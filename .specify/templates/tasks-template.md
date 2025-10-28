@@ -8,7 +8,7 @@ description: "機能実装のためのタスクリストテンプレート"
 **入力**: `/specs/[###-feature-name]/` 配下の設計ドキュメント  
 **前提条件**: plan.md（必須）、spec.md（ユーザーストーリー参照）、research.md、data-model.md、contracts/
 
-**テスト方針**: 原則2に従い、各ユーザーストーリーで失敗するテストを先行実装する。`modules/<crate>/tests.rs` に配置し、`std` 依存は `cfg(test)` 内に限定する。`modules/*-core` で `tokio` や `embassy` を直接利用しない。作業の節目ごとに `./scripts/ci-check.sh all` と `makers ci-check -- dylint` を実行する。  
+**テスト方針**: 原則2に従い、各ユーザーストーリーで失敗するテストを先行実装する。`modules/<crate>/tests.rs` に配置し、`std` 依存は `cfg(test)` 内に限定する。実装前に対象領域の既存コードを調査し、支配的な設計パターンを把握したうえで着手する。`modules/*-core` で `tokio` や `embassy` を直接利用せず、共有参照・ロックは `modules/utils-core` の `Shared`/`ArcShared` と `Async/SyncMutexLike` 抽象を介して実装する。作業の節目ごとに `./scripts/ci-check.sh all` と `makers ci-check -- dylint` を実行する。  
 **構成**: タスクはユーザーストーリー単位でグルーピングし、並列実行可能なものは `[P]` フラグを付ける。
 
 ## 形式: `[ID] [P?] [Story] 説明`
@@ -43,7 +43,9 @@ description: "機能実装のためのタスクリストテンプレート"
 - [ ] T100 必須のデータ型／メッセージを定義（1 ファイル 1 型/1 trait）  
 - [ ] T101 [P] 非同期実行器・スケジューラ等の基盤を整備（必要な場合は `*-std` / `*-embedded` クレートでラップする）  
 - [ ] T102 エラーハンドリング・ロギング（`tracing`）を設定  
-- [ ] T103 protoactor-go / Apache Pekko との差分を `docs/` または spec に記録
+- [ ] T103 protoactor-go / Apache Pekko との差分を `docs/` または spec に記録  
+- [ ] T104 `Shared`/`ArcShared` および `Async/SyncMutexLike` 抽象で共有リソースを実装する設計を確認し、`alloc::sync::Arc` やプラットフォーム固有 Mutex への直接依存がないことをレビュー  
+- [ ] T105 関連モジュール（既存の型/アクター/サービス）を調査し、採用されている設計パターン・抽象化・命名規約を整理して plan/spec/tasks に記録する。乖離が必要なら理由と影響範囲を明記する。
 
 ---
 
@@ -132,5 +134,5 @@ description: "機能実装のためのタスクリストテンプレート"
 ### 運用ノート
 
 - 各タスク完了時に `./scripts/ci-check.sh all` と `makers ci-check -- dylint` の該当部分を確認する。  
-- Serena MCP ツールによるコード参照結果を記録し、再利用できる形に残す。  
+- Serena MCP ツールによるコード参照結果を記録し、既存実装の設計パターンとともに再利用できる形に残す。  
 - テストをスキップ／コメントアウトすることは禁止。失敗する場合は理由を記録して修正する。
