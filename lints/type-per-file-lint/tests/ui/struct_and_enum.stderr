@@ -1,0 +1,21 @@
+warning: 構造体・列挙型・トレイトはファイルごとに1つまでにしてください
+  --> $DIR/struct_and_enum.rs:7:1
+   |
+LL | / pub enum SampleEnum {
+LL | |   Unit,
+LL | | }
+   | |_^
+   |
+note: このファイルでは既に `SampleStruct` (struct) が定義されています
+  --> $DIR/struct_and_enum.rs:5:1
+   |
+LL | pub struct SampleStruct;
+   | ^^^^^^^^^^^^^^^^^^^^^^^^
+   = note: 対象ファイル: $DIR/struct_and_enum.rs
+   = note: 検出された型一覧: SampleStruct (struct), SampleEnum (enum)
+   = help: 型ごとに別ファイルを作成し、親モジュールで `mod` 宣言を更新してください
+   = note: AI向けアドバイス: 1. `struct_and_enum.rs` と同じディレクトリに `sample_enum.rs` を新規作成しこの `SampleEnum` を移動（サブディレクトリを掘らず `.rs` ファイル単体で配置） 2. 親モジュールで `mod sample_enum;` を追加 3. 必要なら `pub use` を調整して `cargo check` を実行してください。
+   = note: `#[warn(multiple_type_definitions)]` on by default
+
+warning: 1 warning emitted
+

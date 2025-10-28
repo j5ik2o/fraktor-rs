@@ -1,0 +1,13 @@
+warning: mod.rs は Cellex のコーディング規約で使用禁止です
+  --> $DIR/auxiliary/legacy/mod.rs:1:1
+   |
+LL | pub fn value() -> u32 {
+   | ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: 対象ファイル: $DIR/auxiliary/legacy/mod.rs
+   = help: ファイルを `<module>.rs` にリネームし、必要なら同ディレクトリに `<module>/` を作成してサブモジュールを移動してください
+   = note: AI向けアドバイス: 1. `git mv foo/mod.rs foo.rs` 2. 親モジュールの `mod foo;` はそのまま利用 3. サブモジュールは foo.rs 内で `mod sub;` として再宣言しましょう。
+   = note: `#[warn(no_mod_rs)]` on by default
+
+warning: 1 warning emitted
+

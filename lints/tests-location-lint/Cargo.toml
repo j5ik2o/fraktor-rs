@@ -1,0 +1,17 @@
+[package]
+name = "tests-location-lint"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+dylint_linting = "5"
+quote = "1"
+syn = { version = "2", features = ["full", "parsing"] }
+
+[dev-dependencies]
+dylint_testing = "5"

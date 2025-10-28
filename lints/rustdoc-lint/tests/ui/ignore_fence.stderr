@@ -1,0 +1,12 @@
+warning: rustdoc のコードフェンスでは `ignore` を使用できません
+  --> $DIR/ignore_fence.rs:3:5
+   |
+LL | /// ```ignore
+   |     ^^^^^^^^^
+   |
+   = help: サンプルコードは ` ```rust ` としてコンパイル可能な形で記述してください
+   = note: AI向けアドバイス: 実行不能なコードは避け、最小限の `rust` サンプルを提示しましょう。
+   = note: `#[warn(rustdoc_lint)]` on by default
+
+warning: 1 warning emitted
+

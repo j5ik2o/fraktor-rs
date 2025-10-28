@@ -1,0 +1,13 @@
+warning: 再エクスポートは末端モジュールの直属親以外では禁止です
+  --> $DIR/alias_violation.rs:9:1
+   |
+LL | pub use child::Thing as Alias;
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: ルール: 例外ルール: 末端モジュールの直属親のみ許可
+   = note: 詳細: `as` を用いた再エクスポートは許可されていません
+   = help: 末端モジュール内で元の名前を公開するか、呼び出し側で名前を付け替えてください
+   = note: `#[warn(no_parent_reexport)]` on by default
+
+warning: 1 warning emitted
+

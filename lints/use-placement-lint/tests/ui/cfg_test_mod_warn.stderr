@@ -1,0 +1,13 @@
+warning: `use` と `mod` 宣言はファイル冒頭にまとめて配置してください
+  --> $DIR/cfg_test_mod_warn.rs:7:1
+   |
+LL | / #[cfg(test)]
+LL | | mod tests;
+   | |__________^
+   |
+   = help: この宣言を最初の `use` / `mod` ブロックより前に移動しましょう
+   = note: AI向けアドバイス: コメントや属性を含めたまま、該当の `use` / `mod` ブロックをファイル上部へ移動して一箇所に集約してください。
+   = note: `#[warn(use_mod_placement)]` on by default
+
+warning: 1 warning emitted
+

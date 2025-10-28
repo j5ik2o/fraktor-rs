@@ -1,0 +1,19 @@
+warning: 末端モジュールの宣言では `mod` のみを使用してください
+  --> $DIR/allow_comment_ok.rs:6:3
+   |
+LL | /   pub mod sub {
+LL | |     pub struct Thing;
+LL | |     pub struct Other;
+LL | |   }
+   | |___^
+   |
+   = note: ルール: 末端モジュールを公開したい場合は親で `mod` のみ宣言し、`pub use` で公開します
+   = note: 詳細: 宣言 `pub mod sub {
+               pub struct Thing;
+               pub struct Other;
+             }` に公開可視性が設定されています
+   = help: 宣言から可視性修飾子を削除し、公開が必要なシンボルは末端モジュール内で `pub` を付けてください
+   = note: `#[warn(no_parent_reexport)]` on by default
+
+warning: 1 warning emitted
+

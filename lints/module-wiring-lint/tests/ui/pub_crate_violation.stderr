@@ -1,0 +1,27 @@
+warning: 末端モジュールの宣言では `mod` のみを使用してください
+  --> $DIR/pub_crate_violation.rs:6:3
+   |
+LL | /   pub mod sub {
+LL | |     pub struct Thing;
+LL | |   }
+   | |___^
+   |
+   = note: ルール: 末端モジュールを公開したい場合は親で `mod` のみ宣言し、`pub use` で公開します
+   = note: 詳細: 宣言 `pub mod sub {
+               pub struct Thing;
+             }` に公開可視性が設定されています
+   = help: 宣言から可視性修飾子を削除し、公開が必要なシンボルは末端モジュール内で `pub` を付けてください
+   = note: `#[warn(no_parent_reexport)]` on by default
+
+warning: 再エクスポートは末端モジュールの直属親以外では禁止です
+  --> $DIR/pub_crate_violation.rs:11:1
+   |
+LL | pub(crate) use child::sub::Thing;
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: ルール: 例外ルール: 末端モジュールの直属親のみ許可
+   = note: 詳細: モジュール `child` にさらに子モジュールが存在するため末端モジュールではありません
+   = help: 再エクスポートは葉モジュールの直属親でのみ行い、階層が深い場合は子モジュール側で公開してください
+
+warning: 2 warnings emitted
+

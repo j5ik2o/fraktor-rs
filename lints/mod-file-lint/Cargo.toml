@@ -1,0 +1,15 @@
+[package]
+name = "mod-file-lint"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+dylint_linting = "5"
+
+[dev-dependencies]
+dylint_testing = "5"

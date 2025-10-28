@@ -1,0 +1,12 @@
+warning: `crate::hello::actor_process::ActorProcess` のような冗長な import です
+  --> $DIR/redundant_import.rs:7:34
+   |
+LL | use crate::hello::actor_process::ActorProcess;
+   |                                  ^^^^^^^^^^^^
+   |
+   = help: `mod actor_process;` と `pub use actor_process::ActorProcess;` をこのファイルで宣言して再エクスポートしてください
+   = note: AI向けアドバイス: 1. 同名モジュールを `mod` 宣言で読み込み 2. 公開が必要な型を `pub use` でまとめて再エクスポート 3. 呼び出し側の `use` を削除して親モジュールから直接利用しましょう。
+   = note: `#[warn(redundant_mod_import)]` on by default
+
+warning: 1 warning emitted
+

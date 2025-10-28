@@ -1,0 +1,17 @@
+warning: 末端モジュールの宣言では `mod` のみを使用してください
+  --> $DIR/prelude_reexport_ok.rs:7:5
+   |
+LL | /     pub mod sub {
+LL | |       pub struct Thing;
+LL | |     }
+   | |_____^
+   |
+   = note: ルール: 末端モジュールを公開したい場合は親で `mod` のみ宣言し、`pub use` で公開します
+   = note: 詳細: 宣言 `pub mod sub {
+                 pub struct Thing;
+               }` に公開可視性が設定されています
+   = help: 宣言から可視性修飾子を削除し、公開が必要なシンボルは末端モジュール内で `pub` を付けてください
+   = note: `#[warn(no_parent_reexport)]` on by default
+
+warning: 1 warning emitted
+

@@ -1,0 +1,12 @@
+warning: rustdoc は英語で記述してください
+  --> $DIR/non_english.rs:3:5
+   |
+LL | /// 日本語の説明です。
+   |     ^^
+   |
+   = help: 日本語などの全角文字はドキュメントコメントでは使わず、別資料に移動してください
+   = note: AI向けアドバイス: ドキュメント生成時には英語の説明文と `rust` のコード例を組み合わせて出力してください。
+   = note: `#[warn(rustdoc_lint)]` on by default
+
+warning: 1 warning emitted
+
