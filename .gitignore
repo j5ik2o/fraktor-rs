@@ -31,3 +31,4 @@ Cargo.lock
 /.codex/log/
 /.codex/auth.json
 /.codex/history.jsonl
+/.codex/internal_storage.json
