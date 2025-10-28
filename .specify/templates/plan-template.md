@@ -25,7 +25,7 @@
 
 *Phase 0 の前に全てのゲートを満たす計画を示し、Phase 1 終了時点で再確認すること。*
 
-- **ゲートP1（原則1）**: 対象機能が依存する `modules/*-core` クレートが `#![no_std]` でビルド可能である設計か検証する。`std` 依存が必要な場合は別クレートやテスト専用モジュールに切り出す計画を明記する。共有参照やロックは `modules/utils-core` の `Shared` 系・`Async/SyncMutexLike` 抽象のみを使用する計画を示し、直接 `alloc::sync::Arc` 等へ依存しないことを確認する。また `Shared` の命名規約（`_shared` / `Shared` サフィックス、`Handle`/`Driver`/`Facade` 禁止）を守る設計であるかチェックする。  
+- **ゲートP1（原則1）**: 対象機能が依存する `modules/*-core` クレートが `#![no_std]` でビルド可能である設計か検証する。`std` 依存が必要な場合は別クレートやテスト専用モジュールに切り出す計画を明記する。共有参照やロックは `modules/utils-core` の `Shared` 系・`Async/SyncMutexLike` 抽象のみを使用する計画を示し、直接 `alloc::sync::Arc` 等へ依存しないことを確認する。また `Shared` の命名規約（`_shared` / `Shared` サフィックス、`Handle`/`Driver`/`Facade` 禁止）と公開 API への `Typed` 禁止を守る設計であるかチェックし、循環参照が設計段階で排除されていることを確認する。  
 - **ゲートP2（原則2）**: ユーザーストーリー毎に失敗するテストを先に記述し、`./scripts/ci-check.sh all` と `makers ci-check -- dylint` の双方を実行する計画を含める。テストの無効化・削除は不可。  
 - **ゲートP3（原則3）**: protoactor-go / Apache Pekko の該当箇所を調査し、差分理由と Rust イディオム変換方針を記録する。  
 - **ゲートP4（原則4）**: 新規ファイル追加時は 1 ファイル 1 型または 1 trait、`mod.rs` 非使用、`<module>/tests.rs` 配置を計画に落とし込む。  
