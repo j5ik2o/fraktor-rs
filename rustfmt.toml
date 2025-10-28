@@ -1,0 +1,54 @@
+# =============================
+# Rustfmt Best Practice (Nightly, 2025対応)
+# =============================
+
+unstable_features = true
+edition = "2021"
+
+# --- 基本 ---
+max_width = 120
+tab_spaces = 2
+newline_style = "Unix"
+indent_style = "Block"
+use_small_heuristics = "Max"
+blank_lines_upper_bound = 1
+
+# --- コメントと整形 ---
+normalize_comments = true
+wrap_comments = true
+format_code_in_doc_comments = true
+comment_width = 100
+
+# --- 波括弧スタイル ---
+brace_style = "PreferSameLine"
+control_brace_style = "AlwaysSameLine"
+
+# --- インポート整形 ---
+reorder_imports = true
+imports_granularity = "Crate"
+group_imports = "StdExternalCrate"
+imports_indent = "Block"
+imports_layout = "Mixed"
+
+# --- impl / mod 整形（nightly限定）---
+reorder_impl_items = true
+reorder_modules = true
+
+# --- 関数・式整形 ---
+combine_control_expr = false
+fn_params_layout = "Tall"          # ← 新しい正しいキー名
+match_block_trailing_comma = true
+match_arm_leading_pipes = "Always"
+
+# --- 可読性・diff安定性 ---
+where_single_line = false
+struct_field_align_threshold = 20
+enum_discrim_align_threshold = 20
+space_after_colon = true
+space_before_colon = false
+spaces_around_ranges = false
+trailing_comma = "Vertical"
+trailing_semicolon = true
+
+# --- 実験的 ---
+overflow_delimited_expr = true
