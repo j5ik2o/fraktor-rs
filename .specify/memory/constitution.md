@@ -1,10 +1,10 @@
 <!--
 Sync Impact Report
-Version change: 1.2.0 → 1.3.0
+Version change: 1.4.0 → 1.5.0
 Modified principles:
-- 実装規約と構造制約：Shared/Mutex抽象の使用義務を維持
+- 実装規約と構造制約：命名ガイドラインと循環参照設計方針を強化
 Added sections:
-- VI. 帰納的一貫性駆動の設計
+- なし
 Removed sections:
 - なし
 Templates requiring updates:
@@ -68,6 +68,9 @@ Follow-up TODOs:
 - FQCN による `use` を基本とし、再エクスポートは末端モジュールの直属親に限定する。
 - `lints/` 配下のカスタム lint は `lints/*/README.md` に明文化されたルールを参照し、作業前後で `makers ci-check -- dylint` を実行して逸脱を検知する。AI や CI が自動修正を試みる前に必ず内容を更新・確認する。
 - `alloc::sync::Arc` や `spin::Mutex` 等の直接利用は禁止し、共有参照やロックは必ず `modules/utils-core` の `Shared`/`ArcShared`/`RcShared` と `AsyncMutexLike`/`SyncMutexLike` 抽象を介して差し替え可能に実装する。`no_std` では `SpinAsyncMutex`/`SpinSyncMutex` をデフォルトとし、プラットフォーム固有実装を導入する場合は同抽象を拡張する。
+- `Shared` 系の型や変数名には `_shared` / `Shared` サフィックスを用い、`Handle` プレフィックス/サフィックスでの命名は禁止する。共有参照は組込み負荷を考慮して必要最小限とし、代替手段がある場合は `Shared` を避ける。`Driver` や `Facade` といった実装都合を想起させるサフィックスの利用も禁止する。
+- 公開 API の型・trait・メソッドには `Typed` といった歴史的命名を含めず、`ActorRef<M>` のように静的型付けを前提とした名称を採用する。内部向けの `Any` ベース構造には `Internal` 等で明確に区別する。
+- 循環参照を発生させない設計を優先し、`Weak` 連鎖に依存した複雑な API を導入しない。必要な場合は `MapSystemFn` など関数型抽象で依存関係を解消し、設計レビューで循環構造の有無を検証する。
 
 ## 開発フローとレビュー手順
 
@@ -86,4 +89,4 @@ Follow-up TODOs:
 - すべての PR は憲章遵守チェックリストをレビューコメントに添付し、CI 結果とテスト稼働ログを含める。
 - 四半期ごとにメンテナが遵守状況を棚卸しし、逸脱があれば是正計画と期日を記録する。
 
-**Version**: 1.3.0 | **Ratified**: 2025-10-28 | **Last Amended**: 2025-10-28
+**Version**: 1.5.0 | **Ratified**: 2025-10-28 | **Last Amended**: 2025-10-28

@@ -76,6 +76,7 @@
 - **FR-005**: コア機能は `#![no_std]` 環境で動作し、`std` 依存は `cfg(test)` または別クレートに限定しなければならない。共有参照・ロック機構は必ず `modules/utils-core` の `Shared`/`ArcShared` および `AsyncMutexLike`/`SyncMutexLike` 抽象を用い、`alloc::sync::Arc` やプラットフォーム固有 Mutex への直接依存を禁止する。`tokio` や `embassy` などのランタイム依存は `modules/*-std` または `modules/*-embedded` に隔離し、`modules/*-core` では利用しない。
 - **FR-006**: [NEEDS CLARIFICATION: 具体的な認証方式など未確定事項]
 - **FR-007**: 新規コードは対象ドメインの既存モジュールを調査し、支配的な設計パターン（抽象化、トレイト利用、命名）と整合しなければならない。意図的に乖離する場合は spec/plan/tasks に根拠と参照ファイルを記録する。  
+- **FR-008**: 公開 API の命名には `Typed` / `Untyped` 等の歴史的命名を含めず、静的型付けを前提とした分かりやすい名称を採用する。循環参照が発生する設計を避け、必要な場合は関数型抽象などで依存関係を解消する方針を仕様に明記する。  
 
 ### 重要エンティティ（データを扱う場合）
 

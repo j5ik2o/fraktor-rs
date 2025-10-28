@@ -8,7 +8,7 @@ description: "機能実装のためのタスクリストテンプレート"
 **入力**: `/specs/[###-feature-name]/` 配下の設計ドキュメント  
 **前提条件**: plan.md（必須）、spec.md（ユーザーストーリー参照）、research.md、data-model.md、contracts/
 
-**テスト方針**: 原則2に従い、各ユーザーストーリーで失敗するテストを先行実装する。`modules/<crate>/tests.rs` に配置し、`std` 依存は `cfg(test)` 内に限定する。実装前に対象領域の既存コードを調査し、支配的な設計パターンを把握したうえで着手する。`modules/*-core` で `tokio` や `embassy` を直接利用せず、共有参照・ロックは `modules/utils-core` の `Shared`/`ArcShared` と `Async/SyncMutexLike` 抽象を介して実装する。作業の節目ごとに `./scripts/ci-check.sh all` と `makers ci-check -- dylint` を実行する。  
+**テスト方針**: 原則2に従い、各ユーザーストーリーで失敗するテストを先行実装する。`modules/<crate>/tests.rs` に配置し、`std` 依存は `cfg(test)` 内に限定する。実装前に対象領域の既存コードを調査し、支配的な設計パターンを把握したうえで着手する。`modules/*-core` で `tokio` や `embassy` を直接利用せず、共有参照・ロックは `modules/utils-core` の `Shared`/`ArcShared` と `Async/SyncMutexLike` 抽象を介して実装し、`_shared` / `Shared` サフィックス等の命名規約および公開 API への `Typed` 禁止を遵守する。作業の節目ごとに `./scripts/ci-check.sh all` と `makers ci-check -- dylint` を実行する。  
 **構成**: タスクはユーザーストーリー単位でグルーピングし、並列実行可能なものは `[P]` フラグを付ける。
 
 ## 形式: `[ID] [P?] [Story] 説明`
@@ -45,7 +45,8 @@ description: "機能実装のためのタスクリストテンプレート"
 - [ ] T102 エラーハンドリング・ロギング（`tracing`）を設定  
 - [ ] T103 protoactor-go / Apache Pekko との差分を `docs/` または spec に記録  
 - [ ] T104 `Shared`/`ArcShared` および `Async/SyncMutexLike` 抽象で共有リソースを実装する設計を確認し、`alloc::sync::Arc` やプラットフォーム固有 Mutex への直接依存がないことをレビュー  
-- [ ] T105 関連モジュール（既存の型/アクター/サービス）を調査し、採用されている設計パターン・抽象化・命名規約を整理して plan/spec/tasks に記録する。乖離が必要なら理由と影響範囲を明記する。
+- [ ] T105 関連モジュール（既存の型/アクター/サービス）を調査し、採用されている設計パターン・抽象化・命名規約を整理して plan/spec/tasks に記録する。乖離が必要なら理由と影響範囲を明記する。  
+- [ ] T106 `Shared` 系命名規約（`_shared` / `Shared` サフィックス、`Handle`/`Driver`/`Facade` 禁止）と使用最小化方針、公開 API での `Typed` 禁止、循環参照排除の設計判断をコードレビュー項目に追加し、逸脱時の是正プランを明記する。
 
 ---
 
