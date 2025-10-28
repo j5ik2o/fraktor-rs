@@ -1,8 +1,8 @@
-# Specification Quality Checklist: Behavior ファクトリと監視拡張
+# Specification Quality Checklist: Cellactor Actor Core 初期実装
 
-**Purpose**: Validate specification completeness and quality before proceeding to planning  
-**Created**: 2025-10-28  
-**Feature**: [specs/001-behavior-factory/spec.md](../spec.md)
+**Purpose**: Validate specification completeness and quality before proceeding to planning
+**Created**: 2025-10-28
+**Feature**: specs/002-init-actor-lib/spec.md
 
 ## Content Quality
 
@@ -31,4 +31,4 @@
 
 ## Notes
 
-- 特記事項なし。
+- Items marked incomplete require spec updates before `/speckit.clarify` or `/speckit.plan`
