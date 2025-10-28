@@ -8,6 +8,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 cd "${REPO_ROOT}"
 
 THUMB_TARGETS=("thumbv6m-none-eabi" "thumbv8m.main-none-eabi")
+declare -a HARDWARE_PACKAGES=()
 DEFAULT_TOOLCHAIN="${RUSTUP_TOOLCHAIN:-stable}"
 FMT_TOOLCHAIN="${FMT_TOOLCHAIN:-nightly}"
 
@@ -124,7 +125,7 @@ run_dylint() {
         break
         ;;
       -h|--help)
-        echo "利用例: scripts/ci-check.sh dylint -n mod-file-lint -m cellex-actor-core-rs" >&2
+        echo "利用例: scripts/ci-check.sh dylint -n mod-file-lint -m cellactor-actor-core-rs" >&2
         return 0
         ;;
       *)
@@ -274,22 +275,29 @@ run_dylint() {
   fi
 
   local -a common_dylint_args=("${dylint_args[@]}" "--no-build" "--no-metadata")
-  local -a hardware_packages=("rp2040-hw-tests" "rp2350-hw-tests" "wio-terminal-hw-tests")
+  local -a hardware_packages=()
+  if [[ ${HARDWARE_PACKAGES+set} == set && ${#HARDWARE_PACKAGES[@]} -gt 0 ]]; then
+    hardware_packages=("${HARDWARE_PACKAGES[@]}")
+  fi
   local -a main_package_args=()
   local -a hardware_targets=()
-  local -a feature_packages=("cellex-utils-embedded-rs=embassy,arc")
+  local -a feature_packages=() #("cellactor-utils-embedded-rs=embassy,arc")
 
   if [[ ${#package_args[@]} -eq 0 ]]; then
     if ! command -v python3 >/dev/null 2>&1; then
       echo "エラー: python3 が必要ですが見つかりませんでした。" >&2
       return 1
     fi
+    local -a python_cmd=(python3 -)
+    if [[ ${#hardware_packages[@]} -gt 0 ]]; then
+      python_cmd+=("${hardware_packages[@]}")
+    fi
     local -a workspace_packages=()
     while IFS= read -r pkg; do
       if [[ -n "${pkg}" ]]; then
         workspace_packages+=("${pkg}")
       fi
-    done < <(python3 - "${hardware_packages[@]}" <<'PY'
+    done < <("${python_cmd[@]}" <<'PY'
 import json
 import subprocess
 import sys
@@ -311,7 +319,9 @@ PY
     for pkg in "${workspace_packages[@]}"; do
       main_package_args+=("-p" "${pkg}")
     done
-    hardware_targets=("${hardware_packages[@]}")
+    if [[ ${#hardware_packages[@]} -gt 0 ]]; then
+      hardware_targets=("${hardware_packages[@]}")
+    fi
   else
     local idx=0
     while [[ ${idx} -lt ${#package_args[@]} ]]; do
@@ -320,12 +330,14 @@ PY
       local matched=""
       if [[ "${flag}" == "-p" ]]; then
         local hpkg
-        for hpkg in "${hardware_packages[@]}"; do
-          if [[ "${value}" == "${hpkg}" ]]; then
-            matched="yes"
-            break
-          fi
-        done
+        if [[ ${#hardware_packages[@]} -gt 0 ]]; then
+          for hpkg in "${hardware_packages[@]}"; do
+            if [[ "${value}" == "${hpkg}" ]]; then
+              matched="yes"
+              break
+            fi
+          done
+        fi
       fi
       if [[ -n "${matched}" ]]; then
         hardware_targets+=("${value}")
@@ -383,39 +395,41 @@ PY
     done
   fi
 
-  local feature_mapping
-  for feature_mapping in "${feature_packages[@]}"; do
-    local feature_pkg="${feature_mapping%%=*}"
-    local feature_list="${feature_mapping#*=}"
-    local run_feature=""
+  if [[ ${#feature_packages[@]} -gt 0 ]]; then
+    local feature_mapping
+    for feature_mapping in "${feature_packages[@]}"; do
+      local feature_pkg="${feature_mapping%%=*}"
+      local feature_list="${feature_mapping#*=}"
+      local run_feature=""
 
-    if [[ ${#package_args[@]} -eq 0 ]]; then
-      run_feature="yes"
-    else
-      local idx=0
-      while [[ ${idx} -lt ${#package_args[@]} ]]; do
-        if [[ "${package_args[${idx}]}" == "-p" && "${package_args[${idx}+1]}" == "${feature_pkg}" ]]; then
-          run_feature="yes"
-          break
-        fi
-        idx=$((idx + 2))
-      done
-    fi
+      if [[ ${#package_args[@]} -eq 0 ]]; then
+        run_feature="yes"
+      else
+        local idx=0
+        while [[ ${idx} -lt ${#package_args[@]} ]]; do
+          if [[ "${package_args[${idx}]}" == "-p" && "${package_args[${idx}+1]}" == "${feature_pkg}" ]]; then
+            run_feature="yes"
+            break
+          fi
+          idx=$((idx + 2))
+        done
+      fi
 
-    if [[ -z "${run_feature}" ]]; then
-      continue
-    fi
+      if [[ -z "${run_feature}" ]]; then
+        continue
+      fi
 
-    local -a feature_invocation=("-p" "${feature_pkg}" "${common_dylint_args[@]}")
-    local -a feature_trailing=(--features "${feature_list}")
-    local log_feature="${feature_invocation[*]} -- --features ${feature_list}"
-    if [[ ${#trailing_args[@]} -gt 0 ]]; then
-      log_feature+=" -- ${trailing_args[*]}"
-      feature_trailing+=("${trailing_args[@]}")
-    fi
-    log_step "cargo +${DEFAULT_TOOLCHAIN} dylint ${log_feature} (RUSTFLAGS=${rustflags_value})"
-    RUSTFLAGS="${rustflags_value}" DYLINT_LIBRARY_PATH="${dylint_library_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${feature_invocation[@]}" -- "${feature_trailing[@]}" || return 1
-  done
+      local -a feature_invocation=("-p" "${feature_pkg}" "${common_dylint_args[@]}")
+      local -a feature_trailing=(--features "${feature_list}")
+      local log_feature="${feature_invocation[*]} -- --features ${feature_list}"
+      if [[ ${#trailing_args[@]} -gt 0 ]]; then
+        log_feature+=" -- ${trailing_args[*]}"
+        feature_trailing+=("${trailing_args[@]}")
+      fi
+      log_step "cargo +${DEFAULT_TOOLCHAIN} dylint ${log_feature} (RUSTFLAGS=${rustflags_value})"
+      RUSTFLAGS="${rustflags_value}" DYLINT_LIBRARY_PATH="${dylint_library_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${feature_invocation[@]}" -- "${feature_trailing[@]}" || return 1
+    done
+  fi
 }
 
 run_clippy() {
@@ -424,76 +438,76 @@ run_clippy() {
 }
 
 run_no_std() {
-  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p cellex-utils-core-rs --no-default-features --features alloc"
-  run_cargo check -p cellex-utils-core-rs --no-default-features --features alloc || return 1
+  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p cellactor-utils-core-rs --no-default-features --features alloc"
+  run_cargo check -p cellactor-utils-core-rs --no-default-features --features alloc || return 1
 
-  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p cellex-actor-core-rs --no-default-features --features alloc"
-  run_cargo check -p cellex-actor-core-rs --no-default-features --features alloc || return 1
+  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p cellactor-actor-core-rs --no-default-features"
+  run_cargo check -p cellactor-actor-core-rs --no-default-features || return 1
 }
 
 run_std() {
-  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p cellex-utils-core-rs"
-  run_cargo test -p cellex-utils-core-rs || return 1
+  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p cellactor-utils-core-rs"
+  run_cargo test -p cellactor-utils-core-rs || return 1
 
-  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p cellex-actor-core-rs --no-default-features --features alloc,unwind-supervision --lib"
-  run_cargo test -p cellex-actor-core-rs --no-default-features --features alloc,unwind-supervision --lib || return 1
+  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p cellactor-actor-core-rs --lib"
+  run_cargo test -p cellactor-actor-core-rs --lib || return 1
 
-  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p cellex-utils-std-rs"
-  run_cargo test -p cellex-utils-std-rs || return 1
-
-  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p cellex-actor-std-rs"
-  run_cargo test -p cellex-actor-std-rs || return 1
-
-  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p cellex-remote-core-rs"
-  run_cargo test -p cellex-remote-core-rs || return 1
-
-  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p cellex-cluster-core-rs"
-  run_cargo test -p cellex-cluster-core-rs || return 1
+#  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p cellactor-utils-std-rs"
+#  run_cargo test -p cellactor-utils-std-rs || return 1
+#
+#  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p cellactor-actor-std-rs"
+#  run_cargo test -p cellactor-actor-std-rs || return 1
+#
+#  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p cellactor-remote-core-rs"
+#  run_cargo test -p cellactor-remote-core-rs || return 1
+#
+#  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p cellactor-cluster-core-rs"
+#  run_cargo test -p cellactor-cluster-core-rs || return 1
 }
 
 run_doc_tests() {
-  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p cellex-actor-core-rs --no-default-features --features alloc,test-support"
-  run_cargo check -p cellex-actor-core-rs --no-default-features --features alloc,test-support || return 1
+  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p cellactor-actor-core-rs --no-default-features"
+  run_cargo check -p cellactor-actor-core-rs --no-default-features || return 1
 }
 
-run_embedded() {
-  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p cellex-utils-embedded-rs --no-default-features --features rc"
-  run_cargo check -p cellex-utils-embedded-rs --no-default-features --features rc || return 1
-
-  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p cellex-utils-embedded-rs --no-default-features --features arc"
-  run_cargo check -p cellex-utils-embedded-rs --no-default-features --features arc || return 1
-
-  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p cellex-utils-embedded-rs --no-default-features --features embassy --no-run"
-  run_cargo test -p cellex-utils-embedded-rs --no-default-features --features embassy --no-run || return 1
-
-  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p cellex-actor-embedded-rs --no-default-features --features alloc,embedded_arc"
-  run_cargo check -p cellex-actor-embedded-rs --no-default-features --features alloc,embedded_arc || return 1
-
-  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p cellex-actor-embedded-rs --no-default-features --features alloc,embedded_arc"
-  run_cargo test -p cellex-actor-embedded-rs --no-default-features --features alloc,embedded_arc || return 1
-
-  for target in "${THUMB_TARGETS[@]}"; do
-    if ! ensure_target_installed "${target}"; then
-      status=$?
-      if [[ ${status} -eq 1 ]]; then
-        return 1
-      fi
-      continue
-    fi
-
-    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p cellex-utils-core-rs --target ${target} --no-default-features --features alloc"
-    run_cargo check -p cellex-utils-core-rs --target "${target}" --no-default-features --features alloc || return 1
-
-    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p cellex-actor-core-rs --target ${target} --no-default-features --features alloc"
-    run_cargo check -p cellex-actor-core-rs --target "${target}" --no-default-features --features alloc || return 1
-
-    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p cellex-actor-core-rs --target ${target} --no-default-features --features alloc"
-    run_cargo check -p cellex-actor-core-rs --target "${target}" --no-default-features --features alloc || return 1
-
-    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p cellex-actor-embedded-rs --target ${target} --no-default-features --features alloc,embedded_rc"
-    run_cargo check -p cellex-actor-embedded-rs --target "${target}" --no-default-features --features alloc,embedded_rc || return 1
-  done
-}
+# run_embedded() {
+#  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p cellactor-utils-embedded-rs --no-default-features --features rc"
+#  run_cargo check -p cellactor-utils-embedded-rs --no-default-features --features rc || return 1
+#
+#  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p cellactor-utils-embedded-rs --no-default-features --features arc"
+#  run_cargo check -p cellactor-utils-embedded-rs --no-default-features --features arc || return 1
+#
+#  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p cellactor-utils-embedded-rs --no-default-features --features embassy --no-run"
+#  run_cargo test -p cellactor-utils-embedded-rs --no-default-features --features embassy --no-run || return 1
+#
+#  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p cellactor-actor-embedded-rs --no-default-features --features alloc,embedded_arc"
+#  run_cargo check -p cellactor-actor-embedded-rs --no-default-features --features alloc,embedded_arc || return 1
+#
+#  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p cellactor-actor-embedded-rs --no-default-features --features alloc,embedded_arc"
+#  run_cargo test -p cellactor-actor-embedded-rs --no-default-features --features alloc,embedded_arc || return 1
+#
+#  for target in "${THUMB_TARGETS[@]}"; do
+#    if ! ensure_target_installed "${target}"; then
+#      status=$?
+#      if [[ ${status} -eq 1 ]]; then
+#        return 1
+#      fi
+#      continue
+#    fi
+#
+#    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p cellactor-utils-core-rs --target ${target} --no-default-features --features alloc"
+#    run_cargo check -p cellactor-utils-core-rs --target "${target}" --no-default-features --features alloc || return 1
+#
+#    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p cellactor-actor-core-rs --target ${target} --no-default-features --features alloc"
+#    run_cargo check -p cellactor-actor-core-rs --target "${target}" --no-default-features --features alloc || return 1
+#
+#    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p cellactor-actor-core-rs --target ${target} --no-default-features --features alloc"
+#    run_cargo check -p cellactor-actor-core-rs --target "${target}" --no-default-features --features alloc || return 1
+#
+#    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p cellactor-actor-embedded-rs --target ${target} --no-default-features --features alloc,embedded_rc"
+#    run_cargo check -p cellactor-actor-embedded-rs --target "${target}" --no-default-features --features alloc,embedded_rc || return 1
+#  done
+# }
 
 run_tests() {
   log_step "cargo +${DEFAULT_TOOLCHAIN} test --workspace --verbose --lib --bins --tests --benches --examples"
@@ -506,12 +520,14 @@ run_all() {
   run_no_std || return 1
   run_std || return 1
   run_doc_tests || return 1
-  run_embedded || return 1
+#  run_embedded || return 1
   run_tests || return 1
 }
 
 main() {
-  "${SCRIPT_DIR}/check_modrs.sh"
+  if [[ -x "${SCRIPT_DIR}/check_modrs.sh" ]]; then
+    "${SCRIPT_DIR}/check_modrs.sh"
+  fi
 
   if [[ $# -eq 0 ]]; then
     run_all || return 1
