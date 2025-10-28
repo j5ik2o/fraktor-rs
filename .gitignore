@@ -27,3 +27,7 @@ target
 .idea/
 
 Cargo.lock
+/.codex/sessions/
+/.codex/log/
+/.codex/auth.json
+/.codex/history.jsonl
