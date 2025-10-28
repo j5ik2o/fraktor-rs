@@ -24,6 +24,9 @@
 - [ ] T104 [P] utils-core キュー調査結果を追記し `specs/002-init-actor-lib/research.md` にバックプレッシャー整理を追加する
 - [ ] T105 `modules/actor-core/src/system_id.rs` に `SystemId` 新規定義を追加する
 - [ ] T106 [P] `modules/actor-core/src/scope_id.rs` に `ScopeId` 新規定義を追加する
+- [ ] T107 `modules/actor-core/src/execution_runtime/mod.rs` に `ExecutionRuntime` トレイトと `ExecutionRuntimeRegistry` を定義し、CoreSync をデフォルト登録する
+- [ ] T108 [P] `modules/actor-core/src/execution_runtime/core_sync.rs` に CoreSync 実装を追加し、ReadyQueueCoordinator/DispatcherRuntime を駆動するループを提供する
+- [ ] T109 `modules/actor-core/tests/execution_runtime/tests.rs` に CoreSync ランタイムが ActorSystem 起動時に自動登録されることを検証する
 
 ## フェーズ3: ユーザーストーリー1（優先度: P1） — システム内で安全にアクターを起動したい 🎯
 
@@ -59,13 +62,17 @@
 
 ### 実装
 
-- [ ] T303 [US2] `modules/actor-core/src/mailbox_runtime.rs` に `MailboxRuntime<M>` を実装し utils-core の `SyncQueue` を組み込む
-- [ ] T304 [US2] `modules/actor-core/src/dispatcher_config.rs` に `DispatcherConfig` と `FairnessStrategy` を実装する
-- [ ] T305 [US2] バックプレッシャーメトリクスを `modules/actor-core/src/observation_channel.rs` に統合する
-- [ ] T306 [US2] `modules/actor-core/src/event_stream_core.rs` に `EventStreamCore` を実装し publish/backpressure を処理する
-- [ ] T307 [US2] メールボックス設定エンドポイントを反映し `specs/002-init-actor-lib/contracts/control-plane.yaml` を更新する
-- [ ] T308 [US2] Dispatcher 公平性の根拠を `specs/002-init-actor-lib/research.md` に追記する
-- [ ] T309 [US2] Mailbox 設定例を `specs/002-init-actor-lib/quickstart.md` に追記する
+- [ ] T303 [US2] `modules/actor-core/src/mailbox_runtime.rs` に `MailboxRuntime<M>` を実装し、CoreSync では `SyncQueue`、HostAsync では `AsyncQueue` をラップする `MailboxBackend` 抽象を確立する（`OverflowPolicy::Block` は後者のみ許可）。SystemMessageQueue と UserMessageQueue を内包し、Suspend/Resume 操作でユーザーキューのみを停止できるようにする
+- [ ] T304 [US2] `modules/actor-core/src/dispatcher_runtime.rs` に `DispatcherRuntime` を実装し、`DispatcherConfig` と `FairnessStrategy` を利用してワーカー割当・スケジューリングを制御する
+- [ ] T305 [US2] `modules/actor-core/src/message_invoker.rs` に `MessageInvoker<M>` を実装し、system/user 両キューからの取得順序と backpressure ヒント伝搬を担保する
+- [ ] T306 [US2] バックプレッシャーメトリクスを `modules/actor-core/src/observation_channel.rs` に統合し、`OverflowPolicy::Block` 選択時は HostAsync キュー待機を含むヒントを発火する
+- [ ] T307 [US2] `modules/actor-core/src/event_stream_core.rs` に `EventStreamCore` を実装し publish/backpressure を処理する
+- [ ] T308 [US2] メールボックス設定エンドポイントを反映し `specs/002-init-actor-lib/contracts/control-plane.yaml` を更新する
+- [ ] T309 [US2] Dispatcher 公平性の根拠を `specs/002-init-actor-lib/research.md` に追記する
+- [ ] T310 [US2] Mailbox 設定例を `specs/002-init-actor-lib/quickstart.md` に追記する
+- [ ] T311 [US2] Mailbox Middleware チェイン API を設計・実装し、メッセージ前後処理フックとテレメトリ統合を提供する
+- [ ] T312 [US2] Throughput/Backpressure ヒントを ReadyQueueCoordinator に送出し DispatcherRuntime がワーカープール制御に利用できるよう統合する
+- [ ] T313 [US2] Stash API と再投入制御ロジックを実装し、容量超過時の観測イベントとエラー伝搬をテストで保証する
 
 ## フェーズ5: ユーザーストーリー3（優先度: P1） — 失敗時の回復方針を制御したい
 
@@ -139,4 +146,3 @@ Polish (T501–T504)
 2. **拡張1 (US2)**: Mailbox/Dispatcher/EventStream を追加し、バックプレッシャー制御と公平性メトリクスを実現する。  
 3. **拡張2 (US3)**: Supervision と ActorError 分類を導入し、エラー復旧ポリシーを制御する。  
 4. **仕上げ**: ドキュメントを更新し、CI/リンタを完走させて安定版を確定する。
-

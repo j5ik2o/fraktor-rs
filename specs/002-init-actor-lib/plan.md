@@ -7,7 +7,10 @@
 
 - ActorSystem にスコープ制約を課し、Rust の所有権で `ActorRef` を外部へ漏らさない仕組みを確立する。protoactor-go の `RootContext` と Apache Pekko Typed の `ActorSystem` を比較し、Rust では RAII とライフタイム境界で再構成する。
 - Props/Behavior ビルダをチェーン API として設計し、状態初期化、メールボックス種別、監視ポリシー、メトリクス設定を組み合わせられるようにする。`Handle`/`Untyped` 命名は禁止し、新名称（例: `ScopeRef`, `ErasedMessageEnvelope`）を提示する。
-- Mailbox/Dispatcher は `modules/utils-core` の queue 抽象を基盤にし、バウンデッド/アンバウンデッド、バックプレッシャーポリシー（保留・最新破棄・最古破棄・拡張）を切り替え可能にする。公平性メトリクスを exposing し、no_std 環境で portable-atomic ベースのスケジューラを組む。
+- Mailbox/Dispatcher は `modules/utils-core` の queue 抽象を基盤にし、バウンデッド/アンバウンデッド、バックプレッシャーポリシー（保留・最新破棄・最古破棄・拡張・ブロック）を切り替え可能にする。`OverflowPolicy::Block` は HostAsync モードと `AsyncQueue` を組み合わせた場合のみ許可し、CoreSync では構成時に拒否・代替案提示を行う。Mailbox は Suspend/Resume をサポートし、SystemMessageQueue/UserMessageQueue を分離した上でシステムメッセージを常に優先する。公平性メトリクスを exposing し、no_std 環境で portable-atomic ベースのスケジューラを組む。
+- DispatcherRuntime と MessageInvoker の責務を切り分け、Dispatcher がワーカー割当とスケジューリング、MessageInvoker が mailbox からの取り出しとハンドラ実行・backpressure 伝搬を担う構成にする。DispatcherRuntime は常に複数ワーカー（少なくとも 2 スレッド）を前提としたスレッドプールで動作させ、単一スレッド実装を想定しない。
+- ReadyQueueCoordinator と Throughput ヒントの往復を明確化し、Mailbox Middleware チェインおよび Stash 制御を組み込んだテレメトリ連携（投入件数、Suspend Duration、予約枠消費）を最小限のオーバーヘッドで提供する。
+- ExecutionRuntime とそのレジストリを導入し、CoreSync 実装をデフォルト提供しつつ HostAsync など追加ランタイムを差し替え可能にする。利用者がイベントループや DispatcherRuntime を直接管理する必要がない設計を保証する。
 - ActorError と Supervision 戦略のデータモデルを定義し、再試行ポリシー・時間窓・重篤度を保持。判定器 API で Restart/Stop/Resume/Escalate を外部設定できるようにし、観測チャンネルへ通知する。
 - EventStream を購読・解除・バックプレッシャーヒント付きで提供し、Dispatcher/メールボックスと整合した観測指標を quickstart とテストで示す。
 

@@ -175,6 +175,7 @@ components:
         overflow:
           type: string
           enum: [DropNewest, DropOldest, Grow, Block]
+          description: Block は HostAsync ランタイム構成で AsyncQueue バックエンドを用いる場合のみ選択可能
         stashCapacity:
           type: integer
           minimum: 0
@@ -204,9 +205,10 @@ components:
         fairness:
           type: string
           enum: [RoundRobin, WorkStealing]
-        runtime:
+        mode:
           type: string
           enum: [CoreSync, HostAsync]
+          description: Block overflow を伴う MailboxPolicy を適用する場合は HostAsync モードを必須とする
     MailboxConfigResult:
       type: object
       required: [status, appliedPolicy, fairnessScore]

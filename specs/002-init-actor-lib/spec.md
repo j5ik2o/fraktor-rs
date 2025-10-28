@@ -52,18 +52,28 @@
 
 - System スコープ外からのアクター参照操作は拒否される。不可視化できないケースでは監査ログと共にフェイルファストする。
 - メールボックスが許容量を超えた場合は、保留・ドロップ・抑止等のポリシーごとに通知が必須であり、暗黙のドロップは禁止する。
+- メールボックスは Dispatcher からの Suspend/Resume コマンドに応答し、ユーザーメッセージ処理を停止・再開できることを保証する。
+- SystemMessageQueue と UserMessageQueue を内部に持ち、システムメッセージが常に優先的に処理されるようキューを切り分ける。
+- ReadyQueue への再登録フックと Throughput/Backpressure ヒント出力は常時有効であり、シグナルロス時は観測イベントとフォールバック動作（再試行または即時失敗）を定義する。DispatcherRuntime は常にスレッドプール（少なくとも 2 スレッド以上、構成可能）上で動作し、単一スレッド運用を前提とする実装を禁止する。
+- DispatcherRuntime と MailboxRuntime の間には ReadyQueueCoordinator（再スケジュール調停役）と ReadyQueueLink（Mailbox 側の接続子）が存在し、再登録やスループットヒントは必ずこの経路を通す。
+- ActorSystem は CoreSync 用 ExecutionRuntime をデフォルトで組み込み、Spawn 後のイベントループ制御や DispatcherRuntime 駆動を利用者へ委ねない。追加のホスト向けランタイムはオプションとして差し替え可能だが、未設定でもアクターが動作することが前提条件。
+- Stash を利用するルートでは保留メッセージの順序と整合性を保証し、容量超過時に通知と代替手段（破棄不可/再試行）を提示する。
+- `OverflowPolicy::Block` を選択する構成は HostAsync モードと `AsyncQueue` バックエンドを組み合わせた場合に限定し、CoreSync モードでは構成時に拒否される。
 - Supervision 戦略未設定時は安全デフォルトとして停止を選択し、protoactor-go との互換性よりも Rust 実装の明瞭さを優先する。
 
 ## 要件（必須）
 
 機能要件はテスト可能な文として記述し、`no_std` 制約や破壊的変更の扱いを明確にする。  
-各要件では参照元（protoactor-go, Apache Pekko）と差分方針を併記する。
+各要件では参照元（protoactor-go, Apache Pekko）と差分方針を併記する。  
+DispatcherRuntime―ReadyQueueCoordinator―ReadyQueueLink―MailboxRuntime のスケジューリング連鎖に加え、実行基盤は ExecutionRuntime（ホスト／組込み向けランタイム）経由で差し替え可能としつつ、ActorSystem がデフォルトでランタイムを注入して利用者にイベントループを意識させない方針を徹底する。
+
+本仕様では DispatcherRuntime―ReadyQueueCoordinator―ReadyQueueLink―MailboxRuntime から成るスケジューリング連鎖を採用し、ReadyQueueCoordinator が再スケジュール要求の唯一の窓口となる。以降の要件ではこの連鎖を前提としてバックプレッシャーや公平性の検証項目を定義する。
 
 ### 機能要件
 
 - **FR-001**: ActorSystem はシステム内専用の実行スコープを提供し、アクター参照を外部へムーブできないようにしなければならない（Pekko `ActorSystem` のスコープ設計に倣い、protoactor-go `RootContext` との違いを仕様に残す）。
 - **FR-002**: Props/Behavior ビルダは初期状態の注入・ライフサイクルフック・監視設定をチェーン設定できること（protoactor-go `Props` と Pekko `Behavior` API の共通機能を網羅し、`Handle` といった命名は使用しない）。
-- **FR-003**: メールボックスはバウンデッド/アンバウンデッドを選択可能とし、オーバーフローポリシー（保留・最新破棄・最古破棄・拡張）を構成できなければならない。挙動は protoactor-go `mailbox` 実装と一致し、no_std 環境で利用できるメモリ戦略を明示する。
+- **FR-003**: メールボックスはバウンデッド/アンバウンデッドを選択可能とし、オーバーフローポリシー（保留・最新破棄・最古破棄・拡張・ブロック）を構成できなければならない。`OverflowPolicy::Block` は HostAsync モード構成で `AsyncQueue` バックエンドを利用する場合にのみ有効とし、CoreSync モードでは設定段階でエラーとする。Suspend/Resume 操作を提供し、SystemMessageQueue と UserMessageQueue を分離した上でシステムメッセージを常に優先処理する。挙動は protoactor-go `mailbox` 実装と一致し、no_std 環境で利用できるメモリ戦略を明示する。
 - **FR-004**: Dispatcher は公平性メトリクスを公開し、複数アクター間でのスケジュール順序が Pekko の Mailbox/Dispatcher 契約と整合することを検証可能にしなければならない。
 - **FR-005**: コア機能は `#![no_std]` 環境で動作し、`std` 依存は `cfg(test)` または `modules/*-std` に隔離しなければならない。共有参照は `modules/utils-core` の抽象を利用し、直接的な `Arc` や OS 依存ロックへの依存を避ける。
 - **FR-006**: ActorError 相当のエラー分類は再試行ポリシー・重篤度・時間窓を保持する拡張可能なデータモデルとして提供され、アプリケーションが列挙拡張またはトレイト実装で独自分類を追加できなければならない（protoactor-go `actor/errors.go` と Pekko `SupervisorStrategy` の分類方針を統合）。
@@ -71,12 +81,49 @@
 - **FR-008**: メッセージアダプタ層は型安全な変換 API を提供し、内部での動的ディスパッチは必要最小限に留める。命名には歴史的な `UntypedEnvelope` を用いず、新しい名称（例: `ErasedMessageEnvelope`）を仕様で提示する。
 - **FR-009**: イベントストリームは購読・解除・バックプレッシャーヒントを提供し、観測指標をテストで検証できる形式で公開しなければならない（protoactor-go `eventstream` と Pekko `EventStream` の差異を記述）。
 - **FR-010**: 仕様で定義する公開 API はバイナリ互換ではなくソース互換を前提とし、破壊的変更を許容する代わりに変更理由と移行方針を spec/plan/tasks に記録する。
+ - **FR-011**: Dispatcher と MessageInvoker は system/user 両キューからのメッセージを優先度付きで取得し、Suspend/Resume 指示と backpressure ヒントを伝搬しなければならない。protoactor-go の `dispatcher`/`mailbox`、Apache Pekko の `Dispatcher`/`MessageDispatcher` の責務分担を参考に、Rust では `MessageInvoker` トレイトとスケジューラループを仕様化する。DispatcherRuntime は N 個のワーカースレッド／タスクを前提としたスレッドプール上で動作し、シングルスレッド専用設計を禁止する。
+- **FR-012**: Mailbox は Enqueue（offer）→ Signal（ready 通知）→ Dequeue（poll）の基本動線を保証し、ReadyQueue へ再登録できない場合は即時エラーまたは診断イベントを発火しなければならない。シグナルロスを防ぐため一貫したハンドシェイクを仕様に含める。
+- **FR-013**: SystemMessageQueue を常に優先し、ユーザーメッセージレーンには予約枠と優先度付きエンベロープを適用する。予約枠が枯渇した場合は観測イベントで通知し、Dispatcher が処理順序を調整できるようにする。
+- **FR-014**: Suspend/Resume 操作はユーザーメッセージ配送を停止・再開しつつ、システムメッセージを継続的に処理できるようにしなければならない。Suspend 状態遷移と Resume 再開時の優先順序を仕様化し、テストで検証可能にする。
+- **FR-015**: オーバーフローポリシーごとの挙動（DropNewest / DropOldest / Grow / Block）を仕様化し、Block が選ばれた場合は HostAsync + AsyncQueue によるノンブロッキング待機とバックプレッシャーヒント発火を必須とする。
+- **FR-016**: Mailbox と DispatcherRuntime はメトリクス（投入件数、ドロップ件数、Suspend 時間、system 予約枠使用率など）を `ObservationChannel` へ記録し、少なくとも仕様で定義するイベント種別を Quickstart とテストで検証可能にする。
+- **FR-017**: ReadyQueueCoordinator との連携を通じて、処理済みメッセージ数や待機時間に基づく Throughput/Backpressure ヒントを返却しなければならない。ヒントは DispatcherRuntime がワーカープール調整に利用できる形式であること。
+- **FR-018**: Mailbox はメッセージ処理前後に Middleware チェインを挿入できるようにし、前処理・後処理・トレース挿入などの拡張ポイントを提供する。チェインは no_std 互換 API で構成し、未設定時のオーバーヘッドを最小化する。
+- **FR-019**: Suspend 回数と期間、system 予約枠消費量などの統計情報を集約し、利用者が監視レイヤーで参照可能な形式で提供する。計測には抽象化したクロックを利用し、no_std 環境でも一貫した値を取得できるようにする。
+- **FR-020**: Stashing をサポートし、利用者が条件付きでメッセージを保留・再投入できる API を提供する。Stash 容量超過時は明示的なエラーおよび観測イベントを発火し、保留中メッセージを失わないよう再投入順序を仕様化する。
+- **FR-021**: ActorSystem は ExecutionRuntime を通じて DispatcherRuntime/ReadyQueueCoordinator を駆動し、利用者が独自にイベントループやスレッドを管理しなくてもアクターが稼働することを保証する。CoreSync 用ランタイムはデフォルトで注入し、HostAsync など追加モードも `with_runtime` で差し替え可能とする。
+
+#### Mailbox必須機能対応状況
+
+| 機能 | 仕様上の扱い | 状態 | 参考要件・タスク | protoactor-go 参照 |
+| --- | --- | --- | --- | --- |
+| 基本メッセージ投入/受信 | FR-012 で offer/signal/poll のハンドシェイクと ReadyQueue 再登録を必須化 | OK（仕様化済） | FR-012, T303 | `queueMailbox` |
+| System / User メッセージ優先度 | FR-003 / FR-013 で system 専用レーンと予約枠、優先度制御を要求 | OK（仕様化済） | FR-003, FR-013, T303 | `systemMailbox` |
+| Suspend / Resume 制御 | 境界条件・FR-014 で明文化。Resume 後の再スケジュールも定義 | OK（仕様化済） | FR-014, T303 | `SuspendMailbox` |
+| オーバーフロー処理 | FR-015 で全ポリシーと Block=HostAsync 制約を規定 | OK（仕様化済） | FR-015, T303 | `mailbox/queueMailbox` |
+| メトリクス連携 | FR-016 で投入/ドロップ/Suspend 時間等の観測を要求 | PARTIAL（仕様あり・細部タスク化） | FR-016, T305, T311 | `mailbox/statistics` |
+| ReadyQueue 連携 | FR-012 と FR-017 で ReadyQueueCoordinator 連携・ヒント伝搬を必須化 | OK（仕様化済） | FR-012, FR-017, T304, T312 | `dispatcher.Schedule` |
+| Throughput / Backpressure ヒント | FR-017 でヒントを DispatcherRuntime が利用できる形式に規定 | PARTIAL（仕様あり・調整タスクあり） | FR-017, T304, T312 | `dispatcher.Throughput` |
+| Middleware チェイン | FR-018 でチェイン API を要求し、spec Entities に定義 | GAP（実装タスク新設） | FR-018, T311 | `MailboxMiddleware` |
+| サスペンション統計・観測 | FR-016 / FR-019 で Suspend 期間・回数を観測データに含める | PARTIAL（仕様あり・集計設計が課題） | FR-016, FR-019, T305 | `mailbox/statistics` |
+| Stashing / 再投入制御 | FR-020 で Stash API とエラー処理を義務付け | GAP（実装タスク新設） | FR-020, T313 | `Stash` |
 
 ### 重要エンティティ（データを扱う場合）
 
 - **ActorSystemScope**: システム初期化時に生成される実行スコープ。アクター生成、参照管理、監査ログ出力を担い、外部公開を禁止する境界。
 - **BehaviorProfile**: Props/Behavior ビルダで確定する振る舞い設定。状態初期化、メールボックス種別、監視ポリシー、計測設定などを束ねる。
 - **MessageQueuePolicy**: メールボックスの容量・優先度・バックプレッシャーポリシーを記述する設定。テストで検証可能な閾値と通知内容を保持する。
+- **MailboxBackend**: `SyncQueue`/`AsyncQueue` を共通化するバックエンド抽象。`OverflowPolicy::Block` を扱う際に HostAsync モードと連携し、CoreSync では同期 API を提供する。
+- **DispatcherRuntime**: DispatcherConfig を元にワーカースレッド／タスクを管理し、MessageInvoker へメッセージ処理ループを割り当てる実行装置。公平性メトリクスを ObservationChannel に送る。
+- **MessageInvoker**: MailboxRuntime からシステム／ユーザーメッセージを取得し、`BehaviorProfile` の `next` 関数を呼び出すエグゼキュータ。Suspend/Resume とバックプレッシャーヒントの反映を担う。
+- **ReadyQueueCoordinator**: DispatcherRuntime と MailboxRuntime を橋渡しし、再スケジュール要求や throughput/backpressure ヒントを調整する調停者。公平性管理の基準を保持する。
+- **ReadyQueueLink**: MailboxRuntime から ReadyQueueCoordinator へ再登録・ヒント送出を行う接続子。命名規約として `Handle` を避け、シグナリング境界を明確化する。
+- **ExecutionRuntime**: DispatcherRuntime/ReadyQueueCoordinator/WorkerPool を初期化・駆動する挿入ポイント。CoreSync/HostAsync などのモードを抽象化し、ActorSystem がデフォルトを注入する。
+- **ExecutionRuntimeRegistry**: ActorSystem 内で利用可能な ExecutionRuntime を登録・解決するレジストリ。`with_runtime` で差し替え可能だが、未登録時は CoreSync 実装が自動的に選択される。
+- **DispatchMode**: DispatcherConfig が選択する実行モード。`CoreSync`（no_std 用の同期駆動）と `HostAsync`（ホスト向け非同期駆動）を定義し、モードごとの制約を仕様に明記する。
+- **MailboxMetrics**: Mailbox の投入・ドロップ・Suspend/Resume などのイベントを表現する観測データセット。ObservationChannel 経由で外部へ伝達され、組込み／ホスト双方で解析可能とする。
+- **MailboxMiddlewareChain**: メッセージ処理前後にフックを挿入するチェイン。トレースやポリシー適用などの拡張ポイントを提供し、未設定時はノーオペレーションとなる。
+- **StashBuffer**: 条件付きで保留したメッセージを保持するバッファ。容量超過時のエラーと再投入順序を明示し、再開時の処理整合性を保証する。
 - **RecoveryPolicy**: Supervision の戦略と ActorError 分類を関連付けるデータ。再試行回数、時間窓、重篤度などのパラメータを含む。
 - **ObservationChannel**: イベントストリームおよび Dispatcher メトリクスを購読するための抽象化。遅延やドロップなどの指標を外部へ伝播する。
 
@@ -91,9 +138,11 @@
 - **SC-003**: Supervision テストで再起動戦略が期待値どおり遷移し、許容回数を超えた場合に停止イベントが 100% 観測される。
 - **SC-004**: 代表的な protoactor-go サンプル（カウンタ）を本仕様の API へ移植する作業時間が従来比 +20% 以内に収まると評価者 3 名以上から確認される。
 - **SC-005**: イベントストリームの購読・解除を 1000 回繰り返しても遅延通知や幽霊イベントの発生率が 0% である。
+- **SC-006**: ActorSystem を CoreSync デフォルト構成で起動した際、利用者コードが追加のイベントループやワーカースレッドを明示せずに 100 個のアクターを spawn・停止できることを統合テストで確認する（HostAsync ランタイムへの切替も 3 行以内の設定で完了する）。
 
 ## 前提・仮定
 
-- no_std 対応のため、タイマーやスレッドプールは既存 `modules/*-core` 抽象を必須とし、新規ランタイム依存を追加しない。
+- no_std 対応のため、タイマーやスレッドプールは既存 `modules/*-core` 抽象を必須とし、新規実行基盤への依存を追加しない。
 - エラー分類は列挙型ベースで提供しつつ、将来の柔軟性確保のためにトレイトを介した拡張ポイントを同時に設ける。
 - 命名規約から `Untyped`・`Handle` を排除し、新名称は設計段階でレビュー対象とする。
+- ActorSystem は CoreSync 用 ExecutionRuntime をデフォルト登録し、利用者が追加コードを書かなくても DispatcherRuntime/ReadyQueueCoordinator が稼働する前提で設計する。ホスト向けランタイムはプラガブルだが、省略可能であること。
