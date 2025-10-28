@@ -1,104 +1,71 @@
-# Implementation Plan: [FEATURE]
+# 実装計画: [FEATURE]
 
-**Branch**: `[###-feature-name]` | **Date**: [DATE] | **Spec**: [link]
-**Input**: Feature specification from `/specs/[###-feature-name]/spec.md`
+**ブランチ**: `[###-feature-name]` | **作成日**: [DATE] | **参照スペック**: [link]  
+**入力資料**: `/specs/[###-feature-name]/spec.md` に定義された機能仕様
 
-**Note**: This template is filled in by the `/speckit.plan` command. See `.specify/templates/commands/plan.md` for the execution workflow.
+**備考**: 本テンプレートは `/speckit.plan` コマンドで生成されます。ワークフローは `AGENTS.md` と憲章を参照してください。
 
-## Summary
+## 概要
 
-[Extract from feature spec: primary requirement + technical approach from research]
+[スペックから主要要件と技術方針を抜粋]
 
-## Technical Context
+## 技術コンテキスト
 
-<!--
-  ACTION REQUIRED: Replace the content in this section with the technical details
-  for the project. The structure here is presented in advisory capacity to guide
-  the iteration process.
--->
+**言語/バージョン**: Rust nightly（`rust-toolchain.toml` で固定）  
+**主要依存関係**: `portable-atomic`, `alloc`, `heapless`（`modules/*-core`）。`tokio` 依存は `modules/*-std`、`embassy-*` 依存は `modules/*-embedded` に限定する。  
+**ストレージ**: 組込みデバイス上の揮発メモリ（必要に応じて外部記憶を明示）  
+**テスト**: `cargo test`, `criterion`。`std` 依存は `cfg(test)` 内に限定すること。  
+**対象プラットフォーム**: RP2040 / RP235x 系マイコンおよびホスト検証環境  
+**プロジェクト種別**: マルチクレート（`modules/*-core`）  
+**性能目標**: 低レイテンシかつ割込み安全なアクターランタイム。具体値はスペックで定義。  
+**制約**: コアクレートは `#![no_std]`。ランタイムに `#[cfg(feature = "std")]` を追加しない。`modules/*-core` で `tokio` や `embassy` を直接依存させない。  
+**スケール/スコープ**: 組込み向けアクターシステム。ユーザーストーリー単位で段階提供。
 
-**Language/Version**: [e.g., Python 3.11, Swift 5.9, Rust 1.75 or NEEDS CLARIFICATION]  
-**Primary Dependencies**: [e.g., FastAPI, UIKit, LLVM or NEEDS CLARIFICATION]  
-**Storage**: [if applicable, e.g., PostgreSQL, CoreData, files or N/A]  
-**Testing**: [e.g., pytest, XCTest, cargo test or NEEDS CLARIFICATION]  
-**Target Platform**: [e.g., Linux server, iOS 15+, WASM or NEEDS CLARIFICATION]
-**Project Type**: [single/web/mobile - determines source structure]  
-**Performance Goals**: [domain-specific, e.g., 1000 req/s, 10k lines/sec, 60 fps or NEEDS CLARIFICATION]  
-**Constraints**: [domain-specific, e.g., <200ms p95, <100MB memory, offline-capable or NEEDS CLARIFICATION]  
-**Scale/Scope**: [domain-specific, e.g., 10k users, 1M LOC, 50 screens or NEEDS CLARIFICATION]
+## 憲章チェック
 
-## Constitution Check
+*Phase 0 の前に全てのゲートを満たす計画を示し、Phase 1 終了時点で再確認すること。*
 
-*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
+- **ゲートP1（原則1）**: 対象機能が依存する `modules/*-core` クレートが `#![no_std]` でビルド可能である設計か検証する。`std` 依存が必要な場合は別クレートやテスト専用モジュールに切り出す計画を明記する。  
+- **ゲートP2（原則2）**: ユーザーストーリー毎に失敗するテストを先に記述し、`./scripts/ci-check.sh all` と `makers ci-check -- dylint` の双方を実行する計画を含める。テストの無効化・削除は不可。  
+- **ゲートP3（原則3）**: protoactor-go / Apache Pekko の該当箇所を調査し、差分理由と Rust イディオム変換方針を記録する。  
+- **ゲートP4（原則4）**: 新規ファイル追加時は 1 ファイル 1 型または 1 trait、`mod.rs` 非使用、`<module>/tests.rs` 配置を計画に落とし込む。  
+- **ゲートP5（原則5）**: 破壊的変更がある場合は影響範囲と移行手順を spec/taks に明示し、整合する proposal を先に承認する。
 
-[Gates determined based on constitution file]
+## プロジェクト構成
 
-## Project Structure
-
-### Documentation (this feature)
+### 対象機能のドキュメント
 
 ```text
-specs/[###-feature]/
-├── plan.md              # This file (/speckit.plan command output)
-├── research.md          # Phase 0 output (/speckit.plan command)
-├── data-model.md        # Phase 1 output (/speckit.plan command)
-├── quickstart.md        # Phase 1 output (/speckit.plan command)
-├── contracts/           # Phase 1 output (/speckit.plan command)
-└── tasks.md             # Phase 2 output (/speckit.tasks command - NOT created by /speckit.plan)
+specs/[###-feature-name]/
+├── plan.md          # /speckit.plan 出力
+├── research.md      # フェーズ0成果
+├── data-model.md    # フェーズ1成果
+├── quickstart.md    # フェーズ1成果
+├── contracts/       # フェーズ1成果
+└── tasks.md         # /speckit.tasks 出力
 ```
 
-### Source Code (repository root)
-<!--
-  ACTION REQUIRED: Replace the placeholder tree below with the concrete layout
-  for this feature. Delete unused options and expand the chosen structure with
-  real paths (e.g., apps/admin, packages/something). The delivered plan must
-  not include Option labels.
--->
+### リポジトリ構造（共通基盤）
 
 ```text
-# [REMOVE IF UNUSED] Option 1: Single project (DEFAULT)
-src/
-├── models/
-├── services/
-├── cli/
-└── lib/
-
-tests/
-├── contract/
-├── integration/
-└── unit/
-
-# [REMOVE IF UNUSED] Option 2: Web application (when "frontend" + "backend" detected)
-backend/
-├── src/
-│   ├── models/
-│   ├── services/
-│   └── api/
-└── tests/
-
-frontend/
-├── src/
-│   ├── components/
-│   ├── pages/
-│   └── services/
-└── tests/
-
-# [REMOVE IF UNUSED] Option 3: Mobile + API (when "iOS/Android" detected)
-api/
-└── [same as backend above]
-
-ios/ or android/
-└── [platform-specific structure: feature modules, UI flows, platform tests]
+modules/
+├── actor-core/
+│   ├── src/
+│   └── tests/
+├── utils-core/
+│   ├── src/
+│   └── tests/
+lints/
+scripts/
+└── docs/
 ```
 
-**Structure Decision**: [Document the selected structure and reference the real
-directories captured above]
+**構成決定**: 各 `*-core` クレートで機能を完結させ、ホスト固有機能は別クレートやテストに隔離する。
 
-## Complexity Tracking
+## 複雑度トラッキング
 
-> **Fill ONLY if Constitution Check has violations that must be justified**
+> 憲章チェック違反を一時的に許容する場合のみ記入すること。
 
-| Violation | Why Needed | Simpler Alternative Rejected Because |
-|-----------|------------|-------------------------------------|
-| [e.g., 4th project] | [current need] | [why 3 projects insufficient] |
-| [e.g., Repository pattern] | [specific problem] | [why direct DB access insufficient] |
+| 違反項目 | 必要な理由 | 却下した単純案 |
+|----------|------------|----------------|
+|          |            |                |
