@@ -31,5 +31,3 @@ Cargo.lock
 /.codex/log/
 /.codex/auth.json
 /.codex/history.jsonl
-/references/pekko/
-/references/protoactor-go/
