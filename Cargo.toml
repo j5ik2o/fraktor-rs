@@ -1,0 +1,51 @@
+[workspace]
+resolver = "2"
+members = [
+    "modules/utils-core",
+    "modules/actor-core",
+]
+
+[workspace.metadata.dylint]
+libraries = [
+    { path = "lints/mod-file-lint" },
+    { path = "lints/module-wiring-lint" },
+    { path = "lints/type-per-file-lint" },
+    { path = "lints/tests-location-lint" },
+    { path = "lints/use-placement-lint" },
+    { path = "lints/mod-reexport-lint" },
+    { path = "lints/cfg-std-forbid-lint" },
+]
+
+[workspace.dependencies]
+alloc-cortex-m = "0.4"
+async-trait = { version = "0.1.89", default-features = false }
+cortex-m = "0.7"
+cortex-m-rt = "0.7"
+criterion = "0.7"
+critical-section = { version = "1.2", default-features = false }
+dashmap = "7.0.0-rc2"
+embassy-executor = { version = "0.9", default-features = false }
+embassy-futures = { version = "0.1", default-features = false }
+embassy-sync = { version = "0.7", default-features = false }
+embassy-time = { version = "0.5", default-features = false }
+embedded-hal = "1.0"
+futures = { version = "0.3.31", default-features = false }
+panic-halt = "1.0"
+parking_lot = "0.12.5"
+portable-atomic = { version = "1.11", default-features = false }
+postcard = { version = "1.1.3", default-features = false, features = ["alloc"] }
+prost = "0.14.1"
+rp2040-boot2 = "0.3"
+rp2040-hal = { version = "0.11", default-features = false }
+rp235x-hal = { version = "0.3", default-features = false }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+spin = { version = "0.10", default-features = false }
+static_assertions = "1.1.0"
+static_cell = "2"
+thiserror = "2.0.17"
+tokio = { version = "1.47.1", default-features = false }
+tokio-condvar = "0.3.0"
+tokio-util = "0.7.16"
+tracing = { version = "0.1.41", default-features = false }
+tracing-subscriber = { version = "0.3", default-features = false }
