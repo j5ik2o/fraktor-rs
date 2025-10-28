@@ -1,0 +1,6 @@
+disallowed-types = [
+  { path = "alloc::sync::Arc", reason = "Use ArcShared within production code", replacement = "cellactor_utils_core_rs::sync::ArcShared" },
+  { path = "std::sync::Arc", reason = "Use ArcShared within production code", replacement = "cellactor_utils_core_rs::sync::ArcShared" },
+  { path = "alloc::rc::Rc", reason = "Use ArcShared within production code", replacement = "cellactor_utils_core_rs::sync::ArcShared" },
+  { path = "std::rc::Rc", reason = "Use ArcShared within production code", replacement = "cellactor_utils_core_rs::sync::ArcShared" },
+]

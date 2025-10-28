@@ -3,4 +3,17 @@ name = "cellactor-utils-core-rs"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+default = ["alloc"]
+alloc = []
+interrupt-cortex-m = ["cortex-m"]
+
 [dependencies]
+async-trait = { workspace = true }
+critical-section = { workspace = true, optional = false }
+spin = { workspace = true, default-features = false, features = ["mutex", "spin_mutex", "rwlock", "portable_atomic"] }
+portable-atomic = { workspace = true, default-features = false, features = ["critical-section"] }
+cortex-m = { workspace = true, optional = true }
+
+[dev-dependencies]
+criterion = { workspace = true }

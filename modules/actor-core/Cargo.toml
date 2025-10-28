@@ -2,5 +2,18 @@
 name = "cellactor-actor-core-rs"
 version = "0.1.0"
 edition = "2024"
+description = "no_std friendly utilities for Cell Actor"
+license = "MIT OR Apache-2.0"
+keywords = ["cellex", "actor", "utils", "no_std"]
+categories = ["concurrency", "embedded", "no-std"]
+repository = "https://github.com/j5ik2o/cellactor-rs"
 
 [dependencies]
+async-trait = { workspace = true }
+critical-section = { workspace = true, optional = false }
+spin = { workspace = true, default-features = false, features = ["mutex", "spin_mutex", "rwlock", "portable_atomic"] }
+portable-atomic = { workspace = true, default-features = false, features = ["critical-section"] }
+cortex-m = { workspace = true, optional = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
