@@ -8,6 +8,7 @@ extern crate rustc_span;
 use rustc_data_structures::fx::FxHashMap;
 use rustc_hir::{
   self as hir,
+  attrs::AttributeKind,
   def_id::{DefId, LocalModDefId},
   Item,
   ItemKind,
@@ -15,7 +16,7 @@ use rustc_hir::{
 };
 use rustc_lint::{LateContext, LateLintPass, LintContext};
 use rustc_middle::ty::Visibility;
-use rustc_span::{symbol::Symbol, Span};
+use rustc_span::{symbol::Symbol, BytePos, Span};
 
 dylint_linting::impl_late_lint! {
   pub NO_PARENT_REEXPORT,
@@ -47,6 +48,19 @@ impl<'tcx> LateLintPass<'tcx> for NoParentReexport {
 impl NoParentReexport {
   fn evaluate_mod<'tcx>(&mut self, cx: &LateContext<'tcx>, item: &Item<'tcx>, module_name: Symbol) {
     if has_allow_comment(cx, item.span) {
+      return;
+    }
+
+    let attrs = cx.tcx.hir_attrs(item.hir_id());
+    for attr in attrs {
+      if let rustc_hir::Attribute::Parsed(AttributeKind::Path(_, span)) = attr {
+        self.emit_path_attribute_violation(cx, *span);
+        return;
+      }
+    }
+
+    if let Some(include_span) = find_include_invocation_span(cx, item.span) {
+      self.emit_include_macro_violation(cx, include_span);
       return;
     }
 
@@ -213,6 +227,32 @@ impl NoParentReexport {
       diag.help("宣言から可視性修飾子を削除し、公開が必要なシンボルは末端モジュール内で `pub` を付けてください");
     });
   }
+
+  fn emit_path_attribute_violation(&self, cx: &LateContext<'_>, span: Span) {
+    let sm = cx.tcx.sess.source_map();
+    let detail = match sm.span_to_snippet(span) {
+      | Ok(snippet) => format!("属性 `{}` が設定されています", snippet.trim()),
+      | Err(_) => "属性 `#[path = ...]` が設定されています".to_string(),
+    };
+
+    cx.span_lint(NO_PARENT_REEXPORT, span, |diag| {
+      diag.primary_message("モジュール宣言で `#[path = \"...\"]` 属性は禁止されています");
+      diag.note("ルール: 原則ルール: モジュールはファイル配置と `mod` 宣言だけで結線してください");
+      diag.note(format!("詳細: {}", detail));
+      diag.help("モジュールファイルを規約どおりの場所に配置し、`mod foo;` として宣言してください");
+    });
+  }
+
+  fn emit_include_macro_violation(&self, cx: &LateContext<'_>, span: Span) {
+    let sm = cx.tcx.sess.source_map();
+    let detail = sm.span_to_snippet(span).unwrap_or_else(|_| "include!".to_string());
+    cx.span_lint(NO_PARENT_REEXPORT, span, |diag| {
+      diag.primary_message("モジュール内で `include!` マクロを用いた結線は禁止されています");
+      diag.note("ルール: 原則ルール: モジュールはファイル配置と `mod` 宣言だけで結線してください");
+      diag.note(format!("詳細: マクロ `{}` によって外部ファイルを結線しようとしています", detail));
+      diag.help("対象ファイルを所定のパスに配置し、`mod child;` でモジュールを宣言してください");
+    });
+  }
 }
 
 #[derive(Clone, Copy)]
@@ -294,6 +334,43 @@ fn scan_comment(segment: &str, token: &str) -> bool {
     return segment[pos + 2..].trim().starts_with(token);
   }
   false
+}
+
+fn find_include_invocation_span(cx: &LateContext<'_>, span: Span) -> Option<Span> {
+  const TARGET: &str = "include!";
+  let sm = cx.tcx.sess.source_map();
+  let snippet = sm.span_to_snippet(span).ok()?;
+  let mut search_offset = 0usize;
+
+  while let Some(pos) = snippet[search_offset..].find(TARGET) {
+    let absolute_pos = search_offset + pos;
+    let before = snippet[..absolute_pos].chars().rev().find(|ch| !ch.is_whitespace());
+    if before.is_some_and(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '#') {
+      search_offset = absolute_pos + TARGET.len();
+      continue;
+    }
+    if before == Some('/') {
+      let mut chars = snippet[..absolute_pos].chars().rev().skip_while(|ch| ch.is_whitespace());
+      let first = chars.next();
+      let second = chars.next();
+      if first == Some('/') || (first == Some('*') && second == Some('/')) {
+        search_offset = absolute_pos + TARGET.len();
+        continue;
+      }
+    }
+    let after = snippet[absolute_pos + TARGET.len()..]
+      .chars()
+      .skip_while(|ch| ch.is_whitespace())
+      .next();
+    if after == Some('(') {
+      let lo = span.lo() + BytePos(absolute_pos as u32);
+      let hi = lo + BytePos(TARGET.len() as u32);
+      return Some(span.with_lo(lo).with_hi(hi));
+    }
+    search_offset = absolute_pos + TARGET.len();
+  }
+
+  None
 }
 
 

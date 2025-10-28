@@ -1,0 +1,17 @@
+warning: モジュール内で `include!` マクロを用いた結線は禁止されています
+  --> $DIR/include_macro_violation.rs:4:3
+   |
+LL |   include!(concat!(env!("CARGO_MANIFEST_DIR"), "/$DIR/include_macro_violation/helper.inc"));
+   |   ^^^^^^^^
+   |
+   = note: ルール: 原則ルール: モジュールはファイル配置と `mod` 宣言だけで結線してください
+   = note: 詳細: マクロ `include!` によって外部ファイルを結線しようとしています
+   = help: 対象ファイルを所定のパスに配置し、`mod child;` でモジュールを宣言してください
+note: the lint level is defined here
+  --> $DIR/include_macro_violation.rs:1:9
+   |
+LL | #![warn(no_parent_reexport)]
+   |         ^^^^^^^^^^^^^^^^^^
+
+warning: 1 warning emitted
+
