@@ -23,3 +23,35 @@
 ## Decision: ヒープ計測アプローチ
 - **Rationale**: `portable-atomic-util` のカウンタと `core::alloc::GlobalAlloc` ラッパで確保回数をトレースし、SC-005 のしきい値（≦5/秒）を quickstart で測定方法として提示。  
 - **Alternatives considered**: 外部計測機材のみで確認する案（開発体験が悪化）; 試験用に `wee_alloc` を導入する案（抽象層が増え複雑化）。
+
+## Decision: Logger 購読者の構成
+- **Rationale**: Pekko の DefaultLogger と同様に EventStream 購読者としてログを扱うことで、no_std 環境でも軽量に実装でき、Deadletter/監視イベントと同じ経路で観測できる。UART/RTT への出力とホスト向けブリッジの両方に対応しやすい。  
+- **Alternatives considered**: 専用 LoggerActor へ直接メッセージ送信（優先度制御が複雑化）; `tracing` のみをホスト依存で利用（no_std で利用しづらい）。
+
+## Decision: Child actor supervision
+- **Rationale**: 親アクターが `spawn_child` して Supervisor ツリーを形成するのは protoactor-go / Pekko と同様の基本機能であり、復旧ポリシーや EventStream ログに一貫性を持たせるため。Rust では Props 継承と親参照を借用ポインタで保持し、所有権循環を避ける。  
+- **Alternatives considered**: ルートコンテキストのみから spawn する案（親子監視ができず Supervisor の意義が薄れる）; 子アクターをグローバル登録に切り替える案（依存が複雑化）。
+
+## Decision: Guardian actor entry point
+- **Rationale**: Pekko/Akka Typed のようにユーザガーディアン Props をエントリポイントとすることで、アプリがルートから子アクターを生成し Supervisor ツリーを自然に構成できる。RootContext のみで spawn するより構造化が容易。  
+- **Alternatives considered**: 全アクターを ActorSystem から直接 spawn する案（親子関係が失われ監督ができない）。
+
+## Decision: Actor naming registry
+- **Rationale**: 親スコープごとに名前一意性を持たせ、自動命名で `anon-{pid}` を付与することで protoactor-go の ProcessRegistry と同等の UX を提供する。ログやテレメトリで名前参照が可能になる。  
+- **Alternatives considered**: 名前をオプション扱いにして逆引きを提供しない案（デバッグ性低下）; グローバル一意名前（Flexibility 欠如）。
+
+## Decision: Middleware chain abstraction
+- **Rationale**: protoactor-go の Process middleware と同様にメッセージ前後で観測・フィルタを掛けられるようにしつつ、初版では空チェーンとする。将来のトレーシングや認証を挿入しやすい。  
+- **Alternatives considered**: 直接 MessageInvoker にベタ書きする案（拡張性が低い）; middleware を最初から実装する案（初版で複雑化）。
+
+## Decision: Bounded/unbounded mailbox strategy
+- **Rationale**: 組込みでは Bounded を既定としつつ、ホスト検証では Unbounded を利用できるようにし、メモリ水位を EventStream で監視することで柔軟性と安全性を両立する。  
+- **Alternatives considered**: 常に Bounded に固定（柔軟性不足）; Unbounded のみ提供（組込みでの OOM リスク）。
+
+## Decision: Throughput limit per actor
+- **Rationale**: protoactor-go の 300 メッセージ/アクター/ターンに倣い、過剰な占有を防ぐ。Props から構成可能にし、0 で無制限を許可。  
+- **Alternatives considered**: スループット制限なし（スターべーションリスク）; 固定値で変更不可（用途に応じた調整ができない）。
+
+## Decision: Request/Reply pattern without sender()
+- **Rationale**: Akka/Pekko Typed と同様に `sender()` を廃止し、明示的に `reply_to: ActorRef` を渡すことで依存関係を明確化し、no_std での可搬性を維持する。  
+- **Alternatives considered**: Classic の `sender()` を引き継ぐ案（stateful Context が複雑化し、将来 Typed レイヤー導入時に破綻する）。

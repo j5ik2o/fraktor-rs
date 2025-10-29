@@ -18,7 +18,7 @@
 
 **受け入れシナリオ**:
 
-1. **前提** ランタイム初期化時に ActorSystem とルート Props が登録済み、**操作** 単一アクターを spawn して `ActorRef` に `AnyMessage::new(Ping)` を送信、**結果** アクターが `Actor::receive` 内で `downcast_ref::<Ping>()` を通じて `Ping` を取り出し、`Pong` を返信してサンプルが完走する。
+1. **前提** ランタイム初期化時に ActorSystem とルート Props が登録済み、**操作** 単一アクターを spawn して `ActorRef` に `AnyMessage::new(Ping)` を送信、**結果** アクターが `Behavior::receive` 内で `downcast_ref::<Ping>()` を通じて `Ping` を取り出し、`Pong` を返信してサンプルが完走する。
 2. **前提** メッセージ処理中にキューへ 32 件の要求が積まれている、**操作** Mailbox が protoactor-go の `DefaultDispatcher` 相当の順序で処理、**結果** 全メッセージが FIFO 順守で消化され、バックプレッシャー無しで完了ログが出力される。
 
 ---
@@ -55,16 +55,8 @@
 
 - `no_std` + `alloc` 環境で利用可能なことを前提とし、標準ライブラリ固有 API への依存は禁止する。
 - すべてのアクター間メッセージは `AnyMessage` を経由して `dyn core::any::Any` として扱い、Typed アクター API は後続フェーズでレイヤー追加する方針とする。
-- Mailbox は制御用 System メッセージとユーザメッセージを優先度付きで扱い、停止・再開時でも System メッセージが処理される設計を必須とする。
-- ランタイム API は借用ベースのライフタイム設計を基本とし、ヒープ確保が必要な処理は事前に計測計画と再利用戦略を記載する。
-- Actor トレイトは `pre_start`, `post_stop`, `receive` を提供し、`pre_start` でリソース初期化、`post_stop` で解放ができるようにする。`receive` は `Result<(), ActorError>` を返却し、`Err` の場合は Supervisor が再起動戦略に基づいて扱う。`panic!` などスタックを巻き戻せない致命的障害は ActorSystem が介入せず、アプリケーション側でリセットやフォールバックを実装することを前提とする。
 - AsyncQueue が満杯の場合は protoactor-go の `BoundedMailbox` を参考にバックプレッシャーをかけ、送信 API は明示的な失敗結果を返す。
 - Supervisor により再起動回数が上限を超えた場合、ActorSystem はアクターを停止させ Deadletter と EventStream へ必ず通知する。
-- Actor は子アクターを生成し、Supervisor 戦略に基づいた親子ツリーを形成できることを前提とする。親は子アクターのライフサイクルイベントを EventStream 経由で監視できる必要がある。
-- ActorSystem の初期化時にユーザガーディアン（root actor）の Props を受け取り、そのコンテキストから子アクターを生成してシステム全体を構築できるようにする。
-- Mailbox は Bounded / Unbounded を切り替え可能であり、Bounded 時は容量閾値で背圧またはドロップポリシーを適用し、Unbounded 時は組込みのメモリ制約を超えないよう監視メトリクスを提供する。
-- Classic Akka の `sender()` を提供せず、応答が必要なメッセージは `reply_to: ActorRef` などのフィールドを持つリクエスト・リプライパターンを利用することを前提とする。
-- アクターには一意な名前を付与でき、未指定の場合は ActorSystem が自動生成した名前を割り当てる。名前は PID レジストリから逆引きできる。
 - サンプルコードは PC 上のホストビルドと LLVM 目標ボード（例: RISCV）など少なくとも 2 つのターゲットでビルドできること。
 
 ## 仮定と依存関係
@@ -72,15 +64,14 @@
 - `modules/utils-core` の `AsyncQueue` および `Shared` 抽象が既存実装として利用可能であり、追加の同期プリミティブを導入しない。
 - メッセージ表現は `AnyMessage` 構造体と `dyn core::any::Any` のみに依存し、Typed メッセージ/アクターは拡張レイヤーが担う。
 - メッセージシリアライズは初期版ではトレイト境界のみ定義し、具象実装は後続フェーズで拡張する。
-- ロガー／タイマーなどの周辺機能は既存ユーティリティを再利用し、ActorSystem 側ではインターフェイスだけを提供する。EventStream を介した Logger 購読者で観測できることを前提とする。
-- ライフタイム重視の API 設計を維持するため、借用で表現できるデータに対して所有権移動や追加アロケーションを求めないことを前提とする。
+- ロガー／タイマーなどの周辺機能は既存ユーティリティを再利用し、ActorSystem 側ではインターフェイスだけを提供する。
 
 ## 要件（必須）
 
 ### 機能要件
 
 - **FR-001**: ActorSystem は 1 回の初期化呼び出しでルート Context・PID 名前空間・Supervisor ツリーを確立し、protoactor-go の RootContext と同等の spawn API を `no_std` 下で提供しなければならない。
-- **FR-002**: Actor トレイトは Classic スタイルのビヘイビア遷移メソッド（`receive`, `become`, `unbecome` 相当）を提供し、Apache Pekko が定義する動的ビヘイビア切替フローを Rust のライフタイム制約に合わせて実行できなければならない。Typed Behavior (Pekko Typed) は後続フェーズで別レイヤーとして導入する。
+- **FR-002**: Actor トレイトは `Behavior` の遷移メソッド（`receive`, `become`, `unbecome`）を提供し、Apache Pekko が定義する動的ビヘイビア切替フローを Rust のライフタイム制約に合わせて実行できなければならない。
 - **FR-003**: ActorRef と Pid は一意識別子を保持し、同一アクターへの再解決が O(1) で完了するルックアップテーブルを ActorSystem 内に提供しなければならない。
 - **FR-004**: Mailbox は `modules/utils-core::AsyncQueue` を内部キューとして用い、protoactor-go の Mailbox 処理順序と同様の FIFO 保証を仕様化しなければならない。
 - **FR-005**: Dispatcher と MessageInvoker は メッセージ取得→ビヘイビア呼び出し→ポスト処理の段階を分離し、Pekko の `Dispatcher` 設計を参考に同期／非同期両モードを後日拡張可能な形でインターフェイス化しなければならない。
@@ -95,19 +86,6 @@
 - **FR-014**: サンプルコードは Single Producer-Consumer の Ping/Pong シナリオを提供し、ビルド成果物が 64KB RAM 制約下で 1,000 メッセージを 1 秒以内に処理することをテストで確認できなければならない。
 - **FR-015**: 拡張性確認のため、Dispatcher や Mailbox を差し替えるためのトレイト境界を公開し、外部クレートからカスタム実装を挿入できるよう仕様化しなければならない。
 - **FR-016**: 全コンポーネントは循環参照を避ける設計指針（例: イミュータブル PID、弱参照テーブル）を文書化し、静的解析テストで検知できるようにしなければならない。
-- **FR-017**: ActorSystem と ActorContext の API は借用を優先し、ヒープアロケーションが発生する処理には計測・再利用戦略・最大許容頻度を定義しなければならない。
-- **FR-018**: Actor トレイトは `pre_start(&mut self, ctx)` / `receive(&mut self, ctx, msg)` / `post_stop(&mut self, ctx)` を提供し、`pre_start` はアクター生成直後に 1 度呼ばれ、`post_stop` は停止時に呼ばれなければならない。`receive` は `Result<(), ActorError>` を返却し、`Err(ActorError::Recoverable)` は Supervisor の再起動ロジックへ渡し、`Err(ActorError::Fatal)` は即時停止扱いとして Deadletter と EventStream で通知しなければならない。`panic!` やスタック巻き戻し不能な障害はアクターランタイムが回復を試みない旨を仕様に記載し、アプリケーションがハードリセット等の外部対処を取る前提とする。
-- **FR-019**: Mailbox は System メッセージと User メッセージの優先度キューを提供し、System メッセージは常に User メッセージより先にディスパッチされなければならない。優先度判定はバックプレッシャや停止中でも維持すること。
-- **FR-020**: Mailbox は `DropNewest` / `DropOldest` / `Grow` / `Block` の 4 ポリシーを設定可能とし、初期リリースでは少なくとも `DropOldest` をデフォルトで提供し、`DropNewest` と `Grow` の正常動作を満たさなければならない。`Block` は将来機能として仕様化し、ランタイムがブロッキングを発生させずに背圧を伝播できるインターフェイスを公開すること。
-- **FR-021**: Mailbox は外部から `suspend()` / `resume()` に相当する制御を受け付け、停止期間中は User メッセージをキューに蓄積しつつ System メッセージは処理できる手段を提供しなければならない。no_std 環境と std/embassy 環境の双方で API が一貫する必要がある。
-- **FR-022**: EventStream は `LogEvent` を publish できる API を提供し、少なくとも 1 つの Logger 購読者が存在してログレベル・PID・メッセージ・タイムスタンプを取得できなければならない。Logger 購読者は UART/RTT など組込み向け出力とホスト向けブリッジの双方に拡張可能であること。
-- **FR-023**: ActorSystem はアクターが `spawn_child(props)` を呼び出して子アクターを生成できる API を提供し、親アクターは自動的に子アクターを Supervisor ツリーへ登録して監視しなければならない。親は子アクターの停止・エラー・再起動イベントを EventStream 経由で受け取れること。
-- **FR-024**: ActorSystem の初期化ではユーザガーディアン（root actor）の Props を必須引数として受け取り、起動時にそのアクターを最上位コンテキストで spawn し、アプリケーションが root から子アクターを生成して機能を構築できるようにしなければならない。
-- **FR-025**: アクター生成 API は任意の名前を受け付け、同一親スコープ内で一意性を保証しなければならない。名前未指定の場合は ActorSystem が衝突しない自動命名（例: `anon-{pid}`）を行い、名前から PID を逆引きできる仕組みを提供する。
-- **FR-026**: MessageInvoker はメッセージをアクターへ渡す前後にミドルウェアチェーンを差し込める拡張ポイントを提供し、将来的にトレーシング・メトリクス・auth などの処理を挿入できる構造を維持しなければならない。初期リリースではチェーンは空で良いが、差し替え可能な API を公開すること。
-- **FR-027**: Mailbox は Bounded/Unbounded の戦略を設定可能とし、Bounded では容量オーバ時のポリシー（FR-020）と一貫した挙動を提供し、Unbounded ではメモリ使用量を監視して EventStream/Logger へ警告を出せるメトリクスを提供しなければならない。
-- **FR-028**: Dispatcher/MessageInvoker は 1 アクター当たりのスループット制限（例: 300 メッセージ/フェンス）を設定でき、設定値に到達した場合は制御用 System メッセージを優先しつつ残りメッセージを次ターンへ繰り越す仕組みを提供する。スループット値は Props または Mailbox 設定で構成可能とし、デフォルトは protoactor-go 相当の 300 を採用する。
-- **FR-029**: ランタイムは `Context::sender()` を提供せず、応答が必要なメッセージは `reply_to: ActorRef`（もしくは同等の手段）を含むペイロード設計に従う。ActorContext は送信元を暗黙に保持しないこと。
 
 ### 重要エンティティ（データを扱う場合）
 
@@ -117,7 +95,6 @@
 - **Behavior**: 現在のメッセージハンドラと次の状態遷移に関する関数ポインタ群。
 - **EventStream / Deadletter**: 監視イベントと未配達メッセージの集約ポイント。
 - **Props**: アクター生成時の構成（ファクトリ、Supervisor、Mailbox 設定）をカプセル化する定義。
-- **AnyMessage**: `dyn core::any::Any` を所有せずに借用経由で参照できるメッセージコンテナ。
 
 ## 成功指標（必須）
 
@@ -127,9 +104,8 @@
 - **SC-002**: 1 秒あたり 1,000 件のメッセージ送信時に Mailbox のバックログ長が 10 件以下に収束し、Drop や Deadletter への過剰蓄積が発生しないこと。
 - **SC-003**: Supervisor による再起動テストで 100 件の意図的エラーのうち 95% 以上が自動復旧し、system-wide 停止へ連鎖しないこと。
 - **SC-004**: EventStream と Deadletter の監視により、未配達メッセージの検出率 100% をログ検証で確認できること。
-- **SC-005**: サンプルコードにおけるメッセージ処理あたりのヒープ確保回数が 0、やむを得ず発生する場合でも 1 秒あたり 5 回未満に抑えられていることを計測で確認できること。
 
 ### 定性的成果
 
-- **SC-006**: 開発者インタビュー（少なくとも 3 名）で「Rust no_std 環境で protoactor-go/Pekko のパターンを再利用できる」と評価されること。
-- **SC-007**: ランタイムコア API が 3 つ以上の将来拡張アイデア（例: クラスタリング、永続化）への適用可能性を設計レビューで承認されること。
+- **SC-005**: 開発者インタビュー（少なくとも 3 名）で「Rust no_std 環境で protoactor-go/Pekko のパターンを再利用できる」と評価されること。
+- **SC-006**: ランタイムコア API が 3 つ以上の将来拡張アイデア（例: クラスタリング、永続化）への適用可能性を設計レビューで承認されること。

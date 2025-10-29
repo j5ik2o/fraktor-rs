@@ -30,26 +30,44 @@ cargo build --package actor-core --target $target --no-default-features
 - `Err(ActorError::Fatal)` を返すとアクターが停止し、Deadletter + EventStream に記録されること。  
 - `panic!()` を挿入した場合はランタイムが停止を記録し、外部ウォッチドッグ（例: RP2040 の watchdog リセット）がシステムを再起動する設計とする。
 
-## 5. EventStream / Deadletter 購読
+## 5. ガーディアンアクターでのエントリポイント
 
 ```rust
-let subscription = system.event_stream().subscribe(|event| {
-    // ログやテレメトリに流用
+let guardian_props = Props::new(|ctx| GuardianActor::new(ctx));
+let system = ActorSystem::new(guardian_props);
+```
+
+- guardian が `spawn_child` を利用してアプリケーションの子アクターを構築する。
+- 名前付きアクター: `ctx.spawn_child(props.with_name("worker"))` で同親スコープ内の一意性を確認。名前未指定では `anon-{pid}` が割り当てられる。
+- リクエスト/リプライ: メッセージに `reply_to: ActorRef` を含め、`sender()` を使用しない。Pong は `reply_to.tell(...)` で返送する。
+- ミドルウェアチェーン: `system.with_middleware(logging_middleware)` のように差し込めるポイントがあり、初期状態では空チェーンで動作することを確認。
+- Mailbox 戦略: `Props::with_mailbox_strategy` で Bounded/Unbounded を切り替え、Bounded 時は容量（例:64）とポリシーを設定、Unbounded 時は EventStream の警告ログを監視。`throughput_limit` を `Props::with_throughput(300)` などで指定し、上限到達で処理が次ターンに繰り越されることを確認。
+- テスト時は別の guardian Props を渡してシナリオを切り替えられる。
+
+## 6. EventStream / Deadletter 購読
+
+```rust
+let logger = system.event_stream().subscribe(LoggerSubscriber::uart());
+let lifecycle_sub = system.event_stream().subscribe(|event| match event {
+    Event::ActorLifecycle(t) => log::info!("transition: {:?}", t),
+    Event::Log(log_event) => forward_to_host(log_event),
+    Event::ChildTerminated { parent, child, reason } => log::warn!("child {:?} of {:?} stopped: {:?}", child, parent, reason),
+    _ => {}
 });
 
 let deadletter_rx = system.deadletter().subscribe();
 ```
 
 - Deadletter に蓄積されたメッセージ数が常に 10 未満であることを確認。
-- EventStream で `ActorLifecycle::Transition` が受信できることをテスト。
+- EventStream で `ActorLifecycle::Transition` と `LogEvent`、`ChildTerminated` が受信できることをテスト。
 
-## 6. ヒープ確保計測
+## 7. ヒープ確保計測
 
 1. `alloc::GlobalAlloc` をラップしたカウンタを有効化（feature `alloc-metrics`）。
 2. サンプル実行後、`heap_allocations_per_sec` が 5 未満であることを出力。
 3. 増加した場合は Mailbox capacity や replay バッチサイズを調整。
 
-## 7. CI & Lint
+## 8. CI & Lint
 
 ```bash
 ./scripts/ci-check.sh all
@@ -59,8 +77,8 @@ makers ci-check -- dylint
 - red テスト（ユーザーストーリー別）を先に実装し、green でコミット。
 - `panic!` を伴うテストは `thumbv8m` ターゲットで `panic=abort` を指定。
 
-## 8. 運用ノート
+## 9. 運用ノート
 
 - panic 非介入: ランタイムは再起動せず、外部ウォッチドッグまたはシステムサービスが責務を負う。  
-- Deadletter / EventStream による監視を運用ダッシュボード（例: RTT 経由）へ出力。  
+- Deadletter / EventStream による監視を運用ダッシュボード（例: RTT 経由）へ出力し、Logger 購読者を通じて `LogEvent` を UART/RTT またはホストログに転送する。  
 - 将来の Typed レイヤーは AnyMessage 上に別レイヤーとして構築予定で、現フェーズの API は未型付けを前提とする。
