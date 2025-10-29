@@ -29,7 +29,7 @@
 **言語/バージョン**: Rust 1.81 (stable) + nightly toolchain fallback（`no_std` 機能確認用）
 **主要依存関係**: `portable-atomic`, `portable-atomic-util`, `alloc`, `heapless`, `modules/utils-core::AsyncQueue`; 参照実装として `references/protoactor-go`, `references/pekko`  ️
 **ストレージ**: SRAM 64KB クラスの組込みデバイス。メッセージバッファは AsyncQueue / ヒープ再利用で管理。
-**テスト**: `./scripts/ci-check.sh all`, `makers ci-check -- dylint`, `cargo test --target thumbv7em-none-eabihf`（panic=abort）, ホスト検証は `cargo test --no-default-features --features std`（テスト専用）。
+**テスト**: `./scripts/ci-check.sh all`, `makers ci-check -- dylint`, `cargo test --target thumbv7em-none-eabihf`（panic=abort）, ホスト検証は `cargo test --no-default-features`（std フィーチャを使わない確認用）。
 **対象プラットフォーム**: RP2040 / RP235x / Cortex-M33、ホスト Linux/macOS (シミュレーション用)。
 **プロジェクト種別**: マルチクレート (`modules/actor-core`, `modules/utils-core`, 後続で `modules/actor-std` 等)。
 **性能目標**: 起動→初回処理 <5ms（ホスト）/<20ms（組込み）、1,000 msg/s でバックログ <=10、ヒープ確保 0〜5 回/秒以内。
@@ -76,7 +76,7 @@ specs/001-add-actor-runtime/
 
 1. data-model.md: ActorSystem / ActorCell / ActorContext / AnyMessage / SupervisorStrategy / ActorError のエンティティ、属性、関係性を定義し、Mailbox ポリシー `DropNewest` / `DropOldest` / `Grow` / `Block` と `Suspend` / `Resume` 制御、System/User 優先度の状態遷移・トレイトフック、および親子アクターのツリー構造と伝播規則（ユーザガーディアンを含む）、NameRegistry、MessageInvoker ミドルウェアチェーンの拡張ポイント、Bounded/Unbounded 戦略とスループット制限の設定点を整理。
 2. contracts/: Ping/Pong サンプル用エンドポイント（例: 制御インターフェイス）を OpenAPI で定義し、ActorSystem 構成 API の最小セットを記述。  
-3. quickstart.md: no_std ボード + ホスト実行の手順、panic 非介入時の対応、計測方法（ヒープ確保計測・1,000 msg/s テスト）、Mailbox ポリシー切り替え手順、EventStream Logger 購読者の設定例、ユーザガーディアン Props を渡してエントリポイントから子アクターを spawn するコード例を記載。  
+3. quickstart.md: no_std ボード + ホスト実行の手順、panic 非介入時の対応、計測方法（ヒープ確保計測・1,000 msg/s テスト）、Mailbox ポリシー切り替え手順、EventStream Logger 購読者の設定例、ユーザガーディアン Props を渡してエントリポイントから子アクターを spawn しつつ `system.user_guardian_ref().tell(Start)` でブートストラップするコード例を記載。  
 4. `.specify/scripts/bash/update-agent-context.sh codex` を実行し、Codex 専用コンテキストに AnyMessage/ActorError ポリシー・Mailbox ポリシー設計・EventStream Logger・ユーザガーディアン構成・panic 非介入を追記。  
 5. 憲章ゲート再評価（P1〜P7）。設計で新たに発生したリスクがあれば複雑度トラッキングに記録。
 

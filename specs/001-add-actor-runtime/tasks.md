@@ -61,14 +61,14 @@ description: "セルアクター no_std ランタイム初期版の実装タス�
 **目標**: AnyMessage を使った最小構成でアクターを起動し、Ping/Pong サンプルが no_std + alloc 環境で動作する。  
 **独立テスト**: `modules/actor-core/tests/ping_pong.rs` で spawn / tell / 背圧ポリシー / reply_to 処理が通ること。
 
-- [ ] T016 [US1] Implement `ActorRef` handle with `tell`/`ask` APIs and ArcShared storage (modules/actor-core/src/actor_ref.rs)
-- [ ] T017 [US1] Implement `Mailbox` struct supporting DropNewest/DropOldest/Grow policies and Bounded/Unbounded capacity (modules/actor-core/src/mailbox.rs)
-- [ ] T018 [US1] Implement `Dispatcher` with throughput limiting and scheduling hooks (modules/actor-core/src/dispatcher.rs)
-- [ ] T019 [US1] Implement `MessageInvoker` pipeline executing middleware chain and reply_to routing (modules/actor-core/src/message_invoker.rs)
-- [ ] T020 [US1] Implement `ActorSystem` core（guardian Props、name registry、spawn/tell、reply_to dispatch）(modules/actor-core/src/system.rs)
+- [x] T016 [US1] Implement `ActorRef` handle with未型付けの `tell`/`ask` APIs and ArcShared storage（`AnyOwnedMessage` を受け付ける）(modules/actor-core/src/actor_ref.rs)
+- [x] T017 [US1] Implement `Mailbox` struct supporting DropNewest/DropOldest/Grow policies and Bounded/Unbounded capacity (modules/actor-core/src/mailbox.rs)
+- [x] T018 [US1] Implement `Dispatcher` with throughput limiting and scheduling hooks (modules/actor-core/src/dispatcher.rs)
+- [x] T019 [US1] Implement `MessageInvoker` pipeline executing middleware chain and reply_to routing (modules/actor-core/src/message_invoker.rs)
+- [x] T020 [US1] Implement `ActorSystem` core（guardian Props、name registry、spawn/tell、reply_to dispatch）(modules/actor-core/src/system.rs)
 - [ ] T021 [US1] Complete `ActorFuture` ask helpers tying into ActorSystem (modules/actor-core/src/actor_future.rs)
-- [ ] T022 [P] [US1] Add no_std Ping/Pong example showcasing AnyMessage + reply_to (examples/ping_pong_no_std/main.rs)
-- [ ] T023 [P] [US1] Add integration tests for spawn/tell/backpressure/auto naming (modules/actor-core/tests/ping_pong.rs)
+- [x] T022 [P] [US1] Add no_std Ping/Pong example showcasing AnyMessage + reply_to (examples/ping_pong_no_std/main.rs)
+- [x] T023 [P] [US1] Add integration tests for spawn/tell/backpressure/auto naming (modules/actor-core/tests/ping_pong.rs)
 
 ---
 

@@ -60,6 +60,9 @@
 - Mailbox の内部構成は System 用と User 用に 2 本のキューを持ち、`modules/utils-core::v2::collections::queue::async_mpsc` をバックエンドとする。System キューの処理が優先され、空の場合のみ User キューを処理する。`suspend()` は dequeue を停止し、`resume()` で再開する。外部に公開する API は同期呼び出しを維持しつつ、`async_mpsc` の Future は Dispatcher 内の協調ポーリング（自前 executor）で駆動し、`async fn` 依存を避ける。
 - ランタイム API は借用ベースのライフタイム設計を基本とし、ヒープ確保が必要な処理は事前に計測計画と再利用戦略を記載する。
 - Actor トレイトは `pre_start`, `post_stop`, `receive` を提供し、`pre_start` でリソース初期化、`post_stop` で解放ができるようにする。`receive` は `Result<(), ActorError>` を返却し、`Err` の場合は Supervisor が再起動戦略に基づいて扱う。`panic!` などスタックを巻き戻せない致命的障害は ActorSystem が介入せず、アプリケーション側でリセットやフォールバックを実装することを前提とする。
+- 同名・同型のエラーや trait を異なる責務に使い回すことを禁止する（例: `ActorError` はアクター実行時の失敗に限定し、Mailbox 送信時の背圧エラーには別の `SendError` を用意する）。
+- アプリケーションのブートストラップは ActorSystem を `Props::new(user_guardian_factory)` で生成し、以降のアクター生成は **必ず** ガーディアン（または子アクター）が `ActorContext::spawn_child` を通じて行う。`ActorSystem` 本体にトップレベルの汎用 `spawn` API は公開しない。
+- ActorSystem はブート時に登録したユーザガーディアンへアクセスするための `user_guardian_ref()`（名称は同等の意図を満たせばよい）を提供し、エントリポイントとなるメッセージ（例: `Start`) をその `ActorRef` に対して `tell` することでアプリケーションを起動する。
 - AsyncQueue が満杯の場合は protoactor-go の `BoundedMailbox` を参考にバックプレッシャーをかけ、送信 API は明示的な失敗結果を返す。
 - `Block` ポリシーは no_std 向けに WaitNode を用いた待機を採用し、Busy wait を避ける。enqueue 側は `async_mpsc::Producer::wait_push()` で待機し、Mailbox 再開時に待機ノードへ通知する。初期リリースではポリシー定義と待機ハンドラ API を公開し、実際のブロッキング挙動は協調ポーリング上で段階的に実装する。
 - Supervisor により再起動回数が上限を超えた場合、ActorSystem はアクターを停止させ Deadletter と EventStream へ必ず通知する。
@@ -82,7 +85,7 @@
 
 ### 機能要件
 
-- **FR-001**: ActorSystem は 1 回の初期化呼び出しでルート Context・PID 名前空間・Supervisor ツリーを確立し、protoactor-go の RootContext と同等の spawn API を `no_std` 下で提供しなければならない。
+- **FR-001**: ActorSystem は 1 回の初期化呼び出しでルート Context・PID 名前空間・Supervisor ツリーを確立し、protoactor-go の RootContext と同等のブートストラップ API（ユーザガーディアンを起点とするアクター生成）を `no_std` 下で提供しなければならない。
 - **FR-002**: Actor トレイトは Classic スタイルのビヘイビア遷移メソッド（`receive`, `become`, `unbecome` 相当）を提供し、Apache Pekko が定義する動的ビヘイビア切替フローを Rust のライフタイム制約に合わせて実行できなければならない。Typed Behavior (Pekko Typed) は後続フェーズで別レイヤーとして導入する。
 - **FR-003**: ActorRef と Pid は一意識別子を保持し、同一アクターへの再解決が O(1) で完了するルックアップテーブルを ActorSystem 内に提供しなければならない。
 - **FR-004**: Mailbox は `modules/utils-core::AsyncQueue` を内部キューとして用い、protoactor-go の Mailbox 処理順序と同様の FIFO 保証を仕様化しなければならない。
@@ -104,7 +107,9 @@
 - **FR-020**: Mailbox は `DropNewest` / `DropOldest` / `Grow` / `Block` の 4 ポリシーを設定可能とし、初期リリースでは少なくとも `DropOldest` をデフォルトで提供し、`DropNewest` と `Grow` の正常動作を満たさなければならない。`Block` は将来機能として仕様化し、ランタイムがブロッキングを発生させずに背圧を伝播できるインターフェイスを公開すること。
 - **FR-021**: Mailbox は外部から `suspend()` / `resume()` に相当する制御を受け付け、停止期間中は User メッセージをキューに蓄積しつつ System メッセージは処理できる手段を提供しなければならない。no_std 環境と std/embassy 環境の双方で API が一貫する必要がある。
 - **FR-022**: EventStream は `LogEvent` を publish できる API を提供し、少なくとも 1 つの Logger 購読者が存在してログレベル・PID・メッセージ・タイムスタンプを取得できなければならない。Logger 購読者は UART/RTT など組込み向け出力とホスト向けブリッジの双方に拡張可能であること。
-- **FR-023**: ActorSystem はアクターが `spawn_child(props)` を呼び出して子アクターを生成できる API を提供し、親アクターは自動的に子アクターを Supervisor ツリーへ登録して監視しなければならない。親は子アクターの停止・エラー・再起動イベントを EventStream 経由で受け取れること。
+- **FR-023**: ActorSystem はアクターが `spawn_child(props)` を呼び出して子アクターを生成できる API を提供し、親アクターは自動的に子アクターを Supervisor ツリーへ登録して監視しなければならない。親は子アクターの停止・エラー・再起動イベントを EventStream 経由で受け取れること。トップレベルの `spawn` はユーザガーディアン初期化時のみ許容され、通常フローではアクターコンテキスト経由で生成する。
+- **FR-030**: ActorRef の `tell` / `ask` API は未型付けメッセージを扱うことを前提とし、ジェネリック型パラメータ経由で静的型情報を露出しない。`AnyOwnedMessage` を受け取り、Typed レイヤーは将来の別フェーズで提供する。
+- **FR-031**: ActorSystem は `user_guardian_ref()`（または同等の名前）のアクセサを提供し、ブートストラップコードはその `ActorRef` へ `Start` 等の初回メッセージを送信してアプリケーションを起動する。外部コードからの直接 `spawn` は禁止し、Context 経由の子生成のみを許可する。
 - **FR-024**: ActorSystem の初期化ではユーザガーディアン（root actor）の Props を必須引数として受け取り、起動時にそのアクターを最上位コンテキストで spawn し、アプリケーションが root から子アクターを生成して機能を構築できるようにしなければならない。
 - **FR-025**: アクター生成 API は任意の名前を受け付け、同一親スコープ内で一意性を保証しなければならない。名前未指定の場合は ActorSystem が衝突しない自動命名（例: `anon-{pid}`）を行い、名前から PID を逆引きできる仕組みを提供する。
 - **FR-026**: MessageInvoker はメッセージをアクターへ渡す前後にミドルウェアチェーンを差し込める拡張ポイントを提供し、将来的にトレーシング・メトリクス・auth などの処理を挿入できる構造を維持しなければならない。初期リリースではチェーンは空で良いが、差し替え可能な API を公開すること。

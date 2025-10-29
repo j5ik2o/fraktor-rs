@@ -10,8 +10,8 @@
 ## 2. ビルド構成
 
 ```bash
-# ホスト向け（デバッグ用、std フィーチャのみテストで有効）
-cargo build --package actor-core --features std
+# ホスト向け（デバッグ用、std フィーチャは無効）
+cargo build --package actor-core --no-default-features
 
 # no_std 組込みターゲット
 target=thumbv8m.main-none-eabihf
@@ -21,7 +21,7 @@ cargo build --package actor-core --target $target --no-default-features
 ## 3. サンプル実行（Ping/Pong）
 
 1. `examples/ping_pong_no_std` を `actor-core` に追加し、`AnyMessage::new(Ping)` → `downcast_ref::<Ping>()` の往復を確認します。
-2. ホスト: `cargo run --example ping_pong_no_std --features std`（テスト用に std を許可）。
+2. ホスト: `cargo run --example ping_pong_no_std --no-default-features`（actor-core では `std` フィーチャを有効化しない）。
 3. 組込み: `cargo embed --example ping_pong_no_std --target $target`。UART ログに `PING -> PONG` が 1,000 回出力され、1 秒以内に完了すること。
 
 ## 4. Supervisor 戦略の確認
@@ -35,9 +35,13 @@ cargo build --package actor-core --target $target --no-default-features
 ```rust
 let guardian_props = Props::new(|ctx| GuardianActor::new(ctx));
 let system = ActorSystem::new(guardian_props);
+system
+  .user_guardian_ref()
+  .tell(AnyOwnedMessage::new(Start))
+  .expect("bootstrap");
 ```
 
-- guardian が `spawn_child` を利用してアプリケーションの子アクターを構築する。
+- guardian が `spawn_child` を利用してアプリケーションの子アクターを構築する。トップレベルのアクター生成はガーディアン（または子アクター）からの `spawn_child` のみ許可し、外部コードは `user_guardian_ref()` に `Start` メッセージを送ることでアプリケーションを起動する。
 - 名前付きアクター: `ctx.spawn_child(props.with_name("worker"))` で同親スコープ内の一意性を確認。名前未指定では `anon-{pid}` が割り当てられる。
 - リクエスト/リプライ: メッセージに `reply_to: ActorRef` を含め、`sender()` を使用しない。Pong は `reply_to.tell(...)` で返送する。
 - ミドルウェアチェーン: `system.with_middleware(logging_middleware)` のように差し込めるポイントがあり、初期状態では空チェーンで動作することを確認。

@@ -4,6 +4,10 @@
 - **Rationale**: protoactor-go の `Reason` と Pekko の `Directive` を比較し、Recoverable/Fatal の 2 区分に絞ることで Supervisor の分岐を単純化しつつ `panic!` 非介入方針と整合。Recoverable は再起動対象、Fatal は停止+通知。  
 - **Alternatives considered**: protoactor-go と同様に `Restart/Resume/Stop/Escalate` の 4 区分を維持する案（no_std でのテーブル管理が複雑化）; エラーを enum ではなく trait object に委譲する案（動的ディスパッチとアロケーションが増えるため却下）。
 
+## Decision: エラー型の責務分離
+- **Rationale**: Actor の処理失敗（`ActorError`）と Mailbox 送信時の背圧・サスペンドなど通信レイヤーの失敗（将来導入する `SendError` など）を分離し、責務ごとに型を固定することで、Typed/Remote レイヤーや Supervisor 戦略での扱いを明確化する。  
+- **Alternatives considered**: `ActorError` を使い回す案（Supervisor ロジックと送信エラーの境界が曖昧になり、Typed/Remote 拡張で混乱が生じやすい）。
+
 ## Decision: AsyncQueue 容量とバックプレッシャー
 - **Rationale**: Ping/Pong シナリオで 1,000 msg/s を処理しつつ 64KB RAM を圧迫しないよう、Mailbox の既定容量を 64 メッセージとし、75% で送信 API に `WouldBlock` を返すバックプレッシャーを導入。`heapless::spsc::Queue` の容量計算と同等。  
 - **Alternatives considered**: 無制限キュー（Alloc 増大・断片化リスク）; capacity=32（ピーク負荷時に Deadletter が増える懸念）。
@@ -33,7 +37,7 @@
 - **Alternatives considered**: ルートコンテキストのみから spawn する案（親子監視ができず Supervisor の意義が薄れる）; 子アクターをグローバル登録に切り替える案（依存が複雑化）。
 
 ## Decision: Guardian actor entry point
-- **Rationale**: Pekko/Akka Typed のようにユーザガーディアン Props をエントリポイントとすることで、アプリがルートから子アクターを生成し Supervisor ツリーを自然に構成できる。RootContext のみで spawn するより構造化が容易。  
+- **Rationale**: Pekko/Akka Typed のようにユーザガーディアン Props をエントリポイントとし、`ActorSystem::new` の直後は `user_guardian_ref().tell(Start)` のような単一点起動に限定することで、ルートから子アクターを生成し Supervisor ツリーを自然に構成できる。RootContext 経由以外での直接 spawn を許さず、Typed への移行も容易になる。  
 - **Alternatives considered**: 全アクターを ActorSystem から直接 spawn する案（親子関係が失われ監督ができない）。
 
 ## Decision: Actor naming registry
