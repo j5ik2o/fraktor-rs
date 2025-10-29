@@ -5,6 +5,8 @@ use core::hint::spin_loop;
 use cellactor_utils_core_rs::sync::ArcShared;
 use spin::Mutex;
 
+use crate::{actor_ref::ActorRef, any_owned_message::AnyOwnedMessage};
+
 /// Shared state backing an [`ActorFuture`].
 struct ActorFutureState<T> {
   value:     Option<T>,
@@ -18,7 +20,6 @@ impl<T> ActorFutureState<T> {
 }
 
 /// Cooperative future used by the runtime to deliver ask responses.
-#[derive(Clone)]
 pub struct ActorFuture<T> {
   state: ArcShared<Mutex<ActorFutureState<T>>>,
 }
@@ -71,5 +72,18 @@ impl<T> ActorFuture<T> {
 impl<T> Default for ActorFuture<T> {
   fn default() -> Self {
     Self::pending()
+  }
+}
+
+impl<T> Clone for ActorFuture<T> {
+  fn clone(&self) -> Self {
+    Self { state: self.state.clone() }
+  }
+}
+
+impl ActorFuture<AnyOwnedMessage> {
+  #[must_use]
+  pub(crate) fn reply_handle(&self) -> ActorRef {
+    ActorRef::for_future(self.clone())
   }
 }

@@ -15,7 +15,7 @@ pub struct ReceiveState {
 impl ReceiveState {
   /// Creates a new state with the provided behaviour identifier.
   #[must_use]
-  pub fn new(initial: BehaviorId) -> Self {
+  pub const fn new(initial: BehaviorId) -> Self {
     Self { current: initial, stack: Vec::new() }
   }
 
@@ -33,10 +33,12 @@ impl ReceiveState {
 
   /// Restores the previous behaviour if any.
   pub fn pop_behavior(&mut self) -> Option<BehaviorId> {
-    self.stack.pop().map(|previous| {
+    if let Some(previous) = self.stack.pop() {
       self.current = previous;
-      previous
-    })
+      Some(previous)
+    } else {
+      None
+    }
   }
 
   /// Clears the behaviour stack and sets a new active behaviour.

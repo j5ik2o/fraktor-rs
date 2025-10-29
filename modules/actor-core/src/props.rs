@@ -1,11 +1,13 @@
 //! Actor properties configuration.
 
+mod mailbox_capacity;
 mod mailbox_config;
 mod supervisor_options;
 
 use alloc::boxed::Box;
 
-pub use mailbox_config::{MailboxCapacity, MailboxConfig};
+pub use mailbox_capacity::MailboxCapacity;
+pub use mailbox_config::MailboxConfig;
 pub use supervisor_options::SupervisorOptions;
 
 use crate::{actor::Actor, mailbox_policy::MailboxPolicy};
@@ -38,58 +40,58 @@ impl Props {
 
   /// Returns the actor factory.
   #[must_use]
-  pub fn factory(&self) -> ActorFactory {
+  pub const fn factory(&self) -> ActorFactory {
     self.factory
   }
 
   /// Returns the mailbox configuration.
   #[must_use]
-  pub fn mailbox(&self) -> &MailboxConfig {
+  pub const fn mailbox(&self) -> &MailboxConfig {
     &self.mailbox
   }
 
   /// Updates the mailbox configuration.
   #[must_use]
-  pub fn with_mailbox(mut self, mailbox: MailboxConfig) -> Self {
+  pub const fn with_mailbox(mut self, mailbox: MailboxConfig) -> Self {
     self.mailbox = mailbox;
     self
   }
 
   /// Returns the supervisor options.
   #[must_use]
-  pub fn supervisor(&self) -> &SupervisorOptions {
+  pub const fn supervisor(&self) -> &SupervisorOptions {
     &self.supervisor
   }
 
   /// Updates the supervisor options.
   #[must_use]
-  pub fn with_supervisor(mut self, supervisor: SupervisorOptions) -> Self {
+  pub const fn with_supervisor(mut self, supervisor: SupervisorOptions) -> Self {
     self.supervisor = supervisor;
     self
   }
 
   /// Returns the throughput limit per scheduling turn.
   #[must_use]
-  pub fn throughput(&self) -> u32 {
+  pub const fn throughput(&self) -> u32 {
     self.throughput
   }
 
   /// Sets the throughput limit per scheduling turn.
   #[must_use]
-  pub fn with_throughput(mut self, throughput: u32) -> Self {
+  pub const fn with_throughput(mut self, throughput: u32) -> Self {
     self.throughput = throughput;
     self
   }
 
   /// Returns the mailbox overflow policy.
   #[must_use]
-  pub fn policy(&self) -> MailboxPolicy {
+  pub const fn policy(&self) -> MailboxPolicy {
     self.policy
   }
 
   /// Updates the mailbox overflow policy.
   #[must_use]
-  pub fn with_policy(mut self, policy: MailboxPolicy) -> Self {
+  pub const fn with_policy(mut self, policy: MailboxPolicy) -> Self {
     self.policy = policy;
     self
   }

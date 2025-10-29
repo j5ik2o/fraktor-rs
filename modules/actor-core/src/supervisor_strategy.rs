@@ -1,30 +1,10 @@
-//! Supervisor strategy definitions.
+//! Configurable supervisor strategy with restart limits.
 
 use core::{fmt, time::Duration};
 
-use crate::actor_error::ActorError;
-
-/// Decision emitted by a supervisor strategy when handling an error.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SupervisorDirective {
-  /// Resume processing without restarting the actor.
-  Resume,
-  /// Restart the failing actor.
-  Restart,
-  /// Stop the failing actor.
-  Stop,
-  /// Escalate to the parent supervisor.
-  Escalate,
-}
-
-/// Supervisor fan-out strategy.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StrategyKind {
-  /// Only the failing child is affected.
-  OneForOne,
-  /// The entire sibling group responds together.
-  AllForOne,
-}
+use crate::{
+  actor_error::ActorError, supervisor_directive::SupervisorDirective, supervisor_strategy_kind::StrategyKind,
+};
 
 type DeciderFn<'a> = dyn Fn(&ActorError) -> SupervisorDirective + 'a;
 

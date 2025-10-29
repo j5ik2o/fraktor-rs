@@ -19,7 +19,7 @@ use crate::{
   props::{Props, SupervisorOptions},
   restart_statistics::RestartStatistics,
   send_error::SendError,
-  supervisor_strategy::SupervisorDirective,
+  supervisor_directive::SupervisorDirective,
 };
 
 /// Shared pointer to the mutable system state guarded by a spin mutex.
@@ -33,6 +33,10 @@ pub struct ActorSystem {
 
 impl ActorSystem {
   /// Creates a new system using the supplied guardian props.
+  ///
+  /// # Errors
+  ///
+  /// Returns an [`ActorError`] if the guardian actor fails to start.
   pub fn new(guardian_props: Props) -> Result<Self, ActorError> {
     let state = ArcShared::new(Mutex::new(ActorSystemState::new()));
     let guardian_pid;
@@ -98,6 +102,7 @@ impl ActorSystemState {
     Self { next_pid: 1, registry: NameRegistry::new(), actors: BTreeMap::new() }
   }
 
+  #[allow(clippy::missing_const_for_fn)]
   fn allocate_pid(&mut self) -> Pid {
     let pid = Pid::new(self.next_pid, 0);
     self.next_pid = self.next_pid.wrapping_add(1);
@@ -113,14 +118,14 @@ impl ActorSystemState {
   ) -> Result<Pid, ActorError> {
     let pid = self.allocate_pid();
     if let Some(ref name_value) = name {
-      let _ = self.registry.register(name_value.as_str(), pid).map_err(|_| ActorError::fatal("duplicate_name"))?;
+      self.registry.register(name_value.as_str(), pid).map_err(|_| ActorError::fatal("duplicate_name"))?;
     }
-    let mut entry = ActorEntry::new(shared.clone(), pid, parent, name.clone(), props)?;
+    let mut entry = ActorEntry::new(shared.clone(), pid, parent, name, props);
     entry.ensure_started()?;
-    if let Some(parent_pid) = parent {
-      if let Some(parent_entry) = self.actors.get_mut(&parent_pid) {
-        parent_entry.children.push(pid);
-      }
+    if let Some(parent_pid) = parent
+      && let Some(parent_entry) = self.actors.get_mut(&parent_pid)
+    {
+      parent_entry.children.push(pid);
     }
     self.actors.insert(pid, entry);
     Ok(pid)
@@ -135,17 +140,17 @@ impl ActorSystemState {
   }
 
   fn remove_entry_recursive(&mut self, mut entry: ActorEntry) {
-    for child in entry.children.iter().copied() {
+    for &child in entry.children.iter() {
       if let Some(mut child_entry) = self.actors.remove(&child) {
-        let _ = child_entry.stop_actor();
+        child_entry.stop_actor();
         self.remove_entry_recursive(child_entry);
       }
     }
-    let _ = entry.stop_actor();
-    if let Some(parent_pid) = entry.parent {
-      if let Some(parent_entry) = self.actors.get_mut(&parent_pid) {
-        parent_entry.children.retain(|&pid| pid != entry.pid);
-      }
+    entry.stop_actor();
+    if let Some(parent_pid) = entry.parent
+      && let Some(parent_entry) = self.actors.get_mut(&parent_pid)
+    {
+      parent_entry.children.retain(|&pid| pid != entry.pid);
     }
   }
 }
@@ -167,20 +172,14 @@ struct ActorEntry {
 }
 
 impl ActorEntry {
-  fn new(
-    system: SystemShared,
-    pid: Pid,
-    parent: Option<Pid>,
-    name: Option<String>,
-    props: Props,
-  ) -> Result<Self, ActorError> {
+  fn new(system: SystemShared, pid: Pid, parent: Option<Pid>, name: Option<String>, props: Props) -> Self {
     let actor = (props.factory())();
     let mailbox = Mailbox::new(*props.mailbox());
     let dispatcher = Dispatcher::new(props.throughput());
     let invoker = MessageInvoker::new();
     let supervisor = *props.supervisor();
     let restart = RestartStatistics::new(supervisor.strategy().max_restarts(), supervisor.strategy().reset_interval());
-    Ok(Self {
+    Self {
       system,
       pid,
       parent,
@@ -194,7 +193,7 @@ impl ActorEntry {
       restart,
       props,
       started: false,
-    })
+    }
   }
 
   fn ensure_started(&mut self) -> Result<(), ActorError> {
@@ -215,7 +214,7 @@ impl ActorEntry {
         break;
       };
 
-      self.process_message(message)?;
+      self.process_message(&message)?;
       remaining -= 1;
     }
     Ok(())
@@ -225,10 +224,11 @@ impl ActorEntry {
     ctx.set_system_handle(self.system.clone());
   }
 
-  fn process_message(&mut self, message: AnyOwnedMessage) -> Result<(), SendError> {
+  fn process_message(&mut self, message: &AnyOwnedMessage) -> Result<(), SendError> {
     let mut ctx = ActorContext::new(&self.pid);
     self.configure_context(&mut ctx);
-    match self.invoker.invoke(self.actor.as_mut(), &mut ctx, &message) {
+    ctx.set_reply_target(message.reply_to().cloned());
+    match self.invoker.invoke(self.actor.as_mut(), &mut ctx, message) {
       | Ok(()) => Ok(()),
       | Err(error) => self.handle_failure(error),
     }
@@ -243,37 +243,36 @@ impl ActorEntry {
           self.restart_actor()?;
           Ok(())
         } else {
-          self.stop_actor()?;
+          self.stop_actor();
           Err(SendError::ActorFailure(error))
         }
       },
       | SupervisorDirective::Stop => {
-        self.stop_actor()?;
+        self.stop_actor();
         Err(SendError::ActorFailure(error))
       },
       | SupervisorDirective::Escalate => {
-        self.stop_actor()?;
+        self.stop_actor();
         Err(SendError::ActorFailure(error))
       },
     }
   }
 
   fn restart_actor(&mut self) -> Result<(), SendError> {
-    self.stop_actor()?;
+    self.stop_actor();
     self.actor = (self.props.factory())();
     self.started = false;
     self.ensure_started().map_err(SendError::from)?;
     Ok(())
   }
 
-  fn stop_actor(&mut self) -> Result<(), SendError> {
+  fn stop_actor(&mut self) {
     // Call post_stop to allow cleanup. Ignore errors for now.
     let mut ctx = ActorContext::new(&self.pid);
     self.configure_context(&mut ctx);
     let _ = self.actor.post_stop(&mut ctx);
     self.mailbox.clear();
     self.started = false;
-    Ok(())
   }
 
   fn enqueue_user(&mut self, message: AnyOwnedMessage) -> Result<(), SendError> {

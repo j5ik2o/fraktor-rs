@@ -66,7 +66,7 @@ impl AnyOwnedMessage {
   /// Borrows the payload and constructs a transient [`AnyMessage`] view.
   #[must_use]
   pub fn borrow(&self) -> crate::any_message::AnyMessage<'_> {
-    crate::any_message::AnyMessage::from_dyn(self.as_any(), self.metadata(), self.type_id)
+    crate::any_message::AnyMessage::from_dyn_with_reply(self.as_any(), self.metadata(), self.type_id, self.reply_to())
   }
 
   /// Borrows the metadata if available.

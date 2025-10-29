@@ -53,9 +53,6 @@
 
 extern crate alloc;
 
-#[cfg(any(feature = "std", test))]
-extern crate std;
-
 mod actor;
 mod actor_context;
 mod actor_error;
@@ -74,7 +71,9 @@ mod props;
 mod receive_state;
 mod restart_statistics;
 mod send_error;
+mod supervisor_directive;
 mod supervisor_strategy;
+mod supervisor_strategy_kind;
 mod system;
 
 pub use actor::Actor;
@@ -95,5 +94,7 @@ pub use props::{MailboxCapacity, MailboxConfig, Props, SupervisorOptions};
 pub use receive_state::ReceiveState;
 pub use restart_statistics::RestartStatistics;
 pub use send_error::SendError;
+pub use supervisor_directive::SupervisorDirective;
 pub use supervisor_strategy::SupervisorStrategy;
+pub use supervisor_strategy_kind::StrategyKind;
 pub use system::ActorSystem;

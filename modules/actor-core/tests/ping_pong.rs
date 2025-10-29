@@ -53,6 +53,8 @@ struct StartPing {
   count:  u32,
 }
 
+struct AskGuardian;
+
 impl Actor for PingActor {
   fn receive(&mut self, _ctx: &mut ActorContext<'_>, msg: AnyMessage<'_>) -> Result<(), ActorError> {
     if let Some(cmd) = msg.downcast_ref::<StartPing>() {
@@ -61,6 +63,17 @@ impl Actor for PingActor {
         if cmd.target.tell(AnyOwnedMessage::new(payload.clone())).is_err() {
           return Err(ActorError::recoverable("send_failed"));
         }
+      }
+    }
+    Ok(())
+  }
+}
+
+impl Actor for AskGuardian {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, msg: AnyMessage<'_>) -> Result<(), ActorError> {
+    if let Some(text) = msg.downcast_ref::<String>() {
+      if let Some(reply_to) = msg.reply_to() {
+        reply_to.tell(AnyOwnedMessage::new(text.clone())).map_err(|_| ActorError::recoverable("reply_failed"))?;
       }
     }
     Ok(())
@@ -83,6 +96,10 @@ fn ping_factory() -> Box<dyn Actor> {
   Box::new(PingActor)
 }
 
+fn ask_guardian_factory() -> Box<dyn Actor> {
+  Box::new(AskGuardian)
+}
+
 #[test]
 fn ping_messages_are_delivered() {
   MESSAGE_LOG.lock().unwrap().clear();
@@ -92,4 +109,13 @@ fn ping_messages_are_delivered() {
 
   let log = MESSAGE_LOG.lock().unwrap();
   assert_eq!(log.as_slice(), &["ping-1".to_string(), "ping-2".to_string(), "ping-3".to_string()]);
+}
+
+#[test]
+fn ask_completes_future_with_response() {
+  let system = ActorSystem::new(Props::new(ask_guardian_factory)).expect("system");
+  let future = system.user_guardian_ref().ask(AnyOwnedMessage::new("ping".to_string())).expect("ask");
+  let response = future.wait();
+  let value = response.downcast::<String>().unwrap_or_else(|_| panic!("expected String"));
+  assert_eq!(value, "ping".to_string());
 }

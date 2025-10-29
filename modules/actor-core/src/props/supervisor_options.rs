@@ -2,7 +2,10 @@
 
 use core::time::Duration;
 
-use crate::supervisor_strategy::{StrategyKind, SupervisorDirective, SupervisorStrategy};
+use crate::{
+  supervisor_directive::SupervisorDirective, supervisor_strategy::SupervisorStrategy,
+  supervisor_strategy_kind::StrategyKind,
+};
 
 /// Supervisor configuration applied to spawned actors.
 #[derive(Debug, Clone, Copy)]

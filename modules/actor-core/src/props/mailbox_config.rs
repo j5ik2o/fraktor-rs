@@ -1,15 +1,7 @@
 //! Mailbox configuration used by Props.
 
+use super::mailbox_capacity::MailboxCapacity;
 use crate::mailbox_policy::MailboxPolicy;
-
-/// Capacity strategy describing bounded or unbounded mailboxes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MailboxCapacity {
-  /// Mailbox stores at most the specified number of messages.
-  Bounded(usize),
-  /// Mailbox grows without an upper bound.
-  Unbounded,
-}
 
 /// Mailbox configuration applied when spawning actors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

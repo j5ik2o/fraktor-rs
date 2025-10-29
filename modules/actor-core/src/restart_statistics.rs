@@ -19,6 +19,7 @@ impl RestartStatistics {
 
   #[must_use]
   /// Registers a failure and returns `true` when a restart is still permitted.
+  #[allow(clippy::missing_const_for_fn)]
   pub fn allow_restart(&mut self) -> bool {
     if self.max_restarts == 0 {
       return false;
@@ -32,6 +33,7 @@ impl RestartStatistics {
   }
 
   /// Resets the failure counter, typically after the window has elapsed.
+  #[allow(clippy::missing_const_for_fn)]
   pub fn reset(&mut self) {
     self.failures = 0;
   }

@@ -43,13 +43,12 @@ impl NameRegistry {
 
   /// Allocates a unique anonymous name of the form `anon-<counter>`.
   pub fn allocate_anonymous(&mut self) -> String {
-    let name = loop {
+    loop {
       let candidate = format!("anon-{}", self.counter);
       self.counter = self.counter.wrapping_add(1);
       if !self.entries.contains_key(&candidate) {
         break candidate;
       }
-    };
-    name
+    }
   }
 }

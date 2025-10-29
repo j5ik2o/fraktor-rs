@@ -1,32 +1,18 @@
 //! Mailbox implementation handling System/User queues and overflow policies.
 
+mod enqueue;
+mod error;
+
 use alloc::collections::VecDeque;
+
+pub use enqueue::MailboxEnqueue;
+pub use error::MailboxError;
 
 use crate::{
   any_owned_message::AnyOwnedMessage,
   mailbox_policy::MailboxPolicy,
   props::{MailboxCapacity, MailboxConfig},
 };
-
-/// Result of enqueuing a message into the mailbox.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MailboxEnqueue {
-  /// Message stored without side effects.
-  Enqueued,
-  /// Message stored after dropping the oldest entry.
-  DroppedOldest,
-  /// Message dropped because it was the newest entry.
-  DroppedNewest,
-}
-
-/// Errors that can occur while interacting with the mailbox.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MailboxError {
-  /// Mailbox is at capacity and the policy requires blocking.
-  WouldBlock,
-  /// Mailbox is suspended for user traffic.
-  Suspended,
-}
 
 /// Mailbox storing system-priority and user messages separately.
 pub struct Mailbox {
