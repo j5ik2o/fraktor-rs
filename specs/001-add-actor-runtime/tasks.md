@@ -66,7 +66,7 @@ description: "セルアクター no_std ランタイム初期版の実装タス�
 - [x] T018 [US1] Implement `Dispatcher` with throughput limiting and scheduling hooks (modules/actor-core/src/dispatcher.rs)
 - [x] T019 [US1] Implement `MessageInvoker` pipeline executing middleware chain and reply_to routing (modules/actor-core/src/message_invoker.rs)
 - [x] T020 [US1] Implement `ActorSystem` core（guardian Props、`user_guardian_ref()`、name registry、`spawn_child` 経由の生成、reply_to dispatch）(modules/actor-core/src/system.rs)
-- [ ] T021 [US1] Complete `ActorFuture` ask helpers tying into ActorSystem (modules/actor-core/src/actor_future.rs)
+- [x] T021 [US1] Complete `ActorFuture` ask helpers tying into ActorSystem (modules/actor-core/src/actor_future.rs)
 - [x] T022 [P] [US1] Add no_std Ping/Pong example showcasing AnyMessage + reply_to (examples/ping_pong_no_std/main.rs)
 - [x] T023 [P] [US1] Add integration tests for spawn/tell/backpressure/auto naming (modules/actor-core/tests/ping_pong.rs)
 
