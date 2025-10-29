@@ -1,8 +1,8 @@
 # 機能仕様: セルアクター no_std ランタイム初期版
 
-**ブランチ**: `[001-add-actor-runtime]`  
-**作成日**: 2025-10-29  
-**ステータス**: Draft  
+**ブランチ**: `[001-add-actor-runtime]`
+**作成日**: 2025-10-29
+**ステータス**: Draft
 **入力**: ユーザ要望: "最初のスペックです。原則に従ってください。Rust(no_std)で動作可能なアクターシステムを作りたい。ActorSystem, Actor, ActorRef, Supervisor, Mailbox, MessageInvoker, Dispatcher, ActorCell, ActorFuture, Deadletter, ActorContext, EventStream, Pid, Props, Behaviorなどを搭載した初期版の実装を作りましょう。Queueはutils-coreのAsyncQueueを使って。asyn fnは必要最低限。全体を汚染させない。循環参照をさけて。実行できるサンプルコードも作って。この初期版を土台に機能拡張できるようにして"
 
 > protoactor-go の Minimal Actor サンプルと Apache Pekko Classic の基本アクターライフサイクルを参照し、Rust の `no_std` 制約下へ転写する指針を各節で明記する。
@@ -13,8 +13,8 @@
 
 組込み向けアプリ開発者として、protoactor-go の `examples/spawn` 相当のシナリオを Rust `no_std` 環境でも再現できるように、ActorSystem と ActorRef だけでメッセージ送受信が完結し、メッセージ本体は `dyn core::any::Any` を包む `AnyMessage` によって未型付けで扱える最小構成を提供してほしい。Apache Pekko の「Quick Start」で示される `ActorRef.tell` の遷移を Rust で確認できることを期待する。
 
-**優先度の理由**: ランタイム採用可否を判断するための最初のユーザバリューであり、他要素の前提となる。  
-**独立テスト**: 提供されるサンプルコードをターゲットボード向けの `cargo` ビルド（`no_std + alloc`）で実行し、メッセージ送受信ログをシリアル出力で検証する E2E テスト。  
+**優先度の理由**: ランタイム採用可否を判断するための最初のユーザバリューであり、他要素の前提となる。
+**独立テスト**: 提供されるサンプルコードをターゲットボード向けの `cargo` ビルド（`no_std + alloc`）で実行し、メッセージ送受信ログをシリアル出力で検証する E2E テスト。
 
 **受け入れシナリオ**:
 
@@ -27,8 +27,8 @@
 
 ランタイム統合エンジニアとして、Apache Pekko のスーパービジョンツリーを参考に、アクターの失敗を捕捉し `Supervisor` が再起動戦略を適用できるようにしたい。protoactor-go の `OneForOneStrategy` をモデルとして Rust 向けに再設計されたポリシーを設定し、負荷試験時にも自動回復できる必要がある。
 
-**優先度の理由**: 安定稼働に必須の信頼性機能であり、初期 adopters 向け PoC に含める。  
-**独立テスト**: 疑似エラーを発生させるテストアクターを用いた統合テストで、Supervisor のポリシー適用回数と停止ログを検証する。  
+**優先度の理由**: 安定稼働に必須の信頼性機能であり、初期 adopters 向け PoC に含める。
+**独立テスト**: 疑似エラーを発生させるテストアクターを用いた統合テストで、Supervisor のポリシー適用回数と停止ログを検証する。
 
 **受け入れシナリオ**:
 
@@ -41,8 +41,8 @@
 
 プラットフォーム運用担当として、protoactor-go の `EventStream` と Pekko の `DeadLetter` ログを参考に、アクター間通信の健全性をリアルタイムで観測したい。Deadletter と EventStream を Subscribe し、未配達メッセージや状態遷移を把握できる仕組みを提供することで、運用ダッシュボードに統合できるようにする。
 
-**優先度の理由**: 運用品質を可視化し、初期導入ユーザの信頼を確保するため。  
-**独立テスト**: イベント購読 API を使った結合テストで、意図的に不達メッセージを生成し Deadletter の記録内容と EventStream 通知件数を検証する。  
+**優先度の理由**: 運用品質を可視化し、初期導入ユーザの信頼を確保するため。
+**独立テスト**: イベント購読 API を使った結合テストで、意図的に不達メッセージを生成し Deadletter の記録内容と EventStream 通知件数を検証する。
 
 **受け入れシナリオ**:
 
@@ -126,7 +126,6 @@
 - **ActorSystem**: PID レジストリ、Supervisor ツリー、イベント配信チャネルを保持する中心コンポーネント。
 - **ActorRef / Pid**: ActorCell へのメッセージ送信に利用する軽量ハンドルと一意識別子。
 - **Mailbox**: AsyncQueue に基づくメッセージバッファと処理ステータス。System キューはランタイム内部の `SystemMessage` を保持し、User キューは `AnyOwnedMessage` を保持する。
-- **Behavior**: 現在のメッセージハンドラと次の状態遷移に関する関数ポインタ群。
 - **EventStream / Deadletter**: 監視イベントと未配達メッセージの集約ポイント。Deadletter は失敗した `AnyOwnedMessage` を完全な形で格納し、EventStream 通知も payload 情報を含む。
 - **Props**: アクター生成時の構成（ファクトリ、Supervisor、Mailbox 設定）をカプセル化する定義。
 - **AnyMessage**: `dyn core::any::Any` を所有せずに借用経由で参照できるメッセージコンテナ。
