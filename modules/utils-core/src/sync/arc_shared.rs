@@ -11,12 +11,11 @@ pub use portable_atomic_util::Arc;
 
 use super::{Shared, SharedDyn};
 
-/// Shared wrapper backed by `alloc::sync::Arc`.
+/// Shared wrapper backed by [`alloc::sync::Arc`] by default.
 ///
-/// Targets that lack atomic pointer operations (`target_has_atomic = "ptr"`)
-/// do not provide `alloc::sync::Arc`. In those environments we transparently
-/// fall back to `alloc::rc::Rc`, allowing higher layers to keep using a unified
-/// shared abstraction.
+/// When the `force-portable-arc` feature is enabled it switches to [`portable_atomic_util::Arc`]
+/// so that targets without native atomic pointer support still benefit from an `Arc`-compatible
+/// shared handle.
 #[repr(transparent)]
 pub struct ArcShared<T: ?Sized>(Arc<T>);
 
