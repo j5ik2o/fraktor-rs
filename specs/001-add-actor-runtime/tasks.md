@@ -31,10 +31,10 @@ description: "セルアクター no_std ランタイム初期版の実装タス�
 
 **目的**: ワークスペース・依存関係・CI を準備し、`modules/actor-core` が `#![no_std]` で動作する土台を整える。
 
-- [ ] T001 Update workspace manifest to expose `modules/actor-core` features and default flags (Cargo.toml)
-- [ ] T002 Align `modules/actor-core/Cargo.toml` dependencies (`portable-atomic`, `heapless`, `portable-atomic-util`, `modules/utils-core`) for no_std + alloc support (modules/actor-core/Cargo.toml)
-- [ ] T003 Configure crate root with `#![no_std]`, module declarations, and shared re-exports (modules/actor-core/src/lib.rs)
-- [ ] T004 Extend CI pipeline to run `cargo check --no-default-features --package actor-core` (scripts/ci-check.sh)
+- [x] T001 Update workspace manifest to expose `modules/actor-core` features and default flags (Cargo.toml)
+- [x] T002 Align `modules/actor-core/Cargo.toml` dependencies (`portable-atomic`, `heapless`, `portable-atomic-util`, `modules/utils-core`) for no_std + alloc support (modules/actor-core/Cargo.toml)
+- [x] T003 Configure crate root with `#![no_std]`, module declarations, and shared re-exports (modules/actor-core/src/lib.rs)
+- [x] T004 Extend CI pipeline to run `cargo check --no-default-features --package actor-core` (scripts/ci-check.sh)
 
 ---
 
@@ -42,17 +42,17 @@ description: "セルアクター no_std ランタイム初期版の実装タス�
 
 **目的**: すべてのストーリーで共有するコア抽象（Actor/Context/Error/Message など）を定義する。
 
-- [ ] T005 Define `Actor` trait with `pre_start` / `receive` / `post_stop` lifecycle signatures (modules/actor-core/src/actor.rs)
-- [ ] T006 Implement `ActorContext` struct scaffolding（self PID、spawn hooks、reply helpers）(modules/actor-core/src/actor_context.rs)
-- [ ] T007 Add `ActorError` enum with `Recoverable` / `Fatal` variants and helper constructors (modules/actor-core/src/actor_error.rs)
-- [ ] T008 Implement `AnyMessage` wrapper with type-id metadataとdowncastユーティリティ (modules/actor-core/src/any_message.rs)
-- [ ] T009 Provide polling-based `ActorFuture` skeleton with completion callbacks (modules/actor-core/src/actor_future.rs)
-- [ ] T010 Define `Pid` structure and O(1) registry keys (modules/actor-core/src/pid.rs)
-- [ ] T011 Implement `NameRegistry` for parent-scoped unique names + auto `anon-{pid}` generation (modules/actor-core/src/name_registry.rs)
-- [ ] T012 Create `ReceiveState` state machine supporting become/unbecome stack (modules/actor-core/src/receive_state.rs)
-- [ ] T013 Declare `SupervisorStrategy` data structures（OneForOne / AllForOne / decider）(modules/actor-core/src/supervisor_strategy.rs)
-- [ ] T014 Add `Props` builder, `MailboxConfig`, `SupervisorOptions` definitions (modules/actor-core/src/props.rs)
-- [ ] T015 Define `MailboxPolicy` and capacity strategy enums covering DropNewest/DropOldest/Grow/Block + Bounded/Unbounded flags (modules/actor-core/src/mailbox_policy.rs)
+- [x] T005 Define `Actor` trait with `pre_start` / `receive` / `post_stop` lifecycle signatures (modules/actor-core/src/actor.rs)
+- [x] T006 Implement `ActorContext` struct scaffolding（self PID、spawn hooks、reply helpers）(modules/actor-core/src/actor_context.rs)
+- [x] T007 Add `ActorError` enum with `Recoverable` / `Fatal` variants and helper constructors (modules/actor-core/src/actor_error.rs)
+- [x] T008 Implement `AnyMessage` wrapper with type-id metadataとdowncastユーティリティ (modules/actor-core/src/any_message.rs)
+- [x] T009 Provide polling-based `ActorFuture` skeleton with completion callbacks (modules/actor-core/src/actor_future.rs)
+- [x] T010 Define `Pid` structure and O(1) registry keys (modules/actor-core/src/pid.rs)
+- [x] T011 Implement `NameRegistry` for parent-scoped unique names + auto `anon-{pid}` generation (modules/actor-core/src/name_registry.rs)
+- [x] T012 Create `ReceiveState` state machine supporting become/unbecome stack (modules/actor-core/src/receive_state.rs)
+- [x] T013 Declare `SupervisorStrategy` data structures（OneForOne / AllForOne / decider）(modules/actor-core/src/supervisor_strategy.rs)
+- [x] T014 Add `Props` builder, `MailboxConfig`, `SupervisorOptions` definitions (modules/actor-core/src/props.rs)
+- [x] T015 Define `MailboxPolicy` and capacity strategy enums covering DropNewest/DropOldest/Grow/Block + Bounded/Unbounded flags (modules/actor-core/src/mailbox_policy.rs)
 
 ---
 
@@ -130,4 +130,3 @@ description: "セルアクター no_std ランタイム初期版の実装タス�
 2. **信頼性 (US2)**: RestartStatistics・SupervisorStrategy・子アクター監視を追加し、panic 非介入ポリシーとイベント通知を確立する。  
 3. **オブザーバビリティ (US3)**: EventStream/Deadletter/Logger を導入し、OpenAPI ベースのホスト制御面を提供する。  
 4. **Polish**: ドキュメント／ベンチマーク／CI を整え、no_std + alloc での運用を確実にする。
-

@@ -1,3 +1,4 @@
+#![cfg_attr(not(any(feature = "std", test)), no_std)]
 #![deny(missing_docs)]
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_types))]
 #![deny(rustdoc::broken_intra_doc_links)]
@@ -49,3 +50,32 @@
 #![allow(unknown_lints)]
 #![deny(cfg_std_forbid)]
 //! Core actor runtime primitives.
+
+extern crate alloc;
+
+#[cfg(any(feature = "std", test))]
+extern crate std;
+
+mod actor;
+mod actor_context;
+mod actor_error;
+mod actor_future;
+mod any_message;
+mod mailbox_policy;
+mod name_registry;
+mod pid;
+mod props;
+mod receive_state;
+mod supervisor_strategy;
+
+pub use actor::Actor;
+pub use actor_context::ActorContext;
+pub use actor_error::ActorError;
+pub use actor_future::ActorFuture;
+pub use any_message::AnyMessage;
+pub use mailbox_policy::MailboxPolicy;
+pub use name_registry::NameRegistry;
+pub use pid::Pid;
+pub use props::{MailboxCapacity, MailboxConfig, Props, SupervisorOptions};
+pub use receive_state::ReceiveState;
+pub use supervisor_strategy::SupervisorStrategy;

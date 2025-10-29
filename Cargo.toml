@@ -5,6 +5,9 @@ members = [
     "modules/actor-core",
 ]
 
+[workspace.package]
+edition = "2024"
+
 [workspace.metadata.dylint]
 libraries = [
     { path = "lints/mod-file-lint" },
@@ -17,8 +20,10 @@ libraries = [
 ]
 
 [workspace.dependencies]
+actor-core = { path = "modules/actor-core", default-features = false }
 alloc-cortex-m = "0.4"
 async-trait = { version = "0.1.89", default-features = false }
+cellactor-utils-core-rs = { path = "modules/utils-core", default-features = false }
 cortex-m = "0.7"
 cortex-m-rt = "0.7"
 criterion = "0.7"
@@ -33,6 +38,7 @@ futures = { version = "0.3.31", default-features = false }
 panic-halt = "1.0"
 parking_lot = "0.12.5"
 portable-atomic = { version = "1.11", default-features = false }
+portable-atomic-util = { version = "0.2", default-features = false }
 postcard = { version = "1.1.3", default-features = false, features = ["alloc"] }
 prost = "0.14.1"
 rp2040-boot2 = "0.3"

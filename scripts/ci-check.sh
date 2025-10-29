@@ -125,7 +125,7 @@ run_dylint() {
         break
         ;;
       -h|--help)
-        echo "利用例: scripts/ci-check.sh dylint -n mod-file-lint -m cellactor-actor-core-rs" >&2
+        echo "利用例: scripts/ci-check.sh dylint -n mod-file-lint -m actor-core" >&2
         return 0
         ;;
       *)
@@ -441,16 +441,16 @@ run_no_std() {
   log_step "cargo +${DEFAULT_TOOLCHAIN} check -p cellactor-utils-core-rs --no-default-features --features alloc"
   run_cargo check -p cellactor-utils-core-rs --no-default-features --features alloc || return 1
 
-  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p cellactor-actor-core-rs --no-default-features"
-  run_cargo check -p cellactor-actor-core-rs --no-default-features || return 1
+  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p actor-core --no-default-features"
+  run_cargo check -p actor-core --no-default-features || return 1
 }
 
 run_std() {
   log_step "cargo +${DEFAULT_TOOLCHAIN} test -p cellactor-utils-core-rs"
   run_cargo test -p cellactor-utils-core-rs || return 1
 
-  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p cellactor-actor-core-rs --lib"
-  run_cargo test -p cellactor-actor-core-rs --lib || return 1
+  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p actor-core --lib"
+  run_cargo test -p actor-core --lib || return 1
 
 #  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p cellactor-utils-std-rs"
 #  run_cargo test -p cellactor-utils-std-rs || return 1
@@ -466,8 +466,8 @@ run_std() {
 }
 
 run_doc_tests() {
-  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p cellactor-actor-core-rs --no-default-features"
-  run_cargo check -p cellactor-actor-core-rs --no-default-features || return 1
+  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p actor-core --no-default-features"
+  run_cargo check -p actor-core --no-default-features || return 1
 }
 
 # run_embedded() {
@@ -498,11 +498,11 @@ run_doc_tests() {
 #    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p cellactor-utils-core-rs --target ${target} --no-default-features --features alloc"
 #    run_cargo check -p cellactor-utils-core-rs --target "${target}" --no-default-features --features alloc || return 1
 #
-#    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p cellactor-actor-core-rs --target ${target} --no-default-features --features alloc"
-#    run_cargo check -p cellactor-actor-core-rs --target "${target}" --no-default-features --features alloc || return 1
+#    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p actor-core --target ${target} --no-default-features --features alloc"
+#    run_cargo check -p actor-core --target "${target}" --no-default-features --features alloc || return 1
 #
-#    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p cellactor-actor-core-rs --target ${target} --no-default-features --features alloc"
-#    run_cargo check -p cellactor-actor-core-rs --target "${target}" --no-default-features --features alloc || return 1
+#    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p actor-core --target ${target} --no-default-features --features alloc"
+#    run_cargo check -p actor-core --target "${target}" --no-default-features --features alloc || return 1
 #
 #    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p cellactor-actor-embedded-rs --target ${target} --no-default-features --features alloc,embedded_rc"
 #    run_cargo check -p cellactor-actor-embedded-rs --target "${target}" --no-default-features --features alloc,embedded_rc || return 1
