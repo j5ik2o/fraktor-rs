@@ -1,6 +1,7 @@
 #![allow(clippy::disallowed_types)] // ここだけは許可されます
 #[cfg(not(feature = "force-portable-arc"))]
 use alloc::sync::Arc;
+#[cfg(not(feature = "unsize"))]
 use core::ptr;
 #[cfg(feature = "unsize")]
 use core::{marker::Unsize, ops::CoerceUnsized};
@@ -59,6 +60,7 @@ impl<T: ?Sized> ArcShared<T> {
   }
 
   /// Converts the shared handle into another dynamically sized representation.
+  #[cfg(not(feature = "unsize"))]
   pub fn into_dyn<U: ?Sized, F>(self, cast: F) -> ArcShared<U>
   where
     F: FnOnce(&T) -> &U, {
@@ -69,6 +71,18 @@ impl<T: ?Sized> ArcShared<T> {
       let trait_ptr = ptr::from_ref(trait_reference);
       ArcShared::from_raw(trait_ptr)
     }
+  }
+
+  /// Converts the shared handle into another dynamically sized representation.
+  #[cfg(feature = "unsize")]
+  #[deprecated(
+    note = "ArcShared::into_dyn is disabled when the `unsize` feature is enabled; rely on implicit coercion instead."
+  )]
+  pub fn into_dyn<U: ?Sized, F>(self, cast: F) -> ArcShared<U>
+  where
+    F: FnOnce(&T) -> &U, {
+    let _ = cast;
+    panic!("ArcShared::into_dyn is disabled when the `unsize` feature is enabled; rely on implicit coercion instead.");
   }
 }
 
@@ -88,6 +102,7 @@ impl<T: ?Sized> Shared<T> for ArcShared<T> {
   }
 }
 
+#[cfg(not(feature = "unsize"))]
 impl<T: ?Sized> SharedDyn<T> for ArcShared<T> {
   type Dyn<U: ?Sized + 'static> = ArcShared<U>;
 
@@ -95,6 +110,20 @@ impl<T: ?Sized> SharedDyn<T> for ArcShared<T> {
   where
     F: FnOnce(&T) -> &U, {
     ArcShared::into_dyn(self, cast)
+  }
+}
+
+#[cfg(feature = "unsize")]
+impl<T: ?Sized> SharedDyn<T> for ArcShared<T> {
+  type Dyn<U: ?Sized + 'static> = ArcShared<U>;
+
+  fn into_dyn<U: ?Sized + 'static, F>(self, cast: F) -> Self::Dyn<U>
+  where
+    F: FnOnce(&T) -> &U, {
+    #[allow(deprecated)]
+    {
+      self.into_dyn(cast)
+    }
   }
 }
 

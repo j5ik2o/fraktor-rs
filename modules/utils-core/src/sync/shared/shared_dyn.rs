@@ -5,6 +5,9 @@ pub trait SharedDyn<T: ?Sized>: Shared<T> {
   /// Shared wrapper yielded after converting to a new dynamically sized view.
   type Dyn<U: ?Sized + 'static>: Shared<U>;
 
+  #[deprecated(
+    note = "ArcShared::into_dyn is disabled when the `unsize` feature is enabled; rely on implicit coercion instead."
+  )]
   /// Converts the shared handle into another dynamically sized representation.
   fn into_dyn<U: ?Sized + 'static, F>(self, cast: F) -> Self::Dyn<U>
   where
