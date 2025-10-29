@@ -14,6 +14,7 @@ critical-section = { workspace = true, optional = false }
 spin = { workspace = true, default-features = false, features = ["mutex", "spin_mutex", "rwlock", "portable_atomic"] }
 portable-atomic = { workspace = true, default-features = false, features = ["critical-section"] }
 cortex-m = { workspace = true, optional = true }
+cellactor-utils-core-rs = { path = "../utils-core" }
 
 [dev-dependencies]
 criterion = { workspace = true }
