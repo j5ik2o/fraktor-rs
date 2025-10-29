@@ -42,17 +42,17 @@ description: "セルアクター no_std ランタイム初期版の実装タス�
 
 **目的**: すべてのストーリーで共有するコア抽象（Actor/Context/Error/Message など）を定義する。
 
-- [ ] T005 `Actor` トレイトを定義し、`pre_start` / `receive` / `post_stop` のライフサイクルシグネチャを揃える (modules/actor-core/src/actor.rs)
-- [ ] T006 `ActorContext` の骨組みを実装し、self PID・子生成フック・返信ヘルパーを提供する (modules/actor-core/src/actor_context.rs)
-- [ ] T007 `Recoverable` / `Fatal` 変種を備えた `ActorError` 列挙体と補助コンストラクタを追加する (modules/actor-core/src/actor_error.rs)
-- [ ] T008 型 ID メタデータとダウンキャストユーティリティを備えた `AnyMessage` ラッパーを実装する (modules/actor-core/src/any_message.rs)
-- [ ] T009 ポーリングベースの完了コールバックを持つ `ActorFuture` の骨格を用意する (modules/actor-core/src/actor_future.rs)
-- [ ] T010 `Pid` 構造体と O(1) で引けるレジストリキーを定義する (modules/actor-core/src/pid.rs)
-- [ ] T011 親スコープ内で一意な名前と自動 `anon-{pid}` 生成を行う `NameRegistry` を実装する (modules/actor-core/src/name_registry.rs)
-- [ ] T012 become/unbecome スタックを扱う `ReceiveState` 状態機械を作成する (modules/actor-core/src/receive_state.rs)
-- [ ] T013 `SupervisorStrategy`（OneForOne / AllForOne / decider）のデータ構造を定義する (modules/actor-core/src/supervisor_strategy.rs)
-- [ ] T014 `Props` ビルダーと `MailboxConfig`・`SupervisorOptions` の定義を追加する (modules/actor-core/src/props.rs)
-- [ ] T015 DropNewest / DropOldest / Grow / Block と Bounded / Unbounded フラグを網羅する `MailboxPolicy` 列挙体を定義する (modules/actor-core/src/mailbox_policy.rs)
+- [X] T005 `Actor` トレイトを定義し、`pre_start` / `receive` / `post_stop` のライフサイクルシグネチャを揃える (modules/actor-core/src/actor.rs)
+- [X] T006 `ActorContext` の骨組みを実装し、self PID・子生成フック・返信ヘルパーを提供する (modules/actor-core/src/actor_context.rs)
+- [X] T007 `Recoverable` / `Fatal` 変種を備えた `ActorError` 列挙体と補助コンストラクタを追加する (modules/actor-core/src/actor_error.rs)
+- [X] T008 型 ID メタデータとダウンキャストユーティリティを備えた `AnyMessage` ラッパーを実装する (modules/actor-core/src/any_message.rs)
+- [X] T009 ポーリングベースの完了コールバックを持つ `ActorFuture` の骨格を用意する (modules/actor-core/src/actor_future.rs)
+- [X] T010 `Pid` 構造体と O(1) で引けるレジストリキーを定義する (modules/actor-core/src/pid.rs)
+- [X] T011 親スコープ内で一意な名前と自動 `anon-{pid}` 生成を行う `NameRegistry` を実装する (modules/actor-core/src/name_registry.rs)
+- [X] T012 become/unbecome スタックを扱う `ReceiveState` 状態機械を作成する (modules/actor-core/src/receive_state.rs)
+- [X] T013 `SupervisorStrategy`（OneForOne / AllForOne / decider）のデータ構造を定義する (modules/actor-core/src/supervisor_strategy.rs)
+- [X] T014 `Props` ビルダーと `MailboxConfig`・`SupervisorOptions` の定義を追加する (modules/actor-core/src/props.rs)
+- [X] T015 DropNewest / DropOldest / Grow / Block と Bounded / Unbounded フラグを網羅する `MailboxPolicy` 列挙体を定義する (modules/actor-core/src/mailbox_policy.rs)
 
 ---
 
@@ -61,8 +61,8 @@ description: "セルアクター no_std ランタイム初期版の実装タス�
 **目標**: AnyMessage を使った最小構成でアクターを起動し、Ping/Pong サンプルが no_std + alloc 環境で動作する。
 **独立テスト**: `modules/actor-core/tests/ping_pong.rs` で spawn / tell / 背圧ポリシー / reply_to 処理が通ること。
 
-- [ ] T016 [US1] `ActorRef` ハンドルを実装し、未型付けの `tell` / `ask` API と ArcShared ストレージを備える（`AnyOwnedMessage` を受け付け、送信失敗を `Result` で検知可能にする）(modules/actor-core/src/actor_ref.rs)
-- [ ] T017 [US1] DropNewest / DropOldest / Grow ポリシーと Bounded / Unbounded 容量を扱う `Mailbox` を AsyncQueue バックエンドで実装する (modules/actor-core/src/mailbox.rs)
+- [X] T016 [US1] `ActorRef` ハンドルを実装し、未型付けの `tell` / `ask` API と ArcShared ストレージを備える（`AnyOwnedMessage` を受け付け、送信失敗を `Result` で検知可能にする）(modules/actor-core/src/actor_ref.rs)
+- [X] T017 [US1] DropNewest / DropOldest / Grow ポリシーと Bounded / Unbounded 容量を扱う `Mailbox` を AsyncQueue バックエンドで実装する (modules/actor-core/src/mailbox.rs)
 - [ ] T018 [US1] スループット制限とスケジューリングフックを備えた `Dispatcher` を実装する (modules/actor-core/src/dispatcher.rs)
 - [ ] T019 [US1] ミドルウェアチェーンと `reply_to` ルーティングを行う `MessageInvoker` パイプラインを実装する (modules/actor-core/src/message_invoker.rs)
 - [ ] T020 [US1] ガーディアン Props、`user_guardian_ref()`、名前レジストリ、`spawn_child` を通じた生成、`reply_to` ディスパッチを含む `ActorSystem` コアを実装する (modules/actor-core/src/system.rs)
