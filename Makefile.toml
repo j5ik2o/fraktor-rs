@@ -108,3 +108,8 @@ if [ ${#ARGS[@]} -gt 0 ] && [ "${ARGS[0]}" = "--" ]; then
 fi
 ./scripts/ci-check.sh dylint "${ARGS[@]}"
 '''
+
+[tasks.codex]
+description = "Report heuristic cyclomatic complexity for key crates"
+workspace = false
+command = "./scripts/run-codex.sh"
