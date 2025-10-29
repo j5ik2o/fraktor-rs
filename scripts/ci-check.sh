@@ -517,6 +517,7 @@ run_tests() {
 run_all() {
   run_lint || return 1
   run_dylint || return 1
+  run_clippy || return 1
   run_no_std || return 1
   run_std || return 1
   run_doc_tests || return 1
