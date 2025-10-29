@@ -89,7 +89,7 @@
 - **FR-002**: Actor トレイトは Classic スタイルのビヘイビア遷移メソッド（`receive`, `become`, `unbecome` 相当）を提供し、Apache Pekko が定義する動的ビヘイビア切替フローを Rust のライフタイム制約に合わせて実行できなければならない。Typed Behavior (Pekko Typed) は後続フェーズで別レイヤーとして導入する。
 - **FR-003**: ActorRef と Pid は一意識別子を保持し、同一アクターへの再解決が O(1) で完了するルックアップテーブルを ActorSystem 内に提供しなければならない。
 - **FR-004**: Mailbox は `modules/utils-core::AsyncQueue` を内部キューとして用い、protoactor-go の Mailbox 処理順序と同様の FIFO 保証を仕様化しなければならない。
-- **FR-005**: Dispatcher と MessageInvoker は メッセージ取得→ビヘイビア呼び出し→ポスト処理の段階を分離し、Pekko の `Dispatcher` 設計を参考に同期／非同期両モードを後日拡張可能な形でインターフェイス化しなければならない。
+- **FR-005**: Dispatcher と MessageInvoker は メッセージ取得→ビヘイビア呼び出し→ポスト処理の段階を分離し、Pekko の `Dispatcher` 設計を参考に同期／非同期両モードを後日拡張可能な形でインターフェイス化しなければならない。アクター起動や `pre_start` 呼び出し、`run_until_idle` 相当の処理は Dispatcher 側の責務とし、Mailbox の enqueue 経路に入れないこと。
 - **FR-006**: Supervisor は `OneForOne` と `AllForOne` の 2 種類以上の戦略を持ち、再起動回数制限・遅延・エスカレーション条件を設定できる API を提供しなければならない。
 - **FR-007**: ActorCell と ActorContext は アクターのライフサイクル状態（初期化中／稼働中／停止）と親子関係を保持し、サンプルコードで状態遷移を EventStream へ通知できなければならない。
 - **FR-008**: ActorFuture は 非同期返信のための簡易 Future/Promise API を提供し、`async fn` を利用せずにポーリングベースの完了検知ができるようにしなければならない。
@@ -103,7 +103,7 @@
 - **FR-016**: 全コンポーネントは循環参照を避ける設計指針（例: イミュータブル PID、弱参照テーブル）を文書化し、静的解析テストで検知できるようにしなければならない。
 - **FR-017**: ActorSystem と ActorContext の API は借用を優先し、ヒープアロケーションが発生する処理には計測・再利用戦略・最大許容頻度を定義しなければならない。
 - **FR-018**: Actor トレイトは `pre_start(&mut self, ctx)` / `receive(&mut self, ctx, msg)` / `post_stop(&mut self, ctx)` を提供し、`pre_start` はアクター生成直後に 1 度呼ばれ、`post_stop` は停止時に呼ばれなければならない。`receive` は `Result<(), ActorError>` を返却し、`Err(ActorError::Recoverable)` は Supervisor の再起動ロジックへ渡し、`Err(ActorError::Fatal)` は即時停止扱いとして Deadletter と EventStream で通知しなければならない。`panic!` やスタック巻き戻し不能な障害はアクターランタイムが回復を試みない旨を仕様に記載し、アプリケーションがハードリセット等の外部対処を取る前提とする。
-- **FR-019**: Mailbox は System メッセージと User メッセージの優先度キューを提供し、System メッセージは常に User メッセージより先にディスパッチされなければならない。優先度判定はバックプレッシャや停止中でも維持すること。
+- **FR-019**: Mailbox は System メッセージと User メッセージの優先度キューを提供し、System メッセージは常に User メッセージより先にディスパッチされなければならない。優先度判定はバックプレッシャや停止中でも維持すること。`enqueue_user` / `enqueue_system` はメッセージをキューへ追加し、ドロップ／ブロック等のポリシーに従って `SendError` を返すか、Dispatcher へのスケジューリング通知を発行するところまでを責務とし、アクターの起動やメッセージ処理を直接行ってはならない。
 - **FR-020**: Mailbox は `DropNewest` / `DropOldest` / `Grow` / `Block` の 4 ポリシーを設定可能とし、初期リリースでは少なくとも `DropOldest` をデフォルトで提供し、`DropNewest` と `Grow` の正常動作を満たさなければならない。`Block` は将来機能として仕様化し、ランタイムがブロッキングを発生させずに背圧を伝播できるインターフェイスを公開すること。
 - **FR-021**: Mailbox は外部から `suspend()` / `resume()` に相当する制御を受け付け、停止期間中は User メッセージをキューに蓄積しつつ System メッセージは処理できる手段を提供しなければならない。no_std 環境と std/embassy 環境の双方で API が一貫する必要がある。
 - **FR-022**: EventStream は `LogEvent` を publish できる API を提供し、少なくとも 1 つの Logger 購読者が存在してログレベル・PID・メッセージ・タイムスタンプを取得できなければならない。Logger 購読者は UART/RTT など組込み向け出力とホスト向けブリッジの双方に拡張可能であること。
