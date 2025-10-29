@@ -86,5 +86,3 @@ mod concurrent;
 /// Synchronization primitives and shared ownership abstractions.
 pub mod sync;
 mod timing;
-/// Next-generation APIs under development.
-pub mod v2;

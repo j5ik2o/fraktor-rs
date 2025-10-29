@@ -10,8 +10,8 @@ use crate::{
     async_mutex_like::AsyncMutexLike,
     interrupt::{InterruptContextPolicy, NeverInterruptPolicy},
   },
-  v2::sync::SharedError,
 };
+use crate::sync::shared_error::SharedError;
 
 type SpinGuard<'a, T> = spin::MutexGuard<'a, T>;
 

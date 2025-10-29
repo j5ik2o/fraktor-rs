@@ -4,8 +4,7 @@ use core::ops::{Deref, DerefMut};
 use async_trait::async_trait;
 mod spin_async_mutex;
 pub use spin_async_mutex::*;
-
-use crate::v2::sync::SharedError;
+use crate::sync::shared_error::SharedError;
 
 /// Async-aware mutex abstraction.
 #[async_trait(?Send)]
