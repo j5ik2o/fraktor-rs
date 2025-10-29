@@ -65,11 +65,11 @@
 - **Alternatives considered**: enqueue 毎に `Vec<u8>` へシリアライズする案（ヒープ負荷が高い）; 送信側がライフタイムを保持し続ける案（no_std で安全に扱いづらい）。
 
 ## Decision: System/User dual queue layout
-- **Rationale**: 優先度制御と suspend/resume をシンプルにするため、System/User の 2 本キューに分離し、`async_mpsc` をバックエンドに採用する。外部 API は同期呼び出しのまま保ち、Dispatcher 内部で協調ポーリングして Future を駆動することで `async fn` 依存を避ける。  
+- **Rationale**: 優先度制御と suspend/resume をシンプルにするため、System/User の 2 本キューに分離し、`modules/utils-core::collections::queue::async_queue` に含まれる `AsyncQueue` をバックエンドに採用する。外部 API は同期呼び出しのまま保ち、Dispatcher 内部で協調ポーリングしてカスタム Future (`offer_blocking` / `poll_blocking`) を駆動することで `async fn` 依存を避ける。  
 - **Alternatives considered**: 単一キューに priority flag を持たせる案（dequeue 時の判定が複雑）; Multiqueue を自前実装する案（既存抽象を再利用できず負荷が大きい）。
 
 ## Decision: Block policy wait strategy
-- **Rationale**: Busy wait を避け、WaitNode + `wait_push()` で待機させることで no_std でも適正な背圧を実現する。  
+- **Rationale**: Busy wait を避け、WaitNode + `AsyncQueue` の `offer_blocking` / `poll_blocking` が返す Future で待機させることで no_std でも適正な背圧を実現する。  
 - **Alternatives considered**: spin ループで待機する案（電力・スケジューラが非効率）; Block を未実装とする案（将来の拡張性がない）。
 
 ## Decision: Ask/reply flow with ActorFuture

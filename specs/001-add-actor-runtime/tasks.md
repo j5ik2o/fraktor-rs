@@ -9,7 +9,8 @@ description: "セルアクター no_std ランタイム初期版の実装タス�
 **入力**: `/specs/001-add-actor-runtime/` 配下の設計ドキュメント
 **前提条件**: plan.md（必須）、spec.md（ユーザーストーリー参照）、research.md、data-model.md、contracts/
 
-**テスト方針**: 原則2に従い、ユーザーストーリー単位で独立した検証ができるようにする。`modules/actor-core/tests/` にストーリー別の統合テストを追加し、`cfg(test)` 下でのみ `std` を有効化する。実装前に既存コードの設計パターン（1ファイル1構造体／trait、`ArcShared` 抽象、`no_std` 運用）を確認し、乖離する場合は理由と影響を記録する。共有参照・ロックは必ず `modules/utils-core` の抽象 (`Shared`/`ArcShared`, `Async/SyncMutexLike`) を利用し、`alloc::sync::Arc` へ直接依存しない。API とデータフローは借用ベースのライフタイム設計を採り、ヒープ確保は不可避な箇所に限定して計測・再利用戦略をタスク内で明示する。`sender()` は導入せず、メッセージの `reply_to: ActorRef` を必須パターンとする。`./scripts/ci-check.sh all` と `makers ci-check -- dylint` は全タスク完了時に一括で実行し、それ以前は対象範囲のテストとローカル検証を優先する。
+**テスト方針**: 原則2に従い、ユーザーストーリー単位で独立した検証ができるようにする。`modules/actor-core/tests/` にストーリー別の統合テストを追加し、`cfg(test)` 下でのみ `std` を有効化する。実装前に既存コードの設計パターン（1ファイル1構造体／trait、`ArcShared` 抽象、`no_std` 運用）を確認し、乖離する場合は理由と影響を記録する。共有参照・ロックは必ず `modules/utils-core` の抽象 (`Shared`/`ArcShared`, `Async/SyncMutexLike`) を利用し、`alloc::sync::Arc` へ直接依存しない。API とデータフローは借用ベースのライフタイム設計を採り、ヒープ確保は不可避な箇所に限定して計測・再利用戦略をタスク内で明示する。`sender()` は導入せず、メッセージの `reply_to: ActorRef` を必須パターンとする。`./scripts/ci-check.sh all` と `makers ci-check -- dylint` は全タスク完了時に一括で実行し、それ以前は対象範囲のテストとローカル検証を優先する。  
+**進行中指針**: cargo checkをしながら作業すること。  
 **構成**: タスクはユーザーストーリーごとにグルーピングし、依存関係が無いものは `[P]` で並列実行可とする。
 
 ## 形式: `[ID] [P?] [Story] 説明`
@@ -31,10 +32,10 @@ description: "セルアクター no_std ランタイム初期版の実装タス�
 
 **目的**: ワークスペース・依存関係・CI を準備し、`modules/actor-core` が `#![no_std]` で動作する土台を整える。
 
-- [X] T001 ワークスペースのマニフェストを更新し、`modules/actor-core` のフィーチャとデフォルト有効化フラグを公開する (Cargo.toml)
-- [X] T002 `modules/actor-core/Cargo.toml` の依存関係を調整し、`no_std + alloc` 対応のために `portable-atomic`・`heapless`・`portable-atomic-util`・`modules/utils-core` を正しく設定する (modules/actor-core/Cargo.toml)
-- [X] T003 クレートルートに `#![no_std]`・モジュール宣言・共通再エクスポートを整備する (modules/actor-core/src/lib.rs)
-- [X] T004 CI パイプラインに `cargo check --no-default-features --package actor-core` を組み込み、scripts から実行できるようにする (scripts/ci-check.sh)
+- [ ] T001 ワークスペースのマニフェストを更新し、`modules/actor-core` のフィーチャとデフォルト有効化フラグを公開する (Cargo.toml)
+- [ ] T002 `modules/actor-core/Cargo.toml` の依存関係を調整し、`no_std + alloc` 対応のために `portable-atomic`・`heapless`・`portable-atomic-util`・`modules/utils-core` を正しく設定する (modules/actor-core/Cargo.toml)
+- [ ] T003 クレートルートに `#![no_std]`・モジュール宣言・共通再エクスポートを整備する (modules/actor-core/src/lib.rs)
+- [ ] T004 CI パイプラインに `cargo check --no-default-features --package actor-core` を組み込み、scripts から実行できるようにする (scripts/ci-check.sh)
 
 ---
 
@@ -42,17 +43,17 @@ description: "セルアクター no_std ランタイム初期版の実装タス�
 
 **目的**: すべてのストーリーで共有するコア抽象（Actor/Context/Error/Message など）を定義する。
 
-- [X] T005 `Actor` トレイトを定義し、`pre_start` / `receive` / `post_stop` のライフサイクルシグネチャを揃える (modules/actor-core/src/actor.rs)
-- [X] T006 `ActorContext` の骨組みを実装し、self PID・子生成フック・返信ヘルパーを提供する (modules/actor-core/src/actor_context.rs)
-- [X] T007 `Recoverable` / `Fatal` 変種を備えた `ActorError` 列挙体と補助コンストラクタを追加する (modules/actor-core/src/actor_error.rs)
-- [X] T008 型 ID メタデータとダウンキャストユーティリティを備えた `AnyMessage` ラッパーを実装する (modules/actor-core/src/any_message.rs)
-- [X] T009 ポーリングベースの完了コールバックを持つ `ActorFuture` の骨格を用意する (modules/actor-core/src/actor_future.rs)
-- [X] T010 `Pid` 構造体と O(1) で引けるレジストリキーを定義する (modules/actor-core/src/pid.rs)
-- [X] T011 親スコープ内で一意な名前と自動 `anon-{pid}` 生成を行う `NameRegistry` を実装する (modules/actor-core/src/name_registry.rs)
-- [X] T012 become/unbecome スタックを扱う `ReceiveState` 状態機械を作成する (modules/actor-core/src/receive_state.rs)
-- [X] T013 `SupervisorStrategy`（OneForOne / AllForOne / decider）のデータ構造を定義する (modules/actor-core/src/supervisor_strategy.rs)
-- [X] T014 `Props` ビルダーと `MailboxConfig`・`SupervisorOptions` の定義を追加する (modules/actor-core/src/props.rs)
-- [X] T015 DropNewest / DropOldest / Grow / Block と Bounded / Unbounded フラグを網羅する `MailboxPolicy` 列挙体を定義する (modules/actor-core/src/mailbox_policy.rs)
+- [ ] T005 `Actor` トレイトを定義し、`pre_start` / `receive` / `post_stop` のライフサイクルシグネチャを揃える (modules/actor-core/src/actor.rs)
+- [ ] T006 `ActorContext` の骨組みを実装し、self PID・子生成フック・返信ヘルパーを提供する (modules/actor-core/src/actor_context.rs)
+- [ ] T007 `Recoverable` / `Fatal` 変種を備えた `ActorError` 列挙体と補助コンストラクタを追加する (modules/actor-core/src/actor_error.rs)
+- [ ] T008 型 ID メタデータとダウンキャストユーティリティを備えた `AnyMessage` ラッパーを実装する (modules/actor-core/src/any_message.rs)
+- [ ] T009 ポーリングベースの完了コールバックを持つ `ActorFuture` の骨格を用意する (modules/actor-core/src/actor_future.rs)
+- [ ] T010 `Pid` 構造体と O(1) で引けるレジストリキーを定義する (modules/actor-core/src/pid.rs)
+- [ ] T011 親スコープ内で一意な名前と自動 `anon-{pid}` 生成を行う `NameRegistry` を実装する (modules/actor-core/src/name_registry.rs)
+- [ ] T012 become/unbecome スタックを扱う `ReceiveState` 状態機械を作成する (modules/actor-core/src/receive_state.rs)
+- [ ] T013 `SupervisorStrategy`（OneForOne / AllForOne / decider）のデータ構造を定義する (modules/actor-core/src/supervisor_strategy.rs)
+- [ ] T014 `Props` ビルダーと `MailboxConfig`・`SupervisorOptions` の定義を追加する (modules/actor-core/src/props.rs)
+- [ ] T015 DropNewest / DropOldest / Grow / Block と Bounded / Unbounded フラグを網羅する `MailboxPolicy` 列挙体を定義する (modules/actor-core/src/mailbox_policy.rs)
 
 ---
 
@@ -61,7 +62,7 @@ description: "セルアクター no_std ランタイム初期版の実装タス�
 **目標**: AnyMessage を使った最小構成でアクターを起動し、Ping/Pong サンプルが no_std + alloc 環境で動作する。
 **独立テスト**: `modules/actor-core/tests/ping_pong.rs` で spawn / tell / 背圧ポリシー / reply_to 処理が通ること。
 
-- [X] T016 [US1] `ActorRef` ハンドルを実装し、未型付けの `tell` / `ask` API と ArcShared ストレージを備える（`AnyOwnedMessage` を受け付け、送信失敗を `Result` で検知可能にする）(modules/actor-core/src/actor_ref.rs)
+- [ ] T016 [US1] `ActorRef` ハンドルを実装し、未型付けの `tell` / `ask` API と ArcShared ストレージを備える（`AnyOwnedMessage` を受け付け、送信失敗を `Result` で検知可能にする）(modules/actor-core/src/actor_ref.rs)
 - [ ] T017 [US1] DropNewest / DropOldest / Grow ポリシーと Bounded / Unbounded 容量を扱う `Mailbox` を AsyncQueue バックエンドで実装する (modules/actor-core/src/mailbox.rs)
 - [ ] T018 [US1] スループット制限とスケジューリングフックを備えた `Dispatcher` を実装する (modules/actor-core/src/dispatcher.rs)
 - [ ] T019 [US1] ミドルウェアチェーンと `reply_to` ルーティングを行う `MessageInvoker` パイプラインを実装する (modules/actor-core/src/message_invoker.rs)
