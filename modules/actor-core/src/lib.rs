@@ -70,6 +70,7 @@ pub mod props;
 pub mod receive_state;
 pub mod send_error;
 pub mod supervisor_strategy;
+pub mod system_message;
 
 pub use actor::Actor;
 pub use actor_context::ActorContext;
@@ -87,3 +88,4 @@ pub use props::{MailboxConfig, Props, SupervisorOptions};
 pub use receive_state::{ReceiveHandler, ReceiveState};
 pub use send_error::SendError;
 pub use supervisor_strategy::{StrategyKind, SupervisorDecision, SupervisorStrategy};
+pub use system_message::SystemMessage;

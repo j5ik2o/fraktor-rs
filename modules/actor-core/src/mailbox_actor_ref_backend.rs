@@ -1,6 +1,6 @@
 //! ActorRef backend that enqueues messages into a mailbox instance.
 
-use cellactor_utils_core_rs::{ArcShared, sync::async_mutex_like::SpinAsyncMutex};
+use cellactor_utils_core_rs::{ArcShared, Shared, sync::async_mutex_like::SpinAsyncMutex};
 
 use crate::{
   actor_ref_backend::ActorRefBackend, any_message::AnyOwnedMessage, mailbox::Mailbox, pid::Pid, send_error::SendError,
@@ -10,28 +10,17 @@ use crate::{
 pub struct MailboxActorRefBackend {
   pid:     Pid,
   mailbox: ArcShared<SpinAsyncMutex<Mailbox>>,
-  system:  bool,
 }
 
 impl MailboxActorRefBackend {
   /// Creates a backend targeting the user queue.
   #[must_use]
   pub fn user(pid: Pid, mailbox: ArcShared<SpinAsyncMutex<Mailbox>>) -> Self {
-    {
-      let mut guard = mailbox.lock();
+    mailbox.with_ref(|mutex: &SpinAsyncMutex<Mailbox>| {
+      let mut guard = mutex.lock();
       guard.bind_pid(pid);
-    }
-    Self { pid, mailbox, system: false }
-  }
-
-  /// Creates a backend targeting the system queue.
-  #[must_use]
-  pub fn system(pid: Pid, mailbox: ArcShared<SpinAsyncMutex<Mailbox>>) -> Self {
-    {
-      let mut guard = mailbox.lock();
-      guard.bind_pid(pid);
-    }
-    Self { pid, mailbox, system: true }
+    });
+    Self { pid, mailbox }
   }
 }
 
@@ -40,8 +29,10 @@ impl ActorRefBackend for MailboxActorRefBackend {
     Some(self.pid)
   }
 
-  fn send(&self, message: AnyOwnedMessage) -> Result<(), SendError> {
-    let mut mailbox = self.mailbox.lock();
-    if self.system { mailbox.enqueue_system(message) } else { mailbox.enqueue_user(message) }
+  fn send(&self, message: AnyOwnedMessage) -> Result<(), SendError<AnyOwnedMessage>> {
+    self.mailbox.with_ref(|mutex: &SpinAsyncMutex<Mailbox>| {
+      let mut guard = mutex.lock();
+      guard.enqueue_user(message)
+    })
   }
 }

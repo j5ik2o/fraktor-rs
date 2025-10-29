@@ -12,5 +12,5 @@ pub trait ActorRefBackend: Send + Sync {
   /// Enqueues the provided message.
   ///
   /// The backend may apply backpressure or reject the message depending on mailbox policy.
-  fn send(&self, message: AnyOwnedMessage) -> Result<(), SendError>;
+  fn send(&self, message: AnyOwnedMessage) -> Result<(), SendError<AnyOwnedMessage>>;
 }

@@ -23,7 +23,7 @@ impl AskReplyEndpoint {
 }
 
 impl ActorRefBackend for AskReplyEndpoint {
-  fn send(&self, message: AnyOwnedMessage) -> Result<(), SendError> {
+  fn send(&self, message: AnyOwnedMessage) -> Result<(), SendError<AnyOwnedMessage>> {
     let attempt = message.clone();
     match self.future.complete(attempt) {
       | Ok(()) => Ok(()),

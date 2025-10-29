@@ -47,7 +47,7 @@ impl ActorRef {
   }
 
   /// Sends a message to the referenced actor.
-  pub fn tell(&self, message: AnyOwnedMessage) -> Result<(), SendError> {
+  pub fn tell(&self, message: AnyOwnedMessage) -> Result<(), SendError<AnyOwnedMessage>> {
     let Some(backend) = self.backend.as_ref() else {
       return Err(SendError::no_recipient(self.pid, message));
     };
@@ -55,7 +55,10 @@ impl ActorRef {
   }
 
   /// Sends a message and returns a future that resolves when a reply arrives.
-  pub fn ask(&self, message: AnyOwnedMessage) -> Result<ArcShared<ActorFuture<AnyOwnedMessage>>, SendError> {
+  pub fn ask(
+    &self,
+    message: AnyOwnedMessage,
+  ) -> Result<ArcShared<ActorFuture<AnyOwnedMessage>>, SendError<AnyOwnedMessage>> {
     let Some(backend) = self.backend.as_ref() else {
       return Err(SendError::no_recipient(self.pid, message));
     };

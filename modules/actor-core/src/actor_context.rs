@@ -6,7 +6,7 @@ use crate::{
 };
 
 type SpawnChildFn<'a> = dyn Fn(&Props) -> Result<ActorRef, ActorError> + Send + Sync + 'a;
-type ReplyFn<'a> = dyn Fn(AnyOwnedMessage) -> Result<(), SendError> + Send + Sync + 'a;
+type ReplyFn<'a> = dyn Fn(AnyOwnedMessage) -> Result<(), SendError<AnyOwnedMessage>> + Send + Sync + 'a;
 
 /// Execution context passed to actor lifecycle callbacks.
 ///
@@ -72,7 +72,7 @@ impl<'a> ActorContext<'a> {
 
   /// Replies to the current sender using either the explicit reply function or the captured actor
   /// reference.
-  pub fn reply(&self, message: AnyOwnedMessage) -> Result<(), SendError> {
+  pub fn reply(&self, message: AnyOwnedMessage) -> Result<(), SendError<AnyOwnedMessage>> {
     if let Some(handler) = self.reply_fn {
       return handler(message);
     }
