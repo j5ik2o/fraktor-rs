@@ -77,12 +77,12 @@ description: "セルアクター no_std ランタイム初期版の実装タス�
 **目標**: 親子アクターの監督ツリーを構築し、Supervisor 戦略に基づく再起動／停止を実現する。  
 **独立テスト**: `modules/actor-core/tests/supervisor.rs` で Restart/Escalate ポリシーと子アクター監視が検証できること。
 
-- [ ] T024 [US2] Implement `RestartStatistics` tracker for rate-limited restarts (modules/actor-core/src/restart_statistics.rs)
-- [ ] T025 [US2] Wire `SupervisorStrategy` decision logic with Restart/Fatal/Escalate handling (modules/actor-core/src/supervisor_strategy.rs)
-- [ ] T026 [US2] Extend `ActorContext` with `spawn_child`, child registry, and supervision signals (modules/actor-core/src/actor_context.rs)
-- [ ] T027 [US2] Connect `ActorSystem` to maintain supervisor tree and propagate failures upward (modules/actor-core/src/system.rs)
-- [ ] T028 [US2] Add `ChildRef` wrapper to manage child handles and lifecycle hooks (modules/actor-core/src/child_ref.rs)
-- [ ] T029 [P] [US2] Add supervision regression tests covering Restart/Escalate + panic 非介入 (modules/actor-core/tests/supervisor.rs)
+- [x] T024 [US2] Implement `RestartStatistics` tracker for rate-limited restarts (modules/actor-core/src/restart_statistics.rs)
+- [x] T025 [US2] Wire `SupervisorStrategy` decision logic with Restart/Fatal/Escalate handling (modules/actor-core/src/supervisor_strategy.rs)
+- [x] T026 [US2] Extend `ActorContext` with `spawn_child`, child registry, and supervision signals (modules/actor-core/src/actor_context.rs)
+- [x] T027 [US2] Connect `ActorSystem` to maintain supervisor tree and propagate failures upward (modules/actor-core/src/system.rs)
+- [x] T028 [US2] Add `ChildRef` wrapper to manage child handles and lifecycle hooks (modules/actor-core/src/child_ref.rs)
+- [x] T029 [P] [US2] Add supervision regression tests covering Restart/Escalate + panic 非介入 (modules/actor-core/tests/supervisor.rs)
 
 ---
 
