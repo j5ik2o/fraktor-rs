@@ -74,11 +74,12 @@ let deadletter_rx = system.deadletter().subscribe();
 ## 8. CI & Lint
 
 ```bash
+# 全タスクを完了したらまとめて実行
 ./scripts/ci-check.sh all
 makers ci-check -- dylint
 ```
 
-- red テスト（ユーザーストーリー別）を先に実装し、green でコミット。
+- red テスト（ユーザーストーリー別）を先に実装し、green でコミット。CI スクリプトは最終確認時に一括実行する。
 - `panic!` を伴うテストは `thumbv8m` ターゲットで `panic=abort` を指定。
 
 ## 9. 運用ノート

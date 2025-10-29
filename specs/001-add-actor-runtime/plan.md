@@ -29,7 +29,7 @@
 **言語/バージョン**: Rust 1.81 (stable) + nightly toolchain fallback（`no_std` 機能確認用）
 **主要依存関係**: `portable-atomic`, `portable-atomic-util`, `alloc`, `heapless`, `modules/utils-core::AsyncQueue`; 参照実装として `references/protoactor-go`, `references/pekko`  ️
 **ストレージ**: SRAM 64KB クラスの組込みデバイス。メッセージバッファは AsyncQueue / ヒープ再利用で管理。
-**テスト**: `./scripts/ci-check.sh all`, `makers ci-check -- dylint`, `cargo test --target thumbv7em-none-eabihf`（panic=abort）, ホスト検証は `cargo test --no-default-features`（std フィーチャを使わない確認用）。
+**テスト**: 各フェーズでは対象範囲のユニット／統合テストを優先し、`./scripts/ci-check.sh all` と `makers ci-check -- dylint` は全タスク完了後の最終確認時にまとめて実行する。ホスト検証は `cargo test --no-default-features`（std フィーチャを使わない確認用）、組込み検証は `cargo test --target thumbv7em-none-eabihf`（panic=abort）。
 **対象プラットフォーム**: RP2040 / RP235x / Cortex-M33、ホスト Linux/macOS (シミュレーション用)。
 **プロジェクト種別**: マルチクレート (`modules/actor-core`, `modules/utils-core`, 後続で `modules/actor-std` 等)。
 **性能目標**: 起動→初回処理 <5ms（ホスト）/<20ms（組込み）、1,000 msg/s でバックログ <=10、ヒープ確保 0〜5 回/秒以内。
@@ -40,7 +40,7 @@
 ## 憲章チェック（着手前）
 
 - **P1 no_std コア**: `modules/actor-core` を `#![no_std]` 維持。共有資源は `Shared` 抽象で統一し、`alloc::sync::Arc` 直接使用禁止。Mailbox/Dispatcher は trait + ジェネリクスで循環参照を避ける。
-- **P2 テスト完全性**: 各ユーザーストーリーのテストを red→green サイクルで実装。CI は `./scripts/ci-check.sh all` と `makers ci-check -- dylint` を両方実行しログ添付。
+- **P2 テスト完全性**: 各ユーザーストーリーのテストを red→green サイクルで実装。`./scripts/ci-check.sh all` と `makers ci-check -- dylint` は全タスク完了後にまとめて走らせ、途中では対象範囲のテストとローカル検証に留める。
 - **P3 リファレンス整合**: protoactor-go, Pekko の対象機能（メールボックス、Supervisor、EventStream）を調査し差分を research.md に記録。Rust 固有制約は rationale として残す。
 - **P4 モジュール構造**: 1 ファイル 1 型/1 trait、`mod.rs` 非使用、`tests.rs` 分離。コード生成時に CI lint で確認。
 - **P5 攻めの設計**: 破壊的 API 追加（AnyMessage ベース）であるが後方互換前提がないため許容。proposal 済み（本スペック）。
