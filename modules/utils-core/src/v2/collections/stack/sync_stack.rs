@@ -29,21 +29,35 @@ where
 {
   /// Creates a new stack from the provided shared backend.
   #[must_use]
-  pub fn new(shared_backend: ArcShared<M>) -> Self {
+  pub const fn new(shared_backend: ArcShared<M>) -> Self {
     Self { inner: shared_backend, _pd: PhantomData }
   }
 
   /// Pushes an item onto the stack.
+  ///
+  /// # Errors
+  ///
+  /// Propagates `StackError` when the backend rejects the element, for example when the stack is
+  /// closed or at capacity.
   pub fn push(&self, item: T) -> Result<PushOutcome, StackError> {
     self.inner.with_mut(|backend: &mut B| backend.push(item)).map_err(StackError::from)?
   }
 
   /// Pops the top item from the stack.
+  ///
+  /// # Errors
+  ///
+  /// Propagates `StackError` when the backend cannot supply an element, typically due to closure
+  /// or disconnection.
   pub fn pop(&self) -> Result<T, StackError> {
     self.inner.with_mut(|backend: &mut B| backend.pop()).map_err(StackError::from)?
   }
 
   /// Returns the top item without removing it.
+  ///
+  /// # Errors
+  ///
+  /// Propagates `StackError` when the backend cannot provide access to the top element.
   pub fn peek(&self) -> Result<Option<T>, StackError>
   where
     T: Clone, {
@@ -51,6 +65,10 @@ where
   }
 
   /// Requests the backend to transition into the closed state.
+  ///
+  /// # Errors
+  ///
+  /// Propagates `StackError` when the backend refuses to close.
   pub fn close(&self) -> Result<(), StackError> {
     self
       .inner
@@ -93,7 +111,7 @@ where
 
   /// Provides access to the underlying shared backend.
   #[must_use]
-  pub fn shared(&self) -> &ArcShared<M> {
+  pub const fn shared(&self) -> &ArcShared<M> {
     &self.inner
   }
 }

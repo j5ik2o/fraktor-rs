@@ -42,13 +42,13 @@ where
 
   /// Provides immutable access to the wrapped backend.
   #[must_use]
-  pub fn backend(&self) -> &B {
+  pub const fn backend(&self) -> &B {
     &self.backend
   }
 
   /// Provides mutable access to the wrapped backend.
   #[must_use]
-  pub fn backend_mut(&mut self) -> &mut B {
+  pub const fn backend_mut(&mut self) -> &mut B {
     &mut self.backend
   }
 
@@ -71,8 +71,8 @@ where
   pub(crate) fn fail_all_waiters<F>(&mut self, mut make_error: F)
   where
     F: FnMut() -> QueueError<T>, {
-    self.producer_waiters.notify_error_all_with(|| make_error());
-    self.consumer_waiters.notify_error_all_with(|| make_error());
+    self.producer_waiters.notify_error_all_with(&mut make_error);
+    self.consumer_waiters.notify_error_all_with(&mut make_error);
   }
 }
 

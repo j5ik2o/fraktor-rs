@@ -127,10 +127,10 @@ impl<T> MpscBuffer<T> {
   /// ```
   pub fn set_capacity(&mut self, capacity: Option<usize>) {
     self.capacity = capacity;
-    if let Some(limit) = capacity {
-      if self.buffer.len() > limit {
-        self.buffer.truncate(limit);
-      }
+    if let Some(limit) = capacity
+      && self.buffer.len() > limit
+    {
+      self.buffer.truncate(limit);
     }
   }
 

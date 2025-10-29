@@ -37,7 +37,10 @@ where
         return Err(StackError::Full);
       }
     } else {
-      let result = guard.push(value.take().expect("push value already consumed")).await;
+      let Some(item) = value.take() else {
+        return Err(StackError::Closed);
+      };
+      let result = guard.push(item).await;
       drop(guard);
       return result;
     }
@@ -93,21 +96,34 @@ where
 {
   /// Creates a new async stack from the provided shared backend.
   #[must_use]
-  pub fn new(shared_backend: ArcShared<A>) -> Self {
+  pub const fn new(shared_backend: ArcShared<A>) -> Self {
     Self { inner: shared_backend, _pd: PhantomData }
   }
 
   /// Pushes an item onto the stack.
+  ///
+  /// # Errors
+  ///
+  /// Returns a `StackError` when the backend rejects the item because the stack is closed or at
+  /// capacity.
   pub async fn push(&self, item: T) -> Result<PushOutcome, StackError> {
     push_shared::<T, B, A>(&self.inner, item).await
   }
 
   /// Pops the top item from the stack.
+  ///
+  /// # Errors
+  ///
+  /// Returns a `StackError` when the backend cannot supply an item due to closure or disconnection.
   pub async fn pop(&self) -> Result<T, StackError> {
     pop_shared::<T, B, A>(&self.inner).await
   }
 
   /// Returns the top item without removing it.
+  ///
+  /// # Errors
+  ///
+  /// Returns a `StackError` when the backend cannot access the top element.
   pub async fn peek(&self) -> Result<Option<T>, StackError>
   where
     T: Clone, {
@@ -116,34 +132,50 @@ where
   }
 
   /// Requests the backend to transition into the closed state.
+  ///
+  /// # Errors
+  ///
+  /// Returns a `StackError` when the backend refuses to close.
   pub async fn close(&self) -> Result<(), StackError> {
     let mut guard = <A as AsyncMutexLike<B>>::lock(&*self.inner).await.map_err(StackError::from)?;
     guard.close().await
   }
 
   /// Returns the number of stored elements.
-  #[must_use]
+  ///
+  /// # Errors
+  ///
+  /// Returns a `StackError` when the backend cannot report its length.
   pub async fn len(&self) -> Result<usize, StackError> {
     let guard = <A as AsyncMutexLike<B>>::lock(&*self.inner).await.map_err(StackError::from)?;
     Ok(guard.len())
   }
 
   /// Returns the storage capacity.
-  #[must_use]
+  ///
+  /// # Errors
+  ///
+  /// Returns a `StackError` when the backend cannot expose its capacity.
   pub async fn capacity(&self) -> Result<usize, StackError> {
     let guard = <A as AsyncMutexLike<B>>::lock(&*self.inner).await.map_err(StackError::from)?;
     Ok(guard.capacity())
   }
 
   /// Indicates whether the stack is empty.
-  #[must_use]
+  ///
+  /// # Errors
+  ///
+  /// Returns a `StackError` when the backend cannot determine emptiness.
   pub async fn is_empty(&self) -> Result<bool, StackError> {
     let guard = <A as AsyncMutexLike<B>>::lock(&*self.inner).await.map_err(StackError::from)?;
     Ok(guard.len() == 0)
   }
 
   /// Indicates whether the stack is full.
-  #[must_use]
+  ///
+  /// # Errors
+  ///
+  /// Returns a `StackError` when the backend cannot determine fullness.
   pub async fn is_full(&self) -> Result<bool, StackError> {
     let guard = <A as AsyncMutexLike<B>>::lock(&*self.inner).await.map_err(StackError::from)?;
     Ok(guard.len() == guard.capacity())
@@ -151,7 +183,7 @@ where
 
   /// Provides access to the underlying shared backend.
   #[must_use]
-  pub fn shared(&self) -> &ArcShared<A> {
+  pub const fn shared(&self) -> &ArcShared<A> {
     &self.inner
   }
 }

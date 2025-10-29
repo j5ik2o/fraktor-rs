@@ -51,6 +51,11 @@ impl<T> VecRingStorage<T> {
   }
 
   /// Attempts to grow the capacity limit to the provided value.
+  ///
+  /// # Errors
+  ///
+  /// Returns a `TryReserveError` when the underlying allocation fails while reserving additional
+  /// capacity.
   pub fn try_grow(&mut self, new_capacity: usize) -> Result<(), TryReserveError> {
     if new_capacity <= self.limit {
       return Ok(());

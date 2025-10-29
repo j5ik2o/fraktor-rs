@@ -1,5 +1,3 @@
-#![cfg(test)]
-
 use super::{CriticalSectionInterruptPolicy, InterruptContextPolicy, NeverInterruptPolicy};
 
 #[test]

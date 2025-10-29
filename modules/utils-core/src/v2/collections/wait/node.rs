@@ -72,3 +72,9 @@ impl<E> WaitNode<E> {
     self.result.lock().take()
   }
 }
+
+impl<E> Default for WaitNode<E> {
+  fn default() -> Self {
+    Self::new()
+  }
+}

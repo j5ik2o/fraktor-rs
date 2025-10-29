@@ -3,6 +3,11 @@ use crate::collections::{QueueSize, stack::StackError};
 /// Backend abstraction for stack operations.
 pub trait StackBackend<T> {
   /// Pushes a value onto the stack.
+  ///
+  /// # Errors
+  ///
+  /// Returns a `StackError` when the backend refuses the value, usually because the stack is full
+  /// or closed.
   fn push(&self, value: T) -> Result<(), StackError<T>>;
 
   /// Pops a value from the stack.

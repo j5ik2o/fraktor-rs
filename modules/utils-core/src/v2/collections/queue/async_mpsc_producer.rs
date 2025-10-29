@@ -25,18 +25,23 @@ where
   B: AsyncQueueBackend<T>,
   A: AsyncMutexLike<B>,
 {
-  pub(crate) fn new(inner: ArcShared<A>) -> Self {
+  pub(crate) const fn new(inner: ArcShared<A>) -> Self {
     Self { inner, _pd: PhantomData }
   }
 
   /// Offers an element to the queue using the underlying backend.
+  ///
+  /// # Errors
+  ///
+  /// Returns a `QueueError` when the backend cannot accept the element, such as when the queue is
+  /// closed, full, or disconnected.
   pub async fn offer(&self, item: T) -> Result<OfferOutcome, QueueError<T>> {
     offer_shared::<T, B, A>(&self.inner, item).await
   }
 
   /// Provides access to the shared backend.
   #[must_use]
-  pub fn shared(&self) -> &ArcShared<A> {
+  pub const fn shared(&self) -> &ArcShared<A> {
     &self.inner
   }
 }

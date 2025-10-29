@@ -12,9 +12,19 @@ pub trait SyncQueueBackend<T> {
   fn new(storage: Self::Storage, policy: OverflowPolicy) -> Self;
 
   /// Adds an element to the queue according to the configured overflow policy.
+  ///
+  /// # Errors
+  ///
+  /// Returns a `QueueError` when the backend rejects the element because the queue is closed,
+  /// full, or disconnected.
   fn offer(&mut self, item: T) -> Result<OfferOutcome, QueueError<T>>;
 
   /// Removes and returns the next element from the queue.
+  ///
+  /// # Errors
+  ///
+  /// Returns a `QueueError` when the backend cannot supply an element due to closure,
+  /// disconnection, or backend-specific failures.
   fn poll(&mut self) -> Result<T, QueueError<T>>;
 
   /// Returns the number of elements currently stored.

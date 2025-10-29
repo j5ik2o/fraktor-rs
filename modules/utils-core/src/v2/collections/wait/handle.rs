@@ -14,7 +14,8 @@ pub struct WaitHandle<E> {
 
 impl<E> WaitHandle<E> {
   /// Creates a wait handle bound to the supplied waiter node.
-  pub fn new(node: ArcShared<WaitNode<E>>) -> Self {
+  #[must_use]
+  pub const fn new(node: ArcShared<WaitNode<E>>) -> Self {
     Self { node }
   }
 
@@ -31,7 +32,10 @@ impl<E> Future for WaitHandle<E> {
 
     match this.node().poll(cx) {
       | Poll::Ready(()) => {
-        let result = this.node().take_result().expect("completed waiter must hold a result");
+        let result = this.node().take_result().unwrap_or_else(|| {
+          debug_assert!(false, "Completed waiter must provide a result");
+          Ok(())
+        });
         Poll::Ready(result)
       },
       | Poll::Pending => Poll::Pending,

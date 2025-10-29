@@ -6,6 +6,11 @@ use crate::sync::{ArcShared, Shared, sync_mutex_like::SyncMutexLike};
 /// Abstraction offering mutable access to shared backends.
 pub trait SharedAccess<B> {
   /// Executes the provided closure with mutable access to the backend.
+  ///
+  /// # Errors
+  ///
+  /// Returns a `SharedError` when the shared backend cannot be accessed, such as when the state is
+  /// poisoned or a borrow would conflict.
   fn with_mut<R>(&self, f: impl FnOnce(&mut B) -> R) -> Result<R, SharedError>;
 }
 

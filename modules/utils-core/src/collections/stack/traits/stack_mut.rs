@@ -4,6 +4,11 @@ use crate::collections::stack::StackError;
 /// Mutable stack interface.
 pub trait StackMut<T>: StackBase<T> {
   /// Pushes a value onto the stack.
+  ///
+  /// # Errors
+  ///
+  /// Returns a `StackError` when the stack rejects the value, typically because it is full or
+  /// already closed.
   fn push(&mut self, value: T) -> Result<(), StackError<T>>;
 
   /// Pops a value from the stack.

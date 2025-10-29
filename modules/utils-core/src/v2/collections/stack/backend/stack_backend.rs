@@ -9,9 +9,19 @@ pub trait StackBackend<T> {
   fn new(storage: Self::Storage, policy: StackOverflowPolicy) -> Self;
 
   /// Pushes an element onto the stack according to the configured overflow policy.
+  ///
+  /// # Errors
+  ///
+  /// Returns a `StackError` when the backend rejects the element because the stack is closed or the
+  /// overflow policy disallows storing additional items.
   fn push(&mut self, item: T) -> Result<PushOutcome, StackError>;
 
   /// Pops the most recently pushed element from the stack.
+  ///
+  /// # Errors
+  ///
+  /// Returns a `StackError` when the backend cannot supply an element, typically due to closure or
+  /// a storage failure.
   fn pop(&mut self) -> Result<T, StackError>;
 
   /// Returns a reference to the element at the top of the stack without removing it.

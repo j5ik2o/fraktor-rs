@@ -38,6 +38,11 @@ where
   }
 
   /// Acquires a lock and executes the specified function (for reading).
+  ///
+  /// # Panics
+  ///
+  /// Panics when the underlying backend refuses to acquire the lock, typically because blocking is
+  /// not permitted in the current context.
   pub async fn read<R>(&self, f: impl FnOnce(&B::Guard<'_>) -> R) -> R {
     match self.backend.lock().await {
       | Ok(guard) => f(&guard),
@@ -46,6 +51,11 @@ where
   }
 
   /// Acquires a lock and executes the specified function (for writing).
+  ///
+  /// # Panics
+  ///
+  /// Panics when the underlying backend refuses to acquire the lock, typically because blocking is
+  /// not permitted in the current context.
   pub async fn write<R>(&self, f: impl FnOnce(&mut B::Guard<'_>) -> R) -> R {
     match self.backend.lock().await {
       | Ok(mut guard) => f(&mut guard),
@@ -54,6 +64,11 @@ where
   }
 
   /// Acquires a lock and returns a guard handle.
+  ///
+  /// # Panics
+  ///
+  /// Panics when the underlying backend refuses to acquire the lock, typically because blocking is
+  /// not permitted in the current context.
   pub async fn lock(&self) -> GuardHandle<B::Guard<'_>> {
     match self.backend.lock().await {
       | Ok(guard) => GuardHandle::new(guard),

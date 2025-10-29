@@ -12,5 +12,10 @@ use crate::v2::sync::SharedError;
 /// current execution context.
 pub trait InterruptContextPolicy {
   /// Checks whether blocking operations are allowed.
+  ///
+  /// # Errors
+  ///
+  /// Returns `SharedError::InterruptContext` when blocking is not permitted in the current
+  /// execution context.
   fn check_blocking_allowed() -> Result<(), SharedError>;
 }

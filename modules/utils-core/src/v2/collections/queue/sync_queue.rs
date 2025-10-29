@@ -40,21 +40,35 @@ where
 {
   /// Creates a new queue from the provided shared backend.
   #[must_use]
-  pub fn new(shared_backend: ArcShared<M>) -> Self {
+  pub const fn new(shared_backend: ArcShared<M>) -> Self {
     Self { inner: shared_backend, _pd: PhantomData }
   }
 
   /// Enqueues an item according to the backend's overflow policy.
+  ///
+  /// # Errors
+  ///
+  /// Returns a `QueueError` when the backend rejects the element because the queue is closed,
+  /// full, or disconnected.
   pub fn offer(&self, item: T) -> Result<OfferOutcome, QueueError<T>> {
     self.inner.with_mut(|backend: &mut B| backend.offer(item)).map_err(QueueError::from)?
   }
 
   /// Dequeues the next available item.
+  ///
+  /// # Errors
+  ///
+  /// Returns a `QueueError` when the backend cannot supply an element due to closure,
+  /// disconnection, or backend-specific failures.
   pub fn poll(&self) -> Result<T, QueueError<T>> {
     self.inner.with_mut(|backend: &mut B| backend.poll()).map_err(QueueError::from)?
   }
 
   /// Requests the backend to transition into the closed state.
+  ///
+  /// # Errors
+  ///
+  /// Returns a `QueueError` when the backend refuses to close.
   pub fn close(&self) -> Result<(), QueueError<T>> {
     self
       .inner
@@ -97,7 +111,7 @@ where
 
   /// Provides access to the underlying shared backend.
   #[must_use]
-  pub fn shared(&self) -> &ArcShared<M> {
+  pub const fn shared(&self) -> &ArcShared<M> {
     &self.inner
   }
 }
@@ -111,6 +125,11 @@ where
   PriorityKey: SupportsPeek,
 {
   /// Retrieves the smallest element without removing it.
+  ///
+  /// # Errors
+  ///
+  /// Returns a `QueueError` when the backend cannot access the next element due to closure,
+  /// disconnection, or backend-specific failures.
   pub fn peek_min(&self) -> Result<Option<T>, QueueError<T>> {
     self.inner.with_mut(|backend: &mut B| Ok(backend.peek_min().cloned())).map_err(QueueError::from)?
   }
@@ -125,7 +144,7 @@ where
 {
   /// Creates a queue tailored for MPSC usage.
   #[must_use]
-  pub fn new_mpsc(shared_backend: ArcShared<M>) -> Self {
+  pub const fn new_mpsc(shared_backend: ArcShared<M>) -> Self {
     SyncQueue::new(shared_backend)
   }
 
@@ -136,6 +155,7 @@ where
   }
 
   /// Consumes the queue and returns the producer/consumer pair.
+  #[must_use]
   pub fn into_mpsc_pair(self) -> (SyncMpscProducer<T, B, M>, SyncMpscConsumer<T, B, M>) {
     let consumer = SyncMpscConsumer::new(self.inner.clone());
     let producer = SyncMpscProducer::new(self.inner);
@@ -152,11 +172,12 @@ where
 {
   /// Creates a queue tailored for SPSC usage.
   #[must_use]
-  pub fn new_spsc(shared_backend: ArcShared<M>) -> Self {
+  pub const fn new_spsc(shared_backend: ArcShared<M>) -> Self {
     SyncQueue::new(shared_backend)
   }
 
   /// Consumes the queue and returns the SPSC producer/consumer pair.
+  #[must_use]
   pub fn into_spsc_pair(self) -> (SyncSpscProducer<T, B, M>, SyncSpscConsumer<T, B, M>) {
     let consumer = SyncSpscConsumer::new(self.inner.clone());
     let producer = SyncSpscProducer::new(self.inner);
@@ -173,7 +194,7 @@ where
 {
   /// Creates a queue tailored for FIFO usage.
   #[must_use]
-  pub fn new_fifo(shared_backend: ArcShared<M>) -> Self {
+  pub const fn new_fifo(shared_backend: ArcShared<M>) -> Self {
     SyncQueue::new(shared_backend)
   }
 }

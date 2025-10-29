@@ -35,10 +35,10 @@ impl<T> StackBuffer<T> {
   /// Sets the stack's capacity limit.
   pub fn set_capacity(&mut self, capacity: Option<usize>) {
     self.capacity = capacity;
-    if let Some(limit) = capacity {
-      if self.items.len() > limit {
-        self.items.truncate(limit);
-      }
+    if let Some(limit) = capacity
+      && self.items.len() > limit
+    {
+      self.items.truncate(limit);
     }
   }
 
@@ -55,11 +55,16 @@ impl<T> StackBuffer<T> {
   }
 
   /// Adds an element to the top of the stack.
+  ///
+  /// # Errors
+  ///
+  /// Returns `StackError::Full` when the stack has reached its capacity limit and cannot accept
+  /// additional elements.
   pub fn push(&mut self, value: T) -> Result<(), StackError<T>> {
-    if let Some(limit) = self.capacity {
-      if self.items.len() >= limit {
-        return Err(StackError::Full(value));
-      }
+    if let Some(limit) = self.capacity
+      && self.items.len() >= limit
+    {
+      return Err(StackError::Full(value));
     }
     self.items.push(value);
     Ok(())

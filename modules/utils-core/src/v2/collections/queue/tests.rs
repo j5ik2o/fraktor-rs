@@ -19,6 +19,7 @@ mod storage_config {
   use crate::v2::collections::queue::QueueStorage;
 
   /// Storage configuration used by the test backends.
+  #[derive(Clone, Copy, Default)]
   pub struct QueueConfig {
     capacity: usize,
   }
@@ -30,7 +31,8 @@ mod storage_config {
     }
 
     /// Returns the configured capacity.
-    pub fn capacity(&self) -> usize {
+    #[must_use]
+    pub const fn capacity(self) -> usize {
       self.capacity
     }
   }
@@ -47,18 +49,6 @@ mod storage_config {
     unsafe fn write_unchecked(&mut self, _idx: usize, val: T) {
       core::mem::drop(val);
       panic!("write_unchecked is not supported in test storage");
-    }
-  }
-
-  impl Default for QueueConfig {
-    fn default() -> Self {
-      Self { capacity: 0 }
-    }
-  }
-
-  impl Clone for QueueConfig {
-    fn clone(&self) -> Self {
-      Self { capacity: self.capacity }
     }
   }
 }

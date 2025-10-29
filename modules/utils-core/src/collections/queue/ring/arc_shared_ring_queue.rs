@@ -18,7 +18,7 @@ impl<E> RingHandle<E> for SharedRingStorage<E> {
   type Backend = RingStorageBackend<ArcShared<SpinSyncMutex<RingBuffer<E>>>>;
 
   fn backend(&self) -> &Self::Backend {
-    &self
+    self
   }
 }
 
@@ -26,7 +26,7 @@ impl<E> QueueHandle<E> for ArcShared<SpinSyncMutex<RingBuffer<E>>> {
   type Storage = SpinSyncMutex<RingBuffer<E>>;
 
   fn storage(&self) -> &Self::Storage {
-    &self
+    self
   }
 }
 

@@ -10,6 +10,7 @@ pub struct WaitQueue<E> {
 
 impl<E> WaitQueue<E> {
   /// Creates an empty queue.
+  #[must_use]
   pub const fn new() -> Self {
     Self { waiters: VecDeque::new() }
   }
@@ -45,5 +46,11 @@ impl<E> WaitQueue<E> {
     while let Some(node) = self.waiters.pop_front() {
       node.complete_with_error(make_error());
     }
+  }
+}
+
+impl<E> Default for WaitQueue<E> {
+  fn default() -> Self {
+    Self::new()
   }
 }

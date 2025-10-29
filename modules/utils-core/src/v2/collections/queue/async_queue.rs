@@ -30,7 +30,10 @@ where
     let mut guard = <A as AsyncMutexLike<B>>::lock(&**shared).await.map_err(QueueError::from)?;
 
     if guard.is_closed() {
-      return Err(QueueError::Closed(value.take().expect("offer value already consumed")));
+      let Some(item) = value.take() else {
+        return Err(QueueError::Disconnected);
+      };
+      return Err(QueueError::Closed(item));
     }
 
     if guard.is_full() {
@@ -43,10 +46,16 @@ where
         }
       } else {
         drop(guard);
-        return Err(QueueError::Full(value.take().expect("offer value already consumed")));
+        let Some(item) = value.take() else {
+          return Err(QueueError::Disconnected);
+        };
+        return Err(QueueError::Full(item));
       }
     } else {
-      let result = guard.offer(value.take().expect("offer value already consumed")).await;
+      let Some(item) = value.take() else {
+        return Err(QueueError::Disconnected);
+      };
+      let result = guard.offer(item).await;
       drop(guard);
       return result;
     }
@@ -114,49 +123,76 @@ where
 {
   /// Creates a new async queue from the provided shared backend.
   #[must_use]
-  pub fn new(shared_backend: ArcShared<A>) -> Self {
+  pub const fn new(shared_backend: ArcShared<A>) -> Self {
     Self { inner: shared_backend, _pd: PhantomData }
   }
 
   /// Adds an element to the queue according to the backend's policy.
+  ///
+  /// # Errors
+  ///
+  /// Returns a `QueueError` when the backend rejects the element, such as when the queue is closed,
+  /// full, or disconnected.
   pub async fn offer(&self, item: T) -> Result<OfferOutcome, QueueError<T>> {
     offer_shared::<T, B, A>(&self.inner, item).await
   }
 
   /// Removes and returns the next available item.
+  ///
+  /// # Errors
+  ///
+  /// Returns a `QueueError` when the backend cannot supply an item due to closure, disconnection,
+  /// or backend-specific failures.
   pub async fn poll(&self) -> Result<T, QueueError<T>> {
     poll_shared::<T, B, A>(&self.inner).await
   }
 
   /// Requests the backend to transition into the closed state.
+  ///
+  /// # Errors
+  ///
+  /// Returns a `QueueError` when the backend refuses to close.
   pub async fn close(&self) -> Result<(), QueueError<T>> {
     let mut guard = <A as AsyncMutexLike<B>>::lock(&*self.inner).await.map_err(QueueError::from)?;
     guard.close().await
   }
 
   /// Returns the current number of stored elements.
-  #[must_use]
+  ///
+  /// # Errors
+  ///
+  /// Returns a `QueueError` when the backend cannot report its length.
   pub async fn len(&self) -> Result<usize, QueueError<T>> {
     let guard = <A as AsyncMutexLike<B>>::lock(&*self.inner).await.map_err(QueueError::from)?;
     Ok(guard.len())
   }
 
   /// Returns the storage capacity.
-  #[must_use]
+  ///
+  /// # Errors
+  ///
+  /// Returns a `QueueError` when the backend cannot expose its capacity.
   pub async fn capacity(&self) -> Result<usize, QueueError<T>> {
     let guard = <A as AsyncMutexLike<B>>::lock(&*self.inner).await.map_err(QueueError::from)?;
     Ok(guard.capacity())
   }
 
   /// Indicates whether the queue is empty.
-  #[must_use]
+  ///
+  /// # Errors
+  ///
+  /// Returns a `QueueError` when the backend cannot determine emptiness due to closure or
+  /// disconnection.
   pub async fn is_empty(&self) -> Result<bool, QueueError<T>> {
     let guard = <A as AsyncMutexLike<B>>::lock(&*self.inner).await.map_err(QueueError::from)?;
     Ok(guard.is_empty())
   }
 
   /// Indicates whether the queue is full.
-  #[must_use]
+  ///
+  /// # Errors
+  ///
+  /// Returns a `QueueError` when the backend cannot determine fullness.
   pub async fn is_full(&self) -> Result<bool, QueueError<T>> {
     let guard = <A as AsyncMutexLike<B>>::lock(&*self.inner).await.map_err(QueueError::from)?;
     Ok(guard.is_full())
@@ -164,7 +200,7 @@ where
 
   /// Provides access to the underlying shared backend.
   #[must_use]
-  pub fn shared(&self) -> &ArcShared<A> {
+  pub const fn shared(&self) -> &ArcShared<A> {
     &self.inner
   }
 }
@@ -177,6 +213,11 @@ where
   PriorityKey: SupportsPeek,
 {
   /// Retrieves the smallest element without removing it.
+  ///
+  /// # Errors
+  ///
+  /// Returns a `QueueError` when the backend cannot access the next element due to closure or
+  /// disconnection.
   pub async fn peek_min(&self) -> Result<Option<T>, QueueError<T>> {
     let guard = <A as AsyncMutexLike<B>>::lock(&*self.inner).await.map_err(QueueError::from)?;
     Ok(guard.peek_min().cloned())
@@ -191,7 +232,7 @@ where
 {
   /// Creates an async queue tailored for MPSC usage.
   #[must_use]
-  pub fn new_mpsc(shared_backend: ArcShared<A>) -> Self {
+  pub const fn new_mpsc(shared_backend: ArcShared<A>) -> Self {
     Self::new(shared_backend)
   }
 
@@ -202,6 +243,7 @@ where
   }
 
   /// Consumes the queue and returns the producer/consumer pair.
+  #[must_use]
   pub fn into_mpsc_pair(self) -> (AsyncMpscProducer<T, B, A>, AsyncMpscConsumer<T, B, A>) {
     let consumer = AsyncMpscConsumer::new(self.inner.clone());
     let producer = AsyncMpscProducer::new(self.inner);
@@ -217,11 +259,12 @@ where
 {
   /// Creates an async queue tailored for SPSC usage.
   #[must_use]
-  pub fn new_spsc(shared_backend: ArcShared<A>) -> Self {
+  pub const fn new_spsc(shared_backend: ArcShared<A>) -> Self {
     Self::new(shared_backend)
   }
 
   /// Consumes the queue and returns the SPSC producer/consumer pair.
+  #[must_use]
   pub fn into_spsc_pair(self) -> (AsyncSpscProducer<T, B, A>, AsyncSpscConsumer<T, B, A>) {
     let consumer = AsyncSpscConsumer::new(self.inner.clone());
     let producer = AsyncSpscProducer::new(self.inner);
@@ -237,7 +280,7 @@ where
 {
   /// Creates an async queue tailored for FIFO usage.
   #[must_use]
-  pub fn new_fifo(shared_backend: ArcShared<A>) -> Self {
+  pub const fn new_fifo(shared_backend: ArcShared<A>) -> Self {
     Self::new(shared_backend)
   }
 }

@@ -22,14 +22,18 @@ where
   M: SyncMutexLike<B>,
   ArcShared<M>: SharedAccess<B>,
 {
-  pub(crate) fn new(inner: ArcShared<M>) -> Self {
+  pub(crate) const fn new(inner: ArcShared<M>) -> Self {
     Self { inner, _pd: PhantomData }
   }
 
   /// Polls the next element from the queue.
+  ///
+  /// # Errors
+  ///
+  /// Returns a `QueueError` when the backend cannot produce an element due to closure,
+  /// disconnection, or backend-specific failures.
   pub fn poll(&self) -> Result<T, QueueError<T>> {
-    let result = self.inner.with_mut(|backend: &mut B| backend.poll()).map_err(QueueError::from)?;
-    result
+    self.inner.with_mut(|backend: &mut B| backend.poll()).map_err(QueueError::from).and_then(|result| result)
   }
 
   /// Signals that no more elements will be produced.

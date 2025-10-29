@@ -3,6 +3,11 @@ use core::ops::Deref;
 /// Shared ownership abstraction used across runtimes.
 pub trait Shared<T: ?Sized>: Clone + Deref<Target = T> {
   /// Attempt to unwrap the shared value.
+  ///
+  /// # Errors
+  ///
+  /// Returns `Err(self)` when the shared value cannot be uniquely owned because additional clones
+  /// exist.
   fn try_unwrap(self) -> Result<T, Self>
   where
     T: Sized, {

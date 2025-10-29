@@ -17,19 +17,19 @@ impl<T> VecStackStorage<T> {
 
   /// Returns the number of initialized elements.
   #[must_use]
-  pub fn len(&self) -> usize {
+  pub const fn len(&self) -> usize {
     self.data.len()
   }
 
   /// Returns whether the storage currently holds no elements.
   #[must_use]
-  pub fn is_empty(&self) -> bool {
+  pub const fn is_empty(&self) -> bool {
     self.data.is_empty()
   }
 
   /// Returns the configured capacity limit.
   #[must_use]
-  pub fn capacity(&self) -> usize {
+  pub const fn capacity(&self) -> usize {
     self.limit
   }
 
@@ -45,11 +45,17 @@ impl<T> VecStackStorage<T> {
   }
 
   /// Returns a reference to the last element if it exists.
+  #[must_use]
   pub fn peek(&self) -> Option<&T> {
     self.data.last()
   }
 
   /// Attempts to grow the capacity limit to `new_capacity`.
+  ///
+  /// # Errors
+  ///
+  /// Returns a `TryReserveError` when the underlying allocation fails to reserve additional
+  /// capacity.
   pub fn try_grow(&mut self, new_capacity: usize) -> Result<(), TryReserveError> {
     if new_capacity <= self.limit {
       return Ok(());

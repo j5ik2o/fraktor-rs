@@ -22,6 +22,10 @@ where
   Q: QueueRw<E>,
 {
   /// Creates a new priority queue.
+  ///
+  /// # Panics
+  ///
+  /// Panics if `levels` is empty because at least one priority level is required.
   #[must_use]
   pub fn new(levels: Vec<Q>) -> Self {
     assert!(!levels.is_empty(), "PriorityQueue requires at least one level");
@@ -47,6 +51,11 @@ where
   }
 
   /// Adds an element to the queue based on its priority.
+  ///
+  /// # Errors
+  ///
+  /// Returns a `QueueError` when the backend handling the specific priority level cannot accept
+  /// the element, typically because it is closed, full, or disconnected.
   pub fn offer(&self, element: E) -> Result<(), QueueError<E>>
   where
     E: PriorityMessage, {
@@ -55,6 +64,11 @@ where
   }
 
   /// Removes an element from the queue, preferring higher priorities.
+  ///
+  /// # Errors
+  ///
+  /// Returns a `QueueError` when none of the priority level backends can supply an element due to
+  /// closure, disconnection, or backend-specific failures.
   pub fn poll(&self) -> Result<Option<E>, QueueError<E>>
   where
     E: PriorityMessage, {

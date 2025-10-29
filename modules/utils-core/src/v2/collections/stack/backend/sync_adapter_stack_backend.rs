@@ -39,13 +39,13 @@ where
 
   /// Provides immutable access to the wrapped backend.
   #[must_use]
-  pub fn backend(&self) -> &B {
+  pub const fn backend(&self) -> &B {
     &self.backend
   }
 
   /// Provides mutable access to the wrapped backend.
   #[must_use]
-  pub fn backend_mut(&mut self) -> &mut B {
+  pub const fn backend_mut(&mut self) -> &mut B {
     &mut self.backend
   }
 
