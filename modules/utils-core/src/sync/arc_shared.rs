@@ -1,8 +1,9 @@
 #![allow(clippy::disallowed_types)] // ここだけは許可されます
-#[cfg(not(target_has_atomic = "ptr"))]
-use alloc::rc::Rc as Arc;
-#[cfg(target_has_atomic = "ptr")]
+#[cfg(not(feature = "force-portable-arc"))]
 use alloc::sync::Arc;
+
+#[cfg(feature = "force-portable-arc")]
+pub use portable_atomic_util::Arc;
 use core::ptr;
 
 use super::{Shared, SharedDyn};
