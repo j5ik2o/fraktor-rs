@@ -1,5 +1,7 @@
-use crate::collections::queue_old::QueueError;
-use crate::collections::queue::{storage::QueueStorage, OfferOutcome, OverflowPolicy};
+use crate::collections::{
+  queue::{OfferOutcome, OverflowPolicy, storage::QueueStorage},
+  queue_old::QueueError,
+};
 
 /// Backend trait responsible for queue operations on top of a storage implementation.
 pub trait SyncQueueBackend<T> {

@@ -2,13 +2,15 @@ use core::marker::PhantomData;
 
 use super::async_queue::offer_shared;
 use crate::{
-    collections::queue_old::QueueError,
-    sync::{
-        async_mutex_like::{AsyncMutexLike, SpinAsyncMutex},
-        ArcShared,
-    },
+  collections::{
+    queue::backend::{AsyncQueueBackend, OfferOutcome},
+    queue_old::QueueError,
+  },
+  sync::{
+    ArcShared,
+    async_mutex_like::{AsyncMutexLike, SpinAsyncMutex},
+  },
 };
-use crate::collections::queue::backend::{AsyncQueueBackend, OfferOutcome};
 
 /// Async producer for queues tagged with
 /// [`SpscKey`](crate::collections::queue::type_keys::SpscKey).

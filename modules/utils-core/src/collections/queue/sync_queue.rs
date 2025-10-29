@@ -5,18 +5,20 @@ use super::{
   sync_spsc_producer::SyncSpscProducer,
 };
 use crate::{
-  collections::queue_old::QueueError,
+  collections::{
+    queue::{
+      backend::{OfferOutcome, SyncPriorityBackend, SyncQueueBackend},
+      capabilities::{MultiProducer, SingleConsumer, SingleProducer, SupportsPeek},
+      type_keys::{FifoKey, MpscKey, PriorityKey, SpscKey, TypeKey},
+    },
+    queue_old::QueueError,
+  },
   sync::{
-    sync_mutex_like::{SpinSyncMutex, SyncMutexLike}, ArcShared,
-    Shared,
+    ArcShared, Shared,
+    shared_access::SharedAccess,
+    sync_mutex_like::{SpinSyncMutex, SyncMutexLike},
   },
 };
-use crate::collections::queue::{
-  backend::{OfferOutcome, SyncPriorityBackend, SyncQueueBackend},
-  capabilities::{MultiProducer, SingleConsumer, SingleProducer, SupportsPeek},
-  type_keys::{FifoKey, MpscKey, PriorityKey, SpscKey, TypeKey},
-};
-use crate::sync::shared_access::SharedAccess;
 
 /// Queue API parameterised by element type, type key, backend, and shared guard.
 #[derive(Clone)]

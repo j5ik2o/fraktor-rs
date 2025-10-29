@@ -1,11 +1,12 @@
 use core::marker::PhantomData;
 
 use crate::{
-    collections::queue_old::QueueError,
-    sync::{sync_mutex_like::SyncMutexLike, ArcShared},
+  collections::{
+    queue::backend::{OfferOutcome, SyncQueueBackend},
+    queue_old::QueueError,
+  },
+  sync::{ArcShared, shared_access::SharedAccess, sync_mutex_like::SyncMutexLike},
 };
-use crate::collections::queue::backend::{OfferOutcome, SyncQueueBackend};
-use crate::sync::shared_access::SharedAccess;
 
 /// Producer for queues tagged with
 /// [`MpscKey`](crate::collections::queue::type_keys::MpscKey).

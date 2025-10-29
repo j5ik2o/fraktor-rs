@@ -8,9 +8,9 @@ use crate::{
 
 /// Ring buffer-based storage abstraction trait
 ///
-/// Provides storage abstraction shared by [`crate::collections::queue_old::mpsc::RingBufferBackend`]
-/// implementations. This trait offers an interface for uniformly handling read and write access to
-/// MPSC buffers.
+/// Provides storage abstraction shared by
+/// [`crate::collections::queue_old::mpsc::RingBufferBackend`] implementations. This trait offers an
+/// interface for uniformly handling read and write access to MPSC buffers.
 ///
 /// # Type Parameters
 ///

@@ -1,7 +1,6 @@
 //! Access helpers for shared backends guarded by mutex-like primitives.
 
-use crate::sync::{ArcShared, Shared, sync_mutex_like::SyncMutexLike};
-use crate::sync::shared_error::SharedError;
+use crate::sync::{ArcShared, Shared, shared_error::SharedError, sync_mutex_like::SyncMutexLike};
 
 /// Abstraction offering mutable access to shared backends.
 pub trait SharedAccess<B> {

@@ -1,19 +1,18 @@
 use core::{
-    future::Future,
-    pin::Pin,
-    ptr,
-    task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
+  future::Future,
+  pin::Pin,
+  ptr,
+  task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
 };
 
 use super::AsyncStack;
 use crate::{
-    sync::{async_mutex_like::SpinAsyncMutex, interrupt::InterruptContextPolicy, ArcShared},
+  collections::stack::{
+    StackOverflowPolicy, VecStackStorage,
+    backend::{PushOutcome, StackError, SyncAdapterStackBackend, VecStackBackend},
+  },
+  sync::{ArcShared, async_mutex_like::SpinAsyncMutex, interrupt::InterruptContextPolicy, shared_error::SharedError},
 };
-use crate::collections::stack::{
-    backend::{PushOutcome, StackError, SyncAdapterStackBackend, VecStackBackend}, StackOverflowPolicy,
-    VecStackStorage,
-};
-use crate::sync::shared_error::SharedError;
 
 fn raw_waker() -> RawWaker {
   fn clone(_: *const ()) -> RawWaker {

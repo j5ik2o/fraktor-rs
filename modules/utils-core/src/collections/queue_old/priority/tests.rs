@@ -8,8 +8,8 @@ use core::cell::RefCell;
 use super::{PriorityMessage, PriorityQueue};
 use crate::{
   collections::{
-      QueueError, QueueSize,
-      queue_old::{
+    QueueError, QueueSize,
+    queue_old::{
       mpsc::{MpscBuffer, MpscHandle, MpscQueue, RingBufferBackend},
       traits::{QueueBase, QueueReader, QueueRw, QueueWriter},
     },

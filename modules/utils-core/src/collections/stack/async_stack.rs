@@ -1,10 +1,12 @@
 use core::marker::PhantomData;
 
-use crate::sync::{
-  async_mutex_like::{AsyncMutexLike, SpinAsyncMutex},
-  ArcShared,
+use crate::{
+  collections::stack::{PushOutcome, StackError, backend::AsyncStackBackend},
+  sync::{
+    ArcShared,
+    async_mutex_like::{AsyncMutexLike, SpinAsyncMutex},
+  },
 };
-use crate::collections::stack::{backend::AsyncStackBackend, PushOutcome, StackError};
 
 #[cfg(test)]
 mod tests;

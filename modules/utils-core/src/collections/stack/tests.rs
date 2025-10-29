@@ -2,13 +2,12 @@ extern crate alloc;
 
 use super::SyncStack;
 use crate::{
-    sync::{sync_mutex_like::SpinSyncMutex, ArcShared},
-};
-use crate::collections::stack::{
-    backend::{PushOutcome, StackError, StackOverflowPolicy, VecStackBackend},
+  collections::stack::{
     VecStackStorage,
+    backend::{PushOutcome, StackError, StackOverflowPolicy, VecStackBackend},
+  },
+  sync::{ArcShared, shared_error::SharedError, sync_mutex_like::SpinSyncMutex},
 };
-use crate::sync::shared_error::SharedError;
 
 fn make_stack<T>(capacity: usize, policy: StackOverflowPolicy) -> SyncStack<T, VecStackBackend<T>> {
   let storage = VecStackStorage::with_capacity(capacity);

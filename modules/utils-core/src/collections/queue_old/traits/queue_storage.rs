@@ -2,8 +2,8 @@
 use core::cell::RefCell;
 
 use crate::{
-    collections::queue_old::ring::RingBuffer,
-    sync::{ArcShared, sync_mutex_like::SpinSyncMutex},
+  collections::queue_old::ring::RingBuffer,
+  sync::{ArcShared, sync_mutex_like::SpinSyncMutex},
 };
 
 /// Queue storage abstraction trait.

@@ -1,6 +1,6 @@
 use crate::collections::{
-    QueueError, QueueSize,
-    queue_old::{
+  QueueError, QueueSize,
+  queue_old::{
     ring::ring_backend::RingBackend,
     traits::{QueueBase, QueueHandle, QueueReader, QueueStorage, QueueWriter},
   },

@@ -12,12 +12,12 @@ pub mod interrupt;
 #[allow(clippy::disallowed_types)]
 mod rc_shared;
 mod shared;
+pub mod shared_access;
+pub mod shared_error;
 mod state;
 mod static_ref_shared;
 /// Synchronous mutex abstractions shared across runtimes.
 pub mod sync_mutex_like;
-pub mod shared_access;
-pub mod shared_error;
 
 pub use arc_shared::ArcShared;
 pub use flag::Flag;

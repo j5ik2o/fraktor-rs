@@ -61,3 +61,30 @@
 
 extern crate alloc;
 
+pub mod actor;
+pub mod actor_context;
+pub mod actor_error;
+pub mod actor_future;
+pub mod actor_ref;
+pub mod any_message;
+pub mod mailbox_policy;
+pub mod name_registry;
+pub mod pid;
+pub mod props;
+pub mod receive_state;
+pub mod supervisor_strategy;
+pub mod system;
+
+pub use actor::Actor;
+pub use actor_context::ActorContext;
+pub use actor_error::{ActorError, ActorErrorReason};
+pub use actor_future::ActorFuture;
+pub use actor_ref::ActorRef;
+pub use any_message::{AnyMessage, AnyOwnedMessage};
+pub use mailbox_policy::{MailboxCapacity, MailboxOverflowStrategy, MailboxPolicy};
+pub use name_registry::{NameRegistry, NameRegistryError};
+pub use pid::Pid;
+pub use props::{ActorFactory, MailboxConfig, Props, SupervisorOptions};
+pub use receive_state::ReceiveState;
+pub use supervisor_strategy::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind};
+pub use system::ActorSystem;

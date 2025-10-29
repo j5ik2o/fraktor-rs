@@ -6,8 +6,8 @@ use alloc::rc::Rc;
 use core::{cell::RefCell, fmt};
 
 use crate::collections::{
-    QueueError,
-    queue_old::mpsc::{MpscBuffer, MpscQueue, mpsc_backend::RingBufferBackend, traits::MpscHandle},
+  QueueError,
+  queue_old::mpsc::{MpscBuffer, MpscQueue, mpsc_backend::RingBufferBackend, traits::MpscHandle},
 };
 
 struct RcBackendHandle<T>(Rc<RingBufferBackend<RefCell<MpscBuffer<T>>>>);

@@ -1,10 +1,13 @@
-use core::marker::PhantomData;
 use alloc::boxed::Box;
+use core::marker::PhantomData;
+
 use async_trait::async_trait;
 
 use super::{AsyncPriorityBackend, AsyncQueueBackend, OfferOutcome, SyncPriorityBackend, SyncQueueBackend};
-use crate::collections::queue_old::QueueError;
-use crate::collections::wait::{WaitHandle, WaitQueue};
+use crate::collections::{
+  queue_old::QueueError,
+  wait::{WaitHandle, WaitQueue},
+};
 
 /// Adapter that exposes a synchronous queue backend through the async backend trait.
 pub struct SyncAdapterQueueBackend<T, B>

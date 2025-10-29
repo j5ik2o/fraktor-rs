@@ -2,13 +2,12 @@ use core::marker::PhantomData;
 
 use super::async_queue::poll_shared;
 use crate::{
-  collections::queue_old::QueueError,
+  collections::{queue::backend::AsyncQueueBackend, queue_old::QueueError},
   sync::{
-    async_mutex_like::{AsyncMutexLike, SpinAsyncMutex},
     ArcShared,
+    async_mutex_like::{AsyncMutexLike, SpinAsyncMutex},
   },
 };
-use crate::collections::queue::backend::AsyncQueueBackend;
 
 /// Async consumer for queues tagged with
 /// [`MpscKey`](crate::collections::queue::type_keys::MpscKey).

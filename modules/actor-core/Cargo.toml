@@ -23,6 +23,7 @@ portable-atomic = { workspace = true, features = ["critical-section"] }
 portable-atomic-util = { workspace = true, features = ["alloc"] }
 spin = { workspace = true, default-features = false, features = ["mutex", "spin_mutex", "rwlock", "portable_atomic"] }
 cortex-m = { workspace = true, optional = true }
+hashbrown = { workspace = true, default-features = false }
 
 [dev-dependencies]
 criterion = { workspace = true }

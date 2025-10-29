@@ -5,16 +5,18 @@ use super::{
   async_spsc_consumer::AsyncSpscConsumer, async_spsc_producer::AsyncSpscProducer,
 };
 use crate::{
-  collections::queue_old::QueueError,
-  sync::{
-    async_mutex_like::{AsyncMutexLike, SpinAsyncMutex},
-    ArcShared,
+  collections::{
+    queue::{
+      backend::{AsyncPriorityBackend, AsyncQueueBackend, OfferOutcome},
+      capabilities::{MultiProducer, SingleConsumer, SingleProducer, SupportsPeek},
+      type_keys::{FifoKey, MpscKey, PriorityKey, SpscKey, TypeKey},
+    },
+    queue_old::QueueError,
   },
-};
-use crate::collections::queue::{
-  backend::{AsyncPriorityBackend, AsyncQueueBackend, OfferOutcome},
-  capabilities::{MultiProducer, SingleConsumer, SingleProducer, SupportsPeek},
-  type_keys::{FifoKey, MpscKey, PriorityKey, SpscKey, TypeKey},
+  sync::{
+    ArcShared,
+    async_mutex_like::{AsyncMutexLike, SpinAsyncMutex},
+  },
 };
 
 #[cfg(test)]

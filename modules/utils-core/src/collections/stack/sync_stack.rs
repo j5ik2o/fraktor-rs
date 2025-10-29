@@ -1,13 +1,13 @@
 use core::marker::PhantomData;
 
 use crate::{
-    sync::{
-        sync_mutex_like::{SpinSyncMutex, SyncMutexLike}, ArcShared,
-        Shared,
-    },
+  collections::stack::{PushOutcome, StackBackend, StackError},
+  sync::{
+    ArcShared, Shared,
+    shared_access::SharedAccess,
+    sync_mutex_like::{SpinSyncMutex, SyncMutexLike},
+  },
 };
-use crate::collections::stack::{PushOutcome, StackBackend, StackError};
-use crate::sync::shared_access::SharedAccess;
 
 /// Stack API parameterised by element type, backend, and shared guard.
 #[derive(Clone)]

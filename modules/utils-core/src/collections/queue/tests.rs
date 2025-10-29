@@ -3,7 +3,7 @@ extern crate alloc;
 use super::SyncQueue;
 use crate::{
   collections::queue_old::QueueError,
-  sync::{sync_mutex_like::SpinSyncMutex, ArcShared},
+  sync::{ArcShared, sync_mutex_like::SpinSyncMutex},
 };
 
 mod storage_config {
@@ -50,8 +50,10 @@ mod fifo_backend {
   use alloc::collections::VecDeque;
 
   use super::QueueConfig;
-  use crate::collections::queue_old::QueueError;
-  use crate::collections::queue::backend::{OfferOutcome, OverflowPolicy, SyncQueueBackend};
+  use crate::collections::{
+    queue::backend::{OfferOutcome, OverflowPolicy, SyncQueueBackend},
+    queue_old::QueueError,
+  };
 
   /// Simple FIFO backend used for unit tests.
   pub struct FifoBackend<T> {
@@ -154,8 +156,10 @@ mod priority_backend {
   use core::cmp::Reverse;
 
   use super::QueueConfig;
-  use crate::collections::queue_old::QueueError;
-  use crate::collections::queue::backend::{OfferOutcome, OverflowPolicy, SyncPriorityBackend, SyncQueueBackend};
+  use crate::collections::{
+    queue::backend::{OfferOutcome, OverflowPolicy, SyncPriorityBackend, SyncQueueBackend},
+    queue_old::QueueError,
+  };
 
   /// Priority backend backed by a binary heap.
   pub struct BinaryHeapBackend<T: Ord> {
@@ -245,13 +249,16 @@ mod priority_backend {
 }
 
 use priority_backend::BinaryHeapBackend;
-use crate::collections::queue::{
-  backend::{OfferOutcome, OverflowPolicy, VecRingBackend},
-  capabilities::{SingleConsumer, SingleProducer, SupportsPeek},
-  type_keys::{FifoKey, MpscKey, PriorityKey, SpscKey},
-  VecRingStorage,
+
+use crate::{
+  collections::queue::{
+    VecRingStorage,
+    backend::{OfferOutcome, OverflowPolicy, VecRingBackend},
+    capabilities::{SingleConsumer, SingleProducer, SupportsPeek},
+    type_keys::{FifoKey, MpscKey, PriorityKey, SpscKey},
+  },
+  sync::shared_error::SharedError,
 };
-use crate::sync::shared_error::SharedError;
 
 #[test]
 fn offer_and_poll_fifo_queue() {

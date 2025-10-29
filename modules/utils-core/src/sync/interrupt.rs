@@ -5,6 +5,7 @@ mod tests;
 
 pub use critical_section_interrupt_policy::CriticalSectionInterruptPolicy;
 pub use never_interrupt_policy::NeverInterruptPolicy;
+
 use crate::sync::shared_error::SharedError;
 
 /// Policy interface for determining whether blocking operations are permitted in the

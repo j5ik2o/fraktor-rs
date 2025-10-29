@@ -7,14 +7,15 @@ use core::{
 
 use super::{AsyncMpscQueue, AsyncQueue, AsyncSpscQueue};
 use crate::{
-  collections::queue_old::QueueError,
-  sync::{async_mutex_like::SpinAsyncMutex, interrupt::InterruptContextPolicy, ArcShared},
+  collections::{
+    queue::{
+      VecRingStorage,
+      backend::{OfferOutcome, OverflowPolicy, SyncAdapterQueueBackend, VecRingBackend},
+    },
+    queue_old::QueueError,
+  },
+  sync::{ArcShared, async_mutex_like::SpinAsyncMutex, interrupt::InterruptContextPolicy, shared_error::SharedError},
 };
-use crate::collections::queue::{
-  backend::{OfferOutcome, OverflowPolicy, SyncAdapterQueueBackend, VecRingBackend},
-  VecRingStorage,
-};
-use crate::sync::shared_error::SharedError;
 
 fn raw_waker() -> RawWaker {
   fn clone(_: *const ()) -> RawWaker {

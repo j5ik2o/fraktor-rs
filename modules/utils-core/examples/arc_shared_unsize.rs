@@ -1,7 +1,9 @@
 #![cfg_attr(not(feature = "unsize"), allow(dead_code))]
 
 #[cfg(not(feature = "unsize"))]
-compile_error!("`unsize` フィーチャが無効の場合、このサンプルはビルドできません。`--features unsize` を指定してください。");
+compile_error!(
+  "`unsize` フィーチャが無効の場合、このサンプルはビルドできません。`--features unsize` を指定してください。"
+);
 
 use cellactor_utils_core_rs::ArcShared;
 
