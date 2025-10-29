@@ -93,7 +93,7 @@
 - **FR-006**: Supervisor は `OneForOne` と `AllForOne` の 2 種類以上の戦略を持ち、再起動回数制限・遅延・エスカレーション条件を設定できる API を提供しなければならない。
 - **FR-007**: ActorCell と ActorContext は アクターのライフサイクル状態（初期化中／稼働中／停止）と親子関係を保持し、サンプルコードで状態遷移を EventStream へ通知できなければならない。
 - **FR-008**: ActorFuture は 非同期返信のための簡易 Future/Promise API を提供し、`async fn` を利用せずにポーリングベースの完了検知ができるようにしなければならない。
-- **FR-009**: Deadletter と EventStream は 100% の未配達メッセージと監視イベントを記録し、購読インターフェイス（Subscribe/Unsubscribe/Publish）を提供しなければならない。
+- **FR-009**: Deadletter と EventStream は 100% の未配達メッセージと監視イベントを記録し、購読インターフェイス（Subscribe/Unsubscribe/Publish）を提供しなければならない。Deadletter は失敗した `AnyOwnedMessage`（payload・metadata・`reply_to` を含む）を保持し、EventStream にも同情報を含む通知を流すことで再送・解析に利用できなければならない。
 - **FR-010**: Props は アクター生成時のファクトリ・Mailbox 設定・Supervisor 紐付けを宣言的に構築でき、protoactor-go の `Props` 相当 API を Rust の所有権モデルに合わせて記述しなければならない。
 - **FR-011**: すべてのメッセージは `AnyMessage` にカプセル化され、`AnyMessage::new<T>(value: T)` と `downcast::<M>()` / `downcast_ref::<M>()` を通じて型情報を遅延取得できること。
 - **FR-012**: メッセージ処理ロジックは未型付けメッセージ専用の ActorContext API を提供し、Typed レイヤーと混在させない設計ガイドラインを仕様に含めなければならない。
@@ -114,6 +114,8 @@
 - **FR-025**: アクター生成 API は任意の名前を受け付け、同一親スコープ内で一意性を保証しなければならない。名前未指定の場合は ActorSystem が衝突しない自動命名（例: `anon-{pid}`）を行い、名前から PID を逆引きできる仕組みを提供する。
 - **FR-026**: MessageInvoker はメッセージをアクターへ渡す前後にミドルウェアチェーンを差し込める拡張ポイントを提供し、将来的にトレーシング・メトリクス・auth などの処理を挿入できる構造を維持しなければならない。初期リリースではチェーンは空で良いが、差し替え可能な API を公開すること。
 - **FR-027**: Mailbox は Bounded/Unbounded の戦略を設定可能とし、Bounded では容量オーバ時のポリシー（FR-020）と一貫した挙動を提供し、Unbounded ではメモリ使用量を監視して EventStream/Logger へ警告を出せるメトリクスを提供しなければならない。
+- **FR-032**: MailboxError / SendError は失敗した `AnyOwnedMessage` を所有（もしくは再取得可能なハンドルとして）して呼び出し元へ返し、Deadletter がそのまま保管・再配送できるようにしなければならない。Drop 系ポリシーでもメッセージを失わず、EventStream 通知に同一 payload 情報を含めること。
+- **FR-033**: Mailbox の System キューはランタイム内部用の `SystemMessage`（固定スキーマ）を保持し、User キューと型で分離しなければならない。ユーザ定義メッセージが System キューへ到達しないよう型安全性を確保し、変換は ActorSystem 側で明示的に行うこと。
 - **FR-028**: Dispatcher/MessageInvoker は 1 アクター当たりのスループット制限（例: 300 メッセージ/フェンス）を設定でき、設定値に到達した場合は制御用 System メッセージを優先しつつ残りメッセージを次ターンへ繰り越す仕組みを提供する。スループット値は Props または Mailbox 設定で構成可能とし、デフォルトは protoactor-go 相当の 300 を採用する。
 - **FR-029**: ランタイムは `Context::sender()` を提供せず、応答が必要なメッセージは `reply_to: ActorRef`（もしくは同等の手段）を含むペイロード設計に従う。ActorContext は送信元を暗黙に保持しないこと。
 - **FR-030**: `ask` 経路では enqueue 時に `AnyOwnedMessage` 内へ `reply_to` を保持し、MessageInvoker が処理完了後に `reply_to.tell(...)` または `ActorFuture::complete()` を呼び出す。Mailbox / Dispatcher / ActorSystem は `reply_to` を破棄せず、完了時に ActorFuture を解決するためのフックを提供しなければならない。
@@ -122,9 +124,9 @@
 
 - **ActorSystem**: PID レジストリ、Supervisor ツリー、イベント配信チャネルを保持する中心コンポーネント。
 - **ActorRef / Pid**: ActorCell へのメッセージ送信に利用する軽量ハンドルと一意識別子。
-- **Mailbox**: AsyncQueue に基づくメッセージバッファと処理ステータス。
+- **Mailbox**: AsyncQueue に基づくメッセージバッファと処理ステータス。System キューはランタイム内部の `SystemMessage` を保持し、User キューは `AnyOwnedMessage` を保持する。
 - **Behavior**: 現在のメッセージハンドラと次の状態遷移に関する関数ポインタ群。
-- **EventStream / Deadletter**: 監視イベントと未配達メッセージの集約ポイント。
+- **EventStream / Deadletter**: 監視イベントと未配達メッセージの集約ポイント。Deadletter は失敗した `AnyOwnedMessage` を完全な形で格納し、EventStream 通知も payload 情報を含む。
 - **Props**: アクター生成時の構成（ファクトリ、Supervisor、Mailbox 設定）をカプセル化する定義。
 - **AnyMessage**: `dyn core::any::Any` を所有せずに借用経由で参照できるメッセージコンテナ。
 
