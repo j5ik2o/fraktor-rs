@@ -28,13 +28,13 @@ impl<T> RcShared<T> {
 impl<T: ?Sized> RcShared<T> {
   /// Wraps an existing `Rc` in the shared wrapper.
   #[must_use]
-  pub const fn from_rc(inner: Rc<T>) -> Self {
+  pub const fn ___from_rc(inner: Rc<T>) -> Self {
     Self(inner)
   }
 
   /// Consumes the wrapper and returns the inner `Rc`.
   #[must_use]
-  pub fn into_rc(self) -> Rc<T> {
+  pub fn ___into_rc(self) -> Rc<T> {
     self.0
   }
 
@@ -48,7 +48,7 @@ impl<T: ?Sized> RcShared<T> {
       let reference = &*raw;
       let trait_reference = cast(reference);
       let trait_ptr = ptr::from_ref(trait_reference);
-      RcShared::from_rc(Rc::from_raw(trait_ptr))
+      RcShared::___from_rc(Rc::from_raw(trait_ptr))
     }
   }
 }

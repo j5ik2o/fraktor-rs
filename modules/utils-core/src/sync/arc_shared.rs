@@ -1,4 +1,4 @@
-#![allow(clippy::disallowed_types)]
+#![allow(clippy::disallowed_types)] // ここだけは許可されます
 #[cfg(not(target_has_atomic = "ptr"))]
 use alloc::rc::Rc as Arc;
 #[cfg(target_has_atomic = "ptr")]
@@ -27,7 +27,7 @@ impl<T: ?Sized> ArcShared<T> {
   ///
   /// Wraps an existing `Arc` in the shared wrapper.
   #[must_use]
-  pub const fn from_arc_for_testing_dont_use_production(inner: Arc<T>) -> Self {
+  pub const fn ___from_arc(inner: Arc<T>) -> Self {
     Self(inner)
   }
 
@@ -35,7 +35,7 @@ impl<T: ?Sized> ArcShared<T> {
   ///
   /// Consumes the wrapper and returns the inner `Arc`.
   #[must_use]
-  pub fn into_arc_for_testing_dont_use_production(self) -> Arc<T> {
+  pub fn ___into_arc(self) -> Arc<T> {
     self.0
   }
 
