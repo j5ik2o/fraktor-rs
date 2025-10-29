@@ -9,7 +9,7 @@ cd "${REPO_ROOT}"
 
 THUMB_TARGETS=("thumbv6m-none-eabi" "thumbv8m.main-none-eabi")
 declare -a HARDWARE_PACKAGES=()
-DEFAULT_TOOLCHAIN="${RUSTUP_TOOLCHAIN:-stable}"
+DEFAULT_TOOLCHAIN="${RUSTUP_TOOLCHAIN:-nightly}"
 FMT_TOOLCHAIN="${FMT_TOOLCHAIN:-nightly}"
 
 usage() {
