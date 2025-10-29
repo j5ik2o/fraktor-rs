@@ -3,7 +3,8 @@
 use core::marker::PhantomData;
 
 use crate::{
-  actor_error::ActorError, actor_ref::ActorRef, any_message::AnyMessage, pid::Pid, props::Props, system::SystemShared,
+  actor_error::ActorError, actor_ref::ActorRef, any_message::AnyMessage, child_ref::ChildRef, pid::Pid, props::Props,
+  system::SystemShared,
 };
 
 type ReplyFn<'a> = dyn for<'msg> Fn(AnyMessage<'msg>) -> Result<(), ActorError> + 'a;
@@ -45,13 +46,13 @@ impl<'a> ActorContext<'a> {
   }
 
   /// Spawns a child actor using the configured runtime handle。
-  pub fn spawn_child(&self, props: &Props) -> Result<ActorRef, ActorError> {
+  pub fn spawn_child(&self, props: &Props) -> Result<ChildRef, ActorError> {
     let system = self.system.as_ref().ok_or_else(|| ActorError::unsupported("spawn_child"))?;
     let pid = {
       let mut guard = system.lock();
-      guard.spawn_actor(system, None, props.clone())?
+      guard.spawn_actor(system, Some(*self.self_pid), None, *props)?
     };
-    Ok(ActorRef::new(pid, system.clone()))
+    Ok(ChildRef::new(ActorRef::new(pid, system.clone())))
   }
 
   /// Replies to the current sender using the configured runtime hook。

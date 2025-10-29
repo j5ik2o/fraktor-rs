@@ -29,18 +29,18 @@ impl ActorRef {
 
   /// Sends a user message to the actor.
   pub fn tell(&self, message: AnyOwnedMessage) -> Result<(), SendError> {
-    enqueue_user(&self.system, self.pid, message).map_err(SendError::from)
+    enqueue_user(&self.system, self.pid, message)
   }
 
   /// Sends a system message to the actor.
   pub fn tell_system(&self, message: AnyOwnedMessage) -> Result<(), SendError> {
-    enqueue_system(&self.system, self.pid, message).map_err(SendError::from)
+    enqueue_system(&self.system, self.pid, message)
   }
 
   /// Sends a request expecting a reply. Current implementation forwards the message using
   /// `tell` semantics and returns a pending future for callers that wish to coordinate manually.
   pub fn ask(&self, message: AnyOwnedMessage) -> Result<ActorFuture<AnyOwnedMessage>, SendError> {
-    enqueue_user(&self.system, self.pid, message).map_err(SendError::from)?;
+    enqueue_user(&self.system, self.pid, message)?;
     Ok(ActorFuture::pending())
   }
 }

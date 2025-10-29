@@ -10,7 +10,7 @@ use alloc::{
 };
 use std::sync::Mutex;
 
-use actor_core::{Actor, ActorContext, ActorError, ActorRef, ActorSystem, AnyMessage, AnyOwnedMessage, Props};
+use actor_core::{Actor, ActorContext, ActorError, ActorSystem, AnyMessage, AnyOwnedMessage, ChildRef, Props};
 
 static MESSAGE_LOG: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
@@ -49,7 +49,7 @@ impl Actor for RecorderActor {
 struct PingActor;
 
 struct StartPing {
-  target: ActorRef,
+  target: ChildRef,
   count:  u32,
 }
 
