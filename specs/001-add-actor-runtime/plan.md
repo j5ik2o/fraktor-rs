@@ -13,6 +13,8 @@
 - 64KB RAM 制約下で 1,000 msg/s を処理する性能検証、panic 非介入時の運用フローを quickstart で案内。  
 - Mailbox については Spec FR-019〜FR-021 を満たすため、初期実装で `DropOldest` を既定としつつ `DropNewest`/`Grow` の検証を行い、`Suspend`/`Resume` 制御および System / User 優先度キューを提供する設計を確定する。`Block` は将来機能だが、ブロッキングなしで背圧を伝播できる待機ハンドラ抽象を先行で用意する。  
 - Spec FR-027 に基づき、Mailbox の Bounded/Unbounded 戦略とメモリ監視・警告イベント発火をサポートする。  
+- メッセージ所有は `AnyOwnedMessage` + `ArcShared` に統一し、Mailbox が所有→借用の変換を担当する。  
+- System/User の 2 本キュー（`async_mpsc` バックエンド）と WaitNode ベースの Block 待機戦略を採用し、Busy wait を禁止する。  
 - Spec FR-023 に基づき、親アクターが子アクターを生成・監督する API（Props 継承、`Context::spawn_child`）を整備し、Supervisor ツリー操作と EventStream 通知をサポートする。
 - Spec FR-024 に基づき、ActorSystem 初期化時にユーザガーディアン Props を必須とし、エントリポイントからアプリケーションツリーを構築するフローを quickstart と data-model に落とし込む。
 - Spec FR-025 に基づき、アクター命名の一意性と自動生成ロジック（親スコープごとの NameRegistry）を実装し、名前から PID への逆引きを提供する。
@@ -33,7 +35,7 @@
 **性能目標**: 起動→初回処理 <5ms（ホスト）/<20ms（組込み）、1,000 msg/s でバックログ <=10、ヒープ確保 0〜5 回/秒以内。
 **制約**: `modules/*-core` は `#![no_std]`; `tokio`/`embassy` は各 std/embedded クレートに隔離。`panic!` はランタイム非介入。Mailbox は同期（割込み安全）/非同期（std, embassy）両対応が可能な trait 設計とし、`async fn` 汚染を最小化する（FR-019〜FR-021 の要件を満たす構造）。  
 **スケール/スコープ**: 単一ノード・シングルプロセスのローカルアクター、Typed レイヤーは後続フェーズ。
-**未確定事項**: FR-020 で定義する `Block` ポリシーの背圧 API と FR-021 の `Suspend` / `Resume` 制御、FR-019 の System/User 優先度実装方式（2 本キュー or priority queue）、FR-023 の子アクター生成 API と FR-024 のユーザガーディアン Props 初期化フロー、FR-025 の命名規則（許容文字・長さ・自動命名プレフィックス）、FR-026 のミドルウェアチェーン API のインターフェイス、FR-027 の Bounded/Unbounded 切替ポリシー詳細と警告基準、FR-028 のスループット制限デフォルト値と構成方法、FR-029 の標準メッセージスキーマ指針（`reply_to` の型や必須性）。Phase 0 でハンドラ抽象の要件を調査する。
+**未確定事項**: FR-020 で定義する `Block` ポリシーの背圧 API と FR-021 の `Suspend` / `Resume` 制御、FR-019 の System/User 優先度実装方式（2 本キュー or priority queue）、FR-023 の子アクター生成 API と FR-024 のユーザガーディアン Props 初期化フロー、FR-025 の命名規則（許容文字・長さ・自動命名プレフィックス）、FR-026 のミドルウェアチェーン API のインターフェイス、FR-027 の Bounded/Unbounded 切替ポリシー詳細と警告基準、FR-028 のスループット制限デフォルト値と構成方法、FR-029 の標準メッセージスキーマ指針（`reply_to` の型や必須性）、FR-030 の Ask 完了フックの具体的実装。Phase 0 でハンドラ抽象の要件を調査する。
 
 ## 憲章チェック（着手前）
 
@@ -60,10 +62,10 @@ specs/001-add-actor-runtime/
 
 ## フェーズ0: リサーチ計画
 
-1. `protoactor-go` の Mailbox / Dispatcher / Supervisor / Child actor API (`Context.Spawn`/RootContext) と命名ルール (`ProcessRegistry`)、MiddlewareChain (ProcessStage)、Bounded/Unbounded mailbox、Dispatcher throughput 設定を調査し、借用・アロケーション挙動、および `Drop`/`Grow` 相当のキュー戦略を整理。  
+1. `protoactor-go` の Mailbox / Dispatcher / Supervisor / Child actor API (`Context.Spawn`/RootContext) と命名ルール (`ProcessRegistry`)、MiddlewareChain (ProcessStage)、Bounded/Unbounded mailbox、Dispatcher throughput 設定、ProcessMailbox のメッセージ所有モデルを調査し、借用・アロケーション挙動、および `Drop`/`Grow` 相当のキュー戦略を整理。  
 2. Apache Pekko の `EventStream` / `DeadLetter` / Supervision ドキュメントを参照し、Recoverable/Fatal ハンドリング差分を抽出。
 3. `AnyMessage` の借用ベース設計に適した Rust パターン（`dyn Any` + `RefCell` 非使用）を調査。
-4. AsyncQueue の容量・バックプレッシャー戦略（BoundedMailbox 相当）と `DropNewest`/`Grow`/`Block` の遷移条件、`Suspend`/`Resume` の制御手段（同期・非同期双方）および System/User 優先度実装（デュアルキュー or priority queue）、Bounded/Unbounded 切替時のメモリ監視指標、スループット制限適用方法を決定。
+4. AsyncQueue の容量・バックプレッシャー戦略（BoundedMailbox 相当）と `DropNewest`/`Grow`/`Block` の遷移条件、`Suspend`/`Resume` の制御手段（同期・非同期双方）および System/User デュアルキュー構成、Bounded/Unbounded 切替時のメモリ監視指標、Block 待機フロー、スループット制限適用方法、`AnyOwnedMessage` の所有先（ArcShared）を決定。
 5. panic 非介入ポリシー時の運用ベストプラクティス（ウォッチドッグリセットなど）を確認し quickstart に反映。
 
 成果物: research.md（Decision / Rationale / Alternatives 形式）で全 NEEDS CLARIFICATION を解消。

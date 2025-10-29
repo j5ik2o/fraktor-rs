@@ -55,13 +55,16 @@
 
 - `no_std` + `alloc` 環境で利用可能なことを前提とし、標準ライブラリ固有 API への依存は禁止する。
 - すべてのアクター間メッセージは `AnyMessage` を経由して `dyn core::any::Any` として扱い、Typed アクター API は後続フェーズでレイヤー追加する方針とする。
+- 送信時には所有型 `AnyOwnedMessage` に変換して Mailbox に格納し、取り出し時に借用型 `AnyMessage<'_>` を再構成してアクターへ渡す。所有型は `modules/utils-core::sync::ArcShared` を利用して複製を避ける。
 - Mailbox は制御用 System メッセージとユーザメッセージを優先度付きで扱い、停止・再開時でも System メッセージが処理される設計を必須とする。
+- Mailbox の内部構成は System 用と User 用に 2 本のキューを持ち、`modules/utils-core::v2::collections::queue::async_mpsc` をバックエンドとする。System キューの処理が優先され、空の場合のみ User キューを処理する。`suspend()` は dequeue を停止し、`resume()` で再開する。
 - ランタイム API は借用ベースのライフタイム設計を基本とし、ヒープ確保が必要な処理は事前に計測計画と再利用戦略を記載する。
 - Actor トレイトは `pre_start`, `post_stop`, `receive` を提供し、`pre_start` でリソース初期化、`post_stop` で解放ができるようにする。`receive` は `Result<(), ActorError>` を返却し、`Err` の場合は Supervisor が再起動戦略に基づいて扱う。`panic!` などスタックを巻き戻せない致命的障害は ActorSystem が介入せず、アプリケーション側でリセットやフォールバックを実装することを前提とする。
 - AsyncQueue が満杯の場合は protoactor-go の `BoundedMailbox` を参考にバックプレッシャーをかけ、送信 API は明示的な失敗結果を返す。
+- `Block` ポリシーは no_std 向けに WaitNode を用いた待機を採用し、Busy wait を避ける。enqueue 側は `async_mpsc::Producer::wait_push()` で待機し、Mailbox 再開時に待機ノードへ通知する。
 - Supervisor により再起動回数が上限を超えた場合、ActorSystem はアクターを停止させ Deadletter と EventStream へ必ず通知する。
 - Actor は子アクターを生成し、Supervisor 戦略に基づいた親子ツリーを形成できることを前提とする。親は子アクターのライフサイクルイベントを EventStream 経由で監視できる必要がある。
-- ActorSystem の初期化時にユーザガーディアン（root actor）の Props を受け取り、そのコンテキストから子アクターを生成してシステム全体を構築できるようにする。
+- ActorSystem の初期化時にユーザガーディアン（root actor）のインスタンスと Props を受け取り、そのコンテキストから子アクターを生成してシステム全体を構築できるようにする。
 - Mailbox は Bounded / Unbounded を切り替え可能であり、Bounded 時は容量閾値で背圧またはドロップポリシーを適用し、Unbounded 時は組込みのメモリ制約を超えないよう監視メトリクスを提供する。
 - Classic Akka の `sender()` を提供せず、応答が必要なメッセージは `reply_to: ActorRef` などのフィールドを持つリクエスト・リプライパターンを利用することを前提とする。
 - アクターには一意な名前を付与でき、未指定の場合は ActorSystem が自動生成した名前を割り当てる。名前は PID レジストリから逆引きできる。
@@ -108,6 +111,7 @@
 - **FR-027**: Mailbox は Bounded/Unbounded の戦略を設定可能とし、Bounded では容量オーバ時のポリシー（FR-020）と一貫した挙動を提供し、Unbounded ではメモリ使用量を監視して EventStream/Logger へ警告を出せるメトリクスを提供しなければならない。
 - **FR-028**: Dispatcher/MessageInvoker は 1 アクター当たりのスループット制限（例: 300 メッセージ/フェンス）を設定でき、設定値に到達した場合は制御用 System メッセージを優先しつつ残りメッセージを次ターンへ繰り越す仕組みを提供する。スループット値は Props または Mailbox 設定で構成可能とし、デフォルトは protoactor-go 相当の 300 を採用する。
 - **FR-029**: ランタイムは `Context::sender()` を提供せず、応答が必要なメッセージは `reply_to: ActorRef`（もしくは同等の手段）を含むペイロード設計に従う。ActorContext は送信元を暗黙に保持しないこと。
+- **FR-030**: `ask` 経路では enqueue 時に `AnyOwnedMessage` 内へ `reply_to` を保持し、MessageInvoker が処理完了後に `reply_to.tell(...)` または `ActorFuture::complete()` を呼び出す。Mailbox / Dispatcher / ActorSystem は `reply_to` を破棄せず、完了時に ActorFuture を解決するためのフックを提供しなければならない。
 
 ### 重要エンティティ（データを扱う場合）
 

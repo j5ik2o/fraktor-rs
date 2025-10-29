@@ -55,3 +55,19 @@
 ## Decision: Request/Reply pattern without sender()
 - **Rationale**: Akka/Pekko Typed と同様に `sender()` を廃止し、明示的に `reply_to: ActorRef` を渡すことで依存関係を明確化し、no_std での可搬性を維持する。  
 - **Alternatives considered**: Classic の `sender()` を引き継ぐ案（stateful Context が複雑化し、将来 Typed レイヤー導入時に破綻する）。
+
+## Decision: Owned message buffer for mailbox
+- **Rationale**: Mailbox でメッセージを所有するため `AnyOwnedMessage` + `ArcShared` を導入し、借用型 `AnyMessage` を再構成してゼロコピーで配達できるようにする。  
+- **Alternatives considered**: enqueue 毎に `Vec<u8>` へシリアライズする案（ヒープ負荷が高い）; 送信側がライフタイムを保持し続ける案（no_std で安全に扱いづらい）。
+
+## Decision: System/User dual queue layout
+- **Rationale**: 優先度制御と suspend/resume をシンプルにするため、System/User の 2 本キューに分離し、`async_mpsc` をバックエンドに採用する。  
+- **Alternatives considered**: 単一キューに priority flag を持たせる案（dequeue 時の判定が複雑）; Multiqueue を自前実装する案（既存抽象を再利用できず負荷が大きい）。
+
+## Decision: Block policy wait strategy
+- **Rationale**: Busy wait を避け、WaitNode + `wait_push()` で待機させることで no_std でも適正な背圧を実現する。  
+- **Alternatives considered**: spin ループで待機する案（電力・スケジューラが非効率）; Block を未実装とする案（将来の拡張性がない）。
+
+## Decision: Ask/reply flow with ActorFuture
+- **Rationale**: `reply_to: ActorRef` を AnyOwnedMessage に保持し、MessageInvoker 終了時に ActorFuture を完了させることで sender() 依存を排除しつつ ask を実現する。  
+- **Alternatives considered**: Classic sender() を維持する案（Typed レイヤー導入時に矛盾）; ask をサポートしない案（ユースケースが限定される）。
