@@ -49,3 +49,4 @@ tokio-condvar = "0.3.0"
 tokio-util = "0.7.16"
 tracing = { version = "0.1.41", default-features = false }
 tracing-subscriber = { version = "0.3", default-features = false }
+heapless = { version = "0.8", default-features = false }
