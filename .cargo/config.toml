@@ -1,0 +1,3 @@
+[target.'cfg(all())']
+rustflags = ["--cfg", "portable_atomic_unstable_coerce_unsized"]
+# for future reuse, keep marker file

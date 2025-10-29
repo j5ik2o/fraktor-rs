@@ -4,10 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [features]
-default = ["alloc"]
+default = ["alloc", "unsize"]
 alloc = []
 interrupt-cortex-m = ["cortex-m"]
 force-portable-arc = []
+unsize = []
 
 [dependencies]
 async-trait = { workspace = true }

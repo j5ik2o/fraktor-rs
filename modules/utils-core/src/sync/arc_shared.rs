@@ -1,10 +1,12 @@
 #![allow(clippy::disallowed_types)] // ここだけは許可されます
 #[cfg(not(feature = "force-portable-arc"))]
 use alloc::sync::Arc;
+use core::ptr;
+#[cfg(feature = "unsize")]
+use core::{marker::Unsize, ops::CoerceUnsized};
 
 #[cfg(feature = "force-portable-arc")]
 pub use portable_atomic_util::Arc;
-use core::ptr;
 
 use super::{Shared, SharedDyn};
 
@@ -14,6 +16,7 @@ use super::{Shared, SharedDyn};
 /// do not provide `alloc::sync::Arc`. In those environments we transparently
 /// fall back to `alloc::rc::Rc`, allowing higher layers to keep using a unified
 /// shared abstraction.
+#[repr(transparent)]
 pub struct ArcShared<T: ?Sized>(Arc<T>);
 
 impl<T: ?Sized> ArcShared<T> {
@@ -100,3 +103,6 @@ impl<T: ?Sized> Clone for ArcShared<T> {
     Self(self.0.clone())
   }
 }
+
+#[cfg(feature = "unsize")]
+impl<T: ?Sized + Unsize<U>, U: ?Sized> CoerceUnsized<ArcShared<U>> for ArcShared<T> {}

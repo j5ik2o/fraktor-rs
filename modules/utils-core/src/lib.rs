@@ -48,7 +48,8 @@
 #![deny(clippy::cmp_null)]
 #![allow(unknown_lints)]
 #![deny(cfg_std_forbid)]
-
+#![cfg_attr(feature = "unsize", feature(unsize, coerce_unsized, dispatch_from_dyn))]
+#![cfg_attr(feature = "unsize", allow(incomplete_features))]
 //! Core utility collection.
 //!
 //! Provides fundamental data structures such as mailboxes, synchronization primitives,
