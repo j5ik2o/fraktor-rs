@@ -61,7 +61,7 @@
 - **Alternatives considered**: enqueue 毎に `Vec<u8>` へシリアライズする案（ヒープ負荷が高い）; 送信側がライフタイムを保持し続ける案（no_std で安全に扱いづらい）。
 
 ## Decision: System/User dual queue layout
-- **Rationale**: 優先度制御と suspend/resume をシンプルにするため、System/User の 2 本キューに分離し、`async_mpsc` をバックエンドに採用する。  
+- **Rationale**: 優先度制御と suspend/resume をシンプルにするため、System/User の 2 本キューに分離し、`async_mpsc` をバックエンドに採用する。外部 API は同期呼び出しのまま保ち、Dispatcher 内部で協調ポーリングして Future を駆動することで `async fn` 依存を避ける。  
 - **Alternatives considered**: 単一キューに priority flag を持たせる案（dequeue 時の判定が複雑）; Multiqueue を自前実装する案（既存抽象を再利用できず負荷が大きい）。
 
 ## Decision: Block policy wait strategy

@@ -57,11 +57,11 @@
 - すべてのアクター間メッセージは `AnyMessage` を経由して `dyn core::any::Any` として扱い、Typed アクター API は後続フェーズでレイヤー追加する方針とする。
 - 送信時には所有型 `AnyOwnedMessage` に変換して Mailbox に格納し、取り出し時に借用型 `AnyMessage<'_>` を再構成してアクターへ渡す。所有型は `modules/utils-core::sync::ArcShared` を利用して複製を避ける。
 - Mailbox は制御用 System メッセージとユーザメッセージを優先度付きで扱い、停止・再開時でも System メッセージが処理される設計を必須とする。
-- Mailbox の内部構成は System 用と User 用に 2 本のキューを持ち、`modules/utils-core::v2::collections::queue::async_mpsc` をバックエンドとする。System キューの処理が優先され、空の場合のみ User キューを処理する。`suspend()` は dequeue を停止し、`resume()` で再開する。
+- Mailbox の内部構成は System 用と User 用に 2 本のキューを持ち、`modules/utils-core::v2::collections::queue::async_mpsc` をバックエンドとする。System キューの処理が優先され、空の場合のみ User キューを処理する。`suspend()` は dequeue を停止し、`resume()` で再開する。外部に公開する API は同期呼び出しを維持しつつ、`async_mpsc` の Future は Dispatcher 内の協調ポーリング（自前 executor）で駆動し、`async fn` 依存を避ける。
 - ランタイム API は借用ベースのライフタイム設計を基本とし、ヒープ確保が必要な処理は事前に計測計画と再利用戦略を記載する。
 - Actor トレイトは `pre_start`, `post_stop`, `receive` を提供し、`pre_start` でリソース初期化、`post_stop` で解放ができるようにする。`receive` は `Result<(), ActorError>` を返却し、`Err` の場合は Supervisor が再起動戦略に基づいて扱う。`panic!` などスタックを巻き戻せない致命的障害は ActorSystem が介入せず、アプリケーション側でリセットやフォールバックを実装することを前提とする。
 - AsyncQueue が満杯の場合は protoactor-go の `BoundedMailbox` を参考にバックプレッシャーをかけ、送信 API は明示的な失敗結果を返す。
-- `Block` ポリシーは no_std 向けに WaitNode を用いた待機を採用し、Busy wait を避ける。enqueue 側は `async_mpsc::Producer::wait_push()` で待機し、Mailbox 再開時に待機ノードへ通知する。
+- `Block` ポリシーは no_std 向けに WaitNode を用いた待機を採用し、Busy wait を避ける。enqueue 側は `async_mpsc::Producer::wait_push()` で待機し、Mailbox 再開時に待機ノードへ通知する。初期リリースではポリシー定義と待機ハンドラ API を公開し、実際のブロッキング挙動は協調ポーリング上で段階的に実装する。
 - Supervisor により再起動回数が上限を超えた場合、ActorSystem はアクターを停止させ Deadletter と EventStream へ必ず通知する。
 - Actor は子アクターを生成し、Supervisor 戦略に基づいた親子ツリーを形成できることを前提とする。親は子アクターのライフサイクルイベントを EventStream 経由で監視できる必要がある。
 - ActorSystem の初期化時にユーザガーディアン（root actor）のインスタンスと Props を受け取り、そのコンテキストから子アクターを生成してシステム全体を構築できるようにする。
