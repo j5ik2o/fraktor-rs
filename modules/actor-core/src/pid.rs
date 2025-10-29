@@ -1,9 +1,9 @@
 //! Process identifier implementation.
 
 /// Identifies an actor instance within the system.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Pid {
-  value: u64,
+  value:      u64,
   generation: u32,
 }
 

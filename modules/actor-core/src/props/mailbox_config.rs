@@ -15,7 +15,7 @@ pub enum MailboxCapacity {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MailboxConfig {
   capacity: MailboxCapacity,
-  policy: MailboxPolicy,
+  policy:   MailboxPolicy,
 }
 
 impl MailboxConfig {

@@ -1,41 +1,70 @@
-//! Actor future placeholder implementation.
+//! Simple future-like primitive used by `ask` helpers.
 
-/// Represents an asynchronous result produced by an actor interaction.
-#[derive(Debug)]
+use core::hint::spin_loop;
+
+use cellactor_utils_core_rs::sync::ArcShared;
+use spin::Mutex;
+
+/// Shared state backing an [`ActorFuture`].
+struct ActorFutureState<T> {
+  value:     Option<T>,
+  completed: bool,
+}
+
+impl<T> ActorFutureState<T> {
+  const fn new() -> Self {
+    Self { value: None, completed: false }
+  }
+}
+
+/// Cooperative future used by the runtime to deliver ask responses.
+#[derive(Clone)]
 pub struct ActorFuture<T> {
-  value: Option<T>,
-  on_complete: Option<fn(&T)>,
+  state: ArcShared<Mutex<ActorFutureState<T>>>,
 }
 
 impl<T> ActorFuture<T> {
-  /// Creates a pending future with no completion value.
+  /// Creates a pending future.
   #[must_use]
-  pub const fn pending() -> Self {
-    Self { value: None, on_complete: None }
+  pub fn pending() -> Self {
+    Self { state: ArcShared::new(Mutex::new(ActorFutureState::new())) }
   }
 
-  /// Registers a completion callback invoked when the future resolves.
-  pub fn set_on_complete(&mut self, callback: fn(&T)) {
-    self.on_complete = Some(callback);
+  /// Completes the future; subsequent completions are ignored.
+  pub fn complete(&self, value: T) {
+    let mut guard = self.state.lock();
+    if guard.completed {
+      return;
+    }
+    guard.value = Some(value);
+    guard.completed = true;
   }
 
-  /// Completes the future with the provided value.
-  pub fn complete(&mut self, value: T) {
-    self.value = Some(value);
-    if let (Some(callback), Some(ref stored)) = (self.on_complete, self.value.as_ref()) {
-      callback(stored);
+  /// Returns `true` when a value has been written.
+  #[must_use]
+  pub fn is_completed(&self) -> bool {
+    self.state.lock().completed
+  }
+
+  /// Attempts to take the value; returns `None` if not completed yet.
+  pub fn try_take(&self) -> Option<T> {
+    let mut guard = self.state.lock();
+    if guard.completed {
+      guard.completed = false;
+      guard.value.take()
+    } else {
+      None
     }
   }
 
-  /// Returns `true` when the future has been completed.
-  #[must_use]
-  pub fn is_completed(&self) -> bool {
-    self.value.is_some()
-  }
-
-  /// Extracts the completion value.
-  pub fn take(&mut self) -> Option<T> {
-    self.value.take()
+  /// Busy waits until the value is available and then consumes it.
+  pub fn wait(self) -> T {
+    loop {
+      if let Some(value) = self.try_take() {
+        return value;
+      }
+      spin_loop();
+    }
   }
 }
 

@@ -3,10 +3,10 @@
 mod mailbox_config;
 mod supervisor_options;
 
+use alloc::boxed::Box;
+
 pub use mailbox_config::{MailboxCapacity, MailboxConfig};
 pub use supervisor_options::SupervisorOptions;
-
-use alloc::boxed::Box;
 
 use crate::{actor::Actor, mailbox_policy::MailboxPolicy};
 
@@ -16,11 +16,11 @@ pub type ActorFactory = fn() -> Box<dyn Actor>;
 /// Configuration data used when creating actors.
 #[derive(Debug, Clone, Copy)]
 pub struct Props {
-  factory: ActorFactory,
-  mailbox: MailboxConfig,
+  factory:    ActorFactory,
+  mailbox:    MailboxConfig,
   supervisor: SupervisorOptions,
   throughput: u32,
-  policy: MailboxPolicy,
+  policy:     MailboxPolicy,
 }
 
 impl Props {

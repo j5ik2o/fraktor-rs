@@ -9,7 +9,7 @@ pub type BehaviorId = u16;
 #[derive(Debug, Default)]
 pub struct ReceiveState {
   current: BehaviorId,
-  stack: Vec<BehaviorId>,
+  stack:   Vec<BehaviorId>,
 }
 
 impl ReceiveState {

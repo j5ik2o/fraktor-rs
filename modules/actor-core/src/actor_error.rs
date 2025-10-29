@@ -44,7 +44,7 @@ impl ActorError {
   #[must_use]
   pub const fn reason(&self) -> &'static str {
     match self {
-      Self::Recoverable(reason) | Self::Fatal(reason) => reason,
+      | Self::Recoverable(reason) | Self::Fatal(reason) => reason,
     }
   }
 }

@@ -31,16 +31,15 @@ type DeciderFn<'a> = dyn Fn(&ActorError) -> SupervisorDirective + 'a;
 /// Configurable supervisor strategy with restart limits.
 #[derive(Clone, Copy)]
 pub struct SupervisorStrategy<'a> {
-  kind: StrategyKind,
+  kind:         StrategyKind,
   max_restarts: u32,
-  within: Duration,
-  decider: Option<&'a DeciderFn<'a>>,
+  within:       Duration,
+  decider:      Option<&'a DeciderFn<'a>>,
 }
 
 impl<'a> fmt::Debug for SupervisorStrategy<'a> {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    f
-      .debug_struct("SupervisorStrategy")
+    f.debug_struct("SupervisorStrategy")
       .field("kind", &self.kind)
       .field("max_restarts", &self.max_restarts)
       .field("within", &self.within)
@@ -87,8 +86,8 @@ impl<'a> SupervisorStrategy<'a> {
       return decider(error);
     }
     match error {
-      ActorError::Recoverable(_) => SupervisorDirective::Restart,
-      ActorError::Fatal(_) => SupervisorDirective::Stop,
+      | ActorError::Recoverable(_) => SupervisorDirective::Restart,
+      | ActorError::Fatal(_) => SupervisorDirective::Stop,
     }
   }
 }

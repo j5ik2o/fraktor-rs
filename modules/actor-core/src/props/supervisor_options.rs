@@ -7,7 +7,7 @@ use crate::supervisor_strategy::{StrategyKind, SupervisorDirective, SupervisorSt
 /// Supervisor configuration applied to spawned actors.
 #[derive(Debug, Clone, Copy)]
 pub struct SupervisorOptions {
-  strategy: SupervisorStrategy<'static>,
+  strategy:             SupervisorStrategy<'static>,
   escalation_threshold: u32,
 }
 
