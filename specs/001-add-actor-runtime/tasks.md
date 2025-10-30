@@ -44,7 +44,7 @@ description: "セルアクター no_std ランタイム初期版の実装タス�
 **目的**: すべてのストーリーで共有するコア抽象（Actor/Context/Error/Message など）を定義する。
 
 - [x] T005 `Actor` トレイトを定義し、`pre_start` / `receive` / `post_stop` のライフサイクルシグネチャを揃える (modules/actor-core/src/actor.rs)
-- [ ] T006 `ActorContext` の骨組みを実装し、self PID・子生成フック・返信ヘルパーを提供する (modules/actor-core/src/actor_context.rs)
+- [x] T006 `ActorContext` の骨組みを実装し、self PID・子生成フック・返信ヘルパーを提供する (modules/actor-core/src/actor_context.rs)
 - [x] T007 `Recoverable` / `Fatal` 変種を備えた `ActorError` 列挙体と補助コンストラクタを追加する (modules/actor-core/src/actor_error.rs)
 - [x] T008 型 ID メタデータとダウンキャストユーティリティを備えた `AnyMessage` ラッパーを実装する (modules/actor-core/src/any_message.rs)
 - [x] T009 ポーリングベースの完了コールバックを持つ `ActorFuture` の骨格を用意する (modules/actor-core/src/actor_future.rs)
@@ -62,7 +62,7 @@ description: "セルアクター no_std ランタイム初期版の実装タス�
 **目標**: AnyMessage を使った最小構成でアクターを起動し、Ping/Pong サンプルが no_std + alloc 環境で動作する。
 **独立テスト**: `modules/actor-core/tests/ping_pong.rs` で spawn / tell / 背圧ポリシー / reply_to 処理が通ること。
 
-- [ ] T016 [US1] `ActorRef` ハンドルを実装し、未型付けの `tell` / `ask` API と ArcShared ストレージを備える（`AnyOwnedMessage` を受け付け、送信失敗を `Result` で検知可能にする）(modules/actor-core/src/actor_ref.rs)
+- [x] T016 [US1] `ActorRef` ハンドルを実装し、未型付けの `tell` / `ask` API と ArcShared ストレージを備える（`AnyOwnedMessage` を受け付け、送信失敗を `Result` で検知可能にする）(modules/actor-core/src/actor_ref.rs)
 - [ ] T017 [US1] DropNewest / DropOldest / Grow ポリシーと Bounded / Unbounded 容量を扱う `Mailbox` を AsyncQueue バックエンドで実装する (modules/actor-core/src/mailbox.rs)
 - [ ] T018 [US1] スループット制限とスケジューリングフックを備えた `Dispatcher` を実装する (modules/actor-core/src/dispatcher.rs)
 - [ ] T019 [US1] ミドルウェアチェーンと `reply_to` ルーティングを行う `MessageInvoker` パイプラインを実装する (modules/actor-core/src/message_invoker.rs)
