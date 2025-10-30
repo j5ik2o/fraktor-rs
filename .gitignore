@@ -13,8 +13,11 @@ release
 
 # Common runtime outputs
 *.log
+.tmp
+.swp
 .env*
 .DS_Store
+Thumbs.db
 
 # MSVC Windows builds of rustc generate these, which store debugging information
 *.pdb
@@ -35,6 +38,7 @@ release
 
 /target
 .idea/
+.vscode/
 
 Cargo.lock
 /.codex/sessions/
