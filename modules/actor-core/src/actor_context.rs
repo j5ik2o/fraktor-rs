@@ -64,7 +64,7 @@ impl<'a> ActorContext<'a> {
   /// # Errors
   ///
   /// Returns an error if actor spawning fails.
-  pub fn spawn_child(&self, props: Props) -> Result<ActorRef, SpawnError> {
+  pub fn spawn_child(&self, props: &Props) -> Result<ActorRef, SpawnError> {
     self.system.spawn_child(self.pid, props)
   }
 }

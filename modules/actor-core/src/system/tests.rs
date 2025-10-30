@@ -40,7 +40,7 @@ fn guardian_processes_message() {
     let log = log.clone();
     move || GuardianLogger::new(log.clone())
   });
-  let system = ActorSystem::new(props).expect("create system");
+  let system = ActorSystem::new(&props).expect("create system");
 
   system.user_guardian_ref().tell(AnyOwnedMessage::new(Start)).expect("send");
 
@@ -80,12 +80,12 @@ impl ChildSpawner {
 impl Actor for ChildSpawner {
   fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessage<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() && self.child_slot.lock().is_none() {
-      let child = ctx
-        .spawn_child(Props::from_fn({
-          let log = self.log.clone();
-          move || ChildRecorder::new(log.clone())
-        }))
-        .map_err(|_| ActorError::recoverable(ActorErrorReason::new("spawn failed")))?;
+      let props = Props::from_fn({
+        let log = self.log.clone();
+        move || ChildRecorder::new(log.clone())
+      });
+      let child =
+        ctx.spawn_child(&props).map_err(|_| ActorError::recoverable(ActorErrorReason::new("spawn failed")))?;
       self.child_slot.lock().replace(child);
     }
     Ok(())
@@ -103,7 +103,7 @@ fn spawn_child_creates_actor() {
     move || ChildSpawner::new(slot.clone(), log.clone())
   });
 
-  let system = ActorSystem::new(props).expect("system");
+  let system = ActorSystem::new(&props).expect("system");
   let guardian = system.user_guardian_ref();
 
   guardian.tell(AnyOwnedMessage::new(Start)).expect("start");
@@ -170,16 +170,17 @@ impl ReplyGuardian {
 impl Actor for ReplyGuardian {
   fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessage<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() && self.responder_slot.lock().is_none() {
-      let probe = ctx
-        .spawn_child(Props::from_fn({
-          let log = self.log.clone();
-          move || Probe::new(log.clone())
-        }))
-        .map_err(|_| ActorError::recoverable(ActorErrorReason::new("spawn failed")))?;
+      let probe_props = Props::from_fn({
+        let log = self.log.clone();
+        move || Probe::new(log.clone())
+      });
+      let probe =
+        ctx.spawn_child(&probe_props).map_err(|_| ActorError::recoverable(ActorErrorReason::new("spawn failed")))?;
       self.probe_slot.lock().replace(probe.clone());
 
+      let responder_props = Props::from_fn(|| Responder);
       let responder = ctx
-        .spawn_child(Props::from_fn(|| Responder))
+        .spawn_child(&responder_props)
         .map_err(|_| ActorError::recoverable(ActorErrorReason::new("spawn failed")))?;
       self.responder_slot.lock().replace(responder);
     }
@@ -200,7 +201,7 @@ fn reply_to_dispatches_response() {
     move || ReplyGuardian::new(responder_slot.clone(), probe_slot.clone(), log.clone())
   });
 
-  let system = ActorSystem::new(props).expect("system");
+  let system = ActorSystem::new(&props).expect("system");
   let guardian = system.user_guardian_ref();
   guardian.tell(AnyOwnedMessage::new(Start)).expect("boot");
 

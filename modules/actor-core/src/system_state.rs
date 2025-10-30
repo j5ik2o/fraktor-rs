@@ -72,7 +72,7 @@ impl ActorSystemState {
   /// Returns `SpawnError::NameConflict` when the requested name already exists.
   pub fn assign_name(&self, parent: Option<Pid>, name_hint: Option<&str>, pid: Pid) -> Result<String, SpawnError> {
     let mut registries = self.registries.lock();
-    let registry = registries.entry(parent).or_insert_with(NameRegistry::new);
+    let registry = registries.entry(parent).or_default();
 
     match name_hint {
       | Some(name) => {

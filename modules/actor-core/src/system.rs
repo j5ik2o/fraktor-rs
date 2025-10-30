@@ -5,6 +5,9 @@ use crate::{
   system_state::ActorSystemState,
 };
 
+#[cfg(test)]
+mod tests;
+
 const ACTOR_INIT_FAILED: &str = "actor lifecycle hook failed";
 const PARENT_MISSING: &str = "parent actor not found";
 
@@ -12,9 +15,6 @@ const PARENT_MISSING: &str = "parent actor not found";
 pub struct ActorSystem {
   state: ArcShared<ActorSystemState>,
 }
-
-#[cfg(test)]
-mod tests;
 
 impl ActorSystem {
   /// Creates an empty actor system without any guardian (testing only).
@@ -28,7 +28,7 @@ impl ActorSystem {
   /// # Errors
   ///
   /// Returns [`SpawnError`] when guardian initialization fails.
-  pub fn new(user_guardian_props: Props) -> Result<Self, SpawnError> {
+  pub fn new(user_guardian_props: &Props) -> Result<Self, SpawnError> {
     let system = Self::new_empty();
     let guardian_ref = system.spawn_with_parent(None, user_guardian_props)?;
     if let Some(cell) = system.state.cell(&guardian_ref.pid()) {
@@ -38,6 +38,10 @@ impl ActorSystem {
   }
 
   /// Returns the actor reference to the user guardian.
+  ///
+  /// # Panics
+  ///
+  /// Panics if the user guardian has not been initialized.
   #[must_use]
   pub fn user_guardian_ref(&self) -> ActorRef {
     match self.state.user_guardian() {
@@ -51,7 +55,7 @@ impl ActorSystem {
   /// # Errors
   ///
   /// Returns [`SpawnError::SystemUnavailable`] when the guardian is missing.
-  pub fn spawn(&self, props: Props) -> Result<ActorRef, SpawnError> {
+  pub fn spawn(&self, props: &Props) -> Result<ActorRef, SpawnError> {
     let guardian_pid = self.state.user_guardian_pid().ok_or_else(SpawnError::system_unavailable)?;
     self.spawn_child(guardian_pid, props)
   }
@@ -61,21 +65,21 @@ impl ActorSystem {
   /// # Errors
   ///
   /// Returns [`SpawnError::InvalidProps`] when the parent pid is unknown.
-  pub fn spawn_child(&self, parent: Pid, props: Props) -> Result<ActorRef, SpawnError> {
+  pub fn spawn_child(&self, parent: Pid, props: &Props) -> Result<ActorRef, SpawnError> {
     if self.state.cell(&parent).is_none() {
       return Err(SpawnError::invalid_props(PARENT_MISSING));
     }
     self.spawn_with_parent(Some(parent), props)
   }
 
-  pub(crate) fn from_state(state: ArcShared<ActorSystemState>) -> Self {
+  pub(crate) const fn from_state(state: ArcShared<ActorSystemState>) -> Self {
     Self { state }
   }
 
-  fn spawn_with_parent(&self, parent: Option<Pid>, props: Props) -> Result<ActorRef, SpawnError> {
+  fn spawn_with_parent(&self, parent: Option<Pid>, props: &Props) -> Result<ActorRef, SpawnError> {
     let pid = self.state.allocate_pid();
     let name = self.state.assign_name(parent, props.name(), pid)?;
-    let cell = ActorCell::create(self.state.clone(), pid, parent, name, &props);
+    let cell = ActorCell::create(self.state.clone(), pid, parent, name, props);
 
     self.state.register_cell(pid, cell.clone());
     if cell.pre_start().is_err() {
