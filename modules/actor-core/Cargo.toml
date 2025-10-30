@@ -27,3 +27,8 @@ hashbrown = { workspace = true, default-features = false }
 
 [dev-dependencies]
 criterion = { workspace = true }
+
+[[example]]
+name = "ping_pong_no_std"
+path = "examples/ping_pong_no_std/main.rs"
+required-features = ["std"]
