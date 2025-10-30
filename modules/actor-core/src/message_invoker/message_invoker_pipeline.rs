@@ -29,6 +29,12 @@ impl MessageInvokerPipeline {
   }
 
   /// Invokes the actor using the configured middleware chain.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if middleware processing fails or if the actor's message handler returns an
+  /// error.
+  #[allow(clippy::needless_pass_by_value)]
   pub fn invoke_user<A>(
     &self,
     actor: &mut A,
