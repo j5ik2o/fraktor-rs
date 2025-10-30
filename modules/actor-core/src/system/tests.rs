@@ -40,7 +40,7 @@ fn guardian_processes_message() {
     let log = log.clone();
     move || GuardianLogger::new(log.clone())
   });
-  let system = ActorSystem::new(&props).expect("create system");
+  let system = ActorSystem::new(props).expect("create system");
 
   system.user_guardian_ref().tell(AnyOwnedMessage::new(Start)).expect("send");
 
@@ -103,7 +103,7 @@ fn spawn_child_creates_actor() {
     move || ChildSpawner::new(slot.clone(), log.clone())
   });
 
-  let system = ActorSystem::new(&props).expect("system");
+  let system = ActorSystem::new(props).expect("system");
   let guardian = system.user_guardian_ref();
 
   guardian.tell(AnyOwnedMessage::new(Start)).expect("start");
@@ -188,6 +188,29 @@ impl Actor for ReplyGuardian {
   }
 }
 
+struct AskGuardian {
+  responder_slot: ArcShared<SpinSyncMutex<Option<ActorRef>>>,
+}
+
+impl AskGuardian {
+  fn new(responder_slot: ArcShared<SpinSyncMutex<Option<ActorRef>>>) -> Self {
+    Self { responder_slot }
+  }
+}
+
+impl Actor for AskGuardian {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessage<'_>) -> Result<(), ActorError> {
+    if message.downcast_ref::<Start>().is_some() && self.responder_slot.lock().is_none() {
+      let responder_props = Props::from_fn(|| Responder);
+      let responder = ctx
+        .spawn_child(&responder_props)
+        .map_err(|_| ActorError::recoverable(ActorErrorReason::new("spawn failed")))?;
+      self.responder_slot.lock().replace(responder);
+    }
+    Ok(())
+  }
+}
+
 #[test]
 fn reply_to_dispatches_response() {
   let responder_slot = ArcShared::new(SpinSyncMutex::new(None));
@@ -201,7 +224,7 @@ fn reply_to_dispatches_response() {
     move || ReplyGuardian::new(responder_slot.clone(), probe_slot.clone(), log.clone())
   });
 
-  let system = ActorSystem::new(&props).expect("system");
+  let system = ActorSystem::new(props).expect("system");
   let guardian = system.user_guardian_ref();
   guardian.tell(AnyOwnedMessage::new(Start)).expect("boot");
 
@@ -212,4 +235,29 @@ fn reply_to_dispatches_response() {
   responder.tell(message).expect("send ping");
 
   assert_eq!(log.lock().clone(), vec![42_u32]);
+}
+
+#[test]
+fn ask_registers_future_in_system() {
+  let responder_slot = ArcShared::new(SpinSyncMutex::new(None));
+
+  let props = Props::from_fn({
+    let responder_slot = responder_slot.clone();
+    move || AskGuardian::new(responder_slot.clone())
+  });
+
+  let system = ActorSystem::new(props).expect("system");
+  let guardian = system.user_guardian_ref();
+  guardian.tell(AnyOwnedMessage::new(Start)).expect("boot");
+
+  let responder = responder_slot.lock().clone().expect("responder");
+  let response = responder.ask(AnyOwnedMessage::new(Ping(99))).expect("ask");
+
+  let mut ready = system.drain_ready_ask_futures();
+  assert_eq!(ready.len(), 1);
+  let future = ready.pop().unwrap();
+  let message = future.try_take().expect("ask result");
+  let borrowed = message.as_any();
+  assert_eq!(borrowed.downcast_ref::<Pong>().map(|p| p.0), Some(99));
+  assert!(response.future().try_take().is_none());
 }

@@ -8,7 +8,7 @@ use crate::{
   actor_error::ActorError,
   actor_ref::ActorRef,
   any_message::AnyOwnedMessage,
-  dispatcher::{Dispatcher, InlineExecutor},
+  dispatcher::{DispatchExecutor, Dispatcher, InlineExecutor},
   mailbox::Mailbox,
   message_invoker::{MessageInvoker, MessageInvokerPipeline},
   pid::Pid,
@@ -40,7 +40,7 @@ impl ActorCell {
     props: &Props,
   ) -> ArcShared<Self> {
     let mailbox = ArcShared::new(Mailbox::new(props.mailbox().policy()));
-    let executor: ArcShared<dyn crate::dispatcher::DispatchExecutor> = ArcShared::new(InlineExecutor::new());
+    let executor: ArcShared<dyn DispatchExecutor> = ArcShared::new(InlineExecutor::new());
     let dispatcher = Dispatcher::new(mailbox, executor);
     let sender = dispatcher.into_sender();
     let actor = props.factory().create();
@@ -79,7 +79,7 @@ impl ActorCell {
   /// Produces an [`ActorRef`] pointing at this cell.
   #[must_use]
   pub fn actor_ref(&self) -> ActorRef {
-    ActorRef::new(self.pid, self.sender.clone())
+    ActorRef::with_system(self.pid, self.sender.clone(), self.system.clone())
   }
 
   /// Executes the actor's `pre_start` hook.

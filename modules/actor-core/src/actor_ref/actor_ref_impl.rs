@@ -10,13 +10,14 @@ use cellactor_utils_core_rs::sync::ArcShared;
 use super::{ask_reply_sender::AskReplySender, null_sender::NullSender};
 use crate::{
   actor_future::ActorFuture, actor_ref::ActorRefSender, any_message::AnyOwnedMessage, ask_response::AskResponse,
-  pid::Pid, send_error::SendError,
+  pid::Pid, send_error::SendError, system_state::ActorSystemState,
 };
 
 /// Handle used to communicate with an actor instance.
 pub struct ActorRef {
   pid:    Pid,
   sender: ArcShared<dyn ActorRefSender>,
+  system: Option<ArcShared<ActorSystemState>>,
 }
 
 impl ActorRef {
@@ -25,8 +26,21 @@ impl ActorRef {
   pub fn new<T>(pid: Pid, sender: ArcShared<T>) -> Self
   where
     T: ActorRefSender + 'static, {
+    Self::from_parts(pid, sender, None)
+  }
+
+  #[must_use]
+  pub(crate) fn with_system<T>(pid: Pid, sender: ArcShared<T>, system: ArcShared<ActorSystemState>) -> Self
+  where
+    T: ActorRefSender + 'static, {
+    Self::from_parts(pid, sender, Some(system))
+  }
+
+  fn from_parts<T>(pid: Pid, sender: ArcShared<T>, system: Option<ArcShared<ActorSystemState>>) -> Self
+  where
+    T: ActorRefSender + 'static, {
     let dyn_sender: ArcShared<dyn ActorRefSender> = sender;
-    Self { pid, sender: dyn_sender }
+    Self { pid, sender: dyn_sender, system }
   }
 
   /// Returns the unique process identifier.
@@ -55,6 +69,9 @@ impl ActorRef {
     let reply_ref = ActorRef::new(self.pid, reply_sender);
     let envelope = message.with_reply_to(reply_ref.clone());
     self.tell(envelope)?;
+    if let Some(system) = &self.system {
+      system.register_ask_future(future.clone());
+    }
     Ok(AskResponse::new(reply_ref, future))
   }
 
@@ -62,13 +79,13 @@ impl ActorRef {
   #[must_use]
   pub fn null() -> Self {
     let sender: ArcShared<dyn ActorRefSender> = ArcShared::new(NullSender);
-    Self { pid: Pid::new(0, 0), sender }
+    Self { pid: Pid::new(0, 0), sender, system: None }
   }
 }
 
 impl Clone for ActorRef {
   fn clone(&self) -> Self {
-    Self { pid: self.pid, sender: self.sender.clone() }
+    Self { pid: self.pid, sender: self.sender.clone(), system: self.system.clone() }
   }
 }
 

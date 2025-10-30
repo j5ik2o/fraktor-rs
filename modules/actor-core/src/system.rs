@@ -1,8 +1,10 @@
+use alloc::vec::Vec;
+
 use cellactor_utils_core_rs::sync::ArcShared;
 
 use crate::{
-  actor_cell::ActorCell, actor_ref::ActorRef, pid::Pid, props::Props, spawn_error::SpawnError,
-  system_state::ActorSystemState,
+  actor_cell::ActorCell, actor_future::ActorFuture, actor_ref::ActorRef, any_message::AnyOwnedMessage, pid::Pid,
+  props::Props, spawn_error::SpawnError, system_state::ActorSystemState,
 };
 
 #[cfg(test)]
@@ -28,9 +30,9 @@ impl ActorSystem {
   /// # Errors
   ///
   /// Returns [`SpawnError`] when guardian initialization fails.
-  pub fn new(user_guardian_props: &Props) -> Result<Self, SpawnError> {
+  pub fn new(user_guardian_props: Props) -> Result<Self, SpawnError> {
     let system = Self::new_empty();
-    let guardian_ref = system.spawn_with_parent(None, user_guardian_props)?;
+    let guardian_ref = system.spawn_with_parent(None, &user_guardian_props)?;
     if let Some(cell) = system.state.cell(&guardian_ref.pid()) {
       system.state.set_user_guardian(cell);
     }
@@ -88,6 +90,12 @@ impl ActorSystem {
     }
 
     Ok(cell.actor_ref())
+  }
+
+  /// Drains ask futures that have completed since the last call.
+  #[must_use]
+  pub fn drain_ready_ask_futures(&self) -> Vec<ArcShared<ActorFuture<AnyOwnedMessage>>> {
+    self.state.drain_ready_ask_futures()
   }
 
   fn rollback_spawn(&self, parent: Option<Pid>, cell: &ArcShared<ActorCell>, pid: Pid) {
