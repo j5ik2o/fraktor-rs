@@ -30,3 +30,9 @@ impl<T> ActorFuture<T> {
     unsafe { (*self.value.get()).take() }
   }
 }
+
+impl<T> Default for ActorFuture<T> {
+  fn default() -> Self {
+    Self::new()
+  }
+}

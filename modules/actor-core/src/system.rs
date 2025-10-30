@@ -2,7 +2,7 @@
 
 use crate::{actor_ref::ActorRef, pid::Pid, props::Props, spawn_error::SpawnError};
 
-/// Minimal actor system placeholder. 実際の実装は後続タスクで追加する。
+/// Minimal actor system placeholder.
 pub struct ActorSystem {
   _unused: (),
 }
@@ -20,6 +20,10 @@ impl ActorSystem {
   }
 
   /// Requests spawning a child actor for the specified parent.
+  ///
+  /// # Errors
+  ///
+  /// Returns `SpawnError::SystemUnavailable` if the actor system is not ready.
   pub fn spawn_child(&self, _parent: Pid, _props: Props) -> Result<ActorRef, SpawnError> {
     Err(SpawnError::system_unavailable())
   }

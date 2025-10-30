@@ -1,11 +1,11 @@
 #![deny(missing_docs)]
-#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_types))]
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_types, clippy::redundant_clone))]
 #![deny(rustdoc::broken_intra_doc_links)]
 #![deny(unsafe_op_in_unsafe_fn)]
 #![deny(clippy::missing_errors_doc)]
 #![deny(clippy::missing_panics_doc)]
 #![deny(clippy::missing_safety_doc)]
-#![deny(clippy::redundant_clone)]
+#![cfg_attr(not(test), deny(clippy::redundant_clone))]
 #![deny(clippy::redundant_field_names)]
 #![deny(clippy::redundant_pattern)]
 #![deny(clippy::redundant_static_lifetimes)]
@@ -24,8 +24,8 @@
 #![deny(clippy::empty_enum)]
 #![deny(clippy::no_effect)]
 #![deny(dropping_copy_types)]
-#![deny(clippy::unwrap_used)]
-#![deny(clippy::expect_used)]
+#![cfg_attr(not(test), deny(clippy::unwrap_used))]
+#![cfg_attr(not(test), deny(clippy::expect_used))]
 #![deny(clippy::todo)]
 #![deny(clippy::unimplemented)]
 #![deny(clippy::print_stdout)]
@@ -36,7 +36,6 @@
 #![deny(clippy::clone_on_copy)]
 #![deny(clippy::len_without_is_empty)]
 #![deny(clippy::wrong_self_convention)]
-#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::redundant_clone))]
 #![deny(clippy::from_over_into)]
 #![deny(clippy::eq_op)]
 #![deny(clippy::bool_comparison)]
@@ -61,40 +60,40 @@
 
 extern crate alloc;
 
-pub mod actor;
-pub mod actor_context;
-pub mod actor_error;
-pub mod actor_future;
-pub mod actor_ref;
-pub mod ask_response;
-pub mod any_message;
-pub mod send_error;
-pub mod mailbox;
-pub mod mailbox_policy;
-pub mod name_registry;
-pub mod pid;
-pub mod props;
-pub mod system_message;
-pub mod spawn_error;
-pub mod receive_state;
-pub mod supervisor_strategy;
-pub mod system;
+mod actor;
+mod actor_context;
+mod actor_error;
+mod actor_future;
+mod actor_ref;
+mod any_message;
+mod ask_response;
+mod mailbox;
+mod mailbox_policy;
+mod name_registry;
+mod pid;
+mod props;
+mod receive_state;
+mod send_error;
+mod spawn_error;
+mod supervisor_strategy;
+mod system;
+mod system_message;
 
 pub use actor::Actor;
 pub use actor_context::ActorContext;
 pub use actor_error::{ActorError, ActorErrorReason};
 pub use actor_future::ActorFuture;
 pub use actor_ref::{ActorRef, ActorRefSender};
-pub use ask_response::AskResponse;
 pub use any_message::{AnyMessage, AnyOwnedMessage};
-pub use send_error::SendError;
+pub use ask_response::AskResponse;
 pub use mailbox::{EnqueueOutcome, Mailbox, MailboxMessage, MailboxOfferFuture, MailboxPollFuture};
 pub use mailbox_policy::{MailboxCapacity, MailboxOverflowStrategy, MailboxPolicy};
 pub use name_registry::{NameRegistry, NameRegistryError};
 pub use pid::Pid;
 pub use props::{ActorFactory, MailboxConfig, Props, SupervisorOptions};
-pub use system_message::SystemMessage;
-pub use spawn_error::SpawnError;
 pub use receive_state::ReceiveState;
+pub use send_error::SendError;
+pub use spawn_error::SpawnError;
 pub use supervisor_strategy::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind};
 pub use system::ActorSystem;
+pub use system_message::SystemMessage;

@@ -19,10 +19,10 @@ pub enum SendError {
 impl fmt::Debug for SendError {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match self {
-      SendError::Full(_) => f.debug_tuple("Full").finish(),
-      SendError::Suspended(_) => f.debug_tuple("Suspended").finish(),
-      SendError::Closed(_) => f.debug_tuple("Closed").finish(),
-      SendError::NoRecipient(_) => f.debug_tuple("NoRecipient").finish(),
+      | SendError::Full(_) => f.debug_tuple("Full").finish(),
+      | SendError::Suspended(_) => f.debug_tuple("Suspended").finish(),
+      | SendError::Closed(_) => f.debug_tuple("Closed").finish(),
+      | SendError::NoRecipient(_) => f.debug_tuple("NoRecipient").finish(),
     }
   }
 }
@@ -30,31 +30,31 @@ impl fmt::Debug for SendError {
 impl SendError {
   /// Creates a send error representing a full mailbox.
   #[must_use]
-  pub fn full(message: AnyOwnedMessage) -> Self {
+  pub const fn full(message: AnyOwnedMessage) -> Self {
     Self::Full(message)
   }
 
   /// Creates a send error representing a suspended mailbox.
   #[must_use]
-  pub fn suspended(message: AnyOwnedMessage) -> Self {
+  pub const fn suspended(message: AnyOwnedMessage) -> Self {
     Self::Suspended(message)
   }
 
   /// Creates a send error representing a closed mailbox or actor.
   #[must_use]
-  pub fn closed(message: AnyOwnedMessage) -> Self {
+  pub const fn closed(message: AnyOwnedMessage) -> Self {
     Self::Closed(message)
   }
 
   /// Creates a send error representing a missing reply target.
   #[must_use]
-  pub fn no_recipient(message: AnyOwnedMessage) -> Self {
+  pub const fn no_recipient(message: AnyOwnedMessage) -> Self {
     Self::NoRecipient(message)
   }
 
   /// Returns a shared reference to the owned message.
   #[must_use]
-  pub fn message(&self) -> &AnyOwnedMessage {
+  pub const fn message(&self) -> &AnyOwnedMessage {
     match self {
       | SendError::Full(message)
       | SendError::Suspended(message)

@@ -1,6 +1,8 @@
-use core::num::NonZeroUsize;
-
-use core::{pin::Pin, task::{Context, Poll, RawWaker, RawWakerVTable, Waker}};
+use core::{
+  num::NonZeroUsize,
+  pin::Pin,
+  task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
+};
 
 use super::{EnqueueOutcome, Mailbox, MailboxMessage};
 use crate::{
@@ -54,16 +56,13 @@ fn suspension_blocks_user_messages_but_not_system() {
   let mailbox = Mailbox::new(policy);
 
   mailbox.enqueue_system(SystemMessage::Stop).expect("system message");
-  assert!(matches!(
-    mailbox.enqueue_user(AnyOwnedMessage::new("user")),
-    Ok(EnqueueOutcome::Enqueued)
-  ));
+  assert!(matches!(mailbox.enqueue_user(AnyOwnedMessage::new("user")), Ok(EnqueueOutcome::Enqueued)));
 
   mailbox.suspend();
 
   match mailbox.dequeue() {
-    Some(MailboxMessage::System(SystemMessage::Stop)) => {},
-    _ => panic!("expected system message while suspended"),
+    | Some(MailboxMessage::System(SystemMessage::Stop)) => {},
+    | _ => panic!("expected system message while suspended"),
   }
 
   // While suspended, user messages must not be dequeued.
@@ -71,10 +70,10 @@ fn suspension_blocks_user_messages_but_not_system() {
 
   mailbox.resume();
   match mailbox.dequeue() {
-    Some(MailboxMessage::User(msg)) => {
+    | Some(MailboxMessage::User(msg)) => {
       assert_eq!(msg.as_any().downcast_ref::<&str>(), Some(&"user"));
     },
-    _ => panic!("expected user message after resume"),
+    | _ => panic!("expected user message after resume"),
   }
 }
 
@@ -84,10 +83,7 @@ fn grow_policy_accepts_messages_beyond_initial_capacity() {
   let mailbox = Mailbox::new(policy);
 
   for idx in 0..5 {
-    assert!(matches!(
-      mailbox.enqueue_user(AnyOwnedMessage::new(idx)),
-      Ok(EnqueueOutcome::Enqueued)
-    ));
+    assert!(matches!(mailbox.enqueue_user(AnyOwnedMessage::new(idx)), Ok(EnqueueOutcome::Enqueued)));
   }
 
   assert_eq!(mailbox.user_len(), 5);
@@ -102,8 +98,8 @@ fn block_policy_returns_future_that_completes_on_space() {
 
   let pending = mailbox.enqueue_user(AnyOwnedMessage::new(2_u8)).expect("pending result");
   let mut future = match pending {
-    EnqueueOutcome::Pending(fut) => fut,
-    EnqueueOutcome::Enqueued => panic!("expected pending future"),
+    | EnqueueOutcome::Pending(fut) => fut,
+    | EnqueueOutcome::Enqueued => panic!("expected pending future"),
   };
 
   let waker = noop_waker();
@@ -111,8 +107,8 @@ fn block_policy_returns_future_that_completes_on_space() {
   assert!(matches!(Pin::new(&mut future).poll(&mut cx), Poll::Pending));
 
   match mailbox.dequeue() {
-    Some(MailboxMessage::User(_)) => {},
-    other => panic!("expected user message, got {:?}", other),
+    | Some(MailboxMessage::User(_)) => {},
+    | other => panic!("expected user message, got {:?}", other),
   }
 
   assert!(matches!(Pin::new(&mut future).poll(&mut cx), Poll::Ready(Ok(()))));

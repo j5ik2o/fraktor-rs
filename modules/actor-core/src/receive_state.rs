@@ -14,12 +14,12 @@ impl ReceiveState {
   }
 
   /// Pushes a new behavior onto the stack.
-  pub fn push(&mut self) {
+  pub const fn push(&mut self) {
     self.depth += 1;
   }
 
   /// Pops the current behavior if present.
-  pub fn pop(&mut self) {
+  pub const fn pop(&mut self) {
     self.depth = self.depth.saturating_sub(1);
   }
 
