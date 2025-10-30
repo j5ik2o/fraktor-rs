@@ -1,3 +1,5 @@
+//! Unique actor identifiers.
+
 use core::fmt;
 
 /// Process identifier allocated by the actor system.

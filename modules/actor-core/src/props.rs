@@ -1,3 +1,5 @@
+//! Actor construction descriptors.
+
 use alloc::{string::String, vec::Vec};
 use core::num::NonZeroUsize;
 
@@ -141,7 +143,7 @@ impl Default for MailboxConfig {
 }
 
 /// Supervisor configuration attached to props.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug)]
 pub struct SupervisorOptions {
   strategy: SupervisorStrategy,
 }

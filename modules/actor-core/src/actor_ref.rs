@@ -1,3 +1,5 @@
+//! Actor reference handle.
+
 /// Handle used to communicate with an actor instance.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ActorRef {

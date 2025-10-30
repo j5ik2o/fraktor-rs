@@ -1,3 +1,5 @@
+//! Dynamically typed message containers.
+
 use core::any::{Any, TypeId};
 
 use cellactor_utils_core_rs::sync::ArcShared;

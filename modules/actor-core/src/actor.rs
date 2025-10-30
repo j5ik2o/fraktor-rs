@@ -1,3 +1,5 @@
+//! Actor trait definition.
+
 use crate::{actor_context::ActorContext, actor_error::ActorError, any_message::AnyMessage};
 
 /// Core trait implemented by all actors executed inside the runtime.

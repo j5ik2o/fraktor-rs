@@ -1,3 +1,5 @@
+//! Name to PID registry used within actor scopes.
+
 use alloc::{borrow::ToOwned, format, string::String};
 
 use hashbrown::HashMap;

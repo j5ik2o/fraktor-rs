@@ -1,3 +1,5 @@
+//! Actor system placeholder implementation.
+
 use crate::props::Props;
 
 /// Minimal actor system placeholder. 実際の実装は後続タスクで追加する。

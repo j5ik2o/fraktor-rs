@@ -1,3 +1,5 @@
+//! Minimal future primitive for ask pattern handling.
+
 use core::cell::UnsafeCell;
 
 /// Minimal future primitive used by the ask pattern.

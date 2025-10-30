@@ -1,3 +1,5 @@
+//! Actor execution context utilities.
+
 use core::marker::PhantomData;
 
 use crate::{actor_ref::ActorRef, pid::Pid};

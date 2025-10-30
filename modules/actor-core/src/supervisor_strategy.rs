@@ -1,3 +1,5 @@
+//! Supervisor strategy definitions.
+
 use core::time::Duration;
 
 use crate::actor_error::ActorError;
@@ -23,7 +25,7 @@ pub enum SupervisorStrategyKind {
 }
 
 /// Supervisor configuration controlling restart policies.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug)]
 pub struct SupervisorStrategy {
   kind:         SupervisorStrategyKind,
   max_restarts: u32,

@@ -1,3 +1,5 @@
+//! Placeholder receive behaviour stack management.
+
 /// Tracks the current receive behavior stack for an actor.
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct ReceiveState {

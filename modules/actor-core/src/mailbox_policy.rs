@@ -1,3 +1,5 @@
+//! Mailbox capacity and overflow policies.
+
 use core::num::NonZeroUsize;
 
 /// Strategy used when a bounded mailbox reaches capacity.
@@ -17,7 +19,10 @@ pub enum MailboxOverflowStrategy {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MailboxCapacity {
   /// Capacity is fixed and enforced.
-  Bounded { capacity: NonZeroUsize },
+  Bounded {
+    /// Maximum number of messages stored before overflow behaviour engages.
+    capacity: NonZeroUsize,
+  },
   /// Capacity is unbounded and may consume additional heap memory.
   Unbounded,
 }

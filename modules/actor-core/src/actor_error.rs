@@ -1,3 +1,5 @@
+//! Error types produced by actor lifecycle hooks.
+
 use alloc::{borrow::Cow, string::String};
 use core::fmt;
 
