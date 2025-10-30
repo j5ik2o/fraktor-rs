@@ -76,14 +76,14 @@ specs/001-add-actor-runtime/
 
 1. data-model.md: ActorSystem / ActorCell / ActorContext / AnyMessage / SupervisorStrategy / ActorError のエンティティ、属性、関係性を定義し、Mailbox ポリシー `DropNewest` / `DropOldest` / `Grow` / `Block` と `Suspend` / `Resume` 制御、System/User 優先度の状態遷移・トレイトフック、および親子アクターのツリー構造と伝播規則（ユーザガーディアンを含む）、NameRegistry、MessageInvoker ミドルウェアチェーンの拡張ポイント、Bounded/Unbounded 戦略とスループット制限の設定点を整理。
 2. contracts/: Ping/Pong サンプル用エンドポイント（例: 制御インターフェイス）を OpenAPI で定義し、ActorSystem 構成 API の最小セットを記述。  
-3. quickstart.md: no_std ボード + ホスト実行の手順、panic 非介入時の対応、計測方法（ヒープ確保計測・1,000 msg/s テスト）、Mailbox ポリシー切り替え手順、EventStream Logger 購読者の設定例、ユーザガーディアン Props を渡してエントリポイントから子アクターを spawn しつつ `system.user_guardian_ref().tell(Start)` でブートストラップするコード例を記載。  
+3. quickstart.md: no_std ボード + ホスト実行の手順、panic 非介入時の対応、計測方法（ヒープ確保計測・1,000 msg/s テスト）、Mailbox ポリシー切り替え手順、EventStream Logger 購読者の設定例、ユーザガーディアン Props を渡してエントリポイントから子アクターを spawn しつつ `system.user_guardian_ref().tell(Start)` でブートストラップするコード例を記載。actor-core 配下の `examples/ping_pong_no_std` は `std` フィーチャを有効にして実行する旨も明記する。  
 4. `.specify/scripts/bash/update-agent-context.sh codex` を実行し、Codex 専用コンテキストに AnyMessage/ActorError ポリシー・Mailbox ポリシー設計・EventStream Logger・ユーザガーディアン構成・panic 非介入を追記。  
 5. 憲章ゲート再評価（P1〜P7）。設計で新たに発生したリスクがあれば複雑度トラッキングに記録。
 
 ## フェーズ2: 実装準備 & テスト設計
 
 1. Modules: `modules/actor-core` に ActorRef / ActorCell / ActorSystem スケルトン、Supervisor 戦略 trait、Mailbox trait を追加する設計メモを作成。Mailbox trait にはポリシー切り替え用の `on_full(policy)` フックと将来の `Block` 専用ハンドラ（反復的ポーリング / Waker 相当）、さらに `suspend()` / `resume()` API、System/User 優先度キューの API（例: `enqueue_system`/`enqueue_user`）を備え、同期/非同期環境いずれでも安全にデータ流を停止・再開できる設計を確保。
-2. テスト: ユーザーストーリー毎に red テストケース（Ping/Pong、Supervisor 再起動、イベント購読）と `DropNewest` / `DropOldest` / `Grow` / `Suspend` / `Resume` / System vs User 優先度 / 子アクター監視 / 名前重複検出・自動命名 / ミドルウェアチェーン挿入 / Bounded vs Unbounded 切替 / スループット制限の挙動を確認するケースを tasks.md に反映。
+2. テスト: ユーザーストーリー毎に red テストケース（Ping/Pong、Supervisor 再起動、イベント購読）と `DropNewest` / `DropOldest` / `Grow` / `Suspend` / `Resume` / System vs User 優先度 / 子アクター監視 / 名前重複検出・自動命名 / ミドルウェアチェーン挿入 / Bounded vs Unbounded 切替 / スループット制限の挙動、および `ActorSystem::drain_ready_ask_futures()` を通じた ask 完了確認を tasks.md に反映。
 3. 効率: アロケーション計測用の `no_std` 計測フックと、AsyncQueue 容量設定・`Grow` による拡張時の計測プラン、Bounded/Unbounded 切替時のメモリモニタ、スループット制限のプロファイルを用意。  
 4. 運用: Deadletter/EventStream の Subscribe API と quickstart のサンプルコード尖兵を準備。Logger 購読者が `LogEvent` を UART/RTT/ホストログへ転送する例を用意。  
 5. リスク: panic 非介入に伴う復旧遅延リスクを `研究結果 + quickstart` で周知し、タスクへウォッチドッグ設定を追加。将来の `Block` ポリシー向けに非同期実行（tokio/embassy）での待機戦略を検討タスクとして backlog に追加。
