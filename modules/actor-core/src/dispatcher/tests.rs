@@ -5,7 +5,7 @@ use cellactor_utils_core_rs::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
 
 use super::{dispatch_executor::DispatchExecutor, dispatch_handle::DispatchHandle, dispatcher_struct::Dispatcher};
 use crate::{
-  ActorRefSender,
+  ActorError, ActorRefSender,
   any_message::AnyOwnedMessage,
   mailbox::Mailbox,
   mailbox_policy::{MailboxOverflowStrategy, MailboxPolicy},
@@ -64,12 +64,14 @@ impl RecordingInvoker {
 }
 
 impl MessageInvoker for RecordingInvoker {
-  fn invoke_user_message(&self, message: AnyOwnedMessage) {
+  fn invoke_user_message(&self, message: AnyOwnedMessage) -> Result<(), ActorError> {
     self.events.lock().push(RecordedMessage::User(message));
+    Ok(())
   }
 
-  fn invoke_system_message(&self, message: SystemMessage) {
+  fn invoke_system_message(&self, message: SystemMessage) -> Result<(), ActorError> {
     self.events.lock().push(RecordedMessage::System(message));
+    Ok(())
   }
 }
 

@@ -12,6 +12,7 @@ use super::{
   schedule_waker::ScheduleWaker,
 };
 use crate::{
+  actor_error::ActorError,
   any_message::AnyOwnedMessage,
   mailbox::{EnqueueOutcome, Mailbox, MailboxMessage, MailboxOfferFuture},
   message_invoker::MessageInvoker,
@@ -107,24 +108,28 @@ impl DispatcherCore {
     match message {
       | SystemMessage::Suspend => self.mailbox.suspend(),
       | SystemMessage::Resume => self.mailbox.resume(),
-      | other => self.invoke_system_message(other),
+      | other => {
+        let _ = self.invoke_system_message(other);
+      },
     }
   }
 
   fn handle_user_message(&self, message: AnyOwnedMessage) {
-    self.invoke_user_message(message);
+    let _ = self.invoke_user_message(message);
   }
 
-  fn invoke_user_message(&self, message: AnyOwnedMessage) {
+  fn invoke_user_message(&self, message: AnyOwnedMessage) -> Result<(), ActorError> {
     if let Some(invoker) = self.invoker.lock().as_ref() {
-      invoker.invoke_user_message(message);
+      return invoker.invoke_user_message(message);
     }
+    Ok(())
   }
 
-  fn invoke_system_message(&self, message: SystemMessage) {
+  fn invoke_system_message(&self, message: SystemMessage) -> Result<(), ActorError> {
     if let Some(invoker) = self.invoker.lock().as_ref() {
-      invoker.invoke_system_message(message);
+      return invoker.invoke_system_message(message);
     }
+    Ok(())
   }
 
   pub(super) fn enqueue_user(self_arc: &ArcShared<Self>, message: AnyOwnedMessage) -> Result<(), SendError> {

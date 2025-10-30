@@ -91,6 +91,7 @@ pub use ask_response::AskResponse;
 pub use dispatcher::{DispatchExecutor, Dispatcher, DispatcherSender, InlineExecutor};
 pub use mailbox::{EnqueueOutcome, Mailbox, MailboxMessage, MailboxOfferFuture, MailboxPollFuture};
 pub use mailbox_policy::{MailboxCapacity, MailboxOverflowStrategy, MailboxPolicy};
+pub use message_invoker::{MessageInvoker, MessageInvokerMiddleware, MessageInvokerPipeline};
 pub use name_registry::{NameRegistry, NameRegistryError};
 pub use pid::Pid;
 pub use props::{ActorFactory, MailboxConfig, Props, SupervisorOptions};
