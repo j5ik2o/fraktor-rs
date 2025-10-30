@@ -6,6 +6,10 @@ use crate::collections::{
 };
 
 /// Queue backend backed by a ring buffer storage.
+///
+/// This adapter is meant to be constructed and driven by `AsyncQueue`/`SyncQueue`
+/// helpers. Prefer those high-level APIs and implement custom backends instead of
+/// invoking this adapter directly from application logic.
 pub struct VecRingBackend<T> {
   storage: VecRingStorage<T>,
   policy:  OverflowPolicy,
