@@ -1,6 +1,6 @@
 //! Dynamically typed message containers.
 
-use core::any::{Any, TypeId};
+use core::{any::{Any, TypeId}, fmt};
 
 use cellactor_utils_core_rs::sync::ArcShared;
 
@@ -39,6 +39,7 @@ impl<'a> AnyMessage<'a> {
     self.reply_to
   }
 }
+
 
 /// Owned representation of a dynamically typed message.
 #[derive(Clone)]
@@ -79,5 +80,14 @@ impl AnyOwnedMessage {
   #[must_use]
   pub fn payload(&self) -> &(dyn Any + Send + Sync + 'static) {
     &*self.payload
+  }
+}
+
+impl fmt::Debug for AnyOwnedMessage {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    f.debug_struct("AnyOwnedMessage")
+      .field("type_id", &self.payload.type_id())
+      .field("has_reply_to", &self.reply_to.is_some())
+      .finish()
   }
 }
