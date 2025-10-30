@@ -2,17 +2,13 @@
 
 use core::{cmp, fmt, future::Future, num::NonZeroUsize, pin::Pin, task::{Context, Poll}};
 
-use cellactor_utils_core_rs::{
-  collections::{
-    queue::{
-      backend::{OfferOutcome, OverflowPolicy, VecRingBackend},
-      MpscQueue, SyncMpscConsumer, SyncMpscProducer, VecRingStorage, SyncQueueBackend,
-    },
-    queue_old::QueueError,
-    wait::{WaitHandle, WaitQueue},
+use cellactor_utils_core_rs::{collections::{
+  queue::{
+    backend::{OfferOutcome, OverflowPolicy, VecRingBackend},
+    MpscQueue, SyncMpscConsumer, SyncMpscProducer, VecRingStorage, SyncQueueBackend,
   },
-  sync::{ArcShared, sync_mutex_like::SpinSyncMutex},
-};
+  wait::{WaitHandle, WaitQueue},
+}, sync::{ArcShared, sync_mutex_like::SpinSyncMutex}, QueueError};
 use portable_atomic::{AtomicBool, Ordering};
 use spin::Mutex;
 
