@@ -16,7 +16,7 @@ use crate::collections::{
 /// This adapter is meant to be constructed and driven by `AsyncQueue`/`SyncQueue`
 /// helpers. Prefer those high-level APIs and implement custom backends instead of
 /// invoking this adapter directly from application logic.
-pub struct SyncAdapterQueueBackend<T, B>
+pub struct SyncQueueAsyncAdapter<T, B>
 where
   B: SyncQueueBackend<T>, {
   backend:          B,
@@ -25,7 +25,7 @@ where
   consumer_waiters: WaitQueue<QueueError<T>>,
 }
 
-impl<T, B> SyncAdapterQueueBackend<T, B>
+impl<T, B> SyncQueueAsyncAdapter<T, B>
 where
   B: SyncQueueBackend<T>,
 {
@@ -83,7 +83,7 @@ where
 }
 
 #[async_trait(?Send)]
-impl<T, B> AsyncQueueBackend<T> for SyncAdapterQueueBackend<T, B>
+impl<T, B> AsyncQueueBackend<T> for SyncQueueAsyncAdapter<T, B>
 where
   B: SyncQueueBackend<T>,
 {
@@ -136,7 +136,7 @@ where
   }
 }
 
-impl<T: Ord, B> AsyncPriorityBackend<T> for SyncAdapterQueueBackend<T, B>
+impl<T: Ord, B> AsyncPriorityBackend<T> for SyncQueueAsyncAdapter<T, B>
 where
   B: SyncPriorityBackend<T>,
 {

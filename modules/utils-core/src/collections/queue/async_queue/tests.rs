@@ -9,8 +9,8 @@ use super::{AsyncMpscQueue, AsyncQueue, AsyncSpscQueue};
 use crate::{
   collections::{
     queue::{
-      VecRingStorage,
-      backend::{OfferOutcome, OverflowPolicy, SyncAdapterQueueBackend, VecRingBackend},
+        VecRingStorage,
+        backend::{OfferOutcome, OverflowPolicy, SyncQueueAsyncAdapter, VecRingBackend},
     },
     queue_old::QueueError,
   },
@@ -48,10 +48,10 @@ fn block_on<F: Future>(mut future: F) -> F::Output {
 fn make_shared_queue(
   capacity: usize,
   policy: OverflowPolicy,
-) -> ArcShared<SpinAsyncMutex<SyncAdapterQueueBackend<i32, VecRingBackend<i32>>>> {
+) -> ArcShared<SpinAsyncMutex<SyncQueueAsyncAdapter<i32, VecRingBackend<i32>>>> {
   let storage = VecRingStorage::with_capacity(capacity);
   let backend = VecRingBackend::new_with_storage(storage, policy);
-  ArcShared::new(SpinAsyncMutex::new(SyncAdapterQueueBackend::new(backend)))
+  ArcShared::new(SpinAsyncMutex::new(SyncQueueAsyncAdapter::new(backend)))
 }
 
 struct DenyPolicy;
@@ -66,10 +66,10 @@ type DenyMutex<T> = SpinAsyncMutex<T, DenyPolicy>;
 
 fn make_interrupt_shared_queue(
   capacity: usize,
-) -> ArcShared<DenyMutex<SyncAdapterQueueBackend<i32, VecRingBackend<i32>>>> {
+) -> ArcShared<DenyMutex<SyncQueueAsyncAdapter<i32, VecRingBackend<i32>>>> {
   let storage = VecRingStorage::with_capacity(capacity);
   let backend = VecRingBackend::new_with_storage(storage, OverflowPolicy::Block);
-  ArcShared::new(DenyMutex::new(SyncAdapterQueueBackend::new(backend)))
+  ArcShared::new(DenyMutex::new(SyncQueueAsyncAdapter::new(backend)))
 }
 
 #[test]

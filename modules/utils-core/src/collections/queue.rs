@@ -21,8 +21,8 @@ pub use async_queue::{AsyncFifoQueue, AsyncMpscQueue, AsyncPriorityQueue, AsyncQ
 pub use async_spsc_consumer::AsyncSpscConsumer;
 pub use async_spsc_producer::AsyncSpscProducer;
 pub use backend::{
-    AsyncPriorityBackend, AsyncQueueBackend, OfferOutcome, OverflowPolicy, SyncAdapterQueueBackend, SyncPriorityBackend,
-    SyncQueueBackend, VecRingBackend,
+  AsyncPriorityBackend, AsyncQueueBackend, OfferOutcome, OverflowPolicy, SyncQueueAsyncAdapter, SyncPriorityBackend,
+  SyncQueueBackend, VecRingBackend,
 };
 pub use capabilities::{MultiProducer, SingleConsumer, SingleProducer, SupportsPeek};
 pub use storage::{QueueStorage, VecRingStorage};
@@ -36,6 +36,8 @@ pub use type_keys::{FifoKey, MpscKey, PriorityKey, SpscKey, TypeKey};
 #[cfg(test)]
 mod tests;
 mod queue_error;
+mod offer_outcome;
+mod overflow_policy;
 
 pub use queue_error::QueueError;
 
@@ -43,4 +45,4 @@ pub use queue_error::QueueError;
 pub type SharedVecRingQueue<T, K = FifoKey> = SyncQueue<T, K, VecRingBackend<T>>;
 
 /// Default async shared queue alias backed by [`VecRingBackend`] via the sync adapter.
-pub type AsyncSharedVecRingQueue<T, K = FifoKey> = AsyncQueue<T, K, SyncAdapterQueueBackend<T, VecRingBackend<T>>>;
+pub type AsyncSharedVecRingQueue<T, K = FifoKey> = AsyncQueue<T, K, SyncQueueAsyncAdapter<T, VecRingBackend<T>>>;
