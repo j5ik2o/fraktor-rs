@@ -65,7 +65,7 @@ specs/001-add-actor-runtime/
 1. `protoactor-go` の Mailbox / Dispatcher / Supervisor / Child actor API (`Context.Spawn`/RootContext) と命名ルール (`ProcessRegistry`)、MiddlewareChain (ProcessStage)、Bounded/Unbounded mailbox、Dispatcher throughput 設定、ProcessMailbox のメッセージ所有モデルを調査し、借用・アロケーション挙動、および `Drop`/`Grow` 相当のキュー戦略を整理。  
 2. Apache Pekko の `EventStream` / `DeadLetter` / Supervision ドキュメントを参照し、Recoverable/Fatal ハンドリング差分を抽出。
 3. `AnyMessage` の借用ベース設計に適した Rust パターン（`dyn Any` + `RefCell` 非使用）を調査。
-4. AsyncQueue の容量・バックプレッシャー戦略（BoundedMailbox 相当）と `DropNewest`/`Grow`/`Block` の遷移条件、`Suspend`/`Resume` の制御手段（同期・非同期双方）および System/User デュアルキュー構成、Bounded/Unbounded 切替時のメモリ監視指標、Block 待機フロー、スループット制限適用方法、`AnyMessage` の所有先（ArcShared）を決定。
+4. AsyncQueue の容量・バックプレッシャー戦略（BoundedMailbox 相当）と `DropNewest`/`Grow`/`Block` の遷移条件、`Suspend`/`Resume` の制御手段（同期・非同期双方）および System/User デュアルキュー構成、Bounded/Unbounded 切替時のメモリ監視指標、Block 待機フロー、スループット制限適用方法、`AnyMessage` の所有先（ArcShared）を決定。ActorSystem のライフサイクル API（`terminate()`, `when_terminated()`, `run_until_terminated()`）の振る舞いもこの段階で設計する。
 5. panic 非介入ポリシー時の運用ベストプラクティス（ウォッチドッグリセットなど）を確認し quickstart に反映。
 
 成果物: research.md（Decision / Rationale / Alternatives 形式）で全 NEEDS CLARIFICATION を解消。
@@ -76,7 +76,7 @@ specs/001-add-actor-runtime/
 
 1. data-model.md: ActorSystem / ActorCell / ActorContext / AnyMessage / SupervisorStrategy / ActorError のエンティティ、属性、関係性を定義し、Mailbox ポリシー `DropNewest` / `DropOldest` / `Grow` / `Block` と `Suspend` / `Resume` 制御、System/User 優先度の状態遷移・トレイトフック、および親子アクターのツリー構造と伝播規則（ユーザガーディアンを含む）、NameRegistry、MessageInvoker ミドルウェアチェーンの拡張ポイント、Bounded/Unbounded 戦略とスループット制限の設定点を整理。
 2. contracts/: Ping/Pong サンプル用エンドポイント（例: 制御インターフェイス）を OpenAPI で定義し、ActorSystem 構成 API の最小セットを記述。  
-3. quickstart.md: no_std ボード + ホスト実行の手順、panic 非介入時の対応、計測方法（ヒープ確保計測・1,000 msg/s テスト）、Mailbox ポリシー切り替え手順、EventStream Logger 購読者の設定例、ユーザガーディアン Props を渡してエントリポイントから子アクターを spawn しつつ `system.user_guardian_ref().tell(Start)` でブートストラップするコード例を記載。actor-core 配下の `examples/ping_pong_no_std` は `std` フィーチャを有効にして実行し、`ctx.self_ref()` を payload に埋め込んだ `reply_to` の扱いを示す旨も明記する。  
+3. quickstart.md: no_std ボード + ホスト実行の手順、panic 非介入時の対応、計測方法（ヒープ確保計測・1,000 msg/s テスト）、Mailbox ポリシー切り替え手順、EventStream Logger 購読者の設定例、ユーザガーディアン Props を渡してエントリポイントから子アクターを spawn しつつ `system.user_guardian_ref().tell(Start)` でブートストラップするコード例を記載。actor-core 配下の `examples/ping_pong_no_std` は `std` フィーチャを有効にして実行し、`ctx.self_ref()` を payload に埋め込んだ `reply_to` の扱いや、ガーディアンが `ctx.stop(ctx.self_ref())` を呼ばない限り ActorSystem が継続する点を明記する。  
 4. `.specify/scripts/bash/update-agent-context.sh codex` を実行し、Codex 専用コンテキストに AnyMessage/ActorError ポリシー・Mailbox ポリシー設計・EventStream Logger・ユーザガーディアン構成・panic 非介入を追記。  
 5. 憲章ゲート再評価（P1〜P7）。設計で新たに発生したリスクがあれば複雑度トラッキングに記録。
 

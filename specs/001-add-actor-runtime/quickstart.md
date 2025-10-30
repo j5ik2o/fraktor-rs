@@ -97,3 +97,9 @@ makers ci-check -- dylint
 > ```
 >
 > 受信側の Pong では `reply_to.tell(AnyMessage::new(PongReply { ... }))` のように、受け取った `reply_to` を利用して応答を返します。`ActorContext::reply()` は拡張／ミドルウェア向けの補助メソッドとして残っていますが、アプリケーションレベルでは payload に `reply_to` を含めるスタイルが基本になります。
+
+> **ActorSystem の停止**
+> Typed スタイルと同様に、ユーザガーディアンが `ctx.stop(ctx.self_ref())` を呼び出すまで ActorSystem は終了しません。アプリケーションを終了させる場合は、ガーディアンが自ら停止し、それに追随して子アクターやリソースが片付くよう設計してください。システム終了を待つには `ActorSystem::when_terminated()` で Future を取得し、同期環境では `run_until_terminated()` などのブロッキング API、非同期環境では `await` を利用します。
+
+> **ActorSystem の明示的停止**
+> アプリケーション側で明示的にシステムを終了したい場合は、`system.terminate()` を呼び出して内部 `SystemMessage::Stop` をガーディアンに送ります。その後 `run_until_terminated()` でブロックするか、`when_terminated().listener()` を await して終了まで待機してください。
