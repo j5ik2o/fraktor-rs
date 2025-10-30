@@ -1,5 +1,7 @@
 //! Actor trait definition.
 
+use alloc::boxed::Box;
+
 use crate::{actor_context::ActorContext, actor_error::ActorError, any_message::AnyMessage};
 
 /// Core trait implemented by all actors executed inside the runtime.
@@ -27,5 +29,22 @@ pub trait Actor: Send {
   /// Returns an error if cleanup fails.
   fn post_stop(&mut self, _ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
     Ok(())
+  }
+}
+
+impl<T> Actor for Box<T>
+where
+  T: Actor + ?Sized,
+{
+  fn pre_start(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
+    (**self).pre_start(ctx)
+  }
+
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessage<'_>) -> Result<(), ActorError> {
+    (**self).receive(ctx, message)
+  }
+
+  fn post_stop(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
+    (**self).post_stop(ctx)
   }
 }

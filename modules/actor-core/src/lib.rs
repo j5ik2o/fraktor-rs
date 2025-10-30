@@ -61,6 +61,7 @@
 extern crate alloc;
 
 mod actor;
+mod actor_cell;
 mod actor_context;
 mod actor_error;
 mod actor_future;
@@ -80,6 +81,7 @@ mod spawn_error;
 mod supervisor_strategy;
 mod system;
 mod system_message;
+mod system_state;
 
 pub use actor::Actor;
 pub use actor_context::ActorContext;

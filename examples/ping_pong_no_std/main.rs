@@ -13,8 +13,8 @@ struct GuardianActor;
 impl Actor for GuardianActor {
   fn receive(&mut self, ctx: &mut ActorContext<'_>, msg: AnyMessage<'_>) -> Result<(), ActorError> {
     if msg.downcast_ref::<Start>().is_some() {
-      let pong = ctx.spawn_child(&Props::new(pong_factory))?;
-      let ping = ctx.spawn_child(&Props::new(ping_factory))?;
+      let pong = ctx.spawn_child(Props::from_fn(pong_factory))?;
+      let ping = ctx.spawn_child(Props::from_fn(ping_factory))?;
       let start_ping = StartPing { target: pong, count: 3 };
       ping.tell(AnyOwnedMessage::new(start_ping))?;
     }
@@ -63,21 +63,21 @@ fn format_message(index: u32) -> String {
   out
 }
 
-fn guardian_factory() -> Box<dyn Actor> {
-  Box::new(GuardianActor)
+fn guardian_factory() -> GuardianActor {
+  GuardianActor
 }
 
-fn ping_factory() -> Box<dyn Actor> {
-  Box::new(PingActor)
+fn ping_factory() -> PingActor {
+  PingActor
 }
 
-fn pong_factory() -> Box<dyn Actor> {
-  Box::new(PongActor)
+fn pong_factory() -> PongActor {
+  PongActor
 }
 
 #[cfg(feature = "std")]
 fn main() {
-  let system = ActorSystem::new(Props::new(guardian_factory)).expect("system");
+  let system = ActorSystem::new(Props::from_fn(guardian_factory)).expect("system");
   system
     .user_guardian_ref()
     .tell(AnyOwnedMessage::new(Start))

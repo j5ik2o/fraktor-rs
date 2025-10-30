@@ -8,6 +8,7 @@ use crate::actor::Actor;
 /// Immutable configuration describing how to construct an actor.
 pub struct Props {
   factory:    ArcShared<dyn ActorFactory>,
+  name:       Option<String>,
   mailbox:    MailboxConfig,
   supervisor: SupervisorOptions,
   middleware: Vec<String>,
@@ -19,6 +20,7 @@ impl Props {
   pub fn new(factory: ArcShared<dyn ActorFactory>) -> Self {
     Self {
       factory,
+      name: None,
       mailbox: MailboxConfig::default(),
       supervisor: SupervisorOptions::default(),
       middleware: Vec::new(),
@@ -38,6 +40,12 @@ impl Props {
   #[must_use]
   pub fn factory(&self) -> &ArcShared<dyn ActorFactory> {
     &self.factory
+  }
+
+  /// Returns the configured actor name, if any.
+  #[must_use]
+  pub fn name(&self) -> Option<&str> {
+    self.name.as_deref()
   }
 
   /// Returns the mailbox configuration.
@@ -79,6 +87,13 @@ impl Props {
     I: IntoIterator<Item = S>,
     S: Into<String>, {
     self.middleware = middleware.into_iter().map(Into::into).collect();
+    self
+  }
+
+  /// Assigns a logical name to the actor for registry purposes.
+  #[must_use]
+  pub fn with_name(mut self, name: impl Into<String>) -> Self {
+    self.name = Some(name.into());
     self
   }
 }
