@@ -62,7 +62,7 @@ description: "セルアクター no_std ランタイム初期版の実装タス�
 **目標**: AnyMessage を使った最小構成でアクターを起動し、Ping/Pong サンプルが no_std + alloc 環境で動作する。
 **独立テスト**: `modules/actor-core/tests/ping_pong.rs` で spawn / tell / 背圧ポリシー / reply_to 処理が通ること。
 
-- [x] T016 [US1] `ActorRef` ハンドルを実装し、未型付けの `tell` / `ask` API と ArcShared ストレージを備える（`AnyOwnedMessage` を受け付け、送信失敗を `Result` で検知可能にする）(modules/actor-core/src/actor_ref.rs)
+- [x] T016 [US1] `ActorRef` ハンドルを実装し、未型付けの `tell` / `ask` API と ArcShared ストレージを備える（所有型 `AnyMessage` を受け付け、送信失敗を `Result` で検知可能にする）(modules/actor-core/src/actor_ref.rs)
 - [x] T017 [US1] DropNewest / DropOldest / Grow ポリシーと Bounded / Unbounded 容量を扱う `Mailbox` を SyncQueue バックエンドで実装する (modules/actor-core/src/mailbox.rs)
 - [x] T018 [US1] スループット制限とスケジューリングフックを備えた `Dispatcher` を実装する (modules/actor-core/src/dispatcher.rs)
 - [x] T019 [US1] ミドルウェアチェーンと `reply_to` ルーティングを行う `MessageInvoker` パイプラインを実装する (modules/actor-core/src/message_invoker.rs)

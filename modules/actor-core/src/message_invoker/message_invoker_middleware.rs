@@ -1,4 +1,4 @@
-use crate::{actor_context::ActorContext, actor_error::ActorError, any_message::AnyMessage};
+use crate::{actor_context::ActorContext, actor_error::ActorError, any_message::AnyMessageView};
 
 /// Middleware invoked before and after actor message handlers.
 pub trait MessageInvokerMiddleware: Send + Sync {
@@ -8,7 +8,7 @@ pub trait MessageInvokerMiddleware: Send + Sync {
   ///
   /// Returns an error if middleware processing fails. Implementers may return errors
   /// based on message validation, authorization checks, or other pre-processing requirements.
-  fn before_user(&self, _ctx: &mut ActorContext<'_>, _message: &AnyMessage<'_>) -> Result<(), ActorError> {
+  fn before_user(&self, _ctx: &mut ActorContext<'_>, _message: &AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 
@@ -22,7 +22,7 @@ pub trait MessageInvokerMiddleware: Send + Sync {
   fn after_user(
     &self,
     _ctx: &mut ActorContext<'_>,
-    _message: &AnyMessage<'_>,
+    _message: &AnyMessageView<'_>,
     result: Result<(), ActorError>,
   ) -> Result<(), ActorError> {
     result

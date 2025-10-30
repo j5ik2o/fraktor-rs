@@ -3,7 +3,7 @@ use alloc::vec::Vec;
 use cellactor_utils_core_rs::sync::ArcShared;
 
 use crate::{
-  actor_cell::ActorCell, actor_future::ActorFuture, actor_ref::ActorRef, any_message::AnyOwnedMessage, pid::Pid,
+  actor_cell::ActorCell, actor_future::ActorFuture, actor_ref::ActorRef, any_message::AnyMessage, pid::Pid,
   props::Props, spawn_error::SpawnError, system_state::ActorSystemState,
 };
 
@@ -94,7 +94,7 @@ impl ActorSystem {
 
   /// Drains ask futures that have completed since the last call.
   #[must_use]
-  pub fn drain_ready_ask_futures(&self) -> Vec<ArcShared<ActorFuture<AnyOwnedMessage>>> {
+  pub fn drain_ready_ask_futures(&self) -> Vec<ArcShared<ActorFuture<AnyMessage>>> {
     self.state.drain_ready_ask_futures()
   }
 

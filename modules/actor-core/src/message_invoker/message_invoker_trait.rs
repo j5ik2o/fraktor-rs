@@ -1,4 +1,4 @@
-use crate::{actor_error::ActorError, any_message::AnyOwnedMessage, system_message::SystemMessage};
+use crate::{actor_error::ActorError, any_message::AnyMessage, system_message::SystemMessage};
 
 /// Abstraction for delivering messages retrieved from the mailbox to the actor.
 pub trait MessageInvoker: Send + Sync {
@@ -7,7 +7,7 @@ pub trait MessageInvoker: Send + Sync {
   /// # Errors
   ///
   /// Returns an error if the message processing fails or if the actor's handler returns an error.
-  fn invoke_user_message(&self, message: AnyOwnedMessage) -> Result<(), ActorError>;
+  fn invoke_user_message(&self, message: AnyMessage) -> Result<(), ActorError>;
 
   /// Processes system messages.
   ///

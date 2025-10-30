@@ -6,13 +6,13 @@ use crate::actor_ref::ActorRef;
 
 /// Borrowed representation of a dynamically typed message.
 #[derive(Debug)]
-pub struct AnyMessage<'a> {
+pub struct AnyMessageView<'a> {
   payload:  &'a (dyn Any + Send + Sync + 'static),
   type_id:  TypeId,
   reply_to: Option<&'a ActorRef>,
 }
 
-impl<'a> AnyMessage<'a> {
+impl<'a> AnyMessageView<'a> {
   /// Creates a new borrowed message.
   #[must_use]
   pub fn new(payload: &'a (dyn Any + Send + Sync + 'static), reply_to: Option<&'a ActorRef>) -> Self {

@@ -13,7 +13,7 @@
 - **Alternatives considered**: 無制限キュー（Alloc 増大・断片化リスク）; capacity=32（ピーク負荷時に Deadletter が増える懸念）。
 
 ## Decision: AnyMessage の借用戦略
-- **Rationale**: `AnyMessage<'a>` で `&'a dyn Any` を保持し、所有権移動版 `AnyOwnedMessage` はテスト/ブリッジ用途に限定。これによりヒープ確保を避け、ダウンキャストは参照ベースで実施。  
+- **Rationale**: `AnyMessageView<'a>` で `&'a dyn Any` を保持し、所有権移動版 `AnyMessage` はテスト/ブリッジ用途に限定。これによりヒープ確保を避け、ダウンキャストは参照ベースで実施。  
 - **Alternatives considered**: `Box<dyn Any>` による所有権転送（ヒープ確保が発生）; `enum Message` の静的多態（拡張性と未型付け方針に反する）。
 
 ## Decision: panic 非介入運用
@@ -61,7 +61,7 @@
 - **Alternatives considered**: Classic の `sender()` を引き継ぐ案（stateful Context が複雑化し、将来 Typed レイヤー導入時に破綻する）。
 
 ## Decision: Owned message buffer for mailbox
-- **Rationale**: Mailbox でメッセージを所有するため `AnyOwnedMessage` + `ArcShared` を導入し、借用型 `AnyMessage` を再構成してゼロコピーで配達できるようにする。  
+- **Rationale**: Mailbox でメッセージを所有するため `AnyMessage` + `ArcShared` を導入し、借用型 `AnyMessageView` を再構成してゼロコピーで配達できるようにする。  
 - **Alternatives considered**: enqueue 毎に `Vec<u8>` へシリアライズする案（ヒープ負荷が高い）; 送信側がライフタイムを保持し続ける案（no_std で安全に扱いづらい）。
 
 ## Decision: System/User dual queue layout
@@ -73,5 +73,5 @@
 - **Alternatives considered**: spin ループで待機する案（電力・スケジューラが非効率）; Block を未実装とする案（将来の拡張性がない）。
 
 ## Decision: Ask/reply flow with ActorFuture
-- **Rationale**: `reply_to: ActorRef` を AnyOwnedMessage に保持し、MessageInvoker 終了時に ActorFuture を完了させることで sender() 依存を排除しつつ ask を実現する。  
+- **Rationale**: `reply_to: ActorRef` を AnyMessage に保持し、MessageInvoker 終了時に ActorFuture を完了させることで sender() 依存を排除しつつ ask を実現する。  
 - **Alternatives considered**: Classic sender() を維持する案（Typed レイヤー導入時に矛盾）; ask をサポートしない案（ユースケースが限定される）。

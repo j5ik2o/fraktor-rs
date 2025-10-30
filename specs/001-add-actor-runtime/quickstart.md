@@ -37,7 +37,7 @@ let guardian_props = Props::new(|ctx| GuardianActor::new(ctx));
 let system = ActorSystem::new(guardian_props);
 system
   .user_guardian_ref()
-  .tell(AnyOwnedMessage::new(Start))
+  .tell(AnyMessage::new(Start))
   .expect("bootstrap");
 ```
 

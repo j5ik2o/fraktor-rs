@@ -1,8 +1,8 @@
 //! Actor execution context utilities.
 
 use crate::{
-  actor_ref::ActorRef, any_message::AnyOwnedMessage, pid::Pid, props::Props, send_error::SendError,
-  spawn_error::SpawnError, system::ActorSystem,
+  actor_ref::ActorRef, any_message::AnyMessage, pid::Pid, props::Props, send_error::SendError, spawn_error::SpawnError,
+  system::ActorSystem,
 };
 
 /// Provides contextual APIs while handling a message.
@@ -52,7 +52,7 @@ impl<'a> ActorContext<'a> {
   /// # Errors
   ///
   /// Returns an error if no reply target is set or if the send operation fails.
-  pub fn reply(&self, message: AnyOwnedMessage) -> Result<(), SendError> {
+  pub fn reply(&self, message: AnyMessage) -> Result<(), SendError> {
     match self.reply_to.as_ref() {
       | Some(target) => target.tell(message),
       | None => Err(SendError::no_recipient(message)),

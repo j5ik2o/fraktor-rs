@@ -4,17 +4,17 @@ use core::{any::Any, fmt};
 
 use cellactor_utils_core_rs::sync::ArcShared;
 
-use super::any_message_struct::AnyMessage;
+use super::any_message_struct::AnyMessageView;
 use crate::actor_ref::ActorRef;
 
 /// Owned representation of a dynamically typed message.
 #[derive(Clone)]
-pub struct AnyOwnedMessage {
+pub struct AnyMessage {
   payload:  ArcShared<dyn Any + Send + Sync + 'static>,
   reply_to: Option<ActorRef>,
 }
 
-impl AnyOwnedMessage {
+impl AnyMessage {
   /// Creates a new owned message.
   #[must_use]
   pub fn new<T>(payload: T) -> Self
@@ -38,8 +38,8 @@ impl AnyOwnedMessage {
 
   /// Converts into a borrowed representation.
   #[must_use]
-  pub fn as_any(&self) -> AnyMessage<'_> {
-    AnyMessage::new(&*self.payload, self.reply_to.as_ref())
+  pub fn as_view(&self) -> AnyMessageView<'_> {
+    AnyMessageView::new(&*self.payload, self.reply_to.as_ref())
   }
 
   /// Returns the payload as a trait object reference.
@@ -49,9 +49,9 @@ impl AnyOwnedMessage {
   }
 }
 
-impl fmt::Debug for AnyOwnedMessage {
+impl fmt::Debug for AnyMessage {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    f.debug_struct("AnyOwnedMessage")
+    f.debug_struct("AnyMessage")
       .field("type_id", &self.payload.type_id())
       .field("has_reply_to", &self.reply_to.is_some())
       .finish()

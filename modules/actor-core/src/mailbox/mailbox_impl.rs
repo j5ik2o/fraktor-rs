@@ -8,7 +8,7 @@ use super::{
   mailbox_poll_future::MailboxPollFuture, map_system_queue_error, map_user_queue_error, queue_handles::QueueHandles,
 };
 use crate::{
-  any_message::AnyOwnedMessage,
+  any_message::AnyMessage,
   mailbox_policy::{MailboxCapacity, MailboxOverflowStrategy, MailboxPolicy},
   send_error::SendError,
   system_message::SystemMessage,
@@ -18,7 +18,7 @@ use crate::{
 pub struct Mailbox {
   policy:    MailboxPolicy,
   system:    QueueHandles<SystemMessage>,
-  user:      QueueHandles<AnyOwnedMessage>,
+  user:      QueueHandles<AnyMessage>,
   suspended: AtomicBool,
 }
 
@@ -45,7 +45,7 @@ impl Mailbox {
   /// # Errors
   ///
   /// Returns an error if the mailbox is suspended, full, or closed.
-  pub fn enqueue_user(&self, message: AnyOwnedMessage) -> Result<EnqueueOutcome, SendError> {
+  pub fn enqueue_user(&self, message: AnyMessage) -> Result<EnqueueOutcome, SendError> {
     if self.is_suspended() {
       return Err(SendError::suspended(message));
     }
@@ -59,7 +59,7 @@ impl Mailbox {
   }
 
   /// Returns a future that resolves when the provided user message is enqueued.
-  pub fn enqueue_user_future(&self, message: AnyOwnedMessage) -> MailboxOfferFuture {
+  pub fn enqueue_user_future(&self, message: AnyMessage) -> MailboxOfferFuture {
     MailboxOfferFuture::new(self.user.offer_blocking(message))
   }
 
@@ -119,7 +119,7 @@ impl Mailbox {
   fn enqueue_bounded_user(
     &self,
     capacity: usize,
-    message: AnyOwnedMessage,
+    message: AnyMessage,
     overflow: MailboxOverflowStrategy,
   ) -> Result<EnqueueOutcome, SendError> {
     match overflow {
@@ -148,7 +148,7 @@ impl Mailbox {
     }
   }
 
-  fn offer_user(&self, message: AnyOwnedMessage) -> Result<EnqueueOutcome, SendError> {
+  fn offer_user(&self, message: AnyMessage) -> Result<EnqueueOutcome, SendError> {
     match self.user.offer(message) {
       | Ok(outcome) => {
         Self::handle_offer_outcome(outcome);

@@ -2,7 +2,7 @@
 
 use alloc::boxed::Box;
 
-use crate::{actor_context::ActorContext, actor_error::ActorError, any_message::AnyMessage};
+use crate::{actor_context::ActorContext, actor_error::ActorError, any_message::AnyMessageView};
 
 /// Core trait implemented by all actors executed inside the runtime.
 pub trait Actor: Send {
@@ -20,7 +20,7 @@ pub trait Actor: Send {
   /// # Errors
   ///
   /// Returns an error if message processing fails.
-  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessage<'_>) -> Result<(), ActorError>;
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError>;
 
   /// Invoked after the actor has stopped.
   ///
@@ -40,7 +40,7 @@ where
     (**self).pre_start(ctx)
   }
 
-  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessage<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     (**self).receive(ctx, message)
   }
 

@@ -7,7 +7,7 @@ use crate::{
   actor::Actor,
   actor_context::ActorContext,
   actor_error::ActorError,
-  any_message::{AnyMessage, AnyOwnedMessage},
+  any_message::{AnyMessage, AnyMessageView},
 };
 
 /// Middleware-enabled pipeline used to invoke actor message handlers.
@@ -39,7 +39,7 @@ impl MessageInvokerPipeline {
     &self,
     actor: &mut A,
     ctx: &mut ActorContext<'_>,
-    message: AnyOwnedMessage,
+    message: AnyMessage,
   ) -> Result<(), ActorError>
   where
     A: Actor, {
@@ -51,20 +51,23 @@ impl MessageInvokerPipeline {
       | None => ctx.clear_reply_to(),
     }
 
-    if let Err(error) = self.invoke_before(ctx, &message.as_any()) {
+    let view = message.as_view();
+
+    if let Err(error) = self.invoke_before(ctx, &view) {
       restore_reply(ctx, previous);
       return Err(error);
     }
 
-    let mut result = actor.receive(ctx, message.as_any());
+    let mut result = actor.receive(ctx, view);
 
-    result = self.invoke_after(ctx, &message.as_any(), result);
+    let view_after = message.as_view();
+    result = self.invoke_after(ctx, &view_after, result);
 
     restore_reply(ctx, previous);
     result
   }
 
-  fn invoke_before(&self, ctx: &mut ActorContext<'_>, message: &AnyMessage<'_>) -> Result<(), ActorError> {
+  fn invoke_before(&self, ctx: &mut ActorContext<'_>, message: &AnyMessageView<'_>) -> Result<(), ActorError> {
     for middleware in &self.user_middlewares {
       middleware.before_user(ctx, message)?;
     }
@@ -74,7 +77,7 @@ impl MessageInvokerPipeline {
   fn invoke_after(
     &self,
     ctx: &mut ActorContext<'_>,
-    message: &AnyMessage<'_>,
+    message: &AnyMessageView<'_>,
     mut result: Result<(), ActorError>,
   ) -> Result<(), ActorError> {
     for middleware in self.user_middlewares.iter().rev() {

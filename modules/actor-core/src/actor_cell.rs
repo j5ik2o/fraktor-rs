@@ -7,7 +7,7 @@ use crate::{
   actor_context::ActorContext,
   actor_error::ActorError,
   actor_ref::ActorRef,
-  any_message::AnyOwnedMessage,
+  any_message::AnyMessage,
   dispatcher::{DispatchExecutor, Dispatcher, InlineExecutor},
   mailbox::Mailbox,
   message_invoker::{MessageInvoker, MessageInvokerPipeline},
@@ -111,7 +111,7 @@ impl ActorCell {
 }
 
 impl MessageInvoker for ActorCell {
-  fn invoke_user_message(&self, message: AnyOwnedMessage) -> Result<(), ActorError> {
+  fn invoke_user_message(&self, message: AnyMessage) -> Result<(), ActorError> {
     let system = ActorSystem::from_state(self.system.clone());
     let mut ctx = ActorContext::new(&system, self.pid);
     let mut actor = self.actor.lock();

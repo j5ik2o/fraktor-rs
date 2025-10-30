@@ -88,7 +88,7 @@ pub use actor_context::ActorContext;
 pub use actor_error::{ActorError, ActorErrorReason};
 pub use actor_future::ActorFuture;
 pub use actor_ref::{ActorRef, ActorRefSender};
-pub use any_message::{AnyMessage, AnyOwnedMessage};
+pub use any_message::{AnyMessage, AnyMessageView};
 pub use ask_response::AskResponse;
 pub use dispatcher::{DispatchExecutor, Dispatcher, DispatcherSender, InlineExecutor};
 pub use mailbox::{EnqueueOutcome, Mailbox, MailboxMessage, MailboxOfferFuture, MailboxPollFuture};

@@ -8,7 +8,7 @@ use crate::{
   actor_context::ActorContext,
   actor_error::ActorError,
   actor_ref::{ActorRef, ActorRefSender},
-  any_message::{AnyMessage, AnyOwnedMessage},
+  any_message::{AnyMessage, AnyMessageView},
   pid::Pid,
   system::ActorSystem,
 };
@@ -16,7 +16,7 @@ use crate::{
 struct RecordingSender;
 
 impl ActorRefSender for RecordingSender {
-  fn send(&self, _message: AnyOwnedMessage) -> Result<(), crate::send_error::SendError> {
+  fn send(&self, _message: AnyMessage) -> Result<(), crate::send_error::SendError> {
     Ok(())
   }
 }
@@ -41,7 +41,7 @@ impl CaptureActor {
 }
 
 impl Actor for CaptureActor {
-  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessage<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if let Some(value) = message.downcast_ref::<u32>() {
       self.payloads.lock().push(*value);
     }
@@ -65,7 +65,7 @@ impl LoggingActor {
 }
 
 impl Actor for LoggingActor {
-  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessage<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     self.record("actor");
     Ok(())
   }
@@ -87,7 +87,7 @@ impl RecordingMiddleware {
 }
 
 impl MessageInvokerMiddleware for RecordingMiddleware {
-  fn before_user(&self, _ctx: &mut ActorContext<'_>, _message: &AnyMessage<'_>) -> Result<(), ActorError> {
+  fn before_user(&self, _ctx: &mut ActorContext<'_>, _message: &AnyMessageView<'_>) -> Result<(), ActorError> {
     self.record("before");
     Ok(())
   }
@@ -95,7 +95,7 @@ impl MessageInvokerMiddleware for RecordingMiddleware {
   fn after_user(
     &self,
     _ctx: &mut ActorContext<'_>,
-    _message: &AnyMessage<'_>,
+    _message: &AnyMessageView<'_>,
     result: Result<(), ActorError>,
   ) -> Result<(), ActorError> {
     self.record("after");
@@ -114,7 +114,7 @@ fn pipeline_sets_and_clears_reply_to() {
   let reply_sender = ArcShared::new(RecordingSender);
   let reply_ref = ActorRef::new(Pid::new(2, 0), reply_sender);
 
-  let message = AnyOwnedMessage::new(123_u32).with_reply_to(reply_ref.clone());
+  let message = AnyMessage::new(123_u32).with_reply_to(reply_ref.clone());
   pipeline.invoke_user(&mut actor, &mut ctx, message).expect("invoke user message");
 
   assert_eq!(actor.payloads(), vec![123_u32]);
@@ -134,7 +134,7 @@ fn pipeline_restores_previous_reply_target() {
   let previous_ref = ActorRef::new(Pid::new(3, 0), previous_sender);
   ctx.set_reply_to(Some(previous_ref.clone()));
 
-  pipeline.invoke_user(&mut actor, &mut ctx, AnyOwnedMessage::new(7_u32)).expect("invoke");
+  pipeline.invoke_user(&mut actor, &mut ctx, AnyMessage::new(7_u32)).expect("invoke");
 
   assert_eq!(actor.payloads(), vec![7_u32]);
   assert_eq!(actor.replies(), vec![None]);
@@ -155,7 +155,7 @@ fn middleware_executes_in_expected_order() {
     ArcShared::new(RecordingMiddleware::new("b", log.clone()));
   let pipeline = MessageInvokerPipeline::from_middlewares(vec![middleware_a, middleware_b]);
 
-  pipeline.invoke_user(&mut actor, &mut ctx, AnyOwnedMessage::new(1_u8)).expect("invoke");
+  pipeline.invoke_user(&mut actor, &mut ctx, AnyMessage::new(1_u8)).expect("invoke");
 
   assert_eq!(log.lock().clone(), vec![
     String::from("a:before"),

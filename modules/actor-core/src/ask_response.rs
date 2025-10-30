@@ -2,18 +2,18 @@
 
 use cellactor_utils_core_rs::sync::ArcShared;
 
-use crate::{actor_future::ActorFuture, actor_ref::ActorRef, any_message::AnyOwnedMessage};
+use crate::{actor_future::ActorFuture, actor_ref::ActorRef, any_message::AnyMessage};
 
 /// Holds the reply handle and future associated with an ask request.
 pub struct AskResponse {
   reply_to: ActorRef,
-  future:   ArcShared<ActorFuture<AnyOwnedMessage>>,
+  future:   ArcShared<ActorFuture<AnyMessage>>,
 }
 
 impl AskResponse {
   /// Creates a new ask response handle.
   #[must_use]
-  pub const fn new(reply_to: ActorRef, future: ArcShared<ActorFuture<AnyOwnedMessage>>) -> Self {
+  pub const fn new(reply_to: ActorRef, future: ArcShared<ActorFuture<AnyMessage>>) -> Self {
     Self { reply_to, future }
   }
 
@@ -25,13 +25,13 @@ impl AskResponse {
 
   /// Returns a reference to the future that resolves with the response message.
   #[must_use]
-  pub const fn future(&self) -> &ArcShared<ActorFuture<AnyOwnedMessage>> {
+  pub const fn future(&self) -> &ArcShared<ActorFuture<AnyMessage>> {
     &self.future
   }
 
   /// Decomposes the response into its parts.
   #[must_use]
-  pub fn into_parts(self) -> (ActorRef, ArcShared<ActorFuture<AnyOwnedMessage>>) {
+  pub fn into_parts(self) -> (ActorRef, ArcShared<ActorFuture<AnyMessage>>) {
     (self.reply_to, self.future)
   }
 }

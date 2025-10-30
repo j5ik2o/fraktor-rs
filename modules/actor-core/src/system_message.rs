@@ -1,6 +1,6 @@
 //! Internal system messages exchanged within the actor runtime.
 
-use crate::any_message::AnyOwnedMessage;
+use crate::any_message::AnyMessage;
 
 /// Lightweight enum describing system-level mailbox traffic.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -13,8 +13,8 @@ pub enum SystemMessage {
   Stop,
 }
 
-impl From<SystemMessage> for AnyOwnedMessage {
+impl From<SystemMessage> for AnyMessage {
   fn from(value: SystemMessage) -> Self {
-    AnyOwnedMessage::new(value)
+    AnyMessage::new(value)
   }
 }

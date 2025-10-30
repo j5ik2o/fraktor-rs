@@ -6,7 +6,7 @@ use core::{
 
 use super::{EnqueueOutcome, Mailbox, MailboxMessage};
 use crate::{
-  any_message::AnyOwnedMessage,
+  any_message::AnyMessage,
   mailbox_policy::{MailboxOverflowStrategy, MailboxPolicy},
   send_error::SendError,
   system_message::SystemMessage,
@@ -21,9 +21,9 @@ fn drop_newest_returns_error_when_full() {
   let policy = bounded_policy(2, MailboxOverflowStrategy::DropNewest);
   let mailbox = Mailbox::new(policy);
 
-  assert!(matches!(mailbox.enqueue_user(AnyOwnedMessage::new(1_u32)), Ok(EnqueueOutcome::Enqueued)));
-  assert!(matches!(mailbox.enqueue_user(AnyOwnedMessage::new(2_u32)), Ok(EnqueueOutcome::Enqueued)));
-  let result = mailbox.enqueue_user(AnyOwnedMessage::new(3_u32));
+  assert!(matches!(mailbox.enqueue_user(AnyMessage::new(1_u32)), Ok(EnqueueOutcome::Enqueued)));
+  assert!(matches!(mailbox.enqueue_user(AnyMessage::new(2_u32)), Ok(EnqueueOutcome::Enqueued)));
+  let result = mailbox.enqueue_user(AnyMessage::new(3_u32));
   assert!(matches!(result, Err(SendError::Full(_))));
   assert_eq!(mailbox.user_len(), 2);
 }
@@ -33,18 +33,18 @@ fn drop_oldest_replaces_oldest_message() {
   let policy = bounded_policy(2, MailboxOverflowStrategy::DropOldest);
   let mailbox = Mailbox::new(policy);
 
-  assert!(matches!(mailbox.enqueue_user(AnyOwnedMessage::new(10_u8)), Ok(EnqueueOutcome::Enqueued)));
-  assert!(matches!(mailbox.enqueue_user(AnyOwnedMessage::new(20_u8)), Ok(EnqueueOutcome::Enqueued)));
-  assert!(matches!(mailbox.enqueue_user(AnyOwnedMessage::new(30_u8)), Ok(EnqueueOutcome::Enqueued)));
+  assert!(matches!(mailbox.enqueue_user(AnyMessage::new(10_u8)), Ok(EnqueueOutcome::Enqueued)));
+  assert!(matches!(mailbox.enqueue_user(AnyMessage::new(20_u8)), Ok(EnqueueOutcome::Enqueued)));
+  assert!(matches!(mailbox.enqueue_user(AnyMessage::new(30_u8)), Ok(EnqueueOutcome::Enqueued)));
 
   // The oldest (10) should be removed, leaving 20 and 30.
   if let Some(MailboxMessage::User(msg)) = mailbox.dequeue() {
-    assert_eq!(msg.as_any().downcast_ref::<u8>(), Some(&20));
+    assert_eq!(msg.as_view().downcast_ref::<u8>(), Some(&20));
   } else {
     panic!("expected user message");
   }
   if let Some(MailboxMessage::User(msg)) = mailbox.dequeue() {
-    assert_eq!(msg.as_any().downcast_ref::<u8>(), Some(&30));
+    assert_eq!(msg.as_view().downcast_ref::<u8>(), Some(&30));
   } else {
     panic!("expected user message");
   }
@@ -56,7 +56,7 @@ fn suspension_blocks_user_messages_but_not_system() {
   let mailbox = Mailbox::new(policy);
 
   mailbox.enqueue_system(SystemMessage::Stop).expect("system message");
-  assert!(matches!(mailbox.enqueue_user(AnyOwnedMessage::new("user")), Ok(EnqueueOutcome::Enqueued)));
+  assert!(matches!(mailbox.enqueue_user(AnyMessage::new("user")), Ok(EnqueueOutcome::Enqueued)));
 
   mailbox.suspend();
 
@@ -71,7 +71,7 @@ fn suspension_blocks_user_messages_but_not_system() {
   mailbox.resume();
   match mailbox.dequeue() {
     | Some(MailboxMessage::User(msg)) => {
-      assert_eq!(msg.as_any().downcast_ref::<&str>(), Some(&"user"));
+      assert_eq!(msg.as_view().downcast_ref::<&str>(), Some(&"user"));
     },
     | _ => panic!("expected user message after resume"),
   }
@@ -83,7 +83,7 @@ fn grow_policy_accepts_messages_beyond_initial_capacity() {
   let mailbox = Mailbox::new(policy);
 
   for idx in 0..5 {
-    assert!(matches!(mailbox.enqueue_user(AnyOwnedMessage::new(idx)), Ok(EnqueueOutcome::Enqueued)));
+    assert!(matches!(mailbox.enqueue_user(AnyMessage::new(idx)), Ok(EnqueueOutcome::Enqueued)));
   }
 
   assert_eq!(mailbox.user_len(), 5);
@@ -94,9 +94,9 @@ fn block_policy_returns_future_that_completes_on_space() {
   let policy = bounded_policy(1, MailboxOverflowStrategy::Block);
   let mailbox = Mailbox::new(policy);
 
-  assert!(matches!(mailbox.enqueue_user(AnyOwnedMessage::new(1_u8)), Ok(EnqueueOutcome::Enqueued)));
+  assert!(matches!(mailbox.enqueue_user(AnyMessage::new(1_u8)), Ok(EnqueueOutcome::Enqueued)));
 
-  let pending = mailbox.enqueue_user(AnyOwnedMessage::new(2_u8)).expect("pending result");
+  let pending = mailbox.enqueue_user(AnyMessage::new(2_u8)).expect("pending result");
   let mut future = match pending {
     | EnqueueOutcome::Pending(fut) => fut,
     | EnqueueOutcome::Enqueued => panic!("expected pending future"),

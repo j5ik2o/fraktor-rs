@@ -7,7 +7,7 @@ use portable_atomic::{AtomicU64, Ordering};
 use crate::{
   actor_cell::ActorCell,
   actor_future::ActorFuture,
-  any_message::AnyOwnedMessage,
+  any_message::AnyMessage,
   name_registry::{NameRegistry, NameRegistryError},
   pid::Pid,
   spawn_error::SpawnError,
@@ -19,7 +19,7 @@ pub struct ActorSystemState {
   cells:       SpinSyncMutex<HashMap<Pid, ArcShared<ActorCell>>>,
   registries:  SpinSyncMutex<HashMap<Option<Pid>, NameRegistry>>,
   guardian:    SpinSyncMutex<Option<ArcShared<ActorCell>>>,
-  ask_futures: SpinSyncMutex<Vec<ArcShared<ActorFuture<AnyOwnedMessage>>>>,
+  ask_futures: SpinSyncMutex<Vec<ArcShared<ActorFuture<AnyMessage>>>>,
 }
 
 impl ActorSystemState {
@@ -105,13 +105,13 @@ impl ActorSystemState {
   }
 
   /// Registers an ask future so the actor system can track its completion.
-  pub fn register_ask_future(&self, future: ArcShared<ActorFuture<AnyOwnedMessage>>) {
+  pub fn register_ask_future(&self, future: ArcShared<ActorFuture<AnyMessage>>) {
     self.ask_futures.lock().push(future);
   }
 
   /// Drains futures that have completed since the previous inspection.
   #[must_use]
-  pub fn drain_ready_ask_futures(&self) -> Vec<ArcShared<ActorFuture<AnyOwnedMessage>>> {
+  pub fn drain_ready_ask_futures(&self) -> Vec<ArcShared<ActorFuture<AnyMessage>>> {
     let mut registry = self.ask_futures.lock();
     let mut ready = Vec::new();
     let mut index = 0_usize;

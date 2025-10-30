@@ -5,7 +5,7 @@ use cellactor_utils_core_rs::{
   sync::sync_mutex_like::SpinSyncMutex,
 };
 
-use crate::{any_message::AnyOwnedMessage, send_error::SendError, system_message::SystemMessage};
+use crate::{any_message::AnyMessage, send_error::SendError, system_message::SystemMessage};
 
 mod enqueue_outcome;
 mod mailbox_impl;
@@ -27,7 +27,7 @@ pub use mailbox_poll_future::MailboxPollFuture;
 
 type QueueMutex<T> = SpinSyncMutex<VecRingBackend<T>>;
 
-fn map_user_queue_error(error: QueueError<AnyOwnedMessage>) -> SendError {
+fn map_user_queue_error(error: QueueError<AnyMessage>) -> SendError {
   match error {
     | QueueError::Full(item) | QueueError::OfferError(item) => SendError::full(item),
     | QueueError::Closed(item) | QueueError::AllocError(item) => SendError::closed(item),
@@ -39,8 +39,8 @@ fn map_user_queue_error(error: QueueError<AnyOwnedMessage>) -> SendError {
 
 fn map_system_queue_error(error: QueueError<SystemMessage>) -> SendError {
   match error {
-    | QueueError::Full(item) | QueueError::OfferError(item) => SendError::full(AnyOwnedMessage::new(item)),
-    | QueueError::Closed(item) | QueueError::AllocError(item) => SendError::closed(AnyOwnedMessage::new(item)),
+    | QueueError::Full(item) | QueueError::OfferError(item) => SendError::full(AnyMessage::new(item)),
+    | QueueError::Closed(item) | QueueError::AllocError(item) => SendError::closed(AnyMessage::new(item)),
     | QueueError::Disconnected | QueueError::Empty | QueueError::WouldBlock => {
       panic!("unexpected queue error variant during offer")
     },

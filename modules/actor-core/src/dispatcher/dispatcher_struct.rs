@@ -6,7 +6,7 @@ use super::{
   dispatch_executor::DispatchExecutor, dispatch_handle::DispatchHandle, dispatcher_core::DispatcherCore,
   dispatcher_state::DispatcherState, inline_executor::InlineExecutor, schedule_waker::ScheduleWaker,
 };
-use crate::{any_message::AnyOwnedMessage, mailbox::Mailbox, send_error::SendError, system_message::SystemMessage};
+use crate::{any_message::AnyMessage, mailbox::Mailbox, send_error::SendError, system_message::SystemMessage};
 
 /// Dispatcher that manages mailbox processing.
 pub struct Dispatcher {
@@ -38,7 +38,7 @@ impl Dispatcher {
   /// # Errors
   ///
   /// Returns an error if the mailbox is closed or full.
-  pub fn enqueue_user(&self, message: AnyOwnedMessage) -> Result<(), SendError> {
+  pub fn enqueue_user(&self, message: AnyMessage) -> Result<(), SendError> {
     DispatcherCore::enqueue_user(&self.core, message)
   }
 

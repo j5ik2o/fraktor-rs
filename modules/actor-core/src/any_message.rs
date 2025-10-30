@@ -3,5 +3,5 @@
 mod any_message_struct;
 mod any_owned_message;
 
-pub use any_message_struct::AnyMessage;
-pub use any_owned_message::AnyOwnedMessage;
+pub use any_message_struct::AnyMessageView;
+pub use any_owned_message::AnyMessage;

@@ -6,15 +6,15 @@ use core::{
 };
 
 use super::queue_offer_future::QueueOfferFuture;
-use crate::{any_message::AnyOwnedMessage, mailbox::map_user_queue_error, send_error::SendError};
+use crate::{any_message::AnyMessage, mailbox::map_user_queue_error, send_error::SendError};
 
 /// Future specialized for mailbox user queue offers.
 pub struct MailboxOfferFuture {
-  inner: QueueOfferFuture<AnyOwnedMessage>,
+  inner: QueueOfferFuture<AnyMessage>,
 }
 
 impl MailboxOfferFuture {
-  pub(super) const fn new(inner: QueueOfferFuture<AnyOwnedMessage>) -> Self {
+  pub(super) const fn new(inner: QueueOfferFuture<AnyMessage>) -> Self {
     Self { inner }
   }
 }

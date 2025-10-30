@@ -8,12 +8,12 @@
 | `ActorCell` | 個々のアクター状態と Mailbox を保持。 | `props`, `mailbox`, `receive_state: ReceiveState`, `supervisor_ref`, `parent: Option<Pid>`, `children: ArrayVec<Pid>`, `lifecycle_state`, `pre_start_done` | `ActorCell` 1 : 1 `Mailbox`、1 : 1 `SupervisorRef`、1 : N 子アクター |
 | `ActorContext<'a>` | アクター実行時の API。 | `system: &'a ActorSystem`, `self_pid: &'a Pid`, `current_state: ReceiveState` | `ActorContext` -> `ActorSystem`, `ActorContext` -> `MessageInvoker` |
 | `Actor` | 開発者が実装するアクター本体。 | 実装側で定義したフィールド、`ArcShared<dyn Actor>` として保持 | `Actor` <- `Props.factory`, `Actor` -> `ActorContext` |
-| `AnyOwnedMessage` | Mailbox に格納される所有メッセージ。 | `payload: ArcShared<dyn Any>`, `type_id`, `metadata`, `reply_to: Option<ActorRef>` | `AnyOwnedMessage` -> `AnyMessage`, `AnyOwnedMessage` -> `ActorFuture` |
-| `AnyMessage<'a>` | 未型付けメッセージコンテナ（借用ベース）。 | `payload: &'a dyn Any`, `type_id`, `metadata`, `reply_to: Option<&'a ActorRef>` | `AnyMessage` は `ActorContext`/`MessageInvoker` から渡される |
+| `AnyMessage` | Mailbox に格納される所有メッセージ。 | `payload: ArcShared<dyn Any>`, `type_id`, `metadata`, `reply_to: Option<ActorRef>` | `AnyMessage` -> `AnyMessageView`, `AnyMessage` -> `ActorFuture` |
+| `AnyMessageView<'a>` | 未型付けメッセージコンテナ（借用ベース）。 | `payload: &'a dyn Any`, `type_id`, `metadata`, `reply_to: Option<&'a ActorRef>` | `AnyMessageView` は `ActorContext`/`MessageInvoker` から渡される |
 | `Props` | アクター生成時の設定。 | `factory: fn(&ActorContext) -> impl Actor`, `mailbox_config`, `supervisor_strategy` | `Props` -> `SupervisorStrategy`, `Props` -> `MailboxConfig` |
 | `SupervisorStrategy` | 再起動ポリシー。 | `kind: OneForOne/AllForOne`, `max_restarts`, `reset_interval`, `decider: fn(ActorError) -> Decision` | `SupervisorStrategy` -> `ActorError`, `SupervisorStrategy` -> `ActorCell` |
 | `ActorError` | ハンドラ戻り値で使用する分類。 | `Recoverable(code)`, `Fatal(code)` | `ActorError` を `SupervisorStrategy` と `Deadletter` が参照 |
-| `Mailbox` | AsyncQueue を用いたメッセージキュー。 | `system_queue: AsyncMpscQueue<AnyOwnedMessage>`, `user_queue: AsyncMpscQueue<AnyOwnedMessage>`, `policy: MailboxPolicy`, `capacity_strategy: Bounded/Unbounded`, `throughput_limit`, `status`, `dispatcher_ref` | `Mailbox` -> `Dispatcher`, `Mailbox` -> `ActorCell` |
+| `Mailbox` | AsyncQueue を用いたメッセージキュー。 | `system_queue: AsyncMpscQueue<SystemMessage>`, `user_queue: AsyncMpscQueue<AnyMessage>`, `policy: MailboxPolicy`, `capacity_strategy: Bounded/Unbounded`, `throughput_limit`, `status`, `dispatcher_ref` | `Mailbox` -> `Dispatcher`, `Mailbox` -> `ActorCell` |
 | `Dispatcher` | メッセージ処理のスケジューラ。 | `strategy: Immediate/Deferred`, `executor_ref`, `metrics` | `Dispatcher` -> `MessageInvoker`、`Dispatcher` -> `Mailbox` |
 | `MessageInvoker` | Mailbox から取り出したメッセージをアクターに渡す実行器。 | `behavior_runner`, `panic_handler`, `middleware_chain: Vec<Middleware>` | `MessageInvoker` -> `ActorContext`, `MessageInvoker` -> `AnyMessage` |
 | `EventStream` | 状態遷移・Deadletter・LogEvent 通知。 | `subscribers: [SubscriberHandle; N]`, `buffer` | `EventStream` <- `ActorSystem`, `EventStream` -> `Subscriber` |
@@ -44,13 +44,13 @@ Running -> Stopped (panic! -> 即時停止、Deadletter通知)
 
 ### Mailbox と背圧制御
 
-- 内部は System / User の 2 本の `AsyncMpscQueue<AnyOwnedMessage>` で構成され、System キューが空のときのみ User キューを処理する。  
+- 内部は System / User の 2 本の `AsyncMpscQueue<AnyMessage>` で構成され、System キューが空のときのみ User キューを処理する。  
 - Bounded 戦略では `MailboxPolicy` に従い DropNewest/DropOldest/Grow/Block を適用する。Grow はバッファ容量を拡張し、Block は WaitNode ベースで待機し、`resume()` または dequeue により通知して解除する。  
 - Unbounded 戦略ではメモリ使用量を計測し、しきい値超過時に EventStream/Logger へ Warning を送る。`suspend()` は dequeue を停止し、`resume()` が発火すると再開する。
 
 ### Request / Reply フロー
 
-- `AnyOwnedMessage` は `reply_to: Option<ActorRef>` を保持して enqueue され、MessageInvoker が借用型 `AnyMessage<'_>` を生成してアクターへ渡す。  
+- `AnyMessage` は `reply_to: Option<ActorRef>` を保持して enqueue され、MessageInvoker が借用型 `AnyMessageView` を生成してアクターへ渡す。  
 - アクターが `reply_to` を利用して返信するか、`ActorFuture::complete()` を呼ぶことで ask を完了させる。  
 - `ActorFuture` レジストリは ActorSystem にあり、完了後は Future を解決して待機している呼び出しに結果を返す。
 

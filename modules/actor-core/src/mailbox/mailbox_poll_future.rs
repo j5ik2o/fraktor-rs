@@ -6,15 +6,15 @@ use core::{
 };
 
 use super::queue_poll_future::QueuePollFuture;
-use crate::{any_message::AnyOwnedMessage, mailbox::map_user_queue_error, send_error::SendError};
+use crate::{any_message::AnyMessage, mailbox::map_user_queue_error, send_error::SendError};
 
 /// Future specialized for mailbox user queue polling.
 pub struct MailboxPollFuture {
-  inner: QueuePollFuture<AnyOwnedMessage>,
+  inner: QueuePollFuture<AnyMessage>,
 }
 
 impl MailboxPollFuture {
-  pub(super) const fn new(inner: QueuePollFuture<AnyOwnedMessage>) -> Self {
+  pub(super) const fn new(inner: QueuePollFuture<AnyMessage>) -> Self {
     Self { inner }
   }
 }
@@ -22,7 +22,7 @@ impl MailboxPollFuture {
 impl Unpin for MailboxPollFuture {}
 
 impl Future for MailboxPollFuture {
-  type Output = Result<AnyOwnedMessage, SendError>;
+  type Output = Result<AnyMessage, SendError>;
 
   fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
     match Pin::new(&mut self.inner).poll(cx) {

@@ -6,7 +6,7 @@ use cellactor_utils_core_rs::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
 use super::{dispatch_executor::DispatchExecutor, dispatch_handle::DispatchHandle, dispatcher_struct::Dispatcher};
 use crate::{
   ActorError, ActorRefSender,
-  any_message::AnyOwnedMessage,
+  any_message::AnyMessage,
   mailbox::Mailbox,
   mailbox_policy::{MailboxOverflowStrategy, MailboxPolicy},
   message_invoker::MessageInvoker,
@@ -45,7 +45,7 @@ impl DispatchExecutor for RecordingExecutor {
 
 #[derive(Clone)]
 enum RecordedMessage {
-  User(AnyOwnedMessage),
+  User(AnyMessage),
   System(SystemMessage),
 }
 
@@ -64,7 +64,7 @@ impl RecordingInvoker {
 }
 
 impl MessageInvoker for RecordingInvoker {
-  fn invoke_user_message(&self, message: AnyOwnedMessage) -> Result<(), ActorError> {
+  fn invoke_user_message(&self, message: AnyMessage) -> Result<(), ActorError> {
     self.events.lock().push(RecordedMessage::User(message));
     Ok(())
   }
@@ -85,14 +85,14 @@ fn processes_user_messages_via_sender() {
   dispatcher.register_invoker(invoker.clone());
 
   let sender = dispatcher.into_sender();
-  sender.send(AnyOwnedMessage::new(42_u32)).expect("enqueue");
+  sender.send(AnyMessage::new(42_u32)).expect("enqueue");
   executor.drain();
 
   let events = invoker.take_events();
   assert_eq!(events.len(), 1);
   match &events[0] {
     | RecordedMessage::User(message) => {
-      assert_eq!(message.as_any().downcast_ref::<u32>(), Some(&42));
+      assert_eq!(message.as_view().downcast_ref::<u32>(), Some(&42));
     },
     | RecordedMessage::System(_) => panic!("expected user message"),
   }
@@ -108,7 +108,7 @@ fn system_messages_take_priority() {
   dispatcher.register_invoker(invoker.clone());
 
   let sender = dispatcher.into_sender();
-  sender.send(AnyOwnedMessage::new(1_u8)).expect("enqueue user");
+  sender.send(AnyMessage::new(1_u8)).expect("enqueue user");
   dispatcher.enqueue_system(SystemMessage::Stop).expect("enqueue system");
   executor.drain();
 
@@ -133,8 +133,8 @@ fn throughput_limit_reschedules() {
   dispatcher.register_invoker(invoker.clone());
 
   let sender = dispatcher.into_sender();
-  sender.send(AnyOwnedMessage::new(10_u8)).expect("first message");
-  sender.send(AnyOwnedMessage::new(20_u8)).expect("second message");
+  sender.send(AnyMessage::new(10_u8)).expect("first message");
+  sender.send(AnyMessage::new(20_u8)).expect("second message");
   executor.drain();
 
   let events = invoker.take_events();

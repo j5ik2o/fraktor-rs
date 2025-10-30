@@ -9,8 +9,8 @@ use cellactor_utils_core_rs::sync::ArcShared;
 
 use super::{ask_reply_sender::AskReplySender, null_sender::NullSender};
 use crate::{
-  actor_future::ActorFuture, actor_ref::ActorRefSender, any_message::AnyOwnedMessage, ask_response::AskResponse,
-  pid::Pid, send_error::SendError, system_state::ActorSystemState,
+  actor_future::ActorFuture, actor_ref::ActorRefSender, any_message::AnyMessage, ask_response::AskResponse, pid::Pid,
+  send_error::SendError, system_state::ActorSystemState,
 };
 
 /// Handle used to communicate with an actor instance.
@@ -54,7 +54,7 @@ impl ActorRef {
   /// # Errors
   ///
   /// Returns an error if the send operation fails.
-  pub fn tell(&self, message: AnyOwnedMessage) -> Result<(), SendError> {
+  pub fn tell(&self, message: AnyMessage) -> Result<(), SendError> {
     self.sender.send(message)
   }
 
@@ -63,7 +63,7 @@ impl ActorRef {
   /// # Errors
   ///
   /// Returns an error if the message cannot be sent.
-  pub fn ask(&self, message: AnyOwnedMessage) -> Result<AskResponse, SendError> {
+  pub fn ask(&self, message: AnyMessage) -> Result<AskResponse, SendError> {
     let future = ArcShared::new(ActorFuture::new());
     let reply_sender = ArcShared::new(AskReplySender::new(future.clone()));
     let reply_ref = ActorRef::new(self.pid, reply_sender);

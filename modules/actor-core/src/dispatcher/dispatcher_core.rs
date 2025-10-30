@@ -13,7 +13,7 @@ use super::{
 };
 use crate::{
   actor_error::ActorError,
-  any_message::AnyOwnedMessage,
+  any_message::AnyMessage,
   mailbox::{EnqueueOutcome, Mailbox, MailboxMessage, MailboxOfferFuture},
   message_invoker::MessageInvoker,
   send_error::SendError,
@@ -114,11 +114,11 @@ impl DispatcherCore {
     }
   }
 
-  fn handle_user_message(&self, message: AnyOwnedMessage) {
+  fn handle_user_message(&self, message: AnyMessage) {
     let _ = self.invoke_user_message(message);
   }
 
-  fn invoke_user_message(&self, message: AnyOwnedMessage) -> Result<(), ActorError> {
+  fn invoke_user_message(&self, message: AnyMessage) -> Result<(), ActorError> {
     if let Some(invoker) = self.invoker.lock().as_ref() {
       return invoker.invoke_user_message(message);
     }
@@ -132,7 +132,7 @@ impl DispatcherCore {
     Ok(())
   }
 
-  pub(super) fn enqueue_user(self_arc: &ArcShared<Self>, message: AnyOwnedMessage) -> Result<(), SendError> {
+  pub(super) fn enqueue_user(self_arc: &ArcShared<Self>, message: AnyMessage) -> Result<(), SendError> {
     match self_arc.mailbox.enqueue_user(message) {
       | Ok(EnqueueOutcome::Enqueued) => {
         super::dispatcher_struct::Dispatcher::from_core(self_arc.clone()).schedule();

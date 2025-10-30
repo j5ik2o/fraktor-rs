@@ -5,7 +5,7 @@ use cellactor_utils_core_rs::sync::ArcShared;
 use super::dispatcher_struct::Dispatcher;
 use crate::{
   actor_ref::ActorRefSender,
-  any_message::AnyOwnedMessage,
+  any_message::AnyMessage,
   mailbox::{EnqueueOutcome, Mailbox},
   send_error::SendError,
 };
@@ -42,7 +42,7 @@ impl DispatcherSender {
 }
 
 impl ActorRefSender for DispatcherSender {
-  fn send(&self, message: AnyOwnedMessage) -> Result<(), SendError> {
+  fn send(&self, message: AnyMessage) -> Result<(), SendError> {
     match self.mailbox.enqueue_user(message) {
       | Ok(EnqueueOutcome::Enqueued) => {
         self.dispatcher.schedule();
