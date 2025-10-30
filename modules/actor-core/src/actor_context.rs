@@ -1,8 +1,10 @@
 //! Actor execution context utilities.
 
+use alloc::vec::Vec;
+
 use crate::{
-  actor_ref::ActorRef, any_message::AnyMessage, pid::Pid, props::Props, send_error::SendError, spawn_error::SpawnError,
-  system::ActorSystem,
+  actor_ref::ActorRef, any_message::AnyMessage, child_ref::ChildRef, pid::Pid, props::Props, send_error::SendError,
+  spawn_error::SpawnError, system::ActorSystem,
 };
 
 /// Provides contextual APIs while handling a message.
@@ -70,7 +72,28 @@ impl<'a> ActorContext<'a> {
   /// # Errors
   ///
   /// Returns an error if actor spawning fails.
-  pub fn spawn_child(&self, props: &Props) -> Result<ActorRef, SpawnError> {
+  pub fn spawn_child(&self, props: &Props) -> Result<ChildRef, SpawnError> {
     self.system.spawn_child(self.pid, props)
+  }
+
+  /// Returns the list of supervised children.
+  #[must_use]
+  pub fn children(&self) -> Vec<ChildRef> {
+    self.system.children(self.pid)
+  }
+
+  /// Sends a stop signal to the specified child.
+  pub fn stop_child(&self, child: &ChildRef) -> Result<(), SendError> {
+    child.stop()
+  }
+
+  /// Suspends the specified child.
+  pub fn suspend_child(&self, child: &ChildRef) -> Result<(), SendError> {
+    child.suspend()
+  }
+
+  /// Resumes the specified child.
+  pub fn resume_child(&self, child: &ChildRef) -> Result<(), SendError> {
+    child.resume()
   }
 }

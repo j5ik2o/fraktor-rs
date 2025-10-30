@@ -7,8 +7,8 @@ use crate::{
   actor::Actor,
   actor_context::ActorContext,
   actor_error::{ActorError, ActorErrorReason},
-  actor_ref::ActorRef,
   any_message::{AnyMessage, AnyMessageView},
+  child_ref::ChildRef,
   props::Props,
 };
 
@@ -67,12 +67,12 @@ impl Actor for ChildRecorder {
 }
 
 struct ChildSpawner {
-  child_slot: ArcShared<SpinSyncMutex<Option<ActorRef>>>,
+  child_slot: ArcShared<SpinSyncMutex<Option<ChildRef>>>,
   log:        ArcShared<SpinSyncMutex<Vec<u32>>>,
 }
 
 impl ChildSpawner {
-  fn new(child_slot: ArcShared<SpinSyncMutex<Option<ActorRef>>>, log: ArcShared<SpinSyncMutex<Vec<u32>>>) -> Self {
+  fn new(child_slot: ArcShared<SpinSyncMutex<Option<ChildRef>>>, log: ArcShared<SpinSyncMutex<Vec<u32>>>) -> Self {
     Self { child_slot, log }
   }
 }
@@ -152,15 +152,15 @@ impl Actor for Probe {
 }
 
 struct ReplyGuardian {
-  responder_slot: ArcShared<SpinSyncMutex<Option<ActorRef>>>,
-  probe_slot:     ArcShared<SpinSyncMutex<Option<ActorRef>>>,
+  responder_slot: ArcShared<SpinSyncMutex<Option<ChildRef>>>,
+  probe_slot:     ArcShared<SpinSyncMutex<Option<ChildRef>>>,
   log:            ArcShared<SpinSyncMutex<Vec<u32>>>,
 }
 
 impl ReplyGuardian {
   fn new(
-    responder_slot: ArcShared<SpinSyncMutex<Option<ActorRef>>>,
-    probe_slot: ArcShared<SpinSyncMutex<Option<ActorRef>>>,
+    responder_slot: ArcShared<SpinSyncMutex<Option<ChildRef>>>,
+    probe_slot: ArcShared<SpinSyncMutex<Option<ChildRef>>>,
     log: ArcShared<SpinSyncMutex<Vec<u32>>>,
   ) -> Self {
     Self { responder_slot, probe_slot, log }
@@ -189,11 +189,11 @@ impl Actor for ReplyGuardian {
 }
 
 struct AskGuardian {
-  responder_slot: ArcShared<SpinSyncMutex<Option<ActorRef>>>,
+  responder_slot: ArcShared<SpinSyncMutex<Option<ChildRef>>>,
 }
 
 impl AskGuardian {
-  fn new(responder_slot: ArcShared<SpinSyncMutex<Option<ActorRef>>>) -> Self {
+  fn new(responder_slot: ArcShared<SpinSyncMutex<Option<ChildRef>>>) -> Self {
     Self { responder_slot }
   }
 }
@@ -231,7 +231,7 @@ fn reply_to_dispatches_response() {
   let responder = responder_slot.lock().clone().expect("responder");
   let probe = probe_slot.lock().clone().expect("probe");
 
-  let message = AnyMessage::new(Ping(42)).with_reply_to(probe);
+  let message = AnyMessage::new(Ping(42)).with_reply_to(probe.actor_ref().clone());
   responder.tell(message).expect("send ping");
 
   assert_eq!(log.lock().clone(), vec![42_u32]);

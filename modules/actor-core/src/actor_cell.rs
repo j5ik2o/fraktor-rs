@@ -1,4 +1,5 @@
-use alloc::{boxed::Box, string::String};
+use alloc::{boxed::Box, string::String, vec::Vec};
+use core::time::Duration;
 
 use cellactor_utils_core_rs::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
 
@@ -12,7 +13,9 @@ use crate::{
   mailbox::Mailbox,
   message_invoker::{MessageInvoker, MessageInvokerPipeline},
   pid::Pid,
-  props::Props,
+  props::{ActorFactory, Props},
+  restart_statistics::RestartStatistics,
+  supervisor_strategy::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
   system::ActorSystem,
   system_message::SystemMessage,
   system_state::ActorSystemState,
@@ -20,14 +23,18 @@ use crate::{
 
 /// Runtime container responsible for executing an actor instance.
 pub struct ActorCell {
-  pid:        Pid,
-  parent:     Option<Pid>,
-  name:       String,
-  system:     ArcShared<ActorSystemState>,
-  actor:      SpinSyncMutex<Box<dyn Actor + Send + Sync>>,
-  pipeline:   MessageInvokerPipeline,
-  dispatcher: Dispatcher,
-  sender:     ArcShared<crate::dispatcher::DispatcherSender>,
+  pid:         Pid,
+  parent:      Option<Pid>,
+  name:        String,
+  system:      ArcShared<ActorSystemState>,
+  factory:     ArcShared<dyn ActorFactory>,
+  supervisor:  SupervisorStrategy,
+  actor:       SpinSyncMutex<Box<dyn Actor + Send + Sync>>,
+  pipeline:    MessageInvokerPipeline,
+  dispatcher:  Dispatcher,
+  sender:      ArcShared<crate::dispatcher::DispatcherSender>,
+  children:    SpinSyncMutex<Vec<Pid>>,
+  child_stats: SpinSyncMutex<Vec<(Pid, RestartStatistics)>>,
 }
 
 impl ActorCell {
@@ -43,17 +50,23 @@ impl ActorCell {
     let executor: ArcShared<dyn DispatchExecutor> = ArcShared::new(InlineExecutor::new());
     let dispatcher = Dispatcher::new(mailbox, executor);
     let sender = dispatcher.into_sender();
-    let actor = props.factory().create();
+    let factory = props.factory().clone();
+    let supervisor = *props.supervisor().strategy();
+    let actor = factory.create();
 
     let cell = ArcShared::new(Self {
       pid,
       parent,
       name,
       system,
+      factory,
+      supervisor,
       actor: SpinSyncMutex::new(actor),
       pipeline: MessageInvokerPipeline::new(),
       dispatcher,
       sender,
+      children: SpinSyncMutex::new(Vec::new()),
+      child_stats: SpinSyncMutex::new(Vec::new()),
     });
 
     {
@@ -76,10 +89,94 @@ impl ActorCell {
     &self.name
   }
 
+  /// Returns the parent pid if registered.
+  #[must_use]
+  pub const fn parent(&self) -> Option<Pid> {
+    self.parent
+  }
+
   /// Produces an [`ActorRef`] pointing at this cell.
   #[must_use]
   pub fn actor_ref(&self) -> ActorRef {
     ActorRef::with_system(self.pid, self.sender.clone(), self.system.clone())
+  }
+
+  /// Returns the dispatcher associated with this cell.
+  #[must_use]
+  pub fn dispatcher(&self) -> Dispatcher {
+    self.dispatcher.clone()
+  }
+
+  /// Registers a child pid for supervision.
+  pub fn register_child(&self, pid: Pid) {
+    {
+      let mut children = self.children.lock();
+      if !children.iter().any(|child| *child == pid) {
+        children.push(pid);
+      }
+    }
+
+    let mut stats = self.child_stats.lock();
+    find_or_insert_stats(&mut stats, pid);
+  }
+
+  /// Removes a child pid from supervision tracking.
+  pub fn unregister_child(&self, pid: &Pid) {
+    self.children.lock().retain(|child| child != pid);
+    self.child_stats.lock().retain(|(child, _)| child != pid);
+  }
+
+  /// Returns the current child pids supervised by this cell.
+  #[must_use]
+  pub fn children(&self) -> Vec<Pid> {
+    self.children.lock().clone()
+  }
+
+  /// Handles a child failure and determines the supervision directive.
+  #[must_use]
+  pub fn handle_child_failure(&self, child: Pid, error: &ActorError, now: Duration) -> (SupervisorDirective, Vec<Pid>) {
+    let directive = {
+      let mut stats = self.child_stats.lock();
+      let entry = find_or_insert_stats(&mut stats, child);
+      self.supervisor.handle_failure(entry, error, now)
+    };
+
+    let affected = match self.supervisor.kind() {
+      | SupervisorStrategyKind::OneForOne => {
+        let mut list = Vec::new();
+        list.push(child);
+        list
+      },
+      | SupervisorStrategyKind::AllForOne => self.children.lock().clone(),
+    };
+
+    if matches!(directive, SupervisorDirective::Stop) {
+      self.clear_child_stats(&affected);
+    }
+
+    (directive, affected)
+  }
+
+  /// Restarts the actor by invoking lifecycle hooks.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if `post_stop` or `pre_start` fails.
+  pub fn restart(&self) -> Result<(), ActorError> {
+    let system = ActorSystem::from_state(self.system.clone());
+
+    {
+      let mut ctx = ActorContext::new(&system, self.pid);
+      let mut actor = self.actor.lock();
+      actor.post_stop(&mut ctx)?;
+    }
+
+    {
+      let mut actor_slot = self.actor.lock();
+      *actor_slot = self.factory.create();
+    }
+
+    self.run_pre_start()
   }
 
   /// Executes the actor's `pre_start` hook.
@@ -104,9 +201,19 @@ impl ActorCell {
     let mut actor = self.actor.lock();
     let outcome = actor.post_stop(&mut ctx);
     drop(actor);
+    if let Some(parent) = self.parent {
+      self.system.unregister_child(Some(parent), self.pid);
+    }
     self.system.release_name(self.parent, &self.name);
     self.system.remove_cell(&self.pid);
     outcome
+  }
+
+  fn clear_child_stats(&self, children: &[Pid]) {
+    if children.is_empty() {
+      return;
+    }
+    self.child_stats.lock().retain(|(pid, _)| !children.iter().any(|target| target == pid));
   }
 }
 
@@ -115,13 +222,40 @@ impl MessageInvoker for ActorCell {
     let system = ActorSystem::from_state(self.system.clone());
     let mut ctx = ActorContext::new(&system, self.pid);
     let mut actor = self.actor.lock();
-    self.pipeline.invoke_user(&mut *actor, &mut ctx, message)
+    let result = self.pipeline.invoke_user(&mut *actor, &mut ctx, message);
+    if let Err(ref error) = result {
+      let cloned = error.clone();
+      drop(actor);
+      self.system.notify_failure(self.pid, cloned);
+    } else {
+      drop(actor);
+    }
+    result
   }
 
   fn invoke_system_message(&self, message: SystemMessage) -> Result<(), ActorError> {
     match message {
       | SystemMessage::Stop => self.handle_stop(),
-      | SystemMessage::Suspend | SystemMessage::Resume => Ok(()),
+      | SystemMessage::Suspend => {
+        self.dispatcher.mailbox().suspend();
+        Ok(())
+      },
+      | SystemMessage::Resume => {
+        self.dispatcher.mailbox().resume();
+        Ok(())
+      },
     }
   }
+}
+
+fn find_or_insert_stats<'a>(entries: &'a mut Vec<(Pid, RestartStatistics)>, pid: Pid) -> &'a mut RestartStatistics {
+  let len = entries.len();
+  for index in 0..len {
+    if entries[index].0 == pid {
+      return &mut entries[index].1;
+    }
+  }
+  entries.push((pid, RestartStatistics::new()));
+  let new_len = entries.len();
+  &mut entries[new_len - 1].1
 }

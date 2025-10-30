@@ -3,8 +3,8 @@ use alloc::vec::Vec;
 use cellactor_utils_core_rs::sync::ArcShared;
 
 use crate::{
-  actor_cell::ActorCell, actor_future::ActorFuture, actor_ref::ActorRef, any_message::AnyMessage, pid::Pid,
-  props::Props, spawn_error::SpawnError, system_state::ActorSystemState,
+  actor_cell::ActorCell, actor_future::ActorFuture, actor_ref::ActorRef, any_message::AnyMessage, child_ref::ChildRef,
+  pid::Pid, props::Props, spawn_error::SpawnError, system_state::ActorSystemState,
 };
 
 #[cfg(test)]
@@ -32,8 +32,8 @@ impl ActorSystem {
   /// Returns [`SpawnError`] when guardian initialization fails.
   pub fn new(user_guardian_props: Props) -> Result<Self, SpawnError> {
     let system = Self::new_empty();
-    let guardian_ref = system.spawn_with_parent(None, &user_guardian_props)?;
-    if let Some(cell) = system.state.cell(&guardian_ref.pid()) {
+    let guardian = system.spawn_with_parent(None, &user_guardian_props)?;
+    if let Some(cell) = system.state.cell(&guardian.pid()) {
       system.state.set_user_guardian(cell);
     }
     Ok(system)
@@ -57,7 +57,7 @@ impl ActorSystem {
   /// # Errors
   ///
   /// Returns [`SpawnError::SystemUnavailable`] when the guardian is missing.
-  pub fn spawn(&self, props: &Props) -> Result<ActorRef, SpawnError> {
+  pub fn spawn(&self, props: &Props) -> Result<ChildRef, SpawnError> {
     let guardian_pid = self.state.user_guardian_pid().ok_or_else(SpawnError::system_unavailable)?;
     self.spawn_child(guardian_pid, props)
   }
@@ -67,7 +67,7 @@ impl ActorSystem {
   /// # Errors
   ///
   /// Returns [`SpawnError::InvalidProps`] when the parent pid is unknown.
-  pub fn spawn_child(&self, parent: Pid, props: &Props) -> Result<ActorRef, SpawnError> {
+  pub fn spawn_child(&self, parent: Pid, props: &Props) -> Result<ChildRef, SpawnError> {
     if self.state.cell(&parent).is_none() {
       return Err(SpawnError::invalid_props(PARENT_MISSING));
     }
@@ -84,7 +84,7 @@ impl ActorSystem {
     Self { state }
   }
 
-  fn spawn_with_parent(&self, parent: Option<Pid>, props: &Props) -> Result<ActorRef, SpawnError> {
+  fn spawn_with_parent(&self, parent: Option<Pid>, props: &Props) -> Result<ChildRef, SpawnError> {
     let pid = self.state.allocate_pid();
     let name = self.state.assign_name(parent, props.name(), pid)?;
     let cell = ActorCell::create(self.state.clone(), pid, parent, name, props);
@@ -95,7 +95,11 @@ impl ActorSystem {
       return Err(SpawnError::invalid_props(ACTOR_INIT_FAILED));
     }
 
-    Ok(cell.actor_ref())
+    if let Some(parent_pid) = parent {
+      self.state.register_child(parent_pid, pid);
+    }
+
+    Ok(ChildRef::new(cell.actor_ref(), self.state.clone()))
   }
 
   /// Drains ask futures that have completed since the last call.
@@ -107,6 +111,21 @@ impl ActorSystem {
   fn rollback_spawn(&self, parent: Option<Pid>, cell: &ArcShared<ActorCell>, pid: Pid) {
     self.state.release_name(parent, cell.name());
     self.state.remove_cell(&pid);
+    if let Some(parent_pid) = parent {
+      self.state.unregister_child(Some(parent_pid), pid);
+    }
+  }
+
+  /// Returns child references supervised by the provided parent PID.
+  #[must_use]
+  pub fn children(&self, parent: Pid) -> Vec<ChildRef> {
+    let system = self.state.clone();
+    self
+      .state
+      .child_pids(parent)
+      .into_iter()
+      .filter_map(|pid| self.state.cell(&pid).map(|cell| ChildRef::new(cell.actor_ref(), system.clone())))
+      .collect()
   }
 }
 

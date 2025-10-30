@@ -5,7 +5,7 @@ extern crate alloc;
 use alloc::{string::String, vec::Vec};
 
 use cellactor_actor_core_rs::{
-  Actor, ActorContext, ActorError, ActorRef, ActorSystem, AnyMessage, AnyMessageView, EnqueueOutcome, Mailbox,
+  Actor, ActorContext, ActorError, ActorSystem, AnyMessage, AnyMessageView, ChildRef, EnqueueOutcome, Mailbox,
   MailboxOverflowStrategy, MailboxPolicy, Props, SendError, SpawnError,
 };
 use cellactor_utils_core_rs::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
@@ -33,11 +33,11 @@ impl Actor for RecordingChild {
 
 struct RecordingGuardian {
   child_log: ArcShared<SpinSyncMutex<Vec<u32>>>,
-  child_ref: ArcShared<SpinSyncMutex<Option<ActorRef>>>,
+  child_ref: ArcShared<SpinSyncMutex<Option<ChildRef>>>,
 }
 
 impl RecordingGuardian {
-  fn new(child_log: ArcShared<SpinSyncMutex<Vec<u32>>>, child_ref: ArcShared<SpinSyncMutex<Option<ActorRef>>>) -> Self {
+  fn new(child_log: ArcShared<SpinSyncMutex<Vec<u32>>>, child_ref: ArcShared<SpinSyncMutex<Option<ChildRef>>>) -> Self {
     Self { child_log, child_ref }
   }
 }

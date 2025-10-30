@@ -20,7 +20,7 @@ impl Actor for GuardianActor {
       let ping =
         ctx.spawn_child(&Props::from_fn(ping_factory)).map_err(|_| ActorError::recoverable("failed to spawn ping"))?;
 
-      let start_ping = StartPing { target: pong, reply_to: ctx.self_ref(), count: 3 };
+      let start_ping = StartPing { target: pong.actor_ref().clone(), reply_to: ctx.self_ref(), count: 3 };
       ping.tell(AnyMessage::new(start_ping)).map_err(|_| ActorError::recoverable("failed to start ping actor"))?;
     } else if let Some(reply) = message.downcast_ref::<PongReply>() {
       #[cfg(feature = "std")]
