@@ -9,7 +9,7 @@ pub struct DispatchHandle {
 }
 
 impl DispatchHandle {
-  pub(super) fn new(core: ArcShared<DispatcherCore>) -> Self {
+  pub(super) const fn new(core: ArcShared<DispatcherCore>) -> Self {
     Self { core }
   }
 

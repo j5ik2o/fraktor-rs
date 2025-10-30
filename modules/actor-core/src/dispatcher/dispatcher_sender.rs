@@ -10,7 +10,7 @@ use crate::{
   send_error::SendError,
 };
 
-/// アクターハンドル経由でメッセージを投入する送信者。
+/// Sender that enqueues messages via actor handle.
 pub struct DispatcherSender {
   dispatcher: Dispatcher,
   mailbox:    ArcShared<Mailbox>,
@@ -64,7 +64,7 @@ pub(super) fn block_hint() {
 }
 
 impl Dispatcher {
-  /// `ActorRefSender` 実装を共有ハンドルで構築する。
+  /// Constructs an `ActorRefSender` implementation with a shared handle.
   #[must_use]
   pub fn into_sender(&self) -> ArcShared<DispatcherSender> {
     ArcShared::new(DispatcherSender::new(self.clone()))

@@ -1,12 +1,12 @@
 use portable_atomic::AtomicU8;
 
-/// ディスパッチャのスケジューラ状態を表す列挙。
+/// Enumeration representing the scheduler state of the dispatcher.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum DispatcherState {
-  /// 実行待ち状態。
+  /// Idle state.
   Idle    = 0,
-  /// 実行中状態。
+  /// Running state.
   Running = 1,
 }
 

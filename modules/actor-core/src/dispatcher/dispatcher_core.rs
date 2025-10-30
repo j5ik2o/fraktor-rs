@@ -21,7 +21,7 @@ use crate::{
 
 const DEFAULT_THROUGHPUT: usize = 300;
 
-/// メールボックスをドレインしてメッセージをインボークする実体。
+/// Entity that drains the mailbox and invokes messages.
 pub(super) struct DispatcherCore {
   mailbox:          ArcShared<Mailbox>,
   executor:         ArcShared<dyn DispatchExecutor>,
@@ -45,7 +45,7 @@ impl DispatcherCore {
     }
   }
 
-  pub(super) fn mailbox(&self) -> &ArcShared<Mailbox> {
+  pub(super) const fn mailbox(&self) -> &ArcShared<Mailbox> {
     &self.mailbox
   }
 
@@ -57,7 +57,7 @@ impl DispatcherCore {
     &self.executor
   }
 
-  pub(super) fn state(&self) -> &AtomicU8 {
+  pub(super) const fn state(&self) -> &AtomicU8 {
     &self.state
   }
 
@@ -117,13 +117,13 @@ impl DispatcherCore {
 
   fn invoke_user_message(&self, message: AnyOwnedMessage) {
     if let Some(invoker) = self.invoker.lock().as_ref() {
-      let _ = invoker.invoke_user_message(message);
+      invoker.invoke_user_message(message);
     }
   }
 
   fn invoke_system_message(&self, message: SystemMessage) {
     if let Some(invoker) = self.invoker.lock().as_ref() {
-      let _ = invoker.invoke_system_message(message);
+      invoker.invoke_system_message(message);
     }
   }
 
@@ -134,7 +134,7 @@ impl DispatcherCore {
         Ok(())
       },
       | Ok(EnqueueOutcome::Pending(mut future)) => {
-        Self::drain_offer_future(self_arc.clone(), &mut future)?;
+        Self::drain_offer_future(self_arc, &mut future)?;
         super::dispatcher_struct::Dispatcher::from_core(self_arc.clone()).schedule();
         Ok(())
       },
@@ -148,7 +148,7 @@ impl DispatcherCore {
     Ok(())
   }
 
-  fn drain_offer_future(self_arc: ArcShared<Self>, future: &mut MailboxOfferFuture) -> Result<(), SendError> {
+  fn drain_offer_future(self_arc: &ArcShared<Self>, future: &mut MailboxOfferFuture) -> Result<(), SendError> {
     let waker = ScheduleWaker::into_waker(self_arc.clone());
     let mut cx = Context::from_waker(&waker);
 

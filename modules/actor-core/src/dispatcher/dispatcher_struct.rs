@@ -8,13 +8,13 @@ use super::{
 };
 use crate::{any_message::AnyOwnedMessage, mailbox::Mailbox, send_error::SendError, system_message::SystemMessage};
 
-/// メールボックス処理を管理するディスパッチャ。
+/// Dispatcher that manages mailbox processing.
 pub struct Dispatcher {
   core: ArcShared<DispatcherCore>,
 }
 
 impl Dispatcher {
-  /// メールボックスと実行戦略から新しいディスパッチャを生成する。
+  /// Creates a new dispatcher from a mailbox and execution strategy.
   #[must_use]
   pub fn new(mailbox: ArcShared<Mailbox>, executor: ArcShared<dyn DispatchExecutor>) -> Self {
     let throughput = mailbox.throughput_limit();
@@ -22,28 +22,36 @@ impl Dispatcher {
     Self::from_core(core)
   }
 
-  /// インライン実行戦略を用いたディスパッチャを作成する。
+  /// Creates a dispatcher using an inline execution strategy.
   #[must_use]
   pub fn with_inline_executor(mailbox: ArcShared<Mailbox>) -> Self {
     Self::new(mailbox, ArcShared::new(InlineExecutor::new()))
   }
 
-  /// インボーカーを登録する。
+  /// Registers an invoker.
   pub fn register_invoker(&self, invoker: ArcShared<dyn crate::message_invoker::MessageInvoker>) {
     self.core.register_invoker(invoker);
   }
 
-  /// ユーザーメッセージをキューに追加する。
+  /// Enqueues a user message.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the mailbox is closed or full.
   pub fn enqueue_user(&self, message: AnyOwnedMessage) -> Result<(), SendError> {
     DispatcherCore::enqueue_user(&self.core, message)
   }
 
-  /// システムメッセージをキューに追加する。
+  /// Enqueues a system message.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the mailbox is closed.
   pub fn enqueue_system(&self, message: SystemMessage) -> Result<(), SendError> {
     DispatcherCore::enqueue_system(&self.core, message)
   }
 
-  /// スケジューラに実行を要求する。
+  /// Requests execution from the scheduler.
   pub fn schedule(&self) {
     let should_run = {
       let core_ref = &*self.core;
@@ -56,19 +64,19 @@ impl Dispatcher {
     }
   }
 
-  /// メールボックス参照を取得する。
+  /// Returns a reference to the mailbox.
   #[must_use]
   pub fn mailbox(&self) -> ArcShared<Mailbox> {
     self.core.mailbox().clone()
   }
 
-  /// メールボックス待機用ワーカを生成する。
+  /// Creates a waker for mailbox waiting.
   #[must_use]
   pub fn create_waker(&self) -> Waker {
     ScheduleWaker::into_waker(self.core.clone())
   }
 
-  pub(super) fn from_core(core: ArcShared<DispatcherCore>) -> Self {
+  pub(super) const fn from_core(core: ArcShared<DispatcherCore>) -> Self {
     Self { core }
   }
 }

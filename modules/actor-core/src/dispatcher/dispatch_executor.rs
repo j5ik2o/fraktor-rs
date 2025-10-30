@@ -1,7 +1,7 @@
 use super::dispatch_handle::DispatchHandle;
 
-/// スケジューラがディスパッチャ実行をフックするための抽象化。
+/// Abstraction for schedulers to hook dispatcher execution.
 pub trait DispatchExecutor: Send + Sync {
-  /// ディスパッチャの実行をスケジューラへ委譲する。
+  /// Delegates dispatcher execution to the scheduler.
   fn execute(&self, dispatcher: DispatchHandle);
 }

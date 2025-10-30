@@ -9,7 +9,7 @@ struct ScheduleHandle {
 }
 
 impl ScheduleHandle {
-  fn new(dispatcher: ArcShared<DispatcherCore>) -> Self {
+  const fn new(dispatcher: ArcShared<DispatcherCore>) -> Self {
     Self { dispatcher }
   }
 
@@ -18,11 +18,11 @@ impl ScheduleHandle {
   }
 }
 
-/// ディスパッチャ実行を喚起する Waker を生成する補助。
+/// Helper for creating a Waker that triggers dispatcher execution.
 pub struct ScheduleWaker;
 
 impl ScheduleWaker {
-  /// ディスパッチャを再度スケジューリングする Waker を生成する。
+  /// Creates a Waker that reschedules the dispatcher.
   pub fn into_waker(dispatcher: ArcShared<DispatcherCore>) -> Waker {
     let handle = ArcShared::new(ScheduleHandle::new(dispatcher));
     unsafe { Waker::from_raw(Self::raw_waker(handle)) }

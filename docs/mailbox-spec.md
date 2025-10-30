@@ -118,7 +118,7 @@ Then 待機していた producer 側の offer_blocking() Future が目覚め、�
 
 
 ### Requirement: WaitQueue integration avoids async fn usage
-- Block 走査で利用する Future 実装は `async fn` を用いず、`poll` メソッド内で `AsyncQueue` または同等の待機基盤へ直接アクセスしなければならない。
+- Block 走査で利用する Future 実装は `async fn` を用いず、`poll` メソッド内で `SyncQueue` + `WaitQueue` などの待機基盤へ直接アクセスしなければならない。
 - Future が `Poll::Pending` を返す直前に、所有するガードやロックを開放しデッドロックを防止しなければならない。
 - Future が drop された場合は WaitQueue からの登録解除を確実に行うこと。
 

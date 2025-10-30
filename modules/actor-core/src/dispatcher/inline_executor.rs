@@ -1,7 +1,13 @@
 use super::{dispatch_executor::DispatchExecutor, dispatch_handle::DispatchHandle};
 
-/// 同期コンテキスト上で即時に実行するシンプルなエグゼキュータ。
+/// Simple executor that runs tasks immediately in a synchronous context.
 pub struct InlineExecutor;
+
+impl Default for InlineExecutor {
+  fn default() -> Self {
+    Self::new()
+  }
+}
 
 impl InlineExecutor {
   #[must_use]
