@@ -1,5 +1,6 @@
 use super::traits::MpscBackend;
-use crate::collections::{QueueError, QueueSize, queue_old::ring::RingBufferStorage};
+use crate::collections::{QueueSize, queue_old::ring::RingBufferStorage};
+use crate::QueueError;
 
 /// Backend implementation that drives a shared multi-producer/single-consumer
 /// queue using ring buffer storage.
