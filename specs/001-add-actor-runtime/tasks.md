@@ -82,7 +82,7 @@ description: "セルアクター no_std ランタイム初期版の実装タス�
 - [x] T025 [US2] `SupervisorStrategy` の判定ロジックを配線し Restart/Fatal/Escalate を処理する (modules/actor-core/src/supervisor_strategy.rs)
 - [x] T026 [US2] `ActorContext` を拡張し、`spawn_child`・子レジストリ・スーパービジョンシグナルを提供する (modules/actor-core/src/actor_context.rs)
 - [x] T027 [US2] `ActorSystem` とスーパービジョンツリーの連携を実装し、障害を親へ伝播させる (modules/actor-core/src/system.rs)
-- [x] T027A [US2] `ActorSystem::terminate()` / `when_terminated()` / `run_until_terminated()` を実装し、ガーディアン停止とシステム終了待機を整備する (modules/actor-core/src/system.rs, modules/actor-core/src/system_state.rs, modules/actor-core/tests/system_lifecycle.rs)
+- [x] T027A [US2] `ActorSystem::terminate()` / `when_terminated()` / `run_until_terminated()` を実装し、ガーディアン停止とシステム終了待機を整備する (modules/actor-core/src/system.rs, modules/actor-core/src/system_state.rs, modules/actor-core/tests/system_lifecycle.rs, specs/001-add-actor-runtime/quickstart.md)
 - [x] T028 [US2] 子アクターを扱う `ChildRef` ラッパーを追加しライフサイクルフックを提供する (modules/actor-core/src/child_ref.rs)
 - [x] T029 [P] [US2] Restart/Escalate / panic 非介入をカバーするスーパービジョン回帰テストを追加する (modules/actor-core/tests/supervisor.rs)
 
