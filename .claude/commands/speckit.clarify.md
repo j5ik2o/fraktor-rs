@@ -6,6 +6,8 @@ description: Identify underspecified areas in the current feature spec by asking
 
 ```text
 $ARGUMENTS
+
+Spec Kit関連ファイル生成やユーザーとのコミュニケーションはすべて日本語で行ってください。
 ```
 
 You **MUST** consider the user input before proceeding (if not empty).

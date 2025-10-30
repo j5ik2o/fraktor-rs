@@ -6,6 +6,8 @@ description: Create or update the project constitution from interactive or provi
 
 ```text
 $ARGUMENTS
+
+Spec Kit関連ファイル生成やユーザーとのコミュニケーションはすべて日本語で行ってください。
 ```
 
 You **MUST** consider the user input before proceeding (if not empty).
