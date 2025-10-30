@@ -47,6 +47,12 @@ impl<'a> ActorContext<'a> {
     self.reply_to = None;
   }
 
+  /// Returns an [`ActorRef`] pointing to the running actor.
+  #[must_use]
+  pub fn self_ref(&self) -> ActorRef {
+    self.system.actor_ref(self.pid).expect("actor reference must exist for running context")
+  }
+
   /// Sends a reply to the caller if a reply target is present.
   ///
   /// # Errors

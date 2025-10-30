@@ -119,8 +119,8 @@
 - **FR-033**: Mailbox の System キューはランタイム内部用の `SystemMessage`（固定スキーマ）を保持し、User キューと型で分離しなければならない。ユーザ定義メッセージが System キューへ到達しないよう型安全性を確保し、変換は ActorSystem 側で明示的に行うこと。
 - **FR-034**: Mailbox と Dispatcher は no_std 組込み環境向けの同期ランナーと、std/tokio などホスト環境向けの非同期ランナー双方へ適用できる抽象を提供しなければならない。Core レイヤーでは `async fn` を露出せず、ランナー層で `OfferFuture` / `PollFuture`（および `MailboxSignalHandle::wait`）を駆動するためのフックを公開すること。
 - **FR-028**: Dispatcher/MessageInvoker は 1 アクター当たりのスループット制限（例: 300 メッセージ/フェンス）を設定でき、設定値に到達した場合は制御用 System メッセージを優先しつつ残りメッセージを次ターンへ繰り越す仕組みを提供する。スループット値は Props または Mailbox 設定で構成可能とし、デフォルトは protoactor-go 相当の 300 を採用する。
-- **FR-029**: ランタイムは `Context::sender()` を提供せず、応答が必要なメッセージは `reply_to: ActorRef`（もしくは同等の手段）を含むペイロード設計に従う。ActorContext は送信元を暗黙に保持しないこと。
-- **FR-030**: `ask` 経路では enqueue 時に `AnyMessage` 内へ `reply_to` を保持し、MessageInvoker が処理完了後に `reply_to.tell(...)` または `ActorFuture::complete()` を呼び出す。Mailbox / Dispatcher / ActorSystem は `reply_to` を破棄せず、完了時に ActorFuture を解決するためのフックを提供しなければならない。
+- **FR-029**: ランタイムは `Context::sender()` を提供せず、応答が必要なメッセージは `reply_to: ActorRef`（もしくは同等の手段）を含むペイロード設計に従う。ActorContext は送信元を暗黙に保持しないこと。起点となるアクターは `ctx.self_ref()` を明示的に渡し、返信側は受け取った `reply_to.tell(...)` を利用する。
+- **FR-030**: `ask` 経路では enqueue 時に `AnyMessage` 内へ `reply_to` を保持し、MessageInvoker が処理完了後に `reply_to.tell(...)` または `ActorFuture::complete()` を呼び出す。Mailbox / Dispatcher / ActorSystem は `reply_to` を破棄せず、完了時に ActorFuture を解決するためのフックを提供しなければならない。サンプルとガイドでは、`ctx.self_ref()` を payload に渡す例（`StartPing { reply_to: ctx.self_ref() }` など）を提示し、アプリケーション開発者が意図的に返信経路を設計できるようにする。
 
 ### 重要エンティティ（データを扱う場合）
 

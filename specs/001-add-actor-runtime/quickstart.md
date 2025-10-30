@@ -87,3 +87,13 @@ makers ci-check -- dylint
 - panic 非介入: ランタイムは再起動せず、外部ウォッチドッグまたはシステムサービスが責務を負う。  
 - Deadletter / EventStream による監視を運用ダッシュボード（例: RTT 経由）へ出力し、Logger 購読者を通じて `LogEvent` を UART/RTT またはホストログに転送する。  
 - 将来の Typed レイヤーは AnyMessage 上に別レイヤーとして構築予定で、現フェーズの API は未型付けを前提とする。
+
+> **Reply-to パターンについて**
+> このランタイムは Classic の `sender()` を提供しないため、返信が必要な場合はメッセージ起点で `reply_to: ActorRef` を明示的に渡す必要があります。例として、Guardian が自分自身を起点に Ping/Pong を起動する場合:
+>
+> ```rust
+> let start_ping = StartPing { target: pong, reply_to: ctx.self_ref(), count: 3 };
+> ping.tell(AnyMessage::new(start_ping))?;
+> ```
+>
+> 受信側の Pong では `reply_to.tell(AnyMessage::new(PongReply { ... }))` のように、受け取った `reply_to` を利用して応答を返します。`ActorContext::reply()` は拡張／ミドルウェア向けの補助メソッドとして残っていますが、アプリケーションレベルでは payload に `reply_to` を含めるスタイルが基本になります。

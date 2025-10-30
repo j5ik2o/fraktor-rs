@@ -68,8 +68,8 @@ description: "セルアクター no_std ランタイム初期版の実装タス�
 - [x] T019 [US1] ミドルウェアチェーンと `reply_to` ルーティングを行う `MessageInvoker` パイプラインを実装する (modules/actor-core/src/message_invoker.rs)
 - [x] T020 [US1] ガーディアン Props、`user_guardian_ref()`、名前レジストリ、`spawn_child` を通じた生成、`reply_to` ディスパッチ、`ActorCell` 管理を含む `ActorSystem` コアを実装する (modules/actor-core/src/system.rs, modules/actor-core/src/actor_cell.rs)
 - [x] T021 [US1] `ActorFuture` の ask ヘルパーを完成させ ActorSystem と連携させる (modules/actor-core/src/actor_future.rs)
-- [x] T022 [P] [US1] AnyMessage + reply_to を用いた no_std Ping/Pong サンプルを追加する (modules/actor-core/examples/ping_pong_no_std/main.rs; 実行時は `cargo run -p cellactor-actor-core-rs --example ping_pong_no_std --features std` を使用)
-- [ ] T023 [P] [US1] spawn / tell / 背圧ポリシー / 自動命名を検証する統合テストを追加する (modules/actor-core/tests/ping_pong.rs)
+- [x] T022 [P] [US1] AnyMessage + reply_to を用いた no_std Ping/Pong サンプルを追加する (modules/actor-core/examples/ping_pong_no_std/main.rs; `ctx.self_ref()` を payload の `reply_to` に埋め込み、`reply_to.tell(...)` で応答する例を示す。実行は `cargo run -p cellactor-actor-core-rs --example ping_pong_no_std --features std`)
+- [x] T023 [P] [US1] spawn / tell / 背圧ポリシー / 自動命名を検証する統合テストを追加する (modules/actor-core/tests/ping_pong.rs)
 
 ---
 

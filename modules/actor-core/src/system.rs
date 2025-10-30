@@ -74,6 +74,12 @@ impl ActorSystem {
     self.spawn_with_parent(Some(parent), props)
   }
 
+  /// Returns an [`ActorRef`] for the specified pid if the actor is registered.
+  #[must_use]
+  pub fn actor_ref(&self, pid: Pid) -> Option<ActorRef> {
+    self.state.cell(&pid).map(|cell| cell.actor_ref())
+  }
+
   pub(crate) const fn from_state(state: ArcShared<ActorSystemState>) -> Self {
     Self { state }
   }
