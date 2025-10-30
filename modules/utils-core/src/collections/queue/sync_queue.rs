@@ -5,17 +5,15 @@ use super::{
   sync_spsc_producer::SyncSpscProducer,
 };
 use crate::{
-  collections::{
-    queue::{
-      backend::{OfferOutcome, SyncPriorityBackend, SyncQueueBackend},
-      capabilities::{MultiProducer, SingleConsumer, SingleProducer, SupportsPeek},
-      type_keys::{FifoKey, MpscKey, PriorityKey, SpscKey, TypeKey},
-    },
-    queue_old::QueueError,
+  PriorityMessage,
+  collections::queue::{
+    QueueError,
+    backend::{OfferOutcome, SyncQueueBackend, sync_priority_backend::SyncPriorityBackend},
+    capabilities::{MultiProducer, SingleConsumer, SingleProducer, SupportsPeek},
+    type_keys::{FifoKey, MpscKey, PriorityKey, SpscKey, TypeKey},
   },
   sync::{
-    ArcShared, Shared,
-    shared_access::SharedAccess,
+    ArcShared, Shared, SharedAccess,
     sync_mutex_like::{SpinSyncMutex, SyncMutexLike},
   },
 };
@@ -118,7 +116,7 @@ where
 
 impl<T, B, M> SyncQueue<T, PriorityKey, B, M>
 where
-  T: Clone + Ord,
+  T: Clone + PriorityMessage,
   B: SyncPriorityBackend<T>,
   M: SyncMutexLike<B>,
   ArcShared<M>: SharedAccess<B>,

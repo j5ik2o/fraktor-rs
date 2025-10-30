@@ -3,9 +3,12 @@ use core::marker::PhantomData;
 
 use async_trait::async_trait;
 
-use super::{AsyncPriorityBackend, AsyncQueueBackend, OfferOutcome, SyncPriorityBackend, SyncQueueBackend};
+use super::{
+  AsyncPriorityBackend, AsyncQueueBackend, OfferOutcome, SyncQueueBackend, sync_priority_backend::SyncPriorityBackend,
+};
 use crate::collections::{
-  queue_old::QueueError,
+  PriorityMessage,
+  queue::QueueError,
   wait::{WaitHandle, WaitQueue},
 };
 
@@ -136,7 +139,7 @@ where
   }
 }
 
-impl<T: Ord, B> AsyncPriorityBackend<T> for SyncQueueAsyncAdapter<T, B>
+impl<T: PriorityMessage, B> AsyncPriorityBackend<T> for SyncQueueAsyncAdapter<T, B>
 where
   B: SyncPriorityBackend<T>,
 {

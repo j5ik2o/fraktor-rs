@@ -1,5 +1,5 @@
 use super::traits::{MpscBackend, MpscHandle};
-use crate::collections::{QueueBase, QueueError, QueueReader, QueueRw, QueueSize, QueueWriter};
+use crate::collections::{QueueBase, QueueReader, QueueRw, QueueSize, QueueWriter, queue::QueueError};
 #[cfg(test)]
 mod tests;
 

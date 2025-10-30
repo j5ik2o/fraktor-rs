@@ -1,5 +1,7 @@
 //! no_std-friendly queue primitives shared between runtimes.
 
+#![allow(clippy::no_parent_reexport)]
+
 mod queue_size;
 /// Queue trait definitions shared across all backends.
 pub mod traits;
@@ -12,12 +14,11 @@ pub mod priority;
 pub mod ring;
 
 pub use mpsc::{MpscBackend, MpscBuffer, MpscHandle, MpscQueue, RingBufferBackend};
-pub use priority::{PriorityMessage, PriorityQueue, DEFAULT_PRIORITY, PRIORITY_LEVELS};
-pub use crate::collections::queue::QueueError;
+pub use priority::{DEFAULT_PRIORITY, PRIORITY_LEVELS, PriorityQueue};
 pub use queue_size::QueueSize;
 pub use ring::{
-    RingBackend, RingBuffer, RingBufferStorage, RingHandle, RingQueue, RingStorageBackend, DEFAULT_CAPACITY,
+  DEFAULT_CAPACITY, RingBackend, RingBuffer, RingBufferStorage, RingHandle, RingQueue, RingStorageBackend,
 };
 pub use traits::{
-    QueueBase, QueueHandle as QueueRwHandle, QueueHandle, QueueReader, QueueRw, QueueStorage, QueueWriter,
+  QueueBase, QueueHandle as QueueRwHandle, QueueHandle, QueueReader, QueueRw, QueueStorage, QueueWriter,
 };

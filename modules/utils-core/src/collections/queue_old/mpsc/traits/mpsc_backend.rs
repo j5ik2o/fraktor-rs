@@ -1,4 +1,4 @@
-use crate::collections::{QueueError, QueueSize};
+use crate::collections::{QueueSize, queue::QueueError};
 
 /// Transport-oriented trait abstracting MPSC queue backends.
 pub trait MpscBackend<T> {

@@ -3,9 +3,10 @@ mod tests;
 
 use core::marker::PhantomData;
 
-use crate::{
-  QueueError, QueueSize,
-  collections::queue_old::{
+use crate::collections::{
+  QueueSize,
+  queue::QueueError,
+  queue_old::{
     ring::{ring_backend::RingBackend, ring_handle::RingHandle},
     traits::{QueueBase, QueueReader, QueueRw, QueueWriter},
   },

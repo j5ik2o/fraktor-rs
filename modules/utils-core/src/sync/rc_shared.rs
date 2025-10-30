@@ -1,4 +1,3 @@
-#![allow(clippy::disallowed_types)]
 #[cfg(feature = "alloc")]
 use alloc::rc::Rc;
 #[cfg(feature = "alloc")]

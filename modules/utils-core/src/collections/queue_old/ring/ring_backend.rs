@@ -1,4 +1,4 @@
-use crate::collections::{QueueError, QueueSize};
+use crate::collections::{QueueSize, queue::QueueError};
 
 /// Backend abstraction trait for ring buffer-based queues.
 pub trait RingBackend<E> {

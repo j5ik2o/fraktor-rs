@@ -6,7 +6,7 @@ use crate::{
     VecStackStorage,
     backend::{PushOutcome, StackError, StackOverflowPolicy, VecStackBackend},
   },
-  sync::{ArcShared, shared_error::SharedError, sync_mutex_like::SpinSyncMutex},
+  sync::{ArcShared, SharedError, sync_mutex_like::SpinSyncMutex},
 };
 
 fn make_stack<T>(capacity: usize, policy: StackOverflowPolicy) -> SyncStack<T, VecStackBackend<T>> {

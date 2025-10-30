@@ -1,5 +1,5 @@
 use super::InterruptContextPolicy;
-use crate::sync::shared_error::SharedError;
+use crate::sync::SharedError;
 
 /// Policy that never reports an active interrupt context.
 pub struct NeverInterruptPolicy;

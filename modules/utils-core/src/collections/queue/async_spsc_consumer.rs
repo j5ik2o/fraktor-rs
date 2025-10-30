@@ -2,7 +2,7 @@ use core::marker::PhantomData;
 
 use super::async_queue::poll_shared;
 use crate::{
-  collections::{queue::backend::AsyncQueueBackend, queue_old::QueueError},
+  collections::queue::{QueueError, backend::AsyncQueueBackend},
   sync::{
     ArcShared,
     async_mutex_like::{AsyncMutexLike, SpinAsyncMutex},

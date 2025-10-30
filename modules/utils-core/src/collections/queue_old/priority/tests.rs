@@ -5,11 +5,13 @@ extern crate alloc;
 use alloc::{rc::Rc, vec::Vec};
 use core::cell::RefCell;
 
-use super::{PriorityMessage, PriorityQueue};
+use super::PriorityQueue;
 use crate::{
+  PriorityMessage,
   collections::{
-    QueueError, QueueSize,
+    queue::QueueError,
     queue_old::{
+      QueueSize,
       mpsc::{MpscBuffer, MpscHandle, MpscQueue, RingBufferBackend},
       traits::{QueueBase, QueueReader, QueueRw, QueueWriter},
     },

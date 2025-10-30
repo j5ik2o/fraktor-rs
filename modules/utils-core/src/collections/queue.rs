@@ -21,8 +21,8 @@ pub use async_queue::{AsyncFifoQueue, AsyncMpscQueue, AsyncPriorityQueue, AsyncQ
 pub use async_spsc_consumer::AsyncSpscConsumer;
 pub use async_spsc_producer::AsyncSpscProducer;
 pub use backend::{
-  AsyncPriorityBackend, AsyncQueueBackend, OfferOutcome, OverflowPolicy, SyncQueueAsyncAdapter, SyncPriorityBackend,
-  SyncQueueBackend, VecRingBackend,
+  AsyncPriorityBackend, AsyncQueueBackend, OfferOutcome, OverflowPolicy, SyncQueueAsyncAdapter, SyncQueueBackend,
+  VecRingBackend, sync_priority_backend::SyncPriorityBackend,
 };
 pub use capabilities::{MultiProducer, SingleConsumer, SingleProducer, SupportsPeek};
 pub use storage::{QueueStorage, VecRingStorage};
@@ -33,12 +33,11 @@ pub use sync_spsc_consumer::SyncSpscConsumer;
 pub use sync_spsc_producer::SyncSpscProducer;
 pub use type_keys::{FifoKey, MpscKey, PriorityKey, SpscKey, TypeKey};
 
-#[cfg(test)]
-mod tests;
-mod queue_error;
 mod offer_outcome;
 mod overflow_policy;
-
+mod queue_error;
+#[cfg(test)]
+mod tests;
 pub use queue_error::QueueError;
 
 /// Default shared queue alias backed by [`VecRingBackend`].

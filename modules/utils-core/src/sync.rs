@@ -12,8 +12,8 @@ pub mod interrupt;
 #[allow(clippy::disallowed_types)]
 mod rc_shared;
 mod shared;
-pub mod shared_access;
-pub mod shared_error;
+mod shared_access;
+mod shared_error;
 mod state;
 mod static_ref_shared;
 /// Synchronous mutex abstractions shared across runtimes.
@@ -26,5 +26,7 @@ pub use interrupt::{CriticalSectionInterruptPolicy, InterruptContextPolicy, Neve
 #[cfg(feature = "alloc")]
 pub use rc_shared::RcShared;
 pub use shared::{SendBound, Shared, SharedBound, SharedDyn};
+pub use shared_access::SharedAccess;
+pub use shared_error::SharedError;
 pub use state::StateCell;
 pub use static_ref_shared::StaticRefShared;

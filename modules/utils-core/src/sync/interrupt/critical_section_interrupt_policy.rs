@@ -1,5 +1,5 @@
 use super::InterruptContextPolicy;
-use crate::sync::shared_error::SharedError;
+use crate::sync::SharedError;
 
 /// Policy that consults platform-specific interrupt state before allowing blocking operations.
 pub struct CriticalSectionInterruptPolicy;

@@ -1,4 +1,4 @@
-use crate::sync::shared_error::SharedError;
+use crate::sync::SharedError;
 
 /// Errors that may arise while operating on a stack backend.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

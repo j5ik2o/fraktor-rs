@@ -1,10 +1,13 @@
 use crate::{
-  QueueError, QueueSize,
-  collections::queue_old::{
-    ring::{
-      DEFAULT_CAPACITY, RingBuffer, RingQueue, ring_handle::RingHandle, ring_storage_backend::RingStorageBackend,
+  collections::{
+    QueueSize,
+    queue::QueueError,
+    queue_old::{
+      ring::{
+        DEFAULT_CAPACITY, RingBuffer, RingQueue, ring_handle::RingHandle, ring_storage_backend::RingStorageBackend,
+      },
+      traits::{QueueBase, QueueHandle, QueueReader, QueueRw, QueueWriter},
     },
-    traits::{QueueBase, QueueHandle, QueueReader, QueueRw, QueueWriter},
   },
   sync::{ArcShared, sync_mutex_like::SpinSyncMutex},
 };

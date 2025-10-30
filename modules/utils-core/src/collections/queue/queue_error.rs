@@ -1,4 +1,4 @@
-use crate::sync::shared_error::SharedError;
+use crate::sync::SharedError;
 
 /// Errors that occur during queue operations.
 #[derive(Debug, Clone, PartialEq, Eq)]

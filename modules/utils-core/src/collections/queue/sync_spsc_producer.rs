@@ -1,11 +1,11 @@
 use core::marker::PhantomData;
 
 use crate::{
-  collections::{
-    queue::backend::{OfferOutcome, SyncQueueBackend},
-    queue_old::QueueError,
+  collections::queue::{
+    QueueError,
+    backend::{OfferOutcome, SyncQueueBackend},
   },
-  sync::{ArcShared, shared_access::SharedAccess, sync_mutex_like::SyncMutexLike},
+  sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
 };
 
 /// Producer for queues tagged with

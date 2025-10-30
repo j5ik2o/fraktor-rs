@@ -2,7 +2,7 @@ extern crate alloc;
 
 use super::SyncQueue;
 use crate::{
-  collections::queue_old::QueueError,
+  collections::queue::QueueError,
   sync::{ArcShared, sync_mutex_like::SpinSyncMutex},
 };
 
@@ -50,9 +50,9 @@ mod fifo_backend {
   use alloc::collections::VecDeque;
 
   use super::QueueConfig;
-  use crate::collections::{
-    queue::backend::{OfferOutcome, OverflowPolicy, SyncQueueBackend},
-    queue_old::QueueError,
+  use crate::collections::queue::{
+    QueueError,
+    backend::{OfferOutcome, OverflowPolicy, SyncQueueBackend},
   };
 
   /// Simple FIFO backend used for unit tests.
@@ -151,113 +151,47 @@ mod mpsc_key_capability_assertion {
   }
 }
 
-mod priority_backend {
-  use alloc::collections::BinaryHeap;
-  use core::cmp::Reverse;
+mod priority_message {
+  use crate::PriorityMessage;
 
-  use super::QueueConfig;
-  use crate::collections::{
-    queue::backend::{OfferOutcome, OverflowPolicy, SyncPriorityBackend, SyncQueueBackend},
-    queue_old::QueueError,
-  };
-
-  /// Priority backend backed by a binary heap.
-  pub struct BinaryHeapBackend<T: Ord> {
-    heap:     BinaryHeap<Reverse<T>>,
-    capacity: usize,
-    policy:   OverflowPolicy,
-    closed:   bool,
+  /// Priority-aware message used in priority queue tests.
+  #[derive(Clone, Debug, PartialEq, Eq)]
+  pub struct TestPriorityMessage {
+    value:    i32,
+    priority: Option<i8>,
   }
 
-  impl<T: Ord> BinaryHeapBackend<T> {
-    /// Creates a backend with the provided capacity and overflow policy.
-    pub fn new(storage: QueueConfig, policy: OverflowPolicy) -> Self {
-      Self { heap: BinaryHeap::new(), capacity: storage.capacity(), policy, closed: false }
-    }
-  }
-
-  impl<T: Ord> SyncQueueBackend<T> for BinaryHeapBackend<T> {
-    type Storage = QueueConfig;
-
-    fn new(storage: Self::Storage, policy: OverflowPolicy) -> Self {
-      BinaryHeapBackend::new(storage, policy)
+  impl TestPriorityMessage {
+    /// Creates a new message with the specified value and priority.
+    #[must_use]
+    pub const fn new(value: i32, priority: Option<i8>) -> Self {
+      Self { value, priority }
     }
 
-    fn offer(&mut self, item: T) -> Result<OfferOutcome, QueueError<T>> {
-      if self.closed {
-        return Err(QueueError::Closed(item));
-      }
-      if self.heap.len() < self.capacity {
-        self.heap.push(Reverse(item));
-        return Ok(OfferOutcome::Enqueued);
-      }
-      match self.policy {
-        | OverflowPolicy::DropNewest => Ok(OfferOutcome::DroppedNewest { count: 1 }),
-        | OverflowPolicy::DropOldest => {
-          let _ = self.heap.pop();
-          self.heap.push(Reverse(item));
-          Ok(OfferOutcome::DroppedOldest { count: 1 })
-        },
-        | OverflowPolicy::Block => Err(QueueError::Full(item)),
-        | OverflowPolicy::Grow => {
-          self.capacity += 1;
-          self.heap.push(Reverse(item));
-          Ok(OfferOutcome::GrewTo { capacity: self.capacity })
-        },
-      }
-    }
-
-    fn poll(&mut self) -> Result<T, QueueError<T>> {
-      match self.heap.pop() {
-        | Some(Reverse(item)) => Ok(item),
-        | None => {
-          if self.closed {
-            Err(QueueError::Disconnected)
-          } else {
-            Err(QueueError::Empty)
-          }
-        },
-      }
-    }
-
-    fn len(&self) -> usize {
-      self.heap.len()
-    }
-
-    fn capacity(&self) -> usize {
-      self.capacity
-    }
-
-    fn overflow_policy(&self) -> OverflowPolicy {
-      self.policy
-    }
-
-    fn is_closed(&self) -> bool {
-      self.closed
-    }
-
-    fn close(&mut self) {
-      self.closed = true;
+    /// Returns the stored payload.
+    #[must_use]
+    pub const fn value(&self) -> i32 {
+      self.value
     }
   }
 
-  impl<T: Ord> SyncPriorityBackend<T> for BinaryHeapBackend<T> {
-    fn peek_min(&self) -> Option<&T> {
-      self.heap.peek().map(|Reverse(item)| item)
+  impl PriorityMessage for TestPriorityMessage {
+    fn get_priority(&self) -> Option<i8> {
+      self.priority
     }
   }
 }
 
-use priority_backend::BinaryHeapBackend;
+use priority_message::TestPriorityMessage;
 
 use crate::{
   collections::queue::{
     VecRingStorage,
-    backend::{OfferOutcome, OverflowPolicy, VecRingBackend},
+    backend::{OfferOutcome, OverflowPolicy, VecRingBackend, sync_priority_backend::BinaryHeapPriorityBackend},
     capabilities::{SingleConsumer, SingleProducer, SupportsPeek},
     type_keys::{FifoKey, MpscKey, PriorityKey, SpscKey},
   },
-  sync::shared_error::SharedError,
+  sync::SharedError,
 };
 
 #[test]
@@ -313,18 +247,18 @@ fn priority_queue_supports_peek() {
   fn assert_priority_capabilities<K: SingleProducer + SingleConsumer + SupportsPeek>() {}
   assert_priority_capabilities::<PriorityKey>();
 
-  let backend = BinaryHeapBackend::new(QueueConfig::new(4), OverflowPolicy::DropOldest);
+  let backend = BinaryHeapPriorityBackend::new_with_capacity(4, OverflowPolicy::DropOldest);
   let shared = ArcShared::new(SpinSyncMutex::new(backend));
-  let queue: SyncQueue<_, PriorityKey, _, _> = SyncQueue::new(shared);
+  let queue: SyncQueue<TestPriorityMessage, PriorityKey, _, _> = SyncQueue::new(shared);
 
-  assert_eq!(queue.offer(5).unwrap(), OfferOutcome::Enqueued);
-  assert_eq!(queue.offer(2).unwrap(), OfferOutcome::Enqueued);
-  assert_eq!(queue.offer(7).unwrap(), OfferOutcome::Enqueued);
+  assert_eq!(queue.offer(TestPriorityMessage::new(5, Some(2))).unwrap(), OfferOutcome::Enqueued);
+  assert_eq!(queue.offer(TestPriorityMessage::new(2, Some(0))).unwrap(), OfferOutcome::Enqueued);
+  assert_eq!(queue.offer(TestPriorityMessage::new(7, Some(5))).unwrap(), OfferOutcome::Enqueued);
 
-  let peeked = queue.peek_min().unwrap();
+  let peeked = queue.peek_min().unwrap().map(|msg| msg.value());
   assert_eq!(peeked, Some(2));
-  assert_eq!(queue.poll().unwrap(), 2);
-  assert_eq!(queue.peek_min().unwrap(), Some(5));
+  assert_eq!(queue.poll().unwrap().value(), 7);
+  assert_eq!(queue.peek_min().unwrap().map(|msg| msg.value()), Some(2));
 }
 
 #[test]

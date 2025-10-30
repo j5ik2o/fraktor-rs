@@ -3,8 +3,7 @@ use core::marker::PhantomData;
 use crate::{
   collections::stack::{PushOutcome, StackBackend, StackError},
   sync::{
-    ArcShared, Shared,
-    shared_access::SharedAccess,
+    ArcShared, Shared, SharedAccess,
     sync_mutex_like::{SpinSyncMutex, SyncMutexLike},
   },
 };

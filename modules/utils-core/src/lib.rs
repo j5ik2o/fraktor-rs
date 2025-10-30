@@ -1,11 +1,11 @@
 #![deny(missing_docs)]
-#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_types))]
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_types, clippy::redundant_clone))]
 #![deny(rustdoc::broken_intra_doc_links)]
 #![deny(unsafe_op_in_unsafe_fn)]
 #![deny(clippy::missing_errors_doc)]
 #![deny(clippy::missing_panics_doc)]
 #![deny(clippy::missing_safety_doc)]
-#![deny(clippy::redundant_clone)]
+#![cfg_attr(not(test), deny(clippy::redundant_clone))]
 #![deny(clippy::redundant_field_names)]
 #![deny(clippy::redundant_pattern)]
 #![deny(clippy::redundant_static_lifetimes)]
@@ -24,8 +24,8 @@
 #![deny(clippy::empty_enum)]
 #![deny(clippy::no_effect)]
 #![deny(dropping_copy_types)]
-#![deny(clippy::unwrap_used)]
-#![deny(clippy::expect_used)]
+#![cfg_attr(not(test), deny(clippy::unwrap_used))]
+#![cfg_attr(not(test), deny(clippy::expect_used))]
 #![deny(clippy::todo)]
 #![deny(clippy::unimplemented)]
 #![deny(clippy::print_stdout)]
@@ -36,7 +36,6 @@
 #![deny(clippy::clone_on_copy)]
 #![deny(clippy::len_without_is_empty)]
 #![deny(clippy::wrong_self_convention)]
-#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::redundant_clone))]
 #![deny(clippy::from_over_into)]
 #![deny(clippy::eq_op)]
 #![deny(clippy::bool_comparison)]
@@ -64,8 +63,8 @@ extern crate alloc;
 
 pub use collections::{
   DEFAULT_CAPACITY, DEFAULT_PRIORITY, Element, MpscBackend, MpscBuffer, MpscHandle, MpscQueue, PRIORITY_LEVELS,
-  PriorityMessage, PriorityQueue, QueueBase, QueueError, QueueHandle, QueueReader, QueueRw, QueueRwHandle, QueueSize,
-  QueueStorage, QueueWriter, RingBackend, RingBuffer, RingBufferBackend, RingBufferStorage, RingHandle, RingQueue,
+  PriorityMessage, PriorityQueue, QueueBase, QueueHandle, QueueReader, QueueRw, QueueRwHandle, QueueSize, QueueStorage,
+  QueueWriter, RingBackend, RingBuffer, RingBufferBackend, RingBufferStorage, RingHandle, RingQueue,
   RingStorageBackend, Stack, StackBackend, StackBase, StackBuffer, StackError, StackHandle, StackMut, StackStorage,
   StackStorageBackend,
 };

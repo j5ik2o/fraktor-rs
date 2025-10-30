@@ -11,7 +11,7 @@ use crate::{
     StackOverflowPolicy, VecStackStorage,
     backend::{PushOutcome, StackError, SyncAdapterStackBackend, VecStackBackend},
   },
-  sync::{ArcShared, async_mutex_like::SpinAsyncMutex, interrupt::InterruptContextPolicy, shared_error::SharedError},
+  sync::{ArcShared, SharedError, async_mutex_like::SpinAsyncMutex, interrupt::InterruptContextPolicy},
 };
 
 fn raw_waker() -> RawWaker {

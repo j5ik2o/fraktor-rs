@@ -7,14 +7,11 @@ use core::{
 
 use super::{AsyncMpscQueue, AsyncQueue, AsyncSpscQueue};
 use crate::{
-  collections::{
-    queue::{
-        VecRingStorage,
-        backend::{OfferOutcome, OverflowPolicy, SyncQueueAsyncAdapter, VecRingBackend},
-    },
-    queue_old::QueueError,
+  collections::queue::{
+    QueueError, VecRingStorage,
+    backend::{OfferOutcome, OverflowPolicy, SyncQueueAsyncAdapter, VecRingBackend},
   },
-  sync::{ArcShared, async_mutex_like::SpinAsyncMutex, interrupt::InterruptContextPolicy, shared_error::SharedError},
+  sync::{ArcShared, SharedError, async_mutex_like::SpinAsyncMutex, interrupt::InterruptContextPolicy},
 };
 
 fn raw_waker() -> RawWaker {

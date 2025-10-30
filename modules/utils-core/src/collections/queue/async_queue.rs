@@ -6,12 +6,13 @@ use super::{
 };
 use crate::{
   collections::{
+    PriorityMessage,
     queue::{
+      QueueError,
       backend::{AsyncPriorityBackend, AsyncQueueBackend, OfferOutcome},
       capabilities::{MultiProducer, SingleConsumer, SingleProducer, SupportsPeek},
       type_keys::{FifoKey, MpscKey, PriorityKey, SpscKey, TypeKey},
     },
-    queue_old::QueueError,
   },
   sync::{
     ArcShared,
@@ -209,7 +210,7 @@ where
 
 impl<T, B, A> AsyncQueue<T, PriorityKey, B, A>
 where
-  T: Clone + Ord,
+  T: Clone + PriorityMessage,
   B: AsyncPriorityBackend<T>,
   A: AsyncMutexLike<B>,
   PriorityKey: SupportsPeek,

@@ -1,5 +1,4 @@
-use crate::collections::queue::QueueError;
-use crate::collections::queue_old::traits::queue_base::QueueBase;
+use crate::collections::{queue::QueueError, queue_old::traits::queue_base::QueueBase};
 
 /// Trait providing read operations from the queue for mutable references.
 pub trait QueueReader<E>: QueueBase<E> {

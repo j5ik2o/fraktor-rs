@@ -1,9 +1,10 @@
 use alloc::{boxed::Box, vec::Vec};
 use core::{fmt::Debug, mem::MaybeUninit};
 
-use crate::{
-  QueueError, QueueSize,
-  collections::queue_old::traits::{QueueBase, QueueReader, QueueWriter},
+use crate::collections::{
+  QueueSize,
+  queue::QueueError,
+  queue_old::traits::{QueueBase, QueueReader, QueueWriter},
 };
 
 #[cfg(test)]
