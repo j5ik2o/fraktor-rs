@@ -57,15 +57,15 @@
 - すべてのアクター間メッセージは `AnyMessage` を経由して `dyn core::any::Any` として扱い、Typed アクター API は後続フェーズでレイヤー追加する方針とする。
 - 送信時には所有型 `AnyOwnedMessage` に変換して Mailbox に格納し、取り出し時に借用型 `AnyMessage<'_>` を再構成してアクターへ渡す。所有型は `modules/utils-core::sync::ArcShared` を利用して複製を避ける。
 - Mailbox は制御用 System メッセージとユーザメッセージを優先度付きで扱い、停止・再開時でも System メッセージが処理される設計を必須とする。
-- Mailbox の内部構成は System 用と User 用に 2 本のキューを持ち、バックエンドには `modules/utils-core::collections::queue::async_queue` で提供される `AsyncQueue` ファミリーを採用する。System キューの処理が優先され、空の場合のみ User キューを処理する。`suspend()` は dequeue を停止し、`resume()` で再開する。外部に公開する API は同期呼び出しを維持しつつ、`AsyncQueue` のカスタム Future を Dispatcher 内の協調ポーリング（自前 executor）で駆動し、`async fn` 依存を避ける。
-- `AsyncQueue` が提供する `offer_blocking` / `poll_blocking` はそれぞれ `OfferFuture` / `PollFuture` を返し、所有権を保持したまま待機登録・解除を制御する。Future が `Poll::Pending` を返す際はロックを開放し、drop 時には WaitQueue から確実に解除される設計とする（詳細は `docs/mailbox-spec.md` を参照）。
+- Mailbox の内部構成は System 用と User 用に 2 本のキューを持ち、バックエンドには `modules/utils-core::collections::queue::sync_queue::SyncQueue` を採用する（`VecRingBackend` や `SyncAdapterQueueBackend` を直接利用せず、SyncQueue の公開 API 経由で構築すること）。Mailbox は同期 API（`try_offer` / `try_poll`）で即時処理し、System キューが優先される。`suspend()` は user キューの dequeue を停止し、`resume()` で再開する。待機が必要になった場合のみ `OfferFuture` / `PollFuture` を Dispatcher 側の協調ポーリングで駆動し、`async fn` を公開 API に露出しない。
+- `SyncAdapterQueueBackend` が提供する `OfferFuture` / `PollFuture` は所有権を保持したまま WaitQueue へ登録し、`Poll::Pending` を返す直前にロックを解放して Busy wait を回避する。Future drop 時には WaitQueue から確実に解除される設計とし、詳細は `docs/mailbox-spec.md` に準拠する。
 - ランタイム API は借用ベースのライフタイム設計を基本とし、ヒープ確保が必要な処理は事前に計測計画と再利用戦略を記載する。
 - Actor トレイトは `pre_start`, `post_stop`, `receive` を提供し、`pre_start` でリソース初期化、`post_stop` で解放ができるようにする。`receive` は `Result<(), ActorError>` を返却し、`Err` の場合は Supervisor が再起動戦略に基づいて扱う。`panic!` などスタックを巻き戻せない致命的障害は ActorSystem が介入せず、アプリケーション側でリセットやフォールバックを実装することを前提とする。
 - 同名・同型のエラーや trait を異なる責務に使い回すことを禁止する（例: `ActorError` はアクター実行時の失敗に限定し、Mailbox 送信時の背圧エラーには別の `SendError` を用意する）。
 - アプリケーションのブートストラップは ActorSystem を `Props::new(user_guardian_factory)` で生成し、以降のアクター生成は **必ず** ガーディアン（または子アクター）が `ActorContext::spawn_child` を通じて行う。`ActorSystem` 本体にトップレベルの汎用 `spawn` API は公開しない。
 - ActorSystem はブート時に登録したユーザガーディアンへアクセスするための `user_guardian_ref()`（名称は同等の意図を満たせばよい）を提供し、エントリポイントとなるメッセージ（例: `Start`) をその `ActorRef` に対して `tell` することでアプリケーションを起動する。
-- AsyncQueue が満杯の場合は protoactor-go の `BoundedMailbox` を参考にバックプレッシャーをかけ、送信 API は明示的な失敗結果を返す。
-- `Block` ポリシーは no_std 向けに WaitNode を用いた待機を採用し、Busy wait を避ける。enqueue 側は `AsyncQueue` の `offer_blocking`、dequeue 側は `poll_blocking` が返すカスタム Future を利用して待機し、Mailbox 再開時に待機ノードへ通知する。初期リリースではポリシー定義と待機ハンドラ API を公開し、実際のブロッキング挙動は協調ポーリング上で段階的に実装する。
+- SyncQueue が満杯の場合は protoactor-go の `BoundedMailbox` を参考にバックプレッシャーをかけ、送信 API は明示的な失敗結果を返す。
+- `Block` ポリシーは no_std 向けに WaitNode を用いた待機を採用し、Busy wait を避ける。enqueue 側は `OfferFuture`、dequeue 側は `PollFuture` を利用して待機し、Mailbox 再開時に待機ノードへ通知する。初期リリースではポリシー定義と待機ハンドラ API を公開し、実際のブロッキング挙動は協調ポーリング上で段階的に実装する。
 - Supervisor により再起動回数が上限を超えた場合、ActorSystem はアクターを停止させ Deadletter と EventStream へ必ず通知する。
 - Actor は子アクターを生成し、Supervisor 戦略に基づいた親子ツリーを形成できることを前提とする。親は子アクターのライフサイクルイベントを EventStream 経由で監視できる必要がある。
 - ActorSystem の初期化時にユーザガーディアン（root actor）のインスタンスと Props を受け取り、そのコンテキストから子アクターを生成してシステム全体を構築できるようにする。
@@ -76,7 +76,7 @@
 
 ## 仮定と依存関係
 
-- `modules/utils-core` の `AsyncQueue` および `Shared` 抽象が既存実装として利用可能であり、追加の同期プリミティブを導入しない。
+- `modules/utils-core` の `SyncQueue` / `SyncAdapterQueueBackend` および `Shared` 抽象が既存実装として利用可能であり、新たな実装では SyncQueue 公開 API を通じて Offer/Poll Future を提供し、`SyncAdapterQueueBackend` へ直接依存しない。
 - メッセージ表現は `AnyMessage` 構造体と `dyn core::any::Any` のみに依存し、Typed メッセージ/アクターは拡張レイヤーが担う。
 - メッセージシリアライズは初期版ではトレイト境界のみ定義し、具象実装は後続フェーズで拡張する。
 - ロガー／タイマーなどの周辺機能は既存ユーティリティを再利用し、ActorSystem 側ではインターフェイスだけを提供する。EventStream を介した Logger 購読者で観測できることを前提とする。
@@ -89,7 +89,7 @@
 - **FR-001**: ActorSystem は 1 回の初期化呼び出しでルート Context・PID 名前空間・Supervisor ツリーを確立し、protoactor-go の RootContext と同等のブートストラップ API（ユーザガーディアンを起点とするアクター生成）を `no_std` 下で提供しなければならない。
 - **FR-002**: Actor トレイトは Classic スタイルのビヘイビア遷移メソッド（`receive`, `become`, `unbecome` 相当）を提供し、Apache Pekko が定義する動的ビヘイビア切替フローを Rust のライフタイム制約に合わせて実行できなければならない。Typed Behavior (Pekko Typed) は後続フェーズで別レイヤーとして導入する。
 - **FR-003**: ActorRef と Pid は一意識別子を保持し、同一アクターへの再解決が O(1) で完了するルックアップテーブルを ActorSystem 内に提供しなければならない。
-- **FR-004**: Mailbox は `modules/utils-core::collections::queue::async_queue`（以下 AsyncQueue）を内部キューとして用い、protoactor-go の Mailbox 処理順序と同様の FIFO 保証を仕様化しなければならない。AsyncQueue が提供する `offer_blocking` / `poll_blocking` のカスタム Future を利用し、`Block` ポリシーや `suspend`/`resume` 制御に必要な協調ブロッキングを実現すること。`VecDeque` など簡易キューによる仮実装は禁止とする。
+- **FR-004**: Mailbox は `modules/utils-core::collections::queue::sync_queue::SyncQueue` を内部キューとして用い、protoactor-go の Mailbox 処理順序と同様の FIFO 保証を仕様化しなければならない。キュー生成は SyncQueue の API 経由に限定し、`VecRingBackend` や `SyncAdapterQueueBackend` を直接操作しない。`SyncQueue` が公開する同期 API と `OfferFuture` / `PollFuture` を組み合わせ、`Block` ポリシーや `suspend` / `resume` 制御に必要な協調ブロッキングを実現すること。`VecDeque` など簡易キューによる仮実装は禁止とする。
 - **FR-005**: Dispatcher と MessageInvoker は メッセージ取得→ビヘイビア呼び出し→ポスト処理の段階を分離し、Pekko の `Dispatcher` 設計を参考に同期／非同期両モードを後日拡張可能な形でインターフェイス化しなければならない。アクター起動や `pre_start` 呼び出し、`run_until_idle` 相当の処理は Dispatcher 側の責務とし、Mailbox の enqueue 経路に入れないこと。
 - **FR-006**: Supervisor は `OneForOne` と `AllForOne` の 2 種類以上の戦略を持ち、再起動回数制限・遅延・エスカレーション条件を設定できる API を提供しなければならない。
 - **FR-007**: ActorCell と ActorContext は アクターのライフサイクル状態（初期化中／稼働中／停止）と親子関係を保持し、サンプルコードで状態遷移を EventStream へ通知できなければならない。
@@ -105,7 +105,7 @@
 - **FR-017**: ActorSystem と ActorContext の API は借用を優先し、ヒープアロケーションが発生する処理には計測・再利用戦略・最大許容頻度を定義しなければならない。
 - **FR-018**: Actor トレイトは `pre_start(&mut self, ctx)` / `receive(&mut self, ctx, msg)` / `post_stop(&mut self, ctx)` を提供し、`pre_start` はアクター生成直後に 1 度呼ばれ、`post_stop` は停止時に呼ばれなければならない。`receive` は `Result<(), ActorError>` を返却し、`Err(ActorError::Recoverable)` は Supervisor の再起動ロジックへ渡し、`Err(ActorError::Fatal)` は即時停止扱いとして Deadletter と EventStream で通知しなければならない。`panic!` やスタック巻き戻し不能な障害はアクターランタイムが回復を試みない旨を仕様に記載し、アプリケーションがハードリセット等の外部対処を取る前提とする。
 - **FR-019**: Mailbox は System メッセージと User メッセージの優先度キューを提供し、System メッセージは常に User メッセージより先にディスパッチされなければならない。優先度判定はバックプレッシャや停止中でも維持すること。`enqueue_user` / `enqueue_system` はメッセージをキューへ追加し、ドロップ／ブロック等のポリシーに従って `SendError` を返すか、Dispatcher へのスケジューリング通知を発行するところまでを責務とし、アクターの起動やメッセージ処理を直接行ってはならない。
-- **FR-020**: Mailbox は `DropNewest` / `DropOldest` / `Grow` / `Block` の 4 ポリシーを設定可能とし、初期リリースでは少なくとも `DropOldest` をデフォルトで提供し、`DropNewest` と `Grow` の正常動作を満たさなければならない。`Block` は AsyncQueue の `wait_push` など協調ブロッキング機構により実装し、ランタイムがポーリング／スピンによる忙待ちを発生させずに背圧を伝播できるインターフェイスを公開すること。
+- **FR-020**: Mailbox は `DropNewest` / `DropOldest` / `Grow` / `Block` の 4 ポリシーを設定可能とし、初期リリースでは少なくとも `DropOldest` をデフォルトで提供し、`DropNewest` と `Grow` の正常動作を満たさなければならない。`Block` は SyncQueue + WaitQueue ベースの `OfferFuture` / `PollFuture` により実装し、ランタイムがポーリング／スピンによる忙待ちを発生させずに背圧を伝播できるインターフェイスを公開すること。
 - **FR-021**: Mailbox は外部から `suspend()` / `resume()` に相当する制御を受け付け、停止期間中は User メッセージをキューに蓄積しつつ System メッセージは処理できる手段を提供しなければならない。no_std 環境と std/embassy 環境の双方で API が一貫する必要がある。
 - **FR-022**: EventStream は `LogEvent` を publish できる API を提供し、少なくとも 1 つの Logger 購読者が存在してログレベル・PID・メッセージ・タイムスタンプを取得できなければならない。Logger 購読者は UART/RTT など組込み向け出力とホスト向けブリッジの双方に拡張可能であること。
 - **FR-023**: ActorSystem はアクターが `spawn_child(props)` を呼び出して子アクターを生成できる API を提供し、戻り値は未型付けの `ChildRef` で管理する。親アクターは自動的に子アクターを Supervisor ツリーへ登録して監視しなければならない。親は子アクターの停止・エラー・再起動イベントを EventStream 経由で受け取れること。トップレベルの `spawn` はユーザガーディアン初期化時のみ許容され、通常フローではアクターコンテキスト経由で生成する。
@@ -117,7 +117,7 @@
 - **FR-027**: Mailbox は Bounded/Unbounded の戦略を設定可能とし、Bounded では容量オーバ時のポリシー（FR-020）と一貫した挙動を提供し、Unbounded ではメモリ使用量を監視して EventStream/Logger へ警告を出せるメトリクスを提供しなければならない。
 - **FR-032**: MailboxError / SendError は失敗した `AnyOwnedMessage` を所有（もしくは再取得可能なハンドルとして）して呼び出し元へ返し、Deadletter がそのまま保管・再配送できるようにしなければならない。Drop 系ポリシーでもメッセージを失わず、EventStream 通知に同一 payload 情報を含めること。
 - **FR-033**: Mailbox の System キューはランタイム内部用の `SystemMessage`（固定スキーマ）を保持し、User キューと型で分離しなければならない。ユーザ定義メッセージが System キューへ到達しないよう型安全性を確保し、変換は ActorSystem 側で明示的に行うこと。
-- **FR-034**: Mailbox と Dispatcher は no_std 組込み環境向けの同期ランナーと、std/tokio などホスト環境向けの非同期ランナーの双方へ適用できる抽象を提供しなければならない。Core レイヤーでは `async fn` を露出せず、ランナー層で `AsyncQueue` を駆動するためのフックを公開すること。
+- **FR-034**: Mailbox と Dispatcher は no_std 組込み環境向けの同期ランナーと、std/tokio などホスト環境向けの非同期ランナー双方へ適用できる抽象を提供しなければならない。Core レイヤーでは `async fn` を露出せず、ランナー層で `OfferFuture` / `PollFuture`（および `MailboxSignalHandle::wait`）を駆動するためのフックを公開すること。
 - **FR-028**: Dispatcher/MessageInvoker は 1 アクター当たりのスループット制限（例: 300 メッセージ/フェンス）を設定でき、設定値に到達した場合は制御用 System メッセージを優先しつつ残りメッセージを次ターンへ繰り越す仕組みを提供する。スループット値は Props または Mailbox 設定で構成可能とし、デフォルトは protoactor-go 相当の 300 を採用する。
 - **FR-029**: ランタイムは `Context::sender()` を提供せず、応答が必要なメッセージは `reply_to: ActorRef`（もしくは同等の手段）を含むペイロード設計に従う。ActorContext は送信元を暗黙に保持しないこと。
 - **FR-030**: `ask` 経路では enqueue 時に `AnyOwnedMessage` 内へ `reply_to` を保持し、MessageInvoker が処理完了後に `reply_to.tell(...)` または `ActorFuture::complete()` を呼び出す。Mailbox / Dispatcher / ActorSystem は `reply_to` を破棄せず、完了時に ActorFuture を解決するためのフックを提供しなければならない。
@@ -126,7 +126,7 @@
 
 - **ActorSystem**: PID レジストリ、Supervisor ツリー、イベント配信チャネルを保持する中心コンポーネント。
 - **ActorRef / Pid**: ActorCell へのメッセージ送信に利用する軽量ハンドルと一意識別子。
-- **Mailbox**: AsyncQueue に基づくメッセージバッファと処理ステータス。System キューはランタイム内部の `SystemMessage` を保持し、User キューは `AnyOwnedMessage` を保持する。
+- **Mailbox**: SyncQueue（VecRingBackend や SyncAdapterQueueBackend を直接使わず、SyncQueue API 経由で構築すること）に基づくメッセージバッファと処理ステータス。System キューはランタイム内部の `SystemMessage` を保持し、User キューは `AnyOwnedMessage` を保持する。
 - **EventStream / Deadletter**: 監視イベントと未配達メッセージの集約ポイント。Deadletter は失敗した `AnyOwnedMessage` を完全な形で格納し、EventStream 通知も payload 情報を含む。
 - **Props**: アクター生成時の構成（ファクトリ、Supervisor、Mailbox 設定）をカプセル化する定義。
 - **AnyMessage**: `dyn core::any::Any` を所有せずに借用経由で参照できるメッセージコンテナ。
