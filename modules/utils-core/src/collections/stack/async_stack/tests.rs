@@ -8,8 +8,8 @@ use core::{
 use super::AsyncStack;
 use crate::{
   collections::stack::{
-      StackOverflowPolicy, VecStackStorage,
-      backend::{PushOutcome, StackError, SyncStackAsyncAdapter, VecStackBackend},
+    StackOverflowPolicy, VecStackStorage,
+    backend::{PushOutcome, StackError, SyncStackAsyncAdapter, VecStackBackend},
   },
   sync::{ArcShared, SharedError, async_mutex_like::SpinAsyncMutex, interrupt::InterruptContextPolicy},
 };

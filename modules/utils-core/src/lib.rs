@@ -61,13 +61,6 @@
 
 extern crate alloc;
 
-pub use collections::{
-  DEFAULT_CAPACITY, DEFAULT_PRIORITY, Element, MpscBackend, MpscBuffer, MpscHandle, MpscQueue, PRIORITY_LEVELS,
-  PriorityMessage, PriorityQueue, QueueBase, QueueHandle, QueueReader, QueueRw, QueueRwHandle, QueueSize, QueueStorage,
-  QueueWriter, RingBackend, RingBuffer, RingBufferBackend, RingBufferStorage, RingHandle, RingQueue,
-  RingStorageBackend, Stack, StackBackend, StackBase, StackBuffer, StackError, StackHandle, StackMut, StackStorage,
-  StackStorageBackend,
-};
 pub use concurrent::{
   AsyncBarrier, AsyncBarrierBackend, CountDownLatch, CountDownLatchBackend, GuardHandle, Synchronized,
   SynchronizedMutexBackend, SynchronizedRw, SynchronizedRwBackend, WaitGroup, WaitGroupBackend,

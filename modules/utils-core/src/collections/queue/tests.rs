@@ -152,7 +152,7 @@ mod mpsc_key_capability_assertion {
 }
 
 mod priority_message {
-  use crate::PriorityMessage;
+  use crate::collections::PriorityMessage;
 
   /// Priority-aware message used in priority queue tests.
   #[derive(Clone, Debug, PartialEq, Eq)]
