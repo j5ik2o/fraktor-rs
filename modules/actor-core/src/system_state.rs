@@ -3,7 +3,7 @@ use core::time::Duration;
 
 use cellactor_utils_core_rs::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
 use hashbrown::HashMap;
-use portable_atomic::{AtomicU64, Ordering};
+use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
 use crate::{
   actor_cell::ActorCell,
@@ -26,6 +26,8 @@ pub struct ActorSystemState {
   registries:  SpinSyncMutex<HashMap<Option<Pid>, NameRegistry>>,
   guardian:    SpinSyncMutex<Option<ArcShared<ActorCell>>>,
   ask_futures: SpinSyncMutex<Vec<ArcShared<ActorFuture<AnyMessage>>>>,
+  termination: ArcShared<ActorFuture<()>>,
+  terminated:  AtomicBool,
 }
 
 impl ActorSystemState {
@@ -39,6 +41,8 @@ impl ActorSystemState {
       registries:  SpinSyncMutex::new(HashMap::new()),
       guardian:    SpinSyncMutex::new(None),
       ask_futures: SpinSyncMutex::new(Vec::new()),
+      termination: ArcShared::new(ActorFuture::new()),
+      terminated:  AtomicBool::new(false),
     }
   }
 
@@ -68,6 +72,17 @@ impl ActorSystemState {
   /// Stores the user guardian cell reference.
   pub fn set_user_guardian(&self, cell: ArcShared<ActorCell>) {
     *self.guardian.lock() = Some(cell);
+  }
+
+  /// Clears the guardian if the provided pid matches.
+  pub fn clear_guardian(&self, pid: Pid) -> bool {
+    let mut guard = self.guardian.lock();
+    if guard.as_ref().map(|cell| cell.pid()) == Some(pid) {
+      *guard = None;
+      true
+    } else {
+      false
+    }
   }
 
   /// Returns the user guardian cell if initialised.
@@ -114,6 +129,20 @@ impl ActorSystemState {
   /// Registers an ask future so the actor system can track its completion.
   pub fn register_ask_future(&self, future: ArcShared<ActorFuture<AnyMessage>>) {
     self.ask_futures.lock().push(future);
+  }
+
+  /// Returns the termination future for when the actor system shuts down.
+  #[must_use]
+  pub fn termination_future(&self) -> ArcShared<ActorFuture<()>> {
+    self.termination.clone()
+  }
+
+  /// Marks the system as terminated and completes the termination future.
+  pub fn mark_terminated(&self) {
+    if self.terminated.swap(true, Ordering::AcqRel) {
+      return;
+    }
+    self.termination.complete(());
   }
 
   /// Drains futures that have completed since the previous inspection.
@@ -230,5 +259,11 @@ impl ActorSystemState {
   fn monotonic_now(&self) -> Duration {
     let ticks = self.clock.fetch_add(1, Ordering::Relaxed) + 1;
     Duration::from_millis(ticks)
+  }
+
+  /// Indicates whether the actor system has terminated.
+  #[must_use]
+  pub fn is_terminated(&self) -> bool {
+    self.terminated.load(Ordering::Acquire)
   }
 }

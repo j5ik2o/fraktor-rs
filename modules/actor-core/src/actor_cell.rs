@@ -206,6 +206,9 @@ impl ActorCell {
     }
     self.system.release_name(self.parent, &self.name);
     self.system.remove_cell(&self.pid);
+    if self.system.clear_guardian(self.pid) {
+      self.system.mark_terminated();
+    }
     outcome
   }
 

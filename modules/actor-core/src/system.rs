@@ -1,10 +1,12 @@
 use alloc::vec::Vec;
+use core::hint::spin_loop;
 
 use cellactor_utils_core_rs::sync::ArcShared;
 
 use crate::{
   actor_cell::ActorCell, actor_future::ActorFuture, actor_ref::ActorRef, any_message::AnyMessage, child_ref::ChildRef,
-  pid::Pid, props::Props, spawn_error::SpawnError, system_state::ActorSystemState,
+  pid::Pid, props::Props, send_error::SendError, spawn_error::SpawnError, system_message::SystemMessage,
+  system_state::ActorSystemState,
 };
 
 #[cfg(test)]
@@ -126,6 +128,48 @@ impl ActorSystem {
       .into_iter()
       .filter_map(|pid| self.state.cell(&pid).map(|cell| ChildRef::new(cell.actor_ref(), system.clone())))
       .collect()
+  }
+
+  /// Sends a stop signal to the user guardian and initiates system shutdown.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the guardian mailbox rejects the stop request.
+  pub fn terminate(&self) -> Result<(), SendError> {
+    if self.state.is_terminated() {
+      return Ok(());
+    }
+
+    match self.state.user_guardian_pid() {
+      | Some(pid) => match self.state.send_system_message(pid, SystemMessage::Stop) {
+        | Ok(()) => Ok(()),
+        | Err(error) => {
+          if self.state.is_terminated() {
+            Ok(())
+          } else {
+            Err(error)
+          }
+        },
+      },
+      | None => {
+        self.state.mark_terminated();
+        Ok(())
+      },
+    }
+  }
+
+  /// Returns a future that resolves once the actor system terminates.
+  #[must_use]
+  pub fn when_terminated(&self) -> ArcShared<ActorFuture<()>> {
+    self.state.termination_future()
+  }
+
+  /// Blocks the current thread until the actor system has fully terminated.
+  pub fn run_until_terminated(&self) {
+    let future = self.when_terminated();
+    while !future.is_ready() {
+      spin_loop();
+    }
   }
 }
 
