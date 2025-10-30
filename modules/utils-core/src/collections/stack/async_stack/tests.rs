@@ -8,8 +8,8 @@ use core::{
 use super::AsyncStack;
 use crate::{
   collections::stack::{
-    StackOverflowPolicy, VecStackStorage,
-    backend::{PushOutcome, StackError, SyncAdapterStackBackend, VecStackBackend},
+      StackOverflowPolicy, VecStackStorage,
+      backend::{PushOutcome, StackError, SyncStackAsyncAdapter, VecStackBackend},
   },
   sync::{ArcShared, SharedError, async_mutex_like::SpinAsyncMutex, interrupt::InterruptContextPolicy},
 };
@@ -45,10 +45,10 @@ fn block_on<F: Future>(mut future: F) -> F::Output {
 fn make_shared_stack(
   capacity: usize,
   policy: StackOverflowPolicy,
-) -> ArcShared<SpinAsyncMutex<SyncAdapterStackBackend<i32, VecStackBackend<i32>>>> {
+) -> ArcShared<SpinAsyncMutex<SyncStackAsyncAdapter<i32, VecStackBackend<i32>>>> {
   let storage = VecStackStorage::with_capacity(capacity);
   let backend = VecStackBackend::new_with_storage(storage, policy);
-  ArcShared::new(SpinAsyncMutex::new(SyncAdapterStackBackend::new(backend)))
+  ArcShared::new(SpinAsyncMutex::new(SyncStackAsyncAdapter::new(backend)))
 }
 
 struct DenyPolicy;
@@ -63,10 +63,10 @@ type DenyMutex<T> = SpinAsyncMutex<T, DenyPolicy>;
 
 fn make_interrupt_shared_stack(
   capacity: usize,
-) -> ArcShared<DenyMutex<SyncAdapterStackBackend<i32, VecStackBackend<i32>>>> {
+) -> ArcShared<DenyMutex<SyncStackAsyncAdapter<i32, VecStackBackend<i32>>>> {
   let storage = VecStackStorage::with_capacity(capacity);
   let backend = VecStackBackend::new_with_storage(storage, StackOverflowPolicy::Block);
-  ArcShared::new(DenyMutex::new(SyncAdapterStackBackend::new(backend)))
+  ArcShared::new(DenyMutex::new(SyncStackAsyncAdapter::new(backend)))
 }
 
 #[test]

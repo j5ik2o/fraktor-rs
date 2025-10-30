@@ -9,7 +9,7 @@ mod tests;
 
 pub use async_stack::AsyncStack;
 pub use backend::{
-  AsyncStackBackend, PushOutcome, StackBackend, StackError, StackOverflowPolicy, SyncAdapterStackBackend,
+  AsyncStackBackend, PushOutcome, StackBackend, StackError, StackOverflowPolicy, SyncStackAsyncAdapter,
   VecStackBackend,
 };
 pub use storage::{StackStorage, VecStackStorage};
@@ -19,4 +19,4 @@ pub use sync_stack::SyncStack;
 pub type SharedVecStack<T> = SyncStack<T, VecStackBackend<T>>;
 
 /// Default async shared stack alias backed by [`VecStackBackend`] via the sync adapter.
-pub type AsyncSharedVecStack<T> = AsyncStack<T, SyncAdapterStackBackend<T, VecStackBackend<T>>>;
+pub type AsyncSharedVecStack<T> = AsyncStack<T, SyncStackAsyncAdapter<T, VecStackBackend<T>>>;

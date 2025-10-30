@@ -7,7 +7,7 @@ use super::{AsyncStackBackend, PushOutcome, StackBackend, StackError};
 use crate::collections::wait::{WaitHandle, WaitQueue};
 
 /// Adapter that exposes a synchronous stack backend through the async backend trait.
-pub struct SyncAdapterStackBackend<T, B>
+pub struct SyncStackAsyncAdapter<T, B>
 where
   B: StackBackend<T>, {
   backend:      B,
@@ -16,7 +16,7 @@ where
   pop_waiters:  WaitQueue<StackError>,
 }
 
-impl<T, B> SyncAdapterStackBackend<T, B>
+impl<T, B> SyncStackAsyncAdapter<T, B>
 where
   B: StackBackend<T>,
 {
@@ -72,7 +72,7 @@ where
 }
 
 #[async_trait(?Send)]
-impl<T, B> AsyncStackBackend<T> for SyncAdapterStackBackend<T, B>
+impl<T, B> AsyncStackBackend<T> for SyncStackAsyncAdapter<T, B>
 where
   B: StackBackend<T>,
 {
