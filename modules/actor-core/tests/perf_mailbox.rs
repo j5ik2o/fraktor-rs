@@ -2,17 +2,13 @@
 
 extern crate alloc;
 
-use core::{
-  num::NonZeroUsize,
-  sync::atomic::{AtomicUsize, Ordering},
-};
+use core::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use cellactor_actor_core_rs::{
-  ActorError, AnyMessage, DispatchExecutor, Dispatcher, InlineExecutor, Mailbox, MailboxMessage,
-  MailboxOverflowStrategy, MailboxPolicy, MessageInvoker, SystemMessage,
+  ActorError, ActorRefSender, AnyMessage, DispatchExecutor, Dispatcher, InlineExecutor, Mailbox, MailboxMessage,
+  MailboxPolicy, MessageInvoker, SystemMessage,
 };
-use cellactor_actor_core_rs::ActorRefSender;
 use cellactor_utils_core_rs::sync::ArcShared;
 
 const MAILBOX_ITERATIONS: usize = 10_000;
@@ -44,12 +40,7 @@ fn dispatcher_throughput_harness_processes_all_messages() {
 }
 
 fn measure_mailbox_throughput(iterations: usize) -> ThroughputReport {
-  let policy = MailboxPolicy::bounded(
-    NonZeroUsize::new(512).expect("non zero capacity"),
-    MailboxOverflowStrategy::DropOldest,
-    None,
-  );
-  let mailbox = Mailbox::new(policy);
+  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
 
   let enqueue_start = Instant::now();
   for index in 0..iterations {
@@ -58,9 +49,12 @@ fn measure_mailbox_throughput(iterations: usize) -> ThroughputReport {
   let enqueue_duration = enqueue_start.elapsed();
 
   let dequeue_start = Instant::now();
-  for _ in 0..iterations {
+  let mut processed = 0;
+  while processed < iterations {
     match mailbox.dequeue() {
-      | Some(MailboxMessage::User(_message)) => {},
+      | Some(MailboxMessage::User(_message)) => {
+        processed += 1;
+      },
       | other => panic!("expected user message, found {:?}", other),
     }
   }

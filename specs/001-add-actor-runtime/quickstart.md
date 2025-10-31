@@ -18,7 +18,22 @@ target=thumbv8m.main-none-eabihf
 cargo build --package actor-core --target $target --no-default-features
 ```
 
-なお、Tokio ランタイムと連携する Dispatcher/Props 向けヘルパー（例: `DispatcherConfig::tokio_current()` や `Props::with_tokio_dispatcher()`）は、`actor-core` の no_std 方針を守るため `actor-std` クレート側に拡張として提供する計画です。ホスト環境でのボイラープレート削減は `actor-std` を追加導入することで行います。
+なお、Tokio ランタイムと連携する Dispatcher/Props 向けヘルパーは `cellactor-actor-std-rs` クレートに分離して提供される。ワークスペース内で利用する場合は Cargo.toml に
+
+```toml
+cellactor-actor-std-rs = { path = "modules/actor-std" }
+```
+
+を追加し、コード側で
+
+```rust
+use cellactor_actor_std_rs::{TokioDispatcherConfigExt, TokioPropsExt};
+
+let dispatcher = DispatcherConfig::tokio_current()?; // Result<T, TryCurrentError>
+let props = Props::from_fn(|| MyActor).try_with_tokio_dispatcher()?;
+```
+
+のように extension trait をインポートして利用する。`with_tokio_dispatcher_current()` と `tokio_current()` は Tokio ランタイム外で呼び出すと panic するため、初期化フェーズで `try_*` 系メソッドを使って失敗を検出することを推奨する。
 
 ## 3. サンプル実行（Ping/Pong）
 
@@ -81,7 +96,7 @@ let snapshot = system.deadletters();
 
 - EventStream の既定バッファ容量は 256 件。ホスト環境で履歴を厚く保持したい場合は 512〜1024 件に拡張し、組込みでは 128 件程度まで縮小すると割り込み遅延を抑えられる。  
 - Deadletter の既定保持件数は 512 件。組込み環境では必要に応じて減らし、警告閾値を LoggerSubscriber などで監視する。閾値の目安は容量の 75% で Warning を出すこと。  
-- 将来導入予定の `actor-std` 向けヘルパー（`ActorSystemConfig` 仮称）では、上記容量と警告閾値をビルダー API から指定できるようにする。現時点では ActorSystem の初期化が固定値のため、カスタム容量が必要な場合はランタイム側に専用ブートストラップ関数を追加するなど内部拡張が前提となる。
+- `actor-std` クレートでは将来的に `ActorSystemConfig`（仮称）を導入し、EventStream/Deadletter の容量や警告閾値をビルダー API から設定できるようにする計画である（T041 設計メモ参照）。現時点で容量を変更したい場合は runtime 側の内部拡張が必要となる。
 - EventStream で `LifecycleEvent`・`LogEvent`・`Deadletter` が受信できることをテストする。
 
 ## 7. ヒープ確保計測

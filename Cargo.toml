@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "modules/utils-core",
     "modules/actor-core",
+    "modules/actor-std",
 ]
 
 [workspace.package]

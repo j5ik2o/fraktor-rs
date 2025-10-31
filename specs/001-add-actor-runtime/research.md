@@ -79,3 +79,17 @@
 ## Decision: DispatcherConfig ヘルパの配置レイヤ
 - **Rationale**: `DispatcherConfig::tokio_current()` や `Props::with_tokio_dispatcher()` といったホスト依存ヘルパは `actor-core` の no_std ポリシーと整合しないため、`actor-std` クレート側に extension/helper として実装し、Tokio ランタイムと紐づく API を分離する。これにより core 側はポータブルなまま、標準環境ではシンプルな opt-in API でボイラープレートを削減できる。  
 - **Alternatives considered**: `actor-core` に Tokio ヘルパを追加する案（no_std ビルドで feature gating が複雑化し `#[cfg(feature = "std")]` を runtime 本体に持ち込む懸念）; 外部 crate に委ねる案（公式サポートが分散し利用者が API を探しづらい）。
+
+## Proposal: actor-std `ActorSystemConfig` (T041)
+- **目的**: `actor-core` の no_std 方針を維持しつつ、ホスト環境では EventStream/Deadletter の容量や警告閾値、Logger レベルを柔軟に調整できるようにする。Tokio 統合を担う `actor-std` クレートに設定ヘルパーを集約し、アプリケーション側のブートストラップを簡素化する。
+- **設計草案**:
+  - `ActorSystemConfig` 本体は `event_stream_capacity`, `deadletter_capacity`, `deadletter_warn_ratio`, `logger_level` などの項目を `Option<T>` で保持し、未設定時は core の既定値（256 / 512 / 0.75 / LogLevel::Info）を尊重する。
+  - `ActorSystemConfigBuilder` で段階的に設定し、`with_deadletter_capacity(u16)` のようなメソッドをチェーン可能にする。`build()` で妥当性検証を行い、0 や 1.0 を超える割合が指定された場合は `ConfigError` を返す。
+  - 運用時は `ActorSystemConfig::apply(&self, system: &ActorSystem)` を呼び出して core 側の `ActorSystemState` に反映させる想定。ただし現状 core に公開フックが無いため、次フェーズで `ActorSystem` に設定適用 API を追加する必要がある。このタスクでは設計メモとして方針を共有する。
+- **quickstart 反映**:
+  1. Quickstart の EventStream 章に `actor-std` を導入すると容量と閾値を設定できる旨を記述し、`ActorSystemConfig` の利用例（コードスニペット）を将来挿入する計画を明示する。
+  2. Quickstart で `actor-std` の依存追加手順（`cargo add cellactor-actor-std-rs --features tokio` など）を案内し、Tokio ヘルパと併用する流れを説明する。
+  3. plan.md / spec.md の関連箇所に `actor-std` がホスト向け設定と Dispatcher 拡張の入口であることを追記して整合性を保つ。
+- **オープン課題**:
+  - `ActorSystemState` の内部フィールド更新を安全に公開する API 設計。開始前に `system.terminate()` を呼ぶか、Guardian 起動前に設定を適用するガイドを用意する必要がある。
+  - マルチスレッド環境での同時書き換えを避けるため、`ActorSystemConfig::apply` はシステム起動時の一度きりとする運用ルールを quickstart に明記する。

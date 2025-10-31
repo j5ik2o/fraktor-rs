@@ -15,7 +15,7 @@
 - Spec FR-027 に基づき、Mailbox の Bounded/Unbounded 戦略とメモリ監視・警告イベント発火をサポートする。  
 - メッセージ所有は `AnyMessage` + `ArcShared` に統一し、Mailbox が所有→借用の変換（`AnyMessageView`）を担当する。  
 - System/User の 2 本キュー（`AsyncQueue` バックエンド）と WaitNode ベースの Block 待機戦略を採用し、Busy wait を禁止する。外部 API は同期呼び出しのまま維持し、Dispatcher 内部で協調ポーリングする軽量 executor を用意して `async fn` 依存を回避する。  
-- `std` フィーチャ有効時の検証として、examples 配下に `DispatcherConfig::from_executor(TokioExecutor)` を用いた Ping/Pong サンプルを追加し、Dispatcher 差し替えで ActorSystem が Tokio ランタイム上でも動作することを確認する。Tokio 依存は examples の Cargo マニフェストに限定し、コアクレートは no_std 方針を維持する。また、ホスト向けサンプルでは `when_terminated()` の Future/Listener を用いて終了待機するベストプラクティスを提示し、EventStream を活用する `logger_subscriber_std` / `supervision_std` / `deadletter_std` でログ・監督・未配達通知の動作確認を提供する。Tokio 向けの `DispatcherConfig` ヘルパーは `actor-std` など std 層の拡張クレートで公開する。
+- `std` フィーチャ有効時の検証として、examples 配下に `DispatcherConfig::from_executor(TokioExecutor)` を用いた Ping/Pong サンプルを追加し、Dispatcher 差し替えで ActorSystem が Tokio ランタイム上でも動作することを確認する。Tokio 依存は examples と `modules/actor-std` クレート（T042 で拡張メソッドを提供）に閉じ込め、コアクレートは no_std 方針を維持する。また、ホスト向けサンプルでは `when_terminated()` の Future/Listener を用いて終了待機するベストプラクティスを提示し、EventStream を活用する `logger_subscriber_std` / `supervision_std` / `deadletter_std` でログ・監督・未配達通知の動作確認を提供する。
 - Spec FR-023 に基づき、親アクターが子アクターを生成・監督する API（Props 継承、`Context::spawn_child`）を整備し、Supervisor ツリー操作と EventStream 通知をサポートする。
 - Spec FR-024 に基づき、ActorSystem 初期化時にユーザガーディアン Props を必須とし、エントリポイントからアプリケーションツリーを構築するフローを quickstart と data-model に落とし込む。
 - Spec FR-025 に基づき、アクター命名の一意性と自動生成ロジック（親スコープごとの NameRegistry）を実装し、名前から PID への逆引きを提供する。
@@ -38,7 +38,7 @@
 **制約**: `modules/*-core` は `#![no_std]`; `tokio`/`embassy` は各 std/embedded クレートに隔離。`panic!` はランタイム非介入。Mailbox は同期（割込み安全）/非同期（std, embassy）両対応が可能な trait 設計とし、`async fn` 汚染を最小化する（FR-019〜FR-021 の要件を満たす構造）。  
 **スケール/スコープ**: 単一ノード・シングルプロセスのローカルアクター、Typed レイヤーは後続フェーズ。
 **未確定事項**: FR-020 で定義する `Block` ポリシーの背圧 API と FR-021 の `Suspend` / `Resume` 制御、FR-019 の System/User 優先度実装方式（2 本キュー or priority queue）、FR-023 の子アクター生成 API と FR-024 のユーザガーディアン Props 初期化フロー、FR-025 の命名規則（許容文字・長さ・自動命名プレフィックス）、FR-026 のミドルウェアチェーン API のインターフェイス、FR-027 の Bounded/Unbounded 切替ポリシー詳細と警告基準、FR-028 のスループット制限デフォルト値と構成方法、FR-029 の標準メッセージスキーマ指針（`reply_to` の型や必須性）、FR-030 の Ask 完了フックの具体的実装。Phase 0 でハンドラ抽象の要件を調査する。
-また、DispatcherConfig/Props の設定簡略化に向けたヘルパー関数（例: `DispatcherConfig::tokio_current()`）の追加可否を、利用者のボイラープレート量と型安全性のトレードオフを評価したうえで検討する。その際、Tokio などホスト依存のヘルパーは `actor-std` クレート側に実装し、`actor-core` の no_std ポリシーを維持する。EventStream / Deadletter のバッファ容量（既定値: EventStream=256 件, Deadletter=512 件）と警告閾値の設定ポリシーを quickstart/data-model に反映する。
+また、DispatcherConfig/Props の設定簡略化に向けたヘルパー関数（例: `DispatcherConfig::tokio_current()`）の追加可否を、利用者のボイラープレート量と型安全性のトレードオフを評価したうえで検討する。その際、Tokio などホスト依存のヘルパーは `actor-std` クレート側に実装し（T042）、`actor-core` の no_std ポリシーを維持する。EventStream / Deadletter のバッファ容量（既定値: EventStream=256 件, Deadletter=512 件）と警告閾値の設定ポリシーを quickstart/data-model に反映し、運用時に可変化する仕組みとして `ActorSystemConfig` ビルダー（T041）の設計を進める。
 
 ## 憲章チェック（着手前）
 

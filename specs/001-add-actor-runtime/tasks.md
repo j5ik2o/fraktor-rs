@@ -116,9 +116,9 @@ description: "セルアクター no_std ランタイム初期版の実装タス�
 
 - [x] T038 ランタイムガイドを更新し、利用方法・reply_to パターン・監視手順を追記する (docs/guides/actor-system.md)
 - [x] T039 Mailbox / Dispatcher のスループットベンチマークハーネスを追加する (modules/actor-core/tests/perf_mailbox.rs)
-- [ ] T040 Makefile のレシピを更新し、actor-core のストーリーパイプラインと最終 CI ターゲットを含める (Makefile.toml)
-- [ ] T041 [Optional] `actor-std` クレート向けに `ActorSystemConfig`（仮称）を設計し、EventStream/Deadletter 容量や警告閾値を指定できるヘルパー API の草案と quickstart 反映手順を整理する（設計メモを research.md か docs/ に追記し、導入時の変更点を quickstart アップデートとセットで管理する）。
-- [ ] T042 `actor-std` クレートに DispatcherConfig / Props の Tokio ヘルパー（例: `DispatcherConfig::tokio_current()`, `Props::with_tokio_dispatcher()`）を実装し、対応する quickstart/plan/specs の記述を更新する。Tokio ランタイムの `Handle` を安全に取得できる API 設計と、`actor-core` 側の no_std ポリシーを崩さない構成を確認する。
+- [x] T040 Makefile のレシピを更新し、actor-core のストーリーパイプラインと最終 CI ターゲットを含める (Makefile.toml)
+- [x] T041 [Optional] `actor-std` クレート向けに `ActorSystemConfig`（仮称）を設計し、EventStream/Deadletter 容量や警告閾値を指定できるヘルパー API の草案と quickstart 反映手順を整理する（設計メモを research.md か docs/ に追記し、導入時の変更点を quickstart アップデートとセットで管理する）。
+- [x] T042 `actor-std` クレートに DispatcherConfig / Props の Tokio ヘルパー（例: `DispatcherConfig::tokio_current()`, `Props::with_tokio_dispatcher()`）を実装し、対応する quickstart/plan/specs の記述を更新する。Tokio ランタイムの `Handle` を安全に取得できる API 設計と、`actor-core` 側の no_std ポリシーを崩さない構成を確認する。
 
 ---
 

@@ -113,3 +113,63 @@ fi
 description = "Report heuristic cyclomatic complexity for key crates"
 workspace = false
 command = "./scripts/run-codex.sh"
+
+[tasks.actor-core-us1]
+description = "Actor core US1: ping/pong pipeline (tests + examples)"
+workspace = false
+script = '''
+#!/usr/bin/env bash
+set -euo pipefail
+cargo test -p cellactor-actor-core-rs --features std --test ping_pong
+cargo run -q -p cellactor-actor-core-rs --example ping_pong_no_std --features std
+cargo run -q -p cellactor-actor-core-rs --example ping_pong_tokio --features std
+'''
+
+[tasks.actor-core-us2]
+description = "Actor core US2: supervision pipeline (tests + examples)"
+workspace = false
+script = '''
+#!/usr/bin/env bash
+set -euo pipefail
+cargo test -p cellactor-actor-core-rs --features std --test supervisor
+cargo run -q -p cellactor-actor-core-rs --example supervision_std --features std
+'''
+
+[tasks.actor-core-us3]
+description = "Actor core US3: observability pipeline (tests + examples)"
+workspace = false
+script = '''
+#!/usr/bin/env bash
+set -euo pipefail
+cargo test -p cellactor-actor-core-rs --features std --test event_stream
+cargo run -q -p cellactor-actor-core-rs --example deadletter_std --features std
+cargo run -q -p cellactor-actor-core-rs --example logger_subscriber_std --features std
+'''
+
+[tasks.actor-core-perf]
+description = "Actor core throughput harness (perf_mailbox)"
+workspace = false
+script = '''
+#!/usr/bin/env bash
+set -euo pipefail
+cargo test -p cellactor-actor-core-rs --features std --test perf_mailbox
+'''
+
+[tasks.actor-core-story]
+description = "Actor core story pipeline (US1→US3 + perf)"
+workspace = false
+dependencies = [
+  "actor-core-us1",
+  "actor-core-us2",
+  "actor-core-us3",
+  "actor-core-perf",
+]
+
+[tasks.actor-core-ci]
+description = "Run full CI for actor-core (scripts/ci-check.sh all)"
+workspace = false
+script = '''
+#!/usr/bin/env bash
+set -euo pipefail
+./scripts/ci-check.sh all
+'''
