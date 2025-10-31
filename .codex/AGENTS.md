@@ -1,3 +1,2 @@
-Please provide all answers in Japanese
-
-- ファイルの編集にはpythonではなくてfunctions.apply_patchを使え
+- すべて日本語でやりとりすること
+- ソースコード以外の生成されるファイルも日本語で記述すること
