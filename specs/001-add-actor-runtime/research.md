@@ -75,3 +75,7 @@
 ## Decision: Ask/reply flow with ActorFuture
 - **Rationale**: `reply_to: ActorRef` を AnyMessage に保持し、MessageInvoker 終了時に ActorFuture を完了させることで sender() 依存を排除しつつ ask を実現する。  
 - **Alternatives considered**: Classic sender() を維持する案（Typed レイヤー導入時に矛盾）; ask をサポートしない案（ユースケースが限定される）。
+
+## Decision: DispatcherConfig ヘルパの配置レイヤ
+- **Rationale**: `DispatcherConfig::tokio_current()` や `Props::with_tokio_dispatcher()` といったホスト依存ヘルパは `actor-core` の no_std ポリシーと整合しないため、`actor-std` クレート側に extension/helper として実装し、Tokio ランタイムと紐づく API を分離する。これにより core 側はポータブルなまま、標準環境ではシンプルな opt-in API でボイラープレートを削減できる。  
+- **Alternatives considered**: `actor-core` に Tokio ヘルパを追加する案（no_std ビルドで feature gating が複雑化し `#[cfg(feature = "std")]` を runtime 本体に持ち込む懸念）; 外部 crate に委ねる案（公式サポートが分散し利用者が API を探しづらい）。

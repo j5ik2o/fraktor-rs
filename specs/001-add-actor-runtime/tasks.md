@@ -72,7 +72,7 @@ description: "セルアクター no_std ランタイム初期版の実装タス�
 - [x] T022 [P] [US1] AnyMessage + reply_to を用いた no_std Ping/Pong サンプルを追加する (modules/actor-core/examples/ping_pong_no_std/main.rs; `ctx.self_ref()` を payload の `reply_to` に埋め込み、`reply_to.tell(...)` で応答する例を示す。実行は `cargo run -p cellactor-actor-core-rs --example ping_pong_no_std --features std`)
 - [x] T022A [P] [US1] Tokio ランタイムの `Handle::spawn_blocking` を用いて Dispatcher を駆動する `TokioExecutor` を examples 配下に追加し、`cfg(feature = "std")` 下でのみコンパイルされるようにする (modules/actor-core/examples/ping_pong_tokio/executor.rs)
 - [x] T022B [P] [US1] `Props::with_dispatcher(DispatcherConfig::from_executor(...))` を利用する Ping/Pong サンプルを追加し、Tokio ランタイムで ActorSystem を起動して `reply_to` ベースの応答とスレッド ID ログを検証しつつ、`when_terminated()` の Future/Listener でシステム終了を待機する (modules/actor-core/examples/ping_pong_tokio/main.rs; 実行コマンド `cargo run -p cellactor-actor-core-rs --example ping_pong_tokio --features std`)
-- [ ] T022C [Optional] DispatcherConfig / Props の利便性向上ヘルパー（例: `DispatcherConfig::tokio_current()` や `Props::with_tokio_dispatcher()`）の設計案をまとめ、導入時の API 影響とボイラープレート削減効果を評価する (docs/ 或いは research.md にメモ)
+- [x] T022C [Optional] DispatcherConfig / Props の利便性向上ヘルパー（例: `DispatcherConfig::tokio_current()` や `Props::with_tokio_dispatcher()`）の設計案をまとめ、導入時の API 影響とボイラープレート削減効果を評価する (docs/ 或いは research.md にメモ)
 - [x] T023 [P] [US1] spawn / tell / 背圧ポリシー / 自動命名を検証する統合テストを追加する (modules/actor-core/tests/ping_pong.rs)
 
 ---
@@ -106,7 +106,7 @@ description: "セルアクター no_std ランタイム初期版の実装タス�
 - [x] T036 [P] [US3] EventStream + Deadletter フローを検証する統合テストを追加する (modules/actor-core/tests/event_stream.rs)
 - [x] T037 [P] [US3] LogEvent を消費するロガー購読者サンプルを追加する (examples/logger_subscriber_std/main.rs)
 - [x] T037B [P] [US3] Deadletter 監視とサスペンド郵便受けを示すサンプルを追加する (modules/actor-core/examples/deadletter_std/main.rs)
-- [ ] T037A [Optional] EventStream/Deadletter のバッファ容量と警告閾値をユーザ設定できる API を検討し、quickstart/data-model に推奨値を追記する
+- [ ] T037A [Optional] EventStream/Deadletter のバッファ容量と警告閾値をユーザ設定できる API を検討し、quickstart/data-model に推奨値を追記する。Tokio などホスト側ランタイム向けの `DispatcherConfig` ヘルパーは core ではなく `actor-std` 等の拡張クレートで提供する方針案をまとめる。
 
 ---
 
