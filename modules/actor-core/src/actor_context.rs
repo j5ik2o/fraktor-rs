@@ -1,10 +1,10 @@
 //! Actor execution context utilities.
 
-use alloc::vec::Vec;
+use alloc::{string::String, vec::Vec};
 
 use crate::{
-  actor_ref::ActorRef, any_message::AnyMessage, child_ref::ChildRef, pid::Pid, props::Props, send_error::SendError,
-  spawn_error::SpawnError, system::ActorSystem,
+  actor_ref::ActorRef, any_message::AnyMessage, child_ref::ChildRef, log_level::LogLevel, pid::Pid, props::Props,
+  send_error::SendError, spawn_error::SpawnError, system::ActorSystem,
 };
 
 /// Provides contextual APIs while handling a message.
@@ -123,5 +123,10 @@ impl<'a> ActorContext<'a> {
   /// Returns an error if the resume message cannot be enqueued.
   pub fn resume_child(&self, child: &ChildRef) -> Result<(), SendError> {
     child.resume()
+  }
+
+  /// Emits a log event associated with the running actor.
+  pub fn log(&self, level: LogLevel, message: impl Into<String>) {
+    self.system.emit_log(level, message.into(), Some(self.pid));
   }
 }

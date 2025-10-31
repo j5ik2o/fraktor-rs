@@ -38,3 +38,8 @@ required-features = ["std"]
 name = "ping_pong_tokio"
 path = "examples/ping_pong_tokio/main.rs"
 required-features = ["std"]
+
+[[example]]
+name = "logger_subscriber_std"
+path = "examples/logger_subscriber_std/main.rs"
+required-features = ["std"]

@@ -1,4 +1,4 @@
-use alloc::{string::String, vec::Vec};
+use alloc::{format, string::String, vec::Vec};
 use core::time::Duration;
 
 use cellactor_utils_core_rs::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
@@ -10,6 +10,12 @@ use crate::{
   actor_error::ActorError,
   actor_future::ActorFuture,
   any_message::AnyMessage,
+  deadletter::Deadletter,
+  deadletter_entry::DeadletterEntry,
+  event_stream::EventStream,
+  event_stream_event::EventStreamEvent,
+  log_event::LogEvent,
+  log_level::LogLevel,
   name_registry::{NameRegistry, NameRegistryError},
   pid::Pid,
   send_error::SendError,
@@ -20,29 +26,35 @@ use crate::{
 
 /// Shared, mutable state owned by the [`ActorSystem`](crate::system::ActorSystem).
 pub struct ActorSystemState {
-  next_pid:    AtomicU64,
-  clock:       AtomicU64,
-  cells:       SpinSyncMutex<HashMap<Pid, ArcShared<ActorCell>>>,
-  registries:  SpinSyncMutex<HashMap<Option<Pid>, NameRegistry>>,
-  guardian:    SpinSyncMutex<Option<ArcShared<ActorCell>>>,
-  ask_futures: SpinSyncMutex<Vec<ArcShared<ActorFuture<AnyMessage>>>>,
-  termination: ArcShared<ActorFuture<()>>,
-  terminated:  AtomicBool,
+  next_pid:     AtomicU64,
+  clock:        AtomicU64,
+  cells:        SpinSyncMutex<HashMap<Pid, ArcShared<ActorCell>>>,
+  registries:   SpinSyncMutex<HashMap<Option<Pid>, NameRegistry>>,
+  guardian:     SpinSyncMutex<Option<ArcShared<ActorCell>>>,
+  ask_futures:  SpinSyncMutex<Vec<ArcShared<ActorFuture<AnyMessage>>>>,
+  termination:  ArcShared<ActorFuture<()>>,
+  terminated:   AtomicBool,
+  event_stream: ArcShared<EventStream>,
+  deadletter:   ArcShared<Deadletter>,
 }
 
 impl ActorSystemState {
   /// Creates a fresh state container without any registered actors.
   #[must_use]
   pub fn new() -> Self {
+    let event_stream = ArcShared::new(EventStream::default());
+    let deadletter = ArcShared::new(Deadletter::new(event_stream.clone(), 512));
     Self {
-      next_pid:    AtomicU64::new(0),
-      clock:       AtomicU64::new(0),
-      cells:       SpinSyncMutex::new(HashMap::new()),
-      registries:  SpinSyncMutex::new(HashMap::new()),
-      guardian:    SpinSyncMutex::new(None),
+      next_pid: AtomicU64::new(0),
+      clock: AtomicU64::new(0),
+      cells: SpinSyncMutex::new(HashMap::new()),
+      registries: SpinSyncMutex::new(HashMap::new()),
+      guardian: SpinSyncMutex::new(None),
       ask_futures: SpinSyncMutex::new(Vec::new()),
       termination: ArcShared::new(ActorFuture::new()),
-      terminated:  AtomicBool::new(false),
+      terminated: AtomicBool::new(false),
+      event_stream,
+      deadletter,
     }
   }
 
@@ -67,6 +79,42 @@ impl ActorSystemState {
   #[must_use]
   pub fn cell(&self, pid: &Pid) -> Option<ArcShared<ActorCell>> {
     self.cells.lock().get(pid).cloned()
+  }
+
+  /// Returns the shared event stream handle.
+  #[must_use]
+  pub fn event_stream(&self) -> ArcShared<EventStream> {
+    self.event_stream.clone()
+  }
+
+  /// Returns the deadletter repository.
+  #[must_use]
+  pub fn deadletter(&self) -> ArcShared<Deadletter> {
+    self.deadletter.clone()
+  }
+
+  /// Returns a snapshot of deadletter entries.
+  #[must_use]
+  pub fn deadletters(&self) -> Vec<DeadletterEntry> {
+    self.deadletter.entries()
+  }
+
+  /// Publishes an event through the event stream.
+  pub fn publish_event(&self, event: EventStreamEvent) {
+    self.event_stream.publish(event);
+  }
+
+  /// Emits a log event.
+  pub fn emit_log(&self, level: LogLevel, message: String, origin: Option<Pid>) {
+    let timestamp = self.monotonic_now();
+    let event = LogEvent::new(level, message, timestamp, origin);
+    self.event_stream.publish(EventStreamEvent::Log(event));
+  }
+
+  /// Records a send error in the deadletter repository.
+  pub fn record_send_error(&self, recipient: Option<Pid>, error: &SendError) {
+    let timestamp = self.monotonic_now();
+    self.deadletter.record_send_error(recipient, error, timestamp);
   }
 
   /// Stores the user guardian cell reference.
@@ -202,6 +250,7 @@ impl ActorSystemState {
 
   /// Handles an actor failure by applying the appropriate supervisor directive.
   pub fn notify_failure(&self, pid: Pid, error: &ActorError) {
+    self.emit_log(LogLevel::Error, format!("actor {:?} failed: {:?}", pid, error.reason()), Some(pid));
     let parent = self.parent_of(&pid);
     self.handle_failure(pid, parent, error);
   }
@@ -255,7 +304,9 @@ impl ActorSystemState {
     self.cell(pid).and_then(|cell| cell.parent())
   }
 
-  fn monotonic_now(&self) -> Duration {
+  /// Returns a monotonic timestamp for instrumentation.
+  #[must_use]
+  pub fn monotonic_now(&self) -> Duration {
     let ticks = self.clock.fetch_add(1, Ordering::Relaxed) + 1;
     Duration::from_millis(ticks)
   }

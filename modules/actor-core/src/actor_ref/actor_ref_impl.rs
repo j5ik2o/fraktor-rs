@@ -55,7 +55,15 @@ impl ActorRef {
   ///
   /// Returns an error if the send operation fails.
   pub fn tell(&self, message: AnyMessage) -> Result<(), SendError> {
-    self.sender.send(message)
+    match self.sender.send(message) {
+      | Ok(()) => Ok(()),
+      | Err(error) => {
+        if let Some(system) = &self.system {
+          system.record_send_error(Some(self.pid), &error);
+        }
+        Err(error)
+      },
+    }
   }
 
   /// Sends a request and obtains a future that resolves with the reply.

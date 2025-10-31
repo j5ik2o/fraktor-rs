@@ -1,12 +1,13 @@
-use alloc::vec::Vec;
+use alloc::{string::String, vec::Vec};
 use core::hint::spin_loop;
 
 use cellactor_utils_core_rs::sync::ArcShared;
 
 use crate::{
   actor_cell::ActorCell, actor_future::ActorFuture, actor_ref::ActorRef, any_message::AnyMessage, child_ref::ChildRef,
-  pid::Pid, props::Props, send_error::SendError, spawn_error::SpawnError, system_message::SystemMessage,
-  system_state::ActorSystemState,
+  deadletter_entry::DeadletterEntry, event_stream::EventStream, event_stream_subscriber::EventStreamSubscriber,
+  event_stream_subscription::EventStreamSubscription, log_level::LogLevel, pid::Pid, props::Props,
+  send_error::SendError, spawn_error::SpawnError, system_message::SystemMessage, system_state::ActorSystemState,
 };
 
 #[cfg(test)]
@@ -108,6 +109,29 @@ impl ActorSystem {
   #[must_use]
   pub fn drain_ready_ask_futures(&self) -> Vec<ArcShared<ActorFuture<AnyMessage>>> {
     self.state.drain_ready_ask_futures()
+  }
+
+  /// Returns the shared event stream.
+  #[must_use]
+  pub fn event_stream(&self) -> ArcShared<EventStream> {
+    self.state.event_stream()
+  }
+
+  /// Emits a log event associated with the optional actor pid.
+  pub fn emit_log(&self, level: LogLevel, message: impl Into<String>, origin: Option<Pid>) {
+    self.state.emit_log(level, message.into(), origin);
+  }
+
+  /// Returns the recorded deadletter entries.
+  #[must_use]
+  pub fn deadletters(&self) -> Vec<DeadletterEntry> {
+    self.state.deadletters()
+  }
+
+  /// Subscribes to the event stream with the provided subscriber.
+  #[must_use]
+  pub fn subscribe_event_stream(&self, subscriber: ArcShared<dyn EventStreamSubscriber>) -> EventStreamSubscription {
+    EventStream::subscribe_arc(&self.state.event_stream(), subscriber)
   }
 
   fn rollback_spawn(&self, parent: Option<Pid>, cell: &ArcShared<ActorCell>, pid: Pid) {

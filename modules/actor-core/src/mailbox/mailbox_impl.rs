@@ -1,6 +1,9 @@
 use core::num::NonZeroUsize;
 
-use cellactor_utils_core_rs::collections::queue::{QueueError, backend::OfferOutcome};
+use cellactor_utils_core_rs::{
+  collections::queue::{QueueError, backend::OfferOutcome},
+  sync::sync_mutex_like::SpinSyncMutex,
+};
 use portable_atomic::{AtomicBool, Ordering};
 
 use super::{
@@ -9,6 +12,7 @@ use super::{
 };
 use crate::{
   any_message::AnyMessage,
+  mailbox_instrumentation::MailboxInstrumentation,
   mailbox_policy::{MailboxCapacity, MailboxOverflowStrategy, MailboxPolicy},
   send_error::SendError,
   system_message::SystemMessage,
@@ -16,10 +20,11 @@ use crate::{
 
 /// Priority mailbox maintaining separate queues for system and user messages.
 pub struct Mailbox {
-  policy:    MailboxPolicy,
-  system:    QueueHandles<SystemMessage>,
-  user:      QueueHandles<AnyMessage>,
-  suspended: AtomicBool,
+  policy:          MailboxPolicy,
+  system:          QueueHandles<SystemMessage>,
+  user:            QueueHandles<AnyMessage>,
+  suspended:       AtomicBool,
+  instrumentation: SpinSyncMutex<Option<MailboxInstrumentation>>,
 }
 
 impl Mailbox {
@@ -28,7 +33,18 @@ impl Mailbox {
   pub fn new(policy: MailboxPolicy) -> Self {
     let user_handles = QueueHandles::new_user(&policy);
     let system_handles = QueueHandles::new_system();
-    Self { policy, system: system_handles, user: user_handles, suspended: AtomicBool::new(false) }
+    Self {
+      policy,
+      system: system_handles,
+      user: user_handles,
+      suspended: AtomicBool::new(false),
+      instrumentation: SpinSyncMutex::new(None),
+    }
+  }
+
+  /// Installs instrumentation hooks for metrics emission.
+  pub fn set_instrumentation(&self, instrumentation: MailboxInstrumentation) {
+    *self.instrumentation.lock() = Some(instrumentation);
   }
 
   /// Enqueues a system message, bypassing suspension.
@@ -72,6 +88,7 @@ impl Mailbox {
   #[must_use]
   pub fn dequeue(&self) -> Option<MailboxMessage> {
     if let Some(system) = Self::poll_queue(&self.system) {
+      self.publish_metrics();
       return Some(MailboxMessage::System(system));
     }
 
@@ -79,7 +96,11 @@ impl Mailbox {
       return None;
     }
 
-    Self::poll_queue(&self.user).map(MailboxMessage::User)
+    let result = Self::poll_queue(&self.user).map(MailboxMessage::User);
+    if result.is_some() {
+      self.publish_metrics();
+    }
+    result
   }
 
   /// Suspends user message consumption.
@@ -152,6 +173,7 @@ impl Mailbox {
     match self.user.offer(message) {
       | Ok(outcome) => {
         Self::handle_offer_outcome(outcome);
+        self.publish_metrics();
         Ok(EnqueueOutcome::Enqueued)
       },
       | Err(error) => Err(map_user_queue_error(error)),
@@ -162,6 +184,7 @@ impl Mailbox {
     match self.system.offer(message) {
       | Ok(outcome) => {
         Self::handle_offer_outcome(outcome);
+        self.publish_metrics();
         Ok(())
       },
       | Err(error) => Err(map_system_queue_error(error)),
@@ -183,5 +206,12 @@ impl Mailbox {
   const fn handle_offer_outcome(outcome: OfferOutcome) {
     let _ = outcome;
     // TODO: instrumentation hook for telemetry and EventStream integration.
+  }
+
+  fn publish_metrics(&self) {
+    let guard = self.instrumentation.lock();
+    if let Some(instrumentation) = guard.as_ref() {
+      instrumentation.publish(self.user_len(), self.system_len());
+    }
   }
 }

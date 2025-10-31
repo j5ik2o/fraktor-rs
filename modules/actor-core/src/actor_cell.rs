@@ -10,7 +10,11 @@ use crate::{
   actor_ref::ActorRef,
   any_message::AnyMessage,
   dispatcher::Dispatcher,
+  event_stream_event::EventStreamEvent,
+  lifecycle_event::{LifecycleEvent, LifecycleStage},
   mailbox::Mailbox,
+  mailbox_instrumentation::MailboxInstrumentation,
+  mailbox_policy::MailboxCapacity,
   message_invoker::{MessageInvoker, MessageInvokerPipeline},
   pid::Pid,
   props::{ActorFactory, Props},
@@ -47,6 +51,7 @@ impl ActorCell {
     props: &Props,
   ) -> ArcShared<Self> {
     let mailbox = ArcShared::new(Mailbox::new(props.mailbox().policy()));
+    Self::configure_mailbox(&mailbox, &system, pid, props);
     let dispatcher = props.dispatcher().build_dispatcher(mailbox.clone());
     let sender = dispatcher.into_sender();
     let factory = props.factory().clone();
@@ -166,12 +171,14 @@ impl ActorCell {
       actor.post_stop(&mut ctx)?;
     }
 
+    self.publish_lifecycle(LifecycleStage::Stopped);
+
     {
       let mut actor_slot = self.actor.lock();
       *actor_slot = self.factory.create();
     }
 
-    self.run_pre_start()
+    self.run_pre_start(LifecycleStage::Restarted)
   }
 
   /// Executes the actor's `pre_start` hook.
@@ -180,14 +187,18 @@ impl ActorCell {
   ///
   /// Returns an error if the hook fails.
   pub fn pre_start(&self) -> Result<(), ActorError> {
-    self.run_pre_start()
+    self.run_pre_start(LifecycleStage::Started)
   }
 
-  fn run_pre_start(&self) -> Result<(), ActorError> {
+  fn run_pre_start(&self, stage: LifecycleStage) -> Result<(), ActorError> {
     let system = ActorSystem::from_state(self.system.clone());
     let mut ctx = ActorContext::new(&system, self.pid);
     let mut actor = self.actor.lock();
-    actor.pre_start(&mut ctx)
+    let outcome = actor.pre_start(&mut ctx);
+    if outcome.is_ok() {
+      self.publish_lifecycle(stage);
+    }
+    outcome
   }
 
   fn handle_stop(&self) -> Result<(), ActorError> {
@@ -196,6 +207,9 @@ impl ActorCell {
     let mut actor = self.actor.lock();
     let outcome = actor.post_stop(&mut ctx);
     drop(actor);
+    if outcome.is_ok() {
+      self.publish_lifecycle(LifecycleStage::Stopped);
+    }
     for child in self.children() {
       let _ = self.system.send_system_message(child, SystemMessage::Stop);
     }
@@ -215,6 +229,25 @@ impl ActorCell {
       return;
     }
     self.child_stats.lock().retain(|(pid, _)| !children.iter().any(|target| target == pid));
+  }
+
+  fn configure_mailbox(mailbox: &ArcShared<Mailbox>, system: &ArcShared<ActorSystemState>, pid: Pid, props: &Props) {
+    let policy = props.mailbox().policy();
+    let capacity = match policy.capacity() {
+      | MailboxCapacity::Bounded { capacity } => Some(capacity.get()),
+      | MailboxCapacity::Unbounded => None,
+    };
+    let throughput = policy.throughput_limit().map(|limit| limit.get());
+    let warn_threshold = props.mailbox().warn_threshold().map(|threshold| threshold.get());
+    let instrumentation =
+      MailboxInstrumentation::new(system.event_stream(), system.clone(), pid, capacity, throughput, warn_threshold);
+    mailbox.set_instrumentation(instrumentation);
+  }
+
+  fn publish_lifecycle(&self, stage: LifecycleStage) {
+    let timestamp = self.system.monotonic_now();
+    let event = LifecycleEvent::new(self.pid, self.parent, self.name.clone(), stage, timestamp);
+    self.system.publish_event(EventStreamEvent::Lifecycle(event));
   }
 }
 
