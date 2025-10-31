@@ -30,7 +30,7 @@ pub struct ActorSystemState {
   clock:        AtomicU64,
   cells:        SpinSyncMutex<HashMap<Pid, ArcShared<ActorCell>>>,
   registries:   SpinSyncMutex<HashMap<Option<Pid>, NameRegistry>>,
-  guardian:     SpinSyncMutex<Option<ArcShared<ActorCell>>>,
+  user_guardian:     SpinSyncMutex<Option<ArcShared<ActorCell>>>,
   ask_futures:  SpinSyncMutex<Vec<ArcShared<ActorFuture<AnyMessage>>>>,
   termination:  ArcShared<ActorFuture<()>>,
   terminated:   AtomicBool,
@@ -49,7 +49,7 @@ impl ActorSystemState {
       clock: AtomicU64::new(0),
       cells: SpinSyncMutex::new(HashMap::new()),
       registries: SpinSyncMutex::new(HashMap::new()),
-      guardian: SpinSyncMutex::new(None),
+      user_guardian: SpinSyncMutex::new(None),
       ask_futures: SpinSyncMutex::new(Vec::new()),
       termination: ArcShared::new(ActorFuture::new()),
       terminated: AtomicBool::new(false),
@@ -119,12 +119,12 @@ impl ActorSystemState {
 
   /// Stores the user guardian cell reference.
   pub fn set_user_guardian(&self, cell: ArcShared<ActorCell>) {
-    *self.guardian.lock() = Some(cell);
+    *self.user_guardian.lock() = Some(cell);
   }
 
   /// Clears the guardian if the provided pid matches.
   pub fn clear_guardian(&self, pid: Pid) -> bool {
-    let mut guard = self.guardian.lock();
+    let mut guard = self.user_guardian.lock();
     if guard.as_ref().map(|cell| cell.pid()) == Some(pid) {
       *guard = None;
       true
@@ -136,7 +136,7 @@ impl ActorSystemState {
   /// Returns the user guardian cell if initialised.
   #[must_use]
   pub fn user_guardian(&self) -> Option<ArcShared<ActorCell>> {
-    self.guardian.lock().clone()
+    self.user_guardian.lock().clone()
   }
 
   /// Reserves a name for the actor within its parent's scope.
@@ -171,7 +171,7 @@ impl ActorSystemState {
   /// Returns the pid of the user guardian if available.
   #[must_use]
   pub fn user_guardian_pid(&self) -> Option<Pid> {
-    self.guardian.lock().as_ref().map(|cell| cell.pid())
+    self.user_guardian.lock().as_ref().map(|cell| cell.pid())
   }
 
   /// Registers an ask future so the actor system can track its completion.
