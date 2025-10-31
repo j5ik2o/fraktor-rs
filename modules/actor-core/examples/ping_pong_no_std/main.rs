@@ -26,7 +26,7 @@ impl Actor for GuardianActor {
       #[cfg(feature = "std")]
       {
         use std::println;
-        println!("pong replied: {}", reply.text);
+        println!("[{:?}] pong replied: {}", std::thread::current().id(), reply.text);
       }
     }
     Ok(())
@@ -70,7 +70,7 @@ impl Actor for PongActor {
       #[cfg(feature = "std")]
       {
         use std::println;
-        println!("received ping: {}", ping.text);
+        println!("[{:?}] received ping: {}", std::thread::current().id(), ping.text);
       }
       let response = PongReply { text: ping.text.clone() };
       ping.reply_to.tell(AnyMessage::new(response)).map_err(|_| ActorError::recoverable("reply failed"))?;
