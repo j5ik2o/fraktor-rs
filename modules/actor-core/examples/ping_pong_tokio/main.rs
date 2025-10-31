@@ -105,11 +105,7 @@ async fn main() {
   })
   .with_dispatcher(dispatcher.clone());
   let system = ActorSystem::new(&props).expect("system");
-
-  let wait_handle = {
-    let system = system.clone();
-    tokio::task::spawn_blocking(move || system.run_until_terminated())
-  };
+  let termination = system.when_terminated();
 
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
 
@@ -117,5 +113,5 @@ async fn main() {
 
   system.terminate().expect("terminate");
 
-  wait_handle.await.expect("await termination");
+  termination.listener().await;
 }

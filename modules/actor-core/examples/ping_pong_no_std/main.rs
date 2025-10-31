@@ -88,11 +88,16 @@ fn format_message(index: u32) -> String {
 
 #[cfg(feature = "std")]
 fn main() {
+  use std::thread;
+
   let props = Props::from_fn(|| GuardianActor);
   let system = ActorSystem::new(&props).expect("system");
+  let termination = system.when_terminated();
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
   system.terminate().expect("terminate");
-  system.run_until_terminated();
+  while !termination.is_ready() {
+    thread::yield_now();
+  }
 }
 
 #[cfg(not(feature = "std"))]
