@@ -9,8 +9,9 @@ description: "セルアクター no_std ランタイム初期版の実装タス�
 **入力**: `/specs/001-add-actor-runtime/` 配下の設計ドキュメント
 **前提条件**: plan.md（必須）、spec.md（ユーザーストーリー参照）、research.md、data-model.md、contracts/
 
-**テスト方針**: 原則2に従い、ユーザーストーリー単位で独立した検証ができるようにする。`modules/actor-core/tests/` にストーリー別の統合テストを追加し、`cfg(test)` 下でのみ `std` を有効化する。実装前に既存コードの設計パターン（1ファイル1構造体／trait、`ArcShared` 抽象、`no_std` 運用）を確認し、乖離する場合は理由と影響を記録する。共有参照・ロックは必ず `modules/utils-core` の抽象 (`Shared`/`ArcShared`, `Async/SyncMutexLike`) を利用し、`alloc::sync::Arc` へ直接依存しない。API とデータフローは借用ベースのライフタイム設計を採り、ヒープ確保は不可避な箇所に限定して計測・再利用戦略をタスク内で明示する。`sender()` は導入せず、メッセージの `reply_to: ActorRef` を必須パターンとする。`./scripts/ci-check.sh all` と `makers ci-check -- dylint` は全タスク完了時に一括で実行し、それ以前は対象範囲のテストとローカル検証を優先する。  
-**進行中指針**: cargo checkをしながら作業すること。単体テストを書くこと。  
+**テスト方針**: 原則2に従い、ユーザーストーリー単位で独立した検証ができるようにする。`modules/actor-core/tests/` にストーリー別の統合テストを追加し、`cfg(test)` 下でのみ `std` を有効化する。実装前に既存コードの設計パターン（1ファイル1構造体／trait、`ArcShared` 抽象、`no_std` 運用）を確認し、乖離する場合は理由と影響を記録する。共有参照・ロックは必ず `modules/utils-core` の抽象 (`Shared`/`ArcShared`, `Async/SyncMutexLike`) を利用し、`alloc::sync::Arc` へ直接依存しない。API とデータフローは借用ベースのライフタイム設計を採り、ヒープ確保は不可避な箇所に限定して計測・再利用戦略をタスク内で明示する。`sender()` は導入せず、メッセージの `reply_to: ActorRef` を必須パターンとする。`./scripts/ci-check.sh all` と `makers ci-check -- dylint` は全タスク完了時に一括で実行し、それ以前は対象範囲のテストとローカル検証を優先する。
+**進行中指針**: cargo checkをしながら作業すること。単体テストを書くこと。
+**コーディング規約**: `vec!` マクロ使用時は `use alloc::vec;` を追加。コンパイル時評価可能な関数は `const fn` を使用。値渡しよりも参照渡し（`&T`）を優先してクローンを回避。すべての公開関数に適切な rustdoc コメント（`# Errors`, `# Panics` セクション含む）を記載。Clippy 警告は原則すべて修正するが、借用チェッカーとの兼ね合いで適用不可能な場合は `#[allow(...)]` で理由をコメント付きで許可し、`plan.md` の「複雑度トラッキング」に記録。
 **構成**: タスクはユーザーストーリーごとにグルーピングし、依存関係が無いものは `[P]` で並列実行可とする。
 
 ## 形式: `[ID] [P?] [Story] 説明`

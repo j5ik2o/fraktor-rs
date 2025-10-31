@@ -27,8 +27,9 @@
 ## 技術コンテキスト
 
 **言語/バージョン**: Rust 1.81 (stable) + nightly toolchain fallback（`no_std` 機能確認用）
-**主要依存関係**: `portable-atomic`, `portable-atomic-util`, `alloc`, `heapless`, `modules/utils-core::AsyncQueue`; 参照実装として `references/protoactor-go`, `references/pekko`  ️
+**主要依存関係**: `portable-atomic`, `portable-atomic-util`, `alloc`, `heapless`, `modules/utils-core::AsyncQueue`; 参照実装として `references/protoactor-go`, `references/pekko`
 **ストレージ**: SRAM 64KB クラスの組込みデバイス。メッセージバッファは AsyncQueue / ヒープ再利用で管理。
+**`no_std` 実装注意点**: `vec!` マクロ使用時は `use alloc::vec;` が必須。`const fn` はコンパイル時評価可能な関数に積極適用。参照渡し（`&T`）でクローン回避を優先し、ドキュメントコメントには `# Errors` / `# Panics` セクションを必ず記載。
 **テスト**: 各フェーズでは対象範囲のユニット／統合テストを優先し、`./scripts/ci-check.sh all` と `makers ci-check -- dylint` は全タスク完了後の最終確認時にまとめて実行する。ホスト検証は `cargo test --no-default-features`（std フィーチャを使わない確認用）、組込み検証は `cargo test --target thumbv7em-none-eabihf`（panic=abort）。
 **対象プラットフォーム**: RP2040 / RP235x / Cortex-M33、ホスト Linux/macOS (シミュレーション用)。
 **プロジェクト種別**: マルチクレート (`modules/actor-core`, `modules/utils-core`, 後続で `modules/actor-std` 等)。
@@ -104,4 +105,4 @@ specs/001-add-actor-runtime/
 
 | 違反項目 | 必要な理由 | 却下した単純案 |
 |----------|------------|----------------|
-| なし     | -          | -              |
+| `#[allow(clippy::needless_range_loop)]` in `actor_cell.rs::find_or_insert_stats` | 可変参照を返すパターンでループ内indexingが必須。`iter_mut().take(len)` への変更は借用チェッカーエラーを引き起こす（ループ内で可変参照を返した後、同じベクターへ `push` するため）。 | `iter_mut()` パターンは借用チェッカーエラーで却下。 |
