@@ -16,9 +16,9 @@ impl Actor for GuardianActor {
   fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
       let pong =
-        ctx.spawn_child(&Props::from_fn(pong_factory)).map_err(|_| ActorError::recoverable("failed to spawn pong"))?;
+        ctx.spawn_child(&Props::from_fn(|| PongActor)).map_err(|_| ActorError::recoverable("failed to spawn pong"))?;
       let ping =
-        ctx.spawn_child(&Props::from_fn(ping_factory)).map_err(|_| ActorError::recoverable("failed to spawn ping"))?;
+        ctx.spawn_child(&Props::from_fn(|| PingActor)).map_err(|_| ActorError::recoverable("failed to spawn ping"))?;
 
       let start_ping = StartPing { target: pong.actor_ref().clone(), reply_to: ctx.self_ref(), count: 3 };
       ping.tell(AnyMessage::new(start_ping)).map_err(|_| ActorError::recoverable("failed to start ping actor"))?;
@@ -86,21 +86,9 @@ fn format_message(index: u32) -> String {
   out
 }
 
-fn guardian_factory() -> GuardianActor {
-  GuardianActor
-}
-
-fn ping_factory() -> PingActor {
-  PingActor
-}
-
-fn pong_factory() -> PongActor {
-  PongActor
-}
-
 #[cfg(feature = "std")]
 fn main() {
-  let props = Props::from_fn(guardian_factory);
+  let props = Props::from_fn(|| GuardianActor);
   let system = ActorSystem::new(&props).expect("system");
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
   system.terminate().expect("terminate");

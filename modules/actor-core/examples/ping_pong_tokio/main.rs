@@ -22,8 +22,9 @@ impl GuardianActor {
     Self { dispatcher }
   }
 
-  fn child_props<A>(&self, factory: fn() -> A) -> Props
+  fn child_props<F, A>(&self, factory: F) -> Props
   where
+    F: Fn() -> A + Send + Sync + 'static,
     A: Actor + Sync + 'static, {
     Props::from_fn(factory).with_dispatcher(self.dispatcher.clone())
   }
@@ -32,10 +33,10 @@ impl GuardianActor {
 impl Actor for GuardianActor {
   fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
-      let pong_props = self.child_props(pong_factory);
+      let pong_props = self.child_props(|| PongActor);
       let pong = ctx.spawn_child(&pong_props).map_err(|_| ActorError::recoverable("failed to spawn pong"))?;
 
-      let ping_props = self.child_props(ping_factory);
+      let ping_props = self.child_props(|| PingActor);
       let ping = ctx.spawn_child(&ping_props).map_err(|_| ActorError::recoverable("failed to spawn ping"))?;
 
       let start_ping = StartPing { target: pong.actor_ref().clone(), reply_to: ctx.self_ref(), count: 3 };
@@ -94,23 +95,15 @@ fn format_message(index: u32) -> String {
   format!("ping-{number}")
 }
 
-fn guardian_factory(dispatcher: DispatcherConfig) -> impl Fn() -> GuardianActor {
-  move || GuardianActor::new(dispatcher.clone())
-}
-
-fn ping_factory() -> PingActor {
-  PingActor
-}
-
-fn pong_factory() -> PongActor {
-  PongActor
-}
-
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
   let handle = Handle::current();
   let dispatcher = DispatcherConfig::from_executor(ArcShared::new(TokioExecutor::new(handle)));
-  let props = Props::from_fn(guardian_factory(dispatcher.clone())).with_dispatcher(dispatcher.clone());
+  let props = Props::from_fn({
+    let dispatcher = dispatcher.clone();
+    move || GuardianActor::new(dispatcher.clone())
+  })
+  .with_dispatcher(dispatcher.clone());
   let system = ActorSystem::new(&props).expect("system");
 
   let wait_handle = {
