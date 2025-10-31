@@ -44,10 +44,11 @@ fn event_stream_replays_buffer_for_new_subscribers() {
   let stream = ArcShared::new(cellactor_actor_core_rs::EventStream::default());
 
   let log = LogEvent::new(LogLevel::Info, alloc::string::String::from("boot"), Duration::from_millis(1), None);
-  stream.publish(EventStreamEvent::Log(log));
+  stream.publish(&EventStreamEvent::Log(log));
 
-  let subscriber = ArcShared::new(RecordingSubscriber::new());
-  let _subscription = cellactor_actor_core_rs::EventStream::subscribe_arc(&stream, subscriber.clone());
+  let subscriber_impl = ArcShared::new(RecordingSubscriber::new());
+  let subscriber: ArcShared<dyn EventStreamSubscriber> = subscriber_impl.clone();
+  let _subscription = cellactor_actor_core_rs::EventStream::subscribe_arc(&stream, &subscriber);
 
   let lifecycle = cellactor_actor_core_rs::LifecycleEvent::new(
     cellactor_actor_core_rs::Pid::new(1, 0),
@@ -56,9 +57,9 @@ fn event_stream_replays_buffer_for_new_subscribers() {
     LifecycleStage::Started,
     Duration::from_millis(2),
   );
-  stream.publish(EventStreamEvent::Lifecycle(lifecycle));
+  stream.publish(&EventStreamEvent::Lifecycle(lifecycle));
 
-  let events = subscriber.events();
+  let events = subscriber_impl.events();
   assert!(events.iter().any(|event| matches!(event, EventStreamEvent::Log(_))));
   assert!(events.iter().any(|event| matches!(event, EventStreamEvent::Lifecycle(_))));
 }
@@ -67,8 +68,9 @@ fn event_stream_replays_buffer_for_new_subscribers() {
 fn deadletter_is_recorded_when_recipient_is_unavailable() {
   let guardian_props = Props::from_fn(|| NullActor);
   let system = ActorSystem::new(&guardian_props).expect("system");
-  let subscriber = ArcShared::new(RecordingSubscriber::new());
-  let _subscription = system.subscribe_event_stream(subscriber.clone());
+  let subscriber_impl = ArcShared::new(RecordingSubscriber::new());
+  let subscriber: ArcShared<dyn EventStreamSubscriber> = subscriber_impl.clone();
+  let _subscription = system.subscribe_event_stream(&subscriber);
 
   let mailbox_policy = MailboxPolicy::bounded(NonZeroUsize::new(1).unwrap(), MailboxOverflowStrategy::DropNewest, None);
   let mailbox_config = MailboxConfig::new(mailbox_policy);
@@ -81,7 +83,7 @@ fn deadletter_is_recorded_when_recipient_is_unavailable() {
 
   let deadletters = system.deadletters();
   assert!(!deadletters.is_empty());
-  assert!(subscriber.events().iter().any(|event| matches!(event, EventStreamEvent::Deadletter(_))));
+  assert!(subscriber_impl.events().iter().any(|event| matches!(event, EventStreamEvent::Deadletter(_))));
 
   child.resume().expect("resume child");
   system.terminate().expect("terminate");

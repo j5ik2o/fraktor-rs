@@ -113,11 +113,12 @@ fn main() {
   let system = ActorSystem::new(&props).expect("system");
 
   let logger_writer: ArcShared<dyn LoggerWriter> = ArcShared::new(StdoutLogger);
-  let logger = ArcShared::new(LoggerSubscriber::new(LogLevel::Info, logger_writer));
-  let _logger_subscription = system.subscribe_event_stream(logger);
+  let logger: ArcShared<dyn EventStreamSubscriber> =
+    ArcShared::new(LoggerSubscriber::new(LogLevel::Info, logger_writer));
+  let _logger_subscription = system.subscribe_event_stream(&logger);
 
-  let lifecycle = ArcShared::new(LifecyclePrinter);
-  let _lifecycle_subscription = system.subscribe_event_stream(lifecycle);
+  let lifecycle: ArcShared<dyn EventStreamSubscriber> = ArcShared::new(LifecyclePrinter);
+  let _lifecycle_subscription = system.subscribe_event_stream(&lifecycle);
 
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
 

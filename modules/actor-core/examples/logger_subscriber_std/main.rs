@@ -42,8 +42,9 @@ fn main() {
   let system = ActorSystem::new(&props).expect("system");
 
   let writer: ArcShared<dyn LoggerWriter> = ArcShared::new(StdoutLogger);
-  let subscriber = ArcShared::new(LoggerSubscriber::new(LogLevel::Info, writer));
-  let _subscription = system.subscribe_event_stream(subscriber);
+  let subscriber: ArcShared<dyn cellactor_actor_core_rs::EventStreamSubscriber> =
+    ArcShared::new(LoggerSubscriber::new(LogLevel::Info, writer));
+  let _subscription = system.subscribe_event_stream(&subscriber);
 
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
 
