@@ -3,17 +3,17 @@
 use alloc::{format, vec::Vec};
 use core::time::Duration;
 
-use cellactor_utils_core_rs::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
+use cellactor_utils_core_rs::sync::ArcShared;
 
 use crate::{
-  any_message::AnyMessage, deadletter_entry::DeadletterEntry, deadletter_reason::DeadletterReason,
+  ActorRuntimeMutex, any_message::AnyMessage, deadletter_entry::DeadletterEntry, deadletter_reason::DeadletterReason,
   event_stream::EventStream, event_stream_event::EventStreamEvent, log_event::LogEvent, log_level::LogLevel, pid::Pid,
   send_error::SendError,
 };
 
 /// Bounded deadletter store that forwards notifications to the event stream.
 pub struct Deadletter {
-  entries:      SpinSyncMutex<Vec<DeadletterEntry>>,
+  entries:      ActorRuntimeMutex<Vec<DeadletterEntry>>,
   capacity:     usize,
   event_stream: ArcShared<EventStream>,
 }
@@ -22,7 +22,7 @@ impl Deadletter {
   /// Creates a new deadletter repository.
   #[must_use]
   pub const fn new(event_stream: ArcShared<EventStream>, capacity: usize) -> Self {
-    Self { entries: SpinSyncMutex::new(Vec::new()), capacity, event_stream }
+    Self { entries: ActorRuntimeMutex::new(Vec::new()), capacity, event_stream }
   }
 
   /// Records a send error generated while addressing the specified pid.

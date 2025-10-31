@@ -4,7 +4,7 @@ use core::{
   task::{Context, Poll},
 };
 
-use cellactor_utils_core_rs::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
+use cellactor_utils_core_rs::sync::ArcShared;
 use portable_atomic::AtomicU8;
 
 use super::{
@@ -12,6 +12,7 @@ use super::{
   schedule_waker::ScheduleWaker,
 };
 use crate::{
+  ActorRuntimeMutex,
   actor_error::ActorError,
   any_message::AnyMessage,
   mailbox::{EnqueueOutcome, Mailbox, MailboxMessage, MailboxOfferFuture},
@@ -26,7 +27,7 @@ const DEFAULT_THROUGHPUT: usize = 300;
 pub(super) struct DispatcherCore {
   mailbox:          ArcShared<Mailbox>,
   executor:         ArcShared<dyn DispatchExecutor>,
-  invoker:          SpinSyncMutex<Option<ArcShared<dyn MessageInvoker>>>,
+  invoker:          ActorRuntimeMutex<Option<ArcShared<dyn MessageInvoker>>>,
   state:            AtomicU8,
   throughput_limit: Option<NonZeroUsize>,
 }
@@ -40,7 +41,7 @@ impl DispatcherCore {
     Self {
       mailbox,
       executor,
-      invoker: SpinSyncMutex::new(None),
+      invoker: ActorRuntimeMutex::new(None),
       state: AtomicU8::new(DispatcherState::Idle.as_u8()),
       throughput_limit,
     }

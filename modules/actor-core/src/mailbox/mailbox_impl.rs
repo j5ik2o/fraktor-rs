@@ -1,9 +1,6 @@
 use core::num::NonZeroUsize;
 
-use cellactor_utils_core_rs::{
-  collections::queue::{QueueError, backend::OfferOutcome},
-  sync::sync_mutex_like::SpinSyncMutex,
-};
+use cellactor_utils_core_rs::collections::queue::{QueueError, backend::OfferOutcome};
 use portable_atomic::{AtomicBool, Ordering};
 
 use super::{
@@ -11,6 +8,7 @@ use super::{
   mailbox_poll_future::MailboxPollFuture, map_system_queue_error, map_user_queue_error, queue_handles::QueueHandles,
 };
 use crate::{
+  ActorRuntimeMutex,
   any_message::AnyMessage,
   mailbox_instrumentation::MailboxInstrumentation,
   mailbox_policy::{MailboxCapacity, MailboxOverflowStrategy, MailboxPolicy},
@@ -24,7 +22,7 @@ pub struct Mailbox {
   system:          QueueHandles<SystemMessage>,
   user:            QueueHandles<AnyMessage>,
   suspended:       AtomicBool,
-  instrumentation: SpinSyncMutex<Option<MailboxInstrumentation>>,
+  instrumentation: ActorRuntimeMutex<Option<MailboxInstrumentation>>,
 }
 
 impl Mailbox {
@@ -38,7 +36,7 @@ impl Mailbox {
       system: system_handles,
       user: user_handles,
       suspended: AtomicBool::new(false),
-      instrumentation: SpinSyncMutex::new(None),
+      instrumentation: ActorRuntimeMutex::new(None),
     }
   }
 

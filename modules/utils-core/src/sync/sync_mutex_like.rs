@@ -1,8 +1,12 @@
 use core::ops::{Deref, DerefMut};
 
 mod spin_sync_mutex;
+#[cfg(feature = "std")]
+mod std_sync_mutex;
 
 pub use spin_sync_mutex::*;
+#[cfg(feature = "std")]
+pub use std_sync_mutex::{StdSyncMutex, StdSyncMutexGuard};
 
 /// Generic mutex abstraction for runtime-agnostic code.
 pub trait SyncMutexLike<T> {

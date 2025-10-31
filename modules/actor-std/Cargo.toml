@@ -8,5 +8,5 @@ publish = false
 
 [dependencies]
 cellactor-actor-core-rs = { path = "../actor-core", features = ["std"] }
-cellactor-utils-core-rs = { path = "../utils-core" }
-tokio = { workspace = true, features = ["rt", "rt-multi-thread"] }
+cellactor-utils-core-rs = { path = "../utils-core", features = ["std"] }
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "time"] }

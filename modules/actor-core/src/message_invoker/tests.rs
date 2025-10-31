@@ -1,9 +1,10 @@
 use alloc::{format, string::String, vec, vec::Vec};
 
-use cellactor_utils_core_rs::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
+use cellactor_utils_core_rs::sync::ArcShared;
 
 use super::{MessageInvokerMiddleware, MessageInvokerPipeline};
 use crate::{
+  ActorRuntimeMutex,
   actor::Actor,
   actor_context::ActorContext,
   actor_error::ActorError,
@@ -22,13 +23,13 @@ impl ActorRefSender for RecordingSender {
 }
 
 struct CaptureActor {
-  payloads: SpinSyncMutex<Vec<u32>>,
-  replies:  SpinSyncMutex<Vec<Option<ActorRef>>>,
+  payloads: ActorRuntimeMutex<Vec<u32>>,
+  replies:  ActorRuntimeMutex<Vec<Option<ActorRef>>>,
 }
 
 impl CaptureActor {
   fn new() -> Self {
-    Self { payloads: SpinSyncMutex::new(Vec::new()), replies: SpinSyncMutex::new(Vec::new()) }
+    Self { payloads: ActorRuntimeMutex::new(Vec::new()), replies: ActorRuntimeMutex::new(Vec::new()) }
   }
 
   fn payloads(&self) -> Vec<u32> {
@@ -51,11 +52,11 @@ impl Actor for CaptureActor {
 }
 
 struct LoggingActor {
-  log: ArcShared<SpinSyncMutex<Vec<String>>>,
+  log: ArcShared<ActorRuntimeMutex<Vec<String>>>,
 }
 
 impl LoggingActor {
-  fn new(log: ArcShared<SpinSyncMutex<Vec<String>>>) -> Self {
+  fn new(log: ArcShared<ActorRuntimeMutex<Vec<String>>>) -> Self {
     Self { log }
   }
 
@@ -73,11 +74,11 @@ impl Actor for LoggingActor {
 
 struct RecordingMiddleware {
   name: String,
-  log:  ArcShared<SpinSyncMutex<Vec<String>>>,
+  log:  ArcShared<ActorRuntimeMutex<Vec<String>>>,
 }
 
 impl RecordingMiddleware {
-  fn new(name: &str, log: ArcShared<SpinSyncMutex<Vec<String>>>) -> Self {
+  fn new(name: &str, log: ArcShared<ActorRuntimeMutex<Vec<String>>>) -> Self {
     Self { name: String::from(name), log }
   }
 
@@ -146,7 +147,7 @@ fn middleware_executes_in_expected_order() {
   let system = ActorSystem::new_empty();
   let pid = Pid::new(42, 0);
   let mut ctx = ActorContext::new(&system, pid);
-  let log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let log = ArcShared::new(ActorRuntimeMutex::new(Vec::new()));
   let mut actor = LoggingActor::new(log.clone());
 
   let middleware_a: ArcShared<dyn MessageInvokerMiddleware> =

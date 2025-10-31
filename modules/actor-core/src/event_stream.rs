@@ -3,10 +3,10 @@
 use alloc::vec::Vec;
 use core::sync::atomic::{AtomicU64, Ordering};
 
-use cellactor_utils_core_rs::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
+use cellactor_utils_core_rs::sync::ArcShared;
 
 use crate::{
-  event_stream_event::EventStreamEvent, event_stream_subscriber::EventStreamSubscriber,
+  ActorRuntimeMutex, event_stream_event::EventStreamEvent, event_stream_subscriber::EventStreamSubscriber,
   event_stream_subscriber_entry::EventStreamSubscriberEntry, event_stream_subscription::EventStreamSubscription,
 };
 
@@ -14,8 +14,8 @@ const DEFAULT_CAPACITY: usize = 256;
 
 /// In-memory event bus with replay support for new subscribers.
 pub struct EventStream {
-  subscribers: SpinSyncMutex<Vec<EventStreamSubscriberEntry>>,
-  buffer:      SpinSyncMutex<Vec<EventStreamEvent>>,
+  subscribers: ActorRuntimeMutex<Vec<EventStreamSubscriberEntry>>,
+  buffer:      ActorRuntimeMutex<Vec<EventStreamEvent>>,
   capacity:    usize,
   next_id:     AtomicU64,
 }
@@ -25,8 +25,8 @@ impl EventStream {
   #[must_use]
   pub const fn with_capacity(capacity: usize) -> Self {
     Self {
-      subscribers: SpinSyncMutex::new(Vec::new()),
-      buffer: SpinSyncMutex::new(Vec::new()),
+      subscribers: ActorRuntimeMutex::new(Vec::new()),
+      buffer: ActorRuntimeMutex::new(Vec::new()),
       capacity,
       next_id: AtomicU64::new(1),
     }

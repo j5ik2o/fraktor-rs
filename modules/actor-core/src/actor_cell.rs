@@ -1,9 +1,10 @@
 use alloc::{boxed::Box, string::String, vec, vec::Vec};
 use core::time::Duration;
 
-use cellactor_utils_core_rs::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
+use cellactor_utils_core_rs::sync::ArcShared;
 
 use crate::{
+  ActorRuntimeMutex,
   actor::Actor,
   actor_context::ActorContext,
   actor_error::ActorError,
@@ -34,12 +35,12 @@ pub struct ActorCell {
   system:      ArcShared<ActorSystemState>,
   factory:     ArcShared<dyn ActorFactory>,
   supervisor:  SupervisorStrategy,
-  actor:       SpinSyncMutex<Box<dyn Actor + Send + Sync>>,
+  actor:       ActorRuntimeMutex<Box<dyn Actor + Send + Sync>>,
   pipeline:    MessageInvokerPipeline,
   dispatcher:  Dispatcher,
   sender:      ArcShared<crate::dispatcher::DispatcherSender>,
-  children:    SpinSyncMutex<Vec<Pid>>,
-  child_stats: SpinSyncMutex<Vec<(Pid, RestartStatistics)>>,
+  children:    ActorRuntimeMutex<Vec<Pid>>,
+  child_stats: ActorRuntimeMutex<Vec<(Pid, RestartStatistics)>>,
 }
 
 impl ActorCell {
@@ -66,12 +67,12 @@ impl ActorCell {
       system,
       factory,
       supervisor,
-      actor: SpinSyncMutex::new(actor),
+      actor: ActorRuntimeMutex::new(actor),
       pipeline: MessageInvokerPipeline::new(),
       dispatcher,
       sender,
-      children: SpinSyncMutex::new(Vec::new()),
-      child_stats: SpinSyncMutex::new(Vec::new()),
+      children: ActorRuntimeMutex::new(Vec::new()),
+      child_stats: ActorRuntimeMutex::new(Vec::new()),
     });
 
     {

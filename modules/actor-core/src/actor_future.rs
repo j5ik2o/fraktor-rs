@@ -2,24 +2,22 @@
 
 use core::task::Waker;
 
-use cellactor_utils_core_rs::sync::sync_mutex_like::SpinSyncMutex;
-
-use crate::actor_future_listener::ActorFutureListener;
+use crate::{ActorRuntimeMutex, actor_future_listener::ActorFutureListener};
 
 #[cfg(test)]
 mod tests;
 
 /// Minimal future primitive used by the ask pattern.
 pub struct ActorFuture<T> {
-  value: SpinSyncMutex<Option<T>>,
-  waker: SpinSyncMutex<Option<Waker>>,
+  value: ActorRuntimeMutex<Option<T>>,
+  waker: ActorRuntimeMutex<Option<Waker>>,
 }
 
 impl<T> ActorFuture<T> {
   /// Creates a new future in the pending state.
   #[must_use]
   pub const fn new() -> Self {
-    Self { value: SpinSyncMutex::new(None), waker: SpinSyncMutex::new(None) }
+    Self { value: ActorRuntimeMutex::new(None), waker: ActorRuntimeMutex::new(None) }
   }
 
   /// Completes the future with a value. Subsequent calls are ignored.

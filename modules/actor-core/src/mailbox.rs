@@ -1,11 +1,8 @@
 //! Priority mailbox managing system and user message queues.
 
-use cellactor_utils_core_rs::{
-  collections::queue::{QueueError, backend::VecRingBackend},
-  sync::sync_mutex_like::SpinSyncMutex,
-};
+use cellactor_utils_core_rs::collections::queue::{QueueError, backend::VecRingBackend};
 
-use crate::{any_message::AnyMessage, send_error::SendError, system_message::SystemMessage};
+use crate::{ActorRuntimeMutex, any_message::AnyMessage, send_error::SendError, system_message::SystemMessage};
 
 mod enqueue_outcome;
 mod mailbox_impl;
@@ -25,7 +22,7 @@ pub use mailbox_message::MailboxMessage;
 pub use mailbox_offer_future::MailboxOfferFuture;
 pub use mailbox_poll_future::MailboxPollFuture;
 
-type QueueMutex<T> = SpinSyncMutex<VecRingBackend<T>>;
+type QueueMutex<T> = ActorRuntimeMutex<VecRingBackend<T>>;
 
 fn map_user_queue_error(error: QueueError<AnyMessage>) -> SendError {
   match error {

@@ -1,11 +1,11 @@
 use alloc::vec::Vec;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use cellactor_utils_core_rs::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
+use cellactor_utils_core_rs::sync::ArcShared;
 
 use super::{dispatch_executor::DispatchExecutor, dispatch_handle::DispatchHandle, dispatcher_struct::Dispatcher};
 use crate::{
-  ActorError, ActorRefSender,
+  ActorError, ActorRefSender, ActorRuntimeMutex,
   any_message::AnyMessage,
   mailbox::Mailbox,
   mailbox_policy::{MailboxOverflowStrategy, MailboxPolicy},
@@ -14,13 +14,13 @@ use crate::{
 };
 
 struct RecordingExecutor {
-  tasks: SpinSyncMutex<Vec<DispatchHandle>>,
+  tasks: ActorRuntimeMutex<Vec<DispatchHandle>>,
   runs:  AtomicUsize,
 }
 
 impl RecordingExecutor {
   fn new() -> Self {
-    Self { tasks: SpinSyncMutex::new(Vec::new()), runs: AtomicUsize::new(0) }
+    Self { tasks: ActorRuntimeMutex::new(Vec::new()), runs: AtomicUsize::new(0) }
   }
 
   fn drain(&self) {
@@ -50,12 +50,12 @@ enum RecordedMessage {
 }
 
 struct RecordingInvoker {
-  events: SpinSyncMutex<Vec<RecordedMessage>>,
+  events: ActorRuntimeMutex<Vec<RecordedMessage>>,
 }
 
 impl RecordingInvoker {
   fn new() -> Self {
-    Self { events: SpinSyncMutex::new(Vec::new()) }
+    Self { events: ActorRuntimeMutex::new(Vec::new()) }
   }
 
   fn take_events(&self) -> Vec<RecordedMessage> {

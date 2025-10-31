@@ -1,9 +1,10 @@
 use alloc::{vec, vec::Vec};
 
-use cellactor_utils_core_rs::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
+use cellactor_utils_core_rs::sync::ArcShared;
 
 use super::ActorSystem;
 use crate::{
+  ActorRuntimeMutex,
   actor::Actor,
   actor_context::ActorContext,
   actor_error::{ActorError, ActorErrorReason},
@@ -16,11 +17,11 @@ use crate::{
 struct Start;
 
 struct GuardianLogger {
-  log: ArcShared<SpinSyncMutex<Vec<&'static str>>>,
+  log: ArcShared<ActorRuntimeMutex<Vec<&'static str>>>,
 }
 
 impl GuardianLogger {
-  fn new(log: ArcShared<SpinSyncMutex<Vec<&'static str>>>) -> Self {
+  fn new(log: ArcShared<ActorRuntimeMutex<Vec<&'static str>>>) -> Self {
     Self { log }
   }
 }
@@ -36,7 +37,7 @@ impl Actor for GuardianLogger {
 
 #[test]
 fn guardian_processes_message() {
-  let log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let log = ArcShared::new(ActorRuntimeMutex::new(Vec::new()));
   let props = Props::from_fn({
     let log = log.clone();
     move || GuardianLogger::new(log.clone())
@@ -49,11 +50,11 @@ fn guardian_processes_message() {
 }
 
 struct ChildRecorder {
-  log: ArcShared<SpinSyncMutex<Vec<u32>>>,
+  log: ArcShared<ActorRuntimeMutex<Vec<u32>>>,
 }
 
 impl ChildRecorder {
-  fn new(log: ArcShared<SpinSyncMutex<Vec<u32>>>) -> Self {
+  fn new(log: ArcShared<ActorRuntimeMutex<Vec<u32>>>) -> Self {
     Self { log }
   }
 }
@@ -68,12 +69,15 @@ impl Actor for ChildRecorder {
 }
 
 struct ChildSpawner {
-  child_slot: ArcShared<SpinSyncMutex<Option<ChildRef>>>,
-  log:        ArcShared<SpinSyncMutex<Vec<u32>>>,
+  child_slot: ArcShared<ActorRuntimeMutex<Option<ChildRef>>>,
+  log:        ArcShared<ActorRuntimeMutex<Vec<u32>>>,
 }
 
 impl ChildSpawner {
-  fn new(child_slot: ArcShared<SpinSyncMutex<Option<ChildRef>>>, log: ArcShared<SpinSyncMutex<Vec<u32>>>) -> Self {
+  fn new(
+    child_slot: ArcShared<ActorRuntimeMutex<Option<ChildRef>>>,
+    log: ArcShared<ActorRuntimeMutex<Vec<u32>>>,
+  ) -> Self {
     Self { child_slot, log }
   }
 }
@@ -95,8 +99,8 @@ impl Actor for ChildSpawner {
 
 #[test]
 fn spawn_child_creates_actor() {
-  let child_slot = ArcShared::new(SpinSyncMutex::new(None));
-  let log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let child_slot = ArcShared::new(ActorRuntimeMutex::new(None));
+  let log = ArcShared::new(ActorRuntimeMutex::new(Vec::new()));
 
   let props = Props::from_fn({
     let slot = child_slot.clone();
@@ -134,11 +138,11 @@ impl Actor for Responder {
 }
 
 struct Probe {
-  log: ArcShared<SpinSyncMutex<Vec<u32>>>,
+  log: ArcShared<ActorRuntimeMutex<Vec<u32>>>,
 }
 
 impl Probe {
-  fn new(log: ArcShared<SpinSyncMutex<Vec<u32>>>) -> Self {
+  fn new(log: ArcShared<ActorRuntimeMutex<Vec<u32>>>) -> Self {
     Self { log }
   }
 }
@@ -153,16 +157,16 @@ impl Actor for Probe {
 }
 
 struct ReplyGuardian {
-  responder_slot: ArcShared<SpinSyncMutex<Option<ChildRef>>>,
-  probe_slot:     ArcShared<SpinSyncMutex<Option<ChildRef>>>,
-  log:            ArcShared<SpinSyncMutex<Vec<u32>>>,
+  responder_slot: ArcShared<ActorRuntimeMutex<Option<ChildRef>>>,
+  probe_slot:     ArcShared<ActorRuntimeMutex<Option<ChildRef>>>,
+  log:            ArcShared<ActorRuntimeMutex<Vec<u32>>>,
 }
 
 impl ReplyGuardian {
   fn new(
-    responder_slot: ArcShared<SpinSyncMutex<Option<ChildRef>>>,
-    probe_slot: ArcShared<SpinSyncMutex<Option<ChildRef>>>,
-    log: ArcShared<SpinSyncMutex<Vec<u32>>>,
+    responder_slot: ArcShared<ActorRuntimeMutex<Option<ChildRef>>>,
+    probe_slot: ArcShared<ActorRuntimeMutex<Option<ChildRef>>>,
+    log: ArcShared<ActorRuntimeMutex<Vec<u32>>>,
   ) -> Self {
     Self { responder_slot, probe_slot, log }
   }
@@ -190,11 +194,11 @@ impl Actor for ReplyGuardian {
 }
 
 struct AskGuardian {
-  responder_slot: ArcShared<SpinSyncMutex<Option<ChildRef>>>,
+  responder_slot: ArcShared<ActorRuntimeMutex<Option<ChildRef>>>,
 }
 
 impl AskGuardian {
-  fn new(responder_slot: ArcShared<SpinSyncMutex<Option<ChildRef>>>) -> Self {
+  fn new(responder_slot: ArcShared<ActorRuntimeMutex<Option<ChildRef>>>) -> Self {
     Self { responder_slot }
   }
 }
@@ -214,9 +218,9 @@ impl Actor for AskGuardian {
 
 #[test]
 fn reply_to_dispatches_response() {
-  let responder_slot = ArcShared::new(SpinSyncMutex::new(None));
-  let probe_slot = ArcShared::new(SpinSyncMutex::new(None));
-  let log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let responder_slot = ArcShared::new(ActorRuntimeMutex::new(None));
+  let probe_slot = ArcShared::new(ActorRuntimeMutex::new(None));
+  let log = ArcShared::new(ActorRuntimeMutex::new(Vec::new()));
 
   let props = Props::from_fn({
     let responder_slot = responder_slot.clone();
@@ -240,7 +244,7 @@ fn reply_to_dispatches_response() {
 
 #[test]
 fn ask_registers_future_in_system() {
-  let responder_slot = ArcShared::new(SpinSyncMutex::new(None));
+  let responder_slot = ArcShared::new(ActorRuntimeMutex::new(None));
 
   let props = Props::from_fn({
     let responder_slot = responder_slot.clone();
@@ -264,11 +268,11 @@ fn ask_registers_future_in_system() {
 }
 
 struct StopChildActor {
-  flag: ArcShared<SpinSyncMutex<bool>>,
+  flag: ArcShared<ActorRuntimeMutex<bool>>,
 }
 
 impl StopChildActor {
-  fn new(flag: ArcShared<SpinSyncMutex<bool>>) -> Self {
+  fn new(flag: ArcShared<ActorRuntimeMutex<bool>>) -> Self {
     Self { flag }
   }
 }
@@ -285,16 +289,16 @@ impl Actor for StopChildActor {
 }
 
 struct StopSelfParent {
-  child_pid:   ArcShared<SpinSyncMutex<Option<Pid>>>,
-  child_flag:  ArcShared<SpinSyncMutex<bool>>,
-  parent_flag: ArcShared<SpinSyncMutex<bool>>,
+  child_pid:   ArcShared<ActorRuntimeMutex<Option<Pid>>>,
+  child_flag:  ArcShared<ActorRuntimeMutex<bool>>,
+  parent_flag: ArcShared<ActorRuntimeMutex<bool>>,
 }
 
 impl StopSelfParent {
   fn new(
-    child_pid: ArcShared<SpinSyncMutex<Option<Pid>>>,
-    child_flag: ArcShared<SpinSyncMutex<bool>>,
-    parent_flag: ArcShared<SpinSyncMutex<bool>>,
+    child_pid: ArcShared<ActorRuntimeMutex<Option<Pid>>>,
+    child_flag: ArcShared<ActorRuntimeMutex<bool>>,
+    parent_flag: ArcShared<ActorRuntimeMutex<bool>>,
   ) -> Self {
     Self { child_pid, child_flag, parent_flag }
   }
@@ -324,9 +328,9 @@ impl Actor for StopSelfParent {
 
 #[test]
 fn stop_self_propagates_to_children() {
-  let child_pid = ArcShared::new(SpinSyncMutex::new(None));
-  let child_stopped = ArcShared::new(SpinSyncMutex::new(false));
-  let parent_stopped = ArcShared::new(SpinSyncMutex::new(false));
+  let child_pid = ArcShared::new(ActorRuntimeMutex::new(None));
+  let child_stopped = ArcShared::new(ActorRuntimeMutex::new(false));
+  let parent_stopped = ArcShared::new(ActorRuntimeMutex::new(false));
 
   let props = Props::from_fn({
     let child_pid = child_pid.clone();

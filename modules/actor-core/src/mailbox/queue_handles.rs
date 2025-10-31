@@ -5,13 +5,16 @@ use cellactor_utils_core_rs::{
     MpscQueue, QueueError, SyncMpscConsumer, SyncMpscProducer, VecRingStorage,
     backend::{OfferOutcome, OverflowPolicy, VecRingBackend},
   },
-  sync::{ArcShared, sync_mutex_like::SpinSyncMutex},
+  sync::ArcShared,
 };
 
 use super::{queue_offer_future::QueueOfferFuture, queue_poll_future::QueuePollFuture, queue_state::QueueState};
-use crate::mailbox_policy::{MailboxCapacity, MailboxOverflowStrategy, MailboxPolicy};
+use crate::{
+  ActorRuntimeMutex,
+  mailbox_policy::{MailboxCapacity, MailboxOverflowStrategy, MailboxPolicy},
+};
 
-type QueueMutex<T> = SpinSyncMutex<VecRingBackend<T>>;
+type QueueMutex<T> = ActorRuntimeMutex<VecRingBackend<T>>;
 type QueueProducer<T> = SyncMpscProducer<T, VecRingBackend<T>, QueueMutex<T>>;
 type QueueConsumer<T> = SyncMpscConsumer<T, VecRingBackend<T>, QueueMutex<T>>;
 
@@ -40,7 +43,7 @@ impl<T> QueueHandles<T> {
   fn new_with(capacity: usize, overflow: OverflowPolicy) -> Self {
     let storage = VecRingStorage::with_capacity(capacity);
     let backend = VecRingBackend::new_with_storage(storage, overflow);
-    let mutex = SpinSyncMutex::new(backend);
+    let mutex = QueueMutex::new(backend);
     let shared = ArcShared::new(mutex);
     let state = ArcShared::new(QueueState::new(shared.clone()));
     let queue: MpscQueue<_, VecRingBackend<T>, _> = MpscQueue::new_mpsc(shared);

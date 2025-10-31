@@ -1,11 +1,12 @@
 use alloc::{format, string::String, vec::Vec};
 use core::time::Duration;
 
-use cellactor_utils_core_rs::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
+use cellactor_utils_core_rs::sync::ArcShared;
 use hashbrown::HashMap;
 use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
 use crate::{
+  ActorRuntimeMutex,
   actor_cell::ActorCell,
   actor_error::ActorError,
   actor_future::ActorFuture,
@@ -28,10 +29,10 @@ use crate::{
 pub struct ActorSystemState {
   next_pid:      AtomicU64,
   clock:         AtomicU64,
-  cells:         SpinSyncMutex<HashMap<Pid, ArcShared<ActorCell>>>,
-  registries:    SpinSyncMutex<HashMap<Option<Pid>, NameRegistry>>,
-  user_guardian: SpinSyncMutex<Option<ArcShared<ActorCell>>>,
-  ask_futures:   SpinSyncMutex<Vec<ArcShared<ActorFuture<AnyMessage>>>>,
+  cells:         ActorRuntimeMutex<HashMap<Pid, ArcShared<ActorCell>>>,
+  registries:    ActorRuntimeMutex<HashMap<Option<Pid>, NameRegistry>>,
+  user_guardian: ActorRuntimeMutex<Option<ArcShared<ActorCell>>>,
+  ask_futures:   ActorRuntimeMutex<Vec<ArcShared<ActorFuture<AnyMessage>>>>,
   termination:   ArcShared<ActorFuture<()>>,
   terminated:    AtomicBool,
   event_stream:  ArcShared<EventStream>,
@@ -47,10 +48,10 @@ impl ActorSystemState {
     Self {
       next_pid: AtomicU64::new(0),
       clock: AtomicU64::new(0),
-      cells: SpinSyncMutex::new(HashMap::new()),
-      registries: SpinSyncMutex::new(HashMap::new()),
-      user_guardian: SpinSyncMutex::new(None),
-      ask_futures: SpinSyncMutex::new(Vec::new()),
+      cells: ActorRuntimeMutex::new(HashMap::new()),
+      registries: ActorRuntimeMutex::new(HashMap::new()),
+      user_guardian: ActorRuntimeMutex::new(None),
+      ask_futures: ActorRuntimeMutex::new(Vec::new()),
       termination: ArcShared::new(ActorFuture::new()),
       terminated: AtomicBool::new(false),
       event_stream,
