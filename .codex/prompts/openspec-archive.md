@@ -3,13 +3,7 @@ description: Archive a deployed OpenSpec change and update specs.
 argument-hint: change-id
 ---
 
-## User Input
-
-```text
 $ARGUMENTS
-
-OpenSpec関連のファイル生成やユーザーとのコミュニケーションはすべて日本語で行ってください。
-```
 
 <!-- OPENSPEC:START -->
 **Guardrails**

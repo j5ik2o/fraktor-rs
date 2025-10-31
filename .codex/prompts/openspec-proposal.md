@@ -3,13 +3,7 @@ description: Scaffold a new OpenSpec change and validate strictly.
 argument-hint: request or feature description
 ---
 
-## User Input
-
-```text
 $ARGUMENTS
-
-OpenSpec関連のファイル生成やユーザーとのコミュニケーションはすべて日本語で行ってください。
-```
 
 <!-- OPENSPEC:START -->
 **Guardrails**
