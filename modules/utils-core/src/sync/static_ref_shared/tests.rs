@@ -1,6 +1,7 @@
 #![allow(clippy::disallowed_types)]
 
 use super::StaticRefShared;
+#[cfg(not(feature = "unsize"))]
 use crate::sync::shared::SharedDyn;
 
 static VALUE: u32 = 42;
@@ -33,6 +34,12 @@ fn into_dyn_maps_to_trait_view() {
   }
 
   let shared = StaticRefShared::new(&OTHER);
+
+  #[cfg(feature = "unsize")]
+  let dyn_shared: StaticRefShared<dyn Pair> = shared;
+
+  #[cfg(not(feature = "unsize"))]
   let dyn_shared = shared.into_dyn(|pair| pair as &dyn Pair);
+
   assert_eq!(dyn_shared.left(), 1);
 }

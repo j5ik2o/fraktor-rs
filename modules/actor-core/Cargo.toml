@@ -2,19 +2,59 @@
 name = "cellactor-actor-core-rs"
 version = "0.1.0"
 edition = "2024"
-description = "no_std friendly utilities for Cell Actor"
+description = "Cellactor no_std actor runtime core"
 license = "MIT OR Apache-2.0"
-keywords = ["cellex", "actor", "utils", "no_std"]
+keywords = ["cellactor", "actor", "runtime", "no_std"]
 categories = ["concurrency", "embedded", "no-std"]
 repository = "https://github.com/j5ik2o/cellactor-rs"
+publish = false
+
+[features]
+default = []
+std = []
+alloc-metrics = []
 
 [dependencies]
 async-trait = { workspace = true }
-critical-section = { workspace = true, optional = false }
+cellactor-utils-core-rs = { workspace = true, features = ["alloc", "unsize"] }
+critical-section = { workspace = true }
+heapless = { workspace = true, default-features = false }
+portable-atomic = { workspace = true, features = ["critical-section"] }
+portable-atomic-util = { workspace = true, features = ["alloc"] }
 spin = { workspace = true, default-features = false, features = ["mutex", "spin_mutex", "rwlock", "portable_atomic"] }
-portable-atomic = { workspace = true, default-features = false, features = ["critical-section"] }
 cortex-m = { workspace = true, optional = true }
-cellactor-utils-core-rs = { path = "../utils-core" }
+hashbrown = { workspace = true, default-features = false }
 
 [dev-dependencies]
 criterion = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+
+[[example]]
+name = "ping_pong_no_std"
+path = "examples/ping_pong_no_std/main.rs"
+required-features = ["std"]
+
+[[example]]
+name = "ping_pong_tokio"
+path = "examples/ping_pong_tokio/main.rs"
+required-features = ["std"]
+
+[[example]]
+name = "logger_subscriber_std"
+path = "examples/logger_subscriber_std/main.rs"
+required-features = ["std"]
+
+[[example]]
+name = "supervision_std"
+path = "examples/supervision_std/main.rs"
+required-features = ["std"]
+
+[[example]]
+name = "deadletter_std"
+path = "examples/deadletter_std/main.rs"
+required-features = ["std"]
+
+[[example]]
+name = "named_actor_std"
+path = "examples/named_actor_std/main.rs"
+required-features = ["std"]

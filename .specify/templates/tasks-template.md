@@ -8,7 +8,7 @@ description: "機能実装のためのタスクリストテンプレート"
 **入力**: `/specs/[###-feature-name]/` 配下の設計ドキュメント  
 **前提条件**: plan.md（必須）、spec.md（ユーザーストーリー参照）、research.md、data-model.md、contracts/
 
-**テスト方針**: 原則2に従い、各ユーザーストーリーで失敗するテストを先行実装する。`modules/<crate>/tests.rs` に配置し、`std` 依存は `cfg(test)` 内に限定する。実装前に対象領域の既存コードを調査し、支配的な設計パターンを把握したうえで着手する。`modules/*-core` で `tokio` や `embassy` を直接利用せず、共有参照・ロックは `modules/utils-core` の `Shared`/`ArcShared` と `Async/SyncMutexLike` 抽象を介して実装し、`_shared` / `Shared` サフィックス等の命名規約および公開 API への `Typed` 禁止を遵守する。主要コンポーネントはプラガブルに差し替え可能な構造を維持しつつ、トレイトオブジェクト多用を避けた静的バインディング設計を採用する。通信・シリアライズ層は抽象化し、組込みで利用できない技術に依存しないことを確認する。作業の節目ごとに `./scripts/ci-check.sh all` と `makers ci-check -- dylint` を実行する。  
+**テスト方針**: 原則2に従い、各ユーザーストーリーで失敗するテストを先行実装する。`modules/<crate>/tests.rs` に配置し、`std` 依存は `cfg(test)` 内に限定する。実装前に対象領域の既存コードを調査し、支配的な設計パターンを把握したうえで着手する。`modules/*-core` で `tokio` や `embassy` を直接利用せず、共有参照・ロックは `modules/utils-core` の `Shared`/`ArcShared` と `Async/SyncMutexLike` 抽象を介して実装し、`_shared` / `Shared` サフィックス等の命名規約および公開 API への `Typed` 禁止を遵守する。主要コンポーネントはプラガブルに差し替え可能な構造を維持しつつ、トレイトオブジェクト多用を避けた静的バインディング設計を採用する。API とデータフローは借用を中心としたライフタイム設計を採り、ヒープ確保は不可避な箇所のみに限定して発生箇所・頻度・再利用戦略・計測方法をタスクに記録する。通信・シリアライズ層は抽象化し、組込みで利用できない技術に依存しないことを確認する。作業の節目ごとに `./scripts/ci-check.sh all` と `makers ci-check -- dylint` を実行する。  
 **構成**: タスクはユーザーストーリー単位でグルーピングし、並列実行可能なものは `[P]` フラグを付ける。
 
 ## 形式: `[ID] [P?] [Story] 説明`

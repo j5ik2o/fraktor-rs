@@ -1,1 +1,2 @@
-Please provide all answers in Japanese
+- すべて日本語でやりとりすること
+- ソースコード以外の生成されるファイルも日本語で記述すること

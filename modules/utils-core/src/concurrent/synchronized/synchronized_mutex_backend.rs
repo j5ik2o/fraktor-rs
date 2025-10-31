@@ -3,7 +3,7 @@ use core::ops::{Deref, DerefMut};
 
 use async_trait::async_trait;
 
-use crate::v2::sync::SharedError;
+use crate::sync::SharedError;
 
 /// Backend trait for async mutex-like primitives.
 #[async_trait(?Send)]

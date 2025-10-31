@@ -1,0 +1,9 @@
+# Common exclusions for Docker build context
+.git/
+Dockerfile*
+.dockerignore
+node_modules/
+target/
+*.log*
+.env*
+coverage/

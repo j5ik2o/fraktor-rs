@@ -1,4 +1,3 @@
-#![allow(clippy::disallowed_types)] // ここだけは許可されます
 #[cfg(not(feature = "force-portable-arc"))]
 use alloc::sync::Arc;
 #[cfg(not(feature = "unsize"))]

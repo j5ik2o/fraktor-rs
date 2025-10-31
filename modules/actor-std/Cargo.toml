@@ -1,0 +1,12 @@
+[package]
+name = "cellactor-actor-std-rs"
+version = "0.1.0"
+edition = "2024"
+description = "Cellactor std helpers for host runtimes"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[dependencies]
+cellactor-actor-core-rs = { path = "../actor-core", features = ["std"] }
+cellactor-utils-core-rs = { path = "../utils-core" }
+tokio = { workspace = true, features = ["rt", "rt-multi-thread"] }

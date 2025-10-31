@@ -1,33 +1,31 @@
-#![cfg_attr(feature = "unsize", feature(unsize, coerce_unsized))]
+#![cfg_attr(not(feature = "unsize"), allow(dead_code))]
 
-/// `unsize` featureが有効な場合にのみ実演コードを実行する。
 #[cfg(not(feature = "unsize"))]
-fn main() {
-  println!("Enable the `unsize` feature on nightly to run this example.");
-}
+compile_error!(
+  "`unsize` フィーチャが無効の場合、このサンプルはビルドできません。`--features unsize` を指定してください。"
+);
 
-#[cfg(feature = "unsize")]
 use cellactor_utils_core_rs::ArcShared;
 
-#[cfg(feature = "unsize")]
-trait HogeTrait {
-  fn run(&self);
+trait Greeter {
+  fn greet(&self) -> &'static str;
 }
 
-#[cfg(feature = "unsize")]
-struct Hoge;
+struct SimpleGreeter;
 
-#[cfg(feature = "unsize")]
-impl HogeTrait for Hoge {
-  fn run(&self) {
-    println!("Hello!");
+impl Greeter for SimpleGreeter {
+  fn greet(&self) -> &'static str {
+    "こんにちは"
   }
 }
 
-#[cfg(feature = "unsize")]
 fn main() {
-  let x: ArcShared<Hoge> = ArcShared::new(Hoge);
-  // 明示的な into_dyn 呼び出しなしで型強制が働くことを確認
-  let y: ArcShared<dyn HogeTrait> = x;
-  y.run();
+  // 具象型の ArcShared からトレイトオブジェクトへの暗黙の Unsized 変換を確認する
+  let concrete: ArcShared<SimpleGreeter> = ArcShared::new(SimpleGreeter);
+  let trait_object: ArcShared<dyn Greeter> = concrete;
+
+  assert_eq!(trait_object.greet(), "こんにちは");
+
+  // into_dyn に頼らず、普通の参照変換と同じ感覚で動的ディスパッチを活用できる
+  println!("{}", trait_object.greet());
 }

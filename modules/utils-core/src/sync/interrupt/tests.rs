@@ -1,4 +1,7 @@
-use super::{CriticalSectionInterruptPolicy, InterruptContextPolicy, NeverInterruptPolicy};
+#[allow(unused_imports)]
+#[cfg(not(feature = "interrupt-cortex-m"))]
+use super::CriticalSectionInterruptPolicy;
+use super::{InterruptContextPolicy, NeverInterruptPolicy};
 
 #[test]
 fn never_policy_allows_blocking() {

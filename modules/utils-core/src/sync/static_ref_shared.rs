@@ -1,3 +1,7 @@
+#[cfg(feature = "unsize")]
+use core::marker::Unsize;
+#[cfg(feature = "unsize")]
+use core::ops::CoerceUnsized;
 use core::ops::Deref;
 
 use super::{Shared, SharedDyn};
@@ -52,3 +56,6 @@ impl<T: ?Sized + 'static> SharedDyn<T> for StaticRefShared<T> {
     StaticRefShared::new(reference)
   }
 }
+
+#[cfg(feature = "unsize")]
+impl<T: ?Sized + 'static + Unsize<U>, U: ?Sized + 'static> CoerceUnsized<StaticRefShared<U>> for StaticRefShared<T> {}

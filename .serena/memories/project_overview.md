@@ -1,0 +1,6 @@
+- プロジェクト名: cellactor-rs
+- 目的: 組込み/マルチランタイム向けのセルベース actor ランタイムを Rust で構築し、no_std 環境でも利用できる共通ユーティリティと actor 実行基盤を提供する。
+- 主要クレート: `modules/utils-core` (同期・非同期プリミティブやキュー等の共通ユーティリティ)、`modules/actor-core` (actor ランタイム中核)。
+- 対象プラットフォーム: no_std (thumb ターゲット等) を含む組込み向け、std 環境もサポート。
+- リファレンス: protoactor-go と pekko のアーキテクチャを参考に Rust イディオムへ落とし込む方針。
+- 使用ツールチェーン: Rust 2024 edition、nightly toolchain を標準とする。

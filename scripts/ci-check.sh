@@ -274,7 +274,7 @@ run_dylint() {
     rustflags_value="-Dwarnings -Adeprecated"
   fi
 
-  local -a common_dylint_args=("${dylint_args[@]}" "--no-build" "--no-metadata")
+  local -a common_dylint_args=("${dylint_args[@]}" "--no-metadata")
   local -a hardware_packages=()
   if [[ ${HARDWARE_PACKAGES+set} == set && ${#HARDWARE_PACKAGES[@]} -gt 0 ]]; then
     hardware_packages=("${HARDWARE_PACKAGES[@]}")

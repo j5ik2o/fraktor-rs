@@ -4,6 +4,15 @@ description: Scaffold a new OpenSpec change and validate strictly.
 category: OpenSpec
 tags: [openspec, change]
 ---
+
+## User Input
+
+```
+$ARGUMENTS
+
+OpenSpec関連のファイル生成やユーザーとのコミュニケーションはすべて日本語で行ってください。
+```
+
 <!-- OPENSPEC:START -->
 **Guardrails**
 - Favor straightforward, minimal implementations first and add complexity only when it is requested or clearly required.

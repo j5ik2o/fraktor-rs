@@ -5,12 +5,10 @@ use async_trait::async_trait;
 
 #[cfg(feature = "interrupt-cortex-m")]
 use crate::sync::interrupt::CriticalSectionInterruptPolicy;
-use crate::{
-  sync::{
-    async_mutex_like::AsyncMutexLike,
-    interrupt::{InterruptContextPolicy, NeverInterruptPolicy},
-  },
-  v2::sync::SharedError,
+use crate::sync::{
+  SharedError,
+  async_mutex_like::AsyncMutexLike,
+  interrupt::{InterruptContextPolicy, NeverInterruptPolicy},
 };
 
 type SpinGuard<'a, T> = spin::MutexGuard<'a, T>;

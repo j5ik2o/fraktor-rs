@@ -1,0 +1,101 @@
+use alloc::vec::Vec;
+
+use cellactor_utils_core_rs::sync::ArcShared;
+
+use super::message_invoker_middleware::MessageInvokerMiddleware;
+use crate::{
+  actor::Actor,
+  actor_context::ActorContext,
+  actor_error::ActorError,
+  any_message::{AnyMessage, AnyMessageView},
+};
+
+/// Middleware-enabled pipeline used to invoke actor message handlers.
+pub struct MessageInvokerPipeline {
+  user_middlewares: Vec<ArcShared<dyn MessageInvokerMiddleware>>,
+}
+
+impl MessageInvokerPipeline {
+  /// Creates a pipeline without any middleware.
+  #[must_use]
+  pub const fn new() -> Self {
+    Self { user_middlewares: Vec::new() }
+  }
+
+  /// Builds a pipeline from the provided middleware list.
+  #[must_use]
+  pub fn from_middlewares(middlewares: Vec<ArcShared<dyn MessageInvokerMiddleware>>) -> Self {
+    Self { user_middlewares: middlewares }
+  }
+
+  /// Invokes the actor using the configured middleware chain.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if middleware processing fails or if the actor's message handler returns an
+  /// error.
+  #[allow(clippy::needless_pass_by_value)]
+  pub fn invoke_user<A>(
+    &self,
+    actor: &mut A,
+    ctx: &mut ActorContext<'_>,
+    message: AnyMessage,
+  ) -> Result<(), ActorError>
+  where
+    A: Actor, {
+    let previous = ctx.reply_to().cloned();
+    let reply_target = message.reply_to().cloned();
+
+    match reply_target {
+      | Some(target) => ctx.set_reply_to(Some(target)),
+      | None => ctx.clear_reply_to(),
+    }
+
+    let view = message.as_view();
+
+    if let Err(error) = self.invoke_before(ctx, &view) {
+      restore_reply(ctx, previous);
+      return Err(error);
+    }
+
+    let mut result = actor.receive(ctx, view);
+
+    let view_after = message.as_view();
+    result = self.invoke_after(ctx, &view_after, result);
+
+    restore_reply(ctx, previous);
+    result
+  }
+
+  fn invoke_before(&self, ctx: &mut ActorContext<'_>, message: &AnyMessageView<'_>) -> Result<(), ActorError> {
+    for middleware in &self.user_middlewares {
+      middleware.before_user(ctx, message)?;
+    }
+    Ok(())
+  }
+
+  fn invoke_after(
+    &self,
+    ctx: &mut ActorContext<'_>,
+    message: &AnyMessageView<'_>,
+    mut result: Result<(), ActorError>,
+  ) -> Result<(), ActorError> {
+    for middleware in self.user_middlewares.iter().rev() {
+      result = middleware.after_user(ctx, message, result);
+    }
+    result
+  }
+}
+
+fn restore_reply(ctx: &mut ActorContext<'_>, previous: Option<crate::actor_ref::ActorRef>) {
+  match previous {
+    | Some(target) => ctx.set_reply_to(Some(target)),
+    | None => ctx.clear_reply_to(),
+  }
+}
+
+impl Default for MessageInvokerPipeline {
+  fn default() -> Self {
+    Self::new()
+  }
+}

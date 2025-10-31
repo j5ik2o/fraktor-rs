@@ -1,0 +1,8 @@
+- 応対は日本語、rustdoc (`///`, `//!`) のみ英語、その他コメント・ドキュメントは日本語で記述する。
+- `mod.rs` 禁止。Rust 2018 以降のモジュール構成を採用する。
+- 1 ファイルに複数構造体や複数 trait を定義しない。
+- 単体テストは対象ファイルと同階層の `hoge/tests.rs` に配置する。
+- ランタイム本体で `#[cfg(feature = "std")]` による分岐は行わない (テストコード内のみ許容)。
+- 破壊的変更は許容され、最適な設計を優先する。
+- カスタム Dylint による各種スタイルチェック (mod-file, module-wiring, type-per-file, tests-location, use-placement, cfg-std-forbid 等) を導入済み。
+- rustfmt 設定は `rustfmt.toml` で管理、`cargo fmt` は nightly toolchain 経由で実行する。

@@ -1,3 +1,5 @@
+use crate::sync::SharedError;
+
 /// Errors that occur during queue operations.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum QueueError<T> {
@@ -27,6 +29,15 @@ impl<T> QueueError<T> {
     match self {
       | Self::Full(item) | Self::OfferError(item) | Self::Closed(item) | Self::AllocError(item) => Some(item),
       | Self::Disconnected | Self::Empty | Self::WouldBlock => None,
+    }
+  }
+}
+
+impl<T> From<SharedError> for QueueError<T> {
+  fn from(err: SharedError) -> Self {
+    match err {
+      | SharedError::Poisoned => QueueError::Disconnected,
+      | SharedError::BorrowConflict | SharedError::InterruptContext => QueueError::WouldBlock,
     }
   }
 }
