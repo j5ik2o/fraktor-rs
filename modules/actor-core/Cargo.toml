@@ -27,8 +27,14 @@ hashbrown = { workspace = true, default-features = false }
 
 [dev-dependencies]
 criterion = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
 
 [[example]]
 name = "ping_pong_no_std"
 path = "examples/ping_pong_no_std/main.rs"
+required-features = ["std"]
+
+[[example]]
+name = "ping_pong_tokio"
+path = "examples/ping_pong_tokio/main.rs"
 required-features = ["std"]

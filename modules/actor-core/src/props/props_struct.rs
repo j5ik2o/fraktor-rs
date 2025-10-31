@@ -2,7 +2,10 @@ use alloc::{string::String, vec::Vec};
 
 use cellactor_utils_core_rs::sync::ArcShared;
 
-use super::{actor_factory::ActorFactory, mailbox_config::MailboxConfig, supervisor_options::SupervisorOptions};
+use super::{
+  actor_factory::ActorFactory, dispatcher_config::DispatcherConfig, mailbox_config::MailboxConfig,
+  supervisor_options::SupervisorOptions,
+};
 use crate::actor::Actor;
 
 /// Immutable configuration describing how to construct an actor.
@@ -12,6 +15,7 @@ pub struct Props {
   mailbox:    MailboxConfig,
   supervisor: SupervisorOptions,
   middleware: Vec<String>,
+  dispatcher: DispatcherConfig,
 }
 
 impl Props {
@@ -24,6 +28,7 @@ impl Props {
       mailbox: MailboxConfig::default(),
       supervisor: SupervisorOptions::default(),
       middleware: Vec::new(),
+      dispatcher: DispatcherConfig::default(),
     }
   }
 
@@ -66,6 +71,12 @@ impl Props {
     &self.middleware
   }
 
+  /// Returns the configured dispatcher settings.
+  #[must_use]
+  pub const fn dispatcher(&self) -> &DispatcherConfig {
+    &self.dispatcher
+  }
+
   /// Updates the mailbox configuration.
   #[must_use]
   pub const fn with_mailbox(mut self, config: MailboxConfig) -> Self {
@@ -94,6 +105,13 @@ impl Props {
   #[must_use]
   pub fn with_name(mut self, name: impl Into<String>) -> Self {
     self.name = Some(name.into());
+    self
+  }
+
+  /// Overrides the dispatcher configuration used when constructing actors.
+  #[must_use]
+  pub fn with_dispatcher(mut self, dispatcher: DispatcherConfig) -> Self {
+    self.dispatcher = dispatcher;
     self
   }
 }

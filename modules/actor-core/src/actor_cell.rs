@@ -9,7 +9,7 @@ use crate::{
   actor_error::ActorError,
   actor_ref::ActorRef,
   any_message::AnyMessage,
-  dispatcher::{DispatchExecutor, Dispatcher, InlineExecutor},
+  dispatcher::Dispatcher,
   mailbox::Mailbox,
   message_invoker::{MessageInvoker, MessageInvokerPipeline},
   pid::Pid,
@@ -47,8 +47,7 @@ impl ActorCell {
     props: &Props,
   ) -> ArcShared<Self> {
     let mailbox = ArcShared::new(Mailbox::new(props.mailbox().policy()));
-    let executor: ArcShared<dyn DispatchExecutor> = ArcShared::new(InlineExecutor::new());
-    let dispatcher = Dispatcher::new(mailbox, executor);
+    let dispatcher = props.dispatcher().build_dispatcher(mailbox.clone());
     let sender = dispatcher.into_sender();
     let factory = props.factory().clone();
     let supervisor = *props.supervisor().strategy();

@@ -60,7 +60,7 @@ description: "セルアクター no_std ランタイム初期版の実装タス�
 
 ## フェーズ3: ユーザーストーリー 1（優先度: P1） 🎯 MVP
 
-**目標**: AnyMessage を使った最小構成でアクターを起動し、Ping/Pong サンプルが no_std + alloc 環境で動作する。さらに TokioExecutor を介して std + Tokio ランタイム上でも同サンプルが完走することを確認する。
+**目標**: AnyMessage を使った最小構成でアクターを起動し、Ping/Pong サンプルが no_std + alloc 環境で動作する。さらに DispatcherConfig を介して std + Tokio ランタイム上でも同サンプルが完走することを確認する。
 **独立テスト**: `modules/actor-core/tests/ping_pong.rs` で spawn / tell / 背圧ポリシー / reply_to 処理が通ること。
 
 - [x] T016 [US1] `ActorRef` ハンドルを実装し、未型付けの `tell` / `ask` API と ArcShared ストレージを備える（所有型 `AnyMessage` を受け付け、送信失敗を `Result` で検知可能にする）(modules/actor-core/src/actor_ref.rs)
@@ -70,8 +70,8 @@ description: "セルアクター no_std ランタイム初期版の実装タス�
 - [x] T020 [US1] ガーディアン Props、`user_guardian_ref()`、名前レジストリ、`spawn_child` を通じた生成、`reply_to` ディスパッチ、`ActorCell` 管理を含む `ActorSystem` コアを実装する (modules/actor-core/src/system.rs, modules/actor-core/src/actor_cell.rs)
 - [x] T021 [US1] `ActorFuture` の ask ヘルパーを完成させ ActorSystem と連携させる (modules/actor-core/src/actor_future.rs)
 - [x] T022 [P] [US1] AnyMessage + reply_to を用いた no_std Ping/Pong サンプルを追加する (modules/actor-core/examples/ping_pong_no_std/main.rs; `ctx.self_ref()` を payload の `reply_to` に埋め込み、`reply_to.tell(...)` で応答する例を示す。実行は `cargo run -p cellactor-actor-core-rs --example ping_pong_no_std --features std`)
-- [ ] T022A [P] [US1] Tokio ランタイムの `Handle::spawn` を用いて Dispatcher を駆動する `DispatchExecutor` 実装（TokioExecutor）を examples 配下に追加し、`cfg(feature = "std")` 下でのみコンパイルされるようにする (modules/actor-core/examples/ping_pong_tokio/executor.rs)
-- [ ] T022B [P] [US1] TokioExecutor を利用する Ping/Pong サンプルを追加し、Tokio ランタイムで ActorSystem を起動して `reply_to` ベースの応答とスレッド ID ログを検証する (modules/actor-core/examples/ping_pong_tokio/main.rs; 実行コマンド `cargo run -p cellactor-actor-core-rs --example ping_pong_tokio --features std`)
+- [x] T022A [P] [US1] Tokio ランタイムの `Handle::spawn_blocking` を用いて Dispatcher を駆動する `TokioExecutor` を examples 配下に追加し、`cfg(feature = "std")` 下でのみコンパイルされるようにする (modules/actor-core/examples/ping_pong_tokio/executor.rs)
+- [x] T022B [P] [US1] `Props::with_dispatcher(DispatcherConfig::from_executor(...))` を利用する Ping/Pong サンプルを追加し、Tokio ランタイムで ActorSystem を起動して `reply_to` ベースの応答とスレッド ID ログを検証する (modules/actor-core/examples/ping_pong_tokio/main.rs; 実行コマンド `cargo run -p cellactor-actor-core-rs --example ping_pong_tokio --features std`)
 - [x] T023 [P] [US1] spawn / tell / 背圧ポリシー / 自動命名を検証する統合テストを追加する (modules/actor-core/tests/ping_pong.rs)
 
 ---
@@ -131,7 +131,7 @@ description: "セルアクター no_std ランタイム初期版の実装タス�
 
 ## 実装戦略
 
-1. **MVP (US1)**: ActorSystem、ActorRef、Mailbox、Dispatcher、MessageInvoker を最小構成で完成させ、no_std 向け Ping/Pong サンプルと統合テストを通す。あわせて TokioExecutor を用いた std 向け Ping/Pong サンプルで Executor 差し替えを実証する。
+1. **MVP (US1)**: ActorSystem、ActorRef、Mailbox、Dispatcher、MessageInvoker を最小構成で完成させ、no_std 向け Ping/Pong サンプルと統合テストを通す。あわせて DispatcherConfig 経由で TokioExecutor を差し替えた std 向け Ping/Pong サンプルで Dispatcher 拡張性を実証する。
 2. **信頼性 (US2)**: RestartStatistics・SupervisorStrategy・子アクター監視を追加し、panic 非介入ポリシーとイベント通知を確立する。
 3. **オブザーバビリティ (US3)**: EventStream/Deadletter/Logger を導入し、OpenAPI ベースのホスト制御面を提供する。
 4. **Polish**: ドキュメント／ベンチマーク／CI を整え、no_std + alloc での運用を確実にする。
