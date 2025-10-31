@@ -43,3 +43,13 @@ required-features = ["std"]
 name = "logger_subscriber_std"
 path = "examples/logger_subscriber_std/main.rs"
 required-features = ["std"]
+
+[[example]]
+name = "supervision_std"
+path = "examples/supervision_std/main.rs"
+required-features = ["std"]
+
+[[example]]
+name = "deadletter_std"
+path = "examples/deadletter_std/main.rs"
+required-features = ["std"]

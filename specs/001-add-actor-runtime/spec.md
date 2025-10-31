@@ -36,6 +36,8 @@
 1. **前提** Supervisor が `Restart` ポリシーを設定済み、**操作** 子アクターがハンドラ内で意図的にパニックを発生、**結果** Supervisor がエラーを捕捉してアクターを即時再起動し、再起動カウンタが仕様で定める最大値未満でリセットされる。
 2. **前提** Supervisor が `Escalate` ポリシーを設定済み、**操作** 致命的なエラーコードを返すメッセージを処理、**結果** 上位ツリーに例外が伝播し、ActorSystem が Deadletter 経由で通知を行う。
 
+補足: `modules/actor-core/examples/supervision_std/main.rs` で OneForOne 戦略による再起動と EventStream ログ購読を確認できること。
+
 ---
 
 ### ユーザーストーリー3 - 動作を観測して運用判断を下す（優先度: P3）
@@ -49,6 +51,8 @@
 
 1. **前提** EventStream に外部購読者が登録済み、**操作** 任意のアクターが `Behavior::become` で状態遷移、**結果** 状態遷移イベントが購読者に配送され、タイムスタンプと PID が一致して記録される。
 2. **前提** 宛先不明 PID に `tell` を送信するテストが走っている、**操作** メッセージを送信、**結果** Deadletter が未配達メッセージと原因を記録し、EventStream にも転送される。
+
+補足: `modules/actor-core/examples/deadletter_std/main.rs` で Suspended 状態や容量超過による Deadletter/LogEvent を確認できること。
 
 ---
 

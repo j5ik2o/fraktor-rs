@@ -15,7 +15,7 @@
 - Spec FR-027 に基づき、Mailbox の Bounded/Unbounded 戦略とメモリ監視・警告イベント発火をサポートする。  
 - メッセージ所有は `AnyMessage` + `ArcShared` に統一し、Mailbox が所有→借用の変換（`AnyMessageView`）を担当する。  
 - System/User の 2 本キュー（`AsyncQueue` バックエンド）と WaitNode ベースの Block 待機戦略を採用し、Busy wait を禁止する。外部 API は同期呼び出しのまま維持し、Dispatcher 内部で協調ポーリングする軽量 executor を用意して `async fn` 依存を回避する。  
-- `std` フィーチャ有効時の検証として、examples 配下に `DispatcherConfig::from_executor(TokioExecutor)` を用いた Ping/Pong サンプルを追加し、Dispatcher 差し替えで ActorSystem が Tokio ランタイム上でも動作することを確認する。Tokio 依存は examples の Cargo マニフェストに限定し、コアクレートは no_std 方針を維持する。また、ホスト向けサンプルでは `when_terminated()` の Future/Listener を用いて終了待機するベストプラクティスを提示する。
+- `std` フィーチャ有効時の検証として、examples 配下に `DispatcherConfig::from_executor(TokioExecutor)` を用いた Ping/Pong サンプルを追加し、Dispatcher 差し替えで ActorSystem が Tokio ランタイム上でも動作することを確認する。Tokio 依存は examples の Cargo マニフェストに限定し、コアクレートは no_std 方針を維持する。また、ホスト向けサンプルでは `when_terminated()` の Future/Listener を用いて終了待機するベストプラクティスを提示し、EventStream を活用する `logger_subscriber_std` / `supervision_std` / `deadletter_std` でログ・監督・未配達通知の動作確認を提供する。
 - Spec FR-023 に基づき、親アクターが子アクターを生成・監督する API（Props 継承、`Context::spawn_child`）を整備し、Supervisor ツリー操作と EventStream 通知をサポートする。
 - Spec FR-024 に基づき、ActorSystem 初期化時にユーザガーディアン Props を必須とし、エントリポイントからアプリケーションツリーを構築するフローを quickstart と data-model に落とし込む。
 - Spec FR-025 に基づき、アクター命名の一意性と自動生成ロジック（親スコープごとの NameRegistry）を実装し、名前から PID への逆引きを提供する。

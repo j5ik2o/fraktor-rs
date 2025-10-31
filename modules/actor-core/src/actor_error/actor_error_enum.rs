@@ -1,4 +1,7 @@
+use alloc::format;
+
 use super::actor_error_reason::ActorErrorReason;
+use crate::send_error::SendError;
 
 /// Error classification returned by actor lifecycle callbacks.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -44,5 +47,17 @@ impl ActorError {
     match self {
       | ActorError::Recoverable(reason) | ActorError::Fatal(reason) => ActorError::Recoverable(reason),
     }
+  }
+
+  /// Creates a recoverable actor error from a send error.
+  #[must_use]
+  pub fn from_send_error(error: SendError) -> Self {
+    ActorError::recoverable(format!("send failed: {:?}", error))
+  }
+}
+
+impl From<SendError> for ActorError {
+  fn from(value: SendError) -> Self {
+    Self::from_send_error(value)
   }
 }
