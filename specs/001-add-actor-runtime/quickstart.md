@@ -24,10 +24,10 @@ cargo build --package actor-core --target $target --no-default-features
 2. ホスト: `cargo run --example ping_pong_no_std --no-default-features`（actor-core では `std` フィーチャを有効化しない）。
 3. 組込み: `cargo embed --example ping_pong_no_std --target $target`。UART ログに `PING -> PONG` が 1,000 回出力され、1 秒以内に完了すること。
 
-## 4. Supervisor 戦略の確認
+## 4. 監督戦略と Deadletter の確認
 
-- `examples/supervisor_restart` を実行し、`Err(ActorError::Recoverable)` で再起動カウンタが増えることを確認。  
-- `Err(ActorError::Fatal)` を返すとアクターが停止し、Deadletter + EventStream に記録されること。  
+- `examples/supervision_std` を実行し、`ActorError::recoverable` を返すと Supervisor が再起動を行い、EventStream 経由でライフサイクルログが出力されることを確認する。  
+- `examples/deadletter_std` を実行し、Mailbox を `Suspend` した状態で `tell` すると Deadletter/LogEvent が発生することを確認する。サンプル内では `send_or_log` `suspend_or_log` といった薄いヘルパーで `Result<(), SendError>` を扱っている。  
 - `panic!()` を挿入した場合はランタイムが停止を記録し、外部ウォッチドッグ（例: RP2040 の watchdog リセット）がシステムを再起動する設計とする。
 
 ## 5. ガーディアンアクターでのエントリポイント
@@ -39,6 +39,12 @@ system
   .user_guardian_ref()
   .tell(AnyMessage::new(Start))
   .expect("bootstrap");
+
+let termination = system.when_terminated();
+system.terminate().expect("terminate");
+while !termination.is_ready() {
+  core::hint::spin_loop();
+}
 ```
 
 - guardian が `spawn_child` を利用してアプリケーションの子アクターを構築する。トップレベルのアクター生成はガーディアン（または子アクター）からの `spawn_child` のみ許可し、外部コードは `user_guardian_ref()` に `Start` メッセージを送ることでアプリケーションを起動する。
@@ -51,19 +57,28 @@ system
 ## 6. EventStream / Deadletter 購読
 
 ```rust
-let logger = system.event_stream().subscribe(LoggerSubscriber::uart());
-let lifecycle_sub = system.event_stream().subscribe(|event| match event {
-    Event::ActorLifecycle(t) => log::info!("transition: {:?}", t),
-    Event::Log(log_event) => forward_to_host(log_event),
-    Event::ChildTerminated { parent, child, reason } => log::warn!("child {:?} of {:?} stopped: {:?}", child, parent, reason),
-    _ => {}
-});
+let logger_writer: ArcShared<dyn LoggerWriter> = ArcShared::new(MyWriter);
+let logger = ArcShared::new(LoggerSubscriber::new(LogLevel::Info, logger_writer));
+let _log_subscription = system.subscribe_event_stream(logger);
 
-let deadletter_rx = system.deadletter().subscribe();
+struct LifecyclePrinter;
+
+impl EventStreamSubscriber for LifecyclePrinter {
+    fn on_event(&self, event: &EventStreamEvent) {
+        if let EventStreamEvent::Lifecycle(lifecycle) = event {
+            log::info!("actor {:?} -> {:?}", lifecycle.pid(), lifecycle.stage());
+        }
+    }
+}
+
+let lifecycle = ArcShared::new(LifecyclePrinter);
+let _lifecycle_subscription = system.subscribe_event_stream(lifecycle);
+
+let snapshot = system.deadletters();
 ```
 
-- Deadletter に蓄積されたメッセージ数が常に 10 未満であることを確認。
-- EventStream で `ActorLifecycle::Transition` と `LogEvent`、`ChildTerminated` が受信できることをテスト。
+- Deadletter の既定保持件数は 512 件。組込み環境では必要に応じて減らし、警告閾値を LoggerSubscriber などで監視する。
+- EventStream で `LifecycleEvent`・`LogEvent`・`Deadletter` が受信できることをテストする。
 
 ## 7. ヒープ確保計測
 
@@ -87,6 +102,7 @@ makers ci-check -- dylint
 - panic 非介入: ランタイムは再起動せず、外部ウォッチドッグまたはシステムサービスが責務を負う。  
 - Deadletter / EventStream による監視を運用ダッシュボード（例: RTT 経由）へ出力し、Logger 購読者を通じて `LogEvent` を UART/RTT またはホストログに転送する。  
 - 将来の Typed レイヤーは AnyMessage 上に別レイヤーとして構築予定で、現フェーズの API は未型付けを前提とする。
+- `tell` は `Result<(), SendError>` を返すため、`send_or_log` のような薄いヘルパーをアプリ側で用意し、サスペンドや容量超過を即座に検知・ロギングする。
 
 > **Reply-to パターンについて**
 > このランタイムは Classic の `sender()` を提供しないため、返信が必要な場合はメッセージ起点で `reply_to: ActorRef` を明示的に渡す必要があります。例として、Guardian が自分自身を起点に Ping/Pong を起動する場合:
