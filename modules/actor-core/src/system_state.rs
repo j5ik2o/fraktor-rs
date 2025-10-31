@@ -26,16 +26,16 @@ use crate::{
 
 /// Shared, mutable state owned by the [`ActorSystem`](crate::system::ActorSystem).
 pub struct ActorSystemState {
-  next_pid:     AtomicU64,
-  clock:        AtomicU64,
-  cells:        SpinSyncMutex<HashMap<Pid, ArcShared<ActorCell>>>,
-  registries:   SpinSyncMutex<HashMap<Option<Pid>, NameRegistry>>,
-  user_guardian:     SpinSyncMutex<Option<ArcShared<ActorCell>>>,
-  ask_futures:  SpinSyncMutex<Vec<ArcShared<ActorFuture<AnyMessage>>>>,
-  termination:  ArcShared<ActorFuture<()>>,
-  terminated:   AtomicBool,
-  event_stream: ArcShared<EventStream>,
-  deadletter:   ArcShared<Deadletter>,
+  next_pid:      AtomicU64,
+  clock:         AtomicU64,
+  cells:         SpinSyncMutex<HashMap<Pid, ArcShared<ActorCell>>>,
+  registries:    SpinSyncMutex<HashMap<Option<Pid>, NameRegistry>>,
+  user_guardian: SpinSyncMutex<Option<ArcShared<ActorCell>>>,
+  ask_futures:   SpinSyncMutex<Vec<ArcShared<ActorFuture<AnyMessage>>>>,
+  termination:   ArcShared<ActorFuture<()>>,
+  terminated:    AtomicBool,
+  event_stream:  ArcShared<EventStream>,
+  deadletter:    ArcShared<Deadletter>,
 }
 
 impl ActorSystemState {
@@ -100,7 +100,7 @@ impl ActorSystemState {
   }
 
   /// Publishes an event through the event stream.
-  pub fn publish_event(&self, event: EventStreamEvent) {
+  pub fn publish_event(&self, event: &EventStreamEvent) {
     self.event_stream.publish(event);
   }
 
@@ -108,7 +108,7 @@ impl ActorSystemState {
   pub fn emit_log(&self, level: LogLevel, message: String, origin: Option<Pid>) {
     let timestamp = self.monotonic_now();
     let event = LogEvent::new(level, message, timestamp, origin);
-    self.event_stream.publish(EventStreamEvent::Log(event));
+    self.event_stream.publish(&EventStreamEvent::Log(event));
   }
 
   /// Records a send error in the deadletter repository.

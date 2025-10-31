@@ -36,13 +36,13 @@ impl MailboxInstrumentation {
   pub fn publish(&self, user_len: usize, system_len: usize) {
     let timestamp = self.system_state.monotonic_now();
     let event = MailboxMetricsEvent::new(self.pid, user_len, system_len, self.capacity, self.throughput, timestamp);
-    self.event_stream.publish(EventStreamEvent::Mailbox(event));
+    self.event_stream.publish(&EventStreamEvent::Mailbox(event));
     if let Some(threshold) = self.warn_threshold
       && user_len >= threshold
     {
       let message = alloc::format!("mailbox backlog reached {} (threshold: {})", user_len, threshold);
       let log = LogEvent::new(LogLevel::Warn, message, timestamp, Some(self.pid));
-      self.event_stream.publish(EventStreamEvent::Log(log));
+      self.event_stream.publish(&EventStreamEvent::Log(log));
     }
   }
 }

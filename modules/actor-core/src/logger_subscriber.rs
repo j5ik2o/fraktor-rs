@@ -29,10 +29,10 @@ impl LoggerSubscriber {
 
 impl EventStreamSubscriber for LoggerSubscriber {
   fn on_event(&self, event: &EventStreamEvent) {
-    if let EventStreamEvent::Log(log) = event {
-      if log.level() >= self.level {
-        self.writer.write(log);
-      }
+    if let EventStreamEvent::Log(log) = event
+      && log.level() >= self.level
+    {
+      self.writer.write(log);
     }
   }
 }

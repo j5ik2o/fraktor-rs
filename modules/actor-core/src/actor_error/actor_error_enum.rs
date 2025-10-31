@@ -51,13 +51,13 @@ impl ActorError {
 
   /// Creates a recoverable actor error from a send error.
   #[must_use]
-  pub fn from_send_error(error: SendError) -> Self {
+  pub fn from_send_error(error: &SendError) -> Self {
     ActorError::recoverable(format!("send failed: {:?}", error))
   }
 }
 
 impl From<SendError> for ActorError {
   fn from(value: SendError) -> Self {
-    Self::from_send_error(value)
+    Self::from_send_error(&value)
   }
 }

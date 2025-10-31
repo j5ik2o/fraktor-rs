@@ -16,13 +16,13 @@ pub struct DeadletterEntry {
 impl DeadletterEntry {
   /// Creates a new deadletter entry.
   #[must_use]
-  pub fn new(message: AnyMessage, reason: DeadletterReason, recipient: Option<Pid>, timestamp: Duration) -> Self {
+  pub const fn new(message: AnyMessage, reason: DeadletterReason, recipient: Option<Pid>, timestamp: Duration) -> Self {
     Self { message, reason, recipient, timestamp }
   }
 
   /// Returns the undelivered message.
   #[must_use]
-  pub fn message(&self) -> &AnyMessage {
+  pub const fn message(&self) -> &AnyMessage {
     &self.message
   }
 

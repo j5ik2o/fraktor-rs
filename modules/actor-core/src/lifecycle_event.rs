@@ -3,18 +3,7 @@
 use alloc::string::String;
 use core::time::Duration;
 
-use crate::pid::Pid;
-
-/// Lifecycle stage transitions captured for observability.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum LifecycleStage {
-  /// Actor has started.
-  Started,
-  /// Actor has restarted following a failure.
-  Restarted,
-  /// Actor has stopped.
-  Stopped,
-}
+use crate::{lifecycle_stage::LifecycleStage, pid::Pid};
 
 /// Event published whenever an actor transitions lifecycle state.
 #[derive(Clone, Debug)]
@@ -29,7 +18,7 @@ pub struct LifecycleEvent {
 impl LifecycleEvent {
   /// Creates a new lifecycle event.
   #[must_use]
-  pub fn new(pid: Pid, parent: Option<Pid>, name: String, stage: LifecycleStage, timestamp: Duration) -> Self {
+  pub const fn new(pid: Pid, parent: Option<Pid>, name: String, stage: LifecycleStage, timestamp: Duration) -> Self {
     Self { pid, parent, name, stage, timestamp }
   }
 

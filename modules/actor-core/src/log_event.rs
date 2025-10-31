@@ -17,7 +17,7 @@ pub struct LogEvent {
 impl LogEvent {
   /// Creates a new log event.
   #[must_use]
-  pub fn new(level: LogLevel, message: String, timestamp: Duration, origin: Option<Pid>) -> Self {
+  pub const fn new(level: LogLevel, message: String, timestamp: Duration, origin: Option<Pid>) -> Self {
     Self { level, message, timestamp, origin }
   }
 

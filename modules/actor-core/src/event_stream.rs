@@ -23,7 +23,7 @@ pub struct EventStream {
 impl EventStream {
   /// Creates a new event stream with the specified buffer capacity.
   #[must_use]
-  pub fn with_capacity(capacity: usize) -> Self {
+  pub const fn with_capacity(capacity: usize) -> Self {
     Self {
       subscribers: SpinSyncMutex::new(Vec::new()),
       buffer: SpinSyncMutex::new(Vec::new()),
@@ -36,7 +36,7 @@ impl EventStream {
   #[must_use]
   pub fn subscribe_arc(
     stream: &ArcShared<Self>,
-    subscriber: ArcShared<dyn EventStreamSubscriber>,
+    subscriber: &ArcShared<dyn EventStreamSubscriber>,
   ) -> EventStreamSubscription {
     let id = stream.next_id.fetch_add(1, Ordering::Relaxed);
     {
@@ -61,7 +61,7 @@ impl EventStream {
   }
 
   /// Publishes an event to all registered subscribers.
-  pub fn publish(&self, event: EventStreamEvent) {
+  pub fn publish(&self, event: &EventStreamEvent) {
     {
       let mut buffer = self.buffer.lock();
       buffer.push(event.clone());
@@ -73,7 +73,7 @@ impl EventStream {
 
     let subscribers = self.subscribers.lock().clone();
     for entry in subscribers {
-      entry.subscriber().on_event(&event);
+      entry.subscriber().on_event(event);
     }
   }
 }

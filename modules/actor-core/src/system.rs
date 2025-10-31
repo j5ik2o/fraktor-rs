@@ -130,7 +130,7 @@ impl ActorSystem {
 
   /// Subscribes to the event stream with the provided subscriber.
   #[must_use]
-  pub fn subscribe_event_stream(&self, subscriber: ArcShared<dyn EventStreamSubscriber>) -> EventStreamSubscription {
+  pub fn subscribe_event_stream(&self, subscriber: &ArcShared<dyn EventStreamSubscriber>) -> EventStreamSubscription {
     EventStream::subscribe_arc(&self.state.event_stream(), subscriber)
   }
 

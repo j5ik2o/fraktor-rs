@@ -11,7 +11,8 @@ use crate::{
   any_message::AnyMessage,
   dispatcher::Dispatcher,
   event_stream_event::EventStreamEvent,
-  lifecycle_event::{LifecycleEvent, LifecycleStage},
+  lifecycle_event::LifecycleEvent,
+  lifecycle_stage::LifecycleStage,
   mailbox::Mailbox,
   mailbox_instrumentation::MailboxInstrumentation,
   mailbox_policy::MailboxCapacity,
@@ -52,7 +53,7 @@ impl ActorCell {
   ) -> ArcShared<Self> {
     let mailbox = ArcShared::new(Mailbox::new(props.mailbox().policy()));
     Self::configure_mailbox(&mailbox, &system, pid, props);
-    let dispatcher = props.dispatcher().build_dispatcher(mailbox.clone());
+    let dispatcher = props.dispatcher().build_dispatcher(mailbox);
     let sender = dispatcher.into_sender();
     let factory = props.factory().clone();
     let supervisor = *props.supervisor().strategy();
@@ -247,7 +248,7 @@ impl ActorCell {
   fn publish_lifecycle(&self, stage: LifecycleStage) {
     let timestamp = self.system.monotonic_now();
     let event = LifecycleEvent::new(self.pid, self.parent, self.name.clone(), stage, timestamp);
-    self.system.publish_event(EventStreamEvent::Lifecycle(event));
+    self.system.publish_event(&EventStreamEvent::Lifecycle(event));
   }
 }
 

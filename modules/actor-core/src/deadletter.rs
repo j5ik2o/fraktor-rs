@@ -21,7 +21,7 @@ pub struct Deadletter {
 impl Deadletter {
   /// Creates a new deadletter repository.
   #[must_use]
-  pub fn new(event_stream: ArcShared<EventStream>, capacity: usize) -> Self {
+  pub const fn new(event_stream: ArcShared<EventStream>, capacity: usize) -> Self {
     Self { entries: SpinSyncMutex::new(Vec::new()), capacity, event_stream }
   }
 
@@ -49,7 +49,7 @@ impl Deadletter {
       }
     }
 
-    self.publish(entry);
+    self.publish(&entry);
   }
 
   /// Returns a snapshot of stored entries.
@@ -58,13 +58,13 @@ impl Deadletter {
     self.entries.lock().clone()
   }
 
-  fn publish(&self, entry: DeadletterEntry) {
-    self.event_stream.publish(EventStreamEvent::Deadletter(entry.clone()));
+  fn publish(&self, entry: &DeadletterEntry) {
+    self.event_stream.publish(&EventStreamEvent::Deadletter(entry.clone()));
     let (origin, message) = match entry.recipient() {
       | Some(pid) => (Some(pid), format!("deadletter for pid {:?} (reason: {:?})", pid, entry.reason())),
       | None => (None, format!("deadletter recorded (reason: {:?})", entry.reason())),
     };
     let log = LogEvent::new(LogLevel::Warn, message, entry.timestamp(), origin);
-    self.event_stream.publish(EventStreamEvent::Log(log));
+    self.event_stream.publish(&EventStreamEvent::Log(log));
   }
 }
