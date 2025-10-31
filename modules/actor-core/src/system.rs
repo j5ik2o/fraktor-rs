@@ -32,9 +32,9 @@ impl ActorSystem {
   /// # Errors
   ///
   /// Returns [`SpawnError`] when guardian initialization fails.
-  pub fn new(user_guardian_props: Props) -> Result<Self, SpawnError> {
+  pub fn new(user_guardian_props: &Props) -> Result<Self, SpawnError> {
     let system = Self::new_empty();
-    let guardian = system.spawn_with_parent(None, &user_guardian_props)?;
+    let guardian = system.spawn_with_parent(None, user_guardian_props)?;
     if let Some(cell) = system.state.cell(&guardian.pid()) {
       system.state.set_user_guardian(cell);
     }
@@ -128,6 +128,15 @@ impl ActorSystem {
       .into_iter()
       .filter_map(|pid| self.state.cell(&pid).map(|cell| ChildRef::new(cell.actor_ref(), system.clone())))
       .collect()
+  }
+
+  /// Sends a stop signal to the specified actor.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the stop message cannot be enqueued.
+  pub fn stop_actor(&self, pid: Pid) -> Result<(), SendError> {
+    self.state.send_system_message(pid, SystemMessage::Stop)
   }
 
   /// Sends a stop signal to the user guardian and initiates system shutdown.

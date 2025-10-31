@@ -1,4 +1,4 @@
-use alloc::{boxed::Box, string::String, vec::Vec};
+use alloc::{boxed::Box, string::String, vec, vec::Vec};
 use core::time::Duration;
 
 use cellactor_utils_core_rs::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
@@ -111,7 +111,7 @@ impl ActorCell {
   pub fn register_child(&self, pid: Pid) {
     {
       let mut children = self.children.lock();
-      if !children.iter().any(|child| *child == pid) {
+      if !children.contains(&pid) {
         children.push(pid);
       }
     }
@@ -142,11 +142,7 @@ impl ActorCell {
     };
 
     let affected = match self.supervisor.kind() {
-      | SupervisorStrategyKind::OneForOne => {
-        let mut list = Vec::new();
-        list.push(child);
-        list
-      },
+      | SupervisorStrategyKind::OneForOne => vec![child],
       | SupervisorStrategyKind::AllForOne => self.children.lock().clone(),
     };
 
@@ -201,6 +197,9 @@ impl ActorCell {
     let mut actor = self.actor.lock();
     let outcome = actor.post_stop(&mut ctx);
     drop(actor);
+    for child in self.children() {
+      let _ = self.system.send_system_message(child, SystemMessage::Stop);
+    }
     if let Some(parent) = self.parent {
       self.system.unregister_child(Some(parent), self.pid);
     }
@@ -227,9 +226,8 @@ impl MessageInvoker for ActorCell {
     let mut actor = self.actor.lock();
     let result = self.pipeline.invoke_user(&mut *actor, &mut ctx, message);
     if let Err(ref error) = result {
-      let cloned = error.clone();
       drop(actor);
-      self.system.notify_failure(self.pid, cloned);
+      self.system.notify_failure(self.pid, error);
     } else {
       drop(actor);
     }
@@ -251,7 +249,8 @@ impl MessageInvoker for ActorCell {
   }
 }
 
-fn find_or_insert_stats<'a>(entries: &'a mut Vec<(Pid, RestartStatistics)>, pid: Pid) -> &'a mut RestartStatistics {
+#[allow(clippy::needless_range_loop)]
+fn find_or_insert_stats(entries: &mut Vec<(Pid, RestartStatistics)>, pid: Pid) -> &mut RestartStatistics {
   let len = entries.len();
   for index in 0..len {
     if entries[index].0 == pid {

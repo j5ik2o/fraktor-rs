@@ -9,6 +9,7 @@ use crate::{
   actor_error::{ActorError, ActorErrorReason},
   any_message::{AnyMessage, AnyMessageView},
   child_ref::ChildRef,
+  pid::Pid,
   props::Props,
 };
 
@@ -40,7 +41,7 @@ fn guardian_processes_message() {
     let log = log.clone();
     move || GuardianLogger::new(log.clone())
   });
-  let system = ActorSystem::new(props).expect("create system");
+  let system = ActorSystem::new(&props).expect("create system");
 
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("send");
 
@@ -103,7 +104,7 @@ fn spawn_child_creates_actor() {
     move || ChildSpawner::new(slot.clone(), log.clone())
   });
 
-  let system = ActorSystem::new(props).expect("system");
+  let system = ActorSystem::new(&props).expect("system");
   let guardian = system.user_guardian_ref();
 
   guardian.tell(AnyMessage::new(Start)).expect("start");
@@ -224,7 +225,7 @@ fn reply_to_dispatches_response() {
     move || ReplyGuardian::new(responder_slot.clone(), probe_slot.clone(), log.clone())
   });
 
-  let system = ActorSystem::new(props).expect("system");
+  let system = ActorSystem::new(&props).expect("system");
   let guardian = system.user_guardian_ref();
   guardian.tell(AnyMessage::new(Start)).expect("boot");
 
@@ -246,7 +247,7 @@ fn ask_registers_future_in_system() {
     move || AskGuardian::new(responder_slot.clone())
   });
 
-  let system = ActorSystem::new(props).expect("system");
+  let system = ActorSystem::new(&props).expect("system");
   let guardian = system.user_guardian_ref();
   guardian.tell(AnyMessage::new(Start)).expect("boot");
 
@@ -260,4 +261,91 @@ fn ask_registers_future_in_system() {
   let borrowed = message.as_view();
   assert_eq!(borrowed.downcast_ref::<Pong>().map(|p| p.0), Some(99));
   assert!(response.future().try_take().is_none());
+}
+
+struct StopChildActor {
+  flag: ArcShared<SpinSyncMutex<bool>>,
+}
+
+impl StopChildActor {
+  fn new(flag: ArcShared<SpinSyncMutex<bool>>) -> Self {
+    Self { flag }
+  }
+}
+
+impl Actor for StopChildActor {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    Ok(())
+  }
+
+  fn post_stop(&mut self, _ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
+    *self.flag.lock() = true;
+    Ok(())
+  }
+}
+
+struct StopSelfParent {
+  child_pid:   ArcShared<SpinSyncMutex<Option<Pid>>>,
+  child_flag:  ArcShared<SpinSyncMutex<bool>>,
+  parent_flag: ArcShared<SpinSyncMutex<bool>>,
+}
+
+impl StopSelfParent {
+  fn new(
+    child_pid: ArcShared<SpinSyncMutex<Option<Pid>>>,
+    child_flag: ArcShared<SpinSyncMutex<bool>>,
+    parent_flag: ArcShared<SpinSyncMutex<bool>>,
+  ) -> Self {
+    Self { child_pid, child_flag, parent_flag }
+  }
+}
+
+impl Actor for StopSelfParent {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    if message.downcast_ref::<Start>().is_some() && self.child_pid.lock().is_none() {
+      let child_props = Props::from_fn({
+        let child_flag = self.child_flag.clone();
+        move || StopChildActor::new(child_flag.clone())
+      });
+      let child = ctx
+        .spawn_child(&child_props)
+        .map_err(|_| ActorError::recoverable(ActorErrorReason::new("spawn child failed")))?;
+      self.child_pid.lock().replace(child.pid());
+      ctx.stop_self().map_err(|_| ActorError::recoverable(ActorErrorReason::new("stop self failed")))?;
+    }
+    Ok(())
+  }
+
+  fn post_stop(&mut self, _ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
+    *self.parent_flag.lock() = true;
+    Ok(())
+  }
+}
+
+#[test]
+fn stop_self_propagates_to_children() {
+  let child_pid = ArcShared::new(SpinSyncMutex::new(None));
+  let child_stopped = ArcShared::new(SpinSyncMutex::new(false));
+  let parent_stopped = ArcShared::new(SpinSyncMutex::new(false));
+
+  let props = Props::from_fn({
+    let child_pid = child_pid.clone();
+    let child_stopped = child_stopped.clone();
+    let parent_stopped = parent_stopped.clone();
+    move || StopSelfParent::new(child_pid.clone(), child_stopped.clone(), parent_stopped.clone())
+  });
+
+  let system = ActorSystem::new(&props).expect("system");
+  let guardian = system.user_guardian_ref();
+  let guardian_pid = guardian.pid();
+  guardian.tell(AnyMessage::new(Start)).expect("start");
+
+  assert!(*parent_stopped.lock(), "parent post_stop should run");
+
+  if let Some(child_pid) = *child_pid.lock() {
+    assert!(*child_stopped.lock(), "child post_stop should run");
+    assert!(system.actor_ref(child_pid).is_none(), "child should be removed from system");
+  }
+
+  assert!(system.actor_ref(guardian_pid).is_none(), "guardian should be removed after stop");
 }

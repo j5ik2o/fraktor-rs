@@ -26,7 +26,7 @@ fn recoverable_failure_triggers_restart() {
     move || RestartGuardian::new(child_log.clone(), child_slot.clone())
   });
 
-  let system = ActorSystem::new(props).expect("system");
+  let system = ActorSystem::new(&props).expect("system");
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start guardian");
 
   let child = child_slot.lock().clone().expect("child ref");
@@ -46,7 +46,7 @@ fn fatal_failure_stops_child() {
     move || FatalGuardian::new(child_slot.clone())
   });
 
-  let system = ActorSystem::new(props).expect("system");
+  let system = ActorSystem::new(&props).expect("system");
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start guardian");
 
   let child = child_slot.lock().clone().expect("child ref");
@@ -70,7 +70,7 @@ fn escalate_restarts_parent_via_root_supervisor() {
     move || RootGuardian::new(supervisor_slot.clone(), child_slot.clone(), supervisor_log.clone(), child_log.clone())
   });
 
-  let system = ActorSystem::new(props).expect("system");
+  let system = ActorSystem::new(&props).expect("system");
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start guardian");
 
   let supervisor = supervisor_slot.lock().clone().expect("supervisor ref");

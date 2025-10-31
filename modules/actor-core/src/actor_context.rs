@@ -50,9 +50,16 @@ impl<'a> ActorContext<'a> {
   }
 
   /// Returns an [`ActorRef`] pointing to the running actor.
+  ///
+  /// # Panics
+  ///
+  /// Panics if the actor reference cannot be found for the running context.
   #[must_use]
   pub fn self_ref(&self) -> ActorRef {
-    self.system.actor_ref(self.pid).expect("actor reference must exist for running context")
+    match self.system.actor_ref(self.pid) {
+      | Some(actor_ref) => actor_ref,
+      | None => panic!("actor reference must exist for running context"),
+    }
   }
 
   /// Sends a reply to the caller if a reply target is present.
@@ -83,16 +90,37 @@ impl<'a> ActorContext<'a> {
   }
 
   /// Sends a stop signal to the specified child.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the stop message cannot be enqueued.
   pub fn stop_child(&self, child: &ChildRef) -> Result<(), SendError> {
     child.stop()
   }
 
+  /// Sends a stop signal to the running actor.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the stop message cannot be enqueued.
+  pub fn stop_self(&self) -> Result<(), SendError> {
+    self.system.stop_actor(self.pid)
+  }
+
   /// Suspends the specified child.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the suspend message cannot be enqueued.
   pub fn suspend_child(&self, child: &ChildRef) -> Result<(), SendError> {
     child.suspend()
   }
 
   /// Resumes the specified child.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the resume message cannot be enqueued.
   pub fn resume_child(&self, child: &ChildRef) -> Result<(), SendError> {
     child.resume()
   }

@@ -1,12 +1,13 @@
 //! Minimal future primitive for ask pattern handling.
 
-use core::{
-  future::Future,
-  pin::Pin,
-  task::{Context, Poll, Waker},
-};
+use core::task::Waker;
 
 use cellactor_utils_core_rs::sync::sync_mutex_like::SpinSyncMutex;
+
+use crate::actor_future_listener::ActorFutureListener;
+
+#[cfg(test)]
+mod tests;
 
 /// Minimal future primitive used by the ask pattern.
 pub struct ActorFuture<T> {
@@ -48,11 +49,11 @@ impl<T> ActorFuture<T> {
 
   /// Returns a lightweight adapter implementing [`Future`].
   #[must_use]
-  pub fn listener(&self) -> ActorFutureListener<'_, T> {
+  pub const fn listener(&self) -> ActorFutureListener<'_, T> {
     ActorFutureListener::new(self)
   }
 
-  fn register_waker(&self, waker: &Waker) {
+  pub(crate) fn register_waker(&self, waker: &Waker) {
     *self.waker.lock() = Some(waker.clone());
   }
 }
@@ -62,32 +63,3 @@ impl<T> Default for ActorFuture<T> {
     Self::new()
   }
 }
-
-/// Future adapter that polls the underlying [`ActorFuture`].
-pub struct ActorFutureListener<'a, T> {
-  future: &'a ActorFuture<T>,
-}
-
-impl<'a, T> ActorFutureListener<'a, T> {
-  const fn new(future: &'a ActorFuture<T>) -> Self {
-    Self { future }
-  }
-}
-
-impl<'a, T> Future for ActorFutureListener<'a, T> {
-  type Output = T;
-
-  fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-    if let Some(value) = self.future.try_take() {
-      Poll::Ready(value)
-    } else {
-      self.future.register_waker(cx.waker());
-      Poll::Pending
-    }
-  }
-}
-
-impl<'a, T> Unpin for ActorFutureListener<'a, T> {}
-
-#[cfg(test)]
-mod tests;

@@ -100,7 +100,8 @@ fn pong_factory() -> PongActor {
 
 #[cfg(feature = "std")]
 fn main() {
-  let system = ActorSystem::new(Props::from_fn(guardian_factory)).expect("system");
+  let props = Props::from_fn(guardian_factory);
+  let system = ActorSystem::new(&props).expect("system");
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
   system.terminate().expect("terminate");
   system.run_until_terminated();

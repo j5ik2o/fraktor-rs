@@ -34,7 +34,7 @@ cargo build --package actor-core --target $target --no-default-features
 
 ```rust
 let guardian_props = Props::new(|ctx| GuardianActor::new(ctx));
-let system = ActorSystem::new(guardian_props);
+let system = ActorSystem::new(&guardian_props);
 system
   .user_guardian_ref()
   .tell(AnyMessage::new(Start))
@@ -99,8 +99,7 @@ makers ci-check -- dylint
 > 受信側の Pong では `reply_to.tell(AnyMessage::new(PongReply { ... }))` のように、受け取った `reply_to` を利用して応答を返します。`ActorContext::reply()` は拡張／ミドルウェア向けの補助メソッドとして残っていますが、アプリケーションレベルでは payload に `reply_to` を含めるスタイルが基本になります。
 
 > **ActorSystem の停止**
-> Typed スタイルと同様に、ユーザガーディアンが `ctx.stop(ctx.self_ref())` を呼び出すまで ActorSystem は終了しません。アプリケーションを終了させる場合は、ガーディアンが自ら停止し、それに追随して子アクターやリソースが片付くよう設計してください。システム終了を待つには `ActorSystem::when_terminated()` で Future を取得し、同期環境では `run_until_terminated()` などのブロッキング API、非同期環境では `await` を利用します。
-> なお現行バージョンでは `ctx.stop_self()`（または `ctx.stop(ctx.self_ref())`）を呼んでも子アクターへ自動的に停止が伝播しません。必要な子は `ctx.stop_child(child_ref)` などで明示停止させてから自身を停止してください。
+> Typed スタイルと同様に、ユーザガーディアンが `ctx.stop(ctx.self_ref())` を呼び出すまで ActorSystem は終了しません。アプリケーションを終了させる場合は、ガーディアンが自ら停止し、それに追随して子アクターやリソースが片付くよう設計してください。`ctx.stop_self()`（または `ctx.stop(ctx.self_ref())`）を呼ぶと保持している子アクターへも `SystemMessage::Stop` が自動伝播し、順次停止処理が進みます。システム終了を待つには `ActorSystem::when_terminated()` で Future を取得し、同期環境では `run_until_terminated()` などのブロッキング API、非同期環境では `await` を利用します。
 
 > **ActorSystem の明示的停止**
 > アプリケーション側で明示的にシステムを終了したい場合は、`system.terminate()` を呼び出して内部 `SystemMessage::Stop` をガーディアンに送ります。その後 `run_until_terminated()` でブロックするか、`when_terminated().listener()` を await して終了まで待機してください。

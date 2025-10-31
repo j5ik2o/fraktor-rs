@@ -14,7 +14,7 @@ pub struct ChildRef {
 }
 
 impl ChildRef {
-  pub(crate) fn new(actor: ActorRef, system: ArcShared<ActorSystemState>) -> Self {
+  pub(crate) const fn new(actor: ActorRef, system: ArcShared<ActorSystemState>) -> Self {
     Self { actor, system }
   }
 
@@ -40,21 +40,37 @@ impl ChildRef {
   }
 
   /// Sends a request to the child and returns an ask response handle.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if enqueueing the message fails.
   pub fn ask(&self, message: AnyMessage) -> Result<AskResponse, SendError> {
     self.actor.ask(message)
   }
 
   /// Sends a stop signal to the child.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the system message cannot be enqueued.
   pub fn stop(&self) -> Result<(), SendError> {
     self.system.send_system_message(self.pid(), SystemMessage::Stop)
   }
 
   /// Suspends the child mailbox.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the suspend message cannot be enqueued.
   pub fn suspend(&self) -> Result<(), SendError> {
     self.system.send_system_message(self.pid(), SystemMessage::Suspend)
   }
 
   /// Resumes the child mailbox.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the resume message cannot be enqueued.
   pub fn resume(&self) -> Result<(), SendError> {
     self.system.send_system_message(self.pid(), SystemMessage::Resume)
   }

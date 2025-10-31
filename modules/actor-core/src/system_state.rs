@@ -178,10 +178,10 @@ impl ActorSystemState {
 
   /// Removes a child from its parent's supervision registry.
   pub fn unregister_child(&self, parent: Option<Pid>, child: Pid) {
-    if let Some(parent_pid) = parent {
-      if let Some(cell) = self.cell(&parent_pid) {
-        cell.unregister_child(&child);
-      }
+    if let Some(parent_pid) = parent
+      && let Some(cell) = self.cell(&parent_pid)
+    {
+      cell.unregister_child(&child);
     }
   }
 
@@ -201,12 +201,12 @@ impl ActorSystemState {
   }
 
   /// Handles an actor failure by applying the appropriate supervisor directive.
-  pub fn notify_failure(&self, pid: Pid, error: ActorError) {
+  pub fn notify_failure(&self, pid: Pid, error: &ActorError) {
     let parent = self.parent_of(&pid);
     self.handle_failure(pid, parent, error);
   }
 
-  fn handle_failure(&self, pid: Pid, parent: Option<Pid>, error: ActorError) {
+  fn handle_failure(&self, pid: Pid, parent: Option<Pid>, error: &ActorError) {
     let Some(parent_pid) = parent else {
       self.stop_actor(pid);
       return;
@@ -219,8 +219,7 @@ impl ActorSystemState {
 
     let parent_parent = parent_cell.parent();
     let now = self.monotonic_now();
-    let (directive, affected) = parent_cell.handle_child_failure(pid, &error, now);
-    let error_for_parent = error.clone();
+    let (directive, affected) = parent_cell.handle_child_failure(pid, error, now);
 
     match directive {
       | SupervisorDirective::Restart => {
@@ -237,7 +236,7 @@ impl ActorSystemState {
         for target in affected {
           self.stop_actor(target);
         }
-        self.handle_failure(parent_pid, parent_parent, error_for_parent);
+        self.handle_failure(parent_pid, parent_parent, error);
       },
     }
   }

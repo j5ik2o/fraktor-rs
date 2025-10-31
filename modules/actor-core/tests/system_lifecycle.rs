@@ -14,7 +14,8 @@ impl Actor for IdleGuardian {
 
 #[test]
 fn terminate_signals_future() {
-  let system = ActorSystem::new(Props::from_fn(|| IdleGuardian)).expect("system");
+  let props = Props::from_fn(|| IdleGuardian);
+  let system = ActorSystem::new(&props).expect("system");
 
   let termination = system.when_terminated();
   assert!(!termination.is_ready(), "system should be running before terminate");
@@ -27,7 +28,8 @@ fn terminate_signals_future() {
 
 #[test]
 fn when_terminated_is_ready_after_shutdown() {
-  let system = ActorSystem::new(Props::from_fn(|| IdleGuardian)).expect("system");
+  let props = Props::from_fn(|| IdleGuardian);
+  let system = ActorSystem::new(&props).expect("system");
   system.terminate().expect("terminate");
   system.run_until_terminated();
 

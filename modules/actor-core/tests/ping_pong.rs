@@ -105,7 +105,7 @@ fn spawn_and_tell_delivers_message() {
     let child_ref = child_ref.clone();
     move || RecordingGuardian::new(log.clone(), child_ref.clone())
   });
-  let system = ActorSystem::new(props).expect("system");
+  let system = ActorSystem::new(&props).expect("system");
 
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start message");
 
@@ -138,7 +138,7 @@ fn auto_naming_and_duplicate_detection() {
     move || NamingGuardian::new(conflict.clone(), spawned.clone())
   });
 
-  let system = ActorSystem::new(props).expect("system");
+  let system = ActorSystem::new(&props).expect("system");
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
 
   assert!(*conflict.lock(), "expected name conflict for duplicate spawn");
