@@ -18,6 +18,8 @@ target=thumbv8m.main-none-eabihf
 cargo build --package actor-core --target $target --no-default-features
 ```
 
+なお、Tokio ランタイムと連携する Dispatcher/Props 向けヘルパー（例: `DispatcherConfig::tokio_current()` や `Props::with_tokio_dispatcher()`）は、`actor-core` の no_std 方針を守るため `actor-std` クレート側に拡張として提供する計画です。ホスト環境でのボイラープレート削減は `actor-std` を追加導入することで行います。
+
 ## 3. サンプル実行（Ping/Pong）
 
 1. `examples/ping_pong_no_std` を `actor-core` に追加し、`AnyMessage::new(Ping)` → `downcast_ref::<Ping>()` の往復を確認します。

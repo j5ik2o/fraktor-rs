@@ -38,7 +38,7 @@
 **制約**: `modules/*-core` は `#![no_std]`; `tokio`/`embassy` は各 std/embedded クレートに隔離。`panic!` はランタイム非介入。Mailbox は同期（割込み安全）/非同期（std, embassy）両対応が可能な trait 設計とし、`async fn` 汚染を最小化する（FR-019〜FR-021 の要件を満たす構造）。  
 **スケール/スコープ**: 単一ノード・シングルプロセスのローカルアクター、Typed レイヤーは後続フェーズ。
 **未確定事項**: FR-020 で定義する `Block` ポリシーの背圧 API と FR-021 の `Suspend` / `Resume` 制御、FR-019 の System/User 優先度実装方式（2 本キュー or priority queue）、FR-023 の子アクター生成 API と FR-024 のユーザガーディアン Props 初期化フロー、FR-025 の命名規則（許容文字・長さ・自動命名プレフィックス）、FR-026 のミドルウェアチェーン API のインターフェイス、FR-027 の Bounded/Unbounded 切替ポリシー詳細と警告基準、FR-028 のスループット制限デフォルト値と構成方法、FR-029 の標準メッセージスキーマ指針（`reply_to` の型や必須性）、FR-030 の Ask 完了フックの具体的実装。Phase 0 でハンドラ抽象の要件を調査する。
-また、DispatcherConfig/Props の設定簡略化に向けたヘルパー関数（例: `DispatcherConfig::tokio_current()`）の追加可否を、利用者のボイラープレート量と型安全性のトレードオフを評価したうえで検討する。EventStream / Deadletter のバッファ容量（既定値 512 件）と警告閾値の設定ポリシーを quickstart/data-model に反映する。
+また、DispatcherConfig/Props の設定簡略化に向けたヘルパー関数（例: `DispatcherConfig::tokio_current()`）の追加可否を、利用者のボイラープレート量と型安全性のトレードオフを評価したうえで検討する。その際、Tokio などホスト依存のヘルパーは `actor-std` クレート側に実装し、`actor-core` の no_std ポリシーを維持する。EventStream / Deadletter のバッファ容量（既定値 512 件）と警告閾値の設定ポリシーを quickstart/data-model に反映する。
 
 ## 憲章チェック（着手前）
 
