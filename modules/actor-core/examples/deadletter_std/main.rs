@@ -2,12 +2,12 @@
 
 extern crate alloc;
 
-use alloc::{format, vec::Vec};
+use alloc::format;
 use core::num::NonZeroUsize;
 use std::{thread, time::Duration};
 
 use cellactor_actor_core_rs::{
-  Actor, ActorContext, ActorError, ActorSystem, AnyMessage, AnyMessageView, DeadletterEntry, EventStreamEvent,
+  Actor, ActorContext, ActorError, ActorRef, ActorSystem, AnyMessage, AnyMessageView, EventStreamEvent,
   EventStreamSubscriber, LogLevel, LoggerSubscriber, LoggerWriter, MailboxConfig, MailboxOverflowStrategy,
   MailboxPolicy, Props,
 };
@@ -52,11 +52,11 @@ impl Actor for Guardian {
       let actor_ref = child.actor_ref();
 
       // Fill the mailbox, then suspend to force further messages into deadletter.
-      actor_ref.tell(AnyMessage::new("first"))?;
-      actor_ref.tell(AnyMessage::new("second"))?;
-      ctx.suspend_child(&child)?;
-      actor_ref.tell(AnyMessage::new("third"))?;
-      actor_ref.tell(AnyMessage::new(LogDeadletters))?;
+      send_or_log(ctx, &actor_ref, AnyMessage::new("first"));
+      send_or_log(ctx, &actor_ref, AnyMessage::new("second"));
+      suspend_or_log(ctx, &child);
+      send_or_log(ctx, &actor_ref, AnyMessage::new("third"));
+      send_or_log(ctx, &actor_ref, AnyMessage::new(LogDeadletters));
       ctx.stop_self().ok();
     }
     Ok(())
@@ -68,7 +68,7 @@ struct Echo;
 impl Actor for Echo {
   fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<LogDeadletters>().is_some() {
-      let entries: Vec<DeadletterEntry> = ctx.system().deadletters();
+      let entries = ctx.system().deadletters();
       println!("[DEADLETTER SNAPSHOT] {} entries", entries.len());
       for entry in entries {
         println!("  - reason={:?}, recipient={:?}", entry.reason(), entry.recipient());
@@ -95,5 +95,17 @@ fn main() {
   system.terminate().expect("terminate");
   while !termination.is_ready() {
     thread::sleep(Duration::from_millis(20));
+  }
+}
+
+fn send_or_log(ctx: &ActorContext<'_>, target: &ActorRef, message: AnyMessage) {
+  if let Err(error) = target.tell(message) {
+    ctx.log(LogLevel::Warn, format!("send failed: {:?}", error));
+  }
+}
+
+fn suspend_or_log(ctx: &ActorContext<'_>, child: &cellactor_actor_core_rs::ChildRef) {
+  if let Err(error) = ctx.suspend_child(child) {
+    ctx.log(LogLevel::Warn, format!("suspend failed: {:?}", error));
   }
 }
