@@ -106,7 +106,7 @@ description: "セルアクター no_std ランタイム初期版の実装タス�
 - [x] T036 [P] [US3] EventStream + Deadletter フローを検証する統合テストを追加する (modules/actor-core/tests/event_stream.rs)
 - [x] T037 [P] [US3] LogEvent を消費するロガー購読者サンプルを追加する (examples/logger_subscriber_std/main.rs)
 - [x] T037B [P] [US3] Deadletter 監視とサスペンド郵便受けを示すサンプルを追加する (modules/actor-core/examples/deadletter_std/main.rs)
-- [ ] T037A [Optional] EventStream/Deadletter のバッファ容量と警告閾値をユーザ設定できる API を検討し、quickstart/data-model に推奨値を追記する。Tokio などホスト側ランタイム向けの `DispatcherConfig` ヘルパーは core ではなく `actor-std` 等の拡張クレートで提供する方針案をまとめる。将来的に `actor-std` クレートへヘルパー API を追加する際は、quickstart の該当節へ反映済みかを必ず確認する。
+- [x] T037A [Optional] EventStream/Deadletter のバッファ容量と警告閾値をユーザ設定できる API を検討し、quickstart/data-model に推奨値を追記する。Tokio などホスト側ランタイム向けの `DispatcherConfig` ヘルパーは core ではなく `actor-std` 等の拡張クレートで提供する方針案をまとめる。将来的に `actor-std` クレートへヘルパー API を追加する際は、quickstart の該当節へ反映済みかを必ず確認する。
 
 ---
 
@@ -117,6 +117,8 @@ description: "セルアクター no_std ランタイム初期版の実装タス�
 - [ ] T038 ランタイムガイドを更新し、利用方法・reply_to パターン・監視手順を追記する (docs/guides/actor-system.md)
 - [ ] T039 Mailbox / Dispatcher のスループットベンチマークハーネスを追加する (modules/actor-core/tests/perf_mailbox.rs)
 - [ ] T040 Makefile のレシピを更新し、actor-core のストーリーパイプラインと最終 CI ターゲットを含める (Makefile.toml)
+- [ ] T041 [Optional] `actor-std` クレート向けに `ActorSystemConfig`（仮称）を設計し、EventStream/Deadletter 容量や警告閾値を指定できるヘルパー API の草案と quickstart 反映手順を整理する（設計メモを research.md か docs/ に追記し、導入時の変更点を quickstart アップデートとセットで管理する）。
+- [ ] T042 `actor-std` クレートに DispatcherConfig / Props の Tokio ヘルパー（例: `DispatcherConfig::tokio_current()`, `Props::with_tokio_dispatcher()`）を実装し、対応する quickstart/plan/specs の記述を更新する。Tokio ランタイムの `Handle` を安全に取得できる API 設計と、`actor-core` 側の no_std ポリシーを崩さない構成を確認する。
 
 ---
 

@@ -87,3 +87,10 @@ Running -> Stopped (panic! -> 即時停止、Deadletter通知)
 - `AnyMessage` はポインタ + TypeId + メタデータ（8+8+?）程度で 32 bytes 以内を目標。  
 - `ActorCell` は Mailbox 参照 + Props + 状態で 64 bytes 以内。  
 - ヒープ確保箇所は Mailbox のバッファリサイズ（既定では発生しない）と外部プラグインのみ許容。SC-005 のしきい値は研究結果参照。
+
+## 6. バッファ容量と警告閾値の指針
+
+- `EventStream` の既定バッファ容量は 256 件。ホスト環境では 512〜1024 件、組込み環境では 128 件程度まで縮小するのが目安。購読者の初期同期を速めたい場合は容量を減らし、テレメトリ保持を優先する場合は増加させる。  
+- `Deadletter` の既定保持件数は 512 件。容量超過時には最古エントリからドロップされるため、クリティカルなメッセージ監視が必要な場合は 1024 件超まで拡張する。組込み環境でメモリが厳しい場合は 256 件程度まで抑える。  
+- 警告閾値は運用ガイドとして capacity×0.75 を目安に EventStream 経由で Warning ログを発火する。ランタイム本体では自動判定をまだ提供していないため、LoggerSubscriber などアプリ側の購読処理で閾値判定を行い、Deadletter 偏重時に監視アラートを上げる。  
+- 将来的に `actor-std` クレートへ `ActorSystemConfig`（仮称）を追加し、`event_stream_capacity` / `deadletter_capacity` / `deadletter_warn_threshold` を構築時に指定できるヘルパー API を提供する計画。no_std 側では現在の既定値を維持しつつ、ホスト環境では `ActorSystem::new` に渡す拡張設定として公開する。

@@ -79,7 +79,9 @@ let _lifecycle_subscription = system.subscribe_event_stream(lifecycle);
 let snapshot = system.deadletters();
 ```
 
-- Deadletter の既定保持件数は 512 件。組込み環境では必要に応じて減らし、警告閾値を LoggerSubscriber などで監視する。
+- EventStream の既定バッファ容量は 256 件。ホスト環境で履歴を厚く保持したい場合は 512〜1024 件に拡張し、組込みでは 128 件程度まで縮小すると割り込み遅延を抑えられる。  
+- Deadletter の既定保持件数は 512 件。組込み環境では必要に応じて減らし、警告閾値を LoggerSubscriber などで監視する。閾値の目安は容量の 75% で Warning を出すこと。  
+- 将来導入予定の `actor-std` 向けヘルパー（`ActorSystemConfig` 仮称）では、上記容量と警告閾値をビルダー API から指定できるようにする。現時点では ActorSystem の初期化が固定値のため、カスタム容量が必要な場合はランタイム側に専用ブートストラップ関数を追加するなど内部拡張が前提となる。
 - EventStream で `LifecycleEvent`・`LogEvent`・`Deadletter` が受信できることをテストする。
 
 ## 7. ヒープ確保計測
