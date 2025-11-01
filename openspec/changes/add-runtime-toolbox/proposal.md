@@ -2,43 +2,43 @@
 `ActorRuntimeMutex` は利用クレートに応じて暗黙的にバックエンドが切り替わるが、アプリケーション側からは挙動を明示できず学習コストが高い。今後 `std` / `embedded` で異なる同期プリミティブを提供したい場合、共通の注入ポイントが必要になる。`RuntimeToolbox` 抽象を導入し、ランタイムが利用する同期プリミティブを一括して管理できるようにすることで、利用者は明示的にバックエンドを選択でき、将来的な拡張にも備えられる。
 
 ## What Changes
-- `RuntimeToolbox` トレイトを再定義し、Generic Associated Type（GAT）で `type SyncMutex<T>` を提供するだけのマッピングに切り替える。
-- `NoStdToolbox` / `StdToolbox` など標準環境を実装し、`actor-std` から `StdToolbox` と `ActorSystemGeneric<StdToolbox>` の型エイリアスを公開する。
-- `ActorSystem` を `ActorSystemGeneric<TB>` へリファクタリングし、既存 API 互換のため `type ActorSystem = ActorSystemGeneric<NoStdToolbox>` を提供する。`ActorSystemBuilder` なども同様にツールボックスをジェネリクス引数で受け取る形に再構成する。
-- ランタイム内部で `ActorRuntimeMutex` を型エイリアスに置き換え、各構造体で `TB::SyncMutex<T>::new` を利用するスタイルへ変更する。
-- ドキュメントとサンプルを更新し、利用者が `StdToolbox` などを型引数として選択する方法を示す。
+- `SyncMutexFamily` トレイトを新設し、`type Mutex<T>` と `fn create(value: T)` を通じてミューテックス生成を統一する。
+- `RuntimeToolbox` は `type MutexFamily: SyncMutexFamily` を提供するだけの薄いラッパーへ再定義し、`NoStdToolbox` / `StdToolbox` を実装する。
+- ランタイム内部では `ToolboxMutex<T, TB>`（=`<TB::MutexFamily as SyncMutexFamily>::Mutex<T>`）のような型エイリアスで同期プリミティブを取得し、公開 API の `ActorRuntimeMutex<T>` は従来通り `NoStdToolbox` バックエンドを指す。
+- `ActorSystem` / `ActorSystemBuilder` など公開型はジェネリクスを露出させずに維持しつつ、内部的には選択された `RuntimeToolbox` を保持できるようにする（例: ビルダーに `with_toolbox::<StdToolbox>()` / `with_toolbox_family(StdToolbox)` を追加し、別名 `StdActorSystem` を提供）。
+- ドキュメントとサンプルを更新し、利用者がエイリアスやビルダー API を通じてミューテックスバックエンドを切り替える手順を示す。
 
 ## Impact
-- 既存の `ActorSystem` / `ActorRuntimeMutex` 呼び出しは型エイリアスで互換性を保ちつつ、追加の型引数を指定するだけで異なる同期バックエンドを選択できるようになる。
-- ランタイム内部から動的ディスパッチを排除し、コンパイル時最適化を維持したまま複数環境を表現できる。
-- 将来的に `Condvar` などを追加する際は `RuntimeToolbox` の関連型を拡張すれば良く、構造体のフィールド定義や生成関数はジェネリクス経由で自然に対応できる。
+- 既存の `ActorSystem::new` や `ActorRuntimeMutex<T>` を利用するコードは変更不要のまま、`StdActorSystem` などのエイリアスやビルダー API 経由でバックエンドを明示的に選択できるようになる。
+- ミューテックス生成は `SyncMutexFamily::create` に一本化されるため、動的ディスパッチなしで異なるバックエンドへ切り替えられる。
+- 将来的に `Condvar` などを追加する場合は `SyncMutexFamily` と同様の *Family* トレイトを導入し、`RuntimeToolbox` に関連型を追加するだけで拡張できる。
 
 ## Scope
 ### Goals
-1. `RuntimeToolbox` 抽象と標準環境実装を GAT ベースで整備する。
-2. `ActorSystemGeneric<TB>` / `ActorSystemBuilder<TB>` などのジェネリクス API を追加し、既存の型エイリアスで後方互換を維持する。
-3. ランタイム内部の同期プリミティブ参照を `TB::SyncMutex<T>` 経由に置換する。
-4. `actor-std` から `StdToolbox` と `StdActorSystem`（仮称）を再エクスポートし、ドキュメントとサンプルを更新する。
+1. `SyncMutexFamily` / `RuntimeToolbox` の二段構えを導入し、`StdToolbox` / `NoStdToolbox` など既定環境を実装する。
+2. ランタイム内部のロック生成を `SyncMutexFamily::create` に置き換え、`ActorRuntimeMutex<T>` は既定バックエンドの型エイリアスとして維持する。
+3. `ActorSystem` / `ActorSystemBuilder` の公開 API では追加の型引数を露出させずに、内部的に `RuntimeToolbox` を差し替えられる仕組み（ビルダー API や型エイリアス）を用意する。
+4. `actor-std` の再エクスポートとドキュメントを更新し、利用者が `StdToolbox` 相当を選択する手順を示す。
 
 ### Non-Goals
 - ランタイム起動後の `RuntimeToolbox` 動的変更。
 - `Condvar` 等の新たな同期プリミティブ本体の実装（別提案で扱う）。
-- `actor-core` の API を全面的なジェネリクス公開に切り替える（型エイリアスでラップする範囲に留める）。
+- 既存公開 API を総ジェネリクス化すること（表層は型エイリアスやビルダーオプションで包む）。
 
 ## Rollout Plan
-1. `ActorRuntimeMutex::new` を直接呼び出している箇所を洗い出し、GAT で置き換える対象をリスト化する。
-2. `RuntimeToolbox` / `NoStdToolbox` / `StdToolbox` を GAT に合わせて実装し、ユニットテストでミューテックス生成を確認する。
-3. `ActorSystemGeneric<TB>` と関連ビルダーを導入し、既存 API とのエイリアス互換を整備する。
-4. ランタイム内部のロック生成呼び出しを `TB::SyncMutex<T>::new` 形式へ段階的にリプレースする。
-5. `actor-std` の再エクスポート・サンプル・ガイドを更新し、型パラメータで環境を選択するフローを提示する。
+1. `ActorRuntimeMutex::new` / `SpinSyncMutex::new` を直接呼ぶ箇所を洗い出し、`SyncMutexFamily::create` に差し替える対象を把握する。
+2. `SyncMutexFamily` / `RuntimeToolbox` / `NoStdToolbox` / `StdToolbox` を実装し、単体テストで `create` から適切なミューテックスが得られることを確認する。
+3. ランタイム内部構造体（`ActorSystemState` / `Mailbox` 等）を `ToolboxMutex<T, TB>` に移行しつつ、公開 API は既存シグネチャを維持する。
+4. `ActorSystemBuilder` 等にツールボックス選択 API と `StdActorSystem` エイリアスを追加し、`actor-std` の再エクスポートおよびドキュメントを更新する。
+5. 変更範囲のテスト群と `./scripts/ci-check.sh all` を実行し、回帰がないことを確認する。
 
 ## Risks & Mitigations
 - **ジェネリクス露出による複雑化**: 型エイリアスと `actor-std` の再エクスポートで典型ケースをカバーし、拡張利用時にのみ型パラメータを意識させる道筋を用意する。
 - **GAT 導入による推論失敗**: 主要 API で明示的な型記述が不要になるようテストを追加し、回避手段（型エイリアス）をドキュメント化する。
 
 ## Impacted APIs / Modules
-- `modules/utils-core`（`RuntimeToolbox` の定義）
-- `modules/actor-core`（`ActorSystemBuilder`, `ActorSystemState`, 各モジュール内の同期プリミティブ生成）
+- `modules/utils-core`（`SyncMutexFamily` と `RuntimeToolbox` の定義）
+- `modules/actor-core`（`ActorSystemState`, `Mailbox` などミューテックス生成箇所、およびビルダー API）
 - `modules/actor-std`（`StdToolbox` 再エクスポートとサンプル更新）
 
 ## References
