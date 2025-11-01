@@ -1,4 +1,7 @@
 #!/bin/bash
 
-export CODEX_HOME=/Users/j5ik2o/Sources/cellactor-rs/.codex
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+REPO_ROOT=$(cd "${SCRIPT_DIR}/.." && pwd)
+
+export CODEX_HOME=${REPO_ROOT}/.codex
 codex --dangerously-bypass-approvals-and-sandbox
