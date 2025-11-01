@@ -5,7 +5,7 @@
 - `RuntimeEnv` トレイトを定義し、`SyncMutex` などの同期プリミティブを生成するインターフェースを提供する。
 - `NoStdEnv` / `StdEnv` など標準環境を実装し、`actor-std` から `StdEnv` を再エクスポートする。
 - `ActorSystemBuilder` / `ActorSystemConfig` に `RuntimeEnv` を設定できる API を追加し、未指定時は `NoStdEnv` を利用する。
-- ランタイム内部のロック生成を `RuntimeEnv` 経由にリファクタリングする。
+- ランタイム内部のロック生成を `RuntimeEnv` 経由にリファクタリングし、`ActorSystemState` 等の中心状態が環境を保持して各コンポーネントへ提供する。
 - ドキュメントとサンプルを更新し、利用者が環境を明示選択する手順を示す。
 
 ## Impact
@@ -29,7 +29,7 @@
 1. 既存コードで `ActorRuntimeMutex::new` を利用している箇所を調査し、環境注入が必要な範囲を把握する。
 2. `RuntimeEnv` トレイトと標準環境を実装し、単体テストで `SyncMutex` が生成できることを確認する。
 3. `ActorSystemBuilder` / `ActorSystemConfig` に環境設定 API を追加し、デフォルトを `NoStdEnv` に設定する。
-4. ランタイム内部のロック生成を `RuntimeEnv` 経由に書き換える。
+4. ランタイム内部のロック生成を `RuntimeEnv` 経由に書き換え、環境を `ActorSystemState` 等で一元管理する。
 5. `actor-std` から `StdEnv` を再エクスポートし、サンプル・ドキュメントを更新する。
 
 ## Risks & Mitigations
