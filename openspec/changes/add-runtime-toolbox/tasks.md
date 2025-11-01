@@ -1,14 +1,14 @@
 ## 1. 調査
-- [ ] `ActorRuntimeMutex::new` および `SpinSyncMutex::new` を直接呼び出している箇所を洗い出し、`RuntimeToolbox` へ置き換える対象をリストアップする
-- [ ] `ActorSystemBuilder` / `ActorSystemConfig` の初期化フローを確認し、環境注入の導線を設計する
+- [ ] `ActorRuntimeMutex::new` を直接呼び出している箇所を洗い出し、`TB::SyncMutex<T>::new` への置換対象を整理する
+- [ ] `ActorSystem` / `ActorSystemState` / `ActorSystemBuilder` が保持する型情報を確認し、ジェネリクス化の影響範囲を把握する
 
 ## 2. 実装
-- [ ] `RuntimeToolbox` トレイトと標準実装 (`NoStdToolbox` / `StdToolbox`) を追加する
-- [ ] `ActorSystemBuilder` / `ActorSystemConfig` に環境設定 API を導入し、デフォルト環境を `NoStdToolbox` に設定する
-- [ ] ランタイム内部で `RuntimeToolbox` を保持し、同期プリミティブ生成を環境経由にリファクタリングする
+- [ ] `RuntimeToolbox` を GAT ベースの関連型マッピングとして実装し、`NoStdToolbox` / `StdToolbox` を整備する
+- [ ] `ActorSystemGeneric<TB>` / `ActorSystemBuilder<TB>` / `ActorRuntimeMutex<TB>` など必要な構造体・型エイリアスを導入する
+- [ ] ランタイム内部のデータ構造を `TB::SyncMutex<T>::new` 形式にリファクタリングする
 
 ## 3. 検証・ドキュメント
-- [ ] `NoStdToolbox` と `StdToolbox` の切替テストを追加する
-- [ ] ドキュメントとサンプル（actor-std 向け）を更新し、環境設定手順を記載する
-- [ ] 環境切替が実行後に行えないことを仕様／ガイドに明示する
+- [ ] `ActorSystemGeneric<NoStdToolbox>` / `<StdToolbox>` のユニットテストを追加し、推論が崩れないことを確認する
+- [ ] ドキュメントとサンプル（特に actor-std）を更新し、型パラメータで環境を選択する手順を記載する
+- [ ] ランタイム起動後に環境を変更できないこと、および既定が `NoStdToolbox` であることを明示する
 - [ ] `./scripts/ci-check.sh all` を実行し回帰がないことを確認する

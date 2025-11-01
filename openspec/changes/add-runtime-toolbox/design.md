@@ -1,39 +1,39 @@
 # RuntimeToolbox設計メモ
 
 ## 目的
-- ランタイム固有の同期プリミティブ（初期段階では `SyncMutex`）を注入するための単一の入口を用意する。
-- アクターランタイムAPI全体へジェネリクスを伝播させない。
-- 環境が指定されない場合は現行の `SpinSyncMutex` ベース実装と同一の挙動を維持する。
+- `RuntimeToolbox` を型レベルのマッピングとして再設計し、動的ディスパッチを排除する。
+- `ActorSystem` の表層 API は従来通り維持しつつ、内部実装を `ActorSystemGeneric<TB>` へ移行する。
+- `SyncMutex` 以外のプリミティブを追加しやすい土台（GAT）の上で拡張性を確保する。
 
-## RuntimeToolboxトレイト
+## RuntimeToolbox トレイト
 ```
-pub trait RuntimeToolbox: Send + Sync + 'static {
-    type SyncMutex<T>: SyncMutexLike<T> + Send + Sync + 'static;
-
-    fn make_mutex<T>(&self, value: T) -> Self::SyncMutex<T>;
+pub trait RuntimeToolbox {
+    type SyncMutex<T>: SyncMutexLike<T> + Send + 'static;
+    // 将来: type RwLock<T>, type Condvar などを追加
 }
 ```
-- 将来的なプリミティブ（例:`RwLock`, `Condvar`）は関連型とコンストラクタメソッドを追加することで拡張できる。
-- 実装はスレッド安全である必要がある。`ActorSystemState` で共有インスタンスを保持し複数スレッドからアクセスするため `Send + Sync` が必須。
+- 実行時に値を生成するメソッドは提供せず、各関連型が持つ `SyncMutexLike::new` を直接利用する。
+- トレイト自体はオブジェクトセーフ性を気にせず設計でき、ジェネリクス経由でコンパイル時に解決される。
+- `Send + Sync` 制約は関連型に付与し、`RuntimeToolbox` 自身はマーカー的役割に留める。
 
 ## 標準環境
-- `NoStdToolbox`: すべてのビルドで利用可能で、`SpinSyncMutex` を使用し `no_std` ターゲットとの互換性を保つ。
-- `StdToolbox`: `std` feature 有効時のみコンパイルされ、内部的に `StdSyncMutex` を利用する。
-- `actor-std` `StdToolbox` を再エクスポートし、ヘルパー的なビルダーを提供できる。
+- `NoStdToolbox`: `SpinSyncMutex` を関連型として公開。
+- `StdToolbox`: `StdSyncMutex` を関連型として公開。`actor-std` が `pub use StdToolbox` と `pub type StdActorSystem = ActorSystemGeneric<StdToolbox>` を提供する。
+- カスタム環境は `RuntimeToolbox` を実装し、利用側で型引数として指定する。
 
 ## 所有モデル
-- `ActorSystemBuilder` は `with_runtime_toolbox` で `ArcShared<dyn RuntimeToolbox>` を受け取る。
-- 利用者が環境を指定しない場合はビルダーが共有の `ArcShared<NoStdToolbox>` インスタンスを挿入する。
-- `ActorSystemState` が環境を保持し、他のサブシステムは `state.runtime_toolbox().make_mutex(...)` を呼び出してミューテックスを取得する。
+- `ActorSystemGeneric<TB>` / `ActorSystemState<TB>` など主要構造体は `TB: RuntimeToolbox` を型パラメータとして保持する。
+- 既存 API を壊さないため `pub type ActorSystem = ActorSystemGeneric<NoStdToolbox>` のような型エイリアスを導入する。
+- ビルダーも `ActorSystemBuilder<TB>` とし、`ActorSystemBuilder::<StdToolbox>::new()` のように利用する。典型ケースではエイリアスを通じてジェネリクス記法を意識させない。
 
 ## 検討した代替案
-- 完全なジェネリクス（`ActorSystem<R: RuntimeToolbox>`）: 利用者向けAPIすべてにジェネリクスを強制し型推論を複雑化させるため却下。
-- Mutex専用ファクトリ: 将来のプリミティブをカバーできず、複数の注入ポイントが残るため却下。
+- **動的ディスパッチ**: オブジェクトセーフ性の制約により `make_sync_mutex` が実現困難で、実装複雑化＆パフォーマンス低下リスクが高いため棄却。
+- **環境ごとの差し替えマクロ**: メンテナンス性が低く、将来のプリミティブ追加でマクロ改修が必要になるため棄却。
 
-## 性能上の考慮
-- `ArcShared<dyn RuntimeToolbox>` を使う場合、ミューテックス生成時に動的ディスパッチが1回発生するが、メッセージパッシングに比べ生成頻度が低いため許容できる。
-- プロファイルでオーバーヘッドが無視できない場合は、今後の作業でジェネリック特化や環境専用アクターを導入可能。
+## 性能および型推論
+- すべてがコンパイル時に解決されるため、ランタイムコストは現行と同等。
+- 型推論失敗に備え、主要 API で `TB` を明示できる補助型エイリアス（`StdActorSystem` など）を提供する。
 
 ## 将来拡張
-- 追加のプリミティブ（例:`type RwLock<T>`, `type Condvar`）は関連型と対応するコンストラクタを追加することで対応できる。
-- 他の実行コンテキスト（組込み、決定的スケジューリング）向け環境も既存コードに影響を与えずに `RuntimeToolbox` を実装できる。
+- `RuntimeToolbox` に `type RwLock<T>` `type Condvar` などを追加するだけで、新しい同期プリミティブを全経路で利用可能になる。
+- `RuntimeToolbox` 実装を追加するだけで別環境（RTOS・デターミニスティック実行など）を組み込める。
