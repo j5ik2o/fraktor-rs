@@ -6,10 +6,28 @@ network_access = true
 [features]
 web_search_request = true
 
-[projects."/Users/j5ik2o/Sources/cellactor-rs"]
+
+
+[projects."/Users/j5ik2o/Sources/cqrs-es-spec-kit-rs"]
 trust_level = "trusted"
 
+[mcp_servers.chrome-devtools]
+command = "npx"
+args = ["chrome-devtools-mcp@latest", "--headless=true"]
+
+[mcp_servers.context7]
+command = "npx"
+args = ["-y", "@upstash/context7-mcp@latest"]
+
+[mcp_servers.playwright]
+command = "npx"
+args = ["@playwright/mcp@latest"]
+
 [mcp_servers.serena]
-startup_timeout_sec = 10
 command = "uvx"
 args = ["--from", "git+https://github.com/oraios/serena", "serena", "start-mcp-server", "--context", "codex"]
+startup_timeout_sec = 30.0
+
+[mcp_servers.vibe-kanban]
+command = "npx"
+args = ["-y", "vibe-kanban", "--mcp"]
