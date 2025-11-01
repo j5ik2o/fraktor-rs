@@ -1,0 +1,48 @@
+{
+  "general": {
+    "checkpointing": true
+  },
+  "mcpServers": {
+    "serena": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/oraios/serena",
+        "serena-mcp-server",
+        "--context",
+        "ide-assistant",
+        "--enable-web-dashboard",
+        "false",
+        "--project",
+        "${PWD}"
+      ]
+    },
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp@latest"]
+    },
+    "playwright": {
+      "command": "npx",
+      "args": [
+        "@playwright/mcp@latest"
+      ]
+    },
+    "chrome-devtools": {
+      "command": "npx",
+      "args": [
+        "chrome-devtools-mcp@latest"
+      ]
+    },
+    "vibe-kanban": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "vibe-kanban",
+        "--mcp"
+      ]
+    }
+  },
+  "ui": {
+    "theme": "Default"
+  }
+}
