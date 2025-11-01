@@ -22,9 +22,9 @@ pub trait RuntimeToolbox: Send + Sync + 'static {
 - `actor-std` `StdToolbox` を再エクスポートし、ヘルパー的なビルダーを提供できる。
 
 ## 所有モデル
-- `ActorSystemBuilder` は `with_env` で `ArcShared<dyn RuntimeToolbox>` を受け取る。
+- `ActorSystemBuilder` は `with_runtime_toolbox` で `ArcShared<dyn RuntimeToolbox>` を受け取る。
 - 利用者が環境を指定しない場合はビルダーが共有の `ArcShared<NoStdToolbox>` インスタンスを挿入する。
-- `ActorSystemState` が環境を保持し、他のサブシステムは `state.env().make_mutex(...)` を呼び出してミューテックスを取得する。
+- `ActorSystemState` が環境を保持し、他のサブシステムは `state.runtime_toolbox().make_mutex(...)` を呼び出してミューテックスを取得する。
 
 ## 検討した代替案
 - 完全なジェネリクス（`ActorSystem<R: RuntimeToolbox>`）: 利用者向けAPIすべてにジェネリクスを強制し型推論を複雑化させるため却下。
