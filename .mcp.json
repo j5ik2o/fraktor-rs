@@ -11,8 +11,9 @@
         "--context",
         "ide-assistant",
         "--project",
-        "/Users/j5ik2o/Sources/cqrs-es-spec-kit-rs"
+        "."
       ],
+      "cwd": ".",
       "env": {}
     },
     "context7": {
