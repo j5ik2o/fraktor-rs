@@ -32,6 +32,11 @@
 - **Rationale**: Pekko の DefaultLogger と同様に EventStream 購読者としてログを扱うことで、no_std 環境でも軽量に実装でき、Deadletter/監視イベントと同じ経路で観測できる。UART/RTT への出力とホスト向けブリッジの両方に対応しやすい。  
 - **Alternatives considered**: 専用 LoggerActor へ直接メッセージ送信（優先度制御が複雑化）; `tracing` のみをホスト依存で利用（no_std で利用しづらい）。
 
+## Decision: EventStream/Deadletter 設定 API（T037A）
+- **Rationale**: actor-old では MailboxInstrumentation と Deadletter で容量・警告閾値を調整した実績があり、現行仕様にも同程度の柔軟性が求められる。`ObserverOptions`（仮称）を追加し、環境ごとに EventStream/Deadletter の保持件数と Warn 閾値を設定できるようにすることで、ホスト／組込み双方での監視ノイズとメモリ使用量を最適化できる。
+- **Alternatives considered**: SystemState のコンストラクタで生値を直接渡す案（API が肥大し利用者側での管理が煩雑になる）; Props 側に設定を埋め込む案（アクター固有設定とシステム全体設定が混在し責務分離が崩れる）。
+- **Follow-up**: `actor-std` にビルダーを追加してホスト向けに公開し、no_std では既定値を維持しつつ `ActorSystem::new_with_options` で任意設定を受け取れるようにする。実装タスクは T041/T042 で扱い、完了時に quickstart/data-model/spec の推奨値が最新と一致しているか検証する。
+
 ## Decision: Child actor supervision
 - **Rationale**: 親アクターが `spawn_child` して Supervisor ツリーを形成するのは protoactor-go / Pekko と同様の基本機能であり、復旧ポリシーや EventStream ログに一貫性を持たせるため。Rust では Props 継承と親参照を借用ポインタで保持し、所有権循環を避ける。  
 - **Alternatives considered**: ルートコンテキストのみから spawn する案（親子監視ができず Supervisor の意義が薄れる）; 子アクターをグローバル登録に切り替える案（依存が複雑化）。

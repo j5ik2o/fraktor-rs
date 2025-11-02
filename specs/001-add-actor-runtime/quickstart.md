@@ -73,7 +73,7 @@ while !termination.is_ready() {
 - Mailbox 戦略: `Props::with_mailbox_strategy` で Bounded/Unbounded を切り替え、Bounded 時は容量（例:64）とポリシーを設定、Unbounded 時は EventStream の警告ログを監視。`throughput_limit` を `Props::with_throughput(300)` などで指定し、上限到達で処理が次ターンに繰り越されることを確認。
 - テスト時は別の guardian Props を渡してシナリオを切り替えられる。
 
-## 6. EventStream / Deadletter 購読
+## 6. EventStream / Deadletter 購読と設定指針
 
 ```rust
 let logger_writer: ArcShared<dyn LoggerWriter> = ArcShared::new(MyWriter);
@@ -96,10 +96,35 @@ let _lifecycle_subscription = system.subscribe_event_stream(lifecycle);
 let snapshot = system.deadletters();
 ```
 
-- EventStream の既定バッファ容量は 256 件。ホスト環境で履歴を厚く保持したい場合は 512〜1024 件に拡張し、組込みでは 128 件程度まで縮小すると割り込み遅延を抑えられる。  
-- Deadletter の既定保持件数は 512 件。組込み環境では必要に応じて減らし、警告閾値を LoggerSubscriber などで監視する。閾値の目安は容量の 75% で Warning を出すこと。  
-- `actor-std` クレートでは将来的に `ActorSystemConfig`（仮称）を導入し、EventStream/Deadletter の容量や警告閾値をビルダー API から設定できるようにする計画である（T041 設計メモ参照）。現時点で容量を変更したい場合は runtime 側の内部拡張が必要となる。
-- EventStream で `LifecycleEvent`・`LogEvent`・`Deadletter` が受信できることをテストする。
+| 環境 | EventStream 容量 | Deadletter 容量 | 警告閾値の目安 |
+|------|------------------|-----------------|----------------|
+| 組込み (no_std) | 128 | 256 | capacity × 0.75 |
+| ホスト (std)    | 512 | 1024 | capacity × 0.75 |
+| 負荷試験/CI     | 1024 | 2048 | capacity × 0.8 |
+
+- 上表は actor-old の運用実績に基づく推奨値。既定値は EventStream=256 件、Deadletter=512 件だが、割り込み遅延・ログ保持要件に応じて調整する。
+- 警告閾値は容量の 75% を初期値とし、ホスト側でノイズを抑えたい場合は 80% に引き上げる。Warning は LoggerSubscriber などで取得し、Deadletter 偏重時の監視アラートに利用する。
+- **API 設計案（T037A）**: `ObserverOptions`（仮称）を `actor-core` に導入し、EventStream / Deadletter の容量・警告閾値をまとめて指定できるようにする。`actor-std` では下記のようなビルダー API を提供する計画。
+
+```rust
+// 設計案: T041/T042 で実装予定のビルダーイメージ
+use core::num::NonZeroUsize;
+use cellactor_actor_std_rs::{ObserverOptions, StdActorSystem};
+
+let observer = ObserverOptions::default()
+    .with_event_stream_capacity(NonZeroUsize::new(512).unwrap())
+    .with_deadletter_capacity(NonZeroUsize::new(1024).unwrap())
+    .with_deadletter_warn_threshold(NonZeroUsize::new(768).unwrap());
+
+let system = StdActorSystem::builder()
+    .with_guardian_props(&guardian_props)
+    .with_observer_options(observer)
+    .build()?; // 実装完了後に利用可能
+```
+
+  - 実装完了時は quickstart のコードサンプルを実装版へ更新し、推奨値表が最新の既定値と整合しているかチェックすること。
+  - no_std 側では `ActorSystem::new_with_options(&Props, &ObserverOptions)` のような API を検討しており、既定値を利用する場合は現行コンストラクタをそのまま呼び出せる。
+- EventStream で `LifecycleEvent`・`LogEvent`・`Deadletter` が受信できることをテストし、Deadletter スナップショットと合わせて監視ダッシュボードに反映する。
 
 ## 7. ヒープ確保計測
 

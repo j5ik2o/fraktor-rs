@@ -21,6 +21,24 @@
 | `Pid` | アクター識別子。 | `value: u64`, `generation: u32`, `name: Option<Name>` | `Pid` -> `ActorSystem.registry`, `Name` -> `Pid` 逆引き |
 | `LogEvent` | Logger 購読者向けイベント。 | `level: LogLevel`, `pid: Option<Pid>`, `message: &'a str`, `timestamp: Instant`, `metadata` | `LogEvent` は `EventStream` から Logger に配送 |
 
+### ObserverOptions（設計案）
+
+- **役割**: EventStream / Deadletter の容量・警告閾値をまとめて保持する設定オブジェクト。`actor-core` 側で `ObserverOptions`（仮称）を追加し、`ActorSystemBuilder<TB>` が `SystemState` 初期化時に受け取る。
+- **主なフィールド**:
+  - `event_stream_capacity: NonZeroUsize`（既定 256）
+  - `event_stream_replay_warn: Option<NonZeroUsize>`（既定 None。将来的に購読者のバックプレッシャーを検知する拡張余地）
+  - `deadletter_capacity: NonZeroUsize`（既定 512）
+  - `deadletter_warn_threshold: Option<NonZeroUsize>`（既定は capacity × 0.75 を Doc で推奨）
+- **関係**: `ActorSystemBuilder` -> `ObserverOptions` -> `SystemState`。`SystemState` は値を保持し、`Deadletter` / `EventStream` / `MailboxInstrumentation` へ閾値を配線する。`actor-std` では `StdActorSystem::builder().with_observer_options(...)` でラップし、組込み環境では `ActorSystem::new_with_options(&Props, &ObserverOptions)`（検討中）を通じて設定可能にする。
+
+推奨値は次の通り。
+
+| 環境 | EventStream | Deadletter | Warn 閾値 |
+|------|-------------|------------|-----------|
+| 組込み (no_std) | 128 | 256 | capacity × 0.75 |
+| ホスト (std)    | 512 | 1024 | capacity × 0.75 |
+| 長時間計測      | 1024 | 2048 | capacity × 0.8 |
+
 ## 2. ライフサイクル / 状態遷移
 
 ### ActorCell 状態遷移

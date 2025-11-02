@@ -45,6 +45,12 @@
 **未確定事項**: FR-020 で定義する `Block` ポリシーの背圧 API と FR-021 の `Suspend` / `Resume` 制御、FR-019 の System/User 優先度実装方式（2 本キュー or priority queue）、FR-023 の子アクター生成 API と FR-024 のユーザガーディアン Props 初期化フロー、FR-025 の命名規則（許容文字・長さ・自動命名プレフィックス）、FR-026 のミドルウェアチェーン API のインターフェイス、FR-027 の Bounded/Unbounded 切替ポリシー詳細と警告基準、FR-028 のスループット制限デフォルト値と構成方法、FR-029 の標準メッセージスキーマ指針（`reply_to` の型や必須性）、FR-030 の Ask 完了フックの具体的実装。Phase 0 でハンドラ抽象の要件を調査する。
 また、DispatcherConfig/Props の設定簡略化に向けたヘルパー関数（例: `DispatcherConfig::tokio_current()`）の追加可否を、利用者のボイラープレート量と型安全性のトレードオフを評価したうえで検討する。その際、Tokio などホスト依存のヘルパーは `actor-std` クレート側に実装し（T042）、`actor-core` の no_std ポリシーを維持する。EventStream / Deadletter のバッファ容量（既定値: EventStream=256 件, Deadletter=512 件）と警告閾値の設定ポリシーを quickstart/data-model に反映し、運用時に可変化する仕組みとして `ActorSystemConfig` ビルダー（T041）の設計を進める。
 
+### T037A: オブザーバビリティ設定 API の設計
+
+1. `ObserverOptions`（仮称）を `actor-core` で定義し、EventStream/Deadletter の容量・警告閾値・再配信バッファ幅を保持する構造体として整理する。actor-old の MailboxInstrumentation で扱っていた警告閾値フラグを想定しつつ、現実装への導線を明記する。
+2. `ActorSystemBuilder<TB>` を追加する設計案をまとめ、no_std では既定値のまま `ActorSystem::new_with_options(&Props, &ObserverOptions)` のように構築できる形を提示する。ホスト環境向けには `actor-std` で `StdActorSystem::builder().with_observer_options(..)` を提供する方針を確立する。
+3. quickstart/data-model/spec に環境別推奨値（組込み: EventStream 128 / Deadletter 256、ホスト: 512 / 1024）と設計指針を追加し、実装時に差分確認すべきチェックリストを記載する。T041/T042 が実装された際には quickstart 更新が必須である旨をタスクに明示する。
+
 ## 憲章チェック（着手前）
 
 - **P1 no_std コア**: `modules/actor-core` を `#![no_std]` 維持。共有資源は `Shared` 抽象で統一し、`alloc::sync::Arc` 直接使用禁止。Mailbox/Dispatcher は trait + ジェネリクスで循環参照を避ける。

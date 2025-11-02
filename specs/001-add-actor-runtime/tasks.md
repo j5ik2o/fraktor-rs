@@ -117,7 +117,7 @@ description: "セルアクター no_std ランタイム初期版の実装タス�
 - [x] T036 [P] [US3] EventStream + Deadletter フローを検証する統合テストを追加する (modules/actor-core/tests/event_stream.rs)
 - [x] T037 [P] [US3] LogEvent を消費するロガー購読者サンプルを追加する (modules/actor-std/examples/logger_subscriber_std/main.rs)
 - [x] T037B [P] [US3] Deadletter 監視とサスペンド郵便受けを示すサンプルを追加する (modules/actor-std/examples/deadletter_std/main.rs)
-- [ ] T037A [Optional] EventStream/Deadletter のバッファ容量と警告閾値をユーザ設定できる API を検討し、quickstart/data-model に推奨値を追記する。Tokio などホスト側ランタイム向けの `DispatcherConfig` ヘルパーは core ではなく `actor-std` 等の拡張クレートで提供する方針案をまとめる。将来的に `actor-std` クレートへヘルパー API を追加する際は、quickstart の該当節へ反映済みかを必ず確認する。
+- [x] T037A [Optional] EventStream/Deadletter のバッファ容量と警告閾値をユーザ設定できる API を検討し、quickstart/data-model に推奨値を追記する。Tokio などホスト側ランタイム向けの `DispatcherConfig` ヘルパーは core ではなく `actor-std` 等の拡張クレートで提供する方針案をまとめる。将来的に `actor-std` クレートへヘルパー API を追加する際は、quickstart の該当節へ反映済みかを必ず確認する。
 
 ---
 
