@@ -74,7 +74,7 @@ description: "セルアクター no_std ランタイム初期版の実装タス�
 - [x] T022A [P] [US1] Tokio ランタイムの `Handle::spawn_blocking` を用いて Dispatcher を駆動する `TokioExecutor` を examples 配下に追加し、`cfg(feature = "std")` 下でのみコンパイルされるようにする (modules/actor-core/examples/ping_pong_tokio/executor.rs)
 - [x] T022B [P] [US1] `Props::with_dispatcher(DispatcherConfig::from_executor(...))` を利用する Ping/Pong サンプルを追加し、Tokio ランタイムで ActorSystem を起動して `reply_to` ベースの応答とスレッド ID ログを検証しつつ、`when_terminated()` の Future/Listener でシステム終了を待機する (modules/actor-core/examples/ping_pong_tokio/main.rs; 実行コマンド `cargo run -p cellactor-actor-core-rs --example ping_pong_tokio --features std`)
 - [ ] T022C [Optional] DispatcherConfig / Props の利便性向上ヘルパー（例: `DispatcherConfig::tokio_current()` や `Props::with_tokio_dispatcher()`）の設計案をまとめ、導入時の API 影響とボイラープレート削減効果を評価する (docs/ 或いは research.md にメモ)
-- [ ] T023 [P] [US1] spawn / tell / 背圧ポリシー / 自動命名を検証する統合テストを追加する (modules/actor-core/tests/ping_pong.rs)
+- [x] T023 [P] [US1] spawn / tell / 背圧ポリシー / 自動命名を検証する統合テストを追加する (modules/actor-core/tests/ping_pong.rs)
 
 ## フェーズ2.5: ツールボックス抽象導入
 
