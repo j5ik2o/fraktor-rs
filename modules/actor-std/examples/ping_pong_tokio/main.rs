@@ -2,10 +2,10 @@ mod executor;
 
 use std::{string::String, time::Duration};
 
-use cellactor_actor_core_rs::{
-  Actor, ActorContext, ActorError, ActorRef, ActorSystemGeneric, AnyMessage, AnyMessageView, DispatcherConfig, Props,
+use cellactor_actor_core_rs::{Actor, ActorError};
+use cellactor_actor_std_rs::{
+  ActorContext, ActorRef, ActorSystem, AnyMessage, AnyMessageView, DispatcherConfig, Props, StdToolbox,
 };
-use cellactor_actor_std_rs::StdToolbox;
 use cellactor_utils_core_rs::sync::ArcShared;
 use executor::TokioExecutor;
 use tokio::runtime::Handle;
@@ -13,15 +13,15 @@ use tokio::runtime::Handle;
 struct Start;
 
 struct GuardianActor {
-  dispatcher: DispatcherConfig<StdToolbox>,
+  dispatcher: DispatcherConfig,
 }
 
 impl GuardianActor {
-  fn new(dispatcher: DispatcherConfig<StdToolbox>) -> Self {
+  fn new(dispatcher: DispatcherConfig) -> Self {
     Self { dispatcher }
   }
 
-  fn child_props<F, A>(&self, factory: F) -> Props<StdToolbox>
+  fn child_props<F, A>(&self, factory: F) -> Props
   where
     F: Fn() -> A + Send + Sync + 'static,
     A: Actor<StdToolbox> + Sync + 'static, {
@@ -30,11 +30,7 @@ impl GuardianActor {
 }
 
 impl Actor<StdToolbox> for GuardianActor {
-  fn receive(
-    &mut self,
-    ctx: &mut ActorContext<'_, StdToolbox>,
-    message: AnyMessageView<'_, StdToolbox>,
-  ) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
       let pong_props = self.child_props(|| PongActor);
       let pong = ctx.spawn_child(&pong_props).map_err(|_| ActorError::recoverable("failed to spawn pong"))?;
@@ -52,14 +48,14 @@ impl Actor<StdToolbox> for GuardianActor {
 }
 
 struct StartPing {
-  target:   ActorRef<StdToolbox>,
-  reply_to: ActorRef<StdToolbox>,
+  target:   ActorRef,
+  reply_to: ActorRef,
   count:    u32,
 }
 
 struct PingMessage {
   text:     String,
-  reply_to: ActorRef<StdToolbox>,
+  reply_to: ActorRef,
 }
 
 struct PongReply {
@@ -69,11 +65,7 @@ struct PongReply {
 struct PingActor;
 
 impl Actor<StdToolbox> for PingActor {
-  fn receive(
-    &mut self,
-    _ctx: &mut ActorContext<'_, StdToolbox>,
-    message: AnyMessageView<'_, StdToolbox>,
-  ) -> Result<(), ActorError> {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if let Some(cmd) = message.downcast_ref::<StartPing>() {
       for index in 0..cmd.count {
         let payload = PingMessage { text: format!("ping-{}", index + 1), reply_to: cmd.reply_to.clone() };
@@ -87,11 +79,7 @@ impl Actor<StdToolbox> for PingActor {
 struct PongActor;
 
 impl Actor<StdToolbox> for PongActor {
-  fn receive(
-    &mut self,
-    _ctx: &mut ActorContext<'_, StdToolbox>,
-    message: AnyMessageView<'_, StdToolbox>,
-  ) -> Result<(), ActorError> {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if let Some(ping) = message.downcast_ref::<PingMessage>() {
       println!("[{:?}] received ping: {}", std::thread::current().id(), ping.text);
       let response = PongReply { text: ping.text.clone() };
@@ -103,18 +91,16 @@ impl Actor<StdToolbox> for PongActor {
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
-  type StdActorSystem = ActorSystemGeneric<StdToolbox>;
   let handle = Handle::current();
-  let dispatcher: DispatcherConfig<StdToolbox> =
-    DispatcherConfig::from_executor(ArcShared::new(TokioExecutor::new(handle)));
+  let dispatcher: DispatcherConfig = DispatcherConfig::from_executor(ArcShared::new(TokioExecutor::new(handle)));
 
-  let props: Props<StdToolbox> = Props::from_fn({
+  let props: Props = Props::from_fn({
     let dispatcher = dispatcher.clone();
     move || GuardianActor::new(dispatcher.clone())
   })
   .with_dispatcher(dispatcher.clone());
 
-  let system = StdActorSystem::new(&props).expect("system");
+  let system = ActorSystem::new(&props).expect("system");
   let termination = system.when_terminated();
 
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");

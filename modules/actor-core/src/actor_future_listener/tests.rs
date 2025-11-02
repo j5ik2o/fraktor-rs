@@ -6,7 +6,7 @@ use core::{
   task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
 };
 
-use crate::{actor_future::ActorFuture, NoStdToolbox};
+use crate::{NoStdToolbox, actor_future::ActorFuture};
 
 fn noop_waker() -> Waker {
   fn noop(_: *const ()) {}

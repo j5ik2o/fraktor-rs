@@ -1,10 +1,9 @@
 use std::{fmt::Write as _, thread, time::Duration};
 
 use cellactor_actor_core_rs::{
-  Actor, ActorContext, ActorError, ActorRef, AnyMessage, AnyMessageView, EventStreamSubscriber, LogEvent, LogLevel,
-  LoggerSubscriber, LoggerWriter, Props,
+  Actor, ActorError, EventStreamSubscriber, LogEvent, LogLevel, LoggerSubscriber, LoggerWriter,
 };
-use cellactor_actor_std_rs::{StdActorSystem, StdToolbox};
+use cellactor_actor_std_rs::{ActorContext, ActorRef, ActorSystem, AnyMessage, AnyMessageView, Props, StdToolbox};
 use cellactor_utils_core_rs::sync::ArcShared;
 
 struct Start;
@@ -27,11 +26,7 @@ impl LoggerWriter for StdoutLogger {
 struct GuardianActor;
 
 impl Actor<StdToolbox> for GuardianActor {
-  fn receive(
-    &mut self,
-    ctx: &mut ActorContext<'_, StdToolbox>,
-    message: AnyMessageView<'_, StdToolbox>,
-  ) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
       ctx.log(LogLevel::Debug, "debug は閾値未満なので無視される");
       ctx.log(LogLevel::Info, "INFO: ログ購読者がメッセージを受信しました");
@@ -48,12 +43,12 @@ fn main() {
   let log_subscriber: ArcShared<dyn EventStreamSubscriber<StdToolbox>> =
     ArcShared::new(LoggerSubscriber::new(LogLevel::Info, logger_writer));
 
-  let props: Props<StdToolbox> = Props::from_fn(|| GuardianActor);
-  let system = StdActorSystem::new(&props).expect("actor system を初期化できること");
+  let props: Props = Props::from_fn(|| GuardianActor);
+  let system = ActorSystem::new(&props).expect("actor system を初期化できること");
 
   let _subscription = system.subscribe_event_stream(&log_subscriber);
 
-  let guardian: ActorRef<StdToolbox> = system.user_guardian_ref();
+  let guardian: ActorRef = system.user_guardian_ref();
   guardian.tell(AnyMessage::new(Start)).expect("ガーディアンへ Start を送信できること");
 
   thread::sleep(Duration::from_millis(30));
