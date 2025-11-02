@@ -21,7 +21,7 @@ libraries = [
 ]
 
 [workspace.dependencies]
-cellactor-actor-core-rs = { path = "modules/actor-core", default-features = false }
+cellactor-actor-core-rs = { path = "modules/actor-core" }
 alloc-cortex-m = "0.4"
 async-trait = { version = "0.1.89", default-features = false }
 cellactor-utils-core-rs = { path = "modules/utils-core", default-features = false }
