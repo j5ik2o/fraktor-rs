@@ -93,7 +93,7 @@ description: "セルアクター no_std ランタイム初期版の実装タス�
 **独立テスト**: `modules/actor-core/tests/supervisor.rs` で Restart/Escalate ポリシーと子アクター監視が検証できること。
 
 - [x] T024 [US2] レート制限付き再起動を追跡する `RestartStatistics` を実装する (modules/actor-core/src/restart_statistics.rs)
-- [ ] T025 [US2] `SupervisorStrategy` の判定ロジックを配線し Restart/Fatal/Escalate を処理する (modules/actor-core/src/supervisor_strategy.rs)
+- [x] T025 [US2] `SupervisorStrategy` の判定ロジックを配線し Restart/Fatal/Escalate を処理する (modules/actor-core/src/supervisor_strategy.rs)
 - [ ] T026 [US2] `ActorContext` を拡張し、`spawn_child`・子レジストリ・スーパービジョンシグナルを提供する (modules/actor-core/src/actor_context.rs)
 - [ ] T027 [US2] `ActorSystem` とスーパービジョンツリーの連携を実装し、障害を親へ伝播させる (modules/actor-core/src/system.rs)
 - [ ] T027A [US2] `ActorSystem::terminate()` / `when_terminated()` / `run_until_terminated()` を実装し、ガーディアン停止とシステム終了待機を整備する (modules/actor-core/src/system.rs, modules/actor-core/src/system_state.rs, modules/actor-core/tests/system_lifecycle.rs, specs/001-add-actor-runtime/quickstart.md)

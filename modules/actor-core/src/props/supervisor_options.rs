@@ -22,6 +22,18 @@ impl SupervisorOptions {
 
 impl Default for SupervisorOptions {
   fn default() -> Self {
-    Self::new(SupervisorStrategy)
+    const fn decider(error: &crate::actor_error::ActorError) -> crate::supervisor_strategy::SupervisorDirective {
+      match error {
+        | crate::actor_error::ActorError::Recoverable(_) => crate::supervisor_strategy::SupervisorDirective::Restart,
+        | crate::actor_error::ActorError::Fatal(_) => crate::supervisor_strategy::SupervisorDirective::Stop,
+      }
+    }
+
+    Self::new(crate::supervisor_strategy::SupervisorStrategy::new(
+      crate::supervisor_strategy::SupervisorStrategyKind::OneForOne,
+      10,
+      core::time::Duration::from_secs(1),
+      decider,
+    ))
   }
 }
