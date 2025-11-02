@@ -21,8 +21,12 @@ impl RecordingChild {
   }
 }
 
-impl Actor for RecordingChild {
-  fn receive(&mut self, _ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+impl Actor<NoStdToolbox> for RecordingChild {
+  fn receive(
+    &mut self,
+    _ctx: &mut ActorContext<'_, NoStdToolbox>,
+    message: AnyMessageView<'_, NoStdToolbox>,
+  ) -> Result<(), ActorError> {
     if let Some(deliver) = message.downcast_ref::<Deliver>() {
       self.log.lock().push(deliver.0);
     }
@@ -44,8 +48,12 @@ impl RecordingGuardian {
   }
 }
 
-impl Actor for RecordingGuardian {
-  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+impl Actor<NoStdToolbox> for RecordingGuardian {
+  fn receive(
+    &mut self,
+    ctx: &mut ActorContext<'_, NoStdToolbox>,
+    message: AnyMessageView<'_, NoStdToolbox>,
+  ) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
       let log = self.log.clone();
       let child = ctx
@@ -60,8 +68,12 @@ impl Actor for RecordingGuardian {
 
 struct SilentActor;
 
-impl Actor for SilentActor {
-  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
+impl Actor<NoStdToolbox> for SilentActor {
+  fn receive(
+    &mut self,
+    _ctx: &mut ActorContext<'_, NoStdToolbox>,
+    _message: AnyMessageView<'_, NoStdToolbox>,
+  ) -> Result<(), ActorError> {
     Ok(())
   }
 }
@@ -77,8 +89,12 @@ impl NamingGuardian {
   }
 }
 
-impl Actor for NamingGuardian {
-  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+impl Actor<NoStdToolbox> for NamingGuardian {
+  fn receive(
+    &mut self,
+    ctx: &mut ActorContext<'_, NoStdToolbox>,
+    message: AnyMessageView<'_, NoStdToolbox>,
+  ) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
       let _ = ctx
         .spawn_child(&Props::from_fn(|| SilentActor).with_name("worker"))
@@ -101,7 +117,7 @@ impl Actor for NamingGuardian {
 fn spawn_and_tell_delivers_message() {
   let log = ArcShared::new(NoStdMutex::new(Vec::new()));
   let child_slot = ArcShared::new(NoStdMutex::new(None));
-  let props = Props::from_fn({
+  let props = Props::<NoStdToolbox>::from_fn({
     let log = log.clone();
     let child_slot = child_slot.clone();
     move || RecordingGuardian::new(log.clone(), child_slot.clone())
@@ -136,7 +152,7 @@ fn auto_naming_and_duplicate_detection() {
   let conflict = ArcShared::new(NoStdMutex::new(false));
   let spawned = ArcShared::new(NoStdMutex::new(Vec::new()));
 
-  let props = Props::from_fn({
+  let props = Props::<NoStdToolbox>::from_fn({
     let conflict = conflict.clone();
     let spawned = spawned.clone();
     move || NamingGuardian::new(conflict.clone(), spawned.clone())

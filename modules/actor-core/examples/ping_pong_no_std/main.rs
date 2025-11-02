@@ -5,15 +5,19 @@ extern crate alloc;
 use alloc::string::{String, ToString};
 
 use cellactor_actor_core_rs::{
-  Actor, ActorContext, ActorError, ActorRef, ActorSystem, AnyMessage, AnyMessageView, Props,
+  Actor, ActorContext, ActorError, ActorRef, ActorSystem, AnyMessage, AnyMessageView, NoStdToolbox, Props,
 };
 
 struct Start;
 
 struct GuardianActor;
 
-impl Actor for GuardianActor {
-  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+impl Actor<NoStdToolbox> for GuardianActor {
+  fn receive(
+    &mut self,
+    ctx: &mut ActorContext<'_, NoStdToolbox>,
+    message: AnyMessageView<'_, NoStdToolbox>,
+  ) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
       let pong =
         ctx.spawn_child(&Props::from_fn(|| PongActor)).map_err(|_| ActorError::recoverable("failed to spawn pong"))?;
@@ -31,14 +35,14 @@ impl Actor for GuardianActor {
 }
 
 struct StartPing {
-  target:   ActorRef,
-  reply_to: ActorRef,
+  target:   ActorRef<NoStdToolbox>,
+  reply_to: ActorRef<NoStdToolbox>,
   count:    u32,
 }
 
 struct PingMessage {
   text:     String,
-  reply_to: ActorRef,
+  reply_to: ActorRef<NoStdToolbox>,
 }
 
 struct PongReply {
@@ -47,8 +51,12 @@ struct PongReply {
 
 struct PingActor;
 
-impl Actor for PingActor {
-  fn receive(&mut self, _ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+impl Actor<NoStdToolbox> for PingActor {
+  fn receive(
+    &mut self,
+    _ctx: &mut ActorContext<'_, NoStdToolbox>,
+    message: AnyMessageView<'_, NoStdToolbox>,
+  ) -> Result<(), ActorError> {
     if let Some(cmd) = message.downcast_ref::<StartPing>() {
       for index in 0..cmd.count {
         let payload = PingMessage { text: format_message(index), reply_to: cmd.reply_to.clone() };
@@ -61,8 +69,12 @@ impl Actor for PingActor {
 
 struct PongActor;
 
-impl Actor for PongActor {
-  fn receive(&mut self, _ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+impl Actor<NoStdToolbox> for PongActor {
+  fn receive(
+    &mut self,
+    _ctx: &mut ActorContext<'_, NoStdToolbox>,
+    message: AnyMessageView<'_, NoStdToolbox>,
+  ) -> Result<(), ActorError> {
     if let Some(ping) = message.downcast_ref::<PingMessage>() {
       #[cfg(not(target_os = "none"))]
       println!("[{:?}] received ping: {}", std::thread::current().id(), ping.text);
@@ -85,7 +97,7 @@ fn format_message(index: u32) -> String {
 fn main() {
   use std::thread;
 
-  let props = Props::from_fn(|| GuardianActor);
+  let props = Props::<NoStdToolbox>::from_fn(|| GuardianActor);
   let system = ActorSystem::new(&props).expect("system");
   let termination = system.when_terminated();
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");

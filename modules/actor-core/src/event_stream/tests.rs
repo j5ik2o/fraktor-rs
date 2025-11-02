@@ -7,11 +7,11 @@ use cellactor_utils_core_rs::sync::ArcShared;
 
 use crate::{
   EventStream, EventStreamEvent, EventStreamSubscriber, LifecycleEvent, LifecycleStage, LogEvent, LogLevel, NoStdMutex,
-  Pid,
+  NoStdToolbox, Pid,
 };
 
 struct RecordingSubscriber {
-  events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>,
+  events: ArcShared<NoStdMutex<Vec<EventStreamEvent<NoStdToolbox>>>>,
 }
 
 impl RecordingSubscriber {
@@ -19,13 +19,13 @@ impl RecordingSubscriber {
     Self { events: ArcShared::new(NoStdMutex::new(Vec::new())) }
   }
 
-  fn events(&self) -> Vec<EventStreamEvent> {
+  fn events(&self) -> Vec<EventStreamEvent<NoStdToolbox>> {
     self.events.lock().clone()
   }
 }
 
-impl EventStreamSubscriber for RecordingSubscriber {
-  fn on_event(&self, event: &EventStreamEvent) {
+impl EventStreamSubscriber<NoStdToolbox> for RecordingSubscriber {
+  fn on_event(&self, event: &EventStreamEvent<NoStdToolbox>) {
     self.events.lock().push(event.clone());
   }
 }
@@ -38,7 +38,7 @@ fn event_stream_replays_buffer_for_new_subscribers() {
   stream.publish(&EventStreamEvent::Log(log));
 
   let subscriber_impl = ArcShared::new(RecordingSubscriber::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber> = subscriber_impl.clone();
+  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
   let _subscription = EventStream::subscribe_arc(&stream, &subscriber);
 
   let lifecycle =
@@ -68,7 +68,7 @@ fn capacity_limits_buffer_size() {
   )));
 
   let subscriber_impl = ArcShared::new(RecordingSubscriber::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber> = subscriber_impl.clone();
+  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
   let _subscription = EventStream::subscribe_arc(&stream, &subscriber);
 
   let events = subscriber_impl.events();

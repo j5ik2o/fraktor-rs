@@ -247,11 +247,11 @@ mod tests {
 
   struct Guardian;
 
-  impl Actor for Guardian {
+  impl Actor<crate::NoStdToolbox> for Guardian {
     fn receive(
       &mut self,
       _ctx: &mut ActorContext<'_, crate::NoStdToolbox>,
-      _message: AnyMessageView<'_>,
+      _message: AnyMessageView<'_, crate::NoStdToolbox>,
     ) -> Result<(), ActorError> {
       Ok(())
     }
@@ -269,11 +269,11 @@ mod tests {
     }
   }
 
-  impl Actor for Recorder {
+  impl Actor<crate::NoStdToolbox> for Recorder {
     fn receive(
       &mut self,
       _ctx: &mut ActorContext<'_, crate::NoStdToolbox>,
-      _message: AnyMessageView<'_>,
+      _message: AnyMessageView<'_, crate::NoStdToolbox>,
     ) -> Result<(), ActorError> {
       let mut guard = self.events.lock();
       guard.push("message");
@@ -302,7 +302,7 @@ mod tests {
   fn guardian_spawn_failure_rolls_back() {
     struct Failing;
 
-    impl Actor for Failing {
+    impl Actor<crate::NoStdToolbox> for Failing {
       fn pre_start(&mut self, _ctx: &mut ActorContext<'_, crate::NoStdToolbox>) -> Result<(), ActorError> {
         Err(ActorError::fatal(ACTOR_INIT_FAILED))
       }
@@ -310,7 +310,7 @@ mod tests {
       fn receive(
         &mut self,
         _ctx: &mut ActorContext<'_, crate::NoStdToolbox>,
-        _message: AnyMessageView<'_>,
+        _message: AnyMessageView<'_, crate::NoStdToolbox>,
       ) -> Result<(), ActorError> {
         Ok(())
       }

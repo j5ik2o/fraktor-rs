@@ -1,10 +1,10 @@
 //! Event variants delivered through the event stream.
 
-use crate::{DeadletterEntry, LifecycleEvent, LogEvent, MailboxMetricsEvent, NoStdToolbox, RuntimeToolbox};
+use crate::{DeadletterEntry, LifecycleEvent, LogEvent, MailboxMetricsEvent, RuntimeToolbox};
 
 /// Event selected for publication on the event stream.
 #[derive(Debug)]
-pub enum EventStreamEvent<TB: RuntimeToolbox = NoStdToolbox> {
+pub enum EventStreamEvent<TB: RuntimeToolbox> {
   /// Actor lifecycle transition notification.
   Lifecycle(LifecycleEvent),
   /// Deadletter capture describing an undeliverable message.

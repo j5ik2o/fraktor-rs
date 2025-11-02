@@ -2,10 +2,10 @@
 
 use cellactor_utils_core_rs::sync::ArcShared;
 
-use crate::{EventStreamSubscriber, NoStdToolbox, RuntimeToolbox};
+use crate::{EventStreamSubscriber, RuntimeToolbox};
 
 /// Maps subscription identifiers to subscriber instances.
-pub struct EventStreamSubscriberEntry<TB: RuntimeToolbox = NoStdToolbox> {
+pub struct EventStreamSubscriberEntry<TB: RuntimeToolbox> {
   id:         u64,
   subscriber: ArcShared<dyn EventStreamSubscriber<TB>>,
 }

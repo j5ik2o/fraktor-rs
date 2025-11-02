@@ -7,7 +7,7 @@ use cellactor_utils_core_rs::sync::ArcShared;
 
 use crate::{
   EventStream, EventStreamEvent, EventStreamSubscriber, LifecycleEvent, LifecycleStage, LogEvent, LogLevel,
-  LoggerSubscriber, LoggerWriter, NoStdMutex, Pid,
+  LoggerSubscriber, LoggerWriter, NoStdMutex, NoStdToolbox, Pid,
 };
 
 struct RecordingWriter {
@@ -34,7 +34,7 @@ impl LoggerWriter for RecordingWriter {
 fn forwards_events_at_or_above_threshold() {
   let stream = ArcShared::new(EventStream::default());
   let writer = ArcShared::new(RecordingWriter::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber> =
+  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> =
     ArcShared::new(LoggerSubscriber::new(LogLevel::Info, writer.clone()));
   let _subscription = EventStream::subscribe_arc(&stream, &subscriber);
 
@@ -61,7 +61,7 @@ fn forwards_events_at_or_above_threshold() {
 fn ignores_non_log_events() {
   let stream = ArcShared::new(EventStream::default());
   let writer = ArcShared::new(RecordingWriter::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber> =
+  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> =
     ArcShared::new(LoggerSubscriber::new(LogLevel::Trace, writer.clone()));
   let _subscription = EventStream::subscribe_arc(&stream, &subscriber);
 

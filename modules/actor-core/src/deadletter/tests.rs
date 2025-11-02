@@ -7,11 +7,11 @@ use cellactor_utils_core_rs::sync::ArcShared;
 
 use crate::{
   AnyMessage, DeadletterGeneric, DeadletterReason, EventStream, EventStreamEvent, EventStreamSubscriber, LogLevel,
-  NoStdMutex, Pid, SendError,
+  NoStdMutex, NoStdToolbox, Pid, SendError,
 };
 
 struct RecordingSubscriber {
-  events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>,
+  events: ArcShared<NoStdMutex<Vec<EventStreamEvent<NoStdToolbox>>>>,
 }
 
 impl RecordingSubscriber {
@@ -19,13 +19,13 @@ impl RecordingSubscriber {
     Self { events: ArcShared::new(NoStdMutex::new(Vec::new())) }
   }
 
-  fn events(&self) -> Vec<EventStreamEvent> {
+  fn events(&self) -> Vec<EventStreamEvent<NoStdToolbox>> {
     self.events.lock().clone()
   }
 }
 
-impl EventStreamSubscriber for RecordingSubscriber {
-  fn on_event(&self, event: &EventStreamEvent) {
+impl EventStreamSubscriber<NoStdToolbox> for RecordingSubscriber {
+  fn on_event(&self, event: &EventStreamEvent<NoStdToolbox>) {
     self.events.lock().push(event.clone());
   }
 }
@@ -34,7 +34,7 @@ impl EventStreamSubscriber for RecordingSubscriber {
 fn record_entry_stores_and_publishes() {
   let stream = ArcShared::new(EventStream::default());
   let subscriber_impl = ArcShared::new(RecordingSubscriber::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber> = subscriber_impl.clone();
+  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
   let _subscription = EventStream::subscribe_arc(&stream, &subscriber);
 
   let deadletter = DeadletterGeneric::with_default_capacity(stream.clone());
@@ -56,7 +56,7 @@ fn record_entry_stores_and_publishes() {
 fn record_send_error_converts_reason_and_honours_capacity() {
   let stream = ArcShared::new(EventStream::default());
   let subscriber_impl = ArcShared::new(RecordingSubscriber::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber> = subscriber_impl.clone();
+  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
   let _subscription = EventStream::subscribe_arc(&stream, &subscriber);
 
   let deadletter = DeadletterGeneric::new(stream, 1);

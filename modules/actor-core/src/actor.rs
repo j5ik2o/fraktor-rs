@@ -2,10 +2,10 @@
 
 use alloc::boxed::Box;
 
-use crate::{ActorContext, ActorError, AnyMessageView, NoStdToolbox, RuntimeToolbox};
+use crate::{ActorContext, ActorError, AnyMessageView, RuntimeToolbox};
 
 /// Defines the lifecycle hooks that every actor must implement.
-pub trait Actor<TB: RuntimeToolbox = NoStdToolbox>: Send {
+pub trait Actor<TB: RuntimeToolbox>: Send {
   /// Called once before the actor starts processing messages.
   ///
   /// # Errors

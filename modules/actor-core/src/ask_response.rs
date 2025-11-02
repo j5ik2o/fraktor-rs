@@ -2,10 +2,10 @@
 
 use cellactor_utils_core_rs::sync::ArcShared;
 
-use crate::{ActorRef, NoStdToolbox, RuntimeToolbox, actor_future::ActorFuture, any_message::AnyMessage};
+use crate::{ActorRef, RuntimeToolbox, actor_future::ActorFuture, any_message::AnyMessage};
 
 /// Combines the reply handle and future returned by `ActorRef::ask`.
-pub struct AskResponse<TB: RuntimeToolbox + 'static = NoStdToolbox> {
+pub struct AskResponse<TB: RuntimeToolbox + 'static> {
   reply_to: ActorRef<TB>,
   future:   ArcShared<ActorFuture<AnyMessage<TB>, TB>>,
 }

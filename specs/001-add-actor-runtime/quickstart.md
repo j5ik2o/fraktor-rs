@@ -72,6 +72,7 @@ while !termination.is_ready() {
 - ミドルウェアチェーン: `system.with_middleware(logging_middleware)` のように差し込めるポイントがあり、初期状態では空チェーンで動作することを確認。
 - Mailbox 戦略: `Props::with_mailbox_strategy` で Bounded/Unbounded を切り替え、Bounded 時は容量（例:64）とポリシーを設定、Unbounded 時は EventStream の警告ログを監視。`throughput_limit` を `Props::with_throughput(300)` などで指定し、上限到達で処理が次ターンに繰り越されることを確認。
 - テスト時は別の guardian Props を渡してシナリオを切り替えられる。
+- `RuntimeToolbox` は明示指定が必須です。no_std では `impl Actor<NoStdToolbox> for MyActor { ... }`、ホスト環境では `impl Actor<StdToolbox> for MyStdActor { ... }` のように書き、`Props::<NoStdToolbox>::from_fn(...)` など型引数を省略しないでください。
 
 ## 6. EventStream / Deadletter 購読と設定指針
 

@@ -12,7 +12,7 @@ use cellactor_actor_core_rs::{
 use cellactor_utils_core_rs::sync::{ArcShared, NoStdMutex};
 
 struct RecordingSubscriber {
-  events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>,
+  events: ArcShared<NoStdMutex<Vec<EventStreamEvent<NoStdToolbox>>>>,
 }
 
 impl RecordingSubscriber {
@@ -20,13 +20,13 @@ impl RecordingSubscriber {
     Self { events: ArcShared::new(NoStdMutex::new(Vec::new())) }
   }
 
-  fn events(&self) -> Vec<EventStreamEvent> {
+  fn events(&self) -> Vec<EventStreamEvent<NoStdToolbox>> {
     self.events.lock().clone()
   }
 }
 
-impl EventStreamSubscriber for RecordingSubscriber {
-  fn on_event(&self, event: &EventStreamEvent) {
+impl EventStreamSubscriber<NoStdToolbox> for RecordingSubscriber {
+  fn on_event(&self, event: &EventStreamEvent<NoStdToolbox>) {
     self.events.lock().push(event.clone());
   }
 }
@@ -45,17 +45,17 @@ impl Actor<NoStdToolbox> for NullActor {
 
 #[test]
 fn deadletter_event_is_published_when_send_fails() {
-  let props = Props::from_fn(|| NullActor);
+  let props = Props::<NoStdToolbox>::from_fn(|| NullActor);
   let system = ActorSystem::new(&props).expect("system");
 
   let subscriber_impl = ArcShared::new(RecordingSubscriber::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber> = subscriber_impl.clone();
+  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
   let _subscription = system.subscribe_event_stream(&subscriber);
 
   let mailbox_policy =
     MailboxPolicy::bounded(NonZeroUsize::new(1).expect("non-zero"), MailboxOverflowStrategy::DropNewest, None);
   let mailbox_config = MailboxConfig::new(mailbox_policy);
-  let child = system.spawn(&Props::from_fn(|| NullActor).with_mailbox(mailbox_config)).expect("spawn");
+  let child = system.spawn(&Props::<NoStdToolbox>::from_fn(|| NullActor).with_mailbox(mailbox_config)).expect("spawn");
   let actor_ref = child.actor_ref().clone();
 
   child.suspend().expect("suspend child");

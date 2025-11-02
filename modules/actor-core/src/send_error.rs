@@ -2,10 +2,10 @@
 
 use alloc::fmt;
 
-use crate::{AnyMessage, NoStdToolbox, RuntimeToolbox};
+use crate::{AnyMessage, RuntimeToolbox};
 
 /// Represents failures that can occur when enqueueing a message.
-pub enum SendError<TB: RuntimeToolbox = NoStdToolbox> {
+pub enum SendError<TB: RuntimeToolbox> {
   /// The mailbox is full and the message could not be enqueued.
   Full(AnyMessage<TB>),
   /// The mailbox is temporarily suspended.

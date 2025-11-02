@@ -6,7 +6,7 @@ use core::{
   task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
 };
 
-use crate::actor_future::ActorFuture;
+use crate::{actor_future::ActorFuture, NoStdToolbox};
 
 fn noop_waker() -> Waker {
   fn noop(_: *const ()) {}
@@ -19,7 +19,7 @@ fn noop_waker() -> Waker {
 
 #[test]
 fn listener_polls_underlying_future() {
-  let future: ActorFuture<u8> = ActorFuture::new();
+  let future: ActorFuture<u8, NoStdToolbox> = ActorFuture::new();
   let mut listener = future.listener();
   future.complete(1_u8);
 

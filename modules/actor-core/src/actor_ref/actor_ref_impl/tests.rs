@@ -19,8 +19,8 @@ impl RecordingSender {
   }
 }
 
-impl ActorRefSender for RecordingSender {
-  fn send(&self, _message: AnyMessage) -> Result<(), SendError> {
+impl ActorRefSender<NoStdToolbox> for RecordingSender {
+  fn send(&self, _message: AnyMessage<NoStdToolbox>) -> Result<(), SendError<NoStdToolbox>> {
     use core::sync::atomic::Ordering;
     self.count.fetch_add(1, Ordering::Relaxed);
     Ok(())

@@ -316,11 +316,11 @@ mod tests {
 
   struct ProbeActor;
 
-  impl Actor for ProbeActor {
+  impl Actor<crate::NoStdToolbox> for ProbeActor {
     fn receive(
       &mut self,
       _ctx: &mut ActorContext<'_, crate::NoStdToolbox>,
-      _message: AnyMessageView<'_>,
+      _message: AnyMessageView<'_, crate::NoStdToolbox>,
     ) -> Result<(), ActorError> {
       Ok(())
     }

@@ -2,11 +2,11 @@
 
 use core::time::Duration;
 
-use crate::{AnyMessage, DeadletterReason, NoStdToolbox, Pid, RuntimeToolbox};
+use crate::{AnyMessage, DeadletterReason, Pid, RuntimeToolbox};
 
 /// Captures a single deadletter occurrence.
 #[derive(Debug)]
-pub struct DeadletterEntry<TB: RuntimeToolbox = NoStdToolbox> {
+pub struct DeadletterEntry<TB: RuntimeToolbox> {
   message:   AnyMessage<TB>,
   reason:    DeadletterReason,
   recipient: Option<Pid>,

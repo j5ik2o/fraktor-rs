@@ -8,7 +8,7 @@ use core::{
 use cellactor_utils_core_rs::sync::ArcShared;
 
 use crate::{
-  NoStdToolbox, RuntimeToolbox,
+  RuntimeToolbox,
   actor_future::ActorFuture,
   actor_ref::{actor_ref_sender::ActorRefSender, ask_reply_sender::AskReplySender, null_sender::NullSender},
   any_message::AnyMessage,
@@ -19,7 +19,7 @@ use crate::{
 };
 
 /// Handle used to communicate with an actor instance.
-pub struct ActorRef<TB: RuntimeToolbox = NoStdToolbox> {
+pub struct ActorRef<TB: RuntimeToolbox> {
   pid:    Pid,
   sender: ArcShared<dyn ActorRefSender<TB>>,
   system: Option<ArcShared<SystemState<TB>>>,
