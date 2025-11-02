@@ -83,10 +83,7 @@ impl<TB: RuntimeToolbox + 'static> MessageInvokerPipeline<TB> {
   }
 }
 
-fn restore_reply<TB: RuntimeToolbox + 'static>(
-  ctx: &mut ActorContext<'_, TB>,
-  previous: Option<ActorRef<TB>>,
-) {
+fn restore_reply<TB: RuntimeToolbox + 'static>(ctx: &mut ActorContext<'_, TB>, previous: Option<ActorRef<TB>>) {
   match previous {
     | Some(target) => ctx.set_reply_to(Some(target)),
     | None => ctx.clear_reply_to(),

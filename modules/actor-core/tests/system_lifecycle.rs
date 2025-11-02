@@ -1,4 +1,4 @@
-#![cfg(feature = "std")]
+#![cfg(not(target_os = "none"))]
 
 extern crate alloc;
 

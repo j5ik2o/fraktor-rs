@@ -1,9 +1,7 @@
-#![cfg(feature = "std")]
-
 use core::ops::{Deref, DerefMut};
 use std::sync::{Mutex, MutexGuard};
 
-use crate::sync::sync_mutex_like::SyncMutexLike;
+use cellactor_utils_core_rs::sync::sync_mutex_like::SyncMutexLike;
 
 /// Mutex wrapper backed by [`std::sync::Mutex`].
 pub struct StdSyncMutex<T>(Mutex<T>);
@@ -45,7 +43,6 @@ impl<'a, T> Deref for StdSyncMutexGuard<'a, T> {
   }
 }
 
-#[cfg(feature = "std")]
 impl<'a, T> DerefMut for StdSyncMutexGuard<'a, T> {
   fn deref_mut(&mut self) -> &mut Self::Target {
     &mut *self.guard

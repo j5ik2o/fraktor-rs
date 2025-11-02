@@ -1,4 +1,4 @@
-#![cfg(feature = "std")]
+#![cfg(not(target_os = "none"))]
 
 extern crate alloc;
 
@@ -52,11 +52,8 @@ fn deadletter_event_is_published_when_send_fails() {
   let subscriber: ArcShared<dyn EventStreamSubscriber> = subscriber_impl.clone();
   let _subscription = system.subscribe_event_stream(&subscriber);
 
-  let mailbox_policy = MailboxPolicy::bounded(
-    NonZeroUsize::new(1).expect("non-zero"),
-    MailboxOverflowStrategy::DropNewest,
-    None,
-  );
+  let mailbox_policy =
+    MailboxPolicy::bounded(NonZeroUsize::new(1).expect("non-zero"), MailboxOverflowStrategy::DropNewest, None);
   let mailbox_config = MailboxConfig::new(mailbox_policy);
   let child = system.spawn(&Props::from_fn(|| NullActor).with_mailbox(mailbox_config)).expect("spawn");
   let actor_ref = child.actor_ref().clone();
@@ -69,12 +66,7 @@ fn deadletter_event_is_published_when_send_fails() {
   let entries = system.deadletters();
   assert!(!entries.is_empty());
 
-  wait_until(|| {
-    subscriber_impl
-      .events()
-      .iter()
-      .any(|event| matches!(event, EventStreamEvent::Deadletter(_)))
-  });
+  wait_until(|| subscriber_impl.events().iter().any(|event| matches!(event, EventStreamEvent::Deadletter(_))));
 
   child.resume().expect("resume child");
   system.terminate().expect("terminate");

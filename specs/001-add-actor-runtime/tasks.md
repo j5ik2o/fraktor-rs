@@ -82,7 +82,7 @@ description: "セルアクター no_std ランタイム初期版の実装タス�
 
 - [x] T020D [US1] `modules/utils-core` に `sync/mutex_family.rs` と `sync/runtime_toolbox.rs` を追加し、`SyncMutexFamily`・`RuntimeToolbox`・`NoStdToolbox` を実装する。`SpinMutexFamily` の単体テストを用意し、FR-036/FR-037 を満たす (modules/utils-core/src/sync/).
 - [x] T020E [US1] `modules/actor-core` 全体を `ToolboxMutex<T, TB>` ベースへリファクタリングし、`ActorSystemGeneric<TB>` / `ActorCell<TB>` / `Mailbox<TB>` / `EventStreamGeneric<TB>` / `DeadletterGeneric<TB>` / `ActorFutureGeneric<TB>` を導入する。公開 API は `type ActorSystem = ActorSystemGeneric<NoStdToolbox>` など型エイリアスで互換性を維持し、FR-038 を満たす。
-- [x] T020F [US1] `modules/actor-std` に `StdMutexFamily` と `StdToolbox` を実装して再エクスポートし、例示コード・統合テストから `StdActorSystem` を利用できるようにする。Tokio サンプルで `StdToolbox` を選択し、FR-037/FR-039 を検証する。
+- [x] T020F [US1] `modules/utils-std` に `StdMutexFamily` と `StdToolbox` を実装し、`modules/actor-std` から再エクスポートして例示コード・統合テストから `StdActorSystem` を利用できるようにする。Tokio サンプルで `StdToolbox` を選択し、FR-037/FR-039 を検証する。
 - [x] T020G [US1] ビルダー／ドキュメントを更新し、`Props<StdToolbox>` を用いた切り替え手順と `StdActorSystem` の利用方法、CI での `cargo check --features std` 実行方針を quickstart・docs に反映する。FR-039/FR-040 の受け入れ条件を満たす。
 
 ---
@@ -115,8 +115,8 @@ description: "セルアクター no_std ランタイム初期版の実装タス�
 - [x] T034 [US3] Mailbox に容量警告とスループットメトリクスを組み込む (modules/actor-core/src/mailbox.rs)
 - [x] T035 [US3] MessageInvoker の middleware / pipeline 実装を actor-old から移植する (modules/actor-core/src/message_invoker.rs, modules/actor-core-old/src/message_invoker/)
 - [x] T036 [P] [US3] EventStream + Deadletter フローを検証する統合テストを追加する (modules/actor-core/tests/event_stream.rs)
-- [ ] T037 [P] [US3] LogEvent を消費するロガー購読者サンプルを追加する (examples/logger_subscriber_std/main.rs)
-- [ ] T037B [P] [US3] Deadletter 監視とサスペンド郵便受けを示すサンプルを追加する (modules/actor-core/examples/deadletter_std/main.rs)
+- [x] T037 [P] [US3] LogEvent を消費するロガー購読者サンプルを追加する (modules/actor-std/examples/logger_subscriber_std/main.rs)
+- [x] T037B [P] [US3] Deadletter 監視とサスペンド郵便受けを示すサンプルを追加する (modules/actor-std/examples/deadletter_std/main.rs)
 - [ ] T037A [Optional] EventStream/Deadletter のバッファ容量と警告閾値をユーザ設定できる API を検討し、quickstart/data-model に推奨値を追記する。Tokio などホスト側ランタイム向けの `DispatcherConfig` ヘルパーは core ではなく `actor-std` 等の拡張クレートで提供する方針案をまとめる。将来的に `actor-std` クレートへヘルパー API を追加する際は、quickstart の該当節へ反映済みかを必ず確認する。
 
 ---

@@ -1,4 +1,4 @@
-#![cfg(feature = "std")]
+#![cfg(not(target_os = "none"))]
 
 use std::{thread, time::Duration, vec::Vec};
 

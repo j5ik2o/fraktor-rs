@@ -1,5 +1,3 @@
-#![cfg(feature = "std")]
-
 extern crate alloc;
 
 use alloc::vec::Vec;

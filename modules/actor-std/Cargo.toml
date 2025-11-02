@@ -6,7 +6,32 @@ description = "Cellactor std helpers for host runtimes"
 license = "MIT OR Apache-2.0"
 publish = false
 
+[features]
+default = ["std"]
+std = []
+
 [dependencies]
-cellactor-actor-core-rs = { path = "../actor-core", features = ["std"] }
-cellactor-utils-core-rs = { path = "../utils-core", features = ["std"] }
+cellactor-actor-core-rs = { path = "../actor-core" }
+cellactor-utils-core-rs = { path = "../utils-core", default-features = false }
+cellactor-utils-std-rs = { path = "../utils-std" }
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "time"] }
+
+[[example]]
+name = "ping_pong_tokio"
+path = "examples/ping_pong_tokio/main.rs"
+
+[[example]]
+name = "logger_subscriber"
+path = "examples/logger_subscriber_std/main.rs"
+
+[[example]]
+name = "supervision"
+path = "examples/supervision_std/main.rs"
+
+[[example]]
+name = "deadletter"
+path = "examples/deadletter_std/main.rs"
+
+[[example]]
+name = "named_actor"
+path = "examples/named_actor_std/main.rs"

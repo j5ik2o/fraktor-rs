@@ -1,5 +1,3 @@
-#![cfg(feature = "std")]
-
 extern crate alloc;
 
 use alloc::{format, string::String, vec, vec::Vec};
@@ -27,10 +25,7 @@ struct CaptureActor {
 
 impl CaptureActor {
   fn new() -> Self {
-    Self {
-      payloads: NoStdMutex::new(Vec::new()),
-      replies: NoStdMutex::new(Vec::new()),
-    }
+    Self { payloads: NoStdMutex::new(Vec::new()), replies: NoStdMutex::new(Vec::new()) }
   }
 
   fn payloads(&self) -> Vec<u32> {
@@ -171,14 +166,11 @@ fn middleware_executes_in_expected_order() {
 
   pipeline.invoke_user(&mut actor, &mut ctx, AnyMessage::new(1_u8)).expect("invoke");
 
-  assert_eq!(
-    log.lock().clone(),
-    vec![
-      String::from("a:before"),
-      String::from("b:before"),
-      String::from("actor"),
-      String::from("b:after"),
-      String::from("a:after"),
-    ]
-  );
+  assert_eq!(log.lock().clone(), vec![
+    String::from("a:before"),
+    String::from("b:before"),
+    String::from("actor"),
+    String::from("b:after"),
+    String::from("a:after"),
+  ]);
 }

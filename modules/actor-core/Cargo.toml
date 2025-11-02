@@ -11,7 +11,6 @@ publish = false
 
 [features]
 default = []
-std = ["cellactor-utils-core-rs/std"]
 alloc-metrics = []
 
 [dependencies]
@@ -26,35 +25,10 @@ cortex-m = { workspace = true, optional = true }
 hashbrown = { workspace = true, default-features = false }
 
 [dev-dependencies]
+cellactor-actor-std-rs = { path = "../actor-std" }
 criterion = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
 
 [[example]]
 name = "ping_pong_no_std"
 path = "examples/ping_pong_no_std/main.rs"
-required-features = ["std"]
-
-[[example]]
-name = "ping_pong_tokio"
-path = "examples/ping_pong_tokio/main.rs"
-required-features = ["std"]
-
-[[example]]
-name = "logger_subscriber_std"
-path = "examples/logger_subscriber_std/main.rs"
-required-features = ["std"]
-
-[[example]]
-name = "supervision_std"
-path = "examples/supervision_std/main.rs"
-required-features = ["std"]
-
-[[example]]
-name = "deadletter_std"
-path = "examples/deadletter_std/main.rs"
-required-features = ["std"]
-
-[[example]]
-name = "named_actor_std"
-path = "examples/named_actor_std/main.rs"
-required-features = ["std"]

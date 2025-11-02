@@ -1,5 +1,5 @@
 use cellactor_actor_core_rs::{DispatchExecutor, DispatchHandle};
-use cellactor_utils_core_rs::sync::StdToolbox;
+use cellactor_actor_std_rs::StdToolbox;
 use tokio::runtime::Handle;
 
 /// Tokio ランタイム上で Dispatcher を駆動する実装。

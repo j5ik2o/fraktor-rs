@@ -1,4 +1,4 @@
-#![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(all(not(test), target_os = "none"), no_std)]
 
 extern crate alloc;
 
@@ -23,11 +23,8 @@ impl Actor for GuardianActor {
       let start_ping = StartPing { target: pong.actor_ref().clone(), reply_to: ctx.self_ref(), count: 3 };
       ping.tell(AnyMessage::new(start_ping)).map_err(|_| ActorError::recoverable("failed to start ping actor"))?;
     } else if let Some(reply) = message.downcast_ref::<PongReply>() {
-      #[cfg(feature = "std")]
-      {
-        use std::println;
-        println!("[{:?}] pong replied: {}", std::thread::current().id(), reply.text);
-      }
+      #[cfg(not(target_os = "none"))]
+      println!("[{:?}] pong replied: {}", std::thread::current().id(), reply.text);
     }
     Ok(())
   }
@@ -67,11 +64,8 @@ struct PongActor;
 impl Actor for PongActor {
   fn receive(&mut self, _ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if let Some(ping) = message.downcast_ref::<PingMessage>() {
-      #[cfg(feature = "std")]
-      {
-        use std::println;
-        println!("[{:?}] received ping: {}", std::thread::current().id(), ping.text);
-      }
+      #[cfg(not(target_os = "none"))]
+      println!("[{:?}] received ping: {}", std::thread::current().id(), ping.text);
 
       let response = PongReply { text: ping.text.clone() };
       ping.reply_to.tell(AnyMessage::new(response)).map_err(|_| ActorError::recoverable("reply failed"))?;
@@ -87,7 +81,7 @@ fn format_message(index: u32) -> String {
   out
 }
 
-#[cfg(feature = "std")]
+#[cfg(not(target_os = "none"))]
 fn main() {
   use std::thread;
 
@@ -101,5 +95,5 @@ fn main() {
   }
 }
 
-#[cfg(not(feature = "std"))]
+#[cfg(target_os = "none")]
 fn main() {}

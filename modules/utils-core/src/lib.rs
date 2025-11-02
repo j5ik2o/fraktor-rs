@@ -57,7 +57,7 @@
 //! and each runtime only needs to satisfy the abstractions defined here with their own
 //! implementations.
 
-#![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(not(test), no_std)]
 
 extern crate alloc;
 
