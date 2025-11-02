@@ -47,3 +47,4 @@ Cargo.lock
 /.codex/auth.json
 /.codex/history.jsonl
 /.codex/internal_storage.json
+/.kamui/
