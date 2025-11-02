@@ -91,6 +91,7 @@ mod restart_statistics;
 mod send_error;
 mod supervisor_strategy;
 mod system;
+mod system_message;
 mod system_state;
 
 pub use actor::Actor;
@@ -123,4 +124,5 @@ pub use restart_statistics::RestartStatistics;
 pub use send_error::SendError;
 pub use supervisor_strategy::SupervisorStrategy;
 pub use system::ActorSystem;
+pub use system_message::SystemMessage;
 pub use system_state::SystemState;

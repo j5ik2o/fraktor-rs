@@ -3,7 +3,7 @@
 use super::mutex_family::{SpinMutexFamily, SyncMutexFamily};
 
 /// Provides access to synchronization primitives required by the runtime.
-pub trait RuntimeToolbox {
+pub trait RuntimeToolbox: Send + Sync + 'static {
   /// Mutex family used to instantiate synchronization primitives.
   type MutexFamily: SyncMutexFamily;
 }
