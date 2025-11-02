@@ -22,6 +22,8 @@ impl RestartStatistics {
     self.prune(window, now);
     self.failures.push(now);
 
+    let count = self.failures.len();
+
     if let Some(limit) = max_history {
       let limit = limit as usize;
       if limit > 0 && self.failures.len() > limit {
@@ -30,7 +32,7 @@ impl RestartStatistics {
       }
     }
 
-    self.failures.len()
+    count
   }
 
   /// Returns the number of recorded failures.
@@ -68,3 +70,6 @@ impl Default for RestartStatistics {
     Self::new()
   }
 }
+
+#[cfg(test)]
+mod tests;

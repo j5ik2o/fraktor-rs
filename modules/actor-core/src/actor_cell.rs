@@ -207,9 +207,7 @@ mod tests {
   use cellactor_utils_core_rs::sync::ArcShared;
 
   use super::ActorCell;
-  use crate::{
-    actor::Actor, actor_context::ActorContext, actor_error::ActorError, any_message::AnyMessageView, pid::Pid,
-  };
+  use crate::{actor::Actor, actor_context::ActorContext, actor_error::ActorError, pid::Pid, AnyMessageView};
 
   struct ProbeActor;
 

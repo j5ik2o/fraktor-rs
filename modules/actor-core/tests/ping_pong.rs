@@ -3,20 +3,8 @@
 use std::{thread, time::Duration, vec::Vec};
 
 use cellactor_actor_core_rs::{
-  Actor,
-  ActorContext,
-  ActorError,
-  ActorSystem,
-  AnyMessage,
-  AnyMessageView,
-  ChildRef,
-  Mailbox,
-  MailboxOverflowStrategy,
-  MailboxPolicy,
-  NoStdToolbox,
-  Props,
-  SendError,
-  SpawnError,
+  Actor, ActorContext, ActorError, ActorSystem, AnyMessage, AnyMessageView, ChildRef, Mailbox, MailboxOverflowStrategy,
+  MailboxPolicy, NoStdToolbox, Props, SendError, SpawnError,
 };
 use cellactor_utils_core_rs::sync::{ArcShared, NoStdMutex};
 
@@ -43,7 +31,7 @@ impl Actor for RecordingChild {
 }
 
 struct RecordingGuardian {
-  log: ArcShared<NoStdMutex<Vec<u32>>>,
+  log:        ArcShared<NoStdMutex<Vec<u32>>>,
   child_slot: ArcShared<NoStdMutex<Option<ChildRef<NoStdToolbox>>>>,
 }
 
@@ -64,9 +52,7 @@ impl Actor for RecordingGuardian {
         .spawn_child(&Props::from_fn(move || RecordingChild::new(log.clone())))
         .map_err(|_| ActorError::recoverable("spawn failed"))?;
       self.child_slot.lock().replace(child.clone());
-      child
-        .tell(AnyMessage::new(Deliver(99)))
-        .map_err(|_| ActorError::recoverable("send failed"))?;
+      child.tell(AnyMessage::new(Deliver(99))).map_err(|_| ActorError::recoverable("send failed"))?;
     }
     Ok(())
   }
@@ -82,7 +68,7 @@ impl Actor for SilentActor {
 
 struct NamingGuardian {
   conflict: ArcShared<NoStdMutex<bool>>,
-  spawned: ArcShared<NoStdMutex<Vec<u64>>>,
+  spawned:  ArcShared<NoStdMutex<Vec<u64>>>,
 }
 
 impl NamingGuardian {
@@ -137,11 +123,8 @@ fn spawn_and_tell_delivers_message() {
 fn tell_respects_mailbox_backpressure() {
   use core::num::NonZeroUsize;
 
-  let mailbox: Mailbox<NoStdToolbox> = Mailbox::new(MailboxPolicy::bounded(
-    NonZeroUsize::new(1).unwrap(),
-    MailboxOverflowStrategy::DropNewest,
-    None,
-  ));
+  let mailbox: Mailbox<NoStdToolbox> =
+    Mailbox::new(MailboxPolicy::bounded(NonZeroUsize::new(1).unwrap(), MailboxOverflowStrategy::DropNewest, None));
 
   assert!(mailbox.enqueue_user(AnyMessage::new("first")).is_ok());
   let result = mailbox.enqueue_user(AnyMessage::new("second"));

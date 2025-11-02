@@ -19,7 +19,7 @@ fn noop_waker() -> Waker {
 
 #[test]
 fn listener_polls_underlying_future() {
-  let future = ActorFuture::new();
+  let future: ActorFuture<u8> = ActorFuture::new();
   let mut listener = future.listener();
   future.complete(1_u8);
 

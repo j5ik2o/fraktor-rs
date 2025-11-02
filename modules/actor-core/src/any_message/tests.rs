@@ -1,15 +1,13 @@
 #![cfg(test)]
 
-use core::any::Any;
-
-use crate::{any_message::AnyMessage, pid::Pid};
+use crate::{any_message::AnyMessage, pid::Pid, ActorRef, NoStdToolbox};
 
 #[test]
 fn stores_payload_and_reply_to() {
-  let mut message = AnyMessage::new(5_u32);
+  let mut message: AnyMessage<NoStdToolbox> = AnyMessage::new(5_u32);
   assert_eq!(message.payload().downcast_ref::<u32>(), Some(&5));
 
-  let reply = crate::ActorRef::null();
+  let reply: ActorRef<NoStdToolbox> = ActorRef::null();
   message = message.with_reply_to(reply.clone());
   assert_eq!(message.reply_to(), Some(&reply));
 

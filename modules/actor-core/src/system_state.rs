@@ -8,9 +8,9 @@ use hashbrown::HashMap;
 use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
 use crate::{
-  actor_cell::ActorCell, actor_error::ActorError, actor_future::ActorFuture, any_message::AnyMessage,
-  name_registry::NameRegistry, name_registry_error::NameRegistryError, pid::Pid, send_error::SendError,
-  spawn_error::SpawnError, system_message::SystemMessage, RuntimeToolbox, ToolboxMutex,
+  actor_cell::ActorCell, actor_error::ActorError, actor_future::ActorFuture, name_registry::NameRegistry,
+  name_registry_error::NameRegistryError, pid::Pid, send_error::SendError, spawn_error::SpawnError,
+  system_message::SystemMessage, AnyMessage, RuntimeToolbox, ToolboxMutex,
 };
 
 /// Captures global actor system state.
@@ -223,9 +223,7 @@ mod tests {
   use cellactor_utils_core_rs::sync::ArcShared;
 
   use super::SystemState;
-  use crate::{
-    actor::Actor, actor_context::ActorContext, actor_error::ActorError, any_message::AnyMessageView, pid::Pid,
-  };
+  use crate::{actor::Actor, actor_context::ActorContext, actor_error::ActorError, AnyMessageView};
 
   struct ProbeActor;
 

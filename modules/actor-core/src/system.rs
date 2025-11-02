@@ -5,9 +5,9 @@ use alloc::vec::Vec;
 use cellactor_utils_core_rs::sync::ArcShared;
 
 use crate::{
-  actor_cell::ActorCell, actor_future::ActorFuture, actor_ref::ActorRef, any_message::AnyMessage, child_ref::ChildRef,
-  pid::Pid, props::Props, send_error::SendError, spawn_error::SpawnError, system_message::SystemMessage,
-  system_state::SystemState, RuntimeToolbox,
+  actor_cell::ActorCell, actor_future::ActorFuture, actor_ref::ActorRef, child_ref::ChildRef, pid::Pid, props::Props,
+  send_error::SendError, spawn_error::SpawnError, system_message::SystemMessage, system_state::SystemState, AnyMessage,
+  RuntimeToolbox,
 };
 
 const ACTOR_INIT_FAILED: &str = "actor lifecycle hook failed";
@@ -205,15 +205,11 @@ unsafe impl<TB: RuntimeToolbox + 'static> Sync for ActorSystem<TB> {}
 mod tests {
   use alloc::vec::Vec;
 
-  use cellactor_utils_core_rs::sync::ArcShared;
+  use cellactor_utils_core_rs::sync::{ArcShared, SyncMutexFamily};
 
   use super::{ActorSystem, ACTOR_INIT_FAILED};
   use crate::{
-    actor::Actor,
-    actor_context::ActorContext,
-    actor_error::ActorError,
-    any_message::{AnyMessage, AnyMessageView},
-    props::Props,
+    actor::Actor, actor_context::ActorContext, actor_error::ActorError, props::Props, AnyMessage, AnyMessageView,
     RuntimeToolbox, ToolboxMutex,
   };
 
@@ -259,7 +255,10 @@ mod tests {
     let guardian_props = Props::<crate::NoStdToolbox>::from_fn(|| Guardian);
     let system = ActorSystem::new(&guardian_props).expect("guardian spawn");
     let events = ArcShared::new(<crate::NoStdToolbox as RuntimeToolbox>::MutexFamily::create(Vec::new()));
-    let recorder_props = Props::<crate::NoStdToolbox>::from_fn(|| Recorder::new(events.clone()));
+    let recorder_props = Props::<crate::NoStdToolbox>::from_fn({
+      let events = events.clone();
+      move || Recorder::new(events.clone())
+    });
     let child = system.spawn(&recorder_props).expect("child spawn");
     child.tell(AnyMessage::new("ping")).expect("tell");
     assert_eq!(events.lock().as_slice(), &["message"]);

@@ -19,7 +19,7 @@ fn noop_waker() -> Waker {
 
 #[test]
 fn completes_and_listens() {
-  let future = ActorFuture::new();
+  let future: ActorFuture<i32> = ActorFuture::new();
   let mut listener = future.listener();
 
   assert!(future.try_take().is_none());
