@@ -47,6 +47,7 @@
 #![deny(clippy::cmp_null)]
 #![allow(unknown_lints)]
 #![deny(cfg_std_forbid)]
+#![no_std]
 
 //! Core utility collection.
 //!
@@ -56,4 +57,52 @@
 //! and each runtime only needs to satisfy the abstractions defined here with their own
 //! implementations.
 
-#![no_std]
+extern crate alloc;
+
+mod actor;
+mod actor_cell;
+mod actor_context;
+mod actor_error;
+mod actor_future;
+mod actor_ref;
+mod any_message;
+mod child_ref;
+mod deadletter;
+mod dispatcher;
+mod event_stream;
+mod logger_subscriber;
+mod mailbox;
+mod mailbox_policy;
+mod message_invoker;
+mod name_registry;
+mod pid;
+mod props;
+mod receive_state;
+mod restart_statistics;
+mod supervisor_strategy;
+mod system;
+mod system_state;
+
+pub use actor::Actor;
+pub use actor_cell::ActorCell;
+pub use actor_context::ActorContext;
+pub use actor_error::ActorError;
+pub use actor_future::ActorFuture;
+pub use actor_ref::ActorRef;
+pub use any_message::AnyMessage;
+pub use child_ref::ChildRef;
+pub use deadletter::Deadletter;
+pub use dispatcher::Dispatcher;
+pub use event_stream::EventStream;
+pub use logger_subscriber::LoggerSubscriber;
+pub use mailbox::Mailbox;
+pub use mailbox_policy::MailboxPolicy;
+pub use message_invoker::MessageInvoker;
+pub use name_registry::NameRegistry;
+pub use pid::Pid;
+pub use props::Props;
+pub use receive_state::ReceiveState;
+pub use restart_statistics::RestartStatistics;
+pub use supervisor_strategy::SupervisorStrategy;
+pub use system::ActorSystem;
+pub use system_state::SystemState;

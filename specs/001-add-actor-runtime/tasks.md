@@ -34,8 +34,8 @@ description: "セルアクター no_std ランタイム初期版の実装タス�
 
 **目的**: ワークスペース・依存関係・CI を準備し、`modules/actor-core` が `#![no_std]` で動作する土台を整える。
 
-- [ ] T001 ワークスペースのマニフェストを更新し、`modules/actor-core` のフィーチャとデフォルト有効化フラグを公開する (Cargo.toml)
-- [ ] T002 `modules/actor-core/Cargo.toml` の依存関係を調整し、`no_std + alloc` 対応のために `portable-atomic`・`heapless`・`portable-atomic-util`・`modules/utils-core` を正しく設定する (modules/actor-core/Cargo.toml)
+- [x] T001 ワークスペースのマニフェストを更新し、`modules/actor-core` のフィーチャとデフォルト有効化フラグを公開する (Cargo.toml)
+- [x] T002 `modules/actor-core/Cargo.toml` の依存関係を調整し、`no_std + alloc` 対応のために `portable-atomic`・`heapless`・`portable-atomic-util`・`modules/utils-core` を正しく設定する (modules/actor-core/Cargo.toml)
 - [ ] T003 クレートルートに `#![no_std]`・モジュール宣言・共通再エクスポートを整備する (modules/actor-core/src/lib.rs)
 - [ ] T004 CI パイプラインに `cargo check --no-default-features --package actor-core` を組み込み、scripts から実行できるようにする (scripts/ci-check.sh)
 
