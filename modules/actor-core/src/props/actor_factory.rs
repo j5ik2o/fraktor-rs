@@ -1,6 +1,6 @@
 use alloc::boxed::Box;
 
-use crate::{actor::Actor, NoStdToolbox, RuntimeToolbox};
+use crate::{NoStdToolbox, RuntimeToolbox, actor::Actor};
 
 /// Trait implemented by actor factories stored inside [`Props`](super::props_struct::Props).
 pub trait ActorFactory<TB: RuntimeToolbox = NoStdToolbox>: Send + Sync {

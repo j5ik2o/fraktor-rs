@@ -25,9 +25,9 @@ pub use arc_shared::ArcShared;
 pub use flag::Flag;
 pub use function::{SharedFactory, SharedFn};
 pub use interrupt::{CriticalSectionInterruptPolicy, InterruptContextPolicy, NeverInterruptPolicy};
-pub use mutex_family::{SpinMutexFamily, SyncMutexFamily};
 #[cfg(feature = "std")]
 pub use mutex_family::StdMutexFamily;
+pub use mutex_family::{SpinMutexFamily, SyncMutexFamily};
 #[cfg(feature = "alloc")]
 pub use rc_shared::RcShared;
 pub use runtime_toolbox::{NoStdMutex, NoStdToolbox, RuntimeToolbox, ToolboxMutex};

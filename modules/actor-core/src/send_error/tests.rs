@@ -1,6 +1,6 @@
 #![cfg(test)]
 
-use crate::{any_message::AnyMessage, send_error::SendError, NoStdToolbox};
+use crate::{NoStdToolbox, any_message::AnyMessage, send_error::SendError};
 
 #[test]
 fn retains_message() {

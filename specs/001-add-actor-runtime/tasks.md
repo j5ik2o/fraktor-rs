@@ -99,7 +99,7 @@ description: "セルアクター no_std ランタイム初期版の実装タス�
 - [x] T027A [US2] `ActorSystem::terminate()` / `when_terminated()` / `run_until_terminated()` を実装し、ガーディアン停止とシステム終了待機を整備する (modules/actor-core/src/system.rs, modules/actor-core/src/system_state.rs, modules/actor-core/tests/system_lifecycle.rs, specs/001-add-actor-runtime/quickstart.md)
 - [x] T027B [US2] `ctx.stop_self()` / `SystemMessage::Stop` による停止が子アクターへ伝播するよう、ActorCell / ActorSystemState に子停止伝播処理を追加し、挙動をドキュメント化・テストで検証する (modules/actor-core/src/actor_cell.rs, modules/actor-core/src/system_state.rs, modules/actor-core/src/system/tests.rs, specs/001-add-actor-runtime/quickstart.md, specs/001-add-actor-runtime/spec.md)
 - [x] T028 [US2] 子アクターを扱う `ChildRef` ラッパーを追加しライフサイクルフックを提供する (modules/actor-core/src/child_ref.rs)
-- [ ] T029 [P] [US2] Restart/Escalate / panic 非介入をカバーするスーパービジョン回帰テストを追加する (modules/actor-core/tests/supervisor.rs)
+- [x] T029 [P] [US2] Restart/Escalate / panic 非介入をカバーするスーパービジョン回帰テストを追加する (modules/actor-core/tests/supervisor.rs)
 
 ---
 

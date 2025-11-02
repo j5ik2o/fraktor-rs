@@ -1,6 +1,6 @@
 //! Trait implemented by actor reference senders.
 
-use crate::{any_message::AnyMessage, send_error::SendError, NoStdToolbox, RuntimeToolbox};
+use crate::{NoStdToolbox, RuntimeToolbox, any_message::AnyMessage, send_error::SendError};
 
 /// Abstraction over mailbox-backed senders.
 pub trait ActorRefSender<TB: RuntimeToolbox = NoStdToolbox>: Send + Sync {

@@ -2,7 +2,7 @@
 
 use cellactor_utils_core_rs::sync::ArcShared;
 
-use crate::{actor_future::ActorFuture, ask_response::AskResponse, ActorRef, NoStdToolbox};
+use crate::{ActorRef, NoStdToolbox, actor_future::ActorFuture, ask_response::AskResponse};
 
 #[test]
 fn exposes_parts() {

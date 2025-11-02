@@ -4,7 +4,7 @@ use alloc::{borrow::ToOwned, format, string::String};
 
 use hashbrown::HashMap;
 
-use crate::{name_registry_error::NameRegistryError, Pid};
+use crate::{Pid, name_registry_error::NameRegistryError};
 
 /// Maintains the mapping between actor names and their pids for a scope.
 pub struct NameRegistry {

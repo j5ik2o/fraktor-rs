@@ -1,10 +1,10 @@
 #![cfg(test)]
 
 use crate::{
+  NoStdToolbox,
   actor_ref::{actor_ref_sender::ActorRefSender, null_sender::NullSender},
   any_message::AnyMessage,
   send_error::SendError,
-  NoStdToolbox,
 };
 
 #[test]

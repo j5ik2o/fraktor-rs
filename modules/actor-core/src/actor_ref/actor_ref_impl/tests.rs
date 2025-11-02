@@ -5,7 +5,7 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 use cellactor_utils_core_rs::sync::ArcShared;
 
 use super::{ActorRef, ActorRefSender};
-use crate::{any_message::AnyMessage, pid::Pid, send_error::SendError, NoStdToolbox};
+use crate::{NoStdToolbox, any_message::AnyMessage, pid::Pid, send_error::SendError};
 
 struct RecordingSender {
   count: ArcShared<AtomicUsize>,

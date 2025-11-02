@@ -5,9 +5,9 @@ use alloc::vec::Vec;
 use cellactor_utils_core_rs::sync::ArcShared;
 
 use crate::{
-  actor_cell::ActorCell, actor_future::ActorFuture, actor_ref::ActorRef, child_ref::ChildRef, pid::Pid, props::Props,
-  send_error::SendError, spawn_error::SpawnError, system_message::SystemMessage, system_state::SystemState, AnyMessage,
-  RuntimeToolbox,
+  AnyMessage, RuntimeToolbox, actor_cell::ActorCell, actor_future::ActorFuture, actor_ref::ActorRef,
+  child_ref::ChildRef, pid::Pid, props::Props, send_error::SendError, spawn_error::SpawnError,
+  system_message::SystemMessage, system_state::SystemState,
 };
 
 const ACTOR_INIT_FAILED: &str = "actor lifecycle hook failed";
@@ -207,10 +207,10 @@ mod tests {
 
   use cellactor_utils_core_rs::sync::{ArcShared, SyncMutexFamily};
 
-  use super::{ActorSystem, ACTOR_INIT_FAILED};
+  use super::{ACTOR_INIT_FAILED, ActorSystem};
   use crate::{
-    actor::Actor, actor_context::ActorContext, actor_error::ActorError, props::Props, AnyMessage, AnyMessageView,
-    RuntimeToolbox, ToolboxMutex,
+    AnyMessage, AnyMessageView, RuntimeToolbox, ToolboxMutex, actor::Actor, actor_context::ActorContext,
+    actor_error::ActorError, props::Props,
   };
 
   struct Guardian;

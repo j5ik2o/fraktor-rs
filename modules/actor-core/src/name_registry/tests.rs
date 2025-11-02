@@ -1,7 +1,7 @@
 #![cfg(test)]
 
 use super::NameRegistry;
-use crate::{name_registry_error::NameRegistryError, Pid};
+use crate::{Pid, name_registry_error::NameRegistryError};
 
 #[test]
 fn register_and_resolve_name() {

@@ -8,7 +8,7 @@ use core::{
 
 use cellactor_utils_core_rs::{
   collections::{
-    queue::{backend::OfferOutcome, QueueError},
+    queue::{QueueError, backend::OfferOutcome},
     wait::WaitHandle,
   },
   sync::ArcShared,

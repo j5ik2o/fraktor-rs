@@ -4,15 +4,15 @@ use core::cmp;
 
 use cellactor_utils_core_rs::{
   collections::queue::{
-    backend::{OfferOutcome, OverflowPolicy, VecRingBackend},
     MpscQueue, QueueError, SyncMpscConsumer, SyncMpscProducer, VecRingStorage,
+    backend::{OfferOutcome, OverflowPolicy, VecRingBackend},
   },
   sync::{ArcShared, SyncMutexFamily},
 };
 
 use super::{
-  mailbox_queue_offer_future::QueueOfferFuture, mailbox_queue_poll_future::QueuePollFuture,
-  mailbox_queue_state::QueueState, QueueMutex,
+  QueueMutex, mailbox_queue_offer_future::QueueOfferFuture, mailbox_queue_poll_future::QueuePollFuture,
+  mailbox_queue_state::QueueState,
 };
 use crate::{MailboxCapacity, MailboxOverflowStrategy, MailboxPolicy, RuntimeToolbox};
 

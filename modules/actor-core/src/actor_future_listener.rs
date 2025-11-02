@@ -6,7 +6,7 @@ use core::{
   task::{Context, Poll},
 };
 
-use crate::{actor_future::ActorFuture, NoStdToolbox, RuntimeToolbox};
+use crate::{NoStdToolbox, RuntimeToolbox, actor_future::ActorFuture};
 
 /// Future adapter that polls the underlying [`ActorFuture`].
 pub struct ActorFutureListener<'a, T, TB: RuntimeToolbox = NoStdToolbox>

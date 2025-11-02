@@ -3,14 +3,14 @@
 use alloc::{string::String, vec::Vec};
 use core::time::Duration;
 
-use cellactor_utils_core_rs::sync::{sync_mutex_like::SyncMutexLike, ArcShared, SyncMutexFamily};
+use cellactor_utils_core_rs::sync::{ArcShared, SyncMutexFamily, sync_mutex_like::SyncMutexLike};
 use hashbrown::HashMap;
 use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
 use crate::{
-  actor_cell::ActorCell, actor_error::ActorError, actor_future::ActorFuture, name_registry::NameRegistry,
-  name_registry_error::NameRegistryError, pid::Pid, send_error::SendError, spawn_error::SpawnError,
-  supervisor_strategy::SupervisorDirective, system_message::SystemMessage, AnyMessage, RuntimeToolbox, ToolboxMutex,
+  AnyMessage, RuntimeToolbox, ToolboxMutex, actor_cell::ActorCell, actor_error::ActorError, actor_future::ActorFuture,
+  name_registry::NameRegistry, name_registry_error::NameRegistryError, pid::Pid, send_error::SendError,
+  spawn_error::SpawnError, supervisor_strategy::SupervisorDirective, system_message::SystemMessage,
 };
 
 /// Captures global actor system state.
@@ -246,11 +246,7 @@ impl<TB: RuntimeToolbox + 'static> SystemState<TB> {
   }
 
   fn restart_actor(&self, pid: Pid) -> Result<(), ActorError> {
-    if let Some(cell) = self.cell(&pid) {
-      cell.restart()
-    } else {
-      Ok(())
-    }
+    if let Some(cell) = self.cell(&pid) { cell.restart() } else { Ok(()) }
   }
 
   fn stop_actor(&self, pid: Pid) {
@@ -278,7 +274,7 @@ mod tests {
   use cellactor_utils_core_rs::sync::ArcShared;
 
   use super::SystemState;
-  use crate::{actor::Actor, actor_context::ActorContext, actor_error::ActorError, AnyMessageView};
+  use crate::{AnyMessageView, actor::Actor, actor_context::ActorContext, actor_error::ActorError};
 
   struct ProbeActor;
 

@@ -6,7 +6,7 @@ use super::{
   actor_factory::ActorFactory, dispatcher_config::DispatcherConfig, mailbox_config::MailboxConfig,
   supervisor_options::SupervisorOptions,
 };
-use crate::{actor::Actor, mailbox_policy::MailboxPolicy, RuntimeToolbox};
+use crate::{RuntimeToolbox, actor::Actor, mailbox_policy::MailboxPolicy};
 
 /// Immutable configuration describing how to construct an actor.
 pub struct Props<TB: RuntimeToolbox + 'static> {
