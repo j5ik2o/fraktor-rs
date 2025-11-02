@@ -1,0 +1,20 @@
+use cellactor_actor_core_rs::{DispatchExecutor, DispatchHandle, NoStdToolbox};
+use tokio::runtime::Handle;
+
+/// Tokio ランタイム上で Dispatcher を駆動する実装。
+pub struct TokioExecutor {
+  handle: Handle,
+}
+
+impl TokioExecutor {
+  #[must_use]
+  pub fn new(handle: Handle) -> Self {
+    Self { handle }
+  }
+}
+
+impl DispatchExecutor<NoStdToolbox> for TokioExecutor {
+  fn execute(&self, dispatcher: DispatchHandle<NoStdToolbox>) {
+    let _ = self.handle.spawn_blocking(move || dispatcher.drive());
+  }
+}
