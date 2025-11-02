@@ -2,6 +2,6 @@
 
 /// Categorizes actor errors.
 pub enum ActorError {
-    /// Placeholder variant for the initial skeleton.
-    Placeholder,
+  /// Placeholder variant for the initial skeleton.
+  Placeholder,
 }

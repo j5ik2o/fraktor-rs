@@ -1,4 +1,8 @@
-//! Actor context placeholder.
+//! Actor execution context placeholder.
 
-/// Provides contextual operations for an actor placeholder.
-pub struct ActorContext;
+use core::marker::PhantomData;
+
+/// Provides contextual operations for an actor while processing a message.
+pub struct ActorContext<'a> {
+  _marker: PhantomData<&'a ()>,
+}

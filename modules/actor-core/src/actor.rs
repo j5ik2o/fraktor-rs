@@ -1,4 +1,64 @@
-//! Actor trait placeholder.
+//! Actor lifecycle contract.
 
-/// Defines the primary actor lifecycle interface.
-pub trait Actor {}
+use alloc::boxed::Box;
+
+use crate::{ActorContext, ActorError, AnyMessageView};
+
+/// Defines the lifecycle hooks that every actor must implement.
+pub trait Actor: Send {
+  /// Called once before the actor starts processing messages.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the actor fails to initialize and should not start.
+  ///
+  /// # Panics
+  ///
+  /// Panics are not expected. Implementations should return `Err` instead so the
+  /// supervisor can decide how to recover.
+  fn pre_start(&mut self, _ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
+    Ok(())
+  }
+
+  /// Handles a single incoming message dispatched to this actor instance.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error to signal recoverable or fatal processing failures.
+  ///
+  /// # Panics
+  ///
+  /// Panics are considered fatal and will propagate to the runtime.
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError>;
+
+  /// Called once after the actor has been stopped.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when cleanup work fails.
+  ///
+  /// # Panics
+  ///
+  /// Panics are not expected. Implementations should return `Err` to allow
+  /// supervisor policies to react.
+  fn post_stop(&mut self, _ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
+    Ok(())
+  }
+}
+
+impl<T> Actor for Box<T>
+where
+  T: Actor + ?Sized,
+{
+  fn pre_start(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
+    (**self).pre_start(ctx)
+  }
+
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    (**self).receive(ctx, message)
+  }
+
+  fn post_stop(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
+    (**self).post_stop(ctx)
+  }
+}
