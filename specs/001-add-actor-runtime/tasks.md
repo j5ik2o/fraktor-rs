@@ -114,7 +114,7 @@ description: "セルアクター no_std ランタイム初期版の実装タス�
 - [x] T033 [US3] ActorSystem / Supervisor 経路からライフサイクル・ログイベントを発火させる (modules/actor-core/src/system.rs)
 - [x] T034 [US3] Mailbox に容量警告とスループットメトリクスを組み込む (modules/actor-core/src/mailbox.rs)
 - [x] T035 [US3] MessageInvoker の middleware / pipeline 実装を actor-old から移植する (modules/actor-core/src/message_invoker.rs, modules/actor-core-old/src/message_invoker/)
-- [ ] T036 [P] [US3] EventStream + Deadletter フローを検証する統合テストを追加する (modules/actor-core/tests/event_stream.rs)
+- [x] T036 [P] [US3] EventStream + Deadletter フローを検証する統合テストを追加する (modules/actor-core/tests/event_stream.rs)
 - [ ] T037 [P] [US3] LogEvent を消費するロガー購読者サンプルを追加する (examples/logger_subscriber_std/main.rs)
 - [ ] T037B [P] [US3] Deadletter 監視とサスペンド郵便受けを示すサンプルを追加する (modules/actor-core/examples/deadletter_std/main.rs)
 - [ ] T037A [Optional] EventStream/Deadletter のバッファ容量と警告閾値をユーザ設定できる API を検討し、quickstart/data-model に推奨値を追記する。Tokio などホスト側ランタイム向けの `DispatcherConfig` ヘルパーは core ではなく `actor-std` 等の拡張クレートで提供する方針案をまとめる。将来的に `actor-std` クレートへヘルパー API を追加する際は、quickstart の該当節へ反映済みかを必ず確認する。
