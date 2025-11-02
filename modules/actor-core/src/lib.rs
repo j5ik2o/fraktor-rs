@@ -59,6 +59,8 @@
 
 extern crate alloc;
 
+pub use cellactor_utils_core_rs::sync::{NoStdMutex, NoStdToolbox, RuntimeToolbox, ToolboxMutex};
+
 mod actor;
 mod actor_cell;
 mod actor_context;
@@ -73,9 +75,12 @@ mod dispatcher;
 mod event_stream;
 mod logger_subscriber;
 mod mailbox;
+mod mailbox_capacity;
+mod mailbox_overflow_strategy;
 mod mailbox_policy;
 mod message_invoker;
 mod name_registry;
+mod name_registry_error;
 mod pid;
 mod props;
 mod receive_state;
@@ -98,9 +103,12 @@ pub use dispatcher::Dispatcher;
 pub use event_stream::EventStream;
 pub use logger_subscriber::LoggerSubscriber;
 pub use mailbox::Mailbox;
+pub use mailbox_capacity::MailboxCapacity;
+pub use mailbox_overflow_strategy::MailboxOverflowStrategy;
 pub use mailbox_policy::MailboxPolicy;
 pub use message_invoker::MessageInvoker;
 pub use name_registry::NameRegistry;
+pub use name_registry_error::NameRegistryError;
 pub use pid::Pid;
 pub use props::Props;
 pub use receive_state::ReceiveState;
