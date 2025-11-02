@@ -16,11 +16,11 @@ alloc-metrics = []
 
 [dependencies]
 async-trait = { workspace = true }
-cellactor-utils-core-rs = { workspace = true, features = ["alloc", "unsize"] }
+cellactor-utils-core-rs = { workspace = true, default-features = false, features = ["alloc", "unsize"] }
 critical-section = { workspace = true }
-heapless = { workspace = true, default-features = false }
-portable-atomic = { workspace = true, features = ["critical-section"] }
-portable-atomic-util = { workspace = true, features = ["alloc"] }
+heapless = { workspace = true, default-features = false, features = ["portable-atomic"] }
+portable-atomic = { workspace = true, default-features = false, features = ["critical-section"] }
+portable-atomic-util = { workspace = true, default-features = false, features = ["alloc"] }
 spin = { workspace = true, default-features = false, features = ["mutex", "spin_mutex", "rwlock", "portable_atomic"] }
 cortex-m = { workspace = true, optional = true }
 hashbrown = { workspace = true, default-features = false }
