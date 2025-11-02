@@ -1,5 +1,5 @@
 [package]
-name = "cellactor-actor-core-rs-old"
+name = "cellactor-actor-core-rs"
 version = "0.1.0"
 edition = "2024"
 description = "Cellactor no_std actor runtime core"
