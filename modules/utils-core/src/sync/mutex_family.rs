@@ -20,7 +20,8 @@ pub trait SyncMutexFamily {
 pub struct SpinMutexFamily;
 
 impl SyncMutexFamily for SpinMutexFamily {
-  type Mutex<T> = SpinSyncMutex<T>
+  type Mutex<T>
+    = SpinSyncMutex<T>
   where
     T: Send + 'static;
 

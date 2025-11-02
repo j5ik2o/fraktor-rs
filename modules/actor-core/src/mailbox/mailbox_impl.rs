@@ -1,21 +1,24 @@
 //! Priority mailbox maintaining separate queues for system and user messages.
 
-use core::{num::NonZeroUsize, sync::atomic::{AtomicBool, Ordering}};
+use core::{
+  num::NonZeroUsize,
+  sync::atomic::{AtomicBool, Ordering},
+};
 
-use cellactor_utils_core_rs::{collections::queue::{QueueError, backend::OfferOutcome}, sync::{sync_mutex_like::SyncMutexLike, SyncMutexFamily}};
+use cellactor_utils_core_rs::{
+  collections::queue::{QueueError, backend::OfferOutcome},
+  sync::{SyncMutexFamily, sync_mutex_like::SyncMutexLike},
+};
 
 use super::{
-  map_system_queue_error,
-  map_user_queue_error,
-  mailbox_enqueue_outcome::EnqueueOutcome,
-  mailbox_instrumentation::MailboxInstrumentation,
-  mailbox_message::MailboxMessage,
-  mailbox_offer_future::MailboxOfferFuture,
-  mailbox_poll_future::MailboxPollFuture,
-  mailbox_queue_handles::QueueHandles,
+  mailbox_enqueue_outcome::EnqueueOutcome, mailbox_instrumentation::MailboxInstrumentation,
+  mailbox_message::MailboxMessage, mailbox_offer_future::MailboxOfferFuture, mailbox_poll_future::MailboxPollFuture,
+  mailbox_queue_handles::QueueHandles, map_system_queue_error, map_user_queue_error,
 };
-use crate::{any_message::AnyMessage, MailboxCapacity, MailboxOverflowStrategy, MailboxPolicy, RuntimeToolbox, SendError,
-            SystemMessage};
+use crate::{
+  MailboxCapacity, MailboxOverflowStrategy, MailboxPolicy, RuntimeToolbox, SendError, SystemMessage,
+  any_message::AnyMessage,
+};
 
 /// Priority mailbox maintaining separate queues for system and user messages.
 pub struct Mailbox<TB: RuntimeToolbox + 'static> {

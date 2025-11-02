@@ -1,8 +1,9 @@
 #![cfg(test)]
 
+use core::num::NonZeroUsize;
+
 use super::MailboxPolicy;
 use crate::{MailboxCapacity, MailboxOverflowStrategy};
-use core::num::NonZeroUsize;
 
 #[test]
 fn bounded_policy_reports_settings() {

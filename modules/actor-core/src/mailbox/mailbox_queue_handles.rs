@@ -11,10 +11,8 @@ use cellactor_utils_core_rs::{
 };
 
 use super::{
-  mailbox_queue_offer_future::QueueOfferFuture,
-  mailbox_queue_poll_future::QueuePollFuture,
+  QueueMutex, mailbox_queue_offer_future::QueueOfferFuture, mailbox_queue_poll_future::QueuePollFuture,
   mailbox_queue_state::QueueState,
-  QueueMutex,
 };
 use crate::{MailboxCapacity, MailboxOverflowStrategy, MailboxPolicy, RuntimeToolbox};
 
@@ -27,8 +25,7 @@ type QueueConsumer<T, TB> = SyncMpscConsumer<T, VecRingBackend<T>, QueueMutex<T,
 /// Internal handles wrapping queue producers/consumers.
 pub struct QueueHandles<T, TB: RuntimeToolbox>
 where
-  T: Send + 'static,
-{
+  T: Send + 'static, {
   pub(super) state:     ArcShared<QueueState<T, TB>>,
   pub(super) _producer: QueueProducer<T, TB>,
   pub(super) consumer:  QueueConsumer<T, TB>,

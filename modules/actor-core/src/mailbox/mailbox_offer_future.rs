@@ -1,10 +1,14 @@
 //! Future specialized for mailbox user queue offers.
 
-use core::{fmt, future::Future, pin::Pin, task::{Context, Poll}};
+use core::{
+  fmt,
+  future::Future,
+  pin::Pin,
+  task::{Context, Poll},
+};
 
-use super::mailbox_queue_offer_future::QueueOfferFuture;
-use super::map_user_queue_error;
-use crate::{any_message::AnyMessage, RuntimeToolbox, SendError};
+use super::{mailbox_queue_offer_future::QueueOfferFuture, map_user_queue_error};
+use crate::{RuntimeToolbox, SendError, any_message::AnyMessage};
 
 /// Future completing once a user message has been enqueued.
 pub struct MailboxOfferFuture<TB: RuntimeToolbox + 'static> {

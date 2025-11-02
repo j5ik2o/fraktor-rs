@@ -1,6 +1,6 @@
 //! Abstraction for delivering messages drained from the mailbox to actors.
 
-use crate::{actor_error::ActorError, any_message::AnyMessage, RuntimeToolbox, SystemMessage};
+use crate::{RuntimeToolbox, SystemMessage, actor_error::ActorError, any_message::AnyMessage};
 
 /// Dispatches user and system messages to actor handlers.
 pub trait MessageInvoker<TB: RuntimeToolbox + 'static>: Send + Sync {

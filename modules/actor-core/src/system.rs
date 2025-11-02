@@ -1,26 +1,55 @@
 //! Coordinates actors and infrastructure.
 
+use alloc::vec::Vec;
+
 use cellactor_utils_core_rs::sync::ArcShared;
 
 use crate::{
-  actor_cell::ActorCell,
-  mailbox::Mailbox,
-  pid::Pid,
-  props::Props,
+  actor_cell::ActorCell, actor_future::ActorFuture, actor_ref::ActorRef, child_ref::ChildRef, pid::Pid, props::Props,
+  send_error::SendError, spawn_error::SpawnError, system_message::SystemMessage, system_state::SystemState,
   RuntimeToolbox,
-  SystemState,
 };
 
-/// Minimal actor system wiring around [`SystemState`].
+const ACTOR_INIT_FAILED: &str = "actor lifecycle hook failed";
+const PARENT_MISSING: &str = "parent actor not found";
+
+/// Core runtime structure that owns registry, guardians, and spawn logic.
 pub struct ActorSystem<TB: RuntimeToolbox + 'static> {
   state: ArcShared<SystemState<TB>>,
 }
 
 impl<TB: RuntimeToolbox + 'static> ActorSystem<TB> {
-  /// Creates a new actor system instance.
+  /// Creates an empty actor system without any guardian (testing only).
   #[must_use]
-  pub fn new() -> Self {
+  pub fn new_empty() -> Self {
     Self { state: ArcShared::new(SystemState::new()) }
+  }
+
+  /// Creates a new actor system using the provided user guardian props.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SpawnError`] when guardian initialization fails.
+  pub fn new(user_guardian_props: &Props<TB>) -> Result<Self, SpawnError> {
+    let system = Self::new_empty();
+    let guardian = system.spawn_with_parent(None, user_guardian_props)?;
+    if let Some(cell) = system.state.cell(&guardian.pid()) {
+      system.state.set_user_guardian(cell);
+    }
+    Ok(system)
+  }
+
+  /// Returns the actor reference to the user guardian.
+  ///
+  /// # Panics
+  ///
+  /// Panics if the user guardian has not been initialised.
+  #[must_use]
+  pub fn user_guardian_ref(&self) -> ActorRef<TB> {
+    match self.state.user_guardian() {
+      | Some(cell) => cell.actor_ref(),
+      | None => panic!("user guardian has not been initialised"),
+    }
   }
 
   /// Returns the shared system state.
@@ -29,34 +58,137 @@ impl<TB: RuntimeToolbox + 'static> ActorSystem<TB> {
     self.state.clone()
   }
 
-  /// Allocates a new pid.
+  /// Allocates a new pid (testing helper).
   #[must_use]
   pub fn allocate_pid(&self) -> Pid {
     self.state.allocate_pid()
   }
 
-  /// Registers a freshly created actor cell.
-  pub fn register_cell(&self, cell: ArcShared<ActorCell<TB>>) {
-    self.state.register_cell(cell);
+  /// Spawns a new top-level actor under the user guardian.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SpawnError::SystemUnavailable`] when the guardian is missing.
+  pub fn spawn(&self, props: &Props<TB>) -> Result<ChildRef<TB>, SpawnError> {
+    let guardian_pid = self.state.user_guardian_pid().ok_or_else(SpawnError::system_unavailable)?;
+    self.spawn_child(guardian_pid, props)
   }
 
-  /// Retrieves a cell by pid.
-  #[must_use]
-  pub fn cell(&self, pid: &Pid) -> Option<ArcShared<ActorCell<TB>>> {
-    self.state.cell(pid)
+  /// Spawns a new actor as a child of the specified parent.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SpawnError::InvalidProps`] when the parent pid is unknown.
+  pub fn spawn_child(&self, parent: Pid, props: &Props<TB>) -> Result<ChildRef<TB>, SpawnError> {
+    if self.state.cell(&parent).is_none() {
+      return Err(SpawnError::invalid_props(PARENT_MISSING));
+    }
+    self.spawn_with_parent(Some(parent), props)
   }
 
-  /// Returns the default mailbox for props.
+  /// Returns an [`ActorRef`] for the specified pid if the actor is registered.
   #[must_use]
-  pub fn create_mailbox(&self, props: &Props) -> ArcShared<Mailbox<TB>> {
-    let policy = props.mailbox_policy();
-    ArcShared::new(Mailbox::new(policy))
+  pub fn actor_ref(&self, pid: Pid) -> Option<ActorRef<TB>> {
+    self.state.cell(&pid).map(|cell| cell.actor_ref())
+  }
+
+  /// Returns child references supervised by the provided parent PID.
+  #[must_use]
+  pub fn children(&self, parent: Pid) -> Vec<ChildRef<TB>> {
+    let system = self.state.clone();
+    self
+      .state
+      .child_pids(parent)
+      .into_iter()
+      .filter_map(|pid| self.state.cell(&pid).map(|cell| ChildRef::new(cell.actor_ref(), system.clone())))
+      .collect()
+  }
+
+  /// Sends a stop signal to the specified actor.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the stop message cannot be enqueued.
+  pub fn stop_actor(&self, pid: Pid) -> Result<(), SendError<TB>> {
+    self.state.send_system_message(pid, SystemMessage::Stop)
+  }
+
+  /// Sends a stop signal to the user guardian and initiates system shutdown.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the guardian mailbox rejects the stop request.
+  pub fn terminate(&self) -> Result<(), SendError<TB>> {
+    if self.state.is_terminated() {
+      return Ok(());
+    }
+
+    match self.state.user_guardian_pid() {
+      | Some(pid) => match self.state.send_system_message(pid, SystemMessage::Stop) {
+        | Ok(()) => Ok(()),
+        | Err(error) => {
+          if self.state.is_terminated() {
+            Ok(())
+          } else {
+            Err(error)
+          }
+        },
+      },
+      | None => {
+        self.state.mark_terminated();
+        Ok(())
+      },
+    }
+  }
+
+  /// Returns a future that resolves once the actor system terminates.
+  #[must_use]
+  pub fn when_terminated(&self) -> ArcShared<ActorFuture<(), TB>> {
+    self.state.termination_future()
+  }
+
+  /// Blocks the current thread until the actor system has fully terminated.
+  pub fn run_until_terminated(&self) {
+    let future = self.when_terminated();
+    while !future.is_ready() {
+      core::hint::spin_loop();
+    }
+  }
+
+  fn spawn_with_parent(&self, parent: Option<Pid>, props: &Props<TB>) -> Result<ChildRef<TB>, SpawnError> {
+    let pid = self.state.allocate_pid();
+    let name = self.state.assign_name(parent, props.name(), pid)?;
+    let cell = ActorCell::create(self.state.clone(), pid, parent, name, props);
+
+    self.state.register_cell(cell.clone());
+    if cell.pre_start().is_err() {
+      self.rollback_spawn(parent, &cell, pid);
+      return Err(SpawnError::invalid_props(ACTOR_INIT_FAILED));
+    }
+
+    if let Some(parent_pid) = parent {
+      self.state.register_child(parent_pid, pid);
+    }
+
+    Ok(ChildRef::new(cell.actor_ref(), self.state.clone()))
+  }
+
+  fn rollback_spawn(&self, parent: Option<Pid>, cell: &ArcShared<ActorCell<TB>>, pid: Pid) {
+    self.state.release_name(parent, cell.name());
+    self.state.remove_cell(&pid);
+    if let Some(parent_pid) = parent {
+      self.state.unregister_child(Some(parent_pid), pid);
+    }
+  }
+
+  pub(crate) const fn from_state(state: ArcShared<SystemState<TB>>) -> Self {
+    Self { state }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Default for ActorSystem<TB> {
-  fn default() -> Self {
-    Self::new()
+impl<TB: RuntimeToolbox + 'static> Clone for ActorSystem<TB> {
+  fn clone(&self) -> Self {
+    Self { state: self.state.clone() }
   }
 }
 
@@ -65,34 +197,90 @@ unsafe impl<TB: RuntimeToolbox + 'static> Sync for ActorSystem<TB> {}
 
 #[cfg(test)]
 mod tests {
-  use alloc::string::ToString;
+  use alloc::vec::Vec;
 
   use cellactor_utils_core_rs::sync::ArcShared;
 
+  use super::{ActorSystem, ACTOR_INIT_FAILED};
   use crate::{
-    actor_cell::ActorCell,
-    dispatcher::Dispatcher,
-    mailbox::{Mailbox, MailboxPolicy},
+    actor::Actor,
+    actor_context::ActorContext,
+    actor_error::ActorError,
+    any_message::{AnyMessage, AnyMessageView},
+    props::Props,
+    RuntimeToolbox, ToolboxMutex,
   };
 
-  use super::ActorSystem;
+  struct Guardian;
 
-  #[test]
-  fn allocates_unique_pids() {
-    let system: ActorSystem<crate::NoStdToolbox> = ActorSystem::new();
-    let pid1 = system.allocate_pid();
-    let pid2 = system.allocate_pid();
-    assert_ne!(pid1, pid2);
+  impl Actor for Guardian {
+    fn receive(
+      &mut self,
+      _ctx: &mut ActorContext<'_, crate::NoStdToolbox>,
+      _message: AnyMessageView<'_>,
+    ) -> Result<(), ActorError> {
+      Ok(())
+    }
+  }
+
+  type EventMutex = ToolboxMutex<Vec<&'static str>, crate::NoStdToolbox>;
+
+  struct Recorder {
+    events: ArcShared<EventMutex>,
+  }
+
+  impl Recorder {
+    fn new(events: ArcShared<EventMutex>) -> Self {
+      Self { events }
+    }
+  }
+
+  impl Actor for Recorder {
+    fn receive(
+      &mut self,
+      _ctx: &mut ActorContext<'_, crate::NoStdToolbox>,
+      _message: AnyMessageView<'_>,
+    ) -> Result<(), ActorError> {
+      let mut guard = self.events.lock();
+      guard.push("message");
+      drop(guard);
+      Ok(())
+    }
   }
 
   #[test]
-  fn registers_cells() {
-    let system: ActorSystem<crate::NoStdToolbox> = ActorSystem::new();
-    let mailbox = ArcShared::new(Mailbox::new(MailboxPolicy::unbounded(None)));
-    let dispatcher = Dispatcher::with_inline_executor(mailbox.clone());
-    let cell = ArcShared::new(ActorCell::new(system.allocate_pid(), None, "root".to_string(), mailbox, dispatcher));
-    let pid = cell.pid();
-    system.register_cell(cell.clone());
-    assert!(system.cell(&pid).is_some());
+  fn spawns_guardian_and_child() {
+    let guardian_props = Props::<crate::NoStdToolbox>::from_fn(|| Guardian);
+    let system = ActorSystem::new(&guardian_props).expect("guardian spawn");
+    let events = ArcShared::new(<crate::NoStdToolbox as RuntimeToolbox>::MutexFamily::create(Vec::new()));
+    let recorder_props = Props::<crate::NoStdToolbox>::from_fn(|| Recorder::new(events.clone()));
+    let child = system.spawn(&recorder_props).expect("child spawn");
+    child.tell(AnyMessage::new("ping")).expect("tell");
+    assert_eq!(events.lock().as_slice(), &["message"]);
+    system.terminate().expect("terminate");
+    system.run_until_terminated();
+  }
+
+  #[test]
+  fn guardian_spawn_failure_rolls_back() {
+    struct Failing;
+
+    impl Actor for Failing {
+      fn pre_start(&mut self, _ctx: &mut ActorContext<'_, crate::NoStdToolbox>) -> Result<(), ActorError> {
+        Err(ActorError::fatal(ACTOR_INIT_FAILED))
+      }
+
+      fn receive(
+        &mut self,
+        _ctx: &mut ActorContext<'_, crate::NoStdToolbox>,
+        _message: AnyMessageView<'_>,
+      ) -> Result<(), ActorError> {
+        Ok(())
+      }
+    }
+
+    let props = Props::<crate::NoStdToolbox>::from_fn(|| Failing);
+    let result = ActorSystem::new(&props);
+    assert!(result.is_err());
   }
 }

@@ -1,14 +1,17 @@
 //! Listener adapter for [`ActorFuture`](crate::ActorFuture).
 
-use core::{future::Future, pin::Pin, task::{Context, Poll}};
+use core::{
+  future::Future,
+  pin::Pin,
+  task::{Context, Poll},
+};
 
-use crate::{actor_future::ActorFuture, NoStdToolbox, RuntimeToolbox};
+use crate::{NoStdToolbox, RuntimeToolbox, actor_future::ActorFuture};
 
 /// Future adapter that polls the underlying [`ActorFuture`].
 pub struct ActorFutureListener<'a, T, TB: RuntimeToolbox = NoStdToolbox>
 where
-  T: Send + 'static,
-{
+  T: Send + 'static, {
   future: &'a ActorFuture<T, TB>,
 }
 
@@ -43,7 +46,8 @@ impl<'a, T, TB> Unpin for ActorFutureListener<'a, T, TB>
 where
   T: Send + 'static,
   TB: RuntimeToolbox,
-{}
+{
+}
 
 #[cfg(test)]
 mod tests;

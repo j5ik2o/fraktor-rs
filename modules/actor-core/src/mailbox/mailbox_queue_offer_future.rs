@@ -1,6 +1,10 @@
 //! Future returned when a queue needs to wait for capacity.
 
-use core::{future::Future, pin::Pin, task::{Context, Poll}};
+use core::{
+  future::Future,
+  pin::Pin,
+  task::{Context, Poll},
+};
 
 use cellactor_utils_core_rs::{
   collections::{
@@ -16,8 +20,7 @@ use crate::RuntimeToolbox;
 /// Future completing when a queued message has been enqueued.
 pub struct QueueOfferFuture<T, TB: RuntimeToolbox>
 where
-  T: Send + 'static,
-{
+  T: Send + 'static, {
   state:   ArcShared<QueueState<T, TB>>,
   message: Option<T>,
   waiter:  Option<WaitHandle<QueueError<T>>>,
@@ -45,7 +48,8 @@ impl<T, TB> Unpin for QueueOfferFuture<T, TB>
 where
   T: Send + 'static,
   TB: RuntimeToolbox,
-{}
+{
+}
 
 impl<T, TB> Future for QueueOfferFuture<T, TB>
 where

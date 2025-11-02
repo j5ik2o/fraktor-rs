@@ -2,15 +2,14 @@
 
 use core::task::Waker;
 
-use cellactor_utils_core_rs::sync::{sync_mutex_like::SyncMutexLike, SyncMutexFamily};
+use cellactor_utils_core_rs::sync::{SyncMutexFamily, sync_mutex_like::SyncMutexLike};
 
-use crate::{actor_future_listener::ActorFutureListener, NoStdToolbox, RuntimeToolbox, ToolboxMutex};
+use crate::{NoStdToolbox, RuntimeToolbox, ToolboxMutex, actor_future_listener::ActorFutureListener};
 
 /// Represents a future that resolves with a message.
 pub struct ActorFuture<T, TB: RuntimeToolbox = NoStdToolbox>
 where
-  T: Send + 'static,
-{
+  T: Send + 'static, {
   value: ToolboxMutex<Option<T>, TB>,
   waker: ToolboxMutex<Option<Waker>, TB>,
 }
@@ -82,13 +81,15 @@ unsafe impl<T, TB> Send for ActorFuture<T, TB>
 where
   T: Send + 'static,
   TB: RuntimeToolbox,
-{}
+{
+}
 
 unsafe impl<T, TB> Sync for ActorFuture<T, TB>
 where
   T: Send + 'static,
   TB: RuntimeToolbox,
-{}
+{
+}
 
 #[cfg(test)]
 mod tests;

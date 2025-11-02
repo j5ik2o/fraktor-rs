@@ -1,6 +1,10 @@
 #![cfg(test)]
 
-use core::{future::Future, pin::Pin, task::{Context, Poll, RawWaker, RawWakerVTable, Waker}};
+use core::{
+  future::Future,
+  pin::Pin,
+  task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
+};
 
 use crate::actor_future::ActorFuture;
 

@@ -1,10 +1,14 @@
 //! Future monitoring the user queue for incoming messages.
 
-use core::{fmt, future::Future, pin::Pin, task::{Context, Poll}};
+use core::{
+  fmt,
+  future::Future,
+  pin::Pin,
+  task::{Context, Poll},
+};
 
-use super::mailbox_queue_poll_future::QueuePollFuture;
-use super::map_user_queue_error;
-use crate::{any_message::AnyMessage, RuntimeToolbox, SendError};
+use super::{mailbox_queue_poll_future::QueuePollFuture, map_user_queue_error};
+use crate::{RuntimeToolbox, SendError, any_message::AnyMessage};
 
 /// Future completing with the next user message from the mailbox.
 pub struct MailboxPollFuture<TB: RuntimeToolbox + 'static> {

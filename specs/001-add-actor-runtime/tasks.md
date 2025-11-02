@@ -64,11 +64,11 @@ description: "セルアクター no_std ランタイム初期版の実装タス�
 **目標**: AnyMessage を使った最小構成でアクターを起動し、Ping/Pong サンプルが no_std + alloc 環境で動作する。さらに DispatcherConfig を介して std + Tokio ランタイム上でも同サンプルが完走することを確認する。
 **独立テスト**: `modules/actor-core/tests/ping_pong.rs` で spawn / tell / 背圧ポリシー / reply_to 処理が通ること。
 
-- [ ] T016 [US1] `ActorRef` ハンドルを実装し、未型付けの `tell` / `ask` API と ArcShared ストレージを備える（所有型 `AnyMessage` を受け付け、送信失敗を `Result` で検知可能にする）(modules/actor-core/src/actor_ref.rs)
+- [x] T016 [US1] `ActorRef` ハンドルを実装し、未型付けの `tell` / `ask` API と ArcShared ストレージを備える（所有型 `AnyMessage` を受け付け、送信失敗を `Result` で検知可能にする）(modules/actor-core/src/actor_ref.rs)
 - [x] T017 [US1] DropNewest / DropOldest / Grow ポリシーと Bounded / Unbounded 容量を扱う `Mailbox` を SyncQueue バックエンドで実装する (modules/actor-core/src/mailbox.rs)
 - [x] T018 [US1] スループット制限とスケジューリングフックを備えた `Dispatcher` を実装する (modules/actor-core/src/dispatcher.rs)
 - [x] T019 [US1] ミドルウェアチェーンと `reply_to` ルーティングを行う `MessageInvoker` パイプラインを実装する (modules/actor-core/src/message_invoker.rs)
-- [ ] T020 [US1] ガーディアン Props、`user_guardian_ref()`、名前レジストリ、`spawn_child` を通じた生成、`reply_to` ディスパッチ、`ActorCell` 管理を含む `ActorSystem` コアを実装する (modules/actor-core/src/system.rs, modules/actor-core/src/actor_cell.rs)
+- [x] T020 [US1] ガーディアン Props、`user_guardian_ref()`、名前レジストリ、`spawn_child` を通じた生成、`reply_to` ディスパッチ、`ActorCell` 管理を含む `ActorSystem` コアを実装する (modules/actor-core/src/system.rs, modules/actor-core/src/actor_cell.rs)
 - [ ] T021 [US1] `ActorFuture` の ask ヘルパーを完成させ ActorSystem と連携させる (modules/actor-core/src/actor_future.rs)
 - [ ] T022 [P] [US1] AnyMessage + reply_to を用いた no_std Ping/Pong サンプルを追加する (modules/actor-core/examples/ping_pong_no_std/main.rs; `ctx.self_ref()` を payload の `reply_to` に埋め込み、`reply_to.tell(...)` で応答する例を示す。実行は `cargo run -p cellactor-actor-core-rs --example ping_pong_no_std --features std`)
 - [ ] T022A [P] [US1] Tokio ランタイムの `Handle::spawn_blocking` を用いて Dispatcher を駆動する `TokioExecutor` を examples 配下に追加し、`cfg(feature = "std")` 下でのみコンパイルされるようにする (modules/actor-core/examples/ping_pong_tokio/executor.rs)
@@ -92,7 +92,7 @@ description: "セルアクター no_std ランタイム初期版の実装タス�
 **目標**: 親子アクターの監督ツリーを構築し、Supervisor 戦略に基づく再起動／停止を実現する。
 **独立テスト**: `modules/actor-core/tests/supervisor.rs` で Restart/Escalate ポリシーと子アクター監視が検証できること。
 
-- [ ] T024 [US2] レート制限付き再起動を追跡する `RestartStatistics` を実装する (modules/actor-core/src/restart_statistics.rs)
+- [x] T024 [US2] レート制限付き再起動を追跡する `RestartStatistics` を実装する (modules/actor-core/src/restart_statistics.rs)
 - [ ] T025 [US2] `SupervisorStrategy` の判定ロジックを配線し Restart/Fatal/Escalate を処理する (modules/actor-core/src/supervisor_strategy.rs)
 - [ ] T026 [US2] `ActorContext` を拡張し、`spawn_child`・子レジストリ・スーパービジョンシグナルを提供する (modules/actor-core/src/actor_context.rs)
 - [ ] T027 [US2] `ActorSystem` とスーパービジョンツリーの連携を実装し、障害を親へ伝播させる (modules/actor-core/src/system.rs)

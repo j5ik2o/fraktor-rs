@@ -15,10 +15,7 @@ pub struct AnyMessageView<'a, TB: RuntimeToolbox = NoStdToolbox> {
 impl<'a, TB: RuntimeToolbox> AnyMessageView<'a, TB> {
   /// Creates a new borrowed message view.
   #[must_use]
-  pub fn new(
-    payload: &'a (dyn Any + Send + Sync + 'static),
-    reply_to: Option<&'a ActorRef<TB>>,
-  ) -> Self {
+  pub fn new(payload: &'a (dyn Any + Send + Sync + 'static), reply_to: Option<&'a ActorRef<TB>>) -> Self {
     Self { payload, type_id: (*payload).type_id(), reply_to }
   }
 

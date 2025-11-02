@@ -1,6 +1,10 @@
 //! Future returned when a queue needs to wait for incoming messages.
 
-use core::{future::Future, pin::Pin, task::{Context, Poll}};
+use core::{
+  future::Future,
+  pin::Pin,
+  task::{Context, Poll},
+};
 
 use cellactor_utils_core_rs::{
   collections::{queue::QueueError, wait::WaitHandle},
@@ -13,8 +17,7 @@ use crate::RuntimeToolbox;
 /// Future resolving when a message becomes available in the queue.
 pub struct QueuePollFuture<T, TB: RuntimeToolbox>
 where
-  T: Send + 'static,
-{
+  T: Send + 'static, {
   state:  ArcShared<QueueState<T, TB>>,
   waiter: Option<WaitHandle<QueueError<T>>>,
 }
@@ -41,7 +44,8 @@ impl<T, TB> Unpin for QueuePollFuture<T, TB>
 where
   T: Send + 'static,
   TB: RuntimeToolbox,
-{}
+{
+}
 
 impl<T, TB> Future for QueuePollFuture<T, TB>
 where

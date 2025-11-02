@@ -3,14 +3,12 @@ use core::task::Waker;
 use cellactor_utils_core_rs::sync::ArcShared;
 
 use super::{
-  dispatch_executor::DispatchExecutor,
-  dispatch_handle::DispatchHandle,
-  dispatcher_core::DispatcherCore,
-  dispatcher_state::DispatcherState,
-  inline_executor::InlineExecutor,
-  schedule_waker::ScheduleWaker,
+  dispatch_executor::DispatchExecutor, dispatch_handle::DispatchHandle, dispatcher_core::DispatcherCore,
+  dispatcher_state::DispatcherState, inline_executor::InlineExecutor, schedule_waker::ScheduleWaker,
 };
-use crate::{any_message::AnyMessage, mailbox::Mailbox, message_invoker::MessageInvoker, RuntimeToolbox, SendError, SystemMessage};
+use crate::{
+  RuntimeToolbox, SendError, SystemMessage, any_message::AnyMessage, mailbox::Mailbox, message_invoker::MessageInvoker,
+};
 
 /// Dispatcher that manages mailbox processing.
 pub struct Dispatcher<TB: RuntimeToolbox + 'static> {

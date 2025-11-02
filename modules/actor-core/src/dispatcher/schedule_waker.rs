@@ -1,6 +1,9 @@
 //! Helper utilities for constructing dispatcher-driven wakers.
 
-use core::{marker::PhantomData, task::{RawWaker, RawWakerVTable, Waker}};
+use core::{
+  marker::PhantomData,
+  task::{RawWaker, RawWakerVTable, Waker},
+};
 
 use cellactor_utils_core_rs::sync::ArcShared;
 

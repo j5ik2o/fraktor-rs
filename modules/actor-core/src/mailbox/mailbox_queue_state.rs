@@ -15,8 +15,7 @@ use crate::RuntimeToolbox;
 /// Maintains shared queue state and wait queues for asynchronous offers/polls.
 pub struct QueueState<T, TB: RuntimeToolbox>
 where
-  T: Send + 'static,
-{
+  T: Send + 'static, {
   pub(super) shared:           ArcShared<QueueMutex<T, TB>>,
   pub(super) producer_waiters: Mutex<WaitQueue<QueueError<T>>>,
   pub(super) consumer_waiters: Mutex<WaitQueue<QueueError<T>>>,

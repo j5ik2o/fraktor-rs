@@ -1,12 +1,21 @@
 //! Actor reference handle implementation.
 
-use core::{fmt, hash::{Hash, Hasher}};
+use core::{
+  fmt,
+  hash::{Hash, Hasher},
+};
 
 use cellactor_utils_core_rs::sync::ArcShared;
 
-use crate::{actor_future::ActorFuture, any_message::AnyMessage, ask_response::AskResponse, actor_ref::actor_ref_sender::ActorRefSender,
-            actor_ref::ask_reply_sender::AskReplySender, actor_ref::null_sender::NullSender, pid::Pid, send_error::SendError,
-            NoStdToolbox, RuntimeToolbox};
+use crate::{
+  NoStdToolbox, RuntimeToolbox,
+  actor_future::ActorFuture,
+  actor_ref::{actor_ref_sender::ActorRefSender, ask_reply_sender::AskReplySender, null_sender::NullSender},
+  any_message::AnyMessage,
+  ask_response::AskResponse,
+  pid::Pid,
+  send_error::SendError,
+};
 
 /// Handle used to communicate with an actor instance.
 pub struct ActorRef<TB: RuntimeToolbox = NoStdToolbox> {
@@ -44,8 +53,7 @@ impl<TB: RuntimeToolbox> ActorRef<TB> {
   /// Sends a request and obtains a future that resolves with the reply.
   pub fn ask(&self, message: AnyMessage<TB>) -> Result<AskResponse<TB>, SendError<TB>>
   where
-    TB: 'static,
-  {
+    TB: 'static, {
     let future = ArcShared::new(ActorFuture::new());
     let reply_sender = ArcShared::new(AskReplySender::new(future.clone()));
     let reply_ref = ActorRef::new(self.pid, reply_sender);

@@ -1,7 +1,8 @@
 #![cfg(test)]
 
-use super::MailboxCapacity;
 use core::num::NonZeroUsize;
+
+use super::MailboxCapacity;
 
 #[test]
 fn bounded_capacity_stores_limit() {

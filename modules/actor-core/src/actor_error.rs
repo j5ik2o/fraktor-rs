@@ -2,7 +2,7 @@
 
 use alloc::format;
 
-use crate::{actor_error_reason::ActorErrorReason, RuntimeToolbox, SendError};
+use crate::{RuntimeToolbox, SendError, actor_error_reason::ActorErrorReason};
 
 /// Categorizes actor failures and informs supervision decisions.
 #[derive(Clone, Debug, PartialEq, Eq)]
