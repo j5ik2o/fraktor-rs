@@ -8,7 +8,6 @@ use cellactor_utils_core_rs::sync::ArcShared;
 use crate::{ActorRef, NoStdToolbox, RuntimeToolbox, any_message_view::AnyMessageView};
 
 /// Wraps an arbitrary payload for message passing.
-#[derive(Clone)]
 pub struct AnyMessage<TB: RuntimeToolbox = NoStdToolbox> {
   payload:  ArcShared<dyn Any + Send + Sync + 'static>,
   reply_to: Option<ActorRef<TB>>,
@@ -46,6 +45,12 @@ impl<TB: RuntimeToolbox> AnyMessage<TB> {
   #[must_use]
   pub fn payload(&self) -> &(dyn Any + Send + Sync + 'static) {
     &*self.payload
+  }
+}
+
+impl<TB: RuntimeToolbox> Clone for AnyMessage<TB> {
+  fn clone(&self) -> Self {
+    Self { payload: self.payload.clone(), reply_to: self.reply_to.clone() }
   }
 }
 

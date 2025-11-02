@@ -108,8 +108,8 @@ description: "セルアクター no_std ランタイム初期版の実装タス�
 **目標**: EventStream / Deadletter / Logger によるオブザーバビリティとホスト制御面を提供する。
 **独立テスト**: `modules/actor-core/tests/event_stream.rs` で LogEvent 配信・Deadletter 記録・容量警告が検証できること。
 
-- [ ] T030 [US3] バッファ付き配信を行う `EventStream` の publish/subscribe バスを実装する (modules/actor-core/src/event_stream.rs)
-- [ ]  T031 [US3] EventStream へ転送する `Deadletter` ストアを実装する (modules/actor-core/src/deadletter.rs)
+- [x] T030 [US3] バッファ付き配信を行う `EventStream` の publish/subscribe バスを実装する (modules/actor-core/src/event_stream.rs)
+- [x]  T031 [US3] EventStream へ転送する `Deadletter` ストアを実装する (modules/actor-core/src/deadletter.rs)
 - [ ]  T032 [US3] LogEvent を UART/RTT へルーティングする `LoggerSubscriber` を実装する (modules/actor-core/src/logger_subscriber.rs)
 - [ ] T033 [US3] ActorSystem / Supervisor 経路からライフサイクル・ログイベントを発火させる (modules/actor-core/src/system.rs)
 - [ ] T034 [US3] Mailbox に容量警告とスループットメトリクスを組み込む (modules/actor-core/src/mailbox.rs)
