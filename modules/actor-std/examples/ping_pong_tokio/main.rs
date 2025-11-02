@@ -1,5 +1,3 @@
-#![cfg(feature = "std")]
-
 mod executor;
 
 use std::{string::String, time::Duration};

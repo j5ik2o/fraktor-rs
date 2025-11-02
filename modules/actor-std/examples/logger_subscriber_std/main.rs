@@ -1,5 +1,3 @@
-#![cfg(feature = "std")]
-
 use std::{fmt::Write as _, thread, time::Duration};
 
 use cellactor_actor_core_rs::{

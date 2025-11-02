@@ -1,5 +1,3 @@
-#![cfg(feature = "std")]
-
 use core::num::NonZeroUsize;
 use std::{thread, time::Duration};
 
