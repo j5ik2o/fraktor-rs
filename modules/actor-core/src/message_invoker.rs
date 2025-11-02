@@ -1,12 +1,12 @@
-//! Abstraction for delivering messages drained from the mailbox to actors.
+//! Message invocation primitives and middleware pipeline.
 
-use crate::{RuntimeToolbox, SystemMessage, actor_error::ActorError, any_message::AnyMessage};
+mod invoker_trait;
+mod middleware;
+mod pipeline;
 
-/// Dispatches user and system messages to actor handlers.
-pub trait MessageInvoker<TB: RuntimeToolbox + 'static>: Send + Sync {
-  /// Processes user messages.
-  fn invoke_user_message(&self, message: AnyMessage<TB>) -> Result<(), ActorError>;
+pub use invoker_trait::MessageInvoker;
+pub use middleware::MessageInvokerMiddleware;
+pub use pipeline::MessageInvokerPipeline;
 
-  /// Processes system messages.
-  fn invoke_system_message(&self, message: SystemMessage) -> Result<(), ActorError>;
-}
+#[cfg(test)]
+mod tests;

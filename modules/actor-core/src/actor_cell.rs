@@ -14,7 +14,7 @@ use crate::{
   any_message::AnyMessage,
   dispatcher::{Dispatcher, DispatcherSender},
   mailbox::{Mailbox, MailboxInstrumentation},
-  message_invoker::MessageInvoker,
+  message_invoker::{MessageInvoker, MessageInvokerPipeline},
   pid::Pid,
   props::{ActorFactory, Props},
   restart_statistics::RestartStatistics,
@@ -32,6 +32,7 @@ pub struct ActorCell<TB: RuntimeToolbox + 'static> {
   system:      ArcShared<SystemState<TB>>,
   factory:     ArcShared<dyn ActorFactory<TB>>,
   actor:       ToolboxMutex<Box<dyn Actor<TB> + Send + Sync>, TB>,
+  pipeline:    MessageInvokerPipeline<TB>,
   mailbox:     ArcShared<Mailbox<TB>>,
   dispatcher:  Dispatcher<TB>,
   sender:      ArcShared<DispatcherSender<TB>>,
@@ -81,6 +82,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCell<TB> {
       system,
       factory,
       actor,
+      pipeline: MessageInvokerPipeline::new(),
       mailbox,
       dispatcher,
       sender,
@@ -238,12 +240,9 @@ impl<TB: RuntimeToolbox + 'static> MessageInvoker<TB> for ActorCell<TB> {
   fn invoke_user_message(&self, message: AnyMessage<TB>) -> Result<(), ActorError> {
     let system = ActorSystem::from_state(self.system.clone());
     let mut ctx = ActorContext::new(&system, self.pid);
-    ctx.set_reply_to(message.reply_to().cloned());
-
     let mut actor = self.actor.lock();
-    let result = actor.receive(&mut ctx, message.as_view());
+    let result = self.pipeline.invoke_user(&mut *actor, &mut ctx, message);
     drop(actor);
-    ctx.clear_reply_to();
     if let Err(ref error) = result {
       system.state().notify_failure(self.pid, error);
     }

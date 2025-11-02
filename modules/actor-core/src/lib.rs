@@ -138,7 +138,7 @@ pub use mailbox_capacity::MailboxCapacity;
 pub use mailbox_metrics_event::MailboxMetricsEvent;
 pub use mailbox_overflow_strategy::MailboxOverflowStrategy;
 pub use mailbox_policy::MailboxPolicy;
-pub use message_invoker::MessageInvoker;
+pub use message_invoker::{MessageInvoker, MessageInvokerMiddleware, MessageInvokerPipeline};
 pub use name_registry::NameRegistry;
 pub use name_registry_error::NameRegistryError;
 pub use pid::Pid;
