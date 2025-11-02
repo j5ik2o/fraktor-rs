@@ -87,6 +87,14 @@
 - ロガー／タイマーなどの周辺機能は既存ユーティリティを再利用し、ActorSystem 側ではインターフェイスだけを提供する。EventStream を介した Logger 購読者で観測できることを前提とする。
 - ライフタイム重視の API 設計を維持するため、借用で表現できるデータに対して所有権移動や追加アロケーションを求めないことを前提とする。
 
+## アーキテクチャ指針
+
+- ランタイムは初期段階からツールボックス抽象を前提としたジェネリック設計を採用する。`ActorSystem`, `ActorCell`, `ActorRef`, `Mailbox`, `EventStream`, `Deadletter`, `ActorFuture` などの中核構造は `TB: RuntimeToolbox` を型パラメータとして受け取り、同期プリミティブは `ToolboxMutex<T, TB>` によって生成する。
+- `RuntimeToolbox` は `type MutexFamily: SyncMutexFamily` の関連型を持ち、`SyncMutexFamily::create` を通じて `SpinSyncMutex` や `StdSyncMutex` を生成する。既定の `NoStdToolbox` と `StdToolbox` に加え、利用者が独自実装を追加できるようドキュメントで拡張手順を示す。
+- 公開 API の互換性を維持するため、`actor-core` は `type ActorSystem = ActorSystemGeneric<NoStdToolbox>` のような型エイリアスと `create_default_mutex` ヘルパを提供し、従来の呼び出しシグネチャを変えずに内部実装のみジェネリック化する。
+- `actor-std` などホスト環境向けクレートは `StdToolbox`, `StdMutexFamily`, `StdActorSystem` などのエイリアスとビルダー拡張を公開し、`actor-core` の no_std 方針を維持しながら標準ライブラリバックエンドを選択できるようにする。
+- CI とサンプルコードでは `NoStdToolbox` / `StdToolbox` の双方でビルド・実行パスを検証し、異なるバックエンド間で API の一貫性を保証する。
+
 ## 要件（必須）
 
 ### 機能要件
@@ -124,6 +132,11 @@
 - **FR-033**: Mailbox の System キューはランタイム内部用の `SystemMessage`（固定スキーマ）を保持し、User キューと型で分離しなければならない。ユーザ定義メッセージが System キューへ到達しないよう型安全性を確保し、変換は ActorSystem 側で明示的に行うこと。
 - **FR-034**: Mailbox と Dispatcher は no_std 組込み環境向けの同期ランナーと、std/tokio などホスト環境向けの非同期ランナー双方へ適用できる抽象を提供しなければならない。Core レイヤーでは `async fn` を露出せず、ランナー層で `OfferFuture` / `PollFuture`（および `MailboxSignalHandle::wait`）を駆動するためのフックを公開すること。
 - **FR-035**: ホスト環境向けの動作検証を目的に、examples 配下で Tokio 依存を許容した `DispatcherConfig::from_executor(TokioExecutor)` のサンプル実装を提供しなければならない。Core クレートは Tokio を依存に含めず、Props から Dispatcher を差し替え可能にすることで連携する。TokioExecutor は `std` フィーチャ有効時のみビルドされ、Tokio ランタイム上で ActorSystem を駆動する Ping/Pong サンプルが成功し、終了待機には `when_terminated()` から得られる Future を利用することを確認する。EventStream publish/subscribe を確認する LoggerSubscriber サンプルを提供し、ログ購読 API が実証されていること。イベントバッファ長（既定値 256 件）や Deadletter 保持件数（既定値 512 件）の初期値を設計方針として明記する。
+- **FR-036**: ランタイムの同期プリミティブ生成は `SyncMutexFamily` 抽象を経由しなければならない。`SyncMutexFamily` は `type Mutex<T>` と `fn create<T>(value: T)`（`T: Send + 'static`）を提供し、内部で使用する全ての `SpinSyncMutex` / `StdSyncMutex` / カスタム実装はこのインターフェイスを実装する。直接 `SpinSyncMutex::new` や `StdSyncMutex::new` を呼び出すコードは仕様上禁止する。
+- **FR-037**: `RuntimeToolbox` は `type MutexFamily: SyncMutexFamily` を関連型として公開し、組み込み環境向けの `NoStdToolbox`（`SpinMutexFamily` を使用）と、ホスト環境向けの `StdToolbox`（`StdMutexFamily` を使用）を標準実装として提供しなければならない。利用者は独自の `RuntimeToolbox` を実装するだけでミューテックス実装を差し替えられる。
+- **FR-038**: `ActorSystem`, `ActorSystemState`, `ActorCell`, `ActorRef`, `ChildRef`, `Mailbox`, `EventStream`, `Deadletter`, `ActorFuture` などランタイム中核の構造体は `TB: RuntimeToolbox` を型パラメータとして受け取るジェネリック型として定義しなければならない。公開 API は `type ActorSystem = ActorSystemGeneric<NoStdToolbox>` のような型エイリアスを通じて既存シグネチャを維持する。
+- **FR-039**: `ActorSystemBuilder` や `Props` 等のビルダー API は `with_toolbox::<TB>()` もしくは同等のメソッドでツールボックスを指定できなければならず、指定が無い場合は `NoStdToolbox` を既定値とする。`actor-std` クレートは `StdToolbox`, `StdActorSystem`, `StdActorSystemBuilder` などのエイリアスを再エクスポートし、利用者が追加の import だけで標準ライブラリ版を利用できるようにする。
+- **FR-040**: ドキュメントとサンプルはツールボックスの選択手順、カスタム `RuntimeToolbox` 実装の手順、`NoStd` と `Std` の違いを明示しなければならない。CI では少なくとも `NoStdToolbox` と `StdToolbox` の両方で単体テストを実行し、生成物がコンパイル可能であることを保証する。
   - **補足**: `DispatcherConfig::tokio_current()` や `Props::with_tokio_dispatcher()` などのホスト依存ヘルパは `actor-std` クレートで提供し（T042 完了）、`actor-core` の no_std ポリシーを崩さない。今後は同クレートに `ActorSystemConfig` ビルダー（T041 設計中）を追加し、EventStream/Deadletter の容量や警告閾値を操作できるようにする。
 - **FR-028**: Dispatcher/MessageInvoker は 1 アクター当たりのスループット制限（例: 300 メッセージ/フェンス）を設定でき、設定値に到達した場合は制御用 System メッセージを優先しつつ残りメッセージを次ターンへ繰り越す仕組みを提供する。スループット値は Props または Mailbox 設定で構成可能とし、デフォルトは protoactor-go 相当の 300 を採用する。
 - **FR-029**: ランタイムは `Context::sender()` を提供せず、応答が必要なメッセージは `reply_to: ActorRef`（もしくは同等の手段）を含むペイロード設計に従う。ActorContext は送信元を暗黙に保持しないこと。起点となるアクターは `ctx.self_ref()` を明示的に渡し、返信側は受け取った `reply_to.tell(...)` を利用する。
