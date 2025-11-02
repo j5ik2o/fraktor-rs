@@ -3,7 +3,7 @@
 extern crate alloc;
 
 use alloc::vec::Vec;
-use std::{thread, time::Duration};
+use core::hint::spin_loop;
 
 use cellactor_actor_core_rs::{
   Actor, ActorContext, ActorError, ActorSystem, AnyMessage, AnyMessageView, EventStreamEvent, EventStreamSubscriber,
@@ -83,8 +83,11 @@ fn lifecycle_and_log_events_are_published() {
 }
 
 fn wait_until(condition: impl Fn() -> bool) {
-  let deadline = std::time::Instant::now() + Duration::from_secs(1);
-  while !condition() && std::time::Instant::now() < deadline {
-    thread::yield_now();
+  for _ in 0..10_000 {
+    if condition() {
+      return;
+    }
+    spin_loop();
   }
+  assert!(condition());
 }

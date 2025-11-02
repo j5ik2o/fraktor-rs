@@ -6,14 +6,14 @@ use core::time::Duration;
 use cellactor_utils_core_rs::sync::{ArcShared, SyncMutexFamily, sync_mutex_like::SyncMutexLike};
 
 use crate::{
-  EventStreamEvent, LifecycleEvent, LifecycleStage, RuntimeToolbox, ToolboxMutex,
+  EventStreamEvent, LifecycleEvent, LifecycleStage, MailboxCapacity, RuntimeToolbox, ToolboxMutex,
   actor::Actor,
   actor_context::ActorContext,
   actor_error::ActorError,
   actor_ref::ActorRef,
   any_message::AnyMessage,
   dispatcher::{Dispatcher, DispatcherSender},
-  mailbox::Mailbox,
+  mailbox::{Mailbox, MailboxInstrumentation},
   message_invoker::MessageInvoker,
   pid::Pid,
   props::{ActorFactory, Props},
@@ -54,6 +54,18 @@ impl<TB: RuntimeToolbox + 'static> ActorCell<TB> {
     props: &Props<TB>,
   ) -> ArcShared<Self> {
     let mailbox = ArcShared::new(Mailbox::new(props.mailbox_policy()));
+    {
+      let mailbox_config = props.mailbox();
+      let policy = mailbox_config.policy();
+      let capacity = match policy.capacity() {
+        | MailboxCapacity::Bounded { capacity } => Some(capacity.get()),
+        | MailboxCapacity::Unbounded => None,
+      };
+      let throughput = policy.throughput_limit().map(|limit| limit.get());
+      let warn_threshold = mailbox_config.warn_threshold().map(|threshold| threshold.get());
+      let instrumentation = MailboxInstrumentation::new(system.clone(), pid, capacity, throughput, warn_threshold);
+      mailbox.set_instrumentation(instrumentation);
+    }
     let dispatcher = props.dispatcher().build_dispatcher(mailbox.clone());
     let sender = dispatcher.into_sender();
     let factory = props.factory().clone();

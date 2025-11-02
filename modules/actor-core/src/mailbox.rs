@@ -27,6 +27,9 @@ pub use mailbox_offer_future::MailboxOfferFuture;
 #[allow(unused_imports)]
 pub use mailbox_poll_future::MailboxPollFuture;
 
+#[cfg(test)]
+mod tests;
+
 type QueueMutex<T, TB> = crate::ToolboxMutex<VecRingBackend<T>, TB>;
 
 fn map_user_queue_error<TB: RuntimeToolbox>(error: QueueError<AnyMessage<TB>>) -> SendError<TB> {

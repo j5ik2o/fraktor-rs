@@ -26,7 +26,7 @@ pub struct Mailbox<TB: RuntimeToolbox + 'static> {
   system:          QueueHandles<SystemMessage, TB>,
   user:            QueueHandles<AnyMessage<TB>, TB>,
   suspended:       AtomicBool,
-  instrumentation: crate::ToolboxMutex<Option<MailboxInstrumentation>, TB>,
+  instrumentation: crate::ToolboxMutex<Option<MailboxInstrumentation<TB>>, TB>,
 }
 
 unsafe impl<TB: RuntimeToolbox + 'static> Send for Mailbox<TB> {}
@@ -51,7 +51,7 @@ where
   }
 
   /// Installs instrumentation hooks for metrics emission.
-  pub fn set_instrumentation(&self, instrumentation: MailboxInstrumentation) {
+  pub fn set_instrumentation(&self, instrumentation: MailboxInstrumentation<TB>) {
     *self.instrumentation.lock() = Some(instrumentation);
   }
 
