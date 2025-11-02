@@ -106,7 +106,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCell<TB> {
   /// Produces an actor reference targeting this cell.
   #[must_use]
   pub fn actor_ref(&self) -> ActorRef<TB> {
-    ActorRef::new(self.pid, self.sender.clone())
+    ActorRef::with_system(self.pid, self.sender.clone(), self.system.clone())
   }
 
   /// Runs the actor's `pre_start` hook.

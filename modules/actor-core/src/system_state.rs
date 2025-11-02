@@ -20,6 +20,7 @@ pub struct SystemState<TB: RuntimeToolbox + 'static> {
   cells:         ToolboxMutex<HashMap<Pid, ArcShared<ActorCell<TB>>>, TB>,
   registries:    ToolboxMutex<HashMap<Option<Pid>, NameRegistry>, TB>,
   user_guardian: ToolboxMutex<Option<ArcShared<ActorCell<TB>>>, TB>,
+  ask_futures:   ToolboxMutex<Vec<ArcShared<ActorFuture<AnyMessage<TB>, TB>>>, TB>,
   termination:   ArcShared<ActorFuture<(), TB>>,
   terminated:    AtomicBool,
 }
@@ -34,6 +35,7 @@ impl<TB: RuntimeToolbox + 'static> SystemState<TB> {
       cells:         <TB::MutexFamily as SyncMutexFamily>::create(HashMap::new()),
       registries:    <TB::MutexFamily as SyncMutexFamily>::create(HashMap::new()),
       user_guardian: <TB::MutexFamily as SyncMutexFamily>::create(None),
+      ask_futures:   <TB::MutexFamily as SyncMutexFamily>::create(Vec::new()),
       termination:   ArcShared::new(ActorFuture::<(), TB>::new()),
       terminated:    AtomicBool::new(false),
     }
@@ -118,6 +120,11 @@ impl<TB: RuntimeToolbox + 'static> SystemState<TB> {
     self.user_guardian.lock().as_ref().map(|cell| cell.pid())
   }
 
+  /// Registers an ask future so the actor system can track its completion.
+  pub fn register_ask_future(&self, future: ArcShared<ActorFuture<AnyMessage<TB>, TB>>) {
+    self.ask_futures.lock().push(future);
+  }
+
   /// Registers a child under the specified parent pid.
   pub fn register_child(&self, parent: Pid, child: Pid) {
     if let Some(cell) = self.cell(&parent) {
@@ -149,6 +156,9 @@ impl<TB: RuntimeToolbox + 'static> SystemState<TB> {
     }
   }
 
+  /// Records a send error for diagnostics.
+  pub fn record_send_error(&self, _recipient: Option<Pid>, _error: &SendError<TB>) {}
+
   /// Marks the system as terminated and completes the termination future.
   pub fn mark_terminated(&self) {
     if self.terminated.swap(true, Ordering::AcqRel) {
@@ -161,6 +171,23 @@ impl<TB: RuntimeToolbox + 'static> SystemState<TB> {
   #[must_use]
   pub fn termination_future(&self) -> ArcShared<ActorFuture<(), TB>> {
     self.termination.clone()
+  }
+
+  /// Drains ask futures that have completed since the previous inspection.
+  pub fn drain_ready_ask_futures(&self) -> Vec<ArcShared<ActorFuture<AnyMessage<TB>, TB>>> {
+    let mut registry = self.ask_futures.lock();
+    let mut ready = Vec::new();
+    let mut index = 0_usize;
+
+    while index < registry.len() {
+      if registry[index].is_ready() {
+        ready.push(registry.swap_remove(index));
+      } else {
+        index += 1;
+      }
+    }
+
+    ready
   }
 
   /// Indicates whether the actor system has terminated.

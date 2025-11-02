@@ -8,19 +8,21 @@ use core::{
 use cellactor_utils_core_rs::sync::ArcShared;
 
 use crate::{
-  NoStdToolbox, RuntimeToolbox,
   actor_future::ActorFuture,
   actor_ref::{actor_ref_sender::ActorRefSender, ask_reply_sender::AskReplySender, null_sender::NullSender},
   any_message::AnyMessage,
   ask_response::AskResponse,
   pid::Pid,
   send_error::SendError,
+  system_state::SystemState,
+  NoStdToolbox, RuntimeToolbox,
 };
 
 /// Handle used to communicate with an actor instance.
 pub struct ActorRef<TB: RuntimeToolbox = NoStdToolbox> {
   pid:    Pid,
   sender: ArcShared<dyn ActorRefSender<TB>>,
+  system: Option<ArcShared<SystemState<TB>>>,
 }
 
 impl<TB: RuntimeToolbox> ActorRef<TB> {
@@ -29,14 +31,20 @@ impl<TB: RuntimeToolbox> ActorRef<TB> {
   pub fn new<T>(pid: Pid, sender: ArcShared<T>) -> Self
   where
     T: ActorRefSender<TB> + 'static, {
-    Self::from_parts(pid, sender)
+    Self::from_parts(pid, sender, None)
   }
 
-  fn from_parts<T>(pid: Pid, sender: ArcShared<T>) -> Self
+  pub(crate) fn with_system<T>(pid: Pid, sender: ArcShared<T>, system: ArcShared<SystemState<TB>>) -> Self
+  where
+    T: ActorRefSender<TB> + 'static, {
+    Self::from_parts(pid, sender, Some(system))
+  }
+
+  fn from_parts<T>(pid: Pid, sender: ArcShared<T>, system: Option<ArcShared<SystemState<TB>>>) -> Self
   where
     T: ActorRefSender<TB> + 'static, {
     let dyn_sender: ArcShared<dyn ActorRefSender<TB>> = sender;
-    Self { pid, sender: dyn_sender }
+    Self { pid, sender: dyn_sender, system }
   }
 
   /// Returns the unique process identifier.
@@ -47,7 +55,15 @@ impl<TB: RuntimeToolbox> ActorRef<TB> {
 
   /// Sends a message to the referenced actor.
   pub fn tell(&self, message: AnyMessage<TB>) -> Result<(), SendError<TB>> {
-    self.sender.send(message)
+    match self.sender.send(message) {
+      | Ok(()) => Ok(()),
+      | Err(error) => {
+        if let Some(system) = &self.system {
+          system.record_send_error(Some(self.pid), &error);
+        }
+        Err(error)
+      },
+    }
   }
 
   /// Sends a request and obtains a future that resolves with the reply.
@@ -59,6 +75,9 @@ impl<TB: RuntimeToolbox> ActorRef<TB> {
     let reply_ref = ActorRef::new(self.pid, reply_sender);
     let envelope = message.with_reply_to(reply_ref.clone());
     self.tell(envelope)?;
+    if let Some(system) = &self.system {
+      system.register_ask_future(future.clone());
+    }
     Ok(AskResponse::new(reply_ref, future))
   }
 
@@ -67,13 +86,13 @@ impl<TB: RuntimeToolbox> ActorRef<TB> {
   pub fn null() -> Self {
     let sender = ArcShared::new(NullSender::default());
     let dyn_sender: ArcShared<dyn ActorRefSender<TB>> = sender;
-    Self { pid: Pid::new(0, 0), sender: dyn_sender }
+    Self { pid: Pid::new(0, 0), sender: dyn_sender, system: None }
   }
 }
 
 impl<TB: RuntimeToolbox> Clone for ActorRef<TB> {
   fn clone(&self) -> Self {
-    Self { pid: self.pid, sender: self.sender.clone() }
+    Self { pid: self.pid, sender: self.sender.clone(), system: self.system.clone() }
   }
 }
 

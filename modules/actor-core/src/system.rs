@@ -5,9 +5,9 @@ use alloc::vec::Vec;
 use cellactor_utils_core_rs::sync::ArcShared;
 
 use crate::{
-  actor_cell::ActorCell, actor_future::ActorFuture, actor_ref::ActorRef, child_ref::ChildRef, pid::Pid, props::Props,
-  send_error::SendError, spawn_error::SpawnError, system_message::SystemMessage, system_state::SystemState,
-  RuntimeToolbox,
+  actor_cell::ActorCell, actor_future::ActorFuture, actor_ref::ActorRef, any_message::AnyMessage, child_ref::ChildRef,
+  pid::Pid, props::Props, send_error::SendError, spawn_error::SpawnError, system_message::SystemMessage,
+  system_state::SystemState, RuntimeToolbox,
 };
 
 const ACTOR_INIT_FAILED: &str = "actor lifecycle hook failed";
@@ -111,6 +111,12 @@ impl<TB: RuntimeToolbox + 'static> ActorSystem<TB> {
   /// Returns an error if the stop message cannot be enqueued.
   pub fn stop_actor(&self, pid: Pid) -> Result<(), SendError<TB>> {
     self.state.send_system_message(pid, SystemMessage::Stop)
+  }
+
+  /// Drains ask futures that have been fulfilled since the last check.
+  #[must_use]
+  pub fn drain_ready_ask_futures(&self) -> Vec<ArcShared<ActorFuture<AnyMessage<TB>, TB>>> {
+    self.state.drain_ready_ask_futures()
   }
 
   /// Sends a stop signal to the user guardian and initiates system shutdown.
