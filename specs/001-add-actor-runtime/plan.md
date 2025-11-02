@@ -8,7 +8,11 @@
 ## 概要
 
 - `AnyMessage` による未型付けメッセージ配送を実装し、`ActorRef`/`ActorSystem` での Ping-Pong サンプルを no_std + alloc 環境で動作させる。
-- ランタイム初期版から `SyncMutexFamily` / `RuntimeToolbox` を導入し、`ActorSystemGeneric<TB>` や `Mailbox<TB>` など中核構造をツールボックスジェネリックとして設計する。公開 API は `type ActorSystem = ActorSystemGeneric<NoStdToolbox>` などの型エイリアスで互換性を維持しつつ、`StdToolbox` など他バックエンドを `actor-std` が再エクスポートできるようにする。
+- ランタイム初期版から `SyncMutexFamily` / `RuntimeToolbox` を導入し、`ActorSystemGeneric<TB>` / `SystemState<TB>` / `ActorCell<TB>` / `Mailbox<TB>` / `Dispatcher<TB>` / `ActorRef<TB>` など中核構造をツールボックスジェネリックとして設計する。公開 API は `type ActorSystem = ActorSystemGeneric<NoStdToolbox>` などの型エイリアスで互換性を維持しつつ、`StdToolbox` など他バックエンドを `actor-std` が再エクスポートできるようにする。
+- SystemState は PID 採番・ActorCell レジストリ・名前レジストリ・AskFuture レジストリ・終了待機 Future と EventStream/Deadletter を管理し、`mark_terminated()` / `when_terminated()` を介した終了待機を提供する（FR-041）。
+- ActorCell は Mailbox / Dispatcher / MessageInvokerPipeline / ActorFactory を束ね、`pre_start` → `receive` → `post_stop` のライフサイクルと子アクター監視・RestartStatistics 更新・Supervisor 指示の反映を行う（FR-042）。
+- ActorSystem は Props から Mailbox/Dispatcher を構築し、ユーザガーディアン経由で `spawn_child` を公開、`terminate` / `user_guardian_ref` / `when_terminated` などの API 契約を SystemState と連携させる（FR-043）。
+- Props は MailboxPolicy / SupervisorStrategy / ActorFactory / DispatcherConfig を保持し、ビルダー API で差し替え可能にする。MessageInvoker は before/after ミドルウェアチェーンを持ち `reply_to` の復元や Hook 処理を提供する（FR-045, FR-046）。
 - Supervisor 戦略（OneForOne / AllForOne）と Deadletter + EventStream を備え、Recoverable/Fatal エラーと panic 非介入ポリシーを明文化する。  
 - ライフタイム重視・アロケーション最小化を貫き、ヒープ確保発生箇所を計測・文書化。  
 - 64KB RAM 制約下で 1,000 msg/s を処理する性能検証、panic 非介入時の運用フローを quickstart で案内。  

@@ -137,6 +137,20 @@
 - **FR-038**: `ActorSystem`, `ActorSystemState`, `ActorCell`, `ActorRef`, `ChildRef`, `Mailbox`, `EventStream`, `Deadletter`, `ActorFuture` などランタイム中核の構造体は `TB: RuntimeToolbox` を型パラメータとして受け取るジェネリック型として定義しなければならない。公開 API は `type ActorSystem = ActorSystemGeneric<NoStdToolbox>` のような型エイリアスを通じて既存シグネチャを維持する。
 - **FR-039**: `ActorSystemBuilder` や `Props` 等のビルダー API は `with_toolbox::<TB>()` もしくは同等のメソッドでツールボックスを指定できなければならず、指定が無い場合は `NoStdToolbox` を既定値とする。`actor-std` クレートは `StdToolbox`, `StdActorSystem`, `StdActorSystemBuilder` などのエイリアスを再エクスポートし、利用者が追加の import だけで標準ライブラリ版を利用できるようにする。
 - **FR-040**: ドキュメントとサンプルはツールボックスの選択手順、カスタム `RuntimeToolbox` 実装の手順、`NoStd` と `Std` の違いを明示しなければならない。CI では少なくとも `NoStdToolbox` と `StdToolbox` の両方で単体テストを実行し、生成物がコンパイル可能であることを保証する。
+- **FR-041**: SystemState は PID 採番・ActorCell レジストリ・名前レジストリ・AskFuture レジストリ・EventStream・Deadletter・終了待ち Future を保持し、Atomic と `ToolboxMutex` を通してこれらのリソースを `no_std` でも安全に管理しなければならない。`mark_terminated()` により終了 Future を完了させ、`when_terminated()` が待機できることを仕様で定義する。
+- **FR-042**: ActorCell は Mailbox/Dispatcher/MessageInvokerPipeline とアクター本体を束ね、`pre_start` → `receive` → `post_stop` の呼び出しと子アクター監視・名前登録の責務を持つ。再起動時には格納した `ActorFactory` でアクターを再生成し、子統計 (`RestartStatistics`) を Supervisor 戦略へ提供しなければならない。
+- **FR-043**: ActorSystem は `Props` から Mailbox と Dispatcher を構築し、ユーザガーディアン経由でのみ子アクターを生成するブートシーケンスを提供する。`spawn_child`・`terminate`・`user_guardian_ref`・`when_terminated` などの API 契約と、それらが SystemState とどのように連携するかを明記する。
+- **FR-044**: RuntimeToolbox は Mailbox・Dispatcher・ActorRef・ActorCell・SystemState・ActorSystem など中核コンポーネントで必須のジェネリック引数とし、`ToolboxMutex<T, TB>` による同期抽象を利用して `ArcShared` や WaitQueue と安全に連携できるよう仕様化する。どの型に TB ジェネリクスを持たせるかの指針を文書化する。
+- **FR-045**: Props は MailboxPolicy・SupervisorStrategy・ActorFactory・DispatcherConfig などアクター生成に必要なパラメータを保持し、`with_mailbox_policy` などのビルダー API で差し替え可能にする。MVP では fallback として `MailboxPolicy::unbounded` と `InlineExecutor` を既定とし、Docs/サンプルで既定値の動作を説明する。
+- **FR-046**: MessageInvoker は before/after ミドルウェアチェーンと `reply_to` 復元処理を行い、`ActorContext` の `set_reply_to` / `clear_reply_to` と連携する設計を明文化する。MVP では空のチェーンを既定とするが、Middleware の拡張ポイントと責務（前処理・後処理）を仕様に含める。
+
+#### ランタイムコンポーネントの責務整理
+
+- **SystemState**: PID 採番、ActorCell/NameRegistry/AskFuture/Deadletter/EventStream/終了 Future の管理を担い、Atomic + `ToolboxMutex<T, TB>` による no_std 対応の同期手法を採用する。`mark_terminated()` と `when_terminated()` を中心とした終了待機契約を仕様に含める。
+- **ActorCell**: Mailbox / Dispatcher / MessageInvokerPipeline / ActorFactory を束ね、`pre_start` → `receive` → `post_stop` のライフサイクル実行、子アクター監視、RestartStatistics 更新、Supervisor 指示に従う停止／再起動を担当する。
+- **ActorSystem**: Props から Mailbox／Dispatcher を組み立て、ユーザガーディアン経由のみで子アクターを生成する。`spawn_child`・`terminate`・`user_guardian_ref`・`when_terminated` の API 契約を SystemState と連動した形で定める。
+- **RuntimeToolbox**: Mailbox・Dispatcher・ActorRef・ActorCell・SystemState・ActorSystem が TB ジェネリックを受け取り、`ToolboxMutex` や WaitQueue と安全に連携できるよう統一する。ジェネリクスを適用する型・適用しない型の指針をドキュメント化する。
+- **Props / MessageInvoker**: Props は MailboxPolicy・SupervisorStrategy・ActorFactory・DispatcherConfig を保持し、ビルダー API で差し替え可能にする。MessageInvoker は before/after ミドルウェアチェーンを定義し、`reply_to` の復元や追加 Hook を実装できる拡張ポイントとして扱う（MVP では空チェーンが既定）。
   - **補足**: `DispatcherConfig::tokio_current()` や `Props::with_tokio_dispatcher()` などのホスト依存ヘルパは `actor-std` クレートで提供し（T042 完了）、`actor-core` の no_std ポリシーを崩さない。今後は同クレートに `ActorSystemConfig` ビルダー（T041 設計中）を追加し、EventStream/Deadletter の容量や警告閾値を操作できるようにする。
 - **FR-028**: Dispatcher/MessageInvoker は 1 アクター当たりのスループット制限（例: 300 メッセージ/フェンス）を設定でき、設定値に到達した場合は制御用 System メッセージを優先しつつ残りメッセージを次ターンへ繰り越す仕組みを提供する。スループット値は Props または Mailbox 設定で構成可能とし、デフォルトは protoactor-go 相当の 300 を採用する。
 - **FR-029**: ランタイムは `Context::sender()` を提供せず、応答が必要なメッセージは `reply_to: ActorRef`（もしくは同等の手段）を含むペイロード設計に従う。ActorContext は送信元を暗黙に保持しないこと。起点となるアクターは `ctx.self_ref()` を明示的に渡し、返信側は受け取った `reply_to.tell(...)` を利用する。
