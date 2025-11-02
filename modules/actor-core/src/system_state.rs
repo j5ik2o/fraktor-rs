@@ -10,7 +10,7 @@ use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 use crate::{
   actor_cell::ActorCell, actor_error::ActorError, actor_future::ActorFuture, name_registry::NameRegistry,
   name_registry_error::NameRegistryError, pid::Pid, send_error::SendError, spawn_error::SpawnError,
-  system_message::SystemMessage, AnyMessage, RuntimeToolbox, ToolboxMutex,
+  supervisor_strategy::SupervisorDirective, system_message::SystemMessage, AnyMessage, RuntimeToolbox, ToolboxMutex,
 };
 
 /// Captures global actor system state.
@@ -204,7 +204,62 @@ impl<TB: RuntimeToolbox + 'static> SystemState<TB> {
   }
 
   /// Records a failure for future diagnostics.
-  pub fn notify_failure(&self, _pid: Pid, _error: &ActorError) {}
+  pub fn notify_failure(&self, pid: Pid, error: &ActorError) {
+    let parent = self.parent_of(&pid);
+    self.handle_failure(pid, parent, error);
+  }
+
+  fn handle_failure(&self, pid: Pid, parent: Option<Pid>, error: &ActorError) {
+    let Some(parent_pid) = parent else {
+      self.stop_actor(pid);
+      return;
+    };
+
+    let Some(parent_cell) = self.cell(&parent_pid) else {
+      self.stop_actor(pid);
+      return;
+    };
+
+    let parent_cell_ref = &*parent_cell;
+    let parent_parent = parent_cell_ref.parent();
+    let now = self.monotonic_now();
+    let (directive, affected) = parent_cell_ref.handle_child_failure(pid, error, now);
+
+    match directive {
+      | SupervisorDirective::Restart => {
+        for target in affected {
+          let _ = self.restart_actor(target);
+        }
+      },
+      | SupervisorDirective::Stop => {
+        for target in affected {
+          self.stop_actor(target);
+        }
+      },
+      | SupervisorDirective::Escalate => {
+        for target in affected {
+          self.stop_actor(target);
+        }
+        self.handle_failure(parent_pid, parent_parent, error);
+      },
+    }
+  }
+
+  fn restart_actor(&self, pid: Pid) -> Result<(), ActorError> {
+    if let Some(cell) = self.cell(&pid) {
+      cell.restart()
+    } else {
+      Ok(())
+    }
+  }
+
+  fn stop_actor(&self, pid: Pid) {
+    let _ = self.send_system_message(pid, SystemMessage::Stop);
+  }
+
+  fn parent_of(&self, pid: &Pid) -> Option<Pid> {
+    self.cell(pid).and_then(|cell| cell.parent())
+  }
 }
 
 impl<TB: RuntimeToolbox + 'static> Default for SystemState<TB> {

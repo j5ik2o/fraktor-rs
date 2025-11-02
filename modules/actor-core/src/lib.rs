@@ -124,7 +124,7 @@ pub use receive_state::ReceiveState;
 pub use restart_statistics::RestartStatistics;
 pub use send_error::SendError;
 pub use spawn_error::SpawnError;
-pub use supervisor_strategy::SupervisorStrategy;
+pub use supervisor_strategy::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind};
 pub use system::ActorSystem as ActorSystemGeneric;
 pub use system_message::SystemMessage;
 pub use system_state::SystemState;
