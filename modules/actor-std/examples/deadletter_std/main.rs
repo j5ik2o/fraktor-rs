@@ -5,9 +5,7 @@ use cellactor_actor_core_rs::{
   Actor, ActorError, EventStreamEvent, EventStreamSubscriber, LogEvent, LogLevel, LoggerSubscriber, LoggerWriter,
   MailboxConfig, MailboxOverflowStrategy, MailboxPolicy,
 };
-use cellactor_actor_std_rs::{
-  ActorContext, ActorRef, ActorSystem, AnyMessage, AnyMessageView, ChildRef, Props, StdToolbox,
-};
+use cellactor_actor_std_rs::{ActorContext, ActorRef, ActorSystem, AnyMessage, AnyMessageView, ChildRef, Props, StdToolbox};
 use cellactor_utils_core_rs::sync::ArcShared;
 
 struct Start;
@@ -39,7 +37,11 @@ impl EventStreamSubscriber<StdToolbox> for DeadletterPrinter {
 struct GuardianActor;
 
 impl Actor<StdToolbox> for GuardianActor {
-  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+  fn receive(
+    &mut self,
+    ctx: &mut ActorContext<'_>,
+    message: AnyMessageView<'_>,
+  ) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
       let mailbox_policy =
         MailboxPolicy::bounded(NonZeroUsize::new(1).expect("non-zero"), MailboxOverflowStrategy::DropNewest, None);
@@ -61,7 +63,11 @@ impl Actor<StdToolbox> for GuardianActor {
 struct EchoActor;
 
 impl Actor<StdToolbox> for EchoActor {
-  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+  fn receive(
+    &mut self,
+    ctx: &mut ActorContext<'_>,
+    message: AnyMessageView<'_>,
+  ) -> Result<(), ActorError> {
     if message.downcast_ref::<LogDeadletters>().is_some() {
       let entries = ctx.system().deadletters();
       println!("[DEADLETTER SNAPSHOT] {} entries", entries.len());
