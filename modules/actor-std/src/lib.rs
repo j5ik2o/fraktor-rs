@@ -4,3 +4,9 @@
 #![deny(clippy::missing_errors_doc, clippy::missing_panics_doc)]
 
 //! Standard library helpers for Cellactor runtime integrations.
+
+pub use cellactor_actor_core_rs::{ActorSystemGeneric, Props};
+pub use cellactor_utils_core_rs::sync::{StdMutex, StdMutexFamily, StdToolbox};
+
+/// 型エイリアス: std 環境向けツールボックスで動作する ActorSystem。
+pub type StdActorSystem = ActorSystemGeneric<StdToolbox>;

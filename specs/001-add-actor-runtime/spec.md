@@ -91,8 +91,8 @@
 
 - ランタイムは初期段階からツールボックス抽象を前提としたジェネリック設計を採用する。`ActorSystem`, `ActorCell`, `ActorRef`, `Mailbox`, `EventStream`, `Deadletter`, `ActorFuture` などの中核構造は `TB: RuntimeToolbox` を型パラメータとして受け取り、同期プリミティブは `ToolboxMutex<T, TB>` によって生成する。
 - `RuntimeToolbox` は `type MutexFamily: SyncMutexFamily` の関連型を持ち、`SyncMutexFamily::create` を通じて `SpinSyncMutex` や `StdSyncMutex` を生成する。既定の `NoStdToolbox` と `StdToolbox` に加え、利用者が独自実装を追加できるようドキュメントで拡張手順を示す。
-- 公開 API の互換性を維持するため、`actor-core` は `type ActorSystem = ActorSystemGeneric<NoStdToolbox>` のような型エイリアスと `create_default_mutex` ヘルパを提供し、従来の呼び出しシグネチャを変えずに内部実装のみジェネリック化する。
-- `actor-std` などホスト環境向けクレートは `StdToolbox`, `StdMutexFamily`, `StdActorSystem` などのエイリアスとビルダー拡張を公開し、`actor-core` の no_std 方針を維持しながら標準ライブラリバックエンドを選択できるようにする。
+- 公開 API の互換性を維持するため、`actor-core` は `type ActorSystem = ActorSystemGeneric<NoStdToolbox>` のような型エイリアスを提供し、従来の呼び出しシグネチャを変えずに内部実装のみジェネリック化する。
+- `actor-std` などホスト環境向けクレートは `StdToolbox`, `StdMutexFamily`, `StdActorSystem` などのエイリアスを公開し、`Props<StdToolbox>` や `DispatcherConfig<StdToolbox>` を選択するだけで標準ライブラリバックエンドへ切り替えられるようにする。
 - CI とサンプルコードでは `NoStdToolbox` / `StdToolbox` の双方でビルド・実行パスを検証し、異なるバックエンド間で API の一貫性を保証する。
 
 ## 要件（必須）
@@ -135,7 +135,7 @@
 - **FR-036**: ランタイムの同期プリミティブ生成は `SyncMutexFamily` 抽象を経由しなければならない。`SyncMutexFamily` は `type Mutex<T>` と `fn create<T>(value: T)`（`T: Send + 'static`）を提供し、内部で使用する全ての `SpinSyncMutex` / `StdSyncMutex` / カスタム実装はこのインターフェイスを実装する。直接 `SpinSyncMutex::new` や `StdSyncMutex::new` を呼び出すコードは仕様上禁止する。
 - **FR-037**: `RuntimeToolbox` は `type MutexFamily: SyncMutexFamily` を関連型として公開し、組み込み環境向けの `NoStdToolbox`（`SpinMutexFamily` を使用）と、ホスト環境向けの `StdToolbox`（`StdMutexFamily` を使用）を標準実装として提供しなければならない。利用者は独自の `RuntimeToolbox` を実装するだけでミューテックス実装を差し替えられる。
 - **FR-038**: `ActorSystem`, `ActorSystemState`, `ActorCell`, `ActorRef`, `ChildRef`, `Mailbox`, `EventStream`, `Deadletter`, `ActorFuture` などランタイム中核の構造体は `TB: RuntimeToolbox` を型パラメータとして受け取るジェネリック型として定義しなければならない。公開 API は `type ActorSystem = ActorSystemGeneric<NoStdToolbox>` のような型エイリアスを通じて既存シグネチャを維持する。
-- **FR-039**: `ActorSystemBuilder` や `Props` 等のビルダー API は `with_toolbox::<TB>()` もしくは同等のメソッドでツールボックスを指定できなければならず、指定が無い場合は `NoStdToolbox` を既定値とする。`actor-std` クレートは `StdToolbox`, `StdActorSystem`, `StdActorSystemBuilder` などのエイリアスを再エクスポートし、利用者が追加の import だけで標準ライブラリ版を利用できるようにする。
+- **FR-039**: `Props` / `DispatcherConfig` などのビルダーはジェネリック型 `TB: RuntimeToolbox` で提供し、利用者が `Props::<StdToolbox>::from_fn` のように型パラメータを指定するだけでツールボックスを切り替えられるようにする。`actor-std` クレートは `StdToolbox`, `StdMutexFamily`, `StdActorSystem` といったエイリアスを再エクスポートし、追加の import で標準ライブラリ版を利用できるようにする。
 - **FR-040**: ドキュメントとサンプルはツールボックスの選択手順、カスタム `RuntimeToolbox` 実装の手順、`NoStd` と `Std` の違いを明示しなければならない。CI では少なくとも `NoStdToolbox` と `StdToolbox` の両方で単体テストを実行し、生成物がコンパイル可能であることを保証する。
 - **FR-041**: SystemState は PID 採番・ActorCell レジストリ・名前レジストリ・AskFuture レジストリ・EventStream・Deadletter・終了待ち Future を保持し、Atomic と `ToolboxMutex` を通してこれらのリソースを `no_std` でも安全に管理しなければならない。`mark_terminated()` により終了 Future を完了させ、`when_terminated()` が待機できることを仕様で定義する。
 - **FR-042**: ActorCell は Mailbox/Dispatcher/MessageInvokerPipeline とアクター本体を束ね、`pre_start` → `receive` → `post_stop` の呼び出しと子アクター監視・名前登録の責務を持つ。再起動時には格納した `ActorFactory` でアクターを再生成し、子統計 (`RestartStatistics`) を Supervisor 戦略へ提供しなければならない。

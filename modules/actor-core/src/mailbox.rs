@@ -1,6 +1,6 @@
 //! Priority mailbox managing system and user message queues.
 
-use cellactor_utils_core_rs::collections::queue::{QueueError, backend::VecRingBackend};
+use cellactor_utils_core_rs::collections::queue::{backend::VecRingBackend, QueueError};
 
 use crate::{AnyMessage, RuntimeToolbox, SendError, SystemMessage};
 

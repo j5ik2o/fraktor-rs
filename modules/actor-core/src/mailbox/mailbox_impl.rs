@@ -6,8 +6,8 @@ use core::{
 };
 
 use cellactor_utils_core_rs::{
-  collections::queue::{QueueError, backend::OfferOutcome},
-  sync::{SyncMutexFamily, sync_mutex_like::SyncMutexLike},
+  collections::queue::{backend::OfferOutcome, QueueError},
+  sync::{sync_mutex_like::SyncMutexLike, SyncMutexFamily},
 };
 
 use super::{
@@ -16,8 +16,8 @@ use super::{
   mailbox_queue_handles::QueueHandles, map_system_queue_error, map_user_queue_error,
 };
 use crate::{
-  MailboxCapacity, MailboxOverflowStrategy, MailboxPolicy, RuntimeToolbox, SendError, SystemMessage,
-  any_message::AnyMessage,
+  any_message::AnyMessage, MailboxCapacity, MailboxOverflowStrategy, MailboxPolicy, RuntimeToolbox, SendError,
+  SystemMessage,
 };
 
 /// Priority mailbox maintaining separate queues for system and user messages.

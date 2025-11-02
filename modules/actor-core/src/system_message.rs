@@ -1,6 +1,6 @@
 //! Internal system messages exchanged within the actor runtime.
 
-use crate::{RuntimeToolbox, any_message::AnyMessage};
+use crate::{any_message::AnyMessage, RuntimeToolbox};
 
 /// Lightweight enum describing system-level mailbox traffic.
 #[derive(Clone, Debug, PartialEq, Eq)]

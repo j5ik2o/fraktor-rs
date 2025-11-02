@@ -4,10 +4,10 @@ use cellactor_utils_core_rs::sync::ArcShared;
 
 use super::dispatcher_struct::Dispatcher;
 use crate::{
-  RuntimeToolbox, SendError,
   actor_ref::ActorRefSender,
   any_message::AnyMessage,
   mailbox::{EnqueueOutcome, Mailbox, MailboxOfferFuture},
+  RuntimeToolbox, SendError,
 };
 
 /// Sender that enqueues messages via actor handle.

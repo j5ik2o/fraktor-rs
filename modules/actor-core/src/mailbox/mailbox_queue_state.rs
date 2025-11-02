@@ -2,10 +2,10 @@
 
 use cellactor_utils_core_rs::{
   collections::{
-    queue::{QueueError, SyncQueueBackend, backend::OfferOutcome},
+    queue::{backend::OfferOutcome, QueueError, SyncQueueBackend},
     wait::{WaitHandle, WaitQueue},
   },
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+  sync::{sync_mutex_like::SyncMutexLike, ArcShared},
 };
 use spin::Mutex;
 

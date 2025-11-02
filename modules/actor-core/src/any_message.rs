@@ -5,7 +5,7 @@ use core::any::Any;
 
 use cellactor_utils_core_rs::sync::ArcShared;
 
-use crate::{ActorRef, NoStdToolbox, RuntimeToolbox, any_message_view::AnyMessageView};
+use crate::{any_message_view::AnyMessageView, ActorRef, NoStdToolbox, RuntimeToolbox};
 
 /// Wraps an arbitrary payload for message passing.
 #[derive(Clone)]

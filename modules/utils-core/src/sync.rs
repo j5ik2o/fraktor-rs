@@ -26,9 +26,13 @@ pub use flag::Flag;
 pub use function::{SharedFactory, SharedFn};
 pub use interrupt::{CriticalSectionInterruptPolicy, InterruptContextPolicy, NeverInterruptPolicy};
 pub use mutex_family::{SpinMutexFamily, SyncMutexFamily};
+#[cfg(feature = "std")]
+pub use mutex_family::StdMutexFamily;
 #[cfg(feature = "alloc")]
 pub use rc_shared::RcShared;
 pub use runtime_toolbox::{NoStdMutex, NoStdToolbox, RuntimeToolbox, ToolboxMutex};
+#[cfg(feature = "std")]
+pub use runtime_toolbox::{StdMutex, StdToolbox};
 pub use shared::{SendBound, Shared, SharedBound, SharedDyn};
 pub use shared_access::SharedAccess;
 pub use shared_error::SharedError;

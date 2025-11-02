@@ -7,7 +7,7 @@ use super::{
   dispatcher_state::DispatcherState, inline_executor::InlineExecutor, schedule_waker::ScheduleWaker,
 };
 use crate::{
-  RuntimeToolbox, SendError, SystemMessage, any_message::AnyMessage, mailbox::Mailbox, message_invoker::MessageInvoker,
+  any_message::AnyMessage, mailbox::Mailbox, message_invoker::MessageInvoker, RuntimeToolbox, SendError, SystemMessage,
 };
 
 /// Dispatcher that manages mailbox processing.

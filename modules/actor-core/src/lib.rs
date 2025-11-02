@@ -107,9 +107,9 @@ pub use any_message::AnyMessage;
 pub use any_message_view::AnyMessageView;
 pub use ask_response::AskResponse;
 pub use child_ref::ChildRef;
-pub use deadletter::Deadletter;
+pub use deadletter::{Deadletter, DeadletterGeneric};
 pub use dispatcher::{DispatchExecutor, DispatchHandle, Dispatcher};
-pub use event_stream::EventStream;
+pub use event_stream::{EventStream, EventStreamGeneric};
 pub use logger_subscriber::LoggerSubscriber;
 pub use mailbox::Mailbox;
 pub use mailbox_capacity::MailboxCapacity;
@@ -125,6 +125,9 @@ pub use restart_statistics::RestartStatistics;
 pub use send_error::SendError;
 pub use spawn_error::SpawnError;
 pub use supervisor_strategy::SupervisorStrategy;
-pub use system::ActorSystem;
+pub use system::ActorSystem as ActorSystemGeneric;
 pub use system_message::SystemMessage;
 pub use system_state::SystemState;
+
+/// 型エイリアス: 既定のツールボックスで動作する ActorSystem。
+pub type ActorSystem = ActorSystemGeneric<NoStdToolbox>;

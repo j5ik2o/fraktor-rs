@@ -18,28 +18,30 @@ target=thumbv8m.main-none-eabihf
 cargo build --package actor-core --target $target --no-default-features
 ```
 
-なお、Tokio ランタイムと連携する Dispatcher/Props 向けヘルパーは `cellactor-actor-std-rs` クレートに分離して提供される。ワークスペース内で利用する場合は Cargo.toml に
+ホスト環境で標準ライブラリバックエンドを利用する場合は `cellactor-actor-std-rs` クレートを追加し、`StdToolbox` と `StdActorSystem` をインポートする。
 
 ```toml
 cellactor-actor-std-rs = { path = "modules/actor-std" }
 ```
 
-を追加し、コード側で
-
 ```rust
-use cellactor_actor_std_rs::{TokioDispatcherConfigExt, TokioPropsExt};
+use cellactor_actor_core_rs::{DispatcherConfig, Props};
+use cellactor_actor_std_rs::{StdActorSystem, StdToolbox};
+use cellactor_utils_core_rs::sync::ArcShared;
 
-let dispatcher = DispatcherConfig::tokio_current()?; // Result<T, TryCurrentError>
-let props = Props::from_fn(|| MyActor).try_with_tokio_dispatcher()?;
+let dispatcher: DispatcherConfig<StdToolbox> =
+    DispatcherConfig::from_executor(ArcShared::new(MyExecutor::new()));
+let props: Props<StdToolbox> = Props::from_fn(|| Guardian).with_dispatcher(dispatcher.clone());
+let system = StdActorSystem::new(&props)?;
 ```
 
-のように extension trait をインポートして利用する。`with_tokio_dispatcher_current()` と `tokio_current()` は Tokio ランタイム外で呼び出すと panic するため、初期化フェーズで `try_*` 系メソッドを使って失敗を検出することを推奨する。
+Tokio 連携については `examples/ping_pong_tokio` を参照。`TokioExecutor` は `Handle::spawn_blocking` で Dispatcher を駆動し、`DispatcherConfig<StdToolbox>` へ注入する構成になっている。
 
 ## 3. サンプル実行（Ping/Pong）
 
-1. `examples/ping_pong_no_std` を `actor-core` に追加し、`AnyMessage::new(Ping)` → `downcast_ref::<Ping>()` の往復を確認します。
-2. ホスト: `cargo run --example ping_pong_no_std --no-default-features`（actor-core では `std` フィーチャを有効化しない）。
-3. 組込み: `cargo embed --example ping_pong_no_std --target $target`。UART ログに `PING -> PONG` が 1,000 回出力され、1 秒以内に完了すること。
+1. `examples/ping_pong_no_std` は `NoStdToolbox` を前提に Guardian → Ping/Pong のラウンドトリップを確認する。
+2. ホスト確認（std 必須）: `cargo run -p cellactor-actor-core-rs --example ping_pong_tokio --features std`。Tokio ランタイム上で `StdToolbox` を利用し、`reply_to` ベースの応答とスレッド ID ログを表示する。
+3. 組込み: `cargo embed --example ping_pong_no_std --target $target`。UART ログに `PING -> PONG` が 3 回出力され、`reply_to.tell(...)` で返信できていること。
 
 ## 4. 監督戦略と Deadletter の確認
 

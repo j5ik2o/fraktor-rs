@@ -1,6 +1,6 @@
 #![cfg(test)]
 
-use crate::{ActorRef, any_message::AnyMessage, any_message_view::AnyMessageView};
+use crate::{any_message::AnyMessage, any_message_view::AnyMessageView, ActorRef};
 
 #[test]
 fn downcasts_payload() {

@@ -1,7 +1,7 @@
 //! Sender that rejects all messages.
 
 use crate::{
-  RuntimeToolbox, actor_ref::actor_ref_sender::ActorRefSender, any_message::AnyMessage, send_error::SendError,
+  actor_ref::actor_ref_sender::ActorRefSender, any_message::AnyMessage, send_error::SendError, RuntimeToolbox,
 };
 
 /// Sender that always returns a closed error.
