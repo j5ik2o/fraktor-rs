@@ -1,12 +1,13 @@
 //! Coordinates actors and infrastructure.
 
-use alloc::vec::Vec;
+use alloc::{string::String, vec::Vec};
 
 use cellactor_utils_core_rs::sync::ArcShared;
 
 use crate::{
-  AnyMessage, RuntimeToolbox, actor_cell::ActorCell, actor_future::ActorFuture, actor_ref::ActorRef,
-  child_ref::ChildRef, pid::Pid, props::Props, send_error::SendError, spawn_error::SpawnError,
+  AnyMessage, DeadletterEntry, EventStreamEvent, EventStreamGeneric, EventStreamSubscriber,
+  EventStreamSubscriptionGeneric, LogLevel, RuntimeToolbox, actor_cell::ActorCell, actor_future::ActorFuture,
+  actor_ref::ActorRef, child_ref::ChildRef, pid::Pid, props::Props, send_error::SendError, spawn_error::SpawnError,
   system_message::SystemMessage, system_state::SystemState,
 };
 
@@ -62,6 +63,37 @@ impl<TB: RuntimeToolbox + 'static> ActorSystem<TB> {
   #[must_use]
   pub fn allocate_pid(&self) -> Pid {
     self.state.allocate_pid()
+  }
+
+  /// Returns the shared event stream handle.
+  #[must_use]
+  pub fn event_stream(&self) -> ArcShared<EventStreamGeneric<TB>> {
+    self.state.event_stream()
+  }
+
+  /// Subscribes the provided observer to the event stream.
+  #[must_use]
+  pub fn subscribe_event_stream(
+    &self,
+    subscriber: &ArcShared<dyn EventStreamSubscriber<TB>>,
+  ) -> EventStreamSubscriptionGeneric<TB> {
+    EventStreamGeneric::subscribe_arc(&self.state.event_stream(), subscriber)
+  }
+
+  /// Returns a snapshot of recorded deadletters.
+  #[must_use]
+  pub fn deadletters(&self) -> Vec<DeadletterEntry<TB>> {
+    self.state.deadletters()
+  }
+
+  /// Emits a log event with the specified severity.
+  pub fn emit_log(&self, level: LogLevel, message: impl Into<String>, origin: Option<Pid>) {
+    self.state.emit_log(level, message.into(), origin);
+  }
+
+  /// Publishes a raw event to the event stream.
+  pub fn publish_event(&self, event: &EventStreamEvent<TB>) {
+    self.state.publish_event(event);
   }
 
   /// Spawns a new top-level actor under the user guardian.

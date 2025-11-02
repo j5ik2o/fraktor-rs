@@ -6,7 +6,7 @@ use core::time::Duration;
 use cellactor_utils_core_rs::sync::{ArcShared, SyncMutexFamily, sync_mutex_like::SyncMutexLike};
 
 use crate::{
-  RuntimeToolbox, ToolboxMutex,
+  EventStreamEvent, LifecycleEvent, LifecycleStage, RuntimeToolbox, ToolboxMutex,
   actor::Actor,
   actor_context::ActorContext,
   actor_error::ActorError,
@@ -130,13 +130,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCell<TB> {
 
   /// Runs the actor's `pre_start` hook.
   pub fn pre_start(&self) -> Result<(), ActorError> {
-    let system = ActorSystem::from_state(self.system.clone());
-    let mut ctx = ActorContext::new(&system, self.pid);
-    let mut actor = self.actor.lock();
-    let outcome = actor.pre_start(&mut ctx);
-    drop(actor);
-    ctx.clear_reply_to();
-    outcome
+    self.run_pre_start(LifecycleStage::Started)
   }
 
   /// Restarts the actor with a freshly created instance.
@@ -149,8 +143,9 @@ impl<TB: RuntimeToolbox + 'static> ActorCell<TB> {
       ctx.clear_reply_to();
     }
 
+    self.publish_lifecycle(LifecycleStage::Stopped);
     self.recreate_actor();
-    self.pre_start()
+    self.run_pre_start(LifecycleStage::Restarted)
   }
 
   /// Registers a child pid for supervision.
@@ -182,6 +177,9 @@ impl<TB: RuntimeToolbox + 'static> ActorCell<TB> {
     let result = actor.post_stop(&mut ctx);
     drop(actor);
     ctx.clear_reply_to();
+    if result.is_ok() {
+      self.publish_lifecycle(LifecycleStage::Stopped);
+    }
 
     let children_snapshot = self.children();
     for child in &children_snapshot {
@@ -202,6 +200,25 @@ impl<TB: RuntimeToolbox + 'static> ActorCell<TB> {
     }
 
     result
+  }
+
+  fn run_pre_start(&self, stage: LifecycleStage) -> Result<(), ActorError> {
+    let system = ActorSystem::from_state(self.system.clone());
+    let mut ctx = ActorContext::new(&system, self.pid);
+    let mut actor = self.actor.lock();
+    let outcome = actor.pre_start(&mut ctx);
+    drop(actor);
+    ctx.clear_reply_to();
+    if outcome.is_ok() {
+      self.publish_lifecycle(stage);
+    }
+    outcome
+  }
+
+  fn publish_lifecycle(&self, stage: LifecycleStage) {
+    let timestamp = self.system.monotonic_now();
+    let event = LifecycleEvent::new(self.pid, self.parent, self.name.clone(), stage, timestamp);
+    self.system.publish_event(&EventStreamEvent::Lifecycle(event));
   }
 }
 

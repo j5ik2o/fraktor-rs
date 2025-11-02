@@ -1,10 +1,10 @@
 //! Actor execution context utilities.
 
-use alloc::vec::Vec;
+use alloc::{string::String, vec::Vec};
 use core::marker::PhantomData;
 
 use crate::{
-  NoStdToolbox, RuntimeToolbox, actor_ref::ActorRef, any_message::AnyMessage, child_ref::ChildRef, pid::Pid,
+  LogLevel, NoStdToolbox, RuntimeToolbox, actor_ref::ActorRef, any_message::AnyMessage, child_ref::ChildRef, pid::Pid,
   props::Props, send_error::SendError, spawn_error::SpawnError, system::ActorSystem,
 };
 
@@ -125,5 +125,10 @@ impl<'a, TB: RuntimeToolbox + 'static> ActorContext<'a, TB> {
   /// Returns an error when the resume signal cannot be delivered.
   pub fn resume_child(&self, child: &ChildRef<TB>) -> Result<(), SendError<TB>> {
     child.resume()
+  }
+
+  /// Emits a log event associated with the running actor.
+  pub fn log(&self, level: LogLevel, message: impl Into<String>) {
+    self.system.emit_log(level, message.into(), Some(self.pid));
   }
 }

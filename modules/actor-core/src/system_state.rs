@@ -1,6 +1,6 @@
 //! Shared, mutable state owned by the actor system.
 
-use alloc::{string::String, vec::Vec};
+use alloc::{format, string::String, vec::Vec};
 use core::time::Duration;
 
 use cellactor_utils_core_rs::sync::{ArcShared, SyncMutexFamily, sync_mutex_like::SyncMutexLike};
@@ -8,7 +8,8 @@ use hashbrown::HashMap;
 use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
 use crate::{
-  AnyMessage, RuntimeToolbox, ToolboxMutex, actor_cell::ActorCell, actor_error::ActorError, actor_future::ActorFuture,
+  AnyMessage, DeadletterEntry, DeadletterGeneric, EventStreamEvent, EventStreamGeneric, LogEvent, LogLevel,
+  RuntimeToolbox, ToolboxMutex, actor_cell::ActorCell, actor_error::ActorError, actor_future::ActorFuture,
   name_registry::NameRegistry, name_registry_error::NameRegistryError, pid::Pid, send_error::SendError,
   spawn_error::SpawnError, supervisor_strategy::SupervisorDirective, system_message::SystemMessage,
 };
@@ -23,21 +24,28 @@ pub struct SystemState<TB: RuntimeToolbox + 'static> {
   ask_futures:   ToolboxMutex<Vec<ArcShared<ActorFuture<AnyMessage<TB>, TB>>>, TB>,
   termination:   ArcShared<ActorFuture<(), TB>>,
   terminated:    AtomicBool,
+  event_stream:  ArcShared<EventStreamGeneric<TB>>,
+  deadletter:    ArcShared<DeadletterGeneric<TB>>,
 }
 
 impl<TB: RuntimeToolbox + 'static> SystemState<TB> {
   /// Creates a fresh state container without any registered actors.
   #[must_use]
   pub fn new() -> Self {
+    const DEADLETTER_CAPACITY: usize = 512;
+    let event_stream = ArcShared::new(EventStreamGeneric::default());
+    let deadletter = ArcShared::new(DeadletterGeneric::new(event_stream.clone(), DEADLETTER_CAPACITY));
     Self {
-      next_pid:      AtomicU64::new(0),
-      clock:         AtomicU64::new(0),
-      cells:         <TB::MutexFamily as SyncMutexFamily>::create(HashMap::new()),
-      registries:    <TB::MutexFamily as SyncMutexFamily>::create(HashMap::new()),
+      next_pid: AtomicU64::new(0),
+      clock: AtomicU64::new(0),
+      cells: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::new()),
+      registries: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::new()),
       user_guardian: <TB::MutexFamily as SyncMutexFamily>::create(None),
-      ask_futures:   <TB::MutexFamily as SyncMutexFamily>::create(Vec::new()),
-      termination:   ArcShared::new(ActorFuture::<(), TB>::new()),
-      terminated:    AtomicBool::new(false),
+      ask_futures: <TB::MutexFamily as SyncMutexFamily>::create(Vec::new()),
+      termination: ArcShared::new(ActorFuture::<(), TB>::new()),
+      terminated: AtomicBool::new(false),
+      event_stream,
+      deadletter,
     }
   }
 
@@ -120,9 +128,33 @@ impl<TB: RuntimeToolbox + 'static> SystemState<TB> {
     self.user_guardian.lock().as_ref().map(|cell| cell.pid())
   }
 
+  /// Returns the shared event stream handle.
+  #[must_use]
+  pub fn event_stream(&self) -> ArcShared<EventStreamGeneric<TB>> {
+    self.event_stream.clone()
+  }
+
+  /// Returns a snapshot of deadletter entries.
+  #[must_use]
+  pub fn deadletters(&self) -> Vec<DeadletterEntry<TB>> {
+    self.deadletter.entries()
+  }
+
   /// Registers an ask future so the actor system can track its completion.
   pub fn register_ask_future(&self, future: ArcShared<ActorFuture<AnyMessage<TB>, TB>>) {
     self.ask_futures.lock().push(future);
+  }
+
+  /// Publishes an event to all event stream subscribers.
+  pub fn publish_event(&self, event: &EventStreamEvent<TB>) {
+    self.event_stream.publish(event);
+  }
+
+  /// Emits a log event via the event stream.
+  pub fn emit_log(&self, level: LogLevel, message: String, origin: Option<Pid>) {
+    let timestamp = self.monotonic_now();
+    let event = LogEvent::new(level, message, timestamp, origin);
+    self.event_stream.publish(&EventStreamEvent::Log(event));
   }
 
   /// Registers a child under the specified parent pid.
@@ -157,7 +189,10 @@ impl<TB: RuntimeToolbox + 'static> SystemState<TB> {
   }
 
   /// Records a send error for diagnostics.
-  pub fn record_send_error(&self, _recipient: Option<Pid>, _error: &SendError<TB>) {}
+  pub fn record_send_error(&self, recipient: Option<Pid>, error: &SendError<TB>) {
+    let timestamp = self.monotonic_now();
+    self.deadletter.record_send_error(recipient, error, timestamp);
+  }
 
   /// Marks the system as terminated and completes the termination future.
   pub fn mark_terminated(&self) {
@@ -205,6 +240,7 @@ impl<TB: RuntimeToolbox + 'static> SystemState<TB> {
 
   /// Records a failure for future diagnostics.
   pub fn notify_failure(&self, pid: Pid, error: &ActorError) {
+    self.emit_log(LogLevel::Error, format!("actor {:?} failed: {:?}", pid, error.reason()), Some(pid));
     let parent = self.parent_of(&pid);
     self.handle_failure(pid, parent, error);
   }
