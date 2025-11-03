@@ -6,8 +6,15 @@ use alloc::vec::Vec;
 use core::hint::spin_loop;
 
 use cellactor_actor_core_rs::{
-  Actor, ActorContext, ActorError, ActorSystem, AnyMessage, AnyMessageView, EventStreamEvent, EventStreamSubscriber,
-  LifecycleStage, LogLevel, NoStdToolbox, Props,
+  NoStdToolbox,
+  actor_prim::{Actor, ActorContext},
+  error::ActorError,
+  eventstream::{EventStreamEvent, EventStreamSubscriber},
+  lifecycle::LifecycleStage,
+  logging::LogLevel,
+  messaging::{AnyMessage, AnyMessageView},
+  props::Props,
+  system::ActorSystem,
 };
 use cellactor_utils_core_rs::sync::{ArcShared, NoStdMutex};
 
@@ -60,7 +67,8 @@ fn lifecycle_and_log_events_are_published() {
   let system = ActorSystem::new(&props).expect("system");
 
   let subscriber_impl = ArcShared::new(RecordingSubscriber::new());
-  let subscriber: ArcShared<dyn cellactor_actor_core_rs::EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
+  let subscriber: ArcShared<dyn cellactor_actor_core_rs::eventstream::EventStreamSubscriber<NoStdToolbox>> =
+    subscriber_impl.clone();
   let _subscription = system.subscribe_event_stream(&subscriber);
 
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("send start");

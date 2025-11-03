@@ -6,7 +6,12 @@ use alloc::vec::Vec;
 use std::{thread, time::Duration};
 
 use cellactor_actor_core_rs::{
-  Actor, ActorContext, ActorError, ActorSystem, AnyMessage, AnyMessageView, NoStdToolbox, Props,
+  NoStdToolbox,
+  actor_prim::{Actor, ActorContext},
+  error::ActorError,
+  messaging::{AnyMessage, AnyMessageView},
+  props::Props,
+  system::ActorSystem,
 };
 use cellactor_utils_core_rs::sync::{ArcShared, NoStdMutex};
 

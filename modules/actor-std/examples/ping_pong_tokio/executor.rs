@@ -1,4 +1,4 @@
-use cellactor_actor_core_rs::{DispatchExecutor, DispatchHandle};
+use cellactor_actor_core_rs::system::dispatcher::{DispatchExecutor, DispatchHandle};
 use cellactor_actor_std_rs::StdToolbox;
 use tokio::runtime::Handle;
 

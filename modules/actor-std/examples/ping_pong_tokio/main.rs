@@ -2,7 +2,7 @@ mod executor;
 
 use std::{string::String, time::Duration};
 
-use cellactor_actor_core_rs::{Actor, ActorError};
+use cellactor_actor_core_rs::{actor_prim::Actor, error::ActorError};
 use cellactor_actor_std_rs::{
   ActorContext, ActorRef, ActorSystem, AnyMessage, AnyMessageView, DispatcherConfig, Props, StdToolbox,
 };

@@ -4,7 +4,10 @@ use alloc::format;
 
 use cellactor_utils_core_rs::sync::ArcShared;
 
-use crate::{EventStreamEvent, LogLevel, MailboxMetricsEvent, RuntimeToolbox, SystemState};
+use crate::{
+  RuntimeToolbox, actor_prim::Pid, eventstream::EventStreamEvent, logging::LogLevel, mailbox::MailboxMetricsEvent,
+  system::SystemState,
+};
 
 /// Provides mailbox metrics publication facilities.
 #[derive(Clone)]
@@ -13,7 +16,7 @@ pub struct MailboxInstrumentation<TB: RuntimeToolbox + 'static> {
   capacity:       Option<usize>,
   throughput:     Option<usize>,
   warn_threshold: Option<usize>,
-  pid:            crate::Pid,
+  pid:            Pid,
 }
 
 impl<TB: RuntimeToolbox + 'static> MailboxInstrumentation<TB> {
@@ -21,7 +24,7 @@ impl<TB: RuntimeToolbox + 'static> MailboxInstrumentation<TB> {
   #[must_use]
   pub const fn new(
     system_state: ArcShared<SystemState<TB>>,
-    pid: crate::Pid,
+    pid: Pid,
     capacity: Option<usize>,
     throughput: Option<usize>,
     warn_threshold: Option<usize>,

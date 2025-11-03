@@ -3,8 +3,14 @@
 use std::{thread, time::Duration, vec::Vec};
 
 use cellactor_actor_core_rs::{
-  Actor, ActorContext, ActorError, ActorSystem, AnyMessage, AnyMessageView, ChildRef, Mailbox, MailboxOverflowStrategy,
-  MailboxPolicy, NoStdToolbox, Props, SendError, SpawnError,
+  NoStdToolbox,
+  actor_prim::{Actor, ActorContext, ChildRef},
+  error::{ActorError, SendError},
+  mailbox::{Mailbox, MailboxOverflowStrategy, MailboxPolicy},
+  messaging::{AnyMessage, AnyMessageView},
+  props::Props,
+  spawn::SpawnError,
+  system::ActorSystem,
 };
 use cellactor_utils_core_rs::sync::{ArcShared, NoStdMutex};
 

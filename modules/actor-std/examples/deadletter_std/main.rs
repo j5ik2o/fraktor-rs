@@ -2,8 +2,12 @@ use core::num::NonZeroUsize;
 use std::{thread, time::Duration};
 
 use cellactor_actor_core_rs::{
-  Actor, ActorError, EventStreamEvent, EventStreamSubscriber, LogEvent, LogLevel, LoggerSubscriber, LoggerWriter,
-  MailboxConfig, MailboxOverflowStrategy, MailboxPolicy,
+  actor_prim::Actor,
+  error::ActorError,
+  eventstream::{EventStreamEvent, EventStreamSubscriber},
+  logging::{LogEvent, LogLevel, LoggerSubscriber, LoggerWriter},
+  mailbox::{MailboxOverflowStrategy, MailboxPolicy},
+  props::MailboxConfig,
 };
 use cellactor_actor_std_rs::{
   ActorContext, ActorRef, ActorSystem, AnyMessage, AnyMessageView, ChildRef, Props, StdToolbox,

@@ -1,0 +1,9 @@
+//! Trait implemented by event stream observers.
+
+use crate::{NoStdToolbox, RuntimeToolbox, eventstream::EventStreamEvent};
+
+/// Observers registered with the event stream must implement this trait.
+pub trait EventStreamSubscriber<TB: RuntimeToolbox = NoStdToolbox>: Send + Sync + 'static {
+  /// Invoked for every published event.
+  fn on_event(&self, event: &EventStreamEvent<TB>);
+}

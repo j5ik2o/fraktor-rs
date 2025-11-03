@@ -10,8 +10,13 @@ use std::{
 };
 
 use cellactor_actor_core_rs::{
-  Actor, ActorContext, ActorError, ActorErrorReason, ActorSystem, AnyMessage, AnyMessageView, ChildRef, NoStdToolbox,
-  Props, SupervisorDirective, SupervisorOptions, SupervisorStrategy, SupervisorStrategyKind,
+  NoStdToolbox,
+  actor_prim::{Actor, ActorContext, ChildRef},
+  error::{ActorError, ActorErrorReason},
+  messaging::{AnyMessage, AnyMessageView},
+  props::{Props, SupervisorOptions},
+  supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
+  system::ActorSystem,
 };
 use cellactor_utils_core_rs::sync::{ArcShared, NoStdMutex};
 

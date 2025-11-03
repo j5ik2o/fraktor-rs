@@ -6,8 +6,14 @@ use alloc::vec::Vec;
 use core::{hint::spin_loop, num::NonZeroUsize};
 
 use cellactor_actor_core_rs::{
-  Actor, ActorContext, ActorError, ActorSystem, AnyMessage, AnyMessageView, EventStreamEvent, EventStreamSubscriber,
-  MailboxConfig, MailboxOverflowStrategy, MailboxPolicy, NoStdToolbox, Props,
+  NoStdToolbox,
+  actor_prim::{Actor, ActorContext},
+  error::ActorError,
+  eventstream::{EventStreamEvent, EventStreamSubscriber},
+  mailbox::{MailboxOverflowStrategy, MailboxPolicy},
+  messaging::{AnyMessage, AnyMessageView},
+  props::{MailboxConfig, Props},
+  system::ActorSystem,
 };
 use cellactor_utils_core_rs::sync::{ArcShared, NoStdMutex};
 
@@ -60,7 +66,7 @@ fn deadletter_event_is_published_when_send_fails() {
 
   child.suspend().expect("suspend child");
   let result = actor_ref.tell(AnyMessage::new("ping"));
-  assert!(matches!(result, Err(cellactor_actor_core_rs::SendError::Suspended(_))));
+  assert!(matches!(result, Err(cellactor_actor_core_rs::error::SendError::Suspended(_))));
 
   wait_until(|| !system.deadletters().is_empty());
   let entries = system.deadletters();

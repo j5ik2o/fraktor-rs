@@ -14,7 +14,10 @@ use super::{
   QueueMutex, mailbox_queue_offer_future::QueueOfferFuture, mailbox_queue_poll_future::QueuePollFuture,
   mailbox_queue_state::QueueState,
 };
-use crate::{MailboxCapacity, MailboxOverflowStrategy, MailboxPolicy, RuntimeToolbox};
+use crate::{
+  RuntimeToolbox,
+  mailbox::{capacity::MailboxCapacity, overflow_strategy::MailboxOverflowStrategy, policy::MailboxPolicy},
+};
 
 const DEFAULT_QUEUE_CAPACITY: usize = 16;
 const SYSTEM_QUEUE_CAPACITY: usize = 8;

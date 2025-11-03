@@ -1,7 +1,10 @@
 use std::{fmt::Write as _, thread, time::Duration};
 
 use cellactor_actor_core_rs::{
-  Actor, ActorError, EventStreamSubscriber, LogEvent, LogLevel, LoggerSubscriber, LoggerWriter,
+  actor_prim::Actor,
+  error::ActorError,
+  eventstream::EventStreamSubscriber,
+  logging::{LogEvent, LogLevel, LoggerSubscriber, LoggerWriter},
 };
 use cellactor_actor_std_rs::{ActorContext, ActorRef, ActorSystem, AnyMessage, AnyMessageView, Props, StdToolbox};
 use cellactor_utils_core_rs::sync::ArcShared;

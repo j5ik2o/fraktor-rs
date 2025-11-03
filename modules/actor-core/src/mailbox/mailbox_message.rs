@@ -1,6 +1,9 @@
 //! Messages dequeued from the mailbox.
 
-use crate::{AnyMessage, RuntimeToolbox, SystemMessage};
+use crate::{
+  RuntimeToolbox,
+  messaging::{AnyMessage, SystemMessage},
+};
 
 /// Represents messages dequeued from the mailbox.
 #[derive(Debug)]

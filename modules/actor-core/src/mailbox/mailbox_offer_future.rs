@@ -8,7 +8,7 @@ use core::{
 };
 
 use super::{mailbox_queue_offer_future::QueueOfferFuture, map_user_queue_error};
-use crate::{RuntimeToolbox, SendError, any_message::AnyMessage};
+use crate::{RuntimeToolbox, error::SendError, messaging::AnyMessage};
 
 /// Future completing once a user message has been enqueued.
 pub struct MailboxOfferFuture<TB: RuntimeToolbox + 'static> {

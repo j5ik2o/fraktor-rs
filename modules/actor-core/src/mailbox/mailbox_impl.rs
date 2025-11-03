@@ -11,13 +11,15 @@ use cellactor_utils_core_rs::{
 };
 
 use super::{
-  mailbox_enqueue_outcome::EnqueueOutcome, mailbox_instrumentation::MailboxInstrumentation,
-  mailbox_message::MailboxMessage, mailbox_offer_future::MailboxOfferFuture, mailbox_poll_future::MailboxPollFuture,
-  mailbox_queue_handles::QueueHandles, map_system_queue_error, map_user_queue_error,
+  MailboxOfferFuture, mailbox_enqueue_outcome::EnqueueOutcome, mailbox_instrumentation::MailboxInstrumentation,
+  mailbox_message::MailboxMessage, mailbox_poll_future::MailboxPollFuture, mailbox_queue_handles::QueueHandles,
+  map_system_queue_error, map_user_queue_error,
 };
 use crate::{
-  MailboxCapacity, MailboxOverflowStrategy, MailboxPolicy, RuntimeToolbox, SendError, SystemMessage,
-  any_message::AnyMessage,
+  RuntimeToolbox,
+  error::SendError,
+  mailbox::{capacity::MailboxCapacity, overflow_strategy::MailboxOverflowStrategy, policy::MailboxPolicy},
+  messaging::{AnyMessage, SystemMessage},
 };
 
 /// Priority mailbox maintaining separate queues for system and user messages.
