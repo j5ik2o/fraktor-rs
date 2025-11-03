@@ -1,11 +1,11 @@
 # Design: Actor-Core Package Structure Refactoring
 
 ## 概要
-現在フラットに配置されている約107個のモジュールファイルを、機能別に11個の論理的なパッケージに階層化する。参照実装（Pekko/ProtoActor-Go）の構造に倣いつつ、Rustのベストプラクティスに従った設計とする。
+現在フラットに配置されている約107個のモジュールファイルを、機能別に13個の論理的なパッケージに階層化する。参照実装（Pekko/ProtoActor-Go）の構造に倣いつつ、Rustのベストプラクティスと Module Wiring ガイドライン（再エクスポートを最小化する運用）に従った設計とする。
 
 ## パッケージ構造の詳細
 
-### 1. actor/ - アクタープリミティブ
+### 1. actor_prim/ - アクタープリミティブ
 **責務**: アクターシステムの最も基本的な型とtrait
 
 **含まれるモジュール**:
@@ -16,25 +16,21 @@
 - `pid.rs` - プロセスID
 - `child_ref.rs` - 子アクターへの参照
 - `receive_state.rs` - メッセージ受信状態
-- `internal/` - 内部実装の詳細（`actor_ref_impl.rs` 等）
+- `actor_ref_internal.rs` など内部実装を分離したファイル
 
 **設計判断**:
-- 従来の `core/` を `actor/` に改名（Pekko/ProtoActorに倣う）
-- 内部実装を `internal/` サブパッケージに隠蔽し、`pub(crate)` で可視性制御
+- デフォルト構成を `actor_prim/` ディレクトリに再配置し、Rust 2018 のパス表記に従う。
+- 内部実装は `*_internal.rs` に切り出し、`pub(crate)` で可視性制御
 - 公開APIと内部実装を明確に分離
+- ルートファイルでは子モジュールを `pub mod` するだけに留め、再エクスポートを禁止
 
-**公開API例**:
+**公開パス例**:
 ```rust
-pub use self::actor::Actor;
-pub use self::actor_ref::{ActorRef, ActorRefSender, AskReplySender, NullSender};
-pub use self::actor_cell::ActorCell;
-pub use self::actor_context::ActorContext;
-pub use self::pid::Pid;
-pub use self::child_ref::ChildRef;
-pub use self::receive_state::ReceiveState;
-
-pub(crate) mod internal;
+use cellactor_core::actor_prim::actor::Actor;
+use cellactor_core::actor_prim::actor_ref::ActorRef;
+use cellactor_core::actor_prim::actor_cell::ActorCell;
 ```
+ルートファイル `actor_prim.rs` では子モジュールを `pub mod actor;` のように公開し、`pub use` による再エクスポートは行わない。
 
 ### 2. messaging/ - メッセージング
 **責務**: メッセージの型消去、Ask/Tellパターン、システムメッセージ
@@ -76,7 +72,7 @@ pub(crate) mod internal;
 **設計判断**:
 - `SupervisorDirective` を独立したモジュールに分離（関心の分離）
 
-### 5. props/ - アクター生成設定
+### 5. props_ (ディレクトリ) - アクター生成設定
 **責務**: アクター生成時の設定（Props）
 
 **含まれるモジュール**:
@@ -87,10 +83,10 @@ pub(crate) mod internal;
 - `supervisor_options.rs` - スーパーバイザーオプション（supervision/とは別管理）
 
 **設計判断**:
-- 従来の `spawning/` を `props/` と `spawn/` に分離
+- 従来の `spawning/` を `props_` と `spawn_` に分離（mod.rs を使わずに表現）
 - 設定（Props）と実行（spawn）の責務を明確化
 
-### 6. spawn/ - アクター生成処理
+### 6. spawn_ (ディレクトリ) - アクター生成処理
 **責務**: アクターの実際の生成処理とエラー
 
 **含まれるモジュール**:
@@ -102,7 +98,7 @@ pub(crate) mod internal;
 - 生成実行に関する機能を集約
 - `props/` とは独立して管理
 
-### 7. system/ - アクターシステム
+### 7. system_ (ディレクトリ) - アクターシステム
 **責務**: システム全体の管理
 
 **含まれるモジュール**:
@@ -128,14 +124,14 @@ pub(crate) mod internal;
 - Pekko/ProtoActorに倣いトップレベルパッケージとして配置
 - `system/event_stream/` ではなく、独立した `eventstream/` として扱う
 
-### 9. lifecycle/ - ライフサイクル
+### 9. lifecycle_ (ディレクトリ) - ライフサイクル
 **責務**: アクターのライフサイクルイベントとステージ管理
 
 **含まれるモジュール**:
 - `event.rs` - ライフサイクルイベント
 - `stage.rs` - ライフサイクルステージ
 
-### 10. deadletter/ - デッドレター
+### 10. deadletter_ (ディレクトリ) - デッドレター
 **責務**: 配信できないメッセージの管理
 
 **含まれるモジュール**:
@@ -143,7 +139,7 @@ pub(crate) mod internal;
 - `entry.rs` - デッドレターエントリ
 - `reason.rs` - デッドレター理由
 
-### 11. logging/ - ロギング
+### 11. logging_ (ディレクトリ) - ロギング
 **責務**: ログイベントとサブスクライバー管理
 
 **含まれるモジュール**:
@@ -152,14 +148,14 @@ pub(crate) mod internal;
 - `subscriber.rs` - ログサブスクライバー
 - `writer.rs` - ログライター
 
-### 12. futures/ - Future統合
+### 12. futures_ (ディレクトリ) - Future統合
 **責務**: 非同期処理とFutureとの統合
 
 **含まれるモジュール**:
 - `actor_future.rs` - ActorFuture
 - `listener.rs` - Futureリスナー
 
-### 13. error/ - エラー型
+### 13. error_ (ディレクトリ) - エラー型
 **責務**: エラー型の集約
 
 **含まれるモジュール**:
@@ -176,17 +172,17 @@ pub(crate) mod internal;
 
 ### レイヤー構造
 ```
-Layer 5: system/, eventstream/, deadletter/, logging/
+Layer 5: system, eventstream, deadletter, logging
          ↑
-Layer 4: spawn/, props/
+Layer 4: spawn, props
          ↑
-Layer 3: supervision/, context (actor_cell, actor_context)
+Layer 3: supervision, actor_prim (actor_cell, actor_context)
          ↑
-Layer 2: mailbox/, messaging/, lifecycle/
+Layer 2: mailbox, messaging, lifecycle
          ↑
-Layer 1: actor/ (primitives), error/
+Layer 1: actor_prim (primitives), error
          ↑
-Layer 0: futures/ (横断的関心事)
+Layer 0: futures (横断的関心事)
 ```
 
 ### 依存関係の原則
@@ -194,56 +190,25 @@ Layer 0: futures/ (横断的関心事)
 2. **同レイヤー内の依存は最小限に**
 3. **循環依存は禁止**
 4. **共通の型は下位レイヤーに配置**
+5. **再エクスポートは Module Wiring ガイドラインに従い原則禁止**
 
 ## 可視性戦略
 
 ### pub(crate) の使用
 - パッケージ内でのみ使用する型・関数に適用
-- 例: `actor/internal/` 内の実装詳細
+- 例: `actor_prim/actor_ref_internal.rs` 等の内部ファイル
+- ルートファイルは `pub mod` のみを宣言し、`pub use` を使用しない
 
-### internal/ サブパッケージ
-- 公開APIの実装詳細を配置
-- `pub(crate)` と組み合わせて使用
-- 例: `actor/internal/actor_ref_impl.rs`
+### internal ディレクトリを使わない理由
+- Rust 2018 の方針に従い `mod.rs` を前提とする構成は採用しない。
+- 公開 API と内部実装を分ける場合は `*_internal.rs` へ分割し `pub(crate)` で制御する。
+- テストや補助コードも同様に、必要な場合は `test_support.rs` などフラットなファイル名で配置する。
 
 ### 公開API の原則
-- 各パッケージの `mod.rs` で `pub use` により再エクスポート
-- ユーザーは `use cellactor_core::actor::Actor;` のようにインポート
+- 各パッケージのルートファイル（例: `actor_prim.rs`）は子モジュールを `pub mod` で公開するのみとし、`pub use` を行わない
+- ユーザーは `use cellactor_core::actor_prim::actor::Actor;` のように階層パスでインポートする
+- ユーザー向けの簡易インポートは `prelude` を通じて提供する（prelude 内の再エクスポートは許容）
 - 内部実装の詳細は公開しない
-
-## 後方互換性戦略
-
-### lib.rs での再エクスポート
-現在の公開APIを完全に維持するため、`lib.rs` で以下のように再エクスポート：
-
-```rust
-// パッケージモジュール宣言
-pub mod actor;
-pub mod messaging;
-pub mod mailbox;
-pub mod supervision;
-pub mod props;
-pub mod spawn;
-pub mod system;
-pub mod eventstream;
-pub mod lifecycle;
-pub mod deadletter;
-pub mod logging;
-pub mod futures;
-pub mod error;
-pub mod prelude;
-
-// 後方互換性のための再エクスポート（既存のフラットな構造を維持）
-pub use actor::{Actor, ActorRef, ActorRefSender, ActorCell, ActorContext, Pid, ChildRef, ReceiveState, AskReplySender, NullSender};
-pub use messaging::{AnyMessage, AnyMessageView, AskResponse, MessageInvoker, MessageInvokerMiddleware, MessageInvokerPipeline, SystemMessage};
-pub use mailbox::{Mailbox, MailboxInstrumentation, MailboxMessage, MailboxOfferFuture, MailboxPollFuture, EnqueueOutcome, MailboxCapacity, MailboxPolicy, MailboxOverflowStrategy, MailboxMetricsEvent};
-// ... 他のパッケージも同様
-```
-
-### 段階的な移行パス
-1. **現在**: 既存の `use cellactor_core::Actor;` は引き続き動作
-2. **推奨**: `use cellactor_core::actor::Actor;` または `use cellactor_core::prelude::*;`
-3. **将来**: メジャーバージョンアップ時に `lib.rs` の直接再エクスポートを削除（オプション）
 
 ## prelude の設計
 
@@ -292,11 +257,11 @@ impl Actor for MyActor {
 
 ## マイグレーション計画
 
-### フェーズ1: 構造作成（破壊的変更なし）
+### フェーズ1: 構造作成（破壊的変更を含む）
 - 新しいディレクトリ作成
 - ファイル移動
-- `mod.rs` 作成
-- `lib.rs` 更新（既存API維持）
+- ルートファイル（例: `actor_prim.rs`）で `pub mod` 宣言のみを定義
+- `lib.rs` からフラットな再エクスポートを削除
 - テスト確認
 
 ### フェーズ2: 検証
@@ -333,7 +298,7 @@ impl Actor for MyActor {
 
 ### 本実装の方針
 - Pekkoの階層化とProtoActorの明確な命名を組み合わせ
-- Rustの慣習（prelude、internal/）を適用
+- Rustの慣習（prelude、`*_internal.rs`）を適用
 - `no_std` 対応を維持しつつ、保守性を向上
 
 ## 将来の拡張性
@@ -368,7 +333,7 @@ impl Actor for MyActor {
 この設計により、以下のメリットが得られる：
 1. **明確な責任分離**: 各パッケージが明確な役割を持つ
 2. **保守性の向上**: コードの配置場所が自明になり、変更の影響範囲が限定される
-3. **内部実装の保護**: `internal/` と `pub(crate)` により、APIの境界が明確化
+3. **内部実装の保護**: `*_internal.rs` と `pub(crate)` により、APIの境界が明確化
 4. **参照実装との整合性**: Pekko/ProtoActorの設計思想を踏襲
 5. **拡張性**: 新機能の追加場所が明確で、段階的な機能追加が容易
 6. **後方互換性**: 既存コードはすべて動作し続ける
