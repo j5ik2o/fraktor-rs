@@ -17,11 +17,11 @@ struct Start;
 
 struct GuardianActor;
 
-impl Actor<NoStdToolbox> for GuardianActor {
+impl Actor for GuardianActor {
   fn receive(
     &mut self,
-    ctx: &mut ActorContext<'_, NoStdToolbox>,
-    message: AnyMessageView<'_, NoStdToolbox>,
+    ctx: &mut ActorContext<'_>,
+    message: AnyMessageView<'_>,
   ) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
       let pong =
@@ -40,14 +40,14 @@ impl Actor<NoStdToolbox> for GuardianActor {
 }
 
 struct StartPing {
-  target:   ActorRef<NoStdToolbox>,
-  reply_to: ActorRef<NoStdToolbox>,
+  target:   ActorRef,
+  reply_to: ActorRef,
   count:    u32,
 }
 
 struct PingMessage {
   text:     String,
-  reply_to: ActorRef<NoStdToolbox>,
+  reply_to: ActorRef,
 }
 
 struct PongReply {
@@ -56,11 +56,11 @@ struct PongReply {
 
 struct PingActor;
 
-impl Actor<NoStdToolbox> for PingActor {
+impl Actor for PingActor {
   fn receive(
     &mut self,
-    _ctx: &mut ActorContext<'_, NoStdToolbox>,
-    message: AnyMessageView<'_, NoStdToolbox>,
+    _ctx: &mut ActorContext<'_>,
+    message: AnyMessageView<'_>,
   ) -> Result<(), ActorError> {
     if let Some(cmd) = message.downcast_ref::<StartPing>() {
       for index in 0..cmd.count {
@@ -74,11 +74,11 @@ impl Actor<NoStdToolbox> for PingActor {
 
 struct PongActor;
 
-impl Actor<NoStdToolbox> for PongActor {
+impl Actor for PongActor {
   fn receive(
     &mut self,
-    _ctx: &mut ActorContext<'_, NoStdToolbox>,
-    message: AnyMessageView<'_, NoStdToolbox>,
+    _ctx: &mut ActorContext<'_>,
+    message: AnyMessageView<'_>,
   ) -> Result<(), ActorError> {
     if let Some(ping) = message.downcast_ref::<PingMessage>() {
       #[cfg(not(target_os = "none"))]
@@ -102,7 +102,7 @@ fn format_message(index: u32) -> String {
 fn main() {
   use std::thread;
 
-  let props = Props::<NoStdToolbox>::from_fn(|| GuardianActor);
+  let props = Props::from_fn(|| GuardianActor);
   let system = ActorSystem::new(&props).expect("system");
   let termination = system.when_terminated();
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");

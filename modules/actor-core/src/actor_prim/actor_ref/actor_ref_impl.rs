@@ -8,7 +8,7 @@ use core::{
   hash::{Hash, Hasher},
 };
 
-use cellactor_utils_core_rs::sync::ArcShared;
+use cellactor_utils_core_rs::sync::{ArcShared, NoStdToolbox};
 
 use crate::{
   RuntimeToolbox,
@@ -23,7 +23,7 @@ use crate::{
 };
 
 /// Handle used to communicate with an actor instance.
-pub struct ActorRef<TB: RuntimeToolbox> {
+pub struct ActorRef<TB: RuntimeToolbox = NoStdToolbox> {
   pid:    Pid,
   sender: ArcShared<dyn ActorRefSender<TB>>,
   system: Option<ArcShared<SystemState<TB>>>,
