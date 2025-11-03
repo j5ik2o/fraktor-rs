@@ -2,9 +2,12 @@ mod executor;
 
 use std::{string::String, time::Duration};
 
-use cellactor_actor_core_rs::{actor_prim::Actor, error::ActorError};
+use cellactor_actor_core_rs::error::ActorError;
 use cellactor_actor_std_rs::{
-  ActorContext, ActorRef, ActorSystem, AnyMessage, AnyMessageView, DispatcherConfig, Props, StdToolbox,
+  actor_prim::{Actor, ActorContext, ActorRef},
+  messaging::{AnyMessage, AnyMessageView},
+  props::Props,
+  system::{ActorSystem, DispatcherConfig},
 };
 use cellactor_utils_core_rs::sync::ArcShared;
 use executor::TokioExecutor;
@@ -24,12 +27,12 @@ impl GuardianActor {
   fn child_props<F, A>(&self, factory: F) -> Props
   where
     F: Fn() -> A + Send + Sync + 'static,
-    A: Actor<StdToolbox> + Sync + 'static, {
+    A: Actor + Sync + 'static, {
     Props::from_fn(factory).with_dispatcher(self.dispatcher.clone())
   }
 }
 
-impl Actor<StdToolbox> for GuardianActor {
+impl Actor for GuardianActor {
   fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
       let pong_props = self.child_props(|| PongActor);
@@ -64,7 +67,7 @@ struct PongReply {
 
 struct PingActor;
 
-impl Actor<StdToolbox> for PingActor {
+impl Actor for PingActor {
   fn receive(&mut self, _ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if let Some(cmd) = message.downcast_ref::<StartPing>() {
       for index in 0..cmd.count {
@@ -78,7 +81,7 @@ impl Actor<StdToolbox> for PingActor {
 
 struct PongActor;
 
-impl Actor<StdToolbox> for PongActor {
+impl Actor for PongActor {
   fn receive(&mut self, _ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if let Some(ping) = message.downcast_ref::<PingMessage>() {
       println!("[{:?}] received ping: {}", std::thread::current().id(), ping.text);

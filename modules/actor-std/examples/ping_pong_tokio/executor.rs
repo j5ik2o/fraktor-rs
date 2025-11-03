@@ -1,5 +1,4 @@
-use cellactor_actor_core_rs::system::dispatcher::{DispatchExecutor, DispatchHandle};
-use cellactor_actor_std_rs::StdToolbox;
+use cellactor_actor_std_rs::system::dispatcher::{DispatchExecutor, DispatchHandle};
 use tokio::runtime::Handle;
 
 /// Tokio ランタイム上で Dispatcher を駆動する実装。
@@ -14,8 +13,8 @@ impl TokioExecutor {
   }
 }
 
-impl DispatchExecutor<StdToolbox> for TokioExecutor {
-  fn execute(&self, dispatcher: DispatchHandle<StdToolbox>) {
+impl DispatchExecutor for TokioExecutor {
+  fn execute(&self, dispatcher: DispatchHandle) {
     let _ = self.handle.spawn_blocking(move || dispatcher.drive());
   }
 }

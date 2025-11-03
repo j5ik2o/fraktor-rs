@@ -2,15 +2,17 @@ use core::num::NonZeroUsize;
 use std::{thread, time::Duration};
 
 use cellactor_actor_core_rs::{
-  actor_prim::Actor,
   error::ActorError,
-  eventstream::{EventStreamEvent, EventStreamSubscriber},
   logging::{LogEvent, LogLevel, LoggerSubscriber, LoggerWriter},
   mailbox::{MailboxOverflowStrategy, MailboxPolicy},
   props::MailboxConfig,
 };
 use cellactor_actor_std_rs::{
-  ActorContext, ActorRef, ActorSystem, AnyMessage, AnyMessageView, ChildRef, Props, StdToolbox,
+  actor_prim::{Actor, ActorContext, ActorRef, ChildRef},
+  eventstream::{EventStreamEvent, EventStreamSubscriber},
+  messaging::{AnyMessage, AnyMessageView},
+  props::Props,
+  system::ActorSystem,
 };
 use cellactor_utils_core_rs::sync::ArcShared;
 
@@ -27,8 +29,8 @@ impl LoggerWriter for StdoutLogger {
 
 struct DeadletterPrinter;
 
-impl EventStreamSubscriber<StdToolbox> for DeadletterPrinter {
-  fn on_event(&self, event: &EventStreamEvent<StdToolbox>) {
+impl EventStreamSubscriber for DeadletterPrinter {
+  fn on_event(&self, event: &EventStreamEvent) {
     if let EventStreamEvent::Deadletter(entry) = event {
       println!(
         "[DEADLETTER] reason={:?} recipient={:?} message_type={:?}",
@@ -42,7 +44,7 @@ impl EventStreamSubscriber<StdToolbox> for DeadletterPrinter {
 
 struct GuardianActor;
 
-impl Actor<StdToolbox> for GuardianActor {
+impl Actor for GuardianActor {
   fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
       let mailbox_policy =
@@ -64,7 +66,7 @@ impl Actor<StdToolbox> for GuardianActor {
 
 struct EchoActor;
 
-impl Actor<StdToolbox> for EchoActor {
+impl Actor for EchoActor {
   fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<LogDeadletters>().is_some() {
       let entries = ctx.system().deadletters();
@@ -82,11 +84,11 @@ fn main() {
   let system = ActorSystem::new(&props).expect("actor system を初期化できること");
 
   let logger_writer: ArcShared<dyn LoggerWriter> = ArcShared::new(StdoutLogger);
-  let logger: ArcShared<dyn EventStreamSubscriber<StdToolbox>> =
+  let logger: ArcShared<dyn EventStreamSubscriber> =
     ArcShared::new(LoggerSubscriber::new(LogLevel::Info, logger_writer));
   let _log_subscription = system.subscribe_event_stream(&logger);
 
-  let printer: ArcShared<dyn EventStreamSubscriber<StdToolbox>> = ArcShared::new(DeadletterPrinter);
+  let printer: ArcShared<dyn EventStreamSubscriber> = ArcShared::new(DeadletterPrinter);
   let _deadletter_subscription = system.subscribe_event_stream(&printer);
 
   let guardian: ActorRef = system.user_guardian_ref();

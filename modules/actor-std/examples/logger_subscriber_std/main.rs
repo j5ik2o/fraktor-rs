@@ -1,12 +1,16 @@
 use std::{fmt::Write as _, thread, time::Duration};
 
 use cellactor_actor_core_rs::{
-  actor_prim::Actor,
   error::ActorError,
-  eventstream::EventStreamSubscriber,
   logging::{LogEvent, LogLevel, LoggerSubscriber, LoggerWriter},
 };
-use cellactor_actor_std_rs::{ActorContext, ActorRef, ActorSystem, AnyMessage, AnyMessageView, Props, StdToolbox};
+use cellactor_actor_std_rs::{
+  actor_prim::{Actor, ActorContext, ActorRef},
+  eventstream::EventStreamSubscriber,
+  messaging::{AnyMessage, AnyMessageView},
+  props::Props,
+  system::ActorSystem,
+};
 use cellactor_utils_core_rs::sync::ArcShared;
 
 struct Start;
@@ -28,7 +32,7 @@ impl LoggerWriter for StdoutLogger {
 
 struct GuardianActor;
 
-impl Actor<StdToolbox> for GuardianActor {
+impl Actor for GuardianActor {
   fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
       ctx.log(LogLevel::Debug, "debug は閾値未満なので無視される");
@@ -43,7 +47,7 @@ impl Actor<StdToolbox> for GuardianActor {
 
 fn main() {
   let logger_writer: ArcShared<dyn LoggerWriter> = ArcShared::new(StdoutLogger);
-  let log_subscriber: ArcShared<dyn EventStreamSubscriber<StdToolbox>> =
+  let log_subscriber: ArcShared<dyn EventStreamSubscriber> =
     ArcShared::new(LoggerSubscriber::new(LogLevel::Info, logger_writer));
 
   let props: Props = Props::from_fn(|| GuardianActor);
