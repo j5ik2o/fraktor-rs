@@ -6,10 +6,10 @@ use super::{
   props_actor_factory::ActorFactory, props_dispatcher_config::DispatcherConfig, props_mailbox_config::MailboxConfig,
   props_supervisor_options::SupervisorOptions,
 };
-use crate::{RuntimeToolbox, actor::Actor, mailbox_policy::MailboxPolicy};
+use crate::{NoStdToolbox, RuntimeToolbox, actor::Actor, mailbox_policy::MailboxPolicy};
 
 /// Immutable configuration describing how to construct an actor.
-pub struct Props<TB: RuntimeToolbox + 'static> {
+pub struct Props<TB: RuntimeToolbox + 'static = NoStdToolbox> {
   factory:    ArcShared<dyn ActorFactory<TB>>,
   name:       Option<String>,
   mailbox:    MailboxConfig,

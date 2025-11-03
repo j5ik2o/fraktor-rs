@@ -7,10 +7,10 @@ use core::task::Waker;
 
 use cellactor_utils_core_rs::sync::{SyncMutexFamily, sync_mutex_like::SyncMutexLike};
 
-use crate::{RuntimeToolbox, ToolboxMutex, actor_future_listener::ActorFutureListener};
+use crate::{NoStdToolbox, RuntimeToolbox, ToolboxMutex, actor_future_listener::ActorFutureListener};
 
 /// Represents a future that resolves with a message.
-pub struct ActorFuture<T, TB: RuntimeToolbox>
+pub struct ActorFuture<T, TB: RuntimeToolbox = NoStdToolbox>
 where
   T: Send + 'static, {
   value: ToolboxMutex<Option<T>, TB>,

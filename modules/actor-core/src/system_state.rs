@@ -12,13 +12,13 @@ use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
 use crate::{
   AnyMessage, DeadletterEntry, DeadletterGeneric, EventStreamEvent, EventStreamGeneric, LogEvent, LogLevel,
-  RuntimeToolbox, ToolboxMutex, actor_cell::ActorCell, actor_error::ActorError, actor_future::ActorFuture,
+  NoStdToolbox, RuntimeToolbox, ToolboxMutex, actor_cell::ActorCell, actor_error::ActorError, actor_future::ActorFuture,
   name_registry::NameRegistry, name_registry_error::NameRegistryError, pid::Pid, send_error::SendError,
   spawn_error::SpawnError, supervisor_strategy::SupervisorDirective, system_message::SystemMessage,
 };
 
 /// Captures global actor system state.
-pub struct SystemState<TB: RuntimeToolbox + 'static> {
+pub struct SystemState<TB: RuntimeToolbox + 'static = NoStdToolbox> {
   next_pid:      AtomicU64,
   clock:         AtomicU64,
   cells:         ToolboxMutex<HashMap<Pid, ArcShared<ActorCell<TB>>>, TB>,

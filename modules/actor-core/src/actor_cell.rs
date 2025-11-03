@@ -9,7 +9,7 @@ use core::time::Duration;
 use cellactor_utils_core_rs::sync::{ArcShared, SyncMutexFamily, sync_mutex_like::SyncMutexLike};
 
 use crate::{
-  EventStreamEvent, LifecycleEvent, LifecycleStage, MailboxCapacity, RuntimeToolbox, ToolboxMutex,
+  EventStreamEvent, LifecycleEvent, LifecycleStage, MailboxCapacity, NoStdToolbox, RuntimeToolbox, ToolboxMutex,
   actor::Actor,
   actor_context::ActorContext,
   actor_error::ActorError,
@@ -29,7 +29,7 @@ use crate::{
 };
 
 /// Runtime container responsible for executing an actor instance.
-pub struct ActorCell<TB: RuntimeToolbox + 'static> {
+pub struct ActorCell<TB: RuntimeToolbox + 'static = NoStdToolbox> {
   pid:         Pid,
   parent:      Option<Pid>,
   name:        String,

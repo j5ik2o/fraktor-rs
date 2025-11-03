@@ -16,7 +16,7 @@ use crate::{
 const DEFAULT_CAPACITY: usize = 256;
 
 /// In-memory event bus with replay support for late subscribers.
-pub struct EventStreamGeneric<TB: RuntimeToolbox + 'static> {
+pub struct EventStreamGeneric<TB: RuntimeToolbox + 'static = NoStdToolbox> {
   subscribers: ToolboxMutex<Vec<EventStreamSubscriberEntry<TB>>, TB>,
   buffer:      ToolboxMutex<Vec<EventStreamEvent<TB>>, TB>,
   capacity:    usize,

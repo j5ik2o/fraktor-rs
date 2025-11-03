@@ -37,7 +37,7 @@ impl CaptureActor {
   }
 }
 
-impl Actor<NoStdToolbox> for CaptureActor {
+impl Actor for CaptureActor {
   fn receive(
     &mut self,
     ctx: &mut ActorContext<'_, NoStdToolbox>,

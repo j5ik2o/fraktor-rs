@@ -1,13 +1,13 @@
 use cellactor_utils_core_rs::sync::ArcShared;
 
 use crate::{
-  RuntimeToolbox,
+  NoStdToolbox, RuntimeToolbox,
   dispatcher::{DispatchExecutor, Dispatcher, InlineExecutor},
   mailbox::Mailbox,
 };
 
 /// Dispatcher configuration attached to [`Props`](super::Props).
-pub struct DispatcherConfig<TB: RuntimeToolbox + 'static> {
+pub struct DispatcherConfig<TB: RuntimeToolbox + 'static = NoStdToolbox> {
   executor: ArcShared<dyn DispatchExecutor<TB>>,
 }
 

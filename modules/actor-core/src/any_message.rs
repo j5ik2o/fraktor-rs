@@ -5,10 +5,10 @@ use core::any::Any;
 
 use cellactor_utils_core_rs::sync::ArcShared;
 
-use crate::{RuntimeToolbox, actor_ref::ActorRef, any_message_view::AnyMessageView};
+use crate::{NoStdToolbox, RuntimeToolbox, actor_ref::ActorRef, any_message_view::AnyMessageView};
 
 /// Wraps an arbitrary payload for message passing.
-pub struct AnyMessage<TB: RuntimeToolbox> {
+pub struct AnyMessage<TB: RuntimeToolbox = NoStdToolbox> {
   payload:  ArcShared<dyn Any + Send + Sync + 'static>,
   reply_to: Option<ActorRef<TB>>,
 }

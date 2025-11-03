@@ -5,12 +5,12 @@ use core::fmt;
 use cellactor_utils_core_rs::sync::ArcShared;
 
 use crate::{
-  RuntimeToolbox, actor_ref::ActorRef, any_message::AnyMessage, ask_response::AskResponse, pid::Pid,
+  NoStdToolbox, RuntimeToolbox, actor_ref::ActorRef, any_message::AnyMessage, ask_response::AskResponse, pid::Pid,
   send_error::SendError, system_message::SystemMessage, system_state::SystemState,
 };
 
 /// Provides typed accessors to a child actor owned by a parent.
-pub struct ChildRef<TB: RuntimeToolbox + 'static> {
+pub struct ChildRef<TB: RuntimeToolbox + 'static = NoStdToolbox> {
   actor:  ActorRef<TB>,
   system: ArcShared<SystemState<TB>>,
 }

@@ -13,7 +13,7 @@
         "--project",
         "."
       ],
-      "cwd": ".",
+      "cwd": "${PWD}",
       "env": {}
     },
     "context7": {

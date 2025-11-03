@@ -5,11 +5,11 @@ mod tests;
 
 use core::any::{Any, TypeId};
 
-use crate::{RuntimeToolbox, actor_ref::ActorRef};
+use crate::{NoStdToolbox, RuntimeToolbox, actor_ref::ActorRef};
 
 /// Represents a borrowed view of an actor message.
 #[derive(Debug)]
-pub struct AnyMessageView<'a, TB: RuntimeToolbox> {
+pub struct AnyMessageView<'a, TB: RuntimeToolbox = NoStdToolbox> {
   payload:  &'a (dyn Any + Send + Sync + 'static),
   type_id:  TypeId,
   reply_to: Option<&'a ActorRef<TB>>,

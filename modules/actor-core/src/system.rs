@@ -6,7 +6,7 @@ use cellactor_utils_core_rs::sync::ArcShared;
 
 use crate::{
   AnyMessage, DeadletterEntry, EventStreamEvent, EventStreamGeneric, EventStreamSubscriber,
-  EventStreamSubscriptionGeneric, LogLevel, RuntimeToolbox, actor_cell::ActorCell, actor_future::ActorFuture,
+  EventStreamSubscriptionGeneric, LogLevel, NoStdToolbox, RuntimeToolbox, actor_cell::ActorCell, actor_future::ActorFuture,
   actor_ref::ActorRef, child_ref::ChildRef, pid::Pid, props_struct::Props, send_error::SendError,
   spawn_error::SpawnError, system_message::SystemMessage, system_state::SystemState,
 };
@@ -15,7 +15,7 @@ const ACTOR_INIT_FAILED: &str = "actor lifecycle hook failed";
 const PARENT_MISSING: &str = "parent actor not found";
 
 /// Core runtime structure that owns registry, guardians, and spawn logic.
-pub struct ActorSystem<TB: RuntimeToolbox + 'static> {
+pub struct ActorSystem<TB: RuntimeToolbox + 'static = NoStdToolbox> {
   state: ArcShared<SystemState<TB>>,
 }
 

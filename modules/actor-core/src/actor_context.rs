@@ -4,12 +4,12 @@ use alloc::{string::String, vec::Vec};
 use core::marker::PhantomData;
 
 use crate::{
-  LogLevel, RuntimeToolbox, actor_ref::ActorRef, any_message::AnyMessage, child_ref::ChildRef, pid::Pid,
+  LogLevel, NoStdToolbox, RuntimeToolbox, actor_ref::ActorRef, any_message::AnyMessage, child_ref::ChildRef, pid::Pid,
   props_struct::Props, send_error::SendError, spawn_error::SpawnError, system::ActorSystem,
 };
 
 /// Provides contextual APIs while handling a message.
-pub struct ActorContext<'a, TB: RuntimeToolbox + 'static> {
+pub struct ActorContext<'a, TB: RuntimeToolbox + 'static = NoStdToolbox> {
   system:   ActorSystem<TB>,
   pid:      Pid,
   reply_to: Option<ActorRef<TB>>,

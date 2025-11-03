@@ -16,7 +16,7 @@ use crate::{
 const DEFAULT_CAPACITY: usize = 256;
 
 /// Collects undeliverable messages and notifies subscribers.
-pub struct DeadletterGeneric<TB: RuntimeToolbox + 'static> {
+pub struct DeadletterGeneric<TB: RuntimeToolbox + 'static = NoStdToolbox> {
   entries:      ToolboxMutex<Vec<DeadletterEntry<TB>>, TB>,
   capacity:     usize,
   event_stream: ArcShared<EventStreamGeneric<TB>>,
