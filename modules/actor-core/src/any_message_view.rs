@@ -1,8 +1,11 @@
 //! Borrowed representation of a dynamically typed message.
 
+#[cfg(test)]
+mod tests;
+
 use core::any::{Any, TypeId};
 
-use crate::{ActorRef, RuntimeToolbox};
+use crate::{RuntimeToolbox, actor_ref::ActorRef};
 
 /// Represents a borrowed view of an actor message.
 #[derive(Debug)]
@@ -37,6 +40,3 @@ impl<'a, TB: RuntimeToolbox> AnyMessageView<'a, TB> {
     self.reply_to
   }
 }
-
-#[cfg(test)]
-mod tests;

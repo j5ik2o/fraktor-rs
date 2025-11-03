@@ -2,10 +2,14 @@
 
 //! Standard library extensions for Cellactor utilities.
 
+mod std_toolbox;
 /// Synchronization primitives built on top of `std::sync::Mutex`.
-pub mod sync_mutex;
+mod sync_mutex;
+mod sync_mutex_guard;
 /// Runtime toolbox and aliases for std environments.
-pub mod toolbox;
+mod toolbox;
 
-pub use sync_mutex::{StdSyncMutex, StdSyncMutexGuard};
-pub use toolbox::{StdMutex, StdMutexFamily, StdToolbox};
+pub use std_toolbox::StdToolbox;
+pub use sync_mutex::StdSyncMutex;
+pub use sync_mutex_guard::StdSyncMutexGuard;
+pub use toolbox::{StdMutex, StdMutexFamily};

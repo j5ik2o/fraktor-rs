@@ -16,6 +16,6 @@ impl<TB: RuntimeToolbox + 'static> DispatchHandle<TB> {
 
   /// Runs a dispatcher batch immediately on the current thread.
   pub fn drive(&self) {
-    DispatcherCore::drive(self.core.clone());
+    DispatcherCore::drive(&self.core);
   }
 }

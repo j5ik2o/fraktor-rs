@@ -1,5 +1,8 @@
 //! Tracks actor names within a parent scope.
 
+#[cfg(test)]
+mod tests;
+
 use alloc::{borrow::ToOwned, format, string::String};
 
 use hashbrown::HashMap;
@@ -48,6 +51,3 @@ impl NameRegistry {
     format!("anon-{}", pid)
   }
 }
-
-#[cfg(test)]
-mod tests;

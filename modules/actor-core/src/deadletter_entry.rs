@@ -16,13 +16,18 @@ pub struct DeadletterEntry<TB: RuntimeToolbox> {
 impl<TB: RuntimeToolbox> DeadletterEntry<TB> {
   /// Creates a new deadletter entry.
   #[must_use]
-  pub fn new(message: AnyMessage<TB>, reason: DeadletterReason, recipient: Option<Pid>, timestamp: Duration) -> Self {
+  pub const fn new(
+    message: AnyMessage<TB>,
+    reason: DeadletterReason,
+    recipient: Option<Pid>,
+    timestamp: Duration,
+  ) -> Self {
     Self { message, reason, recipient, timestamp }
   }
 
   /// Returns the undelivered message.
   #[must_use]
-  pub fn message(&self) -> &AnyMessage<TB> {
+  pub const fn message(&self) -> &AnyMessage<TB> {
     &self.message
   }
 

@@ -19,7 +19,7 @@ pub struct MailboxInstrumentation<TB: RuntimeToolbox + 'static> {
 impl<TB: RuntimeToolbox + 'static> MailboxInstrumentation<TB> {
   /// Creates a new instrumentation helper.
   #[must_use]
-  pub fn new(
+  pub const fn new(
     system_state: ArcShared<SystemState<TB>>,
     pid: crate::Pid,
     capacity: Option<usize>,

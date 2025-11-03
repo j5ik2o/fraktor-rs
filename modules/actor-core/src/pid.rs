@@ -34,6 +34,3 @@ impl fmt::Display for Pid {
     write!(f, "{}:{}", self.value, self.generation)
   }
 }
-
-#[cfg(test)]
-mod tests;

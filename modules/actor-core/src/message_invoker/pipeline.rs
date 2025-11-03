@@ -5,7 +5,7 @@ use alloc::vec::Vec;
 use cellactor_utils_core_rs::sync::ArcShared;
 
 use super::MessageInvokerMiddleware;
-use crate::{Actor, ActorContext, ActorError, ActorRef, AnyMessage, AnyMessageView, RuntimeToolbox};
+use crate::{Actor, ActorContext, ActorError, AnyMessage, AnyMessageView, RuntimeToolbox, actor_ref::ActorRef};
 
 /// Middleware-enabled pipeline used to invoke actor message handlers.
 pub struct MessageInvokerPipeline<TB: RuntimeToolbox + 'static> {

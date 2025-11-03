@@ -1,5 +1,8 @@
 //! Listener adapter for [`ActorFuture`](crate::ActorFuture).
 
+#[cfg(test)]
+mod tests;
+
 use core::{
   future::Future,
   pin::Pin,
@@ -48,6 +51,3 @@ where
   TB: RuntimeToolbox,
 {
 }
-
-#[cfg(test)]
-mod tests;

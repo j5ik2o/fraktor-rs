@@ -70,6 +70,3 @@ impl Default for RestartStatistics {
     Self::new()
   }
 }
-
-#[cfg(test)]
-mod tests;

@@ -1,6 +1,9 @@
 //! Mutex family abstraction for runtime injection.
 
-use crate::sync::sync_mutex_like::{SpinSyncMutex, SyncMutexLike};
+#[cfg(test)]
+mod tests;
+
+use crate::sync::sync_mutex_like::SyncMutexLike;
 
 /// Provides a constructor for mutex implementations used by the runtime.
 pub trait SyncMutexFamily {
@@ -14,23 +17,3 @@ pub trait SyncMutexFamily {
   where
     T: Send + 'static;
 }
-
-/// Mutex family backed by [`SpinSyncMutex`], suited for no_std environments.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct SpinMutexFamily;
-
-impl SyncMutexFamily for SpinMutexFamily {
-  type Mutex<T>
-    = SpinSyncMutex<T>
-  where
-    T: Send + 'static;
-
-  fn create<T>(value: T) -> Self::Mutex<T>
-  where
-    T: Send + 'static, {
-    SpinSyncMutex::new(value)
-  }
-}
-
-#[cfg(test)]
-mod tests;

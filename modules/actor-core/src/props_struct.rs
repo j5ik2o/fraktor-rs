@@ -3,8 +3,8 @@ use alloc::{string::String, vec::Vec};
 use cellactor_utils_core_rs::sync::ArcShared;
 
 use super::{
-  actor_factory::ActorFactory, dispatcher_config::DispatcherConfig, mailbox_config::MailboxConfig,
-  supervisor_options::SupervisorOptions,
+  props_actor_factory::ActorFactory, props_dispatcher_config::DispatcherConfig, props_mailbox_config::MailboxConfig,
+  props_supervisor_options::SupervisorOptions,
 };
 use crate::{RuntimeToolbox, actor::Actor, mailbox_policy::MailboxPolicy};
 
@@ -77,27 +77,27 @@ impl<TB: RuntimeToolbox + 'static> Props<TB> {
     &self.middleware
   }
 
-  /// Returns the configured dispatcher settings。
+  /// Returns the configured dispatcher settings.
   #[must_use]
   pub const fn dispatcher(&self) -> &DispatcherConfig<TB> {
     &self.dispatcher
   }
 
-  /// Updates the mailbox configuration。
+  /// Updates the mailbox configuration.
   #[must_use]
   pub const fn with_mailbox(mut self, config: MailboxConfig) -> Self {
     self.mailbox = config;
     self
   }
 
-  /// Updates the supervisor options。
+  /// Updates the supervisor options.
   #[must_use]
   pub const fn with_supervisor(mut self, supervisor: SupervisorOptions) -> Self {
     self.supervisor = supervisor;
     self
   }
 
-  /// Registers middleware identifiers used when constructing the message pipeline。
+  /// Registers middleware identifiers used when constructing the message pipeline.
   #[must_use]
   pub fn with_middleware<I, S>(mut self, middleware: I) -> Self
   where
@@ -107,14 +107,14 @@ impl<TB: RuntimeToolbox + 'static> Props<TB> {
     self
   }
 
-  /// Assigns a logical name to the actor for registry purposes。
+  /// Assigns a logical name to the actor for registry purposes.
   #[must_use]
   pub fn with_name(mut self, name: impl Into<String>) -> Self {
     self.name = Some(name.into());
     self
   }
 
-  /// Overrides the dispatcher configuration used when constructing actors。
+  /// Overrides the dispatcher configuration used when constructing actors.
   #[must_use]
   pub fn with_dispatcher(mut self, dispatcher: DispatcherConfig<TB>) -> Self {
     self.dispatcher = dispatcher;

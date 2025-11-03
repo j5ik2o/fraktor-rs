@@ -13,59 +13,59 @@ pub use cellactor_actor_core_rs::{
 };
 pub use cellactor_utils_std_rs::{StdMutex, StdMutexFamily, StdToolbox};
 
-/// 型エイリアス: std 環境向けツールボックスで動作する ActorSystem。
+/// ActorSystem specialized for std environment.
 pub type ActorSystem = ActorSystemGeneric<StdToolbox>;
 
-/// 型エイリアス: std 向け Props。
+/// Props specialized for std environment.
 pub type Props = cellactor_actor_core_rs::Props<StdToolbox>;
 
-/// 型エイリアス: std 向け ActorContext。
+/// ActorContext specialized for std environment.
 pub type ActorContext<'a> = cellactor_actor_core_rs::ActorContext<'a, StdToolbox>;
 
-/// 型エイリアス: std 向け ActorRef。
+/// ActorRef specialized for std environment.
 pub type ActorRef = cellactor_actor_core_rs::ActorRef<StdToolbox>;
 
-/// 型エイリアス: std 向け ChildRef。
+/// ChildRef specialized for std environment.
 pub type ChildRef = cellactor_actor_core_rs::ChildRef<StdToolbox>;
 
-/// 型エイリアス: std 向け AnyMessage。
+/// AnyMessage specialized for std environment.
 pub type AnyMessage = cellactor_actor_core_rs::AnyMessage<StdToolbox>;
 
-/// 型エイリアス: std 向け AnyMessageView。
+/// AnyMessageView specialized for std environment.
 pub type AnyMessageView<'a> = cellactor_actor_core_rs::AnyMessageView<'a, StdToolbox>;
 
-/// 型エイリアス: std 向け ActorFuture。
+/// ActorFuture specialized for std environment.
 pub type ActorFuture<T> = cellactor_actor_core_rs::ActorFuture<T, StdToolbox>;
 
-/// 型エイリアス: std 向け ActorFutureListener。
+/// ActorFutureListener specialized for std environment.
 pub type ActorFutureListener<'a, T> = cellactor_actor_core_rs::ActorFutureListener<'a, T, StdToolbox>;
 
-/// 型エイリアス: std 向け AskResponse。
+/// AskResponse specialized for std environment.
 pub type AskResponse = cellactor_actor_core_rs::AskResponse<StdToolbox>;
 
-/// 型エイリアス: std 向け SendError。
+/// SendError specialized for std environment.
 pub type SendError = cellactor_actor_core_rs::SendError<StdToolbox>;
 
-/// 型エイリアス: std 向け Mailbox。
+/// Mailbox specialized for std environment.
 pub type Mailbox = cellactor_actor_core_rs::Mailbox<StdToolbox>;
 
-/// 型エイリアス: std 向け Dispatcher。
+/// Dispatcher specialized for std environment.
 pub type Dispatcher = cellactor_actor_core_rs::Dispatcher<StdToolbox>;
 
-/// 型エイリアス: std 向け DispatcherConfig。
+/// DispatcherConfig specialized for std environment.
 pub type DispatcherConfig = cellactor_actor_core_rs::DispatcherConfig<StdToolbox>;
 
-/// 型エイリアス: std 向け EventStream。
+/// EventStream specialized for std environment.
 pub type EventStream = cellactor_actor_core_rs::EventStreamGeneric<StdToolbox>;
 
-/// 型エイリアス: std 向け EventStreamEvent。
+/// EventStreamEvent specialized for std environment.
 pub type EventStreamEvent = cellactor_actor_core_rs::EventStreamEvent<StdToolbox>;
 
-/// 型エイリアス: std 向け EventStreamSubscription。
+/// EventStreamSubscription specialized for std environment.
 pub type EventStreamSubscription = cellactor_actor_core_rs::EventStreamSubscriptionGeneric<StdToolbox>;
 
-/// 型エイリアス: std 向け Deadletter。
+/// Deadletter specialized for std environment.
 pub type Deadletter = cellactor_actor_core_rs::DeadletterGeneric<StdToolbox>;
 
-/// 型エイリアス: std 向け SystemState。
+/// SystemState specialized for std environment.
 pub type SystemState = cellactor_actor_core_rs::SystemState<StdToolbox>;

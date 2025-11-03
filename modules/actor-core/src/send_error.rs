@@ -1,5 +1,8 @@
 //! Errors returned when enqueueing messages fails.
 
+#[cfg(test)]
+mod tests;
+
 use alloc::fmt;
 
 use crate::{AnyMessage, RuntimeToolbox};
@@ -19,31 +22,31 @@ pub enum SendError<TB: RuntimeToolbox> {
 impl<TB: RuntimeToolbox> SendError<TB> {
   /// Creates a send error representing a full mailbox.
   #[must_use]
-  pub fn full(message: AnyMessage<TB>) -> Self {
+  pub const fn full(message: AnyMessage<TB>) -> Self {
     Self::Full(message)
   }
 
   /// Creates a send error representing a suspended mailbox.
   #[must_use]
-  pub fn suspended(message: AnyMessage<TB>) -> Self {
+  pub const fn suspended(message: AnyMessage<TB>) -> Self {
     Self::Suspended(message)
   }
 
   /// Creates a send error representing a closed mailbox or actor.
   #[must_use]
-  pub fn closed(message: AnyMessage<TB>) -> Self {
+  pub const fn closed(message: AnyMessage<TB>) -> Self {
     Self::Closed(message)
   }
 
   /// Creates a send error representing a missing reply target.
   #[must_use]
-  pub fn no_recipient(message: AnyMessage<TB>) -> Self {
+  pub const fn no_recipient(message: AnyMessage<TB>) -> Self {
     Self::NoRecipient(message)
   }
 
   /// Returns a shared reference to the owned message.
   #[must_use]
-  pub fn message(&self) -> &AnyMessage<TB> {
+  pub const fn message(&self) -> &AnyMessage<TB> {
     match self {
       | SendError::Full(message)
       | SendError::Suspended(message)
@@ -74,6 +77,3 @@ impl<TB: RuntimeToolbox> fmt::Debug for SendError<TB> {
     }
   }
 }
-
-#[cfg(test)]
-mod tests;

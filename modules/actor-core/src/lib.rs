@@ -97,7 +97,11 @@ mod message_invoker;
 mod name_registry;
 mod name_registry_error;
 mod pid;
-mod props;
+mod props_actor_factory;
+mod props_dispatcher_config;
+mod props_mailbox_config;
+mod props_struct;
+mod props_supervisor_options;
 mod receive_state;
 mod restart_statistics;
 mod send_error;
@@ -114,7 +118,7 @@ pub use actor_error::ActorError;
 pub use actor_error_reason::ActorErrorReason;
 pub use actor_future::ActorFuture;
 pub use actor_future_listener::ActorFutureListener;
-pub use actor_ref::ActorRef;
+pub use actor_ref::{ActorRef, ActorRefSender, AskReplySender, NullSender};
 pub use any_message::AnyMessage;
 pub use any_message_view::AnyMessageView;
 pub use ask_response::AskResponse;
@@ -133,7 +137,9 @@ pub use log_event::LogEvent;
 pub use log_level::LogLevel;
 pub use logger_subscriber::LoggerSubscriber;
 pub use logger_writer::LoggerWriter;
-pub use mailbox::Mailbox;
+pub use mailbox::{
+  EnqueueOutcome, Mailbox, MailboxInstrumentation, MailboxMessage, MailboxOfferFuture, MailboxPollFuture,
+};
 pub use mailbox_capacity::MailboxCapacity;
 pub use mailbox_metrics_event::MailboxMetricsEvent;
 pub use mailbox_overflow_strategy::MailboxOverflowStrategy;
@@ -142,15 +148,19 @@ pub use message_invoker::{MessageInvoker, MessageInvokerMiddleware, MessageInvok
 pub use name_registry::NameRegistry;
 pub use name_registry_error::NameRegistryError;
 pub use pid::Pid;
-pub use props::{DispatcherConfig, MailboxConfig, Props, SupervisorOptions};
+pub use props_actor_factory::ActorFactory;
+pub use props_dispatcher_config::DispatcherConfig;
+pub use props_mailbox_config::MailboxConfig;
+pub use props_struct::Props;
+pub use props_supervisor_options::SupervisorOptions;
 pub use receive_state::ReceiveState;
 pub use restart_statistics::RestartStatistics;
 pub use send_error::SendError;
 pub use spawn_error::SpawnError;
 pub use supervisor_strategy::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind};
-pub use system::ActorSystem as ActorSystemGeneric;
+pub use system::ActorSystemGeneric;
 pub use system_message::SystemMessage;
 pub use system_state::SystemState;
 
-/// 型エイリアス: 既定のツールボックスで動作する ActorSystem。
+/// Type alias for ActorSystem using the default toolbox.
 pub type ActorSystem = ActorSystemGeneric<NoStdToolbox>;

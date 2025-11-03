@@ -1,7 +1,8 @@
-use core::ops::{Deref, DerefMut};
-use std::sync::{Mutex, MutexGuard};
+use std::sync::Mutex;
 
 use cellactor_utils_core_rs::sync::sync_mutex_like::SyncMutexLike;
+
+use crate::sync_mutex_guard::StdSyncMutexGuard;
 
 /// Mutex wrapper backed by [`std::sync::Mutex`].
 pub struct StdSyncMutex<T>(Mutex<T>);
@@ -27,25 +28,6 @@ impl<T> StdSyncMutex<T> {
       | Ok(guard) => StdSyncMutexGuard { guard },
       | Err(poisoned) => StdSyncMutexGuard { guard: poisoned.into_inner() },
     }
-  }
-}
-
-/// Guard returned by [`StdSyncMutex`].
-pub struct StdSyncMutexGuard<'a, T> {
-  guard: MutexGuard<'a, T>,
-}
-
-impl<'a, T> Deref for StdSyncMutexGuard<'a, T> {
-  type Target = T;
-
-  fn deref(&self) -> &Self::Target {
-    &*self.guard
-  }
-}
-
-impl<'a, T> DerefMut for StdSyncMutexGuard<'a, T> {
-  fn deref_mut(&mut self) -> &mut Self::Target {
-    &mut *self.guard
   }
 }
 

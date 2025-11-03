@@ -16,6 +16,7 @@ pub use dispatch_handle::DispatchHandle;
 #[allow(unused_imports)]
 pub use dispatcher_sender::DispatcherSender;
 pub use dispatcher_struct::Dispatcher;
+#[allow(unused_imports)]
 pub use inline_executor::InlineExecutor;
 
 #[cfg(test)]

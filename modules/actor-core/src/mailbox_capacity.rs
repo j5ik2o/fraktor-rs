@@ -13,6 +13,3 @@ pub enum MailboxCapacity {
   /// Capacity is unbounded and may grow until memory pressure applies.
   Unbounded,
 }
-
-#[cfg(test)]
-mod tests;

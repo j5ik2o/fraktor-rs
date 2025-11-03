@@ -1,5 +1,8 @@
 //! Runtime container responsible for executing an actor instance.
 
+#[cfg(test)]
+mod tests;
+
 use alloc::{boxed::Box, string::String, vec, vec::Vec};
 use core::time::Duration;
 
@@ -16,7 +19,8 @@ use crate::{
   mailbox::{Mailbox, MailboxInstrumentation},
   message_invoker::{MessageInvoker, MessageInvokerPipeline},
   pid::Pid,
-  props::{ActorFactory, Props},
+  props_actor_factory::ActorFactory,
+  props_struct::Props,
   restart_statistics::RestartStatistics,
   supervisor_strategy::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
   system::ActorSystem,
@@ -143,11 +147,19 @@ impl<TB: RuntimeToolbox + 'static> ActorCell<TB> {
   }
 
   /// Runs the actor's `pre_start` hook.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the actor's `pre_start` lifecycle hook fails.
   pub fn pre_start(&self) -> Result<(), ActorError> {
     self.run_pre_start(LifecycleStage::Started)
   }
 
   /// Restarts the actor with a freshly created instance.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if actor recreation or lifecycle hooks fail.
   pub fn restart(&self) -> Result<(), ActorError> {
     {
       let system = ActorSystem::from_state(self.system.clone());
@@ -301,41 +313,7 @@ fn find_or_insert_stats(entries: &mut Vec<(Pid, RestartStatistics)>, pid: Pid) -
   if let Some(index) = entries.iter().position(|(child, _)| *child == pid) {
     return &mut entries[index].1;
   }
+  let new_index = entries.len();
   entries.push((pid, RestartStatistics::new()));
-  &mut entries.last_mut().expect("entry must exist").1
-}
-
-#[cfg(test)]
-mod tests {
-  use alloc::string::ToString;
-
-  use cellactor_utils_core_rs::sync::ArcShared;
-
-  use super::ActorCell;
-  use crate::{AnyMessageView, actor::Actor, actor_context::ActorContext, actor_error::ActorError, pid::Pid};
-
-  struct ProbeActor;
-
-  impl Actor<crate::NoStdToolbox> for ProbeActor {
-    fn receive(
-      &mut self,
-      _ctx: &mut ActorContext<'_, crate::NoStdToolbox>,
-      _message: AnyMessageView<'_, crate::NoStdToolbox>,
-    ) -> Result<(), ActorError> {
-      Ok(())
-    }
-  }
-
-  #[test]
-  fn actor_cell_holds_components() {
-    let system = ArcShared::new(crate::SystemState::<crate::NoStdToolbox>::new());
-    let props = crate::props::Props::<crate::NoStdToolbox>::from_fn(|| ProbeActor);
-    let cell = ActorCell::create(system, Pid::new(1, 0), None, "worker".to_string(), &props);
-
-    assert_eq!(cell.pid(), Pid::new(1, 0));
-    assert_eq!(cell.name(), "worker");
-    assert!(cell.parent().is_none());
-    assert_eq!(cell.mailbox().system_len(), 0);
-    assert_eq!(cell.dispatcher().mailbox().system_len(), 0);
-  }
+  &mut entries[new_index].1
 }

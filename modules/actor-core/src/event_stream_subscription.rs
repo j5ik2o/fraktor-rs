@@ -30,5 +30,5 @@ impl<TB: RuntimeToolbox + 'static> Drop for EventStreamSubscriptionGeneric<TB> {
   }
 }
 
-/// 型エイリアス: 既定ツールボックス向けのサブスクリプション。
+/// Type alias for EventStreamSubscription using the default toolbox.
 pub type EventStreamSubscription = EventStreamSubscriptionGeneric<NoStdToolbox>;

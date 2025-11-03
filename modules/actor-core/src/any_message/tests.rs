@@ -1,6 +1,6 @@
 #![cfg(test)]
 
-use crate::{ActorRef, NoStdToolbox, any_message::AnyMessage, pid::Pid};
+use crate::{NoStdToolbox, actor_ref::ActorRef, any_message::AnyMessage, pid::Pid};
 
 #[test]
 fn stores_payload_and_reply_to() {

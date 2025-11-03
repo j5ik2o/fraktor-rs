@@ -4,8 +4,8 @@ use alloc::{string::String, vec::Vec};
 use core::marker::PhantomData;
 
 use crate::{
-  LogLevel, RuntimeToolbox, actor_ref::ActorRef, any_message::AnyMessage, child_ref::ChildRef, pid::Pid, props::Props,
-  send_error::SendError, spawn_error::SpawnError, system::ActorSystem,
+  LogLevel, RuntimeToolbox, actor_ref::ActorRef, any_message::AnyMessage, child_ref::ChildRef, pid::Pid,
+  props_struct::Props, send_error::SendError, spawn_error::SpawnError, system::ActorSystem,
 };
 
 /// Provides contextual APIs while handling a message.
@@ -37,7 +37,7 @@ impl<'a, TB: RuntimeToolbox + 'static> ActorContext<'a, TB> {
 
   /// Returns the reply target if supplied by the message envelope.
   #[must_use]
-  pub fn reply_to(&self) -> Option<&ActorRef<TB>> {
+  pub const fn reply_to(&self) -> Option<&ActorRef<TB>> {
     self.reply_to.as_ref()
   }
 

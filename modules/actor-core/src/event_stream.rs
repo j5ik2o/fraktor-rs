@@ -1,5 +1,8 @@
 //! Runtime event stream supporting buffered fanout.
 
+#[cfg(test)]
+mod tests;
+
 use alloc::vec::Vec;
 use core::sync::atomic::{AtomicU64, Ordering};
 
@@ -84,8 +87,5 @@ impl<TB: RuntimeToolbox + 'static> Default for EventStreamGeneric<TB> {
   }
 }
 
-/// 既定ツールボックス向けの型エイリアス。
+/// Type alias for EventStream using the default toolbox.
 pub type EventStream = EventStreamGeneric<NoStdToolbox>;
-
-#[cfg(test)]
-mod tests;

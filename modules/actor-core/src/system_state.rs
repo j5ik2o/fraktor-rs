@@ -1,5 +1,8 @@
 //! Shared, mutable state owned by the actor system.
 
+#[cfg(test)]
+mod tests;
+
 use alloc::{format, string::String, vec::Vec};
 use core::time::Duration;
 
@@ -73,6 +76,10 @@ impl<TB: RuntimeToolbox + 'static> SystemState<TB> {
   }
 
   /// Binds an actor name within its parent's scope.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the requested name is already taken.
   pub fn assign_name(&self, parent: Option<Pid>, hint: Option<&str>, pid: Pid) -> Result<String, SpawnError> {
     let mut registries = self.registries.lock();
     let registry = registries.entry(parent).or_insert_with(NameRegistry::new);
@@ -180,11 +187,15 @@ impl<TB: RuntimeToolbox + 'static> SystemState<TB> {
   }
 
   /// Sends a system message to the specified actor.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the actor doesn't exist or the message cannot be enqueued.
   pub fn send_system_message(&self, pid: Pid, message: SystemMessage) -> Result<(), SendError<TB>> {
     if let Some(cell) = self.cell(&pid) {
       cell.dispatcher().enqueue_system(message)
     } else {
-      Err(SendError::closed(AnyMessage::new(message)))
+      Err(SendError::<TB>::closed(AnyMessage::new(message)))
     }
   }
 
@@ -302,37 +313,3 @@ impl<TB: RuntimeToolbox + 'static> Default for SystemState<TB> {
 
 unsafe impl<TB: RuntimeToolbox + 'static> Send for SystemState<TB> {}
 unsafe impl<TB: RuntimeToolbox + 'static> Sync for SystemState<TB> {}
-
-#[cfg(test)]
-mod tests {
-  use alloc::string::ToString;
-
-  use cellactor_utils_core_rs::sync::ArcShared;
-
-  use super::SystemState;
-  use crate::{AnyMessageView, actor::Actor, actor_context::ActorContext, actor_error::ActorError};
-
-  struct ProbeActor;
-
-  impl Actor<crate::NoStdToolbox> for ProbeActor {
-    fn receive(
-      &mut self,
-      _ctx: &mut ActorContext<'_, crate::NoStdToolbox>,
-      _message: AnyMessageView<'_, crate::NoStdToolbox>,
-    ) -> Result<(), ActorError> {
-      Ok(())
-    }
-  }
-
-  #[test]
-  fn registers_and_fetches_cells() {
-    let state = ArcShared::new(SystemState::<crate::NoStdToolbox>::new());
-    let props = crate::props::Props::<crate::NoStdToolbox>::from_fn(|| ProbeActor);
-    let pid = state.allocate_pid();
-    let cell = crate::ActorCell::create(state.clone(), pid, None, "worker".to_string(), &props);
-    state.register_cell(cell.clone());
-    assert!(state.cell(&pid).is_some());
-    state.remove_cell(&pid);
-    assert!(state.cell(&pid).is_none());
-  }
-}

@@ -64,7 +64,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
     &self.state
   }
 
-  pub(super) fn drive(self_arc: ArcShared<Self>) {
+  pub(super) fn drive(self_arc: &ArcShared<Self>) {
     loop {
       {
         let this = &*self_arc;

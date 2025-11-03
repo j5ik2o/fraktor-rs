@@ -5,7 +5,7 @@ use core::any::Any;
 
 use cellactor_utils_core_rs::sync::ArcShared;
 
-use crate::{ActorRef, RuntimeToolbox, any_message_view::AnyMessageView};
+use crate::{RuntimeToolbox, actor_ref::ActorRef, any_message_view::AnyMessageView};
 
 /// Wraps an arbitrary payload for message passing.
 pub struct AnyMessage<TB: RuntimeToolbox> {
@@ -62,6 +62,3 @@ impl<TB: RuntimeToolbox> fmt::Debug for AnyMessage<TB> {
       .finish()
   }
 }
-
-#[cfg(test)]
-mod tests;

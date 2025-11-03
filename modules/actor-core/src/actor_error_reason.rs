@@ -1,5 +1,8 @@
 //! Human readable explanation associated with an actor error.
 
+#[cfg(test)]
+mod tests;
+
 use alloc::{borrow::Cow, string::String};
 use core::fmt;
 
@@ -44,6 +47,3 @@ impl fmt::Display for ActorErrorReason {
     f.write_str(&self.0)
   }
 }
-
-#[cfg(test)]
-mod tests;

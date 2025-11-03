@@ -1,5 +1,8 @@
 //! Minimal future primitive used by the ask pattern.
 
+#[cfg(test)]
+mod tests;
+
 use core::task::Waker;
 
 use cellactor_utils_core_rs::sync::{SyncMutexFamily, sync_mutex_like::SyncMutexLike};
@@ -56,7 +59,7 @@ where
 
   /// Returns a lightweight adapter implementing [`Future`].
   #[must_use]
-  pub fn listener(&self) -> ActorFutureListener<'_, T, TB> {
+  pub const fn listener(&self) -> ActorFutureListener<'_, T, TB> {
     ActorFutureListener::new(self)
   }
 
@@ -90,6 +93,3 @@ where
   TB: RuntimeToolbox,
 {
 }
-
-#[cfg(test)]
-mod tests;

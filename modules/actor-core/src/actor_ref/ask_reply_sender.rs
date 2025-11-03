@@ -1,5 +1,8 @@
 //! Sender used to deliver ask responses back to the awaiting future.
 
+#[cfg(test)]
+mod tests;
+
 use cellactor_utils_core_rs::sync::ArcShared;
 
 use crate::{
@@ -26,6 +29,3 @@ impl<TB: RuntimeToolbox + 'static> ActorRefSender<TB> for AskReplySender<TB> {
     Ok(())
   }
 }
-
-#[cfg(test)]
-mod tests;

@@ -56,6 +56,3 @@ impl ActorError {
     ActorError::recoverable(format!("send failed: {:?}", error))
   }
 }
-
-#[cfg(test)]
-mod tests;

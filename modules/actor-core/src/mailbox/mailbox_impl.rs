@@ -56,11 +56,19 @@ where
   }
 
   /// Enqueues a system message, bypassing suspension.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the system message queue is full or closed.
   pub fn enqueue_system(&self, message: SystemMessage) -> Result<(), SendError<TB>> {
     self.offer_system(message)
   }
 
   /// Attempts to enqueue a user message; returns a future when blocking is needed.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the mailbox is suspended, full, or closed.
   pub fn enqueue_user(&self, message: AnyMessage<TB>) -> Result<EnqueueOutcome<TB>, SendError<TB>> {
     if self.is_suspended() {
       return Err(SendError::suspended(message));

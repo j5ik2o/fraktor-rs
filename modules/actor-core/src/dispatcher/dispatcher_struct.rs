@@ -39,11 +39,19 @@ impl<TB: RuntimeToolbox + 'static> Dispatcher<TB> {
   }
 
   /// Enqueues a user message.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the mailbox is full or closed.
   pub fn enqueue_user(&self, message: AnyMessage<TB>) -> Result<(), SendError<TB>> {
     DispatcherCore::enqueue_user(&self.core, message)
   }
 
   /// Enqueues a system message.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the mailbox is full or closed.
   pub fn enqueue_system(&self, message: SystemMessage) -> Result<(), SendError<TB>> {
     DispatcherCore::enqueue_system(&self.core, message)
   }

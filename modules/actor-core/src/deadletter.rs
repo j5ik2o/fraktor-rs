@@ -1,5 +1,8 @@
 //! Deadletter repository publishing notifications to the event stream.
 
+#[cfg(test)]
+mod tests;
+
 use alloc::{format, vec::Vec};
 use core::time::Duration;
 
@@ -82,8 +85,5 @@ impl<TB: RuntimeToolbox + 'static> DeadletterGeneric<TB> {
   }
 }
 
-#[cfg(test)]
-mod tests;
-
-/// 既定ツールボックス向けの型エイリアス。
+/// Type alias for Deadletter using the default toolbox.
 pub type Deadletter = DeadletterGeneric<NoStdToolbox>;

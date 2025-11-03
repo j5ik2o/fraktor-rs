@@ -1,5 +1,8 @@
 //! Overflow strategies for bounded mailboxes.
 
+#[cfg(test)]
+mod tests;
+
 /// Strategy invoked when a bounded mailbox reaches capacity.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MailboxOverflowStrategy {
@@ -12,6 +15,3 @@ pub enum MailboxOverflowStrategy {
   /// Blocks the producer until capacity becomes available.
   Block,
 }
-
-#[cfg(test)]
-mod tests;

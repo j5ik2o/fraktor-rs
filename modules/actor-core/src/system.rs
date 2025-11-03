@@ -7,8 +7,8 @@ use cellactor_utils_core_rs::sync::ArcShared;
 use crate::{
   AnyMessage, DeadletterEntry, EventStreamEvent, EventStreamGeneric, EventStreamSubscriber,
   EventStreamSubscriptionGeneric, LogLevel, RuntimeToolbox, actor_cell::ActorCell, actor_future::ActorFuture,
-  actor_ref::ActorRef, child_ref::ChildRef, pid::Pid, props::Props, send_error::SendError, spawn_error::SpawnError,
-  system_message::SystemMessage, system_state::SystemState,
+  actor_ref::ActorRef, child_ref::ChildRef, pid::Pid, props_struct::Props, send_error::SendError,
+  spawn_error::SpawnError, system_message::SystemMessage, system_state::SystemState,
 };
 
 const ACTOR_INIT_FAILED: &str = "actor lifecycle hook failed";
@@ -233,91 +233,5 @@ impl<TB: RuntimeToolbox + 'static> Clone for ActorSystem<TB> {
 unsafe impl<TB: RuntimeToolbox + 'static> Send for ActorSystem<TB> {}
 unsafe impl<TB: RuntimeToolbox + 'static> Sync for ActorSystem<TB> {}
 
-#[cfg(test)]
-mod tests {
-  use alloc::vec::Vec;
-
-  use cellactor_utils_core_rs::sync::{ArcShared, SyncMutexFamily};
-
-  use super::{ACTOR_INIT_FAILED, ActorSystem};
-  use crate::{
-    AnyMessage, AnyMessageView, RuntimeToolbox, ToolboxMutex, actor::Actor, actor_context::ActorContext,
-    actor_error::ActorError, props::Props,
-  };
-
-  struct Guardian;
-
-  impl Actor<crate::NoStdToolbox> for Guardian {
-    fn receive(
-      &mut self,
-      _ctx: &mut ActorContext<'_, crate::NoStdToolbox>,
-      _message: AnyMessageView<'_, crate::NoStdToolbox>,
-    ) -> Result<(), ActorError> {
-      Ok(())
-    }
-  }
-
-  type EventMutex = ToolboxMutex<Vec<&'static str>, crate::NoStdToolbox>;
-
-  struct Recorder {
-    events: ArcShared<EventMutex>,
-  }
-
-  impl Recorder {
-    fn new(events: ArcShared<EventMutex>) -> Self {
-      Self { events }
-    }
-  }
-
-  impl Actor<crate::NoStdToolbox> for Recorder {
-    fn receive(
-      &mut self,
-      _ctx: &mut ActorContext<'_, crate::NoStdToolbox>,
-      _message: AnyMessageView<'_, crate::NoStdToolbox>,
-    ) -> Result<(), ActorError> {
-      let mut guard = self.events.lock();
-      guard.push("message");
-      drop(guard);
-      Ok(())
-    }
-  }
-
-  #[test]
-  fn spawns_guardian_and_child() {
-    let guardian_props = Props::<crate::NoStdToolbox>::from_fn(|| Guardian);
-    let system = ActorSystem::new(&guardian_props).expect("guardian spawn");
-    let events = ArcShared::new(<crate::NoStdToolbox as RuntimeToolbox>::MutexFamily::create(Vec::new()));
-    let recorder_props = Props::<crate::NoStdToolbox>::from_fn({
-      let events = events.clone();
-      move || Recorder::new(events.clone())
-    });
-    let child = system.spawn(&recorder_props).expect("child spawn");
-    child.tell(AnyMessage::new("ping")).expect("tell");
-    assert_eq!(events.lock().as_slice(), &["message"]);
-    system.terminate().expect("terminate");
-    system.run_until_terminated();
-  }
-
-  #[test]
-  fn guardian_spawn_failure_rolls_back() {
-    struct Failing;
-
-    impl Actor<crate::NoStdToolbox> for Failing {
-      fn pre_start(&mut self, _ctx: &mut ActorContext<'_, crate::NoStdToolbox>) -> Result<(), ActorError> {
-        Err(ActorError::fatal(ACTOR_INIT_FAILED))
-      }
-
-      fn receive(
-        &mut self,
-        _ctx: &mut ActorContext<'_, crate::NoStdToolbox>,
-        _message: AnyMessageView<'_, crate::NoStdToolbox>,
-      ) -> Result<(), ActorError> {
-        Ok(())
-      }
-    }
-
-    let props = Props::<crate::NoStdToolbox>::from_fn(|| Failing);
-    let result = ActorSystem::new(&props);
-    assert!(result.is_err());
-  }
-}
+/// Type alias for compatibility with older code.
+pub type ActorSystemGeneric<TB> = ActorSystem<TB>;

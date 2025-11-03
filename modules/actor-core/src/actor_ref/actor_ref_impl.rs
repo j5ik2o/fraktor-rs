@@ -1,5 +1,8 @@
 //! Actor reference handle implementation.
 
+#[cfg(test)]
+mod tests;
+
 use core::{
   fmt,
   hash::{Hash, Hasher},
@@ -54,6 +57,10 @@ impl<TB: RuntimeToolbox> ActorRef<TB> {
   }
 
   /// Sends a message to the referenced actor.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the mailbox is full, closed, or the actor doesn't exist.
   pub fn tell(&self, message: AnyMessage<TB>) -> Result<(), SendError<TB>> {
     match self.sender.send(message) {
       | Ok(()) => Ok(()),
@@ -67,6 +74,10 @@ impl<TB: RuntimeToolbox> ActorRef<TB> {
   }
 
   /// Sends a request and obtains a future that resolves with the reply.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the message cannot be delivered.
   pub fn ask(&self, message: AnyMessage<TB>) -> Result<AskResponse<TB>, SendError<TB>>
   where
     TB: 'static, {
@@ -121,6 +132,3 @@ impl<TB: RuntimeToolbox> Hash for ActorRef<TB> {
     self.pid.hash(state);
   }
 }
-
-#[cfg(test)]
-mod tests;

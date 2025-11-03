@@ -1,5 +1,6 @@
-use cellactor_utils_core_rs::sync::{RuntimeToolbox, SyncMutexFamily, ToolboxMutex};
+use cellactor_utils_core_rs::sync::{SyncMutexFamily, ToolboxMutex};
 
+use super::std_toolbox::StdToolbox;
 use crate::sync_mutex::StdSyncMutex;
 
 /// Mutex family backed by [`std::sync::Mutex`].
@@ -17,14 +18,6 @@ impl SyncMutexFamily for StdMutexFamily {
     T: Send + 'static, {
     StdSyncMutex::new(value)
   }
-}
-
-/// Toolbox for std environments, backed by [`StdMutexFamily`].
-#[derive(Clone, Copy, Debug, Default)]
-pub struct StdToolbox;
-
-impl RuntimeToolbox for StdToolbox {
-  type MutexFamily = StdMutexFamily;
 }
 
 /// Convenience alias for the default std mutex.

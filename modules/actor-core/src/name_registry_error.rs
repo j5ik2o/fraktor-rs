@@ -1,5 +1,8 @@
 //! Errors produced by the name registry.
 
+#[cfg(test)]
+mod tests;
+
 use alloc::string::String;
 
 /// Error variants emitted when managing name registrations.
@@ -8,6 +11,3 @@ pub enum NameRegistryError {
   /// The provided name already exists in the registry.
   Duplicate(String),
 }
-
-#[cfg(test)]
-mod tests;

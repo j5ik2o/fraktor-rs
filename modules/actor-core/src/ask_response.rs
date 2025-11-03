@@ -2,7 +2,7 @@
 
 use cellactor_utils_core_rs::sync::ArcShared;
 
-use crate::{ActorRef, RuntimeToolbox, actor_future::ActorFuture, any_message::AnyMessage};
+use crate::{RuntimeToolbox, actor_future::ActorFuture, actor_ref::ActorRef, any_message::AnyMessage};
 
 /// Combines the reply handle and future returned by `ActorRef::ask`.
 pub struct AskResponse<TB: RuntimeToolbox + 'static> {
@@ -13,7 +13,7 @@ pub struct AskResponse<TB: RuntimeToolbox + 'static> {
 impl<TB: RuntimeToolbox + 'static> AskResponse<TB> {
   /// Creates a new ask response handle.
   #[must_use]
-  pub fn new(reply_to: ActorRef<TB>, future: ArcShared<ActorFuture<AnyMessage<TB>, TB>>) -> Self {
+  pub const fn new(reply_to: ActorRef<TB>, future: ArcShared<ActorFuture<AnyMessage<TB>, TB>>) -> Self {
     Self { reply_to, future }
   }
 
@@ -35,6 +35,3 @@ impl<TB: RuntimeToolbox + 'static> AskResponse<TB> {
     (self.reply_to, self.future)
   }
 }
-
-#[cfg(test)]
-mod tests;

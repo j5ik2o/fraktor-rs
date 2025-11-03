@@ -1,5 +1,8 @@
 //! Sender that rejects all messages.
 
+#[cfg(test)]
+mod tests;
+
 use crate::{
   RuntimeToolbox, actor_ref::actor_ref_sender::ActorRefSender, any_message::AnyMessage, send_error::SendError,
 };
@@ -13,6 +16,3 @@ impl<TB: RuntimeToolbox> ActorRefSender<TB> for NullSender {
     Err(SendError::closed(message))
   }
 }
-
-#[cfg(test)]
-mod tests;

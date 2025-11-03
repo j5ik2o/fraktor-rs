@@ -1,5 +1,8 @@
 //! Mailbox policy describing capacity and overflow behaviour.
 
+#[cfg(test)]
+mod tests;
+
 use core::num::NonZeroUsize;
 
 use crate::{MailboxCapacity, MailboxOverflowStrategy};
@@ -75,6 +78,3 @@ impl MailboxPolicy {
     Self { capacity, ..self }
   }
 }
-
-#[cfg(test)]
-mod tests;
