@@ -1,3 +1,3 @@
 #!/bin/bash
 
-cursor-agent
+cursor-agent --force
