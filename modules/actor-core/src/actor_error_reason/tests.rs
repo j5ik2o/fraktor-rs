@@ -1,5 +1,3 @@
-#![cfg(test)]
-
 use alloc::string::String;
 
 use crate::actor_error_reason::ActorErrorReason;

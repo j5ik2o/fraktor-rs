@@ -1,5 +1,3 @@
-#![cfg(test)]
-
 use core::num::NonZeroUsize;
 
 use super::MailboxCapacity;

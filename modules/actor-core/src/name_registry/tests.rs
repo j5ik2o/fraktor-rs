@@ -1,5 +1,3 @@
-#![cfg(test)]
-
 use super::NameRegistry;
 use crate::{Pid, name_registry_error::NameRegistryError};
 

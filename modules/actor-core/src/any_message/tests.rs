@@ -1,5 +1,3 @@
-#![cfg(test)]
-
 use crate::{NoStdToolbox, actor_ref::ActorRef, any_message::AnyMessage, pid::Pid};
 
 #[test]

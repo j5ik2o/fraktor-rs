@@ -1,5 +1,3 @@
-#![cfg(test)]
-
 use super::SpinMutexFamily;
 use crate::sync::{mutex_family::SyncMutexFamily, sync_mutex_like::SyncMutexLike};
 

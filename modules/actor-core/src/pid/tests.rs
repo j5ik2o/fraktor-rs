@@ -1,5 +1,3 @@
-#![cfg(test)]
-
 use alloc::string::ToString;
 
 use super::Pid;

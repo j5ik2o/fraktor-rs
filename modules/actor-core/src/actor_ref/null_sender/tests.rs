@@ -1,5 +1,3 @@
-#![cfg(test)]
-
 use crate::{
   NoStdToolbox,
   actor_ref::{actor_ref_sender::ActorRefSender, null_sender::NullSender},

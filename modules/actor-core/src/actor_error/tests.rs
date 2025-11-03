@@ -1,5 +1,3 @@
-#![cfg(test)]
-
 use crate::{actor_error::ActorError, actor_error_reason::ActorErrorReason};
 
 #[test]

@@ -1,5 +1,3 @@
-#![cfg(test)]
-
 use crate::{NoStdToolbox, any_message::AnyMessage, send_error::SendError};
 
 #[test]

@@ -1,5 +1,3 @@
-#![cfg(test)]
-
 use core::{
   future::Future,
   pin::Pin,

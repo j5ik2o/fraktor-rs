@@ -1,5 +1,3 @@
-#![cfg(test)]
-
 use super::{NoStdToolbox, RuntimeToolbox, ToolboxMutex};
 use crate::sync::mutex_family::SyncMutexFamily;
 
