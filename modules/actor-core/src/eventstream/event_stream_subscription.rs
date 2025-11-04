@@ -1,5 +1,8 @@
 //! Subscription handle managing event stream registrations.
 
+#[cfg(test)]
+mod tests;
+
 use cellactor_utils_core_rs::sync::ArcShared;
 
 use crate::{NoStdToolbox, RuntimeToolbox, eventstream::EventStreamGeneric};
