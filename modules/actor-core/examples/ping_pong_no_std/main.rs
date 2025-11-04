@@ -5,7 +5,6 @@ extern crate alloc;
 use alloc::string::{String, ToString};
 
 use cellactor_actor_core_rs::{
-  NoStdToolbox,
   actor_prim::{Actor, ActorContext, actor_ref::ActorRef},
   error::ActorError,
   messaging::{AnyMessage, AnyMessageView},

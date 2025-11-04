@@ -22,6 +22,7 @@ usage() {
   no-std                 : no_std 対応チェック (core/utils) を実行します
   std                    : std フィーチャーでのテストを実行します
   doc                    : ドキュメントテストを test-support フィーチャー付きで実行します
+  examples               : ワークスペース配下の examples をビルドします
   embedded / embassy     : embedded 系 (utils / actor) のチェックとテストを実行します
   test                   : ワークスペース全体のテストを実行します
   all                    : 上記すべてを順番に実行します (引数なし時と同じ)
@@ -514,6 +515,85 @@ run_tests() {
   run_cargo test --workspace --verbose --lib --bins --tests --benches --examples || return 1
 }
 
+run_examples() {
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "エラー: python3 が必要ですが見つかりませんでした。" >&2
+    return 1
+  fi
+
+  local example_file
+  example_file="$(mktemp)"
+  if ! python3 <<'PY' >"${example_file}"; then
+import json
+import subprocess
+import sys
+
+try:
+    metadata = json.loads(
+        subprocess.check_output(
+            ["cargo", "metadata", "--format-version", "1", "--no-deps"],
+            text=True,
+        )
+    )
+except Exception as exc:
+    print(f"metadata error: {exc}", file=sys.stderr)
+    sys.exit(1)
+
+workspace = set(metadata.get("workspace_members", []))
+for package in metadata.get("packages", []):
+    if package.get("id") not in workspace:
+        continue
+    name = package.get("name")
+    if not name:
+        continue
+    for target in package.get("targets", []):
+        kinds = target.get("kind", [])
+        if "example" not in kinds:
+            continue
+        target_name = target.get("name")
+        if target_name:
+            print(f"{name}\t{target_name}")
+PY
+    rm -f "${example_file}"
+    return 1
+  fi
+
+  local had_examples=""
+  while IFS=$'\t' read -r package_name example_name; do
+    if [[ -z "${package_name}" || -z "${example_name}" ]]; then
+      continue
+    fi
+    had_examples="yes"
+    log_step "cargo +${DEFAULT_TOOLCHAIN} run --package ${package_name} --example ${example_name} --quiet"
+    local log_file
+    log_file="$(mktemp)"
+    if [[ -n "${DEFAULT_TOOLCHAIN}" ]]; then
+      cargo "+${DEFAULT_TOOLCHAIN}" run --package "${package_name}" --example "${example_name}" --quiet \
+        >"${log_file}" 2>&1 || {
+          cat "${log_file}"
+          rm -f "${log_file}" "${example_file}"
+          return 1
+        }
+    else
+      cargo run --package "${package_name}" --example "${example_name}" --quiet \
+        >"${log_file}" 2>&1 || {
+          cat "${log_file}"
+          rm -f "${log_file}" "${example_file}"
+          return 1
+        }
+    fi
+    tail -n 5 "${log_file}" || true
+    echo
+    rm -f "${log_file}"
+  done <"${example_file}"
+
+  rm -f "${example_file}"
+
+  if [[ -z "${had_examples}" ]]; then
+    echo "info: 実行可能な example が見つかりませんでした" >&2
+  fi
+}
+
 run_all() {
   run_lint || return 1
   run_dylint || return 1
@@ -523,6 +603,7 @@ run_all() {
   run_doc_tests || return 1
 #  run_embedded || return 1
   run_tests || return 1
+  run_examples || return 1
 }
 
 main() {
@@ -598,6 +679,10 @@ main() {
         ;;
       doc|docs)
         run_doc_tests || return 1
+        shift
+        ;;
+      examples|example)
+        run_examples || return 1
         shift
         ;;
       embedded|embassy)
