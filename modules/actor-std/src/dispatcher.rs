@@ -1,7 +1,7 @@
 use cellactor_actor_core_rs::{
   mailbox::Mailbox,
   props::DispatcherConfig as CoreDispatcherConfig,
-  system::dispatcher::{
+  dispatcher::{
     DispatchExecutor as CoreDispatchExecutor, DispatchHandle as CoreDispatchHandle, Dispatcher as CoreDispatcher,
   },
 };
