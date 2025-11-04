@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod tests;
+
 use core::{pin::Pin, task::Context};
 
 use cellactor_utils_core_rs::sync::ArcShared;
