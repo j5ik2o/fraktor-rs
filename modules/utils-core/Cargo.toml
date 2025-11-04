@@ -20,3 +20,4 @@ portable-atomic-util = { version = "0.2", default-features = false, features = [
 
 [dev-dependencies]
 criterion = { workspace = true }
+tokio = { workspace = true, features = ["sync", "rt", "macros", "time"] }
