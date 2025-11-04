@@ -2,6 +2,9 @@ use core::marker::PhantomData;
 
 use super::{guard_handle::GuardHandle, synchronized_mutex_backend::SynchronizedMutexBackend};
 
+#[cfg(test)]
+mod tests;
+
 /// Async synchronization primitive providing exclusive access.
 #[derive(Debug)]
 pub struct Synchronized<B, T: ?Sized>
