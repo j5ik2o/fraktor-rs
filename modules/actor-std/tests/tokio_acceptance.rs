@@ -16,7 +16,7 @@ use cellactor_actor_core_rs::{
 use cellactor_actor_std_rs::{
   actor_prim::{Actor, ActorContext, ActorRef, ChildRef},
   dispatcher::{DispatcherConfig, dispatch_executor::TokioExecutor},
-  eventstream::{EventStreamEvent, EventStreamSubscriber},
+  event_stream::{EventStreamEvent, EventStreamSubscriber},
   messaging::{AnyMessage, AnyMessageView, AskResponse},
   props::Props,
   system::ActorSystem,

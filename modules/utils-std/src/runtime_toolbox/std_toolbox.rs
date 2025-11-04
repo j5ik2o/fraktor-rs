@@ -1,6 +1,6 @@
 use cellactor_utils_core_rs::sync::RuntimeToolbox;
 
-use crate::toolbox::StdMutexFamily;
+use crate::runtime_toolbox::StdMutexFamily;
 
 #[cfg(test)]
 mod tests;

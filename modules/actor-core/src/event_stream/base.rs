@@ -6,7 +6,10 @@ mod tests;
 use alloc::vec::Vec;
 use core::sync::atomic::{AtomicU64, Ordering};
 
-use cellactor_utils_core_rs::sync::{ArcShared, SyncMutexFamily, sync_mutex_like::SyncMutexLike};
+use cellactor_utils_core_rs::{
+  runtime_toolbox::SyncMutexFamily,
+  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+};
 
 use crate::{
   NoStdToolbox, RuntimeToolbox, ToolboxMutex,

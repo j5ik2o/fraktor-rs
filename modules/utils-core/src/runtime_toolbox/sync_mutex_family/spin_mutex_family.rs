@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use crate::sync::{mutex_family::SyncMutexFamily, sync_mutex_like::SpinSyncMutex};
+use crate::{runtime_toolbox::sync_mutex_family::SyncMutexFamily, sync::sync_mutex_like::SpinSyncMutex};
 
 /// Mutex family backed by [`SpinSyncMutex`], suited for no_std environments.
 #[derive(Clone, Copy, Debug, Default)]

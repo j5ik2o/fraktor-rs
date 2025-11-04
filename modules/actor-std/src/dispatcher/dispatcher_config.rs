@@ -3,7 +3,7 @@ use cellactor_actor_core_rs::{
   props::DispatcherConfig as CoreDispatcherConfig,
 };
 use cellactor_utils_core_rs::sync::ArcShared;
-use cellactor_utils_std_rs::StdToolbox;
+use cellactor_utils_std_rs::runtime_toolbox::StdToolbox;
 
 use super::{CoreDispatchExecutorAdapter, DispatchExecutor, DispatchExecutorAdapter, Dispatcher};
 

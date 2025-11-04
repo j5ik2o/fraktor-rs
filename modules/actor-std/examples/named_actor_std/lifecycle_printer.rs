@@ -1,4 +1,4 @@
-use cellactor_actor_std_rs::eventstream::{EventStreamEvent, EventStreamSubscriber};
+use cellactor_actor_std_rs::event_stream::{EventStreamEvent, EventStreamSubscriber};
 
 pub struct LifecyclePrinter;
 

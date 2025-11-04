@@ -1,4 +1,4 @@
-use cellactor_utils_std_rs::StdToolbox;
+use cellactor_utils_std_rs::runtime_toolbox::StdToolbox;
 
 /// Owned message envelope specialised for `StdToolbox`.
 pub type AnyMessage = cellactor_actor_core_rs::messaging::AnyMessage<StdToolbox>;

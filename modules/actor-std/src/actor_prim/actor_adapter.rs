@@ -1,5 +1,5 @@
 use cellactor_actor_core_rs::error::ActorError;
-use cellactor_utils_std_rs::StdToolbox;
+use cellactor_utils_std_rs::runtime_toolbox::StdToolbox;
 
 use crate::{
   actor_prim::{Actor, ActorContext},

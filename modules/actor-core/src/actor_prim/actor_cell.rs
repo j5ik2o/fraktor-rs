@@ -6,7 +6,10 @@ mod tests;
 use alloc::{boxed::Box, string::String, vec, vec::Vec};
 use core::time::Duration;
 
-use cellactor_utils_core_rs::sync::{ArcShared, SyncMutexFamily, sync_mutex_like::SyncMutexLike};
+use cellactor_utils_core_rs::{
+  runtime_toolbox::SyncMutexFamily,
+  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+};
 
 use crate::{
   NoStdToolbox, RuntimeToolbox, ToolboxMutex,

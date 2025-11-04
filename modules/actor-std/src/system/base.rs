@@ -6,13 +6,13 @@ use cellactor_actor_core_rs::{
   system::{ActorSystemGeneric, SystemState as CoreSystemState},
 };
 use cellactor_utils_core_rs::sync::ArcShared;
-use cellactor_utils_std_rs::StdToolbox;
+use cellactor_utils_std_rs::runtime_toolbox::StdToolbox;
 
 pub use crate::dispatcher::{DispatchExecutor, DispatchShared, Dispatcher, DispatcherConfig};
 use crate::{
   actor_prim::ActorRef,
   error::SendError,
-  eventstream::{self, EventStream, EventStreamEvent, EventStreamSubscriber, EventStreamSubscription},
+  event_stream::{self, EventStream, EventStreamEvent, EventStreamSubscriber, EventStreamSubscription},
   futures::ActorFuture,
   messaging::AnyMessage,
   props::Props,
@@ -84,7 +84,7 @@ impl ActorSystem {
   /// Subscribes the provided observer to the event stream.
   #[must_use]
   pub fn subscribe_event_stream(&self, subscriber: &ArcShared<dyn EventStreamSubscriber>) -> EventStreamSubscription {
-    eventstream::subscribe(self, subscriber)
+    event_stream::subscribe(self, subscriber)
   }
 
   /// Returns a snapshot of recorded deadletters.

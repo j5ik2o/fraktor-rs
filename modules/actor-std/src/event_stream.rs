@@ -4,7 +4,7 @@ mod types;
 
 use cellactor_actor_core_rs::event_stream::EventStreamSubscriber as CoreEventStreamSubscriber;
 use cellactor_utils_core_rs::sync::ArcShared;
-use cellactor_utils_std_rs::StdToolbox;
+use cellactor_utils_std_rs::runtime_toolbox::StdToolbox;
 pub use subscriber::EventStreamSubscriber;
 pub use types::*;
 

@@ -1,5 +1,4 @@
-use super::SpinMutexFamily;
-use crate::sync::mutex_family::SyncMutexFamily;
+use crate::runtime_toolbox::{SyncMutexFamily, sync_mutex_family::spin_mutex_family::SpinMutexFamily};
 
 #[test]
 fn spin_mutex_family_creates_functional_mutex() {

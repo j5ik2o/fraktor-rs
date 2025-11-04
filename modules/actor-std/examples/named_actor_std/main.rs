@@ -6,7 +6,7 @@ mod start_message;
 use std::{thread, time::Duration};
 
 use cellactor_actor_std_rs::{
-  eventstream::EventStreamSubscriber, messaging::AnyMessage, props::Props, system::ActorSystem,
+  event_stream::EventStreamSubscriber, messaging::AnyMessage, props::Props, system::ActorSystem,
 };
 use cellactor_utils_core_rs::sync::ArcShared;
 use guardian::GuardianActor;

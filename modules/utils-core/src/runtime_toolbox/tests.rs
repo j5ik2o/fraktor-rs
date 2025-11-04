@@ -1,5 +1,4 @@
-use super::{NoStdToolbox, RuntimeToolbox, ToolboxMutex};
-use crate::sync::mutex_family::SyncMutexFamily;
+use super::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex};
 
 #[test]
 fn toolbox_mutex_uses_spin_family() {

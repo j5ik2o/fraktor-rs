@@ -75,6 +75,7 @@ pub use timing::{
 /// Core collections shared across the Cellex runtimes.
 pub mod collections;
 mod concurrent;
+pub mod runtime_toolbox;
 /// Synchronization primitives and shared ownership abstractions.
 pub mod sync;
 mod timing;

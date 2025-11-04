@@ -1,5 +1,5 @@
 use super::RuntimeToolbox;
-use crate::sync::spin_mutex_family::SpinMutexFamily;
+use crate::runtime_toolbox::sync_mutex_family::SpinMutexFamily;
 
 /// Default toolbox for no_std environments, backed by [`SpinMutexFamily`].
 #[derive(Clone, Copy, Debug, Default)]

@@ -4,10 +4,10 @@
 mod tests;
 
 mod no_std_toolbox;
+pub mod sync_mutex_family;
 
 pub use no_std_toolbox::NoStdToolbox;
-
-use super::mutex_family::SyncMutexFamily;
+pub use sync_mutex_family::{SpinMutexFamily, SyncMutexFamily};
 
 /// Provides access to synchronization primitives required by the runtime.
 pub trait RuntimeToolbox: Send + Sync + 'static {

@@ -8,7 +8,7 @@ use cellactor_actor_core_rs::{
   props::{ActorFactory, MailboxConfig, Props as CoreProps, SupervisorOptions},
 };
 use cellactor_utils_core_rs::sync::ArcShared;
-use cellactor_utils_std_rs::StdToolbox;
+use cellactor_utils_std_rs::runtime_toolbox::StdToolbox;
 
 use crate::{
   actor_prim::{Actor, ActorAdapter},

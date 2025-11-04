@@ -1,4 +1,4 @@
-use cellactor_utils_std_rs::StdToolbox;
+use cellactor_utils_std_rs::runtime_toolbox::StdToolbox;
 
 /// Mailbox specialised for `StdToolbox`.
 pub type Mailbox = cellactor_actor_core_rs::mailbox::Mailbox<StdToolbox>;

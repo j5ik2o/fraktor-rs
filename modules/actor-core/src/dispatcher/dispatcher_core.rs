@@ -7,7 +7,10 @@ use core::{
   task::{Context, Poll},
 };
 
-use cellactor_utils_core_rs::sync::{ArcShared, SyncMutexFamily, sync_mutex_like::SyncMutexLike};
+use cellactor_utils_core_rs::{
+  runtime_toolbox::SyncMutexFamily,
+  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+};
 use portable_atomic::AtomicU8;
 
 use super::{

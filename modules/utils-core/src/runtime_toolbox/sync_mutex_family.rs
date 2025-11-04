@@ -1,7 +1,10 @@
 //! Mutex family abstraction for runtime injection.
 
+mod spin_mutex_family;
 #[cfg(test)]
 mod tests;
+
+pub use spin_mutex_family::SpinMutexFamily;
 
 use crate::sync::sync_mutex_like::SyncMutexLike;
 
