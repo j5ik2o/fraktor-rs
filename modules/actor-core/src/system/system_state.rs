@@ -1,5 +1,8 @@
 //! Shared, mutable state owned by the actor system.
 
+#[cfg(test)]
+mod tests;
+
 use alloc::{format, string::String, vec::Vec};
 use core::time::Duration;
 
