@@ -1,6 +1,9 @@
 use core::ops::{Deref, DerefMut};
 use std::sync::MutexGuard;
 
+#[cfg(test)]
+mod tests;
+
 /// Guard returned by [`StdSyncMutex`](crate::StdSyncMutex).
 pub struct StdSyncMutexGuard<'a, T> {
   pub(crate) guard: MutexGuard<'a, T>,
