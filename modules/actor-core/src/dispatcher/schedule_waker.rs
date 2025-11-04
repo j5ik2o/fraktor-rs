@@ -10,6 +10,9 @@ use cellactor_utils_core_rs::sync::ArcShared;
 use super::{base::Dispatcher, dispatcher_core::DispatcherCore};
 use crate::RuntimeToolbox;
 
+#[cfg(test)]
+mod tests;
+
 struct ScheduleShared<TB: RuntimeToolbox + 'static> {
   dispatcher: ArcShared<DispatcherCore<TB>>,
 }

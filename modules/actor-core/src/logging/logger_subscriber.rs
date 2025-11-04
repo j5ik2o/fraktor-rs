@@ -8,6 +8,9 @@ use crate::{
   logging::{LogLevel, logger_writer::LoggerWriter},
 };
 
+#[cfg(test)]
+mod tests;
+
 /// Subscribes to log events and filters by severity.
 pub struct LoggerSubscriber {
   level:  LogLevel,

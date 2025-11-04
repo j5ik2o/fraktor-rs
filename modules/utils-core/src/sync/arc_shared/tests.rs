@@ -36,6 +36,7 @@ fn arc_shared_try_unwrap_failure() {
 fn arc_shared_from_arc_and_into_arc() {
   #[cfg(not(feature = "force-portable-arc"))]
   use alloc::sync::Arc;
+
   #[cfg(feature = "force-portable-arc")]
   use portable_atomic_util::Arc;
 

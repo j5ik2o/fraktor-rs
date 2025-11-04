@@ -1,0 +1,49 @@
+use cellactor_actor_core_rs::dispatcher::DispatchExecutor as CoreDispatchExecutor;
+use cellactor_utils_core_rs::sync::ArcShared;
+use cellactor_utils_std_rs::StdToolbox;
+
+use crate::dispatcher::{DispatchExecutor, DispatchShared};
+
+struct TestExecutor {
+  executed: ArcShared<std::sync::Mutex<bool>>,
+}
+
+impl TestExecutor {
+  fn new() -> (Self, ArcShared<std::sync::Mutex<bool>>) {
+    let executed = ArcShared::new(std::sync::Mutex::new(false));
+    (Self { executed: executed.clone() }, executed)
+  }
+
+  fn lock_state(state: &ArcShared<std::sync::Mutex<bool>>) -> std::sync::MutexGuard<'_, bool> {
+    match state.lock() {
+      | Ok(guard) => guard,
+      | Err(poisoned) => poisoned.into_inner(),
+    }
+  }
+}
+
+impl CoreDispatchExecutor<StdToolbox> for TestExecutor {
+  fn execute(&self, _dispatcher: DispatchShared) {
+    *Self::lock_state(&self.executed) = true;
+  }
+}
+
+#[test]
+fn dispatch_executor_trait_implemented() {
+  let (executor, executed) = TestExecutor::new();
+  let executor_dyn: &dyn DispatchExecutor = &executor;
+
+  // This test just verifies trait implementation compiles correctly
+  let _ = executor_dyn;
+  assert!(!*TestExecutor::lock_state(&executed));
+}
+
+#[test]
+fn core_dispatch_executor_trait_implemented() {
+  let (executor, executed) = TestExecutor::new();
+  let executor_dyn: &dyn CoreDispatchExecutor<StdToolbox> = &executor;
+
+  // This test just verifies trait implementation compiles correctly
+  let _ = executor_dyn;
+  assert!(!*TestExecutor::lock_state(&executed));
+}

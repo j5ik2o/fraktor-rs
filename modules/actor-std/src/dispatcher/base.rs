@@ -4,6 +4,9 @@ use cellactor_utils_std_rs::StdToolbox;
 
 use crate::dispatcher::DispatchShared;
 
+#[cfg(test)]
+mod tests;
+
 /// Scheduler abstraction for driving dispatcher execution in the standard runtime.
 pub trait DispatchExecutor: Send + Sync + 'static {
   /// Delegates dispatcher execution to the scheduler.

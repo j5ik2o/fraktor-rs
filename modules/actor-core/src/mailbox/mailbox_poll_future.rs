@@ -10,6 +10,9 @@ use core::{
 use super::{mailbox_queue_poll_future::QueuePollFuture, map_user_queue_error};
 use crate::{RuntimeToolbox, error::SendError, messaging::AnyMessage};
 
+#[cfg(test)]
+mod tests;
+
 /// Future completing with the next user message from the mailbox.
 pub struct MailboxPollFuture<TB: RuntimeToolbox + 'static> {
   inner: QueuePollFuture<AnyMessage<TB>, TB>,
