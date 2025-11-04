@@ -1,5 +1,8 @@
 //! Internal subscriber entry used by the event stream.
 
+#[cfg(test)]
+mod tests;
+
 use cellactor_utils_core_rs::sync::ArcShared;
 
 use crate::{NoStdToolbox, RuntimeToolbox, eventstream::EventStreamSubscriber};
