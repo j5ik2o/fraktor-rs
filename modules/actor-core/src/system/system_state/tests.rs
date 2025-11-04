@@ -1,5 +1,5 @@
 use super::SystemState;
-use crate::{NoStdToolbox, actor_prim::Pid};
+use crate::NoStdToolbox;
 
 #[test]
 fn system_state_new() {
@@ -19,7 +19,6 @@ fn system_state_allocate_pid() {
   let state = SystemState::<NoStdToolbox>::new();
   let pid1 = state.allocate_pid();
   let pid2 = state.allocate_pid();
-  // Pid????????
   assert_ne!(pid1.value(), pid2.value());
 }
 
@@ -28,7 +27,6 @@ fn system_state_monotonic_now() {
   let state = SystemState::<NoStdToolbox>::new();
   let now1 = state.monotonic_now();
   let now2 = state.monotonic_now();
-  // ???????
   assert!(now2 > now1);
 }
 
@@ -36,7 +34,6 @@ fn system_state_monotonic_now() {
 fn system_state_event_stream() {
   let state = SystemState::<NoStdToolbox>::new();
   let stream = state.event_stream();
-  // ????????????????????
   let _ = stream;
 }
 
@@ -44,7 +41,6 @@ fn system_state_event_stream() {
 fn system_state_termination_future() {
   let state = SystemState::<NoStdToolbox>::new();
   let future = state.termination_future();
-  // ???????????????????
   assert!(!future.is_ready());
 }
 

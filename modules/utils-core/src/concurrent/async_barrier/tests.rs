@@ -5,7 +5,6 @@ use async_trait::async_trait;
 
 use super::{async_barrier_backend::AsyncBarrierBackend, async_barrier_struct::AsyncBarrier};
 
-// ?????????????????????
 #[derive(Clone, Debug)]
 struct MockBackend {
   count: Arc<AtomicUsize>,
@@ -26,7 +25,6 @@ impl AsyncBarrierBackend for MockBackend {
   }
 
   async fn wait(&self) {
-    // ???????: ???????????
     self.count.fetch_sub(1, Ordering::SeqCst);
   }
 }

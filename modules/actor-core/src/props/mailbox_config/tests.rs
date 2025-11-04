@@ -33,7 +33,6 @@ fn mailbox_config_with_warn_threshold() {
   let updated = config.with_warn_threshold(Some(threshold));
   assert_eq!(updated.warn_threshold(), Some(threshold));
 
-  // ???????????
   assert_eq!(config.warn_threshold(), None);
 }
 
@@ -47,7 +46,7 @@ fn mailbox_config_default() {
 #[test]
 fn mailbox_config_clone() {
   let config1 = MailboxConfig::new(MailboxPolicy::unbounded(None));
-  let config2 = config1; // Copy trait???clone()??
+  let config2 = config1;
   assert_eq!(config1, config2);
 }
 
@@ -60,7 +59,6 @@ fn mailbox_config_copy() {
 
 #[test]
 fn mailbox_config_debug() {
-  // Debug?????????????????????????????
   let config = MailboxConfig::new(MailboxPolicy::unbounded(None));
   fn assert_debug<T: core::fmt::Debug>(_t: &T) {}
   assert_debug(&config);

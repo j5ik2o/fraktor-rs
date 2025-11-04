@@ -36,7 +36,6 @@ fn sync_spsc_producer_offer_closed() {
   let mutex = ArcShared::new(SpinSyncMutex::new(backend));
   let producer = SyncSpscProducer::new(mutex.clone());
 
-  // ??????????
   mutex.with_mut(|b: &mut VecRingBackend<u32>| b.close()).unwrap();
 
   let result = producer.offer(42);

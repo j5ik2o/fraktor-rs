@@ -22,7 +22,6 @@ fn vec_ring_storage_try_grow_no_change_when_smaller() {
 
   let result = storage.try_grow(5);
   assert!(result.is_ok());
-  // ????????
   assert_eq!(storage.capacity(), 10);
 }
 
@@ -34,7 +33,6 @@ fn vec_ring_storage_try_grow_no_change_when_equal() {
 
   let result = storage.try_grow(10);
   assert!(result.is_ok());
-  // ????????
   assert_eq!(storage.capacity(), 10);
 }
 
@@ -51,10 +49,10 @@ fn vec_ring_storage_read_unchecked() {
     assert_eq!(*ptr0, 10);
 
     let ptr1 = storage.read_unchecked(1);
-    assert_eq!( *ptr1, 20);
+    assert_eq!(*ptr1, 20);
 
     let ptr2 = storage.read_unchecked(2);
-    assert_eq!( *ptr2, 30);
+    assert_eq!(*ptr2, 30);
   }
 }
 
@@ -82,7 +80,6 @@ fn vec_ring_storage_write_unchecked_append() {
   storage.push_back(20);
 
   unsafe {
-    // idx == len() ????push_back
     storage.write_unchecked(2, 30);
   }
 
@@ -100,9 +97,8 @@ fn vec_ring_storage_read_unchecked_with_wraparound() {
   storage.push_back(20);
   storage.push_back(30);
 
-  // VecDeque?wraparound??????????
-  let _ = storage.pop_front(); // 10???
-  storage.push_back(40); // wraparound???????????
+  let _ = storage.pop_front();
+  storage.push_back(40);
 
   unsafe {
     let ptr0 = storage.read_unchecked(0);

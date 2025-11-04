@@ -7,13 +7,11 @@ use crate::concurrent::synchronized::{
   synchronized_rw::SynchronizedRw, synchronized_rw_backend::SynchronizedRwBackend,
 };
 
-// ?????????????????????
 #[derive(Clone, Debug)]
 struct MockBackend<T> {
   value: Arc<T>,
 }
 
-// ReadGuard????
 struct MockReadGuard<T> {
   value: Arc<T>,
 }
@@ -26,7 +24,6 @@ impl<T> Deref for MockReadGuard<T> {
   }
 }
 
-// WriteGuard????
 struct MockWriteGuard<T> {
   value: Arc<T>,
 }
@@ -41,7 +38,6 @@ impl<T> Deref for MockWriteGuard<T> {
 
 impl<T> DerefMut for MockWriteGuard<T> {
   fn deref_mut(&mut self) -> &mut Self::Target {
-    // ???????????????????
     unsafe { &mut *(Arc::as_ptr(&self.value) as *mut T) }
   }
 }

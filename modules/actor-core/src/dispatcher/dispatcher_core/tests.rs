@@ -8,7 +8,6 @@ fn dispatcher_core_new() {
   let mailbox = ArcShared::new(Mailbox::<NoStdToolbox>::new(crate::mailbox::MailboxPolicy::unbounded(None)));
   let executor = ArcShared::new(InlineExecutor::<NoStdToolbox>::new());
   let core = DispatcherCore::<NoStdToolbox>::new(mailbox, executor, None);
-  // ??????????????
   let _ = core;
 }
 
@@ -20,7 +19,6 @@ fn dispatcher_core_new_with_throughput_limit() {
   let executor = ArcShared::new(InlineExecutor::<NoStdToolbox>::new());
   let limit = NonZeroUsize::new(100).unwrap();
   let core = DispatcherCore::<NoStdToolbox>::new(mailbox, executor, Some(limit));
-  // ??????????????
   let _ = core;
 }
 
@@ -30,7 +28,6 @@ fn dispatcher_core_mailbox() {
   let executor = ArcShared::new(InlineExecutor::<NoStdToolbox>::new());
   let core = DispatcherCore::<NoStdToolbox>::new(mailbox.clone(), executor, None);
   let retrieved = core.mailbox();
-  // mailbox???????????
   let _ = retrieved;
 }
 
@@ -40,7 +37,6 @@ fn dispatcher_core_executor() {
   let executor = ArcShared::new(InlineExecutor::<NoStdToolbox>::new());
   let core = DispatcherCore::<NoStdToolbox>::new(mailbox, executor.clone(), None);
   let retrieved = core.executor();
-  // executor???????????
   let _ = retrieved;
 }
 
@@ -50,7 +46,6 @@ fn dispatcher_core_state() {
   let executor = ArcShared::new(InlineExecutor::<NoStdToolbox>::new());
   let core = DispatcherCore::<NoStdToolbox>::new(mailbox, executor, None);
   let state = core.state();
-  // state???????????
   let _ = state;
 }
 
@@ -60,17 +55,12 @@ fn dispatcher_core_drive_with_empty_mailbox() {
   let executor = ArcShared::new(InlineExecutor::<NoStdToolbox>::new());
   let core = ArcShared::new(DispatcherCore::<NoStdToolbox>::new(mailbox, executor, None));
 
-  // ??????????drive?????
   DispatcherCore::drive(&core);
-  // ??????????????
 }
 
 #[test]
 fn dispatcher_core_register_invoker() {
-  use crate::{
-    error::ActorError,
-    messaging::{AnyMessageView, message_invoker::MessageInvoker},
-  };
+  use crate::{error::ActorError, messaging::message_invoker::MessageInvoker};
 
   struct MockInvoker;
 
@@ -90,5 +80,4 @@ fn dispatcher_core_register_invoker() {
 
   let invoker = ArcShared::new(MockInvoker);
   core.register_invoker(invoker);
-  // invoker???????????
 }

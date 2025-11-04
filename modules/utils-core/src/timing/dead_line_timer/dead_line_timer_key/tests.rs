@@ -45,7 +45,7 @@ fn deadline_timer_key_default() {
 #[test]
 fn deadline_timer_key_clone() {
   let key1 = DeadLineTimerKey::from_raw(50);
-  let key2 = key1; // Copy trait???clone()??
+  let key2 = key1;
   assert_eq!(key1, key2);
 }
 
@@ -93,7 +93,7 @@ fn deadline_timer_key_partial_ord() {
 
 #[test]
 fn deadline_timer_key_ord() {
-  let mut keys = vec![DeadLineTimerKey::from_raw(30), DeadLineTimerKey::from_raw(10), DeadLineTimerKey::from_raw(20)];
+  let mut keys = [DeadLineTimerKey::from_raw(30), DeadLineTimerKey::from_raw(10), DeadLineTimerKey::from_raw(20)];
   keys.sort();
   assert_eq!(keys[0].into_raw(), 10);
   assert_eq!(keys[1].into_raw(), 20);

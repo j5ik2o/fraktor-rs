@@ -12,7 +12,6 @@ use crate::{
 #[test]
 fn mailbox_new() {
   let mailbox = Mailbox::<NoStdToolbox>::new(MailboxPolicy::unbounded(None));
-  // ??????????????
   let _ = mailbox;
 }
 
@@ -23,7 +22,6 @@ fn mailbox_set_instrumentation() {
   let pid = Pid::new(1, 0);
   let instrumentation = MailboxInstrumentation::<NoStdToolbox>::new(system_state, pid, None, None, None);
   mailbox.set_instrumentation(instrumentation);
-  // ?????????????
 }
 
 #[test]
@@ -68,16 +66,14 @@ fn mailbox_enqueue_user_future() {
   let mailbox = Mailbox::<NoStdToolbox>::new(MailboxPolicy::unbounded(None));
   let message = AnyMessage::new(42_u32);
   let future = mailbox.enqueue_user_future(message);
-  // Future???????????
-  let _ = future;
+  drop(future);
 }
 
 #[test]
 fn mailbox_poll_user_future() {
   let mailbox = Mailbox::<NoStdToolbox>::new(MailboxPolicy::unbounded(None));
   let future = mailbox.poll_user_future();
-  // Future???????????
-  let _ = future;
+  drop(future);
 }
 
 #[test]
@@ -104,7 +100,6 @@ fn mailbox_dequeue_system_message_priority() {
   let system_message = SystemMessage::Stop;
   mailbox.enqueue_system(system_message).unwrap();
 
-  // ???????????????
   let result = mailbox.dequeue();
   assert!(result.is_some());
   if let Some(msg) = result {
@@ -119,7 +114,6 @@ fn mailbox_dequeue_suspended() {
   mailbox.enqueue_user(message).unwrap();
   mailbox.suspend();
   let result = mailbox.dequeue();
-  // ?????????????????????????
   assert!(result.is_none());
 }
 

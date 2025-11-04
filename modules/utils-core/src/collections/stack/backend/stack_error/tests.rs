@@ -29,7 +29,7 @@ fn stack_error_is_debug() {
 #[test]
 fn stack_error_is_clone() {
   let err1 = StackError::Closed;
-  let err2 = err1; // Copy trait???clone()??
+  let err2 = err1;
   assert_eq!(err1, err2);
 }
 

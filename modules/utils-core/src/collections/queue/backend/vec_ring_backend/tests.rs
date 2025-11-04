@@ -130,7 +130,6 @@ fn grow_policy_doubles_capacity_when_needed() {
 
   backend.offer(1).unwrap();
   backend.offer(2).unwrap();
-  // ??offer????2?????2 -> 4?
   let outcome = backend.offer(3).unwrap();
   assert_eq!(outcome, OfferOutcome::GrewTo { capacity: 4 });
   assert_eq!(backend.capacity(), 4);
@@ -141,7 +140,6 @@ fn grow_policy_with_existing_capacity() {
   let storage = VecRingStorage::with_capacity(5);
   let mut backend = VecRingBackend::new_with_storage(storage, OverflowPolicy::Grow);
 
-  // ???????????Grow?????????
   backend.offer(1).unwrap();
   backend.offer(2).unwrap();
   backend.offer(3).unwrap();
@@ -185,7 +183,6 @@ fn multiple_drop_oldest_operations() {
   assert_eq!(backend.offer(3).unwrap(), OfferOutcome::DroppedOldest { count: 1 });
   assert_eq!(backend.offer(4).unwrap(), OfferOutcome::DroppedOldest { count: 1 });
 
-  // ???2?????????
   assert_eq!(backend.poll().unwrap(), 3);
   assert_eq!(backend.poll().unwrap(), 4);
 }
@@ -199,7 +196,6 @@ fn multiple_drop_newest_operations() {
   assert_eq!(backend.offer(2).unwrap(), OfferOutcome::DroppedNewest { count: 1 });
   assert_eq!(backend.offer(3).unwrap(), OfferOutcome::DroppedNewest { count: 1 });
 
-  // ??????????
   assert_eq!(backend.poll().unwrap(), 1);
   assert!(matches!(backend.poll(), Err(QueueError::Empty)));
 }
@@ -210,15 +206,12 @@ fn grow_policy_with_large_capacity_increase() {
   let mut backend = VecRingBackend::new_with_storage(storage, OverflowPolicy::Grow);
 
   backend.offer(1).unwrap();
-  // ???1??2???
   let outcome = backend.offer(2).unwrap();
   assert_eq!(outcome, OfferOutcome::GrewTo { capacity: 2 });
 
-  // ???2?????????3????????????2??4???
   let outcome = backend.offer(3).unwrap();
   assert_eq!(outcome, OfferOutcome::GrewTo { capacity: 4 });
 
-  // ???4?????????4??Enqueued???
   let outcome = backend.offer(4).unwrap();
   assert_eq!(outcome, OfferOutcome::Enqueued);
 

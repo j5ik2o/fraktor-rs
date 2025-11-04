@@ -31,13 +31,10 @@ fn event_stream_subscription_drop_unsubscribes() {
   let subscription = EventStream::subscribe_arc(&stream, &subscriber);
   let id = subscription.id();
 
-  // subscription?drop???unsubscribe?????
   drop(subscription);
 
-  // ??subscribe??ID????????????unsubscribe??????
   let subscriber2: ArcShared<dyn crate::event_stream::EventStreamSubscriber<NoStdToolbox>> =
     ArcShared::new(MockSubscriber);
   let subscription2 = EventStream::subscribe_arc(&stream, &subscriber2);
-  // ID???????????
   assert!(subscription2.id() > id);
 }

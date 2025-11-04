@@ -5,7 +5,6 @@ use async_trait::async_trait;
 
 use super::{count_down_latch_backend::CountDownLatchBackend, count_down_latch_struct::CountDownLatch};
 
-// ?????????????????????
 #[derive(Clone, Debug)]
 struct MockBackend {
   count: Arc<AtomicUsize>,
@@ -30,7 +29,6 @@ impl CountDownLatchBackend for MockBackend {
   }
 
   async fn wait(&self) {
-    // ???????: ?????0???????
     while self.count.load(Ordering::SeqCst) > 0 {
       core::hint::spin_loop();
     }

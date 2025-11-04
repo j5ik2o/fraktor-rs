@@ -41,7 +41,7 @@ fn timer_deadline_clone() {
 #[test]
 fn timer_deadline_copy() {
   let deadline1 = TimerDeadLine::from_duration(Duration::from_secs(3));
-  let deadline2 = deadline1; // Copy trait???clone()??
+  let deadline2 = deadline1;
   assert_eq!(deadline1, deadline2);
 }
 

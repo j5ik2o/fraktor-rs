@@ -28,7 +28,6 @@ fn event_stream_subscriber_entry_subscriber() {
   let subscriber = ArcShared::new(MockSubscriber);
   let entry = EventStreamSubscriberEntry::new(1, subscriber.clone());
   let retrieved = entry.subscriber();
-  // ??subscriber?????????????????????
   let _ = retrieved;
 }
 

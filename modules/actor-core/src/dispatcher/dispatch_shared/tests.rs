@@ -13,7 +13,6 @@ fn dispatch_shared_new() {
   let executor = ArcShared::new(InlineExecutor::<NoStdToolbox>::new());
   let core = ArcShared::new(DispatcherCore::<NoStdToolbox>::new(mailbox, executor, None));
   let _shared = DispatchShared::new(core.clone());
-  // ??????????????
   assert!(core.with_ref(|_| true));
 }
 
@@ -24,7 +23,6 @@ fn dispatch_shared_clone() {
   let core = ArcShared::new(DispatcherCore::<NoStdToolbox>::new(mailbox, executor, None));
   let shared1 = DispatchShared::new(core.clone());
   let shared2 = shared1.clone();
-  // ????????????
   assert!(shared1.core.with_ref(|_| true));
   assert!(shared2.core.with_ref(|_| true));
 }
@@ -35,6 +33,5 @@ fn dispatch_shared_drive() {
   let executor = ArcShared::new(InlineExecutor::<NoStdToolbox>::new());
   let core = ArcShared::new(DispatcherCore::<NoStdToolbox>::new(mailbox, executor, None));
   let shared = DispatchShared::new(core);
-  // drive???????????????????????????????
   shared.drive();
 }

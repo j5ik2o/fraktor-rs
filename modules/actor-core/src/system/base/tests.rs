@@ -32,7 +32,6 @@ fn actor_system_from_state() {
 fn actor_system_clone() {
   let system1 = ActorSystemGeneric::<NoStdToolbox>::new_empty();
   let system2 = system1.clone();
-  // ????????????
   assert!(!system1.state().is_terminated());
   assert!(!system2.state().is_terminated());
 }
@@ -42,7 +41,6 @@ fn actor_system_allocate_pid() {
   let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
   let pid1 = system.allocate_pid();
   let pid2 = system.allocate_pid();
-  // Pid????????
   assert_ne!(pid1.value(), pid2.value());
 }
 
@@ -50,7 +48,6 @@ fn actor_system_allocate_pid() {
 fn actor_system_state() {
   let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
   let state = system.state();
-  // ?????????????
   assert!(!state.is_terminated());
 }
 
@@ -58,7 +55,6 @@ fn actor_system_state() {
 fn actor_system_event_stream() {
   let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
   let stream = system.event_stream();
-  // ????????????????????
   let _ = stream;
 }
 
@@ -66,7 +62,6 @@ fn actor_system_event_stream() {
 fn actor_system_deadletters() {
   let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
   let deadletters = system.dead_letters();
-  // ???????????????
   assert_eq!(deadletters.len(), 0);
 }
 
@@ -74,7 +69,6 @@ fn actor_system_deadletters() {
 fn actor_system_emit_log() {
   let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
   let pid = system.allocate_pid();
-  // ?????????????????????????????
   system.emit_log(crate::logging::LogLevel::Info, "test message", Some(pid));
 }
 
@@ -82,7 +76,6 @@ fn actor_system_emit_log() {
 fn actor_system_when_terminated() {
   let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
   let future = system.when_terminated();
-  // ???????????????????
   assert!(!future.is_ready());
 }
 
@@ -90,7 +83,6 @@ fn actor_system_when_terminated() {
 fn actor_system_actor_ref_for_nonexistent_pid() {
   let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
   let pid = system.allocate_pid();
-  // ?????Pid??None???
   assert!(system.actor_ref(pid).is_none());
 }
 
@@ -98,7 +90,6 @@ fn actor_system_actor_ref_for_nonexistent_pid() {
 fn actor_system_children_for_nonexistent_parent() {
   let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
   let parent_pid = system.allocate_pid();
-  // ??????????Vec???
   let children = system.children(parent_pid);
   assert_eq!(children.len(), 0);
 }
@@ -109,7 +100,6 @@ fn actor_system_spawn_child_with_invalid_parent() {
   let props = Props::from_fn(|| TestActor);
   let invalid_parent = system.allocate_pid();
 
-  // ????????spawn_child???????
   let result = system.spawn_child(invalid_parent, &props);
   assert!(result.is_err());
 }
@@ -119,7 +109,6 @@ fn actor_system_spawn_without_guardian() {
   let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
   let props = Props::from_fn(|| TestActor);
 
-  // user_guardian??????spawn???????
   let result = system.spawn(&props);
   assert!(result.is_err());
 }
@@ -128,14 +117,12 @@ fn actor_system_spawn_without_guardian() {
 fn actor_system_drain_ready_ask_futures() {
   let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
   let futures = system.drain_ready_ask_futures();
-  // ??????ready?ask_future???
   assert_eq!(futures.len(), 0);
 }
 
 #[test]
 fn actor_system_terminate_without_guardian() {
   let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
-  // user_guardian??????terminate??????mark_terminated??????
   let result = system.terminate();
   assert!(result.is_ok());
   assert!(system.state().is_terminated());
@@ -145,7 +132,6 @@ fn actor_system_terminate_without_guardian() {
 fn actor_system_terminate_when_already_terminated() {
   let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
   system.state().mark_terminated();
-  // ???????????terminate?????
   let result = system.terminate();
   assert!(result.is_ok());
 }

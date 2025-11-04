@@ -5,7 +5,6 @@ use async_trait::async_trait;
 
 use super::{wait_group_backend::WaitGroupBackend, wait_group_struct::WaitGroup};
 
-// ?????????????????????
 #[derive(Clone, Debug)]
 struct MockBackend {
   count: Arc<AtomicUsize>,
@@ -38,7 +37,6 @@ impl WaitGroupBackend for MockBackend {
   }
 
   async fn wait(&self) {
-    // ???????: ?????0???????
     while self.count.load(Ordering::SeqCst) > 0 {
       core::hint::spin_loop();
     }

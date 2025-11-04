@@ -27,7 +27,6 @@ fn actor_context_system() {
   let pid = system.allocate_pid();
   let context = ActorContext::new(&system, pid);
   let retrieved_system = context.system();
-  // ???????????????
   let _ = retrieved_system;
 }
 
@@ -53,10 +52,8 @@ fn actor_context_set_and_clear_reply_to() {
   let pid = system.allocate_pid();
   let mut context = ActorContext::new(&system, pid);
 
-  // reply_to???????None
   assert!(context.reply_to().is_none());
 
-  // clear_reply_to?????????????????????
   context.clear_reply_to();
   assert!(context.reply_to().is_none());
 }
@@ -67,7 +64,6 @@ fn actor_context_reply_without_reply_to() {
   let pid = system.allocate_pid();
   let context = ActorContext::new(&system, pid);
 
-  // reply_to????????????reply???????
   let result = context.reply(crate::messaging::AnyMessage::new(42_u32));
   assert!(result.is_err());
 }
@@ -78,7 +74,6 @@ fn actor_context_children() {
   let pid = system.allocate_pid();
   let context = ActorContext::new(&system, pid);
 
-  // ???????????
   let children = context.children();
   assert_eq!(children.len(), 0);
 }
@@ -90,7 +85,6 @@ fn actor_context_spawn_child_with_invalid_parent() {
   let context = ActorContext::new(&system, pid);
   let props = Props::from_fn(|| TestActor);
 
-  // ????????spawn_child???????
   let result = context.spawn_child(&props);
   assert!(result.is_err());
 }
@@ -103,7 +97,6 @@ fn actor_context_log() {
   let pid = system.allocate_pid();
   let context = ActorContext::new(&system, pid);
 
-  // ?????????????????????????????
   context.log(crate::logging::LogLevel::Info, String::from("test message"));
   context.log(crate::logging::LogLevel::Error, String::from("error message"));
 }

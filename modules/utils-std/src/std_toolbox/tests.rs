@@ -18,7 +18,7 @@ fn std_toolbox_is_clone() {
 
 #[test]
 fn std_toolbox_default() {
-  let toolbox = StdToolbox::default();
+  let toolbox = StdToolbox;
   let debug_str = format!("{:?}", toolbox);
   assert!(debug_str.contains("StdToolbox"));
 }
@@ -26,7 +26,6 @@ fn std_toolbox_default() {
 #[test]
 fn std_toolbox_implements_runtime_toolbox() {
   let _toolbox: StdToolbox = StdToolbox;
-  // RuntimeToolbox?????????????????
   fn assert_runtime_toolbox<T: RuntimeToolbox>() {}
   assert_runtime_toolbox::<StdToolbox>();
 }

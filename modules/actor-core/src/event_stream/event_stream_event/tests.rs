@@ -1,8 +1,11 @@
 #[cfg(feature = "alloc")]
 use alloc::string::String;
+#[cfg(feature = "alloc")]
 use core::time::Duration;
 
+#[cfg(feature = "alloc")]
 use super::EventStreamEvent;
+#[cfg(feature = "alloc")]
 use crate::{
   NoStdToolbox,
   actor_prim::Pid,
@@ -78,15 +81,12 @@ fn event_stream_event_mailbox_clone() {
   }
 }
 
+#[cfg(feature = "alloc")]
 #[test]
 fn event_stream_event_debug() {
   fn assert_debug<T: core::fmt::Debug>(_t: &T) {}
-  // ???????Debug????????????
-  #[cfg(feature = "alloc")]
-  {
-    let lifecycle_event =
-      LifecycleEvent::new(Pid::new(1, 0), None, String::from("test"), LifecycleStage::Started, Duration::from_secs(0));
-    let event = EventStreamEvent::<NoStdToolbox>::Lifecycle(lifecycle_event);
-    assert_debug(&event);
-  }
+  let lifecycle_event =
+    LifecycleEvent::new(Pid::new(1, 0), None, String::from("test"), LifecycleStage::Started, Duration::from_secs(0));
+  let event = EventStreamEvent::<NoStdToolbox>::Lifecycle(lifecycle_event);
+  assert_debug(&event);
 }

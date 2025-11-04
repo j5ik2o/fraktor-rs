@@ -103,7 +103,6 @@ fn unsubscribe_removes_subscriber() {
   )));
 
   let events = subscriber_impl.events();
-  // unsubscribe??????????????????
   assert!(
     events.iter().any(|event| matches!(event, EventStreamEvent::Log(event) if event.message() == "before unsubscribe"))
   );
@@ -115,13 +114,11 @@ fn unsubscribe_removes_subscriber() {
 #[test]
 fn default_creates_stream_with_default_capacity() {
   let stream = EventStream::default();
-  // default???????????????
   let _ = stream;
 }
 
 #[test]
 fn with_capacity_creates_stream_with_specified_capacity() {
   let stream = EventStream::with_capacity(100);
-  // with_capacity???????????????
   let _ = stream;
 }

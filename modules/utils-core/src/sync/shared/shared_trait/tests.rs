@@ -16,7 +16,6 @@ fn shared_with_ref_modifies_through_closure() {
   let shared = RcShared::new(10);
   let doubled = shared.with_ref(|v| *v * 2);
   assert_eq!(doubled, 20);
-  // with_ref?????????????????????
   assert_eq!(*shared, 10);
 }
 

@@ -59,12 +59,10 @@ fn async_mpsc_consumer_poll() {
   let queue = AsyncQueue::<i32, MpscKey, _, _>::new_mpsc(shared);
   let (_producer, consumer) = queue.into_mpsc_pair();
 
-  // ???????
   let queue2 = AsyncQueue::<i32, MpscKey, _, _>::new_mpsc(consumer.shared().clone());
   let (producer, _consumer) = queue2.into_mpsc_pair();
   block_on(producer.offer(42)).unwrap();
 
-  // ?????
   let result = block_on(consumer.poll());
   assert_eq!(result.unwrap(), 42);
 }
@@ -111,8 +109,6 @@ fn async_mpsc_consumer_shared() {
   let queue = AsyncQueue::<i32, MpscKey, _, _>::new_mpsc(shared.clone());
   let (_producer, consumer) = queue.into_mpsc_pair();
 
-  // shared?????????????????
   let retrieved = consumer.shared();
-  // shared???????ArcShared????????????
   let _ = retrieved;
 }

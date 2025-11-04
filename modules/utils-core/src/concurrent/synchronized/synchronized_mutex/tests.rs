@@ -11,7 +11,6 @@ use crate::{
   sync::SharedError,
 };
 
-// ?????????????????????
 #[derive(Clone, Debug)]
 struct MockBackend<T> {
   value:       Arc<T>,
@@ -29,7 +28,6 @@ impl<T> MockBackend<T> {
   }
 }
 
-// Guard????
 struct MockGuard<T> {
   value: Arc<T>,
 }
@@ -44,7 +42,6 @@ impl<T> Deref for MockGuard<T> {
 
 impl<T> DerefMut for MockGuard<T> {
   fn deref_mut(&mut self) -> &mut Self::Target {
-    // ???????????????????
     unsafe { &mut *(Arc::as_ptr(&self.value) as *mut T) }
   }
 }
