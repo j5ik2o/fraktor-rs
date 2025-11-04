@@ -2,6 +2,9 @@
 
 use crate::sync::{ArcShared, Shared, SharedError, sync_mutex_like::SyncMutexLike};
 
+#[cfg(test)]
+mod tests;
+
 /// Abstraction offering mutable access to shared backends.
 pub trait SharedAccess<B> {
   /// Executes the provided closure with mutable access to the backend.
