@@ -34,7 +34,11 @@ fn arc_shared_try_unwrap_failure() {
 
 #[test]
 fn arc_shared_from_arc_and_into_arc() {
+  #[cfg(not(feature = "force-portable-arc"))]
   use alloc::sync::Arc;
+  #[cfg(feature = "force-portable-arc")]
+  use portable_atomic_util::Arc;
+
   let arc: Arc<i32> = Arc::new(42);
   let shared: ArcShared<i32> = ArcShared::___from_arc(arc);
   assert_eq!(*shared, 42);
