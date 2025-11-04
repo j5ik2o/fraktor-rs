@@ -10,7 +10,7 @@ use cellactor_utils_core_rs::sync::ArcShared;
 use crate::{
   NoStdToolbox, RuntimeToolbox,
   actor_prim::{ActorCell, ChildRef, Pid, actor_ref::ActorRef},
-  deadletter::DeadletterEntry,
+  dead_letter::DeadLetterEntry,
   error::SendError,
   eventstream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric},
   futures::ActorFuture,
@@ -96,10 +96,10 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     EventStreamGeneric::subscribe_arc(&self.state.event_stream(), subscriber)
   }
 
-  /// Returns a snapshot of recorded deadletters.
+  /// Returns a snapshot of recorded dead letters.
   #[must_use]
-  pub fn deadletters(&self) -> Vec<DeadletterEntry<TB>> {
-    self.state.deadletters()
+  pub fn dead_letters(&self) -> Vec<DeadLetterEntry<TB>> {
+    self.state.dead_letters()
   }
 
   /// Emits a log event with the specified severity.

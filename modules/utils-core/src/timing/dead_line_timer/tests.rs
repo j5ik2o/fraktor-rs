@@ -7,7 +7,7 @@ use super::*;
 
 #[test]
 fn allocate_provides_unique_keys() {
-  let allocator = DeadlineTimerKeyAllocator::new();
+  let allocator = DeadLineTimerKeyAllocator::new();
   let mut keys = HashSet::new();
 
   for _ in 0..1024 {
@@ -20,7 +20,7 @@ fn allocate_provides_unique_keys() {
 #[test]
 fn deadline_roundtrip() {
   let duration = Duration::from_millis(150);
-  let deadline = TimerDeadline::from(duration);
+  let deadline = TimerDeadLine::from(duration);
   assert_eq!(deadline.as_duration(), duration);
   let back: Duration = deadline.into();
   assert_eq!(back, duration);

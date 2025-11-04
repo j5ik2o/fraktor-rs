@@ -1,6 +1,6 @@
 use cellactor_actor_core_rs::{
   actor_prim::Pid,
-  deadletter::DeadletterEntry,
+  dead_letter::DeadLetterEntry,
   logging::LogLevel,
   spawn::SpawnError,
   system::{ActorSystemGeneric, SystemState as CoreSystemState},
@@ -89,8 +89,8 @@ impl ActorSystem {
 
   /// Returns a snapshot of recorded deadletters.
   #[must_use]
-  pub fn deadletters(&self) -> Vec<DeadletterEntry<StdToolbox>> {
-    self.inner.deadletters()
+  pub fn deadletters(&self) -> Vec<DeadLetterEntry<StdToolbox>> {
+    self.inner.dead_letters()
   }
 
   /// Emits a log event with the specified severity.

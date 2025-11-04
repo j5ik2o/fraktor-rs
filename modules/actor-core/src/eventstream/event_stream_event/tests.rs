@@ -6,7 +6,7 @@ use super::EventStreamEvent;
 use crate::{
   NoStdToolbox,
   actor_prim::Pid,
-  deadletter::DeadletterEntry,
+  dead_letter::DeadLetterEntry,
   lifecycle::{LifecycleEvent, LifecycleStage},
   logging::{LogEvent, LogLevel},
   mailbox::MailboxMetricsEvent,
@@ -37,11 +37,11 @@ fn event_stream_event_lifecycle_clone() {
 #[cfg(feature = "alloc")]
 #[test]
 fn event_stream_event_deadletter_clone() {
-  let entry = DeadletterEntry::new(Pid::new(1, 0), AnyMessage::new(42u8));
-  let event = EventStreamEvent::<NoStdToolbox>::Deadletter(entry.clone());
+  let entry = DeadLetterEntry::new(Pid::new(1, 0), AnyMessage::new(42u8));
+  let event = EventStreamEvent::<NoStdToolbox>::DeadLetter(entry.clone());
   let cloned = event.clone();
   match (event, cloned) {
-    | (EventStreamEvent::Deadletter(e1), EventStreamEvent::Deadletter(e2)) => {
+    | (EventStreamEvent::DeadLetter(e1), EventStreamEvent::DeadLetter(e2)) => {
       assert_eq!(e1.pid(), e2.pid());
     },
     | _ => panic!("Expected Deadletter variants"),

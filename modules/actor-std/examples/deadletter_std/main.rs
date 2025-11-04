@@ -17,7 +17,7 @@ use cellactor_actor_std_rs::{
 use cellactor_utils_core_rs::sync::ArcShared;
 
 struct Start;
-struct LogDeadletters;
+struct LogDeadLetters;
 
 struct StdoutLogger;
 
@@ -27,13 +27,13 @@ impl LoggerWriter for StdoutLogger {
   }
 }
 
-struct DeadletterPrinter;
+struct DeadLetterPrinter;
 
-impl EventStreamSubscriber for DeadletterPrinter {
+impl EventStreamSubscriber for DeadLetterPrinter {
   fn on_event(&self, event: &EventStreamEvent) {
-    if let EventStreamEvent::Deadletter(entry) = event {
+    if let EventStreamEvent::DeadLetter(entry) = event {
       println!(
-        "[DEADLETTER] reason={:?} recipient={:?} message_type={:?}",
+        "[DEAD LETTER] reason={:?} recipient={:?} message_type={:?}",
         entry.reason(),
         entry.recipient(),
         entry.message().payload().type_id()
@@ -57,7 +57,7 @@ impl Actor for GuardianActor {
       send_or_log(ctx, actor_ref, AnyMessage::new("second"));
       suspend_or_log(ctx, &child);
       send_or_log(ctx, actor_ref, AnyMessage::new("third"));
-      send_or_log(ctx, actor_ref, AnyMessage::new(LogDeadletters));
+      send_or_log(ctx, actor_ref, AnyMessage::new(LogDeadLetters));
       ctx.stop_self().ok();
     }
     Ok(())
@@ -68,9 +68,9 @@ struct EchoActor;
 
 impl Actor for EchoActor {
   fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
-    if message.downcast_ref::<LogDeadletters>().is_some() {
-      let entries = ctx.system().deadletters();
-      println!("[DEADLETTER SNAPSHOT] {} entries", entries.len());
+    if message.downcast_ref::<LogDeadLetters>().is_some() {
+      let entries = ctx.system().dead_letters();
+      println!("[DEAD LETTER SNAPSHOT] {} entries", entries.len());
       for entry in entries {
         println!("  - reason={:?}, recipient={:?}", entry.reason(), entry.recipient());
       }
@@ -88,7 +88,7 @@ fn main() {
     ArcShared::new(LoggerSubscriber::new(LogLevel::Info, logger_writer));
   let _log_subscription = system.subscribe_event_stream(&logger);
 
-  let printer: ArcShared<dyn EventStreamSubscriber> = ArcShared::new(DeadletterPrinter);
+  let printer: ArcShared<dyn EventStreamSubscriber> = ArcShared::new(DeadLetterPrinter);
   let _deadletter_subscription = system.subscribe_event_stream(&printer);
 
   let guardian: ActorRef = system.user_guardian_ref();

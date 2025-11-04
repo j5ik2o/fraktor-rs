@@ -108,7 +108,7 @@ fn tokio_mailbox_backpressure_acceptance() {
     })
     .await;
     wait_until_async("deadletter (overflow)", || {
-      subscriber_impl.events().iter().any(|event| matches!(event, EventStreamEvent::Deadletter(_)))
+      subscriber_impl.events().iter().any(|event| matches!(event, EventStreamEvent::DeadLetter(_)))
     })
     .await;
 

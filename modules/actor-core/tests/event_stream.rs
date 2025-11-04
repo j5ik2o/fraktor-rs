@@ -50,7 +50,7 @@ impl Actor<NoStdToolbox> for NullActor {
 }
 
 #[test]
-fn deadletter_event_is_published_when_send_fails() {
+fn dead_letter_event_is_published_when_send_fails() {
   let props = Props::<NoStdToolbox>::from_fn(|| NullActor);
   let system = ActorSystem::new(&props).expect("system");
 
@@ -68,11 +68,11 @@ fn deadletter_event_is_published_when_send_fails() {
   let result = actor_ref.tell(AnyMessage::new("ping"));
   assert!(matches!(result, Err(cellactor_actor_core_rs::error::SendError::Suspended(_))));
 
-  wait_until(|| !system.deadletters().is_empty());
-  let entries = system.deadletters();
+  wait_until(|| !system.dead_letters().is_empty());
+  let entries = system.dead_letters();
   assert!(!entries.is_empty());
 
-  wait_until(|| subscriber_impl.events().iter().any(|event| matches!(event, EventStreamEvent::Deadletter(_))));
+  wait_until(|| subscriber_impl.events().iter().any(|event| matches!(event, EventStreamEvent::DeadLetter(_))));
 
   child.resume().expect("resume child");
   system.terminate().expect("terminate");

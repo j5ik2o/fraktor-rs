@@ -65,7 +65,7 @@ fn actor_system_event_stream() {
 #[test]
 fn actor_system_deadletters() {
   let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
-  let deadletters = system.deadletters();
+  let deadletters = system.dead_letters();
   // ???????????????
   assert_eq!(deadletters.len(), 0);
 }

@@ -3,9 +3,9 @@ mod tests;
 
 /// Key for identifying items registered in a DeadlineTimer.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Debug, Default)]
-pub struct DeadlineTimerKey(u64);
+pub struct DeadLineTimerKey(u64);
 
-impl DeadlineTimerKey {
+impl DeadLineTimerKey {
   /// Returns an invalid key.
   #[must_use]
   #[inline]

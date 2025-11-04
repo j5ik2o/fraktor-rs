@@ -5,7 +5,7 @@ use crate::{NoStdToolbox, actor_prim::Pid};
 fn system_state_new() {
   let state = SystemState::<NoStdToolbox>::new();
   assert!(!state.is_terminated());
-  assert_eq!(state.deadletters().len(), 0);
+  assert_eq!(state.dead_letters().len(), 0);
 }
 
 #[test]
@@ -123,7 +123,7 @@ fn system_state_child_pids() {
 #[test]
 fn system_state_deadletters() {
   let state = SystemState::<NoStdToolbox>::new();
-  let deadletters = state.deadletters();
+  let deadletters = state.dead_letters();
   // ???????????????
   assert_eq!(deadletters.len(), 0);
 }

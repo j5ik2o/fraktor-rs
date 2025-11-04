@@ -126,8 +126,8 @@ fn panic_propagates_without_intervention() {
 }
 
 fn wait_until(condition: impl Fn() -> bool, timeout: Duration) {
-  let deadline = std::time::Instant::now() + timeout;
-  while !condition() && std::time::Instant::now() < deadline {
+  let dead_line = std::time::Instant::now() + timeout;
+  while !condition() && std::time::Instant::now() < dead_line {
     thread::yield_now();
   }
 }

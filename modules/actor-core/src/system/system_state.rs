@@ -13,7 +13,7 @@ use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 use crate::{
   NoStdToolbox, RuntimeToolbox, ToolboxMutex,
   actor_prim::{ActorCell, Pid},
-  deadletter::{DeadletterEntry, DeadletterGeneric},
+  dead_letter::{DeadLetterEntry, DeadLetterGeneric},
   error::{ActorError, SendError},
   eventstream::{EventStreamEvent, EventStreamGeneric},
   futures::ActorFuture,
@@ -37,16 +37,16 @@ pub struct SystemState<TB: RuntimeToolbox + 'static = NoStdToolbox> {
   termination:   ArcShared<ActorFuture<(), TB>>,
   terminated:    AtomicBool,
   event_stream:  ArcShared<EventStreamGeneric<TB>>,
-  deadletter:    ArcShared<DeadletterGeneric<TB>>,
+  dead_letter:   ArcShared<DeadLetterGeneric<TB>>,
 }
 
 impl<TB: RuntimeToolbox + 'static> SystemState<TB> {
   /// Creates a fresh state container without any registered actors.
   #[must_use]
   pub fn new() -> Self {
-    const DEADLETTER_CAPACITY: usize = 512;
+    const DEAD_LETTER_CAPACITY: usize = 512;
     let event_stream = ArcShared::new(EventStreamGeneric::default());
-    let deadletter = ArcShared::new(DeadletterGeneric::new(event_stream.clone(), DEADLETTER_CAPACITY));
+    let dead_letter = ArcShared::new(DeadLetterGeneric::new(event_stream.clone(), DEAD_LETTER_CAPACITY));
     Self {
       next_pid: AtomicU64::new(0),
       clock: AtomicU64::new(0),
@@ -57,7 +57,7 @@ impl<TB: RuntimeToolbox + 'static> SystemState<TB> {
       termination: ArcShared::new(ActorFuture::<(), TB>::new()),
       terminated: AtomicBool::new(false),
       event_stream,
-      deadletter,
+      dead_letter,
     }
   }
 
@@ -152,8 +152,8 @@ impl<TB: RuntimeToolbox + 'static> SystemState<TB> {
 
   /// Returns a snapshot of deadletter entries.
   #[must_use]
-  pub fn deadletters(&self) -> Vec<DeadletterEntry<TB>> {
-    self.deadletter.entries()
+  pub fn dead_letters(&self) -> Vec<DeadLetterEntry<TB>> {
+    self.dead_letter.entries()
   }
 
   /// Registers an ask future so the actor system can track its completion.
@@ -211,7 +211,7 @@ impl<TB: RuntimeToolbox + 'static> SystemState<TB> {
   /// Records a send error for diagnostics.
   pub fn record_send_error(&self, recipient: Option<Pid>, error: &SendError<TB>) {
     let timestamp = self.monotonic_now();
-    self.deadletter.record_send_error(recipient, error, timestamp);
+    self.dead_letter.record_send_error(recipient, error, timestamp);
   }
 
   /// Marks the system as terminated and completes the termination future.

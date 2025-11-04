@@ -35,8 +35,8 @@ impl EventStreamSubscriber for LifecyclePrinter {
       | EventStreamEvent::Lifecycle(lifecycle) => {
         println!("[LIFECYCLE] pid={:?} stage={:?}", lifecycle.pid(), lifecycle.stage());
       },
-      | EventStreamEvent::Deadletter(entry) => {
-        println!("[DEADLETTER] reason={:?} recipient={:?}", entry.reason(), entry.recipient());
+      | EventStreamEvent::DeadLetter(entry) => {
+        println!("[DEAD LETTER] reason={:?} recipient={:?}", entry.reason(), entry.recipient());
       },
       | EventStreamEvent::Log(_) | EventStreamEvent::Mailbox(_) => {},
     }

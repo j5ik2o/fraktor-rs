@@ -38,8 +38,8 @@ fn stop_self_propagates_to_children() {
   let system = ActorSystem::new(&props).expect("system");
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
 
-  let deadline = std::time::Instant::now() + Duration::from_millis(20);
-  while child_states.lock().len() < 2 && std::time::Instant::now() < deadline {
+  let dead_line = std::time::Instant::now() + Duration::from_millis(20);
+  while child_states.lock().len() < 2 && std::time::Instant::now() < dead_line {
     thread::yield_now();
   }
 

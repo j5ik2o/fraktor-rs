@@ -23,8 +23,8 @@ pub mod system;
 /// Event stream bindings for the standard toolbox.
 pub mod eventstream;
 
-/// Deadletter bindings for the standard toolbox.
-pub mod deadletter;
+/// DeadLetter bindings for the standard toolbox.
+pub mod dead_letter;
 
 /// Future utilities specialised for the standard toolbox.
 pub mod futures;

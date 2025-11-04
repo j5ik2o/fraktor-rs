@@ -5,9 +5,9 @@ mod tests;
 
 /// A newtype representing a DeadlineTimer deadline.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct TimerDeadline(Duration);
+pub struct TimerDeadLine(Duration);
 
-impl TimerDeadline {
+impl TimerDeadLine {
   /// Creates a deadline from the specified duration.
   #[must_use]
   #[inline]
@@ -23,16 +23,16 @@ impl TimerDeadline {
   }
 }
 
-impl From<Duration> for TimerDeadline {
+impl From<Duration> for TimerDeadLine {
   #[inline]
   fn from(value: Duration) -> Self {
     Self::from_duration(value)
   }
 }
 
-impl From<TimerDeadline> for Duration {
+impl From<TimerDeadLine> for Duration {
   #[inline]
-  fn from(value: TimerDeadline) -> Self {
+  fn from(value: TimerDeadLine) -> Self {
     value.as_duration()
   }
 }

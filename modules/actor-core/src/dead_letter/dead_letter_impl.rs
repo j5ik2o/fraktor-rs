@@ -8,7 +8,7 @@ use cellactor_utils_core_rs::sync::{ArcShared, SyncMutexFamily, sync_mutex_like:
 use crate::{
   NoStdToolbox, RuntimeToolbox, ToolboxMutex,
   actor_prim::Pid,
-  deadletter::{DeadletterEntry, deadletter_reason::DeadletterReason},
+  dead_letter::{DeadLetterEntry, dead_letter_reason::DeadLetterReason},
   error::SendError,
   eventstream::{EventStreamEvent, EventStreamGeneric},
   logging::{LogEvent, LogLevel},
@@ -18,13 +18,13 @@ use crate::{
 const DEFAULT_CAPACITY: usize = 256;
 
 /// Collects undeliverable messages and notifies subscribers.
-pub struct DeadletterGeneric<TB: RuntimeToolbox + 'static = NoStdToolbox> {
-  entries:      ToolboxMutex<Vec<DeadletterEntry<TB>>, TB>,
+pub struct DeadLetterGeneric<TB: RuntimeToolbox + 'static = NoStdToolbox> {
+  entries:      ToolboxMutex<Vec<DeadLetterEntry<TB>>, TB>,
   capacity:     usize,
   event_stream: ArcShared<EventStreamGeneric<TB>>,
 }
 
-impl<TB: RuntimeToolbox + 'static> DeadletterGeneric<TB> {
+impl<TB: RuntimeToolbox + 'static> DeadLetterGeneric<TB> {
   /// Creates a new deadletter store with the provided buffer capacity.
   #[must_use]
   pub fn new(event_stream: ArcShared<EventStreamGeneric<TB>>, capacity: usize) -> Self {
@@ -40,10 +40,10 @@ impl<TB: RuntimeToolbox + 'static> DeadletterGeneric<TB> {
   /// Records a send error generated while targeting the specified pid.
   pub fn record_send_error(&self, target: Option<Pid>, error: &SendError<TB>, timestamp: Duration) {
     let reason = match error {
-      | SendError::Full(_) => DeadletterReason::MailboxFull,
-      | SendError::Suspended(_) => DeadletterReason::MailboxSuspended,
-      | SendError::Closed(_) => DeadletterReason::RecipientUnavailable,
-      | SendError::NoRecipient(_) => DeadletterReason::MissingRecipient,
+      | SendError::Full(_) => DeadLetterReason::MailboxFull,
+      | SendError::Suspended(_) => DeadLetterReason::MailboxSuspended,
+      | SendError::Closed(_) => DeadLetterReason::RecipientUnavailable,
+      | SendError::NoRecipient(_) => DeadLetterReason::MissingRecipient,
     };
     let message = error.message().clone();
     self.record_entry(message, reason, target, timestamp);
@@ -53,11 +53,11 @@ impl<TB: RuntimeToolbox + 'static> DeadletterGeneric<TB> {
   pub fn record_entry(
     &self,
     message: AnyMessage<TB>,
-    reason: DeadletterReason,
+    reason: DeadLetterReason,
     target: Option<Pid>,
     timestamp: Duration,
   ) {
-    let entry = DeadletterEntry::new(message, reason, target, timestamp);
+    let entry = DeadLetterEntry::new(message, reason, target, timestamp);
     {
       let mut entries = self.entries.lock();
       entries.push(entry.clone());
@@ -72,12 +72,12 @@ impl<TB: RuntimeToolbox + 'static> DeadletterGeneric<TB> {
 
   /// Returns a snapshot of stored deadletters.
   #[must_use]
-  pub fn entries(&self) -> Vec<DeadletterEntry<TB>> {
+  pub fn entries(&self) -> Vec<DeadLetterEntry<TB>> {
     self.entries.lock().clone()
   }
 
-  fn publish(&self, entry: &DeadletterEntry<TB>) {
-    self.event_stream.publish(&EventStreamEvent::Deadletter(entry.clone()));
+  fn publish(&self, entry: &DeadLetterEntry<TB>) {
+    self.event_stream.publish(&EventStreamEvent::DeadLetter(entry.clone()));
     let (origin, message) = match entry.recipient() {
       | Some(pid) => (Some(pid), format!("deadletter for pid {:?} (reason: {:?})", pid, entry.reason())),
       | None => (None, format!("deadletter recorded (reason: {:?})", entry.reason())),
@@ -88,4 +88,4 @@ impl<TB: RuntimeToolbox + 'static> DeadletterGeneric<TB> {
 }
 
 /// Type alias for Deadletter using the default toolbox.
-pub type Deadletter = DeadletterGeneric<NoStdToolbox>;
+pub type DeadLetter = DeadLetterGeneric<NoStdToolbox>;

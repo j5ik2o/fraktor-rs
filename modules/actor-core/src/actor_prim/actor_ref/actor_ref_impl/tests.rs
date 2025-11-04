@@ -90,7 +90,7 @@ fn actor_ref_tell_with_system_records_error() {
   assert!(result.is_err());
 
   // deadletters???????????
-  let deadletters = system.deadletters();
+  let deadletters = system.dead_letters();
   assert_eq!(deadletters.len(), 1);
 }
 

@@ -3,24 +3,25 @@
 use core::time::Duration;
 
 use crate::{
-  NoStdToolbox, RuntimeToolbox, actor_prim::Pid, deadletter::deadletter_reason::DeadletterReason, messaging::AnyMessage,
+  NoStdToolbox, RuntimeToolbox, actor_prim::Pid, dead_letter::dead_letter_reason::DeadLetterReason,
+  messaging::AnyMessage,
 };
 
 /// Captures a single deadletter occurrence.
 #[derive(Debug)]
-pub struct DeadletterEntry<TB: RuntimeToolbox = NoStdToolbox> {
+pub struct DeadLetterEntry<TB: RuntimeToolbox = NoStdToolbox> {
   message:   AnyMessage<TB>,
-  reason:    DeadletterReason,
+  reason:    DeadLetterReason,
   recipient: Option<Pid>,
   timestamp: Duration,
 }
 
-impl<TB: RuntimeToolbox> DeadletterEntry<TB> {
+impl<TB: RuntimeToolbox> DeadLetterEntry<TB> {
   /// Creates a new deadletter entry.
   #[must_use]
   pub const fn new(
     message: AnyMessage<TB>,
-    reason: DeadletterReason,
+    reason: DeadLetterReason,
     recipient: Option<Pid>,
     timestamp: Duration,
   ) -> Self {
@@ -35,7 +36,7 @@ impl<TB: RuntimeToolbox> DeadletterEntry<TB> {
 
   /// Returns the deadletter reason.
   #[must_use]
-  pub const fn reason(&self) -> DeadletterReason {
+  pub const fn reason(&self) -> DeadLetterReason {
     self.reason
   }
 
@@ -52,7 +53,7 @@ impl<TB: RuntimeToolbox> DeadletterEntry<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox> Clone for DeadletterEntry<TB> {
+impl<TB: RuntimeToolbox> Clone for DeadLetterEntry<TB> {
   fn clone(&self) -> Self {
     Self {
       message:   self.message.clone(),

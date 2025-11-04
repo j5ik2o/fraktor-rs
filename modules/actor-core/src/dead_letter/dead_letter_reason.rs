@@ -2,7 +2,7 @@
 
 /// High level classification explaining why a message was not delivered.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum DeadletterReason {
+pub enum DeadLetterReason {
   /// Mailbox capacity or overflow strategy rejected the message.
   MailboxFull,
   /// Mailbox was suspended at the time of delivery.

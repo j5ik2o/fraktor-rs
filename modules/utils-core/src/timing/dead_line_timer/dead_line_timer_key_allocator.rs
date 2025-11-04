@@ -6,18 +6,18 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 #[cfg(not(target_has_atomic = "ptr"))]
 use critical_section::with;
 
-use super::deadline_timer_key::DeadlineTimerKey;
+use super::dead_line_timer_key::DeadLineTimerKey;
 
-/// Allocator for generating [`DeadlineTimerKey`] values.
+/// Allocator for generating [`DeadLineTimerKey`] values.
 #[derive(Debug)]
-pub struct DeadlineTimerKeyAllocator {
+pub struct DeadLineTimerKeyAllocator {
   #[cfg(target_has_atomic = "ptr")]
   counter: AtomicUsize,
   #[cfg(not(target_has_atomic = "ptr"))]
   counter: Cell<usize>,
 }
 
-impl DeadlineTimerKeyAllocator {
+impl DeadLineTimerKeyAllocator {
   /// Creates a new allocator.
   #[must_use]
   #[inline]
@@ -35,12 +35,12 @@ impl DeadlineTimerKeyAllocator {
 
   /// Issues a new unique key.
   #[inline]
-  pub fn allocate(&self) -> DeadlineTimerKey {
+  pub fn allocate(&self) -> DeadLineTimerKey {
     #[cfg(target_has_atomic = "ptr")]
     {
       let next = self.counter.fetch_add(1, Ordering::Relaxed) as u64;
       let raw = if next == 0 { 1 } else { next };
-      DeadlineTimerKey::from_raw(raw)
+      DeadLineTimerKey::from_raw(raw)
     }
 
     #[cfg(not(target_has_atomic = "ptr"))]
@@ -52,26 +52,26 @@ impl DeadlineTimerKeyAllocator {
         self.counter.set(stored);
         if current == 0 { 1 } else { current }
       });
-      DeadlineTimerKey::from_raw(issued as u64)
+      DeadLineTimerKey::from_raw(issued as u64)
     }
   }
 
   /// Checks the next key to be issued (for testing purposes).
   #[inline]
-  pub fn peek(&self) -> DeadlineTimerKey {
+  pub fn peek(&self) -> DeadLineTimerKey {
     #[cfg(target_has_atomic = "ptr")]
     {
-      DeadlineTimerKey::from_raw(self.counter.load(Ordering::Relaxed) as u64)
+      DeadLineTimerKey::from_raw(self.counter.load(Ordering::Relaxed) as u64)
     }
 
     #[cfg(not(target_has_atomic = "ptr"))]
     {
-      with(|_| DeadlineTimerKey::from_raw(self.counter.get() as u64))
+      with(|_| DeadLineTimerKey::from_raw(self.counter.get() as u64))
     }
   }
 }
 
-impl Default for DeadlineTimerKeyAllocator {
+impl Default for DeadLineTimerKeyAllocator {
   fn default() -> Self {
     Self::new()
   }
