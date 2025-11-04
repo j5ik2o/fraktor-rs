@@ -1,3 +1,5 @@
+//! Future monitoring the user queue for incoming messages.
+
 use core::{
   fmt,
   future::Future,
@@ -5,24 +7,24 @@ use core::{
   task::{Context, Poll},
 };
 
-use super::queue_poll_future::QueuePollFuture;
-use crate::{any_message::AnyMessage, mailbox::map_user_queue_error, send_error::SendError};
+use super::{mailbox_queue_poll_future::QueuePollFuture, map_user_queue_error};
+use crate::{RuntimeToolbox, error::SendError, messaging::AnyMessage};
 
-/// Future specialized for mailbox user queue polling.
-pub struct MailboxPollFuture {
-  inner: QueuePollFuture<AnyMessage>,
+/// Future completing with the next user message from the mailbox.
+pub struct MailboxPollFuture<TB: RuntimeToolbox + 'static> {
+  inner: QueuePollFuture<AnyMessage<TB>, TB>,
 }
 
-impl MailboxPollFuture {
-  pub(super) const fn new(inner: QueuePollFuture<AnyMessage>) -> Self {
+impl<TB: RuntimeToolbox + 'static> MailboxPollFuture<TB> {
+  pub(super) const fn new(inner: QueuePollFuture<AnyMessage<TB>, TB>) -> Self {
     Self { inner }
   }
 }
 
-impl Unpin for MailboxPollFuture {}
+impl<TB: RuntimeToolbox + 'static> Unpin for MailboxPollFuture<TB> {}
 
-impl Future for MailboxPollFuture {
-  type Output = Result<AnyMessage, SendError>;
+impl<TB: RuntimeToolbox + 'static> Future for MailboxPollFuture<TB> {
+  type Output = Result<AnyMessage<TB>, SendError<TB>>;
 
   fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
     match Pin::new(&mut self.inner).poll(cx) {
@@ -33,7 +35,7 @@ impl Future for MailboxPollFuture {
   }
 }
 
-impl fmt::Debug for MailboxPollFuture {
+impl<TB: RuntimeToolbox> fmt::Debug for MailboxPollFuture<TB> {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     f.debug_struct("MailboxPollFuture").finish()
   }

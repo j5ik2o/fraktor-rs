@@ -1,6 +1,6 @@
 use core::num::NonZeroUsize;
 
-use crate::mailbox_policy::MailboxPolicy;
+use crate::mailbox::MailboxPolicy;
 
 /// Mailbox configuration derived from the props builder.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -34,7 +34,12 @@ impl<'tcx> LateLintPass<'tcx> for SeparateTests {
       return;
     };
 
-    if !self.processed.insert(path.clone()) || is_tests_path(&path) {
+    if !self.processed.insert(path.clone()) {
+      return;
+    }
+
+    if is_tests_path(&path) {
+      analyze_tests_file(cx, &path);
       return;
     }
 
@@ -80,6 +85,27 @@ fn analyze_source_file(cx: &LateContext<'_>, path: &Path) {
         diag.primary_message("test functions must be moved into a dedicated tests.rs file");
         diag.help("place this test under `<module>/tests.rs` ensuring the parent declares `#[cfg(test)] mod tests;`");
         diag.note("AI向けアドバイス: このテスト関数と依存するヘルパーを `<module>/tests.rs` に移動し、必要なら `use super::*;` などを追加してビルドが通るようにしてください。");
+      });
+    }
+  }
+}
+
+fn analyze_tests_file(cx: &LateContext<'_>, path: &Path) {
+  let Ok(source) = fs::read_to_string(path) else {
+    return;
+  };
+
+  let sm = cx.tcx.sess.source_map();
+  let Some(source_file) = load_source_file(sm, path) else {
+    return;
+  };
+
+  for range in find_inner_cfg_test_attributes(&source) {
+    if let Some(span) = span_for_range(&source_file, range) {
+      cx.span_lint(SEPARATE_TESTS, span, |diag| {
+        diag.primary_message("`tests.rs` 内で `#![cfg(test)]` は使用できません");
+        diag.help("親ファイルに `#[cfg(test)] mod tests;` を記述してテスト用モジュールを有効化してください");
+        diag.note("AI向けアドバイス: `tests.rs` から `#![cfg(test)]` を削除し、親モジュール側で `#[cfg(test)] mod tests;` を宣言してテスト専用モジュールを有効化してください。");
       });
     }
   }
@@ -196,4 +222,25 @@ fn find_attribute_end(segment: &str) -> Option<usize> {
     }
   }
   None
+}
+
+fn find_inner_cfg_test_attributes(src: &str) -> Vec<Range<usize>> {
+  let mut matches = Vec::new();
+  let mut cursor = 0;
+
+  while let Some(start) = src[cursor..].find("#![") {
+    let absolute = cursor + start;
+    let remaining = &src[absolute + 3..];
+    let Some(closing) = find_attribute_end(remaining) else {
+      break;
+    };
+    let attr_body = &remaining[..closing];
+    let normalized: String = attr_body.chars().filter(|c| !c.is_whitespace()).collect();
+    if normalized == "cfg(test)" {
+      matches.push(absolute..absolute + 3 + closing + 1);
+    }
+    cursor = absolute + 3 + closing + 1;
+  }
+
+  matches
 }

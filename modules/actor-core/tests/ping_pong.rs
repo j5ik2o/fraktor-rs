@@ -1,29 +1,38 @@
-#![cfg(feature = "std")]
+#![cfg(not(target_os = "none"))]
 
-extern crate alloc;
-
-use alloc::{string::String, vec::Vec};
+use std::{thread, time::Duration, vec::Vec};
 
 use cellactor_actor_core_rs::{
-  Actor, ActorContext, ActorError, ActorSystem, AnyMessage, AnyMessageView, ChildRef, EnqueueOutcome, Mailbox,
-  MailboxOverflowStrategy, MailboxPolicy, Props, SendError, SpawnError,
+  NoStdToolbox,
+  actor_prim::{Actor, ActorContext, ChildRef},
+  error::{ActorError, SendError},
+  mailbox::{Mailbox, MailboxOverflowStrategy, MailboxPolicy},
+  messaging::{AnyMessage, AnyMessageView},
+  props::Props,
+  spawn::SpawnError,
+  system::ActorSystem,
 };
-use cellactor_utils_core_rs::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
+use cellactor_utils_core_rs::sync::{ArcShared, NoStdMutex};
 
 struct Start;
 struct Deliver(u32);
+
 struct RecordingChild {
-  log: ArcShared<SpinSyncMutex<Vec<u32>>>,
+  log: ArcShared<NoStdMutex<Vec<u32>>>,
 }
 
 impl RecordingChild {
-  fn new(log: ArcShared<SpinSyncMutex<Vec<u32>>>) -> Self {
+  fn new(log: ArcShared<NoStdMutex<Vec<u32>>>) -> Self {
     Self { log }
   }
 }
 
-impl Actor for RecordingChild {
-  fn receive(&mut self, _ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+impl Actor<NoStdToolbox> for RecordingChild {
+  fn receive(
+    &mut self,
+    _ctx: &mut ActorContext<'_, NoStdToolbox>,
+    message: AnyMessageView<'_, NoStdToolbox>,
+  ) -> Result<(), ActorError> {
     if let Some(deliver) = message.downcast_ref::<Deliver>() {
       self.log.lock().push(deliver.0);
     }
@@ -32,24 +41,31 @@ impl Actor for RecordingChild {
 }
 
 struct RecordingGuardian {
-  child_log: ArcShared<SpinSyncMutex<Vec<u32>>>,
-  child_ref: ArcShared<SpinSyncMutex<Option<ChildRef>>>,
+  log:        ArcShared<NoStdMutex<Vec<u32>>>,
+  child_slot: ArcShared<NoStdMutex<Option<ChildRef<NoStdToolbox>>>>,
 }
 
 impl RecordingGuardian {
-  fn new(child_log: ArcShared<SpinSyncMutex<Vec<u32>>>, child_ref: ArcShared<SpinSyncMutex<Option<ChildRef>>>) -> Self {
-    Self { child_log, child_ref }
+  fn new(
+    log: ArcShared<NoStdMutex<Vec<u32>>>,
+    child_slot: ArcShared<NoStdMutex<Option<ChildRef<NoStdToolbox>>>>,
+  ) -> Self {
+    Self { log, child_slot }
   }
 }
 
-impl Actor for RecordingGuardian {
-  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+impl Actor<NoStdToolbox> for RecordingGuardian {
+  fn receive(
+    &mut self,
+    ctx: &mut ActorContext<'_, NoStdToolbox>,
+    message: AnyMessageView<'_, NoStdToolbox>,
+  ) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
-      let log = self.child_log.clone();
+      let log = self.log.clone();
       let child = ctx
         .spawn_child(&Props::from_fn(move || RecordingChild::new(log.clone())))
         .map_err(|_| ActorError::recoverable("spawn failed"))?;
-      self.child_ref.lock().replace(child.clone());
+      self.child_slot.lock().replace(child.clone());
       child.tell(AnyMessage::new(Deliver(99))).map_err(|_| ActorError::recoverable("send failed"))?;
     }
     Ok(())
@@ -58,33 +74,40 @@ impl Actor for RecordingGuardian {
 
 struct SilentActor;
 
-impl Actor for SilentActor {
-  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
+impl Actor<NoStdToolbox> for SilentActor {
+  fn receive(
+    &mut self,
+    _ctx: &mut ActorContext<'_, NoStdToolbox>,
+    _message: AnyMessageView<'_, NoStdToolbox>,
+  ) -> Result<(), ActorError> {
     Ok(())
   }
 }
 
 struct NamingGuardian {
-  conflict: ArcShared<SpinSyncMutex<bool>>,
-  spawned:  ArcShared<SpinSyncMutex<Vec<u64>>>,
+  conflict: ArcShared<NoStdMutex<bool>>,
+  spawned:  ArcShared<NoStdMutex<Vec<u64>>>,
 }
 
 impl NamingGuardian {
-  fn new(conflict: ArcShared<SpinSyncMutex<bool>>, spawned: ArcShared<SpinSyncMutex<Vec<u64>>>) -> Self {
+  fn new(conflict: ArcShared<NoStdMutex<bool>>, spawned: ArcShared<NoStdMutex<Vec<u64>>>) -> Self {
     Self { conflict, spawned }
   }
 }
 
-impl Actor for NamingGuardian {
-  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+impl Actor<NoStdToolbox> for NamingGuardian {
+  fn receive(
+    &mut self,
+    ctx: &mut ActorContext<'_, NoStdToolbox>,
+    message: AnyMessageView<'_, NoStdToolbox>,
+  ) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
       let _ = ctx
         .spawn_child(&Props::from_fn(|| SilentActor).with_name("worker"))
         .map(|actor| self.spawned.lock().push(actor.pid().value()));
 
       let duplicate = ctx.spawn_child(&Props::from_fn(|| SilentActor).with_name("worker"));
-      let conflict_detected = matches!(duplicate, Err(SpawnError::NameConflict(_)));
-      *self.conflict.lock() = conflict_detected;
+      *self.conflict.lock() = matches!(duplicate, Err(SpawnError::NameConflict(_)));
 
       for _ in 0..2 {
         let actor =
@@ -98,41 +121,44 @@ impl Actor for NamingGuardian {
 
 #[test]
 fn spawn_and_tell_delivers_message() {
-  let log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
-  let child_ref = ArcShared::new(SpinSyncMutex::new(None));
-  let props = Props::from_fn({
+  let log = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let child_slot = ArcShared::new(NoStdMutex::new(None));
+  let props = Props::<NoStdToolbox>::from_fn({
     let log = log.clone();
-    let child_ref = child_ref.clone();
-    move || RecordingGuardian::new(log.clone(), child_ref.clone())
+    let child_slot = child_slot.clone();
+    move || RecordingGuardian::new(log.clone(), child_slot.clone())
   });
   let system = ActorSystem::new(&props).expect("system");
 
-  system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start message");
+  system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
 
-  let entries = log.lock().clone();
-  assert_eq!(entries, vec![99]);
-  assert!(child_ref.lock().is_some());
+  let deadline = std::time::Instant::now() + Duration::from_millis(20);
+  while log.lock().is_empty() && std::time::Instant::now() < deadline {
+    thread::yield_now();
+  }
+
+  assert_eq!(*log.lock(), vec![99]);
+  assert!(child_slot.lock().is_some());
 }
 
 #[test]
 fn tell_respects_mailbox_backpressure() {
-  let mailbox = Mailbox::new(MailboxPolicy::bounded(
-    core::num::NonZeroUsize::new(1).unwrap(),
-    MailboxOverflowStrategy::DropNewest,
-    None,
-  ));
+  use core::num::NonZeroUsize;
 
-  assert!(matches!(mailbox.enqueue_user(AnyMessage::new(String::from("first"))), Ok(EnqueueOutcome::Enqueued)));
-  let result = mailbox.enqueue_user(AnyMessage::new(String::from("second")));
+  let mailbox: Mailbox<NoStdToolbox> =
+    Mailbox::new(MailboxPolicy::bounded(NonZeroUsize::new(1).unwrap(), MailboxOverflowStrategy::DropNewest, None));
+
+  assert!(mailbox.enqueue_user(AnyMessage::new("first")).is_ok());
+  let result = mailbox.enqueue_user(AnyMessage::new("second"));
   assert!(matches!(result, Err(SendError::Full(_))));
 }
 
 #[test]
 fn auto_naming_and_duplicate_detection() {
-  let conflict = ArcShared::new(SpinSyncMutex::new(false));
-  let spawned = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let conflict = ArcShared::new(NoStdMutex::new(false));
+  let spawned = ArcShared::new(NoStdMutex::new(Vec::new()));
 
-  let props = Props::from_fn({
+  let props = Props::<NoStdToolbox>::from_fn({
     let conflict = conflict.clone();
     let spawned = spawned.clone();
     move || NamingGuardian::new(conflict.clone(), spawned.clone())
@@ -140,6 +166,11 @@ fn auto_naming_and_duplicate_detection() {
 
   let system = ActorSystem::new(&props).expect("system");
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
+
+  let deadline = std::time::Instant::now() + Duration::from_millis(20);
+  while spawned.lock().len() < 3 && std::time::Instant::now() < deadline {
+    thread::yield_now();
+  }
 
   assert!(*conflict.lock(), "expected name conflict for duplicate spawn");
   let ids = spawned.lock().clone();

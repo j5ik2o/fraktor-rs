@@ -87,6 +87,14 @@
 - ロガー／タイマーなどの周辺機能は既存ユーティリティを再利用し、ActorSystem 側ではインターフェイスだけを提供する。EventStream を介した Logger 購読者で観測できることを前提とする。
 - ライフタイム重視の API 設計を維持するため、借用で表現できるデータに対して所有権移動や追加アロケーションを求めないことを前提とする。
 
+## アーキテクチャ指針
+
+- ランタイムは初期段階からツールボックス抽象を前提としたジェネリック設計を採用する。`ActorSystem`, `ActorCell`, `ActorRef`, `Mailbox`, `EventStream`, `Deadletter`, `ActorFuture` などの中核構造は `TB: RuntimeToolbox` を型パラメータとして受け取り、同期プリミティブは `ToolboxMutex<T, TB>` によって生成する。
+- `RuntimeToolbox` は `type MutexFamily: SyncMutexFamily` の関連型を持ち、`SyncMutexFamily::create` を通じて `SpinSyncMutex` や `StdSyncMutex` を生成する。既定の `NoStdToolbox` と `StdToolbox` に加え、利用者が独自実装を追加できるようドキュメントで拡張手順を示す。
+- 公開 API の互換性を維持するため、`actor-core` は `type ActorSystem = ActorSystemGeneric<NoStdToolbox>` のような型エイリアスを提供し、従来の呼び出しシグネチャを変えずに内部実装のみジェネリック化する。
+- `actor-std` などホスト環境向けクレートは `StdToolbox`, `StdMutexFamily`, `StdActorSystem` などのエイリアスを公開し、`Props<StdToolbox>` や `DispatcherConfig<StdToolbox>` を選択するだけで標準ライブラリバックエンドへ切り替えられるようにする。
+- CI とサンプルコードでは `NoStdToolbox` / `StdToolbox` の双方でビルド・実行パスを検証し、異なるバックエンド間で API の一貫性を保証する。
+
 ## 要件（必須）
 
 ### 機能要件
@@ -124,6 +132,39 @@
 - **FR-033**: Mailbox の System キューはランタイム内部用の `SystemMessage`（固定スキーマ）を保持し、User キューと型で分離しなければならない。ユーザ定義メッセージが System キューへ到達しないよう型安全性を確保し、変換は ActorSystem 側で明示的に行うこと。
 - **FR-034**: Mailbox と Dispatcher は no_std 組込み環境向けの同期ランナーと、std/tokio などホスト環境向けの非同期ランナー双方へ適用できる抽象を提供しなければならない。Core レイヤーでは `async fn` を露出せず、ランナー層で `OfferFuture` / `PollFuture`（および `MailboxSignalHandle::wait`）を駆動するためのフックを公開すること。
 - **FR-035**: ホスト環境向けの動作検証を目的に、examples 配下で Tokio 依存を許容した `DispatcherConfig::from_executor(TokioExecutor)` のサンプル実装を提供しなければならない。Core クレートは Tokio を依存に含めず、Props から Dispatcher を差し替え可能にすることで連携する。TokioExecutor は `std` フィーチャ有効時のみビルドされ、Tokio ランタイム上で ActorSystem を駆動する Ping/Pong サンプルが成功し、終了待機には `when_terminated()` から得られる Future を利用することを確認する。EventStream publish/subscribe を確認する LoggerSubscriber サンプルを提供し、ログ購読 API が実証されていること。イベントバッファ長（既定値 256 件）や Deadletter 保持件数（既定値 512 件）の初期値を設計方針として明記する。
+
+### オブザーバビリティ設定 API（T037A）
+
+- **目的**: actor-old では Deadletter/ EventStream の容量・警告閾値を組込み・ホスト環境に合わせて調整する運用ノウハウが存在していたが、現行仕様では固定値のままで明示的な API が欠落していた。運用時の監視ノイズやメモリ制約に応じてチューニングできるよう、設定インターフェイスを設計する。
+- **設計案**:
+  - `ObserverOptions`（仮称）を `actor-core` に導入し、`event_stream_capacity: NonZeroUsize`、`event_stream_replay_warn: Option<NonZeroUsize>`、`deadletter_capacity: NonZeroUsize`、`deadletter_warn_threshold: Option<NonZeroUsize>` を保持する。既定値は EventStream=256、Deadletter=512、警告閾値は容量の 75% を推奨値とする。
+  - `ActorSystemBuilder<TB>`（仮称）でこれらのオプションを受け取り、`SystemState::new_with_observer_options(options)` を経由して内部バッファ初期化・警告閾値を配線する。no_std 環境では既定値を採用しつつ、コンストラクタで明示的な値を渡せるようにする。
+  - ホスト環境では `actor-std` クレートに `StdActorSystem::builder()` を追加し、`with_observer_options(ObserverOptions)`、`with_event_stream_capacity(usize)` などのヘルパーを提供する。Tokio ヘルパー（T042）と同様に std 依存の責務を集約する。
+  - Warn 閾値は `SystemState` / `MailboxInstrumentation` から EventStream へログを publish する際に利用可能なよう、現在の `MailBoxInstrumentation` に引き続き `warn_threshold` を渡す。Deadletter 側も同様に警告ログ発火を行う拡張余地を持たせる。
+- **ドキュメント反映**:
+  - quickstart のオブザーバビリティ節に環境別推奨値（組込み向け 128/256、ホスト向け 512/1024）とビルダー API 利用例を追加し、API 提供時に差分チェックを行うことを明記する。
+  - data-model に `ObserverOptions` と `ActorSystemBuilder` の関係図を追加し、SystemState が設定値を保持する流れを図示する。
+- **後続タスク**: 実装は T041/T042 で扱う計画とし、本仕様では API の方向性と既定値を確定する。実装完了時は quickstart/plan/spec が更新済みであることを確認するチェックリストを追加する。
+- **FR-036**: ランタイムの同期プリミティブ生成は `SyncMutexFamily` 抽象を経由しなければならない。`SyncMutexFamily` は `type Mutex<T>` と `fn create<T>(value: T)`（`T: Send + 'static`）を提供し、内部で使用する全ての `SpinSyncMutex` / `StdSyncMutex` / カスタム実装はこのインターフェイスを実装する。直接 `SpinSyncMutex::new` や `StdSyncMutex::new` を呼び出すコードは仕様上禁止する。
+- **FR-037**: `RuntimeToolbox` は `type MutexFamily: SyncMutexFamily` を関連型として公開し、組み込み環境向けの `NoStdToolbox`（`SpinMutexFamily` を使用）と、ホスト環境向けの `StdToolbox`（`StdMutexFamily` を使用）を標準実装として提供しなければならない。利用者は独自の `RuntimeToolbox` を実装するだけでミューテックス実装を差し替えられる。
+- **FR-038**: `ActorSystem`, `ActorSystemState`, `ActorCell`, `ActorRef`, `ChildRef`, `Mailbox`, `EventStream`, `Deadletter`, `ActorFuture` などランタイム中核の構造体は `TB: RuntimeToolbox` を型パラメータとして受け取るジェネリック型として定義しなければならない。公開 API は `type ActorSystem = ActorSystemGeneric<NoStdToolbox>` のような型エイリアスを通じて既存シグネチャを維持する。
+- **FR-038A**: すべての `RuntimeToolbox` ジェネリックはデフォルト型パラメータを持たず、`impl Actor<NoStdToolbox>` や `Props::<StdToolbox>` のように利用者が明示指定しなければならない。actor-old で暗黙に `NoStdToolbox` が選ばれていたケースを排除し、Toolbox の取り違えによる不具合を防ぐ。
+- **FR-039**: `Props` / `DispatcherConfig` などのビルダーはジェネリック型 `TB: RuntimeToolbox` で提供し、利用者が `Props::<StdToolbox>::from_fn` のように型パラメータを指定するだけでツールボックスを切り替えられるようにする。`actor-std` クレートは `StdToolbox`, `StdMutexFamily`, `StdActorSystem` といったエイリアスを再エクスポートし、追加の import で標準ライブラリ版を利用できるようにする。
+- **FR-040**: ドキュメントとサンプルはツールボックスの選択手順、カスタム `RuntimeToolbox` 実装の手順、`NoStd` と `Std` の違いを明示しなければならない。CI では少なくとも `NoStdToolbox` と `StdToolbox` の両方で単体テストを実行し、生成物がコンパイル可能であることを保証する。
+- **FR-041**: SystemState は PID 採番・ActorCell レジストリ・名前レジストリ・AskFuture レジストリ・EventStream・Deadletter・終了待ち Future を保持し、Atomic と `ToolboxMutex` を通してこれらのリソースを `no_std` でも安全に管理しなければならない。`mark_terminated()` により終了 Future を完了させ、`when_terminated()` が待機できることを仕様で定義する。
+- **FR-042**: ActorCell は Mailbox/Dispatcher/MessageInvokerPipeline とアクター本体を束ね、`pre_start` → `receive` → `post_stop` の呼び出しと子アクター監視・名前登録の責務を持つ。再起動時には格納した `ActorFactory` でアクターを再生成し、子統計 (`RestartStatistics`) を Supervisor 戦略へ提供しなければならない。
+- **FR-043**: ActorSystem は `Props` から Mailbox と Dispatcher を構築し、ユーザガーディアン経由でのみ子アクターを生成するブートシーケンスを提供する。`spawn_child`・`terminate`・`user_guardian_ref`・`when_terminated` などの API 契約と、それらが SystemState とどのように連携するかを明記する。
+- **FR-044**: RuntimeToolbox は Mailbox・Dispatcher・ActorRef・ActorCell・SystemState・ActorSystem など中核コンポーネントで必須のジェネリック引数とし、`ToolboxMutex<T, TB>` による同期抽象を利用して `ArcShared` や WaitQueue と安全に連携できるよう仕様化する。どの型に TB ジェネリクスを持たせるかの指針を文書化する。
+- **FR-045**: Props は MailboxPolicy・SupervisorStrategy・ActorFactory・DispatcherConfig などアクター生成に必要なパラメータを保持し、`with_mailbox_policy` などのビルダー API で差し替え可能にする。MVP では fallback として `MailboxPolicy::unbounded` と `InlineExecutor` を既定とし、Docs/サンプルで既定値の動作を説明する。
+- **FR-046**: MessageInvoker は before/after ミドルウェアチェーンと `reply_to` 復元処理を行い、`ActorContext` の `set_reply_to` / `clear_reply_to` と連携する設計を明文化する。MVP では空のチェーンを既定とするが、Middleware の拡張ポイントと責務（前処理・後処理）を仕様に含める。
+
+#### ランタイムコンポーネントの責務整理
+
+- **SystemState**: PID 採番、ActorCell/NameRegistry/AskFuture/Deadletter/EventStream/終了 Future の管理を担い、Atomic + `ToolboxMutex<T, TB>` による no_std 対応の同期手法を採用する。`mark_terminated()` と `when_terminated()` を中心とした終了待機契約を仕様に含める。
+- **ActorCell**: Mailbox / Dispatcher / MessageInvokerPipeline / ActorFactory を束ね、`pre_start` → `receive` → `post_stop` のライフサイクル実行、子アクター監視、RestartStatistics 更新、Supervisor 指示に従う停止／再起動を担当する。
+- **ActorSystem**: Props から Mailbox／Dispatcher を組み立て、ユーザガーディアン経由のみで子アクターを生成する。`spawn_child`・`terminate`・`user_guardian_ref`・`when_terminated` の API 契約を SystemState と連動した形で定める。
+- **RuntimeToolbox**: Mailbox・Dispatcher・ActorRef・ActorCell・SystemState・ActorSystem が TB ジェネリックを受け取り、`ToolboxMutex` や WaitQueue と安全に連携できるよう統一する。ジェネリクスを適用する型・適用しない型の指針をドキュメント化する。
+- **Props / MessageInvoker**: Props は MailboxPolicy・SupervisorStrategy・ActorFactory・DispatcherConfig を保持し、ビルダー API で差し替え可能にする。MessageInvoker は before/after ミドルウェアチェーンを定義し、`reply_to` の復元や追加 Hook を実装できる拡張ポイントとして扱う（MVP では空チェーンが既定）。
   - **補足**: `DispatcherConfig::tokio_current()` や `Props::with_tokio_dispatcher()` などのホスト依存ヘルパは `actor-std` クレートで提供し（T042 完了）、`actor-core` の no_std ポリシーを崩さない。今後は同クレートに `ActorSystemConfig` ビルダー（T041 設計中）を追加し、EventStream/Deadletter の容量や警告閾値を操作できるようにする。
 - **FR-028**: Dispatcher/MessageInvoker は 1 アクター当たりのスループット制限（例: 300 メッセージ/フェンス）を設定でき、設定値に到達した場合は制御用 System メッセージを優先しつつ残りメッセージを次ターンへ繰り越す仕組みを提供する。スループット値は Props または Mailbox 設定で構成可能とし、デフォルトは protoactor-go 相当の 300 を採用する。
 - **FR-029**: ランタイムは `Context::sender()` を提供せず、応答が必要なメッセージは `reply_to: ActorRef`（もしくは同等の手段）を含むペイロード設計に従う。ActorContext は送信元を暗黙に保持しないこと。起点となるアクターは `ctx.self_ref()` を明示的に渡し、返信側は受け取った `reply_to.tell(...)` を利用する。

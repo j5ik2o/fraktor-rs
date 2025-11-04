@@ -5,10 +5,31 @@
 
 //! Standard library helpers for Cellactor runtime integrations.
 
-mod dispatcher_config_ext;
-mod props_ext;
-mod tokio_dispatch_executor;
+/// Actor primitives specialised for the standard toolbox.
+pub mod actor_prim;
 
-pub use dispatcher_config_ext::TokioDispatcherConfigExt;
-pub use props_ext::TokioPropsExt;
-pub use tokio_dispatch_executor::TokioDispatchExecutor;
+/// Messaging primitives specialised for the standard toolbox.
+pub mod messaging;
+
+/// Props and dispatcher configuration bindings for the standard toolbox.
+pub mod props;
+
+/// Mailbox bindings for the standard toolbox.
+pub mod mailbox;
+
+/// Actor system bindings for the standard toolbox.
+pub mod system;
+
+/// Event stream bindings for the standard toolbox.
+pub mod eventstream;
+
+/// Deadletter bindings for the standard toolbox.
+pub mod deadletter;
+
+/// Future utilities specialised for the standard toolbox.
+pub mod futures;
+
+/// Dispatcher utilities specialised for the standard runtime.
+pub mod dispatcher;
+/// Error utilities specialised for the standard toolbox.
+pub mod error;

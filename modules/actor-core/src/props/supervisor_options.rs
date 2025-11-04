@@ -1,4 +1,4 @@
-use crate::supervisor_strategy::SupervisorStrategy;
+use crate::supervision::SupervisorStrategy;
 
 /// Supervisor configuration attached to props.
 #[derive(Clone, Copy, Debug)]
@@ -22,18 +22,18 @@ impl SupervisorOptions {
 
 impl Default for SupervisorOptions {
   fn default() -> Self {
-    const DEFAULT_WITHIN: core::time::Duration = core::time::Duration::from_secs(1);
-    const fn decide(error: &crate::actor_error::ActorError) -> crate::supervisor_strategy::SupervisorDirective {
+    const fn decider(error: &crate::error::ActorError) -> crate::supervision::SupervisorDirective {
       match error {
-        | crate::actor_error::ActorError::Recoverable(_) => crate::supervisor_strategy::SupervisorDirective::Restart,
-        | crate::actor_error::ActorError::Fatal(_) => crate::supervisor_strategy::SupervisorDirective::Stop,
+        | crate::error::ActorError::Recoverable(_) => crate::supervision::SupervisorDirective::Restart,
+        | crate::error::ActorError::Fatal(_) => crate::supervision::SupervisorDirective::Stop,
       }
     }
-    Self::new(SupervisorStrategy::new(
-      crate::supervisor_strategy::SupervisorStrategyKind::OneForOne,
+
+    Self::new(crate::supervision::SupervisorStrategy::new(
+      crate::supervision::SupervisorStrategyKind::OneForOne,
       10,
-      DEFAULT_WITHIN,
-      decide,
+      core::time::Duration::from_secs(1),
+      decider,
     ))
   }
 }

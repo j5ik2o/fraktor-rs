@@ -1,33 +1,51 @@
-//! Priority mailbox managing system and user message queues.
+//! Mailbox package.
+//!
+//! This module contains message queue implementations and configurations.
 
-use cellactor_utils_core_rs::{
-  collections::queue::{QueueError, backend::VecRingBackend},
-  sync::sync_mutex_like::SpinSyncMutex,
+use cellactor_utils_core_rs::collections::queue::{QueueError, backend::VecRingBackend};
+
+use crate::{
+  RuntimeToolbox, ToolboxMutex,
+  error::SendError,
+  messaging::{AnyMessage, SystemMessage},
 };
 
-use crate::{any_message::AnyMessage, send_error::SendError, system_message::SystemMessage};
-
-mod enqueue_outcome;
+mod capacity;
+mod mailbox_enqueue_outcome;
 mod mailbox_impl;
+mod mailbox_instrumentation;
 mod mailbox_message;
 mod mailbox_offer_future;
 mod mailbox_poll_future;
-mod queue_handles;
-mod queue_offer_future;
-mod queue_poll_future;
-mod queue_state;
-#[cfg(test)]
-mod tests;
+mod mailbox_queue_handles;
+mod mailbox_queue_offer_future;
+mod mailbox_queue_poll_future;
+mod mailbox_queue_state;
+mod metrics_event;
+mod overflow_strategy;
+mod policy;
 
-pub use enqueue_outcome::EnqueueOutcome;
+pub use capacity::MailboxCapacity;
+pub use mailbox_enqueue_outcome::EnqueueOutcome;
 pub use mailbox_impl::Mailbox;
+pub use mailbox_instrumentation::MailboxInstrumentation;
 pub use mailbox_message::MailboxMessage;
 pub use mailbox_offer_future::MailboxOfferFuture;
 pub use mailbox_poll_future::MailboxPollFuture;
+pub use mailbox_queue_handles::QueueHandles;
+pub use mailbox_queue_offer_future::QueueOfferFuture;
+pub use mailbox_queue_poll_future::QueuePollFuture;
+pub use mailbox_queue_state::QueueState;
+pub use metrics_event::MailboxMetricsEvent;
+pub use overflow_strategy::MailboxOverflowStrategy;
+pub use policy::MailboxPolicy;
 
-type QueueMutex<T> = SpinSyncMutex<VecRingBackend<T>>;
+#[cfg(test)]
+mod tests;
 
-fn map_user_queue_error(error: QueueError<AnyMessage>) -> SendError {
+pub(crate) type QueueMutex<T, TB> = ToolboxMutex<VecRingBackend<T>, TB>;
+
+pub(crate) fn map_user_queue_error<TB: RuntimeToolbox>(error: QueueError<AnyMessage<TB>>) -> SendError<TB> {
   match error {
     | QueueError::Full(item) | QueueError::OfferError(item) => SendError::full(item),
     | QueueError::Closed(item) | QueueError::AllocError(item) => SendError::closed(item),
@@ -37,7 +55,7 @@ fn map_user_queue_error(error: QueueError<AnyMessage>) -> SendError {
   }
 }
 
-fn map_system_queue_error(error: QueueError<SystemMessage>) -> SendError {
+pub(crate) fn map_system_queue_error<TB: RuntimeToolbox>(error: QueueError<SystemMessage>) -> SendError<TB> {
   match error {
     | QueueError::Full(item) | QueueError::OfferError(item) => SendError::full(AnyMessage::new(item)),
     | QueueError::Closed(item) | QueueError::AllocError(item) => SendError::closed(AnyMessage::new(item)),

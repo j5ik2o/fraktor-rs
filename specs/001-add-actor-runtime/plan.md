@@ -8,6 +8,11 @@
 ## 概要
 
 - `AnyMessage` による未型付けメッセージ配送を実装し、`ActorRef`/`ActorSystem` での Ping-Pong サンプルを no_std + alloc 環境で動作させる。
+- ランタイム初期版から `SyncMutexFamily` / `RuntimeToolbox` を導入し、`ActorSystemGeneric<TB>` / `SystemState<TB>` / `ActorCell<TB>` / `Mailbox<TB>` / `Dispatcher<TB>` / `ActorRef<TB>` など中核構造をツールボックスジェネリックとして設計する。公開 API は `type ActorSystem = ActorSystemGeneric<NoStdToolbox>` などの型エイリアスで互換性を維持しつつ、`StdToolbox` など他バックエンドを `actor-std` が再エクスポートできるようにする。
+- SystemState は PID 採番・ActorCell レジストリ・名前レジストリ・AskFuture レジストリ・終了待機 Future と EventStream/Deadletter を管理し、`mark_terminated()` / `when_terminated()` を介した終了待機を提供する（FR-041）。
+- ActorCell は Mailbox / Dispatcher / MessageInvokerPipeline / ActorFactory を束ね、`pre_start` → `receive` → `post_stop` のライフサイクルと子アクター監視・RestartStatistics 更新・Supervisor 指示の反映を行う（FR-042）。
+- ActorSystem は Props から Mailbox/Dispatcher を構築し、ユーザガーディアン経由で `spawn_child` を公開、`terminate` / `user_guardian_ref` / `when_terminated` などの API 契約を SystemState と連携させる（FR-043）。
+- Props は MailboxPolicy / SupervisorStrategy / ActorFactory / DispatcherConfig を保持し、ビルダー API で差し替え可能にする。MessageInvoker は before/after ミドルウェアチェーンを持ち `reply_to` の復元や Hook 処理を提供する（FR-045, FR-046）。
 - Supervisor 戦略（OneForOne / AllForOne）と Deadletter + EventStream を備え、Recoverable/Fatal エラーと panic 非介入ポリシーを明文化する。  
 - ライフタイム重視・アロケーション最小化を貫き、ヒープ確保発生箇所を計測・文書化。  
 - 64KB RAM 制約下で 1,000 msg/s を処理する性能検証、panic 非介入時の運用フローを quickstart で案内。  
@@ -28,7 +33,7 @@
 ## 技術コンテキスト
 
 **言語/バージョン**: Rust 1.81 (stable) + nightly toolchain fallback（`no_std` 機能確認用）
-**主要依存関係**: `portable-atomic`, `portable-atomic-util`, `alloc`, `heapless`, `modules/utils-core::AsyncQueue`; 参照実装として `references/protoactor-go`, `references/pekko`。ホスト向けサンプルでは `tokio`（`rt-multi-thread`, `macros`, `time`）を examples スコープで利用し、コアクレートへの伝播を避ける。
+**主要依存関係**: `portable-atomic`, `portable-atomic-util`, `alloc`, `heapless`, `modules/utils-core::AsyncQueue`; 参照実装として `references/protoactor-go`, `references/pekko`。`modules/utils-core` は `SyncMutexFamily` / `RuntimeToolbox` / `NoStdToolbox` / `StdToolbox` を提供し、`modules/actor-std` がホスト環境向けにそれらを再エクスポートする。ホスト向けサンプルでは `tokio`（`rt-multi-thread`, `macros`, `time`）を examples スコープで利用し、コアクレートへの伝播を避ける。
 **ストレージ**: SRAM 64KB クラスの組込みデバイス。メッセージバッファは AsyncQueue / ヒープ再利用で管理。
 **`no_std` 実装注意点**: `vec!` マクロ使用時は `use alloc::vec;` が必須。`const fn` はコンパイル時評価可能な関数に積極適用。参照渡し（`&T`）でクローン回避を優先し、ドキュメントコメントには `# Errors` / `# Panics` セクションを必ず記載。
 **テスト**: 各フェーズでは対象範囲のユニット／統合テストを優先し、`./scripts/ci-check.sh all` と `makers ci-check -- dylint` は全タスク完了後の最終確認時にまとめて実行する。ホスト検証は `cargo test --no-default-features`（std フィーチャを使わない確認用）、組込み検証は `cargo test --target thumbv7em-none-eabihf`（panic=abort）。
@@ -39,6 +44,12 @@
 **スケール/スコープ**: 単一ノード・シングルプロセスのローカルアクター、Typed レイヤーは後続フェーズ。
 **未確定事項**: FR-020 で定義する `Block` ポリシーの背圧 API と FR-021 の `Suspend` / `Resume` 制御、FR-019 の System/User 優先度実装方式（2 本キュー or priority queue）、FR-023 の子アクター生成 API と FR-024 のユーザガーディアン Props 初期化フロー、FR-025 の命名規則（許容文字・長さ・自動命名プレフィックス）、FR-026 のミドルウェアチェーン API のインターフェイス、FR-027 の Bounded/Unbounded 切替ポリシー詳細と警告基準、FR-028 のスループット制限デフォルト値と構成方法、FR-029 の標準メッセージスキーマ指針（`reply_to` の型や必須性）、FR-030 の Ask 完了フックの具体的実装。Phase 0 でハンドラ抽象の要件を調査する。
 また、DispatcherConfig/Props の設定簡略化に向けたヘルパー関数（例: `DispatcherConfig::tokio_current()`）の追加可否を、利用者のボイラープレート量と型安全性のトレードオフを評価したうえで検討する。その際、Tokio などホスト依存のヘルパーは `actor-std` クレート側に実装し（T042）、`actor-core` の no_std ポリシーを維持する。EventStream / Deadletter のバッファ容量（既定値: EventStream=256 件, Deadletter=512 件）と警告閾値の設定ポリシーを quickstart/data-model に反映し、運用時に可変化する仕組みとして `ActorSystemConfig` ビルダー（T041）の設計を進める。
+
+### T037A: オブザーバビリティ設定 API の設計
+
+1. `ObserverOptions`（仮称）を `actor-core` で定義し、EventStream/Deadletter の容量・警告閾値・再配信バッファ幅を保持する構造体として整理する。actor-old の MailboxInstrumentation で扱っていた警告閾値フラグを想定しつつ、現実装への導線を明記する。
+2. `ActorSystemBuilder<TB>` を追加する設計案をまとめ、no_std では既定値のまま `ActorSystem::new_with_options(&Props, &ObserverOptions)` のように構築できる形を提示する。ホスト環境向けには `actor-std` で `StdActorSystem::builder().with_observer_options(..)` を提供する方針を確立する。
+3. quickstart/data-model/spec に環境別推奨値（組込み: EventStream 128 / Deadletter 256、ホスト: 512 / 1024）と設計指針を追加し、実装時に差分確認すべきチェックリストを記載する。T041/T042 が実装された際には quickstart 更新が必須である旨をタスクに明示する。
 
 ## 憲章チェック（着手前）
 

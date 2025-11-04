@@ -41,8 +41,10 @@ Thumbs.db
 .vscode/
 
 Cargo.lock
+/.claude/settings.local.json
 /.codex/sessions/
 /.codex/log/
 /.codex/auth.json
 /.codex/history.jsonl
 /.codex/internal_storage.json
+/.kamui/

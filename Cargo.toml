@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "modules/utils-core",
+    "modules/utils-std",
     "modules/actor-core",
     "modules/actor-std",
 ]
@@ -21,7 +22,8 @@ libraries = [
 ]
 
 [workspace.dependencies]
-cellactor-actor-core-rs = { path = "modules/actor-core", default-features = false }
+cellactor-actor-core-rs = { path = "modules/actor-core" }
+cellactor-utils-std-rs = { path = "modules/utils-std" }
 alloc-cortex-m = "0.4"
 async-trait = { version = "0.1.89", default-features = false }
 cellactor-utils-core-rs = { path = "modules/utils-core", default-features = false }

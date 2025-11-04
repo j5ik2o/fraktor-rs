@@ -11,50 +11,24 @@ publish = false
 
 [features]
 default = []
-std = []
 alloc-metrics = []
 
 [dependencies]
 async-trait = { workspace = true }
-cellactor-utils-core-rs = { workspace = true, features = ["alloc", "unsize"] }
+cellactor-utils-core-rs = { workspace = true, default-features = false, features = ["alloc", "unsize"] }
 critical-section = { workspace = true }
-heapless = { workspace = true, default-features = false }
-portable-atomic = { workspace = true, features = ["critical-section"] }
-portable-atomic-util = { workspace = true, features = ["alloc"] }
+heapless = { workspace = true, default-features = false, features = ["portable-atomic"] }
+portable-atomic = { workspace = true, default-features = false, features = ["critical-section"] }
+portable-atomic-util = { workspace = true, default-features = false, features = ["alloc"] }
 spin = { workspace = true, default-features = false, features = ["mutex", "spin_mutex", "rwlock", "portable_atomic"] }
 cortex-m = { workspace = true, optional = true }
 hashbrown = { workspace = true, default-features = false }
 
 [dev-dependencies]
+cellactor-actor-std-rs = { path = "../actor-std" }
 criterion = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
 
 [[example]]
 name = "ping_pong_no_std"
 path = "examples/ping_pong_no_std/main.rs"
-required-features = ["std"]
-
-[[example]]
-name = "ping_pong_tokio"
-path = "examples/ping_pong_tokio/main.rs"
-required-features = ["std"]
-
-[[example]]
-name = "logger_subscriber_std"
-path = "examples/logger_subscriber_std/main.rs"
-required-features = ["std"]
-
-[[example]]
-name = "supervision_std"
-path = "examples/supervision_std/main.rs"
-required-features = ["std"]
-
-[[example]]
-name = "deadletter_std"
-path = "examples/deadletter_std/main.rs"
-required-features = ["std"]
-
-[[example]]
-name = "named_actor_std"
-path = "examples/named_actor_std/main.rs"
-required-features = ["std"]

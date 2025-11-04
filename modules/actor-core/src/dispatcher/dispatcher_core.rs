@@ -4,7 +4,7 @@ use core::{
   task::{Context, Poll},
 };
 
-use cellactor_utils_core_rs::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
+use cellactor_utils_core_rs::sync::{ArcShared, SyncMutexFamily, sync_mutex_like::SyncMutexLike};
 use portable_atomic::AtomicU8;
 
 use super::{
@@ -12,49 +12,50 @@ use super::{
   schedule_waker::ScheduleWaker,
 };
 use crate::{
-  actor_error::ActorError,
-  any_message::AnyMessage,
+  RuntimeToolbox, ToolboxMutex,
+  error::{ActorError, SendError},
   mailbox::{EnqueueOutcome, Mailbox, MailboxMessage, MailboxOfferFuture},
-  message_invoker::MessageInvoker,
-  send_error::SendError,
-  system_message::SystemMessage,
+  messaging::{AnyMessage, SystemMessage, message_invoker::MessageInvoker},
 };
 
 const DEFAULT_THROUGHPUT: usize = 300;
 
 /// Entity that drains the mailbox and invokes messages.
-pub(super) struct DispatcherCore {
-  mailbox:          ArcShared<Mailbox>,
-  executor:         ArcShared<dyn DispatchExecutor>,
-  invoker:          SpinSyncMutex<Option<ArcShared<dyn MessageInvoker>>>,
+pub(super) struct DispatcherCore<TB: RuntimeToolbox + 'static> {
+  mailbox:          ArcShared<Mailbox<TB>>,
+  executor:         ArcShared<dyn DispatchExecutor<TB>>,
+  invoker:          ToolboxMutex<Option<ArcShared<dyn MessageInvoker<TB>>>, TB>,
   state:            AtomicU8,
   throughput_limit: Option<NonZeroUsize>,
 }
 
-impl DispatcherCore {
+unsafe impl<TB: RuntimeToolbox + 'static> Send for DispatcherCore<TB> {}
+unsafe impl<TB: RuntimeToolbox + 'static> Sync for DispatcherCore<TB> {}
+
+impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
   pub(super) fn new(
-    mailbox: ArcShared<Mailbox>,
-    executor: ArcShared<dyn DispatchExecutor>,
+    mailbox: ArcShared<Mailbox<TB>>,
+    executor: ArcShared<dyn DispatchExecutor<TB>>,
     throughput_limit: Option<NonZeroUsize>,
   ) -> Self {
     Self {
       mailbox,
       executor,
-      invoker: SpinSyncMutex::new(None),
+      invoker: <TB::MutexFamily as SyncMutexFamily>::create(None),
       state: AtomicU8::new(DispatcherState::Idle.as_u8()),
       throughput_limit,
     }
   }
 
-  pub(super) const fn mailbox(&self) -> &ArcShared<Mailbox> {
+  pub(super) const fn mailbox(&self) -> &ArcShared<Mailbox<TB>> {
     &self.mailbox
   }
 
-  pub(super) fn register_invoker(&self, invoker: ArcShared<dyn MessageInvoker>) {
+  pub(super) fn register_invoker(&self, invoker: ArcShared<dyn MessageInvoker<TB>>) {
     *self.invoker.lock() = Some(invoker);
   }
 
-  pub(super) fn executor(&self) -> &ArcShared<dyn DispatchExecutor> {
+  pub(super) fn executor(&self) -> &ArcShared<dyn DispatchExecutor<TB>> {
     &self.executor
   }
 
@@ -62,26 +63,23 @@ impl DispatcherCore {
     &self.state
   }
 
-  pub(super) fn drive(self_arc: ArcShared<Self>) {
-    let dispatcher = self_arc;
+  pub(super) fn drive(self_arc: &ArcShared<Self>) {
     loop {
       {
-        let this = &*dispatcher;
+        let this = &*self_arc;
         this.process_batch();
       }
 
       let should_continue = {
-        let this = &*dispatcher;
+        let this = &*self_arc;
         DispatcherState::Idle.store(&this.state);
         this.has_pending_work()
           && DispatcherState::compare_exchange(DispatcherState::Idle, DispatcherState::Running, &this.state).is_ok()
       };
 
-      if should_continue {
-        continue;
+      if !should_continue {
+        break;
       }
-
-      break;
     }
   }
 
@@ -114,11 +112,11 @@ impl DispatcherCore {
     }
   }
 
-  fn handle_user_message(&self, message: AnyMessage) {
+  fn handle_user_message(&self, message: AnyMessage<TB>) {
     let _ = self.invoke_user_message(message);
   }
 
-  fn invoke_user_message(&self, message: AnyMessage) -> Result<(), ActorError> {
+  fn invoke_user_message(&self, message: AnyMessage<TB>) -> Result<(), ActorError> {
     if let Some(invoker) = self.invoker.lock().as_ref() {
       return invoker.invoke_user_message(message);
     }
@@ -132,7 +130,7 @@ impl DispatcherCore {
     Ok(())
   }
 
-  pub(super) fn enqueue_user(self_arc: &ArcShared<Self>, message: AnyMessage) -> Result<(), SendError> {
+  pub(super) fn enqueue_user(self_arc: &ArcShared<Self>, message: AnyMessage<TB>) -> Result<(), SendError<TB>> {
     match self_arc.mailbox.enqueue_user(message) {
       | Ok(EnqueueOutcome::Enqueued) => {
         super::dispatcher_struct::Dispatcher::from_core(self_arc.clone()).schedule();
@@ -147,14 +145,14 @@ impl DispatcherCore {
     }
   }
 
-  pub(super) fn enqueue_system(self_arc: &ArcShared<Self>, message: SystemMessage) -> Result<(), SendError> {
+  pub(super) fn enqueue_system(self_arc: &ArcShared<Self>, message: SystemMessage) -> Result<(), SendError<TB>> {
     self_arc.mailbox.enqueue_system(message)?;
     super::dispatcher_struct::Dispatcher::from_core(self_arc.clone()).schedule();
     Ok(())
   }
 
-  fn drain_offer_future(self_arc: &ArcShared<Self>, future: &mut MailboxOfferFuture) -> Result<(), SendError> {
-    let waker = ScheduleWaker::into_waker(self_arc.clone());
+  fn drain_offer_future(self_arc: &ArcShared<Self>, future: &mut MailboxOfferFuture<TB>) -> Result<(), SendError<TB>> {
+    let waker = ScheduleWaker::<TB>::into_waker(self_arc.clone());
     let mut cx = Context::from_waker(&waker);
 
     loop {

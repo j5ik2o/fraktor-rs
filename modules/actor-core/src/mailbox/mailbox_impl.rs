@@ -1,33 +1,43 @@
-use core::num::NonZeroUsize;
+//! Priority mailbox maintaining separate queues for system and user messages.
+
+use core::{
+  num::NonZeroUsize,
+  sync::atomic::{AtomicBool, Ordering},
+};
 
 use cellactor_utils_core_rs::{
   collections::queue::{QueueError, backend::OfferOutcome},
-  sync::sync_mutex_like::SpinSyncMutex,
+  sync::{SyncMutexFamily, sync_mutex_like::SyncMutexLike},
 };
-use portable_atomic::{AtomicBool, Ordering};
 
 use super::{
-  enqueue_outcome::EnqueueOutcome, mailbox_message::MailboxMessage, mailbox_offer_future::MailboxOfferFuture,
-  mailbox_poll_future::MailboxPollFuture, map_system_queue_error, map_user_queue_error, queue_handles::QueueHandles,
+  MailboxOfferFuture, mailbox_enqueue_outcome::EnqueueOutcome, mailbox_instrumentation::MailboxInstrumentation,
+  mailbox_message::MailboxMessage, mailbox_poll_future::MailboxPollFuture, mailbox_queue_handles::QueueHandles,
+  map_system_queue_error, map_user_queue_error,
 };
 use crate::{
-  any_message::AnyMessage,
-  mailbox_instrumentation::MailboxInstrumentation,
-  mailbox_policy::{MailboxCapacity, MailboxOverflowStrategy, MailboxPolicy},
-  send_error::SendError,
-  system_message::SystemMessage,
+  RuntimeToolbox,
+  error::SendError,
+  mailbox::{capacity::MailboxCapacity, overflow_strategy::MailboxOverflowStrategy, policy::MailboxPolicy},
+  messaging::{AnyMessage, SystemMessage},
 };
 
 /// Priority mailbox maintaining separate queues for system and user messages.
-pub struct Mailbox {
+pub struct Mailbox<TB: RuntimeToolbox + 'static> {
   policy:          MailboxPolicy,
-  system:          QueueHandles<SystemMessage>,
-  user:            QueueHandles<AnyMessage>,
+  system:          QueueHandles<SystemMessage, TB>,
+  user:            QueueHandles<AnyMessage<TB>, TB>,
   suspended:       AtomicBool,
-  instrumentation: SpinSyncMutex<Option<MailboxInstrumentation>>,
+  instrumentation: crate::ToolboxMutex<Option<MailboxInstrumentation<TB>>, TB>,
 }
 
-impl Mailbox {
+unsafe impl<TB: RuntimeToolbox + 'static> Send for Mailbox<TB> {}
+unsafe impl<TB: RuntimeToolbox + 'static> Sync for Mailbox<TB> {}
+
+impl<TB> Mailbox<TB>
+where
+  TB: RuntimeToolbox + 'static,
+{
   /// Creates a new mailbox using the provided policy.
   #[must_use]
   pub fn new(policy: MailboxPolicy) -> Self {
@@ -38,12 +48,12 @@ impl Mailbox {
       system: system_handles,
       user: user_handles,
       suspended: AtomicBool::new(false),
-      instrumentation: SpinSyncMutex::new(None),
+      instrumentation: <TB::MutexFamily as SyncMutexFamily>::create(None),
     }
   }
 
   /// Installs instrumentation hooks for metrics emission.
-  pub fn set_instrumentation(&self, instrumentation: MailboxInstrumentation) {
+  pub fn set_instrumentation(&self, instrumentation: MailboxInstrumentation<TB>) {
     *self.instrumentation.lock() = Some(instrumentation);
   }
 
@@ -51,8 +61,8 @@ impl Mailbox {
   ///
   /// # Errors
   ///
-  /// Returns an error if the system queue is full or closed.
-  pub fn enqueue_system(&self, message: SystemMessage) -> Result<(), SendError> {
+  /// Returns an error if the system message queue is full or closed.
+  pub fn enqueue_system(&self, message: SystemMessage) -> Result<(), SendError<TB>> {
     self.offer_system(message)
   }
 
@@ -61,7 +71,7 @@ impl Mailbox {
   /// # Errors
   ///
   /// Returns an error if the mailbox is suspended, full, or closed.
-  pub fn enqueue_user(&self, message: AnyMessage) -> Result<EnqueueOutcome, SendError> {
+  pub fn enqueue_user(&self, message: AnyMessage<TB>) -> Result<EnqueueOutcome<TB>, SendError<TB>> {
     if self.is_suspended() {
       return Err(SendError::suspended(message));
     }
@@ -75,18 +85,18 @@ impl Mailbox {
   }
 
   /// Returns a future that resolves when the provided user message is enqueued.
-  pub fn enqueue_user_future(&self, message: AnyMessage) -> MailboxOfferFuture {
+  pub fn enqueue_user_future(&self, message: AnyMessage<TB>) -> MailboxOfferFuture<TB> {
     MailboxOfferFuture::new(self.user.offer_blocking(message))
   }
 
   /// Returns a future that resolves when the next user message becomes available.
-  pub fn poll_user_future(&self) -> MailboxPollFuture {
+  pub fn poll_user_future(&self) -> MailboxPollFuture<TB> {
     MailboxPollFuture::new(self.user.poll_blocking())
   }
 
   /// Dequeues the next available message, prioritising system queue.
   #[must_use]
-  pub fn dequeue(&self) -> Option<MailboxMessage> {
+  pub fn dequeue(&self) -> Option<MailboxMessage<TB>> {
     if let Some(system) = Self::poll_queue(&self.system) {
       self.publish_metrics();
       return Some(MailboxMessage::System(system));
@@ -140,9 +150,9 @@ impl Mailbox {
   fn enqueue_bounded_user(
     &self,
     capacity: usize,
-    message: AnyMessage,
+    message: AnyMessage<TB>,
     overflow: MailboxOverflowStrategy,
-  ) -> Result<EnqueueOutcome, SendError> {
+  ) -> Result<EnqueueOutcome<TB>, SendError<TB>> {
     match overflow {
       | MailboxOverflowStrategy::DropNewest => {
         if self.user.consumer.len() >= capacity {
@@ -151,10 +161,8 @@ impl Mailbox {
         self.offer_user(message)
       },
       | MailboxOverflowStrategy::DropOldest => {
-        if self.user.consumer.len() >= capacity
-          && let Ok(dropped) = self.user.poll()
-        {
-          drop(dropped);
+        if self.user.consumer.len() >= capacity && self.user.poll().is_ok() {
+          // drop oldest message
         }
         self.offer_user(message)
       },
@@ -169,7 +177,7 @@ impl Mailbox {
     }
   }
 
-  fn offer_user(&self, message: AnyMessage) -> Result<EnqueueOutcome, SendError> {
+  fn offer_user(&self, message: AnyMessage<TB>) -> Result<EnqueueOutcome<TB>, SendError<TB>> {
     match self.user.offer(message) {
       | Ok(outcome) => {
         Self::handle_offer_outcome(outcome);
@@ -180,7 +188,7 @@ impl Mailbox {
     }
   }
 
-  fn offer_system(&self, message: SystemMessage) -> Result<(), SendError> {
+  fn offer_system(&self, message: SystemMessage) -> Result<(), SendError<TB>> {
     match self.system.offer(message) {
       | Ok(outcome) => {
         Self::handle_offer_outcome(outcome);
@@ -191,10 +199,11 @@ impl Mailbox {
     }
   }
 
-  fn poll_queue<T>(handles: &QueueHandles<T>) -> Option<T> {
+  fn poll_queue<T: Send + 'static>(handles: &QueueHandles<T, TB>) -> Option<T> {
     match handles.poll() {
       | Ok(message) => Some(message),
-      | Err(QueueError::Empty) | Err(QueueError::Disconnected) => None,
+      | Err(QueueError::Empty) => None,
+      | Err(QueueError::Disconnected) => None,
       | Err(QueueError::WouldBlock) => None,
       | Err(QueueError::Full(_))
       | Err(QueueError::OfferError(_))
@@ -205,7 +214,6 @@ impl Mailbox {
 
   const fn handle_offer_outcome(outcome: OfferOutcome) {
     let _ = outcome;
-    // TODO: instrumentation hook for telemetry and EventStream integration.
   }
 
   fn publish_metrics(&self) {

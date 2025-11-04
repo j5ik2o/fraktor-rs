@@ -1,0 +1,12 @@
+warning: `tests.rs` 内で `#![cfg(test)]` は使用できません
+  --> $DIR/tests.rs:2:1
+   |
+LL | #![cfg(test)]
+   | ^^^^^^^^^^^^^
+   |
+   = help: 親ファイルに `#[cfg(test)] mod tests;` を記述してテスト用モジュールを有効化してください
+   = note: AI向けアドバイス: `tests.rs` から `#![cfg(test)]` を削除し、親モジュール側で `#[cfg(test)] mod tests;` を宣言してテスト専用モジュールを有効化してください。
+   = note: `#[warn(separate_tests)]` on by default
+
+warning: 1 warning emitted
+

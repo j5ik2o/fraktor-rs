@@ -1,13 +1,20 @@
-//! Actor construction descriptors.
+//! Props package.
+//!
+//! This module contains actor spawning configuration.
 
-mod actor_factory;
+/// Dispatcher configuration module.
 mod dispatcher_config;
+/// Actor factory module.
+mod factory;
+/// Mailbox configuration module.
 mod mailbox_config;
-mod props_struct;
+/// Props structure module.
+mod props;
+/// Supervisor options module.
 mod supervisor_options;
 
-pub use actor_factory::ActorFactory;
 pub use dispatcher_config::DispatcherConfig;
+pub use factory::ActorFactory;
 pub use mailbox_config::MailboxConfig;
-pub use props_struct::Props;
+pub use props::Props;
 pub use supervisor_options::SupervisorOptions;
