@@ -64,6 +64,7 @@ pub use cellactor_utils_core_rs::sync::{NoStdMutex, NoStdToolbox, RuntimeToolbox
 // Hierarchical package structure
 pub mod actor_prim;
 pub mod deadletter;
+pub mod dispatcher;
 pub mod error;
 pub mod eventstream;
 pub mod futures;

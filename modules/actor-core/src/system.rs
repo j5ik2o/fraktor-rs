@@ -2,7 +2,6 @@
 //!
 //! This module contains the actor system management.
 
-pub mod dispatcher;
 mod root;
 mod system_state;
 pub use root::{ActorSystem, ActorSystemGeneric};

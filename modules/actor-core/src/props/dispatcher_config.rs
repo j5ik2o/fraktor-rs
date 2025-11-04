@@ -2,8 +2,8 @@ use cellactor_utils_core_rs::sync::ArcShared;
 
 use crate::{
   NoStdToolbox, RuntimeToolbox,
+  dispatcher::{DispatchExecutor, Dispatcher, InlineExecutor},
   mailbox::Mailbox,
-  system::dispatcher::{DispatchExecutor, Dispatcher, InlineExecutor},
 };
 
 /// Dispatcher configuration attached to [`Props`](super::Props).
