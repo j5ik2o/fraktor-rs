@@ -3,6 +3,9 @@ use cellactor_utils_core_rs::sync::{SyncMutexFamily, ToolboxMutex};
 use super::std_toolbox::StdToolbox;
 use crate::sync_mutex::StdSyncMutex;
 
+#[cfg(test)]
+mod tests;
+
 /// Mutex family backed by [`std::sync::Mutex`].
 #[derive(Clone, Copy, Debug, Default)]
 pub struct StdMutexFamily;
