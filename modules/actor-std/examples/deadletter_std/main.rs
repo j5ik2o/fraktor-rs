@@ -53,11 +53,11 @@ impl Actor for GuardianActor {
       let child = ctx.spawn_child(&props).map_err(|error| ActorError::fatal(format!("spawn failed: {:?}", error)))?;
       let actor_ref = child.actor_ref();
 
-      send_or_log(ctx, &actor_ref, AnyMessage::new("first"));
-      send_or_log(ctx, &actor_ref, AnyMessage::new("second"));
+      send_or_log(ctx, actor_ref, AnyMessage::new("first"));
+      send_or_log(ctx, actor_ref, AnyMessage::new("second"));
       suspend_or_log(ctx, &child);
-      send_or_log(ctx, &actor_ref, AnyMessage::new("third"));
-      send_or_log(ctx, &actor_ref, AnyMessage::new(LogDeadletters));
+      send_or_log(ctx, actor_ref, AnyMessage::new("third"));
+      send_or_log(ctx, actor_ref, AnyMessage::new(LogDeadletters));
       ctx.stop_self().ok();
     }
     Ok(())

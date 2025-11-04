@@ -96,7 +96,7 @@ impl<TB: RuntimeToolbox> ActorRef<TB> {
   /// Creates a placeholder reference that rejects all messages.
   #[must_use]
   pub fn null() -> Self {
-    let sender = ArcShared::new(NullSender::default());
+    let sender = ArcShared::new(NullSender);
     let dyn_sender: ArcShared<dyn ActorRefSender<TB>> = sender;
     Self { pid: Pid::new(0, 0), sender: dyn_sender, system: None }
   }

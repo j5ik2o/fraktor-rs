@@ -14,11 +14,17 @@ pub struct NameRegistry {
   entries: HashMap<String, Pid>,
 }
 
+impl Default for NameRegistry {
+  fn default() -> Self {
+    Self { entries: HashMap::new() }
+  }
+}
+
 impl NameRegistry {
   /// Creates a new, empty registry.
   #[must_use]
   pub fn new() -> Self {
-    Self { entries: HashMap::new() }
+    Self::default()
   }
 
   /// Attempts to register a name for the provided pid.

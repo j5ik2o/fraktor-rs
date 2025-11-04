@@ -66,12 +66,12 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
   pub(super) fn drive(self_arc: &ArcShared<Self>) {
     loop {
       {
-        let this = &*self_arc;
+        let this = self_arc;
         this.process_batch();
       }
 
       let should_continue = {
-        let this = &*self_arc;
+        let this = self_arc;
         DispatcherState::Idle.store(&this.state);
         this.has_pending_work()
           && DispatcherState::compare_exchange(DispatcherState::Idle, DispatcherState::Running, &this.state).is_ok()

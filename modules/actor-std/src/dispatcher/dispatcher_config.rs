@@ -9,6 +9,7 @@ use super::{CoreDispatchExecutorAdapter, DispatchExecutor, DispatchExecutorAdapt
 
 /// Dispatcher configuration specialised for `StdToolbox`.
 #[derive(Clone)]
+#[derive(Default)]
 pub struct DispatcherConfig {
   inner: CoreDispatcherConfig<StdToolbox>,
 }
@@ -54,8 +55,3 @@ impl DispatcherConfig {
   }
 }
 
-impl Default for DispatcherConfig {
-  fn default() -> Self {
-    Self { inner: CoreDispatcherConfig::default() }
-  }
-}

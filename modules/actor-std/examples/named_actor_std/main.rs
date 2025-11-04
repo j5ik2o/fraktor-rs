@@ -17,7 +17,7 @@ fn main() {
   let props = Props::from_fn(|| GuardianActor).with_name("named-guardian");
   let system = ActorSystem::new(&props).expect("ユーザーガーディアンの起動に失敗しました");
 
-  let lifecycle_subscriber: ArcShared<dyn EventStreamSubscriber> = ArcShared::new(LifecyclePrinter::default());
+  let lifecycle_subscriber: ArcShared<dyn EventStreamSubscriber> = ArcShared::new(LifecyclePrinter);
   let _subscription = system.subscribe_event_stream(&lifecycle_subscriber);
 
   let termination = system.when_terminated();

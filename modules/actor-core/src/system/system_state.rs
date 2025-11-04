@@ -20,6 +20,9 @@ use crate::{
   supervision::SupervisorDirective,
 };
 
+/// Type alias for ask future collections.
+type AskFutureVec<TB> = Vec<ArcShared<ActorFuture<AnyMessage<TB>, TB>>>;
+
 /// Captures global actor system state.
 pub struct SystemState<TB: RuntimeToolbox + 'static = NoStdToolbox> {
   next_pid:      AtomicU64,
@@ -27,7 +30,7 @@ pub struct SystemState<TB: RuntimeToolbox + 'static = NoStdToolbox> {
   cells:         ToolboxMutex<HashMap<Pid, ArcShared<ActorCell<TB>>>, TB>,
   registries:    ToolboxMutex<HashMap<Option<Pid>, NameRegistry>, TB>,
   user_guardian: ToolboxMutex<Option<ArcShared<ActorCell<TB>>>, TB>,
-  ask_futures:   ToolboxMutex<Vec<ArcShared<ActorFuture<AnyMessage<TB>, TB>>>, TB>,
+  ask_futures:   ToolboxMutex<AskFutureVec<TB>, TB>,
   termination:   ArcShared<ActorFuture<(), TB>>,
   terminated:    AtomicBool,
   event_stream:  ArcShared<EventStreamGeneric<TB>>,
@@ -176,11 +179,10 @@ impl<TB: RuntimeToolbox + 'static> SystemState<TB> {
 
   /// Removes a child from its parent's supervision registry.
   pub fn unregister_child(&self, parent: Option<Pid>, child: Pid) {
-    if let Some(parent_pid) = parent {
-      if let Some(cell) = self.cell(&parent_pid) {
+    if let Some(parent_pid) = parent
+      && let Some(cell) = self.cell(&parent_pid) {
         cell.unregister_child(&child);
       }
-    }
   }
 
   /// Returns the children supervised by the specified parent pid.

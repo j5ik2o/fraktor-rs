@@ -7,7 +7,7 @@ use crate::{
 
 #[test]
 fn always_returns_closed_error() {
-  let sender = NullSender::default();
+  let sender = NullSender;
   let error: SendError<NoStdToolbox> = sender.send(AnyMessage::new(1_u8)).unwrap_err();
   match error {
     | SendError::Closed(_) => {},

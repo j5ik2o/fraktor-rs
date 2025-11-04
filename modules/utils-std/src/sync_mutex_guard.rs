@@ -10,12 +10,12 @@ impl<'a, T> Deref for StdSyncMutexGuard<'a, T> {
   type Target = T;
 
   fn deref(&self) -> &Self::Target {
-    &*self.guard
+    &self.guard
   }
 }
 
 impl<'a, T> DerefMut for StdSyncMutexGuard<'a, T> {
   fn deref_mut(&mut self) -> &mut Self::Target {
-    &mut *self.guard
+    &mut self.guard
   }
 }
