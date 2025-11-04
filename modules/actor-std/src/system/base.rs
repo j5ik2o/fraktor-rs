@@ -10,7 +10,7 @@ use cellactor_utils_std_rs::StdToolbox;
 
 pub use crate::dispatcher::{DispatchExecutor, DispatchShared, Dispatcher, DispatcherConfig};
 use crate::{
-  actor_prim::{ActorRef, ChildRef},
+  actor_prim::ActorRef,
   error::SendError,
   eventstream::{self, EventStream, EventStreamEvent, EventStreamSubscriber, EventStreamSubscription},
   futures::ActorFuture,
@@ -101,45 +101,6 @@ impl ActorSystem {
   /// Publishes a raw event to the event stream.
   pub fn publish_event(&self, event: &EventStreamEvent) {
     self.inner.publish_event(event)
-  }
-
-  /// Spawns a new top-level actor under the user guardian.
-  ///
-  /// # Errors
-  ///
-  /// Propagates [`SpawnError`] emitted when the props fail validation or the actor cannot start.
-  pub fn spawn(&self, props: &Props) -> Result<ChildRef, SpawnError> {
-    self.inner.spawn(props.as_core())
-  }
-
-  /// Spawns a new actor as a child of the specified parent.
-  ///
-  /// # Errors
-  ///
-  /// Returns [`SpawnError`] when the parent PID is invalid or the child fails to initialise.
-  pub fn spawn_child(&self, parent: Pid, props: &Props) -> Result<ChildRef, SpawnError> {
-    self.inner.spawn_child(parent, props.as_core())
-  }
-
-  /// Returns an actor reference for the specified pid if registered.
-  #[must_use]
-  pub fn actor_ref(&self, pid: Pid) -> Option<ActorRef> {
-    self.inner.actor_ref(pid)
-  }
-
-  /// Returns child references supervised by the provided parent PID.
-  #[must_use]
-  pub fn children(&self, parent: Pid) -> Vec<ChildRef> {
-    self.inner.children(parent)
-  }
-
-  /// Sends a stop signal to the specified actor.
-  ///
-  /// # Errors
-  ///
-  /// Returns [`SendError`] when the target mailbox rejects the stop request.
-  pub fn stop_actor(&self, pid: Pid) -> Result<(), SendError> {
-    self.inner.stop_actor(pid)
   }
 
   /// Drains ask futures that have been fulfilled since the last check.

@@ -62,7 +62,7 @@ fn deadline_timer_key_copy() {
 fn deadline_timer_key_debug() {
   let key = DeadLineTimerKey::from_raw(200);
   let debug_str = format!("{:?}", key);
-  assert!(debug_str.contains("DeadlineTimerKey"));
+  assert!(debug_str.contains("DeadLineTimerKey"));
 }
 
 #[test]

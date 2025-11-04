@@ -3,9 +3,9 @@
 use cellactor_utils_core_rs::sync::ArcShared;
 
 use crate::{
-    RuntimeToolbox,
-    event_stream::{EventStreamEvent, EventStreamSubscriber},
-    logging::{LogLevel, logger_writer::LoggerWriter},
+  RuntimeToolbox,
+  event_stream::{EventStreamEvent, EventStreamSubscriber},
+  logging::{LogLevel, logger_writer::LoggerWriter},
 };
 
 #[cfg(test)]

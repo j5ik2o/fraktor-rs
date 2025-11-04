@@ -6,11 +6,11 @@ use core::time::Duration;
 use cellactor_utils_core_rs::sync::ArcShared;
 
 use crate::{
-    NoStdMutex, NoStdToolbox,
-    actor_prim::Pid,
-    event_stream::{EventStream, EventStreamEvent, EventStreamSubscriber},
-    lifecycle::{LifecycleEvent, LifecycleStage},
-    logging::{LogEvent, LogLevel},
+  NoStdMutex, NoStdToolbox,
+  actor_prim::Pid,
+  event_stream::{EventStream, EventStreamEvent, EventStreamSubscriber},
+  lifecycle::{LifecycleEvent, LifecycleStage},
+  logging::{LogEvent, LogLevel},
 };
 
 struct RecordingSubscriber {

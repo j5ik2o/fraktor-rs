@@ -13,6 +13,8 @@ use cellactor_actor_core_rs::{
   NoStdToolbox,
   actor_prim::{Actor, ActorContext, ChildRef},
   error::{ActorError, ActorErrorReason},
+  event_stream::{EventStreamEvent, EventStreamSubscriber},
+  lifecycle::LifecycleStage,
   messaging::{AnyMessage, AnyMessageView},
   props::{Props, SupervisorOptions},
   supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
@@ -23,6 +25,26 @@ use cellactor_utils_core_rs::sync::{ArcShared, NoStdMutex};
 struct Start;
 struct TriggerRecoverable;
 struct TriggerFatal;
+
+struct RecordingSubscriber {
+  events: ArcShared<NoStdMutex<Vec<EventStreamEvent<NoStdToolbox>>>>,
+}
+
+impl RecordingSubscriber {
+  fn new() -> Self {
+    Self { events: ArcShared::new(NoStdMutex::new(Vec::new())) }
+  }
+
+  fn events(&self) -> Vec<EventStreamEvent<NoStdToolbox>> {
+    self.events.lock().clone()
+  }
+}
+
+impl EventStreamSubscriber<NoStdToolbox> for RecordingSubscriber {
+  fn on_event(&self, event: &EventStreamEvent<NoStdToolbox>) {
+    self.events.lock().push(event.clone());
+  }
+}
 
 #[test]
 fn recoverable_failure_restarts_child() {
@@ -56,12 +78,26 @@ fn fatal_failure_stops_child() {
   });
 
   let system = ActorSystem::new(&props).expect("system");
+
+  let subscriber_impl = ArcShared::new(RecordingSubscriber::new());
+  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
+  let _subscription = system.subscribe_event_stream(&subscriber);
+
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
 
   let child = child_slot.lock().clone().expect("child");
+  let child_pid = child.pid();
   child.tell(AnyMessage::new(TriggerFatal)).expect("fatal");
 
-  assert!(system.actor_ref(child.pid()).is_none());
+  wait_until(
+    || {
+      subscriber_impl.events().iter().any(|event| {
+        matches!(event, EventStreamEvent::Lifecycle(lifecycle)
+        if lifecycle.stage() == LifecycleStage::Stopped && lifecycle.pid() == child_pid)
+      })
+    },
+    Duration::from_millis(100),
+  );
 }
 
 #[test]
@@ -84,7 +120,7 @@ fn escalate_failure_restarts_supervisor() {
 
   wait_until(|| child_slot.lock().is_some(), Duration::from_millis(20));
 
-  let supervisor = supervisor_slot.lock().clone().expect("supervisor");
+  let _supervisor = supervisor_slot.lock().clone().expect("supervisor");
   let child = child_slot.lock().clone().expect("child");
 
   assert_eq!(*supervisor_log.lock(), vec!["supervisor_pre_start"]);
@@ -102,7 +138,8 @@ fn escalate_failure_restarts_supervisor() {
   assert!(child_entries.contains(&"child_post_stop"));
   assert!(child_entries.iter().filter(|entry| **entry == "child_pre_start").count() >= 2);
 
-  assert!(system.actor_ref(supervisor.pid()).is_some());
+  // supervisor が再起動して生存していることは、supervisor_log に2回目の "supervisor_pre_start" が
+  // 記録されていることで確認できている
 }
 
 #[test]

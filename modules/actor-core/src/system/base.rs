@@ -117,7 +117,8 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   /// # Errors
   ///
   /// Returns [`SpawnError::SystemUnavailable`] when the guardian is missing.
-  pub fn spawn(&self, props: &Props<TB>) -> Result<ChildRef<TB>, SpawnError> {
+  #[allow(dead_code)]
+  pub(crate) fn spawn(&self, props: &Props<TB>) -> Result<ChildRef<TB>, SpawnError> {
     let guardian_pid = self.state.user_guardian_pid().ok_or_else(SpawnError::system_unavailable)?;
     self.spawn_child(guardian_pid, props)
   }
@@ -127,7 +128,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   /// # Errors
   ///
   /// Returns [`SpawnError::InvalidProps`] when the parent pid is unknown.
-  pub fn spawn_child(&self, parent: Pid, props: &Props<TB>) -> Result<ChildRef<TB>, SpawnError> {
+  pub(crate) fn spawn_child(&self, parent: Pid, props: &Props<TB>) -> Result<ChildRef<TB>, SpawnError> {
     if self.state.cell(&parent).is_none() {
       return Err(SpawnError::invalid_props(PARENT_MISSING));
     }
@@ -136,13 +137,13 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
 
   /// Returns an [`ActorRef`] for the specified pid if the actor is registered.
   #[must_use]
-  pub fn actor_ref(&self, pid: Pid) -> Option<ActorRef<TB>> {
+  pub(crate) fn actor_ref(&self, pid: Pid) -> Option<ActorRef<TB>> {
     self.state.cell(&pid).map(|cell| cell.actor_ref())
   }
 
   /// Returns child references supervised by the provided parent PID.
   #[must_use]
-  pub fn children(&self, parent: Pid) -> Vec<ChildRef<TB>> {
+  pub(crate) fn children(&self, parent: Pid) -> Vec<ChildRef<TB>> {
     let system = self.state.clone();
     self
       .state
@@ -157,7 +158,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   /// # Errors
   ///
   /// Returns an error if the stop message cannot be enqueued.
-  pub fn stop_actor(&self, pid: Pid) -> Result<(), SendError<TB>> {
+  pub(crate) fn stop_actor(&self, pid: Pid) -> Result<(), SendError<TB>> {
     self.state.send_system_message(pid, SystemMessage::Stop)
   }
 

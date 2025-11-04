@@ -40,7 +40,7 @@
 
 #### Scenario: 単体テストで子アクターを作成したい
 - **GIVEN** テストコードが guardian 経由で spawn した子アクターにアクセスしたい
-- **THEN** テスト用ガーディアンが `on_start` で子アクターを生成し、参照を保持するパターンを使用できる
+- **THEN** テスト用ガーディアンが `pre_start` で子アクターを生成し、参照を保持するパターンを使用できる
 - **AND** `ActorSystem::actor_ref` に依存しない
 
 ### Requirement: ドキュメントとサンプルはActorContext経由のパターンを示す

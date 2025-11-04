@@ -7,7 +7,7 @@ use core::{hint::spin_loop, num::NonZeroUsize};
 
 use cellactor_actor_core_rs::{
   NoStdToolbox,
-  actor_prim::{Actor, ActorContext},
+  actor_prim::{Actor, ActorContext, ChildRef},
   error::ActorError,
   event_stream::{EventStreamEvent, EventStreamSubscriber},
   mailbox::{MailboxOverflowStrategy, MailboxPolicy},
@@ -49,19 +49,55 @@ impl Actor<NoStdToolbox> for NullActor {
   }
 }
 
+struct TestGuardian {
+  child_slot:  ArcShared<NoStdMutex<Option<ChildRef<NoStdToolbox>>>>,
+  child_props: Props<NoStdToolbox>,
+}
+
+impl TestGuardian {
+  fn new(child_slot: ArcShared<NoStdMutex<Option<ChildRef<NoStdToolbox>>>>, child_props: Props<NoStdToolbox>) -> Self {
+    Self { child_slot, child_props }
+  }
+}
+
+impl Actor<NoStdToolbox> for TestGuardian {
+  fn pre_start(&mut self, ctx: &mut ActorContext<'_, NoStdToolbox>) -> Result<(), ActorError> {
+    let child = ctx.spawn_child(&self.child_props).map_err(|_| ActorError::recoverable("spawn failed"))?;
+    *self.child_slot.lock() = Some(child);
+    Ok(())
+  }
+
+  fn receive(
+    &mut self,
+    _ctx: &mut ActorContext<'_, NoStdToolbox>,
+    _message: AnyMessageView<'_, NoStdToolbox>,
+  ) -> Result<(), ActorError> {
+    Ok(())
+  }
+}
+
 #[test]
 fn dead_letter_event_is_published_when_send_fails() {
-  let props = Props::<NoStdToolbox>::from_fn(|| NullActor);
+  let child_slot = ArcShared::new(NoStdMutex::new(None));
+
+  let mailbox_policy =
+    MailboxPolicy::bounded(NonZeroUsize::new(1).expect("non-zero"), MailboxOverflowStrategy::DropNewest, None);
+  let mailbox_config = MailboxConfig::new(mailbox_policy);
+  let child_props = Props::<NoStdToolbox>::from_fn(|| NullActor).with_mailbox(mailbox_config);
+
+  let props = Props::<NoStdToolbox>::from_fn({
+    let child_slot = child_slot.clone();
+    let child_props = child_props.clone();
+    move || TestGuardian::new(child_slot.clone(), child_props.clone())
+  });
   let system = ActorSystem::new(&props).expect("system");
 
   let subscriber_impl = ArcShared::new(RecordingSubscriber::new());
   let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
   let _subscription = system.subscribe_event_stream(&subscriber);
 
-  let mailbox_policy =
-    MailboxPolicy::bounded(NonZeroUsize::new(1).expect("non-zero"), MailboxOverflowStrategy::DropNewest, None);
-  let mailbox_config = MailboxConfig::new(mailbox_policy);
-  let child = system.spawn(&Props::<NoStdToolbox>::from_fn(|| NullActor).with_mailbox(mailbox_config)).expect("spawn");
+  wait_until(|| child_slot.lock().is_some());
+  let child = child_slot.lock().clone().expect("child");
   let actor_ref = child.actor_ref().clone();
 
   child.suspend().expect("suspend child");
