@@ -2,8 +2,8 @@
 
 use cellactor_utils_core_rs::{
   collections::{
-    queue::{QueueError, SyncQueueBackend, backend::OfferOutcome},
-    wait::{WaitHandle, WaitQueue},
+      queue::{QueueError, SyncQueueBackend, backend::OfferOutcome},
+      wait::{WaitShared, WaitQueue},
   },
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
@@ -59,11 +59,11 @@ where
     result
   }
 
-  pub(super) fn register_producer_waiter(&self) -> WaitHandle<QueueError<T>> {
+  pub(super) fn register_producer_waiter(&self) -> WaitShared<QueueError<T>> {
     self.producer_waiters.lock().register()
   }
 
-  pub(super) fn register_consumer_waiter(&self) -> WaitHandle<QueueError<T>> {
+  pub(super) fn register_consumer_waiter(&self) -> WaitShared<QueueError<T>> {
     self.consumer_waiters.lock().register()
   }
 

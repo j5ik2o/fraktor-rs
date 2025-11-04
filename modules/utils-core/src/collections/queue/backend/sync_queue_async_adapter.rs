@@ -9,7 +9,7 @@ use super::{
 use crate::collections::{
   PriorityMessage,
   queue::QueueError,
-  wait::{WaitHandle, WaitQueue},
+  wait::{WaitShared, WaitQueue},
 };
 
 /// Adapter that exposes a synchronous queue backend through the async backend trait.
@@ -61,11 +61,11 @@ where
     &mut self.backend
   }
 
-  pub(crate) fn register_producer_waiter(&mut self) -> WaitHandle<QueueError<T>> {
+  pub(crate) fn register_producer_waiter(&mut self) -> WaitShared<QueueError<T>> {
     self.producer_waiters.register()
   }
 
-  pub(crate) fn register_consumer_waiter(&mut self) -> WaitHandle<QueueError<T>> {
+  pub(crate) fn register_consumer_waiter(&mut self) -> WaitShared<QueueError<T>> {
     self.consumer_waiters.register()
   }
 
@@ -122,7 +122,7 @@ where
     self.backend.capacity()
   }
 
-  fn prepare_producer_wait(&mut self) -> Option<WaitHandle<QueueError<T>>> {
+  fn prepare_producer_wait(&mut self) -> Option<WaitShared<QueueError<T>>> {
     if self.backend.overflow_policy() == super::OverflowPolicy::Block && !self.backend.is_closed() {
       Some(self.register_producer_waiter())
     } else {
@@ -130,7 +130,7 @@ where
     }
   }
 
-  fn prepare_consumer_wait(&mut self) -> Option<WaitHandle<QueueError<T>>> {
+  fn prepare_consumer_wait(&mut self) -> Option<WaitShared<QueueError<T>>> {
     if self.backend.is_closed() { None } else { Some(self.register_consumer_waiter()) }
   }
 

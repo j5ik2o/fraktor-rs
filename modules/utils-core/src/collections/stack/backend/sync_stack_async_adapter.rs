@@ -4,7 +4,7 @@ use core::marker::PhantomData;
 use async_trait::async_trait;
 
 use super::{AsyncStackBackend, PushOutcome, StackBackend, StackError};
-use crate::collections::wait::{WaitHandle, WaitQueue};
+use crate::collections::wait::{WaitShared, WaitQueue};
 
 /// Adapter that exposes a synchronous stack backend through the async backend trait.
 pub struct SyncStackAsyncAdapter<T, B>
@@ -49,11 +49,11 @@ where
     &mut self.backend
   }
 
-  pub(crate) fn register_push_waiter(&mut self) -> WaitHandle<StackError> {
+  pub(crate) fn register_push_waiter(&mut self) -> WaitShared<StackError> {
     self.push_waiters.register()
   }
 
-  pub(crate) fn register_pop_waiter(&mut self) -> WaitHandle<StackError> {
+  pub(crate) fn register_pop_waiter(&mut self) -> WaitShared<StackError> {
     self.pop_waiters.register()
   }
 
@@ -112,7 +112,7 @@ where
     self.backend.capacity()
   }
 
-  fn prepare_push_wait(&mut self) -> Option<WaitHandle<StackError>> {
+  fn prepare_push_wait(&mut self) -> Option<WaitShared<StackError>> {
     if self.backend.overflow_policy() == super::StackOverflowPolicy::Block && !self.backend.is_closed() {
       Some(self.register_push_waiter())
     } else {
@@ -120,7 +120,7 @@ where
     }
   }
 
-  fn prepare_pop_wait(&mut self) -> Option<WaitHandle<StackError>> {
+  fn prepare_pop_wait(&mut self) -> Option<WaitShared<StackError>> {
     if self.backend.is_closed() { None } else { Some(self.register_pop_waiter()) }
   }
 

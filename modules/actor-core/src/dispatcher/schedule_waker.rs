@@ -10,11 +10,11 @@ use cellactor_utils_core_rs::sync::ArcShared;
 use super::{dispatcher_core::DispatcherCore, base::Dispatcher};
 use crate::RuntimeToolbox;
 
-struct ScheduleHandle<TB: RuntimeToolbox + 'static> {
+struct ScheduleShared<TB: RuntimeToolbox + 'static> {
   dispatcher: ArcShared<DispatcherCore<TB>>,
 }
 
-impl<TB: RuntimeToolbox + 'static> ScheduleHandle<TB> {
+impl<TB: RuntimeToolbox + 'static> ScheduleShared<TB> {
   const fn new(dispatcher: ArcShared<DispatcherCore<TB>>) -> Self {
     Self { dispatcher }
   }
@@ -32,35 +32,35 @@ pub struct ScheduleWaker<TB: RuntimeToolbox + 'static> {
 impl<TB: RuntimeToolbox + 'static> ScheduleWaker<TB> {
   /// Creates a waker that schedules the dispatcher using the provided core reference.
   pub fn into_waker(dispatcher: ArcShared<DispatcherCore<TB>>) -> Waker {
-    let handle = ArcShared::new(ScheduleHandle::new(dispatcher));
+    let handle = ArcShared::new(ScheduleShared::new(dispatcher));
     unsafe { Waker::from_raw(Self::raw_waker(handle)) }
   }
 
-  unsafe fn raw_waker(handle: ArcShared<ScheduleHandle<TB>>) -> RawWaker {
+  unsafe fn raw_waker(handle: ArcShared<ScheduleShared<TB>>) -> RawWaker {
     let data = ArcShared::into_raw(handle) as *const ();
     RawWaker::new(data, &ScheduleWakerVtable::<TB>::VTABLE)
   }
 
   unsafe fn clone(ptr: *const ()) -> RawWaker {
-    let handle = unsafe { ArcShared::from_raw(ptr as *const ScheduleHandle<TB>) };
+    let handle = unsafe { ArcShared::from_raw(ptr as *const ScheduleShared<TB>) };
     let clone = handle.clone();
     let _ = ArcShared::into_raw(handle);
     unsafe { Self::raw_waker(clone) }
   }
 
   unsafe fn wake(ptr: *const ()) {
-    let handle = unsafe { ArcShared::from_raw(ptr as *const ScheduleHandle<TB>) };
+    let handle = unsafe { ArcShared::from_raw(ptr as *const ScheduleShared<TB>) };
     handle.schedule();
   }
 
   unsafe fn wake_by_ref(ptr: *const ()) {
-    let handle = unsafe { ArcShared::from_raw(ptr as *const ScheduleHandle<TB>) };
+    let handle = unsafe { ArcShared::from_raw(ptr as *const ScheduleShared<TB>) };
     handle.schedule();
     let _ = ArcShared::into_raw(handle);
   }
 
   unsafe fn drop(ptr: *const ()) {
-    let _ = unsafe { ArcShared::from_raw(ptr as *const ScheduleHandle<TB>) };
+    let _ = unsafe { ArcShared::from_raw(ptr as *const ScheduleShared<TB>) };
   }
 }
 

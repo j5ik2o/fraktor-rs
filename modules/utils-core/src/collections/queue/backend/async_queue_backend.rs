@@ -3,7 +3,7 @@ use alloc::boxed::Box;
 use async_trait::async_trait;
 
 use super::OfferOutcome;
-use crate::collections::{queue::QueueError, wait::WaitHandle};
+use crate::collections::{queue::QueueError, wait::WaitShared};
 
 /// Async-compatible backend trait for queue operations.
 #[async_trait(?Send)]
@@ -34,13 +34,13 @@ pub trait AsyncQueueBackend<T> {
   }
 
   /// Optionally registers a producer waiter when the queue is full.
-  fn prepare_producer_wait(&mut self) -> Option<WaitHandle<QueueError<T>>> {
+  fn prepare_producer_wait(&mut self) -> Option<WaitShared<QueueError<T>>> {
     let _ = self;
     None
   }
 
   /// Optionally registers a consumer waiter when the queue is empty.
-  fn prepare_consumer_wait(&mut self) -> Option<WaitHandle<QueueError<T>>> {
+  fn prepare_consumer_wait(&mut self) -> Option<WaitShared<QueueError<T>>> {
     let _ = self;
     None
   }

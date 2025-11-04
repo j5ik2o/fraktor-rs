@@ -3,7 +3,7 @@ use alloc::boxed::Box;
 use async_trait::async_trait;
 
 use super::{PushOutcome, StackError};
-use crate::collections::wait::WaitHandle;
+use crate::collections::wait::WaitShared;
 
 /// Async-compatible backend trait for stack operations.
 #[async_trait(?Send)]
@@ -37,13 +37,13 @@ pub trait AsyncStackBackend<T> {
   }
 
   /// Optionally registers a waiter when the stack is full and pushes should block.
-  fn prepare_push_wait(&mut self) -> Option<WaitHandle<StackError>> {
+  fn prepare_push_wait(&mut self) -> Option<WaitShared<StackError>> {
     let _ = self;
     None
   }
 
   /// Optionally registers a waiter when the stack is empty and pops should block.
-  fn prepare_pop_wait(&mut self) -> Option<WaitHandle<StackError>> {
+  fn prepare_pop_wait(&mut self) -> Option<WaitShared<StackError>> {
     let _ = self;
     None
   }

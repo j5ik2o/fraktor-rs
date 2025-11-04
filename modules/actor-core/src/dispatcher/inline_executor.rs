@@ -1,6 +1,6 @@
 use core::marker::PhantomData;
 
-use super::{dispatch_executor::DispatchExecutor, dispatch_handle::DispatchHandle};
+use super::{dispatch_executor::DispatchExecutor, dispatch_shared::DispatchShared};
 use crate::RuntimeToolbox;
 
 /// Simple executor that runs tasks immediately in a synchronous context.
@@ -26,7 +26,7 @@ impl<TB> DispatchExecutor<TB> for InlineExecutor<TB>
 where
   TB: RuntimeToolbox + Send + Sync + 'static,
 {
-  fn execute(&self, dispatcher: DispatchHandle<TB>) {
+  fn execute(&self, dispatcher: DispatchShared<TB>) {
     dispatcher.drive();
   }
 }

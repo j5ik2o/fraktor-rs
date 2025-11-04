@@ -1,4 +1,4 @@
-use cellactor_actor_std_rs::dispatcher::{DispatchExecutor, DispatchHandle};
+use cellactor_actor_std_rs::dispatcher::{DispatchExecutor, DispatchShared};
 use tokio::runtime::Handle;
 
 /// Tokio ランタイム上で Dispatcher を駆動する実装。
@@ -14,7 +14,7 @@ impl TokioExecutor {
 }
 
 impl DispatchExecutor for TokioExecutor {
-  fn execute(&self, dispatcher: DispatchHandle) {
+  fn execute(&self, dispatcher: DispatchShared) {
     let _ = self.handle.spawn_blocking(move || dispatcher.drive());
   }
 }

@@ -9,14 +9,14 @@ pub use types::*;
 /// Scheduler abstraction for driving dispatcher execution in the standard runtime.
 pub trait DispatchExecutor: Send + Sync + 'static {
   /// Delegates dispatcher execution to the scheduler.
-  fn execute(&self, dispatcher: DispatchHandle);
+  fn execute(&self, dispatcher: DispatchShared);
 }
 
 impl<T> DispatchExecutor for T
 where
   T: CoreDispatchExecutor<StdToolbox> + 'static,
 {
-  fn execute(&self, dispatcher: DispatchHandle) {
+  fn execute(&self, dispatcher: DispatchShared) {
     CoreDispatchExecutor::execute(self, dispatcher)
   }
 }
@@ -32,7 +32,7 @@ impl DispatchExecutorAdapter {
 }
 
 impl CoreDispatchExecutor<StdToolbox> for DispatchExecutorAdapter {
-  fn execute(&self, dispatcher: DispatchHandle) {
+  fn execute(&self, dispatcher: DispatchShared) {
     self.inner.execute(dispatcher);
   }
 }
@@ -48,7 +48,7 @@ impl CoreDispatchExecutorAdapter {
 }
 
 impl DispatchExecutor for CoreDispatchExecutorAdapter {
-  fn execute(&self, dispatcher: DispatchHandle) {
+  fn execute(&self, dispatcher: DispatchShared) {
     self.inner.execute(dispatcher);
   }
 }

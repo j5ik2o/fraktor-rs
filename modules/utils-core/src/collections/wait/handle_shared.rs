@@ -8,12 +8,12 @@ use super::node::WaitNode;
 use crate::sync::ArcShared;
 
 /// Future returned when registering interest in a queue/stack event.
-pub struct WaitHandle<E> {
+pub struct WaitShared<E> {
   node: ArcShared<WaitNode<E>>,
 }
 
-impl<E> WaitHandle<E> {
-  /// Creates a wait handle bound to the supplied waiter node.
+impl<E> WaitShared<E> {
+  /// Creates a shared wait future bound to the supplied waiter node.
   #[must_use]
   pub const fn new(node: ArcShared<WaitNode<E>>) -> Self {
     Self { node }
@@ -24,7 +24,7 @@ impl<E> WaitHandle<E> {
   }
 }
 
-impl<E> Future for WaitHandle<E> {
+impl<E> Future for WaitShared<E> {
   type Output = Result<(), E>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -43,13 +43,13 @@ impl<E> Future for WaitHandle<E> {
   }
 }
 
-impl<E> Drop for WaitHandle<E> {
+impl<E> Drop for WaitShared<E> {
   fn drop(&mut self) {
     self.node.cancel();
   }
 }
 
-impl<E> Clone for WaitHandle<E> {
+impl<E> Clone for WaitShared<E> {
   fn clone(&self) -> Self {
     Self { node: self.node.clone() }
   }

@@ -8,7 +8,7 @@ use cellactor_actor_core_rs::{
 use cellactor_utils_core_rs::sync::ArcShared;
 use cellactor_utils_std_rs::StdToolbox;
 
-pub use crate::dispatcher::{DispatchExecutor, DispatchHandle, Dispatcher, DispatcherConfig};
+pub use crate::dispatcher::{DispatchExecutor, DispatchShared, Dispatcher, DispatcherConfig};
 use crate::{
   actor_prim::{ActorRef, ChildRef},
   error::SendError,

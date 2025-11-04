@@ -3,7 +3,7 @@ use core::task::Waker;
 use cellactor_utils_core_rs::sync::ArcShared;
 
 use super::{
-  dispatch_executor::DispatchExecutor, dispatch_handle::DispatchHandle, dispatcher_core::DispatcherCore,
+  dispatch_executor::DispatchExecutor, dispatch_shared::DispatchShared, dispatcher_core::DispatcherCore,
   dispatcher_state::DispatcherState, inline_executor::InlineExecutor, schedule_waker::ScheduleWaker,
 };
 use crate::{
@@ -68,7 +68,7 @@ impl<TB: RuntimeToolbox + 'static> Dispatcher<TB> {
 
     if should_run {
       let executor = self.core.executor().clone();
-      executor.execute(DispatchHandle::new(self.core.clone()));
+      executor.execute(DispatchShared::new(self.core.clone()));
     }
   }
 

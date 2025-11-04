@@ -3,13 +3,16 @@ use cellactor_utils_core_rs::sync::ArcShared;
 use super::dispatcher_core::DispatcherCore;
 use crate::RuntimeToolbox;
 
-/// Public handle used to drive dispatcher execution.
+/// Shared reference for driving dispatcher execution across threads.
+///
+/// This type wraps `DispatcherCore` in an `ArcShared`, allowing multiple
+/// threads to safely access and execute dispatcher batches.
 #[derive(Clone)]
-pub struct DispatchHandle<TB: RuntimeToolbox + 'static> {
+pub struct DispatchShared<TB: RuntimeToolbox + 'static> {
   core: ArcShared<DispatcherCore<TB>>,
 }
 
-impl<TB: RuntimeToolbox + 'static> DispatchHandle<TB> {
+impl<TB: RuntimeToolbox + 'static> DispatchShared<TB> {
   pub(super) const fn new(core: ArcShared<DispatcherCore<TB>>) -> Self {
     Self { core }
   }

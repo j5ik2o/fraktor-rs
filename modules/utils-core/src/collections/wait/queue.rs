@@ -1,6 +1,6 @@
 use alloc::collections::VecDeque;
 
-use super::{handle::WaitHandle, node::WaitNode};
+use super::{handle_shared::WaitShared, node::WaitNode};
 use crate::sync::ArcShared;
 
 /// FIFO queue managing waiter nodes.
@@ -15,11 +15,11 @@ impl<E> WaitQueue<E> {
     Self { waiters: VecDeque::new() }
   }
 
-  /// Registers a new waiter and returns a handle for awaiting completion.
-  pub fn register(&mut self) -> WaitHandle<E> {
+  /// Registers a new waiter and returns a shared future for awaiting completion.
+  pub fn register(&mut self) -> WaitShared<E> {
     let node = ArcShared::new(WaitNode::new());
     self.waiters.push_back(node.clone());
-    WaitHandle::new(node)
+    WaitShared::new(node)
   }
 
   /// Notifies the oldest pending waiter with success.

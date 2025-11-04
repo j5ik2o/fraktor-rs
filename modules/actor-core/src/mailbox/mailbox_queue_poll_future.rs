@@ -7,8 +7,8 @@ use core::{
 };
 
 use cellactor_utils_core_rs::{
-  collections::{queue::QueueError, wait::WaitHandle},
-  sync::ArcShared,
+    collections::{queue::QueueError, wait::WaitShared},
+    sync::ArcShared,
 };
 
 use super::mailbox_queue_state::QueueState;
@@ -19,7 +19,7 @@ pub struct QueuePollFuture<T, TB: RuntimeToolbox>
 where
   T: Send + 'static, {
   state:  ArcShared<QueueState<T, TB>>,
-  waiter: Option<WaitHandle<QueueError<T>>>,
+  waiter: Option<WaitShared<QueueError<T>>>,
 }
 
 impl<T, TB: RuntimeToolbox> QueuePollFuture<T, TB>
@@ -30,7 +30,7 @@ where
     Self { state, waiter: None }
   }
 
-  fn ensure_waiter(&mut self) -> &mut WaitHandle<QueueError<T>> {
+  fn ensure_waiter(&mut self) -> &mut WaitShared<QueueError<T>> {
     if self.waiter.is_none() {
       let waiter = self.state.register_consumer_waiter();
       self.waiter = Some(waiter);

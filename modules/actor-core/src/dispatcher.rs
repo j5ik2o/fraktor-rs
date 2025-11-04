@@ -16,7 +16,7 @@
 //! - `dispatcher`: Task execution and scheduling infrastructure
 
 mod dispatch_executor;
-mod dispatch_handle;
+mod dispatch_shared;
 mod dispatcher_core;
 mod dispatcher_sender;
 mod dispatcher_state;
@@ -25,7 +25,7 @@ mod inline_executor;
 mod schedule_waker;
 
 pub use dispatch_executor::DispatchExecutor;
-pub use dispatch_handle::DispatchHandle;
+pub use dispatch_shared::DispatchShared;
 pub use dispatcher_sender::DispatcherSender;
 pub use base::Dispatcher;
 pub use inline_executor::InlineExecutor;
