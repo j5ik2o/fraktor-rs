@@ -4,7 +4,7 @@
 mod tests;
 
 use crate::{
-  NoStdToolbox, RuntimeToolbox, dead_letter::DeadLetterEntry, lifecycle::LifecycleEvent, logging::LogEvent,
+  NoStdToolbox, RuntimeToolbox, dead_letter::DeadLetterEntryGeneric, lifecycle::LifecycleEvent, logging::LogEvent,
   mailbox::MailboxMetricsEvent,
 };
 
@@ -14,7 +14,7 @@ pub enum EventStreamEvent<TB: RuntimeToolbox = NoStdToolbox> {
   /// Actor lifecycle transition notification.
   Lifecycle(LifecycleEvent),
   /// Deadletter capture describing an undeliverable message.
-  DeadLetter(DeadLetterEntry<TB>),
+  DeadLetter(DeadLetterEntryGeneric<TB>),
   /// Structured log event.
   Log(LogEvent),
   /// Mailbox metrics snapshot.

@@ -8,33 +8,33 @@ use core::marker::PhantomData;
 
 use crate::{
   NoStdToolbox, RuntimeToolbox,
-  actor_prim::{ChildRef, Pid, actor_ref::ActorRef},
+  actor_prim::{ChildRefGeneric, Pid, actor_ref::ActorRefGeneric},
   error::SendError,
   logging::LogLevel,
-  messaging::AnyMessage,
-  props::Props,
+  messaging::AnyMessageGeneric,
+  props::PropsGeneric,
   spawn::SpawnError,
-  system::ActorSystem,
+  system::ActorSystemGeneric,
 };
 
 /// Provides contextual APIs while handling a message.
 pub struct ActorContext<'a, TB: RuntimeToolbox + 'static = NoStdToolbox> {
-  system:   ActorSystem<TB>,
+  system:   ActorSystemGeneric<TB>,
   pid:      Pid,
-  reply_to: Option<ActorRef<TB>>,
+  reply_to: Option<ActorRefGeneric<TB>>,
   _marker:  PhantomData<&'a ()>,
 }
 
 impl<'a, TB: RuntimeToolbox + 'static> ActorContext<'a, TB> {
   /// Creates a new context placeholder.
   #[must_use]
-  pub fn new(system: &ActorSystem<TB>, pid: Pid) -> Self {
+  pub fn new(system: &ActorSystemGeneric<TB>, pid: Pid) -> Self {
     Self { system: system.clone(), pid, reply_to: None, _marker: PhantomData }
   }
 
   /// Returns a reference to the actor system.
   #[must_use]
-  pub const fn system(&self) -> &ActorSystem<TB> {
+  pub const fn system(&self) -> &ActorSystemGeneric<TB> {
     &self.system
   }
 
@@ -46,12 +46,12 @@ impl<'a, TB: RuntimeToolbox + 'static> ActorContext<'a, TB> {
 
   /// Returns the reply target if supplied by the message envelope.
   #[must_use]
-  pub const fn reply_to(&self) -> Option<&ActorRef<TB>> {
+  pub const fn reply_to(&self) -> Option<&ActorRefGeneric<TB>> {
     self.reply_to.as_ref()
   }
 
   /// Sets the reply target (used internally by the runtime).
-  pub fn set_reply_to(&mut self, reply_to: Option<ActorRef<TB>>) {
+  pub fn set_reply_to(&mut self, reply_to: Option<ActorRefGeneric<TB>>) {
     self.reply_to = reply_to;
   }
 
@@ -66,7 +66,7 @@ impl<'a, TB: RuntimeToolbox + 'static> ActorContext<'a, TB> {
   ///
   /// Panics if the actor reference cannot be resolved.
   #[must_use]
-  pub fn self_ref(&self) -> ActorRef<TB> {
+  pub fn self_ref(&self) -> ActorRefGeneric<TB> {
     match self.system.actor_ref(self.pid) {
       | Some(reference) => reference,
       | None => panic!("actor reference must exist for running context"),
@@ -78,7 +78,7 @@ impl<'a, TB: RuntimeToolbox + 'static> ActorContext<'a, TB> {
   /// # Errors
   ///
   /// Returns an error if no reply target is set or sending fails.
-  pub fn reply(&self, message: AnyMessage<TB>) -> Result<(), SendError<TB>> {
+  pub fn reply(&self, message: AnyMessageGeneric<TB>) -> Result<(), SendError<TB>> {
     match self.reply_to.as_ref() {
       | Some(target) => target.tell(message),
       | None => Err(SendError::no_recipient(message)),
@@ -90,13 +90,13 @@ impl<'a, TB: RuntimeToolbox + 'static> ActorContext<'a, TB> {
   /// # Errors
   ///
   /// Returns an error when spawning the child fails.
-  pub fn spawn_child(&self, props: &Props<TB>) -> Result<ChildRef<TB>, SpawnError> {
+  pub fn spawn_child(&self, props: &PropsGeneric<TB>) -> Result<ChildRefGeneric<TB>, SpawnError> {
     self.system.spawn_child(self.pid, props)
   }
 
   /// Returns the list of supervised children.
   #[must_use]
-  pub fn children(&self) -> Vec<ChildRef<TB>> {
+  pub fn children(&self) -> Vec<ChildRefGeneric<TB>> {
     self.system.children(self.pid)
   }
 
@@ -105,7 +105,7 @@ impl<'a, TB: RuntimeToolbox + 'static> ActorContext<'a, TB> {
   /// # Errors
   ///
   /// Returns an error when the stop message cannot be delivered.
-  pub fn stop_child(&self, child: &ChildRef<TB>) -> Result<(), SendError<TB>> {
+  pub fn stop_child(&self, child: &ChildRefGeneric<TB>) -> Result<(), SendError<TB>> {
     child.stop()
   }
 
@@ -123,7 +123,7 @@ impl<'a, TB: RuntimeToolbox + 'static> ActorContext<'a, TB> {
   /// # Errors
   ///
   /// Returns an error when the suspend signal cannot be delivered.
-  pub fn suspend_child(&self, child: &ChildRef<TB>) -> Result<(), SendError<TB>> {
+  pub fn suspend_child(&self, child: &ChildRefGeneric<TB>) -> Result<(), SendError<TB>> {
     child.suspend()
   }
 
@@ -132,7 +132,7 @@ impl<'a, TB: RuntimeToolbox + 'static> ActorContext<'a, TB> {
   /// # Errors
   ///
   /// Returns an error when the resume signal cannot be delivered.
-  pub fn resume_child(&self, child: &ChildRef<TB>) -> Result<(), SendError<TB>> {
+  pub fn resume_child(&self, child: &ChildRefGeneric<TB>) -> Result<(), SendError<TB>> {
     child.resume()
   }
 

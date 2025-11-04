@@ -9,13 +9,13 @@ use cellactor_utils_core_rs::sync::ArcShared;
 
 use crate::{
   RuntimeToolbox, actor_prim::Pid, event_stream::EventStreamEvent, logging::LogLevel, mailbox::MailboxMetricsEvent,
-  system::SystemState,
+  system::SystemStateGeneric,
 };
 
 /// Provides mailbox metrics publication facilities.
 #[derive(Clone)]
 pub struct MailboxInstrumentation<TB: RuntimeToolbox + 'static> {
-  system_state:   ArcShared<SystemState<TB>>,
+  system_state:   ArcShared<SystemStateGeneric<TB>>,
   capacity:       Option<usize>,
   throughput:     Option<usize>,
   warn_threshold: Option<usize>,
@@ -26,7 +26,7 @@ impl<TB: RuntimeToolbox + 'static> MailboxInstrumentation<TB> {
   /// Creates a new instrumentation helper.
   #[must_use]
   pub const fn new(
-    system_state: ArcShared<SystemState<TB>>,
+    system_state: ArcShared<SystemStateGeneric<TB>>,
     pid: Pid,
     capacity: Option<usize>,
     throughput: Option<usize>,

@@ -5,19 +5,19 @@ use core::{pin::Pin, task::Context};
 
 use cellactor_utils_core_rs::sync::ArcShared;
 
-use super::base::Dispatcher;
+use super::base::DispatcherGeneric;
 use crate::{
   RuntimeToolbox,
   actor_prim::actor_ref::ActorRefSender,
   error::SendError,
-  mailbox::{EnqueueOutcome, Mailbox, MailboxOfferFuture},
-  messaging::AnyMessage,
+  mailbox::{EnqueueOutcome, MailboxGeneric, MailboxOfferFuture},
+  messaging::AnyMessageGeneric,
 };
 
 /// Sender that enqueues messages via actor handle.
 pub struct DispatcherSender<TB: RuntimeToolbox + 'static> {
-  dispatcher: Dispatcher<TB>,
-  mailbox:    ArcShared<Mailbox<TB>>,
+  dispatcher: DispatcherGeneric<TB>,
+  mailbox:    ArcShared<MailboxGeneric<TB>>,
 }
 
 unsafe impl<TB: RuntimeToolbox + 'static> Send for DispatcherSender<TB> {}
@@ -26,7 +26,7 @@ unsafe impl<TB: RuntimeToolbox + 'static> Sync for DispatcherSender<TB> {}
 impl<TB: RuntimeToolbox + 'static> DispatcherSender<TB> {
   #[must_use]
   /// Creates a sender bound to the specified dispatcher.
-  pub fn new(dispatcher: Dispatcher<TB>) -> Self {
+  pub fn new(dispatcher: DispatcherGeneric<TB>) -> Self {
     let mailbox = dispatcher.mailbox();
     Self { dispatcher, mailbox }
   }
@@ -49,7 +49,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherSender<TB> {
 }
 
 impl<TB: RuntimeToolbox + 'static> ActorRefSender<TB> for DispatcherSender<TB> {
-  fn send(&self, message: AnyMessage<TB>) -> Result<(), SendError<TB>> {
+  fn send(&self, message: AnyMessageGeneric<TB>) -> Result<(), SendError<TB>> {
     match self.mailbox.enqueue_user(message) {
       | Ok(EnqueueOutcome::Enqueued) => {
         self.dispatcher.schedule();

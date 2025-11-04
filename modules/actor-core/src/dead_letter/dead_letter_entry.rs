@@ -4,23 +4,23 @@ use core::time::Duration;
 
 use crate::{
   NoStdToolbox, RuntimeToolbox, actor_prim::Pid, dead_letter::dead_letter_reason::DeadLetterReason,
-  messaging::AnyMessage,
+  messaging::AnyMessageGeneric,
 };
 
 /// Captures a single deadletter occurrence.
 #[derive(Debug)]
-pub struct DeadLetterEntry<TB: RuntimeToolbox = NoStdToolbox> {
-  message:   AnyMessage<TB>,
+pub struct DeadLetterEntryGeneric<TB: RuntimeToolbox> {
+  message:   AnyMessageGeneric<TB>,
   reason:    DeadLetterReason,
   recipient: Option<Pid>,
   timestamp: Duration,
 }
 
-impl<TB: RuntimeToolbox> DeadLetterEntry<TB> {
+impl<TB: RuntimeToolbox> DeadLetterEntryGeneric<TB> {
   /// Creates a new deadletter entry.
   #[must_use]
   pub const fn new(
-    message: AnyMessage<TB>,
+    message: AnyMessageGeneric<TB>,
     reason: DeadLetterReason,
     recipient: Option<Pid>,
     timestamp: Duration,
@@ -30,7 +30,7 @@ impl<TB: RuntimeToolbox> DeadLetterEntry<TB> {
 
   /// Returns the undelivered message.
   #[must_use]
-  pub const fn message(&self) -> &AnyMessage<TB> {
+  pub const fn message(&self) -> &AnyMessageGeneric<TB> {
     &self.message
   }
 
@@ -53,7 +53,7 @@ impl<TB: RuntimeToolbox> DeadLetterEntry<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox> Clone for DeadLetterEntry<TB> {
+impl<TB: RuntimeToolbox> Clone for DeadLetterEntryGeneric<TB> {
   fn clone(&self) -> Self {
     Self {
       message:   self.message.clone(),
@@ -63,3 +63,6 @@ impl<TB: RuntimeToolbox> Clone for DeadLetterEntry<TB> {
     }
   }
 }
+
+/// Type alias for `DeadLetterEntryGeneric` with the default `NoStdToolbox`.
+pub type DeadLetterEntry = DeadLetterEntryGeneric<NoStdToolbox>;

@@ -6,13 +6,13 @@ use crate::{
   NoStdToolbox,
   actor_prim::actor_ref::{actor_ref_sender::ActorRefSender, ask_reply_sender::AskReplySender},
   futures::ActorFuture,
-  messaging::AnyMessage,
+  messaging::{AnyMessage, AnyMessageGeneric},
 };
 
 #[test]
 fn completes_future_on_send() {
-  let future = ArcShared::new(ActorFuture::<AnyMessage<NoStdToolbox>, NoStdToolbox>::new());
+  let future = ArcShared::new(ActorFuture::<AnyMessage, NoStdToolbox>::new());
   let sender: AskReplySender<NoStdToolbox> = AskReplySender::new(future.clone());
-  sender.send(AnyMessage::new("ok".to_string())).unwrap();
+  sender.send(AnyMessageGeneric::new("ok".to_string())).unwrap();
   assert!(future.is_ready());
 }

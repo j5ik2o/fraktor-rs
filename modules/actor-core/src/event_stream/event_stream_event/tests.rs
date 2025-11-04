@@ -9,11 +9,11 @@ use super::EventStreamEvent;
 use crate::{
   NoStdToolbox,
   actor_prim::Pid,
-  dead_letter::DeadLetterEntry,
+  dead_letter::DeadLetterEntryGeneric,
   lifecycle::{LifecycleEvent, LifecycleStage},
   logging::{LogEvent, LogLevel},
   mailbox::MailboxMetricsEvent,
-  messaging::AnyMessage,
+  messaging::AnyMessageGeneric,
 };
 
 #[cfg(feature = "alloc")]
@@ -39,8 +39,8 @@ fn event_stream_event_lifecycle_clone() {
 
 #[cfg(feature = "alloc")]
 #[test]
-fn event_stream_event_deadletter_clone() {
-  let entry = DeadLetterEntry::new(Pid::new(1, 0), AnyMessage::new(42u8));
+fn event_stream_event_dead_letter_clone() {
+  let entry = DeadLetterEntryGeneric::new(Pid::new(1, 0), AnyMessageGeneric::new(42u8));
   let event = EventStreamEvent::<NoStdToolbox>::DeadLetter(entry.clone());
   let cloned = event.clone();
   match (event, cloned) {

@@ -1,9 +1,9 @@
 use cellactor_actor_core_rs::{
   actor_prim::Pid,
-  dead_letter::DeadLetterEntry,
+  dead_letter::DeadLetterEntryGeneric,
   logging::LogLevel,
   spawn::SpawnError,
-  system::{ActorSystem as CoreActorSystem, SystemState as CoreSystemState},
+  system::{ActorSystemGeneric as CoreActorSystemGeneric, SystemStateGeneric as CoreSystemStateGeneric},
 };
 use cellactor_utils_core_rs::sync::ArcShared;
 use cellactor_utils_std_rs::runtime_toolbox::StdToolbox;
@@ -20,7 +20,7 @@ use crate::{
 
 /// Actor system specialised for `StdToolbox` with ergonomics for standard runtime consumers.
 pub struct ActorSystem {
-  inner: CoreActorSystem<StdToolbox>,
+  inner: CoreActorSystemGeneric<StdToolbox>,
 }
 
 impl ActorSystem {
@@ -30,30 +30,30 @@ impl ActorSystem {
   ///
   /// Returns [`SpawnError::InvalidProps`] when the user guardian props cannot be initialised.
   pub fn new(props: &Props) -> Result<Self, SpawnError> {
-    CoreActorSystem::new(props.as_core()).map(Self::from_core)
+    CoreActorSystemGeneric::new(props.as_core()).map(Self::from_core)
   }
 
   /// Creates an empty actor system without any guardian (testing helper).
   #[must_use]
   pub fn new_empty() -> Self {
-    Self::from_core(CoreActorSystem::new_empty())
+    Self::from_core(CoreActorSystemGeneric::new_empty())
   }
 
   /// Constructs the wrapper from a core actor system.
   #[must_use]
-  pub const fn from_core(inner: CoreActorSystem<StdToolbox>) -> Self {
+  pub const fn from_core(inner: CoreActorSystemGeneric<StdToolbox>) -> Self {
     Self { inner }
   }
 
   /// Borrows the underlying core actor system.
   #[must_use]
-  pub(crate) const fn as_core(&self) -> &CoreActorSystem<StdToolbox> {
+  pub(crate) const fn as_core(&self) -> &CoreActorSystemGeneric<StdToolbox> {
     &self.inner
   }
 
   /// Consumes the wrapper and returns the core actor system.
   #[must_use]
-  pub fn into_core(self) -> CoreActorSystem<StdToolbox> {
+  pub fn into_core(self) -> CoreActorSystemGeneric<StdToolbox> {
     self.inner
   }
 
@@ -89,7 +89,7 @@ impl ActorSystem {
 
   /// Returns a snapshot of recorded deadletters.
   #[must_use]
-  pub fn deadletters(&self) -> Vec<DeadLetterEntry<StdToolbox>> {
+  pub fn deadletters(&self) -> Vec<DeadLetterEntryGeneric<StdToolbox>> {
     self.inner.dead_letters()
   }
 
@@ -126,4 +126,4 @@ impl ActorSystem {
 }
 
 /// Shared system state specialised for `StdToolbox`.
-pub type SystemState = CoreSystemState<StdToolbox>;
+pub type SystemState = CoreSystemStateGeneric<StdToolbox>;

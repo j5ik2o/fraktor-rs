@@ -11,18 +11,18 @@ use cellactor_utils_core_rs::{
 use crate::{
   NoStdToolbox, RuntimeToolbox, ToolboxMutex,
   actor_prim::Pid,
-  dead_letter::{DeadLetterEntry, dead_letter_reason::DeadLetterReason},
+  dead_letter::{DeadLetterEntryGeneric, dead_letter_reason::DeadLetterReason},
   error::SendError,
-  event_stream::{EventStreamGeneric, EventStreamEvent},
+  event_stream::{EventStreamEvent, EventStreamGeneric},
   logging::{LogEvent, LogLevel},
-  messaging::AnyMessage,
+  messaging::AnyMessageGeneric,
 };
 
 const DEFAULT_CAPACITY: usize = 256;
 
 /// Collects undeliverable messages and notifies subscribers.
-pub struct DeadLetterGeneric<TB: RuntimeToolbox + 'static = NoStdToolbox> {
-  entries:      ToolboxMutex<Vec<DeadLetterEntry<TB>>, TB>,
+pub struct DeadLetterGeneric<TB: RuntimeToolbox + 'static> {
+  entries:      ToolboxMutex<Vec<DeadLetterEntryGeneric<TB>>, TB>,
   capacity:     usize,
   event_stream: ArcShared<EventStreamGeneric<TB>>,
 }
@@ -55,12 +55,12 @@ impl<TB: RuntimeToolbox + 'static> DeadLetterGeneric<TB> {
   /// Records an explicit deadletter entry.
   pub fn record_entry(
     &self,
-    message: AnyMessage<TB>,
+    message: AnyMessageGeneric<TB>,
     reason: DeadLetterReason,
     target: Option<Pid>,
     timestamp: Duration,
   ) {
-    let entry = DeadLetterEntry::new(message, reason, target, timestamp);
+    let entry = DeadLetterEntryGeneric::new(message, reason, target, timestamp);
     {
       let mut entries = self.entries.lock();
       entries.push(entry.clone());
@@ -75,11 +75,11 @@ impl<TB: RuntimeToolbox + 'static> DeadLetterGeneric<TB> {
 
   /// Returns a snapshot of stored deadletters.
   #[must_use]
-  pub fn entries(&self) -> Vec<DeadLetterEntry<TB>> {
+  pub fn entries(&self) -> Vec<DeadLetterEntryGeneric<TB>> {
     self.entries.lock().clone()
   }
 
-  fn publish(&self, entry: &DeadLetterEntry<TB>) {
+  fn publish(&self, entry: &DeadLetterEntryGeneric<TB>) {
     self.event_stream.publish(&EventStreamEvent::DeadLetter(entry.clone()));
     let (origin, message) = match entry.recipient() {
       | Some(pid) => (Some(pid), format!("deadletter for pid {:?} (reason: {:?})", pid, entry.reason())),
@@ -91,4 +91,4 @@ impl<TB: RuntimeToolbox + 'static> DeadLetterGeneric<TB> {
 }
 
 /// Type alias for `DeadLetterGeneric` with the default `NoStdToolbox`.
-pub type DeadLetter<TB = NoStdToolbox> = DeadLetterGeneric<TB>;
+pub type DeadLetter = DeadLetterGeneric<NoStdToolbox>;

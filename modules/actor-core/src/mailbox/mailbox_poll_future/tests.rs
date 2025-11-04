@@ -7,8 +7,8 @@ use core::{
 
 use crate::{
   NoStdToolbox,
-  mailbox::{Mailbox, MailboxPolicy},
-  messaging::AnyMessage,
+  mailbox::{MailboxGeneric, MailboxPolicy},
+  messaging::AnyMessageGeneric,
 };
 
 unsafe fn noop_clone(_: *const ()) -> RawWaker {
@@ -33,10 +33,10 @@ fn noop_waker() -> Waker {
 
 #[test]
 fn mailbox_poll_future_completes_with_message() {
-  let mailbox = Mailbox::<NoStdToolbox>::new(MailboxPolicy::unbounded(None));
+  let mailbox = MailboxGeneric::<NoStdToolbox>::new(MailboxPolicy::unbounded(None));
 
   // メッセージをエンキュー
-  mailbox.enqueue_user(AnyMessage::new(42)).expect("enqueue failed");
+  mailbox.enqueue_user(AnyMessageGeneric::new(42)).expect("enqueue failed");
 
   let mut future = mailbox.poll_user_future();
 
@@ -55,7 +55,7 @@ fn mailbox_poll_future_completes_with_message() {
 
 #[test]
 fn mailbox_poll_future_pending_when_empty() {
-  let mailbox = Mailbox::<NoStdToolbox>::new(MailboxPolicy::unbounded(None));
+  let mailbox = MailboxGeneric::<NoStdToolbox>::new(MailboxPolicy::unbounded(None));
 
   let mut future = mailbox.poll_user_future();
 
@@ -68,7 +68,7 @@ fn mailbox_poll_future_pending_when_empty() {
 
 #[test]
 fn mailbox_poll_future_debug_format() {
-  let mailbox = Mailbox::<NoStdToolbox>::new(MailboxPolicy::unbounded(None));
+  let mailbox = MailboxGeneric::<NoStdToolbox>::new(MailboxPolicy::unbounded(None));
   let future = mailbox.poll_user_future();
 
   let debug_str = format!("{:?}", future);

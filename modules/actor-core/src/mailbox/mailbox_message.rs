@@ -2,7 +2,7 @@
 
 use crate::{
   RuntimeToolbox,
-  messaging::{AnyMessage, SystemMessage},
+  messaging::{AnyMessageGeneric, SystemMessage},
 };
 
 /// Represents messages dequeued from the mailbox.
@@ -11,5 +11,5 @@ pub enum MailboxMessage<TB: RuntimeToolbox> {
   /// Internal system-level message.
   System(SystemMessage),
   /// Application user-level message.
-  User(AnyMessage<TB>),
+  User(AnyMessageGeneric<TB>),
 }

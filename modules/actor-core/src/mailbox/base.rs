@@ -20,25 +20,25 @@ use super::{
   map_system_queue_error, map_user_queue_error,
 };
 use crate::{
-  RuntimeToolbox,
+  NoStdToolbox, RuntimeToolbox,
   error::SendError,
   mailbox::{capacity::MailboxCapacity, overflow_strategy::MailboxOverflowStrategy, policy::MailboxPolicy},
-  messaging::{AnyMessage, SystemMessage},
+  messaging::{AnyMessageGeneric, SystemMessage},
 };
 
 /// Priority mailbox maintaining separate queues for system and user messages.
-pub struct Mailbox<TB: RuntimeToolbox + 'static> {
+pub struct MailboxGeneric<TB: RuntimeToolbox + 'static> {
   policy:          MailboxPolicy,
   system:          QueueHandles<SystemMessage, TB>,
-  user:            QueueHandles<AnyMessage<TB>, TB>,
+  user:            QueueHandles<AnyMessageGeneric<TB>, TB>,
   suspended:       AtomicBool,
   instrumentation: crate::ToolboxMutex<Option<MailboxInstrumentation<TB>>, TB>,
 }
 
-unsafe impl<TB: RuntimeToolbox + 'static> Send for Mailbox<TB> {}
-unsafe impl<TB: RuntimeToolbox + 'static> Sync for Mailbox<TB> {}
+unsafe impl<TB: RuntimeToolbox + 'static> Send for MailboxGeneric<TB> {}
+unsafe impl<TB: RuntimeToolbox + 'static> Sync for MailboxGeneric<TB> {}
 
-impl<TB> Mailbox<TB>
+impl<TB> MailboxGeneric<TB>
 where
   TB: RuntimeToolbox + 'static,
 {
@@ -75,7 +75,7 @@ where
   /// # Errors
   ///
   /// Returns an error if the mailbox is suspended, full, or closed.
-  pub fn enqueue_user(&self, message: AnyMessage<TB>) -> Result<EnqueueOutcome<TB>, SendError<TB>> {
+  pub fn enqueue_user(&self, message: AnyMessageGeneric<TB>) -> Result<EnqueueOutcome<TB>, SendError<TB>> {
     if self.is_suspended() {
       return Err(SendError::suspended(message));
     }
@@ -89,7 +89,7 @@ where
   }
 
   /// Returns a future that resolves when the provided user message is enqueued.
-  pub fn enqueue_user_future(&self, message: AnyMessage<TB>) -> MailboxOfferFuture<TB> {
+  pub fn enqueue_user_future(&self, message: AnyMessageGeneric<TB>) -> MailboxOfferFuture<TB> {
     MailboxOfferFuture::new(self.user.offer_blocking(message))
   }
 
@@ -154,7 +154,7 @@ where
   fn enqueue_bounded_user(
     &self,
     capacity: usize,
-    message: AnyMessage<TB>,
+    message: AnyMessageGeneric<TB>,
     overflow: MailboxOverflowStrategy,
   ) -> Result<EnqueueOutcome<TB>, SendError<TB>> {
     match overflow {
@@ -181,7 +181,7 @@ where
     }
   }
 
-  fn offer_user(&self, message: AnyMessage<TB>) -> Result<EnqueueOutcome<TB>, SendError<TB>> {
+  fn offer_user(&self, message: AnyMessageGeneric<TB>) -> Result<EnqueueOutcome<TB>, SendError<TB>> {
     match self.user.offer(message) {
       | Ok(outcome) => {
         Self::handle_offer_outcome(outcome);
@@ -227,3 +227,6 @@ where
     }
   }
 }
+
+/// Type alias for `MailboxGeneric` with the default `NoStdToolbox`.
+pub type Mailbox = MailboxGeneric<NoStdToolbox>;

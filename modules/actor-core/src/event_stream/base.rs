@@ -15,15 +15,16 @@ use crate::{
   NoStdToolbox, RuntimeToolbox, ToolboxMutex,
   event_stream::{
     EventStreamSubscriber, event_stream_event::EventStreamEvent,
-    event_stream_subscriber_entry::EventStreamSubscriberEntry, event_stream_subscription::EventStreamSubscription,
+    event_stream_subscriber_entry::EventStreamSubscriberEntryGeneric,
+    event_stream_subscription::EventStreamSubscriptionGeneric,
   },
 };
 
 const DEFAULT_CAPACITY: usize = 256;
 
 /// In-memory event bus with replay support for late subscribers.
-pub struct EventStreamGeneric<TB: RuntimeToolbox + 'static = NoStdToolbox> {
-  subscribers: ToolboxMutex<Vec<EventStreamSubscriberEntry<TB>>, TB>,
+pub struct EventStreamGeneric<TB: RuntimeToolbox + 'static> {
+  subscribers: ToolboxMutex<Vec<EventStreamSubscriberEntryGeneric<TB>>, TB>,
   buffer:      ToolboxMutex<Vec<EventStreamEvent<TB>>, TB>,
   capacity:    usize,
   next_id:     AtomicU64,
@@ -46,11 +47,11 @@ impl<TB: RuntimeToolbox + 'static> EventStreamGeneric<TB> {
   pub fn subscribe_arc(
     stream: &ArcShared<Self>,
     subscriber: &ArcShared<dyn EventStreamSubscriber<TB>>,
-  ) -> EventStreamSubscription<TB> {
+  ) -> EventStreamSubscriptionGeneric<TB> {
     let id = stream.next_id.fetch_add(1, Ordering::Relaxed);
     {
       let mut list = stream.subscribers.lock();
-      list.push(EventStreamSubscriberEntry::new(id, subscriber.clone()));
+      list.push(EventStreamSubscriberEntryGeneric::new(id, subscriber.clone()));
     }
 
     let snapshot = stream.buffer.lock().clone();
@@ -58,7 +59,7 @@ impl<TB: RuntimeToolbox + 'static> EventStreamGeneric<TB> {
       subscriber.on_event(event);
     }
 
-    EventStreamSubscription::new(stream.clone(), id)
+    EventStreamSubscriptionGeneric::new(stream.clone(), id)
   }
 
   /// Removes the subscriber associated with the identifier.
@@ -94,4 +95,4 @@ impl<TB: RuntimeToolbox + 'static> Default for EventStreamGeneric<TB> {
 }
 
 /// Type alias for `EventStreamGeneric` with the default `NoStdToolbox`.
-pub type EventStream<TB = NoStdToolbox> = EventStreamGeneric<TB>;
+pub type EventStream = EventStreamGeneric<NoStdToolbox>;

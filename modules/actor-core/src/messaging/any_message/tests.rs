@@ -1,11 +1,12 @@
-use crate::{NoStdToolbox, actor_ref::ActorRef, AnyMessage, Pid};
+use super::*;
+use crate::actor_prim::Pid;
 
 #[test]
 fn stores_payload_and_reply_to() {
-  let mut message: AnyMessage<NoStdToolbox> = AnyMessage::new(5_u32);
+  let mut message: AnyMessage = AnyMessageGeneric::new(5_u32);
   assert_eq!(message.payload().downcast_ref::<u32>(), Some(&5));
 
-  let reply: ActorRef<NoStdToolbox> = ActorRef::null();
+  let reply = ActorRefGeneric::null();
   message = message.with_reply_to(reply.clone());
   assert_eq!(message.reply_to(), Some(&reply));
 

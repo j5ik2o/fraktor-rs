@@ -3,12 +3,12 @@ use cellactor_utils_core_rs::sync::ArcShared;
 use crate::{
   NoStdToolbox,
   dispatcher::{InlineExecutor, dispatcher_core::DispatcherCore, schedule_waker::ScheduleWaker},
-  mailbox::{Mailbox, MailboxPolicy},
+  mailbox::{MailboxGeneric, MailboxPolicy},
 };
 
 #[test]
 fn into_waker_creates_valid_waker() {
-  let mailbox = Mailbox::<NoStdToolbox>::new(MailboxPolicy::unbounded(None));
+  let mailbox = MailboxGeneric::<NoStdToolbox>::new(MailboxPolicy::unbounded(None));
   let mailbox_shared = ArcShared::new(mailbox);
   let executor = ArcShared::new(InlineExecutor::<NoStdToolbox>::new());
   let core = DispatcherCore::new(mailbox_shared, executor, None);
@@ -21,7 +21,7 @@ fn into_waker_creates_valid_waker() {
 
 #[test]
 fn waker_wake_schedules_dispatcher() {
-  let mailbox = Mailbox::<NoStdToolbox>::new(MailboxPolicy::unbounded(None));
+  let mailbox = MailboxGeneric::<NoStdToolbox>::new(MailboxPolicy::unbounded(None));
   let mailbox_shared = ArcShared::new(mailbox);
   let executor = ArcShared::new(InlineExecutor::<NoStdToolbox>::new());
   let core = DispatcherCore::new(mailbox_shared, executor, None);
@@ -37,7 +37,7 @@ fn waker_wake_schedules_dispatcher() {
 
 #[test]
 fn waker_wake_by_ref_schedules_dispatcher() {
-  let mailbox = Mailbox::<NoStdToolbox>::new(MailboxPolicy::unbounded(None));
+  let mailbox = MailboxGeneric::<NoStdToolbox>::new(MailboxPolicy::unbounded(None));
   let mailbox_shared = ArcShared::new(mailbox);
   let executor = ArcShared::new(InlineExecutor::<NoStdToolbox>::new());
   let core = DispatcherCore::new(mailbox_shared, executor, None);
@@ -53,7 +53,7 @@ fn waker_wake_by_ref_schedules_dispatcher() {
 
 #[test]
 fn waker_clone_creates_new_waker() {
-  let mailbox = Mailbox::<NoStdToolbox>::new(MailboxPolicy::unbounded(None));
+  let mailbox = MailboxGeneric::<NoStdToolbox>::new(MailboxPolicy::unbounded(None));
   let mailbox_shared = ArcShared::new(mailbox);
   let executor = ArcShared::new(InlineExecutor::<NoStdToolbox>::new());
   let core = DispatcherCore::new(mailbox_shared, executor, None);
@@ -69,7 +69,7 @@ fn waker_clone_creates_new_waker() {
 
 #[test]
 fn waker_drop_cleans_up() {
-  let mailbox = Mailbox::<NoStdToolbox>::new(MailboxPolicy::unbounded(None));
+  let mailbox = MailboxGeneric::<NoStdToolbox>::new(MailboxPolicy::unbounded(None));
   let mailbox_shared = ArcShared::new(mailbox);
   let executor = ArcShared::new(InlineExecutor::<NoStdToolbox>::new());
   let core = DispatcherCore::new(mailbox_shared, executor, None);

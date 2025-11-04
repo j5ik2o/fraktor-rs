@@ -12,21 +12,21 @@ use crate::{
     actor_ref::{ActorRef, ActorRefSender},
   },
   error::{ActorError, SendError},
-  messaging::{AnyMessage, AnyMessageView},
-  system::ActorSystem,
+  messaging::{AnyMessage, AnyMessageGeneric, AnyMessageView},
+  system::ActorSystemGeneric,
 };
 
 struct RecordingSender;
 
 impl ActorRefSender<NoStdToolbox> for RecordingSender {
-  fn send(&self, _message: AnyMessage<NoStdToolbox>) -> Result<(), SendError<NoStdToolbox>> {
+  fn send(&self, _message: AnyMessage) -> Result<(), SendError<NoStdToolbox>> {
     Ok(())
   }
 }
 
 struct CaptureActor {
   payloads: NoStdMutex<Vec<u32>>,
-  replies:  NoStdMutex<Vec<Option<ActorRef<NoStdToolbox>>>>,
+  replies:  NoStdMutex<Vec<Option<ActorRef>>>,
 }
 
 impl CaptureActor {
@@ -38,7 +38,7 @@ impl CaptureActor {
     self.payloads.lock().clone()
   }
 
-  fn replies(&self) -> Vec<Option<ActorRef<NoStdToolbox>>> {
+  fn replies(&self) -> Vec<Option<ActorRef>> {
     self.replies.lock().clone()
   }
 }
@@ -120,16 +120,16 @@ impl MessageInvokerMiddleware<NoStdToolbox> for RecordingMiddleware {
 
 #[test]
 fn pipeline_sets_and_clears_reply_to() {
-  let system = ActorSystem::new_empty();
+  let system = ActorSystemGeneric::new_empty();
   let pid = crate::actor_prim::Pid::new(1, 0);
   let mut ctx = ActorContext::new(&system, pid);
   let mut actor = CaptureActor::new();
   let pipeline = MessageInvokerPipeline::<NoStdToolbox>::new();
 
   let reply_sender = ArcShared::new(RecordingSender);
-  let reply_ref = crate::actor_prim::actor_ref::ActorRef::new(crate::actor_prim::Pid::new(2, 0), reply_sender);
+  let reply_ref = crate::actor_prim::actor_ref::ActorRefGeneric::new(crate::actor_prim::Pid::new(2, 0), reply_sender);
 
-  let message = AnyMessage::new(123_u32).with_reply_to(reply_ref.clone());
+  let message = AnyMessageGeneric::new(123_u32).with_reply_to(reply_ref.clone());
   pipeline.invoke_user(&mut actor, &mut ctx, message).expect("invoke user message");
 
   assert_eq!(actor.payloads(), vec![123_u32]);
@@ -139,17 +139,18 @@ fn pipeline_sets_and_clears_reply_to() {
 
 #[test]
 fn pipeline_restores_previous_reply_target() {
-  let system = ActorSystem::new_empty();
+  let system = ActorSystemGeneric::new_empty();
   let pid = crate::actor_prim::Pid::new(10, 0);
   let mut ctx = ActorContext::new(&system, pid);
   let mut actor = CaptureActor::new();
   let pipeline = MessageInvokerPipeline::<NoStdToolbox>::new();
 
   let previous_sender = ArcShared::new(RecordingSender);
-  let previous_ref = crate::actor_prim::actor_ref::ActorRef::new(crate::actor_prim::Pid::new(3, 0), previous_sender);
+  let previous_ref =
+    crate::actor_prim::actor_ref::ActorRefGeneric::new(crate::actor_prim::Pid::new(3, 0), previous_sender);
   ctx.set_reply_to(Some(previous_ref.clone()));
 
-  pipeline.invoke_user(&mut actor, &mut ctx, AnyMessage::new(7_u32)).expect("invoke");
+  pipeline.invoke_user(&mut actor, &mut ctx, AnyMessageGeneric::new(7_u32)).expect("invoke");
 
   assert_eq!(actor.payloads(), vec![7_u32]);
   assert_eq!(actor.replies(), vec![None]);
@@ -158,7 +159,7 @@ fn pipeline_restores_previous_reply_target() {
 
 #[test]
 fn middleware_executes_in_expected_order() {
-  let system = ActorSystem::new_empty();
+  let system = ActorSystemGeneric::new_empty();
   let pid = crate::actor_prim::Pid::new(42, 0);
   let mut ctx = ActorContext::new(&system, pid);
   let log = ArcShared::new(NoStdMutex::new(Vec::new()));
@@ -170,7 +171,7 @@ fn middleware_executes_in_expected_order() {
     ArcShared::new(RecordingMiddleware::new("b", log.clone()));
   let pipeline = MessageInvokerPipeline::from_middlewares(vec![middleware_a, middleware_b]);
 
-  pipeline.invoke_user(&mut actor, &mut ctx, AnyMessage::new(1_u8)).expect("invoke");
+  pipeline.invoke_user(&mut actor, &mut ctx, AnyMessageGeneric::new(1_u8)).expect("invoke");
 
   assert_eq!(log.lock().clone(), vec![
     String::from("a:before"),

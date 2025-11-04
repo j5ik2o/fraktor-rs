@@ -4,12 +4,12 @@ use super::DispatchShared;
 use crate::{
   NoStdToolbox,
   dispatcher::{InlineExecutor, dispatcher_core::DispatcherCore},
-  mailbox::Mailbox,
+  mailbox::MailboxGeneric,
 };
 
 #[test]
 fn dispatch_shared_new() {
-  let mailbox = ArcShared::new(Mailbox::<NoStdToolbox>::new(crate::mailbox::MailboxPolicy::unbounded(None)));
+  let mailbox = ArcShared::new(MailboxGeneric::<NoStdToolbox>::new(crate::mailbox::MailboxPolicy::unbounded(None)));
   let executor = ArcShared::new(InlineExecutor::<NoStdToolbox>::new());
   let core = ArcShared::new(DispatcherCore::<NoStdToolbox>::new(mailbox, executor, None));
   let _shared = DispatchShared::new(core.clone());
@@ -18,7 +18,7 @@ fn dispatch_shared_new() {
 
 #[test]
 fn dispatch_shared_clone() {
-  let mailbox = ArcShared::new(Mailbox::<NoStdToolbox>::new(crate::mailbox::MailboxPolicy::unbounded(None)));
+  let mailbox = ArcShared::new(MailboxGeneric::<NoStdToolbox>::new(crate::mailbox::MailboxPolicy::unbounded(None)));
   let executor = ArcShared::new(InlineExecutor::<NoStdToolbox>::new());
   let core = ArcShared::new(DispatcherCore::<NoStdToolbox>::new(mailbox, executor, None));
   let shared1 = DispatchShared::new(core.clone());
@@ -29,7 +29,7 @@ fn dispatch_shared_clone() {
 
 #[test]
 fn dispatch_shared_drive() {
-  let mailbox = ArcShared::new(Mailbox::<NoStdToolbox>::new(crate::mailbox::MailboxPolicy::unbounded(None)));
+  let mailbox = ArcShared::new(MailboxGeneric::<NoStdToolbox>::new(crate::mailbox::MailboxPolicy::unbounded(None)));
   let executor = ArcShared::new(InlineExecutor::<NoStdToolbox>::new());
   let core = ArcShared::new(DispatcherCore::<NoStdToolbox>::new(mailbox, executor, None));
   let shared = DispatchShared::new(core);

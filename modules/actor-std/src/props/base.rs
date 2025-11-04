@@ -5,7 +5,7 @@ use std::{
 
 use cellactor_actor_core_rs::{
   mailbox::MailboxPolicy,
-  props::{ActorFactory, MailboxConfig, Props as CoreProps, SupervisorOptions},
+  props::{ActorFactory, MailboxConfig, PropsGeneric as CorePropsGeneric, SupervisorOptions},
 };
 use cellactor_utils_core_rs::sync::ArcShared;
 use cellactor_utils_std_rs::runtime_toolbox::StdToolbox;
@@ -18,14 +18,14 @@ use crate::{
 /// Actor properties specialised for `StdToolbox` with a closure ergonomics layer.
 #[derive(Clone)]
 pub struct Props {
-  inner: CoreProps<StdToolbox>,
+  inner: CorePropsGeneric<StdToolbox>,
 }
 
 impl Props {
   /// Creates new props from the provided factory.
   #[must_use]
   pub fn new(factory: ArcShared<dyn ActorFactory<StdToolbox>>) -> Self {
-    Self { inner: CoreProps::new(factory) }
+    Self { inner: CorePropsGeneric::new(factory) }
   }
 
   /// Convenience helper to build props from a closure returning a [`Actor`].
@@ -35,7 +35,7 @@ impl Props {
     F: Fn() -> A + Send + Sync + 'static,
     A: Actor + Sync + 'static, {
     let wrapped_factory = move || ActorAdapter::new(factory());
-    Self { inner: CoreProps::from_fn(wrapped_factory) }
+    Self { inner: CorePropsGeneric::from_fn(wrapped_factory) }
   }
 
   /// Returns the actor factory.
@@ -120,25 +120,25 @@ impl Props {
 
   /// Borrows the underlying core props reference.
   #[must_use]
-  pub fn as_core(&self) -> &CoreProps<StdToolbox> {
+  pub fn as_core(&self) -> &CorePropsGeneric<StdToolbox> {
     &self.inner
   }
 
   /// Borrows the underlying core props mutably.
   #[must_use]
-  pub fn as_core_mut(&mut self) -> &mut CoreProps<StdToolbox> {
+  pub fn as_core_mut(&mut self) -> &mut CorePropsGeneric<StdToolbox> {
     &mut self.inner
   }
 
   /// Consumes the wrapper and returns the underlying core props.
   #[must_use]
-  pub fn into_inner(self) -> CoreProps<StdToolbox> {
+  pub fn into_inner(self) -> CorePropsGeneric<StdToolbox> {
     self.inner
   }
 }
 
 impl Deref for Props {
-  type Target = CoreProps<StdToolbox>;
+  type Target = CorePropsGeneric<StdToolbox>;
 
   fn deref(&self) -> &Self::Target {
     self.as_core()

@@ -8,12 +8,12 @@ use cellactor_utils_core_rs::sync::ArcShared;
 use crate::{NoStdToolbox, RuntimeToolbox, event_stream::EventStreamSubscriber};
 
 /// Maps subscription identifiers to subscriber instances.
-pub struct EventStreamSubscriberEntry<TB: RuntimeToolbox = NoStdToolbox> {
+pub struct EventStreamSubscriberEntryGeneric<TB: RuntimeToolbox> {
   id:         u64,
   subscriber: ArcShared<dyn EventStreamSubscriber<TB>>,
 }
 
-impl<TB: RuntimeToolbox> EventStreamSubscriberEntry<TB> {
+impl<TB: RuntimeToolbox> EventStreamSubscriberEntryGeneric<TB> {
   /// Creates a new subscriber entry.
   #[must_use]
   pub const fn new(id: u64, subscriber: ArcShared<dyn EventStreamSubscriber<TB>>) -> Self {
@@ -33,8 +33,11 @@ impl<TB: RuntimeToolbox> EventStreamSubscriberEntry<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox> Clone for EventStreamSubscriberEntry<TB> {
+impl<TB: RuntimeToolbox> Clone for EventStreamSubscriberEntryGeneric<TB> {
   fn clone(&self) -> Self {
     Self { id: self.id, subscriber: self.subscriber.clone() }
   }
 }
+
+/// Type alias for `EventStreamSubscriberEntryGeneric` with the default `NoStdToolbox`.
+pub type EventStreamSubscriberEntry = EventStreamSubscriberEntryGeneric<NoStdToolbox>;

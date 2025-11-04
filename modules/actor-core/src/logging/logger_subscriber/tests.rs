@@ -77,8 +77,8 @@ fn on_event_ignores_non_log_events() {
   let (writer, logs) = TestWriter::new();
   let subscriber = LoggerSubscriber::new(LogLevel::Info, ArcShared::new(writer));
 
-  subscriber.on_event(&EventStreamEvent::<NoStdToolbox>::DeadLetter(crate::dead_letter::DeadLetterEntry::new(
-    crate::messaging::AnyMessage::new(()),
+  subscriber.on_event(&EventStreamEvent::<NoStdToolbox>::DeadLetter(crate::dead_letter::DeadLetterEntryGeneric::new(
+    crate::messaging::AnyMessageGeneric::new(()),
     crate::dead_letter::DeadLetterReason::MissingRecipient,
     None,
     Duration::ZERO,

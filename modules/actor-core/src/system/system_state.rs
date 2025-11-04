@@ -15,41 +15,41 @@ use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
 use crate::{
   NoStdToolbox, RuntimeToolbox, ToolboxMutex,
-  actor_prim::{ActorCell, Pid},
-  dead_letter::{DeadLetter, DeadLetterEntry},
+  actor_prim::{ActorCellGeneric, Pid},
+  dead_letter::{DeadLetterEntryGeneric, DeadLetterGeneric},
   error::{ActorError, SendError},
-  event_stream::{EventStream, EventStreamEvent},
+  event_stream::{EventStreamEvent, EventStreamGeneric},
   futures::ActorFuture,
   logging::{LogEvent, LogLevel},
-  messaging::{AnyMessage, SystemMessage},
+  messaging::{AnyMessageGeneric, SystemMessage},
   spawn::{NameRegistry, NameRegistryError, SpawnError},
   supervision::SupervisorDirective,
 };
 
 /// Type alias for ask future collections.
-type AskFutureVec<TB> = Vec<ArcShared<ActorFuture<AnyMessage<TB>, TB>>>;
+type AskFutureVec<TB> = Vec<ArcShared<ActorFuture<AnyMessageGeneric<TB>, TB>>>;
 
 /// Captures global actor system state.
-pub struct SystemState<TB: RuntimeToolbox + 'static = NoStdToolbox> {
+pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   next_pid:      AtomicU64,
   clock:         AtomicU64,
-  cells:         ToolboxMutex<HashMap<Pid, ArcShared<ActorCell<TB>>>, TB>,
+  cells:         ToolboxMutex<HashMap<Pid, ArcShared<ActorCellGeneric<TB>>>, TB>,
   registries:    ToolboxMutex<HashMap<Option<Pid>, NameRegistry>, TB>,
-  user_guardian: ToolboxMutex<Option<ArcShared<ActorCell<TB>>>, TB>,
+  user_guardian: ToolboxMutex<Option<ArcShared<ActorCellGeneric<TB>>>, TB>,
   ask_futures:   ToolboxMutex<AskFutureVec<TB>, TB>,
   termination:   ArcShared<ActorFuture<(), TB>>,
   terminated:    AtomicBool,
-  event_stream:  ArcShared<EventStream<TB>>,
-  dead_letter:   ArcShared<DeadLetter<TB>>,
+  event_stream:  ArcShared<EventStreamGeneric<TB>>,
+  dead_letter:   ArcShared<DeadLetterGeneric<TB>>,
 }
 
-impl<TB: RuntimeToolbox + 'static> SystemState<TB> {
+impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   /// Creates a fresh state container without any registered actors.
   #[must_use]
   pub fn new() -> Self {
     const DEAD_LETTER_CAPACITY: usize = 512;
-    let event_stream = ArcShared::new(EventStream::default());
-    let dead_letter = ArcShared::new(DeadLetter::new(event_stream.clone(), DEAD_LETTER_CAPACITY));
+    let event_stream = ArcShared::new(EventStreamGeneric::default());
+    let dead_letter = ArcShared::new(DeadLetterGeneric::new(event_stream.clone(), DEAD_LETTER_CAPACITY));
     Self {
       next_pid: AtomicU64::new(0),
       clock: AtomicU64::new(0),
@@ -72,18 +72,18 @@ impl<TB: RuntimeToolbox + 'static> SystemState<TB> {
   }
 
   /// Registers the provided actor cell in the global registry.
-  pub fn register_cell(&self, cell: ArcShared<ActorCell<TB>>) {
+  pub fn register_cell(&self, cell: ArcShared<ActorCellGeneric<TB>>) {
     self.cells.lock().insert(cell.pid(), cell);
   }
 
   /// Removes the actor cell associated with the pid.
-  pub fn remove_cell(&self, pid: &Pid) -> Option<ArcShared<ActorCell<TB>>> {
+  pub fn remove_cell(&self, pid: &Pid) -> Option<ArcShared<ActorCellGeneric<TB>>> {
     self.cells.lock().remove(pid)
   }
 
   /// Retrieves an actor cell by pid.
   #[must_use]
-  pub fn cell(&self, pid: &Pid) -> Option<ArcShared<ActorCell<TB>>> {
+  pub fn cell(&self, pid: &Pid) -> Option<ArcShared<ActorCellGeneric<TB>>> {
     self.cells.lock().get(pid).cloned()
   }
 
@@ -121,7 +121,7 @@ impl<TB: RuntimeToolbox + 'static> SystemState<TB> {
   }
 
   /// Stores the user guardian cell reference.
-  pub fn set_user_guardian(&self, cell: ArcShared<ActorCell<TB>>) {
+  pub fn set_user_guardian(&self, cell: ArcShared<ActorCellGeneric<TB>>) {
     *self.user_guardian.lock() = Some(cell);
   }
 
@@ -137,7 +137,7 @@ impl<TB: RuntimeToolbox + 'static> SystemState<TB> {
 
   /// Returns the user guardian cell if initialised.
   #[must_use]
-  pub fn user_guardian(&self) -> Option<ArcShared<ActorCell<TB>>> {
+  pub fn user_guardian(&self) -> Option<ArcShared<ActorCellGeneric<TB>>> {
     self.user_guardian.lock().clone()
   }
 
@@ -149,18 +149,18 @@ impl<TB: RuntimeToolbox + 'static> SystemState<TB> {
 
   /// Returns the shared event stream handle.
   #[must_use]
-  pub fn event_stream(&self) -> ArcShared<EventStream<TB>> {
+  pub fn event_stream(&self) -> ArcShared<EventStreamGeneric<TB>> {
     self.event_stream.clone()
   }
 
   /// Returns a snapshot of deadletter entries.
   #[must_use]
-  pub fn dead_letters(&self) -> Vec<DeadLetterEntry<TB>> {
+  pub fn dead_letters(&self) -> Vec<DeadLetterEntryGeneric<TB>> {
     self.dead_letter.entries()
   }
 
   /// Registers an ask future so the actor system can track its completion.
-  pub fn register_ask_future(&self, future: ArcShared<ActorFuture<AnyMessage<TB>, TB>>) {
+  pub fn register_ask_future(&self, future: ArcShared<ActorFuture<AnyMessageGeneric<TB>, TB>>) {
     self.ask_futures.lock().push(future);
   }
 
@@ -207,7 +207,7 @@ impl<TB: RuntimeToolbox + 'static> SystemState<TB> {
     if let Some(cell) = self.cell(&pid) {
       cell.dispatcher().enqueue_system(message)
     } else {
-      Err(SendError::<TB>::closed(AnyMessage::new(message)))
+      Err(SendError::<TB>::closed(AnyMessageGeneric::new(message)))
     }
   }
 
@@ -232,7 +232,7 @@ impl<TB: RuntimeToolbox + 'static> SystemState<TB> {
   }
 
   /// Drains ask futures that have completed since the previous inspection.
-  pub fn drain_ready_ask_futures(&self) -> Vec<ArcShared<ActorFuture<AnyMessage<TB>, TB>>> {
+  pub fn drain_ready_ask_futures(&self) -> Vec<ArcShared<ActorFuture<AnyMessageGeneric<TB>, TB>>> {
     let mut registry = self.ask_futures.lock();
     let mut ready = Vec::new();
     let mut index = 0_usize;
@@ -317,11 +317,14 @@ impl<TB: RuntimeToolbox + 'static> SystemState<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Default for SystemState<TB> {
+impl<TB: RuntimeToolbox + 'static> Default for SystemStateGeneric<TB> {
   fn default() -> Self {
     Self::new()
   }
 }
 
-unsafe impl<TB: RuntimeToolbox + 'static> Send for SystemState<TB> {}
-unsafe impl<TB: RuntimeToolbox + 'static> Sync for SystemState<TB> {}
+unsafe impl<TB: RuntimeToolbox + 'static> Send for SystemStateGeneric<TB> {}
+unsafe impl<TB: RuntimeToolbox + 'static> Sync for SystemStateGeneric<TB> {}
+
+/// Type alias for `SystemStateGeneric` with the default `NoStdToolbox`.
+pub type SystemState = SystemStateGeneric<NoStdToolbox>;

@@ -8,7 +8,7 @@ use cellactor_utils_core_rs::sync::ArcShared;
 use crate::{NoStdToolbox, RuntimeToolbox, event_stream::EventStreamGeneric};
 
 /// RAII wrapper ensuring subscribers are removed when dropped.
-pub struct EventStreamSubscriptionGeneric<TB: RuntimeToolbox + 'static = NoStdToolbox> {
+pub struct EventStreamSubscriptionGeneric<TB: RuntimeToolbox + 'static> {
   stream: ArcShared<EventStreamGeneric<TB>>,
   id:     u64,
 }
@@ -34,4 +34,4 @@ impl<TB: RuntimeToolbox + 'static> Drop for EventStreamSubscriptionGeneric<TB> {
 }
 
 /// Type alias for `EventStreamSubscriptionGeneric` with the default `NoStdToolbox`.
-pub type EventStreamSubscription<TB = NoStdToolbox> = EventStreamSubscriptionGeneric<TB>;
+pub type EventStreamSubscription = EventStreamSubscriptionGeneric<NoStdToolbox>;

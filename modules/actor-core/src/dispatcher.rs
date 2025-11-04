@@ -24,7 +24,7 @@ mod dispatcher_state;
 mod inline_executor;
 mod schedule_waker;
 
-pub use base::Dispatcher;
+pub use base::{Dispatcher, DispatcherGeneric};
 pub use dispatch_executor::DispatchExecutor;
 pub use dispatch_shared::DispatchShared;
 pub use dispatcher_sender::DispatcherSender;

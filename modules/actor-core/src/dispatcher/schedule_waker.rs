@@ -7,7 +7,7 @@ use core::{
 
 use cellactor_utils_core_rs::sync::ArcShared;
 
-use super::{base::Dispatcher, dispatcher_core::DispatcherCore};
+use super::{base::DispatcherGeneric, dispatcher_core::DispatcherCore};
 use crate::RuntimeToolbox;
 
 #[cfg(test)]
@@ -23,7 +23,7 @@ impl<TB: RuntimeToolbox + 'static> ScheduleShared<TB> {
   }
 
   fn schedule(&self) {
-    Dispatcher::from_core(self.dispatcher.clone()).schedule();
+    DispatcherGeneric::from_core(self.dispatcher.clone()).schedule();
   }
 }
 

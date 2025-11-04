@@ -50,12 +50,12 @@ impl Actor<NoStdToolbox> for NullActor {
 }
 
 struct TestGuardian {
-  child_slot:  ArcShared<NoStdMutex<Option<ChildRef<NoStdToolbox>>>>,
-  child_props: Props<NoStdToolbox>,
+  child_slot:  ArcShared<NoStdMutex<Option<ChildRef>>>,
+  child_props: Props,
 }
 
 impl TestGuardian {
-  fn new(child_slot: ArcShared<NoStdMutex<Option<ChildRef<NoStdToolbox>>>>, child_props: Props<NoStdToolbox>) -> Self {
+  fn new(child_slot: ArcShared<NoStdMutex<Option<ChildRef>>>, child_props: Props) -> Self {
     Self { child_slot, child_props }
   }
 }
@@ -83,9 +83,9 @@ fn dead_letter_event_is_published_when_send_fails() {
   let mailbox_policy =
     MailboxPolicy::bounded(NonZeroUsize::new(1).expect("non-zero"), MailboxOverflowStrategy::DropNewest, None);
   let mailbox_config = MailboxConfig::new(mailbox_policy);
-  let child_props = Props::<NoStdToolbox>::from_fn(|| NullActor).with_mailbox(mailbox_config);
+  let child_props = Props::from_fn(|| NullActor).with_mailbox(mailbox_config);
 
-  let props = Props::<NoStdToolbox>::from_fn({
+  let props = Props::from_fn({
     let child_slot = child_slot.clone();
     let child_props = child_props.clone();
     move || TestGuardian::new(child_slot.clone(), child_props.clone())

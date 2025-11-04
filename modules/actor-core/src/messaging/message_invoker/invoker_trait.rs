@@ -3,7 +3,7 @@
 use crate::{
   RuntimeToolbox,
   error::ActorError,
-  messaging::{AnyMessage, SystemMessage},
+  messaging::{AnyMessageGeneric, SystemMessage},
 };
 
 /// Dispatches user and system messages to actor handlers.
@@ -13,7 +13,7 @@ pub trait MessageInvoker<TB: RuntimeToolbox + 'static>: Send + Sync {
   /// # Errors
   ///
   /// Returns an error if message processing fails.
-  fn invoke_user_message(&self, message: AnyMessage<TB>) -> Result<(), ActorError>;
+  fn invoke_user_message(&self, message: AnyMessageGeneric<TB>) -> Result<(), ActorError>;
 
   /// Processes system messages.
   ///

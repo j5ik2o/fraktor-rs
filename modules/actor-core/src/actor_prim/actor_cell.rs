@@ -13,52 +13,52 @@ use cellactor_utils_core_rs::{
 
 use crate::{
   NoStdToolbox, RuntimeToolbox, ToolboxMutex,
-  actor_prim::{Actor, ActorContext, Pid, actor_ref::ActorRef},
-  dispatcher::{Dispatcher, DispatcherSender},
+  actor_prim::{Actor, ActorContext, Pid, actor_ref::ActorRefGeneric},
+  dispatcher::{DispatcherGeneric, DispatcherSender},
   error::ActorError,
   event_stream::EventStreamEvent,
   lifecycle::{LifecycleEvent, LifecycleStage},
-  mailbox::{Mailbox, MailboxCapacity, MailboxInstrumentation},
+  mailbox::{MailboxCapacity, MailboxGeneric, MailboxInstrumentation},
   messaging::{
-    AnyMessage, SystemMessage,
+    AnyMessageGeneric, SystemMessage,
     message_invoker::{MessageInvoker, MessageInvokerPipeline},
   },
-  props::{ActorFactory, Props},
+  props::{ActorFactory, PropsGeneric},
   supervision::{RestartStatistics, SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
-  system::{ActorSystem, SystemState},
+  system::{ActorSystemGeneric, SystemStateGeneric},
 };
 
 /// Runtime container responsible for executing an actor instance.
-pub struct ActorCell<TB: RuntimeToolbox + 'static = NoStdToolbox> {
+pub struct ActorCellGeneric<TB: RuntimeToolbox + 'static> {
   pid:         Pid,
   parent:      Option<Pid>,
   name:        String,
-  system:      ArcShared<SystemState<TB>>,
+  system:      ArcShared<SystemStateGeneric<TB>>,
   factory:     ArcShared<dyn ActorFactory<TB>>,
   actor:       ToolboxMutex<Box<dyn Actor<TB> + Send + Sync>, TB>,
   pipeline:    MessageInvokerPipeline<TB>,
-  mailbox:     ArcShared<Mailbox<TB>>,
-  dispatcher:  Dispatcher<TB>,
+  mailbox:     ArcShared<MailboxGeneric<TB>>,
+  dispatcher:  DispatcherGeneric<TB>,
   sender:      ArcShared<DispatcherSender<TB>>,
   children:    ToolboxMutex<Vec<Pid>, TB>,
   supervisor:  SupervisorStrategy,
   child_stats: ToolboxMutex<Vec<(Pid, RestartStatistics)>, TB>,
 }
 
-unsafe impl<TB: RuntimeToolbox + 'static> Send for ActorCell<TB> {}
-unsafe impl<TB: RuntimeToolbox + 'static> Sync for ActorCell<TB> {}
+unsafe impl<TB: RuntimeToolbox + 'static> Send for ActorCellGeneric<TB> {}
+unsafe impl<TB: RuntimeToolbox + 'static> Sync for ActorCellGeneric<TB> {}
 
-impl<TB: RuntimeToolbox + 'static> ActorCell<TB> {
+impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
   /// Creates a new actor cell using the provided runtime state and props.
   #[must_use]
   pub fn create(
-    system: ArcShared<SystemState<TB>>,
+    system: ArcShared<SystemStateGeneric<TB>>,
     pid: Pid,
     parent: Option<Pid>,
     name: String,
-    props: &Props<TB>,
+    props: &PropsGeneric<TB>,
   ) -> ArcShared<Self> {
-    let mailbox = ArcShared::new(Mailbox::new(props.mailbox_policy()));
+    let mailbox = ArcShared::new(MailboxGeneric::new(props.mailbox_policy()));
     {
       let mailbox_config = props.mailbox();
       let policy = mailbox_config.policy();
@@ -130,20 +130,20 @@ impl<TB: RuntimeToolbox + 'static> ActorCell<TB> {
 
   /// Returns a handle to the mailbox managed by this cell.
   #[must_use]
-  pub fn mailbox(&self) -> ArcShared<Mailbox<TB>> {
+  pub fn mailbox(&self) -> ArcShared<MailboxGeneric<TB>> {
     self.mailbox.clone()
   }
 
   /// Returns the dispatcher associated with this cell.
   #[must_use]
-  pub fn dispatcher(&self) -> Dispatcher<TB> {
+  pub fn dispatcher(&self) -> DispatcherGeneric<TB> {
     self.dispatcher.clone()
   }
 
   /// Produces an actor reference targeting this cell.
   #[must_use]
-  pub fn actor_ref(&self) -> ActorRef<TB> {
-    ActorRef::with_system(self.pid, self.sender.clone(), self.system.clone())
+  pub fn actor_ref(&self) -> ActorRefGeneric<TB> {
+    ActorRefGeneric::with_system(self.pid, self.sender.clone(), self.system.clone())
   }
 
   /// Runs the actor's `pre_start` hook.
@@ -162,7 +162,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCell<TB> {
   /// Returns an error if actor recreation or lifecycle hooks fail.
   pub fn restart(&self) -> Result<(), ActorError> {
     {
-      let system = ActorSystem::from_state(self.system.clone());
+      let system = ActorSystemGeneric::from_state(self.system.clone());
       let mut ctx = ActorContext::new(&system, self.pid);
       let mut actor = self.actor.lock();
       actor.post_stop(&mut ctx)?;
@@ -197,7 +197,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCell<TB> {
   }
 
   fn handle_stop(&self) -> Result<(), ActorError> {
-    let system = ActorSystem::from_state(self.system.clone());
+    let system = ActorSystemGeneric::from_state(self.system.clone());
     let mut ctx = ActorContext::new(&system, self.pid);
     let mut actor = self.actor.lock();
     let result = actor.post_stop(&mut ctx);
@@ -229,7 +229,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCell<TB> {
   }
 
   fn run_pre_start(&self, stage: LifecycleStage) -> Result<(), ActorError> {
-    let system = ActorSystem::from_state(self.system.clone());
+    let system = ActorSystemGeneric::from_state(self.system.clone());
     let mut ctx = ActorContext::new(&system, self.pid);
     let mut actor = self.actor.lock();
     let outcome = actor.pre_start(&mut ctx);
@@ -248,9 +248,9 @@ impl<TB: RuntimeToolbox + 'static> ActorCell<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> MessageInvoker<TB> for ActorCell<TB> {
-  fn invoke_user_message(&self, message: AnyMessage<TB>) -> Result<(), ActorError> {
-    let system = ActorSystem::from_state(self.system.clone());
+impl<TB: RuntimeToolbox + 'static> MessageInvoker<TB> for ActorCellGeneric<TB> {
+  fn invoke_user_message(&self, message: AnyMessageGeneric<TB>) -> Result<(), ActorError> {
+    let system = ActorSystemGeneric::from_state(self.system.clone());
     let mut ctx = ActorContext::new(&system, self.pid);
     let mut actor = self.actor.lock();
     let result = self.pipeline.invoke_user(&mut *actor, &mut ctx, message);
@@ -276,7 +276,7 @@ impl<TB: RuntimeToolbox + 'static> MessageInvoker<TB> for ActorCell<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> ActorCell<TB> {
+impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
   pub(crate) fn handle_child_failure(
     &self,
     child: Pid,
@@ -317,3 +317,6 @@ fn find_or_insert_stats(entries: &mut Vec<(Pid, RestartStatistics)>, pid: Pid) -
   entries.push((pid, RestartStatistics::new()));
   &mut entries[new_index].1
 }
+
+/// Type alias for `ActorCellGeneric` with the default `NoStdToolbox`.
+pub type ActorCell = ActorCellGeneric<NoStdToolbox>;

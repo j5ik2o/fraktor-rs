@@ -12,8 +12,8 @@ mod pid;
 mod receive_state;
 
 pub use actor::Actor;
-pub use actor_cell::ActorCell;
+pub use actor_cell::{ActorCell, ActorCellGeneric};
 pub use actor_context::ActorContext;
-pub use child_ref::ChildRef;
+pub use child_ref::{ChildRef, ChildRefGeneric};
 pub use pid::Pid;
 pub use receive_state::ReceiveState;

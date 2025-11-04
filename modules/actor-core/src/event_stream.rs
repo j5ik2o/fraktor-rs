@@ -11,5 +11,5 @@ mod event_stream_subscription;
 pub use base::{EventStream, EventStreamGeneric};
 pub use event_stream_event::EventStreamEvent;
 pub use event_stream_subscriber::EventStreamSubscriber;
-pub use event_stream_subscriber_entry::EventStreamSubscriberEntry;
+pub use event_stream_subscriber_entry::{EventStreamSubscriberEntry, EventStreamSubscriberEntryGeneric};
 pub use event_stream_subscription::{EventStreamSubscription, EventStreamSubscriptionGeneric};

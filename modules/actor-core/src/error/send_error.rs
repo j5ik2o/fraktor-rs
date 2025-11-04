@@ -5,48 +5,48 @@ mod tests;
 
 use alloc::fmt;
 
-use crate::{NoStdToolbox, RuntimeToolbox, messaging::AnyMessage};
+use crate::{NoStdToolbox, RuntimeToolbox, messaging::AnyMessageGeneric};
 
 /// Represents failures that can occur when enqueueing a message.
 pub enum SendError<TB: RuntimeToolbox = NoStdToolbox> {
   /// The mailbox is full and the message could not be enqueued.
-  Full(AnyMessage<TB>),
+  Full(AnyMessageGeneric<TB>),
   /// The mailbox is temporarily suspended.
-  Suspended(AnyMessage<TB>),
+  Suspended(AnyMessageGeneric<TB>),
   /// The mailbox or actor has been permanently closed.
-  Closed(AnyMessage<TB>),
+  Closed(AnyMessageGeneric<TB>),
   /// No reply target was provided for the attempted send operation.
-  NoRecipient(AnyMessage<TB>),
+  NoRecipient(AnyMessageGeneric<TB>),
 }
 
 impl<TB: RuntimeToolbox> SendError<TB> {
   /// Creates a send error representing a full mailbox.
   #[must_use]
-  pub const fn full(message: AnyMessage<TB>) -> Self {
+  pub const fn full(message: AnyMessageGeneric<TB>) -> Self {
     Self::Full(message)
   }
 
   /// Creates a send error representing a suspended mailbox.
   #[must_use]
-  pub const fn suspended(message: AnyMessage<TB>) -> Self {
+  pub const fn suspended(message: AnyMessageGeneric<TB>) -> Self {
     Self::Suspended(message)
   }
 
   /// Creates a send error representing a closed mailbox or actor.
   #[must_use]
-  pub const fn closed(message: AnyMessage<TB>) -> Self {
+  pub const fn closed(message: AnyMessageGeneric<TB>) -> Self {
     Self::Closed(message)
   }
 
   /// Creates a send error representing a missing reply target.
   #[must_use]
-  pub const fn no_recipient(message: AnyMessage<TB>) -> Self {
+  pub const fn no_recipient(message: AnyMessageGeneric<TB>) -> Self {
     Self::NoRecipient(message)
   }
 
   /// Returns a shared reference to the owned message.
   #[must_use]
-  pub const fn message(&self) -> &AnyMessage<TB> {
+  pub const fn message(&self) -> &AnyMessageGeneric<TB> {
     match self {
       | SendError::Full(message)
       | SendError::Suspended(message)
@@ -57,7 +57,7 @@ impl<TB: RuntimeToolbox> SendError<TB> {
 
   /// Consumes the error and returns the owned message.
   #[must_use]
-  pub fn into_message(self) -> AnyMessage<TB> {
+  pub fn into_message(self) -> AnyMessageGeneric<TB> {
     match self {
       | SendError::Full(message)
       | SendError::Suspended(message)

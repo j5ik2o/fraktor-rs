@@ -7,7 +7,7 @@ use cellactor_utils_core_rs::collections::queue::{QueueError, backend::VecRingBa
 use crate::{
   RuntimeToolbox, ToolboxMutex,
   error::SendError,
-  messaging::{AnyMessage, SystemMessage},
+  messaging::{AnyMessageGeneric, SystemMessage},
 };
 
 mod base;
@@ -25,7 +25,7 @@ mod metrics_event;
 mod overflow_strategy;
 mod policy;
 
-pub use base::Mailbox;
+pub use base::{Mailbox, MailboxGeneric};
 pub use capacity::MailboxCapacity;
 pub use mailbox_enqueue_outcome::EnqueueOutcome;
 pub use mailbox_instrumentation::MailboxInstrumentation;
@@ -45,7 +45,7 @@ mod tests;
 
 pub(crate) type QueueMutex<T, TB> = ToolboxMutex<VecRingBackend<T>, TB>;
 
-pub(crate) fn map_user_queue_error<TB: RuntimeToolbox>(error: QueueError<AnyMessage<TB>>) -> SendError<TB> {
+pub(crate) fn map_user_queue_error<TB: RuntimeToolbox>(error: QueueError<AnyMessageGeneric<TB>>) -> SendError<TB> {
   match error {
     | QueueError::Full(item) | QueueError::OfferError(item) => SendError::full(item),
     | QueueError::Closed(item) | QueueError::AllocError(item) => SendError::closed(item),
@@ -57,8 +57,8 @@ pub(crate) fn map_user_queue_error<TB: RuntimeToolbox>(error: QueueError<AnyMess
 
 pub(crate) fn map_system_queue_error<TB: RuntimeToolbox>(error: QueueError<SystemMessage>) -> SendError<TB> {
   match error {
-    | QueueError::Full(item) | QueueError::OfferError(item) => SendError::full(AnyMessage::new(item)),
-    | QueueError::Closed(item) | QueueError::AllocError(item) => SendError::closed(AnyMessage::new(item)),
+    | QueueError::Full(item) | QueueError::OfferError(item) => SendError::full(AnyMessageGeneric::new(item)),
+    | QueueError::Closed(item) | QueueError::AllocError(item) => SendError::closed(AnyMessageGeneric::new(item)),
     | QueueError::Disconnected | QueueError::Empty | QueueError::WouldBlock => {
       panic!("unexpected queue error variant during offer")
     },

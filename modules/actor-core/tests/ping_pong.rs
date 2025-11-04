@@ -42,14 +42,11 @@ impl Actor<NoStdToolbox> for RecordingChild {
 
 struct RecordingGuardian {
   log:        ArcShared<NoStdMutex<Vec<u32>>>,
-  child_slot: ArcShared<NoStdMutex<Option<ChildRef<NoStdToolbox>>>>,
+  child_slot: ArcShared<NoStdMutex<Option<ChildRef>>>,
 }
 
 impl RecordingGuardian {
-  fn new(
-    log: ArcShared<NoStdMutex<Vec<u32>>>,
-    child_slot: ArcShared<NoStdMutex<Option<ChildRef<NoStdToolbox>>>>,
-  ) -> Self {
+  fn new(log: ArcShared<NoStdMutex<Vec<u32>>>, child_slot: ArcShared<NoStdMutex<Option<ChildRef>>>) -> Self {
     Self { log, child_slot }
   }
 }
@@ -123,7 +120,7 @@ impl Actor<NoStdToolbox> for NamingGuardian {
 fn spawn_and_tell_delivers_message() {
   let log = ArcShared::new(NoStdMutex::new(Vec::new()));
   let child_slot = ArcShared::new(NoStdMutex::new(None));
-  let props = Props::<NoStdToolbox>::from_fn({
+  let props = Props::from_fn({
     let log = log.clone();
     let child_slot = child_slot.clone();
     move || RecordingGuardian::new(log.clone(), child_slot.clone())
@@ -145,7 +142,7 @@ fn spawn_and_tell_delivers_message() {
 fn tell_respects_mailbox_backpressure() {
   use core::num::NonZeroUsize;
 
-  let mailbox: Mailbox<NoStdToolbox> =
+  let mailbox: Mailbox =
     Mailbox::new(MailboxPolicy::bounded(NonZeroUsize::new(1).unwrap(), MailboxOverflowStrategy::DropNewest, None));
 
   assert!(mailbox.enqueue_user(AnyMessage::new("first")).is_ok());
@@ -158,7 +155,7 @@ fn auto_naming_and_duplicate_detection() {
   let conflict = ArcShared::new(NoStdMutex::new(false));
   let spawned = ArcShared::new(NoStdMutex::new(Vec::new()));
 
-  let props = Props::<NoStdToolbox>::from_fn({
+  let props = Props::from_fn({
     let conflict = conflict.clone();
     let spawned = spawned.clone();
     move || NamingGuardian::new(conflict.clone(), spawned.clone())

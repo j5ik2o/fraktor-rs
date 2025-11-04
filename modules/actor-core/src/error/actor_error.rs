@@ -1,5 +1,8 @@
 //! Error classification returned by actor lifecycle callbacks.
 
+#[cfg(test)]
+mod tests;
+
 use alloc::format;
 
 use crate::{

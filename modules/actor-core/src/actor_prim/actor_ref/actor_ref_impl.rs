@@ -18,18 +18,18 @@ use crate::{
   },
   error::SendError,
   futures::ActorFuture,
-  messaging::{AnyMessage, AskResponse},
-  system::SystemState,
+  messaging::{AnyMessageGeneric, AskResponseGeneric},
+  system::SystemStateGeneric,
 };
 
 /// Handle used to communicate with an actor instance.
-pub struct ActorRef<TB: RuntimeToolbox = NoStdToolbox> {
+pub struct ActorRefGeneric<TB: RuntimeToolbox> {
   pid:    Pid,
   sender: ArcShared<dyn ActorRefSender<TB>>,
-  system: Option<ArcShared<SystemState<TB>>>,
+  system: Option<ArcShared<SystemStateGeneric<TB>>>,
 }
 
-impl<TB: RuntimeToolbox> ActorRef<TB> {
+impl<TB: RuntimeToolbox> ActorRefGeneric<TB> {
   /// Creates a new actor reference backed by the provided sender.
   #[must_use]
   pub fn new<T>(pid: Pid, sender: ArcShared<T>) -> Self
@@ -38,13 +38,13 @@ impl<TB: RuntimeToolbox> ActorRef<TB> {
     Self::from_parts(pid, sender, None)
   }
 
-  pub(crate) fn with_system<T>(pid: Pid, sender: ArcShared<T>, system: ArcShared<SystemState<TB>>) -> Self
+  pub(crate) fn with_system<T>(pid: Pid, sender: ArcShared<T>, system: ArcShared<SystemStateGeneric<TB>>) -> Self
   where
     T: ActorRefSender<TB> + 'static, {
     Self::from_parts(pid, sender, Some(system))
   }
 
-  fn from_parts<T>(pid: Pid, sender: ArcShared<T>, system: Option<ArcShared<SystemState<TB>>>) -> Self
+  fn from_parts<T>(pid: Pid, sender: ArcShared<T>, system: Option<ArcShared<SystemStateGeneric<TB>>>) -> Self
   where
     T: ActorRefSender<TB> + 'static, {
     let dyn_sender: ArcShared<dyn ActorRefSender<TB>> = sender;
@@ -62,7 +62,7 @@ impl<TB: RuntimeToolbox> ActorRef<TB> {
   /// # Errors
   ///
   /// Returns an error if the mailbox is full, closed, or the actor doesn't exist.
-  pub fn tell(&self, message: AnyMessage<TB>) -> Result<(), SendError<TB>> {
+  pub fn tell(&self, message: AnyMessageGeneric<TB>) -> Result<(), SendError<TB>> {
     match self.sender.send(message) {
       | Ok(()) => Ok(()),
       | Err(error) => {
@@ -79,18 +79,18 @@ impl<TB: RuntimeToolbox> ActorRef<TB> {
   /// # Errors
   ///
   /// Returns an error if the message cannot be delivered.
-  pub fn ask(&self, message: AnyMessage<TB>) -> Result<AskResponse<TB>, SendError<TB>>
+  pub fn ask(&self, message: AnyMessageGeneric<TB>) -> Result<AskResponseGeneric<TB>, SendError<TB>>
   where
     TB: 'static, {
     let future = ArcShared::new(ActorFuture::new());
     let reply_sender = ArcShared::new(AskReplySender::new(future.clone()));
-    let reply_ref = ActorRef::new(self.pid, reply_sender);
+    let reply_ref = ActorRefGeneric::new(self.pid, reply_sender);
     let envelope = message.with_reply_to(reply_ref.clone());
     self.tell(envelope)?;
     if let Some(system) = &self.system {
       system.register_ask_future(future.clone());
     }
-    Ok(AskResponse::new(reply_ref, future))
+    Ok(AskResponseGeneric::new(reply_ref, future))
   }
 
   /// Creates a placeholder reference that rejects all messages.
@@ -102,34 +102,37 @@ impl<TB: RuntimeToolbox> ActorRef<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox> Clone for ActorRef<TB> {
+impl<TB: RuntimeToolbox> Clone for ActorRefGeneric<TB> {
   fn clone(&self) -> Self {
     Self { pid: self.pid, sender: self.sender.clone(), system: self.system.clone() }
   }
 }
 
-// SAFETY: `ActorRef` holds `ArcShared` handles to trait objects that are required to be both `Send`
-// and `Sync`. Cloning or dropping the reference does not violate thread-safety guarantees.
-unsafe impl<TB: RuntimeToolbox> Send for ActorRef<TB> {}
+// SAFETY: `ActorRefGeneric` holds `ArcShared` handles to trait objects that are required to be both
+// `Send` and `Sync`. Cloning or dropping the reference does not violate thread-safety guarantees.
+unsafe impl<TB: RuntimeToolbox> Send for ActorRefGeneric<TB> {}
 
-unsafe impl<TB: RuntimeToolbox> Sync for ActorRef<TB> {}
+unsafe impl<TB: RuntimeToolbox> Sync for ActorRefGeneric<TB> {}
 
-impl<TB: RuntimeToolbox> fmt::Debug for ActorRef<TB> {
+impl<TB: RuntimeToolbox> fmt::Debug for ActorRefGeneric<TB> {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     f.debug_struct("ActorRef").field("pid", &self.pid).finish()
   }
 }
 
-impl<TB: RuntimeToolbox> PartialEq for ActorRef<TB> {
+impl<TB: RuntimeToolbox> PartialEq for ActorRefGeneric<TB> {
   fn eq(&self, other: &Self) -> bool {
     self.pid == other.pid
   }
 }
 
-impl<TB: RuntimeToolbox> Eq for ActorRef<TB> {}
+impl<TB: RuntimeToolbox> Eq for ActorRefGeneric<TB> {}
 
-impl<TB: RuntimeToolbox> Hash for ActorRef<TB> {
+impl<TB: RuntimeToolbox> Hash for ActorRefGeneric<TB> {
   fn hash<H: Hasher>(&self, state: &mut H) {
     self.pid.hash(state);
   }
 }
+
+/// Type alias for `ActorRefGeneric` with the default `NoStdToolbox`.
+pub type ActorRef = ActorRefGeneric<NoStdToolbox>;

@@ -6,20 +6,20 @@ use cellactor_utils_core_rs::sync::ArcShared;
 
 use crate::{
   NoStdToolbox, RuntimeToolbox,
-  actor_prim::{Pid, actor_ref::ActorRef},
+  actor_prim::{Pid, actor_ref::ActorRefGeneric},
   error::SendError,
-  messaging::{AnyMessage, AskResponse, SystemMessage},
-  system::SystemState,
+  messaging::{AnyMessageGeneric, AskResponseGeneric, SystemMessage},
+  system::SystemStateGeneric,
 };
 
 /// Provides typed accessors to a child actor owned by a parent.
-pub struct ChildRef<TB: RuntimeToolbox + 'static = NoStdToolbox> {
-  actor:  ActorRef<TB>,
-  system: ArcShared<SystemState<TB>>,
+pub struct ChildRefGeneric<TB: RuntimeToolbox + 'static> {
+  actor:  ActorRefGeneric<TB>,
+  system: ArcShared<SystemStateGeneric<TB>>,
 }
 
-impl<TB: RuntimeToolbox + 'static> ChildRef<TB> {
-  pub(crate) const fn new(actor: ActorRef<TB>, system: ArcShared<SystemState<TB>>) -> Self {
+impl<TB: RuntimeToolbox + 'static> ChildRefGeneric<TB> {
+  pub(crate) const fn new(actor: ActorRefGeneric<TB>, system: ArcShared<SystemStateGeneric<TB>>) -> Self {
     Self { actor, system }
   }
 
@@ -31,7 +31,7 @@ impl<TB: RuntimeToolbox + 'static> ChildRef<TB> {
 
   /// Returns the underlying actor reference.
   #[must_use]
-  pub const fn actor_ref(&self) -> &ActorRef<TB> {
+  pub const fn actor_ref(&self) -> &ActorRefGeneric<TB> {
     &self.actor
   }
 
@@ -40,7 +40,7 @@ impl<TB: RuntimeToolbox + 'static> ChildRef<TB> {
   /// # Errors
   ///
   /// Returns an error when the mailbox cannot accept the message.
-  pub fn tell(&self, message: AnyMessage<TB>) -> Result<(), SendError<TB>> {
+  pub fn tell(&self, message: AnyMessageGeneric<TB>) -> Result<(), SendError<TB>> {
     self.actor.tell(message)
   }
 
@@ -49,7 +49,7 @@ impl<TB: RuntimeToolbox + 'static> ChildRef<TB> {
   /// # Errors
   ///
   /// Returns an error when the message cannot be enqueued.
-  pub fn ask(&self, message: AnyMessage<TB>) -> Result<AskResponse<TB>, SendError<TB>> {
+  pub fn ask(&self, message: AnyMessageGeneric<TB>) -> Result<AskResponseGeneric<TB>, SendError<TB>> {
     self.actor.ask(message)
   }
 
@@ -81,22 +81,25 @@ impl<TB: RuntimeToolbox + 'static> ChildRef<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Clone for ChildRef<TB> {
+impl<TB: RuntimeToolbox + 'static> Clone for ChildRefGeneric<TB> {
   fn clone(&self) -> Self {
     Self { actor: self.actor.clone(), system: self.system.clone() }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> fmt::Debug for ChildRef<TB> {
+impl<TB: RuntimeToolbox + 'static> fmt::Debug for ChildRefGeneric<TB> {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     f.debug_struct("ChildRef").field("pid", &self.pid()).finish()
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> PartialEq for ChildRef<TB> {
+impl<TB: RuntimeToolbox + 'static> PartialEq for ChildRefGeneric<TB> {
   fn eq(&self, other: &Self) -> bool {
     self.pid() == other.pid()
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Eq for ChildRef<TB> {}
+impl<TB: RuntimeToolbox + 'static> Eq for ChildRefGeneric<TB> {}
+
+/// Type alias for `ChildRefGeneric` with the default `NoStdToolbox`.
+pub type ChildRef = ChildRefGeneric<NoStdToolbox>;
