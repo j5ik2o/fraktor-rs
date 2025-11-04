@@ -25,6 +25,10 @@ pub struct ActorSystem {
 
 impl ActorSystem {
   /// Creates a new actor system using the provided user guardian props.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SpawnError::InvalidProps`] when the user guardian props cannot be initialised.
   pub fn new(props: &Props) -> Result<Self, SpawnError> {
     ActorSystemGeneric::new(props.as_core()).map(Self::from_core)
   }
@@ -100,11 +104,19 @@ impl ActorSystem {
   }
 
   /// Spawns a new top-level actor under the user guardian.
+  ///
+  /// # Errors
+  ///
+  /// Propagates [`SpawnError`] emitted when the props fail validation or the actor cannot start.
   pub fn spawn(&self, props: &Props) -> Result<ChildRef, SpawnError> {
     self.inner.spawn(props.as_core())
   }
 
   /// Spawns a new actor as a child of the specified parent.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SpawnError`] when the parent PID is invalid or the child fails to initialise.
   pub fn spawn_child(&self, parent: Pid, props: &Props) -> Result<ChildRef, SpawnError> {
     self.inner.spawn_child(parent, props.as_core())
   }
@@ -122,6 +134,10 @@ impl ActorSystem {
   }
 
   /// Sends a stop signal to the specified actor.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SendError`] when the target mailbox rejects the stop request.
   pub fn stop_actor(&self, pid: Pid) -> Result<(), SendError> {
     self.inner.stop_actor(pid)
   }
@@ -133,6 +149,10 @@ impl ActorSystem {
   }
 
   /// Sends a stop signal to the user guardian and initiates system shutdown.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SendError`] when the guardian mailbox refuses the termination message.
   pub fn terminate(&self) -> Result<(), SendError> {
     self.inner.terminate()
   }

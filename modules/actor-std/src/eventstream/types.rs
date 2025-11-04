@@ -1,11 +1,8 @@
 use cellactor_actor_core_rs::eventstream::{
   EventStreamEvent as CoreEventStreamEvent, EventStreamGeneric as CoreEventStream,
-  EventStreamSubscriber as CoreEventStreamSubscriber, EventStreamSubscriptionGeneric as CoreEventStreamSubscription,
+  EventStreamSubscriptionGeneric as CoreEventStreamSubscription,
 };
-use cellactor_utils_core_rs::sync::ArcShared;
 use cellactor_utils_std_rs::StdToolbox;
-
-use crate::system::ActorSystem;
 
 /// Event stream specialised for `StdToolbox`.
 pub type EventStream = CoreEventStream<StdToolbox>;
