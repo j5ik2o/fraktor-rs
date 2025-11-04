@@ -13,7 +13,7 @@ use crate::{
   actor_prim::Pid,
   dead_letter::{DeadLetterEntry, dead_letter_reason::DeadLetterReason},
   error::SendError,
-  event_stream::{EventStreamEvent, EventStreamGeneric},
+  event_stream::{EventStreamGeneric, EventStreamEvent},
   logging::{LogEvent, LogLevel},
   messaging::AnyMessage,
 };
@@ -90,5 +90,5 @@ impl<TB: RuntimeToolbox + 'static> DeadLetterGeneric<TB> {
   }
 }
 
-/// Type alias for Deadletter using the default toolbox.
-pub type DeadLetter = DeadLetterGeneric<NoStdToolbox>;
+/// Type alias for `DeadLetterGeneric` with the default `NoStdToolbox`.
+pub type DeadLetter<TB = NoStdToolbox> = DeadLetterGeneric<TB>;

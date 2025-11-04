@@ -25,7 +25,7 @@ use crate::{
   },
   props::{ActorFactory, Props},
   supervision::{RestartStatistics, SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
-  system::{ActorSystemGeneric, SystemState},
+  system::{ActorSystem, SystemState},
 };
 
 /// Runtime container responsible for executing an actor instance.
@@ -162,7 +162,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCell<TB> {
   /// Returns an error if actor recreation or lifecycle hooks fail.
   pub fn restart(&self) -> Result<(), ActorError> {
     {
-      let system = ActorSystemGeneric::from_state(self.system.clone());
+      let system = ActorSystem::from_state(self.system.clone());
       let mut ctx = ActorContext::new(&system, self.pid);
       let mut actor = self.actor.lock();
       actor.post_stop(&mut ctx)?;
@@ -197,7 +197,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCell<TB> {
   }
 
   fn handle_stop(&self) -> Result<(), ActorError> {
-    let system = ActorSystemGeneric::from_state(self.system.clone());
+    let system = ActorSystem::from_state(self.system.clone());
     let mut ctx = ActorContext::new(&system, self.pid);
     let mut actor = self.actor.lock();
     let result = actor.post_stop(&mut ctx);
@@ -229,7 +229,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCell<TB> {
   }
 
   fn run_pre_start(&self, stage: LifecycleStage) -> Result<(), ActorError> {
-    let system = ActorSystemGeneric::from_state(self.system.clone());
+    let system = ActorSystem::from_state(self.system.clone());
     let mut ctx = ActorContext::new(&system, self.pid);
     let mut actor = self.actor.lock();
     let outcome = actor.pre_start(&mut ctx);
@@ -250,7 +250,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCell<TB> {
 
 impl<TB: RuntimeToolbox + 'static> MessageInvoker<TB> for ActorCell<TB> {
   fn invoke_user_message(&self, message: AnyMessage<TB>) -> Result<(), ActorError> {
-    let system = ActorSystemGeneric::from_state(self.system.clone());
+    let system = ActorSystem::from_state(self.system.clone());
     let mut ctx = ActorContext::new(&system, self.pid);
     let mut actor = self.actor.lock();
     let result = self.pipeline.invoke_user(&mut *actor, &mut ctx, message);

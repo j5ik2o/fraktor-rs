@@ -33,5 +33,5 @@ impl<TB: RuntimeToolbox + 'static> Drop for EventStreamSubscriptionGeneric<TB> {
   }
 }
 
-/// Type alias for EventStreamSubscription using the default toolbox.
-pub type EventStreamSubscription = EventStreamSubscriptionGeneric<NoStdToolbox>;
+/// Type alias for `EventStreamSubscriptionGeneric` with the default `NoStdToolbox`.
+pub type EventStreamSubscription<TB = NoStdToolbox> = EventStreamSubscriptionGeneric<TB>;

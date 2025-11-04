@@ -14,12 +14,12 @@ use crate::{
   messaging::AnyMessage,
   props::Props,
   spawn::SpawnError,
-  system::ActorSystemGeneric,
+  system::ActorSystem,
 };
 
 /// Provides contextual APIs while handling a message.
 pub struct ActorContext<'a, TB: RuntimeToolbox + 'static = NoStdToolbox> {
-  system:   ActorSystemGeneric<TB>,
+  system:   ActorSystem<TB>,
   pid:      Pid,
   reply_to: Option<ActorRef<TB>>,
   _marker:  PhantomData<&'a ()>,
@@ -28,13 +28,13 @@ pub struct ActorContext<'a, TB: RuntimeToolbox + 'static = NoStdToolbox> {
 impl<'a, TB: RuntimeToolbox + 'static> ActorContext<'a, TB> {
   /// Creates a new context placeholder.
   #[must_use]
-  pub fn new(system: &ActorSystemGeneric<TB>, pid: Pid) -> Self {
+  pub fn new(system: &ActorSystem<TB>, pid: Pid) -> Self {
     Self { system: system.clone(), pid, reply_to: None, _marker: PhantomData }
   }
 
   /// Returns a reference to the actor system.
   #[must_use]
-  pub const fn system(&self) -> &ActorSystemGeneric<TB> {
+  pub const fn system(&self) -> &ActorSystem<TB> {
     &self.system
   }
 

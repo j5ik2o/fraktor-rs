@@ -113,12 +113,12 @@ fn unsubscribe_removes_subscriber() {
 
 #[test]
 fn default_creates_stream_with_default_capacity() {
-  let stream = EventStream::default();
+  let stream = EventStream::<NoStdToolbox>::default();
   let _ = stream;
 }
 
 #[test]
 fn with_capacity_creates_stream_with_specified_capacity() {
-  let stream = EventStream::with_capacity(100);
+  let stream = EventStream::<NoStdToolbox>::with_capacity(100);
   let _ = stream;
 }

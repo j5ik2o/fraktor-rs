@@ -16,9 +16,9 @@ use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 use crate::{
   NoStdToolbox, RuntimeToolbox, ToolboxMutex,
   actor_prim::{ActorCell, Pid},
-  dead_letter::{DeadLetterEntry, DeadLetterGeneric},
+  dead_letter::{DeadLetter, DeadLetterEntry},
   error::{ActorError, SendError},
-  event_stream::{EventStreamEvent, EventStreamGeneric},
+  event_stream::{EventStream, EventStreamEvent},
   futures::ActorFuture,
   logging::{LogEvent, LogLevel},
   messaging::{AnyMessage, SystemMessage},
@@ -39,8 +39,8 @@ pub struct SystemState<TB: RuntimeToolbox + 'static = NoStdToolbox> {
   ask_futures:   ToolboxMutex<AskFutureVec<TB>, TB>,
   termination:   ArcShared<ActorFuture<(), TB>>,
   terminated:    AtomicBool,
-  event_stream:  ArcShared<EventStreamGeneric<TB>>,
-  dead_letter:   ArcShared<DeadLetterGeneric<TB>>,
+  event_stream:  ArcShared<EventStream<TB>>,
+  dead_letter:   ArcShared<DeadLetter<TB>>,
 }
 
 impl<TB: RuntimeToolbox + 'static> SystemState<TB> {
@@ -48,8 +48,8 @@ impl<TB: RuntimeToolbox + 'static> SystemState<TB> {
   #[must_use]
   pub fn new() -> Self {
     const DEAD_LETTER_CAPACITY: usize = 512;
-    let event_stream = ArcShared::new(EventStreamGeneric::default());
-    let dead_letter = ArcShared::new(DeadLetterGeneric::new(event_stream.clone(), DEAD_LETTER_CAPACITY));
+    let event_stream = ArcShared::new(EventStream::default());
+    let dead_letter = ArcShared::new(DeadLetter::new(event_stream.clone(), DEAD_LETTER_CAPACITY));
     Self {
       next_pid: AtomicU64::new(0),
       clock: AtomicU64::new(0),
@@ -149,7 +149,7 @@ impl<TB: RuntimeToolbox + 'static> SystemState<TB> {
 
   /// Returns the shared event stream handle.
   #[must_use]
-  pub fn event_stream(&self) -> ArcShared<EventStreamGeneric<TB>> {
+  pub fn event_stream(&self) -> ArcShared<EventStream<TB>> {
     self.event_stream.clone()
   }
 

@@ -76,6 +76,3 @@ pub mod props;
 pub mod spawn;
 pub mod supervision;
 pub mod system;
-
-/// Type alias for ActorSystem using the default toolbox.
-pub type ActorSystem = system::ActorSystemGeneric<NoStdToolbox>;

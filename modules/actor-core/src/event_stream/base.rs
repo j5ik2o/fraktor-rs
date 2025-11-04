@@ -15,8 +15,7 @@ use crate::{
   NoStdToolbox, RuntimeToolbox, ToolboxMutex,
   event_stream::{
     EventStreamSubscriber, event_stream_event::EventStreamEvent,
-    event_stream_subscriber_entry::EventStreamSubscriberEntry,
-    event_stream_subscription::EventStreamSubscriptionGeneric,
+    event_stream_subscriber_entry::EventStreamSubscriberEntry, event_stream_subscription::EventStreamSubscription,
   },
 };
 
@@ -47,7 +46,7 @@ impl<TB: RuntimeToolbox + 'static> EventStreamGeneric<TB> {
   pub fn subscribe_arc(
     stream: &ArcShared<Self>,
     subscriber: &ArcShared<dyn EventStreamSubscriber<TB>>,
-  ) -> EventStreamSubscriptionGeneric<TB> {
+  ) -> EventStreamSubscription<TB> {
     let id = stream.next_id.fetch_add(1, Ordering::Relaxed);
     {
       let mut list = stream.subscribers.lock();
@@ -59,7 +58,7 @@ impl<TB: RuntimeToolbox + 'static> EventStreamGeneric<TB> {
       subscriber.on_event(event);
     }
 
-    EventStreamSubscriptionGeneric::new(stream.clone(), id)
+    EventStreamSubscription::new(stream.clone(), id)
   }
 
   /// Removes the subscriber associated with the identifier.
@@ -94,5 +93,5 @@ impl<TB: RuntimeToolbox + 'static> Default for EventStreamGeneric<TB> {
   }
 }
 
-/// Type alias for EventStream using the default toolbox.
-pub type EventStream = EventStreamGeneric<NoStdToolbox>;
+/// Type alias for `EventStreamGeneric` with the default `NoStdToolbox`.
+pub type EventStream<TB = NoStdToolbox> = EventStreamGeneric<TB>;

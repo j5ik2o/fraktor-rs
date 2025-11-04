@@ -12,7 +12,7 @@ use crate::{
   actor_prim::{ActorCell, ChildRef, Pid, actor_ref::ActorRef},
   dead_letter::DeadLetterEntry,
   error::SendError,
-  event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric},
+  event_stream::{EventStream, EventStreamEvent, EventStreamSubscriber, EventStreamSubscription},
   futures::ActorFuture,
   logging::LogLevel,
   messaging::{AnyMessage, SystemMessage},
@@ -83,7 +83,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
 
   /// Returns the shared event stream handle.
   #[must_use]
-  pub fn event_stream(&self) -> ArcShared<EventStreamGeneric<TB>> {
+  pub fn event_stream(&self) -> ArcShared<EventStream<TB>> {
     self.state.event_stream()
   }
 
@@ -92,8 +92,8 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   pub fn subscribe_event_stream(
     &self,
     subscriber: &ArcShared<dyn EventStreamSubscriber<TB>>,
-  ) -> EventStreamSubscriptionGeneric<TB> {
-    EventStreamGeneric::subscribe_arc(&self.state.event_stream(), subscriber)
+  ) -> EventStreamSubscription<TB> {
+    EventStream::subscribe_arc(&self.state.event_stream(), subscriber)
   }
 
   /// Returns a snapshot of recorded dead letters.
@@ -246,5 +246,5 @@ impl<TB: RuntimeToolbox + 'static> Clone for ActorSystemGeneric<TB> {
 unsafe impl<TB: RuntimeToolbox + 'static> Send for ActorSystemGeneric<TB> {}
 unsafe impl<TB: RuntimeToolbox + 'static> Sync for ActorSystemGeneric<TB> {}
 
-/// Type alias for compatibility with older code.
-pub type ActorSystem<TB> = ActorSystemGeneric<TB>;
+/// Type alias for `ActorSystemGeneric` with the default `NoStdToolbox`.
+pub type ActorSystem<TB = NoStdToolbox> = ActorSystemGeneric<TB>;

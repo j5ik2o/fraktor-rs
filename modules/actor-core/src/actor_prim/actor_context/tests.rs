@@ -1,5 +1,5 @@
 use super::ActorContext;
-use crate::{NoStdToolbox, actor_prim::Actor, props::Props, system::ActorSystemGeneric};
+use crate::{NoStdToolbox, actor_prim::Actor, props::Props, system::ActorSystem};
 
 struct TestActor;
 
@@ -15,7 +15,7 @@ impl Actor<NoStdToolbox> for TestActor {
 
 #[test]
 fn actor_context_new() {
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::<NoStdToolbox>::new_empty();
   let pid = system.allocate_pid();
   let context = ActorContext::new(&system, pid);
   assert_eq!(context.pid(), pid);
@@ -23,7 +23,7 @@ fn actor_context_new() {
 
 #[test]
 fn actor_context_system() {
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::<NoStdToolbox>::new_empty();
   let pid = system.allocate_pid();
   let context = ActorContext::new(&system, pid);
   let retrieved_system = context.system();
@@ -32,7 +32,7 @@ fn actor_context_system() {
 
 #[test]
 fn actor_context_pid() {
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::<NoStdToolbox>::new_empty();
   let pid = system.allocate_pid();
   let context = ActorContext::new(&system, pid);
   assert_eq!(context.pid(), pid);
@@ -40,7 +40,7 @@ fn actor_context_pid() {
 
 #[test]
 fn actor_context_reply_to_initially_none() {
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::<NoStdToolbox>::new_empty();
   let pid = system.allocate_pid();
   let context = ActorContext::new(&system, pid);
   assert!(context.reply_to().is_none());
@@ -48,7 +48,7 @@ fn actor_context_reply_to_initially_none() {
 
 #[test]
 fn actor_context_set_and_clear_reply_to() {
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::<NoStdToolbox>::new_empty();
   let pid = system.allocate_pid();
   let mut context = ActorContext::new(&system, pid);
 
@@ -60,7 +60,7 @@ fn actor_context_set_and_clear_reply_to() {
 
 #[test]
 fn actor_context_reply_without_reply_to() {
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::<NoStdToolbox>::new_empty();
   let pid = system.allocate_pid();
   let context = ActorContext::new(&system, pid);
 
@@ -70,7 +70,7 @@ fn actor_context_reply_without_reply_to() {
 
 #[test]
 fn actor_context_children() {
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::<NoStdToolbox>::new_empty();
   let pid = system.allocate_pid();
   let context = ActorContext::new(&system, pid);
 
@@ -80,7 +80,7 @@ fn actor_context_children() {
 
 #[test]
 fn actor_context_spawn_child_with_invalid_parent() {
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::<NoStdToolbox>::new_empty();
   let pid = system.allocate_pid();
   let context = ActorContext::new(&system, pid);
   let props = Props::from_fn(|| TestActor);
@@ -93,7 +93,7 @@ fn actor_context_spawn_child_with_invalid_parent() {
 fn actor_context_log() {
   use alloc::string::String;
 
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::<NoStdToolbox>::new_empty();
   let pid = system.allocate_pid();
   let context = ActorContext::new(&system, pid);
 

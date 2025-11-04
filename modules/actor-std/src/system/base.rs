@@ -3,7 +3,7 @@ use cellactor_actor_core_rs::{
   dead_letter::DeadLetterEntry,
   logging::LogLevel,
   spawn::SpawnError,
-  system::{ActorSystemGeneric, SystemState as CoreSystemState},
+  system::{ActorSystem as CoreActorSystem, SystemState as CoreSystemState},
 };
 use cellactor_utils_core_rs::sync::ArcShared;
 use cellactor_utils_std_rs::runtime_toolbox::StdToolbox;
@@ -20,7 +20,7 @@ use crate::{
 
 /// Actor system specialised for `StdToolbox` with ergonomics for standard runtime consumers.
 pub struct ActorSystem {
-  inner: ActorSystemGeneric<StdToolbox>,
+  inner: CoreActorSystem<StdToolbox>,
 }
 
 impl ActorSystem {
@@ -30,30 +30,30 @@ impl ActorSystem {
   ///
   /// Returns [`SpawnError::InvalidProps`] when the user guardian props cannot be initialised.
   pub fn new(props: &Props) -> Result<Self, SpawnError> {
-    ActorSystemGeneric::new(props.as_core()).map(Self::from_core)
+    CoreActorSystem::new(props.as_core()).map(Self::from_core)
   }
 
   /// Creates an empty actor system without any guardian (testing helper).
   #[must_use]
   pub fn new_empty() -> Self {
-    Self::from_core(ActorSystemGeneric::new_empty())
+    Self::from_core(CoreActorSystem::new_empty())
   }
 
   /// Constructs the wrapper from a core actor system.
   #[must_use]
-  pub const fn from_core(inner: ActorSystemGeneric<StdToolbox>) -> Self {
+  pub const fn from_core(inner: CoreActorSystem<StdToolbox>) -> Self {
     Self { inner }
   }
 
   /// Borrows the underlying core actor system.
   #[must_use]
-  pub(crate) const fn as_core(&self) -> &ActorSystemGeneric<StdToolbox> {
+  pub(crate) const fn as_core(&self) -> &CoreActorSystem<StdToolbox> {
     &self.inner
   }
 
   /// Consumes the wrapper and returns the core actor system.
   #[must_use]
-  pub fn into_core(self) -> ActorSystemGeneric<StdToolbox> {
+  pub fn into_core(self) -> CoreActorSystem<StdToolbox> {
     self.inner
   }
 

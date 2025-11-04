@@ -8,7 +8,7 @@ use cellactor_utils_core_rs::sync::ArcShared;
 use crate::{
   NoStdMutex, NoStdToolbox,
   actor_prim::Pid,
-  dead_letter::{DeadLetterGeneric, DeadLetterReason},
+  dead_letter::{DeadLetter, DeadLetterReason},
   error::SendError,
   event_stream::{EventStream, EventStreamEvent, EventStreamSubscriber},
   logging::LogLevel,
@@ -42,7 +42,7 @@ fn record_entry_stores_and_publishes() {
   let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
   let _subscription = EventStream::subscribe_arc(&stream, &subscriber);
 
-  let deadletter = DeadLetterGeneric::with_default_capacity(stream.clone());
+  let deadletter = DeadLetter::with_default_capacity(stream.clone());
   let pid = Pid::new(1, 0);
   let message = AnyMessage::new("payload");
   deadletter.record_entry(message, DeadLetterReason::ExplicitRouting, Some(pid), Duration::from_millis(5));
@@ -64,7 +64,7 @@ fn record_send_error_converts_reason_and_honours_capacity() {
   let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
   let _subscription = EventStream::subscribe_arc(&stream, &subscriber);
 
-  let deadletter = DeadLetterGeneric::new(stream, 1);
+  let deadletter = DeadLetter::new(stream, 1);
   let pid = Pid::new(7, 0);
   let error = SendError::full(AnyMessage::new("first"));
   deadletter.record_send_error(Some(pid), &error, Duration::from_millis(1));
