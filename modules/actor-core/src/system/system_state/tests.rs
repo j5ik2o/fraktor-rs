@@ -127,3 +127,90 @@ fn system_state_deadletters() {
   // ???????????????
   assert_eq!(deadletters.len(), 0);
 }
+
+#[test]
+fn system_state_register_ask_future() {
+  use cellactor_utils_core_rs::sync::ArcShared;
+
+  use crate::{futures::ActorFuture, messaging::AnyMessage};
+
+  let state = SystemState::<NoStdToolbox>::new();
+  let future = ArcShared::new(ActorFuture::<AnyMessage<NoStdToolbox>, NoStdToolbox>::new());
+  state.register_ask_future(future.clone());
+
+  // ask_future?????????????
+  let ready = state.drain_ready_ask_futures();
+  // ??ready???????
+  assert_eq!(ready.len(), 0);
+}
+
+#[test]
+fn system_state_publish_event() {
+  use alloc::string::String;
+  use core::time::Duration;
+
+  use crate::{
+    eventstream::EventStreamEvent,
+    logging::{LogEvent, LogLevel},
+  };
+
+  let state = SystemState::<NoStdToolbox>::new();
+  let log_event = LogEvent::new(LogLevel::Info, String::from("test"), Duration::from_millis(1), None);
+  let event = EventStreamEvent::Log(log_event);
+
+  // ???????????????????????????????
+  state.publish_event(&event);
+}
+
+#[test]
+fn system_state_emit_log() {
+  use alloc::string::String;
+
+  let state = SystemState::<NoStdToolbox>::new();
+  let pid = state.allocate_pid();
+
+  // ?????????????????????????????
+  state.emit_log(crate::logging::LogLevel::Info, String::from("test message"), Some(pid));
+  state.emit_log(crate::logging::LogLevel::Error, String::from("error message"), None);
+}
+
+#[test]
+fn system_state_clear_guardian() {
+  let state = SystemState::<NoStdToolbox>::new();
+  let pid = state.allocate_pid();
+
+  // ?????guardian???????????false???
+  let cleared = state.clear_guardian(pid);
+  assert!(!cleared);
+}
+
+#[test]
+fn system_state_user_guardian() {
+  let state = SystemState::<NoStdToolbox>::new();
+  // ??????user_guardian?????????
+  assert!(state.user_guardian().is_none());
+}
+
+#[test]
+fn system_state_send_system_message_to_nonexistent_actor() {
+  use crate::messaging::SystemMessage;
+
+  let state = SystemState::<NoStdToolbox>::new();
+  let pid = state.allocate_pid();
+
+  // ?????actor??system_message?????????
+  let result = state.send_system_message(pid, SystemMessage::Stop);
+  assert!(result.is_err());
+}
+
+#[test]
+fn system_state_record_send_error() {
+  use crate::{error::SendError, messaging::AnyMessage};
+
+  let state = SystemState::<NoStdToolbox>::new();
+  let error = SendError::closed(AnyMessage::new(42_u32));
+
+  // ??????????????????????????????
+  state.record_send_error(None, &error);
+  state.record_send_error(Some(state.allocate_pid()), &error);
+}

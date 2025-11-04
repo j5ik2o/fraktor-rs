@@ -1,5 +1,8 @@
 //! Coordinates actors and infrastructure.
 
+#[cfg(test)]
+mod tests;
+
 use alloc::{string::String, vec::Vec};
 
 use cellactor_utils_core_rs::sync::ArcShared;
