@@ -4,6 +4,8 @@
   "screen_reader": false,
   "theme": "auto",
   "trusted_folders": [
-    "/Users/j5ik2o/GolandProjects/cqrs-es-spec-kit-go"
-  ]
+    "/Users/j5ik2o/GolandProjects/cqrs-es-spec-kit-go",
+    "/Users/j5ik2o/Sources/cellactor-rs"
+  ],
+  "model": "claude-sonnet-4.5"
 }
