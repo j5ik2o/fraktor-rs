@@ -3,6 +3,9 @@ use alloc::collections::VecDeque;
 use super::{handle_shared::WaitShared, node::WaitNode};
 use crate::sync::ArcShared;
 
+#[cfg(all(test, feature = "alloc"))]
+mod tests;
+
 /// FIFO queue managing waiter nodes.
 pub struct WaitQueue<E> {
   waiters: VecDeque<ArcShared<WaitNode<E>>>,

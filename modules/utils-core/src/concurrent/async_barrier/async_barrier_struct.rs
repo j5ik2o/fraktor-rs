@@ -1,5 +1,8 @@
 use super::async_barrier_backend::AsyncBarrierBackend;
 
+#[cfg(test)]
+mod tests;
+
 /// Structure providing synchronization barrier among async tasks.
 #[derive(Clone, Debug)]
 pub struct AsyncBarrier<B>
