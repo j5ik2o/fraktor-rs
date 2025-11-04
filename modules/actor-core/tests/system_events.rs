@@ -9,7 +9,7 @@ use cellactor_actor_core_rs::{
   NoStdToolbox,
   actor_prim::{Actor, ActorContext},
   error::ActorError,
-  eventstream::{EventStreamEvent, EventStreamSubscriber},
+  event_stream::{EventStreamEvent, EventStreamSubscriber},
   lifecycle::LifecycleStage,
   logging::LogLevel,
   messaging::{AnyMessage, AnyMessageView},
@@ -67,7 +67,7 @@ fn lifecycle_and_log_events_are_published() {
   let system = ActorSystem::new(&props).expect("system");
 
   let subscriber_impl = ArcShared::new(RecordingSubscriber::new());
-  let subscriber: ArcShared<dyn cellactor_actor_core_rs::eventstream::EventStreamSubscriber<NoStdToolbox>> =
+  let subscriber: ArcShared<dyn cellactor_actor_core_rs::event_stream::EventStreamSubscriber<NoStdToolbox>> =
     subscriber_impl.clone();
   let _subscription = system.subscribe_event_stream(&subscriber);
 

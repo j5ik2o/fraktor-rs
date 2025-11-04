@@ -9,7 +9,7 @@ use cellactor_actor_core_rs::{
   NoStdToolbox,
   actor_prim::{Actor, ActorContext},
   error::ActorError,
-  eventstream::{EventStreamEvent, EventStreamSubscriber},
+  event_stream::{EventStreamEvent, EventStreamSubscriber},
   mailbox::{MailboxOverflowStrategy, MailboxPolicy},
   messaging::{AnyMessage, AnyMessageView},
   props::{MailboxConfig, Props},

@@ -5,7 +5,7 @@ mod tests;
 
 use cellactor_utils_core_rs::sync::ArcShared;
 
-use crate::{NoStdToolbox, RuntimeToolbox, eventstream::EventStreamSubscriber};
+use crate::{NoStdToolbox, RuntimeToolbox, event_stream::EventStreamSubscriber};
 
 /// Maps subscription identifiers to subscriber instances.
 pub struct EventStreamSubscriberEntry<TB: RuntimeToolbox = NoStdToolbox> {

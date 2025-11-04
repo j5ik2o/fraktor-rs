@@ -15,7 +15,7 @@ use crate::{
   actor_prim::{ActorCell, Pid},
   dead_letter::{DeadLetterEntry, DeadLetterGeneric},
   error::{ActorError, SendError},
-  eventstream::{EventStreamEvent, EventStreamGeneric},
+  event_stream::{EventStreamEvent, EventStreamGeneric},
   futures::ActorFuture,
   logging::{LogEvent, LogLevel},
   messaging::{AnyMessage, SystemMessage},

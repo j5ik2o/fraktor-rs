@@ -10,7 +10,7 @@ use cellactor_utils_core_rs::sync::{ArcShared, SyncMutexFamily, sync_mutex_like:
 
 use crate::{
   NoStdToolbox, RuntimeToolbox, ToolboxMutex,
-  eventstream::{
+  event_stream::{
     EventStreamSubscriber, event_stream_event::EventStreamEvent,
     event_stream_subscriber_entry::EventStreamSubscriberEntry,
     event_stream_subscription::EventStreamSubscriptionGeneric,

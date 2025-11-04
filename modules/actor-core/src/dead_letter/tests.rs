@@ -10,7 +10,7 @@ use crate::{
   actor_prim::Pid,
   dead_letter::{DeadLetterGeneric, DeadLetterReason},
   error::SendError,
-  eventstream::{EventStream, EventStreamEvent, EventStreamSubscriber},
+  event_stream::{EventStream, EventStreamEvent, EventStreamSubscriber},
   logging::LogLevel,
   messaging::AnyMessage,
 };

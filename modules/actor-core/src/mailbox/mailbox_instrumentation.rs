@@ -8,8 +8,8 @@ use alloc::format;
 use cellactor_utils_core_rs::sync::ArcShared;
 
 use crate::{
-  RuntimeToolbox, actor_prim::Pid, eventstream::EventStreamEvent, logging::LogLevel, mailbox::MailboxMetricsEvent,
-  system::SystemState,
+    RuntimeToolbox, actor_prim::Pid, event_stream::EventStreamEvent, logging::LogLevel, mailbox::MailboxMetricsEvent,
+    system::SystemState,
 };
 
 /// Provides mailbox metrics publication facilities.

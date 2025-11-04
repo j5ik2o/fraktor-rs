@@ -6,15 +6,15 @@ use core::{hint::spin_loop, num::NonZeroUsize};
 use cellactor_utils_core_rs::sync::{ArcShared, NoStdMutex};
 
 use crate::{
-  NoStdToolbox,
-  actor_prim::{Actor, ActorContext},
-  error::ActorError,
-  eventstream::{EventStreamEvent, EventStreamSubscriber},
-  logging::LogLevel,
-  mailbox::{MailboxOverflowStrategy, MailboxPolicy},
-  messaging::{AnyMessage, AnyMessageView},
-  props::{MailboxConfig, Props},
-  system::ActorSystem,
+    NoStdToolbox,
+    actor_prim::{Actor, ActorContext},
+    error::ActorError,
+    event_stream::{EventStreamEvent, EventStreamSubscriber},
+    logging::LogLevel,
+    mailbox::{MailboxOverflowStrategy, MailboxPolicy},
+    messaging::{AnyMessage, AnyMessageView},
+    props::{MailboxConfig, Props},
+    system::ActorSystem,
 };
 
 struct PassiveActor;

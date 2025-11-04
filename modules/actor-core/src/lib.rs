@@ -66,7 +66,7 @@ pub mod actor_prim;
 pub mod dead_letter;
 pub mod dispatcher;
 pub mod error;
-pub mod eventstream;
+pub mod event_stream;
 pub mod futures;
 pub mod lifecycle;
 pub mod logging;

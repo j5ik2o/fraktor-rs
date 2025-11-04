@@ -5,7 +5,7 @@ use cellactor_utils_core_rs::sync::{ArcShared, NoStdMutex};
 
 use crate::{
   NoStdToolbox,
-  eventstream::{EventStreamEvent, EventStreamSubscriber},
+  event_stream::{EventStreamEvent, EventStreamSubscriber},
   logging::{LogEvent, LogLevel, LoggerSubscriber, LoggerWriter},
 };
 

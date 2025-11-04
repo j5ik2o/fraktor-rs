@@ -1,4 +1,4 @@
-use cellactor_actor_core_rs::eventstream::EventStreamSubscriber as CoreEventStreamSubscriber;
+use cellactor_actor_core_rs::event_stream::EventStreamSubscriber as CoreEventStreamSubscriber;
 use cellactor_utils_std_rs::StdToolbox;
 
 use super::EventStreamEvent;

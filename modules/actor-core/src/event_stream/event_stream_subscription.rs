@@ -5,7 +5,7 @@ mod tests;
 
 use cellactor_utils_core_rs::sync::ArcShared;
 
-use crate::{NoStdToolbox, RuntimeToolbox, eventstream::EventStreamGeneric};
+use crate::{NoStdToolbox, RuntimeToolbox, event_stream::EventStreamGeneric};
 
 /// RAII wrapper ensuring subscribers are removed when dropped.
 pub struct EventStreamSubscriptionGeneric<TB: RuntimeToolbox + 'static = NoStdToolbox> {

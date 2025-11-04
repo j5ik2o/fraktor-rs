@@ -1,12 +1,12 @@
 use cellactor_utils_core_rs::sync::ArcShared;
 
 use super::EventStreamSubscriberEntry;
-use crate::{NoStdToolbox, eventstream::EventStreamSubscriber};
+use crate::{NoStdToolbox, event_stream::EventStreamSubscriber};
 
 struct MockSubscriber;
 
 impl EventStreamSubscriber<NoStdToolbox> for MockSubscriber {
-  fn on_event(&self, _event: &crate::eventstream::EventStreamEvent<NoStdToolbox>) {}
+  fn on_event(&self, _event: &crate::event_stream::EventStreamEvent<NoStdToolbox>) {}
 }
 
 #[test]

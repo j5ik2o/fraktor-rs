@@ -12,7 +12,7 @@ use crate::{
   actor_prim::{ActorCell, ChildRef, Pid, actor_ref::ActorRef},
   dead_letter::DeadLetterEntry,
   error::SendError,
-  eventstream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric},
+  event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric},
   futures::ActorFuture,
   logging::LogLevel,
   messaging::{AnyMessage, SystemMessage},

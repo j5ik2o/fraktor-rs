@@ -2,7 +2,7 @@ mod subscriber;
 mod subscriber_adapter;
 mod types;
 
-use cellactor_actor_core_rs::eventstream::EventStreamSubscriber as CoreEventStreamSubscriber;
+use cellactor_actor_core_rs::event_stream::EventStreamSubscriber as CoreEventStreamSubscriber;
 use cellactor_utils_core_rs::sync::ArcShared;
 use cellactor_utils_std_rs::StdToolbox;
 pub use subscriber::EventStreamSubscriber;

@@ -150,7 +150,7 @@ fn system_state_publish_event() {
   use core::time::Duration;
 
   use crate::{
-    eventstream::EventStreamEvent,
+    event_stream::EventStreamEvent,
     logging::{LogEvent, LogLevel},
   };
 
