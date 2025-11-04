@@ -1,5 +1,8 @@
 //! Actor execution context utilities.
 
+#[cfg(test)]
+mod tests;
+
 use alloc::{string::String, vec::Vec};
 use core::marker::PhantomData;
 
