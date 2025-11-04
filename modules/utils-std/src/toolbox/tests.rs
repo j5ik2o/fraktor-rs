@@ -18,8 +18,6 @@ fn std_mutex_family_is_debug() {
 
 #[test]
 fn std_mutex_family_is_clone() {
-  let family1 = StdMutexFamily;
-  let family2 = family1;
   let mutex1 = <StdMutexFamily as SyncMutexFamily>::create(100);
   let mutex2 = <StdMutexFamily as SyncMutexFamily>::create(200);
   assert_eq!(*mutex1.lock(), 100);
@@ -28,7 +26,6 @@ fn std_mutex_family_is_clone() {
 
 #[test]
 fn std_mutex_family_default() {
-  let _family = StdMutexFamily::default();
   let mutex = <StdMutexFamily as SyncMutexFamily>::create(999);
   assert_eq!(*mutex.lock(), 999);
 }
