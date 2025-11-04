@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod tests;
+
 use core::cmp;
 
 use crate::collections::queue::{

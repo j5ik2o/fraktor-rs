@@ -63,7 +63,7 @@ fn closed_backend_rejects_offer_and_poll() {
 
 #[test]
 fn sync_queue_backend_new() {
-  let storage = VecRingStorage::with_capacity(5);
+  let storage = VecRingStorage::<i32>::with_capacity(5);
   let backend = VecRingBackend::new(storage, OverflowPolicy::Block);
   assert_eq!(backend.capacity(), 5);
   assert_eq!(backend.overflow_policy(), OverflowPolicy::Block);
@@ -72,29 +72,29 @@ fn sync_queue_backend_new() {
 
 #[test]
 fn overflow_policy_returns_correct_policy() {
-  let storage = VecRingStorage::with_capacity(1);
+  let storage = VecRingStorage::<i32>::with_capacity(1);
   let backend1 = VecRingBackend::new_with_storage(storage, OverflowPolicy::DropNewest);
   assert_eq!(backend1.overflow_policy(), OverflowPolicy::DropNewest);
 
-  let storage = VecRingStorage::with_capacity(1);
+  let storage = VecRingStorage::<i32>::with_capacity(1);
   let backend2 = VecRingBackend::new_with_storage(storage, OverflowPolicy::DropOldest);
   assert_eq!(backend2.overflow_policy(), OverflowPolicy::DropOldest);
 
-  let storage = VecRingStorage::with_capacity(1);
+  let storage = VecRingStorage::<i32>::with_capacity(1);
   let backend3 = VecRingBackend::new_with_storage(storage, OverflowPolicy::Grow);
   assert_eq!(backend3.overflow_policy(), OverflowPolicy::Grow);
 }
 
 #[test]
 fn is_closed_returns_false_initially() {
-  let storage = VecRingStorage::with_capacity(1);
+  let storage = VecRingStorage::<i32>::with_capacity(1);
   let backend = VecRingBackend::new_with_storage(storage, OverflowPolicy::Block);
   assert!(!backend.is_closed());
 }
 
 #[test]
 fn is_closed_returns_true_after_close() {
-  let storage = VecRingStorage::with_capacity(1);
+  let storage = VecRingStorage::<i32>::with_capacity(1);
   let mut backend = VecRingBackend::new_with_storage(storage, OverflowPolicy::Block);
   backend.close();
   assert!(backend.is_closed());
@@ -102,7 +102,7 @@ fn is_closed_returns_true_after_close() {
 
 #[test]
 fn capacity_returns_storage_capacity() {
-  let storage = VecRingStorage::with_capacity(10);
+  let storage = VecRingStorage::<i32>::with_capacity(10);
   let backend = VecRingBackend::new_with_storage(storage, OverflowPolicy::Block);
   assert_eq!(backend.capacity(), 10);
 }
@@ -118,7 +118,7 @@ fn block_policy_returns_full_error_when_full() {
 
 #[test]
 fn empty_queue_returns_empty_error() {
-  let storage = VecRingStorage::with_capacity(5);
+  let storage = VecRingStorage::<i32>::with_capacity(5);
   let mut backend = VecRingBackend::new_with_storage(storage, OverflowPolicy::Block);
   assert!(matches!(backend.poll(), Err(QueueError::Empty)));
 }
@@ -134,4 +134,94 @@ fn grow_policy_doubles_capacity_when_needed() {
   let outcome = backend.offer(3).unwrap();
   assert_eq!(outcome, OfferOutcome::GrewTo { capacity: 4 });
   assert_eq!(backend.capacity(), 4);
+}
+
+#[test]
+fn grow_policy_with_existing_capacity() {
+  let storage = VecRingStorage::with_capacity(5);
+  let mut backend = VecRingBackend::new_with_storage(storage, OverflowPolicy::Grow);
+
+  // ???????????Grow?????????
+  backend.offer(1).unwrap();
+  backend.offer(2).unwrap();
+  backend.offer(3).unwrap();
+  assert_eq!(backend.capacity(), 5);
+  assert_eq!(backend.len(), 3);
+}
+
+#[test]
+fn len_returns_correct_length() {
+  let storage = VecRingStorage::with_capacity(5);
+  let mut backend = VecRingBackend::new_with_storage(storage, OverflowPolicy::Block);
+
+  assert_eq!(backend.len(), 0);
+  backend.offer(1).unwrap();
+  assert_eq!(backend.len(), 1);
+  backend.offer(2).unwrap();
+  assert_eq!(backend.len(), 2);
+  backend.poll().unwrap();
+  assert_eq!(backend.len(), 1);
+}
+
+#[test]
+fn is_empty_when_len_is_zero() {
+  let storage = VecRingStorage::with_capacity(5);
+  let mut backend = VecRingBackend::new_with_storage(storage, OverflowPolicy::Block);
+
+  assert_eq!(backend.len(), 0);
+  backend.offer(1).unwrap();
+  assert_ne!(backend.len(), 0);
+  backend.poll().unwrap();
+  assert_eq!(backend.len(), 0);
+}
+
+#[test]
+fn multiple_drop_oldest_operations() {
+  let storage = VecRingStorage::with_capacity(2);
+  let mut backend = VecRingBackend::new_with_storage(storage, OverflowPolicy::DropOldest);
+
+  backend.offer(1).unwrap();
+  backend.offer(2).unwrap();
+  assert_eq!(backend.offer(3).unwrap(), OfferOutcome::DroppedOldest { count: 1 });
+  assert_eq!(backend.offer(4).unwrap(), OfferOutcome::DroppedOldest { count: 1 });
+
+  // ???2?????????
+  assert_eq!(backend.poll().unwrap(), 3);
+  assert_eq!(backend.poll().unwrap(), 4);
+}
+
+#[test]
+fn multiple_drop_newest_operations() {
+  let storage = VecRingStorage::with_capacity(1);
+  let mut backend = VecRingBackend::new_with_storage(storage, OverflowPolicy::DropNewest);
+
+  backend.offer(1).unwrap();
+  assert_eq!(backend.offer(2).unwrap(), OfferOutcome::DroppedNewest { count: 1 });
+  assert_eq!(backend.offer(3).unwrap(), OfferOutcome::DroppedNewest { count: 1 });
+
+  // ??????????
+  assert_eq!(backend.poll().unwrap(), 1);
+  assert!(matches!(backend.poll(), Err(QueueError::Empty)));
+}
+
+#[test]
+fn grow_policy_with_large_capacity_increase() {
+  let storage = VecRingStorage::<i32>::with_capacity(1);
+  let mut backend = VecRingBackend::new_with_storage(storage, OverflowPolicy::Grow);
+
+  backend.offer(1).unwrap();
+  // ???1??2???
+  let outcome = backend.offer(2).unwrap();
+  assert_eq!(outcome, OfferOutcome::GrewTo { capacity: 2 });
+
+  // ???2?????????3????????????2??4???
+  let outcome = backend.offer(3).unwrap();
+  assert_eq!(outcome, OfferOutcome::GrewTo { capacity: 4 });
+
+  // ???4?????????4??Enqueued???
+  let outcome = backend.offer(4).unwrap();
+  assert_eq!(outcome, OfferOutcome::Enqueued);
+
+  assert_eq!(backend.capacity(), 4);
+  assert_eq!(backend.len(), 4);
 }
