@@ -1,6 +1,9 @@
 use super::InterruptContextPolicy;
 use crate::sync::SharedError;
 
+#[cfg(test)]
+mod tests;
+
 /// Policy that consults platform-specific interrupt state before allowing blocking operations.
 pub struct CriticalSectionInterruptPolicy;
 

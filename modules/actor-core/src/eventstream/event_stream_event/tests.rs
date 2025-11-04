@@ -1,0 +1,92 @@
+#[cfg(feature = "alloc")]
+use alloc::string::String;
+use core::time::Duration;
+
+use super::EventStreamEvent;
+use crate::{
+  NoStdToolbox,
+  actor_prim::Pid,
+  deadletter::DeadletterEntry,
+  lifecycle::{LifecycleEvent, LifecycleStage},
+  logging::{LogEvent, LogLevel},
+  mailbox::MailboxMetricsEvent,
+  messaging::AnyMessage,
+};
+
+#[cfg(feature = "alloc")]
+#[test]
+fn event_stream_event_lifecycle_clone() {
+  let lifecycle_event = LifecycleEvent::new(
+    Pid::new(1, 0),
+    None,
+    String::from("test-actor"),
+    LifecycleStage::Started,
+    Duration::from_secs(0),
+  );
+  let event = EventStreamEvent::<NoStdToolbox>::Lifecycle(lifecycle_event.clone());
+  let cloned = event.clone();
+  match (event, cloned) {
+    | (EventStreamEvent::Lifecycle(e1), EventStreamEvent::Lifecycle(e2)) => {
+      assert_eq!(e1.pid(), e2.pid());
+      assert_eq!(e1.stage(), e2.stage());
+    },
+    | _ => panic!("Expected Lifecycle variants"),
+  }
+}
+
+#[cfg(feature = "alloc")]
+#[test]
+fn event_stream_event_deadletter_clone() {
+  let entry = DeadletterEntry::new(Pid::new(1, 0), AnyMessage::new(42u8));
+  let event = EventStreamEvent::<NoStdToolbox>::Deadletter(entry.clone());
+  let cloned = event.clone();
+  match (event, cloned) {
+    | (EventStreamEvent::Deadletter(e1), EventStreamEvent::Deadletter(e2)) => {
+      assert_eq!(e1.pid(), e2.pid());
+    },
+    | _ => panic!("Expected Deadletter variants"),
+  }
+}
+
+#[cfg(feature = "alloc")]
+#[test]
+fn event_stream_event_log_clone() {
+  let log_event = LogEvent::new(LogLevel::Info, String::from("test message"), Duration::from_secs(0), None);
+  let event = EventStreamEvent::<NoStdToolbox>::Log(log_event.clone());
+  let cloned = event.clone();
+  match (event, cloned) {
+    | (EventStreamEvent::Log(e1), EventStreamEvent::Log(e2)) => {
+      assert_eq!(e1.level(), e2.level());
+      assert_eq!(e1.message(), e2.message());
+    },
+    | _ => panic!("Expected Log variants"),
+  }
+}
+
+#[cfg(feature = "alloc")]
+#[test]
+fn event_stream_event_mailbox_clone() {
+  let metrics_event = MailboxMetricsEvent::new(Pid::new(1, 0), 10, 0, None, None, Duration::from_secs(0));
+  let event = EventStreamEvent::<NoStdToolbox>::Mailbox(metrics_event.clone());
+  let cloned = event.clone();
+  match (event, cloned) {
+    | (EventStreamEvent::Mailbox(e1), EventStreamEvent::Mailbox(e2)) => {
+      assert_eq!(e1.pid(), e2.pid());
+      assert_eq!(e1.user_len(), e2.user_len());
+    },
+    | _ => panic!("Expected Mailbox variants"),
+  }
+}
+
+#[test]
+fn event_stream_event_debug() {
+  fn assert_debug<T: core::fmt::Debug>(_t: &T) {}
+  // ???????Debug????????????
+  #[cfg(feature = "alloc")]
+  {
+    let lifecycle_event =
+      LifecycleEvent::new(Pid::new(1, 0), None, String::from("test"), LifecycleStage::Started, Duration::from_secs(0));
+    let event = EventStreamEvent::<NoStdToolbox>::Lifecycle(lifecycle_event);
+    assert_debug(&event);
+  }
+}

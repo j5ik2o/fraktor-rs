@@ -1,6 +1,9 @@
 use super::InterruptContextPolicy;
 use crate::sync::SharedError;
 
+#[cfg(test)]
+mod tests;
+
 /// Policy that never reports an active interrupt context.
 pub struct NeverInterruptPolicy;
 

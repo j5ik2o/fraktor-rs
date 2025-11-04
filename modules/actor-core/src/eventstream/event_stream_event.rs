@@ -1,5 +1,8 @@
 //! Event variants delivered through the event stream.
 
+#[cfg(test)]
+mod tests;
+
 use crate::{
   NoStdToolbox, RuntimeToolbox, deadletter::DeadletterEntry, lifecycle::LifecycleEvent, logging::LogEvent,
   mailbox::MailboxMetricsEvent,
