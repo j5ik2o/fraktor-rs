@@ -8,8 +8,7 @@ use cellactor_utils_std_rs::StdToolbox;
 use super::{CoreDispatchExecutorAdapter, DispatchExecutor, DispatchExecutorAdapter, Dispatcher};
 
 /// Dispatcher configuration specialised for `StdToolbox`.
-#[derive(Clone)]
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct DispatcherConfig {
   inner: CoreDispatcherConfig<StdToolbox>,
 }
@@ -54,4 +53,3 @@ impl DispatcherConfig {
     Self { inner }
   }
 }
-
