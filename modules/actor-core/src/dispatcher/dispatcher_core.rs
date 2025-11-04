@@ -133,12 +133,12 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
   pub(super) fn enqueue_user(self_arc: &ArcShared<Self>, message: AnyMessage<TB>) -> Result<(), SendError<TB>> {
     match self_arc.mailbox.enqueue_user(message) {
       | Ok(EnqueueOutcome::Enqueued) => {
-        super::dispatcher_struct::Dispatcher::from_core(self_arc.clone()).schedule();
+        super::base::Dispatcher::from_core(self_arc.clone()).schedule();
         Ok(())
       },
       | Ok(EnqueueOutcome::Pending(mut future)) => {
         Self::drain_offer_future(self_arc, &mut future)?;
-        super::dispatcher_struct::Dispatcher::from_core(self_arc.clone()).schedule();
+        super::base::Dispatcher::from_core(self_arc.clone()).schedule();
         Ok(())
       },
       | Err(error) => Err(error),
@@ -147,7 +147,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
 
   pub(super) fn enqueue_system(self_arc: &ArcShared<Self>, message: SystemMessage) -> Result<(), SendError<TB>> {
     self_arc.mailbox.enqueue_system(message)?;
-    super::dispatcher_struct::Dispatcher::from_core(self_arc.clone()).schedule();
+    super::base::Dispatcher::from_core(self_arc.clone()).schedule();
     Ok(())
   }
 
@@ -160,7 +160,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
         | Poll::Ready(Ok(_)) => return Ok(()),
         | Poll::Ready(Err(error)) => return Err(error),
         | Poll::Pending => {
-          super::dispatcher_struct::Dispatcher::from_core(self_arc.clone()).schedule();
+          super::base::Dispatcher::from_core(self_arc.clone()).schedule();
           block_hint();
         },
       }

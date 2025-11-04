@@ -2,7 +2,7 @@ use core::{pin::Pin, task::Context};
 
 use cellactor_utils_core_rs::sync::ArcShared;
 
-use super::dispatcher_struct::Dispatcher;
+use super::base::Dispatcher;
 use crate::{
   RuntimeToolbox,
   actor_prim::actor_ref::ActorRefSender,

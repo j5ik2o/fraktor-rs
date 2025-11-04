@@ -9,12 +9,12 @@ mod factory;
 /// Mailbox configuration module.
 mod mailbox_config;
 /// Props structure module.
-mod props;
+mod base;
 /// Supervisor options module.
 mod supervisor_options;
 
 pub use dispatcher_config::DispatcherConfig;
 pub use factory::ActorFactory;
 pub use mailbox_config::MailboxConfig;
-pub use props::Props;
+pub use base::Props;
 pub use supervisor_options::SupervisorOptions;

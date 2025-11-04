@@ -10,4 +10,4 @@ pub use single_consumer::SingleConsumer;
 pub use single_producer::SingleProducer;
 pub use supports_peek::SupportsPeek;
 
-mod impls;
+mod base;

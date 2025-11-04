@@ -7,7 +7,7 @@ use core::{
 
 use cellactor_utils_core_rs::sync::ArcShared;
 
-use super::{dispatcher_core::DispatcherCore, dispatcher_struct::Dispatcher};
+use super::{dispatcher_core::DispatcherCore, base::Dispatcher};
 use crate::RuntimeToolbox;
 
 struct ScheduleHandle<TB: RuntimeToolbox + 'static> {

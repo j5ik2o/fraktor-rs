@@ -20,14 +20,14 @@ mod dispatch_handle;
 mod dispatcher_core;
 mod dispatcher_sender;
 mod dispatcher_state;
-mod dispatcher_struct;
+mod base;
 mod inline_executor;
 mod schedule_waker;
 
 pub use dispatch_executor::DispatchExecutor;
 pub use dispatch_handle::DispatchHandle;
 pub use dispatcher_sender::DispatcherSender;
-pub use dispatcher_struct::Dispatcher;
+pub use base::Dispatcher;
 pub use inline_executor::InlineExecutor;
 
 #[cfg(test)]
