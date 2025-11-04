@@ -1,5 +1,8 @@
 //! Priority mailbox maintaining separate queues for system and user messages.
 
+#[cfg(test)]
+mod tests;
+
 use core::{
   num::NonZeroUsize,
   sync::atomic::{AtomicBool, Ordering},
