@@ -1,4 +1,4 @@
-use cellactor_actor_std_rs::system::dispatcher::{DispatchExecutor, DispatchHandle};
+use cellactor_actor_std_rs::dispatcher::{DispatchExecutor, DispatchHandle};
 use tokio::runtime::Handle;
 
 /// Tokio ランタイム上で Dispatcher を駆動する実装。

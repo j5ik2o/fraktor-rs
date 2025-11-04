@@ -1,9 +1,9 @@
 use cellactor_actor_core_rs::{
-  mailbox::Mailbox,
-  props::DispatcherConfig as CoreDispatcherConfig,
   dispatcher::{
     DispatchExecutor as CoreDispatchExecutor, DispatchHandle as CoreDispatchHandle, Dispatcher as CoreDispatcher,
   },
+  mailbox::Mailbox,
+  props::DispatcherConfig as CoreDispatcherConfig,
 };
 use cellactor_utils_core_rs::sync::ArcShared;
 use cellactor_utils_std_rs::StdToolbox;

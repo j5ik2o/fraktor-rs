@@ -29,7 +29,7 @@ pub mod deadletter;
 /// Future utilities specialised for the standard toolbox.
 pub mod futures;
 
-/// Error utilities specialised for the standard toolbox.
-pub mod error;
 /// Dispatcher utilities specialised for the standard runtime.
 pub mod dispatcher;
+/// Error utilities specialised for the standard toolbox.
+pub mod error;
