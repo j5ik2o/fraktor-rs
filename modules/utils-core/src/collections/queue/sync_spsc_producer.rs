@@ -1,5 +1,8 @@
 use core::marker::PhantomData;
 
+#[cfg(test)]
+mod tests;
+
 use crate::{
   collections::queue::{
     QueueError,
