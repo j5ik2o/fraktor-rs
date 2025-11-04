@@ -10,6 +10,9 @@ pub use portable_atomic_util::Arc;
 
 use super::{Shared, SharedDyn};
 
+#[cfg(test)]
+mod tests;
+
 /// Shared wrapper backed by [`alloc::sync::Arc`] by default.
 ///
 /// When the `force-portable-arc` feature is enabled it switches to [`portable_atomic_util::Arc`]

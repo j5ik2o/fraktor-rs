@@ -180,9 +180,10 @@ impl<TB: RuntimeToolbox + 'static> SystemState<TB> {
   /// Removes a child from its parent's supervision registry.
   pub fn unregister_child(&self, parent: Option<Pid>, child: Pid) {
     if let Some(parent_pid) = parent
-      && let Some(cell) = self.cell(&parent_pid) {
-        cell.unregister_child(&child);
-      }
+      && let Some(cell) = self.cell(&parent_pid)
+    {
+      cell.unregister_child(&child);
+    }
   }
 
   /// Returns the children supervised by the specified parent pid.

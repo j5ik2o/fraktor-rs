@@ -552,30 +552,42 @@ for package in metadata.get("packages", []):
             continue
         target_name = target.get("name")
         if target_name:
-            print(f"{name}\t{target_name}")
+            # 必要なfeatureを判定
+            required_features = target.get("required-features", [])
+            features_str = ",".join(required_features) if required_features else ""
+            print(f"{name}\t{target_name}\t{features_str}")
 PY
     rm -f "${example_file}"
     return 1
   fi
 
   local had_examples=""
-  while IFS=$'\t' read -r package_name example_name; do
+  while IFS=$'\t' read -r package_name example_name features; do
     if [[ -z "${package_name}" || -z "${example_name}" ]]; then
       continue
     fi
     had_examples="yes"
-    log_step "cargo +${DEFAULT_TOOLCHAIN} run --package ${package_name} --example ${example_name} --quiet"
+
+    local -a cargo_args=(run --package "${package_name}" --example "${example_name}")
+    if [[ -n "${features}" ]]; then
+      cargo_args+=(--features "${features}")
+      log_step "cargo +${DEFAULT_TOOLCHAIN} run --package ${package_name} --example ${example_name} --features ${features} --quiet"
+    else
+      log_step "cargo +${DEFAULT_TOOLCHAIN} run --package ${package_name} --example ${example_name} --quiet"
+    fi
+    cargo_args+=(--quiet)
+
     local log_file
     log_file="$(mktemp)"
     if [[ -n "${DEFAULT_TOOLCHAIN}" ]]; then
-      cargo "+${DEFAULT_TOOLCHAIN}" run --package "${package_name}" --example "${example_name}" --quiet \
+      cargo "+${DEFAULT_TOOLCHAIN}" "${cargo_args[@]}" \
         >"${log_file}" 2>&1 || {
           cat "${log_file}"
           rm -f "${log_file}" "${example_file}"
           return 1
         }
     else
-      cargo run --package "${package_name}" --example "${example_name}" --quiet \
+      cargo "${cargo_args[@]}" \
         >"${log_file}" 2>&1 || {
           cat "${log_file}"
           rm -f "${log_file}" "${example_file}"

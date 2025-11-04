@@ -7,6 +7,9 @@ use core::ptr;
 
 use super::{Shared, SharedDyn};
 
+#[cfg(all(test, feature = "alloc"))]
+mod tests;
+
 /// Shared ownership wrapper backed by `alloc::rc::Rc`.
 ///
 /// Unlike [`ArcShared`](super::ArcShared), this variant deliberately omits any

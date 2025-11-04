@@ -8,6 +8,9 @@ use core::fmt::{self, Debug, Formatter};
 #[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
 use core::sync::atomic::{AtomicBool, Ordering};
 
+#[cfg(test)]
+mod tests;
+
 /// Structure providing a thread-safe boolean flag
 ///
 /// `Flag` provides a boolean flag that can be safely used in multi-threaded environments.
