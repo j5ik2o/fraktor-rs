@@ -7,8 +7,8 @@ use core::{
 };
 
 use cellactor_utils_core_rs::{
-    collections::{queue::QueueError, wait::WaitShared},
-    sync::ArcShared,
+  collections::{queue::QueueError, wait::WaitShared},
+  sync::ArcShared,
 };
 
 use super::mailbox_queue_state::QueueState;

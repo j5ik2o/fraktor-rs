@@ -9,7 +9,7 @@ use super::{
 use crate::collections::{
   PriorityMessage,
   queue::QueueError,
-  wait::{WaitShared, WaitQueue},
+  wait::{WaitQueue, WaitShared},
 };
 
 /// Adapter that exposes a synchronous queue backend through the async backend trait.

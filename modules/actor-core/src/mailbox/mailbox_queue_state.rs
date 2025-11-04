@@ -2,8 +2,8 @@
 
 use cellactor_utils_core_rs::{
   collections::{
-      queue::{QueueError, SyncQueueBackend, backend::OfferOutcome},
-      wait::{WaitShared, WaitQueue},
+    queue::{QueueError, SyncQueueBackend, backend::OfferOutcome},
+    wait::{WaitQueue, WaitShared},
   },
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };

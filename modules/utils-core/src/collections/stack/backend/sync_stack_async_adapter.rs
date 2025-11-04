@@ -4,7 +4,7 @@ use core::marker::PhantomData;
 use async_trait::async_trait;
 
 use super::{AsyncStackBackend, PushOutcome, StackBackend, StackError};
-use crate::collections::wait::{WaitShared, WaitQueue};
+use crate::collections::wait::{WaitQueue, WaitShared};
 
 /// Adapter that exposes a synchronous stack backend through the async backend trait.
 pub struct SyncStackAsyncAdapter<T, B>

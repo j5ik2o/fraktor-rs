@@ -1,12 +1,14 @@
-use cellactor_actor_std_rs::dispatcher::{DispatchExecutor, DispatchShared};
 use tokio::runtime::Handle;
 
-/// Tokio ランタイム上で Dispatcher を駆動する実装。
+use crate::dispatcher::{DispatchExecutor, DispatchShared};
+
+/// Executor that drives a dispatcher on a Tokio runtime handle.
 pub struct TokioExecutor {
   handle: Handle,
 }
 
 impl TokioExecutor {
+  /// Creates a new executor bound to the provided Tokio runtime handle.
   #[must_use]
   pub fn new(handle: Handle) -> Self {
     Self { handle }

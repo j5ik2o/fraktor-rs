@@ -10,9 +10,9 @@ use crate::{
   messaging::{AnyMessage, SystemMessage},
 };
 
+mod base;
 mod capacity;
 mod mailbox_enqueue_outcome;
-mod base;
 mod mailbox_instrumentation;
 mod mailbox_message;
 mod mailbox_offer_future;
@@ -25,9 +25,9 @@ mod metrics_event;
 mod overflow_strategy;
 mod policy;
 
+pub use base::Mailbox;
 pub use capacity::MailboxCapacity;
 pub use mailbox_enqueue_outcome::EnqueueOutcome;
-pub use base::Mailbox;
 pub use mailbox_instrumentation::MailboxInstrumentation;
 pub use mailbox_message::MailboxMessage;
 pub use mailbox_offer_future::MailboxOfferFuture;

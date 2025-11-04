@@ -1,5 +1,3 @@
-mod executor;
-
 use std::{string::String, time::Duration};
 
 use cellactor_actor_core_rs::error::ActorError;
@@ -10,8 +8,8 @@ use cellactor_actor_std_rs::{
   system::{ActorSystem, DispatcherConfig},
 };
 use cellactor_utils_core_rs::sync::ArcShared;
-use executor::TokioExecutor;
 use tokio::runtime::Handle;
+use cellactor_actor_std_rs::dispatcher::dispatch_executor::TokioExecutor;
 
 struct Start;
 

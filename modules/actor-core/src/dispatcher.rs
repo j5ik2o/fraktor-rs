@@ -15,19 +15,19 @@
 //! - `system`: System lifecycle and management
 //! - `dispatcher`: Task execution and scheduling infrastructure
 
+mod base;
 mod dispatch_executor;
 mod dispatch_shared;
 mod dispatcher_core;
 mod dispatcher_sender;
 mod dispatcher_state;
-mod base;
 mod inline_executor;
 mod schedule_waker;
 
+pub use base::Dispatcher;
 pub use dispatch_executor::DispatchExecutor;
 pub use dispatch_shared::DispatchShared;
 pub use dispatcher_sender::DispatcherSender;
-pub use base::Dispatcher;
 pub use inline_executor::InlineExecutor;
 
 #[cfg(test)]
