@@ -8,14 +8,15 @@
 階層的なパッケージ構造に移行することで、コードベースの可読性・保守性を向上させ、将来的な機能拡張への対応を容易にする。
 
 ## What Changes
-- `modules/actor-core/src` のフラットな構造を、11個の論理的なパッケージに階層化する
+- `modules/actor-core/src` のフラットな構造を、14個の論理的なパッケージに階層化する
 - 主要な変更点：
   1. **`actor_prim/` パッケージ**: アクタープリミティブを集約し、Rust 2018 のモジュール規約（mod.rs禁止）に従う
   2. **`*_internal.rs` 分割**: 内部実装の詳細は `actor_ref_internal.rs` のような別ファイルに切り出し `pub(crate)` で可視性制御
   3. **`eventstream/` パッケージ**: トップレベル化（Pekko/ProtoActorに倣う）
-  4. **`props_` + `spawn_` ファイル群**: アクター生成の設定と実行を分離
-  5. **`error/` パッケージ**: エラー型を集約
-  6. その他の機能別パッケージ: `messaging/`, `mailbox/`, `supervision/`, `system/`, `lifecycle/`, `deadletter/`, `logging/`, `futures/`
+  4. **`dispatcher/` パッケージ**: トップレベル化（Pekko: `org.apache.pekko.dispatch`、Akka: `akka.dispatch` と同様に独立パッケージとして配置）
+  5. **`props_` + `spawn_` ファイル群**: アクター生成の設定と実行を分離
+  6. **`error/` パッケージ**: エラー型を集約
+  7. その他の機能別パッケージ: `messaging/`, `mailbox/`, `supervision/`, `system/`, `lifecycle/`, `deadletter/`, `logging/`, `futures/`
 - `pub(crate)` と `*_internal.rs` を活用した可視性制御の強化
 - `prelude` モジュールによる便利な再エクスポート機能の追加（ユーザー向けに限定）
 - crate ルートおよび中間モジュールの再エクスポートを撤廃し、階層パスへの移行を強制

@@ -104,11 +104,10 @@ use cellactor_core::actor_prim::actor_cell::ActorCell;
 **含まれるモジュール**:
 - `system.rs` - アクターシステム（`ActorSystemGeneric`, `ActorSystem`）
 - `system_state.rs` - システム状態
-- `dispatcher.rs` - ディスパッチャー（`Dispatcher`, `DispatchExecutor`, `DispatchHandle`）
 
 **設計判断**:
 - システムレベルの抽象化を集約
-- ディスパッチャーをシステムパッケージに配置
+- ディスパッチャーは独立したトップレベルパッケージとして配置（Pekkoの構造に倣う）
 
 ### 8. eventstream/ - イベントストリーム
 **責務**: イベントの発行と購読
@@ -168,13 +167,50 @@ use cellactor_core::actor_prim::actor_cell::ActorCell;
 - エラー型を一箇所に集約することで、エラーハンドリングの一貫性を向上
 - 各パッケージからエラー型を分離し、依存関係を簡素化
 
+### 14. dispatcher/ - ディスパッチャー
+**責務**: アクターのタスク実行とスケジューリング管理
+
+**含まれるモジュール**:
+- `dispatcher.rs` - ルートファイル（子モジュールの公開宣言のみ）
+- `dispatcher_struct.rs` - `Dispatcher` 本体（公開API）
+- `dispatcher_sender.rs` - `DispatcherSender`（公開API）
+- `dispatch_executor.rs` - `DispatchExecutor` trait（公開API）
+- `dispatch_handle.rs` - `DispatchHandle`（公開API）
+- `inline_executor.rs` - `InlineExecutor`（公開API）
+- `dispatcher_core.rs` - `DispatcherCore`（内部実装、`pub(crate)`）
+- `dispatcher_state.rs` - `DispatcherState`（内部状態管理、`pub(crate)`）
+- `schedule_waker.rs` - `ScheduleWaker`（内部実装、`pub(crate)`）
+- `tests.rs` - テストコード
+
+**設計判断**:
+- **Pekkoの構造に倣い、トップレベルパッケージとして独立配置**
+  - Pekko: `org.apache.pekko.dispatch` (独立パッケージ)
+  - Akka: `akka.dispatch` (独立パッケージ)
+- `system`パッケージと密接に関連するが、責務が異なるため独立
+  - `system`: システム全体の管理・ライフサイクル
+  - `dispatcher`: タスク実行基盤とスケジューリング
+- `eventstream`と同様に、システムレベルの横断的関心事として位置づけ
+- 内部実装（`*_core.rs`, `*_state.rs`）は`pub(crate)`で可視性制御
+
+**公開パス例**:
+```rust
+use cellactor_core::dispatcher::dispatcher_struct::Dispatcher;
+use cellactor_core::dispatcher::dispatch_executor::DispatchExecutor;
+use cellactor_core::dispatcher::dispatch_handle::DispatchHandle;
+```
+
+**参照実装との対応**:
+- Pekko/Akkaでは`dispatch`パッケージが`actor`パッケージと同列に配置
+- メッセージディスパッチングとスレッドプール管理の中核を担う
+- システム初期化時に`ActorSystem`から利用されるが、独立したコンポーネント
+
 ## 依存関係の設計
 
 ### レイヤー構造
 ```
 Layer 5: system, eventstream, deadletter, logging
          ↑
-Layer 4: spawn, props
+Layer 4: spawn, props, dispatcher
          ↑
 Layer 3: supervision, actor_prim (actor_cell, actor_context)
          ↑
@@ -184,6 +220,8 @@ Layer 1: actor_prim (primitives), error
          ↑
 Layer 0: futures (横断的関心事)
 ```
+
+**注**: `dispatcher`はLayer 4に配置。`mailbox`（Layer 2）と`messaging`（Layer 2）に依存し、`props`と同レベルでアクター生成・実行基盤を担う。
 
 ### 依存関係の原則
 1. **下位レイヤーは上位レイヤーに依存しない**（依存性逆転の原則）
