@@ -16,7 +16,7 @@ use cellactor_actor_core_rs::{
 use cellactor_actor_std_rs::{
   actor_prim::{Actor, ActorContext, ActorRef, ChildRef},
   dispatcher::{DispatcherConfig, dispatch_executor::TokioExecutor},
-  eventstream::{EventStreamEvent, EventStreamSubscriber},
+  event_stream::{EventStreamEvent, EventStreamSubscriber},
   messaging::{AnyMessage, AnyMessageView, AskResponse},
   props::Props,
   system::ActorSystem,
@@ -68,7 +68,12 @@ fn tokio_mailbox_backpressure_acceptance() {
   run_with_runtime(|| async {
     let handle = Handle::current();
     let dispatcher = dispatcher_config(&handle);
-    let guardian = Props::from_fn(|| SilentGuardian).with_dispatcher(dispatcher.clone());
+    let child_slot = ArcShared::new(StdMutex::new(None));
+    let guardian = Props::from_fn({
+      let slot = child_slot.clone();
+      move || SilentGuardian::with_child_slot(slot.clone())
+    })
+    .with_dispatcher(dispatcher.clone());
     let system = ActorSystem::new(&guardian).expect("system");
 
     let mailbox_policy = MailboxPolicy::bounded(
@@ -89,8 +94,12 @@ fn tokio_mailbox_backpressure_acceptance() {
     .with_mailbox(mailbox)
     .with_dispatcher(dispatcher.clone());
 
-    let child = system.spawn(&child_props).expect("spawn child");
-    let actor_ref = child.actor_ref().clone();
+    let spawn_req = SpawnChildRequest { props: child_props };
+    let spawn_resp =
+      await_message(system.user_guardian_ref().ask(AnyMessage::new(spawn_req)).expect("ask spawn")).await;
+    let child_ref =
+      spawn_resp.as_view().downcast_ref::<SpawnChildResponse>().expect("response").child.actor_ref().clone();
+    let actor_ref = child_ref;
 
     actor_ref.tell(AnyMessage::new(Deliver(1))).expect("deliver 1");
     actor_ref.tell(AnyMessage::new(Deliver(2))).expect("deliver 2");
@@ -108,7 +117,7 @@ fn tokio_mailbox_backpressure_acceptance() {
     })
     .await;
     wait_until_async("deadletter (overflow)", || {
-      subscriber_impl.events().iter().any(|event| matches!(event, EventStreamEvent::Deadletter(_)))
+      subscriber_impl.events().iter().any(|event| matches!(event, EventStreamEvent::DeadLetter(_)))
     })
     .await;
 
@@ -151,12 +160,14 @@ fn tokio_supervision_and_events_acceptance() {
     .await;
 
     supervised.tell(AnyMessage::new(TriggerFatal)).expect("trigger fatal");
-    wait_until_async("child stopped", || system.actor_ref(actor_ref.pid()).is_none()).await;
 
+    // アクターが停止したことを、Stoppedライフサイクルイベントで確認
+    let stopped_pid = actor_ref.pid();
     wait_until_async("lifecycle stopped", || {
-      subscriber_impl.events().iter().any(
-        |event| matches!(event, EventStreamEvent::Lifecycle(lifecycle) if lifecycle.stage() == LifecycleStage::Stopped),
-      )
+      subscriber_impl.events().iter().any(|event| {
+        matches!(event, EventStreamEvent::Lifecycle(lifecycle)
+          if lifecycle.stage() == LifecycleStage::Stopped && lifecycle.pid() == stopped_pid)
+      })
     })
     .await;
 
@@ -392,11 +403,39 @@ struct SupervisedChild {
 struct TriggerRecoverable;
 struct TriggerFatal;
 
-struct SilentGuardian;
+struct SilentGuardian {
+  child_slot: Option<ArcShared<StdMutex<Option<ChildRef>>>>,
+}
+
+impl SilentGuardian {
+  fn new() -> Self {
+    Self { child_slot: None }
+  }
+
+  fn with_child_slot(child_slot: ArcShared<StdMutex<Option<ChildRef>>>) -> Self {
+    Self { child_slot: Some(child_slot) }
+  }
+}
+
 impl Actor for SilentGuardian {
-  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    if let Some(spawn_req) = message.downcast_ref::<SpawnChildRequest>() {
+      let child = ctx.spawn_child(&spawn_req.props).map_err(|_| ActorError::recoverable("spawn failed"))?;
+      if let Some(slot) = &self.child_slot {
+        *slot.lock() = Some(child.clone());
+      }
+      ctx.reply(AnyMessage::new(SpawnChildResponse { child })).map_err(|_| ActorError::recoverable("reply"))?;
+    }
     Ok(())
   }
+}
+
+struct SpawnChildRequest {
+  props: Props,
+}
+
+struct SpawnChildResponse {
+  child: ChildRef,
 }
 
 impl SupervisedChild {

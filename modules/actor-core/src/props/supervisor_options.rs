@@ -1,5 +1,8 @@
 use crate::supervision::SupervisorStrategy;
 
+#[cfg(test)]
+mod tests;
+
 /// Supervisor configuration attached to props.
 #[derive(Clone, Copy, Debug)]
 pub struct SupervisorOptions {

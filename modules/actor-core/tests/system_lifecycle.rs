@@ -19,7 +19,7 @@ struct Start;
 
 #[test]
 fn terminate_signals_future() {
-  let props = Props::<NoStdToolbox>::from_fn(|| IdleGuardian);
+  let props = Props::from_fn(|| IdleGuardian);
   let system = ActorSystem::new(&props).expect("system");
   let termination = system.when_terminated();
   system.terminate().expect("terminate");
@@ -30,7 +30,7 @@ fn terminate_signals_future() {
 #[test]
 fn stop_self_propagates_to_children() {
   let child_states = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let props = Props::<NoStdToolbox>::from_fn({
+  let props = Props::from_fn({
     let child_states = child_states.clone();
     move || ParentGuardian::new(child_states.clone())
   });
@@ -38,8 +38,8 @@ fn stop_self_propagates_to_children() {
   let system = ActorSystem::new(&props).expect("system");
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
 
-  let deadline = std::time::Instant::now() + Duration::from_millis(20);
-  while child_states.lock().len() < 2 && std::time::Instant::now() < deadline {
+  let dead_line = std::time::Instant::now() + Duration::from_millis(20);
+  while child_states.lock().len() < 2 && std::time::Instant::now() < dead_line {
     thread::yield_now();
   }
 
@@ -76,7 +76,7 @@ impl Actor<NoStdToolbox> for ParentGuardian {
   ) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
       let states = self.child_states.clone();
-      let child_props = Props::<NoStdToolbox>::from_fn(move || RecordingChild::new(states.clone()));
+      let child_props = Props::from_fn(move || RecordingChild::new(states.clone()));
       let _ = ctx.spawn_child(&child_props).map_err(|_| ActorError::recoverable("spawn failed"))?;
       ctx.stop_self().map_err(|_| ActorError::recoverable("stop failed"))?;
     }

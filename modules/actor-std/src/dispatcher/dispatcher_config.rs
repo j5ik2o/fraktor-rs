@@ -1,16 +1,16 @@
 use cellactor_actor_core_rs::{
-  dispatcher::DispatchExecutor as CoreDispatchExecutor, mailbox::Mailbox,
-  props::DispatcherConfig as CoreDispatcherConfig,
+  dispatcher::DispatchExecutor as CoreDispatchExecutor, mailbox::MailboxGeneric,
+  props::DispatcherConfigGeneric as CoreDispatcherConfigGeneric,
 };
 use cellactor_utils_core_rs::sync::ArcShared;
-use cellactor_utils_std_rs::StdToolbox;
+use cellactor_utils_std_rs::runtime_toolbox::StdToolbox;
 
 use super::{CoreDispatchExecutorAdapter, DispatchExecutor, DispatchExecutorAdapter, Dispatcher};
 
 /// Dispatcher configuration specialised for `StdToolbox`.
 #[derive(Clone, Default)]
 pub struct DispatcherConfig {
-  inner: CoreDispatcherConfig<StdToolbox>,
+  inner: CoreDispatcherConfigGeneric<StdToolbox>,
 }
 
 impl DispatcherConfig {
@@ -19,7 +19,7 @@ impl DispatcherConfig {
   pub fn from_executor(executor: ArcShared<dyn DispatchExecutor>) -> Self {
     let adapter: ArcShared<dyn CoreDispatchExecutor<StdToolbox>> =
       ArcShared::new(DispatchExecutorAdapter::new(executor));
-    Self { inner: CoreDispatcherConfig::from_executor(adapter) }
+    Self { inner: CoreDispatcherConfigGeneric::from_executor(adapter) }
   }
 
   /// Returns the configured scheduler as a standard trait object.
@@ -31,25 +31,25 @@ impl DispatcherConfig {
 
   /// Builds a dispatcher using the configured scheduler.
   #[must_use]
-  pub fn build_dispatcher(&self, mailbox: ArcShared<Mailbox<StdToolbox>>) -> Dispatcher {
+  pub fn build_dispatcher(&self, mailbox: ArcShared<MailboxGeneric<StdToolbox>>) -> Dispatcher {
     self.inner.build_dispatcher(mailbox)
   }
 
   /// Borrows the underlying core configuration.
   #[must_use]
-  pub const fn as_core(&self) -> &CoreDispatcherConfig<StdToolbox> {
+  pub const fn as_core(&self) -> &CoreDispatcherConfigGeneric<StdToolbox> {
     &self.inner
   }
 
   /// Consumes the wrapper and returns the core configuration.
   #[must_use]
-  pub fn into_core(self) -> CoreDispatcherConfig<StdToolbox> {
+  pub fn into_core(self) -> CoreDispatcherConfigGeneric<StdToolbox> {
     self.inner
   }
 
   /// Wraps an existing core configuration.
   #[must_use]
-  pub const fn from_core(inner: CoreDispatcherConfig<StdToolbox>) -> Self {
+  pub const fn from_core(inner: CoreDispatcherConfigGeneric<StdToolbox>) -> Self {
     Self { inner }
   }
 }

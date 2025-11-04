@@ -1,19 +1,22 @@
 //! Owned representation of a dynamically typed message.
 
+#[cfg(test)]
+mod tests;
+
 use alloc::fmt;
 use core::any::Any;
 
 use cellactor_utils_core_rs::sync::ArcShared;
 
-use crate::{NoStdToolbox, RuntimeToolbox, actor_prim::actor_ref::ActorRef, messaging::AnyMessageView};
+use crate::{NoStdToolbox, RuntimeToolbox, actor_prim::actor_ref::ActorRefGeneric, messaging::AnyMessageView};
 
 /// Wraps an arbitrary payload for message passing.
-pub struct AnyMessage<TB: RuntimeToolbox = NoStdToolbox> {
+pub struct AnyMessageGeneric<TB: RuntimeToolbox> {
   payload:  ArcShared<dyn Any + Send + Sync + 'static>,
-  reply_to: Option<ActorRef<TB>>,
+  reply_to: Option<ActorRefGeneric<TB>>,
 }
 
-impl<TB: RuntimeToolbox> AnyMessage<TB> {
+impl<TB: RuntimeToolbox> AnyMessageGeneric<TB> {
   /// Creates a new owned message from the provided payload.
   #[must_use]
   pub fn new<T>(payload: T) -> Self
@@ -24,14 +27,14 @@ impl<TB: RuntimeToolbox> AnyMessage<TB> {
 
   /// Associates a reply target with this message and returns the updated instance.
   #[must_use]
-  pub fn with_reply_to(mut self, reply_to: ActorRef<TB>) -> Self {
+  pub fn with_reply_to(mut self, reply_to: ActorRefGeneric<TB>) -> Self {
     self.reply_to = Some(reply_to);
     self
   }
 
   /// Returns the reply target, if any.
   #[must_use]
-  pub const fn reply_to(&self) -> Option<&ActorRef<TB>> {
+  pub const fn reply_to(&self) -> Option<&ActorRefGeneric<TB>> {
     self.reply_to.as_ref()
   }
 
@@ -48,13 +51,13 @@ impl<TB: RuntimeToolbox> AnyMessage<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox> Clone for AnyMessage<TB> {
+impl<TB: RuntimeToolbox> Clone for AnyMessageGeneric<TB> {
   fn clone(&self) -> Self {
     Self { payload: self.payload.clone(), reply_to: self.reply_to.clone() }
   }
 }
 
-impl<TB: RuntimeToolbox> fmt::Debug for AnyMessage<TB> {
+impl<TB: RuntimeToolbox> fmt::Debug for AnyMessageGeneric<TB> {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     f.debug_struct("AnyMessage")
       .field("type_id", &self.payload.type_id())
@@ -62,3 +65,6 @@ impl<TB: RuntimeToolbox> fmt::Debug for AnyMessage<TB> {
       .finish()
   }
 }
+
+/// Type alias for `AnyMessageGeneric` with the default `NoStdToolbox`.
+pub type AnyMessage = AnyMessageGeneric<NoStdToolbox>;

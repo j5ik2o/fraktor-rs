@@ -3,22 +3,22 @@ use alloc::{string::String, vec::Vec};
 use cellactor_utils_core_rs::sync::ArcShared;
 
 use super::{
-  dispatcher_config::DispatcherConfig, factory::ActorFactory, mailbox_config::MailboxConfig,
+  dispatcher_config::DispatcherConfigGeneric, factory::ActorFactory, mailbox_config::MailboxConfig,
   supervisor_options::SupervisorOptions,
 };
 use crate::{NoStdToolbox, RuntimeToolbox, actor_prim::Actor, mailbox::MailboxPolicy};
 
 /// Immutable configuration describing how to construct an actor.
-pub struct Props<TB: RuntimeToolbox + 'static = NoStdToolbox> {
+pub struct PropsGeneric<TB: RuntimeToolbox + 'static> {
   factory:    ArcShared<dyn ActorFactory<TB>>,
   name:       Option<String>,
   mailbox:    MailboxConfig,
   supervisor: SupervisorOptions,
   middleware: Vec<String>,
-  dispatcher: DispatcherConfig<TB>,
+  dispatcher: DispatcherConfigGeneric<TB>,
 }
 
-impl<TB: RuntimeToolbox + 'static> Props<TB> {
+impl<TB: RuntimeToolbox + 'static> PropsGeneric<TB> {
   /// Creates new props from the provided factory.
   #[must_use]
   pub fn new(factory: ArcShared<dyn ActorFactory<TB>>) -> Self {
@@ -28,7 +28,7 @@ impl<TB: RuntimeToolbox + 'static> Props<TB> {
       mailbox: MailboxConfig::default(),
       supervisor: SupervisorOptions::default(),
       middleware: Vec::new(),
-      dispatcher: DispatcherConfig::default(),
+      dispatcher: DispatcherConfigGeneric::default(),
     }
   }
 
@@ -79,7 +79,7 @@ impl<TB: RuntimeToolbox + 'static> Props<TB> {
 
   /// Returns the configured dispatcher settings.
   #[must_use]
-  pub const fn dispatcher(&self) -> &DispatcherConfig<TB> {
+  pub const fn dispatcher(&self) -> &DispatcherConfigGeneric<TB> {
     &self.dispatcher
   }
 
@@ -116,13 +116,13 @@ impl<TB: RuntimeToolbox + 'static> Props<TB> {
 
   /// Overrides the dispatcher configuration used when constructing actors.
   #[must_use]
-  pub fn with_dispatcher(mut self, dispatcher: DispatcherConfig<TB>) -> Self {
+  pub fn with_dispatcher(mut self, dispatcher: DispatcherConfigGeneric<TB>) -> Self {
     self.dispatcher = dispatcher;
     self
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Clone for Props<TB> {
+impl<TB: RuntimeToolbox + 'static> Clone for PropsGeneric<TB> {
   fn clone(&self) -> Self {
     Self {
       factory:    self.factory.clone(),
@@ -134,3 +134,6 @@ impl<TB: RuntimeToolbox + 'static> Clone for Props<TB> {
     }
   }
 }
+
+/// Type alias for `PropsGeneric` with the default `NoStdToolbox`.
+pub type Props = PropsGeneric<NoStdToolbox>;

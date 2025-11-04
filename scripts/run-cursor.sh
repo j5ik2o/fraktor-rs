@@ -1,3 +1,3 @@
 #!/bin/bash
 
-cursor-agent --force
+cursor-agent --force "$@"

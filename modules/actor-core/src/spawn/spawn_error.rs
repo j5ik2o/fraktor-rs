@@ -1,5 +1,8 @@
 //! Errors that can occur while spawning a new actor.
 
+#[cfg(test)]
+mod tests;
+
 extern crate alloc;
 
 use alloc::string::String;

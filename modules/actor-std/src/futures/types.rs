@@ -1,4 +1,4 @@
-use cellactor_utils_std_rs::StdToolbox;
+use cellactor_utils_std_rs::runtime_toolbox::StdToolbox;
 
 /// Future primitive specialised for `StdToolbox`.
 pub type ActorFuture<T> = cellactor_actor_core_rs::futures::ActorFuture<T, StdToolbox>;

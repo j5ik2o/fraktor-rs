@@ -11,6 +11,7 @@ publish = false
 
 [features]
 default = []
+alloc = []
 alloc-metrics = []
 
 [dependencies]

@@ -1,5 +1,8 @@
 use cellactor_utils_core_rs::sync::ArcShared;
 
+#[cfg(test)]
+mod tests;
+
 use super::dispatcher_core::DispatcherCore;
 use crate::RuntimeToolbox;
 

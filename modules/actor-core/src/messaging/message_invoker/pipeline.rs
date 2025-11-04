@@ -7,9 +7,9 @@ use cellactor_utils_core_rs::sync::ArcShared;
 use super::MessageInvokerMiddleware;
 use crate::{
   RuntimeToolbox,
-  actor_prim::{Actor, ActorContext, actor_ref::ActorRef},
+  actor_prim::{Actor, ActorContext, actor_ref::ActorRefGeneric},
   error::ActorError,
-  messaging::{AnyMessage, any_message_view::AnyMessageView},
+  messaging::{AnyMessageGeneric, any_message_view::AnyMessageView},
 };
 
 /// Middleware-enabled pipeline used to invoke actor message handlers.
@@ -40,7 +40,7 @@ impl<TB: RuntimeToolbox + 'static> MessageInvokerPipeline<TB> {
     &self,
     actor: &mut A,
     ctx: &mut ActorContext<'_, TB>,
-    message: AnyMessage<TB>,
+    message: AnyMessageGeneric<TB>,
   ) -> Result<(), ActorError>
   where
     A: Actor<TB>, {
@@ -88,7 +88,7 @@ impl<TB: RuntimeToolbox + 'static> MessageInvokerPipeline<TB> {
   }
 }
 
-fn restore_reply<TB: RuntimeToolbox + 'static>(ctx: &mut ActorContext<'_, TB>, previous: Option<ActorRef<TB>>) {
+fn restore_reply<TB: RuntimeToolbox + 'static>(ctx: &mut ActorContext<'_, TB>, previous: Option<ActorRefGeneric<TB>>) {
   match previous {
     | Some(target) => ctx.set_reply_to(Some(target)),
     | None => ctx.clear_reply_to(),

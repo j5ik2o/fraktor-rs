@@ -1,8 +1,11 @@
 use cellactor_actor_core_rs::dispatcher::DispatchExecutor as CoreDispatchExecutor;
 use cellactor_utils_core_rs::sync::ArcShared;
-use cellactor_utils_std_rs::StdToolbox;
+use cellactor_utils_std_rs::runtime_toolbox::StdToolbox;
 
 use crate::dispatcher::DispatchShared;
+
+#[cfg(test)]
+mod tests;
 
 /// Scheduler abstraction for driving dispatcher execution in the standard runtime.
 pub trait DispatchExecutor: Send + Sync + 'static {

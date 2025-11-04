@@ -1,5 +1,8 @@
 use alloc::boxed::Box;
 
+#[cfg(test)]
+mod tests;
+
 use crate::{NoStdToolbox, RuntimeToolbox, actor_prim::Actor};
 
 /// Trait implemented by actor factories stored inside [`Props`](super::base::Props).

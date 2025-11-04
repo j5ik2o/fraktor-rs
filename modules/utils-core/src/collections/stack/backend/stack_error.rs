@@ -1,5 +1,8 @@
 use crate::sync::SharedError;
 
+#[cfg(test)]
+mod tests;
+
 /// Errors that may arise while operating on a stack backend.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StackError {

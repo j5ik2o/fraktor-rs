@@ -8,15 +8,18 @@ use core::{
 };
 
 use super::{mailbox_queue_poll_future::QueuePollFuture, map_user_queue_error};
-use crate::{RuntimeToolbox, error::SendError, messaging::AnyMessage};
+use crate::{RuntimeToolbox, error::SendError, messaging::AnyMessageGeneric};
+
+#[cfg(test)]
+mod tests;
 
 /// Future completing with the next user message from the mailbox.
 pub struct MailboxPollFuture<TB: RuntimeToolbox + 'static> {
-  inner: QueuePollFuture<AnyMessage<TB>, TB>,
+  inner: QueuePollFuture<AnyMessageGeneric<TB>, TB>,
 }
 
 impl<TB: RuntimeToolbox + 'static> MailboxPollFuture<TB> {
-  pub(super) const fn new(inner: QueuePollFuture<AnyMessage<TB>, TB>) -> Self {
+  pub(super) const fn new(inner: QueuePollFuture<AnyMessageGeneric<TB>, TB>) -> Self {
     Self { inner }
   }
 }
@@ -24,7 +27,7 @@ impl<TB: RuntimeToolbox + 'static> MailboxPollFuture<TB> {
 impl<TB: RuntimeToolbox + 'static> Unpin for MailboxPollFuture<TB> {}
 
 impl<TB: RuntimeToolbox + 'static> Future for MailboxPollFuture<TB> {
-  type Output = Result<AnyMessage<TB>, SendError<TB>>;
+  type Output = Result<AnyMessageGeneric<TB>, SendError<TB>>;
 
   fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
     match Pin::new(&mut self.inner).poll(cx) {

@@ -2,6 +2,9 @@ use core::marker::PhantomData;
 
 use super::{guard_handle::GuardHandle, synchronized_rw_backend::SynchronizedRwBackend};
 
+#[cfg(test)]
+mod tests;
+
 /// Async read/write synchronization primitive providing backend abstraction.
 #[derive(Debug)]
 pub struct SynchronizedRw<B, T: ?Sized>

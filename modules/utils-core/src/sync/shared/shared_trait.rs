@@ -1,5 +1,8 @@
 use core::ops::Deref;
 
+#[cfg(test)]
+mod tests;
+
 /// Shared ownership abstraction used across runtimes.
 pub trait Shared<T: ?Sized>: Clone + Deref<Target = T> {
   /// Attempt to unwrap the shared value.

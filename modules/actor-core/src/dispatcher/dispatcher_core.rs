@@ -1,10 +1,16 @@
+#[cfg(test)]
+mod tests;
+
 use core::{
   num::NonZeroUsize,
   pin::Pin,
   task::{Context, Poll},
 };
 
-use cellactor_utils_core_rs::sync::{ArcShared, SyncMutexFamily, sync_mutex_like::SyncMutexLike};
+use cellactor_utils_core_rs::{
+  runtime_toolbox::SyncMutexFamily,
+  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+};
 use portable_atomic::AtomicU8;
 
 use super::{
@@ -14,15 +20,15 @@ use super::{
 use crate::{
   RuntimeToolbox, ToolboxMutex,
   error::{ActorError, SendError},
-  mailbox::{EnqueueOutcome, Mailbox, MailboxMessage, MailboxOfferFuture},
-  messaging::{AnyMessage, SystemMessage, message_invoker::MessageInvoker},
+  mailbox::{EnqueueOutcome, MailboxGeneric, MailboxMessage, MailboxOfferFuture},
+  messaging::{AnyMessageGeneric, SystemMessage, message_invoker::MessageInvoker},
 };
 
 const DEFAULT_THROUGHPUT: usize = 300;
 
 /// Entity that drains the mailbox and invokes messages.
 pub(super) struct DispatcherCore<TB: RuntimeToolbox + 'static> {
-  mailbox:          ArcShared<Mailbox<TB>>,
+  mailbox:          ArcShared<MailboxGeneric<TB>>,
   executor:         ArcShared<dyn DispatchExecutor<TB>>,
   invoker:          ToolboxMutex<Option<ArcShared<dyn MessageInvoker<TB>>>, TB>,
   state:            AtomicU8,
@@ -34,7 +40,7 @@ unsafe impl<TB: RuntimeToolbox + 'static> Sync for DispatcherCore<TB> {}
 
 impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
   pub(super) fn new(
-    mailbox: ArcShared<Mailbox<TB>>,
+    mailbox: ArcShared<MailboxGeneric<TB>>,
     executor: ArcShared<dyn DispatchExecutor<TB>>,
     throughput_limit: Option<NonZeroUsize>,
   ) -> Self {
@@ -47,7 +53,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
     }
   }
 
-  pub(super) const fn mailbox(&self) -> &ArcShared<Mailbox<TB>> {
+  pub(super) const fn mailbox(&self) -> &ArcShared<MailboxGeneric<TB>> {
     &self.mailbox
   }
 
@@ -112,11 +118,11 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
     }
   }
 
-  fn handle_user_message(&self, message: AnyMessage<TB>) {
+  fn handle_user_message(&self, message: AnyMessageGeneric<TB>) {
     let _ = self.invoke_user_message(message);
   }
 
-  fn invoke_user_message(&self, message: AnyMessage<TB>) -> Result<(), ActorError> {
+  fn invoke_user_message(&self, message: AnyMessageGeneric<TB>) -> Result<(), ActorError> {
     if let Some(invoker) = self.invoker.lock().as_ref() {
       return invoker.invoke_user_message(message);
     }
@@ -130,15 +136,15 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
     Ok(())
   }
 
-  pub(super) fn enqueue_user(self_arc: &ArcShared<Self>, message: AnyMessage<TB>) -> Result<(), SendError<TB>> {
+  pub(super) fn enqueue_user(self_arc: &ArcShared<Self>, message: AnyMessageGeneric<TB>) -> Result<(), SendError<TB>> {
     match self_arc.mailbox.enqueue_user(message) {
       | Ok(EnqueueOutcome::Enqueued) => {
-        super::base::Dispatcher::from_core(self_arc.clone()).schedule();
+        super::base::DispatcherGeneric::from_core(self_arc.clone()).schedule();
         Ok(())
       },
       | Ok(EnqueueOutcome::Pending(mut future)) => {
         Self::drain_offer_future(self_arc, &mut future)?;
-        super::base::Dispatcher::from_core(self_arc.clone()).schedule();
+        super::base::DispatcherGeneric::from_core(self_arc.clone()).schedule();
         Ok(())
       },
       | Err(error) => Err(error),
@@ -147,7 +153,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
 
   pub(super) fn enqueue_system(self_arc: &ArcShared<Self>, message: SystemMessage) -> Result<(), SendError<TB>> {
     self_arc.mailbox.enqueue_system(message)?;
-    super::base::Dispatcher::from_core(self_arc.clone()).schedule();
+    super::base::DispatcherGeneric::from_core(self_arc.clone()).schedule();
     Ok(())
   }
 
@@ -160,7 +166,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
         | Poll::Ready(Ok(_)) => return Ok(()),
         | Poll::Ready(Err(error)) => return Err(error),
         | Poll::Pending => {
-          super::base::Dispatcher::from_core(self_arc.clone()).schedule();
+          super::base::DispatcherGeneric::from_core(self_arc.clone()).schedule();
           block_hint();
         },
       }

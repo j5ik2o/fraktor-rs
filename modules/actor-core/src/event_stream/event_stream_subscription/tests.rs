@@ -1,0 +1,40 @@
+use cellactor_utils_core_rs::sync::ArcShared;
+
+use super::EventStreamSubscriptionGeneric;
+use crate::{NoStdToolbox, event_stream::EventStreamGeneric};
+
+struct MockSubscriber;
+
+impl crate::event_stream::EventStreamSubscriber<NoStdToolbox> for MockSubscriber {
+  fn on_event(&self, _event: &crate::event_stream::EventStreamEvent<NoStdToolbox>) {}
+}
+
+#[test]
+fn event_stream_subscription_new() {
+  let stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let subscription = EventStreamSubscriptionGeneric::new(stream.clone(), 42);
+  assert_eq!(subscription.id(), 42);
+}
+
+#[test]
+fn event_stream_subscription_id() {
+  let stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let subscription = EventStreamSubscriptionGeneric::new(stream.clone(), 100);
+  assert_eq!(subscription.id(), 100);
+}
+
+#[test]
+fn event_stream_subscription_drop_unsubscribes() {
+  let stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let subscriber: ArcShared<dyn crate::event_stream::EventStreamSubscriber<NoStdToolbox>> =
+    ArcShared::new(MockSubscriber);
+  let subscription = EventStreamGeneric::subscribe_arc(&stream, &subscriber);
+  let id = subscription.id();
+
+  drop(subscription);
+
+  let subscriber2: ArcShared<dyn crate::event_stream::EventStreamSubscriber<NoStdToolbox>> =
+    ArcShared::new(MockSubscriber);
+  let subscription2 = EventStreamGeneric::subscribe_arc(&stream, &subscriber2);
+  assert!(subscription2.id() > id);
+}

@@ -4,9 +4,12 @@ use cellactor_utils_core_rs::sync::ArcShared;
 
 use crate::{
   RuntimeToolbox,
-  eventstream::{EventStreamEvent, EventStreamSubscriber},
+  event_stream::{EventStreamEvent, EventStreamSubscriber},
   logging::{LogLevel, logger_writer::LoggerWriter},
 };
+
+#[cfg(test)]
+mod tests;
 
 /// Subscribes to log events and filters by severity.
 pub struct LoggerSubscriber {

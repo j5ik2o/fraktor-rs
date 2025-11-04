@@ -6,7 +6,7 @@ use cellactor_actor_core_rs::{
 };
 use cellactor_actor_std_rs::{
   actor_prim::{Actor, ActorContext, ActorRef},
-  eventstream::EventStreamSubscriber,
+  event_stream::EventStreamSubscriber,
   messaging::{AnyMessage, AnyMessageView},
   props::Props,
   system::ActorSystem,

@@ -7,24 +7,24 @@ use super::{
   dispatcher_state::DispatcherState, inline_executor::InlineExecutor, schedule_waker::ScheduleWaker,
 };
 use crate::{
-  RuntimeToolbox,
+  NoStdToolbox, RuntimeToolbox,
   error::SendError,
-  mailbox::Mailbox,
-  messaging::{AnyMessage, SystemMessage, message_invoker::MessageInvoker},
+  mailbox::MailboxGeneric,
+  messaging::{AnyMessageGeneric, SystemMessage, message_invoker::MessageInvoker},
 };
 
 /// Dispatcher that manages mailbox processing.
-pub struct Dispatcher<TB: RuntimeToolbox + 'static> {
+pub struct DispatcherGeneric<TB: RuntimeToolbox + 'static> {
   core: ArcShared<DispatcherCore<TB>>,
 }
 
-unsafe impl<TB: RuntimeToolbox + 'static> Send for Dispatcher<TB> {}
-unsafe impl<TB: RuntimeToolbox + 'static> Sync for Dispatcher<TB> {}
+unsafe impl<TB: RuntimeToolbox + 'static> Send for DispatcherGeneric<TB> {}
+unsafe impl<TB: RuntimeToolbox + 'static> Sync for DispatcherGeneric<TB> {}
 
-impl<TB: RuntimeToolbox + 'static> Dispatcher<TB> {
+impl<TB: RuntimeToolbox + 'static> DispatcherGeneric<TB> {
   /// Creates a new dispatcher from a mailbox and execution strategy.
   #[must_use]
-  pub fn new(mailbox: ArcShared<Mailbox<TB>>, executor: ArcShared<dyn DispatchExecutor<TB>>) -> Self {
+  pub fn new(mailbox: ArcShared<MailboxGeneric<TB>>, executor: ArcShared<dyn DispatchExecutor<TB>>) -> Self {
     let throughput = mailbox.throughput_limit();
     let core = ArcShared::new(DispatcherCore::new(mailbox, executor, throughput));
     Self::from_core(core)
@@ -32,7 +32,7 @@ impl<TB: RuntimeToolbox + 'static> Dispatcher<TB> {
 
   /// Creates a dispatcher using an inline execution strategy.
   #[must_use]
-  pub fn with_inline_executor(mailbox: ArcShared<Mailbox<TB>>) -> Self {
+  pub fn with_inline_executor(mailbox: ArcShared<MailboxGeneric<TB>>) -> Self {
     Self::new(mailbox, ArcShared::new(InlineExecutor::<TB>::new()))
   }
 
@@ -46,7 +46,7 @@ impl<TB: RuntimeToolbox + 'static> Dispatcher<TB> {
   /// # Errors
   ///
   /// Returns an error if the mailbox is full or closed.
-  pub fn enqueue_user(&self, message: AnyMessage<TB>) -> Result<(), SendError<TB>> {
+  pub fn enqueue_user(&self, message: AnyMessageGeneric<TB>) -> Result<(), SendError<TB>> {
     DispatcherCore::enqueue_user(&self.core, message)
   }
 
@@ -74,7 +74,7 @@ impl<TB: RuntimeToolbox + 'static> Dispatcher<TB> {
 
   /// Returns a reference to the mailbox.
   #[must_use]
-  pub fn mailbox(&self) -> ArcShared<Mailbox<TB>> {
+  pub fn mailbox(&self) -> ArcShared<MailboxGeneric<TB>> {
     self.core.mailbox().clone()
   }
 
@@ -95,8 +95,11 @@ impl<TB: RuntimeToolbox + 'static> Dispatcher<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Clone for Dispatcher<TB> {
+impl<TB: RuntimeToolbox + 'static> Clone for DispatcherGeneric<TB> {
   fn clone(&self) -> Self {
     Self { core: self.core.clone() }
   }
 }
+
+/// Type alias for `DispatcherGeneric` with the default `NoStdToolbox`.
+pub type Dispatcher = DispatcherGeneric<NoStdToolbox>;

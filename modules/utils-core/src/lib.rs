@@ -21,7 +21,7 @@
 #![deny(clippy::unused_self)]
 #![deny(clippy::unnecessary_wraps)]
 #![deny(clippy::unreachable)]
-#![deny(clippy::empty_enum)]
+#![deny(clippy::empty_enums)]
 #![deny(clippy::no_effect)]
 #![deny(dropping_copy_types)]
 #![cfg_attr(not(test), deny(clippy::unwrap_used))]
@@ -69,12 +69,13 @@ pub use sync::{
   ArcShared, Flag, SendBound, Shared, SharedBound, SharedDyn, SharedFactory, SharedFn, StateCell, StaticRefShared,
 };
 pub use timing::{
-  DeadlineTimer, DeadlineTimerError, DeadlineTimerExpired, DeadlineTimerKey, DeadlineTimerKeyAllocator, TimerDeadline,
+  DeadLineTimer, DeadLineTimerError, DeadLineTimerExpired, DeadLineTimerKey, DeadLineTimerKeyAllocator, TimerDeadLine,
 };
 
 /// Core collections shared across the Cellex runtimes.
 pub mod collections;
 mod concurrent;
+pub mod runtime_toolbox;
 /// Synchronization primitives and shared ownership abstractions.
 pub mod sync;
 mod timing;

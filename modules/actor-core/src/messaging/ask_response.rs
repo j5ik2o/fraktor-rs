@@ -3,37 +3,41 @@
 use cellactor_utils_core_rs::sync::ArcShared;
 
 use crate::{
-  NoStdToolbox, RuntimeToolbox, actor_prim::actor_ref::ActorRef, futures::ActorFuture, messaging::AnyMessage,
+  NoStdToolbox, RuntimeToolbox, actor_prim::actor_ref::ActorRefGeneric, futures::ActorFuture,
+  messaging::AnyMessageGeneric,
 };
 
-/// Combines the reply handle and future returned by `ActorRef::ask`.
-pub struct AskResponse<TB: RuntimeToolbox + 'static = NoStdToolbox> {
-  reply_to: ActorRef<TB>,
-  future:   ArcShared<ActorFuture<AnyMessage<TB>, TB>>,
+/// Combines the reply handle and future returned by `ActorRefGeneric::ask`.
+pub struct AskResponseGeneric<TB: RuntimeToolbox + 'static> {
+  reply_to: ActorRefGeneric<TB>,
+  future:   ArcShared<ActorFuture<AnyMessageGeneric<TB>, TB>>,
 }
 
-impl<TB: RuntimeToolbox + 'static> AskResponse<TB> {
+impl<TB: RuntimeToolbox + 'static> AskResponseGeneric<TB> {
   /// Creates a new ask response handle.
   #[must_use]
-  pub const fn new(reply_to: ActorRef<TB>, future: ArcShared<ActorFuture<AnyMessage<TB>, TB>>) -> Self {
+  pub const fn new(reply_to: ActorRefGeneric<TB>, future: ArcShared<ActorFuture<AnyMessageGeneric<TB>, TB>>) -> Self {
     Self { reply_to, future }
   }
 
   /// Returns the reply handle exposed to the caller.
   #[must_use]
-  pub const fn reply_to(&self) -> &ActorRef<TB> {
+  pub const fn reply_to(&self) -> &ActorRefGeneric<TB> {
     &self.reply_to
   }
 
   /// Returns a reference to the future that resolves with the response message.
   #[must_use]
-  pub const fn future(&self) -> &ArcShared<ActorFuture<AnyMessage<TB>, TB>> {
+  pub const fn future(&self) -> &ArcShared<ActorFuture<AnyMessageGeneric<TB>, TB>> {
     &self.future
   }
 
   /// Decomposes the response into its parts.
   #[must_use]
-  pub fn into_parts(self) -> (ActorRef<TB>, ArcShared<ActorFuture<AnyMessage<TB>, TB>>) {
+  pub fn into_parts(self) -> (ActorRefGeneric<TB>, ArcShared<ActorFuture<AnyMessageGeneric<TB>, TB>>) {
     (self.reply_to, self.future)
   }
 }
+
+/// Type alias for `AskResponseGeneric` with the default `NoStdToolbox`.
+pub type AskResponse = AskResponseGeneric<NoStdToolbox>;

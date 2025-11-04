@@ -1,5 +1,8 @@
 //! Capacity strategy applied to actor mailboxes.
 
+#[cfg(test)]
+mod tests;
+
 use core::num::NonZeroUsize;
 
 /// Configures how many messages a mailbox may hold.

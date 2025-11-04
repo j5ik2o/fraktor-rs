@@ -9,7 +9,7 @@ use cellactor_actor_core_rs::{
 };
 use cellactor_actor_std_rs::{
   actor_prim::{Actor, ActorContext},
-  eventstream::{EventStreamEvent, EventStreamSubscriber},
+  event_stream::{EventStreamEvent, EventStreamSubscriber},
   messaging::{AnyMessage, AnyMessageView},
   props::Props,
   system::ActorSystem,
@@ -35,8 +35,8 @@ impl EventStreamSubscriber for LifecyclePrinter {
       | EventStreamEvent::Lifecycle(lifecycle) => {
         println!("[LIFECYCLE] pid={:?} stage={:?}", lifecycle.pid(), lifecycle.stage());
       },
-      | EventStreamEvent::Deadletter(entry) => {
-        println!("[DEADLETTER] reason={:?} recipient={:?}", entry.reason(), entry.recipient());
+      | EventStreamEvent::DeadLetter(entry) => {
+        println!("[DEAD LETTER] reason={:?} recipient={:?}", entry.reason(), entry.recipient());
       },
       | EventStreamEvent::Log(_) | EventStreamEvent::Mailbox(_) => {},
     }

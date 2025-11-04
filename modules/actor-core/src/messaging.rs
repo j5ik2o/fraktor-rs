@@ -8,7 +8,7 @@ mod ask_response;
 pub mod message_invoker;
 mod system_message;
 
-pub use any_message::AnyMessage;
+pub use any_message::{AnyMessage, AnyMessageGeneric};
 pub use any_message_view::AnyMessageView;
-pub use ask_response::AskResponse;
+pub use ask_response::{AskResponse, AskResponseGeneric};
 pub use system_message::SystemMessage;

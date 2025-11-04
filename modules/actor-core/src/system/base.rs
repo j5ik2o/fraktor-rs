@@ -1,41 +1,44 @@
 //! Coordinates actors and infrastructure.
 
+#[cfg(test)]
+mod tests;
+
 use alloc::{string::String, vec::Vec};
 
 use cellactor_utils_core_rs::sync::ArcShared;
 
 use crate::{
   NoStdToolbox, RuntimeToolbox,
-  actor_prim::{ActorCell, ChildRef, Pid, actor_ref::ActorRef},
-  deadletter::DeadletterEntry,
+  actor_prim::{ActorCellGeneric, ChildRefGeneric, Pid, actor_ref::ActorRefGeneric},
+  dead_letter::DeadLetterEntryGeneric,
   error::SendError,
-  eventstream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric},
+  event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric},
   futures::ActorFuture,
   logging::LogLevel,
-  messaging::{AnyMessage, SystemMessage},
-  props::Props,
+  messaging::{AnyMessageGeneric, SystemMessage},
+  props::PropsGeneric,
   spawn::SpawnError,
-  system::system_state::SystemState,
+  system::system_state::SystemStateGeneric,
 };
 
 const ACTOR_INIT_FAILED: &str = "actor lifecycle hook failed";
 const PARENT_MISSING: &str = "parent actor not found";
 
 /// Core runtime structure that owns registry, guardians, and spawn logic.
-pub struct ActorSystemGeneric<TB: RuntimeToolbox + 'static = NoStdToolbox> {
-  state: ArcShared<SystemState<TB>>,
+pub struct ActorSystemGeneric<TB: RuntimeToolbox + 'static> {
+  state: ArcShared<SystemStateGeneric<TB>>,
 }
 
 impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   /// Creates an empty actor system without any guardian (testing only).
   #[must_use]
   pub fn new_empty() -> Self {
-    Self { state: ArcShared::new(SystemState::new()) }
+    Self { state: ArcShared::new(SystemStateGeneric::new()) }
   }
 
   /// Creates an actor system from an existing system state.
   #[must_use]
-  pub const fn from_state(state: ArcShared<SystemState<TB>>) -> Self {
+  pub const fn from_state(state: ArcShared<SystemStateGeneric<TB>>) -> Self {
     Self { state }
   }
 
@@ -44,7 +47,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   /// # Errors
   ///
   /// Returns [`SpawnError`] when guardian initialization fails.
-  pub fn new(user_guardian_props: &Props<TB>) -> Result<Self, SpawnError> {
+  pub fn new(user_guardian_props: &PropsGeneric<TB>) -> Result<Self, SpawnError> {
     let system = Self::new_empty();
     let guardian = system.spawn_with_parent(None, user_guardian_props)?;
     if let Some(cell) = system.state.cell(&guardian.pid()) {
@@ -59,7 +62,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   ///
   /// Panics if the user guardian has not been initialised.
   #[must_use]
-  pub fn user_guardian_ref(&self) -> ActorRef<TB> {
+  pub fn user_guardian_ref(&self) -> ActorRefGeneric<TB> {
     match self.state.user_guardian() {
       | Some(cell) => cell.actor_ref(),
       | None => panic!("user guardian has not been initialised"),
@@ -68,7 +71,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
 
   /// Returns the shared system state.
   #[must_use]
-  pub fn state(&self) -> ArcShared<SystemState<TB>> {
+  pub fn state(&self) -> ArcShared<SystemStateGeneric<TB>> {
     self.state.clone()
   }
 
@@ -93,10 +96,10 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     EventStreamGeneric::subscribe_arc(&self.state.event_stream(), subscriber)
   }
 
-  /// Returns a snapshot of recorded deadletters.
+  /// Returns a snapshot of recorded dead letters.
   #[must_use]
-  pub fn deadletters(&self) -> Vec<DeadletterEntry<TB>> {
-    self.state.deadletters()
+  pub fn dead_letters(&self) -> Vec<DeadLetterEntryGeneric<TB>> {
+    self.state.dead_letters()
   }
 
   /// Emits a log event with the specified severity.
@@ -114,7 +117,8 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   /// # Errors
   ///
   /// Returns [`SpawnError::SystemUnavailable`] when the guardian is missing.
-  pub fn spawn(&self, props: &Props<TB>) -> Result<ChildRef<TB>, SpawnError> {
+  #[allow(dead_code)]
+  pub(crate) fn spawn(&self, props: &PropsGeneric<TB>) -> Result<ChildRefGeneric<TB>, SpawnError> {
     let guardian_pid = self.state.user_guardian_pid().ok_or_else(SpawnError::system_unavailable)?;
     self.spawn_child(guardian_pid, props)
   }
@@ -124,7 +128,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   /// # Errors
   ///
   /// Returns [`SpawnError::InvalidProps`] when the parent pid is unknown.
-  pub fn spawn_child(&self, parent: Pid, props: &Props<TB>) -> Result<ChildRef<TB>, SpawnError> {
+  pub(crate) fn spawn_child(&self, parent: Pid, props: &PropsGeneric<TB>) -> Result<ChildRefGeneric<TB>, SpawnError> {
     if self.state.cell(&parent).is_none() {
       return Err(SpawnError::invalid_props(PARENT_MISSING));
     }
@@ -133,19 +137,19 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
 
   /// Returns an [`ActorRef`] for the specified pid if the actor is registered.
   #[must_use]
-  pub fn actor_ref(&self, pid: Pid) -> Option<ActorRef<TB>> {
+  pub(crate) fn actor_ref(&self, pid: Pid) -> Option<ActorRefGeneric<TB>> {
     self.state.cell(&pid).map(|cell| cell.actor_ref())
   }
 
   /// Returns child references supervised by the provided parent PID.
   #[must_use]
-  pub fn children(&self, parent: Pid) -> Vec<ChildRef<TB>> {
+  pub(crate) fn children(&self, parent: Pid) -> Vec<ChildRefGeneric<TB>> {
     let system = self.state.clone();
     self
       .state
       .child_pids(parent)
       .into_iter()
-      .filter_map(|pid| self.state.cell(&pid).map(|cell| ChildRef::new(cell.actor_ref(), system.clone())))
+      .filter_map(|pid| self.state.cell(&pid).map(|cell| ChildRefGeneric::new(cell.actor_ref(), system.clone())))
       .collect()
   }
 
@@ -154,13 +158,13 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   /// # Errors
   ///
   /// Returns an error if the stop message cannot be enqueued.
-  pub fn stop_actor(&self, pid: Pid) -> Result<(), SendError<TB>> {
+  pub(crate) fn stop_actor(&self, pid: Pid) -> Result<(), SendError<TB>> {
     self.state.send_system_message(pid, SystemMessage::Stop)
   }
 
   /// Drains ask futures that have been fulfilled since the last check.
   #[must_use]
-  pub fn drain_ready_ask_futures(&self) -> Vec<ArcShared<ActorFuture<AnyMessage<TB>, TB>>> {
+  pub fn drain_ready_ask_futures(&self) -> Vec<ArcShared<ActorFuture<AnyMessageGeneric<TB>, TB>>> {
     self.state.drain_ready_ask_futures()
   }
 
@@ -206,10 +210,14 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     }
   }
 
-  fn spawn_with_parent(&self, parent: Option<Pid>, props: &Props<TB>) -> Result<ChildRef<TB>, SpawnError> {
+  fn spawn_with_parent(
+    &self,
+    parent: Option<Pid>,
+    props: &PropsGeneric<TB>,
+  ) -> Result<ChildRefGeneric<TB>, SpawnError> {
     let pid = self.state.allocate_pid();
     let name = self.state.assign_name(parent, props.name(), pid)?;
-    let cell = ActorCell::create(self.state.clone(), pid, parent, name, props);
+    let cell = ActorCellGeneric::create(self.state.clone(), pid, parent, name, props);
 
     self.state.register_cell(cell.clone());
     if cell.pre_start().is_err() {
@@ -221,10 +229,10 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
       self.state.register_child(parent_pid, pid);
     }
 
-    Ok(ChildRef::new(cell.actor_ref(), self.state.clone()))
+    Ok(ChildRefGeneric::new(cell.actor_ref(), self.state.clone()))
   }
 
-  fn rollback_spawn(&self, parent: Option<Pid>, cell: &ArcShared<ActorCell<TB>>, pid: Pid) {
+  fn rollback_spawn(&self, parent: Option<Pid>, cell: &ArcShared<ActorCellGeneric<TB>>, pid: Pid) {
     self.state.release_name(parent, cell.name());
     self.state.remove_cell(&pid);
     if let Some(parent_pid) = parent {
@@ -242,5 +250,5 @@ impl<TB: RuntimeToolbox + 'static> Clone for ActorSystemGeneric<TB> {
 unsafe impl<TB: RuntimeToolbox + 'static> Send for ActorSystemGeneric<TB> {}
 unsafe impl<TB: RuntimeToolbox + 'static> Sync for ActorSystemGeneric<TB> {}
 
-/// Type alias for compatibility with older code.
-pub type ActorSystem<TB> = ActorSystemGeneric<TB>;
+/// Type alias for `ActorSystemGeneric` with the default `NoStdToolbox`.
+pub type ActorSystem = ActorSystemGeneric<NoStdToolbox>;

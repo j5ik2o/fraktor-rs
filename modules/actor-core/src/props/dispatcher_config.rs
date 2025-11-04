@@ -2,22 +2,22 @@ use cellactor_utils_core_rs::sync::ArcShared;
 
 use crate::{
   NoStdToolbox, RuntimeToolbox,
-  dispatcher::{DispatchExecutor, Dispatcher, InlineExecutor},
-  mailbox::Mailbox,
+  dispatcher::{DispatchExecutor, DispatcherGeneric, InlineExecutor},
+  mailbox::MailboxGeneric,
 };
 
 /// Dispatcher configuration attached to [`Props`](super::Props).
-pub struct DispatcherConfig<TB: RuntimeToolbox + 'static = NoStdToolbox> {
+pub struct DispatcherConfigGeneric<TB: RuntimeToolbox + 'static> {
   executor: ArcShared<dyn DispatchExecutor<TB>>,
 }
 
-impl<TB: RuntimeToolbox + 'static> Clone for DispatcherConfig<TB> {
+impl<TB: RuntimeToolbox + 'static> Clone for DispatcherConfigGeneric<TB> {
   fn clone(&self) -> Self {
     Self { executor: self.executor.clone() }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> DispatcherConfig<TB> {
+impl<TB: RuntimeToolbox + 'static> DispatcherConfigGeneric<TB> {
   /// Creates a configuration from an executor.
   #[must_use]
   pub fn from_executor(executor: ArcShared<dyn DispatchExecutor<TB>>) -> Self {
@@ -32,13 +32,16 @@ impl<TB: RuntimeToolbox + 'static> DispatcherConfig<TB> {
 
   /// Builds a dispatcher using the configured executor.
   #[must_use]
-  pub fn build_dispatcher(&self, mailbox: ArcShared<Mailbox<TB>>) -> Dispatcher<TB> {
-    Dispatcher::new(mailbox, self.executor())
+  pub fn build_dispatcher(&self, mailbox: ArcShared<MailboxGeneric<TB>>) -> DispatcherGeneric<TB> {
+    DispatcherGeneric::new(mailbox, self.executor())
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Default for DispatcherConfig<TB> {
+impl<TB: RuntimeToolbox + 'static> Default for DispatcherConfigGeneric<TB> {
   fn default() -> Self {
     Self::from_executor(ArcShared::new(InlineExecutor::<TB>::new()))
   }
 }
+
+/// Type alias for `DispatcherConfigGeneric` with the default `NoStdToolbox`.
+pub type DispatcherConfig = DispatcherConfigGeneric<NoStdToolbox>;

@@ -1,3 +1,3 @@
 #!/bin/bash
 
-gemini --yolo
+gemini --yolo "$@"

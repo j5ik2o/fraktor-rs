@@ -1,5 +1,8 @@
 use super::wait_group_backend::WaitGroupBackend;
 
+#[cfg(test)]
+mod tests;
+
 /// Synchronization primitive for waiting on multiple concurrent tasks.
 #[derive(Clone, Debug)]
 pub struct WaitGroup<B>

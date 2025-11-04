@@ -1,3 +1,3 @@
 #!/bin/bash
 
-claude --dangerously-skip-permissions
+claude --dangerously-skip-permissions "$@"

@@ -13,8 +13,8 @@ mod mailbox_config;
 /// Supervisor options module.
 mod supervisor_options;
 
-pub use base::Props;
-pub use dispatcher_config::DispatcherConfig;
+pub use base::{Props, PropsGeneric};
+pub use dispatcher_config::{DispatcherConfig, DispatcherConfigGeneric};
 pub use factory::ActorFactory;
 pub use mailbox_config::MailboxConfig;
 pub use supervisor_options::SupervisorOptions;

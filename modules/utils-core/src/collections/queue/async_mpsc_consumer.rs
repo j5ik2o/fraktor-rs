@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod tests;
+
 use core::marker::PhantomData;
 
 use super::async_queue::poll_shared;

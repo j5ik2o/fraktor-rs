@@ -21,7 +21,7 @@
 #![deny(clippy::unused_self)]
 #![deny(clippy::unnecessary_wraps)]
 #![deny(clippy::unreachable)]
-#![deny(clippy::empty_enum)]
+#![deny(clippy::empty_enums)]
 #![deny(clippy::no_effect)]
 #![deny(dropping_copy_types)]
 #![cfg_attr(not(test), deny(clippy::unwrap_used))]
@@ -63,10 +63,10 @@ pub use cellactor_utils_core_rs::sync::{NoStdMutex, NoStdToolbox, RuntimeToolbox
 
 // Hierarchical package structure
 pub mod actor_prim;
-pub mod deadletter;
+pub mod dead_letter;
 pub mod dispatcher;
 pub mod error;
-pub mod eventstream;
+pub mod event_stream;
 pub mod futures;
 pub mod lifecycle;
 pub mod logging;
@@ -76,6 +76,3 @@ pub mod props;
 pub mod spawn;
 pub mod supervision;
 pub mod system;
-
-/// Type alias for ActorSystem using the default toolbox.
-pub type ActorSystem = system::ActorSystemGeneric<NoStdToolbox>;

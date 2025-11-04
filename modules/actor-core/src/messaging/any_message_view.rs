@@ -5,20 +5,20 @@ mod tests;
 
 use core::any::{Any, TypeId};
 
-use crate::{NoStdToolbox, RuntimeToolbox, actor_prim::actor_ref::ActorRef};
+use crate::{NoStdToolbox, RuntimeToolbox, actor_prim::actor_ref::ActorRefGeneric};
 
 /// Represents a borrowed view of an actor message.
 #[derive(Debug)]
 pub struct AnyMessageView<'a, TB: RuntimeToolbox = NoStdToolbox> {
   payload:  &'a (dyn Any + Send + Sync + 'static),
   type_id:  TypeId,
-  reply_to: Option<&'a ActorRef<TB>>,
+  reply_to: Option<&'a ActorRefGeneric<TB>>,
 }
 
 impl<'a, TB: RuntimeToolbox> AnyMessageView<'a, TB> {
   /// Creates a new borrowed message view.
   #[must_use]
-  pub fn new(payload: &'a (dyn Any + Send + Sync + 'static), reply_to: Option<&'a ActorRef<TB>>) -> Self {
+  pub fn new(payload: &'a (dyn Any + Send + Sync + 'static), reply_to: Option<&'a ActorRefGeneric<TB>>) -> Self {
     Self { payload, type_id: (*payload).type_id(), reply_to }
   }
 
@@ -36,7 +36,7 @@ impl<'a, TB: RuntimeToolbox> AnyMessageView<'a, TB> {
 
   /// Returns the reply target if present.
   #[must_use]
-  pub const fn reply_to(&self) -> Option<&'a ActorRef<TB>> {
+  pub const fn reply_to(&self) -> Option<&'a ActorRefGeneric<TB>> {
     self.reply_to
   }
 }

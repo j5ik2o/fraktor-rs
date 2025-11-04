@@ -2,6 +2,9 @@ use core::num::NonZeroUsize;
 
 use crate::mailbox::MailboxPolicy;
 
+#[cfg(test)]
+mod tests;
+
 /// Mailbox configuration derived from the props builder.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct MailboxConfig {

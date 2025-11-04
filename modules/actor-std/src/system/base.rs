@@ -1,18 +1,18 @@
 use cellactor_actor_core_rs::{
   actor_prim::Pid,
-  deadletter::DeadletterEntry,
+  dead_letter::DeadLetterEntryGeneric,
   logging::LogLevel,
   spawn::SpawnError,
-  system::{ActorSystemGeneric, SystemState as CoreSystemState},
+  system::{ActorSystemGeneric as CoreActorSystemGeneric, SystemStateGeneric as CoreSystemStateGeneric},
 };
 use cellactor_utils_core_rs::sync::ArcShared;
-use cellactor_utils_std_rs::StdToolbox;
+use cellactor_utils_std_rs::runtime_toolbox::StdToolbox;
 
 pub use crate::dispatcher::{DispatchExecutor, DispatchShared, Dispatcher, DispatcherConfig};
 use crate::{
-  actor_prim::{ActorRef, ChildRef},
+  actor_prim::ActorRef,
   error::SendError,
-  eventstream::{self, EventStream, EventStreamEvent, EventStreamSubscriber, EventStreamSubscription},
+  event_stream::{self, EventStream, EventStreamEvent, EventStreamSubscriber, EventStreamSubscription},
   futures::ActorFuture,
   messaging::AnyMessage,
   props::Props,
@@ -20,7 +20,7 @@ use crate::{
 
 /// Actor system specialised for `StdToolbox` with ergonomics for standard runtime consumers.
 pub struct ActorSystem {
-  inner: ActorSystemGeneric<StdToolbox>,
+  inner: CoreActorSystemGeneric<StdToolbox>,
 }
 
 impl ActorSystem {
@@ -30,30 +30,30 @@ impl ActorSystem {
   ///
   /// Returns [`SpawnError::InvalidProps`] when the user guardian props cannot be initialised.
   pub fn new(props: &Props) -> Result<Self, SpawnError> {
-    ActorSystemGeneric::new(props.as_core()).map(Self::from_core)
+    CoreActorSystemGeneric::new(props.as_core()).map(Self::from_core)
   }
 
   /// Creates an empty actor system without any guardian (testing helper).
   #[must_use]
   pub fn new_empty() -> Self {
-    Self::from_core(ActorSystemGeneric::new_empty())
+    Self::from_core(CoreActorSystemGeneric::new_empty())
   }
 
   /// Constructs the wrapper from a core actor system.
   #[must_use]
-  pub const fn from_core(inner: ActorSystemGeneric<StdToolbox>) -> Self {
+  pub const fn from_core(inner: CoreActorSystemGeneric<StdToolbox>) -> Self {
     Self { inner }
   }
 
   /// Borrows the underlying core actor system.
   #[must_use]
-  pub(crate) const fn as_core(&self) -> &ActorSystemGeneric<StdToolbox> {
+  pub(crate) const fn as_core(&self) -> &CoreActorSystemGeneric<StdToolbox> {
     &self.inner
   }
 
   /// Consumes the wrapper and returns the core actor system.
   #[must_use]
-  pub fn into_core(self) -> ActorSystemGeneric<StdToolbox> {
+  pub fn into_core(self) -> CoreActorSystemGeneric<StdToolbox> {
     self.inner
   }
 
@@ -84,13 +84,13 @@ impl ActorSystem {
   /// Subscribes the provided observer to the event stream.
   #[must_use]
   pub fn subscribe_event_stream(&self, subscriber: &ArcShared<dyn EventStreamSubscriber>) -> EventStreamSubscription {
-    eventstream::subscribe(self, subscriber)
+    event_stream::subscribe(self, subscriber)
   }
 
   /// Returns a snapshot of recorded deadletters.
   #[must_use]
-  pub fn deadletters(&self) -> Vec<DeadletterEntry<StdToolbox>> {
-    self.inner.deadletters()
+  pub fn deadletters(&self) -> Vec<DeadLetterEntryGeneric<StdToolbox>> {
+    self.inner.dead_letters()
   }
 
   /// Emits a log event with the specified severity.
@@ -101,45 +101,6 @@ impl ActorSystem {
   /// Publishes a raw event to the event stream.
   pub fn publish_event(&self, event: &EventStreamEvent) {
     self.inner.publish_event(event)
-  }
-
-  /// Spawns a new top-level actor under the user guardian.
-  ///
-  /// # Errors
-  ///
-  /// Propagates [`SpawnError`] emitted when the props fail validation or the actor cannot start.
-  pub fn spawn(&self, props: &Props) -> Result<ChildRef, SpawnError> {
-    self.inner.spawn(props.as_core())
-  }
-
-  /// Spawns a new actor as a child of the specified parent.
-  ///
-  /// # Errors
-  ///
-  /// Returns [`SpawnError`] when the parent PID is invalid or the child fails to initialise.
-  pub fn spawn_child(&self, parent: Pid, props: &Props) -> Result<ChildRef, SpawnError> {
-    self.inner.spawn_child(parent, props.as_core())
-  }
-
-  /// Returns an actor reference for the specified pid if registered.
-  #[must_use]
-  pub fn actor_ref(&self, pid: Pid) -> Option<ActorRef> {
-    self.inner.actor_ref(pid)
-  }
-
-  /// Returns child references supervised by the provided parent PID.
-  #[must_use]
-  pub fn children(&self, parent: Pid) -> Vec<ChildRef> {
-    self.inner.children(parent)
-  }
-
-  /// Sends a stop signal to the specified actor.
-  ///
-  /// # Errors
-  ///
-  /// Returns [`SendError`] when the target mailbox rejects the stop request.
-  pub fn stop_actor(&self, pid: Pid) -> Result<(), SendError> {
-    self.inner.stop_actor(pid)
   }
 
   /// Drains ask futures that have been fulfilled since the last check.
@@ -165,4 +126,4 @@ impl ActorSystem {
 }
 
 /// Shared system state specialised for `StdToolbox`.
-pub type SystemState = CoreSystemState<StdToolbox>;
+pub type SystemState = CoreSystemStateGeneric<StdToolbox>;

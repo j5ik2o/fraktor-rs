@@ -1,6 +1,9 @@
 use alloc::collections::{TryReserveError, VecDeque};
 use core::ptr;
 
+#[cfg(test)]
+mod tests;
+
 use super::QueueStorage;
 
 /// Ring buffer storage backed by [`VecDeque`].

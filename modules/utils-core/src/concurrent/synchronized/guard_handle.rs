@@ -1,5 +1,8 @@
 use core::ops::{Deref, DerefMut};
 
+#[cfg(test)]
+mod tests;
+
 /// Handle that wraps a guard object.
 #[derive(Debug)]
 pub struct GuardHandle<G> {
