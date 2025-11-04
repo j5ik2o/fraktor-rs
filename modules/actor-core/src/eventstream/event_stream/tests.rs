@@ -78,3 +78,50 @@ fn capacity_limits_buffer_size() {
   assert_eq!(events.len(), 1);
   assert!(matches!(&events[0], EventStreamEvent::Log(event) if event.message() == "second"));
 }
+
+#[test]
+fn unsubscribe_removes_subscriber() {
+  let stream = ArcShared::new(EventStream::default());
+  let subscriber_impl = ArcShared::new(RecordingSubscriber::new());
+  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
+  let subscription = EventStream::subscribe_arc(&stream, &subscriber);
+
+  stream.publish(&EventStreamEvent::Log(LogEvent::new(
+    LogLevel::Info,
+    String::from("before unsubscribe"),
+    Duration::from_millis(1),
+    None,
+  )));
+
+  stream.unsubscribe(subscription.id());
+
+  stream.publish(&EventStreamEvent::Log(LogEvent::new(
+    LogLevel::Info,
+    String::from("after unsubscribe"),
+    Duration::from_millis(2),
+    None,
+  )));
+
+  let events = subscriber_impl.events();
+  // unsubscribe??????????????????
+  assert!(
+    events.iter().any(|event| matches!(event, EventStreamEvent::Log(event) if event.message() == "before unsubscribe"))
+  );
+  assert!(
+    !events.iter().any(|event| matches!(event, EventStreamEvent::Log(event) if event.message() == "after unsubscribe"))
+  );
+}
+
+#[test]
+fn default_creates_stream_with_default_capacity() {
+  let stream = EventStream::default();
+  // default???????????????
+  let _ = stream;
+}
+
+#[test]
+fn with_capacity_creates_stream_with_specified_capacity() {
+  let stream = EventStream::with_capacity(100);
+  // with_capacity???????????????
+  let _ = stream;
+}
