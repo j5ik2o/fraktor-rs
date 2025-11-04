@@ -1,4 +1,4 @@
-use std::thread;
+use std::{string::String, thread};
 
 use crate::dispatcher::{DispatchExecutor, DispatchShared};
 
