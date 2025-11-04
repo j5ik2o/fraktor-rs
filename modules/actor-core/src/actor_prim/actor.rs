@@ -1,5 +1,8 @@
 //! Actor lifecycle contract.
 
+#[cfg(test)]
+mod tests;
+
 use alloc::boxed::Box;
 
 use crate::{NoStdToolbox, RuntimeToolbox, actor_prim::ActorContext, error::ActorError, messaging::AnyMessageView};
