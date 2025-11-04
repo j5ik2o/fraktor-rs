@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod tests;
+
 /// Key for identifying items registered in a DeadlineTimer.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Debug, Default)]
 pub struct DeadlineTimerKey(u64);

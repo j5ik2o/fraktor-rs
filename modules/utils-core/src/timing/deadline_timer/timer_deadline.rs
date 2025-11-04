@@ -1,5 +1,8 @@
 use core::time::Duration;
 
+#[cfg(test)]
+mod tests;
+
 /// A newtype representing a DeadlineTimer deadline.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TimerDeadline(Duration);
