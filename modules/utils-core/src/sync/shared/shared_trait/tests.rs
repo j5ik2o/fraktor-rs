@@ -1,6 +1,3 @@
-#[cfg(feature = "alloc")]
-use alloc::rc::Rc;
-
 use super::Shared;
 #[cfg(feature = "alloc")]
 use crate::sync::rc_shared::RcShared;

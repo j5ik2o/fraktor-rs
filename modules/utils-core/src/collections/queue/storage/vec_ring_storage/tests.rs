@@ -48,13 +48,13 @@ fn vec_ring_storage_read_unchecked() {
 
   unsafe {
     let ptr0 = storage.read_unchecked(0);
-    assert_eq!(unsafe { *ptr0 }, 10);
+    assert_eq!(*ptr0, 10);
 
     let ptr1 = storage.read_unchecked(1);
-    assert_eq!(unsafe { *ptr1 }, 20);
+    assert_eq!( *ptr1, 20);
 
     let ptr2 = storage.read_unchecked(2);
-    assert_eq!(unsafe { *ptr2 }, 30);
+    assert_eq!( *ptr2, 30);
   }
 }
 
@@ -106,7 +106,7 @@ fn vec_ring_storage_read_unchecked_with_wraparound() {
 
   unsafe {
     let ptr0 = storage.read_unchecked(0);
-    let val0 = unsafe { *ptr0 };
+    let val0 = *ptr0;
     assert!(val0 == 20 || val0 == 30 || val0 == 40);
   }
 }

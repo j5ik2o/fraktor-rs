@@ -23,6 +23,7 @@ impl<T> MockBackend<T> {
     Self { value: Arc::new(value), should_fail: Arc::new(AtomicBool::new(false)) }
   }
 
+  #[allow(dead_code)]
   fn new_failing(value: T) -> Self {
     Self { value: Arc::new(value), should_fail: Arc::new(AtomicBool::new(true)) }
   }

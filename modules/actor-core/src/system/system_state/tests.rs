@@ -58,15 +58,9 @@ fn system_state_mark_terminated() {
 
 #[test]
 fn system_state_register_and_remove_cell() {
-  use cellactor_utils_core_rs::sync::ArcShared;
-
-  use crate::actor_prim::ActorCell;
-
   let state = SystemState::<NoStdToolbox>::new();
   let pid = state.allocate_pid();
 
-  // ActorCell????????????????????
-  // cell???????????????
   let _ = pid;
 }
 
@@ -89,7 +83,7 @@ fn system_state_assign_name_without_hint() {
   let result = state.assign_name(None, None, pid);
   assert!(result.is_ok());
   let name = result.unwrap();
-  // ?????????
+
   assert!(!name.is_empty());
 }
 
@@ -100,13 +94,11 @@ fn system_state_release_name() {
 
   let _name = state.assign_name(None, Some("test-actor"), pid).unwrap();
   state.release_name(None, "test-actor");
-  // ?????????????????????????????
 }
 
 #[test]
 fn system_state_user_guardian_pid() {
   let state = SystemState::<NoStdToolbox>::new();
-  // ??????user_guardian?????????
   assert!(state.user_guardian_pid().is_none());
 }
 
@@ -115,7 +107,6 @@ fn system_state_child_pids() {
   let state = SystemState::<NoStdToolbox>::new();
   let parent_pid = state.allocate_pid();
 
-  // ???????????
   let children = state.child_pids(parent_pid);
   assert_eq!(children.len(), 0);
 }
@@ -123,9 +114,8 @@ fn system_state_child_pids() {
 #[test]
 fn system_state_deadletters() {
   let state = SystemState::<NoStdToolbox>::new();
-  let deadletters = state.dead_letters();
-  // ???????????????
-  assert_eq!(deadletters.len(), 0);
+  let dead_letters = state.dead_letters();
+  assert_eq!(dead_letters.len(), 0);
 }
 
 #[test]
@@ -138,9 +128,7 @@ fn system_state_register_ask_future() {
   let future = ArcShared::new(ActorFuture::<AnyMessage<NoStdToolbox>, NoStdToolbox>::new());
   state.register_ask_future(future.clone());
 
-  // ask_future?????????????
   let ready = state.drain_ready_ask_futures();
-  // ??ready???????
   assert_eq!(ready.len(), 0);
 }
 
@@ -158,7 +146,6 @@ fn system_state_publish_event() {
   let log_event = LogEvent::new(LogLevel::Info, String::from("test"), Duration::from_millis(1), None);
   let event = EventStreamEvent::Log(log_event);
 
-  // ???????????????????????????????
   state.publish_event(&event);
 }
 
@@ -169,7 +156,6 @@ fn system_state_emit_log() {
   let state = SystemState::<NoStdToolbox>::new();
   let pid = state.allocate_pid();
 
-  // ?????????????????????????????
   state.emit_log(crate::logging::LogLevel::Info, String::from("test message"), Some(pid));
   state.emit_log(crate::logging::LogLevel::Error, String::from("error message"), None);
 }
@@ -179,7 +165,6 @@ fn system_state_clear_guardian() {
   let state = SystemState::<NoStdToolbox>::new();
   let pid = state.allocate_pid();
 
-  // ?????guardian???????????false???
   let cleared = state.clear_guardian(pid);
   assert!(!cleared);
 }
@@ -187,7 +172,6 @@ fn system_state_clear_guardian() {
 #[test]
 fn system_state_user_guardian() {
   let state = SystemState::<NoStdToolbox>::new();
-  // ??????user_guardian?????????
   assert!(state.user_guardian().is_none());
 }
 
@@ -198,7 +182,6 @@ fn system_state_send_system_message_to_nonexistent_actor() {
   let state = SystemState::<NoStdToolbox>::new();
   let pid = state.allocate_pid();
 
-  // ?????actor??system_message?????????
   let result = state.send_system_message(pid, SystemMessage::Stop);
   assert!(result.is_err());
 }
@@ -210,7 +193,6 @@ fn system_state_record_send_error() {
   let state = SystemState::<NoStdToolbox>::new();
   let error = SendError::closed(AnyMessage::new(42_u32));
 
-  // ??????????????????????????????
   state.record_send_error(None, &error);
   state.record_send_error(Some(state.allocate_pid()), &error);
 }
