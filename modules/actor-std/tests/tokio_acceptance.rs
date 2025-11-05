@@ -440,10 +440,7 @@ struct SpawnChildResponse {
 }
 
 impl SupervisedChild {
-  fn tell(
-    &self,
-    message: AnyMessage,
-  ) -> Result<(), cellactor_actor_core_rs::error::SendError<StdToolbox>> {
+  fn tell(&self, message: AnyMessage) -> Result<(), cellactor_actor_core_rs::error::SendError<StdToolbox>> {
     self.child.tell(message)
   }
 

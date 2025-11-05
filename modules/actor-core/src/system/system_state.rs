@@ -207,7 +207,15 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     if let Some(cell) = self.cell(&pid) {
       cell.dispatcher().enqueue_system(message)
     } else {
-      Err(SendError::<TB>::closed(AnyMessageGeneric::new(message)))
+      match message {
+        | SystemMessage::Watch(watcher) => {
+          let _ = self.send_system_message(watcher, SystemMessage::Terminated(pid));
+          Ok(())
+        },
+        | SystemMessage::Unwatch(_) => Ok(()),
+        | SystemMessage::Terminated(_) => Ok(()),
+        | other => Err(SendError::<TB>::closed(AnyMessageGeneric::new(other))),
+      }
     }
   }
 

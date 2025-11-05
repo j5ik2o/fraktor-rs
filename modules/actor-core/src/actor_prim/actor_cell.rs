@@ -10,6 +10,7 @@ use cellactor_utils_core_rs::{
   runtime_toolbox::SyncMutexFamily,
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
+use portable_atomic::{AtomicBool, Ordering};
 
 use crate::{
   NoStdToolbox, RuntimeToolbox, ToolboxMutex,
@@ -43,6 +44,8 @@ pub struct ActorCellGeneric<TB: RuntimeToolbox + 'static> {
   children:    ToolboxMutex<Vec<Pid>, TB>,
   supervisor:  SupervisorStrategy,
   child_stats: ToolboxMutex<Vec<(Pid, RestartStatistics)>, TB>,
+  watchers:    ToolboxMutex<Vec<Pid>, TB>,
+  terminated:  AtomicBool,
 }
 
 unsafe impl<TB: RuntimeToolbox + 'static> Send for ActorCellGeneric<TB> {}
@@ -78,6 +81,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     let children = <TB::MutexFamily as SyncMutexFamily>::create(Vec::new());
     let supervisor = *props.supervisor().strategy();
     let child_stats = <TB::MutexFamily as SyncMutexFamily>::create(Vec::new());
+    let watchers = <TB::MutexFamily as SyncMutexFamily>::create(Vec::new());
 
     let cell = ArcShared::new(Self {
       pid,
@@ -93,6 +97,8 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
       children,
       supervisor,
       child_stats,
+      watchers,
+      terminated: AtomicBool::new(false),
     });
 
     {
@@ -196,6 +202,59 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     self.children.lock().clone()
   }
 
+  fn mark_terminated(&self) {
+    self.terminated.store(true, Ordering::Release);
+  }
+
+  fn is_terminated(&self) -> bool {
+    self.terminated.load(Ordering::Acquire)
+  }
+
+  pub(crate) fn handle_watch(&self, watcher: Pid) {
+    if self.is_terminated() {
+      let _ = self.system.send_system_message(watcher, SystemMessage::Terminated(self.pid));
+      return;
+    }
+
+    let mut watchers = self.watchers.lock();
+    if !watchers.contains(&watcher) {
+      watchers.push(watcher);
+    }
+  }
+
+  pub(crate) fn handle_unwatch(&self, watcher: Pid) {
+    self.watchers.lock().retain(|pid| *pid != watcher);
+  }
+
+  fn notify_watchers_on_stop(&self) {
+    let mut watchers = self.watchers.lock();
+    if watchers.is_empty() {
+      return;
+    }
+    let recipients = watchers.clone();
+    watchers.clear();
+    drop(watchers);
+
+    for watcher in recipients {
+      let _ = self.system.send_system_message(watcher, SystemMessage::Terminated(self.pid));
+    }
+  }
+
+  pub(crate) fn handle_terminated(&self, terminated_pid: Pid) -> Result<(), ActorError> {
+    let system = ActorSystemGeneric::from_state(self.system.clone());
+    let mut ctx = ActorContext::new(&system, self.pid);
+    let mut actor = self.actor.lock();
+    let result = actor.on_terminated(&mut ctx, terminated_pid);
+    drop(actor);
+    ctx.clear_reply_to();
+    result
+  }
+
+  #[cfg(test)]
+  pub(crate) fn watchers_snapshot(&self) -> Vec<Pid> {
+    self.watchers.lock().clone()
+  }
+
   fn handle_stop(&self) -> Result<(), ActorError> {
     let system = ActorSystemGeneric::from_state(self.system.clone());
     let mut ctx = ActorContext::new(&system, self.pid);
@@ -213,6 +272,8 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     }
 
     self.clear_child_stats(&children_snapshot);
+    self.mark_terminated();
+    self.notify_watchers_on_stop();
 
     if let Some(parent) = self.parent {
       self.system.unregister_child(Some(parent), self.pid);
@@ -272,6 +333,15 @@ impl<TB: RuntimeToolbox + 'static> MessageInvoker<TB> for ActorCellGeneric<TB> {
         self.mailbox.resume();
         Ok(())
       },
+      | SystemMessage::Watch(pid) => {
+        self.handle_watch(pid);
+        Ok(())
+      },
+      | SystemMessage::Unwatch(pid) => {
+        self.handle_unwatch(pid);
+        Ok(())
+      },
+      | SystemMessage::Terminated(pid) => self.handle_terminated(pid),
     }
   }
 }

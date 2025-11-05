@@ -1,14 +1,53 @@
+use alloc::{string::String, vec, vec::Vec};
+
+use cellactor_utils_core_rs::sync::{ArcShared, NoStdMutex};
+
 use super::ActorContext;
-use crate::{NoStdToolbox, actor_prim::Actor, props::PropsGeneric, system::ActorSystemGeneric};
+use crate::{
+  NoStdToolbox,
+  actor_prim::{Actor, ActorCellGeneric, Pid},
+  messaging::{AnyMessageGeneric, AnyMessageView},
+  props::PropsGeneric,
+  system::ActorSystemGeneric,
+};
 
 struct TestActor;
 
 impl Actor<NoStdToolbox> for TestActor {
   fn receive(
     &mut self,
-    _context: &mut crate::actor_prim::ActorContext<'_, NoStdToolbox>,
-    _message: crate::messaging::AnyMessageView<'_, NoStdToolbox>,
+    _context: &mut ActorContext<'_, NoStdToolbox>,
+    _message: AnyMessageView<'_, NoStdToolbox>,
   ) -> Result<(), crate::error::ActorError> {
+    Ok(())
+  }
+}
+
+struct RecordingActor {
+  log: ArcShared<NoStdMutex<Vec<Pid>>>,
+}
+
+impl RecordingActor {
+  fn new(log: ArcShared<NoStdMutex<Vec<Pid>>>) -> Self {
+    Self { log }
+  }
+}
+
+impl Actor<NoStdToolbox> for RecordingActor {
+  fn receive(
+    &mut self,
+    _context: &mut ActorContext<'_, NoStdToolbox>,
+    _message: AnyMessageView<'_, NoStdToolbox>,
+  ) -> Result<(), crate::error::ActorError> {
+    Ok(())
+  }
+
+  fn on_terminated(
+    &mut self,
+    _ctx: &mut ActorContext<'_, NoStdToolbox>,
+    pid: Pid,
+  ) -> Result<(), crate::error::ActorError> {
+    self.log.lock().push(pid);
     Ok(())
   }
 }
@@ -64,7 +103,7 @@ fn actor_context_reply_without_reply_to() {
   let pid = system.allocate_pid();
   let context = ActorContext::new(&system, pid);
 
-  let result = context.reply(crate::messaging::AnyMessageGeneric::new(42_u32));
+  let result = context.reply(AnyMessageGeneric::new(42_u32));
   assert!(result.is_err());
 }
 
@@ -99,4 +138,82 @@ fn actor_context_log() {
 
   context.log(crate::logging::LogLevel::Info, String::from("test message"));
   context.log(crate::logging::LogLevel::Error, String::from("error message"));
+}
+
+fn register_cell(
+  system: &ActorSystemGeneric<NoStdToolbox>,
+  pid: Pid,
+  name: &str,
+  props: &PropsGeneric<NoStdToolbox>,
+) -> ArcShared<ActorCellGeneric<NoStdToolbox>> {
+  let cell = ActorCellGeneric::create(system.state(), pid, None, String::from(name), props);
+  system.state().register_cell(cell.clone());
+  cell
+}
+
+#[test]
+fn actor_context_watch_enqueues_system_message() {
+  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let watcher_pid = system.allocate_pid();
+  let target_pid = system.allocate_pid();
+  let props = PropsGeneric::from_fn(|| TestActor);
+  let _watcher = register_cell(&system, watcher_pid, "watcher", &props);
+  let target = register_cell(&system, target_pid, "target", &props);
+
+  let context = ActorContext::new(&system, watcher_pid);
+  let target_ref = target.actor_ref();
+  assert!(context.watch(&target_ref).is_ok());
+  assert!(target.watchers_snapshot().contains(&watcher_pid));
+}
+
+#[test]
+fn actor_context_watch_missing_actor_notifies_self() {
+  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let watcher_pid = system.allocate_pid();
+  let target_pid = system.allocate_pid();
+  let watcher_log = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let watcher_props = PropsGeneric::from_fn({
+    let log = watcher_log.clone();
+    move || RecordingActor::new(log.clone())
+  });
+  let target_props = PropsGeneric::from_fn(|| TestActor);
+  let _watcher = register_cell(&system, watcher_pid, "watcher", &watcher_props);
+  let target = register_cell(&system, target_pid, "target", &target_props);
+  let target_ref = target.actor_ref();
+  system.state().remove_cell(&target_pid);
+
+  let context = ActorContext::new(&system, watcher_pid);
+  assert!(context.watch(&target_ref).is_ok());
+  assert_eq!(watcher_log.lock().clone(), vec![target_pid]);
+}
+
+#[test]
+fn actor_context_unwatch_enqueues_message() {
+  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let watcher_pid = system.allocate_pid();
+  let target_pid = system.allocate_pid();
+  let props = PropsGeneric::from_fn(|| TestActor);
+  let _watcher = register_cell(&system, watcher_pid, "watcher", &props);
+  let target = register_cell(&system, target_pid, "target", &props);
+  let context = ActorContext::new(&system, watcher_pid);
+  let target_ref = target.actor_ref();
+
+  assert!(context.watch(&target_ref).is_ok());
+  assert!(context.unwatch(&target_ref).is_ok());
+  assert!(!target.watchers_snapshot().contains(&watcher_pid));
+}
+
+#[test]
+fn spawn_child_watched_installs_watch() {
+  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let parent_pid = system.allocate_pid();
+  let props = PropsGeneric::from_fn(|| TestActor);
+  let _parent = register_cell(&system, parent_pid, "parent", &props);
+  let context = ActorContext::new(&system, parent_pid);
+  let child_props = PropsGeneric::from_fn(|| TestActor);
+
+  let child = context.spawn_child_watched(&child_props).expect("child spawn succeeds");
+  let child_cell = system.state().cell(&child.pid()).expect("child registered");
+
+  assert!(child_cell.watchers_snapshot().contains(&parent_pid));
 }

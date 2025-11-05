@@ -104,17 +104,8 @@ mod tests {
   #[test]
   fn offer_outcome_partial_eq() {
     assert_eq!(OfferOutcome::Enqueued, OfferOutcome::Enqueued);
-    assert_ne!(
-      OfferOutcome::Enqueued,
-      OfferOutcome::DroppedOldest { count: 1 }
-    );
-    assert_eq!(
-      OfferOutcome::DroppedOldest { count: 2 },
-      OfferOutcome::DroppedOldest { count: 2 }
-    );
-    assert_ne!(
-      OfferOutcome::DroppedOldest { count: 2 },
-      OfferOutcome::DroppedOldest { count: 3 }
-    );
+    assert_ne!(OfferOutcome::Enqueued, OfferOutcome::DroppedOldest { count: 1 });
+    assert_eq!(OfferOutcome::DroppedOldest { count: 2 }, OfferOutcome::DroppedOldest { count: 2 });
+    assert_ne!(OfferOutcome::DroppedOldest { count: 2 }, OfferOutcome::DroppedOldest { count: 3 });
   }
 }

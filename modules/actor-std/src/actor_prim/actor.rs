@@ -1,4 +1,4 @@
-use cellactor_actor_core_rs::error::ActorError;
+use cellactor_actor_core_rs::{actor_prim::Pid, error::ActorError};
 
 use super::ActorContext;
 use crate::messaging::AnyMessageView;
@@ -41,6 +41,11 @@ pub trait Actor: Send {
   /// Panics are not expected. Implementations should return `Err` to allow
   /// supervisor policies to react.
   fn post_stop(&mut self, _ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
+    Ok(())
+  }
+
+  /// Called when a watched actor terminates.
+  fn on_terminated(&mut self, _ctx: &mut ActorContext<'_>, _terminated: Pid) -> Result<(), ActorError> {
     Ok(())
   }
 }
