@@ -6,7 +6,7 @@ use core::ptr;
 use core::{marker::Unsize, ops::CoerceUnsized};
 
 #[cfg(feature = "force-portable-arc")]
-pub use portable_atomic_util::Arc;
+use portable_atomic_util::Arc;
 
 use super::{Shared, SharedDyn};
 
