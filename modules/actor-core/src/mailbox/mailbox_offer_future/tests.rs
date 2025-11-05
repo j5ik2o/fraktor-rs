@@ -6,9 +6,8 @@ use core::{
 };
 
 use crate::{
-  NoStdToolbox,
-  mailbox::{MailboxGeneric, MailboxPolicy},
-  messaging::AnyMessageGeneric,
+  mailbox::{Mailbox, MailboxPolicy},
+  messaging::AnyMessage,
 };
 
 unsafe fn noop_clone(_: *const ()) -> RawWaker {
@@ -33,8 +32,8 @@ fn noop_waker() -> Waker {
 
 #[test]
 fn mailbox_offer_future_unbounded_completes_immediately() {
-  let mailbox = MailboxGeneric::<NoStdToolbox>::new(MailboxPolicy::unbounded(None));
-  let message = AnyMessageGeneric::new(42);
+  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
+  let message = AnyMessage::new(42);
 
   let mut future = mailbox.enqueue_user_future(message);
 
@@ -49,13 +48,13 @@ fn mailbox_offer_future_unbounded_completes_immediately() {
 fn mailbox_offer_future_bounded_completes_when_space_available() {
   use core::num::NonZeroUsize;
 
-  let mailbox = MailboxGeneric::<NoStdToolbox>::new(MailboxPolicy::bounded(
+  let mailbox = Mailbox::new(MailboxPolicy::bounded(
     NonZeroUsize::new(1).unwrap(),
     crate::mailbox::MailboxOverflowStrategy::DropNewest,
     None,
   ));
 
-  let message = AnyMessageGeneric::new(42);
+  let message = AnyMessage::new(42);
   let mut future = mailbox.enqueue_user_future(message);
 
   let waker = noop_waker();
@@ -67,8 +66,8 @@ fn mailbox_offer_future_bounded_completes_when_space_available() {
 
 #[test]
 fn mailbox_offer_future_debug_format() {
-  let mailbox = MailboxGeneric::<NoStdToolbox>::new(MailboxPolicy::unbounded(None));
-  let message = AnyMessageGeneric::new(42);
+  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
+  let message = AnyMessage::new(42);
   let future = mailbox.enqueue_user_future(message);
 
   let debug_str = format!("{:?}", future);

@@ -5,7 +5,7 @@ use core::time::Duration;
 
 use cellactor_utils_core_rs::sync::ArcShared;
 
-use super::EventStreamGeneric;
+use super::EventStream;
 use crate::{
   NoStdMutex, NoStdToolbox,
   actor_prim::Pid,
@@ -36,14 +36,14 @@ impl EventStreamSubscriber<NoStdToolbox> for RecordingSubscriber {
 
 #[test]
 fn event_stream_replays_buffer_for_new_subscribers() {
-  let stream = ArcShared::new(EventStreamGeneric::default());
+  let stream = ArcShared::new(EventStream::default());
 
   let log = LogEvent::new(LogLevel::Info, String::from("boot"), Duration::from_millis(1), None);
   stream.publish(&EventStreamEvent::Log(log));
 
   let subscriber_impl = ArcShared::new(RecordingSubscriber::new());
   let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
-  let _subscription = EventStreamGeneric::subscribe_arc(&stream, &subscriber);
+  let _subscription = EventStream::subscribe_arc(&stream, &subscriber);
 
   let lifecycle =
     LifecycleEvent::new(Pid::new(1, 0), None, String::from("actor"), LifecycleStage::Started, Duration::from_millis(2));
@@ -56,7 +56,7 @@ fn event_stream_replays_buffer_for_new_subscribers() {
 
 #[test]
 fn capacity_limits_buffer_size() {
-  let stream = ArcShared::new(EventStreamGeneric::with_capacity(1));
+  let stream = ArcShared::new(EventStream::with_capacity(1));
 
   stream.publish(&EventStreamEvent::Log(LogEvent::new(
     LogLevel::Info,
@@ -73,7 +73,7 @@ fn capacity_limits_buffer_size() {
 
   let subscriber_impl = ArcShared::new(RecordingSubscriber::new());
   let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
-  let _subscription = EventStreamGeneric::subscribe_arc(&stream, &subscriber);
+  let _subscription = EventStream::subscribe_arc(&stream, &subscriber);
 
   let events = subscriber_impl.events();
   assert_eq!(events.len(), 1);
@@ -82,10 +82,10 @@ fn capacity_limits_buffer_size() {
 
 #[test]
 fn unsubscribe_removes_subscriber() {
-  let stream = ArcShared::new(EventStreamGeneric::default());
+  let stream = ArcShared::new(EventStream::default());
   let subscriber_impl = ArcShared::new(RecordingSubscriber::new());
   let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
-  let subscription = EventStreamGeneric::subscribe_arc(&stream, &subscriber);
+  let subscription = EventStream::subscribe_arc(&stream, &subscriber);
 
   stream.publish(&EventStreamEvent::Log(LogEvent::new(
     LogLevel::Info,
@@ -114,12 +114,12 @@ fn unsubscribe_removes_subscriber() {
 
 #[test]
 fn default_creates_stream_with_default_capacity() {
-  let stream = EventStreamGeneric::<NoStdToolbox>::default();
+  let stream = EventStream::default();
   let _ = stream;
 }
 
 #[test]
 fn with_capacity_creates_stream_with_specified_capacity() {
-  let stream = EventStreamGeneric::<NoStdToolbox>::with_capacity(100);
+  let stream = EventStream::with_capacity(100);
   let _ = stream;
 }

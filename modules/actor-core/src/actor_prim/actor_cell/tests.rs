@@ -2,13 +2,13 @@ use alloc::{string::ToString, vec, vec::Vec};
 
 use cellactor_utils_core_rs::sync::{ArcShared, NoStdMutex};
 
-use super::ActorCellGeneric;
+use super::ActorCell;
 use crate::{
   actor_prim::{Actor, ActorContext, Pid},
   error::ActorError,
   messaging::AnyMessageView,
-  props::PropsGeneric,
-  system::SystemStateGeneric,
+  props::Props,
+  system::SystemState,
 };
 
 struct ProbeActor;
@@ -50,9 +50,9 @@ impl Actor for RecordingActor {
 
 #[test]
 fn actor_cell_holds_components() {
-  let system = ArcShared::new(crate::system::SystemStateGeneric::<crate::NoStdToolbox>::new());
-  let props = crate::props::PropsGeneric::<crate::NoStdToolbox>::from_fn(|| ProbeActor);
-  let cell = ActorCellGeneric::create(system, Pid::new(1, 0), None, "worker".to_string(), &props);
+  let system = ArcShared::new(SystemState::new());
+  let props = Props::from_fn(|| ProbeActor);
+  let cell = ActorCell::create(system, Pid::new(1, 0), None, "worker".to_string(), &props);
 
   assert_eq!(cell.pid(), Pid::new(1, 0));
   assert_eq!(cell.name(), "worker");
@@ -63,9 +63,9 @@ fn actor_cell_holds_components() {
 
 #[test]
 fn handle_watch_is_idempotent() {
-  let system = ArcShared::new(SystemStateGeneric::<crate::NoStdToolbox>::new());
-  let props = PropsGeneric::<crate::NoStdToolbox>::from_fn(|| ProbeActor);
-  let target = ActorCellGeneric::create(system.clone(), Pid::new(10, 0), None, "target".to_string(), &props);
+  let system = ArcShared::new(SystemState::new());
+  let props = Props::from_fn(|| ProbeActor);
+  let target = ActorCell::create(system.clone(), Pid::new(10, 0), None, "target".to_string(), &props);
   system.register_cell(target.clone());
 
   target.handle_watch(Pid::new(20, 0));
@@ -76,9 +76,9 @@ fn handle_watch_is_idempotent() {
 
 #[test]
 fn handle_unwatch_removes_pid() {
-  let system = ArcShared::new(SystemStateGeneric::<crate::NoStdToolbox>::new());
-  let props = PropsGeneric::<crate::NoStdToolbox>::from_fn(|| ProbeActor);
-  let target = ActorCellGeneric::create(system.clone(), Pid::new(11, 0), None, "target".to_string(), &props);
+  let system = ArcShared::new(SystemState::new());
+  let props = Props::from_fn(|| ProbeActor);
+  let target = ActorCell::create(system.clone(), Pid::new(11, 0), None, "target".to_string(), &props);
   system.register_cell(target.clone());
 
   target.handle_watch(Pid::new(21, 0));
@@ -89,15 +89,15 @@ fn handle_unwatch_removes_pid() {
 
 #[test]
 fn notify_watchers_sends_terminated() {
-  let state = ArcShared::new(SystemStateGeneric::<crate::NoStdToolbox>::new());
-  let props = PropsGeneric::<crate::NoStdToolbox>::from_fn(|| ProbeActor);
-  let target = ActorCellGeneric::create(state.clone(), Pid::new(30, 0), None, "target".to_string(), &props);
+  let state = ArcShared::new(SystemState::new());
+  let props = Props::from_fn(|| ProbeActor);
+  let target = ActorCell::create(state.clone(), Pid::new(30, 0), None, "target".to_string(), &props);
   let log = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let watcher_props = PropsGeneric::<crate::NoStdToolbox>::from_fn({
+  let watcher_props = Props::from_fn({
     let log = log.clone();
     move || RecordingActor::new(log.clone())
   });
-  let watcher = ActorCellGeneric::create(state.clone(), Pid::new(31, 0), None, "watcher".to_string(), &watcher_props);
+  let watcher = ActorCell::create(state.clone(), Pid::new(31, 0), None, "watcher".to_string(), &watcher_props);
   state.register_cell(target.clone());
   state.register_cell(watcher.clone());
 

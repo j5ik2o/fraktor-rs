@@ -5,15 +5,15 @@ use cellactor_utils_core_rs::sync::{ArcShared, NoStdMutex};
 use super::ActorContext;
 use crate::{
   NoStdToolbox,
-  actor_prim::{Actor, ActorCellGeneric, Pid},
-  messaging::{AnyMessageGeneric, AnyMessageView},
-  props::PropsGeneric,
-  system::ActorSystemGeneric,
+  actor_prim::{Actor, ActorCell, Pid},
+  messaging::{AnyMessage, AnyMessageView},
+  props::Props,
+  system::ActorSystem,
 };
 
 struct TestActor;
 
-impl Actor<NoStdToolbox> for TestActor {
+impl Actor for TestActor {
   fn receive(
     &mut self,
     _context: &mut ActorContext<'_, NoStdToolbox>,
@@ -54,7 +54,7 @@ impl Actor<NoStdToolbox> for RecordingActor {
 
 #[test]
 fn actor_context_new() {
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
   let context = ActorContext::new(&system, pid);
   assert_eq!(context.pid(), pid);
@@ -62,7 +62,7 @@ fn actor_context_new() {
 
 #[test]
 fn actor_context_system() {
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
   let context = ActorContext::new(&system, pid);
   let retrieved_system = context.system();
@@ -71,7 +71,7 @@ fn actor_context_system() {
 
 #[test]
 fn actor_context_pid() {
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
   let context = ActorContext::new(&system, pid);
   assert_eq!(context.pid(), pid);
@@ -79,7 +79,7 @@ fn actor_context_pid() {
 
 #[test]
 fn actor_context_reply_to_initially_none() {
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
   let context = ActorContext::new(&system, pid);
   assert!(context.reply_to().is_none());
@@ -87,7 +87,7 @@ fn actor_context_reply_to_initially_none() {
 
 #[test]
 fn actor_context_set_and_clear_reply_to() {
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
   let mut context = ActorContext::new(&system, pid);
 
@@ -99,17 +99,17 @@ fn actor_context_set_and_clear_reply_to() {
 
 #[test]
 fn actor_context_reply_without_reply_to() {
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
   let context = ActorContext::new(&system, pid);
 
-  let result = context.reply(AnyMessageGeneric::new(42_u32));
+  let result = context.reply(AnyMessage::new(42_u32));
   assert!(result.is_err());
 }
 
 #[test]
 fn actor_context_children() {
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
   let context = ActorContext::new(&system, pid);
 
@@ -119,10 +119,10 @@ fn actor_context_children() {
 
 #[test]
 fn actor_context_spawn_child_with_invalid_parent() {
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
   let context = ActorContext::new(&system, pid);
-  let props = PropsGeneric::from_fn(|| TestActor);
+  let props = Props::from_fn(|| TestActor);
 
   let result = context.spawn_child(&props);
   assert!(result.is_err());
@@ -132,7 +132,7 @@ fn actor_context_spawn_child_with_invalid_parent() {
 fn actor_context_log() {
   use alloc::string::String;
 
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
   let context = ActorContext::new(&system, pid);
 
@@ -140,23 +140,18 @@ fn actor_context_log() {
   context.log(crate::logging::LogLevel::Error, String::from("error message"));
 }
 
-fn register_cell(
-  system: &ActorSystemGeneric<NoStdToolbox>,
-  pid: Pid,
-  name: &str,
-  props: &PropsGeneric<NoStdToolbox>,
-) -> ArcShared<ActorCellGeneric<NoStdToolbox>> {
-  let cell = ActorCellGeneric::create(system.state(), pid, None, String::from(name), props);
+fn register_cell(system: &ActorSystem, pid: Pid, name: &str, props: &Props) -> ArcShared<ActorCell> {
+  let cell = ActorCell::create(system.state(), pid, None, String::from(name), props);
   system.state().register_cell(cell.clone());
   cell
 }
 
 #[test]
 fn actor_context_watch_enqueues_system_message() {
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::new_empty();
   let watcher_pid = system.allocate_pid();
   let target_pid = system.allocate_pid();
-  let props = PropsGeneric::from_fn(|| TestActor);
+  let props = Props::from_fn(|| TestActor);
   let _watcher = register_cell(&system, watcher_pid, "watcher", &props);
   let target = register_cell(&system, target_pid, "target", &props);
 
@@ -168,15 +163,15 @@ fn actor_context_watch_enqueues_system_message() {
 
 #[test]
 fn actor_context_watch_missing_actor_notifies_self() {
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::new_empty();
   let watcher_pid = system.allocate_pid();
   let target_pid = system.allocate_pid();
   let watcher_log = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let watcher_props = PropsGeneric::from_fn({
+  let watcher_props = Props::from_fn({
     let log = watcher_log.clone();
     move || RecordingActor::new(log.clone())
   });
-  let target_props = PropsGeneric::from_fn(|| TestActor);
+  let target_props = Props::from_fn(|| TestActor);
   let _watcher = register_cell(&system, watcher_pid, "watcher", &watcher_props);
   let target = register_cell(&system, target_pid, "target", &target_props);
   let target_ref = target.actor_ref();
@@ -189,10 +184,10 @@ fn actor_context_watch_missing_actor_notifies_self() {
 
 #[test]
 fn actor_context_unwatch_enqueues_message() {
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::new_empty();
   let watcher_pid = system.allocate_pid();
   let target_pid = system.allocate_pid();
-  let props = PropsGeneric::from_fn(|| TestActor);
+  let props = Props::from_fn(|| TestActor);
   let _watcher = register_cell(&system, watcher_pid, "watcher", &props);
   let target = register_cell(&system, target_pid, "target", &props);
   let context = ActorContext::new(&system, watcher_pid);
@@ -205,12 +200,12 @@ fn actor_context_unwatch_enqueues_message() {
 
 #[test]
 fn spawn_child_watched_installs_watch() {
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::new_empty();
   let parent_pid = system.allocate_pid();
-  let props = PropsGeneric::from_fn(|| TestActor);
+  let props = Props::from_fn(|| TestActor);
   let _parent = register_cell(&system, parent_pid, "parent", &props);
   let context = ActorContext::new(&system, parent_pid);
-  let child_props = PropsGeneric::from_fn(|| TestActor);
+  let child_props = Props::from_fn(|| TestActor);
 
   let child = context.spawn_child_watched(&child_props).expect("child spawn succeeds");
   let child_cell = system.state().cell(&child.pid()).expect("child registered");

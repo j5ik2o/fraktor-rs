@@ -12,9 +12,9 @@ use crate::{
   event_stream::{EventStreamEvent, EventStreamSubscriber},
   logging::LogLevel,
   mailbox::{MailboxOverflowStrategy, MailboxPolicy},
-  messaging::{AnyMessageGeneric, AnyMessageView},
-  props::{MailboxConfig, PropsGeneric},
-  system::ActorSystemGeneric,
+  messaging::{AnyMessage, AnyMessageView},
+  props::{MailboxConfig, Props},
+  system::ActorSystem,
 };
 
 struct PassiveActor;
@@ -55,14 +55,14 @@ fn mailbox_metrics_and_warnings_are_emitted() {
   let capacity = NonZeroUsize::new(2).unwrap();
   let mailbox_config = MailboxConfig::new(MailboxPolicy::bounded(capacity, MailboxOverflowStrategy::DropNewest, None))
     .with_warn_threshold(Some(warn_threshold));
-  let props = PropsGeneric::<NoStdToolbox>::from_fn(|| PassiveActor).with_mailbox(mailbox_config);
-  let system = ActorSystemGeneric::new(&props).expect("system");
+  let props = Props::from_fn(|| PassiveActor).with_mailbox(mailbox_config);
+  let system = ActorSystem::new(&props).expect("system");
 
   let subscriber_impl = ArcShared::new(RecordingSubscriber::new());
   let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
   let _subscription = system.subscribe_event_stream(&subscriber);
 
-  system.user_guardian_ref().tell(AnyMessageGeneric::new("first")).expect("send");
+  system.user_guardian_ref().tell(AnyMessage::new("first")).expect("send");
 
   wait_until(|| {
     let events = subscriber_impl.events();

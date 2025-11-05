@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use cellactor_utils_core_rs::sync::ArcShared;
+use cellactor_utils_core_rs::sync::{ArcShared, NoStdToolbox};
 
 use crate::{
   RuntimeToolbox, actor_prim::actor_ref::ActorRefSender, error::SendError, futures::ActorFuture,
@@ -11,11 +11,14 @@ use crate::{
 };
 
 /// Sender that completes the associated `ActorFuture` when a reply arrives.
-pub struct AskReplySender<TB: RuntimeToolbox + 'static> {
+pub struct AskReplySenderGeneric<TB: RuntimeToolbox + 'static> {
   future: ArcShared<ActorFuture<AnyMessageGeneric<TB>, TB>>,
 }
 
-impl<TB: RuntimeToolbox + 'static> AskReplySender<TB> {
+/// Type alias for the default `NoStdToolbox`-backed reply sender.
+pub type AskReplySender = AskReplySenderGeneric<NoStdToolbox>;
+
+impl<TB: RuntimeToolbox + 'static> AskReplySenderGeneric<TB> {
   /// Creates a new reply sender.
   #[must_use]
   pub const fn new(future: ArcShared<ActorFuture<AnyMessageGeneric<TB>, TB>>) -> Self {
@@ -23,7 +26,7 @@ impl<TB: RuntimeToolbox + 'static> AskReplySender<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> ActorRefSender<TB> for AskReplySender<TB> {
+impl<TB: RuntimeToolbox + 'static> ActorRefSender<TB> for AskReplySenderGeneric<TB> {
   fn send(&self, message: AnyMessageGeneric<TB>) -> Result<(), SendError<TB>> {
     self.future.complete(message);
     Ok(())

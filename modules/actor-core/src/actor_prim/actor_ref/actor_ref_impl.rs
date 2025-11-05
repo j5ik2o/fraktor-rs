@@ -13,7 +13,7 @@ use cellactor_utils_core_rs::sync::{ArcShared, NoStdToolbox};
 use crate::{
   RuntimeToolbox,
   actor_prim::{
-    actor_ref::{actor_ref_sender::ActorRefSender, ask_reply_sender::AskReplySender, null_sender::NullSender},
+    actor_ref::{actor_ref_sender::ActorRefSender, ask_reply_sender::AskReplySenderGeneric, null_sender::NullSender},
     pid::Pid,
   },
   error::SendError,
@@ -83,8 +83,8 @@ impl<TB: RuntimeToolbox> ActorRefGeneric<TB> {
   where
     TB: 'static, {
     let future = ArcShared::new(ActorFuture::new());
-    let reply_sender = ArcShared::new(AskReplySender::new(future.clone()));
-    let reply_ref = ActorRefGeneric::new(self.pid, reply_sender);
+    let reply_sender = ArcShared::new(AskReplySenderGeneric::<TB>::new(future.clone()));
+    let reply_ref = ActorRefGeneric::<TB>::new(self.pid, reply_sender);
     let envelope = message.with_reply_to(reply_ref.clone());
     self.tell(envelope)?;
     if let Some(system) = &self.system {

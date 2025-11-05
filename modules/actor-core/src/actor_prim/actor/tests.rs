@@ -2,7 +2,7 @@ use alloc::boxed::Box;
 
 use super::Actor;
 use crate::{
-  NoStdToolbox, actor_prim::ActorContext, error::ActorError, messaging::AnyMessageView, system::ActorSystemGeneric,
+  NoStdToolbox, actor_prim::ActorContext, error::ActorError, messaging::AnyMessageView, system::ActorSystem,
 };
 
 #[derive(Default)]
@@ -43,7 +43,7 @@ impl Actor<NoStdToolbox> for TestActor {
 
 #[test]
 fn actor_box_delegates_pre_start() {
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::new_empty();
   let mut ctx = ActorContext::new(&system, system.allocate_pid());
   let mut actor: Box<dyn Actor<NoStdToolbox>> = Box::new(TestActor::default());
   assert!(actor.pre_start(&mut ctx).is_ok());
@@ -51,7 +51,7 @@ fn actor_box_delegates_pre_start() {
 
 #[test]
 fn actor_box_delegates_receive() {
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::new_empty();
   let mut ctx = ActorContext::new(&system, system.allocate_pid());
   let mut actor: Box<dyn Actor<NoStdToolbox>> = Box::new(TestActor::default());
   let message = crate::messaging::AnyMessageView::new(&(), None);
@@ -60,7 +60,7 @@ fn actor_box_delegates_receive() {
 
 #[test]
 fn actor_box_delegates_post_stop() {
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::new_empty();
   let mut ctx = ActorContext::new(&system, system.allocate_pid());
   let mut actor: Box<dyn Actor<NoStdToolbox>> = Box::new(TestActor::default());
   assert!(actor.post_stop(&mut ctx).is_ok());
@@ -68,7 +68,7 @@ fn actor_box_delegates_post_stop() {
 
 #[test]
 fn actor_box_delegates_on_terminated() {
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
   let mut ctx = ActorContext::new(&system, pid);
   let mut actor: Box<dyn Actor<NoStdToolbox>> = Box::new(TestActor::default());
