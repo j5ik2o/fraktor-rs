@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn test_spin_mutex_family_default() {
-  let _family = SpinMutexFamily::default();
+  let _family = SpinMutexFamily;
 }
 
 #[test]

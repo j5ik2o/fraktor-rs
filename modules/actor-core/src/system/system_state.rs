@@ -294,8 +294,16 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
 
     match directive {
       | SupervisorDirective::Restart => {
+        let mut escalate_due_to_recreate_failure = false;
         for target in affected {
-          let _ = self.restart_actor(target);
+          if let Err(send_error) = self.send_system_message(target, SystemMessage::Recreate) {
+            self.record_send_error(Some(target), &send_error);
+            let _ = self.send_system_message(target, SystemMessage::Stop);
+            escalate_due_to_recreate_failure = true;
+          }
+        }
+        if escalate_due_to_recreate_failure {
+          self.handle_failure(parent_pid, parent_parent, error);
         }
       },
       | SupervisorDirective::Stop => {
@@ -310,10 +318,6 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
         self.handle_failure(parent_pid, parent_parent, error);
       },
     }
-  }
-
-  fn restart_actor(&self, pid: Pid) -> Result<(), ActorError> {
-    if let Some(cell) = self.cell(&pid) { cell.restart() } else { Ok(()) }
   }
 
   fn stop_actor(&self, pid: Pid) {

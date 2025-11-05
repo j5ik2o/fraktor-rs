@@ -1,5 +1,15 @@
+use alloc::string::ToString;
+
+use cellactor_utils_core_rs::sync::ArcShared;
+
 use super::SystemState;
-use crate::messaging::AnyMessage;
+use crate::{
+  NoStdToolbox,
+  actor_prim::{Actor, ActorCell, ActorContext},
+  error::ActorError,
+  messaging::{AnyMessage, AnyMessageView},
+  props::Props,
+};
 
 #[test]
 fn system_state_new() {
@@ -191,4 +201,37 @@ fn system_state_record_send_error() {
 
   state.record_send_error(None, &error);
   state.record_send_error(Some(state.allocate_pid()), &error);
+}
+
+struct RestartProbeActor;
+
+impl Actor<NoStdToolbox> for RestartProbeActor {
+  fn receive(
+    &mut self,
+    _ctx: &mut ActorContext<'_, NoStdToolbox>,
+    _message: AnyMessageView<'_, NoStdToolbox>,
+  ) -> Result<(), ActorError> {
+    Ok(())
+  }
+}
+
+#[test]
+fn recreate_send_failure_escalates_and_stops_parent() {
+  let state = ArcShared::new(SystemState::new());
+  let parent_pid = state.allocate_pid();
+  let parent_props = Props::from_fn(|| RestartProbeActor);
+  let parent = ActorCell::create(state.clone(), parent_pid, None, "parent".to_string(), &parent_props);
+  state.register_cell(parent.clone());
+
+  let child_pid = state.allocate_pid();
+  let child_props = Props::from_fn(|| RestartProbeActor);
+  let child = ActorCell::create(state.clone(), child_pid, Some(parent_pid), "child".to_string(), &child_props);
+  state.register_cell(child.clone());
+  state.register_child(parent_pid, child_pid);
+
+  state.remove_cell(&child_pid);
+  let error = ActorError::recoverable("boom");
+  state.handle_failure(child_pid, Some(parent_pid), &error);
+
+  assert!(state.cell(&parent_pid).is_none());
 }
