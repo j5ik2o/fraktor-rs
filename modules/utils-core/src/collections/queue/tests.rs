@@ -11,19 +11,19 @@ mod storage_config {
 
   /// Storage configuration used by the test backends.
   #[derive(Clone, Copy, Default)]
-  pub struct QueueConfig {
+  pub(super) struct QueueConfig {
     capacity: usize,
   }
 
   impl QueueConfig {
     /// Creates a new configuration with the specified capacity.
-    pub fn new(capacity: usize) -> Self {
+    pub(super) fn new(capacity: usize) -> Self {
       Self { capacity }
     }
 
     /// Returns the configured capacity.
     #[must_use]
-    pub const fn capacity(self) -> usize {
+    pub(super) const fn capacity(self) -> usize {
       self.capacity
     }
   }
@@ -56,7 +56,7 @@ mod fifo_backend {
   };
 
   /// Simple FIFO backend used for unit tests.
-  pub struct FifoBackend<T> {
+  pub(super) struct FifoBackend<T> {
     buffer:   VecDeque<T>,
     capacity: usize,
     policy:   OverflowPolicy,
@@ -65,7 +65,7 @@ mod fifo_backend {
 
   impl<T> FifoBackend<T> {
     /// Creates a backend with the provided capacity and overflow policy.
-    pub fn new(storage: QueueConfig, policy: OverflowPolicy) -> Self {
+    pub(super) fn new(storage: QueueConfig, policy: OverflowPolicy) -> Self {
       Self { buffer: VecDeque::new(), capacity: storage.capacity(), policy, closed: false }
     }
   }
@@ -145,7 +145,7 @@ mod mpsc_key_capability_assertion {
   };
 
   /// Ensures capability traits are implemented for MpscKey.
-  pub fn assert_capabilities() {
+  pub(super) fn assert_capabilities() {
     fn require_capabilities<K: MultiProducer + SingleConsumer>() {}
     require_capabilities::<MpscKey>();
   }
@@ -156,7 +156,7 @@ mod priority_message {
 
   /// Priority-aware message used in priority queue tests.
   #[derive(Clone, Debug, PartialEq, Eq)]
-  pub struct TestPriorityMessage {
+  pub(super) struct TestPriorityMessage {
     value:    i32,
     priority: Option<i8>,
   }
@@ -164,13 +164,13 @@ mod priority_message {
   impl TestPriorityMessage {
     /// Creates a new message with the specified value and priority.
     #[must_use]
-    pub const fn new(value: i32, priority: Option<i8>) -> Self {
+    pub(super) const fn new(value: i32, priority: Option<i8>) -> Self {
       Self { value, priority }
     }
 
     /// Returns the stored payload.
     #[must_use]
-    pub const fn value(&self) -> i32 {
+    pub(super) const fn value(&self) -> i32 {
       self.value
     }
   }

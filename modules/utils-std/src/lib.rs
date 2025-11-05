@@ -1,4 +1,5 @@
 #![deny(missing_docs)]
+#![deny(unreachable_pub)]
 
 //! Standard library extensions for Cellactor utilities.
 

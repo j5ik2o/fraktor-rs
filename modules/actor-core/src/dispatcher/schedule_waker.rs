@@ -28,13 +28,13 @@ impl<TB: RuntimeToolbox + 'static> ScheduleShared<TB> {
 }
 
 /// Helper for creating a [`Waker`] that reschedules the dispatcher.
-pub struct ScheduleWaker<TB: RuntimeToolbox + 'static> {
+pub(super) struct ScheduleWaker<TB: RuntimeToolbox + 'static> {
   _marker: PhantomData<TB>,
 }
 
 impl<TB: RuntimeToolbox + 'static> ScheduleWaker<TB> {
   /// Creates a waker that schedules the dispatcher using the provided core reference.
-  pub fn into_waker(dispatcher: ArcShared<DispatcherCore<TB>>) -> Waker {
+  pub(super) fn into_waker(dispatcher: ArcShared<DispatcherCore<TB>>) -> Waker {
     let handle = ArcShared::new(ScheduleShared::new(dispatcher));
     unsafe { Waker::from_raw(Self::raw_waker(handle)) }
   }

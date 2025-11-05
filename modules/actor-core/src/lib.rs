@@ -45,6 +45,7 @@
 #![deny(clippy::naive_bytecount)]
 #![deny(clippy::if_same_then_else)]
 #![deny(clippy::cmp_null)]
+#![deny(unreachable_pub)]
 #![allow(unknown_lints)]
 #![deny(cfg_std_forbid)]
 #![no_std]
