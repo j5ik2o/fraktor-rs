@@ -11,4 +11,4 @@ mod system_message;
 pub use any_message::{AnyMessage, AnyMessageGeneric};
 pub use any_message_view::AnyMessageView;
 pub use ask_response::{AskResponse, AskResponseGeneric};
-pub use system_message::SystemMessage;
+pub use system_message::{FailureClassification, FailureMessageSnapshot, FailurePayload, SystemMessage};

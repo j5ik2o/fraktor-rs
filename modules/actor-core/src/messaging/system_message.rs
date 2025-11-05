@@ -3,7 +3,15 @@
 #[cfg(test)]
 mod tests;
 
+pub use self::{
+  failure_classification::FailureClassification, failure_message_snapshot::FailureMessageSnapshot,
+  failure_payload::FailurePayload,
+};
 use crate::{RuntimeToolbox, actor_prim::Pid, messaging::AnyMessageGeneric};
+
+mod failure_classification;
+mod failure_message_snapshot;
+mod failure_payload;
 
 /// Lightweight enum describing system-level mailbox traffic.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -24,6 +32,8 @@ pub enum SystemMessage {
   Unwatch(Pid),
   /// Notifies watchers that the referenced actor has terminated.
   Terminated(Pid),
+  /// Reports that a child actor failed and requires supervisor handling.
+  Failure(FailurePayload),
 }
 
 impl<TB: RuntimeToolbox> From<SystemMessage> for AnyMessageGeneric<TB> {

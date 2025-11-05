@@ -99,6 +99,20 @@ impl<T: ?Sized> core::ops::Deref for ArcShared<T> {
   }
 }
 
+impl<T: ?Sized + core::fmt::Debug> core::fmt::Debug for ArcShared<T> {
+  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    f.debug_struct("ArcShared").finish()
+  }
+}
+
+impl<T: ?Sized> PartialEq for ArcShared<T> {
+  fn eq(&self, other: &Self) -> bool {
+    Arc::ptr_eq(&self.0, &other.0)
+  }
+}
+
+impl<T: ?Sized> Eq for ArcShared<T> {}
+
 impl<T: ?Sized> Shared<T> for ArcShared<T> {
   fn try_unwrap(self) -> Result<T, Self>
   where
