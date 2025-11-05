@@ -5,6 +5,7 @@ use cellactor_utils_core_rs::sync::{ArcShared, NoStdMutex};
 
 use crate::{
   NoStdToolbox,
+  dead_letter::DeadLetterEntry,
   event_stream::{EventStreamEvent, EventStreamSubscriber},
   logging::{LogEvent, LogLevel, LoggerSubscriber, LoggerWriter},
 };
@@ -77,8 +78,8 @@ fn on_event_ignores_non_log_events() {
   let (writer, logs) = TestWriter::new();
   let subscriber = LoggerSubscriber::new(LogLevel::Info, ArcShared::new(writer));
 
-  subscriber.on_event(&EventStreamEvent::<NoStdToolbox>::DeadLetter(crate::dead_letter::DeadLetterEntryGeneric::new(
-    crate::messaging::AnyMessageGeneric::new(()),
+  subscriber.on_event(&EventStreamEvent::<NoStdToolbox>::DeadLetter(DeadLetterEntry::new(
+    crate::messaging::AnyMessage::new(()),
     crate::dead_letter::DeadLetterReason::MissingRecipient,
     None,
     Duration::ZERO,

@@ -23,16 +23,16 @@ required-features = ["tokio-executor"]
 
 [[example]]
 name = "logger_subscriber"
-path = "examples/logger_subscriber_std/main.rs"
+path = "examples/logger_subscriber/main.rs"
 
 [[example]]
 name = "supervision"
-path = "examples/supervision_std/main.rs"
+path = "examples/supervision/main.rs"
 
 [[example]]
 name = "deadletter"
-path = "examples/deadletter_std/main.rs"
+path = "examples/dead_letter/main.rs"
 
 [[example]]
 name = "named_actor"
-path = "examples/named_actor_std/main.rs"
+path = "examples/named_actor/main.rs"

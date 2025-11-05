@@ -1,5 +1,8 @@
 //! Trait implemented by actor reference senders.
 
+#[cfg(test)]
+mod tests;
+
 use cellactor_utils_core_rs::sync::NoStdToolbox;
 
 use crate::{RuntimeToolbox, error::SendError, messaging::AnyMessageGeneric};

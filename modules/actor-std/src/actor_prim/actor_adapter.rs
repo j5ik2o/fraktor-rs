@@ -1,4 +1,4 @@
-use cellactor_actor_core_rs::error::ActorError;
+use cellactor_actor_core_rs::{actor_prim::Pid, error::ActorError};
 use cellactor_utils_std_rs::runtime_toolbox::StdToolbox;
 
 use crate::{
@@ -33,5 +33,9 @@ where
 
   fn post_stop(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
     self.inner.post_stop(ctx)
+  }
+
+  fn on_terminated(&mut self, ctx: &mut ActorContext<'_>, terminated: Pid) -> Result<(), ActorError> {
+    self.inner.on_terminated(ctx, terminated)
   }
 }

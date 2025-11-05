@@ -1,5 +1,8 @@
 //! Holds reply handle and future associated with an ask request.
 
+#[cfg(test)]
+mod tests;
+
 use cellactor_utils_core_rs::sync::ArcShared;
 
 use crate::{

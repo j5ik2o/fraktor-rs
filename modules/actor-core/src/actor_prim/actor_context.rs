@@ -11,7 +11,7 @@ use crate::{
   actor_prim::{ChildRefGeneric, Pid, actor_ref::ActorRefGeneric},
   error::SendError,
   logging::LogLevel,
-  messaging::AnyMessageGeneric,
+  messaging::{AnyMessageGeneric, SystemMessage},
   props::PropsGeneric,
   spawn::SpawnError,
   system::ActorSystemGeneric,
@@ -134,6 +134,60 @@ impl<'a, TB: RuntimeToolbox + 'static> ActorContext<'a, TB> {
   /// Returns an error when the resume signal cannot be delivered.
   pub fn resume_child(&self, child: &ChildRefGeneric<TB>) -> Result<(), SendError<TB>> {
     child.resume()
+  }
+
+  /// Subscribes the running actor to termination events for the specified target.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the runtime cannot enqueue the watch signal.
+  pub fn watch(&self, target: &ActorRefGeneric<TB>) -> Result<(), SendError<TB>> {
+    if target.pid() == self.pid {
+      return Ok(());
+    }
+
+    let state = self.system.state();
+    match state.send_system_message(target.pid(), SystemMessage::Watch(self.pid)) {
+      | Ok(()) => Ok(()),
+      | Err(SendError::Closed(_)) => {
+        let _ = state.send_system_message(self.pid, SystemMessage::Terminated(target.pid()));
+        Ok(())
+      },
+      | Err(error) => Err(error),
+    }
+  }
+
+  /// Stops watching the specified actor.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the runtime cannot enqueue the unwatch signal.
+  pub fn unwatch(&self, target: &ActorRefGeneric<TB>) -> Result<(), SendError<TB>> {
+    if target.pid() == self.pid {
+      return Ok(());
+    }
+
+    let state = self.system.state();
+    match state.send_system_message(target.pid(), SystemMessage::Unwatch(self.pid)) {
+      | Ok(()) => Ok(()),
+      | Err(SendError::Closed(_)) => Ok(()),
+      | Err(error) => Err(error),
+    }
+  }
+
+  /// Spawns a child actor and immediately starts monitoring it for termination.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when spawning fails or when installing the watch registration cannot be
+  /// performed.
+  pub fn spawn_child_watched(&self, props: &PropsGeneric<TB>) -> Result<ChildRefGeneric<TB>, SpawnError> {
+    let child = self.spawn_child(props)?;
+    if self.watch(child.actor_ref()).is_err() {
+      let _ = child.stop();
+      return Err(SpawnError::invalid_props("failed to install death watch"));
+    }
+    Ok(child)
   }
 
   /// Emits a log event associated with the running actor.

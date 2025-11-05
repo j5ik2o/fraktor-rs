@@ -2,13 +2,8 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 
 use cellactor_utils_core_rs::sync::ArcShared;
 
-use super::{ActorRef, ActorRefGeneric, ActorRefSender};
-use crate::{
-  NoStdToolbox,
-  actor_prim::Pid,
-  error::SendError,
-  messaging::{AnyMessage, AnyMessageGeneric},
-};
+use super::{ActorRef, ActorRefSender};
+use crate::{NoStdToolbox, actor_prim::Pid, error::SendError, messaging::AnyMessage};
 
 struct RecordingSender {
   count: ArcShared<AtomicUsize>,
@@ -32,15 +27,15 @@ impl ActorRefSender for RecordingSender {
 
 #[test]
 fn null_sender_rejects_messages() {
-  let null: ActorRef = ActorRefGeneric::null();
-  assert!(null.tell(AnyMessageGeneric::new(1_u32)).is_err());
+  let null: ActorRef = ActorRef::null();
+  assert!(null.tell(AnyMessage::new(1_u32)).is_err());
 }
 
 #[test]
 fn new_actor_ref_forwards_messages() {
   let (count, sender) = RecordingSender::new();
-  let actor: ActorRef = ActorRefGeneric::new(Pid::new(1, 0), sender);
-  assert!(actor.tell(AnyMessageGeneric::new(42_u32)).is_ok());
+  let actor: ActorRef = ActorRef::new(Pid::new(1, 0), sender);
+  assert!(actor.tell(AnyMessage::new(42_u32)).is_ok());
   assert_eq!(count.load(Ordering::Relaxed), 1);
 }
 
@@ -48,31 +43,31 @@ fn new_actor_ref_forwards_messages() {
 fn actor_ref_pid() {
   let pid = Pid::new(42, 1);
   let (_, sender) = RecordingSender::new();
-  let actor: ActorRef = ActorRefGeneric::new(pid, sender);
+  let actor: ActorRef = ActorRef::new(pid, sender);
   assert_eq!(actor.pid(), pid);
 }
 
 #[test]
 fn actor_ref_clone() {
   let (count, sender) = RecordingSender::new();
-  let actor1: ActorRef = ActorRefGeneric::new(Pid::new(1, 0), sender);
+  let actor1: ActorRef = ActorRef::new(Pid::new(1, 0), sender);
   let actor2 = actor1.clone();
 
   assert_eq!(actor1.pid(), actor2.pid());
 
-  assert!(actor1.tell(AnyMessageGeneric::new(1_u32)).is_ok());
-  assert!(actor2.tell(AnyMessageGeneric::new(2_u32)).is_ok());
+  assert!(actor1.tell(AnyMessage::new(1_u32)).is_ok());
+  assert!(actor2.tell(AnyMessage::new(2_u32)).is_ok());
   assert_eq!(count.load(Ordering::Relaxed), 2);
 }
 
 #[test]
 fn actor_ref_with_system() {
-  use crate::system::SystemStateGeneric;
+  use crate::system::SystemState;
 
   let (_, sender) = RecordingSender::new();
-  let system = ArcShared::new(SystemStateGeneric::<NoStdToolbox>::new());
+  let system = ArcShared::new(SystemState::new());
   let pid = Pid::new(1, 0);
-  let actor: ActorRef = ActorRefGeneric::with_system(pid, sender, system.clone());
+  let actor: ActorRef = ActorRef::with_system(pid, sender, system.clone());
 
   assert_eq!(actor.pid(), pid);
   let _ = actor;
@@ -80,14 +75,14 @@ fn actor_ref_with_system() {
 
 #[test]
 fn actor_ref_tell_with_system_records_error() {
-  use crate::{actor_prim::actor_ref::null_sender::NullSender, system::SystemStateGeneric};
+  use crate::{actor_prim::actor_ref::null_sender::NullSender, system::SystemState};
 
-  let system = ArcShared::new(SystemStateGeneric::<NoStdToolbox>::new());
+  let system = ArcShared::new(SystemState::new());
   let pid = Pid::new(1, 0);
   let null_sender = ArcShared::new(NullSender);
-  let actor: ActorRef = ActorRefGeneric::with_system(pid, null_sender, system.clone());
+  let actor: ActorRef = ActorRef::with_system(pid, null_sender, system.clone());
 
-  let result = actor.tell(AnyMessageGeneric::new(42_u32));
+  let result = actor.tell(AnyMessage::new(42_u32));
   assert!(result.is_err());
 
   let deadletters = system.dead_letters();
@@ -101,9 +96,9 @@ fn actor_ref_partial_eq() {
   let (_, sender3) = RecordingSender::new();
   let pid = Pid::new(1, 0);
 
-  let actor1: ActorRef = ActorRefGeneric::new(pid, sender1);
-  let actor2: ActorRef = ActorRefGeneric::new(pid, sender2);
-  let actor3: ActorRef = ActorRefGeneric::new(Pid::new(2, 0), sender3);
+  let actor1: ActorRef = ActorRef::new(pid, sender1);
+  let actor2: ActorRef = ActorRef::new(pid, sender2);
+  let actor3: ActorRef = ActorRef::new(Pid::new(2, 0), sender3);
 
   assert_eq!(actor1, actor2);
   assert_ne!(actor1, actor3);
@@ -116,7 +111,7 @@ fn actor_ref_debug() {
 
   let (_, sender) = RecordingSender::new();
   let pid = Pid::new(42, 1);
-  let actor: ActorRef = ActorRefGeneric::new(pid, sender);
+  let actor: ActorRef = ActorRef::new(pid, sender);
 
   let debug_str = format!("{:?}", actor);
   assert!(debug_str.contains("ActorRef"));
@@ -129,8 +124,8 @@ fn actor_ref_hash() {
   let (_, sender2) = RecordingSender::new();
   let pid = Pid::new(1, 0);
 
-  let actor1: ActorRef = ActorRefGeneric::new(pid, sender1);
-  let actor2: ActorRef = ActorRefGeneric::new(pid, sender2);
+  let actor1: ActorRef = ActorRef::new(pid, sender1);
+  let actor2: ActorRef = ActorRef::new(pid, sender2);
 
   let _ = actor1;
   let _ = actor2;

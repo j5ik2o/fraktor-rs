@@ -5,7 +5,12 @@ mod tests;
 
 use alloc::boxed::Box;
 
-use crate::{NoStdToolbox, RuntimeToolbox, actor_prim::ActorContext, error::ActorError, messaging::AnyMessageView};
+use crate::{
+  NoStdToolbox, RuntimeToolbox,
+  actor_prim::{ActorContext, Pid},
+  error::ActorError,
+  messaging::AnyMessageView,
+};
 
 /// Defines the lifecycle hooks that every actor must implement.
 pub trait Actor<TB: RuntimeToolbox = NoStdToolbox>: Send {
@@ -47,6 +52,15 @@ pub trait Actor<TB: RuntimeToolbox = NoStdToolbox>: Send {
   fn post_stop(&mut self, _ctx: &mut ActorContext<'_, TB>) -> Result<(), ActorError> {
     Ok(())
   }
+
+  /// Called when a watched actor terminates and notifies this actor via DeathWatch.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when cleanup logic fails.
+  fn on_terminated(&mut self, _ctx: &mut ActorContext<'_, TB>, _terminated: Pid) -> Result<(), ActorError> {
+    Ok(())
+  }
 }
 
 impl<T, TB> Actor<TB> for Box<T>
@@ -64,5 +78,9 @@ where
 
   fn post_stop(&mut self, ctx: &mut ActorContext<'_, TB>) -> Result<(), ActorError> {
     (**self).post_stop(ctx)
+  }
+
+  fn on_terminated(&mut self, ctx: &mut ActorContext<'_, TB>, terminated: Pid) -> Result<(), ActorError> {
+    (**self).on_terminated(ctx, terminated)
   }
 }

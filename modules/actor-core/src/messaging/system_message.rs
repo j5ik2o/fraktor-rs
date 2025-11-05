@@ -1,16 +1,25 @@
 //! Internal system messages exchanged within the actor runtime.
 
-use crate::{RuntimeToolbox, messaging::AnyMessageGeneric};
+#[cfg(test)]
+mod tests;
+
+use crate::{RuntimeToolbox, actor_prim::Pid, messaging::AnyMessageGeneric};
 
 /// Lightweight enum describing system-level mailbox traffic.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SystemMessage {
+  /// Signals that the associated actor should stop.
+  Stop,
   /// Requests the mailbox to suspend user message processing.
   Suspend,
   /// Requests the mailbox to resume user message processing.
   Resume,
-  /// Signals that the associated actor should stop.
-  Stop,
+  /// Registers the specified watcher for termination notifications.
+  Watch(Pid),
+  /// Removes the specified watcher and stops sending notifications.
+  Unwatch(Pid),
+  /// Notifies watchers that the referenced actor has terminated.
+  Terminated(Pid),
 }
 
 impl<TB: RuntimeToolbox> From<SystemMessage> for AnyMessageGeneric<TB> {
