@@ -27,6 +27,13 @@ impl DeadLineTimerKey {
     self.0
   }
 
+  /// Retrieves the internal representation as a reference.
+  #[must_use]
+  #[inline]
+  pub const fn as_raw(&self) -> u64 {
+    self.0
+  }
+
   /// Creates a key from the raw representation.
   #[must_use]
   #[inline]

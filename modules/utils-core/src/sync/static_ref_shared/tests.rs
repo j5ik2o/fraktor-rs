@@ -19,6 +19,31 @@ fn clone_preserves_identity() {
   assert!(core::ptr::eq(shared.as_ref(), cloned.as_ref()));
 }
 
+#[test]
+fn explicit_clone_method() {
+  let shared = StaticRefShared::new(&VALUE);
+  let cloned = shared;
+  assert!(core::ptr::eq(shared.as_ref(), cloned.as_ref()));
+  assert_eq!(*cloned, 42);
+}
+
+#[test]
+fn copy_behavior() {
+  let shared = StaticRefShared::new(&VALUE);
+  let copied = shared;
+  let copied_again = copied;
+  // All copies should point to the same static reference
+  assert!(core::ptr::eq(shared.as_ref(), copied_again.as_ref()));
+}
+
+#[test]
+fn as_ref_method() {
+  let shared = StaticRefShared::new(&VALUE);
+  let reference = shared.as_ref();
+  assert_eq!(*reference, 42);
+  assert!(core::ptr::eq(reference, &VALUE));
+}
+
 static OTHER: (u32, u32) = (1, 2);
 
 #[test]

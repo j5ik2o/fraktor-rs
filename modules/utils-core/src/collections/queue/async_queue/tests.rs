@@ -92,6 +92,30 @@ fn into_mpsc_pair_roundtrip() {
 }
 
 #[test]
+fn into_spsc_pair_roundtrip() {
+  let shared = make_shared_queue(4, OverflowPolicy::Block);
+  let queue: AsyncSpscQueue<i32, _, _> = AsyncQueue::new_spsc(shared);
+  let (producer, consumer) = queue.into_spsc_pair();
+
+  assert!(matches!(block_on(producer.offer(10)), Ok(OfferOutcome::Enqueued)));
+  assert!(matches!(block_on(producer.offer(20)), Ok(OfferOutcome::Enqueued)));
+  assert_eq!(block_on(consumer.poll()), Ok(10));
+  assert_eq!(block_on(consumer.poll()), Ok(20));
+}
+
+#[test]
+fn spsc_consumer_close() {
+  let shared = make_shared_queue(2, OverflowPolicy::Block);
+  let queue: AsyncSpscQueue<i32, _, _> = AsyncQueue::new_spsc(shared);
+  let (producer, consumer) = queue.into_spsc_pair();
+
+  assert!(matches!(block_on(producer.offer(1)), Ok(OfferOutcome::Enqueued)));
+  assert!(block_on(consumer.close()).is_ok());
+  assert_eq!(block_on(consumer.poll()), Ok(1));
+  assert_eq!(block_on(consumer.poll()), Err(QueueError::Disconnected));
+}
+
+#[test]
 fn close_prevents_further_operations() {
   let shared = make_shared_queue(2, OverflowPolicy::Block);
   let queue: AsyncSpscQueue<i32, _, _> = AsyncQueue::new_spsc(shared);
