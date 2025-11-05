@@ -4,7 +4,6 @@
 mod tests;
 
 use alloc::{string::String, vec::Vec};
-use core::hint::spin_loop;
 
 use cellactor_utils_core_rs::sync::ArcShared;
 
@@ -12,7 +11,7 @@ use crate::{
   NoStdToolbox, RuntimeToolbox,
   actor_prim::{ActorCellGeneric, ChildRefGeneric, Pid, actor_ref::ActorRefGeneric},
   dead_letter::DeadLetterEntryGeneric,
-  error::{ActorError, SendError},
+  error::SendError,
   event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric},
   futures::ActorFuture,
   logging::LogLevel,
@@ -22,13 +21,8 @@ use crate::{
   system::system_state::SystemStateGeneric,
 };
 
-const ACTOR_INIT_FAILED: &str = "actor lifecycle hook failed";
 const PARENT_MISSING: &str = "parent actor not found";
 const CREATE_SEND_FAILED: &str = "create system message delivery failed";
-const CREATE_ACK_TIMEOUT: &str = "create lifecycle ack timed out";
-const CREATE_ACK_SPIN_LIMIT: usize = 1_000_000;
-
-type CreateAckFuture<TB> = ArcShared<ActorFuture<Result<(), ActorError>, TB>>;
 
 /// Core runtime structure that owns registry, guardians, and spawn logic.
 pub struct ActorSystemGeneric<TB: RuntimeToolbox + 'static> {
@@ -223,10 +217,10 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   ) -> Result<ChildRefGeneric<TB>, SpawnError> {
     let pid = self.state.allocate_pid();
     let name = self.state.assign_name(parent, props.name(), pid)?;
-    let (cell, ack) = self.build_cell_for_spawn(pid, parent, name, props);
+    let cell = self.build_cell_for_spawn(pid, parent, name, props);
 
     self.state.register_cell(cell.clone());
-    self.perform_create_handshake(parent, pid, &cell, &ack)?;
+    self.perform_create_handshake(parent, pid, &cell)?;
 
     if let Some(parent_pid) = parent {
       self.state.register_child(parent_pid, pid);
@@ -241,10 +235,8 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     parent: Option<Pid>,
     name: String,
     props: &PropsGeneric<TB>,
-  ) -> (ArcShared<ActorCellGeneric<TB>>, CreateAckFuture<TB>) {
-    let cell = ActorCellGeneric::create(self.state.clone(), pid, parent, name, props);
-    let ack = cell.prepare_create_ack();
-    (cell, ack)
+  ) -> ArcShared<ActorCellGeneric<TB>> {
+    ActorCellGeneric::create(self.state.clone(), pid, parent, name, props)
   }
 
   fn perform_create_handshake(
@@ -252,17 +244,11 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     parent: Option<Pid>,
     pid: Pid,
     cell: &ArcShared<ActorCellGeneric<TB>>,
-    ack: &CreateAckFuture<TB>,
   ) -> Result<(), SpawnError> {
     if let Err(error) = self.state.send_system_message(pid, SystemMessage::Create) {
       self.state.record_send_error(Some(pid), &error);
       self.rollback_spawn(parent, cell, pid);
       return Err(SpawnError::invalid_props(CREATE_SEND_FAILED));
-    }
-
-    if let Err(error) = Self::wait_for_create_ack(ack) {
-      self.rollback_spawn(parent, cell, pid);
-      return Err(SpawnError::invalid_props(Self::create_failure_reason(&error)));
     }
 
     Ok(())
@@ -274,24 +260,6 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     if let Some(parent_pid) = parent {
       self.state.unregister_child(Some(parent_pid), pid);
     }
-  }
-
-  fn wait_for_create_ack(ack: &CreateAckFuture<TB>) -> Result<(), ActorError> {
-    let mut spins = 0_usize;
-    loop {
-      if let Some(result) = ack.try_take() {
-        return result;
-      }
-      if spins >= CREATE_ACK_SPIN_LIMIT {
-        return Err(ActorError::fatal(CREATE_ACK_TIMEOUT));
-      }
-      spins += 1;
-      spin_loop();
-    }
-  }
-
-  fn create_failure_reason(error: &ActorError) -> &'static str {
-    if error.reason().as_str() == CREATE_ACK_TIMEOUT { CREATE_ACK_TIMEOUT } else { ACTOR_INIT_FAILED }
   }
 }
 

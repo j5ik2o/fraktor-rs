@@ -139,7 +139,7 @@ fn notify_watchers_sends_terminated() {
 }
 
 #[test]
-fn create_system_message_runs_pre_start_and_completes_ack() {
+fn create_system_message_runs_pre_start() {
   let state = ArcShared::new(SystemState::new());
   let log = ArcShared::new(NoStdMutex::new(Vec::new()));
   let props = Props::from_fn({
@@ -149,10 +149,8 @@ fn create_system_message_runs_pre_start_and_completes_ack() {
   let cell = ActorCell::create(state.clone(), Pid::new(40, 0), None, "probe".to_string(), &props);
   state.register_cell(cell.clone());
 
-  let ack = cell.prepare_create_ack();
   MessageInvoker::invoke_system_message(&*cell, SystemMessage::Create).expect("create");
 
-  assert_eq!(ack.try_take(), Some(Ok(())));
   let snapshot = log.lock().clone();
   assert_eq!(snapshot, vec!["pre_start"]);
 }
@@ -186,19 +184,10 @@ fn system_queue_is_drained_before_user_queue() {
   let cell = ActorCell::create(state.clone(), Pid::new(42, 0), None, "probe".to_string(), &props);
   state.register_cell(cell.clone());
 
-  let ack = cell.prepare_create_ack();
   cell.dispatcher().enqueue_system(SystemMessage::Create).expect("system enqueue");
   cell.actor_ref().tell(AnyMessage::new(())).expect("user enqueue");
 
   cell.dispatcher().schedule();
-
-  let create_result = loop {
-    if let Some(result) = ack.try_take() {
-      break result;
-    }
-    core::hint::spin_loop();
-  };
-  assert!(create_result.is_ok());
 
   let snapshot = log.lock().clone();
   assert_eq!(snapshot, vec!["pre_start", "receive"]);

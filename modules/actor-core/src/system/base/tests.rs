@@ -9,7 +9,7 @@ use crate::{
   dispatcher::{DispatchExecutor, DispatchShared},
   event_stream::{EventStreamEvent, EventStreamSubscriber},
   lifecycle::LifecycleStage,
-  messaging::{AnyMessage, SystemMessage},
+  messaging::SystemMessage,
   props::{DispatcherConfig, Props},
 };
 
@@ -225,32 +225,27 @@ fn actor_system_terminate_when_already_terminated() {
 }
 
 #[test]
-fn spawn_waits_for_pre_start_completion() {
+fn spawn_does_not_block_when_dispatcher_never_runs() {
   let system = ActorSystem::new_empty();
   let log: ArcShared<NoStdMutex<Vec<&'static str>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
   let props = Props::from_fn({
     let log = log.clone();
     move || SpawnRecorderActor::new(log.clone())
-  });
+  })
+  .with_dispatcher(DispatcherConfig::from_executor(ArcShared::new(NoopExecutor::new())));
 
   let child = system.spawn_with_parent(None, &props).expect("spawn succeeds");
-  assert_eq!(log.lock().clone(), vec!["pre_start"]);
-
-  child.tell(AnyMessage::new(())).expect("tell succeeds");
+  assert!(log.lock().is_empty());
+  assert!(system.state().cell(&child.pid()).is_some());
 }
 
 #[test]
-fn spawn_returns_error_when_pre_start_fails() {
+fn spawn_succeeds_even_if_pre_start_fails() {
   let system = ActorSystem::new_empty();
   let props = Props::from_fn(|| FailingStartActor);
-  let result = system.spawn_with_parent(None, &props);
+  let child = system.spawn_with_parent(None, &props).expect("spawn succeeds despite failure");
 
-  match result {
-    | Err(crate::spawn::SpawnError::InvalidProps(reason)) => {
-      assert_eq!(reason, super::ACTOR_INIT_FAILED);
-    },
-    | other => panic!("unexpected spawn result: {:?}", other),
-  }
+  assert!(system.state().cell(&child.pid()).is_none());
 }
 
 #[test]
@@ -259,11 +254,11 @@ fn create_send_failure_triggers_rollback() {
   let props = Props::from_fn(|| TestActor);
   let pid = system.allocate_pid();
   let name = system.state().assign_name(None, props.name(), pid).expect("name assigned");
-  let (cell, ack) = system.build_cell_for_spawn(pid, None, name, &props);
+  let cell = system.build_cell_for_spawn(pid, None, name, &props);
   system.state().register_cell(cell.clone());
 
   system.state().remove_cell(&pid);
-  let result = system.perform_create_handshake(None, pid, &cell, &ack);
+  let result = system.perform_create_handshake(None, pid, &cell);
 
   match result {
     | Err(crate::spawn::SpawnError::InvalidProps(reason)) => {
@@ -278,18 +273,13 @@ fn create_send_failure_triggers_rollback() {
 }
 
 #[test]
-fn dispatcher_ack_timeout_rolls_back_spawn() {
+fn spawn_returns_child_ref_even_if_dispatcher_is_idle() {
   let system = ActorSystem::new_empty();
   let props =
     Props::from_fn(|| TestActor).with_dispatcher(DispatcherConfig::from_executor(ArcShared::new(NoopExecutor::new())));
   let result = system.spawn_with_parent(None, &props);
 
-  match result {
-    | Err(crate::spawn::SpawnError::InvalidProps(reason)) => {
-      assert_eq!(reason, super::CREATE_ACK_TIMEOUT);
-    },
-    | other => panic!("unexpected spawn result: {:?}", other),
-  }
+  assert!(result.is_ok());
 }
 
 #[test]
