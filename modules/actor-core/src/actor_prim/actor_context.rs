@@ -137,6 +137,10 @@ impl<'a, TB: RuntimeToolbox + 'static> ActorContext<'a, TB> {
   }
 
   /// Subscribes the running actor to termination events for the specified target.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the runtime cannot enqueue the watch signal.
   pub fn watch(&self, target: &ActorRefGeneric<TB>) -> Result<(), SendError<TB>> {
     if target.pid() == self.pid {
       return Ok(());
@@ -154,6 +158,10 @@ impl<'a, TB: RuntimeToolbox + 'static> ActorContext<'a, TB> {
   }
 
   /// Stops watching the specified actor.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the runtime cannot enqueue the unwatch signal.
   pub fn unwatch(&self, target: &ActorRefGeneric<TB>) -> Result<(), SendError<TB>> {
     if target.pid() == self.pid {
       return Ok(());
@@ -168,6 +176,11 @@ impl<'a, TB: RuntimeToolbox + 'static> ActorContext<'a, TB> {
   }
 
   /// Spawns a child actor and immediately starts monitoring it for termination.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when spawning fails or when installing the watch registration cannot be
+  /// performed.
   pub fn spawn_child_watched(&self, props: &PropsGeneric<TB>) -> Result<ChildRefGeneric<TB>, SpawnError> {
     let child = self.spawn_child(props)?;
     if self.watch(child.actor_ref()).is_err() {

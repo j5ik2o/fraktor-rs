@@ -250,7 +250,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     result
   }
 
-  #[cfg(test)]
+  #[cfg_attr(not(test), allow(dead_code))]
   pub(crate) fn watchers_snapshot(&self) -> Vec<Pid> {
     self.watchers.lock().clone()
   }

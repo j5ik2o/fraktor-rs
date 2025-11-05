@@ -11,7 +11,6 @@ use cellactor_utils_core_rs::sync::{ArcShared, NoStdMutex};
 
 struct Start;
 struct StopChild;
-struct Restart;
 
 struct Worker;
 
@@ -49,15 +48,12 @@ impl Actor for Guardian {
     self.spawn_watched_child(ctx)
   }
 
-  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
       if let Some(child) = self.last_child.lock().as_ref() {
         println!("[guardian] 子アクターに停止指示を送ります");
         child.tell(AnyMessage::new(StopChild)).map_err(|_| ActorError::recoverable("tell failed"))?;
       }
-    } else if message.downcast_ref::<Restart>().is_some() {
-      println!("[guardian] DeathWatch トリガー後に子アクターを再生成します");
-      self.spawn_watched_child(ctx)?;
     }
     Ok(())
   }
@@ -68,7 +64,8 @@ impl Actor for Guardian {
     pid: cellactor_actor_core_rs::actor_prim::Pid,
   ) -> Result<(), ActorError> {
     println!("[guardian] 監視対象 {:?} の停止を検知", pid);
-    ctx.self_ref().tell(AnyMessage::new(Restart)).map_err(|_| ActorError::recoverable("queue restart"))?;
+    println!("[guardian] DeathWatch トリガー後に子アクターを再生成します");
+    self.spawn_watched_child(ctx)?;
     Ok(())
   }
 }

@@ -45,6 +45,10 @@ pub trait Actor: Send {
   }
 
   /// Called when a watched actor terminates.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the hook fails to handle the termination event.
   fn on_terminated(&mut self, _ctx: &mut ActorContext<'_>, _terminated: Pid) -> Result<(), ActorError> {
     Ok(())
   }
