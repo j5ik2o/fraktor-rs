@@ -59,41 +59,24 @@ pub enum SystemMessage {
 }
 ```
 
-#### 2. LifecycleEventの拡張（破壊的変更）
+#### 2. SystemMessage::Terminatedの追加
 ```rust
-// modules/actor-core/src/lifecycle/lifecycle_event.rs
-/// ライフサイクルイベント - アクターの状態遷移を表現
-#[derive(Clone, Debug)]
-pub struct LifecycleEvent {
-  pid: Pid,
-  parent: Option<Pid>,
-  name: String,
-  stage: LifecycleStage,
-  timestamp: Duration,
-  watcher: Option<Pid>,  // NEW: 監視者のPid（watch専用イベントの場合のみ）
-}
-
-impl LifecycleEvent {
-  // 既存コード向けの便利メソッド
-  pub fn new_started(pid: Pid, parent: Option<Pid>, name: String, timestamp: Duration) -> Self;
-  pub fn new_restarted(pid: Pid, parent: Option<Pid>, name: String, timestamp: Duration) -> Self;
-  pub fn new_stopped(pid: Pid, parent: Option<Pid>, name: String, timestamp: Duration) -> Self;
-
-  // NEW: 監視者向け終了通知イベント生成
-  pub fn new_terminated(pid: Pid, parent: Option<Pid>, name: String, timestamp: Duration, watcher: Pid) -> Self;
-
-  // NEW: このイベントが監視者向けかどうかを判定
-  pub fn is_watched(&self) -> bool {
-    self.watcher.is_some()
-  }
+// modules/actor-core/src/messaging/system_message.rs
+pub enum SystemMessage {
+  Stop,
+  Suspend,
+  Resume,
+  Watch(Pid),    // NEW: 監視者のPid
+  Unwatch(Pid),  // NEW: 監視解除
+  Terminated(Pid),  // NEW: 監視対象が停止したことを通知
 }
 ```
 
 **設計の理由**:
-- 単一の事象（アクター終了）を単一のイベント型で表現（DRY原則）
-- `watcher: None` → システムワイドの観測可能性イベント（全EventStreamサブスクライバー向け）
-- `watcher: Some(pid)` → 特定の監視者向けDeathWatchイベント
-- EventStreamEventに新しいvariantを追加する必要がない
+- EventStreamを経由せず、監視者のメールボックスに直接配送
+- Akka/Pekkoと同じ「システムメッセージとして優先処理」の仕組み
+- 順序保証: 通常メッセージより先に処理される
+- O(n)の効率: 監視者のみに送信、全サブスクライバーへのブロードキャスト不要
 
 #### 3. ActorCellの拡張
 ```rust
@@ -115,8 +98,11 @@ impl ActorCellGeneric {
   // NEW: Unwatchメッセージ処理
   pub(crate) fn handle_unwatch(&self, watcher: Pid);
 
-  // NEW: Stopped時に監視者に通知
+  // NEW: Stopped時に監視者にSystemMessage::Terminatedを送信
   fn notify_watchers_on_stop(&self);
+
+  // NEW: SystemMessage::Terminatedを受信したときの処理
+  pub(crate) fn handle_terminated(&self, terminated_pid: Pid);
 }
 ```
 
@@ -147,6 +133,10 @@ pub trait Actor<TB: RuntimeToolbox = NoStdToolbox>: Send + Sized + 'static {
   fn post_stop(&mut self, ctx: &mut ActorContext<'_, TB>) -> Result<(), ActorError>;
 
   /// NEW: 監視対象のアクターが終了したときに呼ばれる
+  ///
+  /// このメソッドは、SystemMessage::Terminatedを受信したActorCellが
+  /// handle_terminated()内で呼び出す。通常のアクター処理コンテキスト内で
+  /// 実行されるため、&mut ActorContextが利用可能。
   fn on_terminated(&mut self, _ctx: &mut ActorContext<'_, TB>, _terminated: Pid)
     -> Result<(), ActorError> {
     Ok(())  // デフォルトは何もしない
@@ -207,42 +197,39 @@ impl Actor for ParentActor {
 
 ### 破壊的変更
 
-**BREAKING CHANGE**: `LifecycleEvent`構造体に`watcher: Option<Pid>`フィールドを追加
+**NON-BREAKING**: 既存のAPIに破壊的変更はなし
 
-**影響範囲**:
-- `LifecycleEvent`を直接生成している箇所で`watcher`フィールドの指定が必要
-- 既存の構造体初期化は`watcher: None`を追加することで対応可能
-- パターンマッチングで全フィールドを列挙している箇所は修正が必要
+**追加される新機能**:
+- `SystemMessage::Watch/Unwatch/Terminated` - 新しいシステムメッセージvariant
+- `ActorContext::watch/unwatch/spawn_child_watched` - 新しいAPIメソッド
+- `Actor::on_terminated` - 新しいトレイトメソッド（デフォルト実装あり）
+- `ActorCell::watchers` - 新しい内部フィールド
 
-**緩和策**:
-- `LifecycleEvent::new_started/new_stopped/new_restarted`便利メソッドを提供
-- これらのメソッドは`watcher: None`をデフォルトで設定
-- 既存コードはこれらのメソッドを使うことで最小限の変更で済む
+**既存コードへの影響**:
+- なし。既存のEventStream監視パターンは引き続き動作
+- 新しいwatch/unwatch APIは追加の選択肢として提供
 
 ### 影響を受けるコンポーネント
 
-- **Affected specs**: actor-lifecycle, event-stream
+- **Affected specs**: actor-lifecycle, system-messaging
 - **Affected modules**:
   - `modules/actor-core` - コア実装（主要変更箇所）
   - `modules/actor-std` - actor-coreの変更を継承（自動的に利用可能）
 - **Affected code**:
-  - `modules/actor-core/src/messaging/system_message.rs` - SystemMessage拡張
-  - `modules/actor-core/src/lifecycle/lifecycle_event.rs` - watcherフィールド追加（破壊的変更）
-  - `modules/actor-core/src/actor_prim/actor_cell.rs` - watchersフィールド追加
+  - `modules/actor-core/src/messaging/system_message.rs` - SystemMessage拡張（Watch/Unwatch/Terminated追加）
+  - `modules/actor-core/src/actor_prim/actor_cell.rs` - watchersフィールド、handle_terminated追加
   - `modules/actor-core/src/actor_prim/actor_context.rs` - watch/unwatch API追加
   - `modules/actor-core/src/actor_prim/actor.rs` - on_terminated追加
-  - `modules/actor-core/src/system/system_state.rs` - Watch/Unwatch処理追加
-  - 既存のテストコード - LifecycleEvent生成箇所の修正
+  - `modules/actor-core/src/system/system_state.rs` - Watch/Unwatch/Terminated処理追加
+  - 既存のテストコード - 新しいシステムメッセージのテスト追加
 
 ### 実装の段階
 
-#### Phase 1: コアインフラ構築（破壊的変更含む）
-1. `LifecycleEvent`に`watcher: Option<Pid>`フィールド追加
-2. `LifecycleEvent::new_started/new_stopped/new_restarted/new_terminated`メソッド追加
-3. 既存のLifecycleEvent生成箇所を便利メソッドに移行
-4. `SystemMessage::Watch/Unwatch`追加
-5. `ActorCell`に`watchers`フィールド追加
-6. `ActorCell::handle_watch/unwatch/notify_watchers_on_stop`実装
+#### Phase 1: コアインフラ構築
+1. `SystemMessage::Watch/Unwatch/Terminated`追加
+2. `ActorCell`に`watchers`フィールド追加
+3. `ActorCell::handle_watch/unwatch/notify_watchers_on_stop`実装
+4. `ActorCell::handle_terminated`実装
 
 #### Phase 2: API追加
 1. `ActorContext::watch/unwatch`実装
@@ -250,10 +237,10 @@ impl Actor for ParentActor {
 3. `Actor::on_terminated`デフォルト実装追加
 
 #### Phase 3: システム統合
-1. `SystemState`でWatch/Unwatchメッセージ処理
+1. `SystemState`でWatch/Unwatch/Terminatedメッセージ処理
 2. `ActorCell::stop`時に`notify_watchers_on_stop`を呼び出し
-3. `notify_watchers_on_stop`内で監視者ごとに`LifecycleEvent { watcher: Some(pid) }`を発行
-4. 通常のLifecycleEvent(Stopped)は`watcher: None`で発行（既存の観測可能性維持）
+3. `notify_watchers_on_stop`内で監視者ごとに`SystemMessage::Terminated(self.pid)`を送信
+4. 通常のLifecycleEvent(Stopped)は従来通り発行（既存の観測可能性維持）
 
 #### Phase 4: テストと検証
 1. 基本的な監視テスト（watch → 子停止 → on_terminated呼び出し）
@@ -264,10 +251,10 @@ impl Actor for ParentActor {
 ### 互換性と移行
 
 #### 既存コードへの影響
-- **破壊的変更**: LifecycleEvent構造体のフィールド追加により、直接生成している箇所は修正が必要
-- **緩和策**: 便利メソッド(`new_started`等)を使えば最小限の変更で対応可能
-- **観測可能性の維持**: 既存のEventStreamベースの監視は`watcher: None`として引き続き動作
+- **非破壊的**: システムメッセージの追加のみで、既存コードの変更は不要
+- **観測可能性の維持**: 既存のEventStreamベースの監視は引き続き動作
 - **追加オプション**: 新しいwatch APIは追加の選択肢として提供
+- **順序保証**: SystemMessage経由のため、通常メッセージより優先処理される
 
 #### Akka/Pekkoからの移行
 ```scala
@@ -287,10 +274,10 @@ fn on_terminated(&mut self, ctx, pid) { ... }
 ### メモリオーバーヘッド
 
 - **ActorCell**: `watchers: Vec<Pid>`を1つ追加（通常は数要素程度）
-- **LifecycleEvent**: `watcher: Option<Pid>`フィールド追加（8バイト）
-- **イベント発行数**: 監視者がいる場合、停止時に`1 + 監視者数`個のLifecycleEventが発行される
-  - 通常のLifecycleEvent(Stopped) × 1（システムワイド観測用）
-  - 監視者向けLifecycleEvent(Stopped) × 監視者数
+- **SystemMessage**: Terminated variantを追加（既存のenumサイズに影響なし）
+- **メッセージ発行数**: 監視者がいる場合、停止時に`監視者数`個のSystemMessage::Terminatedが送信される
+  - SystemMessage::Terminated(pid) × 監視者数（監視者のメールボックスに直接送信）
+  - LifecycleEvent(Stopped) × 1（システムワイド観測用、従来通り）
 - **no_std対応**: 全ての新規コンポーネントはno_std環境でも動作
 
 ### パフォーマンス考慮事項
@@ -305,13 +292,14 @@ fn on_terminated(&mut self, ctx, pid) { ... }
 1. ✅ `ActorContext::watch/unwatch` APIが動作する
 2. ✅ `Actor::on_terminated`が子アクター停止時に呼ばれる
 3. ✅ unwatchしたアクターからは通知が来ない
-4. ✅ 複数の監視者が全員通知を受け取る（各監視者向けに`watcher: Some(pid)`イベント発行）
-5. ✅ システムワイドの観測可能性が維持される（`watcher: None`イベント発行）
-6. ✅ 監視者向けイベントと通常イベントが明確に区別できる（`is_watched()`メソッド）
-7. ✅ 既存のテストが全てパスする（便利メソッド使用により最小限の修正）
-8. ✅ no_std環境（actor-core）で動作する
-9. ✅ std環境（actor-std）でも動作する
-10. ✅ examplesにwatch/unwatchを使った例が追加される
+4. ✅ 複数の監視者が全員通知を受け取る（各監視者に`SystemMessage::Terminated`送信）
+5. ✅ システムワイドの観測可能性が維持される（LifecycleEvent従来通り）
+6. ✅ 監視者への通知が順序保証される（SystemMessage優先処理）
+7. ✅ 既に停止したアクターをwatchした場合、即座にTerminatedが送られる
+8. ✅ 既存のテストが全てパスする（非破壊的変更）
+9. ✅ no_std環境（actor-core）で動作する
+10. ✅ std環境（actor-std）でも動作する
+11. ✅ examplesにwatch/unwatchを使った例が追加される
 
 ### リスクと緩和策
 
