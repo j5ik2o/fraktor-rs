@@ -104,3 +104,67 @@ fn debug_format() {
   let debug_str = format!("{:?}", sync);
   assert!(debug_str.contains("SynchronizedRw"));
 }
+
+// Helper for async testing
+fn block_on<F: core::future::Future>(mut future: F) -> F::Output {
+  use core::{
+    pin::Pin,
+    task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
+  };
+
+  fn raw_waker() -> RawWaker {
+    fn clone(_: *const ()) -> RawWaker {
+      raw_waker()
+    }
+    fn wake(_: *const ()) {}
+    fn wake_by_ref(_: *const ()) {}
+    fn drop(_: *const ()) {}
+    static VTABLE: RawWakerVTable = RawWakerVTable::new(clone, wake, wake_by_ref, drop);
+    RawWaker::new(core::ptr::null(), &VTABLE)
+  }
+
+  let waker = unsafe { Waker::from_raw(raw_waker()) };
+  let mut future = unsafe { Pin::new_unchecked(&mut future) };
+  let mut context = Context::from_waker(&waker);
+
+  loop {
+    match future.as_mut().poll(&mut context) {
+      | Poll::Ready(output) => return output,
+      | Poll::Pending => continue,
+    }
+  }
+}
+
+#[test]
+fn read_executes_closure() {
+  let sync = SynchronizedRw::<MockBackend<i32>, i32>::new(100);
+  let result = block_on(sync.read(|guard| **guard));
+  assert_eq!(result, 100);
+}
+
+#[test]
+fn write_executes_closure() {
+  let sync = SynchronizedRw::<MockBackend<i32>, i32>::new(50);
+  block_on(sync.write(|guard| {
+    **guard = 300;
+  }));
+  let result = block_on(sync.read(|guard| **guard));
+  assert_eq!(result, 300);
+}
+
+#[test]
+fn read_guard_returns_handle() {
+  let sync = SynchronizedRw::<MockBackend<i32>, i32>::new(15);
+  let guard = block_on(sync.read_guard());
+  assert_eq!(**guard, 15);
+}
+
+#[test]
+fn write_guard_returns_handle() {
+  let sync = SynchronizedRw::<MockBackend<i32>, i32>::new(20);
+  let mut guard = block_on(sync.write_guard());
+  **guard = 60;
+  drop(guard);
+  let result = block_on(sync.read(|guard| **guard));
+  assert_eq!(result, 60);
+}

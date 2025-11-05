@@ -19,6 +19,7 @@ pub struct MailboxPollFuture<TB: RuntimeToolbox + 'static> {
 }
 
 impl<TB: RuntimeToolbox + 'static> MailboxPollFuture<TB> {
+  #[allow(dead_code)]
   pub(super) const fn new(inner: QueuePollFuture<AnyMessageGeneric<TB>, TB>) -> Self {
     Self { inner }
   }

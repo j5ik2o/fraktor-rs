@@ -40,12 +40,19 @@ fn event_stream_event_lifecycle_clone() {
 #[cfg(feature = "alloc")]
 #[test]
 fn event_stream_event_dead_letter_clone() {
-  let entry = DeadLetterEntryGeneric::new(Pid::new(1, 0), AnyMessageGeneric::new(42u8));
+  use crate::dead_letter::DeadLetterReason;
+
+  let entry = DeadLetterEntryGeneric::new(
+    AnyMessageGeneric::new(42u8),
+    DeadLetterReason::RecipientUnavailable,
+    Some(Pid::new(1, 0)),
+    Duration::from_secs(0),
+  );
   let event = EventStreamEvent::<NoStdToolbox>::DeadLetter(entry.clone());
   let cloned = event.clone();
   match (event, cloned) {
     | (EventStreamEvent::DeadLetter(e1), EventStreamEvent::DeadLetter(e2)) => {
-      assert_eq!(e1.pid(), e2.pid());
+      assert_eq!(e1.recipient(), e2.recipient());
     },
     | _ => panic!("Expected Deadletter variants"),
   }

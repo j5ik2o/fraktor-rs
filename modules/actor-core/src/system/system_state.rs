@@ -72,18 +72,18 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   }
 
   /// Registers the provided actor cell in the global registry.
-  pub fn register_cell(&self, cell: ArcShared<ActorCellGeneric<TB>>) {
+  pub(crate) fn register_cell(&self, cell: ArcShared<ActorCellGeneric<TB>>) {
     self.cells.lock().insert(cell.pid(), cell);
   }
 
   /// Removes the actor cell associated with the pid.
-  pub fn remove_cell(&self, pid: &Pid) -> Option<ArcShared<ActorCellGeneric<TB>>> {
+  pub(crate) fn remove_cell(&self, pid: &Pid) -> Option<ArcShared<ActorCellGeneric<TB>>> {
     self.cells.lock().remove(pid)
   }
 
   /// Retrieves an actor cell by pid.
   #[must_use]
-  pub fn cell(&self, pid: &Pid) -> Option<ArcShared<ActorCellGeneric<TB>>> {
+  pub(crate) fn cell(&self, pid: &Pid) -> Option<ArcShared<ActorCellGeneric<TB>>> {
     self.cells.lock().get(pid).cloned()
   }
 
@@ -92,7 +92,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   /// # Errors
   ///
   /// Returns an error if the requested name is already taken.
-  pub fn assign_name(&self, parent: Option<Pid>, hint: Option<&str>, pid: Pid) -> Result<String, SpawnError> {
+  pub(crate) fn assign_name(&self, parent: Option<Pid>, hint: Option<&str>, pid: Pid) -> Result<String, SpawnError> {
     let mut registries = self.registries.lock();
     let registry = registries.entry(parent).or_insert_with(NameRegistry::new);
 
@@ -114,19 +114,19 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   }
 
   /// Releases the association between a name and its pid in the registry.
-  pub fn release_name(&self, parent: Option<Pid>, name: &str) {
+  pub(crate) fn release_name(&self, parent: Option<Pid>, name: &str) {
     if let Some(registry) = self.registries.lock().get_mut(&parent) {
       registry.remove(name);
     }
   }
 
   /// Stores the user guardian cell reference.
-  pub fn set_user_guardian(&self, cell: ArcShared<ActorCellGeneric<TB>>) {
+  pub(crate) fn set_user_guardian(&self, cell: ArcShared<ActorCellGeneric<TB>>) {
     *self.user_guardian.lock() = Some(cell);
   }
 
   /// Clears the guardian if the provided pid matches.
-  pub fn clear_guardian(&self, pid: Pid) -> bool {
+  pub(crate) fn clear_guardian(&self, pid: Pid) -> bool {
     let mut guardian = self.user_guardian.lock();
     if guardian.as_ref().map(|cell| cell.pid()) == Some(pid) {
       *guardian = None;
@@ -137,7 +137,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
 
   /// Returns the user guardian cell if initialised.
   #[must_use]
-  pub fn user_guardian(&self) -> Option<ArcShared<ActorCellGeneric<TB>>> {
+  pub(crate) fn user_guardian(&self) -> Option<ArcShared<ActorCellGeneric<TB>>> {
     self.user_guardian.lock().clone()
   }
 
@@ -160,7 +160,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   }
 
   /// Registers an ask future so the actor system can track its completion.
-  pub fn register_ask_future(&self, future: ArcShared<ActorFuture<AnyMessageGeneric<TB>, TB>>) {
+  pub(crate) fn register_ask_future(&self, future: ArcShared<ActorFuture<AnyMessageGeneric<TB>, TB>>) {
     self.ask_futures.lock().push(future);
   }
 
@@ -177,14 +177,14 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   }
 
   /// Registers a child under the specified parent pid.
-  pub fn register_child(&self, parent: Pid, child: Pid) {
+  pub(crate) fn register_child(&self, parent: Pid, child: Pid) {
     if let Some(cell) = self.cell(&parent) {
       cell.register_child(child);
     }
   }
 
   /// Removes a child from its parent's supervision registry.
-  pub fn unregister_child(&self, parent: Option<Pid>, child: Pid) {
+  pub(crate) fn unregister_child(&self, parent: Option<Pid>, child: Pid) {
     if let Some(parent_pid) = parent
       && let Some(cell) = self.cell(&parent_pid)
     {
@@ -194,7 +194,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
 
   /// Returns the children supervised by the specified parent pid.
   #[must_use]
-  pub fn child_pids(&self, parent: Pid) -> Vec<Pid> {
+  pub(crate) fn child_pids(&self, parent: Pid) -> Vec<Pid> {
     self.cell(&parent).map_or_else(Vec::new, |cell| cell.children())
   }
 
@@ -203,7 +203,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   /// # Errors
   ///
   /// Returns an error if the actor doesn't exist or the message cannot be enqueued.
-  pub fn send_system_message(&self, pid: Pid, message: SystemMessage) -> Result<(), SendError<TB>> {
+  pub(crate) fn send_system_message(&self, pid: Pid, message: SystemMessage) -> Result<(), SendError<TB>> {
     if let Some(cell) = self.cell(&pid) {
       cell.dispatcher().enqueue_system(message)
     } else {
@@ -212,13 +212,13 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   }
 
   /// Records a send error for diagnostics.
-  pub fn record_send_error(&self, recipient: Option<Pid>, error: &SendError<TB>) {
+  pub(crate) fn record_send_error(&self, recipient: Option<Pid>, error: &SendError<TB>) {
     let timestamp = self.monotonic_now();
     self.dead_letter.record_send_error(recipient, error, timestamp);
   }
 
   /// Marks the system as terminated and completes the termination future.
-  pub fn mark_terminated(&self) {
+  pub(crate) fn mark_terminated(&self) {
     if self.terminated.swap(true, Ordering::AcqRel) {
       return;
     }
@@ -227,12 +227,12 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
 
   /// Returns a future that resolves once the actor system terminates.
   #[must_use]
-  pub fn termination_future(&self) -> ArcShared<ActorFuture<(), TB>> {
+  pub(crate) fn termination_future(&self) -> ArcShared<ActorFuture<(), TB>> {
     self.termination.clone()
   }
 
   /// Drains ask futures that have completed since the previous inspection.
-  pub fn drain_ready_ask_futures(&self) -> Vec<ArcShared<ActorFuture<AnyMessageGeneric<TB>, TB>>> {
+  pub(crate) fn drain_ready_ask_futures(&self) -> Vec<ArcShared<ActorFuture<AnyMessageGeneric<TB>, TB>>> {
     let mut registry = self.ask_futures.lock();
     let mut ready = Vec::new();
     let mut index = 0_usize;
@@ -262,7 +262,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   }
 
   /// Records a failure for future diagnostics.
-  pub fn notify_failure(&self, pid: Pid, error: &ActorError) {
+  pub(crate) fn notify_failure(&self, pid: Pid, error: &ActorError) {
     self.emit_log(LogLevel::Error, format!("actor {:?} failed: {:?}", pid, error.reason()), Some(pid));
     let parent = self.parent_of(&pid);
     self.handle_failure(pid, parent, error);

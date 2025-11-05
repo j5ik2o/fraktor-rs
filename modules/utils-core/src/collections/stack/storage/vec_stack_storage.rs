@@ -2,6 +2,9 @@ use alloc::{collections::TryReserveError, vec::Vec};
 
 use super::StackStorage;
 
+#[cfg(test)]
+mod tests;
+
 /// Contiguous stack storage backed by `alloc::vec::Vec`.
 pub struct VecStackStorage<T> {
   data:  Vec<T>,

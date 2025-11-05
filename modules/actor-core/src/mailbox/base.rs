@@ -57,7 +57,7 @@ where
   }
 
   /// Installs instrumentation hooks for metrics emission.
-  pub fn set_instrumentation(&self, instrumentation: MailboxInstrumentation<TB>) {
+  pub(crate) fn set_instrumentation(&self, instrumentation: MailboxInstrumentation<TB>) {
     *self.instrumentation.lock() = Some(instrumentation);
   }
 
@@ -66,7 +66,7 @@ where
   /// # Errors
   ///
   /// Returns an error if the system message queue is full or closed.
-  pub fn enqueue_system(&self, message: SystemMessage) -> Result<(), SendError<TB>> {
+  pub(crate) fn enqueue_system(&self, message: SystemMessage) -> Result<(), SendError<TB>> {
     self.offer_system(message)
   }
 
@@ -75,6 +75,8 @@ where
   /// # Errors
   ///
   /// Returns an error if the mailbox is suspended, full, or closed.
+  #[cfg_attr(not(test), doc(hidden))]
+  #[cfg_attr(test, allow(dead_code))]
   pub fn enqueue_user(&self, message: AnyMessageGeneric<TB>) -> Result<EnqueueOutcome<TB>, SendError<TB>> {
     if self.is_suspended() {
       return Err(SendError::suspended(message));
@@ -89,18 +91,20 @@ where
   }
 
   /// Returns a future that resolves when the provided user message is enqueued.
-  pub fn enqueue_user_future(&self, message: AnyMessageGeneric<TB>) -> MailboxOfferFuture<TB> {
+  #[allow(dead_code)]
+  pub(crate) fn enqueue_user_future(&self, message: AnyMessageGeneric<TB>) -> MailboxOfferFuture<TB> {
     MailboxOfferFuture::new(self.user.offer_blocking(message))
   }
 
   /// Returns a future that resolves when the next user message becomes available.
-  pub fn poll_user_future(&self) -> MailboxPollFuture<TB> {
+  #[allow(dead_code)]
+  pub(crate) fn poll_user_future(&self) -> MailboxPollFuture<TB> {
     MailboxPollFuture::new(self.user.poll_blocking())
   }
 
   /// Dequeues the next available message, prioritising system queue.
   #[must_use]
-  pub fn dequeue(&self) -> Option<MailboxMessage<TB>> {
+  pub(crate) fn dequeue(&self) -> Option<MailboxMessage<TB>> {
     if let Some(system) = Self::poll_queue(&self.system) {
       self.publish_metrics();
       return Some(MailboxMessage::System(system));
@@ -118,30 +122,30 @@ where
   }
 
   /// Suspends user message consumption.
-  pub fn suspend(&self) {
+  pub(crate) fn suspend(&self) {
     self.suspended.store(true, Ordering::Release);
   }
 
   /// Resumes user message consumption.
-  pub fn resume(&self) {
+  pub(crate) fn resume(&self) {
     self.suspended.store(false, Ordering::Release);
   }
 
   /// Indicates whether the mailbox is currently suspended.
   #[must_use]
-  pub fn is_suspended(&self) -> bool {
+  pub(crate) fn is_suspended(&self) -> bool {
     self.suspended.load(Ordering::Acquire)
   }
 
   /// Returns the number of user messages awaiting processing.
   #[must_use]
-  pub fn user_len(&self) -> usize {
+  pub(crate) fn user_len(&self) -> usize {
     self.user.consumer.len()
   }
 
   /// Returns the number of system messages awaiting processing.
   #[must_use]
-  pub fn system_len(&self) -> usize {
+  pub(crate) fn system_len(&self) -> usize {
     self.system.consumer.len()
   }
 

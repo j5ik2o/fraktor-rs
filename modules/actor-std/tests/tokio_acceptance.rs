@@ -22,7 +22,7 @@ use cellactor_actor_std_rs::{
   system::ActorSystem,
 };
 use cellactor_utils_core_rs::sync::ArcShared;
-use cellactor_utils_std_rs::StdMutex;
+use cellactor_utils_std_rs::runtime_toolbox::{StdMutex, StdToolbox};
 use tokio::{
   runtime::{Builder, Handle},
   time::{sleep, timeout},
@@ -422,7 +422,8 @@ impl Actor for SilentGuardian {
     if let Some(spawn_req) = message.downcast_ref::<SpawnChildRequest>() {
       let child = ctx.spawn_child(&spawn_req.props).map_err(|_| ActorError::recoverable("spawn failed"))?;
       if let Some(slot) = &self.child_slot {
-        *slot.lock() = Some(child.clone());
+        let mut guard = slot.lock();
+        *guard = Some(child.clone());
       }
       ctx.reply(AnyMessage::new(SpawnChildResponse { child })).map_err(|_| ActorError::recoverable("reply"))?;
     }
@@ -442,7 +443,7 @@ impl SupervisedChild {
   fn tell(
     &self,
     message: AnyMessage,
-  ) -> Result<(), cellactor_actor_core_rs::error::SendError<cellactor_utils_std_rs::StdToolbox>> {
+  ) -> Result<(), cellactor_actor_core_rs::error::SendError<StdToolbox>> {
     self.child.tell(message)
   }
 

@@ -1,5 +1,8 @@
 use crate::sync::sync_mutex_like::SyncMutexLike;
 
+#[cfg(test)]
+mod tests;
+
 /// Thin wrapper around [`spin::Mutex`] implementing [`SyncMutexLike`].
 pub struct SpinSyncMutex<T>(spin::Mutex<T>);
 

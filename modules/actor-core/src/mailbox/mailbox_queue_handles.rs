@@ -75,6 +75,7 @@ where
     QueueOfferFuture::new(self.state.clone(), message)
   }
 
+  #[allow(dead_code)]
   pub(super) fn poll_blocking(&self) -> QueuePollFuture<T, TB> {
     QueuePollFuture::new(self.state.clone())
   }
