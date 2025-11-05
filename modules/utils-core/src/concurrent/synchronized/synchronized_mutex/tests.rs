@@ -156,7 +156,7 @@ fn write_executes_closure_with_mutable_guard() {
 fn write_modifies_and_read_verifies() {
   let sync = Synchronized::<MockBackend<i32>, i32>::new(10);
   block_on(sync.write(|guard| {
-    **guard = **guard * 2;
+    **guard *= 2;
   }));
   let result = block_on(sync.read(|guard| **guard));
   assert_eq!(result, 20);

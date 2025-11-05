@@ -6,7 +6,7 @@ use super::ActorCell;
 use crate::{
   actor_prim::{Actor, ActorContext, Pid},
   error::ActorError,
-  messaging::AnyMessageView,
+  messaging::{AnyMessage, AnyMessageView, SystemMessage, message_invoker::MessageInvoker},
   props::Props,
   system::SystemState,
 };
@@ -30,6 +30,37 @@ struct RecordingActor {
 impl RecordingActor {
   fn new(log: ArcShared<NoStdMutex<Vec<Pid>>>) -> Self {
     Self { log }
+  }
+}
+
+struct LifecycleRecorderActor {
+  log: ArcShared<NoStdMutex<Vec<&'static str>>>,
+}
+
+impl LifecycleRecorderActor {
+  fn new(log: ArcShared<NoStdMutex<Vec<&'static str>>>) -> Self {
+    Self { log }
+  }
+}
+
+impl Actor for LifecycleRecorderActor {
+  fn pre_start(&mut self, _ctx: &mut ActorContext<'_, crate::NoStdToolbox>) -> Result<(), ActorError> {
+    self.log.lock().push("pre_start");
+    Ok(())
+  }
+
+  fn receive(
+    &mut self,
+    _ctx: &mut ActorContext<'_, crate::NoStdToolbox>,
+    _message: AnyMessageView<'_, crate::NoStdToolbox>,
+  ) -> Result<(), ActorError> {
+    self.log.lock().push("receive");
+    Ok(())
+  }
+
+  fn post_stop(&mut self, _ctx: &mut ActorContext<'_, crate::NoStdToolbox>) -> Result<(), ActorError> {
+    self.log.lock().push("post_stop");
+    Ok(())
   }
 }
 
@@ -105,4 +136,70 @@ fn notify_watchers_sends_terminated() {
   target.notify_watchers_on_stop();
   assert_eq!(log.lock().clone(), vec![target.pid()]);
   assert_eq!(target.watchers.lock().len(), 0);
+}
+
+#[test]
+fn create_system_message_runs_pre_start_and_completes_ack() {
+  let state = ArcShared::new(SystemState::new());
+  let log = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let props = Props::from_fn({
+    let log = log.clone();
+    move || LifecycleRecorderActor::new(log.clone())
+  });
+  let cell = ActorCell::create(state.clone(), Pid::new(40, 0), None, "probe".to_string(), &props);
+  state.register_cell(cell.clone());
+
+  let ack = cell.prepare_create_ack();
+  MessageInvoker::invoke_system_message(&*cell, SystemMessage::Create).expect("create");
+
+  assert_eq!(ack.try_take(), Some(Ok(())));
+  let snapshot = log.lock().clone();
+  assert_eq!(snapshot, vec!["pre_start"]);
+}
+
+#[test]
+fn recreate_system_message_invokes_post_stop_then_pre_start() {
+  let state = ArcShared::new(SystemState::new());
+  let log = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let props = Props::from_fn({
+    let log = log.clone();
+    move || LifecycleRecorderActor::new(log.clone())
+  });
+  let cell = ActorCell::create(state.clone(), Pid::new(41, 0), None, "probe".to_string(), &props);
+  state.register_cell(cell.clone());
+
+  MessageInvoker::invoke_system_message(&*cell, SystemMessage::Create).expect("create");
+  MessageInvoker::invoke_system_message(&*cell, SystemMessage::Recreate).expect("recreate");
+
+  let snapshot = log.lock().clone();
+  assert_eq!(snapshot, vec!["pre_start", "post_stop", "pre_start"]);
+}
+
+#[test]
+fn system_queue_is_drained_before_user_queue() {
+  let state = ArcShared::new(SystemState::new());
+  let log = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let props = Props::from_fn({
+    let log = log.clone();
+    move || LifecycleRecorderActor::new(log.clone())
+  });
+  let cell = ActorCell::create(state.clone(), Pid::new(42, 0), None, "probe".to_string(), &props);
+  state.register_cell(cell.clone());
+
+  let ack = cell.prepare_create_ack();
+  cell.dispatcher().enqueue_system(SystemMessage::Create).expect("system enqueue");
+  cell.actor_ref().tell(AnyMessage::new(())).expect("user enqueue");
+
+  cell.dispatcher().schedule();
+
+  let create_result = loop {
+    if let Some(result) = ack.try_take() {
+      break result;
+    }
+    core::hint::spin_loop();
+  };
+  assert!(create_result.is_ok());
+
+  let snapshot = log.lock().clone();
+  assert_eq!(snapshot, vec!["pre_start", "receive"]);
 }

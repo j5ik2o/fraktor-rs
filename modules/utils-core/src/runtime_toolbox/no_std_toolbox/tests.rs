@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn test_no_std_toolbox_default() {
-  let _toolbox = NoStdToolbox::default();
+  let _toolbox = NoStdToolbox;
 }
 
 #[test]

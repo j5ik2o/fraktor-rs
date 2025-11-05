@@ -18,6 +18,7 @@ use crate::{
   dispatcher::{DispatcherGeneric, DispatcherSender},
   error::ActorError,
   event_stream::EventStreamEvent,
+  futures::ActorFuture,
   lifecycle::{LifecycleEvent, LifecycleStage},
   mailbox::{MailboxCapacity, MailboxGeneric, MailboxInstrumentation},
   messaging::{
@@ -29,23 +30,26 @@ use crate::{
   system::{ActorSystemGeneric, SystemStateGeneric},
 };
 
+type LifecycleAckFuture<TB> = ArcShared<ActorFuture<Result<(), ActorError>, TB>>;
+
 /// Runtime container responsible for executing an actor instance.
 pub struct ActorCellGeneric<TB: RuntimeToolbox + 'static> {
-  pid:         Pid,
-  parent:      Option<Pid>,
-  name:        String,
-  system:      ArcShared<SystemStateGeneric<TB>>,
-  factory:     ArcShared<dyn ActorFactory<TB>>,
-  actor:       ToolboxMutex<Box<dyn Actor<TB> + Send + Sync>, TB>,
-  pipeline:    MessageInvokerPipeline<TB>,
-  mailbox:     ArcShared<MailboxGeneric<TB>>,
-  dispatcher:  DispatcherGeneric<TB>,
-  sender:      ArcShared<DispatcherSender<TB>>,
-  children:    ToolboxMutex<Vec<Pid>, TB>,
-  supervisor:  SupervisorStrategy,
-  child_stats: ToolboxMutex<Vec<(Pid, RestartStatistics)>, TB>,
-  watchers:    ToolboxMutex<Vec<Pid>, TB>,
-  terminated:  AtomicBool,
+  pid:                Pid,
+  parent:             Option<Pid>,
+  name:               String,
+  system:             ArcShared<SystemStateGeneric<TB>>,
+  factory:            ArcShared<dyn ActorFactory<TB>>,
+  actor:              ToolboxMutex<Box<dyn Actor<TB> + Send + Sync>, TB>,
+  pipeline:           MessageInvokerPipeline<TB>,
+  mailbox:            ArcShared<MailboxGeneric<TB>>,
+  dispatcher:         DispatcherGeneric<TB>,
+  sender:             ArcShared<DispatcherSender<TB>>,
+  children:           ToolboxMutex<Vec<Pid>, TB>,
+  supervisor:         SupervisorStrategy,
+  child_stats:        ToolboxMutex<Vec<(Pid, RestartStatistics)>, TB>,
+  watchers:           ToolboxMutex<Vec<Pid>, TB>,
+  terminated:         AtomicBool,
+  pending_create_ack: ToolboxMutex<Option<LifecycleAckFuture<TB>>, TB>,
 }
 
 unsafe impl<TB: RuntimeToolbox + 'static> Send for ActorCellGeneric<TB> {}
@@ -99,6 +103,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
       child_stats,
       watchers,
       terminated: AtomicBool::new(false),
+      pending_create_ack: <TB::MutexFamily as SyncMutexFamily>::create(None),
     });
 
     {
@@ -152,32 +157,11 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     ActorRefGeneric::with_system(self.pid, self.sender.clone(), self.system.clone())
   }
 
-  /// Runs the actor's `pre_start` hook.
-  ///
-  /// # Errors
-  ///
-  /// Returns an error if the actor's `pre_start` lifecycle hook fails.
-  pub fn pre_start(&self) -> Result<(), ActorError> {
-    self.run_pre_start(LifecycleStage::Started)
-  }
-
-  /// Restarts the actor with a freshly created instance.
-  ///
-  /// # Errors
-  ///
-  /// Returns an error if actor recreation or lifecycle hooks fail.
-  pub fn restart(&self) -> Result<(), ActorError> {
-    {
-      let system = ActorSystemGeneric::from_state(self.system.clone());
-      let mut ctx = ActorContext::new(&system, self.pid);
-      let mut actor = self.actor.lock();
-      actor.post_stop(&mut ctx)?;
-      ctx.clear_reply_to();
-    }
-
-    self.publish_lifecycle(LifecycleStage::Stopped);
-    self.recreate_actor();
-    self.run_pre_start(LifecycleStage::Restarted)
+  /// Arms a lifecycle acknowledgement that completes when `SystemMessage::Create` finishes.
+  pub(crate) fn prepare_create_ack(&self) -> LifecycleAckFuture<TB> {
+    let future = ArcShared::new(ActorFuture::new());
+    *self.pending_create_ack.lock() = Some(future.clone());
+    future
   }
 
   /// Registers a child pid for supervision.
@@ -248,6 +232,32 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     drop(actor);
     ctx.clear_reply_to();
     result
+  }
+
+  fn handle_create(&self) -> Result<(), ActorError> {
+    let outcome = self.run_pre_start(LifecycleStage::Started);
+    self.notify_create_result(outcome.clone());
+    outcome
+  }
+
+  fn handle_recreate(&self) -> Result<(), ActorError> {
+    {
+      let system = ActorSystemGeneric::from_state(self.system.clone());
+      let mut ctx = ActorContext::new(&system, self.pid);
+      let mut actor = self.actor.lock();
+      actor.post_stop(&mut ctx)?;
+      ctx.clear_reply_to();
+    }
+
+    self.publish_lifecycle(LifecycleStage::Stopped);
+    self.recreate_actor();
+    self.run_pre_start(LifecycleStage::Restarted)
+  }
+
+  fn notify_create_result(&self, outcome: Result<(), ActorError>) {
+    if let Some(future) = self.pending_create_ack.lock().take() {
+      future.complete(outcome);
+    }
   }
 
   #[cfg_attr(not(test), allow(dead_code))]
@@ -325,6 +335,8 @@ impl<TB: RuntimeToolbox + 'static> MessageInvoker<TB> for ActorCellGeneric<TB> {
   fn invoke_system_message(&self, message: SystemMessage) -> Result<(), ActorError> {
     match message {
       | SystemMessage::Stop => self.handle_stop(),
+      | SystemMessage::Create => self.handle_create(),
+      | SystemMessage::Recreate => self.handle_recreate(),
       | SystemMessage::Suspend => {
         self.mailbox.suspend();
         Ok(())

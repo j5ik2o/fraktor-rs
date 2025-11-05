@@ -10,6 +10,10 @@ use crate::{RuntimeToolbox, actor_prim::Pid, messaging::AnyMessageGeneric};
 pub enum SystemMessage {
   /// Signals that the associated actor should stop.
   Stop,
+  /// Requests actor initialization via the mailbox pipeline.
+  Create,
+  /// Recreates the actor instance after a recoverable failure.
+  Recreate,
   /// Requests the mailbox to suspend user message processing.
   Suspend,
   /// Requests the mailbox to resume user message processing.
