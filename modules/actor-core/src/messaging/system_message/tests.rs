@@ -1,11 +1,11 @@
 use super::SystemMessage;
-use crate::{NoStdToolbox, actor_prim::Pid, messaging::AnyMessageGeneric};
+use crate::{actor_prim::Pid, messaging::AnyMessage};
 
 #[test]
 fn watch_message_round_trips_through_any_message() {
   let watcher = Pid::new(1, 0);
   let payload = SystemMessage::Watch(watcher);
-  let stored: AnyMessageGeneric<NoStdToolbox> = payload.clone().into();
+  let stored: AnyMessage = payload.clone().into();
   let view = stored.as_view();
   let recovered = view.downcast_ref::<SystemMessage>().expect("system message");
   assert_eq!(recovered, &payload);

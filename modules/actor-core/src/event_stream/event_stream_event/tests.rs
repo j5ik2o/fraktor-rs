@@ -9,11 +9,11 @@ use super::EventStreamEvent;
 use crate::{
   NoStdToolbox,
   actor_prim::Pid,
-  dead_letter::DeadLetterEntryGeneric,
+  dead_letter::DeadLetterEntry,
   lifecycle::{LifecycleEvent, LifecycleStage},
   logging::{LogEvent, LogLevel},
   mailbox::MailboxMetricsEvent,
-  messaging::AnyMessageGeneric,
+  messaging::AnyMessage,
 };
 
 #[cfg(feature = "alloc")]
@@ -42,8 +42,8 @@ fn event_stream_event_lifecycle_clone() {
 fn event_stream_event_dead_letter_clone() {
   use crate::dead_letter::DeadLetterReason;
 
-  let entry = DeadLetterEntryGeneric::new(
-    AnyMessageGeneric::new(42u8),
+  let entry = DeadLetterEntry::new(
+    AnyMessage::new(42u8),
     DeadLetterReason::RecipientUnavailable,
     Some(Pid::new(1, 0)),
     Duration::from_secs(0),
