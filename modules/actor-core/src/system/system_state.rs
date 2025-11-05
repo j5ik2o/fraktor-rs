@@ -21,26 +21,35 @@ use crate::{
   event_stream::{EventStreamEvent, EventStreamGeneric},
   futures::ActorFuture,
   logging::{LogEvent, LogLevel},
-  messaging::{AnyMessageGeneric, SystemMessage},
+  messaging::{AnyMessageGeneric, FailurePayload, SystemMessage},
   spawn::{NameRegistry, NameRegistryError, SpawnError},
   supervision::SupervisorDirective,
 };
+
+mod failure_outcome;
+
+pub use failure_outcome::FailureOutcome;
 
 /// Type alias for ask future collections.
 type AskFutureVec<TB> = Vec<ArcShared<ActorFuture<AnyMessageGeneric<TB>, TB>>>;
 
 /// Captures global actor system state.
 pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
-  next_pid:      AtomicU64,
-  clock:         AtomicU64,
-  cells:         ToolboxMutex<HashMap<Pid, ArcShared<ActorCellGeneric<TB>>>, TB>,
-  registries:    ToolboxMutex<HashMap<Option<Pid>, NameRegistry>, TB>,
-  user_guardian: ToolboxMutex<Option<ArcShared<ActorCellGeneric<TB>>>, TB>,
-  ask_futures:   ToolboxMutex<AskFutureVec<TB>, TB>,
-  termination:   ArcShared<ActorFuture<(), TB>>,
-  terminated:    AtomicBool,
-  event_stream:  ArcShared<EventStreamGeneric<TB>>,
-  dead_letter:   ArcShared<DeadLetterGeneric<TB>>,
+  next_pid:               AtomicU64,
+  clock:                  AtomicU64,
+  cells:                  ToolboxMutex<HashMap<Pid, ArcShared<ActorCellGeneric<TB>>>, TB>,
+  registries:             ToolboxMutex<HashMap<Option<Pid>, NameRegistry>, TB>,
+  user_guardian:          ToolboxMutex<Option<ArcShared<ActorCellGeneric<TB>>>, TB>,
+  ask_futures:            ToolboxMutex<AskFutureVec<TB>, TB>,
+  termination:            ArcShared<ActorFuture<(), TB>>,
+  terminated:             AtomicBool,
+  event_stream:           ArcShared<EventStreamGeneric<TB>>,
+  dead_letter:            ArcShared<DeadLetterGeneric<TB>>,
+  failure_total:          AtomicU64,
+  failure_restart_total:  AtomicU64,
+  failure_stop_total:     AtomicU64,
+  failure_escalate_total: AtomicU64,
+  failure_inflight:       AtomicU64,
 }
 
 impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
@@ -61,6 +70,11 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       terminated: AtomicBool::new(false),
       event_stream,
       dead_letter,
+      failure_total: AtomicU64::new(0),
+      failure_restart_total: AtomicU64::new(0),
+      failure_stop_total: AtomicU64::new(0),
+      failure_escalate_total: AtomicU64::new(0),
+      failure_inflight: AtomicU64::new(0),
     }
   }
 
@@ -269,13 +283,52 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     Duration::from_millis(ticks)
   }
 
-  /// Records a failure for future diagnostics.
-  pub(crate) fn notify_failure(&self, pid: Pid, error: &ActorError) {
-    self.emit_log(LogLevel::Error, format!("actor {:?} failed: {:?}", pid, error.reason()), Some(pid));
-    let parent = self.parent_of(&pid);
-    self.handle_failure(pid, parent, error);
+  /// Records a failure and routes it to the supervising hierarchy.
+  pub(crate) fn report_failure(&self, mut payload: FailurePayload) {
+    self.failure_total.fetch_add(1, Ordering::Relaxed);
+    self.failure_inflight.fetch_add(1, Ordering::AcqRel);
+    let message = format!("actor {:?} failed: {}", payload.child(), payload.reason().as_str());
+    self.emit_log(LogLevel::Error, message, Some(payload.child()));
+
+    if let Some(parent_pid) = self.parent_of(&payload.child())
+      && let Some(parent_cell) = self.cell(&parent_pid)
+    {
+      if let Some(stats) = parent_cell.snapshot_child_restart_stats(payload.child()) {
+        payload = payload.with_restart_stats(stats);
+      }
+      if self.send_system_message(parent_pid, SystemMessage::Failure(payload.clone())).is_ok() {
+        return;
+      }
+      let payload_ref = &payload;
+      self.record_failure_outcome(payload.child(), FailureOutcome::Stop, payload_ref);
+      self.stop_actor(payload.child());
+      return;
+    }
+
+    let payload_ref = &payload;
+    self.record_failure_outcome(payload.child(), FailureOutcome::Stop, payload_ref);
+    self.stop_actor(payload.child());
   }
 
+  /// Records the outcome of a previously reported failure (restart/stop/escalate).
+  pub(crate) fn record_failure_outcome(&self, child: Pid, outcome: FailureOutcome, payload: &FailurePayload) {
+    self.failure_inflight.fetch_sub(1, Ordering::AcqRel);
+    let counter = match outcome {
+      | FailureOutcome::Restart => &self.failure_restart_total,
+      | FailureOutcome::Stop => &self.failure_stop_total,
+      | FailureOutcome::Escalate => &self.failure_escalate_total,
+    };
+    counter.fetch_add(1, Ordering::Relaxed);
+    let label = match outcome {
+      | FailureOutcome::Restart => "restart",
+      | FailureOutcome::Stop => "stop",
+      | FailureOutcome::Escalate => "escalate",
+    };
+    let message = format!("failure outcome {} for {:?} (reason: {})", label, child, payload.reason().as_str());
+    self.emit_log(LogLevel::Info, message, Some(child));
+  }
+
+  #[allow(dead_code)]
   fn handle_failure(&self, pid: Pid, parent: Option<Pid>, error: &ActorError) {
     let Some(parent_pid) = parent else {
       self.stop_actor(pid);

@@ -49,6 +49,11 @@ impl<TB: RuntimeToolbox> AnyMessageGeneric<TB> {
   pub fn payload(&self) -> &(dyn Any + Send + Sync + 'static) {
     &*self.payload
   }
+
+  /// Returns a clone of the shared payload pointer (internal use).
+  pub(crate) fn payload_arc(&self) -> ArcShared<dyn Any + Send + Sync + 'static> {
+    self.payload.clone()
+  }
 }
 
 impl<TB: RuntimeToolbox> Clone for AnyMessageGeneric<TB> {

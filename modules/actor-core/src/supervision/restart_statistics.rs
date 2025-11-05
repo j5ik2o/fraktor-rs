@@ -6,6 +6,7 @@ use alloc::vec::Vec;
 use core::time::Duration;
 
 /// Maintains failure timestamps to enforce restart limits.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RestartStatistics {
   failures: Vec<Duration>,
 }

@@ -3,7 +3,7 @@
 //! Re-exports minimal APIs referenced from core for common use by time-triggered features such as
 //! `ReceiveTimeout`.
 
-pub mod dead_line_timer;
+mod dead_line_timer;
 
 pub use dead_line_timer::{
   DeadLineTimer, DeadLineTimerError, DeadLineTimerExpired, DeadLineTimerKey, DeadLineTimerKeyAllocator, TimerDeadLine,

@@ -7,14 +7,14 @@ use crate::{
 };
 
 /// `ActorAdapter` bridges [`Actor`] implementations to the core runtime trait.
-pub struct ActorAdapter<T> {
+pub(crate) struct ActorAdapter<T> {
   inner: T,
 }
 
 impl<T> ActorAdapter<T> {
   /// Wraps the actor instance that will be registered in the runtime.
   #[must_use]
-  pub const fn new(inner: T) -> Self {
+  pub(crate) const fn new(inner: T) -> Self {
     Self { inner }
   }
 }

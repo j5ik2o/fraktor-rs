@@ -11,11 +11,17 @@ use cellactor_utils_core_rs::sync::{ArcShared, NoStdMutex};
 
 struct Start;
 struct StopChild;
+struct Crash;
 
 struct Worker;
 
 impl Actor for Worker {
   fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    if message.downcast_ref::<Crash>().is_some() {
+      println!("[worker] クラッシュ要求を受信しました");
+      return Err(ActorError::recoverable("intentional crash"));
+    }
+
     if message.downcast_ref::<StopChild>().is_some() {
       // 子アクターに停止を要求して DeathWatch の通知を発生させる。
       ctx.stop_self().ok();
@@ -52,7 +58,9 @@ impl Actor for Guardian {
     if message.downcast_ref::<Start>().is_some()
       && let Some(child) = self.last_child.lock().as_ref()
     {
-      println!("[guardian] 子アクターに停止指示を送ります");
+      println!("[guardian] 子アクターにクラッシュを指示します");
+      child.tell(AnyMessage::new(Crash)).map_err(|_| ActorError::recoverable("tell failed"))?;
+      println!("[guardian] 再起動後に停止指示を送ります");
       child.tell(AnyMessage::new(StopChild)).map_err(|_| ActorError::recoverable("tell failed"))?;
     }
     Ok(())
