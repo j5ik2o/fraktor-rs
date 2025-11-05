@@ -136,6 +136,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
     Ok(())
   }
 
+  #[allow(dead_code)]
   pub(super) fn enqueue_user(self_arc: &ArcShared<Self>, message: AnyMessageGeneric<TB>) -> Result<(), SendError<TB>> {
     match self_arc.mailbox.enqueue_user(message) {
       | Ok(EnqueueOutcome::Enqueued) => {
@@ -157,6 +158,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
     Ok(())
   }
 
+  #[allow(dead_code)]
   fn drain_offer_future(self_arc: &ArcShared<Self>, future: &mut MailboxOfferFuture<TB>) -> Result<(), SendError<TB>> {
     let waker = ScheduleWaker::<TB>::into_waker(self_arc.clone());
     let mut cx = Context::from_waker(&waker);

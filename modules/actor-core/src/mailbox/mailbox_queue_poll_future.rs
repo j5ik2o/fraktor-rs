@@ -26,6 +26,7 @@ impl<T, TB: RuntimeToolbox> QueuePollFuture<T, TB>
 where
   T: Send + 'static,
 {
+  #[allow(dead_code)]
   pub(super) const fn new(state: ArcShared<QueueState<T, TB>>) -> Self {
     Self { state, waiter: None }
   }

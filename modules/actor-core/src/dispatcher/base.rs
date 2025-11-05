@@ -37,7 +37,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherGeneric<TB> {
   }
 
   /// Registers an invoker.
-  pub fn register_invoker(&self, invoker: ArcShared<dyn MessageInvoker<TB>>) {
+  pub(crate) fn register_invoker(&self, invoker: ArcShared<dyn MessageInvoker<TB>>) {
     self.core.register_invoker(invoker);
   }
 
@@ -46,7 +46,8 @@ impl<TB: RuntimeToolbox + 'static> DispatcherGeneric<TB> {
   /// # Errors
   ///
   /// Returns an error if the mailbox is full or closed.
-  pub fn enqueue_user(&self, message: AnyMessageGeneric<TB>) -> Result<(), SendError<TB>> {
+  #[allow(dead_code)]
+  pub(crate) fn enqueue_user(&self, message: AnyMessageGeneric<TB>) -> Result<(), SendError<TB>> {
     DispatcherCore::enqueue_user(&self.core, message)
   }
 
@@ -55,12 +56,12 @@ impl<TB: RuntimeToolbox + 'static> DispatcherGeneric<TB> {
   /// # Errors
   ///
   /// Returns an error if the mailbox is full or closed.
-  pub fn enqueue_system(&self, message: SystemMessage) -> Result<(), SendError<TB>> {
+  pub(crate) fn enqueue_system(&self, message: SystemMessage) -> Result<(), SendError<TB>> {
     DispatcherCore::enqueue_system(&self.core, message)
   }
 
   /// Requests execution from the scheduler.
-  pub fn schedule(&self) {
+  pub(crate) fn schedule(&self) {
     let should_run = {
       let core_ref = &*self.core;
       DispatcherState::compare_exchange(DispatcherState::Idle, DispatcherState::Running, core_ref.state()).is_ok()
@@ -74,13 +75,13 @@ impl<TB: RuntimeToolbox + 'static> DispatcherGeneric<TB> {
 
   /// Returns a reference to the mailbox.
   #[must_use]
-  pub fn mailbox(&self) -> ArcShared<MailboxGeneric<TB>> {
+  pub(crate) fn mailbox(&self) -> ArcShared<MailboxGeneric<TB>> {
     self.core.mailbox().clone()
   }
 
   /// Creates a waker for mailbox waiting.
   #[must_use]
-  pub fn create_waker(&self) -> Waker {
+  pub(crate) fn create_waker(&self) -> Waker {
     ScheduleWaker::<TB>::into_waker(self.core.clone())
   }
 
@@ -90,7 +91,8 @@ impl<TB: RuntimeToolbox + 'static> DispatcherGeneric<TB> {
 
   /// Constructs an `ActorRefSender` implementation with a shared handle.
   #[must_use]
-  pub fn into_sender(&self) -> ArcShared<super::dispatcher_sender::DispatcherSender<TB>> {
+  #[allow(clippy::wrong_self_convention)]
+  pub(crate) fn into_sender(&self) -> ArcShared<super::dispatcher_sender::DispatcherSender<TB>> {
     ArcShared::new(super::dispatcher_sender::DispatcherSender::new(self.clone()))
   }
 }
