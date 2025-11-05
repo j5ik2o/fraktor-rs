@@ -30,6 +30,6 @@ fn on_terminated(
 ## ライフサイクル制御の統一
 
 - アクターの起動と再起動は `SystemMessage::Create` / `SystemMessage::Recreate` として mailbox に投入され、ユーザーメッセージより必ず先に処理されます。
-- `ActorSystem::spawn_with_parent` は dispatcher からの Create ACK を待機してから `ChildRef` を返すため、`pre_start` が完了するまで親側の処理はブロックされます。
+- `ActorSystem::spawn_with_parent` は fire-and-forget で動作し、`SystemMessage::Create` の enqueue が成功した時点で `ChildRef` を返します。`pre_start` の結果は EventStream や Supervisor を通じて観測してください。
 - Restart 指示は `SystemMessage::Recreate` を経由して `post_stop` → インスタンス再生成 → `pre_start(LifecycleStage::Restarted)` の順序を保証し、送信に失敗した場合は Stop/Escalate へフォールバックします。
 - 子アクターの失敗は `SystemMessage::Failure` として親へ配送され、監督戦略・メトリクス・EventStream が同じ経路を共有します。

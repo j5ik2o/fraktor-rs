@@ -18,7 +18,6 @@ use crate::{
   dispatcher::{DispatcherGeneric, DispatcherSender},
   error::ActorError,
   event_stream::EventStreamEvent,
-  futures::ActorFuture,
   lifecycle::{LifecycleEvent, LifecycleStage},
   mailbox::{MailboxCapacity, MailboxGeneric, MailboxInstrumentation},
   messaging::{
@@ -30,26 +29,23 @@ use crate::{
   system::{ActorSystemGeneric, FailureOutcome, SystemStateGeneric},
 };
 
-type LifecycleAckFuture<TB> = ArcShared<ActorFuture<Result<(), ActorError>, TB>>;
-
 /// Runtime container responsible for executing an actor instance.
 pub struct ActorCellGeneric<TB: RuntimeToolbox + 'static> {
-  pid:                Pid,
-  parent:             Option<Pid>,
-  name:               String,
-  system:             ArcShared<SystemStateGeneric<TB>>,
-  factory:            ArcShared<dyn ActorFactory<TB>>,
-  actor:              ToolboxMutex<Box<dyn Actor<TB> + Send + Sync>, TB>,
-  pipeline:           MessageInvokerPipeline<TB>,
-  mailbox:            ArcShared<MailboxGeneric<TB>>,
-  dispatcher:         DispatcherGeneric<TB>,
-  sender:             ArcShared<DispatcherSender<TB>>,
-  children:           ToolboxMutex<Vec<Pid>, TB>,
-  supervisor:         SupervisorStrategy,
-  child_stats:        ToolboxMutex<Vec<(Pid, RestartStatistics)>, TB>,
-  watchers:           ToolboxMutex<Vec<Pid>, TB>,
-  terminated:         AtomicBool,
-  pending_create_ack: ToolboxMutex<Option<LifecycleAckFuture<TB>>, TB>,
+  pid:         Pid,
+  parent:      Option<Pid>,
+  name:        String,
+  system:      ArcShared<SystemStateGeneric<TB>>,
+  factory:     ArcShared<dyn ActorFactory<TB>>,
+  actor:       ToolboxMutex<Box<dyn Actor<TB> + Send + Sync>, TB>,
+  pipeline:    MessageInvokerPipeline<TB>,
+  mailbox:     ArcShared<MailboxGeneric<TB>>,
+  dispatcher:  DispatcherGeneric<TB>,
+  sender:      ArcShared<DispatcherSender<TB>>,
+  children:    ToolboxMutex<Vec<Pid>, TB>,
+  supervisor:  SupervisorStrategy,
+  child_stats: ToolboxMutex<Vec<(Pid, RestartStatistics)>, TB>,
+  watchers:    ToolboxMutex<Vec<Pid>, TB>,
+  terminated:  AtomicBool,
 }
 
 unsafe impl<TB: RuntimeToolbox + 'static> Send for ActorCellGeneric<TB> {}
@@ -103,7 +99,6 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
       child_stats,
       watchers,
       terminated: AtomicBool::new(false),
-      pending_create_ack: <TB::MutexFamily as SyncMutexFamily>::create(None),
     });
 
     {
@@ -155,13 +150,6 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
   #[must_use]
   pub fn actor_ref(&self) -> ActorRefGeneric<TB> {
     ActorRefGeneric::with_system(self.pid, self.sender.clone(), self.system.clone())
-  }
-
-  /// Arms a lifecycle acknowledgement that completes when `SystemMessage::Create` finishes.
-  pub(crate) fn prepare_create_ack(&self) -> LifecycleAckFuture<TB> {
-    let future = ArcShared::new(ActorFuture::new());
-    *self.pending_create_ack.lock() = Some(future.clone());
-    future
   }
 
   /// Registers a child pid for supervision.
@@ -241,7 +229,9 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
 
   fn handle_create(&self) -> Result<(), ActorError> {
     let outcome = self.run_pre_start(LifecycleStage::Started);
-    self.notify_create_result(outcome.clone());
+    if let Err(ref error) = outcome {
+      self.report_failure(error, None);
+    }
     outcome
   }
 
@@ -261,12 +251,6 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
       self.mailbox.resume();
     }
     outcome
-  }
-
-  fn notify_create_result(&self, outcome: Result<(), ActorError>) {
-    if let Some(future) = self.pending_create_ack.lock().take() {
-      future.complete(outcome);
-    }
   }
 
   #[cfg_attr(not(test), allow(dead_code))]
