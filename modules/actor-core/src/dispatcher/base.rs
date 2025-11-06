@@ -3,8 +3,9 @@ use core::task::Waker;
 use cellactor_utils_core_rs::sync::ArcShared;
 
 use super::{
-  dispatch_executor::DispatchExecutor, dispatch_shared::DispatchShared, dispatcher_core::DispatcherCore,
-  dispatcher_state::DispatcherState, inline_executor::InlineExecutor, schedule_waker::ScheduleWaker,
+  DispatcherSenderGeneric, dispatch_executor::DispatchExecutor, dispatch_shared::DispatchSharedGeneric,
+  dispatcher_core::DispatcherCore, dispatcher_state::DispatcherState, inline_executor::InlineExecutorGeneric,
+  schedule_waker::ScheduleWaker,
 };
 use crate::{
   NoStdToolbox, RuntimeToolbox,
@@ -17,6 +18,9 @@ use crate::{
 pub struct DispatcherGeneric<TB: RuntimeToolbox + 'static> {
   core: ArcShared<DispatcherCore<TB>>,
 }
+
+/// Type alias for `DispatcherGeneric` with the default `NoStdToolbox`.
+pub type Dispatcher = DispatcherGeneric<NoStdToolbox>;
 
 unsafe impl<TB: RuntimeToolbox + 'static> Send for DispatcherGeneric<TB> {}
 unsafe impl<TB: RuntimeToolbox + 'static> Sync for DispatcherGeneric<TB> {}
@@ -33,7 +37,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherGeneric<TB> {
   /// Creates a dispatcher using an inline execution strategy.
   #[must_use]
   pub fn with_inline_executor(mailbox: ArcShared<MailboxGeneric<TB>>) -> Self {
-    Self::new(mailbox, ArcShared::new(InlineExecutor::<TB>::new()))
+    Self::new(mailbox, ArcShared::new(InlineExecutorGeneric::<TB>::new()))
   }
 
   /// Registers an invoker.
@@ -69,7 +73,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherGeneric<TB> {
 
     if should_run {
       let executor = self.core.executor().clone();
-      executor.execute(DispatchShared::new(self.core.clone()));
+      executor.execute(DispatchSharedGeneric::new(self.core.clone()));
     }
   }
 
@@ -92,8 +96,8 @@ impl<TB: RuntimeToolbox + 'static> DispatcherGeneric<TB> {
   /// Constructs an `ActorRefSender` implementation with a shared handle.
   #[must_use]
   #[allow(clippy::wrong_self_convention)]
-  pub(crate) fn into_sender(&self) -> ArcShared<super::dispatcher_sender::DispatcherSender<TB>> {
-    ArcShared::new(super::dispatcher_sender::DispatcherSender::new(self.clone()))
+  pub(crate) fn into_sender(&self) -> ArcShared<DispatcherSenderGeneric<TB>> {
+    ArcShared::new(DispatcherSenderGeneric::new(self.clone()))
   }
 }
 
@@ -102,6 +106,3 @@ impl<TB: RuntimeToolbox + 'static> Clone for DispatcherGeneric<TB> {
     Self { core: self.core.clone() }
   }
 }
-
-/// Type alias for `DispatcherGeneric` with the default `NoStdToolbox`.
-pub type Dispatcher = DispatcherGeneric<NoStdToolbox>;

@@ -7,6 +7,8 @@ use core::{
   task::{Context, Poll},
 };
 
+use cellactor_utils_core_rs::sync::NoStdToolbox;
+
 use super::{mailbox_queue_poll_future::QueuePollFuture, map_user_queue_error};
 use crate::{RuntimeToolbox, error::SendError, messaging::AnyMessageGeneric};
 
@@ -14,20 +16,23 @@ use crate::{RuntimeToolbox, error::SendError, messaging::AnyMessageGeneric};
 mod tests;
 
 /// Future completing with the next user message from the mailbox.
-pub struct MailboxPollFuture<TB: RuntimeToolbox + 'static> {
+pub struct MailboxPollFutureGeneric<TB: RuntimeToolbox + 'static> {
   inner: QueuePollFuture<AnyMessageGeneric<TB>, TB>,
 }
 
-impl<TB: RuntimeToolbox + 'static> MailboxPollFuture<TB> {
+/// Type alias for [MailboxPollFutureGeneric] with the default [NoStdToolbox].
+pub type MailboxPollFuture = MailboxPollFutureGeneric<NoStdToolbox>;
+
+impl<TB: RuntimeToolbox + 'static> MailboxPollFutureGeneric<TB> {
   #[allow(dead_code)]
   pub(super) const fn new(inner: QueuePollFuture<AnyMessageGeneric<TB>, TB>) -> Self {
     Self { inner }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Unpin for MailboxPollFuture<TB> {}
+impl<TB: RuntimeToolbox + 'static> Unpin for MailboxPollFutureGeneric<TB> {}
 
-impl<TB: RuntimeToolbox + 'static> Future for MailboxPollFuture<TB> {
+impl<TB: RuntimeToolbox + 'static> Future for MailboxPollFutureGeneric<TB> {
   type Output = Result<AnyMessageGeneric<TB>, SendError<TB>>;
 
   fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -39,7 +44,7 @@ impl<TB: RuntimeToolbox + 'static> Future for MailboxPollFuture<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox> fmt::Debug for MailboxPollFuture<TB> {
+impl<TB: RuntimeToolbox> fmt::Debug for MailboxPollFutureGeneric<TB> {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     f.debug_struct("MailboxPollFuture").finish()
   }

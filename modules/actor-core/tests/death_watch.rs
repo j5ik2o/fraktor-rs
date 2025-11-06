@@ -7,7 +7,7 @@ use std::{
 
 use cellactor_actor_core_rs::{
   NoStdToolbox,
-  actor_prim::{Actor, ActorContext, ChildRef, Pid},
+  actor_prim::{Actor, ActorContextGeneric, ChildRef, Pid},
   error::ActorError,
   messaging::{AnyMessage, AnyMessageView},
   props::Props,
@@ -28,10 +28,10 @@ struct UserProbe;
 
 struct PassiveChild;
 
-impl Actor<NoStdToolbox> for PassiveChild {
+impl Actor for PassiveChild {
   fn receive(
     &mut self,
-    ctx: &mut ActorContext<'_, NoStdToolbox>,
+    ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
     message: AnyMessageView<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     if message.downcast_ref::<StopChild>().is_some() {
@@ -56,7 +56,7 @@ impl HarnessWatcher {
     Self { terminated_log, order_log, child_slot }
   }
 
-  fn spawn_child(&self, ctx: &mut ActorContext<'_, NoStdToolbox>) -> Result<(), ActorError> {
+  fn spawn_child(&self, ctx: &mut ActorContextGeneric<'_, NoStdToolbox>) -> Result<(), ActorError> {
     if self.child_slot.lock().is_some() {
       return Ok(());
     }
@@ -75,10 +75,10 @@ impl HarnessWatcher {
   }
 }
 
-impl Actor<NoStdToolbox> for HarnessWatcher {
+impl Actor for HarnessWatcher {
   fn receive(
     &mut self,
-    ctx: &mut ActorContext<'_, NoStdToolbox>,
+    ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
     message: AnyMessageView<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     if message.downcast_ref::<SpawnChild>().is_some() {
@@ -125,7 +125,7 @@ impl Actor<NoStdToolbox> for HarnessWatcher {
     Ok(())
   }
 
-  fn on_terminated(&mut self, _ctx: &mut ActorContext<'_, NoStdToolbox>, pid: Pid) -> Result<(), ActorError> {
+  fn on_terminated(&mut self, _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>, pid: Pid) -> Result<(), ActorError> {
     self.terminated_log.lock().push(pid);
     self.order_log.lock().push("terminated");
     Ok(())
@@ -142,10 +142,10 @@ impl SecondaryWatcher {
   }
 }
 
-impl Actor<NoStdToolbox> for SecondaryWatcher {
+impl Actor for SecondaryWatcher {
   fn receive(
     &mut self,
-    ctx: &mut ActorContext<'_, NoStdToolbox>,
+    ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
     message: AnyMessageView<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     if let Some(child) = message.downcast_ref::<ChildRef>() {
@@ -154,7 +154,7 @@ impl Actor<NoStdToolbox> for SecondaryWatcher {
     Ok(())
   }
 
-  fn on_terminated(&mut self, _ctx: &mut ActorContext<'_, NoStdToolbox>, pid: Pid) -> Result<(), ActorError> {
+  fn on_terminated(&mut self, _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>, pid: Pid) -> Result<(), ActorError> {
     self.log.lock().push(pid);
     Ok(())
   }
@@ -170,10 +170,10 @@ impl SpawnWatchedGuardian {
   }
 }
 
-impl Actor<NoStdToolbox> for SpawnWatchedGuardian {
+impl Actor for SpawnWatchedGuardian {
   fn receive(
     &mut self,
-    ctx: &mut ActorContext<'_, NoStdToolbox>,
+    ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
     message: AnyMessageView<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     if message.downcast_ref::<SpawnChild>().is_some() {
@@ -186,7 +186,7 @@ impl Actor<NoStdToolbox> for SpawnWatchedGuardian {
     Ok(())
   }
 
-  fn on_terminated(&mut self, _ctx: &mut ActorContext<'_, NoStdToolbox>, pid: Pid) -> Result<(), ActorError> {
+  fn on_terminated(&mut self, _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>, pid: Pid) -> Result<(), ActorError> {
     self.terminated_log.lock().push(pid);
     Ok(())
   }
@@ -202,10 +202,10 @@ impl CycleActor {
   }
 }
 
-impl Actor<NoStdToolbox> for CycleActor {
+impl Actor for CycleActor {
   fn receive(
     &mut self,
-    ctx: &mut ActorContext<'_, NoStdToolbox>,
+    ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
     message: AnyMessageView<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     if let Some(peer) = message.downcast_ref::<ChildRef>() {
@@ -216,7 +216,7 @@ impl Actor<NoStdToolbox> for CycleActor {
     Ok(())
   }
 
-  fn on_terminated(&mut self, _ctx: &mut ActorContext<'_, NoStdToolbox>, pid: Pid) -> Result<(), ActorError> {
+  fn on_terminated(&mut self, _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>, pid: Pid) -> Result<(), ActorError> {
     self.log.lock().push(pid);
     Ok(())
   }
@@ -233,10 +233,10 @@ impl CycleGuardian {
   }
 }
 
-impl Actor<NoStdToolbox> for CycleGuardian {
+impl Actor for CycleGuardian {
   fn receive(
     &mut self,
-    ctx: &mut ActorContext<'_, NoStdToolbox>,
+    ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
     message: AnyMessageView<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     if message.downcast_ref::<StartCycle>().is_some() {

@@ -18,14 +18,17 @@ use crate::{
 };
 
 /// Provides contextual APIs while handling a message.
-pub struct ActorContext<'a, TB: RuntimeToolbox + 'static = NoStdToolbox> {
+pub struct ActorContextGeneric<'a, TB: RuntimeToolbox + 'static> {
   system:   ActorSystemGeneric<TB>,
   pid:      Pid,
   reply_to: Option<ActorRefGeneric<TB>>,
   _marker:  PhantomData<&'a ()>,
 }
 
-impl<'a, TB: RuntimeToolbox + 'static> ActorContext<'a, TB> {
+/// Alias for a context with the default runtime toolbox.
+pub type ActorContext<'a> = ActorContextGeneric<'a, NoStdToolbox>;
+
+impl<'a, TB: RuntimeToolbox + 'static> ActorContextGeneric<'a, TB> {
   /// Creates a new context placeholder.
   #[must_use]
   pub fn new(system: &ActorSystemGeneric<TB>, pid: Pid) -> Self {

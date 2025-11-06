@@ -7,7 +7,7 @@ use core::{hint::spin_loop, num::NonZeroUsize};
 
 use cellactor_actor_core_rs::{
   NoStdToolbox,
-  actor_prim::{Actor, ActorContext, ChildRef},
+  actor_prim::{Actor, ActorContextGeneric, ChildRef},
   error::ActorError,
   event_stream::{EventStreamEvent, EventStreamSubscriber},
   mailbox::{MailboxOverflowStrategy, MailboxPolicy},
@@ -39,10 +39,10 @@ impl EventStreamSubscriber<NoStdToolbox> for RecordingSubscriber {
 
 struct NullActor;
 
-impl Actor<NoStdToolbox> for NullActor {
+impl Actor for NullActor {
   fn receive(
     &mut self,
-    _ctx: &mut ActorContext<'_, NoStdToolbox>,
+    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
     _message: AnyMessageView<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     Ok(())
@@ -60,8 +60,8 @@ impl TestGuardian {
   }
 }
 
-impl Actor<NoStdToolbox> for TestGuardian {
-  fn pre_start(&mut self, ctx: &mut ActorContext<'_, NoStdToolbox>) -> Result<(), ActorError> {
+impl Actor for TestGuardian {
+  fn pre_start(&mut self, ctx: &mut ActorContextGeneric<'_, NoStdToolbox>) -> Result<(), ActorError> {
     let child = ctx.spawn_child(&self.child_props).map_err(|_| ActorError::recoverable("spawn failed"))?;
     *self.child_slot.lock() = Some(child);
     Ok(())
@@ -69,7 +69,7 @@ impl Actor<NoStdToolbox> for TestGuardian {
 
   fn receive(
     &mut self,
-    _ctx: &mut ActorContext<'_, NoStdToolbox>,
+    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
     _message: AnyMessageView<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     Ok(())

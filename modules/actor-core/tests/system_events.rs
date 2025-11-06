@@ -7,7 +7,7 @@ use core::hint::spin_loop;
 
 use cellactor_actor_core_rs::{
   NoStdToolbox,
-  actor_prim::{Actor, ActorContext},
+  actor_prim::{Actor, ActorContextGeneric},
   error::ActorError,
   event_stream::{EventStreamEvent, EventStreamSubscriber},
   lifecycle::LifecycleStage,
@@ -42,15 +42,15 @@ impl EventStreamSubscriber<NoStdToolbox> for RecordingSubscriber {
 
 struct Guardian;
 
-impl Actor<NoStdToolbox> for Guardian {
-  fn pre_start(&mut self, ctx: &mut ActorContext<'_, NoStdToolbox>) -> Result<(), ActorError> {
+impl Actor for Guardian {
+  fn pre_start(&mut self, ctx: &mut ActorContextGeneric<'_, NoStdToolbox>) -> Result<(), ActorError> {
     ctx.log(LogLevel::Info, "guardian pre_start");
     Ok(())
   }
 
   fn receive(
     &mut self,
-    ctx: &mut ActorContext<'_, NoStdToolbox>,
+    ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
     message: AnyMessageView<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {

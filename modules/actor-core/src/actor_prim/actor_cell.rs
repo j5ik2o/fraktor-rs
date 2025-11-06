@@ -14,15 +14,15 @@ use portable_atomic::{AtomicBool, Ordering};
 
 use crate::{
   NoStdToolbox, RuntimeToolbox, ToolboxMutex,
-  actor_prim::{Actor, ActorContext, Pid, actor_ref::ActorRefGeneric},
-  dispatcher::{DispatcherGeneric, DispatcherSender},
+  actor_prim::{Actor, ActorContextGeneric, Pid, actor_ref::ActorRefGeneric},
+  dispatcher::{DispatcherGeneric, DispatcherSenderGeneric},
   error::ActorError,
   event_stream::EventStreamEvent,
   lifecycle::{LifecycleEvent, LifecycleStage},
-  mailbox::{MailboxCapacity, MailboxGeneric, MailboxInstrumentation},
+  mailbox::{MailboxCapacity, MailboxGeneric, MailboxInstrumentationGeneric},
   messaging::{
     AnyMessageGeneric, FailureMessageSnapshot, FailurePayload, SystemMessage,
-    message_invoker::{MessageInvoker, MessageInvokerPipeline},
+    message_invoker::{MessageInvoker, MessageInvokerPipelineGeneric},
   },
   props::{ActorFactory, PropsGeneric},
   supervision::{RestartStatistics, SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
@@ -37,10 +37,10 @@ pub struct ActorCellGeneric<TB: RuntimeToolbox + 'static> {
   system:      ArcShared<SystemStateGeneric<TB>>,
   factory:     ArcShared<dyn ActorFactory<TB>>,
   actor:       ToolboxMutex<Box<dyn Actor<TB> + Send + Sync>, TB>,
-  pipeline:    MessageInvokerPipeline<TB>,
+  pipeline:    MessageInvokerPipelineGeneric<TB>,
   mailbox:     ArcShared<MailboxGeneric<TB>>,
   dispatcher:  DispatcherGeneric<TB>,
-  sender:      ArcShared<DispatcherSender<TB>>,
+  sender:      ArcShared<DispatcherSenderGeneric<TB>>,
   children:    ToolboxMutex<Vec<Pid>, TB>,
   supervisor:  SupervisorStrategy,
   child_stats: ToolboxMutex<Vec<(Pid, RestartStatistics)>, TB>,
@@ -71,7 +71,8 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
       };
       let throughput = policy.throughput_limit().map(|limit| limit.get());
       let warn_threshold = mailbox_config.warn_threshold().map(|threshold| threshold.get());
-      let instrumentation = MailboxInstrumentation::new(system.clone(), pid, capacity, throughput, warn_threshold);
+      let instrumentation =
+        MailboxInstrumentationGeneric::new(system.clone(), pid, capacity, throughput, warn_threshold);
       mailbox.set_instrumentation(instrumentation);
     }
     let dispatcher = props.dispatcher().build_dispatcher(mailbox.clone());
@@ -90,7 +91,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
       system,
       factory,
       actor,
-      pipeline: MessageInvokerPipeline::new(),
+      pipeline: MessageInvokerPipelineGeneric::new(),
       mailbox,
       dispatcher,
       sender,
@@ -219,7 +220,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
 
   pub(crate) fn handle_terminated(&self, terminated_pid: Pid) -> Result<(), ActorError> {
     let system = ActorSystemGeneric::from_state(self.system.clone());
-    let mut ctx = ActorContext::new(&system, self.pid);
+    let mut ctx = ActorContextGeneric::new(&system, self.pid);
     let mut actor = self.actor.lock();
     let result = actor.on_terminated(&mut ctx, terminated_pid);
     drop(actor);
@@ -238,7 +239,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
   fn handle_recreate(&self) -> Result<(), ActorError> {
     {
       let system = ActorSystemGeneric::from_state(self.system.clone());
-      let mut ctx = ActorContext::new(&system, self.pid);
+      let mut ctx = ActorContextGeneric::new(&system, self.pid);
       let mut actor = self.actor.lock();
       actor.post_stop(&mut ctx)?;
       ctx.clear_reply_to();
@@ -260,7 +261,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
 
   fn handle_stop(&self) -> Result<(), ActorError> {
     let system = ActorSystemGeneric::from_state(self.system.clone());
-    let mut ctx = ActorContext::new(&system, self.pid);
+    let mut ctx = ActorContextGeneric::new(&system, self.pid);
     let mut actor = self.actor.lock();
     let result = actor.post_stop(&mut ctx);
     drop(actor);
@@ -344,7 +345,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
 
   fn run_pre_start(&self, stage: LifecycleStage) -> Result<(), ActorError> {
     let system = ActorSystemGeneric::from_state(self.system.clone());
-    let mut ctx = ActorContext::new(&system, self.pid);
+    let mut ctx = ActorContextGeneric::new(&system, self.pid);
     let mut actor = self.actor.lock();
     let outcome = actor.pre_start(&mut ctx);
     drop(actor);
@@ -365,7 +366,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
 impl<TB: RuntimeToolbox + 'static> MessageInvoker<TB> for ActorCellGeneric<TB> {
   fn invoke_user_message(&self, message: AnyMessageGeneric<TB>) -> Result<(), ActorError> {
     let system = ActorSystemGeneric::from_state(self.system.clone());
-    let mut ctx = ActorContext::new(&system, self.pid);
+    let mut ctx = ActorContextGeneric::new(&system, self.pid);
     let mut actor = self.actor.lock();
     let failure_candidate = message.clone();
     let result = self.pipeline.invoke_user(&mut *actor, &mut ctx, message);

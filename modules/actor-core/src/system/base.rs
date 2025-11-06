@@ -29,6 +29,9 @@ pub struct ActorSystemGeneric<TB: RuntimeToolbox + 'static> {
   state: ArcShared<SystemStateGeneric<TB>>,
 }
 
+/// Type alias for [ActorSystemGeneric] with the default [NoStdToolbox].
+pub type ActorSystem = ActorSystemGeneric<NoStdToolbox>;
+
 impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   /// Creates an empty actor system without any guardian (testing only).
   #[must_use]
@@ -271,6 +274,3 @@ impl<TB: RuntimeToolbox + 'static> Clone for ActorSystemGeneric<TB> {
 
 unsafe impl<TB: RuntimeToolbox + 'static> Send for ActorSystemGeneric<TB> {}
 unsafe impl<TB: RuntimeToolbox + 'static> Sync for ActorSystemGeneric<TB> {}
-
-/// Type alias for `ActorSystemGeneric` with the default `NoStdToolbox`.
-pub type ActorSystem = ActorSystemGeneric<NoStdToolbox>;

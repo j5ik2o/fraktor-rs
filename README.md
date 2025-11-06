@@ -27,6 +27,55 @@ fn on_terminated(
 
 より詳細なチュートリアルや移行ガイドは `docs/` 配下を参照してください。
 
+## Typed API (実験的)
+
+Untyped API と互換のまま、メッセージ型をコンパイル時に固定したい場合は `cellactor_actor_core_rs::typed` を利用できます。
+
+```rust
+use cellactor_actor_core_rs::typed::{BehaviorGeneric, TypedActor, TypedActorContextGeneric, TypedActorSystemGeneric};
+use cellactor_actor_core_rs::{NoStdToolbox, error::ActorError};
+
+#[derive(Clone, Copy)]
+enum CounterMessage {
+  Increment(i32),
+  Read,
+}
+
+struct CounterActor {
+  total: i32,
+}
+
+impl CounterActor {
+  const fn new() -> Self {
+    Self { total: 0 }
+  }
+}
+
+impl TypedActor<NoStdToolbox, CounterMessage> for CounterActor {
+  fn receive(
+    &mut self,
+    ctx: &mut TypedActorContextGeneric<'_, NoStdToolbox, CounterMessage>,
+    message: &CounterMessage,
+  ) -> Result<(), ActorError> {
+    match message {
+      CounterMessage::Increment(delta) => {
+        self.total += delta;
+        Ok(())
+      },
+      CounterMessage::Read => ctx.reply(self.total).map_err(|error| ActorError::from_send_error(&error)),
+    }
+  }
+}
+
+let behavior = BehaviorGeneric::<NoStdToolbox, CounterMessage>::new(CounterActor::new);
+let system = TypedActorSystemGeneric::new(&behavior)?;
+let counter = system.user_guardian_ref();
+counter.tell(CounterMessage::Increment(1))?;
+let ask = counter.ask(CounterMessage::Read)?;
+```
+
+Typed API は Untyped へ変換するヘルパー (`into_untyped`, `as_untyped`) も提供するため、既存の middleware や拡張をそのまま組み合わせられます。より詳細なサンプルは `modules/actor-core/src/typed/tests.rs` を参照してください。
+
 ## ライフサイクル制御の統一
 
 - アクターの起動と再起動は `SystemMessage::Create` / `SystemMessage::Recreate` として mailbox に投入され、ユーザーメッセージより必ず先に処理されます。

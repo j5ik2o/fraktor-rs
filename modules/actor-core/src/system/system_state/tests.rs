@@ -5,7 +5,7 @@ use cellactor_utils_core_rs::sync::ArcShared;
 use super::SystemState;
 use crate::{
   NoStdToolbox,
-  actor_prim::{Actor, ActorCell, ActorContext},
+  actor_prim::{Actor, ActorCell, ActorContextGeneric},
   error::ActorError,
   messaging::{AnyMessage, AnyMessageView},
   props::Props,
@@ -205,10 +205,10 @@ fn system_state_record_send_error() {
 
 struct RestartProbeActor;
 
-impl Actor<NoStdToolbox> for RestartProbeActor {
+impl Actor for RestartProbeActor {
   fn receive(
     &mut self,
-    _ctx: &mut ActorContext<'_, NoStdToolbox>,
+    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
     _message: AnyMessageView<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     Ok(())

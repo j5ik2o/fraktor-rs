@@ -2,7 +2,7 @@ use alloc::{string::String, vec, vec::Vec};
 
 use cellactor_utils_core_rs::sync::{ArcShared, NoStdMutex};
 
-use super::ActorContext;
+use super::{ActorContext, ActorContextGeneric};
 use crate::{
   NoStdToolbox,
   actor_prim::{Actor, ActorCell, Pid},
@@ -16,7 +16,7 @@ struct TestActor;
 impl Actor for TestActor {
   fn receive(
     &mut self,
-    _context: &mut ActorContext<'_, NoStdToolbox>,
+    _context: &mut ActorContextGeneric<'_, NoStdToolbox>,
     _message: AnyMessageView<'_, NoStdToolbox>,
   ) -> Result<(), crate::error::ActorError> {
     Ok(())
@@ -33,10 +33,10 @@ impl RecordingActor {
   }
 }
 
-impl Actor<NoStdToolbox> for RecordingActor {
+impl Actor for RecordingActor {
   fn receive(
     &mut self,
-    _context: &mut ActorContext<'_, NoStdToolbox>,
+    _context: &mut ActorContextGeneric<'_, NoStdToolbox>,
     _message: AnyMessageView<'_, NoStdToolbox>,
   ) -> Result<(), crate::error::ActorError> {
     Ok(())
@@ -44,7 +44,7 @@ impl Actor<NoStdToolbox> for RecordingActor {
 
   fn on_terminated(
     &mut self,
-    _ctx: &mut ActorContext<'_, NoStdToolbox>,
+    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
     pid: Pid,
   ) -> Result<(), crate::error::ActorError> {
     self.log.lock().push(pid);

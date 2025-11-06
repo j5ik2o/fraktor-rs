@@ -2,7 +2,7 @@ use cellactor_utils_core_rs::sync::ArcShared;
 
 use crate::{
   NoStdToolbox, RuntimeToolbox,
-  dispatcher::{DispatchExecutor, DispatcherGeneric, InlineExecutor},
+  dispatcher::{DispatchExecutor, DispatcherGeneric, InlineExecutorGeneric},
   mailbox::MailboxGeneric,
 };
 
@@ -10,6 +10,9 @@ use crate::{
 pub struct DispatcherConfigGeneric<TB: RuntimeToolbox + 'static> {
   executor: ArcShared<dyn DispatchExecutor<TB>>,
 }
+
+/// Type alias for [DispatcherConfigGeneric] with the default [NoStdToolbox].
+pub type DispatcherConfig = DispatcherConfigGeneric<NoStdToolbox>;
 
 impl<TB: RuntimeToolbox + 'static> Clone for DispatcherConfigGeneric<TB> {
   fn clone(&self) -> Self {
@@ -39,9 +42,6 @@ impl<TB: RuntimeToolbox + 'static> DispatcherConfigGeneric<TB> {
 
 impl<TB: RuntimeToolbox + 'static> Default for DispatcherConfigGeneric<TB> {
   fn default() -> Self {
-    Self::from_executor(ArcShared::new(InlineExecutor::<TB>::new()))
+    Self::from_executor(ArcShared::new(InlineExecutorGeneric::<TB>::new()))
   }
 }
-
-/// Type alias for `DispatcherConfigGeneric` with the default `NoStdToolbox`.
-pub type DispatcherConfig = DispatcherConfigGeneric<NoStdToolbox>;

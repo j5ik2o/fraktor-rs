@@ -5,7 +5,7 @@ mod tests;
 
 use alloc::format;
 
-use cellactor_utils_core_rs::sync::ArcShared;
+use cellactor_utils_core_rs::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
 
 use crate::{
   RuntimeToolbox, actor_prim::Pid, event_stream::EventStreamEvent, logging::LogLevel, mailbox::MailboxMetricsEvent,
@@ -14,7 +14,7 @@ use crate::{
 
 /// Provides mailbox metrics publication facilities.
 #[derive(Clone)]
-pub struct MailboxInstrumentation<TB: RuntimeToolbox + 'static> {
+pub struct MailboxInstrumentationGeneric<TB: RuntimeToolbox + 'static> {
   system_state:   ArcShared<SystemStateGeneric<TB>>,
   capacity:       Option<usize>,
   throughput:     Option<usize>,
@@ -22,7 +22,10 @@ pub struct MailboxInstrumentation<TB: RuntimeToolbox + 'static> {
   pid:            Pid,
 }
 
-impl<TB: RuntimeToolbox + 'static> MailboxInstrumentation<TB> {
+/// Type alias for the default mailbox instrumentation.
+pub type MailboxInstrumentation = MailboxInstrumentationGeneric<NoStdToolbox>;
+
+impl<TB: RuntimeToolbox + 'static> MailboxInstrumentationGeneric<TB> {
   /// Creates a new instrumentation helper.
   #[must_use]
   pub const fn new(

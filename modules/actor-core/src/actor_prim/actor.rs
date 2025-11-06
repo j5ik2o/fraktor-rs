@@ -7,7 +7,7 @@ use alloc::boxed::Box;
 
 use crate::{
   NoStdToolbox, RuntimeToolbox,
-  actor_prim::{ActorContext, Pid},
+  actor_prim::{ActorContextGeneric, Pid},
   error::ActorError,
   messaging::AnyMessageView,
 };
@@ -24,7 +24,7 @@ pub trait Actor<TB: RuntimeToolbox = NoStdToolbox>: Send {
   ///
   /// Panics are not expected. Implementations should return `Err` instead so the
   /// supervisor can decide how to recover.
-  fn pre_start(&mut self, _ctx: &mut ActorContext<'_, TB>) -> Result<(), ActorError> {
+  fn pre_start(&mut self, _ctx: &mut ActorContextGeneric<'_, TB>) -> Result<(), ActorError> {
     Ok(())
   }
 
@@ -37,7 +37,11 @@ pub trait Actor<TB: RuntimeToolbox = NoStdToolbox>: Send {
   /// # Panics
   ///
   /// Panics are considered fatal and will propagate to the runtime.
-  fn receive(&mut self, ctx: &mut ActorContext<'_, TB>, message: AnyMessageView<'_, TB>) -> Result<(), ActorError>;
+  fn receive(
+    &mut self,
+    ctx: &mut ActorContextGeneric<'_, TB>,
+    message: AnyMessageView<'_, TB>,
+  ) -> Result<(), ActorError>;
 
   /// Called once after the actor has been stopped.
   ///
@@ -49,7 +53,7 @@ pub trait Actor<TB: RuntimeToolbox = NoStdToolbox>: Send {
   ///
   /// Panics are not expected. Implementations should return `Err` to allow
   /// supervisor policies to react.
-  fn post_stop(&mut self, _ctx: &mut ActorContext<'_, TB>) -> Result<(), ActorError> {
+  fn post_stop(&mut self, _ctx: &mut ActorContextGeneric<'_, TB>) -> Result<(), ActorError> {
     Ok(())
   }
 
@@ -58,7 +62,7 @@ pub trait Actor<TB: RuntimeToolbox = NoStdToolbox>: Send {
   /// # Errors
   ///
   /// Returns an error when cleanup logic fails.
-  fn on_terminated(&mut self, _ctx: &mut ActorContext<'_, TB>, _terminated: Pid) -> Result<(), ActorError> {
+  fn on_terminated(&mut self, _ctx: &mut ActorContextGeneric<'_, TB>, _terminated: Pid) -> Result<(), ActorError> {
     Ok(())
   }
 }
@@ -68,19 +72,23 @@ where
   T: Actor<TB> + ?Sized,
   TB: RuntimeToolbox,
 {
-  fn pre_start(&mut self, ctx: &mut ActorContext<'_, TB>) -> Result<(), ActorError> {
+  fn pre_start(&mut self, ctx: &mut ActorContextGeneric<'_, TB>) -> Result<(), ActorError> {
     (**self).pre_start(ctx)
   }
 
-  fn receive(&mut self, ctx: &mut ActorContext<'_, TB>, message: AnyMessageView<'_, TB>) -> Result<(), ActorError> {
+  fn receive(
+    &mut self,
+    ctx: &mut ActorContextGeneric<'_, TB>,
+    message: AnyMessageView<'_, TB>,
+  ) -> Result<(), ActorError> {
     (**self).receive(ctx, message)
   }
 
-  fn post_stop(&mut self, ctx: &mut ActorContext<'_, TB>) -> Result<(), ActorError> {
+  fn post_stop(&mut self, ctx: &mut ActorContextGeneric<'_, TB>) -> Result<(), ActorError> {
     (**self).post_stop(ctx)
   }
 
-  fn on_terminated(&mut self, ctx: &mut ActorContext<'_, TB>, terminated: Pid) -> Result<(), ActorError> {
+  fn on_terminated(&mut self, ctx: &mut ActorContextGeneric<'_, TB>, terminated: Pid) -> Result<(), ActorError> {
     (**self).on_terminated(ctx, terminated)
   }
 }

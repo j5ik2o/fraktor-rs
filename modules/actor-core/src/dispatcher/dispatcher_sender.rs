@@ -3,27 +3,30 @@ mod tests;
 
 use core::{pin::Pin, task::Context};
 
-use cellactor_utils_core_rs::sync::ArcShared;
+use cellactor_utils_core_rs::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
 
 use super::base::DispatcherGeneric;
 use crate::{
   RuntimeToolbox,
   actor_prim::actor_ref::ActorRefSender,
   error::SendError,
-  mailbox::{EnqueueOutcome, MailboxGeneric, MailboxOfferFuture},
+  mailbox::{EnqueueOutcome, MailboxGeneric, MailboxOfferFutureGeneric},
   messaging::AnyMessageGeneric,
 };
 
 /// Sender that enqueues messages via actor handle.
-pub struct DispatcherSender<TB: RuntimeToolbox + 'static> {
+pub struct DispatcherSenderGeneric<TB: RuntimeToolbox + 'static> {
   dispatcher: DispatcherGeneric<TB>,
   mailbox:    ArcShared<MailboxGeneric<TB>>,
 }
 
-unsafe impl<TB: RuntimeToolbox + 'static> Send for DispatcherSender<TB> {}
-unsafe impl<TB: RuntimeToolbox + 'static> Sync for DispatcherSender<TB> {}
+/// Type alias for the default dispatcher sender.
+pub type DispatcherSender = DispatcherSenderGeneric<NoStdToolbox>;
 
-impl<TB: RuntimeToolbox + 'static> DispatcherSender<TB> {
+unsafe impl<TB: RuntimeToolbox + 'static> Send for DispatcherSenderGeneric<TB> {}
+unsafe impl<TB: RuntimeToolbox + 'static> Sync for DispatcherSenderGeneric<TB> {}
+
+impl<TB: RuntimeToolbox + 'static> DispatcherSenderGeneric<TB> {
   #[must_use]
   /// Creates a sender bound to the specified dispatcher.
   pub fn new(dispatcher: DispatcherGeneric<TB>) -> Self {
@@ -31,7 +34,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherSender<TB> {
     Self { dispatcher, mailbox }
   }
 
-  fn poll_pending(&self, future: &mut MailboxOfferFuture<TB>) -> Result<(), SendError<TB>> {
+  fn poll_pending(&self, future: &mut MailboxOfferFutureGeneric<TB>) -> Result<(), SendError<TB>> {
     let waker = self.dispatcher.create_waker();
     let mut cx = Context::from_waker(&waker);
 
@@ -48,7 +51,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherSender<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> ActorRefSender<TB> for DispatcherSender<TB> {
+impl<TB: RuntimeToolbox + 'static> ActorRefSender<TB> for DispatcherSenderGeneric<TB> {
   fn send(&self, message: AnyMessageGeneric<TB>) -> Result<(), SendError<TB>> {
     match self.mailbox.enqueue_user(message) {
       | Ok(EnqueueOutcome::Enqueued) => {
