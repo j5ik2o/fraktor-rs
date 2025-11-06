@@ -1,3 +1,6 @@
+//! High-level typed actor bindings for the standard Cellactor runtime.
+
+/// Core typed actor primitives including actors, contexts, and references.
 pub mod actor_prim;
 mod behavior;
 mod props;

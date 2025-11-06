@@ -14,8 +14,8 @@ struct WorkerCommand {
 fn guardian_behavior() -> Behavior<GuardianCommand> {
   Behaviors::setup(|ctx| {
     // setup 内で子アクターを生成し、後続の receiveMessage に共有する
-    let worker =
-      ctx.spawn_child(&TypedProps::from_behavior_factory(worker_behavior)).expect("spawn worker").actor_ref();
+    let worker_props = TypedProps::from_behavior_factory(worker_behavior);
+    let worker = ctx.spawn_child(worker_props.as_core()).expect("spawn worker").actor_ref();
 
     Behaviors::receive_message(move |_ctx, message| match message {
       | GuardianCommand::Start => {

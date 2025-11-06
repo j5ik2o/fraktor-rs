@@ -1,7 +1,6 @@
 use cellactor_actor_core_rs::{
-  actor_prim::Pid, logging::LogLevel, spawn::SpawnError,
-  typed::TypedActorSystemGeneric as CoreTypedActorSystemGeneric,
-  event_stream::EventStreamSubscriber as CoreEventStreamSubscriber,
+  actor_prim::Pid, event_stream::EventStreamSubscriber as CoreEventStreamSubscriber, logging::LogLevel,
+  spawn::SpawnError, typed::TypedActorSystemGeneric as CoreTypedActorSystemGeneric,
 };
 use cellactor_utils_core_rs::ArcShared;
 use cellactor_utils_std_rs::runtime_toolbox::StdToolbox;
@@ -10,8 +9,7 @@ use crate::{
   dead_letter::DeadLetterEntry,
   error::SendError,
   event_stream::{
-    EventStream, EventStreamEvent, EventStreamSubscriber, EventStreamSubscription,
-    subscriber_adapter::EventStreamSubscriberAdapter,
+    EventStream, EventStreamEvent, EventStreamSubscriber, EventStreamSubscriberAdapter, EventStreamSubscription,
   },
   futures::ActorFuture,
   system::SystemState,
@@ -24,8 +22,7 @@ use crate::{
 /// particularly for event stream operations with type conversions.
 pub struct TypedActorSystem<M>
 where
-  M: Send + Sync + 'static,
-{
+  M: Send + Sync + 'static, {
   inner: CoreTypedActorSystemGeneric<M, StdToolbox>,
 }
 
@@ -35,9 +32,7 @@ where
 {
   /// Creates an empty typed actor system (for testing).
   pub fn new_empty() -> Self {
-    Self {
-      inner: CoreTypedActorSystemGeneric::new_empty(),
-    }
+    Self { inner: CoreTypedActorSystemGeneric::new_empty() }
   }
 
   /// Creates a new typed actor system with the given guardian props.
@@ -46,15 +41,13 @@ where
   ///
   /// Returns an error if the guardian actor cannot be spawned.
   pub fn new(guardian: &TypedProps<M>) -> Result<Self, SpawnError> {
-    Ok(Self {
-      inner: CoreTypedActorSystemGeneric::new(guardian)?,
-    })
+    Ok(Self { inner: CoreTypedActorSystemGeneric::new(guardian.as_core())? })
   }
 
   /// Returns the typed user guardian reference.
   #[must_use]
   pub fn user_guardian_ref(&self) -> TypedActorRef<M> {
-    self.inner.user_guardian_ref()
+    TypedActorRef::from_core(self.inner.user_guardian_ref())
   }
 
   /// Returns the shared system state handle.
@@ -80,10 +73,7 @@ where
   /// This method provides std-specific type conversion from the local
   /// `EventStreamSubscriber` trait to the core trait.
   #[must_use]
-  pub fn subscribe_event_stream(
-    &self,
-    subscriber: &ArcShared<dyn EventStreamSubscriber>,
-  ) -> EventStreamSubscription {
+  pub fn subscribe_event_stream(&self, subscriber: &ArcShared<dyn EventStreamSubscriber>) -> EventStreamSubscription {
     let adapter: ArcShared<dyn CoreEventStreamSubscriber<StdToolbox>> =
       ArcShared::new(EventStreamSubscriberAdapter::new(subscriber.clone()));
     self.inner.subscribe_event_stream(&adapter)

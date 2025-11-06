@@ -22,6 +22,8 @@ mod typed_ask_error;
 mod typed_ask_future;
 /// Typed ask response handle.
 mod typed_ask_response;
+/// Unhandled message event for monitoring.
+mod unhandled_message_event;
 
 pub use behavior::Behavior;
 pub use behavior_signal::BehaviorSignal;
@@ -31,6 +33,7 @@ pub use system::{TypedActorSystem, TypedActorSystemGeneric};
 pub use typed_ask_error::TypedAskError;
 pub use typed_ask_future::{TypedAskFuture, TypedAskFutureGeneric};
 pub use typed_ask_response::{TypedAskResponse, TypedAskResponseGeneric};
+pub use unhandled_message_event::UnhandledMessageEvent;
 
 #[cfg(test)]
 mod tests;

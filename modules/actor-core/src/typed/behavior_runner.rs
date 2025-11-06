@@ -1,11 +1,15 @@
 //! Executes typed behaviors inside the actor runtime.
 
+use alloc::string::ToString;
+
 use cellactor_utils_core_rs::sync::NoStdToolbox;
 
 use crate::{
   RuntimeToolbox,
   error::ActorError,
+  event_stream::EventStreamEvent,
   typed::{
+    UnhandledMessageEvent,
     actor_prim::{TypedActor, TypedActorContextGeneric},
     behavior::{Behavior, BehaviorDirective},
     behavior_signal::BehaviorSignal,
@@ -37,7 +41,26 @@ where
     next: Behavior<M, TB>,
   ) -> Result<(), ActorError> {
     match next.directive() {
-      | BehaviorDirective::Same => Ok(()),
+      | BehaviorDirective::Same | BehaviorDirective::Ignore => Ok(()),
+      | BehaviorDirective::Unhandled => {
+        // Keep the current behavior and emit UnhandledMessage event
+        let system = ctx.system();
+        let timestamp = system.state().monotonic_now();
+        let message_type = core::any::type_name::<M>().to_string();
+        let event = UnhandledMessageEvent::new(ctx.pid(), message_type, timestamp);
+        system.event_stream().publish(&EventStreamEvent::UnhandledMessage(event));
+        Ok(())
+      },
+      | BehaviorDirective::Empty => {
+        // Empty behavior: treat as unhandled and emit event, then keep empty behavior
+        let system = ctx.system();
+        let timestamp = system.state().monotonic_now();
+        let message_type = core::any::type_name::<M>().to_string();
+        let event = UnhandledMessageEvent::new(ctx.pid(), message_type, timestamp);
+        system.event_stream().publish(&EventStreamEvent::UnhandledMessage(event));
+        self.current = Behavior::empty();
+        Ok(())
+      },
       | BehaviorDirective::Stopped => {
         if !self.stopping {
           ctx.stop_self().map_err(|error| ActorError::from_send_error(&error))?;
@@ -46,7 +69,7 @@ where
         self.current = Behavior::stopped();
         Ok(())
       },
-      | BehaviorDirective::Ignore | BehaviorDirective::Active => {
+      | BehaviorDirective::Active => {
         self.current = next;
         Ok(())
       },

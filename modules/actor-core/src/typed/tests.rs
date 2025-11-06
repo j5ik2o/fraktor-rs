@@ -21,6 +21,13 @@ enum CounterMessage {
   Get,
 }
 
+#[derive(Clone, Copy)]
+enum IgnoreCommand {
+  Add(u32),
+  Reject,
+  Read,
+}
+
 struct CounterActor {
   total: i32,
 }
@@ -84,6 +91,26 @@ fn typed_behaviors_handle_recursive_state() {
   let payload = future.try_take().expect("reply available").expect("typed payload");
 
   assert_eq!(payload, 8);
+
+  system.terminate().expect("terminate");
+}
+
+#[test]
+fn typed_behaviors_ignore_keeps_current_state() {
+  let props = TypedPropsGeneric::<IgnoreCommand, NoStdToolbox>::from_behavior_factory(|| ignore_gate(0));
+  let system = TypedActorSystemGeneric::<IgnoreCommand, NoStdToolbox>::new(&props).expect("system");
+  let gate = system.user_guardian_ref();
+
+  gate.tell(IgnoreCommand::Add(1)).expect("add before reject");
+  gate.tell(IgnoreCommand::Reject).expect("reject once");
+  gate.tell(IgnoreCommand::Add(5)).expect("add after reject");
+
+  let response = gate.ask::<u32>(IgnoreCommand::Read).expect("ask read");
+  let future = response.future().clone();
+  wait_until(|| future.is_ready());
+  let payload = future.try_take().expect("reply available").expect("typed payload");
+
+  assert_eq!(payload, 6);
 
   system.terminate().expect("terminate");
 }
@@ -158,6 +185,17 @@ fn behavior_counter(total: i32) -> Behavior<CounterMessage, NoStdToolbox> {
   Behaviors::receive_message(move |ctx, message| match message {
     | CounterMessage::Increment(delta) => Ok(behavior_counter(total + delta)),
     | CounterMessage::Get => {
+      ctx.reply(total).map_err(|error| ActorError::from_send_error(&error))?;
+      Ok(Behaviors::same())
+    },
+  })
+}
+
+fn ignore_gate(total: u32) -> Behavior<IgnoreCommand, NoStdToolbox> {
+  Behaviors::receive_message(move |ctx, message| match message {
+    | IgnoreCommand::Add(delta) => Ok(ignore_gate(total + delta)),
+    | IgnoreCommand::Reject => Ok(Behaviors::ignore()),
+    | IgnoreCommand::Read => {
       ctx.reply(total).map_err(|error| ActorError::from_send_error(&error))?;
       Ok(Behaviors::same())
     },
