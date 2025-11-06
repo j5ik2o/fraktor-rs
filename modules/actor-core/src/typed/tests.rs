@@ -1,4 +1,4 @@
-use alloc::sync::Arc;
+use alloc::{string::ToString, sync::Arc};
 use core::{
   hint::spin_loop,
   sync::atomic::{AtomicUsize, Ordering},
@@ -8,7 +8,7 @@ use crate::{
   NoStdToolbox,
   error::ActorError,
   typed::{
-    Behavior, BehaviorSignal, Behaviors,
+    Behavior, BehaviorSignal, Behaviors, TypedAskError,
     actor_prim::{TypedActor, TypedActorContextGeneric},
     props::TypedPropsGeneric,
     system::TypedActorSystemGeneric,
@@ -59,11 +59,10 @@ fn typed_actor_system_handles_basic_flow() {
   counter.tell(CounterMessage::Increment(2)).expect("tell increment one");
   counter.tell(CounterMessage::Increment(5)).expect("tell increment two");
 
-  let response = counter.ask(CounterMessage::Get).expect("ask get");
+  let response = counter.ask::<i32>(CounterMessage::Get).expect("ask get");
   let future = response.future().clone();
   wait_until(|| future.is_ready());
-  let reply = future.try_take().expect("reply available");
-  let payload = reply.payload().downcast_ref::<i32>().copied().expect("payload downcast");
+  let payload = future.try_take().expect("reply available").expect("typed payload");
 
   assert_eq!(payload, 7);
 
@@ -79,11 +78,10 @@ fn typed_behaviors_handle_recursive_state() {
   counter.tell(CounterMessage::Increment(3)).expect("increment one");
   counter.tell(CounterMessage::Increment(5)).expect("increment two");
 
-  let response = counter.ask(CounterMessage::Get).expect("ask get");
+  let response = counter.ask::<i32>(CounterMessage::Get).expect("ask get");
   let future = response.future().clone();
   wait_until(|| future.is_ready());
-  let reply = future.try_take().expect("reply available");
-  let payload = reply.payload().downcast_ref::<i32>().copied().expect("payload downcast");
+  let payload = future.try_take().expect("reply available").expect("typed payload");
 
   assert_eq!(payload, 8);
 
@@ -111,6 +109,39 @@ fn typed_behaviors_receive_signal_notifications() {
 
   assert_eq!(started.load(Ordering::SeqCst), 1);
   assert_eq!(stopped.load(Ordering::SeqCst), 1);
+}
+
+#[derive(Clone, Copy)]
+enum MismatchCommand {
+  Trigger,
+}
+
+struct MismatchActor;
+
+impl TypedActor<MismatchCommand> for MismatchActor {
+  fn receive(
+    &mut self,
+    ctx: &mut TypedActorContextGeneric<'_, MismatchCommand>,
+    _message: &MismatchCommand,
+  ) -> Result<(), ActorError> {
+    ctx.reply("unexpected".to_string()).map_err(|error| ActorError::from_send_error(&error))
+  }
+}
+
+#[test]
+fn typed_ask_reports_type_mismatch() {
+  let props = TypedPropsGeneric::<MismatchCommand, NoStdToolbox>::new(|| MismatchActor);
+  let system = TypedActorSystemGeneric::<MismatchCommand, NoStdToolbox>::new(&props).expect("system");
+  let actor = system.user_guardian_ref();
+
+  let response = actor.ask::<i32>(MismatchCommand::Trigger).expect("ask");
+  let future = response.future().clone();
+  wait_until(|| future.is_ready());
+  let result = future.try_take().expect("result");
+
+  assert!(matches!(result, Err(TypedAskError::TypeMismatch)));
+
+  system.terminate().expect("terminate");
 }
 
 fn wait_until(mut condition: impl FnMut() -> bool) {

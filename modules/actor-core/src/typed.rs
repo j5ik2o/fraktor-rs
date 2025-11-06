@@ -16,12 +16,21 @@ mod props;
 mod system;
 /// Internal adapter between typed and untyped actors.
 mod typed_actor_adapter;
+/// Typed ask error classification.
+mod typed_ask_error;
+/// Typed ask future helpers.
+mod typed_ask_future;
+/// Typed ask response handle.
+mod typed_ask_response;
 
 pub use behavior::Behavior;
 pub use behavior_signal::BehaviorSignal;
 pub use behaviors::Behaviors;
 pub use props::{TypedProps, TypedPropsGeneric};
 pub use system::{TypedActorSystem, TypedActorSystemGeneric};
+pub use typed_ask_error::TypedAskError;
+pub use typed_ask_future::TypedAskFuture;
+pub use typed_ask_response::{TypedAskResponse, TypedAskResponseGeneric};
 
 #[cfg(test)]
 mod tests;

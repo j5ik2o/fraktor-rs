@@ -8,7 +8,8 @@ use crate::{
   RuntimeToolbox,
   actor_prim::{Pid, actor_ref::ActorRefGeneric},
   error::SendError,
-  messaging::{AnyMessageGeneric, AskResponseGeneric},
+  messaging::AnyMessageGeneric,
+  typed::TypedAskResponseGeneric,
 };
 
 /// Provides a typed façade over [`ActorRefGeneric`].
@@ -66,8 +67,11 @@ where
   /// # Errors
   ///
   /// Returns an error if the request cannot be sent.
-  pub fn ask(&self, message: M) -> Result<AskResponseGeneric<TB>, SendError<TB>> {
-    self.inner.ask(AnyMessageGeneric::new(message))
+  pub fn ask<R>(&self, message: M) -> Result<TypedAskResponseGeneric<R, TB>, SendError<TB>>
+  where
+    R: Send + Sync + 'static, {
+    let response = self.inner.ask(AnyMessageGeneric::new(message))?;
+    Ok(TypedAskResponseGeneric::from_generic(response))
   }
 
   /// Maps this reference to a different message type without runtime cost.

@@ -35,14 +35,16 @@ fn main() {
   counter.tell(CounterCommand::Add(4)).expect("add first");
   counter.tell(CounterCommand::Add(6)).expect("add second");
 
-  let response = counter.ask(CounterCommand::Read).expect("ask read");
+  let response = counter.ask::<i32>(CounterCommand::Read).expect("ask read");
   let future = response.future().clone();
   while !future.is_ready() {
     thread::yield_now();
   }
-  if let Some(reply) = future.try_take() {
-    let payload = reply.payload().downcast_ref::<i32>().copied().unwrap_or_default();
-    println!("typed behaviors counter result: {payload}");
+  if let Some(result) = future.try_take() {
+    match result {
+      | Ok(value) => println!("typed behaviors counter result: {value}"),
+      | Err(error) => println!("typed behaviors counter error: {error}"),
+    }
   }
 
   system.terminate().expect("terminate");
