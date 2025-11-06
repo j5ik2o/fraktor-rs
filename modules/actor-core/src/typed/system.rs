@@ -38,6 +38,11 @@ where
   M: Send + Sync + 'static,
   TB: RuntimeToolbox + 'static,
 {
+  /// Creates an empty actor system without any guardian (testing only).
+  pub fn new_empty() -> Self {
+    Self { inner: ActorSystemGeneric::new_empty(), marker: PhantomData }
+  }
+
   /// Creates a new typed actor system using the supplied guardian behavior.
   ///
   /// # Errors

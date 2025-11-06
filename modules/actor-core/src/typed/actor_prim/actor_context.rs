@@ -15,6 +15,7 @@ use crate::{
     props::TypedPropsGeneric,
   },
 };
+use crate::system::ActorSystemGeneric;
 
 /// Provides typed helpers around the untyped [`ActorContextGeneric`].
 pub struct TypedActorContextGeneric<'a, M, TB = NoStdToolbox>
@@ -56,7 +57,7 @@ where
 
   /// Returns the underlying actor system handle.
   #[must_use]
-  pub fn system(&self) -> crate::system::ActorSystemGeneric<TB> {
+  pub fn system(&self) -> ActorSystemGeneric<TB> {
     self.inner().system().clone()
   }
 
