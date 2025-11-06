@@ -1,5 +1,6 @@
 #[cfg(not(feature = "force-portable-arc"))]
 use alloc::sync::Arc;
+use core::any::Any;
 #[cfg(not(feature = "unsize"))]
 use core::ptr;
 #[cfg(feature = "unsize")]
@@ -149,6 +150,22 @@ impl<T: ?Sized> SharedDyn<T> for ArcShared<T> {
 impl<T: ?Sized> Clone for ArcShared<T> {
   fn clone(&self) -> Self {
     Self(self.0.clone())
+  }
+}
+
+impl ArcShared<dyn Any + Send + Sync + 'static> {
+  /// Attempts to downcast the shared handle to the requested type.
+  ///
+  /// # Errors
+  ///
+  /// Returns the original shared handle when the payload cannot be converted to `U`.
+  pub fn downcast<U>(self) -> Result<ArcShared<U>, ArcShared<dyn Any + Send + Sync + 'static>>
+  where
+    U: Any + Send + Sync + 'static, {
+    match Arc::downcast::<U>(self.0) {
+      | Ok(concrete) => Ok(ArcShared(concrete)),
+      | Err(original) => Err(ArcShared(original)),
+    }
   }
 }
 

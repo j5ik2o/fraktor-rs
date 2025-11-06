@@ -37,6 +37,18 @@ impl Behaviors {
     Behavior::ignore()
   }
 
+  /// Defers behavior creation until the actor is started, allowing access to the context.
+  pub fn setup<M, TB, F>(factory: F) -> Behavior<M, TB>
+  where
+    M: Send + Sync + 'static,
+    TB: RuntimeToolbox + 'static,
+    F: for<'a> Fn(&mut TypedActorContextGeneric<'a, M, TB>) -> Behavior<M, TB> + Send + Sync + 'static, {
+    Behavior::from_signal_handler(move |ctx, signal| match signal {
+      | BehaviorSignal::Started => Ok(factory(ctx)),
+      | _ => Ok(Behavior::same()),
+    })
+  }
+
   /// Creates a behavior that handles typed messages and can return the next behavior.
   pub fn receive_message<M, TB, F>(handler: F) -> Behavior<M, TB>
   where

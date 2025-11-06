@@ -8,8 +8,8 @@ use crate::{
   RuntimeToolbox,
   actor_prim::{ChildRefGeneric, Pid},
   error::SendError,
-  messaging::{AnyMessageGeneric, AskResponseGeneric},
-  typed::actor_prim::actor_ref::TypedActorRefGeneric,
+  messaging::AnyMessageGeneric,
+  typed::{TypedAskResponseGeneric, actor_prim::actor_ref::TypedActorRefGeneric},
 };
 
 /// Wraps [`ChildRefGeneric`] and enforces message type `M`.
@@ -61,8 +61,11 @@ where
   /// # Errors
   ///
   /// Returns an error if the request cannot be sent.
-  pub fn ask(&self, message: M) -> Result<AskResponseGeneric<TB>, SendError<TB>> {
-    self.inner.ask(AnyMessageGeneric::new(message))
+  pub fn ask<R>(&self, message: M) -> Result<TypedAskResponseGeneric<R, TB>, SendError<TB>>
+  where
+    R: Send + Sync + 'static, {
+    let response = self.inner.ask(AnyMessageGeneric::new(message))?;
+    Ok(TypedAskResponseGeneric::from_generic(response))
   }
 
   /// Stops the child actor.
