@@ -19,7 +19,7 @@ use crate::{
   error::ActorError,
   event_stream::EventStreamEvent,
   lifecycle::{LifecycleEvent, LifecycleStage},
-  mailbox::{MailboxCapacity, MailboxGeneric, MailboxInstrumentation},
+  mailbox::{MailboxCapacity, MailboxGeneric, MailboxInstrumentationGeneric},
   messaging::{
     AnyMessageGeneric, FailureMessageSnapshot, FailurePayload, SystemMessage,
     message_invoker::{MessageInvoker, MessageInvokerPipeline},
@@ -71,7 +71,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
       };
       let throughput = policy.throughput_limit().map(|limit| limit.get());
       let warn_threshold = mailbox_config.warn_threshold().map(|threshold| threshold.get());
-      let instrumentation = MailboxInstrumentation::new(system.clone(), pid, capacity, throughput, warn_threshold);
+      let instrumentation = MailboxInstrumentationGeneric::new(system.clone(), pid, capacity, throughput, warn_threshold);
       mailbox.set_instrumentation(instrumentation);
     }
     let dispatcher = props.dispatcher().build_dispatcher(mailbox.clone());

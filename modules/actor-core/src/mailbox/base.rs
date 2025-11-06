@@ -15,7 +15,7 @@ use cellactor_utils_core_rs::{
 };
 
 use super::{
-  MailboxOfferFuture, mailbox_enqueue_outcome::EnqueueOutcome, mailbox_instrumentation::MailboxInstrumentation,
+  MailboxOfferFuture, mailbox_enqueue_outcome::EnqueueOutcome, mailbox_instrumentation::MailboxInstrumentationGeneric,
   mailbox_message::MailboxMessage, mailbox_poll_future::MailboxPollFuture, mailbox_queue_handles::QueueHandles,
   map_system_queue_error, map_user_queue_error,
 };
@@ -32,7 +32,7 @@ pub struct MailboxGeneric<TB: RuntimeToolbox + 'static> {
   system:          QueueHandles<SystemMessage, TB>,
   user:            QueueHandles<AnyMessageGeneric<TB>, TB>,
   suspended:       AtomicBool,
-  instrumentation: crate::ToolboxMutex<Option<MailboxInstrumentation<TB>>, TB>,
+  instrumentation: crate::ToolboxMutex<Option<MailboxInstrumentationGeneric<TB>>, TB>,
 }
 
 unsafe impl<TB: RuntimeToolbox + 'static> Send for MailboxGeneric<TB> {}
@@ -57,7 +57,7 @@ where
   }
 
   /// Installs instrumentation hooks for metrics emission.
-  pub(crate) fn set_instrumentation(&self, instrumentation: MailboxInstrumentation<TB>) {
+  pub(crate) fn set_instrumentation(&self, instrumentation: MailboxInstrumentationGeneric<TB>) {
     *self.instrumentation.lock() = Some(instrumentation);
   }
 

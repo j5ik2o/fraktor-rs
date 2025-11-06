@@ -28,7 +28,7 @@ mod policy;
 pub use base::{Mailbox, MailboxGeneric};
 pub use capacity::MailboxCapacity;
 pub use mailbox_enqueue_outcome::EnqueueOutcome;
-pub use mailbox_instrumentation::MailboxInstrumentation;
+pub use mailbox_instrumentation::{MailboxInstrumentation, MailboxInstrumentationGeneric};
 pub use mailbox_message::MailboxMessage;
 pub use mailbox_offer_future::MailboxOfferFuture;
 pub use mailbox_poll_future::MailboxPollFuture;
