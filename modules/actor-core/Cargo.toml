@@ -36,4 +36,4 @@ path = "examples/ping_pong_not_std/main.rs"
 
 [[example]]
 name = "typed_ping_pong_not_std"
-path = "examples/typed_ping_pong_not_std/main.rs"
+path = "examples/ping_pong_typed_not_std/main.rs"
