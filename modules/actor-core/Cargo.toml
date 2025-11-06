@@ -33,3 +33,7 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
 [[example]]
 name = "ping_pong_no_std"
 path = "examples/ping_pong_not_std/main.rs"
+
+[[example]]
+name = "typed_ping_pong_not_std"
+path = "examples/typed_ping_pong_not_std/main.rs"

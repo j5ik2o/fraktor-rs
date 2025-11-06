@@ -1,11 +1,13 @@
 //! Typed actor lifecycle contract.
 
+use cellactor_utils_core_rs::sync::NoStdToolbox;
+
 use crate::{
   RuntimeToolbox, actor_prim::Pid, error::ActorError, typed::actor_prim::actor_context::TypedActorContextGeneric,
 };
 
 /// Defines the lifecycle hooks for actors that operate on a typed message `M`.
-pub trait TypedActor<TB, M>: Send + Sync
+pub trait TypedActor<M, TB = NoStdToolbox>: Send + Sync
 where
   TB: RuntimeToolbox + 'static,
   M: Send + Sync + 'static, {
@@ -15,7 +17,7 @@ where
   ///
   /// Returns an error when the actor fails to initialize and should not start.
   #[allow(unused_variables)]
-  fn pre_start(&mut self, ctx: &mut TypedActorContextGeneric<'_, TB, M>) -> Result<(), ActorError> {
+  fn pre_start(&mut self, ctx: &mut TypedActorContextGeneric<'_, M, TB>) -> Result<(), ActorError> {
     Ok(())
   }
 
@@ -24,7 +26,7 @@ where
   /// # Errors
   ///
   /// Returns an error to signal recoverable or fatal processing failures.
-  fn receive(&mut self, ctx: &mut TypedActorContextGeneric<'_, TB, M>, message: &M) -> Result<(), ActorError>;
+  fn receive(&mut self, ctx: &mut TypedActorContextGeneric<'_, M, TB>, message: &M) -> Result<(), ActorError>;
 
   /// Called after the actor stops.
   ///
@@ -32,7 +34,7 @@ where
   ///
   /// Returns an error when cleanup work fails.
   #[allow(unused_variables)]
-  fn post_stop(&mut self, ctx: &mut TypedActorContextGeneric<'_, TB, M>) -> Result<(), ActorError> {
+  fn post_stop(&mut self, ctx: &mut TypedActorContextGeneric<'_, M, TB>) -> Result<(), ActorError> {
     Ok(())
   }
 
@@ -44,7 +46,7 @@ where
   #[allow(unused_variables)]
   fn on_terminated(
     &mut self,
-    ctx: &mut TypedActorContextGeneric<'_, TB, M>,
+    ctx: &mut TypedActorContextGeneric<'_, M, TB>,
     terminated: Pid,
   ) -> Result<(), ActorError> {
     Ok(())

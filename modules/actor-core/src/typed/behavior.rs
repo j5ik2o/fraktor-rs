@@ -11,38 +11,38 @@ use crate::{
 };
 
 /// Describes how to construct a typed actor for message `M`.
-pub struct BehaviorGeneric<TB, M>
+pub struct BehaviorGeneric<M, TB>
 where
-  TB: RuntimeToolbox + 'static,
-  M: Send + Sync + 'static, {
+  M: Send + Sync + 'static,
+  TB: RuntimeToolbox + 'static, {
   props:  PropsGeneric<TB>,
   marker: PhantomData<M>,
 }
 
 /// Type alias for [BehaviorGeneric] with the default [NoStdToolbox].
-pub type Behavior<M> = BehaviorGeneric<NoStdToolbox, M>;
+pub type Behavior<M> = BehaviorGeneric<M, NoStdToolbox>;
 
-impl<TB, M> Clone for BehaviorGeneric<TB, M>
+impl<M, TB> Clone for BehaviorGeneric<M, TB>
 where
-  TB: RuntimeToolbox + 'static,
   M: Send + Sync + 'static,
+  TB: RuntimeToolbox + 'static,
 {
   fn clone(&self) -> Self {
     Self { props: self.props.clone(), marker: PhantomData }
   }
 }
 
-impl<TB, M> BehaviorGeneric<TB, M>
+impl<M, TB> BehaviorGeneric<M, TB>
 where
-  TB: RuntimeToolbox + 'static,
   M: Send + Sync + 'static,
+  TB: RuntimeToolbox + 'static,
 {
   /// Builds behavior from a typed actor factory.
   #[must_use]
   pub fn new<F, A>(factory: F) -> Self
   where
     F: Fn() -> A + Send + Sync + 'static,
-    A: TypedActor<TB, M> + 'static, {
+    A: TypedActor<M, TB> + 'static, {
     let props = PropsGeneric::from_fn(move || TypedActorAdapter::<TB, M>::new(factory()));
     Self { props, marker: PhantomData }
   }
@@ -52,7 +52,7 @@ where
   pub fn from_factory<F, A>(factory: F) -> Self
   where
     F: Fn() -> A + Send + Sync + 'static,
-    A: TypedActor<TB, M> + 'static, {
+    A: TypedActor<M, TB> + 'static, {
     Self::new(factory)
   }
 

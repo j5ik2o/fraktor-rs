@@ -26,10 +26,10 @@ impl CounterActor {
   }
 }
 
-impl TypedActor<NoStdToolbox, CounterMessage> for CounterActor {
+impl TypedActor<CounterMessage> for CounterActor {
   fn receive(
     &mut self,
-    ctx: &mut TypedActorContextGeneric<'_, NoStdToolbox, CounterMessage>,
+    ctx: &mut TypedActorContextGeneric<'_, CounterMessage>,
     message: &CounterMessage,
   ) -> Result<(), ActorError> {
     match message {
@@ -47,8 +47,8 @@ impl TypedActor<NoStdToolbox, CounterMessage> for CounterActor {
 
 #[test]
 fn typed_actor_system_handles_basic_flow() {
-  let behavior = BehaviorGeneric::<NoStdToolbox, CounterMessage>::new(CounterActor::new);
-  let system = TypedActorSystemGeneric::<NoStdToolbox, CounterMessage>::new(&behavior).expect("system");
+  let behavior = BehaviorGeneric::<CounterMessage, NoStdToolbox>::new(CounterActor::new);
+  let system = TypedActorSystemGeneric::<CounterMessage, NoStdToolbox>::new(&behavior).expect("system");
   let counter = system.user_guardian_ref();
 
   counter.tell(CounterMessage::Increment(2)).expect("tell increment one");

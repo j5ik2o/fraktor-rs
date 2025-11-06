@@ -12,21 +12,21 @@ use crate::{
 };
 
 /// Provides a typed façade over [`ActorRefGeneric`].
-pub struct TypedActorRefGeneric<TB, M>
+pub struct TypedActorRefGeneric<M, TB>
 where
-  TB: RuntimeToolbox + 'static,
-  M: Send + Sync + 'static, {
+  M: Send + Sync + 'static,
+  TB: RuntimeToolbox + 'static, {
   inner:   ActorRefGeneric<TB>,
   _marker: PhantomData<M>,
 }
 
 /// Type alias for [TypedActorRefGeneric] with the default [NoStdToolbox].
-pub type TypedActorRef<M> = TypedActorRefGeneric<NoStdToolbox, M>;
+pub type TypedActorRef<M> = TypedActorRefGeneric<M, NoStdToolbox>;
 
-impl<TB, M> TypedActorRefGeneric<TB, M>
+impl<M, TB> TypedActorRefGeneric<M, TB>
 where
-  TB: RuntimeToolbox + 'static,
   M: Send + Sync + 'static,
+  TB: RuntimeToolbox + 'static,
 {
   /// Wraps an untyped actor reference.
   #[must_use]
@@ -72,27 +72,27 @@ where
 
   /// Maps this reference to a different message type without runtime cost.
   #[must_use]
-  pub fn map<N>(self) -> TypedActorRefGeneric<TB, N>
+  pub fn map<N>(self) -> TypedActorRefGeneric<N, TB>
   where
     N: Send + Sync + 'static, {
     TypedActorRefGeneric::from_untyped(self.inner)
   }
 }
 
-impl<TB, M> Clone for TypedActorRefGeneric<TB, M>
+impl<M, TB> Clone for TypedActorRefGeneric<M, TB>
 where
-  TB: RuntimeToolbox + 'static,
   M: Send + Sync + 'static,
+  TB: RuntimeToolbox + 'static,
 {
   fn clone(&self) -> Self {
     Self { inner: self.inner.clone(), _marker: PhantomData }
   }
 }
 
-impl<TB, M> core::fmt::Debug for TypedActorRefGeneric<TB, M>
+impl<M, TB> core::fmt::Debug for TypedActorRefGeneric<M, TB>
 where
-  TB: RuntimeToolbox + 'static,
   M: Send + Sync + 'static,
+  TB: RuntimeToolbox + 'static,
 {
   fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
     f.debug_struct("TypedActorRefGeneric").field("pid", &self.pid()).finish()

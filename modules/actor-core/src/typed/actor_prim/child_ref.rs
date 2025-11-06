@@ -13,21 +13,21 @@ use crate::{
 };
 
 /// Wraps [`ChildRefGeneric`] and enforces message type `M`.
-pub struct TypedChildRefGeneric<TB, M>
+pub struct TypedChildRefGeneric<M, TB>
 where
-  TB: RuntimeToolbox + 'static,
-  M: Send + Sync + 'static, {
+  M: Send + Sync + 'static,
+  TB: RuntimeToolbox + 'static, {
   inner:   ChildRefGeneric<TB>,
   _marker: PhantomData<M>,
 }
 
 /// Type alias for [TypedChildRefGeneric] with the default [NoStdToolbox].
-pub type TypedChildRef<M> = TypedChildRefGeneric<NoStdToolbox, M>;
+pub type TypedChildRef<M> = TypedChildRefGeneric<M, NoStdToolbox>;
 
-impl<TB, M> TypedChildRefGeneric<TB, M>
+impl<M, TB> TypedChildRefGeneric<M, TB>
 where
-  TB: RuntimeToolbox + 'static,
   M: Send + Sync + 'static,
+  TB: RuntimeToolbox + 'static,
 {
   /// Creates a typed wrapper from an untyped child reference.
   #[must_use]
@@ -43,7 +43,7 @@ where
 
   /// Returns the typed actor reference for the child.
   #[must_use]
-  pub fn actor_ref(&self) -> TypedActorRefGeneric<TB, M> {
+  pub fn actor_ref(&self) -> TypedActorRefGeneric<M, TB> {
     TypedActorRefGeneric::from_untyped(self.inner.actor_ref().clone())
   }
 
@@ -105,20 +105,20 @@ where
   }
 }
 
-impl<TB, M> Clone for TypedChildRefGeneric<TB, M>
+impl<M, TB> Clone for TypedChildRefGeneric<M, TB>
 where
-  TB: RuntimeToolbox + 'static,
   M: Send + Sync + 'static,
+  TB: RuntimeToolbox + 'static,
 {
   fn clone(&self) -> Self {
     Self { inner: self.inner.clone(), _marker: PhantomData }
   }
 }
 
-impl<TB, M> core::fmt::Debug for TypedChildRefGeneric<TB, M>
+impl<M, TB> core::fmt::Debug for TypedChildRefGeneric<M, TB>
 where
-  TB: RuntimeToolbox + 'static,
   M: Send + Sync + 'static,
+  TB: RuntimeToolbox + 'static,
 {
   fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
     f.debug_struct("TypedChildRefGeneric").field("pid", &self.pid()).finish()

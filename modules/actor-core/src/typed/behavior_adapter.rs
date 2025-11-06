@@ -17,7 +17,7 @@ pub(crate) struct TypedActorAdapter<TB, M>
 where
   TB: RuntimeToolbox + 'static,
   M: Send + Sync + 'static, {
-  actor: Box<dyn TypedActor<TB, M>>,
+  actor: Box<dyn TypedActor<M, TB>>,
 }
 
 impl<TB, M> TypedActorAdapter<TB, M>
@@ -29,7 +29,7 @@ where
   #[must_use]
   pub(crate) fn new<A>(actor: A) -> Self
   where
-    A: TypedActor<TB, M> + 'static, {
+    A: TypedActor<M, TB> + 'static, {
     Self { actor: Box::new(actor) }
   }
 }

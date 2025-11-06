@@ -17,21 +17,21 @@ use crate::{
 };
 
 /// Provides typed helpers around the untyped [`ActorContextGeneric`].
-pub struct TypedActorContextGeneric<'a, TB, M>
+pub struct TypedActorContextGeneric<'a, M, TB = NoStdToolbox>
 where
-  TB: RuntimeToolbox + 'static,
-  M: Send + Sync + 'static, {
+  M: Send + Sync + 'static,
+  TB: RuntimeToolbox + 'static, {
   inner:   NonNull<ActorContextGeneric<'a, TB>>,
   _marker: PhantomData<(&'a mut ActorContextGeneric<'a, TB>, M)>,
 }
 
 /// Type alias for [TypedActorContextGeneric] with the default [NoStdToolbox].
-pub type TypedActorContext<'a, M> = TypedActorContextGeneric<'a, NoStdToolbox, M>;
+pub type TypedActorContext<'a, M> = TypedActorContextGeneric<'a, M, NoStdToolbox>;
 
-impl<'a, TB, M> TypedActorContextGeneric<'a, TB, M>
+impl<'a, M, TB> TypedActorContextGeneric<'a, M, TB>
 where
-  TB: RuntimeToolbox + 'static,
   M: Send + Sync + 'static,
+  TB: RuntimeToolbox + 'static,
 {
   /// Creates a typed wrapper from the provided untyped context.
   pub(crate) fn from_untyped(inner: &mut ActorContextGeneric<'a, TB>) -> Self {
@@ -62,7 +62,7 @@ where
 
   /// Returns the typed self reference.
   #[must_use]
-  pub fn self_ref(&self) -> TypedActorRefGeneric<TB, M> {
+  pub fn self_ref(&self) -> TypedActorRefGeneric<M, TB> {
     TypedActorRefGeneric::from_untyped(self.inner().self_ref())
   }
 
@@ -82,7 +82,7 @@ where
   /// # Errors
   ///
   /// Returns an error if the child actor cannot be spawned.
-  pub fn spawn_child<C>(&self, behavior: &BehaviorGeneric<TB, C>) -> Result<TypedChildRefGeneric<TB, C>, SpawnError>
+  pub fn spawn_child<C>(&self, behavior: &BehaviorGeneric<C, TB>) -> Result<TypedChildRefGeneric<C, TB>, SpawnError>
   where
     C: Send + Sync + 'static, {
     let child = self.inner().spawn_child(behavior.props())?;
@@ -96,8 +96,8 @@ where
   /// Returns an error if the child actor cannot be spawned or watched.
   pub fn spawn_child_watched<C>(
     &self,
-    behavior: &BehaviorGeneric<TB, C>,
-  ) -> Result<TypedChildRefGeneric<TB, C>, SpawnError>
+    behavior: &BehaviorGeneric<C, TB>,
+  ) -> Result<TypedChildRefGeneric<C, TB>, SpawnError>
   where
     C: Send + Sync + 'static, {
     let child = self.inner().spawn_child_watched(behavior.props())?;
@@ -109,7 +109,7 @@ where
   /// # Errors
   ///
   /// Returns an error if the watch operation cannot be performed.
-  pub fn watch<C>(&self, target: &TypedActorRefGeneric<TB, C>) -> Result<(), SendError<TB>>
+  pub fn watch<C>(&self, target: &TypedActorRefGeneric<C, TB>) -> Result<(), SendError<TB>>
   where
     C: Send + Sync + 'static, {
     self.inner().watch(target.as_untyped())
@@ -120,7 +120,7 @@ where
   /// # Errors
   ///
   /// Returns an error if the unwatch operation cannot be performed.
-  pub fn unwatch<C>(&self, target: &TypedActorRefGeneric<TB, C>) -> Result<(), SendError<TB>>
+  pub fn unwatch<C>(&self, target: &TypedActorRefGeneric<C, TB>) -> Result<(), SendError<TB>>
   where
     C: Send + Sync + 'static, {
     self.inner().unwatch(target.as_untyped())

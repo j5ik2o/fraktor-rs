@@ -22,34 +22,34 @@ use crate::{
 };
 
 /// Actor system facade that enforces a message type `M` at the API boundary.
-pub struct TypedActorSystemGeneric<TB, M>
+pub struct TypedActorSystemGeneric<M, TB>
 where
-  TB: RuntimeToolbox + 'static,
-  M: Send + Sync + 'static, {
+  M: Send + Sync + 'static,
+  TB: RuntimeToolbox + 'static, {
   inner:  ActorSystemGeneric<TB>,
   marker: PhantomData<M>,
 }
 
 /// Type alias for [TypedActorSystemGeneric] with the default [NoStdToolbox].
-pub type TypedActorSystem<M> = TypedActorSystemGeneric<NoStdToolbox, M>;
+pub type TypedActorSystem<M> = TypedActorSystemGeneric<M, NoStdToolbox>;
 
-impl<TB, M> TypedActorSystemGeneric<TB, M>
+impl<M, TB> TypedActorSystemGeneric<M, TB>
 where
-  TB: RuntimeToolbox + 'static,
   M: Send + Sync + 'static,
+  TB: RuntimeToolbox + 'static,
 {
   /// Creates a new typed actor system using the supplied guardian behavior.
   ///
   /// # Errors
   ///
   /// Returns an error if the guardian actor cannot be spawned.
-  pub fn new(guardian: &BehaviorGeneric<TB, M>) -> Result<Self, SpawnError> {
+  pub fn new(guardian: &BehaviorGeneric<M, TB>) -> Result<Self, SpawnError> {
     Ok(Self { inner: ActorSystemGeneric::new(guardian.props())?, marker: PhantomData })
   }
 
   /// Returns the typed user guardian reference.
   #[must_use]
-  pub fn user_guardian_ref(&self) -> TypedActorRefGeneric<TB, M> {
+  pub fn user_guardian_ref(&self) -> TypedActorRefGeneric<M, TB> {
     TypedActorRefGeneric::from_untyped(self.inner.user_guardian_ref())
   }
 
@@ -110,7 +110,7 @@ where
 
   /// Spawns a new top-level actor under the user guardian.
   #[allow(dead_code)]
-  pub(crate) fn spawn<C>(&self, behavior: &BehaviorGeneric<TB, C>) -> Result<TypedChildRefGeneric<TB, C>, SpawnError>
+  pub(crate) fn spawn<C>(&self, behavior: &BehaviorGeneric<C, TB>) -> Result<TypedChildRefGeneric<C, TB>, SpawnError>
   where
     C: Send + Sync + 'static, {
     let child = self.inner.spawn(behavior.props())?;
@@ -133,10 +133,10 @@ where
   }
 }
 
-impl<TB, M> Clone for TypedActorSystemGeneric<TB, M>
+impl<M, TB> Clone for TypedActorSystemGeneric<M, TB>
 where
-  TB: RuntimeToolbox + 'static,
   M: Send + Sync + 'static,
+  TB: RuntimeToolbox + 'static,
 {
   fn clone(&self) -> Self {
     Self { inner: self.inner.clone(), marker: PhantomData }
