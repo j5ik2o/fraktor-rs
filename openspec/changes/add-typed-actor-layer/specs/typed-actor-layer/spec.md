@@ -10,12 +10,17 @@ Typed Actor System MUST expose a root guardian Behavior and builder API that wir
 - **AND** ルートガーディアンが停止するとシステム全体が orderly shutdown する
 
 ### Requirement: TypedActorSystem Generic Boundary
-`TypedActorSystem<M>` MUST treat the type parameter `M` as the sole message type that the system-level guardian can receive, ensuring that spawn APIs enforce compatibility against `M` またはそのサブ型に限定されなければならない。
+`TypedActorSystem<M>` MUST treat the type parameter `M` as the唯一のメッセージ型として root guardian が受信できるようにし、root で生成される Behavior は常に `Behavior<M>` に限定されなければならない。Rust には継承サブタイプが存在しないため、「互換性」は `Behavior` のメッセージ型が `M` と完全一致する場合のみ成立すると定義する。Context 経由の spawn は root 境界に縛られず、`Behavior<N>` を自由に生成できることを明示しなければならない。
 
-#### Scenario: 不整合メッセージ型のスパウン拒否
+#### Scenario: 不整合メッセージ型のルートスパウン拒否
 - **GIVEN** `TypedActorSystem<OrderCommand>` と `Behavior<InventoryCommand>` がある
 - **WHEN** 利用者がこのシステムで `Behavior<InventoryCommand>` を `spawn_root` しようとする
-- **THEN** 型不一致としてビルドエラーが発生し、`OrderCommand` 互換 Behavior 以外は受け入れられない
+- **THEN** 型不一致としてビルドエラーが発生し、`Behavior<OrderCommand>` 以外は受け入れられない
+
+#### Scenario: Context 経由で異なるプロトコルを生成できる
+- **GIVEN** `TypedActorContext<OrderCommand>` を持つ親アクターと `Behavior<InventoryCommand>` がある
+- **WHEN** 親が `ctx.spawn("inventory", behavior)` を呼び出す
+- **THEN** 生成された子は `TypedActorRef<InventoryCommand>` を返し、親はこの参照を保持して `InventoryCommand` をそのまま送信できる
 
 ### Requirement: Typed Spawn API
 Typed レイヤー MUST offer `spawn(behavior: Behavior<M>, opts: SpawnOpts)` など Behavior を直接受け取る API を提供し、untyped の `spawn(props: Props, …)` を置き換える形で Document 化されなければならない。また `SpawnOpts` MUST expose mailbox 設定（`MailboxConfig` 等）や dispatcher/supervisor など Props 相当の構成を受け渡せなければならない。
