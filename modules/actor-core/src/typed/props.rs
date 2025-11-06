@@ -7,7 +7,9 @@ use cellactor_utils_core_rs::sync::NoStdToolbox;
 use crate::{
   RuntimeToolbox,
   props::PropsGeneric,
-  typed::{actor_prim::TypedActor, typed_actor_adapter::TypedActorAdapter},
+  typed::{
+    actor_prim::TypedActor, behavior::Behavior, behavior_runner::BehaviorRunner, typed_actor_adapter::TypedActorAdapter,
+  },
 };
 
 /// Describes how to construct a typed actor for message `M`.
@@ -44,6 +46,18 @@ where
     F: Fn() -> A + Send + Sync + 'static,
     A: TypedActor<M, TB> + 'static, {
     let props = PropsGeneric::from_fn(move || TypedActorAdapter::<M, TB>::new(factory()));
+    Self { props, marker: PhantomData }
+  }
+
+  /// Builds props from a typed behavior factory.
+  #[must_use]
+  pub fn from_behavior_factory<F>(factory: F) -> Self
+  where
+    F: Fn() -> Behavior<M, TB> + Send + Sync + 'static, {
+    let props = PropsGeneric::from_fn(move || {
+      let behavior = factory();
+      TypedActorAdapter::<M, TB>::new(BehaviorRunner::new(behavior))
+    });
     Self { props, marker: PhantomData }
   }
 

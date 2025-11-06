@@ -120,6 +120,12 @@ where
     Ok(TypedChildRefGeneric::from_untyped(child))
   }
 
+  /// Returns a future that resolves once the actor system terminates.
+  #[must_use]
+  pub fn when_terminated(&self) -> ArcShared<ActorFuture<(), TB>> {
+    self.inner.when_terminated()
+  }
+
   /// Sends a stop signal to the user guardian and initiates system shutdown.
   ///
   /// # Errors
