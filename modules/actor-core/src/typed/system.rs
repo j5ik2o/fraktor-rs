@@ -1,0 +1,136 @@
+//! Typed actor system wrapper.
+
+use alloc::{string::String, vec::Vec};
+use core::marker::PhantomData;
+
+use cellactor_utils_core_rs::sync::{ArcShared, NoStdToolbox};
+
+use crate::{
+  RuntimeToolbox,
+  dead_letter::DeadLetterEntryGeneric,
+  error::SendError,
+  event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric},
+  futures::ActorFuture,
+  logging::LogLevel,
+  messaging::AnyMessageGeneric,
+  spawn::SpawnError,
+  system::{ActorSystemGeneric, SystemStateGeneric},
+  typed::{
+    actor_prim::{TypedActorRefGeneric, TypedChildRefGeneric},
+    behavior::BehaviorGeneric,
+  },
+};
+
+/// Actor system facade that enforces a message type `M` at the API boundary.
+pub struct TypedActorSystemGeneric<TB, M>
+where
+  TB: RuntimeToolbox + 'static,
+  M: Send + Sync + 'static, {
+  inner:  ActorSystemGeneric<TB>,
+  marker: PhantomData<M>,
+}
+
+/// Type alias for [TypedActorSystemGeneric] with the default [NoStdToolbox].
+pub type TypedActorSystem<M> = TypedActorSystemGeneric<NoStdToolbox, M>;
+
+impl<TB, M> TypedActorSystemGeneric<TB, M>
+where
+  TB: RuntimeToolbox + 'static,
+  M: Send + Sync + 'static,
+{
+  /// Creates a new typed actor system using the supplied guardian behavior.
+  pub fn new(guardian: &BehaviorGeneric<TB, M>) -> Result<Self, SpawnError> {
+    Ok(Self { inner: ActorSystemGeneric::new(guardian.props())?, marker: PhantomData })
+  }
+
+  /// Returns the typed user guardian reference.
+  #[must_use]
+  pub fn user_guardian_ref(&self) -> TypedActorRefGeneric<TB, M> {
+    TypedActorRefGeneric::from_untyped(self.inner.user_guardian_ref())
+  }
+
+  /// Returns the untyped system for advanced scenarios.
+  #[must_use]
+  pub fn as_untyped(&self) -> &ActorSystemGeneric<TB> {
+    &self.inner
+  }
+
+  /// Consumes the typed wrapper and returns the untyped system.
+  #[must_use]
+  pub fn into_untyped(self) -> ActorSystemGeneric<TB> {
+    self.inner
+  }
+
+  /// Returns the shared system state handle.
+  #[must_use]
+  pub fn state(&self) -> ArcShared<SystemStateGeneric<TB>> {
+    self.inner.state()
+  }
+
+  /// Allocates a new pid (testing helper).
+  #[must_use]
+  pub fn allocate_pid(&self) -> crate::actor_prim::Pid {
+    self.inner.allocate_pid()
+  }
+
+  /// Returns the shared event stream handle.
+  #[must_use]
+  pub fn event_stream(&self) -> ArcShared<EventStreamGeneric<TB>> {
+    self.inner.event_stream()
+  }
+
+  /// Subscribes the provided observer to the event stream.
+  #[must_use]
+  pub fn subscribe_event_stream(
+    &self,
+    subscriber: &ArcShared<dyn EventStreamSubscriber<TB>>,
+  ) -> EventStreamSubscriptionGeneric<TB> {
+    self.inner.subscribe_event_stream(subscriber)
+  }
+
+  /// Returns a snapshot of recorded dead letters.
+  #[must_use]
+  pub fn dead_letters(&self) -> Vec<DeadLetterEntryGeneric<TB>> {
+    self.inner.dead_letters()
+  }
+
+  /// Emits a log event with the specified severity.
+  pub fn emit_log(&self, level: LogLevel, message: impl Into<String>, origin: Option<crate::actor_prim::Pid>) {
+    self.inner.emit_log(level, message, origin)
+  }
+
+  /// Publishes a raw event to the event stream.
+  pub fn publish_event(&self, event: &EventStreamEvent<TB>) {
+    self.inner.publish_event(event)
+  }
+
+  /// Spawns a new top-level actor under the user guardian.
+  #[allow(dead_code)]
+  pub(crate) fn spawn<C>(&self, behavior: &BehaviorGeneric<TB, C>) -> Result<TypedChildRefGeneric<TB, C>, SpawnError>
+  where
+    C: Send + Sync + 'static, {
+    let child = self.inner.spawn(behavior.props())?;
+    Ok(TypedChildRefGeneric::from_untyped(child))
+  }
+
+  /// Sends a stop signal to the user guardian and initiates system shutdown.
+  pub fn terminate(&self) -> Result<(), SendError<TB>> {
+    self.inner.terminate()
+  }
+
+  /// Drains ask futures that have been fulfilled since the last check.
+  #[must_use]
+  pub fn drain_ready_ask_futures(&self) -> Vec<ArcShared<ActorFuture<AnyMessageGeneric<TB>, TB>>> {
+    self.inner.drain_ready_ask_futures()
+  }
+}
+
+impl<TB, M> Clone for TypedActorSystemGeneric<TB, M>
+where
+  TB: RuntimeToolbox + 'static,
+  M: Send + Sync + 'static,
+{
+  fn clone(&self) -> Self {
+    Self { inner: self.inner.clone(), marker: PhantomData }
+  }
+}

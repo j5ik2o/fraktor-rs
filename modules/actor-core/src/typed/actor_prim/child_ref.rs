@@ -1,0 +1,106 @@
+//! Typed child reference wrapper.
+
+use core::marker::PhantomData;
+
+use cellactor_utils_core_rs::sync::NoStdToolbox;
+
+use crate::{
+  RuntimeToolbox,
+  actor_prim::{ChildRefGeneric, Pid},
+  error::SendError,
+  messaging::{AnyMessageGeneric, AskResponseGeneric},
+  typed::actor_prim::actor_ref::TypedActorRefGeneric,
+};
+
+/// Wraps [`ChildRefGeneric`] and enforces message type `M`.
+pub struct TypedChildRefGeneric<TB, M>
+where
+  TB: RuntimeToolbox + 'static,
+  M: Send + Sync + 'static, {
+  inner:   ChildRefGeneric<TB>,
+  _marker: PhantomData<M>,
+}
+
+/// Type alias for [TypedChildRefGeneric] with the default [NoStdToolbox].
+pub type TypedChildRef<M> = TypedChildRefGeneric<NoStdToolbox, M>;
+
+impl<TB, M> TypedChildRefGeneric<TB, M>
+where
+  TB: RuntimeToolbox + 'static,
+  M: Send + Sync + 'static,
+{
+  /// Creates a typed wrapper from an untyped child reference.
+  #[must_use]
+  pub fn from_untyped(inner: ChildRefGeneric<TB>) -> Self {
+    Self { inner, _marker: PhantomData }
+  }
+
+  /// Returns the pid of the child actor.
+  #[must_use]
+  pub fn pid(&self) -> Pid {
+    self.inner.pid()
+  }
+
+  /// Returns the typed actor reference for the child.
+  #[must_use]
+  pub fn actor_ref(&self) -> TypedActorRefGeneric<TB, M> {
+    TypedActorRefGeneric::from_untyped(self.inner.actor_ref().clone())
+  }
+
+  /// Sends a typed message to the child.
+  pub fn tell(&self, message: M) -> Result<(), SendError<TB>> {
+    self.inner.tell(AnyMessageGeneric::new(message))
+  }
+
+  /// Sends a typed request to the child actor.
+  pub fn ask(&self, message: M) -> Result<AskResponseGeneric<TB>, SendError<TB>> {
+    self.inner.ask(AnyMessageGeneric::new(message))
+  }
+
+  /// Stops the child actor.
+  pub fn stop(&self) -> Result<(), SendError<TB>> {
+    self.inner.stop()
+  }
+
+  /// Suspends the child actor.
+  pub fn suspend(&self) -> Result<(), SendError<TB>> {
+    self.inner.suspend()
+  }
+
+  /// Resumes the child actor.
+  pub fn resume(&self) -> Result<(), SendError<TB>> {
+    self.inner.resume()
+  }
+
+  /// Exposes the untyped handle when necessary.
+  #[must_use]
+  pub fn as_untyped(&self) -> &ChildRefGeneric<TB> {
+    &self.inner
+  }
+
+  /// Consumes the wrapper and returns the untyped child reference.
+  #[must_use]
+  pub fn into_untyped(self) -> ChildRefGeneric<TB> {
+    self.inner
+  }
+}
+
+impl<TB, M> Clone for TypedChildRefGeneric<TB, M>
+where
+  TB: RuntimeToolbox + 'static,
+  M: Send + Sync + 'static,
+{
+  fn clone(&self) -> Self {
+    Self { inner: self.inner.clone(), _marker: PhantomData }
+  }
+}
+
+impl<TB, M> core::fmt::Debug for TypedChildRefGeneric<TB, M>
+where
+  TB: RuntimeToolbox + 'static,
+  M: Send + Sync + 'static,
+{
+  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    f.debug_struct("TypedChildRefGeneric").field("pid", &self.pid()).finish()
+  }
+}

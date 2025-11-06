@@ -77,3 +77,4 @@ pub mod props;
 pub mod spawn;
 pub mod supervision;
 pub mod system;
+pub mod typed;
