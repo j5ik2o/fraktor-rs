@@ -44,3 +44,7 @@ path = "examples/behaviors_setup_receive_std/main.rs"
 [[example]]
 name = "behaviors_unhandled"
 path = "examples/behaviors_unhandled_std/main.rs"
+
+[[example]]
+name = "behaviors_empty"
+path = "examples/behaviors_empty_std/main.rs"

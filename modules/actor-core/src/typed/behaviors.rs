@@ -53,6 +53,26 @@ impl Behaviors {
     Behavior::unhandled()
   }
 
+  /// Returns a behavior that treats every incoming message as unhandled.
+  ///
+  /// This is useful when the actor has reached a state where no more messages are expected,
+  /// but the actor has not yet stopped. For example, when waiting for all spawned child
+  /// actors to terminate before stopping.
+  ///
+  /// Unlike `ignore()`, which silently drops messages without logging, `empty()` will
+  /// emit an `UnhandledMessage` event to the event stream for every received message,
+  /// allowing monitoring and debugging of unexpected messages.
+  ///
+  /// Unlike `unhandled()`, which reverts to the previous behavior, `empty()` maintains
+  /// the empty state indefinitely until explicitly changed.
+  #[must_use]
+  pub const fn empty<M, TB>() -> Behavior<M, TB>
+  where
+    M: Send + Sync + 'static,
+    TB: RuntimeToolbox + 'static, {
+    Behavior::empty()
+  }
+
   /// Defers behavior creation until the actor is started, allowing access to the context.
   pub fn setup<M, TB, F>(factory: F) -> Behavior<M, TB>
   where

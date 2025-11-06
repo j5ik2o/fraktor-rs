@@ -51,6 +51,16 @@ where
         system.event_stream().publish(&EventStreamEvent::UnhandledMessage(event));
         Ok(())
       },
+      | BehaviorDirective::Empty => {
+        // Empty behavior: treat as unhandled and emit event, then keep empty behavior
+        let system = ctx.system();
+        let timestamp = system.state().monotonic_now();
+        let message_type = core::any::type_name::<M>().to_string();
+        let event = UnhandledMessageEvent::new(ctx.pid(), message_type, timestamp);
+        system.event_stream().publish(&EventStreamEvent::UnhandledMessage(event));
+        self.current = Behavior::empty();
+        Ok(())
+      },
       | BehaviorDirective::Stopped => {
         if !self.stopping {
           ctx.stop_self().map_err(|error| ActorError::from_send_error(&error))?;
