@@ -37,7 +37,7 @@ where
     next: Behavior<M, TB>,
   ) -> Result<(), ActorError> {
     match next.directive() {
-      | BehaviorDirective::Same => Ok(()),
+      | BehaviorDirective::Same | BehaviorDirective::Ignore => Ok(()),
       | BehaviorDirective::Stopped => {
         if !self.stopping {
           ctx.stop_self().map_err(|error| ActorError::from_send_error(&error))?;
@@ -46,7 +46,7 @@ where
         self.current = Behavior::stopped();
         Ok(())
       },
-      | BehaviorDirective::Ignore | BehaviorDirective::Active => {
+      | BehaviorDirective::Active => {
         self.current = next;
         Ok(())
       },

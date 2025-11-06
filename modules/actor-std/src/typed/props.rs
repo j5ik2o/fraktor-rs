@@ -1,10 +1,18 @@
-use crate::props::Props;
-use crate::typed::actor_prim::{TypedActor, TypedActorAdapter};
-use crate::typed::Behavior;
 use cellactor_actor_core_rs::typed::TypedPropsGeneric as CoreTypedPropsGeneric;
 use cellactor_utils_std_rs::runtime_toolbox::StdToolbox;
 
-pub struct TypedProps<M> where M: Send + Sync + 'static {
+use crate::{
+  props::Props,
+  typed::{
+    Behavior,
+    actor_prim::{TypedActor, TypedActorAdapter},
+  },
+};
+
+/// Builder for typed actors and behaviors running on the standard runtime toolbox.
+pub struct TypedProps<M>
+where
+  M: Send + Sync + 'static, {
   inner: CoreTypedPropsGeneric<M, StdToolbox>,
 }
 
@@ -17,7 +25,10 @@ where
   }
 }
 
-impl<M> TypedProps<M> where M: Send + Sync + 'static {
+impl<M> TypedProps<M>
+where
+  M: Send + Sync + 'static,
+{
   /// Builds props from a typed actor factory.
   #[must_use]
   pub fn new<F, A>(factory: F) -> Self
@@ -53,17 +64,18 @@ impl<M> TypedProps<M> where M: Send + Sync + 'static {
     Self { inner }
   }
 
-
+  /// Adopts already constructed core typed props that use the standard toolbox.
   pub fn from_core(props: CoreTypedPropsGeneric<M, StdToolbox>) -> Self {
     Self { inner: props }
   }
 
+  /// Returns the underlying core representation for advanced configuration.
   pub fn as_core(&self) -> &CoreTypedPropsGeneric<M, StdToolbox> {
     &self.inner
   }
 
+  /// Consumes the wrapper and yields the core props value.
   pub fn into_core(self) -> CoreTypedPropsGeneric<M, StdToolbox> {
     self.inner
   }
-
 }

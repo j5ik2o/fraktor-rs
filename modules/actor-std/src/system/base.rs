@@ -7,7 +7,7 @@ use cellactor_actor_core_rs::{
 };
 use cellactor_utils_core_rs::sync::ArcShared;
 use cellactor_utils_std_rs::runtime_toolbox::StdToolbox;
-use event_stream::subscriber_adapter::EventStreamSubscriberAdapter;
+use event_stream::EventStreamSubscriberAdapter;
 
 pub use crate::dispatcher::{DispatchExecutor, DispatchShared, Dispatcher, DispatcherConfig};
 use crate::{

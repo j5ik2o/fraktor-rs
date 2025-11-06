@@ -39,6 +39,7 @@ where
   TB: RuntimeToolbox + 'static,
 {
   /// Creates an empty actor system without any guardian (testing only).
+  #[must_use]
   pub fn new_empty() -> Self {
     Self { inner: ActorSystemGeneric::new_empty(), marker: PhantomData }
   }

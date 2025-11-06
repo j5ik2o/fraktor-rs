@@ -1,19 +1,21 @@
-use cellactor_actor_core_rs::typed::actor_prim::TypedActorContextGeneric as CoreTypedActorContextGeneric;
-use cellactor_actor_core_rs::actor_prim::Pid;
-use cellactor_actor_core_rs::error::SendError;
-use cellactor_actor_core_rs::spawn::SpawnError;
-use cellactor_actor_core_rs::system::ActorSystemGeneric;
-use cellactor_utils_std_rs::runtime_toolbox::StdToolbox;
-use crate::typed::actor_prim::{TypedActorRef, TypedChildRef};
-use crate::typed::TypedProps;
 use std::ops::{Deref, DerefMut};
+
+use cellactor_actor_core_rs::{
+  actor_prim::Pid, error::SendError, spawn::SpawnError, system::ActorSystemGeneric,
+  typed::actor_prim::TypedActorContextGeneric as CoreTypedActorContextGeneric,
+};
+use cellactor_utils_std_rs::runtime_toolbox::StdToolbox;
+
+use crate::typed::{
+  TypedProps,
+  actor_prim::{TypedActorRef, TypedChildRef},
+};
 
 /// Typed actor context wrapper for StdToolbox.
 #[repr(transparent)]
 pub struct TypedActorContext<'a, M>
 where
-  M: Send + Sync + 'static,
-{
+  M: Send + Sync + 'static, {
   inner: CoreTypedActorContextGeneric<'a, M, StdToolbox>,
 }
 
@@ -21,22 +23,6 @@ impl<'a, M> TypedActorContext<'a, M>
 where
   M: Send + Sync + 'static,
 {
-  /// Creates a typed context from the core typed context.
-  pub(crate) fn from_core(inner: CoreTypedActorContextGeneric<'a, M, StdToolbox>) -> Self {
-    Self { inner }
-  }
-
-  /// Converts a mutable reference to core context into a mutable reference to wrapped context.
-  ///
-  /// # Safety
-  /// This is safe because TypedActorContext is a transparent wrapper around CoreTypedActorContextGeneric.
-  pub(crate) fn from_core_ref_mut<'b>(inner: &'b mut CoreTypedActorContextGeneric<'b, M, StdToolbox>) -> &'b mut TypedActorContext<'b, M> {
-    // SAFETY: TypedActorContext is #[repr(transparent)] over CoreTypedActorContextGeneric
-    unsafe {
-      &mut *(inner as *mut CoreTypedActorContextGeneric<'b, M, StdToolbox> as *mut TypedActorContext<'b, M>)
-    }
-  }
-
   /// Returns the actor pid.
   #[must_use]
   pub const fn pid(&self) -> Pid {
@@ -71,10 +57,7 @@ where
   /// # Errors
   ///
   /// Returns an error if the child actor cannot be spawned.
-  pub fn spawn_child<C>(
-    &self,
-    typed_props: &TypedProps<C>,
-  ) -> Result<TypedChildRef<C>, SpawnError>
+  pub fn spawn_child<C>(&self, typed_props: &TypedProps<C>) -> Result<TypedChildRef<C>, SpawnError>
   where
     C: Send + Sync + 'static, {
     let child = self.inner.spawn_child(typed_props.as_core())?;
@@ -86,10 +69,7 @@ where
   /// # Errors
   ///
   /// Returns an error if the child actor cannot be spawned or watched.
-  pub fn spawn_child_watched<C>(
-    &self,
-    typed_props: &TypedProps<C>,
-  ) -> Result<TypedChildRef<C>, SpawnError>
+  pub fn spawn_child_watched<C>(&self, typed_props: &TypedProps<C>) -> Result<TypedChildRef<C>, SpawnError>
   where
     C: Send + Sync + 'static, {
     let child = self.inner.spawn_child_watched(typed_props.as_core())?;
