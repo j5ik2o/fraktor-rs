@@ -7,9 +7,8 @@ use cellactor_utils_core_rs::sync::NoStdToolbox;
 use crate::{
   RuntimeToolbox,
   props::PropsGeneric,
-  typed::{behavior_adapter::TypedActorAdapter},
+  typed::{actor_prim::TypedActor, behavior_adapter::TypedActorAdapter},
 };
-use crate::typed::actor_prim::TypedActor;
 
 /// Describes how to construct a typed actor for message `M`.
 pub struct BehaviorGeneric<TB, M>
@@ -59,13 +58,13 @@ where
 
   /// Wraps existing props after applying an external typed conversion.
   #[must_use]
-  pub fn from_props(props: PropsGeneric<TB>) -> Self {
+  pub const fn from_props(props: PropsGeneric<TB>) -> Self {
     Self { props, marker: PhantomData }
   }
 
   /// Returns the underlying props.
   #[must_use]
-  pub fn props(&self) -> &PropsGeneric<TB> {
+  pub const fn props(&self) -> &PropsGeneric<TB> {
     &self.props
   }
 

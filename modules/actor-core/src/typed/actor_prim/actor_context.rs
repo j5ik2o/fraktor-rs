@@ -38,19 +38,19 @@ where
     Self { inner: NonNull::from(inner), _marker: PhantomData }
   }
 
-  fn inner(&self) -> &ActorContextGeneric<'a, TB> {
+  const fn inner(&self) -> &ActorContextGeneric<'a, TB> {
     // SAFETY: `inner` always points to a valid context for lifetime `'a`.
     unsafe { self.inner.as_ref() }
   }
 
-  fn inner_mut(&mut self) -> &mut ActorContextGeneric<'a, TB> {
+  const fn inner_mut(&mut self) -> &mut ActorContextGeneric<'a, TB> {
     // SAFETY: The runtime guarantees exclusive access while executing actor code.
     unsafe { self.inner.as_mut() }
   }
 
   /// Returns the actor pid.
   #[must_use]
-  pub fn pid(&self) -> Pid {
+  pub const fn pid(&self) -> Pid {
     self.inner().pid()
   }
 
@@ -67,6 +67,10 @@ where
   }
 
   /// Sends a reply to the original sender.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the sender is unavailable or the message cannot be delivered.
   pub fn reply<R>(&self, message: R) -> Result<(), SendError<TB>>
   where
     R: Send + Sync + 'static, {
@@ -74,6 +78,10 @@ where
   }
 
   /// Spawns a typed child actor using the provided behavior.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the child actor cannot be spawned.
   pub fn spawn_child<C>(&self, behavior: &BehaviorGeneric<TB, C>) -> Result<TypedChildRefGeneric<TB, C>, SpawnError>
   where
     C: Send + Sync + 'static, {
@@ -82,6 +90,10 @@ where
   }
 
   /// Spawns a typed child actor and automatically watches it.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the child actor cannot be spawned or watched.
   pub fn spawn_child_watched<C>(
     &self,
     behavior: &BehaviorGeneric<TB, C>,
@@ -93,6 +105,10 @@ where
   }
 
   /// Watches the provided typed target.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the watch operation cannot be performed.
   pub fn watch<C>(&self, target: &TypedActorRefGeneric<TB, C>) -> Result<(), SendError<TB>>
   where
     C: Send + Sync + 'static, {
@@ -100,6 +116,10 @@ where
   }
 
   /// Stops watching the provided typed target.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the unwatch operation cannot be performed.
   pub fn unwatch<C>(&self, target: &TypedActorRefGeneric<TB, C>) -> Result<(), SendError<TB>>
   where
     C: Send + Sync + 'static, {
@@ -107,12 +127,16 @@ where
   }
 
   /// Stops the running actor.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the stop signal cannot be sent.
   pub fn stop_self(&self) -> Result<(), SendError<TB>> {
     self.inner().stop_self()
   }
 
   /// Provides mutable access to the underlying untyped context.
-  pub fn as_untyped_mut(&mut self) -> &mut ActorContextGeneric<'a, TB> {
+  pub const fn as_untyped_mut(&mut self) -> &mut ActorContextGeneric<'a, TB> {
     self.inner_mut()
   }
 }

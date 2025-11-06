@@ -7,9 +7,8 @@ use crate::{
   actor_prim::{Actor, ActorContextGeneric},
   error::{ActorError, ActorErrorReason},
   messaging::AnyMessageView,
-  typed::actor_prim::{TypedActorContextGeneric},
+  typed::actor_prim::{TypedActor, TypedActorContextGeneric},
 };
-use crate::typed::actor_prim::TypedActor;
 
 const DOWNCAST_FAILED: &str = "typed actor received unexpected message";
 

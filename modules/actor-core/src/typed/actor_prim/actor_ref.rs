@@ -30,13 +30,13 @@ where
 {
   /// Wraps an untyped actor reference.
   #[must_use]
-  pub fn from_untyped(inner: ActorRefGeneric<TB>) -> Self {
+  pub const fn from_untyped(inner: ActorRefGeneric<TB>) -> Self {
     Self { inner, _marker: PhantomData }
   }
 
   /// Returns the underlying untyped reference.
   #[must_use]
-  pub fn as_untyped(&self) -> &ActorRefGeneric<TB> {
+  pub const fn as_untyped(&self) -> &ActorRefGeneric<TB> {
     &self.inner
   }
 
@@ -48,16 +48,24 @@ where
 
   /// Returns the actor pid.
   #[must_use]
-  pub fn pid(&self) -> Pid {
+  pub const fn pid(&self) -> Pid {
     self.inner.pid()
   }
 
   /// Sends a typed message to the actor.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the message cannot be delivered.
   pub fn tell(&self, message: M) -> Result<(), SendError<TB>> {
     self.inner.tell(AnyMessageGeneric::new(message))
   }
 
   /// Sends a typed request and obtains the ask response.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the request cannot be sent.
   pub fn ask(&self, message: M) -> Result<AskResponseGeneric<TB>, SendError<TB>> {
     self.inner.ask(AnyMessageGeneric::new(message))
   }

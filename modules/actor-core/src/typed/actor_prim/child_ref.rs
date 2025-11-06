@@ -31,13 +31,13 @@ where
 {
   /// Creates a typed wrapper from an untyped child reference.
   #[must_use]
-  pub fn from_untyped(inner: ChildRefGeneric<TB>) -> Self {
+  pub const fn from_untyped(inner: ChildRefGeneric<TB>) -> Self {
     Self { inner, _marker: PhantomData }
   }
 
   /// Returns the pid of the child actor.
   #[must_use]
-  pub fn pid(&self) -> Pid {
+  pub const fn pid(&self) -> Pid {
     self.inner.pid()
   }
 
@@ -48,33 +48,53 @@ where
   }
 
   /// Sends a typed message to the child.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the message cannot be delivered.
   pub fn tell(&self, message: M) -> Result<(), SendError<TB>> {
     self.inner.tell(AnyMessageGeneric::new(message))
   }
 
   /// Sends a typed request to the child actor.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the request cannot be sent.
   pub fn ask(&self, message: M) -> Result<AskResponseGeneric<TB>, SendError<TB>> {
     self.inner.ask(AnyMessageGeneric::new(message))
   }
 
   /// Stops the child actor.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the stop signal cannot be sent.
   pub fn stop(&self) -> Result<(), SendError<TB>> {
     self.inner.stop()
   }
 
   /// Suspends the child actor.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the suspend signal cannot be sent.
   pub fn suspend(&self) -> Result<(), SendError<TB>> {
     self.inner.suspend()
   }
 
   /// Resumes the child actor.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the resume signal cannot be sent.
   pub fn resume(&self) -> Result<(), SendError<TB>> {
     self.inner.resume()
   }
 
   /// Exposes the untyped handle when necessary.
   #[must_use]
-  pub fn as_untyped(&self) -> &ChildRefGeneric<TB> {
+  pub const fn as_untyped(&self) -> &ChildRefGeneric<TB> {
     &self.inner
   }
 

@@ -39,6 +39,10 @@ where
   M: Send + Sync + 'static,
 {
   /// Creates a new typed actor system using the supplied guardian behavior.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the guardian actor cannot be spawned.
   pub fn new(guardian: &BehaviorGeneric<TB, M>) -> Result<Self, SpawnError> {
     Ok(Self { inner: ActorSystemGeneric::new(guardian.props())?, marker: PhantomData })
   }
@@ -51,7 +55,7 @@ where
 
   /// Returns the untyped system for advanced scenarios.
   #[must_use]
-  pub fn as_untyped(&self) -> &ActorSystemGeneric<TB> {
+  pub const fn as_untyped(&self) -> &ActorSystemGeneric<TB> {
     &self.inner
   }
 
@@ -114,6 +118,10 @@ where
   }
 
   /// Sends a stop signal to the user guardian and initiates system shutdown.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the terminate signal cannot be sent.
   pub fn terminate(&self) -> Result<(), SendError<TB>> {
     self.inner.terminate()
   }
