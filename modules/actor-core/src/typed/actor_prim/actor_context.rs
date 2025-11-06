@@ -10,6 +10,7 @@ use crate::{
   error::SendError,
   messaging::AnyMessageGeneric,
   spawn::SpawnError,
+  system::ActorSystemGeneric,
   typed::{
     actor_prim::{actor_ref::TypedActorRefGeneric, child_ref::TypedChildRefGeneric},
     props::TypedPropsGeneric,
@@ -56,7 +57,7 @@ where
 
   /// Returns the underlying actor system handle.
   #[must_use]
-  pub fn system(&self) -> crate::system::ActorSystemGeneric<TB> {
+  pub fn system(&self) -> ActorSystemGeneric<TB> {
     self.inner().system().clone()
   }
 

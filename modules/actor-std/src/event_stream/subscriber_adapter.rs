@@ -4,12 +4,12 @@ use cellactor_utils_std_rs::runtime_toolbox::StdToolbox;
 
 use super::{EventStreamEvent, EventStreamSubscriber};
 
-pub(super) struct EventStreamSubscriberAdapter {
+pub(crate) struct EventStreamSubscriberAdapter {
   inner: ArcShared<dyn EventStreamSubscriber>,
 }
 
 impl EventStreamSubscriberAdapter {
-  pub(super) const fn new(inner: ArcShared<dyn EventStreamSubscriber>) -> Self {
+  pub(crate) const fn new(inner: ArcShared<dyn EventStreamSubscriber>) -> Self {
     Self { inner }
   }
 }

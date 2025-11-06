@@ -3,7 +3,7 @@
 use crate::{
   NoStdToolbox, RuntimeToolbox,
   messaging::AskResponseGeneric,
-  typed::{actor_prim::TypedActorRefGeneric, typed_ask_future::TypedAskFuture},
+  typed::{actor_prim::TypedActorRefGeneric, typed_ask_future::TypedAskFutureGeneric},
 };
 
 /// Associates the typed reply handle with the typed future.
@@ -12,7 +12,7 @@ where
   R: Send + Sync + 'static,
   TB: RuntimeToolbox + 'static, {
   reply_to: TypedActorRefGeneric<R, TB>,
-  future:   TypedAskFuture<R, TB>,
+  future:   TypedAskFutureGeneric<R, TB>,
 }
 
 /// Type alias with the default toolbox.
@@ -26,7 +26,7 @@ where
   pub(crate) fn from_generic(response: AskResponseGeneric<TB>) -> Self {
     let (reply_to, future) = response.into_parts();
     let reply_to = TypedActorRefGeneric::from_untyped(reply_to);
-    let future = TypedAskFuture::new(future);
+    let future = TypedAskFutureGeneric::new(future);
     Self { reply_to, future }
   }
 
@@ -38,13 +38,13 @@ where
 
   /// Returns the typed future handle tied to this ask response.
   #[must_use]
-  pub const fn future(&self) -> &TypedAskFuture<R, TB> {
+  pub const fn future(&self) -> &TypedAskFutureGeneric<R, TB> {
     &self.future
   }
 
   /// Decomposes the response into its raw parts.
   #[must_use]
-  pub fn into_parts(self) -> (TypedActorRefGeneric<R, TB>, TypedAskFuture<R, TB>) {
+  pub fn into_parts(self) -> (TypedActorRefGeneric<R, TB>, TypedAskFutureGeneric<R, TB>) {
     (self.reply_to, self.future)
   }
 }

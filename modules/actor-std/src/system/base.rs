@@ -1,23 +1,24 @@
 use cellactor_actor_core_rs::{
   actor_prim::Pid,
-  dead_letter::DeadLetterEntryGeneric,
+  event_stream::EventStreamSubscriber as CoreEventStreamSubscriber,
   logging::LogLevel,
   spawn::SpawnError,
   system::{ActorSystemGeneric as CoreActorSystemGeneric, SystemStateGeneric as CoreSystemStateGeneric},
 };
 use cellactor_utils_core_rs::sync::ArcShared;
 use cellactor_utils_std_rs::runtime_toolbox::StdToolbox;
+use event_stream::subscriber_adapter::EventStreamSubscriberAdapter;
 
 pub use crate::dispatcher::{DispatchExecutor, DispatchShared, Dispatcher, DispatcherConfig};
 use crate::{
   actor_prim::ActorRef,
+  dead_letter::DeadLetterEntry,
   error::SendError,
   event_stream::{self, EventStream, EventStreamEvent, EventStreamSubscriber, EventStreamSubscription},
   futures::ActorFuture,
   messaging::AnyMessage,
   props::Props,
 };
-
 /// Actor system specialised for `StdToolbox` with ergonomics for standard runtime consumers.
 pub struct ActorSystem {
   inner: CoreActorSystemGeneric<StdToolbox>,
@@ -47,6 +48,7 @@ impl ActorSystem {
 
   /// Borrows the underlying core actor system.
   #[must_use]
+  #[allow(dead_code)]
   pub(crate) const fn as_core(&self) -> &CoreActorSystemGeneric<StdToolbox> {
     &self.inner
   }
@@ -84,12 +86,14 @@ impl ActorSystem {
   /// Subscribes the provided observer to the event stream.
   #[must_use]
   pub fn subscribe_event_stream(&self, subscriber: &ArcShared<dyn EventStreamSubscriber>) -> EventStreamSubscription {
-    event_stream::subscribe(self, subscriber)
+    let adapter: ArcShared<dyn CoreEventStreamSubscriber<StdToolbox>> =
+      ArcShared::new(EventStreamSubscriberAdapter::new(subscriber.clone()));
+    self.inner.subscribe_event_stream(&adapter)
   }
 
   /// Returns a snapshot of recorded deadletters.
   #[must_use]
-  pub fn deadletters(&self) -> Vec<DeadLetterEntryGeneric<StdToolbox>> {
+  pub fn dead_letters(&self) -> Vec<DeadLetterEntry> {
     self.inner.dead_letters()
   }
 
