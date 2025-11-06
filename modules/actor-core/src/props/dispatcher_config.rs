@@ -2,7 +2,7 @@ use cellactor_utils_core_rs::sync::ArcShared;
 
 use crate::{
   NoStdToolbox, RuntimeToolbox,
-  dispatcher::{DispatchExecutor, DispatcherGeneric, InlineExecutor},
+  dispatcher::{DispatchExecutor, DispatcherGeneric, InlineExecutorGeneric},
   mailbox::MailboxGeneric,
 };
 
@@ -39,7 +39,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherConfigGeneric<TB> {
 
 impl<TB: RuntimeToolbox + 'static> Default for DispatcherConfigGeneric<TB> {
   fn default() -> Self {
-    Self::from_executor(ArcShared::new(InlineExecutor::<TB>::new()))
+    Self::from_executor(ArcShared::new(InlineExecutorGeneric::<TB>::new()))
   }
 }
 

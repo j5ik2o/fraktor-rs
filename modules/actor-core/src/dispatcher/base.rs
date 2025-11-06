@@ -4,7 +4,7 @@ use cellactor_utils_core_rs::sync::ArcShared;
 
 use super::{
   dispatch_executor::DispatchExecutor, dispatch_shared::DispatchSharedGeneric, dispatcher_core::DispatcherCore,
-  dispatcher_state::DispatcherState, inline_executor::InlineExecutor, schedule_waker::ScheduleWaker,
+  dispatcher_state::DispatcherState, inline_executor::InlineExecutorGeneric, schedule_waker::ScheduleWaker,
 };
 use crate::{
   NoStdToolbox, RuntimeToolbox,
@@ -36,7 +36,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherGeneric<TB> {
   /// Creates a dispatcher using an inline execution strategy.
   #[must_use]
   pub fn with_inline_executor(mailbox: ArcShared<MailboxGeneric<TB>>) -> Self {
-    Self::new(mailbox, ArcShared::new(InlineExecutor::<TB>::new()))
+    Self::new(mailbox, ArcShared::new(InlineExecutorGeneric::<TB>::new()))
   }
 
   /// Registers an invoker.

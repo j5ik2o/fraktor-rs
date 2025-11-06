@@ -10,7 +10,7 @@ use crate::{
 fn into_waker_creates_valid_waker() {
   let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
   let mailbox_shared = ArcShared::new(mailbox);
-  let executor = ArcShared::new(InlineExecutor::<NoStdToolbox>::new());
+  let executor = ArcShared::new(InlineExecutor::new());
   let core = DispatcherCore::new(mailbox_shared, executor, None);
   let core_shared = ArcShared::new(core);
 
@@ -23,7 +23,7 @@ fn into_waker_creates_valid_waker() {
 fn waker_wake_schedules_dispatcher() {
   let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
   let mailbox_shared = ArcShared::new(mailbox);
-  let executor = ArcShared::new(InlineExecutor::<NoStdToolbox>::new());
+  let executor = ArcShared::new(InlineExecutor::new());
   let core = DispatcherCore::new(mailbox_shared, executor, None);
   let core_shared = ArcShared::new(core);
 
@@ -39,7 +39,7 @@ fn waker_wake_schedules_dispatcher() {
 fn waker_wake_by_ref_schedules_dispatcher() {
   let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
   let mailbox_shared = ArcShared::new(mailbox);
-  let executor = ArcShared::new(InlineExecutor::<NoStdToolbox>::new());
+  let executor = ArcShared::new(InlineExecutor::new());
   let core = DispatcherCore::new(mailbox_shared, executor, None);
   let core_shared = ArcShared::new(core);
 
@@ -55,7 +55,7 @@ fn waker_wake_by_ref_schedules_dispatcher() {
 fn waker_clone_creates_new_waker() {
   let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
   let mailbox_shared = ArcShared::new(mailbox);
-  let executor = ArcShared::new(InlineExecutor::<NoStdToolbox>::new());
+  let executor = ArcShared::new(InlineExecutor::new());
   let core = DispatcherCore::new(mailbox_shared, executor, None);
   let core_shared = ArcShared::new(core);
 
@@ -71,7 +71,7 @@ fn waker_clone_creates_new_waker() {
 fn waker_drop_cleans_up() {
   let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
   let mailbox_shared = ArcShared::new(mailbox);
-  let executor = ArcShared::new(InlineExecutor::<NoStdToolbox>::new());
+  let executor = ArcShared::new(InlineExecutor::new());
   let core = DispatcherCore::new(mailbox_shared, executor, None);
   let core_shared = ArcShared::new(core);
 
