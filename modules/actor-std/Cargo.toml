@@ -36,3 +36,11 @@ path = "examples/dead_letter_std/main.rs"
 [[example]]
 name = "named_actor"
 path = "examples/named_actor_std/main.rs"
+
+[[example]]
+name = "behaviors_setup_receive"
+path = "examples/behaviors_setup_receive_std/main.rs"
+
+[[example]]
+name = "behaviors_unhandled"
+path = "examples/behaviors_unhandled_std/main.rs"

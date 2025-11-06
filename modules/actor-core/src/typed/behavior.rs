@@ -31,6 +31,9 @@ pub(crate) enum BehaviorDirective {
   Ignore,
   /// Indicates that the provided handlers should be used as the new behavior.
   Active,
+  /// Indicates that the message was not handled. Runtime will reuse previous behavior
+  /// and emit an UnhandledMessage event for monitoring/debugging.
+  Unhandled,
 }
 
 type MessageHandler<M, TB> = Box<
@@ -58,6 +61,10 @@ where
 
   pub(crate) const fn ignore() -> Self {
     Self { directive: BehaviorDirective::Ignore, message_handler: None, signal_handler: None }
+  }
+
+  pub(crate) const fn unhandled() -> Self {
+    Self { directive: BehaviorDirective::Unhandled, message_handler: None, signal_handler: None }
   }
 
   pub(crate) fn from_message_handler<F>(handler: F) -> Self
@@ -101,6 +108,7 @@ where
       | BehaviorDirective::Same => Ok(Self::same()),
       | BehaviorDirective::Stopped => Ok(Self::stopped()),
       | BehaviorDirective::Ignore => Ok(Self::same()),
+      | BehaviorDirective::Unhandled => Ok(Self::unhandled()),
       | BehaviorDirective::Active => match &mut self.message_handler {
         | Some(handler) => handler(ctx, message),
         | None => Ok(Self::same()),
@@ -117,6 +125,7 @@ where
       | BehaviorDirective::Same => Ok(Self::same()),
       | BehaviorDirective::Stopped => Ok(Self::stopped()),
       | BehaviorDirective::Ignore => Ok(Self::same()),
+      | BehaviorDirective::Unhandled => Ok(Self::unhandled()),
       | BehaviorDirective::Active => match &mut self.signal_handler {
         | Some(handler) => handler(ctx, signal),
         | None => Ok(Self::same()),

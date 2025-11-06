@@ -37,6 +37,22 @@ impl Behaviors {
     Behavior::ignore()
   }
 
+  /// Returns a behavior that signals a message was not handled.
+  ///
+  /// This is used to advise the system to reuse the previous behavior, including the hint
+  /// that the message has not been handled. This hint may be used by composite behaviors
+  /// that delegate (partial) handling to other behaviors.
+  ///
+  /// Unlike `ignore()`, this will emit an `UnhandledMessage` event to the event stream
+  /// for monitoring and debugging purposes.
+  #[must_use]
+  pub const fn unhandled<M, TB>() -> Behavior<M, TB>
+  where
+    M: Send + Sync + 'static,
+    TB: RuntimeToolbox + 'static, {
+    Behavior::unhandled()
+  }
+
   /// Defers behavior creation until the actor is started, allowing access to the context.
   pub fn setup<M, TB, F>(factory: F) -> Behavior<M, TB>
   where
