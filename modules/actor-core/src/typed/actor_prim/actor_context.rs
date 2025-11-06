@@ -82,10 +82,13 @@ where
   /// # Errors
   ///
   /// Returns an error if the child actor cannot be spawned.
-  pub fn spawn_child<C>(&self, behavior: &TypedPropsGeneric<C, TB>) -> Result<TypedChildRefGeneric<C, TB>, SpawnError>
+  pub fn spawn_child<C>(
+    &self,
+    typed_props: &TypedPropsGeneric<C, TB>,
+  ) -> Result<TypedChildRefGeneric<C, TB>, SpawnError>
   where
     C: Send + Sync + 'static, {
-    let child = self.inner().spawn_child(behavior.props())?;
+    let child = self.inner().spawn_child(typed_props.props())?;
     Ok(TypedChildRefGeneric::from_untyped(child))
   }
 
@@ -96,11 +99,11 @@ where
   /// Returns an error if the child actor cannot be spawned or watched.
   pub fn spawn_child_watched<C>(
     &self,
-    behavior: &TypedPropsGeneric<C, TB>,
+    typed_props: &TypedPropsGeneric<C, TB>,
   ) -> Result<TypedChildRefGeneric<C, TB>, SpawnError>
   where
     C: Send + Sync + 'static, {
-    let child = self.inner().spawn_child_watched(behavior.props())?;
+    let child = self.inner().spawn_child_watched(typed_props.props())?;
     Ok(TypedChildRefGeneric::from_untyped(child))
   }
 

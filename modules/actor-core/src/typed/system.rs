@@ -112,11 +112,11 @@ where
   #[allow(dead_code)]
   pub(crate) fn spawn<C>(
     &self,
-    behavior: &TypedPropsGeneric<C, TB>,
+    typed_props: &TypedPropsGeneric<C, TB>,
   ) -> Result<TypedChildRefGeneric<C, TB>, SpawnError>
   where
     C: Send + Sync + 'static, {
-    let child = self.inner.spawn(behavior.props())?;
+    let child = self.inner.spawn(typed_props.props())?;
     Ok(TypedChildRefGeneric::from_untyped(child))
   }
 
