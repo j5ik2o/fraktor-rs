@@ -7,7 +7,7 @@ use cellactor_utils_core_rs::sync::NoStdToolbox;
 use crate::{
   RuntimeToolbox,
   props::PropsGeneric,
-  typed::{actor_prim::TypedActor, behavior_adapter::TypedActorAdapter},
+  typed::{actor_prim::TypedActor, typed_actor_adapter::TypedActorAdapter},
 };
 
 /// Describes how to construct a typed actor for message `M`.

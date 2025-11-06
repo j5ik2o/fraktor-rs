@@ -4,10 +4,10 @@
 pub mod actor_prim;
 /// Typed behavior builders that wrap untyped props.
 mod props;
-/// Internal adapter between typed and untyped actors.
-mod behavior_adapter;
 /// Typed actor system interface.
 mod system;
+/// Internal adapter between typed and untyped actors.
+mod typed_actor_adapter;
 
 pub use props::{TypedProps, TypedPropsGeneric};
 pub use system::{TypedActorSystem, TypedActorSystemGeneric};

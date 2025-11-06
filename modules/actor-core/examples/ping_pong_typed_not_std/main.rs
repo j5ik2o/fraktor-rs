@@ -7,7 +7,7 @@ use alloc::string::{String, ToString};
 use cellactor_actor_core_rs::{
   error::ActorError,
   typed::{
-    TypedProps, TypedActorSystem,
+    TypedActorSystem, TypedProps,
     actor_prim::{TypedActor, TypedActorContext, TypedActorRef},
   },
 };

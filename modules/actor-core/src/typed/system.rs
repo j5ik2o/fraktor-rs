@@ -110,7 +110,10 @@ where
 
   /// Spawns a new top-level actor under the user guardian.
   #[allow(dead_code)]
-  pub(crate) fn spawn<C>(&self, behavior: &TypedPropsGeneric<C, TB>) -> Result<TypedChildRefGeneric<C, TB>, SpawnError>
+  pub(crate) fn spawn<C>(
+    &self,
+    behavior: &TypedPropsGeneric<C, TB>,
+  ) -> Result<TypedChildRefGeneric<C, TB>, SpawnError>
   where
     C: Send + Sync + 'static, {
     let child = self.inner.spawn(behavior.props())?;

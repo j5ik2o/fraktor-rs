@@ -95,8 +95,8 @@ where
   ///
   /// Returns an error if the child actor cannot be spawned or watched.
   pub fn spawn_child_watched<C>(
-      &self,
-      behavior: &TypedPropsGeneric<C, TB>,
+    &self,
+    behavior: &TypedPropsGeneric<C, TB>,
   ) -> Result<TypedChildRefGeneric<C, TB>, SpawnError>
   where
     C: Send + Sync + 'static, {
