@@ -36,7 +36,7 @@ fn main() {
   // `cargo run --example behaviors_receive_signal` で実行し、シグナルログを確認する。
   let props = TypedProps::from_behavior_factory(guardian_behavior);
   let system = TypedActorSystem::new(&props).expect("system");
-  let termination = system.as_untyped().when_terminated();
+  let termination = system.when_terminated();
 
   let guardian = system.user_guardian_ref();
   guardian.tell(GuardianCommand::Start).expect("start");

@@ -43,7 +43,7 @@ fn main() {
   // `cargo run --example behaviors_setup_receive` で実行する
   let props = TypedProps::from_behavior_factory(guardian_behavior);
   let system = TypedActorSystem::new(&props).expect("system");
-  let termination = system.as_untyped().when_terminated();
+  let termination = system.when_terminated();
 
   system.user_guardian_ref().tell(GuardianCommand::Start).expect("start");
   system.terminate().expect("terminate");
