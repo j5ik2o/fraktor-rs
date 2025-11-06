@@ -38,13 +38,13 @@ TypedActorRef MUST restrict sending to a single message type `M`, and Envelope �
 - **WHEN** 利用者が `InventoryCommand` を `TypedActorRef<OrderCommand>` に送ろうとする
 - **THEN** コンパイルエラーまたは明示的なトランスレータが無い限りビルドに失敗する
 
-### Requirement: Message Adapters For Cross-Protocol Communication
-Typed レイヤー MUST require `MessageAdapter` 登録を通じて型の異なる TypedActorRef 間のやりとりを行い、直接互換性のないメッセージ型は変換またはラップされなければならない。
+### Requirement: Message Adapters For Incoming Protocol Alignment
+Typed レイヤー MUST provide `MessageAdapter` を通じて「自アクターが受信したい異なるプロトコル」を自プロトコルに合わせる手段を提供しなければならない。送信側は相手の `TypedActorRef<TheirCommand>` に直接メッセージを送信できる自由度を維持し、受信側が必要に応じて Adapter で変換・ラップする設計を必須とする。
 
-#### Scenario: Command から Event への変換
-- **GIVEN** `TypedActorRef<OrderCommand>` が `InventoryEvent` を発行するアクターとやり取りしたい
+#### Scenario: 異種イベント受信を自己プロトコルに写像
+- **GIVEN** `TypedActorRef<OrderCommand>` が `InventoryEvent` を発行するアクターからイベントを受信したい
 - **WHEN** `TypedActorContext` で `message_adapter::<InventoryEvent, OrderCommand>(...)` を登録する
-- **THEN** 受信した `InventoryEvent` が `OrderCommand::InventoryUpdated` などへ変換され、元の `OrderCommand` プロトコルで安全に処理できる
+- **THEN** 受信した `InventoryEvent` が `OrderCommand::InventoryUpdated` などへ変換され、`OrderCommand` プロトコルのまま処理できる一方、送信側は Adapter なしで `TypedActorRef<InventoryEvent>` に向けて送信できる
 
 ### Requirement: Behavior Lifecycle Contract
 Behavior MUST be modeled as a pure function that takes `TypedActorContext<M>` and returns `Behavior<M>`, かつ `Receive`, `Stopped`, `Same` などの明示的な戻り値で状態遷移を表現しなければならない。

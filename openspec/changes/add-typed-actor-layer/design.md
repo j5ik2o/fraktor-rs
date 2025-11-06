@@ -20,7 +20,8 @@ Typed Kernel は Untyped Layer の API を少数（spawn, stop, send, watch 等�
   - `fn root_behavior(&self) -> Behavior<M>`（もしくは builder 経由で設定）
   - `fn spawn_root(&self, behavior: Behavior<M>, opts: SpawnOpts) -> TypedActorRef<M>`
 - `spawn_root` 実装では Behavior を `Props` に変換し untyped `spawn` を呼ぶが、変換は Typed 側の DSL が担当。
-- サブツリー用に `TypedActorContext<M>::spawn<N>(&self, behavior: Behavior<N>, opts)` を定義し、`N` と `M` の整合チェックは Context 側で実施（`N: Into<M>` などの境界を検討）。
+- サブツリー用に `TypedActorContext<M>::spawn<N>(&self, behavior: Behavior<N>, opts)` を定義するが、`N` は自由型として取り扱い、親 `M` との整合は求めない。親は `TypedActorRef<N>` を受け取ってそのまま保持・送信でき、Pekko Typed / protoactor の like-for-like プロトコルを阻害しないようにする。
+- 型境界は `TypedActorSystem<M>` の root guardian だけに適用し、システム全体が受け入れる `M` を固定する。Context 経由の spawn では root とは独立したプロトコルが構築できることを明示し、cluster sharding や router の子アクターでも追加の変換を要求しない。
 
 ## 4. Behavior モデル
 - `Behavior<M>` は enum で `Receive(fn(&mut State, &TypedActorContext<M>, M) -> Behavior<M>)`, `Same`, `Stopped`, `Unhandled` を持つ設計を想定。
