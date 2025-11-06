@@ -43,7 +43,7 @@ where
   where
     F: Fn() -> A + Send + Sync + 'static,
     A: TypedActor<M, TB> + 'static, {
-    let props = PropsGeneric::from_fn(move || TypedActorAdapter::<TB, M>::new(factory()));
+    let props = PropsGeneric::from_fn(move || TypedActorAdapter::<M, TB>::new(factory()));
     Self { props, marker: PhantomData }
   }
 

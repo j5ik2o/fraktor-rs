@@ -13,17 +13,17 @@ use crate::{
 const DOWNCAST_FAILED: &str = "typed actor received unexpected message";
 
 /// Wraps a typed actor and exposes the untyped [`Actor`] interface.
-pub(crate) struct TypedActorAdapter<TB, M>
+pub(crate) struct TypedActorAdapter<M, TB>
 where
-  TB: RuntimeToolbox + 'static,
-  M: Send + Sync + 'static, {
+  M: Send + Sync + 'static,
+  TB: RuntimeToolbox + 'static, {
   actor: Box<dyn TypedActor<M, TB>>,
 }
 
-impl<TB, M> TypedActorAdapter<TB, M>
+impl<M, TB> TypedActorAdapter<M, TB>
 where
-  TB: RuntimeToolbox + 'static,
   M: Send + Sync + 'static,
+  TB: RuntimeToolbox + 'static,
 {
   /// Creates a new adapter from the provided typed actor.
   #[must_use]
@@ -34,10 +34,10 @@ where
   }
 }
 
-impl<TB, M> Actor<TB> for TypedActorAdapter<TB, M>
+impl<M, TB> Actor<TB> for TypedActorAdapter<M, TB>
 where
-  TB: RuntimeToolbox + 'static,
   M: Send + Sync + 'static,
+  TB: RuntimeToolbox + 'static,
 {
   fn pre_start(&mut self, ctx: &mut ActorContextGeneric<'_, TB>) -> Result<(), ActorError> {
     let mut typed_ctx = TypedActorContextGeneric::from_untyped(ctx);
