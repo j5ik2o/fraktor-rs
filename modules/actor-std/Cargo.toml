@@ -18,21 +18,21 @@ tokio = { workspace = true, optional = true, features = ["rt", "rt-multi-thread"
 
 [[example]]
 name = "ping_pong_tokio"
-path = "examples/ping_pong_tokio/main.rs"
+path = "examples/ping_pong_tokio_std/main.rs"
 required-features = ["tokio-executor"]
 
 [[example]]
 name = "logger_subscriber"
-path = "examples/logger_subscriber/main.rs"
+path = "examples/logger_subscriber_std/main.rs"
 
 [[example]]
 name = "supervision"
-path = "examples/supervision/main.rs"
+path = "examples/supervision_std/main.rs"
 
 [[example]]
 name = "deadletter"
-path = "examples/dead_letter/main.rs"
+path = "examples/dead_letter_std/main.rs"
 
 [[example]]
 name = "named_actor"
-path = "examples/named_actor/main.rs"
+path = "examples/named_actor_std/main.rs"
