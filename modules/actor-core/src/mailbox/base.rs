@@ -15,9 +15,9 @@ use cellactor_utils_core_rs::{
 };
 
 use super::{
-  MailboxOfferFuture, mailbox_enqueue_outcome::EnqueueOutcome, mailbox_instrumentation::MailboxInstrumentationGeneric,
-  mailbox_message::MailboxMessage, mailbox_poll_future::MailboxPollFuture, mailbox_queue_handles::QueueHandles,
-  map_system_queue_error, map_user_queue_error,
+  MailboxOfferFutureGeneric, MailboxPollFutureGeneric, mailbox_enqueue_outcome::EnqueueOutcome,
+  mailbox_instrumentation::MailboxInstrumentationGeneric, mailbox_message::MailboxMessage,
+  mailbox_queue_handles::QueueHandles, map_system_queue_error, map_user_queue_error,
 };
 use crate::{
   NoStdToolbox, RuntimeToolbox,
@@ -92,14 +92,14 @@ where
 
   /// Returns a future that resolves when the provided user message is enqueued.
   #[allow(dead_code)]
-  pub(crate) fn enqueue_user_future(&self, message: AnyMessageGeneric<TB>) -> MailboxOfferFuture<TB> {
-    MailboxOfferFuture::new(self.user.offer_blocking(message))
+  pub(crate) fn enqueue_user_future(&self, message: AnyMessageGeneric<TB>) -> MailboxOfferFutureGeneric<TB> {
+    MailboxOfferFutureGeneric::new(self.user.offer_blocking(message))
   }
 
   /// Returns a future that resolves when the next user message becomes available.
   #[allow(dead_code)]
-  pub(crate) fn poll_user_future(&self) -> MailboxPollFuture<TB> {
-    MailboxPollFuture::new(self.user.poll_blocking())
+  pub(crate) fn poll_user_future(&self) -> MailboxPollFutureGeneric<TB> {
+    MailboxPollFutureGeneric::new(self.user.poll_blocking())
   }
 
   /// Dequeues the next available message, prioritising system queue.
@@ -177,7 +177,7 @@ where
       | MailboxOverflowStrategy::Grow => self.offer_user(message),
       | MailboxOverflowStrategy::Block => {
         if self.user.consumer.len() >= capacity {
-          let future = MailboxOfferFuture::new(self.user.offer_blocking(message));
+          let future = MailboxOfferFutureGeneric::new(self.user.offer_blocking(message));
           return Ok(EnqueueOutcome::Pending(future));
         }
         self.offer_user(message)

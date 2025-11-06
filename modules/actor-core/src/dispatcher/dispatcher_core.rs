@@ -20,7 +20,7 @@ use super::{
 use crate::{
   RuntimeToolbox, ToolboxMutex,
   error::{ActorError, SendError},
-  mailbox::{EnqueueOutcome, MailboxGeneric, MailboxMessage, MailboxOfferFuture},
+  mailbox::{EnqueueOutcome, MailboxGeneric, MailboxMessage, MailboxOfferFutureGeneric},
   messaging::{AnyMessageGeneric, SystemMessage, message_invoker::MessageInvoker},
 };
 
@@ -159,7 +159,10 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
   }
 
   #[allow(dead_code)]
-  fn drain_offer_future(self_arc: &ArcShared<Self>, future: &mut MailboxOfferFuture<TB>) -> Result<(), SendError<TB>> {
+  fn drain_offer_future(
+    self_arc: &ArcShared<Self>,
+    future: &mut MailboxOfferFutureGeneric<TB>,
+  ) -> Result<(), SendError<TB>> {
     let waker = ScheduleWaker::<TB>::into_waker(self_arc.clone());
     let mut cx = Context::from_waker(&waker);
 

@@ -10,7 +10,7 @@ use crate::{
   RuntimeToolbox,
   actor_prim::actor_ref::ActorRefSender,
   error::SendError,
-  mailbox::{EnqueueOutcome, MailboxGeneric, MailboxOfferFuture},
+  mailbox::{EnqueueOutcome, MailboxGeneric, MailboxOfferFutureGeneric},
   messaging::AnyMessageGeneric,
 };
 
@@ -34,7 +34,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherSenderGeneric<TB> {
     Self { dispatcher, mailbox }
   }
 
-  fn poll_pending(&self, future: &mut MailboxOfferFuture<TB>) -> Result<(), SendError<TB>> {
+  fn poll_pending(&self, future: &mut MailboxOfferFutureGeneric<TB>) -> Result<(), SendError<TB>> {
     let waker = self.dispatcher.create_waker();
     let mut cx = Context::from_waker(&waker);
 
