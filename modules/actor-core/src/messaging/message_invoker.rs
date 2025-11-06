@@ -6,7 +6,7 @@ mod pipeline;
 
 pub use invoker_trait::MessageInvoker;
 pub use middleware::MessageInvokerMiddleware;
-pub use pipeline::MessageInvokerPipeline;
+pub use pipeline::{MessageInvokerPipeline, MessageInvokerPipelineGeneric};
 
 #[cfg(test)]
 mod tests;

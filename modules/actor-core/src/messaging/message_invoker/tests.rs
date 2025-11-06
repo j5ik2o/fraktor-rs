@@ -8,7 +8,7 @@ use super::{MessageInvokerMiddleware, MessageInvokerPipeline};
 use crate::{
   NoStdMutex, NoStdToolbox,
   actor_prim::{
-    Actor, ActorContextGeneric, ActorContext, Pid,
+    Actor, ActorContext, ActorContextGeneric, Pid,
     actor_ref::{ActorRef, ActorRefSender},
   },
   error::{ActorError, SendError},
@@ -124,7 +124,7 @@ fn pipeline_sets_and_clears_reply_to() {
   let pid = Pid::new(1, 0);
   let mut ctx = ActorContext::new(&system, pid);
   let mut actor = CaptureActor::new();
-  let pipeline = MessageInvokerPipeline::<NoStdToolbox>::new();
+  let pipeline = MessageInvokerPipeline::new();
 
   let reply_sender = ArcShared::new(RecordingSender);
   let reply_ref = ActorRef::new(Pid::new(2, 0), reply_sender);
@@ -143,7 +143,7 @@ fn pipeline_restores_previous_reply_target() {
   let pid = Pid::new(10, 0);
   let mut ctx = ActorContext::new(&system, pid);
   let mut actor = CaptureActor::new();
-  let pipeline = MessageInvokerPipeline::<NoStdToolbox>::new();
+  let pipeline = MessageInvokerPipeline::new();
 
   let previous_sender = ArcShared::new(RecordingSender);
   let previous_ref = ActorRef::new(Pid::new(3, 0), previous_sender);

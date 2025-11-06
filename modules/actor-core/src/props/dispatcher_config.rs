@@ -11,6 +11,9 @@ pub struct DispatcherConfigGeneric<TB: RuntimeToolbox + 'static> {
   executor: ArcShared<dyn DispatchExecutor<TB>>,
 }
 
+/// Type alias for [DispatcherConfigGeneric] with the default [NoStdToolbox].
+pub type DispatcherConfig = DispatcherConfigGeneric<NoStdToolbox>;
+
 impl<TB: RuntimeToolbox + 'static> Clone for DispatcherConfigGeneric<TB> {
   fn clone(&self) -> Self {
     Self { executor: self.executor.clone() }
@@ -42,6 +45,3 @@ impl<TB: RuntimeToolbox + 'static> Default for DispatcherConfigGeneric<TB> {
     Self::from_executor(ArcShared::new(InlineExecutorGeneric::<TB>::new()))
   }
 }
-
-/// Type alias for `DispatcherConfigGeneric` with the default `NoStdToolbox`.
-pub type DispatcherConfig = DispatcherConfigGeneric<NoStdToolbox>;

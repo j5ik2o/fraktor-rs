@@ -52,6 +52,9 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   failure_inflight:       AtomicU64,
 }
 
+/// Type alias for [SystemStateGeneric] with the default [NoStdToolbox].
+pub type SystemState = SystemStateGeneric<NoStdToolbox>;
+
 impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   /// Creates a fresh state container without any registered actors.
   #[must_use]
@@ -390,6 +393,3 @@ impl<TB: RuntimeToolbox + 'static> Default for SystemStateGeneric<TB> {
 
 unsafe impl<TB: RuntimeToolbox + 'static> Send for SystemStateGeneric<TB> {}
 unsafe impl<TB: RuntimeToolbox + 'static> Sync for SystemStateGeneric<TB> {}
-
-/// Type alias for `SystemStateGeneric` with the default `NoStdToolbox`.
-pub type SystemState = SystemStateGeneric<NoStdToolbox>;

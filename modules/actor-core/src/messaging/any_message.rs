@@ -16,6 +16,9 @@ pub struct AnyMessageGeneric<TB: RuntimeToolbox> {
   reply_to: Option<ActorRefGeneric<TB>>,
 }
 
+/// Type alias for [AnyMessageGeneric] with the default [NoStdToolbox].
+pub type AnyMessage = AnyMessageGeneric<NoStdToolbox>;
+
 impl<TB: RuntimeToolbox> AnyMessageGeneric<TB> {
   /// Creates a new owned message from the provided payload.
   #[must_use]
@@ -70,6 +73,3 @@ impl<TB: RuntimeToolbox> fmt::Debug for AnyMessageGeneric<TB> {
       .finish()
   }
 }
-
-/// Type alias for `AnyMessageGeneric` with the default `NoStdToolbox`.
-pub type AnyMessage = AnyMessageGeneric<NoStdToolbox>;

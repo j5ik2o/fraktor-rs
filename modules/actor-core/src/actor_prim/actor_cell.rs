@@ -22,7 +22,7 @@ use crate::{
   mailbox::{MailboxCapacity, MailboxGeneric, MailboxInstrumentationGeneric},
   messaging::{
     AnyMessageGeneric, FailureMessageSnapshot, FailurePayload, SystemMessage,
-    message_invoker::{MessageInvoker, MessageInvokerPipeline},
+    message_invoker::{MessageInvoker, MessageInvokerPipelineGeneric},
   },
   props::{ActorFactory, PropsGeneric},
   supervision::{RestartStatistics, SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
@@ -37,7 +37,7 @@ pub struct ActorCellGeneric<TB: RuntimeToolbox + 'static> {
   system:      ArcShared<SystemStateGeneric<TB>>,
   factory:     ArcShared<dyn ActorFactory<TB>>,
   actor:       ToolboxMutex<Box<dyn Actor<TB> + Send + Sync>, TB>,
-  pipeline:    MessageInvokerPipeline<TB>,
+  pipeline:    MessageInvokerPipelineGeneric<TB>,
   mailbox:     ArcShared<MailboxGeneric<TB>>,
   dispatcher:  DispatcherGeneric<TB>,
   sender:      ArcShared<DispatcherSenderGeneric<TB>>,
@@ -71,7 +71,8 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
       };
       let throughput = policy.throughput_limit().map(|limit| limit.get());
       let warn_threshold = mailbox_config.warn_threshold().map(|threshold| threshold.get());
-      let instrumentation = MailboxInstrumentationGeneric::new(system.clone(), pid, capacity, throughput, warn_threshold);
+      let instrumentation =
+        MailboxInstrumentationGeneric::new(system.clone(), pid, capacity, throughput, warn_threshold);
       mailbox.set_instrumentation(instrumentation);
     }
     let dispatcher = props.dispatcher().build_dispatcher(mailbox.clone());
@@ -90,7 +91,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
       system,
       factory,
       actor,
-      pipeline: MessageInvokerPipeline::new(),
+      pipeline: MessageInvokerPipelineGeneric::new(),
       mailbox,
       dispatcher,
       sender,

@@ -18,6 +18,9 @@ pub struct PropsGeneric<TB: RuntimeToolbox + 'static> {
   dispatcher: DispatcherConfigGeneric<TB>,
 }
 
+/// Type alias for [PropsGeneric] with the default [NoStdToolbox].
+pub type Props = PropsGeneric<NoStdToolbox>;
+
 impl<TB: RuntimeToolbox + 'static> PropsGeneric<TB> {
   /// Creates new props from the provided factory.
   #[must_use]
@@ -134,6 +137,3 @@ impl<TB: RuntimeToolbox + 'static> Clone for PropsGeneric<TB> {
     }
   }
 }
-
-/// Type alias for `PropsGeneric` with the default `NoStdToolbox`.
-pub type Props = PropsGeneric<NoStdToolbox>;

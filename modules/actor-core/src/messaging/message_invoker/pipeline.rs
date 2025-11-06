@@ -2,7 +2,7 @@
 
 use alloc::vec::Vec;
 
-use cellactor_utils_core_rs::sync::ArcShared;
+use cellactor_utils_core_rs::sync::{ArcShared, NoStdToolbox};
 
 use super::MessageInvokerMiddleware;
 use crate::{
@@ -13,11 +13,14 @@ use crate::{
 };
 
 /// Middleware-enabled pipeline used to invoke actor message handlers.
-pub struct MessageInvokerPipeline<TB: RuntimeToolbox + 'static> {
+pub struct MessageInvokerPipelineGeneric<TB: RuntimeToolbox + 'static> {
   user_middlewares: Vec<ArcShared<dyn MessageInvokerMiddleware<TB>>>,
 }
 
-impl<TB: RuntimeToolbox + 'static> MessageInvokerPipeline<TB> {
+/// Type alias for [MessageInvokerPipelineGeneric] with the default [NoStdToolbox].
+pub type MessageInvokerPipeline = MessageInvokerPipelineGeneric<NoStdToolbox>;
+
+impl<TB: RuntimeToolbox + 'static> MessageInvokerPipelineGeneric<TB> {
   /// Creates a pipeline without any middleware.
   #[must_use]
   pub const fn new() -> Self {
@@ -68,7 +71,11 @@ impl<TB: RuntimeToolbox + 'static> MessageInvokerPipeline<TB> {
     result
   }
 
-  fn invoke_before(&self, ctx: &mut ActorContextGeneric<'_, TB>, message: &AnyMessageView<'_, TB>) -> Result<(), ActorError> {
+  fn invoke_before(
+    &self,
+    ctx: &mut ActorContextGeneric<'_, TB>,
+    message: &AnyMessageView<'_, TB>,
+  ) -> Result<(), ActorError> {
     for middleware in &self.user_middlewares {
       middleware.before_user(ctx, message)?;
     }
@@ -88,14 +95,17 @@ impl<TB: RuntimeToolbox + 'static> MessageInvokerPipeline<TB> {
   }
 }
 
-fn restore_reply<TB: RuntimeToolbox + 'static>(ctx: &mut ActorContextGeneric<'_, TB>, previous: Option<ActorRefGeneric<TB>>) {
+fn restore_reply<TB: RuntimeToolbox + 'static>(
+  ctx: &mut ActorContextGeneric<'_, TB>,
+  previous: Option<ActorRefGeneric<TB>>,
+) {
   match previous {
     | Some(target) => ctx.set_reply_to(Some(target)),
     | None => ctx.clear_reply_to(),
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Default for MessageInvokerPipeline<TB> {
+impl<TB: RuntimeToolbox + 'static> Default for MessageInvokerPipelineGeneric<TB> {
   fn default() -> Self {
     Self::new()
   }

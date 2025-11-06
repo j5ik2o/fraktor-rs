@@ -2,7 +2,11 @@ use alloc::boxed::Box;
 
 use super::Actor;
 use crate::{
-  NoStdToolbox, actor_prim::{ActorContextGeneric, ActorContext}, error::ActorError, messaging::AnyMessageView, system::ActorSystem,
+  NoStdToolbox,
+  actor_prim::{ActorContext, ActorContextGeneric},
+  error::ActorError,
+  messaging::AnyMessageView,
+  system::ActorSystem,
 };
 
 #[derive(Default)]

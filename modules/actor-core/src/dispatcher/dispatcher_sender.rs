@@ -2,8 +2,8 @@
 mod tests;
 
 use core::{pin::Pin, task::Context};
-use cellactor_utils_core_rs::runtime_toolbox::NoStdToolbox;
-use cellactor_utils_core_rs::sync::ArcShared;
+
+use cellactor_utils_core_rs::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
 
 use super::base::DispatcherGeneric;
 use crate::{

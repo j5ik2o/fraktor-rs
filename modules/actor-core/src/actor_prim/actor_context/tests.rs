@@ -2,7 +2,7 @@ use alloc::{string::String, vec, vec::Vec};
 
 use cellactor_utils_core_rs::sync::{ArcShared, NoStdMutex};
 
-use super::{ActorContextGeneric, ActorContext};
+use super::{ActorContext, ActorContextGeneric};
 use crate::{
   NoStdToolbox,
   actor_prim::{Actor, ActorCell, Pid},

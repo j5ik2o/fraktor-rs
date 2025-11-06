@@ -15,7 +15,8 @@ use crate::{
 /// Defines the lifecycle hooks that every actor must implement.
 pub trait Actor<TB: RuntimeToolbox = NoStdToolbox>: Send {
   /// Called once before the actor starts processing messages.
-  ////// # Errors
+  ///
+  /// # Errors
   ///
   /// Returns an error when the actor fails to initialize and should not start.
   ///
@@ -36,7 +37,11 @@ pub trait Actor<TB: RuntimeToolbox = NoStdToolbox>: Send {
   /// # Panics
   ///
   /// Panics are considered fatal and will propagate to the runtime.
-  fn receive(&mut self, ctx: &mut ActorContextGeneric<'_, TB>, message: AnyMessageView<'_, TB>) -> Result<(), ActorError>;
+  fn receive(
+    &mut self,
+    ctx: &mut ActorContextGeneric<'_, TB>,
+    message: AnyMessageView<'_, TB>,
+  ) -> Result<(), ActorError>;
 
   /// Called once after the actor has been stopped.
   ///
@@ -71,7 +76,11 @@ where
     (**self).pre_start(ctx)
   }
 
-  fn receive(&mut self, ctx: &mut ActorContextGeneric<'_, TB>, message: AnyMessageView<'_, TB>) -> Result<(), ActorError> {
+  fn receive(
+    &mut self,
+    ctx: &mut ActorContextGeneric<'_, TB>,
+    message: AnyMessageView<'_, TB>,
+  ) -> Result<(), ActorError> {
     (**self).receive(ctx, message)
   }
 

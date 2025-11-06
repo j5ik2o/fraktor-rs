@@ -16,6 +16,9 @@ pub struct AskResponseGeneric<TB: RuntimeToolbox + 'static> {
   future:   ArcShared<ActorFuture<AnyMessageGeneric<TB>, TB>>,
 }
 
+/// Type alias for [AskResponseGeneric] with the default [NoStdToolbox].
+pub type AskResponse = AskResponseGeneric<NoStdToolbox>;
+
 impl<TB: RuntimeToolbox + 'static> AskResponseGeneric<TB> {
   /// Creates a new ask response handle.
   #[must_use]
@@ -41,6 +44,3 @@ impl<TB: RuntimeToolbox + 'static> AskResponseGeneric<TB> {
     (self.reply_to, self.future)
   }
 }
-
-/// Type alias for `AskResponseGeneric` with the default `NoStdToolbox`.
-pub type AskResponse = AskResponseGeneric<NoStdToolbox>;

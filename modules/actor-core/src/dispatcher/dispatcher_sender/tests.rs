@@ -20,7 +20,8 @@ fn dispatcher_sender_send_enqueued() {
   let dispatcher = Dispatcher::with_inline_executor(mailbox);
   let sender = DispatcherSenderGeneric::new(dispatcher);
 
-  let result = <DispatcherSenderGeneric<NoStdToolbox> as ActorRefSender<NoStdToolbox>>::send(&sender, AnyMessage::new(42_u32));
+  let result =
+    <DispatcherSenderGeneric<NoStdToolbox> as ActorRefSender<NoStdToolbox>>::send(&sender, AnyMessage::new(42_u32));
   assert!(result.is_ok());
 }
 
@@ -31,12 +32,15 @@ fn dispatcher_sender_send_multiple_messages() {
   let sender = DispatcherSenderGeneric::new(dispatcher);
 
   assert!(
-    <DispatcherSenderGeneric<NoStdToolbox> as ActorRefSender<NoStdToolbox>>::send(&sender, AnyMessage::new(1_u32)).is_ok()
+    <DispatcherSenderGeneric<NoStdToolbox> as ActorRefSender<NoStdToolbox>>::send(&sender, AnyMessage::new(1_u32))
+      .is_ok()
   );
   assert!(
-    <DispatcherSenderGeneric<NoStdToolbox> as ActorRefSender<NoStdToolbox>>::send(&sender, AnyMessage::new(2_u32)).is_ok()
+    <DispatcherSenderGeneric<NoStdToolbox> as ActorRefSender<NoStdToolbox>>::send(&sender, AnyMessage::new(2_u32))
+      .is_ok()
   );
   assert!(
-    <DispatcherSenderGeneric<NoStdToolbox> as ActorRefSender<NoStdToolbox>>::send(&sender, AnyMessage::new(3_u32)).is_ok()
+    <DispatcherSenderGeneric<NoStdToolbox> as ActorRefSender<NoStdToolbox>>::send(&sender, AnyMessage::new(3_u32))
+      .is_ok()
   );
 }

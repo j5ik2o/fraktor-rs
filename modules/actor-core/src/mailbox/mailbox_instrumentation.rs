@@ -4,8 +4,8 @@
 mod tests;
 
 use alloc::format;
-use cellactor_utils_core_rs::runtime_toolbox::NoStdToolbox;
-use cellactor_utils_core_rs::sync::ArcShared;
+
+use cellactor_utils_core_rs::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
 
 use crate::{
   RuntimeToolbox, actor_prim::Pid, event_stream::EventStreamEvent, logging::LogLevel, mailbox::MailboxMetricsEvent,

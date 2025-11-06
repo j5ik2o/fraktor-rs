@@ -73,7 +73,11 @@ impl Actor for RecordingActor {
     Ok(())
   }
 
-  fn on_terminated(&mut self, _ctx: &mut ActorContextGeneric<'_, crate::NoStdToolbox>, pid: Pid) -> Result<(), ActorError> {
+  fn on_terminated(
+    &mut self,
+    _ctx: &mut ActorContextGeneric<'_, crate::NoStdToolbox>,
+    pid: Pid,
+  ) -> Result<(), ActorError> {
     self.log.lock().push(pid);
     Ok(())
   }

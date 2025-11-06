@@ -9,7 +9,11 @@ pub trait MessageInvokerMiddleware<TB: RuntimeToolbox + 'static>: Send + Sync {
   /// # Errors
   ///
   /// Returning an error aborts message processing.
-  fn before_user(&self, _ctx: &mut ActorContextGeneric<'_, TB>, _message: &AnyMessageView<'_, TB>) -> Result<(), ActorError> {
+  fn before_user(
+    &self,
+    _ctx: &mut ActorContextGeneric<'_, TB>,
+    _message: &AnyMessageView<'_, TB>,
+  ) -> Result<(), ActorError> {
     Ok(())
   }
 
