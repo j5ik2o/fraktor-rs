@@ -47,14 +47,14 @@ where
   /// Returns an error if the guardian actor cannot be spawned.
   pub fn new(guardian: &TypedProps<M>) -> Result<Self, SpawnError> {
     Ok(Self {
-      inner: CoreTypedActorSystemGeneric::new(guardian)?,
+      inner: CoreTypedActorSystemGeneric::new(guardian.as_core())?,
     })
   }
 
   /// Returns the typed user guardian reference.
   #[must_use]
   pub fn user_guardian_ref(&self) -> TypedActorRef<M> {
-    self.inner.user_guardian_ref()
+    TypedActorRef::from_core(self.inner.user_guardian_ref())
   }
 
   /// Returns the shared system state handle.
