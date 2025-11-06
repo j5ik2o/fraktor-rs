@@ -3,7 +3,7 @@ use core::task::Waker;
 use cellactor_utils_core_rs::sync::ArcShared;
 
 use super::{
-  dispatch_executor::DispatchExecutor, dispatch_shared::DispatchShared, dispatcher_core::DispatcherCore,
+  dispatch_executor::DispatchExecutor, dispatch_shared::DispatchSharedGeneric, dispatcher_core::DispatcherCore,
   dispatcher_state::DispatcherState, inline_executor::InlineExecutor, schedule_waker::ScheduleWaker,
 };
 use crate::{
@@ -17,6 +17,9 @@ use crate::{
 pub struct DispatcherGeneric<TB: RuntimeToolbox + 'static> {
   core: ArcShared<DispatcherCore<TB>>,
 }
+
+/// Type alias for `DispatcherGeneric` with the default `NoStdToolbox`.
+pub type Dispatcher = DispatcherGeneric<NoStdToolbox>;
 
 unsafe impl<TB: RuntimeToolbox + 'static> Send for DispatcherGeneric<TB> {}
 unsafe impl<TB: RuntimeToolbox + 'static> Sync for DispatcherGeneric<TB> {}
@@ -69,7 +72,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherGeneric<TB> {
 
     if should_run {
       let executor = self.core.executor().clone();
-      executor.execute(DispatchShared::new(self.core.clone()));
+      executor.execute(DispatchSharedGeneric::new(self.core.clone()));
     }
   }
 
@@ -103,5 +106,3 @@ impl<TB: RuntimeToolbox + 'static> Clone for DispatcherGeneric<TB> {
   }
 }
 
-/// Type alias for `DispatcherGeneric` with the default `NoStdToolbox`.
-pub type Dispatcher = DispatcherGeneric<NoStdToolbox>;

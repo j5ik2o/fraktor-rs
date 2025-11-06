@@ -6,7 +6,7 @@ use super::ActorSystem;
 use crate::{
   NoStdToolbox,
   actor_prim::Actor,
-  dispatcher::{DispatchExecutor, DispatchShared},
+  dispatcher::{DispatchExecutor, DispatchSharedGeneric},
   event_stream::{EventStreamEvent, EventStreamSubscriber},
   lifecycle::LifecycleStage,
   messaging::SystemMessage,
@@ -100,7 +100,7 @@ impl NoopExecutor {
 }
 
 impl DispatchExecutor<NoStdToolbox> for NoopExecutor {
-  fn execute(&self, _dispatcher: DispatchShared<NoStdToolbox>) {}
+  fn execute(&self, _dispatcher: DispatchSharedGeneric<NoStdToolbox>) {}
 }
 
 #[test]

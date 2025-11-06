@@ -26,7 +26,7 @@ mod schedule_waker;
 
 pub use base::{Dispatcher, DispatcherGeneric};
 pub use dispatch_executor::DispatchExecutor;
-pub use dispatch_shared::DispatchShared;
+pub use dispatch_shared::{DispatchShared, DispatchSharedGeneric};
 pub use dispatcher_sender::DispatcherSender;
 pub use inline_executor::InlineExecutor;
 
