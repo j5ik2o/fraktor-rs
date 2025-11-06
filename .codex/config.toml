@@ -28,7 +28,8 @@ args = ["@playwright/mcp@latest"]
 
 [mcp_servers.serena]
 command = "uvx"
-args = ["--from", "git+https://github.com/oraios/serena", "serena", "start-mcp-server", "--context", "codex"]
+args = ["--from", "git+https://github.com/oraios/serena", "serena", "start-mcp-server", "--context", "codex", "--project", "."]
+startup_timeout_sec = 30.0
 
 [mcp_servers.vibe-kanban]
 command = "npx"
