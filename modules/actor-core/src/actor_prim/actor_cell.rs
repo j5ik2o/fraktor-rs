@@ -15,7 +15,7 @@ use portable_atomic::{AtomicBool, Ordering};
 use crate::{
   NoStdToolbox, RuntimeToolbox, ToolboxMutex,
   actor_prim::{Actor, ActorContextGeneric, Pid, actor_ref::ActorRefGeneric},
-  dispatcher::{DispatcherGeneric, DispatcherSender},
+  dispatcher::{DispatcherGeneric, DispatcherSenderGeneric},
   error::ActorError,
   event_stream::EventStreamEvent,
   lifecycle::{LifecycleEvent, LifecycleStage},
@@ -40,7 +40,7 @@ pub struct ActorCellGeneric<TB: RuntimeToolbox + 'static> {
   pipeline:    MessageInvokerPipeline<TB>,
   mailbox:     ArcShared<MailboxGeneric<TB>>,
   dispatcher:  DispatcherGeneric<TB>,
-  sender:      ArcShared<DispatcherSender<TB>>,
+  sender:      ArcShared<DispatcherSenderGeneric<TB>>,
   children:    ToolboxMutex<Vec<Pid>, TB>,
   supervisor:  SupervisorStrategy,
   child_stats: ToolboxMutex<Vec<(Pid, RestartStatistics)>, TB>,

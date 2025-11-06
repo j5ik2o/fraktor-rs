@@ -2,10 +2,7 @@ use core::task::Waker;
 
 use cellactor_utils_core_rs::sync::ArcShared;
 
-use super::{
-  dispatch_executor::DispatchExecutor, dispatch_shared::DispatchSharedGeneric, dispatcher_core::DispatcherCore,
-  dispatcher_state::DispatcherState, inline_executor::InlineExecutorGeneric, schedule_waker::ScheduleWaker,
-};
+use super::{dispatch_executor::DispatchExecutor, dispatch_shared::DispatchSharedGeneric, dispatcher_core::DispatcherCore, dispatcher_state::DispatcherState, inline_executor::InlineExecutorGeneric, schedule_waker::ScheduleWaker, DispatcherSenderGeneric};
 use crate::{
   NoStdToolbox, RuntimeToolbox,
   error::SendError,
@@ -95,8 +92,8 @@ impl<TB: RuntimeToolbox + 'static> DispatcherGeneric<TB> {
   /// Constructs an `ActorRefSender` implementation with a shared handle.
   #[must_use]
   #[allow(clippy::wrong_self_convention)]
-  pub(crate) fn into_sender(&self) -> ArcShared<super::dispatcher_sender::DispatcherSender<TB>> {
-    ArcShared::new(super::dispatcher_sender::DispatcherSender::new(self.clone()))
+  pub(crate) fn into_sender(&self) -> ArcShared<DispatcherSenderGeneric<TB>> {
+    ArcShared::new(DispatcherSenderGeneric::new(self.clone()))
   }
 }
 
