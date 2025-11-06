@@ -1,5 +1,0 @@
-- [x] `ArcShared` 定義周辺の既存実装を調査し、nightly 用 feature gate の導入方法を決定する
-- [x] `unsize` feature を追加し、nightly 環境で `#![feature(unsize, coerce_unsized)]` を有効化する
-- [x] `ArcShared` に `CoerceUnsized` と `DispatchFromDyn` の実装を追加し、portable_atomic_util::Arc に統一する
-- [x] 動作確認サンプルコードを追加し、nightly + `unsize` feature で実行テストする
-- [x] 既存 CI スクリプトが stable 構成で成功することを確認する
