@@ -2,7 +2,7 @@
 
 /// Typed actor primitives (actors, contexts, references).
 pub mod actor_prim;
-/// Typed behavior builders that wrap untyped props.
+/// Typed props that wrap untyped props.
 mod props;
 /// Typed actor system interface.
 mod system;

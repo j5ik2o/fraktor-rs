@@ -77,7 +77,7 @@ where
     self.inner().reply(AnyMessageGeneric::new(message))
   }
 
-  /// Spawns a typed child actor using the provided behavior.
+  /// Spawns a typed child actor using the provided typed props
   ///
   /// # Errors
   ///
@@ -88,7 +88,7 @@ where
   ) -> Result<TypedChildRefGeneric<C, TB>, SpawnError>
   where
     C: Send + Sync + 'static, {
-    let child = self.inner().spawn_child(typed_props.props())?;
+    let child = self.inner().spawn_child(typed_props.to_untyped())?;
     Ok(TypedChildRefGeneric::from_untyped(child))
   }
 
@@ -103,7 +103,7 @@ where
   ) -> Result<TypedChildRefGeneric<C, TB>, SpawnError>
   where
     C: Send + Sync + 'static, {
-    let child = self.inner().spawn_child_watched(typed_props.props())?;
+    let child = self.inner().spawn_child_watched(typed_props.to_untyped())?;
     Ok(TypedChildRefGeneric::from_untyped(child))
   }
 

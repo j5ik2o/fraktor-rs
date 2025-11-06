@@ -127,8 +127,8 @@ fn format_message(index: u32) -> String {
 fn main() {
   use std::thread;
 
-  let behavior = TypedProps::new(|| GuardianActor);
-  let system = TypedActorSystem::new(&behavior).expect("system");
+  let props = TypedProps::new(|| GuardianActor);
+  let system = TypedActorSystem::new(&props).expect("system");
   let termination = system.as_untyped().when_terminated();
   system.user_guardian_ref().tell(GuardianCommand::Start).expect("start");
   system.terminate().expect("terminate");

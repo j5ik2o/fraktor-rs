@@ -1,4 +1,4 @@
-//! Typed behavior builder.
+//! Typed props.
 
 use core::marker::PhantomData;
 
@@ -37,7 +37,7 @@ where
   M: Send + Sync + 'static,
   TB: RuntimeToolbox + 'static,
 {
-  /// Builds behavior from a typed actor factory.
+  /// Builds props from a typed actor factory.
   #[must_use]
   pub fn new<F, A>(factory: F) -> Self
   where
@@ -64,17 +64,17 @@ where
 
   /// Returns the underlying props.
   #[must_use]
-  pub const fn props(&self) -> &PropsGeneric<TB> {
+  pub const fn to_untyped(&self) -> &PropsGeneric<TB> {
     &self.props
   }
 
-  /// Consumes the behavior and returns the props.
+  /// Consumes the typed props and returns the props.
   #[must_use]
-  pub fn into_props(self) -> PropsGeneric<TB> {
+  pub fn into_untyped(self) -> PropsGeneric<TB> {
     self.props
   }
 
-  /// Applies a mapping function to the props and returns a new behavior.
+  /// Applies a mapping function to the props and returns a new typed props.
   #[must_use]
   pub fn map_props(self, f: impl FnOnce(PropsGeneric<TB>) -> PropsGeneric<TB>) -> Self {
     Self { props: f(self.props), marker: PhantomData }

@@ -47,8 +47,8 @@ impl TypedActor<CounterMessage> for CounterActor {
 
 #[test]
 fn typed_actor_system_handles_basic_flow() {
-  let behavior = TypedPropsGeneric::<CounterMessage, NoStdToolbox>::new(CounterActor::new);
-  let system = TypedActorSystemGeneric::<CounterMessage, NoStdToolbox>::new(&behavior).expect("system");
+  let props = TypedPropsGeneric::<CounterMessage, NoStdToolbox>::new(CounterActor::new);
+  let system = TypedActorSystemGeneric::<CounterMessage, NoStdToolbox>::new(&props).expect("system");
   let counter = system.user_guardian_ref();
 
   counter.tell(CounterMessage::Increment(2)).expect("tell increment one");

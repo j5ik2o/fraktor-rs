@@ -44,7 +44,7 @@ where
   ///
   /// Returns an error if the guardian actor cannot be spawned.
   pub fn new(guardian: &TypedPropsGeneric<M, TB>) -> Result<Self, SpawnError> {
-    Ok(Self { inner: ActorSystemGeneric::new(guardian.props())?, marker: PhantomData })
+    Ok(Self { inner: ActorSystemGeneric::new(guardian.to_untyped())?, marker: PhantomData })
   }
 
   /// Returns the typed user guardian reference.
@@ -116,7 +116,7 @@ where
   ) -> Result<TypedChildRefGeneric<C, TB>, SpawnError>
   where
     C: Send + Sync + 'static, {
-    let child = self.inner.spawn(typed_props.props())?;
+    let child = self.inner.spawn(typed_props.to_untyped())?;
     Ok(TypedChildRefGeneric::from_untyped(child))
   }
 
