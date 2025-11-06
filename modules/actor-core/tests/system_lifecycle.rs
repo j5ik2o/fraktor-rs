@@ -7,7 +7,7 @@ use std::{thread, time::Duration};
 
 use cellactor_actor_core_rs::{
   NoStdToolbox,
-  actor_prim::{Actor, ActorContext},
+  actor_prim::{Actor, ActorContextGeneric},
   error::ActorError,
   messaging::{AnyMessage, AnyMessageView},
   props::Props,
@@ -48,10 +48,10 @@ fn stop_self_propagates_to_children() {
 
 struct IdleGuardian;
 
-impl Actor<NoStdToolbox> for IdleGuardian {
+impl Actor for IdleGuardian {
   fn receive(
     &mut self,
-    _ctx: &mut ActorContext<'_, NoStdToolbox>,
+    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
     _message: AnyMessageView<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     Ok(())
@@ -68,10 +68,10 @@ impl ParentGuardian {
   }
 }
 
-impl Actor<NoStdToolbox> for ParentGuardian {
+impl Actor for ParentGuardian {
   fn receive(
     &mut self,
-    ctx: &mut ActorContext<'_, NoStdToolbox>,
+    ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
     message: AnyMessageView<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
@@ -94,21 +94,21 @@ impl RecordingChild {
   }
 }
 
-impl Actor<NoStdToolbox> for RecordingChild {
-  fn pre_start(&mut self, _ctx: &mut ActorContext<'_, NoStdToolbox>) -> Result<(), ActorError> {
+impl Actor for RecordingChild {
+  fn pre_start(&mut self, _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>) -> Result<(), ActorError> {
     self.states.lock().push("child_pre_start");
     Ok(())
   }
 
   fn receive(
     &mut self,
-    _ctx: &mut ActorContext<'_, NoStdToolbox>,
+    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
     _message: AnyMessageView<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     Ok(())
   }
 
-  fn post_stop(&mut self, _ctx: &mut ActorContext<'_, NoStdToolbox>) -> Result<(), ActorError> {
+  fn post_stop(&mut self, _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>) -> Result<(), ActorError> {
     self.states.lock().push("child_post_stop");
     Ok(())
   }

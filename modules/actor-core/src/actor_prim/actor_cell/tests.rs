@@ -4,7 +4,7 @@ use cellactor_utils_core_rs::sync::{ArcShared, NoStdMutex};
 
 use super::ActorCell;
 use crate::{
-  actor_prim::{Actor, ActorContext, Pid},
+  actor_prim::{Actor, ActorContextGeneric, Pid},
   error::ActorError,
   messaging::{AnyMessage, AnyMessageView, SystemMessage, message_invoker::MessageInvoker},
   props::Props,
@@ -16,7 +16,7 @@ struct ProbeActor;
 impl Actor for ProbeActor {
   fn receive(
     &mut self,
-    _ctx: &mut ActorContext<'_, crate::NoStdToolbox>,
+    _ctx: &mut ActorContextGeneric<'_, crate::NoStdToolbox>,
     _message: AnyMessageView<'_, crate::NoStdToolbox>,
   ) -> Result<(), ActorError> {
     Ok(())
@@ -44,21 +44,21 @@ impl LifecycleRecorderActor {
 }
 
 impl Actor for LifecycleRecorderActor {
-  fn pre_start(&mut self, _ctx: &mut ActorContext<'_, crate::NoStdToolbox>) -> Result<(), ActorError> {
+  fn pre_start(&mut self, _ctx: &mut ActorContextGeneric<'_, crate::NoStdToolbox>) -> Result<(), ActorError> {
     self.log.lock().push("pre_start");
     Ok(())
   }
 
   fn receive(
     &mut self,
-    _ctx: &mut ActorContext<'_, crate::NoStdToolbox>,
+    _ctx: &mut ActorContextGeneric<'_, crate::NoStdToolbox>,
     _message: AnyMessageView<'_, crate::NoStdToolbox>,
   ) -> Result<(), ActorError> {
     self.log.lock().push("receive");
     Ok(())
   }
 
-  fn post_stop(&mut self, _ctx: &mut ActorContext<'_, crate::NoStdToolbox>) -> Result<(), ActorError> {
+  fn post_stop(&mut self, _ctx: &mut ActorContextGeneric<'_, crate::NoStdToolbox>) -> Result<(), ActorError> {
     self.log.lock().push("post_stop");
     Ok(())
   }
@@ -67,13 +67,13 @@ impl Actor for LifecycleRecorderActor {
 impl Actor for RecordingActor {
   fn receive(
     &mut self,
-    _ctx: &mut ActorContext<'_, crate::NoStdToolbox>,
+    _ctx: &mut ActorContextGeneric<'_, crate::NoStdToolbox>,
     _message: AnyMessageView<'_, crate::NoStdToolbox>,
   ) -> Result<(), ActorError> {
     Ok(())
   }
 
-  fn on_terminated(&mut self, _ctx: &mut ActorContext<'_, crate::NoStdToolbox>, pid: Pid) -> Result<(), ActorError> {
+  fn on_terminated(&mut self, _ctx: &mut ActorContextGeneric<'_, crate::NoStdToolbox>, pid: Pid) -> Result<(), ActorError> {
     self.log.lock().push(pid);
     Ok(())
   }

@@ -14,7 +14,7 @@ use portable_atomic::{AtomicBool, Ordering};
 
 use crate::{
   NoStdToolbox, RuntimeToolbox, ToolboxMutex,
-  actor_prim::{Actor, ActorContext, Pid, actor_ref::ActorRefGeneric},
+  actor_prim::{Actor, ActorContextGeneric, Pid, actor_ref::ActorRefGeneric},
   dispatcher::{DispatcherGeneric, DispatcherSender},
   error::ActorError,
   event_stream::EventStreamEvent,
@@ -219,7 +219,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
 
   pub(crate) fn handle_terminated(&self, terminated_pid: Pid) -> Result<(), ActorError> {
     let system = ActorSystemGeneric::from_state(self.system.clone());
-    let mut ctx = ActorContext::new(&system, self.pid);
+    let mut ctx = ActorContextGeneric::new(&system, self.pid);
     let mut actor = self.actor.lock();
     let result = actor.on_terminated(&mut ctx, terminated_pid);
     drop(actor);
@@ -238,7 +238,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
   fn handle_recreate(&self) -> Result<(), ActorError> {
     {
       let system = ActorSystemGeneric::from_state(self.system.clone());
-      let mut ctx = ActorContext::new(&system, self.pid);
+      let mut ctx = ActorContextGeneric::new(&system, self.pid);
       let mut actor = self.actor.lock();
       actor.post_stop(&mut ctx)?;
       ctx.clear_reply_to();
@@ -260,7 +260,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
 
   fn handle_stop(&self) -> Result<(), ActorError> {
     let system = ActorSystemGeneric::from_state(self.system.clone());
-    let mut ctx = ActorContext::new(&system, self.pid);
+    let mut ctx = ActorContextGeneric::new(&system, self.pid);
     let mut actor = self.actor.lock();
     let result = actor.post_stop(&mut ctx);
     drop(actor);
@@ -344,7 +344,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
 
   fn run_pre_start(&self, stage: LifecycleStage) -> Result<(), ActorError> {
     let system = ActorSystemGeneric::from_state(self.system.clone());
-    let mut ctx = ActorContext::new(&system, self.pid);
+    let mut ctx = ActorContextGeneric::new(&system, self.pid);
     let mut actor = self.actor.lock();
     let outcome = actor.pre_start(&mut ctx);
     drop(actor);
@@ -365,7 +365,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
 impl<TB: RuntimeToolbox + 'static> MessageInvoker<TB> for ActorCellGeneric<TB> {
   fn invoke_user_message(&self, message: AnyMessageGeneric<TB>) -> Result<(), ActorError> {
     let system = ActorSystemGeneric::from_state(self.system.clone());
-    let mut ctx = ActorContext::new(&system, self.pid);
+    let mut ctx = ActorContextGeneric::new(&system, self.pid);
     let mut actor = self.actor.lock();
     let failure_candidate = message.clone();
     let result = self.pipeline.invoke_user(&mut *actor, &mut ctx, message);

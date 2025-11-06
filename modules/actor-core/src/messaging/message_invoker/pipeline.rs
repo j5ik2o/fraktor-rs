@@ -7,7 +7,7 @@ use cellactor_utils_core_rs::sync::ArcShared;
 use super::MessageInvokerMiddleware;
 use crate::{
   RuntimeToolbox,
-  actor_prim::{Actor, ActorContext, actor_ref::ActorRefGeneric},
+  actor_prim::{Actor, ActorContextGeneric, actor_ref::ActorRefGeneric},
   error::ActorError,
   messaging::{AnyMessageGeneric, any_message_view::AnyMessageView},
 };
@@ -39,7 +39,7 @@ impl<TB: RuntimeToolbox + 'static> MessageInvokerPipeline<TB> {
   pub fn invoke_user<A>(
     &self,
     actor: &mut A,
-    ctx: &mut ActorContext<'_, TB>,
+    ctx: &mut ActorContextGeneric<'_, TB>,
     message: AnyMessageGeneric<TB>,
   ) -> Result<(), ActorError>
   where
@@ -68,7 +68,7 @@ impl<TB: RuntimeToolbox + 'static> MessageInvokerPipeline<TB> {
     result
   }
 
-  fn invoke_before(&self, ctx: &mut ActorContext<'_, TB>, message: &AnyMessageView<'_, TB>) -> Result<(), ActorError> {
+  fn invoke_before(&self, ctx: &mut ActorContextGeneric<'_, TB>, message: &AnyMessageView<'_, TB>) -> Result<(), ActorError> {
     for middleware in &self.user_middlewares {
       middleware.before_user(ctx, message)?;
     }
@@ -77,7 +77,7 @@ impl<TB: RuntimeToolbox + 'static> MessageInvokerPipeline<TB> {
 
   fn invoke_after(
     &self,
-    ctx: &mut ActorContext<'_, TB>,
+    ctx: &mut ActorContextGeneric<'_, TB>,
     message: &AnyMessageView<'_, TB>,
     mut result: Result<(), ActorError>,
   ) -> Result<(), ActorError> {
@@ -88,7 +88,7 @@ impl<TB: RuntimeToolbox + 'static> MessageInvokerPipeline<TB> {
   }
 }
 
-fn restore_reply<TB: RuntimeToolbox + 'static>(ctx: &mut ActorContext<'_, TB>, previous: Option<ActorRefGeneric<TB>>) {
+fn restore_reply<TB: RuntimeToolbox + 'static>(ctx: &mut ActorContextGeneric<'_, TB>, previous: Option<ActorRefGeneric<TB>>) {
   match previous {
     | Some(target) => ctx.set_reply_to(Some(target)),
     | None => ctx.clear_reply_to(),

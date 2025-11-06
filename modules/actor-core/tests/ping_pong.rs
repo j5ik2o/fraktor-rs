@@ -4,7 +4,7 @@ use std::{thread, time::Duration, vec::Vec};
 
 use cellactor_actor_core_rs::{
   NoStdToolbox,
-  actor_prim::{Actor, ActorContext, ChildRef},
+  actor_prim::{Actor, ActorContextGeneric, ChildRef},
   error::{ActorError, SendError},
   mailbox::{Mailbox, MailboxOverflowStrategy, MailboxPolicy},
   messaging::{AnyMessage, AnyMessageView},
@@ -27,10 +27,10 @@ impl RecordingChild {
   }
 }
 
-impl Actor<NoStdToolbox> for RecordingChild {
+impl Actor for RecordingChild {
   fn receive(
     &mut self,
-    _ctx: &mut ActorContext<'_, NoStdToolbox>,
+    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
     message: AnyMessageView<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     if let Some(deliver) = message.downcast_ref::<Deliver>() {
@@ -51,10 +51,10 @@ impl RecordingGuardian {
   }
 }
 
-impl Actor<NoStdToolbox> for RecordingGuardian {
+impl Actor for RecordingGuardian {
   fn receive(
     &mut self,
-    ctx: &mut ActorContext<'_, NoStdToolbox>,
+    ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
     message: AnyMessageView<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
@@ -71,10 +71,10 @@ impl Actor<NoStdToolbox> for RecordingGuardian {
 
 struct SilentActor;
 
-impl Actor<NoStdToolbox> for SilentActor {
+impl Actor for SilentActor {
   fn receive(
     &mut self,
-    _ctx: &mut ActorContext<'_, NoStdToolbox>,
+    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
     _message: AnyMessageView<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     Ok(())
@@ -92,10 +92,10 @@ impl NamingGuardian {
   }
 }
 
-impl Actor<NoStdToolbox> for NamingGuardian {
+impl Actor for NamingGuardian {
   fn receive(
     &mut self,
-    ctx: &mut ActorContext<'_, NoStdToolbox>,
+    ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
     message: AnyMessageView<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {

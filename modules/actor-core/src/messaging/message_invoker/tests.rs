@@ -8,7 +8,7 @@ use super::{MessageInvokerMiddleware, MessageInvokerPipeline};
 use crate::{
   NoStdMutex, NoStdToolbox,
   actor_prim::{
-    Actor, ActorContext, Pid,
+    Actor, ActorContextGeneric, ActorContext, Pid,
     actor_ref::{ActorRef, ActorRefSender},
   },
   error::{ActorError, SendError},
@@ -46,7 +46,7 @@ impl CaptureActor {
 impl Actor for CaptureActor {
   fn receive(
     &mut self,
-    ctx: &mut ActorContext<'_, NoStdToolbox>,
+    ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
     message: AnyMessageView<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     if let Some(value) = message.downcast_ref::<u32>() {
@@ -74,7 +74,7 @@ impl LoggingActor {
 impl Actor for LoggingActor {
   fn receive(
     &mut self,
-    _ctx: &mut ActorContext<'_, NoStdToolbox>,
+    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
     _message: AnyMessageView<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     self.record("actor");
@@ -100,7 +100,7 @@ impl RecordingMiddleware {
 impl MessageInvokerMiddleware<NoStdToolbox> for RecordingMiddleware {
   fn before_user(
     &self,
-    _ctx: &mut ActorContext<'_, NoStdToolbox>,
+    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
     _message: &AnyMessageView<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     self.record("before");
@@ -109,7 +109,7 @@ impl MessageInvokerMiddleware<NoStdToolbox> for RecordingMiddleware {
 
   fn after_user(
     &self,
-    _ctx: &mut ActorContext<'_, NoStdToolbox>,
+    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
     _message: &AnyMessageView<'_, NoStdToolbox>,
     result: Result<(), ActorError>,
   ) -> Result<(), ActorError> {

@@ -15,10 +15,10 @@ use crate::{
 
 struct TestActor;
 
-impl Actor<NoStdToolbox> for TestActor {
+impl Actor for TestActor {
   fn receive(
     &mut self,
-    _context: &mut crate::actor_prim::ActorContext<'_, NoStdToolbox>,
+    _context: &mut crate::actor_prim::ActorContextGeneric<'_, NoStdToolbox>,
     _message: crate::messaging::AnyMessageView<'_, NoStdToolbox>,
   ) -> Result<(), crate::error::ActorError> {
     Ok(())
@@ -35,10 +35,10 @@ impl SpawnRecorderActor {
   }
 }
 
-impl Actor<NoStdToolbox> for SpawnRecorderActor {
+impl Actor for SpawnRecorderActor {
   fn pre_start(
     &mut self,
-    _ctx: &mut crate::actor_prim::ActorContext<'_, NoStdToolbox>,
+    _ctx: &mut crate::actor_prim::ActorContextGeneric<'_, NoStdToolbox>,
   ) -> Result<(), crate::error::ActorError> {
     self.log.lock().push("pre_start");
     Ok(())
@@ -46,7 +46,7 @@ impl Actor<NoStdToolbox> for SpawnRecorderActor {
 
   fn receive(
     &mut self,
-    _context: &mut crate::actor_prim::ActorContext<'_, NoStdToolbox>,
+    _context: &mut crate::actor_prim::ActorContextGeneric<'_, NoStdToolbox>,
     _message: crate::messaging::AnyMessageView<'_, NoStdToolbox>,
   ) -> Result<(), crate::error::ActorError> {
     self.log.lock().push("receive");
@@ -56,10 +56,10 @@ impl Actor<NoStdToolbox> for SpawnRecorderActor {
 
 struct FailingStartActor;
 
-impl Actor<NoStdToolbox> for FailingStartActor {
+impl Actor for FailingStartActor {
   fn receive(
     &mut self,
-    _context: &mut crate::actor_prim::ActorContext<'_, NoStdToolbox>,
+    _context: &mut crate::actor_prim::ActorContextGeneric<'_, NoStdToolbox>,
     _message: crate::messaging::AnyMessageView<'_, NoStdToolbox>,
   ) -> Result<(), crate::error::ActorError> {
     Ok(())
@@ -67,7 +67,7 @@ impl Actor<NoStdToolbox> for FailingStartActor {
 
   fn pre_start(
     &mut self,
-    _ctx: &mut crate::actor_prim::ActorContext<'_, NoStdToolbox>,
+    _ctx: &mut crate::actor_prim::ActorContextGeneric<'_, NoStdToolbox>,
   ) -> Result<(), crate::error::ActorError> {
     Err(crate::error::ActorError::recoverable("boom"))
   }

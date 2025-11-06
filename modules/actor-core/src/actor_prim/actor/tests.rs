@@ -2,7 +2,7 @@ use alloc::boxed::Box;
 
 use super::Actor;
 use crate::{
-  NoStdToolbox, actor_prim::ActorContext, error::ActorError, messaging::AnyMessageView, system::ActorSystem,
+  NoStdToolbox, actor_prim::{ActorContextGeneric, ActorContext}, error::ActorError, messaging::AnyMessageView, system::ActorSystem,
 };
 
 #[derive(Default)]
@@ -12,28 +12,28 @@ struct TestActor {
   on_terminated_called: bool,
 }
 
-impl Actor<NoStdToolbox> for TestActor {
-  fn pre_start(&mut self, _ctx: &mut ActorContext<'_, NoStdToolbox>) -> Result<(), ActorError> {
+impl Actor for TestActor {
+  fn pre_start(&mut self, _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>) -> Result<(), ActorError> {
     self.pre_start_called = true;
     Ok(())
   }
 
   fn receive(
     &mut self,
-    _ctx: &mut ActorContext<'_, NoStdToolbox>,
+    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
     _message: AnyMessageView<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     Ok(())
   }
 
-  fn post_stop(&mut self, _ctx: &mut ActorContext<'_, NoStdToolbox>) -> Result<(), ActorError> {
+  fn post_stop(&mut self, _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>) -> Result<(), ActorError> {
     self.post_stop_called = true;
     Ok(())
   }
 
   fn on_terminated(
     &mut self,
-    _ctx: &mut ActorContext<'_, NoStdToolbox>,
+    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
     _terminated: crate::actor_prim::Pid,
   ) -> Result<(), ActorError> {
     self.on_terminated_called = true;

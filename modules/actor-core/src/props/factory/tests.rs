@@ -3,17 +3,17 @@ use alloc::boxed::Box;
 use super::ActorFactory;
 use crate::{
   NoStdToolbox,
-  actor_prim::{Actor, ActorContext},
+  actor_prim::{Actor, ActorContextGeneric},
   error::ActorError,
   messaging::AnyMessageView,
 };
 
 struct TestActor;
 
-impl Actor<NoStdToolbox> for TestActor {
+impl Actor for TestActor {
   fn receive(
     &mut self,
-    _context: &mut ActorContext<'_, NoStdToolbox>,
+    _context: &mut ActorContextGeneric<'_, NoStdToolbox>,
     _message: AnyMessageView<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     Ok(())

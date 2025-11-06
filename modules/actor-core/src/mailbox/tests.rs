@@ -7,7 +7,7 @@ use cellactor_utils_core_rs::sync::{ArcShared, NoStdMutex};
 
 use crate::{
   NoStdToolbox,
-  actor_prim::{Actor, ActorContext},
+  actor_prim::{Actor, ActorContextGeneric},
   error::ActorError,
   event_stream::{EventStreamEvent, EventStreamSubscriber},
   logging::LogLevel,
@@ -19,10 +19,10 @@ use crate::{
 
 struct PassiveActor;
 
-impl Actor<NoStdToolbox> for PassiveActor {
+impl Actor for PassiveActor {
   fn receive(
     &mut self,
-    _ctx: &mut ActorContext<'_, NoStdToolbox>,
+    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
     _message: AnyMessageView<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     Ok(())
