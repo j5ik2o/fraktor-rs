@@ -29,7 +29,7 @@ pub use behaviors::Behaviors;
 pub use props::{TypedProps, TypedPropsGeneric};
 pub use system::{TypedActorSystem, TypedActorSystemGeneric};
 pub use typed_ask_error::TypedAskError;
-pub use typed_ask_future::TypedAskFuture;
+pub use typed_ask_future::{TypedAskFuture, TypedAskFutureGeneric};
 pub use typed_ask_response::{TypedAskResponse, TypedAskResponseGeneric};
 
 #[cfg(test)]

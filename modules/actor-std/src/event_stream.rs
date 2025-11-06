@@ -4,4 +4,3 @@ mod types;
 
 pub use subscriber::EventStreamSubscriber;
 pub use types::*;
-

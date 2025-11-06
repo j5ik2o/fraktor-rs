@@ -2,14 +2,17 @@
 
 use core::marker::PhantomData;
 
-use cellactor_utils_core_rs::{Shared, sync::ArcShared};
+use cellactor_utils_core_rs::{
+  Shared,
+  sync::{ArcShared, NoStdToolbox},
+};
 
 use crate::{
   RuntimeToolbox, futures::ActorFuture, messaging::AnyMessageGeneric, typed::typed_ask_error::TypedAskError,
 };
 
 /// Exposes typed helpers around an ask future that resolves with `R`.
-pub struct TypedAskFuture<R, TB>
+pub struct TypedAskFutureGeneric<R, TB>
 where
   R: Send + Sync + 'static,
   TB: RuntimeToolbox + 'static, {
@@ -17,7 +20,10 @@ where
   marker: PhantomData<R>,
 }
 
-impl<R, TB> Clone for TypedAskFuture<R, TB>
+/// Type alias with the default toolbox.
+pub type TypedAskFuture<R> = TypedAskFutureGeneric<R, NoStdToolbox>;
+
+impl<R, TB> Clone for TypedAskFutureGeneric<R, TB>
 where
   R: Send + Sync + 'static,
   TB: RuntimeToolbox + 'static,
@@ -27,7 +33,7 @@ where
   }
 }
 
-impl<R, TB> TypedAskFuture<R, TB>
+impl<R, TB> TypedAskFutureGeneric<R, TB>
 where
   R: Send + Sync + 'static,
   TB: RuntimeToolbox + 'static,

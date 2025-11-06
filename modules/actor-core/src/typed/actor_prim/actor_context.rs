@@ -10,12 +10,12 @@ use crate::{
   error::SendError,
   messaging::AnyMessageGeneric,
   spawn::SpawnError,
+  system::ActorSystemGeneric,
   typed::{
     actor_prim::{actor_ref::TypedActorRefGeneric, child_ref::TypedChildRefGeneric},
     props::TypedPropsGeneric,
   },
 };
-use crate::system::ActorSystemGeneric;
 
 /// Provides typed helpers around the untyped [`ActorContextGeneric`].
 pub struct TypedActorContextGeneric<'a, M, TB = NoStdToolbox>

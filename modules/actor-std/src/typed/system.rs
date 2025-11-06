@@ -1,24 +1,31 @@
-use std::marker::PhantomData;
-
 use cellactor_actor_core_rs::{
-  spawn::SpawnError,
-  system::ActorSystemGeneric,
-  typed::{TypedActorSystemGeneric as CoreTypedActorSystemGeneric, TypedPropsGeneric},
+  actor_prim::Pid, logging::LogLevel, spawn::SpawnError,
+  typed::TypedActorSystemGeneric as CoreTypedActorSystemGeneric,
+  event_stream::EventStreamSubscriber as CoreEventStreamSubscriber,
 };
-use cellactor_actor_core_rs::actor_prim::Pid;
-use cellactor_actor_core_rs::event_stream::EventStreamGeneric;
-use cellactor_actor_core_rs::system::SystemStateGeneric;
-use cellactor_actor_core_rs::typed::actor_prim::TypedActorRefGeneric;
 use cellactor_utils_core_rs::ArcShared;
 use cellactor_utils_std_rs::runtime_toolbox::StdToolbox;
-use crate::event_stream::EventStream;
-use crate::system::SystemState;
-use crate::typed::actor_prim::TypedActorRef;
-use crate::typed::TypedProps;
 
+use crate::{
+  dead_letter::DeadLetterEntry,
+  error::SendError,
+  event_stream::{
+    EventStream, EventStreamEvent, EventStreamSubscriber, EventStreamSubscription,
+    subscriber_adapter::EventStreamSubscriberAdapter,
+  },
+  futures::ActorFuture,
+  system::SystemState,
+  typed::{TypedProps, actor_prim::TypedActorRef},
+};
+
+/// Typed actor system specialized for `StdToolbox`.
+///
+/// This is a newtype wrapper that provides std-specific convenience methods,
+/// particularly for event stream operations with type conversions.
 pub struct TypedActorSystem<M>
 where
-  M: Send + Sync + 'static, {
+  M: Send + Sync + 'static,
+{
   inner: CoreTypedActorSystemGeneric<M, StdToolbox>,
 }
 
@@ -26,12 +33,22 @@ impl<M> TypedActorSystem<M>
 where
   M: Send + Sync + 'static,
 {
+  /// Creates an empty typed actor system (for testing).
   pub fn new_empty() -> Self {
-    Self { inner: CoreTypedActorSystemGeneric::new_empty() }
+    Self {
+      inner: CoreTypedActorSystemGeneric::new_empty(),
+    }
   }
 
+  /// Creates a new typed actor system with the given guardian props.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the guardian actor cannot be spawned.
   pub fn new(guardian: &TypedProps<M>) -> Result<Self, SpawnError> {
-    Ok(Self { inner: CoreTypedActorSystemGeneric::new(guardian)? })
+    Ok(Self {
+      inner: CoreTypedActorSystemGeneric::new(guardian)?,
+    })
   }
 
   /// Returns the typed user guardian reference.
@@ -56,5 +73,50 @@ where
   #[must_use]
   pub fn event_stream(&self) -> ArcShared<EventStream> {
     self.inner.event_stream()
+  }
+
+  /// Subscribes the provided observer to the event stream.
+  ///
+  /// This method provides std-specific type conversion from the local
+  /// `EventStreamSubscriber` trait to the core trait.
+  #[must_use]
+  pub fn subscribe_event_stream(
+    &self,
+    subscriber: &ArcShared<dyn EventStreamSubscriber>,
+  ) -> EventStreamSubscription {
+    let adapter: ArcShared<dyn CoreEventStreamSubscriber<StdToolbox>> =
+      ArcShared::new(EventStreamSubscriberAdapter::new(subscriber.clone()));
+    self.inner.subscribe_event_stream(&adapter)
+  }
+
+  /// Returns a snapshot of recorded dead letters.
+  #[must_use]
+  pub fn dead_letters(&self) -> Vec<DeadLetterEntry> {
+    self.inner.dead_letters()
+  }
+
+  /// Emits a log event with the specified severity.
+  pub fn emit_log(&self, level: LogLevel, message: impl Into<String>, origin: Option<Pid>) {
+    self.inner.emit_log(level, message, origin);
+  }
+
+  /// Publishes a raw event to the event stream.
+  pub fn publish_event(&self, event: &EventStreamEvent) {
+    self.inner.publish_event(event);
+  }
+
+  /// Returns a future that resolves once the actor system terminates.
+  #[must_use]
+  pub fn when_terminated(&self) -> ArcShared<ActorFuture<()>> {
+    self.inner.when_terminated()
+  }
+
+  /// Sends a stop signal to the user guardian and initiates system shutdown.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the terminate signal cannot be sent.
+  pub fn terminate(&self) -> Result<(), SendError> {
+    self.inner.terminate()
   }
 }
