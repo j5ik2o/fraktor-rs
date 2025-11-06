@@ -5,7 +5,7 @@ use crate::{
   error::ActorError,
   typed::{
     actor_prim::{TypedActor, TypedActorContextGeneric},
-    behavior::BehaviorGeneric,
+    props::TypedPropsGeneric,
     system::TypedActorSystemGeneric,
   },
 };
@@ -47,7 +47,7 @@ impl TypedActor<CounterMessage> for CounterActor {
 
 #[test]
 fn typed_actor_system_handles_basic_flow() {
-  let behavior = BehaviorGeneric::<CounterMessage, NoStdToolbox>::new(CounterActor::new);
+  let behavior = TypedPropsGeneric::<CounterMessage, NoStdToolbox>::new(CounterActor::new);
   let system = TypedActorSystemGeneric::<CounterMessage, NoStdToolbox>::new(&behavior).expect("system");
   let counter = system.user_guardian_ref();
 

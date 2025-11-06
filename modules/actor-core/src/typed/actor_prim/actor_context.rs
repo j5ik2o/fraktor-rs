@@ -12,7 +12,7 @@ use crate::{
   spawn::SpawnError,
   typed::{
     actor_prim::{actor_ref::TypedActorRefGeneric, child_ref::TypedChildRefGeneric},
-    behavior::BehaviorGeneric,
+    props::TypedPropsGeneric,
   },
 };
 
@@ -82,7 +82,7 @@ where
   /// # Errors
   ///
   /// Returns an error if the child actor cannot be spawned.
-  pub fn spawn_child<C>(&self, behavior: &BehaviorGeneric<C, TB>) -> Result<TypedChildRefGeneric<C, TB>, SpawnError>
+  pub fn spawn_child<C>(&self, behavior: &TypedPropsGeneric<C, TB>) -> Result<TypedChildRefGeneric<C, TB>, SpawnError>
   where
     C: Send + Sync + 'static, {
     let child = self.inner().spawn_child(behavior.props())?;
@@ -95,8 +95,8 @@ where
   ///
   /// Returns an error if the child actor cannot be spawned or watched.
   pub fn spawn_child_watched<C>(
-    &self,
-    behavior: &BehaviorGeneric<C, TB>,
+      &self,
+      behavior: &TypedPropsGeneric<C, TB>,
   ) -> Result<TypedChildRefGeneric<C, TB>, SpawnError>
   where
     C: Send + Sync + 'static, {

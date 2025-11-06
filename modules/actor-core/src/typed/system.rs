@@ -17,7 +17,7 @@ use crate::{
   system::{ActorSystemGeneric, SystemStateGeneric},
   typed::{
     actor_prim::{TypedActorRefGeneric, TypedChildRefGeneric},
-    behavior::BehaviorGeneric,
+    props::TypedPropsGeneric,
   },
 };
 
@@ -43,7 +43,7 @@ where
   /// # Errors
   ///
   /// Returns an error if the guardian actor cannot be spawned.
-  pub fn new(guardian: &BehaviorGeneric<M, TB>) -> Result<Self, SpawnError> {
+  pub fn new(guardian: &TypedPropsGeneric<M, TB>) -> Result<Self, SpawnError> {
     Ok(Self { inner: ActorSystemGeneric::new(guardian.props())?, marker: PhantomData })
   }
 
@@ -110,7 +110,7 @@ where
 
   /// Spawns a new top-level actor under the user guardian.
   #[allow(dead_code)]
-  pub(crate) fn spawn<C>(&self, behavior: &BehaviorGeneric<C, TB>) -> Result<TypedChildRefGeneric<C, TB>, SpawnError>
+  pub(crate) fn spawn<C>(&self, behavior: &TypedPropsGeneric<C, TB>) -> Result<TypedChildRefGeneric<C, TB>, SpawnError>
   where
     C: Send + Sync + 'static, {
     let child = self.inner.spawn(behavior.props())?;

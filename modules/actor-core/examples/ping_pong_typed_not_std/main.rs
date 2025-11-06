@@ -7,7 +7,7 @@ use alloc::string::{String, ToString};
 use cellactor_actor_core_rs::{
   error::ActorError,
   typed::{
-    Behavior, TypedActorSystem,
+    TypedProps, TypedActorSystem,
     actor_prim::{TypedActor, TypedActorContext, TypedActorRef},
   },
 };
@@ -33,11 +33,11 @@ impl TypedActor<GuardianCommand> for GuardianActor {
     match message {
       | GuardianCommand::Start => {
         let pong_ref = ctx
-          .spawn_child(&Behavior::new(|| PongActor))
+          .spawn_child(&TypedProps::new(|| PongActor))
           .map_err(|_| ActorError::recoverable("failed to spawn pong"))?
           .actor_ref();
         let ping_ref = ctx
-          .spawn_child(&Behavior::new(|| PingActor))
+          .spawn_child(&TypedProps::new(|| PingActor))
           .map_err(|_| ActorError::recoverable("failed to spawn ping"))?
           .actor_ref();
 
@@ -127,7 +127,7 @@ fn format_message(index: u32) -> String {
 fn main() {
   use std::thread;
 
-  let behavior = Behavior::new(|| GuardianActor);
+  let behavior = TypedProps::new(|| GuardianActor);
   let system = TypedActorSystem::new(&behavior).expect("system");
   let termination = system.as_untyped().when_terminated();
   system.user_guardian_ref().tell(GuardianCommand::Start).expect("start");

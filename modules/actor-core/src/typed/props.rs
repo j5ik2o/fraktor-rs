@@ -11,7 +11,7 @@ use crate::{
 };
 
 /// Describes how to construct a typed actor for message `M`.
-pub struct BehaviorGeneric<M, TB>
+pub struct TypedPropsGeneric<M, TB>
 where
   M: Send + Sync + 'static,
   TB: RuntimeToolbox + 'static, {
@@ -19,10 +19,10 @@ where
   marker: PhantomData<M>,
 }
 
-/// Type alias for [BehaviorGeneric] with the default [NoStdToolbox].
-pub type Behavior<M> = BehaviorGeneric<M, NoStdToolbox>;
+/// Type alias for [TypedPropsGeneric] with the default [NoStdToolbox].
+pub type TypedProps<M> = TypedPropsGeneric<M, NoStdToolbox>;
 
-impl<M, TB> Clone for BehaviorGeneric<M, TB>
+impl<M, TB> Clone for TypedPropsGeneric<M, TB>
 where
   M: Send + Sync + 'static,
   TB: RuntimeToolbox + 'static,
@@ -32,7 +32,7 @@ where
   }
 }
 
-impl<M, TB> BehaviorGeneric<M, TB>
+impl<M, TB> TypedPropsGeneric<M, TB>
 where
   M: Send + Sync + 'static,
   TB: RuntimeToolbox + 'static,
@@ -47,7 +47,7 @@ where
     Self { props, marker: PhantomData }
   }
 
-  /// Backwards-compatible alias for [`BehaviorGeneric::new`].
+  /// Backwards-compatible alias for [`TypedPropsGeneric::new`].
   #[must_use]
   pub fn from_factory<F, A>(factory: F) -> Self
   where
