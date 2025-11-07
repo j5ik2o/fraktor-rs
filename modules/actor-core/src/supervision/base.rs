@@ -11,7 +11,7 @@ mod tests;
 type SupervisorDecider = fn(&ActorError) -> SupervisorDirective;
 
 /// Supervisor configuration controlling restart policies.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct SupervisorStrategy {
   kind:         SupervisorStrategyKind,
   max_restarts: u32,
@@ -87,5 +87,18 @@ impl SupervisorStrategy {
   #[must_use]
   pub const fn within(&self) -> Duration {
     self.within
+  }
+}
+
+impl Default for SupervisorStrategy {
+  fn default() -> Self {
+    const fn decider(error: &ActorError) -> SupervisorDirective {
+      match error {
+        | ActorError::Recoverable(_) => SupervisorDirective::Restart,
+        | ActorError::Fatal(_) => SupervisorDirective::Stop,
+      }
+    }
+
+    Self::new(SupervisorStrategyKind::OneForOne, 10, Duration::from_secs(1), decider)
   }
 }

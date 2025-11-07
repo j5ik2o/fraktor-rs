@@ -5,7 +5,7 @@ use std::{
 
 use cellactor_actor_core_rs::{
   mailbox::MailboxPolicy,
-  props::{ActorFactory, MailboxConfig, PropsGeneric as CorePropsGeneric, SupervisorOptions},
+  props::{ActorFactory, MailboxConfig, PropsGeneric as CorePropsGeneric},
 };
 use cellactor_utils_core_rs::sync::ArcShared;
 use cellactor_utils_std_rs::runtime_toolbox::StdToolbox;
@@ -62,12 +62,6 @@ impl Props {
     self.inner.mailbox_policy()
   }
 
-  /// Returns the supervisor options.
-  #[must_use]
-  pub fn supervisor(&self) -> &SupervisorOptions {
-    self.inner.supervisor()
-  }
-
   /// Returns the registered middleware identifiers.
   #[must_use]
   pub fn middleware(&self) -> &[String] {
@@ -84,13 +78,6 @@ impl Props {
   #[must_use]
   pub fn with_mailbox(mut self, config: MailboxConfig) -> Self {
     self.inner = self.inner.with_mailbox(config);
-    self
-  }
-
-  /// Updates the supervisor options.
-  #[must_use]
-  pub fn with_supervisor(mut self, supervisor: SupervisorOptions) -> Self {
-    self.inner = self.inner.with_supervisor(supervisor);
     self
   }
 

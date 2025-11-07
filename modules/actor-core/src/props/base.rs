@@ -2,10 +2,7 @@ use alloc::{string::String, vec::Vec};
 
 use cellactor_utils_core_rs::sync::ArcShared;
 
-use super::{
-  dispatcher_config::DispatcherConfigGeneric, factory::ActorFactory, mailbox_config::MailboxConfig,
-  supervisor_options::SupervisorOptions,
-};
+use super::{dispatcher_config::DispatcherConfigGeneric, factory::ActorFactory, mailbox_config::MailboxConfig};
 use crate::{NoStdToolbox, RuntimeToolbox, actor_prim::Actor, mailbox::MailboxPolicy};
 
 /// Immutable configuration describing how to construct an actor.
@@ -13,7 +10,6 @@ pub struct PropsGeneric<TB: RuntimeToolbox + 'static> {
   factory:    ArcShared<dyn ActorFactory<TB>>,
   name:       Option<String>,
   mailbox:    MailboxConfig,
-  supervisor: SupervisorOptions,
   middleware: Vec<String>,
   dispatcher: DispatcherConfigGeneric<TB>,
 }
@@ -29,7 +25,6 @@ impl<TB: RuntimeToolbox + 'static> PropsGeneric<TB> {
       factory,
       name: None,
       mailbox: MailboxConfig::default(),
-      supervisor: SupervisorOptions::default(),
       middleware: Vec::new(),
       dispatcher: DispatcherConfigGeneric::default(),
     }
@@ -68,12 +63,6 @@ impl<TB: RuntimeToolbox + 'static> PropsGeneric<TB> {
     self.mailbox.policy()
   }
 
-  /// Returns the supervisor options.
-  #[must_use]
-  pub const fn supervisor(&self) -> &SupervisorOptions {
-    &self.supervisor
-  }
-
   /// Returns the registered middleware identifiers.
   #[must_use]
   pub fn middleware(&self) -> &[String] {
@@ -90,13 +79,6 @@ impl<TB: RuntimeToolbox + 'static> PropsGeneric<TB> {
   #[must_use]
   pub const fn with_mailbox(mut self, config: MailboxConfig) -> Self {
     self.mailbox = config;
-    self
-  }
-
-  /// Updates the supervisor options.
-  #[must_use]
-  pub const fn with_supervisor(mut self, supervisor: SupervisorOptions) -> Self {
-    self.supervisor = supervisor;
     self
   }
 
@@ -131,7 +113,6 @@ impl<TB: RuntimeToolbox + 'static> Clone for PropsGeneric<TB> {
       factory:    self.factory.clone(),
       name:       self.name.clone(),
       mailbox:    self.mailbox,
-      supervisor: self.supervisor,
       middleware: self.middleware.clone(),
       dispatcher: self.dispatcher.clone(),
     }

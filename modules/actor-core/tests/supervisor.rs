@@ -16,7 +16,7 @@ use cellactor_actor_core_rs::{
   event_stream::{EventStreamEvent, EventStreamSubscriber},
   lifecycle::LifecycleStage,
   messaging::{AnyMessage, AnyMessageView},
-  props::{Props, SupervisorOptions},
+  props::Props,
   supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
   system::ActorSystem,
 };
@@ -300,16 +300,7 @@ impl Actor for RootGuardian {
         let child_slot = self.child_slot.clone();
         let child_log = self.child_log.clone();
         move || SupervisorActor::new(supervisor_log.clone(), child_slot.clone(), child_log.clone())
-      })
-      .with_supervisor(SupervisorOptions::new(SupervisorStrategy::new(
-        SupervisorStrategyKind::OneForOne,
-        3,
-        Duration::from_secs(1),
-        |error| match error {
-          | ActorError::Recoverable(_) => SupervisorDirective::Escalate,
-          | ActorError::Fatal(_) => SupervisorDirective::Stop,
-        },
-      )));
+      });
 
       let supervisor = ctx.spawn_child(&supervisor_props).map_err(|_| ActorError::recoverable("spawn supervisor"))?;
       self.supervisor_slot.lock().replace(supervisor.clone());
@@ -362,6 +353,13 @@ impl Actor for SupervisorActor {
       self.child_slot.lock().replace(child);
     }
     Ok(())
+  }
+
+  fn supervisor_strategy(&mut self, _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>) -> SupervisorStrategy {
+    SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 3, Duration::from_secs(1), |error| match error {
+      | ActorError::Recoverable(_) => SupervisorDirective::Escalate,
+      | ActorError::Fatal(_) => SupervisorDirective::Stop,
+    })
   }
 }
 
