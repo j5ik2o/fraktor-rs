@@ -7,6 +7,7 @@ use alloc::{string::String, vec::Vec};
 
 use cellactor_utils_core_rs::sync::ArcShared;
 
+use super::{RootGuardianActor, SystemGuardianActor, SystemGuardianProtocol};
 use crate::{
   NoStdToolbox, RuntimeToolbox,
   actor_prim::{ActorCellGeneric, ChildRefGeneric, Pid, actor_ref::ActorRefGeneric},
@@ -18,7 +19,7 @@ use crate::{
   messaging::{AnyMessageGeneric, SystemMessage},
   props::PropsGeneric,
   spawn::SpawnError,
-  system::system_state::SystemStateGeneric,
+  system::{RegisterExtraTopLevelError, system_state::SystemStateGeneric},
 };
 
 const PARENT_MISSING: &str = "parent actor not found";
@@ -51,11 +52,19 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   ///
   /// Returns [`SpawnError`] when guardian initialization fails.
   pub fn new(user_guardian_props: &PropsGeneric<TB>) -> Result<Self, SpawnError> {
+    Self::new_with(user_guardian_props, |_| Ok(()))
+  }
+
+  /// Creates a new actor system and runs the provided configuration callback before startup.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SpawnError`] when guardian initialization or configuration fails.
+  pub fn new_with<F>(user_guardian_props: &PropsGeneric<TB>, configure: F) -> Result<Self, SpawnError>
+  where
+    F: FnOnce(&ActorSystemGeneric<TB>) -> Result<(), SpawnError>, {
     let system = Self::new_empty();
-    let guardian = system.spawn_with_parent(None, user_guardian_props)?;
-    if let Some(cell) = system.state.cell(&guardian.pid()) {
-      system.state.set_user_guardian(cell);
-    }
+    system.bootstrap(user_guardian_props, configure)?;
     Ok(system)
   }
 
@@ -105,6 +114,40 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     self.state.dead_letters()
   }
 
+  /// Registers an extra top-level actor name before the system finishes startup.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`RegisterExtraTopLevelError`] if the name is reserved, duplicated, or registration
+  /// occurs after startup.
+  pub fn register_extra_top_level(
+    &self,
+    name: &str,
+    actor: ActorRefGeneric<TB>,
+  ) -> Result<(), RegisterExtraTopLevelError> {
+    self.state.register_extra_top_level(name, actor)
+  }
+
+  /// Registers a temporary actor reference under `/temp` and returns the generated segment.
+  #[must_use]
+  #[allow(dead_code)]
+  pub(crate) fn register_temp_actor(&self, actor: ActorRefGeneric<TB>) -> String {
+    self.state.register_temp_actor(actor)
+  }
+
+  /// Removes a temporary actor mapping if present.
+  #[allow(dead_code)]
+  pub(crate) fn unregister_temp_actor(&self, name: &str) -> Option<ActorRefGeneric<TB>> {
+    self.state.unregister_temp_actor(name)
+  }
+
+  /// Resolves a registered temporary actor reference.
+  #[must_use]
+  #[allow(dead_code)]
+  pub(crate) fn temp_actor(&self, name: &str) -> Option<ActorRefGeneric<TB>> {
+    self.state.temp_actor(name)
+  }
+
   /// Emits a log event with the specified severity.
   pub fn emit_log(&self, level: LogLevel, message: impl Into<String>, origin: Option<Pid>) {
     self.state.emit_log(level, message.into(), origin);
@@ -123,6 +166,13 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   #[allow(dead_code)]
   pub(crate) fn spawn(&self, props: &PropsGeneric<TB>) -> Result<ChildRefGeneric<TB>, SpawnError> {
     let guardian_pid = self.state.user_guardian_pid().ok_or_else(SpawnError::system_unavailable)?;
+    self.spawn_child(guardian_pid, props)
+  }
+
+  /// Spawns a new actor under the system guardian (internal use only).
+  #[allow(dead_code)]
+  pub(crate) fn system_actor_of(&self, props: &PropsGeneric<TB>) -> Result<ChildRefGeneric<TB>, SpawnError> {
+    let guardian_pid = self.state.system_guardian_pid().ok_or_else(SpawnError::system_unavailable)?;
     self.spawn_child(guardian_pid, props)
   }
 
@@ -181,21 +231,22 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
       return Ok(());
     }
 
-    match self.state.user_guardian_pid() {
-      | Some(pid) => match self.state.send_system_message(pid, SystemMessage::Stop) {
-        | Ok(()) => Ok(()),
-        | Err(error) => {
-          if self.state.is_terminated() {
-            Ok(())
-          } else {
-            Err(error)
-          }
-        },
-      },
-      | None => {
+    if self.state.begin_termination() {
+      if let Some(root_pid) = self.state.root_guardian_pid() {
+        if let Some(user_pid) = self.state.user_guardian_pid() {
+          return self.state.send_system_message(root_pid, SystemMessage::StopChild(user_pid));
+        }
         self.state.mark_terminated();
-        Ok(())
-      },
+        return Ok(());
+      }
+      if let Some(user_pid) = self.state.user_guardian_pid() {
+        return self.state.send_system_message(user_pid, SystemMessage::Stop);
+      }
+      self.state.mark_terminated();
+      Ok(())
+    } else {
+      self.force_termination_hooks();
+      Ok(())
     }
   }
 
@@ -232,6 +283,51 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     Ok(ChildRefGeneric::new(cell.actor_ref(), self.state.clone()))
   }
 
+  fn bootstrap<F>(&self, user_guardian_props: &PropsGeneric<TB>, configure: F) -> Result<(), SpawnError>
+  where
+    F: FnOnce(&ActorSystemGeneric<TB>) -> Result<(), SpawnError>, {
+    let root_props = PropsGeneric::from_fn(RootGuardianActor::new).with_name("root");
+    let root_cell = self.spawn_root_guardian_cell(&root_props)?;
+    let root_pid = root_cell.pid();
+    self.state.set_root_guardian(root_cell.clone());
+
+    let user_guardian = self.spawn_child(root_pid, user_guardian_props)?;
+    if let Some(cell) = self.state.cell(&user_guardian.pid()) {
+      self.state.set_user_guardian(cell);
+    } else {
+      return Err(SpawnError::invalid_props("user guardian unavailable"));
+    }
+
+    let user_guardian_ref = user_guardian.actor_ref();
+    let system_props = PropsGeneric::from_fn({
+      let user_guardian_ref = user_guardian_ref.clone();
+      move || SystemGuardianActor::new(user_guardian_ref.clone())
+    })
+    .with_name("system");
+
+    let system_guardian = self.spawn_child(root_pid, &system_props)?;
+    if let Some(cell) = self.state.cell(&system_guardian.pid()) {
+      self.state.set_system_guardian(cell);
+    }
+
+    configure(self)?;
+
+    if let Err(error) = self.perform_create_handshake(None, root_pid, &root_cell) {
+      self.rollback_spawn(None, &root_cell, root_pid);
+      return Err(error);
+    }
+    self.state.mark_root_started();
+    Ok(())
+  }
+
+  fn spawn_root_guardian_cell(&self, props: &PropsGeneric<TB>) -> Result<ArcShared<ActorCellGeneric<TB>>, SpawnError> {
+    let pid = self.state.allocate_pid();
+    let name = self.state.assign_name(None, props.name(), pid)?;
+    let cell = self.build_cell_for_spawn(pid, None, name, props);
+    self.state.register_cell(cell.clone());
+    Ok(cell)
+  }
+
   fn build_cell_for_spawn(
     &self,
     pid: Pid,
@@ -262,6 +358,14 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     self.state.remove_cell(&pid);
     if let Some(parent_pid) = parent {
       self.state.unregister_child(Some(parent_pid), pid);
+    }
+  }
+
+  fn force_termination_hooks(&self) {
+    if let Some(system_pid) = self.state.system_guardian_pid()
+      && let Some(system_ref) = self.actor_ref(system_pid)
+    {
+      let _ = system_ref.tell(AnyMessageGeneric::new(SystemGuardianProtocol::<TB>::ForceTerminateHooks));
     }
   }
 }

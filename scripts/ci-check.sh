@@ -483,7 +483,7 @@ PY
 
 run_clippy() {
   log_step "cargo +${DEFAULT_TOOLCHAIN} clippy --workspace --all-targets -- -D warnings"
-  run_cargo clippy --workspace --all-targets || return 1
+  run_cargo clippy --workspace --all-targets -- -D warnings || return 1
 }
 
 run_no_std() {

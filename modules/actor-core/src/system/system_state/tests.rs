@@ -5,10 +5,11 @@ use cellactor_utils_core_rs::sync::ArcShared;
 use super::SystemState;
 use crate::{
   NoStdToolbox,
-  actor_prim::{Actor, ActorCell, ActorContextGeneric},
+  actor_prim::{Actor, ActorCell, ActorContextGeneric, actor_ref::ActorRefGeneric},
   error::ActorError,
   messaging::{AnyMessage, AnyMessageView},
   props::Props,
+  system::RegisterExtraTopLevelError,
 };
 
 #[test]
@@ -64,10 +65,21 @@ fn system_state_mark_terminated() {
 
 #[test]
 fn system_state_register_and_remove_cell() {
-  let state = SystemState::new();
-  let pid = state.allocate_pid();
+  let state = ArcShared::new(SystemState::new());
+  let root_pid = state.allocate_pid();
+  let child_pid = state.allocate_pid();
+  let props = Props::from_fn(|| RestartProbeActor);
+  let root = ActorCell::create(state.clone(), root_pid, None, "root".to_string(), &props);
+  state.register_cell(root);
+  let child = ActorCell::create(state.clone(), child_pid, Some(root_pid), "worker".to_string(), &props);
+  state.register_cell(child.clone());
 
-  let _ = pid;
+  assert!(state.cell(&child_pid).is_some());
+  let path = state.actor_path(&child_pid).expect("path");
+  assert_eq!(path.to_string(), "/worker");
+
+  state.remove_cell(&child_pid);
+  assert!(state.cell(&child_pid).is_none());
 }
 
 #[test]
@@ -172,13 +184,42 @@ fn system_state_clear_guardian() {
   let pid = state.allocate_pid();
 
   let cleared = state.clear_guardian(pid);
-  assert!(!cleared);
+  assert!(cleared.is_none());
 }
 
 #[test]
 fn system_state_user_guardian() {
   let state = SystemState::new();
   assert!(state.user_guardian().is_none());
+}
+
+#[test]
+fn system_state_register_extra_top_level_success() {
+  let state = SystemState::new();
+  let actor = ActorRefGeneric::null();
+  assert!(state.register_extra_top_level("metrics", actor.clone()).is_ok());
+  assert!(state.extra_top_level("metrics").is_some());
+}
+
+#[test]
+fn system_state_register_extra_top_level_errors() {
+  let state = SystemState::new();
+  let actor = ActorRefGeneric::null();
+  let reserved = state.register_extra_top_level("user", actor.clone());
+  assert!(matches!(reserved, Err(RegisterExtraTopLevelError::ReservedName(_))));
+  state.mark_root_started();
+  let started = state.register_extra_top_level("custom", actor);
+  assert!(matches!(started, Err(RegisterExtraTopLevelError::AlreadyStarted)));
+}
+
+#[test]
+fn system_state_temp_actor_round_trip() {
+  let state = SystemState::new();
+  let actor = ActorRefGeneric::null();
+  let name = state.register_temp_actor(actor.clone());
+  assert!(state.temp_actor(&name).is_some());
+  state.unregister_temp_actor(&name);
+  assert!(state.temp_actor(&name).is_none());
 }
 
 #[test]

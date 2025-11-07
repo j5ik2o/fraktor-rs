@@ -30,6 +30,8 @@ pub enum SystemMessage {
   Watch(Pid),
   /// Removes the specified watcher and stops sending notifications.
   Unwatch(Pid),
+  /// Requests the guardian to stop a specific child actor.
+  StopChild(Pid),
   /// Notifies watchers that the referenced actor has terminated.
   Terminated(Pid),
   /// Reports that a child actor failed and requires supervisor handling.

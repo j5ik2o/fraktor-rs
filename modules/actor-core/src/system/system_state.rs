@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::{format, string::String, vec::Vec};
+use alloc::{borrow::ToOwned, format, string::String, vec::Vec};
 use core::time::Duration;
 
 use cellactor_utils_core_rs::{
@@ -13,9 +13,10 @@ use cellactor_utils_core_rs::{
 use hashbrown::HashMap;
 use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
+use super::GuardianKind;
 use crate::{
   NoStdToolbox, RuntimeToolbox, ToolboxMutex,
-  actor_prim::{ActorCellGeneric, Pid},
+  actor_prim::{ActorCellGeneric, ActorPath, Pid, actor_ref::ActorRefGeneric},
   dead_letter::{DeadLetterEntryGeneric, DeadLetterGeneric},
   error::{ActorError, SendError},
   event_stream::{EventStreamEvent, EventStreamGeneric},
@@ -24,6 +25,7 @@ use crate::{
   messaging::{AnyMessageGeneric, FailurePayload, SystemMessage},
   spawn::{NameRegistry, NameRegistryError, SpawnError},
   supervision::SupervisorDirective,
+  system::RegisterExtraTopLevelError,
 };
 
 mod failure_outcome;
@@ -33,18 +35,27 @@ pub use failure_outcome::FailureOutcome;
 /// Type alias for ask future collections.
 type AskFutureVec<TB> = Vec<ArcShared<ActorFuture<AnyMessageGeneric<TB>, TB>>>;
 
+const RESERVED_TOP_LEVEL: [&str; 4] = ["user", "system", "temp", "deadLetters"];
+
 /// Captures global actor system state.
 pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   next_pid:               AtomicU64,
   clock:                  AtomicU64,
   cells:                  ToolboxMutex<HashMap<Pid, ArcShared<ActorCellGeneric<TB>>>, TB>,
   registries:             ToolboxMutex<HashMap<Option<Pid>, NameRegistry>, TB>,
+  root_guardian:          ToolboxMutex<Option<ArcShared<ActorCellGeneric<TB>>>, TB>,
+  system_guardian:        ToolboxMutex<Option<ArcShared<ActorCellGeneric<TB>>>, TB>,
   user_guardian:          ToolboxMutex<Option<ArcShared<ActorCellGeneric<TB>>>, TB>,
   ask_futures:            ToolboxMutex<AskFutureVec<TB>, TB>,
   termination:            ArcShared<ActorFuture<(), TB>>,
   terminated:             AtomicBool,
+  terminating:            AtomicBool,
+  root_started:           AtomicBool,
   event_stream:           ArcShared<EventStreamGeneric<TB>>,
   dead_letter:            ArcShared<DeadLetterGeneric<TB>>,
+  extra_top_levels:       ToolboxMutex<HashMap<String, ActorRefGeneric<TB>>, TB>,
+  temp_actors:            ToolboxMutex<HashMap<String, ActorRefGeneric<TB>>, TB>,
+  temp_counter:           AtomicU64,
   failure_total:          AtomicU64,
   failure_restart_total:  AtomicU64,
   failure_stop_total:     AtomicU64,
@@ -67,12 +78,19 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       clock: AtomicU64::new(0),
       cells: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::new()),
       registries: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::new()),
+      root_guardian: <TB::MutexFamily as SyncMutexFamily>::create(None),
+      system_guardian: <TB::MutexFamily as SyncMutexFamily>::create(None),
       user_guardian: <TB::MutexFamily as SyncMutexFamily>::create(None),
       ask_futures: <TB::MutexFamily as SyncMutexFamily>::create(Vec::new()),
       termination: ArcShared::new(ActorFuture::<(), TB>::new()),
       terminated: AtomicBool::new(false),
+      terminating: AtomicBool::new(false),
+      root_started: AtomicBool::new(false),
       event_stream,
       dead_letter,
+      extra_top_levels: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::new()),
+      temp_actors: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::new()),
+      temp_counter: AtomicU64::new(0),
       failure_total: AtomicU64::new(0),
       failure_restart_total: AtomicU64::new(0),
       failure_stop_total: AtomicU64::new(0),
@@ -137,19 +155,55 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     }
   }
 
+  /// Stores the root guardian cell reference.
+  pub(crate) fn set_root_guardian(&self, cell: ArcShared<ActorCellGeneric<TB>>) {
+    *self.root_guardian.lock() = Some(cell);
+  }
+
+  /// Stores the system guardian cell reference.
+  pub(crate) fn set_system_guardian(&self, cell: ArcShared<ActorCellGeneric<TB>>) {
+    *self.system_guardian.lock() = Some(cell);
+  }
+
   /// Stores the user guardian cell reference.
   pub(crate) fn set_user_guardian(&self, cell: ArcShared<ActorCellGeneric<TB>>) {
     *self.user_guardian.lock() = Some(cell);
   }
 
-  /// Clears the guardian if the provided pid matches.
-  pub(crate) fn clear_guardian(&self, pid: Pid) -> bool {
-    let mut guardian = self.user_guardian.lock();
-    if guardian.as_ref().map(|cell| cell.pid()) == Some(pid) {
-      *guardian = None;
+  /// Clears the guardian slot matching the pid and returns which guardian stopped.
+  pub(crate) fn clear_guardian(&self, pid: Pid) -> Option<GuardianKind> {
+    if Self::clear_specific_guardian(&self.root_guardian, pid) {
+      return Some(GuardianKind::Root);
+    }
+    if Self::clear_specific_guardian(&self.system_guardian, pid) {
+      return Some(GuardianKind::System);
+    }
+    if Self::clear_specific_guardian(&self.user_guardian, pid) {
+      return Some(GuardianKind::User);
+    }
+    None
+  }
+
+  fn clear_specific_guardian(slot: &ToolboxMutex<Option<ArcShared<ActorCellGeneric<TB>>>, TB>, pid: Pid) -> bool {
+    let mut guard = slot.lock();
+    if guard.as_ref().map(|cell| cell.pid()) == Some(pid) {
+      *guard = None;
       return true;
     }
     false
+  }
+
+  /// Returns the root guardian cell if initialised.
+  #[must_use]
+  #[allow(dead_code)]
+  pub(crate) fn root_guardian(&self) -> Option<ArcShared<ActorCellGeneric<TB>>> {
+    self.root_guardian.lock().clone()
+  }
+
+  /// Returns the system guardian cell if initialised.
+  #[must_use]
+  pub(crate) fn system_guardian(&self) -> Option<ArcShared<ActorCellGeneric<TB>>> {
+    self.system_guardian.lock().clone()
   }
 
   /// Returns the user guardian cell if initialised.
@@ -158,10 +212,114 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     self.user_guardian.lock().clone()
   }
 
+  /// Returns the pid of the root guardian if available.
+  #[must_use]
+  pub fn root_guardian_pid(&self) -> Option<Pid> {
+    self.root_guardian.lock().as_ref().map(|cell| cell.pid())
+  }
+
+  /// Returns the pid of the system guardian if available.
+  #[must_use]
+  pub fn system_guardian_pid(&self) -> Option<Pid> {
+    self.system_guardian.lock().as_ref().map(|cell| cell.pid())
+  }
+
   /// Returns the pid of the user guardian if available.
   #[must_use]
   pub fn user_guardian_pid(&self) -> Option<Pid> {
     self.user_guardian.lock().as_ref().map(|cell| cell.pid())
+  }
+
+  /// Registers an extra top-level path prior to root startup.
+  pub(crate) fn register_extra_top_level(
+    &self,
+    name: &str,
+    actor: ActorRefGeneric<TB>,
+  ) -> Result<(), RegisterExtraTopLevelError> {
+    if self.root_started.load(Ordering::Acquire) {
+      return Err(RegisterExtraTopLevelError::AlreadyStarted);
+    }
+    if name.is_empty() || RESERVED_TOP_LEVEL.iter().any(|reserved| reserved.eq_ignore_ascii_case(name)) {
+      return Err(RegisterExtraTopLevelError::ReservedName(name.into()));
+    }
+    let mut registry = self.extra_top_levels.lock();
+    if registry.contains_key(name) {
+      return Err(RegisterExtraTopLevelError::DuplicateName(name.into()));
+    }
+    registry.insert(name.into(), actor);
+    Ok(())
+  }
+
+  /// Returns a registered extra top-level reference if present.
+  #[must_use]
+  pub fn extra_top_level(&self, name: &str) -> Option<ActorRefGeneric<TB>> {
+    self.extra_top_levels.lock().get(name).cloned()
+  }
+
+  /// Marks the root guardian as fully initialised, preventing further registrations.
+  pub(crate) fn mark_root_started(&self) {
+    self.root_started.store(true, Ordering::Release);
+  }
+
+  /// Indicates whether the root guardian has completed startup.
+  #[must_use]
+  pub fn has_root_started(&self) -> bool {
+    self.root_started.load(Ordering::Acquire)
+  }
+
+  /// Attempts to transition the system into the terminating state.
+  ///
+  /// Returns `true` if this call initiated termination, `false` if another caller has already done
+  /// so.
+  pub fn begin_termination(&self) -> bool {
+    !self.terminating.swap(true, Ordering::AcqRel)
+  }
+
+  /// Indicates whether the system is currently terminating.
+  #[must_use]
+  pub fn is_terminating(&self) -> bool {
+    self.terminating.load(Ordering::Acquire)
+  }
+
+  /// Generates a unique `/temp` path segment and registers the supplied actor reference.
+  #[must_use]
+  pub(crate) fn register_temp_actor(&self, actor: ActorRefGeneric<TB>) -> String {
+    let id = self.temp_counter.fetch_add(1, Ordering::Relaxed) + 1;
+    let name = format!("t{:x}", id);
+    self.temp_actors.lock().insert(name.clone(), actor);
+    name
+  }
+
+  /// Removes a temporary actor reference if registered.
+  pub(crate) fn unregister_temp_actor(&self, name: &str) -> Option<ActorRefGeneric<TB>> {
+    self.temp_actors.lock().remove(name)
+  }
+
+  /// Resolves a registered temporary actor reference.
+  #[must_use]
+  pub(crate) fn temp_actor(&self, name: &str) -> Option<ActorRefGeneric<TB>> {
+    self.temp_actors.lock().get(name).cloned()
+  }
+
+  /// Resolves the actor path for the specified pid if the actor exists.
+  #[must_use]
+  pub fn actor_path(&self, pid: &Pid) -> Option<ActorPath> {
+    let cell = self.cell(pid)?;
+    let mut segments = Vec::new();
+    let mut current = Some(cell);
+    while let Some(cursor) = current {
+      segments.push(cursor.name().to_owned());
+      current = cursor.parent().and_then(|parent_pid| self.cell(&parent_pid));
+    }
+    if segments.is_empty() {
+      return Some(ActorPath::root());
+    }
+    segments.pop(); // discard root
+    if segments.is_empty() {
+      return Some(ActorPath::root());
+    }
+    segments.reverse();
+    Some(ActorPath::from_segments(segments))
   }
 
   /// Returns the shared event stream handle.
@@ -244,6 +402,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
 
   /// Marks the system as terminated and completes the termination future.
   pub(crate) fn mark_terminated(&self) {
+    self.terminating.store(true, Ordering::Release);
     if self.terminated.swap(true, Ordering::AcqRel) {
       return;
     }
