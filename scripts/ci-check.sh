@@ -68,6 +68,34 @@ ensure_target_installed() {
   return 2
 }
 
+ensure_rustc_components_installed() {
+  local -a required_components=("rustc-dev" "llvm-tools-preview")
+  local -a missing_components=()
+
+  for component in "${required_components[@]}"; do
+    if ! rustup component list --installed --toolchain "${DEFAULT_TOOLCHAIN}" 2>/dev/null | grep -qx "${component}"; then
+      missing_components+=("${component}")
+    fi
+  done
+
+  if [[ ${#missing_components[@]} -eq 0 ]]; then
+    return 0
+  fi
+
+  echo "info: 不足しているコンポーネントをインストールします: ${missing_components[*]}" >&2
+  local component
+  for component in "${missing_components[@]}"; do
+    if rustup component add --toolchain "${DEFAULT_TOOLCHAIN}" "${component}"; then
+      echo "info: ${component} のインストールが完了しました。" >&2
+    else
+      echo "エラー: ${component} のインストールに失敗しました。" >&2
+      return 1
+    fi
+  done
+
+  return 0
+}
+
 ensure_dylint_installed() {
   if command -v cargo-dylint >/dev/null 2>&1; then
     return 0
@@ -90,6 +118,7 @@ run_lint() {
 }
 
 run_dylint() {
+  ensure_rustc_components_installed || return 1
   ensure_dylint_installed || return 1
 
   local -a lint_filters
