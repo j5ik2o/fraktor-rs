@@ -33,29 +33,32 @@ struct ResilientWorker {
 }
 
 impl Actor for ResilientWorker {
-    fn supervisor_strategy(&mut self, _ctx: &mut ActorContext) -> Option<SupervisorStrategy> {
+    fn supervisor_strategy(&mut self, _ctx: &mut ActorContext) -> SupervisorStrategy {
         if self.consecutive_errors > 10 {
             // 10回以上連続エラー → 即座に停止
-            Some(SupervisorStrategy::stopping())
+            SupervisorStrategy::stopping()
         } else {
             // 通常時 → 3回まで再試行
-            Some(SupervisorStrategy::restarting(3, Duration::from_secs(10)))
+            SupervisorStrategy::restarting(3, Duration::from_secs(10))
         }
     }
 }
 
 // ユースケース2: ビジネスロジックの状態に基づく判断
+use cellactor::logging::LogLevel;
+
 struct PaymentProcessor {
     critical_mode: bool, // 決済処理中など
 }
 
 impl Actor for PaymentProcessor {
-    fn supervisor_strategy(&mut self, _ctx: &mut ActorContext) -> Option<SupervisorStrategy> {
+    fn supervisor_strategy(&mut self, ctx: &mut ActorContext) -> SupervisorStrategy {
         if self.critical_mode {
-            // クリティカルな処理中はエスカレート
-            Some(SupervisorStrategy::escalating())
+            // クリティカルな処理中はエスカレート。Context経由でロガーを利用
+            ctx.log(LogLevel::Warn, "escalate to payment guardian");
+            SupervisorStrategy::escalating()
         } else {
-            None // デフォルト戦略を使用
+            SupervisorStrategy::default()
         }
     }
 }
@@ -75,25 +78,27 @@ pub trait Actor<TB: RuntimeToolbox = NoStdToolbox>: Send {
     ///
     /// # デフォルト実装
     ///
-    /// `None`を返し、`Props`で指定された戦略を使用する。
+    /// `SupervisorStrategy::default()`を返す。PropsやActorCellは監督戦略を保持しないため、
+    /// このメソッドが唯一の情報源となる。
     ///
     /// # カスタマイズ
     ///
     /// Actor内部の状態に基づいて動的に戦略を決定できる。
+    /// 必要に応じて`ctx`からシステム情報を取得し、状態更新も行える。
     ///
     /// # 例
     ///
     /// ```rust
-    /// fn supervisor_strategy(&self, ctx: &ActorContext) -> Option<SupervisorStrategy> {
+    /// fn supervisor_strategy(&mut self, ctx: &mut ActorContext) -> SupervisorStrategy {
     ///     if self.strict_mode {
-    ///         Some(SupervisorStrategy::stopping())
+    ///         SupervisorStrategy::stopping()
     ///     } else {
-    ///         Some(SupervisorStrategy::restarting(5, Duration::from_secs(10)))
+    ///         SupervisorStrategy::default()
     ///     }
     /// }
     /// ```
-    fn supervisor_strategy(&self, _ctx: &ActorContextGeneric<'_, TB>) -> Option<SupervisorStrategy> {
-        None
+    fn supervisor_strategy(&mut self, _ctx: &mut ActorContextGeneric<'_, TB>) -> SupervisorStrategy {
+        SupervisorStrategy::default()
     }
 }
 ```
@@ -155,65 +160,110 @@ pub struct ActorCellGeneric<TB: RuntimeToolbox + 'static> {
 
 ### 4. デフォルト戦略
 
-Actor traitのデフォルト実装でデフォルト戦略を提供:
+Actor traitのデフォルト実装で`SupervisorStrategy::default()`を返し、PropsやActorCellが戦略を保持しない新しい責務分担に揃える。同時に`SupervisorStrategy`へ`Default`実装および`fn default() -> Self`を追加し、従来`SupervisorOptions::default()`が提供していた挙動（OneForOne / 10回 / 1秒 / Recoverable=Restart, Fatal=Stop）を完全に移植する。
 
 ```rust
+impl Default for SupervisorStrategy {
+    fn default() -> Self {
+        const fn decider(err: &ActorError) -> SupervisorDirective {
+            match err {
+                ActorError::Recoverable(_) => SupervisorDirective::Restart,
+                ActorError::Fatal(_) => SupervisorDirective::Stop,
+            }
+        }
+
+        SupervisorStrategy::new(
+            SupervisorStrategyKind::OneForOne,
+            10,
+            Duration::from_secs(1),
+            decider,
+        )
+    }
+}
+
 pub trait Actor<TB: RuntimeToolbox = NoStdToolbox>: Send {
     fn supervisor_strategy(&mut self, _ctx: &mut ActorContextGeneric<'_, TB>) -> SupervisorStrategy {
-        SupervisorStrategy::default()  // OneForOne, 10回再起動, 1分以内
+        SupervisorStrategy::default()
     }
 }
 ```
 
+`SupervisorOptions::default()`は互換性のために残しつつ、内部で`SupervisorStrategy::default()`を呼び出すだけの薄いラッパーに縮小する。
+
+**再確認したデフォルト挙動**:
+- 種類: `OneForOne`
+- 最大再起動回数: 10 回
+- 監視ウィンドウ: 1 秒
+- Decider: `ActorError::Recoverable(_) => Restart` / `ActorError::Fatal(_) => Stop`
+  - Escalationはユーザー実装の戦略でのみ選択される
+
 ### 5. SupervisorStrategyの制約緩和
 
-現在`Copy` traitを要求しているが、これを緩和する可能性を検討:
+`SupervisorStrategy`から`Copy`トレイトを即時に削除し、`Clone`のみに揃える。
 
 ```rust
-// 現在: Copy制約あり
-#[derive(Clone, Copy, Debug)]
-pub struct SupervisorStrategy { ... }
-
-// 提案: Clone のみでOK（クロージャサポートのため）
 #[derive(Clone, Debug)]
-pub struct SupervisorStrategy { ... }
+pub struct SupervisorStrategy { /* deciderクロージャを格納できる */ }
 ```
 
-**理由**: 将来的にクロージャベースのdeciderをサポートする場合、Copyでは制限が厳しい。
+**理由**:
+- `supervisor_strategy(&mut self, ..)`は毎回新しい`SupervisorStrategy`を生成するため、Copyによる暗黙コピーは不要
+- deciderをクロージャで表現したい将来拡張（状態を捕捉するrestartポリシーなど）の足かせを事前に取り除ける
+- Propsからのフォールバックを廃止したため、グローバルに共有される固定戦略の需要が低下
+
+**影響**:
+- これまで`Copy`に依存していた箇所（例: `strategy.handle_failure(...)`呼び出し前に一時変数へコピー）は`clone()`へ置き換える
+- 公開APIの挙動は変わらず、破壊的変更は`SupervisorStrategy: Copy`を前提にしていた利用者のみ
 
 ## 影響範囲
 
 ### 変更が必要なファイル
 
-1. **modules/actor-core/src/actor_prim/actor.rs**
-   - `Actor` traitに`supervisor_strategy`メソッド追加（デフォルト実装あり）
+1. **modules/actor-core/src/actor_prim/actor.rs**  
+   - `Actor` traitに`fn supervisor_strategy(&mut self, &mut ActorContext) -> SupervisorStrategy`を追加し、RustDocでデフォルト実装・使用例を更新
 
-2. **modules/actor-core/src/actor_prim/actor_cell.rs**
-   - `ActorCell`構造体から`supervisor`フィールド削除
-   - `handle_failure`メソッドで動的戦略取得ロジック実装
+2. **modules/actor-std/src/actor_prim/actor.rs**  
+   - std版Actor traitも同じAPIへ揃え、ドキュメントを同期
 
-3. **modules/actor-core/src/props/base.rs**
-   - `PropsGeneric`構造体から`supervisor`フィールド削除
-   - `with_supervisor()`メソッド削除
+3. **modules/actor-core/src/actor_prim/actor_cell.rs**  
+   - 構造体・`create`・`handle_child_failure`・`handle_failure`から`supervisor`フィールド参照を削除し、Actorから直接戦略を取得するロジックを導入
 
-4. **modules/actor-std/src/actor_prim/actor.rs**
-   - stdモジュールの`Actor` traitも同様に拡張
+4. **modules/actor-core/src/actor_prim/actor_cell/tests.rs**  
+   - ActorCell単体テストで動的なOneForOne/AllForOne切り替え、Escalateフォールバックを検証
 
-5. **modules/actor-core/tests/supervisor.rs**
-   - 動的戦略変更のテストケース追加
-   - Props経由の戦略指定テストを削除
+5. **modules/actor-core/src/props/base.rs**  
+   - `PropsGeneric`から`supervisor: SupervisorOptions`を除去し、`with_supervisor`/`supervisor` APIと関連ドキュメントを削除
 
-6. **modules/actor-core/src/supervision/base.rs**
-   - `SupervisorStrategy`の`Copy`制約削除を検討（将来の拡張）
+6. **modules/actor-std/src/props/base.rs**  
+   - std向けPropsラッパーから同APIを削除し、ビルダー例をActorメソッド方式へ書き換え
+
+7. **modules/actor-core/src/supervision/base.rs**  
+   - `SupervisorStrategy`から`Copy`制約を削除し、`Clone`ベースの実装へ変更（deciderクロージャを保持できるよう準備）
+
+8. **modules/actor-core/tests/supervisor.rs**  
+   - `.with_supervisor()`に依存しているテストをActor実装オーバーライド方式へ移行し、新しいユースケースを追加
+
+9. **modules/actor-std/tests/tokio_acceptance.rs**  
+   - 受け入れテストのProps構築を修正し、API破壊的変更によるビルド失敗を防止
+
+10. **modules/actor-std/examples/supervision_std/main.rs**  
+    - ガイドで使用しているPropsビルダーの移行例を提供し、ユーザー向けのリファレンスを最新化
+
+11. **CHANGELOG.md / docs/guides/**  
+    - BREAKING CHANGEとして`Props::with_supervisor`削除と移行手順を周知
 
 ### 破壊的変更
 
 **重大な破壊的変更**:
 
 - **Props APIの変更**
-  - `Props::with_supervisor()`メソッド削除
+  - `Props::with_supervisor()`および`Props::supervisor()`アクセサを削除
   - 影響: 既存コードで`.with_supervisor()`を使用している箇所はコンパイルエラー
   - 移行方法: Actor実装で`supervisor_strategy`メソッドをオーバーライド
+
+- **SupervisorStrategyのCopy撤廃**
+  - `SupervisorStrategy: Copy`に依存していたコードは`clone()`へ置き換える必要がある
+  - `SupervisorStrategy::default()`は`Clone`前提で再生成できるため、大半のケースで追加コストは無視できる
 
 **移行例**:
 ```rust
@@ -232,11 +282,49 @@ impl Actor for MyActor {
 let props = Props::from_fn(MyActor::new);
 ```
 
-**軽微な破壊的変更**:
+### 移行ガイド
 
-- `SupervisorStrategy`から`Copy` traitを削除する場合（将来の拡張）
-  - 影響: 構造体のコピーが必要な箇所で`clone()`を明示的に呼ぶ必要がある
-  - 緩和策: 当面は`Copy`を維持
+1. **影響箇所の洗い出し**: `rg --context 2 "with_supervisor" -n modules` を実行してすべての呼び出し元を列挙する（2025-11-07時点で9箇所以上）。
+2. **Actor実装へのロジック移動**: Propsで設定していた戦略をActor実装に移し、`supervisor_strategy`で返す。
+
+   **AllForOne戦略の例**
+
+   ```rust
+   // 変更前
+   let supervisor = SupervisorStrategy::all_for_one(5, Duration::from_secs(30), decider);
+   let props = Props::from_fn(Guardian::new)
+       .with_supervisor(SupervisorOptions::new(supervisor));
+
+   // 変更後
+   use cellactor::logging::LogLevel;
+
+   impl Actor for Guardian {
+       fn supervisor_strategy(&mut self, ctx: &mut ActorContext) -> SupervisorStrategy {
+           ctx.log(LogLevel::Warn, "switch entire tree to strict supervision");
+           SupervisorStrategy::all_for_one(5, Duration::from_secs(30), decider)
+       }
+   }
+   let props = Props::from_fn(Guardian::new);
+   ```
+
+   **Escalate戦略の例**
+
+   ```rust
+   use cellactor::logging::LogLevel;
+
+   impl Actor for EscalatingGuardian {
+       fn supervisor_strategy(&mut self, ctx: &mut ActorContext) -> SupervisorStrategy {
+           ctx.log(LogLevel::Warn, "escalate to higher guardian");
+           SupervisorStrategy::escalating()
+       }
+   }
+   ```
+
+3. **テスト/サンプルの順次更新**:
+   - `modules/actor-core/tests/supervisor.rs`: Props由来の設定をActor実装オーバーライドへ変換し、新しい動的シナリオを追加
+   - `modules/actor-std/tests/tokio_acceptance.rs`: 受け入れテスト内で`.with_supervisor()`を削除
+   - `modules/actor-std/examples/supervision_std/main.rs`: ドキュメントに掲載するBefore/Afterを整備
+4. **ドキュメント告知**: `CHANGELOG.md`と`docs/guides/actor-system.md`にBREAKING CHANGEを明記し、上記Before/Afterを引用できるようにする。
 
 **非破壊的変更**:
 
@@ -282,12 +370,16 @@ let props = Props::from_fn(MyActor::new);
 
 ### 判断3: Copy制約の扱い
 
-**当面は維持、将来的に削除を検討**
+**即時に削除し、Cloneのみを要求** ✅ 採用
 
 **理由**:
-- 現時点でクロージャdeciderの需要は不明
-- 破壊的変更のリスクを最小化
-- 必要になった時点で別のOpenSpecとして提案
+- `supervisor_strategy`が毎回新しい値を返すため、`Copy`による暗黙コピーは不要
+- クロージャ/状態付きdeciderを実現する際に`Copy`がボトルネックになる
+- Propsからのフォールバックを廃止したため、共有参照として戦略を再利用する要件が薄れた
+
+**移行策**:
+- core/std両モジュールで`SupervisorStrategy`を複製していた箇所は`clone()`呼び出しに統一
+- 破壊的変更はこの提案のフェーズ内でまとめてリリースし、追加のBreakingを避ける
 
 ### 判断4: panic処理の扱い
 
@@ -309,10 +401,12 @@ let props = Props::from_fn(MyActor::new);
 - [ ] stdモジュールも同様に拡張
 - [ ] RustDocコメント追加
 
-### フェーズ2: ActorCell変更
-- [ ] `ActorCell`に`default_supervisor`フィールド追加
-- [ ] コンストラクタで`Props`から戦略をコピー
-- [ ] `handle_failure`で動的戦略取得ロジック実装
+### フェーズ2: ActorCell/Props/戦略定義の更新
+- [ ] `ActorCell`構造体から`supervisor`関連フィールドを完全削除
+- [ ] コンストラクタから`Props`由来の戦略コピー処理を削除
+- [ ] `PropsGeneric`から`supervisor`フィールドと`.with_supervisor()`/`.supervisor()` APIを除去
+- [ ] `handle_failure`でActor実装から直接`SupervisorStrategy`を取得するロジックを実装
+- [ ] `SupervisorStrategy`の`Copy`制約を外し、必要箇所を`clone()`に置き換える
 
 ### フェーズ3: テスト追加
 - [ ] 動的戦略変更のテストケース作成
@@ -330,12 +424,14 @@ let props = Props::from_fn(MyActor::new);
 - **影響**: 軽微
   - `handle_failure`時に1回の`actor.lock()`とメソッド呼び出しが追加
   - 失敗処理は頻繁に発生しないため、ホットパスではない
+  - 実装時に`cargo bench -p actor-core supervisor_failures`を追加し、旧ロジックと新ロジックの平均処理時間を比較する
 
 ### メモリ使用量
 
-- **影響**: 最小限
-  - `ActorCell`に1フィールド（`SupervisorStrategy`）追加
-  - `SupervisorStrategy`は小さい構造体（数十バイト）
+- **影響**: 削減
+  - `ActorCell`から`supervisor`フィールドが消えるため、1セルあたり約48バイト節約
+  - Props側の`SupervisorOptions`保有コストもゼロになる
+  - `std::mem::size_of::<ActorCellGeneric<StdToolbox>>()`および`::<SupervisorStrategy>()`の実測値を記録し、ドキュメント/CHANGELOGに掲載する
 
 ### スレッドセーフティ
 

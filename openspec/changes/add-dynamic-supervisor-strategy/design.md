@@ -70,7 +70,7 @@ pub trait Actor<TB: RuntimeToolbox = NoStdToolbox>: Send {
     /// 子アクターの監督戦略を提供する。
     ///
     /// Actor実装の内部状態に基づいて動的に監督方針を決定できる。
-    /// `None`を返した場合、`Props`で指定されたデフォルト戦略が使用される。
+    /// デフォルト実装は`SupervisorStrategy::default()`を返し、Props側では監督戦略を保持しない。
     ///
     /// # 実装例
     ///
@@ -81,26 +81,26 @@ pub trait Actor<TB: RuntimeToolbox = NoStdToolbox>: Send {
     /// }
     ///
     /// impl Actor for ResilientWorker {
-    ///     fn supervisor_strategy(&mut self, _ctx: &mut ActorContext) -> Option<SupervisorStrategy> {
+    ///     fn supervisor_strategy(&mut self, _ctx: &mut ActorContext) -> SupervisorStrategy {
     ///         if self.strict_mode {
     ///             // 厳格モード: 即座に停止
-    ///             Some(SupervisorStrategy::new(
+    ///             SupervisorStrategy::new(
     ///                 SupervisorStrategyKind::OneForOne,
     ///                 0,
     ///                 Duration::from_secs(1),
     ///                 |_| SupervisorDirective::Stop
-    ///             ))
+    ///             )
     ///         } else if self.error_count > 10 {
     ///             // エラー多発: 親にエスカレート
-    ///             Some(SupervisorStrategy::new(
+    ///             SupervisorStrategy::new(
     ///                 SupervisorStrategyKind::OneForOne,
     ///                 1,
     ///                 Duration::from_secs(5),
     ///                 |_| SupervisorDirective::Escalate
-    ///             ))
+    ///             )
     ///         } else {
-    ///             // 通常モード: Propsのデフォルト戦略を使用
-    ///             None
+    ///             // 通常モード: デフォルト戦略
+    ///             SupervisorStrategy::default()
     ///         }
     ///     }
     ///
@@ -118,8 +118,8 @@ pub trait Actor<TB: RuntimeToolbox = NoStdToolbox>: Send {
     /// - 頻繁に呼ばれるわけではないが、軽量な実装を推奨
     /// - 戦略の決定ロジックは状態更新を含めることができる
     /// - 既存のActor traitメソッド（receive, pre_startなど）と一貫したシグネチャ
-    fn supervisor_strategy(&mut self, _ctx: &mut ActorContextGeneric<'_, TB>) -> Option<SupervisorStrategy> {
-        None
+    fn supervisor_strategy(&mut self, _ctx: &mut ActorContextGeneric<'_, TB>) -> SupervisorStrategy {
+        SupervisorStrategy::default()
     }
 }
 ```
@@ -254,10 +254,42 @@ coreモジュールと同じ変更を適用:
 pub trait Actor: Send {
     // 既存のメソッド...
 
-    fn supervisor_strategy(&mut self, _ctx: &mut ActorContext<'_>) -> Option<SupervisorStrategy> {
-        None
+    fn supervisor_strategy(&mut self, _ctx: &mut ActorContext<'_>) -> SupervisorStrategy {
+        SupervisorStrategy::default()
     }
 }
+
+### 4. SupervisorStrategyのデフォルト実装
+
+`modules/actor-core/src/supervision/base.rs`に`impl Default for SupervisorStrategy`を追加し、従来`SupervisorOptions::default()`が提供していた挙動を移植する。
+
+```rust
+impl Default for SupervisorStrategy {
+    fn default() -> Self {
+        const fn decider(err: &ActorError) -> SupervisorDirective {
+            match err {
+                ActorError::Recoverable(_) => SupervisorDirective::Restart,
+                ActorError::Fatal(_) => SupervisorDirective::Stop,
+            }
+        }
+
+        SupervisorStrategy::new(
+            SupervisorStrategyKind::OneForOne,
+            10,
+            Duration::from_secs(1),
+            decider,
+        )
+    }
+}
+
+impl Default for SupervisorOptions {
+    fn default() -> Self {
+        Self::new(SupervisorStrategy::default())
+    }
+}
+```
+
+この変更により、`supervisor_strategy`をオーバーライドしない既存Actorは以前と同じ挙動（Recoverable→Restart / Fatal→Stop）を維持しつつ、Propsから戦略を参照する必要がなくなる。
 ```
 
 ## データフロー
@@ -273,7 +305,7 @@ pub trait Actor: Send {
 
 3. 子アクター失敗
    └─ actor.supervisor_strategy(ctx) → SupervisorStrategy::default()
-   └─ デフォルト戦略を使用（OneForOne, 10回再起動, 1分以内）
+   └─ デフォルト戦略を使用（OneForOne, 10回再起動, 1秒以内）
 ```
 
 ### 動的フロー（Actor実装がカスタム戦略を提供）
@@ -305,6 +337,11 @@ pub trait Actor: Send {
 - **メッセージ処理**: 影響なし（`receive`はそのまま）
 - **通常動作**: 影響なし（失敗時のみ追加コスト）
 - **失敗処理**: 軽微な追加コスト（Mutexロック1回 + メソッド呼び出し1回）
+
+#### 計測手順
+
+- `cargo bench -p actor-core supervisor_failures`（新規ベンチ）で旧実装と新実装の失敗処理時間を比較し、差分をproposal/designに追記する
+- `std::mem::size_of::<ActorCellGeneric<StdToolbox>>()` と `::<SupervisorStrategy>()` を実測し、約48バイトの削減が成立しているか検証する
 
 ## エッジケースの処理
 
@@ -345,11 +382,11 @@ fn handle_failure(&self, child: Pid, error: ActorError) -> FailureOutcome {
 **推奨実装**:
 ```rust
 // ✅ panic-free実装
-fn supervisor_strategy(&mut self, _ctx: &mut ActorContext) -> Option<SupervisorStrategy> {
+fn supervisor_strategy(&mut self, _ctx: &mut ActorContext) -> SupervisorStrategy {
     if self.error_count > 10 {
-        Some(SupervisorStrategy::stopping())
+        SupervisorStrategy::stopping()
     } else {
-        None
+        SupervisorStrategy::default()
     }
 }
 ```
@@ -359,11 +396,11 @@ fn supervisor_strategy(&mut self, _ctx: &mut ActorContext) -> Option<SupervisorS
 ### ユニットテスト
 
 1. **動的戦略変更**
-   - Actor内部状態を変更して戦略が切り替わることを確認
-   - `Some(strategy)`と`None`の両パターン
+   - Actor内部状態を変更して返される`SupervisorStrategy`が切り替わることを確認
+   - OneForOne/AllForOne/Escalateの全パターンを網羅
 
-2. **デフォルトフォールバック**
-   - `None`を返した場合にPropsの戦略が使われることを確認
+2. **デフォルト実装**
+   - `supervisor_strategy`をオーバーライドしないActorが`SupervisorStrategy::default()`を返すことを確認
 
 3. **OneForOne vs AllForOne**
    - 動的に戦略種別が変わることを確認
@@ -383,11 +420,11 @@ fn supervisor_strategy(&mut self, _ctx: &mut ActorContext) -> Option<SupervisorS
 
 | コンポーネント | 変更 | 互換性 |
 |----------------|------|--------|
-| `Actor` trait | デフォルト実装付きメソッド追加 | ✅ 後方互換 |
-| `ActorCell` | フィールド追加 | ⚠️ 内部実装（公開APIではない） |
-| `Props` | 変更なし | ✅ 互換 |
-| `SupervisorStrategy` | Copy維持 | ✅ 互換 |
-| 既存のActor実装 | 変更不要 | ✅ 互換 |
+| `Actor` trait | `supervisor_strategy`追加（デフォルト実装が`SupervisorStrategy::default()`を返す） | ✅ 後方互換 |
+| `ActorCell` | `supervisor`フィールド削除 + `handle_failure`を動的取得に変更 | ⚠️ 内部実装のみ（公開API変更なし） |
+| `Props` | `with_supervisor`/`supervisor` API削除 | ❌ 破壊的（移行ガイド必須） |
+| `SupervisorStrategy` | `Copy`→`Clone`へ変更 | ❌ 破壊的（`.clone()`追記が必要） |
+| 既存のActor実装 | デフォルト実装で動作 | ✅ 互換 |
 
 ## ロールバック戦略
 
@@ -396,11 +433,11 @@ fn supervisor_strategy(&mut self, _ctx: &mut ActorContext) -> Option<SupervisorS
 1. **Actorトレイトのデフォルト実装**
    - メソッド削除で元に戻る
 
-2. **ActorCellのフィールド追加のみ**
-   - フィールド削除と元のロジックに戻すだけ
+2. **ActorCellのフィールド差分のみ**
+   - `supervisor`フィールドを復活させ、`handle_failure`呼び出しを元に戻せばロールバック可能
 
-3. **破壊的変更なし**
-   - 既存コードは変更なしで動作
+3. **Props APIの巻き戻し**
+   - `Props::with_supervisor`を再導入し、Actor traitメソッドを削除すれば従来挙動に戻せる（ただし一括ロールバックが必要）
 
 ## 将来の拡張
 
@@ -416,7 +453,7 @@ let behavior = Behaviors::setup(|ctx| {
 
 ### クロージャベースのdecider
 
-`Copy`制約を削除する場合:
+`Copy`制約をすでに削除したため、将来的には以下のようにクロージャを格納できる:
 
 ```rust
 pub struct SupervisorStrategy {
@@ -434,6 +471,6 @@ pub struct SupervisorStrategy {
 ✅ **シンプル**: 最小限の変更で実現
 ✅ **型安全**: Actorトレイトを通じた静的型付け
 ✅ **柔軟**: Actor状態に基づく動的判断が可能（`&mut self`により状態更新可能）
-✅ **互換**: 既存コードへの影響が最小限
+⚠️ **互換**: `Props::with_supervisor`と`SupervisorStrategy: Copy`に依存するコードは移行が必要
 ✅ **Pekko互換**: Classic ActorのsupervisorStrategyメソッドに相当
 ✅ **no_std対応**: panic-free実装を要求、ライブラリは関与しない

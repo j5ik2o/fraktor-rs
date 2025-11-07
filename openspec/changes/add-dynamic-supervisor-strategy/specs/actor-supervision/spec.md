@@ -29,24 +29,24 @@ struct ResilientWorker {
 
 ```rust
 impl Actor for ResilientWorker {
-    fn supervisor_strategy(&mut self, _ctx: &mut ActorContext) -> Option<SupervisorStrategy> {
+    fn supervisor_strategy(&mut self, _ctx: &mut ActorContext) -> SupervisorStrategy {
         if self.error_count > 10 {
-            Some(SupervisorStrategy::new(
+            SupervisorStrategy::new(
                 SupervisorStrategyKind::OneForOne,
                 0,
                 Duration::from_secs(1),
                 |_| SupervisorDirective::Stop
-            ))
+            )
         } else {
-            None
+            SupervisorStrategy::default()
         }
     }
 }
 ```
 
 **Then**:
-- エラーカウントが10以下の場合、`None`が返されPropsのデフォルト戦略が使用される
-- エラーカウントが10を超える場合、即座に停止する戦略が使用される
+- エラーカウントが10以下の場合、`SupervisorStrategy::default()`（OneForOne, 10回, 1秒以内）が使用される
+- エラーカウントが10を超える場合、即座に停止するカスタム戦略が使用される
 
 #### Scenario: デフォルト実装を使用する
 
@@ -66,8 +66,8 @@ impl Actor for SimpleActor {
 **When**: 子アクターが失敗する
 
 **Then**:
-- `supervisor_strategy`メソッドのデフォルト実装が`None`を返す
-- Propsで指定されたデフォルト戦略が使用される
+- `supervisor_strategy`メソッドのデフォルト実装が`SupervisorStrategy::default()`を返す
+- 返された戦略がそのまま使用される（Propsは関与しない）
 
 ### Requirement: ActorCellによる動的戦略取得 (REQ-002)
 
@@ -82,7 +82,7 @@ ActorCellは子アクターの失敗時に、親Actor実装から監督戦略を
 
 **Given**:
 - ActorCellが子アクターを管理している
-- 親Actor実装が`supervisor_strategy`メソッドで`Some(strategy)`を返す
+- 親Actor実装が`supervisor_strategy`メソッドでカスタム`SupervisorStrategy`を返す
 
 **When**: 子アクターが失敗する
 
@@ -90,7 +90,7 @@ ActorCellは子アクターの失敗時に、親Actor実装から監督戦略を
 1. `handle_failure`メソッドが呼び出される
 2. `actor.lock()`で親Actor実装への可変参照を取得
 3. `actor.supervisor_strategy(&mut ctx)`を呼び出す（状態更新可能）
-4. 返された`Some(strategy)`を使用して失敗を処理
+4. 返された戦略を使用して失敗を処理
 5. 適切な`SupervisorDirective`が決定される
 
 #### Scenario: デフォルト戦略の使用
@@ -104,7 +104,7 @@ ActorCellは子アクターの失敗時に、親Actor実装から監督戦略を
 **Then**:
 1. `handle_failure`メソッドが呼び出される
 2. `actor.supervisor_strategy(ctx)`がデフォルト実装により`SupervisorStrategy::default()`を返す
-3. デフォルト戦略（OneForOne, 10回再起動, 1分以内）が使用される
+3. デフォルト戦略（OneForOne, 10回再起動, 1秒以内）が使用される
 4. 適切な`SupervisorDirective`が決定される
 
 ### Requirement: 後方互換性 (REQ-003)
@@ -120,14 +120,12 @@ ActorCellは子アクターの失敗時に、親Actor実装から監督戦略を
 
 **Given**:
 - 既存のActor実装が`supervisor_strategy`メソッドをオーバーライドしていない
-- Propsでデフォルト戦略が指定されている
 
 **When**: システムが動作する
 
 **Then**:
-- `supervisor_strategy`メソッドのデフォルト実装が`None`を返す
-- Propsのデフォルト戦略が使用される
-- 既存の動作が維持される
+- `supervisor_strategy`メソッドのデフォルト実装が`SupervisorStrategy::default()`を返す
+- 返された戦略がそのまま使用され、既存の動作が維持される
 
 #### Scenario: 既存テストの継続性
 
@@ -181,12 +179,12 @@ ActorCellは子アクターの失敗時に、親Actor実装から監督戦略を
 
 ```rust
 impl Actor for SafeActor {
-    fn supervisor_strategy(&mut self, _ctx: &mut ActorContext) -> Option<SupervisorStrategy> {
+    fn supervisor_strategy(&mut self, _ctx: &mut ActorContext) -> SupervisorStrategy {
         // ✅ 良い例: panic-free実装
         if self.error_count > 10 {
-            Some(SupervisorStrategy::stopping())
+            SupervisorStrategy::stopping()
         } else {
-            None
+            SupervisorStrategy::default()
         }
     }
 }
@@ -204,7 +202,7 @@ impl Actor for SafeActor {
 
 ```rust
 impl Actor for BuggyActor {
-    fn supervisor_strategy(&mut self, _ctx: &mut ActorContext) -> Option<SupervisorStrategy> {
+    fn supervisor_strategy(&mut self, _ctx: &mut ActorContext) -> SupervisorStrategy {
         panic!("Bug in strategy logic!");  // ❌ 避けるべき
     }
 }
@@ -217,18 +215,51 @@ impl Actor for BuggyActor {
 - **std環境（panic = unwind）**: Mutexがpoisonedになり、以降のロック取得が失敗する
 - いずれの場合も、ライブラリは関与せず、アプリケーション側の責任となる
 
+### Requirement: デフォルト戦略の互換性 (REQ-006)
+
+`SupervisorStrategy::default()`は従来の`SupervisorOptions::default()`と同一の挙動を提供しなければならない (MUST)。
+
+**優先度**: HIGH
+
+**適用範囲**:
+- `modules/actor-core/src/supervision/base.rs`
+- `modules/actor-core/src/props/supervisor_options.rs`
+
+#### Scenario: Fatalエラーは停止する
+
+**Given**:
+- Actorが`supervisor_strategy`をオーバーライドしていない
+- 子アクターが`ActorError::Fatal(_)`を返して失敗する
+
+**When**: `handle_failure`が`SupervisorStrategy::default()`で判定する
+
+**Then**:
+- Deciderが`SupervisorDirective::Stop`を返し、子アクターは停止する
+
+#### Scenario: Recoverableエラーは再起動する
+
+**Given**:
+- Actorが`supervisor_strategy`をオーバーライドしていない
+- 子アクターが`ActorError::Recoverable(_)`を返して失敗する
+
+**When**: `handle_failure`が`SupervisorStrategy::default()`で判定する
+
+**Then**:
+- 1秒の監視ウィンドウ内で最大10回まで`SupervisorDirective::Restart`が返る
+- 上限を超えた場合は既存の統計ロジックに従って`SupervisorDirective::Stop`（またはEscalate）に遷移する
+
 ## 受入基準
 
 以下のすべてが満たされること:
 
-1. ✅ `Actor` traitに`supervisor_strategy`メソッドが追加され、デフォルト実装が`None`を返す
-2. ✅ `ActorCell`が`default_supervisor`フィールドを持ち、Props由来の戦略を保存する
-3. ✅ `handle_failure`メソッドがActor実装から戦略を動的に取得する
-4. ✅ 優先順位ポリシー（Actor実装 → Propsデフォルト）が正しく実装されている
-5. ✅ 既存のActor実装が変更なしで動作する
-6. ✅ すべての既存テストがパスする
-7. ✅ 新しいテストケースが追加され、動的戦略変更を検証する
-8. ✅ RustDocドキュメントが充実している
+1. ✅ `Actor` traitに`supervisor_strategy`メソッドが追加され、デフォルト実装が`SupervisorStrategy::default()`を返す
+2. ✅ `ActorCell`は監督戦略を保持せず、毎回Actor実装から値を取得する
+3. ✅ `Props::with_supervisor`および`Props::supervisor` APIが削除され、ビルダーがコンパイルエラーになる
+4. ✅ `SupervisorStrategy`が`Clone`のみを実装し、`Copy`に依存した全コードが`clone()`へ書き換わる
+5. ✅ `SupervisorStrategy::default()`がOneForOne/10回/1秒/Recoverable→Restart/Fatal→Stopの挙動を提供する
+6. ✅ 既存のActor実装/テスト/サンプルがデフォルト実装で動作し続ける（追加の移行作業なし）
+7. ✅ 新しいユニット/統合テストが動的戦略変更とEscalate動作を検証する
+8. ✅ ドキュメント（RustDoc/CHANGELOG/guides）が破壊的変更と移行手順・デフォルト戦略仕様を説明する
 9. ✅ パフォーマンス劣化が許容範囲（失敗処理時の軽微な追加コストのみ）
 10. ✅ CIがすべてパスする
 
@@ -238,7 +269,7 @@ impl Actor for BuggyActor {
 
 - メッセージ処理パスには影響なし
 - 失敗処理時の追加コスト: Mutexロック1回 + メソッド呼び出し1回
-- メモリ増加: ActorCell当たり約48バイト
+- メモリ削減: ActorCell当たり約48バイト
 
 ### 保守性
 
@@ -255,7 +286,7 @@ impl Actor for BuggyActor {
 ### 現在のスコープ外
 
 - Typed ActorのBehaviors.supervise DSL（将来の拡張として検討）
-- SupervisorStrategyの`Copy`制約削除（クロージャサポート）
+
 
 ### 既知の制約
 
@@ -267,12 +298,13 @@ impl Actor for BuggyActor {
 ### 前提条件
 
 - 既存のsupervision機構が正常に動作していること
-- `Props`と`SupervisorOptions`が正しく実装されていること
+- `ActorContext`が適切に生成できること（システム/ツールボックス依存）
 
 ### 影響を受けるコンポーネント
 
 - `Actor` trait
 - `ActorCell`
+- `SupervisorStrategy`（Copy撤廃・Clone要件）
 - `ActorContext` (コンテキスト生成ヘルパーが必要な場合)
 
 ## 参考資料

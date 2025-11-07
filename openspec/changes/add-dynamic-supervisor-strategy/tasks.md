@@ -8,7 +8,7 @@
 
 - [ ] **actor-core**: `Actor` traitに`supervisor_strategy`メソッド追加
   - ファイル: `modules/actor-core/src/actor_prim/actor.rs`
-  - デフォルト実装で`None`を返す
+  - デフォルト実装で`SupervisorStrategy::default()`を返す
   - RustDocコメント追加（使用例、注意事項を含む）
 
 - [ ] **actor-std**: stdモジュールの`Actor` traitも同様に拡張
@@ -25,17 +25,24 @@
   - `new`メソッドから`props.supervisor().strategy()`取得処理を削除
   - `supervisor`フィールド設定を削除
 
-- [ ] **Props構造体**: `supervisor`フィールド削除
-  - ファイル: `modules/actor-core/src/props/base.rs`
+- [ ] **Props構造体（core/std両方）**: `supervisor`フィールド削除
+  - ファイル: `modules/actor-core/src/props/base.rs`, `modules/actor-std/src/props/base.rs`
   - `PropsGeneric`から`supervisor: SupervisorOptions`を削除
-  - `with_supervisor()`メソッド削除
-  - `supervisor()`アクセサメソッド削除
+  - `with_supervisor()`/`supervisor()` APIと関連ドキュメントを削除
 
 - [ ] **handle_failureメソッド**: 動的戦略取得ロジック実装
   - `actor.lock()`でActor実装を取得
   - `actor.supervisor_strategy(&mut ctx)`を呼び出し
-  - 返されたSupervisorStrategyを直接使用
-  - 戦略に基づいて`SupervisorDirective`を決定
+  - 返された`SupervisorStrategy`を直接使用
+  - 戦略に基づいて`SupervisorDirective`を決定（`Clone`前提で扱う）
+
+- [ ] **SupervisorStrategy実装**: `Copy`制約を削除
+  - ファイル: `modules/actor-core/src/supervision/base.rs`
+  - すべての呼び出し元で`clone()`へ置き換え、ベンチ/サイズ計測を更新
+
+- [ ] **デフォルト戦略の実装**
+  - `SupervisorStrategy`に`impl Default`/`fn default()`を追加（OneForOne, 10回, 1秒, Recoverable→Restart/Fatal→Stop）
+  - `SupervisorOptions::default()`は新しい`SupervisorStrategy::default()`を委譲するのみとし、既存挙動を維持
 
 ### フェーズ3: テスト追加
 
@@ -60,9 +67,16 @@
   - `modules/actor-core/tests/supervisor.rs`の既存テストが継続して動作
   - `escalate_failure_restarts_supervisor`など
 
+- [ ] **actor-std受け入れテスト**
+  - ファイル: `modules/actor-std/tests/tokio_acceptance.rs`
+  - `.with_supervisor()`削除後もシナリオが通ることを確認
+
 - [ ] **エッジケーステスト**
-  - `supervisor_strategy`メソッド内で例外が発生した場合
+  - `supervisor_strategy`がpanic-freeであることをドキュメント化し、panic発生時にライブラリがフォールバックしないことを確認
   - 再帰的失敗のシナリオ
+
+- [ ] **デフォルト戦略テスト**
+  - `SupervisorStrategy::default()`がRecoverable→Restart/Fatal→Stopを返すこと、および監視ウィンドウ(1秒)/最大再起動回数(10回)を満たすことを検証
 
 ### フェーズ4: ドキュメント・サンプル
 
@@ -78,6 +92,10 @@
 - [ ] **既存サンプルの更新**: supervision_std exampleの確認
   - ファイル: `modules/actor-std/examples/supervision_std/main.rs`
   - 既存のサンプルが引き続き動作することを確認
+
+- [ ] **移行ドキュメント**
+  - ファイル: `CHANGELOG.md`, `docs/guides/actor-system.md`
+  - BREAKING CHANGEとBefore/Afterコードを追加
 
 ### フェーズ5: コード品質
 
@@ -123,7 +141,7 @@ Phase 5 (Quality)
 - [ ] すべてのテストがパス
 - [ ] CIがグリーン
 - [ ] ドキュメントが充実
-- [ ] 破壊的変更なし（既存コードが動作）
+- [ ] 破壊的変更はすべて移行ガイドとCHANGELOGで周知済み
 - [ ] パフォーマンス劣化なし
 
 ## 注意事項
@@ -135,7 +153,7 @@ Phase 5 (Quality)
    - デッドロックを避けるため、ネストしたロック取得は避ける
 
 2. **Panic対策**
-   - `supervisor_strategy`メソッド内でpanicが発生してもシステムが停止しないよう、適切なエラーハンドリング
+   - `supervisor_strategy`はpanic-freeに実装することをRustDoc/テストで保証（ライブラリ側でpanicを握り潰さない）
 
 3. **テストの網羅性**
    - 正常系だけでなく、異常系・エッジケースもカバー
