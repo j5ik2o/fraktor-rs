@@ -26,7 +26,7 @@ use crate::{
   },
   props::{ActorFactory, PropsGeneric},
   supervision::{RestartStatistics, SupervisorDirective, SupervisorStrategyKind},
-  system::{ActorSystemGeneric, FailureOutcome, SystemStateGeneric},
+  system::{ActorSystemGeneric, FailureOutcome, GuardianKind, SystemStateGeneric},
 };
 
 /// Runtime container responsible for executing an actor instance.
@@ -166,6 +166,13 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     self.child_stats.lock().retain(|(child, _)| child != pid);
   }
 
+  fn stop_child(&self, pid: Pid) {
+    let should_stop = { self.children.lock().contains(&pid) };
+    if should_stop {
+      let _ = self.system.send_system_message(pid, SystemMessage::Stop);
+    }
+  }
+
   /// Returns the current child pids supervised by this cell.
   #[must_use]
   pub fn children(&self) -> Vec<Pid> {
@@ -283,8 +290,16 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     self.system.release_name(self.parent, &self.name);
     self.system.remove_cell(&self.pid);
 
-    if self.system.clear_guardian(self.pid) {
-      self.system.mark_terminated();
+    match self.system.clear_guardian(self.pid) {
+      | Some(GuardianKind::Root) => {
+        self.system.mark_terminated();
+      },
+      | Some(GuardianKind::User) | Some(GuardianKind::System) => {
+        if self.system.root_guardian_pid().is_none() {
+          self.system.mark_terminated();
+        }
+      },
+      | None => {},
     }
 
     result
@@ -398,6 +413,10 @@ impl<TB: RuntimeToolbox + 'static> MessageInvoker<TB> for ActorCellGeneric<TB> {
       },
       | SystemMessage::Unwatch(pid) => {
         self.handle_unwatch(pid);
+        Ok(())
+      },
+      | SystemMessage::StopChild(pid) => {
+        self.stop_child(pid);
         Ok(())
       },
       | SystemMessage::Terminated(pid) => self.handle_terminated(pid),

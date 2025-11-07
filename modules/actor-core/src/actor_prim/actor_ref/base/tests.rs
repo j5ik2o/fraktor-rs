@@ -74,6 +74,41 @@ fn actor_ref_with_system() {
 }
 
 #[test]
+fn actor_ref_path_resolves_segments() {
+  use crate::{
+    actor_prim::{Actor, ActorCell, ActorContextGeneric},
+    messaging::AnyMessageView,
+    props::Props,
+    system::SystemState,
+  };
+
+  struct PathActor;
+  impl Actor for PathActor {
+    fn receive(
+      &mut self,
+      _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
+      _message: AnyMessageView<'_, NoStdToolbox>,
+    ) -> Result<(), crate::error::ActorError> {
+      Ok(())
+    }
+  }
+
+  let system = ArcShared::new(SystemState::new());
+  let root_pid = system.allocate_pid();
+  let child_pid = system.allocate_pid();
+  let props = Props::from_fn(|| PathActor);
+  let root = ActorCell::create(system.clone(), root_pid, None, "root".into(), &props);
+  system.register_cell(root);
+  let child = ActorCell::create(system.clone(), child_pid, Some(root_pid), "worker".into(), &props);
+  system.register_cell(child);
+
+  use crate::actor_prim::actor_ref::null_sender::NullSender;
+  let sender = ArcShared::new(NullSender);
+  let actor: ActorRef = ActorRef::with_system(child_pid, sender, system.clone());
+  assert_eq!(actor.path().expect("path").to_string(), "/worker");
+}
+
+#[test]
 fn actor_ref_tell_with_system_records_error() {
   use crate::{actor_prim::actor_ref::null_sender::NullSender, system::SystemState};
 

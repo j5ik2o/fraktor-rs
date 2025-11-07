@@ -131,10 +131,8 @@ fn typed_behaviors_receive_signal_notifications() {
     signal_probe_behavior(&start_probe, &stop_probe)
   });
   let system = TypedActorSystemGeneric::<LifecycleCommand, NoStdToolbox>::new(&props).expect("system");
-  let termination = system.as_untyped().when_terminated();
-
   system.terminate().expect("terminate");
-  wait_until(|| termination.is_ready());
+  system.as_untyped().run_until_terminated();
 
   assert_eq!(started.load(Ordering::SeqCst), 1);
   assert_eq!(stopped.load(Ordering::SeqCst), 1);

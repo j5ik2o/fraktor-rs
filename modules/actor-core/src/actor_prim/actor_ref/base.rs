@@ -13,6 +13,7 @@ use cellactor_utils_core_rs::sync::{ArcShared, NoStdToolbox};
 use crate::{
   RuntimeToolbox,
   actor_prim::{
+    actor_path::ActorPath,
     actor_ref::{actor_ref_sender::ActorRefSender, ask_reply_sender::AskReplySenderGeneric, null_sender::NullSender},
     pid::Pid,
   },
@@ -55,6 +56,12 @@ impl<TB: RuntimeToolbox> ActorRefGeneric<TB> {
   #[must_use]
   pub const fn pid(&self) -> Pid {
     self.pid
+  }
+
+  /// Returns the logical path of the actor if the system is still available.
+  #[must_use]
+  pub fn path(&self) -> Option<ActorPath> {
+    self.system.as_ref().and_then(|system| system.actor_path(&self.pid))
   }
 
   /// Sends a message to the referenced actor.

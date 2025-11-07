@@ -6,6 +6,7 @@
 mod actor;
 mod actor_cell;
 mod actor_context;
+mod actor_path;
 pub mod actor_ref;
 mod child_ref;
 mod pid;
@@ -14,6 +15,7 @@ mod receive_state;
 pub use actor::Actor;
 pub use actor_cell::{ActorCell, ActorCellGeneric};
 pub use actor_context::{ActorContext, ActorContextGeneric};
+pub use actor_path::ActorPath;
 pub use child_ref::{ChildRef, ChildRefGeneric};
 pub use pid::Pid;
 pub use receive_state::ReceiveState;
