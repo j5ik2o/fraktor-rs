@@ -4,7 +4,7 @@ use crate::supervision::SupervisorStrategy;
 mod tests;
 
 /// Supervisor configuration attached to props.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct SupervisorOptions {
   strategy: SupervisorStrategy,
 }

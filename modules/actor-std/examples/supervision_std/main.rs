@@ -4,7 +4,6 @@ use std::{thread, time::Duration};
 use cellactor_actor_core_rs::{
   error::ActorError,
   logging::{LogEvent, LogLevel, LoggerSubscriber, LoggerWriter},
-  props::SupervisorOptions,
   supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
 };
 use cellactor_actor_std_rs::{
@@ -55,16 +54,7 @@ impl Actor for GuardianActor {
   fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
       ctx.log(LogLevel::Info, "子アクターを起動します");
-      let strategy = SupervisorStrategy::new(
-        SupervisorStrategyKind::OneForOne,
-        3,
-        CoreDuration::from_secs(1),
-        |error| match error {
-          | ActorError::Recoverable(_) => SupervisorDirective::Restart,
-          | ActorError::Fatal(_) => SupervisorDirective::Stop,
-        },
-      );
-      let worker_props = Props::from_fn(FussyWorker::new).with_supervisor(SupervisorOptions::new(strategy));
+      let worker_props = Props::from_fn(FussyWorker::new);
       let child = ctx
         .spawn_child(&worker_props)
         .map_err(|error| ActorError::fatal(format!("子アクター生成に失敗: {:?}", error)))?;
@@ -81,6 +71,13 @@ impl Actor for GuardianActor {
       ctx.stop_self().ok();
     }
     Ok(())
+  }
+
+  fn supervisor_strategy(&mut self, _ctx: &mut ActorContext<'_>) -> SupervisorStrategy {
+    SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 3, CoreDuration::from_secs(1), |error| match error {
+      | ActorError::Recoverable(_) => SupervisorDirective::Restart,
+      | ActorError::Fatal(_) => SupervisorDirective::Stop,
+    })
   }
 }
 

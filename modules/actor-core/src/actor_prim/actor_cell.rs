@@ -25,7 +25,7 @@ use crate::{
     message_invoker::{MessageInvoker, MessageInvokerPipelineGeneric},
   },
   props::{ActorFactory, PropsGeneric},
-  supervision::{RestartStatistics, SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
+  supervision::{RestartStatistics, SupervisorDirective, SupervisorStrategyKind},
   system::{ActorSystemGeneric, FailureOutcome, SystemStateGeneric},
 };
 
@@ -42,7 +42,6 @@ pub struct ActorCellGeneric<TB: RuntimeToolbox + 'static> {
   dispatcher:  DispatcherGeneric<TB>,
   sender:      ArcShared<DispatcherSenderGeneric<TB>>,
   children:    ToolboxMutex<Vec<Pid>, TB>,
-  supervisor:  SupervisorStrategy,
   child_stats: ToolboxMutex<Vec<(Pid, RestartStatistics)>, TB>,
   watchers:    ToolboxMutex<Vec<Pid>, TB>,
   terminated:  AtomicBool,
@@ -80,7 +79,6 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     let factory = props.factory().clone();
     let actor = <TB::MutexFamily as SyncMutexFamily>::create(factory.create());
     let children = <TB::MutexFamily as SyncMutexFamily>::create(Vec::new());
-    let supervisor = *props.supervisor().strategy();
     let child_stats = <TB::MutexFamily as SyncMutexFamily>::create(Vec::new());
     let watchers = <TB::MutexFamily as SyncMutexFamily>::create(Vec::new());
 
@@ -96,7 +94,6 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
       dispatcher,
       sender,
       children,
-      supervisor,
       child_stats,
       watchers,
       terminated: AtomicBool::new(false),
@@ -415,13 +412,21 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     error: &ActorError,
     now: Duration,
   ) -> (SupervisorDirective, Vec<Pid>) {
+    // Get supervisor strategy dynamically from actor instance
+    let strategy = {
+      let mut actor = self.actor.lock();
+      let system = crate::system::ActorSystemGeneric::from_state(self.system.clone());
+      let mut ctx = ActorContextGeneric::new(&system, self.pid);
+      actor.supervisor_strategy(&mut ctx)
+    };
+
     let directive = {
       let mut stats = self.child_stats.lock();
       let entry = find_or_insert_stats(&mut stats, child);
-      self.supervisor.handle_failure(entry, error, now)
+      strategy.handle_failure(entry, error, now)
     };
 
-    let affected = match self.supervisor.kind() {
+    let affected = match strategy.kind() {
       | SupervisorStrategyKind::OneForOne => vec![child],
       | SupervisorStrategyKind::AllForOne => self.children.lock().clone(),
     };

@@ -36,18 +36,7 @@ fn supervisor_options_clone() {
       SupervisorDirective::Restart
     });
   let options1 = SupervisorOptions::new(strategy);
-  let options2 = options1;
-  assert_eq!(options1.strategy().kind(), options2.strategy().kind());
-}
-
-#[test]
-fn supervisor_options_copy() {
-  let strategy =
-    SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 1, core::time::Duration::from_secs(1), |_| {
-      SupervisorDirective::Restart
-    });
-  let options1 = SupervisorOptions::new(strategy);
-  let options2 = options1;
+  let options2 = options1.clone();
   assert_eq!(options1.strategy().kind(), options2.strategy().kind());
 }
 

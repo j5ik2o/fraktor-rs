@@ -10,7 +10,7 @@ use cellactor_actor_core_rs::{
   error::ActorError,
   lifecycle::LifecycleStage,
   mailbox::{MailboxOverflowStrategy, MailboxPolicy},
-  props::{MailboxConfig, SupervisorOptions},
+  props::MailboxConfig,
   supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
 };
 use cellactor_actor_std_rs::{
@@ -303,21 +303,19 @@ impl Actor for SupervisorGuardian {
         let log = log.clone();
         move || RestartChild::new(log.clone())
       })
-      .with_dispatcher(self.dispatcher.clone())
-      .with_supervisor(SupervisorOptions::new(SupervisorStrategy::new(
-        SupervisorStrategyKind::OneForOne,
-        5,
-        Duration::from_secs(1),
-        |error| match error {
-          | ActorError::Recoverable(_) => SupervisorDirective::Restart,
-          | ActorError::Fatal(_) => SupervisorDirective::Stop,
-        },
-      )));
+      .with_dispatcher(self.dispatcher.clone());
 
       let child = ctx.spawn_child(&child_props).map_err(|_| ActorError::recoverable("spawn child"))?;
       *start.slot.lock() = Some(SupervisedChild { child, log });
     }
     Ok(())
+  }
+
+  fn supervisor_strategy(&mut self, _ctx: &mut ActorContext<'_>) -> SupervisorStrategy {
+    SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 5, Duration::from_secs(1), |error| match error {
+      | ActorError::Recoverable(_) => SupervisorDirective::Restart,
+      | ActorError::Fatal(_) => SupervisorDirective::Stop,
+    })
   }
 }
 

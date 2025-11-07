@@ -8,6 +8,8 @@
         "serena-mcp-server",
         "--context",
         "ide-assistant",
+        "--project",
+        ".",
         "--enable-web-dashboard",
         "false"
       ]
