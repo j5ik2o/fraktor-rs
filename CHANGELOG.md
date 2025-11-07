@@ -16,3 +16,4 @@
 - `ActorContext::watch/unwatch/spawn_child_watched` と `Actor::on_terminated` を導入。
 - ActorCell に監視者リストと Terminated 通知処理を追加。
 - actor-core/actor-std 両環境向けの DeathWatch 統合テストとサンプルを追加。
+- typed API に `Behaviors::supervise` を追加し、宣言的に子アクターの監督戦略を設定できるようにしました。`modules/actor-std/examples/behaviors_supervise_typed_std` で使用例を追加し、typed ランタイムが `SupervisorStrategy` を動的に参照するテストを追加しました。

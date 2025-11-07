@@ -7,6 +7,7 @@ use cellactor_utils_core_rs::sync::NoStdToolbox;
 use crate::{
   RuntimeToolbox,
   error::ActorError,
+  supervision::SupervisorStrategy,
   typed::{actor_prim::TypedActorContextGeneric, behavior_signal::BehaviorSignal},
 };
 
@@ -15,9 +16,10 @@ pub struct Behavior<M, TB = NoStdToolbox>
 where
   M: Send + Sync + 'static,
   TB: RuntimeToolbox + 'static, {
-  directive:       BehaviorDirective,
-  message_handler: Option<MessageHandler<M, TB>>,
-  signal_handler:  Option<SignalHandler<M, TB>>,
+  directive:           BehaviorDirective,
+  message_handler:     Option<MessageHandler<M, TB>>,
+  signal_handler:      Option<SignalHandler<M, TB>>,
+  supervisor_override: Option<SupervisorStrategy>,
 }
 
 /// Represents interpreter directives returned by behaviors.
@@ -55,23 +57,48 @@ where
   TB: RuntimeToolbox + 'static,
 {
   pub(crate) const fn same() -> Self {
-    Self { directive: BehaviorDirective::Same, message_handler: None, signal_handler: None }
+    Self {
+      directive:           BehaviorDirective::Same,
+      message_handler:     None,
+      signal_handler:      None,
+      supervisor_override: None,
+    }
   }
 
   pub(crate) const fn stopped() -> Self {
-    Self { directive: BehaviorDirective::Stopped, message_handler: None, signal_handler: None }
+    Self {
+      directive:           BehaviorDirective::Stopped,
+      message_handler:     None,
+      signal_handler:      None,
+      supervisor_override: None,
+    }
   }
 
   pub(crate) const fn ignore() -> Self {
-    Self { directive: BehaviorDirective::Ignore, message_handler: None, signal_handler: None }
+    Self {
+      directive:           BehaviorDirective::Ignore,
+      message_handler:     None,
+      signal_handler:      None,
+      supervisor_override: None,
+    }
   }
 
   pub(crate) const fn unhandled() -> Self {
-    Self { directive: BehaviorDirective::Unhandled, message_handler: None, signal_handler: None }
+    Self {
+      directive:           BehaviorDirective::Unhandled,
+      message_handler:     None,
+      signal_handler:      None,
+      supervisor_override: None,
+    }
   }
 
   pub(crate) const fn empty() -> Self {
-    Self { directive: BehaviorDirective::Empty, message_handler: None, signal_handler: None }
+    Self {
+      directive:           BehaviorDirective::Empty,
+      message_handler:     None,
+      signal_handler:      None,
+      supervisor_override: None,
+    }
   }
 
   pub(crate) fn from_message_handler<F>(handler: F) -> Self
@@ -80,7 +107,12 @@ where
       + Send
       + Sync
       + 'static, {
-    Self { directive: BehaviorDirective::Active, message_handler: Some(Box::new(handler)), signal_handler: None }
+    Self {
+      directive:           BehaviorDirective::Active,
+      message_handler:     Some(Box::new(handler)),
+      signal_handler:      None,
+      supervisor_override: None,
+    }
   }
 
   pub(crate) fn from_signal_handler<F>(handler: F) -> Self
@@ -89,7 +121,12 @@ where
       + Send
       + Sync
       + 'static, {
-    Self { directive: BehaviorDirective::Active, message_handler: None, signal_handler: Some(Box::new(handler)) }
+    Self {
+      directive:           BehaviorDirective::Active,
+      message_handler:     None,
+      signal_handler:      Some(Box::new(handler)),
+      supervisor_override: None,
+    }
   }
 
   /// Attaches an additional signal handler while keeping the existing message handler intact.
@@ -104,6 +141,17 @@ where
       self.directive = BehaviorDirective::Active;
     }
     self
+  }
+
+  /// Overrides the supervisor strategy associated with this behavior.
+  #[must_use]
+  pub const fn with_supervisor_strategy(mut self, strategy: SupervisorStrategy) -> Self {
+    self.supervisor_override = Some(strategy);
+    self
+  }
+
+  pub(crate) const fn supervisor_override(&self) -> Option<&SupervisorStrategy> {
+    self.supervisor_override.as_ref()
   }
 
   pub(crate) fn handle_message(

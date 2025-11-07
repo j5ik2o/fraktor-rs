@@ -6,13 +6,11 @@
 
 use std::time::Duration;
 
-use cellactor_actor_core_rs::typed::Behaviors;
 use cellactor_actor_std_rs::{
   event_stream::{EventStreamEvent, EventStreamSubscriber, EventStreamSubscription},
-  typed::{TypedActorSystem, TypedProps},
+  typed::{Behavior, Behaviors, TypedActorSystem, TypedProps},
 };
 use cellactor_utils_core_rs::ArcShared;
-use cellactor_utils_std_rs::runtime_toolbox::StdToolbox;
 
 #[derive(Debug, Clone)]
 enum WorkerCommand {
@@ -22,7 +20,7 @@ enum WorkerCommand {
 }
 
 /// Worker actor that transitions to empty state after finishing work.
-fn worker_behavior() -> cellactor_actor_core_rs::typed::Behavior<WorkerCommand, StdToolbox> {
+fn worker_behavior() -> Behavior<WorkerCommand> {
   Behaviors::setup(|ctx| {
     println!("[Worker] Started");
     working_behavior(ctx)
@@ -30,28 +28,23 @@ fn worker_behavior() -> cellactor_actor_core_rs::typed::Behavior<WorkerCommand, 
 }
 
 fn working_behavior(
-  _ctx: &mut cellactor_actor_core_rs::typed::actor_prim::TypedActorContextGeneric<WorkerCommand, StdToolbox>,
-) -> cellactor_actor_core_rs::typed::Behavior<WorkerCommand, StdToolbox> {
-  Behaviors::receive_message(
-    |_ctx: &mut cellactor_actor_core_rs::typed::actor_prim::TypedActorContextGeneric<WorkerCommand, StdToolbox>,
-     message: &WorkerCommand| {
-      match message {
-        | WorkerCommand::DoWork => {
-          println!("[Worker] Doing work...");
-          Ok(Behaviors::same())
-        },
-        | WorkerCommand::FinishWork => {
-          println!("[Worker] Finished all work, transitioning to empty state");
-          println!("[Worker] Will no longer process messages, but not stopping yet");
-          Ok(Behaviors::empty())
-        },
-        | WorkerCommand::StopWorking => {
-          println!("[Worker] Stopping");
-          Ok(Behaviors::stopped())
-        },
-      }
+  _ctx: &mut cellactor_actor_std_rs::typed::actor_prim::TypedActorContext<'_, WorkerCommand>,
+) -> Behavior<WorkerCommand> {
+  Behaviors::receive_message(|_ctx, message: &WorkerCommand| match message {
+    | WorkerCommand::DoWork => {
+      println!("[Worker] Doing work...");
+      Ok(Behaviors::same())
     },
-  )
+    | WorkerCommand::FinishWork => {
+      println!("[Worker] Finished all work, transitioning to empty state");
+      println!("[Worker] Will no longer process messages, but not stopping yet");
+      Ok(Behaviors::empty())
+    },
+    | WorkerCommand::StopWorking => {
+      println!("[Worker] Stopping");
+      Ok(Behaviors::stopped())
+    },
+  })
 }
 
 /// Event subscriber that logs UnhandledMessage events.

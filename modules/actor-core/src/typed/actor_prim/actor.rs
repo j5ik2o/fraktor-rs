@@ -3,7 +3,8 @@
 use cellactor_utils_core_rs::sync::NoStdToolbox;
 
 use crate::{
-  RuntimeToolbox, actor_prim::Pid, error::ActorError, typed::actor_prim::actor_context::TypedActorContextGeneric,
+  RuntimeToolbox, actor_prim::Pid, error::ActorError, supervision::SupervisorStrategy,
+  typed::actor_prim::actor_context::TypedActorContextGeneric,
 };
 
 /// Defines the lifecycle hooks for actors that operate on a typed message `M`.
@@ -50,5 +51,11 @@ where
     terminated: Pid,
   ) -> Result<(), ActorError> {
     Ok(())
+  }
+
+  /// Provides the supervision strategy for this typed actor.
+  #[must_use]
+  fn supervisor_strategy(&mut self, _ctx: &mut TypedActorContextGeneric<'_, M, TB>) -> SupervisorStrategy {
+    SupervisorStrategy::default()
   }
 }

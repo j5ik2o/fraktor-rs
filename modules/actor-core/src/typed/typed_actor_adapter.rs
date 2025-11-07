@@ -7,6 +7,7 @@ use crate::{
   actor_prim::{Actor, ActorContextGeneric},
   error::{ActorError, ActorErrorReason},
   messaging::AnyMessageView,
+  supervision::SupervisorStrategy,
   typed::actor_prim::{TypedActor, TypedActorContextGeneric},
 };
 
@@ -67,5 +68,10 @@ where
   ) -> Result<(), ActorError> {
     let mut typed_ctx = TypedActorContextGeneric::from_untyped(ctx);
     self.actor.on_terminated(&mut typed_ctx, terminated)
+  }
+
+  fn supervisor_strategy(&mut self, ctx: &mut ActorContextGeneric<'_, TB>) -> SupervisorStrategy {
+    let mut typed_ctx = TypedActorContextGeneric::from_untyped(ctx);
+    self.actor.supervisor_strategy(&mut typed_ctx)
   }
 }

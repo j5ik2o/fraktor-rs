@@ -8,6 +8,7 @@ use crate::{
   RuntimeToolbox,
   error::ActorError,
   event_stream::EventStreamEvent,
+  supervision::SupervisorStrategy,
   typed::{
     UnhandledMessageEvent,
     actor_prim::{TypedActor, TypedActorContextGeneric},
@@ -21,8 +22,9 @@ pub(crate) struct BehaviorRunner<M, TB = NoStdToolbox>
 where
   M: Send + Sync + 'static,
   TB: RuntimeToolbox + 'static, {
-  current:  Behavior<M, TB>,
-  stopping: bool,
+  current:    Behavior<M, TB>,
+  supervisor: Option<SupervisorStrategy>,
+  stopping:   bool,
 }
 
 impl<M, TB> BehaviorRunner<M, TB>
@@ -31,8 +33,15 @@ where
   TB: RuntimeToolbox + 'static,
 {
   /// Creates a runner with the provided initial behavior.
-  pub(crate) const fn new(initial: Behavior<M, TB>) -> Self {
-    Self { current: initial, stopping: false }
+  pub(crate) fn new(initial: Behavior<M, TB>) -> Self {
+    let supervisor = initial.supervisor_override().cloned();
+    Self { current: initial, supervisor, stopping: false }
+  }
+
+  const fn update_supervisor_override(&mut self, strategy: Option<SupervisorStrategy>) {
+    if let Some(strategy) = strategy {
+      self.supervisor = Some(strategy);
+    }
   }
 
   fn apply_transition(
@@ -40,6 +49,8 @@ where
     ctx: &mut TypedActorContextGeneric<'_, M, TB>,
     next: Behavior<M, TB>,
   ) -> Result<(), ActorError> {
+    let override_strategy = next.supervisor_override().cloned();
+
     match next.directive() {
       | BehaviorDirective::Same | BehaviorDirective::Ignore => Ok(()),
       | BehaviorDirective::Unhandled => {
@@ -74,6 +85,7 @@ where
         Ok(())
       },
     }
+    .map(|_| self.update_supervisor_override(override_strategy))
   }
 
   fn dispatch_signal(
@@ -110,5 +122,9 @@ where
     terminated: crate::actor_prim::Pid,
   ) -> Result<(), ActorError> {
     self.dispatch_signal(ctx, BehaviorSignal::Terminated(terminated))
+  }
+
+  fn supervisor_strategy(&mut self, _ctx: &mut TypedActorContextGeneric<'_, M, TB>) -> SupervisorStrategy {
+    self.supervisor.clone().unwrap_or_default()
   }
 }

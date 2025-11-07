@@ -6,13 +6,11 @@
 
 use std::time::Duration;
 
-use cellactor_actor_core_rs::typed::{BehaviorSignal, Behaviors};
 use cellactor_actor_std_rs::{
   event_stream::{EventStreamEvent, EventStreamSubscriber, EventStreamSubscription},
-  typed::{TypedActorSystem, TypedProps},
+  typed::{Behavior, BehaviorSignal, Behaviors, TypedActorSystem, TypedProps},
 };
 use cellactor_utils_core_rs::ArcShared;
-use cellactor_utils_std_rs::runtime_toolbox::StdToolbox;
 
 #[derive(Debug, Clone)]
 enum Command {
@@ -22,22 +20,17 @@ enum Command {
 }
 
 /// Actor that only handles Ping messages, returns unhandled for others.
-fn selective_behavior() -> cellactor_actor_core_rs::typed::Behavior<Command, StdToolbox> {
-  Behaviors::receive_message(
-    |_ctx: &mut cellactor_actor_core_rs::typed::actor_prim::TypedActorContextGeneric<Command, StdToolbox>,
-     message: &Command| {
-      match message {
-        | Command::Ping => {
-          println!("Received Ping, responding with message handling");
-          Ok(Behaviors::same())
-        },
-        | _ => {
-          println!("Received {:?}, returning unhandled", message);
-          Ok(Behaviors::unhandled())
-        },
-      }
+fn selective_behavior() -> Behavior<Command> {
+  Behaviors::receive_message(|_ctx, message: &Command| match message {
+    | Command::Ping => {
+      println!("Received Ping, responding with message handling");
+      Ok(Behaviors::same())
     },
-  )
+    | _ => {
+      println!("Received {:?}, returning unhandled", message);
+      Ok(Behaviors::unhandled())
+    },
+  })
   .receive_signal(|_ctx, signal| {
     if matches!(signal, BehaviorSignal::Started) {
       println!("Actor started");

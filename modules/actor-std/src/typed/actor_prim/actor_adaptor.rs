@@ -1,4 +1,6 @@
-use cellactor_actor_core_rs::{actor_prim::Pid, error::ActorError, typed::actor_prim::TypedActorContextGeneric};
+use cellactor_actor_core_rs::{
+  actor_prim::Pid, error::ActorError, supervision::SupervisorStrategy, typed::actor_prim::TypedActorContextGeneric,
+};
 use cellactor_utils_std_rs::runtime_toolbox::StdToolbox;
 
 use crate::typed::actor_prim::{TypedActor, TypedActorContext};
@@ -52,5 +54,11 @@ where
     let wrapped_ctx =
       unsafe { &mut *(core_ctx as *mut TypedActorContextGeneric<'_, M, StdToolbox> as *mut TypedActorContext<'_, M>) };
     self.inner.on_terminated(wrapped_ctx, terminated)
+  }
+
+  fn supervisor_strategy(&mut self, core_ctx: &mut TypedActorContextGeneric<'_, M, StdToolbox>) -> SupervisorStrategy {
+    let wrapped_ctx =
+      unsafe { &mut *(core_ctx as *mut TypedActorContextGeneric<'_, M, StdToolbox> as *mut TypedActorContext<'_, M>) };
+    self.inner.supervisor_strategy(wrapped_ctx)
   }
 }

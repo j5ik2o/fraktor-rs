@@ -2,11 +2,13 @@ use alloc::{string::ToString, sync::Arc};
 use core::{
   hint::spin_loop,
   sync::atomic::{AtomicUsize, Ordering},
+  time::Duration,
 };
 
 use crate::{
   NoStdToolbox,
   error::ActorError,
+  supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
   typed::{
     Behavior, BehaviorSignal, Behaviors, TypedAskError,
     actor_prim::{TypedActor, TypedActorContextGeneric},
@@ -143,6 +145,16 @@ enum MismatchCommand {
   Trigger,
 }
 
+#[derive(Clone, Copy)]
+enum SupervisorCommand {
+  CrashChild,
+}
+
+#[derive(Clone, Copy)]
+enum ChildCommand {
+  Crash,
+}
+
 struct MismatchActor;
 
 impl TypedActor<MismatchCommand> for MismatchActor {
@@ -220,4 +232,91 @@ fn signal_probe_behavior(
     }
     Ok(Behaviors::same())
   })
+}
+
+fn child_behavior(counter: &Arc<AtomicUsize>) -> Behavior<ChildCommand, NoStdToolbox> {
+  let start_probe = Arc::clone(counter);
+  Behaviors::receive_message(move |_ctx, message| match message {
+    | ChildCommand::Crash => Err(ActorError::recoverable("boom")),
+  })
+  .receive_signal(move |_ctx, signal| {
+    if matches!(signal, BehaviorSignal::Started) {
+      start_probe.fetch_add(1, Ordering::SeqCst);
+    }
+    Ok(Behaviors::same())
+  })
+}
+
+fn child_props(counter: &Arc<AtomicUsize>) -> TypedPropsGeneric<ChildCommand, NoStdToolbox> {
+  let counter = Arc::clone(counter);
+  TypedPropsGeneric::from_behavior_factory(move || child_behavior(&counter))
+}
+
+fn supervised_parent_behavior(
+  child: TypedPropsGeneric<ChildCommand, NoStdToolbox>,
+) -> Behavior<SupervisorCommand, NoStdToolbox> {
+  Behaviors::setup(move |ctx| {
+    let child_ref = ctx.spawn_child(&child).expect("spawn child");
+    let handle = child_ref.actor_ref();
+    Behaviors::receive_message(move |_ctx, message| match message {
+      | SupervisorCommand::CrashChild => {
+        handle.tell(ChildCommand::Crash).expect("crash child");
+        Ok(Behaviors::same())
+      },
+    })
+  })
+}
+
+fn supervised_parent_props(
+  strategy: SupervisorStrategy,
+  child: TypedPropsGeneric<ChildCommand, NoStdToolbox>,
+) -> TypedPropsGeneric<SupervisorCommand, NoStdToolbox> {
+  TypedPropsGeneric::from_behavior_factory(move || {
+    let behavior = supervised_parent_behavior(child.clone());
+    Behaviors::supervise(behavior).on_failure(strategy.clone())
+  })
+}
+
+#[test]
+fn behaviors_supervise_restarts_children() {
+  let start_counter = Arc::new(AtomicUsize::new(0));
+  let child = child_props(&start_counter);
+  let restart_strategy = SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 5, Duration::from_secs(1), |_| {
+    SupervisorDirective::Restart
+  });
+  let parent_props = supervised_parent_props(restart_strategy, child);
+  let system = TypedActorSystemGeneric::<SupervisorCommand, NoStdToolbox>::new(&parent_props).expect("system");
+  let parent = system.user_guardian_ref();
+
+  wait_until(|| start_counter.load(Ordering::SeqCst) == 1);
+
+  parent.tell(SupervisorCommand::CrashChild).expect("crash");
+
+  wait_until(|| start_counter.load(Ordering::SeqCst) >= 2);
+
+  system.terminate().expect("terminate");
+}
+
+#[test]
+fn behaviors_supervise_stops_children() {
+  let start_counter = Arc::new(AtomicUsize::new(0));
+  let child = child_props(&start_counter);
+  let stop_strategy = SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 1, Duration::from_secs(1), |_| {
+    SupervisorDirective::Stop
+  });
+  let parent_props = supervised_parent_props(stop_strategy, child);
+  let system = TypedActorSystemGeneric::<SupervisorCommand, NoStdToolbox>::new(&parent_props).expect("system");
+  let parent = system.user_guardian_ref();
+
+  wait_until(|| start_counter.load(Ordering::SeqCst) == 1);
+
+  parent.tell(SupervisorCommand::CrashChild).expect("crash");
+
+  // Child should not restart, so validate the counter stays at 1 for a short period.
+  for _ in 0..1_000 {
+    assert_eq!(start_counter.load(Ordering::SeqCst), 1);
+    spin_loop();
+  }
+
+  system.terminate().expect("terminate");
 }

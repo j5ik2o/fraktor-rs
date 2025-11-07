@@ -12,6 +12,8 @@ mod behavior_signal;
 mod behaviors;
 /// Typed props that wrap untyped props.
 mod props;
+/// Builder for assigning supervisor strategies to behaviors.
+mod supervise;
 /// Typed actor system interface.
 mod system;
 /// Internal adapter between typed and untyped actors.
@@ -29,6 +31,7 @@ pub use behavior::Behavior;
 pub use behavior_signal::BehaviorSignal;
 pub use behaviors::Behaviors;
 pub use props::{TypedProps, TypedPropsGeneric};
+pub use supervise::Supervise;
 pub use system::{TypedActorSystem, TypedActorSystemGeneric};
 pub use typed_ask_error::TypedAskError;
 pub use typed_ask_future::{TypedAskFuture, TypedAskFutureGeneric};

@@ -1,5 +1,4 @@
-use cellactor_actor_core_rs::typed::{BehaviorSignal, Behaviors};
-use cellactor_actor_std_rs::typed::{Behavior, TypedActorSystem, TypedProps};
+use cellactor_actor_std_rs::typed::{Behavior, BehaviorSignal, Behaviors, TypedActorSystem, TypedProps};
 
 #[derive(Clone, Copy)]
 enum GuardianCommand {

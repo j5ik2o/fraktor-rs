@@ -1,4 +1,4 @@
-use cellactor_actor_core_rs::{actor_prim::Pid, error::ActorError};
+use cellactor_actor_core_rs::{actor_prim::Pid, error::ActorError, supervision::SupervisorStrategy};
 
 use crate::typed::actor_prim::TypedActorContext;
 
@@ -35,5 +35,11 @@ where
   /// Propagate an error when reacting to the termination cannot succeed.
   fn on_terminated(&mut self, _ctx: &mut TypedActorContext<'_, M>, _terminated: Pid) -> Result<(), ActorError> {
     Ok(())
+  }
+
+  /// Provides the supervision strategy for this typed actor.
+  #[must_use]
+  fn supervisor_strategy(&mut self, _ctx: &mut TypedActorContext<'_, M>) -> SupervisorStrategy {
+    SupervisorStrategy::default()
   }
 }
