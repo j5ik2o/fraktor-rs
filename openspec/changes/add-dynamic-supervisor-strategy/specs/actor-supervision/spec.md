@@ -29,7 +29,7 @@ struct ResilientWorker {
 
 ```rust
 impl Actor for ResilientWorker {
-    fn supervisor_strategy(&self, _ctx: &ActorContext) -> Option<SupervisorStrategy> {
+    fn supervisor_strategy(&mut self, _ctx: &mut ActorContext) -> Option<SupervisorStrategy> {
         if self.error_count > 10 {
             Some(SupervisorStrategy::new(
                 SupervisorStrategyKind::OneForOne,
@@ -88,82 +88,26 @@ ActorCellは子アクターの失敗時に、親Actor実装から監督戦略を
 
 **Then**:
 1. `handle_failure`メソッドが呼び出される
-2. `actor.lock()`で親Actor実装を取得
-3. `actor.supervisor_strategy(ctx)`を呼び出す
+2. `actor.lock()`で親Actor実装への可変参照を取得
+3. `actor.supervisor_strategy(&mut ctx)`を呼び出す（状態更新可能）
 4. 返された`Some(strategy)`を使用して失敗を処理
 5. 適切な`SupervisorDirective`が決定される
 
-#### Scenario: デフォルト戦略にフォールバック
+#### Scenario: デフォルト戦略の使用
 
 **Given**:
 - ActorCellが子アクターを管理している
-- 親Actor実装が`supervisor_strategy`メソッドで`None`を返す
-- ActorCellの`default_supervisor`フィールドにPropsから取得した戦略が保存されている
+- 親Actor実装が`supervisor_strategy`メソッドをオーバーライドしていない
 
 **When**: 子アクターが失敗する
 
 **Then**:
 1. `handle_failure`メソッドが呼び出される
-2. `actor.supervisor_strategy(ctx)`が`None`を返す
-3. `default_supervisor`フィールドの戦略を使用
+2. `actor.supervisor_strategy(ctx)`がデフォルト実装により`SupervisorStrategy::default()`を返す
+3. デフォルト戦略（OneForOne, 10回再起動, 1分以内）が使用される
 4. 適切な`SupervisorDirective`が決定される
 
-### Requirement: 優先順位ポリシー (REQ-003)
-
-監督戦略の決定は、Actor実装による提供を優先し、提供されない場合はPropsのデフォルトにフォールバックしなければならない (MUST)。
-
-**優先度**: MEDIUM
-
-**適用範囲**:
-- `modules/actor-core/src/actor_prim/actor_cell.rs`
-
-#### Scenario: 優先順位の適用
-
-**Given**:
-- Propsで`SupervisorStrategy::restarting(3, Duration::from_secs(10))`が指定されている
-- Actor実装が状態に応じて異なる戦略を返す
-
-**When**: 以下の状態で子アクターが失敗する
-1. Actor実装が`Some(SupervisorStrategy::stopping())`を返す
-2. Actor実装が`None`を返す
-
-**Then**:
-1. ケース1: 停止戦略が使用される（Actor実装の戦略が優先）
-2. ケース2: 再起動戦略（3回、10秒以内）が使用される（Propsのデフォルトにフォールバック）
-
-### Requirement: ActorCellのデフォルト戦略保持 (REQ-004)
-
-ActorCellはProps由来のデフォルト監督戦略を`default_supervisor`フィールドに保持しなければならない (MUST)。
-
-**優先度**: HIGH
-
-**適用範囲**:
-- `modules/actor-core/src/actor_prim/actor_cell.rs`
-
-#### Scenario: ActorCell生成時のデフォルト戦略保存
-
-**Given**: Propsがカスタム監督戦略を持つ
-
-```rust
-let props = Props::from_fn(MyActor::new)
-    .with_supervisor(SupervisorOptions::new(
-        SupervisorStrategy::new(
-            SupervisorStrategyKind::AllForOne,
-            5,
-            Duration::from_secs(30),
-            |_| SupervisorDirective::Restart
-        )
-    ));
-```
-
-**When**: ActorCellが生成される
-
-**Then**:
-- `ActorCell::new`メソッドで`props.supervisor().strategy()`を呼び出す
-- 取得した戦略を`default_supervisor`フィールドにコピーして保存
-- このデフォルト戦略は後のフォールバックで使用される
-
-### Requirement: 後方互換性 (REQ-005)
+### Requirement: 後方互換性 (REQ-003)
 
 既存のActor実装は変更なしで動作し続けなければならない (MUST)。
 
@@ -195,7 +139,7 @@ let props = Props::from_fn(MyActor::new)
 - すべての既存テストが引き続きパスする
 - 特に`escalate_failure_restarts_supervisor`テストが正常に動作
 
-### Requirement: パフォーマンス影響の最小化 (REQ-006)
+### Requirement: パフォーマンス影響の最小化 (REQ-004)
 
 失敗処理のパフォーマンスオーバーヘッドは最小限に抑えられなければならない (SHALL)。
 
@@ -213,25 +157,37 @@ let props = Props::from_fn(MyActor::new)
 **Then**:
 - 追加コストはMutexロック1回とメソッド呼び出し1回のみ
 - メッセージ処理パスには影響なし
-- ActorCellのメモリ使用量増加は1フィールド分（約48バイト）のみ
+- ActorCellのメモリ使用量が1フィールド分削減（約48バイト削減）
 
-### Requirement: エラーハンドリング (REQ-007)
+### Requirement: panic-free実装 (REQ-005)
 
-`supervisor_strategy`メソッド内での例外発生には適切に対処しなければならない (MUST)。
+`supervisor_strategy`メソッド実装はpanic-freeでなければならない (MUST)。
 
-**優先度**: MEDIUM
+**優先度**: CRITICAL
 
 **適用範囲**:
-- `modules/actor-core/src/actor_prim/actor_cell.rs`
+- `modules/actor-core/src/actor_prim/actor.rs`
+- すべてのActor実装
 
-#### Scenario: supervisor_strategyメソッドでのパニック
+**制約**:
+- `actor-core`クレートは`#![no_std]`環境をサポート
+- no_std環境ではpanic回復メカニズム（`catch_unwind`等）が利用できない
+- `supervisor_strategy`内でパニックが発生した場合、ライブラリは関与しない
+- パニックはアプリケーション全体の異常終了を引き起こす可能性がある
 
-**Given**: Actor実装の`supervisor_strategy`メソッドがパニックする
+#### Scenario: panic-free実装の推奨
+
+**Given**: Actor実装が`supervisor_strategy`をオーバーライドする
 
 ```rust
-impl Actor for BuggyActor {
-    fn supervisor_strategy(&self, _ctx: &ActorContext) -> Option<SupervisorStrategy> {
-        panic!("Bug in strategy logic!");
+impl Actor for SafeActor {
+    fn supervisor_strategy(&mut self, _ctx: &mut ActorContext) -> Option<SupervisorStrategy> {
+        // ✅ 良い例: panic-free実装
+        if self.error_count > 10 {
+            Some(SupervisorStrategy::stopping())
+        } else {
+            None
+        }
     }
 }
 ```
@@ -239,9 +195,27 @@ impl Actor for BuggyActor {
 **When**: 子アクターが失敗する
 
 **Then**:
-- Mutexがpoisonedになる可能性があるが、システムは停止しない
-- デフォルト戦略にフォールバックする、または親アクターが停止する
-- システム全体がクラッシュしない
+- メソッドは正常に完了する
+- システムは予測可能に動作する
+
+#### Scenario: panic発生時の動作（非推奨）
+
+**Given**: Actor実装の`supervisor_strategy`がパニックする
+
+```rust
+impl Actor for BuggyActor {
+    fn supervisor_strategy(&mut self, _ctx: &mut ActorContext) -> Option<SupervisorStrategy> {
+        panic!("Bug in strategy logic!");  // ❌ 避けるべき
+    }
+}
+```
+
+**When**: 子アクターが失敗する
+
+**Then**:
+- **no_std環境**: アプリケーション全体が異常終了する（`panic = abort`）
+- **std環境（panic = unwind）**: Mutexがpoisonedになり、以降のロック取得が失敗する
+- いずれの場合も、ライブラリは関与せず、アプリケーション側の責任となる
 
 ## 受入基準
 

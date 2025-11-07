@@ -15,25 +15,27 @@
   - ファイル: `modules/actor-std/src/actor_prim/actor.rs`
   - coreモジュールと同じシグネチャ
 
-### フェーズ2: ActorCell変更
+### フェーズ2: ActorCell/Props変更
 
-- [ ] **ActorCell構造体**: `default_supervisor`フィールド追加
+- [ ] **ActorCell構造体**: `supervisor`フィールド削除
   - ファイル: `modules/actor-core/src/actor_prim/actor_cell.rs`
-  - 型: `SupervisorStrategy`
-  - 説明コメント追加
+  - Props由来の固定戦略フィールドを削除
 
-- [ ] **ActorCellコンストラクタ**: デフォルト戦略の初期化
-  - `new`メソッドで`props.supervisor().strategy()`から取得
-  - フィールドに保存
+- [ ] **ActorCellコンストラクタ**: Props由来のsupervisor初期化を削除
+  - `new`メソッドから`props.supervisor().strategy()`取得処理を削除
+  - `supervisor`フィールド設定を削除
+
+- [ ] **Props構造体**: `supervisor`フィールド削除
+  - ファイル: `modules/actor-core/src/props/base.rs`
+  - `PropsGeneric`から`supervisor: SupervisorOptions`を削除
+  - `with_supervisor()`メソッド削除
+  - `supervisor()`アクセサメソッド削除
 
 - [ ] **handle_failureメソッド**: 動的戦略取得ロジック実装
   - `actor.lock()`でActor実装を取得
-  - `actor.supervisor_strategy(ctx)`を呼び出し
-  - `Some(strategy)` → 使用、`None` → `default_supervisor`にフォールバック
+  - `actor.supervisor_strategy(&mut ctx)`を呼び出し
+  - 返されたSupervisorStrategyを直接使用
   - 戦略に基づいて`SupervisorDirective`を決定
-
-- [ ] **create_contextヘルパー**: `ActorContext`構築メソッド追加（必要に応じて）
-  - `supervisor_strategy`メソッドに渡すためのcontext生成
 
 ### フェーズ3: テスト追加
 
@@ -41,8 +43,12 @@
   - ファイル: `modules/actor-core/tests/supervisor.rs`
   - テストシナリオ:
     - Actor内部状態を変更して戦略が切り替わる
-    - `Some(strategy)`を返すパターン
-    - `None`を返してデフォルトにフォールバックするパターン
+    - カスタム戦略を返すパターン
+    - デフォルト実装でSupervisorStrategy::default()を返すパターン
+
+- [ ] **Props経由の戦略指定テスト削除**
+  - `.with_supervisor()`を使用する既存テストを削除または修正
+  - Actor実装で`supervisor_strategy`をオーバーライドする形に書き換え
 
 - [ ] **OneForOne/AllForOne動的切り替えテスト**
   - Actor状態に応じて戦略種別が変わることを確認

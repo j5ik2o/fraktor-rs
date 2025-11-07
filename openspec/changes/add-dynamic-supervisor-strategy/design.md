@@ -7,17 +7,19 @@
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │ Props                                                       │
-│  ├─ SupervisorOptions                                       │
-│  │   └─ SupervisorStrategy (デフォルト戦略)                │
-│  └─ ActorFactory                                            │
+│  ├─ ActorFactory                                            │
+│  ├─ MailboxConfig                                           │
+│  ├─ DispatcherConfig                                        │
+│  └─ Middleware                                              │
+│  （SupervisorStrategy指定なし - Pekko互換）                │
 └─────────────────────────────────────────────────────────────┘
                             │
                             ▼ ActorCell生成時
 ┌─────────────────────────────────────────────────────────────┐
 │ ActorCell<TB>                                               │
 │  ├─ actor: Mutex<Actor>                                     │
-│  ├─ default_supervisor: SupervisorStrategy (Propsから)      │
-│  └─ children: Vec<Pid>                                      │
+│  ├─ children: Vec<Pid>                                      │
+│  └─ （supervisorフィールドなし）                            │
 └─────────────────────────────────────────────────────────────┘
                             │
                             ▼ 子アクター失敗時
@@ -25,8 +27,7 @@
 │ handle_failure(child, error)                                │
 │  1. actor.lock()でActor実装を取得                           │
 │  2. actor.supervisor_strategy(ctx)を呼び出し               │
-│  3. Some(strategy) → その戦略を使用                         │
-│     None           → default_supervisorを使用               │
+│  3. 返されたSupervisorStrategyを使用                        │
 │  4. strategy.handle_failure(stats, error, now)で判定        │
 └─────────────────────────────────────────────────────────────┘
                             │
@@ -80,7 +81,7 @@ pub trait Actor<TB: RuntimeToolbox = NoStdToolbox>: Send {
     /// }
     ///
     /// impl Actor for ResilientWorker {
-    ///     fn supervisor_strategy(&self, _ctx: &ActorContext) -> Option<SupervisorStrategy> {
+    ///     fn supervisor_strategy(&mut self, _ctx: &mut ActorContext) -> Option<SupervisorStrategy> {
     ///         if self.strict_mode {
     ///             // 厳格モード: 即座に停止
     ///             Some(SupervisorStrategy::new(
@@ -115,8 +116,9 @@ pub trait Actor<TB: RuntimeToolbox = NoStdToolbox>: Send {
     ///
     /// - このメソッドは子アクターの失敗時に呼び出される
     /// - 頻繁に呼ばれるわけではないが、軽量な実装を推奨
-    /// - 戦略の決定ロジックに副作用を持たせない（純粋関数として実装）
-    fn supervisor_strategy(&self, _ctx: &ActorContextGeneric<'_, TB>) -> Option<SupervisorStrategy> {
+    /// - 戦略の決定ロジックは状態更新を含めることができる
+    /// - 既存のActor traitメソッド（receive, pre_startなど）と一貫したシグネチャ
+    fn supervisor_strategy(&mut self, _ctx: &mut ActorContextGeneric<'_, TB>) -> Option<SupervisorStrategy> {
         None
     }
 }
@@ -126,7 +128,7 @@ pub trait Actor<TB: RuntimeToolbox = NoStdToolbox>: Send {
 
 **ファイル**: `modules/actor-core/src/actor_prim/actor_cell.rs`
 
-#### 2.1 構造体フィールド追加
+#### 2.1 構造体フィールド削除
 
 ```rust
 pub struct ActorCell<TB: RuntimeToolbox> {
@@ -136,14 +138,17 @@ pub struct ActorCell<TB: RuntimeToolbox> {
     sender:      ArcShared<DispatcherSenderGeneric<TB>>,
     children:    ToolboxMutex<Vec<Pid>, TB>,
 
-    // 追加: Propsから取得したデフォルト戦略
-    default_supervisor: SupervisorStrategy,
+    // supervisor: SupervisorStrategy,  // ← 削除
 
     child_stats: ToolboxMutex<Vec<(Pid, RestartStatistics)>, TB>,
     watchers:    ToolboxMutex<Vec<Pid>, TB>,
     // ...その他のフィールド
 }
 ```
+
+**変更点**:
+- `supervisor`フィールドを削除（Props由来の固定戦略が不要になった）
+- メモリ使用量が約48バイト削減
 
 #### 2.2 コンストラクタの変更
 
@@ -159,8 +164,7 @@ impl<TB: RuntimeToolbox> ActorCell<TB> {
         let actor = <TB::MutexFamily as SyncMutexFamily>::create(factory.create());
         let children = <TB::MutexFamily as SyncMutexFamily>::create(Vec::new());
 
-        // Propsから戦略を取得（コピー）
-        let default_supervisor = *props.supervisor().strategy();
+        // let supervisor = *props.supervisor().strategy();  // ← 削除
 
         let child_stats = <TB::MutexFamily as SyncMutexFamily>::create(Vec::new());
         let watchers = <TB::MutexFamily as SyncMutexFamily>::create(Vec::new());
@@ -171,7 +175,7 @@ impl<TB: RuntimeToolbox> ActorCell<TB> {
             actor,
             sender,
             children,
-            default_supervisor,  // 追加
+            // supervisor,  // ← 削除
             child_stats,
             watchers,
             // ...
@@ -191,10 +195,11 @@ impl<TB: RuntimeToolbox> ActorCell<TB> {
 
         // 監督戦略を動的に取得
         let strategy = {
-            let actor = self.actor.lock();
-            // Actor実装から戦略を取得、なければデフォルト
-            actor.supervisor_strategy(&self.create_context())
-                .unwrap_or(self.default_supervisor)
+            let system = ActorSystemGeneric::from_state(self.system.clone());
+            let mut ctx = ActorContextGeneric::new(&system, self.pid);
+            let mut actor = self.actor.lock();
+            // Actor実装から戦略を取得
+            actor.supervisor_strategy(&mut ctx)
         };
 
         // 戦略に基づいてディレクティブを決定
@@ -249,7 +254,7 @@ coreモジュールと同じ変更を適用:
 pub trait Actor: Send {
     // 既存のメソッド...
 
-    fn supervisor_strategy(&self, _ctx: &ActorContext<'_>) -> Option<SupervisorStrategy> {
+    fn supervisor_strategy(&mut self, _ctx: &mut ActorContext<'_>) -> Option<SupervisorStrategy> {
         None
     }
 }
@@ -257,32 +262,32 @@ pub trait Actor: Send {
 
 ## データフロー
 
-### 通常フロー（Actor実装が戦略を提供しない場合）
+### 基本フロー（デフォルト戦略を使用）
 
 ```
 1. Props生成
-   └─ SupervisorOptions::default() → デフォルト戦略
+   └─ ActorFactory, MailboxConfig, DispatcherConfig等のみ
 
 2. ActorCell生成
-   └─ default_supervisor = props.supervisor().strategy()
+   └─ Props由来のsupervisorフィールドなし
 
 3. 子アクター失敗
-   └─ actor.supervisor_strategy(ctx) → None
-   └─ default_supervisor を使用
+   └─ actor.supervisor_strategy(ctx) → SupervisorStrategy::default()
+   └─ デフォルト戦略を使用（OneForOne, 10回再起動, 1分以内）
 ```
 
-### 動的フロー（Actor実装が戦略を提供する場合）
+### 動的フロー（Actor実装がカスタム戦略を提供）
 
 ```
 1. Props生成
-   └─ SupervisorOptions::default() → デフォルト戦略
+   └─ ActorFactory, MailboxConfig, DispatcherConfig等のみ
 
 2. ActorCell生成
-   └─ default_supervisor = props.supervisor().strategy()
+   └─ Props由来のsupervisorフィールドなし
 
 3. 子アクター失敗
-   └─ actor.supervisor_strategy(ctx) → Some(custom_strategy)
-   └─ custom_strategy を使用
+   └─ actor.supervisor_strategy(ctx) → カスタムSupervisorStrategy
+   └─ Actor状態に基づく動的戦略を使用
 ```
 
 ## パフォーマンス分析
@@ -291,7 +296,7 @@ pub trait Actor: Send {
 
 | 操作 | コスト | 頻度 | 影響 |
 |------|--------|------|------|
-| `ActorCell`構造体サイズ増加 | +48バイト程度 | アクター生成時 | 最小限 |
+| `ActorCell`構造体サイズ削減 | -48バイト程度 | アクター生成時 | メモリ効率向上 |
 | `actor.lock()` | Mutexロック | 子失敗時のみ | 軽微 |
 | `supervisor_strategy()` 呼び出し | メソッド呼び出し | 子失敗時のみ | 最小限 |
 
@@ -324,20 +329,29 @@ fn handle_failure(&self, child: Pid, error: ActorError) -> FailureOutcome {
 // 既存のエスカレート処理をそのまま使用
 ```
 
-### ケース3: Actor実装が`panic!`する場合
+### ケース3: Actor実装が`panic!`する場合（非推奨）
 
-`supervisor_strategy`メソッド内でパニックした場合:
+**重要**: `supervisor_strategy`メソッド実装はpanic-freeであるべきです。
 
+**no_std環境での動作**:
+- `panic = abort`: アプリケーション全体が即座に終了
+- ライブラリは関与しない（panic回復メカニズムなし）
+
+**std環境（panic = unwind）での動作**:
+- Mutexがpoisonedになり、以降のロック取得が失敗
+- システムの予測可能な動作が保証されない
+- ライブラリは関与せず、アプリケーション側の責任
+
+**推奨実装**:
 ```rust
-// Mutexがpoisonedになるが、既存のエラー処理で対応
-// 最悪の場合、デフォルト戦略にフォールバック
-let strategy = {
-    let actor = self.actor.lock();
-    match actor.supervisor_strategy(&ctx) {
-        Some(s) => s,
-        None => self.default_supervisor,
+// ✅ panic-free実装
+fn supervisor_strategy(&mut self, _ctx: &mut ActorContext) -> Option<SupervisorStrategy> {
+    if self.error_count > 10 {
+        Some(SupervisorStrategy::stopping())
+    } else {
+        None
     }
-};
+}
 ```
 
 ## テスト戦略
@@ -419,6 +433,7 @@ pub struct SupervisorStrategy {
 
 ✅ **シンプル**: 最小限の変更で実現
 ✅ **型安全**: Actorトレイトを通じた静的型付け
-✅ **柔軟**: Actor状態に基づく動的判断が可能
+✅ **柔軟**: Actor状態に基づく動的判断が可能（`&mut self`により状態更新可能）
 ✅ **互換**: 既存コードへの影響が最小限
 ✅ **Pekko互換**: Classic ActorのsupervisorStrategyメソッドに相当
+✅ **no_std対応**: panic-free実装を要求、ライブラリは関与しない

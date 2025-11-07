@@ -33,7 +33,7 @@ struct ResilientWorker {
 }
 
 impl Actor for ResilientWorker {
-    fn supervisor_strategy(&self, _ctx: &ActorContext) -> Option<SupervisorStrategy> {
+    fn supervisor_strategy(&mut self, _ctx: &mut ActorContext) -> Option<SupervisorStrategy> {
         if self.consecutive_errors > 10 {
             // 10回以上連続エラー → 即座に停止
             Some(SupervisorStrategy::stopping())
@@ -50,7 +50,7 @@ struct PaymentProcessor {
 }
 
 impl Actor for PaymentProcessor {
-    fn supervisor_strategy(&self, _ctx: &ActorContext) -> Option<SupervisorStrategy> {
+    fn supervisor_strategy(&mut self, _ctx: &mut ActorContext) -> Option<SupervisorStrategy> {
         if self.critical_mode {
             // クリティカルな処理中はエスカレート
             Some(SupervisorStrategy::escalating())
@@ -107,35 +107,65 @@ pub trait Actor<TB: RuntimeToolbox = NoStdToolbox>: Send {
 let directive = {
     let mut stats = self.child_stats.lock();
     let entry = find_or_insert_stats(&mut stats, child);
-    self.supervisor.handle_failure(entry, error, now)  // 固定されたsupervisor
+    self.supervisor.handle_failure(entry, error, now)  // Props由来の固定戦略
 };
 
 // 変更後
+let strategy = {
+    let system = ActorSystemGeneric::from_state(self.system.clone());
+    let mut ctx = ActorContextGeneric::new(&system, self.pid);
+    let mut actor = self.actor.lock();
+    actor.supervisor_strategy(&mut ctx)  // Actor実装から直接取得
+};
+
 let directive = {
     let mut stats = self.child_stats.lock();
     let entry = find_or_insert_stats(&mut stats, child);
-
-    // Actor実装から戦略を取得、なければPropsのデフォルトを使用
-    let strategy = {
-        let actor = self.actor.lock();
-        actor.supervisor_strategy(&ctx)
-            .unwrap_or(self.default_supervisor)
-    };
-
     strategy.handle_failure(entry, error, now)
 };
 ```
 
-### 3. 優先順位ポリシー
+### 3. Props簡素化
 
-監督戦略の決定優先順位:
+**重要な設計変更**: PropsからSupervisorStrategy指定を削除
 
-1. **Actor実装の`supervisor_strategy`メソッド** （最優先）
-   - `Some(strategy)`を返した場合、その戦略を使用
-2. **Propsで指定された戦略**
-   - Actor実装が`None`を返した場合のフォールバック
+**理由**:
+- **Pekko互換性**: Pekko Classicでは`Props`に`supervisorStrategy`フィールドなし
+- **責務の明確化**: Props = インスタンス化設定、SupervisorStrategy = Actor振る舞い
+- **設計の簡素化**: フィールド重複なし、優先順位ポリシー不要、フォールバック不要
 
-### 4. SupervisorStrategyの制約緩和
+```rust
+// Props構造体から削除
+pub struct PropsGeneric<TB: RuntimeToolbox + 'static> {
+    factory:    ArcShared<dyn ActorFactory<TB>>,
+    name:       Option<String>,
+    mailbox:    MailboxConfig,
+    // supervisor: SupervisorOptions,  // ← 削除
+    middleware: Vec<String>,
+    dispatcher: DispatcherConfigGeneric<TB>,
+}
+
+// ActorCell構造体からも削除
+pub struct ActorCellGeneric<TB: RuntimeToolbox + 'static> {
+    // ...
+    // supervisor: SupervisorStrategy,  // ← 削除
+    // ...
+}
+```
+
+### 4. デフォルト戦略
+
+Actor traitのデフォルト実装でデフォルト戦略を提供:
+
+```rust
+pub trait Actor<TB: RuntimeToolbox = NoStdToolbox>: Send {
+    fn supervisor_strategy(&mut self, _ctx: &mut ActorContextGeneric<'_, TB>) -> SupervisorStrategy {
+        SupervisorStrategy::default()  // OneForOne, 10回再起動, 1分以内
+    }
+}
+```
+
+### 5. SupervisorStrategyの制約緩和
 
 現在`Copy` traitを要求しているが、これを緩和する可能性を検討:
 
@@ -156,33 +186,62 @@ pub struct SupervisorStrategy { ... }
 ### 変更が必要なファイル
 
 1. **modules/actor-core/src/actor_prim/actor.rs**
-   - `Actor` traitに`supervisor_strategy`メソッド追加
+   - `Actor` traitに`supervisor_strategy`メソッド追加（デフォルト実装あり）
 
 2. **modules/actor-core/src/actor_prim/actor_cell.rs**
-   - `ActorCell`構造体に`default_supervisor`フィールド追加
+   - `ActorCell`構造体から`supervisor`フィールド削除
    - `handle_failure`メソッドで動的戦略取得ロジック実装
 
-3. **modules/actor-std/src/actor_prim/actor.rs**
+3. **modules/actor-core/src/props/base.rs**
+   - `PropsGeneric`構造体から`supervisor`フィールド削除
+   - `with_supervisor()`メソッド削除
+
+4. **modules/actor-std/src/actor_prim/actor.rs**
    - stdモジュールの`Actor` traitも同様に拡張
 
-4. **modules/actor-core/tests/supervisor.rs**
+5. **modules/actor-core/tests/supervisor.rs**
    - 動的戦略変更のテストケース追加
+   - Props経由の戦略指定テストを削除
 
-5. **modules/actor-core/src/supervision/base.rs**
-   - `SupervisorStrategy`の`Copy`制約削除を検討
+6. **modules/actor-core/src/supervision/base.rs**
+   - `SupervisorStrategy`の`Copy`制約削除を検討（将来の拡張）
 
 ### 破壊的変更
 
+**重大な破壊的変更**:
+
+- **Props APIの変更**
+  - `Props::with_supervisor()`メソッド削除
+  - 影響: 既存コードで`.with_supervisor()`を使用している箇所はコンパイルエラー
+  - 移行方法: Actor実装で`supervisor_strategy`メソッドをオーバーライド
+
+**移行例**:
+```rust
+// 変更前
+let props = Props::from_fn(MyActor::new)
+    .with_supervisor(SupervisorOptions::new(
+        SupervisorStrategy::stopping()
+    ));
+
+// 変更後
+impl Actor for MyActor {
+    fn supervisor_strategy(&mut self, _ctx: &mut ActorContext) -> SupervisorStrategy {
+        SupervisorStrategy::stopping()
+    }
+}
+let props = Props::from_fn(MyActor::new);
+```
+
 **軽微な破壊的変更**:
 
-- `SupervisorStrategy`から`Copy` traitを削除する場合
+- `SupervisorStrategy`から`Copy` traitを削除する場合（将来の拡張）
   - 影響: 構造体のコピーが必要な箇所で`clone()`を明示的に呼ぶ必要がある
-  - 緩和策: 当面は`Copy`を維持し、将来的な拡張として検討
+  - 緩和策: 当面は`Copy`を維持
 
 **非破壊的変更**:
 
 - `Actor` traitへのデフォルト実装付きメソッド追加
-  - 既存のActor実装は変更不要（デフォルトで`None`を返す）
+  - 既存のActor実装は変更不要（デフォルト戦略が自動適用）
 
 ## 設計判断
 
@@ -190,9 +249,11 @@ pub struct SupervisorStrategy { ... }
 
 **選択肢**:
 
-1. **`&self`で直接アクセス** ✅ 採用
-   - `ActorCell`が`self.actor.lock()`でActor実装を取得
+1. **`&mut self`で直接アクセス** ✅ 採用
+   - `ActorCell`が`self.actor.lock()`でActor実装への可変参照を取得
    - 型安全で明示的
+   - 既存のActor traitメソッド（receive, pre_startなど）と一貫したシグネチャ
+   - 状態更新が自然に可能
 
 2. **`&dyn Any`で渡す**
    - Actor実装を`Any`として渡し、downcastが必要
@@ -204,13 +265,20 @@ pub struct SupervisorStrategy { ... }
 
 **理由**: シンプルで型安全な選択肢1を採用。
 
-### 判断2: デフォルト戦略の保存場所
+### 判断2: Props vs Actor traitでの戦略指定
 
-`ActorCell`に`default_supervisor: SupervisorStrategy`フィールドを追加し、Props由来の戦略を保存。
+**Props削除、Actor trait のみで戦略を提供** ✅ 採用
 
 **理由**:
-- Actor実装が`None`を返した際のフォールバックとして必要
-- Props生成時の戦略を維持
+- **Pekko互換性**: Pekko Classicは`Props`に`supervisorStrategy`フィールドなし
+- **責務の明確化**: Props = インスタンス化設定、SupervisorStrategy = Actor振る舞い
+- **設計の簡素化**: フィールド重複なし、優先順位ポリシー不要、フォールバック不要
+- **メモリ効率**: ActorCellから`supervisor`フィールド削除で48バイト削減
+- **実用性**: Props指定の正当なユースケースが見当たらない
+
+**代替案として検討したが却下**:
+- 両方サポート（Props + Actor trait）: 複雑すぎる、二重管理のバグ温床
+- Props のみ: Actor状態に基づく動的変更ができない
 
 ### 判断3: Copy制約の扱い
 
@@ -220,6 +288,19 @@ pub struct SupervisorStrategy { ... }
 - 現時点でクロージャdeciderの需要は不明
 - 破壊的変更のリスクを最小化
 - 必要になった時点で別のOpenSpecとして提案
+
+### 判断4: panic処理の扱い
+
+**panic-free実装を要求、ライブラリは関与しない** ✅ 採用
+
+**理由**:
+- `actor-core`クレートは`#![no_std]`環境をサポート
+- no_std環境ではpanic回復メカニズム（`catch_unwind`等）が利用できない
+- `supervisor_strategy`内でパニックが発生した場合:
+  - **no_std環境（panic = abort）**: アプリケーション全体が異常終了
+  - **std環境（panic = unwind）**: Mutexがpoisonedになり、システムが不安定化
+- いずれの場合も、ライブラリは関与せず、アプリケーション側の責任
+- Actor実装者は必ずpanic-freeな実装を提供すべき
 
 ## 実装フェーズ
 
