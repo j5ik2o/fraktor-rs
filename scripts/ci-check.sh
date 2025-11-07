@@ -68,6 +68,51 @@ ensure_target_installed() {
   return 2
 }
 
+get_dylib_extension() {
+  case "$(uname -s)" in
+    Darwin*)
+      echo "dylib"
+      ;;
+    Linux*)
+      echo "so"
+      ;;
+    CYGWIN*|MINGW*|MSYS*)
+      echo "dll"
+      ;;
+    *)
+      echo "so"
+      ;;
+  esac
+}
+
+ensure_rustc_components_installed() {
+  local -a required_components=("rustc-dev" "llvm-tools-preview")
+  local -a missing_components=()
+
+  for component in "${required_components[@]}"; do
+    if ! rustup component list --installed --toolchain "${DEFAULT_TOOLCHAIN}" 2>/dev/null | grep -qx "${component}"; then
+      missing_components+=("${component}")
+    fi
+  done
+
+  if [[ ${#missing_components[@]} -eq 0 ]]; then
+    return 0
+  fi
+
+  echo "info: 不足しているコンポーネントをインストールします: ${missing_components[*]}" >&2
+  local component
+  for component in "${missing_components[@]}"; do
+    if rustup component add --toolchain "${DEFAULT_TOOLCHAIN}" "${component}"; then
+      echo "info: ${component} のインストールが完了しました。" >&2
+    else
+      echo "エラー: ${component} のインストールに失敗しました。" >&2
+      return 1
+    fi
+  done
+
+  return 0
+}
+
 ensure_dylint_installed() {
   if command -v cargo-dylint >/dev/null 2>&1; then
     return 0
@@ -90,6 +135,7 @@ run_lint() {
 }
 
 run_dylint() {
+  ensure_rustc_components_installed || return 1
   ensure_dylint_installed || return 1
 
   local -a lint_filters
@@ -250,9 +296,11 @@ run_dylint() {
     log_step "cargo +nightly test --manifest-path ${lint_path}/Cargo.toml -- test ui -- --quiet"
     CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" cargo +nightly test --manifest-path "${lint_path}/Cargo.toml" -- test ui -- --quiet || return 1
 
+    local dylib_ext
+    dylib_ext="$(get_dylib_extension)"
     local target_dir="${lint_path}/target/release"
-    local plain_lib="${target_dir}/lib${lib_name}.dylib"
-    local tagged_lib="${target_dir}/lib${lib_name}@${toolchain}.dylib"
+    local plain_lib="${target_dir}/lib${lib_name}.${dylib_ext}"
+    local tagged_lib="${target_dir}/lib${lib_name}@${toolchain}.${dylib_ext}"
 
     if [[ -f "${plain_lib}" ]]; then
       cp -f "${plain_lib}" "${tagged_lib}"
