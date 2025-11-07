@@ -89,18 +89,19 @@ pub trait Actor<TB: RuntimeToolbox = NoStdToolbox>: Send {
   ///
   /// ```
   /// use core::time::Duration;
+  ///
   /// use cellactor_actor_core_rs::{
   ///   actor_prim::{Actor, ActorContext},
   ///   error::ActorError,
   ///   messaging::AnyMessageView,
   ///   supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
   /// };
-///
-/// struct ResilientWorker {
-///   consecutive_errors: u32,
-/// }
-///
-/// impl Actor for ResilientWorker {
+  ///
+  /// struct ResilientWorker {
+  ///   consecutive_errors: u32,
+  /// }
+  ///
+  /// impl Actor for ResilientWorker {
   ///   fn receive(
   ///     &mut self,
   ///     _ctx: &mut ActorContext<'_>,
@@ -109,20 +110,20 @@ pub trait Actor<TB: RuntimeToolbox = NoStdToolbox>: Send {
   ///     Ok(())
   ///   }
   ///
-///   fn supervisor_strategy(&mut self, _ctx: &mut ActorContext) -> SupervisorStrategy {
-///     if self.consecutive_errors > 10 {
-///       // Too many errors: stop immediately
+  ///   fn supervisor_strategy(&mut self, _ctx: &mut ActorContext) -> SupervisorStrategy {
+  ///     if self.consecutive_errors > 10 {
+  ///       // Too many errors: stop immediately
   ///       SupervisorStrategy::new(
   ///         SupervisorStrategyKind::OneForOne,
   ///         0,
   ///         Duration::from_secs(0),
   ///         |_| SupervisorDirective::Stop,
   ///       )
-///     } else {
-///       // Normal operation: allow retries
-///       SupervisorStrategy::default()
-///     }
-///   }
+  ///     } else {
+  ///       // Normal operation: allow retries
+  ///       SupervisorStrategy::default()
+  ///     }
+  ///   }
   /// }
   /// ```
   ///

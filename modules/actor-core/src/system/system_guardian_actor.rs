@@ -17,6 +17,7 @@ struct HookEntry<TB: RuntimeToolbox + 'static> {
 }
 
 impl<TB: RuntimeToolbox + 'static> HookEntry<TB> {
+  #[allow(clippy::missing_const_for_fn)]
   fn pid(&self) -> Pid {
     self.actor.pid()
   }
@@ -38,7 +39,7 @@ pub(crate) struct SystemGuardianActor<TB: RuntimeToolbox + 'static> {
 impl<TB: RuntimeToolbox + 'static> SystemGuardianActor<TB> {
   /// Creates a new system guardian linked to the provided user guardian.
   #[must_use]
-  pub(crate) fn new(user_guardian: ActorRefGeneric<TB>) -> Self {
+  pub(crate) const fn new(user_guardian: ActorRefGeneric<TB>) -> Self {
     Self { user_guardian, hooks: Vec::new(), phase: SystemGuardianPhase::Running }
   }
 
@@ -146,11 +147,8 @@ impl<TB: RuntimeToolbox + 'static> Actor<TB> for SystemGuardianActor<TB> {
   }
 
   fn supervisor_strategy(&mut self, _ctx: &mut ActorContextGeneric<'_, TB>) -> SupervisorStrategy {
-    SupervisorStrategy::new(
-      SupervisorStrategyKind::OneForOne,
-      0,
-      core::time::Duration::from_secs(0),
-      |_error| SupervisorDirective::Stop,
-    )
+    SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 0, core::time::Duration::from_secs(0), |_error| {
+      SupervisorDirective::Stop
+    })
   }
 }

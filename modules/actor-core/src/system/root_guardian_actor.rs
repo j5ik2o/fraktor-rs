@@ -21,7 +21,6 @@ impl RootGuardianActor {
   }
 
   fn watch_system_guardian<TB: RuntimeToolbox + 'static>(
-    &self,
     ctx: &mut ActorContextGeneric<'_, TB>,
   ) -> Result<(), ActorError> {
     if let Some(cell) = ctx.system().state().system_guardian() {
@@ -32,14 +31,14 @@ impl RootGuardianActor {
     }
   }
 
-  fn handle_system_terminated<TB: RuntimeToolbox + 'static>(&self, state: &ArcShared<SystemStateGeneric<TB>>) {
+  fn handle_system_terminated<TB: RuntimeToolbox + 'static>(state: &ArcShared<SystemStateGeneric<TB>>) {
     state.mark_terminated();
   }
 }
 
 impl<TB: RuntimeToolbox + 'static> Actor<TB> for RootGuardianActor {
   fn pre_start(&mut self, ctx: &mut ActorContextGeneric<'_, TB>) -> Result<(), ActorError> {
-    self.watch_system_guardian(ctx)
+    Self::watch_system_guardian(ctx)
   }
 
   fn receive(
@@ -52,7 +51,7 @@ impl<TB: RuntimeToolbox + 'static> Actor<TB> for RootGuardianActor {
 
   fn on_terminated(&mut self, ctx: &mut ActorContextGeneric<'_, TB>, _terminated: Pid) -> Result<(), ActorError> {
     let state = ctx.system().state();
-    self.handle_system_terminated(&state);
+    Self::handle_system_terminated(&state);
     Ok(())
   }
 

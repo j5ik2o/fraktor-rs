@@ -43,6 +43,10 @@ impl ActorPath {
   }
 
   /// Returns a new path with the provided child appended.
+  ///
+  /// # Panics
+  ///
+  /// Panics if the provided segment is empty.
   #[must_use]
   pub fn child(&self, name: impl Into<String>) -> Self {
     let mut segments = self.segments.clone();
@@ -54,6 +58,7 @@ impl ActorPath {
 
   /// Converts the path into a string (e.g. `/user/worker`).
   #[must_use]
+  #[allow(clippy::inherent_to_string_shadow_display)]
   pub fn to_string(&self) -> String {
     if self.segments.is_empty() {
       return "/".into();

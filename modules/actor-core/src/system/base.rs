@@ -7,6 +7,7 @@ use alloc::{string::String, vec::Vec};
 
 use cellactor_utils_core_rs::sync::ArcShared;
 
+use super::{RootGuardianActor, SystemGuardianActor, SystemGuardianProtocol};
 use crate::{
   NoStdToolbox, RuntimeToolbox,
   actor_prim::{ActorCellGeneric, ChildRefGeneric, Pid, actor_ref::ActorRefGeneric},
@@ -20,7 +21,6 @@ use crate::{
   spawn::SpawnError,
   system::{RegisterExtraTopLevelError, system_state::SystemStateGeneric},
 };
-use super::{RootGuardianActor, SystemGuardianActor, SystemGuardianProtocol};
 
 const PARENT_MISSING: &str = "parent actor not found";
 const CREATE_SEND_FAILED: &str = "create system message delivery failed";
@@ -130,17 +130,20 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
 
   /// Registers a temporary actor reference under `/temp` and returns the generated segment.
   #[must_use]
+  #[allow(dead_code)]
   pub(crate) fn register_temp_actor(&self, actor: ActorRefGeneric<TB>) -> String {
     self.state.register_temp_actor(actor)
   }
 
   /// Removes a temporary actor mapping if present.
+  #[allow(dead_code)]
   pub(crate) fn unregister_temp_actor(&self, name: &str) -> Option<ActorRefGeneric<TB>> {
     self.state.unregister_temp_actor(name)
   }
 
   /// Resolves a registered temporary actor reference.
   #[must_use]
+  #[allow(dead_code)]
   pub(crate) fn temp_actor(&self, name: &str) -> Option<ActorRefGeneric<TB>> {
     self.state.temp_actor(name)
   }
@@ -167,6 +170,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   }
 
   /// Spawns a new actor under the system guardian (internal use only).
+  #[allow(dead_code)]
   pub(crate) fn system_actor_of(&self, props: &PropsGeneric<TB>) -> Result<ChildRefGeneric<TB>, SpawnError> {
     let guardian_pid = self.state.system_guardian_pid().ok_or_else(SpawnError::system_unavailable)?;
     self.spawn_child(guardian_pid, props)
@@ -316,10 +320,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     Ok(())
   }
 
-  fn spawn_root_guardian_cell(
-    &self,
-    props: &PropsGeneric<TB>,
-  ) -> Result<ArcShared<ActorCellGeneric<TB>>, SpawnError> {
+  fn spawn_root_guardian_cell(&self, props: &PropsGeneric<TB>) -> Result<ArcShared<ActorCellGeneric<TB>>, SpawnError> {
     let pid = self.state.allocate_pid();
     let name = self.state.assign_name(None, props.name(), pid)?;
     let cell = self.build_cell_for_spawn(pid, None, name, props);

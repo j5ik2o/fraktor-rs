@@ -75,6 +75,7 @@ pub trait Actor: Send {
   ///
   /// ```
   /// use core::time::Duration;
+  ///
   /// use cellactor_actor_core_rs::{
   ///   error::ActorError,
   ///   supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},

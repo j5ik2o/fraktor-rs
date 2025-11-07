@@ -13,6 +13,7 @@ use cellactor_utils_core_rs::{
 use hashbrown::HashMap;
 use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
+use super::GuardianKind;
 use crate::{
   NoStdToolbox, RuntimeToolbox, ToolboxMutex,
   actor_prim::{ActorCellGeneric, ActorPath, Pid, actor_ref::ActorRefGeneric},
@@ -60,17 +61,6 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   failure_stop_total:     AtomicU64,
   failure_escalate_total: AtomicU64,
   failure_inflight:       AtomicU64,
-}
-
-/// Identifies which guardian slot was affected.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum GuardianKind {
-  /// Root guardian at `/`.
-  Root,
-  /// System guardian at `/system`.
-  System,
-  /// User guardian at `/user`.
-  User,
 }
 
 /// Type alias for [SystemStateGeneric] with the default [NoStdToolbox].
@@ -194,10 +184,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     None
   }
 
-  fn clear_specific_guardian(
-    slot: &ToolboxMutex<Option<ArcShared<ActorCellGeneric<TB>>>, TB>,
-    pid: Pid,
-  ) -> bool {
+  fn clear_specific_guardian(slot: &ToolboxMutex<Option<ArcShared<ActorCellGeneric<TB>>>, TB>, pid: Pid) -> bool {
     let mut guard = slot.lock();
     if guard.as_ref().map(|cell| cell.pid()) == Some(pid) {
       *guard = None;
@@ -208,6 +195,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
 
   /// Returns the root guardian cell if initialised.
   #[must_use]
+  #[allow(dead_code)]
   pub(crate) fn root_guardian(&self) -> Option<ArcShared<ActorCellGeneric<TB>>> {
     self.root_guardian.lock().clone()
   }
@@ -281,7 +269,8 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
 
   /// Attempts to transition the system into the terminating state.
   ///
-  /// Returns `true` if this call initiated termination, `false` if another caller has already done so.
+  /// Returns `true` if this call initiated termination, `false` if another caller has already done
+  /// so.
   pub fn begin_termination(&self) -> bool {
     !self.terminating.swap(true, Ordering::AcqRel)
   }
