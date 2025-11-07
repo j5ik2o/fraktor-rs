@@ -1,5 +1,5 @@
-use cellactor_actor_core_rs::{error::ActorError, typed::Behaviors};
-use cellactor_actor_std_rs::typed::{Behavior, TypedActorSystem, TypedProps};
+use cellactor_actor_core_rs::error::ActorError;
+use cellactor_actor_std_rs::typed::{Behavior, Behaviors, TypedActorSystem, TypedProps};
 
 #[derive(Clone, Copy)]
 enum CounterCommand {

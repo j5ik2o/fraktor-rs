@@ -88,6 +88,11 @@ pub trait Actor<TB: RuntimeToolbox = NoStdToolbox>: Send {
   /// # Examples
   ///
   /// ```
+  /// use cellactor_actor_core_rs::{
+  ///   actor_prim::{Actor, ActorContext},
+  ///   supervision::SupervisorStrategy,
+  /// };
+  ///
   /// struct ResilientWorker {
   ///   consecutive_errors: u32,
   /// }

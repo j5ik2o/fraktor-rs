@@ -1,5 +1,6 @@
 //! Functional builders for typed behaviors.
 
+use super::supervise::Supervise;
 use crate::{
   RuntimeToolbox,
   error::ActorError,
@@ -107,5 +108,14 @@ impl Behaviors {
       + Sync
       + 'static, {
     Behavior::from_signal_handler(handler)
+  }
+
+  /// Wraps a behavior so that spawned children inherit a declarative [`SupervisorStrategy`].
+  #[must_use]
+  pub const fn supervise<M, TB>(behavior: Behavior<M, TB>) -> Supervise<M, TB>
+  where
+    M: Send + Sync + 'static,
+    TB: RuntimeToolbox + 'static, {
+    Supervise::new(behavior)
   }
 }
