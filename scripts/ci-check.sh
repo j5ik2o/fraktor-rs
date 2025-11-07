@@ -68,6 +68,23 @@ ensure_target_installed() {
   return 2
 }
 
+get_dylib_extension() {
+  case "$(uname -s)" in
+    Darwin*)
+      echo "dylib"
+      ;;
+    Linux*)
+      echo "so"
+      ;;
+    CYGWIN*|MINGW*|MSYS*)
+      echo "dll"
+      ;;
+    *)
+      echo "so"
+      ;;
+  esac
+}
+
 ensure_rustc_components_installed() {
   local -a required_components=("rustc-dev" "llvm-tools-preview")
   local -a missing_components=()
@@ -279,9 +296,11 @@ run_dylint() {
     log_step "cargo +nightly test --manifest-path ${lint_path}/Cargo.toml -- test ui -- --quiet"
     CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" cargo +nightly test --manifest-path "${lint_path}/Cargo.toml" -- test ui -- --quiet || return 1
 
+    local dylib_ext
+    dylib_ext="$(get_dylib_extension)"
     local target_dir="${lint_path}/target/release"
-    local plain_lib="${target_dir}/lib${lib_name}.dylib"
-    local tagged_lib="${target_dir}/lib${lib_name}@${toolchain}.dylib"
+    local plain_lib="${target_dir}/lib${lib_name}.${dylib_ext}"
+    local tagged_lib="${target_dir}/lib${lib_name}@${toolchain}.${dylib_ext}"
 
     if [[ -f "${plain_lib}" ]]; then
       cp -f "${plain_lib}" "${tagged_lib}"
