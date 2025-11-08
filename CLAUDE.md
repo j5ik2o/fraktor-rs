@@ -244,7 +244,7 @@ Kiro-style Spec Driven Development implementation on AI-DLC (AI Development Life
 - Use `/kiro:spec-status [feature-name]` to check progress
 
 ## Development Guidelines
-- Think in English, but generate responses in Japanese (思考は英語、回答は日本語)
+- Think in English, but generate responses in Japanese (思考は英語、回答の生成は日本語で行うように)
 
 ## Minimal Workflow
 - Phase 0 (optional): `/kiro:steering`, `/kiro:steering-custom`
