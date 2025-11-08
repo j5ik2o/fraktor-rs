@@ -10,7 +10,7 @@ use cellactor_utils_core_rs::{
   runtime_toolbox::SyncMutexFamily,
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
-use portable_atomic::{AtomicBool, Ordering};
+use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
 use crate::{
   NoStdToolbox, RuntimeToolbox, ToolboxMutex,
@@ -27,24 +27,27 @@ use crate::{
   props::{ActorFactory, PropsGeneric},
   supervision::{RestartStatistics, SupervisorDirective, SupervisorStrategyKind},
   system::{ActorSystemGeneric, FailureOutcome, GuardianKind, SystemStateGeneric},
+  typed::message_adapter::{AdapterLifecycleState, AdapterRefHandle, AdapterRefHandleId},
 };
 
 /// Runtime container responsible for executing an actor instance.
 pub struct ActorCellGeneric<TB: RuntimeToolbox + 'static> {
-  pid:         Pid,
-  parent:      Option<Pid>,
-  name:        String,
-  system:      ArcShared<SystemStateGeneric<TB>>,
-  factory:     ArcShared<dyn ActorFactory<TB>>,
-  actor:       ToolboxMutex<Box<dyn Actor<TB> + Send + Sync>, TB>,
-  pipeline:    MessageInvokerPipelineGeneric<TB>,
-  mailbox:     ArcShared<MailboxGeneric<TB>>,
-  dispatcher:  DispatcherGeneric<TB>,
-  sender:      ArcShared<DispatcherSenderGeneric<TB>>,
-  children:    ToolboxMutex<Vec<Pid>, TB>,
-  child_stats: ToolboxMutex<Vec<(Pid, RestartStatistics)>, TB>,
-  watchers:    ToolboxMutex<Vec<Pid>, TB>,
-  terminated:  AtomicBool,
+  pid:                    Pid,
+  parent:                 Option<Pid>,
+  name:                   String,
+  system:                 ArcShared<SystemStateGeneric<TB>>,
+  factory:                ArcShared<dyn ActorFactory<TB>>,
+  actor:                  ToolboxMutex<Box<dyn Actor<TB> + Send + Sync>, TB>,
+  pipeline:               MessageInvokerPipelineGeneric<TB>,
+  mailbox:                ArcShared<MailboxGeneric<TB>>,
+  dispatcher:             DispatcherGeneric<TB>,
+  sender:                 ArcShared<DispatcherSenderGeneric<TB>>,
+  children:               ToolboxMutex<Vec<Pid>, TB>,
+  child_stats:            ToolboxMutex<Vec<(Pid, RestartStatistics)>, TB>,
+  watchers:               ToolboxMutex<Vec<Pid>, TB>,
+  adapter_handles:        ToolboxMutex<Vec<AdapterRefHandle<TB>>, TB>,
+  adapter_handle_counter: AtomicU64,
+  terminated:             AtomicBool,
 }
 
 unsafe impl<TB: RuntimeToolbox + 'static> Send for ActorCellGeneric<TB> {}
@@ -81,6 +84,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     let children = <TB::MutexFamily as SyncMutexFamily>::create(Vec::new());
     let child_stats = <TB::MutexFamily as SyncMutexFamily>::create(Vec::new());
     let watchers = <TB::MutexFamily as SyncMutexFamily>::create(Vec::new());
+    let adapter_handles = <TB::MutexFamily as SyncMutexFamily>::create(Vec::new());
 
     let cell = ArcShared::new(Self {
       pid,
@@ -96,6 +100,8 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
       children,
       child_stats,
       watchers,
+      adapter_handles,
+      adapter_handle_counter: AtomicU64::new(0),
       terminated: AtomicBool::new(false),
     });
 
@@ -144,6 +150,12 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     self.dispatcher.clone()
   }
 
+  /// Returns a sender handle targeting this actor cell's mailbox.
+  #[must_use]
+  pub(crate) fn mailbox_sender(&self) -> ArcShared<DispatcherSenderGeneric<TB>> {
+    self.sender.clone()
+  }
+
   /// Produces an actor reference targeting this cell.
   #[must_use]
   pub fn actor_ref(&self) -> ActorRefGeneric<TB> {
@@ -186,6 +198,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
 
   fn mark_terminated(&self) {
     self.terminated.store(true, Ordering::Release);
+    self.drop_adapter_refs();
   }
 
   fn is_terminated(&self) -> bool {
@@ -206,6 +219,34 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
 
   pub(crate) fn handle_unwatch(&self, watcher: Pid) {
     self.watchers.lock().retain(|pid| *pid != watcher);
+  }
+
+  /// Allocates and tracks a new adapter handle for message adapters.
+  pub(crate) fn acquire_adapter_handle(&self) -> (AdapterRefHandleId, ArcShared<AdapterLifecycleState<TB>>) {
+    let id = self.adapter_handle_counter.fetch_add(1, Ordering::Relaxed) + 1;
+    let handle_id = AdapterRefHandleId::new(id);
+    let lifecycle = ArcShared::new(AdapterLifecycleState::new(self.system.clone(), self.pid));
+    let handle = AdapterRefHandle::new(handle_id, lifecycle.clone());
+    self.adapter_handles.lock().push(handle);
+    (handle_id, lifecycle)
+  }
+
+  /// Removes the specified adapter handle and marks it as stopped.
+  pub(crate) fn remove_adapter_handle(&self, handle_id: AdapterRefHandleId) {
+    let mut handles = self.adapter_handles.lock();
+    if let Some(index) = handles.iter().position(|handle| handle.id() == handle_id) {
+      let handle = handles.remove(index);
+      handle.stop();
+    }
+  }
+
+  /// Drops every tracked adapter handle, notifying senders that the actor stopped.
+  pub(crate) fn drop_adapter_refs(&self) {
+    let mut handles = self.adapter_handles.lock();
+    for handle in handles.iter() {
+      handle.stop();
+    }
+    handles.clear();
   }
 
   fn notify_watchers_on_stop(&self) {

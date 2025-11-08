@@ -60,7 +60,7 @@
   - 再起動・停止時にレジストリ/FunctionRef をクリアし、監督戦略と整合するようにする
   - _Requirements: 要件2.1, 要件2.3, 要件3.1, 要件3.2, 要件3.3_
 
-- [ ] 4.1 AdapterEnvelope の受信とルーティングを実装する
+- [x] 4.1 AdapterEnvelope の受信とルーティングを実装する
   - TypedActorAdapter がユーザメッセージと AdapterEnvelope を判別し、レジストリの adapt 処理へ委譲する
   - 成功時に M 型メッセージへ変換して BehaviorRunner へ渡し、未マッチ時は ActorCell.unhandled を呼び出す
   - EnvelopeCorrupted を検出した場合に DeadLetter へ告知してメッセージを破棄する
@@ -77,13 +77,13 @@
   - 高負荷シナリオでの adapter 連投に耐えることを確認し、監督イベントが観測できるようメトリクスを確認する
   - _Requirements: 要件1.1〜1.4, 要件2.1〜2.4, 要件3.1〜3.3_
 
-- [ ] 5.1 ユニットテストを追加して基礎挙動を固定する
+- [x] 5.1 ユニットテストを追加して基礎挙動を固定する
   - MessageAdapterRegistry, AdapterPayload, AdapterRefSender の happy/edge ケースをそれぞれ個別テストで検証する
   - TypeMismatch や EnvelopeCorrupted の失敗パスを明示し、DeadLetter 記録内容をアサートする
   - ask/pipe_to_self の AdaptMessage ハンドリングがスレッド拘束を守ることをテストする
   - _Requirements: 要件1.1〜1.3, 要件2.1〜2.4, 要件3.1_
 
-- [ ] 5.2 統合テストで TypedActorAdapter と BehaviorRunner を検証する
+- [x] 5.2 統合テストで TypedActorAdapter と BehaviorRunner を検証する
   - 複数 adapter を登録して優先順位・置換・未マッチ時の DeadLetter をシナリオ駆動で確認する
   - アクター停止/再起動シーケンスを通し、AdapterFailure シグナルとレジストリ再登録が期待通りに動くか確かめる
   - 高頻度で MessageAdaptionFailure を発生させ、SupervisorStrategy が再起動/停止を選択する挙動を観測する

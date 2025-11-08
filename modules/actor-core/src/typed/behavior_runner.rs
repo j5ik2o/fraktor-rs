@@ -14,6 +14,7 @@ use crate::{
     actor_prim::{TypedActor, TypedActorContextGeneric},
     behavior::{Behavior, BehaviorDirective},
     behavior_signal::BehaviorSignal,
+    message_adapter::{AdapterFailure, AdapterFailureEvent},
   },
 };
 
@@ -91,9 +92,13 @@ where
   fn dispatch_signal(
     &mut self,
     ctx: &mut TypedActorContextGeneric<'_, M, TB>,
-    signal: BehaviorSignal,
+    signal: &BehaviorSignal,
   ) -> Result<(), ActorError> {
-    let next = self.current.handle_signal(ctx, &signal)?;
+    if let BehaviorSignal::AdapterFailed(failure) = signal {
+      let event = AdapterFailureEvent::new(ctx.pid(), failure.clone());
+      ctx.system().event_stream().publish(&EventStreamEvent::AdapterFailure(event));
+    }
+    let next = self.current.handle_signal(ctx, signal)?;
     self.apply_transition(ctx, next)
   }
 }
@@ -104,7 +109,7 @@ where
   TB: RuntimeToolbox + 'static,
 {
   fn pre_start(&mut self, ctx: &mut TypedActorContextGeneric<'_, M, TB>) -> Result<(), ActorError> {
-    self.dispatch_signal(ctx, BehaviorSignal::Started)
+    self.dispatch_signal(ctx, &BehaviorSignal::Started)
   }
 
   fn receive(&mut self, ctx: &mut TypedActorContextGeneric<'_, M, TB>, message: &M) -> Result<(), ActorError> {
@@ -113,7 +118,7 @@ where
   }
 
   fn post_stop(&mut self, ctx: &mut TypedActorContextGeneric<'_, M, TB>) -> Result<(), ActorError> {
-    self.dispatch_signal(ctx, BehaviorSignal::Stopped)
+    self.dispatch_signal(ctx, &BehaviorSignal::Stopped)
   }
 
   fn on_terminated(
@@ -121,10 +126,18 @@ where
     ctx: &mut TypedActorContextGeneric<'_, M, TB>,
     terminated: crate::actor_prim::Pid,
   ) -> Result<(), ActorError> {
-    self.dispatch_signal(ctx, BehaviorSignal::Terminated(terminated))
+    self.dispatch_signal(ctx, &BehaviorSignal::Terminated(terminated))
   }
 
   fn supervisor_strategy(&mut self, _ctx: &mut TypedActorContextGeneric<'_, M, TB>) -> SupervisorStrategy {
     self.supervisor.clone().unwrap_or_default()
+  }
+
+  fn on_adapter_failure(
+    &mut self,
+    ctx: &mut TypedActorContextGeneric<'_, M, TB>,
+    failure: AdapterFailure,
+  ) -> Result<(), ActorError> {
+    self.dispatch_signal(ctx, &BehaviorSignal::AdapterFailed(failure))
   }
 }

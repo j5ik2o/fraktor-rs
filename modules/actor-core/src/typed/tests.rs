@@ -1,9 +1,14 @@
-use alloc::{string::ToString, sync::Arc};
+use alloc::{
+  string::{String, ToString},
+  sync::Arc,
+};
 use core::{
   hint::spin_loop,
   sync::atomic::{AtomicUsize, Ordering},
   time::Duration,
 };
+
+use cellactor_utils_core_rs::sync::NoStdMutex;
 
 use crate::{
   NoStdToolbox,
@@ -11,7 +16,8 @@ use crate::{
   supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
   typed::{
     Behavior, BehaviorSignal, Behaviors, TypedAskError,
-    actor_prim::{TypedActor, TypedActorContextGeneric},
+    actor_prim::{TypedActor, TypedActorContextGeneric, TypedActorRef},
+    message_adapter::AdapterFailure,
     props::TypedPropsGeneric,
     system::TypedActorSystemGeneric,
   },
@@ -27,6 +33,12 @@ enum CounterMessage {
 enum IgnoreCommand {
   Add(u32),
   Reject,
+  Read,
+}
+
+#[derive(Clone, Copy)]
+enum AdapterCounterCommand {
+  Set(i32),
   Read,
 }
 
@@ -191,6 +203,16 @@ fn wait_until(mut condition: impl FnMut() -> bool) {
   assert!(condition());
 }
 
+fn wait_for(mut condition: impl FnMut() -> bool) -> bool {
+  for _ in 0..10_000 {
+    if condition() {
+      return true;
+    }
+    spin_loop();
+  }
+  condition()
+}
+
 fn behavior_counter(total: i32) -> Behavior<CounterMessage, NoStdToolbox> {
   Behaviors::receive_message(move |ctx, message| match message {
     | CounterMessage::Increment(delta) => Ok(behavior_counter(total + delta)),
@@ -227,6 +249,7 @@ fn signal_probe_behavior(
         stop_probe.fetch_add(1, Ordering::SeqCst);
       },
       | BehaviorSignal::Terminated(_) => {},
+      | BehaviorSignal::AdapterFailed(_) => {},
     }
     Ok(Behaviors::same())
   })
@@ -317,4 +340,59 @@ fn behaviors_supervise_stops_children() {
   }
 
   system.terminate().expect("terminate");
+}
+
+fn adapter_counter_behavior(
+  slot: &Arc<NoStdMutex<Option<TypedActorRef<String>>>>,
+) -> Behavior<AdapterCounterCommand, NoStdToolbox> {
+  let slot = Arc::clone(slot);
+  Behaviors::setup(move |ctx| {
+    let adapter = ctx
+      .message_adapter(|value: String| {
+        value.parse::<i32>().map(AdapterCounterCommand::Set).map_err(|_| AdapterFailure::Custom("parse error".into()))
+      })
+      .expect("register adapter");
+    slot.lock().replace(adapter);
+    counter_behavior(0)
+  })
+}
+
+fn counter_behavior(value: i32) -> Behavior<AdapterCounterCommand, NoStdToolbox> {
+  Behaviors::receive_message(move |ctx, message| match message {
+    | AdapterCounterCommand::Set(delta) => Ok(counter_behavior(value + delta)),
+    | AdapterCounterCommand::Read => {
+      ctx.reply(value).map_err(|error| ActorError::from_send_error(&error))?;
+      Ok(Behaviors::same())
+    },
+  })
+}
+
+#[test]
+fn message_adapter_converts_external_messages() {
+  let adapter_slot: Arc<NoStdMutex<Option<TypedActorRef<String>>>> = Arc::new(NoStdMutex::new(None));
+  let props = TypedPropsGeneric::<AdapterCounterCommand, NoStdToolbox>::from_behavior_factory({
+    let slot = adapter_slot.clone();
+    move || adapter_counter_behavior(&slot)
+  });
+  let system = TypedActorSystemGeneric::<AdapterCounterCommand, NoStdToolbox>::new(&props).expect("system");
+  let actor = system.user_guardian_ref();
+
+  assert!(wait_for(|| adapter_slot.lock().is_some()), "adapter never registered");
+  let adapter = adapter_slot.lock().clone().expect("adapter available");
+
+  adapter.tell("5".to_string()).expect("set one");
+  adapter.tell("3".to_string()).expect("set two");
+
+  wait_until(|| read_counter_value(&actor) == 8);
+  let value = read_counter_value(&actor);
+  assert_eq!(value, 8);
+
+  system.terminate().expect("terminate");
+}
+
+fn read_counter_value(actor: &TypedActorRef<AdapterCounterCommand>) -> i32 {
+  let response = actor.ask::<i32>(AdapterCounterCommand::Read).expect("ask read");
+  let future = response.future().clone();
+  wait_until(|| future.is_ready());
+  future.try_take().expect("result").expect("payload")
 }

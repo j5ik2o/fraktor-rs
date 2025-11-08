@@ -13,6 +13,7 @@ use crate::{
   system::ActorSystemGeneric,
   typed::{
     actor_prim::{actor_ref::TypedActorRefGeneric, child_ref::TypedChildRefGeneric},
+    message_adapter::{AdapterError, AdapterFailure, MessageAdapterRegistry},
     props::TypedPropsGeneric,
   },
 };
@@ -22,8 +23,9 @@ pub struct TypedActorContextGeneric<'a, M, TB = NoStdToolbox>
 where
   M: Send + Sync + 'static,
   TB: RuntimeToolbox + 'static, {
-  inner:   NonNull<ActorContextGeneric<'a, TB>>,
-  _marker: PhantomData<(&'a mut ActorContextGeneric<'a, TB>, M)>,
+  inner:    NonNull<ActorContextGeneric<'a, TB>>,
+  adapters: Option<NonNull<MessageAdapterRegistry<M, TB>>>,
+  _marker:  PhantomData<(&'a mut ActorContextGeneric<'a, TB>, M)>,
 }
 
 /// Type alias for [TypedActorContextGeneric] with the default [NoStdToolbox].
@@ -35,8 +37,11 @@ where
   TB: RuntimeToolbox + 'static,
 {
   /// Creates a typed wrapper from the provided untyped context.
-  pub(crate) fn from_untyped(inner: &mut ActorContextGeneric<'a, TB>) -> Self {
-    Self { inner: NonNull::from(inner), _marker: PhantomData }
+  pub(crate) fn from_untyped(
+    inner: &mut ActorContextGeneric<'a, TB>,
+    adapters: Option<&mut MessageAdapterRegistry<M, TB>>,
+  ) -> Self {
+    Self { inner: NonNull::from(inner), adapters: adapters.map(NonNull::from), _marker: PhantomData }
   }
 
   const fn inner(&self) -> &ActorContextGeneric<'a, TB> {
@@ -142,5 +147,44 @@ where
   /// Provides mutable access to the underlying untyped context.
   pub const fn as_untyped_mut(&mut self) -> &mut ActorContextGeneric<'a, TB> {
     self.inner_mut()
+  }
+
+  fn registry_ptr(&self) -> Result<NonNull<MessageAdapterRegistry<M, TB>>, AdapterError> {
+    self.adapters.ok_or(AdapterError::RegistryUnavailable)
+  }
+
+  /// Registers a message adapter for the specified payload type.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the registry is unavailable or if registration fails.
+  pub fn message_adapter<U, F>(&mut self, adapter: F) -> Result<TypedActorRefGeneric<U, TB>, AdapterError>
+  where
+    U: Send + Sync + 'static,
+    F: Fn(U) -> Result<M, AdapterFailure> + Send + Sync + 'static, {
+    let ctx_ptr = self.inner;
+    let registry_ptr = self.registry_ptr()?;
+    let actor_ref = unsafe {
+      let ctx_ref = ctx_ptr.as_ref();
+      let registry = &mut *registry_ptr.as_ptr();
+      registry.register::<U, _>(ctx_ref, adapter)?
+    };
+    Ok(TypedActorRefGeneric::from_untyped(actor_ref))
+  }
+
+  /// Spawns a dedicated message adapter.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the registry is unavailable or if adapter registration fails.
+  pub fn spawn_message_adapter<U, F>(
+    &mut self,
+    _name: Option<&str>,
+    adapter: F,
+  ) -> Result<TypedActorRefGeneric<U, TB>, AdapterError>
+  where
+    U: Send + Sync + 'static,
+    F: Fn(U) -> Result<M, AdapterFailure> + Send + Sync + 'static, {
+    self.message_adapter(adapter)
   }
 }
