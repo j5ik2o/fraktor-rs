@@ -88,9 +88,20 @@ get_dylib_extension() {
 ensure_rustc_components_installed() {
   local -a required_components=("rustc-dev" "llvm-tools-preview")
   local -a missing_components=()
+  local component_list=""
+
+  if ! component_list=$(rustup component list --toolchain "${DEFAULT_TOOLCHAIN}" 2>/dev/null); then
+    echo "エラー: rustup component list の取得に失敗しました" >&2
+    return 1
+  fi
 
   for component in "${required_components[@]}"; do
-    if ! rustup component list --installed --toolchain "${DEFAULT_TOOLCHAIN}" 2>/dev/null | grep -qx "${component}"; then
+    local search_name="${component}"
+    case "${component}" in
+      llvm-tools-preview) search_name="llvm-tools" ;;
+    esac
+
+    if ! grep -Eq "^${search_name}([-._[:alnum:]]+)? \(installed\)$" <<<"${component_list}"; then
       missing_components+=("${component}")
     fi
   done
