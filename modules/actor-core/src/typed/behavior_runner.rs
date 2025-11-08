@@ -103,6 +103,51 @@ where
   }
 }
 
+impl<M, TB> TypedActor<M, TB> for BehaviorRunner<M, TB>
+where
+  M: Send + Sync + 'static,
+  TB: RuntimeToolbox + 'static,
+{
+  fn pre_start(&mut self, ctx: &mut TypedActorContextGeneric<'_, M, TB>) -> Result<(), ActorError> {
+    self.dispatch_signal(ctx, &BehaviorSignal::Started)
+  }
+
+  fn receive(&mut self, ctx: &mut TypedActorContextGeneric<'_, M, TB>, message: &M) -> Result<(), ActorError> {
+    let next = self.current.handle_message(ctx, message)?;
+    self.apply_transition(ctx, next)
+  }
+
+  fn post_stop(&mut self, ctx: &mut TypedActorContextGeneric<'_, M, TB>) -> Result<(), ActorError> {
+    self.dispatch_signal(ctx, &BehaviorSignal::Stopped)
+  }
+
+  fn on_terminated(
+    &mut self,
+    ctx: &mut TypedActorContextGeneric<'_, M, TB>,
+    terminated: crate::actor_prim::Pid,
+  ) -> Result<(), ActorError> {
+    self.dispatch_signal(ctx, &BehaviorSignal::Terminated(terminated))
+  }
+
+  fn supervisor_strategy(&mut self, _ctx: &mut TypedActorContextGeneric<'_, M, TB>) -> SupervisorStrategy {
+    self.supervisor.clone().unwrap_or_default()
+  }
+
+  fn on_adapter_failure(
+    &mut self,
+    ctx: &mut TypedActorContextGeneric<'_, M, TB>,
+    failure: AdapterFailure,
+  ) -> Result<(), ActorError> {
+    let has_signal_handler = self.current.has_signal_handler();
+    self.dispatch_signal(ctx, &BehaviorSignal::AdapterFailed(failure))?;
+    if has_signal_handler {
+      Ok(())
+    } else {
+      Err(ActorError::recoverable(ActorErrorReason::new("message adapter failure")))
+    }
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use alloc::{string::String, sync::Arc};
@@ -158,50 +203,5 @@ mod tests {
     let result = runner.on_adapter_failure(&mut typed_ctx, AdapterFailure::Custom(String::from("oops")));
     assert!(result.is_ok());
     assert!(handled.load(Ordering::SeqCst));
-  }
-}
-
-impl<M, TB> TypedActor<M, TB> for BehaviorRunner<M, TB>
-where
-  M: Send + Sync + 'static,
-  TB: RuntimeToolbox + 'static,
-{
-  fn pre_start(&mut self, ctx: &mut TypedActorContextGeneric<'_, M, TB>) -> Result<(), ActorError> {
-    self.dispatch_signal(ctx, &BehaviorSignal::Started)
-  }
-
-  fn receive(&mut self, ctx: &mut TypedActorContextGeneric<'_, M, TB>, message: &M) -> Result<(), ActorError> {
-    let next = self.current.handle_message(ctx, message)?;
-    self.apply_transition(ctx, next)
-  }
-
-  fn post_stop(&mut self, ctx: &mut TypedActorContextGeneric<'_, M, TB>) -> Result<(), ActorError> {
-    self.dispatch_signal(ctx, &BehaviorSignal::Stopped)
-  }
-
-  fn on_terminated(
-    &mut self,
-    ctx: &mut TypedActorContextGeneric<'_, M, TB>,
-    terminated: crate::actor_prim::Pid,
-  ) -> Result<(), ActorError> {
-    self.dispatch_signal(ctx, &BehaviorSignal::Terminated(terminated))
-  }
-
-  fn supervisor_strategy(&mut self, _ctx: &mut TypedActorContextGeneric<'_, M, TB>) -> SupervisorStrategy {
-    self.supervisor.clone().unwrap_or_default()
-  }
-
-  fn on_adapter_failure(
-    &mut self,
-    ctx: &mut TypedActorContextGeneric<'_, M, TB>,
-    failure: AdapterFailure,
-  ) -> Result<(), ActorError> {
-    let has_signal_handler = self.current.has_signal_handler();
-    self.dispatch_signal(ctx, &BehaviorSignal::AdapterFailed(failure.clone()))?;
-    if has_signal_handler {
-      Ok(())
-    } else {
-      Err(ActorError::recoverable(ActorErrorReason::new("message adapter failure")))
-    }
   }
 }

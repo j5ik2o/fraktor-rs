@@ -199,6 +199,10 @@ impl<'a, TB: RuntimeToolbox + 'static> ActorContextGeneric<'a, TB> {
   }
 
   /// Pipes a message back to the running actor by reusing the mailbox on the same thread。
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if sending the adapted message to the actor fails.
   pub fn pipe_to_self<F>(&self, message: AnyMessageGeneric<TB>, adapter: F) -> Result<(), SendError<TB>>
   where
     F: Fn(AnyMessageGeneric<TB>) -> AnyMessageGeneric<TB>, {

@@ -189,6 +189,10 @@ where
   }
 
   /// Pipes a value back into the actor via an inline adapter executed on the actor thread.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if sending the adapted message to the actor fails.
   pub fn pipe_to_self<U, F>(&mut self, value: U, adapter: F) -> Result<(), SendError<TB>>
   where
     U: Send + Sync + 'static,

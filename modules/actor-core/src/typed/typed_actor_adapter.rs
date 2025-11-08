@@ -53,7 +53,7 @@ where
       return Ok(());
     };
     if payload.type_id() != envelope.type_id() {
-      self.record_dead_letter(ctx, payload, reply_to.as_ref(), DeadLetterReason::ExplicitRouting);
+      Self::record_dead_letter(ctx, payload, reply_to.as_ref(), DeadLetterReason::ExplicitRouting);
       ctx.system().emit_log(LogLevel::Error, "adapter envelope corrupted", Some(ctx.pid()));
       return Ok(());
     }
@@ -82,7 +82,7 @@ where
       | AdapterOutcome::Failure(failure) => self.forward_adapter_failure(ctx, failure),
       | AdapterOutcome::NotFound => {
         if let Some(payload) = original_payload {
-          self.record_dead_letter(ctx, payload, reply_to, DeadLetterReason::ExplicitRouting);
+          Self::record_dead_letter(ctx, payload, reply_to, DeadLetterReason::ExplicitRouting);
         }
         ctx.system().emit_log(LogLevel::Warn, "adapter dropped message", Some(ctx.pid()));
         Ok(())
@@ -117,7 +117,6 @@ where
   }
 
   fn record_dead_letter(
-    &self,
     ctx: &ActorContextGeneric<'_, TB>,
     payload: AdapterPayload<TB>,
     reply_to: Option<&ActorRefGeneric<TB>>,
