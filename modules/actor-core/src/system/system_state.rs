@@ -4,7 +4,10 @@
 mod tests;
 
 use alloc::{borrow::ToOwned, format, string::String, vec::Vec};
-use core::time::Duration;
+use core::{
+  any::{Any, TypeId},
+  time::Duration,
+};
 
 use cellactor_utils_core_rs::{
   runtime_toolbox::SyncMutexFamily,
@@ -61,6 +64,7 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   failure_stop_total:     AtomicU64,
   failure_escalate_total: AtomicU64,
   failure_inflight:       AtomicU64,
+  extensions:             ToolboxMutex<HashMap<TypeId, ArcShared<dyn Any + Send + Sync + 'static>>, TB>,
 }
 
 /// Type alias for [SystemStateGeneric] with the default [NoStdToolbox].
@@ -96,6 +100,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       failure_stop_total: AtomicU64::new(0),
       failure_escalate_total: AtomicU64::new(0),
       failure_inflight: AtomicU64::new(0),
+      extensions: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::new()),
     }
   }
 
@@ -349,6 +354,36 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     let timestamp = self.monotonic_now();
     let event = LogEvent::new(level, message, timestamp, origin);
     self.event_stream.publish(&EventStreamEvent::Log(event));
+  }
+
+  /// Returns `true` when an extension for the provided [`TypeId`] is registered.
+  pub(crate) fn has_extension(&self, type_id: TypeId) -> bool {
+    self.extensions.lock().contains_key(&type_id)
+  }
+
+  /// Returns an extension by [`TypeId`].
+  pub(crate) fn extension<E>(&self, type_id: TypeId) -> Option<ArcShared<E>>
+  where
+    E: Any + Send + Sync + 'static, {
+    self.extensions.lock().get(&type_id).cloned().and_then(|handle| handle.downcast::<E>().ok())
+  }
+
+  /// Inserts an extension if absent and returns the shared instance.
+  pub(crate) fn extension_or_insert_with<E, F>(&self, type_id: TypeId, factory: F) -> ArcShared<E>
+  where
+    E: Any + Send + Sync + 'static,
+    F: FnOnce() -> ArcShared<E>, {
+    let mut guard = self.extensions.lock();
+    if let Some(existing) = guard.get(&type_id) {
+      if let Ok(extension) = existing.clone().downcast::<E>() {
+        return extension;
+      }
+      panic!("extension type mismatch for id {type_id:?}");
+    }
+    let extension = factory();
+    let erased: ArcShared<dyn Any + Send + Sync + 'static> = extension.clone();
+    guard.insert(type_id, erased);
+    extension
   }
 
   /// Registers a child under the specified parent pid.
