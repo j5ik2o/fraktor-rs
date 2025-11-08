@@ -197,4 +197,12 @@ impl<'a, TB: RuntimeToolbox + 'static> ActorContextGeneric<'a, TB> {
   pub fn log(&self, level: LogLevel, message: impl Into<String>) {
     self.system.emit_log(level, message.into(), Some(self.pid));
   }
+
+  /// Pipes a message back to the running actor by reusing the mailbox on the same thread。
+  pub fn pipe_to_self<F>(&self, message: AnyMessageGeneric<TB>, adapter: F) -> Result<(), SendError<TB>>
+  where
+    F: Fn(AnyMessageGeneric<TB>) -> AnyMessageGeneric<TB>, {
+    let adapted = adapter(message);
+    self.self_ref().tell(adapted)
+  }
 }

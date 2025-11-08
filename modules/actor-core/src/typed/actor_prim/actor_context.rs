@@ -13,7 +13,7 @@ use crate::{
   system::ActorSystemGeneric,
   typed::{
     actor_prim::{actor_ref::TypedActorRefGeneric, child_ref::TypedChildRefGeneric},
-    message_adapter::{AdapterError, AdapterFailure, MessageAdapterRegistry},
+    message_adapter::{AdaptMessage, AdapterError, AdapterFailure, MessageAdapterRegistry},
     props::TypedPropsGeneric,
   },
 };
@@ -186,5 +186,14 @@ where
     U: Send + Sync + 'static,
     F: Fn(U) -> Result<M, AdapterFailure> + Send + Sync + 'static, {
     self.message_adapter(adapter)
+  }
+
+  /// Pipes a value back into the actor via an inline adapter executed on the actor thread.
+  pub fn pipe_to_self<U, F>(&mut self, value: U, adapter: F) -> Result<(), SendError<TB>>
+  where
+    U: Send + Sync + 'static,
+    F: Fn(U) -> Result<M, AdapterFailure> + Send + Sync + 'static, {
+    let adapt = AdaptMessage::<M, TB>::new(value, adapter);
+    self.inner().pipe_to_self(AnyMessageGeneric::new(adapt), |message| message)
   }
 }

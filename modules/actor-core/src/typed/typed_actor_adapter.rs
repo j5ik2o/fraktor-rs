@@ -5,13 +5,16 @@ use alloc::boxed::Box;
 use crate::{
   RuntimeToolbox,
   actor_prim::{Actor, ActorContextGeneric, actor_ref::ActorRefGeneric},
+  dead_letter::DeadLetterReason,
   error::{ActorError, ActorErrorReason},
   logging::LogLevel,
-  messaging::AnyMessageView,
+  messaging::{AnyMessageGeneric, AnyMessageView},
   supervision::SupervisorStrategy,
   typed::{
     actor_prim::{TypedActor, TypedActorContextGeneric},
-    message_adapter::{AdaptMessage, AdapterEnvelope, AdapterFailure, AdapterOutcome, MessageAdapterRegistry},
+    message_adapter::{
+      AdaptMessage, AdapterEnvelope, AdapterFailure, AdapterOutcome, AdapterPayload, MessageAdapterRegistry,
+    },
   },
 };
 
@@ -50,11 +53,13 @@ where
       return Ok(());
     };
     if payload.type_id() != envelope.type_id() {
+      self.record_dead_letter(ctx, payload, reply_to.as_ref(), DeadLetterReason::ExplicitRouting);
       ctx.system().emit_log(LogLevel::Error, "adapter envelope corrupted", Some(ctx.pid()));
       return Ok(());
     }
+    let fallback = payload.clone();
     let outcome = self.adapters.adapt(payload);
-    self.handle_adapter_outcome(ctx, outcome, reply_to.as_ref())
+    self.handle_adapter_outcome(ctx, outcome, reply_to.as_ref(), Some(fallback))
   }
 
   fn handle_adapt_message(
@@ -63,7 +68,7 @@ where
     message: &AdaptMessage<M, TB>,
   ) -> Result<(), ActorError> {
     let outcome = message.execute();
-    self.handle_adapter_outcome(ctx, outcome, None)
+    self.handle_adapter_outcome(ctx, outcome, None, None)
   }
 
   fn handle_adapter_outcome(
@@ -71,11 +76,15 @@ where
     ctx: &mut ActorContextGeneric<'_, TB>,
     outcome: AdapterOutcome<M>,
     reply_to: Option<&ActorRefGeneric<TB>>,
+    original_payload: Option<AdapterPayload<TB>>,
   ) -> Result<(), ActorError> {
     match outcome {
       | AdapterOutcome::Converted(message) => self.deliver_converted_message(ctx, message, reply_to),
       | AdapterOutcome::Failure(failure) => self.forward_adapter_failure(ctx, failure),
       | AdapterOutcome::NotFound => {
+        if let Some(payload) = original_payload {
+          self.record_dead_letter(ctx, payload, reply_to, DeadLetterReason::ExplicitRouting);
+        }
         ctx.system().emit_log(LogLevel::Warn, "adapter dropped message", Some(ctx.pid()));
         Ok(())
       },
@@ -106,6 +115,18 @@ where
   ) -> Result<(), ActorError> {
     let mut typed_ctx = TypedActorContextGeneric::from_untyped(ctx, Some(&mut self.adapters));
     self.actor.on_adapter_failure(&mut typed_ctx, failure)
+  }
+
+  fn record_dead_letter(
+    &self,
+    ctx: &ActorContextGeneric<'_, TB>,
+    payload: AdapterPayload<TB>,
+    reply_to: Option<&ActorRefGeneric<TB>>,
+    reason: DeadLetterReason,
+  ) {
+    let system_state = ctx.system().state();
+    let message = AnyMessageGeneric::from_parts(payload.into_erased(), reply_to.cloned());
+    system_state.record_dead_letter(message, reason, Some(ctx.pid()));
   }
 }
 

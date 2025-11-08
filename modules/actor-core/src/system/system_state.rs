@@ -20,7 +20,7 @@ use super::GuardianKind;
 use crate::{
   NoStdToolbox, RuntimeToolbox, ToolboxMutex,
   actor_prim::{ActorCellGeneric, ActorPath, Pid, actor_ref::ActorRefGeneric},
-  dead_letter::{DeadLetterEntryGeneric, DeadLetterGeneric},
+  dead_letter::{DeadLetterEntryGeneric, DeadLetterGeneric, DeadLetterReason},
   error::{ActorError, SendError},
   event_stream::{EventStreamEvent, EventStreamGeneric},
   futures::ActorFuture,
@@ -433,6 +433,17 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   pub(crate) fn record_send_error(&self, recipient: Option<Pid>, error: &SendError<TB>) {
     let timestamp = self.monotonic_now();
     self.dead_letter.record_send_error(recipient, error, timestamp);
+  }
+
+  /// Records an explicit deadletter entry originating from runtime logic.
+  pub(crate) fn record_dead_letter(
+    &self,
+    message: AnyMessageGeneric<TB>,
+    reason: DeadLetterReason,
+    target: Option<Pid>,
+  ) {
+    let timestamp = self.monotonic_now();
+    self.dead_letter.record_entry(message, reason, target, timestamp);
   }
 
   /// Marks the system as terminated and completes the termination future.

@@ -12,12 +12,14 @@ use cellactor_utils_core_rs::sync::NoStdMutex;
 
 use crate::{
   NoStdToolbox,
+  dead_letter::DeadLetterReason,
   error::ActorError,
+  messaging::AnyMessageGeneric,
   supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
   typed::{
     Behavior, BehaviorSignal, Behaviors, TypedAskError,
     actor_prim::{TypedActor, TypedActorContextGeneric, TypedActorRef},
-    message_adapter::AdapterFailure,
+    message_adapter::{AdapterEnvelope, AdapterFailure, AdapterPayload},
     props::TypedPropsGeneric,
     system::TypedActorSystemGeneric,
   },
@@ -387,6 +389,51 @@ fn message_adapter_converts_external_messages() {
   let value = read_counter_value(&actor);
   assert_eq!(value, 8);
 
+  system.terminate().expect("terminate");
+}
+
+#[test]
+fn adapter_not_found_routes_to_dead_letter() {
+  let props = TypedPropsGeneric::<AdapterCounterCommand, NoStdToolbox>::from_behavior_factory(|| {
+    Behaviors::setup(|ctx| {
+      ctx
+        .message_adapter(|value: String| {
+          value.parse::<i32>().map(AdapterCounterCommand::Set).map_err(|_| AdapterFailure::Custom("parse error".into()))
+        })
+        .expect("register adapter");
+      counter_behavior(0)
+    })
+  });
+  let system = TypedActorSystemGeneric::<AdapterCounterCommand, NoStdToolbox>::new(&props).expect("system");
+  let actor = system.user_guardian_ref();
+  let untyped = actor.as_untyped().clone();
+
+  let payload = AdapterPayload::<NoStdToolbox>::new(7_u64);
+  let envelope = AdapterEnvelope::new(payload, None);
+  untyped.tell(AnyMessageGeneric::new(envelope)).expect("send envelope");
+
+  wait_until(|| !system.dead_letters().is_empty());
+  let entries = system.dead_letters();
+  assert!(entries.iter().any(|entry| entry.reason() == DeadLetterReason::ExplicitRouting));
+
+  system.terminate().expect("terminate");
+}
+
+#[test]
+fn pipe_to_self_converts_messages_via_adapter() {
+  let props = TypedPropsGeneric::<AdapterCounterCommand, NoStdToolbox>::from_behavior_factory(|| {
+    Behaviors::setup(|ctx| {
+      ctx
+        .pipe_to_self("6".to_string(), |value: String| {
+          value.parse::<i32>().map(AdapterCounterCommand::Set).map_err(|_| AdapterFailure::Custom("parse error".into()))
+        })
+        .expect("pipe");
+      counter_behavior(0)
+    })
+  });
+  let system = TypedActorSystemGeneric::<AdapterCounterCommand, NoStdToolbox>::new(&props).expect("system");
+  let actor = system.user_guardian_ref();
+  wait_until(|| read_counter_value(&actor) == 6);
   system.terminate().expect("terminate");
 }
 

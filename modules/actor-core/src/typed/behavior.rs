@@ -193,4 +193,8 @@ where
   pub(crate) const fn directive(&self) -> BehaviorDirective {
     self.directive
   }
+
+  pub(crate) const fn has_signal_handler(&self) -> bool {
+    self.signal_handler.is_some()
+  }
 }
