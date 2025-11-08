@@ -99,18 +99,18 @@ where
 
   /// Attempts to adapt the provided payload.
   #[must_use]
-  pub fn adapt(&self, payload: AdapterPayload<TB>) -> AdapterOutcome<M> {
+  pub fn adapt(&self, payload: AdapterPayload<TB>) -> (AdapterOutcome<M>, Option<AdapterPayload<TB>>) {
     let payload_type = payload.type_id();
     let mut envelope = Some(payload);
     for entry in self.entries.iter().rev() {
       if entry.type_id() == payload_type {
         if let Some(concrete) = envelope.take() {
-          return entry.invoke(concrete);
+          return (entry.invoke(concrete), None);
         }
-        return AdapterOutcome::Failure(AdapterFailure::Custom(String::from("adapter_payload_consumed")));
+        return (AdapterOutcome::Failure(AdapterFailure::Custom(String::from("adapter_payload_consumed"))), None);
       }
     }
-    AdapterOutcome::NotFound
+    (AdapterOutcome::NotFound, envelope)
   }
 
   fn ensure_adapter_ref(&mut self, ctx: &ActorContextGeneric<'_, TB>) -> Result<ActorRefGeneric<TB>, AdapterError> {

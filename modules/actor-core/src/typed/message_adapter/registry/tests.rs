@@ -57,15 +57,18 @@ fn registry_replaces_existing_adapter_for_same_type() {
   assert_eq!(registry.len(), 1);
 
   let payload = AdapterPayload::<NoStdToolbox>::new(5_u32);
-  let outcome = registry.adapt(payload);
+  let (outcome, leftover) = registry.adapt(payload);
   assert_eq!(outcome, AdapterOutcome::Converted(10));
+  assert!(leftover.is_none());
 }
 
 #[test]
 fn registry_returns_not_found_when_no_adapter_matches() {
   let registry = MessageAdapterRegistry::<i32, NoStdToolbox>::new();
   let payload = AdapterPayload::<NoStdToolbox>::new(1_u8);
-  assert_eq!(registry.adapt(payload), AdapterOutcome::NotFound);
+  let (outcome, leftover) = registry.adapt(payload);
+  assert_eq!(outcome, AdapterOutcome::NotFound);
+  assert!(leftover.is_some());
 }
 
 #[test]
@@ -76,5 +79,7 @@ fn registry_returns_failure_from_adapter() {
   registry.register::<u32, _>(&ctx, |_| Err(AdapterFailure::Custom("boom".into()))).expect("register");
 
   let payload = AdapterPayload::<NoStdToolbox>::new(3_u32);
-  assert_eq!(registry.adapt(payload), AdapterOutcome::Failure(AdapterFailure::Custom("boom".into())));
+  let (outcome, leftover) = registry.adapt(payload);
+  assert_eq!(outcome, AdapterOutcome::Failure(AdapterFailure::Custom("boom".into())));
+  assert!(leftover.is_none());
 }

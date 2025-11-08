@@ -57,9 +57,8 @@ where
       ctx.system().emit_log(LogLevel::Error, "adapter envelope corrupted", Some(ctx.pid()));
       return Ok(());
     }
-    let fallback = payload.clone();
-    let outcome = self.adapters.adapt(payload);
-    self.handle_adapter_outcome(ctx, outcome, reply_to.as_ref(), Some(fallback))
+    let (outcome, leftover) = self.adapters.adapt(payload);
+    self.handle_adapter_outcome(ctx, outcome, reply_to.as_ref(), leftover)
   }
 
   fn handle_adapt_message(
