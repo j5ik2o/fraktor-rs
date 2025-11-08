@@ -424,6 +424,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
         },
         | SystemMessage::Unwatch(_) => Ok(()),
         | SystemMessage::Terminated(_) => Ok(()),
+        | SystemMessage::PipeTask(_) => Ok(()),
         | other => Err(SendError::<TB>::closed(AnyMessageGeneric::new(other))),
       }
     }

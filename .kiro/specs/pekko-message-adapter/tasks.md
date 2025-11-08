@@ -48,7 +48,7 @@
   - 最初のアダプタ登録時に FunctionRef を起動し、以後の登録では再利用されることを確認する
   - _Requirements: 要件1.1, 要件1.2, 要件1.3_
 
-- [ ] 3.2 AdaptMessage を用いた ask / pipe_to_self 経路を整備する
+- [x] 3.2 AdaptMessage を用いた ask / pipe_to_self 経路を整備する
   - Future/CompletionStage の完了値を AdaptMessage エンベロープに包み、親アクター自身に送り返すフローを構築する
   - 変換クロージャの成功と失敗を AdapterOutcome へ統一し、MessageAdaptionFailure を supervisor へ橋渡しする
   - 同期/非同期どちらの呼び出しでも親スレッド上で変換が完了することを検証する
@@ -72,18 +72,18 @@
   - PostStop/PreRestart でレジストリと AdapterRef をクリアし、再起動後にクリーンな状態で再登録できるようにする
   - _Requirements: 要件3.1, 要件3.2, 要件3.3_
 
-- [ ] 5. 品質検証と性能チェックで全要件を裏付ける
+- [x] 5. 品質検証と性能チェックで全要件を裏付ける
   - レジストリ置換、AdapterRef 停止検知、AdaptMessage 経路、DeadLetter フォールバックといった主要シナリオを網羅する
   - 高負荷シナリオでの adapter 連投に耐えることを確認し、監督イベントが観測できるようメトリクスを確認する
   - _Requirements: 要件1.1〜1.4, 要件2.1〜2.4, 要件3.1〜3.3_
 
-- [ ] 5.1 ユニットテストを追加して基礎挙動を固定する
+- [x] 5.1 ユニットテストを追加して基礎挙動を固定する
   - MessageAdapterRegistry, AdapterPayload, AdapterRefSender の happy/edge ケースをそれぞれ個別テストで検証する
   - TypeMismatch や EnvelopeCorrupted の失敗パスを明示し、DeadLetter 記録内容をアサートする
   - ask/pipe_to_self の AdaptMessage ハンドリングがスレッド拘束を守ることをテストする
   - _Requirements: 要件1.1〜1.3, 要件2.1〜2.4, 要件3.1_
 
-- [ ] 5.2 統合テストで TypedActorAdapter と BehaviorRunner を検証する
+- [x] 5.2 統合テストで TypedActorAdapter と BehaviorRunner を検証する
   - 複数 adapter を登録して優先順位・置換・未マッチ時の DeadLetter をシナリオ駆動で確認する
   - アクター停止/再起動シーケンスを通し、AdapterFailure シグナルとレジストリ再登録が期待通りに動くか確かめる
   - 高頻度で MessageAdaptionFailure を発生させ、SupervisorStrategy が再起動/停止を選択する挙動を観測する

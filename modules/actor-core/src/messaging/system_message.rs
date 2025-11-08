@@ -7,7 +7,11 @@ pub use self::{
   failure_classification::FailureClassification, failure_message_snapshot::FailureMessageSnapshot,
   failure_payload::FailurePayload,
 };
-use crate::{RuntimeToolbox, actor_prim::Pid, messaging::AnyMessageGeneric};
+use crate::{
+  RuntimeToolbox,
+  actor_prim::{ContextPipeTaskId, Pid},
+  messaging::AnyMessageGeneric,
+};
 
 mod failure_classification;
 mod failure_message_snapshot;
@@ -36,6 +40,8 @@ pub enum SystemMessage {
   Terminated(Pid),
   /// Reports that a child actor failed and requires supervisor handling.
   Failure(FailurePayload),
+  /// Resumes a pending pipe task once its future has been woken.
+  PipeTask(ContextPipeTaskId),
 }
 
 impl<TB: RuntimeToolbox> From<SystemMessage> for AnyMessageGeneric<TB> {

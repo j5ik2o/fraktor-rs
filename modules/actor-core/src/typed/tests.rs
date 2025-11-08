@@ -424,9 +424,16 @@ fn pipe_to_self_converts_messages_via_adapter() {
   let props = TypedPropsGeneric::<AdapterCounterCommand, NoStdToolbox>::from_behavior_factory(|| {
     Behaviors::setup(|ctx| {
       ctx
-        .pipe_to_self("6".to_string(), |value: String| {
-          value.parse::<i32>().map(AdapterCounterCommand::Set).map_err(|_| AdapterFailure::Custom("parse error".into()))
-        })
+        .pipe_to_self(
+          async { Ok::<_, ()>("6".to_string()) },
+          |value: String| {
+            value
+              .parse::<i32>()
+              .map(AdapterCounterCommand::Set)
+              .map_err(|_| AdapterFailure::Custom("parse error".into()))
+          },
+          |_| Err(AdapterFailure::Custom("pipe failure".into())),
+        )
         .expect("pipe");
       counter_behavior(0)
     })

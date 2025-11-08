@@ -1,12 +1,12 @@
 //! Typed actor context wrapper.
 
-use core::{marker::PhantomData, ptr::NonNull};
+use core::{future::Future, marker::PhantomData, ptr::NonNull};
 
 use cellactor_utils_core_rs::sync::NoStdToolbox;
 
 use crate::{
   RuntimeToolbox,
-  actor_prim::{ActorContextGeneric, Pid},
+  actor_prim::{ActorContextGeneric, Pid, PipeSpawnError},
   error::SendError,
   messaging::AnyMessageGeneric,
   spawn::SpawnError,
@@ -188,16 +188,31 @@ where
     self.message_adapter(adapter)
   }
 
-  /// Pipes a value back into the actor via an inline adapter executed on the actor thread.
+  /// Pipes a future back into the actor, adapting the response on the actor thread.
   ///
   /// # Errors
   ///
-  /// Returns an error if sending the adapted message to the actor fails.
-  pub fn pipe_to_self<U, F>(&mut self, value: U, adapter: F) -> Result<(), SendError<TB>>
+  /// Returns an error if the actor is unavailable or stops before the task runs.
+  pub fn pipe_to_self<U, E, Fut, MapOk, MapErr>(
+    &mut self,
+    future: Fut,
+    map_ok: MapOk,
+    map_err: MapErr,
+  ) -> Result<(), PipeSpawnError>
   where
+    Fut: Future<Output = Result<U, E>> + Send + 'static,
     U: Send + Sync + 'static,
-    F: Fn(U) -> Result<M, AdapterFailure> + Send + Sync + 'static, {
-    let adapt = AdaptMessage::<M, TB>::new(value, adapter);
-    self.inner().pipe_to_self(AnyMessageGeneric::new(adapt), |message| message)
+    E: Send + Sync + 'static,
+    MapOk: Fn(U) -> Result<M, AdapterFailure> + Send + Sync + 'static,
+    MapErr: Fn(E) -> Result<M, AdapterFailure> + Send + Sync + 'static, {
+    let mapped = async move {
+      let outcome = future.await;
+      let adapt = AdaptMessage::<M, TB>::new(outcome, move |result: Result<U, E>| match result {
+        | Ok(value) => map_ok(value),
+        | Err(error) => map_err(error),
+      });
+      AnyMessageGeneric::new(adapt)
+    };
+    self.inner().pipe_to_self(mapped, |message| message)
   }
 }

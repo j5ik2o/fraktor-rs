@@ -4,7 +4,7 @@
 mod tests;
 
 use alloc::{boxed::Box, string::String, vec, vec::Vec};
-use core::time::Duration;
+use core::{task::Poll, time::Duration};
 
 use cellactor_utils_core_rs::{
   runtime_toolbox::SyncMutexFamily,
@@ -14,7 +14,12 @@ use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
 use crate::{
   NoStdToolbox, RuntimeToolbox, ToolboxMutex,
-  actor_prim::{Actor, ActorContextGeneric, Pid, actor_ref::ActorRefGeneric},
+  actor_prim::{
+    Actor, ActorContextGeneric, ContextPipeTaskId, Pid,
+    actor_ref::ActorRefGeneric,
+    context_pipe_task::{ContextPipeFuture, ContextPipeTask},
+    pipe_spawn_error::PipeSpawnError,
+  },
   dispatcher::{DispatcherGeneric, DispatcherSenderGeneric},
   error::ActorError,
   event_stream::EventStreamEvent,
@@ -45,8 +50,10 @@ pub struct ActorCellGeneric<TB: RuntimeToolbox + 'static> {
   children:               ToolboxMutex<Vec<Pid>, TB>,
   child_stats:            ToolboxMutex<Vec<(Pid, RestartStatistics)>, TB>,
   watchers:               ToolboxMutex<Vec<Pid>, TB>,
+  pipe_tasks:             ToolboxMutex<Vec<ContextPipeTask<TB>>, TB>,
   adapter_handles:        ToolboxMutex<Vec<AdapterRefHandle<TB>>, TB>,
   adapter_handle_counter: AtomicU64,
+  pipe_task_counter:      AtomicU64,
   terminated:             AtomicBool,
 }
 
@@ -84,6 +91,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     let children = <TB::MutexFamily as SyncMutexFamily>::create(Vec::new());
     let child_stats = <TB::MutexFamily as SyncMutexFamily>::create(Vec::new());
     let watchers = <TB::MutexFamily as SyncMutexFamily>::create(Vec::new());
+    let pipe_tasks = <TB::MutexFamily as SyncMutexFamily>::create(Vec::new());
     let adapter_handles = <TB::MutexFamily as SyncMutexFamily>::create(Vec::new());
 
     let cell = ArcShared::new(Self {
@@ -100,8 +108,10 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
       children,
       child_stats,
       watchers,
+      pipe_tasks,
       adapter_handles,
       adapter_handle_counter: AtomicU64::new(0),
+      pipe_task_counter: AtomicU64::new(0),
       terminated: AtomicBool::new(false),
     });
 
@@ -199,6 +209,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
   fn mark_terminated(&self) {
     self.terminated.store(true, Ordering::Release);
     self.drop_adapter_refs();
+    self.drop_pipe_tasks();
   }
 
   fn is_terminated(&self) -> bool {
@@ -249,6 +260,52 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     handles.clear();
   }
 
+  /// Registers a new pipe task and schedules its first poll.
+  pub(crate) fn spawn_pipe_task(&self, future: ContextPipeFuture<TB>) -> Result<(), PipeSpawnError> {
+    if self.is_terminated() {
+      return Err(PipeSpawnError::TargetStopped);
+    }
+    let id = ContextPipeTaskId::new(self.pipe_task_counter.fetch_add(1, Ordering::Relaxed) + 1);
+    let task = ContextPipeTask::new(id, future, self.pid, self.system.clone());
+    {
+      let mut tasks = self.pipe_tasks.lock();
+      tasks.push(task);
+    }
+    self.poll_pipe_task(id);
+    Ok(())
+  }
+
+  fn poll_pipe_task(&self, task_id: ContextPipeTaskId) {
+    let message = {
+      let mut tasks = self.pipe_tasks.lock();
+      let Some(index) = tasks.iter().position(|task| task.id() == task_id) else {
+        return;
+      };
+      match tasks[index].poll() {
+        | Poll::Ready(message) => {
+          tasks.swap_remove(index);
+          Some(message)
+        },
+        | Poll::Pending => None,
+      }
+    };
+
+    if let Some(message) = message {
+      match self.actor_ref().tell(message) {
+        | Ok(()) => {},
+        | Err(error) => self.system.record_send_error(Some(self.pid), &error),
+      }
+    }
+  }
+
+  fn drop_pipe_tasks(&self) {
+    self.pipe_tasks.lock().clear();
+  }
+
+  fn handle_pipe_task_ready(&self, task_id: ContextPipeTaskId) {
+    self.poll_pipe_task(task_id);
+  }
+
   fn notify_watchers_on_stop(&self) {
     let mut watchers = self.watchers.lock();
     if watchers.is_empty() {
@@ -290,6 +347,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
       ctx.clear_reply_to();
     }
 
+    self.drop_pipe_tasks();
     self.publish_lifecycle(LifecycleStage::Stopped);
     self.recreate_actor();
     let outcome = self.run_pre_start(LifecycleStage::Restarted);
@@ -461,6 +519,10 @@ impl<TB: RuntimeToolbox + 'static> MessageInvoker<TB> for ActorCellGeneric<TB> {
         Ok(())
       },
       | SystemMessage::Terminated(pid) => self.handle_terminated(pid),
+      | SystemMessage::PipeTask(task_id) => {
+        self.handle_pipe_task_ready(task_id);
+        Ok(())
+      },
     }
   }
 }
