@@ -20,7 +20,6 @@
 - 1ファイルに複数構造体、複数traitを記述しないこと
 - 全タスクを完了した段階で `./scripts/ci-check.sh all` を実行し、エラーがないことを確認すること（途中工程では対象範囲のテストに留めてよい）
 
-
 # AI-DLC and Spec-Driven Development
 
 Kiro-style Spec Driven Development implementation on AI-DLC (AI Development Life Cycle)
