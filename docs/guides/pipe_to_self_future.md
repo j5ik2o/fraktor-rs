@@ -88,6 +88,103 @@ impl<'a, M, TB> TypedActorContextGeneric<'a, M, TB> {
 4. **concurrency**: 複数同時 pipe が `ReqId` で区別され、完了順序に応じてメッセージ化される。
 5. **typed/untyped parity**: Untyped 経路と Typed ラッパーが同じ ContextPipeMessage を共有し、ask 経路とも干渉しないことを検証。
 
+## 使用例
+
+### Untyped Actor での利用例
+
+```rust
+use alloc::{boxed::Box, sync::Arc};
+use cellactor_actor_core_rs::{
+  actor_prim::{Actor, ActorContext, ActorContextGeneric, actor_ref::ActorRef},
+  error::ActorError,
+  messaging::AnyMessage,
+};
+use cellactor_utils_core_rs::sync::NoStdToolbox;
+
+struct FetcherActor;
+
+impl Actor for FetcherActor {
+  fn receive(
+    &mut self,
+    ctx: &mut ActorContext<'_>,
+    message: AnyMessage<NoStdToolbox>,
+  ) -> Result<(), ActorError> {
+    let request = message.downcast_ref::<Arc<str>>().expect("string payload").clone();
+    ctx.pipe_to_self(
+      async move {
+        // ここではスタブ化したHTTP呼び出しを想定
+        let body = fake_http(request.as_ref()).await;
+        AnyMessage::new(body)
+      },
+      |response| response,
+    )?;
+
+    Ok(())
+  }
+}
+
+async fn fake_http(_path: &str) -> String {
+  "ok".to_string()
+}
+```
+
+ポイント:
+
+- `ctx.pipe_to_self` に Future と戻り値をメッセージへ変換するクロージャを渡すだけでよい。
+- Future 内で HTTP クライアント等の `async` API をそのまま利用できる。
+- Future 完了後の `AnyMessage` は自分自身のメールボックスへ投入され、通常の `receive` ルートで処理できる。
+
+### Typed Behavior での利用例
+
+```rust
+use cellactor_actor_core_rs::{
+  typed::{
+    Behaviors,
+    actor_prim::{TypedActorContext, TypedActorRef},
+    behavior::Behavior,
+  },
+  NoStdToolbox,
+};
+
+#[derive(Clone)]
+enum Command {
+  Fetch(Arc<str>),
+  Fetched(String),
+  Failed(String),
+}
+
+fn fetcher_behavior() -> Behavior<Command, NoStdToolbox> {
+  Behaviors::receive_message(|ctx, msg| match msg {
+    Command::Fetch(path) => {
+      ctx.pipe_to_self(
+        async move { fake_http(path.as_ref()).await.map(Command::Fetched).map_err(|e| e.to_string()) },
+        |payload| Ok(payload),
+        |error| Ok(Command::Failed(error)),
+      )?;
+      Ok(Behaviors::same())
+    },
+    Command::Fetched(body) => {
+      ctx.log(LogLevel::Info, format!("fetched: {body}"));
+      Ok(Behaviors::same())
+    },
+    Command::Failed(reason) => {
+      ctx.log(LogLevel::Warn, format!("failed: {reason}"));
+      Ok(Behaviors::same())
+    },
+  })
+}
+
+async fn fake_http(_path: &str) -> Result<String, &'static str> {
+  Ok("ok".to_string())
+}
+```
+
+ポイント:
+
+- `map_ok` と `map_err` に `Result<T, E>` → `Result<M, AdapterFailure>` 変換を記述するだけで、成功・失敗両方のメッセージハンドリングを型安全に統合できる。
+- `fake_http` が返すエラーを `Command::Failed` にマップし、同じアクター内でエラーログを出せる。
+- `Behavior` 側は同期のまま保てるため、`pipe_to_self` 呼び出し以外に `async` 境界を意識する必要がない。
+
 ## 移行ステップ
 
 1. `ActorContextGeneric` に pipe タスク管理のフィールドと drop フローを追加。
