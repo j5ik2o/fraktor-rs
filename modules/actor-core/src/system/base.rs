@@ -14,10 +14,12 @@ use crate::{
   dead_letter::DeadLetterEntryGeneric,
   error::SendError,
   event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric},
+  extension::ExtensionId,
   futures::ActorFuture,
   logging::LogLevel,
   messaging::{AnyMessageGeneric, SystemMessage},
   props::PropsGeneric,
+  serialization::SERIALIZATION_EXTENSION,
   spawn::SpawnError,
   system::{RegisterExtraTopLevelError, system_state::SystemStateGeneric},
 };
@@ -156,6 +158,29 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   /// Publishes a raw event to the event stream.
   pub fn publish_event(&self, event: &EventStreamEvent<TB>) {
     self.state.publish_event(event);
+  }
+
+  /// Registers the provided extension and returns the shared instance.
+  pub fn register_extension<E>(&self, ext_id: &E) -> ArcShared<E::Ext>
+  where
+    E: ExtensionId<TB>, {
+    self.state.extension_or_insert_with(ext_id.id(), || ArcShared::new(ext_id.create_extension(self)))
+  }
+
+  /// Retrieves a previously registered extension.
+  #[must_use]
+  pub fn extension<E>(&self, ext_id: &E) -> Option<ArcShared<E::Ext>>
+  where
+    E: ExtensionId<TB>, {
+    self.state.extension(ext_id.id())
+  }
+
+  /// Returns `true` when the extension has already been registered.
+  #[must_use]
+  pub fn has_extension<E>(&self, ext_id: &E) -> bool
+  where
+    E: ExtensionId<TB>, {
+    self.state.has_extension(ext_id.id())
   }
 
   /// Spawns a new top-level actor under the user guardian.
@@ -309,6 +334,8 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     if let Some(cell) = self.state.cell(&system_guardian.pid()) {
       self.state.set_system_guardian(cell);
     }
+
+    let _ = self.register_extension(&SERIALIZATION_EXTENSION);
 
     configure(self)?;
 

@@ -68,13 +68,17 @@ pub mod dead_letter;
 pub mod dispatcher;
 pub mod error;
 pub mod event_stream;
+mod extension;
 pub mod futures;
 pub mod lifecycle;
 pub mod logging;
 pub mod mailbox;
 pub mod messaging;
 pub mod props;
+pub mod serialization;
 pub mod spawn;
 pub mod supervision;
 pub mod system;
 pub mod typed;
+
+pub use extension::{Extension, ExtensionId};
