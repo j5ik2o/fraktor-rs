@@ -25,14 +25,14 @@
   - _Requirements: 要件1.4, 要件3.3_
 
 - [ ] 3. TypedActorContext API を拡張して開発者向けの登録面を整える
-  - `message_adapter`／`spawn_message_adapter`／`ask` がレジストリや `AdaptMessage` と自然に連携し、親アクターのスレッドで結果を評価できるようにする
+  - `message_adapter`／`spawn_message_adapter`／`ask` がレジストリや `AdaptMessage` と自然に連携し、親アクターの実行コンテキスト（メッセージ処理中は単一スレッドで実行される環境）で結果を評価できるようにする
   - _Requirements: 要件1.1, 要件2.4_
 - [ ] 3.1 message_adapter / spawn_message_adapter の委譲レイヤーを実装する
-  - API から `MessageAdapterRegistry` への登録・置換を一手に引き受け、戻り値の Typed ActorRef を同一スレッド実行に固定する
+  - API から `MessageAdapterRegistry` への登録・置換を一手に引き受け、戻り値の Typed ActorRef がアクターの実行コンテキスト内でのみクロージャを実行することを保証する
   - 既存の `_messageAdapters` 互換リストを移行し、On-the-fly 再登録でも unbounded growth が起きないことを検証する
   - _Requirements: 要件1.1, 要件1.2_
 - [ ] 3.2 AdaptMessage を用いた ask/pipe_to_self 経路を整備する
-  - Future/CompletionStage 完了時に `AdaptMessage { value, adapter }` を自分自身へ送るヘルパを実装し、親アクターがレスポンス変換クロージャを自スレッドで評価できるようにする
+  - Future/CompletionStage 完了時に `AdaptMessage { value, adapter }` を自分自身へ送るヘルパを実装し、親アクターが自身のメッセージ処理コンテキスト内でレスポンス変換クロージャを評価できるようにする
   - 成功・失敗の両経路で `MessageAdaptionFailure` と SupervisorStrategy へ橋渡しする共通ハンドラを追加する
   - _Requirements: 要件2.2, 要件2.4, 要件3.1_
 
