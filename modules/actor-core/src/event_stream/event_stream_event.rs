@@ -4,8 +4,12 @@
 mod tests;
 
 use crate::{
-  NoStdToolbox, RuntimeToolbox, dead_letter::DeadLetterEntryGeneric, lifecycle::LifecycleEvent, logging::LogEvent,
-  mailbox::MailboxMetricsEvent, typed::UnhandledMessageEvent,
+  NoStdToolbox, RuntimeToolbox,
+  dead_letter::DeadLetterEntryGeneric,
+  lifecycle::LifecycleEvent,
+  logging::LogEvent,
+  mailbox::MailboxMetricsEvent,
+  typed::{UnhandledMessageEvent, message_adapter::AdapterFailureEvent},
 };
 
 /// Event selected for publication on the event stream.
@@ -21,6 +25,8 @@ pub enum EventStreamEvent<TB: RuntimeToolbox = NoStdToolbox> {
   Mailbox(MailboxMetricsEvent),
   /// Unhandled message notification from typed behaviors.
   UnhandledMessage(UnhandledMessageEvent),
+  /// Message adapter failure notification.
+  AdapterFailure(AdapterFailureEvent),
 }
 
 impl<TB: RuntimeToolbox> Clone for EventStreamEvent<TB> {
@@ -31,6 +37,7 @@ impl<TB: RuntimeToolbox> Clone for EventStreamEvent<TB> {
       | Self::Log(event) => Self::Log(event.clone()),
       | Self::Mailbox(event) => Self::Mailbox(event.clone()),
       | Self::UnhandledMessage(event) => Self::UnhandledMessage(event.clone()),
+      | Self::AdapterFailure(event) => Self::AdapterFailure(event.clone()),
     }
   }
 }

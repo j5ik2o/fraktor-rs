@@ -57,6 +57,21 @@ impl<TB: RuntimeToolbox> AnyMessageGeneric<TB> {
   pub(crate) fn payload_arc(&self) -> ArcShared<dyn Any + Send + Sync + 'static> {
     self.payload.clone()
   }
+
+  /// Reconstructs an envelope from erased components.
+  pub(crate) fn from_parts(
+    payload: ArcShared<dyn Any + Send + Sync + 'static>,
+    reply_to: Option<ActorRefGeneric<TB>>,
+  ) -> Self {
+    Self { payload, reply_to }
+  }
+
+  /// Consumes the message and returns the payload alongside the reply target.
+  pub(crate) fn into_payload_and_reply(
+    self,
+  ) -> (ArcShared<dyn Any + Send + Sync + 'static>, Option<ActorRefGeneric<TB>>) {
+    (self.payload, self.reply_to)
+  }
 }
 
 impl<TB: RuntimeToolbox> Clone for AnyMessageGeneric<TB> {

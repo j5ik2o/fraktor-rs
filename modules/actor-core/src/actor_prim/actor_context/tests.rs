@@ -1,4 +1,5 @@
 use alloc::{string::String, vec, vec::Vec};
+use core::hint::spin_loop;
 
 use cellactor_utils_core_rs::sync::{ArcShared, NoStdMutex};
 
@@ -48,6 +49,29 @@ impl Actor for RecordingActor {
     pid: Pid,
   ) -> Result<(), crate::error::ActorError> {
     self.log.lock().push(pid);
+    Ok(())
+  }
+}
+
+struct ProbeActor {
+  received: ArcShared<NoStdMutex<Vec<i32>>>,
+}
+
+impl ProbeActor {
+  fn new(received: ArcShared<NoStdMutex<Vec<i32>>>) -> Self {
+    Self { received }
+  }
+}
+
+impl Actor for ProbeActor {
+  fn receive(
+    &mut self,
+    _context: &mut ActorContextGeneric<'_, NoStdToolbox>,
+    message: AnyMessageView<'_, NoStdToolbox>,
+  ) -> Result<(), crate::error::ActorError> {
+    if let Some(value) = message.downcast_ref::<i32>() {
+      self.received.lock().push(*value);
+    }
     Ok(())
   }
 }
@@ -138,6 +162,62 @@ fn actor_context_log() {
 
   context.log(crate::logging::LogLevel::Info, String::from("test message"));
   context.log(crate::logging::LogLevel::Error, String::from("error message"));
+}
+
+fn wait_until(mut condition: impl FnMut() -> bool) {
+  for _ in 0..10_000 {
+    if condition() {
+      return;
+    }
+    spin_loop();
+  }
+  assert!(condition());
+}
+
+#[test]
+fn actor_context_pipe_to_self_enqueues_message() {
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let received = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let props = Props::from_fn({
+    let log = received.clone();
+    move || ProbeActor::new(log.clone())
+  });
+  register_cell(&system, pid, "self", &props);
+  let context = ActorContext::new(&system, pid);
+
+  context.pipe_to_self(async { 41_i32 }, AnyMessage::new).expect("pipe to self");
+
+  wait_until(|| !received.lock().is_empty());
+  assert_eq!(received.lock()[0], 41);
+}
+
+#[test]
+fn actor_context_pipe_to_self_handles_async_future() {
+  use crate::futures::ActorFuture;
+
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let received = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let props = Props::from_fn({
+    let log = received.clone();
+    move || ProbeActor::new(log.clone())
+  });
+  register_cell(&system, pid, "self", &props);
+  let context = ActorContext::new(&system, pid);
+
+  let signal = ArcShared::new(ActorFuture::<i32>::new());
+  let future = {
+    let handle = signal.clone();
+    async move { handle.listener().await }
+  };
+
+  context.pipe_to_self(future, AnyMessage::new).expect("pipe to self");
+  assert!(received.lock().is_empty());
+
+  signal.complete(7);
+  wait_until(|| !received.lock().is_empty());
+  assert_eq!(received.lock()[0], 7);
 }
 
 fn register_cell(system: &ActorSystem, pid: Pid, name: &str, props: &Props) -> ArcShared<ActorCell> {

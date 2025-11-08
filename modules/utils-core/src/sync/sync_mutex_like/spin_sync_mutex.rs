@@ -6,6 +6,9 @@ mod tests;
 /// Thin wrapper around [`spin::Mutex`] implementing [`SyncMutexLike`].
 pub struct SpinSyncMutex<T>(spin::Mutex<T>);
 
+unsafe impl<T: Send> Send for SpinSyncMutex<T> {}
+unsafe impl<T: Send> Sync for SpinSyncMutex<T> {}
+
 impl<T> SpinSyncMutex<T> {
   /// Creates a new spinlock-protected value.
   #[must_use]

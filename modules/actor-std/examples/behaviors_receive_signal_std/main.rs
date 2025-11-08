@@ -21,6 +21,7 @@ fn guardian_behavior() -> Behavior<GuardianCommand> {
       | BehaviorSignal::Started => println!("guardian: Started signal"),
       | BehaviorSignal::Stopped => println!("guardian: Stopped signal"),
       | BehaviorSignal::Terminated(pid) => println!("guardian: Terminated({pid:?})"),
+      | BehaviorSignal::AdapterFailed(reason) => println!("guardian: AdapterFailed({reason:?})"),
     }
     Ok(Behaviors::same())
   })

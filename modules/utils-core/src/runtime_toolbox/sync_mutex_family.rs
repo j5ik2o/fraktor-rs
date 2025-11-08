@@ -11,7 +11,7 @@ use crate::sync::sync_mutex_like::SyncMutexLike;
 /// Provides a constructor for mutex implementations used by the runtime.
 pub trait SyncMutexFamily {
   /// Concrete mutex type produced by this family.
-  type Mutex<T>: SyncMutexLike<T> + Send + 'static
+  type Mutex<T>: SyncMutexLike<T> + Send + Sync + 'static
   where
     T: Send + 'static;
 

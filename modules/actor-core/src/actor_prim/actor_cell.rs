@@ -4,17 +4,22 @@
 mod tests;
 
 use alloc::{boxed::Box, string::String, vec, vec::Vec};
-use core::time::Duration;
+use core::{task::Poll, time::Duration};
 
 use cellactor_utils_core_rs::{
   runtime_toolbox::SyncMutexFamily,
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
-use portable_atomic::{AtomicBool, Ordering};
+use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
 use crate::{
   NoStdToolbox, RuntimeToolbox, ToolboxMutex,
-  actor_prim::{Actor, ActorContextGeneric, Pid, actor_ref::ActorRefGeneric},
+  actor_prim::{
+    Actor, ActorContextGeneric, ContextPipeTaskId, Pid,
+    actor_ref::ActorRefGeneric,
+    context_pipe_task::{ContextPipeFuture, ContextPipeTask},
+    pipe_spawn_error::PipeSpawnError,
+  },
   dispatcher::{DispatcherGeneric, DispatcherSenderGeneric},
   error::ActorError,
   event_stream::EventStreamEvent,
@@ -27,24 +32,29 @@ use crate::{
   props::{ActorFactory, PropsGeneric},
   supervision::{RestartStatistics, SupervisorDirective, SupervisorStrategyKind},
   system::{ActorSystemGeneric, FailureOutcome, GuardianKind, SystemStateGeneric},
+  typed::message_adapter::{AdapterLifecycleState, AdapterRefHandle, AdapterRefHandleId},
 };
 
 /// Runtime container responsible for executing an actor instance.
 pub struct ActorCellGeneric<TB: RuntimeToolbox + 'static> {
-  pid:         Pid,
-  parent:      Option<Pid>,
-  name:        String,
-  system:      ArcShared<SystemStateGeneric<TB>>,
-  factory:     ArcShared<dyn ActorFactory<TB>>,
-  actor:       ToolboxMutex<Box<dyn Actor<TB> + Send + Sync>, TB>,
-  pipeline:    MessageInvokerPipelineGeneric<TB>,
-  mailbox:     ArcShared<MailboxGeneric<TB>>,
-  dispatcher:  DispatcherGeneric<TB>,
-  sender:      ArcShared<DispatcherSenderGeneric<TB>>,
-  children:    ToolboxMutex<Vec<Pid>, TB>,
-  child_stats: ToolboxMutex<Vec<(Pid, RestartStatistics)>, TB>,
-  watchers:    ToolboxMutex<Vec<Pid>, TB>,
-  terminated:  AtomicBool,
+  pid:                    Pid,
+  parent:                 Option<Pid>,
+  name:                   String,
+  system:                 ArcShared<SystemStateGeneric<TB>>,
+  factory:                ArcShared<dyn ActorFactory<TB>>,
+  actor:                  ToolboxMutex<Box<dyn Actor<TB> + Send + Sync>, TB>,
+  pipeline:               MessageInvokerPipelineGeneric<TB>,
+  mailbox:                ArcShared<MailboxGeneric<TB>>,
+  dispatcher:             DispatcherGeneric<TB>,
+  sender:                 ArcShared<DispatcherSenderGeneric<TB>>,
+  children:               ToolboxMutex<Vec<Pid>, TB>,
+  child_stats:            ToolboxMutex<Vec<(Pid, RestartStatistics)>, TB>,
+  watchers:               ToolboxMutex<Vec<Pid>, TB>,
+  pipe_tasks:             ToolboxMutex<Vec<ContextPipeTask<TB>>, TB>,
+  adapter_handles:        ToolboxMutex<Vec<AdapterRefHandle<TB>>, TB>,
+  adapter_handle_counter: AtomicU64,
+  pipe_task_counter:      AtomicU64,
+  terminated:             AtomicBool,
 }
 
 unsafe impl<TB: RuntimeToolbox + 'static> Send for ActorCellGeneric<TB> {}
@@ -81,6 +91,8 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     let children = <TB::MutexFamily as SyncMutexFamily>::create(Vec::new());
     let child_stats = <TB::MutexFamily as SyncMutexFamily>::create(Vec::new());
     let watchers = <TB::MutexFamily as SyncMutexFamily>::create(Vec::new());
+    let pipe_tasks = <TB::MutexFamily as SyncMutexFamily>::create(Vec::new());
+    let adapter_handles = <TB::MutexFamily as SyncMutexFamily>::create(Vec::new());
 
     let cell = ArcShared::new(Self {
       pid,
@@ -96,6 +108,10 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
       children,
       child_stats,
       watchers,
+      pipe_tasks,
+      adapter_handles,
+      adapter_handle_counter: AtomicU64::new(0),
+      pipe_task_counter: AtomicU64::new(0),
       terminated: AtomicBool::new(false),
     });
 
@@ -144,6 +160,12 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     self.dispatcher.clone()
   }
 
+  /// Returns a sender handle targeting this actor cell's mailbox.
+  #[must_use]
+  pub(crate) fn mailbox_sender(&self) -> ArcShared<DispatcherSenderGeneric<TB>> {
+    self.sender.clone()
+  }
+
   /// Produces an actor reference targeting this cell.
   #[must_use]
   pub fn actor_ref(&self) -> ActorRefGeneric<TB> {
@@ -186,6 +208,8 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
 
   fn mark_terminated(&self) {
     self.terminated.store(true, Ordering::Release);
+    self.drop_adapter_refs();
+    self.drop_pipe_tasks();
   }
 
   fn is_terminated(&self) -> bool {
@@ -206,6 +230,80 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
 
   pub(crate) fn handle_unwatch(&self, watcher: Pid) {
     self.watchers.lock().retain(|pid| *pid != watcher);
+  }
+
+  /// Allocates and tracks a new adapter handle for message adapters.
+  pub(crate) fn acquire_adapter_handle(&self) -> (AdapterRefHandleId, ArcShared<AdapterLifecycleState<TB>>) {
+    let id = self.adapter_handle_counter.fetch_add(1, Ordering::Relaxed) + 1;
+    let handle_id = AdapterRefHandleId::new(id);
+    let lifecycle = ArcShared::new(AdapterLifecycleState::new(self.system.clone(), self.pid));
+    let handle = AdapterRefHandle::new(handle_id, lifecycle.clone());
+    self.adapter_handles.lock().push(handle);
+    (handle_id, lifecycle)
+  }
+
+  /// Removes the specified adapter handle and marks it as stopped.
+  pub(crate) fn remove_adapter_handle(&self, handle_id: AdapterRefHandleId) {
+    let mut handles = self.adapter_handles.lock();
+    if let Some(index) = handles.iter().position(|handle| handle.id() == handle_id) {
+      let handle = handles.remove(index);
+      handle.stop();
+    }
+  }
+
+  /// Drops every tracked adapter handle, notifying senders that the actor stopped.
+  pub(crate) fn drop_adapter_refs(&self) {
+    let mut handles = self.adapter_handles.lock();
+    for handle in handles.iter() {
+      handle.stop();
+    }
+    handles.clear();
+  }
+
+  /// Registers a new pipe task and schedules its first poll.
+  pub(crate) fn spawn_pipe_task(&self, future: ContextPipeFuture<TB>) -> Result<(), PipeSpawnError> {
+    if self.is_terminated() {
+      return Err(PipeSpawnError::TargetStopped);
+    }
+    let id = ContextPipeTaskId::new(self.pipe_task_counter.fetch_add(1, Ordering::Relaxed) + 1);
+    let task = ContextPipeTask::new(id, future, self.pid, self.system.clone());
+    {
+      let mut tasks = self.pipe_tasks.lock();
+      tasks.push(task);
+    }
+    self.poll_pipe_task(id);
+    Ok(())
+  }
+
+  fn poll_pipe_task(&self, task_id: ContextPipeTaskId) {
+    let message = {
+      let mut tasks = self.pipe_tasks.lock();
+      let Some(index) = tasks.iter().position(|task| task.id() == task_id) else {
+        return;
+      };
+      match tasks[index].poll() {
+        | Poll::Ready(message) => {
+          tasks.swap_remove(index);
+          Some(message)
+        },
+        | Poll::Pending => None,
+      }
+    };
+
+    if let Some(message) = message {
+      match self.actor_ref().tell(message) {
+        | Ok(()) => {},
+        | Err(error) => self.system.record_send_error(Some(self.pid), &error),
+      }
+    }
+  }
+
+  fn drop_pipe_tasks(&self) {
+    self.pipe_tasks.lock().clear();
+  }
+
+  fn handle_pipe_task_ready(&self, task_id: ContextPipeTaskId) {
+    self.poll_pipe_task(task_id);
   }
 
   fn notify_watchers_on_stop(&self) {
@@ -249,6 +347,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
       ctx.clear_reply_to();
     }
 
+    self.drop_pipe_tasks();
     self.publish_lifecycle(LifecycleStage::Stopped);
     self.recreate_actor();
     let outcome = self.run_pre_start(LifecycleStage::Restarted);
@@ -420,6 +519,10 @@ impl<TB: RuntimeToolbox + 'static> MessageInvoker<TB> for ActorCellGeneric<TB> {
         Ok(())
       },
       | SystemMessage::Terminated(pid) => self.handle_terminated(pid),
+      | SystemMessage::PipeTask(task_id) => {
+        self.handle_pipe_task_ready(task_id);
+        Ok(())
+      },
     }
   }
 }

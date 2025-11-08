@@ -1,18 +1,19 @@
 //! Typed actor context wrapper.
 
-use core::{marker::PhantomData, ptr::NonNull};
+use core::{future::Future, marker::PhantomData, ptr::NonNull};
 
 use cellactor_utils_core_rs::sync::NoStdToolbox;
 
 use crate::{
   RuntimeToolbox,
-  actor_prim::{ActorContextGeneric, Pid},
+  actor_prim::{ActorContextGeneric, Pid, PipeSpawnError},
   error::SendError,
   messaging::AnyMessageGeneric,
   spawn::SpawnError,
   system::ActorSystemGeneric,
   typed::{
     actor_prim::{actor_ref::TypedActorRefGeneric, child_ref::TypedChildRefGeneric},
+    message_adapter::{AdaptMessage, AdapterError, AdapterFailure, MessageAdapterRegistry},
     props::TypedPropsGeneric,
   },
 };
@@ -22,8 +23,9 @@ pub struct TypedActorContextGeneric<'a, M, TB = NoStdToolbox>
 where
   M: Send + Sync + 'static,
   TB: RuntimeToolbox + 'static, {
-  inner:   NonNull<ActorContextGeneric<'a, TB>>,
-  _marker: PhantomData<(&'a mut ActorContextGeneric<'a, TB>, M)>,
+  inner:    NonNull<ActorContextGeneric<'a, TB>>,
+  adapters: Option<NonNull<MessageAdapterRegistry<M, TB>>>,
+  _marker:  PhantomData<(&'a mut ActorContextGeneric<'a, TB>, M)>,
 }
 
 /// Type alias for [TypedActorContextGeneric] with the default [NoStdToolbox].
@@ -35,8 +37,11 @@ where
   TB: RuntimeToolbox + 'static,
 {
   /// Creates a typed wrapper from the provided untyped context.
-  pub(crate) fn from_untyped(inner: &mut ActorContextGeneric<'a, TB>) -> Self {
-    Self { inner: NonNull::from(inner), _marker: PhantomData }
+  pub(crate) fn from_untyped(
+    inner: &mut ActorContextGeneric<'a, TB>,
+    adapters: Option<&mut MessageAdapterRegistry<M, TB>>,
+  ) -> Self {
+    Self { inner: NonNull::from(inner), adapters: adapters.map(NonNull::from), _marker: PhantomData }
   }
 
   const fn inner(&self) -> &ActorContextGeneric<'a, TB> {
@@ -142,5 +147,72 @@ where
   /// Provides mutable access to the underlying untyped context.
   pub const fn as_untyped_mut(&mut self) -> &mut ActorContextGeneric<'a, TB> {
     self.inner_mut()
+  }
+
+  fn registry_ptr(&self) -> Result<NonNull<MessageAdapterRegistry<M, TB>>, AdapterError> {
+    self.adapters.ok_or(AdapterError::RegistryUnavailable)
+  }
+
+  /// Registers a message adapter for the specified payload type.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the registry is unavailable or if registration fails.
+  pub fn message_adapter<U, F>(&mut self, adapter: F) -> Result<TypedActorRefGeneric<U, TB>, AdapterError>
+  where
+    U: Send + Sync + 'static,
+    F: Fn(U) -> Result<M, AdapterFailure> + Send + Sync + 'static, {
+    let ctx_ptr = self.inner;
+    let registry_ptr = self.registry_ptr()?;
+    let actor_ref = unsafe {
+      let ctx_ref = ctx_ptr.as_ref();
+      let registry = &mut *registry_ptr.as_ptr();
+      registry.register::<U, _>(ctx_ref, adapter)?
+    };
+    Ok(TypedActorRefGeneric::from_untyped(actor_ref))
+  }
+
+  /// Spawns a dedicated message adapter.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the registry is unavailable or if adapter registration fails.
+  pub fn spawn_message_adapter<U, F>(
+    &mut self,
+    _name: Option<&str>,
+    adapter: F,
+  ) -> Result<TypedActorRefGeneric<U, TB>, AdapterError>
+  where
+    U: Send + Sync + 'static,
+    F: Fn(U) -> Result<M, AdapterFailure> + Send + Sync + 'static, {
+    self.message_adapter(adapter)
+  }
+
+  /// Pipes a future back into the actor, adapting the response on the actor thread.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the actor is unavailable or stops before the task runs.
+  pub fn pipe_to_self<U, E, Fut, MapOk, MapErr>(
+    &mut self,
+    future: Fut,
+    map_ok: MapOk,
+    map_err: MapErr,
+  ) -> Result<(), PipeSpawnError>
+  where
+    Fut: Future<Output = Result<U, E>> + Send + 'static,
+    U: Send + Sync + 'static,
+    E: Send + Sync + 'static,
+    MapOk: Fn(U) -> Result<M, AdapterFailure> + Send + Sync + 'static,
+    MapErr: Fn(E) -> Result<M, AdapterFailure> + Send + Sync + 'static, {
+    let mapped = async move {
+      let outcome = future.await;
+      let adapt = AdaptMessage::<M, TB>::new(outcome, move |result: Result<U, E>| match result {
+        | Ok(value) => map_ok(value),
+        | Err(error) => map_err(error),
+      });
+      AnyMessageGeneric::new(adapt)
+    };
+    self.inner().pipe_to_self(mapped, |message| message)
   }
 }

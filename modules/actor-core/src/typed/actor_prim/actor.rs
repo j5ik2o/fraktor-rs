@@ -3,8 +3,11 @@
 use cellactor_utils_core_rs::sync::NoStdToolbox;
 
 use crate::{
-  RuntimeToolbox, actor_prim::Pid, error::ActorError, supervision::SupervisorStrategy,
-  typed::actor_prim::actor_context::TypedActorContextGeneric,
+  RuntimeToolbox,
+  actor_prim::Pid,
+  error::{ActorError, ActorErrorReason},
+  supervision::SupervisorStrategy,
+  typed::{actor_prim::actor_context::TypedActorContextGeneric, message_adapter::AdapterFailure},
 };
 
 /// Defines the lifecycle hooks for actors that operate on a typed message `M`.
@@ -57,5 +60,18 @@ where
   #[must_use]
   fn supervisor_strategy(&mut self, _ctx: &mut TypedActorContextGeneric<'_, M, TB>) -> SupervisorStrategy {
     SupervisorStrategy::default()
+  }
+
+  /// Called when a message adapter fails before delivering a message.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the failure cannot be handled.
+  fn on_adapter_failure(
+    &mut self,
+    _ctx: &mut TypedActorContextGeneric<'_, M, TB>,
+    _failure: AdapterFailure,
+  ) -> Result<(), ActorError> {
+    Err(ActorError::recoverable(ActorErrorReason::new("message adapter failure")))
   }
 }

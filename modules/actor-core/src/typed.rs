@@ -10,6 +10,8 @@ mod behavior_runner;
 mod behavior_signal;
 /// Functional behavior builders inspired by Pekko.
 mod behaviors;
+/// Message adapter primitives bridging external protocols.
+pub mod message_adapter;
 /// Typed props that wrap untyped props.
 mod props;
 /// Builder for assigning supervisor strategies to behaviors.
@@ -30,6 +32,7 @@ mod unhandled_message_event;
 pub use behavior::Behavior;
 pub use behavior_signal::BehaviorSignal;
 pub use behaviors::Behaviors;
+pub use message_adapter::{AdapterError, AdapterFailure, AdapterOutcome, AdapterPayload, MessageAdapterRegistry};
 pub use props::{TypedProps, TypedPropsGeneric};
 pub use supervise::Supervise;
 pub use system::{TypedActorSystem, TypedActorSystemGeneric};

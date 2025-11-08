@@ -3,12 +3,12 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::{string::String, vec::Vec};
-use core::marker::PhantomData;
+use alloc::{boxed::Box, string::String, vec::Vec};
+use core::{future::Future, marker::PhantomData};
 
 use crate::{
   NoStdToolbox, RuntimeToolbox,
-  actor_prim::{ChildRefGeneric, Pid, actor_ref::ActorRefGeneric},
+  actor_prim::{ChildRefGeneric, Pid, actor_ref::ActorRefGeneric, pipe_spawn_error::PipeSpawnError},
   error::SendError,
   logging::LogLevel,
   messaging::{AnyMessageGeneric, SystemMessage},
@@ -196,5 +196,27 @@ impl<'a, TB: RuntimeToolbox + 'static> ActorContextGeneric<'a, TB> {
   /// Emits a log event associated with the running actor.
   pub fn log(&self, level: LogLevel, message: impl Into<String>) {
     self.system.emit_log(level, message.into(), Some(self.pid));
+  }
+
+  /// Pipes the completion of an asynchronous computation back to the running actor.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the actor is unavailable or already stopped.
+  pub fn pipe_to_self<Fut, Map, Output>(&self, future: Fut, map: Map) -> Result<(), PipeSpawnError>
+  where
+    Fut: Future<Output = Output> + Send + 'static,
+    Map: FnOnce(Output) -> AnyMessageGeneric<TB> + Send + 'static, {
+    let state = self.system.state();
+    let Some(cell) = state.cell(&self.pid) else {
+      return Err(PipeSpawnError::ActorUnavailable);
+    };
+
+    let mapped = async move {
+      let value = future.await;
+      map(value)
+    };
+
+    cell.spawn_pipe_task(Box::pin(mapped))
   }
 }
