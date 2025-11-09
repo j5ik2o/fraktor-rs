@@ -20,6 +20,7 @@
 - `MAX_FIELDS_PER_AGGREGATE = 128`: 1 集約あたり 128 フィールド。`heapless::Vec` で 2KB 未満のスタック使用に収まる。
 - `MAX_FIELD_PATH_BYTES = 96`: Telemetry/監視向けに `FieldPathDisplay` を `ArrayVec<u8, 96>` で保持。UTF-8 のみ許容し、超過時は登録エラー。
 - `LATENCY_THRESHOLD_US = 250`: デフォルトで 250µs を超えたシリアライズ処理のみ Telemetry Event を発行。クレート機能 `serializer-latency-threshold` で上書き可能。
+- `ValueType::Pure`: `Copy + 'static` かつ `Drop`/内部可変性/外部リソースハンドルを持たない値型の集合。`external_serializer_allowed` はこの分類に属する末端フィールドだけに付与でき、AggregateSchemaBuilder が静的検証する。
 
 ## アーキテクチャ
 
@@ -129,6 +130,7 @@ flowchart TD
   - `fn deserialize_aggregate<T>(&self, payload: &SerializedPayload, ctx: &SerializerContext) -> Result<T, SerializationError>`
 - **再ラップ禁止**: 子シリアライザは `FieldPayload { raw_bytes: Bytes, child_manifest: String, child_serializer_id: u32 }` を返し、親側の `FieldEnvelopeBuilder` にのみ `SerializedPayload` を生成する権限を与える。ジェネリクスで `FieldPayload` 以外を受け付けないことで R1.AC3 を保証する。
 - **並行性**: `heapless::Vec<FieldNode, MAX_FIELDS_PER_AGGREGATE>` と `ArrayVec<FieldPathSegment, MAX_FIELD_PATH_DEPTH>` をスタック上で確保。1 呼び出しあたり 3KB 未満のスタックを消費し、`RuntimeToolbox` のスタック制約内に収まる。
+- **Telemetry 計測フック**: `serialize_aggregate` 開始時に `TelemetryService::start_timer` を呼び、子フィールドごとの `record_latency/record_success/record_failure` を実行。`ctx.telemetry_config.latency_threshold_us` を超えない場合はカウンタ更新のみ行う。
 
 #### SerializerContext
 - `SerializerContext` は `ArcShared<SerializerRegistry<TB>>`, `TelemetryService`, `TelemetryConfig`, `PekkoCompatibilityMode` を含む不変構造体。ActorSystem 起動時に構築し、`serialize` 呼び出し毎に `&SerializerContext` を受け渡す。
@@ -185,6 +187,11 @@ flowchart TD
 - `EventStreamEvent` に `Serialization(SerializationEvent)` を追加。サブスクライバは既存イベントと同等の方法で購読可能。
 - `SerializationEvent` バリアント: `Latency`, `Fallback`, `BindingError`, `DebugTrace`, `SuccessCounter`, `FailureCounter`。
 
+### ExternalSerializerAdapter
+- **責務**: `external_serializer_allowed` な末端フィールドに対して登録済み外部シリアライザ（serde 等）を呼び出し、得られたバイト列を `FieldEnvelopeBuilder` へ渡す。
+- **API**: `fn serialize_with_external(&self, field: &FieldNode, value: &dyn erased_serde::Serialize) -> Result<FieldPayload, SerializationError>`。
+- **安全策**: Policy で許可されていない場合は即座に Err を返し、Telemetry にフォールバック理由を送出。成功時は `TelemetryCounters.external_success` を更新し、親エンベロープのヘッダを保護する。
+
 ## データモデル
 - **Bytes**: `modules/actor-core/src/serialization/bytes.rs` にある所有バッファ。`FieldPayload` や `SerializedPayload` で共有し追加コピーを避ける。
 - **FieldPath**: `ArrayVec<FieldPathSegment, MAX_FIELD_PATH_DEPTH>` を `segments` として保持し、内部的に数値インデックスのみでトラバース順序を管理する。
@@ -210,14 +217,15 @@ flowchart TD
   1. `FieldTraversalEngine` が DFS 既定順序を保持し、BFS 指定で順序が変わることを検証。
   2. `ExternalSerializerPolicy::enforce` が `external_serializer_allowed` + `EnvelopeMode::PreserveOrder` の組を通過させる、その他を拒否する。
   3. `FieldEnvelopeBuilder::finalize` が Pekko 参照ベクタのバイト列と一致することを fixture で確認。
+  4. `PekkoSerializable` を実装した型にデフォルト serializer_id/manifest が自動割当され、重複時にエラーが返ることをテスト。
 - **統合テスト**
   1. `AggregateSchema` を登録した ActorSystem で `serialize`→`deserialize` の往復を行い、`FieldPathHash` と Telemetry イベントを検証。
   2. 循環を含む schema で ActorSystem 起動が失敗し、Telemetry/DeadLetter にイベントが発行されることを確認。
   3. `external_serializer_allowed` な末端フィールドを serde で処理した際、外部成功カウンタが増加し、親エンベロープが保持されることを確認。
 - **性能テスト**
   1. 深さ 16／32 の集約を 100µs/400µs 以内でシリアライズできるか測定。
-  2. 1 秒あたり 10,000 メッセージを処理しても Telemetry ヒストグラムが飽和しないことを確認。
-  3. `FieldPathHash` 生成が 200ns 以内で完了することをベンチマーク。
+  2. 1 秒あたり 10,000 メッセージを処理しても Telemetry ヒストグラムが飽和せず、`latency_threshold_us` 境界でイベント有無が正しく切り替わることを確認。
+  3. `FieldPathHash` 生成が 200ns 以内で完了し、`FieldPathDisplay` が上限を超えた場合に登録エラーとなることを確認。
 
 ## セキュリティ
 - `external_serializer_allowed` は `ValueType::Pure`（Copy, `'static`, 副作用なし）のみ許可し、外部ライブラリへ渡るデータを限定。
