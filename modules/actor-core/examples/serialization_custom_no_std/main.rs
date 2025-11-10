@@ -14,9 +14,9 @@ use cellactor_actor_core_rs::{
   messaging::AnyMessageView,
   props::Props,
   serialization::{
-    SerializationCallScope, SerializationError, SerializationExtension, SerializationExtensionId, SerializationSetup,
-    SerializationSetupBuilder, SerializedMessage, Serializer, SerializerId, SerializerWithStringManifest,
-    TransportInformation,
+    NotSerializableError, SerializationCallScope, SerializationError, SerializationExtension, SerializationExtensionId,
+    SerializationSetup, SerializationSetupBuilder, SerializedMessage, Serializer, SerializerId,
+    SerializerWithStringManifest, TransportInformation,
   },
   system::ActorSystem,
 };
@@ -41,7 +41,7 @@ impl TelemetrySerializer {
   }
 
   fn payload_error(&self) -> SerializationError {
-    SerializationError::not_serializable(cellactor_actor_core_rs::serialization::NotSerializableError::new(
+    SerializationError::not_serializable(NotSerializableError::new(
       "TelemetryPayload",
       Some(self.id),
       Some(TELEMETRY_MANIFEST.into()),
