@@ -1,0 +1,89 @@
+# Implementation Plan
+
+- [ ] 1. System queueとMailbox状態機構をPekko互換へ再設計する
+  - CASベースのSystemQueueノード・push/unlink・DeadLetterフォールバックを実装し、旧systemキューとの差し替えを行う
+  - MailboxInstrumentationでsystemキュー長を計測し、EventStreamへ統合
+  - _Requirements: R1_
+- [ ] 1.1 SystemQueueのデータ構造と排他制御を実装する
+  - `AtomicPtr`によるpush/popとLIFO→FIFO変換を構築し、enqueue失敗時の再試行とDeadLetter搬送を実装
+  - SystemMessage連鎖をdrainするリストAPIを提供し、メトリクス更新を組み込む
+  - _Requirements: R1_
+- [ ] 1.2 MailboxStateEngineを追加しregisterForExecutionヒントを扱う
+  - Scheduled/Suspended/Running/Closedビットフィールドとsuspendカウンタを実装し、set_as_scheduled/set_as_idleのCAS制御を提供
+  - SystemQueue drain後の再スケジューリング手順とNeedRescheduleフラグをMailbox/Dispatcher間で共有
+  - _Requirements: R1, R5_
+
+- [ ] 2. MailboxバックプレッシャーとDequeベースのStash基盤を整備する
+  - utils-coreにDequeBackendを追加し、Block戦略とWaitQueue連動を可能にする
+  - StashとMailbox双方がDequeHandle経由でpush_front/pop_frontできるようにし、capacity警告やDeadLetter通知を統合
+  - _Requirements: R3, R9_
+- [ ] 2.1 DequeBackendとQueueCapabilityRegistryを拡張する
+  - SpinMutex + VecDequeを用いたDequeBackendを実装し、push_front/backとBlockingFuture対応を提供
+  - QueueCapabilityRegistryでDeque/BlockingFuture capabilityを検証し、未登録時は初期化エラーを返す
+  - _Requirements: R3, R9_
+- [ ] 2.2 StashDequeHandleとMailbox統合を行う
+  - Propsから渡されるStashConfigに応じてDequeHandleを割り当て、RequiresMessageQueue<Deque>を満たさない場合はSpawnErrorを返す
+  - Stash操作時の容量超過をStashOverflowError + DeadLetter通知で処理
+  - _Requirements: R3_
+- [ ] 2.3 BackpressurePublisherとMailboxPressureイベントを追加する
+  - Mailbox利用率が閾値を超えた際にEventStreamへMailboxPressureをpublishし、メトリクスにcapacity/throughput情報を含める
+  - Block戦略時の待機/解除でBackpressurePublisherが通知するよう改善
+  - _Requirements: R3, R4_
+
+- [ ] 3. DispatcherスケジューリングとFutureハンドシェイクを強化する
+  - registerForExecutionにhasMessageHint/hasSystemMessageHintを導入し、RejectedExecutionリトライとIdle復帰を実装
+  - MailboxOfferFuture/MailboxPollFutureとScheduleWakerの連携を再設計し、NeedRescheduleを確実に伝播
+  - _Requirements: R2, R8_
+- [ ] 3.1 DispatcherCoreのスケジューリングロジックを更新する
+  - throughput/deadline設定を読み込み、ヒント付きregisterForExecutionと1回限りのスケジュールを保証
+  - RejectedExecutionを2回まで再試行し、失敗時はEventStreamへエラーとIdle復帰を送出
+  - _Requirements: R2_
+- [ ] 3.2 MailboxFutureとScheduleWakerのハンドシェイクを改修する
+  - ScheduleHintsをFutureに渡し、poll_pending時にNeedRescheduleがDispatcherへ伝わるようにする
+  - MailboxPollFutureにも同じwaker基盤を適用し、Pending時のschedule呼び出しと軽量スピン制御を整備
+  - _Requirements: R2, R8_
+
+- [ ] 4. Config resolver APIをRustベースで提供する
+  - DispatchersService/MailboxesServiceへregister/resolve APIを実装し、Propsから常にresolverを通じて設定を取得
+  - Requirement mismatchや未知IDをConfigErrorとして返し、SpawnErrorと連動
+  - _Requirements: R6_
+- [ ] 4.1 DispatchersServiceの登録・解決フローを実装する
+  - ホストアプリがDispatcherConfigを登録できるAPIを提供し、Props/ActorCellがID→Descriptor解決を行う
+  - 既定Dispatcherや優先順位（Props.deploy→dispatcher指定→デフォルト）をPekko順序で適用
+  - _Requirements: R6_
+- [ ] 4.2 MailboxesServiceとRequiresMessageQueue検証を実装する
+  - MailboxConfig登録APIとresolve_mailboxを実装し、RequiresMessageQueue/ProducesMessageQueue要件を検証
+  - Deque要件を満たさない場合はConfigError::RequirementMismatchを返却
+  - _Requirements: R3, R6_
+
+- [ ] 5. STDブリッジと観測性拡張を実装する
+  - ScheduleAdapterでSTD/no_std双方のwaker生成を抽象化し、Tokio/Thread実装を追加
+  - DispatcherDumpServiceとStdBridge telemetryを組み込み、RejectedExecutionやbackpressureをEventStreamへ報告
+  - _Requirements: R4, R7, R8_
+- [ ] 5.1 ScheduleAdapter/StdBridgeのwaker連携を実装する
+  - Tokio/Thread向けのScheduleAdapterがcreate_waker/spawn_scheduledを提供し、ScheduleWakerがadapter経由でwakerを生成
+  - MailboxOfferFuture/MailboxPollFutureが新adapterを用いるよう置き換え、RejectedExecution通知パスを確立
+  - _Requirements: R7, R8_
+- [ ] 5.2 DispatcherDumpとTelemetry拡張を追加する
+  - DispatcherDumpServiceを実装し、actorごとのキュー長とワーカ情報を取得できるAPIを提供
+  - StdBridgeからbackpressureイベント/ログをEventStreamへ送信し、管理者が状態を把握できるようにする
+  - _Requirements: R4, R7_
+
+- [ ] 6. フェーズ移行とfeature flag統合を行う
+  - System queue, state engine, config resolver, deque backend, STD bridge それぞれをfeature flagないし構成で段階的に有効化できるようにする
+  - SystemState初期化とActorSystem起動パスで各サービスの登録タイミングとfallbackを整備
+  - _Requirements: R1-R9_
+
+- [ ] 7. テスト・検証を網羅する
+  - SystemQueue/MailboxStateEngine/DequeBackend/ConfigResolver/StdBridgeの単体テストを追加
+  - ActorCell→Mailbox→Dispatcher統合テスト、Stash/Block/backpressureシナリオ、TokioブリッジのE2Eテストを実装
+  - 性能・回帰テストで System queue CAS, Block戦略のオーバーヘッド、DispatcherDump呼び出しを検証
+  - _Requirements: R1-R9_
+- [ ] 7.1 単体テストを追加する
+  - SystemQueue push/drain、MailboxStateEngineの状態遷移、DequeBackend/QueueCapabilityRegistryの挙動を検証
+  - Config resolver APIの登録/解決/エラー経路、StdBridge ScheduleAdapterのwaker生成をテスト
+  - _Requirements: R1-R9_
+- [ ] 7.2 統合・性能テストを実行する
+  - ActorCell経由のSystemMessage優先処理、Stashを含むMailbox動作、Tokio実行器でのNeedReschedule再投入をE2Eで確認
+  - BackpressureイベントとDispatcherDumpが観測できること、Block戦略時のFuture待機が安定することを性能テストで検証
+  - _Requirements: R1-R9_

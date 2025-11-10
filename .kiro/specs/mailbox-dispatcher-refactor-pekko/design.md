@@ -68,10 +68,10 @@ graph TD
    - **Rationale**: Pekko と同一論理を再現しやすく、CAS で競合制御がしやすい。
    - **Trade-offs**: 状態遷移を誤ると livelock の恐れ、包括的テストが必須。
 
-3. **Decision**: Config resolver を `DispatchersService`/`MailboxesService` として追加し、Props から dispatcher/mailbox ID を **Rust API で登録された** `DispatcherConfig`/`MailboxConfig` に必ずマッピングする。
+3. **Decision**: Config resolver を `Dispatchers`/`Mailboxes` として追加し、Props から dispatcher/mailbox ID を **Rust API で登録された** `DispatcherConfig`/`MailboxConfig` に必ずマッピングする。
    - **Context**: Pekko の `Dispatchers.lookup`/`Mailboxes.getMailboxType` 機構をファイルに依存せず Rust コード内で再現する必要。
    - **Alternatives**: (a) Props に直接ロジックを書く、(b) SystemState に配置、(c) サービスモジュール化。
-   - **Selected Approach**: (c) `modules/actor-core/src/config/dispatchers.rs` 等で Resolver + Registry を定義し、ホストアプリが `DispatchersService::register(id, DispatcherConfig)` / `MailboxesService::register(id, MailboxConfig)` を呼んだ後に ActorSystem を起動する。Props の `with_dispatcher("custom-id")` 等は Resolver を経由して構造体を取得し、既存 `DispatcherConfig`/`MailboxConfig` 型をそのまま利用する。
+   - **Selected Approach**: (c) `modules/actor-core/src/config/dispatchers.rs` 等で Resolver + Registry を定義し、ホストアプリが `Dispatchers::register(id, DispatcherConfig)` / `Mailboxes::register(id, MailboxConfig)` を呼んだ後に ActorSystem を起動する。Props の `with_dispatcher("custom-id")` 等は Resolver を経由して構造体を取得し、既存 `DispatcherConfig`/`MailboxConfig` 型をそのまま利用する。
    - **Rationale**: API ベースで設定を差し替えられるため、ビルド時に型安全に構成でき、外部ファイルのパースやフォーマット差異に依存しない。
    - **Trade-offs**: 初期ブートストラップで Resolver に適切な登録を行わないと ActorSystem 生成が失敗するため、起動コードに追加の初期化手順が必要。
 
@@ -127,9 +127,9 @@ graph LR
 | R1 | system message 優先 + CAS | `SystemQueue`, `MailboxStateEngine` | `enqueue_system`, `system_drain` | SystemMessage Dispatch |
 | R2 | Dispatcher scheduling/リトライ | `DispatcherCore`, `DispatchExecutorAdapter` | `register_for_execution`, `execute` | Sequence + State Machine |
 | R3 | Backpressure/Block/Stash | `MailboxCore`, `DequeBackend`, `BackpressurePublisher` | `enqueue_user`, `MailboxOfferFuture`, `StashDeque` | State Machine |
-| R4 | Telemetry/Dump | `MailboxInstrumentation`, `DispatcherDumpService` | `publish_metrics`, `export_dump` | System Flow (EventStream) |
+| R4 | Telemetry/Dump | `MailboxInstrumentation`, `DispatcherDump` | `publish_metrics`, `export_dump` | System Flow (EventStream) |
 | R5 | Mailbox state machine | `MailboxStateEngine` | `set_as_scheduled`, `set_as_idle` | State diagram |
-| R6 | Config 駆動解決 | `DispatchersService`, `MailboxesService` | `resolve_dispatcher(id)`, `resolve_mailbox(requirement)` | Migration P3 |
+| R6 | Config 駆動解決 | `Dispatchers`, `Mailboxes` | `resolve_dispatcher(id)`, `resolve_mailbox(requirement)` | Migration P3 |
 | R7 | STD ブリッジ | `StdBridge`, `TokioAdapter` | `spawn_async`, `yield_waker` | System Flow extension |
 | R8 | Future handshake | `MailboxOfferFuture`, `MailboxPollFuture`, `ScheduleWaker` | `poll_pending`, `poll_user_future` | Sequence |
 | R9 | utils-core queue capability | `DequeBackend`, `QueueCapabilityRegistry` | `push_front`, `pop_front`, `ensure_blocking_future` | Migration P4 |
@@ -168,12 +168,12 @@ graph LR
   - Interface: `fn execute(&self, task: DispatchShared) -> Result<(), DispatchError>`。
   - STD 側（Tokio/Thread）と no_std Inline executor を抽象化。
 
-### Config Resolution Services
-- **DispatchersService** (`config/dispatchers.rs`)
+### Config Resolution
+- **Dispatchers** (`config/dispatchers.rs`)
   - Stores map<`DispatcherId`, `DispatcherDescriptor`>。
   - API: `fn register(id: &str, cfg: DispatcherConfig)` / `fn resolve(id: &str) -> Result<DispatcherDescriptor, ConfigError>`。
   - `DispatcherDescriptor` includes `throughput`, `deadline`, `executor_adapter`。
-- **MailboxesService** (`config/mailboxes.rs`)
+- **Mailboxes** (`config/mailboxes.rs`)
   - Maintains requirement bindings: `RequiresMessageQueue<Trait>` → `MailboxType`。
   - API: `fn register(id: &str, cfg: MailboxConfig)` / `resolve_mailbox(props: &Props, dispatcher_config: &DispatcherDescriptor) -> Result<MailboxTypeDescriptor, ConfigError>`。
   - Handles Deque requirement mismatch → `ConfigError::RequirementMismatch`。
@@ -188,7 +188,7 @@ graph LR
 - **StdBridge** (`actor-std/src/bridge/scheduler.rs`)
   - `ScheduleAdapter` trait を新設し、no_std では `InlineScheduleAdapter` が、STD では `TokioScheduleAdapter`/`ThreadScheduleAdapter` が `create_waker()` と `spawn_scheduled(task: DispatchShared, hints: ScheduleHints)` を実装する。`ScheduleWaker` は adapter を引数に取り、Tokio では `tokio::task::waker_ref` を用いた waker を返し、no_std では従来の spin-loop waker を返す。
   - MailboxOfferFuture/MailboxPollFuture は `ScheduleAdapter::create_waker()` が生成した waker で poll されるため、STD/nostd どちらでも NeedReschedule が正しく通知される。RejectedExecution 発生時は `StdBridge::notify_rejected()` が adapter 経由で `EventStream` へ backpressure イベントを publish し、同時に `MailboxStateEngine::set_idle(false)` を呼び出す。
-- **DispatcherDumpService** (`actor-std/src/diagnostics/dispatcher_dump.rs`)
+- **DispatcherDump** (`actor-std/src/diagnostics/dispatcher_dump.rs`)
   - API: `fn dump(&self) -> DispatcherDump` (per actor queue length, executing worker IDs)。
   - Called via runtime admin API or CLI。
 
@@ -203,7 +203,7 @@ graph LR
 ### Data Contracts & Integration
 - **EventStreamEvent::MailboxPressure**: `{ pid: Pid, user_percent: u8, capacity: Option<usize>, timestamp: Duration }`。
 - **DispatcherDump** JSON (admin API): `[{ actor: String, pid: Pid, mailbox_user_len: usize, state: String, worker: Option<String> }]`。
-- **Config Provisioning API**: ホストアプリは `DispatchersService::register(id, DispatcherConfig)` / `MailboxesService::register(id, MailboxConfig)` を ActorSystem 初期化前に呼び出し、設定ファイルではなく Rust コード内で型安全に構成する。
+- **Config Provisioning API**: ホストアプリは `Dispatchers::register(id, DispatcherConfig)` / `Mailboxes::register(id, MailboxConfig)` を ActorSystem 初期化前に呼び出し、設定ファイルではなく Rust コード内で型安全に構成する。
 
 ## Error Handling
 - **SystemQueueError**: `Full`, `CasConflict`, `Closed` → `DeadLetterReason::MailboxFull` or re-enqueue。
@@ -214,20 +214,20 @@ graph LR
 
 ### Monitoring
 - MailboxInstrumentation に `MailboxPressure` publish を追加。
-- DispatcherDumpService を `SystemState` へ登録し CLI から取得。
+- DispatcherDump を `SystemState` へ登録し CLI から取得。
 - `tokio-console` 連携用に `StdBridge` で `tracing` span を emit。
 
 ## Testing Strategy
 - **Unit**
   1. SystemQueue push/drain の CAS 再試行。
   2. MailboxStateEngine suspend/resume + register hints。
-  3. DispatchersService requirement 解決と mismatched error。
+  3. Dispatchers requirement 解決と mismatched error。
   4. DequeBackend push_front/pop_front + Block future。
   5. StdBridge RejectedExecution リトライ。
 - **Integration**
   1. ActorCell→Mailbox→Dispatcher end-to-end で system message ordering。
   2. Props から dispatcher/mailbox ID を割り当てて actor spawn。
-  3. Stash trait を有効化した actor で stash/unstash 
+  3. Stash trait を有効化した actor で stash/unstash
   4. EventStream から MailboxPressure/DispatcherDump を取得。
   5. Tokio executor 上で大量 enqueue を行い backpressure future が正しく待機する。
 - **Performance/Load**
