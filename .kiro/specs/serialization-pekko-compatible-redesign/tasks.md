@@ -1,17 +1,17 @@
 # Implementation Plan
 
-- [ ] 1. シリアライゼーションセットアップと構成パイプラインを整備する
-- [ ] 1.1 Builder DSL と検証ロジックを実装する
+- [x] 1. シリアライゼーションセットアップと構成パイプラインを整備する
+- [x] 1.1 Builder DSL と検証ロジックを実装する
   - `register_serializer` / `bind::<Marker>()` 連鎖で TypeId と SerializerId を確定し、予約域チェックや重複検知を組み込む
   - `bind_remote_manifest::<T>` と `require_manifest_for_scope` で Remoting/Persistence 用の manifest 必須条件を表現し、欠落時は BuilderError を返せるようにする
   - Setup 生成時に `SerializationCallScope` 要件や Fallback シリアライザの存在を検証し、構成ミスを初期化前に弾く
   - _Requirements: R1.1-R1.6, R2.4, R5.1-R5.4_
-- [ ] 1.2 SerializationConfigAdapter チェーンと優先順位処理を追加する
+- [x] 1.2 SerializationConfigAdapter チェーンと優先順位処理を追加する
   - Adapter トレイトを定義し、外部設定ソースからの登録差分を Builder へ適用できるようにする
   - Extension 初期化シーケンスで「programmatic builder → adapters → built-in defaults」の順序を保証し、衝突は BuilderError に集約する
   - Adapter 適用履歴を Setup に保持し、`shutdown` 時に破棄できるようメタデータを付与する
   - _Requirements: R1.1, R5.2-R5.4_
-- [ ] 1.3 SerializationSetup イミュータブル構造と構成プロファイルを確定する
+- [x] 1.3 SerializationSetup イミュータブル構造と構成プロファイルを確定する
   - `SerializationSetup` に serializers/bindings/manifest_routes/fallback_serializer/adapter_state を格納するフィールドを整備する
   - Scope ごとの manifest ルールや builder 由来の DSL 設定を Setup 内に保持し、Extension へ受け渡す
   - Setup から派生するデバッグ/監査情報を EventStream へ発行できるようメソッドを用意する
