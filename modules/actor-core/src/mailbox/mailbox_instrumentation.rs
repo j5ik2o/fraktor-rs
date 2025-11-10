@@ -8,9 +8,11 @@ use alloc::format;
 use cellactor_utils_core_rs::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
 
 use crate::{
-  RuntimeToolbox, actor_prim::Pid, event_stream::EventStreamEvent, logging::LogLevel, mailbox::MailboxMetricsEvent,
-  system::SystemStateGeneric,
+  RuntimeToolbox, actor_prim::Pid, event_stream::EventStreamEvent, logging::LogLevel,
+  mailbox::{MailboxMetricsEvent, MailboxPressureEvent}, system::SystemStateGeneric,
 };
+
+const PRESSURE_THRESHOLD_PERCENT: usize = 75;
 
 /// Provides mailbox metrics publication facilities.
 #[derive(Clone)]
@@ -43,12 +45,28 @@ impl<TB: RuntimeToolbox + 'static> MailboxInstrumentationGeneric<TB> {
     let timestamp = self.system_state.monotonic_now();
     let event = MailboxMetricsEvent::new(self.pid, user_len, system_len, self.capacity, self.throughput, timestamp);
     self.system_state.publish_event(&EventStreamEvent::Mailbox(event));
+    self.publish_pressure(user_len, timestamp);
 
     if let Some(threshold) = self.warn_threshold
       && user_len >= threshold
     {
       let message = format!("mailbox backlog reached {} (threshold: {})", user_len, threshold);
       self.system_state.emit_log(LogLevel::Warn, message, Some(self.pid));
+    }
+  }
+
+  fn publish_pressure(&self, user_len: usize, timestamp: core::time::Duration) {
+    let Some(capacity) = self.capacity else {
+      return;
+    };
+    if capacity == 0 {
+      return;
+    }
+
+    let utilization = ((user_len.saturating_mul(100)) / capacity).min(100) as u8;
+    if utilization as usize >= PRESSURE_THRESHOLD_PERCENT {
+      let event = MailboxPressureEvent::new(self.pid, user_len, capacity, utilization, timestamp);
+      self.system_state.publish_event(&EventStreamEvent::MailboxPressure(event));
     }
   }
 }

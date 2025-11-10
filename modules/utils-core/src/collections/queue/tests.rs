@@ -186,7 +186,7 @@ use priority_message::TestPriorityMessage;
 
 use crate::{
   collections::queue::{
-    VecRingStorage,
+    DequeBackend, QueueCapability, QueueCapabilityRegistry, QueueCapabilitySet, VecRingStorage,
     backend::{OfferOutcome, OverflowPolicy, VecRingBackend, sync_priority_backend::BinaryHeapPriorityBackend},
     capabilities::{SingleConsumer, SingleProducer, SupportsPeek},
     type_keys::{FifoKey, MpscKey, PriorityKey, SpscKey},
@@ -318,4 +318,22 @@ fn vec_ring_backend_provides_fifo_behavior() {
   assert_eq!(queue.poll().unwrap(), 2);
   assert_eq!(queue.poll().unwrap(), 3);
   assert_eq!(queue.poll().unwrap(), 4);
+}
+
+#[test]
+fn deque_backend_supports_double_ended_operations() {
+  let deque = DequeBackend::with_capacity(2, OverflowPolicy::Block);
+
+  assert!(matches!(deque.offer_back(1), Ok(OfferOutcome::Enqueued)));
+  assert!(matches!(deque.offer_front(2), Ok(OfferOutcome::Enqueued)));
+
+  assert_eq!(deque.poll_front().ok(), Some(2));
+  assert_eq!(deque.poll_back().ok(), Some(1));
+}
+
+#[test]
+fn queue_capability_registry_reports_missing_capability() {
+  let registry = QueueCapabilityRegistry::new(QueueCapabilitySet::default().with_deque(false));
+  let err = registry.ensure(QueueCapability::Deque).expect_err("deque capability should be missing");
+  assert_eq!(err.missing(), QueueCapability::Deque);
 }

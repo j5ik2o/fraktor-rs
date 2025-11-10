@@ -150,15 +150,35 @@ graph LR
 - Interacts with Dispatcher via `ScheduleHints { has_user_hint, has_system_hint }`。
 
 ### Backpressure & Deque Infrastructure
-- **DequeBackend** (`utils-core/src/collections/queue/deque_backend.rs`)
-  - 実装: `SpinMutex<VecDeque<T>>` を backend に持つ single-consumer multi-producer deque。`offer_back/offer_front` は `SpinMutex` を取得して `VecDeque` を更新し、`poll_front/poll_back` は単一 consumer（Mailbox）から呼ばれる前提。
-  - WaitQueue 連携: `offer_blocking_front/back` が `QueueOfferFuture` を返し、待機ノードは既存 `WaitQueue` に `ProducerWaiterKind::Deque` として登録。`poll_front` 完了時に `notify_producer_waiter()` が実行され、Block 戦略で待っている Future が解除される。
-  - `DequeHandle` trait を導入し、Mailbox/Stash 双方が `push_front_envelope`, `push_back_envelope`, `pop_front_envelope` を通じてデータアクセスする。Trait は `&self` / `&mut self` を明示し、API ごとに `SendError`/`QueueError` を返すことで型安全に扱う。
-- **StashDequeHandle** (`actor-core/src/stash/deque_handle.rs`)
-  - Provides `push_front_envelope`, `pop_front_envelope` for `StashSupport`。
-  - Validates capacity vs `StashConfig` and returns `StashOverflowError`。
-- **BackpressurePublisher**
-  - Watches queue fill ratio >= 75% で `EventStreamEvent::MailboxPressure` を publish。
+- **DequeBackend MVP** (`utils-core/src/collections/queue/deque_backend.rs`)
+  - `SpinMutex<VecDeque<T>>` を backend に持つ single-consumer multi-producer deque を提供。`offer_back/offer_front` と `poll_front/poll_back` をサポートし、Block 戦略時は `DequeOfferFuture` で待機する。
+  - WaitQueue 連携で `offer_blocking_*` が `QueueOfferFuture` 互換の wake を受け取れるようにし、Mailbox 側の Block 戦略で利用する。
+- **QueueCapabilityRegistry**
+  - `QueueCapability::{Mpsc, Deque, BlockingFuture}` を宣言し、Mailbox/Props/Spawner が必要 capability を検証できるようにする。欠落時は `QueueCapabilityError::Missing` を返し、SpawnError に紐付ける。
+- **BackpressurePublisher フェーズ分割**
+  1. *Phase BP-1 (この iteration)*: MailboxInstrumentation が 75% 以上で `EventStreamEvent::MailboxPressure` を publish。Dispatcher 抑制や DeadLetter 連携はまだしない。
+  2. *Phase BP-2*: DispatcherCore が `MailboxPressureEvent` を消費し、StateEngine 経由で registerForExecution 頻度を抑制する。BackpressurePublisher が Dispatcher へヒントを渡すための hook を追加する。
+- **StashDequeHandle ロードマップ**
+  - ステップ0: Mailbox に Deque backend を初期化する capability を追加し、RequiresMessageQueue 検証の土台を作る（本 iteration）。
+  - ステップ1: `actor-core/src/stash/` に `DequeHandle` と `StashConfig` を導入し、Props が要件を宣言できるようにする（次 iteration）。
+  - ステップ2: Typed/Classic API へ stash/unstash を公開し、Deque capability を runtime で強制する。
+
+### Blocking Strategy & Timeout API
+- Mailbox の Block 戦略は `QueueOfferFuture`/`DequeOfferFuture` で「空きが出るまで待機」するが、Pekko 互換の timeout/DeadLetter 処理を追加するには runtime 全体でタイマー抽象化が必要。
+- **Timer Abstraction**: SystemState に monotonic clock があるものの、Future 経由で timeout を伝搬する API が未定義。次フェーズで `DelayFuture`（tokio/no_std 切り替え可能）を導入し、`MailboxOfferFuture::with_timeout(Duration)` を設計する。
+- **Timeout Handling Flow**: Mailbox enqueue → (Block strategy) → Timeout 発生で DeadLetter + `Result::Err` を返す → DispatcherSender が送信者へ伝播。design にこのフローを明記。
+
+### Backpressure/Dispatcher Integration (新セクション)
+1. MailboxInstrumentation が `MailboxPressureEvent` を publish。
+2. SystemState が PressureEvent を EventStream へ流しつつ、将来的に Dispatcher へ Notification を転送する hook を持つ。
+3. DispatcherCore/StateEngine が pressure 状態を保持し、registerForExecution の頻度や throughput を調整。
+4. BackpressurePublisher は EventStream 経由の telemetry に加え、`ScheduleHints` へ「backpressure active」ビットを追加予定（今後の iteration）。
+
+### RequiresMessageQueue & Stash (更新)
+- `RequiresMessageQueue` 相当の仕組みは Rust 側に存在しないため、以下の MVP を採用：
+  - Props に `MailboxRequirement` を追加し（例: `MailboxRequirement::Deque`）、Spawner が `QueueCapabilityRegistry` を用いて検証する。
+  - Mailbox 生成時に capability を宣言し、欠落時は `SpawnError::MailboxCapabilityMissing { requirement, mailbox }` を返す。
+  - Stash 本体は次フェーズで導入し、`StashDequeHandle` が `DequeBackend` を wrap する。
 
 ### Dispatcher Enhancements
 - **DispatcherCore v2** (`dispatcher/dispatcher_core.rs`)

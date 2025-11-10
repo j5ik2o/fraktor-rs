@@ -8,7 +8,7 @@ use crate::{
   dead_letter::DeadLetterEntryGeneric,
   lifecycle::LifecycleEvent,
   logging::LogEvent,
-  mailbox::MailboxMetricsEvent,
+  mailbox::{MailboxMetricsEvent, MailboxPressureEvent},
   serialization::SerializationErrorEvent,
   typed::{UnhandledMessageEvent, message_adapter::AdapterFailureEvent},
 };
@@ -24,6 +24,8 @@ pub enum EventStreamEvent<TB: RuntimeToolbox = NoStdToolbox> {
   Log(LogEvent),
   /// Mailbox metrics snapshot.
   Mailbox(MailboxMetricsEvent),
+  /// Mailbox capacity pressure notification.
+  MailboxPressure(MailboxPressureEvent),
   /// Unhandled message notification from typed behaviors.
   UnhandledMessage(UnhandledMessageEvent),
   /// Message adapter failure notification.
@@ -39,6 +41,7 @@ impl<TB: RuntimeToolbox> Clone for EventStreamEvent<TB> {
       | Self::DeadLetter(entry) => Self::DeadLetter(entry.clone()),
       | Self::Log(event) => Self::Log(event.clone()),
       | Self::Mailbox(event) => Self::Mailbox(event.clone()),
+      | Self::MailboxPressure(event) => Self::MailboxPressure(event.clone()),
       | Self::UnhandledMessage(event) => Self::UnhandledMessage(event.clone()),
       | Self::AdapterFailure(event) => Self::AdapterFailure(event.clone()),
       | Self::Serialization(event) => Self::Serialization(event.clone()),

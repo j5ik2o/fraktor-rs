@@ -34,7 +34,7 @@ pub use mailbox_queue_handles::QueueHandles;
 pub use mailbox_queue_offer_future::QueueOfferFuture;
 pub use mailbox_queue_poll_future::QueuePollFuture;
 pub use mailbox_queue_state::QueueState;
-pub use metrics_event::MailboxMetricsEvent;
+pub use metrics_event::{MailboxMetricsEvent, MailboxPressureEvent};
 pub use overflow_strategy::MailboxOverflowStrategy;
 pub use policy::MailboxPolicy;
 pub use state_engine::{MailboxStateEngine, ScheduleHints};

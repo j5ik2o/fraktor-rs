@@ -18,22 +18,26 @@
   - Idle復帰時のDeadLetter drainとEventStream通知、Closed遷移の完了イベントを追加する
   - _Requirements: R1, R5_
 
-- [ ] 2. MailboxバックプレッシャーとDeque/Stash基盤を強化する
-  - OverflowStrategy=Drop/Fail/Block/DeadLetter各ルートの振る舞いを再定義し、Block戦略はFutureで非同期待機させる
-  - MailboxPressureイベントの発火条件とActorSystemへの通知経路を整理し、BackpressurePublisherを導入する
-  - _Requirements: R3_
-- [ ] 2.1 utils-core QueueCapabilityRegistryをDeque/BlockingFuture対応へ拡張する
+- [ ] 2. Mailboxバックプレッシャー/Deque/Stash基盤を段階導入する
+  - Phase BP-1: Deque backendとQueueCapabilityRegistryを整備し、MailboxPressure telemetryをpublishする
+  - Phase BP-2: Block戦略とbackpressure抑制ロジックをDispatcher連携まで拡張し、Stash向けDeque APIの足場を作る
+  - _Requirements: R3, R4_
+- [x] 2.1 utils-core QueueCapabilityRegistryをDeque/BlockingFuture対応へ拡張する
   - QueueCapabilityセットへDeque/BlockingFutureフラグを追加し、欠落時はMailbox初期化を失敗させるエラーを返す
   - DequeBackendをSpinMutex+VecDequeで実装し、push_front/back・pop_front/backとWaitQueue連携をFuture APIと統合する
   - _Requirements: R3, R9_
-- [ ] 2.2 MailboxOverflow/Block処理とBackpressurePublisherを連携させる
-  - OverflowStrategy=Block時にMailboxOfferFutureを介して送信側をawaitさせ、タイムアウト時は明示的な`Result::Err`とDeadLetterを返す
-  - Mailbox利用率75%超過を検出したら EventStream へ `MailboxPressure` をpublishし、Dispatcherにスケジューリング抑制ヒントを渡す
+- [ ] 2.2 Block戦略のtimeout/telemetryとDispatcher抑制フローを設計する
+  - MailboxOfferFuture/DequeOfferFutureへtimeout設定を伝搬するTimer抽象化を設計し、Block戦略時のDeadLetter + `Result::Err` 返却フローを定義する
+  - MailboxInstrumentationがpublishする `MailboxPressure` を Dispatcher/StateEngine のスケジュールヒントに反映させる BackpressurePublisher API を記述する
   - _Requirements: R3, R4_
-- [ ] 2.3 StashDequeHandleとRequiresMessageQueue<Deque>の契約を実装する
-  - Props/StashConfigの容量とDeque要件を検証し、満たさない場合はSpawnErrorで必要なqueue capabilityを指摘する
-  - stash/unstash操作をDequeHandle API経由に統一し、容量オーバー時はStashOverflowエラーとDeadLetter転送を行う
+- [ ] 2.3 StashDequeHandle足場とDeque capability検証を実装する
+  - PropsにMailboxRequirementを追加し、QueueCapabilityRegistryでDeque/BlockingFuture欠落を検出してSpawnErrorへ伝播する
+  - `actor-core/src/stash/deque_handle.rs`（仮）にDequeHandleトレイトを定義し、Mailboxから両端操作を提供する準備を行う（stash/unstash本体は後フェーズ）
   - _Requirements: R3, R9_
+- [ ] 2.4 BackpressurePublisher実装とDeadLetter/telemetry統合を完了する
+  - Block戦略timeout完了時にDeadLetterへoverflow原因を添えてpublishし、`MailboxPressureEvent`と合わせてEventStreamへ配信する
+  - DispatcherCoreがBackpressurePublisherからのシグナルでregisterForExecution頻度やthroughputを調整するhookを導入する
+  - _Requirements: R3, R4_
 
 - [ ] 3. Dispatcherスケジューリングとフェアネス制御を再設計する
   - Pekko準拠のthroughput・throughput-deadline・starvation検出を導入し、Idle復帰と再スケジューリング条件を明文化する
