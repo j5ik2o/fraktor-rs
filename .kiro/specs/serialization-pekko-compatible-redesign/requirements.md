@@ -102,7 +102,7 @@ pub trait Serializer: Send + Sync {
 }
 
 /// 文字列マニフェスト対応シリアライザ（Pekko SerializerWithStringManifest互換）
-pub trait StringManifestSerializer: Serializer {
+pub trait SerializerWithStringManifest: Serializer {
     /// メッセージの型マニフェストを取得（PekkoのSerializerWithStringManifest.manifest）
     /// Pekkoではエラーなしで必ず成功するためStringを返す
     fn manifest(&self, msg: &dyn Any) -> String;
@@ -117,23 +117,9 @@ pub trait StringManifestSerializer: Serializer {
 
 /// ゼロコピー最適化シリアライザ（Pekko ByteBufferSerializer互換）
 /// デシリアライズはSerializerのfrom_binaryを使用
-pub trait BytesSerializer: Serializer {
+pub trait ByteBufferSerializer: Serializer {
     /// バッファ再利用でシリアライズ（PekkoのtoBinary(o, buf)）
-    fn to_bytes_mut(&self, msg: &dyn Any, buf: &mut BytesMut) -> Result<(), SerializationError>;
-}
-
-/// 非同期シリアライザ（Pekko AsyncSerializer互換）
-#[async_trait]
-pub trait AsyncSerializer: Serializer {
-    /// 非同期シリアライズ（PekkoのtoBinaryAsync）
-    async fn to_binary_async(&self, msg: &dyn Any) -> Result<Bytes, SerializationError>;
-
-    /// 非同期デシリアライズ（PekkoのfromBinaryAsync）
-    async fn from_binary_async(
-        &self,
-        bytes: Bytes,
-        type_hint: Option<TypeId>,
-    ) -> Result<Box<dyn Any + Send>, SerializationError>;
+    fn to_buffer(&self, msg: &dyn Any, buf: &mut impl BufMut) -> Result<(), SerializationError>;
 }
 ```
 
@@ -225,7 +211,6 @@ impl SerializedMessage {
 ```rust
 pub struct Serialization {
     registry: Arc<SerializationRegistry>,
-    transport_context: Option<Arc<TransportContext>>,
 }
 
 impl Serialization {
@@ -237,8 +222,8 @@ impl Serialization {
         let bytes = serializer.to_binary(msg)?;
 
         let manifest = if serializer.include_manifest() {
-            // StringManifestSerializerの場合はmanifestを取得
-            if let Some(sm) = serializer.as_any().downcast_ref::<dyn StringManifestSerializer>() {
+            // SerializerWithStringManifestの場合はmanifestを取得
+            if let Some(sm) = serializer.as_any().downcast_ref::<dyn SerializerWithStringManifest>() {
                 Some(sm.manifest(msg))
             } else {
                 None
@@ -262,8 +247,8 @@ impl Serialization {
         let serializer = self.registry.serializer_by_id(serialized.serializer_id)?;
 
         if let Some(manifest) = &serialized.manifest {
-            // StringManifestSerializerの場合
-            if let Some(sm) = serializer.as_any().downcast_ref::<dyn StringManifestSerializer>() {
+            // SerializerWithStringManifestの場合
+            if let Some(sm) = serializer.as_any().downcast_ref::<dyn SerializerWithStringManifest>() {
                 return sm.from_binary_with_manifest(serialized.bytes.clone(), manifest);
             }
         }
@@ -281,7 +266,7 @@ impl Serialization {
         let serializer = self.registry.serializer_by_id(serialized.serializer_id)?;
 
         if let Some(manifest) = &serialized.manifest {
-            if let Some(sm) = serializer.as_any().downcast_ref::<dyn StringManifestSerializer>() {
+            if let Some(sm) = serializer.as_any().downcast_ref::<dyn SerializerWithStringManifest>() {
                 return sm.from_binary_with_manifest(serialized.bytes.clone(), manifest);
             }
         }
@@ -378,8 +363,8 @@ impl Serializer for ASerializer {
     }
 }
 
-// StringManifestSerializerを使う場合の例
-impl StringManifestSerializer for ASerializer {
+// SerializerWithStringManifestを使う場合の例
+impl SerializerWithStringManifest for ASerializer {
     fn manifest(&self, _msg: &dyn Any) -> String {
         "example.A".to_string()
     }
