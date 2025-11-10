@@ -12,75 +12,384 @@ Pekko と protoactor-go のシリアライゼーション設計を参考に、Ac
 **Objective:** ランタイム管理者として、起動時に設定とプログラム登録を統合した衝突のないレジストリを構築し、常に正しいシリアライザを即座に解決したい。
 
 #### Acceptance Criteria
-1. When ActorSystem起動時にSerialization Extensionの初期化が開始される, the Serializationサービス shall 設定値とコード登録を優先順位規則に従ってマージし、完了時に一意の識別子を持つレジストリを構築する。
-2. If 2つ以上のシリアライザが同一の識別子を宣言する, then the Serializationサービス shall 初期化を失敗させて衝突内容をログへ記録し、ActorSystemの起動を中止する。
-3. When 型情報からシリアライザ解決が要求される, the Serializationレジストリ shall TypeId完全一致 > トレイトタグや明示的に登録された代替候補 > フォールバックシリアライザの順で探索し、各段階の結果をキャッシュして次回以降をメモリアクセスのみで完了させる。
-4. If 該当するシリアライザが見つからない, then the Serializationサービス shall NotSerializableエラーを返し、型名と要求元PIDおよび利用中Transportヒントをエラーデータに含める。
+1. When ActorSystem起動時にSerialization Extensionの初期化が開始される, Serialization shall `programmatic setup builder > (optional) external config adapter > built-in default` の順で登録ソースを評価し、当該ライブラリではプログラムAPIのみでレジストリを完成させられるようにする。
+2. If 2つ以上のシリアライザが同一の識別子を宣言する, then Serialization shall 初期化を失敗させて衝突内容をログへ記録し、ActorSystemの起動を中止する。
+3. When 型情報からシリアライザ解決が要求される, the SerializationRegistry shall TypeId完全一致 > `SerializationSetup` で宣言されたトレイトタグや明示バインディング > 最終フォールバックシリアライザ（例: AnySerializer）の順で探索し、各段階の結果をキャッシュして次回以降をメモリアクセスのみで完了させる。
+4. If 該当するシリアライザが見つからない, then Serialization shall NotSerializableエラーを返し、型名と要求元PIDおよび利用中Transportヒントをエラーデータに含める。
+5. When シリアライザidentifierが登録される, Serialization shall 0-40番をRuntime予約域として拒否し、ユーザ定義IDの衝突・バージョン情報を監査ログへ記録して Pekko 互換の命名規則を維持する。
+6. When アプリケーションが型とシリアライザのバインディングをAPI経由で登録する, Serialization shall 提供するBuilder/DSLで `register_serializer` と `bind::<Marker>()`（構造体・marker trait などのTypeIdを持つ型）を連鎖させ、設定ファイルを使わずに Pekko の `serialization-bindings` と同等の構成を再現できるようにする。
 
 ### Requirement 2: マニフェスト互換と型進化
 **Objective:** Persistence/Remoting利用者として、マニフェストを使った進化互換と再試行可能なエラー処理を備えた堅牢なシリアライゼーションを求める。
 
 #### Acceptance Criteria
-1. When マニフェスト対応シリアライザが同期シリアライズを実行する, the Serializationサービス shall 事前にmanifestを取得してバイト列とともにSerializedMessageへ格納する。
-2. If 受信側でマニフェスト文字列が未登録または旧バージョンと判断される, then the Serializationサービス shall NotSerializableエラー（manifest/serializerId/送信元ヒントを含む）を返し、Transport/Persistence層がリトライや接続維持を判断できる情報を提供する。
-3. While 複数バージョンのマニフェスト互換ロジックが設定されている, the Serializationレジストリ shall 優先順位リストに従って順次デシリアライズを試行し、成功時点で残りのロジックをスキップする。
-4. When シリアライザが「マニフェスト不要」と宣言する, the Serializationサービス shall TypeIdベースの直接復元を同一バイナリ内のローカル呼び出しに限定し、Persistence/Remotingへ送る際は論理マニフェスト文字列を付与するショートカットを自動適用しない。
+1. When マニフェスト対応シリアライザが同期シリアライズを実行する, Serialization shall 事前にmanifestを取得してバイト列とともにSerializedMessageへ格納する。
+2. If 受信側でマニフェスト文字列が未登録または旧バージョンと判断される, then Serialization shall NotSerializableエラー（manifest/serializerId/送信元ヒントを含む）を返し、Transport/Persistence層がリトライや接続維持を判断できる情報を提供する。
+3. While 複数バージョンのマニフェスト互換ロジックが設定されている, the SerializationRegistry shall 優先順位リストに従って順次デシリアライズを試行し、成功時点で残りのロジックをスキップする。
+4. When シリアライザが「マニフェスト不要」と宣言する, Serialization shall TypeIdベースの直接復元を同一バイナリ内のローカル呼び出しに限定し、Persistence/Remotingへ送る際は論理マニフェスト文字列を付与するショートカットを自動適用しない。
 
 ### Requirement 3: TransportコンテキストとExtension統合
 **Objective:** リモート通信開発者として、Transport情報とExtensionスコープが常に整合し、ActorRef文字列化やコンテキスト依存シリアライズが破綻しないようにしたい。
 
 #### Acceptance Criteria
 1. When RemotingやPersistenceがSerializationを呼び出す, the Serialization Extension shall Transport情報を (a) シリアライザAPI引数での明示受け渡し もしくは (b) thread-local などTokio task localに依存しないスレッドスコープなハンドル を通じて提供し、どちらを使うかを実装ガイドで明示する。
-2. If シリアライザがTransport情報へアクセスした際にスコープ外である, then the Serialization Extension shall エラーを返し、呼び出し元へTransport設定の欠落を通知する。
-3. While Transport情報が設定されている, the Serializationサービス shall ActorRefやActorPathをシリアライズするときに該当アドレス情報を含めて書き出す。
-4. When Serialization Extensionがシャットダウンを開始する, the Serializationサービス shall Transportスコープと関連キャッシュを即時クリアし、以降のアクセスに未初期化エラーを返す。
+2. If ActorRefやTransport依存シリアライザがTransport情報へアクセスした際にスコープ外である, then the Serialization Extension shall エラーを返し、ActorRef専用APIやTransportレイヤ経由で再実行するよう通知する。
+3. While Transport情報が設定されている, Serialization shall ActorRefやActorPathをシリアライズするときに該当アドレス情報を含めて書き出す一方、Transport非依存メッセージではTransport情報を参照しない。
+4. When Serialization Extensionがシャットダウンを開始する, Serialization shall Transportスコープと関連キャッシュを即時クリアし、以降のアクセスに未初期化エラーを返す。
+5. When Serialization Extensionの `serialize` / `deserialize` / `with_transport_information` APIが呼ばれる, Serialization shall Pekko互換でTransport情報を自動設定し、呼び出し完了時に必ず元のスコープへ復元する。
 
 ### Requirement 4: 非同期・高速パスと組み込みラインアップ
 **Objective:** ランタイム利用者として、非同期処理・ゼロコピー経路・最低限の組み込みシリアライザを備えた柔軟な拡張基盤を求める。
 
 #### Acceptance Criteria
-1. When AsyncSerializerが登録されている, the Serializationサービス shall 非同期APIを優先実行してFuture/Promiseを返し、呼び出し側がノンブロッキングで結果を待機できるようにする。
-2. If 同期APIがAsyncSerializerを内部で呼び出す, then the Serializationサービス shall 警告ログを出力し、同期待機が呼び出し側責務であることを明示した上で結果を返す。
-3. While BytesSerializerやRawBytes高速パスが有効になっている, the Serializationサービス shall `BytesSerializer`トレイト（`fn to_bytes_mut(&self, msg: &dyn Any, buf: &mut BytesMut)`）のように `&mut BytesMut` を受け取るAPIでバッファ再利用を定義し、ゼロコピーを仕様として明示する。
+1. When AsyncSerializerが登録されている, Serialization shall 非同期APIを優先実行してFuture/Promiseを返し、呼び出し側がノンブロッキングで結果を待機できるようにする。
+2. If 同期APIがAsyncSerializerを内部で呼び出す, then Serialization shall 警告ログを出力し、同期待機が呼び出し側責務であることを明示した上で結果を返す。
+3. While BytesSerializerやRawBytes高速パスが有効になっている, Serialization shall `BytesSerializer`トレイト（`fn to_bytes_mut(&self, msg: &dyn Any, buf: &mut BytesMut)`）のように `&mut BytesMut` を受け取るAPIでバッファ再利用を定義し、ゼロコピーを仕様として明示する。
 4. When ActorSystemが起動する, the Serialization Extension shall Null/Primitive/String/Bytes向けの組み込みシリアライザのみを登録し、ActorRefは Transport Extension 提供の専用シリアライザへ委譲する。
-5. If ActorRefのシリアライズ要求にTransport情報が添付されていない, then the Serializationサービス shall 明示的なエラーを返し、Transport Extensionを経由したAPIを利用するようガイドする。
+5. If ActorRefのシリアライズ要求にTransport情報が添付されていない, then Serialization shall 明示的なエラーを返し、Transport Extensionを経由した `serialize_actor_ref` のような専用APIを利用するようガイドする。
 
 ### Requirement 5: Serde非依存の仕様定義
 **Objective:** ランタイム設計者として、Serdeを利用する実装を許容しつつも仕様レイヤーが特定フレームワークへ依存しないことを保証したい。
 
 #### Acceptance Criteria
-1. When シリアライゼーションAPIを文書化する, the Serializationサービス shall Rust Serde固有の型・トレイト・マクロを仕様レベルの契約に含めない。
-2. If 個別実装がSerde専用シリアライザを提供したい, then the Serializationレジストリ shall それらを任意の追加エントリとして登録できるようにし、既定レジストリへ自動追加しない。
-3. While no_stdやSerde未対応ターゲットでActorSystemが動作している, the Serializationサービス shall Serde依存コードをリンクせずに全コア機能を利用可能であることを保証する。
-4. When 拡張ガイドやテンプレートがシリアライザ追加手順を示す, the Serializationサービス shall Serde以外の実装にも適用できる抽象API記述で共通化する。
+1. When シリアライゼーションAPIを文書化する, Serialization shall Rust Serde固有の型・トレイト・マクロを仕様レベルの契約に含めない。
+2. If 個別実装がSerde専用シリアライザを提供したい, then the SerializationRegistry shall それらを任意の追加エントリとして登録できるようにし、既定レジストリへ自動追加しない。
+3. While no_stdやSerde未対応ターゲットでActorSystemが動作している, Serialization shall Serde依存コードをリンクせずに全コア機能を利用可能であることを保証する。
+4. When 拡張ガイドやテンプレートがシリアライザ追加手順を示す, Serialization shall Serde以外の実装にも適用できる抽象API記述で共通化する。
 
 ### Requirement 6: ネスト型の再帰委譲
 **Objective:** カスタムシリアライザ作者として、複合メッセージ内の個々のフィールドを既存シリアライザへ委譲し、仕様全体で一貫したフォーマットとエラー管理を維持したい。
 
 #### Acceptance Criteria
-1. When A型のシリアライザが内部フィールドBのシリアライズを必要とする, the Serializationサービス shall 公開APIを通じて登録済みBシリアライザへ委譲できるようにする。
-2. If Bフィールドに対応するシリアライザが未登録である, then the Serializationサービス shall Result型でNotSerializableエラーを返し、Aシリアライザがエラーを伝播するか明示ログへ転写する運用ガイドを提供する。
-3. While 再帰的に委譲されたシリアル化が実行されている, the Serializationサービス shall Manifest/Transport情報を親呼び出しと共有し、ActorRefやアドレス情報がダブルシリアライズされないよう維持する。
-4. When デシリアライズで委譲ルートを辿る, the Serializationサービス shall Bのデシリアライザを呼び出した結果をそのままAの復元に利用できるようにし、成功/失敗をAシリアライザへ伝播する。
+1. When A型のシリアライザが内部フィールドBのシリアライズを必要とする, Serialization shall 公開APIを通じて登録済みBシリアライザへ委譲できるようにする。
+2. If Bフィールドに対応するシリアライザが未登録である, then Serialization shall Result型でNotSerializableエラーを返し、Aシリアライザがエラーを伝播するか明示ログへ転写する運用ガイドを提供する。
+3. While 再帰的に委譲されたシリアル化が実行されている, Serialization shall Manifest/Transport情報を親呼び出しと共有し、ActorRefやアドレス情報がダブルシリアライズされないよう維持する。
+4. When デシリアライズで委譲ルートを辿る, Serialization shall Bのデシリアライザを呼び出した結果をそのままAの復元に利用できるようにし、成功/失敗をAシリアライザへ伝播する。
 
 ## Appendix / 付録
 
-### BytesSerializerインタフェース例
-ゼロコピー経路をRustの所有権に沿って表現するための具体的なトレイト像。
+### コアトレイト案
+Pekko互換のシリアライザトレイト群の最小仕様。
+
 ```rust
-pub trait BytesSerializer {
+/// 基本シリアライザトレイト（Pekko Serializer互換）
+pub trait Serializer: Send + Sync {
+    /// シリアライザ識別子を返す（Pekkoのidentifier）
+    fn identifier(&self) -> SerializerId;
+
+    /// メッセージをバイト列にシリアライズ（PekkoのtoBinary）
+    fn to_binary(&self, msg: &dyn Any) -> Result<Bytes, SerializationError>;
+
+    /// バイト列からメッセージをデシリアライズ（PekkoのfromBinary）
+    /// type_hintはPekkoのmanifest: Option[Class[_]]に相当
+    fn from_binary(
+        &self,
+        bytes: Bytes,
+        type_hint: Option<TypeId>,
+    ) -> Result<Box<dyn Any + Send>, SerializationError>;
+
+    /// マニフェストを含めるか（PekkoのincludeManifest）
+    fn include_manifest(&self) -> bool {
+        false
+    }
+
+    /// ダウンキャスト用のAny参照
+    fn as_any(&self) -> &dyn Any;
+}
+
+/// 文字列マニフェスト対応シリアライザ（Pekko SerializerWithStringManifest互換）
+pub trait StringManifestSerializer: Serializer {
+    /// メッセージの型マニフェストを取得（PekkoのSerializerWithStringManifest.manifest）
+    /// Pekkoではエラーなしで必ず成功するためStringを返す
+    fn manifest(&self, msg: &dyn Any) -> String;
+
+    /// マニフェスト付きデシリアライズ（Pekkoのfrominary(bytes, manifest: String)）
+    fn from_binary_with_manifest(
+        &self,
+        bytes: Bytes,
+        manifest: &str,
+    ) -> Result<Box<dyn Any + Send>, SerializationError>;
+}
+
+/// ゼロコピー最適化シリアライザ（Pekko ByteBufferSerializer互換）
+/// デシリアライズはSerializerのfrom_binaryを使用
+pub trait BytesSerializer: Serializer {
+    /// バッファ再利用でシリアライズ（PekkoのtoBinary(o, buf)）
     fn to_bytes_mut(&self, msg: &dyn Any, buf: &mut BytesMut) -> Result<(), SerializationError>;
-    fn from_bytes(&self, buf: &mut Bytes) -> Result<Box<dyn Any + Send>, SerializationError>;
+}
+
+/// 非同期シリアライザ（Pekko AsyncSerializer互換）
+#[async_trait]
+pub trait AsyncSerializer: Serializer {
+    /// 非同期シリアライズ（PekkoのtoBinaryAsync）
+    async fn to_binary_async(&self, msg: &dyn Any) -> Result<Bytes, SerializationError>;
+
+    /// 非同期デシリアライズ（PekkoのfromBinaryAsync）
+    async fn from_binary_async(
+        &self,
+        bytes: Bytes,
+        type_hint: Option<TypeId>,
+    ) -> Result<Box<dyn Any + Send>, SerializationError>;
 }
 ```
 
-### AからBへの委譲コード例
-カスタムシリアライザAが登録済みのBシリアライザへ委譲する際の呼び出し順序を示す。
+### SerializedMessage構造体
+Pekkoのシリアライズ結果を表現する中核データ構造。
+
 ```rust
-fn serialize_a(a: &A, svc: &SerializationService) -> Result<Bytes, SerializationError> {
-    let mut buf = BytesMut::new();
-    svc.serialize_field::<B>(&a.b, &mut buf)?;
-    svc.serialize_field::<String>(&a.name, &mut buf)?;
-    Ok(buf.freeze())
+/// シリアライズ結果（Pekko SerializedMessage互換）
+#[derive(Debug, Clone)]
+pub struct SerializedMessage {
+    /// シリアライザ識別子
+    pub serializer_id: SerializerId,
+    /// 型マニフェスト（オプション）
+    pub manifest: Option<String>,
+    /// シリアライズされたバイト列
+    pub bytes: Bytes,
+}
+
+impl SerializedMessage {
+    /// Pekko互換フォーマットにエンコード
+    /// フォーマット: [serializer_id: u32][has_manifest: u8][manifest_len: u32]?[manifest]?[payload_len: u32][payload]
+    pub fn encode(&self) -> Bytes {
+        let mut buf = BytesMut::new();
+
+        // Serializer ID
+        buf.put_u32_le(self.serializer_id.0);
+
+        // Manifest
+        if let Some(manifest) = &self.manifest {
+            buf.put_u8(1); // has manifest flag
+            let manifest_bytes = manifest.as_bytes();
+            buf.put_u32_le(manifest_bytes.len() as u32);
+            buf.put_slice(manifest_bytes);
+        } else {
+            buf.put_u8(0); // no manifest
+        }
+
+        // Payload
+        buf.put_u32_le(self.bytes.len() as u32);
+        buf.put_slice(&self.bytes);
+
+        buf.freeze()
+    }
+
+    /// Pekko互換フォーマットからデコード
+    pub fn decode(mut bytes: Bytes) -> Result<Self, SerializationError> {
+        if bytes.remaining() < 5 {
+            return Err(SerializationError::InvalidFormat);
+        }
+
+        let serializer_id = SerializerId::new(bytes.get_u32_le());
+        let has_manifest = bytes.get_u8() != 0;
+
+        let manifest = if has_manifest {
+            if bytes.remaining() < 4 {
+                return Err(SerializationError::InvalidFormat);
+            }
+            let len = bytes.get_u32_le() as usize;
+            if bytes.remaining() < len {
+                return Err(SerializationError::InvalidFormat);
+            }
+            let manifest_bytes = bytes.split_to(len);
+            Some(String::from_utf8(manifest_bytes.to_vec())?)
+        } else {
+            None
+        };
+
+        if bytes.remaining() < 4 {
+            return Err(SerializationError::InvalidFormat);
+        }
+        let payload_len = bytes.get_u32_le() as usize;
+        if bytes.remaining() < payload_len {
+            return Err(SerializationError::InvalidFormat);
+        }
+        let payload = bytes.split_to(payload_len);
+
+        Ok(SerializedMessage {
+            serializer_id,
+            manifest,
+            bytes: payload,
+        })
+    }
+}
+```
+
+### Serialization API
+メッセージのシリアライズ/デシリアライズを統括するサービスAPI。
+
+```rust
+pub struct Serialization {
+    registry: Arc<SerializationRegistry>,
+    transport_context: Option<Arc<TransportContext>>,
+}
+
+impl Serialization {
+    /// メッセージをシリアライズ（Pekko Serialization.serialize互換）
+    pub fn serialize(&self, msg: &dyn Any) -> Result<SerializedMessage, SerializationError> {
+        let type_id = msg.type_id();
+        let serializer = self.registry.serializer_for_type(type_id)?;
+
+        let bytes = serializer.to_binary(msg)?;
+
+        let manifest = if serializer.include_manifest() {
+            // StringManifestSerializerの場合はmanifestを取得
+            if let Some(sm) = serializer.as_any().downcast_ref::<dyn StringManifestSerializer>() {
+                Some(sm.manifest(msg))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        Ok(SerializedMessage {
+            serializer_id: serializer.identifier(),
+            manifest,
+            bytes,
+        })
+    }
+
+    /// SerializedMessageからデシリアライズ（Pekko Serialization.deserialize互換）
+    pub fn deserialize(
+        &self,
+        serialized: &SerializedMessage,
+    ) -> Result<Box<dyn Any + Send>, SerializationError> {
+        let serializer = self.registry.serializer_by_id(serialized.serializer_id)?;
+
+        if let Some(manifest) = &serialized.manifest {
+            // StringManifestSerializerの場合
+            if let Some(sm) = serializer.as_any().downcast_ref::<dyn StringManifestSerializer>() {
+                return sm.from_binary_with_manifest(serialized.bytes.clone(), manifest);
+            }
+        }
+
+        // 通常のSerializerの場合
+        serializer.from_binary(serialized.bytes.clone(), None)
+    }
+
+    /// 型ヒント付きデシリアライズ
+    pub fn deserialize_with_type_hint(
+        &self,
+        serialized: &SerializedMessage,
+        type_hint: TypeId,
+    ) -> Result<Box<dyn Any + Send>, SerializationError> {
+        let serializer = self.registry.serializer_by_id(serialized.serializer_id)?;
+
+        if let Some(manifest) = &serialized.manifest {
+            if let Some(sm) = serializer.as_any().downcast_ref::<dyn StringManifestSerializer>() {
+                return sm.from_binary_with_manifest(serialized.bytes.clone(), manifest);
+            }
+        }
+
+        serializer.from_binary(serialized.bytes.clone(), Some(type_hint))
+    }
+}
+```
+
+### SerializerバインディングAPI例
+設定ファイルを使わずに型とシリアライザの対応を構築するBuilder DSLの一例。
+```rust
+let registry = SerializationBuilder::new()
+    .register_serializer("serde-json", SerializerId::new(101), SerdeJsonSerializer::new())
+    .register_serializer("serde-cbor", SerializerId::new(102), SerdeCborSerializer::new())
+    .register_serializer("prost", SerializerId::new(103), ProtobufSerializer::new())
+    .register_serializer("custom", SerializerId::new(201), MyOwnSerializer::new())
+    .bind::<JsonSerializable>("serde-json")
+    .bind::<CborSerializable>("serde-cbor")
+    .bind::<prost::Message>("prost")
+    .bind::<MyOwnSerializable>("custom")
+    .build()?;
+```
+ここで `JsonSerializable` / `CborSerializable` / `MyOwnSerializable` は零サイズの marker trait または newtype で、TypeId を媒介にシリアライザ解決を行う。
+
+### ネスト委譲メソッド例
+カスタムシリアライザ`ASerializer`内で`Serialization`のAPIを呼び出し、Bフィールドを委譲する際の実装イメージ。
+
+```rust
+/// A型のカスタムシリアライザ（ネスト型B, nameフィールドを持つ）
+pub struct ASerializer {
+    id: SerializerId,
+    serialization: Arc<Serialization>,
+}
+
+impl Serializer for ASerializer {
+    fn identifier(&self) -> SerializerId {
+        self.id
+    }
+
+    fn to_binary(&self, msg: &dyn Any) -> Result<Bytes, SerializationError> {
+        let a = msg
+            .downcast_ref::<A>()
+            .ok_or(SerializationError::TypeMismatch)?;
+
+        let mut buf = BytesMut::new();
+
+        // Bフィールドをシリアライズ（SerializedMessage全体を取得）
+        let b_serialized = self.serialization.serialize(&a.b)?;
+        let b_encoded = b_serialized.encode(); // Pekko互換フォーマットにエンコード
+        buf.put_slice(&b_encoded);
+
+        // nameフィールドをシリアライズ
+        let name_serialized = self.serialization.serialize(&a.name)?;
+        let name_encoded = name_serialized.encode();
+        buf.put_slice(&name_encoded);
+
+        Ok(buf.freeze())
+    }
+
+    fn from_binary(
+        &self,
+        bytes: Bytes,
+        _type_hint: Option<TypeId>,
+    ) -> Result<Box<dyn Any + Send>, SerializationError> {
+        let mut buf = bytes;
+
+        // Bフィールドをデシリアライズ
+        let b_serialized = SerializedMessage::decode(buf.clone())?;
+        let b_encoded_len = b_serialized.encode().len();
+        buf.advance(b_encoded_len);
+
+        let b_any = self.serialization.deserialize(&b_serialized)?;
+        let b = *b_any
+            .downcast::<B>()
+            .map_err(|_| SerializationError::TypeMismatch)?;
+
+        // nameフィールドをデシリアライズ
+        let name_serialized = SerializedMessage::decode(buf)?;
+        let name_any = self.serialization.deserialize(&name_serialized)?;
+        let name = *name_any
+            .downcast::<String>()
+            .map_err(|_| SerializationError::TypeMismatch)?;
+
+        Ok(Box::new(A { name, b }))
+    }
+
+    fn include_manifest(&self) -> bool {
+        false
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+// StringManifestSerializerを使う場合の例
+impl StringManifestSerializer for ASerializer {
+    fn manifest(&self, _msg: &dyn Any) -> String {
+        "example.A".to_string()
+    }
+
+    fn from_binary_with_manifest(
+        &self,
+        bytes: Bytes,
+        manifest: &str,
+    ) -> Result<Box<dyn Any + Send>, SerializationError> {
+        // マニフェストでバージョン管理などを行う
+        match manifest {
+            "example.A" | "example.A.v1" => self.from_binary(bytes, None),
+            _ => Err(SerializationError::UnknownManifest(manifest.to_string())),
+        }
+    }
 }
 ```
