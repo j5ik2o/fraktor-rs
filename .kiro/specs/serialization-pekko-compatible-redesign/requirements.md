@@ -82,13 +82,13 @@ pub trait Serializer: Send + Sync {
     fn identifier(&self) -> SerializerId;
 
     /// メッセージをバイト列にシリアライズ（PekkoのtoBinary）
-    fn to_binary(&self, msg: &dyn Any) -> Result<Bytes, SerializationError>;
+    fn to_binary(&self, msg: &dyn Any) -> Result<Vec<u8>, SerializationError>;
 
     /// バイト列からメッセージをデシリアライズ（PekkoのfromBinary）
     /// type_hintはPekkoのmanifest: Option[Class[_]]に相当
     fn from_binary(
         &self,
-        bytes: Bytes,
+        bytes: &[u8],
         type_hint: Option<TypeId>,
     ) -> Result<Box<dyn Any + Send>, SerializationError>;
 
@@ -110,7 +110,7 @@ pub trait SerializerWithStringManifest: Serializer {
     /// マニフェスト付きデシリアライズ（Pekkoのfrominary(bytes, manifest: String)）
     fn from_binary_with_manifest(
         &self,
-        bytes: Bytes,
+        bytes: &[u8],
         manifest: &str,
     ) -> Result<Box<dyn Any + Send>, SerializationError>;
 }
@@ -134,67 +134,82 @@ pub struct SerializedMessage {
     pub serializer_id: SerializerId,
     /// 型マニフェスト（オプション）
     pub manifest: Option<String>,
-    /// シリアライズされたバイト列
-    pub bytes: Bytes,
+    /// シリアライズされたバイト列（Phase 1: シンプルな Vec<u8>）
+    pub bytes: Vec<u8>,
 }
 
 impl SerializedMessage {
     /// Pekko互換フォーマットにエンコード
     /// フォーマット: [serializer_id: u32][has_manifest: u8][manifest_len: u32]?[manifest]?[payload_len: u32][payload]
-    pub fn encode(&self) -> Bytes {
-        let mut buf = BytesMut::new();
+    pub fn encode(&self) -> Vec<u8> {
+        let mut buf = Vec::new();
 
         // Serializer ID
-        buf.put_u32_le(self.serializer_id.0);
+        buf.extend_from_slice(&self.serializer_id.0.to_le_bytes());
 
         // Manifest
         if let Some(manifest) = &self.manifest {
-            buf.put_u8(1); // has manifest flag
+            buf.push(1); // has manifest flag
             let manifest_bytes = manifest.as_bytes();
-            buf.put_u32_le(manifest_bytes.len() as u32);
-            buf.put_slice(manifest_bytes);
+            buf.extend_from_slice(&(manifest_bytes.len() as u32).to_le_bytes());
+            buf.extend_from_slice(manifest_bytes);
         } else {
-            buf.put_u8(0); // no manifest
+            buf.push(0); // no manifest
         }
 
         // Payload
-        buf.put_u32_le(self.bytes.len() as u32);
-        buf.put_slice(&self.bytes);
+        buf.extend_from_slice(&(self.bytes.len() as u32).to_le_bytes());
+        buf.extend_from_slice(&self.bytes);
 
-        buf.freeze()
+        buf
     }
 
     /// Pekko互換フォーマットからデコード
-    pub fn decode(mut bytes: Bytes) -> Result<Self, SerializationError> {
-        if bytes.remaining() < 5 {
+    pub fn decode(bytes: &[u8]) -> Result<Self, SerializationError> {
+        if bytes.len() < 5 {
             return Err(SerializationError::InvalidFormat);
         }
 
-        let serializer_id = SerializerId::new(bytes.get_u32_le());
-        let has_manifest = bytes.get_u8() != 0;
+        let mut offset = 0;
+        let serializer_id = SerializerId::new(u32::from_le_bytes([
+            bytes[offset], bytes[offset+1], bytes[offset+2], bytes[offset+3]
+        ]));
+        offset += 4;
+
+        let has_manifest = bytes[offset] != 0;
+        offset += 1;
 
         let manifest = if has_manifest {
-            if bytes.remaining() < 4 {
+            if bytes.len() < offset + 4 {
                 return Err(SerializationError::InvalidFormat);
             }
-            let len = bytes.get_u32_le() as usize;
-            if bytes.remaining() < len {
+            let len = u32::from_le_bytes([
+                bytes[offset], bytes[offset+1], bytes[offset+2], bytes[offset+3]
+            ]) as usize;
+            offset += 4;
+
+            if bytes.len() < offset + len {
                 return Err(SerializationError::InvalidFormat);
             }
-            let manifest_bytes = bytes.split_to(len);
-            Some(String::from_utf8(manifest_bytes.to_vec())?)
+            let manifest_str = String::from_utf8(bytes[offset..offset+len].to_vec())?;
+            offset += len;
+            Some(manifest_str)
         } else {
             None
         };
 
-        if bytes.remaining() < 4 {
+        if bytes.len() < offset + 4 {
             return Err(SerializationError::InvalidFormat);
         }
-        let payload_len = bytes.get_u32_le() as usize;
-        if bytes.remaining() < payload_len {
+        let payload_len = u32::from_le_bytes([
+            bytes[offset], bytes[offset+1], bytes[offset+2], bytes[offset+3]
+        ]) as usize;
+        offset += 4;
+
+        if bytes.len() < offset + payload_len {
             return Err(SerializationError::InvalidFormat);
         }
-        let payload = bytes.split_to(payload_len);
+        let payload = bytes[offset..offset+payload_len].to_vec();
 
         Ok(SerializedMessage {
             serializer_id,
@@ -249,12 +264,12 @@ impl Serialization {
         if let Some(manifest) = &serialized.manifest {
             // SerializerWithStringManifestの場合
             if let Some(sm) = serializer.as_any().downcast_ref::<dyn SerializerWithStringManifest>() {
-                return sm.from_binary_with_manifest(serialized.bytes.clone(), manifest);
+                return sm.from_binary_with_manifest(&serialized.bytes, manifest);
             }
         }
 
         // 通常のSerializerの場合
-        serializer.from_binary(serialized.bytes.clone(), None)
+        serializer.from_binary(&serialized.bytes, None)
     }
 
     /// 型ヒント付きデシリアライズ
@@ -267,11 +282,11 @@ impl Serialization {
 
         if let Some(manifest) = &serialized.manifest {
             if let Some(sm) = serializer.as_any().downcast_ref::<dyn SerializerWithStringManifest>() {
-                return sm.from_binary_with_manifest(serialized.bytes.clone(), manifest);
+                return sm.from_binary_with_manifest(&serialized.bytes, manifest);
             }
         }
 
-        serializer.from_binary(serialized.bytes.clone(), Some(type_hint))
+        serializer.from_binary(&serialized.bytes, Some(type_hint))
     }
 }
 ```
@@ -307,37 +322,37 @@ impl Serializer for ASerializer {
         self.id
     }
 
-    fn to_binary(&self, msg: &dyn Any) -> Result<Bytes, SerializationError> {
+    fn to_binary(&self, msg: &dyn Any) -> Result<Vec<u8>, SerializationError> {
         let a = msg
             .downcast_ref::<A>()
             .ok_or(SerializationError::TypeMismatch)?;
 
-        let mut buf = BytesMut::new();
+        let mut buf = Vec::new();
 
         // Bフィールドをシリアライズ（SerializedMessage全体を取得）
         let b_serialized = self.serialization.serialize(&a.b)?;
         let b_encoded = b_serialized.encode(); // Pekko互換フォーマットにエンコード
-        buf.put_slice(&b_encoded);
+        buf.extend_from_slice(&b_encoded);
 
         // nameフィールドをシリアライズ
         let name_serialized = self.serialization.serialize(&a.name)?;
         let name_encoded = name_serialized.encode();
-        buf.put_slice(&name_encoded);
+        buf.extend_from_slice(&name_encoded);
 
-        Ok(buf.freeze())
+        Ok(buf)
     }
 
     fn from_binary(
         &self,
-        bytes: Bytes,
+        bytes: &[u8],
         _type_hint: Option<TypeId>,
     ) -> Result<Box<dyn Any + Send>, SerializationError> {
-        let mut buf = bytes;
+        let mut offset = 0;
 
         // Bフィールドをデシリアライズ
-        let b_serialized = SerializedMessage::decode(buf.clone())?;
+        let b_serialized = SerializedMessage::decode(&bytes[offset..])?;
         let b_encoded_len = b_serialized.encode().len();
-        buf.advance(b_encoded_len);
+        offset += b_encoded_len;
 
         let b_any = self.serialization.deserialize(&b_serialized)?;
         let b = *b_any
@@ -345,7 +360,7 @@ impl Serializer for ASerializer {
             .map_err(|_| SerializationError::TypeMismatch)?;
 
         // nameフィールドをデシリアライズ
-        let name_serialized = SerializedMessage::decode(buf)?;
+        let name_serialized = SerializedMessage::decode(&bytes[offset..])?;
         let name_any = self.serialization.deserialize(&name_serialized)?;
         let name = *name_any
             .downcast::<String>()
@@ -371,7 +386,7 @@ impl SerializerWithStringManifest for ASerializer {
 
     fn from_binary_with_manifest(
         &self,
-        bytes: Bytes,
+        bytes: &[u8],
         manifest: &str,
     ) -> Result<Box<dyn Any + Send>, SerializationError> {
         // マニフェストでバージョン管理などを行う
