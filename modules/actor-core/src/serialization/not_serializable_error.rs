@@ -35,4 +35,22 @@ impl NotSerializableError {
   pub fn type_name(&self) -> &str {
     &self.type_name
   }
+
+  /// Returns the serializer identifier that caused the failure (if known).
+  #[must_use]
+  pub const fn serializer_id(&self) -> Option<SerializerId> {
+    self.serializer_id
+  }
+
+  /// Returns the manifest string that triggered the failure (if present).
+  #[must_use]
+  pub fn manifest(&self) -> Option<&str> {
+    self.manifest.as_deref()
+  }
+
+  /// Returns the transport diagnostic hint (if any).
+  #[must_use]
+  pub fn transport_hint(&self) -> Option<&TransportInformation> {
+    self.transport_hint.as_ref()
+  }
 }

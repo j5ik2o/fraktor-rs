@@ -17,18 +17,18 @@
   - Setup から派生するデバッグ/監査情報を EventStream へ発行できるようメソッドを用意する
   - _Requirements: R1.1-R1.6, R2.4_
 
-- [ ] 2. SerializationRegistry と manifest 進化経路を実装する
-- [ ] 2.1 TypeId/trait 解決とキャッシュ管理を構築する
+- [x] 2. SerializationRegistry と manifest 進化経路を実装する
+- [x] 2.1 TypeId/trait 解決とキャッシュ管理を構築する
   - `ToolboxMutex` + `hashbrown` で TypeId→Binding、SerializerId→Serializer のテーブルを実装する
   - 解決順序（TypeId 完全一致 → Marker trait → 明示バインディング → AnySerializer）と LRU/直接キャッシュを組み込む
   - NotSerializable 時に型名・要求元 PID・transport_hint を構造体へ詰めて返す経路を実装する
   - _Requirements: R1.3-R1.4, R6.1-R6.2_
-- [ ] 2.2 manifest_routes と優先度チェーンを実装する
+- [x] 2.2 manifest_routes と優先度チェーンを実装する
   - `HashMap<String, Vec<(priority, SerializerId)>>` で manifest evolution を表現し、優先度順にデシリアライズを試行する
   - 成功時にチェーンをショートサーキットし、失敗時は UnknownManifest に transport_hint 付きで落とす
   - Builder/Adapter から manifest route を登録・検証できる API を公開する
   - _Requirements: R2.1-R2.3_
-- [ ] 2.3 Fallback/AnySerializer と delegator ヘルパーを整備する
+- [x] 2.3 Fallback/AnySerializer と delegator ヘルパーを整備する
   - 未登録型を `AnySerializer` へ送るフォールバック処理を実装し、`Serialization::serialize` をネスト呼び出しできる Delegator ラッパを追加する
   - Delegator 内で TransportInformation と manifest コンテキストを継承し、B フィールド委譲でも一貫性を担保する
   - DeadLetter/EventStream へのエラー通知経路を registry 層でフックする

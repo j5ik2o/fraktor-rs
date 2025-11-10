@@ -162,7 +162,7 @@ impl SerializationSetupBuilder {
     if manifest_required {
       if let Some((_type_id, _name)) = binding_names.iter().find(|(type_id, _)| {
         let requested = **type_id;
-        !manifest_strings.iter().any(|(registered, _)| *registered == requested)
+        !manifest_strings.contains_key(&requested)
       }) {
         let scope = *scopes
           .iter()
@@ -181,6 +181,7 @@ impl SerializationSetupBuilder {
     Ok(SerializationSetup::from_parts(
       serializers_by_id,
       bindings,
+      binding_names,
       manifest_strings,
       manifest_routes,
       scopes,
