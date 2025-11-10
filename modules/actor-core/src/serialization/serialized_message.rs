@@ -46,7 +46,8 @@ impl SerializedMessage {
   pub fn encode(&self) -> Vec<u8> {
     let manifest_bytes = self.manifest.as_ref().map(String::as_bytes);
     let manifest_len = manifest_bytes.map_or(0, |bytes| bytes.len());
-    let mut buffer = Vec::with_capacity(4 + 1 + manifest_len + 4 + self.bytes.len() + if manifest_bytes.is_some() { 4 } else { 0 });
+    let mut buffer =
+      Vec::with_capacity(4 + 1 + manifest_len + 4 + self.bytes.len() + if manifest_bytes.is_some() { 4 } else { 0 });
     buffer.extend_from_slice(&self.serializer_id.value().to_le_bytes());
     match manifest_bytes {
       | Some(bytes) => {
@@ -65,7 +66,8 @@ impl SerializedMessage {
   ///
   /// # Errors
   ///
-  /// Returns [`SerializationError::InvalidFormat`] when the bytes do not follow the expected layout.
+  /// Returns [`SerializationError::InvalidFormat`] when the bytes do not follow the expected
+  /// layout.
   pub fn decode(bytes: &[u8]) -> Result<Self, SerializationError> {
     let mut cursor = 0;
     if bytes.len() < 5 {

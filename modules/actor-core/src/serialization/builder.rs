@@ -4,7 +4,7 @@
 mod tests;
 
 use alloc::{collections::BTreeMap, string::String, vec::Vec};
-use core::any::{type_name, TypeId};
+use core::any::{TypeId, type_name};
 
 use cellactor_utils_core_rs::sync::ArcShared;
 use hashbrown::HashMap;
@@ -34,14 +34,14 @@ impl SerializationSetupBuilder {
   pub fn new() -> Self {
     Self {
       serializers_by_id: HashMap::new(),
-      serializer_ids: HashMap::new(),
-      bindings: HashMap::new(),
-      binding_names: HashMap::new(),
-      manifest_strings: HashMap::new(),
-      routes: HashMap::new(),
-      fallback: None,
-      scopes: Vec::new(),
-      adapter_metadata: Vec::new(),
+      serializer_ids:    HashMap::new(),
+      bindings:          HashMap::new(),
+      binding_names:     HashMap::new(),
+      manifest_strings:  HashMap::new(),
+      routes:            HashMap::new(),
+      fallback:          None,
+      scopes:            Vec::new(),
+      adapter_metadata:  Vec::new(),
     }
   }
 
@@ -49,7 +49,8 @@ impl SerializationSetupBuilder {
   ///
   /// # Errors
   ///
-  /// Returns [`SerializationBuilderError::ReservedIdentifier`] if the id collides with the runtime range.
+  /// Returns [`SerializationBuilderError::ReservedIdentifier`] if the id collides with the runtime
+  /// range.
   pub fn register_serializer(
     mut self,
     name: impl Into<String>,
@@ -96,7 +97,10 @@ impl SerializationSetupBuilder {
   }
 
   /// Associates a logical manifest string with the marker type.
-  pub fn bind_remote_manifest<T: 'static>(mut self, manifest: impl Into<String>) -> Result<Self, SerializationBuilderError> {
+  pub fn bind_remote_manifest<T: 'static>(
+    mut self,
+    manifest: impl Into<String>,
+  ) -> Result<Self, SerializationBuilderError> {
     let type_id = TypeId::of::<T>();
     let type_name = String::from(type_name::<T>());
     if !self.bindings.contains_key(&type_id) {
@@ -158,7 +162,8 @@ impl SerializationSetupBuilder {
       adapter_metadata,
     } = self;
     let fallback = fallback.ok_or(SerializationBuilderError::MissingFallback)?;
-    let manifest_required = scopes.iter().any(|scope| matches!(scope, SerializationCallScope::Remote | SerializationCallScope::Persistence));
+    let manifest_required =
+      scopes.iter().any(|scope| matches!(scope, SerializationCallScope::Remote | SerializationCallScope::Persistence));
     if manifest_required {
       if let Some((_type_id, _name)) = binding_names.iter().find(|(type_id, _)| {
         let requested = **type_id;

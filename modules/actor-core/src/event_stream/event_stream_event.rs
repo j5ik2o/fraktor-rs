@@ -9,6 +9,7 @@ use crate::{
   lifecycle::LifecycleEvent,
   logging::LogEvent,
   mailbox::MailboxMetricsEvent,
+  serialization::error_event::SerializationErrorEvent,
   typed::{UnhandledMessageEvent, message_adapter::AdapterFailureEvent},
 };
 
@@ -27,6 +28,8 @@ pub enum EventStreamEvent<TB: RuntimeToolbox = NoStdToolbox> {
   UnhandledMessage(UnhandledMessageEvent),
   /// Message adapter failure notification.
   AdapterFailure(AdapterFailureEvent),
+  /// Serialization failure notification.
+  Serialization(SerializationErrorEvent),
 }
 
 impl<TB: RuntimeToolbox> Clone for EventStreamEvent<TB> {
@@ -38,6 +41,7 @@ impl<TB: RuntimeToolbox> Clone for EventStreamEvent<TB> {
       | Self::Mailbox(event) => Self::Mailbox(event.clone()),
       | Self::UnhandledMessage(event) => Self::UnhandledMessage(event.clone()),
       | Self::AdapterFailure(event) => Self::AdapterFailure(event.clone()),
+      | Self::Serialization(event) => Self::Serialization(event.clone()),
     }
   }
 }

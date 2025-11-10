@@ -1,9 +1,7 @@
 use alloc::vec;
 
 use crate::serialization::{
-  error::SerializationError,
-  serialized_message::SerializedMessage,
-  serializer_id::SerializerId,
+  error::SerializationError, serialized_message::SerializedMessage, serializer_id::SerializerId,
 };
 
 fn id(value: u32) -> SerializerId {

@@ -6,23 +6,19 @@ use core::any::TypeId;
 use cellactor_utils_core_rs::sync::ArcShared;
 use hashbrown::HashMap;
 
-use super::{
-  call_scope::SerializationCallScope,
-  serializer::Serializer,
-  serializer_id::SerializerId,
-};
+use super::{call_scope::SerializationCallScope, serializer::Serializer, serializer_id::SerializerId};
 
 /// Snapshot of serialization configuration applied to the actor system.
 #[derive(Clone)]
 pub struct SerializationSetup {
-  serializers:       HashMap<SerializerId, ArcShared<dyn Serializer>>,
-  bindings:          HashMap<TypeId, SerializerId>,
-  binding_names:     HashMap<TypeId, String>,
-  remote_manifests:  HashMap<TypeId, String>,
-  manifest_routes:   HashMap<String, Vec<(u8, SerializerId)>>,
-  scopes:            Vec<SerializationCallScope>,
-  fallback:          SerializerId,
-  adapter_metadata:  Vec<String>,
+  serializers:      HashMap<SerializerId, ArcShared<dyn Serializer>>,
+  bindings:         HashMap<TypeId, SerializerId>,
+  binding_names:    HashMap<TypeId, String>,
+  remote_manifests: HashMap<TypeId, String>,
+  manifest_routes:  HashMap<String, Vec<(u8, SerializerId)>>,
+  scopes:           Vec<SerializationCallScope>,
+  fallback:         SerializerId,
+  adapter_metadata: Vec<String>,
 }
 
 impl SerializationSetup {
@@ -38,16 +34,7 @@ impl SerializationSetup {
     fallback: SerializerId,
     adapter_metadata: Vec<String>,
   ) -> Self {
-    Self {
-      serializers,
-      bindings,
-      binding_names,
-      remote_manifests,
-      manifest_routes,
-      scopes,
-      fallback,
-      adapter_metadata,
-    }
+    Self { serializers, bindings, binding_names, remote_manifests, manifest_routes, scopes, fallback, adapter_metadata }
   }
 
   /// Returns the serializer bound to the provided type identifier.
@@ -131,15 +118,6 @@ impl SerializationSetup {
     fallback: SerializerId,
     adapter_metadata: Vec<String>,
   ) -> Self {
-    Self {
-      serializers,
-      bindings,
-      binding_names,
-      remote_manifests,
-      manifest_routes,
-      scopes,
-      fallback,
-      adapter_metadata,
-    }
+    Self { serializers, bindings, binding_names, remote_manifests, manifest_routes, scopes, fallback, adapter_metadata }
   }
 }

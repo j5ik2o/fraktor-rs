@@ -12,7 +12,13 @@ fn invalid_format_debug_representation() {
 
 #[test]
 fn not_serializable_variant_embeds_payload() {
-  let payload = NotSerializableError::new("Example", Some(SerializerId::try_from(41).unwrap()), Some("manifest".into()), None);
+  let payload = NotSerializableError::new(
+    "Example",
+    Some(SerializerId::try_from(41).unwrap()),
+    Some("manifest".into()),
+    None,
+    None,
+  );
   let error = SerializationError::NotSerializable(payload.clone());
   match error {
     | SerializationError::NotSerializable(inner) => {

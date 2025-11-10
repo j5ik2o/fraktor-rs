@@ -51,33 +51,33 @@
   - 生成した文字列を Remoting/Persistence 層へ受け渡すためのユーティリティ（バリデーション、InvalidFormat エラー）を追加する
   - _Requirements: R3.1-R3.2, R4.2_
 
-- [ ] 4. シリアライザトレイト群と組み込み実装を整備する
-- [ ] 4.1 Serializer / SerializerWithStringManifest トレイトを整理する
+- [x] 4. シリアライザトレイト群と組み込み実装を整備する
+- [x] 4.1 Serializer / SerializerWithStringManifest トレイトを整理する
   - `identifier/include_manifest/to_binary/from_binary` を rustdoc 英語で定義し、scope 情報に依存しないコア API を提供する
   - Manifest 付き/不要の分岐をトレイトレベルで表現し、Serializer が manifest 文字列を返せるようにする
   - ByteBuffer/Async 派生トレイトはスコープアウト扱いとしてプレースホルダのみ設置する
   - _Requirements: R4.3, R5.1-R5.4_
-- [ ] 4.2 Null/Primitive/String/Bytes 向け組み込みシリアライザを実装する
+- [x] 4.2 Null/Primitive/String/Bytes 向け組み込みシリアライザを実装する
   - 各基本型を `Vec<u8>` ベースでエンコード/デコードし、Phase 1 でゼロコピーを行わない方針を守る
   - SerializerId の割り当て・予約域を踏まえた初期登録とテストデータを用意する
   - Builder デフォルトで自動登録されるよう Extension 初期化に組み込む
   - _Requirements: R4.1, R4.3_
-- [ ] 4.3 ActorRefSerializer と Delegation 支援を実装する
+- [x] 4.3 ActorRefSerializer と Delegation 支援を実装する
   - ActorRef を serialized_actor_path へ変換し、Transport 情報不足時は `SerializationError::TransportUnavailable` を返すロジックを実装する
   - ネスト委譲時にも ActorRefSerializer を再利用できるよう、Delegator から呼び出すサンプルコード/テストを整備する
   - _Requirements: R3.1-R3.3, R4.2, R6.3_
 
-- [ ] 5. エラーモデル・診断・テストを完成させる
-- [ ] 5.1 NotSerializableError と監査ログの配線を行う
+- [x] 5. エラーモデル・診断・テストを完成させる
+- [x] 5.1 NotSerializableError と監査ログの配線を行う
   - `type_name/serializer_id/manifest/pid/transport_hint` を含むエラー構造体を定義し、Registry/Extension 双方から利用する
   - EventStream/DeadLetter へエラーイベントを publish し、監査ログで manifest 未登録や予約域違反を検知する
   - _Requirements: R1.4, R2.2, R3.4_
-- [ ] 5.2 単体テストと統合テストを追加する
+- [x] 5.2 単体テストと統合テストを追加する
   - Builder/Adapter/manifest discipline/Transport guard/Registry/SerializedMessage/ActorRefSerializer/Delegator を対象に要求ベースのテストを用意する
   - `shutdown` 後の Uninitialized エラー、manifest_routes の優先順、Remote scope での manifest 必須チェックなどクリティカルパスをカバーする
   - CI 向けに再利用できるテストフィクスチャを整理し、`scripts/ci-check.sh all` で整合することを確認する
   - _Requirements: R1.1-R6.4_
-- [ ] 5.3 ロギングと監視フックを検証する
+- [x] 5.3 ロギングと監視フックを検証する
   - Cache hit/miss、Serializer ID 衝突、manifest 未登録イベントを EventStream ログへ流す統計出力を追加する
   - ネスト委譲・Transport スコープ系の WARN/ERROR メッセージが観測できるようメッセージタグを整理する
   - _Requirements: R1.2, R1.4, R3.4_

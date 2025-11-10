@@ -5,7 +5,9 @@ mod tests;
 
 use alloc::string::String;
 
-use super::{call_scope::SerializationCallScope, not_serializable_error::NotSerializableError, serializer_id::SerializerId};
+use super::{
+  call_scope::SerializationCallScope, not_serializable_error::NotSerializableError, serializer_id::SerializerId,
+};
 
 /// Errors emitted by serialization operations.
 #[derive(Debug, Clone, PartialEq, Eq)]

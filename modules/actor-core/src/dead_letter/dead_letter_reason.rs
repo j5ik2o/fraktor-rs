@@ -15,4 +15,6 @@ pub enum DeadLetterReason {
   FatalActorError,
   /// Message was explicitly redirected to deadletter by system logic.
   ExplicitRouting,
+  /// Serialization failure prevented message delivery.
+  SerializationError,
 }

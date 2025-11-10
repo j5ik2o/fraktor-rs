@@ -8,16 +8,26 @@ use core::any::TypeId;
 
 use cellactor_utils_core_rs::{
   runtime_toolbox::SyncMutexFamily,
-  sync::{sync_mutex_like::SyncMutexLike, ArcShared, NoStdToolbox},
+  sync::{ArcShared, NoStdToolbox, sync_mutex_like::SyncMutexLike},
 };
-use hashbrown::HashMap;
-
-use crate::{RuntimeToolbox, ToolboxMutex};
+use hashbrown::{HashMap, hash_map::Entry};
 
 use super::{
   error::SerializationError, not_serializable_error::NotSerializableError, serialization_setup::SerializationSetup,
   serializer::Serializer, serializer_id::SerializerId, transport_information::TransportInformation,
 };
+use crate::{RuntimeToolbox, ToolboxMutex};
+
+/// Indicates how a serializer was resolved.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SerializerResolutionOrigin {
+  /// Resolution returned a cached serializer.
+  Cache,
+  /// Resolution came from an explicit binding.
+  Binding,
+  /// Resolution fell back to the default serializer.
+  Fallback,
+}
 
 /// Registry that resolves serializers based on type identifiers.
 pub struct SerializationRegistryGeneric<TB: RuntimeToolbox> {
@@ -33,29 +43,23 @@ impl<TB: RuntimeToolbox> SerializationRegistryGeneric<TB> {
   /// Creates a registry from the provided setup.
   #[must_use]
   pub fn from_setup(setup: &SerializationSetup) -> Self {
-    let serializers = setup
-      .serializers_ref()
-      .iter()
-      .map(|(id, serializer)| (*id, serializer.clone()))
-      .collect::<HashMap<_, _>>();
+    let serializers =
+      setup.serializers_ref().iter().map(|(id, serializer)| (*id, serializer.clone())).collect::<HashMap<_, _>>();
     let bindings = setup.bindings_ref().iter().map(|(ty, id)| (*ty, *id)).collect::<HashMap<_, _>>();
-    let binding_names = setup
-      .binding_names_ref()
-      .iter()
-      .map(|(ty, name)| (*ty, name.clone()))
-      .collect::<HashMap<_, _>>();
+    let binding_names =
+      setup.binding_names_ref().iter().map(|(ty, name)| (*ty, name.clone())).collect::<HashMap<_, _>>();
     let manifest_routes = setup
       .manifest_routes_ref()
       .iter()
       .map(|(manifest, routes)| (manifest.clone(), routes.clone()))
       .collect::<HashMap<_, _>>();
     Self {
-      serializers: <TB::MutexFamily as SyncMutexFamily>::create(serializers),
-      bindings: <TB::MutexFamily as SyncMutexFamily>::create(bindings),
-      binding_names: <TB::MutexFamily as SyncMutexFamily>::create(binding_names),
+      serializers:     <TB::MutexFamily as SyncMutexFamily>::create(serializers),
+      bindings:        <TB::MutexFamily as SyncMutexFamily>::create(bindings),
+      binding_names:   <TB::MutexFamily as SyncMutexFamily>::create(binding_names),
       manifest_routes: <TB::MutexFamily as SyncMutexFamily>::create(manifest_routes),
-      cache: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::new()),
-      fallback: setup.fallback_serializer(),
+      cache:           <TB::MutexFamily as SyncMutexFamily>::create(HashMap::new()),
+      fallback:        setup.fallback_serializer(),
     }
   }
 
@@ -69,7 +73,7 @@ impl<TB: RuntimeToolbox> SerializationRegistryGeneric<TB> {
     serializer_id: Option<SerializerId>,
     transport_hint: Option<TransportInformation>,
   ) -> SerializationError {
-    SerializationError::NotSerializable(NotSerializableError::new(type_name, serializer_id, None, transport_hint))
+    SerializationError::NotSerializable(NotSerializableError::new(type_name, serializer_id, None, None, transport_hint))
   }
 
   fn cache_insert(&self, type_id: TypeId, serializer_id: SerializerId) {
@@ -86,18 +90,23 @@ impl<TB: RuntimeToolbox> SerializationRegistryGeneric<TB> {
     type_id: TypeId,
     type_name: &str,
     transport_hint: Option<TransportInformation>,
-  ) -> Result<ArcShared<dyn Serializer>, SerializationError> {
+  ) -> Result<(ArcShared<dyn Serializer>, SerializerResolutionOrigin), SerializationError> {
     if let Some(existing) = self.cache.lock().get(&type_id).copied() {
       if let Some(serializer) = self.serializer_by_id_raw(existing) {
-        return Ok(serializer);
+        return Ok((serializer, SerializerResolutionOrigin::Cache));
       }
       self.cache_remove(type_id);
     }
 
-    let resolved = self.bindings.lock().get(&type_id).copied().unwrap_or(self.fallback);
+    let (resolved, origin) = if let Some(bound) = self.bindings.lock().get(&type_id).copied() {
+      (bound, SerializerResolutionOrigin::Binding)
+    } else {
+      (self.fallback, SerializerResolutionOrigin::Fallback)
+    };
+
     if let Some(serializer) = self.serializer_by_id_raw(resolved) {
       self.cache_insert(type_id, resolved);
-      return Ok(serializer);
+      return Ok((serializer, origin));
     }
     self.cache_remove(type_id);
     Err(self.not_serializable(type_name, Some(resolved), transport_hint))
@@ -106,6 +115,18 @@ impl<TB: RuntimeToolbox> SerializationRegistryGeneric<TB> {
   /// Returns the serializer identified by id.
   pub fn serializer_by_id(&self, id: SerializerId) -> Result<ArcShared<dyn Serializer>, SerializationError> {
     self.serializer_by_id_raw(id).ok_or(SerializationError::UnknownSerializer(id))
+  }
+
+  /// Inserts a serializer instance if absent.
+  pub fn register_serializer(&self, id: SerializerId, serializer: ArcShared<dyn Serializer>) -> bool {
+    let mut guard = self.serializers.lock();
+    match guard.entry(id) {
+      | Entry::Occupied(_) => false,
+      | Entry::Vacant(slot) => {
+        slot.insert(serializer);
+        true
+      },
+    }
   }
 
   /// Registers a binding at runtime (used by adapters/extensions).
@@ -131,10 +152,7 @@ impl<TB: RuntimeToolbox> SerializationRegistryGeneric<TB> {
     routes
       .get(manifest)
       .map(|entries| {
-        entries
-          .iter()
-          .filter_map(|(_, serializer_id)| self.serializer_by_id_raw(*serializer_id))
-          .collect::<Vec<_>>()
+        entries.iter().filter_map(|(_, serializer_id)| self.serializer_by_id_raw(*serializer_id)).collect::<Vec<_>>()
       })
       .unwrap_or_else(Vec::new)
   }

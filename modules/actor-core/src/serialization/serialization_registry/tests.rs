@@ -1,5 +1,5 @@
 use alloc::{boxed::Box, vec, vec::Vec};
-use core::any::{type_name, Any, TypeId};
+use core::any::{Any, TypeId, type_name};
 
 use cellactor_utils_core_rs::sync::ArcShared;
 use hashbrown::HashMap;
@@ -7,7 +7,7 @@ use hashbrown::HashMap;
 use crate::serialization::{
   builder::SerializationSetupBuilder,
   error::SerializationError,
-  serialization_registry::SerializationRegistry,
+  serialization_registry::{SerializationRegistry, SerializerResolutionOrigin},
   serialization_setup::SerializationSetup,
   serializer::Serializer,
   serializer_id::SerializerId,
@@ -32,7 +32,10 @@ impl Serializer for DummySerializer {
     false
   }
 
-  fn to_binary(&self, _message: &(dyn Any + Send + Sync)) -> Result<Vec<u8>, crate::serialization::error::SerializationError> {
+  fn to_binary(
+    &self,
+    _message: &(dyn Any + Send + Sync),
+  ) -> Result<Vec<u8>, crate::serialization::error::SerializationError> {
     Ok(Vec::new())
   }
 
@@ -84,9 +87,10 @@ fn setup_with_two_serializers() -> (SerializationRegistry, SerializerId, Seriali
 #[test]
 fn resolves_bound_serializer() {
   let (registry, serializer_id) = setup_with_binding();
-  let resolved =
+  let (resolved, origin) =
     registry.serializer_for_type(TypeId::of::<u32>(), type_name::<u32>(), None).expect("resolved");
   assert_eq!(resolved.identifier(), serializer_id);
+  assert_eq!(origin, SerializerResolutionOrigin::Binding);
   let by_id = registry.serializer_by_id(serializer_id).expect("serializer_by_id should match");
   assert_eq!(by_id.identifier(), serializer_id);
 }
@@ -94,9 +98,10 @@ fn resolves_bound_serializer() {
 #[test]
 fn returns_fallback_for_unknown_type() {
   let (registry, serializer_id) = setup_with_binding();
-  let fallback =
+  let (fallback, origin) =
     registry.serializer_for_type(TypeId::of::<u64>(), type_name::<u64>(), None).expect("fallback required");
   assert_eq!(fallback.identifier(), serializer_id);
+  assert_eq!(origin, SerializerResolutionOrigin::Fallback);
 }
 
 #[test]
@@ -113,20 +118,21 @@ fn serializer_by_id_unknown_returns_error() {
 #[test]
 fn register_binding_allows_dynamic_resolution() {
   let (registry, alpha_id, beta_id) = setup_with_two_serializers();
-  registry
-    .register_binding(TypeId::of::<u64>(), type_name::<u64>(), beta_id)
-    .expect("register binding");
-  let resolved =
+  registry.register_binding(TypeId::of::<u64>(), type_name::<u64>(), beta_id).expect("register binding");
+  let (resolved, origin) =
     registry.serializer_for_type(TypeId::of::<u64>(), type_name::<u64>(), None).expect("resolved");
   assert_eq!(resolved.identifier(), beta_id);
+  assert_eq!(origin, SerializerResolutionOrigin::Binding);
   // second call should hit cache and still return beta
-  let cached =
+  let (cached, cache_origin) =
     registry.serializer_for_type(TypeId::of::<u64>(), type_name::<u64>(), None).expect("cached");
   assert_eq!(cached.identifier(), beta_id);
+  assert_eq!(cache_origin, SerializerResolutionOrigin::Cache);
   // original binding remains
-  let original =
+  let (original, original_origin) =
     registry.serializer_for_type(TypeId::of::<u32>(), type_name::<u32>(), None).expect("alpha");
   assert_eq!(original.identifier(), alpha_id);
+  assert_eq!(original_origin, SerializerResolutionOrigin::Binding);
 }
 
 #[test]

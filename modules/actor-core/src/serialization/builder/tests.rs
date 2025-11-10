@@ -1,15 +1,11 @@
 use alloc::{boxed::Box, vec, vec::Vec};
-use core::any::{type_name, Any, TypeId};
+use core::any::{Any, TypeId, type_name};
 
 use cellactor_utils_core_rs::sync::ArcShared;
 
 use crate::serialization::{
-  builder::SerializationSetupBuilder,
-  builder_error::SerializationBuilderError,
-  call_scope::SerializationCallScope,
-  config_adapter::SerializationConfigAdapter,
-  serializer::Serializer,
-  serializer_id::SerializerId,
+  builder::SerializationSetupBuilder, builder_error::SerializationBuilderError, call_scope::SerializationCallScope,
+  config_adapter::SerializationConfigAdapter, serializer::Serializer, serializer_id::SerializerId,
 };
 
 struct DummySerializer {
@@ -31,7 +27,10 @@ impl Serializer for DummySerializer {
     false
   }
 
-  fn to_binary(&self, _message: &(dyn Any + Send + Sync)) -> Result<Vec<u8>, crate::serialization::error::SerializationError> {
+  fn to_binary(
+    &self,
+    _message: &(dyn Any + Send + Sync),
+  ) -> Result<Vec<u8>, crate::serialization::error::SerializationError> {
     Ok(Vec::new())
   }
 

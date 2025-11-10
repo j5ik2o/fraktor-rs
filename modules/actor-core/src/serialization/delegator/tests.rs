@@ -5,14 +5,9 @@ use cellactor_utils_core_rs::sync::ArcShared;
 use hashbrown::HashMap;
 
 use crate::serialization::{
-  builder::SerializationSetupBuilder,
-  call_scope::SerializationCallScope,
-  delegator::SerializationDelegator,
-  error::SerializationError,
-  serialization_registry::SerializationRegistry,
-  serialization_setup::SerializationSetup,
-  serializer::Serializer,
-  serializer_id::SerializerId,
+  builder::SerializationSetupBuilder, call_scope::SerializationCallScope, delegator::SerializationDelegator,
+  error::SerializationError, serialization_registry::SerializationRegistry, serialization_setup::SerializationSetup,
+  serializer::Serializer, serializer_id::SerializerId,
 };
 
 #[derive(Clone)]
@@ -42,11 +37,7 @@ impl Serializer for RecordingSerializer {
     Ok(vec![0])
   }
 
-  fn from_binary(
-    &self,
-    _bytes: &[u8],
-    _type_hint: Option<TypeId>,
-  ) -> Result<Box<dyn Any + Send>, SerializationError> {
+  fn from_binary(&self, _bytes: &[u8], _type_hint: Option<TypeId>) -> Result<Box<dyn Any + Send>, SerializationError> {
     Ok(Box::new(()))
   }
 

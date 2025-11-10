@@ -1,9 +1,11 @@
 //! Core serializer trait.
 
 use alloc::{boxed::Box, vec::Vec};
-use core::any::Any;
+use core::any::{Any, TypeId};
 
-use super::{error::SerializationError, serializer_id::SerializerId};
+use super::{
+  error::SerializationError, serializer_id::SerializerId, string_manifest_serializer::SerializerWithStringManifest,
+};
 
 /// Represents a synchronous serializer implementation.
 pub trait Serializer: Send + Sync {
@@ -11,22 +13,33 @@ pub trait Serializer: Send + Sync {
   fn identifier(&self) -> SerializerId;
 
   /// Indicates whether the serializer embeds manifest information.
-  fn include_manifest(&self) -> bool;
+  ///
+  /// Defaults to `false`.
+  fn include_manifest(&self) -> bool {
+    false
+  }
 
   /// Converts the provided message into a byte buffer.
   ///
   /// # Errors
   ///
   /// Returns [`SerializationError`] if encoding fails.
-  fn to_binary(&self, _message: &(dyn Any + Send + Sync)) -> Result<Vec<u8>, SerializationError>;
+  fn to_binary(&self, message: &(dyn Any + Send + Sync)) -> Result<Vec<u8>, SerializationError>;
 
   /// Restores a message from its binary representation.
   ///
   /// # Errors
   ///
   /// Returns [`SerializationError`] if decoding fails.
-  fn from_binary(&self, _bytes: &[u8], _type_hint: Option<core::any::TypeId>) -> Result<Box<dyn Any + Send>, SerializationError>;
+  fn from_binary(&self, bytes: &[u8], type_hint: Option<TypeId>) -> Result<Box<dyn Any + Send>, SerializationError>;
 
   /// Provides access to the dynamic type used for downcasting.
   fn as_any(&self) -> &(dyn Any + Send + Sync);
+
+  /// Returns a reference to the [`SerializerWithStringManifest`] view if implemented.
+  ///
+  /// Defaults to `None`.
+  fn as_string_manifest(&self) -> Option<&dyn SerializerWithStringManifest> {
+    None
+  }
 }

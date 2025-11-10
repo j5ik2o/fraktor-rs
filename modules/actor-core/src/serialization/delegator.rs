@@ -3,18 +3,13 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::string::ToString;
 use core::any::Any;
 
-use crate::RuntimeToolbox;
-
 use super::{
-  call_scope::SerializationCallScope,
-  error::SerializationError,
-  serialized_message::SerializedMessage,
-  serialization_registry::SerializationRegistryGeneric,
-  transport_information::TransportInformation,
+  call_scope::SerializationCallScope, error::SerializationError, serialization_registry::SerializationRegistryGeneric,
+  serialized_message::SerializedMessage, transport_information::TransportInformation,
 };
+use crate::RuntimeToolbox;
 
 /// Helper that routes nested serialization requests through the registry.
 pub struct SerializationDelegator<'a, TB: RuntimeToolbox> {
@@ -50,9 +45,9 @@ impl<'a, TB: RuntimeToolbox> SerializationDelegator<'a, TB> {
     value: &(dyn Any + Send + Sync),
     type_name: &str,
   ) -> Result<SerializedMessage, SerializationError> {
-    let serializer = self.registry.serializer_for_type(value.type_id(), type_name, self.transport_hint.clone())?;
+    let (serializer, _) = self.registry.serializer_for_type(value.type_id(), type_name, self.transport_hint.clone())?;
     let bytes = serializer.to_binary(value)?;
-    let manifest = if serializer.include_manifest() { Some(type_name.to_string()) } else { None };
+    let manifest = serializer.as_string_manifest().map(|provider| provider.manifest(value).into_owned());
     Ok(SerializedMessage::new(serializer.identifier(), manifest, bytes))
   }
 
