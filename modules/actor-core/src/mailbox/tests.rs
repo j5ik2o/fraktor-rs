@@ -1,6 +1,6 @@
 extern crate alloc;
 
-use alloc::vec::Vec;
+use alloc::{string::String, vec::Vec};
 use core::{hint::spin_loop, num::NonZeroUsize};
 
 use cellactor_utils_core_rs::sync::{ArcShared, NoStdMutex};
@@ -11,8 +11,8 @@ use crate::{
   error::ActorError,
   event_stream::{EventStreamEvent, EventStreamSubscriber},
   logging::LogLevel,
-  mailbox::{MailboxOverflowStrategy, MailboxPolicy},
-  messaging::{AnyMessage, AnyMessageView},
+  mailbox::{Mailbox, MailboxOverflowStrategy, MailboxPolicy, ScheduleHints},
+  messaging::{AnyMessage, AnyMessageView, SystemMessage},
   props::{MailboxConfig, Props},
   system::ActorSystem,
 };
@@ -74,6 +74,46 @@ fn mailbox_metrics_and_warnings_are_emitted() {
 
   system.terminate().expect("terminate");
   system.run_until_terminated();
+}
+
+#[test]
+fn mailbox_schedule_requests_follow_state_engine() {
+  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
+  let hints = ScheduleHints { has_system_messages: true, has_user_messages: false };
+
+  assert!(mailbox.request_schedule(hints));
+  assert!(!mailbox.request_schedule(hints));
+
+  mailbox.set_running();
+  assert!(!mailbox.request_schedule(hints));
+
+  let _ = mailbox.set_idle();
+  assert!(mailbox.request_schedule(hints));
+}
+
+#[test]
+fn mailbox_schedule_hints_reflect_current_workload() {
+  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
+
+  let idle_hints = mailbox.current_schedule_hints();
+  assert!(!idle_hints.has_system_messages);
+  assert!(!idle_hints.has_user_messages);
+
+  mailbox.enqueue_system(SystemMessage::Create).expect("system enqueue");
+  let system_hints = mailbox.current_schedule_hints();
+  assert!(system_hints.has_system_messages);
+  assert!(!system_hints.has_user_messages);
+  let _ = mailbox.dequeue();
+
+  mailbox.enqueue_user(AnyMessage::new(String::from("user"))).expect("user enqueue");
+  let user_hints = mailbox.current_schedule_hints();
+  assert!(!user_hints.has_system_messages);
+  assert!(user_hints.has_user_messages);
+
+  mailbox.suspend();
+  let suspended_hints = mailbox.current_schedule_hints();
+  assert!(!suspended_hints.has_system_messages);
+  assert!(!suspended_hints.has_user_messages);
 }
 
 fn wait_until(condition: impl Fn() -> bool) {

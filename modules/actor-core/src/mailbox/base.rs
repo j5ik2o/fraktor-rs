@@ -3,10 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use core::{
-  num::NonZeroUsize,
-  sync::atomic::{AtomicBool, Ordering},
-};
+use core::num::NonZeroUsize;
 
 use cellactor_utils_core_rs::{
   collections::queue::{QueueError, backend::OfferOutcome},
@@ -15,9 +12,9 @@ use cellactor_utils_core_rs::{
 };
 
 use super::{
-  MailboxOfferFutureGeneric, MailboxPollFutureGeneric, mailbox_enqueue_outcome::EnqueueOutcome,
-  mailbox_instrumentation::MailboxInstrumentationGeneric, mailbox_message::MailboxMessage,
-  mailbox_queue_handles::QueueHandles, map_system_queue_error, map_user_queue_error,
+  MailboxOfferFutureGeneric, MailboxPollFutureGeneric, MailboxStateEngine, QueueHandles, ScheduleHints, SystemQueue,
+  mailbox_enqueue_outcome::EnqueueOutcome, mailbox_instrumentation::MailboxInstrumentationGeneric,
+  mailbox_message::MailboxMessage, map_user_queue_error,
 };
 use crate::{
   NoStdToolbox, RuntimeToolbox,
@@ -29,9 +26,9 @@ use crate::{
 /// Priority mailbox maintaining separate queues for system and user messages.
 pub struct MailboxGeneric<TB: RuntimeToolbox + 'static> {
   policy:          MailboxPolicy,
-  system:          QueueHandles<SystemMessage, TB>,
+  system:          SystemQueue,
   user:            QueueHandles<AnyMessageGeneric<TB>, TB>,
-  suspended:       AtomicBool,
+  state:           MailboxStateEngine,
   instrumentation: crate::ToolboxMutex<Option<MailboxInstrumentationGeneric<TB>>, TB>,
 }
 
@@ -46,12 +43,11 @@ where
   #[must_use]
   pub fn new(policy: MailboxPolicy) -> Self {
     let user_handles = QueueHandles::new_user(&policy);
-    let system_handles = QueueHandles::new_system();
     Self {
       policy,
-      system: system_handles,
+      system: SystemQueue::new(),
       user: user_handles,
-      suspended: AtomicBool::new(false),
+      state: MailboxStateEngine::new(),
       instrumentation: <TB::MutexFamily as SyncMutexFamily>::create(None),
     }
   }
@@ -67,7 +63,9 @@ where
   ///
   /// Returns an error if the system message queue is full or closed.
   pub(crate) fn enqueue_system(&self, message: SystemMessage) -> Result<(), SendError<TB>> {
-    self.offer_system(message)
+    self.system.push(message);
+    self.publish_metrics();
+    Ok(())
   }
 
   /// Attempts to enqueue a user message; returns a future when blocking is needed.
@@ -105,7 +103,7 @@ where
   /// Dequeues the next available message, prioritising system queue.
   #[must_use]
   pub(crate) fn dequeue(&self) -> Option<MailboxMessage<TB>> {
-    if let Some(system) = Self::poll_queue(&self.system) {
+    if let Some(system) = self.system.pop() {
       self.publish_metrics();
       return Some(MailboxMessage::System(system));
     }
@@ -123,18 +121,44 @@ where
 
   /// Suspends user message consumption.
   pub(crate) fn suspend(&self) {
-    self.suspended.store(true, Ordering::Release);
+    self.state.suspend();
   }
 
   /// Resumes user message consumption.
   pub(crate) fn resume(&self) {
-    self.suspended.store(false, Ordering::Release);
+    self.state.resume();
+  }
+
+  /// Requests scheduling based on provided hints; returns `true` when dispatcher execution should start.
+  #[must_use]
+  pub(crate) fn request_schedule(&self, hints: ScheduleHints) -> bool {
+    self.state.request_schedule(hints)
+  }
+
+  /// Marks the mailbox as running so the next dequeue cycle can begin.
+  pub(crate) fn set_running(&self) {
+    self.state.set_running();
+  }
+
+  /// Clears the running flag and returns whether a pending reschedule must occur immediately.
+  #[must_use]
+  pub(crate) fn set_idle(&self) -> bool {
+    self.state.set_idle()
+  }
+
+  /// Computes schedule hints from the current queue lengths and suspension state.
+  #[must_use]
+  pub(crate) fn current_schedule_hints(&self) -> ScheduleHints {
+    ScheduleHints {
+      has_system_messages: self.system_len() > 0,
+      has_user_messages: !self.is_suspended() && self.user_len() > 0,
+    }
   }
 
   /// Indicates whether the mailbox is currently suspended.
   #[must_use]
   pub(crate) fn is_suspended(&self) -> bool {
-    self.suspended.load(Ordering::Acquire)
+    self.state.is_suspended()
   }
 
   /// Returns the number of user messages awaiting processing.
@@ -146,7 +170,7 @@ where
   /// Returns the number of system messages awaiting processing.
   #[must_use]
   pub(crate) fn system_len(&self) -> usize {
-    self.system.consumer.len()
+    self.system.len()
   }
 
   /// Returns the configured throughput limit.
@@ -193,17 +217,6 @@ where
         Ok(EnqueueOutcome::Enqueued)
       },
       | Err(error) => Err(map_user_queue_error(error)),
-    }
-  }
-
-  fn offer_system(&self, message: SystemMessage) -> Result<(), SendError<TB>> {
-    match self.system.offer(message) {
-      | Ok(outcome) => {
-        Self::handle_offer_outcome(outcome);
-        self.publish_metrics();
-        Ok(())
-      },
-      | Err(error) => Err(map_system_queue_error(error)),
     }
   }
 

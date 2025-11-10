@@ -20,7 +20,7 @@ use super::{
 use crate::{
   RuntimeToolbox, ToolboxMutex,
   error::{ActorError, SendError},
-  mailbox::{EnqueueOutcome, MailboxGeneric, MailboxMessage, MailboxOfferFutureGeneric},
+  mailbox::{EnqueueOutcome, MailboxGeneric, MailboxMessage, MailboxOfferFutureGeneric, ScheduleHints},
   messaging::{AnyMessageGeneric, SystemMessage, message_invoker::MessageInvoker},
 };
 
@@ -70,6 +70,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
   }
 
   pub(super) fn drive(self_arc: &ArcShared<Self>) {
+    self_arc.mailbox.set_running();
     loop {
       {
         let this = self_arc;
@@ -83,9 +84,18 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
           && DispatcherState::compare_exchange(DispatcherState::Idle, DispatcherState::Running, &this.state).is_ok()
       };
 
-      if !should_continue {
-        break;
+      if should_continue {
+        self_arc.mailbox.set_running();
+        continue;
       }
+
+      let pending_reschedule = self_arc.mailbox.set_idle();
+      if pending_reschedule {
+        let hints = self_arc.mailbox.current_schedule_hints();
+        Self::request_execution(self_arc, hints);
+      }
+
+      break;
     }
   }
 
@@ -140,12 +150,12 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
   pub(super) fn enqueue_user(self_arc: &ArcShared<Self>, message: AnyMessageGeneric<TB>) -> Result<(), SendError<TB>> {
     match self_arc.mailbox.enqueue_user(message) {
       | Ok(EnqueueOutcome::Enqueued) => {
-        super::base::DispatcherGeneric::from_core(self_arc.clone()).schedule();
+        Self::request_execution(self_arc, ScheduleHints { has_system_messages: false, has_user_messages: true });
         Ok(())
       },
       | Ok(EnqueueOutcome::Pending(mut future)) => {
         Self::drain_offer_future(self_arc, &mut future)?;
-        super::base::DispatcherGeneric::from_core(self_arc.clone()).schedule();
+        Self::request_execution(self_arc, ScheduleHints { has_system_messages: false, has_user_messages: true });
         Ok(())
       },
       | Err(error) => Err(error),
@@ -154,7 +164,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
 
   pub(super) fn enqueue_system(self_arc: &ArcShared<Self>, message: SystemMessage) -> Result<(), SendError<TB>> {
     self_arc.mailbox.enqueue_system(message)?;
-    super::base::DispatcherGeneric::from_core(self_arc.clone()).schedule();
+    Self::request_execution(self_arc, ScheduleHints { has_system_messages: true, has_user_messages: false });
     Ok(())
   }
 
@@ -171,7 +181,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
         | Poll::Ready(Ok(_)) => return Ok(()),
         | Poll::Ready(Err(error)) => return Err(error),
         | Poll::Pending => {
-          super::base::DispatcherGeneric::from_core(self_arc.clone()).schedule();
+          Self::request_execution(self_arc, ScheduleHints { has_system_messages: false, has_user_messages: true });
           block_hint();
         },
       }
@@ -180,5 +190,11 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
 
   fn has_pending_work(&self) -> bool {
     self.mailbox.system_len() > 0 || (!self.mailbox.is_suspended() && self.mailbox.user_len() > 0)
+  }
+
+  fn request_execution(self_arc: &ArcShared<Self>, hints: ScheduleHints) {
+    if self_arc.mailbox.request_schedule(hints) {
+      super::base::DispatcherGeneric::from_core(self_arc.clone()).schedule();
+    }
   }
 }

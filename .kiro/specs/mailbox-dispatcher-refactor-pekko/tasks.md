@@ -13,7 +13,7 @@
   - ビットフィールドとsuspendカウンタを定義し、set_as_scheduled/set_running/set_idleのCAS制御と閉塞処理を実装する
   - suspend中はユーザキュー hint を無視しつつ system hint は維持するロジックをDispatcher registerフローへ統合する
   - _Requirements: R1, R5_
-- [ ] 1.3 Mailbox本体へstate engineとsystem queueを組み込み公平性を担保する
+- [x] 1.3 Mailbox本体へstate engineとsystem queueを組み込み公平性を担保する
   - processAllSystemMessages→processMailboxの順序でdrainする実行ループを再構成し、NeedReschedule判定をstate engine経由に一本化する
   - Idle復帰時のDeadLetter drainとEventStream通知、Closed遷移の完了イベントを追加する
   - _Requirements: R1, R5_
