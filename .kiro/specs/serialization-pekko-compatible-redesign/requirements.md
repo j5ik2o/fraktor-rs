@@ -28,25 +28,29 @@ Pekko と protoactor-go のシリアライゼーション設計を参考に、Ac
 3. While 複数バージョンのマニフェスト互換ロジックが設定されている, the SerializationRegistry shall 優先順位リストに従って順次デシリアライズを試行し、成功時点で残りのロジックをスキップする。
 4. When シリアライザが「マニフェスト不要」と宣言する, Serialization shall TypeIdベースの直接復元を同一バイナリ内のローカル呼び出しに限定し、Persistence/Remotingへ送る際は論理マニフェスト文字列を付与するショートカットを自動適用しない。
 
-### Requirement 3: TransportコンテキストとExtension統合
-**Objective:** リモート通信開発者として、Transport情報とExtensionスコープが常に整合し、ActorRef文字列化やコンテキスト依存シリアライズが破綻しないようにしたい。
+### Requirement 3: ActorRef文字列化とExtension統合
+**Objective:** リモート通信開発者として、ActorRefを完全修飾パスまたはローカルパスとして正しくシリアライズ/デシリアライズできるようにしたい。
 
 #### Acceptance Criteria
-1. When RemotingやPersistenceがSerializationを呼び出す, the Serialization Extension shall Transport情報を (a) シリアライザAPI引数での明示受け渡し もしくは (b) thread-local などTokio task localに依存しないスレッドスコープなハンドル を通じて提供し、どちらを使うかを実装ガイドで明示する。
-2. If ActorRefやTransport依存シリアライザがTransport情報へアクセスした際にスコープ外である, then the Serialization Extension shall エラーを返し、ActorRef専用APIやTransportレイヤ経由で再実行するよう通知する。
-3. While Transport情報が設定されている, Serialization shall ActorRefやActorPathをシリアライズするときに該当アドレス情報を含めて書き出す一方、Transport非依存メッセージではTransport情報を参照しない。
-4. When Serialization Extensionがシャットダウンを開始する, Serialization shall Transportスコープと関連キャッシュを即時クリアし、以降のアクセスに未初期化エラーを返す。
-5. When Serialization Extensionの `serialize` / `deserialize` / `with_transport_information` APIが呼ばれる, Serialization shall Pekko互換でTransport情報を自動設定し、呼び出し完了時に必ず元のスコープへ復元する。
+1. When Serializer実装がActorRefをシリアライズする必要がある場合, the Serialization Extension shall `serialized_actor_path(actor_ref)` ヘルパー関数を提供し、ActorPathを適切な文字列形式に変換する。
+   - **重要**: SerializerトレイトはActorRefの内部実装に依存しない（Pekkoと同様: Serializer.scala:65）。
+2. When `serialized_actor_path` が呼ばれる, the helper shall リモートアドレスを含む完全修飾パス、またはローカルパスを返す（Pekko互換のフォールバック: Serialization.scala:76-82）。
+3. When RemotingやPersistenceがSerializationを呼び出す, the Serialization Extension shall スコープ管理APIを提供し、ActorRefシリアライズに必要なコンテキストを適切に設定・復元する（Pekko: Serialization.scala:114-122）。
+4. When Serialization Extensionがシャットダウンを開始する, Serialization shall 関連キャッシュを即時クリアし、以降のアクセスに未初期化エラーを返す。
+5. When Serialization Extensionの `serialize` / `deserialize` APIが呼ばれる, Serialization shall 必要なコンテキストを自動設定し、呼び出し完了時に必ず元の状態へ復元する。
 
-### Requirement 4: 非同期・高速パスと組み込みラインアップ
-**Objective:** ランタイム利用者として、非同期処理・ゼロコピー経路・最低限の組み込みシリアライザを備えた柔軟な拡張基盤を求める。
+### Requirement 4: 組み込みシリアライザラインアップ
+**Objective:** ランタイム利用者として、最低限の組み込みシリアライザを備えた柔軟な拡張基盤を求める。
 
 #### Acceptance Criteria
-1. When AsyncSerializerが登録されている, Serialization shall 非同期APIを優先実行してFuture/Promiseを返し、呼び出し側がノンブロッキングで結果を待機できるようにする。
-2. If 同期APIがAsyncSerializerを内部で呼び出す, then Serialization shall 警告ログを出力し、同期待機が呼び出し側責務であることを明示した上で結果を返す。
-3. While BytesSerializerやRawBytes高速パスが有効になっている, Serialization shall `BytesSerializer`トレイト（`fn to_bytes_mut(&self, msg: &dyn Any, buf: &mut BytesMut)`）のように `&mut BytesMut` を受け取るAPIでバッファ再利用を定義し、ゼロコピーを仕様として明示する。
-4. When ActorSystemが起動する, the Serialization Extension shall Null/Primitive/String/Bytes向けの組み込みシリアライザのみを登録し、ActorRefは Transport Extension 提供の専用シリアライザへ委譲する。
-5. If ActorRefのシリアライズ要求にTransport情報が添付されていない, then Serialization shall 明示的なエラーを返し、Transport Extensionを経由した `serialize_actor_ref` のような専用APIを利用するようガイドする。
+1. When ActorSystemが起動する, the Serialization Extension shall Null/Primitive/String/Bytes向けの組み込みシリアライザを自動登録し、基本的な型のシリアライゼーションをすぐに利用可能にする。
+2. When ActorRefシリアライザが実装される, the ActorRefSerializer shall `SerializationExtension::serialized_actor_path(actor_ref)` ヘルパーを呼び出してActorPathを文字列化する（Pekko互換: Serialization.scala:70-93）。
+3. When シリアライザがバイト列を生成する, Serializer shall シンプルな`Vec<u8>`バッファを返し、初期実装ではメモリコピーを許容して実装をシンプルに保つ。
+   - **Note**: ゼロコピー最適化（`BytesMut`再利用など）は将来の性能改善として検討する。
+
+#### スコープアウト（将来検討）
+- **AsyncSerializer**: 非同期シリアライゼーションAPI（初期実装では同期のみで十分）
+- **ゼロコピー最適化**: `BytesMut`バッファ再利用によるゼロコピー経路（需要が明確になってから検討）
 
 ### Requirement 5: Serde非依存の仕様定義
 **Objective:** ランタイム設計者として、Serdeを利用する実装を許容しつつも仕様レイヤーが特定フレームワークへ依存しないことを保証したい。
@@ -63,7 +67,7 @@ Pekko と protoactor-go のシリアライゼーション設計を参考に、Ac
 #### Acceptance Criteria
 1. When A型のシリアライザが内部フィールドBのシリアライズを必要とする, Serialization shall 公開APIを通じて登録済みBシリアライザへ委譲できるようにする。
 2. If Bフィールドに対応するシリアライザが未登録である, then Serialization shall Result型でNotSerializableエラーを返し、Aシリアライザがエラーを伝播するか明示ログへ転写する運用ガイドを提供する。
-3. While 再帰的に委譲されたシリアル化が実行されている, Serialization shall Manifest/Transport情報を親呼び出しと共有し、ActorRefやアドレス情報がダブルシリアライズされないよう維持する。
+3. While 再帰的に委譲されたシリアル化が実行されている, Serialization shall Manifest情報を親呼び出しと共有し、ネストしたシリアライズが正しく動作するよう維持する。ActorRefシリアライズに必要なコンテキストはスコープ管理により自動的に共有される。
 4. When デシリアライズで委譲ルートを辿る, Serialization shall Bのデシリアライザを呼び出した結果をそのままAの復元に利用できるようにし、成功/失敗をAシリアライザへ伝播する。
 
 ## Appendix / 付録
