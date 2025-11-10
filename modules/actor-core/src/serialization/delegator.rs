@@ -40,6 +40,12 @@ impl<'a, TB: RuntimeToolbox> SerializationDelegator<'a, TB> {
   }
 
   /// Serializes the nested payload using the registry configuration.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if:
+  /// - No serializer is found for the given type
+  /// - The serialization process fails
   pub fn serialize(
     &self,
     value: &(dyn Any + Send + Sync),

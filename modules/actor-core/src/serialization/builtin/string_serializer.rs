@@ -40,7 +40,7 @@ impl Serializer for StringSerializer {
     if bytes.len() < 4 {
       return Err(SerializationError::InvalidFormat);
     }
-    let len = u32::from_le_bytes(bytes[0..4].try_into().unwrap()) as usize;
+    let len = u32::from_le_bytes(bytes[0..4].try_into().map_err(|_| SerializationError::InvalidFormat)?) as usize;
     if bytes.len() < 4 + len {
       return Err(SerializationError::InvalidFormat);
     }

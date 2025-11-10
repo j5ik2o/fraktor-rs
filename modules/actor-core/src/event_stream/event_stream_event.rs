@@ -9,7 +9,7 @@ use crate::{
   lifecycle::LifecycleEvent,
   logging::LogEvent,
   mailbox::MailboxMetricsEvent,
-  serialization::error_event::SerializationErrorEvent,
+  serialization::SerializationErrorEvent,
   typed::{UnhandledMessageEvent, message_adapter::AdapterFailureEvent},
 };
 

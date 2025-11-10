@@ -11,7 +11,7 @@ pub struct TransportInformation {
 impl TransportInformation {
   /// Creates a new instance from a textual address hint.
   #[must_use]
-  pub fn new(address: Option<String>) -> Self {
+  pub const fn new(address: Option<String>) -> Self {
     Self { address }
   }
 

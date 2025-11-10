@@ -28,6 +28,12 @@ pub struct SerializationSetupBuilder {
   adapter_metadata:  Vec<String>,
 }
 
+impl Default for SerializationSetupBuilder {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
 impl SerializationSetupBuilder {
   /// Creates an empty builder instance.
   #[must_use]
@@ -73,6 +79,11 @@ impl SerializationSetupBuilder {
   }
 
   /// Marks the named serializer as the fallback implementation.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SerializationBuilderError::UnknownSerializer`] if the specified serializer name is
+  /// not registered.
   pub fn set_fallback(mut self, name: &str) -> Result<Self, SerializationBuilderError> {
     let Some(id) = self.serializer_ids.get(name).copied() else {
       return Err(SerializationBuilderError::UnknownSerializer(name.into()));
@@ -82,6 +93,12 @@ impl SerializationSetupBuilder {
   }
 
   /// Binds a marker type to the named serializer.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SerializationBuilderError::DuplicateMarker`] if the marker type is already bound.
+  /// Returns [`SerializationBuilderError::UnknownSerializer`] if the specified serializer name is
+  /// not registered.
   pub fn bind<T: 'static>(mut self, name: &str) -> Result<Self, SerializationBuilderError> {
     let type_id = TypeId::of::<T>();
     let type_name = type_name::<T>().into();
@@ -97,6 +114,12 @@ impl SerializationSetupBuilder {
   }
 
   /// Associates a logical manifest string with the marker type.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SerializationBuilderError::MarkerUnbound`] if the marker type is not yet bound to a
+  /// serializer. Returns [`SerializationBuilderError::DuplicateManifestBinding`] if the marker
+  /// type already has a manifest string.
   pub fn bind_remote_manifest<T: 'static>(
     mut self,
     manifest: impl Into<String>,
@@ -114,6 +137,7 @@ impl SerializationSetupBuilder {
   }
 
   /// Requires manifests for the given scope.
+  #[must_use]
   pub fn require_manifest_for_scope(mut self, scope: SerializationCallScope) -> Self {
     if !self.scopes.contains(&scope) {
       self.scopes.push(scope);
@@ -122,6 +146,12 @@ impl SerializationSetupBuilder {
   }
 
   /// Registers a manifest evolution route for deserialization.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SerializationBuilderError::UnknownSerializer`] if the specified serializer name is
+  /// not registered. Returns [`SerializationBuilderError::ManifestRouteDuplicate`] if the manifest
+  /// already has a route with the same priority.
   pub fn register_manifest_route(
     mut self,
     manifest: impl Into<String>,
@@ -132,7 +162,7 @@ impl SerializationSetupBuilder {
     let Some(serializer_id) = self.serializer_ids.get(serializer_name).copied() else {
       return Err(SerializationBuilderError::UnknownSerializer(serializer_name.into()));
     };
-    let entry = self.routes.entry(manifest_str.clone()).or_insert_with(BTreeMap::new);
+    let entry = self.routes.entry(manifest_str.clone()).or_default();
     if entry.contains_key(&priority) {
       return Err(SerializationBuilderError::ManifestRouteDuplicate { manifest: manifest_str, priority });
     }
@@ -141,6 +171,10 @@ impl SerializationSetupBuilder {
   }
 
   /// Applies an external configuration adapter to the builder.
+  ///
+  /// # Errors
+  ///
+  /// Returns errors propagated from the adapter's `apply` method.
   pub fn apply_adapter(self, adapter: &impl SerializationConfigAdapter) -> Result<Self, SerializationBuilderError> {
     let metadata = adapter.metadata();
     let mut builder = adapter.apply(self)?;
@@ -149,6 +183,12 @@ impl SerializationSetupBuilder {
   }
 
   /// Finalizes the setup.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SerializationBuilderError::MissingFallback`] if no fallback serializer was set.
+  /// Returns [`SerializationBuilderError::ManifestRequired`] if a scope requires manifests but one
+  /// or more bound types lack manifest strings.
   pub fn build(self) -> Result<SerializationSetup, SerializationBuilderError> {
     let Self {
       serializers_by_id,
@@ -164,17 +204,17 @@ impl SerializationSetupBuilder {
     let fallback = fallback.ok_or(SerializationBuilderError::MissingFallback)?;
     let manifest_required =
       scopes.iter().any(|scope| matches!(scope, SerializationCallScope::Remote | SerializationCallScope::Persistence));
-    if manifest_required {
-      if let Some((_type_id, _name)) = binding_names.iter().find(|(type_id, _)| {
+    if manifest_required
+      && let Some((_type_id, _name)) = binding_names.iter().find(|(type_id, _)| {
         let requested = **type_id;
         !manifest_strings.contains_key(&requested)
-      }) {
-        let scope = *scopes
-          .iter()
-          .find(|scope| matches!(scope, SerializationCallScope::Remote | SerializationCallScope::Persistence))
-          .unwrap_or(&SerializationCallScope::Remote);
-        return Err(SerializationBuilderError::ManifestRequired(scope));
-      }
+      })
+    {
+      let scope = *scopes
+        .iter()
+        .find(|scope| matches!(scope, SerializationCallScope::Remote | SerializationCallScope::Persistence))
+        .unwrap_or(&SerializationCallScope::Remote);
+      return Err(SerializationBuilderError::ManifestRequired(scope));
     }
     let manifest_routes = routes
       .into_iter()

@@ -11,6 +11,7 @@ use cellactor_utils_core_rs::sync::{ArcShared, NoStdMutex};
 use hashbrown::HashMap;
 use portable_atomic::{AtomicUsize, Ordering};
 
+use super::*;
 use crate::{
   NoStdToolbox, RuntimeToolbox,
   actor_prim::{
@@ -21,13 +22,20 @@ use crate::{
   event_stream::{EventStreamEvent, EventStreamSubscriber},
   serialization::{
     builtin, call_scope::SerializationCallScope, error::SerializationError, error_event::SerializationErrorEvent,
-    extension::SerializationExtensionGeneric, not_serializable_error::NotSerializableError,
+    not_serializable_error::NotSerializableError, serialization_registry::SerializationRegistryGeneric,
     serialization_setup::SerializationSetup, serialized_message::SerializedMessage, serializer::Serializer,
     serializer_id::SerializerId, string_manifest_serializer::SerializerWithStringManifest,
     transport_information::TransportInformation,
   },
   system::ActorSystemGeneric,
 };
+
+impl<TB: RuntimeToolbox + 'static> SerializationExtensionGeneric<TB> {
+  /// Returns the underlying registry handle (testing only).
+  pub const fn registry(&self) -> &ArcShared<SerializationRegistryGeneric<TB>> {
+    &self.registry
+  }
+}
 
 #[derive(Debug, PartialEq)]
 struct TestPayload(u8);
@@ -518,7 +526,7 @@ impl Serializer for FailingSerializer {
     self.id
   }
 
-  fn to_binary(&self, message: &(dyn Any + Send + Sync)) -> Result<Vec<u8>, SerializationError> {
+  fn to_binary(&self, _message: &(dyn Any + Send + Sync)) -> Result<Vec<u8>, SerializationError> {
     Err(SerializationError::NotSerializable(NotSerializableError::new(
       core::any::type_name::<TestPayload>(),
       Some(self.id),
@@ -677,7 +685,7 @@ fn builtin_serializers_support_primitives() {
 
   let bool_msg = extension.serialize(&true, SerializationCallScope::Local).expect("bool encode");
   let bool_value = extension.deserialize(&bool_msg, Some(TypeId::of::<bool>())).expect("bool decode");
-  assert_eq!(*bool_value.downcast::<bool>().unwrap(), true);
+  assert!(*bool_value.downcast::<bool>().unwrap());
 
   let number: i32 = 12345;
   let int_msg = extension.serialize(&number, SerializationCallScope::Local).expect("i32 encode");

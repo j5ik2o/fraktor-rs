@@ -5,6 +5,8 @@ mod tests;
 
 use core::fmt;
 
+use super::serializer_id_error::SerializerIdError;
+
 /// Unique identifier assigned to a serializer implementation.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SerializerId(u32);
@@ -27,13 +29,6 @@ impl fmt::Debug for SerializerId {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     f.debug_tuple("SerializerId").field(&self.0).finish()
   }
-}
-
-/// Errors raised when constructing a [`SerializerId`].
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SerializerIdError {
-  /// Indicates that the identifier collides with the runtime reserved range.
-  Reserved(u32),
 }
 
 impl TryFrom<u32> for SerializerId {

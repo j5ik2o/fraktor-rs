@@ -30,7 +30,7 @@ impl NotSerializableError {
 
   /// Returns a copy of the payload with the provided pid if absent.
   #[must_use]
-  pub fn with_pid(mut self, pid: Option<Pid>) -> Self {
+  pub const fn with_pid(mut self, pid: Option<Pid>) -> Self {
     if self.pid.is_none() {
       self.pid = pid;
     }
@@ -72,7 +72,7 @@ impl NotSerializableError {
 
   /// Returns the transport diagnostic hint (if any).
   #[must_use]
-  pub fn transport_hint(&self) -> Option<&TransportInformation> {
+  pub const fn transport_hint(&self) -> Option<&TransportInformation> {
     self.transport_hint.as_ref()
   }
 }

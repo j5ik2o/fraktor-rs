@@ -22,7 +22,7 @@ use cellactor_utils_core_rs::{
 };
 
 use crate::{
-  Extension, ExtensionId, RuntimeToolbox, ToolboxMutex,
+  Extension, RuntimeToolbox, ToolboxMutex,
   actor_prim::{Pid, actor_ref::ActorRefGeneric},
   dead_letter::DeadLetterReason,
   event_stream::EventStreamEvent,
@@ -58,17 +58,26 @@ pub struct SerializationExtensionGeneric<TB: RuntimeToolbox + 'static> {
 
 impl<TB: RuntimeToolbox + 'static> SerializationExtensionGeneric<TB> {
   /// Creates the extension from the provided setup.
+  ///
+  /// # Panics
+  ///
+  /// Panics if the built-in serializers fail to register. This should not happen
+  /// under normal conditions and indicates a serious configuration issue.
   #[must_use]
   pub fn new(system: &ActorSystemGeneric<TB>, setup: SerializationSetup) -> Self {
     let registry = ArcShared::new(SerializationRegistryGeneric::from_setup(&setup));
     let state = system.state();
     {
-      let log_state = state.clone();
-      builtin::register_defaults(&registry, |name, id| {
+      // builtinシリアライザの登録を試み、失敗時には警告ログを出力してから継続
+      // 通常は発生しないが、システム構成に重大な問題がある場合にパニックする
+      if let Err(error) = builtin::register_defaults(&registry, |name, id| {
         let message = format!("serializer collision detected for built-in {name} (id {:?})", id);
-        log_state.emit_log(LogLevel::Warn, message, None);
-      })
-      .expect("failed to register builtin serializers");
+        state.emit_log(LogLevel::Warn, message, None);
+      }) {
+        let message = format!("critical: failed to register builtin serializers: {error:?}");
+        state.emit_log(LogLevel::Error, message, None);
+        panic!("failed to register builtin serializers: {error:?}");
+      }
     }
     Self {
       registry,
@@ -81,6 +90,14 @@ impl<TB: RuntimeToolbox + 'static> SerializationExtensionGeneric<TB> {
   }
 
   /// Serializes the provided object respecting the specified scope.
+  ///
+  /// # Errors
+  ///
+  /// Returns `SerializationError` if:
+  /// - The extension has been shut down (`Uninitialized`)
+  /// - No suitable serializer can be found for the object's type (`NotSerializable`)
+  /// - Serialization fails due to data conversion issues
+  /// - Manifest generation fails when required for the specified scope
   pub fn serialize(
     &self,
     obj: &(dyn Any + Send + Sync),
@@ -90,6 +107,14 @@ impl<TB: RuntimeToolbox + 'static> SerializationExtensionGeneric<TB> {
   }
 
   /// Serializes the object while annotating the originating pid for diagnostics.
+  ///
+  /// # Errors
+  ///
+  /// Returns `SerializationError` if:
+  /// - The extension has been shut down (`Uninitialized`)
+  /// - No suitable serializer can be found for the object's type (`NotSerializable`)
+  /// - Serialization fails due to data conversion issues
+  /// - Manifest generation fails when required for the specified scope
   pub fn serialize_for(
     &self,
     obj: &(dyn Any + Send + Sync),
@@ -100,6 +125,14 @@ impl<TB: RuntimeToolbox + 'static> SerializationExtensionGeneric<TB> {
   }
 
   /// Deserializes the message using the registered serializers.
+  ///
+  /// # Errors
+  ///
+  /// Returns `SerializationError` if:
+  /// - The extension has been shut down (`Uninitialized`)
+  /// - The specified serializer ID is not registered
+  /// - Deserialization fails due to data format issues
+  /// - Manifest routing fails to resolve the message type
   pub fn deserialize(
     &self,
     msg: &SerializedMessage,
@@ -109,7 +142,7 @@ impl<TB: RuntimeToolbox + 'static> SerializationExtensionGeneric<TB> {
     let transport_hint = self.current_transport_information();
     let serializer = match self.registry.serializer_by_id(msg.serializer_id()) {
       | Ok(serializer) => serializer,
-      | Err(error) => return Err(self.handle_error(error, None, transport_hint.clone())),
+      | Err(error) => return Err(self.handle_error(error, None, transport_hint)),
     };
     let result = if let Some(manifest) = msg.manifest()
       && let Some(provider) = serializer.as_string_manifest()
@@ -142,9 +175,13 @@ impl<TB: RuntimeToolbox + 'static> SerializationExtensionGeneric<TB> {
   }
 
   /// Converts the actor reference to a serialized actor path string.
+  ///
+  /// # Errors
+  ///
+  /// Returns `SerializationError::Uninitialized` if the extension has been shut down.
   pub fn serialized_actor_path(&self, actor_ref: &ActorRefGeneric<TB>) -> Result<String, SerializationError> {
     self.ensure_active()?;
-    let path = self.actor_path(actor_ref);
+    let path = Self::actor_path(actor_ref);
     if let Some(info) = self.current_transport_information()
       && let Some(address) = info.address()
     {
@@ -163,6 +200,12 @@ impl<TB: RuntimeToolbox + 'static> SerializationExtensionGeneric<TB> {
   }
 
   /// Registers an additional binding at runtime.
+  ///
+  /// # Errors
+  ///
+  /// Returns `SerializationError` if:
+  /// - A binding for the given type ID already exists with a different serializer
+  /// - The serializer ID is not registered in the system
   pub fn register_binding(
     &self,
     type_id: TypeId,
@@ -188,8 +231,7 @@ impl<TB: RuntimeToolbox + 'static> SerializationExtensionGeneric<TB> {
     Ok(())
   }
 
-  fn resolve_scope(
-    &self,
+  const fn resolve_scope(
     requested: SerializationCallScope,
     transport: Option<&TransportInformation>,
   ) -> SerializationCallScope {
@@ -208,14 +250,14 @@ impl<TB: RuntimeToolbox + 'static> SerializationExtensionGeneric<TB> {
     if let Some(builder_manifest) = self.setup.manifest_for(type_id) {
       return Ok(Some(builder_manifest.to_owned()));
     }
-    let required = self.setup.manifest_required_scopes().iter().any(|candidate| *candidate == scope);
+    let required = self.setup.manifest_required_scopes().contains(&scope);
     if required {
       return fallback.map(Some).ok_or(SerializationError::ManifestMissing { scope });
     }
     Ok(fallback)
   }
 
-  fn actor_path(&self, actor_ref: &ActorRefGeneric<TB>) -> String {
+  fn actor_path(actor_ref: &ActorRefGeneric<TB>) -> String {
     if let Some(path) = actor_ref.path() {
       return path.to_string();
     }
@@ -243,7 +285,7 @@ impl<TB: RuntimeToolbox + 'static> SerializationExtensionGeneric<TB> {
           return Ok(value);
         },
         | Err(SerializationError::UnknownManifest(_)) => continue,
-        | Err(error) => return Err(self.handle_error(error, None, transport_hint.clone())),
+        | Err(error) => return Err(self.handle_error(error, None, transport_hint)),
       }
     }
     self.fail_manifest_route(manifest, msg, transport_hint)
@@ -284,17 +326,17 @@ impl<TB: RuntimeToolbox + 'static> SerializationExtensionGeneric<TB> {
       return self.serialize_internal(&path, scope, pid);
     }
     let transport_hint = self.current_transport_information();
-    let effective_scope = self.resolve_scope(scope, transport_hint.as_ref());
+    let effective_scope = Self::resolve_scope(scope, transport_hint.as_ref());
     let type_id = obj.type_id();
     let type_name = type_name_of_val(obj);
     let (serializer, origin) = match self.registry.serializer_for_type(type_id, type_name, transport_hint.clone()) {
       | Ok(value) => value,
-      | Err(error) => return Err(self.handle_error(error, pid, transport_hint.clone())),
+      | Err(error) => return Err(self.handle_error(error, pid, transport_hint)),
     };
     self.log_resolution(type_name, serializer.identifier(), origin);
     let bytes = match serializer.to_binary(obj) {
       | Ok(bytes) => bytes,
-      | Err(error) => return Err(self.handle_error(error, pid, transport_hint.clone())),
+      | Err(error) => return Err(self.handle_error(error, pid, transport_hint)),
     };
     let manifest_from_serializer = serializer.as_string_manifest().map(|provider| provider.manifest(obj).into_owned());
     let manifest = match self.manifest_for(type_id, effective_scope, manifest_from_serializer) {
@@ -302,12 +344,6 @@ impl<TB: RuntimeToolbox + 'static> SerializationExtensionGeneric<TB> {
       | Err(error) => return Err(self.handle_error(error, pid, transport_hint)),
     };
     Ok(SerializedMessage::new(serializer.identifier(), manifest, bytes))
-  }
-
-  /// Returns the underlying registry handle (testing only).
-  #[cfg(test)]
-  pub fn registry(&self) -> &ArcShared<SerializationRegistryGeneric<TB>> {
-    &self.registry
   }
 
   fn handle_error(
@@ -345,28 +381,6 @@ impl<TB: RuntimeToolbox + 'static> SerializationExtensionGeneric<TB> {
 }
 
 impl<TB: RuntimeToolbox + 'static> Extension<TB> for SerializationExtensionGeneric<TB> {}
-
-/// Identifier used to register the serialization extension.
-#[derive(Clone)]
-pub struct SerializationExtensionId {
-  setup: SerializationSetup,
-}
-
-impl SerializationExtensionId {
-  /// Creates a new identifier for the provided setup.
-  #[must_use]
-  pub fn new(setup: SerializationSetup) -> Self {
-    Self { setup }
-  }
-}
-
-impl<TB: RuntimeToolbox + 'static> ExtensionId<TB> for SerializationExtensionId {
-  type Ext = SerializationExtensionGeneric<TB>;
-
-  fn create_extension(&self, system: &ActorSystemGeneric<TB>) -> Self::Ext {
-    SerializationExtensionGeneric::new(system, self.setup.clone())
-  }
-}
 
 fn fallback_path(pid: Pid) -> String {
   format!("/pid/{}:{}", pid.value(), pid.generation())

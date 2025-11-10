@@ -108,10 +108,7 @@ fn returns_fallback_for_unknown_type() {
 fn serializer_by_id_unknown_returns_error() {
   let (registry, _, _) = setup_with_two_serializers();
   let unknown = SerializerId::try_from(199).expect("valid");
-  let error = match registry.serializer_by_id(unknown) {
-    | Err(err) => err,
-    | Ok(_) => panic!("expected unknown serializer error"),
-  };
+  let Err(error) = registry.serializer_by_id(unknown) else { panic!("expected unknown serializer error") };
   assert!(matches!(error, SerializationError::UnknownSerializer(id) if id == unknown));
 }
 
@@ -173,9 +170,8 @@ fn missing_serializer_produces_not_serializable_error() {
     Vec::new(),
   );
   let registry = SerializationRegistry::from_setup(&setup);
-  let error = match registry.serializer_for_type(TypeId::of::<u8>(), type_name::<u8>(), None) {
-    | Err(err) => err,
-    | Ok(_) => panic!("expected failure"),
+  let Err(error) = registry.serializer_for_type(TypeId::of::<u8>(), type_name::<u8>(), None) else {
+    panic!("expected failure")
   };
   match error {
     | SerializationError::NotSerializable(payload) => assert_eq!(payload.type_name(), type_name::<u8>()),

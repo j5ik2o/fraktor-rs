@@ -40,7 +40,10 @@ impl EventStreamSubscriber for LifecyclePrinter {
       | EventStreamEvent::AdapterFailure(failure) => {
         println!("[ADAPTER FAILURE] pid={:?} reason={:?}", failure.pid(), failure.failure());
       },
-      | EventStreamEvent::Log(_) | EventStreamEvent::Mailbox(_) | EventStreamEvent::UnhandledMessage(_) => {},
+      | EventStreamEvent::Log(_)
+      | EventStreamEvent::Mailbox(_)
+      | EventStreamEvent::UnhandledMessage(_)
+      | EventStreamEvent::Serialization(_) => {},
     }
   }
 }

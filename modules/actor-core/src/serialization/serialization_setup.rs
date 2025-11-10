@@ -1,5 +1,8 @@
 //! Immutable serialization setup produced by the builder.
 
+#[cfg(test)]
+mod tests;
+
 use alloc::{string::String, vec::Vec};
 use core::any::TypeId;
 
@@ -24,6 +27,7 @@ pub struct SerializationSetup {
 impl SerializationSetup {
   /// Creates a setup instance from builder-owned data.
   #[must_use]
+  #[allow(clippy::too_many_arguments)]
   pub(crate) fn from_parts(
     serializers: HashMap<SerializerId, ArcShared<dyn Serializer>>,
     bindings: HashMap<TypeId, SerializerId>,
@@ -69,7 +73,7 @@ impl SerializationSetup {
 
   /// Returns serialized manifest routes.
   #[must_use]
-  pub fn manifest_routes(&self) -> &HashMap<String, Vec<(u8, SerializerId)>> {
+  pub const fn manifest_routes(&self) -> &HashMap<String, Vec<(u8, SerializerId)>> {
     &self.manifest_routes
   }
 
@@ -91,33 +95,17 @@ impl SerializationSetup {
   }
 
   /// Returns the binding map (crate visibility).
-  pub(crate) fn bindings_ref(&self) -> &HashMap<TypeId, SerializerId> {
+  pub(crate) const fn bindings_ref(&self) -> &HashMap<TypeId, SerializerId> {
     &self.bindings
   }
 
   /// Returns the binding names map (crate visibility).
-  pub(crate) fn binding_names_ref(&self) -> &HashMap<TypeId, String> {
+  pub(crate) const fn binding_names_ref(&self) -> &HashMap<TypeId, String> {
     &self.binding_names
   }
 
   /// Returns manifest routes (crate visibility).
-  pub(crate) fn manifest_routes_ref(&self) -> &HashMap<String, Vec<(u8, SerializerId)>> {
+  pub(crate) const fn manifest_routes_ref(&self) -> &HashMap<String, Vec<(u8, SerializerId)>> {
     &self.manifest_routes
-  }
-
-  /// Creates an ad-hoc setup for tests without passing through the builder.
-  #[cfg(test)]
-  #[must_use]
-  pub fn testing_from_raw(
-    serializers: HashMap<SerializerId, ArcShared<dyn Serializer>>,
-    bindings: HashMap<TypeId, SerializerId>,
-    binding_names: HashMap<TypeId, String>,
-    remote_manifests: HashMap<TypeId, String>,
-    manifest_routes: HashMap<String, Vec<(u8, SerializerId)>>,
-    scopes: Vec<SerializationCallScope>,
-    fallback: SerializerId,
-    adapter_metadata: Vec<String>,
-  ) -> Self {
-    Self { serializers, bindings, binding_names, remote_manifests, manifest_routes, scopes, fallback, adapter_metadata }
   }
 }

@@ -31,6 +31,7 @@ pub trait Serializer: Send + Sync {
   /// # Errors
   ///
   /// Returns [`SerializationError`] if decoding fails.
+  #[allow(clippy::wrong_self_convention)]
   fn from_binary(&self, bytes: &[u8], type_hint: Option<TypeId>) -> Result<Box<dyn Any + Send>, SerializationError>;
 
   /// Provides access to the dynamic type used for downcasting.

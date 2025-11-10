@@ -1,10 +1,10 @@
 //! Built-in serializer implementations registered by the extension.
 
-pub mod bool_serializer;
-pub mod bytes_serializer;
-pub mod i32_serializer;
-pub mod null_serializer;
-pub mod string_serializer;
+mod bool_serializer;
+mod bytes_serializer;
+mod i32_serializer;
+mod null_serializer;
+mod string_serializer;
 
 use alloc::string::String;
 
@@ -23,13 +23,26 @@ use crate::{
   },
 };
 
-const NULL_ID: SerializerId = SerializerId::from_raw(1);
-const BOOL_ID: SerializerId = SerializerId::from_raw(2);
-const I32_ID: SerializerId = SerializerId::from_raw(3);
-const STRING_ID: SerializerId = SerializerId::from_raw(4);
-const BYTES_ID: SerializerId = SerializerId::from_raw(5);
+/// Serializer ID for null/unit type.
+pub const NULL_ID: SerializerId = SerializerId::from_raw(1);
+
+/// Serializer ID for boolean type.
+pub const BOOL_ID: SerializerId = SerializerId::from_raw(2);
+
+/// Serializer ID for i32 integer type.
+pub const I32_ID: SerializerId = SerializerId::from_raw(3);
+
+/// Serializer ID for string type.
+pub const STRING_ID: SerializerId = SerializerId::from_raw(4);
+
+/// Serializer ID for byte array type.
+pub const BYTES_ID: SerializerId = SerializerId::from_raw(5);
 
 /// Registers built-in serializers required by the runtime.
+///
+/// # Errors
+///
+/// Returns `SerializationError` if type binding registration fails during the process.
 pub fn register_defaults<TB: RuntimeToolbox + 'static, F>(
   registry: &SerializationRegistryGeneric<TB>,
   mut on_collision: F,
