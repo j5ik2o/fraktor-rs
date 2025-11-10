@@ -34,8 +34,8 @@ impl QueueCapabilityError {
 /// Describes the capability set available at runtime.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct QueueCapabilitySet {
-  has_mpsc:           bool,
-  has_deque:          bool,
+  has_mpsc:            bool,
+  has_deque:           bool,
   has_blocking_future: bool,
 }
 
@@ -107,11 +107,7 @@ impl QueueCapabilityRegistry {
 
   /// Ensures the provided capability exists, returning an error when it does not.
   pub fn ensure(&self, capability: QueueCapability) -> Result<(), QueueCapabilityError> {
-    if self.set.has(capability) {
-      Ok(())
-    } else {
-      Err(QueueCapabilityError::new(capability))
-    }
+    if self.set.has(capability) { Ok(()) } else { Err(QueueCapabilityError::new(capability)) }
   }
 
   /// Ensures all capabilities in the provided slice exist.

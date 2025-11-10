@@ -24,7 +24,7 @@ use crate::{
   error::ActorError,
   event_stream::EventStreamEvent,
   lifecycle::{LifecycleEvent, LifecycleStage},
-  mailbox::{MailboxCapacity, MailboxGeneric, MailboxInstrumentationGeneric},
+  mailbox::{BackpressurePublisherGeneric, MailboxCapacity, MailboxGeneric, MailboxInstrumentationGeneric},
   messaging::{
     AnyMessageGeneric, FailureMessageSnapshot, FailurePayload, SystemMessage,
     message_invoker::{MessageInvoker, MessageInvokerPipelineGeneric},
@@ -85,6 +85,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
       mailbox.set_instrumentation(instrumentation);
     }
     let dispatcher = props.dispatcher().build_dispatcher(mailbox.clone());
+    mailbox.attach_backpressure_publisher(BackpressurePublisherGeneric::from_dispatcher(dispatcher.clone()));
     let sender = dispatcher.into_sender();
     let factory = props.factory().clone();
     let actor = <TB::MutexFamily as SyncMutexFamily>::create(factory.create());

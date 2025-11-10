@@ -79,7 +79,7 @@ fn mailbox_metrics_and_warnings_are_emitted() {
 #[test]
 fn mailbox_schedule_requests_follow_state_engine() {
   let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
-  let hints = ScheduleHints { has_system_messages: true, has_user_messages: false };
+  let hints = ScheduleHints { has_system_messages: true, has_user_messages: false, backpressure_active: false };
 
   assert!(mailbox.request_schedule(hints));
   assert!(!mailbox.request_schedule(hints));
@@ -98,22 +98,26 @@ fn mailbox_schedule_hints_reflect_current_workload() {
   let idle_hints = mailbox.current_schedule_hints();
   assert!(!idle_hints.has_system_messages);
   assert!(!idle_hints.has_user_messages);
+  assert!(!idle_hints.backpressure_active);
 
   mailbox.enqueue_system(SystemMessage::Create).expect("system enqueue");
   let system_hints = mailbox.current_schedule_hints();
   assert!(system_hints.has_system_messages);
   assert!(!system_hints.has_user_messages);
+  assert!(!system_hints.backpressure_active);
   let _ = mailbox.dequeue();
 
   mailbox.enqueue_user(AnyMessage::new(String::from("user"))).expect("user enqueue");
   let user_hints = mailbox.current_schedule_hints();
   assert!(!user_hints.has_system_messages);
   assert!(user_hints.has_user_messages);
+  assert!(!user_hints.backpressure_active);
 
   mailbox.suspend();
   let suspended_hints = mailbox.current_schedule_hints();
   assert!(!suspended_hints.has_system_messages);
   assert!(!suspended_hints.has_user_messages);
+  assert!(!suspended_hints.backpressure_active);
 }
 
 fn wait_until(condition: impl Fn() -> bool) {

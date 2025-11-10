@@ -4,7 +4,7 @@ use super::{MailboxStateEngine, ScheduleHints};
 fn request_schedule_only_triggers_once_until_idle() {
   let engine = MailboxStateEngine::new();
   assert_eq!(engine.raw_state(), 0);
-  let hints = ScheduleHints { has_system_messages: true, has_user_messages: false };
+  let hints = ScheduleHints { has_system_messages: true, has_user_messages: false, backpressure_active: false };
 
   let first = engine.request_schedule(hints);
   assert!(first, "state after first attempt: {:#x}", engine.raw_state());
@@ -26,4 +26,20 @@ fn suspend_and_resume_control_user_messages() {
   assert!(engine.is_suspended());
   engine.resume();
   assert!(!engine.is_suspended());
+}
+
+#[test]
+fn backpressure_hint_requests_schedule_when_not_suspended() {
+  let engine = MailboxStateEngine::new();
+  let hints = ScheduleHints { has_system_messages: false, has_user_messages: false, backpressure_active: true };
+
+  assert!(engine.request_schedule(hints));
+  engine.set_running();
+  assert!(!engine.request_schedule(hints));
+  assert!(engine.set_idle());
+
+  engine.suspend();
+  assert!(!engine.request_schedule(hints));
+  engine.resume();
+  assert!(engine.request_schedule(hints));
 }

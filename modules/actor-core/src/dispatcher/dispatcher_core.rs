@@ -20,7 +20,9 @@ use super::{
 use crate::{
   RuntimeToolbox, ToolboxMutex,
   error::{ActorError, SendError},
-  mailbox::{EnqueueOutcome, MailboxGeneric, MailboxMessage, MailboxOfferFutureGeneric, ScheduleHints},
+  mailbox::{
+    EnqueueOutcome, MailboxGeneric, MailboxMessage, MailboxOfferFutureGeneric, MailboxPressureEvent, ScheduleHints,
+  },
   messaging::{AnyMessageGeneric, SystemMessage, message_invoker::MessageInvoker},
 };
 
@@ -150,12 +152,20 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
   pub(super) fn enqueue_user(self_arc: &ArcShared<Self>, message: AnyMessageGeneric<TB>) -> Result<(), SendError<TB>> {
     match self_arc.mailbox.enqueue_user(message) {
       | Ok(EnqueueOutcome::Enqueued) => {
-        Self::request_execution(self_arc, ScheduleHints { has_system_messages: false, has_user_messages: true });
+        Self::request_execution(self_arc, ScheduleHints {
+          has_system_messages: false,
+          has_user_messages:   true,
+          backpressure_active: false,
+        });
         Ok(())
       },
       | Ok(EnqueueOutcome::Pending(mut future)) => {
         Self::drain_offer_future(self_arc, &mut future)?;
-        Self::request_execution(self_arc, ScheduleHints { has_system_messages: false, has_user_messages: true });
+        Self::request_execution(self_arc, ScheduleHints {
+          has_system_messages: false,
+          has_user_messages:   true,
+          backpressure_active: false,
+        });
         Ok(())
       },
       | Err(error) => Err(error),
@@ -164,7 +174,11 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
 
   pub(super) fn enqueue_system(self_arc: &ArcShared<Self>, message: SystemMessage) -> Result<(), SendError<TB>> {
     self_arc.mailbox.enqueue_system(message)?;
-    Self::request_execution(self_arc, ScheduleHints { has_system_messages: true, has_user_messages: false });
+    Self::request_execution(self_arc, ScheduleHints {
+      has_system_messages: true,
+      has_user_messages:   false,
+      backpressure_active: false,
+    });
     Ok(())
   }
 
@@ -181,7 +195,11 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
         | Poll::Ready(Ok(_)) => return Ok(()),
         | Poll::Ready(Err(error)) => return Err(error),
         | Poll::Pending => {
-          Self::request_execution(self_arc, ScheduleHints { has_system_messages: false, has_user_messages: true });
+          Self::request_execution(self_arc, ScheduleHints {
+            has_system_messages: false,
+            has_user_messages:   true,
+            backpressure_active: false,
+          });
           block_hint();
         },
       }
@@ -196,5 +214,10 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
     if self_arc.mailbox.request_schedule(hints) {
       super::base::DispatcherGeneric::from_core(self_arc.clone()).schedule();
     }
+  }
+
+  pub(super) fn handle_backpressure(self_arc: &ArcShared<Self>, _event: &MailboxPressureEvent) {
+    let hints = ScheduleHints { has_system_messages: false, has_user_messages: true, backpressure_active: true };
+    Self::request_execution(self_arc, hints);
   }
 }

@@ -17,6 +17,8 @@ pub enum SendError<TB: RuntimeToolbox = NoStdToolbox> {
   Closed(AnyMessageGeneric<TB>),
   /// No reply target was provided for the attempted send operation.
   NoRecipient(AnyMessageGeneric<TB>),
+  /// The mailbox failed to accept the message before the timeout elapsed.
+  Timeout(AnyMessageGeneric<TB>),
 }
 
 impl<TB: RuntimeToolbox> SendError<TB> {
@@ -44,6 +46,12 @@ impl<TB: RuntimeToolbox> SendError<TB> {
     Self::NoRecipient(message)
   }
 
+  /// Creates a send error representing an enqueue timeout.
+  #[must_use]
+  pub const fn timeout(message: AnyMessageGeneric<TB>) -> Self {
+    Self::Timeout(message)
+  }
+
   /// Returns a shared reference to the owned message.
   #[must_use]
   pub const fn message(&self) -> &AnyMessageGeneric<TB> {
@@ -51,7 +59,8 @@ impl<TB: RuntimeToolbox> SendError<TB> {
       | SendError::Full(message)
       | SendError::Suspended(message)
       | SendError::Closed(message)
-      | SendError::NoRecipient(message) => message,
+      | SendError::NoRecipient(message)
+      | SendError::Timeout(message) => message,
     }
   }
 
@@ -62,7 +71,8 @@ impl<TB: RuntimeToolbox> SendError<TB> {
       | SendError::Full(message)
       | SendError::Suspended(message)
       | SendError::Closed(message)
-      | SendError::NoRecipient(message) => message,
+      | SendError::NoRecipient(message)
+      | SendError::Timeout(message) => message,
     }
   }
 }
@@ -74,6 +84,7 @@ impl<TB: RuntimeToolbox> fmt::Debug for SendError<TB> {
       | SendError::Suspended(_) => f.debug_tuple("Suspended").finish(),
       | SendError::Closed(_) => f.debug_tuple("Closed").finish(),
       | SendError::NoRecipient(_) => f.debug_tuple("NoRecipient").finish(),
+      | SendError::Timeout(_) => f.debug_tuple("Timeout").finish(),
     }
   }
 }

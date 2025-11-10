@@ -4,9 +4,11 @@ use core::{
   future::Future,
   pin::Pin,
   task::{Context, Poll},
+  time::Duration,
 };
 
 use cellactor_utils_core_rs::{
+  DelayFuture, DelayProvider,
   collections::{
     queue::{QueueError, backend::OfferOutcome},
     wait::WaitShared,
@@ -24,14 +26,20 @@ where
   state:   ArcShared<QueueState<T, TB>>,
   message: Option<T>,
   waiter:  Option<WaitShared<QueueError<T>>>,
+  timeout: Option<DelayFuture>,
 }
 
 impl<T, TB: RuntimeToolbox> QueueOfferFuture<T, TB>
 where
   T: Send + 'static,
 {
-  pub(super) const fn new(state: ArcShared<QueueState<T, TB>>, message: T) -> Self {
-    Self { state, message: Some(message), waiter: None }
+  pub(super) fn new(state: ArcShared<QueueState<T, TB>>, message: T) -> Self {
+    Self { state, message: Some(message), waiter: None, timeout: None }
+  }
+
+  pub(super) fn with_timeout(mut self, duration: Duration, provider: &dyn DelayProvider) -> Self {
+    self.timeout = Some(provider.delay(duration));
+    self
   }
 
   fn ensure_waiter(&mut self) -> &mut WaitShared<QueueError<T>> {
@@ -61,10 +69,22 @@ where
   fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
     let this = self.get_mut();
     loop {
+      if let Some(timeout) = this.timeout.as_mut() {
+        if Pin::new(timeout).poll(cx).is_ready() {
+          this.waiter.take();
+          let message = unsafe {
+            debug_assert!(this.message.is_some(), "timeout without pending message");
+            this.message.take().unwrap_unchecked()
+          };
+          return Poll::Ready(Err(QueueError::TimedOut(message)));
+        }
+      }
+
       if let Some(message) = this.message.take() {
         match this.state.offer(message) {
           | Ok(outcome) => {
             this.waiter.take();
+            this.timeout = None;
             return Poll::Ready(Ok(outcome));
           },
           | Err(QueueError::Full(item)) => {

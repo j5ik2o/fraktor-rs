@@ -3,7 +3,12 @@ use alloc::vec::Vec;
 use cellactor_utils_core_rs::sync::{ArcShared, NoStdMutex};
 
 use super::MailboxInstrumentation;
-use crate::{actor_prim::Pid, event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber}, system::SystemState};
+use crate::{
+  actor_prim::Pid,
+  event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber},
+  mailbox::BackpressurePublisherGeneric,
+  system::SystemState,
+};
 
 #[test]
 fn mailbox_instrumentation_new() {
@@ -53,6 +58,29 @@ fn mailbox_instrumentation_emits_pressure_event() {
   instrumentation.publish(3, 0);
 
   assert!(events.lock().iter().any(|event| matches!(event, EventStreamEvent::MailboxPressure(_))));
+}
+
+#[test]
+fn mailbox_instrumentation_notifies_backpressure_publisher() {
+  let system_state = ArcShared::new(SystemState::new());
+  let pid = Pid::new(6, 0);
+  let mut instrumentation = MailboxInstrumentation::new(system_state.clone(), pid, Some(4), None, None);
+
+  let captured = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let publisher = BackpressurePublisherGeneric::from_fn({
+    let captured = captured.clone();
+    move |event: &crate::mailbox::MailboxPressureEvent| {
+      captured.lock().push((event.pid(), event.user_len()));
+    }
+  });
+  instrumentation.attach_backpressure_publisher(publisher);
+
+  instrumentation.publish(3, 0);
+
+  let entries = captured.lock();
+  assert_eq!(entries.len(), 1);
+  assert_eq!(entries[0].0, pid);
+  assert_eq!(entries[0].1, 3);
 }
 
 struct TestSubscriber {

@@ -12,9 +12,9 @@ use cellactor_utils_core_rs::{
 };
 
 use super::{
-  MailboxOfferFutureGeneric, MailboxPollFutureGeneric, MailboxStateEngine, QueueHandles, ScheduleHints, SystemQueue,
-  mailbox_enqueue_outcome::EnqueueOutcome, mailbox_instrumentation::MailboxInstrumentationGeneric,
-  mailbox_message::MailboxMessage, map_user_queue_error,
+  BackpressurePublisherGeneric, MailboxOfferFutureGeneric, MailboxPollFutureGeneric, MailboxStateEngine, QueueHandles,
+  ScheduleHints, SystemQueue, mailbox_enqueue_outcome::EnqueueOutcome,
+  mailbox_instrumentation::MailboxInstrumentationGeneric, mailbox_message::MailboxMessage, map_user_queue_error,
 };
 use crate::{
   NoStdToolbox, RuntimeToolbox,
@@ -55,6 +55,14 @@ where
   /// Installs instrumentation hooks for metrics emission.
   pub(crate) fn set_instrumentation(&self, instrumentation: MailboxInstrumentationGeneric<TB>) {
     *self.instrumentation.lock() = Some(instrumentation);
+  }
+
+  /// Installs a backpressure publisher used for dispatcher coordination.
+  pub(crate) fn attach_backpressure_publisher(&self, publisher: BackpressurePublisherGeneric<TB>) {
+    let mut guard = self.instrumentation.lock();
+    if let Some(instrumentation) = guard.as_mut() {
+      instrumentation.attach_backpressure_publisher(publisher);
+    }
   }
 
   /// Enqueues a system message, bypassing suspension.
@@ -129,7 +137,8 @@ where
     self.state.resume();
   }
 
-  /// Requests scheduling based on provided hints; returns `true` when dispatcher execution should start.
+  /// Requests scheduling based on provided hints; returns `true` when dispatcher execution should
+  /// start.
   #[must_use]
   pub(crate) fn request_schedule(&self, hints: ScheduleHints) -> bool {
     self.state.request_schedule(hints)
@@ -151,7 +160,8 @@ where
   pub(crate) fn current_schedule_hints(&self) -> ScheduleHints {
     ScheduleHints {
       has_system_messages: self.system_len() > 0,
-      has_user_messages: !self.is_suspended() && self.user_len() > 0,
+      has_user_messages:   !self.is_suspended() && self.user_len() > 0,
+      backpressure_active: false,
     }
   }
 
@@ -229,7 +239,8 @@ where
       | Err(QueueError::Full(_))
       | Err(QueueError::OfferError(_))
       | Err(QueueError::Closed(_))
-      | Err(QueueError::AllocError(_)) => None,
+      | Err(QueueError::AllocError(_))
+      | Err(QueueError::TimedOut(_)) => None,
     }
   }
 

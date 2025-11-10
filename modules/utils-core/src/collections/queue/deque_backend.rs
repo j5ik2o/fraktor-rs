@@ -3,30 +3,49 @@
 extern crate alloc;
 
 use alloc::collections::VecDeque;
-use core::{cmp, future::Future, pin::Pin, task::{Context, Poll}};
-
-use spin::Mutex;
+use core::{
+  cmp,
+  future::Future,
+  pin::Pin,
+  task::{Context, Poll},
+  time::Duration,
+};
 
 use crate::{
+  DelayFuture, DelayProvider,
   collections::{
     queue::{OfferOutcome, OverflowPolicy, QueueError},
     wait::{WaitQueue, WaitShared},
   },
-  sync::{ArcShared, sync_mutex_like::SpinSyncMutex},
+  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
+  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 
+#[cfg(test)]
+mod tests;
+
 /// Double-ended queue backend supporting both FIFO and LIFO style operations.
-pub struct DequeBackend<T> {
-  state: ArcShared<DequeState<T>>,
+pub struct DequeBackendGeneric<T, TB: RuntimeToolbox + 'static = NoStdToolbox>
+where
+  T: Send + 'static, {
+  state: ArcShared<DequeState<T, TB>>,
 }
 
-impl<T> Clone for DequeBackend<T> {
+impl<T, TB> Clone for DequeBackendGeneric<T, TB>
+where
+  T: Send + 'static,
+  TB: RuntimeToolbox + 'static,
+{
   fn clone(&self) -> Self {
     Self { state: self.state.clone() }
   }
 }
 
-impl<T> DequeBackend<T> {
+impl<T, TB> DequeBackendGeneric<T, TB>
+where
+  T: Send + 'static,
+  TB: RuntimeToolbox + 'static,
+{
   /// Creates a new backend with the specified capacity and overflow policy.
   #[must_use]
   pub fn with_capacity(capacity: usize, policy: OverflowPolicy) -> Self {
@@ -67,15 +86,18 @@ impl<T> DequeBackend<T> {
   }
 
   /// Returns a future that waits until the value can be appended to the back of the deque.
-  pub fn offer_back_blocking(&self, item: T) -> DequeOfferFuture<T> {
+  pub fn offer_back_blocking(&self, item: T) -> DequeOfferFuture<T, TB> {
     DequeOfferFuture::new(self.state.clone(), item, DequeEdge::Back)
   }
 
   /// Returns a future that waits until the value can be prepended to the front of the deque.
-  pub fn offer_front_blocking(&self, item: T) -> DequeOfferFuture<T> {
+  pub fn offer_front_blocking(&self, item: T) -> DequeOfferFuture<T, TB> {
     DequeOfferFuture::new(self.state.clone(), item, DequeEdge::Front)
   }
 }
+
+/// Default Deque backend using the no_std toolbox.
+pub type DequeBackend<T> = DequeBackendGeneric<T, NoStdToolbox>;
 
 #[derive(Clone, Copy)]
 enum DequeEdge {
@@ -83,18 +105,24 @@ enum DequeEdge {
   Back,
 }
 
-struct DequeState<T> {
-  inner:             SpinSyncMutex<DequeInner<T>>,
-  producer_waiters:  Mutex<WaitQueue<QueueError<T>>>,
-  consumer_waiters:  Mutex<WaitQueue<QueueError<T>>>,
+struct DequeState<T, TB: RuntimeToolbox + 'static>
+where
+  T: Send + 'static, {
+  inner:            ToolboxMutex<DequeInner<T>, TB>,
+  producer_waiters: ToolboxMutex<WaitQueue<QueueError<T>>, TB>,
+  consumer_waiters: ToolboxMutex<WaitQueue<QueueError<T>>, TB>,
 }
 
-impl<T> DequeState<T> {
+impl<T, TB> DequeState<T, TB>
+where
+  T: Send + 'static,
+  TB: RuntimeToolbox + 'static,
+{
   fn new(capacity: usize, policy: OverflowPolicy) -> Self {
     Self {
-      inner: SpinSyncMutex::new(DequeInner::new(capacity, policy)),
-      producer_waiters: Mutex::new(WaitQueue::new()),
-      consumer_waiters: Mutex::new(WaitQueue::new()),
+      inner:            <TB::MutexFamily as SyncMutexFamily>::create(DequeInner::new(capacity, policy)),
+      producer_waiters: <TB::MutexFamily as SyncMutexFamily>::create(WaitQueue::new()),
+      consumer_waiters: <TB::MutexFamily as SyncMutexFamily>::create(WaitQueue::new()),
     }
   }
 
@@ -239,16 +267,23 @@ impl<T> Drop for DequeInner<T> {
 }
 
 /// Future returned when a deque needs to wait for capacity.
-pub struct DequeOfferFuture<T> {
-  state:  ArcShared<DequeState<T>>,
-  item:   Option<T>,
-  waiter: Option<WaitShared<QueueError<T>>>,
-  edge:   DequeEdge,
+pub struct DequeOfferFuture<T, TB: RuntimeToolbox + 'static = NoStdToolbox>
+where
+  T: Send + 'static, {
+  state:   ArcShared<DequeState<T, TB>>,
+  item:    Option<T>,
+  waiter:  Option<WaitShared<QueueError<T>>>,
+  edge:    DequeEdge,
+  timeout: Option<DelayFuture>,
 }
 
-impl<T> DequeOfferFuture<T> {
-  const fn new(state: ArcShared<DequeState<T>>, item: T, edge: DequeEdge) -> Self {
-    Self { state, item: Some(item), waiter: None, edge }
+impl<T, TB> DequeOfferFuture<T, TB>
+where
+  T: Send + 'static,
+  TB: RuntimeToolbox + 'static,
+{
+  fn new(state: ArcShared<DequeState<T, TB>>, item: T, edge: DequeEdge) -> Self {
+    Self { state, item: Some(item), waiter: None, edge, timeout: None }
   }
 
   fn ensure_waiter(&mut self) -> &mut WaitShared<QueueError<T>> {
@@ -259,18 +294,41 @@ impl<T> DequeOfferFuture<T> {
     // SAFETY: waiter is always Some after the branch above.
     unsafe { self.waiter.as_mut().unwrap_unchecked() }
   }
+
+  /// Configures the future to fail with [`QueueError::TimedOut`] if capacity does not free up
+  /// before the specified duration.
+  pub fn with_timeout(mut self, duration: Duration, provider: &dyn DelayProvider) -> Self {
+    self.timeout = Some(provider.delay(duration));
+    self
+  }
 }
 
-impl<T> Future for DequeOfferFuture<T> {
+impl<T, TB> Future for DequeOfferFuture<T, TB>
+where
+  T: Send + 'static,
+  TB: RuntimeToolbox + 'static,
+{
   type Output = Result<OfferOutcome, QueueError<T>>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
     let this = self.get_mut();
     loop {
+      if let Some(timeout) = this.timeout.as_mut() {
+        if Pin::new(timeout).poll(cx).is_ready() {
+          this.waiter.take();
+          let item = unsafe {
+            debug_assert!(this.item.is_some(), "timeout without pending item");
+            this.item.take().unwrap_unchecked()
+          };
+          return Poll::Ready(Err(QueueError::TimedOut(item)));
+        }
+      }
+
       if let Some(item) = this.item.take() {
         match this.state.offer(item, this.edge) {
           | Ok(outcome) => {
             this.waiter.take();
+            this.timeout = None;
             return Poll::Ready(Ok(outcome));
           },
           | Err(QueueError::Full(returned)) => {
@@ -296,4 +354,9 @@ impl<T> Future for DequeOfferFuture<T> {
   }
 }
 
-impl<T> Unpin for DequeOfferFuture<T> {}
+impl<T, TB> Unpin for DequeOfferFuture<T, TB>
+where
+  T: Send + 'static,
+  TB: RuntimeToolbox + 'static,
+{
+}

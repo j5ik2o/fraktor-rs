@@ -6,6 +6,7 @@ use cellactor_utils_core_rs::collections::queue::{QueueError, backend::VecRingBa
 
 use crate::{RuntimeToolbox, ToolboxMutex, error::SendError, messaging::AnyMessageGeneric};
 
+mod backpressure_publisher;
 mod base;
 mod capacity;
 mod mailbox_enqueue_outcome;
@@ -23,6 +24,7 @@ mod policy;
 mod state_engine;
 mod system_queue;
 
+pub use backpressure_publisher::BackpressurePublisherGeneric;
 pub use base::{Mailbox, MailboxGeneric};
 pub use capacity::MailboxCapacity;
 pub use mailbox_enqueue_outcome::EnqueueOutcome;
@@ -49,6 +51,7 @@ pub(crate) fn map_user_queue_error<TB: RuntimeToolbox>(error: QueueError<AnyMess
   match error {
     | QueueError::Full(item) | QueueError::OfferError(item) => SendError::full(item),
     | QueueError::Closed(item) | QueueError::AllocError(item) => SendError::closed(item),
+    | QueueError::TimedOut(item) => SendError::timeout(item),
     | QueueError::Disconnected | QueueError::Empty | QueueError::WouldBlock => {
       panic!("unexpected queue error variant during offer")
     },

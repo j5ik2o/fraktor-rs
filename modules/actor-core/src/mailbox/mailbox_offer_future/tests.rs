@@ -3,10 +3,14 @@ use core::{
   future::Future,
   pin::Pin,
   task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
+  time::Duration,
 };
 
+use cellactor_utils_core_rs::ManualDelayProvider;
+
 use crate::{
-  mailbox::{Mailbox, MailboxPolicy},
+  error::SendError,
+  mailbox::{EnqueueOutcome, Mailbox, MailboxOverflowStrategy, MailboxPolicy},
   messaging::AnyMessage,
 };
 
@@ -72,4 +76,25 @@ fn mailbox_offer_future_debug_format() {
 
   let debug_str = format!("{:?}", future);
   assert!(debug_str.contains("MailboxOfferFuture"));
+}
+
+#[test]
+fn mailbox_offer_future_times_out_and_returns_send_error() {
+  use core::num::NonZeroUsize;
+
+  let mailbox =
+    Mailbox::new(MailboxPolicy::bounded(NonZeroUsize::new(1).unwrap(), MailboxOverflowStrategy::Block, None));
+
+  assert!(matches!(mailbox.enqueue_user(AnyMessage::new(0)), Ok(EnqueueOutcome::Enqueued)));
+
+  let provider = ManualDelayProvider::new();
+  let mut future = mailbox.enqueue_user_future(AnyMessage::new(1)).with_timeout(Duration::from_millis(5), &provider);
+
+  let waker = noop_waker();
+  let mut context = Context::from_waker(&waker);
+
+  assert!(matches!(Pin::new(&mut future).poll(&mut context), Poll::Pending));
+  assert!(provider.trigger_next());
+  let result = Pin::new(&mut future).poll(&mut context);
+  assert!(matches!(result, Poll::Ready(Err(SendError::Timeout(_)))));
 }

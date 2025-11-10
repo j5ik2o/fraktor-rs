@@ -26,17 +26,20 @@
   - QueueCapabilityセットへDeque/BlockingFutureフラグを追加し、欠落時はMailbox初期化を失敗させるエラーを返す
   - DequeBackendをSpinMutex+VecDequeで実装し、push_front/back・pop_front/backとWaitQueue連携をFuture APIと統合する
   - _Requirements: R3, R9_
-- [ ] 2.2 Block戦略のtimeout/telemetryとDispatcher抑制フローを設計する
-  - MailboxOfferFuture/DequeOfferFutureへtimeout設定を伝搬するTimer抽象化を設計し、Block戦略時のDeadLetter + `Result::Err` 返却フローを定義する
-  - MailboxInstrumentationがpublishする `MailboxPressure` を Dispatcher/StateEngine のスケジュールヒントに反映させる BackpressurePublisher API を記述する
+- [x] 2.2 Block戦略のtimeout/telemetryとDispatcher抑制フローを設計する
+  - utils-core に DelayFuture/DelayProvider 抽象を実装し、MailboxOfferFuture/DequeOfferFuture が `with_timeout(Duration)` を受け取れるようにする
+  - timeout 到達時は DeadLetterReason::MailboxTimeout を追加し、SendError::Timeout と DeadLetter イベントを発火するフローを定義する
+  - MailboxInstrumentation が publish する `MailboxPressureEvent` を Dispatcher/StateEngine の backpressure ヒントへ連携する BackpressurePublisher API を記述する
+  - ✅ DelayFuture と ManualDelayProvider を `cellactor-utils-core` に着地させ、Mailbox/Deque の Block Future が `QueueError::TimedOut`→`SendError::Timeout` へ伝播することを確認済み。BackpressurePublisher 経由で DispatcherCore が `ScheduleHints.backpressure_active` を処理する実装とテストを追加。
   - _Requirements: R3, R4_
 - [ ] 2.3 StashDequeHandle足場とDeque capability検証を実装する
   - PropsにMailboxRequirementを追加し、QueueCapabilityRegistryでDeque/BlockingFuture欠落を検出してSpawnErrorへ伝播する
   - `actor-core/src/stash/deque_handle.rs`（仮）にDequeHandleトレイトを定義し、Mailboxから両端操作を提供する準備を行う（stash/unstash本体は後フェーズ）
   - _Requirements: R3, R9_
-- [ ] 2.4 BackpressurePublisher実装とDeadLetter/telemetry統合を完了する
+- [x] 2.4 BackpressurePublisher実装とDeadLetter/telemetry統合を完了する
   - Block戦略timeout完了時にDeadLetterへoverflow原因を添えてpublishし、`MailboxPressureEvent`と合わせてEventStreamへ配信する
   - DispatcherCoreがBackpressurePublisherからのシグナルでregisterForExecution頻度やthroughputを調整するhookを導入する
+  - ✅ MailboxInstrumentation に publisher を接続し、ActorCell 初期化で Dispatcher へルーティング。DeadLetterReason::MailboxTimeout を追加し、Timeout 時の EventStream/Log 出力まで網羅した。
   - _Requirements: R3, R4_
 
 - [ ] 3. Dispatcherスケジューリングとフェアネス制御を再設計する

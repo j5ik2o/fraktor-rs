@@ -165,8 +165,10 @@ graph LR
 
 ### Blocking Strategy & Timeout API
 - Mailbox の Block 戦略は `QueueOfferFuture`/`DequeOfferFuture` で「空きが出るまで待機」するが、Pekko 互換の timeout/DeadLetter 処理を追加するには runtime 全体でタイマー抽象化が必要。
-- **Timer Abstraction**: SystemState に monotonic clock があるものの、Future 経由で timeout を伝搬する API が未定義。次フェーズで `DelayFuture`（tokio/no_std 切り替え可能）を導入し、`MailboxOfferFuture::with_timeout(Duration)` を設計する。
-- **Timeout Handling Flow**: Mailbox enqueue → (Block strategy) → Timeout 発生で DeadLetter + `Result::Err` を返す → DispatcherSender が送信者へ伝播。design にこのフローを明記。
+- **Timer Abstraction**: SystemState に monotonic clock があるものの、Future 経由で timeout を伝搬する API が未定義。`DelayFuture`（tokio/no_std 切り替え可能）を導入し、Toolbox が DelayProvider を差し込んで `MailboxOfferFuture::with_timeout(Duration)` へ注入する。
+- **Timeout Handling Flow**: Mailbox enqueue → (Block strategy＋DelayFuture) → Timeout で `QueueError::TimedOut` と `SendError::Timeout` を返す → DeadLetter に `MailboxTimeout` 理由を記録し EventStream へ publish → DispatcherSender が送信者へ伝播。
+- **BackpressurePublisher**: `MailboxPressureEvent` を DispatcherCore に伝える `BackpressurePublisher` を SystemState と Dispatcher の間に配置し、pressure 発生中は registerForExecution 頻度や throughput を抑制する。StateEngine/ScheduleHints に `backpressure_active` を追加して公平性制御と連携する。
+- **実装ステップ (Task 2.2)**: (1) utils-core に DelayFuture/DelayProvider を実装、(2) QueueOfferFuture/DequeOfferFuture に timeout API を追加し DeadLetter/SendError 連携を行う、(3) actor-core で DeadLetterReason/BackpressurePublisher/DispatcherCore を拡張する。
 
 ### Backpressure/Dispatcher Integration (新セクション)
 1. MailboxInstrumentation が `MailboxPressureEvent` を publish。

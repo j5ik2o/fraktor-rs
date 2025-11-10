@@ -7,6 +7,8 @@ pub enum DeadLetterReason {
   MailboxFull,
   /// Mailbox was suspended at the time of delivery.
   MailboxSuspended,
+  /// Mailbox timed out while trying to accept the message.
+  MailboxTimeout,
   /// Mailbox or actor was closed, or the recipient pid did not exist.
   RecipientUnavailable,
   /// No reply target was present for an ask/tell expecting a response.

@@ -11,7 +11,7 @@ const SUSPEND_MASK: u32 = !((1 << SUSPEND_SHIFT) - 1);
 
 /// Mailbox-internal state machine that tracks scheduling, running, and suspension.
 pub struct MailboxStateEngine {
-  state: AtomicU32,
+  state:           AtomicU32,
   need_reschedule: AtomicBool,
 }
 
@@ -21,7 +21,9 @@ pub struct ScheduleHints {
   /// True when the system queue contains work.
   pub has_system_messages: bool,
   /// True when the user queue contains work.
-  pub has_user_messages: bool,
+  pub has_user_messages:   bool,
+  /// True when the mailbox has signalled high backpressure.
+  pub backpressure_active: bool,
 }
 
 impl MailboxStateEngine {
@@ -49,11 +51,7 @@ impl MailboxStateEngine {
         return false;
       }
       let desired = state | FLAG_SCHEDULED;
-      if self
-        .state
-        .compare_exchange(state, desired, Ordering::AcqRel, Ordering::Acquire)
-        .is_ok()
-      {
+      if self.state.compare_exchange(state, desired, Ordering::AcqRel, Ordering::Acquire).is_ok() {
         return true;
       }
     }
@@ -64,11 +62,7 @@ impl MailboxStateEngine {
     loop {
       let state = self.state.load(Ordering::Acquire);
       let desired = (state & !FLAG_SCHEDULED) | FLAG_RUNNING;
-      if self
-        .state
-        .compare_exchange(state, desired, Ordering::AcqRel, Ordering::Acquire)
-        .is_ok()
-      {
+      if self.state.compare_exchange(state, desired, Ordering::AcqRel, Ordering::Acquire).is_ok() {
         return;
       }
     }
@@ -79,11 +73,7 @@ impl MailboxStateEngine {
     loop {
       let state = self.state.load(Ordering::Acquire);
       let desired = state & !FLAG_RUNNING;
-      if self
-        .state
-        .compare_exchange(state, desired, Ordering::AcqRel, Ordering::Acquire)
-        .is_ok()
-      {
+      if self.state.compare_exchange(state, desired, Ordering::AcqRel, Ordering::Acquire).is_ok() {
         break;
       }
     }
@@ -107,7 +97,7 @@ impl MailboxStateEngine {
   }
 
   fn has_effective_work(&self, hints: ScheduleHints) -> bool {
-    hints.has_system_messages || (hints.has_user_messages && !self.is_suspended())
+    hints.has_system_messages || ((hints.has_user_messages || hints.backpressure_active) && !self.is_suspended())
   }
 
   fn current_suspend_count(&self) -> u32 {
@@ -120,11 +110,7 @@ impl MailboxStateEngine {
       let count = (state & SUSPEND_MASK) >> SUSPEND_SHIFT;
       let new_count = f(count);
       let desired = (state & !SUSPEND_MASK) | (new_count << SUSPEND_SHIFT);
-      if self
-        .state
-        .compare_exchange(state, desired, Ordering::AcqRel, Ordering::Acquire)
-        .is_ok()
-      {
+      if self.state.compare_exchange(state, desired, Ordering::AcqRel, Ordering::Acquire).is_ok() {
         break;
       }
     }

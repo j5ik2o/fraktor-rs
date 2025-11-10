@@ -7,9 +7,14 @@ use alloc::format;
 
 use cellactor_utils_core_rs::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
 
+use super::BackpressurePublisherGeneric;
 use crate::{
-  RuntimeToolbox, actor_prim::Pid, event_stream::EventStreamEvent, logging::LogLevel,
-  mailbox::{MailboxMetricsEvent, MailboxPressureEvent}, system::SystemStateGeneric,
+  RuntimeToolbox,
+  actor_prim::Pid,
+  event_stream::EventStreamEvent,
+  logging::LogLevel,
+  mailbox::{MailboxMetricsEvent, MailboxPressureEvent},
+  system::SystemStateGeneric,
 };
 
 const PRESSURE_THRESHOLD_PERCENT: usize = 75;
@@ -22,6 +27,7 @@ pub struct MailboxInstrumentationGeneric<TB: RuntimeToolbox + 'static> {
   throughput:     Option<usize>,
   warn_threshold: Option<usize>,
   pid:            Pid,
+  backpressure:   Option<BackpressurePublisherGeneric<TB>>,
 }
 
 /// Type alias for the default mailbox instrumentation.
@@ -37,7 +43,7 @@ impl<TB: RuntimeToolbox + 'static> MailboxInstrumentationGeneric<TB> {
     throughput: Option<usize>,
     warn_threshold: Option<usize>,
   ) -> Self {
-    Self { system_state, capacity, throughput, warn_threshold, pid }
+    Self { system_state, capacity, throughput, warn_threshold, pid, backpressure: None }
   }
 
   /// Publishes a metrics snapshot.
@@ -66,7 +72,19 @@ impl<TB: RuntimeToolbox + 'static> MailboxInstrumentationGeneric<TB> {
     let utilization = ((user_len.saturating_mul(100)) / capacity).min(100) as u8;
     if utilization as usize >= PRESSURE_THRESHOLD_PERCENT {
       let event = MailboxPressureEvent::new(self.pid, user_len, capacity, utilization, timestamp);
-      self.system_state.publish_event(&EventStreamEvent::MailboxPressure(event));
+      self.system_state.publish_event(&EventStreamEvent::MailboxPressure(event.clone()));
+      self.forward_backpressure(&event);
+    }
+  }
+
+  /// Registers the dispatcher-facing publisher that consumes pressure events.
+  pub fn attach_backpressure_publisher(&mut self, publisher: BackpressurePublisherGeneric<TB>) {
+    self.backpressure = Some(publisher);
+  }
+
+  fn forward_backpressure(&self, event: &MailboxPressureEvent) {
+    if let Some(publisher) = &self.backpressure {
+      publisher.publish(event);
     }
   }
 }

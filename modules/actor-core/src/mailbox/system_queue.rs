@@ -1,5 +1,8 @@
 use alloc::boxed::Box;
-use core::{ptr, sync::atomic::{AtomicPtr, AtomicUsize, Ordering}};
+use core::{
+  ptr,
+  sync::atomic::{AtomicPtr, AtomicUsize, Ordering},
+};
 
 use crate::messaging::SystemMessage;
 
@@ -8,7 +11,7 @@ mod tests;
 
 struct Node {
   message: SystemMessage,
-  next: *mut Node,
+  next:    *mut Node,
 }
 
 impl Node {
@@ -28,7 +31,11 @@ pub struct SystemQueue {
 impl SystemQueue {
   /// Creates an empty queue.
   pub const fn new() -> Self {
-    Self { head: AtomicPtr::new(ptr::null_mut()), pending: AtomicPtr::new(ptr::null_mut()), len: AtomicUsize::new(0) }
+    Self {
+      head:    AtomicPtr::new(ptr::null_mut()),
+      pending: AtomicPtr::new(ptr::null_mut()),
+      len:     AtomicUsize::new(0),
+    }
   }
 
   /// Pushes a new system message onto the queue.
@@ -36,12 +43,10 @@ impl SystemQueue {
     let node = Node::new(message);
     loop {
       let current_head = self.head.load(Ordering::Acquire);
-      unsafe { (*node).next = current_head; }
-      if self
-        .head
-        .compare_exchange(current_head, node, Ordering::AcqRel, Ordering::Acquire)
-        .is_ok()
-      {
+      unsafe {
+        (*node).next = current_head;
+      }
+      if self.head.compare_exchange(current_head, node, Ordering::AcqRel, Ordering::Acquire).is_ok() {
         self.len.fetch_add(1, Ordering::Release);
         return;
       }
@@ -70,14 +75,12 @@ impl SystemQueue {
 
   fn pop_from_pending(&self, pending_ptr: *mut Node) -> Option<SystemMessage> {
     let next = unsafe { (*pending_ptr).next };
-    if self
-      .pending
-      .compare_exchange(pending_ptr, next, Ordering::AcqRel, Ordering::Acquire)
-      .is_ok()
-    {
+    if self.pending.compare_exchange(pending_ptr, next, Ordering::AcqRel, Ordering::Acquire).is_ok() {
       self.len.fetch_sub(1, Ordering::Release);
       let message = unsafe { ptr::read(&(*pending_ptr).message) };
-      unsafe { drop(Box::from_raw(pending_ptr)); }
+      unsafe {
+        drop(Box::from_raw(pending_ptr));
+      }
       Some(message)
     } else {
       None
@@ -98,7 +101,9 @@ impl SystemQueue {
     let mut prev = ptr::null_mut();
     while !head.is_null() {
       let next = unsafe { (*head).next };
-      unsafe { (*head).next = prev; }
+      unsafe {
+        (*head).next = prev;
+      }
       prev = head;
       head = next;
     }

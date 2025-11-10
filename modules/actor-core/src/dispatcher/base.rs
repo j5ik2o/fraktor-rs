@@ -10,7 +10,7 @@ use super::{
 use crate::{
   NoStdToolbox, RuntimeToolbox,
   error::SendError,
-  mailbox::MailboxGeneric,
+  mailbox::{MailboxGeneric, MailboxPressureEvent},
   messaging::{AnyMessageGeneric, SystemMessage, message_invoker::MessageInvoker},
 };
 
@@ -81,6 +81,11 @@ impl<TB: RuntimeToolbox + 'static> DispatcherGeneric<TB> {
   #[must_use]
   pub(crate) fn mailbox(&self) -> ArcShared<MailboxGeneric<TB>> {
     self.core.mailbox().clone()
+  }
+
+  /// Notifies the dispatcher about a mailbox pressure signal.
+  pub(crate) fn notify_backpressure(&self, event: &MailboxPressureEvent) {
+    DispatcherCore::handle_backpressure(&self.core, event);
   }
 
   /// Creates a waker for mailbox waiting.

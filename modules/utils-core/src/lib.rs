@@ -70,7 +70,8 @@ pub use sync::{
   ArcShared, Flag, SendBound, Shared, SharedBound, SharedDyn, SharedFactory, SharedFn, StateCell, StaticRefShared,
 };
 pub use timing::{
-  DeadLineTimer, DeadLineTimerError, DeadLineTimerExpired, DeadLineTimerKey, DeadLineTimerKeyAllocator, TimerDeadLine,
+  DeadLineTimer, DeadLineTimerError, DeadLineTimerExpired, DeadLineTimerKey, DeadLineTimerKeyAllocator, DelayFuture,
+  DelayProvider, ManualDelayProvider, TimerDeadLine,
 };
 
 /// Core collections shared across the Cellex runtimes.
