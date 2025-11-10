@@ -13,6 +13,7 @@ use super::{
 };
 
 /// Snapshot of serialization configuration applied to the actor system.
+#[derive(Clone)]
 pub struct SerializationSetup {
   serializers:       HashMap<SerializerId, ArcShared<dyn Serializer>>,
   bindings:          HashMap<TypeId, SerializerId>,

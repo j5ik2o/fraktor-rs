@@ -6,6 +6,7 @@ pub mod call_scope;
 pub mod config_adapter;
 pub mod error;
 pub mod delegator;
+pub mod extension;
 pub mod not_serializable_error;
 pub mod serialized_message;
 pub mod serializer;

@@ -34,18 +34,18 @@
   - DeadLetter/EventStream へのエラー通知経路を registry 層でフックする
   - _Requirements: R1.4, R6.1-R6.4_
 
-- [ ] 3. SerializationExtension と Transport スコープ管理を構築する
-- [ ] 3.1 serialize/deserialize API と scope 判定を実装する
+- [x] 3. SerializationExtension と Transport スコープ管理を構築する
+- [x] 3.1 serialize/deserialize API と scope 判定を実装する
   - `serialize(&self, obj, scope)` で scope=Remote/Persistence の場合に manifest 必須チェックと `SerializationCallScope` 自動昇格を行う
   - `deserialize` で manifest 有無に応じた呼び出し先を選択し、scope 情報を NotSerializableError へ添付する
   - Extension 登録/取得ロジックを SystemState extensions map に組み込み、ArcShared で公開する
   - _Requirements: R1.1-R1.4, R2.1-R2.4, R6.1-R6.4_
-- [ ] 3.2 TransportInformation Guard と shutdown 処理を実装する
+- [x] 3.2 TransportInformation Guard と shutdown 処理を実装する
   - `with_transport_information` で Guard パターンを構築し、マルチスレッドでのスコープ push/pop を安全に行う
   - `current_transport_information` が Guard 状態から読めるよう Cell/ArcShared を整備し、Phase 3 の ThreadLocal 置換を見据えた抽象を用意する
   - `shutdown` で Guard/キャッシュをリセットし、以降の API が `SerializationError::Uninitialized` を返すよう制御する
   - _Requirements: R3.3-R3.5, R3.4, R6.3_
-- [ ] 3.3 serialized_actor_path ヘルパーと ActorRefSerializer 依存機能を提供する
+- [x] 3.3 serialized_actor_path ヘルパーと ActorRefSerializer 依存機能を提供する
   - Transport 情報がある場合は完全修飾パス、ない場合は `local:///` 形式へフォールバックするロジックを実装する
   - ActorRefSerializer がヘルパーを呼び出すだけで済むよう、scope からアドレス情報を取得する API を提供する
   - 生成した文字列を Remoting/Persistence 層へ受け渡すためのユーティリティ（バリデーション、InvalidFormat エラー）を追加する

@@ -144,6 +144,11 @@ impl<TB: RuntimeToolbox> SerializationRegistryGeneric<TB> {
   pub fn binding_name(&self, type_id: TypeId) -> Option<String> {
     self.binding_names.lock().get(&type_id).cloned()
   }
+
+  /// Clears cached lookups (used during shutdown).
+  pub fn clear_cache(&self) {
+    self.cache.lock().clear();
+  }
 }
 
 /// Type alias for the no_std default registry.
