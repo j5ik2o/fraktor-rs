@@ -48,3 +48,7 @@ path = "examples/message_adapter_no_std/main.rs"
 [[example]]
 name = "behaviors_state_transition_typed_no_std"
 path = "examples/behaviors_state_transition_typed_no_std/main.rs"
+
+[[example]]
+name = "serialization_custom_serializer_no_std"
+path = "examples/serialization_custom_serializer_no_std/main.rs"
