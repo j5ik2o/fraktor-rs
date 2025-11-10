@@ -19,7 +19,6 @@ use crate::{
   logging::LogLevel,
   messaging::{AnyMessageGeneric, SystemMessage},
   props::PropsGeneric,
-  serialization::SERIALIZATION_EXTENSION,
   spawn::SpawnError,
   system::{RegisterExtraTopLevelError, system_state::SystemStateGeneric},
 };
@@ -335,7 +334,8 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
       self.state.set_system_guardian(cell);
     }
 
-    let _ = self.register_extension(&SERIALIZATION_EXTENSION);
+    // TODO: enable serialization extension
+    // let _ = self.register_extension(&SERIALIZATION_EXTENSION);
 
     configure(self)?;
 

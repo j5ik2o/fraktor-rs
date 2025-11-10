@@ -75,7 +75,6 @@ pub mod logging;
 pub mod mailbox;
 pub mod messaging;
 pub mod props;
-pub mod serialization;
 pub mod spawn;
 pub mod supervision;
 pub mod system;
