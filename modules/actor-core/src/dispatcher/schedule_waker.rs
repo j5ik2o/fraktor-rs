@@ -8,7 +8,7 @@ use core::{
 use cellactor_utils_core_rs::sync::ArcShared;
 
 use super::{base::DispatcherGeneric, dispatcher_core::DispatcherCore};
-use crate::RuntimeToolbox;
+use crate::{RuntimeToolbox, mailbox::ScheduleHints};
 
 #[cfg(test)]
 mod tests;
@@ -23,7 +23,11 @@ impl<TB: RuntimeToolbox + 'static> ScheduleShared<TB> {
   }
 
   fn schedule(&self) {
-    DispatcherGeneric::from_core(self.dispatcher.clone()).schedule();
+    DispatcherGeneric::from_core(self.dispatcher.clone()).register_for_execution(ScheduleHints {
+      has_system_messages: false,
+      has_user_messages:   true,
+      backpressure_active: false,
+    });
   }
 }
 

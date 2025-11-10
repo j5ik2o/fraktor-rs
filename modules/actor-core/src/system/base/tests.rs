@@ -1,16 +1,19 @@
 use alloc::{vec, vec::Vec};
 
-use cellactor_utils_core_rs::sync::{ArcShared, NoStdMutex};
+use cellactor_utils_core_rs::{
+  collections::queue::capabilities::{QueueCapabilityRegistry, QueueCapabilitySet},
+  sync::{ArcShared, NoStdMutex},
+};
 
 use super::ActorSystem;
 use crate::{
   NoStdToolbox,
-  actor_prim::Actor,
-  dispatcher::{DispatchExecutor, DispatchSharedGeneric},
+  actor_prim::{Actor, ActorCell},
+  dispatcher::{DispatchError, DispatchExecutor, DispatchSharedGeneric},
   event_stream::{EventStreamEvent, EventStreamSubscriber},
   lifecycle::LifecycleStage,
   messaging::SystemMessage,
-  props::{DispatcherConfig, Props},
+  props::{DispatcherConfig, MailboxConfig, MailboxRequirement, Props},
 };
 
 struct TestActor;
@@ -100,7 +103,9 @@ impl NoopExecutor {
 }
 
 impl DispatchExecutor<NoStdToolbox> for NoopExecutor {
-  fn execute(&self, _dispatcher: DispatchSharedGeneric<NoStdToolbox>) {}
+  fn execute(&self, _dispatcher: DispatchSharedGeneric<NoStdToolbox>) -> Result<(), DispatchError> {
+    Ok(())
+  }
 }
 
 #[test]
@@ -193,6 +198,37 @@ fn actor_system_spawn_child_with_invalid_parent() {
 }
 
 #[test]
+fn spawn_child_fails_when_deque_requirement_missing() {
+  let system = ActorSystem::new_empty();
+  let parent_pid = system.allocate_pid();
+  let parent_name = system.state().assign_name(None, Some("parent"), parent_pid).expect("parent name");
+  let parent_cell = ActorCell::create(system.state(), parent_pid, None, parent_name, &Props::from_fn(|| TestActor));
+  system.state().register_cell(parent_cell);
+
+  let capabilities = QueueCapabilityRegistry::new(QueueCapabilitySet::defaults().with_deque(false));
+  let mailbox =
+    MailboxConfig::default().with_capabilities(capabilities).with_requirement(MailboxRequirement::for_stash());
+  let props = Props::from_fn(|| TestActor).with_mailbox(mailbox);
+
+  let result = system.spawn_child(parent_pid, &props);
+  assert!(matches!(result, Err(crate::spawn::SpawnError::InvalidProps(_))));
+}
+
+#[test]
+fn spawn_child_succeeds_when_requirements_met() {
+  let system = ActorSystem::new_empty();
+  let parent_pid = system.allocate_pid();
+  let parent_name = system.state().assign_name(None, Some("parent"), parent_pid).expect("parent name");
+  let parent_cell = ActorCell::create(system.state(), parent_pid, None, parent_name, &Props::from_fn(|| TestActor));
+  system.state().register_cell(parent_cell);
+
+  let mailbox = MailboxConfig::default().with_requirement(MailboxRequirement::for_stash());
+  let props = Props::from_fn(|| TestActor).with_mailbox(mailbox);
+
+  assert!(system.spawn_child(parent_pid, &props).is_ok());
+}
+
+#[test]
 fn actor_system_spawn_without_guardian() {
   let system = ActorSystem::new_empty();
   let props = Props::from_fn(|| TestActor);
@@ -254,7 +290,7 @@ fn create_send_failure_triggers_rollback() {
   let props = Props::from_fn(|| TestActor);
   let pid = system.allocate_pid();
   let name = system.state().assign_name(None, props.name(), pid).expect("name assigned");
-  let cell = system.build_cell_for_spawn(pid, None, name, &props);
+  let cell = system.build_cell_for_spawn(pid, None, name, &props).expect("セル生成に失敗");
   system.state().register_cell(cell.clone());
 
   system.state().remove_cell(&pid);

@@ -10,7 +10,7 @@ use crate::{
   RuntimeToolbox,
   actor_prim::actor_ref::ActorRefSender,
   error::SendError,
-  mailbox::{EnqueueOutcome, MailboxGeneric, MailboxOfferFutureGeneric},
+  mailbox::{EnqueueOutcome, MailboxGeneric, MailboxOfferFutureGeneric, ScheduleHints},
   messaging::AnyMessageGeneric,
 };
 
@@ -43,7 +43,11 @@ impl<TB: RuntimeToolbox + 'static> DispatcherSenderGeneric<TB> {
         | core::task::Poll::Ready(Ok(_)) => return Ok(()),
         | core::task::Poll::Ready(Err(error)) => return Err(error),
         | core::task::Poll::Pending => {
-          self.dispatcher.schedule();
+          self.dispatcher.register_for_execution(ScheduleHints {
+            has_system_messages: false,
+            has_user_messages:   true,
+            backpressure_active: false,
+          });
           block_hint();
         },
       }
@@ -55,13 +59,25 @@ impl<TB: RuntimeToolbox + 'static> ActorRefSender<TB> for DispatcherSenderGeneri
   fn send(&self, message: AnyMessageGeneric<TB>) -> Result<(), SendError<TB>> {
     match self.mailbox.enqueue_user(message) {
       | Ok(EnqueueOutcome::Enqueued) => {
-        self.dispatcher.schedule();
+        self.dispatcher.register_for_execution(ScheduleHints {
+          has_system_messages: false,
+          has_user_messages:   true,
+          backpressure_active: false,
+        });
         Ok(())
       },
       | Ok(EnqueueOutcome::Pending(mut future)) => {
-        self.dispatcher.schedule();
+        self.dispatcher.register_for_execution(ScheduleHints {
+          has_system_messages: false,
+          has_user_messages:   true,
+          backpressure_active: false,
+        });
         self.poll_pending(&mut future)?;
-        self.dispatcher.schedule();
+        self.dispatcher.register_for_execution(ScheduleHints {
+          has_system_messages: false,
+          has_user_messages:   true,
+          backpressure_active: false,
+        });
         Ok(())
       },
       | Err(error) => Err(error),

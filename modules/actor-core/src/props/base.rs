@@ -1,8 +1,11 @@
 use alloc::{string::String, vec::Vec};
 
-use cellactor_utils_core_rs::sync::ArcShared;
+use cellactor_utils_core_rs::{collections::queue::capabilities::QueueCapabilityRegistry, sync::ArcShared};
 
-use super::{dispatcher_config::DispatcherConfigGeneric, factory::ActorFactory, mailbox_config::MailboxConfig};
+use super::{
+  dispatcher_config::DispatcherConfigGeneric, factory::ActorFactory, mailbox_config::MailboxConfig,
+  mailbox_requirement::MailboxRequirement,
+};
 use crate::{NoStdToolbox, RuntimeToolbox, actor_prim::Actor, mailbox::MailboxPolicy};
 
 /// Immutable configuration describing how to construct an actor.
@@ -63,6 +66,12 @@ impl<TB: RuntimeToolbox + 'static> PropsGeneric<TB> {
     self.mailbox.policy()
   }
 
+  /// Returns the mailbox requirements.
+  #[must_use]
+  pub const fn mailbox_requirement(&self) -> MailboxRequirement {
+    self.mailbox.requirement()
+  }
+
   /// Returns the registered middleware identifiers.
   #[must_use]
   pub fn middleware(&self) -> &[String] {
@@ -103,6 +112,20 @@ impl<TB: RuntimeToolbox + 'static> PropsGeneric<TB> {
   #[must_use]
   pub fn with_dispatcher(mut self, dispatcher: DispatcherConfigGeneric<TB>) -> Self {
     self.dispatcher = dispatcher;
+    self
+  }
+
+  /// Overrides the mailbox requirements while preserving existing policy/configuration.
+  #[must_use]
+  pub fn with_mailbox_requirement(mut self, requirement: MailboxRequirement) -> Self {
+    self.mailbox = self.mailbox.with_requirement(requirement);
+    self
+  }
+
+  /// Overrides the mailbox capability registry (testing helper).
+  #[must_use]
+  pub fn with_mailbox_capabilities(mut self, registry: QueueCapabilityRegistry) -> Self {
+    self.mailbox = self.mailbox.with_capabilities(registry);
     self
   }
 }

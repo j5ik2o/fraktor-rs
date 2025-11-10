@@ -29,7 +29,7 @@ pub use capabilities::{
   MultiProducer, QueueCapability, QueueCapabilityError, QueueCapabilityRegistry, QueueCapabilitySet, SingleConsumer,
   SingleProducer, SupportsPeek,
 };
-pub use deque_backend::{DequeBackend, DequeOfferFuture};
+pub use deque_backend::{DequeBackend, DequeBackendGeneric, DequeOfferFuture};
 pub use storage::{QueueStorage, VecRingStorage};
 pub use sync_mpsc_consumer::SyncMpscConsumer;
 pub use sync_mpsc_producer::SyncMpscProducer;

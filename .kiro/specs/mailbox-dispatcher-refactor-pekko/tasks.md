@@ -32,9 +32,10 @@
   - MailboxInstrumentation が publish する `MailboxPressureEvent` を Dispatcher/StateEngine の backpressure ヒントへ連携する BackpressurePublisher API を記述する
   - ✅ DelayFuture と ManualDelayProvider を `cellactor-utils-core` に着地させ、Mailbox/Deque の Block Future が `QueueError::TimedOut`→`SendError::Timeout` へ伝播することを確認済み。BackpressurePublisher 経由で DispatcherCore が `ScheduleHints.backpressure_active` を処理する実装とテストを追加。
   - _Requirements: R3, R4_
-- [ ] 2.3 StashDequeHandle足場とDeque capability検証を実装する
+- [x] 2.3 StashDequeHandle足場とDeque capability検証を実装する
   - PropsにMailboxRequirementを追加し、QueueCapabilityRegistryでDeque/BlockingFuture欠落を検出してSpawnErrorへ伝播する
   - `actor-core/src/stash/deque_handle.rs`（仮）にDequeHandleトレイトを定義し、Mailboxから両端操作を提供する準備を行う（stash/unstash本体は後フェーズ）
+  - ✅ DequeHandleトレイトを追加し、StashDequeHandleGenericで実装。deque/tests.rs を新設して trait object 経由の push/pop を検証し、ActorSystem の requirement チェック経路が SpawnError を返す回帰テストを整備。
   - _Requirements: R3, R9_
 - [x] 2.4 BackpressurePublisher実装とDeadLetter/telemetry統合を完了する
   - Block戦略timeout完了時にDeadLetterへoverflow原因を添えてpublishし、`MailboxPressureEvent`と合わせてEventStreamへ配信する
@@ -46,17 +47,20 @@
   - Pekko準拠のthroughput・throughput-deadline・starvation検出を導入し、Idle復帰と再スケジューリング条件を明文化する
   - no_std環境ではTickベース cooperative スケジューラにフォールバックしつつ、STD側と同じヒントAPIを維持する
   - _Requirements: R2_
-- [ ] 3.1 registerForExecutionとRejectedExecutionリトライを実装する
+- [x] 3.1 registerForExecutionとRejectedExecutionリトライを実装する
   - hasMessageHint/hasSystemMessageHintを受け取り、1度だけDispatcherを登録するガードをStateEngine連動で構築する
   - executorがRejectedExecutionを返したとき2回まで再投入し、それでも失敗すればMailboxをIdleへ戻してEventStreamへエラー通知する
+  - ✅ `DispatcherCore::request_execution` を ScheduleHints 必須＋StateEngine 連動に統合し、`DispatcherGeneric` が `MAX_EXECUTOR_RETRIES` で `RejectedExecution` をハンドリング。失敗時は MailboxIdle/Log が発火するよう EventStream 経由で通知。
   - _Requirements: R2_
-- [ ] 3.2 throughput/deadlineとstarvation緩和を適用する
+- [x] 3.2 throughput/deadlineとstarvation緩和を適用する
   - ループ当たりの処理件数とdeadlineをDispatcherDescriptorから読み込み、残量があればNeedRescheduleを要求し無ければワーカーを返却する
   - starvation検出時に追加ワーカー割当または優先スケジューリングを行い、ログ/メトリクスを残す
+  - ✅ `DispatcherCore` に throughput deadline / starvation deadline を追加し、batch 内で deadline を越えたら早期終了、進捗が無い場合は Warn ログを記録。TickExecutor と Deadline テストで挙動を検証済み。
   - _Requirements: R2_
-- [ ] 3.3 no_std TickスケジューラとSTD executorの契約差分を吸収する
+- [x] 3.3 no_std TickスケジューラとSTD executorの契約差分を吸収する
   - Inline/Tick executorへのフォールバックAPIを整備し、STDブリッジが無い環境でも同じstate machineで動作するよう抽象化する
   - Executor未利用時のbusy-wait禁止と軽量spinの境界条件を整理する
+  - ✅ `TickExecutor` を追加し、no_std 向けに waker / schedule ハンドシェイクを同一ステートマシンで再利用。`TickExecutor` のロック保持問題を解消し、テストで60秒タイムアウトが再発しないことを確認。
   - _Requirements: R2, R7_
 
 - [ ] 4. Config resolver APIをRustアプリ構成向けに追加する

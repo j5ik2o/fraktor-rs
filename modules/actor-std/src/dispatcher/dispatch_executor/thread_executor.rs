@@ -1,5 +1,7 @@
 use std::{string::String, thread};
 
+use cellactor_actor_core_rs::dispatcher::DispatchError;
+
 use crate::dispatcher::{DispatchExecutor, DispatchShared};
 
 /// Executor that runs dispatcher batches on newly spawned OS threads.
@@ -28,12 +30,12 @@ impl Default for ThreadedExecutor {
 }
 
 impl DispatchExecutor for ThreadedExecutor {
-  fn execute(&self, dispatcher: DispatchShared) {
+  fn execute(&self, dispatcher: DispatchShared) -> Result<(), DispatchError> {
     let mut builder = thread::Builder::new();
     if let Some(name) = &self.name {
       builder = builder.name(name.clone());
     }
 
-    let _ = builder.spawn(move || dispatcher.drive());
+    builder.spawn(move || dispatcher.drive()).map(|_| ()).map_err(|_| DispatchError::RejectedExecution)
   }
 }

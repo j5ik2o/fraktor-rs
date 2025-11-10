@@ -3,12 +3,13 @@
 #[cfg(test)]
 mod tests;
 
+use alloc::string::String;
 use core::num::NonZeroUsize;
 
 use cellactor_utils_core_rs::{
   collections::queue::{QueueError, backend::OfferOutcome},
   runtime_toolbox::SyncMutexFamily,
-  sync::sync_mutex_like::SyncMutexLike,
+  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 
 use super::{
@@ -19,8 +20,10 @@ use super::{
 use crate::{
   NoStdToolbox, RuntimeToolbox,
   error::SendError,
+  logging::LogLevel,
   mailbox::{capacity::MailboxCapacity, overflow_strategy::MailboxOverflowStrategy, policy::MailboxPolicy},
   messaging::{AnyMessageGeneric, SystemMessage},
+  system::SystemStateGeneric,
 };
 
 /// Priority mailbox maintaining separate queues for system and user messages.
@@ -55,6 +58,18 @@ where
   /// Installs instrumentation hooks for metrics emission.
   pub(crate) fn set_instrumentation(&self, instrumentation: MailboxInstrumentationGeneric<TB>) {
     *self.instrumentation.lock() = Some(instrumentation);
+  }
+
+  /// Returns the system state handle if instrumentation has been installed.
+  pub(crate) fn system_state(&self) -> Option<ArcShared<SystemStateGeneric<TB>>> {
+    self.instrumentation.lock().as_ref().map(|inst| inst.system_state())
+  }
+
+  /// Emits a log message tagged with this mailbox pid.
+  pub(crate) fn emit_log(&self, level: LogLevel, message: impl Into<String>) {
+    if let Some(instrumentation) = self.instrumentation.lock().as_ref() {
+      instrumentation.emit_log(level, message);
+    }
   }
 
   /// Installs a backpressure publisher used for dispatcher coordination.

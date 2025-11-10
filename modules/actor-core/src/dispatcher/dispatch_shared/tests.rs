@@ -10,7 +10,7 @@ use crate::{
 fn dispatch_shared_new() {
   let mailbox = ArcShared::new(Mailbox::new(crate::mailbox::MailboxPolicy::unbounded(None)));
   let executor = ArcShared::new(InlineExecutor::new());
-  let core = ArcShared::new(DispatcherCore::new(mailbox, executor, None));
+  let core = ArcShared::new(DispatcherCore::new(mailbox, executor, None, None, None));
   let _shared = DispatchShared::new(core.clone());
   assert!(core.with_ref(|_| true));
 }
@@ -19,7 +19,7 @@ fn dispatch_shared_new() {
 fn dispatch_shared_clone() {
   let mailbox = ArcShared::new(Mailbox::new(crate::mailbox::MailboxPolicy::unbounded(None)));
   let executor = ArcShared::new(InlineExecutor::new());
-  let core = ArcShared::new(DispatcherCore::new(mailbox, executor, None));
+  let core = ArcShared::new(DispatcherCore::new(mailbox, executor, None, None, None));
   let shared1 = DispatchShared::new(core.clone());
   let shared2 = shared1.clone();
   assert!(shared1.core.with_ref(|_| true));
@@ -30,7 +30,7 @@ fn dispatch_shared_clone() {
 fn dispatch_shared_drive() {
   let mailbox = ArcShared::new(Mailbox::new(crate::mailbox::MailboxPolicy::unbounded(None)));
   let executor = ArcShared::new(InlineExecutor::new());
-  let core = ArcShared::new(DispatcherCore::new(mailbox, executor, None));
+  let core = ArcShared::new(DispatcherCore::new(mailbox, executor, None, None, None));
   let shared = DispatchShared::new(core);
   shared.drive();
 }

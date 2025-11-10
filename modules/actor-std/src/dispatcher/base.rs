@@ -1,4 +1,4 @@
-use cellactor_actor_core_rs::dispatcher::DispatchExecutor as CoreDispatchExecutor;
+use cellactor_actor_core_rs::dispatcher::{DispatchError, DispatchExecutor as CoreDispatchExecutor};
 use cellactor_utils_core_rs::sync::ArcShared;
 use cellactor_utils_std_rs::runtime_toolbox::StdToolbox;
 
@@ -10,14 +10,14 @@ mod tests;
 /// Scheduler abstraction for driving dispatcher execution in the standard runtime.
 pub trait DispatchExecutor: Send + Sync + 'static {
   /// Delegates dispatcher execution to the scheduler.
-  fn execute(&self, dispatcher: DispatchShared);
+  fn execute(&self, dispatcher: DispatchShared) -> Result<(), DispatchError>;
 }
 
 impl<T> DispatchExecutor for T
 where
   T: CoreDispatchExecutor<StdToolbox> + 'static,
 {
-  fn execute(&self, dispatcher: DispatchShared) {
+  fn execute(&self, dispatcher: DispatchShared) -> Result<(), DispatchError> {
     CoreDispatchExecutor::execute(self, dispatcher)
   }
 }
@@ -43,13 +43,13 @@ impl CoreDispatchExecutorAdapter {
 }
 
 impl CoreDispatchExecutor<StdToolbox> for DispatchExecutorAdapter {
-  fn execute(&self, dispatcher: DispatchShared) {
-    self.inner.execute(dispatcher);
+  fn execute(&self, dispatcher: DispatchShared) -> Result<(), DispatchError> {
+    self.inner.execute(dispatcher)
   }
 }
 
 impl DispatchExecutor for CoreDispatchExecutorAdapter {
-  fn execute(&self, dispatcher: DispatchShared) {
-    self.inner.execute(dispatcher);
+  fn execute(&self, dispatcher: DispatchShared) -> Result<(), DispatchError> {
+    self.inner.execute(dispatcher)
   }
 }

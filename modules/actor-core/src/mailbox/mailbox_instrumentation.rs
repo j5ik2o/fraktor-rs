@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::format;
+use alloc::{format, string::String};
 
 use cellactor_utils_core_rs::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
 
@@ -86,5 +86,16 @@ impl<TB: RuntimeToolbox + 'static> MailboxInstrumentationGeneric<TB> {
     if let Some(publisher) = &self.backpressure {
       publisher.publish(event);
     }
+  }
+
+  /// Returns the associated system state handle.
+  #[must_use]
+  pub fn system_state(&self) -> ArcShared<SystemStateGeneric<TB>> {
+    self.system_state.clone()
+  }
+
+  /// Emits a log event tagged with the owning actor pid.
+  pub fn emit_log(&self, level: LogLevel, message: impl Into<String>) {
+    self.system_state.emit_log(level, message.into(), Some(self.pid));
   }
 }

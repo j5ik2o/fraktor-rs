@@ -5,7 +5,7 @@ mod tests;
 
 use alloc::{string::String, vec::Vec};
 
-use cellactor_utils_core_rs::sync::ArcShared;
+use cellactor_utils_core_rs::{collections::queue::capabilities::QueueCapability, sync::ArcShared};
 
 use super::{RootGuardianActor, SystemGuardianActor, SystemGuardianProtocol};
 use crate::{
@@ -295,7 +295,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   ) -> Result<ChildRefGeneric<TB>, SpawnError> {
     let pid = self.state.allocate_pid();
     let name = self.state.assign_name(parent, props.name(), pid)?;
-    let cell = self.build_cell_for_spawn(pid, parent, name, props);
+    let cell = self.build_cell_for_spawn(pid, parent, name, props)?;
 
     self.state.register_cell(cell.clone());
     self.perform_create_handshake(parent, pid, &cell)?;
@@ -350,7 +350,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   fn spawn_root_guardian_cell(&self, props: &PropsGeneric<TB>) -> Result<ArcShared<ActorCellGeneric<TB>>, SpawnError> {
     let pid = self.state.allocate_pid();
     let name = self.state.assign_name(None, props.name(), pid)?;
-    let cell = self.build_cell_for_spawn(pid, None, name, props);
+    let cell = self.build_cell_for_spawn(pid, None, name, props)?;
     self.state.register_cell(cell.clone());
     Ok(cell)
   }
@@ -361,8 +361,26 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     parent: Option<Pid>,
     name: String,
     props: &PropsGeneric<TB>,
-  ) -> ArcShared<ActorCellGeneric<TB>> {
-    ActorCellGeneric::create(self.state.clone(), pid, parent, name, props)
+  ) -> Result<ArcShared<ActorCellGeneric<TB>>, SpawnError> {
+    self.ensure_mailbox_requirements(props)?;
+    Ok(ActorCellGeneric::create(self.state.clone(), pid, parent, name, props))
+  }
+
+  fn ensure_mailbox_requirements(&self, props: &PropsGeneric<TB>) -> Result<(), SpawnError> {
+    let requirement = props.mailbox().requirement();
+    let registry = props.mailbox().capabilities();
+    requirement.ensure_supported(&registry).map_err(|error| {
+      let reason = Self::missing_capability_reason(error.missing());
+      SpawnError::invalid_props(reason)
+    })
+  }
+
+  const fn missing_capability_reason(capability: QueueCapability) -> &'static str {
+    match capability {
+      | QueueCapability::Mpsc => "mailbox requires MPSC capability",
+      | QueueCapability::Deque => "mailbox requires deque capability",
+      | QueueCapability::BlockingFuture => "mailbox requires blocking-future capability",
+    }
   }
 
   fn perform_create_handshake(

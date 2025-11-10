@@ -1,16 +1,21 @@
-use core::task::Waker;
+use core::{task::Waker, time::Duration};
 
 use cellactor_utils_core_rs::sync::ArcShared;
 
 use super::{
-  DispatcherSenderGeneric, dispatch_executor::DispatchExecutor, dispatch_shared::DispatchSharedGeneric,
-  dispatcher_core::DispatcherCore, dispatcher_state::DispatcherState, inline_executor::InlineExecutorGeneric,
+  DispatcherSenderGeneric,
+  dispatch_error::DispatchError,
+  dispatch_executor::DispatchExecutor,
+  dispatch_shared::DispatchSharedGeneric,
+  dispatcher_core::{DispatcherCore, MAX_EXECUTOR_RETRIES},
+  dispatcher_state::DispatcherState,
+  inline_executor::InlineExecutorGeneric,
   schedule_waker::ScheduleWaker,
 };
 use crate::{
   NoStdToolbox, RuntimeToolbox,
   error::SendError,
-  mailbox::{MailboxGeneric, MailboxPressureEvent},
+  mailbox::{MailboxGeneric, MailboxPressureEvent, ScheduleHints},
   messaging::{AnyMessageGeneric, SystemMessage, message_invoker::MessageInvoker},
 };
 
@@ -29,8 +34,20 @@ impl<TB: RuntimeToolbox + 'static> DispatcherGeneric<TB> {
   /// Creates a new dispatcher from a mailbox and execution strategy.
   #[must_use]
   pub fn new(mailbox: ArcShared<MailboxGeneric<TB>>, executor: ArcShared<dyn DispatchExecutor<TB>>) -> Self {
+    Self::with_executor(mailbox, executor, None, None)
+  }
+
+  /// Creates a dispatcher with explicit runtime limits.
+  #[must_use]
+  pub fn with_executor(
+    mailbox: ArcShared<MailboxGeneric<TB>>,
+    executor: ArcShared<dyn DispatchExecutor<TB>>,
+    throughput_deadline: Option<Duration>,
+    starvation_deadline: Option<Duration>,
+  ) -> Self {
     let throughput = mailbox.throughput_limit();
-    let core = ArcShared::new(DispatcherCore::new(mailbox, executor, throughput));
+    let core =
+      ArcShared::new(DispatcherCore::new(mailbox, executor, throughput, throughput_deadline, starvation_deadline));
     Self::from_core(core)
   }
 
@@ -65,16 +82,34 @@ impl<TB: RuntimeToolbox + 'static> DispatcherGeneric<TB> {
   }
 
   /// Requests execution from the scheduler.
-  pub(crate) fn schedule(&self) {
+  pub(super) fn spawn_execution(&self) {
     let should_run = {
       let core_ref = &*self.core;
       DispatcherState::compare_exchange(DispatcherState::Idle, DispatcherState::Running, core_ref.state()).is_ok()
     };
 
     if should_run {
-      let executor = self.core.executor().clone();
-      executor.execute(DispatchSharedGeneric::new(self.core.clone()));
+      self.try_execute(0);
     }
+  }
+
+  fn try_execute(&self, attempt: usize) {
+    let executor = self.core.executor().clone();
+    let task = DispatchSharedGeneric::new(self.core.clone());
+    match executor.execute(task) {
+      | Ok(()) => {},
+      | Err(DispatchError::RejectedExecution) if attempt < MAX_EXECUTOR_RETRIES => {
+        self.try_execute(attempt + 1);
+      },
+      | Err(error) => {
+        self.core.handle_executor_failure(attempt + 1, error);
+      },
+    }
+  }
+
+  /// Requests scheduling with the provided hints.
+  pub fn register_for_execution(&self, hints: ScheduleHints) {
+    DispatcherCore::request_execution(&self.core, hints);
   }
 
   /// Returns a reference to the mailbox.

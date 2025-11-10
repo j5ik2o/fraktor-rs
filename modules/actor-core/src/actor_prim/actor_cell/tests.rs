@@ -6,6 +6,7 @@ use super::ActorCell;
 use crate::{
   actor_prim::{Actor, ActorContextGeneric, Pid},
   error::ActorError,
+  mailbox::ScheduleHints,
   messaging::{AnyMessage, AnyMessageView, SystemMessage, message_invoker::MessageInvoker},
   props::Props,
   system::SystemState,
@@ -219,7 +220,11 @@ fn system_queue_is_drained_before_user_queue() {
   cell.dispatcher().enqueue_system(SystemMessage::Create).expect("system enqueue");
   cell.actor_ref().tell(AnyMessage::new(())).expect("user enqueue");
 
-  cell.dispatcher().schedule();
+  cell.dispatcher().register_for_execution(ScheduleHints {
+    has_system_messages: true,
+    has_user_messages:   true,
+    backpressure_active: false,
+  });
 
   let snapshot = log.lock().clone();
   assert_eq!(snapshot, vec!["pre_start", "receive"]);

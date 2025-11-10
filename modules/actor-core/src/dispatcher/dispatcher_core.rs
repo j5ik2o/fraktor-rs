@@ -1,40 +1,50 @@
 #[cfg(test)]
 mod tests;
 
+use alloc::format;
 use core::{
   num::NonZeroUsize,
   pin::Pin,
+  sync::atomic::Ordering,
   task::{Context, Poll},
+  time::Duration,
 };
 
 use cellactor_utils_core_rs::{
   runtime_toolbox::SyncMutexFamily,
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
-use portable_atomic::AtomicU8;
+use portable_atomic::{AtomicU8, AtomicU64};
 
 use super::{
-  dispatch_executor::DispatchExecutor, dispatcher_sender::block_hint, dispatcher_state::DispatcherState,
-  schedule_waker::ScheduleWaker,
+  dispatch_error::DispatchError, dispatch_executor::DispatchExecutor, dispatcher_sender::block_hint,
+  dispatcher_state::DispatcherState, schedule_waker::ScheduleWaker,
 };
 use crate::{
   RuntimeToolbox, ToolboxMutex,
   error::{ActorError, SendError},
+  logging::LogLevel,
   mailbox::{
     EnqueueOutcome, MailboxGeneric, MailboxMessage, MailboxOfferFutureGeneric, MailboxPressureEvent, ScheduleHints,
   },
   messaging::{AnyMessageGeneric, SystemMessage, message_invoker::MessageInvoker},
+  system::SystemStateGeneric,
 };
 
 const DEFAULT_THROUGHPUT: usize = 300;
+pub(crate) const MAX_EXECUTOR_RETRIES: usize = 2;
 
 /// Entity that drains the mailbox and invokes messages.
 pub(super) struct DispatcherCore<TB: RuntimeToolbox + 'static> {
-  mailbox:          ArcShared<MailboxGeneric<TB>>,
-  executor:         ArcShared<dyn DispatchExecutor<TB>>,
-  invoker:          ToolboxMutex<Option<ArcShared<dyn MessageInvoker<TB>>>, TB>,
-  state:            AtomicU8,
-  throughput_limit: Option<NonZeroUsize>,
+  mailbox:             ArcShared<MailboxGeneric<TB>>,
+  executor:            ArcShared<dyn DispatchExecutor<TB>>,
+  invoker:             ToolboxMutex<Option<ArcShared<dyn MessageInvoker<TB>>>, TB>,
+  state:               AtomicU8,
+  throughput_limit:    Option<NonZeroUsize>,
+  throughput_deadline: Option<Duration>,
+  starvation_deadline: Option<Duration>,
+  system_state:        Option<ArcShared<SystemStateGeneric<TB>>>,
+  last_progress:       AtomicU64,
 }
 
 unsafe impl<TB: RuntimeToolbox + 'static> Send for DispatcherCore<TB> {}
@@ -45,13 +55,20 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
     mailbox: ArcShared<MailboxGeneric<TB>>,
     executor: ArcShared<dyn DispatchExecutor<TB>>,
     throughput_limit: Option<NonZeroUsize>,
+    throughput_deadline: Option<Duration>,
+    starvation_deadline: Option<Duration>,
   ) -> Self {
+    let system_state = mailbox.system_state();
     Self {
       mailbox,
       executor,
       invoker: <TB::MutexFamily as SyncMutexFamily>::create(None),
       state: AtomicU8::new(DispatcherState::Idle.as_u8()),
       throughput_limit,
+      throughput_deadline,
+      starvation_deadline,
+      system_state,
+      last_progress: AtomicU64::new(0),
     }
   }
 
@@ -69,6 +86,24 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
 
   pub(super) const fn state(&self) -> &AtomicU8 {
     &self.state
+  }
+
+  fn record_progress(&self) {
+    if let Some(state) = &self.system_state {
+      let tick = duration_to_millis(state.monotonic_now());
+      self.last_progress.store(tick, Ordering::Release);
+    }
+  }
+
+  fn elapsed_since_progress(&self) -> Option<Duration> {
+    let last = self.last_progress.load(Ordering::Acquire);
+    if last == 0 {
+      return None;
+    }
+    let state = self.system_state.as_ref()?;
+    let now = duration_to_millis(state.monotonic_now());
+    let delta = now.saturating_sub(last);
+    Some(Duration::from_millis(delta))
   }
 
   pub(super) fn drive(self_arc: &ArcShared<Self>) {
@@ -104,19 +139,43 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
   fn process_batch(&self) {
     let limit = self.throughput_limit.map(NonZeroUsize::get).unwrap_or(DEFAULT_THROUGHPUT);
     let mut processed = 0_usize;
+    let deadline_anchor = self.deadline_anchor();
 
     while processed < limit {
+      if self.deadline_reached(deadline_anchor, processed) {
+        break;
+      }
       match self.mailbox.dequeue() {
         | Some(MailboxMessage::System(msg)) => {
           self.handle_system_message(msg);
+          self.record_progress();
           processed += 1;
         },
         | Some(MailboxMessage::User(msg)) => {
           self.handle_user_message(msg);
+          self.record_progress();
           processed += 1;
         },
         | None => break,
       }
+    }
+  }
+
+  fn deadline_anchor(&self) -> Option<Duration> {
+    if self.throughput_deadline.is_some() {
+      self.system_state.as_ref().map(|state| state.monotonic_now())
+    } else {
+      None
+    }
+  }
+
+  fn deadline_reached(&self, anchor: Option<Duration>, processed: usize) -> bool {
+    if processed == 0 {
+      return false;
+    }
+    match (self.throughput_deadline, anchor, self.system_state.as_ref()) {
+      | (Some(limit), Some(start), Some(state)) => state.monotonic_now().saturating_sub(start) >= limit,
+      | _ => false,
     }
   }
 
@@ -210,14 +269,47 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
     self.mailbox.system_len() > 0 || (!self.mailbox.is_suspended() && self.mailbox.user_len() > 0)
   }
 
-  fn request_execution(self_arc: &ArcShared<Self>, hints: ScheduleHints) {
+  pub(super) fn request_execution(self_arc: &ArcShared<Self>, hints: ScheduleHints) {
+    if !hints.has_system_messages && !hints.has_user_messages && !hints.backpressure_active {
+      return;
+    }
     if self_arc.mailbox.request_schedule(hints) {
-      super::base::DispatcherGeneric::from_core(self_arc.clone()).schedule();
+      super::base::DispatcherGeneric::from_core(self_arc.clone()).spawn_execution();
+    } else {
+      self_arc.handle_starvation(hints);
     }
   }
 
   pub(super) fn handle_backpressure(self_arc: &ArcShared<Self>, _event: &MailboxPressureEvent) {
     let hints = ScheduleHints { has_system_messages: false, has_user_messages: true, backpressure_active: true };
     Self::request_execution(self_arc, hints);
+  }
+
+  pub(super) fn handle_executor_failure(&self, attempts: usize, error: DispatchError) {
+    DispatcherState::Idle.store(self.state());
+    let _ = self.mailbox.set_idle();
+    let message = format!("dispatcher execution failed after {} attempt(s): {}", attempts, error);
+    self.mailbox.emit_log(LogLevel::Error, message);
+  }
+}
+
+const fn duration_to_millis(duration: Duration) -> u64 {
+  duration.as_millis() as u64
+}
+
+impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
+  fn handle_starvation(&self, hints: ScheduleHints) {
+    if !hints.has_system_messages && !hints.has_user_messages && !hints.backpressure_active {
+      return;
+    }
+    let Some(threshold) = self.starvation_deadline else {
+      return;
+    };
+    if let Some(elapsed) = self.elapsed_since_progress() {
+      if elapsed >= threshold {
+        let message = format!("dispatcher detected potential starvation after {:?}", elapsed);
+        self.mailbox.emit_log(LogLevel::Warn, message);
+      }
+    }
   }
 }
