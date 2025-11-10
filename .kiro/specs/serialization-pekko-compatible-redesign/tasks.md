@@ -1,0 +1,83 @@
+# Implementation Plan
+
+- [x] 1. シリアライゼーションセットアップと構成パイプラインを整備する
+- [x] 1.1 Builder DSL と検証ロジックを実装する
+  - `register_serializer` / `bind::<Marker>()` 連鎖で TypeId と SerializerId を確定し、予約域チェックや重複検知を組み込む
+  - `bind_remote_manifest::<T>` と `require_manifest_for_scope` で Remoting/Persistence 用の manifest 必須条件を表現し、欠落時は BuilderError を返せるようにする
+  - Setup 生成時に `SerializationCallScope` 要件や Fallback シリアライザの存在を検証し、構成ミスを初期化前に弾く
+  - _Requirements: R1.1-R1.6, R2.4, R5.1-R5.4_
+- [x] 1.2 SerializationConfigAdapter チェーンと優先順位処理を追加する
+  - Adapter トレイトを定義し、外部設定ソースからの登録差分を Builder へ適用できるようにする
+  - Extension 初期化シーケンスで「programmatic builder → adapters → built-in defaults」の順序を保証し、衝突は BuilderError に集約する
+  - Adapter 適用履歴を Setup に保持し、`shutdown` 時に破棄できるようメタデータを付与する
+  - _Requirements: R1.1, R5.2-R5.4_
+- [x] 1.3 SerializationSetup イミュータブル構造と構成プロファイルを確定する
+  - `SerializationSetup` に serializers/bindings/manifest_routes/fallback_serializer/adapter_state を格納するフィールドを整備する
+  - Scope ごとの manifest ルールや builder 由来の DSL 設定を Setup 内に保持し、Extension へ受け渡す
+  - Setup から派生するデバッグ/監査情報を EventStream へ発行できるようメソッドを用意する
+  - _Requirements: R1.1-R1.6, R2.4_
+
+- [x] 2. SerializationRegistry と manifest 進化経路を実装する
+- [x] 2.1 TypeId/trait 解決とキャッシュ管理を構築する
+  - `ToolboxMutex` + `hashbrown` で TypeId→Binding、SerializerId→Serializer のテーブルを実装する
+  - 解決順序（TypeId 完全一致 → Marker trait → 明示バインディング → AnySerializer）と LRU/直接キャッシュを組み込む
+  - NotSerializable 時に型名・要求元 PID・transport_hint を構造体へ詰めて返す経路を実装する
+  - _Requirements: R1.3-R1.4, R6.1-R6.2_
+- [x] 2.2 manifest_routes と優先度チェーンを実装する
+  - `HashMap<String, Vec<(priority, SerializerId)>>` で manifest evolution を表現し、優先度順にデシリアライズを試行する
+  - 成功時にチェーンをショートサーキットし、失敗時は UnknownManifest に transport_hint 付きで落とす
+  - Builder/Adapter から manifest route を登録・検証できる API を公開する
+  - _Requirements: R2.1-R2.3_
+- [x] 2.3 Fallback/AnySerializer と delegator ヘルパーを整備する
+  - 未登録型を `AnySerializer` へ送るフォールバック処理を実装し、`Serialization::serialize` をネスト呼び出しできる Delegator ラッパを追加する
+  - Delegator 内で TransportInformation と manifest コンテキストを継承し、B フィールド委譲でも一貫性を担保する
+  - DeadLetter/EventStream へのエラー通知経路を registry 層でフックする
+  - _Requirements: R1.4, R6.1-R6.4_
+
+- [x] 3. SerializationExtension と Transport スコープ管理を構築する
+- [x] 3.1 serialize/deserialize API と scope 判定を実装する
+  - `serialize(&self, obj, scope)` で scope=Remote/Persistence の場合に manifest 必須チェックと `SerializationCallScope` 自動昇格を行う
+  - `deserialize` で manifest 有無に応じた呼び出し先を選択し、scope 情報を NotSerializableError へ添付する
+  - Extension 登録/取得ロジックを SystemState extensions map に組み込み、ArcShared で公開する
+  - _Requirements: R1.1-R1.4, R2.1-R2.4, R6.1-R6.4_
+- [x] 3.2 TransportInformation Guard と shutdown 処理を実装する
+  - `with_transport_information` で Guard パターンを構築し、マルチスレッドでのスコープ push/pop を安全に行う
+  - `current_transport_information` が Guard 状態から読めるよう Cell/ArcShared を整備し、Phase 3 の ThreadLocal 置換を見据えた抽象を用意する
+  - `shutdown` で Guard/キャッシュをリセットし、以降の API が `SerializationError::Uninitialized` を返すよう制御する
+  - _Requirements: R3.3-R3.5, R3.4, R6.3_
+- [x] 3.3 serialized_actor_path ヘルパーと ActorRefSerializer 依存機能を提供する
+  - Transport 情報がある場合は完全修飾パス、ない場合は `local:///` 形式へフォールバックするロジックを実装する
+  - ActorRefSerializer がヘルパーを呼び出すだけで済むよう、scope からアドレス情報を取得する API を提供する
+  - 生成した文字列を Remoting/Persistence 層へ受け渡すためのユーティリティ（バリデーション、InvalidFormat エラー）を追加する
+  - _Requirements: R3.1-R3.2, R4.2_
+
+- [x] 4. シリアライザトレイト群と組み込み実装を整備する
+- [x] 4.1 Serializer / SerializerWithStringManifest トレイトを整理する
+  - `identifier/include_manifest/to_binary/from_binary` を rustdoc 英語で定義し、scope 情報に依存しないコア API を提供する
+  - Manifest 付き/不要の分岐をトレイトレベルで表現し、Serializer が manifest 文字列を返せるようにする
+  - ByteBuffer/Async 派生トレイトはスコープアウト扱いとしてプレースホルダのみ設置する
+  - _Requirements: R4.3, R5.1-R5.4_
+- [x] 4.2 Null/Primitive/String/Bytes 向け組み込みシリアライザを実装する
+  - 各基本型を `Vec<u8>` ベースでエンコード/デコードし、Phase 1 でゼロコピーを行わない方針を守る
+  - SerializerId の割り当て・予約域を踏まえた初期登録とテストデータを用意する
+  - Builder デフォルトで自動登録されるよう Extension 初期化に組み込む
+  - _Requirements: R4.1, R4.3_
+- [x] 4.3 ActorRefSerializer と Delegation 支援を実装する
+  - ActorRef を serialized_actor_path へ変換し、Transport 情報不足時は `SerializationError::TransportUnavailable` を返すロジックを実装する
+  - ネスト委譲時にも ActorRefSerializer を再利用できるよう、Delegator から呼び出すサンプルコード/テストを整備する
+  - _Requirements: R3.1-R3.3, R4.2, R6.3_
+
+- [x] 5. エラーモデル・診断・テストを完成させる
+- [x] 5.1 NotSerializableError と監査ログの配線を行う
+  - `type_name/serializer_id/manifest/pid/transport_hint` を含むエラー構造体を定義し、Registry/Extension 双方から利用する
+  - EventStream/DeadLetter へエラーイベントを publish し、監査ログで manifest 未登録や予約域違反を検知する
+  - _Requirements: R1.4, R2.2, R3.4_
+- [x] 5.2 単体テストと統合テストを追加する
+  - Builder/Adapter/manifest discipline/Transport guard/Registry/SerializedMessage/ActorRefSerializer/Delegator を対象に要求ベースのテストを用意する
+  - `shutdown` 後の Uninitialized エラー、manifest_routes の優先順、Remote scope での manifest 必須チェックなどクリティカルパスをカバーする
+  - CI 向けに再利用できるテストフィクスチャを整理し、`scripts/ci-check.sh all` で整合することを確認する
+  - _Requirements: R1.1-R6.4_
+- [x] 5.3 ロギングと監視フックを検証する
+  - Cache hit/miss、Serializer ID 衝突、manifest 未登録イベントを EventStream ログへ流す統計出力を追加する
+  - ネスト委譲・Transport スコープ系の WARN/ERROR メッセージが観測できるようメッセージタグを整理する
+  - _Requirements: R1.2, R1.4, R3.4_

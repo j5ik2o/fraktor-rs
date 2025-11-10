@@ -14,6 +14,7 @@ use crate::{
   logging::{LogEvent, LogLevel},
   mailbox::MailboxMetricsEvent,
   messaging::AnyMessage,
+  serialization::{error_event::SerializationErrorEvent, serializer_id::SerializerId},
 };
 
 #[cfg(feature = "alloc")]
@@ -85,6 +86,27 @@ fn event_stream_event_mailbox_clone() {
       assert_eq!(e1.user_len(), e2.user_len());
     },
     | _ => panic!("Expected Mailbox variants"),
+  }
+}
+
+#[cfg(feature = "alloc")]
+#[test]
+fn event_stream_event_serialization_clone() {
+  let event = SerializationErrorEvent::new(
+    "payload",
+    Some(SerializerId::from_raw(200)),
+    Some("manifest".into()),
+    Some(Pid::new(1, 0)),
+    Some("pekko://sys@host".into()),
+  );
+  let original = EventStreamEvent::<NoStdToolbox>::Serialization(event.clone());
+  let cloned = original.clone();
+  match (original, cloned) {
+    | (EventStreamEvent::Serialization(e1), EventStreamEvent::Serialization(e2)) => {
+      assert_eq!(e1.type_name(), e2.type_name());
+      assert_eq!(e1.serializer_id(), e2.serializer_id());
+    },
+    | _ => panic!("Expected Serialization variants"),
   }
 }
 
