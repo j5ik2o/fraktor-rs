@@ -34,11 +34,11 @@ criterion = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
 
 [[example]]
-name = "ping_pong_no_std"
+name = "ping_pong_not_std"
 path = "examples/ping_pong_not_std/main.rs"
 
 [[example]]
-name = "typed_ping_pong_not_std"
+name = "ping_pong_typed_not_std"
 path = "examples/ping_pong_typed_not_std/main.rs"
 
 [[example]]
@@ -48,3 +48,7 @@ path = "examples/message_adapter_no_std/main.rs"
 [[example]]
 name = "behaviors_state_transition_typed_no_std"
 path = "examples/behaviors_state_transition_typed_no_std/main.rs"
+
+[[example]]
+name = "serialization_custom_no_std"
+path = "examples/serialization_custom_no_std/main.rs"
