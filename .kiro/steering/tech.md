@@ -52,7 +52,6 @@ scripts/ci-check.sh all                  # CI と同等フルスイート
 - **no_std ファースト**: ランタイム本体で `#[cfg(feature = "std")]` を禁止し、標準依存コードは `actor-std`/`utils-std` に隔離。
 - **SystemMessage 先行処理**: `Create/Recreate/Failure/Terminated` をユーザメッセージより先に処理することで、Supervisor 戦略と DeathWatch を deterministic に制御。
 - **FQCN import 原則**: ランタイム内部は `crate::...` で明示的に参照し、prelude はユーザ公開面のみに限定。
-- **Spec Driven**: 大きな機能追加は OpenSpec で Requirements → Design → Tasks を承認してから実装し、ステアリングを変えずにコードを揃える。
 - **参照実装からの逆輸入**: protoactor-go / Apache Pekko を参照しつつ、Rust の所有権と `no_std` 制約に合わせた最小 API を優先する。
 
 ---
