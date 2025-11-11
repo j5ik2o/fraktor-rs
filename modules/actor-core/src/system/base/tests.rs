@@ -202,7 +202,8 @@ fn spawn_child_fails_when_deque_requirement_missing() {
   let system = ActorSystem::new_empty();
   let parent_pid = system.allocate_pid();
   let parent_name = system.state().assign_name(None, Some("parent"), parent_pid).expect("parent name");
-  let parent_cell = ActorCell::create(system.state(), parent_pid, None, parent_name, &Props::from_fn(|| TestActor));
+  let parent_cell = ActorCell::create(system.state(), parent_pid, None, parent_name, &Props::from_fn(|| TestActor))
+    .expect("create actor cell");
   system.state().register_cell(parent_cell);
 
   let capabilities = QueueCapabilityRegistry::new(QueueCapabilitySet::defaults().with_deque(false));
@@ -219,7 +220,8 @@ fn spawn_child_succeeds_when_requirements_met() {
   let system = ActorSystem::new_empty();
   let parent_pid = system.allocate_pid();
   let parent_name = system.state().assign_name(None, Some("parent"), parent_pid).expect("parent name");
-  let parent_cell = ActorCell::create(system.state(), parent_pid, None, parent_name, &Props::from_fn(|| TestActor));
+  let parent_cell = ActorCell::create(system.state(), parent_pid, None, parent_name, &Props::from_fn(|| TestActor))
+    .expect("create actor cell");
   system.state().register_cell(parent_cell);
 
   let mailbox = MailboxConfig::default().with_requirement(MailboxRequirement::for_stash());
@@ -233,7 +235,8 @@ fn spawn_child_fails_when_dispatcher_id_not_registered() {
   let system = ActorSystem::new_empty();
   let parent_pid = system.allocate_pid();
   let parent_name = system.state().assign_name(None, Some("parent"), parent_pid).expect("parent name");
-  let parent_cell = ActorCell::create(system.state(), parent_pid, None, parent_name, &Props::from_fn(|| TestActor));
+  let parent_cell = ActorCell::create(system.state(), parent_pid, None, parent_name, &Props::from_fn(|| TestActor))
+    .expect("create actor cell");
   system.state().register_cell(parent_cell);
 
   let props = Props::from_fn(|| TestActor).with_dispatcher_id("custom-dispatcher");
@@ -248,7 +251,8 @@ fn spawn_child_resolves_mailbox_id_with_requirements() {
   let system = ActorSystem::new_empty();
   let parent_pid = system.allocate_pid();
   let parent_name = system.state().assign_name(None, Some("parent"), parent_pid).expect("parent name");
-  let parent_cell = ActorCell::create(system.state(), parent_pid, None, parent_name, &Props::from_fn(|| TestActor));
+  let parent_cell = ActorCell::create(system.state(), parent_pid, None, parent_name, &Props::from_fn(|| TestActor))
+    .expect("create actor cell");
   system.state().register_cell(parent_cell);
 
   let registry = QueueCapabilityRegistry::new(QueueCapabilitySet::defaults().with_deque(false));

@@ -30,6 +30,7 @@ where
   T: Send + 'static, {
   pub(super) state:     ArcShared<QueueState<T, TB>>,
   pub(super) _producer: QueueProducer<T, TB>,
+  #[allow(dead_code)]
   pub(super) consumer:  QueueConsumer<T, TB>,
 }
 
@@ -72,6 +73,12 @@ where
   #[allow(dead_code)]
   pub(super) fn poll_blocking(&self) -> QueuePollFuture<T, TB> {
     QueuePollFuture::new(self.state.clone())
+  }
+
+  /// Returns the current queue size without acquiring a lock.
+  #[must_use]
+  pub(super) fn len(&self) -> usize {
+    self.state.len()
   }
 }
 

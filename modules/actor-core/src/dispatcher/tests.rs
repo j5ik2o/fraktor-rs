@@ -21,7 +21,9 @@ use crate::{
   },
   event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber},
   logging::LogLevel,
-  mailbox::{MailboxGeneric, MailboxInstrumentation, MailboxOverflowStrategy, MailboxPolicy, ScheduleHints},
+  mailbox::{
+    EnqueueOutcome, MailboxGeneric, MailboxInstrumentation, MailboxOverflowStrategy, MailboxPolicy, ScheduleHints,
+  },
   messaging::{AnyMessage, message_invoker::MessageInvoker},
   system::SystemState,
 };
@@ -172,6 +174,28 @@ fn dispatcher_dump_event_published() {
   dispatcher.publish_dump_metrics();
 
   assert!(events.lock().iter().any(|event| matches!(event, EventStreamEvent::DispatcherDump(_))));
+}
+
+#[test]
+fn telemetry_captures_mailbox_pressure_and_dispatcher_dump() {
+  let (mailbox, system) = bounded_mailbox(2);
+  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let subscriber_impl = ArcShared::new(EventRecorder::new(events.clone()));
+  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
+  let _subscription = EventStreamGeneric::subscribe_arc(&system.event_stream(), &subscriber);
+
+  let executor = ArcShared::new(RecordingExecutor::default());
+  let adapter = ArcShared::new(CountingScheduleAdapter::default());
+  let dispatcher = dispatcher_with_executor_and_adapter(mailbox.clone(), executor, None, None, adapter);
+  dispatcher.register_invoker(ArcShared::new(RecordingInvoker::default()));
+
+  assert!(matches!(mailbox.enqueue_user(AnyMessage::new(1usize)), Ok(EnqueueOutcome::Enqueued)));
+  assert!(matches!(mailbox.enqueue_user(AnyMessage::new(2usize)), Ok(EnqueueOutcome::Enqueued)));
+  dispatcher.publish_dump_metrics();
+
+  let guard = events.lock();
+  assert!(guard.iter().any(|event| matches!(event, EventStreamEvent::MailboxPressure(_))));
+  assert!(guard.iter().any(|event| matches!(event, EventStreamEvent::DispatcherDump(_))));
 }
 
 fn dispatcher_with_executor(

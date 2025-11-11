@@ -221,7 +221,7 @@ fn actor_context_pipe_to_self_handles_async_future() {
 }
 
 fn register_cell(system: &ActorSystem, pid: Pid, name: &str, props: &Props) -> ArcShared<ActorCell> {
-  let cell = ActorCell::create(system.state(), pid, None, String::from(name), props);
+  let cell = ActorCell::create(system.state(), pid, None, String::from(name), props).expect("create actor cell");
   system.state().register_cell(cell.clone());
   cell
 }

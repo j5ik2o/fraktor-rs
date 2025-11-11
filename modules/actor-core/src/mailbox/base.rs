@@ -61,6 +61,12 @@ where
     *self.instrumentation.lock() = Some(instrumentation);
   }
 
+  /// Returns the mailbox policy.
+  #[must_use]
+  pub(crate) const fn policy(&self) -> &MailboxPolicy {
+    &self.policy
+  }
+
   /// Returns the system state handle if instrumentation has been installed.
   pub(crate) fn system_state(&self) -> Option<ArcShared<SystemStateGeneric<TB>>> {
     self.instrumentation.lock().as_ref().map(|inst| inst.system_state())
@@ -197,7 +203,7 @@ where
   /// Returns the number of user messages awaiting processing.
   #[must_use]
   pub(crate) fn user_len(&self) -> usize {
-    self.user.consumer.len()
+    self.user.len()
   }
 
   /// Returns the number of system messages awaiting processing.
@@ -220,20 +226,21 @@ where
   ) -> Result<EnqueueOutcome<TB>, SendError<TB>> {
     match overflow {
       | MailboxOverflowStrategy::DropNewest => {
-        if self.user.consumer.len() >= capacity {
+        let len = self.user.len();
+        if len >= capacity {
           return Err(SendError::full(message));
         }
         self.offer_user(message)
       },
       | MailboxOverflowStrategy::DropOldest => {
-        if self.user.consumer.len() >= capacity && self.user.poll().is_ok() {
+        if self.user.len() >= capacity && self.user.poll().is_ok() {
           // drop oldest message
         }
         self.offer_user(message)
       },
       | MailboxOverflowStrategy::Grow => self.offer_user(message),
       | MailboxOverflowStrategy::Block => {
-        if self.user.consumer.len() >= capacity {
+        if self.user.len() >= capacity {
           let future = MailboxOfferFutureGeneric::new(self.user.offer_blocking(message));
           return Ok(EnqueueOutcome::Pending(future));
         }

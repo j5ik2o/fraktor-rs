@@ -97,9 +97,10 @@ fn actor_ref_path_resolves_segments() {
   let root_pid = system.allocate_pid();
   let child_pid = system.allocate_pid();
   let props = Props::from_fn(|| PathActor);
-  let root = ActorCell::create(system.clone(), root_pid, None, "root".into(), &props);
+  let root = ActorCell::create(system.clone(), root_pid, None, "root".into(), &props).expect("create actor cell");
   system.register_cell(root);
-  let child = ActorCell::create(system.clone(), child_pid, Some(root_pid), "worker".into(), &props);
+  let child =
+    ActorCell::create(system.clone(), child_pid, Some(root_pid), "worker".into(), &props).expect("create actor cell");
   system.register_cell(child);
 
   use crate::actor_prim::actor_ref::null_sender::NullSender;

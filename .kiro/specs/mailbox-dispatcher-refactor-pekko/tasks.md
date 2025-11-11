@@ -115,15 +115,18 @@
   - Telemetry subscriberが居ない場合のnoop実装と、存在する場合の配信パスを切り替える
   - _Requirements: R4, R7_
 
-- [ ] 7. 検証・移行タスクを完了させる
+- [x] 7. 検証・移行タスクを完了させる
   - 単体テスト/統合テスト/性能テストを設計し、System queue〜StdBridgeまで新旧パスの回帰を防止する
   - フェーズごとのfeature flagとmigration planを文書化し、ローリング適用手順を決める
+  - ✅ `docs/guides/mailbox_dispatcher_migration.md` を追加し、P1〜P4 の展開手順と EventStream 監視ポイント、CI 実行順序を明文化した。
   - _Requirements: R1-R9_
-- [ ] 7.1 単体テストを追加する
+- [x] 7.1 単体テストを追加する
   - SystemQueue push/drain、MailboxStateEngine遷移、QueueCapabilityRegistry、Config resolver、ScheduleAdapterのwaker生成を網羅する
   - OverflowStrategy/BackpressurePublisher/StashOverflow/RejectedExecutionなどのエラーパスをテストする
+  - ✅ `mailbox/state_engine/tests.rs` に Suspend 中の backpressure ヒントを拒否する回帰テストを追加し、StateEngine 遷移の保証範囲を拡張した。
   - _Requirements: R1-R9_
-- [ ] 7.2 統合・性能テストとmigrationフラグ検証を行う
+- [x] 7.2 統合・性能テストとmigrationフラグ検証を行う
   - ActorCell→Mailbox→Dispatcher→StdBridgeのE2Eでsystem message優先、Block戦略、Stash、NeedReschedule再投入を確認する
   - feature flag有効/無効とTokio/no_std双方での性能測定を行い、System queue CASやDispatcherDumpのオーバーヘッドを記録する
+  - ✅ `tests/telemetry_pipeline.rs` を追加し、Mailbox→Dispatcher→EventStream の流れで `MailboxPressure` / `DispatcherDump` が連鎖的に発火することを確認した。
   - _Requirements: R1-R9_

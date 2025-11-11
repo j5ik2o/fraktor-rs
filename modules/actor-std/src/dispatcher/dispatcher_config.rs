@@ -2,6 +2,7 @@ use cellactor_actor_core_rs::{
   dispatcher::{DispatchExecutor as CoreDispatchExecutor, ScheduleAdapter},
   mailbox::MailboxGeneric,
   props::DispatcherConfigGeneric as CoreDispatcherConfigGeneric,
+  spawn::SpawnError,
 };
 use cellactor_utils_core_rs::sync::ArcShared;
 use cellactor_utils_std_rs::runtime_toolbox::StdToolbox;
@@ -33,8 +34,12 @@ impl DispatcherConfig {
   }
 
   /// Builds a dispatcher using the configured scheduler.
-  #[must_use]
-  pub fn build_dispatcher(&self, mailbox: ArcShared<MailboxGeneric<StdToolbox>>) -> Dispatcher {
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SpawnError::InvalidMailboxConfig`] if the mailbox configuration is incompatible
+  /// with the executor (e.g., using Block strategy with a non-blocking executor).
+  pub fn build_dispatcher(&self, mailbox: ArcShared<MailboxGeneric<StdToolbox>>) -> Result<Dispatcher, SpawnError> {
     self.inner.build_dispatcher(mailbox)
   }
 

@@ -8,16 +8,17 @@ use cellactor_actor_core_rs::{
   props::MailboxConfig,
 };
 use cellactor_actor_std_rs::{
-  actor_prim::{Actor, ActorContext, ActorRef, ChildRef},
+  actor_prim::{Actor, ActorContext},
+  dispatcher::dispatch_executor::TokioExecutor,
   event_stream::{EventStreamEvent, EventStreamSubscriber},
   messaging::{AnyMessage, AnyMessageView},
   props::Props,
-  system::ActorSystem,
+  system::{ActorSystem, DispatcherConfig},
 };
 use cellactor_utils_core_rs::sync::ArcShared;
+use tokio::runtime::Handle;
 
 struct Start;
-struct LogDeadLetters;
 
 struct StdoutLogger;
 
@@ -42,45 +43,91 @@ impl EventStreamSubscriber for DeadLetterPrinter {
   }
 }
 
-struct GuardianActor;
+struct GuardianActor {
+  dispatcher: DispatcherConfig,
+}
+
+impl GuardianActor {
+  fn new(dispatcher: DispatcherConfig) -> Self {
+    Self { dispatcher }
+  }
+}
 
 impl Actor for GuardianActor {
   fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
-      let mailbox_policy =
-        MailboxPolicy::bounded(NonZeroUsize::new(1).expect("non-zero"), MailboxOverflowStrategy::DropNewest, None);
-      let props = Props::from_fn(|| EchoActor).with_mailbox(MailboxConfig::new(mailbox_policy));
-      let child = ctx.spawn_child(&props).map_err(|error| ActorError::fatal(format!("spawn failed: {:?}", error)))?;
-      let actor_ref = child.actor_ref();
+      ctx.log(LogLevel::Info, "キャパシティ1のboundedキューでoverflowを発生させます");
 
-      send_or_log(ctx, actor_ref, AnyMessage::new("first"));
-      send_or_log(ctx, actor_ref, AnyMessage::new("second"));
-      suspend_or_log(ctx, &child);
-      send_or_log(ctx, actor_ref, AnyMessage::new("third"));
-      send_or_log(ctx, actor_ref, AnyMessage::new(LogDeadLetters));
+      let mailbox_policy =
+        MailboxPolicy::bounded(NonZeroUsize::new(1).unwrap(), MailboxOverflowStrategy::DropNewest, None);
+      let mailbox_config = MailboxConfig::new(mailbox_policy);
+      let overflow_props =
+        Props::from_fn(|| OverflowActor).with_mailbox(mailbox_config).with_dispatcher(self.dispatcher.clone());
+
+      let child = ctx
+        .spawn_child(&overflow_props)
+        .map_err(|error| ActorError::fatal(format!("子アクター生成に失敗: {:?}", error)))?;
+      let actor_ref = child.actor_ref().clone();
+
+      for index in 0..3 {
+        let thread_id = format!("{:?}", thread::current().id());
+        ctx.log(LogLevel::Info, format!("送信 #{} - tell()呼び出し前 [thread={}]", index + 1, thread_id));
+        let result = actor_ref.tell(AnyMessage::new(match index {
+          | 0 => "first",
+          | 1 => "second",
+          | _ => "third",
+        }));
+        ctx.log(LogLevel::Info, format!("送信 #{} - tell()呼び出し後 [thread={}]", index + 1, thread_id));
+        match result {
+          | Ok(()) => ctx.log(LogLevel::Info, format!("送信 #{} - 成功", index + 1)),
+          | Err(error) => ctx.log(LogLevel::Warn, format!("送信 #{} - 失敗: {:?}", index + 1, error)),
+        }
+        thread::sleep(Duration::from_millis(40));
+      }
+
+      ctx.log(LogLevel::Info, "メッセージ送信完了");
       ctx.stop_self().ok();
     }
     Ok(())
   }
 }
 
-struct EchoActor;
+struct OverflowActor;
 
-impl Actor for EchoActor {
+impl Actor for OverflowActor {
+  fn pre_start(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
+    let thread_id = format!("{:?}", thread::current().id());
+    ctx.log(LogLevel::Info, format!("OverflowActorが起動しました [thread={}]", thread_id));
+    Ok(())
+  }
+
   fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
-    if message.downcast_ref::<LogDeadLetters>().is_some() {
-      let entries = ctx.system().dead_letters();
-      println!("[DEAD LETTER SNAPSHOT] {} entries", entries.len());
-      for entry in entries {
-        println!("  - reason={:?}, recipient={:?}", entry.reason(), entry.recipient());
-      }
+    let thread_id = format!("{:?}", thread::current().id());
+    if let Some(msg) = message.downcast_ref::<&str>() {
+      ctx.log(LogLevel::Info, format!("[OverflowActor] received: {} [thread={}]", msg, thread_id));
+    } else {
+      ctx.log(LogLevel::Warn, format!("[OverflowActor] unknown message type [thread={}]", thread_id));
     }
+    Ok(())
+  }
+
+  fn post_stop(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
+    ctx.log(LogLevel::Info, "OverflowActorを停止します");
     Ok(())
   }
 }
 
-fn main() {
-  let props: Props = Props::from_fn(|| GuardianActor);
+#[tokio::main(flavor = "multi_thread")]
+async fn main() {
+  let handle = Handle::current();
+  let dispatcher: DispatcherConfig = DispatcherConfig::from_executor(ArcShared::new(TokioExecutor::new(handle)));
+
+  let props: Props = Props::from_fn({
+    let dispatcher = dispatcher.clone();
+    move || GuardianActor::new(dispatcher.clone())
+  })
+  .with_dispatcher(dispatcher.clone());
+
   let system = ActorSystem::new(&props).expect("actor system を初期化できること");
 
   let logger_writer: ArcShared<dyn LoggerWriter> = ArcShared::new(StdoutLogger);
@@ -91,26 +138,18 @@ fn main() {
   let printer: ArcShared<dyn EventStreamSubscriber> = ArcShared::new(DeadLetterPrinter);
   let _deadletter_subscription = system.subscribe_event_stream(&printer);
 
-  let guardian: ActorRef = system.user_guardian_ref();
-  guardian.tell(AnyMessage::new(Start)).expect("ガーディアンへ Start を送信できること");
+  println!("\n=== Starting overflow test ===\n");
 
-  thread::sleep(Duration::from_millis(50));
+  system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("ガーディアンに Start を送信できること");
 
+  tokio::time::sleep(Duration::from_millis(200)).await;
+
+  println!("\n=== Terminating system ===\n");
   system.terminate().expect("システム停止要求が成功すること");
+
+  println!("\n=== Waiting for termination ===\n");
   let termination = system.when_terminated();
-  while !termination.is_ready() {
-    thread::sleep(Duration::from_millis(10));
-  }
-}
+  termination.listener().await;
 
-fn send_or_log(ctx: &ActorContext<'_>, target: &ActorRef, message: AnyMessage) {
-  if let Err(error) = target.tell(message) {
-    ctx.log(LogLevel::Warn, format!("send failed: {:?}", error));
-  }
-}
-
-fn suspend_or_log(ctx: &ActorContext<'_>, child: &ChildRef) {
-  if let Err(error) = ctx.suspend_child(child) {
-    ctx.log(LogLevel::Warn, format!("suspend failed: {:?}", error));
-  }
+  println!("\n=== Example completed ===\n");
 }

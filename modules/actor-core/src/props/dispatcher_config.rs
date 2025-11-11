@@ -8,7 +8,8 @@ mod tests;
 use crate::{
   NoStdToolbox, RuntimeToolbox,
   dispatcher::{DispatchExecutor, DispatcherGeneric, InlineExecutorGeneric, InlineScheduleAdapter, ScheduleAdapter},
-  mailbox::MailboxGeneric,
+  mailbox::{MailboxGeneric, MailboxOverflowStrategy},
+  spawn::SpawnError,
 };
 
 /// Dispatcher configuration attached to [`Props`](super::Props).
@@ -99,15 +100,28 @@ impl<TB: RuntimeToolbox + 'static> DispatcherConfigGeneric<TB> {
   }
 
   /// Builds a dispatcher using the configured executor.
-  #[must_use]
-  pub fn build_dispatcher(&self, mailbox: ArcShared<MailboxGeneric<TB>>) -> DispatcherGeneric<TB> {
-    DispatcherGeneric::with_adapter(
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SpawnError::InvalidMailboxConfig`] if the mailbox uses
+  /// [`MailboxOverflowStrategy::Block`] with an executor that doesn't support blocking operations.
+  pub fn build_dispatcher(&self, mailbox: ArcShared<MailboxGeneric<TB>>) -> Result<DispatcherGeneric<TB>, SpawnError> {
+    // Validate mailbox configuration against executor capabilities
+    let policy = mailbox.policy();
+    if policy.overflow() == MailboxOverflowStrategy::Block && !self.executor.supports_blocking() {
+      return Err(SpawnError::invalid_mailbox_config(
+        "MailboxOverflowStrategy::Block requires an executor that supports blocking operations (e.g., \
+         TokioExecutor, ThreadedExecutor). InlineExecutor does not support blocking.",
+      ));
+    }
+
+    Ok(DispatcherGeneric::with_adapter(
       mailbox,
       self.executor(),
       self.schedule_adapter(),
       self.throughput_deadline,
       self.starvation_deadline,
-    )
+    ))
   }
 }
 

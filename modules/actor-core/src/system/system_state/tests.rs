@@ -69,9 +69,10 @@ fn system_state_register_and_remove_cell() {
   let root_pid = state.allocate_pid();
   let child_pid = state.allocate_pid();
   let props = Props::from_fn(|| RestartProbeActor);
-  let root = ActorCell::create(state.clone(), root_pid, None, "root".to_string(), &props);
+  let root = ActorCell::create(state.clone(), root_pid, None, "root".to_string(), &props).expect("create actor cell");
   state.register_cell(root);
-  let child = ActorCell::create(state.clone(), child_pid, Some(root_pid), "worker".to_string(), &props);
+  let child = ActorCell::create(state.clone(), child_pid, Some(root_pid), "worker".to_string(), &props)
+    .expect("create actor cell");
   state.register_cell(child.clone());
 
   assert!(state.cell(&child_pid).is_some());
@@ -261,12 +262,14 @@ fn recreate_send_failure_escalates_and_stops_parent() {
   let state = ArcShared::new(SystemState::new());
   let parent_pid = state.allocate_pid();
   let parent_props = Props::from_fn(|| RestartProbeActor);
-  let parent = ActorCell::create(state.clone(), parent_pid, None, "parent".to_string(), &parent_props);
+  let parent =
+    ActorCell::create(state.clone(), parent_pid, None, "parent".to_string(), &parent_props).expect("create actor cell");
   state.register_cell(parent.clone());
 
   let child_pid = state.allocate_pid();
   let child_props = Props::from_fn(|| RestartProbeActor);
-  let child = ActorCell::create(state.clone(), child_pid, Some(parent_pid), "child".to_string(), &child_props);
+  let child = ActorCell::create(state.clone(), child_pid, Some(parent_pid), "child".to_string(), &child_props)
+    .expect("create actor cell");
   state.register_cell(child.clone());
   state.register_child(parent_pid, child_pid);
 

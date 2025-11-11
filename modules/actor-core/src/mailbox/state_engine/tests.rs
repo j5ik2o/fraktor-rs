@@ -52,3 +52,19 @@ fn backpressure_hint_requests_schedule_when_not_suspended() {
   engine.resume();
   assert!(engine.request_schedule(hints));
 }
+
+#[test]
+fn backpressure_hint_is_ignored_while_suspended() {
+  let engine = MailboxStateEngine::new();
+  let hints = ScheduleHints { has_system_messages: false, has_user_messages: false, backpressure_active: true };
+
+  engine.suspend();
+  assert!(engine.is_suspended());
+  assert!(!engine.request_schedule(hints));
+
+  engine.resume();
+  assert!(engine.request_schedule(hints));
+  engine.set_running();
+  assert!(!engine.request_schedule(hints));
+  assert!(engine.set_idle());
+}

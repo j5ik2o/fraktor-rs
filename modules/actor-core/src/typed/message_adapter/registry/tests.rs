@@ -23,7 +23,8 @@ impl Harness {
     let system = ActorSystemGeneric::from_state(state.clone());
     let props = Props::from_fn(|| ProbeActor);
     let pid = state.allocate_pid();
-    let cell = ActorCellGeneric::create(state.clone(), pid, None, "adapter".to_string(), &props);
+    let cell =
+      ActorCellGeneric::create(state.clone(), pid, None, "adapter".to_string(), &props).expect("create actor cell");
     state.register_cell(cell.clone());
     Self { system, cell }
   }

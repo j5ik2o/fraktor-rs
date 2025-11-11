@@ -37,4 +37,8 @@ where
     dispatcher.drive();
     Ok(())
   }
+
+  fn supports_blocking(&self) -> bool {
+    false
+  }
 }

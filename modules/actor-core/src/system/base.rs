@@ -380,7 +380,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   ) -> Result<ArcShared<ActorCellGeneric<TB>>, SpawnError> {
     let resolved = self.resolve_props(props)?;
     Self::ensure_mailbox_requirements(&resolved)?;
-    Ok(ActorCellGeneric::create(self.state.clone(), pid, parent, name, &resolved))
+    ActorCellGeneric::create(self.state.clone(), pid, parent, name, &resolved)
   }
 
   fn ensure_mailbox_requirements(props: &PropsGeneric<TB>) -> Result<(), SpawnError> {
