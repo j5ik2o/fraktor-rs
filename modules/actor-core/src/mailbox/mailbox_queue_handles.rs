@@ -21,8 +21,6 @@ use crate::{
 };
 
 const DEFAULT_QUEUE_CAPACITY: usize = 16;
-const SYSTEM_QUEUE_CAPACITY: usize = 8;
-
 type QueueProducer<T, TB> = SyncMpscProducer<T, VecRingBackend<T>, QueueMutex<T, TB>>;
 type QueueConsumer<T, TB> = SyncMpscConsumer<T, VecRingBackend<T>, QueueMutex<T, TB>>;
 
@@ -46,10 +44,6 @@ where
       | MailboxCapacity::Unbounded => (DEFAULT_QUEUE_CAPACITY, OverflowPolicy::Grow),
     };
     Self::new_with(capacity, overflow)
-  }
-
-  pub(super) fn new_system() -> Self {
-    Self::new_with(SYSTEM_QUEUE_CAPACITY, OverflowPolicy::Grow)
   }
 
   fn new_with(capacity: usize, overflow: OverflowPolicy) -> Self {

@@ -5,6 +5,9 @@ use cellactor_utils_core_rs::collections::queue::capabilities::QueueCapabilityRe
 use super::MailboxRequirement;
 use crate::mailbox::MailboxPolicy;
 
+#[cfg(test)]
+mod tests;
+
 /// Mailbox configuration derived from the props builder.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct MailboxConfig {
@@ -75,23 +78,5 @@ impl MailboxConfig {
 impl Default for MailboxConfig {
   fn default() -> Self {
     MailboxConfig::new(MailboxPolicy::unbounded(None))
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  use cellactor_utils_core_rs::collections::queue::capabilities::{QueueCapability, QueueCapabilitySet};
-
-  use super::*;
-
-  #[test]
-  fn builder_overrides_requirement_and_capabilities() {
-    let capability_set = QueueCapabilitySet::defaults().with_deque(false);
-    let registry = QueueCapabilityRegistry::new(capability_set);
-    let config =
-      MailboxConfig::default().with_requirement(MailboxRequirement::requires_deque()).with_capabilities(registry);
-
-    assert!(config.requirement().needs_deque());
-    assert!(config.capabilities().ensure(QueueCapability::Deque).is_err());
   }
 }

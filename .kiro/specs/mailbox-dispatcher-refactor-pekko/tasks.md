@@ -43,9 +43,10 @@
   - ✅ MailboxInstrumentation に publisher を接続し、ActorCell 初期化で Dispatcher へルーティング。DeadLetterReason::MailboxTimeout を追加し、Timeout 時の EventStream/Log 出力まで網羅した。
   - _Requirements: R3, R4_
 
-- [ ] 3. Dispatcherスケジューリングとフェアネス制御を再設計する
+- [x] 3. Dispatcherスケジューリングとフェアネス制御を再設計する
   - Pekko準拠のthroughput・throughput-deadline・starvation検出を導入し、Idle復帰と再スケジューリング条件を明文化する
   - no_std環境ではTickベース cooperative スケジューラにフォールバックしつつ、STD側と同じヒントAPIを維持する
+  - ✅ `DispatcherConfig` に throughput/starvation deadline を保持するビルダーとゲッターを追加し、`build_dispatcher` が `DispatcherGeneric::with_executor` へ期限を伝播するよう統合テスト付きで仕上げた。`Props` 側から deadline を設定→DispatcherCore が WARN を発火するフローまでE2E検証済み。
   - _Requirements: R2_
 - [x] 3.1 registerForExecutionとRejectedExecutionリトライを実装する
   - hasMessageHint/hasSystemMessageHintを受け取り、1度だけDispatcherを登録するガードをStateEngine連動で構築する
@@ -63,21 +64,25 @@
   - ✅ `TickExecutor` を追加し、no_std 向けに waker / schedule ハンドシェイクを同一ステートマシンで再利用。`TickExecutor` のロック保持問題を解消し、テストで60秒タイムアウトが再発しないことを確認。
   - _Requirements: R2, R7_
 
-- [ ] 4. Config resolver APIをRustアプリ構成向けに追加する
+- [x] 4. Config resolver APIをRustアプリ構成向けに追加する
   - 設定ファイルではなくRust API登録を前提に、Dispatchers/MailboxesサービスがProps起動前に構築されるフローを定義する
   - RequiresMessageQueue/ProducesMessageQueueの整合性チェックとUnknown IDエラーの伝播を整理する
+  - ✅ `config::dispatchers` / `config::mailboxes` レジストリを新設し、ActorSystem起動時にデフォルトIDを登録。Props と ActorSystem に `with_{dispatcher,mailbox}_id` 解決ルートを追加し、未知IDやDeque capability不足時に SpawnError::InvalidProps を返すテストを追加。
   - _Requirements: R6_
-- [ ] 4.1 Dispatchersサービスでdispatcher ID→Descriptor解決を実装する
+- [x] 4.1 Dispatchersサービスでdispatcher ID→Descriptor解決を実装する
   - ホストアプリがDispatcherConfigを登録/更新できるAPIと、Props/ActorCellがID優先順位（Props指定→Deploy→デフォルト）で参照するロジックを追加する
   - throughput・deadline・executorアダプタ等の属性をDescriptorへまとめ、Pekko準拠の解釈を記録する
+  - ✅ `DispatchersGeneric` が `register/resolve/ensure_default` を提供し、`ActorSystem::dispatchers()` から登録できるよう公開。
   - _Requirements: R2, R6_
-- [ ] 4.2 MailboxesサービスでMailboxConfigとQueue要件を管理する
+- [x] 4.2 MailboxesサービスでMailboxConfigとQueue要件を管理する
   - MailboxConfig登録APIとresolve_mailboxを実装し、Deque requirement・capacity override・overflow戦略をRust API経由で受け取る
   - 要件不一致時はConfigError::RequirementMismatchを生成し、SpawnErrorへ連鎖させる
+  - ✅ `MailboxesGeneric` を導入し、ID毎のMailboxConfig登録/解決とデフォルトID作成を実装。QueueCapabilityRegistryを保持した設定もそのまま復元可能。
   - _Requirements: R3, R6, R9_
-- [ ] 4.3 Props/ActorSystem初期化パスへresolver統合を行う
+- [x] 4.3 Props/ActorSystem初期化パスへresolver統合を行う
   - ActorSystem作成時にDispatchers/Mailboxesを注入し、Props.with_dispatcher/with_mailboxが常にResolver経由で確定値を得るようにする
   - Resolver初期化の順序とエラーバブルアップを定義し、RuntimeConfig APIからの更新にも対応する
+  - ✅ Props に `dispatcher_id` / `mailbox_id` を保持させ `with_resolved_*` で置換、ActorSystem::build_cell_for_spawn でキャパビリティ検証前に解決するようリファクタ。新APIの回帰テストを追加。
   - _Requirements: R6_
 
 - [ ] 5. STDブリッジとMailbox Futureハンドシェイクを整備する

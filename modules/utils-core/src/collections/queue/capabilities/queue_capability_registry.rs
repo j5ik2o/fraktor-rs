@@ -19,12 +19,20 @@ impl QueueCapabilityRegistry {
     Self::new(QueueCapabilitySet::defaults())
   }
 
-  /// Ensures the provided capability exists, returning an error when it does not.
-  pub fn ensure(&self, capability: QueueCapability) -> Result<(), QueueCapabilityError> {
+  /// Ensures the provided capability exists.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`QueueCapabilityError`] when the capability is missing from the registry.
+  pub const fn ensure(&self, capability: QueueCapability) -> Result<(), QueueCapabilityError> {
     if self.set.has(capability) { Ok(()) } else { Err(QueueCapabilityError::new(capability)) }
   }
 
   /// Ensures all capabilities in the provided slice exist.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when any capability is missing.
   pub fn ensure_all(&self, capabilities: &[QueueCapability]) -> Result<(), QueueCapabilityError> {
     for capability in capabilities {
       self.ensure(*capability)?;

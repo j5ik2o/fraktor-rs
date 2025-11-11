@@ -1,5 +1,9 @@
 use core::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
+mod schedule_hints;
+
+pub use schedule_hints::ScheduleHints;
+
 #[cfg(test)]
 mod tests;
 
@@ -13,17 +17,6 @@ const SUSPEND_MASK: u32 = !((1 << SUSPEND_SHIFT) - 1);
 pub struct MailboxStateEngine {
   state:           AtomicU32,
   need_reschedule: AtomicBool,
-}
-
-/// Hint flags describing pending work types.
-#[derive(Default, Clone, Copy, Debug)]
-pub struct ScheduleHints {
-  /// True when the system queue contains work.
-  pub has_system_messages: bool,
-  /// True when the user queue contains work.
-  pub has_user_messages:   bool,
-  /// True when the mailbox has signalled high backpressure.
-  pub backpressure_active: bool,
 }
 
 impl MailboxStateEngine {
@@ -114,10 +107,5 @@ impl MailboxStateEngine {
         break;
       }
     }
-  }
-
-  #[cfg(test)]
-  pub(crate) fn raw_state(&self) -> u32 {
-    self.state.load(Ordering::Acquire)
   }
 }

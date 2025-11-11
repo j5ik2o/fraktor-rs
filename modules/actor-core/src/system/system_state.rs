@@ -20,6 +20,7 @@ use super::GuardianKind;
 use crate::{
   NoStdToolbox, RuntimeToolbox, ToolboxMutex,
   actor_prim::{ActorCellGeneric, ActorPath, Pid, actor_ref::ActorRefGeneric},
+  config::{DispatchersGeneric, MailboxesGeneric},
   dead_letter::{DeadLetterEntryGeneric, DeadLetterGeneric, DeadLetterReason},
   error::{ActorError, SendError},
   event_stream::{EventStreamEvent, EventStreamGeneric},
@@ -65,6 +66,8 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   failure_escalate_total: AtomicU64,
   failure_inflight:       AtomicU64,
   extensions:             ToolboxMutex<HashMap<TypeId, ArcShared<dyn Any + Send + Sync + 'static>>, TB>,
+  dispatchers:            ArcShared<DispatchersGeneric<TB>>,
+  mailboxes:              ArcShared<MailboxesGeneric<TB>>,
 }
 
 /// Type alias for [SystemStateGeneric] with the default [NoStdToolbox].
@@ -77,6 +80,10 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     const DEAD_LETTER_CAPACITY: usize = 512;
     let event_stream = ArcShared::new(EventStreamGeneric::default());
     let dead_letter = ArcShared::new(DeadLetterGeneric::new(event_stream.clone(), DEAD_LETTER_CAPACITY));
+    let dispatchers = ArcShared::new(DispatchersGeneric::new());
+    dispatchers.ensure_default();
+    let mailboxes = ArcShared::new(MailboxesGeneric::new());
+    mailboxes.ensure_default();
     Self {
       next_pid: AtomicU64::new(0),
       clock: AtomicU64::new(0),
@@ -101,6 +108,8 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       failure_escalate_total: AtomicU64::new(0),
       failure_inflight: AtomicU64::new(0),
       extensions: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::new()),
+      dispatchers,
+      mailboxes,
     }
   }
 
@@ -490,6 +499,18 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   pub fn monotonic_now(&self) -> Duration {
     let ticks = self.clock.fetch_add(1, Ordering::Relaxed) + 1;
     Duration::from_millis(ticks)
+  }
+
+  /// Returns the dispatcher registry.
+  #[must_use]
+  pub fn dispatchers(&self) -> ArcShared<DispatchersGeneric<TB>> {
+    self.dispatchers.clone()
+  }
+
+  /// Returns the mailbox registry.
+  #[must_use]
+  pub fn mailboxes(&self) -> ArcShared<MailboxesGeneric<TB>> {
+    self.mailboxes.clone()
   }
 
   /// Records a failure and routes it to the supervising hierarchy.

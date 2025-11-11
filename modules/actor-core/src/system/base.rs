@@ -3,7 +3,10 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::{string::String, vec::Vec};
+use alloc::{
+  string::{String, ToString},
+  vec::Vec,
+};
 
 use cellactor_utils_core_rs::{collections::queue::capabilities::QueueCapability, sync::ArcShared};
 
@@ -11,6 +14,7 @@ use super::{RootGuardianActor, SystemGuardianActor, SystemGuardianProtocol};
 use crate::{
   NoStdToolbox, RuntimeToolbox,
   actor_prim::{ActorCellGeneric, ChildRefGeneric, Pid, actor_ref::ActorRefGeneric},
+  config::{DispatchersGeneric, MailboxesGeneric},
   dead_letter::DeadLetterEntryGeneric,
   error::SendError,
   event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric},
@@ -98,6 +102,18 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   #[must_use]
   pub fn event_stream(&self) -> ArcShared<EventStreamGeneric<TB>> {
     self.state.event_stream()
+  }
+
+  /// Returns the dispatcher registry.
+  #[must_use]
+  pub fn dispatchers(&self) -> ArcShared<DispatchersGeneric<TB>> {
+    self.state.dispatchers()
+  }
+
+  /// Returns the mailbox registry.
+  #[must_use]
+  pub fn mailboxes(&self) -> ArcShared<MailboxesGeneric<TB>> {
+    self.state.mailboxes()
   }
 
   /// Subscribes the provided observer to the event stream.
@@ -362,8 +378,9 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     name: String,
     props: &PropsGeneric<TB>,
   ) -> Result<ArcShared<ActorCellGeneric<TB>>, SpawnError> {
-    self.ensure_mailbox_requirements(props)?;
-    Ok(ActorCellGeneric::create(self.state.clone(), pid, parent, name, props))
+    let resolved = self.resolve_props(props)?;
+    self.ensure_mailbox_requirements(&resolved)?;
+    Ok(ActorCellGeneric::create(self.state.clone(), pid, parent, name, &resolved))
   }
 
   fn ensure_mailbox_requirements(&self, props: &PropsGeneric<TB>) -> Result<(), SpawnError> {
@@ -381,6 +398,24 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
       | QueueCapability::Deque => "mailbox requires deque capability",
       | QueueCapability::BlockingFuture => "mailbox requires blocking-future capability",
     }
+  }
+
+  fn resolve_props(&self, props: &PropsGeneric<TB>) -> Result<PropsGeneric<TB>, SpawnError> {
+    let mut resolved = props.clone();
+    if let Some(dispatcher_id) = resolved.dispatcher_id() {
+      let config = self
+        .state
+        .dispatchers()
+        .resolve(dispatcher_id)
+        .map_err(|error| SpawnError::invalid_props(error.to_string()))?;
+      resolved = resolved.with_resolved_dispatcher(config);
+    }
+    if let Some(mailbox_id) = resolved.mailbox_id() {
+      let config =
+        self.state.mailboxes().resolve(mailbox_id).map_err(|error| SpawnError::invalid_props(error.to_string()))?;
+      resolved = resolved.with_resolved_mailbox(config);
+    }
+    Ok(resolved)
   }
 
   fn perform_create_handshake(

@@ -2,6 +2,9 @@ use cellactor_utils_core_rs::collections::queue::capabilities::{
   QueueCapability, QueueCapabilityError, QueueCapabilityRegistry,
 };
 
+#[cfg(test)]
+mod tests;
+
 /// Declares mailbox-level requirements such as deque or blocking futures.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct MailboxRequirement {
@@ -69,26 +72,5 @@ impl MailboxRequirement {
 impl Default for MailboxRequirement {
   fn default() -> Self {
     Self::none()
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  use cellactor_utils_core_rs::collections::queue::capabilities::QueueCapabilitySet;
-
-  use super::*;
-
-  #[test]
-  fn ensure_supported_detects_missing_capability() {
-    let requirement = MailboxRequirement::requires_deque();
-    let registry = QueueCapabilityRegistry::new(QueueCapabilitySet::defaults().with_deque(false));
-    assert!(matches!(requirement.ensure_supported(&registry), Err(QueueCapabilityError { .. })));
-  }
-
-  #[test]
-  fn ensure_supported_passes_when_present() {
-    let requirement = MailboxRequirement::requires_deque().with_blocking_future();
-    let registry = QueueCapabilityRegistry::with_defaults();
-    assert!(requirement.ensure_supported(&registry).is_ok());
   }
 }

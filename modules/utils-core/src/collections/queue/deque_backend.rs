@@ -3,16 +3,9 @@
 extern crate alloc;
 
 use alloc::collections::VecDeque;
-use core::{
-  cmp,
-  future::Future,
-  pin::Pin,
-  task::{Context, Poll},
-  time::Duration,
-};
+use core::cmp;
 
 use crate::{
-  DelayFuture, DelayProvider,
   collections::{
     queue::{OfferOutcome, OverflowPolicy, QueueError},
     wait::{WaitQueue, WaitShared},
@@ -21,8 +14,11 @@ use crate::{
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 
+mod deque_offer_future;
 #[cfg(test)]
 mod tests;
+
+pub use deque_offer_future::DequeOfferFuture;
 
 /// Double-ended queue backend supporting both FIFO and LIFO style operations.
 pub struct DequeBackendGeneric<T, TB: RuntimeToolbox + 'static = NoStdToolbox>
@@ -54,21 +50,39 @@ where
   }
 
   /// Adds an element to the back of the deque respecting the configured overflow policy.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`QueueError::Full`] when the deque is at capacity and the policy forbids growth.
   pub fn offer_back(&self, item: T) -> Result<OfferOutcome, QueueError<T>> {
     self.state.offer(item, DequeEdge::Back)
   }
 
   /// Adds an element to the front of the deque respecting the configured overflow policy.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`QueueError::Full`] when the deque is at capacity and the policy forbids growth.
   pub fn offer_front(&self, item: T) -> Result<OfferOutcome, QueueError<T>> {
     self.state.offer(item, DequeEdge::Front)
   }
 
   /// Removes an element from the front of the deque.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`QueueError::Empty`] when the deque has no entries or [`QueueError::Closed`] if the
+  /// deque was closed.
   pub fn poll_front(&self) -> Result<T, QueueError<T>> {
     self.state.poll(DequeEdge::Front)
   }
 
   /// Removes an element from the back of the deque.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`QueueError::Empty`] when the deque has no entries or [`QueueError::Closed`] if the
+  /// deque was closed.
   pub fn poll_back(&self) -> Result<T, QueueError<T>> {
     self.state.poll(DequeEdge::Back)
   }
@@ -77,6 +91,12 @@ where
   #[must_use]
   pub fn len(&self) -> usize {
     self.state.len()
+  }
+
+  /// Indicates whether the deque currently stores any elements.
+  #[must_use]
+  pub fn is_empty(&self) -> bool {
+    self.len() == 0
   }
 
   /// Returns the configured capacity of the deque.
@@ -189,7 +209,7 @@ impl<T> DequeInner<T> {
     self.buffer.len()
   }
 
-  fn capacity(&self) -> usize {
+  const fn capacity(&self) -> usize {
     self.capacity
   }
 
@@ -264,99 +284,4 @@ impl<T> Drop for DequeInner<T> {
   fn drop(&mut self) {
     self.buffer.clear();
   }
-}
-
-/// Future returned when a deque needs to wait for capacity.
-pub struct DequeOfferFuture<T, TB: RuntimeToolbox + 'static = NoStdToolbox>
-where
-  T: Send + 'static, {
-  state:   ArcShared<DequeState<T, TB>>,
-  item:    Option<T>,
-  waiter:  Option<WaitShared<QueueError<T>>>,
-  edge:    DequeEdge,
-  timeout: Option<DelayFuture>,
-}
-
-impl<T, TB> DequeOfferFuture<T, TB>
-where
-  T: Send + 'static,
-  TB: RuntimeToolbox + 'static,
-{
-  fn new(state: ArcShared<DequeState<T, TB>>, item: T, edge: DequeEdge) -> Self {
-    Self { state, item: Some(item), waiter: None, edge, timeout: None }
-  }
-
-  fn ensure_waiter(&mut self) -> &mut WaitShared<QueueError<T>> {
-    if self.waiter.is_none() {
-      let waiter = self.state.register_producer_waiter();
-      self.waiter = Some(waiter);
-    }
-    // SAFETY: waiter is always Some after the branch above.
-    unsafe { self.waiter.as_mut().unwrap_unchecked() }
-  }
-
-  /// Configures the future to fail with [`QueueError::TimedOut`] if capacity does not free up
-  /// before the specified duration.
-  pub fn with_timeout(mut self, duration: Duration, provider: &dyn DelayProvider) -> Self {
-    self.timeout = Some(provider.delay(duration));
-    self
-  }
-}
-
-impl<T, TB> Future for DequeOfferFuture<T, TB>
-where
-  T: Send + 'static,
-  TB: RuntimeToolbox + 'static,
-{
-  type Output = Result<OfferOutcome, QueueError<T>>;
-
-  fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-    let this = self.get_mut();
-    loop {
-      if let Some(timeout) = this.timeout.as_mut() {
-        if Pin::new(timeout).poll(cx).is_ready() {
-          this.waiter.take();
-          let item = unsafe {
-            debug_assert!(this.item.is_some(), "timeout without pending item");
-            this.item.take().unwrap_unchecked()
-          };
-          return Poll::Ready(Err(QueueError::TimedOut(item)));
-        }
-      }
-
-      if let Some(item) = this.item.take() {
-        match this.state.offer(item, this.edge) {
-          | Ok(outcome) => {
-            this.waiter.take();
-            this.timeout = None;
-            return Poll::Ready(Ok(outcome));
-          },
-          | Err(QueueError::Full(returned)) => {
-            this.item = Some(returned);
-          },
-          | Err(error) => {
-            this.waiter.take();
-            return Poll::Ready(Err(error));
-          },
-        }
-      }
-
-      let waiter = this.ensure_waiter();
-      match Pin::new(waiter).poll(cx) {
-        | Poll::Pending => return Poll::Pending,
-        | Poll::Ready(Ok(())) => continue,
-        | Poll::Ready(Err(error)) => {
-          this.waiter.take();
-          return Poll::Ready(Err(error));
-        },
-      }
-    }
-  }
-}
-
-impl<T, TB> Unpin for DequeOfferFuture<T, TB>
-where
-  T: Send + 'static,
-  TB: RuntimeToolbox + 'static,
-{
 }

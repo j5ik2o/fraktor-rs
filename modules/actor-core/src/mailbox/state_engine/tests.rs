@@ -1,13 +1,21 @@
+use core::sync::atomic::Ordering;
+
 use super::{MailboxStateEngine, ScheduleHints};
+
+impl MailboxStateEngine {
+  fn raw_state_for_test(&self) -> u32 {
+    self.state.load(Ordering::Acquire)
+  }
+}
 
 #[test]
 fn request_schedule_only_triggers_once_until_idle() {
   let engine = MailboxStateEngine::new();
-  assert_eq!(engine.raw_state(), 0);
+  assert_eq!(engine.raw_state_for_test(), 0);
   let hints = ScheduleHints { has_system_messages: true, has_user_messages: false, backpressure_active: false };
 
   let first = engine.request_schedule(hints);
-  assert!(first, "state after first attempt: {:#x}", engine.raw_state());
+  assert!(first, "state after first attempt: {:#x}", engine.raw_state_for_test());
   // Second request before idle should not schedule again but should flag for reschedule.
   assert!(!engine.request_schedule(hints));
 

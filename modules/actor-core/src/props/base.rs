@@ -10,11 +10,13 @@ use crate::{NoStdToolbox, RuntimeToolbox, actor_prim::Actor, mailbox::MailboxPol
 
 /// Immutable configuration describing how to construct an actor.
 pub struct PropsGeneric<TB: RuntimeToolbox + 'static> {
-  factory:    ArcShared<dyn ActorFactory<TB>>,
-  name:       Option<String>,
-  mailbox:    MailboxConfig,
-  middleware: Vec<String>,
-  dispatcher: DispatcherConfigGeneric<TB>,
+  factory:       ArcShared<dyn ActorFactory<TB>>,
+  name:          Option<String>,
+  mailbox:       MailboxConfig,
+  mailbox_id:    Option<String>,
+  middleware:    Vec<String>,
+  dispatcher:    DispatcherConfigGeneric<TB>,
+  dispatcher_id: Option<String>,
 }
 
 /// Type alias for [PropsGeneric] with the default [NoStdToolbox].
@@ -28,8 +30,10 @@ impl<TB: RuntimeToolbox + 'static> PropsGeneric<TB> {
       factory,
       name: None,
       mailbox: MailboxConfig::default(),
+      mailbox_id: None,
       middleware: Vec::new(),
       dispatcher: DispatcherConfigGeneric::default(),
+      dispatcher_id: None,
     }
   }
 
@@ -60,6 +64,12 @@ impl<TB: RuntimeToolbox + 'static> PropsGeneric<TB> {
     &self.mailbox
   }
 
+  /// Returns the configured mailbox identifier, if any.
+  #[must_use]
+  pub fn mailbox_id(&self) -> Option<&str> {
+    self.mailbox_id.as_deref()
+  }
+
   /// Returns the mailbox policy.
   #[must_use]
   pub const fn mailbox_policy(&self) -> MailboxPolicy {
@@ -84,10 +94,17 @@ impl<TB: RuntimeToolbox + 'static> PropsGeneric<TB> {
     &self.dispatcher
   }
 
+  /// Returns the configured dispatcher identifier, if any.
+  #[must_use]
+  pub fn dispatcher_id(&self) -> Option<&str> {
+    self.dispatcher_id.as_deref()
+  }
+
   /// Updates the mailbox configuration.
   #[must_use]
-  pub const fn with_mailbox(mut self, config: MailboxConfig) -> Self {
+  pub fn with_mailbox(mut self, config: MailboxConfig) -> Self {
     self.mailbox = config;
+    self.mailbox_id = None;
     self
   }
 
@@ -112,6 +129,14 @@ impl<TB: RuntimeToolbox + 'static> PropsGeneric<TB> {
   #[must_use]
   pub fn with_dispatcher(mut self, dispatcher: DispatcherConfigGeneric<TB>) -> Self {
     self.dispatcher = dispatcher;
+    self.dispatcher_id = None;
+    self
+  }
+
+  /// Overrides the dispatcher by identifier.
+  #[must_use]
+  pub fn with_dispatcher_id(mut self, id: impl Into<String>) -> Self {
+    self.dispatcher_id = Some(id.into());
     self
   }
 
@@ -122,10 +147,30 @@ impl<TB: RuntimeToolbox + 'static> PropsGeneric<TB> {
     self
   }
 
+  /// Overrides the mailbox via identifier.
+  #[must_use]
+  pub fn with_mailbox_id(mut self, id: impl Into<String>) -> Self {
+    self.mailbox_id = Some(id.into());
+    self
+  }
+
   /// Overrides the mailbox capability registry (testing helper).
   #[must_use]
   pub fn with_mailbox_capabilities(mut self, registry: QueueCapabilityRegistry) -> Self {
     self.mailbox = self.mailbox.with_capabilities(registry);
+    self.mailbox_id = None;
+    self
+  }
+
+  pub(crate) fn with_resolved_dispatcher(mut self, dispatcher: DispatcherConfigGeneric<TB>) -> Self {
+    self.dispatcher = dispatcher;
+    self.dispatcher_id = None;
+    self
+  }
+
+  pub(crate) fn with_resolved_mailbox(mut self, mailbox: MailboxConfig) -> Self {
+    self.mailbox = mailbox;
+    self.mailbox_id = None;
     self
   }
 }
@@ -133,11 +178,13 @@ impl<TB: RuntimeToolbox + 'static> PropsGeneric<TB> {
 impl<TB: RuntimeToolbox + 'static> Clone for PropsGeneric<TB> {
   fn clone(&self) -> Self {
     Self {
-      factory:    self.factory.clone(),
-      name:       self.name.clone(),
-      mailbox:    self.mailbox,
-      middleware: self.middleware.clone(),
-      dispatcher: self.dispatcher.clone(),
+      factory:       self.factory.clone(),
+      name:          self.name.clone(),
+      mailbox:       self.mailbox,
+      mailbox_id:    self.mailbox_id.clone(),
+      middleware:    self.middleware.clone(),
+      dispatcher:    self.dispatcher.clone(),
+      dispatcher_id: self.dispatcher_id.clone(),
     }
   }
 }

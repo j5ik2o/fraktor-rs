@@ -2,6 +2,10 @@
 
 use core::time::Duration;
 
+mod pressure_event;
+
+pub use pressure_event::MailboxPressureEvent;
+
 use crate::actor_prim::Pid;
 
 /// Snapshot of mailbox queue lengths and capacity.
@@ -13,54 +17,6 @@ pub struct MailboxMetricsEvent {
   capacity:   Option<usize>,
   throughput: Option<usize>,
   timestamp:  Duration,
-}
-
-/// Event describing high mailbox utilisation.
-#[derive(Clone, Debug)]
-pub struct MailboxPressureEvent {
-  pid:         Pid,
-  user_len:    usize,
-  capacity:    usize,
-  utilization: u8,
-  timestamp:   Duration,
-}
-
-impl MailboxPressureEvent {
-  /// Creates a new pressure event using utilisation percentage.
-  #[must_use]
-  pub const fn new(pid: Pid, user_len: usize, capacity: usize, utilization: u8, timestamp: Duration) -> Self {
-    Self { pid, user_len, capacity, utilization, timestamp }
-  }
-
-  /// Returns the owning actor pid.
-  #[must_use]
-  pub const fn pid(&self) -> Pid {
-    self.pid
-  }
-
-  /// Returns the queued user messages.
-  #[must_use]
-  pub const fn user_len(&self) -> usize {
-    self.user_len
-  }
-
-  /// Returns the configured capacity.
-  #[must_use]
-  pub const fn capacity(&self) -> usize {
-    self.capacity
-  }
-
-  /// Returns the utilisation percentage (0-100).
-  #[must_use]
-  pub const fn utilization(&self) -> u8 {
-    self.utilization
-  }
-
-  /// Returns the timestamp when the event was emitted.
-  #[must_use]
-  pub const fn timestamp(&self) -> Duration {
-    self.timestamp
-  }
 }
 
 impl MailboxMetricsEvent {

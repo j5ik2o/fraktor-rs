@@ -229,6 +229,42 @@ fn spawn_child_succeeds_when_requirements_met() {
 }
 
 #[test]
+fn spawn_child_fails_when_dispatcher_id_not_registered() {
+  let system = ActorSystem::new_empty();
+  let parent_pid = system.allocate_pid();
+  let parent_name = system.state().assign_name(None, Some("parent"), parent_pid).expect("parent name");
+  let parent_cell = ActorCell::create(system.state(), parent_pid, None, parent_name, &Props::from_fn(|| TestActor));
+  system.state().register_cell(parent_cell);
+
+  let props = Props::from_fn(|| TestActor).with_dispatcher_id("custom-dispatcher");
+  let result = system.spawn_child(parent_pid, &props);
+  assert!(matches!(result, Err(crate::spawn::SpawnError::InvalidProps(_))));
+}
+
+#[test]
+fn spawn_child_resolves_mailbox_id_with_requirements() {
+  use cellactor_utils_core_rs::collections::queue::capabilities::{QueueCapabilityRegistry, QueueCapabilitySet};
+
+  let system = ActorSystem::new_empty();
+  let parent_pid = system.allocate_pid();
+  let parent_name = system.state().assign_name(None, Some("parent"), parent_pid).expect("parent name");
+  let parent_cell = ActorCell::create(system.state(), parent_pid, None, parent_name, &Props::from_fn(|| TestActor));
+  system.state().register_cell(parent_cell);
+
+  let registry = QueueCapabilityRegistry::new(QueueCapabilitySet::defaults().with_deque(false));
+  let constrained =
+    MailboxConfig::default().with_requirement(MailboxRequirement::requires_deque()).with_capabilities(registry);
+  system.mailboxes().register("constrained", constrained).expect("register mailbox");
+
+  let props = Props::from_fn(|| TestActor)
+    .with_mailbox_id("constrained")
+    .with_mailbox_requirement(MailboxRequirement::for_stash());
+
+  let result = system.spawn_child(parent_pid, &props);
+  assert!(matches!(result, Err(crate::spawn::SpawnError::InvalidProps(_))));
+}
+
+#[test]
 fn actor_system_spawn_without_guardian() {
   let system = ActorSystem::new_empty();
   let props = Props::from_fn(|| TestActor);

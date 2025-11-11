@@ -15,7 +15,7 @@ pub enum SpawnError {
   /// The actor system is shutting down or unavailable.
   SystemUnavailable,
   /// The provided props were invalid for this actor system.
-  InvalidProps(&'static str),
+  InvalidProps(String),
 }
 
 impl SpawnError {
@@ -31,9 +31,9 @@ impl SpawnError {
     Self::SystemUnavailable
   }
 
-  /// Creates an invalid props error with a static reason.
+  /// Creates an invalid props error with the provided reason.
   #[must_use]
-  pub const fn invalid_props(reason: &'static str) -> Self {
-    Self::InvalidProps(reason)
+  pub fn invalid_props(reason: impl Into<String>) -> Self {
+    Self::InvalidProps(reason.into())
   }
 }

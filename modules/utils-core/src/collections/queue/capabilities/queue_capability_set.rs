@@ -43,7 +43,7 @@ impl QueueCapabilitySet {
   }
 
   #[must_use]
-  pub(crate) const fn has(&self, capability: QueueCapability) -> bool {
+  pub(crate) const fn has(self, capability: QueueCapability) -> bool {
     match capability {
       | QueueCapability::Mpsc => self.has_mpsc,
       | QueueCapability::Deque => self.has_deque,
