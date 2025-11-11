@@ -7,7 +7,7 @@ use core::{
   time::Duration,
 };
 
-use cellactor_utils_core_rs::{
+use fraktor_utils_core_rs::{
   DelayFuture, DelayProvider,
   collections::{
     queue::{QueueError, backend::OfferOutcome},

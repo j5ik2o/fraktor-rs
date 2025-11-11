@@ -1,8 +1,8 @@
-# cellactor-rs 使用開始ガイド
+# fraktor-rs 使用開始ガイド
 
 ## はじめに
 
-cellactor-rsは、Akka/Pekko互換のアクターランタイムをRust/no_std環境で実装したライブラリです。このガイドでは、cellactor-rsを使い始めるための基本的な手順を説明します。
+fraktor-rsは、Akka/Pekko互換のアクターランタイムをRust/no_std環境で実装したライブラリです。このガイドでは、fraktor-rsを使い始めるための基本的な手順を説明します。
 
 ## インストール
 
@@ -12,16 +12,16 @@ cellactor-rsは、Akka/Pekko互換のアクターランタイムをRust/no_std�
 
 ```toml
 [dependencies]
-cellactor-actor-core-rs = { path = "path/to/modules/actor-core" }
-cellactor-actor-std-rs = { path = "path/to/modules/actor-std" }
+fraktor-actor-core-rs = { path = "path/to/modules/actor-core" }
+fraktor-actor-std-rs = { path = "path/to/modules/actor-std" }
 ```
 
 no_std環境で使用する場合:
 
 ```toml
 [dependencies]
-cellactor-actor-core-rs = { path = "path/to/modules/actor-core", default-features = false }
-cellactor-utils-core-rs = { path = "path/to/modules/utils-core", default-features = false }
+fraktor-actor-core-rs = { path = "path/to/modules/actor-core", default-features = false }
+fraktor-utils-core-rs = { path = "path/to/modules/utils-core", default-features = false }
 ```
 
 ## 基本的な使い方
@@ -31,11 +31,11 @@ cellactor-utils-core-rs = { path = "path/to/modules/utils-core", default-feature
 最も簡単なアクターを作成してみましょう。
 
 ```rust
-use cellactor_actor_core_rs::{
+use fraktor_actor_core_rs::{
     Actor, ActorContext, ActorError, ActorSystem, ActorSystemGeneric,
     LifecycleStage, LogLevel, Props,
 };
-use cellactor_actor_std_rs::{StdActorSystem, StdToolbox};
+use fraktor_actor_std_rs::{StdActorSystem, StdToolbox};
 use core::any::Any;
 
 // アクターの定義
@@ -243,7 +243,7 @@ impl Actor for WatcherActor {
 子アクターの障害を処理する戦略を設定できます。
 
 ```rust
-use cellactor_actor_core_rs::{
+use fraktor_actor_core_rs::{
     SupervisorStrategy, SupervisorStrategyKind, Directive, SupervisionDecider,
 };
 use core::time::Duration;
@@ -277,7 +277,7 @@ let props = Props::from_fn(|| ChildActor::new())
 型安全なメッセージングが必要な場合は、Typed APIを使用できます。
 
 ```rust
-use cellactor_actor_core_rs::typed::{
+use fraktor_actor_core_rs::typed::{
     BehaviorGeneric, TypedActor, TypedActorContextGeneric,
     TypedActorSystemGeneric,
 };
@@ -391,7 +391,7 @@ impl Actor for PongActor {
 
 ## 利用可能なサンプル
 
-cellactor-rsには、様々な使用例が含まれています。
+fraktor-rsには、様々な使用例が含まれています。
 
 ### std環境のサンプル
 
@@ -419,7 +419,7 @@ cellactor-rsには、様々な使用例が含まれています。
 標準環境でTokioランタイムと統合する場合:
 
 ```rust
-use cellactor_actor_std_rs::{StdActorSystem, TokioExecutor};
+use fraktor_actor_std_rs::{StdActorSystem, TokioExecutor};
 use tokio::runtime::Runtime;
 
 #[tokio::main]
@@ -450,7 +450,7 @@ async fn main() -> Result<(), ActorError> {
 システム全体のイベントを購読できます。
 
 ```rust
-use cellactor_actor_core_rs::{EventStreamEvent, LogLevel};
+use fraktor_actor_core_rs::{EventStreamEvent, LogLevel};
 
 struct LoggerSubscriber {
     min_level: LogLevel,
@@ -544,6 +544,6 @@ system.when_terminated().await; // これを忘れずに
 
 ## まとめ
 
-cellactor-rsは、no_std環境でも動作する柔軟なアクターランタイムです。基本的なアクターの作成から、監督戦略、DeathWatch API、Typed APIまで、多様な機能を提供しています。
+fraktor-rsは、no_std環境でも動作する柔軟なアクターランタイムです。基本的なアクターの作成から、監督戦略、DeathWatch API、Typed APIまで、多様な機能を提供しています。
 
 ご質問やフィードバックがありましたら、GitHubのissueでお知らせください。

@@ -1,6 +1,6 @@
 use core::num::NonZeroUsize;
 
-use cellactor_utils_core_rs::collections::queue::capabilities::QueueCapabilityRegistry;
+use fraktor_utils_core_rs::collections::queue::capabilities::QueueCapabilityRegistry;
 
 use super::MailboxRequirement;
 use crate::mailbox::MailboxPolicy;

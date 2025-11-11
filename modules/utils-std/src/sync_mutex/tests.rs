@@ -1,4 +1,4 @@
-use cellactor_utils_core_rs::sync::sync_mutex_like::SyncMutexLike;
+use fraktor_utils_core_rs::sync::sync_mutex_like::SyncMutexLike;
 
 use super::StdSyncMutex;
 

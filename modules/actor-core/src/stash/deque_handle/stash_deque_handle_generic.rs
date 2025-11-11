@@ -1,4 +1,4 @@
-use cellactor_utils_core_rs::{
+use fraktor_utils_core_rs::{
   collections::queue::{DequeBackendGeneric, QueueError},
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
 };

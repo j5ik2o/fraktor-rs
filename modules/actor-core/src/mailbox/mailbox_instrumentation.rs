@@ -5,7 +5,7 @@ mod tests;
 
 use alloc::{format, string::String};
 
-use cellactor_utils_core_rs::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
+use fraktor_utils_core_rs::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
 
 use super::BackpressurePublisherGeneric;
 use crate::{

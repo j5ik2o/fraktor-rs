@@ -1,6 +1,6 @@
 //! Builder that mirrors Pekko's `Behaviors.supervise` DSL.
 
-use cellactor_utils_core_rs::sync::NoStdToolbox;
+use fraktor_utils_core_rs::sync::NoStdToolbox;
 
 use crate::{RuntimeToolbox, supervision::SupervisorStrategy, typed::behavior::Behavior};
 

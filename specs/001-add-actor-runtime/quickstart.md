@@ -18,16 +18,16 @@ target=thumbv8m.main-none-eabihf
 cargo build --package actor-core --target $target --no-default-features
 ```
 
-ホスト環境で標準ライブラリバックエンドを利用する場合は `cellactor-actor-std-rs` クレートを追加し、`StdToolbox` と `StdActorSystem` をインポートする。
+ホスト環境で標準ライブラリバックエンドを利用する場合は `fraktor-actor-std-rs` クレートを追加し、`StdToolbox` と `StdActorSystem` をインポートする。
 
 ```toml
-cellactor-actor-std-rs = { path = "modules/actor-std" }
+fraktor-actor-std-rs = { path = "modules/actor-std" }
 ```
 
 ```rust
-use cellactor_actor_core_rs::{DispatcherConfig, Props};
-use cellactor_actor_std_rs::{StdActorSystem, StdToolbox};
-use cellactor_utils_core_rs::sync::ArcShared;
+use fraktor_actor_core_rs::{DispatcherConfig, Props};
+use fraktor_actor_std_rs::{StdActorSystem, StdToolbox};
+use fraktor_utils_core_rs::sync::ArcShared;
 
 let dispatcher: DispatcherConfig<StdToolbox> =
     DispatcherConfig::from_executor(ArcShared::new(MyExecutor::new()));
@@ -40,13 +40,13 @@ Tokio 連携については `examples/ping_pong_tokio` を参照。`TokioExecuto
 ## 3. サンプル実行（Ping/Pong）
 
 1. `examples/ping_pong_no_std` は `NoStdToolbox` を前提に Guardian → Ping/Pong のラウンドトリップを確認する。
-2. ホスト確認（std 必須）: `cargo run -p cellactor-actor-core-rs --example ping_pong_tokio --features std`。Tokio ランタイム上で `StdToolbox` を利用し、`reply_to` ベースの応答とスレッド ID ログを表示する。
+2. ホスト確認（std 必須）: `cargo run -p fraktor-actor-core-rs --example ping_pong_tokio --features std`。Tokio ランタイム上で `StdToolbox` を利用し、`reply_to` ベースの応答とスレッド ID ログを表示する。
 3. 組込み: `cargo embed --example ping_pong_no_std --target $target`。UART ログに `PING -> PONG` が 3 回出力され、`reply_to.tell(...)` で返信できていること。
 
 ## 4. 監督戦略と Deadletter の確認
 
-- `examples/supervision_std` を実行し、`ActorError::recoverable` を返すと Supervisor が再起動を行い、EventStream 経由でライフサイクルログが出力されることを確認する。  
-- `examples/deadletter_std` を実行し、Mailbox を `Suspend` した状態で `tell` すると Deadletter/LogEvent が発生することを確認する。サンプル内では `send_or_log` `suspend_or_log` といった薄いヘルパーで `Result<(), SendError>` を扱っている。  
+- `examples/supervision_std` を実行し、`ActorError::recoverable` を返すと Supervisor が再起動を行い、EventStream 経由でライフサイクルログが出力されることを確認する。
+- `examples/deadletter_std` を実行し、Mailbox を `Suspend` した状態で `tell` すると Deadletter/LogEvent が発生することを確認する。サンプル内では `send_or_log` `suspend_or_log` といった薄いヘルパーで `Result<(), SendError>` を扱っている。
 - `panic!()` を挿入した場合はランタイムが停止を記録し、外部ウォッチドッグ（例: RP2040 の watchdog リセット）がシステムを再起動する設計とする。
 
 ## 5. ガーディアンアクターでのエントリポイント
@@ -110,7 +110,7 @@ let snapshot = system.deadletters();
 ```rust
 // 設計案: T041/T042 で実装予定のビルダーイメージ
 use core::num::NonZeroUsize;
-use cellactor_actor_std_rs::{ObserverOptions, StdActorSystem};
+use fraktor_actor_std_rs::{ObserverOptions, StdActorSystem};
 
 let observer = ObserverOptions::default()
     .with_event_stream_capacity(NonZeroUsize::new(512).unwrap())
@@ -146,8 +146,8 @@ makers ci-check -- dylint
 
 ## 9. 運用ノート
 
-- panic 非介入: ランタイムは再起動せず、外部ウォッチドッグまたはシステムサービスが責務を負う。  
-- Deadletter / EventStream による監視を運用ダッシュボード（例: RTT 経由）へ出力し、Logger 購読者を通じて `LogEvent` を UART/RTT またはホストログに転送する。  
+- panic 非介入: ランタイムは再起動せず、外部ウォッチドッグまたはシステムサービスが責務を負う。
+- Deadletter / EventStream による監視を運用ダッシュボード（例: RTT 経由）へ出力し、Logger 購読者を通じて `LogEvent` を UART/RTT またはホストログに転送する。
 - 将来の Typed レイヤーは AnyMessage 上に別レイヤーとして構築予定で、現フェーズの API は未型付けを前提とする。
 - `tell` は `Result<(), SendError>` を返すため、`send_or_log` のような薄いヘルパーをアプリ側で用意し、サスペンドや容量超過を即座に検知・ロギングする。
 

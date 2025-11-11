@@ -3,12 +3,12 @@ use std::{
   string::String,
 };
 
-use cellactor_actor_core_rs::{
+use fraktor_actor_core_rs::{
   mailbox::MailboxPolicy,
   props::{ActorFactory, MailboxConfig, PropsGeneric as CorePropsGeneric},
 };
-use cellactor_utils_core_rs::sync::ArcShared;
-use cellactor_utils_std_rs::runtime_toolbox::StdToolbox;
+use fraktor_utils_core_rs::sync::ArcShared;
+use fraktor_utils_std_rs::runtime_toolbox::StdToolbox;
 
 use crate::{
   actor_prim::{Actor, ActorAdapter},

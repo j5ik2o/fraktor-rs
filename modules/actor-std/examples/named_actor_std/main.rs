@@ -5,10 +5,10 @@ mod start_message;
 
 use std::{thread, time::Duration};
 
-use cellactor_actor_std_rs::{
+use fraktor_actor_std_rs::{
   event_stream::EventStreamSubscriber, messaging::AnyMessage, props::Props, system::ActorSystem,
 };
-use cellactor_utils_core_rs::sync::ArcShared;
+use fraktor_utils_core_rs::sync::ArcShared;
 use guardian::GuardianActor;
 use lifecycle_printer::LifecyclePrinter;
 use start_message::Start;

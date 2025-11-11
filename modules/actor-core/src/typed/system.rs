@@ -3,7 +3,7 @@
 use alloc::{string::String, vec::Vec};
 use core::marker::PhantomData;
 
-use cellactor_utils_core_rs::sync::{ArcShared, NoStdToolbox};
+use fraktor_utils_core_rs::sync::{ArcShared, NoStdToolbox};
 
 use crate::{
   RuntimeToolbox,

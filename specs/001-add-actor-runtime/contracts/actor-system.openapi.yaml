@@ -1,6 +1,6 @@
 openapi: 3.1.0
 info:
-  title: Cellactor Runtime Control API
+  title: fraktor Runtime Control API
   version: 0.1.0
   description: >-
     Minimal control surface for the no_std actor runtime. Intended for

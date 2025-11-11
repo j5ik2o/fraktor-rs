@@ -45,7 +45,7 @@ impl Actor for ResilientWorker {
 }
 
 // ユースケース2: ビジネスロジックの状態に基づく判断
-use cellactor::logging::LogLevel;
+use fraktor::logging::LogLevel;
 
 struct PaymentProcessor {
     critical_mode: bool, // 決済処理中など
@@ -219,37 +219,37 @@ pub struct SupervisorStrategy { /* deciderクロージャを格納できる */ }
 
 ### 変更が必要なファイル
 
-1. **modules/actor-core/src/actor_prim/actor.rs**  
+1. **modules/actor-core/src/actor_prim/actor.rs**
    - `Actor` traitに`fn supervisor_strategy(&mut self, &mut ActorContext) -> SupervisorStrategy`を追加し、RustDocでデフォルト実装・使用例を更新
 
-2. **modules/actor-std/src/actor_prim/actor.rs**  
+2. **modules/actor-std/src/actor_prim/actor.rs**
    - std版Actor traitも同じAPIへ揃え、ドキュメントを同期
 
-3. **modules/actor-core/src/actor_prim/actor_cell.rs**  
+3. **modules/actor-core/src/actor_prim/actor_cell.rs**
    - 構造体・`create`・`handle_child_failure`・`handle_failure`から`supervisor`フィールド参照を削除し、Actorから直接戦略を取得するロジックを導入
 
-4. **modules/actor-core/src/actor_prim/actor_cell/tests.rs**  
+4. **modules/actor-core/src/actor_prim/actor_cell/tests.rs**
    - ActorCell単体テストで動的なOneForOne/AllForOne切り替え、Escalateフォールバックを検証
 
-5. **modules/actor-core/src/props/base.rs**  
+5. **modules/actor-core/src/props/base.rs**
    - `PropsGeneric`から`supervisor: SupervisorOptions`を除去し、`with_supervisor`/`supervisor` APIと関連ドキュメントを削除
 
-6. **modules/actor-std/src/props/base.rs**  
+6. **modules/actor-std/src/props/base.rs**
    - std向けPropsラッパーから同APIを削除し、ビルダー例をActorメソッド方式へ書き換え
 
-7. **modules/actor-core/src/supervision/base.rs**  
+7. **modules/actor-core/src/supervision/base.rs**
    - `SupervisorStrategy`から`Copy`制約を削除し、`Clone`ベースの実装へ変更（deciderクロージャを保持できるよう準備）
 
-8. **modules/actor-core/tests/supervisor.rs**  
+8. **modules/actor-core/tests/supervisor.rs**
    - `.with_supervisor()`に依存しているテストをActor実装オーバーライド方式へ移行し、新しいユースケースを追加
 
-9. **modules/actor-std/tests/tokio_acceptance.rs**  
+9. **modules/actor-std/tests/tokio_acceptance.rs**
    - 受け入れテストのProps構築を修正し、API破壊的変更によるビルド失敗を防止
 
-10. **modules/actor-std/examples/supervision_std/main.rs**  
+10. **modules/actor-std/examples/supervision_std/main.rs**
     - ガイドで使用しているPropsビルダーの移行例を提供し、ユーザー向けのリファレンスを最新化
 
-11. **CHANGELOG.md / docs/guides/**  
+11. **CHANGELOG.md / docs/guides/**
     - BREAKING CHANGEとして`Props::with_supervisor`削除と移行手順を周知
 
 ### 破壊的変更
@@ -296,7 +296,7 @@ let props = Props::from_fn(MyActor::new);
        .with_supervisor(SupervisorOptions::new(supervisor));
 
    // 変更後
-   use cellactor::logging::LogLevel;
+   use fraktor::logging::LogLevel;
 
    impl Actor for Guardian {
        fn supervisor_strategy(&mut self, ctx: &mut ActorContext) -> SupervisorStrategy {
@@ -310,7 +310,7 @@ let props = Props::from_fn(MyActor::new);
    **Escalate戦略の例**
 
    ```rust
-   use cellactor::logging::LogLevel;
+   use fraktor::logging::LogLevel;
 
    impl Actor for EscalatingGuardian {
        fn supervisor_strategy(&mut self, ctx: &mut ActorContext) -> SupervisorStrategy {

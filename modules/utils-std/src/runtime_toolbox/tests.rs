@@ -1,4 +1,4 @@
-use cellactor_utils_core_rs::runtime_toolbox::SyncMutexFamily;
+use fraktor_utils_core_rs::runtime_toolbox::SyncMutexFamily;
 
 use super::{StdMutex, StdMutexFamily};
 

@@ -2,7 +2,7 @@
 
 ## 概要
 
-本ドキュメントは、pekkoおよびprotoactor-goと比較した際に、cellactor-rs/actor-coreで欠けているコア機能を特定し、実装優先度と推奨スケジュールを示すものです。
+本ドキュメントは、pekkoおよびprotoactor-goと比較した際に、fraktor-rs/actor-coreで欠けているコア機能を特定し、実装優先度と推奨スケジュールを示すものです。
 
 **方針**: Remoting、Cluster、Cluster Shardingなどの分散機能の前に、単一ノードでのアクターシステムのコア機能を充実させる。
 

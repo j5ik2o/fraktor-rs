@@ -3,7 +3,7 @@ extern crate alloc;
 use alloc::{string::String, vec::Vec};
 use core::{hint::spin_loop, num::NonZeroUsize};
 
-use cellactor_utils_core_rs::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::sync::{ArcShared, NoStdMutex};
 
 use crate::{
   NoStdToolbox,

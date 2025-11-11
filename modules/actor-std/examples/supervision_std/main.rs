@@ -1,19 +1,19 @@
 use core::time::Duration as CoreDuration;
 use std::{thread, time::Duration};
 
-use cellactor_actor_core_rs::{
+use fraktor_actor_core_rs::{
   error::ActorError,
   logging::{LogEvent, LogLevel, LoggerSubscriber, LoggerWriter},
   supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
 };
-use cellactor_actor_std_rs::{
+use fraktor_actor_std_rs::{
   actor_prim::{Actor, ActorContext},
   event_stream::{EventStreamEvent, EventStreamSubscriber},
   messaging::{AnyMessage, AnyMessageView},
   props::Props,
   system::ActorSystem,
 };
-use cellactor_utils_core_rs::sync::ArcShared;
+use fraktor_utils_core_rs::sync::ArcShared;
 
 struct Start;
 struct Trigger;

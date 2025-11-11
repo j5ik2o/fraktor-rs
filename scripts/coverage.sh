@@ -88,10 +88,10 @@ run_llvm_cov() {
 
   # Main packages to measure coverage for (run separately to avoid SIGSEGV)
   local -a packages=(
-    "cellactor-utils-core-rs"
-    "cellactor-utils-std-rs"
-    "cellactor-actor-core-rs"
-    "cellactor-actor-std-rs"
+    "fraktor-utils-core-rs"
+    "fraktor-utils-std-rs"
+    "fraktor-actor-core-rs"
+    "fraktor-actor-std-rs"
   )
 
   case "${format}" in

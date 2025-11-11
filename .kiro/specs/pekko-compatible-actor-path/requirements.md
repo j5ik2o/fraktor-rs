@@ -5,7 +5,7 @@ ActorPathをPekko互換仕様にする。
 参考資料: references/pekko/actor/src/main/scala/org/apache/pekko/actor/ActorPath.scala
 
 ## Introduction
-Cellactor ランタイムは Pekko の ActorPath 仕様（正規化 URI、UID 付きリモートパス、`ActorSelection` の相対解決規約）と同一の振る舞いを提供し、ロギング・Remoting・DeathWatch を跨いで互換性を確保することを目的とする。
+fraktor ランタイムは Pekko の ActorPath 仕様（正規化 URI、UID 付きリモートパス、`ActorSelection` の相対解決規約）と同一の振る舞いを提供し、ロギング・Remoting・DeathWatch を跨いで互換性を確保することを目的とする。
 
 ## Requirements
 
@@ -13,11 +13,11 @@ Cellactor ランタイムは Pekko の ActorPath 仕様（正規化 URI、UID �
 **目的:** ランタイムメンテナが Pekko と同じ ActorPath 文字列でログやリモート API を共有できるようにする。
 
 #### Acceptance Criteria
-1. When CellActor Runtime が ActorPath をログ・DeadLetter・テレメトリ用途で文字列化するとき、ActorPath Formatter は Pekko の正規化規則と同一の URI を出力し、authority が設定されている場合は `pekko://<system>@<host>:<port>/<path>`、設定されていない場合は `pekko://<system>/<path>` を生成しなければならない。
+1. When fraktor Runtime が ActorPath をログ・DeadLetter・テレメトリ用途で文字列化するとき、ActorPath Formatter は Pekko の正規化規則と同一の URI を出力し、authority が設定されている場合は `pekko://<system>@<host>:<port>/<path>`、設定されていない場合は `pekko://<system>/<path>` を生成しなければならない。
 2. If 任意のパスセグメントに RFC2396 準拠の文字（英数字 `[A-Za-z0-9]`、記号 `-_.*$+:@&=,!~';`、または `%HH` 形式のパーセントエンコード）以外が含まれるなら、ActorPath Validator はそのセグメントのインデックスを含むエラーを返してシリアライズを拒否しなければならない。
 3. While ランタイムが authority（host/port）を構成していない間、ActorPath Formatter は `pekko://<system>/<path>` 形式を維持したまま `@<host>:<port>` を省き、Pekko 既定の `/system` または `/user` 直下のルートパスを用いなければならない。
 4. Where リモートパスに `#123456` のような UID サフィックスが含まれている場合、ActorPath Formatter はシリアライズ／デシリアライズの間でその UID を一語一句保持しなければならない。
-5. CellActor Runtime は ActorPath Formatter を通じて各セグメントの大文字小文字を元のアクター生成要求どおり保持しなければならない。
+5. fraktor Runtime は ActorPath Formatter を通じて各セグメントの大文字小文字を元のアクター生成要求どおり保持しなければならない。
 6. If ユーザー定義の ActorPath セグメントが `$` から始まるなら、ActorPath Validator はそれをシステム予約セグメントとして拒否し、訂正を要求しなければならない。
 
 ### Requirement 2: ActorPath 解析と検証

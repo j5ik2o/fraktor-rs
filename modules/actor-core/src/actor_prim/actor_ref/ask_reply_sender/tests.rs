@@ -1,6 +1,6 @@
 use alloc::string::ToString;
 
-use cellactor_utils_core_rs::sync::ArcShared;
+use fraktor_utils_core_rs::sync::ArcShared;
 
 use crate::{
   NoStdToolbox,

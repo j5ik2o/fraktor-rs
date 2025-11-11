@@ -1,12 +1,12 @@
 [package]
-name = "cellactor-actor-core-rs"
+name = "fraktor-actor-core-rs"
 version = "0.1.0"
 edition = "2024"
-description = "Cellactor no_std actor runtime core"
+description = "fraktor no_std actor runtime core"
 license = "MIT OR Apache-2.0"
-keywords = ["cellactor", "actor", "runtime", "no_std"]
+keywords = ["fraktor", "actor", "runtime", "no_std"]
 categories = ["concurrency", "embedded", "no-std"]
-repository = "https://github.com/j5ik2o/cellactor-rs"
+repository = "https://github.com/j5ik2o/fraktor-rs"
 publish = false
 
 [features]
@@ -16,7 +16,7 @@ alloc-metrics = []
 
 [dependencies]
 async-trait = { workspace = true }
-cellactor-utils-core-rs = { workspace = true, default-features = false, features = ["alloc", "unsize"] }
+fraktor-utils-core-rs = { workspace = true, default-features = false, features = ["alloc", "unsize"] }
 critical-section = { workspace = true }
 heapless = { workspace = true, default-features = false, features = ["portable-atomic"] }
 portable-atomic = { workspace = true, default-features = false, features = ["critical-section"] }
@@ -29,7 +29,7 @@ erased-serde = { workspace = true }
 bincode = { workspace = true }
 
 [dev-dependencies]
-cellactor-actor-std-rs = { path = "../actor-std" }
+fraktor-actor-std-rs = { path = "../actor-std" }
 criterion = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
 

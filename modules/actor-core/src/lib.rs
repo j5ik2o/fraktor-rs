@@ -60,7 +60,7 @@
 
 extern crate alloc;
 
-pub use cellactor_utils_core_rs::sync::{NoStdMutex, NoStdToolbox, RuntimeToolbox, ToolboxMutex};
+pub use fraktor_utils_core_rs::sync::{NoStdMutex, NoStdToolbox, RuntimeToolbox, ToolboxMutex};
 
 // Hierarchical package structure
 pub mod actor_prim;

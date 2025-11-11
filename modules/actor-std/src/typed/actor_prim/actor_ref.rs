@@ -1,7 +1,7 @@
 use std::ops::{Deref, DerefMut};
 
-use cellactor_actor_core_rs::typed::actor_prim::TypedActorRefGeneric;
-use cellactor_utils_std_rs::runtime_toolbox::StdToolbox;
+use fraktor_actor_core_rs::typed::actor_prim::TypedActorRefGeneric;
+use fraktor_utils_std_rs::runtime_toolbox::StdToolbox;
 
 #[repr(transparent)]
 /// Strongly typed actor reference bound to the standard runtime toolbox.

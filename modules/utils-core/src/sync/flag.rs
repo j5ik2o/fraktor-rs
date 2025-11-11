@@ -24,7 +24,7 @@ mod tests;
 /// # Examples
 ///
 /// ```
-/// use cellactor_utils_core_rs::Flag;
+/// use fraktor_utils_core_rs::Flag;
 ///
 /// let flag = Flag::new(false);
 /// assert!(!flag.get());
@@ -55,7 +55,7 @@ impl Flag {
   /// # Examples
   ///
   /// ```
-  /// use cellactor_utils_core_rs::Flag;
+  /// use fraktor_utils_core_rs::Flag;
   ///
   /// let flag = Flag::new(true);
   /// assert!(flag.get());
@@ -87,7 +87,7 @@ impl Flag {
   /// # Examples
   ///
   /// ```
-  /// use cellactor_utils_core_rs::Flag;
+  /// use fraktor_utils_core_rs::Flag;
   ///
   /// let flag = Flag::new(false);
   /// flag.set(true);
@@ -119,7 +119,7 @@ impl Flag {
   /// # Examples
   ///
   /// ```
-  /// use cellactor_utils_core_rs::Flag;
+  /// use fraktor_utils_core_rs::Flag;
   ///
   /// let flag = Flag::new(true);
   /// assert!(flag.get());
@@ -149,7 +149,7 @@ impl Flag {
   /// # Examples
   ///
   /// ```
-  /// use cellactor_utils_core_rs::Flag;
+  /// use fraktor_utils_core_rs::Flag;
   ///
   /// let flag = Flag::new(true);
   /// flag.clear();

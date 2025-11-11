@@ -4,7 +4,7 @@ extern crate alloc;
 
 use alloc::string::{String, ToString};
 
-use cellactor_actor_core_rs::{
+use fraktor_actor_core_rs::{
   error::ActorError,
   typed::{
     AdapterFailure, TypedActorSystem, TypedProps,

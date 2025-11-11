@@ -183,7 +183,7 @@ run_dylint() {
         break
         ;;
       -h|--help)
-        echo "利用例: scripts/ci-check.sh dylint -n mod-file-lint -m cellactor-actor-core-rs" >&2
+        echo "利用例: scripts/ci-check.sh dylint -n mod-file-lint -m fraktor-actor-core-rs" >&2
         return 0
         ;;
       *)
@@ -341,7 +341,7 @@ run_dylint() {
   fi
   local -a main_package_args=()
   local -a hardware_targets=()
-  local -a feature_packages=() #("cellactor-utils-embedded-rs=embassy,arc")
+  local -a feature_packages=() #("fraktor-utils-embedded-rs=embassy,arc")
 
   if [[ ${#package_args[@]} -eq 0 ]]; then
     if ! command -v python3 >/dev/null 2>&1; then
@@ -498,53 +498,53 @@ run_clippy() {
 }
 
 run_no_std() {
-  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p cellactor-utils-core-rs --no-default-features --features alloc"
-  run_cargo check -p cellactor-utils-core-rs --no-default-features --features alloc || return 1
+  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-utils-core-rs --no-default-features --features alloc"
+  run_cargo check -p fraktor-utils-core-rs --no-default-features --features alloc || return 1
 
-  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p cellactor-actor-core-rs --no-default-features"
-  run_cargo check -p cellactor-actor-core-rs --no-default-features || return 1
+  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-core-rs --no-default-features"
+  run_cargo check -p fraktor-actor-core-rs --no-default-features || return 1
 }
 
 run_std() {
-  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p cellactor-utils-core-rs"
-  run_cargo test -p cellactor-utils-core-rs || return 1
+  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-utils-core-rs"
+  run_cargo test -p fraktor-utils-core-rs || return 1
 
-  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p cellactor-actor-core-rs --lib"
-  run_cargo test -p cellactor-actor-core-rs --lib || return 1
+  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-actor-core-rs --lib"
+  run_cargo test -p fraktor-actor-core-rs --lib || return 1
 
-#  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p cellactor-utils-std-rs"
-#  run_cargo test -p cellactor-utils-std-rs || return 1
+#  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-utils-std-rs"
+#  run_cargo test -p fraktor-utils-std-rs || return 1
 #
-#  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p cellactor-actor-std-rs"
-#  run_cargo test -p cellactor-actor-std-rs || return 1
+#  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-actor-std-rs"
+#  run_cargo test -p fraktor-actor-std-rs || return 1
 #
-#  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p cellactor-remote-core-rs"
-#  run_cargo test -p cellactor-remote-core-rs || return 1
+#  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-remote-core-rs"
+#  run_cargo test -p fraktor-remote-core-rs || return 1
 #
-#  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p cellactor-cluster-core-rs"
-#  run_cargo test -p cellactor-cluster-core-rs || return 1
+#  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-cluster-core-rs"
+#  run_cargo test -p fraktor-cluster-core-rs || return 1
 }
 
 run_doc_tests() {
-  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p cellactor-actor-core-rs --no-default-features"
-  run_cargo check -p cellactor-actor-core-rs --no-default-features || return 1
+  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-core-rs --no-default-features"
+  run_cargo check -p fraktor-actor-core-rs --no-default-features || return 1
 }
 
 # run_embedded() {
-#  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p cellactor-utils-embedded-rs --no-default-features --features rc"
-#  run_cargo check -p cellactor-utils-embedded-rs --no-default-features --features rc || return 1
+#  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-utils-embedded-rs --no-default-features --features rc"
+#  run_cargo check -p fraktor-utils-embedded-rs --no-default-features --features rc || return 1
 #
-#  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p cellactor-utils-embedded-rs --no-default-features --features arc"
-#  run_cargo check -p cellactor-utils-embedded-rs --no-default-features --features arc || return 1
+#  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-utils-embedded-rs --no-default-features --features arc"
+#  run_cargo check -p fraktor-utils-embedded-rs --no-default-features --features arc || return 1
 #
-#  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p cellactor-utils-embedded-rs --no-default-features --features embassy --no-run"
-#  run_cargo test -p cellactor-utils-embedded-rs --no-default-features --features embassy --no-run || return 1
+#  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-utils-embedded-rs --no-default-features --features embassy --no-run"
+#  run_cargo test -p fraktor-utils-embedded-rs --no-default-features --features embassy --no-run || return 1
 #
-#  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p cellactor-actor-embedded-rs --no-default-features --features alloc,embedded_arc"
-#  run_cargo check -p cellactor-actor-embedded-rs --no-default-features --features alloc,embedded_arc || return 1
+#  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-embedded-rs --no-default-features --features alloc,embedded_arc"
+#  run_cargo check -p fraktor-actor-embedded-rs --no-default-features --features alloc,embedded_arc || return 1
 #
-#  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p cellactor-actor-embedded-rs --no-default-features --features alloc,embedded_arc"
-#  run_cargo test -p cellactor-actor-embedded-rs --no-default-features --features alloc,embedded_arc || return 1
+#  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-actor-embedded-rs --no-default-features --features alloc,embedded_arc"
+#  run_cargo test -p fraktor-actor-embedded-rs --no-default-features --features alloc,embedded_arc || return 1
 #
 #  for target in "${THUMB_TARGETS[@]}"; do
 #    if ! ensure_target_installed "${target}"; then
@@ -555,17 +555,17 @@ run_doc_tests() {
 #      continue
 #    fi
 #
-#    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p cellactor-utils-core-rs --target ${target} --no-default-features --features alloc"
-#    run_cargo check -p cellactor-utils-core-rs --target "${target}" --no-default-features --features alloc || return 1
+#    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-utils-core-rs --target ${target} --no-default-features --features alloc"
+#    run_cargo check -p fraktor-utils-core-rs --target "${target}" --no-default-features --features alloc || return 1
 #
-#    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p cellactor-actor-core-rs --target ${target} --no-default-features --features alloc"
-#    run_cargo check -p cellactor-actor-core-rs --target "${target}" --no-default-features --features alloc || return 1
+#    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-core-rs --target ${target} --no-default-features --features alloc"
+#    run_cargo check -p fraktor-actor-core-rs --target "${target}" --no-default-features --features alloc || return 1
 #
-#    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p cellactor-actor-core-rs --target ${target} --no-default-features --features alloc"
-#    run_cargo check -p cellactor-actor-core-rs --target "${target}" --no-default-features --features alloc || return 1
+#    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-core-rs --target ${target} --no-default-features --features alloc"
+#    run_cargo check -p fraktor-actor-core-rs --target "${target}" --no-default-features --features alloc || return 1
 #
-#    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p cellactor-actor-embedded-rs --target ${target} --no-default-features --features alloc,embedded_rc"
-#    run_cargo check -p cellactor-actor-embedded-rs --target "${target}" --no-default-features --features alloc,embedded_rc || return 1
+#    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-embedded-rs --target ${target} --no-default-features --features alloc,embedded_rc"
+#    run_cargo check -p fraktor-actor-embedded-rs --target "${target}" --no-default-features --features alloc,embedded_rc || return 1
 #  done
 # }
 

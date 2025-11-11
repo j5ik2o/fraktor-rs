@@ -1,13 +1,13 @@
-# cellactor-rs ドキュメント
+# fraktor-rs ドキュメント
 
-このディレクトリには、cellactor-rsプロジェクトの包括的なドキュメントが含まれています。
+このディレクトリには、fraktor-rsプロジェクトの包括的なドキュメントが含まれています。
 
 ## ドキュメント一覧
 
 ### 📚 入門ガイド
 
 - **[使用開始ガイド](./getting-started.md)**
-  - cellactor-rsの基本的な使い方
+  - fraktor-rsの基本的な使い方
   - 最初のアクターの作成方法
   - メッセージングパターン
   - 子アクターの管理
@@ -61,7 +61,7 @@
   - Tokioランタイムとの連携
 
 - **[DeathWatch移行ガイド](../docs/guides/death_watch_migration.md)**
-  - Akka/PekkoからcellactorへのDeathWatch API移行方法
+  - Akka/PekkoからfraktorへのDeathWatch API移行方法
   - 基本構文の対応表
   - ベストプラクティス
   - FAQ
@@ -99,7 +99,7 @@
 
 ## ドキュメントの使い方
 
-### 初めてcellactor-rsを使う方
+### 初めてfraktor-rsを使う方
 
 1. [使用開始ガイド](./getting-started.md)から始めてください
 2. 基本的な概念とコード例を学びます
@@ -140,8 +140,8 @@
 
 ## ライセンス
 
-cellactor-rsは、MIT OR Apache-2.0ライセンスの下で提供されています。
+fraktor-rsは、MIT OR Apache-2.0ライセンスの下で提供されています。
 
 ---
 
-cellactor-rsプロジェクトへようこそ！質問や提案がありましたら、お気軽にお問い合わせください。
+fraktor-rsプロジェクトへようこそ！質問や提案がありましたら、お気軽にお問い合わせください。

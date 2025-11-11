@@ -1,5 +1,5 @@
 # Overview
-cellactor-rs の Mailbox/Dispatcher パイプラインを Pekko 互換の動作保証へリファクタリングし、system message 優先度、バックプレッシャー、設定解決、STD ブリッジ、観測性を段階的に実現する。ターゲットは runtime core を運用するプラットフォーム開発者および actor ライブラリ利用者であり、既存 API 互換を保ちつつ determinism と構成柔軟性を高める。
+fraktor-rs の Mailbox/Dispatcher パイプラインを Pekko 互換の動作保証へリファクタリングし、system message 優先度、バックプレッシャー、設定解決、STD ブリッジ、観測性を段階的に実現する。ターゲットは runtime core を運用するプラットフォーム開発者および actor ライブラリ利用者であり、既存 API 互換を保ちつつ determinism と構成柔軟性を高める。
 
 ユーザは runtime core（no_std）と actor-std（Tokio 等）を統一 API で扱い、SystemMessage 処理や Mailbox キャパシティを制御しつつ、Stash/Configurator といった Pekko 流の操作を Rust 上で再現できる。これにより運用者は設定駆動で dispatcher/mailbox を差し替え、観測性担当は EventStream によるメトリクスメッセージから状態を追跡できる。
 

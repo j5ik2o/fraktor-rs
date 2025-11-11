@@ -1,4 +1,4 @@
-use cellactor_utils_core_rs::sync::ToolboxMutex;
+use fraktor_utils_core_rs::sync::ToolboxMutex;
 
 mod std_mutex_family;
 mod std_toolbox;

@@ -1,7 +1,7 @@
 # Design Document
 
 ## Overview
-Cellactor ランタイムの ActorPath を Pekko 互換仕様へ拡張し、ログ・DeadLetter・Remoting すべてで同一の URI 形式を提供する。ユーザは ActorSelection や監視 API から Pekko と同じパス規約を前提にでき、将来的な remoting 実装を阻害しない。
+fraktor ランタイムの ActorPath を Pekko 互換仕様へ拡張し、ログ・DeadLetter・Remoting すべてで同一の URI 形式を提供する。ユーザは ActorSelection や監視 API から Pekko と同じパス規約を前提にでき、将来的な remoting 実装を阻害しない。
 
 本機能は ActorSystem の内部モジュール（`actor_prim`, `system`, `config`）が対象であり、外部 API は ActorSystemConfig/RemotingConfig などの明示的な型経由でパラメータ化する。これにより no_std 環境でも設定ファイルに依存せずに起動時 API だけで設定できる。
 

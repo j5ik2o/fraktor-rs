@@ -1,8 +1,8 @@
 [package]
-name = "cellactor-actor-std-rs"
+name = "fraktor-actor-std-rs"
 version = "0.1.0"
 edition = "2024"
-description = "Cellactor std helpers for host runtimes"
+description = "fraktor std helpers for host runtimes"
 license = "MIT OR Apache-2.0"
 publish = false
 
@@ -11,9 +11,9 @@ default = []
 tokio-executor = ["dep:tokio"]
 
 [dependencies]
-cellactor-actor-core-rs = { path = "../actor-core" }
-cellactor-utils-core-rs = { path = "../utils-core", default-features = false }
-cellactor-utils-std-rs = { path = "../utils-std" }
+fraktor-actor-core-rs = { path = "../actor-core" }
+fraktor-utils-core-rs = { path = "../utils-core", default-features = false }
+fraktor-utils-std-rs = { path = "../utils-std" }
 tokio = { workspace = true, optional = true, features = ["rt", "rt-multi-thread", "macros", "time"] }
 
 [[example]]

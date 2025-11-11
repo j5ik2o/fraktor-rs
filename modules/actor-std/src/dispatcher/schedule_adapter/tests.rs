@@ -1,10 +1,10 @@
 use std::sync::atomic::Ordering;
 
-use cellactor_actor_core_rs::{
+use fraktor_actor_core_rs::{
   dispatcher::DispatcherGeneric,
   mailbox::{MailboxGeneric, MailboxPolicy},
 };
-use cellactor_utils_core_rs::sync::ArcShared;
+use fraktor_utils_core_rs::sync::ArcShared;
 
 use super::*;
 

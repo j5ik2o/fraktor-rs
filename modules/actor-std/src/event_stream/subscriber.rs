@@ -1,5 +1,5 @@
-use cellactor_actor_core_rs::event_stream::EventStreamSubscriber as CoreEventStreamSubscriber;
-use cellactor_utils_std_rs::runtime_toolbox::StdToolbox;
+use fraktor_actor_core_rs::event_stream::EventStreamSubscriber as CoreEventStreamSubscriber;
+use fraktor_utils_std_rs::runtime_toolbox::StdToolbox;
 
 use super::EventStreamEvent;
 

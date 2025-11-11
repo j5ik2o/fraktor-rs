@@ -3,7 +3,7 @@ extern crate alloc;
 use alloc::vec::Vec;
 use core::time::Duration;
 
-use cellactor_utils_core_rs::sync::ArcShared;
+use fraktor_utils_core_rs::sync::ArcShared;
 
 use crate::{
   NoStdMutex, NoStdToolbox,

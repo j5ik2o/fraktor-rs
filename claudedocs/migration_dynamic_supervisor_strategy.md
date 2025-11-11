@@ -22,11 +22,11 @@
 ### Before (旧実装)
 
 ```rust
-use cellactor_actor_std_rs::{
+use fraktor_actor_std_rs::{
     actor_prim::Actor,
     props::Props,
 };
-use cellactor_actor_core_rs::{
+use fraktor_actor_core_rs::{
     props::SupervisorOptions,
     supervision::{SupervisorStrategy, SupervisorStrategyKind, SupervisorDirective},
 };
@@ -58,11 +58,11 @@ let props = Props::from_fn(MyWorker::new)
 ### After (新実装)
 
 ```rust
-use cellactor_actor_std_rs::{
+use fraktor_actor_std_rs::{
     actor_prim::Actor,
     props::Props,
 };
-use cellactor_actor_core_rs::{
+use fraktor_actor_core_rs::{
     supervision::{SupervisorStrategy, SupervisorStrategyKind, SupervisorDirective},
 };
 

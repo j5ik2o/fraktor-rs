@@ -5,7 +5,7 @@ use core::{
   task::{RawWaker, RawWakerVTable, Waker},
 };
 
-use cellactor_utils_core_rs::sync::ArcShared;
+use fraktor_utils_core_rs::sync::ArcShared;
 
 use super::base::DispatcherGeneric;
 use crate::{RuntimeToolbox, mailbox::ScheduleHints};

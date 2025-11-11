@@ -1,13 +1,13 @@
 use core::num::NonZeroUsize;
 use std::{thread, time::Duration};
 
-use cellactor_actor_core_rs::{
+use fraktor_actor_core_rs::{
   error::ActorError,
   logging::{LogEvent, LogLevel, LoggerSubscriber, LoggerWriter},
   mailbox::{MailboxOverflowStrategy, MailboxPolicy},
   props::MailboxConfig,
 };
-use cellactor_actor_std_rs::{
+use fraktor_actor_std_rs::{
   actor_prim::{Actor, ActorContext},
   dispatcher::dispatch_executor::TokioExecutor,
   event_stream::{EventStreamEvent, EventStreamSubscriber},
@@ -15,7 +15,7 @@ use cellactor_actor_std_rs::{
   props::Props,
   system::{ActorSystem, DispatcherConfig},
 };
-use cellactor_utils_core_rs::sync::ArcShared;
+use fraktor_utils_core_rs::sync::ArcShared;
 use tokio::runtime::Handle;
 
 struct Start;

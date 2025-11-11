@@ -1,5 +1,5 @@
-use cellactor_actor_core_rs::{actor_prim::Pid, error::ActorError};
-use cellactor_utils_std_rs::runtime_toolbox::StdToolbox;
+use fraktor_actor_core_rs::{actor_prim::Pid, error::ActorError};
+use fraktor_utils_std_rs::runtime_toolbox::StdToolbox;
 
 use crate::{
   actor_prim::{Actor, ActorContext},
@@ -19,7 +19,7 @@ impl<T> ActorAdapter<T> {
   }
 }
 
-impl<T> cellactor_actor_core_rs::actor_prim::Actor<StdToolbox> for ActorAdapter<T>
+impl<T> fraktor_actor_core_rs::actor_prim::Actor<StdToolbox> for ActorAdapter<T>
 where
   T: Actor,
 {

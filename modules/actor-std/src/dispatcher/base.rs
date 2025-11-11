@@ -1,6 +1,6 @@
-use cellactor_actor_core_rs::dispatcher::{DispatchError, DispatchExecutor as CoreDispatchExecutor};
-use cellactor_utils_core_rs::sync::ArcShared;
-use cellactor_utils_std_rs::runtime_toolbox::StdToolbox;
+use fraktor_actor_core_rs::dispatcher::{DispatchError, DispatchExecutor as CoreDispatchExecutor};
+use fraktor_utils_core_rs::sync::ArcShared;
+use fraktor_utils_std_rs::runtime_toolbox::StdToolbox;
 
 use crate::dispatcher::DispatchShared;
 

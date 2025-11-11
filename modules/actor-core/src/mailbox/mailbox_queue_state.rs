@@ -2,7 +2,7 @@
 
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use cellactor_utils_core_rs::{
+use fraktor_utils_core_rs::{
   collections::{
     queue::{QueueError, SyncQueueBackend, backend::OfferOutcome},
     wait::{WaitQueue, WaitShared},

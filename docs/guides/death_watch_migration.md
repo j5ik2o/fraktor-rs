@@ -1,10 +1,10 @@
 # DeathWatch 移行ガイド
 
-このガイドでは Akka/Pekko の `DeathWatch` から cellactor-rs の `ActorContext::watch` API へ移行する際の注意点をまとめます。
+このガイドでは Akka/Pekko の `DeathWatch` から fraktor-rs の `ActorContext::watch` API へ移行する際の注意点をまとめます。
 
 ## 基本構文
 
-| Akka/Pekko | cellactor-rs |
+| Akka/Pekko | fraktor-rs |
 |------------|---------------|
 | `context.watch(child)` | `ctx.watch(child.actor_ref())?` |
 | `context.unwatch(child)` | `ctx.unwatch(child.actor_ref())?` |
@@ -20,7 +20,7 @@ def receive = {
 ```
 
 ```rust
-// cellactor-rs
+// fraktor-rs
 ctx.watch(child.actor_ref())?;
 
 fn on_terminated(

@@ -1,5 +1,5 @@
-use cellactor_actor_core_rs::error::ActorError;
-use cellactor_actor_std_rs::{
+use fraktor_actor_core_rs::error::ActorError;
+use fraktor_actor_std_rs::{
   actor_prim::{Actor, ActorContext},
   messaging::{AnyMessage, AnyMessageView},
   props::Props,

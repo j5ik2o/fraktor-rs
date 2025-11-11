@@ -6,14 +6,14 @@ use std::{
   time::{Duration, Instant},
 };
 
-use cellactor_actor_core_rs::{
+use fraktor_actor_core_rs::{
   error::ActorError,
   lifecycle::LifecycleStage,
   mailbox::{MailboxOverflowStrategy, MailboxPolicy},
   props::MailboxConfig,
   supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
 };
-use cellactor_actor_std_rs::{
+use fraktor_actor_std_rs::{
   actor_prim::{Actor, ActorContext, ActorRef, ChildRef},
   dispatcher::{DispatcherConfig, dispatch_executor::TokioExecutor},
   event_stream::{EventStreamEvent, EventStreamSubscriber},
@@ -21,8 +21,8 @@ use cellactor_actor_std_rs::{
   props::Props,
   system::ActorSystem,
 };
-use cellactor_utils_core_rs::sync::ArcShared;
-use cellactor_utils_std_rs::runtime_toolbox::{StdMutex, StdToolbox};
+use fraktor_utils_core_rs::sync::ArcShared;
+use fraktor_utils_std_rs::runtime_toolbox::{StdMutex, StdToolbox};
 use tokio::{
   runtime::{Builder, Handle},
   time::{sleep, timeout},
@@ -104,7 +104,7 @@ fn tokio_mailbox_backpressure_acceptance() {
     actor_ref.tell(AnyMessage::new(Deliver(1))).expect("deliver 1");
     actor_ref.tell(AnyMessage::new(Deliver(2))).expect("deliver 2");
     let overflow = actor_ref.tell(AnyMessage::new(Deliver(3)));
-    assert!(matches!(overflow, Err(cellactor_actor_core_rs::error::SendError::Full(_))));
+    assert!(matches!(overflow, Err(fraktor_actor_core_rs::error::SendError::Full(_))));
 
     wait_until_async("deliveries processed", || deliveries.lock().len() == 2).await;
     assert_eq!(deliveries.lock().clone(), vec![1, 2]);
@@ -438,7 +438,7 @@ struct SpawnChildResponse {
 }
 
 impl SupervisedChild {
-  fn tell(&self, message: AnyMessage) -> Result<(), cellactor_actor_core_rs::error::SendError<StdToolbox>> {
+  fn tell(&self, message: AnyMessage) -> Result<(), fraktor_actor_core_rs::error::SendError<StdToolbox>> {
     self.child.tell(message)
   }
 

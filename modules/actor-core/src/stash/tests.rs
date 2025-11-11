@@ -1,4 +1,4 @@
-use cellactor_utils_core_rs::collections::queue::{DequeBackend, OverflowPolicy};
+use fraktor_utils_core_rs::collections::queue::{DequeBackend, OverflowPolicy};
 
 use super::{DequeHandle, StashDequeHandleGeneric};
 

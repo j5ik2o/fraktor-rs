@@ -22,11 +22,11 @@ libraries = [
 ]
 
 [workspace.dependencies]
-cellactor-actor-core-rs = { path = "modules/actor-core" }
-cellactor-utils-std-rs = { path = "modules/utils-std" }
+fraktor-actor-core-rs = { path = "modules/actor-core" }
+fraktor-utils-std-rs = { path = "modules/utils-std" }
 alloc-cortex-m = "0.4"
 async-trait = { version = "0.1.89", default-features = false }
-cellactor-utils-core-rs = { path = "modules/utils-core", default-features = false }
+fraktor-utils-core-rs = { path = "modules/utils-core", default-features = false }
 cortex-m = "0.7"
 cortex-m-rt = "0.7"
 criterion = "0.7"

@@ -1,4 +1,4 @@
-use cellactor_actor_std_rs::typed::{Behavior, BehaviorSignal, Behaviors, TypedActorSystem, TypedProps};
+use fraktor_actor_std_rs::typed::{Behavior, BehaviorSignal, Behaviors, TypedActorSystem, TypedProps};
 
 #[derive(Clone, Copy)]
 enum GuardianCommand {
