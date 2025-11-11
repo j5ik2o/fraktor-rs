@@ -41,6 +41,7 @@ graph TD
 
 **Architecture Integration**:
 - 既存 `actor_prim` 層に `actor_path/` ディレクトリを新設し、各型を 1 ファイル配置する 2018 モジュール構成を維持。
+- 汎用 URI 解析は `utils_core::net::uri_parser`（no_std 対応モジュール）へ配置し、`actor-core` からは `UriParts` のみ依存する。
 - `ActorPathRegistry` を `system` 層に追加し、`SystemState` と `ActorRef` がここを介してパス情報へアクセスする。
 - `ActorSystemConfig` / `RemotingConfig` を `config` 層で公開し、ランタイム起動時に API 経由で設定を注入する。
 - Remote authority 状態（未解決/接続/隔離）は `RemoteAuthorityManager` で一元管理し、後続の remoting 実装がこの API を介する。
@@ -71,7 +72,7 @@ graph TD
   - **Selected Approach**: `RemoteAuthorityManager` が `HashMap<Authority, AuthorityState>` を保持し、`ActorPathRegistry` と EventStream を観測者として扱う。状態遷移 API は非同期でも deterministic。
   - **Rationale**: 状態図通りの遷移をテストしやすく、remoting モジュールが依存すべき明確な境界を提供。
   - **Trade-offs**: 新たな同期コスト（Mutex）が増える。
-- **Decision**: RFC2396 準拠の汎用 URI パーサー層を `actor_path/uri_parser.rs` に分離し、その出力を `ActorPathParser` がドメイン検証する二段構えにする。
+- **Decision**: RFC2396 準拠の汎用 URI パーサー層を `utils_core::net::uri_parser` に分離し、その出力を `ActorPathParser` がドメイン検証する二段構えにする。
   - **Context**: 直接 `ActorPathParser` で文字列操作を行うと RFC のバリエーション（authority フォーマット、IPv6、percent-encoding など）のデバッグが困難になり、将来の remoting 拡張で URI 解析を再利用できない。
   - **Alternatives**: (1) 既存パーサーを強化し RFC 差分を都度吸収、(2) 外部クレート（`url` など）へ依存、(3) AST なしで分岐処理を積み増す。
   - **Selected Approach**: `UriParser` が RFC2396 に沿って `UriParts { scheme, authority, path, query, fragment }` を生成し、`ActorPathParser` はその AST から `pekko`/`pekko.tcp` 判定・guardian セグメント検証・UID サフィックス処理を実施する。エラー種別は汎用 (`UriError`) と ActorPath 固有 (`ActorPathError`) に分離し、ログやテストで原因を切り分ける。
@@ -128,10 +129,12 @@ stateDiagram-v2
 
 ## Components and Interfaces
 
+### utils_core 層
+- **`net/uri_parser.rs` (`UriParser`)**: `fn parse(input: &str) -> Result<UriParts<'_>, UriError>` が RFC2396 準拠でスキーム・authority・パス・クエリ・フラグメントを AST 化する。`percent_decode`・IPv6 literal・ユーザ情報など汎用的な解析はここで完結し、`actor-core` からは `UriParts` を受け取るだけで済む。
+
 ### actor_prim 層
 - **`actor_path/segment.rs` (`PathSegment`)**: RFC2396 文字種と `$` 禁止の検証を行う値オブジェクト。`fn new(raw: &str) -> Result<Self, ActorPathError>` は `%HH` デコードを許容し、元の文字列と正規化後を保持。
 - **`actor_path/parts.rs` (`ActorPathParts`)**: `scheme: ActorPathScheme`, `system: SystemName`, `authority: Option<PathAuthority>` を保持。`ActorSystemConfig` から生成され、`no_std` でも `&'static str` を使ってコピー回数を制限。
-- **`actor_path/uri_parser.rs` (`UriParser`)**: `fn parse(input: &str) -> Result<UriParts<'_>, UriError>` が RFC2396 の階層的 URI（スキーム・authority・パス・クエリ・フラグメント）を AST に落とし込む。`percent_decode`・IPv6 literal・ユーザ情報等はここで扱い、ActorPath 固有の禁止要件は上位レイヤーへ委譲する。
 - **`actor_path/uid.rs` (`ActorUid`)**: `u64` ラッパー。`ActorRef` 再生成時に `ActorPathRegistry` が UID 予約を判断する。
 - **`actor_path/path.rs` (`ActorPath`)**: `parts`, `segments: PathSegments`, `uid: Option<ActorUid>` を束ねる不変構造。`fn child(&self, segment: PathSegment) -> Self` は親セグメントを再検証しない。
 - **`actor_path/formatter.rs` (`ActorPathFormatter`)**: `fn format(path: &ActorPath) -> CanonicalUri`。`alloc::String` バッファを内部再利用し、authority の有無で分岐。
