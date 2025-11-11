@@ -1,3 +1,4 @@
+use cellactor_actor_core_rs::dispatcher::DispatchError;
 use tokio::runtime::Handle;
 
 use crate::dispatcher::{DispatchExecutor, DispatchShared};
@@ -16,8 +17,9 @@ impl TokioExecutor {
 }
 
 impl DispatchExecutor for TokioExecutor {
-  fn execute(&self, dispatcher: DispatchShared) {
+  fn execute(&self, dispatcher: DispatchShared) -> Result<(), DispatchError> {
     #[allow(clippy::let_underscore_future)]
     let _ = self.handle.spawn_blocking(move || dispatcher.drive());
+    Ok(())
   }
 }

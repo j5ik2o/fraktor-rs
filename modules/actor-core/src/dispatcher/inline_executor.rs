@@ -2,7 +2,9 @@ use core::marker::PhantomData;
 
 use cellactor_utils_core_rs::sync::NoStdToolbox;
 
-use super::{dispatch_executor::DispatchExecutor, dispatch_shared::DispatchSharedGeneric};
+use super::{
+  dispatch_error::DispatchError, dispatch_executor::DispatchExecutor, dispatch_shared::DispatchSharedGeneric,
+};
 use crate::RuntimeToolbox;
 
 /// Simple executor that runs tasks immediately in a synchronous context.
@@ -31,7 +33,12 @@ impl<TB> DispatchExecutor<TB> for InlineExecutorGeneric<TB>
 where
   TB: RuntimeToolbox + Send + Sync + 'static,
 {
-  fn execute(&self, dispatcher: DispatchSharedGeneric<TB>) {
+  fn execute(&self, dispatcher: DispatchSharedGeneric<TB>) -> Result<(), DispatchError> {
     dispatcher.drive();
+    Ok(())
+  }
+
+  fn supports_blocking(&self) -> bool {
+    false
   }
 }

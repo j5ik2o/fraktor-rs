@@ -3,14 +3,18 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::{string::String, vec::Vec};
+use alloc::{
+  string::{String, ToString},
+  vec::Vec,
+};
 
-use cellactor_utils_core_rs::sync::ArcShared;
+use cellactor_utils_core_rs::{collections::queue::capabilities::QueueCapability, sync::ArcShared};
 
 use super::{RootGuardianActor, SystemGuardianActor, SystemGuardianProtocol};
 use crate::{
   NoStdToolbox, RuntimeToolbox,
   actor_prim::{ActorCellGeneric, ChildRefGeneric, Pid, actor_ref::ActorRefGeneric},
+  config::{DispatchersGeneric, MailboxesGeneric},
   dead_letter::DeadLetterEntryGeneric,
   error::SendError,
   event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric},
@@ -98,6 +102,18 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   #[must_use]
   pub fn event_stream(&self) -> ArcShared<EventStreamGeneric<TB>> {
     self.state.event_stream()
+  }
+
+  /// Returns the dispatcher registry.
+  #[must_use]
+  pub fn dispatchers(&self) -> ArcShared<DispatchersGeneric<TB>> {
+    self.state.dispatchers()
+  }
+
+  /// Returns the mailbox registry.
+  #[must_use]
+  pub fn mailboxes(&self) -> ArcShared<MailboxesGeneric<TB>> {
+    self.state.mailboxes()
   }
 
   /// Subscribes the provided observer to the event stream.
@@ -295,7 +311,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   ) -> Result<ChildRefGeneric<TB>, SpawnError> {
     let pid = self.state.allocate_pid();
     let name = self.state.assign_name(parent, props.name(), pid)?;
-    let cell = self.build_cell_for_spawn(pid, parent, name, props);
+    let cell = self.build_cell_for_spawn(pid, parent, name, props)?;
 
     self.state.register_cell(cell.clone());
     self.perform_create_handshake(parent, pid, &cell)?;
@@ -350,7 +366,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   fn spawn_root_guardian_cell(&self, props: &PropsGeneric<TB>) -> Result<ArcShared<ActorCellGeneric<TB>>, SpawnError> {
     let pid = self.state.allocate_pid();
     let name = self.state.assign_name(None, props.name(), pid)?;
-    let cell = self.build_cell_for_spawn(pid, None, name, props);
+    let cell = self.build_cell_for_spawn(pid, None, name, props)?;
     self.state.register_cell(cell.clone());
     Ok(cell)
   }
@@ -361,8 +377,45 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     parent: Option<Pid>,
     name: String,
     props: &PropsGeneric<TB>,
-  ) -> ArcShared<ActorCellGeneric<TB>> {
-    ActorCellGeneric::create(self.state.clone(), pid, parent, name, props)
+  ) -> Result<ArcShared<ActorCellGeneric<TB>>, SpawnError> {
+    let resolved = self.resolve_props(props)?;
+    Self::ensure_mailbox_requirements(&resolved)?;
+    ActorCellGeneric::create(self.state.clone(), pid, parent, name, &resolved)
+  }
+
+  fn ensure_mailbox_requirements(props: &PropsGeneric<TB>) -> Result<(), SpawnError> {
+    let requirement = props.mailbox().requirement();
+    let registry = props.mailbox().capabilities();
+    requirement.ensure_supported(&registry).map_err(|error| {
+      let reason = Self::missing_capability_reason(error.missing());
+      SpawnError::invalid_props(reason)
+    })
+  }
+
+  const fn missing_capability_reason(capability: QueueCapability) -> &'static str {
+    match capability {
+      | QueueCapability::Mpsc => "mailbox requires MPSC capability",
+      | QueueCapability::Deque => "mailbox requires deque capability",
+      | QueueCapability::BlockingFuture => "mailbox requires blocking-future capability",
+    }
+  }
+
+  fn resolve_props(&self, props: &PropsGeneric<TB>) -> Result<PropsGeneric<TB>, SpawnError> {
+    let mut resolved = props.clone();
+    if let Some(dispatcher_id) = resolved.dispatcher_id() {
+      let config = self
+        .state
+        .dispatchers()
+        .resolve(dispatcher_id)
+        .map_err(|error| SpawnError::invalid_props(error.to_string()))?;
+      resolved = resolved.with_resolved_dispatcher(config);
+    }
+    if let Some(mailbox_id) = resolved.mailbox_id() {
+      let config =
+        self.state.mailboxes().resolve(mailbox_id).map_err(|error| SpawnError::invalid_props(error.to_string()))?;
+      resolved = resolved.with_resolved_mailbox(config);
+    }
+    Ok(resolved)
   }
 
   fn perform_create_handshake(

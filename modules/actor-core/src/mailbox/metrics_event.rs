@@ -2,6 +2,10 @@
 
 use core::time::Duration;
 
+mod pressure_event;
+
+pub use pressure_event::MailboxPressureEvent;
+
 use crate::actor_prim::Pid;
 
 /// Snapshot of mailbox queue lengths and capacity.

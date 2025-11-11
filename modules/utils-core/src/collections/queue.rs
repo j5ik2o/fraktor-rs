@@ -7,6 +7,7 @@ mod async_spsc_consumer;
 mod async_spsc_producer;
 pub mod backend;
 pub mod capabilities;
+mod deque_backend;
 mod storage;
 mod sync_mpsc_consumer;
 mod sync_mpsc_producer;
@@ -24,7 +25,11 @@ pub use backend::{
   AsyncPriorityBackend, AsyncQueueBackend, OfferOutcome, OverflowPolicy, SyncQueueAsyncAdapter, SyncQueueBackend,
   VecRingBackend, sync_priority_backend::SyncPriorityBackend,
 };
-pub use capabilities::{MultiProducer, SingleConsumer, SingleProducer, SupportsPeek};
+pub use capabilities::{
+  MultiProducer, QueueCapability, QueueCapabilityError, QueueCapabilityRegistry, QueueCapabilitySet, SingleConsumer,
+  SingleProducer, SupportsPeek,
+};
+pub use deque_backend::{DequeBackend, DequeBackendGeneric, DequeOfferFuture};
 pub use storage::{QueueStorage, VecRingStorage};
 pub use sync_mpsc_consumer::SyncMpscConsumer;
 pub use sync_mpsc_producer::SyncMpscProducer;

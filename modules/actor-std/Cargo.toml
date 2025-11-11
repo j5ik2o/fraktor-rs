@@ -32,6 +32,7 @@ path = "examples/supervision_std/main.rs"
 [[example]]
 name = "deadletter"
 path = "examples/dead_letter_std/main.rs"
+required-features = ["tokio-executor"]
 
 [[example]]
 name = "named_actor"

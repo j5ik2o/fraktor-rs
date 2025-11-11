@@ -9,8 +9,9 @@ use super::base::DispatcherGeneric;
 use crate::{
   RuntimeToolbox,
   actor_prim::actor_ref::ActorRefSender,
+  dispatcher::ScheduleAdapter,
   error::SendError,
-  mailbox::{EnqueueOutcome, MailboxGeneric, MailboxOfferFutureGeneric},
+  mailbox::{EnqueueOutcome, MailboxGeneric, MailboxOfferFutureGeneric, ScheduleHints},
   messaging::AnyMessageGeneric,
 };
 
@@ -34,8 +35,12 @@ impl<TB: RuntimeToolbox + 'static> DispatcherSenderGeneric<TB> {
     Self { dispatcher, mailbox }
   }
 
-  fn poll_pending(&self, future: &mut MailboxOfferFutureGeneric<TB>) -> Result<(), SendError<TB>> {
-    let waker = self.dispatcher.create_waker();
+  fn poll_pending(
+    &self,
+    adapter: &ArcShared<dyn ScheduleAdapter<TB>>,
+    future: &mut MailboxOfferFutureGeneric<TB>,
+  ) -> Result<(), SendError<TB>> {
+    let waker = adapter.create_waker(self.dispatcher.clone());
     let mut cx = Context::from_waker(&waker);
 
     loop {
@@ -43,8 +48,12 @@ impl<TB: RuntimeToolbox + 'static> DispatcherSenderGeneric<TB> {
         | core::task::Poll::Ready(Ok(_)) => return Ok(()),
         | core::task::Poll::Ready(Err(error)) => return Err(error),
         | core::task::Poll::Pending => {
-          self.dispatcher.schedule();
-          block_hint();
+          self.dispatcher.register_for_execution(ScheduleHints {
+            has_system_messages: false,
+            has_user_messages:   true,
+            backpressure_active: false,
+          });
+          adapter.on_pending();
         },
       }
     }
@@ -55,20 +64,30 @@ impl<TB: RuntimeToolbox + 'static> ActorRefSender<TB> for DispatcherSenderGeneri
   fn send(&self, message: AnyMessageGeneric<TB>) -> Result<(), SendError<TB>> {
     match self.mailbox.enqueue_user(message) {
       | Ok(EnqueueOutcome::Enqueued) => {
-        self.dispatcher.schedule();
+        self.dispatcher.register_for_execution(ScheduleHints {
+          has_system_messages: false,
+          has_user_messages:   true,
+          backpressure_active: false,
+        });
         Ok(())
       },
       | Ok(EnqueueOutcome::Pending(mut future)) => {
-        self.dispatcher.schedule();
-        self.poll_pending(&mut future)?;
-        self.dispatcher.schedule();
+        let adapter = self.dispatcher.schedule_adapter();
+        adapter.on_pending();
+        self.dispatcher.register_for_execution(ScheduleHints {
+          has_system_messages: false,
+          has_user_messages:   true,
+          backpressure_active: false,
+        });
+        self.poll_pending(&adapter, &mut future)?;
+        self.dispatcher.register_for_execution(ScheduleHints {
+          has_system_messages: false,
+          has_user_messages:   true,
+          backpressure_active: false,
+        });
         Ok(())
       },
       | Err(error) => Err(error),
     }
   }
-}
-
-pub(super) fn block_hint() {
-  core::hint::spin_loop();
 }

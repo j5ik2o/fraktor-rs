@@ -1,16 +1,22 @@
-use core::task::Waker;
+use core::time::Duration;
 
 use cellactor_utils_core_rs::sync::ArcShared;
 
 use super::{
-  DispatcherSenderGeneric, dispatch_executor::DispatchExecutor, dispatch_shared::DispatchSharedGeneric,
-  dispatcher_core::DispatcherCore, dispatcher_state::DispatcherState, inline_executor::InlineExecutorGeneric,
-  schedule_waker::ScheduleWaker,
+  DispatcherSenderGeneric,
+  dispatch_error::DispatchError,
+  dispatch_executor::DispatchExecutor,
+  dispatch_shared::DispatchSharedGeneric,
+  dispatcher_core::{DispatcherCore, MAX_EXECUTOR_RETRIES},
+  dispatcher_state::DispatcherState,
+  inline_executor::InlineExecutorGeneric,
+  inline_schedule_adapter::InlineScheduleAdapter,
+  schedule_adapter::ScheduleAdapter,
 };
 use crate::{
   NoStdToolbox, RuntimeToolbox,
   error::SendError,
-  mailbox::MailboxGeneric,
+  mailbox::{MailboxGeneric, MailboxPressureEvent, ScheduleHints},
   messaging::{AnyMessageGeneric, SystemMessage, message_invoker::MessageInvoker},
 };
 
@@ -29,8 +35,39 @@ impl<TB: RuntimeToolbox + 'static> DispatcherGeneric<TB> {
   /// Creates a new dispatcher from a mailbox and execution strategy.
   #[must_use]
   pub fn new(mailbox: ArcShared<MailboxGeneric<TB>>, executor: ArcShared<dyn DispatchExecutor<TB>>) -> Self {
+    Self::with_executor(mailbox, executor, None, None)
+  }
+
+  /// Creates a dispatcher with explicit runtime limits.
+  #[must_use]
+  pub fn with_executor(
+    mailbox: ArcShared<MailboxGeneric<TB>>,
+    executor: ArcShared<dyn DispatchExecutor<TB>>,
+    throughput_deadline: Option<Duration>,
+    starvation_deadline: Option<Duration>,
+  ) -> Self {
+    let adapter = ArcShared::new(InlineScheduleAdapter::new());
+    Self::with_adapter(mailbox, executor, adapter, throughput_deadline, starvation_deadline)
+  }
+
+  /// Creates a dispatcher with a custom schedule adapter.
+  #[must_use]
+  pub fn with_adapter(
+    mailbox: ArcShared<MailboxGeneric<TB>>,
+    executor: ArcShared<dyn DispatchExecutor<TB>>,
+    schedule_adapter: ArcShared<dyn ScheduleAdapter<TB>>,
+    throughput_deadline: Option<Duration>,
+    starvation_deadline: Option<Duration>,
+  ) -> Self {
     let throughput = mailbox.throughput_limit();
-    let core = ArcShared::new(DispatcherCore::new(mailbox, executor, throughput));
+    let core = ArcShared::new(DispatcherCore::new(
+      mailbox,
+      executor,
+      schedule_adapter,
+      throughput,
+      throughput_deadline,
+      starvation_deadline,
+    ));
     Self::from_core(core)
   }
 
@@ -65,16 +102,34 @@ impl<TB: RuntimeToolbox + 'static> DispatcherGeneric<TB> {
   }
 
   /// Requests execution from the scheduler.
-  pub(crate) fn schedule(&self) {
+  pub(super) fn spawn_execution(&self) {
     let should_run = {
       let core_ref = &*self.core;
       DispatcherState::compare_exchange(DispatcherState::Idle, DispatcherState::Running, core_ref.state()).is_ok()
     };
 
     if should_run {
-      let executor = self.core.executor().clone();
-      executor.execute(DispatchSharedGeneric::new(self.core.clone()));
+      self.try_execute(0);
     }
+  }
+
+  fn try_execute(&self, attempt: usize) {
+    let executor = self.core.executor().clone();
+    let task = DispatchSharedGeneric::new(self.core.clone());
+    match executor.execute(task) {
+      | Ok(()) => {},
+      | Err(DispatchError::RejectedExecution) if attempt < MAX_EXECUTOR_RETRIES => {
+        self.try_execute(attempt + 1);
+      },
+      | Err(error) => {
+        self.core.handle_executor_failure(attempt + 1, error);
+      },
+    }
+  }
+
+  /// Requests scheduling with the provided hints.
+  pub fn register_for_execution(&self, hints: ScheduleHints) {
+    DispatcherCore::request_execution(&self.core, hints);
   }
 
   /// Returns a reference to the mailbox.
@@ -83,10 +138,9 @@ impl<TB: RuntimeToolbox + 'static> DispatcherGeneric<TB> {
     self.core.mailbox().clone()
   }
 
-  /// Creates a waker for mailbox waiting.
-  #[must_use]
-  pub(crate) fn create_waker(&self) -> Waker {
-    ScheduleWaker::<TB>::into_waker(self.core.clone())
+  /// Notifies the dispatcher about a mailbox pressure signal.
+  pub(crate) fn notify_backpressure(&self, event: &MailboxPressureEvent) {
+    DispatcherCore::handle_backpressure(&self.core, event);
   }
 
   pub(super) const fn from_core(core: ArcShared<DispatcherCore<TB>>) -> Self {
@@ -98,6 +152,15 @@ impl<TB: RuntimeToolbox + 'static> DispatcherGeneric<TB> {
   #[allow(clippy::wrong_self_convention)]
   pub(crate) fn into_sender(&self) -> ArcShared<DispatcherSenderGeneric<TB>> {
     ArcShared::new(DispatcherSenderGeneric::new(self.clone()))
+  }
+
+  pub(crate) fn schedule_adapter(&self) -> ArcShared<dyn ScheduleAdapter<TB>> {
+    self.core.schedule_adapter()
+  }
+
+  /// Publishes dispatcher diagnostics to the event stream, when instrumentation is available.
+  pub fn publish_dump_metrics(&self) {
+    DispatcherCore::publish_dump(&self.core);
   }
 }
 

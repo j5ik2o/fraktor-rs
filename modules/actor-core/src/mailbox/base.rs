@@ -3,35 +3,36 @@
 #[cfg(test)]
 mod tests;
 
-use core::{
-  num::NonZeroUsize,
-  sync::atomic::{AtomicBool, Ordering},
-};
+use alloc::string::String;
+use core::num::NonZeroUsize;
 
 use cellactor_utils_core_rs::{
   collections::queue::{QueueError, backend::OfferOutcome},
   runtime_toolbox::SyncMutexFamily,
-  sync::sync_mutex_like::SyncMutexLike,
+  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 
 use super::{
-  MailboxOfferFutureGeneric, MailboxPollFutureGeneric, mailbox_enqueue_outcome::EnqueueOutcome,
-  mailbox_instrumentation::MailboxInstrumentationGeneric, mailbox_message::MailboxMessage,
-  mailbox_queue_handles::QueueHandles, map_system_queue_error, map_user_queue_error,
+  BackpressurePublisherGeneric, MailboxOfferFutureGeneric, MailboxPollFutureGeneric, MailboxStateEngine, QueueHandles,
+  ScheduleHints, SystemQueue, mailbox_enqueue_outcome::EnqueueOutcome,
+  mailbox_instrumentation::MailboxInstrumentationGeneric, mailbox_message::MailboxMessage, map_user_queue_error,
 };
 use crate::{
   NoStdToolbox, RuntimeToolbox,
+  actor_prim::Pid,
   error::SendError,
+  logging::LogLevel,
   mailbox::{capacity::MailboxCapacity, overflow_strategy::MailboxOverflowStrategy, policy::MailboxPolicy},
   messaging::{AnyMessageGeneric, SystemMessage},
+  system::SystemStateGeneric,
 };
 
 /// Priority mailbox maintaining separate queues for system and user messages.
 pub struct MailboxGeneric<TB: RuntimeToolbox + 'static> {
   policy:          MailboxPolicy,
-  system:          QueueHandles<SystemMessage, TB>,
+  system:          SystemQueue,
   user:            QueueHandles<AnyMessageGeneric<TB>, TB>,
-  suspended:       AtomicBool,
+  state:           MailboxStateEngine,
   instrumentation: crate::ToolboxMutex<Option<MailboxInstrumentationGeneric<TB>>, TB>,
 }
 
@@ -46,12 +47,11 @@ where
   #[must_use]
   pub fn new(policy: MailboxPolicy) -> Self {
     let user_handles = QueueHandles::new_user(&policy);
-    let system_handles = QueueHandles::new_system();
     Self {
       policy,
-      system: system_handles,
+      system: SystemQueue::new(),
       user: user_handles,
-      suspended: AtomicBool::new(false),
+      state: MailboxStateEngine::new(),
       instrumentation: <TB::MutexFamily as SyncMutexFamily>::create(None),
     }
   }
@@ -61,13 +61,48 @@ where
     *self.instrumentation.lock() = Some(instrumentation);
   }
 
+  /// Returns the mailbox policy.
+  #[must_use]
+  pub(crate) const fn policy(&self) -> &MailboxPolicy {
+    &self.policy
+  }
+
+  /// Returns the system state handle if instrumentation has been installed.
+  pub(crate) fn system_state(&self) -> Option<ArcShared<SystemStateGeneric<TB>>> {
+    self.instrumentation.lock().as_ref().map(|inst| inst.system_state())
+  }
+
+  /// Returns the actor pid associated with this mailbox when instrumentation is installed.
+  #[must_use]
+  pub(crate) fn pid(&self) -> Option<Pid> {
+    self.instrumentation.lock().as_ref().map(|inst| inst.pid())
+  }
+
+  /// Emits a log message tagged with this mailbox pid.
+  pub(crate) fn emit_log(&self, level: LogLevel, message: impl Into<String>) {
+    if let Some(instrumentation) = self.instrumentation.lock().as_ref() {
+      instrumentation.emit_log(level, message);
+    }
+  }
+
+  /// Installs a backpressure publisher used for dispatcher coordination.
+  pub(crate) fn attach_backpressure_publisher(&self, publisher: BackpressurePublisherGeneric<TB>) {
+    let mut guard = self.instrumentation.lock();
+    if let Some(instrumentation) = guard.as_mut() {
+      instrumentation.attach_backpressure_publisher(publisher);
+    }
+  }
+
   /// Enqueues a system message, bypassing suspension.
   ///
   /// # Errors
   ///
   /// Returns an error if the system message queue is full or closed.
+  #[allow(clippy::unnecessary_wraps)]
   pub(crate) fn enqueue_system(&self, message: SystemMessage) -> Result<(), SendError<TB>> {
-    self.offer_system(message)
+    self.system.push(message);
+    self.publish_metrics();
+    Ok(())
   }
 
   /// Attempts to enqueue a user message; returns a future when blocking is needed.
@@ -105,7 +140,7 @@ where
   /// Dequeues the next available message, prioritising system queue.
   #[must_use]
   pub(crate) fn dequeue(&self) -> Option<MailboxMessage<TB>> {
-    if let Some(system) = Self::poll_queue(&self.system) {
+    if let Some(system) = self.system.pop() {
       self.publish_metrics();
       return Some(MailboxMessage::System(system));
     }
@@ -123,30 +158,58 @@ where
 
   /// Suspends user message consumption.
   pub(crate) fn suspend(&self) {
-    self.suspended.store(true, Ordering::Release);
+    self.state.suspend();
   }
 
   /// Resumes user message consumption.
   pub(crate) fn resume(&self) {
-    self.suspended.store(false, Ordering::Release);
+    self.state.resume();
+  }
+
+  /// Requests scheduling based on provided hints; returns `true` when dispatcher execution should
+  /// start.
+  #[must_use]
+  pub(crate) fn request_schedule(&self, hints: ScheduleHints) -> bool {
+    self.state.request_schedule(hints)
+  }
+
+  /// Marks the mailbox as running so the next dequeue cycle can begin.
+  pub(crate) fn set_running(&self) {
+    self.state.set_running();
+  }
+
+  /// Clears the running flag and returns whether a pending reschedule must occur immediately.
+  #[must_use]
+  pub(crate) fn set_idle(&self) -> bool {
+    self.state.set_idle()
+  }
+
+  /// Computes schedule hints from the current queue lengths and suspension state.
+  #[must_use]
+  pub(crate) fn current_schedule_hints(&self) -> ScheduleHints {
+    ScheduleHints {
+      has_system_messages: self.system_len() > 0,
+      has_user_messages:   !self.is_suspended() && self.user_len() > 0,
+      backpressure_active: false,
+    }
   }
 
   /// Indicates whether the mailbox is currently suspended.
   #[must_use]
   pub(crate) fn is_suspended(&self) -> bool {
-    self.suspended.load(Ordering::Acquire)
+    self.state.is_suspended()
   }
 
   /// Returns the number of user messages awaiting processing.
   #[must_use]
   pub(crate) fn user_len(&self) -> usize {
-    self.user.consumer.len()
+    self.user.len()
   }
 
   /// Returns the number of system messages awaiting processing.
   #[must_use]
   pub(crate) fn system_len(&self) -> usize {
-    self.system.consumer.len()
+    self.system.len()
   }
 
   /// Returns the configured throughput limit.
@@ -163,20 +226,21 @@ where
   ) -> Result<EnqueueOutcome<TB>, SendError<TB>> {
     match overflow {
       | MailboxOverflowStrategy::DropNewest => {
-        if self.user.consumer.len() >= capacity {
+        let len = self.user.len();
+        if len >= capacity {
           return Err(SendError::full(message));
         }
         self.offer_user(message)
       },
       | MailboxOverflowStrategy::DropOldest => {
-        if self.user.consumer.len() >= capacity && self.user.poll().is_ok() {
+        if self.user.len() >= capacity && self.user.poll().is_ok() {
           // drop oldest message
         }
         self.offer_user(message)
       },
       | MailboxOverflowStrategy::Grow => self.offer_user(message),
       | MailboxOverflowStrategy::Block => {
-        if self.user.consumer.len() >= capacity {
+        if self.user.len() >= capacity {
           let future = MailboxOfferFutureGeneric::new(self.user.offer_blocking(message));
           return Ok(EnqueueOutcome::Pending(future));
         }
@@ -196,17 +260,6 @@ where
     }
   }
 
-  fn offer_system(&self, message: SystemMessage) -> Result<(), SendError<TB>> {
-    match self.system.offer(message) {
-      | Ok(outcome) => {
-        Self::handle_offer_outcome(outcome);
-        self.publish_metrics();
-        Ok(())
-      },
-      | Err(error) => Err(map_system_queue_error(error)),
-    }
-  }
-
   fn poll_queue<T: Send + 'static>(handles: &QueueHandles<T, TB>) -> Option<T> {
     match handles.poll() {
       | Ok(message) => Some(message),
@@ -216,7 +269,8 @@ where
       | Err(QueueError::Full(_))
       | Err(QueueError::OfferError(_))
       | Err(QueueError::Closed(_))
-      | Err(QueueError::AllocError(_)) => None,
+      | Err(QueueError::AllocError(_))
+      | Err(QueueError::TimedOut(_)) => None,
     }
   }
 

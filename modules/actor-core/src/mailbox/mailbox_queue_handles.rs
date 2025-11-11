@@ -21,8 +21,6 @@ use crate::{
 };
 
 const DEFAULT_QUEUE_CAPACITY: usize = 16;
-const SYSTEM_QUEUE_CAPACITY: usize = 8;
-
 type QueueProducer<T, TB> = SyncMpscProducer<T, VecRingBackend<T>, QueueMutex<T, TB>>;
 type QueueConsumer<T, TB> = SyncMpscConsumer<T, VecRingBackend<T>, QueueMutex<T, TB>>;
 
@@ -32,6 +30,7 @@ where
   T: Send + 'static, {
   pub(super) state:     ArcShared<QueueState<T, TB>>,
   pub(super) _producer: QueueProducer<T, TB>,
+  #[allow(dead_code)]
   pub(super) consumer:  QueueConsumer<T, TB>,
 }
 
@@ -46,10 +45,6 @@ where
       | MailboxCapacity::Unbounded => (DEFAULT_QUEUE_CAPACITY, OverflowPolicy::Grow),
     };
     Self::new_with(capacity, overflow)
-  }
-
-  pub(super) fn new_system() -> Self {
-    Self::new_with(SYSTEM_QUEUE_CAPACITY, OverflowPolicy::Grow)
   }
 
   fn new_with(capacity: usize, overflow: OverflowPolicy) -> Self {
@@ -78,6 +73,12 @@ where
   #[allow(dead_code)]
   pub(super) fn poll_blocking(&self) -> QueuePollFuture<T, TB> {
     QueuePollFuture::new(self.state.clone())
+  }
+
+  /// Returns the current queue size without acquiring a lock.
+  #[must_use]
+  pub(super) fn len(&self) -> usize {
+    self.state.len()
   }
 }
 

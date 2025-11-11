@@ -82,3 +82,18 @@ fn record_send_error_converts_reason_and_honours_capacity() {
   let events = subscriber_impl.events();
   assert!(events.iter().filter(|event| matches!(event, EventStreamEvent::DeadLetter(_))).count() >= 2);
 }
+
+#[test]
+fn record_send_error_maps_timeout_reason() {
+  let stream = ArcShared::new(EventStream::default());
+  let deadletter = DeadLetter::with_default_capacity(stream);
+  let pid = Pid::new(11, 0);
+  let error = SendError::timeout(AnyMessage::new("delayed"));
+
+  deadletter.record_send_error(Some(pid), &error, Duration::from_millis(3));
+
+  let entries = deadletter.entries();
+  assert!(
+    entries.iter().any(|entry| entry.recipient() == Some(pid) && entry.reason() == DeadLetterReason::MailboxTimeout)
+  );
+}

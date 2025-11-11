@@ -1,5 +1,7 @@
 //! Shared queue state coordinating producers and consumers.
 
+use core::sync::atomic::{AtomicUsize, Ordering};
+
 use cellactor_utils_core_rs::{
   collections::{
     queue::{QueueError, SyncQueueBackend, backend::OfferOutcome},
@@ -19,6 +21,7 @@ where
   pub(super) shared:           ArcShared<QueueMutex<T, TB>>,
   pub(super) producer_waiters: Mutex<WaitQueue<QueueError<T>>>,
   pub(super) consumer_waiters: Mutex<WaitQueue<QueueError<T>>>,
+  pub(super) size:             AtomicUsize,
 }
 
 impl<T, TB: RuntimeToolbox> QueueState<T, TB>
@@ -28,7 +31,12 @@ where
   /// Creates a new queue state wrapper.
   #[must_use]
   pub const fn new(shared: ArcShared<QueueMutex<T, TB>>) -> Self {
-    Self { shared, producer_waiters: Mutex::new(WaitQueue::new()), consumer_waiters: Mutex::new(WaitQueue::new()) }
+    Self {
+      shared,
+      producer_waiters: Mutex::new(WaitQueue::new()),
+      consumer_waiters: Mutex::new(WaitQueue::new()),
+      size: AtomicUsize::new(0),
+    }
   }
 
   /// Attempts to offer a message into the queue.
@@ -39,6 +47,7 @@ where
     };
 
     if result.is_ok() {
+      self.size.fetch_add(1, Ordering::Release);
       self.notify_consumer_waiter();
     }
 
@@ -53,6 +62,7 @@ where
     };
 
     if result.is_ok() {
+      self.size.fetch_sub(1, Ordering::Release);
       self.notify_producer_waiter();
     }
 
@@ -73,5 +83,11 @@ where
 
   fn notify_consumer_waiter(&self) {
     let _ = self.consumer_waiters.lock().notify_success();
+  }
+
+  /// Returns the current queue size without acquiring a lock.
+  #[must_use]
+  pub(super) fn len(&self) -> usize {
+    self.size.load(Ordering::Acquire)
   }
 }

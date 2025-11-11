@@ -40,6 +40,19 @@ impl EventStreamSubscriber for LifecyclePrinter {
       | EventStreamEvent::AdapterFailure(failure) => {
         println!("[ADAPTER FAILURE] pid={:?} reason={:?}", failure.pid(), failure.failure());
       },
+      | EventStreamEvent::MailboxPressure(event) => {
+        println!("[MAILBOX PRESSURE] pid={:?} usage={:.2}", event.pid(), event.utilization());
+      },
+      | EventStreamEvent::DispatcherDump(dump) => {
+        println!(
+          "[DISPATCHER DUMP] pid={:?} user_queue={} system_queue={} running={} suspended={}",
+          dump.pid(),
+          dump.user_queue_len(),
+          dump.system_queue_len(),
+          dump.is_running(),
+          dump.is_suspended()
+        );
+      },
       | EventStreamEvent::Log(_)
       | EventStreamEvent::Mailbox(_)
       | EventStreamEvent::UnhandledMessage(_)

@@ -1,11 +1,13 @@
 use cellactor_actor_core_rs::{
-  dispatcher::DispatchExecutor as CoreDispatchExecutor, mailbox::MailboxGeneric,
+  dispatcher::{DispatchExecutor as CoreDispatchExecutor, ScheduleAdapter},
+  mailbox::MailboxGeneric,
   props::DispatcherConfigGeneric as CoreDispatcherConfigGeneric,
+  spawn::SpawnError,
 };
 use cellactor_utils_core_rs::sync::ArcShared;
 use cellactor_utils_std_rs::runtime_toolbox::StdToolbox;
 
-use super::{CoreDispatchExecutorAdapter, DispatchExecutor, DispatchExecutorAdapter, Dispatcher};
+use super::{CoreDispatchExecutorAdapter, DispatchExecutor, DispatchExecutorAdapter, Dispatcher, StdScheduleAdapter};
 
 /// Dispatcher configuration specialised for `StdToolbox`.
 #[derive(Clone, Default)]
@@ -17,9 +19,11 @@ impl DispatcherConfig {
   /// Creates a configuration from a scheduler implementation.
   #[must_use]
   pub fn from_executor(executor: ArcShared<dyn DispatchExecutor>) -> Self {
-    let adapter: ArcShared<dyn CoreDispatchExecutor<StdToolbox>> =
+    let executor_adapter: ArcShared<dyn CoreDispatchExecutor<StdToolbox>> =
       ArcShared::new(DispatchExecutorAdapter::new(executor));
-    Self { inner: CoreDispatcherConfigGeneric::from_executor(adapter) }
+    let schedule_adapter: ArcShared<dyn ScheduleAdapter<StdToolbox>> = ArcShared::new(StdScheduleAdapter::default());
+    let inner = CoreDispatcherConfigGeneric::from_executor(executor_adapter).with_schedule_adapter(schedule_adapter);
+    Self { inner }
   }
 
   /// Returns the configured scheduler as a standard trait object.
@@ -30,8 +34,12 @@ impl DispatcherConfig {
   }
 
   /// Builds a dispatcher using the configured scheduler.
-  #[must_use]
-  pub fn build_dispatcher(&self, mailbox: ArcShared<MailboxGeneric<StdToolbox>>) -> Dispatcher {
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SpawnError::InvalidMailboxConfig`] if the mailbox configuration is incompatible
+  /// with the executor (e.g., using Block strategy with a non-blocking executor).
+  pub fn build_dispatcher(&self, mailbox: ArcShared<MailboxGeneric<StdToolbox>>) -> Result<Dispatcher, SpawnError> {
     self.inner.build_dispatcher(mailbox)
   }
 

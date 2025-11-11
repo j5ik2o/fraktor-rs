@@ -47,6 +47,7 @@ impl<TB: RuntimeToolbox + 'static> DeadLetterGeneric<TB> {
       | SendError::Suspended(_) => DeadLetterReason::MailboxSuspended,
       | SendError::Closed(_) => DeadLetterReason::RecipientUnavailable,
       | SendError::NoRecipient(_) => DeadLetterReason::MissingRecipient,
+      | SendError::Timeout(_) => DeadLetterReason::MailboxTimeout,
     };
     let message = error.message().clone();
     self.record_entry(message, reason, target, timestamp);

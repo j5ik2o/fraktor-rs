@@ -5,9 +5,10 @@ use core::{
   future::Future,
   pin::Pin,
   task::{Context, Poll},
+  time::Duration,
 };
 
-use cellactor_utils_core_rs::sync::NoStdToolbox;
+use cellactor_utils_core_rs::{DelayProvider, sync::NoStdToolbox};
 
 use super::{mailbox_queue_offer_future::QueueOfferFuture, map_user_queue_error};
 use crate::{RuntimeToolbox, error::SendError, messaging::AnyMessageGeneric};
@@ -26,6 +27,14 @@ pub type MailboxOfferFuture = MailboxOfferFutureGeneric<NoStdToolbox>;
 impl<TB: RuntimeToolbox + 'static> MailboxOfferFutureGeneric<TB> {
   pub(super) const fn new(inner: QueueOfferFuture<AnyMessageGeneric<TB>, TB>) -> Self {
     Self { inner }
+  }
+
+  /// Configures the offer future to fail with a timeout if the duration elapses before enqueue
+  /// succeeds.
+  #[must_use]
+  pub fn with_timeout(mut self, duration: Duration, provider: &dyn DelayProvider) -> Self {
+    self.inner = self.inner.with_timeout(duration, provider);
+    self
   }
 }
 

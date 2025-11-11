@@ -7,23 +7,27 @@ use core::{
 
 use cellactor_utils_core_rs::sync::ArcShared;
 
-use super::{base::DispatcherGeneric, dispatcher_core::DispatcherCore};
-use crate::RuntimeToolbox;
+use super::base::DispatcherGeneric;
+use crate::{RuntimeToolbox, mailbox::ScheduleHints};
 
 #[cfg(test)]
 mod tests;
 
 struct ScheduleShared<TB: RuntimeToolbox + 'static> {
-  dispatcher: ArcShared<DispatcherCore<TB>>,
+  dispatcher: DispatcherGeneric<TB>,
 }
 
 impl<TB: RuntimeToolbox + 'static> ScheduleShared<TB> {
-  const fn new(dispatcher: ArcShared<DispatcherCore<TB>>) -> Self {
+  const fn new(dispatcher: DispatcherGeneric<TB>) -> Self {
     Self { dispatcher }
   }
 
   fn schedule(&self) {
-    DispatcherGeneric::from_core(self.dispatcher.clone()).schedule();
+    self.dispatcher.register_for_execution(ScheduleHints {
+      has_system_messages: false,
+      has_user_messages:   true,
+      backpressure_active: false,
+    });
   }
 }
 
@@ -33,8 +37,8 @@ pub(super) struct ScheduleWaker<TB: RuntimeToolbox + 'static> {
 }
 
 impl<TB: RuntimeToolbox + 'static> ScheduleWaker<TB> {
-  /// Creates a waker that schedules the dispatcher using the provided core reference.
-  pub(super) fn into_waker(dispatcher: ArcShared<DispatcherCore<TB>>) -> Waker {
+  /// Creates a waker that schedules the dispatcher using the provided dispatcher handle.
+  pub(super) fn into_waker(dispatcher: DispatcherGeneric<TB>) -> Waker {
     let handle = ArcShared::new(ScheduleShared::new(dispatcher));
     unsafe { Waker::from_raw(Self::raw_waker(handle)) }
   }

@@ -24,12 +24,13 @@ use crate::{
   error::ActorError,
   event_stream::EventStreamEvent,
   lifecycle::{LifecycleEvent, LifecycleStage},
-  mailbox::{MailboxCapacity, MailboxGeneric, MailboxInstrumentationGeneric},
+  mailbox::{BackpressurePublisherGeneric, MailboxCapacity, MailboxGeneric, MailboxInstrumentationGeneric},
   messaging::{
     AnyMessageGeneric, FailureMessageSnapshot, FailurePayload, SystemMessage,
     message_invoker::{MessageInvoker, MessageInvokerPipelineGeneric},
   },
   props::{ActorFactory, PropsGeneric},
+  spawn::SpawnError,
   supervision::{RestartStatistics, SupervisorDirective, SupervisorStrategyKind},
   system::{ActorSystemGeneric, FailureOutcome, GuardianKind, SystemStateGeneric},
   typed::message_adapter::{AdapterLifecycleState, AdapterRefHandle, AdapterRefHandleId},
@@ -62,14 +63,18 @@ unsafe impl<TB: RuntimeToolbox + 'static> Sync for ActorCellGeneric<TB> {}
 
 impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
   /// Creates a new actor cell using the provided runtime state and props.
-  #[must_use]
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SpawnError::InvalidMailboxConfig`] if the mailbox configuration is incompatible
+  /// with the dispatcher executor (e.g., using Block strategy with a non-blocking executor).
   pub fn create(
     system: ArcShared<SystemStateGeneric<TB>>,
     pid: Pid,
     parent: Option<Pid>,
     name: String,
     props: &PropsGeneric<TB>,
-  ) -> ArcShared<Self> {
+  ) -> Result<ArcShared<Self>, SpawnError> {
     let mailbox = ArcShared::new(MailboxGeneric::new(props.mailbox_policy()));
     {
       let mailbox_config = props.mailbox();
@@ -84,7 +89,8 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
         MailboxInstrumentationGeneric::new(system.clone(), pid, capacity, throughput, warn_threshold);
       mailbox.set_instrumentation(instrumentation);
     }
-    let dispatcher = props.dispatcher().build_dispatcher(mailbox.clone());
+    let dispatcher = props.dispatcher().build_dispatcher(mailbox.clone())?;
+    mailbox.attach_backpressure_publisher(BackpressurePublisherGeneric::from_dispatcher(dispatcher.clone()));
     let sender = dispatcher.into_sender();
     let factory = props.factory().clone();
     let actor = <TB::MutexFamily as SyncMutexFamily>::create(factory.create());
@@ -121,7 +127,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
       cell.dispatcher.register_invoker(invoker);
     }
 
-    cell
+    Ok(cell)
   }
 
   /// Recreates the actor instance from the stored factory.

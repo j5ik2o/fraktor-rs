@@ -15,7 +15,13 @@ pub enum SpawnError {
   /// The actor system is shutting down or unavailable.
   SystemUnavailable,
   /// The provided props were invalid for this actor system.
-  InvalidProps(&'static str),
+  InvalidProps(String),
+  /// The mailbox configuration is incompatible with the dispatcher executor.
+  ///
+  /// This typically occurs when
+  /// [`MailboxOverflowStrategy::Block`](crate::mailbox::MailboxOverflowStrategy::Block)
+  /// is used with a single-threaded executor that doesn't support blocking operations.
+  InvalidMailboxConfig(String),
 }
 
 impl SpawnError {
@@ -31,9 +37,15 @@ impl SpawnError {
     Self::SystemUnavailable
   }
 
-  /// Creates an invalid props error with a static reason.
+  /// Creates an invalid props error with the provided reason.
   #[must_use]
-  pub const fn invalid_props(reason: &'static str) -> Self {
-    Self::InvalidProps(reason)
+  pub fn invalid_props(reason: impl Into<String>) -> Self {
+    Self::InvalidProps(reason.into())
+  }
+
+  /// Creates an invalid mailbox configuration error with the provided reason.
+  #[must_use]
+  pub fn invalid_mailbox_config(reason: impl Into<String>) -> Self {
+    Self::InvalidMailboxConfig(reason.into())
   }
 }
