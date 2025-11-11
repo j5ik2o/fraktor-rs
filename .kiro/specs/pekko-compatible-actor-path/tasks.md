@@ -23,24 +23,24 @@
   - ログ／トレースで利用しやすいエラーメッセージ表現を検証する。
   - _Requirements: R2.1, R2.5_
 
-- [ ] 2. ActorPath 値オブジェクトと正規化を確立する
+- [x] 2. ActorPath 値オブジェクトと正規化を確立する
   - Guardian ルート、セグメント検証、UID 取り扱いを値オブジェクトで一貫管理し、Formatter/Parser と連携させる。
   - 等価性と canonical URI 生成を deterministic に保ち、DeathWatch／ログ出力で同じ表現を再利用できるようにする。
   - _Requirements: R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R3.1, R3.2_
 
-- [ ] 2.1 Guardian パスとセグメント検証を実装する
+- [x] 2.1 Guardian パスとセグメント検証を実装する
   - 設定から受け取った guardian 種別に応じて `/system` または `/user` を常に先頭へ挿入するロジックを組み込む。
   - セグメント文字種の検証と `$` 始まり予約語の拒否を実装し、元の大小文字を保持する。
   - 相対演算子 `..` が guardian より上位へ遡らないよう境界チェックを行う。
   - _Requirements: R1.2, R1.3, R1.5, R1.6, R2.2_
 
-- [ ] 2.2 Canonical 表現と UID 一貫性を実現する
+- [x] 2.2 Canonical 表現と UID 一貫性を実現する
   - authority 有無に応じて `pekko://system@host:port/path` と `pekko://system/path` の双方を生成できる Formatter を整える。
   - UID サフィックスをパス構造と分離し、等価判定やハッシュでは無視しつつ表示では保持する。
   - 子パス生成時に親セグメントを再検証せず決定的に連結できるようハンドル情報を活用する。
   - _Requirements: R1.1, R1.4, R3.1, R3.2, R3.4_
 
-- [ ] 2.3 Formatter／Parser のプロパティテストを追加する
+- [x] 2.3 Formatter／Parser のプロパティテストを追加する
   - `format(parse(x)) == canonical(x)` を多様な入力で検証するプロパティテストを実装する。
   - 大文字小文字維持や UID 温存を確認する golden cases を整備する。
   - Validator が拒否したケースのエラー内容を DeadLetter／ログで可視化できるよう asserts を用意する。

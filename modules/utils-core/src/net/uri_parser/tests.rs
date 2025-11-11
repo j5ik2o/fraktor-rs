@@ -156,7 +156,8 @@ fn test_golden_data_pekko_remote_path() {
 
 #[test]
 fn test_golden_data_pekko_root_path() {
-  // From Pekko ActorPathSpec: RootActorPath(Address("pekko", "mysys")).toString should ===("pekko://mysys/")
+  // From Pekko ActorPathSpec: RootActorPath(Address("pekko", "mysys")).toString should
+  // ===("pekko://mysys/")
   let input = "pekko://mysys/";
   let result = UriParser::parse(input).unwrap();
   assert_eq!(result.scheme, Some("pekko"));
@@ -258,8 +259,8 @@ fn test_property_round_trip_simple() {
 fn test_property_error_classification() {
   // Verify that different error types are correctly classified
   let parse_error_cases = vec![
-    ("", UriError::InvalidScheme), // Empty string
-    ("://system/path", UriError::InvalidScheme), // Missing scheme
+    ("", UriError::InvalidScheme),                       // Empty string
+    ("://system/path", UriError::InvalidScheme),         // Missing scheme
     ("1invalid://system/path", UriError::InvalidScheme), // Scheme starting with digit
   ];
 
@@ -281,11 +282,7 @@ fn test_property_error_classification() {
     assert!(result.is_ok(), "Parsing should succeed for: {}", uri);
     let parts = result.unwrap();
     let decode_result = UriParser::percent_decode(parts.path);
-    assert!(
-      matches!(decode_result, Err(UriError::InvalidPercentEncoding)),
-      "Expected decode error for URI: {}",
-      uri
-    );
+    assert!(matches!(decode_result, Err(UriError::InvalidPercentEncoding)), "Expected decode error for URI: {}", uri);
   }
 }
 
@@ -304,38 +301,27 @@ fn test_property_hostname_validation() {
   ];
 
   for hostname in valid_hostnames {
-    assert!(
-      UriParser::validate_hostname(hostname).is_ok(),
-      "Hostname should be valid: {}",
-      hostname
-    );
+    assert!(UriParser::validate_hostname(hostname).is_ok(), "Hostname should be valid: {}", hostname);
   }
 
   let invalid_hostnames = vec![
     "",
-    "host name", // space
-    "host@name", // @ symbol
+    "host name",  // space
+    "host@name",  // @ symbol
     "host.name.", // trailing dot
-    "-hostname", // leading hyphen
-    "hostname-", // trailing hyphen
+    "-hostname",  // leading hyphen
+    "hostname-",  // trailing hyphen
   ];
 
   for hostname in invalid_hostnames {
-    assert!(
-      UriParser::validate_hostname(hostname).is_err(),
-      "Hostname should be invalid: {}",
-      hostname
-    );
+    assert!(UriParser::validate_hostname(hostname).is_err(), "Hostname should be invalid: {}", hostname);
   }
 }
 
 #[test]
 fn test_error_message_readability() {
   // Verify that error messages are readable and useful for logging/tracing
-  let parse_error_cases = vec![
-    ("", UriError::InvalidScheme),
-    ("://system/path", UriError::InvalidScheme),
-  ];
+  let parse_error_cases = vec![("", UriError::InvalidScheme), ("://system/path", UriError::InvalidScheme)];
 
   for (uri, expected_error) in parse_error_cases {
     let result = UriParser::parse(uri);
@@ -343,11 +329,7 @@ fn test_error_message_readability() {
     let error_msg = format!("{}", error);
     // Verify error message is non-empty and descriptive
     assert!(!error_msg.is_empty(), "Error message should not be empty");
-    assert!(
-      error_msg.len() > 5,
-      "Error message should be descriptive: {}",
-      error_msg
-    );
+    assert!(error_msg.len() > 5, "Error message should be descriptive: {}", error_msg);
     // Verify error type matches
     assert_eq!(error, expected_error);
   }

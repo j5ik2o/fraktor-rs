@@ -7,15 +7,15 @@ use core::fmt;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UriParts<'a> {
   /// URI scheme (e.g., "pekko", "pekko.tcp").
-  pub scheme: Option<&'a str>,
+  pub scheme:    Option<&'a str>,
   /// Authority component (host:port).
   pub authority: Option<&'a str>,
   /// Path component.
-  pub path: &'a str,
+  pub path:      &'a str,
   /// Query component.
-  pub query: Option<&'a str>,
+  pub query:     Option<&'a str>,
   /// Fragment component.
-  pub fragment: Option<&'a str>,
+  pub fragment:  Option<&'a str>,
 }
 
 /// Errors that may occur during URI parsing.
@@ -119,12 +119,8 @@ impl UriParser {
         return Err(UriError::InvalidAuthority);
       }
       // Allow IPv6 format: hex digits, colons, and optional %zone
-      let valid_ipv6 = ipv6.chars().all(|c| {
-        c.is_ascii_hexdigit()
-          || c == ':'
-          || c == '%'
-          || (c.is_ascii_alphanumeric() && c != ':')
-      });
+      let valid_ipv6 =
+        ipv6.chars().all(|c| c.is_ascii_hexdigit() || c == ':' || c == '%' || (c.is_ascii_alphanumeric() && c != ':'));
       if !valid_ipv6 {
         return Err(UriError::InvalidAuthority);
       }
@@ -133,9 +129,7 @@ impl UriParser {
 
     // IPv4 address validation (basic check)
     if hostname.split('.').count() == 4 {
-      let is_ipv4 = hostname
-        .split('.')
-        .all(|part| part.parse::<u8>().is_ok() && !part.is_empty());
+      let is_ipv4 = hostname.split('.').all(|part| part.parse::<u8>().is_ok() && !part.is_empty());
       if is_ipv4 {
         return Ok(());
       }
@@ -152,9 +146,7 @@ impl UriParser {
     }
 
     // Check for valid characters
-    let valid = hostname.chars().all(|c| {
-      c.is_ascii_alphanumeric() || c == '-' || c == '.' || c == '_'
-    });
+    let valid = hostname.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.' || c == '_');
     if !valid {
       return Err(UriError::InvalidAuthority);
     }
@@ -190,18 +182,10 @@ impl UriParser {
         return Err(UriError::InvalidScheme);
       }
       // Validate scheme: must start with letter and contain only letters, digits, +, -, .
-      if !scheme_str
-        .chars()
-        .next()
-        .map(|c| c.is_ascii_alphabetic())
-        .unwrap_or(false)
-      {
+      if !scheme_str.chars().next().map(|c| c.is_ascii_alphabetic()).unwrap_or(false) {
         return Err(UriError::InvalidScheme);
       }
-      if !scheme_str
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
-      {
+      if !scheme_str.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.')) {
         return Err(UriError::InvalidScheme);
       }
       remaining = &remaining[colon_pos + 1..];
@@ -214,14 +198,8 @@ impl UriParser {
     let (authority, path_start) = if after_scheme.starts_with("//") {
       let after_slashes = &after_scheme[2..];
       // Find the end of authority (either /, ?, #, or end of string)
-      let authority_end = after_slashes
-        .find(|c: char| matches!(c, '/' | '?' | '#'))
-        .unwrap_or(after_slashes.len());
-      let authority_str = if authority_end > 0 {
-        Some(&after_slashes[..authority_end])
-      } else {
-        None
-      };
+      let authority_end = after_slashes.find(|c: char| matches!(c, '/' | '?' | '#')).unwrap_or(after_slashes.len());
+      let authority_str = if authority_end > 0 { Some(&after_slashes[..authority_end]) } else { None };
       remaining = &after_slashes[authority_end..];
       (authority_str, remaining)
     } else {
@@ -229,28 +207,16 @@ impl UriParser {
     };
 
     // Parse path (up to ? or #)
-    let path_end = path_start
-      .find(|c: char| matches!(c, '?' | '#'))
-      .unwrap_or(path_start.len());
-    let path = if path_end > 0 {
-      &path_start[..path_end]
-    } else {
-      ""
-    };
+    let path_end = path_start.find(|c: char| matches!(c, '?' | '#')).unwrap_or(path_start.len());
+    let path = if path_end > 0 { &path_start[..path_end] } else { "" };
     remaining = &path_start[path_end..];
 
     // Parse query (after ?)
     let query = if remaining.starts_with('?') {
       let query_start = &remaining[1..];
-      let query_end = query_start
-        .find('#')
-        .unwrap_or(query_start.len());
+      let query_end = query_start.find('#').unwrap_or(query_start.len());
       remaining = &query_start[query_end..];
-      if query_end > 0 {
-        Some(&query_start[..query_end])
-      } else {
-        None
-      }
+      if query_end > 0 { Some(&query_start[..query_end]) } else { None }
     } else {
       None
     };
@@ -258,22 +224,12 @@ impl UriParser {
     // Parse fragment (after #)
     let fragment = if remaining.starts_with('#') {
       let fragment_str = &remaining[1..];
-      if fragment_str.is_empty() {
-        None
-      } else {
-        Some(fragment_str)
-      }
+      if fragment_str.is_empty() { None } else { Some(fragment_str) }
     } else {
       None
     };
 
-    Ok(UriParts {
-      scheme,
-      authority,
-      path,
-      query,
-      fragment,
-    })
+    Ok(UriParts { scheme, authority, path, query, fragment })
   }
 }
 

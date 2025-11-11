@@ -2,4 +2,4 @@
 
 mod uri_parser;
 
-pub use uri_parser::{UriError, UriParts, UriParser};
+pub use uri_parser::{UriError, UriParser, UriParts};

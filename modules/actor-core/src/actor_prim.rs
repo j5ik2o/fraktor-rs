@@ -6,7 +6,7 @@
 mod actor;
 mod actor_cell;
 mod actor_context;
-mod actor_path;
+pub mod actor_path;
 pub mod actor_ref;
 mod child_ref;
 mod context_pipe_task;

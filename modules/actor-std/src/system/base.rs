@@ -1,3 +1,4 @@
+use event_stream::EventStreamSubscriberAdapter;
 use fraktor_actor_core_rs::{
   actor_prim::Pid,
   event_stream::EventStreamSubscriber as CoreEventStreamSubscriber,
@@ -7,7 +8,6 @@ use fraktor_actor_core_rs::{
 };
 use fraktor_utils_core_rs::sync::ArcShared;
 use fraktor_utils_std_rs::runtime_toolbox::StdToolbox;
-use event_stream::EventStreamSubscriberAdapter;
 
 pub use crate::dispatcher::{DispatchExecutor, DispatchShared, Dispatcher, DispatcherConfig};
 use crate::{

@@ -1,17 +1,33 @@
-use alloc::string::ToString;
+use alloc::{vec, vec::Vec};
 
-use super::ActorPath;
+use super::{
+  ActorPath,
+  formatter::ActorPathFormatter,
+  parts::{ActorPathParts, GuardianKind},
+  segment::PathSegment,
+};
 
 #[test]
-fn actor_path_root() {
-  let root = ActorPath::root();
-  assert_eq!(root.to_string(), "/");
-  assert!(root.segments().is_empty());
+fn guardian_segment_is_injected_into_root() {
+  let parts = ActorPathParts::local("cellsys").with_guardian(GuardianKind::System);
+  let path = ActorPath::from_parts(parts);
+  let segment_names: Vec<&str> = path.segments().iter().map(PathSegment::as_str).collect();
+  assert_eq!(segment_names, vec!["system"]);
 }
 
 #[test]
-fn actor_path_child_segments() {
-  let path = ActorPath::root().child("user").child("guardian");
-  assert_eq!(path.to_string(), "/user/guardian");
-  assert_eq!(path.segments(), &["user".to_string(), "guardian".to_string()]);
+fn path_segment_rejects_reserved_dollar_prefix() {
+  let result = PathSegment::new("$user");
+  assert!(result.is_err());
+}
+
+#[test]
+fn canonical_uri_includes_scheme_system_and_segments() {
+  let parts = ActorPathParts::local("cellsys")
+    .with_guardian(GuardianKind::User)
+    .with_authority_host("host.example.com".into())
+    .with_authority_port(2552);
+  let path = ActorPath::from_parts(parts).child("service").child("worker");
+  let canonical = ActorPathFormatter::format(&path);
+  assert_eq!(canonical, "pekko://cellsys@host.example.com:2552/user/service/worker");
 }
