@@ -1,6 +1,9 @@
 <meta>
 description: Create comprehensive technical design for a specification
-argument-hint: <feature-name:$1> [-y:$2]
+argument-hint: <feature-name> [-y]
+arguments:
+   feature-name: $1
+   -y flag: $2
 </meta>
 
 # Technical Design Generator
@@ -127,12 +130,12 @@ Provide brief summary in the language specified in spec.json:
 **Requirements Not Approved**:
 - **Stop Execution**: Cannot proceed without approved requirements
 - **User Message**: "Requirements not yet approved. Approval required before design generation."
-- **Suggested Action**: "Run `/kiro/spec-design $1 -y` to auto-approve requirements and proceed"
+- **Suggested Action**: "Run `/prompts:kiro-spec-design $1 -y` to auto-approve requirements and proceed"
 
 **Missing Requirements**:
 - **Stop Execution**: Requirements document must exist
 - **User Message**: "No requirements.md found at `.kiro/specs/$1/requirements.md`"
-- **Suggested Action**: "Run `/kiro/spec-requirements $1` to generate requirements first"
+- **Suggested Action**: "Run `/prompts:kiro-spec-requirements $1` to generate requirements first"
 
 **Template Missing**:
 - **User Message**: "Template file missing at `.kiro/settings/templates/specs/design.md`"
@@ -151,11 +154,11 @@ Provide brief summary in the language specified in spec.json:
 
 **If Design Approved**:
 - Review generated design at `.kiro/specs/$1/design.md`
-- **Optional**: Run `/kiro/validate-design $1` for interactive quality review
-- Then `/kiro/spec-tasks $1 -y` to generate implementation tasks
+- **Optional**: Run `/prompts:kiro-validate-design $1` for interactive quality review
+- Then `/prompts:kiro-spec-tasks $1 -y` to generate implementation tasks
 
 **If Modifications Needed**:
-- Provide feedback and re-run `/kiro/spec-design $1`
+- Provide feedback and re-run `/prompts:kiro-spec-design $1`
 - Existing design used as reference (merge mode)
 
 **Note**: Design approval is mandatory before proceeding to task generation.

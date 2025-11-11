@@ -1,6 +1,8 @@
 <meta>
 description: Show specification status and progress
-argument-hint: <feature-name:$1>
+argument-hint: <feature-name>
+arguments:
+   feature-name: $1
 </meta>
 
 # Specification Status
