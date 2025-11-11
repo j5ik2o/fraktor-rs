@@ -71,7 +71,7 @@ impl<TB: RuntimeToolbox + 'static> MailboxInstrumentationGeneric<TB> {
 
     let utilization = ((user_len.saturating_mul(100)) / capacity).min(100) as u8;
     if utilization as usize >= PRESSURE_THRESHOLD_PERCENT {
-      let event = MailboxPressureEvent::new(self.pid, user_len, capacity, utilization, timestamp);
+      let event = MailboxPressureEvent::new(self.pid, user_len, capacity, utilization, timestamp, self.warn_threshold);
       self.system_state.publish_event(&EventStreamEvent::MailboxPressure(event.clone()));
       self.forward_backpressure(&event);
     }
@@ -97,5 +97,11 @@ impl<TB: RuntimeToolbox + 'static> MailboxInstrumentationGeneric<TB> {
   /// Emits a log event tagged with the owning actor pid.
   pub fn emit_log(&self, level: LogLevel, message: impl Into<String>) {
     self.system_state.emit_log(level, message.into(), Some(self.pid));
+  }
+
+  /// Returns the pid associated with this mailbox.
+  #[must_use]
+  pub const fn pid(&self) -> Pid {
+    self.pid
   }
 }

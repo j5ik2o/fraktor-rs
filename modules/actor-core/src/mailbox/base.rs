@@ -19,6 +19,7 @@ use super::{
 };
 use crate::{
   NoStdToolbox, RuntimeToolbox,
+  actor_prim::Pid,
   error::SendError,
   logging::LogLevel,
   mailbox::{capacity::MailboxCapacity, overflow_strategy::MailboxOverflowStrategy, policy::MailboxPolicy},
@@ -65,6 +66,12 @@ where
     self.instrumentation.lock().as_ref().map(|inst| inst.system_state())
   }
 
+  /// Returns the actor pid associated with this mailbox when instrumentation is installed.
+  #[must_use]
+  pub(crate) fn pid(&self) -> Option<Pid> {
+    self.instrumentation.lock().as_ref().map(|inst| inst.pid())
+  }
+
   /// Emits a log message tagged with this mailbox pid.
   pub(crate) fn emit_log(&self, level: LogLevel, message: impl Into<String>) {
     if let Some(instrumentation) = self.instrumentation.lock().as_ref() {
@@ -85,6 +92,7 @@ where
   /// # Errors
   ///
   /// Returns an error if the system message queue is full or closed.
+  #[allow(clippy::unnecessary_wraps)]
   pub(crate) fn enqueue_system(&self, message: SystemMessage) -> Result<(), SendError<TB>> {
     self.system.push(message);
     self.publish_metrics();

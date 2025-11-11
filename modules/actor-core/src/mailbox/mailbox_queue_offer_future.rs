@@ -33,7 +33,7 @@ impl<T, TB: RuntimeToolbox> QueueOfferFuture<T, TB>
 where
   T: Send + 'static,
 {
-  pub(super) fn new(state: ArcShared<QueueState<T, TB>>, message: T) -> Self {
+  pub(super) const fn new(state: ArcShared<QueueState<T, TB>>, message: T) -> Self {
     Self { state, message: Some(message), waiter: None, timeout: None }
   }
 
@@ -69,15 +69,13 @@ where
   fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
     let this = self.get_mut();
     loop {
-      if let Some(timeout) = this.timeout.as_mut() {
-        if Pin::new(timeout).poll(cx).is_ready() {
-          this.waiter.take();
-          let message = unsafe {
-            debug_assert!(this.message.is_some(), "timeout without pending message");
-            this.message.take().unwrap_unchecked()
-          };
-          return Poll::Ready(Err(QueueError::TimedOut(message)));
-        }
+      if this.timeout.as_mut().is_some_and(|timeout| Pin::new(timeout).poll(cx).is_ready()) {
+        this.waiter.take();
+        let message = unsafe {
+          debug_assert!(this.message.is_some(), "timeout without pending message");
+          this.message.take().unwrap_unchecked()
+        };
+        return Poll::Ready(Err(QueueError::TimedOut(message)));
       }
 
       if let Some(message) = this.message.take() {

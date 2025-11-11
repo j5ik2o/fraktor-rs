@@ -39,6 +39,7 @@ fn suspend_and_resume_control_user_messages() {
 #[test]
 fn backpressure_hint_requests_schedule_when_not_suspended() {
   let engine = MailboxStateEngine::new();
+  assert!(!engine.is_suspended());
   let hints = ScheduleHints { has_system_messages: false, has_user_messages: false, backpressure_active: true };
 
   assert!(engine.request_schedule(hints));

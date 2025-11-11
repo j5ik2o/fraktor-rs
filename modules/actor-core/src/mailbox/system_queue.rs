@@ -28,8 +28,15 @@ pub struct SystemQueue {
   len:     AtomicUsize,
 }
 
+impl Default for SystemQueue {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
 impl SystemQueue {
   /// Creates an empty queue.
+  #[must_use]
   pub const fn new() -> Self {
     Self {
       head:    AtomicPtr::new(ptr::null_mut()),
@@ -77,10 +84,8 @@ impl SystemQueue {
     let next = unsafe { (*pending_ptr).next };
     if self.pending.compare_exchange(pending_ptr, next, Ordering::AcqRel, Ordering::Acquire).is_ok() {
       self.len.fetch_sub(1, Ordering::Release);
-      let message = unsafe { ptr::read(&(*pending_ptr).message) };
-      unsafe {
-        drop(Box::from_raw(pending_ptr));
-      }
+      let node = unsafe { Box::from_raw(pending_ptr) };
+      let message = node.message;
       Some(message)
     } else {
       None

@@ -1,20 +1,27 @@
+extern crate std;
+
 use alloc::{vec, vec::Vec};
 use core::{
   num::NonZeroUsize,
   sync::atomic::{AtomicUsize, Ordering},
   time::Duration,
 };
+use std::thread;
 
 use cellactor_utils_core_rs::{
   runtime_toolbox::NoStdToolbox,
   sync::{ArcShared, NoStdMutex, sync_mutex_like::SpinSyncMutex},
 };
 
+use super::schedule_waker::ScheduleWaker;
 use crate::{
-  dispatcher::{DispatchError, DispatchExecutor, DispatchSharedGeneric, DispatcherGeneric, TickExecutorGeneric},
+  actor_prim::actor_ref::ActorRefSender,
+  dispatcher::{
+    DispatchError, DispatchExecutor, DispatchSharedGeneric, DispatcherGeneric, ScheduleAdapter, TickExecutorGeneric,
+  },
   event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber},
   logging::LogLevel,
-  mailbox::{MailboxGeneric, MailboxInstrumentation, MailboxPolicy, ScheduleHints},
+  mailbox::{MailboxGeneric, MailboxInstrumentation, MailboxOverflowStrategy, MailboxPolicy, ScheduleHints},
   messaging::{AnyMessage, message_invoker::MessageInvoker},
   system::SystemState,
 };
@@ -28,6 +35,17 @@ fn system_instrumented_mailbox() -> (ArcShared<MailboxGeneric<NoStdToolbox>>, Ar
   let system = ArcShared::new(SystemState::new());
   let pid = system.allocate_pid();
   let instrumentation = MailboxInstrumentation::new(system.clone(), pid, None, None, None);
+  mailbox.set_instrumentation(instrumentation);
+  (mailbox, system)
+}
+
+fn bounded_mailbox(capacity: usize) -> (ArcShared<MailboxGeneric<NoStdToolbox>>, ArcShared<SystemState>) {
+  let policy =
+    MailboxPolicy::bounded(NonZeroUsize::new(capacity).expect("capacity"), MailboxOverflowStrategy::Block, None);
+  let mailbox = ArcShared::new(MailboxGeneric::new(policy));
+  let system = ArcShared::new(SystemState::new());
+  let pid = system.allocate_pid();
+  let instrumentation = MailboxInstrumentation::new(system.clone(), pid, Some(capacity), None, None);
   mailbox.set_instrumentation(instrumentation);
   (mailbox, system)
 }
@@ -93,13 +111,87 @@ fn dispatcher_respects_throughput_and_deadline_limits() {
   assert!(executor.pending_tasks() <= 1);
 }
 
+#[test]
+fn schedule_adapter_receives_pending_signal() {
+  let (mailbox, _system) = bounded_mailbox(1);
+  let executor = ArcShared::new(TickExecutorGeneric::new());
+  let adapter = ArcShared::new(CountingScheduleAdapter::default());
+  let dispatcher = dispatcher_with_executor_and_adapter(mailbox.clone(), executor.clone(), None, None, adapter.clone());
+  dispatcher.register_invoker(ArcShared::new(RecordingInvoker::default()));
+
+  mailbox.enqueue_user(AnyMessage::new(1usize)).expect("first message");
+  let sender = dispatcher.into_sender();
+
+  let handle = thread::spawn(move || {
+    sender.send(AnyMessage::new(2usize)).expect("second message");
+  });
+
+  thread::sleep(Duration::from_millis(1));
+  dispatcher.register_for_execution(register_user_hint());
+  executor.tick();
+  handle.join().expect("join");
+
+  assert!(adapter.pending_calls() > 0);
+}
+
+#[test]
+fn schedule_adapter_notified_on_rejection() {
+  let (mailbox, system) = system_instrumented_mailbox();
+  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let subscriber_impl = ArcShared::new(EventRecorder::new(events.clone()));
+  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
+  let _subscription = EventStreamGeneric::subscribe_arc(&system.event_stream(), &subscriber);
+
+  let executor = ArcShared::new(FlakyExecutor::new(vec![DispatchError::RejectedExecution; 3]));
+  let adapter = ArcShared::new(CountingScheduleAdapter::default());
+  let dispatcher = dispatcher_with_executor_and_adapter(mailbox, executor.clone(), None, None, adapter.clone());
+
+  dispatcher.register_for_execution(register_user_hint());
+  executor.assert_attempts(3);
+  assert!(adapter.rejected_calls() >= 1);
+
+  let logged = events
+    .lock()
+    .iter()
+    .any(|event| matches!(event, crate::event_stream::EventStreamEvent::Log(log) if log.level() == LogLevel::Error));
+  assert!(logged, "expected rejection log entry");
+}
+
+#[test]
+fn dispatcher_dump_event_published() {
+  let (mailbox, system) = system_instrumented_mailbox();
+  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let subscriber_impl = ArcShared::new(EventRecorder::new(events.clone()));
+  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
+  let _subscription = EventStreamGeneric::subscribe_arc(&system.event_stream(), &subscriber);
+
+  let executor = ArcShared::new(RecordingExecutor::default());
+  let adapter = ArcShared::new(CountingScheduleAdapter::default());
+  let dispatcher = dispatcher_with_executor_and_adapter(mailbox, executor, None, None, adapter);
+
+  dispatcher.publish_dump_metrics();
+
+  assert!(events.lock().iter().any(|event| matches!(event, EventStreamEvent::DispatcherDump(_))));
+}
+
 fn dispatcher_with_executor(
   mailbox: ArcShared<MailboxGeneric<NoStdToolbox>>,
   executor: ArcShared<dyn DispatchExecutor<NoStdToolbox>>,
   throughput_deadline: Option<Duration>,
   starvation_deadline: Option<Duration>,
 ) -> DispatcherGeneric<NoStdToolbox> {
-  DispatcherGeneric::with_executor(mailbox, executor, throughput_deadline, starvation_deadline)
+  let adapter = ArcShared::new(crate::dispatcher::InlineScheduleAdapter::new());
+  dispatcher_with_executor_and_adapter(mailbox, executor, throughput_deadline, starvation_deadline, adapter)
+}
+
+fn dispatcher_with_executor_and_adapter(
+  mailbox: ArcShared<MailboxGeneric<NoStdToolbox>>,
+  executor: ArcShared<dyn DispatchExecutor<NoStdToolbox>>,
+  throughput_deadline: Option<Duration>,
+  starvation_deadline: Option<Duration>,
+  adapter: ArcShared<dyn ScheduleAdapter<NoStdToolbox>>,
+) -> DispatcherGeneric<NoStdToolbox> {
+  DispatcherGeneric::with_adapter(mailbox, executor, adapter, throughput_deadline, starvation_deadline)
 }
 
 struct RecordingExecutor {
@@ -195,5 +287,44 @@ impl EventRecorder {
 impl EventStreamSubscriber<NoStdToolbox> for EventRecorder {
   fn on_event(&self, event: &EventStreamEvent<NoStdToolbox>) {
     self.events.lock().push(event.clone());
+  }
+}
+
+struct CountingScheduleAdapter {
+  pending:  ArcShared<NoStdMutex<usize>>,
+  rejected: ArcShared<NoStdMutex<usize>>,
+}
+
+impl CountingScheduleAdapter {
+  fn new() -> Self {
+    Self { pending: ArcShared::new(NoStdMutex::new(0)), rejected: ArcShared::new(NoStdMutex::new(0)) }
+  }
+
+  fn pending_calls(&self) -> usize {
+    *self.pending.lock()
+  }
+
+  fn rejected_calls(&self) -> usize {
+    *self.rejected.lock()
+  }
+}
+
+impl Default for CountingScheduleAdapter {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
+impl ScheduleAdapter<NoStdToolbox> for CountingScheduleAdapter {
+  fn create_waker(&self, dispatcher: DispatcherGeneric<NoStdToolbox>) -> core::task::Waker {
+    ScheduleWaker::<NoStdToolbox>::into_waker(dispatcher)
+  }
+
+  fn on_pending(&self) {
+    *self.pending.lock() += 1;
+  }
+
+  fn notify_rejected(&self, _attempts: usize) {
+    *self.rejected.lock() += 1;
   }
 }

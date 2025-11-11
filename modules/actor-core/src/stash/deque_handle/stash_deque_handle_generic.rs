@@ -27,21 +27,37 @@ where
   }
 
   /// Pushes an element to the front of the deque.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`QueueError`] when the backend reports a closed or full queue.
   pub fn push_front(&self, item: T) -> Result<(), QueueError<T>> {
     self.backend.offer_front(item).map(|_| ())
   }
 
   /// Pushes an element to the back of the deque.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`QueueError`] when the backend reports a closed or full queue.
   pub fn push_back(&self, item: T) -> Result<(), QueueError<T>> {
     self.backend.offer_back(item).map(|_| ())
   }
 
   /// Removes an element from the front of the deque.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`QueueError`] when the queue is empty or closed.
   pub fn pop_front(&self) -> Result<T, QueueError<T>> {
     self.backend.poll_front()
   }
 
   /// Removes an element from the back of the deque.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`QueueError`] when the queue is empty or closed.
   pub fn pop_back(&self) -> Result<T, QueueError<T>> {
     self.backend.poll_back()
   }

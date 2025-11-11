@@ -142,7 +142,7 @@ impl<TB: RuntimeToolbox + 'static> PropsGeneric<TB> {
 
   /// Overrides the mailbox requirements while preserving existing policy/configuration.
   #[must_use]
-  pub fn with_mailbox_requirement(mut self, requirement: MailboxRequirement) -> Self {
+  pub const fn with_mailbox_requirement(mut self, requirement: MailboxRequirement) -> Self {
     self.mailbox = self.mailbox.with_requirement(requirement);
     self
   }

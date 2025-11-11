@@ -7,7 +7,7 @@ mod tests;
 
 use crate::{
   NoStdToolbox, RuntimeToolbox,
-  dispatcher::{DispatchExecutor, DispatcherGeneric, InlineExecutorGeneric},
+  dispatcher::{DispatchExecutor, DispatcherGeneric, InlineExecutorGeneric, InlineScheduleAdapter, ScheduleAdapter},
   mailbox::MailboxGeneric,
 };
 
@@ -16,6 +16,7 @@ pub struct DispatcherConfigGeneric<TB: RuntimeToolbox + 'static> {
   executor:            ArcShared<dyn DispatchExecutor<TB>>,
   throughput_deadline: Option<Duration>,
   starvation_deadline: Option<Duration>,
+  schedule_adapter:    ArcShared<dyn ScheduleAdapter<TB>>,
 }
 
 /// Type alias for [DispatcherConfigGeneric] with the default [NoStdToolbox].
@@ -27,6 +28,7 @@ impl<TB: RuntimeToolbox + 'static> Clone for DispatcherConfigGeneric<TB> {
       executor:            self.executor.clone(),
       throughput_deadline: self.throughput_deadline,
       starvation_deadline: self.starvation_deadline,
+      schedule_adapter:    self.schedule_adapter.clone(),
     }
   }
 }
@@ -35,7 +37,12 @@ impl<TB: RuntimeToolbox + 'static> DispatcherConfigGeneric<TB> {
   /// Creates a configuration from an executor.
   #[must_use]
   pub fn from_executor(executor: ArcShared<dyn DispatchExecutor<TB>>) -> Self {
-    Self { executor, throughput_deadline: None, starvation_deadline: None }
+    Self {
+      executor,
+      throughput_deadline: None,
+      starvation_deadline: None,
+      schedule_adapter: ArcShared::new(InlineScheduleAdapter::new()),
+    }
   }
 
   /// Returns the current executor handle.
@@ -78,10 +85,29 @@ impl<TB: RuntimeToolbox + 'static> DispatcherConfigGeneric<TB> {
     self
   }
 
+  /// Overrides the scheduler adapter used for creating wakers and pending hooks.
+  #[must_use]
+  pub fn with_schedule_adapter(mut self, adapter: ArcShared<dyn ScheduleAdapter<TB>>) -> Self {
+    self.schedule_adapter = adapter;
+    self
+  }
+
+  /// Returns the configured schedule adapter.
+  #[must_use]
+  pub fn schedule_adapter(&self) -> ArcShared<dyn ScheduleAdapter<TB>> {
+    self.schedule_adapter.clone()
+  }
+
   /// Builds a dispatcher using the configured executor.
   #[must_use]
   pub fn build_dispatcher(&self, mailbox: ArcShared<MailboxGeneric<TB>>) -> DispatcherGeneric<TB> {
-    DispatcherGeneric::with_executor(mailbox, self.executor(), self.throughput_deadline, self.starvation_deadline)
+    DispatcherGeneric::with_adapter(
+      mailbox,
+      self.executor(),
+      self.schedule_adapter(),
+      self.throughput_deadline,
+      self.starvation_deadline,
+    )
   }
 }
 

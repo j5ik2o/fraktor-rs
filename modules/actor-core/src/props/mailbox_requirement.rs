@@ -58,6 +58,11 @@ impl MailboxRequirement {
   }
 
   /// Ensures all declared requirements are supported by the registry.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`QueueCapabilityError`] when the provided registry misses one of the required
+  /// capabilities.
   pub fn ensure_supported(&self, registry: &QueueCapabilityRegistry) -> Result<(), QueueCapabilityError> {
     if self.requires_deque {
       registry.ensure(QueueCapability::Deque)?;

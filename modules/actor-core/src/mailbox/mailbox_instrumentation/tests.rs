@@ -83,6 +83,29 @@ fn mailbox_instrumentation_notifies_backpressure_publisher() {
   assert_eq!(entries[0].1, 3);
 }
 
+#[test]
+fn mailbox_pressure_event_captures_threshold() {
+  let system_state = ArcShared::new(SystemState::new());
+  let pid = Pid::new(7, 0);
+  let instrumentation = MailboxInstrumentation::new(system_state.clone(), pid, Some(4), None, Some(3));
+
+  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let subscriber: ArcShared<dyn EventStreamSubscriber> = ArcShared::new(TestSubscriber::new(events.clone()));
+  let _subscription = EventStreamGeneric::subscribe_arc(&system_state.event_stream(), &subscriber);
+
+  instrumentation.publish(3, 0);
+
+  let guard = events.lock();
+  let pressure = guard
+    .iter()
+    .find_map(|event| match event {
+      | EventStreamEvent::MailboxPressure(evt) => Some(evt.threshold()),
+      | _ => None,
+    })
+    .flatten();
+  assert_eq!(pressure, Some(3));
+}
+
 struct TestSubscriber {
   events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>,
 }

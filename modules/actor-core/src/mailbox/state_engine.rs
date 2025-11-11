@@ -19,8 +19,15 @@ pub struct MailboxStateEngine {
   need_reschedule: AtomicBool,
 }
 
+impl Default for MailboxStateEngine {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
 impl MailboxStateEngine {
   /// Creates a fresh state engine in the idle state.
+  #[must_use]
   pub const fn new() -> Self {
     Self { state: AtomicU32::new(0), need_reschedule: AtomicBool::new(false) }
   }
@@ -28,9 +35,12 @@ impl MailboxStateEngine {
   /// Attempts to mark the mailbox as scheduled. Returns `true` only when the caller
   /// should trigger a new dispatcher execution cycle.
   pub fn request_schedule(&self, hints: ScheduleHints) -> bool {
-    let effective = self.has_effective_work(hints);
-    debug_assert!(effective, "schedule requested without work: {:?}", hints);
-    if !effective {
+    let has_pending = hints.has_system_messages || hints.has_user_messages || hints.backpressure_active;
+    debug_assert!(has_pending, "schedule requested without work: {:?}", hints);
+    if !has_pending {
+      return false;
+    }
+    if self.is_suspended() && !hints.has_system_messages {
       return false;
     }
 
@@ -87,10 +97,6 @@ impl MailboxStateEngine {
   /// Returns `true` when user message processing must remain suspended.
   pub fn is_suspended(&self) -> bool {
     self.current_suspend_count() > 0
-  }
-
-  fn has_effective_work(&self, hints: ScheduleHints) -> bool {
-    hints.has_system_messages || ((hints.has_user_messages || hints.backpressure_active) && !self.is_suspended())
   }
 
   fn current_suspend_count(&self) -> u32 {

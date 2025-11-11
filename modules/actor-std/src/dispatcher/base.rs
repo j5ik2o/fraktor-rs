@@ -10,6 +10,10 @@ mod tests;
 /// Scheduler abstraction for driving dispatcher execution in the standard runtime.
 pub trait DispatchExecutor: Send + Sync + 'static {
   /// Delegates dispatcher execution to the scheduler.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`DispatchError`] when the scheduler fails to enqueue the dispatcher for execution.
   fn execute(&self, dispatcher: DispatchShared) -> Result<(), DispatchError>;
 }
 

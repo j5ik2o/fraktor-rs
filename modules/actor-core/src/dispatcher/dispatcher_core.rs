@@ -17,12 +17,13 @@ use cellactor_utils_core_rs::{
 use portable_atomic::{AtomicU8, AtomicU64};
 
 use super::{
-  dispatch_error::DispatchError, dispatch_executor::DispatchExecutor, dispatcher_sender::block_hint,
-  dispatcher_state::DispatcherState, schedule_waker::ScheduleWaker,
+  dispatch_error::DispatchError, dispatch_executor::DispatchExecutor, dispatcher_dump_event::DispatcherDumpEvent,
+  dispatcher_state::DispatcherState, schedule_adapter::ScheduleAdapter,
 };
 use crate::{
   RuntimeToolbox, ToolboxMutex,
   error::{ActorError, SendError},
+  event_stream::EventStreamEvent,
   logging::LogLevel,
   mailbox::{
     EnqueueOutcome, MailboxGeneric, MailboxMessage, MailboxOfferFutureGeneric, MailboxPressureEvent, ScheduleHints,
@@ -38,6 +39,7 @@ pub(crate) const MAX_EXECUTOR_RETRIES: usize = 2;
 pub(super) struct DispatcherCore<TB: RuntimeToolbox + 'static> {
   mailbox:             ArcShared<MailboxGeneric<TB>>,
   executor:            ArcShared<dyn DispatchExecutor<TB>>,
+  schedule_adapter:    ArcShared<dyn ScheduleAdapter<TB>>,
   invoker:             ToolboxMutex<Option<ArcShared<dyn MessageInvoker<TB>>>, TB>,
   state:               AtomicU8,
   throughput_limit:    Option<NonZeroUsize>,
@@ -54,6 +56,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
   pub(super) fn new(
     mailbox: ArcShared<MailboxGeneric<TB>>,
     executor: ArcShared<dyn DispatchExecutor<TB>>,
+    schedule_adapter: ArcShared<dyn ScheduleAdapter<TB>>,
     throughput_limit: Option<NonZeroUsize>,
     throughput_deadline: Option<Duration>,
     starvation_deadline: Option<Duration>,
@@ -62,6 +65,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
     Self {
       mailbox,
       executor,
+      schedule_adapter,
       invoker: <TB::MutexFamily as SyncMutexFamily>::create(None),
       state: AtomicU8::new(DispatcherState::Idle.as_u8()),
       throughput_limit,
@@ -82,6 +86,10 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
 
   pub(super) fn executor(&self) -> &ArcShared<dyn DispatchExecutor<TB>> {
     &self.executor
+  }
+
+  pub(super) fn schedule_adapter(&self) -> ArcShared<dyn ScheduleAdapter<TB>> {
+    self.schedule_adapter.clone()
   }
 
   pub(super) const fn state(&self) -> &AtomicU8 {
@@ -246,7 +254,9 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
     self_arc: &ArcShared<Self>,
     future: &mut MailboxOfferFutureGeneric<TB>,
   ) -> Result<(), SendError<TB>> {
-    let waker = ScheduleWaker::<TB>::into_waker(self_arc.clone());
+    let adapter = self_arc.schedule_adapter();
+    let dispatcher = super::base::DispatcherGeneric::from_core(self_arc.clone());
+    let waker = adapter.create_waker(dispatcher);
     let mut cx = Context::from_waker(&waker);
 
     loop {
@@ -259,7 +269,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
             has_user_messages:   true,
             backpressure_active: false,
           });
-          block_hint();
+          adapter.on_pending();
         },
       }
     }
@@ -288,8 +298,28 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
   pub(super) fn handle_executor_failure(&self, attempts: usize, error: DispatchError) {
     DispatcherState::Idle.store(self.state());
     let _ = self.mailbox.set_idle();
+    self.schedule_adapter.notify_rejected(attempts);
     let message = format!("dispatcher execution failed after {} attempt(s): {}", attempts, error);
     self.mailbox.emit_log(LogLevel::Error, message);
+  }
+
+  pub(super) fn publish_dump(self_arc: &ArcShared<Self>) {
+    let Some(system_state) = self_arc.mailbox.system_state() else {
+      return;
+    };
+    let Some(pid) = self_arc.mailbox.pid() else {
+      return;
+    };
+    let state_value = self_arc.state.load(Ordering::Acquire);
+    let dispatcher_state = DispatcherState::from_u8(state_value);
+    let event = DispatcherDumpEvent::new(
+      pid,
+      self_arc.mailbox.user_len(),
+      self_arc.mailbox.system_len(),
+      matches!(dispatcher_state, DispatcherState::Running),
+      self_arc.mailbox.is_suspended(),
+    );
+    system_state.publish_event(&EventStreamEvent::DispatcherDump(event));
   }
 }
 
@@ -305,11 +335,9 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
     let Some(threshold) = self.starvation_deadline else {
       return;
     };
-    if let Some(elapsed) = self.elapsed_since_progress() {
-      if elapsed >= threshold {
-        let message = format!("dispatcher detected potential starvation after {:?}", elapsed);
-        self.mailbox.emit_log(LogLevel::Warn, message);
-      }
+    if let Some(elapsed) = self.elapsed_since_progress().filter(|elapsed| *elapsed >= threshold) {
+      let message = format!("dispatcher detected potential starvation after {:?}", elapsed);
+      self.mailbox.emit_log(LogLevel::Warn, message);
     }
   }
 }

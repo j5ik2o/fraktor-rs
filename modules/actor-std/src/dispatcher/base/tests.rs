@@ -1,4 +1,4 @@
-use cellactor_actor_core_rs::dispatcher::DispatchExecutor as CoreDispatchExecutor;
+use cellactor_actor_core_rs::dispatcher::{DispatchError, DispatchExecutor as CoreDispatchExecutor};
 use cellactor_utils_core_rs::sync::ArcShared;
 use cellactor_utils_std_rs::runtime_toolbox::StdToolbox;
 
@@ -23,8 +23,9 @@ impl TestExecutor {
 }
 
 impl CoreDispatchExecutor<StdToolbox> for TestExecutor {
-  fn execute(&self, _dispatcher: DispatchShared) {
+  fn execute(&self, _dispatcher: DispatchShared) -> Result<(), DispatchError> {
     *Self::lock_state(&self.executed) = true;
+    Ok(())
   }
 }
 

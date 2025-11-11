@@ -10,13 +10,21 @@ pub struct MailboxPressureEvent {
   capacity:    usize,
   utilization: u8,
   timestamp:   Duration,
+  threshold:   Option<usize>,
 }
 
 impl MailboxPressureEvent {
   /// Creates a new pressure event using utilisation percentage.
   #[must_use]
-  pub const fn new(pid: Pid, user_len: usize, capacity: usize, utilization: u8, timestamp: Duration) -> Self {
-    Self { pid, user_len, capacity, utilization, timestamp }
+  pub const fn new(
+    pid: Pid,
+    user_len: usize,
+    capacity: usize,
+    utilization: u8,
+    timestamp: Duration,
+    threshold: Option<usize>,
+  ) -> Self {
+    Self { pid, user_len, capacity, utilization, timestamp, threshold }
   }
 
   /// Returns the owning actor pid.
@@ -41,6 +49,12 @@ impl MailboxPressureEvent {
   #[must_use]
   pub const fn utilization(&self) -> u8 {
     self.utilization
+  }
+
+  /// Returns the optional warning threshold associated with the mailbox.
+  #[must_use]
+  pub const fn threshold(&self) -> Option<usize> {
+    self.threshold
   }
 
   /// Returns the timestamp when the event was emitted.

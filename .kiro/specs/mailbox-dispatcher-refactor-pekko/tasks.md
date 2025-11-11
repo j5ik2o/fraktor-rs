@@ -85,32 +85,32 @@
   - ✅ Props に `dispatcher_id` / `mailbox_id` を保持させ `with_resolved_*` で置換、ActorSystem::build_cell_for_spawn でキャパビリティ検証前に解決するようリファクタ。新APIの回帰テストを追加。
   - _Requirements: R6_
 
-- [ ] 5. STDブリッジとMailbox Futureハンドシェイクを整備する
+- [x] 5. STDブリッジとMailbox Futureハンドシェイクを整備する
   - ScheduleAdapter層を定義し、Tokio/Thread executorとno_std inline executorの双方でwaker生成/再スケジュールを統一する
   - MailboxOfferFuture/MailboxPollFutureとScheduleWakerの連携を再実装し、NeedRescheduleをbusy-wait無しで伝播させる
   - _Requirements: R7, R8_
-- [ ] 5.1 ScheduleAdapterとScheduleWakerのAPIを確立する
+- [x] 5.1 ScheduleAdapterとScheduleWakerのAPIを確立する
   - create_waker/spawn_scheduled/notify_rejectedといったインターフェースを整理し、STD/no_std双方で共通traitを実装する
   - ScheduleWakerがAdapterを介してTokio wakerやinline wakerを生成し、RejectedExecution時のIdle復帰とEventStream通知を処理する
   - _Requirements: R7, R8_
-- [ ] 5.2 MailboxOfferFuture/MailboxPollFutureのハンドシェイクを再設計する
+- [x] 5.2 MailboxOfferFuture/MailboxPollFutureのハンドシェイクを再設計する
   - enqueue/poll Pending時に即座にschedule()を呼ぶ契約を定義し、block_hintや軽量スピンの境界を明記する
   - エラー終了時はDeadLetter/EventStreamへ損失を送るフックを統合し、Dispatcherへも同じエラーを返す
   - _Requirements: R8_
-- [ ] 5.3 STD executorブリッジでRejectedExecution/backpressureを可視化する
+- [x] 5.3 STD executorブリッジでRejectedExecution/backpressureを可視化する
   - StdBridgeからbackpressureイベント/ログをEventStreamへpublishし、利用不能時はMailboxを内部キューへ退避させる
   - Tokio runtimeのハンドルを保持し、NeedRescheduleが返ったらspawn_asyncで再投入するフローを整備する
   - _Requirements: R4, R7_
 
-- [ ] 6. テレメトリとDeadLetter観測性を拡張する
+- [x] 6. テレメトリとDeadLetter観測性を拡張する
   - Mailbox/Dispatcher計測値をEventStreamへpublishし、subscriber未登録時も最小オーバーヘッドで動作させる
   - DispatcherDump/diagnostics APIでキュー長とワーカー割当を照会できるようにする
   - _Requirements: R4_
-- [ ] 6.1 MailboxInstrumentationとDeadLetter属性を強化する
+- [x] 6.1 MailboxInstrumentationとDeadLetter属性を強化する
   - Mailbox深さ・利用率・Overflow原因を収集し、DeadLetterにoverflow/scheduler-failure/shutdown属性を付与する
   - MailboxPressureイベントのrate limitやRetry計測を含めたtelemetry payloadを設計する
   - _Requirements: R3, R4_
-- [ ] 6.2 DispatcherDump/Telemetry APIをActorSystemへ公開する
+- [x] 6.2 DispatcherDump/Telemetry APIをActorSystemへ公開する
   - dispatcher dump要求を受けてアクターごとのキュー長とワーカIDを返すAPIを実装し、EventStream/CLI双方から利用できるようにする
   - Telemetry subscriberが居ない場合のnoop実装と、存在する場合の配信パスを切り替える
   - _Requirements: R4, R7_

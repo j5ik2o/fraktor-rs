@@ -2,8 +2,6 @@
 
 use core::time::Duration;
 
-use cellactor_utils_core_rs::sync::ArcShared;
-
 use super::FailureClassification;
 use crate::{
   actor_prim::Pid,
@@ -16,7 +14,7 @@ use crate::{
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FailurePayload {
   child:          Pid,
-  reason:         ArcShared<ActorErrorReason>,
+  reason:         ActorErrorReason,
   classification: FailureClassification,
   restart_stats:  RestartStatistics,
   message:        Option<FailureMessageSnapshot>,
@@ -34,7 +32,7 @@ impl FailurePayload {
   ) -> Self {
     Self {
       child,
-      reason: ArcShared::new(error.reason().clone()),
+      reason: error.reason().clone(),
       classification: FailureClassification::from(error),
       restart_stats: RestartStatistics::new(),
       message,
@@ -57,8 +55,8 @@ impl FailurePayload {
 
   /// Returns the cloned reason associated with the failure.
   #[must_use]
-  pub fn reason(&self) -> ArcShared<ActorErrorReason> {
-    self.reason.clone()
+  pub const fn reason(&self) -> &ActorErrorReason {
+    &self.reason
   }
 
   /// Returns whether the failure was fatal or recoverable.
@@ -89,8 +87,8 @@ impl FailurePayload {
   #[must_use]
   pub fn to_actor_error(&self) -> ActorError {
     match self.classification {
-      | FailureClassification::Recoverable => ActorError::recoverable((*self.reason).clone()),
-      | FailureClassification::Fatal => ActorError::fatal((*self.reason).clone()),
+      | FailureClassification::Recoverable => ActorError::recoverable(self.reason.clone()),
+      | FailureClassification::Fatal => ActorError::fatal(self.reason.clone()),
     }
   }
 
