@@ -15,7 +15,6 @@
         "--enable-web-dashboard",
         "false"
       ],
-      "cwd": "${PWD}",
       "env": {}
     },
     "context7": {
@@ -51,6 +50,14 @@
         "-y",
         "vibe-kanban",
         "--mcp"
+      ],
+      "env": {}
+    },
+    "codex": {
+      "type": "stdio",
+      "command": "codex",
+      "args": [
+        "mcp-server"
       ],
       "env": {}
     }
