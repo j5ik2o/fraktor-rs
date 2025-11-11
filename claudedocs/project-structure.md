@@ -1,8 +1,8 @@
-# cellactor-rs プロジェクト構造
+# fraktor-rs プロジェクト構造
 
 ## プロジェクト概要
 
-cellactor-rs は、Akka/Pekko互換のアクターランタイムをRust/no_stdで実装することを目的とした実験的なプロジェクトです。protoactor-goとpekkoのアーキテクチャを参考にしながら、Rustのイディオムに落とし込んでいます。
+fraktor-rs は、Akka/Pekko互換のアクターランタイムをRust/no_stdで実装することを目的とした実験的なプロジェクトです。protoactor-goとpekkoのアーキテクチャを参考にしながら、Rustのイディオムに落とし込んでいます。
 
 ### 主な特徴
 
@@ -15,7 +15,7 @@ cellactor-rs は、Akka/Pekko互換のアクターランタイムをRust/no_std�
 ## ディレクトリ構造
 
 ```
-cellactor-rs/
+fraktor-rs/
 ├── modules/               # メインモジュール群
 │   ├── actor-core/        # アクターランタイムのコア実装 (no_std)
 │   ├── actor-std/         # std環境用のヘルパー
@@ -46,7 +46,7 @@ cellactor-rs/
 ### 1. actor-core モジュール
 
 **場所**: `modules/actor-core/`
-**パッケージ名**: `cellactor-actor-core-rs`
+**パッケージ名**: `fraktor-actor-core-rs`
 **説明**: アクターランタイムのコア実装（no_std対応）
 
 #### 主要コンポーネント
@@ -74,7 +74,7 @@ cellactor-rs/
 
 #### 主要な依存関係
 
-- `cellactor-utils-core-rs`: コアユーティリティ
+- `fraktor-utils-core-rs`: コアユーティリティ
 - `async-trait`: 非同期トレイト
 - `heapless`: no_stdコレクション
 - `portable-atomic`: ポータブルアトミック操作
@@ -83,7 +83,7 @@ cellactor-rs/
 ### 2. actor-std モジュール
 
 **場所**: `modules/actor-std/`
-**パッケージ名**: `cellactor-actor-std-rs`
+**パッケージ名**: `fraktor-actor-std-rs`
 **説明**: std環境用のヘルパー実装
 
 #### 機能フラグ
@@ -92,8 +92,8 @@ cellactor-rs/
 
 #### 主要な依存関係
 
-- `cellactor-actor-core-rs`: アクターコア
-- `cellactor-utils-std-rs`: stdユーティリティ
+- `fraktor-actor-core-rs`: アクターコア
+- `fraktor-utils-std-rs`: stdユーティリティ
 - `tokio`: Tokioランタイム（オプション）
 
 #### サンプル
@@ -107,7 +107,7 @@ cellactor-rs/
 ### 3. utils-core モジュール
 
 **場所**: `modules/utils-core/`
-**パッケージ名**: `cellactor-utils-core-rs`
+**パッケージ名**: `fraktor-utils-core-rs`
 **説明**: no_std対応の共通ユーティリティ
 
 #### 主要コンポーネント
@@ -135,12 +135,12 @@ cellactor-rs/
 ### 4. utils-std モジュール
 
 **場所**: `modules/utils-std/`
-**パッケージ名**: `cellactor-utils-std-rs`
+**パッケージ名**: `fraktor-utils-std-rs`
 **説明**: std環境用のユーティリティ
 
 #### 主要な依存関係
 
-- `cellactor-utils-core-rs`: コアユーティリティ
+- `fraktor-utils-core-rs`: コアユーティリティ
 
 ## 開発ツール
 

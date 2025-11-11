@@ -4,7 +4,7 @@
 references/pekko を参考にして MessageAdapter 機能を作りたい
 
 ## Introduction
-Pekko Typed の MessageAdapter を cellactor-rs のアクターランタイムへ導入し、外部プロトコルで到着する異なるメッセージ型を既存アクターの型安全なプロトコルへ変換できるアダプタとして提供する。実装方針・API は Pekko Typed の挙動に準拠し、追加機能は導入しない。
+Pekko Typed の MessageAdapter を fraktor-rs のアクターランタイムへ導入し、外部プロトコルで到着する異なるメッセージ型を既存アクターの型安全なプロトコルへ変換できるアダプタとして提供する。実装方針・API は Pekko Typed の挙動に準拠し、追加機能は導入しない。
 
 ## Requirements
 

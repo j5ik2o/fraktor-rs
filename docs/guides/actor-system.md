@@ -3,8 +3,8 @@
 セルアクターランタイムの `ActorSystem` を利用する際の基本手順と、`reply_to` パターンや監視機能の運用ポイントをまとめます。no_std 環境と標準環境（Tokio 連携）で共通する設計指針を把握し、アプリケーションから安全に制御できるようにすることが目的です。
 
 ```rust
-use cellactor_actor_core_rs::{ActorSystem, ActorSystemGeneric, Props};
-use cellactor_actor_std_rs::{StdActorSystem, StdToolbox};
+use fraktor_actor_core_rs::{ActorSystem, ActorSystemGeneric, Props};
+use fraktor_actor_std_rs::{StdActorSystem, StdToolbox};
 ```
 
 ## 1. 初期化フロー

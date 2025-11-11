@@ -8,7 +8,7 @@ use core::{
   convert::{TryFrom, TryInto},
 };
 
-use cellactor_actor_core_rs::{
+use fraktor_actor_core_rs::{
   actor_prim::{Actor, ActorContext},
   error::ActorError,
   messaging::AnyMessageView,
@@ -20,7 +20,7 @@ use cellactor_actor_core_rs::{
   },
   system::ActorSystem,
 };
-use cellactor_utils_core_rs::sync::ArcShared;
+use fraktor_utils_core_rs::sync::ArcShared;
 
 const TELEMETRY_MANIFEST: &str = "sample.telemetry.TelemetryPayload";
 const SERIALIZER_NAME: &str = "telemetry";

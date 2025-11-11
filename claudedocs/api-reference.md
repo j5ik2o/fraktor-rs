@@ -1,14 +1,14 @@
-# cellactor-rs APIリファレンス
+# fraktor-rs APIリファレンス
 
 ## 概要
 
-cellactor-rsは、Akka/Pekko互換のアクターランタイムをRust/no_stdで実装したライブラリです。このドキュメントでは、主要なAPIとその使用方法について説明します。
+fraktor-rsは、Akka/Pekko互換のアクターランタイムをRust/no_stdで実装したライブラリです。このドキュメントでは、主要なAPIとその使用方法について説明します。
 
 ## コアコンセプト
 
 ### アクターモデル
 
-cellactor-rsは、メッセージパッシングによる並行処理を実現するアクターモデルを採用しています。
+fraktor-rsは、メッセージパッシングによる並行処理を実現するアクターモデルを採用しています。
 
 - **Actor**: 状態とメッセージ処理ロジックをカプセル化
 - **ActorSystem**: アクターの生成と管理を担当
@@ -568,7 +568,7 @@ system.event_stream().publish(Event::ActorCreated { pid })?;
 
 ## まとめ
 
-cellactor-rsは、Akka/Pekko互換のアクターモデルをRust/no_std環境で実現するライブラリです。
+fraktor-rsは、Akka/Pekko互換のアクターモデルをRust/no_std環境で実現するライブラリです。
 
 ### 主要な機能
 

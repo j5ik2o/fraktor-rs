@@ -1,6 +1,6 @@
 use alloc::{vec, vec::Vec};
 
-use cellactor_utils_core_rs::{
+use fraktor_utils_core_rs::{
   collections::queue::capabilities::{QueueCapabilityRegistry, QueueCapabilitySet},
   sync::{ArcShared, NoStdMutex},
 };
@@ -246,7 +246,7 @@ fn spawn_child_fails_when_dispatcher_id_not_registered() {
 
 #[test]
 fn spawn_child_resolves_mailbox_id_with_requirements() {
-  use cellactor_utils_core_rs::collections::queue::capabilities::{QueueCapabilityRegistry, QueueCapabilitySet};
+  use fraktor_utils_core_rs::collections::queue::capabilities::{QueueCapabilityRegistry, QueueCapabilitySet};
 
   let system = ActorSystem::new_empty();
   let parent_pid = system.allocate_pid();

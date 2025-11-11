@@ -1,6 +1,6 @@
 use alloc::string::ToString;
 
-use cellactor_utils_core_rs::sync::ArcShared;
+use fraktor_utils_core_rs::sync::ArcShared;
 
 use super::SystemState;
 use crate::{
@@ -139,7 +139,7 @@ fn system_state_deadletters() {
 
 #[test]
 fn system_state_register_ask_future() {
-  use cellactor_utils_core_rs::sync::ArcShared;
+  use fraktor_utils_core_rs::sync::ArcShared;
 
   use crate::futures::ActorFuture;
 

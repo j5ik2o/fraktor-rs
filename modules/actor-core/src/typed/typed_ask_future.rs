@@ -2,7 +2,7 @@
 
 use core::marker::PhantomData;
 
-use cellactor_utils_core_rs::{
+use fraktor_utils_core_rs::{
   Shared,
   sync::{ArcShared, NoStdToolbox},
 };

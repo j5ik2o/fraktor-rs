@@ -4,14 +4,14 @@ extern crate alloc;
 
 use alloc::format;
 
-use cellactor_actor_core_rs::{
+use fraktor_actor_core_rs::{
   actor_prim::{Actor, ActorContext, ChildRef},
   error::ActorError,
   messaging::{AnyMessage, AnyMessageView},
   props::Props,
   system::ActorSystem,
 };
-use cellactor_utils_core_rs::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::sync::{ArcShared, NoStdMutex};
 
 struct Start;
 struct StopChild;
@@ -66,7 +66,7 @@ impl Actor for GuardianActor {
   fn on_terminated(
     &mut self,
     ctx: &mut ActorContext<'_>,
-    pid: cellactor_actor_core_rs::actor_prim::Pid,
+    pid: fraktor_actor_core_rs::actor_prim::Pid,
   ) -> Result<(), ActorError> {
     let mut phase = self.phase.lock();
     match *phase {

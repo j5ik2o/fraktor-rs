@@ -1,6 +1,6 @@
 #![cfg_attr(all(not(test), target_os = "none"), no_std)]
 
-use cellactor_actor_core_rs::typed::{Behavior, BehaviorSignal, Behaviors, TypedActorSystem, TypedProps};
+use fraktor_actor_core_rs::typed::{Behavior, BehaviorSignal, Behaviors, TypedActorSystem, TypedProps};
 
 #[derive(Clone, Copy)]
 enum GuardianCommand {

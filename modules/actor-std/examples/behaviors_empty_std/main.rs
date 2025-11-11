@@ -6,11 +6,11 @@
 
 use std::time::Duration;
 
-use cellactor_actor_std_rs::{
+use fraktor_actor_std_rs::{
   event_stream::{EventStreamEvent, EventStreamSubscriber, EventStreamSubscription},
   typed::{Behavior, Behaviors, TypedActorSystem, TypedProps},
 };
-use cellactor_utils_core_rs::ArcShared;
+use fraktor_utils_core_rs::ArcShared;
 
 #[derive(Debug, Clone)]
 enum WorkerCommand {
@@ -28,7 +28,7 @@ fn worker_behavior() -> Behavior<WorkerCommand> {
 }
 
 fn working_behavior(
-  _ctx: &mut cellactor_actor_std_rs::typed::actor_prim::TypedActorContext<'_, WorkerCommand>,
+  _ctx: &mut fraktor_actor_std_rs::typed::actor_prim::TypedActorContext<'_, WorkerCommand>,
 ) -> Behavior<WorkerCommand> {
   Behaviors::receive_message(|_ctx, message: &WorkerCommand| match message {
     | WorkerCommand::DoWork => {

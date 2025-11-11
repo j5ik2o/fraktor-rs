@@ -6,7 +6,7 @@ mod tests;
 use alloc::{boxed::Box, string::String, vec, vec::Vec};
 use core::{task::Poll, time::Duration};
 
-use cellactor_utils_core_rs::{
+use fraktor_utils_core_rs::{
   runtime_toolbox::SyncMutexFamily,
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };

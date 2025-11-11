@@ -8,7 +8,7 @@
 //!
 //! - **Pekko**: `org.apache.pekko.dispatch` (independent package)
 //! - **Akka**: `akka.dispatch` (independent package)
-//! - **cellactor-rs**: `cellactor_core::dispatcher` (independent module)
+//! - **fraktor-rs**: `fraktor_core::dispatcher` (independent module)
 //!
 //! The dispatcher manages message processing and task scheduling for actors, working in
 //! conjunction with the `system` module but maintaining separate responsibilities:

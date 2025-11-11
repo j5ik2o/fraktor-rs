@@ -6,11 +6,11 @@
 
 use std::time::Duration;
 
-use cellactor_actor_std_rs::{
+use fraktor_actor_std_rs::{
   event_stream::{EventStreamEvent, EventStreamSubscriber, EventStreamSubscription},
   typed::{Behavior, BehaviorSignal, Behaviors, TypedActorSystem, TypedProps},
 };
-use cellactor_utils_core_rs::ArcShared;
+use fraktor_utils_core_rs::ArcShared;
 
 #[derive(Debug, Clone)]
 enum Command {

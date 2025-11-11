@@ -38,7 +38,7 @@
 - **ディレクトリ**: `snake_case/`。`foo.rs` に対応する `foo/` を置き、サブモジュールを格納。
 - **型 / トレイト**: `PascalCase`。trait 名は `*Ext` や `*Service` 等の役割語尾を避け、ドメイン名を直截に記述。
 - **モジュール境界**: 1 ファイル 1 型（構造体または trait）を基本とし、補助型は `tests.rs` かサブモジュールへ退避。
-- **クレート名**: `cellactor-<domain>-rs`。Cargo features は `kebab-case`（例: `alloc-metrics`, `tokio-executor`）。
+- **クレート名**: `fraktor-<domain>-rs`。Cargo features は `kebab-case`（例: `alloc-metrics`, `tokio-executor`）。
 - **ドキュメント言語**: rustdoc は英語、それ以外のコメント・Markdown は日本語。
 
 ## import 組織

@@ -1,4 +1,4 @@
-use cellactor_utils_core_rs::collections::queue::QueueError;
+use fraktor_utils_core_rs::collections::queue::QueueError;
 
 mod stash_deque_handle_generic;
 

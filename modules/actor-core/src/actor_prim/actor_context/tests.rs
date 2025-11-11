@@ -1,7 +1,7 @@
 use alloc::{string::String, vec, vec::Vec};
 use core::hint::spin_loop;
 
-use cellactor_utils_core_rs::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::sync::{ArcShared, NoStdMutex};
 
 use super::{ActorContext, ActorContextGeneric};
 use crate::{

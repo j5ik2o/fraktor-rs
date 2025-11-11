@@ -4,7 +4,7 @@
 #![deny(clippy::missing_errors_doc, clippy::missing_panics_doc)]
 #![deny(unreachable_pub)]
 
-//! Standard library helpers for Cellactor runtime integrations.
+//! Standard library helpers for fraktor runtime integrations.
 
 /// Actor primitives specialised for the standard toolbox.
 pub mod actor_prim;

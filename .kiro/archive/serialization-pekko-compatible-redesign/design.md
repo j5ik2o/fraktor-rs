@@ -1,7 +1,7 @@
 # Serialization Pekko Compatible Redesign — Design
 
 ## Overview
-cellactor-rs のアクターランタイムへ Pekko 相当のシリアライゼーション層を組み込み、ActorSystem 全体で一貫した識別子・マニフェスト・ActorRef文字列化を扱えるようにする。`SerializationExtension` を中心に、型バインディング DSL、manifest 進化を Rust/no_std 向けに設計し、Rolling Upgrade を阻害しない ID 管理とエラーモデルを提供する。Phase 1 はシンプルな `Vec<u8>` ベース、Phase 3 以降でゼロコピー最適化を検討する。
+fraktor-rs のアクターランタイムへ Pekko 相当のシリアライゼーション層を組み込み、ActorSystem 全体で一貫した識別子・マニフェスト・ActorRef文字列化を扱えるようにする。`SerializationExtension` を中心に、型バインディング DSL、manifest 進化を Rust/no_std 向けに設計し、Rolling Upgrade を阻害しない ID 管理とエラーモデルを提供する。Phase 1 はシンプルな `Vec<u8>` ベース、Phase 3 以降でゼロコピー最適化を検討する。
 
 主な利用者は (1) ランタイム管理者（ActorSystem 起動時のレジストリ確定）、(2) Remoting/Persistence 実装者（manifest 進化）、(3) カスタム Serializer 開発者であり、全員が `programmatic setup builder` のみで構成を完結できる。結果として、現状 `AnyMessage` しか持たないメッセージ経路が `SerializedMessage` を軸に標準フォーマット化され、将来の Remoting/Cluster 拡張の土台となる。
 
@@ -55,11 +55,11 @@ graph TD
 - **Observability**: `EventStreamEvent::Log` と `DeadLetter` を使い、Serializer ID 衝突や manifest 未登録を監査ログに送信する。Pekko同様、ロギングのみで十分。
 
 #### Key Design Decisions
-- **Decision**: SerializationExtension を actor-core Extension として実装し、新設クレートではなく既存クレート内に配置する。  
-  **Context**: Extension 機構と SystemState の Mutex/ArcShared 管理が actor-core に密結合している。  
-  **Alternatives**: (1) `serialization-core` クレートを追加、(2) actor-std 側のみで提供、(3) `utils-core` に汎用機能を置く。  
-  **Selected Approach**: actor-core 内に `serialization` モジュールを追加し、Extension/TB/ArcShared を直接利用。  
-  **Rationale**: 依存グラフを崩さず最少の crate 増に留め、no_std でも動作する一貫 API を維持できる。  
+- **Decision**: SerializationExtension を actor-core Extension として実装し、新設クレートではなく既存クレート内に配置する。
+  **Context**: Extension 機構と SystemState の Mutex/ArcShared 管理が actor-core に密結合している。
+  **Alternatives**: (1) `serialization-core` クレートを追加、(2) actor-std 側のみで提供、(3) `utils-core` に汎用機能を置く。
+  **Selected Approach**: actor-core 内に `serialization` モジュールを追加し、Extension/TB/ArcShared を直接利用。
+  **Rationale**: 依存グラフを崩さず最少の crate 増に留め、no_std でも動作する一貫 API を維持できる。
   **Trade-offs**: 将来 serialization を別クレートへ切り出す際にリファクタが必要。
 
 - **Decision**: Transport情報管理をスコープAPI（Handle + Guard）で提供し、ActorRef文字列化を実現する。
@@ -304,5 +304,5 @@ flowchart LR
 - **Rollback**: 各フェーズで `SerializationExtension` を未登録に戻せば旧コードが継続。SerializedMessage は `AnySerializer` fallback があるため互換性を維持。
 
 ---
-[^pekko-serialization]: Apache Pekko Serialization documentation (2025-11-04 crawl).  
+[^pekko-serialization]: Apache Pekko Serialization documentation (2025-11-04 crawl).
 [^pekko-reserved]: Apache Pekko Serializer identifier guidance — identifiers 0–40 reserved (2025-11-04 crawl).

@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use cellactor_utils_core_rs::sync::ArcShared;
+use fraktor_utils_core_rs::sync::ArcShared;
 
 use crate::{
   NoStdToolbox, RuntimeToolbox, actor_prim::actor_ref::ActorRefGeneric, futures::ActorFuture,

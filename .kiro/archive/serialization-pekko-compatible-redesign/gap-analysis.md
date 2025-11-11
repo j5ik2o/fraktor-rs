@@ -8,7 +8,7 @@
 
 ### 対象と目的
 - **対象機能**: Pekko互換のシリアライゼーション機能再設計
-- **既存コードベース**: cellactor-rs (no_std志向のActorランタイム)
+- **既存コードベース**: fraktor-rs (no_std志向のActorランタイム)
 - **参照実装**: Apache Pekko (Scala), protoactor-go (Go)
 - **スコープ**: 既存のActorSystem/Extension機構を活用したシリアライゼーションレイヤーの新規構築
 
@@ -247,7 +247,7 @@ modules/actor-core/src/serialization/
 **想定**: `modules/serialization-core`（仮）を別クレートとして分離し、`actor-core`から疎結合で参照
 
 #### 構成
-- **`cellactor-serialization-rs`**: Pekko互換トレイトとレジストリ実装
+- **`fraktor-serialization-rs`**: Pekko互換トレイトとレジストリ実装
 - **`actor-core`側の統合点**: `SerializationExtension`が新クレートを薄くラップ
 - **依存方向**:
   - `serialization-core` → `utils-core` (Runtimeツール利用)
@@ -392,7 +392,7 @@ modules/actor-core/src/serialization/
 - **推奨**: Phase 2で基本的なマニフェスト管理、Phase 4で完全なバージョン互換
 
 #### 🟢 Low Risk: Serde非依存の保証
-- **なぜ必要か**: cellactor-rsはno_stdファーストの設計であり、組み込み環境やベアメタル環境での使用を想定している。Serdeに依存すると、no_std環境での使用が制限され、バイナリサイズも増大する。フレームワーク非依存を保つことで、ユーザーが自由にシリアライザを選択でき、Serdeはオプショナルな依存として提供する。これにより、最小限のランタイムを必要とする環境でも使用可能になる。
+- **なぜ必要か**: fraktor-rsはno_stdファーストの設計であり、組み込み環境やベアメタル環境での使用を想定している。Serdeに依存すると、no_std環境での使用が制限され、バイナリサイズも増大する。フレームワーク非依存を保つことで、ユーザーが自由にシリアライザを選択でき、Serdeはオプショナルな依存として提供する。これにより、最小限のランタイムを必要とする環境でも使用可能になる。
 - **課題**: Serdeをリンクしないビルドバリア（feature gating, CIターゲット）の具体案
 - **検討事項**:
   - Feature gatingの設計
@@ -597,7 +597,7 @@ modules/actor-core/src/serialization/
 ### 統合の価値
 - **段階的実装戦略**: Phase 1-4の明確な段階分けとActorRef文字列化の段階的対応
 - **リスク管理計画**: High Riskコンポーネントの緩和策と技術調査タイムライン
-- **プロジェクト適合**: cellactor-rs固有の制約とPekko互換性の両立戦略
+- **プロジェクト適合**: fraktor-rs固有の制約とPekko互換性の両立戦略
 - **実装可能性**: 各Phaseで動作確認しながら段階的にリスクを低減
 
 ---
@@ -605,9 +605,9 @@ modules/actor-core/src/serialization/
 ## 参考資料
 
 ### Pekko実装ファイル
-- `/Users/j5ik2o/Sources/cellactor-rs/references/pekko/actor/src/main/scala/org/apache/pekko/serialization/Serializer.scala`
-- `/Users/j5ik2o/Sources/cellactor-rs/references/pekko/actor/src/main/scala/org/apache/pekko/serialization/Serialization.scala`
-- `/Users/j5ik2o/Sources/cellactor-rs/references/pekko/actor/src/main/scala/org/apache/pekko/serialization/SerializationSetup.scala`
+- `/Users/j5ik2o/Sources/fraktor-rs/references/pekko/actor/src/main/scala/org/apache/pekko/serialization/Serializer.scala`
+- `/Users/j5ik2o/Sources/fraktor-rs/references/pekko/actor/src/main/scala/org/apache/pekko/serialization/Serialization.scala`
+- `/Users/j5ik2o/Sources/fraktor-rs/references/pekko/actor/src/main/scala/org/apache/pekko/serialization/SerializationSetup.scala`
 
 ### プロジェクトドキュメント
 - `.kiro/specs/serialization-pekko-compatible-redesign/requirements.md`
@@ -615,7 +615,7 @@ modules/actor-core/src/serialization/
 - `.kiro/steering/tech.md`
 - `AGENTS.md`
 
-### cellactor-rs実装ファイル
+### fraktor-rs実装ファイル
 - `modules/actor-core/src/system/base.rs` (Extension管理)
 - `modules/actor-core/src/messaging/any_message*.rs` (メッセージ表現)
 - `modules/utils-core/src/runtime_toolbox/` (Runtime抽象)

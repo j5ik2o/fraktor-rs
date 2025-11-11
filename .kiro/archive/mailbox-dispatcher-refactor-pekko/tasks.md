@@ -30,7 +30,7 @@
   - utils-core に DelayFuture/DelayProvider 抽象を実装し、MailboxOfferFuture/DequeOfferFuture が `with_timeout(Duration)` を受け取れるようにする
   - timeout 到達時は DeadLetterReason::MailboxTimeout を追加し、SendError::Timeout と DeadLetter イベントを発火するフローを定義する
   - MailboxInstrumentation が publish する `MailboxPressureEvent` を Dispatcher/StateEngine の backpressure ヒントへ連携する BackpressurePublisher API を記述する
-  - ✅ DelayFuture と ManualDelayProvider を `cellactor-utils-core` に着地させ、Mailbox/Deque の Block Future が `QueueError::TimedOut`→`SendError::Timeout` へ伝播することを確認済み。BackpressurePublisher 経由で DispatcherCore が `ScheduleHints.backpressure_active` を処理する実装とテストを追加。
+  - ✅ DelayFuture と ManualDelayProvider を `fraktor-utils-core` に着地させ、Mailbox/Deque の Block Future が `QueueError::TimedOut`→`SendError::Timeout` へ伝播することを確認済み。BackpressurePublisher 経由で DispatcherCore が `ScheduleHints.backpressure_active` を処理する実装とテストを追加。
   - _Requirements: R3, R4_
 - [x] 2.3 StashDequeHandle足場とDeque capability検証を実装する
   - PropsにMailboxRequirementを追加し、QueueCapabilityRegistryでDeque/BlockingFuture欠落を検出してSpawnErrorへ伝播する

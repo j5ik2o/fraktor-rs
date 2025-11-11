@@ -9,7 +9,7 @@ use std::{
   time::Duration,
 };
 
-use cellactor_actor_core_rs::{
+use fraktor_actor_core_rs::{
   NoStdToolbox,
   actor_prim::{Actor, ActorContextGeneric, ChildRef},
   error::{ActorError, ActorErrorReason},
@@ -20,7 +20,7 @@ use cellactor_actor_core_rs::{
   supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
   system::ActorSystem,
 };
-use cellactor_utils_core_rs::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::sync::{ArcShared, NoStdMutex};
 
 struct Start;
 struct TriggerRecoverable;

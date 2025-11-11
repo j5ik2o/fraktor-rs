@@ -1,6 +1,6 @@
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use cellactor_utils_core_rs::sync::ArcShared;
+use fraktor_utils_core_rs::sync::ArcShared;
 
 use super::{ActorRef, ActorRefSender};
 use crate::{NoStdToolbox, actor_prim::Pid, error::SendError, messaging::AnyMessage};

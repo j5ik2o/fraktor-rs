@@ -2,4 +2,4 @@
 - 選択的検証例: `./scripts/ci-check.sh lint` (fmt チェック)、`./scripts/ci-check.sh clippy`, `./scripts/ci-check.sh test` など。
 - 組込みターゲット関連: `./scripts/ci-check.sh embedded` または `./scripts/ci-check.sh embassy`。
 - カスタムリント: `./scripts/ci-check.sh dylint mod-file-lint` 等。
-- サンプル実行: `cargo run -p cellactor-utils-core-rs --example <name>` や `cargo run -p actor-core --example <name>` (必要に応じて `--features` を指定)。
+- サンプル実行: `cargo run -p fraktor-utils-core-rs --example <name>` や `cargo run -p actor-core --example <name>` (必要に応じて `--features` を指定)。

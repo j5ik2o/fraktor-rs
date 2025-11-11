@@ -1,14 +1,14 @@
 # プロダクト概要
 > 最終更新: 2025-11-08
 
-cellactor-rs は Akka/Pekko および protoactor-go のライフサイクル設計を Rust の no_std 環境へ移植し、標準環境（Tokio など）とも同一 API で運用できるアクターランタイムです。DeathWatch を強化した監視 API、system mailbox による厳格なライフサイクル順序、EventStream/DeadLetter の可観測性を兼ね備え、埋め込みボードからホスト OS まで一貫したデプロイを実現します。
+fraktor-rs は Akka/Pekko および protoactor-go のライフサイクル設計を Rust の no_std 環境へ移植し、標準環境（Tokio など）とも同一 API で運用できるアクターランタイムです。DeathWatch を強化した監視 API、system mailbox による厳格なライフサイクル順序、EventStream/DeadLetter の可観測性を兼ね備え、埋め込みボードからホスト OS まで一貫したデプロイを実現します。
 
 ## コア機能
 - **ライフサイクル指向の ActorSystem**: `SystemMessage::Create/Recreate/Failure` を先行処理し、SupervisorStrategy と組み合わせて deterministic な再起動/停止を保証します。
 - **強化 DeathWatch**: `watch/unwatch` と `spawn_child_watched` を通じて監視登録と子生成を一括管理し、停止済み PID でも即時 `on_terminated` を配送して復旧を閉じ込めます。
 - **EventStream & Telemetry**: ログ、DeadLetter、ライフサイクルイベントを低遅延バスで公開し、`LoggerSubscriber` や独自サブスクライバで観測できます。
 - **Typed/Untyped 並存 API**: `TypedActor` が `into_untyped/as_untyped` で Classic API と相互運用し、型安全なビヘイビア切替と `reply_to` パターンを両立します。
-- **Toolbox & Runtime 分離**: `cellactor-utils-core` の `RuntimeToolbox` 抽象で割り込み安全な同期原語を提供し、`actor-std` で Tokio 実行器やホストログへのバインディングを後付けできます。
+- **Toolbox & Runtime 分離**: `fraktor-utils-core` の `RuntimeToolbox` 抽象で割り込み安全な同期原語を提供し、`actor-std` で Tokio 実行器やホストログへのバインディングを後付けできます。
 
 ## ターゲットユースケース
 - Akka/Pekko/Proto.Actor のデザインを Rust へ移植しつつ、ミッションクリティカルな復旧ポリシーを維持したい分散アプリケーション。

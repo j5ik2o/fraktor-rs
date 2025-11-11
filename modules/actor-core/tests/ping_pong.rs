@@ -2,7 +2,7 @@
 
 use std::{thread, time::Duration, vec::Vec};
 
-use cellactor_actor_core_rs::{
+use fraktor_actor_core_rs::{
   NoStdToolbox,
   actor_prim::{Actor, ActorContextGeneric, ChildRef},
   error::{ActorError, SendError},
@@ -12,7 +12,7 @@ use cellactor_actor_core_rs::{
   spawn::SpawnError,
   system::ActorSystem,
 };
-use cellactor_utils_core_rs::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::sync::{ArcShared, NoStdMutex};
 
 struct Start;
 struct Deliver(u32);

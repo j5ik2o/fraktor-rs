@@ -6,7 +6,7 @@ use core::{
   task::{Context, Poll},
 };
 
-use cellactor_utils_core_rs::{
+use fraktor_utils_core_rs::{
   collections::{queue::QueueError, wait::WaitShared},
   sync::ArcShared,
 };

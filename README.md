@@ -1,6 +1,6 @@
-# cellactor-rs
+# fraktor-rs
 
-cellactor-rs は Akka/Pekko 互換のアクターランタイムを Rust/no_std で実装することを目的とした実験的なプロジェクトです。dispatch や EventStream、SupervisorStrategy などの基盤機能に加えて、DeathWatch 互換の監視 API を強化し、より直感的なアクターモデルを提供します。
+fraktor-rs は Akka/Pekko 互換のアクターランタイムを Rust/no_std で実装することを目的とした実験的なプロジェクトです。dispatch や EventStream、SupervisorStrategy などの基盤機能に加えて、DeathWatch 互換の監視 API を強化し、より直感的なアクターモデルを提供します。
 
 ## DeathWatch API のハイライト
 
@@ -29,11 +29,11 @@ fn on_terminated(
 
 ## Typed API (実験的)
 
-Untyped API と互換のまま、メッセージ型をコンパイル時に固定したい場合は `cellactor_actor_core_rs::typed` を利用できます。
+Untyped API と互換のまま、メッセージ型をコンパイル時に固定したい場合は `fraktor_actor_core_rs::typed` を利用できます。
 
 ```rust
-use cellactor_actor_core_rs::typed::{BehaviorGeneric, TypedActor, TypedActorContextGeneric, TypedActorSystemGeneric};
-use cellactor_actor_core_rs::{NoStdToolbox, error::ActorError};
+use fraktor_actor_core_rs::typed::{BehaviorGeneric, TypedActor, TypedActorContextGeneric, TypedActorSystemGeneric};
+use fraktor_actor_core_rs::{NoStdToolbox, error::ActorError};
 
 #[derive(Clone, Copy)]
 enum CounterMessage {

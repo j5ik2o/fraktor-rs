@@ -1,11 +1,11 @@
-use cellactor_actor_core_rs::{
+use fraktor_actor_core_rs::{
   dispatcher::{DispatchExecutor as CoreDispatchExecutor, ScheduleAdapter},
   mailbox::MailboxGeneric,
   props::DispatcherConfigGeneric as CoreDispatcherConfigGeneric,
   spawn::SpawnError,
 };
-use cellactor_utils_core_rs::sync::ArcShared;
-use cellactor_utils_std_rs::runtime_toolbox::StdToolbox;
+use fraktor_utils_core_rs::sync::ArcShared;
+use fraktor_utils_std_rs::runtime_toolbox::StdToolbox;
 
 use super::{CoreDispatchExecutorAdapter, DispatchExecutor, DispatchExecutorAdapter, Dispatcher, StdScheduleAdapter};
 

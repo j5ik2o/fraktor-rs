@@ -5,7 +5,7 @@ use std::{
   time::{Duration, Instant},
 };
 
-use cellactor_actor_core_rs::{
+use fraktor_actor_core_rs::{
   NoStdToolbox,
   actor_prim::{Actor, ActorContextGeneric, ChildRef, Pid},
   error::ActorError,
@@ -13,7 +13,7 @@ use cellactor_actor_core_rs::{
   props::Props,
   system::ActorSystem,
 };
-use cellactor_utils_core_rs::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::sync::{ArcShared, NoStdMutex};
 
 struct SpawnChild;
 struct StopChild;

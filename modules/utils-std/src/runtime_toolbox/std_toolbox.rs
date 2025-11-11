@@ -1,4 +1,4 @@
-use cellactor_utils_core_rs::sync::RuntimeToolbox;
+use fraktor_utils_core_rs::sync::RuntimeToolbox;
 
 use crate::runtime_toolbox::StdMutexFamily;
 

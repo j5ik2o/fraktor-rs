@@ -3,7 +3,7 @@ mod tests;
 
 use core::{pin::Pin, task::Context};
 
-use cellactor_utils_core_rs::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
+use fraktor_utils_core_rs::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
 
 use super::base::DispatcherGeneric;
 use crate::{

@@ -1,6 +1,6 @@
 use alloc::{borrow::ToOwned, string::String};
 
-use cellactor_utils_core_rs::{runtime_toolbox::SyncMutexFamily, sync::sync_mutex_like::SyncMutexLike};
+use fraktor_utils_core_rs::{runtime_toolbox::SyncMutexFamily, sync::sync_mutex_like::SyncMutexLike};
 use hashbrown::HashMap;
 
 use crate::{NoStdToolbox, RuntimeToolbox, ToolboxMutex, config::ConfigError, props::DispatcherConfigGeneric};

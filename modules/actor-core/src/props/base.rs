@@ -1,6 +1,6 @@
 use alloc::{string::String, vec::Vec};
 
-use cellactor_utils_core_rs::{collections::queue::capabilities::QueueCapabilityRegistry, sync::ArcShared};
+use fraktor_utils_core_rs::{collections::queue::capabilities::QueueCapabilityRegistry, sync::ArcShared};
 
 use super::{
   dispatcher_config::DispatcherConfigGeneric, factory::ActorFactory, mailbox_config::MailboxConfig,

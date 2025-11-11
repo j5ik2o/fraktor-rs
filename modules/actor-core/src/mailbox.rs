@@ -2,7 +2,7 @@
 //!
 //! This module contains message queue implementations and configurations.
 
-use cellactor_utils_core_rs::collections::queue::{QueueError, backend::VecRingBackend};
+use fraktor_utils_core_rs::collections::queue::{QueueError, backend::VecRingBackend};
 
 use crate::{RuntimeToolbox, ToolboxMutex, error::SendError, messaging::AnyMessageGeneric};
 

@@ -53,7 +53,7 @@ pub enum RegisterExtraTopLevelError {
 - `DuplicateName`: 既存の extra top-level と衝突した場合に返す。
 
 ## rootGuardian の親管理
-- Pekko では `theOneWhoWalksTheBubblesOfSpaceTime` が rootGuardian の親として存在するが、cellactor-rs では循環参照を避けるため rootGuardian の親は `None` とする。
+- Pekko では `theOneWhoWalksTheBubblesOfSpaceTime` が rootGuardian の親として存在するが、fraktor-rs では循環参照を避けるため rootGuardian の親は `None` とする。
 - `root_guardian` の `get_parent()` は常に `None` を返し、障害時は rootGuardian 自身の監督戦略内で `ActorSystem::terminate` を呼び出すことでシステム終了をトリガする。
 - これにより Rust の所有権モデルに適した単純なガーディアン階層を保ちながら、Pekko と同じフェイルファスト挙動を実現する。
 

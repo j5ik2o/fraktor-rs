@@ -1,7 +1,7 @@
 #![deny(missing_docs)]
 #![deny(unreachable_pub)]
 
-//! Standard library extensions for Cellactor utilities.
+//! Standard library extensions for fraktor utilities.
 
 /// Runtime toolbox and aliases for std environments.
 pub mod runtime_toolbox;

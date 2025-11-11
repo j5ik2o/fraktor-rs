@@ -8,7 +8,7 @@ use alloc::{
   vec::Vec,
 };
 
-use cellactor_utils_core_rs::{collections::queue::capabilities::QueueCapability, sync::ArcShared};
+use fraktor_utils_core_rs::{collections::queue::capabilities::QueueCapability, sync::ArcShared};
 
 use super::{RootGuardianActor, SystemGuardianActor, SystemGuardianProtocol};
 use crate::{

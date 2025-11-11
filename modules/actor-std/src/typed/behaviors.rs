@@ -1,10 +1,10 @@
 //! Std-specific typed behavior helpers that wrap the core DSL.
 
-use cellactor_actor_core_rs::{
+use fraktor_actor_core_rs::{
   error::ActorError,
   typed::{BehaviorSignal, Behaviors as CoreBehaviors, actor_prim::TypedActorContextGeneric as CoreTypedActorContext},
 };
-use cellactor_utils_std_rs::runtime_toolbox::StdToolbox;
+use fraktor_utils_std_rs::runtime_toolbox::StdToolbox;
 
 use crate::typed::{Behavior, Supervise, actor_prim::TypedActorContext};
 

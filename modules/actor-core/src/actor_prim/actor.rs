@@ -90,7 +90,7 @@ pub trait Actor<TB: RuntimeToolbox = NoStdToolbox>: Send {
   /// ```
   /// use core::time::Duration;
   ///
-  /// use cellactor_actor_core_rs::{
+  /// use fraktor_actor_core_rs::{
   ///   actor_prim::{Actor, ActorContext},
   ///   error::ActorError,
   ///   messaging::AnyMessageView,

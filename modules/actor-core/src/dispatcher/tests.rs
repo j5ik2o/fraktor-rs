@@ -8,7 +8,7 @@ use core::{
 };
 use std::thread;
 
-use cellactor_utils_core_rs::{
+use fraktor_utils_core_rs::{
   runtime_toolbox::NoStdToolbox,
   sync::{ArcShared, NoStdMutex, sync_mutex_like::SpinSyncMutex},
 };

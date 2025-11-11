@@ -5,7 +5,7 @@ extern crate alloc;
 use alloc::vec::Vec;
 use std::{thread, time::Duration};
 
-use cellactor_actor_core_rs::{
+use fraktor_actor_core_rs::{
   NoStdToolbox,
   actor_prim::{Actor, ActorContextGeneric},
   error::ActorError,
@@ -13,7 +13,7 @@ use cellactor_actor_core_rs::{
   props::Props,
   system::ActorSystem,
 };
-use cellactor_utils_core_rs::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::sync::{ArcShared, NoStdMutex};
 
 struct Start;
 

@@ -6,7 +6,7 @@ mod tests;
 use alloc::{boxed::Box, string::String};
 use core::any::TypeId;
 
-use cellactor_utils_core_rs::Shared;
+use fraktor_utils_core_rs::Shared;
 
 use crate::{
   RuntimeToolbox,

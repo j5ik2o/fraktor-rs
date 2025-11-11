@@ -1,7 +1,7 @@
-use cellactor_actor_core_rs::{
+use fraktor_actor_core_rs::{
   actor_prim::Pid, error::ActorError, supervision::SupervisorStrategy, typed::actor_prim::TypedActorContextGeneric,
 };
-use cellactor_utils_std_rs::runtime_toolbox::StdToolbox;
+use fraktor_utils_std_rs::runtime_toolbox::StdToolbox;
 
 use crate::typed::actor_prim::{TypedActor, TypedActorContext};
 
@@ -18,7 +18,7 @@ impl<M, T> TypedActorAdapter<M, T> {
   }
 }
 
-impl<M, T> cellactor_actor_core_rs::typed::actor_prim::TypedActor<M, StdToolbox> for TypedActorAdapter<M, T>
+impl<M, T> fraktor_actor_core_rs::typed::actor_prim::TypedActor<M, StdToolbox> for TypedActorAdapter<M, T>
 where
   M: Send + Sync + 'static,
   T: TypedActor<M>,

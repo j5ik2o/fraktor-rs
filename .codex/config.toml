@@ -6,7 +6,7 @@ network_access = true
 [features]
 web_search_request = true
 
-[projects."/Users/j5ik2o/Sources/cellactor-rs"]
+[projects."/Users/j5ik2o/Sources/fraktor-rs"]
 trust_level = "trusted"
 
 [mcp_servers.serena]

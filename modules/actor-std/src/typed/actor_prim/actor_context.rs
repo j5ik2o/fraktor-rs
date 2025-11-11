@@ -1,10 +1,10 @@
 use std::ops::{Deref, DerefMut};
 
-use cellactor_actor_core_rs::{
+use fraktor_actor_core_rs::{
   actor_prim::Pid, error::SendError, spawn::SpawnError, system::ActorSystemGeneric,
   typed::actor_prim::TypedActorContextGeneric as CoreTypedActorContextGeneric,
 };
-use cellactor_utils_std_rs::runtime_toolbox::StdToolbox;
+use fraktor_utils_std_rs::runtime_toolbox::StdToolbox;
 
 use crate::typed::{
   TypedProps,

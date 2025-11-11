@@ -15,7 +15,7 @@ Follow-up TODOs:
 - なし
 -->
 
-# cellactor-rs Constitution
+# fraktor-rs Constitution
 
 ## Core Principles
 
@@ -93,7 +93,7 @@ Follow-up TODOs:
 
 ## Governance
 
-- この憲章は cellactor-rs の開発規範の唯一の出典であり、他ドキュメントより優先される。
+- この憲章は fraktor-rs の開発規範の唯一の出典であり、他ドキュメントより優先される。
 - 改定は OpenSpec プロポーザルの承認を前提とし、変更理由・影響分析・テンプレート更新計画を含めなければならない。
 - バージョニングは SemVer に従う: 原則の差し替えや削除は MAJOR、原則追加や大幅な運用指針拡張は MINOR、表現調整や軽微な補足は PATCH を増分する。
 - すべての PR は憲章遵守チェックリストをレビューコメントに添付し、CI 結果とテスト稼働ログを含める。

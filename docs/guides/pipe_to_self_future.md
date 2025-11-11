@@ -94,12 +94,12 @@ impl<'a, M, TB> TypedActorContextGeneric<'a, M, TB> {
 
 ```rust
 use alloc::{boxed::Box, sync::Arc};
-use cellactor_actor_core_rs::{
+use fraktor_actor_core_rs::{
   actor_prim::{Actor, ActorContext, ActorContextGeneric, actor_ref::ActorRef},
   error::ActorError,
   messaging::AnyMessage,
 };
-use cellactor_utils_core_rs::sync::NoStdToolbox;
+use fraktor_utils_core_rs::sync::NoStdToolbox;
 
 struct FetcherActor;
 
@@ -137,7 +137,7 @@ async fn fake_http(_path: &str) -> String {
 ### Typed Behavior での利用例
 
 ```rust
-use cellactor_actor_core_rs::{
+use fraktor_actor_core_rs::{
   typed::{
     Behaviors,
     actor_prim::{TypedActorContext, TypedActorRef},
