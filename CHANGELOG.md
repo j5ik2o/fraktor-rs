@@ -1,3 +1,10 @@
+## [0.2.5](https://github.com/j5ik2o/fraktor-rs/compare/v0.2.4...v0.2.5) (2025-11-12)
+
+
+### Bug Fixes
+
+* clarify documentation regarding struct, trait, and enum definitions in AGENTS.md, CLAUDE.md, and GEMINI.md ([f2126f7](https://github.com/j5ik2o/fraktor-rs/commit/f2126f7b6f8f6be88fdb32ca60746f3848b9e576))
+
 ## [0.2.4](https://github.com/j5ik2o/fraktor-rs/compare/v0.2.3...v0.2.4) (2025-11-12)
 
 
