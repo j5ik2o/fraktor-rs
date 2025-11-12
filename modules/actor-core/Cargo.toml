@@ -1,6 +1,6 @@
 [package]
 name = "fraktor-actor-core-rs"
-version = "0.1.1"
+version = "0.2.9"
 edition = "2024"
 description = "fraktor no_std actor runtime core"
 license = "MIT OR Apache-2.0"
@@ -31,7 +31,7 @@ erased-serde = { workspace = true }
 bincode = { workspace = true }
 
 [dev-dependencies]
-fraktor-actor-std-rs = { path = "../actor-std", version = "0.1.0" }
+fraktor-actor-std-rs = { workspace = true }
 criterion = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
 

@@ -1,6 +1,6 @@
 [package]
 name = "fraktor-utils-std-rs"
-version = "0.1.1"
+version = "0.2.9"
 edition = "2024"
 description = "Standard-library helpers complementing fraktor-utils-core"
 license = "MIT OR Apache-2.0"
@@ -12,4 +12,4 @@ keywords = ["actors", "runtime", "std"]
 categories = ["concurrency"]
 
 [dependencies]
-fraktor-utils-core-rs = { path = "../utils-core", version = "0.1.0" }
+fraktor-utils-core-rs = { workspace = true }

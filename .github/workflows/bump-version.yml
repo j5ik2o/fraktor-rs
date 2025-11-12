@@ -54,6 +54,17 @@ jobs:
           skip-git-pull: 'true'
           skip-ci: 'false'
           git-push: 'false'
+      - name: Sync workspace dependency versions
+        if: ${{ steps.changelog.outputs.skipped == 'false' && inputs.dry_run == false }}
+        run: ./scripts/sync-workspace-dependency-versions.sh ${{ steps.changelog.outputs.version }}
+      - name: Amend release commit with dependency updates
+        if: ${{ steps.changelog.outputs.skipped == 'false' && inputs.dry_run == false }}
+        env:
+          TAG_NAME: ${{ steps.changelog.outputs.tag }}
+        run: |
+          git add Cargo.toml
+          git commit --amend --no-edit
+          git tag -f "${TAG_NAME}"
       - name: Push Changes
         if: ${{ steps.changelog.outputs.skipped == 'false' && inputs.dry_run == false }}
         env:

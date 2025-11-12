@@ -44,12 +44,12 @@ libraries = [
 ]
 
 [workspace.dependencies]
-fraktor-actor-core-rs = { path = "modules/actor-core", version = "0.1.0" }
-fraktor-actor-std-rs = { path = "modules/actor-std", version = "0.1.0" }
-fraktor-utils-std-rs = { path = "modules/utils-std", version = "0.1.0" }
+fraktor-actor-core-rs = { path = "modules/actor-core", version = "0.2.9" }
+fraktor-actor-std-rs = { path = "modules/actor-std", version = "0.2.9" }
+fraktor-utils-std-rs = { path = "modules/utils-std", version = "0.2.9" }
 alloc-cortex-m = "0.4"
 async-trait = { version = "0.1.89", default-features = false }
-fraktor-utils-core-rs = { path = "modules/utils-core", version = "0.1.0", default-features = false }
+fraktor-utils-core-rs = { path = "modules/utils-core", version = "0.2.9", default-features = false }
 cortex-m = "0.7"
 cortex-m-rt = "0.7"
 criterion = "0.7"
