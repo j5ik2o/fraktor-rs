@@ -52,6 +52,7 @@ jobs:
           skip-commit: ${{ inputs.dry_run }}
           skip-tag: ${{ inputs.dry_run }}
           skip-git-pull: 'true'
+          git-push: 'false'
       - name: Push Changes
         if: ${{ steps.changelog.outputs.skipped == 'false' && inputs.dry_run == false }}
         env:
