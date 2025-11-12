@@ -119,8 +119,7 @@ impl UriParser {
         return Err(UriError::InvalidAuthority);
       }
       // Allow IPv6 format: hex digits, colons, and optional %zone
-      let valid_ipv6 =
-        ipv6.chars().all(|c| c.is_ascii_hexdigit() || c == ':' || c == '%' || (c.is_ascii_alphanumeric() && c != ':'));
+      let valid_ipv6 = ipv6.chars().all(|c| c.is_ascii_hexdigit() || c == ':' || c == '%' || c.is_ascii_alphanumeric());
       if !valid_ipv6 {
         return Err(UriError::InvalidAuthority);
       }
@@ -195,10 +194,9 @@ impl UriParser {
     };
 
     // Parse authority and path
-    let (authority, path_start) = if after_scheme.starts_with("//") {
-      let after_slashes = &after_scheme[2..];
+    let (authority, path_start) = if let Some(after_slashes) = after_scheme.strip_prefix("//") {
       // Find the end of authority (either /, ?, #, or end of string)
-      let authority_end = after_slashes.find(|c: char| matches!(c, '/' | '?' | '#')).unwrap_or(after_slashes.len());
+      let authority_end = after_slashes.find(['/', '?', '#']).unwrap_or(after_slashes.len());
       let authority_str = if authority_end > 0 { Some(&after_slashes[..authority_end]) } else { None };
       remaining = &after_slashes[authority_end..];
       (authority_str, remaining)
@@ -207,7 +205,7 @@ impl UriParser {
     };
 
     // Parse path (up to ? or #)
-    let path_end = path_start.find(|c: char| matches!(c, '?' | '#')).unwrap_or(path_start.len());
+    let path_end = path_start.find(['?', '#']).unwrap_or(path_start.len());
     let path = if path_end > 0 { &path_start[..path_end] } else { "" };
     remaining = &path_start[path_end..];
 
@@ -222,12 +220,7 @@ impl UriParser {
     };
 
     // Parse fragment (after #)
-    let fragment = if remaining.starts_with('#') {
-      let fragment_str = &remaining[1..];
-      if fragment_str.is_empty() { None } else { Some(fragment_str) }
-    } else {
-      None
-    };
+    let fragment = remaining.strip_prefix('#').filter(|&fragment_str| !fragment_str.is_empty());
 
     Ok(UriParts { scheme, authority, path, query, fragment })
   }

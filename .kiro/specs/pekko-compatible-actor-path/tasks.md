@@ -92,7 +92,7 @@
   - レジストリが複数スレッドから安全に利用できるかを stress テストで確認する。
   - _Requirements: R3.1, R3.3, R3.6_
 
-- [ ] 5. Remote authority 状態管理と quarantining を実装する
+- [x] 5. Remote authority 状態管理と quarantining を実装する
   - Authority 未解決／接続／隔離の状態機械を整備し、Deferred キューと EventStream 通知を一体化する。
   - InvalidAssociation の発火条件と再解決サイクルを Remoting 設定と同期させる。
   - _Requirements: R2.4, R3.5, R4.1, R4.2, R4.3, R4.4_

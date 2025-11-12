@@ -14,7 +14,7 @@ use crate::{
   logging::{LogEvent, LogLevel},
   mailbox::MailboxMetricsEvent,
   messaging::AnyMessage,
-  serialization::{error_event::SerializationErrorEvent, serializer_id::SerializerId},
+  serialization::{SerializationErrorEvent, SerializerId},
 };
 
 #[cfg(feature = "alloc")]

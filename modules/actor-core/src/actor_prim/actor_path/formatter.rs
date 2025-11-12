@@ -16,14 +16,14 @@ impl ActorPathFormatter {
     canonical.push_str(parts.scheme().as_str());
     canonical.push_str("://");
     canonical.push_str(parts.system());
-    if let Some(authority) = parts.authority() {
-      if !authority.host().is_empty() {
-        canonical.push('@');
-        canonical.push_str(authority.host());
-        if let Some(port) = authority.port() {
-          canonical.push(':');
-          canonical.push_str(&port.to_string());
-        }
+    if let Some(authority) = parts.authority()
+      && !authority.host().is_empty()
+    {
+      canonical.push('@');
+      canonical.push_str(authority.host());
+      if let Some(port) = authority.port() {
+        canonical.push(':');
+        canonical.push_str(&port.to_string());
       }
     }
     let relative = path.to_relative_string();

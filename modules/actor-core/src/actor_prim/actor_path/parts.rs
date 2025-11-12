@@ -14,7 +14,7 @@ pub enum ActorPathScheme {
 impl ActorPathScheme {
   #[must_use]
   /// Returns the canonical scheme string.
-  pub fn as_str(&self) -> &'static str {
+  pub const fn as_str(&self) -> &'static str {
     match self {
       | ActorPathScheme::Pekko => "pekko",
       | ActorPathScheme::PekkoTcp => "pekko.tcp",
@@ -34,7 +34,7 @@ pub enum GuardianKind {
 impl GuardianKind {
   #[must_use]
   /// Returns the textual guardian segment.
-  pub fn segment(&self) -> &'static str {
+  pub const fn segment(&self) -> &'static str {
     match self {
       | GuardianKind::System => "system",
       | GuardianKind::User => "user",
@@ -58,7 +58,7 @@ impl PathAuthority {
 
   #[must_use]
   /// Returns the authority port.
-  pub(crate) fn port(&self) -> Option<u16> {
+  pub(crate) const fn port(&self) -> Option<u16> {
     self.port
   }
 }
@@ -81,14 +81,14 @@ impl ActorPathParts {
 
   #[must_use]
   /// Overrides the URI scheme.
-  pub fn with_scheme(mut self, scheme: ActorPathScheme) -> Self {
+  pub const fn with_scheme(mut self, scheme: ActorPathScheme) -> Self {
     self.scheme = scheme;
     self
   }
 
   #[must_use]
   /// Overrides the guardian segment inserted at the beginning of the path.
-  pub fn with_guardian(mut self, guardian: GuardianKind) -> Self {
+  pub const fn with_guardian(mut self, guardian: GuardianKind) -> Self {
     self.guardian = guardian;
     self
   }
@@ -125,7 +125,7 @@ impl ActorPathParts {
 
   #[must_use]
   /// Returns the configured scheme.
-  pub fn scheme(&self) -> ActorPathScheme {
+  pub const fn scheme(&self) -> ActorPathScheme {
     self.scheme
   }
 
@@ -137,18 +137,18 @@ impl ActorPathParts {
 
   #[must_use]
   /// Returns the guardian kind anchoring the path.
-  pub fn guardian(&self) -> GuardianKind {
+  pub const fn guardian(&self) -> GuardianKind {
     self.guardian
   }
 
   #[must_use]
   /// Returns the guardian segment string.
-  pub fn guardian_segment(&self) -> &'static str {
+  pub const fn guardian_segment(&self) -> &'static str {
     self.guardian.segment()
   }
 
   #[must_use]
-  pub(crate) fn authority(&self) -> Option<&PathAuthority> {
+  pub(crate) const fn authority(&self) -> Option<&PathAuthority> {
     self.authority.as_ref()
   }
 }

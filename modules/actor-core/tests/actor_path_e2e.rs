@@ -68,7 +68,7 @@ fn test_e2e_authority_quarantine_invalid_association() {
   manager.set_connected(authority);
 
   // InvalidAssociation をトリガー
-  manager.handle_invalid_association(authority, Some(Duration::from_secs(300)));
+  manager.handle_invalid_association(authority, 0, Some(Duration::from_secs(300)));
   assert!(matches!(manager.state(authority), AuthorityState::Quarantine { .. }));
 
   // Quarantine 中は新規メッセージが拒否される

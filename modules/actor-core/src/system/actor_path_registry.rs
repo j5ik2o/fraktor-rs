@@ -24,7 +24,7 @@ pub struct ActorPathHandle {
 impl ActorPathHandle {
   /// Returns the PID associated with this handle.
   #[must_use]
-  pub fn pid(&self) -> Pid {
+  pub const fn pid(&self) -> Pid {
     self.pid
   }
 
@@ -36,7 +36,7 @@ impl ActorPathHandle {
 
   /// Returns the UID if present.
   #[must_use]
-  pub fn uid(&self) -> Option<ActorUid> {
+  pub const fn uid(&self) -> Option<ActorUid> {
     self.uid
   }
 }
@@ -58,13 +58,13 @@ pub struct ReservationPolicy {
 impl ReservationPolicy {
   /// Creates a policy with custom quarantine duration.
   #[must_use]
-  pub fn with_quarantine_duration(duration: Duration) -> Self {
+  pub const fn with_quarantine_duration(duration: Duration) -> Self {
     Self { quarantine_duration: duration }
   }
 
   /// Returns the configured quarantine duration.
   #[must_use]
-  pub fn quarantine_duration(&self) -> Duration {
+  pub const fn quarantine_duration(&self) -> Duration {
     self.quarantine_duration
   }
 }
@@ -119,6 +119,10 @@ impl ActorPathRegistry {
   }
 
   /// Reserves a UID for a given path, preventing reuse until expiration.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`PathResolutionError::UidReserved`] if the UID is already reserved.
   pub fn reserve_uid(
     &mut self,
     path: &ActorPath,

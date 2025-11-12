@@ -14,6 +14,10 @@ pub struct PathSegment {
 
 impl PathSegment {
   /// Creates a new validated path segment.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`ActorPathError`] if the segment is invalid.
   pub fn new(value: impl Into<String>) -> Result<Self, ActorPathError> {
     let owned = value.into();
     validate_segment(&owned)?;

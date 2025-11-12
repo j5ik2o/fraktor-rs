@@ -16,7 +16,7 @@ use fraktor_utils_core_rs::{
 use hashbrown::HashMap;
 use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
-use super::GuardianKind;
+use super::{ActorPathRegistry, GuardianKind, RemoteAuthorityManagerGeneric};
 use crate::{
   NoStdToolbox, RuntimeToolbox, ToolboxMutex,
   actor_prim::{ActorCellGeneric, ActorPath, Pid, actor_ref::ActorRefGeneric},
@@ -68,6 +68,8 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   extensions:             ToolboxMutex<HashMap<TypeId, ArcShared<dyn Any + Send + Sync + 'static>>, TB>,
   dispatchers:            ArcShared<DispatchersGeneric<TB>>,
   mailboxes:              ArcShared<MailboxesGeneric<TB>>,
+  actor_path_registry:    ToolboxMutex<ActorPathRegistry, TB>,
+  remote_authority_mgr:   ArcShared<RemoteAuthorityManagerGeneric<TB>>,
 }
 
 /// Type alias for [SystemStateGeneric] with the default [NoStdToolbox].
@@ -110,6 +112,8 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       extensions: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::new()),
       dispatchers,
       mailboxes,
+      actor_path_registry: <TB::MutexFamily as SyncMutexFamily>::create(ActorPathRegistry::new()),
+      remote_authority_mgr: ArcShared::new(RemoteAuthorityManagerGeneric::new()),
     }
   }
 
@@ -609,6 +613,18 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
 
   fn parent_of(&self, pid: &Pid) -> Option<Pid> {
     self.cell(pid).and_then(|cell| cell.parent())
+  }
+
+  /// Returns a reference to the ActorPathRegistry.
+  #[must_use]
+  pub const fn actor_path_registry(&self) -> &ToolboxMutex<ActorPathRegistry, TB> {
+    &self.actor_path_registry
+  }
+
+  /// Returns a reference to the RemoteAuthorityManager.
+  #[must_use]
+  pub const fn remote_authority_manager(&self) -> &ArcShared<RemoteAuthorityManagerGeneric<TB>> {
+    &self.remote_authority_mgr
   }
 }
 

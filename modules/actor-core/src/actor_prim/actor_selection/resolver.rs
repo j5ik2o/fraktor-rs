@@ -14,6 +14,10 @@ impl ActorSelectionResolver {
   /// - `.` (current)
   /// - `..` (parent, fails if escaping guardian root)
   /// - child names
+  ///
+  /// # Errors
+  ///
+  /// Returns [`ActorPathError::RelativeEscape`] if `..` attempts to escape the guardian root.
   pub fn resolve_relative(base: &ActorPath, selection: &str) -> Result<ActorPath, ActorPathError> {
     if selection.is_empty() {
       return Ok(base.clone());

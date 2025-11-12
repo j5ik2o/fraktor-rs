@@ -1,5 +1,3 @@
-#![cfg(test)]
-
 use core::time::Duration;
 
 use crate::config::actor_system_config::{ActorSystemConfig, RemotingConfig};

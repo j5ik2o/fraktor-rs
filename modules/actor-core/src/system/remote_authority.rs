@@ -23,8 +23,8 @@ pub enum AuthorityState {
   Connected,
   /// Authority is quarantined; new sends are rejected.
   Quarantine {
-    /// Deadline when quarantine should be lifted.
-    deadline: Option<Duration>,
+    /// Absolute deadline (monotonic time) when quarantine should be lifted.
+    deadline: Option<u64>,
   },
 }
 
@@ -43,7 +43,7 @@ struct AuthorityEntry<TB: RuntimeToolbox + 'static> {
 }
 
 impl<TB: RuntimeToolbox + 'static> AuthorityEntry<TB> {
-  fn new(state: AuthorityState) -> Self {
+  const fn new(state: AuthorityState) -> Self {
     Self { state, deferred: VecDeque::new() }
   }
 }
@@ -78,6 +78,10 @@ impl<TB: RuntimeToolbox + 'static> RemoteAuthorityManagerGeneric<TB> {
   }
 
   /// Tries to defer a message, returning an error if the authority is quarantined.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`RemoteAuthorityError::Quarantined`] if the authority is quarantined.
   pub fn try_defer_send(
     &self,
     authority: impl Into<String>,
@@ -105,8 +109,9 @@ impl<TB: RuntimeToolbox + 'static> RemoteAuthorityManagerGeneric<TB> {
   }
 
   /// Transitions an authority to Quarantine and discards deferred messages.
-  pub fn set_quarantine(&self, authority: impl Into<String>, deadline: Option<Duration>) {
+  pub fn set_quarantine(&self, authority: impl Into<String>, now: u64, duration: Option<Duration>) {
     let authority = authority.into();
+    let deadline = duration.map(|d| now + d.as_secs());
     let mut entries = self.entries.lock();
     let entry = entries.entry(authority).or_insert_with(|| AuthorityEntry::new(AuthorityState::Unresolved));
     entry.state = AuthorityState::Quarantine { deadline };
@@ -114,8 +119,8 @@ impl<TB: RuntimeToolbox + 'static> RemoteAuthorityManagerGeneric<TB> {
   }
 
   /// Handles an InvalidAssociation event by transitioning to quarantine.
-  pub fn handle_invalid_association(&self, authority: impl Into<String>, deadline: Option<Duration>) {
-    self.set_quarantine(authority, deadline);
+  pub fn handle_invalid_association(&self, authority: impl Into<String>, now: u64, duration: Option<Duration>) {
+    self.set_quarantine(authority, now, duration);
   }
 
   /// Manually overrides quarantine and transitions to Connected.
@@ -127,14 +132,18 @@ impl<TB: RuntimeToolbox + 'static> RemoteAuthorityManagerGeneric<TB> {
   }
 
   /// Polls all authorities and lifts expired quarantines.
-  pub fn poll_quarantine_expiration(&self) {
+  ///
+  /// # Arguments
+  ///
+  /// * `now` - Current monotonic time in seconds
+  pub fn poll_quarantine_expiration(&self, now: u64) {
     let mut entries = self.entries.lock();
     for entry in entries.values_mut() {
-      if let AuthorityState::Quarantine { deadline } = &entry.state {
-        // 簡易実装: deadline が Some なら期限切れとみなして解除
-        if deadline.is_some() {
-          entry.state = AuthorityState::Unresolved;
-        }
+      if let AuthorityState::Quarantine { deadline } = &entry.state
+        && let Some(deadline_time) = deadline
+        && now >= *deadline_time
+      {
+        entry.state = AuthorityState::Unresolved;
       }
     }
   }
@@ -142,10 +151,10 @@ impl<TB: RuntimeToolbox + 'static> RemoteAuthorityManagerGeneric<TB> {
   /// Transitions quarantine back to unresolved if quarantine period elapsed.
   pub fn lift_quarantine(&self, authority: &str) {
     let mut entries = self.entries.lock();
-    if let Some(entry) = entries.get_mut(authority) {
-      if matches!(entry.state, AuthorityState::Quarantine { .. }) {
-        entry.state = AuthorityState::Unresolved;
-      }
+    if let Some(entry) = entries.get_mut(authority)
+      && matches!(entry.state, AuthorityState::Quarantine { .. })
+    {
+      entry.state = AuthorityState::Unresolved;
     }
   }
 

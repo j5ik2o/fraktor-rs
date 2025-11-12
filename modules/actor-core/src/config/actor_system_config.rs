@@ -24,14 +24,14 @@ impl RemotingConfig {
 
   /// Sets the canonical port for this actor system.
   #[must_use]
-  pub fn with_canonical_port(mut self, port: u16) -> Self {
+  pub const fn with_canonical_port(mut self, port: u16) -> Self {
     self.canonical_port = Some(port);
     self
   }
 
   /// Sets the quarantine duration for remote authorities.
   #[must_use]
-  pub fn with_quarantine_duration(mut self, duration: Duration) -> Self {
+  pub const fn with_quarantine_duration(mut self, duration: Duration) -> Self {
     self.quarantine_duration = duration;
     self
   }
@@ -44,13 +44,13 @@ impl RemotingConfig {
 
   /// Returns the canonical port.
   #[must_use]
-  pub fn canonical_port(&self) -> Option<u16> {
+  pub const fn canonical_port(&self) -> Option<u16> {
     self.canonical_port
   }
 
   /// Returns the quarantine duration.
   #[must_use]
-  pub fn quarantine_duration(&self) -> Duration {
+  pub const fn quarantine_duration(&self) -> Duration {
     self.quarantine_duration
   }
 }
@@ -95,7 +95,7 @@ impl ActorSystemConfig {
 
   /// Returns the remoting configuration if enabled.
   #[must_use]
-  pub fn remoting(&self) -> Option<&RemotingConfig> {
+  pub const fn remoting(&self) -> Option<&RemotingConfig> {
     self.remoting.as_ref()
   }
 }

@@ -1,5 +1,3 @@
-#![cfg(test)]
-
 use core::time::Duration;
 
 use crate::{
@@ -59,16 +57,16 @@ fn test_transition_to_quarantine_clears_deferred() {
 
   assert_eq!(manager.deferred_count("remote1"), 2);
 
-  manager.set_quarantine("remote1", Some(Duration::from_secs(300)));
+  manager.set_quarantine("remote1", 0, Some(Duration::from_secs(300)));
 
-  assert_eq!(manager.state("remote1"), AuthorityState::Quarantine { deadline: Some(Duration::from_secs(300)) });
+  assert_eq!(manager.state("remote1"), AuthorityState::Quarantine { deadline: Some(300) });
   assert_eq!(manager.deferred_count("remote1"), 0);
 }
 
 #[test]
 fn test_lift_quarantine_returns_to_unresolved() {
   let manager = RemoteAuthorityManager::new();
-  manager.set_quarantine("remote1", Some(Duration::from_secs(300)));
+  manager.set_quarantine("remote1", 0, Some(Duration::from_secs(300)));
 
   assert!(matches!(manager.state("remote1"), AuthorityState::Quarantine { .. }));
 
@@ -79,7 +77,7 @@ fn test_lift_quarantine_returns_to_unresolved() {
 #[test]
 fn test_defer_after_quarantine_is_rejected() {
   let manager = RemoteAuthorityManager::new();
-  manager.set_quarantine("remote1", Some(Duration::from_secs(300)));
+  manager.set_quarantine("remote1", 0, Some(Duration::from_secs(300)));
 
   // quarantine 状態でも defer_send は呼べるが、状態がQuarantineのままであることを確認
   manager.defer_send("remote1", AnyMessage::new(99i32));
@@ -108,7 +106,7 @@ fn test_connected_to_unresolved_transition() {
 fn test_quarantine_rejects_new_sends() {
   // 隔離中の authority への新規送信が拒否されることを確認
   let manager = RemoteAuthorityManager::new();
-  manager.set_quarantine("remote1", Some(Duration::from_secs(300)));
+  manager.set_quarantine("remote1", 0, Some(Duration::from_secs(300)));
 
   // 隔離中は新規メッセージを受け付けない（defer_sendは呼べるが実装で拒否される想定）
   let result = manager.try_defer_send("remote1", AnyMessage::new(1i32));
@@ -121,12 +119,12 @@ fn test_quarantine_duration_calculation() {
   // 隔離期間が正しく計算されることを確認
   let manager = RemoteAuthorityManager::new();
   let quarantine_duration = Duration::from_secs(600);
-  manager.set_quarantine("remote1", Some(quarantine_duration));
+  manager.set_quarantine("remote1", 0, Some(quarantine_duration));
 
   // 状態確認
   match manager.state("remote1") {
     | AuthorityState::Quarantine { deadline } => {
-      assert_eq!(deadline, Some(quarantine_duration));
+      assert_eq!(deadline, Some(600));
     },
     | _ => panic!("expected quarantine state"),
   }
@@ -137,10 +135,10 @@ fn test_quarantine_period_expiration() {
   // 隔離期間経過後、自動的に Unresolved へ戻ることを確認
   let manager = RemoteAuthorityManager::new();
   let short_duration = Duration::from_millis(1);
-  manager.set_quarantine("remote1", Some(short_duration));
+  manager.set_quarantine("remote1", 0, Some(short_duration));
 
   // 期限チェックして解除（簡易実装では即座に解除）
-  manager.poll_quarantine_expiration();
+  manager.poll_quarantine_expiration(1000);
 
   assert_eq!(manager.state("remote1"), AuthorityState::Unresolved);
 }
@@ -153,7 +151,7 @@ fn test_invalid_association_on_quarantine() {
   manager.set_connected("remote1");
 
   // InvalidAssociation イベントをトリガー
-  manager.handle_invalid_association("remote1", Some(Duration::from_secs(300)));
+  manager.handle_invalid_association("remote1", 0, Some(Duration::from_secs(300)));
 
   assert!(matches!(manager.state("remote1"), AuthorityState::Quarantine { .. }));
   // deferred キューはクリアされる
@@ -164,7 +162,7 @@ fn test_invalid_association_on_quarantine() {
 fn test_manual_quarantine_override() {
   // 手動解除により即座に Connected へ遷移できることを確認
   let manager = RemoteAuthorityManager::new();
-  manager.set_quarantine("remote1", Some(Duration::from_secs(3600)));
+  manager.set_quarantine("remote1", 0, Some(Duration::from_secs(3600)));
 
   // 手動で解除して接続状態へ
   manager.manual_override_to_connected("remote1");
@@ -186,7 +184,7 @@ fn test_state_transitions_observable() {
   assert_eq!(manager.state("observable-host"), AuthorityState::Connected);
 
   // Connected -> Quarantine
-  manager.set_quarantine("observable-host", Some(Duration::from_secs(300)));
+  manager.set_quarantine("observable-host", 0, Some(Duration::from_secs(300)));
   assert!(matches!(manager.state("observable-host"), AuthorityState::Quarantine { .. }));
 
   // Quarantine -> Unresolved (期限経過)
@@ -194,7 +192,7 @@ fn test_state_transitions_observable() {
   assert_eq!(manager.state("observable-host"), AuthorityState::Unresolved);
 
   // Quarantine -> Connected (手動解除)
-  manager.set_quarantine("observable-host", Some(Duration::from_secs(600)));
+  manager.set_quarantine("observable-host", 0, Some(Duration::from_secs(600)));
   manager.manual_override_to_connected("observable-host");
   assert_eq!(manager.state("observable-host"), AuthorityState::Connected);
 }
@@ -205,11 +203,11 @@ fn test_remoting_config_override_applied() {
   let manager = RemoteAuthorityManager::new();
   let custom_duration = Duration::from_secs(1800); // カスタム 30 分
 
-  manager.set_quarantine("config-host", Some(custom_duration));
+  manager.set_quarantine("config-host", 0, Some(custom_duration));
 
   match manager.state("config-host") {
     | AuthorityState::Quarantine { deadline } => {
-      assert_eq!(deadline, Some(custom_duration));
+      assert_eq!(deadline, Some(1800));
     },
     | _ => panic!("expected quarantine state with custom duration"),
   }
@@ -230,7 +228,7 @@ fn test_multiple_authorities_independent_states() {
   assert_eq!(manager.state("host1"), AuthorityState::Connected);
   assert_eq!(manager.state("host2"), AuthorityState::Unresolved);
 
-  manager.set_quarantine("host2", Some(Duration::from_secs(300)));
+  manager.set_quarantine("host2", 0, Some(Duration::from_secs(300)));
   assert_eq!(manager.state("host1"), AuthorityState::Connected);
   assert!(matches!(manager.state("host2"), AuthorityState::Quarantine { .. }));
 }
