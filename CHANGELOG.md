@@ -1,3 +1,10 @@
+## [0.2.7](https://github.com/j5ik2o/fraktor-rs/compare/v0.2.6...v0.2.7) (2025-11-12)
+
+
+### Bug Fixes
+
+* enable skip-ci option in bump-version.yml for better control over CI execution ([29f8314](https://github.com/j5ik2o/fraktor-rs/commit/29f8314850e2aebaff270f1e79202756919f68f4))
+
 ## [0.2.6](https://github.com/j5ik2o/fraktor-rs/compare/v0.2.5...v0.2.6) (2025-11-12)
 
 
