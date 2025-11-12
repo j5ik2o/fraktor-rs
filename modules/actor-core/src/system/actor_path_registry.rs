@@ -5,8 +5,10 @@ use core::time::Duration;
 
 use hashbrown::HashMap;
 
-use crate::actor_prim::actor_path::{ActorPath, ActorUid, PathResolutionError};
-use crate::actor_prim::Pid;
+use crate::actor_prim::{
+  Pid,
+  actor_path::{ActorPath, ActorUid, PathResolutionError},
+};
 
 /// Default UID reservation period (5 days).
 const DEFAULT_QUARANTINE_DURATION: Duration = Duration::from_secs(5 * 24 * 3600);
@@ -57,9 +59,7 @@ impl ReservationPolicy {
   /// Creates a policy with custom quarantine duration.
   #[must_use]
   pub fn with_quarantine_duration(duration: Duration) -> Self {
-    Self {
-      quarantine_duration: duration,
-    }
+    Self { quarantine_duration: duration }
   }
 
   /// Returns the configured quarantine duration.
@@ -71,9 +71,7 @@ impl ReservationPolicy {
 
 impl Default for ReservationPolicy {
   fn default() -> Self {
-    Self {
-      quarantine_duration: DEFAULT_QUARANTINE_DURATION,
-    }
+    Self { quarantine_duration: DEFAULT_QUARANTINE_DURATION }
   }
 }
 
@@ -88,30 +86,18 @@ impl ActorPathRegistry {
   /// Creates a new empty registry.
   #[must_use]
   pub fn new() -> Self {
-    Self {
-      paths:        HashMap::new(),
-      reservations: HashMap::new(),
-      policy:       ReservationPolicy::default(),
-    }
+    Self { paths: HashMap::new(), reservations: HashMap::new(), policy: ReservationPolicy::default() }
   }
 
   /// Creates a registry with a custom reservation policy.
   #[must_use]
   pub fn with_policy(policy: ReservationPolicy) -> Self {
-    Self {
-      paths:        HashMap::new(),
-      reservations: HashMap::new(),
-      policy,
-    }
+    Self { paths: HashMap::new(), reservations: HashMap::new(), policy }
   }
 
   /// Registers a path for a given PID.
   pub fn register(&mut self, pid: Pid, path: &ActorPath) {
-    let handle = ActorPathHandle {
-      pid,
-      canonical_uri: path.to_canonical_uri(),
-      uid: path.uid(),
-    };
+    let handle = ActorPathHandle { pid, canonical_uri: path.to_canonical_uri(), uid: path.uid() };
     self.paths.insert(pid, handle);
   }
 
@@ -143,18 +129,13 @@ impl ActorPathRegistry {
 
     // 既存の予約をチェック
     if let Some(reservation) = self.reservations.get(&path_key) {
-      return Err(PathResolutionError::UidReserved {
-        uid: reservation.uid,
-      });
+      return Err(PathResolutionError::UidReserved { uid: reservation.uid });
     }
 
     // 新規予約を追加
     let duration = custom_duration.unwrap_or(self.policy.quarantine_duration);
     let deadline = duration; // 実際の実装では現在時刻 + duration を計算
-    self.reservations.insert(
-      path_key,
-      UidReservation { uid, deadline },
-    );
+    self.reservations.insert(path_key, UidReservation { uid, deadline });
 
     Ok(())
   }

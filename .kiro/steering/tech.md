@@ -1,8 +1,8 @@
 # 技術スタック
-> 最終更新: 2025-11-08
+> 最終更新: 2025-11-12
 
 ## アーキテクチャ
-`utils-core` → `actor-core` → `actor-std` の三層で構成し、no_std を前提に抽象化した `RuntimeToolbox` を核に、STD 依存の実装は別クレートへ分離します。スーパーバイザ／DeathWatch／EventStream は system mailbox による `SystemMessage` 優先処理で統一し、Akka/Pekko・protoactor-go の語彙を Rust の所有権モデルへマッピングしています。
+`utils-core` → `actor-core` → `actor-std` の三層で構成し、no_std を前提に抽象化した `RuntimeToolbox` を核に、STD 依存の実装は別クレートへ分離します。スーパーバイザ／DeathWatch／EventStream は system mailbox による `SystemMessage` 優先処理で統一し、Akka/Pekko・protoactor-go の語彙を Rust の所有権モデルへマッピングしています。`actor_prim::actor_path` では `ActorPathScheme`（`pekko`, `pekko.tcp`）と `GuardianKind` を分離した `ActorPathParts` を導入し、`ActorPathFormatter` が canonical URI を生成します。
 
 ## コア技術
 - **言語**: Rust 2024 edition（ワークスペース全体で nightly toolchain を既定とし、`#![no_std]` を前提）。
@@ -16,6 +16,11 @@
 - `tokio`, `tokio-util`, `tokio-condvar`: ホスト環境での Dispatcher 駆動・`ask` Future 回収・待機制御を提供。
 - `postcard` / `prost` / `serde`: 低コストなメッセージシリアライズと API 増設時の互換フォーマットを確保。
 - `tracing` + `tracing-subscriber`: EventStream/LoggerSubscriber をホストログや RTT へ橋渡し。
+
+## リモーティング / アドレッシング
+- **ActorPathParts & Formatter**: `modules/actor-core/src/actor_prim/actor_path/{parts,formatter}.rs` が system 名・guardian・authority(host/port) を保持し、`ActorPath::root()` で `cellactor` ガーディアンを自動注入します。`ActorSelectionResolver` は `..` を guardian 境界で遮断し、Pekko の相対選択ルールに追従します。
+- **RemoteAuthorityManager**: `modules/actor-core/src/system/remote_authority.rs` が `HashMap<String, AuthorityEntry>` を `ToolboxMutex` で包み、`Unresolved/Connected/Quarantine` の状態を no_std でも駆動します。`VecDeque<AnyMessageGeneric<TB>>` に deferred を蓄積し、`try_defer_send` で隔離中の新規送信を拒否、`poll_quarantine_expiration` と `manual_override_to_connected` で復旧を制御します。
+- **イベント観測**: Remoting 由来の InvalidAssociation を `handle_invalid_association` へ集約し、EventStream 通知と同期できるようにしています（spec `pekko-compatible-actor-path` に準拠）。
 
 ## 開発標準
 ### 型安全性
@@ -51,6 +56,8 @@ scripts/ci-check.sh all                  # CI と同等フルスイート
 ## 重要な技術判断
 - **no_std ファースト**: ランタイム本体で `#[cfg(feature = "std")]` を禁止し、標準依存コードは `actor-std`/`utils-std` に隔離。
 - **SystemMessage 先行処理**: `Create/Recreate/Failure/Terminated` をユーザメッセージより先に処理することで、Supervisor 戦略と DeathWatch を deterministic に制御。
+- **Pekko 互換 actor path**: `ActorPathScheme` + `ActorPathFormatter` によって `pekko://` URI を canonical に生成し、guardian（`cellactor/system|user`）を暗黙付与します。権限情報は `PathAuthority` で host/port を保持し、Typed/Untyped いずれの API でも同じ表現を使用します。
+- **Authority 隔離**: `RemoteAuthorityManagerGeneric` が remoting の隔離判定を centralize し、`VecDeque` キューを掃き出してから `Connected` 化します。deadline が過ぎた quarantined authority は `poll_quarantine_expiration` で自動復旧させ、明示解除 API との二段構えで安全側に倒します。
 - **FQCN import 原則**: ランタイム内部は `crate::...` で明示的に参照し、prelude はユーザ公開面のみに限定。
 - **参照実装からの逆輸入**: protoactor-go / Apache Pekko を参照しつつ、Rust の所有権と `no_std` 制約に合わせた最小 API を優先する。
 

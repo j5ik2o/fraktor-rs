@@ -15,7 +15,9 @@ pub use actor_path_registry::{ActorPathHandle, ActorPathRegistry, ReservationPol
 pub use base::{ActorSystem, ActorSystemGeneric};
 pub use guardian_kind::GuardianKind;
 pub use register_extra_top_level_error::RegisterExtraTopLevelError;
-pub use remote_authority::{AuthorityState, RemoteAuthorityError, RemoteAuthorityManager, RemoteAuthorityManagerGeneric};
+pub use remote_authority::{
+  AuthorityState, RemoteAuthorityError, RemoteAuthorityManager, RemoteAuthorityManagerGeneric,
+};
 pub(crate) use root_guardian_actor::RootGuardianActor;
 pub(crate) use system_guardian_actor::SystemGuardianActor;
 pub use system_guardian_protocol::SystemGuardianProtocol;

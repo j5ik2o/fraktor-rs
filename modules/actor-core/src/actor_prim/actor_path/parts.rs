@@ -94,6 +94,14 @@ impl ActorPathParts {
   }
 
   #[must_use]
+  /// Builds parts with a remote authority (host, port).
+  pub fn with_authority(system: impl Into<String>, authority: Option<(impl Into<String>, u16)>) -> Self {
+    let system = system.into();
+    let authority = authority.map(|(host, port)| PathAuthority { host: host.into(), port: Some(port) });
+    Self { scheme: ActorPathScheme::PekkoTcp, system, authority, guardian: GuardianKind::User }
+  }
+
+  #[must_use]
   /// Sets the authority host portion.
   pub fn with_authority_host(mut self, host: String) -> Self {
     match &mut self.authority {

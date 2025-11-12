@@ -6,7 +6,10 @@ mod tests {
   use core::time::Duration;
 
   use crate::{
-    actor_prim::{actor_path::{ActorPath, ActorUid}, Pid},
+    actor_prim::{
+      Pid,
+      actor_path::{ActorPath, ActorUid},
+    },
     system::actor_path_registry::{ActorPathRegistry, PathResolutionError, ReservationPolicy},
   };
 
@@ -104,16 +107,11 @@ mod tests {
     let uid = ActorUid::new(300);
     let custom_duration = Duration::from_secs(1); // 1秒
 
-    registry
-      .reserve_uid(&path, uid, Some(custom_duration))
-      .expect("should reserve with custom duration");
+    registry.reserve_uid(&path, uid, Some(custom_duration)).expect("should reserve with custom duration");
 
     // 予約中は再利用不可
     let uid2 = ActorUid::new(400);
-    assert!(matches!(
-      registry.reserve_uid(&path, uid2, None),
-      Err(PathResolutionError::UidReserved { .. })
-    ));
+    assert!(matches!(registry.reserve_uid(&path, uid2, None), Err(PathResolutionError::UidReserved { .. })));
   }
 
   #[test]
@@ -141,9 +139,7 @@ mod tests {
     let uid = ActorUid::new(700);
     let short_duration = Duration::from_millis(1);
 
-    registry
-      .reserve_uid(&path, uid, Some(short_duration))
-      .expect("should reserve");
+    registry.reserve_uid(&path, uid, Some(short_duration)).expect("should reserve");
 
     // 期限切れエントリを削除（簡易実装ではすべて削除）
     registry.poll_expired();
@@ -183,10 +179,7 @@ mod tests {
     // PID復元時に正しい canonical URI が返されることを確認
     let mut registry = ActorPathRegistry::new();
     let pid = Pid::new(123, 456);
-    let path = ActorPath::root()
-      .child("user")
-      .child("service")
-      .with_uid(ActorUid::new(789));
+    let path = ActorPath::root().child("user").child("service").with_uid(ActorUid::new(789));
 
     registry.register(pid, &path);
 
@@ -247,9 +240,6 @@ mod tests {
 
     // 予約確認
     let uid2 = ActorUid::new(2002);
-    assert!(matches!(
-      registry.reserve_uid(&path, uid2, None),
-      Err(PathResolutionError::UidReserved { .. })
-    ));
+    assert!(matches!(registry.reserve_uid(&path, uid2, None), Err(PathResolutionError::UidReserved { .. })));
   }
 }

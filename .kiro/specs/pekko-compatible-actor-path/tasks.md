@@ -57,13 +57,13 @@
   - Selection 失敗時のエラーを DeadLetter と EventStream へルーティングする。
   - _Requirements: R2.2, R3.4_
 
-- [ ] 3.2 Authority 未解決時の遅延配送を組み込む
+- [x] 3.2 Authority 未解決時の遅延配送を組み込む
   - Resolver が authority 解決結果を照会し、存在しない場合は deferred キューへメッセージを積む。
   - 未解決 authority を Remote 管理層へ通知し、後続の状態遷移が起きた際に再配送できるフックを用意する。
   - Deferred 状態での監視／ログ出力を整え、利用者が遅延理由を追跡できるようにする。
   - _Requirements: R2.4, R4.1_
 
-- [ ] 3.3 Resolver のシナリオテストを追加する
+- [x] 3.3 Resolver のシナリオテストを追加する
   - 正常／異常系の相対パス解決シナリオを追加し、`..` 超過や guardian 越えの失敗を検証する。
   - Authority 未解決と接続済みの両シナリオで deferred→配送完了の流れを確認する。
   - Selection 結果が Remoting/DeathWatch で共有されることを integration テストで保証する。
@@ -109,30 +109,30 @@
   - Remoting 設定の隔離期間をもとに解除時刻を計算し、期限まで状態を維持する。
   - _Requirements: R3.5, R4.3, R4.4_
 
-- [ ] 5.3 EventStream 連携と手動解除パスを検証する
+- [x] 5.3 EventStream 連携と手動解除パスを検証する
   - 状態遷移イベントを EventStream へ発行し、監視者が Unresolved/Connected/Quarantine を観測できるようにする。
   - 手動解除 API を通じて隔離から接続へ即時遷移させるパスをテストする。
   - Remoting 設定上の override 値が正しく適用されるか統合テストで確認する。
   - _Requirements: R4.2, R4.3, R4.4_
 
-- [ ] 6. システム統合とリグレッション検証を行う
+- [x] 6. システム統合とリグレッション検証を行う
   - ActorSystemConfig／RemotingConfig から新機能を構築物へ供給し、ユーザ API の破壊的変更を整理する。
   - end-to-end テストと CI スクリプト実行で R1〜R4 を横断的に保証する。
   - _Requirements: R1.1, R1.3, R2.4, R3.3, R3.7, R4.1, R4.2, R4.3, R4.4_
 
-- [ ] 6.1 Config ビルダーと API 表面を更新する
+- [x] 6.1 Config ビルダーと API 表面を更新する
   - ActorSystemConfig に system 名・guardian 種別・デフォルト authority を設定するフローを追加する。
   - RemotingConfig から quarantine duration や canonical host 情報を注入するパスを整備する。
   - 新しい設定値を利用者が確認できるよう初期化ログやデバッグ情報を整える。
   - _Requirements: R1.3, R3.7_
 
-- [ ] 6.2 End-to-end テストで ActorPath の互換性を確認する
+- [x] 6.2 End-to-end テストで ActorPath の互換性を確認する
   - 複数のローカル・リモート ActorPath に対し format→parse 往復で Pekko 互換 URI が得られることを検証する。
   - Authority 未解決／接続／隔離シナリオを再現し、Deferred キューや InvalidAssociation の挙動を確認する。
   - DeathWatch／ログ／ActorSelection から取得した URI が一致することを統合テストで証明する。
   - _Requirements: R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R2.1, R2.2, R2.3, R2.4, R2.5, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R4.1, R4.2, R4.3, R4.4_
 
-- [ ] 6.3 CI スクリプトとクロスターゲット検証を更新する
+- [x] 6.3 CI スクリプトとクロスターゲット検証を更新する
   - `scripts/ci-check.sh` の関連ジョブを更新し、新規テストスイートを no_std/std/embedded 両方で走らせる。
   - 追加した feature flag や config を cargo features／環境変数と整合させる。
   - リグレッションを防ぐための最小限の fuzz シードやベンチマークを登録する。

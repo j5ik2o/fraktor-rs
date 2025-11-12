@@ -40,11 +40,6 @@ impl ActorSelectionResolver {
       }
     }
 
-    Ok(ActorPath::from_parts_and_segments(
-      base.parts().clone(),
-      segments,
-      None,
-    ))
+    Ok(ActorPath::from_parts_and_segments(base.parts().clone(), segments, None))
   }
-
 }

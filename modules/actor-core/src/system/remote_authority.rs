@@ -1,6 +1,9 @@
 //! Remote authority state management and quarantining.
 
-use alloc::{collections::VecDeque, string::String};
+use alloc::{
+  collections::VecDeque,
+  string::{String, ToString},
+};
 use core::time::Duration;
 
 use fraktor_utils_core_rs::{runtime_toolbox::SyncMutexFamily, sync::sync_mutex_like::SyncMutexLike};
@@ -41,10 +44,7 @@ struct AuthorityEntry<TB: RuntimeToolbox + 'static> {
 
 impl<TB: RuntimeToolbox + 'static> AuthorityEntry<TB> {
   fn new(state: AuthorityState) -> Self {
-    Self {
-      state,
-      deferred: VecDeque::new(),
-    }
+    Self { state, deferred: VecDeque::new() }
   }
 }
 
@@ -60,20 +60,13 @@ impl<TB: RuntimeToolbox + 'static> RemoteAuthorityManagerGeneric<TB> {
   /// Creates a new manager with no authorities.
   #[must_use]
   pub fn new() -> Self {
-    Self {
-      entries: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::new()),
-    }
+    Self { entries: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::new()) }
   }
 
   /// Returns the current state of an authority.
   #[must_use]
   pub fn state(&self, authority: &str) -> AuthorityState {
-    self
-      .entries
-      .lock()
-      .get(authority)
-      .map(|e| e.state.clone())
-      .unwrap_or(AuthorityState::Unresolved)
+    self.entries.lock().get(authority).map(|e| e.state.clone()).unwrap_or(AuthorityState::Unresolved)
   }
 
   /// Marks an authority as unresolved and defers a message.
@@ -106,10 +99,9 @@ impl<TB: RuntimeToolbox + 'static> RemoteAuthorityManagerGeneric<TB> {
   /// Transitions an authority to Connected and returns deferred messages.
   pub fn set_connected(&self, authority: &str) -> Option<VecDeque<AnyMessageGeneric<TB>>> {
     let mut entries = self.entries.lock();
-    entries.get_mut(authority).map(|entry| {
-      entry.state = AuthorityState::Connected;
-      core::mem::take(&mut entry.deferred)
-    })
+    let entry = entries.entry(authority.to_string()).or_insert_with(|| AuthorityEntry::new(AuthorityState::Unresolved));
+    entry.state = AuthorityState::Connected;
+    Some(core::mem::take(&mut entry.deferred))
   }
 
   /// Transitions an authority to Quarantine and discards deferred messages.
@@ -160,12 +152,7 @@ impl<TB: RuntimeToolbox + 'static> RemoteAuthorityManagerGeneric<TB> {
   /// Returns count of deferred messages for an authority.
   #[must_use]
   pub fn deferred_count(&self, authority: &str) -> usize {
-    self
-      .entries
-      .lock()
-      .get(authority)
-      .map(|e| e.deferred.len())
-      .unwrap_or(0)
+    self.entries.lock().get(authority).map(|e| e.deferred.len()).unwrap_or(0)
   }
 }
 

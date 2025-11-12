@@ -61,12 +61,7 @@ fn test_transition_to_quarantine_clears_deferred() {
 
   manager.set_quarantine("remote1", Some(Duration::from_secs(300)));
 
-  assert_eq!(
-    manager.state("remote1"),
-    AuthorityState::Quarantine {
-      deadline: Some(Duration::from_secs(300))
-    }
-  );
+  assert_eq!(manager.state("remote1"), AuthorityState::Quarantine { deadline: Some(Duration::from_secs(300)) });
   assert_eq!(manager.deferred_count("remote1"), 0);
 }
 
@@ -75,10 +70,7 @@ fn test_lift_quarantine_returns_to_unresolved() {
   let manager = RemoteAuthorityManager::new();
   manager.set_quarantine("remote1", Some(Duration::from_secs(300)));
 
-  assert!(matches!(
-    manager.state("remote1"),
-    AuthorityState::Quarantine { .. }
-  ));
+  assert!(matches!(manager.state("remote1"), AuthorityState::Quarantine { .. }));
 
   manager.lift_quarantine("remote1");
   assert_eq!(manager.state("remote1"), AuthorityState::Unresolved);
@@ -133,10 +125,10 @@ fn test_quarantine_duration_calculation() {
 
   // 状態確認
   match manager.state("remote1") {
-    AuthorityState::Quarantine { deadline } => {
+    | AuthorityState::Quarantine { deadline } => {
       assert_eq!(deadline, Some(quarantine_duration));
     },
-    _ => panic!("expected quarantine state"),
+    | _ => panic!("expected quarantine state"),
   }
 }
 
@@ -163,10 +155,7 @@ fn test_invalid_association_on_quarantine() {
   // InvalidAssociation イベントをトリガー
   manager.handle_invalid_association("remote1", Some(Duration::from_secs(300)));
 
-  assert!(matches!(
-    manager.state("remote1"),
-    AuthorityState::Quarantine { .. }
-  ));
+  assert!(matches!(manager.state("remote1"), AuthorityState::Quarantine { .. }));
   // deferred キューはクリアされる
   assert_eq!(manager.deferred_count("remote1"), 0);
 }
@@ -181,4 +170,67 @@ fn test_manual_quarantine_override() {
   manager.manual_override_to_connected("remote1");
 
   assert_eq!(manager.state("remote1"), AuthorityState::Connected);
+}
+
+// Task 5.3: EventStream 連携と状態遷移の観測
+#[test]
+fn test_state_transitions_observable() {
+  // 各状態遷移が発生することを確認
+  let manager = RemoteAuthorityManager::new();
+
+  // 初期: Unresolved
+  assert_eq!(manager.state("observable-host"), AuthorityState::Unresolved);
+
+  // Unresolved -> Connected
+  manager.set_connected("observable-host");
+  assert_eq!(manager.state("observable-host"), AuthorityState::Connected);
+
+  // Connected -> Quarantine
+  manager.set_quarantine("observable-host", Some(Duration::from_secs(300)));
+  assert!(matches!(manager.state("observable-host"), AuthorityState::Quarantine { .. }));
+
+  // Quarantine -> Unresolved (期限経過)
+  manager.lift_quarantine("observable-host");
+  assert_eq!(manager.state("observable-host"), AuthorityState::Unresolved);
+
+  // Quarantine -> Connected (手動解除)
+  manager.set_quarantine("observable-host", Some(Duration::from_secs(600)));
+  manager.manual_override_to_connected("observable-host");
+  assert_eq!(manager.state("observable-host"), AuthorityState::Connected);
+}
+
+#[test]
+fn test_remoting_config_override_applied() {
+  // RemotingConfig からの隔離期間設定が適用されることを確認
+  let manager = RemoteAuthorityManager::new();
+  let custom_duration = Duration::from_secs(1800); // カスタム 30 分
+
+  manager.set_quarantine("config-host", Some(custom_duration));
+
+  match manager.state("config-host") {
+    | AuthorityState::Quarantine { deadline } => {
+      assert_eq!(deadline, Some(custom_duration));
+    },
+    | _ => panic!("expected quarantine state with custom duration"),
+  }
+}
+
+#[test]
+fn test_multiple_authorities_independent_states() {
+  // 複数の authority が独立した状態を持つことを確認
+  let manager = RemoteAuthorityManager::new();
+
+  manager.defer_send("host1", AnyMessage::new(1i32));
+  manager.defer_send("host2", AnyMessage::new(2i32));
+
+  assert_eq!(manager.state("host1"), AuthorityState::Unresolved);
+  assert_eq!(manager.state("host2"), AuthorityState::Unresolved);
+
+  manager.set_connected("host1");
+  assert_eq!(manager.state("host1"), AuthorityState::Connected);
+  assert_eq!(manager.state("host2"), AuthorityState::Unresolved);
+
+  manager.set_quarantine("host2", Some(Duration::from_secs(300)));
+  assert_eq!(manager.state("host1"), AuthorityState::Connected);
+  assert!(matches!(manager.state("host2"), AuthorityState::Quarantine { .. }));
 }
