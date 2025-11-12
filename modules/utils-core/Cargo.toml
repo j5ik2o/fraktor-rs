@@ -2,6 +2,14 @@
 name = "fraktor-utils-core-rs"
 version = "0.1.0"
 edition = "2024"
+description = "Portable no_std toolbox primitives for the fraktor actor runtime"
+license = "MIT OR Apache-2.0"
+homepage = "https://github.com/j5ik2o/fraktor-rs"
+repository = "https://github.com/j5ik2o/fraktor-rs"
+documentation = "https://docs.rs/fraktor-utils-core-rs"
+readme = "../../README.md"
+keywords = ["actors", "runtime", "no-std", "embedded"]
+categories = ["concurrency", "embedded", "no-std"]
 
 [features]
 default = ["alloc", "unsize"]

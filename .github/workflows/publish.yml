@@ -34,7 +34,42 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: publish
-      - name: Publish to crates.io
+      - name: Verify Tag Matches Version
+        run: |
+          set -euo pipefail
+          CRATE_VERSION=$(cargo +nightly metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name=="fraktor-rs") | .version')
+          TAG_NAME="${GITHUB_REF_NAME}"
+          if [[ "${TAG_NAME}" != "v${CRATE_VERSION}" ]]; then
+            echo "Tag ${TAG_NAME} does not match Cargo.toml version ${CRATE_VERSION}." >&2
+            exit 1
+          fi
+      - name: Pre-release Health Check
+        run: ./scripts/ci-check.sh all
+      - name: Publish fraktor-utils-core-rs
         env:
           CARGO_TOKEN: ${{ secrets.CARGO_TOKEN }}
-        run: cargo +nightly publish --token "${CARGO_TOKEN}"
+        run: cargo +nightly publish -p fraktor-utils-core-rs --token "${CARGO_TOKEN}"
+      - name: Wait for crates.io index (utils-core)
+        run: sleep 30
+      - name: Publish fraktor-utils-std-rs
+        env:
+          CARGO_TOKEN: ${{ secrets.CARGO_TOKEN }}
+        run: cargo +nightly publish -p fraktor-utils-std-rs --token "${CARGO_TOKEN}"
+      - name: Wait for crates.io index (utils-std)
+        run: sleep 30
+      - name: Publish fraktor-actor-core-rs
+        env:
+          CARGO_TOKEN: ${{ secrets.CARGO_TOKEN }}
+        run: cargo +nightly publish -p fraktor-actor-core-rs --token "${CARGO_TOKEN}"
+      - name: Wait for crates.io index (actor-core)
+        run: sleep 30
+      - name: Publish fraktor-actor-std-rs
+        env:
+          CARGO_TOKEN: ${{ secrets.CARGO_TOKEN }}
+        run: cargo +nightly publish -p fraktor-actor-std-rs --token "${CARGO_TOKEN}"
+      - name: Wait for crates.io index (actor-std)
+        run: sleep 30
+      - name: Publish fraktor-rs
+        env:
+          CARGO_TOKEN: ${{ secrets.CARGO_TOKEN }}
+        run: cargo +nightly publish -p fraktor-rs --token "${CARGO_TOKEN}"

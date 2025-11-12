@@ -7,7 +7,9 @@ license = "MIT OR Apache-2.0"
 keywords = ["fraktor", "actor", "runtime", "no_std"]
 categories = ["concurrency", "embedded", "no-std"]
 repository = "https://github.com/j5ik2o/fraktor-rs"
-publish = false
+homepage = "https://github.com/j5ik2o/fraktor-rs"
+documentation = "https://docs.rs/fraktor-actor-core-rs"
+readme = "../../README.md"
 
 [features]
 default = []
@@ -29,7 +31,7 @@ erased-serde = { workspace = true }
 bincode = { workspace = true }
 
 [dev-dependencies]
-fraktor-actor-std-rs = { path = "../actor-std" }
+fraktor-actor-std-rs = { path = "../actor-std", version = "0.1.0" }
 criterion = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
 

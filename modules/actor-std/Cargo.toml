@@ -4,16 +4,21 @@ version = "0.1.0"
 edition = "2024"
 description = "fraktor std helpers for host runtimes"
 license = "MIT OR Apache-2.0"
-publish = false
+homepage = "https://github.com/j5ik2o/fraktor-rs"
+repository = "https://github.com/j5ik2o/fraktor-rs"
+documentation = "https://docs.rs/fraktor-actor-std-rs"
+readme = "../../README.md"
+keywords = ["fraktor", "actor", "runtime", "std"]
+categories = ["concurrency"]
 
 [features]
 default = []
 tokio-executor = ["dep:tokio"]
 
 [dependencies]
-fraktor-actor-core-rs = { path = "../actor-core" }
-fraktor-utils-core-rs = { path = "../utils-core", default-features = false }
-fraktor-utils-std-rs = { path = "../utils-std" }
+fraktor-actor-core-rs = { path = "../actor-core", version = "0.1.0" }
+fraktor-utils-core-rs = { path = "../utils-core", version = "0.1.0", default-features = false }
+fraktor-utils-std-rs = { path = "../utils-std", version = "0.1.0" }
 tokio = { workspace = true, optional = true, features = ["rt", "rt-multi-thread", "macros", "time"] }
 
 [[example]]
