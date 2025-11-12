@@ -31,7 +31,6 @@ erased-serde = { workspace = true }
 bincode = { workspace = true }
 
 [dev-dependencies]
-fraktor-actor-std-rs = { workspace = true }
 criterion = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
 
