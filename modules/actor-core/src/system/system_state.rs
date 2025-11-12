@@ -19,7 +19,7 @@ use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 use super::{ActorPathRegistry, GuardianKind, RemoteAuthorityManagerGeneric};
 use crate::{
   NoStdToolbox, RuntimeToolbox, ToolboxMutex,
-  actor_prim::{ActorCellGeneric, ActorPath, Pid, actor_ref::ActorRefGeneric},
+  actor_prim::{ActorCellGeneric, Pid, actor_path::ActorPath, actor_ref::ActorRefGeneric},
   config::{DispatchersGeneric, MailboxesGeneric},
   dead_letter::{DeadLetterEntryGeneric, DeadLetterGeneric, DeadLetterReason},
   error::{ActorError, SendError},

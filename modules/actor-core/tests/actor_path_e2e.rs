@@ -9,7 +9,7 @@ use fraktor_actor_core_rs::{
   },
   config::{ActorSystemConfig, RemotingConfig},
   messaging::AnyMessage,
-  system::remote_authority::{AuthorityState, RemoteAuthorityManager},
+  system::{AuthorityState, RemoteAuthorityManager},
 };
 
 #[test]

@@ -1,45 +1,18 @@
 //! Registry for mapping PIDs to canonical actor paths.
 
+#[cfg(test)]
+mod tests;
+
 use alloc::string::String;
 use core::time::Duration;
 
 use hashbrown::HashMap;
 
+use super::{ActorPathHandle, ReservationPolicy};
 use crate::actor_prim::{
   Pid,
   actor_path::{ActorPath, ActorUid, PathResolutionError},
 };
-
-/// Default UID reservation period (5 days).
-const DEFAULT_QUARANTINE_DURATION: Duration = Duration::from_secs(5 * 24 * 3600);
-
-/// Handle for cached actor path with UID-independent hash.
-#[derive(Clone, Debug)]
-pub struct ActorPathHandle {
-  pid:           Pid,
-  canonical_uri: alloc::string::String,
-  uid:           Option<ActorUid>,
-}
-
-impl ActorPathHandle {
-  /// Returns the PID associated with this handle.
-  #[must_use]
-  pub const fn pid(&self) -> Pid {
-    self.pid
-  }
-
-  /// Returns the canonical URI.
-  #[must_use]
-  pub fn canonical_uri(&self) -> &str {
-    &self.canonical_uri
-  }
-
-  /// Returns the UID if present.
-  #[must_use]
-  pub const fn uid(&self) -> Option<ActorUid> {
-    self.uid
-  }
-}
 
 /// UID reservation entry with expiration deadline.
 #[derive(Clone, Debug)]
@@ -47,32 +20,6 @@ struct UidReservation {
   uid:      ActorUid,
   #[allow(dead_code)] // 将来の実装で使用予定
   deadline: Duration,
-}
-
-/// Policy for UID reservations and quarantine duration.
-#[derive(Clone, Debug)]
-pub struct ReservationPolicy {
-  quarantine_duration: Duration,
-}
-
-impl ReservationPolicy {
-  /// Creates a policy with custom quarantine duration.
-  #[must_use]
-  pub const fn with_quarantine_duration(duration: Duration) -> Self {
-    Self { quarantine_duration: duration }
-  }
-
-  /// Returns the configured quarantine duration.
-  #[must_use]
-  pub const fn quarantine_duration(&self) -> Duration {
-    self.quarantine_duration
-  }
-}
-
-impl Default for ReservationPolicy {
-  fn default() -> Self {
-    Self { quarantine_duration: DEFAULT_QUARANTINE_DURATION }
-  }
 }
 
 /// Registry for PID-to-path mappings and UID reservations.
@@ -97,7 +44,7 @@ impl ActorPathRegistry {
 
   /// Registers a path for a given PID.
   pub fn register(&mut self, pid: Pid, path: &ActorPath) {
-    let handle = ActorPathHandle { pid, canonical_uri: path.to_canonical_uri(), uid: path.uid() };
+    let handle = ActorPathHandle::new(pid, path.to_canonical_uri(), path.uid());
     self.paths.insert(pid, handle);
   }
 
@@ -137,7 +84,7 @@ impl ActorPathRegistry {
     }
 
     // 新規予約を追加
-    let duration = custom_duration.unwrap_or(self.policy.quarantine_duration);
+    let duration = custom_duration.unwrap_or(self.policy.quarantine_duration());
     let deadline = duration; // 実際の実装では現在時刻 + duration を計算
     self.reservations.insert(path_key, UidReservation { uid, deadline });
 
@@ -163,6 +110,3 @@ impl Default for ActorPathRegistry {
     Self::new()
   }
 }
-
-#[cfg(test)]
-mod tests;

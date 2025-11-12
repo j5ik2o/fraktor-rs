@@ -1,58 +1,11 @@
 //! RFC2396-compliant URI parser.
 
-use alloc::vec::Vec;
-use core::fmt;
-
-/// Parsed URI components according to RFC2396.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UriParts<'a> {
-  /// URI scheme (e.g., "pekko", "pekko.tcp").
-  pub scheme:    Option<&'a str>,
-  /// Authority component (host:port).
-  pub authority: Option<&'a str>,
-  /// Path component.
-  pub path:      &'a str,
-  /// Query component.
-  pub query:     Option<&'a str>,
-  /// Fragment component.
-  pub fragment:  Option<&'a str>,
-}
-
-/// Errors that may occur during URI parsing.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum UriError {
-  /// Invalid scheme format.
-  InvalidScheme,
-  /// Invalid authority format.
-  InvalidAuthority,
-  /// Invalid path format.
-  InvalidPath,
-  /// Invalid query format.
-  InvalidQuery,
-  /// Invalid fragment format.
-  InvalidFragment,
-  /// Invalid percent encoding.
-  InvalidPercentEncoding,
-  /// Unexpected end of input.
-  UnexpectedEof,
-}
-
-impl fmt::Display for UriError {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    match self {
-      | UriError::InvalidScheme => write!(f, "invalid scheme format"),
-      | UriError::InvalidAuthority => write!(f, "invalid authority format"),
-      | UriError::InvalidPath => write!(f, "invalid path format"),
-      | UriError::InvalidQuery => write!(f, "invalid query format"),
-      | UriError::InvalidFragment => write!(f, "invalid fragment format"),
-      | UriError::InvalidPercentEncoding => write!(f, "invalid percent encoding"),
-      | UriError::UnexpectedEof => write!(f, "unexpected end of input"),
-    }
-  }
-}
-
 #[cfg(test)]
-impl std::error::Error for UriError {}
+mod tests;
+
+use alloc::vec::Vec;
+
+use super::{UriError, UriParts};
 
 /// RFC2396-compliant URI parser.
 pub struct UriParser;
@@ -225,6 +178,3 @@ impl UriParser {
     Ok(UriParts { scheme, authority, path, query, fragment })
   }
 }
-
-#[cfg(test)]
-mod tests;

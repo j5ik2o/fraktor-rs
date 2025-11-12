@@ -1,11 +1,6 @@
 use alloc::{vec, vec::Vec};
 
-use super::{
-  ActorPath,
-  formatter::ActorPathFormatter,
-  parts::{ActorPathParts, GuardianKind},
-  segment::PathSegment,
-};
+use super::{ActorPath, ActorPathFormatter, ActorPathParts, GuardianKind, PathSegment};
 
 #[test]
 fn guardian_segment_is_injected_into_root() {

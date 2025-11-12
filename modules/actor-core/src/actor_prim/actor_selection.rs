@@ -1,8 +1,8 @@
 //! Actor selection expression and relative path resolution.
 
-pub mod resolver;
+mod resolver;
 
 #[cfg(test)]
 mod tests;
 
-pub use self::resolver::ActorSelectionResolver;
+pub use resolver::ActorSelectionResolver;

@@ -1,5 +1,8 @@
 //! Remote authority state management and quarantining.
 
+#[cfg(test)]
+mod tests;
+
 use alloc::{
   collections::VecDeque,
   string::{String, ToString},
@@ -9,31 +12,11 @@ use core::time::Duration;
 use fraktor_utils_core_rs::{runtime_toolbox::SyncMutexFamily, sync::sync_mutex_like::SyncMutexLike};
 use hashbrown::HashMap;
 
-use crate::{NoStdToolbox, RuntimeToolbox, ToolboxMutex, messaging::AnyMessageGeneric};
-
-#[cfg(test)]
-mod tests;
-
-/// State of a remote authority.
-#[derive(Clone, Debug, PartialEq)]
-pub enum AuthorityState {
-  /// Authority has not been resolved yet; messages are deferred.
-  Unresolved,
-  /// Authority is connected and ready to accept messages.
-  Connected,
-  /// Authority is quarantined; new sends are rejected.
-  Quarantine {
-    /// Absolute deadline (monotonic time) when quarantine should be lifted.
-    deadline: Option<u64>,
-  },
-}
-
-/// Error type for remote authority operations.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RemoteAuthorityError {
-  /// Authority is quarantined and cannot accept messages.
-  Quarantined,
-}
+use crate::{
+  NoStdToolbox, RuntimeToolbox, ToolboxMutex,
+  messaging::AnyMessageGeneric,
+  system::{AuthorityState, RemoteAuthorityError},
+};
 
 /// Entry tracking authority state and deferred messages.
 #[derive(Debug)]

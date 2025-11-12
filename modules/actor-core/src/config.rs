@@ -8,8 +8,11 @@ mod config_error;
 mod dispatchers;
 /// Mailbox registry and associated utilities.
 mod mailboxes;
+/// Remoting configuration.
+mod remoting_config;
 
-pub use actor_system_config::{ActorSystemConfig, RemotingConfig};
+pub use actor_system_config::ActorSystemConfig;
 pub use config_error::ConfigError;
 pub use dispatchers::{Dispatchers, DispatchersGeneric};
 pub use mailboxes::{Mailboxes, MailboxesGeneric};
+pub use remoting_config::RemotingConfig;

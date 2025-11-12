@@ -6,9 +6,7 @@ use alloc::{
 };
 use core::fmt;
 
-use super::{
-  ActorPathError, formatter::ActorPathFormatter, parts::ActorPathParts, segment::PathSegment, uid::ActorUid,
-};
+use super::{ActorPathError, ActorPathParts, ActorUid, PathSegment, formatter::ActorPathFormatter};
 
 /// Canonical actor path with scheme/system/authority metadata.
 #[derive(Clone, PartialEq, Eq, Hash)]

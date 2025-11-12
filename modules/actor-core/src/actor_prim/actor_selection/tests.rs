@@ -86,9 +86,7 @@ fn test_empty_selection_returns_base() {
 // Task 3.2: Authority 未解決時の遅延配送テスト
 #[test]
 fn test_defer_send_when_authority_unresolved() {
-  use crate::{
-    actor_prim::actor_path::ActorPathParts, messaging::AnyMessage, system::remote_authority::RemoteAuthorityManager,
-  };
+  use crate::{actor_prim::actor_path::ActorPathParts, messaging::AnyMessage, system::RemoteAuthorityManager};
 
   // リモート authority を持つパスを作成
   let parts = ActorPathParts::with_authority("test-system", Some(("remote-host", 2552)));
@@ -106,7 +104,7 @@ fn test_defer_send_when_authority_unresolved() {
 
 #[test]
 fn test_flush_deferred_when_connected() {
-  use crate::{messaging::AnyMessage, system::remote_authority::RemoteAuthorityManager};
+  use crate::{messaging::AnyMessage, system::RemoteAuthorityManager};
 
   let manager = RemoteAuthorityManager::new();
   let authority = "remote-host:2552";
@@ -131,7 +129,7 @@ fn test_reject_send_when_quarantined() {
 
   use crate::{
     messaging::AnyMessage,
-    system::remote_authority::{RemoteAuthorityError, RemoteAuthorityManager},
+    system::{RemoteAuthorityError, RemoteAuthorityManager},
   };
 
   let manager = RemoteAuthorityManager::new();
@@ -148,7 +146,7 @@ fn test_reject_send_when_quarantined() {
 // Task 3.3: 統合シナリオテスト
 #[test]
 fn test_scenario_unresolved_to_connected_delivery() {
-  use crate::{messaging::AnyMessage, system::remote_authority::RemoteAuthorityManager};
+  use crate::{messaging::AnyMessage, system::RemoteAuthorityManager};
 
   let manager = RemoteAuthorityManager::new();
   let authority = "integration-host:2552";

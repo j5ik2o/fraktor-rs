@@ -1,67 +1,8 @@
-//! Metadata components that describe canonical actor paths.
+//! Immutable actor path metadata components.
 
 use alloc::string::String;
 
-/// Canonical scheme supported by the runtime.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum ActorPathScheme {
-  /// Local Pekko transport.
-  Pekko,
-  /// TCP transport compatible with Pekko remoting.
-  PekkoTcp,
-}
-
-impl ActorPathScheme {
-  #[must_use]
-  /// Returns the canonical scheme string.
-  pub const fn as_str(&self) -> &'static str {
-    match self {
-      | ActorPathScheme::Pekko => "pekko",
-      | ActorPathScheme::PekkoTcp => "pekko.tcp",
-    }
-  }
-}
-
-/// Guardian hierarchy that anchors the path.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum GuardianKind {
-  /// `/system` guardian target.
-  System,
-  /// `/user` guardian target.
-  User,
-}
-
-impl GuardianKind {
-  #[must_use]
-  /// Returns the textual guardian segment.
-  pub const fn segment(&self) -> &'static str {
-    match self {
-      | GuardianKind::System => "system",
-      | GuardianKind::User => "user",
-    }
-  }
-}
-
-/// Authority settings (host/port) for canonical URIs.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub(crate) struct PathAuthority {
-  pub(crate) host: String,
-  pub(crate) port: Option<u16>,
-}
-
-impl PathAuthority {
-  #[must_use]
-  /// Returns the authority host if configured.
-  pub(crate) fn host(&self) -> &str {
-    &self.host
-  }
-
-  #[must_use]
-  /// Returns the authority port.
-  pub(crate) const fn port(&self) -> Option<u16> {
-    self.port
-  }
-}
+use super::{ActorPathScheme, GuardianKind, PathAuthority};
 
 /// Immutable parts shared by ActorPath instances.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
