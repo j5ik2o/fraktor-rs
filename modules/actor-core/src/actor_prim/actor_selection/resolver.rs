@@ -2,7 +2,12 @@
 
 use alloc::{string::ToString, vec::Vec};
 
-use crate::actor_prim::actor_path::{ActorPath, ActorPathError, PathSegment};
+use crate::{
+  RuntimeToolbox,
+  actor_prim::actor_path::{ActorPath, ActorPathError, PathResolutionError, PathSegment},
+  messaging::AnyMessageGeneric,
+  system::{AuthorityState, RemoteAuthorityManagerGeneric},
+};
 
 /// Resolves relative actor selection expressions against a base path.
 pub struct ActorSelectionResolver;
@@ -45,5 +50,34 @@ impl ActorSelectionResolver {
     }
 
     Ok(ActorPath::from_parts_and_segments(base.parts().clone(), segments, None))
+  }
+
+  /// Ensures that the remote authority referenced by `path` is in a sendable state.
+  ///
+  /// If the authority is unresolved, the provided `message` is deferred (when present) and
+  /// [`PathResolutionError::AuthorityUnresolved`] is returned. When the authority is quarantined,
+  /// [`PathResolutionError::AuthorityQuarantined`] is returned immediately.
+  pub fn ensure_authority_state<TB: RuntimeToolbox + 'static>(
+    path: &ActorPath,
+    authority_manager: &RemoteAuthorityManagerGeneric<TB>,
+    message: Option<AnyMessageGeneric<TB>>,
+  ) -> Result<(), PathResolutionError> {
+    let authority = match path.parts().authority() {
+      | Some(authority) => authority,
+      | None => return Ok(()),
+    };
+    let endpoint = authority.endpoint();
+    match authority_manager.state(&endpoint) {
+      | AuthorityState::Connected => Ok(()),
+      | AuthorityState::Unresolved => {
+        if let Some(envelope) = message {
+          authority_manager
+            .defer_send(endpoint.clone(), envelope)
+            .map_err(|_| PathResolutionError::AuthorityQuarantined)?;
+        }
+        Err(PathResolutionError::AuthorityUnresolved)
+      },
+      | AuthorityState::Quarantine { .. } => Err(PathResolutionError::AuthorityQuarantined),
+    }
   }
 }

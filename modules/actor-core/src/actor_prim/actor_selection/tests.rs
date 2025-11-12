@@ -1,8 +1,14 @@
 //! Tests for ActorSelectionResolver
 
-use crate::actor_prim::{
-  actor_path::{ActorPath, ActorPathError},
-  actor_selection::ActorSelectionResolver,
+use core::time::Duration;
+
+use crate::{
+  actor_prim::{
+    actor_path::{ActorPath, ActorPathError, ActorPathParts, PathResolutionError},
+    actor_selection::ActorSelectionResolver,
+  },
+  messaging::AnyMessage,
+  system::{RemoteAuthorityError, RemoteAuthorityManager},
 };
 
 #[test]
@@ -86,8 +92,6 @@ fn test_empty_selection_returns_base() {
 // Task 3.2: Authority 未解決時の遅延配送テスト
 #[test]
 fn test_defer_send_when_authority_unresolved() {
-  use crate::{actor_prim::actor_path::ActorPathParts, messaging::AnyMessage, system::RemoteAuthorityManager};
-
   // リモート authority を持つパスを作成
   let parts = ActorPathParts::with_authority("test-system", Some(("remote-host", 2552)));
   let _remote_path = ActorPath::from_parts(parts);
@@ -103,9 +107,29 @@ fn test_defer_send_when_authority_unresolved() {
 }
 
 #[test]
-fn test_flush_deferred_when_connected() {
-  use crate::{messaging::AnyMessage, system::RemoteAuthorityManager};
+fn test_ensure_authority_state_defers_and_errors_when_unresolved() {
+  let parts = ActorPathParts::with_authority("remote-sys", Some(("host.example.com", 2552)));
+  let path = ActorPath::from_parts(parts).child("worker");
+  let manager = RemoteAuthorityManager::new();
+  let err = ActorSelectionResolver::ensure_authority_state(&path, &manager, Some(AnyMessage::new(1u32))).unwrap_err();
+  assert!(matches!(err, PathResolutionError::AuthorityUnresolved));
+  assert_eq!(manager.deferred_count("host.example.com:2552"), 1);
+}
 
+#[test]
+fn test_ensure_authority_state_rejects_quarantine() {
+  let parts = ActorPathParts::with_authority("remote-sys", Some(("blocked-host", 2553)));
+  let path = ActorPath::from_parts(parts).child("logger");
+  let manager = RemoteAuthorityManager::new();
+  manager.set_quarantine("blocked-host:2553", 0, Some(Duration::from_secs(30)));
+
+  let err = ActorSelectionResolver::ensure_authority_state(&path, &manager, Some(AnyMessage::new("msg"))).unwrap_err();
+  assert!(matches!(err, PathResolutionError::AuthorityQuarantined));
+  assert_eq!(manager.deferred_count("blocked-host:2553"), 0);
+}
+
+#[test]
+fn test_flush_deferred_when_connected() {
   let manager = RemoteAuthorityManager::new();
   let authority = "remote-host:2552";
 
@@ -125,13 +149,6 @@ fn test_flush_deferred_when_connected() {
 
 #[test]
 fn test_reject_send_when_quarantined() {
-  use core::time::Duration;
-
-  use crate::{
-    messaging::AnyMessage,
-    system::{RemoteAuthorityError, RemoteAuthorityManager},
-  };
-
   let manager = RemoteAuthorityManager::new();
   let authority = "quarantined-host:2552";
 
@@ -146,8 +163,6 @@ fn test_reject_send_when_quarantined() {
 // Task 3.3: 統合シナリオテスト
 #[test]
 fn test_scenario_unresolved_to_connected_delivery() {
-  use crate::{messaging::AnyMessage, system::RemoteAuthorityManager};
-
   let manager = RemoteAuthorityManager::new();
   let authority = "integration-host:2552";
 
