@@ -1,3 +1,10 @@
+## [0.2.2](https://github.com/j5ik2o/fraktor-rs/compare/v0.2.1...v0.2.2) (2025-11-12)
+
+
+### Bug Fixes
+
+* enable persist-credentials in bump-version.yml for improved Git operations ([8e983a6](https://github.com/j5ik2o/fraktor-rs/commit/8e983a6bd4d7c623fa17cc72055a7a6a9898ebaf))
+
 ## [0.2.1](https://github.com/j5ik2o/fraktor-rs/compare/v0.2.0...v0.2.1) (2025-11-12)
 
 
