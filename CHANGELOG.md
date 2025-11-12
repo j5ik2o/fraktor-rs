@@ -1,3 +1,10 @@
+## [0.2.6](https://github.com/j5ik2o/fraktor-rs/compare/v0.2.5...v0.2.6) (2025-11-12)
+
+
+### Bug Fixes
+
+* disable git push in bump-version.yml for dry run scenarios ([ebe5bf4](https://github.com/j5ik2o/fraktor-rs/commit/ebe5bf49e24288ff0ebc4d9568c42539010a5866))
+
 ## [0.2.5](https://github.com/j5ik2o/fraktor-rs/compare/v0.2.4...v0.2.5) (2025-11-12)
 
 

@@ -1,6 +1,6 @@
 [package]
 name = "fraktor-rs"
-version = "0.2.5"
+version = "0.2.6"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "Specification-driven actor runtime bridging Akka/Pekko and Proto.Actor semantics across no_std and std targets."
