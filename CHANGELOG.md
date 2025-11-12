@@ -1,3 +1,10 @@
+## [0.2.3](https://github.com/j5ik2o/fraktor-rs/compare/v0.2.2...v0.2.3) (2025-11-12)
+
+
+### Bug Fixes
+
+* correct terminology in README files for clarity ([8fd9ec2](https://github.com/j5ik2o/fraktor-rs/commit/8fd9ec221e7627a16b02ef3f3912704f14e2f703))
+
 ## [0.2.2](https://github.com/j5ik2o/fraktor-rs/compare/v0.2.1...v0.2.2) (2025-11-12)
 
 
