@@ -31,8 +31,12 @@ deps = [
 ]
 
 for dep in deps:
-    pattern = rf'({dep}\s*=\s*\{{[^}}]*?version\s*=\s*")([^\"]+)("[^}}]*\}})'
-    new_text, count = re.subn(pattern, rf'\1{version}\3', text, count=1)
+    pattern = re.compile(rf'({dep}\s*=\s*\{{[^}}]*?version\s*=\s*")([^\"]+)("[^}}]*\}})', re.MULTILINE)
+
+    def repl(match: re.Match) -> str:
+        return f"{match.group(1)}{version}{match.group(3)}"
+
+    new_text, count = pattern.subn(repl, text, count=1)
     if count == 0:
         raise SystemExit(f"Failed to update version for {dep} in Cargo.toml")
     text = new_text
