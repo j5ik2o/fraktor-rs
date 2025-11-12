@@ -19,7 +19,7 @@
 - 単体テストは hoge.rs に対して hoge/tests.rs に記述すること
 - 1ファイルに複数構造体、複数traitを記述しないこと
 - 全タスクを完了した段階で `./scripts/ci-check.sh all` を実行し、エラーがないことを確認すること（途中工程では対象範囲のテストに留めてよい）
-- CHANGELOG.mdは作らない
+- CHANGELOG.mdはgithub actionが自動的に作るのでAIエージェントは編集してはならない
 
 # AI-DLC and Spec-Driven Development
 
