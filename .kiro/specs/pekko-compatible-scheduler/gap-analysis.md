@@ -44,6 +44,8 @@
 - Pros: `RuntimeToolbox` を経由してクロックとタイマーを差し替えられるため、no_std / std で一貫性を保てる。DeadlineTimer 廃止方針とも矛盾しない。
 - Cons: Toolbox 拡張・TimerWheel 実装・ハンドル管理をすべて新規に作る必要があり、設計ボリュームが大きい。
 
+本プロダクトの性質上、Option B を推奨したい。なお、既存 `DelayProvider` / `DelayFuture` は新 Scheduler の単発タイマー API をラップする形で移行できるため、Mailbox や queue でのタイムアウト処理を段階的に新方式へ置き換えることが可能。
+
 ## 4. 複雑度とリスク
 - **Effort**: L (1–2 週間)。理由: RuntimeToolbox 拡張、Scheduler API 設計、Timer 実装、system mailbox 連携、計測/診断まで広範囲。
 - **Risk**: Medium-High。理由: no_std での正確なタイマー実装、Pekko 固有セマンティクス（固定レート補償、TaskRunOnClose など）を再現する必要があり、スケジューラの精度や負荷が不透明。
