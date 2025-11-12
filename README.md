@@ -1,5 +1,8 @@
 # fraktor-rs
 
+[![CI](https://github.com/j5ik2o/fraktor-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/j5ik2o/fraktor-rs/actions/workflows/ci.yml)
+[![License: Apache-2.0 / MIT](https://img.shields.io/badge/license-Apache--2.0%20%2F%20MIT-blue.svg)](LICENSE-MIT)
+
 > See [README.ja.md](README.ja.md) for the Japanese edition.
 
 fraktor-rs is a specification-driven actor runtime that mirrors the lifecycle, supervision, and remoting patterns of Akka/Pekko and protoactor-go while remaining friendly to both `no_std` microcontrollers and host targets such as Tokio. The workspace ships a consistent API surface across `actor-core` (portable runtime), `actor-std` (host adapters), and `utils-*` crates, making it possible to deploy the same behaviors from RP2040 boards to Linux servers.

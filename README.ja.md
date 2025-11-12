@@ -1,5 +1,8 @@
 # fraktor-rs
 
+[![CI 状態](https://github.com/j5ik2o/fraktor-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/j5ik2o/fraktor-rs/actions/workflows/ci.yml)
+[![ライセンス: Apache-2.0 / MIT](https://img.shields.io/badge/license-Apache--2.0%20%2F%20MIT-blue.svg)](LICENSE-MIT)
+
 > 英語版は [README.md](README.md) を参照してください。
 
 fraktor-rs は Akka/Pekko・protoactor-go のライフサイクル／監視／Remoting 流儀を Rust の `no_std`/標準環境へ共通 API で落とし込むアクターランタイムです。`utils-*` と `actor-*` クレートを縦に積み、RP2040 などのマイコンから Tokio を使うホスト OS まで一貫したデプロイを実現します。
