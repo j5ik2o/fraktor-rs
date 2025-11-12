@@ -20,6 +20,14 @@ pub enum ActorPathError {
   InvalidPercentEncoding,
   /// Relative path escaped beyond guardian root.
   RelativeEscape,
+  /// URI 全体の解析に失敗した。
+  InvalidUri,
+  /// サポートされていないスキームが指定された。
+  UnsupportedScheme,
+  /// システム名が欠落している。
+  MissingSystemName,
+  /// Authority の形式が不正。
+  InvalidAuthority,
 }
 
 impl fmt::Display for ActorPathError {
@@ -32,6 +40,10 @@ impl fmt::Display for ActorPathError {
       },
       | ActorPathError::InvalidPercentEncoding => write!(f, "invalid percent encoding sequence"),
       | ActorPathError::RelativeEscape => write!(f, "relative path escapes beyond guardian root"),
+      | ActorPathError::InvalidUri => write!(f, "invalid actor path uri"),
+      | ActorPathError::UnsupportedScheme => write!(f, "unsupported actor path scheme"),
+      | ActorPathError::MissingSystemName => write!(f, "missing actor system name"),
+      | ActorPathError::InvalidAuthority => write!(f, "invalid authority segment"),
     }
   }
 }

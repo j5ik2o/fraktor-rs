@@ -27,7 +27,7 @@ use crate::{
   NoStdToolbox, RuntimeToolbox, ToolboxMutex,
   actor_prim::{
     ActorCellGeneric, Pid,
-    actor_path::{ActorPath, ActorPathParts, ActorPathScheme},
+    actor_path::{ActorPath, ActorPathParser, ActorPathParts, ActorPathScheme, GuardianKind as PathGuardianKind},
     actor_ref::ActorRefGeneric,
   },
   config::{ActorSystemConfig, DispatchersGeneric, MailboxesGeneric},
@@ -59,6 +59,7 @@ struct PathIdentity {
   canonical_host:      Option<String>,
   canonical_port:      Option<u16>,
   quarantine_duration: Duration,
+  guardian_kind:       PathGuardianKind,
 }
 
 impl Default for PathIdentity {
@@ -68,6 +69,7 @@ impl Default for PathIdentity {
       canonical_host:      None,
       canonical_port:      None,
       quarantine_duration: DEFAULT_QUARANTINE_DURATION,
+      guardian_kind:       PathGuardianKind::User,
     }
   }
 }
@@ -162,6 +164,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     {
       let mut identity = self.path_identity.lock();
       identity.system_name = config.system_name().to_string();
+      identity.guardian_kind = config.default_guardian();
       if let Some(remoting) = config.remoting() {
         identity.canonical_host = Some(remoting.canonical_host().to_string());
         identity.canonical_port = remoting.canonical_port();
@@ -186,6 +189,19 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
 
   /// Removes the actor cell associated with the pid.
   pub(crate) fn remove_cell(&self, pid: &Pid) -> Option<ArcShared<ActorCellGeneric<TB>>> {
+    let reservation_source = {
+      let registry = self.actor_path_registry.lock();
+      registry.get(pid).map(|handle| (handle.canonical_uri().to_string(), handle.uid()))
+    };
+
+    if let Some((canonical, Some(uid))) = reservation_source {
+      if let Ok(actor_path) = ActorPathParser::parse(&canonical) {
+        let now_secs = self.monotonic_now().as_secs();
+        let mut registry = self.actor_path_registry.lock();
+        let _ = registry.reserve_uid(&actor_path, uid, now_secs, None);
+      }
+    }
+
     self.actor_path_registry.lock().unregister(pid);
     self.cells.lock().remove(pid)
   }
@@ -205,7 +221,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
 
   fn canonical_parts(&self) -> ActorPathParts {
     let identity = self.identity_snapshot();
-    let mut parts = ActorPathParts::local(identity.system_name);
+    let mut parts = ActorPathParts::local(identity.system_name).with_guardian(identity.guardian_kind);
     if let Some(host) = identity.canonical_host {
       parts = parts.with_scheme(ActorPathScheme::PekkoTcp).with_authority_host(host);
       if let Some(port) = identity.canonical_port {
@@ -762,8 +778,12 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   }
 
   /// Defers a message while the authority is unresolved.
-  pub fn remote_authority_defer(&self, authority: impl Into<String>, message: AnyMessageGeneric<TB>) {
-    self.remote_authority_mgr.defer_send(authority, message);
+  pub fn remote_authority_defer(
+    &self,
+    authority: impl Into<String>,
+    message: AnyMessageGeneric<TB>,
+  ) -> Result<(), RemoteAuthorityError> {
+    self.remote_authority_mgr.defer_send(authority, message)
   }
 
   /// Attempts to defer a message, returning an error if the authority is quarantined.
@@ -782,6 +802,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   /// Polls all authorities for expired quarantine windows and emits events for lifted entries.
   pub fn poll_remote_authorities(&self) {
     let now_secs = self.monotonic_now().as_secs();
+    self.actor_path_registry.lock().poll_expired(now_secs);
     let lifted = self.remote_authority_mgr.poll_quarantine_expiration(now_secs);
     for authority in lifted {
       self.publish_remote_authority_event(authority.clone(), AuthorityState::Unresolved);

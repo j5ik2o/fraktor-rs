@@ -16,7 +16,7 @@ fn test_register_and_retrieve() {
   // PIDとパスを登録し、取得できることを確認
   let mut registry = ActorPathRegistry::new();
   let pid = Pid::new(1, 0);
-  let path = ActorPath::root().child("user").child("worker");
+  let path = ActorPath::root().child("worker");
 
   registry.register(pid, &path);
 
@@ -30,7 +30,7 @@ fn test_unregister() {
   // 登録後に削除できることを確認
   let mut registry = ActorPathRegistry::new();
   let pid = Pid::new(1, 0);
-  let path = ActorPath::root().child("user");
+  let path = ActorPath::root();
 
   registry.register(pid, &path);
   assert!(registry.get(&pid).is_some());
@@ -44,7 +44,7 @@ fn test_canonical_uri() {
   // canonical_uri ヘルパーが正しく動作することを確認
   let mut registry = ActorPathRegistry::new();
   let pid = Pid::new(1, 0);
-  let path = ActorPath::root().child("user").child("manager");
+  let path = ActorPath::root().child("manager");
 
   registry.register(pid, &path);
 
@@ -85,15 +85,16 @@ fn test_multiple_registrations() {
 fn test_reserve_uid_prevents_reuse() {
   // UID予約後、同じパスで異なるUIDの再生成が拒否されることを確認
   let mut registry = ActorPathRegistry::new();
-  let path = ActorPath::root().child("user").child("worker");
+  let path = ActorPath::root().child("worker");
   let uid1 = ActorUid::new(100);
+  let now = 1;
 
   // UID予約を実行（デフォルト5日の隔離期間）
-  registry.reserve_uid(&path, uid1, None).expect("should reserve");
+  registry.reserve_uid(&path, uid1, now, None).expect("should reserve");
 
   // 同じパスで異なるUIDを予約しようとするとエラーになる
   let uid2 = ActorUid::new(200);
-  let result = registry.reserve_uid(&path, uid2, None);
+  let result = registry.reserve_uid(&path, uid2, now, None);
   assert!(matches!(result, Err(PathResolutionError::UidReserved { .. })));
 }
 
@@ -101,50 +102,53 @@ fn test_reserve_uid_prevents_reuse() {
 fn test_reserve_uid_with_custom_duration() {
   // カスタム隔離期間を指定してUID予約できることを確認
   let mut registry = ActorPathRegistry::new();
-  let path = ActorPath::root().child("user").child("manager");
+  let path = ActorPath::root().child("manager");
   let uid = ActorUid::new(300);
   let custom_duration = Duration::from_secs(1); // 1秒
+  let now = 10;
 
-  registry.reserve_uid(&path, uid, Some(custom_duration)).expect("should reserve with custom duration");
+  registry.reserve_uid(&path, uid, now, Some(custom_duration)).expect("should reserve with custom duration");
 
   // 予約中は再利用不可
   let uid2 = ActorUid::new(400);
-  assert!(matches!(registry.reserve_uid(&path, uid2, None), Err(PathResolutionError::UidReserved { .. })));
+  assert!(matches!(registry.reserve_uid(&path, uid2, now, None), Err(PathResolutionError::UidReserved { .. })));
 }
 
 #[test]
 fn test_release_uid_allows_reuse() {
   // UID解放後、再利用可能になることを確認
   let mut registry = ActorPathRegistry::new();
-  let path = ActorPath::root().child("user").child("temp");
+  let path = ActorPath::root().child("temp");
   let uid1 = ActorUid::new(500);
+  let now = 100;
 
-  registry.reserve_uid(&path, uid1, None).expect("should reserve");
+  registry.reserve_uid(&path, uid1, now, None).expect("should reserve");
 
   // 手動解放
   registry.release_uid(&path);
 
   // 解放後は新しいUIDで予約可能
   let uid2 = ActorUid::new(600);
-  assert!(registry.reserve_uid(&path, uid2, None).is_ok());
+  assert!(registry.reserve_uid(&path, uid2, now, None).is_ok());
 }
 
 #[test]
 fn test_poll_expired_removes_old_reservations() {
   // 期限切れのUID予約が削除されることを確認
   let mut registry = ActorPathRegistry::new();
-  let path = ActorPath::root().child("user").child("expiring");
+  let path = ActorPath::root().child("expiring");
   let uid = ActorUid::new(700);
   let short_duration = Duration::from_millis(1);
+  let now = 1;
 
-  registry.reserve_uid(&path, uid, Some(short_duration)).expect("should reserve");
+  registry.reserve_uid(&path, uid, now, Some(short_duration)).expect("should reserve");
 
   // 期限切れエントリを削除（簡易実装ではすべて削除）
-  registry.poll_expired();
+  registry.poll_expired(now + 1);
 
   // 削除後は再予約可能
   let uid2 = ActorUid::new(800);
-  assert!(registry.reserve_uid(&path, uid2, None).is_ok());
+  assert!(registry.reserve_uid(&path, uid2, now + 2, None).is_ok());
 }
 
 #[test]
@@ -177,7 +181,7 @@ fn test_pid_restoration_returns_correct_uri() {
   // PID復元時に正しい canonical URI が返されることを確認
   let mut registry = ActorPathRegistry::new();
   let pid = Pid::new(123, 456);
-  let path = ActorPath::root().child("user").child("service").with_uid(ActorUid::new(789));
+  let path = ActorPath::root().child("service").with_uid(ActorUid::new(789));
 
   registry.register(pid, &path);
 
@@ -211,18 +215,19 @@ fn test_concurrent_access_safety() {
 fn test_uid_release_via_deathwatch() {
   // DeathWatch経由でUID解放が正しく動作することを確認（シミュレーション）
   let mut registry = ActorPathRegistry::new();
-  let path = ActorPath::root().child("user").child("watched");
+  let path = ActorPath::root().child("watched");
   let uid = ActorUid::new(1001);
+  let now = 50;
 
   // UID予約
-  registry.reserve_uid(&path, uid, None).expect("should reserve");
+  registry.reserve_uid(&path, uid, now, None).expect("should reserve");
 
   // DeathWatch通知を受けてUID解放
   registry.release_uid(&path);
 
   // 解放後は再予約可能
   let new_uid = ActorUid::new(1002);
-  assert!(registry.reserve_uid(&path, new_uid, None).is_ok());
+  assert!(registry.reserve_uid(&path, new_uid, now, None).is_ok());
 }
 
 #[test]
@@ -231,12 +236,13 @@ fn test_registry_with_custom_policy() {
   let custom_policy = ReservationPolicy::with_quarantine_duration(Duration::from_secs(100));
   let mut registry = ActorPathRegistry::with_policy(custom_policy);
 
-  let path = ActorPath::root().child("user").child("custom");
+  let path = ActorPath::root().child("custom");
   let uid = ActorUid::new(2001);
+  let now = 77;
 
-  registry.reserve_uid(&path, uid, None).expect("should reserve with custom policy");
+  registry.reserve_uid(&path, uid, now, None).expect("should reserve with custom policy");
 
   // 予約確認
   let uid2 = ActorUid::new(2002);
-  assert!(matches!(registry.reserve_uid(&path, uid2, None), Err(PathResolutionError::UidReserved { .. })));
+  assert!(matches!(registry.reserve_uid(&path, uid2, now, None), Err(PathResolutionError::UidReserved { .. })));
 }

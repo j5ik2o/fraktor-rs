@@ -1,11 +1,15 @@
 use core::time::Duration;
 
-use crate::config::actor_system_config::{ActorSystemConfig, RemotingConfig};
+use crate::{
+  actor_prim::actor_path::GuardianKind as PathGuardianKind,
+  config::actor_system_config::{ActorSystemConfig, RemotingConfig},
+};
 
 #[test]
 fn test_actor_system_config_default() {
   let config = ActorSystemConfig::default();
   assert_eq!(config.system_name(), "default-system");
+  assert_eq!(config.default_guardian(), PathGuardianKind::User);
   assert!(config.remoting().is_none());
 }
 
@@ -13,6 +17,12 @@ fn test_actor_system_config_default() {
 fn test_actor_system_config_with_system_name() {
   let config = ActorSystemConfig::default().with_system_name("test-system");
   assert_eq!(config.system_name(), "test-system");
+}
+
+#[test]
+fn test_actor_system_config_with_default_guardian() {
+  let config = ActorSystemConfig::default().with_default_guardian(PathGuardianKind::System);
+  assert_eq!(config.default_guardian(), PathGuardianKind::System);
 }
 
 #[test]

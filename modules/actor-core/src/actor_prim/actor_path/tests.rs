@@ -1,6 +1,6 @@
 use alloc::{vec, vec::Vec};
 
-use super::{ActorPath, ActorPathFormatter, ActorPathParts, GuardianKind, PathSegment};
+use super::{ActorPath, ActorPathComparator, ActorPathFormatter, ActorPathParts, ActorUid, GuardianKind, PathSegment};
 
 #[test]
 fn guardian_segment_is_injected_into_root() {
@@ -8,6 +8,13 @@ fn guardian_segment_is_injected_into_root() {
   let path = ActorPath::from_parts(parts);
   let segment_names: Vec<&str> = path.segments().iter().map(PathSegment::as_str).collect();
   assert_eq!(segment_names, vec!["system"]);
+}
+
+#[test]
+fn root_injects_user_guardian_by_default() {
+  let path = ActorPath::root();
+  let segment_names: Vec<&str> = path.segments().iter().map(PathSegment::as_str).collect();
+  assert_eq!(segment_names, vec!["user"]);
 }
 
 #[test]
@@ -25,4 +32,12 @@ fn canonical_uri_includes_scheme_system_and_segments() {
   let path = ActorPath::from_parts(parts).child("service").child("worker");
   let canonical = ActorPathFormatter::format(&path);
   assert_eq!(canonical, "pekko://cellsys@host.example.com:2552/user/service/worker");
+}
+
+#[test]
+fn comparator_ignores_uid_difference() {
+  let base = ActorPath::root().child("worker");
+  let with_uid = base.clone().with_uid(ActorUid::new(42));
+  assert!(ActorPathComparator::eq(&base, &with_uid));
+  assert_eq!(ActorPathComparator::hash(&base), ActorPathComparator::hash(&with_uid));
 }

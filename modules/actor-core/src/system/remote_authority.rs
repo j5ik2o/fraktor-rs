@@ -54,11 +54,16 @@ impl<TB: RuntimeToolbox + 'static> RemoteAuthorityManagerGeneric<TB> {
   }
 
   /// Marks an authority as unresolved and defers a message.
-  pub fn defer_send(&self, authority: impl Into<String>, message: AnyMessageGeneric<TB>) {
-    let authority = authority.into();
-    let mut entries = self.entries.lock();
-    let entry = entries.entry(authority).or_insert_with(|| AuthorityEntry::new(AuthorityState::Unresolved));
-    entry.deferred.push_back(message);
+  ///
+  /// # Errors
+  ///
+  /// Returns [`RemoteAuthorityError::Quarantined`] if the authority is quarantined.
+  pub fn defer_send(
+    &self,
+    authority: impl Into<String>,
+    message: AnyMessageGeneric<TB>,
+  ) -> Result<(), RemoteAuthorityError> {
+    self.defer_or_reject(authority.into(), message)
   }
 
   /// Tries to defer a message, returning an error if the authority is quarantined.
@@ -71,7 +76,10 @@ impl<TB: RuntimeToolbox + 'static> RemoteAuthorityManagerGeneric<TB> {
     authority: impl Into<String>,
     message: AnyMessageGeneric<TB>,
   ) -> Result<(), RemoteAuthorityError> {
-    let authority = authority.into();
+    self.defer_or_reject(authority.into(), message)
+  }
+
+  fn defer_or_reject(&self, authority: String, message: AnyMessageGeneric<TB>) -> Result<(), RemoteAuthorityError> {
     let mut entries = self.entries.lock();
     let entry = entries.entry(authority).or_insert_with(|| AuthorityEntry::new(AuthorityState::Unresolved));
 

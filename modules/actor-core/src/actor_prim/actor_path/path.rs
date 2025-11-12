@@ -6,7 +6,7 @@ use alloc::{
 };
 use core::fmt;
 
-use super::{ActorPathError, ActorPathParts, ActorUid, PathSegment, formatter::ActorPathFormatter};
+use super::{ActorPathError, ActorPathParts, ActorUid, GuardianKind, PathSegment, formatter::ActorPathFormatter};
 
 /// Canonical actor path with scheme/system/authority metadata.
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -20,15 +20,19 @@ impl ActorPath {
   /// Creates an empty path using default local parts.
   #[must_use]
   pub fn root() -> Self {
-    Self::empty(ActorPathParts::local("cellactor"))
+    Self::root_with_guardian(GuardianKind::User)
+  }
+
+  /// Creates an empty path anchored to the specified guardian.
+  #[must_use]
+  pub fn root_with_guardian(guardian: GuardianKind) -> Self {
+    Self::from_parts(ActorPathParts::local("cellactor").with_guardian(guardian))
   }
 
   /// Builds a path from explicit parts, automatically injecting guardian segments.
   #[must_use]
   pub fn from_parts(parts: ActorPathParts) -> Self {
-    let mut path = Self::empty(parts);
-    path.push_guardian();
-    path
+    Self::from_parts_and_segments(parts, Vec::new(), None)
   }
 
   /// Builds a path from explicit parts and segments without auto-injecting guardian.
@@ -38,22 +42,9 @@ impl ActorPath {
     segments: Vec<PathSegment>,
     uid: Option<ActorUid>,
   ) -> Self {
+    let mut segments = segments;
+    Self::ensure_guardian_prefix(&parts, &mut segments);
     Self { parts, segments, uid }
-  }
-
-  fn push_guardian(&mut self) {
-    let guardian = self.parts.guardian_segment();
-    // Guardian names never contain reserved characters.
-    #[allow(clippy::expect_used)]
-    let segment = PathSegment::new(guardian).expect("guardian segment must be valid");
-    if !self.segments.is_empty() {
-      return;
-    }
-    self.segments.push(segment);
-  }
-
-  const fn empty(parts: ActorPathParts) -> Self {
-    Self { parts, segments: Vec::new(), uid: None }
   }
 
   /// Attempts to build a path from raw segments, validating each component.
@@ -65,11 +56,11 @@ impl ActorPath {
   where
     I: IntoIterator<Item = S>,
     S: Into<String>, {
-    let mut path = Self::empty(ActorPathParts::local("cellactor"));
+    let mut validated = Vec::new();
     for segment in segments.into_iter() {
-      path.segments.push(PathSegment::new(segment.into())?);
+      validated.push(PathSegment::new(segment.into())?);
     }
-    Ok(path)
+    Ok(Self::from_parts_and_segments(ActorPathParts::local("cellactor"), validated, None))
   }
 
   /// Builds a path from segments, panicking on invalid data (legacy API).
@@ -158,6 +149,16 @@ impl ActorPath {
   #[must_use]
   pub fn to_canonical_uri(&self) -> String {
     ActorPathFormatter::format(self)
+  }
+
+  fn ensure_guardian_prefix(parts: &ActorPathParts, segments: &mut Vec<PathSegment>) {
+    let guardian = parts.guardian_segment();
+    let needs_injection = segments.first().map(PathSegment::as_str) != Some(guardian);
+    if needs_injection {
+      #[allow(clippy::expect_used)]
+      let segment = PathSegment::new(guardian).expect("guardian segment must be valid");
+      segments.insert(0, segment);
+    }
   }
 }
 

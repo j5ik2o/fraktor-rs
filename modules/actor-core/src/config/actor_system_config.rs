@@ -3,6 +3,7 @@
 use alloc::string::{String, ToString};
 
 use super::RemotingConfig;
+use crate::actor_prim::actor_path::GuardianKind as PathGuardianKind;
 
 #[cfg(test)]
 mod tests;
@@ -10,8 +11,9 @@ mod tests;
 /// Configuration for the actor system.
 #[derive(Clone, Debug)]
 pub struct ActorSystemConfig {
-  system_name: String,
-  remoting:    Option<RemotingConfig>,
+  system_name:      String,
+  default_guardian: PathGuardianKind,
+  remoting:         Option<RemotingConfig>,
 }
 
 impl ActorSystemConfig {
@@ -19,6 +21,13 @@ impl ActorSystemConfig {
   #[must_use]
   pub fn with_system_name(mut self, name: impl Into<String>) -> Self {
     self.system_name = name.into();
+    self
+  }
+
+  /// Sets the default guardian segment (`/system` or `/user`).
+  #[must_use]
+  pub const fn with_default_guardian(mut self, guardian: PathGuardianKind) -> Self {
+    self.default_guardian = guardian;
     self
   }
 
@@ -35,6 +44,12 @@ impl ActorSystemConfig {
     &self.system_name
   }
 
+  /// Returns the default guardian kind.
+  #[must_use]
+  pub const fn default_guardian(&self) -> PathGuardianKind {
+    self.default_guardian
+  }
+
   /// Returns the remoting configuration if enabled.
   #[must_use]
   pub const fn remoting(&self) -> Option<&RemotingConfig> {
@@ -44,6 +59,10 @@ impl ActorSystemConfig {
 
 impl Default for ActorSystemConfig {
   fn default() -> Self {
-    Self { system_name: "default-system".to_string(), remoting: None }
+    Self {
+      system_name:      "default-system".to_string(),
+      default_guardian: PathGuardianKind::User,
+      remoting:         None,
+    }
   }
 }

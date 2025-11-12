@@ -46,8 +46,8 @@ fn test_e2e_authority_unresolved_deferred_connected_delivery() {
 
   // 未解決状態でメッセージを defer
   assert_eq!(manager.state(authority), AuthorityState::Unresolved);
-  manager.defer_send(authority, AnyMessage::new("msg1"));
-  manager.defer_send(authority, AnyMessage::new("msg2"));
+  manager.defer_send(authority, AnyMessage::new("msg1")).expect("defer");
+  manager.defer_send(authority, AnyMessage::new("msg2")).expect("defer");
   assert_eq!(manager.deferred_count(authority), 2);
 
   // 接続確立
@@ -64,7 +64,7 @@ fn test_e2e_authority_quarantine_invalid_association() {
   let authority = "quarantine-host:2552";
 
   // 初期メッセージを defer
-  manager.defer_send(authority, AnyMessage::new(1i32));
+  manager.defer_send(authority, AnyMessage::new(1i32)).expect("defer");
   manager.set_connected(authority);
 
   // InvalidAssociation をトリガー
@@ -72,20 +72,19 @@ fn test_e2e_authority_quarantine_invalid_association() {
   assert!(matches!(manager.state(authority), AuthorityState::Quarantine { .. }));
 
   // Quarantine 中は新規メッセージが拒否される
-  let result = manager.try_defer_send(authority, AnyMessage::new(2i32));
+  let result = manager.defer_send(authority, AnyMessage::new(2i32));
   assert!(result.is_err());
 }
 
 #[test]
 fn test_e2e_actor_selection_with_relative_paths() {
   // ActorSelection の相対パス解決
-  let root = ActorPath::root();
-  let user = root.child("user");
+  let user = ActorPath::root();
   let worker = user.child("worker");
   let task = worker.child("task");
 
   // task から ../../manager へ遡る
-  let resolved = ActorSelectionResolver::resolve_relative(&task, "../../manager").unwrap();
+  let resolved = ActorSelectionResolver::resolve_relative(&task, "../manager").unwrap();
   let expected = user.child("manager");
   assert_eq!(ActorPathFormatter::format(&resolved), ActorPathFormatter::format(&expected));
 }

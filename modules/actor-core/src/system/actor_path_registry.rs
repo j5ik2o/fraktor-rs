@@ -18,8 +18,7 @@ use crate::actor_prim::{
 #[derive(Clone, Debug)]
 struct UidReservation {
   uid:      ActorUid,
-  #[allow(dead_code)] // 将来の実装で使用予定
-  deadline: Duration,
+  deadline: Option<u64>,
 }
 
 /// Registry for PID-to-path mappings and UID reservations.
@@ -79,6 +78,7 @@ impl ActorPathRegistry {
     &mut self,
     path: &ActorPath,
     uid: ActorUid,
+    now_secs: u64,
     custom_duration: Option<Duration>,
   ) -> Result<(), PathResolutionError> {
     let path_key = path.to_canonical_uri();
@@ -90,7 +90,7 @@ impl ActorPathRegistry {
 
     // 新規予約を追加
     let duration = custom_duration.unwrap_or(self.policy.quarantine_duration());
-    let deadline = duration; // 実際の実装では現在時刻 + duration を計算
+    let deadline = duration.as_secs().checked_add(now_secs).map(|instant| instant);
     self.reservations.insert(path_key, UidReservation { uid, deadline });
 
     Ok(())
@@ -103,10 +103,11 @@ impl ActorPathRegistry {
   }
 
   /// Removes expired UID reservations.
-  pub fn poll_expired(&mut self) {
-    // 実際の実装では現在時刻と比較して期限切れをフィルタリング
-    // 簡易実装: すべて削除（テスト用）
-    self.reservations.clear();
+  pub fn poll_expired(&mut self, now_secs: u64) {
+    self.reservations.retain(|_, reservation| match reservation.deadline {
+      | Some(deadline) => deadline > now_secs,
+      | None => true,
+    });
   }
 }
 

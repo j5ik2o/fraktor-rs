@@ -6,7 +6,9 @@ use fraktor_utils_core_rs::sync::{ArcShared, NoStdMutex};
 use super::SystemState;
 use crate::{
   NoStdToolbox,
-  actor_prim::{Actor, ActorCell, ActorContextGeneric, actor_ref::ActorRefGeneric},
+  actor_prim::{
+    Actor, ActorCell, ActorContextGeneric, actor_path::GuardianKind as PathGuardianKind, actor_ref::ActorRefGeneric,
+  },
   config::{ActorSystemConfig, RemotingConfig},
   error::ActorError,
   event_stream::{EventStream, EventStreamEvent, EventStreamSubscriber},
@@ -106,7 +108,29 @@ fn system_state_registers_canonical_uri_with_config() {
   let registry = state.actor_path_registry().lock();
   let canonical = registry.canonical_uri(&child_pid).expect("canonical uri");
   assert!(canonical.starts_with("pekko.tcp://pekko-system@localhost:2552"));
-  assert!(canonical.ends_with("/worker"));
+  assert!(canonical.ends_with("/user/worker"));
+}
+
+#[test]
+fn system_state_honors_default_guardian_config() {
+  let state = ArcShared::new(SystemState::new());
+  let config =
+    ActorSystemConfig::default().with_system_name("sys-guardian").with_default_guardian(PathGuardianKind::System);
+  state.apply_actor_system_config(&config);
+
+  let props = Props::from_fn(|| RestartProbeActor);
+  let root_pid = state.allocate_pid();
+  let root = ActorCell::create(state.clone(), root_pid, None, "root".to_string(), &props).expect("root");
+  state.register_cell(root);
+
+  let child_pid = state.allocate_pid();
+  let child =
+    ActorCell::create(state.clone(), child_pid, Some(root_pid), "logger".to_string(), &props).expect("logger");
+  state.register_cell(child);
+
+  let registry = state.actor_path_registry().lock();
+  let canonical = registry.canonical_uri(&child_pid).expect("canonical uri");
+  assert!(canonical.contains("/system/logger"));
 }
 
 #[test]
