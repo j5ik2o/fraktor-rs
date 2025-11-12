@@ -1,4 +1,4 @@
-//! Canonical URI から ActorPath を生成するパーサ。
+//! Parser that converts canonical Pekko URIs into actor paths.
 
 #[cfg(test)]
 mod tests;
@@ -12,15 +12,17 @@ use fraktor_utils_core_rs::net::{UriError, UriParser};
 
 use super::{ActorPath, ActorPathError, ActorPathParts, ActorPathScheme, ActorUid, GuardianKind, PathSegment};
 
-/// Pekko 互換 URI を解析して [`ActorPath`] を構築する。
+/// Parses Pekko-compatible canonical URIs into [`ActorPath`].
 pub struct ActorPathParser;
 
+type ParsedAuthority<'a> = (&'a str, Option<(String, Option<u16>)>);
+
 impl ActorPathParser {
-  /// 文字列から [`ActorPath`] を復元する。
+  /// Restores an [`ActorPath`] from a canonical URI string.
   ///
   /// # Errors
   ///
-  /// [`ActorPathError`] が発生した場合は変換に失敗する。
+  /// Returns [`ActorPathError`] when the given URI violates actor-path rules.
   pub fn parse(input: &str) -> Result<ActorPath, ActorPathError> {
     let uri = UriParser::parse(input).map_err(|_| ActorPathError::InvalidUri)?;
     let scheme = Self::parse_scheme(uri.scheme)?;
@@ -29,7 +31,7 @@ impl ActorPathParser {
 
     let mut parts = ActorPathParts::local(system_name.to_string()).with_scheme(scheme);
     if let Some((host, port)) = host_info {
-      parts = parts.with_authority_host(host.to_string());
+      parts = parts.with_authority_host(host);
       if let Some(port) = port {
         parts = parts.with_authority_port(port);
       }
@@ -54,7 +56,7 @@ impl ActorPathParser {
     }
   }
 
-  fn split_authority(authority: &str) -> Result<(&str, Option<(String, Option<u16>)>), ActorPathError> {
+  fn split_authority(authority: &str) -> Result<ParsedAuthority<'_>, ActorPathError> {
     if authority.is_empty() {
       return Err(ActorPathError::MissingSystemName);
     }

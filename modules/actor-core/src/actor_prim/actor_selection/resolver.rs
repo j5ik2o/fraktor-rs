@@ -2,33 +2,13 @@
 
 use alloc::{string::ToString, vec::Vec};
 
+use super::actor_selection_error::ActorSelectionError;
 use crate::{
   RuntimeToolbox,
   actor_prim::actor_path::{ActorPath, ActorPathError, PathResolutionError, PathSegment},
   messaging::AnyMessageGeneric,
   system::{AuthorityState, RemoteAuthorityManagerGeneric},
 };
-
-/// Errors that can arise when resolving actor selections.
-#[derive(Debug)]
-pub enum ActorSelectionError {
-  /// The relative path itself was invalid.
-  InvalidPath(ActorPathError),
-  /// Authority resolution failed (unresolved/quarantine).
-  Authority(PathResolutionError),
-}
-
-impl From<ActorPathError> for ActorSelectionError {
-  fn from(error: ActorPathError) -> Self {
-    Self::InvalidPath(error)
-  }
-}
-
-impl From<PathResolutionError> for ActorSelectionError {
-  fn from(error: PathResolutionError) -> Self {
-    Self::Authority(error)
-  }
-}
 
 /// Resolves relative actor selection expressions against a base path.
 pub struct ActorSelectionResolver;
@@ -75,6 +55,8 @@ impl ActorSelectionResolver {
 
   /// Ensures that the remote authority referenced by `path` is in a sendable state.
   ///
+  /// # Errors
+  ///
   /// If the authority is unresolved, the provided `message` is deferred (when present) and
   /// [`PathResolutionError::AuthorityUnresolved`] is returned. When the authority is quarantined,
   /// [`PathResolutionError::AuthorityQuarantined`] is returned immediately.
@@ -83,9 +65,8 @@ impl ActorSelectionResolver {
     authority_manager: &RemoteAuthorityManagerGeneric<TB>,
     message: Option<AnyMessageGeneric<TB>>,
   ) -> Result<(), PathResolutionError> {
-    let authority = match path.parts().authority() {
-      | Some(authority) => authority,
-      | None => return Ok(()),
+    let Some(authority) = path.parts().authority() else {
+      return Ok(());
     };
     let endpoint = authority.endpoint();
     match authority_manager.state(&endpoint) {
@@ -103,6 +84,11 @@ impl ActorSelectionResolver {
   }
 
   /// Resolves a relative path and validates the remote authority state (if present).
+  ///
+  /// # Errors
+  ///
+  /// Returns [`ActorSelectionError`] when either the relative path is invalid or the authority
+  /// remains unresolved/quarantined.
   pub fn resolve_relative_with_authority<TB: RuntimeToolbox + 'static>(
     base: &ActorPath,
     selection: &str,

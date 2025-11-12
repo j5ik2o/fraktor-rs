@@ -74,3 +74,12 @@ fn format_parse_roundtrip_samples() {
     assert_eq!(formatted, uri);
   }
 }
+
+#[test]
+fn parser_decodes_percent_encoded_segments() {
+  let uri = "pekko://cellsys/user/service%20worker";
+  let parsed = ActorPathParser::parse(uri).expect("parse");
+  let last = parsed.segments().last().expect("segment");
+  assert_eq!(last.as_str(), "service%20worker");
+  assert_eq!(last.decoded(), "service worker");
+}

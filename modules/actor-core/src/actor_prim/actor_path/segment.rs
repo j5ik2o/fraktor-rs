@@ -1,6 +1,8 @@
 //! Validated actor path segments.
 
-use alloc::string::String;
+use alloc::string::{String, ToString};
+
+use fraktor_utils_core_rs::net::UriParser;
 
 use super::ActorPathError;
 
@@ -9,7 +11,8 @@ const ALLOWED_PUNCTUATION: &[char] = &['-', '_', '.', '*', '+', ':', '@', '&', '
 /// Represents a validated actor path segment.
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct PathSegment {
-  raw: String,
+  raw:     String,
+  decoded: String,
 }
 
 impl PathSegment {
@@ -21,13 +24,20 @@ impl PathSegment {
   pub fn new(value: impl Into<String>) -> Result<Self, ActorPathError> {
     let owned = value.into();
     validate_segment(&owned)?;
-    Ok(Self { raw: owned })
+    let decoded = decode_segment(&owned)?;
+    Ok(Self { raw: owned, decoded })
   }
 
   /// Returns the segment as `&str`.
   #[must_use]
   pub fn as_str(&self) -> &str {
     &self.raw
+  }
+
+  /// Returns the percent-decoded representation of the segment.
+  #[must_use]
+  pub fn decoded(&self) -> &str {
+    &self.decoded
   }
 }
 
@@ -57,4 +67,12 @@ fn validate_segment(segment: &str) -> Result<(), ActorPathError> {
     return Err(ActorPathError::InvalidSegmentChar { ch, index: idx });
   }
   Ok(())
+}
+
+fn decode_segment(segment: &str) -> Result<String, ActorPathError> {
+  if segment.contains('%') {
+    UriParser::percent_decode(segment).map_err(|_| ActorPathError::InvalidPercentEncoding)
+  } else {
+    Ok(segment.to_string())
+  }
 }

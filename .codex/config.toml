@@ -26,6 +26,3 @@ args = ["@playwright/mcp@latest"]
 command = "npx"
 args = ["chrome-devtools-mcp@latest", "--headless=true"]
 
-[mcp_servers.vibe-kanban]
-command = "npx"
-args = ["-y", "vibe-kanban", "--mcp"]

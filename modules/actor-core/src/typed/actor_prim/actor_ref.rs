@@ -12,7 +12,7 @@ use crate::{
   typed::TypedAskResponseGeneric,
 };
 
-/// Provides a typed façade over [`ActorRefGeneric`].
+/// Provides a typed facade over [`ActorRefGeneric`].
 pub struct TypedActorRefGeneric<M, TB>
 where
   M: Send + Sync + 'static,

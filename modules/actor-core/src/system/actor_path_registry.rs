@@ -90,7 +90,7 @@ impl ActorPathRegistry {
 
     // 新規予約を追加
     let duration = custom_duration.unwrap_or(self.policy.quarantine_duration());
-    let deadline = duration.as_secs().checked_add(now_secs).map(|instant| instant);
+    let deadline = duration.as_secs().checked_add(now_secs);
     self.reservations.insert(path_key, UidReservation { uid, deadline });
 
     Ok(())

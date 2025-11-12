@@ -69,7 +69,7 @@
   - Selection 結果が Remoting/DeathWatch で共有されることを integration テストで保証する。
   - _Requirements: R2.1, R2.2, R2.4_
 
-- [ ] 4. ActorPathRegistry と UID 予約ポリシーを実装する
+- [x] 4. ActorPathRegistry と UID 予約ポリシーを実装する
   - PID→canonical path のキャッシュ、UID 予約、再利用判定を司るレジストリを導入する。
   - SystemState／ActorRef から統一 API で参照できるようにし、再生成判定を deterministic にする。
   - _Requirements: R3.1, R3.2, R3.3, R3.4, R3.6, R3.7_
@@ -115,12 +115,12 @@
   - Remoting 設定上の override 値が正しく適用されるか統合テストで確認する。
   - _Requirements: R4.2, R4.3, R4.4_
 
-- [ ] 6. システム統合とリグレッション検証を行う
+- [x] 6. システム統合とリグレッション検証を行う
   - ActorSystemConfig／RemotingConfig から新機能を構築物へ供給し、ユーザ API の破壊的変更を整理する。
   - end-to-end テストと CI スクリプト実行で R1〜R4 を横断的に保証する。
   - _Requirements: R1.1, R1.3, R2.4, R3.3, R3.7, R4.1, R4.2, R4.3, R4.4_
 
-- [ ] 6.1 Config ビルダーと API 表面を更新する
+- [x] 6.1 Config ビルダーと API 表面を更新する
   - ActorSystemConfig に system 名・guardian 種別・デフォルト authority を設定するフローを追加する。
   - RemotingConfig から quarantine duration や canonical host 情報を注入するパスを整備する。
   - 新しい設定値を利用者が確認できるよう初期化ログやデバッグ情報を整える。

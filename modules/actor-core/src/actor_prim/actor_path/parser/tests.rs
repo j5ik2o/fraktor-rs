@@ -1,4 +1,4 @@
-use alloc::vec::Vec;
+use alloc::{vec, vec::Vec};
 
 use super::*;
 
@@ -18,7 +18,7 @@ fn parse_remote_with_uid() {
   assert_eq!(path.parts().system(), "remote-sys");
   assert_eq!(path.parts().guardian_segment(), "system");
   assert_eq!(path.parts().scheme(), ActorPathScheme::PekkoTcp);
-  assert_eq!(path.uid().map(ActorUid::value), Some(42));
+  assert_eq!(path.uid().map(|uid| uid.value()), Some(42));
   assert_eq!(path.segments().iter().map(PathSegment::as_str).collect::<Vec<_>>(), vec!["system", "logger"]);
 }
 

@@ -194,12 +194,12 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       registry.get(pid).map(|handle| (handle.canonical_uri().to_string(), handle.uid()))
     };
 
-    if let Some((canonical, Some(uid))) = reservation_source {
-      if let Ok(actor_path) = ActorPathParser::parse(&canonical) {
-        let now_secs = self.monotonic_now().as_secs();
-        let mut registry = self.actor_path_registry.lock();
-        let _ = registry.reserve_uid(&actor_path, uid, now_secs, None);
-      }
+    if let Some((canonical, Some(uid))) = reservation_source
+      && let Ok(actor_path) = ActorPathParser::parse(&canonical)
+    {
+      let now_secs = self.monotonic_now().as_secs();
+      let mut registry = self.actor_path_registry.lock();
+      let _ = registry.reserve_uid(&actor_path, uid, now_secs, None);
     }
 
     self.actor_path_registry.lock().unregister(pid);
@@ -439,15 +439,20 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       segments.push(cursor.name().to_owned());
       current = cursor.parent().and_then(|parent_pid| self.cell(&parent_pid));
     }
+    let identity = self.identity_snapshot();
     if segments.is_empty() {
-      return Some(ActorPath::root());
+      return Some(ActorPath::root_with_guardian(identity.guardian_kind));
     }
     segments.pop(); // discard root
     if segments.is_empty() {
-      return Some(ActorPath::root());
+      return Some(ActorPath::root_with_guardian(identity.guardian_kind));
     }
     segments.reverse();
-    Some(ActorPath::from_segments(segments))
+    let mut path = ActorPath::root_with_guardian(identity.guardian_kind);
+    for segment in segments {
+      path = path.child(segment);
+    }
+    Some(path)
   }
 
   /// Returns the shared event stream handle.
@@ -778,6 +783,11 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   }
 
   /// Defers a message while the authority is unresolved.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`RemoteAuthorityError::Quarantined`] if the target authority is currently
+  /// quarantined.
   pub fn remote_authority_defer(
     &self,
     authority: impl Into<String>,

@@ -106,7 +106,7 @@ fn actor_ref_path_resolves_segments() {
   use crate::actor_prim::actor_ref::null_sender::NullSender;
   let sender = ArcShared::new(NullSender);
   let actor: ActorRef = ActorRef::with_system(child_pid, sender, system.clone());
-  assert_eq!(actor.path().expect("path").to_string(), "/worker");
+  assert_eq!(actor.path().expect("path").to_string(), "/user/worker");
 }
 
 #[test]

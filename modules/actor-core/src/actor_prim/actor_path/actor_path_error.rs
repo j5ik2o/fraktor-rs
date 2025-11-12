@@ -20,13 +20,13 @@ pub enum ActorPathError {
   InvalidPercentEncoding,
   /// Relative path escaped beyond guardian root.
   RelativeEscape,
-  /// URI 全体の解析に失敗した。
+  /// Failed to parse the entire URI payload.
   InvalidUri,
-  /// サポートされていないスキームが指定された。
+  /// Unsupported actor path scheme was provided.
   UnsupportedScheme,
-  /// システム名が欠落している。
+  /// Missing actor system name component.
   MissingSystemName,
-  /// Authority の形式が不正。
+  /// Invalid authority string structure.
   InvalidAuthority,
 }
 

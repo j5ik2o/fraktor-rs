@@ -84,7 +84,7 @@ fn system_state_register_and_remove_cell() {
 
   assert!(state.cell(&child_pid).is_some());
   let path = state.actor_path(&child_pid).expect("path");
-  assert_eq!(path.to_string(), "/worker");
+  assert_eq!(path.to_string(), "/user/worker");
 
   state.remove_cell(&child_pid);
   assert!(state.cell(&child_pid).is_none());
@@ -151,7 +151,7 @@ fn system_state_honors_default_guardian_config() {
 
   let registry = state.actor_path_registry().lock();
   let canonical = registry.canonical_uri(&child_pid).expect("canonical uri");
-  assert!(canonical.contains("/system/logger"));
+  assert!(canonical.contains("/system/logger"), "canonical: {}", canonical);
 }
 
 #[test]
