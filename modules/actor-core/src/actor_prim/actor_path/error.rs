@@ -18,6 +18,8 @@ pub enum ActorPathError {
   },
   /// Percent encoding was malformed.
   InvalidPercentEncoding,
+  /// Relative path escaped beyond guardian root.
+  RelativeEscape,
 }
 
 impl fmt::Display for ActorPathError {
@@ -29,6 +31,7 @@ impl fmt::Display for ActorPathError {
         write!(f, "invalid character '{ch}' at position {index}")
       },
       | ActorPathError::InvalidPercentEncoding => write!(f, "invalid percent encoding sequence"),
+      | ActorPathError::RelativeEscape => write!(f, "relative path escapes beyond guardian root"),
     }
   }
 }

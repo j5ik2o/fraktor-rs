@@ -46,12 +46,12 @@
   - Validator が拒否したケースのエラー内容を DeadLetter／ログで可視化できるよう asserts を用意する。
   - _Requirements: R1.1, R1.4, R1.5_
 
-- [ ] 3. ActorSelection 解決と相対操作を強化する
+- [x] 3. ActorSelection 解決と相対操作を強化する
   - 相対パス解決や親子連結を ActorPath 値オブジェクトベースで行い、決定的なツリー遷移を保証する。
   - Authority 未解決時に Resolver が deferred 処理へ委譲できるようハンドオフを整える。
   - _Requirements: R2.1, R2.2, R2.4, R3.4_
 
-- [ ] 3.1 相対選択と子パス合成を実装する
+- [x] 3.1 相対選択と子パス合成を実装する
   - ActorSelection からの `..`／`.`／ワイルドカードを解釈し、guardian を越えないよう保護する。
   - 子パス生成で親の検証をスキップしつつ、Segment 連結後の canonical URI を即座に得られるようにする。
   - Selection 失敗時のエラーを DeadLetter と EventStream へルーティングする。
@@ -69,12 +69,12 @@
   - Selection 結果が Remoting/DeathWatch で共有されることを integration テストで保証する。
   - _Requirements: R2.1, R2.2, R2.4_
 
-- [ ] 4. ActorPathRegistry と UID 予約ポリシーを実装する
+- [x] 4. ActorPathRegistry と UID 予約ポリシーを実装する
   - PID→canonical path のキャッシュ、UID 予約、再利用判定を司るレジストリを導入する。
   - SystemState／ActorRef から統一 API で参照できるようにし、再生成判定を deterministic にする。
   - _Requirements: R3.1, R3.2, R3.3, R3.4, R3.6, R3.7_
 
-- [ ] 4.1 パスハンドルと等価判定キャッシュを構築する
+- [x] 4.1 パスハンドルと等価判定キャッシュを構築する
   - PID から canonical URI と UID 無視ハッシュを取得できるハンドル構造を定義する。
   - ActorRef レベルでの一意性チェックを実装し、既存参照との衝突を防ぐ。
   - Registry が child 生成や Resolver と共有できるようトレイト API を整備する。
@@ -97,7 +97,7 @@
   - InvalidAssociation の発火条件と再解決サイクルを Remoting 設定と同期させる。
   - _Requirements: R2.4, R3.5, R4.1, R4.2, R4.3, R4.4_
 
-- [ ] 5.1 状態遷移と deferred キューを実装する
+- [x] 5.1 状態遷移と deferred キューを実装する
   - Authority ごとの状態を保持し、未解決→接続→未解決の往復や接続→隔離の遷移を deterministic に定義する。
   - Deferred キューへ追加／flush する API を提供し、Resolver からの委譲を受け付ける。
   - 接続確立時に保留メッセージを FIFO で再配送する挙動を実装する。

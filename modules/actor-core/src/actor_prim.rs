@@ -8,6 +8,7 @@ mod actor_cell;
 mod actor_context;
 pub mod actor_path;
 pub mod actor_ref;
+pub mod actor_selection;
 mod child_ref;
 mod context_pipe_task;
 mod context_pipe_task_id;

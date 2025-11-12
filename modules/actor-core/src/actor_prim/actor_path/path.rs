@@ -33,6 +33,16 @@ impl ActorPath {
     path
   }
 
+  /// Builds a path from explicit parts and segments without auto-injecting guardian.
+  #[must_use]
+  pub(crate) fn from_parts_and_segments(
+    parts: ActorPathParts,
+    segments: Vec<PathSegment>,
+    uid: Option<ActorUid>,
+  ) -> Self {
+    Self { parts, segments, uid }
+  }
+
   fn push_guardian(&mut self) {
     let guardian = self.parts.guardian_segment();
     // Guardian names never contain reserved characters.
