@@ -1,4 +1,13 @@
-## 0.2.0 (2025-11-12)
+## [0.2.1](https://github.com/j5ik2o/fraktor-rs/compare/v0.2.0...v0.2.1) (2025-11-12)
+
+
+### Bug Fixes
+
+* correct key name for release in bump-version.yml ([43fe7a3](https://github.com/j5ik2o/fraktor-rs/commit/43fe7a3cce2539500704e3b572bca9ad3b9d14cc))
+* update instructions regarding CHANGELOG.md generation in AGENTS.md ([6db50cc](https://github.com/j5ik2o/fraktor-rs/commit/6db50cc2d946bf5f5fb843d0e05b58ff74ed14fc))
+* update push command in bump-version.yml to include tagging ([b9bc744](https://github.com/j5ik2o/fraktor-rs/commit/b9bc744a0934d90c1b4ada6be27b1053ad2da411))
+
+## [0.2.0](https://github.com/j5ik2o/fraktor-rs/compare/b436952fbb1016fbc77f283cc807c19d06d7645d...v0.2.0) (2025-11-12)
 
 
 ### Features
