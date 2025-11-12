@@ -1,3 +1,10 @@
+## [0.2.11](https://github.com/j5ik2o/fraktor-rs/compare/v0.2.10...v0.2.11) (2025-11-12)
+
+
+### Bug Fixes
+
+* remove fraktor-actor-std-rs from dev-dependencies in Cargo.toml ([e918e3b](https://github.com/j5ik2o/fraktor-rs/commit/e918e3b65391b455b41067a78050d4210035c6b0))
+
 ## [0.2.10](https://github.com/j5ik2o/fraktor-rs/compare/v0.2.9...v0.2.10) (2025-11-12)
 
 

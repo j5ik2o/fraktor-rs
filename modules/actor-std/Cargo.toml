@@ -1,6 +1,6 @@
 [package]
 name = "fraktor-actor-std-rs"
-version = "0.2.10"
+version = "0.2.11"
 edition = "2024"
 description = "fraktor std helpers for host runtimes"
 license = "MIT OR Apache-2.0"
