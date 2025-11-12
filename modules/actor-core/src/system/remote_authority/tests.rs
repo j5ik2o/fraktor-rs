@@ -138,7 +138,10 @@ fn test_quarantine_period_expiration() {
   manager.set_quarantine("remote1", 0, Some(short_duration));
 
   // 期限チェックして解除（簡易実装では即座に解除）
-  manager.poll_quarantine_expiration(1000);
+  let lifted = manager.poll_quarantine_expiration(1000);
+
+  assert_eq!(lifted.len(), 1);
+  assert_eq!(lifted[0], "remote1");
 
   assert_eq!(manager.state("remote1"), AuthorityState::Unresolved);
 }

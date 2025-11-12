@@ -6,6 +6,7 @@ mod tests;
 use alloc::{
   collections::VecDeque,
   string::{String, ToString},
+  vec::Vec,
 };
 use core::time::Duration;
 
@@ -114,21 +115,20 @@ impl<TB: RuntimeToolbox + 'static> RemoteAuthorityManagerGeneric<TB> {
     }
   }
 
-  /// Polls all authorities and lifts expired quarantines.
-  ///
-  /// # Arguments
-  ///
-  /// * `now` - Current monotonic time in seconds
-  pub fn poll_quarantine_expiration(&self, now: u64) {
+  /// Polls all authorities and lifts expired quarantines, returning the affected authorities.
+  pub fn poll_quarantine_expiration(&self, now: u64) -> Vec<String> {
     let mut entries = self.entries.lock();
-    for entry in entries.values_mut() {
+    let mut lifted = Vec::new();
+    for (authority, entry) in entries.iter_mut() {
       if let AuthorityState::Quarantine { deadline } = &entry.state
         && let Some(deadline_time) = deadline
         && now >= *deadline_time
       {
         entry.state = AuthorityState::Unresolved;
+        lifted.push(authority.clone());
       }
     }
+    lifted
   }
 
   /// Transitions quarantine back to unresolved if quarantine period elapsed.

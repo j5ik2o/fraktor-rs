@@ -53,6 +53,9 @@ impl EventStreamSubscriber for LifecyclePrinter {
           dump.is_suspended()
         );
       },
+      | EventStreamEvent::RemoteAuthority(event) => {
+        println!("[REMOTE AUTHORITY] authority={} state={:?}", event.authority(), event.state());
+      },
       | EventStreamEvent::Log(_)
       | EventStreamEvent::Mailbox(_)
       | EventStreamEvent::UnhandledMessage(_)

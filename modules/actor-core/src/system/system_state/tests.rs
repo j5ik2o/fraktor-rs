@@ -1,15 +1,18 @@
-use alloc::string::ToString;
+use alloc::{string::ToString, vec::Vec};
+use core::time::Duration;
 
-use fraktor_utils_core_rs::sync::ArcShared;
+use fraktor_utils_core_rs::sync::{ArcShared, NoStdMutex};
 
 use super::SystemState;
 use crate::{
   NoStdToolbox,
   actor_prim::{Actor, ActorCell, ActorContextGeneric, actor_ref::ActorRefGeneric},
+  config::{ActorSystemConfig, RemotingConfig},
   error::ActorError,
+  event_stream::{EventStream, EventStreamEvent, EventStreamSubscriber},
   messaging::{AnyMessage, AnyMessageView},
   props::Props,
-  system::RegisterExtraTopLevelError,
+  system::{AuthorityState, RegisterExtraTopLevelError},
 };
 
 #[test]
@@ -81,6 +84,29 @@ fn system_state_register_and_remove_cell() {
 
   state.remove_cell(&child_pid);
   assert!(state.cell(&child_pid).is_none());
+}
+
+#[test]
+fn system_state_registers_canonical_uri_with_config() {
+  let state = ArcShared::new(SystemState::new());
+  let remoting = RemotingConfig::default().with_canonical_host("localhost").with_canonical_port(2552);
+  let config = ActorSystemConfig::default().with_system_name("pekko-system").with_remoting(remoting);
+  state.apply_actor_system_config(&config);
+
+  let props = Props::from_fn(|| RestartProbeActor);
+  let root_pid = state.allocate_pid();
+  let root = ActorCell::create(state.clone(), root_pid, None, "root".to_string(), &props).expect("root");
+  state.register_cell(root);
+
+  let child_pid = state.allocate_pid();
+  let child =
+    ActorCell::create(state.clone(), child_pid, Some(root_pid), "worker".to_string(), &props).expect("worker");
+  state.register_cell(child);
+
+  let registry = state.actor_path_registry().lock();
+  let canonical = registry.canonical_uri(&child_pid).expect("canonical uri");
+  assert!(canonical.starts_with("pekko.tcp://pekko-system@localhost:2552"));
+  assert!(canonical.ends_with("/worker"));
 }
 
 #[test]
@@ -224,6 +250,24 @@ fn system_state_temp_actor_round_trip() {
 }
 
 #[test]
+fn system_state_remote_authority_events() {
+  let state = SystemState::new();
+  let stream = state.event_stream();
+  let subscriber_impl = ArcShared::new(RemoteEventRecorder::new());
+  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
+  let _subscription = EventStream::subscribe_arc(&stream, &subscriber);
+
+  state.remote_authority_set_quarantine("node:2552", Some(Duration::from_secs(0)));
+  state.poll_remote_authorities();
+
+  let events = subscriber_impl.events();
+  assert!(events.iter().any(|event| matches!(event, EventStreamEvent::RemoteAuthority(remote)
+    if remote.authority() == "node:2552" && matches!(remote.state(), AuthorityState::Quarantine { .. }))));
+  assert!(events.iter().any(|event| matches!(event, EventStreamEvent::RemoteAuthority(remote)
+    if remote.authority() == "node:2552" && matches!(remote.state(), AuthorityState::Unresolved))));
+}
+
+#[test]
 fn system_state_send_system_message_to_nonexistent_actor() {
   use crate::messaging::SystemMessage;
 
@@ -246,6 +290,32 @@ fn system_state_record_send_error() {
 }
 
 struct RestartProbeActor;
+
+struct RemoteEventRecorder {
+  events: ArcShared<NoStdMutex<Vec<EventStreamEvent<NoStdToolbox>>>>,
+}
+
+impl RemoteEventRecorder {
+  fn new() -> Self {
+    Self { events: ArcShared::new(NoStdMutex::new(Vec::new())) }
+  }
+
+  fn events(&self) -> Vec<EventStreamEvent<NoStdToolbox>> {
+    self.events.lock().clone()
+  }
+}
+
+impl Default for RemoteEventRecorder {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
+impl EventStreamSubscriber<NoStdToolbox> for RemoteEventRecorder {
+  fn on_event(&self, event: &EventStreamEvent<NoStdToolbox>) {
+    self.events.lock().push(event.clone());
+  }
+}
 
 impl Actor for RestartProbeActor {
   fn receive(

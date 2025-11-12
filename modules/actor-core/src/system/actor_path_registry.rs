@@ -42,6 +42,11 @@ impl ActorPathRegistry {
     Self { paths: HashMap::new(), reservations: HashMap::new(), policy }
   }
 
+  /// Applies a new reservation policy.
+  pub const fn set_policy(&mut self, policy: ReservationPolicy) {
+    self.policy = policy;
+  }
+
   /// Registers a path for a given PID.
   pub fn register(&mut self, pid: Pid, path: &ActorPath) {
     let handle = ActorPathHandle::new(pid, path.to_canonical_uri(), path.uid());
