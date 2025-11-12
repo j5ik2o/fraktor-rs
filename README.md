@@ -1,9 +1,13 @@
 # fraktor-rs
 
 [![CI](https://github.com/j5ik2o/fraktor-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/j5ik2o/fraktor-rs/actions/workflows/ci.yml)
-[![License: Apache-2.0 / MIT](https://img.shields.io/badge/license-Apache--2.0%20%2F%20MIT-blue.svg)](LICENSE-MIT)
-[![crates.io version](https://img.shields.io/crates/v/fraktor-rs.svg)](https://crates.io/crates/fraktor-rs)
-[![tokei lines of code](https://tokei.rs/b1/github/j5ik2o/fraktor-rs?category=code)](https://github.com/j5ik2o/fraktor-rs)
+[![crates.io](https://img.shields.io/crates/v/fraktor-rs.svg)](https://crates.io/crates/fraktor-rs)
+[![docs.rs](https://docs.rs/fraktor-rs/badge.svg)](https://docs.rs/faktor-rs)
+[![Renovate](https://img.shields.io/badge/renovate-enabled-brightgreen.svg)](https://renovatebot.com)
+[![dependency status](https://deps.rs/repo/github/j5ik2o/fraktor-rs/status.svg)](https://deps.rs/repo/github/j5ik2o/fraktor-rs)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![License](https://img.shields.io/badge/License-APACHE2.0-blue.svg)](https://opensource.org/licenses/apache-2-0)
+[![tokei](https://tokei.rs/b1/github/XAMPPRocky/tokei)](https://github.com/XAMPPRocky/tokei)
 
 > See [README.ja.md](README.ja.md) for the Japanese edition.
 
