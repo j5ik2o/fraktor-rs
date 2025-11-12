@@ -54,3 +54,9 @@ fn test_remoting_config_defaults() {
   assert_eq!(remoting.canonical_port(), None);
   assert_eq!(remoting.quarantine_duration(), Duration::from_secs(5 * 24 * 3600)); // 5日
 }
+
+#[test]
+#[should_panic(expected = "quarantine duration must be >= 1 second")]
+fn test_remoting_config_rejects_short_quarantine() {
+  let _ = RemotingConfig::default().with_quarantine_duration(Duration::from_millis(999));
+}

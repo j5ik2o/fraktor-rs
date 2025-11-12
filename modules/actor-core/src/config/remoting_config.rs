@@ -3,6 +3,8 @@
 use alloc::string::{String, ToString};
 use core::time::Duration;
 
+const MIN_QUARANTINE_DURATION: Duration = Duration::from_secs(1);
+
 /// Configuration for remoting capabilities.
 #[derive(Clone, Debug, PartialEq)]
 pub struct RemotingConfig {
@@ -27,8 +29,14 @@ impl RemotingConfig {
   }
 
   /// Sets the quarantine duration for remote authorities.
+  ///
+  /// # Panics
+  ///
+  /// Panics if `duration` is shorter than one second because such a value would violate the
+  /// minimum quarantine policy described in the Pekko-compatible actor path design.
   #[must_use]
-  pub const fn with_quarantine_duration(mut self, duration: Duration) -> Self {
+  pub fn with_quarantine_duration(mut self, duration: Duration) -> Self {
+    assert!(duration >= MIN_QUARANTINE_DURATION, "quarantine duration must be >= 1 second");
     self.quarantine_duration = duration;
     self
   }
