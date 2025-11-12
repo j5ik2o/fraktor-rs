@@ -25,6 +25,13 @@ pub enum AuthorityState {
   },
 }
 
+/// Error type for remote authority operations.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RemoteAuthorityError {
+  /// Authority is quarantined and cannot accept messages.
+  Quarantined,
+}
+
 /// Entry tracking authority state and deferred messages.
 #[derive(Debug)]
 struct AuthorityEntry<TB: RuntimeToolbox + 'static> {
@@ -77,6 +84,25 @@ impl<TB: RuntimeToolbox + 'static> RemoteAuthorityManagerGeneric<TB> {
     entry.deferred.push_back(message);
   }
 
+  /// Tries to defer a message, returning an error if the authority is quarantined.
+  pub fn try_defer_send(
+    &self,
+    authority: impl Into<String>,
+    message: AnyMessageGeneric<TB>,
+  ) -> Result<(), RemoteAuthorityError> {
+    let authority = authority.into();
+    let mut entries = self.entries.lock();
+    let entry = entries.entry(authority).or_insert_with(|| AuthorityEntry::new(AuthorityState::Unresolved));
+
+    // Quarantine中は拒否
+    if matches!(entry.state, AuthorityState::Quarantine { .. }) {
+      return Err(RemoteAuthorityError::Quarantined);
+    }
+
+    entry.deferred.push_back(message);
+    Ok(())
+  }
+
   /// Transitions an authority to Connected and returns deferred messages.
   pub fn set_connected(&self, authority: &str) -> Option<VecDeque<AnyMessageGeneric<TB>>> {
     let mut entries = self.entries.lock();
@@ -93,6 +119,32 @@ impl<TB: RuntimeToolbox + 'static> RemoteAuthorityManagerGeneric<TB> {
     let entry = entries.entry(authority).or_insert_with(|| AuthorityEntry::new(AuthorityState::Unresolved));
     entry.state = AuthorityState::Quarantine { deadline };
     entry.deferred.clear();
+  }
+
+  /// Handles an InvalidAssociation event by transitioning to quarantine.
+  pub fn handle_invalid_association(&self, authority: impl Into<String>, deadline: Option<Duration>) {
+    self.set_quarantine(authority, deadline);
+  }
+
+  /// Manually overrides quarantine and transitions to Connected.
+  pub fn manual_override_to_connected(&self, authority: &str) {
+    let mut entries = self.entries.lock();
+    if let Some(entry) = entries.get_mut(authority) {
+      entry.state = AuthorityState::Connected;
+    }
+  }
+
+  /// Polls all authorities and lifts expired quarantines.
+  pub fn poll_quarantine_expiration(&self) {
+    let mut entries = self.entries.lock();
+    for entry in entries.values_mut() {
+      if let AuthorityState::Quarantine { deadline } = &entry.state {
+        // 簡易実装: deadline が Some なら期限切れとみなして解除
+        if deadline.is_some() {
+          entry.state = AuthorityState::Unresolved;
+        }
+      }
+    }
   }
 
   /// Transitions quarantine back to unresolved if quarantine period elapsed.

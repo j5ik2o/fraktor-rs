@@ -7,7 +7,7 @@ pub mod path;
 pub mod segment;
 pub mod uid;
 
-pub use error::ActorPathError;
+pub use error::{ActorPathError, PathResolutionError};
 pub use formatter::ActorPathFormatter;
 pub use parts::{ActorPathParts, GuardianKind};
 pub use path::ActorPath;

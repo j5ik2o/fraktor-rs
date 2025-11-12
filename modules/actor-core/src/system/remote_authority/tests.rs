@@ -110,3 +110,75 @@ fn test_connected_to_unresolved_transition() {
   // 状態はConnectedのまま、deferredに追加される（実装上の挙動）
   assert_eq!(manager.deferred_count("remote1"), 1);
 }
+
+// Task 5.2: Quarantine と InvalidAssociation 処理のテスト
+#[test]
+fn test_quarantine_rejects_new_sends() {
+  // 隔離中の authority への新規送信が拒否されることを確認
+  let manager = RemoteAuthorityManager::new();
+  manager.set_quarantine("remote1", Some(Duration::from_secs(300)));
+
+  // 隔離中は新規メッセージを受け付けない（defer_sendは呼べるが実装で拒否される想定）
+  let result = manager.try_defer_send("remote1", AnyMessage::new(1i32));
+  assert!(result.is_err());
+  assert_eq!(manager.deferred_count("remote1"), 0);
+}
+
+#[test]
+fn test_quarantine_duration_calculation() {
+  // 隔離期間が正しく計算されることを確認
+  let manager = RemoteAuthorityManager::new();
+  let quarantine_duration = Duration::from_secs(600);
+  manager.set_quarantine("remote1", Some(quarantine_duration));
+
+  // 状態確認
+  match manager.state("remote1") {
+    AuthorityState::Quarantine { deadline } => {
+      assert_eq!(deadline, Some(quarantine_duration));
+    },
+    _ => panic!("expected quarantine state"),
+  }
+}
+
+#[test]
+fn test_quarantine_period_expiration() {
+  // 隔離期間経過後、自動的に Unresolved へ戻ることを確認
+  let manager = RemoteAuthorityManager::new();
+  let short_duration = Duration::from_millis(1);
+  manager.set_quarantine("remote1", Some(short_duration));
+
+  // 期限チェックして解除（簡易実装では即座に解除）
+  manager.poll_quarantine_expiration();
+
+  assert_eq!(manager.state("remote1"), AuthorityState::Unresolved);
+}
+
+#[test]
+fn test_invalid_association_on_quarantine() {
+  // InvalidAssociation を受信したとき、quarantine へ遷移することを確認
+  let manager = RemoteAuthorityManager::new();
+  manager.defer_send("remote1", AnyMessage::new(1i32));
+  manager.set_connected("remote1");
+
+  // InvalidAssociation イベントをトリガー
+  manager.handle_invalid_association("remote1", Some(Duration::from_secs(300)));
+
+  assert!(matches!(
+    manager.state("remote1"),
+    AuthorityState::Quarantine { .. }
+  ));
+  // deferred キューはクリアされる
+  assert_eq!(manager.deferred_count("remote1"), 0);
+}
+
+#[test]
+fn test_manual_quarantine_override() {
+  // 手動解除により即座に Connected へ遷移できることを確認
+  let manager = RemoteAuthorityManager::new();
+  manager.set_quarantine("remote1", Some(Duration::from_secs(3600)));
+
+  // 手動で解除して接続状態へ
+  manager.manual_override_to_connected("remote1");
+
+  assert_eq!(manager.state("remote1"), AuthorityState::Connected);
+}

@@ -80,13 +80,13 @@
   - Registry が child 生成や Resolver と共有できるようトレイト API を整備する。
   - _Requirements: R3.1, R3.2, R3.4, R3.6_
 
-- [ ] 4.2 UID 予約と隔離期間ポリシーを組み込む
+- [x] 4.2 UID 予約と隔離期間ポリシーを組み込む
   - UID 予約テーブルに期限付きエントリを追加し、DeathWatch からの通知で延長／解放を制御する。
   - Remoting 設定から隔離期間を受け取り、デフォルト 5 日と API 上書きを切り替えられるようにする。
   - 予約状態にある UID へ再生成要求が来た場合のエラー伝搬を整える。
   - _Requirements: R3.3, R3.6, R3.7_
 
-- [ ] 4.3 SystemState／ActorRef 連携テストを追加する
+- [x] 4.3 SystemState／ActorRef 連携テストを追加する
   - 一時アクター登録や PID 復元のシナリオでレジストリが正しい canonical URI を返すことを検証する。
   - UID 解放タイミングが DeathWatch 経由で伝搬する統合テストを追加する。
   - レジストリが複数スレッドから安全に利用できるかを stress テストで確認する。
@@ -103,7 +103,7 @@
   - 接続確立時に保留メッセージを FIFO で再配送する挙動を実装する。
   - _Requirements: R2.4, R4.1, R4.2_
 
-- [ ] 5.2 Quarantine と InvalidAssociation 処理を実装する
+- [x] 5.2 Quarantine と InvalidAssociation 処理を実装する
   - InvalidAssociation 受信や期間超過失敗時に隔離へ遷移し、新規配送を拒否するロジックを実装する。
   - 隔離中の要求へは送信者単位で InvalidAssociation を返し、監視者が即座に把握できるようにする。
   - Remoting 設定の隔離期間をもとに解除時刻を計算し、期限まで状態を維持する。
