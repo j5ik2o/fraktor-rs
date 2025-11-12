@@ -27,7 +27,7 @@ utils-core  -->  actor-core  -->  actor-std
    ^              ^                ^
    |              |                |
    |          Remoting &       Tokio/host
-   |          system APIs      integration
+utility       system APIs      integration
 ```
 - **utils-core**: low-level synchronization, URI parser, timer families, ArcShared replacements.
 - **actor-core**: no_std ActorSystem, actor refs, mailboxes, supervision, actor path registry, remote authority management.

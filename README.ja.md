@@ -26,7 +26,7 @@ fraktor-rs は Akka/Pekko・protoactor-go のライフサイクル／監視／Re
 utils-core  -->  actor-core  -->  actor-std
    ^              ^                ^
    |              |                |
-低レベル同期   ActorSystem      Tokio/ホスト適合
+ユーティリティ   ActorSystem      Tokio/ホスト適合
 ```
 - `utils-core`: Portable atomic, SmallVec 互換 Primitive, RFC2396 URI パーサなどの共通下支え。
 - `actor-core`: no_std ActorSystem, actor path registry, RemoteAuthorityManager, supervision, mailbox。
