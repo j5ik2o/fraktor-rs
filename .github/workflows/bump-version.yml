@@ -25,16 +25,15 @@ jobs:
       pull-requests: write
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          persist-credentials: false
           token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
-
       - name: Configure Git User
         run: |
           git config user.name "fraktor-release-bot"
           git config user.email "release-bot@fraktor.dev"
-
       - name: Generate Changelog and Bump Version
         id: changelog
         uses: TriPSs/conventional-changelog-action@v6
@@ -53,12 +52,10 @@ jobs:
           skip-commit: ${{ inputs.dry_run }}
           skip-tag: ${{ inputs.dry_run }}
           skip-git-pull: 'true'
-
       - name: Push Changes
         if: ${{ steps.changelog.outputs.skipped == 'false' && inputs.dry_run == false }}
         run: |
           git push --follow-tags origin HEAD:${GITHUB_REF_NAME}
-
       - name: Create GitHub Release
         if: ${{ steps.changelog.outputs.skipped == 'false' && inputs.dry_run == false }}
         uses: softprops/action-gh-release@v2

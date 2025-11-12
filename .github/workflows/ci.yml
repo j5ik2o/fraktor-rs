@@ -23,13 +23,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout source
-        uses: actions/checkout@v4
-
+        uses: actions/checkout@v5
       - name: Setup Rust toolchain (nightly)
         uses: dtolnay/rust-toolchain@nightly
         with:
           components: rustfmt
-
+      - name: Setup Cargo cache
+        uses: Swatinem/rust-cache@v2
       - name: Check formatting
         run: ./scripts/ci-check.sh lint
 
@@ -47,18 +47,15 @@ jobs:
             script: dylint
     steps:
       - name: Checkout source
-        uses: actions/checkout@v4
-
+        uses: actions/checkout@v5
       - name: Setup Rust toolchain (nightly)
         uses: dtolnay/rust-toolchain@nightly
         with:
           components: clippy
-
       - name: Setup Cargo cache
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: lint
-
       - name: Run ${{ matrix.check.name }}
         run: ./scripts/ci-check.sh ${{ matrix.check.script }}
 
@@ -79,16 +76,13 @@ jobs:
             script: test
     steps:
       - name: Checkout source
-        uses: actions/checkout@v4
-
+        uses: actions/checkout@v5
       - name: Setup Rust toolchain (nightly)
         uses: dtolnay/rust-toolchain@nightly
-
       - name: Setup Cargo cache
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: test-${{ matrix.target.name }}
-
       - name: Run ${{ matrix.target.name }} tests
         run: ./scripts/ci-check.sh ${{ matrix.target.script }}
 
@@ -99,16 +93,13 @@ jobs:
     needs: format
     steps:
       - name: Checkout source
-        uses: actions/checkout@v4
-
+        uses: actions/checkout@v5
       - name: Setup Rust toolchain (nightly)
         uses: dtolnay/rust-toolchain@nightly
-
       - name: Setup Cargo cache
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: docs
-
       - name: Build documentation
         run: ./scripts/ci-check.sh doc
 
@@ -119,16 +110,13 @@ jobs:
     needs: format
     steps:
       - name: Checkout source
-        uses: actions/checkout@v4
-
+        uses: actions/checkout@v5
       - name: Setup Rust toolchain (nightly)
         uses: dtolnay/rust-toolchain@nightly
-
       - name: Setup Cargo cache
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: examples
-
       - name: Build examples
         run: ./scripts/ci-check.sh examples
 
