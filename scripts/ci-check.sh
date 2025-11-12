@@ -25,6 +25,7 @@ usage() {
   examples               : ワークスペース配下の examples をビルドします
   embedded / embassy     : embedded 系 (utils / actor) のチェックとテストを実行します
   test                   : ワークスペース全体のテストを実行します
+  actor-path-e2e         : fraktor-actor-core-rs の actor_path_e2e テストを単体実行します
   all                    : 上記すべてを順番に実行します (引数なし時と同じ)
 複数指定で部分実行が可能です (例: scripts/ci-check.sh lint dylint module-wiring-lint)
 EOF
@@ -32,6 +33,35 @@ EOF
 
 log_step() {
   printf '==> %s\n' "$1"
+}
+
+clean_stale_lint_targets() {
+  local lint_path=""
+  local removed=0
+  for lint_path in "${REPO_ROOT}"/lints/*-lint; do
+    if [[ ! -d "${lint_path}" || ! -d "${lint_path}/target" ]]; then
+      continue
+    fi
+
+    local stale=""
+    while IFS= read -r output_file; do
+      [[ -n "${output_file}" ]] || continue
+      if ! grep -q "${REPO_ROOT}" "${output_file}" 2>/dev/null; then
+        stale="yes"
+        break
+      fi
+    done < <(find "${lint_path}/target" -path "*/libssh2-sys-*/output" -type f 2>/dev/null)
+
+    if [[ -n "${stale}" ]]; then
+      rm -rf "${lint_path}/target"
+      echo "info: ${lint_path#${REPO_ROOT}/}/target を削除しました (libssh2-sys キャッシュの再生成)" >&2
+      removed=1
+    fi
+  done
+
+  if [[ ${removed} -eq 1 ]]; then
+    echo "info: Dylint 用ターゲットを再ビルドします" >&2
+  fi
 }
 
 run_cargo() {
@@ -574,6 +604,11 @@ run_tests() {
   run_cargo test --workspace --verbose --lib --bins --tests --benches --examples || return 1
 }
 
+run_actor_path_e2e() {
+  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-actor-core-rs --test actor_path_e2e -- --nocapture"
+  run_cargo test -p fraktor-actor-core-rs --test actor_path_e2e -- --nocapture || return 1
+}
+
 run_examples() {
   if ! command -v python3 >/dev/null 2>&1; then
     echo "エラー: python3 が必要ですが見つかりませんでした。" >&2
@@ -674,6 +709,7 @@ run_all() {
   run_doc_tests || return 1
 #  run_embedded || return 1
   run_tests || return 1
+  run_actor_path_e2e || return 1
   run_examples || return 1
 }
 
@@ -681,6 +717,8 @@ main() {
   if [[ -x "${SCRIPT_DIR}/check_modrs.sh" ]]; then
     "${SCRIPT_DIR}/check_modrs.sh"
   fi
+
+  clean_stale_lint_targets
 
   if [[ $# -eq 0 ]]; then
     run_all || return 1
@@ -762,6 +800,10 @@ main() {
         ;;
       test|tests|workspace)
         run_tests || return 1
+        shift
+        ;;
+      actor-path-e2e)
+        run_actor_path_e2e || return 1
         shift
         ;;
       all)

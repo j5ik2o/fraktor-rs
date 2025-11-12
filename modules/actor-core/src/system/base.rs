@@ -14,7 +14,7 @@ use super::{RootGuardianActor, SystemGuardianActor, SystemGuardianProtocol};
 use crate::{
   NoStdToolbox, RuntimeToolbox,
   actor_prim::{ActorCellGeneric, ChildRefGeneric, Pid, actor_ref::ActorRefGeneric},
-  config::{DispatchersGeneric, MailboxesGeneric},
+  config::{ActorSystemConfig, DispatchersGeneric, MailboxesGeneric},
   dead_letter::DeadLetterEntryGeneric,
   error::SendError,
   event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric},
@@ -57,7 +57,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   ///
   /// Returns [`SpawnError`] when guardian initialization fails.
   pub fn new(user_guardian_props: &PropsGeneric<TB>) -> Result<Self, SpawnError> {
-    Self::new_with(user_guardian_props, |_| Ok(()))
+    Self::new_with_config_and(user_guardian_props, &ActorSystemConfig::default(), |_| Ok(()))
   }
 
   /// Creates a new actor system and runs the provided configuration callback before startup.
@@ -68,7 +68,35 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   pub fn new_with<F>(user_guardian_props: &PropsGeneric<TB>, configure: F) -> Result<Self, SpawnError>
   where
     F: FnOnce(&ActorSystemGeneric<TB>) -> Result<(), SpawnError>, {
+    Self::new_with_config_and(user_guardian_props, &ActorSystemConfig::default(), configure)
+  }
+
+  /// Creates an actor system with the provided configuration.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SpawnError`] when guardian initialization fails.
+  pub fn new_with_config(
+    user_guardian_props: &PropsGeneric<TB>,
+    config: &ActorSystemConfig,
+  ) -> Result<Self, SpawnError> {
+    Self::new_with_config_and(user_guardian_props, config, |_| Ok(()))
+  }
+
+  /// Creates an actor system with configuration and a bootstrap callback.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SpawnError`] when guardian initialization or configuration fails.
+  pub fn new_with_config_and<F>(
+    user_guardian_props: &PropsGeneric<TB>,
+    config: &ActorSystemConfig,
+    configure: F,
+  ) -> Result<Self, SpawnError>
+  where
+    F: FnOnce(&ActorSystemGeneric<TB>) -> Result<(), SpawnError>, {
     let system = Self::new_empty();
+    system.state.apply_actor_system_config(config);
     system.bootstrap(user_guardian_props, configure)?;
     Ok(system)
   }

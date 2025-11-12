@@ -1,4 +1,4 @@
-//! Builder that mirrors Pekko's `Behaviors.supervise` DSL.
+//! Builder that mirrors Fraktor's `Behaviors.supervise` DSL.
 
 use fraktor_utils_core_rs::sync::NoStdToolbox;
 

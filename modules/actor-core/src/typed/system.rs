@@ -7,6 +7,7 @@ use fraktor_utils_core_rs::sync::{ArcShared, NoStdToolbox};
 
 use crate::{
   RuntimeToolbox,
+  config::ActorSystemConfig,
   dead_letter::DeadLetterEntryGeneric,
   error::SendError,
   event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric},
@@ -51,6 +52,15 @@ where
   /// Returns an error if the guardian actor cannot be spawned.
   pub fn new(guardian: &TypedPropsGeneric<M, TB>) -> Result<Self, SpawnError> {
     Ok(Self { inner: ActorSystemGeneric::new(guardian.to_untyped())?, marker: PhantomData })
+  }
+
+  /// Creates a typed actor system using the supplied configuration.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SpawnError`] if guardian initialization fails.
+  pub fn new_with_config(guardian: &TypedPropsGeneric<M, TB>, config: &ActorSystemConfig) -> Result<Self, SpawnError> {
+    Ok(Self { inner: ActorSystemGeneric::new_with_config(guardian.to_untyped(), config)?, marker: PhantomData })
   }
 
   /// Returns the typed user guardian reference.

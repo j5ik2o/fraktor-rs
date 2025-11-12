@@ -3,6 +3,7 @@
 #[cfg(test)]
 mod tests;
 
+use super::remote_authority_event::RemoteAuthorityEvent;
 use crate::{
   NoStdToolbox, RuntimeToolbox,
   dead_letter::DeadLetterEntryGeneric,
@@ -35,6 +36,8 @@ pub enum EventStreamEvent<TB: RuntimeToolbox = NoStdToolbox> {
   AdapterFailure(AdapterFailureEvent),
   /// Serialization failure notification.
   Serialization(SerializationErrorEvent),
+  /// Remote authority state transition notification.
+  RemoteAuthority(RemoteAuthorityEvent),
 }
 
 impl<TB: RuntimeToolbox> Clone for EventStreamEvent<TB> {
@@ -49,6 +52,7 @@ impl<TB: RuntimeToolbox> Clone for EventStreamEvent<TB> {
       | Self::UnhandledMessage(event) => Self::UnhandledMessage(event.clone()),
       | Self::AdapterFailure(event) => Self::AdapterFailure(event.clone()),
       | Self::Serialization(event) => Self::Serialization(event.clone()),
+      | Self::RemoteAuthority(event) => Self::RemoteAuthority(event.clone()),
     }
   }
 }

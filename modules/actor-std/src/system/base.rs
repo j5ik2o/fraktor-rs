@@ -1,5 +1,7 @@
+use event_stream::EventStreamSubscriberAdapter;
 use fraktor_actor_core_rs::{
   actor_prim::Pid,
+  config::ActorSystemConfig,
   event_stream::EventStreamSubscriber as CoreEventStreamSubscriber,
   logging::LogLevel,
   spawn::SpawnError,
@@ -7,7 +9,6 @@ use fraktor_actor_core_rs::{
 };
 use fraktor_utils_core_rs::sync::ArcShared;
 use fraktor_utils_std_rs::runtime_toolbox::StdToolbox;
-use event_stream::EventStreamSubscriberAdapter;
 
 pub use crate::dispatcher::{DispatchExecutor, DispatchShared, Dispatcher, DispatcherConfig};
 use crate::{
@@ -32,6 +33,16 @@ impl ActorSystem {
   /// Returns [`SpawnError::InvalidProps`] when the user guardian props cannot be initialised.
   pub fn new(props: &Props) -> Result<Self, SpawnError> {
     CoreActorSystemGeneric::new(props.as_core()).map(Self::from_core)
+  }
+
+  /// Creates a new actor system with an explicit configuration.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SpawnError::InvalidProps`] when the user guardian props cannot be
+  /// initialised with the supplied configuration.
+  pub fn new_with_config(props: &Props, config: &ActorSystemConfig) -> Result<Self, SpawnError> {
+    CoreActorSystemGeneric::new_with_config(props.as_core(), config).map(Self::from_core)
   }
 
   /// Creates an empty actor system without any guardian (testing helper).

@@ -1,15 +1,22 @@
-use alloc::string::ToString;
+use alloc::{string::ToString, vec::Vec};
+use core::time::Duration;
 
-use fraktor_utils_core_rs::sync::ArcShared;
+use fraktor_utils_core_rs::sync::{ArcShared, NoStdMutex};
 
 use super::SystemState;
 use crate::{
   NoStdToolbox,
-  actor_prim::{Actor, ActorCell, ActorContextGeneric, actor_ref::ActorRefGeneric},
+  actor_prim::{
+    Actor, ActorCell, ActorContextGeneric,
+    actor_path::{ActorPath, ActorUid, GuardianKind as PathGuardianKind, PathResolutionError},
+    actor_ref::ActorRefGeneric,
+  },
+  config::{ActorSystemConfig, RemotingConfig},
   error::ActorError,
+  event_stream::{EventStream, EventStreamEvent, EventStreamSubscriber},
   messaging::{AnyMessage, AnyMessageView},
   props::Props,
-  system::RegisterExtraTopLevelError,
+  system::{AuthorityState, RegisterExtraTopLevelError},
 };
 
 #[test]
@@ -77,10 +84,74 @@ fn system_state_register_and_remove_cell() {
 
   assert!(state.cell(&child_pid).is_some());
   let path = state.actor_path(&child_pid).expect("path");
-  assert_eq!(path.to_string(), "/worker");
+  assert_eq!(path.to_string(), "/user/worker");
 
   state.remove_cell(&child_pid);
   assert!(state.cell(&child_pid).is_none());
+}
+
+#[test]
+fn system_state_remove_cell_reserves_uid() {
+  let state = SystemState::new();
+  let pid = state.allocate_pid();
+  let path = ActorPath::root().child("reserved").with_uid(ActorUid::new(777));
+
+  {
+    let mut registry = state.actor_path_registry().lock();
+    registry.register(pid, &path);
+  }
+
+  let _ = state.remove_cell(&pid);
+
+  let mut registry = state.actor_path_registry().lock();
+  let now = state.monotonic_now().as_secs();
+  let result = registry.reserve_uid(&path, ActorUid::new(888), now, None);
+  assert!(matches!(result, Err(PathResolutionError::UidReserved { .. })));
+}
+
+#[test]
+fn system_state_registers_canonical_uri_with_config() {
+  let state = ArcShared::new(SystemState::new());
+  let remoting = RemotingConfig::default().with_canonical_host("localhost").with_canonical_port(2552);
+  let config = ActorSystemConfig::default().with_system_name("fraktor-system").with_remoting(remoting);
+  state.apply_actor_system_config(&config);
+
+  let props = Props::from_fn(|| RestartProbeActor);
+  let root_pid = state.allocate_pid();
+  let root = ActorCell::create(state.clone(), root_pid, None, "root".to_string(), &props).expect("root");
+  state.register_cell(root);
+
+  let child_pid = state.allocate_pid();
+  let child =
+    ActorCell::create(state.clone(), child_pid, Some(root_pid), "worker".to_string(), &props).expect("worker");
+  state.register_cell(child);
+
+  let registry = state.actor_path_registry().lock();
+  let canonical = registry.canonical_uri(&child_pid).expect("canonical uri");
+  assert!(canonical.starts_with("fraktor.tcp://fraktor-system@localhost:2552"));
+  assert!(canonical.ends_with("/user/worker"));
+}
+
+#[test]
+fn system_state_honors_default_guardian_config() {
+  let state = ArcShared::new(SystemState::new());
+  let config =
+    ActorSystemConfig::default().with_system_name("sys-guardian").with_default_guardian(PathGuardianKind::System);
+  state.apply_actor_system_config(&config);
+
+  let props = Props::from_fn(|| RestartProbeActor);
+  let root_pid = state.allocate_pid();
+  let root = ActorCell::create(state.clone(), root_pid, None, "root".to_string(), &props).expect("root");
+  state.register_cell(root);
+
+  let child_pid = state.allocate_pid();
+  let child =
+    ActorCell::create(state.clone(), child_pid, Some(root_pid), "logger".to_string(), &props).expect("logger");
+  state.register_cell(child);
+
+  let registry = state.actor_path_registry().lock();
+  let canonical = registry.canonical_uri(&child_pid).expect("canonical uri");
+  assert!(canonical.contains("/system/logger"), "canonical: {}", canonical);
 }
 
 #[test]
@@ -224,6 +295,36 @@ fn system_state_temp_actor_round_trip() {
 }
 
 #[test]
+fn system_state_remote_authority_events() {
+  let state = SystemState::new();
+  let stream = state.event_stream();
+  let subscriber_impl = ArcShared::new(RemoteEventRecorder::new());
+  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
+  let _subscription = EventStream::subscribe_arc(&stream, &subscriber);
+
+  state.remote_authority_set_quarantine("node:2552", Some(Duration::from_secs(0)));
+  state.poll_remote_authorities();
+
+  let events = subscriber_impl.events();
+  assert!(events.iter().any(|event| matches!(event, EventStreamEvent::RemoteAuthority(remote)
+    if remote.authority() == "node:2552" && matches!(remote.state(), AuthorityState::Quarantine { .. }))));
+  assert!(events.iter().any(|event| matches!(event, EventStreamEvent::RemoteAuthority(remote)
+    if remote.authority() == "node:2552" && matches!(remote.state(), AuthorityState::Unresolved))));
+
+  // InvalidAssociation による隔離通知
+  state.remote_authority_handle_invalid_association("node:2552", Some(Duration::from_secs(5)));
+  let events = subscriber_impl.events();
+  assert!(events.iter().any(|event| matches!(event, EventStreamEvent::RemoteAuthority(remote)
+    if remote.authority() == "node:2552" && matches!(remote.state(), AuthorityState::Quarantine { .. }))));
+
+  // 手動解除と接続通知
+  state.remote_authority_manual_override_to_connected("node:2552");
+  let events = subscriber_impl.events();
+  assert!(events.iter().any(|event| matches!(event, EventStreamEvent::RemoteAuthority(remote)
+    if remote.authority() == "node:2552" && matches!(remote.state(), AuthorityState::Connected))));
+}
+
+#[test]
 fn system_state_send_system_message_to_nonexistent_actor() {
   use crate::messaging::SystemMessage;
 
@@ -246,6 +347,32 @@ fn system_state_record_send_error() {
 }
 
 struct RestartProbeActor;
+
+struct RemoteEventRecorder {
+  events: ArcShared<NoStdMutex<Vec<EventStreamEvent<NoStdToolbox>>>>,
+}
+
+impl RemoteEventRecorder {
+  fn new() -> Self {
+    Self { events: ArcShared::new(NoStdMutex::new(Vec::new())) }
+  }
+
+  fn events(&self) -> Vec<EventStreamEvent<NoStdToolbox>> {
+    self.events.lock().clone()
+  }
+}
+
+impl Default for RemoteEventRecorder {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
+impl EventStreamSubscriber<NoStdToolbox> for RemoteEventRecorder {
+  fn on_event(&self, event: &EventStreamEvent<NoStdToolbox>) {
+    self.events.lock().push(event.clone());
+  }
+}
 
 impl Actor for RestartProbeActor {
   fn receive(

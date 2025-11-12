@@ -1,5 +1,5 @@
 # プロジェクト構造
-> 最終更新: 2025-11-08
+> 最終更新: 2025-11-12
 
 ## 組織方針
 - ワークスペースは `modules/` 以下に no_std コア (`utils-core`, `actor-core`) と std 補助 (`utils-std`, `actor-std`) を縦方向に積み上げ、依存方向を一方向（utils → actor → アプリケーション）へ固定します。
@@ -17,6 +17,11 @@
 **Location**: `modules/actor-core/src/<domain>/`
 **Purpose**: ActorCell, Mailbox, Supervision, Typed API などドメイン単位でサブディレクトリを持ち、`actor_context.rs` + `actor_context/` のように entry ファイルと詳細ファイルを分離。
 **Example**: `modules/actor-core/src/actor_prim/actor/tests.rs` にドメイン専用テストを配置。
+
+### リモートアドレッシング & Authority
+**Location**: `modules/actor-core/src/actor_prim/actor_path/*`, `modules/actor-core/src/system/remote_authority.rs`
+**Purpose**: `parts.rs`（`ActorPathParts`・`GuardianKind`）、`formatter.rs`、`path.rs` を分けて canonical URI 生成を単一責務化し、`RemoteAuthorityManagerGeneric` が remoting の状態管理（Unresolved/Connected/Quarantine）と deferred キューの排出を担います。
+**Example**: `actor_prim/actor_selection/tests.rs` が guardian を越えない相対解決シナリオを網羅し、`system/remote_authority/tests.rs` が quarantine/手動解除/InvalidAssociation を `tests.rs` に閉じ込めています。
 
 ### ドキュメント & ガイド
 **Location**: `docs/guides`
@@ -40,6 +45,8 @@
 - **モジュール境界**: 1 ファイル 1 型（構造体または trait）を基本とし、補助型は `tests.rs` かサブモジュールへ退避。
 - **クレート名**: `fraktor-<domain>-rs`。Cargo features は `kebab-case`（例: `alloc-metrics`, `tokio-executor`）。
 - **ドキュメント言語**: rustdoc は英語、それ以外のコメント・Markdown は日本語。
+- **ActorPath 初期値**: `ActorPath::root()` は system 名に `cellactor` を用い、guardian は `GuardianKind::User/System` から自動付与するため、手動で `/cellactor` を記述しないこと。
+- **Authority 表記**: リモート authority は `host:port` 文字列で `RemoteAuthorityManager` のキーにし、`PathAuthority` 経由で host/port を保持する。命名は小文字 + `-` を基本とし、実ホスト名を抽象化します。
 
 ## import 組織
 ```rust
@@ -60,6 +67,7 @@ pub mod prelude {
 - DeathWatch/監督/ログ/DeadLetter は EventStream を介して疎結合化し、観測面の利用者が自由に購読可能。
 - テストは `hoge/tests.rs`（単体）と `crate/tests/*.rs`（統合）に分け、`tests-location-lint` で逸脱を検出します。
 - 新規 capability は OpenSpec (requirements → design → tasks) を通して合意し、ステアリングはパターン変化が生じたときのみ更新します。
+- Remoting への追記は `system::remote_authority` 経由で一元化し、ActorPath 側の guardian/authority パターン（`pekko` / `pekko.tcp` スキーム）との乖離が出ないように spec（`pekko-compatible-actor-path`）で検証してから着手します。
 
 ---
 _構造パターンを記録し、新しいファイルはここに記載したルールへ従う限り自由に追加できます。_

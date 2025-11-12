@@ -1,6 +1,8 @@
 <meta>
 description: Generate comprehensive requirements for a specification
-argument-hint: <feature-name:$1>
+argument-hint: <feature-name>
+arguments:
+   feature-name: $1
 </meta>
 
 # Requirements Generation
@@ -83,13 +85,13 @@ Provide output in the language specified in spec.json with:
 **If Requirements Approved**:
 - Review generated requirements at `.kiro/specs/$1/requirements.md`
 - **Optional Gap Analysis** (for existing codebases):
-  - Run `/kiro/validate-gap $1` to analyze implementation gap with current code
+  - Run `/prompts:kiro-validate-gap $1` to analyze implementation gap with current code
   - Identifies existing components, integration points, and implementation strategy
   - Recommended for brownfield projects; skip for greenfield
-- Then `/kiro/spec-design $1 -y` to proceed to design phase
+- Then `/prompts:kiro-spec-design $1 -y` to proceed to design phase
 
 **If Modifications Needed**:
-- Provide feedback and re-run `/kiro/spec-requirements $1`
+- Provide feedback and re-run `/prompts:kiro-spec-requirements $1`
 
 **Note**: Approval is mandatory before proceeding to design phase.
 

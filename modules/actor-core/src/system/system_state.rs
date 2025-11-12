@@ -3,7 +3,13 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::{borrow::ToOwned, format, string::String, vec::Vec};
+use alloc::{
+  borrow::ToOwned,
+  collections::VecDeque,
+  format,
+  string::{String, ToString},
+  vec::Vec,
+};
 use core::{
   any::{Any, TypeId},
   time::Duration,
@@ -16,20 +22,24 @@ use fraktor_utils_core_rs::{
 use hashbrown::HashMap;
 use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
-use super::GuardianKind;
+use super::{ActorPathRegistry, AuthorityState, GuardianKind, RemoteAuthorityError, RemoteAuthorityManagerGeneric};
 use crate::{
   NoStdToolbox, RuntimeToolbox, ToolboxMutex,
-  actor_prim::{ActorCellGeneric, ActorPath, Pid, actor_ref::ActorRefGeneric},
-  config::{DispatchersGeneric, MailboxesGeneric},
+  actor_prim::{
+    ActorCellGeneric, Pid,
+    actor_path::{ActorPath, ActorPathParser, ActorPathParts, ActorPathScheme, GuardianKind as PathGuardianKind},
+    actor_ref::ActorRefGeneric,
+  },
+  config::{ActorSystemConfig, DispatchersGeneric, MailboxesGeneric},
   dead_letter::{DeadLetterEntryGeneric, DeadLetterGeneric, DeadLetterReason},
   error::{ActorError, SendError},
-  event_stream::{EventStreamEvent, EventStreamGeneric},
+  event_stream::{EventStreamEvent, EventStreamGeneric, RemoteAuthorityEvent},
   futures::ActorFuture,
   logging::{LogEvent, LogLevel},
   messaging::{AnyMessageGeneric, FailurePayload, SystemMessage},
   spawn::{NameRegistry, NameRegistryError, SpawnError},
   supervision::SupervisorDirective,
-  system::RegisterExtraTopLevelError,
+  system::{RegisterExtraTopLevelError, ReservationPolicy},
 };
 
 mod failure_outcome;
@@ -40,6 +50,29 @@ pub use failure_outcome::FailureOutcome;
 type AskFutureVec<TB> = Vec<ArcShared<ActorFuture<AnyMessageGeneric<TB>, TB>>>;
 
 const RESERVED_TOP_LEVEL: [&str; 4] = ["user", "system", "temp", "deadLetters"];
+const DEFAULT_SYSTEM_NAME: &str = "cellactor";
+const DEFAULT_QUARANTINE_DURATION: Duration = Duration::from_secs(5 * 24 * 3600);
+
+#[derive(Clone)]
+struct PathIdentity {
+  system_name:         String,
+  canonical_host:      Option<String>,
+  canonical_port:      Option<u16>,
+  quarantine_duration: Duration,
+  guardian_kind:       PathGuardianKind,
+}
+
+impl Default for PathIdentity {
+  fn default() -> Self {
+    Self {
+      system_name:         DEFAULT_SYSTEM_NAME.to_string(),
+      canonical_host:      None,
+      canonical_port:      None,
+      quarantine_duration: DEFAULT_QUARANTINE_DURATION,
+      guardian_kind:       PathGuardianKind::User,
+    }
+  }
+}
 
 /// Captures global actor system state.
 pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
@@ -68,6 +101,9 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   extensions:             ToolboxMutex<HashMap<TypeId, ArcShared<dyn Any + Send + Sync + 'static>>, TB>,
   dispatchers:            ArcShared<DispatchersGeneric<TB>>,
   mailboxes:              ArcShared<MailboxesGeneric<TB>>,
+  path_identity:          ToolboxMutex<PathIdentity, TB>,
+  actor_path_registry:    ToolboxMutex<ActorPathRegistry, TB>,
+  remote_authority_mgr:   ArcShared<RemoteAuthorityManagerGeneric<TB>>,
 }
 
 /// Type alias for [SystemStateGeneric] with the default [NoStdToolbox].
@@ -110,6 +146,9 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       extensions: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::new()),
       dispatchers,
       mailboxes,
+      path_identity: <TB::MutexFamily as SyncMutexFamily>::create(PathIdentity::default()),
+      actor_path_registry: <TB::MutexFamily as SyncMutexFamily>::create(ActorPathRegistry::new()),
+      remote_authority_mgr: ArcShared::new(RemoteAuthorityManagerGeneric::new()),
     }
   }
 
@@ -120,14 +159,89 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     Pid::new(value, 0)
   }
 
+  /// Applies the actor system configuration (system name, remoting settings).
+  pub fn apply_actor_system_config(&self, config: &ActorSystemConfig) {
+    {
+      let mut identity = self.path_identity.lock();
+      identity.system_name = config.system_name().to_string();
+      identity.guardian_kind = config.default_guardian();
+      if let Some(remoting) = config.remoting() {
+        identity.canonical_host = Some(remoting.canonical_host().to_string());
+        identity.canonical_port = remoting.canonical_port();
+        identity.quarantine_duration = remoting.quarantine_duration();
+      } else {
+        identity.canonical_host = None;
+        identity.canonical_port = None;
+        identity.quarantine_duration = DEFAULT_QUARANTINE_DURATION;
+      }
+    }
+
+    let policy = ReservationPolicy::with_quarantine_duration(self.default_quarantine_duration());
+    self.actor_path_registry.lock().set_policy(policy);
+  }
+
   /// Registers the provided actor cell in the global registry.
   pub(crate) fn register_cell(&self, cell: ArcShared<ActorCellGeneric<TB>>) {
-    self.cells.lock().insert(cell.pid(), cell);
+    let pid = cell.pid();
+    self.cells.lock().insert(pid, cell);
+    self.register_actor_path(pid);
   }
 
   /// Removes the actor cell associated with the pid.
   pub(crate) fn remove_cell(&self, pid: &Pid) -> Option<ArcShared<ActorCellGeneric<TB>>> {
+    let reservation_source = {
+      let registry = self.actor_path_registry.lock();
+      registry.get(pid).map(|handle| (handle.canonical_uri().to_string(), handle.uid()))
+    };
+
+    if let Some((canonical, Some(uid))) = reservation_source
+      && let Ok(actor_path) = ActorPathParser::parse(&canonical)
+    {
+      let now_secs = self.monotonic_now().as_secs();
+      let mut registry = self.actor_path_registry.lock();
+      let _ = registry.reserve_uid(&actor_path, uid, now_secs, None);
+    }
+
+    self.actor_path_registry.lock().unregister(pid);
     self.cells.lock().remove(pid)
+  }
+
+  fn register_actor_path(&self, pid: Pid) {
+    if let Some(path) = self.canonical_actor_path(&pid) {
+      self.actor_path_registry.lock().register(pid, &path);
+    }
+  }
+
+  fn canonical_actor_path(&self, pid: &Pid) -> Option<ActorPath> {
+    let base = self.actor_path(pid)?;
+    let segments = base.segments().to_vec();
+    let parts = self.canonical_parts();
+    Some(ActorPath::from_parts_and_segments(parts, segments, base.uid()))
+  }
+
+  fn canonical_parts(&self) -> ActorPathParts {
+    let identity = self.identity_snapshot();
+    let mut parts = ActorPathParts::local(identity.system_name).with_guardian(identity.guardian_kind);
+    if let Some(host) = identity.canonical_host {
+      parts = parts.with_scheme(ActorPathScheme::FraktorTcp).with_authority_host(host);
+      if let Some(port) = identity.canonical_port {
+        parts = parts.with_authority_port(port);
+      }
+    }
+    parts
+  }
+
+  fn identity_snapshot(&self) -> PathIdentity {
+    self.path_identity.lock().clone()
+  }
+
+  fn default_quarantine_duration(&self) -> Duration {
+    self.path_identity.lock().quarantine_duration
+  }
+
+  fn publish_remote_authority_event(&self, authority: String, state: AuthorityState) {
+    let event = RemoteAuthorityEvent::new(authority, state);
+    self.event_stream.publish(&EventStreamEvent::RemoteAuthority(event));
   }
 
   /// Retrieves an actor cell by pid.
@@ -325,15 +439,20 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       segments.push(cursor.name().to_owned());
       current = cursor.parent().and_then(|parent_pid| self.cell(&parent_pid));
     }
+    let identity = self.identity_snapshot();
     if segments.is_empty() {
-      return Some(ActorPath::root());
+      return Some(ActorPath::root_with_guardian(identity.guardian_kind));
     }
     segments.pop(); // discard root
     if segments.is_empty() {
-      return Some(ActorPath::root());
+      return Some(ActorPath::root_with_guardian(identity.guardian_kind));
     }
     segments.reverse();
-    Some(ActorPath::from_segments(segments))
+    let mut path = ActorPath::root_with_guardian(identity.guardian_kind);
+    for segment in segments {
+      path = path.child(segment);
+    }
+    Some(path)
   }
 
   /// Returns the shared event stream handle.
@@ -609,6 +728,95 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
 
   fn parent_of(&self, pid: &Pid) -> Option<Pid> {
     self.cell(pid).and_then(|cell| cell.parent())
+  }
+
+  /// Returns a reference to the ActorPathRegistry.
+  #[must_use]
+  pub const fn actor_path_registry(&self) -> &ToolboxMutex<ActorPathRegistry, TB> {
+    &self.actor_path_registry
+  }
+
+  /// Returns a reference to the RemoteAuthorityManager.
+  #[must_use]
+  pub const fn remote_authority_manager(&self) -> &ArcShared<RemoteAuthorityManagerGeneric<TB>> {
+    &self.remote_authority_mgr
+  }
+
+  /// Returns the current authority state.
+  #[must_use]
+  pub fn remote_authority_state(&self, authority: &str) -> AuthorityState {
+    self.remote_authority_mgr.state(authority)
+  }
+
+  /// Marks the authority as connected and emits an event.
+  pub fn remote_authority_set_connected(&self, authority: &str) -> Option<VecDeque<AnyMessageGeneric<TB>>> {
+    let drained = self.remote_authority_mgr.set_connected(authority);
+    self.publish_remote_authority_event(authority.to_string(), AuthorityState::Connected);
+    drained
+  }
+
+  /// Transitions the authority into quarantine using the provided duration or the configured
+  /// default.
+  pub fn remote_authority_set_quarantine(&self, authority: impl Into<String>, duration: Option<Duration>) {
+    let authority = authority.into();
+    let now_secs = self.monotonic_now().as_secs();
+    let effective = duration.unwrap_or(self.default_quarantine_duration());
+    self.remote_authority_mgr.set_quarantine(authority.clone(), now_secs, Some(effective));
+    let state = self.remote_authority_mgr.state(&authority);
+    self.publish_remote_authority_event(authority, state);
+  }
+
+  /// Handles an InvalidAssociation signal by moving the authority into quarantine.
+  pub fn remote_authority_handle_invalid_association(&self, authority: impl Into<String>, duration: Option<Duration>) {
+    let authority = authority.into();
+    let now_secs = self.monotonic_now().as_secs();
+    let effective = duration.unwrap_or(self.default_quarantine_duration());
+    self.remote_authority_mgr.handle_invalid_association(authority.clone(), now_secs, Some(effective));
+    let state = self.remote_authority_mgr.state(&authority);
+    self.publish_remote_authority_event(authority, state);
+  }
+
+  /// Manually overrides a quarantined authority back to connected.
+  pub fn remote_authority_manual_override_to_connected(&self, authority: &str) {
+    self.remote_authority_mgr.manual_override_to_connected(authority);
+    self.publish_remote_authority_event(authority.to_string(), AuthorityState::Connected);
+  }
+
+  /// Defers a message while the authority is unresolved.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`RemoteAuthorityError::Quarantined`] if the target authority is currently
+  /// quarantined.
+  pub fn remote_authority_defer(
+    &self,
+    authority: impl Into<String>,
+    message: AnyMessageGeneric<TB>,
+  ) -> Result<(), RemoteAuthorityError> {
+    self.remote_authority_mgr.defer_send(authority, message)
+  }
+
+  /// Attempts to defer a message, returning an error if the authority is quarantined.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`RemoteAuthorityError::Quarantined`] when the authority remains quarantined.
+  pub fn remote_authority_try_defer(
+    &self,
+    authority: impl Into<String>,
+    message: AnyMessageGeneric<TB>,
+  ) -> Result<(), RemoteAuthorityError> {
+    self.remote_authority_mgr.try_defer_send(authority, message)
+  }
+
+  /// Polls all authorities for expired quarantine windows and emits events for lifted entries.
+  pub fn poll_remote_authorities(&self) {
+    let now_secs = self.monotonic_now().as_secs();
+    self.actor_path_registry.lock().poll_expired(now_secs);
+    let lifted = self.remote_authority_mgr.poll_quarantine_expiration(now_secs);
+    for authority in lifted {
+      self.publish_remote_authority_event(authority.clone(), AuthorityState::Unresolved);
+    }
   }
 }
 

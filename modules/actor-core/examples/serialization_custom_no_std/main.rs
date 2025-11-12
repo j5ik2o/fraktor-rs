@@ -167,7 +167,7 @@ fn main() {
   println!("restored payload: node={}, temperature={}", restored.node, restored.temperature);
 
   // TransportInformation を付与すると、ActorRef からリモート経路形式を作れる
-  let info = TransportInformation::new(Some(String::from("pekko://sample@localhost:2552")));
+  let info = TransportInformation::new(Some(String::from("fraktor://sample@localhost:2552")));
   serialization.with_transport_information(info, || {
     let path = serialization.serialized_actor_path(&system.user_guardian_ref()).expect("actor path");
     println!("serialized actor path: {path}");

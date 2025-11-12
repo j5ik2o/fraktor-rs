@@ -1,5 +1,8 @@
 <meta>
 description: Create custom steering documents for specialized project contexts
+argument-hint: <what-to-create-custom-steering>
+arguments:
+   what-to-create-custom-steering: $ARGUMENTS
 </meta>
 
 # Kiro Custom Steering Creation

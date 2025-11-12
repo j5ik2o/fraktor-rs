@@ -8,7 +8,7 @@ mod behavior;
 mod behavior_runner;
 /// Typed behavior signals forwarded from the runtime.
 mod behavior_signal;
-/// Functional behavior builders inspired by Pekko.
+/// Functional behavior builders inspired by Fraktor.
 mod behaviors;
 /// Message adapter primitives bridging external protocols.
 pub mod message_adapter;
