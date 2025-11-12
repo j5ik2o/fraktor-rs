@@ -54,7 +54,10 @@ jobs:
           skip-git-pull: 'true'
       - name: Push Changes
         if: ${{ steps.changelog.outputs.skipped == 'false' && inputs.dry_run == false }}
+        env:
+          PAT: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
         run: |
+          git remote set-url origin https://x-access-token:${PAT}@github.com/${{ github.repository }}.git
           git push origin HEAD:${GITHUB_REF_NAME}
           git push origin ${{ steps.changelog.outputs.tag }}
       - name: Create GitHub Release
