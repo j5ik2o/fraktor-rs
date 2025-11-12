@@ -223,7 +223,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     let identity = self.identity_snapshot();
     let mut parts = ActorPathParts::local(identity.system_name).with_guardian(identity.guardian_kind);
     if let Some(host) = identity.canonical_host {
-      parts = parts.with_scheme(ActorPathScheme::PekkoTcp).with_authority_host(host);
+      parts = parts.with_scheme(ActorPathScheme::FraktorTcp).with_authority_host(host);
       if let Some(port) = identity.canonical_port {
         parts = parts.with_authority_port(port);
       }

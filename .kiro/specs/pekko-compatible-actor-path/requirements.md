@@ -13,9 +13,9 @@ fraktor ランタイムは Pekko の ActorPath 仕様（正規化 URI、UID 付�
 **目的:** ランタイムメンテナが Pekko と同じ ActorPath 文字列でログやリモート API を共有できるようにする。
 
 #### Acceptance Criteria
-1. When fraktor Runtime が ActorPath をログ・DeadLetter・テレメトリ用途で文字列化するとき、ActorPath Formatter は Pekko の正規化規則と同一の URI を出力し、authority が設定されている場合は `pekko://<system>@<host>:<port>/<path>`、設定されていない場合は `pekko://<system>/<path>` を生成しなければならない。
+1. When fraktor Runtime が ActorPath をログ・DeadLetter・テレメトリ用途で文字列化するとき、ActorPath Formatter は Pekko の正規化規則と同一の URI を出力し、authority が設定されている場合は `fraktor://<system>@<host>:<port>/<path>`、設定されていない場合は `fraktor://<system>/<path>` を生成しなければならない。
 2. If 任意のパスセグメントに RFC2396 準拠の文字（英数字 `[A-Za-z0-9]`、記号 `-_.*$+:@&=,!~';`、または `%HH` 形式のパーセントエンコード）以外が含まれるなら、ActorPath Validator はそのセグメントのインデックスを含むエラーを返してシリアライズを拒否しなければならない。
-3. While ランタイムが authority（host/port）を構成していない間、ActorPath Formatter は `pekko://<system>/<path>` 形式を維持したまま `@<host>:<port>` を省き、Pekko 既定の `/system` または `/user` 直下のルートパスを用いなければならない。
+3. While ランタイムが authority（host/port）を構成していない間、ActorPath Formatter は `fraktor://<system>/<path>` 形式を維持したまま `@<host>:<port>` を省き、Pekko 既定の `/system` または `/user` 直下のルートパスを用いなければならない。
 4. Where リモートパスに `#123456` のような UID サフィックスが含まれている場合、ActorPath Formatter はシリアライズ／デシリアライズの間でその UID を一語一句保持しなければならない。
 5. fraktor Runtime は ActorPath Formatter を通じて各セグメントの大文字小文字を元のアクター生成要求どおり保持しなければならない。
 6. If ユーザー定義の ActorPath セグメントが `$` から始まるなら、ActorPath Validator はそれをシステム予約セグメントとして拒否し、訂正を要求しなければならない。
@@ -26,7 +26,7 @@ fraktor ランタイムは Pekko の ActorPath 仕様（正規化 URI、UID 付�
 #### Acceptance Criteria
 1. When ランタイムが任意の API から ActorPath 文字列を受け取るとき、ActorPath Resolver はそれを root/system/user/child セグメントへ分解し、Pekko のツリー構造と一致する形でパターンマッチに供さなければならない。
 2. When ActorSelection が `..` を含む相対パスを使用するとき、ActorPath Resolver は親階層を決定的に解決し、ルートを逸脱する場合は検証エラーを返さなければならない。
-3. If 渡された ActorPath のスキームが `pekko` または `pekko.tcp` でなければ、ActorPath Resolver はパスを拒否して未対応スキームエラーを通知しなければならない。
+3. If 渡された ActorPath のスキームが `fraktor` または `fraktor.tcp` でなければ、ActorPath Resolver はパスを拒否して未対応スキームエラーを通知しなければならない。
 4. While ランタイムが参照されたリモート authority のクラスタアドレスマッピングを持たない間、ActorPath Resolver はそのパスを未解決状態に保ち、メッセージ配送を行わず延期対象としてマークしなければならない。
 5. When パーセントエンコード済み文字を含む ActorPath をデシリアライズするとき、ActorPath Resolver は Pekko の URL デコード規則に従って復号してからパスマッチを実施しなければならない。
 

@@ -80,9 +80,9 @@ graph TD
   - **Trade-offs**: 2 層分の型とテストが増えるが、`UriParser` を他モジュール（例: future remoting transport config）で再利用できるため長期的な保守コストを削減できる。
 
 ## Guardian パスとデフォルトセグメント
-- `ActorSystemConfig` は `default_segments: GuardianSegments` を保持し、`GuardianSegments::System`（`["system"]`）と `GuardianSegments::User`（`["user"]`）の 2 種を提供する。起動時に ActorSystemBuilder が `ActorPathParts` と組み合わせて `pekko://<system>/<guardian>` を形成し、Pekko と同じ `/system`・`/user` ルートを常に先頭へ挿入する。
+- `ActorSystemConfig` は `default_segments: GuardianSegments` を保持し、`GuardianSegments::System`（`["system"]`）と `GuardianSegments::User`（`["user"]`）の 2 種を提供する。起動時に ActorSystemBuilder が `ActorPathParts` と組み合わせて `fraktor://<system>/<guardian>` を形成し、Pekko と同じ `/system`・`/user` ルートを常に先頭へ挿入する。
 - `ActorPathBuilder`（`actor_path/path_builder.rs` 追加予定）が `ActorPath::child` を経由してもガーディアンより上位へ遡れないよう `RootKind` をトラッキングし、`ActorSelectionResolver` が `..` を解釈する際に `RootKind::contains(segment_index)` を参照してルート逸脱を検出する。逸脱時は `ActorPathError::RelativeEscape` を返す。
-- authority 未指定 (`PathParts.authority.is_none()`) の場合でも formatter は `pekko://<system>/<guardian>/<segments>` を必ず生成し、guardian 名称を省略しない。`GuardianSegments` は `ActorSystemConfig::with_default_segments(GuardianSegments::User)` のように API で選択でき、`spawn_system`/`spawn_user` がそれぞれ該当ガーディアンを利用する。
+- authority 未指定 (`PathParts.authority.is_none()`) の場合でも formatter は `fraktor://<system>/<guardian>/<segments>` を必ず生成し、guardian 名称を省略しない。`GuardianSegments` は `ActorSystemConfig::with_default_segments(GuardianSegments::User)` のように API で選択でき、`spawn_system`/`spawn_user` がそれぞれ該当ガーディアンを利用する。
 - 予約セグメント（`$` 始まり）は guardian 配下の system actors のみに許可する。`PathSegment::new` が `$` 始まりを拒否し、System 側で必要な `$system` や `$user` は `GuardianSegments` による内部生成でのみ作成することで、ユーザ入力からの侵入を防ぐ。
 
 ## System Flows
@@ -138,7 +138,7 @@ stateDiagram-v2
 - **`actor_path/uid.rs` (`ActorUid`)**: `u64` ラッパー。`ActorRef` 再生成時に `ActorPathRegistry` が UID 予約を判断する。
 - **`actor_path/path.rs` (`ActorPath`)**: `parts`, `segments: PathSegments`, `uid: Option<ActorUid>` を束ねる不変構造。`fn child(&self, segment: PathSegment) -> Self` は親セグメントを再検証しない。
 - **`actor_path/formatter.rs` (`ActorPathFormatter`)**: `fn format(path: &ActorPath) -> CanonicalUri`。`alloc::String` バッファを内部再利用し、authority の有無で分岐。
-- **`actor_path/parser.rs` (`ActorPathParser`)**: `fn parse(input: &str) -> Result<ActorPath, ActorPathError>`。内部で `UriParser::parse` を呼び出し、戻り値から `pekko`/`pekko.tcp` スキーム検証・guardian パス確認・UID サフィックス検出を行う。`UriError` は `ActorPathError::InvalidUri(UriError)` としてラップし、RFC 違反と ActorPath 規約違反を区別できるようにする。
+- **`actor_path/parser.rs` (`ActorPathParser`)**: `fn parse(input: &str) -> Result<ActorPath, ActorPathError>`。内部で `UriParser::parse` を呼び出し、戻り値から `fraktor`/`fraktor.tcp` スキーム検証・guardian パス確認・UID サフィックス検出を行う。`UriError` は `ActorPathError::InvalidUri(UriError)` としてラップし、RFC 違反と ActorPath 規約違反を区別できるようにする。
 - **`actor_path/validator.rs` (`ActorPathValidator`)**: 入口すべてで呼ばれる。`fn validate_segment(segment: &str)` / `fn validate_relative(path: &str)` を提供。
 - **`actor_path/comparator.rs` (`ActorPathComparator`)**: `fn eq(lhs, rhs)` が system/authority/segments だけを見る。`fn hash(path)` は UID 無視ハッシュを返す。
 - **`actor_selection/resolver.rs` (`ActorSelectionResolver`)**: `fn resolve(base: &ActorPath, selection: &ActorSelectionExpr) -> Result<ActorPath, ActorPathError>`。`..` 処理と未解決 authority の保留を `ActorPathRegistry` に通知。
@@ -179,7 +179,7 @@ stateDiagram-v2
 
 ## Security Considerations
 - ホスト名・セグメントは `%` デコード後に ASCII 範囲へ再検証し、ログ注入やパストラバーサルを防ぐ。
-- `ActorPathParser` は `pekko` / `pekko.tcp` 以外のスキームを即座に拒否し、未知プロトコルの authority を registry へ追加しない。
+- `ActorPathParser` は `fraktor` / `fraktor.tcp` 以外のスキームを即座に拒否し、未知プロトコルの authority を registry へ追加しない。
 - `RemoteAuthorityManager` は隔離中に Deferred キューをクリアし、再試行 flood を抑制。`quarantine_duration` は API 経由でのみ設定可能で、極端に短い値は `Duration >= 1s` バリデーションを掛ける。
 
 ## Performance & Scalability

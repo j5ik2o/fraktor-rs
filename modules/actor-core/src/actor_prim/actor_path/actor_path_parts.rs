@@ -17,7 +17,12 @@ impl ActorPathParts {
   #[must_use]
   /// Builds parts for a local (non-remote) actor system.
   pub fn local(system: impl Into<String>) -> Self {
-    Self { scheme: ActorPathScheme::Pekko, system: system.into(), authority: None, guardian: GuardianKind::User }
+    Self {
+      scheme:    ActorPathScheme::Fraktor,
+      system:    system.into(),
+      authority: None,
+      guardian:  GuardianKind::User,
+    }
   }
 
   #[must_use]
@@ -39,7 +44,7 @@ impl ActorPathParts {
   pub fn with_authority(system: impl Into<String>, authority: Option<(impl Into<String>, u16)>) -> Self {
     let system = system.into();
     let authority = authority.map(|(host, port)| PathAuthority { host: host.into(), port: Some(port) });
-    Self { scheme: ActorPathScheme::PekkoTcp, system, authority, guardian: GuardianKind::User }
+    Self { scheme: ActorPathScheme::FraktorTcp, system, authority, guardian: GuardianKind::User }
   }
 
   #[must_use]

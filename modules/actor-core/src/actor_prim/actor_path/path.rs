@@ -145,7 +145,7 @@ impl ActorPath {
     self.to_relative_string()
   }
 
-  /// Formats the path as `pekko://system@host:port/...`.
+  /// Formats the path as `fraktor://system@host:port/...`.
   #[must_use]
   pub fn to_canonical_uri(&self) -> String {
     ActorPathFormatter::format(self)

@@ -34,7 +34,7 @@ fn canonical_uri_includes_scheme_system_and_segments() {
     .with_authority_port(2552);
   let path = ActorPath::from_parts(parts).child("service").child("worker");
   let canonical = ActorPathFormatter::format(&path);
-  assert_eq!(canonical, "pekko://cellsys@host.example.com:2552/user/service/worker");
+  assert_eq!(canonical, "fraktor://cellsys@host.example.com:2552/user/service/worker");
 }
 
 #[test]
@@ -47,13 +47,13 @@ fn comparator_ignores_uid_difference() {
 
 #[test]
 fn parser_rejects_reserved_segment() {
-  let uri = "pekko://sys/user/$system";
+  let uri = "fraktor://sys/user/$system";
   assert!(ActorPathParser::parse(uri).is_err());
 }
 
 #[test]
 fn parser_preserves_authority_and_guardian() {
-  let uri = "pekko.tcp://cellsys@host.example.com:2552/system/logger";
+  let uri = "fraktor.tcp://cellsys@host.example.com:2552/system/logger";
   let parsed = ActorPathParser::parse(uri).expect("parse");
   assert_eq!(parsed.parts().system(), "cellsys");
   assert_eq!(parsed.parts().guardian_segment(), "system");
@@ -64,9 +64,9 @@ fn parser_preserves_authority_and_guardian() {
 #[test]
 fn format_parse_roundtrip_samples() {
   let cases = [
-    "pekko://cellsys/user/worker",
-    "pekko.tcp://cellsys@127.0.0.1:2552/user/service#7",
-    "pekko://cellsys/system/logger/sub",
+    "fraktor://cellsys/user/worker",
+    "fraktor.tcp://cellsys@127.0.0.1:2552/user/service#7",
+    "fraktor://cellsys/system/logger/sub",
   ];
   for uri in cases {
     let parsed = ActorPathParser::parse(uri).expect("parse");
@@ -77,7 +77,7 @@ fn format_parse_roundtrip_samples() {
 
 #[test]
 fn parser_decodes_percent_encoded_segments() {
-  let uri = "pekko://cellsys/user/service%20worker";
+  let uri = "fraktor://cellsys/user/service%20worker";
   let parsed = ActorPathParser::parse(uri).expect("parse");
   let last = parsed.segments().last().expect("segment");
   assert_eq!(last.as_str(), "service%20worker");

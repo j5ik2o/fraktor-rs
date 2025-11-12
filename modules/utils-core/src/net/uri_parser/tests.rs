@@ -2,17 +2,17 @@ use super::{UriError, UriParser};
 
 #[test]
 fn test_parse_simple_uri() {
-  // In Pekko, "pekko://system/path" means:
-  // - scheme: "pekko"
+  // In Fraktor, "fraktor://system/path" means:
+  // - scheme: "fraktor"
   // - authority: "system" (treated as host in Java URI)
   // - path: "/path"
   // However, for ActorPath parsing, "system" is the system name, not authority
   // So we parse it as authority="system", path="/path"
-  let input = "pekko://system/path";
+  let input = "fraktor://system/path";
   let result = UriParser::parse(input);
   assert!(result.is_ok());
   let parts = result.unwrap();
-  assert_eq!(parts.scheme, Some("pekko"));
+  assert_eq!(parts.scheme, Some("fraktor"));
   assert_eq!(parts.authority, Some("system"));
   assert_eq!(parts.path, "/path");
   assert_eq!(parts.query, None);
@@ -21,18 +21,18 @@ fn test_parse_simple_uri() {
 
 #[test]
 fn test_parse_uri_with_authority() {
-  let input = "pekko://system@host:2552/path";
+  let input = "fraktor://system@host:2552/path";
   let result = UriParser::parse(input);
   assert!(result.is_ok());
   let parts = result.unwrap();
-  assert_eq!(parts.scheme, Some("pekko"));
+  assert_eq!(parts.scheme, Some("fraktor"));
   assert_eq!(parts.authority, Some("system@host:2552"));
   assert_eq!(parts.path, "/path");
 }
 
 #[test]
 fn test_parse_uri_with_query() {
-  let input = "pekko://system/path?key=value";
+  let input = "fraktor://system/path?key=value";
   let result = UriParser::parse(input);
   assert!(result.is_ok());
   let parts = result.unwrap();
@@ -41,7 +41,7 @@ fn test_parse_uri_with_query() {
 
 #[test]
 fn test_parse_uri_with_fragment() {
-  let input = "pekko://system/path#fragment";
+  let input = "fraktor://system/path#fragment";
   let result = UriParser::parse(input);
   assert!(result.is_ok());
   let parts = result.unwrap();
@@ -50,11 +50,11 @@ fn test_parse_uri_with_fragment() {
 
 #[test]
 fn test_parse_pekko_tcp_scheme() {
-  let input = "pekko.tcp://system@host:2552/path";
+  let input = "fraktor.tcp://system@host:2552/path";
   let result = UriParser::parse(input);
   assert!(result.is_ok());
   let parts = result.unwrap();
-  assert_eq!(parts.scheme, Some("pekko.tcp"));
+  assert_eq!(parts.scheme, Some("fraktor.tcp"));
 }
 
 #[test]
@@ -66,7 +66,7 @@ fn test_parse_invalid_scheme() {
 
 #[test]
 fn test_parse_percent_encoded_path() {
-  let input = "pekko://system/path%20with%20spaces";
+  let input = "fraktor://system/path%20with%20spaces";
   let result = UriParser::parse(input);
   assert!(result.is_ok());
   let parts = result.unwrap();
@@ -78,7 +78,7 @@ fn test_parse_percent_encoded_path() {
 
 #[test]
 fn test_parse_invalid_percent_encoding() {
-  let input = "pekko://system/path%";
+  let input = "fraktor://system/path%";
   let result = UriParser::parse(input);
   assert!(result.is_ok()); // Parsing succeeds, but decoding should fail
   let parts = result.unwrap();
@@ -88,7 +88,7 @@ fn test_parse_invalid_percent_encoding() {
 
 #[test]
 fn test_parse_invalid_percent_encoding_short() {
-  let input = "pekko://system/path%2";
+  let input = "fraktor://system/path%2";
   let result = UriParser::parse(input);
   assert!(result.is_ok());
   let parts = result.unwrap();
@@ -98,7 +98,7 @@ fn test_parse_invalid_percent_encoding_short() {
 
 #[test]
 fn test_parse_invalid_percent_encoding_non_hex() {
-  let input = "pekko://system/path%GH";
+  let input = "fraktor://system/path%GH";
   let result = UriParser::parse(input);
   assert!(result.is_ok());
   let parts = result.unwrap();
@@ -136,20 +136,20 @@ fn test_validate_hostname_invalid() {
 // Golden data tests based on Pekko/ProtoActor known cases
 #[test]
 fn test_golden_data_pekko_local_path() {
-  // From Pekko docs: "pekko://my-sys/user/service-a/worker1"
-  let input = "pekko://my-sys/user/service-a/worker1";
+  // From Pekko docs: "fraktor://my-sys/user/service-a/worker1"
+  let input = "fraktor://my-sys/user/service-a/worker1";
   let result = UriParser::parse(input).unwrap();
-  assert_eq!(result.scheme, Some("pekko"));
+  assert_eq!(result.scheme, Some("fraktor"));
   assert_eq!(result.authority, Some("my-sys"));
   assert_eq!(result.path, "/user/service-a/worker1");
 }
 
 #[test]
 fn test_golden_data_pekko_remote_path() {
-  // From Pekko docs: "pekko://my-sys@host.example.com:5678/user/service-b"
-  let input = "pekko://my-sys@host.example.com:5678/user/service-b";
+  // From Pekko docs: "fraktor://my-sys@host.example.com:5678/user/service-b"
+  let input = "fraktor://my-sys@host.example.com:5678/user/service-b";
   let result = UriParser::parse(input).unwrap();
-  assert_eq!(result.scheme, Some("pekko"));
+  assert_eq!(result.scheme, Some("fraktor"));
   assert_eq!(result.authority, Some("my-sys@host.example.com:5678"));
   assert_eq!(result.path, "/user/service-b");
 }
@@ -157,20 +157,20 @@ fn test_golden_data_pekko_remote_path() {
 #[test]
 fn test_golden_data_pekko_root_path() {
   // From Pekko ActorPathSpec: RootActorPath(Address("pekko", "mysys")).toString should
-  // ===("pekko://mysys/")
-  let input = "pekko://mysys/";
+  // ===("fraktor://mysys/")
+  let input = "fraktor://mysys/";
   let result = UriParser::parse(input).unwrap();
-  assert_eq!(result.scheme, Some("pekko"));
+  assert_eq!(result.scheme, Some("fraktor"));
   assert_eq!(result.authority, Some("mysys"));
   assert_eq!(result.path, "/");
 }
 
 #[test]
 fn test_golden_data_pekko_remote_with_port() {
-  // From Pekko ActorPathSpec: "pekko://my_sys@host:1234/some/ref"
-  let input = "pekko://my_sys@host:1234/some/ref";
+  // From Pekko ActorPathSpec: "fraktor://my_sys@host:1234/some/ref"
+  let input = "fraktor://my_sys@host:1234/some/ref";
   let result = UriParser::parse(input).unwrap();
-  assert_eq!(result.scheme, Some("pekko"));
+  assert_eq!(result.scheme, Some("fraktor"));
   assert_eq!(result.authority, Some("my_sys@host:1234"));
   assert_eq!(result.path, "/some/ref");
 }
@@ -188,19 +188,19 @@ fn test_golden_data_akka_compatible_path() {
 #[test]
 fn test_golden_data_pekko_tcp_remote() {
   // From Pekko: pekko.tcp scheme for remote transport
-  let input = "pekko.tcp://system@host.example.com:2552/user/actor";
+  let input = "fraktor.tcp://system@host.example.com:2552/user/actor";
   let result = UriParser::parse(input).unwrap();
-  assert_eq!(result.scheme, Some("pekko.tcp"));
+  assert_eq!(result.scheme, Some("fraktor.tcp"));
   assert_eq!(result.authority, Some("system@host.example.com:2552"));
   assert_eq!(result.path, "/user/actor");
 }
 
 #[test]
 fn test_golden_data_address_only() {
-  // From Pekko: "pekko://my_sys@host:1234" (address without path)
-  let input = "pekko://my_sys@host:1234";
+  // From Pekko: "fraktor://my_sys@host:1234" (address without path)
+  let input = "fraktor://my_sys@host:1234";
   let result = UriParser::parse(input).unwrap();
-  assert_eq!(result.scheme, Some("pekko"));
+  assert_eq!(result.scheme, Some("fraktor"));
   assert_eq!(result.authority, Some("my_sys@host:1234"));
   assert_eq!(result.path, "");
 }
@@ -217,7 +217,7 @@ fn test_golden_data_malformed_cases() {
 #[test]
 fn test_golden_data_percent_encoded_actor_names() {
   // Actor names may contain percent-encoded characters
-  let input = "pekko://system/user/actor%20name";
+  let input = "fraktor://system/user/actor%20name";
   let result = UriParser::parse(input).unwrap();
   assert_eq!(result.path, "/user/actor%20name");
   let decoded = UriParser::percent_decode("actor%20name").unwrap();
@@ -227,9 +227,9 @@ fn test_golden_data_percent_encoded_actor_names() {
 #[test]
 fn test_golden_data_query_and_fragment() {
   // URIs with query and fragment components
-  let input = "pekko://system/path?key=value#fragment";
+  let input = "fraktor://system/path?key=value#fragment";
   let result = UriParser::parse(input).unwrap();
-  assert_eq!(result.scheme, Some("pekko"));
+  assert_eq!(result.scheme, Some("fraktor"));
   assert_eq!(result.authority, Some("system"));
   assert_eq!(result.path, "/path");
   assert_eq!(result.query, Some("key=value"));
@@ -241,10 +241,10 @@ fn test_golden_data_query_and_fragment() {
 fn test_property_round_trip_simple() {
   // Simple round-trip: parse should succeed for valid URIs
   let test_cases = vec![
-    "pekko://system/path",
-    "pekko://system/user/actor",
-    "pekko://system@host:2552/path",
-    "pekko.tcp://system@host:2552/path",
+    "fraktor://system/path",
+    "fraktor://system/user/actor",
+    "fraktor://system@host:2552/path",
+    "fraktor.tcp://system@host:2552/path",
   ];
 
   for uri in test_cases {
@@ -275,7 +275,7 @@ fn test_property_error_classification() {
   }
 
   // For cases where parsing succeeds but validation fails during decode
-  let decode_error_cases = vec!["pekko://system/path%", "pekko://system/path%2", "pekko://system/path%GH"];
+  let decode_error_cases = vec!["fraktor://system/path%", "fraktor://system/path%2", "fraktor://system/path%GH"];
 
   for uri in decode_error_cases {
     let result = UriParser::parse(uri);
@@ -335,7 +335,7 @@ fn test_error_message_readability() {
   }
 
   // For percent encoding errors
-  let decode_error_uri = "pekko://system/path%";
+  let decode_error_uri = "fraktor://system/path%";
   let parts = UriParser::parse(decode_error_uri).unwrap();
   let decode_result = UriParser::percent_decode(parts.path);
   if let Err(e) = decode_result {

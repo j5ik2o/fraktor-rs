@@ -113,7 +113,7 @@ fn system_state_remove_cell_reserves_uid() {
 fn system_state_registers_canonical_uri_with_config() {
   let state = ArcShared::new(SystemState::new());
   let remoting = RemotingConfig::default().with_canonical_host("localhost").with_canonical_port(2552);
-  let config = ActorSystemConfig::default().with_system_name("pekko-system").with_remoting(remoting);
+  let config = ActorSystemConfig::default().with_system_name("fraktor-system").with_remoting(remoting);
   state.apply_actor_system_config(&config);
 
   let props = Props::from_fn(|| RestartProbeActor);
@@ -128,7 +128,7 @@ fn system_state_registers_canonical_uri_with_config() {
 
   let registry = state.actor_path_registry().lock();
   let canonical = registry.canonical_uri(&child_pid).expect("canonical uri");
-  assert!(canonical.starts_with("pekko.tcp://pekko-system@localhost:2552"));
+  assert!(canonical.starts_with("fraktor.tcp://fraktor-system@localhost:2552"));
   assert!(canonical.ends_with("/user/worker"));
 }
 

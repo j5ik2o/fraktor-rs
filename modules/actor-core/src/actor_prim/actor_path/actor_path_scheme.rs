@@ -3,10 +3,10 @@
 /// Canonical scheme supported by the runtime.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ActorPathScheme {
-  /// Local Pekko transport.
-  Pekko,
-  /// TCP transport compatible with Pekko remoting.
-  PekkoTcp,
+  /// Local Fraktor transport.
+  Fraktor,
+  /// TCP transport compatible with Fraktor remoting.
+  FraktorTcp,
 }
 
 impl ActorPathScheme {
@@ -14,8 +14,8 @@ impl ActorPathScheme {
   /// Returns the canonical scheme string.
   pub const fn as_str(&self) -> &'static str {
     match self {
-      | ActorPathScheme::Pekko => "pekko",
-      | ActorPathScheme::PekkoTcp => "pekko.tcp",
+      | ActorPathScheme::Fraktor => "fraktor",
+      | ActorPathScheme::FraktorTcp => "fraktor.tcp",
     }
   }
 }

@@ -127,7 +127,7 @@ fn serialize_remote_attaches_manifest() {
 fn with_transport_information_sets_scope_temporarily() {
   let (extension, _) = build_extension::<NoStdToolbox>(None);
   assert!(extension.current_transport_information().is_none());
-  let info = TransportInformation::new(Some("pekko://sys@host".into()));
+  let info = TransportInformation::new(Some("fraktor://sys@host".into()));
   let value = extension.with_transport_information(info.clone(), || extension.current_transport_information());
   assert_eq!(value.as_ref(), Some(&info));
   assert!(extension.current_transport_information().is_none());
@@ -137,9 +137,9 @@ fn with_transport_information_sets_scope_temporarily() {
 fn serialized_actor_path_prefers_transport_address() {
   let (extension, _) = build_extension::<NoStdToolbox>(None);
   let actor_ref = ActorRefGeneric::<NoStdToolbox>::new(Pid::new(1, 0), ArcShared::new(NullSender));
-  let info = TransportInformation::new(Some("pekko://sys@host:2552".into()));
+  let info = TransportInformation::new(Some("fraktor://sys@host:2552".into()));
   let path = extension.with_transport_information(info, || extension.serialized_actor_path(&actor_ref)).expect("path");
-  assert!(path.starts_with("pekko://sys@host:2552"));
+  assert!(path.starts_with("fraktor://sys@host:2552"));
 }
 
 #[test]
@@ -289,7 +289,7 @@ fn not_serializable_event_records_pid_and_transport() {
   let extension = SerializationExtensionGeneric::new(&system, setup);
 
   let pid = Pid::new(77, 1);
-  let info = TransportInformation::new(Some("pekko://sys@host:2552".into()));
+  let info = TransportInformation::new(Some("fraktor://sys@host:2552".into()));
   let error = extension
     .with_transport_information(info.clone(), || {
       extension.serialize_for(&TestPayload(1), SerializationCallScope::Remote, Some(pid))
@@ -300,7 +300,7 @@ fn not_serializable_event_records_pid_and_transport() {
   let events = serialization_events.lock();
   assert_eq!(events.len(), 1);
   assert_eq!(events[0].pid(), Some(pid));
-  assert_eq!(events[0].transport_hint(), Some("pekko://sys@host:2552"));
+  assert_eq!(events[0].transport_hint(), Some("fraktor://sys@host:2552"));
 
   let dead_letters = system.dead_letters();
   assert!(
@@ -707,11 +707,11 @@ fn builtin_serializers_support_primitives() {
 fn actor_ref_serialization_uses_helper() {
   let (extension, _) = build_extension::<NoStdToolbox>(None);
   let actor_ref = ActorRefGeneric::<NoStdToolbox>::new(Pid::new(99, 0), ArcShared::new(NullSender));
-  let info = TransportInformation::new(Some("pekko://sys@host:2552".into()));
+  let info = TransportInformation::new(Some("fraktor://sys@host:2552".into()));
   let message = extension
     .with_transport_information(info, || extension.serialize(&actor_ref, SerializationCallScope::Remote))
     .expect("serialize");
   let decoded = extension.deserialize(&message, Some(TypeId::of::<String>())).expect("decode");
   let path = decoded.downcast::<String>().unwrap();
-  assert!(path.starts_with("pekko://sys@host:2552"));
+  assert!(path.starts_with("fraktor://sys@host:2552"));
 }

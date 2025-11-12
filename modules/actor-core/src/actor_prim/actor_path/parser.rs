@@ -1,4 +1,4 @@
-//! Parser that converts canonical Pekko URIs into actor paths.
+//! Parser that converts canonical Fraktor URIs into actor paths.
 
 #[cfg(test)]
 mod tests;
@@ -50,8 +50,8 @@ impl ActorPathParser {
 
   fn parse_scheme(raw: Option<&str>) -> Result<ActorPathScheme, ActorPathError> {
     match raw {
-      | Some("pekko") | None => Ok(ActorPathScheme::Pekko),
-      | Some("pekko.tcp") => Ok(ActorPathScheme::PekkoTcp),
+      | Some("fraktor") | None => Ok(ActorPathScheme::Fraktor),
+      | Some("fraktor.tcp") => Ok(ActorPathScheme::FraktorTcp),
       | _ => Err(ActorPathError::UnsupportedScheme),
     }
   }

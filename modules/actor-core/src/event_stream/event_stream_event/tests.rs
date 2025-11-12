@@ -97,7 +97,7 @@ fn event_stream_event_serialization_clone() {
     Some(SerializerId::from_raw(200)),
     Some("manifest".into()),
     Some(Pid::new(1, 0)),
-    Some("pekko://sys@host".into()),
+    Some("fraktor://sys@host".into()),
   );
   let original = EventStreamEvent::<NoStdToolbox>::Serialization(event.clone());
   let cloned = original.clone();

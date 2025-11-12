@@ -9,7 +9,7 @@ pub struct ActorPathFormatter;
 
 impl ActorPathFormatter {
   #[must_use]
-  /// Formats `path` as `pekko://system@host:port/...`.
+  /// Formats `path` as `fraktor://system@host:port/...`.
   pub fn format(path: &ActorPath) -> String {
     let mut canonical = String::new();
     let parts = path.parts();
