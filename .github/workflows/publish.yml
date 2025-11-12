@@ -1,0 +1,62 @@
+name: publish
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Cargo Publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Configure Cargo Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: publish
+
+      - name: Verify Tag Matches Version
+        run: |
+          set -euo pipefail
+          CRATE_VERSION=$(cargo +nightly metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name=="fraktor-rs") | .version')
+          TAG_NAME="${GITHUB_REF_NAME}"
+          if [[ "${TAG_NAME}" != "v${CRATE_VERSION}" ]]; then
+            echo "Tag ${TAG_NAME} does not match Cargo.toml version ${CRATE_VERSION}." >&2
+            exit 1
+          fi
+
+      - name: Pre-release Health Check
+        run: ./scripts/ci-check.sh all
+
+      - name: Publish to crates.io
+        env:
+          CARGO_TOKEN: ${{ secrets.CARGO_TOKEN }}
+        run: cargo +nightly publish --token "${CARGO_TOKEN}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
