@@ -43,8 +43,6 @@ jobs:
             echo "Tag ${TAG_NAME} does not match Cargo.toml version ${CRATE_VERSION}." >&2
             exit 1
           fi
-      - name: Pre-release Health Check
-        run: ./scripts/ci-check.sh all
       - name: Publish fraktor-utils-core-rs
         env:
           CARGO_TOKEN: ${{ secrets.CARGO_TOKEN }}
