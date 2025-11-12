@@ -57,28 +57,28 @@ graph TB
 
 ### Technology Stack and Design Decisions
 - `utils-core/time`: `MonotonicClock`（tick 64bit, resolution 指定）, `TimerInstant`, `TimerWheel`（固定長スロット + overflow priority queue）、`TimerEntryMode`。
-- `RuntimeToolbox` 拡張: `type Clock`, `type Timer`, `fn clock(&self)`, `fn timer(&self)` に加えて `fn tick_source(&self) -> &'static dyn ToolboxTickSource` を追加する。Toolbox 側で tokio/embassy/SysTick などの割り込み登録・停止を完結させ、actor-core には `TickEvent { pending_ticks: u16, mode: TickMode }` を pull する API だけを公開する。NoStdToolbox は SysTick/DWT/embassy の ISR から `pending_ticks` をインクリメントする実装、actor-std は tokio タスクから同一インタフェースでイベントを push する実装を提供する。
+- `RuntimeToolbox` 拡張: `type Clock`, `type Timer`, `fn clock(&self)`, `fn timer(&self)` に加えて `fn tick_source(&self) -> &'static dyn ToolboxTickSource` を追加する。Toolbox 側で tokio/embassy/SysTick などの割り込み登録・停止を完結させ、actor-core には `TickEvent { ticks: u32, mode: TickMode }` を pull する API だけを公開する。NoStdToolbox は SysTick/DWT/embassy の ISR から `ticks` をインクリメントする実装、actor-std は tokio タスクから同一インタフェースでイベントを push する実装を提供する。
 
 #### ToolboxTickSource Contract
-- **イベントセマンティクス**: `ToolboxTickSource` は ISR/async task から呼ばれる `notify_tick()` で `pending_ticks` カウンタを単にインクリメントするだけとし、deadline 計算や `SmallVec` 生成は一切行わない。`SchedulerRunner` は `tick_source.try_pull()` を呼び、`TickEvent { pending_ticks, mode }` を受け取ったら自身で `deadline = last_deadline + resolution` を繰り返し計算して `run_tick(deadline)` を実行する。これにより ISR の処理時間は O(1) に固定され、no_std 環境でも割り込み遅延を一定に抑えられる。
-- **Flush/Stop**: `ToolboxTickSource::stop_and_flush()` は (1) 割り込み/タスク登録を解除し新規 `notify_tick()` を遮断、(2) `pending_ticks` を原子的に読み取って `TickEvent::from_pending()` を返すだけで済む。残 deadline の算出は Runner 側が一括で行うため determinism を維持したまま簡潔に停止できる。
-- **Backpressure Reporting**: `tick_source.status()` は `TickSourceStatus::{Ok, Backpressured { pending_ticks }, Suspended}` を返し、Runner は status 変化を `SchedulerDiagnostics::record_driver_status()` へ通知する。Toolbox 実装は queue/critical-section 等の内部情報を保持するが、actor-core は状態 enum のみを観測する。
-- Actor-side: `Scheduler<TB>` が timer wheel を poll して `SchedulerCommand` を処理、`SchedulerHandle` が `Cancellable` として利用可能。`SchedulerRunner` は `RunnerMode::{Manual, AsyncHost, Hardware}` を実装し、いずれのモードでも tick 取得は `TickSource` 経由で統一。バックプレッシャ変化を検知したら (a) backlog deadlines を全て `run_tick` で消化し、(b) `SchedulerBackpressureLink::raise(Driver)` を呼んで accepting_state を Backpressure へ遷移させる。pending が閾値を下回れば `SchedulerBackpressureLink::clear(Driver)` で通常状態へ復帰させる。
+- **イベントセマンティクス**: `ToolboxTickSource` は ISR/async task から呼ばれる `notify_tick()` で `pending_total: AtomicU32` を単調増加させるだけとし、deadline 計算や `ArrayVec` 等の確保は一切行わない。`SchedulerRunner` は `tick_source.try_pull()` を呼び、`TickEvent { ticks, mode }` を受け取ったら `ticks` を `catch_up_chunk_ticks`（デフォルト 1024）単位に分割しつつ `deadline = last_deadline + resolution` を計算して `run_tick(deadline)` を連続実行する。これにより ISR の処理時間は O(1) に固定され、長時間停止後でも tick が失われない。
+- **Flush/Stop**: `ToolboxTickSource::stop_and_flush()` は (1) 割り込み/タスク登録を解除し新規 `notify_tick()` を遮断、(2) `pending_total` を原子的に読み取って `TickEvent::from_total()` を返す。残 deadline の算出は Runner 側が一括で行うため determinism を維持したまま簡潔に停止できる。
+- **Backpressure Reporting**: `tick_source.status()` は `TickSourceStatus::{Ok, Backpressured { ticks }, Suspended}` を返し、Runner は status 変化を `SchedulerDiagnostics::record_driver_status()` へ通知する。tick 消費が追いつかない場合でも値は飽和せず蓄積されるため、Backpressure への遷移は backlog を失わない前提で行える。
+- Actor-side: `Scheduler<TB>` が timer wheel を poll して `SchedulerCommand` を処理、`SchedulerHandle` が `Cancellable` として利用可能。`SchedulerRunner` は `RunnerMode::{Manual, AsyncHost, Hardware}` を実装し、いずれのモードでも tick 取得は `TickSource` 経由で統一。バックプレッシャ変化を検知したら (a) backlog deadlines を全て `run_tick` で消化し、(b) `SchedulerBackpressureLink::raise(Driver)` を呼んで accepting_state を Backpressure へ遷移させる。backlog が閾値を下回れば `SchedulerBackpressureLink::clear(Driver)` で通常状態へ復帰させる。
 
 ##### ToolboxTickSource Implementation Notes
-- **TickCounter**: `ToolboxTickSource` は `pending_ticks: AtomicU16` と `last_tick: TimerInstant` のみを保持し、`notify_tick()` は `pending_ticks.fetch_add(1, Ordering::AcqRel)` で終了する。ISR 内で `SmallVec` を確保せず、スタック使用量と実行時間を一定に保つ。
-- **Catch-up Pull**: Runner は `tick_source.try_pull()` から `TickEvent { pending_ticks, mode }` を受け取り、その場で `pending_ticks` 回ぶんの deadline を計算する。`mode == CatchUp` は backlog がソフト閾値（例: 0.8 * max_pending）を超えたことを示すだけで、deadline 展開は Runner が行う。
-- **Backpressure Hook**: queue/critical-section が飽和して `notify_tick()` が `Backpressure` を返した場合でも、driver 側は pending を破棄しない。Runner は `TickSourceStatus::Backpressured` を受信した時点で `SchedulerBackpressureLink::raise(Driver)` を呼び、タスク受理ポリシーを切り替える。
-- **ISR/Thread 安全性**: no_std モードでは `notify_tick()` が割り込みから呼ばれるため、`pending_ticks` 加算のみの実装で最小限のクリティカルセクションに収める。std モードでは tokio タスクが `notify_tick()` を単純呼び出しするだけで済み、両者が同じ `TickSource` API を共有する。
-- **テストハーネス**: ManualClock/Deterministic モードでは `tick_source.inject_manual_tick(n)` を提供し、Runner が同じコードパスで catch-up を実行できるようにする。
+- **TickCounter**: `ToolboxTickSource` は `pending_total: AtomicU32` と `last_tick: TimerInstant` を保持し、`notify_tick()` は `pending_total.fetch_add(1, Ordering::AcqRel)` で終了する。ISR 内で追加メモリ確保を行わず、スタック使用量と実行時間を一定に保つ。
+- **Catch-up Pull**: Runner は `tick_source.try_pull()` から `TickEvent { ticks, mode }` を受け取り、`TickChunkIter` が `catch_up_chunk_ticks`（デフォルト 1024）単位に分割した値を `run_tick` へ供給する。チャンクの最後で `mode` を更新し、Diagnostics へ backlog サイズを記録する。
+- **Backpressure Hook**: queue/critical-section が飽和して `notify_tick()` が `Backpressured` を返した場合でも、driver 側は tick を破棄しない。Runner は `TickSourceStatus::Backpressured` を受信した時点で `SchedulerBackpressureLink::raise(Driver)` を呼び、タスク受理ポリシーを切り替えると同時に backlog をメトリクス化する。
+- **ISR/Thread 安全性**: no_std モードでは `notify_tick()` が割り込みから呼ばれるため、加算のみの実装で最小限のクリティカルセクションに収める。std モードでは tokio タスクが `notify_tick()` を単純呼び出しするだけで済み、両者が同じ `TickSource` API を共有する。
+- **テストハーネス**: ManualClock/Deterministic モードでは `tick_source.inject_manual_tick(n)` を提供し、本番と同じチャンク処理で catch-up を実行できるようにする。
 
 ###### Catch-up Backlog Configuration
-- **容量計算**: `SchedulerConfig::catch_up_window_ms`（デフォルト 50ms）と `resolution_ns` から `max_pending_ticks = min(64, (catch_up_window_ms * 1_000_000) / resolution_ns)` を算出し、`TickSource` の `pending_ticks` がこの上限を超えないよう clamp する。例えば resolution=10ms, window=50ms なら `max_pending_ticks = 5` と算出される。
-- **Catch-up イベント**: backlog が `0.8 * max_pending` を超えると `TickEvent.mode = CatchUp` をセットし、Runner が受信直後に `SchedulerDiagnostics::record_catch_up(pending_ticks)` を呼ぶ。Runner は `pending_ticks` 回ぶんの deadline を順次計算して `run_tick` を実行し、±1 tick 以内で補償する。
-- **Backpressure 連携**: `pending_ticks` が上限を超えた状態で `notify_tick()` が `Backpressure` を返した場合でも、driver 側は tick を破棄しない。Runner は `TickSourceStatus::Backpressured` を受信した時点で `SchedulerBackpressureLink::raise(Driver)` を呼び、新規タイマー受理ポリシーを切り替える。
+- **容量計算**: `SchedulerConfig::catch_up_window_ms`（デフォルト 50ms）と `resolution_ns` から `catch_up_window_ticks = ceil(window / resolution)` を算出し、`TickSource` はこの値をメトリクスとして公開するだけで clamp は行わない。
+- **Catch-up イベント**: backlog が `0.8 * catch_up_window_ticks` を超えると `TickEvent.mode = CatchUp` をセットし、Runner が受信直後に `SchedulerDiagnostics::record_catch_up(ticks)` を呼ぶ。Runner は `ticks` を順次計算して `run_tick` を実行し、±1 tick 以内で補償する。
+- **Backpressure 連携**: backlog が `catch_up_window_ticks` を超えた状態でも tick を破棄せず、`TickSourceStatus::Backpressured { ticks }` を返して `SchedulerBackpressureLink::raise(Driver)` を即発火する。Backpressure が解除されるまでは `catch_up_chunk_ticks` を自動的に半減させ、イベントループの 1 周期時間を抑制する。
 - **診断項目**: `SchedulerDiagnostics` に `tick_backlog_peak`, `tick_overflow_events` を追加し、backlog 設定値が適切かどうかを観測できるようにする。
-- **飽和ポリシー**: `pending_ticks > max_pending_ticks` が連続 2 回観測された場合、Runner は `SchedulerWarning::DriverCatchUpExceeded { pending_ticks }` を EventStream/Diagnostics へ送出し、`accepting_state = Rejecting` へ遷移して低優先度タイマーを fail-fast する。`pending_ticks` が `max_pending_ticks / 2` 未満に戻ったら `SchedulerBackpressureLink::clear(Driver)` を呼び段階的に Normal へ戻す。
-- **構成ガイド**: `MAX_PENDING = 64` の根拠として、`resolution_ns` と `worst_case_jitter_ms` を用いた計算式（例: Cortex-M で 1kHz SysTick、最悪停止 3ms ⇒ `max_pending_ticks = ceil(3ms / resolution)`）を Performance セクションに記載する。`SchedulerConfig::validate()` はハードウェア種別ごとの推奨上限表と照合し、超過した設定に対して `SchedulerConfigError::CatchUpWindowTooLarge` を返す。
+- **飽和ポリシー**: `ticks > catch_up_window_ticks * 2` が連続 2 回観測された場合、Runner は `SchedulerWarning::DriverCatchUpExceeded { ticks }` を EventStream/Diagnostics へ送出し、`accepting_state = Rejecting` へ遷移して低優先度タイマーを fail-fast する。`ticks` が `catch_up_window_ticks / 2` 未満に戻ったら `SchedulerBackpressureLink::clear(Driver)` を呼び段階的に Normal へ戻す。
+- **構成ガイド**: `catch_up_window_ticks = ceil((worst_case_pause_ns) / resolution_ns)` を Performance セクションに掲載し、Cortex-M（SysTick 1kHz, pause 3ms）では 3 tick、Linux host（resolution 10ms, pause 200ms）では 20 tick を推奨する。`SchedulerConfig::validate()` はハードウェア種別ごとの推奨上限表と照合し、上限を超えた設定に対して `SchedulerConfigError::CatchUpWindowTooLarge` を返す。
 
 ## Deterministic Execution Guarantees
 - **FIFO Preservation**: `Scheduler::schedule_*` は `TimerCommandQueue`（lock-free `ToolboxMpscQueue` + 単調増加する `sequence_id`）に投入し、`run_tick` は `sequence_id` 昇順に `TimerWheel` へ登録する。各スロットは `SlotQueue`（固定長 `ArrayQueue`）で構成し、同一 tick で満期になったエントリは挿入順にデキューされることで Requirement 1 AC2 を満たす。
@@ -86,7 +86,7 @@ graph TB
 - **max_frequency API**: `Scheduler::max_frequency()` は `Hertz::from_nanos(resolution_ns)` を返し、ActorSystemBuilder 経由で DelayProvider や subsystem へ共有する。`RuntimeToolbox` 実装は `TimerWheelConfig` を提供し、std/no_std 間で同一の上限値を保証する。
 - **ManualClock Integration**: 決定論テストでは `ManualClock::advance(n)` が `run_tick` を同期実行し、`drift_monitor` をゼロドリフトに保つ。`deterministic_mode` はタスク ID と発火時刻をログし、Requirement 1 AC1 と Requirement 5 AC1-AC2 のリプレイ検証を実現する。
 - **ClockKind 切替**: `MonotonicClock` trait に `fn kind(&self) -> ClockKind`（`Deterministic`, `RealtimeHost`, `RealtimeHardware`）を追加し、`SchedulerRunner` は `kind` に応じて `RunnerMode::Manual`（ManualClock が `advance` で tick 進行）、`RunnerMode::AsyncHost`（StdClock: tokio task が `tick_source.notify_tick()` を定期呼び出し）、`RunnerMode::Hardware`（no_std: SysTick/embassy ISR が `notify_tick()` を直接叩く）を選択する。`drift_monitor` は `Deterministic` では 0 許容、`RealtimeHost/RealtimeHardware` では `drift_budget_pct` を適用しつつ driver が報告する `DriverJitter` を差し引いて監視する。
-- **Drift Compensation Loop**: `RunnerLoop` は `tick_source.try_pull()` から取得した `TickEvent { pending_ticks, mode }` を逐次消化し、各 tick ごとに `run_tick(deadline)` を呼び出す。`drift_monitor` が `observed_ns > drift_budget_pct` を返した場合でも tick を欠落させず、`pending_ticks` 回の catch-up 実行で `last_deadline` と `clock.now()` の差を 1tick 以内へ押し戻す。queue が一時的に詰まっても TickSource は deadline を保持せず pending を積むだけなので、`ExecutionBatch::missed_runs` は「Actor 側の処理遅延」に限定される。catch-up 期間中は `SchedulerDiagnostics::drift_compensations` を increment し、補償回数と Backpressure 状態を観測できるようにする。
+- **Drift Compensation Loop**: `RunnerLoop` は `tick_source.try_pull()` から取得した `TickEvent { ticks, mode }` を逐次消化し、チャンクごとに `run_tick(deadline)` を呼び出す。`drift_monitor` が `observed_ns > drift_budget_pct` を返した場合でも tick を欠落させず、`ticks` 分の catch-up 実行で `last_deadline` と `clock.now()` の差を 1 tick 以内へ押し戻す。queue が一時的に詰まっても TickSource は deadline を保持せず backlog を積むだけなので、`ExecutionBatch::missed_runs` は「Actor 側の処理遅延」に限定される。catch-up 期間中は `SchedulerDiagnostics::drift_compensations` を increment し、補償回数と Backpressure 状態を観測できるようにする。
 
 **Key Design Decisions**
 1. **Decision**: RuntimeToolbox へ clock/timer ファミリをぶら下げる抽象
@@ -136,7 +136,7 @@ sequenceDiagram
   participant TimerWheel
   ActorSystem->>Scheduler: shutdown()
   Scheduler->>TickSource: stop_and_flush()
-  TickSource-->>Scheduler: PendingTicks(flushed)
+  TickSource-->>Scheduler: TickBatch(flushed)
   Scheduler->>TaskRunQueue: execute(SystemCritical→Runtime→User)
   TaskRunQueue-->>Scheduler: TaskRunOnCloseResult
   Scheduler->>TimerWheel: drain()
@@ -147,7 +147,7 @@ sequenceDiagram
 ### SchedulerRunner モード切替
 - `RunnerMode::Manual`（ManualClock, kind = Deterministic）: `ActorSystem` がテスト用 RuntimeToolbox を構築すると `SchedulerRunner` はハードウェアループを持たず、`ManualClock::advance` が直接 `run_tick` を呼ぶ。`drift_monitor` はゼロドリフトを期待し、逸脱は即 `SchedulerWarning::DriftExceeded` となる。
 - `RunnerMode::AsyncHost`（StdInstantClock, kind = RealtimeHost）: ActorSystemBuilder が std Toolbox を組み立てる際に tokio task を起動し、`resolution` ごとに `tick_source.notify_tick()` を呼ぶ。tokio 依存コードは actor-std 側の Toolbox 実装が保持し、actor-core は `TickSource` 抽象のみを参照する。
-- `RunnerMode::Hardware`（SysTick/DWT/embassy, kind = RealtimeHardware）: RuntimeToolbox が `ToolboxTickSource` を提供し、周期割り込みは `notify_tick()` で `pending_ticks` を加算するだけ。`RunnerLoop`（通常は scheduler 専用タスク）が `tick_source.try_pull()` で pending を消費して `run_tick` を実行し、SystemMailbox との同一コンテキストを保つ。ISR では加算のみのため、R4 AC1 の並行安全性と R1 AC1 の ±1 tick 制約を維持できる。
+- `RunnerMode::Hardware`（SysTick/DWT/embassy, kind = RealtimeHardware）: RuntimeToolbox が `ToolboxTickSource` を提供し、周期割り込みは `notify_tick()` で `pending_total` を加算するだけ。`RunnerLoop`（通常は scheduler 専用タスク）が `tick_source.try_pull()` で backlog を取得し、チャンク単位で `run_tick` を実行して SystemMailbox との同一コンテキストを保つ。ISR では加算のみのため、R4 AC1 の並行安全性と R1 AC1 の ±1 tick 制約を維持できる。
 - いずれのモードでも `SchedulerLifecycleHook` と Diagnostics の API は共通で、切り替えは `MonotonicClock::kind()` と RuntimeToolbox の driver 実装を見るだけで完結する。
 
 ## Requirements Traceability
@@ -162,10 +162,21 @@ sequenceDiagram
 ## Components and Interfaces
 ### utils_core/time
 - **MonotonicClock**: `fn now(&self) -> TimerInstant`; 実装: `SysTickClock`, `StdInstantClock`。`TimerInstant` は `ticks: u64`, `resolution_ns: u32`。
-- **TimerWheelFamily**: `fn insert(&self, entry: TimerEntry) -> TimerHandleId`, `fn cancel(&self, id)`, `fn poll_expired(&self, cx) -> Poll<ExpiredEntry>`。内部で固定長 wheel を tick で進め、範囲外のエントリは `BinaryHeap` + `SmallVec` で保持し threshold 到達時に wheel へ再挿入する。
+- **TimerWheelFamily**: `fn insert(&self, entry: TimerEntry) -> TimerHandleId`, `fn cancel(&self, id)`, `fn poll_expired(&self, cx) -> Poll<ExpiredEntry>`。内部で固定長 wheel を tick で進め、範囲外のエントリは `BinaryHeap` + `ArrayVec` で保持し threshold 到達時に wheel へ再挿入する。
+- **TimerWheelMemoryPlan**: `SchedulerCapacityProfile`（後述）から `system_quota`/`overflow_capacity` を選び、ActorSystemBuilder が RuntimeToolbox に `scheduler_arena(profile)` を要求して実メモリを確保する。std 環境では `SchedulerArena` が `Vec<MaybeUninit<TimerEntry>>`/`Vec<OverflowEntry>` を生成し、no_std 環境では `ToolboxMemory::carve_scheduler_region(bytes)` が返す `&'static mut [MaybeUninit<u8>]` を `SlotArena`/`OverflowPool` へ割り当てる。いずれもランタイム構築時に容量を決定し、const generics に依存しない。容量を超える `system_quota` が指定された場合は **Builder 起動時にエラー** を返して fail-fast し、実行中に silent drop が発生しないようにする。Overflow が満杯になったときのみ `PriorityDropQueue` が `Low → Normal → High` の順にキャンセルし、EventStream へ `SchedulerWarning::DroppedLowPriority` を通知する。
 - **TimerEntry**: `TimerEntryMode`（OneShot/FixedRate/FixedDelay）、`deadline: TimerInstant`, `payload: TimerAction`。
 - **ManualClock/ManualTimer**: テスト用実装。`advance(duration)` で wheel を強制 tick。
-- **TickSourceStatus**: `ToolboxTickSource` は `status()` で `TickSourceStatus::{Ok, Backpressured { pending_ticks }, Suspended}` を返す。`Backpressured` はクリティカルセクションの飽和や ISR 遅延により pending が閾値を超えたことを示し、RunnerLoop が即座に catch-up と Backpressure 遷移を行うシグナルとなる。`Suspended` は `stop_and_flush()` 実行中の状態を意味し、`Scheduler::shutdown` が TaskRunOnClose を開始しても新規 tick が入らないことを保証する。
+- **TickSourceStatus**: `ToolboxTickSource` は `status()` で `TickSourceStatus::{Ok, Backpressured { ticks }, Suspended}` を返す。`Backpressured` はクリティカルセクションの飽和や ISR 遅延により backlog が `catch_up_window_ticks` を超えたことを示し、RunnerLoop が即座に catch-up と Backpressure 遷移を行うシグナルとなる。`Suspended` は `stop_and_flush()` 実行中の状態を意味し、`Scheduler::shutdown` が TaskRunOnClose を開始しても新規 tick が入らないことを保証する。
+
+#### SchedulerCapacityProfile
+| Profile | system_quota (timers) | overflow_capacity | task_run_capacity | 想定ターゲット |
+| --- | --- | --- | --- | --- |
+| Tiny | 2,048 | 512 | 128 | Cortex-M class (<=256 KB RAM) |
+| Small | 4,096 | 1,024 | 256 | 小規模 RTOS / 単一ボード | 
+| Standard | 10,240 | 2,560 | 512 | 一般的なホスト (Tokio) |
+| Large | 25,600 | 6,400 | 1,024 | 多数の subsystem を持つ制御面 |
+
+ActorSystemBuilder は `SchedulerConfig::capacity_profile` により上記いずれかを選択し、RuntimeToolbox が返す `SchedulerArena` から `system_quota` を決定する。カスタム構成が必要な場合は `profile = Custom { system_quota, overflow_capacity, task_run_capacity }` を指定できるが、各値は表の最大値を上回れず、ビルド時検証（`SchedulerConfig::validate_capacity`）に失敗すると起動が中断される。これによりランタイム設定が変わっても再コンパイル不要で、Pekko 互換 API のままターゲットごとに容量を調整できる。
 
 ### utils_core/delay
 - **SchedulerBackedDelayProvider**: 既存 DelayProvider を実装し、`scheduler.schedule_once(duration, DelayFutureWaker)` を内部的に使用。`DelayFutureWaker` は `ExecutionBatch` を必ず受け取り、`runs` と `missed_runs` を DelayFuture の `StateMachine` へ伝搬してミス Tick 折り畳みや drift ログを生成する。
@@ -174,11 +185,12 @@ sequenceDiagram
 ### actor_core/scheduler
 - **Scheduler<TB>**: `fn schedule_once`, `fn schedule_fixed_rate`, `fn schedule_fixed_delay`, `fn cancel(handle)`、`fn run_tick(&mut self, now: TimerInstant)`。内部に `TimerCommandQueue`, `CancellableRegistry`, `TaskRunOnCloseQueue`, `OverflowReinserter` を持つ。
 - **SchedulerHandle**: `impl Cancellable`。`cancel()` は registry を通じて TimerWheel と同期。
-- **SchedulerRunner**: MailboxDispatcher と同じ event-loop パターンで Scheduler を駆動。テスト時は `RunnerMode::Manual` が `ManualClock::advance` から `tick_source.inject_manual_tick` を呼ぶ。std 環境は `RunnerMode::AsyncHost` が tokio task で `tick_source.notify_tick()` を発火し、no_std/embassy は `RunnerMode::Hardware` が ISR から同 API を呼ぶ。`RunnerLoop` は `tick_source.try_pull()` で pending を取得して `run_tick` を実行する。
+- **SchedulerRunner**: MailboxDispatcher と同じ event-loop パターンで Scheduler を駆動。テスト時は `RunnerMode::Manual` が `ManualClock::advance` から `tick_source.inject_manual_tick` を呼ぶ。std 環境は `RunnerMode::AsyncHost` が tokio task で `tick_source.notify_tick()` を発火し、no_std/embassy は `RunnerMode::Hardware` が ISR から同 API を呼ぶ。`RunnerLoop` は `tick_source.try_pull()` で backlog を取得して `run_tick` を実行する。
 - **SchedulerTaskContract**: すべての内部タスクは `trait SchedulerTask { fn run(&self, batch: ExecutionBatch) -> Result<(), HandlerError>; }` を実装し、`ExecutionBatch { runs: NonZeroU32, missed_runs: u32, mode: BatchMode(OneShot|FixedRate|FixedDelay) }` を介して周期情報を共有する。公開 API は Pekko と同一だが、SystemMailbox がメッセージ/Runnable をデキューするときに `SchedulerBatchContext::push(batch, completion)` を呼び、実行完了後に Drop される `BatchGuard` が自動で pop する。guard は std では thread-local、no_std では `RuntimeToolbox::task_local_slot()` の上に構築され、割り込み安全に batch を保管する。
+- **TaskRunMemoryPlan**: `TaskRunOnCloseQueue` は `SchedulerCapacityProfile` に紐づく `task_run_capacity` で初期化され、`heapless::binary_heap::BinaryHeap<TaskRunHandle>`（no_std） / `Vec<TaskRunHandle>`（std）を `SchedulerArena` が供給する。`register_on_close` は空きスロットをアトミックに予約し、満杯の場合は **登録時に** `SchedulerError::TaskRunCapacityExceeded` を返して fail-fast する。これにより shutdown 時にタスクがドロップされることはなく、登録側がガイドラインどおり容量超過を検知して再構成できる。capacity/priority は `SchedulerConfig::task_run_policy` で上書き可能。
 - **SchedulerPolicyRegistry**: ActorSystemBuilder が `SchedulerPolicyRegistry` を生成し、`SchedulerAffinity`（dispatcher, guardian, subsystem 等）単位で `PriorityProfile` と `FixedRatePolicy { backlog_limit, burst_threshold }` を登録する。公開 API (`schedule_once`, `schedule_at_fixed_rate`, など) からは追加引数を受け取らず、Registry が dispatcher/receiver から該当プロファイルを解決して `priority` や `backlog_limit` を注入する。ユーザが個別設定を行いたい場合は Builder でポリシーを上書きしつつ、Pekko 互換シグネチャは維持される。
 - **SchedulerDiagnostics**: 決定論モードログ、dump 生成、EventStream 通知。
-- **SchedulerLifecycleHook**: ActorSystem shutdown 時に `Scheduler::shutdown` を呼び、(1) `ToolboxTickSource::stop_and_flush()` で tick 供給を停止、(2) 残り `pending_ticks` を Runner 内で即座に消化、(3) TaskRunOnClose を優先度順に実行、(4) TimerWheel を drain した結果を Scheduler 内で直接 `run_or_cancel` し、SystemMailbox へ新規 enqueue しない。driver 停止完了までは新規 tick を `Pending` 状態で保持し、完了後に破棄して R3 AC3/AC7 を満たす。
+- **SchedulerLifecycleHook**: ActorSystem shutdown 時に `Scheduler::shutdown` を呼び、(1) `ToolboxTickSource::stop_and_flush()` で tick 供給を停止、(2) 残り backlog を Runner 内で即座に消化、(3) TaskRunOnClose を優先度順に実行、(4) TimerWheel を drain した結果を Scheduler 内で直接 `run_or_cancel` し、SystemMailbox へ新規 enqueue しない。driver 停止完了までは新規 tick を `Pending` 状態で保持し、完了後に破棄して R3 AC3/AC7 を満たす。
 
 #### TaskRunOnClose API
 - **TaskRunOnClose**: `trait TaskRunOnClose { fn run(&self, batch: ExecutionBatch) -> Result<(), HandlerError>; }`。Scheduler 内部の cleanup、DelayProvider、Remoting が実装し、shutdown 中に deterministic に実行される。
@@ -214,7 +226,7 @@ sequenceDiagram
 ```
 このシーケンスにより、`ActorSystem::terminate` が呼ばれると Builder が保持している handles を `Scheduler::shutdown(TaskRunContext { handles })` へ渡し、Requirement 3 AC6 の「close 中に TaskRunOnClose をすべて実行する」ことを検証可能にする。
 
-`TimerWheel::drain()` で収集した未処理タスクは Scheduler 内部で `run_in_shutdown` ハーネスを通じて順次実行または `CompletionToken::mark_cancelled()` を呼んでキャンセルする。SystemMailbox や Dispatcher へは新規 enqueue を行わず、shutdown フェーズの決定性を保ったまま R3 AC3/R3 AC7 を満たす。
+`TimerWheel::drain()` で収集した未処理タスクは Scheduler 内部で `run_in_shutdown` ハーネスを通じて順次実行または `CompletionHandle::cancel()` を呼んでキャンセルする。SystemMailbox や Dispatcher へは新規 enqueue を行わず、shutdown フェーズの決定性を保ったまま R3 AC3/R3 AC7 を満たす。ハーネスは `BatchGuard::from_shutdown(handle, batch)` を生成してタスクを実行し、実行完了／キャンセルのどちらでも guard が drop されることで `ack_complete` が走るため、FixedDelay/TaskRunOnClose の完了セマンティクスと完全に一致する。
 
 
 #### Pekko API シグネチャ写像
@@ -222,8 +234,8 @@ sequenceDiagram
 | --- | --- | --- | --- |
 | `scheduleOnce(delay, receiver, message, dispatcher, sender)` | `pub fn schedule_once<M: SchedulerMessage>(delay: Duration, receiver: ActorRef<M>, message: M, dispatcher: DispatcherId, sender: Option<ActorRef<AnyMessage>>) -> Result<SchedulerHandle, SchedulerError>` | 満期時に SystemMailbox が既存の `DispatcherEnvelope` 形式のまま `message: M` を投函し、並列して `SchedulerBatchContext` へ `ExecutionBatch::once()` をプッシュする。Actor 側は `ctx.scheduler_batch()` で batch を参照でき、メッセージ型は従来通り `M` のまま維持される。 | Backpressure 時は `Err(SchedulerError::Backpressured)`、quota 超過は `Err(SchedulerError::QuotaExceeded)`、負またはゼロ遅延は `Err(SchedulerError::InvalidDelay)` を返す。 |
 | `scheduleAtFixedRate(initialDelay, interval, receiver, message, dispatcher, sender)` | `pub fn schedule_at_fixed_rate<M>(initial_delay: Duration, interval: Duration, receiver: ActorRef<M>, message: M, dispatcher: DispatcherId, sender: Option<ActorRef<AnyMessage>>) -> Result<SchedulerHandle, SchedulerError>` | `FixedRateContext` が `missed_runs` を保持し、`SchedulerRunner` が発火ごとに `ExecutionBatch { runs, missed_runs, mode: FixedRate }` を `SchedulerBatchContext` へセットする。Actor/Typed API は `ctx.scheduler_batch().missed_runs()` で累積実行数を取得でき、メッセージ型は変化しない。 | `Backpressure` 状態では低優先度ジョブを拒否し `Err(SchedulerError::Backpressured)`、`Rejecting` 状態では全ジョブを fail-fast する。interval が 0 の場合は `Err(SchedulerError::InvalidDelay)`。 |
-| `scheduleWithFixedDelay(initialDelay, delay, receiver, message, dispatcher, sender)` | `pub fn schedule_with_fixed_delay<M>(initial_delay: Duration, delay: Duration, receiver: ActorRef<M>, message: M, dispatcher: DispatcherId, sender: Option<ActorRef<AnyMessage>>) -> Result<(SchedulerHandle, CompletionToken), SchedulerError>` | FixedDelay は **完了通知が届くまで次回スケジュールを行わない**。SystemMailbox は `CompletionToken` を batch コンテキストへ保存し、Actor は `ctx.complete_fixed_delay(token)` を呼んで `Scheduler::ack_complete(token, finished_at)` をトリガする。Scheduler は `finished_at + delay` で次回 deadline を再計算し、`FixedDelayContext` に記録する。 | Backpressure 時に自動キャンセルされ `Err(SchedulerError::Backpressured)` を返す。`delay <= 0` なら `SchedulerError::InvalidDelay`。 |
-| `scheduleOnce(delay, runnable, executor)` 等 Runnable 版 | `pub fn schedule_once_fn<F>(delay: Duration, dispatcher: DispatcherId, f: F) -> Result<SchedulerHandle, SchedulerError> where F: BatchAwareRunnable` | Runnable 版は `BatchAwareRunnable::run(&self, batch: ExecutionBatch)` を必須とし、SystemMailbox は Runnable 実行前に `SchedulerBatchContext` へ batch を push する。FixedDelay モードでは Runnable にも `CompletionToken` が引数で渡され、`complete_fixed_delay` を明示呼び出しする。 | Runnable/Future でも Backpressure/Quota/InvalidDelay を `Result` で受け取り、呼び出し側が再試行ポリシーを決められる。 |
+| `scheduleWithFixedDelay(initialDelay, delay, receiver, message, dispatcher, sender)` | `pub fn schedule_with_fixed_delay<M>(initial_delay: Duration, delay: Duration, receiver: ActorRef<M>, message: M, dispatcher: DispatcherId, sender: Option<ActorRef<AnyMessage>>) -> Result<SchedulerHandle, SchedulerError>` | FixedDelayContext が `inflight_guard` を保持し、SystemMailbox は payload を `BatchGuard` でラップして Dispatcher 実行完了時に自動で `ack_complete` を呼ぶ。Actor 側のコード変更は不要で、Pekko の API シグネチャと完全に一致したまま `finished_at + delay` の再スケジュールが保証される。 | Backpressure 時に自動キャンセルされ `Err(SchedulerError::Backpressured)` を返す。`delay <= 0` なら `SchedulerError::InvalidDelay`。 |
+| `scheduleOnce(delay, runnable, executor)` 等 Runnable 版 | `pub fn schedule_once_fn<F>(delay: Duration, dispatcher: DispatcherId, f: F) -> Result<SchedulerHandle, SchedulerError> where F: BatchAwareRunnable` | Runnable 版は `BatchAwareRunnable::run(&self, batch: ExecutionBatch)` を必須とし、SystemMailbox は Runnable 実行前に `SchedulerBatchContext` へ batch を push する。FixedDelay モードでも guard が drop で自動 ACK するため、Runnable 側は batch を読むだけでよい。 | Runnable/Future でも Backpressure/Quota/InvalidDelay を `Result` で受け取り、呼び出し側が再試行ポリシーを決められる。 |
 
 ##### SchedulerExecutionContext と公開 API 互換性
 - **SchedulerExecutionContext**: Pekko の `ExecutionContext` に対応する `pub trait SchedulerExecutionContext` を導入し、`fn dispatcher(&self) -> DispatcherId` と `fn sender(&self) -> Option<ActorRefAny>` を提供する。ActorSystem は `system.scheduler().default_context()` を返し、ActorContext は `impl SchedulerExecutionContext for ActorContext` によって dispatcher/sender を透過的に解決する。
@@ -233,14 +245,14 @@ sequenceDiagram
 
 `DispatcherId` は既存 Dispatcher レジストリが管理され、`SchedulerExecutionContext` を通じて暗黙に供給される。Actor 側のユーティリティ（例: `Context::schedule_once`) では `impl SchedulerExecutionContext for ActorContext` を利用し、Pekko 互換 API の表面仕様を明示的に固定する。
 
-`SchedulerBatchContext` は std では thread-local、no_std では `RuntimeToolbox::task_local_slot()`（critical-section + per-task スロット）上に構築した `TaskLocalBatch` で実装する。SystemMailbox は message/Runnable をデキューする直前に `SchedulerBatchContext::push(ExecutionBatch, CompletionToken?)` を呼び、Drop 時に pop するため、割り込み／マルチタスク下でもデータ競合が発生しない。Actor は `Context::scheduler_batch()`、Runnable は `BatchAwareRunnable::run(&self, batch: ExecutionBatch)`、DelayFuture は `DelayFuture::current_batch()` でメタデータを参照でき、公開シグネチャを変えず Requirement R2 AC2/AC4/AC5 を満たす。
+`SchedulerBatchContext` は std では thread-local、no_std では `RuntimeToolbox::task_local_slot()`（critical-section + per-task スロット）上に構築した `TaskLocalBatch` で実装する。SystemMailbox は message/Runnable をデキューする直前に `SchedulerBatchContext::push(ExecutionBatch, CompletionHandle)` を呼び、Drop 時に `CompletionGuard` が `ack_complete` をトリガする。Actor は `Context::scheduler_batch()`、Runnable は `BatchAwareRunnable::run(&self, batch: ExecutionBatch)`、DelayFuture は `DelayFuture::current_batch()` でメタデータを参照でき、公開シグネチャを変えず Requirement R2 AC2/AC4/AC5 を満たす。
 
-##### ExecutionBatch / CompletionToken 公開契約
+##### ExecutionBatch / CompletionGuard 契約
 - **メッセージ配送**: メッセージ型 `M` はそのまま mailbox に流れ、`SchedulerMessageExt::batch(&self)` が `ExecutionBatch` を task-local から参照する。`ExecutionBatch` は `Copy` で、アプリケーションがログやメトリクスへ転送できる。
-- **Runnable/Task**: Runnable 版 API は `pub trait BatchAwareRunnable { fn run(&self, batch: ExecutionBatch, completion: Option<CompletionToken>); }` を新設し、builder が `ExecutionBatch` と `CompletionToken` を渡す。従来の `FnOnce()` 互換 API は内部でこの trait を実装しており、ユーザが追加作業なしで `missed_runs` や completion を扱える。
-- **CompletionToken**: FixedDelay/TaskRunOnClose など完了時刻が必要なタスクには `CompletionToken` を付与し、Actor/Runnable は `ctx.complete_fixed_delay(token)` もしくは `completion.complete(now)` を呼ぶことで `Scheduler::ack_complete(token, finished_at)` をトリガする。SystemMailbox/Dispatcher は token を意識せず、task-local を介して受け渡すだけで済む。
+- **Runnable/Task**: Runnable 版 API は `pub trait BatchAwareRunnable { fn run(&self, batch: ExecutionBatch); }` を必須とし、SystemMailbox が Runnable を `BatchGuard` で包んで実行します。`BatchGuard` は drop 時に `ack_complete` を呼び出すため、ユーザコードは completion を意識せずに `missed_runs` 等のメタデータのみを参照すればよい設計とします。
+- **CompletionGuard**: `CompletionHandle`（内部 ID）は `BatchGuard` が保持し、公開 API では露出させません。FixedDelay や TaskRunOnClose は guard が完了時刻を計測して `Scheduler::ack_complete(handle, finished_at)` を自動発火し、要件 R2 AC4 をアプリケーション変更なしで満たします。
 - **Task local の安全網**: `SchedulerBatchContext::current()` は `Option<BatchContext>` を返し、task local 機構を提供できない no_std 環境では Toolbox 実装が `TaskLocalSlot` を `critical-section` 上に確保する。どうしても確保できない極小環境向けには API から明示的に `ExecutionBatch` を受け取る builder を用意する。
-- **ドキュメント更新**: Requirements Traceability の R2 行へ `ExecutionBatch + CompletionToken 公開 API` を追記し、ユーザ向けガイド（docs/guides/scheduler.md）にも `ctx.complete_fixed_delay(token)` の使用例を追加する。
+- **ドキュメント更新**: Requirements Traceability の R2 行へ `ExecutionBatch + BatchGuard` を追記し、ユーザ向けガイド（docs/guides/scheduler.md）には「FixedDelay は guard により自動で完了検知される」ことを明記する。
 
 ##### FixedDelay Completion Sequence
 ```mermaid
@@ -251,20 +263,21 @@ sequenceDiagram
   participant Actor
   Scheduler->>TimerWheel: insert FixedDelayEntry(handle_id, delay)
   TimerWheel-->>Scheduler: deadline reached (handle_id)
-  Scheduler->>SystemMailbox: enqueue message + BatchContext{batch, completion_token}
-  SystemMailbox->>Actor: deliver message (ctx.scheduler_batch() exposes token)
-  Actor->>Scheduler: ctx.complete_fixed_delay(token)
+  Scheduler->>SystemMailbox: enqueue message + BatchGuard(batch)
+  SystemMailbox->>Actor: deliver message (ctx.scheduler_batch() exposes batch)
+  Actor->>Actor: process message normally (no explicit ACK)
+  Note over SystemMailbox: BatchGuard::drop => ack_complete(now)
   Scheduler->>Scheduler: compute next_deadline = finished_at + delay
   Scheduler->>TimerWheel: reinsert FixedDelayEntry(handle_id, next_deadline)
 ```
 
-`CompletionToken` を task-local 経由で受け渡すことで、Dispatcher/SystemMailbox に新たなフックを追加せず、Actor が明示的に完了通知を呼ぶだけで Requirement R2 AC4 を満たせる。
+BatchGuard が drop 時に完了時刻を計測し `ack_complete` を自動呼び出すため、Actor や Runnable は追加 API を呼ぶ必要がなく、Pekko 互換の公開インタフェースを保ったまま Requirement R2 AC4 を充足する。
 
 #### SystemMailbox ブリッジ詳細
 1. `Scheduler::schedule_*` は `SchedulerCommand::EnqueueDelayed { receiver, dispatcher, sender, payload, handle_id }` を生成し、TimerWheel にエントリを登録する。
-2. `run_tick` で期限到来したコマンドを取り出し、`SystemMailboxBridge` へ転送。Bridge は既存の `DispatcherEnvelope { dispatcher_id, receiver_pid, sender, message }` を構築し、同時に `BatchContext { execution_batch, completion_token, handle_id }` を添えて `SystemMailbox::enqueue_system` を呼ぶ。
-3. `SystemMailbox` は既存 `SystemMessage` 優先ルールを維持しつつ、`UserMessagePriority::Delayed` で処理する。enqueue 直前に `CancellableRegistry::is_cancelled(handle_id)` を参照し、キャンセル済みであれば破棄して `SchedulerMetrics::dropped_total` を更新する。enqueue が成功した場合のみ `SchedulerBatchContext::push(batch, completion)` が呼ばれ、その後の Actor 実行中に `ctx.scheduler_batch()` から batch/CompletionToken を参照できる。
-4. `DelayProvider` や内部ユーティリティは `SchedulerFacade` を介して上記 API をラップし、ActorRef を持たないケース（Future waker 等）でも SystemMailbox を経由した deterministic な配送を確保する。このとき `SchedulerFacade` は `ExecutionBatch` を `DelayFutureWaker` へ引き渡し、Runnable/Future 系タスクでもミス Tick 情報や CompletionToken を失わない。
+2. `run_tick` で期限到来したコマンドを取り出し、`SystemMailboxBridge` へ転送。Bridge は既存の `DispatcherEnvelope { dispatcher_id, receiver_pid, sender, message }` を構築し、同時に `BatchContext { execution_batch, completion_handle, handle_id }` を添えて `SystemMailbox::enqueue_system` を呼ぶ。
+3. `SystemMailbox` は既存 `SystemMessage` 優先ルールを維持しつつ、`UserMessagePriority::Delayed` で処理する。enqueue 直前に `CancellableRegistry::is_cancelled(handle_id)` を参照し、キャンセル済みであれば破棄して `SchedulerMetrics::dropped_total` を更新する。enqueue が成功した場合のみ `SchedulerBatchContext::push(batch, completion_guard)` が呼ばれ、以後の Actor 実行中に `ctx.scheduler_batch()` から batch を参照でき、guard が drop された瞬間に `ack_complete` が走る。
+4. `DelayProvider` や内部ユーティリティは `SchedulerFacade` を介して上記 API をラップし、ActorRef を持たないケース（Future waker 等）でも SystemMailbox を経由した deterministic な配送を確保する。このとき `SchedulerFacade` は `ExecutionBatch` を `DelayFutureWaker` へ引き渡し、Runnable/Future 系タスクでもミス Tick 情報と guard を失わずにバックログ補償が行える。
 
 このブリッジ手順により、Pekko/Proto.Actor が期待する「Scheduler は直接アクターを実行せず、mailbox 経由で保証された順序を保つ」という要件 (R3 AC4) を Rust 実装にも適用できる。
 
@@ -304,7 +317,7 @@ sequenceDiagram
 - **Builder Lifecycle Hooks**: `ActorSystemBuilder::build()` は Scheduler を初期化した直後に (a) `register_on_close` で system-critical cleanup（DelayProvider, Remoting heartbeat 等）を登録し、(b) `SystemActorBootstrap` に `TaskRunHandle` を引き渡す。Builder は shutdown パスでも `task_run_handles` を保持し、`ActorSystem::terminate()` から `Scheduler::shutdown(TaskRunContext)` へ優先度情報を渡して `TaskRunOnClose` が deterministic に実行されるようにする。
 - **SystemMailboxBridge**: Scheduler からの発火を system mailbox に enqueue。
 - **DelayProvider registration**: ActorSystem 構築時に SchedulerBackedDelayProvider を各コンポーネントへ注入。
-- **SchedulerRunnerShell**: actor-core 内で `TickSource` から `TickEvent` を pull して `run_tick` を呼ぶ薄いシェル。`TickSourceStatus::{Ok, Backpressured, Suspended}` を監視し、`Backpressured` を受信した瞬間に (1) `pending_ticks` 回ぶんの catch-up ループを同期実行し、(2) `SchedulerBackpressureLink::raise(Driver)` を呼んで accepting_state を Backpressure へ遷移させる。`pending_ticks` が `0.8 * max_pending` 未満に戻ったら `SchedulerBackpressureLink::clear(Driver)` を通じて通常状態へ復帰させる。Shell 自体は tokio/SysTick を知らず、Toolbox 側が提供する TickSource 実装を差し替えるだけで std/no_std を横断できる。
+- **SchedulerRunnerShell**: actor-core 内で `TickSource` から `TickEvent` を pull して `run_tick` を呼ぶ薄いシェル。`TickSourceStatus::{Ok, Backpressured, Suspended}` を監視し、`Backpressured` を受信した瞬間に (1) backlog `ticks` をチャンクごとに catch-up 実行し、(2) `SchedulerBackpressureLink::raise(Driver)` を呼んで accepting_state を Backpressure へ遷移させる。`ticks` が `0.8 * catch_up_window_ticks` 未満に戻ったら `SchedulerBackpressureLink::clear(Driver)` を通じて通常状態へ復帰させる。Shell 自体は tokio/SysTick を知らず、Toolbox 側が提供する TickSource 実装を差し替えるだけで std/no_std を横断できる。
 
 ### actor_std implementations
 - **StdInstantClock**: `MonotonicClock` for std。`Instant::now()` をナノ秒へ変換。
@@ -312,7 +325,7 @@ sequenceDiagram
 
 ## Capacity & Backpressure
 - **Backpressure Link**: ActorSystem 側の `BackpressureGauge`（mailbox 飽和率、Dispatcher の拒否状態、RuntimeToolbox が公開する `backpressure_token()`）と Scheduler を `SchedulerBackpressureLink` で接続する。Gauge が `State::Engaged` になった瞬間に `SchedulerConfig` が `accepting_state = Backpressure` へ遷移し、以降は低優先度タイマーを拒否 or 低頻度でのみ受理する。状態遷移は EventStream `SchedulerWarning::BackpressureState { engaged: bool, reason }` で通知し、DelayProvider や上位コンポーネントが統一的に観測できるようにする。
-- **Driver 連携**: `DriverStatus::Backpressured { pending_ticks, overflow }` を受け取った場合、`SchedulerBackpressureLink::raise(Driver)` を呼び出し `BackpressureGauge` に driver 由来の理由をセットする。`pending_ticks` が `max_pending_ticks` の 80% を下回ったら `SchedulerBackpressureLink::clear(Driver)` を呼び、通常状態へ戻す。これにより catch-up backlog の逼迫がスケジューラ全体の受理ポリシーへ反映される。
+- **Driver 連携**: `DriverStatus::Backpressured { ticks, overflow }` を受け取った場合、`SchedulerBackpressureLink::raise(Driver)` を呼び出し `BackpressureGauge` に driver 由来の理由をセットする。`ticks` が `catch_up_window_ticks * 0.8` を下回ったら `SchedulerBackpressureLink::clear(Driver)` を呼び、通常状態へ戻す。これにより catch-up backlog の逼迫がスケジューラ全体の受理ポリシーへ反映される。
 
 ###### Backpressure State Machine
 ```mermaid
@@ -322,7 +335,7 @@ stateDiagram-v2
     Normal --> GaugeBackpressured: BackpressureGauge::engaged
     DriverBackpressured --> Backpressure: SchedulerBackpressureLink::raise(Driver)
     GaugeBackpressured --> Backpressure: SchedulerBackpressureLink::raise(Gauge)
-    Backpressure --> Normal: pending_ticks < 0.8 * max_pending && gauge.clear()
+    Backpressure --> Normal: ticks < 0.8 * catch_up_window_ticks && gauge.clear()
     Backpressure --> Rejecting: adaptive_quota exhausted
     Rejecting --> Normal: cooldown elapsed
 ```
@@ -355,7 +368,7 @@ stateDiagram-v2
 ## Error Handling
 - **InvalidDelay**: `SchedulerError::InvalidDelay` として `delay <= 0` や `delay / tick_nanos > IntMax` を返却。呼び出し元は Result ハンドリング。
 - **CapacityExceeded**: TimerWheel スロットが飽和した場合 `SchedulerError::CapacityExceeded` を返し、EventStream に警告。
-- **DriverStalled**: `pending_ticks > max_pending_ticks` が解消しないまま `TickSourceStatus::Stalled` が返ってきた場合、Scheduler は `accepting_state = Rejecting` へ遷移し新規要求へ `SchedulerError::Backpressured(Driver)` を返す。同時に EventStream へ `SchedulerWarning::DriverCatchUpExceeded` を出力し、診断ストリームで backlog 状態を共有する。既存のタイマーは `FixedRatePolicy` / `PriorityDropQueue` に従う通常のドロップポリシーを用いるため、driver 由来で勝手に破棄されることはない。
+- **DriverStalled**: backlog `ticks > catch_up_window_ticks * 2` が解消しないまま `TickSourceStatus::Stalled` が返ってきた場合、Scheduler は `accepting_state = Rejecting` へ遷移し新規要求へ `SchedulerError::Backpressured(Driver)` を返す。同時に EventStream へ `SchedulerWarning::DriverCatchUpExceeded` を出力し、診断ストリームで backlog 状態を共有する。既存のタイマーは `FixedRatePolicy` / `PriorityDropQueue` に従う通常のドロップポリシーを用いるため、driver 由来で勝手に破棄されることはない。
 - **ShutdownInProgress**: shutdown 後の schedule 呼び出しは `SchedulerError::Shutdown`。
 - **TaskRunOnClose Failure**: handler 内エラーは捕捉せず propagate、ただし EventStream で通知し subsequent handler が継続できるようにする。
 - **Handler Panic Strategy**: `TimerEntry` の `payload` は `SchedulerTask` trait（`fn run(&self, batch: ExecutionBatch) -> Result<(), HandlerError>`）を実装し、`run_tick` は `Ok(Err(e))` を検知した際に `SchedulerWarning::HandlerFailed { job_id, error: e, batch }` を EventStream へ送る。panic に対しては catch_unwind 等で介入せず（no_std 方針で unwind 非対応）、タスク側は panic-free であること、もしくは panic 発生時にはランタイムが即 abort することを前提にする。`CancellableRegistry` は失敗したジョブを `is_cancelled = true` に更新し二重実行を防止する。Actor メッセージ処理は `ActorCellGeneric::invoke_user_message`（`modules/actor-core/src/actor_prim/actor_cell.rs`）で従来どおり直接 `Actor::receive` を呼び出し、panic を捕捉しないポリシーを維持する。
@@ -369,16 +382,16 @@ stateDiagram-v2
 - **Performance**: no_std wheel ベンチ（1k/10k timers）、overflow heap 再挿入コスト、std 実装での burst ハンドリング。
 - **Performance**: no_std wheel ベンチ（1k/10k timers）、overflow heap 再挿入コスト（`O(log n) * reinsertion_batch_limit` が tick あたり 100 pop/push 以内に収まることを確認）、std 実装での burst ハンドリング。
 - **Backpressure/CI Plan**:
-  1. `scripts/ci-check.sh backpressure` を追加し、`catch_up_window_ms` を 10/50/100ms に切り替えた 3 パターンで `max_pending_ticks` が計算通りになるか property テストする。
-  2. Driver モックを用い、`pending_ticks` を `0.8 * max_pending` 超まで増やして `DriverStatus::Backpressured` を発火させ、`SchedulerBackpressureLink` が `accepting_state = Backpressure` へ遷移することを確認。
+  1. `scripts/ci-check.sh backpressure` を追加し、`catch_up_window_ms` を 10/50/100ms に切り替えた 3 パターンで `catch_up_window_ticks = ceil(window / resolution)` が計算通りになるか property テストする。
+  2. Driver モックを用い、backlog `ticks` を `0.8 * catch_up_window_ticks` 超まで増やして `DriverStatus::Backpressured` を発火させ、`SchedulerBackpressureLink` が `accepting_state = Backpressure` へ遷移することを確認。
   3. Adaptive quota が 0 になるまで `schedule_once` を呼び、`SchedulerError::Backpressured` が返ること、cooldown（5 * resolution）経過後に受理が再開することを integration テストで検証。
   4. CI では std/no_std 双方で上記テストを実行し、`tick_backlog_peak`, `tick_overflow_events`, `task_run_on_close_total` を metrics snapshot として収集する。
 
 ## Performance & Scalability
 - **Targets**: 1 tick = 10ms デフォルト、最大遅延 = 2^20 tick、1 アクターシステムあたり同時タイマー 10k。
-- **Scaling**: wheel サイズは設定可能、overflow は `BinaryHeap` + `SmallVec` で保持し `wheel_range_threshold = ticks_per_slot * slots` に近づいた時点で再挿入。std 版は tokio task で `SchedulerRunner` が tick を駆動。
+- **Scaling**: wheel サイズは設定可能、overflow は `BinaryHeap` + `ArrayVec`（heapless 実装）で保持し `wheel_range_threshold = ticks_per_slot * slots` に近づいた時点で再挿入。std 版は tokio task で `SchedulerRunner` が tick を駆動。
 - **Metrics**: active timers, periodic jobs, dropped timers を `SchedulerMetrics` にエクスポート。
-- **Catch-up 設定指針**: `max_pending_ticks = ceil((worst_case_pause_ms * 1_000_000) / resolution_ns)` を基本式とし、Cortex-M (SysTick 1kHz, resolution 1ms) では `max_pending_ticks <= 8`, Linux host (tokio, resolution 10ms) では `<= 32` を推奨する。`MAX_PENDING = 64` を超える設定は `SchedulerConfig::validate()` が拒否し、`SchedulerWarning::DriverCatchUpExceeded` が一度でも発火した場合は `catch_up_window_ms` を 25% 減らして再計算する運用ルールを docs/guides/scheduler.md へ追記する。
+- **Catch-up 設定指針**: `catch_up_window_ticks = ceil((worst_case_pause_ms * 1_000_000) / resolution_ns)` を基本式とし、Cortex-M (SysTick 1kHz, resolution 1ms) では `catch_up_window_ticks <= 8`, Linux host (tokio, resolution 10ms) では `<= 32` を推奨する。`catch_up_window_ticks` が推奨表を超える設定は `SchedulerConfig::validate()` が拒否し、`SchedulerWarning::DriverCatchUpExceeded` が一度でも発火した場合は `catch_up_window_ms` を 25% 減らして再計算する運用ルールを docs/guides/scheduler.md へ追記する。
 
 ## Migration Strategy
 ```mermaid
@@ -417,3 +430,7 @@ sequenceDiagram
 
 `FixedRateContext` は各周期ジョブに紐づく状態であり、`last_fire`, `missed_runs`, `mode`（FixedRate/FixedDelay）と `backlog_limit` を保持する。`run_tick` は `TimerWheel` から受け取った `FixedRateBatch` を `missed_runs` に折り畳み、`handler` へ `ExecutionBatch { runs: u32, mode }` を渡す。`backlog_limit` を超えた場合はジョブをキャンセルし `SchedulerWarning::BacklogExceeded { job_id }` を EventStream へ出力する。GC などで `missed_runs` が `burst_threshold`（デフォルト `resolution * 10` 相当）を超えたときは `SchedulerWarning::BurstFire` を送信し、上位で観測できるようにする。これらの `backlog_limit`/`burst_threshold` は `SchedulerPolicyRegistry` の `FixedRatePolicy` から供給され、公開 API から追加引数を受けることなくポリシーを差し替えられる。
 - **Backpressure/Rejecting 応答**: `accepting_state = Backpressure` の間、`schedule_*` は優先度 `High` の内部タイマーのみ受理し、それ以外は `Err(SchedulerError::Backpressured)` を返す。`accepting_state = Rejecting`（adaptive quota=0）ではすべての `schedule_*` が fail-fast し、呼び出し側は `SchedulerError::Backpressured` を受けて再スケジュールを検討する。`schedule_with_fixed_delay` 等の低優先度 API は Backpressure 時に自動キャンセルされ、呼び出し元へ `SchedulerWarning::CancelledByBackpressure` を送る。cooldown が終わり Normal へ戻った時点で再度登録可能。
+- **Catch-up 窓とチャンク**: `SchedulerConfig::catch_up_window_ms`（デフォルト 50ms）と `resolution_ns` から `catch_up_window_ticks = ceil(window / resolution)` を算出し、backlog が `0.8 * catch_up_window_ticks` を超えた時点で `TickMode::CatchUp` をセットする。`catch_up_window_ticks` 自体は clamp せず、tick がどれだけ蓄積しても Runner が `catch_up_chunk_ticks` ごとに消化する。
+- **Chunk 処理**: `tick_source.try_pull()` は `pending_total.swap(0, Ordering::AcqRel)` で取得した `ticks` を `catch_up_chunk_ticks`（構成可能、デフォルト 1024）単位の `TickChunkIter` へ分割する。各チャンクは `run_tick` 呼び出しで逐次処理され、pause が数百ミリ秒続いても 1 ループの連続実行時間を上限化できる。
+- **飽和ポリシー**: backlog が `catch_up_window_ticks * 2` を連続 2 回観測された場合、Runner は `SchedulerWarning::DriverCatchUpExceeded { ticks }` を EventStream/Diagnostics へ送出し、`accepting_state = Rejecting` へ遷移して低優先度タイマーを fail-fast する。`ticks` が `catch_up_window_ticks / 2` 未満に戻ったら `SchedulerBackpressureLink::clear(Driver)` を呼び段階的に Normal へ戻す。
+- **設定バリデーション**: Performance セクションで Cortex-M/ホスト向けの `catch_up_window_ticks` 推奨値を提示し、`SchedulerConfig::validate()` は `catch_up_window_ticks <= u32::MAX` かつ `catch_up_chunk_ticks <= catch_up_window_ticks` を強制する。tick を lossless に保持したまま deterministic に処理する前提を設計段階で固定する。
