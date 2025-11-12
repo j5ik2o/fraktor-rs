@@ -55,7 +55,8 @@ jobs:
       - name: Push Changes
         if: ${{ steps.changelog.outputs.skipped == 'false' && inputs.dry_run == false }}
         run: |
-          git push --follow-tags origin HEAD:${GITHUB_REF_NAME}
+          git push origin HEAD:${GITHUB_REF_NAME}
+          git push origin ${{ steps.changelog.outputs.tag }}
       - name: Create GitHub Release
         if: ${{ steps.changelog.outputs.skipped == 'false' && inputs.dry_run == false }}
         uses: softprops/action-gh-release@v2
