@@ -1,6 +1,6 @@
 [package]
 name = "fraktor-rs"
-version = "0.2.9"
+version = "0.2.10"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "Specification-driven actor runtime bridging Akka/Pekko and Proto.Actor semantics across no_std and std targets."
@@ -44,12 +44,12 @@ libraries = [
 ]
 
 [workspace.dependencies]
-fraktor-actor-core-rs = { path = "modules/actor-core", version = "0.2.9" }
-fraktor-actor-std-rs = { path = "modules/actor-std", version = "0.2.9" }
-fraktor-utils-std-rs = { path = "modules/utils-std", version = "0.2.9" }
+fraktor-actor-core-rs = { path = "modules/actor-core", version = "0.2.10" }
+fraktor-actor-std-rs = { path = "modules/actor-std", version = "0.2.10" }
+fraktor-utils-std-rs = { path = "modules/utils-std", version = "0.2.10" }
 alloc-cortex-m = "0.4"
 async-trait = { version = "0.1.89", default-features = false }
-fraktor-utils-core-rs = { path = "modules/utils-core", version = "0.2.9", default-features = false }
+fraktor-utils-core-rs = { path = "modules/utils-core", version = "0.2.10", default-features = false }
 cortex-m = "0.7"
 cortex-m-rt = "0.7"
 criterion = "0.7"

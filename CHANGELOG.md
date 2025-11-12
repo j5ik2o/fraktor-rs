@@ -1,3 +1,11 @@
+## [0.2.10](https://github.com/j5ik2o/fraktor-rs/compare/v0.2.9...v0.2.10) (2025-11-12)
+
+
+### Bug Fixes
+
+* improve regex pattern for updating dependency versions in sync script ([6f206b7](https://github.com/j5ik2o/fraktor-rs/commit/6f206b76845134e3250d75047bf3758981302f7d))
+* update workspace dependency versions to 0.2.9 and add sync script ([9218a3c](https://github.com/j5ik2o/fraktor-rs/commit/9218a3c24e564ea5d5a02bd554e942c89207f906))
+
 ## [0.2.9](https://github.com/j5ik2o/fraktor-rs/compare/v0.2.8...v0.2.9) (2025-11-12)
 
 

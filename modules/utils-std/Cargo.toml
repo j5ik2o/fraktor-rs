@@ -1,6 +1,6 @@
 [package]
 name = "fraktor-utils-std-rs"
-version = "0.2.9"
+version = "0.2.10"
 edition = "2024"
 description = "Standard-library helpers complementing fraktor-utils-core"
 license = "MIT OR Apache-2.0"
