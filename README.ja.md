@@ -2,6 +2,8 @@
 
 [![CI 状態](https://github.com/j5ik2o/fraktor-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/j5ik2o/fraktor-rs/actions/workflows/ci.yml)
 [![ライセンス: Apache-2.0 / MIT](https://img.shields.io/badge/license-Apache--2.0%20%2F%20MIT-blue.svg)](LICENSE-MIT)
+[![crates.io バージョン](https://img.shields.io/crates/v/fraktor-rs.svg)](https://crates.io/crates/fraktor-rs)
+[![tokei 行数](https://tokei.rs/b1/github/j5ik2o/fraktor-rs?category=code)](https://github.com/j5ik2o/fraktor-rs)
 
 > 英語版は [README.md](README.md) を参照してください。
 

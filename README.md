@@ -2,6 +2,8 @@
 
 [![CI](https://github.com/j5ik2o/fraktor-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/j5ik2o/fraktor-rs/actions/workflows/ci.yml)
 [![License: Apache-2.0 / MIT](https://img.shields.io/badge/license-Apache--2.0%20%2F%20MIT-blue.svg)](LICENSE-MIT)
+[![crates.io version](https://img.shields.io/crates/v/fraktor-rs.svg)](https://crates.io/crates/fraktor-rs)
+[![tokei lines of code](https://tokei.rs/b1/github/j5ik2o/fraktor-rs?category=code)](https://github.com/j5ik2o/fraktor-rs)
 
 > See [README.ja.md](README.ja.md) for the Japanese edition.
 
