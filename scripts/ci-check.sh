@@ -533,6 +533,9 @@ run_no_std() {
 
   log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-core-rs --no-default-features"
   run_cargo check -p fraktor-actor-core-rs --no-default-features || return 1
+
+  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-rs --no-default-features"
+  run_cargo check -p fraktor-rs --no-default-features || return 1
 }
 
 run_std() {
@@ -541,6 +544,9 @@ run_std() {
 
   log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-actor-core-rs --lib"
   run_cargo test -p fraktor-actor-core-rs --lib || return 1
+
+  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-rs --lib"
+  run_cargo test -p fraktor-rs --lib || return 1
 
 #  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-utils-std-rs"
 #  run_cargo test -p fraktor-utils-std-rs || return 1

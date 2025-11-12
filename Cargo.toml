@@ -1,3 +1,25 @@
+[package]
+name = "fraktor-rs"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Specification-driven actor runtime bridging Akka/Pekko and Proto.Actor semantics across no_std and std targets."
+readme = "README.md"
+homepage = "https://github.com/j5ik2o/fraktor-rs"
+repository = "https://github.com/j5ik2o/fraktor-rs"
+documentation = "https://docs.rs/fraktor-rs"
+keywords = ["actors", "runtime", "no-std", "embedded", "concurrency"]
+categories = ["concurrency", "embedded", "no-std"]
+include = [
+    "src/**",
+    "Cargo.toml",
+    "README.md",
+    "README.ja.md",
+    "CHANGELOG.md",
+    "LICENSE-APACHE",
+    "LICENSE-MIT",
+]
+
 [workspace]
 resolver = "2"
 members = [
