@@ -9,6 +9,27 @@ use crate::{
   system::{AuthorityState, RemoteAuthorityManagerGeneric},
 };
 
+/// Errors that can arise when resolving actor selections.
+#[derive(Debug)]
+pub enum ActorSelectionError {
+  /// The relative path itself was invalid.
+  InvalidPath(ActorPathError),
+  /// Authority resolution failed (unresolved/quarantine).
+  Authority(PathResolutionError),
+}
+
+impl From<ActorPathError> for ActorSelectionError {
+  fn from(error: ActorPathError) -> Self {
+    Self::InvalidPath(error)
+  }
+}
+
+impl From<PathResolutionError> for ActorSelectionError {
+  fn from(error: PathResolutionError) -> Self {
+    Self::Authority(error)
+  }
+}
+
 /// Resolves relative actor selection expressions against a base path.
 pub struct ActorSelectionResolver;
 
@@ -79,5 +100,17 @@ impl ActorSelectionResolver {
       },
       | AuthorityState::Quarantine { .. } => Err(PathResolutionError::AuthorityQuarantined),
     }
+  }
+
+  /// Resolves a relative path and validates the remote authority state (if present).
+  pub fn resolve_relative_with_authority<TB: RuntimeToolbox + 'static>(
+    base: &ActorPath,
+    selection: &str,
+    authority_manager: &RemoteAuthorityManagerGeneric<TB>,
+    message: Option<AnyMessageGeneric<TB>>,
+  ) -> Result<ActorPath, ActorSelectionError> {
+    let resolved = Self::resolve_relative(base, selection)?;
+    Self::ensure_authority_state(&resolved, authority_manager, message).map_err(ActorSelectionError::from)?;
+    Ok(resolved)
   }
 }

@@ -23,6 +23,7 @@ fn test_register_and_retrieve() {
   let handle = registry.get(&pid).expect("handle should exist");
   assert_eq!(handle.pid(), pid);
   assert_eq!(handle.canonical_uri(), path.to_canonical_uri());
+  assert_ne!(handle.path_hash(), 0);
 }
 
 #[test]
@@ -130,6 +131,38 @@ fn test_release_uid_allows_reuse() {
   // 解放後は新しいUIDで予約可能
   let uid2 = ActorUid::new(600);
   assert!(registry.reserve_uid(&path, uid2, now, None).is_ok());
+}
+
+#[test]
+fn test_reserve_uid_blocks_same_path_even_with_different_uid() {
+  let mut registry = ActorPathRegistry::new();
+  let base = ActorPath::root().child("service");
+  let uid_a = ActorUid::new(1000);
+  let now = 5;
+
+  registry.reserve_uid(&base, uid_a, now, None).expect("initial reserve");
+
+  // 同じパスだが UID の異なる ActorPath を生成
+  let uid_b = ActorUid::new(2000);
+  let path_with_new_uid = base.clone().with_uid(uid_b);
+  let result = registry.reserve_uid(&path_with_new_uid, uid_b, now, None);
+  assert!(matches!(result, Err(PathResolutionError::UidReserved { uid: _ })));
+}
+
+#[test]
+fn test_handle_hash_ignores_uid() {
+  let mut registry = ActorPathRegistry::new();
+  let pid_a = Pid::new(200, 0);
+  let pid_b = Pid::new(201, 0);
+  let base = ActorPath::root().child("logger");
+  let with_uid = base.clone().with_uid(ActorUid::new(42));
+
+  registry.register(pid_a, &base);
+  registry.register(pid_b, &with_uid);
+
+  let hash_a = registry.get(&pid_a).unwrap().path_hash();
+  let hash_b = registry.get(&pid_b).unwrap().path_hash();
+  assert_eq!(hash_a, hash_b);
 }
 
 #[test]

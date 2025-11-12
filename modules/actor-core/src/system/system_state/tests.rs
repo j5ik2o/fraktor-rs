@@ -7,7 +7,9 @@ use super::SystemState;
 use crate::{
   NoStdToolbox,
   actor_prim::{
-    Actor, ActorCell, ActorContextGeneric, actor_path::GuardianKind as PathGuardianKind, actor_ref::ActorRefGeneric,
+    Actor, ActorCell, ActorContextGeneric,
+    actor_path::{ActorPath, ActorUid, GuardianKind as PathGuardianKind, PathResolutionError},
+    actor_ref::ActorRefGeneric,
   },
   config::{ActorSystemConfig, RemotingConfig},
   error::ActorError,
@@ -86,6 +88,25 @@ fn system_state_register_and_remove_cell() {
 
   state.remove_cell(&child_pid);
   assert!(state.cell(&child_pid).is_none());
+}
+
+#[test]
+fn system_state_remove_cell_reserves_uid() {
+  let state = SystemState::new();
+  let pid = state.allocate_pid();
+  let path = ActorPath::root().child("reserved").with_uid(ActorUid::new(777));
+
+  {
+    let mut registry = state.actor_path_registry().lock();
+    registry.register(pid, &path);
+  }
+
+  let _ = state.remove_cell(&pid);
+
+  let mut registry = state.actor_path_registry().lock();
+  let now = state.monotonic_now().as_secs();
+  let result = registry.reserve_uid(&path, ActorUid::new(888), now, None);
+  assert!(matches!(result, Err(PathResolutionError::UidReserved { .. })));
 }
 
 #[test]
@@ -289,6 +310,18 @@ fn system_state_remote_authority_events() {
     if remote.authority() == "node:2552" && matches!(remote.state(), AuthorityState::Quarantine { .. }))));
   assert!(events.iter().any(|event| matches!(event, EventStreamEvent::RemoteAuthority(remote)
     if remote.authority() == "node:2552" && matches!(remote.state(), AuthorityState::Unresolved))));
+
+  // InvalidAssociation による隔離通知
+  state.remote_authority_handle_invalid_association("node:2552", Some(Duration::from_secs(5)));
+  let events = subscriber_impl.events();
+  assert!(events.iter().any(|event| matches!(event, EventStreamEvent::RemoteAuthority(remote)
+    if remote.authority() == "node:2552" && matches!(remote.state(), AuthorityState::Quarantine { .. }))));
+
+  // 手動解除と接続通知
+  state.remote_authority_manual_override_to_connected("node:2552");
+  let events = subscriber_impl.events();
+  assert!(events.iter().any(|event| matches!(event, EventStreamEvent::RemoteAuthority(remote)
+    if remote.authority() == "node:2552" && matches!(remote.state(), AuthorityState::Connected))));
 }
 
 #[test]

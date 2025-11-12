@@ -1,6 +1,6 @@
 //! Authority settings for canonical URIs.
 
-use alloc::{format, string::String};
+use alloc::string::String;
 
 /// Authority settings (host/port) for canonical URIs.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

@@ -37,7 +37,7 @@ impl ActorPath {
 
   /// Builds a path from explicit parts and segments without auto-injecting guardian.
   #[must_use]
-  pub(crate) const fn from_parts_and_segments(
+  pub(crate) fn from_parts_and_segments(
     parts: ActorPathParts,
     segments: Vec<PathSegment>,
     uid: Option<ActorUid>,

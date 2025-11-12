@@ -25,6 +25,7 @@ usage() {
   examples               : ワークスペース配下の examples をビルドします
   embedded / embassy     : embedded 系 (utils / actor) のチェックとテストを実行します
   test                   : ワークスペース全体のテストを実行します
+  actor-path-e2e         : fraktor-actor-core-rs の actor_path_e2e テストを単体実行します
   all                    : 上記すべてを順番に実行します (引数なし時と同じ)
 複数指定で部分実行が可能です (例: scripts/ci-check.sh lint dylint module-wiring-lint)
 EOF
@@ -603,6 +604,11 @@ run_tests() {
   run_cargo test --workspace --verbose --lib --bins --tests --benches --examples || return 1
 }
 
+run_actor_path_e2e() {
+  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-actor-core-rs --test actor_path_e2e -- --nocapture"
+  run_cargo test -p fraktor-actor-core-rs --test actor_path_e2e -- --nocapture || return 1
+}
+
 run_examples() {
   if ! command -v python3 >/dev/null 2>&1; then
     echo "エラー: python3 が必要ですが見つかりませんでした。" >&2
@@ -703,6 +709,7 @@ run_all() {
   run_doc_tests || return 1
 #  run_embedded || return 1
   run_tests || return 1
+  run_actor_path_e2e || return 1
   run_examples || return 1
 }
 
@@ -793,6 +800,10 @@ main() {
         ;;
       test|tests|workspace)
         run_tests || return 1
+        shift
+        ;;
+      actor-path-e2e)
+        run_actor_path_e2e || return 1
         shift
         ;;
       all)

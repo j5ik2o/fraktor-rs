@@ -11,7 +11,7 @@ use hashbrown::HashMap;
 use super::{ActorPathHandle, ReservationPolicy};
 use crate::actor_prim::{
   Pid,
-  actor_path::{ActorPath, ActorUid, PathResolutionError},
+  actor_path::{ActorPath, ActorPathComparator, ActorUid, PathResolutionError},
 };
 
 /// UID reservation entry with expiration deadline.
@@ -48,7 +48,7 @@ impl ActorPathRegistry {
 
   /// Registers a path for a given PID.
   pub fn register(&mut self, pid: Pid, path: &ActorPath) {
-    let handle = ActorPathHandle::new(pid, path.to_canonical_uri(), path.uid());
+    let handle = ActorPathHandle::new(pid, path.to_canonical_uri(), path.uid(), ActorPathComparator::hash(path));
     self.paths.insert(pid, handle);
   }
 
@@ -81,7 +81,7 @@ impl ActorPathRegistry {
     now_secs: u64,
     custom_duration: Option<Duration>,
   ) -> Result<(), PathResolutionError> {
-    let path_key = path.to_canonical_uri();
+    let path_key = Self::canonical_key(path);
 
     // 既存の予約をチェック
     if let Some(reservation) = self.reservations.get(&path_key) {
@@ -98,7 +98,7 @@ impl ActorPathRegistry {
 
   /// Releases a UID reservation for a path.
   pub fn release_uid(&mut self, path: &ActorPath) {
-    let path_key = path.to_canonical_uri();
+    let path_key = Self::canonical_key(path);
     self.reservations.remove(&path_key);
   }
 
@@ -108,6 +108,11 @@ impl ActorPathRegistry {
       | Some(deadline) => deadline > now_secs,
       | None => true,
     });
+  }
+
+  fn canonical_key(path: &ActorPath) -> String {
+    let canonical = path.to_canonical_uri();
+    if let Some(idx) = canonical.find('#') { String::from(&canonical[..idx]) } else { canonical }
   }
 }
 

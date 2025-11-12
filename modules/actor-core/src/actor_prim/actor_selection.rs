@@ -5,4 +5,4 @@ mod resolver;
 #[cfg(test)]
 mod tests;
 
-pub use resolver::ActorSelectionResolver;
+pub use resolver::{ActorSelectionError, ActorSelectionResolver};

@@ -5,7 +5,7 @@ use core::time::Duration;
 use crate::{
   actor_prim::{
     actor_path::{ActorPath, ActorPathError, ActorPathParts, PathResolutionError},
-    actor_selection::ActorSelectionResolver,
+    actor_selection::{ActorSelectionError, ActorSelectionResolver},
   },
   messaging::AnyMessage,
   system::{RemoteAuthorityError, RemoteAuthorityManager},
@@ -126,6 +126,29 @@ fn test_ensure_authority_state_rejects_quarantine() {
   let err = ActorSelectionResolver::ensure_authority_state(&path, &manager, Some(AnyMessage::new("msg"))).unwrap_err();
   assert!(matches!(err, PathResolutionError::AuthorityQuarantined));
   assert_eq!(manager.deferred_count("blocked-host:2553"), 0);
+}
+
+#[test]
+fn test_resolve_relative_with_authority_reports_unresolved() {
+  let base = ActorPath::from_parts(ActorPathParts::with_authority("cluster", Some(("peer", 2552))));
+  let manager = RemoteAuthorityManager::new();
+  let result =
+    ActorSelectionResolver::resolve_relative_with_authority(&base, "worker", &manager, Some(AnyMessage::new("msg")));
+  match result {
+    | Err(ActorSelectionError::Authority(PathResolutionError::AuthorityUnresolved)) => {},
+    | other => panic!("unexpected result {:?}", other),
+  }
+  assert_eq!(manager.deferred_count("peer:2552"), 1);
+}
+
+#[test]
+fn test_resolve_relative_with_authority_fails_on_quarantine() {
+  let base = ActorPath::from_parts(ActorPathParts::with_authority("cluster", Some(("peer2", 2553))));
+  let manager = RemoteAuthorityManager::new();
+  manager.set_quarantine("peer2:2553", 0, Some(Duration::from_secs(100)));
+  let result =
+    ActorSelectionResolver::resolve_relative_with_authority(&base, "worker", &manager, Some(AnyMessage::new(1u32)));
+  assert!(matches!(result, Err(ActorSelectionError::Authority(PathResolutionError::AuthorityQuarantined))));
 }
 
 #[test]

@@ -1,6 +1,9 @@
 use alloc::{vec, vec::Vec};
 
-use super::{ActorPath, ActorPathComparator, ActorPathFormatter, ActorPathParts, ActorUid, GuardianKind, PathSegment};
+use super::{
+  ActorPath, ActorPathComparator, ActorPathFormatter, ActorPathParser, ActorPathParts, ActorUid, GuardianKind,
+  PathSegment,
+};
 
 #[test]
 fn guardian_segment_is_injected_into_root() {
@@ -40,4 +43,34 @@ fn comparator_ignores_uid_difference() {
   let with_uid = base.clone().with_uid(ActorUid::new(42));
   assert!(ActorPathComparator::eq(&base, &with_uid));
   assert_eq!(ActorPathComparator::hash(&base), ActorPathComparator::hash(&with_uid));
+}
+
+#[test]
+fn parser_rejects_reserved_segment() {
+  let uri = "pekko://sys/user/$system";
+  assert!(ActorPathParser::parse(uri).is_err());
+}
+
+#[test]
+fn parser_preserves_authority_and_guardian() {
+  let uri = "pekko.tcp://cellsys@host.example.com:2552/system/logger";
+  let parsed = ActorPathParser::parse(uri).expect("parse");
+  assert_eq!(parsed.parts().system(), "cellsys");
+  assert_eq!(parsed.parts().guardian_segment(), "system");
+  assert_eq!(parsed.segments().iter().map(PathSegment::as_str).collect::<Vec<_>>(), vec!["system", "logger"]);
+  assert_eq!(ActorPathFormatter::format(&parsed), uri);
+}
+
+#[test]
+fn format_parse_roundtrip_samples() {
+  let cases = [
+    "pekko://cellsys/user/worker",
+    "pekko.tcp://cellsys@127.0.0.1:2552/user/service#7",
+    "pekko://cellsys/system/logger/sub",
+  ];
+  for uri in cases {
+    let parsed = ActorPathParser::parse(uri).expect("parse");
+    let formatted = ActorPathFormatter::format(&parsed);
+    assert_eq!(formatted, uri);
+  }
 }

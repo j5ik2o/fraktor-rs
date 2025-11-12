@@ -4,8 +4,8 @@ use core::time::Duration;
 
 use fraktor_actor_core_rs::{
   actor_prim::{
-    actor_path::{ActorPath, ActorPathFormatter, ActorPathParts},
-    actor_selection::ActorSelectionResolver,
+    actor_path::{ActorPath, ActorPathFormatter, ActorPathParser, ActorPathParts, ActorUid, PathResolutionError},
+    actor_selection::{ActorSelectionError, ActorSelectionResolver},
   },
   config::{ActorSystemConfig, RemotingConfig},
   messaging::AnyMessage,
@@ -36,6 +36,21 @@ fn test_e2e_remote_path_authority_format() {
   let formatted = ActorPathFormatter::format(&path);
   // 注: ActorPathFormatter の実装に依存するため、ここでは相対パスのみをチェック
   assert!(formatted.contains("remote-worker"));
+}
+
+#[test]
+fn test_e2e_format_parse_round_trip_with_uid() {
+  let parts = ActorPathParts::with_authority("round-sys", Some(("round-host", 2552)));
+  let path = ActorPath::from_parts(parts).child("service").child("worker").with_uid(ActorUid::new(4242));
+
+  let canonical = ActorPathFormatter::format(&path);
+  let parsed = ActorPathParser::parse(&canonical).expect("parse");
+
+  assert_eq!(canonical, ActorPathFormatter::format(&parsed));
+  assert_eq!(parsed.uid().map(|uid| uid.value()), Some(4242));
+  // UID を差し替えても canonical のパス部分は一致する
+  let without_uid = parsed.clone().with_uid(ActorUid::new(1111));
+  assert_eq!(without_uid.to_relative_string(), parsed.to_relative_string());
 }
 
 #[test]
@@ -84,9 +99,36 @@ fn test_e2e_actor_selection_with_relative_paths() {
   let task = worker.child("task");
 
   // task から ../../manager へ遡る
-  let resolved = ActorSelectionResolver::resolve_relative(&task, "../manager").unwrap();
+  let resolved = ActorSelectionResolver::resolve_relative(&task, "../../manager").unwrap();
   let expected = user.child("manager");
   assert_eq!(ActorPathFormatter::format(&resolved), ActorPathFormatter::format(&expected));
+}
+
+#[test]
+fn test_e2e_actor_selection_remote_authority_state_sequence() {
+  let base = ActorPath::from_parts(ActorPathParts::with_authority("cluster", Some(("remote-node", 2552))));
+  let manager = RemoteAuthorityManager::new();
+
+  // 未解決時は defer + AuthorityUnresolved
+  let result =
+    ActorSelectionResolver::resolve_relative_with_authority(&base, "worker", &manager, Some(AnyMessage::new("msg1")));
+  match result {
+    | Err(ActorSelectionError::Authority(PathResolutionError::AuthorityUnresolved)) => {},
+    | other => panic!("expected unresolved, got {:?}", other),
+  }
+  assert_eq!(manager.deferred_count("remote-node:2552"), 1);
+
+  // 接続後は成功し、deferred キューは flush されない（resolve は状態確認のみ）
+  manager.set_connected("remote-node:2552");
+  let resolved = ActorSelectionResolver::resolve_relative_with_authority(&base, "worker", &manager, None)
+    .expect("should resolve when connected");
+  assert_eq!(resolved.to_canonical_uri(), ActorPathFormatter::format(&base.child("worker")));
+
+  // 隔離状態へ遷移させ、即座に AuthorityQuarantined を返す
+  manager.set_quarantine("remote-node:2552", 0, Some(Duration::from_secs(60)));
+  let result =
+    ActorSelectionResolver::resolve_relative_with_authority(&base, "worker", &manager, Some(AnyMessage::new("msg2")));
+  assert!(matches!(result, Err(ActorSelectionError::Authority(PathResolutionError::AuthorityQuarantined))));
 }
 
 #[test]
