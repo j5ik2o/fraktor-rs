@@ -1,3 +1,10 @@
+## [0.2.4](https://github.com/j5ik2o/fraktor-rs/compare/v0.2.3...v0.2.4) (2025-11-12)
+
+
+### Bug Fixes
+
+* update bump-version.yml to use personal access token for Git operations ([e0d30e0](https://github.com/j5ik2o/fraktor-rs/commit/e0d30e03e267378927bebf44cbda5e411f426dea))
+
 ## [0.2.3](https://github.com/j5ik2o/fraktor-rs/compare/v0.2.2...v0.2.3) (2025-11-12)
 
 
