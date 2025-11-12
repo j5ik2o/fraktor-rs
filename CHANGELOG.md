@@ -1,3 +1,11 @@
+## [0.2.9](https://github.com/j5ik2o/fraktor-rs/compare/v0.2.8...v0.2.9) (2025-11-12)
+
+
+### Bug Fixes
+
+* remove pre-release health check step from publish.yml ([fd6fdd0](https://github.com/j5ik2o/fraktor-rs/commit/fd6fdd0fb126788b910361df318782de4052880f))
+* update version-file in bump-version.yml to include multiple Cargo.toml paths ([6249930](https://github.com/j5ik2o/fraktor-rs/commit/62499302789f19836b5f17681cd8685694d1def3))
+
 ## [0.2.8](https://github.com/j5ik2o/fraktor-rs/compare/v0.2.7...v0.2.8) (2025-11-12)
 
 
