@@ -34,6 +34,35 @@ log_step() {
   printf '==> %s\n' "$1"
 }
 
+clean_stale_lint_targets() {
+  local lint_path=""
+  local removed=0
+  for lint_path in "${REPO_ROOT}"/lints/*-lint; do
+    if [[ ! -d "${lint_path}" || ! -d "${lint_path}/target" ]]; then
+      continue
+    fi
+
+    local stale=""
+    while IFS= read -r output_file; do
+      [[ -n "${output_file}" ]] || continue
+      if ! grep -q "${REPO_ROOT}" "${output_file}" 2>/dev/null; then
+        stale="yes"
+        break
+      fi
+    done < <(find "${lint_path}/target" -path "*/libssh2-sys-*/output" -type f 2>/dev/null)
+
+    if [[ -n "${stale}" ]]; then
+      rm -rf "${lint_path}/target"
+      echo "info: ${lint_path#${REPO_ROOT}/}/target を削除しました (libssh2-sys キャッシュの再生成)" >&2
+      removed=1
+    fi
+  done
+
+  if [[ ${removed} -eq 1 ]]; then
+    echo "info: Dylint 用ターゲットを再ビルドします" >&2
+  fi
+}
+
 run_cargo() {
   local -a cmd
   if [[ -n "${DEFAULT_TOOLCHAIN}" ]]; then
@@ -681,6 +710,8 @@ main() {
   if [[ -x "${SCRIPT_DIR}/check_modrs.sh" ]]; then
     "${SCRIPT_DIR}/check_modrs.sh"
   fi
+
+  clean_stale_lint_targets
 
   if [[ $# -eq 0 ]]; then
     run_all || return 1
