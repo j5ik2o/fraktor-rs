@@ -1,0 +1,122 @@
+# Implementation Plan
+
+- [ ] 1. タイマーホイール基盤と Scheduler 構成を確立する
+  - TimerWheelFamily のスロット/overflow/再挿入ポリシーを設計ドキュメント通りに用意し、deterministic な期限処理を成立させる
+  - SchedulerConfig と capacity profile（Tiny/Small/Standard/Large/Custom）を導入し、上限超過時は構築段階で fail-fast させる
+  - SchedulerCapabilities で max frequency・min delay・対応モードを公開し、事前ガードができるようにする
+  - _Requirements: R1 AC1-AC6, R4 AC5-AC6_
+- [ ] 1.1 TimerWheel と Overflow 制御を実装し、drift 予算内で期限を裁く
+  - 固定長スロット＋優先度付き overflow の組み合わせで期限計算をまとめ、再挿入バッチと saturation policy を実装する
+  - PriorityDropQueue と警告イベントを結線し、低優先度タイマーから順に自動廃棄するロジックを整える
+  - ManualClock でも同じ wheel 表現を共有できるよう、resolution/ns 設定を一元化する
+  - _Requirements: R1 AC1-AC3, R4 AC5-AC6_
+- [ ] 1.2 SchedulerConfig と Capabilities を導入し、構成エラーを早期検出する
+  - capacity profile／custom profileの検証を実装し、system_quota/overflow/task_run容量の範囲外指定を防ぐ
+  - max_frequency/min_delay/supported_modes を算出する API を公開し、DelayProvider などが事前チェックできるようにする
+  - invalid delay/interval 入力時にエラーを返すバリデーションを schedule API 前段へ追加する
+  - _Requirements: R1 AC4-AC6, R2 AC1, R3 AC5_
+
+- [ ] 2. Scheduler コアと Cancellable セマンティクスを構築する
+  - TimerCommandQueue と CancellableRegistry を組み合わせ、FIFO 順序と一度きりの実行を保証する
+  - schedule_once / fixed rate / fixed delay を Pekko 互換シグネチャで公開し、IllegalArgument などの失敗分岐を整える
+  - Backpressure/Rejecting 状態と priority class を連動させ、system quota を超えたタイマーを制御する
+  - _Requirements: R1 AC1-AC6, R2 AC1-AC6, R4 AC1-AC6_
+- [ ] 2.1 SchedulerCommandQueue と単発タイマー挙動を実装する
+  - lock-free queue で登録順を維持し、TimerWheel へのエントリ投入と handle 付与を統一する
+  - cancel 競合時もハンドラを一度だけ走らせる状態遷移を実装し、即時リソース解放をテストで確認する
+  - maxFrequency/minDelay を利用したエラーハンドリングを scheduleOnce/fixed API に統合する
+  - _Requirements: R1 AC1-AC6, R4 AC1-AC4_
+- [ ] 2.2 FixedRate/FixedDelay コンテキストと backlog 補償を組み込む
+  - FixedRateContext が missed_runs と burst 警告を生成し、FixedDelayContext は実行完了時刻から次回期限を再計算する
+  - backlog_limit/burst_threshold/policy registry を尊重し、許容量を超えた周期ジョブを自動キャンセルする
+  - ExecutionBatch が actor へ missed_runs を届けられるよう、BatchGuard と completion ack を準備する
+  - _Requirements: R2 AC1-AC6, R1 AC2, R4 AC5-AC6_
+- [ ] 2.3 CancellableRegistry と Backpressure 状態遷移を仕上げる
+  - cancel()/is_cancelled()/is_completed の戻り値契約を満たす原子状態マシンを実装する
+  - SchedulerBackpressureLink が gauge/driver 由来のシグナルで accepting_state を切り替えるようにする
+  - priority class と adaptive quota を結線し、Backpressure/Rejecting 時の受理ルールを網羅する
+  - _Requirements: R4 AC1-AC6, R2 AC6, R1 AC4_
+
+- [ ] 3. Tick ソースと SchedulerRunner／Shutdown を組み込む
+  - SchedulerTickHandle と TickLease を RuntimeToolbox へ追加し、tokio/embassy/manual clock を同じ API で扱う
+  - RunnerMode (Manual/AsyncHost/Hardware) と catch-up ループを実装し、drift 監視と Backpressure 遷移を制御する
+  - TaskRunOnClose と shutdown ドレイン手順を deterministic に実装し、リソースを確実に返却する
+  - _Requirements: R1 AC1-AC3, R2 AC1-AC5, R3 AC1-AC7, R5 AC1_
+- [ ] 3.1 SchedulerTickHandle と Toolbox 拡張を実装する
+  - tick_source<'a> がライフタイム束縛された handle を返し、notify_tick/stop_and_flush/status を提供する
+  - catch-up chunk と backpressure レポートを handle で計測し、Runner へ backlog 数を渡す
+  - ManualClock 用 inject_manual_tick を実装して deterministic モードに切り替えられるようにする
+  - _Requirements: R1 AC1-AC3, R3 AC1, R5 AC1_
+- [ ] 3.2 SchedulerRunner と Backpressure ループを構築する
+  - RunnerMode ごとに tick lease を取得し、catch-up chunk を消化して drift monitor を更新する
+  - Driver/Gauge 由来の Backpressured/Suspended 状態を EventStream へ通知し、accepting_state を更新する
+  - RunnerShell が tick backlog に応じて adaptive quota と SchedulerWarning を発火させるようにする
+  - _Requirements: R1 AC1-AC3, R2 AC5, R3 AC1-AC4, R4 AC5_
+- [ ] 3.3 TaskRunOnClose と shutdown ドレインを仕上げる
+  - register_on_close API と優先度キューを実装し、SystemCritical→Runtime→User の順で実行する
+  - stop_and_flush 後に残タスクを is_cancelled/ack_complete で締め、SystemMailbox へ新規投入しないようにする
+  - shutdown 後の schedule 要求へ SchedulerError::Shutdown を返し、handles を破棄する
+  - _Requirements: R3 AC3-AC7_
+
+- [ ] 4. ActorSystem／Mailbox 連携と公開 API を統合する
+  - SystemMailboxBridge を通じて Scheduler 発火を既存 dispatcher パイプラインへ流し、BatchContext を注入する
+  - RuntimeToolbox::task_local_slot と SchedulerBatchContext を組合わせ、no_std でも batch 情報を保持する
+  - DelayProvider や ActorSystemBuilder が Scheduler を初期化・注入し、Pekko シグネチャ API を公開する
+  - _Requirements: R2 AC2-AC6, R3 AC1-AC7, R4 AC2-AC4_
+- [ ] 4.1 SystemMailbox ブリッジと BatchContext を実装する
+  - SchedulerCommand::EnqueueDelayed から DispatcherEnvelope を生成し、BatchGuard が ack_complete を管理する
+  - task_local_slot の fallback を含め、ExecutionBatch/CompletionHandle を actor/runnable/future が読めるようにする
+  - CancellableRegistry と mailbox enqueue 前の cancel 判定を結線し、ドロップ済みメッセージを遮断する
+  - _Requirements: R2 AC2-AC5, R3 AC4, R4 AC2-AC3_
+- [ ] 4.2 DelayProvider と ActorSystemBuilder を Scheduler ベースへ置き換える
+  - DelayProvider facade が schedule_once を介して DelayFuture を駆動し、TaskRunOnClose handle を登録する
+  - ActorSystemBuilder で scheduler config を受け取り、RuntimeToolbox から clock/timer/tick handle を組み立てる
+  - Remoting heartbeat など内部サブシステムが SchedulerExecutionContext を取得できるよう handles を公開する
+  - _Requirements: R3 AC1-AC6, R1 AC1-AC4_
+- [ ] 4.3 SchedulerExecutionContext と API 露出をまとめる
+  - canonical Pekko シグネチャの schedule_* 関数を公開し、context ヘルパが dispatcher/sender を解決する
+  - API レイヤで maxFrequency/minDelay を expose し、呼び出し前検証や capability 表示を行う
+  - shutdown 済みインスタンスの呼び出しを guard し、SchedulerException を返す経路を追加する
+  - _Requirements: R1 AC5-AC6, R2 AC1, R3 AC5-AC7_
+
+- [ ] 5. Diagnostics・メトリクス・イベント出力を実装する
+  - SchedulerDiagnostics で deterministic log・diagnostic stream・dump を提供し、ManualClock と協調させる
+  - Metrics/Warnings を EventStream へ送信し、Backpressure/driver catch-up/overflow を観測可能にする
+  - Dump/CLI 要求に応じて wheel 状態・pending タスク・周期ジョブ統計をテキスト形式で返す
+  - _Requirements: R4 AC5-AC7, R5 AC1-AC5_
+- [ ] 5.1 Deterministic Log と ManualClock 支援を構築する
+  - schedule/fire/cancel レコードを ring buffer へ書き出し、リプレイ検証用トレースを生成する
+  - ManualClock advance と diagnostics API を結線し、tick ごとの drift/compensation を記録する
+  - property/fuzz テストが参照できる hook を公開し、seed 入力を保持できるようにする
+  - _Requirements: R5 AC1-AC4_
+- [ ] 5.2 Metrics・警告・EventStream 連携を整備する
+  - active_total/periodic_total/dropped_total/catch_up_window などをメトリクスとして公開する
+  - DriverCatchUpExceeded/BurstFire/QuotaReached 等の警告を EventStream/Diagnostics Channel へ配信する
+  - Backpressure state machine と metrics スナップショットをリンクし、上位コンポーネントが制御判断できるようにする
+  - _Requirements: R2 AC5-AC6, R4 AC5-AC7_
+- [ ] 5.3 Dump／診断ストリーム API を実装する
+  - 現在の wheel offset、overflow サイズ、待機タスク、周期ジョブ backlog をダンプとして整形出力する
+  - SchedulerDiagnostics::subscribe が schedule/fire/cancel/drift イベントを購読できる channel を開設する
+  - CLI/telemetry からの dump 要求を system mailbox 経由で処理し、応答を返すフローを整える
+  - _Requirements: R5 AC3-AC5_
+
+- [ ] 6. テストと検証スイートを整備する
+  - ManualClock/Deterministic モードを用いた単体・プロパティテストで FIFO・missed_runs・cancel を検証する
+  - std/no_std/embedded の RunnerMode を分岐テストし、Backpressure・TaskRunOnClose・DelayProvider 統合を確認する
+  - fuzz/負荷テストと diagnostics dump を組み合わせ、ドリフト予算・priority drop・metrics を継続監視する
+  - _Requirements: R1 AC1-AC6, R2 AC1-AC6, R3 AC1-AC7, R4 AC1-AC7, R5 AC1-AC5_
+- [ ] 6.1 Deterministic/ManualClock テストを実装する
+  - ManualClock advance を使って schedule/cancel/fixed-rate の determinism を asserts で証明する
+  - ExecutionBatch の missed_runs/mode 情報が actor/runnable へ届くかを特性テストで検証する
+  - invalid delay や shutdown 中呼び出しのエラーパスを unit test 化する
+  - _Requirements: R1 AC1-AC6, R2 AC1-AC4, R3 AC7, R5 AC1-AC2_
+- [ ] 6.2 std/no_std/embedded 統合テストを構築する
+  - tokio/embassy/SysTick ベースの RunnerMode をそれぞれ駆動し、Backpressure state machine の挙動を確認する
+  - DelayProvider/ActorSystemBuilder/Remoting heartbeat が Scheduler を介して遅延処理を共有できるか検証する
+  - TaskRunOnClose と shutdown フローが system-critical→runtime→user の順で実行されることを確認する
+  - _Requirements: R2 AC3-AC6, R3 AC1-AC7, R4 AC1-AC6_
+- [ ] 6.3 Diagnostics・負荷・fuzz テストを追加する
+  - deterministic log と dump API を使って replay/fuzz シナリオを収集し、再現テストを自動化する
+  - Backpressure/DriverCatchUpExceeded/QuotaReached 警告が metrics と一致するかを統合テストする
+  - Dump/CLI 経路を通じて wheel 状態や backlog を取得し、シリアライズ結果を検証する
+  - _Requirements: R4 AC5-AC7, R5 AC2-AC5_
