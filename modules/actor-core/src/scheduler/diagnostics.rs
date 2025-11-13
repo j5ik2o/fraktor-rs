@@ -67,6 +67,12 @@ impl SchedulerDiagnostics {
       .map_or(&[], |log| log.entries.as_slice())
   }
 
+  /// Returns an iterator that can replay deterministic events in order.
+  #[must_use]
+  pub fn replay(&self) -> DeterministicReplay<'_> {
+    DeterministicReplay::new(self.deterministic_log())
+  }
+
   pub(crate) fn record(&mut self, event: DeterministicEvent) {
     if let Some(log) = &mut self.deterministic_log {
       log.record(event);
@@ -100,5 +106,36 @@ impl Clone for SchedulerDiagnostics {
 impl Clone for DeterministicLog {
   fn clone(&self) -> Self {
     Self { entries: self.entries.clone(), capacity: self.capacity }
+  }
+}
+
+/// Iterator over recorded deterministic events.
+pub struct DeterministicReplay<'a> {
+  events:   &'a [DeterministicEvent],
+  position: usize,
+}
+
+impl<'a> DeterministicReplay<'a> {
+  fn new(events: &'a [DeterministicEvent]) -> Self {
+    Self { events, position: 0 }
+  }
+
+  /// Returns the remaining events without advancing the iterator.
+  #[must_use]
+  pub const fn as_slice(&self) -> &'a [DeterministicEvent] {
+    self.events
+  }
+}
+
+impl<'a> Iterator for DeterministicReplay<'a> {
+  type Item = DeterministicEvent;
+
+  fn next(&mut self) -> Option<Self::Item> {
+    if self.position >= self.events.len() {
+      return None;
+    }
+    let event = self.events[self.position];
+    self.position += 1;
+    Some(event)
   }
 }

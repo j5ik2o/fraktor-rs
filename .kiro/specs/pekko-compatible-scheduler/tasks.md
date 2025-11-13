@@ -133,7 +133,7 @@
   - 完了条件: ManualClock/Diagnostics/Benchmark/エラーカバレッジが全要件を検証し、CIジョブが追加される。
   - _Requirements: R5.AC1-R5.AC5, R4.AC7_
 
-- [ ] 7.1 ManualClock・決定論ログ・プロパティテストを整備する
+- [x] 7.1 ManualClock・決定論ログ・プロパティテストを整備する
   - ManualClock/ManualTimerをSchedulerRunnerへ接続し、手動tickでジョブを発火できるテスト専用モードを実装する。
   - DeterministicLogにタスクID/発火時刻/実行モードを記録し、リプレイ検証APIを提供する。
   - Property/fuzzテストハーネスを追加し、tick単調性・キャンセル保証・固定レート補償を100ケース以上で自動検証する。

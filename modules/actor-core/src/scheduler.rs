@@ -34,7 +34,7 @@ pub use config::SchedulerConfig;
 pub use dispatcher_sender_shared::DispatcherSenderShared;
 pub use error::SchedulerError;
 pub use delay_provider::SchedulerBackedDelayProvider;
-pub use diagnostics::{DeterministicEvent, SchedulerDiagnostics};
+pub use diagnostics::{DeterministicEvent, DeterministicReplay, SchedulerDiagnostics};
 pub use execution_batch::ExecutionBatch;
 pub use fixed_delay_policy::FixedDelayPolicy;
 pub use fixed_rate_policy::FixedRatePolicy;

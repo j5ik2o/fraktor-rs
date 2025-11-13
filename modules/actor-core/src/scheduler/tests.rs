@@ -11,7 +11,7 @@ use fraktor_utils_core_rs::{
   DelayFuture, DelayProvider,
   runtime_toolbox::SyncMutexFamily,
   sync::{ArcShared, NoStdMutex},
-  time::SchedulerCapacityProfile,
+  time::{SchedulerCapacityProfile, SchedulerTickHandle},
 };
 
 use super::{
@@ -125,6 +125,8 @@ fn poll_delay_future(future: &mut DelayFuture) -> Poll<()> {
   let mut cx = Context::from_waker(&waker);
   Pin::new(future).poll(&mut cx)
 }
+
+struct ManualRunnerOwner;
 
 #[test]
 fn schedule_once_rejects_zero_delay() {
@@ -356,9 +358,11 @@ fn runner_manual_processes_ticks_in_order() {
     .expect("handle");
 
   {
-    let mut runner = SchedulerRunner::manual(&mut scheduler);
+    let owner = ManualRunnerOwner;
+    let tick_handle = SchedulerTickHandle::scoped(&owner);
+    let mut runner = SchedulerRunner::manual(&tick_handle);
     runner.inject_manual_ticks(1);
-    runner.run_once();
+    runner.run_once(&mut scheduler);
   }
 
   let delivered: Vec<u32> =
@@ -652,11 +656,26 @@ enum DeterministicOp {
   Advance { ticks: u8 },
 }
 
+#[derive(Clone, Debug)]
+enum RunnerOp {
+  Schedule { delay_ticks: u16 },
+  CancelLatest,
+  Drive { ticks: u8 },
+}
+
 fn deterministic_op_strategy() -> impl Strategy<Value = DeterministicOp> {
   prop_oneof![
     (1u16..16).prop_map(|delay_ticks| DeterministicOp::Schedule { delay_ticks }),
     Just(DeterministicOp::CancelLatest),
     (1u8..8).prop_map(|ticks| DeterministicOp::Advance { ticks }),
+  ]
+}
+
+fn runner_op_strategy() -> impl Strategy<Value = RunnerOp> {
+  prop_oneof![
+    (1u16..16).prop_map(|delay_ticks| RunnerOp::Schedule { delay_ticks }),
+    Just(RunnerOp::CancelLatest),
+    (1u8..8).prop_map(|ticks| RunnerOp::Drive { ticks }),
   ]
 }
 
@@ -689,6 +708,61 @@ proptest! {
     scheduler.run_for_test(64);
     assert_deterministic_invariants(scheduler.diagnostics().deterministic_log());
   }
+}
+
+proptest! {
+  #[test]
+  fn manual_runner_preserves_invariants(ops in prop::collection::vec(runner_op_strategy(), 1..32)) {
+    let mut scheduler = build_scheduler();
+    scheduler.enable_deterministic_log(1024);
+    let owner = ManualRunnerOwner;
+    let tick_handle = SchedulerTickHandle::scoped(&owner);
+    let mut runner = SchedulerRunner::manual(&tick_handle);
+    let mut handles: Vec<SchedulerHandle> = Vec::new();
+
+    for op in ops {
+      match op {
+        RunnerOp::Schedule { delay_ticks } => {
+          let delay = Duration::from_millis((delay_ticks as u64).max(1));
+          if let Ok(handle) = scheduler.schedule_once(delay) {
+            handles.push(handle);
+          }
+        },
+        RunnerOp::CancelLatest => {
+          if let Some(handle) = handles.pop() {
+            let _ = scheduler.cancel(&handle);
+          }
+        },
+        RunnerOp::Drive { ticks } => {
+          runner.inject_manual_ticks(u32::from(ticks));
+          runner.run_once(&mut scheduler);
+        },
+      }
+    }
+
+    runner.inject_manual_ticks(32);
+    runner.run_once(&mut scheduler);
+    assert_deterministic_invariants(scheduler.diagnostics().deterministic_log());
+  }
+}
+
+#[test]
+fn deterministic_log_replay_matches_snapshot() {
+  let mut scheduler = build_scheduler();
+  scheduler.enable_deterministic_log(32);
+  api::schedule_once(
+    &mut scheduler,
+    Duration::from_millis(2),
+    ActorRefGeneric::null(),
+    AnyMessageGeneric::new(5u32),
+    None,
+    None,
+  )
+  .expect("handle");
+  scheduler.run_for_test(2);
+
+  let replay_events: Vec<DeterministicEvent> = scheduler.diagnostics().replay().collect();
+  assert_eq!(replay_events, scheduler.diagnostics().deterministic_log());
 }
 
 fn assert_deterministic_invariants(events: &[DeterministicEvent]) {
