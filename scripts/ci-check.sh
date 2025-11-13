@@ -537,6 +537,15 @@ run_no_std() {
 
   log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-rs --no-default-features"
   run_cargo check -p fraktor-rs --no-default-features || return 1
+
+  local thumb_target="thumbv8m.main-none-eabi"
+  if ensure_target_installed "${thumb_target}"; then
+    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-utils-core-rs --no-default-features --features alloc --target ${thumb_target}"
+    run_cargo check -p fraktor-utils-core-rs --no-default-features --features alloc --target "${thumb_target}" || return 1
+
+    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-core-rs --no-default-features --target ${thumb_target}"
+    run_cargo check -p fraktor-actor-core-rs --no-default-features --target "${thumb_target}" || return 1
+  fi
 }
 
 run_std() {

@@ -77,7 +77,7 @@ bincode = { version = "2.0.1", default-features = false, features = ["alloc", "s
 spin = { version = "0.10", default-features = false }
 static_assertions = "1.1.0"
 static_cell = "2"
-thiserror = "2.0.17"
+thiserror = { version = "2.0.17", default-features = false }
 tokio = { version = "1.47.1", default-features = false }
 tokio-condvar = "0.3.0"
 tokio-util = "0.7.16"

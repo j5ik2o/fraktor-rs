@@ -802,6 +802,18 @@ fn diagnostics_drop_emits_warning() {
 }
 
 #[test]
+fn diagnostics_replays_buffered_events_for_new_subscriber() {
+  let mut scheduler = build_scheduler();
+  let receiver = ActorRefGeneric::null();
+  api::schedule_once(&mut scheduler, Duration::from_millis(2), receiver, AnyMessageGeneric::new(22u32), None, None)
+    .expect("handle");
+  scheduler.run_for_test(2);
+  let mut subscription = scheduler.subscribe_diagnostics(4);
+  let events = subscription.drain();
+  assert!(events.iter().any(|event| matches!(event, SchedulerDiagnosticsEvent::Fired { .. })));
+}
+
+#[test]
 fn scheduler_dump_reports_pending_jobs() {
   let mut scheduler = build_scheduler();
   let handle = scheduler.schedule_once(Duration::from_millis(5)).expect("handle");

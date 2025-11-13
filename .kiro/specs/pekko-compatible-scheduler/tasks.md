@@ -155,7 +155,7 @@
   - shutdown済みSchedulerやBackpressure状態でのAPI呼び出しが想定エラーを返すことをintegrationテストで確認する。
   - _Requirements: R1.AC4, R3.AC7, R4.AC5, R5.AC3_
 
-- [ ] 7.5 no_std環境での完全動作を検証する
+- [x] 7.5 no_std環境での完全動作を検証する
   - no_std+alloc構成でScheduler API一式がコンパイル・リンク可能であることをCIジョブに追加し、heapless実装経路を含む統合テストを実行する。
   - SysTick/embassy系Toolboxでtick_source/tick_leaseが動作するモックテストを追加し、DiagnosticsFanout(heapless)のドロップ挙動を検証する。
   - actor-core/utils-core に `#[cfg(feature = "std")]` が存在しないこと、std依存コードが actor-std/utils-std に限定されることを `rg` と `cfg-std-forbid-lint` で確認する。
