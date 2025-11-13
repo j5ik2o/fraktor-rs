@@ -3,7 +3,7 @@ use core::time::Duration;
 mod delay_future;
 mod manual_delay_provider;
 
-pub use delay_future::DelayFuture;
+pub use delay_future::{DelayFuture, DelayTrigger};
 pub use manual_delay_provider::ManualDelayProvider;
 
 /// Provider capable of creating delay futures backed by the current runtime.

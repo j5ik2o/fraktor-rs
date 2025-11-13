@@ -1,8 +1,10 @@
 use alloc::{vec, vec::Vec};
+use core::{pin::Pin, task::{Context, Poll, RawWaker, RawWakerVTable, Waker}, time::Duration};
 
 use fraktor_utils_core_rs::{
   collections::queue::capabilities::{QueueCapabilityRegistry, QueueCapabilitySet},
   sync::{ArcShared, NoStdMutex},
+  DelayFuture, DelayProvider,
 };
 
 use super::ActorSystem;
@@ -356,6 +358,45 @@ fn spawn_returns_child_ref_even_if_dispatcher_is_idle() {
   let result = system.spawn_with_parent(None, &props);
 
   assert!(result.is_ok());
+}
+
+fn noop_waker() -> Waker {
+  const VTABLE: RawWakerVTable = RawWakerVTable::new(
+    |data| RawWaker::new(data, &VTABLE),
+    |_| {},
+    |_| {},
+    |_| {},
+  );
+
+  unsafe fn raw_waker() -> RawWaker {
+    RawWaker::new(core::ptr::null(), &VTABLE)
+  }
+
+  unsafe { Waker::from_raw(raw_waker()) }
+}
+
+fn poll_delay_future(future: &mut DelayFuture) -> Poll<()> {
+  let waker = noop_waker();
+  let mut cx = Context::from_waker(&waker);
+  Pin::new(future).poll(&mut cx)
+}
+
+#[test]
+fn actor_system_installs_scheduler_service() {
+  let props = Props::from_fn(|| TestActor);
+  let system = ActorSystem::new(&props).expect("actor system");
+  let provider = system.delay_provider().expect("delay provider");
+  let mut future = provider.delay(Duration::from_millis(1));
+  assert!(matches!(poll_delay_future(&mut future), Poll::Pending));
+
+  let service = system.scheduler_service().expect("scheduler service");
+  {
+    let scheduler = service.scheduler();
+    let mut guard = scheduler.lock();
+    guard.run_for_test(1);
+  }
+
+  assert!(matches!(poll_delay_future(&mut future), Poll::Ready(())));
 }
 
 #[test]

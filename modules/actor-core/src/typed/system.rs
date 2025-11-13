@@ -37,7 +37,7 @@ pub type TypedActorSystem<M> = TypedActorSystemGeneric<M, NoStdToolbox>;
 impl<M, TB> TypedActorSystemGeneric<M, TB>
 where
   M: Send + Sync + 'static,
-  TB: RuntimeToolbox + 'static,
+  TB: RuntimeToolbox + Default + 'static,
 {
   /// Creates an empty actor system without any guardian (testing only).
   #[must_use]

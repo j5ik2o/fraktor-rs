@@ -9,4 +9,4 @@ mod delay;
 pub use dead_line_timer::{
   DeadLineTimer, DeadLineTimerError, DeadLineTimerExpired, DeadLineTimerKey, DeadLineTimerKeyAllocator, TimerDeadLine,
 };
-pub use delay::{DelayFuture, DelayProvider, ManualDelayProvider};
+pub use delay::{DelayFuture, DelayProvider, DelayTrigger, ManualDelayProvider};

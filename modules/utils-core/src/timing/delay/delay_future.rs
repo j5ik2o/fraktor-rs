@@ -1,3 +1,4 @@
+use alloc::boxed::Box;
 use core::{
   future::Future,
   pin::Pin,
@@ -16,10 +17,18 @@ pub struct DelayFuture {
 }
 
 impl DelayFuture {
-  pub(super) fn new(duration: Duration) -> (Self, DelayTrigger) {
+  /// Creates a future/trigger pair that can be completed externally.
+  #[must_use]
+  pub fn new_pair(duration: Duration) -> (Self, DelayTrigger) {
     let state = ArcShared::new(DelayState::new(duration));
     let trigger = DelayTrigger { state: state.clone() };
     (Self { state }, trigger)
+  }
+}
+
+impl Drop for DelayFuture {
+  fn drop(&mut self) {
+    self.state.cancel();
   }
 }
 
@@ -39,12 +48,18 @@ impl Future for DelayFuture {
 struct DelayState {
   completed: AtomicBool,
   waker:     SpinMutex<Option<Waker>>,
+  cancel:    SpinMutex<Option<Box<dyn FnOnce() + Send + Sync>>>,
   _duration: Duration,
 }
 
 impl DelayState {
   const fn new(duration: Duration) -> Self {
-    Self { completed: AtomicBool::new(false), waker: SpinMutex::new(None), _duration: duration }
+    Self {
+      completed: AtomicBool::new(false),
+      waker: SpinMutex::new(None),
+      cancel: SpinMutex::new(None),
+      _duration: duration,
+    }
   }
 
   fn is_completed(&self) -> bool {
@@ -65,19 +80,44 @@ impl DelayState {
     if self.completed.swap(true, Ordering::Release) {
       return;
     }
+    self.cancel.lock().take();
     if let Some(waker) = self.waker.lock().take() {
+      waker.wake();
+    }
+  }
+
+  fn install_cancel_hook(&self, hook: Box<dyn FnOnce() + Send + Sync>) {
+    self.cancel.lock().replace(hook);
+  }
+
+  fn cancel(&self) {
+    if self.completed.swap(true, Ordering::AcqRel) {
+      return;
+    }
+    if let Some(hook) = self.cancel.lock().take() {
+      hook();
+    } else if let Some(waker) = self.waker.lock().take() {
       waker.wake();
     }
   }
 }
 
 /// Handle owned by providers to complete a delay.
-pub(super) struct DelayTrigger {
+#[derive(Clone)]
+pub struct DelayTrigger {
   state: ArcShared<DelayState>,
 }
 
 impl DelayTrigger {
-  pub(super) fn fire(&self) {
+  /// Completes the associated delay future.
+  pub fn fire(&self) {
     self.state.complete();
+  }
+
+  /// Registers a cancellation hook that will run if the future is dropped before completion.
+  pub fn set_cancel_hook<F>(&self, hook: F)
+  where
+    F: FnOnce() + Send + Sync + 'static, {
+    self.state.install_cancel_hook(Box::new(hook));
   }
 }

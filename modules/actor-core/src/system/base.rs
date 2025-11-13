@@ -23,6 +23,7 @@ use crate::{
   logging::LogLevel,
   messaging::{AnyMessageGeneric, SystemMessage},
   props::PropsGeneric,
+  scheduler::{SchedulerBackedDelayProvider, SchedulerConfig, SchedulerService},
   spawn::SpawnError,
   system::{RegisterExtraTopLevelError, system_state::SystemStateGeneric},
 };
@@ -56,7 +57,9 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   /// # Errors
   ///
   /// Returns [`SpawnError`] when guardian initialization fails.
-  pub fn new(user_guardian_props: &PropsGeneric<TB>) -> Result<Self, SpawnError> {
+  pub fn new(user_guardian_props: &PropsGeneric<TB>) -> Result<Self, SpawnError>
+  where
+    TB: Default, {
     Self::new_with_config_and(user_guardian_props, &ActorSystemConfig::default(), |_| Ok(()))
   }
 
@@ -67,6 +70,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   /// Returns [`SpawnError`] when guardian initialization or configuration fails.
   pub fn new_with<F>(user_guardian_props: &PropsGeneric<TB>, configure: F) -> Result<Self, SpawnError>
   where
+    TB: Default,
     F: FnOnce(&ActorSystemGeneric<TB>) -> Result<(), SpawnError>, {
     Self::new_with_config_and(user_guardian_props, &ActorSystemConfig::default(), configure)
   }
@@ -79,7 +83,9 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   pub fn new_with_config(
     user_guardian_props: &PropsGeneric<TB>,
     config: &ActorSystemConfig,
-  ) -> Result<Self, SpawnError> {
+  ) -> Result<Self, SpawnError>
+  where
+    TB: Default, {
     Self::new_with_config_and(user_guardian_props, config, |_| Ok(()))
   }
 
@@ -94,9 +100,11 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     configure: F,
   ) -> Result<Self, SpawnError>
   where
+    TB: Default,
     F: FnOnce(&ActorSystemGeneric<TB>) -> Result<(), SpawnError>, {
     let system = Self::new_empty();
     system.state.apply_actor_system_config(config);
+    system.ensure_scheduler_service();
     system.bootstrap(user_guardian_props, configure)?;
     Ok(system)
   }
@@ -120,6 +128,17 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     self.state.clone()
   }
 
+  fn ensure_scheduler_service(&self)
+  where
+    TB: Default,
+  {
+    if self.state.scheduler_service().is_some() {
+      return;
+    }
+    let service = SchedulerService::new(TB::default(), SchedulerConfig::default());
+    self.state.install_scheduler_service(ArcShared::new(service));
+  }
+
   /// Allocates a new pid (testing helper).
   #[must_use]
   pub fn allocate_pid(&self) -> Pid {
@@ -130,6 +149,18 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   #[must_use]
   pub fn event_stream(&self) -> ArcShared<EventStreamGeneric<TB>> {
     self.state.event_stream()
+  }
+
+  /// Returns the scheduler service when initialized.
+  #[must_use]
+  pub fn scheduler_service(&self) -> Option<ArcShared<SchedulerService<TB>>> {
+    self.state.scheduler_service()
+  }
+
+  /// Returns a delay provider backed by the scheduler when available.
+  #[must_use]
+  pub fn delay_provider(&self) -> Option<SchedulerBackedDelayProvider<TB>> {
+    self.scheduler_service().map(|service| service.delay_provider())
   }
 
   /// Returns the dispatcher registry.

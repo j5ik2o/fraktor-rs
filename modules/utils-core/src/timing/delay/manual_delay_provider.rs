@@ -57,7 +57,7 @@ impl Default for ManualDelayProvider {
 
 impl DelayProvider for ManualDelayProvider {
   fn delay(&self, duration: Duration) -> DelayFuture {
-    let (future, handle) = DelayFuture::new(duration);
+    let (future, handle) = DelayFuture::new_pair(duration);
     self.handles.lock().push(handle);
     future
   }

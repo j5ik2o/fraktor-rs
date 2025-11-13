@@ -3,15 +3,17 @@ use alloc::{
   vec,
   vec::Vec,
 };
-use core::{i32, num::NonZeroU32, time::Duration};
+use core::{i32, num::NonZeroU32, pin::Pin, task::{Context, Poll}, time::Duration};
 
 use fraktor_utils_core_rs::{
+  DelayFuture, DelayProvider,
+  runtime_toolbox::SyncMutexFamily,
   sync::{ArcShared, NoStdMutex},
   time::SchedulerCapacityProfile,
 };
 
 use super::{
-  Scheduler, SchedulerConfig, SchedulerError, SchedulerWarning, api,
+  Scheduler, SchedulerBackedDelayProvider, SchedulerConfig, SchedulerError, SchedulerService, SchedulerWarning, api,
   command::SchedulerCommand,
   execution_batch::{BatchMode, ExecutionBatch},
   fixed_delay_policy::FixedDelayPolicy,
@@ -19,7 +21,7 @@ use super::{
   runner::SchedulerRunner,
 };
 use crate::{
-  NoStdToolbox,
+  NoStdToolbox, RuntimeToolbox, ToolboxMutex,
   actor_prim::{
     Pid,
     actor_ref::{ActorRefGeneric, ActorRefSender},
@@ -55,6 +57,40 @@ fn build_scheduler_with_policies(
 
 fn nz(value: u32) -> NonZeroU32 {
   NonZeroU32::new(value).expect("non-zero")
+}
+
+type SharedScheduler = ArcShared<ToolboxMutex<Scheduler<NoStdToolbox>, NoStdToolbox>>;
+
+fn shared_scheduler_state() -> (SharedScheduler, SchedulerBackedDelayProvider<NoStdToolbox>) {
+  let toolbox = NoStdToolbox::default();
+  let scheduler = Scheduler::new(toolbox, SchedulerConfig::default());
+  let mutex = <<NoStdToolbox as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(scheduler);
+  let shared = ArcShared::new(mutex);
+  let provider = SchedulerBackedDelayProvider::new(shared.clone());
+  (shared, provider)
+}
+
+fn noop_waker() -> core::task::Waker {
+  use core::task::{RawWaker, RawWakerVTable, Waker};
+
+  const VTABLE: RawWakerVTable = RawWakerVTable::new(
+    |data| RawWaker::new(data, &VTABLE),
+    |_| {},
+    |_| {},
+    |_| {},
+  );
+
+  unsafe fn raw_waker() -> RawWaker {
+    RawWaker::new(core::ptr::null(), &VTABLE)
+  }
+
+  unsafe { Waker::from_raw(raw_waker()) }
+}
+
+fn poll_delay_future(future: &mut DelayFuture) -> Poll<()> {
+  let waker = noop_waker();
+  let mut cx = Context::from_waker(&waker);
+  Pin::new(future).poll(&mut cx)
 }
 
 #[test]
@@ -535,6 +571,45 @@ fn fixed_delay_backlog_marks_handle_cancelled() {
   let handle = scheduler.schedule_with_fixed_delay(Duration::from_millis(1), Duration::from_millis(1)).expect("handle");
   scheduler.run_for_test(5);
   assert!(handle.is_cancelled(), "fixed-delay handle should report cancelled after backlog drop");
+}
+
+#[test]
+fn scheduler_backed_delay_provider_completes_future() {
+  let (shared, provider) = shared_scheduler_state();
+  let mut future = provider.delay(Duration::from_millis(1));
+  assert!(matches!(poll_delay_future(&mut future), Poll::Pending));
+
+  {
+    let mut guard = shared.lock();
+    guard.run_for_test(1);
+  }
+
+  assert!(matches!(poll_delay_future(&mut future), Poll::Ready(())));
+}
+
+#[test]
+fn scheduler_backed_delay_provider_cancels_on_drop() {
+  let (shared, provider) = shared_scheduler_state();
+  let future = provider.delay(Duration::from_millis(5));
+  drop(future);
+
+  let guard = shared.lock();
+  assert_eq!(guard.metrics().active_timers(), 0, "timer should be cancelled when future is dropped");
+}
+
+#[test]
+fn scheduler_service_provides_shared_delay_provider() {
+  let service = SchedulerService::new(NoStdToolbox::default(), SchedulerConfig::default());
+  let mut future = service.delay_provider().delay(Duration::from_millis(1));
+  assert!(matches!(poll_delay_future(&mut future), Poll::Pending));
+
+  {
+    let scheduler = service.scheduler();
+    let mut guard = scheduler.lock();
+    guard.run_for_test(1);
+  }
+
+  assert!(matches!(poll_delay_future(&mut future), Poll::Ready(())));
 }
 
 struct RecordingSender {

@@ -37,6 +37,7 @@ use crate::{
   futures::ActorFuture,
   logging::{LogEvent, LogLevel},
   messaging::{AnyMessageGeneric, FailurePayload, SystemMessage},
+  scheduler::SchedulerService,
   spawn::{NameRegistry, NameRegistryError, SpawnError},
   supervision::SupervisorDirective,
   system::{RegisterExtraTopLevelError, ReservationPolicy},
@@ -104,6 +105,7 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   path_identity:          ToolboxMutex<PathIdentity, TB>,
   actor_path_registry:    ToolboxMutex<ActorPathRegistry, TB>,
   remote_authority_mgr:   ArcShared<RemoteAuthorityManagerGeneric<TB>>,
+  scheduler_service:      ToolboxMutex<Option<ArcShared<SchedulerService<TB>>>, TB>,
 }
 
 /// Type alias for [SystemStateGeneric] with the default [NoStdToolbox].
@@ -149,6 +151,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       path_identity: <TB::MutexFamily as SyncMutexFamily>::create(PathIdentity::default()),
       actor_path_registry: <TB::MutexFamily as SyncMutexFamily>::create(ActorPathRegistry::new()),
       remote_authority_mgr: ArcShared::new(RemoteAuthorityManagerGeneric::new()),
+      scheduler_service: <TB::MutexFamily as SyncMutexFamily>::create(None),
     }
   }
 
@@ -630,6 +633,18 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   #[must_use]
   pub fn mailboxes(&self) -> ArcShared<MailboxesGeneric<TB>> {
     self.mailboxes.clone()
+  }
+
+  /// Installs the scheduler service handle.
+  pub fn install_scheduler_service(&self, service: ArcShared<SchedulerService<TB>>) {
+    let mut guard = self.scheduler_service.lock();
+    guard.replace(service);
+  }
+
+  /// Returns the scheduler service when it has been initialized.
+  #[must_use]
+  pub fn scheduler_service(&self) -> Option<ArcShared<SchedulerService<TB>>> {
+    self.scheduler_service.lock().clone()
   }
 
   /// Records a failure and routes it to the supervising hierarchy.

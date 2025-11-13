@@ -76,7 +76,7 @@ pub use time::{
 };
 pub use timing::{
   DeadLineTimer, DeadLineTimerError, DeadLineTimerExpired, DeadLineTimerKey, DeadLineTimerKeyAllocator, DelayFuture,
-  DelayProvider, ManualDelayProvider, TimerDeadLine,
+  DelayProvider, DelayTrigger, ManualDelayProvider, TimerDeadLine,
 };
 
 /// Core collections shared across the Cellex runtimes.

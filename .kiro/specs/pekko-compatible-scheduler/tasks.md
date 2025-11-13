@@ -115,7 +115,7 @@
   - 完了条件: BuilderがSchedulerを初期化・closeし、shutdown時にTaskRunOnCloseがdeterministicに完走する。
   - _Requirements: R3.AC1-R3.AC7_
 
-- [ ] 5.1 ActorSystemBuilderとDelayProviderの統合を完了する
+- [x] 5.1 ActorSystemBuilderとDelayProviderの統合を完了する
   - ActorSystemBuilderがRuntimeToolboxからclock/timer/tick_sourceを取得し、std/no-std両用の構築ルートを整える。
   - SchedulerBackedDelayProviderを導入し、DelayFutureが新Schedulerを透過的に利用するよう内部実装を差し替える。既存 DelayProvider 利用箇所（Mailbox/RemoteAuthority 等）が新実装で動作することを統合テストで確認する。
   - std環境限定の観測フック（tokio::Instant等）をactor-std層に閉じ込め、no_stdビルドへ影響しないことをintegrationテストで証明する。
