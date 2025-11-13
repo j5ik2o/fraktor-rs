@@ -66,3 +66,5 @@ Show SubAgent summary to user, then provide next step guidance:
 - Re-validate with `/kiro:validate-impl [feature] [tasks]`
 
 **Note**: Validation is recommended after implementation to ensure spec alignment and quality.
+
+ultrathink

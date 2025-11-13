@@ -66,3 +66,5 @@ Show SubAgent summary to user, then provide next step guidance:
 - **IMPORTANT**: Clear conversation history and free up context before running `/kiro:spec-impl`
 - This applies when starting first task OR switching between tasks
 - Fresh context ensures clean state and proper task focus
+
+ultrathink

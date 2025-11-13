@@ -57,3 +57,5 @@ Show SubAgent summary to user, then provide next step guidance:
 - Re-validate with `/kiro:validate-design $1`
 
 **Note**: Design validation is recommended but optional. Quality review helps catch issues early.
+
+ultrathink

@@ -57,3 +57,5 @@ Show SubAgent summary to user:
 - Templates and principles are external for customization
 - Focus on patterns, not catalogs
 - "Golden Rule": New code following patterns shouldn't require steering updates
+
+ultrathink

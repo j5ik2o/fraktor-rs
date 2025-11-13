@@ -51,3 +51,5 @@ Show SubAgent summary to user, then provide next step guidance:
 - Or `/kiro:spec-design $1 -y` to auto-approve requirements and proceed directly
 
 **Note**: Gap analysis is optional but recommended for brownfield projects to inform design decisions.
+
+ultrathink
