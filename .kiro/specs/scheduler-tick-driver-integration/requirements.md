@@ -1,0 +1,52 @@
+# Requirements Document
+
+## Introduction
+本仕様は、std（Tokio など）と no_std（embassy/SysTick など）で共通に利用できる SchedulerContext の tick 供給経路を Driver 抽象へ統一し、Runner API をテスト用途に限定することで、ActorSystem 起動直後から決定論的な tick ストリームを保証することを目的とする。
+
+## Requirements
+
+### Requirement 1: std 自動 Tick 供給
+**Objective:** As a ランタイム利用者, I want ActorSystem 起動時に tick が自動供給されてほしい, so that std 環境で手動ポーリングなしにアクターを実行できる。
+
+#### Acceptance Criteria
+1. When ActorSystem が Tokio などの std 実行環境で `SchedulerContext` を初期化し tick driver 構成が自動モードに設定されているとき, the Scheduler Tick Driver shall 即座にホストタイマへバックグラウンドタスクを登録し、`SchedulerTickHandle` へ手動介入なしで tick を供給する。
+2. While 自動 tick driver が std 実行環境で稼働している間, the Scheduler Tick Driver shall 構成済み tick 間隔の ±5% 以内の周期で連続的に tick を配送する。
+3. If Scheduler Tick Driver がホストタイマ API の登録に失敗した場合, then the ActorSystem shall 起動を中止して `SchedulerContext` 初期化エラーを発火する。
+4. Where ホストランタイムが Tokio マルチスレッド実行器を提供している場合, the Scheduler Tick Driver shall 専用タスクを spawn して actor workload と tick 供給を分離する。
+5. The Scheduler Tick Driver shall EventStream へ直近 1 秒あたりの tick 数メトリクスを発行する。
+
+### Requirement 2: no_std ドライバ抽象化
+**Objective:** As a 組込み開発者, I want 任意のハードウェアドライバを差し替えたい, so that no_std 環境でも一貫した tick 制御を維持できる。
+
+#### Acceptance Criteria
+1. When ActorSystem が no_std ターゲットでビルドされるとき, the Scheduler Tick Driver shall `SchedulerTickHandle` と外部ドライバ実装を受け取る構成 API を公開する。
+2. While ハードウェアタイマドライバが Scheduler Tick Driver に接続されている間, the Driver shall 受信順序を保持したまま `SchedulerTickHandle` へ tick を橋渡しする。
+3. If 外部ドライバが tick 供給を停止した場合, then the Scheduler Tick Driver shall 停止イベントを `SchedulerContext` へ通知しフォールバックポリシーを起動する。
+4. The Scheduler Tick Driver shall ドライバ trait を介して embassy, SysTick などのハードウェアドライバを差し替え可能にする。
+5. Where テスト環境でビルドされている場合, the Scheduler Tick Driver shall テスト専用の手動ドライバ実装を許可する。
+
+### Requirement 3: Runner API のテスト限定化
+**Objective:** As a プロダクトオーナー, I want Runner API をテスト専用に留めたい, so that 本番利用者が誤って手動 tick 経路を選ばないようにできる。
+
+#### Acceptance Criteria
+1. When ActorSystem が プロダクション構成で起動するとき, the Scheduler Tick Driver shall 登録済みの自動ドライバ（Tokio、embassy、SysTick等）のみを受理し Runner API を無効化する。
+2. If アプリケーションが Runner API をプロダクション設定で呼び出した場合, then the ActorSystem shall 起動を拒否して構成エラーを報告する。
+3. While Runner API が テストプロファイル（`#[cfg(test)]` または明示的なテストフラグ）で使用されている間, the API shall `SchedulerTickHandle` へ手動 tick 注入とシミュレーション時間制御のフックのみを提供する。
+4. When 新しい自動ドライバが Toolbox へ登録されたとき, the Scheduler Tick Driver shall Runner API ではなく自動ドライバ経由の tick 経路をデフォルトに設定する。
+5. While Runner API テストプロファイルがアクティブな間, the Scheduler Tick Driver shall 自動 tick タスクの生成を抑止して手動注入経路のみを許可する。
+6. The Scheduler Tick Driver shall ランタイム設定メタデータに現在有効な tick 供給手段（自動ドライバ名またはテスト手動モード）を記録する。
+
+## Project Description (Input)
+
+### 現状の課題
+- 現状の `SchedulerContext` は no_std の決定論テストを基点に設計されており、std 版でも `SchedulerTickHandle` へ手動で tick を注入しないとタイマーが進まない。
+- `std` + `tokio-executor` 環境ではユーザが「アクターを起動したのにスケジューラだけ動かない」状況に陥りやすく、サンプルも `SchedulerRunner::manual` を直接書いている。
+- 将来の `embassy` / `SysTick` などハードウェアタイマ連携も考えると、tick 供給を toolbox/driver に抽象化しておくべきフェーズに来ている。
+
+### 解決すべき要件
+1. **std 環境（Tokio 等）**: ActorSystem 起動時に自動で scheduler tick が供給されること。
+2. **no_std 環境**: 従来どおり任意のハードウェアドライバを注入できること。
+3. **テスト環境**: Runner API はテスト専用とし、プロダクションではドライバ経由で統一された tick 流路を使うこと。
+
+### 参照ドキュメント
+- docs/scheduler_tick_drivers.md
