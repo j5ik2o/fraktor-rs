@@ -15,8 +15,8 @@ use fraktor_utils_core_rs::{
 };
 
 use super::{
-  DeterministicEvent, Scheduler, SchedulerBackedDelayProvider, SchedulerConfig, SchedulerContext, SchedulerError,
-  SchedulerWarning, api,
+  DeterministicEvent, Scheduler, SchedulerBackedDelayProvider, SchedulerConfig, SchedulerContext, SchedulerDiagnosticsEvent,
+  SchedulerError, SchedulerMode, SchedulerWarning, api,
   command::SchedulerCommand,
   execution_batch::{BatchMode, ExecutionBatch},
   fixed_delay_policy::FixedDelayPolicy,
@@ -763,6 +763,52 @@ fn deterministic_log_replay_matches_snapshot() {
 
   let replay_events: Vec<DeterministicEvent> = scheduler.diagnostics().replay().collect();
   assert_eq!(replay_events, scheduler.diagnostics().deterministic_log());
+}
+
+#[test]
+fn diagnostics_subscription_receives_events() {
+  let mut scheduler = build_scheduler();
+  let mut subscription = scheduler.subscribe_diagnostics(8);
+  let receiver = ActorRefGeneric::null();
+  let handle =
+    api::schedule_once(&mut scheduler, Duration::from_millis(2), receiver, AnyMessageGeneric::new(11u32), None, None)
+      .expect("handle");
+  scheduler.run_for_test(2);
+  let events = subscription.drain();
+  assert!(events.iter().any(|event| matches!(event, SchedulerDiagnosticsEvent::Scheduled { handle_id, .. } if *handle_id == handle.raw())));
+  assert!(events.iter().any(|event| matches!(event, SchedulerDiagnosticsEvent::Fired { handle_id, .. } if *handle_id == handle.raw())));
+}
+
+#[test]
+fn diagnostics_drop_emits_warning() {
+  let mut scheduler = build_scheduler();
+  let mut _subscription = scheduler.subscribe_diagnostics(1);
+  let receiver = ActorRefGeneric::null();
+  api::schedule_once(&mut scheduler, Duration::from_millis(5), receiver.clone(), AnyMessageGeneric::new(1u32), None, None)
+    .expect("first");
+  api::schedule_once(&mut scheduler, Duration::from_millis(6), receiver, AnyMessageGeneric::new(2u32), None, None)
+    .expect("second");
+  assert!(scheduler.warnings().iter().any(|warning| matches!(warning, SchedulerWarning::DiagnosticsDropped { .. })));
+}
+
+#[test]
+fn scheduler_dump_reports_pending_jobs() {
+  let mut scheduler = build_scheduler();
+  let handle = scheduler.schedule_once(Duration::from_millis(5)).expect("handle");
+  let dump = scheduler.dump();
+  assert!(dump.jobs().iter().any(|job| job.handle_id == handle.raw()));
+}
+
+#[test]
+fn scheduler_dump_includes_periodic_metadata() {
+  let mut scheduler = build_scheduler();
+  let handle = scheduler
+    .schedule_at_fixed_rate(Duration::from_millis(2), Duration::from_millis(4))
+    .expect("handle");
+  let dump = scheduler.dump();
+  let periodic = dump.jobs().iter().find(|job| job.handle_id == handle.raw()).expect("job");
+  assert_eq!(periodic.mode, SchedulerMode::FixedRate);
+  assert!(periodic.next_tick.is_some());
 }
 
 fn assert_deterministic_invariants(events: &[DeterministicEvent]) {

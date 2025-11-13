@@ -10,10 +10,11 @@ use fraktor_utils_core_rs::{
 use hashbrown::HashMap;
 
 use super::{
-  diagnostics::{DeterministicEvent, SchedulerDiagnostics},
+  diagnostics::{DeterministicEvent, SchedulerDiagnostics, SchedulerDiagnosticsEvent, SchedulerDiagnosticsSubscription},
   cancellable_registry::CancellableRegistry,
   command::SchedulerCommand,
   config::SchedulerConfig,
+  dump::{SchedulerDump, SchedulerDumpJob},
   error::SchedulerError,
   execution_batch::ExecutionBatch,
   fixed_delay_context::FixedDelayContext,
@@ -50,11 +51,12 @@ pub struct Scheduler<TB: RuntimeToolbox> {
 
 #[allow(dead_code)]
 struct ScheduledJob<TB: RuntimeToolbox> {
-  handle:   SchedulerHandle,
-  wheel_id: TimerHandleId,
-  mode:     SchedulerMode,
-  periodic: Option<PeriodicContext>,
-  command:  SchedulerCommand<TB>,
+  handle:        SchedulerHandle,
+  wheel_id:      TimerHandleId,
+  mode:          SchedulerMode,
+  periodic:      Option<PeriodicContext>,
+  command:       SchedulerCommand<TB>,
+  deadline_tick: u64,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -109,7 +111,7 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
       task_run_seq: 0,
       task_run_capacity: config.task_run_capacity(),
       shutting_down: false,
-      diagnostics: SchedulerDiagnostics::new(),
+      diagnostics: SchedulerDiagnostics::with_capacity(config.diagnostics_capacity()),
     }
   }
 
@@ -140,6 +142,22 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
   #[must_use]
   pub fn diagnostics(&self) -> &SchedulerDiagnostics {
     &self.diagnostics
+  }
+
+  /// Subscribes to the diagnostics stream.
+  pub fn subscribe_diagnostics(&mut self, capacity: usize) -> SchedulerDiagnosticsSubscription {
+    self.diagnostics.subscribe(capacity.max(1))
+  }
+
+  /// Produces a diagnostic dump of the scheduler state.
+  #[must_use]
+  pub fn dump(&self) -> SchedulerDump {
+    let mut jobs = Vec::with_capacity(self.jobs.len());
+    for job in self.jobs.values() {
+      let next_tick = job.periodic.as_ref().map(PeriodicContext::next_deadline_ticks);
+      jobs.push(SchedulerDumpJob::new(job.handle.raw(), job.mode, job.deadline_tick, next_tick));
+    }
+    SchedulerDump::new(self.config.resolution(), self.current_tick, self.metrics, jobs, self.warnings.clone())
   }
 
   /// Registers a one-shot job.
@@ -352,9 +370,9 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
     self.registry.register(handle.raw(), entry);
     self.metrics.increment_active();
     let periodic = self.build_periodic_context(mode, period, deadline.ticks())?;
-    let job = ScheduledJob { handle: handle.clone(), wheel_id, mode, periodic, command };
+    let job = ScheduledJob { handle: handle.clone(), wheel_id, mode, periodic, command, deadline_tick: deadline.ticks() };
     self.jobs.insert(handle.raw(), job);
-    self.record_scheduled_event(handle.raw(), deadline);
+    self.record_scheduled_event(handle.raw(), deadline, mode);
     Ok(handle)
   }
 
@@ -398,12 +416,12 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
       | Some(context) => match context.build_batch(self.current_tick, handle_id) {
         | PeriodicBatchDecision::Execute { batch, warning } => {
           if let Some(warning) = warning {
-            self.warnings.push(warning);
+            self.record_warning(warning);
           }
           BatchPreparation::Ready(batch)
         },
         | PeriodicBatchDecision::Cancel { warning } => {
-          self.warnings.push(warning);
+          self.record_warning(warning);
           self.record_cancel_event(handle_id);
           BatchPreparation::Cancelled
         },
@@ -433,7 +451,7 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
         | Ok(()) => summary.executed_tasks = summary.executed_tasks.saturating_add(1),
         | Err(_) => {
           summary.failed_tasks = summary.failed_tasks.saturating_add(1);
-          self.warnings.push(SchedulerWarning::TaskRunFailed { handle_id: entry.handle.id() });
+          self.record_warning(SchedulerWarning::TaskRunFailed { handle_id: entry.handle.id() });
         },
       }
     }
@@ -483,6 +501,7 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
       .ok_or(SchedulerError::CapacityExceeded)?;
     let deadline = self.deadline_from_absolute(next_tick);
     job.wheel_id = self.enqueue_timer(job.handle.raw(), deadline)?;
+    job.deadline_tick = deadline.ticks();
     Ok(())
   }
 
@@ -498,17 +517,34 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
     }
   }
 
-  fn record_scheduled_event(&mut self, handle_id: u64, deadline: TimerInstant) {
+  fn record_scheduled_event(&mut self, handle_id: u64, deadline: TimerInstant, mode: SchedulerMode) {
     self
       .diagnostics
       .record(DeterministicEvent::Scheduled { handle_id, scheduled_tick: self.current_tick, deadline_tick: deadline.ticks() });
+    self.publish_stream_with_drop(SchedulerDiagnosticsEvent::Scheduled { handle_id, deadline_tick: deadline.ticks(), mode });
   }
 
   fn record_fire_event(&mut self, handle_id: u64, batch: ExecutionBatch) {
     self.diagnostics.record(DeterministicEvent::Fired { handle_id, fired_tick: self.current_tick, batch });
+    self.publish_stream_with_drop(SchedulerDiagnosticsEvent::Fired { handle_id, fired_tick: self.current_tick, batch });
   }
 
   fn record_cancel_event(&mut self, handle_id: u64) {
     self.diagnostics.record(DeterministicEvent::Cancelled { handle_id, cancelled_tick: self.current_tick });
+    self.publish_stream_with_drop(SchedulerDiagnosticsEvent::Cancelled { handle_id, cancelled_tick: self.current_tick });
+  }
+
+  fn publish_stream_with_drop(&mut self, event: SchedulerDiagnosticsEvent) {
+    if self.diagnostics.publish_stream_event(event) {
+      self
+        .warnings
+        .push(SchedulerWarning::DiagnosticsDropped { dropped: 1, capacity: self.config.diagnostics_capacity() });
+    }
+  }
+
+  fn record_warning(&mut self, warning: SchedulerWarning) {
+    let stream_warning = warning.clone();
+    self.warnings.push(warning);
+    self.publish_stream_with_drop(SchedulerDiagnosticsEvent::Warning { warning: stream_warning });
   }
 }

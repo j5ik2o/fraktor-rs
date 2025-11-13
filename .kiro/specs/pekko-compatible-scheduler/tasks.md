@@ -139,7 +139,7 @@
   - Property/fuzzテストハーネスを追加し、tick単調性・キャンセル保証・固定レート補償を100ケース以上で自動検証する。
   - _Requirements: R5.AC1, R5.AC2, R5.AC4_
 
-- [ ] 7.2 Diagnosticsストリームとダンプを実装する
+- [x] 7.2 Diagnosticsストリームとダンプを実装する
   - DiagnosticsFanout（heapless/tokio）を介してschedule/fire/cancel/DriftWarningを配信する診断ストリームを実装する。
   - 診断購読者が0件のときEventStreamへのフォールバックを行い、オーバーフロー時は`DiagnosticsDropped`を通知して回復動作をテストする。
   - SchedulerDump APIを実装し、wheel offset・保留タスク・周期ジョブ状態を人間が読める形式で生成し、CLI/Telemetryから取得する統合テストを追加する。

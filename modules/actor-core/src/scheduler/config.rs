@@ -18,6 +18,7 @@ pub struct SchedulerConfig {
   max_pending_jobs: usize,
   policy_registry:  SchedulerPolicyRegistry,
   task_run_capacity: usize,
+  diagnostics_capacity: usize,
 }
 
 impl SchedulerConfig {
@@ -26,8 +27,11 @@ impl SchedulerConfig {
   pub fn new(resolution: Duration, profile: SchedulerCapacityProfile) -> Self {
     let max_pending_jobs = profile.system_quota();
     let task_run_capacity = profile.task_run_capacity();
-    Self { resolution, profile, max_pending_jobs, policy_registry: SchedulerPolicyRegistry::default(), task_run_capacity }
+    let diagnostics_capacity = Self::DEFAULT_DIAGNOSTICS_CAPACITY;
+    Self { resolution, profile, max_pending_jobs, policy_registry: SchedulerPolicyRegistry::default(), task_run_capacity, diagnostics_capacity }
   }
+
+  const DEFAULT_DIAGNOSTICS_CAPACITY: usize = 256;
 
   /// Returns the configured resolution.
   #[must_use]
@@ -135,6 +139,19 @@ impl SchedulerConfig {
   #[must_use]
   pub fn with_task_run_capacity(mut self, capacity: usize) -> Self {
     self.task_run_capacity = capacity.max(1);
+    self
+  }
+
+  /// Returns the diagnostics queue capacity.
+  #[must_use]
+  pub const fn diagnostics_capacity(&self) -> usize {
+    self.diagnostics_capacity
+  }
+
+  /// Overrides the diagnostics queue capacity used for subscriptions and buffering.
+  #[must_use]
+  pub fn with_diagnostics_capacity(mut self, capacity: usize) -> Self {
+    self.diagnostics_capacity = capacity.max(1);
     self
   }
 }

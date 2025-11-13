@@ -22,4 +22,11 @@ pub enum SchedulerWarning {
     /// Identifier of the failed task handle.
     handle_id: u64,
   },
+  /// Diagnostics subscribers dropped events due to limited capacity.
+  DiagnosticsDropped {
+    /// Number of events that could not be queued.
+    dropped:  usize,
+    /// Capacity configured for each diagnostics queue.
+    capacity: usize,
+  },
 }
