@@ -7,19 +7,19 @@
 - actor-core/utils-core では `#[cfg(feature = "std")]` を使用せず、std 依存コードは actor-std/utils-std に隔離されていることを `rg '#\[cfg\(feature = "std"\)\]'` チェックで確認する。
 - `cargo build --no-default-features --target thumbv8m.main-none-eabi` および `scripts/ci-check.sh no-std`/`embedded` サブセットで新規コンポーネントがビルド・テスト可能であること。
 
-- [ ] 1. タイミング基盤とTickソースを整備する [優先度: CRITICAL]
+- [x] 1. タイミング基盤とTickソースを整備する [優先度: CRITICAL]
   - 依存関係: 1.1でTimerWheel/Clockを完成させてから1.2でToolbox統合へ進む。1.*完了後にScheduler APIを着手可能とする。
   - 完了条件: TimerWheel/Clock単体テストとpropertyテストがCIでグリーンとなり、Toolboxモック経由でtick_leaseを取得できる。
   - _Requirements: R1.AC1-R1.AC3, R1.AC6, R2.AC3_
 
-- [ ] 1.1 TimerWheelとMonotonicClockの決定性を実装する
+- [x] 1.1 TimerWheelとMonotonicClockの決定性を実装する
   - TimerWheelFamilyとMonotonicClockを結合し、tick解像度と±1 tick誤差を守る進行ループを構築して同一tick内の順序保証をテスト10ケース以上で証明する。テストは `modules/utils-core/src/time/timer_wheel/tests.rs` に配置し no_std ビルドでも動作させる。
   - Tickドリフト監視を追加し、累積偏差が解像度の5%を超えた際に`SchedulerWarning::DriftExceeded`を発火しEventStreamへ通知する。
   - 同一tickで満期になったエントリを登録順に取り出せるFIFOを実装し、10メッセージのFIFO統合テストで検証する。
   - ManualClock/StdInstant双方でモノトニック性（`clock.now() >= last_tick`）と FIFO 不変条件（insert_order == dequeue_order）を検証するproptestを追加し、100ケース以上でドリフトレポートを収集する。
   - _Requirements: R1.AC1, R1.AC2, R1.AC3, R2.AC3_
 
-- [ ] 1.2 RuntimeToolboxのtickソースと容量プロファイルを導入する
+- [x] 1.2 RuntimeToolboxのtickソースと容量プロファイルを導入する
   - RuntimeToolboxにtick_source/tick_lease APIを追加し、std/non-stdの両Toolboxでpending tickをLeaseとして引き出せることを統合テストで確認する。
   - SchedulerCapacityProfileからsystem_quota/overflow/task_run容量を設定し、検証失敗時にBuilderが即エラーを返すフェイルファストパスを追加する。
   - `Scheduler::max_frequency`やresolution getterで最小tick/最大周波数を公開し、APIのrustdocに具体例を追加する。
