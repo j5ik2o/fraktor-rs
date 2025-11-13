@@ -1,5 +1,6 @@
 use alloc::{
   string::{String, ToString},
+  vec,
   vec::Vec,
 };
 use core::{i32, time::Duration};
@@ -9,7 +10,10 @@ use fraktor_utils_core_rs::{
   time::SchedulerCapacityProfile,
 };
 
-use super::{Scheduler, SchedulerConfig, SchedulerError, api, command::SchedulerCommand};
+use super::{
+  Scheduler, SchedulerConfig, SchedulerError, api, command::SchedulerCommand, execution_batch::ExecutionBatch,
+  runner::SchedulerRunner,
+};
 use crate::{
   NoStdToolbox,
   actor_prim::{
@@ -104,11 +108,11 @@ fn handles_are_unique_across_registrations() {
 fn capacity_limit_returns_error() {
   let toolbox = NoStdToolbox::default();
   let profile = SchedulerCapacityProfile::new("tiny", 1, 1, 1);
-  let config = SchedulerConfig::new(Duration::from_millis(1), profile);
+  let config = SchedulerConfig::new(Duration::from_millis(1), profile).with_max_pending_jobs(1);
   let mut scheduler = Scheduler::new(toolbox, config);
   scheduler.schedule_once(Duration::from_millis(1)).expect("first");
   let err = scheduler.schedule_once(Duration::from_millis(2)).expect_err("second should fail");
-  assert_eq!(err, SchedulerError::CapacityExceeded);
+  assert_eq!(err, SchedulerError::Backpressured);
 }
 
 #[test]
@@ -205,7 +209,8 @@ fn schedule_once_fn_executes_runnable() {
   let mut scheduler = build_scheduler();
   let counter = ArcShared::new(NoStdMutex::new(0usize));
   let captured = counter.clone();
-  api::schedule_once_fn(&mut scheduler, Duration::from_millis(1), None, move || {
+  api::schedule_once_fn(&mut scheduler, Duration::from_millis(1), None, move |batch: &ExecutionBatch| {
+    assert_eq!(batch.runs().get(), 1);
     let mut guard = captured.lock();
     *guard += 1;
   })
@@ -224,6 +229,62 @@ fn run_for_test_executes_send_message() {
     .expect("handle");
   scheduler.run_for_test(5);
   assert_eq!(inbox.lock().len(), 1);
+}
+
+#[test]
+fn schedule_once_fn_records_execution_batch() {
+  let mut scheduler = build_scheduler();
+  let observed = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let capture = observed.clone();
+  api::schedule_once_fn(&mut scheduler, Duration::from_millis(1), None, move |batch: &ExecutionBatch| {
+    capture.lock().push((batch.runs().get(), batch.missed_runs()));
+  })
+  .expect("handle");
+  scheduler.run_for_test(1);
+  let guard = observed.lock();
+  assert_eq!(guard.len(), 1);
+  assert_eq!(guard[0], (1, 0));
+}
+
+#[test]
+fn runner_manual_processes_ticks_in_order() {
+  let mut scheduler = build_scheduler();
+  let inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let sender = ArcShared::new(RecordingSender { inbox: inbox.clone() });
+  let receiver = ActorRefGeneric::new(Pid::new(7, 0), sender);
+
+  api::schedule_once(
+    &mut scheduler,
+    Duration::from_millis(1),
+    receiver.clone(),
+    AnyMessageGeneric::new(1u32),
+    None,
+    None,
+  )
+  .expect("handle");
+  api::schedule_once(&mut scheduler, Duration::from_millis(1), receiver, AnyMessageGeneric::new(2u32), None, None)
+    .expect("handle");
+
+  {
+    let mut runner = SchedulerRunner::manual(&mut scheduler);
+    runner.inject_manual_ticks(1);
+    runner.run_once();
+  }
+
+  let delivered: Vec<u32> =
+    inbox.lock().iter().map(|msg| *msg.payload().downcast_ref::<u32>().expect("u32 payload")).collect();
+  assert_eq!(delivered, vec![1, 2]);
+}
+
+#[test]
+fn backpressure_error_returned_when_pending_jobs_exceed_limit() {
+  let toolbox = NoStdToolbox::default();
+  let profile = SchedulerCapacityProfile::new("tiny", 32, 8, 4);
+  let config = SchedulerConfig::new(Duration::from_millis(1), profile).with_max_pending_jobs(1);
+  let mut scheduler = Scheduler::new(toolbox, config);
+  scheduler.schedule_once(Duration::from_millis(1)).expect("first");
+  let err = scheduler.schedule_once(Duration::from_millis(2)).expect_err("second");
+  assert_eq!(err, SchedulerError::Backpressured);
 }
 
 struct RecordingSender {

@@ -52,25 +52,25 @@
   - rustdocビルドをCIに追加し、no_std環境でもコンパイル可能なドキュメント例を検証する。
   - _Requirements: R1.AC5, R3.AC5_
 
-- [ ] 3. SystemMailboxブリッジとRunner制御を実装する [優先度: HIGH]
+- [x] 3. SystemMailboxブリッジとRunner制御を実装する [優先度: HIGH]
   - 依存関係: 2.*のAPI完成後に着手し、3.*完了が周期ジョブ実装の前提。
   - 完了条件: SystemMailbox経由で遅延メッセージがFIFOで配送され、RunnerがBackpressure通知とstop_and_flushシーケンスを扱える。
   - _Requirements: R1.AC1, R1.AC2, R1.AC3, R3.AC4_
 
-- [ ] 3.1 SystemMailboxブリッジとExecutionBatch管理を実装する
+- [x] 3.1 SystemMailboxブリッジとExecutionBatch管理を実装する
   - SchedulerCommandからSystemMailboxへの橋渡しを実装し、SystemMessage優先順位を壊さず`UserMessagePriority::Delayed`を付与する。
   - enqueue直前にCancellableRegistryを参照し、キャンセル済みハンドルを破棄することでhandle一意性を保つ。
   - 統合テスト: 同一tickで10件のメッセージを登録しFIFO順でenqueueされること、cancel後はenqueueされないこと、Backpressure状態で`schedule_*`が`SchedulerError::Backpressured`を返すことを検証する。
   - BatchContext/ExecutionBatchをmessageとRunnable双方でpushし、Dropで`ack_complete`するguardをテストする。
   - _Requirements: R1.AC2, R3.AC4_
 
-- [ ] 3.2 SchedulerRunnerとTickLeaseの駆動ループを実装する
+- [x] 3.2 SchedulerRunnerとTickLeaseの駆動ループを実装する
   - RunnerMode::Manual/AsyncHost/Hardwareを実装し、TickLeaseからbacklogをチャンク取得してrun_tickへ供給する。
   - TickSourceStatusがBackpressuredになった場合にcatch-up chunkを発火し、ドリフト抑制と`SchedulerBackpressureLink`遷移を確認する。
   - RunnerLoop停止・再開で`stop_and_flush`→`TaskRunContext`の競合を防ぐ状態機械を追加し、state machineテストで覆う。
   - _Requirements: R1.AC1, R1.AC3, R3.AC3_
 
-- [ ] 3.3 Runner統合テストで順序保証を検証する
+- [x] 3.3 Runner統合テストで順序保証を検証する
   - ManualClockでtick進行を制御し、Runnerがcatch-upチャンクを処理してもFIFO順序とExecutionBatchのruns値が維持されることを確認する。
   - Backlog>catch_up_window時に`SchedulerWarning::DriverCatchUpExceeded`が発火しaccepting_stateが変化することをCIで検証する。
   - _Requirements: R1.AC3, R4.AC5_

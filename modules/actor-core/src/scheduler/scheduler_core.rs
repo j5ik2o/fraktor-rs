@@ -8,8 +8,8 @@ use fraktor_utils_core_rs::time::{
 use hashbrown::HashMap;
 
 use super::{
-  command::SchedulerCommand, config::SchedulerConfig, error::SchedulerError, handle::SchedulerHandle,
-  mode::SchedulerMode,
+  command::SchedulerCommand, config::SchedulerConfig, error::SchedulerError, execution_batch::ExecutionBatch,
+  handle::SchedulerHandle, mode::SchedulerMode,
 };
 use crate::RuntimeToolbox;
 
@@ -17,10 +17,10 @@ const DEFAULT_DRIFT_BUDGET_PCT: u8 = 5;
 
 /// Scheduler responsible for registering delayed and periodic jobs.
 pub struct Scheduler<TB: RuntimeToolbox> {
-  _toolbox:     TB,
+  #[allow(dead_code)]
+  toolbox:      TB,
   config:       SchedulerConfig,
   wheel:        TimerWheel<ScheduledPayload>,
-  _tick_handle: SchedulerTickHandle<'static>,
   next_handle:  u64,
   jobs:         HashMap<u64, ScheduledJob<TB>>,
   current_tick: u64,
@@ -48,18 +48,7 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
   pub fn new(toolbox: TB, config: SchedulerConfig) -> Self {
     let timer_config = TimerWheelConfig::from_profile(config.profile(), config.resolution(), DEFAULT_DRIFT_BUDGET_PCT);
     let wheel = TimerWheel::new(timer_config);
-    // Placeholder tick handle; proper lease integration will be added in later tasks.
-    let tick_handle = SchedulerTickHandle::scoped(&());
-    Self {
-      _toolbox: toolbox,
-      config,
-      wheel,
-      _tick_handle: tick_handle,
-      next_handle: 1,
-      jobs: HashMap::new(),
-      current_tick: 0,
-      closed: false,
-    }
+    Self { toolbox, config, wheel, next_handle: 1, jobs: HashMap::new(), current_tick: 0, closed: false }
   }
 
   /// Returns scheduler tick resolution.
@@ -135,6 +124,12 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
     self.closed = true;
   }
 
+  /// Borrows a tick handle from the toolbox.
+  #[allow(dead_code)]
+  pub(crate) fn tick_source(&self) -> SchedulerTickHandle<'_> {
+    self.toolbox.tick_source()
+  }
+
   /// Runs due timers at the provided instant, returning the number of executed jobs.
   pub fn run_due(&mut self, now: TimerInstant) -> usize {
     self.current_tick = now.ticks();
@@ -170,6 +165,11 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
   #[cfg(test)]
   /// Advances the scheduler by the requested ticks (testing helper).
   pub fn run_for_test(&mut self, ticks: u64) {
+    self.run_for_ticks(ticks);
+  }
+
+  /// Advances the scheduler by the specified number of ticks.
+  pub(crate) fn run_for_ticks(&mut self, ticks: u64) {
     let now = self.deadline_from_ticks(ticks);
     let _ = self.run_due(now);
   }
@@ -183,6 +183,9 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
   ) -> Result<SchedulerHandle, SchedulerError> {
     if self.closed {
       return Err(SchedulerError::Closed);
+    }
+    if self.jobs.len() >= self.config.max_pending_jobs() {
+      return Err(SchedulerError::Backpressured);
     }
     let delay_ticks = self.duration_to_ticks(delay)?;
     let period_ticks = match period {
@@ -238,13 +241,14 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
   }
 
   fn execute_command(&self, command: &SchedulerCommand<TB>) {
+    let batch = ExecutionBatch::once();
     match command {
       | SchedulerCommand::Noop => {},
       | SchedulerCommand::SendMessage { receiver, message, .. } => {
         let _ = receiver.tell(message.clone());
       },
       | SchedulerCommand::RunRunnable { runnable, .. } => {
-        runnable.run();
+        runnable.run(&batch);
       },
     }
   }

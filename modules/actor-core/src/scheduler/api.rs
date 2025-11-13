@@ -137,14 +137,19 @@ pub fn schedule_with_fixed_delay<TB: RuntimeToolbox>(
 /// ```rust,no_run
 /// # use core::time::Duration;
 /// # use core::sync::atomic::{AtomicUsize, Ordering};
-/// # use fraktor_actor_core_rs::scheduler::{api, Scheduler, SchedulerConfig};
+/// # use fraktor_actor_core_rs::scheduler::{api, ExecutionBatch, Scheduler, SchedulerConfig};
 /// # use fraktor_utils_core_rs::runtime_toolbox::NoStdToolbox;
 /// # fn main() {
 /// let mut scheduler = Scheduler::new(NoStdToolbox::default(), SchedulerConfig::default());
 /// let counter = AtomicUsize::new(0);
-/// api::schedule_once_fn(&mut scheduler, Duration::from_millis(1), None, move || {
-///   counter.fetch_add(1, Ordering::Relaxed);
-/// })
+/// api::schedule_once_fn(
+///   &mut scheduler,
+///   Duration::from_millis(1),
+///   None,
+///   move |_batch: &ExecutionBatch| {
+///     counter.fetch_add(1, Ordering::Relaxed);
+///   },
+/// )
 /// .unwrap();
 /// # }
 /// ```
