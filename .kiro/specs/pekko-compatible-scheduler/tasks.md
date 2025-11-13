@@ -26,28 +26,28 @@
   - Tokio/SysTick実装がtick_source/tick_leaseを満たしていることをMockToolbox比較テストで保証する。
   - _Requirements: R1.AC6, R3.AC1_
 
-- [ ] 2. Scheduler API表面とrustdocを固める [優先度: CRITICAL]
+- [x] 2. Scheduler API表面とrustdocを固める [優先度: CRITICAL]
   - 依存関係: 1.*完了後に着手し、2.1→2.2→2.3の順で進める。2.4は2.1-2.3が揃った後に並列実施可能で、2.*完了がSystemMailbox統合の前提となる。
   - 完了条件: schedule_* APIがPekko互換シグネチャとrustdocを備え、自動テストで正/異常系を網羅する。
   - _Requirements: R1.AC5, R3.AC5_
 
-- [ ] 2.1 schedule_* APIシグネチャと動作を実装する
+- [x] 2.1 schedule_* APIシグネチャと動作を実装する
   - schedule_once/at_fixed_rate/with_fixed_delayおよびRunnable版APIをPekkoと同じパラメータ順で公開し、Typed/Untyped双方から呼べるようにする。
   - 各APIの戻り値でCancellableを返し、成功時にhandle IDと実行モードが追跡できるようにする。
   - 既存DelayProviderからの呼び出し経路を新APIへ付け替え、旧APIとの比較テストで互換性を確認する。テストは `modules/actor-core/src/scheduler/tests.rs` に配置し、正常/異常系を最低8ケース作成する。
   - _Requirements: R1.AC5, R3.AC5_
 
-- [ ] 2.2 入力検証とエラーパスを実装する
+- [x] 2.2 入力検証とエラーパスを実装する
   - delay<=0、負周期、Durationオーバーフロー、`delay / tickNanos > i32::MAX`など異常値を検証し`SchedulerError::InvalidDelay`/`IllegalArgument`で即座に失敗させる。
   - Backpressure/容量オーバー時の`SchedulerError::Backpressured`、shutdown後の`SchedulerError::Closed`などResultエラーを単体テストで網羅し、各バリアントに最低1ケース割り当てる。
   - _Requirements: R1.AC4, R1.AC5, R4.AC5_
 
-- [ ] 2.3 Dispatcher/Typed facade解決を共通化する
+- [x] 2.3 Dispatcher/Typed facade解決を共通化する
   - DispatcherSenderShared/Senderの解決をContextやActorSystem defaultに委譲するfacadeを実装し、Typed/Untyped APIが単一路線を共有する。
   - Dispatcher未指定時にSystem defaultを採用する挙動をintegrationテストで確認し、Remoting/DelayProviderパスと突き合わせる。
   - _Requirements: R3.AC4, R3.AC5_
 
-- [ ] 2.4 公開APIのrustdocと使用例を追加する
+- [x] 2.4 公開APIのrustdocと使用例を追加する
   - schedule_*、Cancellable、SchedulerBuilder公開APIに英語rustdocとExamplesセクションを追加し、Typed/Untyped両方のサンプルコードを含める。
   - rustdocビルドをCIに追加し、no_std環境でもコンパイル可能なドキュメント例を検証する。
   - _Requirements: R1.AC5, R3.AC5_
