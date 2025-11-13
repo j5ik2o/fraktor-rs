@@ -7,7 +7,7 @@
 [![dependency status](https://deps.rs/repo/github/j5ik2o/fraktor-rs/status.svg)](https://deps.rs/repo/github/j5ik2o/fraktor-rs)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![License](https://img.shields.io/badge/License-APACHE2.0-blue.svg)](https://opensource.org/licenses/apache-2-0)
-[![tokei](https://tokei.rs/b1/github/XAMPPRocky/tokei)](https://github.com/XAMPPRocky/tokei)
+[![tokei](https://tokei.rs/b1/github/j5ik2o/fraktor-rs)](https://github.com/j5ik2o/fraktor-rs)
 
 > See [README.ja.md](README.ja.md) for the Japanese edition.
 
