@@ -167,7 +167,13 @@ enum ChildCommand {
   Crash,
 }
 
+#[derive(Clone, Copy)]
+enum SchedulerProbeCommand {
+  Check,
+}
+
 struct MismatchActor;
+struct SchedulerProbeActor;
 
 impl TypedActor<MismatchCommand> for MismatchActor {
   fn receive(
@@ -176,6 +182,21 @@ impl TypedActor<MismatchCommand> for MismatchActor {
     _message: &MismatchCommand,
   ) -> Result<(), ActorError> {
     ctx.reply("unexpected".to_string()).map_err(|error| ActorError::from_send_error(&error))
+  }
+}
+
+impl TypedActor<SchedulerProbeCommand> for SchedulerProbeActor {
+  fn receive(
+    &mut self,
+    ctx: &mut TypedActorContextGeneric<'_, SchedulerProbeCommand>,
+    message: &SchedulerProbeCommand,
+  ) -> Result<(), ActorError> {
+    match message {
+      | SchedulerProbeCommand::Check => {
+        let has_context = ctx.system().scheduler_context().is_some();
+        ctx.reply(has_context).map_err(|error| ActorError::from_send_error(&error))
+      },
+    }
   }
 }
 
@@ -191,6 +212,22 @@ fn typed_ask_reports_type_mismatch() {
   let result = future.try_take().expect("result");
 
   assert!(matches!(result, Err(TypedAskError::TypeMismatch)));
+
+  system.terminate().expect("terminate");
+}
+
+#[test]
+fn typed_context_exposes_scheduler_context() {
+  let props = TypedPropsGeneric::<SchedulerProbeCommand, NoStdToolbox>::new(|| SchedulerProbeActor);
+  let system = TypedActorSystemGeneric::<SchedulerProbeCommand, NoStdToolbox>::new(&props).expect("system");
+  let actor = system.user_guardian_ref();
+
+  let response = actor.ask::<bool>(SchedulerProbeCommand::Check).expect("ask");
+  let future = response.future().clone();
+  wait_until(|| future.is_ready());
+  let result = future.try_take().expect("result").expect("payload");
+
+  assert!(result);
 
   system.terminate().expect("terminate");
 }

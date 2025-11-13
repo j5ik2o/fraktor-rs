@@ -4,7 +4,10 @@ use crate::{
   NoStdToolbox,
   actor_prim::actor_ref::ActorRefGeneric,
   scheduler::{Scheduler, SchedulerCommand, SchedulerConfig},
-  typed::{actor_prim::TypedActorRefGeneric, scheduler::TypedScheduler},
+  typed::{
+    actor_prim::TypedActorRefGeneric,
+    scheduler::{TypedScheduler, TypedSchedulerContext},
+  },
 };
 
 fn build_scheduler() -> Scheduler<NoStdToolbox> {
@@ -42,5 +45,21 @@ fn typed_schedule_at_fixed_rate_registers_job() {
       .schedule_at_fixed_rate(Duration::from_millis(2), Duration::from_millis(3), receiver.clone(), 3u32, None, None)
       .expect("handle");
     assert!(scheduler.command_for_test(&handle).is_some());
+  }
+}
+
+#[test]
+fn typed_scheduler_context_reuses_shared_scheduler_arc() {
+  let context = TypedSchedulerContext::new_with_config(NoStdToolbox::default(), SchedulerConfig::default());
+  let receiver = TypedActorRefGeneric::<u32, NoStdToolbox>::from_untyped(ActorRefGeneric::null());
+
+  let handle = context.with_scheduler(|scheduler| {
+    scheduler.schedule_once(Duration::from_millis(5), receiver.clone(), 99u32, None, None).expect("handle")
+  });
+
+  let scheduler_arc = context.scheduler();
+  {
+    let guard = scheduler_arc.lock();
+    assert!(guard.command_for_test(&handle).is_some());
   }
 }

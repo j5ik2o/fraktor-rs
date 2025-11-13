@@ -40,7 +40,7 @@ pub use behavior_signal::BehaviorSignal;
 pub use behaviors::Behaviors;
 pub use message_adapter::{AdapterError, AdapterFailure, AdapterOutcome, AdapterPayload, MessageAdapterRegistry};
 pub use props::{TypedProps, TypedPropsGeneric};
-pub use scheduler::TypedScheduler;
+pub use scheduler::{TypedScheduler, TypedSchedulerContext, TypedSchedulerGuard, TypedSchedulerShared};
 pub use supervise::Supervise;
 pub use system::{TypedActorSystem, TypedActorSystemGeneric};
 pub use typed_ask_error::TypedAskError;

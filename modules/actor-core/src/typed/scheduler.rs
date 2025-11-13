@@ -9,8 +9,15 @@ use crate::{
   typed::actor_prim::TypedActorRefGeneric,
 };
 
+mod scheduler_context;
 #[cfg(test)]
 mod tests;
+mod typed_scheduler_guard;
+mod typed_scheduler_shared;
+
+pub use scheduler_context::TypedSchedulerContext;
+pub use typed_scheduler_guard::TypedSchedulerGuard;
+pub use typed_scheduler_shared::TypedSchedulerShared;
 
 /// Provides typed helpers that delegate to the canonical scheduler APIs.
 pub struct TypedScheduler<'a, TB: RuntimeToolbox + 'static> {
