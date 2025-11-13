@@ -379,6 +379,17 @@ fn backpressure_error_returned_when_pending_jobs_exceed_limit() {
 }
 
 #[test]
+fn timer_wheel_capacity_exceeded_returns_error() {
+  let toolbox = NoStdToolbox::default();
+  let profile = SchedulerCapacityProfile::new("mini", 1, 1, 1);
+  let config = SchedulerConfig::new(Duration::from_millis(1), profile).with_max_pending_jobs(2);
+  let mut scheduler = Scheduler::new(toolbox, config);
+  scheduler.schedule_once(Duration::from_millis(1)).expect("first");
+  let err = scheduler.schedule_once(Duration::from_millis(2)).expect_err("second");
+  assert_eq!(err, SchedulerError::CapacityExceeded);
+}
+
+#[test]
 fn handle_reports_cancelled_state() {
   let mut scheduler = build_scheduler();
   let handle = scheduler.schedule_once(Duration::from_millis(5)).expect("handle");

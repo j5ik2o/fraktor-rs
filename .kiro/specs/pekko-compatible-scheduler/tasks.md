@@ -150,7 +150,7 @@
   - 周期ジョブの精度（missed_runs折り畳み、burst警告）を計測し、backlog上限到達時の挙動を記録するCIジョブを追加する。
   - _Requirements: R4.AC7, R5.AC4, R5.AC5_
 
-- [ ] 7.4 エラーパス網羅テストを追加する
+- [x] 7.4 エラーパス網羅テストを追加する
   - すべての公開APIでpanicを起こさずResultエラーを返すことをコンビネーションテストで検証し、SchedulerError/SchedulerWarning全バリアント（InvalidDelay, Backpressured, Closed, CapacityExceeded など）に対するテストケースを最低1件ずつ追加してカバレッジを100%にする。
   - shutdown済みSchedulerやBackpressure状態でのAPI呼び出しが想定エラーを返すことをintegrationテストで確認する。
   - _Requirements: R1.AC4, R3.AC7, R4.AC5, R5.AC3_
