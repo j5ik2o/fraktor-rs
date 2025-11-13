@@ -23,7 +23,7 @@ use crate::{
   logging::LogLevel,
   messaging::{AnyMessageGeneric, SystemMessage},
   props::PropsGeneric,
-  scheduler::{SchedulerBackedDelayProvider, SchedulerConfig, SchedulerService},
+  scheduler::{SchedulerBackedDelayProvider, SchedulerConfig, SchedulerContext},
   spawn::SpawnError,
   system::{RegisterExtraTopLevelError, system_state::SystemStateGeneric},
 };
@@ -104,7 +104,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     F: FnOnce(&ActorSystemGeneric<TB>) -> Result<(), SpawnError>, {
     let system = Self::new_empty();
     system.state.apply_actor_system_config(config);
-    system.ensure_scheduler_service();
+    system.ensure_scheduler_context();
     system.bootstrap(user_guardian_props, configure)?;
     Ok(system)
   }
@@ -128,15 +128,15 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     self.state.clone()
   }
 
-  fn ensure_scheduler_service(&self)
+  fn ensure_scheduler_context(&self)
   where
     TB: Default,
   {
-    if self.state.scheduler_service().is_some() {
+    if self.state.scheduler_context().is_some() {
       return;
     }
-    let service = SchedulerService::new(TB::default(), SchedulerConfig::default());
-    self.state.install_scheduler_service(ArcShared::new(service));
+    let service = SchedulerContext::new(TB::default(), SchedulerConfig::default());
+    self.state.install_scheduler_context(ArcShared::new(service));
   }
 
   /// Allocates a new pid (testing helper).
@@ -153,14 +153,14 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
 
   /// Returns the scheduler service when initialized.
   #[must_use]
-  pub fn scheduler_service(&self) -> Option<ArcShared<SchedulerService<TB>>> {
-    self.state.scheduler_service()
+  pub fn scheduler_context(&self) -> Option<ArcShared<SchedulerContext<TB>>> {
+    self.state.scheduler_context()
   }
 
   /// Returns a delay provider backed by the scheduler when available.
   #[must_use]
   pub fn delay_provider(&self) -> Option<SchedulerBackedDelayProvider<TB>> {
-    self.scheduler_service().map(|service| service.delay_provider())
+    self.scheduler_context().map(|context| context.delay_provider())
   }
 
   /// Returns the dispatcher registry.

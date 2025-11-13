@@ -13,7 +13,7 @@ use fraktor_utils_core_rs::{
 };
 
 use super::{
-  Scheduler, SchedulerBackedDelayProvider, SchedulerConfig, SchedulerError, SchedulerService, SchedulerWarning, api,
+  Scheduler, SchedulerBackedDelayProvider, SchedulerConfig, SchedulerContext, SchedulerError, SchedulerWarning, api,
   command::SchedulerCommand,
   execution_batch::{BatchMode, ExecutionBatch},
   fixed_delay_policy::FixedDelayPolicy,
@@ -627,8 +627,8 @@ fn scheduler_backed_delay_provider_cancels_on_drop() {
 }
 
 #[test]
-fn scheduler_service_provides_shared_delay_provider() {
-  let service = SchedulerService::new(NoStdToolbox::default(), SchedulerConfig::default());
+fn scheduler_context_provides_shared_delay_provider() {
+  let service = SchedulerContext::new(NoStdToolbox::default(), SchedulerConfig::default());
   let mut future = service.delay_provider().delay(Duration::from_millis(1));
   assert!(matches!(poll_delay_future(&mut future), Poll::Pending));
 

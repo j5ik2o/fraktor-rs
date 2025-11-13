@@ -9,12 +9,12 @@ use super::{Scheduler, SchedulerBackedDelayProvider, SchedulerConfig, TaskRunSum
 use crate::{RuntimeToolbox, ToolboxMutex};
 
 /// Owns the shared scheduler instance and exposes auxiliary services.
-pub struct SchedulerService<TB: RuntimeToolbox + 'static> {
+pub struct SchedulerContext<TB: RuntimeToolbox + 'static> {
   scheduler: ArcShared<ToolboxMutex<Scheduler<TB>, TB>>,
   provider:  SchedulerBackedDelayProvider<TB>,
 }
 
-impl<TB: RuntimeToolbox + 'static> SchedulerService<TB> {
+impl<TB: RuntimeToolbox + 'static> SchedulerContext<TB> {
   /// Creates a service from the provided toolbox and configuration.
   #[must_use]
   pub fn new(toolbox: TB, config: SchedulerConfig) -> Self {

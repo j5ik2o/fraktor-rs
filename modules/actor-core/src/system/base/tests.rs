@@ -382,15 +382,15 @@ fn poll_delay(future: &mut DelayFuture) -> Poll<()> {
 }
 
 #[test]
-fn actor_system_scheduler_service_handles_delays() {
+fn actor_system_scheduler_context_handles_delays() {
   let props = Props::from_fn(|| TestActor);
   let system = ActorSystem::new(&props).expect("system");
   let provider = system.delay_provider().expect("delay provider");
   let mut future = provider.delay(Duration::from_millis(1));
   assert!(matches!(poll_delay(&mut future), Poll::Pending));
 
-  let service = system.scheduler_service().expect("scheduler service");
-  let scheduler = service.scheduler();
+  let context = system.scheduler_context().expect("scheduler context");
+  let scheduler = context.scheduler();
   {
     let mut guard = scheduler.lock();
     guard.run_for_test(1);
@@ -405,8 +405,8 @@ fn actor_system_terminate_runs_scheduler_tasks() {
   let system = ActorSystem::new(&props).expect("system");
   let log = ArcShared::new(NoStdMutex::new(Vec::new()));
   {
-    let service = system.scheduler_service().expect("service");
-    let scheduler = service.scheduler();
+    let context = system.scheduler_context().expect("context");
+    let scheduler = context.scheduler();
     let mut guard = scheduler.lock();
     let task = RecordingShutdownTask { log: log.clone() };
     guard
@@ -452,16 +452,16 @@ fn poll_delay_future(future: &mut DelayFuture) -> Poll<()> {
 }
 
 #[test]
-fn actor_system_installs_scheduler_service() {
+fn actor_system_installs_scheduler_context() {
   let props = Props::from_fn(|| TestActor);
   let system = ActorSystem::new(&props).expect("actor system");
   let provider = system.delay_provider().expect("delay provider");
   let mut future = provider.delay(Duration::from_millis(1));
   assert!(matches!(poll_delay_future(&mut future), Poll::Pending));
 
-  let service = system.scheduler_service().expect("scheduler service");
+  let context = system.scheduler_context().expect("scheduler context");
   {
-    let scheduler = service.scheduler();
+    let scheduler = context.scheduler();
     let mut guard = scheduler.lock();
     guard.run_for_test(1);
   }
