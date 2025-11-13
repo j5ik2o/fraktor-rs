@@ -8,8 +8,8 @@ use fraktor_utils_core_rs::time::{
 use hashbrown::HashMap;
 
 use super::{
-  command::SchedulerCommand, config::SchedulerConfig, error::SchedulerError, execution_batch::ExecutionBatch,
-  handle::SchedulerHandle, mode::SchedulerMode,
+  cancellable_registry::CancellableRegistry, command::SchedulerCommand, config::SchedulerConfig, error::SchedulerError,
+  execution_batch::ExecutionBatch, handle::SchedulerHandle, metrics::SchedulerMetrics, mode::SchedulerMode,
 };
 use crate::RuntimeToolbox;
 
@@ -17,10 +17,11 @@ const DEFAULT_DRIFT_BUDGET_PCT: u8 = 5;
 
 /// Scheduler responsible for registering delayed and periodic jobs.
 pub struct Scheduler<TB: RuntimeToolbox> {
-  #[allow(dead_code)]
   toolbox:      TB,
   config:       SchedulerConfig,
   wheel:        TimerWheel<ScheduledPayload>,
+  registry:     CancellableRegistry,
+  metrics:      SchedulerMetrics,
   next_handle:  u64,
   jobs:         HashMap<u64, ScheduledJob<TB>>,
   current_tick: u64,
@@ -36,10 +37,9 @@ struct ScheduledJob<TB: RuntimeToolbox> {
   command:      SchedulerCommand<TB>,
 }
 
-#[allow(dead_code)]
 #[derive(Clone, Copy, Debug)]
 struct ScheduledPayload {
-  handle: SchedulerHandle,
+  handle_id: u64,
 }
 
 impl<TB: RuntimeToolbox> Scheduler<TB> {
@@ -48,13 +48,29 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
   pub fn new(toolbox: TB, config: SchedulerConfig) -> Self {
     let timer_config = TimerWheelConfig::from_profile(config.profile(), config.resolution(), DEFAULT_DRIFT_BUDGET_PCT);
     let wheel = TimerWheel::new(timer_config);
-    Self { toolbox, config, wheel, next_handle: 1, jobs: HashMap::new(), current_tick: 0, closed: false }
+    Self {
+      toolbox,
+      config,
+      wheel,
+      registry: CancellableRegistry::default(),
+      metrics: SchedulerMetrics::default(),
+      next_handle: 1,
+      jobs: HashMap::new(),
+      current_tick: 0,
+      closed: false,
+    }
   }
 
   /// Returns scheduler tick resolution.
   #[must_use]
   pub fn resolution(&self) -> Duration {
     self.config.resolution()
+  }
+
+  /// Returns a snapshot of the current scheduler metrics.
+  #[must_use]
+  pub fn metrics(&self) -> SchedulerMetrics {
+    self.metrics
   }
 
   /// Registers a one-shot job.
@@ -110,9 +126,17 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
   }
 
   /// Cancels the job identified by the provided handle.
-  pub fn cancel(&mut self, handle: SchedulerHandle) -> bool {
-    if let Some(job) = self.jobs.remove(&handle.raw()) {
-      let _ = self.wheel.cancel(job.wheel_id);
+  pub fn cancel(&mut self, handle: &SchedulerHandle) -> bool {
+    if let Some(entry) = self.registry.get(handle.raw()) {
+      if !entry.try_cancel() {
+        return false;
+      }
+      if let Some(job) = self.jobs.remove(&handle.raw()) {
+        let _ = self.wheel.cancel(job.wheel_id);
+      }
+      self.registry.remove(handle.raw());
+      self.metrics.decrement_active();
+      self.metrics.increment_dropped();
       true
     } else {
       false
@@ -137,14 +161,39 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
     let mut executed = 0;
     for entry in expired {
       let payload = entry.into_payload();
-      if let Some(mut job) = self.jobs.remove(&payload.handle.raw()) {
-        self.execute_command(&job.command);
-        executed += 1;
-        if job.period_ticks > 0 {
-          if self.reschedule_job(&mut job).is_ok() {
-            self.jobs.insert(job.handle.raw(), job);
-          }
+      let handle_id = payload.handle_id;
+      let Some(mut job) = self.jobs.remove(&handle_id) else {
+        continue;
+      };
+      let Some(cancellable) = self.registry.get(handle_id) else {
+        continue;
+      };
+
+      if !cancellable.try_begin_execute() {
+        self.metrics.increment_dropped();
+        if cancellable.is_cancelled() {
+          self.registry.remove(handle_id);
+          self.metrics.decrement_active();
         }
+        continue;
+      }
+
+      self.execute_command(&job.command);
+      executed += 1;
+
+      if job.period_ticks > 0 {
+        if self.reschedule_job(&mut job).is_ok() {
+          cancellable.reset_to_scheduled();
+          self.jobs.insert(handle_id, job);
+        } else {
+          cancellable.mark_completed();
+          self.registry.remove(handle_id);
+          self.metrics.decrement_active();
+        }
+      } else {
+        cancellable.mark_completed();
+        self.registry.remove(handle_id);
+        self.metrics.decrement_active();
       }
     }
     executed
@@ -158,7 +207,7 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
 
   #[cfg(test)]
   /// Returns the command associated with the provided handle for testing.
-  pub fn command_for_test(&self, handle: SchedulerHandle) -> Option<&SchedulerCommand<TB>> {
+  pub fn command_for_test(&self, handle: &SchedulerHandle) -> Option<&SchedulerCommand<TB>> {
     self.jobs.get(&handle.raw()).map(|job| &job.command)
   }
 
@@ -194,8 +243,12 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
     };
     let handle = self.next_handle();
     let deadline = self.deadline_from_ticks(delay_ticks);
-    let wheel_id = self.enqueue_timer(handle, deadline)?;
-    self.jobs.insert(handle.raw(), ScheduledJob { handle, wheel_id, mode, period_ticks, command });
+    let wheel_id = self.enqueue_timer(handle.raw(), deadline)?;
+    let entry = handle.entry();
+    entry.mark_scheduled();
+    self.registry.register(handle.raw(), entry);
+    self.metrics.increment_active();
+    self.jobs.insert(handle.raw(), ScheduledJob { handle: handle.clone(), wheel_id, mode, period_ticks, command });
     Ok(handle)
   }
 
@@ -224,19 +277,15 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
     handle
   }
 
-  fn enqueue_timer(
-    &mut self,
-    handle: SchedulerHandle,
-    deadline: TimerInstant,
-  ) -> Result<TimerHandleId, SchedulerError> {
-    let payload = ScheduledPayload { handle };
+  fn enqueue_timer(&mut self, handle_id: u64, deadline: TimerInstant) -> Result<TimerHandleId, SchedulerError> {
+    let payload = ScheduledPayload { handle_id };
     let entry = TimerEntry::oneshot(deadline, payload);
     self.wheel.schedule(entry).map_err(|_| SchedulerError::CapacityExceeded)
   }
 
   fn reschedule_job(&mut self, job: &mut ScheduledJob<TB>) -> Result<(), SchedulerError> {
     let deadline = self.deadline_from_ticks(job.period_ticks);
-    job.wheel_id = self.enqueue_timer(job.handle, deadline)?;
+    job.wheel_id = self.enqueue_timer(job.handle.raw(), deadline)?;
     Ok(())
   }
 

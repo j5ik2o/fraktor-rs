@@ -111,18 +111,18 @@
   - shutdown/TaskRunOnCloseフローの統合テストでRemoting/DelayProvider cleanupがdeterministicに完了することを検証する。
   - _Requirements: R3.AC3, R3.AC6, R3.AC7_
 
-- [ ] 6. 並行安全性と負荷制御を強化する [優先度: HIGH]
+- [x] 6. 並行安全性と負荷制御を強化する [優先度: HIGH]
   - 依存関係: タスク1完了後に基盤が揃い、2.1（APIシグネチャ）確定時点で CancellableRegistry 実装に着手可。Backpressure統合テストは 3-5 完了後に実施する。
   - 完了条件: Cancellable競合とBackpressure/容量制御が全エラーパスまでテストされ、メトリクスが収集できる。
   - _Requirements: R1.AC4, R4.AC1-R4.AC7_
 
-- [ ] 6.1 CancellableRegistryとhandle状態機械を構築する
+- [x] 6.1 CancellableRegistryとhandle状態機械を構築する
   - CancellableStateをPending→Scheduled→Executing→Completed/Cancelledで遷移させるlock-free状態機械を構築する。
   - cancel()が初回のみtrueを返し、それ以降falseになることと`is_cancelled`が永続的にtrueを返すことを保証する単体テストを追加する。
   - cancelと実行が競合した場合にハンドラが高々1回しか呼ばれないようcompare_exchangeガードを実装し、1 tick以内のリソース解放を検証する。
   - _Requirements: R1.AC4, R4.AC1, R4.AC2, R4.AC3, R4.AC4_
 
-- [ ] 6.2 Backpressure・容量制御・メトリクスを実装する
+- [x] 6.2 Backpressure・容量制御・メトリクスを実装する
   - SchedulerCapacityProfileに基づくsystem_quota/overflow_capacityを監視し、超過時に`SchedulerError::Backpressured`を返す状態遷移を実装する。
   - 低優先度タイマーをdropする際に`SchedulerWarning::DroppedLowPriority`や`CancelledByBackpressure`をEventStreamへ発行する。
   - active timers/periodic jobs/dropped totals/tick backlogなどのメトリクスをSchedulerMetrics経由で公開し、CIで数値の上限/下限を検証する。

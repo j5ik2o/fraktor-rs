@@ -79,8 +79,9 @@ fn schedule_fixed_rate_registers_job() {
 fn cancel_existing_job_returns_true() {
   let mut scheduler = build_scheduler();
   let handle = scheduler.schedule_once(Duration::from_millis(2)).expect("handle");
-  assert!(scheduler.cancel(handle));
-  assert_eq!(scheduler.job_count_for_test(), 0);
+  assert!(scheduler.cancel(&handle));
+  assert!(handle.is_cancelled());
+  assert!(!scheduler.cancel(&handle));
 }
 
 #[test]
@@ -128,7 +129,7 @@ fn schedule_command_records_send_message() {
       sender:     None,
     })
     .expect("handle");
-  match scheduler.command_for_test(handle) {
+  match scheduler.command_for_test(&handle) {
     | Some(SchedulerCommand::SendMessage { receiver: target, message: stored, dispatcher, sender }) => {
       assert_eq!(target.pid(), receiver.pid());
       assert!(stored.payload().is::<u32>());
@@ -154,7 +155,7 @@ fn api_schedule_once_records_sender_metadata() {
     Some(sender.clone()),
   )
   .expect("handle");
-  match scheduler.command_for_test(handle) {
+  match scheduler.command_for_test(&handle) {
     | Some(SchedulerCommand::SendMessage { receiver: target, message: stored, dispatcher, sender: stored_sender }) => {
       assert_eq!(target.pid(), receiver.pid());
       assert!(stored.payload().is::<String>());
@@ -285,6 +286,63 @@ fn backpressure_error_returned_when_pending_jobs_exceed_limit() {
   scheduler.schedule_once(Duration::from_millis(1)).expect("first");
   let err = scheduler.schedule_once(Duration::from_millis(2)).expect_err("second");
   assert_eq!(err, SchedulerError::Backpressured);
+}
+
+#[test]
+fn handle_reports_cancelled_state() {
+  let mut scheduler = build_scheduler();
+  let handle = scheduler.schedule_once(Duration::from_millis(5)).expect("handle");
+  assert!(!handle.is_cancelled());
+  assert!(scheduler.cancel(&handle));
+  assert!(handle.is_cancelled());
+  assert!(!scheduler.cancel(&handle));
+}
+
+#[test]
+fn cancelled_job_is_not_delivered() {
+  let mut scheduler = build_scheduler();
+  let inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let sender = ArcShared::new(RecordingSender { inbox: inbox.clone() });
+  let receiver = ActorRefGeneric::new(Pid::new(3, 0), sender);
+  let handle =
+    api::schedule_once(&mut scheduler, Duration::from_millis(2), receiver, AnyMessageGeneric::new(42u32), None, None)
+      .expect("handle");
+  assert!(scheduler.cancel(&handle));
+  scheduler.run_for_test(2);
+  assert_eq!(inbox.lock().len(), 0);
+}
+
+#[test]
+fn handle_reports_completed_after_execution() {
+  let mut scheduler = build_scheduler();
+  let handle = scheduler.schedule_once(Duration::from_millis(3)).expect("handle");
+  scheduler.run_for_test(3);
+  assert!(handle.is_completed());
+  assert!(!handle.is_cancelled());
+}
+
+#[test]
+fn scheduler_metrics_track_active_and_drops() {
+  let mut scheduler = build_scheduler();
+  let first = scheduler.schedule_once(Duration::from_millis(2)).expect("first");
+  let second = scheduler.schedule_once(Duration::from_millis(4)).expect("second");
+  assert_eq!(scheduler.metrics().active_timers(), 2);
+  assert!(scheduler.cancel(&second));
+  scheduler.run_for_test(2);
+  assert!(first.is_completed());
+  assert_eq!(scheduler.metrics().active_timers(), 0);
+  assert_eq!(scheduler.metrics().dropped_total(), 1);
+}
+
+#[test]
+fn fixed_rate_handle_can_be_cancelled_after_multiple_runs() {
+  let mut scheduler = build_scheduler();
+  let handle = scheduler.schedule_at_fixed_rate(Duration::from_millis(1), Duration::from_millis(1)).expect("handle");
+  scheduler.run_for_test(1);
+  scheduler.run_for_test(1);
+  assert!(!handle.is_completed());
+  assert!(scheduler.cancel(&handle));
+  assert!(handle.is_cancelled());
 }
 
 struct RecordingSender {

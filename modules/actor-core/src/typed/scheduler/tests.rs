@@ -23,7 +23,7 @@ fn typed_schedule_once_forwards_sender_metadata() {
     let handle = typed_scheduler
       .schedule_once(Duration::from_millis(1), receiver.clone(), 7u32, None, Some(sender.clone()))
       .expect("handle");
-    match scheduler.command_for_test(handle) {
+    match scheduler.command_for_test(&handle) {
       | Some(SchedulerCommand::SendMessage { sender: stored_sender, .. }) => {
         assert!(stored_sender.is_some());
       },
@@ -41,6 +41,6 @@ fn typed_schedule_at_fixed_rate_registers_job() {
     let handle = typed_scheduler
       .schedule_at_fixed_rate(Duration::from_millis(2), Duration::from_millis(3), receiver.clone(), 3u32, None, None)
       .expect("handle");
-    assert!(scheduler.command_for_test(handle).is_some());
+    assert!(scheduler.command_for_test(&handle).is_some());
   }
 }
