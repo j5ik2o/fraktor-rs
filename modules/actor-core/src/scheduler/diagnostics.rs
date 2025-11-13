@@ -14,7 +14,7 @@ pub enum DeterministicEvent {
   /// Timer registration event.
   Scheduled {
     /// Identifier of the registered handle.
-    handle_id:     u64,
+    handle_id:      u64,
     /// Tick when the registration occurred.
     scheduled_tick: u64,
     /// Deadline tick assigned to the timer.
@@ -23,7 +23,7 @@ pub enum DeterministicEvent {
   /// Timer execution event.
   Fired {
     /// Identifier of the handle that executed.
-    handle_id: u64,
+    handle_id:  u64,
     /// Tick when execution happened.
     fired_tick: u64,
     /// Execution metadata shared with the runnable/message.
@@ -32,7 +32,7 @@ pub enum DeterministicEvent {
   /// Timer cancellation event.
   Cancelled {
     /// Identifier of the cancelled handle.
-    handle_id:     u64,
+    handle_id:      u64,
     /// Tick when the cancellation occurred.
     cancelled_tick: u64,
   },
@@ -40,11 +40,11 @@ pub enum DeterministicEvent {
 
 /// Aggregates scheduler diagnostics state.
 pub struct SchedulerDiagnostics {
-  deterministic_log: Option<DeterministicLog>,
-  registry:          DiagnosticsRegistry,
+  deterministic_log:  Option<DeterministicLog>,
+  registry:           DiagnosticsRegistry,
   next_subscriber_id: u64,
-  stream_buffer:     VecDeque<SchedulerDiagnosticsEvent>,
-  stream_capacity:   usize,
+  stream_buffer:      VecDeque<SchedulerDiagnosticsEvent>,
+  stream_capacity:    usize,
 }
 
 impl SchedulerDiagnostics {
@@ -58,7 +58,13 @@ impl SchedulerDiagnostics {
   #[must_use]
   pub fn with_capacity(capacity: usize) -> Self {
     let bounded = capacity.max(1);
-    Self { deterministic_log: None, registry: DiagnosticsRegistry::new(), next_subscriber_id: 1, stream_buffer: VecDeque::new(), stream_capacity: bounded }
+    Self {
+      deterministic_log:  None,
+      registry:           DiagnosticsRegistry::new(),
+      next_subscriber_id: 1,
+      stream_buffer:      VecDeque::new(),
+      stream_capacity:    bounded,
+    }
   }
 
   /// Enables deterministic logging with the requested capacity.
@@ -75,10 +81,7 @@ impl SchedulerDiagnostics {
   /// Returns the current log entries.
   #[must_use]
   pub fn deterministic_log(&self) -> &[DeterministicEvent] {
-    self
-      .deterministic_log
-      .as_ref()
-      .map_or(&[], |log| log.entries.as_slice())
+    self.deterministic_log.as_ref().map_or(&[], |log| log.entries.as_slice())
   }
 
   /// Returns an iterator that can replay deterministic events in order.
@@ -131,7 +134,6 @@ impl SchedulerDiagnostics {
     }
     self.stream_buffer.push_back(event);
   }
-
 }
 
 impl Default for SchedulerDiagnostics {
@@ -143,11 +145,11 @@ impl Default for SchedulerDiagnostics {
 impl Clone for SchedulerDiagnostics {
   fn clone(&self) -> Self {
     Self {
-      deterministic_log: self.deterministic_log.clone(),
-      registry: self.registry.clone(),
+      deterministic_log:  self.deterministic_log.clone(),
+      registry:           self.registry.clone(),
       next_subscriber_id: self.next_subscriber_id,
-      stream_buffer: self.stream_buffer.clone(),
-      stream_capacity: self.stream_capacity,
+      stream_buffer:      self.stream_buffer.clone(),
+      stream_capacity:    self.stream_capacity,
     }
   }
 }
@@ -289,16 +291,16 @@ pub enum SchedulerDiagnosticsEvent {
   /// Job registration event with the scheduled deadline.
   Scheduled {
     /// Handle identifier.
-    handle_id: u64,
+    handle_id:     u64,
     /// Deadline tick assigned during registration.
     deadline_tick: u64,
     /// Scheduling mode.
-    mode:        SchedulerMode,
+    mode:          SchedulerMode,
   },
   /// Job execution event including batch metadata.
   Fired {
     /// Handle identifier.
-    handle_id: u64,
+    handle_id:  u64,
     /// Tick when the job fired.
     fired_tick: u64,
     /// Execution batch metadata.
@@ -307,7 +309,7 @@ pub enum SchedulerDiagnosticsEvent {
   /// Job cancellation notification.
   Cancelled {
     /// Handle identifier.
-    handle_id: u64,
+    handle_id:      u64,
     /// Tick when the cancellation was recorded.
     cancelled_tick: u64,
   },

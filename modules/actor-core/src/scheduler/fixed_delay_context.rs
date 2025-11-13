@@ -30,24 +30,16 @@ impl FixedDelayContext {
   pub(crate) fn build_batch(&mut self, now: u64, handle_id: u64) -> PeriodicBatchDecision {
     let missed = self.compute_missed(now);
     if missed >= self.backlog_limit.get() {
-      return PeriodicBatchDecision::Cancel {
-        warning: SchedulerWarning::BacklogExceeded { handle_id, missed },
-      };
+      return PeriodicBatchDecision::Cancel { warning: SchedulerWarning::BacklogExceeded { handle_id, missed } };
     }
 
-    let warning = if missed > self.burst_threshold.get() {
-      Some(SchedulerWarning::BurstFire { handle_id, missed })
-    } else {
-      None
-    };
+    let warning =
+      if missed > self.burst_threshold.get() { Some(SchedulerWarning::BurstFire { handle_id, missed }) } else { None };
 
     let runs_total = missed.saturating_add(1);
     let runs = NonZeroU32::new(runs_total).expect("non-zero runs");
     self.next_tick = now.saturating_add(self.period_ticks.get());
-    PeriodicBatchDecision::Execute {
-      batch: ExecutionBatch::periodic(runs, missed, BatchMode::FixedDelay),
-      warning,
-    }
+    PeriodicBatchDecision::Execute { batch: ExecutionBatch::periodic(runs, missed, BatchMode::FixedDelay), warning }
   }
 
   pub(crate) const fn next_deadline_ticks(&self) -> u64 {

@@ -130,8 +130,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
 
   fn ensure_scheduler_context(&self)
   where
-    TB: Default,
-  {
+    TB: Default, {
     if self.state.scheduler_context().is_some() {
       return;
     }

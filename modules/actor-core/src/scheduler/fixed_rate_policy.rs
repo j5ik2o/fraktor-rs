@@ -5,7 +5,7 @@ use core::num::NonZeroU32;
 /// Controls backlog and warning behavior for fixed-rate jobs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct FixedRatePolicy {
-  backlog_limit:  NonZeroU32,
+  backlog_limit:   NonZeroU32,
   burst_threshold: NonZeroU32,
 }
 

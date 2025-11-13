@@ -5,33 +5,38 @@ use core::{num::NonZeroU32, time::Duration};
 use fraktor_utils_core_rs::time::SchedulerCapacityProfile;
 
 use super::{
-  fixed_delay_policy::FixedDelayPolicy,
-  fixed_rate_policy::FixedRatePolicy,
-  policy_registry::SchedulerPolicyRegistry,
+  fixed_delay_policy::FixedDelayPolicy, fixed_rate_policy::FixedRatePolicy, policy_registry::SchedulerPolicyRegistry,
 };
 
 /// Configuration for scheduler construction.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SchedulerConfig {
-  resolution:       Duration,
-  profile:          SchedulerCapacityProfile,
-  max_pending_jobs: usize,
-  policy_registry:  SchedulerPolicyRegistry,
-  task_run_capacity: usize,
+  resolution:           Duration,
+  profile:              SchedulerCapacityProfile,
+  max_pending_jobs:     usize,
+  policy_registry:      SchedulerPolicyRegistry,
+  task_run_capacity:    usize,
   diagnostics_capacity: usize,
 }
 
 impl SchedulerConfig {
+  const DEFAULT_DIAGNOSTICS_CAPACITY: usize = 256;
+
   /// Creates a configuration with the specified tick resolution and capacity profile.
   #[must_use]
   pub fn new(resolution: Duration, profile: SchedulerCapacityProfile) -> Self {
     let max_pending_jobs = profile.system_quota();
     let task_run_capacity = profile.task_run_capacity();
     let diagnostics_capacity = Self::DEFAULT_DIAGNOSTICS_CAPACITY;
-    Self { resolution, profile, max_pending_jobs, policy_registry: SchedulerPolicyRegistry::default(), task_run_capacity, diagnostics_capacity }
+    Self {
+      resolution,
+      profile,
+      max_pending_jobs,
+      policy_registry: SchedulerPolicyRegistry::default(),
+      task_run_capacity,
+      diagnostics_capacity,
+    }
   }
-
-  const DEFAULT_DIAGNOSTICS_CAPACITY: usize = 256;
 
   /// Returns the configured resolution.
   #[must_use]

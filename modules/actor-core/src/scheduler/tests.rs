@@ -3,9 +3,13 @@ use alloc::{
   vec,
   vec::Vec,
 };
-use core::{i32, num::NonZeroU32, pin::Pin, task::{Context, Poll}, time::Duration};
-use hashbrown::HashMap;
-use proptest::prelude::*;
+use core::{
+  cmp, i32,
+  num::NonZeroU32,
+  pin::Pin,
+  task::{Context, Poll},
+  time::Duration,
+};
 
 use fraktor_utils_core_rs::{
   DelayFuture, DelayProvider,
@@ -13,10 +17,12 @@ use fraktor_utils_core_rs::{
   sync::{ArcShared, NoStdMutex},
   time::{SchedulerCapacityProfile, SchedulerTickHandle},
 };
+use hashbrown::HashMap;
+use proptest::prelude::*;
 
 use super::{
-  DeterministicEvent, Scheduler, SchedulerBackedDelayProvider, SchedulerConfig, SchedulerContext, SchedulerDiagnosticsEvent,
-  SchedulerError, SchedulerMode, SchedulerWarning, api,
+  DeterministicEvent, Scheduler, SchedulerBackedDelayProvider, SchedulerConfig, SchedulerContext,
+  SchedulerDiagnosticsEvent, SchedulerError, SchedulerMode, SchedulerWarning, api,
   command::SchedulerCommand,
   execution_batch::{BatchMode, ExecutionBatch},
   fixed_delay_policy::FixedDelayPolicy,
@@ -84,11 +90,7 @@ impl RecordingTask {
 impl TaskRunOnClose for RecordingTask {
   fn run(&self) -> Result<(), TaskRunError> {
     self.log.lock().push(self.label);
-    if self.should_err {
-      Err(TaskRunError::new("fail"))
-    } else {
-      Ok(())
-    }
+    if self.should_err { Err(TaskRunError::new("fail")) } else { Ok(()) }
   }
 }
 
@@ -106,12 +108,7 @@ fn shared_scheduler_state() -> (SharedScheduler, SchedulerBackedDelayProvider<No
 fn noop_waker() -> core::task::Waker {
   use core::task::{RawWaker, RawWakerVTable, Waker};
 
-  const VTABLE: RawWakerVTable = RawWakerVTable::new(
-    |data| RawWaker::new(data, &VTABLE),
-    |_| {},
-    |_| {},
-    |_| {},
-  );
+  const VTABLE: RawWakerVTable = RawWakerVTable::new(|data| RawWaker::new(data, &VTABLE), |_| {}, |_| {}, |_| {});
 
   unsafe fn raw_waker() -> RawWaker {
     RawWaker::new(core::ptr::null(), &VTABLE)
@@ -484,8 +481,7 @@ fn fixed_rate_policy_enforces_independent_backlog_limit() {
   let rate_policy = FixedRatePolicy::new(nz(1), nz(8));
   let delay_policy = FixedDelayPolicy::new(nz(8), nz(16));
   let mut scheduler = build_scheduler_with_policies(rate_policy, delay_policy);
-  let rate_handle =
-    scheduler.schedule_at_fixed_rate(Duration::from_millis(1), Duration::from_millis(1)).expect("rate");
+  let rate_handle = scheduler.schedule_at_fixed_rate(Duration::from_millis(1), Duration::from_millis(1)).expect("rate");
   let delay_handle =
     scheduler.schedule_with_fixed_delay(Duration::from_millis(1), Duration::from_millis(1)).expect("delay");
   scheduler.run_for_test(5);
@@ -497,10 +493,7 @@ fn fixed_rate_policy_enforces_independent_backlog_limit() {
       .any(|warning| matches!(warning, SchedulerWarning::BacklogExceeded { handle_id, .. } if *handle_id == rate_handle.raw())),
     "expected backlog warning for fixed-rate handle",
   );
-  assert!(
-    !delay_handle.is_cancelled(),
-    "fixed-delay handle should remain active because its backlog limit is relaxed",
-  );
+  assert!(!delay_handle.is_cancelled(), "fixed-delay handle should remain active because its backlog limit is relaxed",);
 }
 
 #[test]
@@ -512,8 +505,7 @@ fn fixed_delay_policy_enforces_independent_backlog_limit() {
     .with_fixed_delay_policy(delay_policy)
     .with_fixed_rate_policy(rate_policy);
   let mut scheduler = Scheduler::new(NoStdToolbox::default(), config);
-  let rate_handle =
-    scheduler.schedule_at_fixed_rate(Duration::from_millis(1), Duration::from_millis(1)).expect("rate");
+  let rate_handle = scheduler.schedule_at_fixed_rate(Duration::from_millis(1), Duration::from_millis(1)).expect("rate");
   let delay_handle =
     scheduler.schedule_with_fixed_delay(Duration::from_millis(1), Duration::from_millis(1)).expect("delay");
   scheduler.run_for_test(5);
@@ -539,23 +531,20 @@ fn fixed_rate_policy_controls_burst_threshold() {
   let rate_policy = FixedRatePolicy::new(nz(8), nz(1));
   let delay_policy = FixedDelayPolicy::new(nz(8), nz(16));
   let mut scheduler = build_scheduler_with_policies(rate_policy, delay_policy);
-  let rate_handle =
-    scheduler.schedule_at_fixed_rate(Duration::from_millis(1), Duration::from_millis(1)).expect("rate");
+  let rate_handle = scheduler.schedule_at_fixed_rate(Duration::from_millis(1), Duration::from_millis(1)).expect("rate");
   let delay_handle =
     scheduler.schedule_with_fixed_delay(Duration::from_millis(1), Duration::from_millis(1)).expect("delay");
   scheduler.run_for_test(4);
   assert!(
-    scheduler
-      .warnings()
-      .iter()
-      .any(|warning| matches!(warning, SchedulerWarning::BurstFire { handle_id, .. } if *handle_id == rate_handle.raw())),
+    scheduler.warnings().iter().any(
+      |warning| matches!(warning, SchedulerWarning::BurstFire { handle_id, .. } if *handle_id == rate_handle.raw())
+    ),
     "fixed-rate job should emit burst warning when threshold is exceeded",
   );
   assert!(
-    !scheduler
-      .warnings()
-      .iter()
-      .any(|warning| matches!(warning, SchedulerWarning::BurstFire { handle_id, .. } if *handle_id == delay_handle.raw())),
+    !scheduler.warnings().iter().any(
+      |warning| matches!(warning, SchedulerWarning::BurstFire { handle_id, .. } if *handle_id == delay_handle.raw())
+    ),
     "fixed-delay job should not emit burst warning when its threshold is not exceeded",
   );
 }
@@ -569,23 +558,20 @@ fn fixed_delay_policy_controls_burst_threshold() {
     .with_fixed_delay_policy(delay_policy)
     .with_fixed_rate_policy(rate_policy);
   let mut scheduler = Scheduler::new(NoStdToolbox::default(), config);
-  let rate_handle =
-    scheduler.schedule_at_fixed_rate(Duration::from_millis(1), Duration::from_millis(1)).expect("rate");
+  let rate_handle = scheduler.schedule_at_fixed_rate(Duration::from_millis(1), Duration::from_millis(1)).expect("rate");
   let delay_handle =
     scheduler.schedule_with_fixed_delay(Duration::from_millis(1), Duration::from_millis(1)).expect("delay");
   scheduler.run_for_test(4);
   assert!(
-    scheduler
-      .warnings()
-      .iter()
-      .any(|warning| matches!(warning, SchedulerWarning::BurstFire { handle_id, .. } if *handle_id == delay_handle.raw())),
+    scheduler.warnings().iter().any(
+      |warning| matches!(warning, SchedulerWarning::BurstFire { handle_id, .. } if *handle_id == delay_handle.raw())
+    ),
     "fixed-delay job should emit burst warning when its threshold is exceeded",
   );
   assert!(
-    !scheduler
-      .warnings()
-      .iter()
-      .any(|warning| matches!(warning, SchedulerWarning::BurstFire { handle_id, .. } if *handle_id == rate_handle.raw())),
+    !scheduler.warnings().iter().any(
+      |warning| matches!(warning, SchedulerWarning::BurstFire { handle_id, .. } if *handle_id == rate_handle.raw())
+    ),
     "fixed-rate job should remain silent when its threshold is higher",
   );
 }
@@ -775,8 +761,14 @@ fn diagnostics_subscription_receives_events() {
       .expect("handle");
   scheduler.run_for_test(2);
   let events = subscription.drain();
-  assert!(events.iter().any(|event| matches!(event, SchedulerDiagnosticsEvent::Scheduled { handle_id, .. } if *handle_id == handle.raw())));
-  assert!(events.iter().any(|event| matches!(event, SchedulerDiagnosticsEvent::Fired { handle_id, .. } if *handle_id == handle.raw())));
+  assert!(events.iter().any(
+    |event| matches!(event, SchedulerDiagnosticsEvent::Scheduled { handle_id, .. } if *handle_id == handle.raw())
+  ));
+  assert!(
+    events
+      .iter()
+      .any(|event| matches!(event, SchedulerDiagnosticsEvent::Fired { handle_id, .. } if *handle_id == handle.raw()))
+  );
 }
 
 #[test]
@@ -784,8 +776,15 @@ fn diagnostics_drop_emits_warning() {
   let mut scheduler = build_scheduler();
   let mut _subscription = scheduler.subscribe_diagnostics(1);
   let receiver = ActorRefGeneric::null();
-  api::schedule_once(&mut scheduler, Duration::from_millis(5), receiver.clone(), AnyMessageGeneric::new(1u32), None, None)
-    .expect("first");
+  api::schedule_once(
+    &mut scheduler,
+    Duration::from_millis(5),
+    receiver.clone(),
+    AnyMessageGeneric::new(1u32),
+    None,
+    None,
+  )
+  .expect("first");
   api::schedule_once(&mut scheduler, Duration::from_millis(6), receiver, AnyMessageGeneric::new(2u32), None, None)
     .expect("second");
   assert!(scheduler.warnings().iter().any(|warning| matches!(warning, SchedulerWarning::DiagnosticsDropped { .. })));
@@ -796,19 +795,78 @@ fn scheduler_dump_reports_pending_jobs() {
   let mut scheduler = build_scheduler();
   let handle = scheduler.schedule_once(Duration::from_millis(5)).expect("handle");
   let dump = scheduler.dump();
-  assert!(dump.jobs().iter().any(|job| job.handle_id == handle.raw()));
+  assert!(dump.jobs().iter().any(|job| job.handle_id() == handle.raw()));
 }
 
 #[test]
 fn scheduler_dump_includes_periodic_metadata() {
   let mut scheduler = build_scheduler();
-  let handle = scheduler
-    .schedule_at_fixed_rate(Duration::from_millis(2), Duration::from_millis(4))
-    .expect("handle");
+  let handle = scheduler.schedule_at_fixed_rate(Duration::from_millis(2), Duration::from_millis(4)).expect("handle");
   let dump = scheduler.dump();
-  let periodic = dump.jobs().iter().find(|job| job.handle_id == handle.raw()).expect("job");
-  assert_eq!(periodic.mode, SchedulerMode::FixedRate);
-  assert!(periodic.next_tick.is_some());
+  let periodic = dump.jobs().iter().find(|job| job.handle_id() == handle.raw()).expect("job");
+  assert_eq!(periodic.mode(), SchedulerMode::FixedRate);
+  assert!(periodic.next_tick().is_some());
+}
+
+#[derive(Debug)]
+struct StressReport {
+  completed:     usize,
+  max_drift_pct: u64,
+}
+
+fn run_stress_profile(job_count: usize, drift_ticks: u64) -> StressReport {
+  let profile = SchedulerCapacityProfile::standard();
+  let config = SchedulerConfig::new(Duration::from_millis(1), profile).with_max_pending_jobs(job_count + 512);
+  let mut scheduler = Scheduler::new(NoStdToolbox::default(), config);
+  scheduler.enable_deterministic_log(job_count * 4);
+
+  for idx in 0..job_count {
+    let delay = Duration::from_millis(((idx % 32) + 1) as u64);
+    scheduler.schedule_once(delay).expect("handle");
+  }
+
+  let total_ticks = 64 + drift_ticks as u64;
+  for _ in 0..total_ticks {
+    scheduler.run_for_test(1);
+  }
+
+  let mut scheduled_deadlines = HashMap::new();
+  let mut completed = 0usize;
+  let mut max_drift_pct = 0u64;
+
+  for event in scheduler.diagnostics().deterministic_log() {
+    match *event {
+      | DeterministicEvent::Scheduled { handle_id, deadline_tick, .. } => {
+        scheduled_deadlines.insert(handle_id, deadline_tick);
+      },
+      | DeterministicEvent::Fired { handle_id, fired_tick, .. } => {
+        completed = completed.saturating_add(1);
+        if let Some(deadline_tick) = scheduled_deadlines.get(&handle_id) {
+          let drift = fired_tick.saturating_sub(*deadline_tick);
+          let budget = cmp::max(*deadline_tick, 1);
+          let pct = (drift * 100) / budget;
+          max_drift_pct = cmp::max(max_drift_pct, pct);
+        }
+      },
+      | DeterministicEvent::Cancelled { .. } => {},
+    }
+  }
+
+  StressReport { completed, max_drift_pct }
+}
+
+#[test]
+fn stress_scheduler_handles_1000_jobs_without_drift() {
+  let report = run_stress_profile(1_000, 0);
+  assert_eq!(report.completed, 1_000);
+  assert!(report.max_drift_pct <= 5, "drift pct {} exceeded budget", report.max_drift_pct);
+}
+
+#[test]
+fn stress_scheduler_handles_10000_jobs_without_drift() {
+  let report = run_stress_profile(10_000, 0);
+  assert_eq!(report.completed, 10_000);
+  assert!(report.max_drift_pct <= 5, "drift pct {} exceeded budget", report.max_drift_pct);
 }
 
 fn assert_deterministic_invariants(events: &[DeterministicEvent]) {
@@ -823,12 +881,12 @@ fn assert_deterministic_invariants(events: &[DeterministicEvent]) {
   let mut map: HashMap<u64, Record> = HashMap::new();
   for event in events {
     match *event {
-      DeterministicEvent::Scheduled { handle_id, scheduled_tick, deadline_tick } => {
+      | DeterministicEvent::Scheduled { handle_id, scheduled_tick, deadline_tick } => {
         let record = map.entry(handle_id).or_default();
         record.scheduled_tick = scheduled_tick;
         record.deadline_tick = deadline_tick;
       },
-      DeterministicEvent::Fired { handle_id, fired_tick, .. } => {
+      | DeterministicEvent::Fired { handle_id, fired_tick, .. } => {
         let record = map.entry(handle_id).or_default();
         record.fired_ticks.push(fired_tick);
         assert!(fired_tick >= record.scheduled_tick, "fire before schedule for handle {handle_id}");
@@ -839,7 +897,7 @@ fn assert_deterministic_invariants(events: &[DeterministicEvent]) {
           assert!(fired_tick <= cancelled_tick, "fire after cancellation for handle {handle_id}");
         }
       },
-      DeterministicEvent::Cancelled { handle_id, cancelled_tick } => {
+      | DeterministicEvent::Cancelled { handle_id, cancelled_tick } => {
         let record = map.entry(handle_id).or_default();
         if let Some(existing) = record.cancelled_tick {
           assert!(cancelled_tick >= existing, "cancelled tick regress for handle {handle_id}");
@@ -862,18 +920,24 @@ fn deterministic_log_records_schedule_fire_cancel() {
   scheduler.run_for_test(4);
 
   let events = scheduler.diagnostics().deterministic_log();
-  assert!(events.iter().any(|event| matches!(event, DeterministicEvent::Scheduled { handle_id, .. } if *handle_id == cancel_handle.raw())));
-  assert!(events.iter().any(|event| matches!(event, DeterministicEvent::Cancelled { handle_id, .. } if *handle_id == cancel_handle.raw())));
-  assert!(events.iter().any(|event| matches!(event, DeterministicEvent::Fired { handle_id, .. } if *handle_id == fire_handle.raw())));
+  assert!(events.iter().any(
+    |event| matches!(event, DeterministicEvent::Scheduled { handle_id, .. } if *handle_id == cancel_handle.raw())
+  ));
+  assert!(events.iter().any(
+    |event| matches!(event, DeterministicEvent::Cancelled { handle_id, .. } if *handle_id == cancel_handle.raw())
+  ));
+  assert!(
+    events
+      .iter()
+      .any(|event| matches!(event, DeterministicEvent::Fired { handle_id, .. } if *handle_id == fire_handle.raw()))
+  );
 }
 
 #[test]
 fn shutdown_executes_task_run_on_close_in_priority_order() {
   let mut scheduler = build_scheduler();
   let log = ArcShared::new(NoStdMutex::new(Vec::new()));
-  scheduler
-    .register_on_close(RecordingTask::succeed(log.clone(), "user"), TaskRunPriority::User)
-    .expect("user");
+  scheduler.register_on_close(RecordingTask::succeed(log.clone(), "user"), TaskRunPriority::User).expect("user");
   scheduler
     .register_on_close(RecordingTask::succeed(log.clone(), "runtime"), TaskRunPriority::Runtime)
     .expect("runtime");
@@ -904,16 +968,11 @@ fn task_run_capacity_limits_registrations() {
 fn shutdown_reports_failed_tasks() {
   let mut scheduler = build_scheduler();
   let log = ArcShared::new(NoStdMutex::new(Vec::new()));
-  scheduler
-    .register_on_close(RecordingTask::fail(log.clone(), "boom"), TaskRunPriority::Runtime)
-    .expect("fail");
+  scheduler.register_on_close(RecordingTask::fail(log.clone(), "boom"), TaskRunPriority::Runtime).expect("fail");
   let summary = scheduler.shutdown();
   assert_eq!(summary.executed_tasks, 0);
   assert_eq!(summary.failed_tasks, 1);
-  assert!(scheduler
-    .warnings()
-    .iter()
-    .any(|warning| matches!(warning, SchedulerWarning::TaskRunFailed { .. })));
+  assert!(scheduler.warnings().iter().any(|warning| matches!(warning, SchedulerWarning::TaskRunFailed { .. })));
 }
 
 struct RecordingSender {

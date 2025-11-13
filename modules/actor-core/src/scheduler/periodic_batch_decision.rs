@@ -7,9 +7,9 @@ pub(super) enum PeriodicBatchDecision {
   /// Job continues execution with the provided batch metadata.
   Execute {
     /// Batch metadata describing the run(s).
-    batch:    ExecutionBatch,
+    batch:   ExecutionBatch,
     /// Optional warning emitted alongside execution.
-    warning:  Option<SchedulerWarning>,
+    warning: Option<SchedulerWarning>,
   },
   /// Job is cancelled due to backlog or policy violations.
   Cancel {

@@ -8,12 +8,7 @@ use fraktor_utils_core_rs::{
 };
 
 use super::{
-  api,
-  execution_batch::ExecutionBatch,
-  runnable::SchedulerRunnable,
-  Scheduler,
-  SchedulerError,
-  SchedulerHandle,
+  Scheduler, SchedulerError, SchedulerHandle, api, execution_batch::ExecutionBatch, runnable::SchedulerRunnable,
 };
 use crate::{RuntimeToolbox, ToolboxMutex};
 
@@ -34,11 +29,7 @@ impl<TB: RuntimeToolbox + 'static> SchedulerBackedDelayProvider<TB> {
     f(&mut guard)
   }
 
-  fn schedule_delay(
-    &self,
-    duration: Duration,
-    trigger: &DelayTrigger,
-  ) -> Result<SchedulerHandle, SchedulerError> {
+  fn schedule_delay(&self, duration: Duration, trigger: &DelayTrigger) -> Result<SchedulerHandle, SchedulerError> {
     let runnable = TriggerRunnable { trigger: trigger.clone() };
     self.with_scheduler(|scheduler| api::schedule_once_fn(scheduler, duration, None, runnable))
   }

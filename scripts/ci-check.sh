@@ -25,6 +25,7 @@ usage() {
   examples               : ワークスペース配下の examples をビルドします
   embedded / embassy     : embedded 系 (utils / actor) のチェックとテストを実行します
   test                   : ワークスペース全体のテストを実行します
+  perf                   : Scheduler ストレス／ベンチマークテストを実行します
   actor-path-e2e         : fraktor-actor-core-rs の actor_path_e2e テストを単体実行します
   all                    : 上記すべてを順番に実行します (引数なし時と同じ)
 複数指定で部分実行が可能です (例: scripts/ci-check.sh lint dylint module-wiring-lint)
@@ -706,6 +707,11 @@ PY
   fi
 }
 
+run_perf() {
+  log_step "cargo test -p fraktor-actor-core-rs stress_scheduler_handles_"
+  run_cargo test -p fraktor-actor-core-rs stress_scheduler_handles_ || return 1
+}
+
 run_all() {
   run_lint || return 1
   run_dylint || return 1
@@ -714,6 +720,7 @@ run_all() {
   run_std || return 1
   run_doc_tests || return 1
 #  run_embedded || return 1
+  run_perf || return 1
   run_tests || return 1
   run_actor_path_e2e || return 1
   run_examples || return 1
@@ -806,6 +813,10 @@ main() {
         ;;
       test|tests|workspace)
         run_tests || return 1
+        shift
+        ;;
+      perf|bench|performance)
+        run_perf || return 1
         shift
         ;;
       actor-path-e2e)

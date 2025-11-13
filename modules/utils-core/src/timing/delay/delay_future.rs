@@ -56,8 +56,8 @@ impl DelayState {
   const fn new(duration: Duration) -> Self {
     Self {
       completed: AtomicBool::new(false),
-      waker: SpinMutex::new(None),
-      cancel: SpinMutex::new(None),
+      waker:     SpinMutex::new(None),
+      cancel:    SpinMutex::new(None),
       _duration: duration,
     }
   }

@@ -1,10 +1,14 @@
 use alloc::{vec, vec::Vec};
-use core::{pin::Pin, task::{Context, Poll, RawWaker, RawWakerVTable, Waker}, time::Duration};
+use core::{
+  pin::Pin,
+  task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
+  time::Duration,
+};
 
 use fraktor_utils_core_rs::{
+  DelayFuture, DelayProvider,
   collections::queue::capabilities::{QueueCapabilityRegistry, QueueCapabilitySet},
   sync::{ArcShared, NoStdMutex},
-  DelayFuture, DelayProvider,
 };
 
 use super::ActorSystem;
@@ -361,12 +365,7 @@ fn spawn_returns_child_ref_even_if_dispatcher_is_idle() {
 }
 
 fn new_noop_waker() -> Waker {
-  const VTABLE: RawWakerVTable = RawWakerVTable::new(
-    |data| RawWaker::new(data, &VTABLE),
-    |_| {},
-    |_| {},
-    |_| {},
-  );
+  const VTABLE: RawWakerVTable = RawWakerVTable::new(|data| RawWaker::new(data, &VTABLE), |_| {}, |_| {}, |_| {});
 
   unsafe fn raw_waker() -> RawWaker {
     RawWaker::new(core::ptr::null(), &VTABLE)
@@ -409,9 +408,7 @@ fn actor_system_terminate_runs_scheduler_tasks() {
     let scheduler = context.scheduler();
     let mut guard = scheduler.lock();
     let task = RecordingShutdownTask { log: log.clone() };
-    guard
-      .register_on_close(ArcShared::new(task), crate::scheduler::task_run::TaskRunPriority::User)
-      .expect("register");
+    guard.register_on_close(ArcShared::new(task), crate::scheduler::task_run::TaskRunPriority::User).expect("register");
   }
 
   system.terminate().expect("terminate");
@@ -431,12 +428,7 @@ impl crate::scheduler::task_run::TaskRunOnClose for RecordingShutdownTask {
 }
 
 fn noop_waker() -> Waker {
-  const VTABLE: RawWakerVTable = RawWakerVTable::new(
-    |data| RawWaker::new(data, &VTABLE),
-    |_| {},
-    |_| {},
-    |_| {},
-  );
+  const VTABLE: RawWakerVTable = RawWakerVTable::new(|data| RawWaker::new(data, &VTABLE), |_| {}, |_| {}, |_| {});
 
   unsafe fn raw_waker() -> RawWaker {
     RawWaker::new(core::ptr::null(), &VTABLE)
