@@ -47,6 +47,7 @@ Cargo.lock
 /.codex/auth.json
 /.codex/history.jsonl
 /.codex/internal_storage.json
+/.codex/version.json
 /.kamui/
 /.copilot/.copilot/logs/
 /.copilot/configstore/update-notifier-@github/
