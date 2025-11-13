@@ -128,7 +128,7 @@
   - shutdown/TaskRunOnCloseフローの統合テストでRemoting/DelayProvider cleanupがdeterministicに完了することを検証する。
   - _Requirements: R3.AC3, R3.AC6, R3.AC7_
 
-- [ ] 7. 診断・テスト性・パフォーマンスを仕上げる [優先度: MEDIUM]
+- [x] 7. 診断・テスト性・パフォーマンスを仕上げる [優先度: MEDIUM]
   - 依存関係: 1-6完了後に取りまとめる。
   - 完了条件: ManualClock/Diagnostics/Benchmark/エラーカバレッジが全要件を検証し、CIジョブが追加される。
   - _Requirements: R5.AC1-R5.AC5, R4.AC7_
@@ -161,7 +161,7 @@
   - actor-core/utils-core に `#[cfg(feature = "std")]` が存在しないこと、std依存コードが actor-std/utils-std に限定されることを `rg` と `cfg-std-forbid-lint` で確認する。
   - _Requirements: R3.AC1, R5.AC4_
 
-- [ ] 8. リファクタリングと技術的負債の解消 [優先度: NICE_TO_HAVE]
+- [x] 8. リファクタリングと技術的負債の解消 [優先度: NICE_TO_HAVE]
   - 依存関係: 1-7の実装中に洗い出した改善点をIssue/ノートへ記録し、主要タスク完了後にまとめて着手する。
   - _Requirements: R1-R5（全要件の品質維持）_
 
