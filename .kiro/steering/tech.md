@@ -59,6 +59,7 @@ scripts/ci-check.sh all                  # CI と同等フルスイート
 - **Pekko 互換 actor path**: `ActorPathScheme` + `ActorPathFormatter` によって `fraktor://` URI を canonical に生成し、guardian（`cellactor/system|user`）を暗黙付与します。権限情報は `PathAuthority` で host/port を保持し、Typed/Untyped いずれの API でも同じ表現を使用します。
 - **Authority 隔離**: `RemoteAuthorityManagerGeneric` が remoting の隔離判定を centralize し、`VecDeque` キューを掃き出してから `Connected` 化します。deadline が過ぎた quarantined authority は `poll_quarantine_expiration` で自動復旧させ、明示解除 API との二段構えで安全側に倒します。
 - **FQCN import 原則**: ランタイム内部は `crate::...` で明示的に参照し、prelude はユーザ公開面のみに限定。
+- **Classic ではなく Untyped 呼称**: 既存設計では「Classic」ではなく「Untyped」と呼ぶ。Untyped API (`Scheduler`, Classic ActorRef) と Typed API (`TypedScheduler`, `TypedActorRef`) を明確に分離し、新規開発でも Untyped/Typed という語彙を使用する。
 - **参照実装からの逆輸入**: protoactor-go / Apache Pekko を参照しつつ、Rust の所有権と `no_std` 制約に合わせた最小 API を優先する。
 - **ハンドル命名規約**: 所有権やライフサイクルを管理する型のみ `*Handle` サフィックスを許容し、`ArcShared` 等を薄く包む共有参照は `*Shared` を用いる。命名段階で責務の違いが分かるようにし、Scheduler/Dispatcher まわりの API でも同ルールを徹底する。
 
