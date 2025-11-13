@@ -91,6 +91,24 @@ pub fn schedule_at_fixed_rate<TB: RuntimeToolbox>(
   scheduler.schedule_at_fixed_rate_with_command(initial_delay, interval, command)
 }
 
+/// Schedules a fixed-rate runnable task.
+pub fn schedule_at_fixed_rate_fn<TB, F>(
+  scheduler: &mut Scheduler<TB>,
+  initial_delay: Duration,
+  interval: Duration,
+  dispatcher: Option<DispatcherSenderShared<TB>>,
+  runnable: F,
+) -> Result<SchedulerHandle, SchedulerError>
+where
+  TB: RuntimeToolbox,
+  F: SchedulerRunnable, {
+  let runnable: ArcShared<dyn SchedulerRunnable> = ArcShared::new(runnable);
+  scheduler.schedule_at_fixed_rate_with_command(initial_delay, interval, SchedulerCommand::RunRunnable {
+    runnable,
+    dispatcher,
+  })
+}
+
 /// Schedules a fixed-delay message delivery.
 ///
 /// # Examples
@@ -129,6 +147,24 @@ pub fn schedule_with_fixed_delay<TB: RuntimeToolbox>(
 ) -> Result<SchedulerHandle, SchedulerError> {
   let command = build_send_message_command(receiver, message, dispatcher, sender);
   scheduler.schedule_with_fixed_delay_with_command(initial_delay, delay, command)
+}
+
+/// Schedules a fixed-delay runnable task.
+pub fn schedule_with_fixed_delay_fn<TB, F>(
+  scheduler: &mut Scheduler<TB>,
+  initial_delay: Duration,
+  delay: Duration,
+  dispatcher: Option<DispatcherSenderShared<TB>>,
+  runnable: F,
+) -> Result<SchedulerHandle, SchedulerError>
+where
+  TB: RuntimeToolbox,
+  F: SchedulerRunnable, {
+  let runnable: ArcShared<dyn SchedulerRunnable> = ArcShared::new(runnable);
+  scheduler.schedule_with_fixed_delay_with_command(initial_delay, delay, SchedulerCommand::RunRunnable {
+    runnable,
+    dispatcher,
+  })
 }
 
 /// Schedules a runnable task for one-shot execution.

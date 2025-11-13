@@ -75,19 +75,36 @@
   - Backlog>catch_up_window時に`SchedulerWarning::DriverCatchUpExceeded`が発火しaccepting_stateが変化することをCIで検証する。
   - _Requirements: R1.AC3, R4.AC5_
 
-- [ ] 4. 周期ジョブ制御とバックログ保護を実装する [優先度: HIGH]
-  - 依存関係: SystemMailbox/Runnerが完成していること。
+- [x] 6. 並行安全性と負荷制御を強化する [優先度: HIGH]
+  - 依存関係: タスク1完了後に基盤が揃い、2.1（APIシグネチャ）確定時点で CancellableRegistry 実装に着手可。Backpressure統合テストは 3-5 完了後に実施する。
+  - 完了条件: Cancellable競合とBackpressure/容量制御が全エラーパスまでテストされ、メトリクスが収集できる。
+  - _Requirements: R1.AC4, R4.AC1-R4.AC7_
+
+- [x] 6.1 CancellableRegistryとhandle状態機械を構築する
+  - CancellableStateをPending→Scheduled→Executing→Completed/Cancelledで遷移させるlock-free状態機械を構築する。
+  - cancel()が初回のみtrueを返し、それ以降falseになることと`is_cancelled`が永続的にtrueを返すことを保証する単体テストを追加する。
+  - cancelと実行が競合した場合にハンドラが高々1回しか呼ばれないようcompare_exchangeガードを実装し、1 tick以内のリソース解放を検証する。
+  - _Requirements: R1.AC4, R4.AC1, R4.AC2, R4.AC3, R4.AC4_
+
+- [x] 6.2 Backpressure・容量制御・メトリクスを実装する
+  - SchedulerCapacityProfileに基づくsystem_quota/overflow_capacityを監視し、超過時に`SchedulerError::Backpressured`を返す状態遷移を実装する。
+  - 低優先度タイマーをdropする際に`SchedulerWarning::DroppedLowPriority`や`CancelledByBackpressure`をEventStreamへ発行する。
+  - active timers/periodic jobs/dropped totals/tick backlogなどのメトリクスをSchedulerMetrics経由で公開し、CIで数値の上限/下限を検証する。
+  - _Requirements: R2.AC6, R4.AC5, R4.AC6, R4.AC7_
+
+- [x] 4. 周期ジョブ制御とバックログ保護を実装する [優先度: HIGH]
+  - 依存関係: SystemMailbox/Runner(3.*)および並行安全性まわり(6.*)が完了していること。
   - 完了条件: FixedRate/FixedDelayジョブがmissed_runsを折り畳み、backlog制御と警告通知が行える。
   - _Requirements: R2.AC1-R2.AC6_
 
-- [ ] 4.1 FixedRate/FixedDelayコンテキストを構築する
+- [x] 4.1 FixedRate/FixedDelayコンテキストを構築する
   - FixedRateContext/FixedDelayContextを実装し、TimerWheelから受け取ったmissed_runsをExecutionBatchへ折り畳む。
   - ハンドラ実行時間が周期を超えた場合に1回の実行へまとめてrunsとmissedRunsを渡し、FixedDelayは完了時刻から次回開始までの遅延を再計測する。
   - GCや長時間停止でmissed_runsが`burst_threshold = resolution * 10`（design.mdの指針）を超えたとき`SchedulerWarning::BurstFire`をEventStreamへ出す統計コードとテストを追加する。
   - FixedRate/FixedDelayそれぞれで最低5シナリオの統合テストを追加し、missed_runs折り畳みとburst警告が期待どおり動作することを検証する。
   - _Requirements: R2.AC1, R2.AC2, R2.AC4, R2.AC5_
 
-- [ ] 4.2 バックログ上限と自動キャンセルポリシーを導入する
+- [x] 4.2 バックログ上限と自動キャンセルポリシーを導入する
   - backlog_limitを越えた周期ジョブを自動キャンセルし、`SchedulerWarning::BacklogExceeded`を記録する。
   - 許容保留数kをSchedulerPolicyRegistryで設定し、Pendingジョブが上限を超えたら即キャンセルへ遷移させる。
   - backlog-limit/auto-cancelシナリオをManualClockで再現し、`CancelledByBackpressure`通知をEventStream/Diagnosticsへ流す統合テストを追加する。
@@ -110,23 +127,6 @@
   - shutdown済みSchedulerへのschedule_*呼び出しに`SchedulerError::Closed`を即返し、新規登録を拒否する。
   - shutdown/TaskRunOnCloseフローの統合テストでRemoting/DelayProvider cleanupがdeterministicに完了することを検証する。
   - _Requirements: R3.AC3, R3.AC6, R3.AC7_
-
-- [x] 6. 並行安全性と負荷制御を強化する [優先度: HIGH]
-  - 依存関係: タスク1完了後に基盤が揃い、2.1（APIシグネチャ）確定時点で CancellableRegistry 実装に着手可。Backpressure統合テストは 3-5 完了後に実施する。
-  - 完了条件: Cancellable競合とBackpressure/容量制御が全エラーパスまでテストされ、メトリクスが収集できる。
-  - _Requirements: R1.AC4, R4.AC1-R4.AC7_
-
-- [x] 6.1 CancellableRegistryとhandle状態機械を構築する
-  - CancellableStateをPending→Scheduled→Executing→Completed/Cancelledで遷移させるlock-free状態機械を構築する。
-  - cancel()が初回のみtrueを返し、それ以降falseになることと`is_cancelled`が永続的にtrueを返すことを保証する単体テストを追加する。
-  - cancelと実行が競合した場合にハンドラが高々1回しか呼ばれないようcompare_exchangeガードを実装し、1 tick以内のリソース解放を検証する。
-  - _Requirements: R1.AC4, R4.AC1, R4.AC2, R4.AC3, R4.AC4_
-
-- [x] 6.2 Backpressure・容量制御・メトリクスを実装する
-  - SchedulerCapacityProfileに基づくsystem_quota/overflow_capacityを監視し、超過時に`SchedulerError::Backpressured`を返す状態遷移を実装する。
-  - 低優先度タイマーをdropする際に`SchedulerWarning::DroppedLowPriority`や`CancelledByBackpressure`をEventStreamへ発行する。
-  - active timers/periodic jobs/dropped totals/tick backlogなどのメトリクスをSchedulerMetrics経由で公開し、CIで数値の上限/下限を検証する。
-  - _Requirements: R2.AC6, R4.AC5, R4.AC6, R4.AC7_
 
 - [ ] 7. 診断・テスト性・パフォーマンスを仕上げる [優先度: MEDIUM]
   - 依存関係: 1-6完了後に取りまとめる。

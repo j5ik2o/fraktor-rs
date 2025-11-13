@@ -3,7 +3,7 @@ use alloc::{
   vec,
   vec::Vec,
 };
-use core::{i32, time::Duration};
+use core::{i32, num::NonZeroU32, time::Duration};
 
 use fraktor_utils_core_rs::{
   sync::{ArcShared, NoStdMutex},
@@ -11,7 +11,11 @@ use fraktor_utils_core_rs::{
 };
 
 use super::{
-  Scheduler, SchedulerConfig, SchedulerError, api, command::SchedulerCommand, execution_batch::ExecutionBatch,
+  Scheduler, SchedulerConfig, SchedulerError, SchedulerWarning, api,
+  command::SchedulerCommand,
+  execution_batch::{BatchMode, ExecutionBatch},
+  fixed_delay_policy::FixedDelayPolicy,
+  fixed_rate_policy::FixedRatePolicy,
   runner::SchedulerRunner,
 };
 use crate::{
@@ -35,6 +39,22 @@ fn build_scheduler_with_resolution(resolution: Duration) -> Scheduler<NoStdToolb
   let profile = SchedulerCapacityProfile::standard();
   let config = SchedulerConfig::new(resolution, profile);
   Scheduler::new(toolbox, config)
+}
+
+fn build_scheduler_with_policies(
+  rate_policy: FixedRatePolicy,
+  delay_policy: FixedDelayPolicy,
+) -> Scheduler<NoStdToolbox> {
+  let toolbox = NoStdToolbox::default();
+  let profile = SchedulerCapacityProfile::standard();
+  let config = SchedulerConfig::new(Duration::from_millis(1), profile)
+    .with_fixed_rate_policy(rate_policy)
+    .with_fixed_delay_policy(delay_policy);
+  Scheduler::new(toolbox, config)
+}
+
+fn nz(value: u32) -> NonZeroU32 {
+  NonZeroU32::new(value).expect("non-zero")
 }
 
 #[test]
@@ -335,6 +355,47 @@ fn scheduler_metrics_track_active_and_drops() {
 }
 
 #[test]
+fn fixed_rate_runnable_reports_missed_runs() {
+  let toolbox = NoStdToolbox::new(Duration::from_millis(1));
+  let profile = SchedulerCapacityProfile::standard();
+  let config = SchedulerConfig::new(Duration::from_millis(1), profile).with_backlog_limit(10);
+  let mut scheduler = Scheduler::new(toolbox, config);
+  let batches = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let capture = batches.clone();
+  api::schedule_at_fixed_rate_fn(
+    &mut scheduler,
+    Duration::from_millis(1),
+    Duration::from_millis(1),
+    None,
+    move |batch: &ExecutionBatch| {
+      capture.lock().push((batch.mode(), batch.runs().get(), batch.missed_runs()));
+    },
+  )
+  .expect("handle");
+
+  scheduler.run_for_test(1);
+  scheduler.run_for_test(5);
+
+  let guard = batches.lock();
+  assert_eq!(guard.len(), 2, "batches: {:?}", *guard);
+  assert_eq!(guard[0], (BatchMode::FixedRate, 1, 0));
+  assert_eq!(guard[1].0, BatchMode::FixedRate);
+  assert!(guard[1].1 > 1, "batches: {:?}", *guard);
+  assert!(guard[1].2 > 0, "batches: {:?}", *guard);
+}
+
+#[test]
+fn backlog_limit_auto_cancels_periodic_job() {
+  let toolbox = NoStdToolbox::default();
+  let config = SchedulerConfig::default().with_backlog_limit(1);
+  let mut scheduler = Scheduler::new(toolbox, config);
+  scheduler.schedule_at_fixed_rate(Duration::from_millis(1), Duration::from_millis(1)).expect("handle");
+  scheduler.run_for_test(10);
+  assert_eq!(scheduler.metrics().active_timers(), 0);
+  assert_eq!(scheduler.warnings().len(), 1);
+}
+
+#[test]
 fn fixed_rate_handle_can_be_cancelled_after_multiple_runs() {
   let mut scheduler = build_scheduler();
   let handle = scheduler.schedule_at_fixed_rate(Duration::from_millis(1), Duration::from_millis(1)).expect("handle");
@@ -343,6 +404,137 @@ fn fixed_rate_handle_can_be_cancelled_after_multiple_runs() {
   assert!(!handle.is_completed());
   assert!(scheduler.cancel(&handle));
   assert!(handle.is_cancelled());
+}
+
+#[test]
+fn fixed_rate_policy_enforces_independent_backlog_limit() {
+  let rate_policy = FixedRatePolicy::new(nz(1), nz(8));
+  let delay_policy = FixedDelayPolicy::new(nz(8), nz(16));
+  let mut scheduler = build_scheduler_with_policies(rate_policy, delay_policy);
+  let rate_handle =
+    scheduler.schedule_at_fixed_rate(Duration::from_millis(1), Duration::from_millis(1)).expect("rate");
+  let delay_handle =
+    scheduler.schedule_with_fixed_delay(Duration::from_millis(1), Duration::from_millis(1)).expect("delay");
+  scheduler.run_for_test(5);
+  assert!(rate_handle.is_cancelled(), "fixed-rate handle should cancel once backlog limit is exceeded");
+  assert!(
+    scheduler
+      .warnings()
+      .iter()
+      .any(|warning| matches!(warning, SchedulerWarning::BacklogExceeded { handle_id, .. } if *handle_id == rate_handle.raw())),
+    "expected backlog warning for fixed-rate handle",
+  );
+  assert!(
+    !delay_handle.is_cancelled(),
+    "fixed-delay handle should remain active because its backlog limit is relaxed",
+  );
+}
+
+#[test]
+fn fixed_delay_policy_enforces_independent_backlog_limit() {
+  let rate_policy = FixedRatePolicy::new(nz(8), nz(16));
+  let delay_policy = FixedDelayPolicy::new(nz(1), nz(8));
+  let profile = SchedulerCapacityProfile::standard();
+  let config = SchedulerConfig::new(Duration::from_millis(1), profile)
+    .with_fixed_delay_policy(delay_policy)
+    .with_fixed_rate_policy(rate_policy);
+  let mut scheduler = Scheduler::new(NoStdToolbox::default(), config);
+  let rate_handle =
+    scheduler.schedule_at_fixed_rate(Duration::from_millis(1), Duration::from_millis(1)).expect("rate");
+  let delay_handle =
+    scheduler.schedule_with_fixed_delay(Duration::from_millis(1), Duration::from_millis(1)).expect("delay");
+  scheduler.run_for_test(5);
+  assert!(
+    scheduler
+      .warnings()
+      .iter()
+      .any(|warning| matches!(warning, SchedulerWarning::BacklogExceeded { handle_id, .. } if *handle_id == delay_handle.raw())),
+    "expected backlog warning for fixed-delay handle",
+  );
+  assert!(delay_handle.is_cancelled(), "fixed-delay handle should cancel once backlog limit is exceeded");
+  assert!(
+    !scheduler
+      .warnings()
+      .iter()
+      .any(|warning| matches!(warning, SchedulerWarning::BacklogExceeded { handle_id, .. } if *handle_id == rate_handle.raw())),
+    "fixed-rate handle should not be cancelled when its policy allows larger backlog",
+  );
+}
+
+#[test]
+fn fixed_rate_policy_controls_burst_threshold() {
+  let rate_policy = FixedRatePolicy::new(nz(8), nz(1));
+  let delay_policy = FixedDelayPolicy::new(nz(8), nz(16));
+  let mut scheduler = build_scheduler_with_policies(rate_policy, delay_policy);
+  let rate_handle =
+    scheduler.schedule_at_fixed_rate(Duration::from_millis(1), Duration::from_millis(1)).expect("rate");
+  let delay_handle =
+    scheduler.schedule_with_fixed_delay(Duration::from_millis(1), Duration::from_millis(1)).expect("delay");
+  scheduler.run_for_test(4);
+  assert!(
+    scheduler
+      .warnings()
+      .iter()
+      .any(|warning| matches!(warning, SchedulerWarning::BurstFire { handle_id, .. } if *handle_id == rate_handle.raw())),
+    "fixed-rate job should emit burst warning when threshold is exceeded",
+  );
+  assert!(
+    !scheduler
+      .warnings()
+      .iter()
+      .any(|warning| matches!(warning, SchedulerWarning::BurstFire { handle_id, .. } if *handle_id == delay_handle.raw())),
+    "fixed-delay job should not emit burst warning when its threshold is not exceeded",
+  );
+}
+
+#[test]
+fn fixed_delay_policy_controls_burst_threshold() {
+  let rate_policy = FixedRatePolicy::new(nz(8), nz(16));
+  let delay_policy = FixedDelayPolicy::new(nz(8), nz(1));
+  let profile = SchedulerCapacityProfile::standard();
+  let config = SchedulerConfig::new(Duration::from_millis(1), profile)
+    .with_fixed_delay_policy(delay_policy)
+    .with_fixed_rate_policy(rate_policy);
+  let mut scheduler = Scheduler::new(NoStdToolbox::default(), config);
+  let rate_handle =
+    scheduler.schedule_at_fixed_rate(Duration::from_millis(1), Duration::from_millis(1)).expect("rate");
+  let delay_handle =
+    scheduler.schedule_with_fixed_delay(Duration::from_millis(1), Duration::from_millis(1)).expect("delay");
+  scheduler.run_for_test(4);
+  assert!(
+    scheduler
+      .warnings()
+      .iter()
+      .any(|warning| matches!(warning, SchedulerWarning::BurstFire { handle_id, .. } if *handle_id == delay_handle.raw())),
+    "fixed-delay job should emit burst warning when its threshold is exceeded",
+  );
+  assert!(
+    !scheduler
+      .warnings()
+      .iter()
+      .any(|warning| matches!(warning, SchedulerWarning::BurstFire { handle_id, .. } if *handle_id == rate_handle.raw())),
+    "fixed-rate job should remain silent when its threshold is higher",
+  );
+}
+
+#[test]
+fn fixed_rate_backlog_marks_handle_cancelled() {
+  let profile = SchedulerCapacityProfile::standard();
+  let config = SchedulerConfig::new(Duration::from_millis(1), profile).with_backlog_limit(1);
+  let mut scheduler = Scheduler::new(NoStdToolbox::default(), config);
+  let handle = scheduler.schedule_at_fixed_rate(Duration::from_millis(1), Duration::from_millis(1)).expect("handle");
+  scheduler.run_for_test(5);
+  assert!(handle.is_cancelled(), "fixed-rate handle should report cancelled after backlog drop");
+}
+
+#[test]
+fn fixed_delay_backlog_marks_handle_cancelled() {
+  let profile = SchedulerCapacityProfile::standard();
+  let config = SchedulerConfig::new(Duration::from_millis(1), profile).with_backlog_limit(1);
+  let mut scheduler = Scheduler::new(NoStdToolbox::default(), config);
+  let handle = scheduler.schedule_with_fixed_delay(Duration::from_millis(1), Duration::from_millis(1)).expect("handle");
+  scheduler.run_for_test(5);
+  assert!(handle.is_cancelled(), "fixed-delay handle should report cancelled after backlog drop");
 }
 
 struct RecordingSender {

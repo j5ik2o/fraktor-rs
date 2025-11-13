@@ -78,6 +78,11 @@ impl CancellableEntry {
       .is_ok()
   }
 
+  /// Forces the entry into the cancelled state regardless of the current state.
+  pub fn force_cancel(&self) {
+    self.state.store(CancellableState::Cancelled as u8, Ordering::Release);
+  }
+
   /// Marks execution as completed.
   pub fn mark_completed(&self) {
     self.state.store(CancellableState::Completed as u8, Ordering::Release);

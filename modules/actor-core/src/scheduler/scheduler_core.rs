@@ -1,6 +1,7 @@
 //! Core scheduler implementation placeholder.
 
-use core::{i32, time::Duration};
+use alloc::vec::Vec;
+use core::{i32, num::NonZeroU64, time::Duration};
 
 use fraktor_utils_core_rs::time::{
   SchedulerTickHandle, TimerEntry, TimerHandleId, TimerInstant, TimerWheel, TimerWheelConfig,
@@ -8,8 +9,18 @@ use fraktor_utils_core_rs::time::{
 use hashbrown::HashMap;
 
 use super::{
-  cancellable_registry::CancellableRegistry, command::SchedulerCommand, config::SchedulerConfig, error::SchedulerError,
-  execution_batch::ExecutionBatch, handle::SchedulerHandle, metrics::SchedulerMetrics, mode::SchedulerMode,
+  cancellable_registry::CancellableRegistry,
+  command::SchedulerCommand,
+  config::SchedulerConfig,
+  error::SchedulerError,
+  execution_batch::ExecutionBatch,
+  fixed_delay_context::FixedDelayContext,
+  fixed_rate_context::FixedRateContext,
+  handle::SchedulerHandle,
+  metrics::SchedulerMetrics,
+  mode::SchedulerMode,
+  periodic_batch_decision::PeriodicBatchDecision,
+  warning::SchedulerWarning,
 };
 use crate::RuntimeToolbox;
 
@@ -22,6 +33,7 @@ pub struct Scheduler<TB: RuntimeToolbox> {
   wheel:        TimerWheel<ScheduledPayload>,
   registry:     CancellableRegistry,
   metrics:      SchedulerMetrics,
+  warnings:     Vec<SchedulerWarning>,
   next_handle:  u64,
   jobs:         HashMap<u64, ScheduledJob<TB>>,
   current_tick: u64,
@@ -30,16 +42,42 @@ pub struct Scheduler<TB: RuntimeToolbox> {
 
 #[allow(dead_code)]
 struct ScheduledJob<TB: RuntimeToolbox> {
-  handle:       SchedulerHandle,
-  wheel_id:     TimerHandleId,
-  mode:         SchedulerMode,
-  period_ticks: u64,
-  command:      SchedulerCommand<TB>,
+  handle:   SchedulerHandle,
+  wheel_id: TimerHandleId,
+  mode:     SchedulerMode,
+  periodic: Option<PeriodicContext>,
+  command:  SchedulerCommand<TB>,
 }
 
 #[derive(Clone, Copy, Debug)]
 struct ScheduledPayload {
   handle_id: u64,
+}
+
+enum PeriodicContext {
+  FixedRate(FixedRateContext),
+  FixedDelay(FixedDelayContext),
+}
+
+impl PeriodicContext {
+  fn build_batch(&mut self, now: u64, handle_id: u64) -> PeriodicBatchDecision {
+    match self {
+      Self::FixedRate(context) => context.build_batch(now, handle_id),
+      Self::FixedDelay(context) => context.build_batch(now, handle_id),
+    }
+  }
+
+  const fn next_deadline_ticks(&self) -> u64 {
+    match self {
+      Self::FixedRate(context) => context.next_deadline_ticks(),
+      Self::FixedDelay(context) => context.next_deadline_ticks(),
+    }
+  }
+}
+
+enum BatchPreparation {
+  Ready(ExecutionBatch),
+  Cancelled,
 }
 
 impl<TB: RuntimeToolbox> Scheduler<TB> {
@@ -54,6 +92,7 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
       wheel,
       registry: CancellableRegistry::default(),
       metrics: SchedulerMetrics::default(),
+      warnings: Vec::new(),
       next_handle: 1,
       jobs: HashMap::new(),
       current_tick: 0,
@@ -71,6 +110,12 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
   #[must_use]
   pub fn metrics(&self) -> SchedulerMetrics {
     self.metrics
+  }
+
+  /// Returns recorded scheduler warnings.
+  #[must_use]
+  pub fn warnings(&self) -> &[SchedulerWarning] {
+    &self.warnings
   }
 
   /// Registers a one-shot job.
@@ -169,31 +214,41 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
         continue;
       };
 
-      if !cancellable.try_begin_execute() {
-        self.metrics.increment_dropped();
-        if cancellable.is_cancelled() {
+      match self.prepare_batch(&mut job, handle_id) {
+        | BatchPreparation::Cancelled => {
+          cancellable.force_cancel();
           self.registry.remove(handle_id);
           self.metrics.decrement_active();
-        }
-        continue;
-      }
+          continue;
+        },
+        | BatchPreparation::Ready(batch) => {
+          if !cancellable.try_begin_execute() {
+            self.metrics.increment_dropped();
+            if cancellable.is_cancelled() {
+              self.registry.remove(handle_id);
+              self.metrics.decrement_active();
+            }
+            continue;
+          }
 
-      self.execute_command(&job.command);
-      executed += 1;
+          self.execute_command(&job.command, &batch);
+          executed += 1;
 
-      if job.period_ticks > 0 {
-        if self.reschedule_job(&mut job).is_ok() {
-          cancellable.reset_to_scheduled();
-          self.jobs.insert(handle_id, job);
-        } else {
-          cancellable.mark_completed();
-          self.registry.remove(handle_id);
-          self.metrics.decrement_active();
-        }
-      } else {
-        cancellable.mark_completed();
-        self.registry.remove(handle_id);
-        self.metrics.decrement_active();
+          if job.periodic.is_some() {
+            if self.reschedule_job(&mut job).is_ok() {
+              cancellable.reset_to_scheduled();
+              self.jobs.insert(handle_id, job);
+            } else {
+              cancellable.mark_completed();
+              self.registry.remove(handle_id);
+              self.metrics.decrement_active();
+            }
+          } else {
+            cancellable.mark_completed();
+            self.registry.remove(handle_id);
+            self.metrics.decrement_active();
+          }
+        },
       }
     }
     executed
@@ -237,10 +292,6 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
       return Err(SchedulerError::Backpressured);
     }
     let delay_ticks = self.duration_to_ticks(delay)?;
-    let period_ticks = match period {
-      | Some(duration) => self.duration_to_ticks(duration)?,
-      | None => 0,
-    };
     let handle = self.next_handle();
     let deadline = self.deadline_from_ticks(delay_ticks);
     let wheel_id = self.enqueue_timer(handle.raw(), deadline)?;
@@ -248,8 +299,63 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
     entry.mark_scheduled();
     self.registry.register(handle.raw(), entry);
     self.metrics.increment_active();
-    self.jobs.insert(handle.raw(), ScheduledJob { handle: handle.clone(), wheel_id, mode, period_ticks, command });
+    let periodic = self.build_periodic_context(mode, period, deadline.ticks())?;
+    let job = ScheduledJob { handle: handle.clone(), wheel_id, mode, periodic, command };
+    self.jobs.insert(handle.raw(), job);
     Ok(handle)
+  }
+
+  fn build_periodic_context(
+    &self,
+    mode: SchedulerMode,
+    period: Option<Duration>,
+    start_tick: u64,
+  ) -> Result<Option<PeriodicContext>, SchedulerError> {
+    match mode {
+      | SchedulerMode::OneShot => Ok(None),
+      | SchedulerMode::FixedRate => {
+        let period_duration = period.ok_or(SchedulerError::InvalidDelay)?;
+        let ticks = self.duration_to_ticks(period_duration)?;
+        let period_ticks = NonZeroU64::new(ticks).ok_or(SchedulerError::InvalidDelay)?;
+        let policy = self.config.fixed_rate_policy();
+        Ok(Some(PeriodicContext::FixedRate(FixedRateContext::new(
+          start_tick,
+          period_ticks,
+          policy.backlog_limit(),
+          policy.burst_threshold(),
+        ))))
+      },
+      | SchedulerMode::FixedDelay => {
+        let period_duration = period.ok_or(SchedulerError::InvalidDelay)?;
+        let ticks = self.duration_to_ticks(period_duration)?;
+        let period_ticks = NonZeroU64::new(ticks).ok_or(SchedulerError::InvalidDelay)?;
+        let policy = self.config.fixed_delay_policy();
+        Ok(Some(PeriodicContext::FixedDelay(FixedDelayContext::new(
+          start_tick,
+          period_ticks,
+          policy.backlog_limit(),
+          policy.burst_threshold(),
+        ))))
+      },
+    }
+  }
+
+  fn prepare_batch(&mut self, job: &mut ScheduledJob<TB>, handle_id: u64) -> BatchPreparation {
+    match job.periodic.as_mut() {
+      | Some(context) => match context.build_batch(self.current_tick, handle_id) {
+        | PeriodicBatchDecision::Execute { batch, warning } => {
+          if let Some(warning) = warning {
+            self.warnings.push(warning);
+          }
+          BatchPreparation::Ready(batch)
+        },
+        | PeriodicBatchDecision::Cancel { warning } => {
+          self.warnings.push(warning);
+          BatchPreparation::Cancelled
+        },
+      },
+      | None => BatchPreparation::Ready(ExecutionBatch::oneshot()),
+    }
   }
 
   fn duration_to_ticks(&self, duration: Duration) -> Result<u64, SchedulerError> {
@@ -271,6 +377,10 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
     TimerInstant::from_ticks(ticks, self.config.resolution())
   }
 
+  fn deadline_from_absolute(&self, ticks: u64) -> TimerInstant {
+    TimerInstant::from_ticks(ticks, self.config.resolution())
+  }
+
   fn next_handle(&mut self) -> SchedulerHandle {
     let handle = SchedulerHandle::new(self.next_handle);
     self.next_handle = self.next_handle.wrapping_add(1).max(1);
@@ -284,20 +394,24 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
   }
 
   fn reschedule_job(&mut self, job: &mut ScheduledJob<TB>) -> Result<(), SchedulerError> {
-    let deadline = self.deadline_from_ticks(job.period_ticks);
+    let next_tick = job
+      .periodic
+      .as_ref()
+      .map(PeriodicContext::next_deadline_ticks)
+      .ok_or(SchedulerError::CapacityExceeded)?;
+    let deadline = self.deadline_from_absolute(next_tick);
     job.wheel_id = self.enqueue_timer(job.handle.raw(), deadline)?;
     Ok(())
   }
 
-  fn execute_command(&self, command: &SchedulerCommand<TB>) {
-    let batch = ExecutionBatch::once();
+  fn execute_command(&self, command: &SchedulerCommand<TB>, batch: &ExecutionBatch) {
     match command {
       | SchedulerCommand::Noop => {},
       | SchedulerCommand::SendMessage { receiver, message, .. } => {
         let _ = receiver.tell(message.clone());
       },
       | SchedulerCommand::RunRunnable { runnable, .. } => {
-        runnable.run(&batch);
+        runnable.run(batch);
       },
     }
   }
