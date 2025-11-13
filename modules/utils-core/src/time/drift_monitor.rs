@@ -14,7 +14,7 @@ pub struct DriftMonitor {
 impl DriftMonitor {
   /// Creates a monitor anchored at the provided deadline.
   #[must_use]
-  pub fn new(config: TimerWheelConfig, anchor: TimerInstant) -> Self {
+  pub const fn new(config: TimerWheelConfig, anchor: TimerInstant) -> Self {
     Self { config, last_deadline: anchor, exceeded: None }
   }
 
@@ -40,7 +40,7 @@ impl DriftMonitor {
 
   /// Returns the last recorded drift amount when exceeded.
   #[must_use]
-  pub fn last_exceeded(&self) -> Option<Duration> {
+  pub const fn last_exceeded(&self) -> Option<Duration> {
     self.exceeded
   }
 }

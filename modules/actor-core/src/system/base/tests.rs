@@ -408,7 +408,7 @@ fn actor_system_terminate_runs_scheduler_tasks() {
     let scheduler = context.scheduler();
     let mut guard = scheduler.lock();
     let task = RecordingShutdownTask { log: log.clone() };
-    guard.register_on_close(ArcShared::new(task), crate::scheduler::task_run::TaskRunPriority::User).expect("register");
+    guard.register_on_close(ArcShared::new(task), crate::scheduler::TaskRunPriority::User).expect("register");
   }
 
   system.terminate().expect("terminate");
@@ -420,8 +420,8 @@ struct RecordingShutdownTask {
   log: ArcShared<NoStdMutex<Vec<&'static str>>>,
 }
 
-impl crate::scheduler::task_run::TaskRunOnClose for RecordingShutdownTask {
-  fn run(&self) -> Result<(), crate::scheduler::task_run::TaskRunError> {
+impl crate::scheduler::TaskRunOnClose for RecordingShutdownTask {
+  fn run(&self) -> Result<(), crate::scheduler::TaskRunError> {
     self.log.lock().push("shutdown");
     Ok(())
   }

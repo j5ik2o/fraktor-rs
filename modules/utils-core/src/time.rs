@@ -1,22 +1,22 @@
 //! Time domain primitives shared across runtimes.
 
-pub mod clock_kind;
-pub mod drift_monitor;
-pub mod drift_status;
-pub mod manual_clock;
-pub mod monotonic_clock;
-pub mod scheduler_capacity_profile;
-pub mod tick_event;
-pub mod tick_handle;
-pub mod tick_lease;
+mod clock_kind;
+mod drift_monitor;
+mod drift_status;
+mod manual_clock;
+mod monotonic_clock;
+mod scheduler_capacity_profile;
+mod tick_event;
+mod tick_handle;
+mod tick_lease;
 mod tick_state;
-pub mod timer_entry;
-pub mod timer_entry_mode;
-pub mod timer_handle_id;
-pub mod timer_instant;
-pub mod timer_wheel;
-pub mod timer_wheel_config;
-pub mod timer_wheel_error;
+mod timer_entry;
+mod timer_entry_mode;
+mod timer_handle_id;
+mod timer_instant;
+mod timer_wheel;
+mod timer_wheel_config;
+mod timer_wheel_error;
 
 pub use clock_kind::ClockKind;
 pub use drift_monitor::DriftMonitor;

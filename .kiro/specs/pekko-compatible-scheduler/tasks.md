@@ -165,19 +165,19 @@
   - 依存関係: 1-7の実装中に洗い出した改善点をIssue/ノートへ記録し、主要タスク完了後にまとめて着手する。
   - _Requirements: R1-R5（全要件の品質維持）_
 
-- [ ] 8.1 静的解析とlintの完全クリア
+- [x] 8.1 静的解析とlintの完全クリア
   - `scripts/ci-check.sh lint`, `scripts/ci-check.sh dylint <all>`、`cargo clippy -- -D warnings` をランタイム関連クレート全体で警告ゼロにする。
   - _Requirements: 全体品質_
 
-- [ ] 8.2 コード品質メトリクスの検証
+- [x] 8.2 コード品質メトリクスの検証
   - 重複コード検出ツールで重複率 <5%、cyclomatic complexity >10 の関数がないことを確認し、必要に応じて分割・コメント整備を行う。
   - _Requirements: 全体品質_
 
-- [ ] 8.3 モジュール境界とimport規約の整理
+- [x] 8.3 モジュール境界とimport規約の整理
   - `modules/utils-core/src/time/` と `modules/actor-core/src/scheduler/` のファイル構成が design.md の 2018 モジュール規約（mod.rs禁止、1ファイル1構造体）に従っていることを `module-wiring-lint` で確認する。
   - FQCN import が徹底されていることを `scripts/ci-check.sh dylint module-wiring-lint` で検証する。
   - _Requirements: 全体品質_
 
-- [ ] 8.4 残存TODO/unwrap/expectの解消
+- [x] 8.4 残存TODO/unwrap/expectの解消
   - `rg "TODO|unwrap\\(|expect\\(" modules/actor-core modules/utils-core` が0件となるよう処理し、必要な箇所は Result/Option で明示的に扱う。
   - _Requirements: 全体品質_

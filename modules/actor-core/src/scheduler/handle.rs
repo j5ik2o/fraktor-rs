@@ -2,7 +2,7 @@
 
 use fraktor_utils_core_rs::sync::ArcShared;
 
-use super::cancellable::CancellableEntry;
+use super::cancellable_entry::CancellableEntry;
 
 /// Identifier for scheduled jobs.
 #[derive(Clone, Debug, PartialEq, Eq)]

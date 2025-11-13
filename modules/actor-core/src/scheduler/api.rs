@@ -16,6 +16,12 @@ use crate::{
 
 /// Schedules a one-shot message delivery matching Pekko's `scheduleOnce` semantics.
 ///
+/// # Errors
+///
+/// Returns [`SchedulerError::InvalidDelay`] if the delay is zero or negative.
+/// Returns [`SchedulerError::Backpressured`] if the scheduler is at capacity.
+/// Returns [`SchedulerError::Closed`] if the scheduler has been shut down.
+///
 /// # Examples
 /// ```rust,no_run
 /// # use core::time::Duration;
@@ -52,6 +58,12 @@ pub fn schedule_once<TB: RuntimeToolbox>(
 }
 
 /// Schedules a fixed-rate message delivery.
+///
+/// # Errors
+///
+/// Returns [`SchedulerError::InvalidDelay`] if the delay or interval is zero or negative.
+/// Returns [`SchedulerError::Backpressured`] if the scheduler is at capacity.
+/// Returns [`SchedulerError::Closed`] if the scheduler has been shut down.
 ///
 /// # Examples
 /// ```rust,no_run
@@ -92,6 +104,12 @@ pub fn schedule_at_fixed_rate<TB: RuntimeToolbox>(
 }
 
 /// Schedules a fixed-rate runnable task.
+///
+/// # Errors
+///
+/// Returns [`SchedulerError::InvalidDelay`] if the delay or interval is zero or negative.
+/// Returns [`SchedulerError::Backpressured`] if the scheduler is at capacity.
+/// Returns [`SchedulerError::Closed`] if the scheduler has been shut down.
 pub fn schedule_at_fixed_rate_fn<TB, F>(
   scheduler: &mut Scheduler<TB>,
   initial_delay: Duration,
@@ -110,6 +128,12 @@ where
 }
 
 /// Schedules a fixed-delay message delivery.
+///
+/// # Errors
+///
+/// Returns [`SchedulerError::InvalidDelay`] if the delay is zero or negative.
+/// Returns [`SchedulerError::Backpressured`] if the scheduler is at capacity.
+/// Returns [`SchedulerError::Closed`] if the scheduler has been shut down.
 ///
 /// # Examples
 /// ```rust,no_run
@@ -150,6 +174,12 @@ pub fn schedule_with_fixed_delay<TB: RuntimeToolbox>(
 }
 
 /// Schedules a fixed-delay runnable task.
+///
+/// # Errors
+///
+/// Returns [`SchedulerError::InvalidDelay`] if the delay is zero or negative.
+/// Returns [`SchedulerError::Backpressured`] if the scheduler is at capacity.
+/// Returns [`SchedulerError::Closed`] if the scheduler has been shut down.
 pub fn schedule_with_fixed_delay_fn<TB, F>(
   scheduler: &mut Scheduler<TB>,
   initial_delay: Duration,
@@ -168,6 +198,12 @@ where
 }
 
 /// Schedules a runnable task for one-shot execution.
+///
+/// # Errors
+///
+/// Returns [`SchedulerError::InvalidDelay`] if the delay is zero or negative.
+/// Returns [`SchedulerError::Backpressured`] if the scheduler is at capacity.
+/// Returns [`SchedulerError::Closed`] if the scheduler has been shut down.
 ///
 /// # Examples
 /// ```rust,no_run
@@ -202,6 +238,7 @@ where
   scheduler.schedule_command(delay, SchedulerCommand::RunRunnable { runnable, dispatcher })
 }
 
+#[allow(clippy::missing_const_for_fn)]
 fn build_send_message_command<TB: RuntimeToolbox>(
   receiver: ActorRefGeneric<TB>,
   message: AnyMessageGeneric<TB>,

@@ -18,7 +18,7 @@ pub struct SchedulerDump {
 impl SchedulerDump {
   /// Creates a dump from the provided components.
   #[must_use]
-  pub fn new(
+  pub const fn new(
     resolution: Duration,
     current_tick: u64,
     metrics: SchedulerMetrics,

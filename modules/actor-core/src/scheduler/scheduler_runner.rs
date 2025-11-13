@@ -4,19 +4,8 @@ use core::marker::PhantomData;
 
 use fraktor_utils_core_rs::time::{SchedulerTickHandle, TickLease};
 
-use super::Scheduler;
+use super::{RunnerMode, Scheduler};
 use crate::RuntimeToolbox;
-
-/// Runner operating mode.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum RunnerMode {
-  /// Manual driver using deterministic tick injection.
-  Manual,
-  /// Placeholder for async host drivers (tokio, std timers).
-  AsyncHost,
-  /// Placeholder for hardware-backed drivers (embassy/SysTick).
-  Hardware,
-}
 
 /// Drives [`Scheduler`] by draining manually injected ticks.
 pub struct SchedulerRunner<'a, TB: RuntimeToolbox + 'static> {

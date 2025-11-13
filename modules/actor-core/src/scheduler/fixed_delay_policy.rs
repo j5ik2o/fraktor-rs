@@ -45,8 +45,9 @@ impl FixedDelayPolicy {
 
 impl Default for FixedDelayPolicy {
   fn default() -> Self {
-    let backlog_limit = NonZeroU32::new(4).expect("non-zero backlog limit");
-    let burst_threshold = NonZeroU32::new(8).expect("non-zero burst threshold");
+    // SAFETY: 4 and 8 are non-zero
+    let backlog_limit = unsafe { NonZeroU32::new_unchecked(4) };
+    let burst_threshold = unsafe { NonZeroU32::new_unchecked(8) };
     Self::new(backlog_limit, burst_threshold)
   }
 }

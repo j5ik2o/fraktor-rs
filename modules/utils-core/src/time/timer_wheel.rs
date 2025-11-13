@@ -24,23 +24,29 @@ pub struct TimerWheel<P> {
 impl<P> TimerWheel<P> {
   /// Creates an empty wheel.
   #[must_use]
-  pub fn new(config: TimerWheelConfig) -> Self {
+  pub const fn new(config: TimerWheelConfig) -> Self {
     Self { config, queue: BinaryHeap::new(), cancelled: BTreeSet::new(), next_handle: 0, sequence: 0, active: 0 }
   }
 
   /// Returns the number of active (non-cancelled) timers.
   #[must_use]
-  pub fn len(&self) -> usize {
+  pub const fn len(&self) -> usize {
     self.active
   }
 
   /// Returns `true` when no timers are scheduled.
   #[must_use]
-  pub fn is_empty(&self) -> bool {
+  pub const fn is_empty(&self) -> bool {
     self.active == 0
   }
 
   /// Schedules a timer entry.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`TimerWheelError::ResolutionMismatch`] if the entry's deadline resolution does not
+  /// match the wheel's resolution. Returns [`TimerWheelError::CapacityExceeded`] if the wheel is
+  /// at capacity.
   pub fn schedule(&mut self, entry: TimerEntry<P>) -> Result<TimerHandleId, TimerWheelError> {
     if entry.deadline().resolution() != self.config.resolution() {
       return Err(TimerWheelError::ResolutionMismatch);
@@ -71,13 +77,22 @@ impl<P> TimerWheel<P> {
   }
 
   /// Drains all expired entries up to `now`.
+  ///
+  /// # Panics
+  ///
+  /// This function should not panic under normal conditions. The internal queue invariant
+  /// guarantees that if `peek()` returns `Some`, then `pop()` will also return `Some`.
   pub fn collect_expired(&mut self, now: TimerInstant) -> Vec<TimerEntry<P>> {
     let mut expired = Vec::new();
     while let Some(Reverse(scheduled)) = self.queue.peek() {
       if scheduled.deadline_tick > now.ticks() {
         break;
       }
-      let Reverse(scheduled) = self.queue.pop().expect("peek guaranteed pop");
+      // SAFETY: peek() returned Some, so pop() must also return Some.
+      // unwrap_or_else を使用してロジックエラーの場合はスキップする
+      let Some(Reverse(scheduled)) = self.queue.pop() else {
+        continue;
+      };
       if self.cancelled.remove(&scheduled.handle_id) {
         continue;
       }
@@ -98,7 +113,7 @@ struct ScheduledEntry<P> {
 }
 
 impl<P> ScheduledEntry<P> {
-  fn new(handle_id: TimerHandleId, entry: TimerEntry<P>, sequence: u64) -> Self {
+  const fn new(handle_id: TimerHandleId, entry: TimerEntry<P>, sequence: u64) -> Self {
     Self { handle_id, deadline_tick: entry.deadline().ticks(), sequence, entry }
   }
 }

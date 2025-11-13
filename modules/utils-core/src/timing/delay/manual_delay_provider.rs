@@ -1,10 +1,7 @@
 use alloc::vec::Vec;
 use core::time::Duration;
 
-use super::{
-  DelayProvider,
-  delay_future::{DelayFuture, DelayTrigger},
-};
+use super::{DelayFuture, DelayProvider, DelayTrigger};
 use crate::sync::{ArcShared, NoStdMutex};
 
 #[cfg(test)]

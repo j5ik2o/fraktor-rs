@@ -20,17 +20,17 @@ impl SchedulerMetrics {
     self.dropped_total
   }
 
-  pub(crate) fn increment_active(&mut self) {
+  pub(crate) const fn increment_active(&mut self) {
     self.active_timers = self.active_timers.saturating_add(1);
   }
 
-  pub(crate) fn decrement_active(&mut self) {
+  pub(crate) const fn decrement_active(&mut self) {
     if self.active_timers > 0 {
       self.active_timers -= 1;
     }
   }
 
-  pub(crate) fn increment_dropped(&mut self) {
+  pub(crate) const fn increment_dropped(&mut self) {
     self.dropped_total = self.dropped_total.saturating_add(1);
   }
 }

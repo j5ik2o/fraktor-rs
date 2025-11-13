@@ -9,7 +9,7 @@ use core::{
 
 use spin::Mutex as SpinMutex;
 
-use crate::sync::ArcShared;
+use crate::{sync::ArcShared, timing::delay::DelayTrigger};
 
 /// Future that resolves once its associated delay has elapsed.
 pub struct DelayFuture {
@@ -21,7 +21,7 @@ impl DelayFuture {
   #[must_use]
   pub fn new_pair(duration: Duration) -> (Self, DelayTrigger) {
     let state = ArcShared::new(DelayState::new(duration));
-    let trigger = DelayTrigger { state: state.clone() };
+    let trigger = DelayTrigger::new(state.clone());
     (Self { state }, trigger)
   }
 }
@@ -45,7 +45,7 @@ impl Future for DelayFuture {
   }
 }
 
-struct DelayState {
+pub(crate) struct DelayState {
   completed: AtomicBool,
   waker:     SpinMutex<Option<Waker>>,
   cancel:    SpinMutex<Option<Box<dyn FnOnce() + Send + Sync>>>,
@@ -53,7 +53,7 @@ struct DelayState {
 }
 
 impl DelayState {
-  const fn new(duration: Duration) -> Self {
+  pub(crate) const fn new(duration: Duration) -> Self {
     Self {
       completed: AtomicBool::new(false),
       waker:     SpinMutex::new(None),
@@ -62,11 +62,11 @@ impl DelayState {
     }
   }
 
-  fn is_completed(&self) -> bool {
+  pub(crate) fn is_completed(&self) -> bool {
     self.completed.load(Ordering::Acquire)
   }
 
-  fn register_waker(&self, waker: &Waker) {
+  pub(crate) fn register_waker(&self, waker: &Waker) {
     let mut guard = self.waker.lock();
     match guard.as_ref() {
       | Some(existing) if existing.will_wake(waker) => {},
@@ -76,7 +76,7 @@ impl DelayState {
     }
   }
 
-  fn complete(&self) {
+  pub(crate) fn complete(&self) {
     if self.completed.swap(true, Ordering::Release) {
       return;
     }
@@ -86,11 +86,11 @@ impl DelayState {
     }
   }
 
-  fn install_cancel_hook(&self, hook: Box<dyn FnOnce() + Send + Sync>) {
+  pub(crate) fn install_cancel_hook(&self, hook: Box<dyn FnOnce() + Send + Sync>) {
     self.cancel.lock().replace(hook);
   }
 
-  fn cancel(&self) {
+  pub(crate) fn cancel(&self) {
     if self.completed.swap(true, Ordering::AcqRel) {
       return;
     }
@@ -99,25 +99,5 @@ impl DelayState {
     } else if let Some(waker) = self.waker.lock().take() {
       waker.wake();
     }
-  }
-}
-
-/// Handle owned by providers to complete a delay.
-#[derive(Clone)]
-pub struct DelayTrigger {
-  state: ArcShared<DelayState>,
-}
-
-impl DelayTrigger {
-  /// Completes the associated delay future.
-  pub fn fire(&self) {
-    self.state.complete();
-  }
-
-  /// Registers a cancellation hook that will run if the future is dropped before completion.
-  pub fn set_cancel_hook<F>(&self, hook: F)
-  where
-    F: FnOnce() + Send + Sync + 'static, {
-    self.state.install_cancel_hook(Box::new(hook));
   }
 }

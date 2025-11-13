@@ -1,7 +1,10 @@
 //! Core scheduler implementation placeholder.
 
 use alloc::vec::Vec;
-use core::{i32, num::NonZeroU64, time::Duration};
+use core::{num::NonZeroU64, time::Duration};
+
+#[cfg(test)]
+mod tests;
 
 use fraktor_utils_core_rs::{
   sync::ArcShared,
@@ -10,24 +13,12 @@ use fraktor_utils_core_rs::{
 use hashbrown::HashMap;
 
 use super::{
-  cancellable_registry::CancellableRegistry,
-  command::SchedulerCommand,
-  config::SchedulerConfig,
-  diagnostics::{
-    DeterministicEvent, SchedulerDiagnostics, SchedulerDiagnosticsEvent, SchedulerDiagnosticsSubscription,
-  },
-  dump::SchedulerDump,
-  dump_job::SchedulerDumpJob,
-  error::SchedulerError,
-  execution_batch::ExecutionBatch,
-  fixed_delay_context::FixedDelayContext,
-  fixed_rate_context::FixedRateContext,
-  handle::SchedulerHandle,
-  metrics::SchedulerMetrics,
-  mode::SchedulerMode,
-  periodic_batch_decision::PeriodicBatchDecision,
-  task_run::{TaskRunEntry, TaskRunHandle, TaskRunOnClose, TaskRunPriority, TaskRunQueue, TaskRunSummary},
-  warning::SchedulerWarning,
+  DeterministicEvent, ExecutionBatch, SchedulerDiagnostics, SchedulerDiagnosticsEvent,
+  SchedulerDiagnosticsSubscription, SchedulerHandle, SchedulerMode, SchedulerWarning, TaskRunEntry, TaskRunHandle,
+  TaskRunOnClose, TaskRunPriority, TaskRunQueue, TaskRunSummary, cancellable_registry::CancellableRegistry,
+  command::SchedulerCommand, config::SchedulerConfig, dump::SchedulerDump, dump_job::SchedulerDumpJob,
+  error::SchedulerError, fixed_delay_context::FixedDelayContext, fixed_rate_context::FixedRateContext,
+  metrics::SchedulerMetrics, periodic_batch_decision::PeriodicBatchDecision,
 };
 use crate::RuntimeToolbox;
 
@@ -120,13 +111,13 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
 
   /// Returns scheduler tick resolution.
   #[must_use]
-  pub fn resolution(&self) -> Duration {
+  pub const fn resolution(&self) -> Duration {
     self.config.resolution()
   }
 
   /// Returns a snapshot of the current scheduler metrics.
   #[must_use]
-  pub fn metrics(&self) -> SchedulerMetrics {
+  pub const fn metrics(&self) -> SchedulerMetrics {
     self.metrics
   }
 
@@ -143,7 +134,7 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
 
   /// Returns the diagnostics snapshot.
   #[must_use]
-  pub fn diagnostics(&self) -> &SchedulerDiagnostics {
+  pub const fn diagnostics(&self) -> &SchedulerDiagnostics {
     &self.diagnostics
   }
 
@@ -164,11 +155,19 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
   }
 
   /// Registers a one-shot job.
+  ///
+  /// # Errors
+  ///
+  /// Returns `SchedulerError` if the delay is invalid or capacity is exceeded.
   pub fn schedule_once(&mut self, delay: Duration) -> Result<SchedulerHandle, SchedulerError> {
     self.register_job(delay, SchedulerMode::OneShot, None, SchedulerCommand::Noop)
   }
 
   /// Registers a periodic job with fixed rate.
+  ///
+  /// # Errors
+  ///
+  /// Returns `SchedulerError` if the delay or period is invalid, or capacity is exceeded.
   pub fn schedule_at_fixed_rate(
     &mut self,
     initial_delay: Duration,
@@ -178,6 +177,10 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
   }
 
   /// Registers a periodic job with fixed rate using the provided command.
+  ///
+  /// # Errors
+  ///
+  /// Returns `SchedulerError` if the delay or period is invalid, or capacity is exceeded.
   pub fn schedule_at_fixed_rate_with_command(
     &mut self,
     initial_delay: Duration,
@@ -188,6 +191,10 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
   }
 
   /// Registers a periodic job with fixed delay.
+  ///
+  /// # Errors
+  ///
+  /// Returns `SchedulerError` if the delay is invalid or capacity is exceeded.
   pub fn schedule_with_fixed_delay(
     &mut self,
     initial_delay: Duration,
@@ -197,6 +204,10 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
   }
 
   /// Registers a periodic job with fixed delay using the provided command.
+  ///
+  /// # Errors
+  ///
+  /// Returns `SchedulerError` if the delay is invalid or capacity is exceeded.
   pub fn schedule_with_fixed_delay_with_command(
     &mut self,
     initial_delay: Duration,
@@ -207,6 +218,10 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
   }
 
   /// Registers a custom command to be executed after the provided delay.
+  ///
+  /// # Errors
+  ///
+  /// Returns `SchedulerError` if the delay is invalid or capacity is exceeded.
   pub fn schedule_command(
     &mut self,
     delay: Duration,
@@ -240,6 +255,10 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
   }
 
   /// Registers a shutdown task with the specified priority.
+  ///
+  /// # Errors
+  ///
+  /// Returns `SchedulerError::TaskRunCapacityExceeded` if the task run capacity is exceeded.
   pub fn register_on_close(
     &mut self,
     task: ArcShared<dyn TaskRunOnClose>,
@@ -303,7 +322,7 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
             continue;
           }
 
-          self.execute_command(&job.command, &batch);
+          Self::execute_command(&job.command, &batch);
           self.record_fire_event(handle_id, batch);
           executed += 1;
 
@@ -325,24 +344,6 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
       }
     }
     executed
-  }
-
-  #[cfg(test)]
-  /// Returns the number of registered jobs (testing helper).
-  pub fn job_count_for_test(&self) -> usize {
-    self.jobs.len()
-  }
-
-  #[cfg(test)]
-  /// Returns the command associated with the provided handle for testing.
-  pub fn command_for_test(&self, handle: &SchedulerHandle) -> Option<&SchedulerCommand<TB>> {
-    self.jobs.get(&handle.raw()).map(|job| &job.command)
-  }
-
-  #[cfg(test)]
-  /// Advances the scheduler by the requested ticks (testing helper).
-  pub fn run_for_test(&mut self, ticks: u64) {
-    self.run_for_ticks(ticks);
   }
 
   /// Advances the scheduler by the specified number of ticks.
@@ -468,7 +469,7 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
     }
     let resolution_ns = self.config.resolution().as_nanos().max(1);
     let duration_ns = duration.as_nanos();
-    let ticks = (duration_ns + resolution_ns - 1) / resolution_ns;
+    let ticks = duration_ns.div_ceil(resolution_ns);
     let max_ticks = i32::MAX as u128;
     if ticks == 0 || ticks > max_ticks {
       return Err(SchedulerError::InvalidDelay);
@@ -476,12 +477,12 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
     Ok(ticks as u64)
   }
 
-  fn deadline_from_ticks(&self, delta: u64) -> TimerInstant {
+  const fn deadline_from_ticks(&self, delta: u64) -> TimerInstant {
     let ticks = self.current_tick.saturating_add(delta);
     TimerInstant::from_ticks(ticks, self.config.resolution())
   }
 
-  fn deadline_from_absolute(&self, ticks: u64) -> TimerInstant {
+  const fn deadline_from_absolute(&self, ticks: u64) -> TimerInstant {
     TimerInstant::from_ticks(ticks, self.config.resolution())
   }
 
@@ -506,7 +507,7 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
     Ok(())
   }
 
-  fn execute_command(&self, command: &SchedulerCommand<TB>, batch: &ExecutionBatch) {
+  fn execute_command(command: &SchedulerCommand<TB>, batch: &ExecutionBatch) {
     match command {
       | SchedulerCommand::Noop => {},
       | SchedulerCommand::SendMessage { receiver, message, .. } => {

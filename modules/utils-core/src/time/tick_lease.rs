@@ -12,7 +12,7 @@ pub struct TickLease<'a> {
 }
 
 impl<'a> TickLease<'a> {
-  pub(crate) fn new(state: ArcShared<TickState>) -> Self {
+  pub(crate) const fn new(state: ArcShared<TickState>) -> Self {
     Self { state, _scope: PhantomData }
   }
 

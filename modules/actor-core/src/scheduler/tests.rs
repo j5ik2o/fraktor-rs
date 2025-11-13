@@ -4,7 +4,7 @@ use alloc::{
   vec::Vec,
 };
 use core::{
-  cmp, i32,
+  cmp,
   num::NonZeroU32,
   pin::Pin,
   task::{Context, Poll},
@@ -21,15 +21,10 @@ use hashbrown::HashMap;
 use proptest::prelude::*;
 
 use super::{
-  DeterministicEvent, Scheduler, SchedulerBackedDelayProvider, SchedulerConfig, SchedulerContext,
-  SchedulerDiagnosticsEvent, SchedulerError, SchedulerMode, SchedulerWarning, api,
-  command::SchedulerCommand,
-  execution_batch::{BatchMode, ExecutionBatch},
-  fixed_delay_policy::FixedDelayPolicy,
-  fixed_rate_policy::FixedRatePolicy,
-  handle::SchedulerHandle,
-  runner::SchedulerRunner,
-  task_run::{TaskRunError, TaskRunOnClose, TaskRunPriority},
+  BatchMode, DeterministicEvent, ExecutionBatch, Scheduler, SchedulerBackedDelayProvider, SchedulerConfig,
+  SchedulerContext, SchedulerDiagnosticsEvent, SchedulerError, SchedulerMode, SchedulerRunner, SchedulerWarning,
+  TaskRunError, TaskRunOnClose, TaskRunPriority, api, command::SchedulerCommand, fixed_delay_policy::FixedDelayPolicy,
+  fixed_rate_policy::FixedRatePolicy, handle::SchedulerHandle,
 };
 use crate::{
   NoStdToolbox, RuntimeToolbox, ToolboxMutex,
@@ -848,7 +843,7 @@ fn run_stress_profile(job_count: usize, drift_ticks: u64) -> StressReport {
     scheduler.schedule_once(delay).expect("handle");
   }
 
-  let total_ticks = 64 + drift_ticks as u64;
+  let total_ticks = 64 + drift_ticks;
   for _ in 0..total_ticks {
     scheduler.run_for_test(1);
   }

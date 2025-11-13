@@ -3,7 +3,7 @@
 use fraktor_utils_core_rs::sync::ArcShared;
 use hashbrown::HashMap;
 
-use super::cancellable::CancellableEntry;
+use super::cancellable_entry::CancellableEntry;
 
 /// Stores cancellable entries for active scheduler handles.
 #[derive(Default)]

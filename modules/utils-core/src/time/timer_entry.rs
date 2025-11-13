@@ -15,19 +15,19 @@ pub struct TimerEntry<P> {
 impl<P> TimerEntry<P> {
   /// Creates a one-shot entry with the specified payload.
   #[must_use]
-  pub fn oneshot(deadline: TimerInstant, payload: P) -> Self {
+  pub const fn oneshot(deadline: TimerInstant, payload: P) -> Self {
     Self { deadline, mode: TimerEntryMode::OneShot, payload }
   }
 
   /// Returns the deadline instant.
   #[must_use]
-  pub fn deadline(&self) -> TimerInstant {
+  pub const fn deadline(&self) -> TimerInstant {
     self.deadline
   }
 
   /// Returns the execution mode.
   #[must_use]
-  pub fn mode(&self) -> TimerEntryMode {
+  pub const fn mode(&self) -> TimerEntryMode {
     self.mode
   }
 

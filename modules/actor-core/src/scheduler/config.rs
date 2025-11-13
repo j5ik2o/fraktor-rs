@@ -65,7 +65,7 @@ impl SchedulerConfig {
 
   /// Configures the backlog limit for periodic jobs.
   #[must_use]
-  pub fn with_backlog_limit(mut self, backlog_limit: u32) -> Self {
+  pub const fn with_backlog_limit(mut self, backlog_limit: u32) -> Self {
     let limit = clamp_non_zero(backlog_limit);
     let rate = self.policy_registry.fixed_rate().with_backlog_limit(limit);
     let delay = self.policy_registry.fixed_delay().with_backlog_limit(limit);
@@ -81,7 +81,7 @@ impl SchedulerConfig {
 
   /// Configures the burst warning threshold.
   #[must_use]
-  pub fn with_burst_threshold(mut self, burst_threshold: u32) -> Self {
+  pub const fn with_burst_threshold(mut self, burst_threshold: u32) -> Self {
     let threshold = clamp_non_zero(burst_threshold);
     let rate = self.policy_registry.fixed_rate().with_burst_threshold(threshold);
     let delay = self.policy_registry.fixed_delay().with_burst_threshold(threshold);
@@ -97,21 +97,21 @@ impl SchedulerConfig {
 
   /// Overrides only the fixed-rate policy.
   #[must_use]
-  pub fn with_fixed_rate_policy(mut self, policy: FixedRatePolicy) -> Self {
+  pub const fn with_fixed_rate_policy(mut self, policy: FixedRatePolicy) -> Self {
     self.policy_registry = self.policy_registry.with_fixed_rate(policy);
     self
   }
 
   /// Overrides only the fixed-delay policy.
   #[must_use]
-  pub fn with_fixed_delay_policy(mut self, policy: FixedDelayPolicy) -> Self {
+  pub const fn with_fixed_delay_policy(mut self, policy: FixedDelayPolicy) -> Self {
     self.policy_registry = self.policy_registry.with_fixed_delay(policy);
     self
   }
 
   /// Replaces the entire policy registry.
   #[must_use]
-  pub fn with_policy_registry(mut self, registry: SchedulerPolicyRegistry) -> Self {
+  pub const fn with_policy_registry(mut self, registry: SchedulerPolicyRegistry) -> Self {
     self.policy_registry = registry;
     self
   }
@@ -167,6 +167,8 @@ impl Default for SchedulerConfig {
   }
 }
 
-fn clamp_non_zero(value: u32) -> NonZeroU32 {
-  NonZeroU32::new(value.max(1)).expect("non-zero backlog value")
+const fn clamp_non_zero(value: u32) -> NonZeroU32 {
+  let clamped = if value == 0 { 1 } else { value };
+  // SAFETY: clamped is always at least 1
+  unsafe { NonZeroU32::new_unchecked(clamped) }
 }

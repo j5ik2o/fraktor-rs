@@ -3,7 +3,7 @@ use core::time::Duration;
 use crate::{
   NoStdToolbox,
   actor_prim::actor_ref::ActorRefGeneric,
-  scheduler::{Scheduler, SchedulerConfig, command::SchedulerCommand},
+  scheduler::{Scheduler, SchedulerCommand, SchedulerConfig},
   typed::{actor_prim::TypedActorRefGeneric, scheduler::TypedScheduler},
 };
 

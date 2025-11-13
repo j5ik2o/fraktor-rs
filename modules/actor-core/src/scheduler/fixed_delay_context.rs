@@ -2,11 +2,7 @@
 
 use core::num::{NonZeroU32, NonZeroU64};
 
-use super::{
-  execution_batch::{BatchMode, ExecutionBatch},
-  periodic_batch_decision::PeriodicBatchDecision,
-  warning::SchedulerWarning,
-};
+use super::{BatchMode, ExecutionBatch, periodic_batch_decision::PeriodicBatchDecision, warning::SchedulerWarning};
 
 /// Tracks timing metadata for fixed-delay jobs.
 pub(crate) struct FixedDelayContext {
@@ -37,7 +33,8 @@ impl FixedDelayContext {
       if missed > self.burst_threshold.get() { Some(SchedulerWarning::BurstFire { handle_id, missed }) } else { None };
 
     let runs_total = missed.saturating_add(1);
-    let runs = NonZeroU32::new(runs_total).expect("non-zero runs");
+    // SAFETY: runs_total is at least 1 (0 + 1)
+    let runs = unsafe { NonZeroU32::new_unchecked(runs_total) };
     self.next_tick = now.saturating_add(self.period_ticks.get());
     PeriodicBatchDecision::Execute { batch: ExecutionBatch::periodic(runs, missed, BatchMode::FixedDelay), warning }
   }

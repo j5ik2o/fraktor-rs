@@ -18,7 +18,7 @@ pub struct NoStdToolbox {
 impl NoStdToolbox {
   /// Creates a toolbox with the provided clock resolution.
   #[must_use]
-  pub fn new(resolution: Duration) -> Self {
+  pub const fn new(resolution: Duration) -> Self {
     Self { clock: ManualClock::new(resolution) }
   }
 }

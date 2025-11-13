@@ -20,7 +20,7 @@ pub struct SchedulerBackedDelayProvider<TB: RuntimeToolbox + 'static> {
 impl<TB: RuntimeToolbox + 'static> SchedulerBackedDelayProvider<TB> {
   /// Creates a provider referencing the shared scheduler instance.
   #[must_use]
-  pub fn new(scheduler: ArcShared<ToolboxMutex<Scheduler<TB>, TB>>) -> Self {
+  pub const fn new(scheduler: ArcShared<ToolboxMutex<Scheduler<TB>, TB>>) -> Self {
     Self { scheduler }
   }
 

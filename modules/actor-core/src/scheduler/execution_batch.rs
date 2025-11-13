@@ -2,16 +2,7 @@
 
 use core::num::NonZeroU32;
 
-/// Execution modes used to interpret batch data.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum BatchMode {
-  /// Single-shot execution.
-  OneShot,
-  /// Fixed-rate periodic execution.
-  FixedRate,
-  /// Fixed-delay periodic execution.
-  FixedDelay,
-}
+use crate::scheduler::BatchMode;
 
 /// Execution metadata shared with scheduler tasks.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -30,14 +21,15 @@ impl ExecutionBatch {
 
   /// Batch describing a single run with no accumulated backlog.
   #[must_use]
-  pub fn oneshot() -> Self {
-    let runs = NonZeroU32::new(1).expect("non-zero");
+  pub const fn oneshot() -> Self {
+    // SAFETY: 1 is non-zero
+    let runs = unsafe { NonZeroU32::new_unchecked(1) };
     Self::new(runs, 0, BatchMode::OneShot)
   }
 
   /// Batch describing periodic execution.
   #[must_use]
-  pub fn periodic(runs: NonZeroU32, missed_runs: u32, mode: BatchMode) -> Self {
+  pub const fn periodic(runs: NonZeroU32, missed_runs: u32, mode: BatchMode) -> Self {
     Self::new(runs, missed_runs, mode)
   }
 

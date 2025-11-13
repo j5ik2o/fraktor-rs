@@ -14,7 +14,7 @@ pub struct ManualClock {
 impl ManualClock {
   /// Creates a clock anchored at zero.
   #[must_use]
-  pub fn new(resolution: Duration) -> Self {
+  pub const fn new(resolution: Duration) -> Self {
     Self { resolution, current: TimerInstant::zero(resolution) }
   }
 

@@ -13,7 +13,7 @@ pub struct DispatcherSenderShared<TB: RuntimeToolbox + 'static> {
 impl<TB: RuntimeToolbox + 'static> DispatcherSenderShared<TB> {
   /// Wraps a dispatcher sender inside the shared handle.
   #[must_use]
-  pub fn new(inner: ArcShared<DispatcherSenderGeneric<TB>>) -> Self {
+  pub const fn new(inner: ArcShared<DispatcherSenderGeneric<TB>>) -> Self {
     Self { inner }
   }
 
