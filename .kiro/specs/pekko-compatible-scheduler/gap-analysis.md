@@ -36,11 +36,11 @@
 - Cons: DelayFuture は単発 Future 前提のため、固定レート補償や大規模タイマー管理に不向き。大量ジョブでの効率や cancel 追跡が困難。
 
 ### Option B: 新規 Scheduler サブシステムを構築
-- `actor-core/src/scheduler/` ディレクトリを新設し、`SchedulerService`, `CancellableHandle`, `TimerCommand` などを定義。`utils-core` には `TimerWheel` + `MonotonicClock` 抽象を追加。
+- `actor-core/src/scheduler/` ディレクトリを新設し、`SchedulerContext`, `CancellableHandle`, `TimerCommand` などを定義。`SchedulerContext` は Scheduler 本体・DelayProvider・shutdown hook を束ねる制御用コンテキストとして ArcShared で共有する。`utils-core` には `TimerWheel` + `MonotonicClock` 抽象を追加。
 - Pros: 責務分離が明確で、Pekko API (`scheduleOnce`, `scheduleAtFixedRate`, etc.) を Rust 流に設計しやすい。既存 DelayProvider には影響を与えない。
 - Cons: 大量の新規コード。RuntimeToolbox 拡張やテストハーネスも一から作る必要がある。
 
-- `utils-core` へ新規 `time/` モジュールを追加し、`MonotonicClock` トレイトと `TimerWheelFamily` を提供。`RuntimeToolbox` に `type Clock` / `type Timer` を追加して各ターゲットの実装をぶら下げ、`actor-core` 側は `SchedulerService` facade を新設する。
+- `utils-core` へ新規 `time/` モジュールを追加し、`MonotonicClock` トレイトと `TimerWheelFamily` を提供。`RuntimeToolbox` に `type Clock` / `type Timer` を追加して各ターゲットの実装をぶら下げ、`actor-core` 側は `SchedulerContext` facade を新設する。
 - Pros: `RuntimeToolbox` を経由してクロックとタイマーを差し替えられるため、no_std / std で一貫性を保てる。DeadlineTimer 廃止方針とも矛盾しない。
 - Cons: Toolbox 拡張・TimerWheel 実装・ハンドル管理をすべて新規に作る必要があり、設計ボリュームが大きい。
 
@@ -55,7 +55,7 @@
 - **重点設計ポイント**:
   - RuntimeToolbox 拡張: `type Clock: MonotonicClock` と `type Timer: TimerWheelFamily` を追加し、no_std 実装（例: SysTick/DWT）と std 実装（`Instant::now() + TimerWheel`）を差し替え可能にする。
   - `time/` モジュールで `TimerWheelConfig`, `TimerEntryMode`（ワンショット/固定レート/固定遅延）を設計し、Scheduler が固定レート補償や TaskRunOnClose を扱えるようにする。
-  - `SchedulerService` の内部ステート（timer wheel, command queue, cancellable registry）の型設計と ActorSystem 連携。
+  - `SchedulerContext` の内部ステート（timer wheel, command queue, cancellable registry）の型設計と ActorSystem 連携。ArcShared ラッパーが単なる共有参照で終わらないよう、shutdown/DelayProvider 制御まで責務を明記する。
   - EventStream／diagnostic hook とメトリクス収集の責務分担。
 - **Research Needed**:
   1. no_std で動作する Timer Wheel 実装（tick サイズ、最大遅延）に関する最適化手法。

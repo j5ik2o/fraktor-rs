@@ -4,6 +4,8 @@ use alloc::{
   vec::Vec,
 };
 use core::{i32, num::NonZeroU32, pin::Pin, task::{Context, Poll}, time::Duration};
+use hashbrown::HashMap;
+use proptest::prelude::*;
 
 use fraktor_utils_core_rs::{
   DelayFuture, DelayProvider,
@@ -13,11 +15,13 @@ use fraktor_utils_core_rs::{
 };
 
 use super::{
-  Scheduler, SchedulerBackedDelayProvider, SchedulerConfig, SchedulerContext, SchedulerError, SchedulerWarning, api,
+  DeterministicEvent, Scheduler, SchedulerBackedDelayProvider, SchedulerConfig, SchedulerContext, SchedulerError,
+  SchedulerWarning, api,
   command::SchedulerCommand,
   execution_batch::{BatchMode, ExecutionBatch},
   fixed_delay_policy::FixedDelayPolicy,
   fixed_rate_policy::FixedRatePolicy,
+  handle::SchedulerHandle,
   runner::SchedulerRunner,
   task_run::{TaskRunError, TaskRunOnClose, TaskRunPriority},
 };
@@ -639,6 +643,108 @@ fn scheduler_context_provides_shared_delay_provider() {
   }
 
   assert!(matches!(poll_delay_future(&mut future), Poll::Ready(())));
+}
+
+#[derive(Clone, Debug)]
+enum DeterministicOp {
+  Schedule { delay_ticks: u16 },
+  CancelLatest,
+  Advance { ticks: u8 },
+}
+
+fn deterministic_op_strategy() -> impl Strategy<Value = DeterministicOp> {
+  prop_oneof![
+    (1u16..16).prop_map(|delay_ticks| DeterministicOp::Schedule { delay_ticks }),
+    Just(DeterministicOp::CancelLatest),
+    (1u8..8).prop_map(|ticks| DeterministicOp::Advance { ticks }),
+  ]
+}
+
+proptest! {
+  #[test]
+  fn deterministic_log_invariants(ops in prop::collection::vec(deterministic_op_strategy(), 1..32)) {
+    let mut scheduler = build_scheduler();
+    scheduler.enable_deterministic_log(1024);
+    let mut handles: Vec<SchedulerHandle> = Vec::new();
+
+    for op in ops {
+      match op {
+        DeterministicOp::Schedule { delay_ticks } => {
+          let delay = Duration::from_millis((delay_ticks as u64).max(1));
+          if let Ok(handle) = scheduler.schedule_once(delay) {
+            handles.push(handle);
+          }
+        },
+        DeterministicOp::CancelLatest => {
+          if let Some(handle) = handles.pop() {
+            let _ = scheduler.cancel(&handle);
+          }
+        },
+        DeterministicOp::Advance { ticks } => {
+          scheduler.run_for_test(u64::from(ticks));
+        },
+      }
+    }
+
+    scheduler.run_for_test(64);
+    assert_deterministic_invariants(scheduler.diagnostics().deterministic_log());
+  }
+}
+
+fn assert_deterministic_invariants(events: &[DeterministicEvent]) {
+  #[derive(Default)]
+  struct Record {
+    scheduled_tick: u64,
+    deadline_tick:  u64,
+    cancelled_tick: Option<u64>,
+    fired_ticks:    Vec<u64>,
+  }
+
+  let mut map: HashMap<u64, Record> = HashMap::new();
+  for event in events {
+    match *event {
+      DeterministicEvent::Scheduled { handle_id, scheduled_tick, deadline_tick } => {
+        let record = map.entry(handle_id).or_default();
+        record.scheduled_tick = scheduled_tick;
+        record.deadline_tick = deadline_tick;
+      },
+      DeterministicEvent::Fired { handle_id, fired_tick, .. } => {
+        let record = map.entry(handle_id).or_default();
+        record.fired_ticks.push(fired_tick);
+        assert!(fired_tick >= record.scheduled_tick, "fire before schedule for handle {handle_id}");
+        if record.deadline_tick > 0 {
+          assert!(fired_tick >= record.deadline_tick, "fire before deadline for handle {handle_id}");
+        }
+        if let Some(cancelled_tick) = record.cancelled_tick {
+          assert!(fired_tick <= cancelled_tick, "fire after cancellation for handle {handle_id}");
+        }
+      },
+      DeterministicEvent::Cancelled { handle_id, cancelled_tick } => {
+        let record = map.entry(handle_id).or_default();
+        if let Some(existing) = record.cancelled_tick {
+          assert!(cancelled_tick >= existing, "cancelled tick regress for handle {handle_id}");
+        }
+        record.cancelled_tick = Some(cancelled_tick);
+      },
+    }
+  }
+}
+
+#[test]
+fn deterministic_log_records_schedule_fire_cancel() {
+  let mut scheduler = build_scheduler();
+  scheduler.enable_deterministic_log(16);
+
+  let cancel_handle = scheduler.schedule_once(Duration::from_millis(1)).expect("cancel handle");
+  assert!(scheduler.cancel(&cancel_handle));
+
+  let fire_handle = scheduler.schedule_once(Duration::from_millis(2)).expect("fire handle");
+  scheduler.run_for_test(4);
+
+  let events = scheduler.diagnostics().deterministic_log();
+  assert!(events.iter().any(|event| matches!(event, DeterministicEvent::Scheduled { handle_id, .. } if *handle_id == cancel_handle.raw())));
+  assert!(events.iter().any(|event| matches!(event, DeterministicEvent::Cancelled { handle_id, .. } if *handle_id == cancel_handle.raw())));
+  assert!(events.iter().any(|event| matches!(event, DeterministicEvent::Fired { handle_id, .. } if *handle_id == fire_handle.raw())));
 }
 
 #[test]

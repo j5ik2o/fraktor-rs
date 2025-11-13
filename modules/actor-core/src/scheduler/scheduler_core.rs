@@ -10,6 +10,7 @@ use fraktor_utils_core_rs::{
 use hashbrown::HashMap;
 
 use super::{
+  diagnostics::{DeterministicEvent, SchedulerDiagnostics},
   cancellable_registry::CancellableRegistry,
   command::SchedulerCommand,
   config::SchedulerConfig,
@@ -44,6 +45,7 @@ pub struct Scheduler<TB: RuntimeToolbox> {
   task_run_seq: u64,
   task_run_capacity: usize,
   shutting_down: bool,
+  diagnostics:  SchedulerDiagnostics,
 }
 
 #[allow(dead_code)]
@@ -107,6 +109,7 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
       task_run_seq: 0,
       task_run_capacity: config.task_run_capacity(),
       shutting_down: false,
+      diagnostics: SchedulerDiagnostics::new(),
     }
   }
 
@@ -126,6 +129,17 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
   #[must_use]
   pub fn warnings(&self) -> &[SchedulerWarning] {
     &self.warnings
+  }
+
+  /// Enables deterministic logging with the provided capacity.
+  pub fn enable_deterministic_log(&mut self, capacity: usize) {
+    self.diagnostics.enable_deterministic_log(capacity);
+  }
+
+  /// Returns the diagnostics snapshot.
+  #[must_use]
+  pub fn diagnostics(&self) -> &SchedulerDiagnostics {
+    &self.diagnostics
   }
 
   /// Registers a one-shot job.
@@ -192,6 +206,7 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
       self.registry.remove(handle.raw());
       self.metrics.decrement_active();
       self.metrics.increment_dropped();
+      self.record_cancel_event(handle.raw());
       true
     } else {
       false
@@ -268,6 +283,7 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
           }
 
           self.execute_command(&job.command, &batch);
+          self.record_fire_event(handle_id, batch);
           executed += 1;
 
           if job.periodic.is_some() {
@@ -338,6 +354,7 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
     let periodic = self.build_periodic_context(mode, period, deadline.ticks())?;
     let job = ScheduledJob { handle: handle.clone(), wheel_id, mode, periodic, command };
     self.jobs.insert(handle.raw(), job);
+    self.record_scheduled_event(handle.raw(), deadline);
     Ok(handle)
   }
 
@@ -387,6 +404,7 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
         },
         | PeriodicBatchDecision::Cancel { warning } => {
           self.warnings.push(warning);
+          self.record_cancel_event(handle_id);
           BatchPreparation::Cancelled
         },
       },
@@ -404,6 +422,7 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
       if let Some(job) = self.jobs.remove(&handle_id) {
         let _ = self.wheel.cancel(job.wheel_id);
       }
+      self.record_cancel_event(handle_id);
     }
   }
 
@@ -477,5 +496,19 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
         runnable.run(batch);
       },
     }
+  }
+
+  fn record_scheduled_event(&mut self, handle_id: u64, deadline: TimerInstant) {
+    self
+      .diagnostics
+      .record(DeterministicEvent::Scheduled { handle_id, scheduled_tick: self.current_tick, deadline_tick: deadline.ticks() });
+  }
+
+  fn record_fire_event(&mut self, handle_id: u64, batch: ExecutionBatch) {
+    self.diagnostics.record(DeterministicEvent::Fired { handle_id, fired_tick: self.current_tick, batch });
+  }
+
+  fn record_cancel_event(&mut self, handle_id: u64) {
+    self.diagnostics.record(DeterministicEvent::Cancelled { handle_id, cancelled_tick: self.current_tick });
   }
 }
