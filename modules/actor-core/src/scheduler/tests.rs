@@ -19,6 +19,7 @@ use super::{
   fixed_delay_policy::FixedDelayPolicy,
   fixed_rate_policy::FixedRatePolicy,
   runner::SchedulerRunner,
+  task_run::{TaskRunError, TaskRunOnClose, TaskRunPriority},
 };
 use crate::{
   NoStdToolbox, RuntimeToolbox, ToolboxMutex,
@@ -57,6 +58,34 @@ fn build_scheduler_with_policies(
 
 fn nz(value: u32) -> NonZeroU32 {
   NonZeroU32::new(value).expect("non-zero")
+}
+
+#[derive(Clone)]
+struct RecordingTask {
+  log:        ArcShared<NoStdMutex<Vec<&'static str>>>,
+  label:      &'static str,
+  should_err: bool,
+}
+
+impl RecordingTask {
+  fn succeed(log: ArcShared<NoStdMutex<Vec<&'static str>>>, label: &'static str) -> ArcShared<Self> {
+    ArcShared::new(Self { log, label, should_err: false })
+  }
+
+  fn fail(log: ArcShared<NoStdMutex<Vec<&'static str>>>, label: &'static str) -> ArcShared<Self> {
+    ArcShared::new(Self { log, label, should_err: true })
+  }
+}
+
+impl TaskRunOnClose for RecordingTask {
+  fn run(&self) -> Result<(), TaskRunError> {
+    self.log.lock().push(self.label);
+    if self.should_err {
+      Err(TaskRunError::new("fail"))
+    } else {
+      Ok(())
+    }
+  }
 }
 
 type SharedScheduler = ArcShared<ToolboxMutex<Scheduler<NoStdToolbox>, NoStdToolbox>>;
@@ -143,7 +172,7 @@ fn cancel_existing_job_returns_true() {
 #[test]
 fn shutdown_prevents_new_jobs() {
   let mut scheduler = build_scheduler();
-  scheduler.shutdown();
+  let _ = scheduler.shutdown();
   let result = scheduler.schedule_once(Duration::from_millis(1));
   assert_eq!(result, Err(SchedulerError::Closed));
 }
@@ -610,6 +639,55 @@ fn scheduler_service_provides_shared_delay_provider() {
   }
 
   assert!(matches!(poll_delay_future(&mut future), Poll::Ready(())));
+}
+
+#[test]
+fn shutdown_executes_task_run_on_close_in_priority_order() {
+  let mut scheduler = build_scheduler();
+  let log = ArcShared::new(NoStdMutex::new(Vec::new()));
+  scheduler
+    .register_on_close(RecordingTask::succeed(log.clone(), "user"), TaskRunPriority::User)
+    .expect("user");
+  scheduler
+    .register_on_close(RecordingTask::succeed(log.clone(), "runtime"), TaskRunPriority::Runtime)
+    .expect("runtime");
+  scheduler
+    .register_on_close(RecordingTask::succeed(log.clone(), "system"), TaskRunPriority::SystemCritical)
+    .expect("system");
+
+  let summary = scheduler.shutdown();
+  let observed = log.lock().clone();
+  assert_eq!(observed, vec!["system", "runtime", "user"]);
+  assert_eq!(summary.executed_tasks, 3);
+  assert_eq!(summary.failed_tasks, 0);
+}
+
+#[test]
+fn task_run_capacity_limits_registrations() {
+  let toolbox = NoStdToolbox::default();
+  let profile = SchedulerCapacityProfile::standard();
+  let config = SchedulerConfig::new(Duration::from_millis(1), profile).with_task_run_capacity(1);
+  let mut scheduler = Scheduler::new(toolbox, config);
+  let task = RecordingTask::succeed(ArcShared::new(NoStdMutex::new(Vec::new())), "only");
+  scheduler.register_on_close(task.clone(), TaskRunPriority::User).expect("first");
+  let err = scheduler.register_on_close(task, TaskRunPriority::User).expect_err("capacity");
+  assert_eq!(err, SchedulerError::TaskRunCapacityExceeded);
+}
+
+#[test]
+fn shutdown_reports_failed_tasks() {
+  let mut scheduler = build_scheduler();
+  let log = ArcShared::new(NoStdMutex::new(Vec::new()));
+  scheduler
+    .register_on_close(RecordingTask::fail(log.clone(), "boom"), TaskRunPriority::Runtime)
+    .expect("fail");
+  let summary = scheduler.shutdown();
+  assert_eq!(summary.executed_tasks, 0);
+  assert_eq!(summary.failed_tasks, 1);
+  assert!(scheduler
+    .warnings()
+    .iter()
+    .any(|warning| matches!(warning, SchedulerWarning::TaskRunFailed { .. })));
 }
 
 struct RecordingSender {

@@ -121,7 +121,7 @@
   - std環境限定の観測フック（tokio::Instant等）をactor-std層に閉じ込め、no_stdビルドへ影響しないことをintegrationテストで証明する。
   - _Requirements: R3.AC1, R3.AC2_
 
-- [ ] 5.2 Shutdown・TaskRunOnClose・rejectフローを実装する
+- [x] 5.2 Shutdown・TaskRunOnClose・rejectフローを実装する
   - Builderが登録したTaskRunOnCloseハンドルを優先度順に実行し、Scheduler::shutdown内で未発火タスクをdrainする。
   - `stop_and_flush`完了後に残っているcommands/handlesをキャンセルまたは実行し、SystemMailboxへ新規enqueueしないことを保証する。
   - shutdown済みSchedulerへのschedule_*呼び出しに`SchedulerError::Closed`を即返し、新規登録を拒否する。

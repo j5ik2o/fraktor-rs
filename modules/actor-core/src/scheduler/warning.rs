@@ -17,4 +17,9 @@ pub enum SchedulerWarning {
     /// Number of missed runs observed.
     missed:    u32,
   },
+  /// Shutdown task failed during execution.
+  TaskRunFailed {
+    /// Identifier of the failed task handle.
+    handle_id: u64,
+  },
 }

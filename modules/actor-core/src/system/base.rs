@@ -331,6 +331,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     }
 
     if self.state.begin_termination() {
+      let _ = self.state.shutdown_scheduler();
       if let Some(root_pid) = self.state.root_guardian_pid() {
         if let Some(user_pid) = self.state.user_guardian_pid() {
           return self.state.send_system_message(root_pid, SystemMessage::StopChild(user_pid));

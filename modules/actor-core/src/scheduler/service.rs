@@ -2,10 +2,10 @@
 
 use fraktor_utils_core_rs::{
   runtime_toolbox::SyncMutexFamily,
-  sync::ArcShared,
+  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 
-use super::{Scheduler, SchedulerBackedDelayProvider, SchedulerConfig};
+use super::{Scheduler, SchedulerBackedDelayProvider, SchedulerConfig, TaskRunSummary};
 use crate::{RuntimeToolbox, ToolboxMutex};
 
 /// Owns the shared scheduler instance and exposes auxiliary services.
@@ -35,5 +35,12 @@ impl<TB: RuntimeToolbox + 'static> SchedulerService<TB> {
   #[must_use]
   pub fn delay_provider(&self) -> SchedulerBackedDelayProvider<TB> {
     self.provider.clone()
+  }
+
+  /// Shuts down the underlying scheduler, returning the summary.
+  pub fn shutdown(&self) -> TaskRunSummary {
+    let scheduler = self.scheduler.clone();
+    let mut guard = scheduler.lock();
+    guard.shutdown_with_tasks()
   }
 }

@@ -37,7 +37,7 @@ use crate::{
   futures::ActorFuture,
   logging::{LogEvent, LogLevel},
   messaging::{AnyMessageGeneric, FailurePayload, SystemMessage},
-  scheduler::SchedulerService,
+  scheduler::{SchedulerService, TaskRunSummary},
   spawn::{NameRegistry, NameRegistryError, SpawnError},
   supervision::SupervisorDirective,
   system::{RegisterExtraTopLevelError, ReservationPolicy},
@@ -645,6 +645,12 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   #[must_use]
   pub fn scheduler_service(&self) -> Option<ArcShared<SchedulerService<TB>>> {
     self.scheduler_service.lock().clone()
+  }
+
+  /// Shuts down the scheduler service if configured.
+  pub fn shutdown_scheduler(&self) -> Option<TaskRunSummary> {
+    self.scheduler_service()
+      .map(|service| service.shutdown())
   }
 
   /// Records a failure and routes it to the supervising hierarchy.

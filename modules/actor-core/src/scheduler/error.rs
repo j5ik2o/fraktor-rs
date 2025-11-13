@@ -13,6 +13,8 @@ pub enum SchedulerError {
   Backpressured,
   /// Internal storage reached configured capacity.
   CapacityExceeded,
+  /// Shutdown-task queue reached configured capacity.
+  TaskRunCapacityExceeded,
 }
 
 impl fmt::Display for SchedulerError {
@@ -22,6 +24,7 @@ impl fmt::Display for SchedulerError {
       | Self::Closed => write!(f, "scheduler closed"),
       | Self::Backpressured => write!(f, "scheduler backpressured"),
       | Self::CapacityExceeded => write!(f, "scheduler capacity exceeded"),
+      | Self::TaskRunCapacityExceeded => write!(f, "scheduler task-run capacity exceeded"),
     }
   }
 }

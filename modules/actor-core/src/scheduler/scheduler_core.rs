@@ -3,8 +3,9 @@
 use alloc::vec::Vec;
 use core::{i32, num::NonZeroU64, time::Duration};
 
-use fraktor_utils_core_rs::time::{
-  SchedulerTickHandle, TimerEntry, TimerHandleId, TimerInstant, TimerWheel, TimerWheelConfig,
+use fraktor_utils_core_rs::{
+  sync::ArcShared,
+  time::{SchedulerTickHandle, TimerEntry, TimerHandleId, TimerInstant, TimerWheel, TimerWheelConfig},
 };
 use hashbrown::HashMap;
 
@@ -20,6 +21,7 @@ use super::{
   metrics::SchedulerMetrics,
   mode::SchedulerMode,
   periodic_batch_decision::PeriodicBatchDecision,
+  task_run::{TaskRunEntry, TaskRunHandle, TaskRunOnClose, TaskRunPriority, TaskRunQueue, TaskRunSummary},
   warning::SchedulerWarning,
 };
 use crate::RuntimeToolbox;
@@ -38,6 +40,10 @@ pub struct Scheduler<TB: RuntimeToolbox> {
   jobs:         HashMap<u64, ScheduledJob<TB>>,
   current_tick: u64,
   closed:       bool,
+  task_runs:    TaskRunQueue,
+  task_run_seq: u64,
+  task_run_capacity: usize,
+  shutting_down: bool,
 }
 
 #[allow(dead_code)]
@@ -97,6 +103,10 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
       jobs: HashMap::new(),
       current_tick: 0,
       closed: false,
+      task_runs: TaskRunQueue::new(),
+      task_run_seq: 0,
+      task_run_capacity: config.task_run_capacity(),
+      shutting_down: false,
     }
   }
 
@@ -188,9 +198,35 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
     }
   }
 
-  /// Prevents future scheduling requests.
-  pub fn shutdown(&mut self) {
+  /// Prevents future scheduling requests and runs registered shutdown tasks.
+  pub fn shutdown(&mut self) -> TaskRunSummary {
+    self.shutdown_with_tasks()
+  }
+
+  /// Registers a shutdown task with the specified priority.
+  pub fn register_on_close(
+    &mut self,
+    task: ArcShared<dyn TaskRunOnClose>,
+    priority: TaskRunPriority,
+  ) -> Result<TaskRunHandle, SchedulerError> {
+    if self.task_runs.len() >= self.task_run_capacity {
+      return Err(SchedulerError::TaskRunCapacityExceeded);
+    }
+    let handle = TaskRunHandle::new(self.task_run_seq);
+    self.task_run_seq = self.task_run_seq.wrapping_add(1);
+    self.task_runs.push(TaskRunEntry::new(priority, self.task_run_seq, handle, task));
+    Ok(handle)
+  }
+
+  /// Shuts down the scheduler, running registered on-close tasks.
+  pub fn shutdown_with_tasks(&mut self) -> TaskRunSummary {
+    if self.shutting_down {
+      return TaskRunSummary::default();
+    }
+    self.shutting_down = true;
     self.closed = true;
+    self.cancel_all_jobs();
+    self.run_task_queue()
   }
 
   /// Borrows a tick handle from the toolbox.
@@ -356,6 +392,33 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
       },
       | None => BatchPreparation::Ready(ExecutionBatch::oneshot()),
     }
+  }
+
+  fn cancel_all_jobs(&mut self) {
+    let handles: Vec<u64> = self.jobs.keys().copied().collect();
+    for handle_id in handles {
+      if let Some(entry) = self.registry.remove(handle_id) {
+        entry.force_cancel();
+        self.metrics.decrement_active();
+      }
+      if let Some(job) = self.jobs.remove(&handle_id) {
+        let _ = self.wheel.cancel(job.wheel_id);
+      }
+    }
+  }
+
+  fn run_task_queue(&mut self) -> TaskRunSummary {
+    let mut summary = TaskRunSummary::default();
+    while let Some(entry) = self.task_runs.pop() {
+      match entry.task.run() {
+        | Ok(()) => summary.executed_tasks = summary.executed_tasks.saturating_add(1),
+        | Err(_) => {
+          summary.failed_tasks = summary.failed_tasks.saturating_add(1);
+          self.warnings.push(SchedulerWarning::TaskRunFailed { handle_id: entry.handle.id() });
+        },
+      }
+    }
+    summary
   }
 
   fn duration_to_ticks(&self, duration: Duration) -> Result<u64, SchedulerError> {

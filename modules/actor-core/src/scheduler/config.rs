@@ -17,6 +17,7 @@ pub struct SchedulerConfig {
   profile:          SchedulerCapacityProfile,
   max_pending_jobs: usize,
   policy_registry:  SchedulerPolicyRegistry,
+  task_run_capacity: usize,
 }
 
 impl SchedulerConfig {
@@ -24,7 +25,8 @@ impl SchedulerConfig {
   #[must_use]
   pub fn new(resolution: Duration, profile: SchedulerCapacityProfile) -> Self {
     let max_pending_jobs = profile.system_quota();
-    Self { resolution, profile, max_pending_jobs, policy_registry: SchedulerPolicyRegistry::default() }
+    let task_run_capacity = profile.task_run_capacity();
+    Self { resolution, profile, max_pending_jobs, policy_registry: SchedulerPolicyRegistry::default(), task_run_capacity }
   }
 
   /// Returns the configured resolution.
@@ -121,6 +123,19 @@ impl SchedulerConfig {
   #[must_use]
   pub const fn fixed_delay_policy(&self) -> FixedDelayPolicy {
     self.policy_registry.fixed_delay()
+  }
+
+  /// Returns the capacity allocated for TaskRunOnClose registrations.
+  #[must_use]
+  pub const fn task_run_capacity(&self) -> usize {
+    self.task_run_capacity
+  }
+
+  /// Overrides the task run capacity.
+  #[must_use]
+  pub fn with_task_run_capacity(mut self, capacity: usize) -> Self {
+    self.task_run_capacity = capacity.max(1);
+    self
   }
 }
 

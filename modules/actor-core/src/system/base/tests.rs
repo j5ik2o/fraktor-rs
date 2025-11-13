@@ -360,6 +360,76 @@ fn spawn_returns_child_ref_even_if_dispatcher_is_idle() {
   assert!(result.is_ok());
 }
 
+fn new_noop_waker() -> Waker {
+  const VTABLE: RawWakerVTable = RawWakerVTable::new(
+    |data| RawWaker::new(data, &VTABLE),
+    |_| {},
+    |_| {},
+    |_| {},
+  );
+
+  unsafe fn raw_waker() -> RawWaker {
+    RawWaker::new(core::ptr::null(), &VTABLE)
+  }
+
+  unsafe { Waker::from_raw(raw_waker()) }
+}
+
+fn poll_delay(future: &mut DelayFuture) -> Poll<()> {
+  let waker = new_noop_waker();
+  let mut cx = Context::from_waker(&waker);
+  Pin::new(future).poll(&mut cx)
+}
+
+#[test]
+fn actor_system_scheduler_service_handles_delays() {
+  let props = Props::from_fn(|| TestActor);
+  let system = ActorSystem::new(&props).expect("system");
+  let provider = system.delay_provider().expect("delay provider");
+  let mut future = provider.delay(Duration::from_millis(1));
+  assert!(matches!(poll_delay(&mut future), Poll::Pending));
+
+  let service = system.scheduler_service().expect("scheduler service");
+  let scheduler = service.scheduler();
+  {
+    let mut guard = scheduler.lock();
+    guard.run_for_test(1);
+  }
+
+  assert!(matches!(poll_delay(&mut future), Poll::Ready(())));
+}
+
+#[test]
+fn actor_system_terminate_runs_scheduler_tasks() {
+  let props = Props::from_fn(|| TestActor);
+  let system = ActorSystem::new(&props).expect("system");
+  let log = ArcShared::new(NoStdMutex::new(Vec::new()));
+  {
+    let service = system.scheduler_service().expect("service");
+    let scheduler = service.scheduler();
+    let mut guard = scheduler.lock();
+    let task = RecordingShutdownTask { log: log.clone() };
+    guard
+      .register_on_close(ArcShared::new(task), crate::scheduler::task_run::TaskRunPriority::User)
+      .expect("register");
+  }
+
+  system.terminate().expect("terminate");
+
+  assert_eq!(log.lock().as_slice(), &["shutdown"]);
+}
+
+struct RecordingShutdownTask {
+  log: ArcShared<NoStdMutex<Vec<&'static str>>>,
+}
+
+impl crate::scheduler::task_run::TaskRunOnClose for RecordingShutdownTask {
+  fn run(&self) -> Result<(), crate::scheduler::task_run::TaskRunError> {
+    self.log.lock().push("shutdown");
+    Ok(())
+  }
+}
+
 fn noop_waker() -> Waker {
   const VTABLE: RawWakerVTable = RawWakerVTable::new(
     |data| RawWaker::new(data, &VTABLE),
