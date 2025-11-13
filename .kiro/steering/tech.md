@@ -60,6 +60,7 @@ scripts/ci-check.sh all                  # CI と同等フルスイート
 - **Authority 隔離**: `RemoteAuthorityManagerGeneric` が remoting の隔離判定を centralize し、`VecDeque` キューを掃き出してから `Connected` 化します。deadline が過ぎた quarantined authority は `poll_quarantine_expiration` で自動復旧させ、明示解除 API との二段構えで安全側に倒します。
 - **FQCN import 原則**: ランタイム内部は `crate::...` で明示的に参照し、prelude はユーザ公開面のみに限定。
 - **参照実装からの逆輸入**: protoactor-go / Apache Pekko を参照しつつ、Rust の所有権と `no_std` 制約に合わせた最小 API を優先する。
+- **ハンドル命名規約**: 所有権やライフサイクルを管理する型のみ `*Handle` サフィックスを許容し、`ArcShared` 等を薄く包む共有参照は `*Shared` を用いる。命名段階で責務の違いが分かるようにし、Scheduler/Dispatcher まわりの API でも同ルールを徹底する。
 
 ---
 _スタックと標準を要約し、詳細な API 仕様は各クレートの rustdoc / guides へ委譲します。_
