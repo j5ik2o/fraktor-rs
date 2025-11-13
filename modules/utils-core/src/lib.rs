@@ -69,9 +69,14 @@ pub use concurrent::{
 pub use sync::{
   ArcShared, Flag, SendBound, Shared, SharedBound, SharedDyn, SharedFactory, SharedFn, StateCell, StaticRefShared,
 };
+pub use time::{
+  ClockKind, DriftMonitor, DriftStatus, ManualClock, MonotonicClock, SchedulerCapacityProfile, SchedulerTickHandle,
+  TickEvent, TickLease, TimerEntry, TimerEntryMode, TimerHandleId, TimerInstant, TimerWheel, TimerWheelConfig,
+  TimerWheelError,
+};
 pub use timing::{
   DeadLineTimer, DeadLineTimerError, DeadLineTimerExpired, DeadLineTimerKey, DeadLineTimerKeyAllocator, DelayFuture,
-  DelayProvider, ManualDelayProvider, TimerDeadLine,
+  DelayProvider, DelayTrigger, ManualDelayProvider, TimerDeadLine,
 };
 
 /// Core collections shared across the Cellex runtimes.
@@ -82,4 +87,5 @@ pub mod net;
 pub mod runtime_toolbox;
 /// Synchronization primitives and shared ownership abstractions.
 pub mod sync;
+pub mod time;
 mod timing;

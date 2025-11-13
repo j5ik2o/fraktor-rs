@@ -37,6 +37,7 @@ use crate::{
   futures::ActorFuture,
   logging::{LogEvent, LogLevel},
   messaging::{AnyMessageGeneric, FailurePayload, SystemMessage},
+  scheduler::{SchedulerContext, TaskRunSummary},
   spawn::{NameRegistry, NameRegistryError, SpawnError},
   supervision::SupervisorDirective,
   system::{RegisterExtraTopLevelError, ReservationPolicy},
@@ -104,6 +105,7 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   path_identity:          ToolboxMutex<PathIdentity, TB>,
   actor_path_registry:    ToolboxMutex<ActorPathRegistry, TB>,
   remote_authority_mgr:   ArcShared<RemoteAuthorityManagerGeneric<TB>>,
+  scheduler_context:      ToolboxMutex<Option<ArcShared<SchedulerContext<TB>>>, TB>,
 }
 
 /// Type alias for [SystemStateGeneric] with the default [NoStdToolbox].
@@ -149,6 +151,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       path_identity: <TB::MutexFamily as SyncMutexFamily>::create(PathIdentity::default()),
       actor_path_registry: <TB::MutexFamily as SyncMutexFamily>::create(ActorPathRegistry::new()),
       remote_authority_mgr: ArcShared::new(RemoteAuthorityManagerGeneric::new()),
+      scheduler_context: <TB::MutexFamily as SyncMutexFamily>::create(None),
     }
   }
 
@@ -630,6 +633,23 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   #[must_use]
   pub fn mailboxes(&self) -> ArcShared<MailboxesGeneric<TB>> {
     self.mailboxes.clone()
+  }
+
+  /// Installs the scheduler service handle.
+  pub fn install_scheduler_context(&self, context: ArcShared<SchedulerContext<TB>>) {
+    let mut guard = self.scheduler_context.lock();
+    guard.replace(context);
+  }
+
+  /// Returns the scheduler context when it has been initialized.
+  #[must_use]
+  pub fn scheduler_context(&self) -> Option<ArcShared<SchedulerContext<TB>>> {
+    self.scheduler_context.lock().clone()
+  }
+
+  /// Shuts down the scheduler context if configured.
+  pub fn shutdown_scheduler(&self) -> Option<TaskRunSummary> {
+    self.scheduler_context().map(|context| context.shutdown())
   }
 
   /// Records a failure and routes it to the supervising hierarchy.

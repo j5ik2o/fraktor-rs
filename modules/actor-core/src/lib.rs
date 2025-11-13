@@ -76,6 +76,7 @@ pub mod logging;
 pub mod mailbox;
 pub mod messaging;
 pub mod props;
+pub mod scheduler;
 pub mod serialization;
 pub mod spawn;
 pub mod stash;

@@ -1,0 +1,62 @@
+name: tokei
+
+on:
+  push:
+    branches:
+      - main
+  schedule:
+    # 毎日0時（UTC）に実行
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+jobs:
+  tokei:
+    name: Update tokei badge
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install tokei
+        run: |
+          cargo install --locked tokei
+
+      - name: Run tokei
+        id: tokei
+        run: |
+          # JSONで出力
+          tokei --output json > tokei_output.json
+
+          # 合計行数を取得
+          TOTAL_LINES=$(jq '.Total.code' tokei_output.json)
+          TOTAL_COMMENTS=$(jq '.Total.comments' tokei_output.json)
+          TOTAL_BLANKS=$(jq '.Total.blanks' tokei_output.json)
+
+          echo "total_lines=${TOTAL_LINES}" >> $GITHUB_OUTPUT
+          echo "total_comments=${TOTAL_COMMENTS}" >> $GITHUB_OUTPUT
+          echo "total_blanks=${TOTAL_BLANKS}" >> $GITHUB_OUTPUT
+
+          # shields.io用のJSONを作成
+          cat > tokei_badge.json <<EOF
+          {
+            "schemaVersion": 1,
+            "label": "lines of code",
+            "message": "$(numfmt --grouping ${TOTAL_LINES})",
+            "color": "blue"
+          }
+          EOF
+
+      - name: Update Gist
+        uses: exuanbo/actions-deploy-gist@v1
+        with:
+          token: ${{ secrets.GIST_TOKEN }}
+          gist_id: ${{ secrets.TOKEI_GIST_ID }}
+          file_path: tokei_badge.json
+          file_type: text
+
+      - name: Display results
+        run: |
+          echo "📊 Code Statistics:"
+          echo "  Lines of code: ${{ steps.tokei.outputs.total_lines }}"
+          echo "  Comments: ${{ steps.tokei.outputs.total_comments }}"
+          echo "  Blank lines: ${{ steps.tokei.outputs.total_blanks }}"

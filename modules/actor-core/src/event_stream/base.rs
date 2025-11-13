@@ -4,12 +4,13 @@
 mod tests;
 
 use alloc::vec::Vec;
-use core::sync::atomic::{AtomicU64, Ordering};
+use core::sync::atomic::Ordering;
 
 use fraktor_utils_core_rs::{
   runtime_toolbox::SyncMutexFamily,
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
+use portable_atomic::AtomicU64;
 
 use crate::{
   NoStdToolbox, RuntimeToolbox, ToolboxMutex,

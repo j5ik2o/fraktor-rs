@@ -1,4 +1,6 @@
-//! Runtime toolbox abstraction selecting synchronization families.
+//! Runtime toolbox abstraction selecting synchronization families and time primitives.
+
+use crate::time::{MonotonicClock, SchedulerTickHandle};
 
 #[cfg(test)]
 mod tests;
@@ -13,6 +15,14 @@ pub use sync_mutex_family::{SpinMutexFamily, SyncMutexFamily};
 pub trait RuntimeToolbox: Send + Sync + 'static {
   /// Mutex family used to instantiate synchronization primitives.
   type MutexFamily: SyncMutexFamily;
+  /// Clock implementation exposed through the toolbox.
+  type Clock: MonotonicClock;
+
+  /// Returns the monotonic clock.
+  fn clock(&self) -> &Self::Clock;
+
+  /// Creates a tick handle scoped to this toolbox.
+  fn tick_source(&self) -> SchedulerTickHandle<'_>;
 }
 
 /// Helper alias exposing the mutex type produced by the selected toolbox.

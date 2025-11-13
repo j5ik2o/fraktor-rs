@@ -1,6 +1,12 @@
 use alloc::{vec, vec::Vec};
+use core::{
+  pin::Pin,
+  task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
+  time::Duration,
+};
 
 use fraktor_utils_core_rs::{
+  DelayFuture, DelayProvider,
   collections::queue::capabilities::{QueueCapabilityRegistry, QueueCapabilitySet},
   sync::{ArcShared, NoStdMutex},
 };
@@ -356,6 +362,103 @@ fn spawn_returns_child_ref_even_if_dispatcher_is_idle() {
   let result = system.spawn_with_parent(None, &props);
 
   assert!(result.is_ok());
+}
+
+fn new_noop_waker() -> Waker {
+  const VTABLE: RawWakerVTable = RawWakerVTable::new(|data| RawWaker::new(data, &VTABLE), |_| {}, |_| {}, |_| {});
+
+  unsafe fn raw_waker() -> RawWaker {
+    RawWaker::new(core::ptr::null(), &VTABLE)
+  }
+
+  unsafe { Waker::from_raw(raw_waker()) }
+}
+
+fn poll_delay(future: &mut DelayFuture) -> Poll<()> {
+  let waker = new_noop_waker();
+  let mut cx = Context::from_waker(&waker);
+  Pin::new(future).poll(&mut cx)
+}
+
+#[test]
+fn actor_system_scheduler_context_handles_delays() {
+  let props = Props::from_fn(|| TestActor);
+  let system = ActorSystem::new(&props).expect("system");
+  let provider = system.delay_provider().expect("delay provider");
+  let mut future = provider.delay(Duration::from_millis(1));
+  assert!(matches!(poll_delay(&mut future), Poll::Pending));
+
+  let context = system.scheduler_context().expect("scheduler context");
+  let scheduler = context.scheduler();
+  {
+    let mut guard = scheduler.lock();
+    guard.run_for_test(1);
+  }
+
+  assert!(matches!(poll_delay(&mut future), Poll::Ready(())));
+}
+
+#[test]
+fn actor_system_terminate_runs_scheduler_tasks() {
+  let props = Props::from_fn(|| TestActor);
+  let system = ActorSystem::new(&props).expect("system");
+  let log = ArcShared::new(NoStdMutex::new(Vec::new()));
+  {
+    let context = system.scheduler_context().expect("context");
+    let scheduler = context.scheduler();
+    let mut guard = scheduler.lock();
+    let task = RecordingShutdownTask { log: log.clone() };
+    guard.register_on_close(ArcShared::new(task), crate::scheduler::TaskRunPriority::User).expect("register");
+  }
+
+  system.terminate().expect("terminate");
+
+  assert_eq!(log.lock().as_slice(), &["shutdown"]);
+}
+
+struct RecordingShutdownTask {
+  log: ArcShared<NoStdMutex<Vec<&'static str>>>,
+}
+
+impl crate::scheduler::TaskRunOnClose for RecordingShutdownTask {
+  fn run(&self) -> Result<(), crate::scheduler::TaskRunError> {
+    self.log.lock().push("shutdown");
+    Ok(())
+  }
+}
+
+fn noop_waker() -> Waker {
+  const VTABLE: RawWakerVTable = RawWakerVTable::new(|data| RawWaker::new(data, &VTABLE), |_| {}, |_| {}, |_| {});
+
+  unsafe fn raw_waker() -> RawWaker {
+    RawWaker::new(core::ptr::null(), &VTABLE)
+  }
+
+  unsafe { Waker::from_raw(raw_waker()) }
+}
+
+fn poll_delay_future(future: &mut DelayFuture) -> Poll<()> {
+  let waker = noop_waker();
+  let mut cx = Context::from_waker(&waker);
+  Pin::new(future).poll(&mut cx)
+}
+
+#[test]
+fn actor_system_installs_scheduler_context() {
+  let props = Props::from_fn(|| TestActor);
+  let system = ActorSystem::new(&props).expect("actor system");
+  let provider = system.delay_provider().expect("delay provider");
+  let mut future = provider.delay(Duration::from_millis(1));
+  assert!(matches!(poll_delay_future(&mut future), Poll::Pending));
+
+  let context = system.scheduler_context().expect("scheduler context");
+  {
+    let scheduler = context.scheduler();
+    let mut guard = scheduler.lock();
+    guard.run_for_test(1);
+  }
+
+  assert!(matches!(poll_delay_future(&mut future), Poll::Ready(())));
 }
 
 #[test]

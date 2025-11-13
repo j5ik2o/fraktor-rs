@@ -25,7 +25,9 @@ spin = { workspace = true, default-features = false, features = ["mutex", "spin_
 portable-atomic = { workspace = true, default-features = false, features = ["critical-section"] }
 cortex-m = { workspace = true, optional = true }
 portable-atomic-util = { version = "0.2", default-features = false, features = ["alloc"] }
+thiserror = { workspace = true, default-features = false }
 
 [dev-dependencies]
 criterion = { workspace = true }
 tokio = { workspace = true, features = ["sync", "rt", "macros", "time"] }
+proptest = "1.5"

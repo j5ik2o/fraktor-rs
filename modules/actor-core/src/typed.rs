@@ -14,6 +14,8 @@ mod behaviors;
 pub mod message_adapter;
 /// Typed props that wrap untyped props.
 mod props;
+/// Typed scheduler facade mirroring the untyped API.
+mod scheduler;
 /// Builder for assigning supervisor strategies to behaviors.
 mod supervise;
 /// Typed actor system interface.
@@ -29,11 +31,16 @@ mod typed_ask_response;
 /// Unhandled message event for monitoring.
 mod unhandled_message_event;
 
+pub use actor_prim::{
+  TypedActor, TypedActorContext, TypedActorContextGeneric, TypedActorRef, TypedActorRefGeneric, TypedChildRef,
+  TypedChildRefGeneric,
+};
 pub use behavior::Behavior;
 pub use behavior_signal::BehaviorSignal;
 pub use behaviors::Behaviors;
 pub use message_adapter::{AdapterError, AdapterFailure, AdapterOutcome, AdapterPayload, MessageAdapterRegistry};
 pub use props::{TypedProps, TypedPropsGeneric};
+pub use scheduler::TypedScheduler;
 pub use supervise::Supervise;
 pub use system::{TypedActorSystem, TypedActorSystemGeneric};
 pub use typed_ask_error::TypedAskError;
