@@ -22,9 +22,9 @@ use proptest::prelude::*;
 
 use super::{
   BatchMode, DeterministicEvent, ExecutionBatch, Scheduler, SchedulerBackedDelayProvider, SchedulerConfig,
-  SchedulerContext, SchedulerDiagnosticsEvent, SchedulerError, SchedulerMode, SchedulerRunner, SchedulerWarning,
-  TaskRunError, TaskRunOnClose, TaskRunPriority, api, command::SchedulerCommand, fixed_delay_policy::FixedDelayPolicy,
-  fixed_rate_policy::FixedRatePolicy, handle::SchedulerHandle,
+  SchedulerContext, SchedulerDiagnosticsEvent, SchedulerError, SchedulerMode, SchedulerRunnable, SchedulerRunner,
+  SchedulerWarning, TaskRunError, TaskRunOnClose, TaskRunPriority, command::SchedulerCommand,
+  fixed_delay_policy::FixedDelayPolicy, fixed_rate_policy::FixedRatePolicy, handle::SchedulerHandle,
 };
 use crate::{
   NoStdToolbox, RuntimeToolbox, ToolboxMutex,
@@ -118,12 +118,34 @@ fn poll_delay_future(future: &mut DelayFuture) -> Poll<()> {
   Pin::new(future).poll(&mut cx)
 }
 
+fn schedule_message_command<TB: RuntimeToolbox>(
+  scheduler: &mut Scheduler<TB>,
+  delay: Duration,
+  receiver: ActorRefGeneric<TB>,
+  message: AnyMessageGeneric<TB>,
+  sender: Option<ActorRefGeneric<TB>>,
+) -> Result<SchedulerHandle, SchedulerError> {
+  scheduler.schedule_command(delay, SchedulerCommand::SendMessage { receiver, message, dispatcher: None, sender })
+}
+
+fn schedule_runnable_command<TB, F>(
+  scheduler: &mut Scheduler<TB>,
+  delay: Duration,
+  runnable: F,
+) -> Result<SchedulerHandle, SchedulerError>
+where
+  TB: RuntimeToolbox,
+  F: SchedulerRunnable, {
+  let runnable: ArcShared<dyn SchedulerRunnable> = ArcShared::new(runnable);
+  scheduler.schedule_command(delay, SchedulerCommand::RunRunnable { runnable, dispatcher: None })
+}
+
 struct ManualRunnerOwner;
 
 #[test]
 fn schedule_once_rejects_zero_delay() {
   let mut scheduler = build_scheduler();
-  let result = scheduler.schedule_once(Duration::ZERO);
+  let result = scheduler.schedule_once(Duration::ZERO, SchedulerCommand::Noop);
   assert_eq!(result, Err(SchedulerError::InvalidDelay));
 }
 
@@ -131,21 +153,21 @@ fn schedule_once_rejects_zero_delay() {
 fn schedule_once_rejects_duration_exceeding_tick_limit() {
   let mut scheduler = build_scheduler_with_resolution(Duration::from_nanos(1));
   let invalid = Duration::from_nanos((i32::MAX as u64) + 1);
-  let result = scheduler.schedule_once(invalid);
+  let result = scheduler.schedule_once(invalid, SchedulerCommand::Noop);
   assert_eq!(result, Err(SchedulerError::InvalidDelay));
 }
 
 #[test]
 fn schedule_once_returns_handle_for_valid_delay() {
   let mut scheduler = build_scheduler();
-  let handle = scheduler.schedule_once(Duration::from_millis(10)).expect("handle");
+  let handle = scheduler.schedule_once(Duration::from_millis(10), SchedulerCommand::Noop).expect("handle");
   assert_ne!(handle.raw(), 0);
 }
 
 #[test]
 fn fixed_rate_requires_positive_period() {
   let mut scheduler = build_scheduler();
-  let result = scheduler.schedule_at_fixed_rate(Duration::from_millis(5), Duration::ZERO);
+  let result = scheduler.schedule_at_fixed_rate(Duration::from_millis(5), Duration::ZERO, SchedulerCommand::Noop);
   assert_eq!(result, Err(SchedulerError::InvalidDelay));
 }
 
@@ -153,7 +175,9 @@ fn fixed_rate_requires_positive_period() {
 fn schedule_fixed_rate_registers_job() {
   let mut scheduler = build_scheduler();
   assert_eq!(scheduler.job_count_for_test(), 0);
-  let handle = scheduler.schedule_at_fixed_rate(Duration::from_millis(5), Duration::from_millis(7)).expect("handle");
+  let handle = scheduler
+    .schedule_at_fixed_rate(Duration::from_millis(5), Duration::from_millis(7), SchedulerCommand::Noop)
+    .expect("handle");
   assert_ne!(handle.raw(), 0);
   assert_eq!(scheduler.job_count_for_test(), 1);
 }
@@ -161,7 +185,7 @@ fn schedule_fixed_rate_registers_job() {
 #[test]
 fn cancel_existing_job_returns_true() {
   let mut scheduler = build_scheduler();
-  let handle = scheduler.schedule_once(Duration::from_millis(2)).expect("handle");
+  let handle = scheduler.schedule_once(Duration::from_millis(2), SchedulerCommand::Noop).expect("handle");
   assert!(scheduler.cancel(&handle));
   assert!(handle.is_cancelled());
   assert!(!scheduler.cancel(&handle));
@@ -171,7 +195,7 @@ fn cancel_existing_job_returns_true() {
 fn shutdown_prevents_new_jobs() {
   let mut scheduler = build_scheduler();
   let _ = scheduler.shutdown();
-  let result = scheduler.schedule_once(Duration::from_millis(1));
+  let result = scheduler.schedule_once(Duration::from_millis(1), SchedulerCommand::Noop);
   assert_eq!(result, Err(SchedulerError::Closed));
 }
 
@@ -180,7 +204,7 @@ fn handles_are_unique_across_registrations() {
   let mut scheduler = build_scheduler();
   let mut ids = Vec::new();
   for offset in 1..=5u64 {
-    let handle = scheduler.schedule_once(Duration::from_millis(offset)).expect("handle");
+    let handle = scheduler.schedule_once(Duration::from_millis(offset), SchedulerCommand::Noop).expect("handle");
     ids.push(handle.raw());
   }
   ids.sort_unstable();
@@ -194,8 +218,8 @@ fn capacity_limit_returns_error() {
   let profile = SchedulerCapacityProfile::new("tiny", 1, 1, 1);
   let config = SchedulerConfig::new(Duration::from_millis(1), profile).with_max_pending_jobs(1);
   let mut scheduler = Scheduler::new(toolbox, config);
-  scheduler.schedule_once(Duration::from_millis(1)).expect("first");
-  let err = scheduler.schedule_once(Duration::from_millis(2)).expect_err("second should fail");
+  scheduler.schedule_once(Duration::from_millis(1), SchedulerCommand::Noop).expect("first");
+  let err = scheduler.schedule_once(Duration::from_millis(2), SchedulerCommand::Noop).expect_err("second should fail");
   assert_eq!(err, SchedulerError::Backpressured);
 }
 
@@ -224,17 +248,16 @@ fn schedule_command_records_send_message() {
 }
 
 #[test]
-fn api_schedule_once_records_sender_metadata() {
+fn schedule_once_records_sender_metadata() {
   let mut scheduler = build_scheduler();
   let receiver = ActorRefGeneric::null();
   let sender = ActorRefGeneric::null();
   let message = AnyMessageGeneric::new("payload".to_string());
-  let handle = api::schedule_once(
+  let handle = schedule_message_command(
     &mut scheduler,
     Duration::from_millis(4),
     receiver.clone(),
     message.clone(),
-    None,
     Some(sender.clone()),
   )
   .expect("handle");
@@ -250,21 +273,19 @@ fn api_schedule_once_records_sender_metadata() {
 }
 
 #[test]
-fn api_schedule_at_fixed_rate_executes_multiple_runs() {
+fn schedule_at_fixed_rate_executes_multiple_runs() {
   let mut scheduler = build_scheduler();
   let inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
   let sender = ArcShared::new(RecordingSender { inbox: inbox.clone() });
   let receiver = ActorRefGeneric::new(Pid::new(2, 0), sender);
-  api::schedule_at_fixed_rate(
-    &mut scheduler,
-    Duration::from_millis(2),
-    Duration::from_millis(3),
-    receiver,
-    AnyMessageGeneric::new(11u32),
-    None,
-    None,
-  )
-  .expect("handle");
+  scheduler
+    .schedule_at_fixed_rate(Duration::from_millis(2), Duration::from_millis(3), SchedulerCommand::SendMessage {
+      receiver,
+      message: AnyMessageGeneric::new(11u32),
+      dispatcher: None,
+      sender: None,
+    })
+    .expect("handle");
   scheduler.run_for_test(2);
   scheduler.run_for_test(3);
   scheduler.run_for_test(3);
@@ -272,19 +293,11 @@ fn api_schedule_at_fixed_rate_executes_multiple_runs() {
 }
 
 #[test]
-fn api_schedule_with_fixed_delay_rejects_zero_initial_delay() {
+fn schedule_with_fixed_delay_rejects_zero_initial_delay() {
   let mut scheduler = build_scheduler();
-  let receiver = ActorRefGeneric::null();
-  let err = api::schedule_with_fixed_delay(
-    &mut scheduler,
-    Duration::ZERO,
-    Duration::from_millis(1),
-    receiver,
-    AnyMessageGeneric::new(1u32),
-    None,
-    None,
-  )
-  .expect_err("should reject zero initial delay");
+  let err = scheduler
+    .schedule_with_fixed_delay(Duration::ZERO, Duration::from_millis(1), SchedulerCommand::Noop)
+    .expect_err("should reject zero initial delay");
   assert_eq!(err, SchedulerError::InvalidDelay);
 }
 
@@ -293,7 +306,7 @@ fn schedule_once_fn_executes_runnable() {
   let mut scheduler = build_scheduler();
   let counter = ArcShared::new(NoStdMutex::new(0usize));
   let captured = counter.clone();
-  api::schedule_once_fn(&mut scheduler, Duration::from_millis(1), None, move |batch: &ExecutionBatch| {
+  schedule_runnable_command(&mut scheduler, Duration::from_millis(1), move |batch: &ExecutionBatch| {
     assert_eq!(batch.runs().get(), 1);
     let mut guard = captured.lock();
     *guard += 1;
@@ -309,7 +322,7 @@ fn run_for_test_executes_send_message() {
   let inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
   let sender = ArcShared::new(RecordingSender { inbox: inbox.clone() });
   let receiver = ActorRefGeneric::new(Pid::new(1, 0), sender);
-  api::schedule_once(&mut scheduler, Duration::from_millis(5), receiver, AnyMessageGeneric::new(7u32), None, None)
+  schedule_message_command(&mut scheduler, Duration::from_millis(5), receiver, AnyMessageGeneric::new(7u32), None)
     .expect("handle");
   scheduler.run_for_test(5);
   assert_eq!(inbox.lock().len(), 1);
@@ -320,7 +333,7 @@ fn schedule_once_fn_records_execution_batch() {
   let mut scheduler = build_scheduler();
   let observed = ArcShared::new(NoStdMutex::new(Vec::new()));
   let capture = observed.clone();
-  api::schedule_once_fn(&mut scheduler, Duration::from_millis(1), None, move |batch: &ExecutionBatch| {
+  schedule_runnable_command(&mut scheduler, Duration::from_millis(1), move |batch: &ExecutionBatch| {
     capture.lock().push((batch.runs().get(), batch.missed_runs()));
   })
   .expect("handle");
@@ -337,16 +350,15 @@ fn runner_manual_processes_ticks_in_order() {
   let sender = ArcShared::new(RecordingSender { inbox: inbox.clone() });
   let receiver = ActorRefGeneric::new(Pid::new(7, 0), sender);
 
-  api::schedule_once(
+  schedule_message_command(
     &mut scheduler,
     Duration::from_millis(1),
     receiver.clone(),
     AnyMessageGeneric::new(1u32),
     None,
-    None,
   )
   .expect("handle");
-  api::schedule_once(&mut scheduler, Duration::from_millis(1), receiver, AnyMessageGeneric::new(2u32), None, None)
+  schedule_message_command(&mut scheduler, Duration::from_millis(1), receiver, AnyMessageGeneric::new(2u32), None)
     .expect("handle");
 
   {
@@ -368,8 +380,8 @@ fn backpressure_error_returned_when_pending_jobs_exceed_limit() {
   let profile = SchedulerCapacityProfile::new("tiny", 32, 8, 4);
   let config = SchedulerConfig::new(Duration::from_millis(1), profile).with_max_pending_jobs(1);
   let mut scheduler = Scheduler::new(toolbox, config);
-  scheduler.schedule_once(Duration::from_millis(1)).expect("first");
-  let err = scheduler.schedule_once(Duration::from_millis(2)).expect_err("second");
+  scheduler.schedule_once(Duration::from_millis(1), SchedulerCommand::Noop).expect("first");
+  let err = scheduler.schedule_once(Duration::from_millis(2), SchedulerCommand::Noop).expect_err("second");
   assert_eq!(err, SchedulerError::Backpressured);
 }
 
@@ -379,15 +391,15 @@ fn timer_wheel_capacity_exceeded_returns_error() {
   let profile = SchedulerCapacityProfile::new("mini", 1, 1, 1);
   let config = SchedulerConfig::new(Duration::from_millis(1), profile).with_max_pending_jobs(2);
   let mut scheduler = Scheduler::new(toolbox, config);
-  scheduler.schedule_once(Duration::from_millis(1)).expect("first");
-  let err = scheduler.schedule_once(Duration::from_millis(2)).expect_err("second");
+  scheduler.schedule_once(Duration::from_millis(1), SchedulerCommand::Noop).expect("first");
+  let err = scheduler.schedule_once(Duration::from_millis(2), SchedulerCommand::Noop).expect_err("second");
   assert_eq!(err, SchedulerError::CapacityExceeded);
 }
 
 #[test]
 fn handle_reports_cancelled_state() {
   let mut scheduler = build_scheduler();
-  let handle = scheduler.schedule_once(Duration::from_millis(5)).expect("handle");
+  let handle = scheduler.schedule_once(Duration::from_millis(5), SchedulerCommand::Noop).expect("handle");
   assert!(!handle.is_cancelled());
   assert!(scheduler.cancel(&handle));
   assert!(handle.is_cancelled());
@@ -401,7 +413,7 @@ fn cancelled_job_is_not_delivered() {
   let sender = ArcShared::new(RecordingSender { inbox: inbox.clone() });
   let receiver = ActorRefGeneric::new(Pid::new(3, 0), sender);
   let handle =
-    api::schedule_once(&mut scheduler, Duration::from_millis(2), receiver, AnyMessageGeneric::new(42u32), None, None)
+    schedule_message_command(&mut scheduler, Duration::from_millis(2), receiver, AnyMessageGeneric::new(42u32), None)
       .expect("handle");
   assert!(scheduler.cancel(&handle));
   scheduler.run_for_test(2);
@@ -411,7 +423,7 @@ fn cancelled_job_is_not_delivered() {
 #[test]
 fn handle_reports_completed_after_execution() {
   let mut scheduler = build_scheduler();
-  let handle = scheduler.schedule_once(Duration::from_millis(3)).expect("handle");
+  let handle = scheduler.schedule_once(Duration::from_millis(3), SchedulerCommand::Noop).expect("handle");
   scheduler.run_for_test(3);
   assert!(handle.is_completed());
   assert!(!handle.is_cancelled());
@@ -420,8 +432,8 @@ fn handle_reports_completed_after_execution() {
 #[test]
 fn scheduler_metrics_track_active_and_drops() {
   let mut scheduler = build_scheduler();
-  let first = scheduler.schedule_once(Duration::from_millis(2)).expect("first");
-  let second = scheduler.schedule_once(Duration::from_millis(4)).expect("second");
+  let first = scheduler.schedule_once(Duration::from_millis(2), SchedulerCommand::Noop).expect("first");
+  let second = scheduler.schedule_once(Duration::from_millis(4), SchedulerCommand::Noop).expect("second");
   assert_eq!(scheduler.metrics().active_timers(), 2);
   assert!(scheduler.cancel(&second));
   scheduler.run_for_test(2);
@@ -438,16 +450,15 @@ fn fixed_rate_runnable_reports_missed_runs() {
   let mut scheduler = Scheduler::new(toolbox, config);
   let batches = ArcShared::new(NoStdMutex::new(Vec::new()));
   let capture = batches.clone();
-  api::schedule_at_fixed_rate_fn(
-    &mut scheduler,
-    Duration::from_millis(1),
-    Duration::from_millis(1),
-    None,
-    move |batch: &ExecutionBatch| {
-      capture.lock().push((batch.mode(), batch.runs().get(), batch.missed_runs()));
-    },
-  )
-  .expect("handle");
+  let runnable: ArcShared<dyn SchedulerRunnable> = ArcShared::new(move |batch: &ExecutionBatch| {
+    capture.lock().push((batch.mode(), batch.runs().get(), batch.missed_runs()));
+  });
+  scheduler
+    .schedule_at_fixed_rate(Duration::from_millis(1), Duration::from_millis(1), SchedulerCommand::RunRunnable {
+      runnable:   runnable.clone(),
+      dispatcher: None,
+    })
+    .expect("handle");
 
   scheduler.run_for_test(1);
   scheduler.run_for_test(5);
@@ -465,7 +476,9 @@ fn backlog_limit_auto_cancels_periodic_job() {
   let toolbox = NoStdToolbox::default();
   let config = SchedulerConfig::default().with_backlog_limit(1);
   let mut scheduler = Scheduler::new(toolbox, config);
-  scheduler.schedule_at_fixed_rate(Duration::from_millis(1), Duration::from_millis(1)).expect("handle");
+  scheduler
+    .schedule_at_fixed_rate(Duration::from_millis(1), Duration::from_millis(1), SchedulerCommand::Noop)
+    .expect("handle");
   scheduler.run_for_test(10);
   assert_eq!(scheduler.metrics().active_timers(), 0);
   assert_eq!(scheduler.warnings().len(), 1);
@@ -474,7 +487,9 @@ fn backlog_limit_auto_cancels_periodic_job() {
 #[test]
 fn fixed_rate_handle_can_be_cancelled_after_multiple_runs() {
   let mut scheduler = build_scheduler();
-  let handle = scheduler.schedule_at_fixed_rate(Duration::from_millis(1), Duration::from_millis(1)).expect("handle");
+  let handle = scheduler
+    .schedule_at_fixed_rate(Duration::from_millis(1), Duration::from_millis(1), SchedulerCommand::Noop)
+    .expect("handle");
   scheduler.run_for_test(1);
   scheduler.run_for_test(1);
   assert!(!handle.is_completed());
@@ -487,9 +502,12 @@ fn fixed_rate_policy_enforces_independent_backlog_limit() {
   let rate_policy = FixedRatePolicy::new(nz(1), nz(8));
   let delay_policy = FixedDelayPolicy::new(nz(8), nz(16));
   let mut scheduler = build_scheduler_with_policies(rate_policy, delay_policy);
-  let rate_handle = scheduler.schedule_at_fixed_rate(Duration::from_millis(1), Duration::from_millis(1)).expect("rate");
-  let delay_handle =
-    scheduler.schedule_with_fixed_delay(Duration::from_millis(1), Duration::from_millis(1)).expect("delay");
+  let rate_handle = scheduler
+    .schedule_at_fixed_rate(Duration::from_millis(1), Duration::from_millis(1), SchedulerCommand::Noop)
+    .expect("rate");
+  let delay_handle = scheduler
+    .schedule_with_fixed_delay(Duration::from_millis(1), Duration::from_millis(1), SchedulerCommand::Noop)
+    .expect("delay");
   scheduler.run_for_test(5);
   assert!(rate_handle.is_cancelled(), "fixed-rate handle should cancel once backlog limit is exceeded");
   assert!(
@@ -511,9 +529,12 @@ fn fixed_delay_policy_enforces_independent_backlog_limit() {
     .with_fixed_delay_policy(delay_policy)
     .with_fixed_rate_policy(rate_policy);
   let mut scheduler = Scheduler::new(NoStdToolbox::default(), config);
-  let rate_handle = scheduler.schedule_at_fixed_rate(Duration::from_millis(1), Duration::from_millis(1)).expect("rate");
-  let delay_handle =
-    scheduler.schedule_with_fixed_delay(Duration::from_millis(1), Duration::from_millis(1)).expect("delay");
+  let rate_handle = scheduler
+    .schedule_at_fixed_rate(Duration::from_millis(1), Duration::from_millis(1), SchedulerCommand::Noop)
+    .expect("rate");
+  let delay_handle = scheduler
+    .schedule_with_fixed_delay(Duration::from_millis(1), Duration::from_millis(1), SchedulerCommand::Noop)
+    .expect("delay");
   scheduler.run_for_test(5);
   assert!(
     scheduler
@@ -537,9 +558,12 @@ fn fixed_rate_policy_controls_burst_threshold() {
   let rate_policy = FixedRatePolicy::new(nz(8), nz(1));
   let delay_policy = FixedDelayPolicy::new(nz(8), nz(16));
   let mut scheduler = build_scheduler_with_policies(rate_policy, delay_policy);
-  let rate_handle = scheduler.schedule_at_fixed_rate(Duration::from_millis(1), Duration::from_millis(1)).expect("rate");
-  let delay_handle =
-    scheduler.schedule_with_fixed_delay(Duration::from_millis(1), Duration::from_millis(1)).expect("delay");
+  let rate_handle = scheduler
+    .schedule_at_fixed_rate(Duration::from_millis(1), Duration::from_millis(1), SchedulerCommand::Noop)
+    .expect("rate");
+  let delay_handle = scheduler
+    .schedule_with_fixed_delay(Duration::from_millis(1), Duration::from_millis(1), SchedulerCommand::Noop)
+    .expect("delay");
   scheduler.run_for_test(4);
   assert!(
     scheduler.warnings().iter().any(
@@ -564,9 +588,12 @@ fn fixed_delay_policy_controls_burst_threshold() {
     .with_fixed_delay_policy(delay_policy)
     .with_fixed_rate_policy(rate_policy);
   let mut scheduler = Scheduler::new(NoStdToolbox::default(), config);
-  let rate_handle = scheduler.schedule_at_fixed_rate(Duration::from_millis(1), Duration::from_millis(1)).expect("rate");
-  let delay_handle =
-    scheduler.schedule_with_fixed_delay(Duration::from_millis(1), Duration::from_millis(1)).expect("delay");
+  let rate_handle = scheduler
+    .schedule_at_fixed_rate(Duration::from_millis(1), Duration::from_millis(1), SchedulerCommand::Noop)
+    .expect("rate");
+  let delay_handle = scheduler
+    .schedule_with_fixed_delay(Duration::from_millis(1), Duration::from_millis(1), SchedulerCommand::Noop)
+    .expect("delay");
   scheduler.run_for_test(4);
   assert!(
     scheduler.warnings().iter().any(
@@ -587,7 +614,9 @@ fn fixed_rate_backlog_marks_handle_cancelled() {
   let profile = SchedulerCapacityProfile::standard();
   let config = SchedulerConfig::new(Duration::from_millis(1), profile).with_backlog_limit(1);
   let mut scheduler = Scheduler::new(NoStdToolbox::default(), config);
-  let handle = scheduler.schedule_at_fixed_rate(Duration::from_millis(1), Duration::from_millis(1)).expect("handle");
+  let handle = scheduler
+    .schedule_at_fixed_rate(Duration::from_millis(1), Duration::from_millis(1), SchedulerCommand::Noop)
+    .expect("handle");
   scheduler.run_for_test(5);
   assert!(handle.is_cancelled(), "fixed-rate handle should report cancelled after backlog drop");
 }
@@ -597,7 +626,9 @@ fn fixed_delay_backlog_marks_handle_cancelled() {
   let profile = SchedulerCapacityProfile::standard();
   let config = SchedulerConfig::new(Duration::from_millis(1), profile).with_backlog_limit(1);
   let mut scheduler = Scheduler::new(NoStdToolbox::default(), config);
-  let handle = scheduler.schedule_with_fixed_delay(Duration::from_millis(1), Duration::from_millis(1)).expect("handle");
+  let handle = scheduler
+    .schedule_with_fixed_delay(Duration::from_millis(1), Duration::from_millis(1), SchedulerCommand::Noop)
+    .expect("handle");
   scheduler.run_for_test(5);
   assert!(handle.is_cancelled(), "fixed-delay handle should report cancelled after backlog drop");
 }
@@ -682,7 +713,7 @@ proptest! {
       match op {
         DeterministicOp::Schedule { delay_ticks } => {
           let delay = Duration::from_millis((delay_ticks as u64).max(1));
-          if let Ok(handle) = scheduler.schedule_once(delay) {
+          if let Ok(handle) = scheduler.schedule_once(delay, SchedulerCommand::Noop) {
             handles.push(handle);
           }
         },
@@ -716,7 +747,7 @@ proptest! {
       match op {
         RunnerOp::Schedule { delay_ticks } => {
           let delay = Duration::from_millis((delay_ticks as u64).max(1));
-          if let Ok(handle) = scheduler.schedule_once(delay) {
+          if let Ok(handle) = scheduler.schedule_once(delay, SchedulerCommand::Noop) {
             handles.push(handle);
           }
         },
@@ -742,12 +773,11 @@ proptest! {
 fn deterministic_log_replay_matches_snapshot() {
   let mut scheduler = build_scheduler();
   scheduler.enable_deterministic_log(32);
-  api::schedule_once(
+  schedule_message_command(
     &mut scheduler,
     Duration::from_millis(2),
     ActorRefGeneric::null(),
     AnyMessageGeneric::new(5u32),
-    None,
     None,
   )
   .expect("handle");
@@ -763,7 +793,7 @@ fn diagnostics_subscription_receives_events() {
   let mut subscription = scheduler.subscribe_diagnostics(8);
   let receiver = ActorRefGeneric::null();
   let handle =
-    api::schedule_once(&mut scheduler, Duration::from_millis(2), receiver, AnyMessageGeneric::new(11u32), None, None)
+    schedule_message_command(&mut scheduler, Duration::from_millis(2), receiver, AnyMessageGeneric::new(11u32), None)
       .expect("handle");
   scheduler.run_for_test(2);
   let events = subscription.drain();
@@ -782,16 +812,15 @@ fn diagnostics_drop_emits_warning() {
   let mut scheduler = build_scheduler();
   let mut _subscription = scheduler.subscribe_diagnostics(1);
   let receiver = ActorRefGeneric::null();
-  api::schedule_once(
+  schedule_message_command(
     &mut scheduler,
     Duration::from_millis(5),
     receiver.clone(),
     AnyMessageGeneric::new(1u32),
     None,
-    None,
   )
   .expect("first");
-  api::schedule_once(&mut scheduler, Duration::from_millis(6), receiver, AnyMessageGeneric::new(2u32), None, None)
+  schedule_message_command(&mut scheduler, Duration::from_millis(6), receiver, AnyMessageGeneric::new(2u32), None)
     .expect("second");
   assert!(scheduler.warnings().iter().any(|warning| matches!(warning, SchedulerWarning::DiagnosticsDropped { .. })));
 }
@@ -800,7 +829,7 @@ fn diagnostics_drop_emits_warning() {
 fn diagnostics_replays_buffered_events_for_new_subscriber() {
   let mut scheduler = build_scheduler();
   let receiver = ActorRefGeneric::null();
-  api::schedule_once(&mut scheduler, Duration::from_millis(2), receiver, AnyMessageGeneric::new(22u32), None, None)
+  schedule_message_command(&mut scheduler, Duration::from_millis(2), receiver, AnyMessageGeneric::new(22u32), None)
     .expect("handle");
   scheduler.run_for_test(2);
   let mut subscription = scheduler.subscribe_diagnostics(4);
@@ -811,7 +840,7 @@ fn diagnostics_replays_buffered_events_for_new_subscriber() {
 #[test]
 fn scheduler_dump_reports_pending_jobs() {
   let mut scheduler = build_scheduler();
-  let handle = scheduler.schedule_once(Duration::from_millis(5)).expect("handle");
+  let handle = scheduler.schedule_once(Duration::from_millis(5), SchedulerCommand::Noop).expect("handle");
   let dump = scheduler.dump();
   assert!(dump.jobs().iter().any(|job| job.handle_id() == handle.raw()));
 }
@@ -819,7 +848,9 @@ fn scheduler_dump_reports_pending_jobs() {
 #[test]
 fn scheduler_dump_includes_periodic_metadata() {
   let mut scheduler = build_scheduler();
-  let handle = scheduler.schedule_at_fixed_rate(Duration::from_millis(2), Duration::from_millis(4)).expect("handle");
+  let handle = scheduler
+    .schedule_at_fixed_rate(Duration::from_millis(2), Duration::from_millis(4), SchedulerCommand::Noop)
+    .expect("handle");
   let dump = scheduler.dump();
   let periodic = dump.jobs().iter().find(|job| job.handle_id() == handle.raw()).expect("job");
   assert_eq!(periodic.mode(), SchedulerMode::FixedRate);
@@ -840,7 +871,7 @@ fn run_stress_profile(job_count: usize, drift_ticks: u64) -> StressReport {
 
   for idx in 0..job_count {
     let delay = Duration::from_millis(((idx % 32) + 1) as u64);
-    scheduler.schedule_once(delay).expect("handle");
+    scheduler.schedule_once(delay, SchedulerCommand::Noop).expect("handle");
   }
 
   let total_ticks = 64 + drift_ticks;
@@ -931,10 +962,10 @@ fn deterministic_log_records_schedule_fire_cancel() {
   let mut scheduler = build_scheduler();
   scheduler.enable_deterministic_log(16);
 
-  let cancel_handle = scheduler.schedule_once(Duration::from_millis(1)).expect("cancel handle");
+  let cancel_handle = scheduler.schedule_once(Duration::from_millis(1), SchedulerCommand::Noop).expect("cancel handle");
   assert!(scheduler.cancel(&cancel_handle));
 
-  let fire_handle = scheduler.schedule_once(Duration::from_millis(2)).expect("fire handle");
+  let fire_handle = scheduler.schedule_once(Duration::from_millis(2), SchedulerCommand::Noop).expect("fire handle");
   scheduler.run_for_test(4);
 
   let events = scheduler.diagnostics().deterministic_log();
