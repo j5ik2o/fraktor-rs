@@ -36,6 +36,17 @@
 5. While Runner API テストプロファイルがアクティブな間, the Scheduler Tick Driver shall 自動 tick タスクの生成を抑止して手動注入経路のみを許可する。
 6. The Scheduler Tick Driver shall ランタイム設定メタデータに現在有効な tick 供給手段（自動ドライバ名またはテスト手動モード）を記録する。
 
+### Requirement 4: Quickstart & Driver 設定ガイド
+**Objective:** As a ライブラリユーザ, I want 公式 Quickstart だけでタイマードライバの設定を完了したい, so that main 関数を低レベル API で埋め尽くすことなく ActorSystem を起動できる。
+
+#### Acceptance Criteria
+1. When Quickstart ドキュメントが std（Tokio 等）ターゲットを案内するとき, the document shall `ActorSystem::builder().with_scheduler_tick_driver(TickDriverConfig::auto().with_resolution(...))` 形式のサンプルコードを提示し、`main` 関数内のタイマー配線が 20 行未満で完結することを示す。
+2. While Quickstart ドキュメントが no_std（embassy/SysTick）ターゲットを扱うとき, the document shall `SchedulerTickDriver::attach(handle, EmbassySysTick::new(...))` のような手動登録手順を段階的に説明し、ハードウェアタイマ抽象の境界を明示する。
+3. If Quickstart が テスト/シミュレーションパスを紹介する場合, then it shall Runner API を `#[cfg(test)]` 付きの manual driver 例として別枠で掲載し、プロダクション構成とは併記しない。
+4. The Quickstart ガイド shall Driver 選択マトリクス（`auto-std`, `embassy-systick`, `manual-test` 等）を 1 画面で比較できる表として盛り込み、ActorSystem へ渡す設定キー／builder メソッド名を列挙する。
+5. When Quickstart が ActorSystem への設定注入方法を説明するとき, the document shall ActorSystemConfig/Toolbox Builder へのハイレベル API（例: `ActorSystemBootstrap::new().timers(driver).boot()?`）のみを記載し、`SchedulerTickHandle` など低レベルハンドルの直接操作を避けると明言する。
+6. The Quickstart ガイド shall main 関数全体のテンプレート（`#[tokio::main]`, `fn main() -> !` for no_std）を含み、利用者がコピーペースト後に Tick Driver 設定箇所だけを書き換えれば済むことを保証する。
+
 ## Project Description (Input)
 
 ### 現状の課題
@@ -48,5 +59,9 @@
 2. **no_std 環境**: 従来どおり任意のハードウェアドライバを注入できること。
 3. **テスト環境**: Runner API はテスト専用とし、プロダクションではドライバ経由で統一された tick 流路を使うこと。
 
-### 参照ドキュメント
-- docs/scheduler_tick_drivers.md
+## Quickstart ガイドライン案
+- **ステップ 1: 実行環境の選択** — `StdAutoTickDriver::tokio()` / `EmbassySysTickDriver::new(timer)` / `ManualTestDriver::new()` から選び、`TickDriverConfig` を構築。
+- **ステップ 2: ActorSystem 構築** — `ActorSystemBootstrap::new().with_config(|cfg| cfg.timers(driver_config))` を呼び出し、main 関数内で 2〜3 行に収める。
+- **ステップ 3: Tick 監視** — EventStream で `SchedulerTickMetrics` を購読するコード断片を掲載し、Quickstart 完了後すぐに周期確認ができるようにする。
+- **ステップ 4: 環境別テンプレート** — `#[tokio::main] async fn main()` と `#[entry] fn main() -> !` の 2 パターンをそれぞれ 15 行以内で提示し、ドライバ差し替え箇所をコメントでマーキングする。
+- **ステップ 5: トラブルシュート** — ドライバ登録失敗時のエラー／panic メッセージ例と再設定手順を Quickstart 下部に添付し、ActorSystem 起動前に原因を切り分けられるようにする。
