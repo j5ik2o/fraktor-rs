@@ -74,10 +74,6 @@ pub use time::{
   TickEvent, TickLease, TimerEntry, TimerEntryMode, TimerHandleId, TimerInstant, TimerWheel, TimerWheelConfig,
   TimerWheelError,
 };
-pub use timing::{
-  DeadLineTimer, DeadLineTimerError, DeadLineTimerExpired, DeadLineTimerKey, DeadLineTimerKeyAllocator, DelayFuture,
-  DelayProvider, DelayTrigger, ManualDelayProvider, TimerDeadLine,
-};
 
 /// Core collections shared across the Cellex runtimes.
 pub mod collections;
