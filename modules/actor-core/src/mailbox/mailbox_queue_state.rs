@@ -7,20 +7,20 @@ use fraktor_utils_core_rs::{
     queue::{QueueError, SyncQueueBackend, backend::OfferOutcome},
     wait::{WaitQueue, WaitShared},
   },
+  runtime_toolbox::SyncMutexFamily,
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
-use spin::Mutex;
 
 use super::QueueMutex;
-use crate::RuntimeToolbox;
+use crate::{RuntimeToolbox, ToolboxMutex};
 
 /// Maintains shared queue state and wait queues for asynchronous offers/polls.
 pub struct QueueState<T, TB: RuntimeToolbox>
 where
   T: Send + 'static, {
   pub(super) shared:           ArcShared<QueueMutex<T, TB>>,
-  pub(super) producer_waiters: Mutex<WaitQueue<QueueError<T>>>,
-  pub(super) consumer_waiters: Mutex<WaitQueue<QueueError<T>>>,
+  pub(super) producer_waiters: ToolboxMutex<WaitQueue<QueueError<T>>, TB>,
+  pub(super) consumer_waiters: ToolboxMutex<WaitQueue<QueueError<T>>, TB>,
   pub(super) size:             AtomicUsize,
 }
 
@@ -30,11 +30,11 @@ where
 {
   /// Creates a new queue state wrapper.
   #[must_use]
-  pub const fn new(shared: ArcShared<QueueMutex<T, TB>>) -> Self {
+  pub fn new(shared: ArcShared<QueueMutex<T, TB>>) -> Self {
     Self {
       shared,
-      producer_waiters: Mutex::new(WaitQueue::new()),
-      consumer_waiters: Mutex::new(WaitQueue::new()),
+      producer_waiters: <TB::MutexFamily as SyncMutexFamily>::create(WaitQueue::new()),
+      consumer_waiters: <TB::MutexFamily as SyncMutexFamily>::create(WaitQueue::new()),
       size: AtomicUsize::new(0),
     }
   }

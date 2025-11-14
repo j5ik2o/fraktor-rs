@@ -88,3 +88,4 @@ Provide output in the language specified in spec.json with:
 
 **Note**: Gap analysis is optional but recommended for brownfield projects to inform design decisions.
 
+ultrathink

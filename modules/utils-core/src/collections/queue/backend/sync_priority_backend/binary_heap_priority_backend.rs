@@ -51,10 +51,6 @@ impl<T: PriorityMessage> BinaryHeapPriorityBackend<T> {
 impl<T: PriorityMessage> SyncQueueBackend<T> for BinaryHeapPriorityBackend<T> {
   type Storage = PriorityBackendConfig;
 
-  fn new(storage: Self::Storage, policy: OverflowPolicy) -> Self {
-    BinaryHeapPriorityBackend::new_with_config(storage, policy)
-  }
-
   fn offer(&mut self, item: T) -> Result<OfferOutcome, QueueError<T>> {
     if self.closed {
       return Err(QueueError::Closed(item));

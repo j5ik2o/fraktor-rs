@@ -7,13 +7,13 @@ use core::{
 
 use super::{DequeEdge, DequeState};
 use crate::{
-  DelayFuture, DelayProvider,
   collections::{
     queue::{OfferOutcome, QueueError},
     wait::WaitShared,
   },
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
   sync::ArcShared,
+  timing::{DelayFuture, DelayProvider},
 };
 
 /// Future returned when a deque needs to wait for capacity.

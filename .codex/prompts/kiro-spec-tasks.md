@@ -76,7 +76,7 @@ Generate implementation tasks for feature **$1** based on approved requirements 
 Provide brief summary in the language specified in spec.json:
 
 1. **Status**: Confirm tasks generated at `.kiro/specs/$1/tasks.md`
-2. **Task Summary**: 
+2. **Task Summary**:
    - Total: X major tasks, Y sub-tasks
    - All Z requirements covered
    - Average task size: 1-3 hours per sub-task
@@ -129,4 +129,4 @@ Provide brief summary in the language specified in spec.json:
 
 **Note**: The implementation phase will guide you through executing tasks with appropriate context and validation.
 
-
+ultrathink

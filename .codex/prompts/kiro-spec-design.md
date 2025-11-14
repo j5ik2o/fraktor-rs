@@ -46,7 +46,7 @@ Generate technical design document for feature **$1** based on approved requirem
    - **Complex Integration** → Comprehensive analysis required
 
 2. **Execute Appropriate Discovery Process**:
-   
+
    **For Complex/New Features**:
    - Read and execute `.kiro/settings/rules/design-discovery-full.md`
    - Conduct thorough research using WebSearch/WebFetch:
@@ -54,12 +54,12 @@ Generate technical design document for feature **$1** based on approved requirem
      - External dependency verification (APIs, libraries, versions, compatibility)
      - Official documentation, migration guides, known issues
      - Performance benchmarks and security considerations
-   
+
    **For Extensions**:
    - Read and execute `.kiro/settings/rules/design-discovery-light.md`
    - Focus on integration points, existing patterns, compatibility
    - Use Grep to analyze existing codebase patterns
-   
+
    **For Simple Additions**:
    - Skip formal discovery, quick pattern check only
 
@@ -163,3 +163,4 @@ Provide brief summary in the language specified in spec.json:
 
 **Note**: Design approval is mandatory before proceeding to task generation.
 
+ultrathink

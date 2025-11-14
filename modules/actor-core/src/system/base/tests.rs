@@ -6,9 +6,9 @@ use core::{
 };
 
 use fraktor_utils_core_rs::{
-  DelayFuture, DelayProvider,
   collections::queue::capabilities::{QueueCapabilityRegistry, QueueCapabilitySet},
   sync::{ArcShared, NoStdMutex},
+  timing::{DelayFuture, DelayProvider},
 };
 
 use super::ActorSystem;

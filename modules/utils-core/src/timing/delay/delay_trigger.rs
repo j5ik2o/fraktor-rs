@@ -1,15 +1,15 @@
 use alloc::boxed::Box;
 
-use crate::{sync::ArcShared, timing::delay::DelayState};
+use super::delay_state::DelayState;
+use crate::sync::ArcShared;
 
-/// Handle owned by providers to complete a delay.
+/// Handle owned by providers to complete or cancel a delay.
 #[derive(Clone)]
 pub struct DelayTrigger {
   state: ArcShared<DelayState>,
 }
 
 impl DelayTrigger {
-  /// Creates a new trigger with the given state.
   pub(crate) const fn new(state: ArcShared<DelayState>) -> Self {
     Self { state }
   }
@@ -19,7 +19,7 @@ impl DelayTrigger {
     self.state.complete();
   }
 
-  /// Registers a cancellation hook that will run if the future is dropped before completion.
+  /// Registers a cancellation hook that fires if the future is dropped before completion.
   pub fn set_cancel_hook<F>(&self, hook: F)
   where
     F: FnOnce() + Send + Sync + 'static, {

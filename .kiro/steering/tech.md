@@ -61,7 +61,10 @@ scripts/ci-check.sh all                  # CI と同等フルスイート
 - **FQCN import 原則**: ランタイム内部は `crate::...` で明示的に参照し、prelude はユーザ公開面のみに限定。
 - **Classic ではなく Untyped 呼称**: 既存設計では「Classic」ではなく「Untyped」と呼ぶ。Untyped API (`Scheduler`, Classic ActorRef) と Typed API (`TypedScheduler`, `TypedActorRef`) を明確に分離し、新規開発でも Untyped/Typed という語彙を使用する。
 - **参照実装からの逆輸入**: protoactor-go / Apache Pekko を参照しつつ、Rust の所有権と `no_std` 制約に合わせた最小 API を優先する。
-- **ハンドル命名規約**: 所有権やライフサイクルを管理する型のみ `*Handle` サフィックスを許容し、`ArcShared` 等を薄く包む共有参照は `*Shared` を用いる。管理対象が複数ハンドルに及ぶ場合は `*HandleSet` / `*Context` 等で「束ね役・制御面」であることを明示し、単なる参照ラッパーでは `Handle` を名乗らない。命名段階で責務の違いが分かるようにし、Scheduler/Dispatcher まわりの API でも同ルールを徹底する。
+- **命名規約**:
+  - 所有権やライフサイクルを管理する型のみ `*Handle` サフィックスを許容し、`ArcShared` 等を薄く包む共有参照は `*Shared` を用いる。管理対象が複数ハンドルに及ぶ場合は `*HandleSet` / `*Context` 等で「束ね役・制御面」であることを明示し、単なる参照ラッパーでは `Handle` を名乗らない。命名段階で責務の違いが分かるようにし、Scheduler/Dispatcher まわりの API でも同ルールを徹底する。
+  - Facadeというサフィックスも安易に使わない。例えばpub traitにFacadeと命名するのはもってのほか。つまりFacadeは内部実装の都合をインターフェイス名に暴露しているのと同じだからだ
+  - Manager, Utilなどの責務が曖昧になる命名は避けて、具体的な名前を付けること
 
 ---
 _スタックと標準を要約し、詳細な API 仕様は各クレートの rustdoc / guides へ委譲します。_

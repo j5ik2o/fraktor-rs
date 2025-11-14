@@ -8,12 +8,12 @@ use core::{
 };
 
 use fraktor_utils_core_rs::{
-  DelayFuture, DelayProvider,
   collections::{
     queue::{QueueError, backend::OfferOutcome},
     wait::WaitShared,
   },
   sync::ArcShared,
+  timing::{DelayFuture, DelayProvider},
 };
 
 use super::mailbox_queue_state::QueueState;
