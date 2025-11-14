@@ -12,7 +12,7 @@
 | R1 std 自動 tick 供給 | `StdToolbox`、`SchedulerRunner`、`EventStream` | Missing | 自動 driver・Tokio タスク生成・ドリフト±5% 監視・メトリクス発行が未実装。ホストタイマ登録失敗時のフェイルファストも不在。 |
 | R2 no_std ドライバ抽象化 | `SchedulerTickHandle`、`TickState`、`SchedulerContext` | Missing / Constraint | 外部 driver trait や attach API がなく、tick 順序保証・停止イベント通知も未定義。`TickState` が `swap(0)` のみで FIFO を維持できない。 |
 | R3 Runner API テスト限定 | `SchedulerRunner` が `pub use` され examples でも使用 | Missing | プロダクション構成で Runner API を拒否する仕組みが無い。モードの記録や構成エラー経路も未実装。 |
-| R4 Quickstart/Driver ガイド | `docs/guides/actor-system.md`、`specs/001-add-actor-runtime/quickstart.md` | Missing | TickDriverConfig や driver マトリクス、main テンプレート、トラブルシュート等の情報が空白。 |
+| R4 Quickstart/Driver ガイド + Builder | `docs/guides/actor-system.md`、`specs/001-add-actor-runtime/quickstart.md` | Missing | TickDriverConfig、driver マトリクス、ActorSystemBuilder チェーン、main テンプレート、トラブルシュート等の情報が空白。 |
 
 ## 3. 実装アプローチ候補
 ### Option A: 既存コンポーネント拡張
@@ -20,8 +20,9 @@
 - **Pros**: 既存依存関係に沿って実装しやすく、actor-core だけで完結。
 - **Cons**: Toolbox 変更が全クレートへ波及し、std/no_std/typed すべての API 互換性が崩れる。tokio タスク管理を core で扱うため責務が肥大化。
 
-### Option B: 新規 Driver Manager / Bootstrap 層
-- `TickDriverConfig` と `ActorSystemBootstrap` を新設し、`ActorSystem` 起動前に driver を選択・注入。`SchedulerContext` は既存のまま、別コンポーネントが `SchedulerRunner` をバックグラウンドで駆動。
+### Option B: ActorSystemBootstrap + TickDriverBootstrap
+- `TickDriverConfig` と `ActorSystemBootstrap` を新設し、まず ActorSystem 全体の初期化を `ActorSystemBootstrap`（またはビルダー API）で統括。初期化処理が複雑化した場合は内部メソッド、さらに必要なら `TickDriverBootstrap` のような専用構造体へ責務を段階的に切り出す。これにより driver 選択・注入は起動前に完結し、`SchedulerContext` は既存のまま別コンポーネントが `SchedulerRunner` をバックグラウンドで駆動でき、main 関数はビルダーのチェーン呼び出しに集約できる。
+- **Status**: 推奨方針。builder を軸に UX/設計一貫性を確保できるため、設計フェーズでは Option B を前提に詳細化する。
 - **Pros**: core の破壊的変更を抑えつつ利用者 UX を改善。std/no_std で driver 実装を分離しやすい。
 - **Cons**: Builder → Core への受け渡し経路を増やす必要があり、初期化順序や shutdown hooks の設計が複雑。
 
