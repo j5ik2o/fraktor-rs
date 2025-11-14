@@ -1,310 +1,215 @@
-# Design Document Template
+# 設計ドキュメントテンプレート
 
 ---
-**Document Length Guidelines: Max 1000 lines**
+**分量ガイド**: 最大 1000 行
 
-**Purpose**: Provide sufficient detail to ensure implementation consistency across different implementers, preventing interpretation drift.
+**目的**: 実装者間で設計解釈のブレを防ぎ、誰が読んでも同じ結果に到達できる情報を提供する。
 
-**Approach**:
-- Include essential sections that directly inform implementation decisions
-- Omit optional sections unless critical to preventing implementation errors
-- Match detail level to feature complexity
-- Use diagrams and tables over lengthy prose
+**基本方針**:
+- 実装判断に直結する必須情報のみを書く
+- 重要箇所は文章より図表や表で簡潔に伝える
+- 機能の複雑さに応じて深さを調整する
 
-**Warning**: Approaching 1000 lines indicates excessive feature complexity that may require design simplification.
+**警告**: 1000 行に近づいたら機能分割や簡素化を再検討すること。
 ---
 
-## Overview 
-2-3 paragraphs max
-**Purpose**: This feature delivers [specific value] to [target users].
-**Users**: [Target user groups] will utilize this for [specific workflows].
-**Impact** (if applicable): Changes the current [system state] by [specific modifications].
+## 概要
+2〜3 段落で完結に記述する。
+- **Purpose**: この機能がどのユーザ／ユースケースにどんな価値を届けるか
+- **Users**: 代表的な利用者と利用シナリオ
+- **Impact**: 既存システムに与える変化（あれば）
 
+### 目標 (Goals)
+- 主要な成果1
+- 主要な成果2
+- 成功判定条件
 
-### Goals
-- Primary objective 1
-- Primary objective 2  
-- Success criteria
+### 非目標 (Non-Goals)
+- 今回のスコープから外す事項
+- 後続検討に回す項目
+- 他システムへの波及を明示
 
-### Non-Goals
-- Explicitly excluded functionality
-- Future considerations outside current scope
-- Integration points deferred
+## アーキテクチャ
 
-## Architecture
+### 既存アーキテクチャの把握
+変更対象が既存システムの場合のみ記述。
+- 現在のパターン／制約
+- 守るべきドメイン境界
+- 維持すべき統合ポイント
+- 併せて解消する技術的負債
 
-### Existing Architecture Analysis (if applicable)
-When modifying existing systems:
-- Current architecture patterns and constraints
-- Existing domain boundaries to be respected
-- Integration points that must be maintained
-- Technical debt addressed or worked around
+### ハイレベルアーキテクチャ
+- Mermaid などで構成図を推奨（複雑機能では必須）
+- 既存パターンをどこまで維持するか
+- 新規コンポーネント追加理由
+- 技術スタックとの整合性
+- Steering の原則をどう満たすか
 
-### High-Level Architecture
-**RECOMMENDED**: Include Mermaid diagram showing system architecture (required for complex features, optional for simple additions)
+### 技術スタック / 設計判断
+- **新規機能**: 採用技術と理由、比較した代替案を記述
+- **既存拡張**: 既存スタックとの整合性、新規依存、既存ルールからの逸脱理由を記述
 
-**Architecture Integration**:
-- Existing patterns preserved: [list key patterns]
-- New components rationale: [why each is needed]
-- Technology alignment: [how it fits current stack]
-- Steering compliance: [principles maintained]
+#### 主要設計判断
+最大 1〜3 件。フォーマット:
+- **Decision**: 技術的な決定事項
+- **Context**: 背景・課題
+- **Alternatives**: 検討した他案
+- **Selected Approach**: 採用内容と仕組み
+- **Rationale**: 採用理由
+- **Trade-offs**: 得られるもの／失うもの
 
-### Technology Stack and Design Decisions
+## システムフロー
+複雑なフローがある場合のみ図示。
+- シーケンス図: 複数コンポーネント間のイベントや API 呼び出し
+- プロセスフロー: 分岐や状態遷移
+- データフロー: 変換や ETL
+- 状態図: 状態遷移が複雑な場合
+- イベントフロー: 非同期・イベント駆動
 
-**Generation Instructions** (DO NOT include this section in design.md):
-Adapt content based on feature classification from Discovery & Analysis Phase:
+## API ブループリント
+追加・変更されるインターフェイスの骨組みを提示する。
 
-**For New Features (greenfield)**:
-Generate Technology Stack section with ONLY relevant layers:
-- Include only applicable technology layers (e.g., skip Frontend for CLI tools, skip Infrastructure for libraries)
-- For each technology choice, provide: selection, rationale, and alternatives considered
-- Include Architecture Pattern Selection if making architectural decisions
+### 型・トレイト一覧
+- 公開／内部を問わず追加・変更される `trait / struct / enum / type alias` を列挙
+- 責務と可視性（例: `pub(crate)`）を併記
+- 命名規約や lint 制約があれば明記
 
-**For Extensions/Additions to Existing Systems**:
-Generate Technology Alignment section instead:
-- Document how feature aligns with existing technology stack
-- Note any new dependencies or libraries being introduced
-- Justify deviations from established patterns if necessary
+### シグネチャ スケッチ
+```rust
+pub enum ExampleCategory {
+  Realtime { backlog: NonZeroUsize },
+  Priority { comparator: PriorityRule },
+}
 
-**Key Design Decisions**:
-Generate 1-3 critical technical decisions that significantly impact the implementation.
-Each decision should follow this format:
-- **Decision**: [Specific technical choice made]
-- **Context**: [Problem or requirement driving this decision]
-- **Alternatives**: [2-3 other approaches considered]
-- **Selected Approach**: [What was chosen and how it works]
-- **Rationale**: [Why this is optimal for the specific context]
-- **Trade-offs**: [What we gain vs. what we sacrifice]
-
-Skip this entire section for simple CRUD operations or when following established patterns without deviation.
-
-## System Flows
-
-**Flow Design Generation Instructions** (DO NOT include this section in design.md):
-Generate appropriate flow diagrams ONLY when the feature requires flow visualization. Select from:
-- **Sequence Diagrams**: For user interactions across multiple components
-- **Process Flow Charts**: For complex algorithms, decision branches, or state machines  
-- **Data Flow Diagrams**: For data transformations, ETL processes, or data pipelines
-- **State Diagrams**: For complex state transitions
-- **Event Flow**: For async/event-driven architectures
-
-Skip this section entirely for simple CRUD operations or features without complex flows.
-When included, provide concise Mermaid diagrams specific to the actual feature requirements.
-
-## Requirements Traceability
-
-**Traceability Generation Instructions** (DO NOT include this section in design.md):
-Generate traceability mapping ONLY for complex features with multiple requirements or when explicitly needed for compliance/validation.
-
-When included, create a mapping table showing how each EARS requirement is realized:
-| Requirement | Requirement Summary | Components | Interfaces | Flows |
-|---------------|-------------------|------------|------------|-------|
-| 1.1 | Brief description | Component names | API/Methods | Relevant flow diagrams |
-
-Alternative format for simpler cases:
-- **1.1**: Realized by [Component X] through [Interface Y]
-- **1.2**: Implemented in [Component Z] with [Flow diagram reference]
-
-Skip this section for simple features with straightforward 1:1 requirement-to-component mappings.
-
-## Components and Interfaces
-
-**Component Design Generation Instructions** (DO NOT include this section in design.md):
-Structure components by domain boundaries or architectural layers. Generate only relevant subsections based on component type.
-Group related components under domain/layer headings for clarity.
-
-### [Domain/Layer Name]
-
-#### [Component Name]
-
-**Responsibility & Boundaries**
-- **Primary Responsibility**: Single, clear statement of what this component does
-- **Domain Boundary**: Which domain/subdomain this belongs to
-- **Data Ownership**: What data this component owns and manages
-- **Transaction Boundary**: Scope of transactional consistency (if applicable)
-
-**Dependencies**
-- **Inbound**: Components/services that depend on this component
-- **Outbound**: Components/services this component depends on
-- **External**: Third-party services, libraries, or external systems
-
-**External Dependencies Investigation** (when using external libraries/services):
-- Use WebSearch to locate official documentation, GitHub repos, and community resources
-- Use WebFetch to retrieve and analyze documentation pages, API references, and usage examples
-- Verify API signatures, authentication methods, and rate limits
-- Check version compatibility, breaking changes, and migration guides
-- Investigate common issues, best practices, and performance considerations
-- Document any assumptions, unknowns, or risks for implementation phase
-- If critical information is missing, clearly note "Requires investigation during implementation: [specific concern]"
-
-**Contract Definition**
-
-Select and generate ONLY the relevant contract types for each component:
-
-**Service Interface** (for business logic components):
-```typescript
-interface [ComponentName]Service {
-  // Method signatures with clear input/output types
-  // Include error types in return signatures
-  methodName(input: InputType): Result<OutputType, ErrorType>;
+pub struct ExampleFront;
+impl ExampleFront {
+  pub fn build<T>(&self, category: ExampleCategory) -> ExampleHandle<T>;
+  pub fn register_backend(&mut self, key: BackendKey, factory: BackendFactory);
 }
 ```
-- **Preconditions**: What must be true before calling
-- **Postconditions**: What is guaranteed after successful execution
-- **Invariants**: What remains true throughout
+- 本文は書かずシグネチャのみ
+- ジェネリクス境界／ライフタイム／戻り値／エラー型を明記
 
-**API Contract** (for REST/GraphQL endpoints):
-| Method | Endpoint | Request | Response | Errors |
-|--------|----------|---------|----------|--------|
+## クラス／モジュール図
+- Mermaid または PlantUML で主要コンポーネントと依存方向を図示
+- 変更前後の差分は色や凡例で区別
+- 階層構造（例: front → backend → storage）がある場合は矢印で示す
+
+```mermaid
+classDiagram
+  class QueueFront {
+    +build(category)
+    +register_backend()
+  }
+  QueueFront --> QueueCategory
+  QueueFront --> QueueHandle
+  QueueHandle --> Backend (<<trait>>)
+```
+
+## クイックスタート / 利用例
+- 10〜20 行程度で代表シナリオを記述
+- カテゴリ選択 → インスタンス生成 → 主要操作の順で示す
+- doctest / テスト形式にして、後で guides へ転用できるようにする
+
+```rust
+fn mailbox_queue_setup() {
+  let front = QueueFront::default();
+  let queue = front.build::<SystemMessage>(QueueCategory::Bounded { capacity: 64 });
+  queue.offer(message).unwrap();
+}
+```
+
+## 旧→新 API 対応表
+
+| 旧 API / 型 | 新 API / 型 | 置換手順 | 備考 |
+| --- | --- | --- | --- |
+| `VecRingBackend<T>` を直接 new | `QueueFront::build(QueueCategory::Realtime)` | 呼び出し側から backend 依存を排除し、QueueFront の戻り値を保持 | オーバーフロー制御はカテゴリで指定 |
+| `BinaryHeap<TaskRunEntry>` | `QueueFront::build(QueueCategory::Priority { order: TaskOrder })` | 優先度制御を backend コンフィグへ委譲 | `peek_min` は Priority ハンドル経由 |
+
+## 要件トレーサビリティ
+複雑な機能のみ記述。EARS 要件との対応表を作成。
+
+| 要件ID | 要約 | 実装コンポーネント | インターフェイス | 参照フロー |
+| --- | --- | --- | --- | --- |
+| 1.1 | ～ | QueueFront | build() | sequence#1 |
+
+## コンポーネント & インターフェイス
+ドメイン／レイヤ単位で小見出しを設置し、以下を記述:
+
+### [ドメイン/レイヤ名]
+- 責務
+- 入出力
+- 依存関係（Inbound/Outbound/External）
+- 外部依存の調査結果（必要なら WebSearch/WebFetch で裏付け）
+
+#### 契約定義 (必要なもののみ採用)
+
+**Component Interface**（業務ロジック向け）
+```rust
+pub trait ComponentName {
+  /// 明確な入出力とエラー型を伴うシグネチャ
+  fn method_name(&self, input: InputType) -> Result<OutputType, ErrorType>;
+}
+```
+- 前提条件 / 事後条件 / 不変条件を列挙
+
+**API Contract**（REST/GraphQL）
+| メソッド | エンドポイント | リクエスト | レスポンス | エラー |
+| --- | --- | --- | --- | --- |
 | POST | /api/resource | CreateRequest | Resource | 400, 409, 500 |
 
-With detailed schemas only for complex payloads
+**Event Contract**（イベント駆動）
+- 発行イベント: 名前、スキーマ、トリガ条件
+- 購読イベント: 名前、処理方針、冪等性
 
-**Event Contract** (for event-driven components):
-- **Published Events**: Event name, schema, trigger conditions
-- **Subscribed Events**: Event name, handling strategy, idempotency
-- **Ordering**: Guaranteed order requirements
-- **Delivery**: At-least-once, at-most-once, or exactly-once
+### ドメインモデル
+- 集約 / エンティティ / 値オブジェクト / ドメインイベント
+- ビジネスルールと不変条件
+- 関係が複雑なら Mermaid 図も検討
 
-**Batch/Job Contract** (for scheduled/triggered processes):
-- **Trigger**: Schedule, event, or manual trigger conditions
-- **Input**: Data source and validation rules
-- **Output**: Results destination and format
-- **Idempotency**: How repeat executions are handled
-- **Recovery**: Failure handling and retry strategy
+## データモデル
+必要な層のみ記述。
 
-**State Management** (only if component maintains state):
-- **State Model**: States and valid transitions
-- **Persistence**: Storage strategy and consistency model
-- **Concurrency**: Locking, optimistic/pessimistic control
+### 論理データモデル
+- エンティティ、属性、関連、キー
+- トランザクション境界、参照整合性
 
-**Integration Strategy** (when modifying existing systems):
-- **Modification Approach**: Extend, wrap, or refactor existing code
-- **Backward Compatibility**: What must be maintained
-- **Migration Path**: How to transition from current to target state
+### 物理データモデル
+ストレージ種別ごとに必要事項を記述（RDB, Document, Event Store 等）。
 
-## Data Models
+### データ契約 / 連携
+- API スキーマ、バリデーション、シリアライズ
+- イベントスキーマとバージョン戦略
+- クロスサービスの同期・整合性戦略
 
-**Data Model Generation Instructions** (DO NOT include this section in design.md):
-Generate only relevant data model sections based on the system's data requirements and chosen architecture.
-Progress from conceptual to physical as needed for implementation clarity.
+## エラーハンドリング
 
-### Domain Model
-**When to include**: Complex business domains with rich behavior and rules
+### エラーストラテジ
+- 各エラータイプの処理パターンと復旧方法
 
-**Core Concepts**:
-- **Aggregates**: Define transactional consistency boundaries
-- **Entities**: Business objects with unique identity and lifecycle
-- **Value Objects**: Immutable descriptive aspects without identity
-- **Domain Events**: Significant state changes in the domain
+### エラー分類と応答
+- ユーザエラー (4xx)
+- システムエラー (5xx)
+- ビジネスロジックエラー (422 等)
+- 複雑な場合はフローチャートで可視化
 
-**Business Rules & Invariants**:
-- Constraints that must always be true
-- Validation rules and their enforcement points
-- Cross-aggregate consistency strategies
+### モニタリング
+- ログ、トレース、メトリクスで何を監視するか
 
-Include conceptual diagram (Mermaid) only when relationships are complex enough to benefit from visualization
+## テスト戦略
+- ユニットテスト: 中核機能 3〜5 件
+- 統合テスト: クロスコンポーネント 3〜5 フロー
+- E2E/UI テスト (必要に応じて)
+- パフォーマンス/負荷テスト (該当時)
 
-### Logical Data Model
-**When to include**: When designing data structures independent of storage technology
+## 追加セクション（必要時のみ）
 
-**Structure Definition**:
-- Entity relationships and cardinality
-- Attributes and their types
-- Natural keys and identifiers
-- Referential integrity rules
+### セキュリティ
+- 脅威モデル、認証/認可、データ保護、コンプライアンス
 
-**Consistency & Integrity**:
-- Transaction boundaries
-- Cascading rules
-- Temporal aspects (versioning, audit)
+### パフォーマンス & スケーラビリティ
+- 目標指標、計測手段、スケール戦略、キャッシュ方針
 
-### Physical Data Model
-**When to include**: When implementation requires specific storage design decisions
-
-**For Relational Databases**:
-- Table definitions with data types
-- Primary/foreign keys and constraints
-- Indexes and performance optimizations
-- Partitioning strategy for scale
-
-**For Document Stores**:
-- Collection structures
-- Embedding vs referencing decisions
-- Sharding key design
-- Index definitions
-
-**For Event Stores**:
-- Event schema definitions
-- Stream aggregation strategies
-- Snapshot policies
-- Projection definitions
-
-**For Key-Value/Wide-Column Stores**:
-- Key design patterns
-- Column families or value structures
-- TTL and compaction strategies
-
-### Data Contracts & Integration
-**When to include**: Systems with service boundaries or external integrations
-
-**API Data Transfer**:
-- Request/response schemas
-- Validation rules
-- Serialization format (JSON, Protobuf, etc.)
-
-**Event Schemas**:
-- Published event structures
-- Schema versioning strategy
-- Backward/forward compatibility rules
-
-**Cross-Service Data Management**:
-- Distributed transaction patterns (Saga, 2PC)
-- Data synchronization strategies
-- Eventual consistency handling
-
-Skip any section not directly relevant to the feature being designed.
-Focus on aspects that influence implementation decisions.
-
-## Error Handling
-
-### Error Strategy
-Concrete error handling patterns and recovery mechanisms for each error type.
-
-### Error Categories and Responses
-**User Errors** (4xx): Invalid input → field-level validation; Unauthorized → auth guidance; Not found → navigation help
-**System Errors** (5xx): Infrastructure failures → graceful degradation; Timeouts → circuit breakers; Exhaustion → rate limiting  
-**Business Logic Errors** (422): Rule violations → condition explanations; State conflicts → transition guidance
-
-**Process Flow Visualization** (when complex business logic exists):
-Include Mermaid flowchart only for complex error scenarios with business workflows.
-
-### Monitoring
-Error tracking, logging, and health monitoring implementation.
-
-## Testing Strategy
-
-### Default sections (adapt names/sections to fit the domain)
-- Unit Tests: 3–5 items from core functions/modules (e.g., auth methods, subscription logic)
-- Integration Tests: 3–5 cross-component flows (e.g., webhook handling, notifications)
-- E2E/UI Tests (if applicable): 3–5 critical user paths (e.g., forms, dashboards)
-- Performance/Load (if applicable): 3–4 items (e.g., concurrency, high-volume ops)
-
-## Optional Sections (include when relevant)
-
-### Security Considerations
-**Include when**: Features handle authentication, sensitive data, external integrations, or user permissions
-- Threat modeling, security controls, compliance requirements
-- Authentication and authorization patterns
-- Data protection and privacy considerations
-
-### Performance & Scalability
-**Include when**: Features have specific performance requirements, high load expectations, or scaling concerns
-- Target metrics and measurement strategies
-- Scaling approaches (horizontal/vertical)
-- Caching strategies and optimization techniques
-
-### Migration Strategy
-**REQUIRED**: Include Mermaid flowchart showing migration phases
-
-**Process**: Phase breakdown, rollback triggers, validation checkpoints
+### 移行戦略
+- Mermaid フローでフェーズとロールバック条件を図示
+- フェーズ分解、検証ポイント、リスク緩和策

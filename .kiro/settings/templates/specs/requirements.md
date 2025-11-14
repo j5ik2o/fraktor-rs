@@ -1,26 +1,25 @@
-# Requirements Document
+# 要件ドキュメント
 
-## Introduction
+## 導入
 {{INTRODUCTION}}
 
-## Requirements
+## 要件
 
-### Requirement 1: {{REQUIREMENT_AREA_1}}
-**Objective:** As a {{ROLE}}, I want {{CAPABILITY}}, so that {{BENEFIT}}
+### 要件1: {{REQUIREMENT_AREA_1}}
+**目的:** {{ROLE}} として {{CAPABILITY}} を実現し、{{BENEFIT}} を得たい。
 
-#### Acceptance Criteria
-1. When [event], the [system] shall [response/action]
-2. If [trigger], then the [system] shall [response/action]
-3. While [precondition], the [system] shall [response/action]
-4. Where [feature is included], the [system] shall [response/action]
-5. The [system] shall [response/action]
+#### 受け入れ条件
+1. [イベント] が起きたとき、[システム] は [応答] しなければならない
+2. [条件] ならば、[システム] は [応答] しなければならない
+3. [前提] の間、[システム] は [応答] し続けなければならない
+4. [機能/オプション] を含む場合、[システム] は [応答] しなければならない
+5. [システム] は常に [応答] しなければならない
 
-### Requirement 2: {{REQUIREMENT_AREA_2}}
-**Objective:** As a {{ROLE}}, I want {{CAPABILITY}}, so that {{BENEFIT}}
+### 要件2: {{REQUIREMENT_AREA_2}}
+**目的:** {{ROLE}} として {{CAPABILITY}} を実現し、{{BENEFIT}} を得たい。
 
-#### Acceptance Criteria
-1. When [event], the [system] shall [response/action]
-2. When [event] and [condition], the [system] shall [response/action]
+#### 受け入れ条件
+1. [イベント] が起きたとき、[システム] は [応答] しなければならない
+2. [イベント] かつ [追加条件] のとき、[システム] は [応答] しなければならない
 
-<!-- Additional requirements follow the same pattern -->
-
+<!-- 追加の要件セクションも同じ構造で記述する -->
