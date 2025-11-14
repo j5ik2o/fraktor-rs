@@ -64,7 +64,7 @@ fn closed_backend_rejects_offer_and_poll() {
 #[test]
 fn sync_queue_backend_new() {
   let storage = VecRingStorage::<i32>::with_capacity(5);
-  let backend = VecRingBackend::new(storage, OverflowPolicy::Block);
+  let backend = VecRingBackend::new_with_storage(storage, OverflowPolicy::Block);
   assert_eq!(backend.capacity(), 5);
   assert_eq!(backend.overflow_policy(), OverflowPolicy::Block);
   assert!(!backend.is_closed());

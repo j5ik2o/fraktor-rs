@@ -74,10 +74,6 @@ impl<T> VecRingBackend<T> {
 impl<T> SyncQueueBackend<T> for VecRingBackend<T> {
   type Storage = VecRingStorage<T>;
 
-  fn new(storage: Self::Storage, policy: OverflowPolicy) -> Self {
-    VecRingBackend::new_with_storage(storage, policy)
-  }
-
   fn offer(&mut self, item: T) -> Result<OfferOutcome, QueueError<T>> {
     if self.closed {
       return Err(QueueError::Closed(item));

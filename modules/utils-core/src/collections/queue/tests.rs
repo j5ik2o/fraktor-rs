@@ -73,9 +73,7 @@ mod fifo_backend {
   impl<T> SyncQueueBackend<T> for FifoBackend<T> {
     type Storage = QueueConfig;
 
-    fn new(storage: Self::Storage, policy: OverflowPolicy) -> Self {
-      FifoBackend::new(storage, policy)
-    }
+
 
     fn offer(&mut self, item: T) -> Result<OfferOutcome, QueueError<T>> {
       if self.closed {
