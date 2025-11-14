@@ -23,7 +23,7 @@ description: Manage .kiro/steering/ as persistent project knowledge
 
 Check `.kiro/steering/` status:
 
-**Bootstrap Mode**: Empty OR missing core files (product.md, tech.md, structure.md)  
+**Bootstrap Mode**: Empty OR missing core files (product.md, tech.md, structure.md)
 **Sync Mode**: All core files exist
 
 ---
@@ -70,7 +70,7 @@ From `.kiro/settings/rules/steering-principles.md`:
 
 Document patterns and principles, not exhaustive lists.
 
-**Bad**: List every file in directory tree  
+**Bad**: List every file in directory tree
 **Good**: Describe organization pattern with examples
 
 </instructions>
@@ -118,11 +118,11 @@ Review and approve as Source of Truth.
 ## Examples
 
 ### Bootstrap
-**Input**: Empty steering, React TypeScript project  
+**Input**: Empty steering, React TypeScript project
 **Output**: 3 files with patterns - "Feature-first", "TypeScript strict", "React 19"
 
 ### Sync
-**Input**: Existing steering, new `/api` directory  
+**Input**: Existing steering, new `/api` directory
 **Output**: Updated structure.md, flagged non-compliant files, suggested api-standards.md
 
 ## Safety & Fallback
@@ -139,3 +139,4 @@ Review and approve as Source of Truth.
 - "Golden Rule": New code following patterns shouldn't require steering updates
 - `.kiro/settings/` content should NOT be documented in steering files (settings are metadata, not project knowledge)
 
+ultrathink
