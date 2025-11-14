@@ -73,8 +73,6 @@ mod fifo_backend {
   impl<T> SyncQueueBackend<T> for FifoBackend<T> {
     type Storage = QueueConfig;
 
-
-
     fn offer(&mut self, item: T) -> Result<OfferOutcome, QueueError<T>> {
       if self.closed {
         return Err(QueueError::Closed(item));
