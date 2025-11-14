@@ -170,10 +170,18 @@ pub struct TickDriverBootstrap<TB: RuntimeToolbox> {
 impl<TB: RuntimeToolbox> TickDriverBootstrap<TB> {
   pub fn provision(&self, cfg: &TickDriverConfig<TB>, ctx: &SchedulerContext<TB>) -> Result<TickDriverHandle, TickDriverError>;
   pub fn shutdown(handle: TickDriverHandle);
+  pub fn handle_driver_stop(
+    &self,
+    handle: TickDriverHandle,
+    policy: FallbackPolicy,
+    ctx: &SchedulerContext<TB>,
+    feed: &TickFeed<TB>,
+  ) -> Result<(), TickDriverError>;
 }
 ```
 - Preconditions: SchedulerContext が初期化済み。
 - Postconditions: 成功時は driver ハンドルを返し、失敗時は ActorSystem 起動を中止。
+- Fallback: driver から停止シグナルが届いた場合 `handle_driver_stop` が `FallbackPolicy` を評価し、(a) manual-test driver を一時的に起動、(b) 指定回数リトライ、(c) `TickDriverError::DriverStopped` を返して ActorSystem を終了、のいずれかを実行する。いずれの場合も `EventStream` へ `SchedulerTickMetrics` + `LogEvent::Error` を発行し、再起動した driver のメタデータを `TickDriverMetadata` に更新する。
 
 #### TickDriverRegistry
 - Primary: driver 名称 → ファクトリ関数のマッピングを保持し、Builder/Bootstrap から解決要求を受ける。
@@ -217,7 +225,7 @@ pub trait TickDriver<TB: RuntimeToolbox>: Send + Sync {
 
 #### TickFeed<TB>
 - Primary: 複数 driver からの tick を順序保持したまま `SchedulerTickHandle` へ橋渡し。
-- State: `ArcShared<TickState>` + lock-free `ArrayQueue`(if needed)。
+- State: `ArcShared<TickState>` + lock-free `ArrayQueue<(TickDriverId, u32)>`（容量は `SchedulerCapacityProfile::system_quota()` に追従）で FIFO を保証。`enqueue` は host driver から、`enqueue_from_isr` は `critical-section` で包んで ISR から呼ぶ。キュー飽和時は最古の entry を破棄し `SchedulerTickMetrics` の dropped カウンタへ反映する。
 - Contract:
 ```rust
 pub struct TickFeed<'a, TB> {
@@ -230,6 +238,7 @@ impl<'a, TB> TickFeed<'a, TB> {
   pub fn metadata(&self) -> TickDriverMetadata;
 }
 ```
+- Ordering: `SchedulerRunner` へ渡す前に `(driver_id, ticks)` をキューからポップし、その順番で `handle.inject_manual_ticks` 相当を行うため、複数 driver が存在しても登録順序を保持できる。
 
 #### SchedulerTickMetricsPublisher
 - Primary: `TickFeed` から 1 秒ごとに tick 数/ドリフト/driver 名を計測し、`EventStream` へ `SchedulerTickMetrics` を publish。
@@ -237,7 +246,8 @@ impl<'a, TB> TickFeed<'a, TB> {
 
 #### RunnerModeGuard
 - Primary: `ActorSystemBuilder` が prod/test を区別し、Runner API 露出を制限。
-- Contract: `fn ensure_manual_mode(cfg: &TickDriverConfig) -> Result<(), TickDriverError>`（本番 driver では Err）。
+- Contract: `fn ensure_manual_mode(cfg: &TickDriverConfig, build_profile: BuildProfile) -> Result<(), TickDriverError>`（`BuildProfile::Prod` かつ `TickDriverKind::ManualTest` の場合は Err）。`SchedulerRunner` は `actor-core` では `pub(crate)` とし、`#[cfg(any(test, feature = "test-support"))]` のみ re-export。
+- Integration: `ActorSystemBuilder::with_tick_driver` 呼び出し時に Guard を実行し、本番構成から manual driver を選んだ場合は `TickDriverError::UnsupportedEnvironment` を返す。テストクレートでは `build_profile = BuildProfile::Test` を渡して許可する。
 
 ### Documentation Assets
 
@@ -290,13 +300,14 @@ fn main() -> ! {
 - **TickDriverKind**: `StdAuto`, `Hardware { source: HardwareKind }`, `ManualTest`。RunnerModeGuard がメタデータとして保持。
 - **TickDriverMetadata**: `{ driver_id: TickDriverId, start_instant: TimerInstant, ticks_total: u64 }`。EventStream 出力とランダムアクセス用。
 - **TickDriverError**: `SpawnFailed`, `HandleUnavailable`, `UnsupportedEnvironment`, `DriftExceeded`, `DriverStopped`。Builder/Bootstrap/Drivers 間の共通 error。
+- **FallbackPolicy**: `ManualFallback`, `Retry { attempts: u8, backoff: Duration }`, `FailFast` の 3 種を提供し、`TickDriverConfig` から `TickDriverBootstrap` へ伝搬して停止時挙動を一意に決定する。
 - **SchedulerTickMetrics Event**: `{ driver: TickDriverKind, ticks_per_sec: u32, drift: Option<Duration>, timestamp: Duration }` を新たに `EventStreamEvent::SchedulerTick` として追加。
 
 ## Error Handling
 ### Error Strategy
 - Driver 起動時: `TickDriverBootstrap` が `TickDriverError` を返し、ActorSystem 構築を即座に中止。
 - 実行中: `TickFeed` がドリフトを検出したら `SchedulerTickMetrics` に `drift` をセットし、±5% 超過時は `EventStream` に Warning。
-- 停止検知: Hardware driver の `stop` シグナルを受けるとフォールバックポリシー（manual driver への切替 or panic）を `TickDriverConfig` に従って実行。
+- 停止検知: Driver の `stop` シグナルを受けると `TickDriverBootstrap::handle_driver_stop` が `FallbackPolicy` を評価し、manual driver への切替／一定回数の再試行／FailFast のいずれかを実行しつつ EventStream に `DriverStopped` を記録。
 
 ### Error Categories and Responses
 - **User Errors**: Builder 未構成 (`with_tick_driver` 未呼び) → `TickDriverError::UnsupportedEnvironment` を返す。
