@@ -46,6 +46,7 @@
 4. The Quickstart ガイド shall Driver 選択マトリクス（`auto-std`, `embassy-systick`, `manual-test` 等）を 1 画面で比較できる表として盛り込み、ActorSystem へ渡す設定キー／builder メソッド名を列挙する。
 5. When Quickstart が ActorSystem への設定注入方法を説明するとき, the document shall ActorSystemConfig/Toolbox Builder へのハイレベル API（例: `ActorSystemBootstrap::new().timers(driver).boot()?`）のみを記載し、`SchedulerTickHandle` など低レベルハンドルの直接操作を避けると明言する。
 6. The Quickstart ガイド shall main 関数全体のテンプレート（`#[tokio::main]`, `fn main() -> !` for no_std）を含み、利用者がコピーペースト後に Tick Driver 設定箇所だけを書き換えれば済むことを保証する。
+7. The Quickstart ガイドと仕様 shall ActorSystem 構築のためのビルダー層（例: `ActorSystemBuilder` または `ActorSystemBootstrap`）を前提にし、`with_tick_driver(...)` などのメソッドチェーンで設定を10〜15行以内に収められることを示す。
 
 ## Project Description (Input)
 
@@ -64,4 +65,5 @@
 - **ステップ 2: ActorSystem 構築** — `ActorSystemBootstrap::new().with_config(|cfg| cfg.timers(driver_config))` を呼び出し、main 関数内で 2〜3 行に収める。
 - **ステップ 3: Tick 監視** — EventStream で `SchedulerTickMetrics` を購読するコード断片を掲載し、Quickstart 完了後すぐに周期確認ができるようにする。
 - **ステップ 4: 環境別テンプレート** — `#[tokio::main] async fn main()` と `#[entry] fn main() -> !` の 2 パターンをそれぞれ 15 行以内で提示し、ドライバ差し替え箇所をコメントでマーキングする。
+- **ステップ 4.5: ActorSystemBuilder の導入** — Tick driver や dispatcher、mailbox 構成を `ActorSystemBuilder::new().with_tick_driver(...).build()?` のようなメソッドチェーンで記述し、main 関数内の低レベル処理を Builder に集約する方針を解説する。
 - **ステップ 5: トラブルシュート** — ドライバ登録失敗時のエラー／panic メッセージ例と再設定手順を Quickstart 下部に添付し、ActorSystem 起動前に原因を切り分けられるようにする。
