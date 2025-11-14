@@ -20,6 +20,7 @@
 - 1ファイルに複数構造体、複数trait、複数enumを記述しないこと(ただしプライベートな構造体・trait・enumは対象外)
 - 全タスクを完了した段階で `./scripts/ci-check.sh all` を実行し、エラーがないことを確認すること（途中工程では対象範囲のテストに留めてよい）
 - CHANGELOG.mdはgithub actionが自動的に作るのでAIエージェントは編集してはならない
+- lintエラーを安易にallowなどで回避しないこと。allowを付ける場合は人間から許可を得ること
 
 # AI-DLC and Spec-Driven Development
 
