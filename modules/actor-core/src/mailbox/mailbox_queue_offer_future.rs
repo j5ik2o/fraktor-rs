@@ -13,8 +13,9 @@ use fraktor_utils_core_rs::{
     wait::WaitShared,
   },
   sync::ArcShared,
+  timing::{DelayFuture, DelayProvider},
 };
-use fraktor_utils_core_rs::timing::{DelayFuture, DelayProvider};
+
 use super::mailbox_queue_state::QueueState;
 use crate::RuntimeToolbox;
 

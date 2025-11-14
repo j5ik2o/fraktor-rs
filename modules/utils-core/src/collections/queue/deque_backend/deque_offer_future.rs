@@ -13,8 +13,8 @@ use crate::{
   },
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
   sync::ArcShared,
+  timing::{DelayFuture, DelayProvider},
 };
-use crate::timing::{DelayFuture, DelayProvider};
 
 /// Future returned when a deque needs to wait for capacity.
 pub struct DequeOfferFuture<T, TB: RuntimeToolbox + 'static = NoStdToolbox>

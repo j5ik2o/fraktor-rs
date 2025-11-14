@@ -10,7 +10,7 @@ pub struct DelayTrigger {
 }
 
 impl DelayTrigger {
-  pub(crate) fn new(state: ArcShared<DelayState>) -> Self {
+  pub(crate) const fn new(state: ArcShared<DelayState>) -> Self {
     Self { state }
   }
 

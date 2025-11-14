@@ -4,8 +4,9 @@ use core::time::Duration;
 
 use fraktor_utils_core_rs::{
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+  timing::{DelayFuture, DelayProvider, DelayTrigger},
 };
-use fraktor_utils_core_rs::timing::{DelayFuture, DelayProvider, DelayTrigger};
+
 use super::{
   Scheduler, SchedulerError, SchedulerHandle, api, execution_batch::ExecutionBatch, runnable::SchedulerRunnable,
 };

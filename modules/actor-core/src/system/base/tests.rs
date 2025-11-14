@@ -8,8 +8,9 @@ use core::{
 use fraktor_utils_core_rs::{
   collections::queue::capabilities::{QueueCapabilityRegistry, QueueCapabilitySet},
   sync::{ArcShared, NoStdMutex},
+  timing::{DelayFuture, DelayProvider},
 };
-use fraktor_utils_core_rs::timing::{DelayFuture, DelayProvider};
+
 use super::ActorSystem;
 use crate::{
   NoStdToolbox,

@@ -7,8 +7,8 @@ use core::{
 
 use crate::{
   collections::queue::{DequeBackend, OverflowPolicy, QueueError},
+  timing::ManualDelayProvider,
 };
-use crate::timing::ManualDelayProvider;
 
 const VTABLE: RawWakerVTable = RawWakerVTable::new(clone, wake, wake_by_ref, drop_waker);
 
