@@ -7,7 +7,6 @@ use core::{
 
 use super::{DequeEdge, DequeState};
 use crate::{
-  DelayFuture, DelayProvider,
   collections::{
     queue::{OfferOutcome, QueueError},
     wait::WaitShared,
@@ -15,6 +14,7 @@ use crate::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
   sync::ArcShared,
 };
+use crate::timing::{DelayFuture, DelayProvider};
 
 /// Future returned when a deque needs to wait for capacity.
 pub struct DequeOfferFuture<T, TB: RuntimeToolbox + 'static = NoStdToolbox>

@@ -3,10 +3,9 @@
 use core::time::Duration;
 
 use fraktor_utils_core_rs::{
-  DelayFuture, DelayProvider, DelayTrigger,
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
-
+use fraktor_utils_core_rs::timing::{DelayFuture, DelayProvider, DelayTrigger};
 use super::{
   Scheduler, SchedulerError, SchedulerHandle, api, execution_batch::ExecutionBatch, runnable::SchedulerRunnable,
 };

@@ -99,10 +99,10 @@ sequenceDiagram
 - `pub trait SyncQueueMeta: BackendMeta` — 同期キュー専用メタ。`fn queue_profile(&self) -> QueueProfile` 等を公開。
 - `pub(crate) trait SyncQueueBackendProvider: SyncQueueMeta` — crate-private。`type Backend<T>: SyncQueueBackend<T>` と `type Guard<T>: SyncMutexLike<Self::Backend<T>>` を関連型として保持する marker。
 - `pub struct QueueProfile` — `type_key: TypeKeyId`, `capability: QueueCapabilitySet`, `default_overflow: OverflowPolicy` などの公開メタ情報。
-- `pub struct QueueSpec<G = DefaultSyncGuard>` — ユーザが override 可能な `capacity`, `overflow`, `storage_hint` を `Option` で保持し、`G` で Guard 実装を示す。`QueueSpecGuard<G>` のような phantom 型で Guard family を静的に保持する。
-- `pub struct SyncQueue<T, K, Meta = meta::VecDequeMpscMeta, G = DefaultSyncGuard>` — 公開 façade。`Meta: SyncQueueMeta` を露出し、Guard 型は `QueueSpec` から推論される。
+- `pub struct QueueSpec<G = DefaultGuardFamily>` — ユーザが override 可能な `capacity`, `overflow`, `storage_hint` を `Option` で保持し、`G: GuardFamily` を phantom 型で保持する。
+- `pub struct SyncQueue<T, K, Meta = meta::VecDequeMpscMeta, G = DefaultGuardFamily>` — 公開 façade。`Meta: SyncQueueMeta` を露出し、Guard 型は `QueueSpec` から推論される。
 - `pub struct AsyncQueue<T, K, Meta = meta::VecDequeAsyncMpscMeta, Guard = DefaultAsyncGuard>` — 非同期版。
-- `pub struct SyncStack<T, Meta = meta::VecStackMeta, Guard = DefaultSyncGuard>` / `AsyncStack` — スタック API。
+- `pub struct SyncStack<T, Meta = meta::VecStackMeta, G = DefaultGuardFamily>` / `AsyncStack` — スタック API。
 - `pub struct BackendMetaKey(pub(crate) &'static str)` — Resolver 内で使用する識別子。
 - `pub(crate) struct SyncQueueHandle<T, K, Impl, Guard>` — 旧 `SyncQueue` 実装を移動した内部型。
 - `pub struct SyncMpscProducer<T, Meta = meta::VecDequeMpscMeta>` — Meta 化された Producer。`pub fn offer(&self, item: T)`。
@@ -125,28 +125,30 @@ pub(crate) trait SyncQueueBackendProvider: SyncQueueMeta {
   type Guard<T>: SyncMutexLike<Self::Backend<T>>;
 }
 
-pub struct QueueSpec<G = DefaultSyncGuard> {
+pub struct QueueSpec<G = DefaultGuardFamily> {
   pub capacity: Option<NonZeroUsize>;
   pub overflow: Option<OverflowPolicy>;
   pub storage_hint: Option<StorageHint>;
-  guard: QueueSpecGuard<G>;
+  guard_family: PhantomData<G>;
 }
 
-pub struct QueueSpecGuard<G> {
-  _pd: PhantomData<G>,
+pub trait GuardFamily {
+  type ForBackend<B>: SyncMutexLike<B>;
 }
 
-pub struct GuardFrom<TB: RuntimeToolbox> {
-  _pd: PhantomData<TB>,
+pub struct DefaultGuardFamily;
+impl GuardFamily for DefaultGuardFamily {
+  type ForBackend<B> = SpinSyncMutex<B>;
 }
 
-impl<TB: RuntimeToolbox> GuardFrom<TB> {
-  pub type Mutex<T> = <TB::MutexFamily as SyncMutexFamily>::Mutex<T>;
+pub struct ToolboxGuardFamily<TB: RuntimeToolbox>(PhantomData<TB>);
+impl<TB: RuntimeToolbox> GuardFamily for ToolboxGuardFamily<TB> {
+  type ForBackend<B> = <TB::MutexFamily as SyncMutexFamily>::Mutex<B>;
 }
 
-impl QueueSpec<DefaultSyncGuard> {
-  pub fn with_guard_family<TB: RuntimeToolbox>(self) -> QueueSpec<GuardFrom<TB>> {
-    QueueSpec { guard: QueueSpecGuard { _pd: PhantomData }, ..self }
+impl QueueSpec<DefaultGuardFamily> {
+  pub fn with_guard_family<TB: RuntimeToolbox>(self) -> QueueSpec<ToolboxGuardFamily<TB>> {
+    QueueSpec { guard_family: PhantomData, ..self }
   }
 }
 impl<G> QueueSpec<G> {
@@ -155,10 +157,6 @@ impl<G> QueueSpec<G> {
     self
   }
 }
-
-// GuardFrom<TB> は `SyncMutexFamily` から生成される Guard 型を静的に表現する marker。
-
-
 impl<T, K, Meta, G> SyncQueue<T, K, Meta, G>
 where
   K: TypeKey,
@@ -310,7 +308,7 @@ pub(crate) trait SyncQueueBackendProvider: SyncQueueMeta {
 
 ### 論理データモデル
 - **QueueProfile**: `{ type_key: QueueTypeKey (Fifo/Mpsc/Spsc/Priority), capability: QueueCapabilitySet, default_overflow: OverflowPolicy, default_capacity: NonZeroUsize, wait_strategy: WaitStrategy }`。
-- **QueueSpec / StackSpec**: `capacity`, `overflow`, `storage_hint` を `Option` で保持し、型パラメータ `G` により Guard 実装を静的に決定する（`QueueSpec<DefaultSyncGuard>` → `QueueSpec<TB::MutexGuard>` への遷移を許容）。
+- **QueueSpec / StackSpec**: `capacity`, `overflow`, `storage_hint` を `Option` で保持し、型パラメータ `G: GuardFamily` により Guard 実装を静的に決定する（`QueueSpec<DefaultGuardFamily>` → `QueueSpec<ToolboxGuardFamily<TB>>` への遷移を許容）。
 
 ### 物理データモデル
 - **BackendMetaKey**: `enum BackendMetaKey { VecDequeMpsc, VecDequeSpsc, PriorityBinaryHeap, ... }`。`match` の網羅性チェックを利用し、Meta ↔ Backend の整合性をコンパイル時に保証。

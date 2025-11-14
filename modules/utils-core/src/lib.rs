@@ -84,4 +84,4 @@ pub mod runtime_toolbox;
 /// Synchronization primitives and shared ownership abstractions.
 pub mod sync;
 pub mod time;
-mod timing;
+pub mod timing;

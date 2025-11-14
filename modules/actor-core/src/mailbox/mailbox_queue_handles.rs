@@ -28,10 +28,7 @@ type QueueConsumer<T, TB> = SyncMpscConsumer<T, VecRingBackend<T>, QueueMutex<T,
 pub struct QueueHandles<T, TB: RuntimeToolbox>
 where
   T: Send + 'static, {
-  pub(super) state:     ArcShared<QueueState<T, TB>>,
-  pub(super) _producer: QueueProducer<T, TB>,
-  #[allow(dead_code)]
-  pub(super) consumer:  QueueConsumer<T, TB>,
+  pub(super) state: ArcShared<QueueState<T, TB>>,
 }
 
 impl<T, TB> QueueHandles<T, TB>
@@ -53,9 +50,7 @@ where
     let mutex = <TB::MutexFamily as SyncMutexFamily>::create(backend);
     let shared = ArcShared::new(mutex);
     let state = ArcShared::new(QueueState::new(shared.clone()));
-    let queue: MpscQueue<_, VecRingBackend<T>, _> = MpscQueue::new_mpsc(shared);
-    let (producer, consumer) = queue.into_mpsc_pair();
-    Self { state, _producer: producer, consumer }
+    Self { state }
   }
 
   pub(super) fn offer(&self, message: T) -> Result<OfferOutcome, QueueError<T>> {

@@ -12,14 +12,13 @@ use core::{
 };
 
 use fraktor_utils_core_rs::{
-  DelayFuture, DelayProvider,
   runtime_toolbox::SyncMutexFamily,
   sync::{ArcShared, NoStdMutex},
   time::{SchedulerCapacityProfile, SchedulerTickHandle},
 };
 use hashbrown::HashMap;
 use proptest::prelude::*;
-
+use fraktor_utils_core_rs::timing::{DelayFuture, DelayProvider};
 use super::{
   BatchMode, DeterministicEvent, ExecutionBatch, Scheduler, SchedulerBackedDelayProvider, SchedulerConfig,
   SchedulerContext, SchedulerDiagnosticsEvent, SchedulerError, SchedulerMode, SchedulerRunner, SchedulerWarning,

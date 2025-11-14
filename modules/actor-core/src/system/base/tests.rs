@@ -6,11 +6,10 @@ use core::{
 };
 
 use fraktor_utils_core_rs::{
-  DelayFuture, DelayProvider,
   collections::queue::capabilities::{QueueCapabilityRegistry, QueueCapabilitySet},
   sync::{ArcShared, NoStdMutex},
 };
-
+use fraktor_utils_core_rs::timing::{DelayFuture, DelayProvider};
 use super::ActorSystem;
 use crate::{
   NoStdToolbox,

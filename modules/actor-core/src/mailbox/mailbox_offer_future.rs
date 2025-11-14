@@ -8,8 +8,8 @@ use core::{
   time::Duration,
 };
 
-use fraktor_utils_core_rs::{DelayProvider, sync::NoStdToolbox};
-
+use fraktor_utils_core_rs::{sync::NoStdToolbox};
+use fraktor_utils_core_rs::timing::DelayProvider;
 use super::{mailbox_queue_offer_future::QueueOfferFuture, map_user_queue_error};
 use crate::{RuntimeToolbox, error::SendError, messaging::AnyMessageGeneric};
 
