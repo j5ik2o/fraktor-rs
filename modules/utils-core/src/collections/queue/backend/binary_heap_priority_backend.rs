@@ -16,7 +16,7 @@ use crate::collections::{
 
 /// Priority-aware backend backed by a binary heap.
 pub struct BinaryHeapPriorityBackend<T: PriorityMessage> {
-  heap:          BinaryHeap<PriorityEntry<T>>,
+  entries:       BinaryHeap<PriorityEntry<T>>,
   config:        PriorityBackendConfig,
   limit:         usize,
   policy:        OverflowPolicy,
@@ -29,7 +29,7 @@ impl<T: PriorityMessage> BinaryHeapPriorityBackend<T> {
   #[must_use]
   pub fn new_with_config(config: PriorityBackendConfig, policy: OverflowPolicy) -> Self {
     let capacity = config.capacity();
-    Self { heap: BinaryHeap::with_capacity(capacity), limit: capacity, policy, closed: false, next_sequence: 0, config }
+    Self { entries: BinaryHeap::with_capacity(capacity), limit: capacity, policy, closed: false, next_sequence: 0, config }
   }
 
   /// Creates a backend using the default priority layout.
@@ -51,7 +51,7 @@ impl<T: PriorityMessage> BinaryHeapPriorityBackend<T> {
   }
 
   fn push_entry(&mut self, entry: PriorityEntry<T>) {
-    self.heap.push(entry);
+    self.entries.push(entry);
   }
 }
 
@@ -67,7 +67,7 @@ impl<T: PriorityMessage> SyncQueueBackendInternal<T> for BinaryHeapPriorityBacke
 
     let priority = self.determine_priority(&item);
 
-    if self.heap.len() < self.limit {
+    if self.entries.len() < self.limit {
       let sequence = self.allocate_sequence();
       self.push_entry(PriorityEntry::new(priority, sequence, item));
       return Ok(OfferOutcome::Enqueued);
@@ -81,7 +81,7 @@ impl<T: PriorityMessage> SyncQueueBackendInternal<T> for BinaryHeapPriorityBacke
       | OverflowPolicy::DropOldest => {
         let sequence = self.allocate_sequence();
         let entry = PriorityEntry::new(priority, sequence, item);
-        let _ = self.heap.pop();
+        let _ = self.entries.pop();
         self.push_entry(entry);
         Ok(OfferOutcome::DroppedOldest { count: 1 })
       },
@@ -97,7 +97,7 @@ impl<T: PriorityMessage> SyncQueueBackendInternal<T> for BinaryHeapPriorityBacke
   }
 
   fn poll(&mut self) -> Result<T, QueueError<T>> {
-    match self.heap.pop() {
+    match self.entries.pop() {
       | Some(entry) => Ok(entry.into_item()),
       | None => {
         if self.closed {
@@ -110,7 +110,7 @@ impl<T: PriorityMessage> SyncQueueBackendInternal<T> for BinaryHeapPriorityBacke
   }
 
   fn len(&self) -> usize {
-    self.heap.len()
+    self.entries.len()
   }
 
   fn capacity(&self) -> usize {
@@ -135,7 +135,7 @@ impl<T: PriorityMessage> SyncPriorityBackend<T> for BinaryHeapPriorityBackend<T>
 impl<T: PriorityMessage> SyncPriorityBackendInternal<T> for BinaryHeapPriorityBackend<T> {
   fn peek_min(&self) -> Option<&T> {
     self
-      .heap
+      .entries
       .iter()
       .min_by(|a, b| match a.priority().cmp(&b.priority()) {
         | Ordering::Equal => a.sequence().cmp(&b.sequence()),
