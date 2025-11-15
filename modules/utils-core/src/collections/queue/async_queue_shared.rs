@@ -1,9 +1,8 @@
 use core::marker::PhantomData;
 
 use super::{
-  AsyncQueue, async_mpsc_consumer_shared::AsyncMpscConsumerShared,
-  async_mpsc_producer_shared::AsyncMpscProducerShared, async_spsc_consumer_shared::AsyncSpscConsumerShared,
-  async_spsc_producer_shared::AsyncSpscProducerShared,
+  AsyncQueue, async_mpsc_consumer_shared::AsyncMpscConsumerShared, async_mpsc_producer_shared::AsyncMpscProducerShared,
+  async_spsc_consumer_shared::AsyncSpscConsumerShared, async_spsc_producer_shared::AsyncSpscProducerShared,
 };
 use crate::{
   collections::{
@@ -225,8 +224,9 @@ where
   /// Returns a `QueueError` when the backend cannot access the next element due to closure or
   /// disconnection.
   pub async fn peek_min(&self) -> Result<Option<T>, QueueError<T>> {
-    let guard = <A as AsyncMutexLike<AsyncQueue<T, PriorityKey, B>>>::lock(&*self.inner).await.map_err(QueueError::from)?;
-    Ok(guard.peek_min()?)
+    let guard =
+      <A as AsyncMutexLike<AsyncQueue<T, PriorityKey, B>>>::lock(&*self.inner).await.map_err(QueueError::from)?;
+    guard.peek_min()
   }
 }
 
@@ -298,4 +298,5 @@ pub type AsyncSpscQueue<T, B, A = SpinAsyncMutex<AsyncQueue<T, SpscKey, B>>> = A
 /// Type alias for an async FIFO queue.
 pub type AsyncFifoQueue<T, B, A = SpinAsyncMutex<AsyncQueue<T, FifoKey, B>>> = AsyncQueueShared<T, FifoKey, B, A>;
 /// Type alias for an async priority queue.
-pub type AsyncPriorityQueue<T, B, A = SpinAsyncMutex<AsyncQueue<T, PriorityKey, B>>> = AsyncQueueShared<T, PriorityKey, B, A>;
+pub type AsyncPriorityQueue<T, B, A = SpinAsyncMutex<AsyncQueue<T, PriorityKey, B>>> =
+  AsyncQueueShared<T, PriorityKey, B, A>;

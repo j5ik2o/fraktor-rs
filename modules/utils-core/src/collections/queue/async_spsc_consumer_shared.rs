@@ -44,7 +44,8 @@ where
   ///
   /// Returns a `QueueError` when the backend refuses to close.
   pub async fn close(&self) -> Result<(), QueueError<T>> {
-    let mut guard = <A as AsyncMutexLike<AsyncQueue<T, SpscKey, B>>>::lock(&*self.inner).await.map_err(QueueError::from)?;
+    let mut guard =
+      <A as AsyncMutexLike<AsyncQueue<T, SpscKey, B>>>::lock(&*self.inner).await.map_err(QueueError::from)?;
     guard.close().await
   }
 }

@@ -5,10 +5,10 @@ use core::{
   task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
 };
 
-use super::AsyncStack;
+use super::AsyncStackShared;
 use crate::{
   collections::stack::{
-    StackOverflowPolicy, VecStackStorage,
+    AsyncStack, StackOverflowPolicy,
     backend::{PushOutcome, StackError, SyncStackAsyncAdapter, VecStackBackend},
   },
   sync::{ArcShared, SharedError, async_mutex_like::SpinAsyncMutex, interrupt::InterruptContextPolicy},
@@ -42,13 +42,12 @@ fn block_on<F: Future>(mut future: F) -> F::Output {
   }
 }
 
-fn make_shared_stack(
-  capacity: usize,
-  policy: StackOverflowPolicy,
-) -> ArcShared<SpinAsyncMutex<SyncStackAsyncAdapter<i32, VecStackBackend<i32>>>> {
-  let storage = VecStackStorage::with_capacity(capacity);
-  let backend = VecStackBackend::new_with_storage(storage, policy);
-  ArcShared::new(SpinAsyncMutex::new(SyncStackAsyncAdapter::new(backend)))
+type SharedStack = ArcShared<SpinAsyncMutex<AsyncStack<i32, SyncStackAsyncAdapter<i32, VecStackBackend<i32>>>>>;
+
+fn make_shared_stack(capacity: usize, policy: StackOverflowPolicy) -> SharedStack {
+  let backend = VecStackBackend::with_capacity(capacity, policy);
+  let async_stack = AsyncStack::new(SyncStackAsyncAdapter::new(backend));
+  ArcShared::new(SpinAsyncMutex::new(async_stack))
 }
 
 struct DenyPolicy;
@@ -60,19 +59,18 @@ impl InterruptContextPolicy for DenyPolicy {
 }
 
 type DenyMutex<T> = SpinAsyncMutex<T, DenyPolicy>;
+type DenySharedStack = ArcShared<DenyMutex<AsyncStack<i32, SyncStackAsyncAdapter<i32, VecStackBackend<i32>>>>>;
 
-fn make_interrupt_shared_stack(
-  capacity: usize,
-) -> ArcShared<DenyMutex<SyncStackAsyncAdapter<i32, VecStackBackend<i32>>>> {
-  let storage = VecStackStorage::with_capacity(capacity);
-  let backend = VecStackBackend::new_with_storage(storage, StackOverflowPolicy::Block);
-  ArcShared::new(DenyMutex::new(SyncStackAsyncAdapter::new(backend)))
+fn make_interrupt_shared_stack(capacity: usize) -> DenySharedStack {
+  let backend = VecStackBackend::with_capacity(capacity, StackOverflowPolicy::Block);
+  let async_stack = AsyncStack::new(SyncStackAsyncAdapter::new(backend));
+  ArcShared::new(DenyMutex::new(async_stack))
 }
 
 #[test]
 fn push_and_pop_operates_async_stack() {
   let shared = make_shared_stack(4, StackOverflowPolicy::Block);
-  let stack: AsyncStack<i32, _, _> = AsyncStack::new(shared);
+  let stack: AsyncStackShared<i32, _, _> = AsyncStackShared::new(shared);
 
   assert!(matches!(block_on(stack.push(10)), Ok(PushOutcome::Pushed)));
   assert_eq!(block_on(stack.len()), Ok(1));
@@ -90,7 +88,7 @@ fn push_and_pop_operates_async_stack() {
 #[test]
 fn peek_reflects_top_element() {
   let shared = make_shared_stack(4, StackOverflowPolicy::Block);
-  let stack: AsyncStack<i32, _, _> = AsyncStack::new(shared);
+  let stack: AsyncStackShared<i32, _, _> = AsyncStackShared::new(shared);
 
   assert!(matches!(block_on(stack.push(1)), Ok(PushOutcome::Pushed)));
   assert!(matches!(block_on(stack.push(2)), Ok(PushOutcome::Pushed)));
@@ -101,7 +99,7 @@ fn peek_reflects_top_element() {
 #[test]
 fn close_prevents_additional_pushes() {
   let shared = make_shared_stack(2, StackOverflowPolicy::Block);
-  let stack: AsyncStack<i32, _, _> = AsyncStack::new(shared);
+  let stack: AsyncStackShared<i32, _, _> = AsyncStackShared::new(shared);
 
   assert!(matches!(block_on(stack.push(5)), Ok(PushOutcome::Pushed)));
   assert!(block_on(stack.close()).is_ok());
@@ -113,7 +111,7 @@ fn close_prevents_additional_pushes() {
 #[test]
 fn push_blocks_until_space_available() {
   let shared = make_shared_stack(1, StackOverflowPolicy::Block);
-  let stack: AsyncStack<i32, _, _> = AsyncStack::new(shared);
+  let stack: AsyncStackShared<i32, _, _> = AsyncStackShared::new(shared);
 
   assert!(matches!(block_on(stack.push(1)), Ok(PushOutcome::Pushed)));
 
@@ -133,7 +131,7 @@ fn push_blocks_until_space_available() {
 #[test]
 fn pop_blocks_until_item_available() {
   let shared = make_shared_stack(1, StackOverflowPolicy::Block);
-  let stack: AsyncStack<i32, _, _> = AsyncStack::new(shared);
+  let stack: AsyncStackShared<i32, _, _> = AsyncStackShared::new(shared);
 
   let mut pop_future = stack.pop();
   let mut pop_future = unsafe { Pin::new_unchecked(&mut pop_future) };
@@ -151,7 +149,7 @@ fn pop_blocks_until_item_available() {
 #[test]
 fn close_wakes_waiting_pop() {
   let shared = make_shared_stack(1, StackOverflowPolicy::Block);
-  let stack: AsyncStack<i32, _, _> = AsyncStack::new(shared);
+  let stack: AsyncStackShared<i32, _, _> = AsyncStackShared::new(shared);
 
   let mut pop_future = stack.pop();
   let mut pop_future = unsafe { Pin::new_unchecked(&mut pop_future) };
@@ -169,7 +167,7 @@ fn close_wakes_waiting_pop() {
 #[test]
 fn interrupt_context_returns_would_block_errors() {
   let shared = make_interrupt_shared_stack(2);
-  let stack: AsyncStack<i32, _, _> = AsyncStack::new(shared);
+  let stack: AsyncStackShared<i32, _, _> = AsyncStackShared::new(shared);
 
   assert_eq!(block_on(stack.push(1)), Err(StackError::WouldBlock));
   assert_eq!(block_on(stack.pop()), Err(StackError::WouldBlock));

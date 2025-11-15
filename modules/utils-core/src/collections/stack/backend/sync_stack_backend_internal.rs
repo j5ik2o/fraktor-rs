@@ -1,10 +1,7 @@
-use crate::collections::stack::{PushOutcome, StackError, StackOverflowPolicy, StackStorage};
+use crate::collections::stack::{PushOutcome, StackError, StackOverflowPolicy};
 
-/// Backend trait responsible for stack operations on top of a storage implementation.
+/// Backend trait responsible for stack operations.
 pub(crate) trait SyncStackBackendInternal<T> {
-  /// Storage implementation backing the stack.
-  type Storage: StackStorage<T>;
-
   /// Pushes an element onto the stack according to the configured overflow policy.
   ///
   /// # Errors
