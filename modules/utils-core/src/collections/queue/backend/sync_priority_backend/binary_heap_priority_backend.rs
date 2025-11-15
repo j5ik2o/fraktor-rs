@@ -4,7 +4,10 @@ use core::cmp::Ordering;
 use super::{SyncPriorityBackend, priority_backend_config::PriorityBackendConfig, priority_entry::PriorityEntry};
 use crate::collections::{
   PriorityMessage,
-  queue::{OfferOutcome, OverflowPolicy, QueueError, SyncQueueBackend, backend::SyncQueueBackendInternal},
+  queue::{
+    OfferOutcome, OverflowPolicy, QueueError, SyncQueueBackend,
+    backend::{SyncPriorityBackendInternal, SyncQueueBackendInternal},
+  },
 };
 
 /// Priority-aware backend backed by a binary heap.
@@ -123,7 +126,9 @@ impl<T: PriorityMessage> SyncQueueBackendInternal<T> for BinaryHeapPriorityBacke
   }
 }
 
-impl<T: PriorityMessage> SyncPriorityBackend<T> for BinaryHeapPriorityBackend<T> {
+impl<T: PriorityMessage> SyncPriorityBackend<T> for BinaryHeapPriorityBackend<T> {}
+
+impl<T: PriorityMessage> SyncPriorityBackendInternal<T> for BinaryHeapPriorityBackend<T> {
   fn peek_min(&self) -> Option<&T> {
     self
       .heap

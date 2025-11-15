@@ -4,8 +4,8 @@ use core::marker::PhantomData;
 use async_trait::async_trait;
 
 use super::{
-  AsyncPriorityBackend, AsyncQueueBackend, AsyncQueueBackendInternal, OfferOutcome, SyncQueueBackend,
-  sync_priority_backend::SyncPriorityBackend,
+  AsyncPriorityBackend, AsyncPriorityBackendInternal, AsyncQueueBackend, AsyncQueueBackendInternal, OfferOutcome,
+  SyncPriorityBackendInternal, SyncQueueBackend, sync_priority_backend::SyncPriorityBackend,
 };
 use crate::collections::{
   PriorityMessage,
@@ -142,11 +142,13 @@ where
 
 impl<T, B> AsyncQueueBackend<T> for SyncQueueAsyncAdapter<T, B> where B: SyncQueueBackend<T> {}
 
-impl<T: PriorityMessage, B> AsyncPriorityBackend<T> for SyncQueueAsyncAdapter<T, B>
+impl<T: PriorityMessage, B> AsyncPriorityBackend<T> for SyncQueueAsyncAdapter<T, B> where B: SyncPriorityBackend<T> {}
+
+impl<T: PriorityMessage, B> AsyncPriorityBackendInternal<T> for SyncQueueAsyncAdapter<T, B>
 where
   B: SyncPriorityBackend<T>,
 {
   fn peek_min(&self) -> Option<&T> {
-    self.backend.peek_min()
+    SyncPriorityBackendInternal::peek_min(&self.backend)
   }
 }

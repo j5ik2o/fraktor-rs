@@ -1,8 +1,11 @@
 use super::AsyncQueueBackend;
-use crate::collections::PriorityMessage;
+use crate::collections::{
+  PriorityMessage, queue::backend::async_priority_backend_internal::AsyncPriorityBackendInternal,
+};
 
 /// Extension trait for async backends supporting priority semantics.
-pub trait AsyncPriorityBackend<T: PriorityMessage>: AsyncQueueBackend<T> {
-  /// Returns a reference to the smallest element without removing it.
-  fn peek_min(&self) -> Option<&T>;
-}
+///
+/// This trait is automatically sealed because it requires `AsyncPriorityBackendInternal` which is
+/// `pub(crate)`. External crates cannot implement this trait.
+#[allow(private_bounds)]
+pub trait AsyncPriorityBackend<T: PriorityMessage>: AsyncPriorityBackendInternal<T> + AsyncQueueBackend<T> {}
