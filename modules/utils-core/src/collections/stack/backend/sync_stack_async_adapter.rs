@@ -3,7 +3,7 @@ use core::marker::PhantomData;
 
 use async_trait::async_trait;
 
-use super::{AsyncStackBackend, PushOutcome, SyncStackBackend, StackError};
+use super::{AsyncStackBackend, AsyncStackBackendInternal, PushOutcome, StackError, SyncStackBackend};
 use crate::collections::wait::{WaitQueue, WaitShared};
 
 /// Adapter that exposes a synchronous stack backend through the async backend trait.
@@ -71,8 +71,10 @@ where
   }
 }
 
+impl<T, B> AsyncStackBackend<T> for SyncStackAsyncAdapter<T, B> where B: SyncStackBackend<T> {}
+
 #[async_trait(?Send)]
-impl<T, B> AsyncStackBackend<T> for SyncStackAsyncAdapter<T, B>
+impl<T, B> AsyncStackBackendInternal<T> for SyncStackAsyncAdapter<T, B>
 where
   B: SyncStackBackend<T>,
 {

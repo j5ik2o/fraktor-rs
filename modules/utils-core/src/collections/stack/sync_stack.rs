@@ -1,8 +1,8 @@
 use core::marker::PhantomData;
 
 use crate::{
-    collections::stack::{PushOutcome, SyncStackBackend, StackError},
-    sync::{
+  collections::stack::{PushOutcome, StackError, SyncStackBackend},
+  sync::{
     ArcShared, Shared, SharedAccess,
     sync_mutex_like::{SpinSyncMutex, SyncMutexLike},
   },

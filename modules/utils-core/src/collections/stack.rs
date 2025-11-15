@@ -9,7 +9,8 @@ mod tests;
 
 pub use async_stack::AsyncStack;
 pub use backend::{
-  AsyncStackBackend, PushOutcome, SyncStackBackend, StackError, StackOverflowPolicy, SyncStackAsyncAdapter, VecStackBackend,
+  AsyncStackBackend, PushOutcome, StackError, StackOverflowPolicy, SyncStackAsyncAdapter, SyncStackBackend,
+  VecStackBackend,
 };
 pub use storage::{StackStorage, VecStackStorage};
 pub use sync_stack::SyncStack;
