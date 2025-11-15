@@ -138,5 +138,3 @@ Review and approve as Source of Truth.
 - Focus on patterns, not catalogs
 - "Golden Rule": New code following patterns shouldn't require steering updates
 - `.kiro/settings/` content should NOT be documented in steering files (settings are metadata, not project knowledge)
-
-ultrathink

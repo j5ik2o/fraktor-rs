@@ -39,6 +39,7 @@ mod task_run_handle;
 mod task_run_on_close;
 mod task_run_priority;
 mod task_run_summary;
+mod tick_driver;
 mod warning;
 
 #[cfg(test)]
@@ -78,4 +79,11 @@ pub use task_run_handle::TaskRunHandle;
 pub use task_run_on_close::TaskRunOnClose;
 pub use task_run_priority::TaskRunPriority;
 pub use task_run_summary::TaskRunSummary;
+pub use tick_driver::{
+  AutoDriverConfig, AutoDriverMetadata, AutoProfileKind, FallbackPolicy, HardwareKind, TickDriverAutoLocator,
+  TickDriverAutoLocatorRef, TickDriverConfig, TickDriverError, TickDriverFactory, TickDriverFactoryRef, TickDriverId,
+  TickDriverKind, TickDriverMetadata, TickMetricsMode, TickPulseHandler, TickPulseSource,
+};
+#[cfg(any(test, feature = "test-support"))]
+pub use tick_driver::ManualTestDriver;
 pub use warning::SchedulerWarning;

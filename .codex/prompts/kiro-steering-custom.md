@@ -125,5 +125,3 @@ Review and customize as needed.
 - Follow same granularity principles as core steering
 - All steering files loaded as project memory
 - Custom files equally important as core files
-
-ultrathink

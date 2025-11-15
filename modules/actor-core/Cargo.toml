@@ -15,6 +15,7 @@ readme = "../../README.md"
 default = []
 alloc = []
 alloc-metrics = []
+test-support = []
 
 [dependencies]
 async-trait = { workspace = true }
