@@ -79,7 +79,6 @@ pub mod props;
 pub mod scheduler;
 pub mod serialization;
 pub mod spawn;
-pub mod stash;
 pub mod supervision;
 pub mod system;
 pub mod typed;

@@ -31,13 +31,13 @@ where
     Self { state, waiter: None }
   }
 
-  fn ensure_waiter(&mut self) -> &mut WaitShared<QueueError<T>> {
+  fn ensure_waiter(&mut self) -> Result<&mut WaitShared<QueueError<T>>, QueueError<T>> {
     if self.waiter.is_none() {
-      let waiter = self.state.register_consumer_waiter();
+      let waiter = self.state.register_consumer_waiter().map_err(|_| QueueError::Disconnected)?;
       self.waiter = Some(waiter);
     }
     // SAFETY: waiter is guaranteed to be Some after the above check.
-    unsafe { self.waiter.as_mut().unwrap_unchecked() }
+    Ok(unsafe { self.waiter.as_mut().unwrap_unchecked() })
   }
 }
 
@@ -64,7 +64,13 @@ where
           return Poll::Ready(Ok(item));
         },
         | Err(QueueError::Empty) => {
-          let waiter = this.ensure_waiter();
+          let waiter = match this.ensure_waiter() {
+            | Ok(w) => w,
+            | Err(error) => {
+              this.waiter.take();
+              return Poll::Ready(Err(error));
+            },
+          };
           match Pin::new(waiter).poll(cx) {
             | Poll::Pending => return Poll::Pending,
             | Poll::Ready(Ok(())) => continue,

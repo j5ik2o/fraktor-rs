@@ -15,14 +15,14 @@ fn wait_queue_default() {
 #[test]
 fn wait_queue_register_creates_waiter() {
   let mut queue: WaitQueue<&str> = WaitQueue::new();
-  let wait_shared = queue.register();
+  let wait_shared = queue.register().unwrap();
   drop(wait_shared);
 }
 
 #[test]
 fn wait_queue_notify_success_completes_one() {
   let mut queue: WaitQueue<&str> = WaitQueue::new();
-  let wait_shared = queue.register();
+  let wait_shared = queue.register().unwrap();
 
   let notified = queue.notify_success();
   assert!(notified);
@@ -40,8 +40,8 @@ fn wait_queue_notify_success_no_waiters() {
 #[test]
 fn wait_queue_notify_success_multiple_waiters() {
   let mut queue: WaitQueue<&str> = WaitQueue::new();
-  let _wait1 = queue.register();
-  let _wait2 = queue.register();
+  let _wait1 = queue.register().unwrap();
+  let _wait2 = queue.register().unwrap();
 
   let notified1 = queue.notify_success();
   assert!(notified1);
@@ -53,8 +53,8 @@ fn wait_queue_notify_success_multiple_waiters() {
 #[test]
 fn wait_queue_notify_error_all() {
   let mut queue: WaitQueue<String> = WaitQueue::new();
-  let _wait1 = queue.register();
-  let _wait2 = queue.register();
+  let _wait1 = queue.register().unwrap();
+  let _wait2 = queue.register().unwrap();
 
   queue.notify_error_all("error".to_string());
 }
@@ -62,8 +62,8 @@ fn wait_queue_notify_error_all() {
 #[test]
 fn wait_queue_notify_error_all_with() {
   let mut queue: WaitQueue<i32> = WaitQueue::new();
-  let _wait1 = queue.register();
-  let _wait2 = queue.register();
+  let _wait1 = queue.register().unwrap();
+  let _wait2 = queue.register().unwrap();
 
   let mut counter = 0;
   queue.notify_error_all_with(|| {

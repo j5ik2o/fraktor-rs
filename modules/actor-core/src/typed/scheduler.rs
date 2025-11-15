@@ -5,12 +5,19 @@ use core::time::Duration;
 use crate::{
   RuntimeToolbox,
   messaging::AnyMessageGeneric,
-  scheduler::{self, DispatcherSenderShared, Scheduler, SchedulerError, SchedulerHandle},
+  scheduler::{DispatcherSenderShared, Scheduler, SchedulerCommand, SchedulerError, SchedulerHandle},
   typed::actor_prim::TypedActorRefGeneric,
 };
 
+mod scheduler_context;
 #[cfg(test)]
 mod tests;
+mod typed_scheduler_guard;
+mod typed_scheduler_shared;
+
+pub use scheduler_context::TypedSchedulerContext;
+pub use typed_scheduler_guard::TypedSchedulerGuard;
+pub use typed_scheduler_shared::TypedSchedulerShared;
 
 /// Provides typed helpers that delegate to the canonical scheduler APIs.
 pub struct TypedScheduler<'a, TB: RuntimeToolbox + 'static> {
@@ -48,14 +55,12 @@ impl<'a, TB: RuntimeToolbox + 'static> TypedScheduler<'a, TB> {
     M: Send + Sync + 'static, {
     let receiver_untyped = receiver.into_untyped();
     let sender_untyped = sender.map(TypedActorRefGeneric::into_untyped);
-    scheduler::schedule_once(
-      self.scheduler,
-      delay,
-      receiver_untyped,
-      AnyMessageGeneric::new(message),
+    self.scheduler.schedule_once(delay, SchedulerCommand::SendMessage {
+      receiver: receiver_untyped,
+      message: AnyMessageGeneric::new(message),
       dispatcher,
-      sender_untyped,
-    )
+      sender: sender_untyped,
+    })
   }
 
   /// Schedules a typed message at a fixed rate.
@@ -77,15 +82,12 @@ impl<'a, TB: RuntimeToolbox + 'static> TypedScheduler<'a, TB> {
     M: Send + Sync + 'static, {
     let receiver_untyped = receiver.into_untyped();
     let sender_untyped = sender.map(TypedActorRefGeneric::into_untyped);
-    scheduler::schedule_at_fixed_rate(
-      self.scheduler,
-      initial_delay,
-      interval,
-      receiver_untyped,
-      AnyMessageGeneric::new(message),
+    self.scheduler.schedule_at_fixed_rate(initial_delay, interval, SchedulerCommand::SendMessage {
+      receiver: receiver_untyped,
+      message: AnyMessageGeneric::new(message),
       dispatcher,
-      sender_untyped,
-    )
+      sender: sender_untyped,
+    })
   }
 
   /// Schedules a typed message with fixed delay semantics.
@@ -107,14 +109,11 @@ impl<'a, TB: RuntimeToolbox + 'static> TypedScheduler<'a, TB> {
     M: Send + Sync + 'static, {
     let receiver_untyped = receiver.into_untyped();
     let sender_untyped = sender.map(TypedActorRefGeneric::into_untyped);
-    scheduler::schedule_with_fixed_delay(
-      self.scheduler,
-      initial_delay,
-      delay,
-      receiver_untyped,
-      AnyMessageGeneric::new(message),
+    self.scheduler.schedule_with_fixed_delay(initial_delay, delay, SchedulerCommand::SendMessage {
+      receiver: receiver_untyped,
+      message: AnyMessageGeneric::new(message),
       dispatcher,
-      sender_untyped,
-    )
+      sender: sender_untyped,
+    })
   }
 }

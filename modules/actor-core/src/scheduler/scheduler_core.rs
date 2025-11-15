@@ -154,16 +154,24 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
     SchedulerDump::new(self.config.resolution(), self.current_tick, self.metrics, jobs, self.warnings.clone())
   }
 
-  /// Registers a one-shot job.
+  /// Registers a one-shot job backed by the provided [`SchedulerCommand`].
+  ///
+  /// The command executes exactly once when `delay` expires unless cancelled or shutdown interrupts
+  /// it.
   ///
   /// # Errors
   ///
-  /// Returns `SchedulerError` if the delay is invalid or capacity is exceeded.
-  pub fn schedule_once(&mut self, delay: Duration) -> Result<SchedulerHandle, SchedulerError> {
-    self.register_job(delay, SchedulerMode::OneShot, None, SchedulerCommand::Noop)
+  /// Returns [`SchedulerError`] if the delay is invalid, the scheduler is closed, or
+  /// capacity/quotas are exceeded.
+  pub fn schedule_once(
+    &mut self,
+    delay: Duration,
+    command: SchedulerCommand<TB>,
+  ) -> Result<SchedulerHandle, SchedulerError> {
+    self.register_job(delay, SchedulerMode::OneShot, None, command)
   }
 
-  /// Registers a periodic job with fixed rate.
+  /// Registers a periodic job with fixed rate using the provided command.
   ///
   /// # Errors
   ///
@@ -172,35 +180,9 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
     &mut self,
     initial_delay: Duration,
     period: Duration,
-  ) -> Result<SchedulerHandle, SchedulerError> {
-    self.schedule_at_fixed_rate_with_command(initial_delay, period, SchedulerCommand::Noop)
-  }
-
-  /// Registers a periodic job with fixed rate using the provided command.
-  ///
-  /// # Errors
-  ///
-  /// Returns `SchedulerError` if the delay or period is invalid, or capacity is exceeded.
-  pub fn schedule_at_fixed_rate_with_command(
-    &mut self,
-    initial_delay: Duration,
-    period: Duration,
     command: SchedulerCommand<TB>,
   ) -> Result<SchedulerHandle, SchedulerError> {
     self.register_job(initial_delay, SchedulerMode::FixedRate, Some(period), command)
-  }
-
-  /// Registers a periodic job with fixed delay.
-  ///
-  /// # Errors
-  ///
-  /// Returns `SchedulerError` if the delay is invalid or capacity is exceeded.
-  pub fn schedule_with_fixed_delay(
-    &mut self,
-    initial_delay: Duration,
-    delay: Duration,
-  ) -> Result<SchedulerHandle, SchedulerError> {
-    self.schedule_with_fixed_delay_with_command(initial_delay, delay, SchedulerCommand::Noop)
   }
 
   /// Registers a periodic job with fixed delay using the provided command.
@@ -208,7 +190,7 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
   /// # Errors
   ///
   /// Returns `SchedulerError` if the delay is invalid or capacity is exceeded.
-  pub fn schedule_with_fixed_delay_with_command(
+  pub fn schedule_with_fixed_delay(
     &mut self,
     initial_delay: Duration,
     delay: Duration,

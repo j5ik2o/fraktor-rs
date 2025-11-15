@@ -1,8 +1,10 @@
 use std::ops::{Deref, DerefMut};
 
 use fraktor_actor_core_rs::{
-  actor_prim::Pid, error::SendError, spawn::SpawnError, system::ActorSystemGeneric,
-  typed::actor_prim::TypedActorContextGeneric as CoreTypedActorContextGeneric,
+  actor_prim::Pid,
+  error::SendError,
+  spawn::SpawnError,
+  typed::{TypedActorSystemGeneric, actor_prim::TypedActorContextGeneric as CoreTypedActorContextGeneric},
 };
 use fraktor_utils_std_rs::runtime_toolbox::StdToolbox;
 
@@ -31,7 +33,7 @@ where
 
   /// Returns the underlying actor system handle.
   #[must_use]
-  pub fn system(&self) -> ActorSystemGeneric<StdToolbox> {
+  pub fn system(&self) -> TypedActorSystemGeneric<M, StdToolbox> {
     self.inner.system()
   }
 

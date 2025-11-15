@@ -8,6 +8,7 @@ const STATE_COMPLETED: u8 = 1;
 const STATE_CANCELLED: u8 = 2;
 
 /// Internal node representing a single waiter.
+#[derive(Debug)]
 pub struct WaitNode<E> {
   state:  AtomicU8,
   waker:  Mutex<Option<Waker>>,

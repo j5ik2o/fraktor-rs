@@ -54,6 +54,7 @@ scripts/ci-check.sh all                  # CI と同等フルスイート
 ```
 
 ## 重要な技術判断
+- 設計における価値観は "Less is more" と "YAGNI"
 - **no_std ファースト**: ランタイム本体で `#[cfg(feature = "std")]` を禁止し、標準依存コードは `actor-std`/`utils-std` に隔離。
 - **SystemMessage 先行処理**: `Create/Recreate/Failure/Terminated` をユーザメッセージより先に処理することで、Supervisor 戦略と DeathWatch を deterministic に制御。
 - **Pekko 互換 actor path**: `ActorPathScheme` + `ActorPathFormatter` によって `fraktor://` URI を canonical に生成し、guardian（`cellactor/system|user`）を暗黙付与します。権限情報は `PathAuthority` で host/port を保持し、Typed/Untyped いずれの API でも同じ表現を使用します。

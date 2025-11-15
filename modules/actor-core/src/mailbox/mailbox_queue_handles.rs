@@ -4,15 +4,14 @@ use core::cmp;
 
 use fraktor_utils_core_rs::{
   collections::queue::{
-    QueueError, VecRingStorage,
-    backend::{OfferOutcome, OverflowPolicy, VecRingBackend},
+    QueueError, SyncQueue,
+    backend::{OfferOutcome, OverflowPolicy, VecDequeBackend},
   },
-  runtime_toolbox::SyncMutexFamily,
-  sync::ArcShared,
+  sync::{ArcShared, sync_mutex_like::SpinSyncMutex},
 };
 
 use super::{
-  mailbox_queue_offer_future::QueueOfferFuture, mailbox_queue_poll_future::QueuePollFuture,
+  UserQueueShared, mailbox_queue_offer_future::QueueOfferFuture, mailbox_queue_poll_future::QueuePollFuture,
   mailbox_queue_state::QueueState,
 };
 use crate::{
@@ -43,11 +42,11 @@ where
   }
 
   fn new_with(capacity: usize, overflow: OverflowPolicy) -> Self {
-    let storage = VecRingStorage::with_capacity(capacity);
-    let backend = VecRingBackend::new_with_storage(storage, overflow);
-    let mutex = <TB::MutexFamily as SyncMutexFamily>::create(backend);
-    let shared = ArcShared::new(mutex);
-    let state = ArcShared::new(QueueState::new(shared));
+    let backend = VecDequeBackend::with_capacity(capacity, overflow);
+    let sync_queue = SyncQueue::new_fifo(backend);
+    let mutex = SpinSyncMutex::new(sync_queue);
+    let queue = UserQueueShared::new(ArcShared::new(mutex));
+    let state = ArcShared::new(QueueState::new(queue));
     Self { state }
   }
 

@@ -8,7 +8,8 @@ use fraktor_utils_core_rs::{
 };
 
 use super::{
-  Scheduler, SchedulerError, SchedulerHandle, api, execution_batch::ExecutionBatch, runnable::SchedulerRunnable,
+  Scheduler, SchedulerCommand, SchedulerError, SchedulerHandle, execution_batch::ExecutionBatch,
+  runnable::SchedulerRunnable,
 };
 use crate::{RuntimeToolbox, ToolboxMutex};
 
@@ -30,8 +31,11 @@ impl<TB: RuntimeToolbox + 'static> SchedulerBackedDelayProvider<TB> {
   }
 
   fn schedule_delay(&self, duration: Duration, trigger: &DelayTrigger) -> Result<SchedulerHandle, SchedulerError> {
-    let runnable = TriggerRunnable { trigger: trigger.clone() };
-    self.with_scheduler(|scheduler| api::schedule_once_fn(scheduler, duration, None, runnable))
+    let runnable: ArcShared<dyn SchedulerRunnable> = ArcShared::new(TriggerRunnable { trigger: trigger.clone() });
+    self.with_scheduler(|scheduler| {
+      scheduler
+        .schedule_command(duration, SchedulerCommand::RunRunnable { runnable: runnable.clone(), dispatcher: None })
+    })
   }
 
   fn install_cancel_hook(&self, handle: SchedulerHandle, trigger: &DelayTrigger) {

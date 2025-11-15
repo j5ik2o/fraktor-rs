@@ -1,6 +1,5 @@
 //! Scheduler subsystem providing Pekko-compatible APIs.
 
-mod api;
 mod batch_mode;
 mod cancellable_entry;
 mod cancellable_registry;
@@ -45,11 +44,6 @@ mod warning;
 #[cfg(test)]
 mod tests;
 
-// Re-export API functions
-pub use api::{
-  schedule_at_fixed_rate, schedule_at_fixed_rate_fn, schedule_once, schedule_once_fn, schedule_with_fixed_delay,
-  schedule_with_fixed_delay_fn,
-};
 pub use batch_mode::BatchMode;
 pub use cancellable_entry::CancellableEntry;
 pub use cancellable_registry::CancellableRegistry;
