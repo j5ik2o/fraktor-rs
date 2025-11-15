@@ -1,6 +1,6 @@
 use crate::collections::{
   stack::{AsyncStackBackend, PushOutcome, StackError},
-  wait::WaitShared,
+  wait::{WaitError, WaitShared},
 };
 
 /// Async stack API parameterised by element type and backend.
@@ -90,12 +90,20 @@ where
   }
 
   /// Prepares a wait for push availability.
-  pub fn prepare_push_wait(&mut self) -> Option<WaitShared<StackError>> {
+  ///
+  /// # Errors
+  ///
+  /// Returns a `WaitError` when the waiter cannot be registered.
+  pub fn prepare_push_wait(&mut self) -> Result<Option<WaitShared<StackError>>, WaitError> {
     self.backend.prepare_push_wait()
   }
 
   /// Prepares a wait for pop availability.
-  pub fn prepare_pop_wait(&mut self) -> Option<WaitShared<StackError>> {
+  ///
+  /// # Errors
+  ///
+  /// Returns a `WaitError` when the waiter cannot be registered.
+  pub fn prepare_pop_wait(&mut self) -> Result<Option<WaitShared<StackError>>, WaitError> {
     self.backend.prepare_pop_wait()
   }
 

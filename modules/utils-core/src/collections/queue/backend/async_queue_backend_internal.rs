@@ -3,7 +3,7 @@ use alloc::boxed::Box;
 use async_trait::async_trait;
 
 use super::OfferOutcome;
-use crate::collections::{queue::QueueError, wait::WaitShared};
+use crate::collections::{queue::QueueError, wait::{WaitError, WaitShared}};
 
 /// Async-compatible backend trait for queue operations.
 #[async_trait(?Send)]
@@ -36,15 +36,15 @@ pub(crate) trait AsyncQueueBackendInternal<T> {
   }
 
   /// Optionally registers a producer waiter when the queue is full.
-  fn prepare_producer_wait(&mut self) -> Option<WaitShared<QueueError<T>>> {
+  fn prepare_producer_wait(&mut self) -> Result<Option<WaitShared<QueueError<T>>>, WaitError> {
     let _ = self;
-    None
+    Ok(None)
   }
 
   /// Optionally registers a consumer waiter when the queue is empty.
-  fn prepare_consumer_wait(&mut self) -> Option<WaitShared<QueueError<T>>> {
+  fn prepare_consumer_wait(&mut self) -> Result<Option<WaitShared<QueueError<T>>>, WaitError> {
     let _ = self;
-    None
+    Ok(None)
   }
 
   /// Indicates whether the backend has transitioned into the closed state.

@@ -5,7 +5,7 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 use fraktor_utils_core_rs::{
   collections::{
     queue::{QueueError, backend::OfferOutcome},
-    wait::{WaitQueue, WaitShared},
+    wait::{WaitError, WaitQueue, WaitShared},
   },
   runtime_toolbox::SyncMutexFamily,
   sync::sync_mutex_like::SyncMutexLike,
@@ -63,11 +63,15 @@ where
     result
   }
 
-  pub(super) fn register_producer_waiter(&self) -> WaitShared<QueueError<T>> {
+  pub(super) fn register_producer_waiter(
+    &self,
+  ) -> Result<WaitShared<QueueError<T>>, WaitError> {
     self.producer_waiters.lock().register()
   }
 
-  pub(super) fn register_consumer_waiter(&self) -> WaitShared<QueueError<T>> {
+  pub(super) fn register_consumer_waiter(
+    &self,
+  ) -> Result<WaitShared<QueueError<T>>, WaitError> {
     self.consumer_waiters.lock().register()
   }
 

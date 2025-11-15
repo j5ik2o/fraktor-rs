@@ -41,7 +41,7 @@ where
     }
 
     if guard.is_full() {
-      if let Some(waiter) = guard.prepare_producer_wait() {
+      if let Some(waiter) = guard.prepare_producer_wait().map_err(|_| QueueError::Disconnected)? {
         drop(guard);
 
         match waiter.await {
@@ -80,7 +80,7 @@ where
         return Err(QueueError::Disconnected);
       }
 
-      if let Some(waiter) = guard.prepare_consumer_wait() {
+      if let Some(waiter) = guard.prepare_consumer_wait().map_err(|_| QueueError::Disconnected)? {
         drop(guard);
 
         match waiter.await {

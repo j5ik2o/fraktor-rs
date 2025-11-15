@@ -26,7 +26,7 @@ where
     }
 
     if guard.is_full() {
-      if let Some(waiter) = guard.prepare_push_wait() {
+      if let Some(waiter) = guard.prepare_push_wait().map_err(|_| StackError::Closed)? {
         drop(guard);
 
         match waiter.await {
@@ -61,7 +61,7 @@ where
         return Err(StackError::Closed);
       }
 
-      if let Some(waiter) = guard.prepare_pop_wait() {
+      if let Some(waiter) = guard.prepare_pop_wait().map_err(|_| StackError::Closed)? {
         drop(guard);
 
         match waiter.await {

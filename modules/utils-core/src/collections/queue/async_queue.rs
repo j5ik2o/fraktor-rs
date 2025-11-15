@@ -8,7 +8,7 @@ use crate::collections::{
     capabilities::{MultiProducer, SingleConsumer, SingleProducer, SupportsPeek},
     type_keys::{FifoKey, MpscKey, PriorityKey, SpscKey, TypeKey},
   },
-  wait::WaitShared,
+  wait::{WaitError, WaitShared},
 };
 
 /// Async queue API parameterised by element type, type key, and backend.
@@ -98,12 +98,20 @@ where
   }
 
   /// Optionally registers a producer waiter when the queue is full.
-  pub fn prepare_producer_wait(&mut self) -> Option<WaitShared<QueueError<T>>> {
+  ///
+  /// # Errors
+  ///
+  /// Returns a `WaitError` when the waiter cannot be registered.
+  pub fn prepare_producer_wait(&mut self) -> Result<Option<WaitShared<QueueError<T>>>, WaitError> {
     self.backend.prepare_producer_wait()
   }
 
   /// Optionally registers a consumer waiter when the queue is empty.
-  pub fn prepare_consumer_wait(&mut self) -> Option<WaitShared<QueueError<T>>> {
+  ///
+  /// # Errors
+  ///
+  /// Returns a `WaitError` when the waiter cannot be registered.
+  pub fn prepare_consumer_wait(&mut self) -> Result<Option<WaitShared<QueueError<T>>>, WaitError> {
     self.backend.prepare_consumer_wait()
   }
 }
