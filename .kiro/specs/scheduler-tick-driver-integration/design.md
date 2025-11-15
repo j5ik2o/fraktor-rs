@@ -4,7 +4,7 @@
 本設計は、ActorSystem 初期化時に std/no_std を問わず決定論的な tick ストリームを供給する仕組みを導入し、Runner API をテスト専用に閉じ込めることでランタイム利用者の初期化負荷と誤設定リスクを排除する。ターゲット利用者は Tokió 等の std 実行環境を使うアプリケーション開発者と、embassy/SysTick を使う組込み開発者であり、両者が共通の Builder API を通じて Tick Driver を選択し、main 関数内の配線を 10〜15 行に収められる UX を提供する。これにより、現在の「SchedulerRunner::manual を main で回す」状態から脱却し、EventStream ベースのメトリクス監視と合わせて起動時の異常検知も容易になる。
 
 ### Goals
-- std 環境で `StdAutoTickDriver` が自動 tick を供給し、±5% 以内の周期を保つ。
+- std 環境で `AutoTickDriver` が自動 tick を供給し、±5% 以内の周期を保つ。
 - no_std 環境で外部ハードウェアドライバが `TickDriver` trait を介して差し替え可能になる。
 - Runner API を `#[cfg(test)]` と Builder 経由の構成チェックでテスト専用モードに封じ込める。
 - Quickstart/テンプレートが `ActorSystemBuilder` を前提に 20 行未満で tick 設定を完了できるようにする。
@@ -30,7 +30,7 @@ graph TD
     TickBootstrap[TickDriverBootstrap]
   end
   subgraph Drivers
-    StdAuto[StdAutoTickDriver]
+    Auto[AutoTickDriver]
     HwDriver[HardwareTickDriver]
     Manual[ManualTestDriver]
   end
@@ -41,10 +41,10 @@ graph TD
   EventStream[EventStream]
 
   Builder --> TickBootstrap
-  TickBootstrap --> StdAuto
+  TickBootstrap --> Auto
   TickBootstrap --> HwDriver
   TickBootstrap --> Manual
-  StdAuto --> TickFeed
+  Auto --> TickFeed
   HwDriver --> TickFeed
   Manual --> TickFeed
   TickFeed --> SchedulerCtx
@@ -55,6 +55,66 @@ graph TD
 - 新規コンポーネント: Builder/Bootstrap/Feed を追加し、driver 起動と EventStream メトリクスを集約。
 - 技術整合: std 側は `tokio::time::interval` と `MissedTickBehavior::Delay` を用いてドリフトを抑制、no_std 側は embassy/SysTick の割り込みハンドラから軽量な enqueue を行う。【turn0search2】【turn0search1】
 - Steering 準拠: 1 ファイル 1 型、no_std 本体に `cfg(feature="std")` を導入しない方針を守り、std 固有の driver 実装は `actor-std`/`utils-std` に置く。
+
+### Class Diagram
+
+```mermaid
+classDiagram
+  class ActorSystemBuilder {
+    -state: BuilderState
+    +new(props)
+    +with_tick_driver(cfg)
+    +with_toolbox(toolbox)
+    +build() Result
+  }
+  class TickDriverBootstrap {
+    +provision(cfg, ctx) Result
+    +shutdown(handle)
+    +handle_driver_stop(handle, ctx, feed) Result
+  }
+  class TickDriver {
+    <<interface>>
+    +id()
+    +resolution()
+    +kind()
+    +start(feed) Result
+    +stop(handle)
+  }
+  class AutoTickDriver {
+    -handle: tokio::runtime::Handle
+    -resolution: Duration
+  }
+  class HardwareTickDriver {
+    -pulse: TickPulseSource
+  }
+  class ManualTestDriver {
+    -feed: TickFeedHandle
+  }
+  class TickFeed {
+    -queue: ArrayQueue<u32>
+    -handle: SchedulerTickHandleOwned
+    -clock: TB::Clock
+    +enqueue(ticks)
+    +enqueue_from_isr(ticks)
+    +metadata()
+  }
+  class TickFeedHandle {
+    <<type alias>> Arc<TickFeed>
+  }
+  class SchedulerTickMetricsProbe {
+    -feed: TickFeedHandle
+    +snapshot() SchedulerTickMetrics
+  }
+
+  ActorSystemBuilder --> TickDriverBootstrap
+  TickDriverBootstrap --> TickDriver
+  TickDriver <|.. AutoTickDriver
+  TickDriver <|.. HardwareTickDriver
+  TickDriver <|.. ManualTestDriver
+  TickDriverBootstrap --> TickFeedHandle
+  TickFeedHandle --> TickFeed
+  SchedulerTickMetricsProbe --> TickFeedHandle
+```
 
 ### Technology Alignment
 - Std: Tokió ランタイム上で tick 精度を保つため `tokio::time::interval` を専用タスクで駆動し、MissedTickBehavior を Delay に設定して catch-up の連射を防ぐ。【turn0search2】
@@ -90,7 +150,7 @@ sequenceDiagram
   participant App as App main
   participant Builder as ActorSystemBuilder
   participant Bootstrap as TickDriverBootstrap
-  participant Driver as StdAutoTickDriver
+  participant Driver as AutoTickDriver
   participant Feed as TickFeed
   participant Scheduler as Scheduler
   App->>Builder: new(props)
@@ -120,8 +180,8 @@ sequenceDiagram
 ## Requirements Traceability
 | Req | Summary | Components | Interfaces | Flows |
 | --- | --- | --- | --- | --- |
-| R1.1-1.5 | std 自動 tick 供給 | ActorSystemBuilder, TickDriverBootstrap, StdAutoTickDriver, TickFeedCore, SchedulerTickMetricsProbe | `ActorSystemBuilder::with_tick_driver`, `TickDriver::start`, `TickFeedCore::enqueue` | Flow 1 |
-| R2.1-2.5 | no_std ドライバ抽象 | TickDriver trait, HardwareTickDriver, TickFeedCore | `TickDriver::start`, `HardwareTickDriver::attach`, `TickFeedCore::enqueue_from_isr` | Flow 2 |
+| R1.1-1.5 | std 自動 tick 供給 | ActorSystemBuilder, TickDriverBootstrap, AutoTickDriver, TickFeed, SchedulerTickMetricsProbe | `ActorSystemBuilder::with_tick_driver`, `TickDriver::start`, `TickFeed::enqueue` | Flow 1 |
+| R2.1-2.5 | no_std ドライバ抽象 | TickDriver trait, HardwareTickDriver, TickFeed | `TickDriver::start`, `HardwareTickDriver::attach`, `TickFeed::enqueue_from_isr` | Flow 2 |
 | R3.1-3.6 | Runner API テスト限定 | TestOnlyDriverGate, ManualTestDriver, Builder validation | `#[cfg(any(test, feature = "test-support"))] ActorSystemTestBuilder::with_manual_test_driver` | Flow 1/2 (構成パスのみ) |
 | R4.1-4.7 | Quickstart & Builder | ActorSystemBuilder, Quickstart Templates | `ActorSystemBuilder::template_tokio()`, documentation artifacts | n/a |
 
@@ -170,7 +230,7 @@ impl TickDriverBootstrap {
   pub fn handle_driver_stop<TB: RuntimeToolbox>(
     handle: TickDriverHandle,
     ctx: &SchedulerContext<TB>,
-    feed: &TickFeedCore<TB>,
+    feed: &TickFeed<TB>,
   ) -> Result<(), TickDriverError>;
 }
 ```
@@ -195,11 +255,11 @@ pub trait TickDriver<TB: RuntimeToolbox>: Send + Sync + 'static {
 ```
 - Invariants: `start` は複数回呼ばない、`stop` は handle に対応。`TickFeedHandle<TB>` は `Clone + Send + Sync + 'static` の共有ポインタであり、Tokio タスクや ISR から安全に保持できる。
 
-#### StdAutoTickDriver
+#### AutoTickDriver
 - Primary: Tokió runtime で `tokio::time::interval` + `MissedTickBehavior::Delay` を専用タスクで実行し、tick を `TickFeedHandle` へ連続供給。【turn0search2】
 - Dependencies: `tokio::runtime::Handle`, `TickFeedHandle<TB>`。
 - Contract:
-  - `StdAutoTickDriver::new(resolution: Duration, handle: tokio::runtime::Handle)` で runtime ハンドルを確定。
+  - `AutoTickDriver::new(resolution: Duration, handle: tokio::runtime::Handle)` で runtime ハンドルを確定。
   - Builder では `TickDriverConfig::tokio(handle, resolution)` のみを提供し、呼び出し点で `tokio::runtime::Handle::current()` などを使って明示的に取得する。自動検出ロジックは持たない。
   - `ActorSystemBuilder` 側はハンドルの妥当性チェック（`handle.id()` の参照、`SchedulerContext` が std ツールボックスであること）だけを行い、失敗時は `TickDriverError::HandleUnavailable` を返す。
 - Error: ハンドル未初期化、`try_current()` 失敗、またはタスク spawn 失敗時は `TickDriverError::{HandleUnavailable, SpawnFailed}`。
@@ -217,29 +277,30 @@ pub trait TickDriver<TB: RuntimeToolbox>: Send + Sync + 'static {
 
 ### Scheduler Integration & Instrumentation
 
+#### TickFeed<TB>
 - Primary: 単一 driver からの tick を `SchedulerTickHandle` へ橋渡し。
-- State: `ArcShared<TickFeedCore<TB>>` + lock-free `ArrayQueue<u32>`（容量は `SchedulerCapacityProfile::system_quota()` に追従）で FIFO を保証。`TickFeedHandle<TB> = Arc<TickFeedCore<TB>>` は `Clone + Send + Sync + 'static` で、Tokio タスクや ISR が所有できる。`enqueue` は host driver から、`enqueue_from_isr` は `critical-section` で包んで ISR から呼ぶ。キュー飽和時は最新 tick を捨てず、飽和検知時に `SchedulerTickMetrics` の dropped カウンタを increment して古い値を破棄する。
+- State: `ArcShared<TickFeed<TB>>` + lock-free `ArrayQueue<u32>`（容量は `SchedulerCapacityProfile::system_quota()` に追従）で FIFO を保証。`TickFeedHandle<TB> = Arc<TickFeed<TB>>` は `Clone + Send + Sync + 'static` で、Tokio タスクや ISR が所有できる。`enqueue` は host driver から、`enqueue_from_isr` は `critical-section` で包んで ISR から呼ぶ。キュー飽和時は最新 tick を捨てず、飽和検知時に `SchedulerTickMetrics` の dropped カウンタを increment して古い値を破棄する。
 - Contract:
 ```rust
-pub struct TickFeedCore<TB> {
+pub struct TickFeed<TB> {
   state: ArcShared<TickState>,
   handle: SchedulerTickHandleOwned<TB>,
   clock: TB::Clock,
   queue: ArrayQueue<u32>,
 }
 
-pub type TickFeedHandle<TB> = Arc<TickFeedCore<TB>>;
+pub type TickFeedHandle<TB> = Arc<TickFeed<TB>>;
 
-impl<TB> TickFeedCore<TB> {
+impl<TB> TickFeed<TB> {
   pub fn enqueue(&self, ticks: u32);
   pub fn enqueue_from_isr(&self, ticks: u32);
   pub fn metadata(&self) -> TickDriverMetadata;
 }
 ```
-- Ordering: `TickFeedCore` が受け取った ticks をキューへ push し、Scheduler 側が順番に `handle.inject_manual_ticks` を呼ぶことで `SchedulerRunner` と同等の挙動を保つ。
+- Ordering: `TickFeed` が受け取った ticks をキューへ push し、Scheduler 側が順番に `handle.inject_manual_ticks` を呼ぶことで `SchedulerRunner` と同等の挙動を保つ。
 
-#### SchedulerTickMetricsProbe
-- Primary: `TickFeedCore` が保持する統計情報を利用者が任意のタイミングで取得し、必要に応じて `EventStream` へ `SchedulerTickMetrics` を publish。
+-#### SchedulerTickMetricsProbe
+- Primary: `TickFeed` が保持する統計情報を利用者が任意のタイミングで取得し、必要に応じて `EventStream` へ `SchedulerTickMetrics` を publish。
 - Contract: `fn snapshot(&self) -> SchedulerTickMetrics`。`ActorSystemBuilder::enable_tick_metrics()` を呼んだ場合のみ probe が生成され、デフォルトでは無効。
 
 #### TestOnlyDriverGate (`cfg(test)` API)
@@ -304,8 +365,8 @@ fn main() -> ! {
 
 ## Data Models
 - **TickDriverConfig<TB>**: `enum TickDriverConfig<TB> { Tokio { handle: tokio::runtime::Handle, resolution: Duration }, Hardware { driver: &'static dyn TickPulseSource }, ManualTest(ManualTestDriver<TB>) }`。Builder は `TickDriverConfig::tokio(handle, resolution)` / `TickDriverConfig::hardware(pulse_source)` / `TickDriverConfig::manual(driver)` のヘルパのみ提供し、拡張登録は行わない。
-- **TickDriverKind**: `StdAuto`, `Hardware { source: HardwareKind }`, `ManualTest`（後者は `#[cfg(any(test, feature = "test-support"))]` 範囲でのみコンパイルされ、prod からは不可視）。
-- **TickFeedHandle<TB>**: `Arc<TickFeedCore<TB>>`。`Clone + Send + Sync + 'static` で、Driver へ渡される唯一の feed エントリポイント。
+- **TickDriverKind**: `Auto`, `Hardware { source: HardwareKind }`, `ManualTest`（後者は `#[cfg(any(test, feature = "test-support"))]` 範囲でのみコンパイルされ、prod からは不可視）。
+- **TickFeedHandle<TB>**: `Arc<TickFeed<TB>>`。`Clone + Send + Sync + 'static` で、Driver へ渡される唯一の feed エントリポイント。
 - **TickDriverMetadata**: `{ driver_id: TickDriverId, start_instant: TimerInstant, ticks_total: u64 }`。単一 driver でも計測用途で driver_id を保持。
 - **TickDriverError**: `SpawnFailed`, `HandleUnavailable`, `UnsupportedEnvironment`, `DriftExceeded`, `DriverStopped`。Builder/Bootstrap/Drivers 間の共通 error。
 - **SchedulerTickMetrics Event**: `{ driver: TickDriverKind, ticks_per_sec: u32, drift: Option<Duration>, timestamp: Duration }` を新たに `EventStreamEvent::SchedulerTick` として追加。
@@ -313,7 +374,7 @@ fn main() -> ! {
 ## Error Handling
 ### Error Strategy
 - Driver 起動時: `TickDriverBootstrap` が `TickDriverError` を返し、ActorSystem 構築を即座に中止。
-- 実行中: `TickFeedCore` がドリフトを検出したら `SchedulerTickMetrics` に `drift` をセットし、±5% 超過時は `EventStream` に Warning。
+- 実行中: `TickFeed` がドリフトを検出したら `SchedulerTickMetrics` に `drift` をセットし、±5% 超過時は `EventStream` に Warning。
 - 停止検知: Driver の `stop` シグナルを受けると `TickDriverBootstrap::handle_driver_stop` が直ちに `TickDriverError::DriverStopped` を返し、ActorSystem を終了させると同時に EventStream に `DriverStopped` を記録。
 
 ### Error Categories and Responses
@@ -326,7 +387,7 @@ fn main() -> ! {
 - Driver failure は `EventStreamEvent::Log(LogEvent::Error)` として通知。Tokio タスク panics は `JoinHandle::abort` で検知し、Builder が再起動ポリシーを log。
 
 ## Testing Strategy
-- **Unit**: (1) `TickDriverConfig` バリデーション、(2) `TickFeedCore::enqueue` の順序保証、(3) `cfg(any(test, feature = "test-support"))` ブロックが prod ビルドから ManualTestDriver API を排除できているかのコンパイルテスト、(4) `SchedulerTickMetrics` 計測ロジック、(5) Manual driver の `inject` が feed と同数の ticks を供給。
+- **Unit**: (1) `TickDriverConfig` バリデーション、(2) `TickFeed::enqueue` の順序保証、(3) `cfg(any(test, feature = "test-support"))` ブロックが prod ビルドから ManualTestDriver API を排除できているかのコンパイルテスト、(4) `SchedulerTickMetrics` 計測ロジック、(5) Manual driver の `inject` が feed と同数の ticks を供給。
 - **Integration**: (1) `ActorSystemBuilder` 経由で Std driver を起動し scheduler が自動進行する、(2) embassy SysTick + Hardware driver 間の ISR 経路、(3) driver 停止時にフォールバックが実行される、(4) EventStream で tick メトリクスが購読できる、(5) Runner/ManualTestDriver API が `cfg(any(test, feature = "test-support"))` のときだけビルドされる。
 - **E2E/Examples**: Quickstart テンプレに沿った Tokio/no_std/test サンプルを examples ディレクトリに追加。
 - **Performance**: (1) Std driver の ticks/s ±5% 判定、(2) ISR enqueue の遅延測定、(3) TickFeed バッファ飽和時の挙動。
@@ -334,15 +395,9 @@ fn main() -> ! {
 ## Performance & Scalability
 - Std driver は Tokió runtime とは別のタスクで interval を駆動し、`spawn_blocking` ではなく通常タスク + `Handle::current()` を使うことでマルチスレッド scheduler と分離する。
 - Hardware driver は `critical-section` を用いた lock-free enqueue で ISR 時間を最小化。TickFeed バッファサイズは `SchedulerCapacityProfile` に合わせて自動計算し、溢れた場合は `dropped_total` に記録。
-- ドリフト測定は `TickFeedCore` が `TB::Clock` を参照し、`snapshot()` 呼び出し間隔の `TimerInstant` 差分を算出。
+- ドリフト測定は `TickFeed` が `TB::Clock` を参照し、`snapshot()` 呼び出し間隔の `TimerInstant` 差分を算出。
 
 ## Migration Strategy
-```mermaid
-flowchart LR
-  A[Phase 0 現在: manual runner] --> B[Phase 1: ActorSystemBuilder 導入<br/>既存 API は builder に委譲]
-  B --> C[Phase 2: TickDriverBootstrap と Std/HW driver 実装<br/>TestOnlyDriverGate (cfg) の導入]
-  C --> D[Phase 3: Docs/Quickstart 更新 + Runner API 制限反映]
-```
-- Phase 1: 既存 `ActorSystem::new*` を Builder に委譲し、内部的には従来の manual driver を起動。
-- Phase 2: 新 driver を登録し、テスト専用 API を `cfg(any(test, feature = "test-support"))` に閉じ込める。旧 API からの移行ガイドを docs に追加。
-- Phase 3: Quickstart/テンプレ/サンプルの更新、`SchedulerRunner` の公開範囲を `#[cfg(test)]` に限定。
+1. **Phase 0 → Phase 1**: 現状（manual runner 直呼び）から、既存 `ActorSystem::new*` を `ActorSystemBuilder` 委譲へリファクタし、内部 driver は従来の manual を利用。
+2. **Phase 1 → Phase 2**: `TickDriverBootstrap` と Auto/Hardware driver を実装し、テスト専用 API を `cfg(any(test, feature = "test-support"))` に封じる。旧 API からの移行ガイドを docs へ追加。
+3. **Phase 2 → Phase 3**: Quickstart/サンプル/ドキュメントを刷新し、`SchedulerRunner` の公開範囲を `#[cfg(test)]` 限定に統一。
