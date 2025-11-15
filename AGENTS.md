@@ -21,6 +21,7 @@
 - 全タスクを完了した段階で `./scripts/ci-check.sh all` を実行し、エラーがないことを確認すること（途中工程では対象範囲のテストに留めてよい）
 - CHANGELOG.mdはgithub actionが自動的に作るのでAIエージェントは編集してはならない
 - lintエラーを安易にallowなどで回避しないこと。allowを付ける場合は人間から許可を得ること
+- 設計における価値観は "Less is more" と "YAGNI"
 
 # AI-DLC and Spec-Driven Development
 
