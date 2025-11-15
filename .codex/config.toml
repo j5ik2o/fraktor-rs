@@ -1,10 +1,11 @@
-model = "gpt-5-codex"
+model = "gpt-5.1-codex"
 model_reasoning_effort = "high"
 hide_agent_reasoning = true
 network_access = true
 
 [features]
-web_search_request = true
+rmcp_client=true
+web_search_request=true
 
 [projects."/Users/j5ik2o/Sources/fraktor-rs"]
 trust_level = "trusted"
@@ -22,7 +23,6 @@ args = ["-y", "@upstash/context7-mcp@latest"]
 command = "npx"
 args = ["@playwright/mcp@latest"]
 
-[mcp_servers.chrome-devtools]
-command = "npx"
-args = ["chrome-devtools-mcp@latest", "--headless=true"]
+[notice]
+hide_gpt5_1_migration_prompt = true
 
