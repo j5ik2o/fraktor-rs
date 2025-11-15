@@ -1,7 +1,7 @@
 use crate::collections::stack::{PushOutcome, StackError, StackOverflowPolicy, StackStorage};
 
 /// Backend trait responsible for stack operations on top of a storage implementation.
-pub trait StackBackend<T> {
+pub trait SyncStackBackend<T> {
   /// Storage implementation backing the stack.
   type Storage: StackStorage<T>;
 

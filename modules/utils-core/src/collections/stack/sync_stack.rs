@@ -1,8 +1,8 @@
 use core::marker::PhantomData;
 
 use crate::{
-  collections::stack::{PushOutcome, StackBackend, StackError},
-  sync::{
+    collections::stack::{PushOutcome, SyncStackBackend, StackError},
+    sync::{
     ArcShared, Shared, SharedAccess,
     sync_mutex_like::{SpinSyncMutex, SyncMutexLike},
   },
@@ -12,7 +12,7 @@ use crate::{
 #[derive(Clone)]
 pub struct SyncStack<T, B, M = SpinSyncMutex<B>>
 where
-  B: StackBackend<T>,
+  B: SyncStackBackend<T>,
   M: SyncMutexLike<B>, {
   inner: ArcShared<M>,
   _pd:   PhantomData<(T, B)>,
@@ -20,7 +20,7 @@ where
 
 impl<T, B, M> SyncStack<T, B, M>
 where
-  B: StackBackend<T>,
+  B: SyncStackBackend<T>,
   M: SyncMutexLike<B>,
   ArcShared<M>: SharedAccess<B>,
 {

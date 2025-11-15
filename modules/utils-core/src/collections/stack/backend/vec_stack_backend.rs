@@ -1,6 +1,6 @@
 use core::cmp;
 
-use crate::collections::stack::{PushOutcome, StackBackend, StackError, StackOverflowPolicy, VecStackStorage};
+use crate::collections::stack::{PushOutcome, SyncStackBackend, StackError, StackOverflowPolicy, VecStackStorage};
 
 /// Stack backend backed by a contiguous growable buffer.
 pub struct VecStackBackend<T> {
@@ -35,7 +35,7 @@ impl<T> VecStackBackend<T> {
   }
 }
 
-impl<T> StackBackend<T> for VecStackBackend<T> {
+impl<T> SyncStackBackend<T> for VecStackBackend<T> {
   type Storage = VecStackStorage<T>;
 
   fn new(storage: Self::Storage, policy: StackOverflowPolicy) -> Self {

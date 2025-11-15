@@ -3,13 +3,13 @@ use core::marker::PhantomData;
 
 use async_trait::async_trait;
 
-use super::{AsyncStackBackend, PushOutcome, StackBackend, StackError};
+use super::{AsyncStackBackend, PushOutcome, SyncStackBackend, StackError};
 use crate::collections::wait::{WaitQueue, WaitShared};
 
 /// Adapter that exposes a synchronous stack backend through the async backend trait.
 pub struct SyncStackAsyncAdapter<T, B>
 where
-  B: StackBackend<T>, {
+  B: SyncStackBackend<T>, {
   backend:      B,
   _pd:          PhantomData<T>,
   push_waiters: WaitQueue<StackError>,
@@ -18,7 +18,7 @@ where
 
 impl<T, B> SyncStackAsyncAdapter<T, B>
 where
-  B: StackBackend<T>,
+  B: SyncStackBackend<T>,
 {
   /// Creates a new adapter wrapping the provided backend instance.
   #[must_use]
@@ -74,7 +74,7 @@ where
 #[async_trait(?Send)]
 impl<T, B> AsyncStackBackend<T> for SyncStackAsyncAdapter<T, B>
 where
-  B: StackBackend<T>,
+  B: SyncStackBackend<T>,
 {
   async fn push(&mut self, item: T) -> Result<PushOutcome, StackError> {
     let result = self.backend.push(item);

@@ -10,7 +10,7 @@ mod vec_stack_backend;
 
 pub use async_stack_backend::AsyncStackBackend;
 pub use push_outcome::PushOutcome;
-pub use stack_backend::StackBackend;
+pub use stack_backend::SyncStackBackend;
 pub use stack_error::StackError;
 pub use stack_overflow_policy::StackOverflowPolicy;
 pub use sync_stack_async_adapter::SyncStackAsyncAdapter;
