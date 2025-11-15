@@ -80,4 +80,4 @@ Project memory keeps persistent guidance (steering, specs notes, component docs)
 - Custom files are supported (managed via `/prompts:kiro-steering-custom`)
 
 # ExecPlans
-When writing complex features or significant refactors, use an ExecPlan (as described in PLANS.md) from design to implementation.
+When writing complex features or significant refactors, use an ExecPlan (as described in .agent/PLANS.md) from design to implementation.
