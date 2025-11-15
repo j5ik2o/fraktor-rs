@@ -52,7 +52,7 @@ mod fifo_backend {
   use super::QueueConfig;
   use crate::collections::queue::{
     QueueError,
-    backend::{OfferOutcome, OverflowPolicy, SyncQueueBackend},
+    backend::{OfferOutcome, OverflowPolicy, SyncQueueBackend, SyncQueueBackendInternal},
   };
 
   /// Simple FIFO backend used for unit tests.
@@ -70,7 +70,9 @@ mod fifo_backend {
     }
   }
 
-  impl<T> SyncQueueBackend<T> for FifoBackend<T> {
+  impl<T> SyncQueueBackend<T> for FifoBackend<T> {}
+
+  impl<T> SyncQueueBackendInternal<T> for FifoBackend<T> {
     type Storage = QueueConfig;
 
     fn offer(&mut self, item: T) -> Result<OfferOutcome, QueueError<T>> {

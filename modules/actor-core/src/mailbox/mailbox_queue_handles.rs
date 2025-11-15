@@ -7,12 +7,11 @@ use fraktor_utils_core_rs::{
     QueueError, VecRingStorage,
     backend::{OfferOutcome, OverflowPolicy, VecRingBackend},
   },
-  runtime_toolbox::SyncMutexFamily,
-  sync::ArcShared,
+  sync::{ArcShared, sync_mutex_like::SpinSyncMutex},
 };
 
 use super::{
-  mailbox_queue_offer_future::QueueOfferFuture, mailbox_queue_poll_future::QueuePollFuture,
+  UserQueue, mailbox_queue_offer_future::QueueOfferFuture, mailbox_queue_poll_future::QueuePollFuture,
   mailbox_queue_state::QueueState,
 };
 use crate::{
@@ -45,9 +44,9 @@ where
   fn new_with(capacity: usize, overflow: OverflowPolicy) -> Self {
     let storage = VecRingStorage::with_capacity(capacity);
     let backend = VecRingBackend::new_with_storage(storage, overflow);
-    let mutex = <TB::MutexFamily as SyncMutexFamily>::create(backend);
-    let shared = ArcShared::new(mutex);
-    let state = ArcShared::new(QueueState::new(shared));
+    let mutex = SpinSyncMutex::new(backend);
+    let queue = UserQueue::new(ArcShared::new(mutex));
+    let state = ArcShared::new(QueueState::new(ArcShared::new(queue)));
     Self { state }
   }
 

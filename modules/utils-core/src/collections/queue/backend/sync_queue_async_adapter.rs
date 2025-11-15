@@ -3,9 +3,7 @@ use core::marker::PhantomData;
 
 use async_trait::async_trait;
 
-use super::{
-  AsyncPriorityBackend, AsyncQueueBackend, OfferOutcome, SyncQueueBackend, sync_priority_backend::SyncPriorityBackend,
-};
+use super::{AsyncPriorityBackend, AsyncQueueBackend, OfferOutcome, SyncQueueBackend, sync_priority_backend::SyncPriorityBackend, AsyncQueueBackendInternal};
 use crate::collections::{
   PriorityMessage,
   queue::QueueError,
@@ -86,7 +84,7 @@ where
 }
 
 #[async_trait(?Send)]
-impl<T, B> AsyncQueueBackend<T> for SyncQueueAsyncAdapter<T, B>
+impl<T, B> AsyncQueueBackendInternal<T> for SyncQueueAsyncAdapter<T, B>
 where
   B: SyncQueueBackend<T>,
 {
@@ -137,6 +135,12 @@ where
   fn is_closed(&self) -> bool {
     self.backend.is_closed()
   }
+}
+
+impl<T, B> AsyncQueueBackend<T> for SyncQueueAsyncAdapter<T, B>
+where
+  B: SyncQueueBackend<T>,
+{
 }
 
 impl<T: PriorityMessage, B> AsyncPriorityBackend<T> for SyncQueueAsyncAdapter<T, B>

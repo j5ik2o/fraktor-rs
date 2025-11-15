@@ -4,7 +4,7 @@ use super::SyncSpscProducer;
 use crate::{
   collections::queue::{
     OverflowPolicy, QueueError, VecRingStorage,
-    backend::{SyncQueueBackend, VecRingBackend},
+    backend::{SyncQueueBackendInternal, VecRingBackend},
   },
   sync::{ArcShared, Shared, SharedAccess, sync_mutex_like::SpinSyncMutex},
 };

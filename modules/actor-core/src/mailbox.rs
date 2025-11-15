@@ -2,9 +2,9 @@
 //!
 //! This module contains message queue implementations and configurations.
 
-use fraktor_utils_core_rs::collections::queue::{QueueError, backend::VecRingBackend};
+use fraktor_utils_core_rs::collections::queue::{QueueError, SharedVecRingQueue};
 
-use crate::{RuntimeToolbox, ToolboxMutex, error::SendError, messaging::AnyMessageGeneric};
+use crate::{RuntimeToolbox, error::SendError, messaging::AnyMessageGeneric};
 
 mod backpressure_publisher;
 mod base;
@@ -45,7 +45,7 @@ pub use system_queue::SystemQueue;
 #[cfg(test)]
 mod tests;
 
-pub(crate) type QueueMutex<T, TB> = ToolboxMutex<VecRingBackend<T>, TB>;
+pub(crate) type UserQueue<T> = SharedVecRingQueue<T>;
 
 pub(crate) fn map_user_queue_error<TB: RuntimeToolbox>(error: QueueError<AnyMessageGeneric<TB>>) -> SendError<TB> {
   match error {
