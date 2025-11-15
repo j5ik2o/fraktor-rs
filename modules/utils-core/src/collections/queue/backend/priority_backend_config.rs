@@ -1,7 +1,4 @@
-use crate::collections::{DEFAULT_PRIORITY, PRIORITY_LEVELS, queue::QueueStorage};
-
-#[cfg(test)]
-mod tests;
+use crate::collections::{DEFAULT_PRIORITY, PRIORITY_LEVELS};
 
 /// Configuration object passed into `SyncQueueBackend` implementations.
 pub struct PriorityBackendConfig {
@@ -65,20 +62,5 @@ impl PriorityBackendConfig {
   #[must_use]
   pub fn clamp_priority(&self, value: i8) -> i8 {
     value.clamp(self.min_priority, self.max_priority)
-  }
-}
-
-impl<T> QueueStorage<T> for PriorityBackendConfig {
-  fn capacity(&self) -> usize {
-    self.capacity
-  }
-
-  unsafe fn read_unchecked(&self, _idx: usize) -> *const T {
-    core::ptr::null()
-  }
-
-  unsafe fn write_unchecked(&mut self, _idx: usize, value: T) {
-    drop(value);
-    panic!("PriorityBackendConfig では write_unchecked を呼び出せません");
   }
 }

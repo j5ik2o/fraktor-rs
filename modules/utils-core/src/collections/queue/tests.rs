@@ -7,8 +7,6 @@ use crate::{
 };
 
 mod storage_config {
-  use crate::collections::queue::QueueStorage;
-
   /// Storage configuration used by the test backends.
   #[derive(Clone, Copy, Default)]
   pub(super) struct QueueConfig {
@@ -25,21 +23,6 @@ mod storage_config {
     #[must_use]
     pub(super) const fn capacity(self) -> usize {
       self.capacity
-    }
-  }
-
-  impl<T> QueueStorage<T> for QueueConfig {
-    fn capacity(&self) -> usize {
-      self.capacity
-    }
-
-    unsafe fn read_unchecked(&self, _idx: usize) -> *const T {
-      core::ptr::null()
-    }
-
-    unsafe fn write_unchecked(&mut self, _idx: usize, val: T) {
-      core::mem::drop(val);
-      panic!("write_unchecked is not supported in test storage");
     }
   }
 }
@@ -73,8 +56,6 @@ mod fifo_backend {
   impl<T> SyncQueueBackend<T> for FifoBackend<T> {}
 
   impl<T> SyncQueueBackendInternal<T> for FifoBackend<T> {
-    type Storage = QueueConfig;
-
     fn offer(&mut self, item: T) -> Result<OfferOutcome, QueueError<T>> {
       if self.closed {
         return Err(QueueError::Closed(item));
@@ -184,8 +165,8 @@ use priority_message::TestPriorityMessage;
 
 use crate::{
   collections::queue::{
-    DequeBackend, QueueCapability, QueueCapabilityRegistry, QueueCapabilitySet, VecDequeStorage,
-    backend::{OfferOutcome, OverflowPolicy, VecDequeBackend, sync_priority_backend::BinaryHeapPriorityBackend},
+    DequeBackend, QueueCapability, QueueCapabilityRegistry, QueueCapabilitySet,
+    backend::{BinaryHeapPriorityBackend, OfferOutcome, OverflowPolicy, VecDequeBackend},
     capabilities::{SingleConsumer, SingleProducer, SupportsPeek},
     type_keys::{FifoKey, MpscKey, PriorityKey, SpscKey},
   },
@@ -268,8 +249,7 @@ fn shared_error_mapping_matches_spec() {
 
 #[test]
 fn mpsc_pair_supports_multiple_producers() {
-  let storage = VecDequeStorage::with_capacity(8);
-  let backend = VecDequeBackend::new_with_storage(storage, OverflowPolicy::DropOldest);
+  let backend = VecDequeBackend::with_capacity(8, OverflowPolicy::DropOldest);
   let shared = ArcShared::new(SpinSyncMutex::new(backend));
   let queue: SyncQueue<_, MpscKey, _, _> = SyncQueue::new(shared);
 
@@ -287,8 +267,7 @@ fn mpsc_pair_supports_multiple_producers() {
 
 #[test]
 fn spsc_pair_provides_split_access() {
-  let storage = VecDequeStorage::with_capacity(4);
-  let backend = VecDequeBackend::new_with_storage(storage, OverflowPolicy::Block);
+  let backend = VecDequeBackend::with_capacity(4, OverflowPolicy::Block);
   let shared = ArcShared::new(SpinSyncMutex::new(backend));
   let queue: SyncQueue<_, SpscKey, _, _> = SyncQueue::new(shared);
 
@@ -302,8 +281,7 @@ fn spsc_pair_provides_split_access() {
 
 #[test]
 fn vec_ring_backend_provides_fifo_behavior() {
-  let storage = VecDequeStorage::with_capacity(3);
-  let backend = VecDequeBackend::new_with_storage(storage, OverflowPolicy::DropOldest);
+  let backend = VecDequeBackend::with_capacity(3, OverflowPolicy::DropOldest);
   let shared = ArcShared::new(SpinSyncMutex::new(backend));
   let queue: SyncQueue<_, FifoKey, _, _> = SyncQueue::new(shared);
 

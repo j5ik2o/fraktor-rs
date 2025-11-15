@@ -1,15 +1,14 @@
 use alloc::collections::BinaryHeap;
 use core::cmp::Ordering;
 
+use super::sync_priority_backend::PriorityEntry;
 use crate::collections::{
   PriorityMessage,
   queue::{
     OfferOutcome, OverflowPolicy, QueueError, SyncQueueBackend,
     backend::{
-      SyncPriorityBackendInternal, SyncQueueBackendInternal,
-      sync_priority_backend::{
-        SyncPriorityBackend, priority_backend_config::PriorityBackendConfig, priority_entry::PriorityEntry,
-      },
+      PriorityBackendConfig, SyncPriorityBackendInternal, SyncQueueBackendInternal,
+      sync_priority_backend::SyncPriorityBackend,
     },
   },
 };
@@ -29,7 +28,14 @@ impl<T: PriorityMessage> BinaryHeapPriorityBackend<T> {
   #[must_use]
   pub fn new_with_config(config: PriorityBackendConfig, policy: OverflowPolicy) -> Self {
     let capacity = config.capacity();
-    Self { entries: BinaryHeap::with_capacity(capacity), limit: capacity, policy, closed: false, next_sequence: 0, config }
+    Self {
+      entries: BinaryHeap::with_capacity(capacity),
+      limit: capacity,
+      policy,
+      closed: false,
+      next_sequence: 0,
+      config,
+    }
   }
 
   /// Creates a backend using the default priority layout.
@@ -58,8 +64,6 @@ impl<T: PriorityMessage> BinaryHeapPriorityBackend<T> {
 impl<T: PriorityMessage> SyncQueueBackend<T> for BinaryHeapPriorityBackend<T> {}
 
 impl<T: PriorityMessage> SyncQueueBackendInternal<T> for BinaryHeapPriorityBackend<T> {
-  type Storage = PriorityBackendConfig;
-
   fn offer(&mut self, item: T) -> Result<OfferOutcome, QueueError<T>> {
     if self.closed {
       return Err(QueueError::Closed(item));

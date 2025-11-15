@@ -8,7 +8,7 @@ use core::{
 use super::{AsyncMpscQueue, AsyncQueue, AsyncSpscQueue};
 use crate::{
   collections::queue::{
-    QueueError, VecDequeStorage,
+    QueueError,
     backend::{OfferOutcome, OverflowPolicy, SyncQueueAsyncAdapter, VecDequeBackend},
   },
   sync::{ArcShared, SharedError, async_mutex_like::SpinAsyncMutex, interrupt::InterruptContextPolicy},
@@ -46,8 +46,7 @@ fn make_shared_queue(
   capacity: usize,
   policy: OverflowPolicy,
 ) -> ArcShared<SpinAsyncMutex<SyncQueueAsyncAdapter<i32, VecDequeBackend<i32>>>> {
-  let storage = VecDequeStorage::with_capacity(capacity);
-  let backend = VecDequeBackend::new_with_storage(storage, policy);
+  let backend = VecDequeBackend::with_capacity(capacity, policy);
   ArcShared::new(SpinAsyncMutex::new(SyncQueueAsyncAdapter::new(backend)))
 }
 
@@ -64,8 +63,7 @@ type DenyMutex<T> = SpinAsyncMutex<T, DenyPolicy>;
 fn make_interrupt_shared_queue(
   capacity: usize,
 ) -> ArcShared<DenyMutex<SyncQueueAsyncAdapter<i32, VecDequeBackend<i32>>>> {
-  let storage = VecDequeStorage::with_capacity(capacity);
-  let backend = VecDequeBackend::new_with_storage(storage, OverflowPolicy::Block);
+  let backend = VecDequeBackend::with_capacity(capacity, OverflowPolicy::Block);
   ArcShared::new(DenyMutex::new(SyncQueueAsyncAdapter::new(backend)))
 }
 

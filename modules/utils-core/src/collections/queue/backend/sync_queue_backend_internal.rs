@@ -1,10 +1,7 @@
-use crate::collections::queue::{OfferOutcome, OverflowPolicy, QueueError, storage::QueueStorage};
+use crate::collections::queue::{OfferOutcome, OverflowPolicy, QueueError};
 
-/// Internal Backend trait responsible for queue operations on top of a storage implementation.
+/// Internal Backend trait responsible for queue operations.
 pub(crate) trait SyncQueueBackendInternal<T> {
-  /// Storage implementation backing the queue.
-  type Storage: QueueStorage<T>;
-
   /// Adds an element to the queue according to the configured overflow policy.
   ///
   /// # Errors

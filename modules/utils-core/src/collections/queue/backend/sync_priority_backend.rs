@@ -1,14 +1,13 @@
-pub use self::priority_backend_config::PriorityBackendConfig;
-pub use super::binary_heap_priority_backend::BinaryHeapPriorityBackend;
 use super::SyncQueueBackend;
 use crate::collections::{
   PriorityMessage, queue::backend::sync_priority_backend_internal::SyncPriorityBackendInternal,
 };
 
-pub(in crate::collections::queue::backend) mod priority_backend_config;
-pub(in crate::collections::queue::backend) mod priority_entry;
+mod priority_entry;
 #[cfg(test)]
 mod tests;
+
+pub(crate) use priority_entry::PriorityEntry;
 
 /// Extension trait for backends supporting priority semantics.
 ///

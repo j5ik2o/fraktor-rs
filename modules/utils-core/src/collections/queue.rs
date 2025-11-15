@@ -8,7 +8,6 @@ mod async_spsc_producer;
 pub mod backend;
 pub mod capabilities;
 mod deque_backend;
-mod storage;
 mod sync_mpsc_consumer;
 mod sync_mpsc_producer;
 mod sync_queue;
@@ -30,7 +29,6 @@ pub use capabilities::{
   SingleProducer, SupportsPeek,
 };
 pub use deque_backend::{DequeBackend, DequeBackendGeneric, DequeOfferFuture};
-pub use storage::{QueueStorage, VecDequeStorage};
 pub use sync_mpsc_consumer::SyncMpscConsumer;
 pub use sync_mpsc_producer::SyncMpscProducer;
 pub use sync_queue::{FifoQueue, MpscQueue, PriorityQueue, SpscQueue, SyncQueue};

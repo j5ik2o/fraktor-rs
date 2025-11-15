@@ -1,39 +1,74 @@
 #[cfg(test)]
 mod tests;
 
+use alloc::collections::{TryReserveError, VecDeque};
 use core::cmp;
 
 use crate::collections::queue::{
-  OfferOutcome, OverflowPolicy, QueueError, QueueStorage, SyncQueueBackend, VecDequeStorage,
-  backend::SyncQueueBackendInternal,
+  OfferOutcome, OverflowPolicy, QueueError, SyncQueueBackend, backend::SyncQueueBackendInternal,
 };
 
-/// Queue backend backed by [`VecDequeStorage`].
+/// Queue backend backed by [`VecDeque`].
 ///
 /// This adapter is meant to be constructed and driven by `AsyncQueue`/`SyncQueue`
 /// helpers. Prefer those high-level APIs and implement custom backends instead of
 /// invoking this adapter directly from application logic.
 pub struct VecDequeBackend<T> {
-  storage: VecDequeStorage<T>,
-  policy:  OverflowPolicy,
-  closed:  bool,
+  buffer: VecDeque<T>,
+  limit:  usize,
+  policy: OverflowPolicy,
+  closed: bool,
 }
 
 impl<T> VecDequeBackend<T> {
-  /// Creates a backend from the provided storage and overflow policy.
+  /// Creates a backend with the specified capacity limit and overflow policy.
   #[must_use]
-  pub const fn new_with_storage(storage: VecDequeStorage<T>, policy: OverflowPolicy) -> Self {
-    Self { storage, policy, closed: false }
+  pub fn with_capacity(capacity: usize, policy: OverflowPolicy) -> Self {
+    Self { buffer: VecDeque::with_capacity(capacity), limit: capacity, policy, closed: false }
+  }
+
+  /// Returns the number of stored elements.
+  #[must_use]
+  fn len_internal(&self) -> usize {
+    self.buffer.len()
+  }
+
+  /// Indicates whether the storage is full.
+  #[must_use]
+  fn is_full_internal(&self) -> bool {
+    self.len_internal() == self.limit
+  }
+
+  /// Pushes an element to the back of the buffer.
+  fn push_back(&mut self, value: T) {
+    debug_assert!(!self.is_full_internal());
+    self.buffer.push_back(value);
+  }
+
+  /// Pops an element from the front of the buffer.
+  fn pop_front(&mut self) -> Option<T> {
+    self.buffer.pop_front()
+  }
+
+  /// Attempts to grow the capacity limit to the provided value.
+  fn try_grow(&mut self, new_capacity: usize) -> Result<(), TryReserveError> {
+    if new_capacity <= self.limit {
+      return Ok(());
+    }
+    let additional = new_capacity - self.limit;
+    self.buffer.try_reserve(additional)?;
+    self.limit = new_capacity;
+    Ok(())
   }
 
   fn ensure_capacity(&mut self, required: usize) -> Result<Option<usize>, ()> {
-    if required <= self.storage.capacity() {
+    if required <= self.limit {
       return Ok(None);
     }
 
-    let current = self.storage.capacity();
+    let current = self.limit;
     let next = cmp::max(required, cmp::max(1, current.saturating_mul(2)));
-    self.storage.try_grow(next).map_err(|_| ())?;
+    self.try_grow(next).map_err(|_| ())?;
     Ok(Some(next))
   }
 
@@ -44,8 +79,8 @@ impl<T> VecDequeBackend<T> {
         Ok(OfferOutcome::DroppedNewest { count: 1 })
       },
       | OverflowPolicy::DropOldest => {
-        let _ = self.storage.pop_front();
-        self.storage.push_back(item);
+        let _ = self.pop_front();
+        self.push_back(item);
         Ok(OfferOutcome::DroppedOldest { count: 1 })
       },
       | OverflowPolicy::Block => Err(QueueError::Full(item)),
@@ -57,15 +92,15 @@ impl<T> VecDequeBackend<T> {
   }
 
   fn handle_grow_policy(&mut self, item: T) -> Result<usize, QueueError<T>> {
-    let required = self.storage.len().saturating_add(1);
+    let required = self.len_internal().saturating_add(1);
     match self.ensure_capacity(required) {
       | Ok(Some(capacity)) => {
-        self.storage.push_back(item);
+        self.push_back(item);
         Ok(capacity)
       },
       | Ok(None) => {
-        self.storage.push_back(item);
-        Ok(self.storage.capacity())
+        self.push_back(item);
+        Ok(self.limit)
       },
       | Err(()) => Err(QueueError::AllocError(item)),
     }
@@ -75,23 +110,21 @@ impl<T> VecDequeBackend<T> {
 impl<T> SyncQueueBackend<T> for VecDequeBackend<T> {}
 
 impl<T> SyncQueueBackendInternal<T> for VecDequeBackend<T> {
-  type Storage = VecDequeStorage<T>;
-
   fn offer(&mut self, item: T) -> Result<OfferOutcome, QueueError<T>> {
     if self.closed {
       return Err(QueueError::Closed(item));
     }
 
-    if self.storage.is_full() {
+    if self.is_full_internal() {
       return self.handle_full_queue(item);
     }
 
-    self.storage.push_back(item);
+    self.push_back(item);
     Ok(OfferOutcome::Enqueued)
   }
 
   fn poll(&mut self) -> Result<T, QueueError<T>> {
-    match self.storage.pop_front() {
+    match self.pop_front() {
       | Some(item) => Ok(item),
       | None => {
         if self.closed {
@@ -104,11 +137,11 @@ impl<T> SyncQueueBackendInternal<T> for VecDequeBackend<T> {
   }
 
   fn len(&self) -> usize {
-    self.storage.len()
+    self.len_internal()
   }
 
   fn capacity(&self) -> usize {
-    self.storage.capacity()
+    self.limit
   }
 
   fn overflow_policy(&self) -> OverflowPolicy {
