@@ -4,8 +4,8 @@ use core::cmp;
 
 use fraktor_utils_core_rs::{
   collections::queue::{
-    QueueError, VecRingStorage,
-    backend::{OfferOutcome, OverflowPolicy, VecRingBackend},
+    QueueError, VecDequeStorage,
+    backend::{OfferOutcome, OverflowPolicy, VecDequeBackend},
   },
   sync::{ArcShared, sync_mutex_like::SpinSyncMutex},
 };
@@ -42,8 +42,8 @@ where
   }
 
   fn new_with(capacity: usize, overflow: OverflowPolicy) -> Self {
-    let storage = VecRingStorage::with_capacity(capacity);
-    let backend = VecRingBackend::new_with_storage(storage, overflow);
+    let storage = VecDequeStorage::with_capacity(capacity);
+    let backend = VecDequeBackend::new_with_storage(storage, overflow);
     let mutex = SpinSyncMutex::new(backend);
     let queue = UserQueue::new(ArcShared::new(mutex));
     let state = ArcShared::new(QueueState::new(ArcShared::new(queue)));

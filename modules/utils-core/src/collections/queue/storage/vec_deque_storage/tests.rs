@@ -1,12 +1,12 @@
 #[cfg(feature = "alloc")]
-use super::VecRingStorage;
+use super::VecDequeStorage;
 #[cfg(feature = "alloc")]
 use crate::collections::queue::storage::QueueStorage;
 
 #[cfg(feature = "alloc")]
 #[test]
 fn vec_ring_storage_try_grow_success() {
-  let mut storage: VecRingStorage<u32> = VecRingStorage::with_capacity(5);
+  let mut storage: VecDequeStorage<u32> = VecDequeStorage::with_capacity(5);
   assert_eq!(storage.capacity(), 5);
 
   let result = storage.try_grow(10);
@@ -17,7 +17,7 @@ fn vec_ring_storage_try_grow_success() {
 #[cfg(feature = "alloc")]
 #[test]
 fn vec_ring_storage_try_grow_no_change_when_smaller() {
-  let mut storage: VecRingStorage<u32> = VecRingStorage::with_capacity(10);
+  let mut storage: VecDequeStorage<u32> = VecDequeStorage::with_capacity(10);
   assert_eq!(storage.capacity(), 10);
 
   let result = storage.try_grow(5);
@@ -28,7 +28,7 @@ fn vec_ring_storage_try_grow_no_change_when_smaller() {
 #[cfg(feature = "alloc")]
 #[test]
 fn vec_ring_storage_try_grow_no_change_when_equal() {
-  let mut storage: VecRingStorage<u32> = VecRingStorage::with_capacity(10);
+  let mut storage: VecDequeStorage<u32> = VecDequeStorage::with_capacity(10);
   assert_eq!(storage.capacity(), 10);
 
   let result = storage.try_grow(10);
@@ -39,7 +39,7 @@ fn vec_ring_storage_try_grow_no_change_when_equal() {
 #[cfg(feature = "alloc")]
 #[test]
 fn vec_ring_storage_read_unchecked() {
-  let mut storage: VecRingStorage<u32> = VecRingStorage::with_capacity(5);
+  let mut storage: VecDequeStorage<u32> = VecDequeStorage::with_capacity(5);
   storage.push_back(10);
   storage.push_back(20);
   storage.push_back(30);
@@ -59,7 +59,7 @@ fn vec_ring_storage_read_unchecked() {
 #[cfg(feature = "alloc")]
 #[test]
 fn vec_ring_storage_write_unchecked() {
-  let mut storage: VecRingStorage<u32> = VecRingStorage::with_capacity(5);
+  let mut storage: VecDequeStorage<u32> = VecDequeStorage::with_capacity(5);
   storage.push_back(10);
   storage.push_back(20);
 
@@ -75,7 +75,7 @@ fn vec_ring_storage_write_unchecked() {
 #[cfg(feature = "alloc")]
 #[test]
 fn vec_ring_storage_write_unchecked_append() {
-  let mut storage: VecRingStorage<u32> = VecRingStorage::with_capacity(5);
+  let mut storage: VecDequeStorage<u32> = VecDequeStorage::with_capacity(5);
   storage.push_back(10);
   storage.push_back(20);
 
@@ -92,7 +92,7 @@ fn vec_ring_storage_write_unchecked_append() {
 #[cfg(feature = "alloc")]
 #[test]
 fn vec_ring_storage_read_unchecked_with_wraparound() {
-  let mut storage: VecRingStorage<u32> = VecRingStorage::with_capacity(3);
+  let mut storage: VecDequeStorage<u32> = VecDequeStorage::with_capacity(3);
   storage.push_back(10);
   storage.push_back(20);
   storage.push_back(30);

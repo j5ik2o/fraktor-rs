@@ -184,8 +184,8 @@ use priority_message::TestPriorityMessage;
 
 use crate::{
   collections::queue::{
-    DequeBackend, QueueCapability, QueueCapabilityRegistry, QueueCapabilitySet, VecRingStorage,
-    backend::{OfferOutcome, OverflowPolicy, VecRingBackend, sync_priority_backend::BinaryHeapPriorityBackend},
+    DequeBackend, QueueCapability, QueueCapabilityRegistry, QueueCapabilitySet, VecDequeStorage,
+    backend::{OfferOutcome, OverflowPolicy, VecDequeBackend, sync_priority_backend::BinaryHeapPriorityBackend},
     capabilities::{SingleConsumer, SingleProducer, SupportsPeek},
     type_keys::{FifoKey, MpscKey, PriorityKey, SpscKey},
   },
@@ -268,8 +268,8 @@ fn shared_error_mapping_matches_spec() {
 
 #[test]
 fn mpsc_pair_supports_multiple_producers() {
-  let storage = VecRingStorage::with_capacity(8);
-  let backend = VecRingBackend::new_with_storage(storage, OverflowPolicy::DropOldest);
+  let storage = VecDequeStorage::with_capacity(8);
+  let backend = VecDequeBackend::new_with_storage(storage, OverflowPolicy::DropOldest);
   let shared = ArcShared::new(SpinSyncMutex::new(backend));
   let queue: SyncQueue<_, MpscKey, _, _> = SyncQueue::new(shared);
 
@@ -287,8 +287,8 @@ fn mpsc_pair_supports_multiple_producers() {
 
 #[test]
 fn spsc_pair_provides_split_access() {
-  let storage = VecRingStorage::with_capacity(4);
-  let backend = VecRingBackend::new_with_storage(storage, OverflowPolicy::Block);
+  let storage = VecDequeStorage::with_capacity(4);
+  let backend = VecDequeBackend::new_with_storage(storage, OverflowPolicy::Block);
   let shared = ArcShared::new(SpinSyncMutex::new(backend));
   let queue: SyncQueue<_, SpscKey, _, _> = SyncQueue::new(shared);
 
@@ -302,8 +302,8 @@ fn spsc_pair_provides_split_access() {
 
 #[test]
 fn vec_ring_backend_provides_fifo_behavior() {
-  let storage = VecRingStorage::with_capacity(3);
-  let backend = VecRingBackend::new_with_storage(storage, OverflowPolicy::DropOldest);
+  let storage = VecDequeStorage::with_capacity(3);
+  let backend = VecDequeBackend::new_with_storage(storage, OverflowPolicy::DropOldest);
   let shared = ArcShared::new(SpinSyncMutex::new(backend));
   let queue: SyncQueue<_, FifoKey, _, _> = SyncQueue::new(shared);
 

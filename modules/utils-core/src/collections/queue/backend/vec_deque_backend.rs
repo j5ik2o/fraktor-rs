@@ -4,25 +4,25 @@ mod tests;
 use core::cmp;
 
 use crate::collections::queue::{
-  OfferOutcome, OverflowPolicy, QueueError, QueueStorage, SyncQueueBackend, VecRingStorage,
+  OfferOutcome, OverflowPolicy, QueueError, QueueStorage, SyncQueueBackend, VecDequeStorage,
   backend::SyncQueueBackendInternal,
 };
 
-/// Queue backend backed by a ring buffer storage.
+/// Queue backend backed by [`VecDequeStorage`].
 ///
 /// This adapter is meant to be constructed and driven by `AsyncQueue`/`SyncQueue`
 /// helpers. Prefer those high-level APIs and implement custom backends instead of
 /// invoking this adapter directly from application logic.
-pub struct VecRingBackend<T> {
-  storage: VecRingStorage<T>,
+pub struct VecDequeBackend<T> {
+  storage: VecDequeStorage<T>,
   policy:  OverflowPolicy,
   closed:  bool,
 }
 
-impl<T> VecRingBackend<T> {
+impl<T> VecDequeBackend<T> {
   /// Creates a backend from the provided storage and overflow policy.
   #[must_use]
-  pub const fn new_with_storage(storage: VecRingStorage<T>, policy: OverflowPolicy) -> Self {
+  pub const fn new_with_storage(storage: VecDequeStorage<T>, policy: OverflowPolicy) -> Self {
     Self { storage, policy, closed: false }
   }
 
@@ -72,10 +72,10 @@ impl<T> VecRingBackend<T> {
   }
 }
 
-impl<T> SyncQueueBackend<T> for VecRingBackend<T> {}
+impl<T> SyncQueueBackend<T> for VecDequeBackend<T> {}
 
-impl<T> SyncQueueBackendInternal<T> for VecRingBackend<T> {
-  type Storage = VecRingStorage<T>;
+impl<T> SyncQueueBackendInternal<T> for VecDequeBackend<T> {
+  type Storage = VecDequeStorage<T>;
 
   fn offer(&mut self, item: T) -> Result<OfferOutcome, QueueError<T>> {
     if self.closed {

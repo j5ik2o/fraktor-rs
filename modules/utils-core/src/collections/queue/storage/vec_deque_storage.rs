@@ -6,13 +6,13 @@ mod tests;
 
 use super::QueueStorage;
 
-/// Ring buffer storage backed by [`VecDeque`].
-pub struct VecRingStorage<T> {
+/// Queue storage backed by [`VecDeque`].
+pub struct VecDequeStorage<T> {
   buffer: VecDeque<T>,
   limit:  usize,
 }
 
-impl<T> VecRingStorage<T> {
+impl<T> VecDequeStorage<T> {
   /// Creates a new storage with the specified capacity limit.
   #[must_use]
   pub fn with_capacity(capacity: usize) -> Self {
@@ -70,7 +70,7 @@ impl<T> VecRingStorage<T> {
   }
 }
 
-impl<T> QueueStorage<T> for VecRingStorage<T> {
+impl<T> QueueStorage<T> for VecDequeStorage<T> {
   fn capacity(&self) -> usize {
     self.limit
   }

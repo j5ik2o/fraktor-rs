@@ -10,7 +10,7 @@ mod sync_priority_backend_internal;
 mod sync_queue_async_adapter;
 mod sync_queue_backend;
 mod sync_queue_backend_internal;
-mod vec_ring_backend;
+mod vec_deque_backend;
 
 pub use async_priority_backend::AsyncPriorityBackend;
 pub(crate) use async_priority_backend_internal::AsyncPriorityBackendInternal;
@@ -20,6 +20,6 @@ pub(crate) use sync_priority_backend_internal::SyncPriorityBackendInternal;
 pub use sync_queue_async_adapter::SyncQueueAsyncAdapter;
 pub use sync_queue_backend::SyncQueueBackend;
 pub(crate) use sync_queue_backend_internal::SyncQueueBackendInternal;
-pub use vec_ring_backend::VecRingBackend;
+pub use vec_deque_backend::VecDequeBackend;
 
 pub use crate::collections::queue::{offer_outcome::OfferOutcome, overflow_policy::OverflowPolicy};
