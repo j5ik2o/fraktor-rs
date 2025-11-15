@@ -23,7 +23,7 @@
 - lintエラーを安易にallowなどで回避しないこと。allowを付ける場合は人間から許可を得ること
 - 設計における価値観は "Less is more" と "YAGNI"。ただし要件や目的に含まれることまで省略することは間違いです。要件や目的を達成するに必要最低限の設計を行い、要件や目的の達成に関係なものを含めるなという意味です。
 
-[]: # 
+[]: #
 []: # ## References
 []: # - [protoactor-go](
 
@@ -78,3 +78,6 @@ Project memory keeps persistent guidance (steering, specs notes, component docs)
 - Load entire `.kiro/steering/` as project memory
 - Default files: `product.md`, `tech.md`, `structure.md`
 - Custom files are supported (managed via `/prompts:kiro-steering-custom`)
+
+# ExecPlans
+When writing complex features or significant refactors, use an ExecPlan (as described in PLANS.md) from design to implementation.
