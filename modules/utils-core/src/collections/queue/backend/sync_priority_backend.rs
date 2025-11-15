@@ -1,14 +1,12 @@
-pub use self::{
-  binary_heap_priority_backend::BinaryHeapPriorityBackend, priority_backend_config::PriorityBackendConfig,
-};
+pub use self::priority_backend_config::PriorityBackendConfig;
+pub use super::binary_heap_priority_backend::BinaryHeapPriorityBackend;
 use super::SyncQueueBackend;
 use crate::collections::{
   PriorityMessage, queue::backend::sync_priority_backend_internal::SyncPriorityBackendInternal,
 };
 
-mod binary_heap_priority_backend;
-mod priority_backend_config;
-mod priority_entry;
+pub(in crate::collections::queue::backend) mod priority_backend_config;
+pub(in crate::collections::queue::backend) mod priority_entry;
 #[cfg(test)]
 mod tests;
 
