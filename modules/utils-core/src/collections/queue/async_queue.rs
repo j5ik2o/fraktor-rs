@@ -160,3 +160,12 @@ where
     AsyncQueue::new(backend)
   }
 }
+
+/// Type alias for an async MPSC queue.
+pub type AsyncMpscQueue<T, B> = AsyncQueue<T, MpscKey, B>;
+/// Type alias for an async SPSC queue.
+pub type AsyncSpscQueue<T, B> = AsyncQueue<T, SpscKey, B>;
+/// Type alias for an async FIFO queue.
+pub type AsyncFifoQueue<T, B> = AsyncQueue<T, FifoKey, B>;
+/// Type alias for an async priority queue.
+pub type AsyncPriorityQueue<T, B> = AsyncQueue<T, PriorityKey, B>;

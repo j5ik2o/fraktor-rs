@@ -292,11 +292,11 @@ where
 }
 
 /// Type alias for an async MPSC queue.
-pub type AsyncMpscQueue<T, B, A = SpinAsyncMutex<AsyncQueue<T, MpscKey, B>>> = AsyncQueueShared<T, MpscKey, B, A>;
+pub type AsyncMpscQueueShared<T, B, A = SpinAsyncMutex<AsyncQueue<T, MpscKey, B>>> = AsyncQueueShared<T, MpscKey, B, A>;
 /// Type alias for an async SPSC queue.
-pub type AsyncSpscQueue<T, B, A = SpinAsyncMutex<AsyncQueue<T, SpscKey, B>>> = AsyncQueueShared<T, SpscKey, B, A>;
+pub type AsyncSpscQueueShared<T, B, A = SpinAsyncMutex<AsyncQueue<T, SpscKey, B>>> = AsyncQueueShared<T, SpscKey, B, A>;
 /// Type alias for an async FIFO queue.
-pub type AsyncFifoQueue<T, B, A = SpinAsyncMutex<AsyncQueue<T, FifoKey, B>>> = AsyncQueueShared<T, FifoKey, B, A>;
+pub type AsyncFifoQueueShared<T, B, A = SpinAsyncMutex<AsyncQueue<T, FifoKey, B>>> = AsyncQueueShared<T, FifoKey, B, A>;
 /// Type alias for an async priority queue.
-pub type AsyncPriorityQueue<T, B, A = SpinAsyncMutex<AsyncQueue<T, PriorityKey, B>>> =
+pub type AsyncPriorityQueueShared<T, B, A = SpinAsyncMutex<AsyncQueue<T, PriorityKey, B>>> =
   AsyncQueueShared<T, PriorityKey, B, A>;

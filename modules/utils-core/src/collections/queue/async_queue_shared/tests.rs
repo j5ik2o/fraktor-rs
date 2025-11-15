@@ -5,7 +5,7 @@ use core::{
   task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
 };
 
-use super::{AsyncMpscQueue, AsyncQueueShared, AsyncSpscQueue};
+use super::{AsyncMpscQueueShared, AsyncQueueShared, AsyncSpscQueueShared};
 use crate::{
   collections::queue::{
     AsyncQueue, QueueError,
@@ -80,7 +80,7 @@ fn make_interrupt_shared_queue(capacity: usize) -> DenySharedQueue {
 #[test]
 fn offer_and_poll_operates_async_queue() {
   let shared = make_shared_queue(4, OverflowPolicy::Block);
-  let queue: AsyncSpscQueue<i32, _, _> = AsyncQueueShared::new_spsc(shared);
+  let queue: AsyncSpscQueueShared<i32, _, _> = AsyncQueueShared::new_spsc(shared);
 
   assert_eq!(block_on(queue.is_empty()), Ok(true));
   assert!(matches!(block_on(queue.offer(42)), Ok(OfferOutcome::Enqueued)));
@@ -92,7 +92,7 @@ fn offer_and_poll_operates_async_queue() {
 #[test]
 fn into_mpsc_pair_roundtrip() {
   let shared = make_shared_queue_mpsc(4, OverflowPolicy::Block);
-  let queue: AsyncMpscQueue<i32, _, _> = AsyncQueueShared::new_mpsc(shared);
+  let queue: AsyncMpscQueueShared<i32, _, _> = AsyncQueueShared::new_mpsc(shared);
   let (producer, consumer) = queue.into_mpsc_pair();
 
   assert!(matches!(block_on(producer.offer(7)), Ok(OfferOutcome::Enqueued)));
@@ -102,7 +102,7 @@ fn into_mpsc_pair_roundtrip() {
 #[test]
 fn into_spsc_pair_roundtrip() {
   let shared = make_shared_queue(4, OverflowPolicy::Block);
-  let queue: AsyncSpscQueue<i32, _, _> = AsyncQueueShared::new_spsc(shared);
+  let queue: AsyncSpscQueueShared<i32, _, _> = AsyncQueueShared::new_spsc(shared);
   let (producer, consumer) = queue.into_spsc_pair();
 
   assert!(matches!(block_on(producer.offer(10)), Ok(OfferOutcome::Enqueued)));
@@ -114,7 +114,7 @@ fn into_spsc_pair_roundtrip() {
 #[test]
 fn spsc_consumer_close() {
   let shared = make_shared_queue(2, OverflowPolicy::Block);
-  let queue: AsyncSpscQueue<i32, _, _> = AsyncQueueShared::new_spsc(shared);
+  let queue: AsyncSpscQueueShared<i32, _, _> = AsyncQueueShared::new_spsc(shared);
   let (producer, consumer) = queue.into_spsc_pair();
 
   assert!(matches!(block_on(producer.offer(1)), Ok(OfferOutcome::Enqueued)));
@@ -126,7 +126,7 @@ fn spsc_consumer_close() {
 #[test]
 fn close_prevents_further_operations() {
   let shared = make_shared_queue(2, OverflowPolicy::Block);
-  let queue: AsyncSpscQueue<i32, _, _> = AsyncQueueShared::new_spsc(shared);
+  let queue: AsyncSpscQueueShared<i32, _, _> = AsyncQueueShared::new_spsc(shared);
 
   assert!(matches!(block_on(queue.offer(1)), Ok(OfferOutcome::Enqueued)));
   assert!(block_on(queue.close()).is_ok());
@@ -138,7 +138,7 @@ fn close_prevents_further_operations() {
 #[test]
 fn offer_blocks_until_space_available() {
   let shared = make_shared_queue(1, OverflowPolicy::Block);
-  let queue: AsyncSpscQueue<i32, _, _> = AsyncQueueShared::new_spsc(shared);
+  let queue: AsyncSpscQueueShared<i32, _, _> = AsyncQueueShared::new_spsc(shared);
 
   assert!(matches!(block_on(queue.offer(1)), Ok(OfferOutcome::Enqueued)));
 
@@ -158,7 +158,7 @@ fn offer_blocks_until_space_available() {
 #[test]
 fn poll_blocks_until_item_available() {
   let shared = make_shared_queue(1, OverflowPolicy::Block);
-  let queue: AsyncSpscQueue<i32, _, _> = AsyncQueueShared::new_spsc(shared);
+  let queue: AsyncSpscQueueShared<i32, _, _> = AsyncQueueShared::new_spsc(shared);
 
   let mut poll_future = queue.poll();
   let mut poll_future = unsafe { Pin::new_unchecked(&mut poll_future) };
@@ -176,7 +176,7 @@ fn poll_blocks_until_item_available() {
 #[test]
 fn close_wakes_waiting_consumer() {
   let shared = make_shared_queue(1, OverflowPolicy::Block);
-  let queue: AsyncSpscQueue<i32, _, _> = AsyncQueueShared::new_spsc(shared);
+  let queue: AsyncSpscQueueShared<i32, _, _> = AsyncQueueShared::new_spsc(shared);
 
   let mut poll_future = queue.poll();
   let mut poll_future = unsafe { Pin::new_unchecked(&mut poll_future) };
@@ -194,7 +194,7 @@ fn close_wakes_waiting_consumer() {
 #[test]
 fn interrupt_context_returns_would_block_errors() {
   let shared = make_interrupt_shared_queue(2);
-  let queue: AsyncSpscQueue<i32, _, _> = AsyncQueueShared::new_spsc(shared);
+  let queue: AsyncSpscQueueShared<i32, _, _> = AsyncQueueShared::new_spsc(shared);
 
   assert_eq!(block_on(queue.offer(1)), Err(QueueError::WouldBlock));
   assert_eq!(block_on(queue.poll()), Err(QueueError::WouldBlock));

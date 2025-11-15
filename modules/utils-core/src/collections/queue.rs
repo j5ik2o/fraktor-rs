@@ -18,7 +18,9 @@ pub mod type_keys;
 
 pub use async_mpsc_consumer_shared::AsyncMpscConsumerShared;
 pub use async_mpsc_producer_shared::AsyncMpscProducerShared;
-pub use async_queue_shared::{AsyncFifoQueue, AsyncMpscQueue, AsyncPriorityQueue, AsyncQueueShared, AsyncSpscQueue};
+pub use async_queue_shared::{
+  AsyncFifoQueueShared, AsyncMpscQueueShared, AsyncPriorityQueueShared, AsyncQueueShared, AsyncSpscQueueShared,
+};
 pub use async_spsc_consumer_shared::AsyncSpscConsumerShared;
 pub use async_spsc_producer_shared::AsyncSpscProducerShared;
 pub use backend::{
@@ -39,8 +41,6 @@ pub use sync_spsc_consumer_shared::SyncSpscConsumerShared;
 pub use sync_spsc_producer_shared::SyncSpscProducerShared;
 pub use type_keys::{FifoKey, MpscKey, PriorityKey, SpscKey, TypeKey};
 
-use crate::sync::async_mutex_like::SpinAsyncMutex;
-
 mod offer_outcome;
 mod overflow_policy;
 mod queue_error;
@@ -51,10 +51,10 @@ pub use async_queue::*;
 pub use queue_error::QueueError;
 pub use sync_queue::*;
 
-/// Default async shared queue alias backed by [`VecDequeBackend`] via the sync adapter.
-pub type AsyncFifoQueueShared<T, K = FifoKey> = AsyncQueueShared<
-  T,
-  K,
-  SyncQueueAsyncAdapter<T, VecDequeBackend<T>>,
-  SpinAsyncMutex<AsyncQueue<T, K, SyncQueueAsyncAdapter<T, VecDequeBackend<T>>>>,
->;
+// /// Default async shared queue alias backed by [`VecDequeBackend`] via the sync adapter.
+// pub type AsyncFifoQueueShared<T, K = FifoKey> = AsyncQueueShared<
+//   T,
+//   K,
+//   SyncQueueAsyncAdapter<T, VecDequeBackend<T>>,
+//   SpinAsyncMutex<AsyncQueue<T, K, SyncQueueAsyncAdapter<T, VecDequeBackend<T>>>>,
+// >;
