@@ -165,7 +165,7 @@ use priority_message::TestPriorityMessage;
 
 use crate::{
   collections::queue::{
-    DequeBackend, QueueCapability, QueueCapabilityRegistry, QueueCapabilitySet,
+    QueueCapability, QueueCapabilityRegistry, QueueCapabilitySet,
     backend::{BinaryHeapPriorityBackend, OfferOutcome, OverflowPolicy, VecDequeBackend},
     capabilities::{SingleConsumer, SingleProducer, SupportsPeek},
     type_keys::{FifoKey, MpscKey, PriorityKey, SpscKey},
@@ -301,17 +301,6 @@ fn vec_ring_backend_provides_fifo_behavior() {
   assert_eq!(queue.poll().unwrap(), 2);
   assert_eq!(queue.poll().unwrap(), 3);
   assert_eq!(queue.poll().unwrap(), 4);
-}
-
-#[test]
-fn deque_backend_supports_double_ended_operations() {
-  let deque = DequeBackend::with_capacity(2, OverflowPolicy::Block);
-
-  assert!(matches!(deque.offer_back(1), Ok(OfferOutcome::Enqueued)));
-  assert!(matches!(deque.offer_front(2), Ok(OfferOutcome::Enqueued)));
-
-  assert_eq!(deque.poll_front().ok(), Some(2));
-  assert_eq!(deque.poll_back().ok(), Some(1));
 }
 
 #[test]

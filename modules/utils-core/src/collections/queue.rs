@@ -8,7 +8,6 @@ mod async_spsc_consumer_shared;
 mod async_spsc_producer_shared;
 pub mod backend;
 pub mod capabilities;
-mod deque_backend;
 mod sync_mpsc_consumer_shared;
 mod sync_mpsc_producer_shared;
 mod sync_queue_shared;
@@ -31,7 +30,6 @@ pub use capabilities::{
   MultiProducer, QueueCapability, QueueCapabilityError, QueueCapabilityRegistry, QueueCapabilitySet, SingleConsumer,
   SingleProducer, SupportsPeek,
 };
-pub use deque_backend::{DequeBackend, DequeBackendGeneric, DequeOfferFuture};
 pub use sync_mpsc_consumer_shared::SyncMpscConsumerShared;
 pub use sync_mpsc_producer_shared::SyncMpscProducerShared;
 pub use sync_queue_shared::{
