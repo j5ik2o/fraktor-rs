@@ -48,11 +48,3 @@ mod tests;
 pub use async_queue::*;
 pub use queue_error::QueueError;
 pub use sync_queue::*;
-
-// /// Default async shared queue alias backed by [`VecDequeBackend`] via the sync adapter.
-// pub type AsyncFifoQueueShared<T, K = FifoKey> = AsyncQueueShared<
-//   T,
-//   K,
-//   SyncQueueAsyncAdapter<T, VecDequeBackend<T>>,
-//   SpinAsyncMutex<AsyncQueue<T, K, SyncQueueAsyncAdapter<T, VecDequeBackend<T>>>>,
-// >;

@@ -132,11 +132,7 @@ where
   }
 
   fn prepare_consumer_wait(&mut self) -> Result<Option<WaitShared<QueueError<T>>>, WaitError> {
-    if self.backend.is_closed() {
-      Ok(None)
-    } else {
-      Ok(Some(self.register_consumer_waiter()?))
-    }
+    if self.backend.is_closed() { Ok(None) } else { Ok(Some(self.register_consumer_waiter()?)) }
   }
 
   fn is_closed(&self) -> bool {

@@ -63,15 +63,11 @@ where
     result
   }
 
-  pub(super) fn register_producer_waiter(
-    &self,
-  ) -> Result<WaitShared<QueueError<T>>, WaitError> {
+  pub(super) fn register_producer_waiter(&self) -> Result<WaitShared<QueueError<T>>, WaitError> {
     self.producer_waiters.lock().register()
   }
 
-  pub(super) fn register_consumer_waiter(
-    &self,
-  ) -> Result<WaitShared<QueueError<T>>, WaitError> {
+  pub(super) fn register_consumer_waiter(&self) -> Result<WaitShared<QueueError<T>>, WaitError> {
     self.consumer_waiters.lock().register()
   }
 

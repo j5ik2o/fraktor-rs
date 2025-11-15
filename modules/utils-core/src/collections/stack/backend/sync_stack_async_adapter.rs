@@ -123,11 +123,7 @@ where
   }
 
   fn prepare_pop_wait(&mut self) -> Result<Option<WaitShared<StackError>>, WaitError> {
-    if self.backend.is_closed() {
-      Ok(None)
-    } else {
-      Ok(Some(self.register_pop_waiter()?))
-    }
+    if self.backend.is_closed() { Ok(None) } else { Ok(Some(self.register_pop_waiter()?)) }
   }
 
   fn is_closed(&self) -> bool {

@@ -3,7 +3,10 @@ use alloc::boxed::Box;
 use async_trait::async_trait;
 
 use super::OfferOutcome;
-use crate::collections::{queue::QueueError, wait::{WaitError, WaitShared}};
+use crate::collections::{
+  queue::QueueError,
+  wait::{WaitError, WaitShared},
+};
 
 /// Async-compatible backend trait for queue operations.
 #[async_trait(?Send)]

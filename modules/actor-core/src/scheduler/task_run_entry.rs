@@ -1,7 +1,12 @@
-use alloc::collections::BinaryHeap;
 use core::cmp::Ordering;
 
-use fraktor_utils_core_rs::sync::ArcShared;
+use fraktor_utils_core_rs::{
+  collections::{
+    PriorityMessage,
+    queue::{SyncPriorityQueue, backend::BinaryHeapPriorityBackend},
+  },
+  sync::ArcShared,
+};
 
 use crate::scheduler::{TaskRunHandle, TaskRunOnClose, TaskRunPriority};
 
@@ -11,6 +16,17 @@ pub(crate) struct TaskRunEntry {
   pub(crate) sequence: u64,
   pub(crate) handle:   TaskRunHandle,
   pub(crate) task:     ArcShared<dyn TaskRunOnClose>,
+}
+
+impl core::fmt::Debug for TaskRunEntry {
+  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    f.debug_struct("TaskRunEntry")
+      .field("priority", &self.priority)
+      .field("sequence", &self.sequence)
+      .field("handle", &self.handle)
+      .field("task", &"<dyn TaskRunOnClose>")
+      .finish()
+  }
 }
 
 impl TaskRunEntry {
@@ -47,5 +63,11 @@ impl Ord for TaskRunEntry {
   }
 }
 
-/// Binary heap storing registered shutdown tasks.
-pub(crate) type TaskRunQueue = BinaryHeap<TaskRunEntry>;
+impl PriorityMessage for TaskRunEntry {
+  fn get_priority(&self) -> Option<i8> {
+    Some(self.priority.rank() as i8)
+  }
+}
+
+/// Priority queue storing registered shutdown tasks.
+pub(crate) type TaskRunQueue = SyncPriorityQueue<TaskRunEntry, BinaryHeapPriorityBackend<TaskRunEntry>>;

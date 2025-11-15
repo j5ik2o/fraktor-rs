@@ -1,6 +1,9 @@
 use super::{WaitError, handle_shared::WaitShared, node::WaitNode};
 use crate::{
-  collections::queue::{QueueError, SyncFifoQueue, backend::{OverflowPolicy, VecDequeBackend}},
+  collections::queue::{
+    QueueError, SyncFifoQueue,
+    backend::{OverflowPolicy, VecDequeBackend},
+  },
   sync::ArcShared,
 };
 
@@ -32,7 +35,7 @@ impl<E> WaitQueue<E> {
       | QueueError::AllocError(_) => WaitError::AllocationFailure,
       | QueueError::Closed(_) => WaitError::QueueClosed,
       | QueueError::Full(_) => WaitError::AllocationFailure, // Should not happen with Grow policy
-      | _ => WaitError::AllocationFailure, // Fallback
+      | _ => WaitError::AllocationFailure,                   // Fallback
     })?;
     Ok(WaitShared::new(node))
   }
