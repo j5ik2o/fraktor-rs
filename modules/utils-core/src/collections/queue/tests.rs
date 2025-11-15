@@ -1,6 +1,6 @@
 extern crate alloc;
 
-use super::SyncQueueShared;
+use super::{SyncQueue, SyncQueueShared};
 use crate::{
   collections::queue::QueueError,
   sync::{ArcShared, sync_mutex_like::SpinSyncMutex},
@@ -178,7 +178,8 @@ fn offer_and_poll_fifo_queue() {
   mpsc_key_capability_assertion::assert_capabilities();
 
   let backend = FifoBackend::new(QueueConfig::new(2), OverflowPolicy::DropOldest);
-  let shared = ArcShared::new(SpinSyncMutex::new(backend));
+  let sync_queue = SyncQueue::new_fifo(backend);
+  let shared = ArcShared::new(SpinSyncMutex::new(sync_queue));
   let queue: SyncQueueShared<_, FifoKey, _, _> = SyncQueueShared::new(shared);
 
   assert_eq!(queue.offer(1).unwrap(), OfferOutcome::Enqueued);
@@ -195,7 +196,8 @@ fn offer_and_poll_fifo_queue() {
 #[test]
 fn block_policy_reports_full() {
   let backend = FifoBackend::new(QueueConfig::new(1), OverflowPolicy::Block);
-  let shared = ArcShared::new(SpinSyncMutex::new(backend));
+  let sync_queue = SyncQueue::new_spsc(backend);
+  let shared = ArcShared::new(SpinSyncMutex::new(sync_queue));
   let queue: SyncQueueShared<_, SpscKey, _, _> = SyncQueueShared::new(shared);
 
   assert_eq!(queue.offer(10).unwrap(), OfferOutcome::Enqueued);
@@ -206,7 +208,8 @@ fn block_policy_reports_full() {
 #[test]
 fn grow_policy_increases_capacity() {
   let backend = FifoBackend::new(QueueConfig::new(1), OverflowPolicy::Grow);
-  let shared = ArcShared::new(SpinSyncMutex::new(backend));
+  let sync_queue = SyncQueue::new_mpsc(backend);
+  let shared = ArcShared::new(SpinSyncMutex::new(sync_queue));
   let queue: SyncQueueShared<_, MpscKey, _, _> = SyncQueueShared::new(shared.clone());
 
   assert_eq!(queue.offer(1).unwrap(), OfferOutcome::Enqueued);
@@ -227,7 +230,8 @@ fn priority_queue_supports_peek() {
   assert_priority_capabilities::<PriorityKey>();
 
   let backend = BinaryHeapPriorityBackend::new_with_capacity(4, OverflowPolicy::DropOldest);
-  let shared = ArcShared::new(SpinSyncMutex::new(backend));
+  let sync_queue = SyncQueue::new(backend);
+  let shared = ArcShared::new(SpinSyncMutex::new(sync_queue));
   let queue: SyncQueueShared<TestPriorityMessage, PriorityKey, _, _> = SyncQueueShared::new(shared);
 
   assert_eq!(queue.offer(TestPriorityMessage::new(5, Some(2))).unwrap(), OfferOutcome::Enqueued);
@@ -250,7 +254,8 @@ fn shared_error_mapping_matches_spec() {
 #[test]
 fn mpsc_pair_supports_multiple_producers() {
   let backend = VecDequeBackend::with_capacity(8, OverflowPolicy::DropOldest);
-  let shared = ArcShared::new(SpinSyncMutex::new(backend));
+  let sync_queue = SyncQueue::new_mpsc(backend);
+  let shared = ArcShared::new(SpinSyncMutex::new(sync_queue));
   let queue: SyncQueueShared<_, MpscKey, _, _> = SyncQueueShared::new(shared);
 
   let (producer, consumer) = queue.into_mpsc_pair();
@@ -268,7 +273,8 @@ fn mpsc_pair_supports_multiple_producers() {
 #[test]
 fn spsc_pair_provides_split_access() {
   let backend = VecDequeBackend::with_capacity(4, OverflowPolicy::Block);
-  let shared = ArcShared::new(SpinSyncMutex::new(backend));
+  let sync_queue = SyncQueue::new_spsc(backend);
+  let shared = ArcShared::new(SpinSyncMutex::new(sync_queue));
   let queue: SyncQueueShared<_, SpscKey, _, _> = SyncQueueShared::new(shared);
 
   let (producer, consumer) = queue.into_spsc_pair();
@@ -282,7 +288,8 @@ fn spsc_pair_provides_split_access() {
 #[test]
 fn vec_ring_backend_provides_fifo_behavior() {
   let backend = VecDequeBackend::with_capacity(3, OverflowPolicy::DropOldest);
-  let shared = ArcShared::new(SpinSyncMutex::new(backend));
+  let sync_queue = SyncQueue::new_fifo(backend);
+  let shared = ArcShared::new(SpinSyncMutex::new(sync_queue));
   let queue: SyncQueueShared<_, FifoKey, _, _> = SyncQueueShared::new(shared);
 
   assert_eq!(queue.offer(1).unwrap(), OfferOutcome::Enqueued);

@@ -1,19 +1,23 @@
 use core::marker::PhantomData;
 
+use super::{SyncQueue, type_keys::MpscKey};
 use crate::{
   collections::queue::{
     QueueError,
     backend::{OfferOutcome, SyncQueueBackend},
   },
-  sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
+  sync::{
+    ArcShared, SharedAccess,
+    sync_mutex_like::{SpinSyncMutex, SyncMutexLike},
+  },
 };
 
 /// Producer for queues tagged with
 /// [`MpscKey`](crate::collections::queue::type_keys::MpscKey).
-pub struct SyncMpscProducerShared<T, B, M>
+pub struct SyncMpscProducerShared<T, B, M = SpinSyncMutex<SyncQueue<T, MpscKey, B>>>
 where
   B: SyncQueueBackend<T>,
-  M: SyncMutexLike<B>, {
+  M: SyncMutexLike<SyncQueue<T, MpscKey, B>>, {
   pub(crate) inner: ArcShared<M>,
   _pd:              PhantomData<(T, B)>,
 }
@@ -21,8 +25,8 @@ where
 impl<T, B, M> SyncMpscProducerShared<T, B, M>
 where
   B: SyncQueueBackend<T>,
-  M: SyncMutexLike<B>,
-  ArcShared<M>: SharedAccess<B>,
+  M: SyncMutexLike<SyncQueue<T, MpscKey, B>>,
+  ArcShared<M>: SharedAccess<SyncQueue<T, MpscKey, B>>,
 {
   pub(crate) const fn new(inner: ArcShared<M>) -> Self {
     Self { inner, _pd: PhantomData }
@@ -35,7 +39,7 @@ where
   /// Returns a `QueueError` when the backend cannot accept the element because the queue is closed,
   /// full, or disconnected.
   pub fn offer(&self, item: T) -> Result<OfferOutcome, QueueError<T>> {
-    self.inner.with_mut(|backend: &mut B| backend.offer(item)).map_err(QueueError::from).and_then(|result| result)
+    self.inner.with_mut(|queue: &mut SyncQueue<T, MpscKey, B>| queue.offer(item)).map_err(QueueError::from)?
   }
 
   /// Provides access to the shared backend.
@@ -48,8 +52,8 @@ where
 impl<T, B, M> Clone for SyncMpscProducerShared<T, B, M>
 where
   B: SyncQueueBackend<T>,
-  M: SyncMutexLike<B>,
-  ArcShared<M>: SharedAccess<B>,
+  M: SyncMutexLike<SyncQueue<T, MpscKey, B>>,
+  ArcShared<M>: SharedAccess<SyncQueue<T, MpscKey, B>>,
 {
   fn clone(&self) -> Self {
     Self::new(self.inner.clone())

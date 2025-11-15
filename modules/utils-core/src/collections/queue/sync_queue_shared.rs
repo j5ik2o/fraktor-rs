@@ -1,7 +1,7 @@
 use core::marker::PhantomData;
 
 use super::{
-  sync_mpsc_consumer_shared::SyncMpscConsumerShared, sync_mpsc_producer_shared::SyncMpscProducerShared,
+  SyncQueue, sync_mpsc_consumer_shared::SyncMpscConsumerShared, sync_mpsc_producer_shared::SyncMpscProducerShared,
   sync_spsc_consumer_shared::SyncSpscConsumerShared, sync_spsc_producer_shared::SyncSpscProducerShared,
 };
 use crate::{
@@ -22,11 +22,11 @@ use crate::{
 
 /// Queue API parameterised by element type, type key, backend, and shared guard.
 #[derive(Clone)]
-pub struct SyncQueueShared<T, K, B, M = SpinSyncMutex<B>>
+pub struct SyncQueueShared<T, K, B, M = SpinSyncMutex<SyncQueue<T, K, B>>>
 where
   K: TypeKey,
   B: SyncQueueBackend<T>,
-  M: SyncMutexLike<B>, {
+  M: SyncMutexLike<SyncQueue<T, K, B>>, {
   inner: ArcShared<M>,
   _pd:   PhantomData<(T, K, B)>,
 }
@@ -35,13 +35,13 @@ impl<T, K, B, M> SyncQueueShared<T, K, B, M>
 where
   K: TypeKey,
   B: SyncQueueBackend<T>,
-  M: SyncMutexLike<B>,
-  ArcShared<M>: SharedAccess<B>,
+  M: SyncMutexLike<SyncQueue<T, K, B>>,
+  ArcShared<M>: SharedAccess<SyncQueue<T, K, B>>,
 {
   /// Creates a new queue from the provided shared backend.
   #[must_use]
-  pub const fn new(shared_backend: ArcShared<M>) -> Self {
-    Self { inner: shared_backend, _pd: PhantomData }
+  pub const fn new(shared_queue: ArcShared<M>) -> Self {
+    Self { inner: shared_queue, _pd: PhantomData }
   }
 
   /// Enqueues an item according to the backend's overflow policy.
@@ -51,7 +51,7 @@ where
   /// Returns a `QueueError` when the backend rejects the element because the queue is closed,
   /// full, or disconnected.
   pub fn offer(&self, item: T) -> Result<OfferOutcome, QueueError<T>> {
-    self.inner.with_mut(|backend: &mut B| backend.offer(item)).map_err(QueueError::from)?
+    self.inner.with_mut(|queue: &mut SyncQueue<T, K, B>| queue.offer(item)).map_err(QueueError::from)?
   }
 
   /// Dequeues the next available item.
@@ -61,7 +61,7 @@ where
   /// Returns a `QueueError` when the backend cannot supply an element due to closure,
   /// disconnection, or backend-specific failures.
   pub fn poll(&self) -> Result<T, QueueError<T>> {
-    self.inner.with_mut(|backend: &mut B| backend.poll()).map_err(QueueError::from)?
+    self.inner.with_mut(|queue: &mut SyncQueue<T, K, B>| queue.poll()).map_err(QueueError::from)?
   }
 
   /// Requests the backend to transition into the closed state.
@@ -70,13 +70,7 @@ where
   ///
   /// Returns a `QueueError` when the backend refuses to close.
   pub fn close(&self) -> Result<(), QueueError<T>> {
-    self
-      .inner
-      .with_mut(|backend: &mut B| {
-        backend.close();
-        Ok(())
-      })
-      .map_err(QueueError::from)?
+    self.inner.with_mut(|queue: &mut SyncQueue<T, K, B>| queue.close()).map_err(QueueError::from)?
   }
 
   /// Returns the current number of stored elements.
@@ -120,8 +114,8 @@ impl<T, B, M> SyncQueueShared<T, PriorityKey, B, M>
 where
   T: Clone + PriorityMessage,
   B: SyncPriorityBackend<T>,
-  M: SyncMutexLike<B>,
-  ArcShared<M>: SharedAccess<B>,
+  M: SyncMutexLike<SyncQueue<T, PriorityKey, B>>,
+  ArcShared<M>: SharedAccess<SyncQueue<T, PriorityKey, B>>,
   PriorityKey: SupportsPeek,
 {
   /// Retrieves the smallest element without removing it.
@@ -131,21 +125,21 @@ where
   /// Returns a `QueueError` when the backend cannot access the next element due to closure,
   /// disconnection, or backend-specific failures.
   pub fn peek_min(&self) -> Result<Option<T>, QueueError<T>> {
-    self.inner.with_mut(|backend: &mut B| Ok(backend.peek_min().cloned())).map_err(QueueError::from)?
+    self.inner.with_mut(|queue: &mut SyncQueue<T, PriorityKey, B>| queue.peek_min()).map_err(QueueError::from)?
   }
 }
 
 impl<T, B, M> SyncQueueShared<T, MpscKey, B, M>
 where
   B: SyncQueueBackend<T>,
-  M: SyncMutexLike<B>,
-  ArcShared<M>: SharedAccess<B>,
+  M: SyncMutexLike<SyncQueue<T, MpscKey, B>>,
+  ArcShared<M>: SharedAccess<SyncQueue<T, MpscKey, B>>,
   MpscKey: MultiProducer + SingleConsumer,
 {
   /// Creates a queue tailored for MPSC usage.
   #[must_use]
-  pub const fn new_mpsc(shared_backend: ArcShared<M>) -> Self {
-    SyncQueueShared::new(shared_backend)
+  pub const fn new_mpsc(shared_queue: ArcShared<M>) -> Self {
+    SyncQueueShared::new(shared_queue)
   }
 
   /// Returns a cloneable producer for MPSC usage.
@@ -166,14 +160,14 @@ where
 impl<T, B, M> SyncQueueShared<T, SpscKey, B, M>
 where
   B: SyncQueueBackend<T>,
-  M: SyncMutexLike<B>,
-  ArcShared<M>: SharedAccess<B>,
+  M: SyncMutexLike<SyncQueue<T, SpscKey, B>>,
+  ArcShared<M>: SharedAccess<SyncQueue<T, SpscKey, B>>,
   SpscKey: SingleProducer + SingleConsumer,
 {
   /// Creates a queue tailored for SPSC usage.
   #[must_use]
-  pub const fn new_spsc(shared_backend: ArcShared<M>) -> Self {
-    SyncQueueShared::new(shared_backend)
+  pub const fn new_spsc(shared_queue: ArcShared<M>) -> Self {
+    SyncQueueShared::new(shared_queue)
   }
 
   /// Consumes the queue and returns the SPSC producer/consumer pair.
@@ -188,22 +182,23 @@ where
 impl<T, B, M> SyncQueueShared<T, FifoKey, B, M>
 where
   B: SyncQueueBackend<T>,
-  M: SyncMutexLike<B>,
-  ArcShared<M>: SharedAccess<B>,
+  M: SyncMutexLike<SyncQueue<T, FifoKey, B>>,
+  ArcShared<M>: SharedAccess<SyncQueue<T, FifoKey, B>>,
   FifoKey: SingleProducer + SingleConsumer,
 {
   /// Creates a queue tailored for FIFO usage.
   #[must_use]
-  pub const fn new_fifo(shared_backend: ArcShared<M>) -> Self {
-    SyncQueueShared::new(shared_backend)
+  pub const fn new_fifo(shared_queue: ArcShared<M>) -> Self {
+    SyncQueueShared::new(shared_queue)
   }
 }
 
 /// Type alias for an MPSC queue.
-pub type MpscQueue<T, B, M = SpinSyncMutex<B>> = SyncQueueShared<T, MpscKey, B, M>;
+pub type SyncMpscQueueShared<T, B, M = SpinSyncMutex<SyncQueue<T, MpscKey, B>>> = SyncQueueShared<T, MpscKey, B, M>;
 /// Type alias for an SPSC queue.
-pub type SpscQueue<T, B, M = SpinSyncMutex<B>> = SyncQueueShared<T, SpscKey, B, M>;
+pub type SyncSpscQueueShared<T, B, M = SpinSyncMutex<SyncQueue<T, SpscKey, B>>> = SyncQueueShared<T, SpscKey, B, M>;
 /// Type alias for a FIFO queue.
-pub type FifoQueue<T, B, M = SpinSyncMutex<B>> = SyncQueueShared<T, FifoKey, B, M>;
+pub type SyncFifoQueueShared<T, B, M = SpinSyncMutex<SyncQueue<T, FifoKey, B>>> = SyncQueueShared<T, FifoKey, B, M>;
 /// Type alias for a priority queue.
-pub type PriorityQueue<T, B, M = SpinSyncMutex<B>> = SyncQueueShared<T, PriorityKey, B, M>;
+pub type SyncPriorityQueueShared<T, B, M = SpinSyncMutex<SyncQueue<T, PriorityKey, B>>> =
+  SyncQueueShared<T, PriorityKey, B, M>;

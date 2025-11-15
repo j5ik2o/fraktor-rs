@@ -4,14 +4,14 @@ use core::cmp;
 
 use fraktor_utils_core_rs::{
   collections::queue::{
-    QueueError,
+    QueueError, SyncQueue,
     backend::{OfferOutcome, OverflowPolicy, VecDequeBackend},
   },
   sync::{ArcShared, sync_mutex_like::SpinSyncMutex},
 };
 
 use super::{
-  UserQueue, mailbox_queue_offer_future::QueueOfferFuture, mailbox_queue_poll_future::QueuePollFuture,
+  UserQueueShared, mailbox_queue_offer_future::QueueOfferFuture, mailbox_queue_poll_future::QueuePollFuture,
   mailbox_queue_state::QueueState,
 };
 use crate::{
@@ -43,8 +43,9 @@ where
 
   fn new_with(capacity: usize, overflow: OverflowPolicy) -> Self {
     let backend = VecDequeBackend::with_capacity(capacity, overflow);
-    let mutex = SpinSyncMutex::new(backend);
-    let queue = UserQueue::new(ArcShared::new(mutex));
+    let sync_queue = SyncQueue::new_fifo(backend);
+    let mutex = SpinSyncMutex::new(sync_queue);
+    let queue = UserQueueShared::new(ArcShared::new(mutex));
     let state = ArcShared::new(QueueState::new(queue));
     Self { state }
   }

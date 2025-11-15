@@ -11,14 +11,14 @@ use fraktor_utils_core_rs::{
   sync::sync_mutex_like::SyncMutexLike,
 };
 
-use super::UserQueue;
+use super::UserQueueShared;
 use crate::{RuntimeToolbox, ToolboxMutex};
 
 /// Maintains shared queue state and wait queues for asynchronous offers/polls.
 pub struct QueueState<T, TB: RuntimeToolbox>
 where
   T: Send + 'static, {
-  pub(super) queue:            UserQueue<T>,
+  pub(super) queue:            UserQueueShared<T>,
   pub(super) producer_waiters: ToolboxMutex<WaitQueue<QueueError<T>>, TB>,
   pub(super) consumer_waiters: ToolboxMutex<WaitQueue<QueueError<T>>, TB>,
   pub(super) size:             AtomicUsize,
@@ -30,7 +30,7 @@ where
 {
   /// Creates a new queue state wrapper.
   #[must_use]
-  pub fn new(queue: UserQueue<T>) -> Self {
+  pub fn new(queue: UserQueueShared<T>) -> Self {
     Self {
       queue,
       producer_waiters: <TB::MutexFamily as SyncMutexFamily>::create(WaitQueue::new()),

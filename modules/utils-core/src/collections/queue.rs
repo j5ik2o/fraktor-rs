@@ -31,7 +31,9 @@ pub use capabilities::{
 pub use deque_backend::{DequeBackend, DequeBackendGeneric, DequeOfferFuture};
 pub use sync_mpsc_consumer_shared::SyncMpscConsumerShared;
 pub use sync_mpsc_producer_shared::SyncMpscProducerShared;
-pub use sync_queue_shared::{FifoQueue, MpscQueue, PriorityQueue, SpscQueue, SyncQueueShared};
+pub use sync_queue_shared::{
+  SyncFifoQueueShared, SyncMpscQueueShared, SyncPriorityQueueShared, SyncQueueShared, SyncSpscQueueShared,
+};
 pub use sync_spsc_consumer_shared::SyncSpscConsumerShared;
 pub use sync_spsc_producer_shared::SyncSpscProducerShared;
 pub use type_keys::{FifoKey, MpscKey, PriorityKey, SpscKey, TypeKey};
@@ -39,12 +41,11 @@ pub use type_keys::{FifoKey, MpscKey, PriorityKey, SpscKey, TypeKey};
 mod offer_outcome;
 mod overflow_policy;
 mod queue_error;
+mod sync_queue;
 #[cfg(test)]
 mod tests;
 pub use queue_error::QueueError;
-
-/// Default shared queue alias backed by [`VecDequeBackend`].
-pub type SyncFifoQueueShared<T, K = FifoKey> = SyncQueueShared<T, K, VecDequeBackend<T>>;
+pub use sync_queue::*;
 
 /// Default async shared queue alias backed by [`VecDequeBackend`] via the sync adapter.
 pub type AsyncFifoQueueShared<T, K = FifoKey> = AsyncQueueShared<T, K, SyncQueueAsyncAdapter<T, VecDequeBackend<T>>>;
