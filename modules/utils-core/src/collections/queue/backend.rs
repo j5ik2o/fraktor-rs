@@ -2,13 +2,13 @@
 
 mod async_priority_backend;
 mod async_queue_backend;
+mod async_queue_backend_internal;
 /// Priority backend implementations for synchronous queues.
 pub mod sync_priority_backend;
 mod sync_queue_async_adapter;
 mod sync_queue_backend;
 mod sync_queue_backend_internal;
 mod vec_ring_backend;
-mod async_queue_backend_internal;
 
 pub use async_priority_backend::AsyncPriorityBackend;
 pub use async_queue_backend::AsyncQueueBackend;
