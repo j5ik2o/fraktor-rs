@@ -3,8 +3,8 @@
 use core::time::Duration;
 
 use fraktor_utils_core_rs::{
-  DelayFuture, DelayProvider, DelayTrigger,
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+  timing::{DelayFuture, DelayProvider, DelayTrigger},
 };
 
 use super::{

@@ -12,10 +12,10 @@ use core::{
 };
 
 use fraktor_utils_core_rs::{
-  DelayFuture, DelayProvider,
   runtime_toolbox::SyncMutexFamily,
   sync::{ArcShared, NoStdMutex},
   time::{SchedulerCapacityProfile, SchedulerTickHandle},
+  timing::{DelayFuture, DelayProvider},
 };
 use hashbrown::HashMap;
 use proptest::prelude::*;

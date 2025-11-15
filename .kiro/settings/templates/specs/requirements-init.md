@@ -1,9 +1,8 @@
-# Requirements Document
+# 要件ドキュメント
 
-## Project Description (Input)
+## プロジェクト説明 (入力)
 {{PROJECT_DESCRIPTION}}
 
-## Requirements
-<!-- Will be generated in /kiro:spec-requirements phase -->
-
+## 要件
+<!-- /prompts:kiro-spec-requirements フェーズで生成 -->
 

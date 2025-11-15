@@ -4,7 +4,7 @@ use core::cmp;
 
 use fraktor_utils_core_rs::{
   collections::queue::{
-    MpscQueue, QueueError, SyncMpscConsumer, SyncMpscProducer, VecRingStorage,
+    QueueError, VecRingStorage,
     backend::{OfferOutcome, OverflowPolicy, VecRingBackend},
   },
   runtime_toolbox::SyncMutexFamily,
@@ -12,7 +12,7 @@ use fraktor_utils_core_rs::{
 };
 
 use super::{
-  QueueMutex, mailbox_queue_offer_future::QueueOfferFuture, mailbox_queue_poll_future::QueuePollFuture,
+  mailbox_queue_offer_future::QueueOfferFuture, mailbox_queue_poll_future::QueuePollFuture,
   mailbox_queue_state::QueueState,
 };
 use crate::{
@@ -21,17 +21,12 @@ use crate::{
 };
 
 const DEFAULT_QUEUE_CAPACITY: usize = 16;
-type QueueProducer<T, TB> = SyncMpscProducer<T, VecRingBackend<T>, QueueMutex<T, TB>>;
-type QueueConsumer<T, TB> = SyncMpscConsumer<T, VecRingBackend<T>, QueueMutex<T, TB>>;
 
 /// Internal handles wrapping queue producers/consumers.
 pub struct QueueHandles<T, TB: RuntimeToolbox>
 where
   T: Send + 'static, {
-  pub(super) state:     ArcShared<QueueState<T, TB>>,
-  pub(super) _producer: QueueProducer<T, TB>,
-  #[allow(dead_code)]
-  pub(super) consumer:  QueueConsumer<T, TB>,
+  pub(super) state: ArcShared<QueueState<T, TB>>,
 }
 
 impl<T, TB> QueueHandles<T, TB>
@@ -52,10 +47,8 @@ where
     let backend = VecRingBackend::new_with_storage(storage, overflow);
     let mutex = <TB::MutexFamily as SyncMutexFamily>::create(backend);
     let shared = ArcShared::new(mutex);
-    let state = ArcShared::new(QueueState::new(shared.clone()));
-    let queue: MpscQueue<_, VecRingBackend<T>, _> = MpscQueue::new_mpsc(shared);
-    let (producer, consumer) = queue.into_mpsc_pair();
-    Self { state, _producer: producer, consumer }
+    let state = ArcShared::new(QueueState::new(shared));
+    Self { state }
   }
 
   pub(super) fn offer(&self, message: T) -> Result<OfferOutcome, QueueError<T>> {

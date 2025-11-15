@@ -1,43 +1,59 @@
-# Implementation Plan
+# 実装計画
 
-## Task Format Template
+## タスク記述フォーマット
 
-Use this structure for all implementation tasks:
+すべてのタスク生成で以下の形式を使用する:
 
 - [ ] {{MAJOR_NUMBER}}. {{MAJOR_TASK_DESCRIPTION}}
   - {{DETAIL_ITEM_1}}
   - {{DETAIL_ITEM_2}}
   - {{DETAIL_ITEM_3}}
-  - _Requirements: {{REQUIREMENT_IDS}}_
+  - _対応要件: {{REQUIREMENT_IDS}}_
+  - _依存タスク: {{DEPENDENCY_IDS もしくは -}}_
 
 - [ ] {{MAJOR_NUMBER}}.{{SUB_NUMBER}} {{SUB_TASK_DESCRIPTION}}
   - {{DETAIL_ITEM_1}}
   - {{DETAIL_ITEM_2}}
-  - _Requirements: {{REQUIREMENT_IDS}}_
+  - _対応要件: {{REQUIREMENT_IDS}}_
+  - _依存タスク: {{DEPENDENCY_IDS もしくは -}}_
 
-## Example (Reference Only)
+> **ルール**: 親タスク (`{{MAJOR_NUMBER}}.`) は概要のみを記述し、子タスク (`{{MAJOR_NUMBER}}.{{SUB_NUMBER}}`) に具体的な作業内容を書き出す。親タスク直下に詳細 bullet を並べないこと。依存タスクが存在しない場合は `_依存タスク: -_` を必ず記載する。
 
-- [ ] 1. Set up project foundation and infrastructure
-  - Initialize project with required technology stack
-  - Configure server infrastructure and request handling
-  - Establish data storage and caching layer
-  - Set up configuration and environment management
-  - _Requirements: All requirements need foundational setup_
+## 記述例（参考）
 
-- [ ] 2. Build authentication and user management system
-- [ ] 2.1 Implement core authentication functionality
-  - Set up user data storage with validation rules
-  - Implement secure authentication mechanism
-  - Build user registration functionality
-  - Add login and session management features
-  - _Requirements: 7.1, 7.2_
+- [ ] 1. プロジェクト基盤とインフラ準備
+  - _(親タスクなので詳細は書かない)_
+  - _対応要件: 基盤を要する全要件_
+  - _依存タスク: -_
+- [ ] 1.1 リポジトリ初期化と環境構築
+  - 必要な技術スタックでリポジトリを初期化
+  - サーバインフラとリクエスト処理を構成
+  - データストレージとキャッシュ層を用意
+  - 設定／環境管理を整備
+  - _対応要件: 基盤を要する全要件_
+  - _依存タスク: -_
 
-- [ ] 2.2 Enable email service integration
-  - Implement secure credential storage system
-  - Build authentication flow for email providers
-  - Create email connection validation logic
-  - Develop email account management features
-  - _Requirements: 5.1, 5.2, 5.4_
+- [ ] 2. 認証・ユーザ管理システムを構築
+  - _(親タスクなので詳細は書かない)_
+  - _対応要件: 5系, 7系のすべて_
+  - _依存タスク: 1.1_
+- [ ] 2.1 コア認証機能を実装
+  - バリデーション付きのユーザデータ保存領域を準備
+  - 安全な認証メカニズムを実装
+  - ユーザ登録フローを構築
+  - ログイン＋セッション管理を追加
+  - _対応要件: 7.1, 7.2_
+  - _依存タスク: 1.1_
 
-- [ ] 3. Next major task...
+- [ ] 2.2 メールサービス連携を有効化
+  - 資格情報を安全に保存する仕組みを実装
+  - メールプロバイダ向け認証フローを構築
+  - 接続検証ロジックを追加
+  - メールアカウント管理機能を実装
+  - _対応要件: 5.1, 5.2, 5.4_
+  - _依存タスク: 2.1_
 
+- [ ] 3. 次の主要タスク...
+  - _(親タスクなので詳細は書かない)_
+  - _対応要件: 該当要件一式_
+  - _依存タスク: -_

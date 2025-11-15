@@ -5,9 +5,6 @@ pub trait SyncQueueBackend<T> {
   /// Storage implementation backing the queue.
   type Storage: QueueStorage<T>;
 
-  /// Constructs a new backend configured with the provided storage and overflow policy.
-  fn new(storage: Self::Storage, policy: OverflowPolicy) -> Self;
-
   /// Adds an element to the queue according to the configured overflow policy.
   ///
   /// # Errors

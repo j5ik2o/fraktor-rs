@@ -1,11 +1,11 @@
 use core::time::Duration;
 
 mod delay_future;
+mod delay_state;
 mod delay_trigger;
 mod manual_delay_provider;
 
 pub use delay_future::DelayFuture;
-pub(crate) use delay_future::DelayState;
 pub use delay_trigger::DelayTrigger;
 pub use manual_delay_provider::ManualDelayProvider;
 

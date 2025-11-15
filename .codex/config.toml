@@ -1,5 +1,5 @@
-model = "gpt-5.1-codex"
-model_reasoning_effort = "medium"
+model = "gpt-5-codex"
+model_reasoning_effort = "high"
 hide_agent_reasoning = true
 network_access = true
 
@@ -25,7 +25,4 @@ args = ["@playwright/mcp@latest"]
 [mcp_servers.chrome-devtools]
 command = "npx"
 args = ["chrome-devtools-mcp@latest", "--headless=true"]
-
-[notice]
-hide_gpt5_1_migration_prompt = true
 
