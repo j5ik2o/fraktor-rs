@@ -8,8 +8,9 @@ use core::{
 use super::{AsyncMpscQueue, AsyncQueueShared, AsyncSpscQueue};
 use crate::{
   collections::queue::{
-    QueueError,
+    AsyncQueue, QueueError,
     backend::{OfferOutcome, OverflowPolicy, SyncQueueAsyncAdapter, VecDequeBackend},
+    type_keys::{MpscKey, SpscKey},
   },
   sync::{ArcShared, SharedError, async_mutex_like::SpinAsyncMutex, interrupt::InterruptContextPolicy},
 };
@@ -45,9 +46,19 @@ fn block_on<F: Future>(mut future: F) -> F::Output {
 fn make_shared_queue(
   capacity: usize,
   policy: OverflowPolicy,
-) -> ArcShared<SpinAsyncMutex<SyncQueueAsyncAdapter<i32, VecDequeBackend<i32>>>> {
+) -> ArcShared<SpinAsyncMutex<AsyncQueue<i32, SpscKey, SyncQueueAsyncAdapter<i32, VecDequeBackend<i32>>>>> {
   let backend = VecDequeBackend::with_capacity(capacity, policy);
-  ArcShared::new(SpinAsyncMutex::new(SyncQueueAsyncAdapter::new(backend)))
+  let async_queue = AsyncQueue::new_spsc(SyncQueueAsyncAdapter::new(backend));
+  ArcShared::new(SpinAsyncMutex::new(async_queue))
+}
+
+fn make_shared_queue_mpsc(
+  capacity: usize,
+  policy: OverflowPolicy,
+) -> ArcShared<SpinAsyncMutex<AsyncQueue<i32, MpscKey, SyncQueueAsyncAdapter<i32, VecDequeBackend<i32>>>>> {
+  let backend = VecDequeBackend::with_capacity(capacity, policy);
+  let async_queue = AsyncQueue::new_mpsc(SyncQueueAsyncAdapter::new(backend));
+  ArcShared::new(SpinAsyncMutex::new(async_queue))
 }
 
 struct DenyPolicy;
@@ -62,9 +73,10 @@ type DenyMutex<T> = SpinAsyncMutex<T, DenyPolicy>;
 
 fn make_interrupt_shared_queue(
   capacity: usize,
-) -> ArcShared<DenyMutex<SyncQueueAsyncAdapter<i32, VecDequeBackend<i32>>>> {
+) -> ArcShared<DenyMutex<AsyncQueue<i32, SpscKey, SyncQueueAsyncAdapter<i32, VecDequeBackend<i32>>>>> {
   let backend = VecDequeBackend::with_capacity(capacity, OverflowPolicy::Block);
-  ArcShared::new(DenyMutex::new(SyncQueueAsyncAdapter::new(backend)))
+  let async_queue = AsyncQueue::new_spsc(SyncQueueAsyncAdapter::new(backend));
+  ArcShared::new(DenyMutex::new(async_queue))
 }
 
 #[test]
@@ -81,7 +93,7 @@ fn offer_and_poll_operates_async_queue() {
 
 #[test]
 fn into_mpsc_pair_roundtrip() {
-  let shared = make_shared_queue(4, OverflowPolicy::Block);
+  let shared = make_shared_queue_mpsc(4, OverflowPolicy::Block);
   let queue: AsyncMpscQueue<i32, _, _> = AsyncQueueShared::new_mpsc(shared);
   let (producer, consumer) = queue.into_mpsc_pair();
 

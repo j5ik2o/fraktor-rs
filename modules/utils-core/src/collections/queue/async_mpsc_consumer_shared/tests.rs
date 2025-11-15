@@ -8,7 +8,7 @@ use core::{
 use super::AsyncMpscConsumerShared;
 use crate::{
   collections::queue::{
-    async_queue_shared::AsyncQueueShared,
+    AsyncQueue, async_queue_shared::AsyncQueueShared,
     backend::{OverflowPolicy, SyncQueueAsyncAdapter, VecDequeBackend},
     type_keys::MpscKey,
   },
@@ -46,9 +46,10 @@ fn block_on<F: Future>(mut future: F) -> F::Output {
 fn make_shared_queue(
   capacity: usize,
   policy: OverflowPolicy,
-) -> ArcShared<SpinAsyncMutex<SyncQueueAsyncAdapter<i32, VecDequeBackend<i32>>>> {
+) -> ArcShared<SpinAsyncMutex<AsyncQueue<i32, MpscKey, SyncQueueAsyncAdapter<i32, VecDequeBackend<i32>>>>> {
   let backend = VecDequeBackend::with_capacity(capacity, policy);
-  ArcShared::new(SpinAsyncMutex::new(SyncQueueAsyncAdapter::new(backend)))
+  let async_queue = AsyncQueue::new_mpsc(SyncQueueAsyncAdapter::new(backend));
+  ArcShared::new(SpinAsyncMutex::new(async_queue))
 }
 
 #[test]

@@ -1,8 +1,9 @@
 use core::marker::PhantomData;
 
 use super::{
-  async_mpsc_consumer_shared::AsyncMpscConsumerShared, async_mpsc_producer_shared::AsyncMpscProducerShared,
-  async_spsc_consumer_shared::AsyncSpscConsumerShared, async_spsc_producer_shared::AsyncSpscProducerShared,
+  AsyncQueue, async_mpsc_consumer_shared::AsyncMpscConsumerShared,
+  async_mpsc_producer_shared::AsyncMpscProducerShared, async_spsc_consumer_shared::AsyncSpscConsumerShared,
+  async_spsc_producer_shared::AsyncSpscProducerShared,
 };
 use crate::{
   collections::{
@@ -23,14 +24,15 @@ use crate::{
 #[cfg(test)]
 mod tests;
 
-pub(crate) async fn offer_shared<T, B, A>(shared: &ArcShared<A>, item: T) -> Result<OfferOutcome, QueueError<T>>
+pub(crate) async fn offer_shared<T, K, B, A>(shared: &ArcShared<A>, item: T) -> Result<OfferOutcome, QueueError<T>>
 where
+  K: TypeKey,
   B: AsyncQueueBackend<T>,
-  A: AsyncMutexLike<B>, {
+  A: AsyncMutexLike<AsyncQueue<T, K, B>>, {
   let mut value = Some(item);
 
   loop {
-    let mut guard = <A as AsyncMutexLike<B>>::lock(&**shared).await.map_err(QueueError::from)?;
+    let mut guard = <A as AsyncMutexLike<AsyncQueue<T, K, B>>>::lock(&**shared).await.map_err(QueueError::from)?;
 
     if guard.is_closed() {
       let Some(item) = value.take() else {
@@ -65,12 +67,13 @@ where
   }
 }
 
-pub(crate) async fn poll_shared<T, B, A>(shared: &ArcShared<A>) -> Result<T, QueueError<T>>
+pub(crate) async fn poll_shared<T, K, B, A>(shared: &ArcShared<A>) -> Result<T, QueueError<T>>
 where
+  K: TypeKey,
   B: AsyncQueueBackend<T>,
-  A: AsyncMutexLike<B>, {
+  A: AsyncMutexLike<AsyncQueue<T, K, B>>, {
   loop {
-    let mut guard = <A as AsyncMutexLike<B>>::lock(&**shared).await.map_err(QueueError::from)?;
+    let mut guard = <A as AsyncMutexLike<AsyncQueue<T, K, B>>>::lock(&**shared).await.map_err(QueueError::from)?;
 
     if guard.is_empty() {
       if guard.is_closed() {
@@ -97,12 +100,12 @@ where
   }
 }
 
-/// Async queue API wrapping a shared backend guarded by an async-capable mutex.
-pub struct AsyncQueueShared<T, K, B, A = SpinAsyncMutex<B>>
+/// Async queue API wrapping a shared queue guarded by an async-capable mutex.
+pub struct AsyncQueueShared<T, K, B, A = SpinAsyncMutex<AsyncQueue<T, K, B>>>
 where
   K: TypeKey,
   B: AsyncQueueBackend<T>,
-  A: AsyncMutexLike<B>, {
+  A: AsyncMutexLike<AsyncQueue<T, K, B>>, {
   inner: ArcShared<A>,
   _pd:   PhantomData<(T, K, B)>,
 }
@@ -111,7 +114,7 @@ impl<T, K, B, A> Clone for AsyncQueueShared<T, K, B, A>
 where
   K: TypeKey,
   B: AsyncQueueBackend<T>,
-  A: AsyncMutexLike<B>,
+  A: AsyncMutexLike<AsyncQueue<T, K, B>>,
 {
   fn clone(&self) -> Self {
     Self { inner: self.inner.clone(), _pd: PhantomData }
@@ -122,12 +125,12 @@ impl<T, K, B, A> AsyncQueueShared<T, K, B, A>
 where
   K: TypeKey,
   B: AsyncQueueBackend<T>,
-  A: AsyncMutexLike<B>,
+  A: AsyncMutexLike<AsyncQueue<T, K, B>>,
 {
-  /// Creates a new async queue from the provided shared backend.
+  /// Creates a new async queue from the provided shared queue.
   #[must_use]
-  pub const fn new(shared_backend: ArcShared<A>) -> Self {
-    Self { inner: shared_backend, _pd: PhantomData }
+  pub const fn new(shared_queue: ArcShared<A>) -> Self {
+    Self { inner: shared_queue, _pd: PhantomData }
   }
 
   /// Adds an element to the queue according to the backend's policy.
@@ -137,7 +140,7 @@ where
   /// Returns a `QueueError` when the backend rejects the element, such as when the queue is closed,
   /// full, or disconnected.
   pub async fn offer(&self, item: T) -> Result<OfferOutcome, QueueError<T>> {
-    offer_shared::<T, B, A>(&self.inner, item).await
+    offer_shared::<T, K, B, A>(&self.inner, item).await
   }
 
   /// Removes and returns the next available item.
@@ -147,7 +150,7 @@ where
   /// Returns a `QueueError` when the backend cannot supply an item due to closure, disconnection,
   /// or backend-specific failures.
   pub async fn poll(&self) -> Result<T, QueueError<T>> {
-    poll_shared::<T, B, A>(&self.inner).await
+    poll_shared::<T, K, B, A>(&self.inner).await
   }
 
   /// Requests the backend to transition into the closed state.
@@ -156,7 +159,7 @@ where
   ///
   /// Returns a `QueueError` when the backend refuses to close.
   pub async fn close(&self) -> Result<(), QueueError<T>> {
-    let mut guard = <A as AsyncMutexLike<B>>::lock(&*self.inner).await.map_err(QueueError::from)?;
+    let mut guard = <A as AsyncMutexLike<AsyncQueue<T, K, B>>>::lock(&*self.inner).await.map_err(QueueError::from)?;
     guard.close().await
   }
 
@@ -166,7 +169,7 @@ where
   ///
   /// Returns a `QueueError` when the backend cannot report its length.
   pub async fn len(&self) -> Result<usize, QueueError<T>> {
-    let guard = <A as AsyncMutexLike<B>>::lock(&*self.inner).await.map_err(QueueError::from)?;
+    let guard = <A as AsyncMutexLike<AsyncQueue<T, K, B>>>::lock(&*self.inner).await.map_err(QueueError::from)?;
     Ok(guard.len())
   }
 
@@ -176,7 +179,7 @@ where
   ///
   /// Returns a `QueueError` when the backend cannot expose its capacity.
   pub async fn capacity(&self) -> Result<usize, QueueError<T>> {
-    let guard = <A as AsyncMutexLike<B>>::lock(&*self.inner).await.map_err(QueueError::from)?;
+    let guard = <A as AsyncMutexLike<AsyncQueue<T, K, B>>>::lock(&*self.inner).await.map_err(QueueError::from)?;
     Ok(guard.capacity())
   }
 
@@ -187,7 +190,7 @@ where
   /// Returns a `QueueError` when the backend cannot determine emptiness due to closure or
   /// disconnection.
   pub async fn is_empty(&self) -> Result<bool, QueueError<T>> {
-    let guard = <A as AsyncMutexLike<B>>::lock(&*self.inner).await.map_err(QueueError::from)?;
+    let guard = <A as AsyncMutexLike<AsyncQueue<T, K, B>>>::lock(&*self.inner).await.map_err(QueueError::from)?;
     Ok(guard.is_empty())
   }
 
@@ -197,11 +200,11 @@ where
   ///
   /// Returns a `QueueError` when the backend cannot determine fullness.
   pub async fn is_full(&self) -> Result<bool, QueueError<T>> {
-    let guard = <A as AsyncMutexLike<B>>::lock(&*self.inner).await.map_err(QueueError::from)?;
+    let guard = <A as AsyncMutexLike<AsyncQueue<T, K, B>>>::lock(&*self.inner).await.map_err(QueueError::from)?;
     Ok(guard.is_full())
   }
 
-  /// Provides access to the underlying shared backend.
+  /// Provides access to the underlying shared queue.
   #[must_use]
   pub const fn shared(&self) -> &ArcShared<A> {
     &self.inner
@@ -212,7 +215,7 @@ impl<T, B, A> AsyncQueueShared<T, PriorityKey, B, A>
 where
   T: Clone + PriorityMessage,
   B: AsyncPriorityBackend<T>,
-  A: AsyncMutexLike<B>,
+  A: AsyncMutexLike<AsyncQueue<T, PriorityKey, B>>,
   PriorityKey: SupportsPeek,
 {
   /// Retrieves the smallest element without removing it.
@@ -222,21 +225,21 @@ where
   /// Returns a `QueueError` when the backend cannot access the next element due to closure or
   /// disconnection.
   pub async fn peek_min(&self) -> Result<Option<T>, QueueError<T>> {
-    let guard = <A as AsyncMutexLike<B>>::lock(&*self.inner).await.map_err(QueueError::from)?;
-    Ok(guard.peek_min().cloned())
+    let guard = <A as AsyncMutexLike<AsyncQueue<T, PriorityKey, B>>>::lock(&*self.inner).await.map_err(QueueError::from)?;
+    Ok(guard.peek_min()?)
   }
 }
 
 impl<T, B, A> AsyncQueueShared<T, MpscKey, B, A>
 where
   B: AsyncQueueBackend<T>,
-  A: AsyncMutexLike<B>,
+  A: AsyncMutexLike<AsyncQueue<T, MpscKey, B>>,
   MpscKey: MultiProducer + SingleConsumer,
 {
   /// Creates an async queue tailored for MPSC usage.
   #[must_use]
-  pub const fn new_mpsc(shared_backend: ArcShared<A>) -> Self {
-    Self::new(shared_backend)
+  pub const fn new_mpsc(shared_queue: ArcShared<A>) -> Self {
+    Self::new(shared_queue)
   }
 
   /// Returns a cloneable producer for MPSC usage.
@@ -257,13 +260,13 @@ where
 impl<T, B, A> AsyncQueueShared<T, SpscKey, B, A>
 where
   B: AsyncQueueBackend<T>,
-  A: AsyncMutexLike<B>,
+  A: AsyncMutexLike<AsyncQueue<T, SpscKey, B>>,
   SpscKey: SingleProducer + SingleConsumer,
 {
   /// Creates an async queue tailored for SPSC usage.
   #[must_use]
-  pub const fn new_spsc(shared_backend: ArcShared<A>) -> Self {
-    Self::new(shared_backend)
+  pub const fn new_spsc(shared_queue: ArcShared<A>) -> Self {
+    Self::new(shared_queue)
   }
 
   /// Consumes the queue and returns the SPSC producer/consumer pair.
@@ -278,21 +281,21 @@ where
 impl<T, B, A> AsyncQueueShared<T, FifoKey, B, A>
 where
   B: AsyncQueueBackend<T>,
-  A: AsyncMutexLike<B>,
+  A: AsyncMutexLike<AsyncQueue<T, FifoKey, B>>,
   FifoKey: SingleProducer + SingleConsumer,
 {
   /// Creates an async queue tailored for FIFO usage.
   #[must_use]
-  pub const fn new_fifo(shared_backend: ArcShared<A>) -> Self {
-    Self::new(shared_backend)
+  pub const fn new_fifo(shared_queue: ArcShared<A>) -> Self {
+    Self::new(shared_queue)
   }
 }
 
 /// Type alias for an async MPSC queue.
-pub type AsyncMpscQueue<T, B, A = SpinAsyncMutex<B>> = AsyncQueueShared<T, MpscKey, B, A>;
+pub type AsyncMpscQueue<T, B, A = SpinAsyncMutex<AsyncQueue<T, MpscKey, B>>> = AsyncQueueShared<T, MpscKey, B, A>;
 /// Type alias for an async SPSC queue.
-pub type AsyncSpscQueue<T, B, A = SpinAsyncMutex<B>> = AsyncQueueShared<T, SpscKey, B, A>;
+pub type AsyncSpscQueue<T, B, A = SpinAsyncMutex<AsyncQueue<T, SpscKey, B>>> = AsyncQueueShared<T, SpscKey, B, A>;
 /// Type alias for an async FIFO queue.
-pub type AsyncFifoQueue<T, B, A = SpinAsyncMutex<B>> = AsyncQueueShared<T, FifoKey, B, A>;
+pub type AsyncFifoQueue<T, B, A = SpinAsyncMutex<AsyncQueue<T, FifoKey, B>>> = AsyncQueueShared<T, FifoKey, B, A>;
 /// Type alias for an async priority queue.
-pub type AsyncPriorityQueue<T, B, A = SpinAsyncMutex<B>> = AsyncQueueShared<T, PriorityKey, B, A>;
+pub type AsyncPriorityQueue<T, B, A = SpinAsyncMutex<AsyncQueue<T, PriorityKey, B>>> = AsyncQueueShared<T, PriorityKey, B, A>;
