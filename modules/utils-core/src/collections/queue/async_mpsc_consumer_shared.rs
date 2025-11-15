@@ -3,7 +3,7 @@ mod tests;
 
 use core::marker::PhantomData;
 
-use super::async_queue::poll_shared;
+use super::async_queue_shared::poll_shared;
 use crate::{
   collections::queue::{QueueError, backend::AsyncQueueBackend},
   sync::{
@@ -14,7 +14,7 @@ use crate::{
 
 /// Async consumer for queues tagged with
 /// [`MpscKey`](crate::collections::queue::type_keys::MpscKey).
-pub struct AsyncMpscConsumer<T, B, A = SpinAsyncMutex<B>>
+pub struct AsyncMpscConsumerShared<T, B, A = SpinAsyncMutex<B>>
 where
   B: AsyncQueueBackend<T>,
   A: AsyncMutexLike<B>, {
@@ -22,7 +22,7 @@ where
   _pd:              PhantomData<(T, B)>,
 }
 
-impl<T, B, A> AsyncMpscConsumer<T, B, A>
+impl<T, B, A> AsyncMpscConsumerShared<T, B, A>
 where
   B: AsyncQueueBackend<T>,
   A: AsyncMutexLike<B>,

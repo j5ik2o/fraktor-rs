@@ -1,6 +1,6 @@
 use core::marker::PhantomData;
 
-use super::async_queue::offer_shared;
+use super::async_queue_shared::offer_shared;
 use crate::{
   collections::queue::{
     QueueError,
@@ -14,7 +14,7 @@ use crate::{
 
 /// Async producer for queues tagged with
 /// [`MpscKey`](crate::collections::queue::type_keys::MpscKey).
-pub struct AsyncMpscProducer<T, B, A = SpinAsyncMutex<B>>
+pub struct AsyncMpscProducerShared<T, B, A = SpinAsyncMutex<B>>
 where
   B: AsyncQueueBackend<T>,
   A: AsyncMutexLike<B>, {
@@ -22,7 +22,7 @@ where
   _pd:              PhantomData<(T, B)>,
 }
 
-impl<T, B, A> AsyncMpscProducer<T, B, A>
+impl<T, B, A> AsyncMpscProducerShared<T, B, A>
 where
   B: AsyncQueueBackend<T>,
   A: AsyncMutexLike<B>,
@@ -48,7 +48,7 @@ where
   }
 }
 
-impl<T, B, A> Clone for AsyncMpscProducer<T, B, A>
+impl<T, B, A> Clone for AsyncMpscProducerShared<T, B, A>
 where
   B: AsyncQueueBackend<T>,
   A: AsyncMutexLike<B>,

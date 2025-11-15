@@ -7,7 +7,7 @@ use crate::{
 
 /// Consumer for queues tagged with
 /// [`MpscKey`](crate::collections::queue::type_keys::MpscKey).
-pub struct SyncMpscConsumer<T, B, M>
+pub struct SyncMpscConsumerShared<T, B, M>
 where
   B: SyncQueueBackend<T>,
   M: SyncMutexLike<B>, {
@@ -15,7 +15,7 @@ where
   _pd:              PhantomData<(T, B)>,
 }
 
-impl<T, B, M> SyncMpscConsumer<T, B, M>
+impl<T, B, M> SyncMpscConsumerShared<T, B, M>
 where
   B: SyncQueueBackend<T>,
   M: SyncMutexLike<B>,

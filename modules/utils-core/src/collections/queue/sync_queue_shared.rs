@@ -1,8 +1,8 @@
 use core::marker::PhantomData;
 
 use super::{
-  sync_mpsc_consumer::SyncMpscConsumer, sync_mpsc_producer::SyncMpscProducer, sync_spsc_consumer::SyncSpscConsumer,
-  sync_spsc_producer::SyncSpscProducer,
+  sync_mpsc_consumer_shared::SyncMpscConsumerShared, sync_mpsc_producer_shared::SyncMpscProducerShared,
+  sync_spsc_consumer_shared::SyncSpscConsumerShared, sync_spsc_producer_shared::SyncSpscProducerShared,
 };
 use crate::{
   collections::{
@@ -22,7 +22,7 @@ use crate::{
 
 /// Queue API parameterised by element type, type key, backend, and shared guard.
 #[derive(Clone)]
-pub struct SyncQueue<T, K, B, M = SpinSyncMutex<B>>
+pub struct SyncQueueShared<T, K, B, M = SpinSyncMutex<B>>
 where
   K: TypeKey,
   B: SyncQueueBackend<T>,
@@ -31,7 +31,7 @@ where
   _pd:   PhantomData<(T, K, B)>,
 }
 
-impl<T, K, B, M> SyncQueue<T, K, B, M>
+impl<T, K, B, M> SyncQueueShared<T, K, B, M>
 where
   K: TypeKey,
   B: SyncQueueBackend<T>,
@@ -116,7 +116,7 @@ where
   }
 }
 
-impl<T, B, M> SyncQueue<T, PriorityKey, B, M>
+impl<T, B, M> SyncQueueShared<T, PriorityKey, B, M>
 where
   T: Clone + PriorityMessage,
   B: SyncPriorityBackend<T>,
@@ -135,7 +135,7 @@ where
   }
 }
 
-impl<T, B, M> SyncQueue<T, MpscKey, B, M>
+impl<T, B, M> SyncQueueShared<T, MpscKey, B, M>
 where
   B: SyncQueueBackend<T>,
   M: SyncMutexLike<B>,
@@ -145,25 +145,25 @@ where
   /// Creates a queue tailored for MPSC usage.
   #[must_use]
   pub const fn new_mpsc(shared_backend: ArcShared<M>) -> Self {
-    SyncQueue::new(shared_backend)
+    SyncQueueShared::new(shared_backend)
   }
 
   /// Returns a cloneable producer for MPSC usage.
   #[must_use]
-  pub fn producer_clone(&self) -> SyncMpscProducer<T, B, M> {
-    SyncMpscProducer::new(self.inner.clone())
+  pub fn producer_clone(&self) -> SyncMpscProducerShared<T, B, M> {
+    SyncMpscProducerShared::new(self.inner.clone())
   }
 
   /// Consumes the queue and returns the producer/consumer pair.
   #[must_use]
-  pub fn into_mpsc_pair(self) -> (SyncMpscProducer<T, B, M>, SyncMpscConsumer<T, B, M>) {
-    let consumer = SyncMpscConsumer::new(self.inner.clone());
-    let producer = SyncMpscProducer::new(self.inner);
+  pub fn into_mpsc_pair(self) -> (SyncMpscProducerShared<T, B, M>, SyncMpscConsumerShared<T, B, M>) {
+    let consumer = SyncMpscConsumerShared::new(self.inner.clone());
+    let producer = SyncMpscProducerShared::new(self.inner);
     (producer, consumer)
   }
 }
 
-impl<T, B, M> SyncQueue<T, SpscKey, B, M>
+impl<T, B, M> SyncQueueShared<T, SpscKey, B, M>
 where
   B: SyncQueueBackend<T>,
   M: SyncMutexLike<B>,
@@ -173,19 +173,19 @@ where
   /// Creates a queue tailored for SPSC usage.
   #[must_use]
   pub const fn new_spsc(shared_backend: ArcShared<M>) -> Self {
-    SyncQueue::new(shared_backend)
+    SyncQueueShared::new(shared_backend)
   }
 
   /// Consumes the queue and returns the SPSC producer/consumer pair.
   #[must_use]
-  pub fn into_spsc_pair(self) -> (SyncSpscProducer<T, B, M>, SyncSpscConsumer<T, B, M>) {
-    let consumer = SyncSpscConsumer::new(self.inner.clone());
-    let producer = SyncSpscProducer::new(self.inner);
+  pub fn into_spsc_pair(self) -> (SyncSpscProducerShared<T, B, M>, SyncSpscConsumerShared<T, B, M>) {
+    let consumer = SyncSpscConsumerShared::new(self.inner.clone());
+    let producer = SyncSpscProducerShared::new(self.inner);
     (producer, consumer)
   }
 }
 
-impl<T, B, M> SyncQueue<T, FifoKey, B, M>
+impl<T, B, M> SyncQueueShared<T, FifoKey, B, M>
 where
   B: SyncQueueBackend<T>,
   M: SyncMutexLike<B>,
@@ -195,15 +195,15 @@ where
   /// Creates a queue tailored for FIFO usage.
   #[must_use]
   pub const fn new_fifo(shared_backend: ArcShared<M>) -> Self {
-    SyncQueue::new(shared_backend)
+    SyncQueueShared::new(shared_backend)
   }
 }
 
 /// Type alias for an MPSC queue.
-pub type MpscQueue<T, B, M = SpinSyncMutex<B>> = SyncQueue<T, MpscKey, B, M>;
+pub type MpscQueue<T, B, M = SpinSyncMutex<B>> = SyncQueueShared<T, MpscKey, B, M>;
 /// Type alias for an SPSC queue.
-pub type SpscQueue<T, B, M = SpinSyncMutex<B>> = SyncQueue<T, SpscKey, B, M>;
+pub type SpscQueue<T, B, M = SpinSyncMutex<B>> = SyncQueueShared<T, SpscKey, B, M>;
 /// Type alias for a FIFO queue.
-pub type FifoQueue<T, B, M = SpinSyncMutex<B>> = SyncQueue<T, FifoKey, B, M>;
+pub type FifoQueue<T, B, M = SpinSyncMutex<B>> = SyncQueueShared<T, FifoKey, B, M>;
 /// Type alias for a priority queue.
-pub type PriorityQueue<T, B, M = SpinSyncMutex<B>> = SyncQueue<T, PriorityKey, B, M>;
+pub type PriorityQueue<T, B, M = SpinSyncMutex<B>> = SyncQueueShared<T, PriorityKey, B, M>;

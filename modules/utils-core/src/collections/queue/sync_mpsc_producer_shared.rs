@@ -1,8 +1,5 @@
 use core::marker::PhantomData;
 
-#[cfg(test)]
-mod tests;
-
 use crate::{
   collections::queue::{
     QueueError,
@@ -12,8 +9,8 @@ use crate::{
 };
 
 /// Producer for queues tagged with
-/// [`SpscKey`](crate::collections::queue::type_keys::SpscKey).
-pub struct SyncSpscProducer<T, B, M>
+/// [`MpscKey`](crate::collections::queue::type_keys::MpscKey).
+pub struct SyncMpscProducerShared<T, B, M>
 where
   B: SyncQueueBackend<T>,
   M: SyncMutexLike<B>, {
@@ -21,7 +18,7 @@ where
   _pd:              PhantomData<(T, B)>,
 }
 
-impl<T, B, M> SyncSpscProducer<T, B, M>
+impl<T, B, M> SyncMpscProducerShared<T, B, M>
 where
   B: SyncQueueBackend<T>,
   M: SyncMutexLike<B>,
@@ -31,7 +28,7 @@ where
     Self { inner, _pd: PhantomData }
   }
 
-  /// Offers an element to the queue.
+  /// Offers an element to the queue using the underlying backend.
   ///
   /// # Errors
   ///
@@ -39,5 +36,22 @@ where
   /// full, or disconnected.
   pub fn offer(&self, item: T) -> Result<OfferOutcome, QueueError<T>> {
     self.inner.with_mut(|backend: &mut B| backend.offer(item)).map_err(QueueError::from).and_then(|result| result)
+  }
+
+  /// Provides access to the shared backend.
+  #[must_use]
+  pub const fn shared(&self) -> &ArcShared<M> {
+    &self.inner
+  }
+}
+
+impl<T, B, M> Clone for SyncMpscProducerShared<T, B, M>
+where
+  B: SyncQueueBackend<T>,
+  M: SyncMutexLike<B>,
+  ArcShared<M>: SharedAccess<B>,
+{
+  fn clone(&self) -> Self {
+    Self::new(self.inner.clone())
   }
 }

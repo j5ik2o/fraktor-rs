@@ -1,8 +1,8 @@
 use core::marker::PhantomData;
 
 use super::{
-  async_mpsc_consumer::AsyncMpscConsumer, async_mpsc_producer::AsyncMpscProducer,
-  async_spsc_consumer::AsyncSpscConsumer, async_spsc_producer::AsyncSpscProducer,
+  async_mpsc_consumer_shared::AsyncMpscConsumerShared, async_mpsc_producer_shared::AsyncMpscProducerShared,
+  async_spsc_consumer_shared::AsyncSpscConsumerShared, async_spsc_producer_shared::AsyncSpscProducerShared,
 };
 use crate::{
   collections::{
@@ -98,7 +98,7 @@ where
 }
 
 /// Async queue API wrapping a shared backend guarded by an async-capable mutex.
-pub struct AsyncQueue<T, K, B, A = SpinAsyncMutex<B>>
+pub struct AsyncQueueShared<T, K, B, A = SpinAsyncMutex<B>>
 where
   K: TypeKey,
   B: AsyncQueueBackend<T>,
@@ -107,7 +107,7 @@ where
   _pd:   PhantomData<(T, K, B)>,
 }
 
-impl<T, K, B, A> Clone for AsyncQueue<T, K, B, A>
+impl<T, K, B, A> Clone for AsyncQueueShared<T, K, B, A>
 where
   K: TypeKey,
   B: AsyncQueueBackend<T>,
@@ -118,7 +118,7 @@ where
   }
 }
 
-impl<T, K, B, A> AsyncQueue<T, K, B, A>
+impl<T, K, B, A> AsyncQueueShared<T, K, B, A>
 where
   K: TypeKey,
   B: AsyncQueueBackend<T>,
@@ -208,7 +208,7 @@ where
   }
 }
 
-impl<T, B, A> AsyncQueue<T, PriorityKey, B, A>
+impl<T, B, A> AsyncQueueShared<T, PriorityKey, B, A>
 where
   T: Clone + PriorityMessage,
   B: AsyncPriorityBackend<T>,
@@ -227,7 +227,7 @@ where
   }
 }
 
-impl<T, B, A> AsyncQueue<T, MpscKey, B, A>
+impl<T, B, A> AsyncQueueShared<T, MpscKey, B, A>
 where
   B: AsyncQueueBackend<T>,
   A: AsyncMutexLike<B>,
@@ -241,20 +241,20 @@ where
 
   /// Returns a cloneable producer for MPSC usage.
   #[must_use]
-  pub fn producer_clone(&self) -> AsyncMpscProducer<T, B, A> {
-    AsyncMpscProducer::new(self.inner.clone())
+  pub fn producer_clone(&self) -> AsyncMpscProducerShared<T, B, A> {
+    AsyncMpscProducerShared::new(self.inner.clone())
   }
 
   /// Consumes the queue and returns the producer/consumer pair.
   #[must_use]
-  pub fn into_mpsc_pair(self) -> (AsyncMpscProducer<T, B, A>, AsyncMpscConsumer<T, B, A>) {
-    let consumer = AsyncMpscConsumer::new(self.inner.clone());
-    let producer = AsyncMpscProducer::new(self.inner);
+  pub fn into_mpsc_pair(self) -> (AsyncMpscProducerShared<T, B, A>, AsyncMpscConsumerShared<T, B, A>) {
+    let consumer = AsyncMpscConsumerShared::new(self.inner.clone());
+    let producer = AsyncMpscProducerShared::new(self.inner);
     (producer, consumer)
   }
 }
 
-impl<T, B, A> AsyncQueue<T, SpscKey, B, A>
+impl<T, B, A> AsyncQueueShared<T, SpscKey, B, A>
 where
   B: AsyncQueueBackend<T>,
   A: AsyncMutexLike<B>,
@@ -268,14 +268,14 @@ where
 
   /// Consumes the queue and returns the SPSC producer/consumer pair.
   #[must_use]
-  pub fn into_spsc_pair(self) -> (AsyncSpscProducer<T, B, A>, AsyncSpscConsumer<T, B, A>) {
-    let consumer = AsyncSpscConsumer::new(self.inner.clone());
-    let producer = AsyncSpscProducer::new(self.inner);
+  pub fn into_spsc_pair(self) -> (AsyncSpscProducerShared<T, B, A>, AsyncSpscConsumerShared<T, B, A>) {
+    let consumer = AsyncSpscConsumerShared::new(self.inner.clone());
+    let producer = AsyncSpscProducerShared::new(self.inner);
     (producer, consumer)
   }
 }
 
-impl<T, B, A> AsyncQueue<T, FifoKey, B, A>
+impl<T, B, A> AsyncQueueShared<T, FifoKey, B, A>
 where
   B: AsyncQueueBackend<T>,
   A: AsyncMutexLike<B>,
@@ -289,10 +289,10 @@ where
 }
 
 /// Type alias for an async MPSC queue.
-pub type AsyncMpscQueue<T, B, A = SpinAsyncMutex<B>> = AsyncQueue<T, MpscKey, B, A>;
+pub type AsyncMpscQueue<T, B, A = SpinAsyncMutex<B>> = AsyncQueueShared<T, MpscKey, B, A>;
 /// Type alias for an async SPSC queue.
-pub type AsyncSpscQueue<T, B, A = SpinAsyncMutex<B>> = AsyncQueue<T, SpscKey, B, A>;
+pub type AsyncSpscQueue<T, B, A = SpinAsyncMutex<B>> = AsyncQueueShared<T, SpscKey, B, A>;
 /// Type alias for an async FIFO queue.
-pub type AsyncFifoQueue<T, B, A = SpinAsyncMutex<B>> = AsyncQueue<T, FifoKey, B, A>;
+pub type AsyncFifoQueue<T, B, A = SpinAsyncMutex<B>> = AsyncQueueShared<T, FifoKey, B, A>;
 /// Type alias for an async priority queue.
-pub type AsyncPriorityQueue<T, B, A = SpinAsyncMutex<B>> = AsyncQueue<T, PriorityKey, B, A>;
+pub type AsyncPriorityQueue<T, B, A = SpinAsyncMutex<B>> = AsyncQueueShared<T, PriorityKey, B, A>;

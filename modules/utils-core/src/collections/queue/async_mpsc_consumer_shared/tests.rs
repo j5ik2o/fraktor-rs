@@ -5,10 +5,10 @@ use core::{
   task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
 };
 
-use super::AsyncMpscConsumer;
+use super::AsyncMpscConsumerShared;
 use crate::{
   collections::queue::{
-    async_queue::AsyncQueue,
+    async_queue_shared::AsyncQueueShared,
     backend::{OverflowPolicy, SyncQueueAsyncAdapter, VecDequeBackend},
     type_keys::MpscKey,
   },
@@ -54,10 +54,10 @@ fn make_shared_queue(
 #[test]
 fn async_mpsc_consumer_poll() {
   let shared = make_shared_queue(4, OverflowPolicy::Block);
-  let queue = AsyncQueue::<i32, MpscKey, _, _>::new_mpsc(shared);
+  let queue = AsyncQueueShared::<i32, MpscKey, _, _>::new_mpsc(shared);
   let (_producer, consumer) = queue.into_mpsc_pair();
 
-  let queue2 = AsyncQueue::<i32, MpscKey, _, _>::new_mpsc(consumer.shared().clone());
+  let queue2 = AsyncQueueShared::<i32, MpscKey, _, _>::new_mpsc(consumer.shared().clone());
   let (producer, _consumer) = queue2.into_mpsc_pair();
   block_on(producer.offer(42)).unwrap();
 
@@ -68,7 +68,7 @@ fn async_mpsc_consumer_poll() {
 #[test]
 fn async_mpsc_consumer_is_empty() {
   let shared = make_shared_queue(4, OverflowPolicy::Block);
-  let consumer = AsyncMpscConsumer::new(shared);
+  let consumer = AsyncMpscConsumerShared::new(shared);
 
   assert_eq!(block_on(consumer.is_empty()), Ok(true));
 }
@@ -76,7 +76,7 @@ fn async_mpsc_consumer_is_empty() {
 #[test]
 fn async_mpsc_consumer_len() {
   let shared = make_shared_queue(4, OverflowPolicy::Block);
-  let queue = AsyncQueue::<i32, MpscKey, _, _>::new_mpsc(shared);
+  let queue = AsyncQueueShared::<i32, MpscKey, _, _>::new_mpsc(shared);
   let (producer, consumer) = queue.into_mpsc_pair();
 
   block_on(producer.offer(1)).unwrap();
@@ -88,7 +88,7 @@ fn async_mpsc_consumer_len() {
 #[test]
 fn async_mpsc_consumer_capacity() {
   let shared = make_shared_queue(10, OverflowPolicy::Block);
-  let consumer = AsyncMpscConsumer::new(shared);
+  let consumer = AsyncMpscConsumerShared::new(shared);
 
   assert_eq!(block_on(consumer.capacity()), Ok(10));
 }
@@ -96,7 +96,7 @@ fn async_mpsc_consumer_capacity() {
 #[test]
 fn async_mpsc_consumer_close() {
   let shared = make_shared_queue(4, OverflowPolicy::Block);
-  let consumer = AsyncMpscConsumer::new(shared);
+  let consumer = AsyncMpscConsumerShared::new(shared);
 
   assert!(block_on(consumer.close()).is_ok());
 }
@@ -104,7 +104,7 @@ fn async_mpsc_consumer_close() {
 #[test]
 fn async_mpsc_consumer_shared() {
   let shared = make_shared_queue(4, OverflowPolicy::Block);
-  let queue = AsyncQueue::<i32, MpscKey, _, _>::new_mpsc(shared.clone());
+  let queue = AsyncQueueShared::<i32, MpscKey, _, _>::new_mpsc(shared.clone());
   let (_producer, consumer) = queue.into_mpsc_pair();
 
   let retrieved = consumer.shared();

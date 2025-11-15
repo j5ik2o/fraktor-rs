@@ -8,7 +8,7 @@ use fraktor_utils_core_rs::{
     wait::{WaitQueue, WaitShared},
   },
   runtime_toolbox::SyncMutexFamily,
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+  sync::sync_mutex_like::SyncMutexLike,
 };
 
 use super::UserQueue;
@@ -18,7 +18,7 @@ use crate::{RuntimeToolbox, ToolboxMutex};
 pub struct QueueState<T, TB: RuntimeToolbox>
 where
   T: Send + 'static, {
-  pub(super) queue:            ArcShared<UserQueue<T>>,
+  pub(super) queue:            UserQueue<T>,
   pub(super) producer_waiters: ToolboxMutex<WaitQueue<QueueError<T>>, TB>,
   pub(super) consumer_waiters: ToolboxMutex<WaitQueue<QueueError<T>>, TB>,
   pub(super) size:             AtomicUsize,
@@ -30,7 +30,7 @@ where
 {
   /// Creates a new queue state wrapper.
   #[must_use]
-  pub fn new(queue: ArcShared<UserQueue<T>>) -> Self {
+  pub fn new(queue: UserQueue<T>) -> Self {
     Self {
       queue,
       producer_waiters: <TB::MutexFamily as SyncMutexFamily>::create(WaitQueue::new()),

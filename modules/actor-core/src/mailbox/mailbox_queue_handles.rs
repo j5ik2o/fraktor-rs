@@ -45,7 +45,7 @@ where
     let backend = VecDequeBackend::with_capacity(capacity, overflow);
     let mutex = SpinSyncMutex::new(backend);
     let queue = UserQueue::new(ArcShared::new(mutex));
-    let state = ArcShared::new(QueueState::new(ArcShared::new(queue)));
+    let state = ArcShared::new(QueueState::new(queue));
     Self { state }
   }
 

@@ -1,6 +1,6 @@
 use core::marker::PhantomData;
 
-use super::async_queue::poll_shared;
+use super::async_queue_shared::poll_shared;
 use crate::{
   collections::queue::{QueueError, backend::AsyncQueueBackend},
   sync::{
@@ -11,7 +11,7 @@ use crate::{
 
 /// Async consumer for queues tagged with
 /// [`SpscKey`](crate::collections::queue::type_keys::SpscKey).
-pub struct AsyncSpscConsumer<T, B, A = SpinAsyncMutex<B>>
+pub struct AsyncSpscConsumerShared<T, B, A = SpinAsyncMutex<B>>
 where
   B: AsyncQueueBackend<T>,
   A: AsyncMutexLike<B>, {
@@ -19,7 +19,7 @@ where
   _pd:              PhantomData<(T, B)>,
 }
 
-impl<T, B, A> AsyncSpscConsumer<T, B, A>
+impl<T, B, A> AsyncSpscConsumerShared<T, B, A>
 where
   B: AsyncQueueBackend<T>,
   A: AsyncMutexLike<B>,

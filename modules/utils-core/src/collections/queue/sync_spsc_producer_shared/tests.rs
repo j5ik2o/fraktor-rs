@@ -1,5 +1,5 @@
 #[cfg(feature = "alloc")]
-use super::SyncSpscProducer;
+use super::SyncSpscProducerShared;
 #[cfg(feature = "alloc")]
 use crate::{
   collections::queue::{
@@ -14,7 +14,7 @@ use crate::{
 fn sync_spsc_producer_offer_success() {
   let backend = VecDequeBackend::with_capacity(10, OverflowPolicy::DropOldest);
   let mutex = ArcShared::new(SpinSyncMutex::new(backend));
-  let producer = SyncSpscProducer::new(mutex.clone());
+  let producer = SyncSpscProducerShared::new(mutex.clone());
 
   let result = producer.offer(42);
   assert!(result.is_ok());
@@ -32,7 +32,7 @@ fn sync_spsc_producer_offer_success() {
 fn sync_spsc_producer_offer_closed() {
   let backend = VecDequeBackend::with_capacity(10, OverflowPolicy::DropOldest);
   let mutex = ArcShared::new(SpinSyncMutex::new(backend));
-  let producer = SyncSpscProducer::new(mutex.clone());
+  let producer = SyncSpscProducerShared::new(mutex.clone());
 
   mutex.with_mut(|b: &mut VecDequeBackend<u32>| b.close()).unwrap();
 
