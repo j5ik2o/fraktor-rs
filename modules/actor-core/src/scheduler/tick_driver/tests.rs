@@ -1,10 +1,7 @@
 //! Tick driver bootstrap integration tests.
 
 use alloc::{boxed::Box, vec, vec::Vec};
-use core::{
-  sync::atomic::{AtomicUsize, Ordering},
-  time::Duration,
-};
+use core::time::Duration;
 
 use fraktor_utils_core_rs::{
   sync::{ArcShared, NoStdMutex, sync_mutex_like::SpinSyncMutex},
@@ -17,43 +14,10 @@ use crate::{
   logging::LogLevel,
   scheduler::{
     ExecutionBatch, HardwareKind, ManualTestDriver, Scheduler, SchedulerCommand, SchedulerConfig, SchedulerContext,
-    SchedulerRunnable, SchedulerTickExecutor, TICK_DRIVER_MATRIX, TickDriver, TickDriverBootstrap, TickDriverConfig,
-    TickDriverControl, TickDriverError, TickDriverFactory, TickDriverId, TickDriverKind, TickExecutorSignal, TickFeed,
-    TickMetricsMode, TickPulseHandler, TickPulseSource,
+    SchedulerRunnable, SchedulerTickExecutor, TICK_DRIVER_MATRIX, TickDriverBootstrap, TickDriverConfig,
+    TickDriverError, TickDriverKind, TickExecutorSignal, TickFeed, TickMetricsMode, TickPulseHandler, TickPulseSource,
   },
 };
-
-struct TestDriverFactory {
-  start_count: ArcShared<AtomicUsize>,
-  stop_count:  ArcShared<AtomicUsize>,
-}
-
-impl TestDriverFactory {
-  fn shared() -> ArcShared<Self> {
-    ArcShared::new(Self {
-      start_count: ArcShared::new(AtomicUsize::new(0)),
-      stop_count:  ArcShared::new(AtomicUsize::new(0)),
-    })
-  }
-}
-
-impl TickDriverFactory<NoStdToolbox> for TestDriverFactory {
-  fn kind(&self) -> TickDriverKind {
-    TickDriverKind::Auto
-  }
-
-  fn resolution(&self) -> Duration {
-    Duration::from_millis(10)
-  }
-
-  fn build(&self) -> Result<Box<dyn TickDriver<NoStdToolbox>>, TickDriverError> {
-    Ok(Box::new(TestDriver {
-      id:          TickDriverId::new(1),
-      start_count: self.start_count.clone(),
-      stop_count:  self.stop_count.clone(),
-    }))
-  }
-}
 
 struct RecordingSubscriber {
   events: SpinSyncMutex<Vec<EventStreamEvent<NoStdToolbox>>>,
@@ -74,52 +38,6 @@ impl EventStreamSubscriber<NoStdToolbox> for RecordingSubscriber {
     self.events.lock().push(event.clone());
   }
 }
-
-struct TestDriver {
-  id:          TickDriverId,
-  start_count: ArcShared<AtomicUsize>,
-  stop_count:  ArcShared<AtomicUsize>,
-}
-
-struct TestDriverControl {
-  stop_count: ArcShared<AtomicUsize>,
-}
-
-impl TickDriverControl for TestDriverControl {
-  fn shutdown(&self) {
-    self.stop_count.fetch_add(1, Ordering::SeqCst);
-  }
-}
-
-impl TickDriver<NoStdToolbox> for TestDriver {
-  fn id(&self) -> TickDriverId {
-    self.id
-  }
-
-  fn kind(&self) -> TickDriverKind {
-    TickDriverKind::Auto
-  }
-
-  fn resolution(&self) -> Duration {
-    Duration::from_millis(10)
-  }
-
-  fn start(
-    &self,
-    _feed: crate::scheduler::TickFeedHandle<NoStdToolbox>,
-  ) -> Result<crate::scheduler::TickDriverHandle, TickDriverError> {
-    self.start_count.fetch_add(1, Ordering::SeqCst);
-    Ok(crate::scheduler::TickDriverHandle::new(
-      self.id,
-      self.kind(),
-      self.resolution(),
-      ArcShared::new(TestDriverControl { stop_count: self.stop_count.clone() }),
-    ))
-  }
-}
-
-// Test removed: factory-based bootstrap is no longer supported after Auto variant removal.
-// Driver start/stop behavior is tested via hardware_test_config() and ManualTestDriver tests.
 
 struct TestPulseSource {
   handler:    SpinSyncMutex<Option<(unsafe extern "C" fn(*mut core::ffi::c_void), *mut core::ffi::c_void)>>,

@@ -19,7 +19,7 @@ fn test_tick_driver_config_manual_test() {
 
 #[test]
 fn test_tick_driver_config_builder() {
-  use crate::scheduler::{TickDriverError, TickDriverRuntime};
+  use crate::scheduler::TickDriverError;
 
   let config = TickDriverConfig::<NoStdToolbox>::new(|_ctx| {
     // Dummy builder for testing

@@ -10,12 +10,16 @@ use super::ManualTestDriver;
 use super::{TickDriverError, TickDriverRuntime};
 use crate::{RuntimeToolbox, scheduler::SchedulerContext};
 
+/// Type alias for tick driver builder function.
+type TickDriverBuilderFn<TB> =
+  Box<dyn Fn(&SchedulerContext<TB>) -> Result<TickDriverRuntime<TB>, TickDriverError> + Send + Sync>;
+
 /// Configuration for tick driver creation.
 pub enum TickDriverConfig<TB: RuntimeToolbox> {
   /// Builder function-based configuration (standard approach).
   Builder {
     /// Builder function that creates a complete tick driver runtime.
-    builder: Box<dyn Fn(&SchedulerContext<TB>) -> Result<TickDriverRuntime<TB>, TickDriverError> + Send + Sync>,
+    builder: TickDriverBuilderFn<TB>,
   },
   /// Manual test driver (test-only).
   #[cfg(any(test, feature = "test-support"))]
@@ -27,15 +31,6 @@ impl<TB: RuntimeToolbox> TickDriverConfig<TB> {
   ///
   /// The builder function receives the scheduler context and must return a complete
   /// `TickDriverRuntime` that includes both the tick driver and scheduler executor.
-  ///
-  /// # Examples
-  ///
-  /// ```ignore
-  /// TickDriverConfig::new(|ctx| {
-  ///   // Create tick driver runtime...
-  ///   Ok(runtime)
-  /// })
-  /// ```
   #[must_use]
   pub fn new<F>(builder: F) -> Self
   where
