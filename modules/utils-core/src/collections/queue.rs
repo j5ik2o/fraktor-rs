@@ -1,52 +1,50 @@
 //! Queue abstractions rebuilt for the v2 collections layer.
 
-mod async_mpsc_consumer;
-mod async_mpsc_producer;
+mod async_mpsc_consumer_shared;
+mod async_mpsc_producer_shared;
 mod async_queue;
-mod async_spsc_consumer;
-mod async_spsc_producer;
+mod async_queue_shared;
+mod async_spsc_consumer_shared;
+mod async_spsc_producer_shared;
 pub mod backend;
 pub mod capabilities;
-mod deque_backend;
-mod storage;
-mod sync_mpsc_consumer;
-mod sync_mpsc_producer;
-mod sync_queue;
-mod sync_spsc_consumer;
-mod sync_spsc_producer;
+mod sync_mpsc_consumer_shared;
+mod sync_mpsc_producer_shared;
+mod sync_queue_shared;
+mod sync_spsc_consumer_shared;
+mod sync_spsc_producer_shared;
 pub mod type_keys;
 
-pub use async_mpsc_consumer::AsyncMpscConsumer;
-pub use async_mpsc_producer::AsyncMpscProducer;
-pub use async_queue::{AsyncFifoQueue, AsyncMpscQueue, AsyncPriorityQueue, AsyncQueue, AsyncSpscQueue};
-pub use async_spsc_consumer::AsyncSpscConsumer;
-pub use async_spsc_producer::AsyncSpscProducer;
+pub use async_mpsc_consumer_shared::AsyncMpscConsumerShared;
+pub use async_mpsc_producer_shared::AsyncMpscProducerShared;
+pub use async_queue_shared::{
+  AsyncFifoQueueShared, AsyncMpscQueueShared, AsyncPriorityQueueShared, AsyncQueueShared, AsyncSpscQueueShared,
+};
+pub use async_spsc_consumer_shared::AsyncSpscConsumerShared;
+pub use async_spsc_producer_shared::AsyncSpscProducerShared;
 pub use backend::{
   AsyncPriorityBackend, AsyncQueueBackend, OfferOutcome, OverflowPolicy, SyncQueueAsyncAdapter, SyncQueueBackend,
-  VecRingBackend, sync_priority_backend::SyncPriorityBackend,
+  VecDequeBackend, sync_priority_backend::SyncPriorityBackend,
 };
 pub use capabilities::{
   MultiProducer, QueueCapability, QueueCapabilityError, QueueCapabilityRegistry, QueueCapabilitySet, SingleConsumer,
   SingleProducer, SupportsPeek,
 };
-pub use deque_backend::{DequeBackend, DequeBackendGeneric, DequeOfferFuture};
-pub use storage::{QueueStorage, VecRingStorage};
-pub use sync_mpsc_consumer::SyncMpscConsumer;
-pub use sync_mpsc_producer::SyncMpscProducer;
-pub use sync_queue::{FifoQueue, MpscQueue, PriorityQueue, SpscQueue, SyncQueue};
-pub use sync_spsc_consumer::SyncSpscConsumer;
-pub use sync_spsc_producer::SyncSpscProducer;
+pub use sync_mpsc_consumer_shared::SyncMpscConsumerShared;
+pub use sync_mpsc_producer_shared::SyncMpscProducerShared;
+pub use sync_queue_shared::{
+  SyncFifoQueueShared, SyncMpscQueueShared, SyncPriorityQueueShared, SyncQueueShared, SyncSpscQueueShared,
+};
+pub use sync_spsc_consumer_shared::SyncSpscConsumerShared;
+pub use sync_spsc_producer_shared::SyncSpscProducerShared;
 pub use type_keys::{FifoKey, MpscKey, PriorityKey, SpscKey, TypeKey};
 
 mod offer_outcome;
 mod overflow_policy;
 mod queue_error;
+mod sync_queue;
 #[cfg(test)]
 mod tests;
+pub use async_queue::*;
 pub use queue_error::QueueError;
-
-/// Default shared queue alias backed by [`VecRingBackend`].
-pub type SharedVecRingQueue<T, K = FifoKey> = SyncQueue<T, K, VecRingBackend<T>>;
-
-/// Default async shared queue alias backed by [`VecRingBackend`] via the sync adapter.
-pub type AsyncSharedVecRingQueue<T, K = FifoKey> = AsyncQueue<T, K, SyncQueueAsyncAdapter<T, VecRingBackend<T>>>;
+pub use sync_queue::*;

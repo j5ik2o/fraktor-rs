@@ -17,6 +17,7 @@ pub struct SchedulerConfig {
   policy_registry:      SchedulerPolicyRegistry,
   task_run_capacity:    usize,
   diagnostics_capacity: usize,
+  runner_api_enabled:   bool,
 }
 
 impl SchedulerConfig {
@@ -35,6 +36,7 @@ impl SchedulerConfig {
       policy_registry: SchedulerPolicyRegistry::default(),
       task_run_capacity,
       diagnostics_capacity,
+      runner_api_enabled: false,
     }
   }
 
@@ -158,6 +160,19 @@ impl SchedulerConfig {
   pub fn with_diagnostics_capacity(mut self, capacity: usize) -> Self {
     self.diagnostics_capacity = capacity.max(1);
     self
+  }
+
+  /// Enables or disables the manual runner API.
+  #[must_use]
+  pub const fn with_runner_api_enabled(mut self, enabled: bool) -> Self {
+    self.runner_api_enabled = enabled;
+    self
+  }
+
+  /// Indicates whether the manual runner API is enabled.
+  #[must_use]
+  pub const fn runner_api_enabled(&self) -> bool {
+    self.runner_api_enabled
   }
 }
 

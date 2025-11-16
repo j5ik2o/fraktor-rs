@@ -2,6 +2,8 @@
 
 /// Typed actor primitives (actors, contexts, references).
 pub mod actor_prim;
+/// Typed actor system builder.
+mod actor_system_builder;
 /// Typed behavior representation.
 mod behavior;
 /// Internal executor that drives behavior state machines.
@@ -35,12 +37,13 @@ pub use actor_prim::{
   TypedActor, TypedActorContext, TypedActorContextGeneric, TypedActorRef, TypedActorRefGeneric, TypedChildRef,
   TypedChildRefGeneric,
 };
+pub use actor_system_builder::TypedActorSystemBuilder;
 pub use behavior::Behavior;
 pub use behavior_signal::BehaviorSignal;
 pub use behaviors::Behaviors;
 pub use message_adapter::{AdapterError, AdapterFailure, AdapterOutcome, AdapterPayload, MessageAdapterRegistry};
 pub use props::{TypedProps, TypedPropsGeneric};
-pub use scheduler::TypedScheduler;
+pub use scheduler::{TypedScheduler, TypedSchedulerContext, TypedSchedulerGuard, TypedSchedulerShared};
 pub use supervise::Supervise;
 pub use system::{TypedActorSystem, TypedActorSystemGeneric};
 pub use typed_ask_error::TypedAskError;

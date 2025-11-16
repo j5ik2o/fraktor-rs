@@ -1,0 +1,22 @@
+{
+  "feature_name": "scheduler-tick-driver-integration",
+  "created_at": "2025-11-13T22:38:15Z",
+  "updated_at": "2025-11-15T12:00:00Z",
+  "language": "ja",
+  "phase": "tasks-generated",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "ready_for_implementation": true
+}

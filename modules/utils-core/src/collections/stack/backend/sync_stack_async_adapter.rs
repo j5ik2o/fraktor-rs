@@ -3,13 +3,13 @@ use core::marker::PhantomData;
 
 use async_trait::async_trait;
 
-use super::{AsyncStackBackend, PushOutcome, StackBackend, StackError};
-use crate::collections::wait::{WaitQueue, WaitShared};
+use super::{AsyncStackBackend, AsyncStackBackendInternal, PushOutcome, StackError, SyncStackBackend};
+use crate::collections::wait::{WaitError, WaitQueue, WaitShared};
 
 /// Adapter that exposes a synchronous stack backend through the async backend trait.
 pub struct SyncStackAsyncAdapter<T, B>
 where
-  B: StackBackend<T>, {
+  B: SyncStackBackend<T>, {
   backend:      B,
   _pd:          PhantomData<T>,
   push_waiters: WaitQueue<StackError>,
@@ -18,11 +18,11 @@ where
 
 impl<T, B> SyncStackAsyncAdapter<T, B>
 where
-  B: StackBackend<T>,
+  B: SyncStackBackend<T>,
 {
   /// Creates a new adapter wrapping the provided backend instance.
   #[must_use]
-  pub const fn new(backend: B) -> Self {
+  pub fn new(backend: B) -> Self {
     Self {
       backend,
       _pd: PhantomData,
@@ -49,11 +49,11 @@ where
     &mut self.backend
   }
 
-  pub(crate) fn register_push_waiter(&mut self) -> WaitShared<StackError> {
+  pub(crate) fn register_push_waiter(&mut self) -> Result<WaitShared<StackError>, WaitError> {
     self.push_waiters.register()
   }
 
-  pub(crate) fn register_pop_waiter(&mut self) -> WaitShared<StackError> {
+  pub(crate) fn register_pop_waiter(&mut self) -> Result<WaitShared<StackError>, WaitError> {
     self.pop_waiters.register()
   }
 
@@ -71,10 +71,12 @@ where
   }
 }
 
+impl<T, B> AsyncStackBackend<T> for SyncStackAsyncAdapter<T, B> where B: SyncStackBackend<T> {}
+
 #[async_trait(?Send)]
-impl<T, B> AsyncStackBackend<T> for SyncStackAsyncAdapter<T, B>
+impl<T, B> AsyncStackBackendInternal<T> for SyncStackAsyncAdapter<T, B>
 where
-  B: StackBackend<T>,
+  B: SyncStackBackend<T>,
 {
   async fn push(&mut self, item: T) -> Result<PushOutcome, StackError> {
     let result = self.backend.push(item);
@@ -112,16 +114,16 @@ where
     self.backend.capacity()
   }
 
-  fn prepare_push_wait(&mut self) -> Option<WaitShared<StackError>> {
+  fn prepare_push_wait(&mut self) -> Result<Option<WaitShared<StackError>>, WaitError> {
     if self.backend.overflow_policy() == super::StackOverflowPolicy::Block && !self.backend.is_closed() {
-      Some(self.register_push_waiter())
+      Ok(Some(self.register_push_waiter()?))
     } else {
-      None
+      Ok(None)
     }
   }
 
-  fn prepare_pop_wait(&mut self) -> Option<WaitShared<StackError>> {
-    if self.backend.is_closed() { None } else { Some(self.register_pop_waiter()) }
+  fn prepare_pop_wait(&mut self) -> Result<Option<WaitShared<StackError>>, WaitError> {
+    if self.backend.is_closed() { Ok(None) } else { Ok(Some(self.register_pop_waiter()?)) }
   }
 
   fn is_closed(&self) -> bool {

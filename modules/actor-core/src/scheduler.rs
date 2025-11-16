@@ -1,6 +1,5 @@
 //! Scheduler subsystem providing Pekko-compatible APIs.
 
-mod api;
 mod batch_mode;
 mod cancellable_entry;
 mod cancellable_registry;
@@ -34,22 +33,19 @@ mod scheduler_diagnostics;
 mod scheduler_diagnostics_event;
 mod scheduler_diagnostics_subscription;
 mod scheduler_runner;
+mod scheduler_runner_owned;
 mod task_run_entry;
 mod task_run_error;
 mod task_run_handle;
 mod task_run_on_close;
 mod task_run_priority;
 mod task_run_summary;
+mod tick_driver;
 mod warning;
 
 #[cfg(test)]
 mod tests;
 
-// Re-export API functions
-pub use api::{
-  schedule_at_fixed_rate, schedule_at_fixed_rate_fn, schedule_once, schedule_once_fn, schedule_with_fixed_delay,
-  schedule_with_fixed_delay_fn,
-};
 pub use batch_mode::BatchMode;
 pub use cancellable_entry::CancellableEntry;
 pub use cancellable_registry::CancellableRegistry;
@@ -78,10 +74,21 @@ pub use scheduler_diagnostics::SchedulerDiagnostics;
 pub use scheduler_diagnostics_event::SchedulerDiagnosticsEvent;
 pub use scheduler_diagnostics_subscription::SchedulerDiagnosticsSubscription;
 pub use scheduler_runner::SchedulerRunner;
+pub use scheduler_runner_owned::SchedulerRunnerOwned;
 pub(crate) use task_run_entry::{TaskRunEntry, TaskRunQueue};
 pub use task_run_error::TaskRunError;
 pub use task_run_handle::TaskRunHandle;
 pub use task_run_on_close::TaskRunOnClose;
 pub use task_run_priority::TaskRunPriority;
 pub use task_run_summary::TaskRunSummary;
+#[cfg(any(test, feature = "test-support"))]
+pub use tick_driver::ManualTestDriver;
+pub use tick_driver::{
+  AutoDriverConfig, AutoDriverMetadata, AutoProfileKind, FallbackPolicy, HardwareKind, SchedulerTickExecutor,
+  SchedulerTickHandleOwned, SchedulerTickMetrics, SchedulerTickMetricsProbe, TICK_DRIVER_MATRIX, TickDriver,
+  TickDriverAutoLocator, TickDriverAutoLocatorRef, TickDriverBootstrap, TickDriverConfig, TickDriverControl,
+  TickDriverError, TickDriverFactory, TickDriverFactoryRef, TickDriverGuideEntry, TickDriverHandle, TickDriverId,
+  TickDriverKind, TickDriverMetadata, TickDriverRuntime, TickExecutorSignal, TickFeed, TickFeedHandle, TickMetricsMode,
+  TickPulseHandler, TickPulseSource, next_tick_driver_id,
+};
 pub use warning::SchedulerWarning;

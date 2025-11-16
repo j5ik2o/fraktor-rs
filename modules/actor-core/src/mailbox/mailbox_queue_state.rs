@@ -4,21 +4,21 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 
 use fraktor_utils_core_rs::{
   collections::{
-    queue::{QueueError, SyncQueueBackend, backend::OfferOutcome},
-    wait::{WaitQueue, WaitShared},
+    queue::{QueueError, backend::OfferOutcome},
+    wait::{WaitError, WaitQueue, WaitShared},
   },
   runtime_toolbox::SyncMutexFamily,
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+  sync::sync_mutex_like::SyncMutexLike,
 };
 
-use super::QueueMutex;
+use super::UserQueueShared;
 use crate::{RuntimeToolbox, ToolboxMutex};
 
 /// Maintains shared queue state and wait queues for asynchronous offers/polls.
 pub struct QueueState<T, TB: RuntimeToolbox>
 where
   T: Send + 'static, {
-  pub(super) shared:           ArcShared<QueueMutex<T, TB>>,
+  pub(super) queue:            UserQueueShared<T>,
   pub(super) producer_waiters: ToolboxMutex<WaitQueue<QueueError<T>>, TB>,
   pub(super) consumer_waiters: ToolboxMutex<WaitQueue<QueueError<T>>, TB>,
   pub(super) size:             AtomicUsize,
@@ -30,9 +30,9 @@ where
 {
   /// Creates a new queue state wrapper.
   #[must_use]
-  pub fn new(shared: ArcShared<QueueMutex<T, TB>>) -> Self {
+  pub fn new(queue: UserQueueShared<T>) -> Self {
     Self {
-      shared,
+      queue,
       producer_waiters: <TB::MutexFamily as SyncMutexFamily>::create(WaitQueue::new()),
       consumer_waiters: <TB::MutexFamily as SyncMutexFamily>::create(WaitQueue::new()),
       size: AtomicUsize::new(0),
@@ -41,10 +41,7 @@ where
 
   /// Attempts to offer a message into the queue.
   pub(super) fn offer(&self, message: T) -> Result<OfferOutcome, QueueError<T>> {
-    let result = {
-      let mut guard = self.shared.lock();
-      guard.offer(message)
-    };
+    let result = self.queue.offer(message);
 
     if result.is_ok() {
       self.size.fetch_add(1, Ordering::Release);
@@ -56,10 +53,7 @@ where
 
   /// Attempts to poll a message from the queue.
   pub(super) fn poll(&self) -> Result<T, QueueError<T>> {
-    let result = {
-      let mut guard = self.shared.lock();
-      guard.poll()
-    };
+    let result = self.queue.poll();
 
     if result.is_ok() {
       self.size.fetch_sub(1, Ordering::Release);
@@ -69,11 +63,11 @@ where
     result
   }
 
-  pub(super) fn register_producer_waiter(&self) -> WaitShared<QueueError<T>> {
+  pub(super) fn register_producer_waiter(&self) -> Result<WaitShared<QueueError<T>>, WaitError> {
     self.producer_waiters.lock().register()
   }
 
-  pub(super) fn register_consumer_waiter(&self) -> WaitShared<QueueError<T>> {
+  pub(super) fn register_consumer_waiter(&self) -> Result<WaitShared<QueueError<T>>, WaitError> {
     self.consumer_waiters.lock().register()
   }
 

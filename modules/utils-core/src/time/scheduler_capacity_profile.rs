@@ -1,5 +1,8 @@
 //! Predefined capacity profiles for the scheduler.
 
+#[cfg(test)]
+mod tests;
+
 /// Capacity settings shared between timer wheel, overflow pool, and on-close tasks.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SchedulerCapacityProfile {
@@ -55,6 +58,13 @@ impl SchedulerCapacityProfile {
   #[must_use]
   pub const fn system_quota(&self) -> usize {
     self.system_quota
+  }
+
+  /// Suggested tick buffer quota for scheduler driver feeds.
+  #[must_use]
+  pub const fn tick_buffer_quota(&self) -> usize {
+    let base = self.system_quota / 8;
+    if base < 32 { 32 } else { base }
   }
 
   /// Overflow queue capacity for far-future timers.

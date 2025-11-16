@@ -4,12 +4,13 @@ use core::marker::PhantomData;
 use async_trait::async_trait;
 
 use super::{
-  AsyncPriorityBackend, AsyncQueueBackend, OfferOutcome, SyncQueueBackend, sync_priority_backend::SyncPriorityBackend,
+  AsyncPriorityBackend, AsyncPriorityBackendInternal, AsyncQueueBackend, AsyncQueueBackendInternal, OfferOutcome,
+  SyncPriorityBackendInternal, SyncQueueBackend, sync_priority_backend::SyncPriorityBackend,
 };
 use crate::collections::{
   PriorityMessage,
   queue::QueueError,
-  wait::{WaitQueue, WaitShared},
+  wait::{WaitError, WaitQueue, WaitShared},
 };
 
 /// Adapter that exposes a synchronous queue backend through the async backend trait.
@@ -34,7 +35,7 @@ where
 {
   /// Creates a new adapter wrapping the provided backend instance.
   #[must_use]
-  pub const fn new(backend: B) -> Self {
+  pub fn new(backend: B) -> Self {
     Self {
       backend,
       _pd: PhantomData,
@@ -61,11 +62,11 @@ where
     &mut self.backend
   }
 
-  pub(crate) fn register_producer_waiter(&mut self) -> WaitShared<QueueError<T>> {
+  pub(crate) fn register_producer_waiter(&mut self) -> Result<WaitShared<QueueError<T>>, WaitError> {
     self.producer_waiters.register()
   }
 
-  pub(crate) fn register_consumer_waiter(&mut self) -> WaitShared<QueueError<T>> {
+  pub(crate) fn register_consumer_waiter(&mut self) -> Result<WaitShared<QueueError<T>>, WaitError> {
     self.consumer_waiters.register()
   }
 
@@ -86,7 +87,7 @@ where
 }
 
 #[async_trait(?Send)]
-impl<T, B> AsyncQueueBackend<T> for SyncQueueAsyncAdapter<T, B>
+impl<T, B> AsyncQueueBackendInternal<T> for SyncQueueAsyncAdapter<T, B>
 where
   B: SyncQueueBackend<T>,
 {
@@ -122,16 +123,16 @@ where
     self.backend.capacity()
   }
 
-  fn prepare_producer_wait(&mut self) -> Option<WaitShared<QueueError<T>>> {
+  fn prepare_producer_wait(&mut self) -> Result<Option<WaitShared<QueueError<T>>>, WaitError> {
     if self.backend.overflow_policy() == super::OverflowPolicy::Block && !self.backend.is_closed() {
-      Some(self.register_producer_waiter())
+      Ok(Some(self.register_producer_waiter()?))
     } else {
-      None
+      Ok(None)
     }
   }
 
-  fn prepare_consumer_wait(&mut self) -> Option<WaitShared<QueueError<T>>> {
-    if self.backend.is_closed() { None } else { Some(self.register_consumer_waiter()) }
+  fn prepare_consumer_wait(&mut self) -> Result<Option<WaitShared<QueueError<T>>>, WaitError> {
+    if self.backend.is_closed() { Ok(None) } else { Ok(Some(self.register_consumer_waiter()?)) }
   }
 
   fn is_closed(&self) -> bool {
@@ -139,11 +140,15 @@ where
   }
 }
 
-impl<T: PriorityMessage, B> AsyncPriorityBackend<T> for SyncQueueAsyncAdapter<T, B>
+impl<T, B> AsyncQueueBackend<T> for SyncQueueAsyncAdapter<T, B> where B: SyncQueueBackend<T> {}
+
+impl<T: PriorityMessage, B> AsyncPriorityBackend<T> for SyncQueueAsyncAdapter<T, B> where B: SyncPriorityBackend<T> {}
+
+impl<T: PriorityMessage, B> AsyncPriorityBackendInternal<T> for SyncQueueAsyncAdapter<T, B>
 where
   B: SyncPriorityBackend<T>,
 {
   fn peek_min(&self) -> Option<&T> {
-    self.backend.peek_min()
+    SyncPriorityBackendInternal::peek_min(&self.backend)
   }
 }

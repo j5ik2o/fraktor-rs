@@ -17,20 +17,6 @@
     "context7": {
       "command": "npx",
       "args": ["-y", "@upstash/context7-mcp"]
-    },
-    "playwright-mcp": {
-      "command": "npx",
-      "args": [
-        "@playwright/mcp@latest"
-      ]
-    },
-    "chrome-devtools": {
-      "command": "npx",
-      "args": ["-y", "chrome-devtools-mcp@latest"]
-    },
-    "vibe-kanban": {
-      "command": "npx",
-      "args": ["-y", "vibe-kanban@latest", "--mcp"]
     }
   }
 }

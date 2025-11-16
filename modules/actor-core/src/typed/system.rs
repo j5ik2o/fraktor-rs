@@ -19,6 +19,7 @@ use crate::{
   typed::{
     actor_prim::{TypedActorRefGeneric, TypedChildRefGeneric},
     props::TypedPropsGeneric,
+    scheduler::TypedSchedulerContext,
   },
 };
 
@@ -62,7 +63,13 @@ where
   pub fn new_with_config(guardian: &TypedPropsGeneric<M, TB>, config: &ActorSystemConfig) -> Result<Self, SpawnError> {
     Ok(Self { inner: ActorSystemGeneric::new_with_config(guardian.to_untyped(), config)?, marker: PhantomData })
   }
+}
 
+impl<M, TB> TypedActorSystemGeneric<M, TB>
+where
+  M: Send + Sync + 'static,
+  TB: RuntimeToolbox + 'static,
+{
   /// Returns the typed user guardian reference.
   #[must_use]
   pub fn user_guardian_ref(&self) -> TypedActorRefGeneric<M, TB> {
@@ -155,6 +162,18 @@ where
   #[must_use]
   pub fn drain_ready_ask_futures(&self) -> Vec<ArcShared<ActorFuture<AnyMessageGeneric<TB>, TB>>> {
     self.inner.drain_ready_ask_futures()
+  }
+
+  /// Wraps an existing untyped actor system so typed APIs can mirror its services.
+  #[must_use]
+  pub const fn from_untyped(system: ActorSystemGeneric<TB>) -> Self {
+    Self { inner: system, marker: PhantomData }
+  }
+
+  /// Returns the typed scheduler context when the runtime has an installed scheduler service.
+  #[must_use]
+  pub fn scheduler_context(&self) -> Option<TypedSchedulerContext<TB>> {
+    self.inner.scheduler_context().map(TypedSchedulerContext::from_shared)
   }
 }
 

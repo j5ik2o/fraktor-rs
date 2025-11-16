@@ -7,6 +7,7 @@ use core::{num::NonZeroU64, time::Duration};
 mod tests;
 
 use fraktor_utils_core_rs::{
+  collections::queue::backend::{BinaryHeapPriorityBackend, OverflowPolicy},
   sync::ArcShared,
   time::{SchedulerTickHandle, TimerEntry, TimerHandleId, TimerInstant, TimerWheel, TimerWheelConfig},
 };
@@ -26,21 +27,20 @@ const DEFAULT_DRIFT_BUDGET_PCT: u8 = 5;
 
 /// Scheduler responsible for registering delayed and periodic jobs.
 pub struct Scheduler<TB: RuntimeToolbox> {
-  toolbox:           TB,
-  config:            SchedulerConfig,
-  wheel:             TimerWheel<ScheduledPayload>,
-  registry:          CancellableRegistry,
-  metrics:           SchedulerMetrics,
-  warnings:          Vec<SchedulerWarning>,
-  next_handle:       u64,
-  jobs:              HashMap<u64, ScheduledJob<TB>>,
-  current_tick:      u64,
-  closed:            bool,
-  task_runs:         TaskRunQueue,
-  task_run_seq:      u64,
-  task_run_capacity: usize,
-  shutting_down:     bool,
-  diagnostics:       SchedulerDiagnostics,
+  toolbox:       TB,
+  config:        SchedulerConfig,
+  wheel:         TimerWheel<ScheduledPayload>,
+  registry:      CancellableRegistry,
+  metrics:       SchedulerMetrics,
+  warnings:      Vec<SchedulerWarning>,
+  next_handle:   u64,
+  jobs:          HashMap<u64, ScheduledJob<TB>>,
+  current_tick:  u64,
+  closed:        bool,
+  task_runs:     TaskRunQueue,
+  task_run_seq:  u64,
+  shutting_down: bool,
+  diagnostics:   SchedulerDiagnostics,
 }
 
 #[allow(dead_code)]
@@ -90,6 +90,8 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
   pub fn new(toolbox: TB, config: SchedulerConfig) -> Self {
     let timer_config = TimerWheelConfig::from_profile(config.profile(), config.resolution(), DEFAULT_DRIFT_BUDGET_PCT);
     let wheel = TimerWheel::new(timer_config);
+    let task_run_backend =
+      BinaryHeapPriorityBackend::new_with_capacity(config.task_run_capacity(), OverflowPolicy::Block);
     Self {
       toolbox,
       config,
@@ -101,9 +103,8 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
       jobs: HashMap::new(),
       current_tick: 0,
       closed: false,
-      task_runs: TaskRunQueue::new(),
+      task_runs: TaskRunQueue::new(task_run_backend),
       task_run_seq: 0,
-      task_run_capacity: config.task_run_capacity(),
       shutting_down: false,
       diagnostics: SchedulerDiagnostics::with_capacity(config.diagnostics_capacity()),
     }
@@ -113,6 +114,18 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
   #[must_use]
   pub const fn resolution(&self) -> Duration {
     self.config.resolution()
+  }
+
+  /// Returns the scheduler configuration copy.
+  #[must_use]
+  pub const fn config(&self) -> SchedulerConfig {
+    self.config
+  }
+
+  /// Returns a reference to the underlying toolbox.
+  #[must_use]
+  pub const fn toolbox(&self) -> &TB {
+    &self.toolbox
   }
 
   /// Returns a snapshot of the current scheduler metrics.
@@ -154,16 +167,24 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
     SchedulerDump::new(self.config.resolution(), self.current_tick, self.metrics, jobs, self.warnings.clone())
   }
 
-  /// Registers a one-shot job.
+  /// Registers a one-shot job backed by the provided [`SchedulerCommand`].
+  ///
+  /// The command executes exactly once when `delay` expires unless cancelled or shutdown interrupts
+  /// it.
   ///
   /// # Errors
   ///
-  /// Returns `SchedulerError` if the delay is invalid or capacity is exceeded.
-  pub fn schedule_once(&mut self, delay: Duration) -> Result<SchedulerHandle, SchedulerError> {
-    self.register_job(delay, SchedulerMode::OneShot, None, SchedulerCommand::Noop)
+  /// Returns [`SchedulerError`] if the delay is invalid, the scheduler is closed, or
+  /// capacity/quotas are exceeded.
+  pub fn schedule_once(
+    &mut self,
+    delay: Duration,
+    command: SchedulerCommand<TB>,
+  ) -> Result<SchedulerHandle, SchedulerError> {
+    self.register_job(delay, SchedulerMode::OneShot, None, command)
   }
 
-  /// Registers a periodic job with fixed rate.
+  /// Registers a periodic job with fixed rate using the provided command.
   ///
   /// # Errors
   ///
@@ -172,35 +193,9 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
     &mut self,
     initial_delay: Duration,
     period: Duration,
-  ) -> Result<SchedulerHandle, SchedulerError> {
-    self.schedule_at_fixed_rate_with_command(initial_delay, period, SchedulerCommand::Noop)
-  }
-
-  /// Registers a periodic job with fixed rate using the provided command.
-  ///
-  /// # Errors
-  ///
-  /// Returns `SchedulerError` if the delay or period is invalid, or capacity is exceeded.
-  pub fn schedule_at_fixed_rate_with_command(
-    &mut self,
-    initial_delay: Duration,
-    period: Duration,
     command: SchedulerCommand<TB>,
   ) -> Result<SchedulerHandle, SchedulerError> {
     self.register_job(initial_delay, SchedulerMode::FixedRate, Some(period), command)
-  }
-
-  /// Registers a periodic job with fixed delay.
-  ///
-  /// # Errors
-  ///
-  /// Returns `SchedulerError` if the delay is invalid or capacity is exceeded.
-  pub fn schedule_with_fixed_delay(
-    &mut self,
-    initial_delay: Duration,
-    delay: Duration,
-  ) -> Result<SchedulerHandle, SchedulerError> {
-    self.schedule_with_fixed_delay_with_command(initial_delay, delay, SchedulerCommand::Noop)
   }
 
   /// Registers a periodic job with fixed delay using the provided command.
@@ -208,7 +203,7 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
   /// # Errors
   ///
   /// Returns `SchedulerError` if the delay is invalid or capacity is exceeded.
-  pub fn schedule_with_fixed_delay_with_command(
+  pub fn schedule_with_fixed_delay(
     &mut self,
     initial_delay: Duration,
     delay: Duration,
@@ -264,13 +259,16 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
     task: ArcShared<dyn TaskRunOnClose>,
     priority: TaskRunPriority,
   ) -> Result<TaskRunHandle, SchedulerError> {
-    if self.task_runs.len() >= self.task_run_capacity {
-      return Err(SchedulerError::TaskRunCapacityExceeded);
-    }
     let handle = TaskRunHandle::new(self.task_run_seq);
-    self.task_run_seq = self.task_run_seq.wrapping_add(1);
-    self.task_runs.push(TaskRunEntry::new(priority, self.task_run_seq, handle, task));
-    Ok(handle)
+    let entry = TaskRunEntry::new(priority, self.task_run_seq, handle, task);
+
+    match self.task_runs.offer(entry) {
+      | Ok(_) => {
+        self.task_run_seq = self.task_run_seq.wrapping_add(1);
+        Ok(handle)
+      },
+      | Err(_) => Err(SchedulerError::TaskRunCapacityExceeded),
+    }
   }
 
   /// Shuts down the scheduler, running registered on-close tasks.
@@ -451,7 +449,7 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
 
   fn run_task_queue(&mut self) -> TaskRunSummary {
     let mut summary = TaskRunSummary::default();
-    while let Some(entry) = self.task_runs.pop() {
+    while let Ok(entry) = self.task_runs.poll() {
       match entry.task.run() {
         | Ok(()) => summary.executed_tasks = summary.executed_tasks.saturating_add(1),
         | Err(_) => {

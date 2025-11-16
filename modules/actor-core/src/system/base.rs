@@ -17,7 +17,9 @@ use crate::{
   config::{ActorSystemConfig, DispatchersGeneric, MailboxesGeneric},
   dead_letter::DeadLetterEntryGeneric,
   error::SendError,
-  event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric},
+  event_stream::{
+    EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric, TickDriverSnapshot,
+  },
   extension::ExtensionId,
   futures::ActorFuture,
   logging::LogLevel,
@@ -134,7 +136,8 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     if self.state.scheduler_context().is_some() {
       return;
     }
-    let service = SchedulerContext::new(TB::default(), SchedulerConfig::default());
+    let event_stream = self.state.event_stream();
+    let service = SchedulerContext::with_event_stream(TB::default(), SchedulerConfig::default(), event_stream);
     self.state.install_scheduler_context(ArcShared::new(service));
   }
 
@@ -154,6 +157,18 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   #[must_use]
   pub fn scheduler_context(&self) -> Option<ArcShared<SchedulerContext<TB>>> {
     self.state.scheduler_context()
+  }
+
+  /// Returns the tick driver runtime when initialized.
+  #[must_use]
+  pub fn tick_driver_runtime(&self) -> Option<crate::scheduler::TickDriverRuntime<TB>> {
+    self.state.tick_driver_runtime()
+  }
+
+  /// Returns the last reported tick driver snapshot.
+  #[must_use]
+  pub fn tick_driver_snapshot(&self) -> Option<TickDriverSnapshot> {
+    self.state.tick_driver_snapshot()
   }
 
   /// Returns a delay provider backed by the scheduler when available.

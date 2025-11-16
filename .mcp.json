@@ -26,33 +26,6 @@
       ],
       "env": {}
     },
-    "playwright": {
-      "type": "stdio",
-      "command": "npx",
-      "args": [
-        "-y",
-        "@playwright/mcp@latest"
-      ],
-      "env": {}
-    },
-    "chrome-devtools": {
-      "type": "stdio",
-      "command": "npx",
-      "args": [
-        "chrome-devtools-mcp@latest"
-      ],
-      "env": {}
-    },
-    "vibe_kanban": {
-      "type": "stdio",
-      "command": "npx",
-      "args": [
-        "-y",
-        "vibe-kanban",
-        "--mcp"
-      ],
-      "env": {}
-    },
     "codex": {
       "type": "stdio",
       "command": "codex",
