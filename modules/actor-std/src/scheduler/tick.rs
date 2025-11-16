@@ -240,9 +240,7 @@ mod tests {
 
   use fraktor_actor_core_rs::{
     event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber},
-    scheduler::{
-      AutoProfileKind, SchedulerConfig, SchedulerContext, TickDriverBootstrap, TickDriverConfig, TickDriverKind,
-    },
+    scheduler::{AutoProfileKind, SchedulerConfig, SchedulerContext, TickDriverBootstrap, TickDriverKind},
   };
   use fraktor_utils_core_rs::{sync::ArcShared, time::TimerInstant};
 

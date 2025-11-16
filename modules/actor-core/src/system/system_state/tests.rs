@@ -113,7 +113,7 @@ fn system_state_remove_cell_reserves_uid() {
 fn system_state_registers_canonical_uri_with_config() {
   let state = ArcShared::new(SystemState::new());
   let remoting = RemotingConfig::default().with_canonical_host("localhost").with_canonical_port(2552);
-  let config = ActorSystemConfig::default().with_system_name("fraktor-system").with_remoting(remoting);
+  let config = ActorSystemConfig::<NoStdToolbox>::default().with_system_name("fraktor-system").with_remoting(remoting);
   state.apply_actor_system_config(&config);
 
   let props = Props::from_fn(|| RestartProbeActor);
@@ -135,8 +135,9 @@ fn system_state_registers_canonical_uri_with_config() {
 #[test]
 fn system_state_honors_default_guardian_config() {
   let state = ArcShared::new(SystemState::new());
-  let config =
-    ActorSystemConfig::default().with_system_name("sys-guardian").with_default_guardian(PathGuardianKind::System);
+  let config = ActorSystemConfig::<NoStdToolbox>::default()
+    .with_system_name("sys-guardian")
+    .with_default_guardian(PathGuardianKind::System);
   state.apply_actor_system_config(&config);
 
   let props = Props::from_fn(|| RestartProbeActor);

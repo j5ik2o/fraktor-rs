@@ -6,7 +6,7 @@ use fraktor_actor_std_rs::{
   dispatcher::dispatch_executor::TokioExecutor,
   messaging::{AnyMessage, AnyMessageView},
   props::Props,
-  scheduler::tick::StdTickDriverConfig,
+  scheduler::StdTickDriverConfig,
   system::{ActorSystemBuilder, DispatcherConfig},
 };
 use fraktor_utils_core_rs::sync::ArcShared;

@@ -3,6 +3,7 @@
 use core::time::Duration;
 
 use fraktor_actor_core_rs::{
+  NoStdToolbox,
   actor_prim::{
     actor_path::{ActorPath, ActorPathFormatter, ActorPathParser, ActorPathParts, ActorUid, PathResolutionError},
     actor_selection::{ActorSelectionError, ActorSelectionResolver},
@@ -139,11 +140,11 @@ fn test_e2e_config_integration() {
     .with_canonical_port(2552)
     .with_quarantine_duration(Duration::from_secs(600));
 
-  let config = ActorSystemConfig::default().with_system_name("e2e-system").with_remoting(remoting);
+  let config = ActorSystemConfig::<NoStdToolbox>::default().with_system_name("e2e-system").with_remoting(remoting);
 
   assert_eq!(config.system_name(), "e2e-system");
 
-  let remoting_cfg = config.remoting().expect("remoting should be configured");
+  let remoting_cfg = config.remoting_config().expect("remoting should be configured");
   assert_eq!(remoting_cfg.canonical_host(), "localhost");
   assert_eq!(remoting_cfg.canonical_port(), Some(2552));
   assert_eq!(remoting_cfg.quarantine_duration(), Duration::from_secs(600));

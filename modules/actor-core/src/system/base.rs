@@ -25,7 +25,7 @@ use crate::{
   logging::LogLevel,
   messaging::{AnyMessageGeneric, SystemMessage},
   props::PropsGeneric,
-  scheduler::{SchedulerBackedDelayProvider, SchedulerConfig, SchedulerContext},
+  scheduler::{SchedulerBackedDelayProvider, SchedulerContext},
   spawn::SpawnError,
   system::{RegisterExtraTopLevelError, system_state::SystemStateGeneric},
 };
@@ -84,7 +84,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   /// Returns [`SpawnError`] when guardian initialization fails.
   pub fn new_with_config(
     user_guardian_props: &PropsGeneric<TB>,
-    config: &ActorSystemConfig,
+    config: &ActorSystemConfig<TB>,
   ) -> Result<Self, SpawnError>
   where
     TB: Default, {
@@ -98,7 +98,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   /// Returns [`SpawnError`] when guardian initialization or configuration fails.
   pub fn new_with_config_and<F>(
     user_guardian_props: &PropsGeneric<TB>,
-    config: &ActorSystemConfig,
+    config: &ActorSystemConfig<TB>,
     configure: F,
   ) -> Result<Self, SpawnError>
   where
@@ -106,7 +106,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     F: FnOnce(&ActorSystemGeneric<TB>) -> Result<(), SpawnError>, {
     let system = Self::new_empty();
     system.state.apply_actor_system_config(config);
-    system.ensure_scheduler_context();
+    system.install_scheduler_and_tick_driver_from_config(config)?;
     system.bootstrap(user_guardian_props, configure)?;
     Ok(system)
   }
@@ -130,15 +130,34 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     self.state.clone()
   }
 
-  fn ensure_scheduler_context(&self)
+  /// Installs scheduler context and tick driver runtime from configuration.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if tick driver provisioning fails.
+  fn install_scheduler_and_tick_driver_from_config(&self, config: &ActorSystemConfig<TB>) -> Result<(), SpawnError>
   where
     TB: Default, {
-    if self.state.scheduler_context().is_some() {
-      return;
+    use crate::scheduler::TickDriverBootstrap;
+
+    // Install scheduler context if not already present
+    if self.state.scheduler_context().is_none() {
+      let event_stream = self.state.event_stream();
+      let toolbox = TB::default();
+      let scheduler_config = *config.scheduler_config();
+      let context = SchedulerContext::with_event_stream(toolbox, scheduler_config, event_stream);
+      self.state.install_scheduler_context(ArcShared::new(context));
     }
-    let event_stream = self.state.event_stream();
-    let service = SchedulerContext::with_event_stream(TB::default(), SchedulerConfig::default(), event_stream);
-    self.state.install_scheduler_context(ArcShared::new(service));
+
+    // Install tick driver runtime if tick_driver_config is provided
+    if let Some(tick_driver_config) = config.tick_driver_config() {
+      let ctx = self.scheduler_context().ok_or(SpawnError::SystemUnavailable)?;
+      let runtime =
+        TickDriverBootstrap::provision(tick_driver_config, &ctx).map_err(|_| SpawnError::SystemUnavailable)?;
+      self.state.install_tick_driver_runtime(runtime);
+    }
+
+    Ok(())
   }
 
   /// Allocates a new pid (testing helper).

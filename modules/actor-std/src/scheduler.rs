@@ -2,4 +2,7 @@
 
 /// Tick driver integrations for standard runtimes.
 #[cfg(feature = "tokio-executor")]
-pub mod tick;
+mod tick;
+
+#[cfg(feature = "tokio-executor")]
+pub use tick::*;

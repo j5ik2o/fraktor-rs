@@ -22,7 +22,7 @@ impl ActorSystemBuilder {
 
   /// Overrides the actor system configuration.
   #[must_use]
-  pub fn with_actor_system_config(mut self, config: ActorSystemConfig) -> Self {
+  pub fn with_actor_system_config(mut self, config: ActorSystemConfig<StdToolbox>) -> Self {
     self.inner = self.inner.with_actor_system_config(config);
     self
   }
@@ -31,13 +31,6 @@ impl ActorSystemBuilder {
   #[must_use]
   pub fn with_scheduler_config(mut self, config: SchedulerConfig) -> Self {
     self.inner = self.inner.with_scheduler_config(config);
-    self
-  }
-
-  /// Injects a custom toolbox instance.
-  #[must_use]
-  pub fn with_toolbox(mut self, toolbox: StdToolbox) -> Self {
-    self.inner = self.inner.with_toolbox(toolbox);
     self
   }
 

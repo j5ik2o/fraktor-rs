@@ -35,6 +35,6 @@ pub mod dispatcher;
 /// Error utilities specialised for the standard toolbox.
 pub mod error;
 /// Scheduler utilities specialised for the standard toolbox runtime.
-pub mod scheduler;
+pub mod scheduler; // allow module_wiring::no_parent_reexport
 /// Typed actor utilities specialised for the standard toolbox runtime.
 pub mod typed;

@@ -60,7 +60,10 @@ where
   /// # Errors
   ///
   /// Returns [`SpawnError`] if guardian initialization fails.
-  pub fn new_with_config(guardian: &TypedPropsGeneric<M, TB>, config: &ActorSystemConfig) -> Result<Self, SpawnError> {
+  pub fn new_with_config(
+    guardian: &TypedPropsGeneric<M, TB>,
+    config: &ActorSystemConfig<TB>,
+  ) -> Result<Self, SpawnError> {
     Ok(Self { inner: ActorSystemGeneric::new_with_config(guardian.to_untyped(), config)?, marker: PhantomData })
   }
 }

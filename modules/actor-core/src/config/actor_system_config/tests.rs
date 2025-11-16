@@ -1,27 +1,28 @@
 use core::time::Duration;
 
 use crate::{
+  NoStdToolbox,
   actor_prim::actor_path::GuardianKind as PathGuardianKind,
   config::actor_system_config::{ActorSystemConfig, RemotingConfig},
 };
 
 #[test]
 fn test_actor_system_config_default() {
-  let config = ActorSystemConfig::default();
+  let config = ActorSystemConfig::<NoStdToolbox>::default();
   assert_eq!(config.system_name(), "default-system");
   assert_eq!(config.default_guardian(), PathGuardianKind::User);
-  assert!(config.remoting().is_none());
+  assert!(config.remoting_config().is_none());
 }
 
 #[test]
 fn test_actor_system_config_with_system_name() {
-  let config = ActorSystemConfig::default().with_system_name("test-system");
+  let config = ActorSystemConfig::<NoStdToolbox>::default().with_system_name("test-system");
   assert_eq!(config.system_name(), "test-system");
 }
 
 #[test]
 fn test_actor_system_config_with_default_guardian() {
-  let config = ActorSystemConfig::default().with_default_guardian(PathGuardianKind::System);
+  let config = ActorSystemConfig::<NoStdToolbox>::default().with_default_guardian(PathGuardianKind::System);
   assert_eq!(config.default_guardian(), PathGuardianKind::System);
 }
 
@@ -29,10 +30,10 @@ fn test_actor_system_config_with_default_guardian() {
 fn test_actor_system_config_with_remoting() {
   let remoting = RemotingConfig::default().with_canonical_host("localhost").with_canonical_port(2552);
 
-  let config = ActorSystemConfig::default().with_remoting(remoting);
+  let config = ActorSystemConfig::<NoStdToolbox>::default().with_remoting(remoting);
 
-  assert!(config.remoting().is_some());
-  let remoting_cfg = config.remoting().unwrap();
+  assert!(config.remoting_config().is_some());
+  let remoting_cfg = config.remoting_config().unwrap();
   assert_eq!(remoting_cfg.canonical_host(), "localhost");
   assert_eq!(remoting_cfg.canonical_port(), Some(2552));
 }

@@ -165,12 +165,12 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   }
 
   /// Applies the actor system configuration (system name, remoting settings).
-  pub fn apply_actor_system_config(&self, config: &ActorSystemConfig) {
+  pub fn apply_actor_system_config(&self, config: &ActorSystemConfig<TB>) {
     {
       let mut identity = self.path_identity.lock();
       identity.system_name = config.system_name().to_string();
       identity.guardian_kind = config.default_guardian();
-      if let Some(remoting) = config.remoting() {
+      if let Some(remoting) = config.remoting_config() {
         identity.canonical_host = Some(remoting.canonical_host().to_string());
         identity.canonical_port = remoting.canonical_port();
         identity.quarantine_duration = remoting.quarantine_duration();

@@ -45,3 +45,13 @@ impl<TB: RuntimeToolbox> TickDriverConfig<TB> {
     Self::ManualTest(driver)
   }
 }
+
+impl<TB: RuntimeToolbox> core::fmt::Debug for TickDriverConfig<TB> {
+  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    match self {
+      | Self::Builder { .. } => f.debug_struct("Builder").finish_non_exhaustive(),
+      #[cfg(any(test, feature = "test-support"))]
+      | Self::ManualTest(_) => f.debug_tuple("ManualTest").finish(),
+    }
+  }
+}

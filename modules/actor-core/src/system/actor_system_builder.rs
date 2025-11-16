@@ -1,11 +1,9 @@
-use fraktor_utils_core_rs::sync::ArcShared;
-
 use super::{actor_system_build_error::ActorSystemBuildError, base::ActorSystemGeneric};
 use crate::{
   RuntimeToolbox,
   config::ActorSystemConfig,
   props::PropsGeneric,
-  scheduler::{SchedulerConfig, SchedulerContext, TickDriverBootstrap, TickDriverConfig, TickDriverError},
+  scheduler::{SchedulerConfig, TickDriverConfig},
 };
 
 /// Builds [`ActorSystemGeneric`] instances with a configured tick driver.
@@ -18,11 +16,8 @@ where
 struct BuilderState<TB>
 where
   TB: RuntimeToolbox + 'static, {
-  props:            PropsGeneric<TB>,
-  actor_config:     ActorSystemConfig,
-  scheduler_config: SchedulerConfig,
-  tick_driver:      Option<TickDriverConfig<TB>>,
-  toolbox:          Option<TB>,
+  props:               PropsGeneric<TB>,
+  actor_system_config: ActorSystemConfig<TB>,
 }
 
 impl<TB> BuilderState<TB>
@@ -30,13 +25,7 @@ where
   TB: RuntimeToolbox + 'static,
 {
   fn new(props: PropsGeneric<TB>) -> Self {
-    Self {
-      props,
-      actor_config: ActorSystemConfig::default(),
-      scheduler_config: SchedulerConfig::default(),
-      tick_driver: None,
-      toolbox: None,
-    }
+    Self { props, actor_system_config: ActorSystemConfig::default() }
   }
 }
 
@@ -52,29 +41,22 @@ where
 
   /// Configures the actor system settings applied during bootstrap.
   #[must_use]
-  pub fn with_actor_system_config(mut self, config: ActorSystemConfig) -> Self {
-    self.state.actor_config = config;
+  pub fn with_actor_system_config(mut self, config: ActorSystemConfig<TB>) -> Self {
+    self.state.actor_system_config = config;
     self
   }
 
   /// Configures the scheduler used by the runtime.
   #[must_use]
-  pub const fn with_scheduler_config(mut self, config: SchedulerConfig) -> Self {
-    self.state.scheduler_config = config;
-    self
-  }
-
-  /// Sets the runtime toolbox used to construct the scheduler context.
-  #[must_use]
-  pub fn with_toolbox(mut self, toolbox: TB) -> Self {
-    self.state.toolbox = Some(toolbox);
+  pub fn with_scheduler_config(mut self, config: SchedulerConfig) -> Self {
+    self.state.actor_system_config = self.state.actor_system_config.with_scheduler_config(config);
     self
   }
 
   /// Sets the tick driver configuration.
   #[must_use]
   pub fn with_tick_driver(mut self, config: TickDriverConfig<TB>) -> Self {
-    self.state.tick_driver = Some(config);
+    self.state.actor_system_config = self.state.actor_system_config.with_tick_driver(config);
     self
   }
 
@@ -88,26 +70,25 @@ where
   /// - Tick driver provisioning fails
   #[allow(unused_mut)]
   pub fn build(self) -> Result<ActorSystemGeneric<TB>, ActorSystemBuildError> {
-    let BuilderState { props, actor_config, mut scheduler_config, tick_driver, toolbox } = self.state;
-    let tick_driver = tick_driver.ok_or(ActorSystemBuildError::MissingTickDriver)?;
+    let BuilderState { props, mut actor_system_config } = self.state;
 
-    #[cfg(any(test, feature = "test-support"))]
-    if matches!(tick_driver, TickDriverConfig::ManualTest(_)) && !scheduler_config.runner_api_enabled() {
-      scheduler_config = scheduler_config.with_runner_api_enabled(true);
+    // Ensure tick driver configuration is present
+    if actor_system_config.tick_driver_config().is_none() {
+      return Err(ActorSystemBuildError::MissingTickDriver);
     }
 
-    let system = ActorSystemGeneric::new_with_config(&props, &actor_config).map_err(ActorSystemBuildError::Spawn)?;
+    // Special handling for ManualTest driver in test mode
+    #[cfg(any(test, feature = "test-support"))]
+    if let Some(tick_driver_config) = actor_system_config.tick_driver_config()
+      && matches!(tick_driver_config, TickDriverConfig::ManualTest(_))
+      && !actor_system_config.scheduler_config().runner_api_enabled()
+    {
+      let new_scheduler_config = actor_system_config.scheduler_config().with_runner_api_enabled(true);
+      actor_system_config = actor_system_config.with_scheduler_config(new_scheduler_config);
+    }
 
-    let event_stream = system.state().event_stream();
-    let toolbox = toolbox.unwrap_or_else(TB::default);
-    let context = SchedulerContext::with_event_stream(toolbox, scheduler_config, event_stream);
-    system.state().install_scheduler_context(ArcShared::new(context));
-
-    let ctx =
-      system.scheduler_context().ok_or(ActorSystemBuildError::TickDriver(TickDriverError::HandleUnavailable))?;
-    let runtime = TickDriverBootstrap::provision(&tick_driver, &ctx).map_err(ActorSystemBuildError::TickDriver)?;
-    system.state().install_tick_driver_runtime(runtime);
-
-    Ok(system)
+    // Create actor system with full configuration
+    // The scheduler context and tick driver runtime will be installed automatically
+    ActorSystemGeneric::new_with_config(&props, &actor_system_config).map_err(ActorSystemBuildError::Spawn)
   }
 }
