@@ -156,16 +156,18 @@ impl TickPulseSource for TestPulseSource {
   }
 }
 
-static TEST_PULSE: TestPulseSource = TestPulseSource::new(Duration::from_millis(2));
+fn spawn_test_pulse(resolution: Duration) -> &'static TestPulseSource {
+  Box::leak(Box::new(TestPulseSource::new(resolution)))
+}
 
-#[test]
-fn hardware_driver_enqueues_isr_pulses() {
-  TEST_PULSE.reset();
-  let config = TickDriverConfig::hardware(&TEST_PULSE);
+fn run_hardware_driver_enqueues_isr_pulses() {
+  let pulse = spawn_test_pulse(Duration::from_millis(2));
+  pulse.reset();
+  let config = TickDriverConfig::hardware(pulse);
   let ctx = SchedulerContext::new(NoStdToolbox::default(), SchedulerConfig::default());
   let runtime = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
 
-  TEST_PULSE.trigger();
+  pulse.trigger();
   let resolution = ctx.scheduler().lock().config().resolution();
   let now = TimerInstant::from_ticks(1, resolution);
   let feed = runtime.feed().expect("feed");
@@ -174,6 +176,7 @@ fn hardware_driver_enqueues_isr_pulses() {
   assert_eq!(metrics.enqueued_total(), 1);
 
   TickDriverBootstrap::shutdown(runtime.driver().clone());
+  pulse.reset();
 }
 
 #[test]
@@ -196,19 +199,26 @@ fn enqueue_from_isr_preserves_order_and_metrics() {
   assert!(signal.arm(), "signal should observe pending work");
 }
 
-#[test]
-fn hardware_driver_watchdog_marks_inactive_on_shutdown() {
-  TEST_PULSE.reset();
-  let config = TickDriverConfig::hardware(&TEST_PULSE);
+fn run_hardware_driver_watchdog_marks_inactive_on_shutdown() {
+  let pulse = spawn_test_pulse(Duration::from_millis(2));
+  pulse.reset();
+  let config = TickDriverConfig::hardware(pulse);
   let ctx = SchedulerContext::new(NoStdToolbox::default(), SchedulerConfig::default());
   let runtime = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
 
-  TEST_PULSE.trigger();
+  pulse.trigger();
   let feed = runtime.feed().expect("feed");
   assert!(feed.driver_active());
 
   TickDriverBootstrap::shutdown(runtime.driver().clone());
   assert!(!feed.driver_active());
+  pulse.reset();
+}
+
+#[test]
+fn hardware_driver_isr_bridge_behaviors() {
+  run_hardware_driver_enqueues_isr_pulses();
+  run_hardware_driver_watchdog_marks_inactive_on_shutdown();
 }
 
 struct ManualRunnable {
