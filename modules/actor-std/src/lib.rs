@@ -34,5 +34,8 @@ pub mod futures;
 pub mod dispatcher;
 /// Error utilities specialised for the standard toolbox.
 pub mod error;
+/// Tick driver integrations for standard runtimes.
+#[cfg(feature = "tokio-executor")]
+pub mod tick;
 /// Typed actor utilities specialised for the standard toolbox runtime.
 pub mod typed;

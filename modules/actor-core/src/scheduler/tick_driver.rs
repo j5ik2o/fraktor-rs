@@ -1,9 +1,12 @@
 //! Tick driver configuration and abstractions.
 
 mod auto_driver_config;
+mod bootstrap;
 mod fallback_policy;
+mod hardware_driver;
 #[cfg(any(test, feature = "test-support"))]
 mod manual_test_driver;
+mod runtime;
 mod scheduler_tick_executor;
 mod scheduler_tick_handle_owned;
 mod tick_driver_auto_locator;
@@ -19,10 +22,15 @@ mod tick_metrics_mode;
 mod tick_metrics_probe;
 mod tick_pulse_source;
 
+#[cfg(test)]
+mod tests;
+
 pub use auto_driver_config::AutoDriverConfig;
+pub use bootstrap::TickDriverBootstrap;
 pub use fallback_policy::FallbackPolicy;
 #[cfg(any(test, feature = "test-support"))]
 pub use manual_test_driver::ManualTestDriver;
+pub use runtime::{TickDriver, TickDriverControl, TickDriverHandle, TickDriverRuntime, next_tick_driver_id};
 pub use scheduler_tick_executor::SchedulerTickExecutor;
 pub use scheduler_tick_handle_owned::SchedulerTickHandleOwned;
 pub use tick_driver_auto_locator::{TickDriverAutoLocator, TickDriverAutoLocatorRef};

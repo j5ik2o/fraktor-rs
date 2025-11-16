@@ -85,9 +85,10 @@ pub use task_run_summary::TaskRunSummary;
 pub use tick_driver::ManualTestDriver;
 pub use tick_driver::{
   AutoDriverConfig, AutoDriverMetadata, AutoProfileKind, FallbackPolicy, HardwareKind, SchedulerTickExecutor,
-  SchedulerTickHandleOwned, SchedulerTickMetrics, SchedulerTickMetricsProbe, TickDriverAutoLocator,
-  TickDriverAutoLocatorRef, TickDriverConfig, TickDriverError, TickDriverFactory, TickDriverFactoryRef, TickDriverId,
-  TickDriverKind, TickDriverMetadata, TickExecutorSignal, TickFeed, TickFeedHandle, TickMetricsMode, TickPulseHandler,
-  TickPulseSource,
+  SchedulerTickHandleOwned, SchedulerTickMetrics, SchedulerTickMetricsProbe, TickDriver, TickDriverAutoLocator,
+  TickDriverAutoLocatorRef, TickDriverBootstrap, TickDriverConfig, TickDriverControl, TickDriverError,
+  TickDriverFactory, TickDriverFactoryRef, TickDriverHandle, TickDriverId, TickDriverKind, TickDriverMetadata,
+  TickDriverRuntime, TickExecutorSignal, TickFeed, TickFeedHandle, TickMetricsMode, TickPulseHandler, TickPulseSource,
+  next_tick_driver_id,
 };
 pub use warning::SchedulerWarning;

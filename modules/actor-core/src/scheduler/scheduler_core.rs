@@ -116,6 +116,18 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
     self.config.resolution()
   }
 
+  /// Returns the scheduler configuration copy.
+  #[must_use]
+  pub const fn config(&self) -> SchedulerConfig {
+    self.config
+  }
+
+  /// Returns a reference to the underlying toolbox.
+  #[must_use]
+  pub fn toolbox(&self) -> &TB {
+    &self.toolbox
+  }
+
   /// Returns a snapshot of the current scheduler metrics.
   #[must_use]
   pub const fn metrics(&self) -> SchedulerMetrics {

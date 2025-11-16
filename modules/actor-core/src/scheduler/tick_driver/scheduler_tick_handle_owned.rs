@@ -41,3 +41,6 @@ impl Default for SchedulerTickHandleOwned {
     Self::new()
   }
 }
+
+unsafe impl Send for SchedulerTickHandleOwned {}
+unsafe impl Sync for SchedulerTickHandleOwned {}

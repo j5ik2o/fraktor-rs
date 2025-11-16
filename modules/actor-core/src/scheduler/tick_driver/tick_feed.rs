@@ -15,7 +15,7 @@ use crate::RuntimeToolbox;
 #[cfg(test)]
 mod tests;
 
-use core::sync::atomic::{AtomicU64, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 /// Shared tick feed handle type.
 pub type TickFeedHandle<TB> = ArcShared<TickFeed<TB>>;
@@ -33,6 +33,7 @@ pub struct TickFeed<TB: RuntimeToolbox> {
   window_enqueued:     AtomicU64,
   window_dropped:      AtomicU64,
   last_snapshot_ticks: AtomicU64,
+  driver_alive:        AtomicBool,
 }
 
 impl<TB: RuntimeToolbox> TickFeed<TB> {
@@ -52,6 +53,7 @@ impl<TB: RuntimeToolbox> TickFeed<TB> {
       window_enqueued: AtomicU64::new(0),
       window_dropped: AtomicU64::new(0),
       last_snapshot_ticks: AtomicU64::new(0),
+      driver_alive: AtomicBool::new(false),
     };
     ArcShared::new(feed)
   }
@@ -61,17 +63,17 @@ impl<TB: RuntimeToolbox> TickFeed<TB> {
     if ticks == 0 {
       return;
     }
-    if self.try_push(ticks) {
-      self.record_enqueue(ticks);
-      self.signal.notify();
-    } else {
-      self.record_drop(ticks);
-    }
+    let pushed = self.try_push(ticks);
+    self.finalize_enqueue(pushed, ticks);
   }
 
   /// Enqueues ticks from interrupt context.
   pub fn enqueue_from_isr(&self, ticks: u32) {
-    self.enqueue(ticks);
+    if ticks == 0 {
+      return;
+    }
+    let pushed = self.try_push(ticks);
+    self.finalize_enqueue(pushed, ticks);
   }
 
   /// Drains buffered ticks, invoking the provided closure for each batch.
@@ -160,6 +162,31 @@ impl<TB: RuntimeToolbox> TickFeed<TB> {
     let value = u64::from(ticks);
     self.dropped_total.fetch_add(value, Ordering::AcqRel);
     self.window_dropped.fetch_add(value, Ordering::AcqRel);
+  }
+
+  fn finalize_enqueue(&self, pushed: bool, ticks: u32) {
+    if pushed {
+      self.record_driver_activity();
+      self.record_enqueue(ticks);
+      self.signal.notify();
+    } else {
+      self.record_drop(ticks);
+    }
+  }
+
+  fn record_driver_activity(&self) {
+    self.driver_alive.store(true, Ordering::Release);
+  }
+
+  /// Marks the driver as inactive (used on shutdown).
+  pub(crate) fn mark_driver_inactive(&self) {
+    self.driver_alive.store(false, Ordering::Release);
+  }
+
+  /// Indicates whether the driver recently signaled activity.
+  #[must_use]
+  pub fn driver_active(&self) -> bool {
+    self.driver_alive.load(Ordering::Acquire)
   }
 }
 

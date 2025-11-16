@@ -1,10 +1,11 @@
 //! Factory trait for creating tick drivers.
 
+use alloc::boxed::Box;
 use core::time::Duration;
 
 use fraktor_utils_core_rs::sync::ArcShared;
 
-use super::{TickDriverError, TickDriverKind};
+use super::{TickDriver, TickDriverError, TickDriverKind};
 use crate::RuntimeToolbox;
 
 /// Factory for creating tick driver instances.
@@ -20,7 +21,7 @@ pub trait TickDriverFactory<TB: RuntimeToolbox>: Send + Sync + 'static {
   /// # Errors
   ///
   /// Returns [`TickDriverError`] if driver creation fails.
-  fn build(&self) -> Result<(), TickDriverError>; // Simplified for now, actual driver type comes later
+  fn build(&self) -> Result<Box<dyn TickDriver<TB>>, TickDriverError>;
 }
 
 /// Shared reference to a tick driver factory.
