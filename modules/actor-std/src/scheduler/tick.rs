@@ -10,7 +10,7 @@ use fraktor_utils_core_rs::sync::ArcShared;
 use fraktor_utils_std_rs::runtime_toolbox::StdToolbox;
 use tokio::runtime::Handle;
 
-use crate::tick::tokio_impl::TokioIntervalDriverFactory;
+use crate::scheduler::tick::tokio_impl::TokioIntervalDriverFactory;
 
 mod tokio_impl;
 

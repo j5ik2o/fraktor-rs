@@ -22,18 +22,18 @@ struct StdMetricsOptions {
 }
 
 /// Factory producing Tokio interval-based drivers.
-pub(super) struct TokioIntervalDriverFactory {
+pub(crate) struct TokioIntervalDriverFactory {
   handle:     Handle,
   resolution: Duration,
   metrics:    Option<StdMetricsOptions>,
 }
 
 impl TokioIntervalDriverFactory {
-  pub(super) fn new(handle: Handle, resolution: Duration) -> Self {
+  pub(crate) fn new(handle: Handle, resolution: Duration) -> Self {
     Self { handle, resolution, metrics: None }
   }
 
-  pub(super) fn with_metrics(
+  pub(crate) fn with_metrics(
     mut self,
     event_stream: ArcShared<EventStreamGeneric<StdToolbox>>,
     interval: Duration,

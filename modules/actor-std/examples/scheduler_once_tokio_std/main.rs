@@ -7,10 +7,10 @@ use fraktor_actor_std_rs::{
   messaging::{AnyMessage, AnyMessageView},
   props::Props,
   system::{ActorSystem, DispatcherConfig},
-  tick::StdTickDriverConfig,
 };
 use fraktor_utils_core_rs::sync::ArcShared;
 use tokio::runtime::Handle;
+use fraktor_actor_std_rs::scheduler::tick::StdTickDriverConfig;
 
 // アクターに送信されるスケジュール済みメッセージ
 struct ScheduledMessage {
