@@ -10,7 +10,7 @@ use fraktor_actor_core_rs::{
   error::ActorError,
   messaging::{AnyMessage, AnyMessageView},
   props::Props,
-  scheduler::{SchedulerCommand},
+  scheduler::SchedulerCommand,
   system::ActorSystemBuilder,
 };
 
@@ -18,7 +18,6 @@ use fraktor_actor_core_rs::{
 #[path = "../no_std_tick_driver_support.rs"]
 mod no_std_tick_driver_support;
 #[cfg(not(target_os = "none"))]
-
 
 // スケジュールされたメッセージ
 struct ScheduledMessage {
@@ -115,8 +114,10 @@ fn main() {
   use std::{process, thread};
 
   let props = Props::from_fn(GuardianActor::new);
-  let bootstrap =
-    ActorSystemBuilder::new(props).with_tick_driver(no_std_tick_driver_support::hardware_tick_driver_config()).build().expect("system");
+  let bootstrap = ActorSystemBuilder::new(props)
+    .with_tick_driver(no_std_tick_driver_support::hardware_tick_driver_config())
+    .build()
+    .expect("system");
   bootstrap.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
 
   // スケジューラが動作する時間を与える

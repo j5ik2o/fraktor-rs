@@ -17,8 +17,6 @@ use fraktor_actor_core_rs::{
 #[path = "../no_std_tick_driver_support.rs"]
 mod no_std_tick_driver_support;
 #[cfg(not(target_os = "none"))]
-
-
 // スケジュール済みメッセージの型
 #[derive(Clone)]
 struct ScheduledMessage {

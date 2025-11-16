@@ -19,11 +19,11 @@ pub struct TickDriverRuntime<TB: RuntimeToolbox> {
 impl<TB: RuntimeToolbox> Clone for TickDriverRuntime<TB> {
   fn clone(&self) -> Self {
     Self {
-      driver:            self.driver.clone(),
-      feed:              self.feed.clone(),
+      driver: self.driver.clone(),
+      feed: self.feed.clone(),
       executor_shutdown: None, // Executor shutdown is owned by the original instance
       #[cfg(any(test, feature = "test-support"))]
-      manual:            self.manual.clone(),
+      manual: self.manual.clone(),
     }
   }
 }

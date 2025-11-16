@@ -169,9 +169,10 @@ fn spawn_test_pulse(resolution: Duration) -> &'static TestPulseSource {
 
 fn hardware_test_config(pulse: &'static dyn TickPulseSource) -> TickDriverConfig<NoStdToolbox> {
   TickDriverConfig::new(move |ctx| {
+    use fraktor_utils_core_rs::sync::ArcShared;
+
     use super::{HardwareKind, HardwareTickDriver, TickDriver, TickDriverRuntime, TickExecutorSignal, TickFeed};
     use crate::{NoStdToolbox, ToolboxMutex};
-    use fraktor_utils_core_rs::sync::ArcShared;
 
     let scheduler: ArcShared<ToolboxMutex<Scheduler<NoStdToolbox>, NoStdToolbox>> = ctx.scheduler();
     let (resolution, capacity) = {

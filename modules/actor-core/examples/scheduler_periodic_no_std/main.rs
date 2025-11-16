@@ -82,8 +82,10 @@ fn main() {
   use std::{process, thread};
 
   let props = Props::from_fn(GuardianActor::new);
-  let system =
-    ActorSystemBuilder::new(props).with_tick_driver(no_std_tick_driver_support::hardware_tick_driver_config()).build().expect("system");
+  let system = ActorSystemBuilder::new(props)
+    .with_tick_driver(no_std_tick_driver_support::hardware_tick_driver_config())
+    .build()
+    .expect("system");
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
 
   // スケジューラが動作する時間を与える

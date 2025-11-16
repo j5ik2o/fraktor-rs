@@ -215,11 +215,7 @@ impl StdTickDriverConfig {
       }
 
       let driver_id = next_tick_driver_id();
-      let control = Arc::new(TokioQuickstartControl {
-        tick_task,
-        executor_task,
-        metrics_task: Some(metrics_task),
-      });
+      let control = Arc::new(TokioQuickstartControl { tick_task, executor_task, metrics_task: Some(metrics_task) });
       let driver_handle = TickDriverHandle::new(driver_id, TickDriverKind::Auto, resolution, control);
 
       Ok(TickDriverRuntime::new(driver_handle, feed))

@@ -16,8 +16,6 @@ use fraktor_actor_core_rs::{
 #[path = "../no_std_tick_driver_support.rs"]
 mod no_std_tick_driver_support;
 #[cfg(not(target_os = "none"))]
-
-
 // 周期的に送信されるメッセージ
 #[derive(Clone)]
 struct PeriodicTick {

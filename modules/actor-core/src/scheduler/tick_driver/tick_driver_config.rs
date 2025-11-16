@@ -3,12 +3,12 @@
 #[cfg(test)]
 mod tests;
 
+use alloc::boxed::Box;
+
 #[cfg(any(test, feature = "test-support"))]
 use super::ManualTestDriver;
 use super::{TickDriverError, TickDriverRuntime};
 use crate::{RuntimeToolbox, scheduler::SchedulerContext};
-
-use alloc::boxed::Box;
 
 /// Configuration for tick driver creation.
 pub enum TickDriverConfig<TB: RuntimeToolbox> {

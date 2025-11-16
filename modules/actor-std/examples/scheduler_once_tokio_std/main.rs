@@ -56,7 +56,8 @@ impl Actor for GuardianActor {
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
   let handle = Handle::current();
-  let dispatcher: DispatcherConfig = DispatcherConfig::from_executor(ArcShared::new(TokioExecutor::new(handle.clone())));
+  let dispatcher: DispatcherConfig =
+    DispatcherConfig::from_executor(ArcShared::new(TokioExecutor::new(handle.clone())));
 
   let props = Props::from_fn(|| GuardianActor).with_dispatcher(dispatcher);
   let core_system = ActorSystemBuilder::new(props.into_inner())

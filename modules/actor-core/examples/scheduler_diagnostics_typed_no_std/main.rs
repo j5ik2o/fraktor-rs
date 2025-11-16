@@ -9,7 +9,7 @@ use std::{thread, time::Duration as StdDuration};
 
 use fraktor_actor_core_rs::{
   error::ActorError,
-  scheduler::{SchedulerDiagnosticsSubscription},
+  scheduler::SchedulerDiagnosticsSubscription,
   typed::{
     TypedActorSystemBuilder, TypedProps,
     actor_prim::{TypedActor, TypedActorContext},
@@ -20,8 +20,6 @@ use fraktor_actor_core_rs::{
 #[path = "../no_std_tick_driver_support.rs"]
 mod no_std_tick_driver_support;
 #[cfg(not(target_os = "none"))]
-
-
 #[derive(Clone)]
 struct ScheduledMessage {
   text: String,
