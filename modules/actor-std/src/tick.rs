@@ -44,8 +44,8 @@ impl StdTickDriverConfig {
     use fraktor_actor_core_rs::{
       ToolboxMutex,
       scheduler::{
-        Scheduler, SchedulerTickExecutor, TickDriverControl, TickDriverHandle, TickDriverKind, TickDriverRuntime,
-        TickExecutorSignal, TickFeed, next_tick_driver_id,
+        AutoDriverMetadata, AutoProfileKind, Scheduler, SchedulerTickExecutor, TickDriverControl, TickDriverHandle,
+        TickDriverKind, TickDriverRuntime, TickExecutorSignal, TickFeed, next_tick_driver_id,
       },
     };
     use fraktor_utils_core_rs::sync::ArcShared;
@@ -103,9 +103,10 @@ impl StdTickDriverConfig {
       let driver_id = next_tick_driver_id();
       let control = ArcShared::new(TokioQuickstartControl { tick_task, executor_task });
       let driver_handle = TickDriverHandle::new(driver_id, TickDriverKind::Auto, resolution, control);
+      let metadata = AutoDriverMetadata { profile: AutoProfileKind::Tokio, driver_id, resolution };
 
       // Create runtime
-      Ok(TickDriverRuntime::new(driver_handle, feed))
+      Ok(TickDriverRuntime::new(driver_handle, feed).with_auto_metadata(metadata))
     })
   }
 
@@ -129,8 +130,9 @@ impl StdTickDriverConfig {
     use fraktor_actor_core_rs::{
       ToolboxMutex,
       scheduler::{
-        Scheduler, SchedulerTickExecutor, SchedulerTickMetricsProbe, TickDriverControl, TickDriverHandle,
-        TickDriverKind, TickDriverRuntime, TickExecutorSignal, TickFeed, next_tick_driver_id,
+        AutoDriverMetadata, AutoProfileKind, Scheduler, SchedulerTickExecutor, SchedulerTickMetricsProbe,
+        TickDriverControl, TickDriverHandle, TickDriverKind, TickDriverRuntime, TickExecutorSignal, TickFeed,
+        next_tick_driver_id,
       },
     };
     use fraktor_utils_core_rs::{sync::ArcShared as Arc, time::TimerInstant};
@@ -214,8 +216,9 @@ impl StdTickDriverConfig {
       let driver_id = next_tick_driver_id();
       let control = Arc::new(TokioQuickstartControl { tick_task, executor_task, metrics_task: Some(metrics_task) });
       let driver_handle = TickDriverHandle::new(driver_id, TickDriverKind::Auto, resolution, control);
+      let metadata = AutoDriverMetadata { profile: AutoProfileKind::Tokio, driver_id, resolution };
 
-      Ok(TickDriverRuntime::new(driver_handle, feed))
+      Ok(TickDriverRuntime::new(driver_handle, feed).with_auto_metadata(metadata))
     })
   }
 
@@ -237,7 +240,9 @@ mod tests {
 
   use fraktor_actor_core_rs::{
     event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber},
-    scheduler::{SchedulerConfig, SchedulerContext, TickDriverBootstrap, TickDriverConfig, TickDriverKind},
+    scheduler::{
+      AutoProfileKind, SchedulerConfig, SchedulerContext, TickDriverBootstrap, TickDriverConfig, TickDriverKind,
+    },
   };
   use fraktor_utils_core_rs::{sync::ArcShared, time::TimerInstant};
 
@@ -315,6 +320,12 @@ mod tests {
     let config = StdTickDriverConfig::tokio_quickstart();
     let ctx = SchedulerContext::new(StdToolbox::default(), SchedulerConfig::default());
     let runtime = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
+
+    let snapshot = ctx.driver_snapshot().expect("snapshot");
+    assert!(
+      matches!(snapshot.auto.as_ref().map(|meta| meta.profile), Some(AutoProfileKind::Tokio)),
+      "auto metadata must be recorded for tokio quickstart",
+    );
 
     tokio::time::sleep(Duration::from_millis(40)).await;
 

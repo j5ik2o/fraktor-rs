@@ -38,7 +38,8 @@ impl TickDriverBootstrap {
         let runtime = builder(ctx)?;
         let handle = runtime.driver();
         let metadata = TickDriverMetadata::new(handle.id(), start_instant);
-        ctx.record_driver_metadata(handle.kind(), handle.resolution(), metadata, None);
+        let auto_metadata = runtime.auto_metadata().cloned();
+        ctx.record_driver_metadata(handle.kind(), handle.resolution(), metadata, auto_metadata);
         Ok(runtime)
       },
     }
