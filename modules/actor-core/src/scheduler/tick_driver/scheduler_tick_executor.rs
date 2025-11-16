@@ -21,6 +21,7 @@ pub struct SchedulerTickExecutor<TB: RuntimeToolbox + 'static> {
 
 impl<TB: RuntimeToolbox + 'static> SchedulerTickExecutor<TB> {
   /// Creates a new executor bound to the provided scheduler context.
+  #[must_use]
   pub fn new(
     scheduler: ArcShared<ToolboxMutex<Scheduler<TB>, TB>>,
     feed: TickFeedHandle<TB>,

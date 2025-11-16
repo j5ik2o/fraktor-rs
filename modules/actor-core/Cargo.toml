@@ -20,7 +20,7 @@ test-support = []
 [dependencies]
 async-trait = { workspace = true }
 fraktor-utils-core-rs = { workspace = true, default-features = false, features = ["alloc", "unsize"] }
-critical-section = { workspace = true, features = ["std"] }
+critical-section = { workspace = true, default-features = false }
 heapless = { workspace = true, default-features = false, features = ["portable-atomic"] }
 portable-atomic = { workspace = true, default-features = false, features = ["critical-section"] }
 portable-atomic-util = { workspace = true, default-features = false, features = ["alloc"] }
@@ -36,6 +36,7 @@ futures = { workspace = true, features = ["alloc"] }
 criterion = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
 proptest = "1.5"
+critical-section = { workspace = true, features = ["std"] }
 
 [[example]]
 name = "ping_pong_not_std"
@@ -60,31 +61,39 @@ path = "examples/serialization_custom_no_std/main.rs"
 [[example]]
 name = "scheduler_once_no_std"
 path = "examples/scheduler_once_no_std/main.rs"
+required-features = ["test-support"]
 
 [[example]]
 name = "scheduler_once_typed_no_std"
 path = "examples/scheduler_once_typed_no_std/main.rs"
+required-features = ["test-support"]
 
 [[example]]
 name = "scheduler_periodic_no_std"
 path = "examples/scheduler_periodic_no_std/main.rs"
+required-features = ["test-support"]
 
 [[example]]
 name = "scheduler_periodic_typed_no_std"
 path = "examples/scheduler_periodic_typed_no_std/main.rs"
+required-features = ["test-support"]
 
 [[example]]
 name = "scheduler_cancellation_no_std"
 path = "examples/scheduler_cancellation_no_std/main.rs"
+required-features = ["test-support"]
 
 [[example]]
 name = "scheduler_cancellation_typed_no_std"
 path = "examples/scheduler_cancellation_typed_no_std/main.rs"
+required-features = ["test-support"]
 
 [[example]]
 name = "scheduler_diagnostics_no_std"
 path = "examples/scheduler_diagnostics_no_std/main.rs"
+required-features = ["test-support"]
 
 [[example]]
 name = "scheduler_diagnostics_typed_no_std"
 path = "examples/scheduler_diagnostics_typed_no_std/main.rs"
+required-features = ["test-support"]

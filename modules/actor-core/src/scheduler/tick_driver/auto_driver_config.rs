@@ -2,7 +2,7 @@
 
 use core::time::Duration;
 
-use super::{FallbackPolicy, TickDriverAutoLocatorRef, TickDriverFactoryRef, TickMetricsMode};
+use super::{AutoProfileKind, FallbackPolicy, TickDriverAutoLocatorRef, TickDriverFactoryRef, TickMetricsMode};
 use crate::RuntimeToolbox;
 
 /// Configuration for automatic tick driver selection and behavior.
@@ -12,6 +12,7 @@ pub struct AutoDriverConfig<TB: RuntimeToolbox> {
   resolution: Option<Duration>,
   metrics:    TickMetricsMode,
   fallback:   FallbackPolicy,
+  profile:    Option<AutoProfileKind>,
 }
 
 impl<TB: RuntimeToolbox> AutoDriverConfig<TB> {
@@ -24,6 +25,7 @@ impl<TB: RuntimeToolbox> AutoDriverConfig<TB> {
       resolution: None,
       metrics:    TickMetricsMode::default(),
       fallback:   FallbackPolicy::default(),
+      profile:    None,
     }
   }
 
@@ -37,27 +39,28 @@ impl<TB: RuntimeToolbox> AutoDriverConfig<TB> {
   /// Sets a custom auto-locator.
   #[must_use]
   pub fn with_locator(mut self, locator: TickDriverAutoLocatorRef<TB>) -> Self {
+    self.profile = Some(locator.profile());
     self.locator = Some(locator);
     self
   }
 
   /// Sets the tick resolution.
   #[must_use]
-  pub fn with_resolution(mut self, resolution: Duration) -> Self {
+  pub const fn with_resolution(mut self, resolution: Duration) -> Self {
     self.resolution = Some(resolution);
     self
   }
 
   /// Sets the metrics collection mode.
   #[must_use]
-  pub fn with_metrics_mode(mut self, mode: TickMetricsMode) -> Self {
+  pub const fn with_metrics_mode(mut self, mode: TickMetricsMode) -> Self {
     self.metrics = mode;
     self
   }
 
   /// Sets the fallback policy for driver failures.
   #[must_use]
-  pub fn with_fallback(mut self, policy: FallbackPolicy) -> Self {
+  pub const fn with_fallback(mut self, policy: FallbackPolicy) -> Self {
     self.fallback = policy;
     self
   }
@@ -96,6 +99,12 @@ impl<TB: RuntimeToolbox> AutoDriverConfig<TB> {
   #[must_use]
   pub const fn fallback_policy(&self) -> &FallbackPolicy {
     &self.fallback
+  }
+
+  /// Returns the detected profile hint.
+  #[must_use]
+  pub const fn profile(&self) -> Option<AutoProfileKind> {
+    self.profile
   }
 }
 

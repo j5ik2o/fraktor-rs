@@ -8,6 +8,7 @@ use core::{
 use fraktor_utils_core_rs::{
   collections::queue::capabilities::{QueueCapabilityRegistry, QueueCapabilitySet},
   sync::{ArcShared, NoStdMutex},
+  time::TimerInstant,
   timing::{DelayFuture, DelayProvider},
 };
 
@@ -20,6 +21,10 @@ use crate::{
   lifecycle::LifecycleStage,
   messaging::SystemMessage,
   props::{DispatcherConfig, MailboxConfig, MailboxRequirement, Props},
+  scheduler::{
+    AutoDriverMetadata, AutoProfileKind, SchedulerConfig, SchedulerContext, TickDriverId, TickDriverKind,
+    TickDriverMetadata,
+  },
 };
 
 struct TestActor;
@@ -176,6 +181,27 @@ fn actor_system_when_terminated() {
   let system = ActorSystem::new_empty();
   let future = system.when_terminated();
   assert!(!future.is_ready());
+}
+
+#[test]
+fn actor_system_reports_tick_driver_snapshot() {
+  let system = ActorSystem::new_empty();
+  let ctx = ArcShared::new(SchedulerContext::new(NoStdToolbox::default(), SchedulerConfig::default()));
+  system.state().install_scheduler_context(ctx.clone());
+
+  let driver_id = TickDriverId::new(99);
+  let resolution = Duration::from_millis(5);
+  let instant = TimerInstant::from_ticks(1, resolution);
+  let metadata = TickDriverMetadata::new(driver_id, instant);
+  let auto = Some(AutoDriverMetadata { profile: AutoProfileKind::Tokio, driver_id, resolution });
+
+  ctx.record_driver_metadata(TickDriverKind::Auto, resolution, metadata, auto.clone());
+
+  let snapshot = system.tick_driver_snapshot().expect("tick driver snapshot");
+  assert_eq!(snapshot.metadata.driver_id, driver_id);
+  assert_eq!(snapshot.kind, TickDriverKind::Auto);
+  assert_eq!(snapshot.resolution, resolution);
+  assert_eq!(snapshot.auto.as_ref().map(|meta| meta.profile), auto.as_ref().map(|meta| meta.profile));
 }
 
 #[test]

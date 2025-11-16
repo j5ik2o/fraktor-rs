@@ -64,13 +64,7 @@ impl SchedulerCapacityProfile {
   #[must_use]
   pub const fn tick_buffer_quota(&self) -> usize {
     let base = self.system_quota / 8;
-    if base == 0 {
-      32
-    } else if base < 32 {
-      32
-    } else {
-      base
-    }
+    if base < 32 { 32 } else { base }
   }
 
   /// Overflow queue capacity for far-future timers.

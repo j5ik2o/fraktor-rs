@@ -124,7 +124,7 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
 
   /// Returns a reference to the underlying toolbox.
   #[must_use]
-  pub fn toolbox(&self) -> &TB {
+  pub const fn toolbox(&self) -> &TB {
     &self.toolbox
   }
 

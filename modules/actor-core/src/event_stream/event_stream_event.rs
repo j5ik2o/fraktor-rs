@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use super::remote_authority_event::RemoteAuthorityEvent;
+use super::{remote_authority_event::RemoteAuthorityEvent, tick_driver_snapshot::TickDriverSnapshot};
 use crate::{
   NoStdToolbox, RuntimeToolbox,
   dead_letter::DeadLetterEntryGeneric,
@@ -11,8 +11,8 @@ use crate::{
   lifecycle::LifecycleEvent,
   logging::LogEvent,
   mailbox::{MailboxMetricsEvent, MailboxPressureEvent},
-  serialization::SerializationErrorEvent,
   scheduler::SchedulerTickMetrics,
+  serialization::SerializationErrorEvent,
   typed::{UnhandledMessageEvent, message_adapter::AdapterFailureEvent},
 };
 
@@ -41,6 +41,8 @@ pub enum EventStreamEvent<TB: RuntimeToolbox = NoStdToolbox> {
   RemoteAuthority(RemoteAuthorityEvent),
   /// Scheduler tick metrics snapshot.
   SchedulerTick(SchedulerTickMetrics),
+  /// Tick driver activation snapshot.
+  TickDriver(TickDriverSnapshot),
 }
 
 impl<TB: RuntimeToolbox> Clone for EventStreamEvent<TB> {
@@ -57,6 +59,7 @@ impl<TB: RuntimeToolbox> Clone for EventStreamEvent<TB> {
       | Self::Serialization(event) => Self::Serialization(event.clone()),
       | Self::RemoteAuthority(event) => Self::RemoteAuthority(event.clone()),
       | Self::SchedulerTick(event) => Self::SchedulerTick(event.clone()),
+      | Self::TickDriver(event) => Self::TickDriver(event.clone()),
     }
   }
 }

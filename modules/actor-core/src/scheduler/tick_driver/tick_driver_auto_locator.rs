@@ -2,7 +2,7 @@
 
 use fraktor_utils_core_rs::sync::ArcShared;
 
-use super::{TickDriverError, TickDriverFactoryRef};
+use super::{AutoProfileKind, TickDriverError, TickDriverFactoryRef};
 use crate::RuntimeToolbox;
 
 /// Automatically detects and selects appropriate tick driver factory.
@@ -18,6 +18,11 @@ pub trait TickDriverAutoLocator<TB: RuntimeToolbox>: Send + Sync + 'static {
   fn default_ref() -> TickDriverAutoLocatorRef<TB>
   where
     Self: Sized;
+
+  /// Provides the profile classification for auto-metadata purposes.
+  fn profile(&self) -> AutoProfileKind {
+    AutoProfileKind::Custom
+  }
 }
 
 /// Shared reference to a tick driver auto-locator.

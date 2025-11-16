@@ -16,11 +16,17 @@ pub struct SchedulerRunner<'a, TB: RuntimeToolbox + 'static> {
 }
 
 impl<'a, TB: RuntimeToolbox + 'static> SchedulerRunner<'a, TB> {
-  /// Creates a manual runner suitable for deterministic tests.
   #[must_use]
-  pub fn manual(tick_handle: &'a SchedulerTickHandle<'a>) -> Self {
+  pub(crate) fn new_internal(tick_handle: &'a SchedulerTickHandle<'a>) -> Self {
     let tick_lease = tick_handle.lease();
     Self { tick_handle, tick_lease, mode: RunnerMode::Manual, _marker: PhantomData }
+  }
+
+  /// Creates a manual runner suitable for deterministic tests.
+  #[cfg(any(test, feature = "test-support"))]
+  #[must_use]
+  pub fn manual(tick_handle: &'a SchedulerTickHandle<'a>) -> Self {
+    Self::new_internal(tick_handle)
   }
 
   /// Returns the configured mode.

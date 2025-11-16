@@ -20,7 +20,7 @@ impl<TB: RuntimeToolbox> SchedulerRunnerOwned<TB> {
     // reference obtained here remains valid for `'static` as long as `self`
     // lives.
     let handle_ptr = handle.handle() as *const SchedulerTickHandle<'static>;
-    let runner = unsafe { SchedulerRunner::manual(&*handle_ptr) };
+    let runner = unsafe { SchedulerRunner::new_internal(&*handle_ptr) };
     Self { runner, handle }
   }
 
@@ -36,7 +36,13 @@ impl<TB: RuntimeToolbox> SchedulerRunnerOwned<TB> {
 
   /// Returns the owned tick handle.
   #[must_use]
-  pub fn handle(&self) -> &SchedulerTickHandle<'static> {
+  pub const fn handle(&self) -> &SchedulerTickHandle<'static> {
     self.handle.handle()
+  }
+}
+
+impl<TB: RuntimeToolbox> Default for SchedulerRunnerOwned<TB> {
+  fn default() -> Self {
+    Self::new()
   }
 }

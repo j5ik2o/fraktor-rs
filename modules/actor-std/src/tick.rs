@@ -4,7 +4,10 @@ use std::time::Duration;
 
 use fraktor_actor_core_rs::{
   event_stream::EventStreamGeneric,
-  scheduler::{TickDriverAutoLocator, TickDriverAutoLocatorRef, TickDriverError, TickDriverFactoryRef},
+  scheduler::{
+    AutoProfileKind, TickDriverAutoLocator, TickDriverAutoLocatorRef, TickDriverConfig, TickDriverError,
+    TickDriverFactoryRef,
+  },
 };
 use fraktor_utils_core_rs::sync::ArcShared;
 use fraktor_utils_std_rs::runtime_toolbox::StdToolbox;
@@ -19,10 +22,26 @@ pub struct StdTickDriverConfig;
 
 impl StdTickDriverConfig {
   /// Builds a factory using the current Tokio runtime handle.
+  ///
+  /// # Panics
+  ///
+  /// Panics if no Tokio runtime handle is available in the current context.
   #[must_use]
   pub fn tokio_auto(resolution: Duration) -> TickDriverFactoryRef<StdToolbox> {
     let handle = Handle::try_current().expect("Tokio runtime handle unavailable");
     Self::tokio_with_handle(handle, resolution)
+  }
+
+  /// Creates a ready-to-use tick driver configuration for Tokio quickstart flows.
+  #[must_use]
+  pub fn tokio_quickstart() -> TickDriverConfig<StdToolbox> {
+    Self::tokio_quickstart_with_resolution(Duration::from_millis(10))
+  }
+
+  /// Creates a Tokio quickstart configuration with custom resolution.
+  #[must_use]
+  pub fn tokio_quickstart_with_resolution(resolution: Duration) -> TickDriverConfig<StdToolbox> {
+    TickDriverConfig::auto_with_factory(Self::tokio_auto(resolution))
   }
 
   /// Builds a factory using the provided Tokio runtime handle.
@@ -32,6 +51,10 @@ impl StdTickDriverConfig {
   }
 
   /// Builds a factory that also publishes metrics to the provided event stream.
+  ///
+  /// # Panics
+  ///
+  /// Panics if no Tokio runtime handle is available in the current context.
   #[must_use]
   pub fn tokio_auto_with_event_stream(
     resolution: Duration,
@@ -68,6 +91,10 @@ impl TickDriverAutoLocator<StdToolbox> for StdTokioAutoLocator {
     Self: Sized, {
     ArcShared::new(Self)
   }
+
+  fn profile(&self) -> AutoProfileKind {
+    AutoProfileKind::Tokio
+  }
 }
 
 #[cfg(test)]
@@ -83,6 +110,7 @@ mod tests {
   use super::*;
 
   #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+  #[allow(clippy::expect_used)]
   async fn tokio_interval_driver_produces_ticks() {
     let factory = StdTickDriverConfig::tokio_auto(Duration::from_millis(5));
     let config = TickDriverConfig::auto_with_factory(factory);
@@ -95,7 +123,7 @@ mod tests {
     let metrics = runtime.feed().expect("feed").snapshot(now, TickDriverKind::Auto);
     assert!(metrics.enqueued_total() > 0);
 
-    TickDriverBootstrap::shutdown(runtime.driver().clone());
+    TickDriverBootstrap::shutdown(runtime.driver());
   }
 
   struct RecordingSubscriber {
@@ -107,18 +135,21 @@ mod tests {
       Self { events: Mutex::new(Vec::new()) }
     }
 
+    #[allow(clippy::expect_used)]
     fn snapshot(&self) -> Vec<EventStreamEvent<StdToolbox>> {
       self.events.lock().expect("lock").clone()
     }
   }
 
   impl EventStreamSubscriber<StdToolbox> for RecordingSubscriber {
+    #[allow(clippy::expect_used)]
     fn on_event(&self, event: &EventStreamEvent<StdToolbox>) {
       self.events.lock().expect("lock").push(event.clone());
     }
   }
 
   #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+  #[allow(clippy::expect_used)]
   async fn tokio_interval_driver_publishes_tick_metrics_events() {
     let event_stream = ArcShared::new(EventStreamGeneric::<StdToolbox>::default());
     let subscriber_impl = ArcShared::new(RecordingSubscriber::new());
@@ -136,9 +167,30 @@ mod tests {
 
     tokio::time::sleep(Duration::from_millis(120)).await;
 
-    TickDriverBootstrap::shutdown(runtime.driver().clone());
+    TickDriverBootstrap::shutdown(runtime.driver());
 
     let events = subscriber_impl.snapshot();
-    assert!(events.iter().any(|event| matches!(event, EventStreamEvent::SchedulerTick(metrics) if metrics.enqueued_total() > 0)));
+    assert!(
+      events
+        .iter()
+        .any(|event| matches!(event, EventStreamEvent::SchedulerTick(metrics) if metrics.enqueued_total() > 0))
+    );
+  }
+
+  #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+  #[allow(clippy::expect_used)]
+  async fn tokio_quickstart_helper_provisions_driver() {
+    let config = StdTickDriverConfig::tokio_quickstart();
+    let ctx = SchedulerContext::new(StdToolbox::default(), SchedulerConfig::default());
+    let runtime = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
+
+    tokio::time::sleep(Duration::from_millis(40)).await;
+
+    let resolution = ctx.scheduler().lock().config().resolution();
+    let now = TimerInstant::from_ticks(1, resolution);
+    let metrics = runtime.feed().expect("feed").snapshot(now, TickDriverKind::Auto);
+    assert!(metrics.enqueued_total() > 0);
+
+    TickDriverBootstrap::shutdown(runtime.driver());
   }
 }

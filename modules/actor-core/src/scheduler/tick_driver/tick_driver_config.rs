@@ -54,7 +54,7 @@ impl<TB: RuntimeToolbox> TickDriverConfig<TB> {
   /// Creates a manual test driver configuration.
   #[cfg(any(test, feature = "test-support"))]
   #[must_use]
-  pub fn manual(driver: ManualTestDriver<TB>) -> Self {
+  pub const fn manual(driver: ManualTestDriver<TB>) -> Self {
     Self::ManualTest(driver)
   }
 

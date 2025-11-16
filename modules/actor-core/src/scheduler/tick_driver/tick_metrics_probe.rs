@@ -20,11 +20,12 @@ pub struct SchedulerTickMetricsProbe<TB: RuntimeToolbox> {
 impl<TB: RuntimeToolbox> SchedulerTickMetricsProbe<TB> {
   /// Creates a new probe for the provided feed.
   #[must_use]
-  pub fn new(feed: TickFeedHandle<TB>, resolution: Duration, driver: TickDriverKind) -> Self {
+  pub const fn new(feed: TickFeedHandle<TB>, resolution: Duration, driver: TickDriverKind) -> Self {
     Self { feed, resolution, driver }
   }
 
   /// Collects a metrics snapshot at the specified instant.
+  #[must_use]
   pub fn snapshot(&self, now: TimerInstant) -> SchedulerTickMetrics {
     self.feed.snapshot(now, self.driver)
   }

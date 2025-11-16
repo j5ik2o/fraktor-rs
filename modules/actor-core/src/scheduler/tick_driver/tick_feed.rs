@@ -1,21 +1,25 @@
 //! Buffered tick feed shared by drivers and the scheduler executor.
 
 use alloc::collections::VecDeque;
-use core::{cell::RefCell, marker::PhantomData, time::Duration};
+use core::{
+  cell::RefCell,
+  marker::PhantomData,
+  sync::atomic::{AtomicBool, Ordering},
+  time::Duration,
+};
 
 use critical_section::Mutex;
 use fraktor_utils_core_rs::{
   sync::ArcShared,
   time::{SchedulerTickHandle, TimerInstant},
 };
+use portable_atomic::AtomicU64;
 
 use super::{SchedulerTickHandleOwned, SchedulerTickMetrics, TickDriverKind, TickExecutorSignal};
 use crate::RuntimeToolbox;
 
 #[cfg(test)]
 mod tests;
-
-use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 /// Shared tick feed handle type.
 pub type TickFeedHandle<TB> = ArcShared<TickFeed<TB>>;
@@ -38,6 +42,7 @@ pub struct TickFeed<TB: RuntimeToolbox> {
 
 impl<TB: RuntimeToolbox> TickFeed<TB> {
   /// Creates a new feed with the provided capacity.
+  #[must_use]
   pub fn new(resolution: Duration, capacity: usize, signal: TickExecutorSignal) -> TickFeedHandle<TB> {
     let bounded_capacity = capacity.max(1);
     let queue = VecDeque::with_capacity(bounded_capacity);
@@ -93,7 +98,7 @@ impl<TB: RuntimeToolbox> TickFeed<TB> {
 
   /// Accesses the underlying tick handle.
   #[must_use]
-  pub fn handle(&self) -> &SchedulerTickHandle<'static> {
+  pub const fn handle(&self) -> &SchedulerTickHandle<'static> {
     self.handle.handle()
   }
 

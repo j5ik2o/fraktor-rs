@@ -2,16 +2,7 @@
 
 use core::time::Duration;
 
-use super::TickDriverError;
-
-/// Callback handler for tick pulses from hardware timers.
-#[repr(C)]
-pub struct TickPulseHandler {
-  /// Function pointer for the callback.
-  pub func: unsafe extern "C" fn(*mut core::ffi::c_void),
-  /// Context pointer passed to the callback.
-  pub ctx:  *mut core::ffi::c_void,
-}
+use super::{TickDriverError, TickPulseHandler};
 
 /// Abstraction for hardware timer tick sources.
 pub trait TickPulseSource: Send + Sync {

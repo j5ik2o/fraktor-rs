@@ -2,7 +2,7 @@ use event_stream::EventStreamSubscriberAdapter;
 use fraktor_actor_core_rs::{
   actor_prim::Pid,
   config::ActorSystemConfig,
-  event_stream::EventStreamSubscriber as CoreEventStreamSubscriber,
+  event_stream::{EventStreamSubscriber as CoreEventStreamSubscriber, TickDriverSnapshot},
   logging::LogLevel,
   spawn::SpawnError,
   system::{ActorSystemGeneric as CoreActorSystemGeneric, SystemStateGeneric as CoreSystemStateGeneric},
@@ -92,6 +92,12 @@ impl ActorSystem {
   #[must_use]
   pub fn event_stream(&self) -> ArcShared<EventStream> {
     self.inner.event_stream()
+  }
+
+  /// Returns the last reported tick driver snapshot.
+  #[must_use]
+  pub fn tick_driver_snapshot(&self) -> Option<TickDriverSnapshot> {
+    self.inner.tick_driver_snapshot()
   }
 
   /// Subscribes the provided observer to the event stream.

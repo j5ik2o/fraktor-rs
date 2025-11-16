@@ -15,6 +15,8 @@ pub enum TickDriverError {
   DriftExceeded,
   /// Driver has stopped unexpectedly.
   DriverStopped,
+  /// Manual runner API is disabled for this configuration.
+  ManualDriverDisabled,
 }
 
 impl fmt::Display for TickDriverError {
@@ -25,6 +27,7 @@ impl fmt::Display for TickDriverError {
       | Self::UnsupportedEnvironment => write!(f, "unsupported environment for tick driver auto-detection"),
       | Self::DriftExceeded => write!(f, "tick drift exceeded allowed threshold"),
       | Self::DriverStopped => write!(f, "tick driver has stopped unexpectedly"),
+      | Self::ManualDriverDisabled => write!(f, "manual tick driver is disabled for this configuration"),
     }
   }
 }

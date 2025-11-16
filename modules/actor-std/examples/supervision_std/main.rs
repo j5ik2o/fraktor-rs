@@ -60,7 +60,8 @@ impl EventStreamSubscriber for LifecyclePrinter {
       | EventStreamEvent::Mailbox(_)
       | EventStreamEvent::UnhandledMessage(_)
       | EventStreamEvent::Serialization(_)
-      | EventStreamEvent::SchedulerTick(_) => {},
+      | EventStreamEvent::SchedulerTick(_)
+      | EventStreamEvent::TickDriver(_) => {},
     }
   }
 }

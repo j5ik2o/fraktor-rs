@@ -33,7 +33,7 @@ use crate::{
   config::{ActorSystemConfig, DispatchersGeneric, MailboxesGeneric},
   dead_letter::{DeadLetterEntryGeneric, DeadLetterGeneric, DeadLetterReason},
   error::{ActorError, SendError},
-  event_stream::{EventStreamEvent, EventStreamGeneric, RemoteAuthorityEvent},
+  event_stream::{EventStreamEvent, EventStreamGeneric, RemoteAuthorityEvent, TickDriverSnapshot},
   futures::ActorFuture,
   logging::{LogEvent, LogLevel},
   messaging::{AnyMessageGeneric, FailurePayload, SystemMessage},
@@ -645,6 +645,12 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   #[must_use]
   pub fn scheduler_context(&self) -> Option<ArcShared<SchedulerContext<TB>>> {
     self.scheduler_context.lock().clone()
+  }
+
+  /// Returns the last recorded tick driver snapshot when available.
+  #[must_use]
+  pub fn tick_driver_snapshot(&self) -> Option<TickDriverSnapshot> {
+    self.scheduler_context().and_then(|context| context.driver_snapshot())
   }
 
   /// Shuts down the scheduler context if configured.

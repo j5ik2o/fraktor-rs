@@ -6,39 +6,33 @@ use core::{
   time::Duration,
 };
 
-use fraktor_utils_core_rs::{sync::{ArcShared, NoStdMutex, sync_mutex_like::SpinSyncMutex}, time::TimerInstant};
+use fraktor_utils_core_rs::{
+  sync::{ArcShared, NoStdMutex, sync_mutex_like::SpinSyncMutex},
+  time::TimerInstant,
+};
 
 use crate::{
   NoStdToolbox,
+  event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber},
+  logging::LogLevel,
   scheduler::{
-    HardwareKind,
-    ManualTestDriver,
-    SchedulerConfig,
-    SchedulerContext,
-    SchedulerRunnable,
-    SchedulerCommand,
-    ExecutionBatch,
-    TickDriver,
-    TickDriverBootstrap,
-    TickDriverConfig,
-    TickDriverControl,
-    TickDriverError,
-    TickDriverFactory,
-    TickDriverId,
-    TickDriverKind, TickExecutorSignal, TickFeed, TickPulseHandler, TickPulseSource,
+    ExecutionBatch, HardwareKind, ManualTestDriver, SchedulerCommand, SchedulerConfig, SchedulerContext,
+    SchedulerRunnable, SchedulerTickExecutor, TICK_DRIVER_MATRIX, TickDriver, TickDriverBootstrap, TickDriverConfig,
+    TickDriverControl, TickDriverError, TickDriverFactory, TickDriverId, TickDriverKind, TickExecutorSignal, TickFeed,
+    TickMetricsMode, TickPulseHandler, TickPulseSource,
   },
 };
 
 struct TestDriverFactory {
   start_count: ArcShared<AtomicUsize>,
-  stop_count: ArcShared<AtomicUsize>,
+  stop_count:  ArcShared<AtomicUsize>,
 }
 
 impl TestDriverFactory {
   fn shared() -> ArcShared<Self> {
     ArcShared::new(Self {
       start_count: ArcShared::new(AtomicUsize::new(0)),
-      stop_count: ArcShared::new(AtomicUsize::new(0)),
+      stop_count:  ArcShared::new(AtomicUsize::new(0)),
     })
   }
 }
@@ -54,17 +48,37 @@ impl TickDriverFactory<NoStdToolbox> for TestDriverFactory {
 
   fn build(&self) -> Result<Box<dyn TickDriver<NoStdToolbox>>, TickDriverError> {
     Ok(Box::new(TestDriver {
-      id: TickDriverId::new(1),
+      id:          TickDriverId::new(1),
       start_count: self.start_count.clone(),
-      stop_count: self.stop_count.clone(),
+      stop_count:  self.stop_count.clone(),
     }))
   }
 }
 
+struct RecordingSubscriber {
+  events: SpinSyncMutex<Vec<EventStreamEvent<NoStdToolbox>>>,
+}
+
+impl RecordingSubscriber {
+  fn new() -> Self {
+    Self { events: SpinSyncMutex::new(Vec::new()) }
+  }
+
+  fn snapshot(&self) -> Vec<EventStreamEvent<NoStdToolbox>> {
+    self.events.lock().clone()
+  }
+}
+
+impl EventStreamSubscriber<NoStdToolbox> for RecordingSubscriber {
+  fn on_event(&self, event: &EventStreamEvent<NoStdToolbox>) {
+    self.events.lock().push(event.clone());
+  }
+}
+
 struct TestDriver {
-  id: TickDriverId,
+  id:          TickDriverId,
   start_count: ArcShared<AtomicUsize>,
-  stop_count: ArcShared<AtomicUsize>,
+  stop_count:  ArcShared<AtomicUsize>,
 }
 
 struct TestDriverControl {
@@ -112,12 +126,12 @@ fn bootstrap_starts_and_stops_driver_via_factory() {
   let runtime = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
   assert_eq!(factory.start_count.load(Ordering::SeqCst), 1);
 
-  TickDriverBootstrap::shutdown(runtime.driver().clone());
+  TickDriverBootstrap::shutdown(runtime.driver());
   assert_eq!(factory.stop_count.load(Ordering::SeqCst), 1);
 }
 
 struct TestPulseSource {
-  handler: SpinSyncMutex<Option<(unsafe extern "C" fn(*mut core::ffi::c_void), *mut core::ffi::c_void)>>,
+  handler:    SpinSyncMutex<Option<(unsafe extern "C" fn(*mut core::ffi::c_void), *mut core::ffi::c_void)>>,
   resolution: Duration,
 }
 
@@ -128,7 +142,9 @@ impl TestPulseSource {
 
   fn trigger(&self) {
     if let Some((func, ctx)) = *self.handler.lock() {
-      unsafe { (func)(ctx); }
+      unsafe {
+        (func)(ctx);
+      }
     }
   }
 
@@ -175,7 +191,7 @@ fn run_hardware_driver_enqueues_isr_pulses() {
   let metrics = feed.snapshot(now, TickDriverKind::Hardware { source: HardwareKind::Custom });
   assert_eq!(metrics.enqueued_total(), 1);
 
-  TickDriverBootstrap::shutdown(runtime.driver().clone());
+  TickDriverBootstrap::shutdown(runtime.driver());
   pulse.reset();
 }
 
@@ -210,7 +226,7 @@ fn run_hardware_driver_watchdog_marks_inactive_on_shutdown() {
   let feed = runtime.feed().expect("feed");
   assert!(feed.driver_active());
 
-  TickDriverBootstrap::shutdown(runtime.driver().clone());
+  TickDriverBootstrap::shutdown(runtime.driver());
   assert!(!feed.driver_active());
   pulse.reset();
 }
@@ -222,7 +238,7 @@ fn hardware_driver_isr_bridge_behaviors() {
 }
 
 struct ManualRunnable {
-  log: ArcShared<NoStdMutex<Vec<&'static str>>>,
+  log:   ArcShared<NoStdMutex<Vec<&'static str>>>,
   label: &'static str,
 }
 
@@ -236,7 +252,8 @@ impl SchedulerRunnable for ManualRunnable {
 fn manual_driver_runs_jobs_without_executor() {
   let driver = ManualTestDriver::<NoStdToolbox>::new();
   let config = TickDriverConfig::manual(driver);
-  let ctx = SchedulerContext::new(NoStdToolbox::default(), SchedulerConfig::default());
+  let scheduler_config = SchedulerConfig::default().with_runner_api_enabled(true);
+  let ctx = SchedulerContext::new(NoStdToolbox::default(), scheduler_config);
 
   let runtime = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
   assert!(runtime.feed().is_none());
@@ -256,4 +273,143 @@ fn manual_driver_runs_jobs_without_executor() {
   controller.drive();
 
   assert_eq!(log.lock().len(), 1);
+}
+
+#[test]
+fn manual_driver_rejected_when_runner_api_disabled() {
+  let driver = ManualTestDriver::<NoStdToolbox>::new();
+  let config = TickDriverConfig::manual(driver);
+  let ctx = SchedulerContext::new(NoStdToolbox::default(), SchedulerConfig::default());
+
+  let result = TickDriverBootstrap::provision(&config, &ctx);
+  assert!(matches!(result, Err(TickDriverError::ManualDriverDisabled)));
+}
+
+#[test]
+fn embedded_quickstart_template_runs_ticks() {
+  let pulse = spawn_test_pulse(Duration::from_millis(2));
+  pulse.reset();
+  let ctx = SchedulerContext::new(NoStdToolbox::default(), SchedulerConfig::default());
+  let config = TickDriverConfig::hardware(pulse);
+  let runtime = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
+
+  let scheduler = ctx.scheduler();
+  let log = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let runnable: ArcShared<ManualRunnable> = ArcShared::new(ManualRunnable { log: log.clone(), label: "embedded" });
+  {
+    let mut guard = scheduler.lock();
+    guard
+      .schedule_once(Duration::from_millis(2), SchedulerCommand::RunRunnable { runnable, dispatcher: None })
+      .expect("schedule job");
+  }
+
+  let feed = runtime.feed().expect("feed").clone();
+  let signal = feed.signal();
+  let mut executor = SchedulerTickExecutor::new(scheduler.clone(), feed, signal);
+
+  for _ in 0..4 {
+    pulse.trigger();
+    executor.drive_pending();
+  }
+
+  assert_eq!(log.lock().as_slice(), &["embedded"]);
+
+  TickDriverBootstrap::shutdown(runtime.driver());
+}
+
+#[test]
+fn driver_matrix_lists_auto_and_hardware_entries() {
+  let mut has_auto = false;
+  let mut has_hardware = false;
+  for entry in TICK_DRIVER_MATRIX {
+    match entry.kind {
+      | TickDriverKind::Auto => {
+        has_auto = true;
+        assert_eq!(entry.label, "auto-std");
+        assert!(!entry.test_only);
+      },
+      | TickDriverKind::Hardware { .. } => {
+        has_hardware = true;
+        assert_eq!(entry.label, "hardware");
+        assert!(!entry.test_only);
+      },
+      #[cfg(any(test, feature = "test-support"))]
+      | TickDriverKind::ManualTest => {},
+    }
+  }
+  assert!(has_auto, "auto entry missing");
+  assert!(has_hardware, "hardware entry missing");
+}
+
+#[test]
+fn driver_matrix_marks_manual_entry_as_test_only() {
+  let manual = TICK_DRIVER_MATRIX.iter().find(|entry| entry.label == "manual-test");
+  if let Some(entry) = manual {
+    assert!(entry.test_only);
+    assert!(matches!(entry.metrics_mode, TickMetricsMode::OnDemand));
+  } else {
+    panic!("manual entry missing in test build");
+  }
+}
+
+#[test]
+fn driver_metadata_records_driver_activation() {
+  let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let subscriber_impl = ArcShared::new(RecordingSubscriber::new());
+  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
+  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let ctx = SchedulerContext::with_event_stream(NoStdToolbox::default(), SchedulerConfig::default(), event_stream);
+  let pulse = spawn_test_pulse(Duration::from_millis(2));
+  pulse.reset();
+  let config = TickDriverConfig::hardware(pulse);
+
+  let runtime = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
+  let metadata = ctx.driver_metadata().expect("metadata");
+  assert_eq!(metadata.driver_id, runtime.driver().id());
+
+  let events = subscriber_impl.snapshot();
+  assert!(
+    events
+      .iter()
+      .any(|event| matches!(event, EventStreamEvent::TickDriver(snapshot) if snapshot.metadata.driver_id == runtime.driver().id())),
+    "tick driver snapshot event not observed"
+  );
+}
+
+#[test]
+fn driver_snapshot_exposed_via_scheduler_context() {
+  let ctx = SchedulerContext::new(NoStdToolbox::default(), SchedulerConfig::default());
+  let pulse = spawn_test_pulse(Duration::from_millis(2));
+  pulse.reset();
+  let config = TickDriverConfig::hardware(pulse);
+
+  let runtime = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
+
+  let snapshot = ctx.driver_snapshot().expect("driver snapshot");
+  assert_eq!(snapshot.metadata.driver_id, runtime.driver().id());
+  assert_eq!(snapshot.kind, TickDriverKind::Hardware { source: HardwareKind::Custom });
+  let expected_resolution = ctx.scheduler().lock().config().resolution();
+  assert_eq!(snapshot.resolution, expected_resolution);
+  assert!(snapshot.auto.is_none());
+
+  TickDriverBootstrap::shutdown(runtime.driver());
+}
+
+#[test]
+fn manual_driver_disabled_emits_warning() {
+  let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let subscriber_impl = ArcShared::new(RecordingSubscriber::new());
+  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
+  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let ctx = SchedulerContext::with_event_stream(NoStdToolbox::default(), SchedulerConfig::default(), event_stream);
+  let config = TickDriverConfig::manual(ManualTestDriver::new());
+
+  let result = TickDriverBootstrap::provision(&config, &ctx);
+  assert!(matches!(result, Err(TickDriverError::ManualDriverDisabled)));
+
+  let events = subscriber_impl.snapshot();
+  assert!(
+    events.iter().any(|event| matches!(event, EventStreamEvent::Log(log) if log.level() == LogLevel::Warn)),
+    "warning log not observed"
+  );
 }

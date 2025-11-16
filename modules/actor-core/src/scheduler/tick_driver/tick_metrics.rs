@@ -17,7 +17,7 @@ pub struct SchedulerTickMetrics {
 impl SchedulerTickMetrics {
   /// Creates a metrics snapshot.
   #[allow(dead_code)]
-  pub(crate) fn new(
+  pub(crate) const fn new(
     driver: TickDriverKind,
     ticks_per_sec: u32,
     drift: Option<Duration>,

@@ -1,5 +1,7 @@
 //! Tick driver variant classification.
 
+use super::HardwareKind;
+
 /// Classification of tick driver implementations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TickDriverKind {
@@ -13,15 +15,4 @@ pub enum TickDriverKind {
   /// Manual test driver (test-only).
   #[cfg(any(test, feature = "test-support"))]
   ManualTest,
-}
-
-/// Hardware timer source classification.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum HardwareKind {
-  /// Embassy-based timer.
-  Embassy,
-  /// SysTick-based timer.
-  SysTick,
-  /// Custom hardware timer.
-  Custom,
 }
