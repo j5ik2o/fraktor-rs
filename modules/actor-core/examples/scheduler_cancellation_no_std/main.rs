@@ -6,12 +6,12 @@ use alloc::string::String;
 use core::time::Duration;
 
 use fraktor_actor_core_rs::{
-    actor_prim::{Actor, ActorContext},
-    error::ActorError,
-    messaging::{AnyMessage, AnyMessageViewGeneric},
-    props::Props,
-    scheduler::SchedulerCommand,
-    system::ActorSystemBuilder,
+  actor_prim::{Actor, ActorContext},
+  error::ActorError,
+  messaging::{AnyMessage, AnyMessageViewGeneric},
+  props::Props,
+  scheduler::SchedulerCommand,
+  system::ActorSystemBuilder,
 };
 
 #[cfg(not(target_os = "none"))]

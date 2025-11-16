@@ -6,15 +6,15 @@ use alloc::vec::Vec;
 use core::hint::spin_loop;
 
 use fraktor_actor_core_rs::{
-    NoStdToolbox,
-    actor_prim::{Actor, ActorContextGeneric},
-    error::ActorError,
-    event_stream::{EventStreamEvent, EventStreamSubscriber},
-    lifecycle::LifecycleStage,
-    logging::LogLevel,
-    messaging::{AnyMessage, AnyMessageViewGeneric},
-    props::Props,
-    system::ActorSystem,
+  NoStdToolbox,
+  actor_prim::{Actor, ActorContextGeneric},
+  error::ActorError,
+  event_stream::{EventStreamEvent, EventStreamSubscriber},
+  lifecycle::LifecycleStage,
+  logging::LogLevel,
+  messaging::{AnyMessage, AnyMessageViewGeneric},
+  props::Props,
+  system::ActorSystem,
 };
 use fraktor_utils_core_rs::sync::{ArcShared, NoStdMutex};
 
@@ -49,9 +49,9 @@ impl Actor for Guardian {
   }
 
   fn receive(
-      &mut self,
-      ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-      message: AnyMessageViewGeneric<'_, NoStdToolbox>,
+    &mut self,
+    ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
+    message: AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
       ctx.log(LogLevel::Info, "received Start message");

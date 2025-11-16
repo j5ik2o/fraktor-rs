@@ -2,11 +2,11 @@ use alloc::boxed::Box;
 
 use super::Actor;
 use crate::{
-    NoStdToolbox,
-    actor_prim::{ActorContext, ActorContextGeneric},
-    error::ActorError,
-    messaging::AnyMessageViewGeneric,
-    system::ActorSystem,
+  NoStdToolbox,
+  actor_prim::{ActorContext, ActorContextGeneric},
+  error::ActorError,
+  messaging::AnyMessageViewGeneric,
+  system::ActorSystem,
 };
 
 #[derive(Default)]
@@ -23,9 +23,9 @@ impl Actor for TestActor {
   }
 
   fn receive(
-      &mut self,
-      _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-      _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
+    &mut self,
+    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
+    _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     Ok(())
   }

@@ -5,18 +5,18 @@ use fraktor_utils_core_rs::sync::{ArcShared, NoStdMutex};
 
 use super::SystemState;
 use crate::{
-    NoStdToolbox,
-    actor_prim::{
+  NoStdToolbox,
+  actor_prim::{
     Actor, ActorCell, ActorContextGeneric,
     actor_path::{ActorPath, ActorUid, GuardianKind as PathGuardianKind, PathResolutionError},
     actor_ref::ActorRefGeneric,
   },
-    config::{ActorSystemConfig, RemotingConfig},
-    error::ActorError,
-    event_stream::{EventStream, EventStreamEvent, EventStreamSubscriber},
-    messaging::{AnyMessage, AnyMessageViewGeneric},
-    props::Props,
-    system::{AuthorityState, RegisterExtraTopLevelError},
+  config::{ActorSystemConfig, RemotingConfig},
+  error::ActorError,
+  event_stream::{EventStream, EventStreamEvent, EventStreamSubscriber},
+  messaging::{AnyMessage, AnyMessageViewGeneric},
+  props::Props,
+  system::{AuthorityState, RegisterExtraTopLevelError},
 };
 
 #[test]
@@ -376,9 +376,9 @@ impl EventStreamSubscriber<NoStdToolbox> for RemoteEventRecorder {
 
 impl Actor for RestartProbeActor {
   fn receive(
-      &mut self,
-      _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-      _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
+    &mut self,
+    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
+    _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     Ok(())
   }

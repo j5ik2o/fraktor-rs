@@ -6,14 +6,14 @@ use alloc::vec::Vec;
 use core::{hint::spin_loop, num::NonZeroUsize};
 
 use fraktor_actor_core_rs::{
-    NoStdToolbox,
-    actor_prim::{Actor, ActorContextGeneric, ChildRef},
-    error::ActorError,
-    event_stream::{EventStreamEvent, EventStreamSubscriber},
-    mailbox::{MailboxOverflowStrategy, MailboxPolicy},
-    messaging::{AnyMessage, AnyMessageViewGeneric},
-    props::{MailboxConfig, Props},
-    system::ActorSystem,
+  NoStdToolbox,
+  actor_prim::{Actor, ActorContextGeneric, ChildRef},
+  error::ActorError,
+  event_stream::{EventStreamEvent, EventStreamSubscriber},
+  mailbox::{MailboxOverflowStrategy, MailboxPolicy},
+  messaging::{AnyMessage, AnyMessageViewGeneric},
+  props::{MailboxConfig, Props},
+  system::ActorSystem,
 };
 use fraktor_utils_core_rs::sync::{ArcShared, NoStdMutex};
 
@@ -41,9 +41,9 @@ struct NullActor;
 
 impl Actor for NullActor {
   fn receive(
-      &mut self,
-      _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-      _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
+    &mut self,
+    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
+    _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     Ok(())
   }
@@ -68,9 +68,9 @@ impl Actor for TestGuardian {
   }
 
   fn receive(
-      &mut self,
-      _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-      _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
+    &mut self,
+    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
+    _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     Ok(())
   }

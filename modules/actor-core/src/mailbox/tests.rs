@@ -6,24 +6,24 @@ use core::{hint::spin_loop, num::NonZeroUsize};
 use fraktor_utils_core_rs::sync::{ArcShared, NoStdMutex};
 
 use crate::{
-    NoStdToolbox,
-    actor_prim::{Actor, ActorContextGeneric},
-    error::ActorError,
-    event_stream::{EventStreamEvent, EventStreamSubscriber},
-    logging::LogLevel,
-    mailbox::{Mailbox, MailboxOverflowStrategy, MailboxPolicy, ScheduleHints},
-    messaging::{AnyMessage, AnyMessageViewGeneric, SystemMessage},
-    props::{MailboxConfig, Props},
-    system::ActorSystem,
+  NoStdToolbox,
+  actor_prim::{Actor, ActorContextGeneric},
+  error::ActorError,
+  event_stream::{EventStreamEvent, EventStreamSubscriber},
+  logging::LogLevel,
+  mailbox::{Mailbox, MailboxOverflowStrategy, MailboxPolicy, ScheduleHints},
+  messaging::{AnyMessage, AnyMessageViewGeneric, SystemMessage},
+  props::{MailboxConfig, Props},
+  system::ActorSystem,
 };
 
 struct PassiveActor;
 
 impl Actor for PassiveActor {
   fn receive(
-      &mut self,
-      _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-      _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
+    &mut self,
+    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
+    _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     Ok(())
   }

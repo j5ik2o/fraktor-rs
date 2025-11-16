@@ -1,16 +1,16 @@
 use std::time::Duration;
 
-use fraktor_actor_core_rs::{error::ActorError, scheduler::SchedulerCommand, system::ActorSystemBuilder};
+use fraktor_actor_core_rs::{error::ActorError, scheduler::SchedulerCommand};
 use fraktor_actor_std_rs::{
   actor_prim::{Actor, ActorContext},
   dispatcher::dispatch_executor::TokioExecutor,
   messaging::{AnyMessage, AnyMessageView},
   props::Props,
-  system::{ActorSystem, DispatcherConfig},
+  scheduler::tick::StdTickDriverConfig,
+  system::{ActorSystemBuilder, DispatcherConfig},
 };
 use fraktor_utils_core_rs::sync::ArcShared;
 use tokio::runtime::Handle;
-use fraktor_actor_std_rs::scheduler::tick::StdTickDriverConfig;
 
 // アクターに送信されるスケジュール済みメッセージ
 struct ScheduledMessage {
@@ -60,12 +60,8 @@ async fn main() {
     DispatcherConfig::from_executor(ArcShared::new(TokioExecutor::new(handle.clone())));
 
   let props = Props::from_fn(|| GuardianActor).with_dispatcher(dispatcher);
-  let core_system = ActorSystemBuilder::new(props.into_inner())
-    .with_tick_driver(StdTickDriverConfig::tokio_quickstart())
-    .build()
-    .expect("system");
-
-  let system = ActorSystem::from_core(core_system);
+  let system =
+    ActorSystemBuilder::new(props).with_tick_driver(StdTickDriverConfig::tokio_quickstart()).build().expect("system");
 
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
 

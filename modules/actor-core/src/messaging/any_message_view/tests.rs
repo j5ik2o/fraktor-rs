@@ -1,6 +1,6 @@
 use crate::{
-    actor_prim::actor_ref::ActorRef,
-    messaging::{AnyMessage, AnyMessageViewGeneric},
+  actor_prim::actor_ref::ActorRef,
+  messaging::{AnyMessage, AnyMessageViewGeneric},
 };
 
 #[test]

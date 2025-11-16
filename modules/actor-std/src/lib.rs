@@ -34,7 +34,7 @@ pub mod futures;
 pub mod dispatcher;
 /// Error utilities specialised for the standard toolbox.
 pub mod error;
-/// Typed actor utilities specialised for the standard toolbox runtime.
-pub mod typed;
 /// Scheduler utilities specialised for the standard toolbox runtime.
 pub mod scheduler;
+/// Typed actor utilities specialised for the standard toolbox runtime.
+pub mod typed;

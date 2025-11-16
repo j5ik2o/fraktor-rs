@@ -1,6 +1,7 @@
 //! Trait for dispatching messages from the mailbox to actors.
 
 use fraktor_utils_core_rs::runtime_toolbox::NoStdToolbox;
+
 use crate::{
   RuntimeToolbox,
   error::ActorError,

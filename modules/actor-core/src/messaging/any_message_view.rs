@@ -6,7 +6,6 @@ mod tests;
 use core::any::{Any, TypeId};
 
 use crate::{NoStdToolbox, RuntimeToolbox, actor_prim::actor_ref::ActorRefGeneric};
-use crate::messaging::AskResponseGeneric;
 
 /// Represents a borrowed view of an actor message.
 #[derive(Debug)]

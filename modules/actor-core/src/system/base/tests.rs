@@ -31,9 +31,9 @@ struct TestActor;
 
 impl Actor for TestActor {
   fn receive(
-      &mut self,
-      _context: &mut crate::actor_prim::ActorContextGeneric<'_, NoStdToolbox>,
-      _message: crate::messaging::AnyMessageViewGeneric<'_, NoStdToolbox>,
+    &mut self,
+    _context: &mut crate::actor_prim::ActorContextGeneric<'_, NoStdToolbox>,
+    _message: crate::messaging::AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), crate::error::ActorError> {
     Ok(())
   }
@@ -59,9 +59,9 @@ impl Actor for SpawnRecorderActor {
   }
 
   fn receive(
-      &mut self,
-      _context: &mut crate::actor_prim::ActorContextGeneric<'_, NoStdToolbox>,
-      _message: crate::messaging::AnyMessageViewGeneric<'_, NoStdToolbox>,
+    &mut self,
+    _context: &mut crate::actor_prim::ActorContextGeneric<'_, NoStdToolbox>,
+    _message: crate::messaging::AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), crate::error::ActorError> {
     self.log.lock().push("receive");
     Ok(())
@@ -72,9 +72,9 @@ struct FailingStartActor;
 
 impl Actor for FailingStartActor {
   fn receive(
-      &mut self,
-      _context: &mut crate::actor_prim::ActorContextGeneric<'_, NoStdToolbox>,
-      _message: crate::messaging::AnyMessageViewGeneric<'_, NoStdToolbox>,
+    &mut self,
+    _context: &mut crate::actor_prim::ActorContextGeneric<'_, NoStdToolbox>,
+    _message: crate::messaging::AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), crate::error::ActorError> {
     Ok(())
   }

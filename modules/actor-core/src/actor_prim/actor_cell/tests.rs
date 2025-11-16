@@ -4,21 +4,21 @@ use fraktor_utils_core_rs::sync::{ArcShared, NoStdMutex};
 
 use super::ActorCell;
 use crate::{
-    actor_prim::{Actor, ActorContextGeneric, Pid},
-    error::ActorError,
-    mailbox::ScheduleHints,
-    messaging::{AnyMessage, AnyMessageViewGeneric, SystemMessage, message_invoker::MessageInvoker},
-    props::Props,
-    system::SystemState,
+  actor_prim::{Actor, ActorContextGeneric, Pid},
+  error::ActorError,
+  mailbox::ScheduleHints,
+  messaging::{AnyMessage, AnyMessageViewGeneric, SystemMessage, message_invoker::MessageInvoker},
+  props::Props,
+  system::SystemState,
 };
 
 struct ProbeActor;
 
 impl Actor for ProbeActor {
   fn receive(
-      &mut self,
-      _ctx: &mut ActorContextGeneric<'_, crate::NoStdToolbox>,
-      _message: AnyMessageViewGeneric<'_, crate::NoStdToolbox>,
+    &mut self,
+    _ctx: &mut ActorContextGeneric<'_, crate::NoStdToolbox>,
+    _message: AnyMessageViewGeneric<'_, crate::NoStdToolbox>,
   ) -> Result<(), ActorError> {
     Ok(())
   }
@@ -51,9 +51,9 @@ impl Actor for LifecycleRecorderActor {
   }
 
   fn receive(
-      &mut self,
-      _ctx: &mut ActorContextGeneric<'_, crate::NoStdToolbox>,
-      _message: AnyMessageViewGeneric<'_, crate::NoStdToolbox>,
+    &mut self,
+    _ctx: &mut ActorContextGeneric<'_, crate::NoStdToolbox>,
+    _message: AnyMessageViewGeneric<'_, crate::NoStdToolbox>,
   ) -> Result<(), ActorError> {
     self.log.lock().push("receive");
     Ok(())
@@ -67,9 +67,9 @@ impl Actor for LifecycleRecorderActor {
 
 impl Actor for RecordingActor {
   fn receive(
-      &mut self,
-      _ctx: &mut ActorContextGeneric<'_, crate::NoStdToolbox>,
-      _message: AnyMessageViewGeneric<'_, crate::NoStdToolbox>,
+    &mut self,
+    _ctx: &mut ActorContextGeneric<'_, crate::NoStdToolbox>,
+    _message: AnyMessageViewGeneric<'_, crate::NoStdToolbox>,
   ) -> Result<(), ActorError> {
     Ok(())
   }

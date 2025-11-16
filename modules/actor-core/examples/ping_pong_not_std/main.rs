@@ -5,11 +5,11 @@ extern crate alloc;
 use alloc::string::{String, ToString};
 
 use fraktor_actor_core_rs::{
-    actor_prim::{Actor, ActorContext, actor_ref::ActorRef},
-    error::ActorError,
-    messaging::{AnyMessage, AnyMessageViewGeneric},
-    props::Props,
-    system::ActorSystem,
+  actor_prim::{Actor, ActorContext, actor_ref::ActorRef},
+  error::ActorError,
+  messaging::{AnyMessage, AnyMessageViewGeneric},
+  props::Props,
+  system::ActorSystem,
 };
 
 struct Start;

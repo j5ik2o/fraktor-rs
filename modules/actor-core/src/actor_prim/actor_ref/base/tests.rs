@@ -76,18 +76,18 @@ fn actor_ref_with_system() {
 #[test]
 fn actor_ref_path_resolves_segments() {
   use crate::{
-      actor_prim::{Actor, ActorCell, ActorContextGeneric},
-      messaging::AnyMessageViewGeneric,
-      props::Props,
-      system::SystemState,
+    actor_prim::{Actor, ActorCell, ActorContextGeneric},
+    messaging::AnyMessageViewGeneric,
+    props::Props,
+    system::SystemState,
   };
 
   struct PathActor;
   impl Actor for PathActor {
     fn receive(
-        &mut self,
-        _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-        _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
+      &mut self,
+      _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
+      _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
     ) -> Result<(), crate::error::ActorError> {
       Ok(())
     }

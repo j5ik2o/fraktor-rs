@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use fraktor_actor_core_rs::{
   event_stream::EventStreamGeneric,
-  scheduler::{TickDriverConfig, TickDriverError, TickDriverFactoryRef},
+  scheduler::{TickDriverConfig, TickDriverFactoryRef},
 };
 use fraktor_utils_core_rs::sync::ArcShared;
 use fraktor_utils_std_rs::runtime_toolbox::StdToolbox;

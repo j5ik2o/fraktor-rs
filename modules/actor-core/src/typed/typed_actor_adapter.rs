@@ -3,14 +3,14 @@
 use alloc::boxed::Box;
 
 use crate::{
-    RuntimeToolbox,
-    actor_prim::{Actor, ActorContextGeneric, actor_ref::ActorRefGeneric},
-    dead_letter::DeadLetterReason,
-    error::{ActorError, ActorErrorReason},
-    logging::LogLevel,
-    messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
-    supervision::SupervisorStrategy,
-    typed::{
+  RuntimeToolbox,
+  actor_prim::{Actor, ActorContextGeneric, actor_ref::ActorRefGeneric},
+  dead_letter::DeadLetterReason,
+  error::{ActorError, ActorErrorReason},
+  logging::LogLevel,
+  messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
+  supervision::SupervisorStrategy,
+  typed::{
     actor_prim::{TypedActor, TypedActorContextGeneric},
     message_adapter::{
       AdaptMessage, AdapterEnvelope, AdapterFailure, AdapterOutcome, AdapterPayload, MessageAdapterRegistry,
@@ -139,9 +139,9 @@ where
   }
 
   fn receive(
-      &mut self,
-      ctx: &mut ActorContextGeneric<'_, TB>,
-      message: AnyMessageViewGeneric<'_, TB>,
+    &mut self,
+    ctx: &mut ActorContextGeneric<'_, TB>,
+    message: AnyMessageViewGeneric<'_, TB>,
   ) -> Result<(), ActorError> {
     if let Some(envelope) = message.downcast_ref::<AdapterEnvelope<TB>>() {
       return self.handle_adapter_envelope(ctx, envelope);
