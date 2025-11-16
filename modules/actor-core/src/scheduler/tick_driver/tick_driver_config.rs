@@ -5,11 +5,11 @@ mod tests;
 
 use core::time::Duration;
 
+#[cfg(any(test, feature = "test-support"))]
+use super::ManualTestDriver;
 use super::{
   AutoDriverConfig, FallbackPolicy, TickDriverAutoLocatorRef, TickDriverFactoryRef, TickMetricsMode, TickPulseSource,
 };
-#[cfg(any(test, feature = "test-support"))]
-use super::ManualTestDriver;
 use crate::RuntimeToolbox;
 
 /// Configuration for tick driver selection and behavior.

@@ -33,6 +33,7 @@ mod scheduler_diagnostics;
 mod scheduler_diagnostics_event;
 mod scheduler_diagnostics_subscription;
 mod scheduler_runner;
+mod scheduler_runner_owned;
 mod task_run_entry;
 mod task_run_error;
 mod task_run_handle;
@@ -73,17 +74,20 @@ pub use scheduler_diagnostics::SchedulerDiagnostics;
 pub use scheduler_diagnostics_event::SchedulerDiagnosticsEvent;
 pub use scheduler_diagnostics_subscription::SchedulerDiagnosticsSubscription;
 pub use scheduler_runner::SchedulerRunner;
+pub use scheduler_runner_owned::SchedulerRunnerOwned;
 pub(crate) use task_run_entry::{TaskRunEntry, TaskRunQueue};
 pub use task_run_error::TaskRunError;
 pub use task_run_handle::TaskRunHandle;
 pub use task_run_on_close::TaskRunOnClose;
 pub use task_run_priority::TaskRunPriority;
 pub use task_run_summary::TaskRunSummary;
-pub use tick_driver::{
-  AutoDriverConfig, AutoDriverMetadata, AutoProfileKind, FallbackPolicy, HardwareKind, TickDriverAutoLocator,
-  TickDriverAutoLocatorRef, TickDriverConfig, TickDriverError, TickDriverFactory, TickDriverFactoryRef, TickDriverId,
-  TickDriverKind, TickDriverMetadata, TickMetricsMode, TickPulseHandler, TickPulseSource,
-};
 #[cfg(any(test, feature = "test-support"))]
 pub use tick_driver::ManualTestDriver;
+pub use tick_driver::{
+  AutoDriverConfig, AutoDriverMetadata, AutoProfileKind, FallbackPolicy, HardwareKind, SchedulerTickExecutor,
+  SchedulerTickHandleOwned, SchedulerTickMetrics, SchedulerTickMetricsProbe, TickDriverAutoLocator,
+  TickDriverAutoLocatorRef, TickDriverConfig, TickDriverError, TickDriverFactory, TickDriverFactoryRef, TickDriverId,
+  TickDriverKind, TickDriverMetadata, TickExecutorSignal, TickFeed, TickFeedHandle, TickMetricsMode, TickPulseHandler,
+  TickPulseSource,
+};
 pub use warning::SchedulerWarning;

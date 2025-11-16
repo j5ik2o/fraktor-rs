@@ -20,7 +20,7 @@ test-support = []
 [dependencies]
 async-trait = { workspace = true }
 fraktor-utils-core-rs = { workspace = true, default-features = false, features = ["alloc", "unsize"] }
-critical-section = { workspace = true }
+critical-section = { workspace = true, features = ["std"] }
 heapless = { workspace = true, default-features = false, features = ["portable-atomic"] }
 portable-atomic = { workspace = true, default-features = false, features = ["critical-section"] }
 portable-atomic-util = { workspace = true, default-features = false, features = ["alloc"] }
@@ -30,6 +30,7 @@ hashbrown = { workspace = true, default-features = false }
 serde = { workspace = true }
 erased-serde = { workspace = true }
 bincode = { workspace = true }
+futures = { workspace = true, features = ["alloc"] }
 
 [dev-dependencies]
 criterion = { workspace = true }
