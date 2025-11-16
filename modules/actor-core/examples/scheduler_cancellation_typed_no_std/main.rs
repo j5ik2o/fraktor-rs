@@ -120,7 +120,7 @@ fn main() {
     .with_tick_driver(TickDriverConfig::hardware(demo_pulse()))
     .build()
     .expect("system");
-  let driver = start_demo_tick_driver(bootstrap.as_untyped()).expect("tick driver");
+  let _driver = start_demo_tick_driver(bootstrap.as_untyped()).expect("tick driver");
   bootstrap.user_guardian_ref().tell(GuardianCommand::Start).expect("start");
 
   // スケジューラが動作する時間を与える
