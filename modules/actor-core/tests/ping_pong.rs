@@ -7,7 +7,7 @@ use fraktor_actor_core_rs::{
   actor_prim::{Actor, ActorContextGeneric, ChildRef},
   error::{ActorError, SendError},
   mailbox::{Mailbox, MailboxOverflowStrategy, MailboxPolicy},
-  messaging::{AnyMessage, AnyMessageView},
+  messaging::{AnyMessage, AnyMessageViewGeneric},
   props::Props,
   spawn::SpawnError,
   system::ActorSystem,
@@ -31,7 +31,7 @@ impl Actor for RecordingChild {
   fn receive(
     &mut self,
     _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    message: AnyMessageView<'_, NoStdToolbox>,
+    message: AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     if let Some(deliver) = message.downcast_ref::<Deliver>() {
       self.log.lock().push(deliver.0);
@@ -55,7 +55,7 @@ impl Actor for RecordingGuardian {
   fn receive(
     &mut self,
     ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    message: AnyMessageView<'_, NoStdToolbox>,
+    message: AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
       let log = self.log.clone();
@@ -75,7 +75,7 @@ impl Actor for SilentActor {
   fn receive(
     &mut self,
     _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    _message: AnyMessageView<'_, NoStdToolbox>,
+    _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     Ok(())
   }
@@ -96,7 +96,7 @@ impl Actor for NamingGuardian {
   fn receive(
     &mut self,
     ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    message: AnyMessageView<'_, NoStdToolbox>,
+    message: AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
       let _ = ctx

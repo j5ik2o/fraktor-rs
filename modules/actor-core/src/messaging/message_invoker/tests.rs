@@ -6,14 +6,14 @@ use fraktor_utils_core_rs::sync::ArcShared;
 
 use super::{MessageInvokerMiddleware, MessageInvokerPipeline};
 use crate::{
-  NoStdMutex, NoStdToolbox,
-  actor_prim::{
+    NoStdMutex, NoStdToolbox,
+    actor_prim::{
     Actor, ActorContext, ActorContextGeneric, Pid,
     actor_ref::{ActorRef, ActorRefSender},
   },
-  error::{ActorError, SendError},
-  messaging::{AnyMessage, AnyMessageView},
-  system::ActorSystem,
+    error::{ActorError, SendError},
+    messaging::{AnyMessage, AnyMessageViewGeneric},
+    system::ActorSystem,
 };
 
 struct RecordingSender;
@@ -45,9 +45,9 @@ impl CaptureActor {
 
 impl Actor for CaptureActor {
   fn receive(
-    &mut self,
-    ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    message: AnyMessageView<'_, NoStdToolbox>,
+      &mut self,
+      ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
+      message: AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     if let Some(value) = message.downcast_ref::<u32>() {
       self.payloads.lock().push(*value);
@@ -73,9 +73,9 @@ impl LoggingActor {
 
 impl Actor for LoggingActor {
   fn receive(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    _message: AnyMessageView<'_, NoStdToolbox>,
+      &mut self,
+      _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
+      _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     self.record("actor");
     Ok(())
@@ -99,19 +99,19 @@ impl RecordingMiddleware {
 
 impl MessageInvokerMiddleware<NoStdToolbox> for RecordingMiddleware {
   fn before_user(
-    &self,
-    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    _message: &AnyMessageView<'_, NoStdToolbox>,
+      &self,
+      _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
+      _message: &AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     self.record("before");
     Ok(())
   }
 
   fn after_user(
-    &self,
-    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    _message: &AnyMessageView<'_, NoStdToolbox>,
-    result: Result<(), ActorError>,
+      &self,
+      _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
+      _message: &AnyMessageViewGeneric<'_, NoStdToolbox>,
+      result: Result<(), ActorError>,
   ) -> Result<(), ActorError> {
     self.record("after");
     result

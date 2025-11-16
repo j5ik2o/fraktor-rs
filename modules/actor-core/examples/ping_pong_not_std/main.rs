@@ -5,11 +5,11 @@ extern crate alloc;
 use alloc::string::{String, ToString};
 
 use fraktor_actor_core_rs::{
-  actor_prim::{Actor, ActorContext, actor_ref::ActorRef},
-  error::ActorError,
-  messaging::{AnyMessage, AnyMessageView},
-  props::Props,
-  system::ActorSystem,
+    actor_prim::{Actor, ActorContext, actor_ref::ActorRef},
+    error::ActorError,
+    messaging::{AnyMessage, AnyMessageViewGeneric},
+    props::Props,
+    system::ActorSystem,
 };
 
 struct Start;
@@ -17,7 +17,7 @@ struct Start;
 struct GuardianActor;
 
 impl Actor for GuardianActor {
-  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageViewGeneric<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
       let pong =
         ctx.spawn_child(&Props::from_fn(|| PongActor)).map_err(|_| ActorError::recoverable("failed to spawn pong"))?;
@@ -52,7 +52,7 @@ struct PongReply {
 struct PingActor;
 
 impl Actor for PingActor {
-  fn receive(&mut self, _ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, message: AnyMessageViewGeneric<'_>) -> Result<(), ActorError> {
     if let Some(cmd) = message.downcast_ref::<StartPing>() {
       for index in 0..cmd.count {
         let payload = PingMessage { text: format_message(index), reply_to: cmd.reply_to.clone() };
@@ -66,7 +66,7 @@ impl Actor for PingActor {
 struct PongActor;
 
 impl Actor for PongActor {
-  fn receive(&mut self, _ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, message: AnyMessageViewGeneric<'_>) -> Result<(), ActorError> {
     if let Some(ping) = message.downcast_ref::<PingMessage>() {
       #[cfg(not(target_os = "none"))]
       println!("[{:?}] received ping: {}", std::thread::current().id(), ping.text);

@@ -6,12 +6,12 @@ use alloc::vec::Vec;
 use std::{thread, time::Duration};
 
 use fraktor_actor_core_rs::{
-  NoStdToolbox,
-  actor_prim::{Actor, ActorContextGeneric},
-  error::ActorError,
-  messaging::{AnyMessage, AnyMessageView},
-  props::Props,
-  system::ActorSystem,
+    NoStdToolbox,
+    actor_prim::{Actor, ActorContextGeneric},
+    error::ActorError,
+    messaging::{AnyMessage, AnyMessageViewGeneric},
+    props::Props,
+    system::ActorSystem,
 };
 use fraktor_utils_core_rs::sync::{ArcShared, NoStdMutex};
 
@@ -50,9 +50,9 @@ struct IdleGuardian;
 
 impl Actor for IdleGuardian {
   fn receive(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    _message: AnyMessageView<'_, NoStdToolbox>,
+      &mut self,
+      _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
+      _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     Ok(())
   }
@@ -70,9 +70,9 @@ impl ParentGuardian {
 
 impl Actor for ParentGuardian {
   fn receive(
-    &mut self,
-    ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    message: AnyMessageView<'_, NoStdToolbox>,
+      &mut self,
+      ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
+      message: AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
       let states = self.child_states.clone();
@@ -101,9 +101,9 @@ impl Actor for RecordingChild {
   }
 
   fn receive(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    _message: AnyMessageView<'_, NoStdToolbox>,
+      &mut self,
+      _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
+      _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     Ok(())
   }

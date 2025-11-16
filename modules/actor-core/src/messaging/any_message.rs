@@ -8,7 +8,7 @@ use core::any::Any;
 
 use fraktor_utils_core_rs::sync::ArcShared;
 
-use crate::{NoStdToolbox, RuntimeToolbox, actor_prim::actor_ref::ActorRefGeneric, messaging::AnyMessageView};
+use crate::{NoStdToolbox, RuntimeToolbox, actor_prim::actor_ref::ActorRefGeneric, messaging::AnyMessageViewGeneric};
 
 /// Wraps an arbitrary payload for message passing.
 pub struct AnyMessageGeneric<TB: RuntimeToolbox> {
@@ -43,8 +43,8 @@ impl<TB: RuntimeToolbox> AnyMessageGeneric<TB> {
 
   /// Converts the owned message into a borrowed view.
   #[must_use]
-  pub fn as_view(&self) -> AnyMessageView<'_, TB> {
-    AnyMessageView::new(&*self.payload, self.reply_to.as_ref())
+  pub fn as_view(&self) -> AnyMessageViewGeneric<'_, TB> {
+    AnyMessageViewGeneric::new(&*self.payload, self.reply_to.as_ref())
   }
 
   /// Returns the payload as a trait object reference.

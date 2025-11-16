@@ -3,11 +3,11 @@
 use fraktor_utils_core_rs::sync::ArcShared;
 
 use crate::{
-  RuntimeToolbox,
-  actor_prim::{Actor, ActorContextGeneric, Pid, actor_ref::ActorRefGeneric},
-  error::ActorError,
-  messaging::AnyMessageView,
-  system::SystemStateGeneric,
+    RuntimeToolbox,
+    actor_prim::{Actor, ActorContextGeneric, Pid, actor_ref::ActorRefGeneric},
+    error::ActorError,
+    messaging::AnyMessageViewGeneric,
+    system::SystemStateGeneric,
 };
 
 /// Root guardian actor responsible for watching the system guardian.
@@ -42,9 +42,9 @@ impl<TB: RuntimeToolbox + 'static> Actor<TB> for RootGuardianActor {
   }
 
   fn receive(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, TB>,
-    _message: AnyMessageView<'_, TB>,
+      &mut self,
+      _ctx: &mut ActorContextGeneric<'_, TB>,
+      _message: AnyMessageViewGeneric<'_, TB>,
   ) -> Result<(), ActorError> {
     Ok(())
   }

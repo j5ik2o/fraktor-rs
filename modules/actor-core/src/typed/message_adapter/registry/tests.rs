@@ -3,13 +3,13 @@ use alloc::string::ToString;
 use fraktor_utils_core_rs::sync::ArcShared;
 
 use crate::{
-  NoStdToolbox,
-  actor_prim::{Actor, ActorCellGeneric, ActorContextGeneric},
-  error::ActorError,
-  messaging::AnyMessageView,
-  props::Props,
-  system::{ActorSystemGeneric, SystemState},
-  typed::message_adapter::{AdapterFailure, AdapterOutcome, AdapterPayload, MessageAdapterRegistry},
+    NoStdToolbox,
+    actor_prim::{Actor, ActorCellGeneric, ActorContextGeneric},
+    error::ActorError,
+    messaging::AnyMessageViewGeneric,
+    props::Props,
+    system::{ActorSystemGeneric, SystemState},
+    typed::message_adapter::{AdapterFailure, AdapterOutcome, AdapterPayload, MessageAdapterRegistry},
 };
 
 struct Harness {
@@ -38,9 +38,9 @@ struct ProbeActor;
 
 impl Actor for ProbeActor {
   fn receive(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    _message: AnyMessageView<'_, NoStdToolbox>,
+      &mut self,
+      _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
+      _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     Ok(())
   }

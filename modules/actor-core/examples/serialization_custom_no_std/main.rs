@@ -9,16 +9,16 @@ use core::{
 };
 
 use fraktor_actor_core_rs::{
-  actor_prim::{Actor, ActorContext},
-  error::ActorError,
-  messaging::AnyMessageView,
-  props::Props,
-  serialization::{
+    actor_prim::{Actor, ActorContext},
+    error::ActorError,
+    messaging::AnyMessageViewGeneric,
+    props::Props,
+    serialization::{
     NotSerializableError, SerializationCallScope, SerializationError, SerializationExtension, SerializationExtensionId,
     SerializationSetup, SerializationSetupBuilder, SerializedMessage, Serializer, SerializerId,
     SerializerWithStringManifest, TransportInformation,
   },
-  system::ActorSystem,
+    system::ActorSystem,
 };
 use fraktor_utils_core_rs::sync::ArcShared;
 
@@ -114,7 +114,7 @@ impl NullActor {
 }
 
 impl Actor for NullActor {
-  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageViewGeneric<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 }

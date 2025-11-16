@@ -6,12 +6,12 @@ use std::{
 };
 
 use fraktor_actor_core_rs::{
-  NoStdToolbox,
-  actor_prim::{Actor, ActorContextGeneric, ChildRef, Pid},
-  error::ActorError,
-  messaging::{AnyMessage, AnyMessageView},
-  props::Props,
-  system::ActorSystem,
+    NoStdToolbox,
+    actor_prim::{Actor, ActorContextGeneric, ChildRef, Pid},
+    error::ActorError,
+    messaging::{AnyMessage, AnyMessageViewGeneric},
+    props::Props,
+    system::ActorSystem,
 };
 use fraktor_utils_core_rs::sync::{ArcShared, NoStdMutex};
 
@@ -30,9 +30,9 @@ struct PassiveChild;
 
 impl Actor for PassiveChild {
   fn receive(
-    &mut self,
-    ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    message: AnyMessageView<'_, NoStdToolbox>,
+      &mut self,
+      ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
+      message: AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     if message.downcast_ref::<StopChild>().is_some() {
       ctx.stop_self().ok();
@@ -77,9 +77,9 @@ impl HarnessWatcher {
 
 impl Actor for HarnessWatcher {
   fn receive(
-    &mut self,
-    ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    message: AnyMessageView<'_, NoStdToolbox>,
+      &mut self,
+      ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
+      message: AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     if message.downcast_ref::<SpawnChild>().is_some() {
       return self.spawn_child(ctx);
@@ -144,9 +144,9 @@ impl SecondaryWatcher {
 
 impl Actor for SecondaryWatcher {
   fn receive(
-    &mut self,
-    ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    message: AnyMessageView<'_, NoStdToolbox>,
+      &mut self,
+      ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
+      message: AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     if let Some(child) = message.downcast_ref::<ChildRef>() {
       ctx.watch(child.actor_ref()).map_err(|_| ActorError::recoverable("secondary watch failed"))?;
@@ -172,9 +172,9 @@ impl SpawnWatchedGuardian {
 
 impl Actor for SpawnWatchedGuardian {
   fn receive(
-    &mut self,
-    ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    message: AnyMessageView<'_, NoStdToolbox>,
+      &mut self,
+      ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
+      message: AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     if message.downcast_ref::<SpawnChild>().is_some() {
       let props = Props::from_fn(|| PassiveChild);
@@ -204,9 +204,9 @@ impl CycleActor {
 
 impl Actor for CycleActor {
   fn receive(
-    &mut self,
-    ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    message: AnyMessageView<'_, NoStdToolbox>,
+      &mut self,
+      ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
+      message: AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     if let Some(peer) = message.downcast_ref::<ChildRef>() {
       ctx.watch(peer.actor_ref()).map_err(|_| ActorError::recoverable("cycle watch failed"))?;
@@ -235,9 +235,9 @@ impl CycleGuardian {
 
 impl Actor for CycleGuardian {
   fn receive(
-    &mut self,
-    ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    message: AnyMessageView<'_, NoStdToolbox>,
+      &mut self,
+      ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
+      message: AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     if message.downcast_ref::<StartCycle>().is_some() {
       let actor_a = ctx

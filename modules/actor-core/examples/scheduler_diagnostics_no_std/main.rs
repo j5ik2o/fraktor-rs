@@ -8,12 +8,12 @@ use core::time::Duration;
 use std::{thread, time::Duration as StdDuration};
 
 use fraktor_actor_core_rs::{
-  actor_prim::{Actor, ActorContext},
-  error::ActorError,
-  messaging::{AnyMessage, AnyMessageView},
-  props::Props,
-  scheduler::{SchedulerCommand, SchedulerDiagnosticsSubscription},
-  system::ActorSystemBuilder,
+    actor_prim::{Actor, ActorContext},
+    error::ActorError,
+    messaging::{AnyMessage, AnyMessageViewGeneric},
+    props::Props,
+    scheduler::{SchedulerCommand, SchedulerDiagnosticsSubscription},
+    system::ActorSystemBuilder,
 };
 
 #[cfg(not(target_os = "none"))]
@@ -41,7 +41,7 @@ impl GuardianActor {
 }
 
 impl Actor for GuardianActor {
-  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageViewGeneric<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
       #[cfg(not(target_os = "none"))]
       println!("[{:?}] subscribing scheduler diagnostics", std::thread::current().id());

@@ -3,12 +3,12 @@
 use alloc::vec::Vec;
 
 use crate::{
-  RuntimeToolbox,
-  actor_prim::{Actor, ActorContextGeneric, Pid, actor_ref::ActorRefGeneric},
-  error::ActorError,
-  messaging::{AnyMessageGeneric, AnyMessageView},
-  supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
-  system::SystemGuardianProtocol,
+    RuntimeToolbox,
+    actor_prim::{Actor, ActorContextGeneric, Pid, actor_ref::ActorRefGeneric},
+    error::ActorError,
+    messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
+    supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
+    system::SystemGuardianProtocol,
 };
 
 struct HookEntry<TB: RuntimeToolbox + 'static> {
@@ -125,9 +125,9 @@ impl<TB: RuntimeToolbox + 'static> Actor<TB> for SystemGuardianActor<TB> {
   }
 
   fn receive(
-    &mut self,
-    ctx: &mut ActorContextGeneric<'_, TB>,
-    message: AnyMessageView<'_, TB>,
+      &mut self,
+      ctx: &mut ActorContextGeneric<'_, TB>,
+      message: AnyMessageViewGeneric<'_, TB>,
   ) -> Result<(), ActorError> {
     if let Some(protocol) = message.downcast_ref::<SystemGuardianProtocol<TB>>() {
       self.handle_protocol(ctx, protocol)

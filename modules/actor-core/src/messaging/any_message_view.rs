@@ -6,16 +6,20 @@ mod tests;
 use core::any::{Any, TypeId};
 
 use crate::{NoStdToolbox, RuntimeToolbox, actor_prim::actor_ref::ActorRefGeneric};
+use crate::messaging::AskResponseGeneric;
 
 /// Represents a borrowed view of an actor message.
 #[derive(Debug)]
-pub struct AnyMessageView<'a, TB: RuntimeToolbox = NoStdToolbox> {
+pub struct AnyMessageViewGeneric<'a, TB: RuntimeToolbox = NoStdToolbox> {
   payload:  &'a (dyn Any + Send + Sync + 'static),
   type_id:  TypeId,
   reply_to: Option<&'a ActorRefGeneric<TB>>,
 }
 
-impl<'a, TB: RuntimeToolbox> AnyMessageView<'a, TB> {
+/// Type alias for [AnyMessageViewGeneric] with the default [NoStdToolbox].
+pub type AnyMessageView<'a> = AnyMessageViewGeneric<'a, NoStdToolbox>;
+
+impl<'a, TB: RuntimeToolbox> AnyMessageViewGeneric<'a, TB> {
   /// Creates a new borrowed message view.
   #[must_use]
   pub fn new(payload: &'a (dyn Any + Send + Sync + 'static), reply_to: Option<&'a ActorRefGeneric<TB>>) -> Self {

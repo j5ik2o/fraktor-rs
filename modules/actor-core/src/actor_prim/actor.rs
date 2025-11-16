@@ -6,11 +6,11 @@ mod tests;
 use alloc::boxed::Box;
 
 use crate::{
-  NoStdToolbox, RuntimeToolbox,
-  actor_prim::{ActorContextGeneric, Pid},
-  error::ActorError,
-  messaging::AnyMessageView,
-  supervision::SupervisorStrategy,
+    NoStdToolbox, RuntimeToolbox,
+    actor_prim::{ActorContextGeneric, Pid},
+    error::ActorError,
+    messaging::AnyMessageViewGeneric,
+    supervision::SupervisorStrategy,
 };
 
 /// Defines the lifecycle hooks that every actor must implement.
@@ -39,9 +39,9 @@ pub trait Actor<TB: RuntimeToolbox = NoStdToolbox>: Send {
   ///
   /// Panics are considered fatal and will propagate to the runtime.
   fn receive(
-    &mut self,
-    ctx: &mut ActorContextGeneric<'_, TB>,
-    message: AnyMessageView<'_, TB>,
+      &mut self,
+      ctx: &mut ActorContextGeneric<'_, TB>,
+      message: AnyMessageViewGeneric<'_, TB>,
   ) -> Result<(), ActorError>;
 
   /// Called once after the actor has been stopped.
@@ -93,7 +93,7 @@ pub trait Actor<TB: RuntimeToolbox = NoStdToolbox>: Send {
   /// use fraktor_actor_core_rs::{
   ///   actor_prim::{Actor, ActorContext},
   ///   error::ActorError,
-  ///   messaging::AnyMessageView,
+  ///   messaging::AnyMessageViewGeneric,
   ///   supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
   /// };
   ///
@@ -105,7 +105,7 @@ pub trait Actor<TB: RuntimeToolbox = NoStdToolbox>: Send {
   ///   fn receive(
   ///     &mut self,
   ///     _ctx: &mut ActorContext<'_>,
-  ///     _message: AnyMessageView<'_>,
+  ///     _message: AnyMessageViewGeneric<'_>,
   ///   ) -> Result<(), ActorError> {
   ///     Ok(())
   ///   }
@@ -154,9 +154,9 @@ where
   }
 
   fn receive(
-    &mut self,
-    ctx: &mut ActorContextGeneric<'_, TB>,
-    message: AnyMessageView<'_, TB>,
+      &mut self,
+      ctx: &mut ActorContextGeneric<'_, TB>,
+      message: AnyMessageViewGeneric<'_, TB>,
   ) -> Result<(), ActorError> {
     (**self).receive(ctx, message)
   }

@@ -1,18 +1,19 @@
 //! Middleware invoked around actor message handlers.
 
-use crate::{RuntimeToolbox, actor_prim::ActorContextGeneric, error::ActorError, messaging::AnyMessageView};
+use fraktor_utils_core_rs::sync::NoStdToolbox;
+use crate::{RuntimeToolbox, actor_prim::ActorContextGeneric, error::ActorError, messaging::AnyMessageViewGeneric};
 
 /// Middleware hook executed before and after user message handling.
-pub trait MessageInvokerMiddleware<TB: RuntimeToolbox + 'static>: Send + Sync {
+pub trait MessageInvokerMiddleware<TB: RuntimeToolbox + 'static = NoStdToolbox>: Send + Sync {
   /// Called before the actor receives the message.
   ///
   /// # Errors
   ///
   /// Returning an error aborts message processing.
   fn before_user(
-    &self,
-    _ctx: &mut ActorContextGeneric<'_, TB>,
-    _message: &AnyMessageView<'_, TB>,
+      &self,
+      _ctx: &mut ActorContextGeneric<'_, TB>,
+      _message: &AnyMessageViewGeneric<'_, TB>,
   ) -> Result<(), ActorError> {
     Ok(())
   }
@@ -23,10 +24,10 @@ pub trait MessageInvokerMiddleware<TB: RuntimeToolbox + 'static>: Send + Sync {
   ///
   /// Returning an error replaces the original actor result.
   fn after_user(
-    &self,
-    _ctx: &mut ActorContextGeneric<'_, TB>,
-    _message: &AnyMessageView<'_, TB>,
-    result: Result<(), ActorError>,
+      &self,
+      _ctx: &mut ActorContextGeneric<'_, TB>,
+      _message: &AnyMessageViewGeneric<'_, TB>,
+      result: Result<(), ActorError>,
   ) -> Result<(), ActorError> {
     result
   }
