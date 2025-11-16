@@ -117,7 +117,7 @@ fn main() {
   let props = Props::from_fn(GuardianActor::new);
   let bootstrap =
     ActorSystemBuilder::new(props).with_tick_driver(TickDriverConfig::hardware(demo_pulse())).build().expect("system");
-  let driver = start_demo_tick_driver(&bootstrap).expect("tick driver");
+  let _driver = start_demo_tick_driver(&bootstrap).expect("tick driver");
   bootstrap.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
 
   // スケジューラが動作する時間を与える
