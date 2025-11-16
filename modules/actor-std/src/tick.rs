@@ -4,10 +4,7 @@ use std::time::Duration;
 
 use fraktor_actor_core_rs::{
   event_stream::EventStreamGeneric,
-  scheduler::{
-    AutoProfileKind, TickDriverAutoLocator, TickDriverAutoLocatorRef, TickDriverConfig, TickDriverError,
-    TickDriverFactoryRef,
-  },
+  scheduler::{TickDriverConfig, TickDriverError, TickDriverFactoryRef},
 };
 use fraktor_utils_core_rs::sync::ArcShared;
 use fraktor_utils_std_rs::runtime_toolbox::StdToolbox;
@@ -231,26 +228,6 @@ impl StdTickDriverConfig {
     interval: Duration,
   ) -> TickDriverFactoryRef<StdToolbox> {
     ArcShared::new(TokioIntervalDriverFactory::new(handle, resolution).with_metrics(event_stream, interval))
-  }
-}
-
-/// Auto locator that detects a Tokio runtime handle.
-pub struct StdTokioAutoLocator;
-
-impl TickDriverAutoLocator<StdToolbox> for StdTokioAutoLocator {
-  fn detect(&self, _toolbox: &StdToolbox) -> Result<TickDriverFactoryRef<StdToolbox>, TickDriverError> {
-    let handle = Handle::try_current().map_err(|_| TickDriverError::HandleUnavailable)?;
-    Ok(StdTickDriverConfig::tokio_with_handle(handle, Duration::from_millis(10)))
-  }
-
-  fn default_ref() -> TickDriverAutoLocatorRef<StdToolbox>
-  where
-    Self: Sized, {
-    ArcShared::new(Self)
-  }
-
-  fn profile(&self) -> AutoProfileKind {
-    AutoProfileKind::Tokio
   }
 }
 
