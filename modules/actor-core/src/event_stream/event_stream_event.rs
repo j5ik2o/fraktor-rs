@@ -12,6 +12,7 @@ use crate::{
   logging::LogEvent,
   mailbox::{MailboxMetricsEvent, MailboxPressureEvent},
   serialization::SerializationErrorEvent,
+  scheduler::SchedulerTickMetrics,
   typed::{UnhandledMessageEvent, message_adapter::AdapterFailureEvent},
 };
 
@@ -38,6 +39,8 @@ pub enum EventStreamEvent<TB: RuntimeToolbox = NoStdToolbox> {
   Serialization(SerializationErrorEvent),
   /// Remote authority state transition notification.
   RemoteAuthority(RemoteAuthorityEvent),
+  /// Scheduler tick metrics snapshot.
+  SchedulerTick(SchedulerTickMetrics),
 }
 
 impl<TB: RuntimeToolbox> Clone for EventStreamEvent<TB> {
@@ -53,6 +56,7 @@ impl<TB: RuntimeToolbox> Clone for EventStreamEvent<TB> {
       | Self::AdapterFailure(event) => Self::AdapterFailure(event.clone()),
       | Self::Serialization(event) => Self::Serialization(event.clone()),
       | Self::RemoteAuthority(event) => Self::RemoteAuthority(event.clone()),
+      | Self::SchedulerTick(event) => Self::SchedulerTick(event.clone()),
     }
   }
 }

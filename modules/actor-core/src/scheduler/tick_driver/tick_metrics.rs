@@ -5,6 +5,7 @@ use core::time::Duration;
 use super::TickDriverKind;
 
 /// Aggregated tick statistics published through EventStream.
+#[derive(Clone, Debug)]
 pub struct SchedulerTickMetrics {
   driver:         TickDriverKind,
   ticks_per_sec:  u32,

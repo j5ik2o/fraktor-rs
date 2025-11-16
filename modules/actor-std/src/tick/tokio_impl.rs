@@ -1,10 +1,14 @@
 use std::{sync::Mutex, time::Duration};
 
-use fraktor_actor_core_rs::scheduler::{
-  TickDriver, TickDriverControl, TickDriverError, TickDriverFactory, TickDriverHandle, TickDriverId, TickDriverKind,
-  TickFeedHandle, next_tick_driver_id,
+use fraktor_actor_core_rs::{
+  event_stream::{EventStreamEvent, EventStreamGeneric},
+  scheduler::{
+    SchedulerTickMetricsProbe, TickDriver, TickDriverControl, TickDriverError, TickDriverFactory, TickDriverHandle,
+    TickDriverId, TickDriverKind, TickFeedHandle, next_tick_driver_id,
+  },
 };
 use fraktor_utils_core_rs::sync::ArcShared;
+use fraktor_utils_core_rs::time::TimerInstant;
 use fraktor_utils_std_rs::runtime_toolbox::StdToolbox;
 use tokio::{
   runtime::Handle,
@@ -12,15 +16,31 @@ use tokio::{
   time::{MissedTickBehavior, interval},
 };
 
+#[derive(Clone)]
+struct StdMetricsOptions {
+  event_stream: ArcShared<EventStreamGeneric<StdToolbox>>,
+  interval:     Duration,
+}
+
 /// Factory producing Tokio interval-based drivers.
 pub(super) struct TokioIntervalDriverFactory {
   handle:     Handle,
   resolution: Duration,
+  metrics:    Option<StdMetricsOptions>,
 }
 
 impl TokioIntervalDriverFactory {
   pub(super) fn new(handle: Handle, resolution: Duration) -> Self {
-    Self { handle, resolution }
+    Self { handle, resolution, metrics: None }
+  }
+
+  pub(super) fn with_metrics(
+    mut self,
+    event_stream: ArcShared<EventStreamGeneric<StdToolbox>>,
+    interval: Duration,
+  ) -> Self {
+    self.metrics = Some(StdMetricsOptions { event_stream, interval });
+    self
   }
 }
 
@@ -38,6 +58,7 @@ impl TickDriverFactory<StdToolbox> for TokioIntervalDriverFactory {
       id:         next_tick_driver_id(),
       handle:     self.handle.clone(),
       resolution: self.resolution,
+      metrics:    self.metrics.clone(),
     }))
   }
 }
@@ -46,6 +67,7 @@ struct TokioIntervalDriver {
   id:         TickDriverId,
   handle:     Handle,
   resolution: Duration,
+  metrics:    Option<StdMetricsOptions>,
 }
 
 impl TickDriver<StdToolbox> for TokioIntervalDriver {
@@ -64,25 +86,38 @@ impl TickDriver<StdToolbox> for TokioIntervalDriver {
   fn start(&self, feed: TickFeedHandle<StdToolbox>) -> Result<TickDriverHandle, TickDriverError> {
     let mut ticker = interval(self.resolution);
     ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
+    let handle_clone = self.handle.clone();
+    let feed_for_driver = feed.clone();
     let join = self.handle.spawn(async move {
       let mut ticker = ticker;
       loop {
         ticker.tick().await;
-        feed.enqueue(1);
+        feed_for_driver.enqueue(1);
       }
     });
-    let control = ArcShared::new(TokioIntervalDriverControl::new(join));
+    let metrics = self.metrics.as_ref().map(|options| {
+      StdTickMetricsEmitter::spawn(
+        handle_clone.clone(),
+        feed.clone(),
+        self.resolution,
+        self.kind(),
+        options.event_stream.clone(),
+        options.interval,
+      )
+    });
+    let control = ArcShared::new(TokioIntervalDriverControl::new(join, metrics));
     Ok(TickDriverHandle::new(self.id, self.kind(), self.resolution, control))
   }
 }
 
 struct TokioIntervalDriverControl {
-  join: Mutex<Option<JoinHandle<()>>>,
+  join:    Mutex<Option<JoinHandle<()>>>,
+  metrics: Mutex<Option<StdTickMetricsEmitter>>,
 }
 
 impl TokioIntervalDriverControl {
-  fn new(join: JoinHandle<()>) -> Self {
-    Self { join: Mutex::new(Some(join)) }
+  fn new(join: JoinHandle<()>, metrics: Option<StdTickMetricsEmitter>) -> Self {
+    Self { join: Mutex::new(Some(join)), metrics: Mutex::new(metrics) }
   }
 }
 
@@ -91,5 +126,52 @@ impl TickDriverControl for TokioIntervalDriverControl {
     if let Some(handle) = self.join.lock().expect("lock").take() {
       handle.abort();
     }
+    if let Some(emitter) = self.metrics.lock().expect("lock").take() {
+      emitter.shutdown();
+    }
   }
+}
+
+struct StdTickMetricsEmitter {
+  join: Mutex<Option<JoinHandle<()>>>,
+}
+
+impl StdTickMetricsEmitter {
+  fn spawn(
+    handle: Handle,
+    feed: TickFeedHandle<StdToolbox>,
+    resolution: Duration,
+    driver: TickDriverKind,
+    event_stream: ArcShared<EventStreamGeneric<StdToolbox>>,
+    metrics_interval: Duration,
+  ) -> Self {
+    let mut ticker = interval(metrics_interval);
+    ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
+    let probe = SchedulerTickMetricsProbe::new(feed, resolution, driver);
+    let join = handle.spawn(async move {
+      let mut elapsed_ticks = 0_u64;
+      let ticks_per_interval = ticks_for_interval(metrics_interval, resolution);
+      loop {
+        ticker.tick().await;
+        elapsed_ticks = elapsed_ticks.saturating_add(ticks_per_interval);
+        let now = TimerInstant::from_ticks(elapsed_ticks, resolution);
+        let metrics = probe.snapshot(now);
+        event_stream.publish(&EventStreamEvent::SchedulerTick(metrics));
+      }
+    });
+    Self { join: Mutex::new(Some(join)) }
+  }
+
+  fn shutdown(&self) {
+    if let Some(handle) = self.join.lock().expect("lock").take() {
+      handle.abort();
+    }
+  }
+}
+
+fn ticks_for_interval(interval: Duration, resolution: Duration) -> u64 {
+  let interval_nanos = interval.as_nanos();
+  let resolution_nanos = resolution.as_nanos().max(1);
+  let ticks = interval_nanos / resolution_nanos;
+  if ticks == 0 { 1 } else { ticks as u64 }
 }
