@@ -37,7 +37,7 @@ use crate::{
   futures::ActorFuture,
   logging::{LogEvent, LogLevel},
   messaging::{AnyMessageGeneric, FailurePayload, SystemMessage},
-  scheduler::{SchedulerContext, TaskRunSummary},
+  scheduler::{SchedulerContext, TaskRunSummary, TickDriverBootstrap, TickDriverRuntime},
   spawn::{NameRegistry, NameRegistryError, SpawnError},
   supervision::SupervisorDirective,
   system::{RegisterExtraTopLevelError, ReservationPolicy},
@@ -106,6 +106,7 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   actor_path_registry:    ToolboxMutex<ActorPathRegistry, TB>,
   remote_authority_mgr:   ArcShared<RemoteAuthorityManagerGeneric<TB>>,
   scheduler_context:      ToolboxMutex<Option<ArcShared<SchedulerContext<TB>>>, TB>,
+  tick_driver_runtime:    ToolboxMutex<Option<TickDriverRuntime<TB>>, TB>,
 }
 
 /// Type alias for [SystemStateGeneric] with the default [NoStdToolbox].
@@ -152,6 +153,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       actor_path_registry: <TB::MutexFamily as SyncMutexFamily>::create(ActorPathRegistry::new()),
       remote_authority_mgr: ArcShared::new(RemoteAuthorityManagerGeneric::new()),
       scheduler_context: <TB::MutexFamily as SyncMutexFamily>::create(None),
+      tick_driver_runtime: <TB::MutexFamily as SyncMutexFamily>::create(None),
     }
   }
 
@@ -647,6 +649,18 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     self.scheduler_context.lock().clone()
   }
 
+  /// Installs the tick driver runtime.
+  pub fn install_tick_driver_runtime(&self, runtime: TickDriverRuntime<TB>) {
+    let mut guard = self.tick_driver_runtime.lock();
+    guard.replace(runtime);
+  }
+
+  /// Returns the tick driver runtime when it has been initialized.
+  #[must_use]
+  pub fn tick_driver_runtime(&self) -> Option<TickDriverRuntime<TB>> {
+    self.tick_driver_runtime.lock().as_ref().cloned()
+  }
+
   /// Returns the last recorded tick driver snapshot when available.
   #[must_use]
   pub fn tick_driver_snapshot(&self) -> Option<TickDriverSnapshot> {
@@ -842,6 +856,14 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     let lifted = self.remote_authority_mgr.poll_quarantine_expiration(now_secs);
     for authority in lifted {
       self.publish_remote_authority_event(authority.clone(), AuthorityState::Unresolved);
+    }
+  }
+}
+
+impl<TB: RuntimeToolbox + 'static> Drop for SystemStateGeneric<TB> {
+  fn drop(&mut self) {
+    if let Some(runtime) = self.tick_driver_runtime.lock().take() {
+      TickDriverBootstrap::shutdown(runtime.driver());
     }
   }
 }

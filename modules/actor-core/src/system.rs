@@ -4,6 +4,8 @@
 
 mod actor_path_handle;
 mod actor_path_registry;
+mod actor_system_build_error;
+mod actor_system_builder;
 mod authority_state;
 mod base;
 mod guardian_kind;
@@ -18,6 +20,8 @@ mod system_state;
 
 pub use actor_path_handle::ActorPathHandle;
 pub use actor_path_registry::ActorPathRegistry;
+pub use actor_system_build_error::ActorSystemBuildError;
+pub use actor_system_builder::ActorSystemBuilder;
 pub use authority_state::AuthorityState;
 pub use base::{ActorSystem, ActorSystemGeneric};
 pub use guardian_kind::GuardianKind;

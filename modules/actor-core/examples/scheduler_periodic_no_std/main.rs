@@ -9,10 +9,15 @@ use fraktor_actor_core_rs::{
   error::ActorError,
   messaging::{AnyMessage, AnyMessageView},
   props::Props,
-  scheduler::{SchedulerCommand, SchedulerRunner},
-  system::ActorSystem,
+  scheduler::{SchedulerCommand, TickDriverConfig},
+  system::ActorSystemBuilder,
 };
-use fraktor_utils_core_rs::time::SchedulerTickHandle;
+
+#[cfg(not(target_os = "none"))]
+#[path = "../no_std_tick_driver_support.rs"]
+mod no_std_tick_driver_support;
+#[cfg(not(target_os = "none"))]
+use no_std_tick_driver_support::{demo_pulse, start_demo_tick_driver};
 
 // 周期的に送信されるメッセージ
 struct PeriodicTick {
@@ -54,18 +59,6 @@ impl Actor for GuardianActor {
         .schedule_at_fixed_rate(Duration::from_millis(50), Duration::from_millis(30), command)
         .map_err(|_| ActorError::recoverable("failed to schedule"))?;
 
-      // スケジューラを進める（デモ用）
-      struct ManualOwner;
-      let tick_handle = SchedulerTickHandle::scoped(&ManualOwner);
-      let mut runner = SchedulerRunner::manual(&tick_handle);
-
-      // 約200msのティックを進める（resolution=10msの場合、20ティック）
-      // これにより、50ms後の最初の実行と、その後30ms間隔で数回実行される
-      for _ in 0..30 {
-        runner.inject_manual_ticks(1);
-        runner.run_once(&mut scheduler);
-      }
-
       #[cfg(not(target_os = "none"))]
       println!(
         "[{:?}] Scheduler ticks completed. Received {} periodic messages",
@@ -88,20 +81,18 @@ impl Actor for GuardianActor {
 
 #[cfg(not(target_os = "none"))]
 fn main() {
-  use std::thread;
+  use std::{process, thread};
 
   let props = Props::from_fn(GuardianActor::new);
-  let system = ActorSystem::new(&props).expect("system");
-  let termination = system.when_terminated();
+  let system =
+    ActorSystemBuilder::new(props).with_tick_driver(TickDriverConfig::hardware(demo_pulse())).build().expect("system");
+  let _driver = start_demo_tick_driver(&system).expect("tick driver");
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
 
   // スケジューラが動作する時間を与える
   thread::sleep(std::time::Duration::from_millis(300));
 
-  system.terminate().expect("terminate");
-  while !termination.is_ready() {
-    thread::yield_now();
-  }
+  process::exit(0);
 }
 
 #[cfg(target_os = "none")]

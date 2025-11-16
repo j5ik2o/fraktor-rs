@@ -13,6 +13,17 @@ pub struct TickDriverRuntime<TB: RuntimeToolbox> {
   manual: Option<ManualTickController<TB>>,
 }
 
+impl<TB: RuntimeToolbox> Clone for TickDriverRuntime<TB> {
+  fn clone(&self) -> Self {
+    Self {
+      driver: self.driver.clone(),
+      feed: self.feed.clone(),
+      #[cfg(any(test, feature = "test-support"))]
+      manual: self.manual.clone(),
+    }
+  }
+}
+
 impl<TB: RuntimeToolbox> TickDriverRuntime<TB> {
   /// Creates a new runtime container for automatic/hardware drivers.
   #[must_use]

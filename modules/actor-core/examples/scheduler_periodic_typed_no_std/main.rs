@@ -6,13 +6,18 @@ use core::time::Duration;
 
 use fraktor_actor_core_rs::{
   error::ActorError,
-  scheduler::SchedulerRunner,
+  scheduler::TickDriverConfig,
   typed::{
-    TypedActorSystem, TypedProps,
+    TypedActorSystemBuilder, TypedProps,
     actor_prim::{TypedActor, TypedActorContext},
   },
 };
-use fraktor_utils_core_rs::time::SchedulerTickHandle;
+
+#[cfg(not(target_os = "none"))]
+#[path = "../no_std_tick_driver_support.rs"]
+mod no_std_tick_driver_support;
+#[cfg(not(target_os = "none"))]
+use no_std_tick_driver_support::{demo_pulse, start_demo_tick_driver};
 
 // 周期的に送信されるメッセージ
 #[derive(Clone)]
@@ -66,16 +71,6 @@ impl TypedActor<GuardianCommand> for GuardianActor {
             .map_err(|_| ActorError::recoverable("failed to schedule"))
         })?;
 
-        // スケジューラを進める（デモ用）
-        struct ManualOwner;
-        let tick_handle = SchedulerTickHandle::scoped(&ManualOwner);
-        let mut runner = SchedulerRunner::manual(&tick_handle);
-
-        for _ in 0..30 {
-          runner.inject_manual_ticks(1);
-          runner.run_once(&mut scheduler);
-        }
-
         #[cfg(not(target_os = "none"))]
         println!(
           "[{:?}] Typed scheduler ticks completed. Received {} periodic messages",
@@ -100,20 +95,20 @@ impl TypedActor<GuardianCommand> for GuardianActor {
 
 #[cfg(not(target_os = "none"))]
 fn main() {
-  use std::thread;
+  use std::{process, thread};
 
   let props = TypedProps::new(GuardianActor::new);
-  let system = TypedActorSystem::new(&props).expect("system");
-  let termination = system.as_untyped().when_terminated();
+  let system = TypedActorSystemBuilder::new(props)
+    .with_tick_driver(TickDriverConfig::hardware(demo_pulse()))
+    .build()
+    .expect("system");
+  let _driver = start_demo_tick_driver(system.as_untyped()).expect("tick driver");
   system.user_guardian_ref().tell(GuardianCommand::Start).expect("start");
 
   // スケジューラが動作する時間を与える
   thread::sleep(std::time::Duration::from_millis(300));
 
-  system.terminate().expect("terminate");
-  while !termination.is_ready() {
-    thread::yield_now();
-  }
+  process::exit(0);
 }
 
 #[cfg(target_os = "none")]

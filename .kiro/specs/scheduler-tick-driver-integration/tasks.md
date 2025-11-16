@@ -1,5 +1,26 @@
 # 実装計画
 
+- [ ] 0. ActorSystemBuilder / Bootstrap を整備する
+  - _(親タスクなので詳細は記載しない)_
+  - _対応要件: R1.1, R1.3, R3.1, R4.1, R4.5, R4.7_
+  - _依存タスク: -_
+- [x] 0.1 ActorSystemBuilder を実装し TickDriverConfig を受け取れるようにする
+  - `ActorSystemBuilder<TB>` / `ActorSystemBootstrap`（名称は最終決定に追従）を追加し、Props・Toolbox・TickDriverConfig をビルドチェーンで設定可能にする
+  - `build()` 時に TickDriverBootstrap を呼び出し、ActorSystem 起動前に構成検証とエラー整形を行う
+  - no_std / std 共通で 20 行以内の初期化テンプレートに落とし込める API 表面を整える
+  - _対応要件: R1.1, R3.1, R4.1, R4.5, R4.7_
+  - _依存タスク: 0_
+- [x] 0.2 Builder 初期化経路にランタイムメタデータと Runner API ガードを統合する
+  - Builder で選択された TickDriverMetadata を `SystemState` / `EventStream` に書き込み、Runner API 無効化設定も同時に適用する
+  - ManualTestDriver を Builder からしか注入できないようにし、`cfg(test)` 以外での利用をビルド時に弾く
+  - _対応要件: R1.3, R3.1, R3.5, R3.6_
+  - _依存タスク: 0.1_
+- [ ] 0.3 Quickstart / examples を ActorSystemBuilder ベースへ更新する
+  - [x] `modules/actor-core/examples/**/scheduler_*_no_std` / typed 版を全て Builder 呼び出しに差し替え、Runner API 依存を排除する
+  - [ ] `docs/guides/tick-driver-quickstart.md` のコードスニペットを最新の Builder API（`with_tick_driver(...)` 等）へ差し替え、main 関数 20 行以内を実証する
+  - _対応要件: R4.1, R4.2, R4.5, R4.6, R4.7_
+  - _依存タスク: 0.1, 0.2_
+
 - [ ] 1. Tickドライバ基盤を整備
   - _(親タスクなので詳細は記載しない)_
   - _対応要件: R1.1, R1.2, R1.3, R1.5, R2.1, R2.2, R2.3, R3.6_

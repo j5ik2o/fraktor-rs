@@ -4,30 +4,45 @@ extern crate alloc;
 
 use alloc::string::String;
 use core::time::Duration;
+#[cfg(not(target_os = "none"))]
+use std::{thread, time::Duration as StdDuration};
 
 use fraktor_actor_core_rs::{
   error::ActorError,
-  scheduler::SchedulerRunner,
+  scheduler::{SchedulerDiagnosticsSubscription, TickDriverConfig},
   typed::{
-    TypedActorSystem, TypedProps,
+    TypedActorSystemBuilder, TypedProps,
     actor_prim::{TypedActor, TypedActorContext},
   },
 };
-use fraktor_utils_core_rs::time::SchedulerTickHandle;
 
-// スケジュールされたメッセージ
+#[cfg(not(target_os = "none"))]
+#[path = "../no_std_tick_driver_support.rs"]
+mod no_std_tick_driver_support;
+#[cfg(not(target_os = "none"))]
+use no_std_tick_driver_support::{demo_pulse, start_demo_tick_driver};
+
 #[derive(Clone)]
 struct ScheduledMessage {
   text: String,
 }
 
-// Guardianアクターのコマンド
 enum GuardianCommand {
   Start,
   Scheduled(ScheduledMessage),
+  Dump,
 }
 
-struct GuardianActor;
+struct GuardianActor {
+  diagnostics: Option<SchedulerDiagnosticsSubscription>,
+  received:    u32,
+}
+
+impl GuardianActor {
+  const fn new() -> Self {
+    Self { diagnostics: None, received: 0 }
+  }
+}
 
 impl TypedActor<GuardianCommand> for GuardianActor {
   fn receive(
@@ -40,63 +55,46 @@ impl TypedActor<GuardianCommand> for GuardianActor {
         #[cfg(not(target_os = "none"))]
         println!("[{:?}] Guardian starting typed diagnostics example...", std::thread::current().id());
 
-        let target = ctx.self_ref();
-
         let scheduler_context = ctx.system().scheduler_context().expect("scheduler context");
         let scheduler_shared = scheduler_context.scheduler();
         let mut scheduler = scheduler_shared.lock();
+        let target = ctx.self_ref();
 
-        // 診断ストリームをサブスクライブ
-        let mut subscription = scheduler.subscribe_diagnostics(100);
+        self.diagnostics = Some(scheduler.subscribe_diagnostics(128));
 
         #[cfg(not(target_os = "none"))]
         println!("[{:?}] Subscribed to typed diagnostics stream", std::thread::current().id());
 
-        // いくつかのメッセージをスケジュール
         scheduler.with(|typed_scheduler| {
           for i in 0..3 {
             let msg = ScheduledMessage { text: alloc::format!("Typed Message {}", i + 1) };
             let cmd = GuardianCommand::Scheduled(msg);
-
             typed_scheduler
               .schedule_once(Duration::from_millis(50 * (i + 1)), target.clone(), cmd, None, None)
               .map_err(|_| ActorError::recoverable("failed to schedule"))?;
           }
+          typed_scheduler
+            .schedule_once(Duration::from_millis(250), target, GuardianCommand::Dump, None, None)
+            .map_err(|_| ActorError::recoverable("failed to schedule diagnostics dump"))?;
           Ok(())
         })?;
-
-        // スケジューラを進める
-        struct ManualOwner;
-        let tick_handle = SchedulerTickHandle::scoped(&ManualOwner);
-        let mut runner = SchedulerRunner::manual(&tick_handle);
-
-        for _ in 0..20 {
-          runner.inject_manual_ticks(1);
-          runner.run_once(&mut scheduler);
-        }
-
-        // 診断イベントを取得
-        let events = subscription.drain();
-
-        #[cfg(not(target_os = "none"))]
-        println!("[{:?}] Typed diagnostics events collected: {} events", std::thread::current().id(), events.len());
-
-        // スケジューラダンプを取得
-        let dump = scheduler.dump();
-
-        #[cfg(not(target_os = "none"))]
-        {
-          println!("[{:?}] Typed scheduler dump:", std::thread::current().id());
-          println!("  Current tick: {}", dump.current_tick());
-          println!("  Resolution: {:?}", dump.resolution());
-          println!("  Active jobs: {}", dump.jobs().len());
-          println!("  Metrics - active timers: {}", dump.metrics().active_timers());
-          println!("  Metrics - dropped total: {}", dump.metrics().dropped_total());
-        }
       },
       | GuardianCommand::Scheduled(msg) => {
+        self.received += 1;
         #[cfg(not(target_os = "none"))]
         println!("[{:?}] Received: {}", std::thread::current().id(), msg.text);
+      },
+      | GuardianCommand::Dump => {
+        if let Some(subscription) = self.diagnostics.as_mut() {
+          let events = subscription.drain();
+          #[cfg(not(target_os = "none"))]
+          println!(
+            "[{:?}] drained {} diagnostics events ({} scheduled messages processed)",
+            std::thread::current().id(),
+            events.len(),
+            self.received,
+          );
+        }
       },
     }
     Ok(())
@@ -105,20 +103,17 @@ impl TypedActor<GuardianCommand> for GuardianActor {
 
 #[cfg(not(target_os = "none"))]
 fn main() {
-  use std::thread;
+  use std::process;
 
-  let props = TypedProps::new(|| GuardianActor);
-  let system = TypedActorSystem::new(&props).expect("system");
-  let termination = system.as_untyped().when_terminated();
+  let props = TypedProps::new(GuardianActor::new);
+  let system = TypedActorSystemBuilder::new(props)
+    .with_tick_driver(TickDriverConfig::hardware(demo_pulse()))
+    .build()
+    .expect("system");
+  let _driver = start_demo_tick_driver(system.as_untyped()).expect("tick driver");
   system.user_guardian_ref().tell(GuardianCommand::Start).expect("start");
-
-  // スケジューラが動作する時間を与える
-  thread::sleep(std::time::Duration::from_millis(300));
-
-  system.terminate().expect("terminate");
-  while !termination.is_ready() {
-    thread::yield_now();
-  }
+  thread::sleep(StdDuration::from_millis(400));
+  process::exit(0);
 }
 
 #[cfg(target_os = "none")]

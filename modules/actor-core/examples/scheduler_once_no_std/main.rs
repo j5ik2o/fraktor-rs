@@ -4,16 +4,23 @@ extern crate alloc;
 
 use alloc::string::String;
 use core::time::Duration;
+#[cfg(not(target_os = "none"))]
+use std::{process, thread, time::Duration as StdDuration};
 
 use fraktor_actor_core_rs::{
   actor_prim::{Actor, ActorContext},
   error::ActorError,
   messaging::{AnyMessage, AnyMessageView},
   props::Props,
-  scheduler::{SchedulerCommand, SchedulerRunner},
-  system::ActorSystem,
+  scheduler::{SchedulerCommand, TickDriverConfig},
+  system::ActorSystemBuilder,
 };
-use fraktor_utils_core_rs::time::SchedulerTickHandle;
+
+#[cfg(not(target_os = "none"))]
+#[path = "../no_std_tick_driver_support.rs"]
+mod no_std_tick_driver_support;
+#[cfg(not(target_os = "none"))]
+use no_std_tick_driver_support::{demo_pulse, start_demo_tick_driver};
 
 // アクターに送信されるスケジュール済みメッセージ
 struct ScheduledMessage {
@@ -50,18 +57,6 @@ impl Actor for GuardianActor {
         .schedule_once(Duration::from_millis(100), command)
         .map_err(|_| ActorError::recoverable("failed to schedule"))?;
 
-      // スケジューラを進める（デモ用）
-      struct ManualOwner;
-      let tick_handle = SchedulerTickHandle::scoped(&ManualOwner);
-      let mut runner = SchedulerRunner::manual(&tick_handle);
-
-      // 十分なティック数を進める（100ms / resolution）
-      // デフォルトのresolutionは10msなので、100ms = 10ティック
-      for _ in 0..15 {
-        runner.inject_manual_ticks(1);
-        runner.run_once(&mut scheduler);
-      }
-
       #[cfg(not(target_os = "none"))]
       println!("[{:?}] Scheduler ticks completed", std::thread::current().id());
     } else if let Some(msg) = message.downcast_ref::<ScheduledMessage>() {
@@ -74,20 +69,17 @@ impl Actor for GuardianActor {
 
 #[cfg(not(target_os = "none"))]
 fn main() {
-  use std::thread;
-
   let props = Props::from_fn(|| GuardianActor);
-  let system = ActorSystem::new(&props).expect("system");
-  let termination = system.when_terminated();
+  let system =
+    ActorSystemBuilder::new(props).with_tick_driver(TickDriverConfig::hardware(demo_pulse())).build().expect("system");
+  let _driver = start_demo_tick_driver(&system).expect("tick driver");
+
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
 
   // スケジューラが動作する時間を与える
-  thread::sleep(std::time::Duration::from_millis(200));
+  thread::sleep(StdDuration::from_millis(200));
 
-  system.terminate().expect("terminate");
-  while !termination.is_ready() {
-    thread::yield_now();
-  }
+  process::exit(0);
 }
 
 #[cfg(target_os = "none")]
