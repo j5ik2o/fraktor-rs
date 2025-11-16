@@ -10,39 +10,14 @@ use std::{thread, time::Duration as StdDuration};
 
 use fraktor_actor_core_rs::{
   NoStdToolbox, ToolboxMutex,
-  scheduler::{Scheduler, SchedulerTickExecutor, TickDriverError, TickFeedHandle, TickPulseHandler, TickPulseSource},
-  system::ActorSystemGeneric,
+  scheduler::{
+    HardwareKind, HardwareTickDriver, Scheduler, SchedulerTickExecutor, TickDriver, TickDriverConfig,
+    TickDriverError, TickDriverRuntime, TickExecutorSignal, TickFeed, TickFeedHandle, TickPulseHandler,
+    TickPulseSource,
+  },
 };
 use fraktor_utils_core_rs::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
 
-/// Guard object that keeps the demo tick executor loop alive for std examples.
-pub struct DemoTickDriverGuard {
-  pump: StdTickDriverPump,
-}
-
-impl DemoTickDriverGuard {
-  fn new(pump: StdTickDriverPump) -> Self {
-    Self { pump }
-  }
-}
-
-impl Drop for DemoTickDriverGuard {
-  fn drop(&mut self) {
-    self.pump.stop();
-  }
-}
-
-/// Starts the demo tick driver executor using the provided actor system.
-pub fn start_demo_tick_driver(
-  system: &ActorSystemGeneric<NoStdToolbox>,
-) -> Result<DemoTickDriverGuard, TickDriverError> {
-  let ctx = system.scheduler_context().ok_or(TickDriverError::HandleUnavailable)?;
-  let runtime = system.tick_driver_runtime().ok_or(TickDriverError::HandleUnavailable)?;
-  let feed = runtime.feed().cloned().ok_or(TickDriverError::HandleUnavailable)?;
-  let scheduler = ctx.scheduler();
-  let pump = StdTickDriverPump::spawn(demo_pulse(), scheduler, feed);
-  Ok(DemoTickDriverGuard::new(pump))
-}
 
 const PULSE_PERIOD_NANOS: u64 = 10_000_000; // 10ms
 static DEMO_PULSE: DemoPulse = DemoPulse::new(PULSE_PERIOD_NANOS);
@@ -50,6 +25,38 @@ static DEMO_PULSE: DemoPulse = DemoPulse::new(PULSE_PERIOD_NANOS);
 /// Returns the demo pulse source used by the examples.
 pub fn demo_pulse() -> &'static DemoPulse {
   &DEMO_PULSE
+}
+
+/// Creates a hardware-based tick driver configuration for demos.
+///
+/// This is a convenience helper that wraps the builder configuration pattern,
+/// combining a hardware tick driver with a scheduler executor.
+pub fn hardware_tick_driver_config() -> TickDriverConfig<NoStdToolbox> {
+  TickDriverConfig::new(|ctx| {
+    // Get resolution and capacity from SchedulerContext
+    let scheduler: ArcShared<ToolboxMutex<Scheduler<NoStdToolbox>, NoStdToolbox>> = ctx.scheduler();
+    let (resolution, capacity) = {
+      let guard = scheduler.lock();
+      let cfg = guard.config();
+      (cfg.resolution(), cfg.profile().tick_buffer_quota())
+    };
+
+    // Create and start tick driver
+    let driver = HardwareTickDriver::new(demo_pulse(), HardwareKind::Custom);
+    let signal = TickExecutorSignal::new();
+    let feed = TickFeed::new(resolution, capacity, signal);
+    let handle = driver.start(feed.clone())?;
+
+    // Start scheduler executor
+    let pump = StdTickDriverPump::spawn(demo_pulse(), scheduler, feed.clone());
+
+    // Create runtime with shutdown callback
+    let runtime = TickDriverRuntime::new(handle, feed).with_executor_shutdown(move || {
+      drop(pump); // Drop will call stop()
+    });
+
+    Ok(runtime)
+  })
 }
 
 pub struct DemoPulse {
@@ -115,13 +122,13 @@ unsafe impl Sync for HandlerSlot {}
 
 type SchedulerArc = ArcShared<ToolboxMutex<Scheduler<NoStdToolbox>, NoStdToolbox>>;
 
-struct StdTickDriverPump {
+pub struct StdTickDriverPump {
   running: Arc<AtomicBool>,
   handle:  Option<thread::JoinHandle<()>>,
 }
 
 impl StdTickDriverPump {
-  fn spawn(pulse: &'static DemoPulse, scheduler: SchedulerArc, feed: TickFeedHandle<NoStdToolbox>) -> Self {
+  pub fn spawn(pulse: &'static DemoPulse, scheduler: SchedulerArc, feed: TickFeedHandle<NoStdToolbox>) -> Self {
     let running = Arc::new(AtomicBool::new(true));
     let signal = feed.signal();
     let sleep_interval = StdDuration::from_nanos(pulse.period);

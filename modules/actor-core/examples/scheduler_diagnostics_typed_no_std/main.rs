@@ -9,7 +9,7 @@ use std::{thread, time::Duration as StdDuration};
 
 use fraktor_actor_core_rs::{
   error::ActorError,
-  scheduler::{SchedulerDiagnosticsSubscription, TickDriverConfig},
+  scheduler::{SchedulerDiagnosticsSubscription},
   typed::{
     TypedActorSystemBuilder, TypedProps,
     actor_prim::{TypedActor, TypedActorContext},
@@ -20,7 +20,7 @@ use fraktor_actor_core_rs::{
 #[path = "../no_std_tick_driver_support.rs"]
 mod no_std_tick_driver_support;
 #[cfg(not(target_os = "none"))]
-use no_std_tick_driver_support::{demo_pulse, start_demo_tick_driver};
+
 
 #[derive(Clone)]
 struct ScheduledMessage {
@@ -107,10 +107,9 @@ fn main() {
 
   let props = TypedProps::new(GuardianActor::new);
   let system = TypedActorSystemBuilder::new(props)
-    .with_tick_driver(TickDriverConfig::hardware(demo_pulse()))
+    .with_tick_driver(no_std_tick_driver_support::hardware_tick_driver_config())
     .build()
     .expect("system");
-  let _driver = start_demo_tick_driver(system.as_untyped()).expect("tick driver");
   system.user_guardian_ref().tell(GuardianCommand::Start).expect("start");
   thread::sleep(StdDuration::from_millis(400));
   process::exit(0);

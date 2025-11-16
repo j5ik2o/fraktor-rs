@@ -12,7 +12,7 @@ use super::{
 use crate::RuntimeToolbox;
 
 /// Tick driver that bridges hardware pulse sources into tick feeds.
-pub(crate) struct HardwareTickDriver<TB: RuntimeToolbox> {
+pub struct HardwareTickDriver<TB: RuntimeToolbox> {
   pulse: &'static dyn TickPulseSource,
   kind:  HardwareKind,
   id:    TickDriverId,
@@ -22,7 +22,7 @@ pub(crate) struct HardwareTickDriver<TB: RuntimeToolbox> {
 impl<TB: RuntimeToolbox> HardwareTickDriver<TB> {
   /// Creates a new driver wrapping the provided pulse source.
   #[must_use]
-  pub(crate) fn new(pulse: &'static dyn TickPulseSource, kind: HardwareKind) -> Self {
+  pub fn new(pulse: &'static dyn TickPulseSource, kind: HardwareKind) -> Self {
     Self { pulse, kind, id: next_tick_driver_id(), _pd: PhantomData }
   }
 

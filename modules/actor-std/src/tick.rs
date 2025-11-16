@@ -39,9 +39,77 @@ impl StdTickDriverConfig {
   }
 
   /// Creates a Tokio quickstart configuration with custom resolution.
+  ///
+  /// This creates a complete tick driver setup including both the tick generator
+  /// and the scheduler executor, similar to no_std hardware tick driver patterns.
   #[must_use]
   pub fn tokio_quickstart_with_resolution(resolution: Duration) -> TickDriverConfig<StdToolbox> {
-    TickDriverConfig::auto_with_factory(Self::tokio_auto(resolution))
+    use fraktor_actor_core_rs::{
+      ToolboxMutex,
+      scheduler::{
+        Scheduler, SchedulerTickExecutor, TickDriverControl, TickDriverHandle, TickDriverKind, TickDriverRuntime,
+        TickExecutorSignal, TickFeed, next_tick_driver_id,
+      },
+    };
+    use fraktor_utils_core_rs::sync::ArcShared;
+    use tokio::time::{MissedTickBehavior, interval};
+
+    TickDriverConfig::new(move |ctx| {
+      let handle = Handle::try_current().expect("Tokio runtime handle unavailable");
+
+      // Get scheduler, resolution, and capacity from context
+      let scheduler: ArcShared<ToolboxMutex<Scheduler<StdToolbox>, StdToolbox>> = ctx.scheduler();
+      let capacity = {
+        let guard = scheduler.lock();
+        guard.config().profile().tick_buffer_quota()
+      };
+
+      // Create tick driver components
+      let signal = TickExecutorSignal::new();
+      let feed = TickFeed::new(resolution, capacity, signal);
+      let feed_clone = feed.clone();
+
+      // Spawn tick generator task
+      let tick_task = handle.spawn(async move {
+        let mut ticker = interval(resolution);
+        ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        loop {
+          ticker.tick().await;
+          feed_clone.enqueue(1);
+        }
+      });
+
+      // Spawn scheduler executor task
+      let executor_feed = feed.clone();
+      let executor_signal = executor_feed.signal();
+      let executor_scheduler = scheduler.clone();
+      let executor_task = handle.spawn(async move {
+        let mut executor = SchedulerTickExecutor::new(executor_scheduler, executor_feed, executor_signal);
+        loop {
+          executor.drive_pending();
+          tokio::time::sleep(resolution / 10).await;
+        }
+      });
+
+      // Create driver handle
+      struct TokioQuickstartControl {
+        tick_task:     tokio::task::JoinHandle<()>,
+        executor_task: tokio::task::JoinHandle<()>,
+      }
+      impl TickDriverControl for TokioQuickstartControl {
+        fn shutdown(&self) {
+          self.tick_task.abort();
+          self.executor_task.abort();
+        }
+      }
+
+      let driver_id = next_tick_driver_id();
+      let control = ArcShared::new(TokioQuickstartControl { tick_task, executor_task });
+      let driver_handle = TickDriverHandle::new(driver_id, TickDriverKind::Auto, resolution, control);
+
+      // Create runtime
+      Ok(TickDriverRuntime::new(driver_handle, feed))
+    })
   }
 
   /// Builds a factory using the provided Tokio runtime handle.
@@ -50,19 +118,112 @@ impl StdTickDriverConfig {
     ArcShared::new(TokioIntervalDriverFactory::new(handle, resolution))
   }
 
-  /// Builds a factory that also publishes metrics to the provided event stream.
+  /// Creates a Tokio quickstart configuration with event stream metrics publishing.
   ///
   /// # Panics
   ///
   /// Panics if no Tokio runtime handle is available in the current context.
   #[must_use]
-  pub fn tokio_auto_with_event_stream(
+  pub fn tokio_quickstart_with_event_stream(
     resolution: Duration,
     event_stream: ArcShared<EventStreamGeneric<StdToolbox>>,
-    interval: Duration,
-  ) -> TickDriverFactoryRef<StdToolbox> {
-    let handle = Handle::try_current().expect("Tokio runtime handle unavailable");
-    Self::tokio_with_handle_and_event_stream(handle, resolution, event_stream, interval)
+    metrics_interval: Duration,
+  ) -> TickDriverConfig<StdToolbox> {
+    use fraktor_actor_core_rs::{
+      ToolboxMutex,
+      scheduler::{
+        Scheduler, SchedulerTickExecutor, SchedulerTickMetricsProbe, TickDriverControl, TickDriverHandle,
+        TickDriverKind, TickDriverRuntime, TickExecutorSignal, TickFeed, next_tick_driver_id,
+      },
+    };
+    use fraktor_utils_core_rs::{sync::ArcShared as Arc, time::TimerInstant};
+    use tokio::time::{MissedTickBehavior, interval};
+
+    TickDriverConfig::new(move |ctx| {
+      let handle = Handle::try_current().expect("Tokio runtime handle unavailable");
+
+      let scheduler: Arc<ToolboxMutex<Scheduler<StdToolbox>, StdToolbox>> = ctx.scheduler();
+      let capacity = {
+        let guard = scheduler.lock();
+        guard.config().profile().tick_buffer_quota()
+      };
+
+      let signal = TickExecutorSignal::new();
+      let feed = TickFeed::new(resolution, capacity, signal);
+      let feed_clone = feed.clone();
+
+      // Spawn tick generator task
+      let tick_task = handle.spawn(async move {
+        let mut ticker = interval(resolution);
+        ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        loop {
+          ticker.tick().await;
+          feed_clone.enqueue(1);
+        }
+      });
+
+      // Spawn scheduler executor task
+      let executor_feed = feed.clone();
+      let executor_signal = executor_feed.signal();
+      let executor_scheduler = scheduler.clone();
+      let executor_task = handle.spawn(async move {
+        let mut executor = SchedulerTickExecutor::new(executor_scheduler, executor_feed, executor_signal);
+        loop {
+          executor.drive_pending();
+          tokio::time::sleep(resolution / 10).await;
+        }
+      });
+
+      // Spawn metrics emitter task
+      let metrics_feed = feed.clone();
+      let metrics_event_stream = event_stream.clone();
+      let probe = SchedulerTickMetricsProbe::new(metrics_feed, resolution, TickDriverKind::Auto);
+      let metrics_task = handle.spawn(async move {
+        let mut ticker = interval(metrics_interval);
+        ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        let mut elapsed_ticks = 0_u64;
+        let ticks_per_interval = {
+          let interval_nanos = metrics_interval.as_nanos();
+          let resolution_nanos = resolution.as_nanos().max(1);
+          let ticks = interval_nanos / resolution_nanos;
+          if ticks == 0 { 1 } else { ticks as u64 }
+        };
+        loop {
+          ticker.tick().await;
+          elapsed_ticks = elapsed_ticks.saturating_add(ticks_per_interval);
+          let now = TimerInstant::from_ticks(elapsed_ticks, resolution);
+          let metrics = probe.snapshot(now);
+          use fraktor_actor_core_rs::event_stream::EventStreamEvent;
+          metrics_event_stream.publish(&EventStreamEvent::SchedulerTick(metrics));
+        }
+      });
+
+      // Create driver handle
+      struct TokioQuickstartControl {
+        tick_task:     tokio::task::JoinHandle<()>,
+        executor_task: tokio::task::JoinHandle<()>,
+        metrics_task:  Option<tokio::task::JoinHandle<()>>,
+      }
+      impl TickDriverControl for TokioQuickstartControl {
+        fn shutdown(&self) {
+          self.tick_task.abort();
+          self.executor_task.abort();
+          if let Some(task) = &self.metrics_task {
+            task.abort();
+          }
+        }
+      }
+
+      let driver_id = next_tick_driver_id();
+      let control = Arc::new(TokioQuickstartControl {
+        tick_task,
+        executor_task,
+        metrics_task: Some(metrics_task),
+      });
+      let driver_handle = TickDriverHandle::new(driver_id, TickDriverKind::Auto, resolution, control);
+
+      Ok(TickDriverRuntime::new(driver_handle, feed))
+    })
   }
 
   /// Builds a factory with explicit handle and metrics publishing.
@@ -112,8 +273,7 @@ mod tests {
   #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
   #[allow(clippy::expect_used)]
   async fn tokio_interval_driver_produces_ticks() {
-    let factory = StdTickDriverConfig::tokio_auto(Duration::from_millis(5));
-    let config = TickDriverConfig::auto_with_factory(factory);
+    let config = StdTickDriverConfig::tokio_quickstart_with_resolution(Duration::from_millis(5));
     let ctx = SchedulerContext::new(StdToolbox::default(), SchedulerConfig::default());
     let runtime = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
 
@@ -156,12 +316,11 @@ mod tests {
     let subscriber: ArcShared<dyn EventStreamSubscriber<StdToolbox>> = subscriber_impl.clone();
     let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
 
-    let factory = StdTickDriverConfig::tokio_auto_with_event_stream(
+    let config = StdTickDriverConfig::tokio_quickstart_with_event_stream(
       Duration::from_millis(5),
       event_stream.clone(),
       Duration::from_millis(50),
     );
-    let config = TickDriverConfig::auto_with_factory(factory);
     let ctx = SchedulerContext::new(StdToolbox::default(), SchedulerConfig::default());
     let runtime = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
 

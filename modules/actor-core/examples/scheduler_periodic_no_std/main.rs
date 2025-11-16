@@ -9,15 +9,13 @@ use fraktor_actor_core_rs::{
   error::ActorError,
   messaging::{AnyMessage, AnyMessageView},
   props::Props,
-  scheduler::{SchedulerCommand, TickDriverConfig},
+  scheduler::SchedulerCommand,
   system::ActorSystemBuilder,
 };
 
 #[cfg(not(target_os = "none"))]
 #[path = "../no_std_tick_driver_support.rs"]
 mod no_std_tick_driver_support;
-#[cfg(not(target_os = "none"))]
-use no_std_tick_driver_support::{demo_pulse, start_demo_tick_driver};
 
 // 周期的に送信されるメッセージ
 struct PeriodicTick {
@@ -85,8 +83,7 @@ fn main() {
 
   let props = Props::from_fn(GuardianActor::new);
   let system =
-    ActorSystemBuilder::new(props).with_tick_driver(TickDriverConfig::hardware(demo_pulse())).build().expect("system");
-  let _driver = start_demo_tick_driver(&system).expect("tick driver");
+    ActorSystemBuilder::new(props).with_tick_driver(no_std_tick_driver_support::hardware_tick_driver_config()).build().expect("system");
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
 
   // スケジューラが動作する時間を与える
