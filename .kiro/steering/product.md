@@ -4,14 +4,33 @@
 fraktor-rs は Akka/Pekko および protoactor-go のライフサイクル設計を Rust の no_std 環境へ移植し、標準環境（Tokio など）とも同一 API で運用できるアクターランタイムです。ワークスペースは `fraktor-actor-rs`（`modules/actor`）と `fraktor-utils-rs`（`modules/utils`）の 2 クレートで構成され、各クレートが `core`（no_std）/`std` モジュールを feature で切り替えることで、DeathWatch を強化した監視 API、system mailbox によるライフサイクル制御、EventStream/DeadLetter の可観測性を埋め込みボードからホスト OS まで一貫した体験で提供します。
 
 ## コア機能
-- **ライフサイクル指向の ActorSystem**: `SystemMessage::Create/Recreate/Failure` を先行処理し、SupervisorStrategy と組み合わせて deterministic な再起動/停止を保証します。
-- **強化 DeathWatch**: `watch/unwatch` と `spawn_child_watched` を通じて監視登録と子生成を一括管理し、停止済み PID でも即時 `on_terminated` を配送して復旧を閉じ込めます。
-- **EventStream & Telemetry**: ログ、DeadLetter、ライフサイクルイベントを低遅延バスで公開し、`LoggerSubscriber` や独自サブスクライバで観測できます。
-- **Typed/Untyped 並存 API**: `TypedActor` が `into_untyped/as_untyped` で Classic API と相互運用し、型安全なビヘイビア切替と `reply_to` パターンを両立します。
-- **Pekko 互換リモートアドレッシング**: `ActorPathParts` と `ActorPathFormatter` が `fraktor://system@host:port/...` 形式の canonical URI を生成し、`GuardianKind` で `/system` `/user` を自動注入して `cellactor` デフォルトガーディアンを守ります。
-- **RemoteAuthority 管理**: `RemoteAuthorityManager` が `Unresolved/Connected/Quarantine` の状態遷移と `VecDeque` ベースの遅延キューを司り、`handle_invalid_association` で隔離を指示しつつ、`manual_override_to_connected` で手動復旧も許容します。
-- **Tick Driver クイックスタート**: `modules/actor/src/core/scheduler/tick_driver.rs` の `TickDriverBootstrap` と `modules/actor/src/std/scheduler/tick.rs` の `StdTickDriverConfig::tokio_quickstart*` が、Tokio/embassy/手動駆動の TickDriver をテンプレで生成し、`docs/guides/tick-driver-quickstart.md` がシナリオ別の導入手順を下支えします。
-- **Toolbox & Runtime 分離**: `fraktor-utils-rs` の `RuntimeToolbox` 抽象で割り込み安全な同期原語を提供し、`fraktor-actor-rs` 内の `core`/`std` モジュールで Tokio 実行器やホストログへのバインディングを段階的に差し込みます。
+- **ライフサイクル制御**: `SystemMessage::Create/Recreate/Failure` を system mailbox で優先処理し、SupervisorStrategy／再起動ポリシーを deterministic に適用して actor の生成・停止シーケンスを安定化します。
+- **監視と復旧閉じ込め**: `watch/unwatch`、`spawn_child_watched`、停止済み PID への即時 `on_terminated` 送達により、DeathWatch と子生成を 1 つのフローで扱い、復旧の境界を明示します。
+- **観測・テレメトリ**: EventStream/DeadLetter/LoggerSubscriber を介してライフサイクル、リモート、TickDriver のイベントを低遅延で配信し、監視パイプラインへ直接流し込めます。
+- **API サーフェスの二層化**: `TypedActor` と `into_untyped/as_untyped` 変換が型付き/非型付き API を橋渡しし、`reply_to` 前提のプロトコルで Classic `sender()` 依存を排除します。
+- **アドレッシング & Remoting**: `ActorPathParts`/`ActorPathFormatter` が Pekko 互換 URI を生成し、`RemoteAuthorityManager` が `Unresolved/Connected/Quarantine` と遅延キューを管理してリモート隔離・復旧を統制します。
+- **スケジューラ / Tick Driver**: `TickDriverBootstrap`・`SchedulerTickExecutor` と `StdTickDriverConfig::tokio_quickstart*` がハードウェア/手動/Tokio driver をテンプレ化し、`docs/guides/tick-driver-quickstart.md` でブート手順を統合します。
+- **Toolbox & Runtime 分離**: `fraktor-utils-rs` の `RuntimeToolbox` が割り込み安全な同期原語・タイマを提供し、`fraktor-actor-rs` の `core`（no_std）と `std`（Tokio/ログ連携）が同一 API を別実装で差し替えます。
+
+### モジュール別要約（`modules/actor/src/core`）
+- **`actor_prim/`**: `Pid`、`ActorRef`、`ActorPathParts`、`ActorSelectionResolver` などアクター識別・アドレッシング・Typed/Untyped の橋渡しを司る基本語彙を提供。
+- **`config/`**: `ActorSystemConfig`・`SchedulerConfig`・`RemotingConfig` を定義し、no_std/std 共通でライフサイクル・スケジューラ・DeathWatch 設定を束ねる。
+- **`dead_letter/`**: 投入不能メッセージの保持 (`DeadLetterEntry`) と EventStream への通知を実装し、監視用 API と統合。
+- **`dispatcher/`**: メールボックスとスレッド/実行器の橋渡し、`DispatchExecutor`・`DispatchShared` などの抽象をまとめて ActorRef 送達パスを標準化。
+- **`event_stream/`**: `EventStreamGeneric` と `EventStreamEvent`（Lifecycle/DeadLetter/RemoteAuthority/TickDriver 等）を管理し、subscriber API を提供。
+- **`extension/`**: ActorSystem への拡張ポイント登録機構を実装し、Toolbox 依存のプラグインを遅延初期化。
+- **`futures/`**: `ActorFuture` と ask/reply フローのポーリング補助を no_std 向けに実装し、std 側では `ActorFuture` を `ArcShared` で保持。
+- **`lifecycle/`**: SystemMessage 処理、DeathWatch、Terminated 通知などライフサイクル制御を司る。
+- **`logging/`**: `LogEvent`/`LogLevel` と EventStream 発火 API を提供し、std では `tracing` 連携が可能。
+- **`mailbox/`**: `Mailbox`, `MailboxScheduler` と `SystemMessage`/ユーザメッセージの優先処理ルールを実装。
+- **`messaging/`**: `AnyMessageGeneric`, `MessageEnvelope`, `reply_to` など送受信ペイロードを定義し、Typed/Untyped 共用のビュー層を提供。
+- **`props/`**: `PropsGeneric` とビルダー API を提供し、`spawn_child_watched` などのラッパーと連携。
+- **`scheduler/`**: `Scheduler`, `TickDriverBootstrap`, `TickDriverRuntime`, `SchedulerTickExecutor` を含み、ハードウェア・手動・Tokio driver の抽象を一元化。
+- **`serialization/`**: `MessageSerializer`, `SerializationRegistry` などの pluggable 仕組みを管理し、`Serde`/`postcard`/`prost` などを統合。
+- **`spawn/`**: `ActorSpawner`, `SpawnError`, `NameRegistry` を実装し、Guardian 経由のアクター生成・命名ルールを提供。
+- **`supervision/`**: `SupervisorStrategy`, `Decider`, `RestartPolicy` を定義し、SystemMessage 先行処理と連携して復旧挙動を制御。
+- **`system/`**: `ActorSystemGeneric`, `SystemStateGeneric`, `RemoteAuthorityManagerGeneric` を実装し、全体の状態管理と EventStream 連携を集中化。
+- **`typed/`**: `Behavior`, `TypedActorContext`, `TypedActorRef` を提供し、Untyped API との safe bridge (`into_untyped/as_untyped`) を担う。
 
 ## ターゲットユースケース
 - Akka/Pekko/Proto.Actor のデザインを Rust へ移植しつつ、ミッションクリティカルな復旧ポリシーを維持したい分散アプリケーション。
