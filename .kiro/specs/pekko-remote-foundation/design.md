@@ -67,6 +67,9 @@ graph TB
 ### 技術スタック / 設計判断
 - `fraktor-remote-rs` crate: `#![no_std]` + `alloc`、feature `std` で Tokio 依存を有効化。ActorSystem 側は extension 経由で参照するだけで依存方向を actor→remote にはしない。
 - Transport 抽象: `RemoteTransport` trait が `spawn_listener`, `open_channel`, `send`, `close`, `set_backpressure_hooks` を提供し、Tokio 実装は `tokio::net::TcpStream` を包む。Pekko の RemoteTransport と同様にプロトコル別 mapping を実現する。citeturn0search1
+- 運用制御: `RemotingControl` が `start`/`shutdown`/`associate`/`quarantine`/`connections_snapshot` を公開し、`register_backpressure_listener` で Transport 由来の `BackpressureSignal` を EventStream/監視へ伝搬する。AutoStart を off にした場合は SystemGuardian 子 (`EndpointSupervisor`) が handle を通じて start を要求し、Quickstart では運用者が明示的に手順を確認できる。
+- トレース相関: `RemotingEnvelope` と FlightRecorder が `CorrelationId`（96bit nonce）を常に付与し、EventStream/メトリクス/トレース出力で同一 ID を参照できる。Transport は frame header へ `correlation_id` を埋め込み、Tokio/no_std 実装で共通化する。
+- RemoteActorRefProvider: 既存 ActorSystem の Provider を `RemoteActorRefProvider` へ差し替え、ActorPath 解決時に RemotingExtension へフォワードする。Provider は SystemGuardian の子 `RemoteWatcherDaemon` を持ち、`RemotingControl` と `RemoteAuthorityManager` をブリッジする。
 - Endpoint FSM: Pekko の EndpointManager (Idle/Active/Gated/Quarantined) を参考に、`AssociationState` enum と `EndpointRegistry` を提供。`RemoteAuthorityManager` を registry backend として再利用し、`Quarantine` の deadline 管理も一元化。citeturn0search0
 - FailureDetector: Pekko の RemoteWatcher と同様に heartbeats を送受信し、Suspect/Reachable を EndpointManager へ通知する役割を分離する。citeturn0search3
 - FlightRecorder: Artery の RemotingFlightRecorder にならい、イベントを ring buffer に蓄積し、JFR 互換イベント構造を設計する。citeturn0search5
@@ -116,6 +119,7 @@ sequenceDiagram
   RemoteTransport-->>RemotePeer: deliver(frame)
   EndpointManager->>EventStream: publish(RemotingLifecycleEvent::Connected)
 ```
+- `RemoteActorRefProvider` は ActorSystem 構築時に `RemotingExtension` から handle を取得し、`resolve_actor_ref` でリモート authority を検出した際は `handle.associate(...)` を起動して EndpointSupervisor を wakeup する。Provider 自身も SystemGuardian 子 (`remote_watcher_daemon`) として監視される。
 
 ## API ブループリント
 
@@ -123,7 +127,8 @@ sequenceDiagram
 | 型/トレイト | 可視性 | 責務 |
 | --- | --- | --- |
 | `RemotingExtension<TB>` | `pub(crate)` (actor crate re-export禁止) | ActorSystem 拡張。トランスポート/エンドポイント初期化と `RemotingControl` 提供 |
-| `RemotingControl` | `pub` | 高レベル操作 (`associate`, `shutdown`, `connections_snapshot`) |
+| `RemotingControl` | `pub` | 高レベル操作 (`start`, `associate`, `shutdown`, `register_backpressure_listener`, `connections_snapshot`) |
+| `RemoteActorRefProvider<TB>` | `pub(crate)` | ActorSystem 用 Provider。ActorPath 解決を RemotingExtension/Transport へ橋渡し |
 | `RemoteTransport<TB>` | `pub(crate)` | トランスポート抽象 (listen/open/send/close/backpressure) |
 | `TransportFactory` | `pub(crate)` | RemotingConfig + scheme → Concrete transport インスタンス生成 |
 | `EndpointSupervisor` | `pub(crate)` | SystemGuardian 子 actor struct。EndpointManager/Writer/Reader を束ねる |
@@ -148,10 +153,16 @@ impl<TB: RuntimeToolbox> RemotingExtension<TB> {
 }
 
 pub trait RemotingControl {
+  fn start(&self) -> Result<(), RemotingError>;
   fn associate(&self, address: &ActorPathParts) -> Result<(), RemotingError>;
   fn quarantine(&self, authority: &str, reason: QuarantineReason);
   fn shutdown(&self) -> Result<(), RemotingError>;
+  fn register_backpressure_listener(&self, listener: Arc<dyn RemotingBackpressureListener>);
   fn connections_snapshot(&self) -> Vec<RemoteAuthoritySnapshot>;
+}
+
+pub trait RemotingBackpressureListener: Send + Sync {
+  fn on_signal(&self, signal: BackpressureSignal, authority: &str);
 }
 
 pub trait RemoteTransport<TB: RuntimeToolbox>: Send + Sync {
@@ -229,16 +240,24 @@ fn bootstrap_remoting() -> Result<ActorSystem, RemotingError> {
 
   let remoting_extension_config = RemotingExtensionConfig::default()
     .with_canonical_host("127.0.0.1")
-    .with_canonical_port(25520);
+    .with_canonical_port(25520)
+    .with_auto_start(false) // サンプルでは起動タイミングを明示する
+    .with_backpressure_listener(|signal: BackpressureSignal, authority| {
+      tracing::warn!(?signal, %authority, "remote backpressure");
+    });
   let extensions_config = ExtensionsConfig::default()
     .with_extension_config(remoting_extension_config)
-    // .with_extension_config(cluster_extension_config) // 後々追加予定
+    // .with_extension_config(cluster_extension_config)
     ;
 
   let system = ActorSystemBuilder::new(user_guardian_props)
-    .with_tick_driver(StdTickDriverConfig::tokio_quickstart()) // ActorSystemConfigの設定項目を専用メソッドで簡単に設定できる
-    .with_extensions_config(extensions_config) // ExtensionsConfigをActorSystemConfigにアサインするメソッド
-    .build()?; // エクステンションが有効になったActorSystemが起動する
+    .with_tick_driver(StdTickDriverConfig::tokio_quickstart())
+    .with_actor_ref_provider(RemoteActorRefProvider::std()) // Provider をリモート対応版へ差し替える
+    .with_extensions_config(extensions_config)
+    .build()?;
+
+  let remoting = system.extension::<RemotingExtension<StdToolbox>>()?;
+  remoting.handle().start()?; // AutoStart=false の場合は明示的に起動
 
   Ok(system)
 }
@@ -254,11 +273,11 @@ fn bootstrap_remoting() -> Result<ActorSystem, RemotingError> {
 ## 要件トレーサビリティ
 | 要件ID | 実装コンポーネント | インターフェイス | 備考 |
 | --- | --- | --- | --- |
-| 1.1-1.5 | RemotingExtension, TransportFactory, RemoteTransport | `builder.with_extensions_config`, `spawn_listener`, `send` | scheme ごとの transport, backpressure hook, framing |
+| 1.1-1.5 | RemotingExtension, RemoteActorRefProvider, TransportFactory | `builder.with_extensions_config`, `provider.resolve_actor_ref`, `spawn_listener`, `send` | scheme ごとの transport, backpressure hook, provider 経由の start/stop |
 | 1.6 | RemotingQuickstartDoc, Quickstart sample | n/a | ドキュメントと example コードを docs/guides/remoting-quickstart.md に追加 |
 | 2.1-2.5 | EndpointManager, EndpointRegistry, RemoteAuthorityManager | `handle(cmd)`, `state()` | FSM が Associating/Connected/Quarantined を遷移し、理由/時刻を保持 |
 | 3.1-3.5 | EndpointWriter, SerializedMessage, DeadLetter | `enqueue`, `serialize_message` | system message 優先送出、reply_to metadata、at-most-once を明示 |
-| 4.1-4.5 | EventPublisher, RemotingFlightRecorder, PhiFailureDetector | `publish`, `record`, `heartbeat_tick` | EventStream にライフサイクル/メトリクス、ハートビート監視、ヘルススナップショット |
+| 4.1-4.5 | EventPublisher, RemotingFlightRecorder, PhiFailureDetector | `publish`, `record`, `heartbeat_tick`, `record_trace` | EventStream/FlightRecorder にライフサイクル、CorrelationId 付きメトリクス、ハートビート監視、ヘルススナップショット |
 
 ## コンポーネント & インターフェイス
 
@@ -269,11 +288,21 @@ fn bootstrap_remoting() -> Result<ActorSystem, RemotingError> {
 - **契約**:
 ```rust
 pub struct RemotingControlHandle {
+  pub fn start(&self) -> Result<(), RemotingError>;
   pub fn associate(&self, authority: &str) -> Result<(), RemotingError>;
   pub fn shutdown(&self) -> Result<(), RemotingError>;
+  pub fn register_backpressure_listener<L: RemotingBackpressureListener + 'static>(&self, listener: L);
 }
 ```
+  - `RemotingExtensionConfig` に `auto_start: bool`（default = true）と `backpressure_listeners: Vec<Arc<dyn RemotingBackpressureListener>>` を追加する。AutoStart=false の場合、SystemGuardian 子 (`EndpointSupervisor`) は RemotingExtension の初期化のみ行い、アプリ側で `handle().start()` を明示的に呼ぶ。
+  - `register_backpressure_listener` で登録されたリスナーは Transport からの `BackpressureSignal` を受け取り、EndpointSupervisor → EventStream → SRE ログ/FlightRecorder にフックされる。リスナーは `Arc` で保持し、`Drop` で自動解除（または `unregister_backpressure_listener` を将来追加）する方針とする。
 前提: ActorSystem が TickDriver を起動済み。事後条件: EndpointSupervisor が起動し、Transport が listen。
+
+### RemoteActorRefProvider 層
+- **責務**: 既存 `ActorRefProvider` を置き換え、ローカル/リモートの ActorPath 解決／PID 生成を一元化。`RemoteActorRefProvider` は `RemotingControl` と `RemoteAuthorityManager` を保持し、`resolve_actor_ref` がリモート authority を検出した際に `associate`／`connections_snapshot` を利用して EndpointManager へ橋渡しする。
+- **入出力**: 入力=ActorPathParts, SystemGuardian, RemotingExtension handle。出力= `RemoteActorRef`, `RemoteWatcherDaemon` の起動コマンド。
+- **依存関係**: `ActorSystemGeneric`, `RemotingControl`, `RemoteAuthorityManager`, `EndpointSupervisor`。
+- **契約**: Provider 初期化時に RemotingExtension を要求し、`ActorSystemBuilder` で `RemoteActorRefProvider::new(system, remoting_handle)` を登録。SystemGuardian に `remote_watcher_daemon` を spawn し、`watch`/`unwatch` を Remoting へ転送する。
 
 ### Endpoint 管理層
 - **責務**: Association FSM、UID handshake、遅延キュー flush、Quarantine 判定。
@@ -293,11 +322,11 @@ pub enum AssociationState {
 ### トランスポート層
 - **責務**: TCP (std) / loopback (no_std テスト) transport 提供。長さプリフィクス framing を強制。
 - **入出力**: `TransportBind`, `TransportEndpoint`, `[u8]` frame。
-- **依存関係**: `tokio::net`, `RuntimeToolbox` timers。
-- **契約**: `send` は at-most-once; backpressure hook で EndpointWriter へ `BackpressureSignal` を返す。
+- **依存関係**: `tokio::net`, `RuntimeToolbox` timers, `RemotingControl` の `register_backpressure_listener` で共有する `BackpressureHook`。
+- **契約**: `send` は at-most-once; backpressure hook で EndpointWriter へ `BackpressureSignal` を返す。`send`/`open_channel` では `CorrelationId` を frame header に埋め込み、EndpointReader が受信時に FlightRecorder へ同一 ID を記録する。
 
 ### 観測/メトリクス層
-- **責務**: FlightRecorder は `RemotingMetric` (latency, queue 深さ, error rate) を ring buffer に蓄積、EventStream に公開。FailureDetector はヘルススナップショット API を EndpointRegistry へ提供。
+- **責務**: FlightRecorder は `RemotingMetric` (latency, queue 深さ, error rate, backpressure level) と `CorrelationTrace` を ring buffer に蓄積し、EventStream に公開。各送受信で `correlation_id` を生成/伝播し、SRE が送受信ログとトレースを突き合わせられるようにする。FailureDetector はヘルススナップショット API を EndpointRegistry へ提供し、`RemotingControl` の backpressure listener へ `EventStreamEvent::RemotingBackpressure` を通知する。
 - **入出力**: `RemotingEvent`, heartbeats, EventStream。
 - **依存関係**: `EventStream`, `SchedulerContext`（ハートビート周期）。
 - **契約**:
@@ -306,6 +335,7 @@ pub struct RemotingMetric {
   pub authority: String,
   pub latency_ms: u32,
   pub deferred_depth: u16,
+  pub backpressure: Option<BackpressureSignal>,
   pub last_error: Option<RemotingError>,
 }
 ```
@@ -317,16 +347,19 @@ pub struct RemotingMetric {
 ## データモデル
 ### 論理データモデル
 - `RemoteNodeId`: `{ system: String, host: String, port: Option<u16>, uid: ActorUid }`
-- `AssociationHandshake`: `{ protocol: ActorPathScheme, node: RemoteNodeId, capabilities: CapabilityFlags, nonce: u64 }`
-- `RemotingEnvelope`: `{ header: AssociationHeader, payload: SerializedMessage, sequence_no: u64, priority: MessagePriority }`
+- `AssociationHandshake`: `{ protocol: ActorPathScheme, node: RemoteNodeId, capabilities: CapabilityFlags, nonce: u64, correlation_seed: CorrelationId }`
+- `CorrelationId`: `{ hi: u64, lo: u32 }` (96bit)。`CorrelationId::next()` が XORShift ベースで生成し、Transport frame header と FlightRecorder に埋め込まれる。
+- `RemotingEnvelope`: `{ header: AssociationHeader, payload: SerializedMessage, sequence_no: u64, priority: MessagePriority, correlation_id: CorrelationId }`
 - `RemoteAuthoritySnapshot`: `{ authority: String, state: AuthorityState, last_change: u64, deferred_count: u32 }`
 
 ### データ契約 / 連携
 | エンティティ | シリアライズ | 備考 |
 | --- | --- | --- |
 | AssociationHandshake | `bincode` (no_std) + `prost` optional | header 長さ固定で、transport 先頭に付与 |
-| RemotingEnvelope | length-prefixed `[u8]` | SerializedMessage を内包、manifest/serializer_id を維持 |
+| RemotingEnvelope | length-prefixed `[u8]` | SerializedMessage + `correlation_id` を内包し、manifest/serializer_id を維持 |
 | RemotingMetric | EventStream JSON 表現 | 運用監視ツールへストリーム |
+| RemotingBackpressureEvent | EventStream JSON 表現 | authority, signal level, listener id を含み、`register_backpressure_listener` で購読 |
+| CorrelationTrace | `tracing::Event` / FlightRecorder ring buffer | `correlation_id`, authority, hop 種別 (send/recv/serialize) を保持 |
 
 ## エラーハンドリング
 ### エラーストラテジ
@@ -347,8 +380,9 @@ pub struct RemotingMetric {
 ## テスト戦略
 - **ユニットテスト**: `EndpointManager` FSM、`RemoteTransport` length framing、`PhiFailureDetector` 閾値判定。
 - **統合テスト**: LoopbackTransport で association/flush、TokioTcpTransport で実コネクション、Quarantine 復旧。
-- **E2E**: `modules/remote/tests/quickstart.rs` が Quickstart シナリオ (system A/B ping-pong) を検証。
+- **E2E**: `modules/remote/tests/quickstart.rs` が Quickstart シナリオ (system A/B ping-pong) を検証し、RemoteActorRefProvider 差し替えと `RemotingControl::start`/`shutdown` のシーケンスを確認。
 - **パフォーマンス**: `criterion` ベンチで EndpointWriter enqueue latency、Transport send throughput。
+- **トレーシング検証**: `modules/remote/tests/correlation_trace.rs` で送受信両端の `correlation_id` が一致し、FlightRecorder/`RemotingBackpressureEvent` に同じ ID が出力されることを snapshot テスト。
 
 ## セキュリティ
 - 現段階では平文 TCP のみ。Transport trait に `TransportSecurity` パラメータを予約し、将来 TLS 実装を追加しやすい設計とする。
