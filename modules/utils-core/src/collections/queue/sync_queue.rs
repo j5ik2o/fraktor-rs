@@ -5,7 +5,7 @@ use crate::collections::{
   queue::{
     QueueError,
     backend::{OfferOutcome, SyncQueueBackend, sync_priority_backend::SyncPriorityBackend},
-    capabilities::{MultiProducer, SingleConsumer, SingleProducer, SupportsPeek},
+    capabilities::SupportsPeek,
     type_keys::{FifoKey, MpscKey, PriorityKey, SpscKey, TypeKey},
   },
 };
@@ -106,42 +106,6 @@ where
   /// disconnection, or backend-specific failures.
   pub fn peek_min(&self) -> Result<Option<T>, QueueError<T>> {
     Ok(self.backend.peek_min().cloned())
-  }
-}
-
-impl<T, B> SyncQueue<T, MpscKey, B>
-where
-  B: SyncQueueBackend<T>,
-  MpscKey: MultiProducer + SingleConsumer,
-{
-  /// Creates a queue tailored for MPSC usage.
-  #[must_use]
-  pub const fn new_mpsc(backend: B) -> Self {
-    SyncQueue::new(backend)
-  }
-}
-
-impl<T, B> SyncQueue<T, SpscKey, B>
-where
-  B: SyncQueueBackend<T>,
-  SpscKey: SingleProducer + SingleConsumer,
-{
-  /// Creates a queue tailored for SPSC usage.
-  #[must_use]
-  pub const fn new_spsc(backend: B) -> Self {
-    SyncQueue::new(backend)
-  }
-}
-
-impl<T, B> SyncQueue<T, FifoKey, B>
-where
-  B: SyncQueueBackend<T>,
-  FifoKey: SingleProducer + SingleConsumer,
-{
-  /// Creates a queue tailored for FIFO usage.
-  #[must_use]
-  pub const fn new_fifo(backend: B) -> Self {
-    SyncQueue::new(backend)
   }
 }
 

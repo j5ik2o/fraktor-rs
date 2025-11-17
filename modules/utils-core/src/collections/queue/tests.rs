@@ -178,7 +178,7 @@ fn offer_and_poll_fifo_queue() {
   mpsc_key_capability_assertion::assert_capabilities();
 
   let backend = FifoBackend::new(QueueConfig::new(2), OverflowPolicy::DropOldest);
-  let sync_queue = SyncQueue::new_fifo(backend);
+  let sync_queue = SyncQueue::new(backend);
   let shared = ArcShared::new(SpinSyncMutex::new(sync_queue));
   let queue: SyncQueueShared<_, FifoKey, _, _> = SyncQueueShared::new(shared);
 
@@ -196,7 +196,7 @@ fn offer_and_poll_fifo_queue() {
 #[test]
 fn block_policy_reports_full() {
   let backend = FifoBackend::new(QueueConfig::new(1), OverflowPolicy::Block);
-  let sync_queue = SyncQueue::new_spsc(backend);
+  let sync_queue = SyncQueue::new(backend);
   let shared = ArcShared::new(SpinSyncMutex::new(sync_queue));
   let queue: SyncQueueShared<_, SpscKey, _, _> = SyncQueueShared::new(shared);
 
@@ -208,7 +208,7 @@ fn block_policy_reports_full() {
 #[test]
 fn grow_policy_increases_capacity() {
   let backend = FifoBackend::new(QueueConfig::new(1), OverflowPolicy::Grow);
-  let sync_queue = SyncQueue::new_mpsc(backend);
+  let sync_queue = SyncQueue::new(backend);
   let shared = ArcShared::new(SpinSyncMutex::new(sync_queue));
   let queue: SyncQueueShared<_, MpscKey, _, _> = SyncQueueShared::new(shared.clone());
 
@@ -254,7 +254,7 @@ fn shared_error_mapping_matches_spec() {
 #[test]
 fn mpsc_pair_supports_multiple_producers() {
   let backend = VecDequeBackend::with_capacity(8, OverflowPolicy::DropOldest);
-  let sync_queue = SyncQueue::new_mpsc(backend);
+  let sync_queue = SyncQueue::new(backend);
   let shared = ArcShared::new(SpinSyncMutex::new(sync_queue));
   let queue: SyncQueueShared<_, MpscKey, _, _> = SyncQueueShared::new(shared);
 
@@ -273,7 +273,7 @@ fn mpsc_pair_supports_multiple_producers() {
 #[test]
 fn spsc_pair_provides_split_access() {
   let backend = VecDequeBackend::with_capacity(4, OverflowPolicy::Block);
-  let sync_queue = SyncQueue::new_spsc(backend);
+  let sync_queue = SyncQueue::new(backend);
   let shared = ArcShared::new(SpinSyncMutex::new(sync_queue));
   let queue: SyncQueueShared<_, SpscKey, _, _> = SyncQueueShared::new(shared);
 
@@ -288,7 +288,7 @@ fn spsc_pair_provides_split_access() {
 #[test]
 fn vec_ring_backend_provides_fifo_behavior() {
   let backend = VecDequeBackend::with_capacity(3, OverflowPolicy::DropOldest);
-  let sync_queue = SyncQueue::new_fifo(backend);
+  let sync_queue = SyncQueue::new(backend);
   let shared = ArcShared::new(SpinSyncMutex::new(sync_queue));
   let queue: SyncQueueShared<_, FifoKey, _, _> = SyncQueueShared::new(shared);
 

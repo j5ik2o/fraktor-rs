@@ -20,7 +20,7 @@ impl<E> WaitQueue<E> {
   #[must_use]
   pub fn new() -> Self {
     let backend = VecDequeBackend::with_capacity(16, OverflowPolicy::Grow);
-    Self { waiters: SyncFifoQueue::new_fifo(backend) }
+    Self { waiters: SyncFifoQueue::new(backend) }
   }
 
   /// Registers a new waiter and returns a shared future for awaiting completion.

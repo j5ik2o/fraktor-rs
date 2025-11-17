@@ -43,7 +43,7 @@ where
 
   fn new_with(capacity: usize, overflow: OverflowPolicy) -> Self {
     let backend = VecDequeBackend::with_capacity(capacity, overflow);
-    let sync_queue = SyncQueue::new_fifo(backend);
+    let sync_queue = SyncQueue::new(backend);
     let mutex = SpinSyncMutex::new(sync_queue);
     let queue = UserQueueShared::new(ArcShared::new(mutex));
     let state = ArcShared::new(QueueState::new(queue));
