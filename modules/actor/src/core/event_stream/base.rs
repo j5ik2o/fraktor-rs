@@ -12,10 +12,13 @@ use fraktor_utils_rs::core::{
 };
 use portable_atomic::AtomicU64;
 
-use crate::core::event_stream::{
-  EventStreamSubscriber, event_stream_event::EventStreamEvent,
-  event_stream_subscriber_entry::EventStreamSubscriberEntryGeneric,
-  event_stream_subscription::EventStreamSubscriptionGeneric,
+use crate::core::{
+  actor_prim::actor_ref::ActorRefGeneric,
+  event_stream::{
+    ActorRefEventStreamSubscriber, EventStreamSubscriber, event_stream_event::EventStreamEvent,
+    event_stream_subscriber_entry::EventStreamSubscriberEntryGeneric,
+    event_stream_subscription::EventStreamSubscriptionGeneric,
+  },
 };
 
 const DEFAULT_CAPACITY: usize = 256;
@@ -58,6 +61,38 @@ impl<TB: RuntimeToolbox + 'static> EventStreamGeneric<TB> {
     }
 
     EventStreamSubscriptionGeneric::new(stream.clone(), id)
+  }
+
+  /// Subscribes an ActorRef to this event stream.
+  ///
+  /// Events will be delivered **asynchronously** to the actor's mailbox.
+  /// This is the **recommended way** for actor-based subscribers as it provides:
+  /// - Non-blocking `publish()` (immediate return)
+  /// - Better scalability with many subscribers
+  /// - Natural actor processing model
+  ///
+  /// # Example
+  ///
+  /// ```rust,ignore
+  /// let event_stream = ArcShared::new(EventStreamGeneric::default());
+  /// let logger_actor = system.spawn_actor(&logger_props, "logger")?;
+  ///
+  /// // Subscribe actor to event stream (async delivery)
+  /// let _subscription = EventStreamGeneric::subscribe_actor(
+  ///   &event_stream,
+  ///   logger_actor
+  /// );
+  ///
+  /// // publish() returns immediately (only mailbox enqueue time)
+  /// event_stream.publish(&EventStreamEvent::LogEvent(event));
+  /// ```
+  #[must_use]
+  pub fn subscribe_actor(
+    stream: &ArcShared<Self>,
+    actor_ref: ActorRefGeneric<TB>,
+  ) -> EventStreamSubscriptionGeneric<TB> {
+    let subscriber: ArcShared<dyn EventStreamSubscriber<TB>> = ArcShared::new(ActorRefEventStreamSubscriber::new(actor_ref));
+    Self::subscribe_arc(stream, &subscriber)
   }
 
   /// Removes the subscriber associated with the identifier.

@@ -2,6 +2,7 @@
 //!
 //! This module contains event publishing and subscription.
 
+mod actor_ref_subscriber;
 mod base;
 mod event_stream_event;
 mod event_stream_subscriber;
@@ -10,6 +11,7 @@ mod event_stream_subscription;
 mod remote_authority_event;
 mod tick_driver_snapshot;
 
+pub use actor_ref_subscriber::ActorRefEventStreamSubscriber;
 pub use base::{EventStream, EventStreamGeneric};
 pub use event_stream_event::EventStreamEvent;
 pub use event_stream_subscriber::EventStreamSubscriber;

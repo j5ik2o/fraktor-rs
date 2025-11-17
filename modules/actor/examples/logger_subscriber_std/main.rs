@@ -1,9 +1,10 @@
-use std::{fmt::Write as _, thread, time::Duration};
+use std::{thread, time::Duration};
 
+use fraktor_actor_rs::std::logging::TracingLoggerSubscriber;
 use fraktor_actor_rs::{
   core::{
     error::ActorError,
-    logging::{LogEvent, LogLevel, LoggerSubscriber, LoggerWriter},
+    logging::LogLevel,
   },
   std::{
     actor_prim::{Actor, ActorContext, ActorRef},
@@ -16,21 +17,6 @@ use fraktor_actor_rs::{
 use fraktor_utils_rs::core::sync::ArcShared;
 
 struct Start;
-
-struct StdoutLogger;
-
-impl LoggerWriter for StdoutLogger {
-  fn write(&self, event: &LogEvent) {
-    let mut origin = String::new();
-    if let Some(pid) = event.origin() {
-      let _ = write!(&mut origin, "{:?}", pid);
-    } else {
-      origin.push_str("system");
-    }
-
-    println!("[{:?}] {:?} origin={origin} message={}", event.timestamp(), event.level(), event.message());
-  }
-}
 
 struct GuardianActor;
 
@@ -48,9 +34,13 @@ impl Actor for GuardianActor {
 }
 
 fn main() {
-  let logger_writer: ArcShared<dyn LoggerWriter> = ArcShared::new(StdoutLogger);
+  let subscriber = tracing_subscriber::FmtSubscriber::builder()
+    .with_max_level(tracing::Level::DEBUG)
+    .finish();
+  tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
+
   let log_subscriber: ArcShared<dyn EventStreamSubscriber> =
-    ArcShared::new(LoggerSubscriber::new(LogLevel::Info, logger_writer));
+    ArcShared::new(TracingLoggerSubscriber::new(LogLevel::Info));
 
   let props: Props = Props::from_fn(|| GuardianActor);
   let system = ActorSystem::new(&props).expect("actor system を初期化できること");
