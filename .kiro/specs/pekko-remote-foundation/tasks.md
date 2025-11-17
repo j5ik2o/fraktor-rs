@@ -27,13 +27,13 @@
   - 不正構成を RemotingError::TransportUnavailable に変換して RemotingExtension 初期化を失敗させる
   - _対応要件: 1.1, 1.3_
   - _依存タスク: 1.1_
-- [ ] 2.2 Tokio TCP / Loopback transport でフレーミングと backpressure hook を実装
+- [x] 2.2 Tokio TCP / Loopback transport でフレーミングと backpressure hook を実装
   - 長さプリフィクス付きフレームと CorrelationId 埋め込みを送信側で実装し、受信側で検証する
   - std feature 有効時に Tokio の非同期ソケット境界を利用し、no_std では LoopbackTransport を提供する
   - Transport から BackpressureSignal を生成して RemotingControl へ通知する hook を接続する
   - _対応要件: 1.4, 1.5, 4.4_
   - _依存タスク: 2.1_
-- [ ] 2.3 Transport 層の送受信テストと backpressure シミュレーションを追加
+- [x] 2.3 Transport 層の送受信テストと backpressure シミュレーションを追加
   - LoopbackTransport で送受信フレーム長と CorrelationId 一貫性を検証するユニットテストを作成
   - Tokio 実装で BackpressureHook をトリガするシナリオを追加し、EventStream にシグナルが届くことを確認する
   - TransportFactory のエラー経路をテーブルドリブンテストでカバーする
@@ -44,7 +44,7 @@
   - _(親タスクなので詳細は書かない)_
   - _対応要件: 2.1, 2.2, 2.3, 2.4, 2.5_
   - _依存タスク: 1.1, 2.3_
-- [ ] 3.1 ハンドシェイクと遅延キュー処理の状態遷移を実装
+- [x] 3.1 ハンドシェイクと遅延キュー処理の状態遷移を実装
   - AssociationHandshake を送受信して RemoteNodeId を確定する FSM を追加し、Unassociated→Associating→Connected の遷移を実装する
   - UID 未確定期間は EndpointRegistry にユーザーメッセージを遅延投入し、ハンドシェイク以外をブロックする
   - ハンドシェイク完了時に遅延キューを FlushDeferred コマンドで排出する

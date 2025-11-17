@@ -8,6 +8,7 @@ extern crate alloc;
 
 mod backpressure_listener;
 mod endpoint_supervisor;
+mod endpoint_manager;
 mod remoting_connection_snapshot;
 mod remoting_control;
 mod remoting_control_handle;
@@ -26,4 +27,14 @@ pub use remoting_error::RemotingError;
 pub use remoting_extension::RemotingExtension;
 pub use remoting_extension_config::RemotingExtensionConfig;
 pub use remoting_extension_id::RemotingExtensionId;
-pub use transport::{factory::TransportFactory, LoopbackTransport, RemoteTransport};
+pub use transport::{
+  factory::TransportFactory,
+  LoopbackTransport,
+  RemoteTransport,
+  TransportBind,
+  TransportEndpoint,
+  TransportChannel,
+  TransportHandle,
+  TransportError,
+};
+pub use endpoint_manager::{AssociationState, EndpointManager, EndpointManagerCommand, RemoteNodeId};
