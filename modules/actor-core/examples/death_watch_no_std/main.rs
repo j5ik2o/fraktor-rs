@@ -11,7 +11,7 @@ use fraktor_actor_core_rs::core::{
   props::Props,
   system::ActorSystem,
 };
-use fraktor_utils_core_rs::runtime_toolbox::NoStdMutex, sync::ArcShared;
+use fraktor_utils_core_rs::runtime_toolbox::{NoStdMutex, sync::ArcShared};
 
 struct Start;
 struct StopChild;
