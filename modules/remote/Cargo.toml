@@ -1,0 +1,18 @@
+[package]
+name = "fraktor-remote-rs"
+version = "0.2.11"
+edition = "2024"
+description = "Remoting facilities for the fraktor actor runtime"
+license = "MIT OR Apache-2.0"
+homepage = "https://github.com/j5ik2o/fraktor-rs"
+repository = "https://github.com/j5ik2o/fraktor-rs"
+documentation = "https://docs.rs/fraktor-remote-rs"
+readme = "../../README.ja.md"
+keywords = ["actors", "runtime", "remoting"]
+categories = ["concurrency", "network-programming"]
+
+[features]
+default = []
+std = []
+
+[dependencies]

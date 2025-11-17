@@ -1,5 +1,8 @@
 use super::*;
-
+use crate::{
+  core::{collections::queue::SyncQueue, sync::ArcShared},
+  std::{collections::queue::StdSyncMpscQueueShared, sync_mutex::StdSyncMutex},
+};
 #[test]
 fn offer_and_poll_roundtrip() {
   let mut backend = MpscBackend::new();
@@ -139,11 +142,6 @@ fn works_with_sync_queue_shared() {
 
 #[test]
 fn works_with_std_sync_mpsc_queue_shared() {
-  use crate::{
-    core::{collections::queue::SyncQueue, sync::ArcShared},
-    std::{collections::StdSyncMpscQueueShared, sync_mutex::StdSyncMutex},
-  };
-
   // StdSyncMpscQueueShared<T, MpscBackend<T>> の型エイリアスが使えることを確認
   let backend = MpscBackend::<i32>::new();
   let sync_queue = SyncQueue::new(backend);

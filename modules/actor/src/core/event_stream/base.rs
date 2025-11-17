@@ -70,28 +70,13 @@ impl<TB: RuntimeToolbox + 'static> EventStreamGeneric<TB> {
   /// - Non-blocking `publish()` (immediate return)
   /// - Better scalability with many subscribers
   /// - Natural actor processing model
-  ///
-  /// # Example
-  ///
-  /// ```rust,ignore
-  /// let event_stream = ArcShared::new(EventStreamGeneric::default());
-  /// let logger_actor = system.spawn_actor(&logger_props, "logger")?;
-  ///
-  /// // Subscribe actor to event stream (async delivery)
-  /// let _subscription = EventStreamGeneric::subscribe_actor(
-  ///   &event_stream,
-  ///   logger_actor
-  /// );
-  ///
-  /// // publish() returns immediately (only mailbox enqueue time)
-  /// event_stream.publish(&EventStreamEvent::LogEvent(event));
-  /// ```
   #[must_use]
   pub fn subscribe_actor(
     stream: &ArcShared<Self>,
     actor_ref: ActorRefGeneric<TB>,
   ) -> EventStreamSubscriptionGeneric<TB> {
-    let subscriber: ArcShared<dyn EventStreamSubscriber<TB>> = ArcShared::new(ActorRefEventStreamSubscriber::new(actor_ref));
+    let subscriber: ArcShared<dyn EventStreamSubscriber<TB>> =
+      ArcShared::new(ActorRefEventStreamSubscriber::new(actor_ref));
     Self::subscribe_arc(stream, &subscriber)
   }
 

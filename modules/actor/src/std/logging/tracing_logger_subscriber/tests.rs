@@ -1,7 +1,6 @@
 extern crate std;
 
-use alloc::{format, string::String, vec::Vec};
-use alloc::borrow::ToOwned;
+use alloc::{borrow::ToOwned, format, string::String, vec::Vec};
 use core::time::Duration;
 use std::{
   fmt,
@@ -18,9 +17,8 @@ use tracing::{
 use super::TracingLoggerSubscriber;
 use crate::{
   core::logging::{LogEvent, LogLevel},
-  std::event_stream::EventStreamEvent,
+  std::event_stream::{EventStreamEvent, EventStreamSubscriber},
 };
-use crate::std::event_stream::EventStreamSubscriber;
 
 #[test]
 fn forwards_log_events_to_tracing() {

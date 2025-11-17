@@ -21,22 +21,6 @@ use crate::core::{
 /// - `publish()` returns immediately (only mailbox enqueue time)
 /// - Event processing happens asynchronously in the actor
 /// - Scales well with many subscribers (O(n) mailbox sends vs O(n) synchronous callbacks)
-///
-/// # Example
-///
-/// ```rust,ignore
-/// use fraktor_actor_rs::core::{
-///   event_stream::{ActorRefEventStreamSubscriber, EventStreamGeneric},
-///   actor_prim::ActorRef,
-/// };
-/// use fraktor_utils_rs::core::sync::ArcShared;
-///
-/// let actor_ref = ActorRef::new(/* ... */);
-/// let subscriber = ArcShared::new(ActorRefEventStreamSubscriber::new(actor_ref));
-///
-/// let event_stream = ArcShared::new(EventStreamGeneric::default());
-/// let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
-/// ```
 pub struct ActorRefEventStreamSubscriber<TB: RuntimeToolbox + 'static> {
   actor_ref: ActorRefGeneric<TB>,
 }
@@ -44,13 +28,13 @@ pub struct ActorRefEventStreamSubscriber<TB: RuntimeToolbox + 'static> {
 impl<TB: RuntimeToolbox + 'static> ActorRefEventStreamSubscriber<TB> {
   /// Creates a new subscriber that forwards events to the given ActorRef.
   #[must_use]
-  pub fn new(actor_ref: ActorRefGeneric<TB>) -> Self {
+  pub const fn new(actor_ref: ActorRefGeneric<TB>) -> Self {
     Self { actor_ref }
   }
 
   /// Returns a reference to the underlying ActorRef.
   #[must_use]
-  pub fn actor_ref(&self) -> &ActorRefGeneric<TB> {
+  pub const fn actor_ref(&self) -> &ActorRefGeneric<TB> {
     &self.actor_ref
   }
 }

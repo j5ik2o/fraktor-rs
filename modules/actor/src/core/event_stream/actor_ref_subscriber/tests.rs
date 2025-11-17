@@ -6,7 +6,10 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::core::{
-  actor_prim::{Pid, actor_ref::{ActorRefGeneric, ActorRefSender}},
+  actor_prim::{
+    Pid,
+    actor_ref::{ActorRefGeneric, ActorRefSender},
+  },
   error::SendError,
   event_stream::{ActorRefEventStreamSubscriber, EventStreamEvent, EventStreamSubscriber},
   logging::{LogEvent, LogLevel},

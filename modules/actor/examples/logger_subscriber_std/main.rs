@@ -1,14 +1,11 @@
 use std::{thread, time::Duration};
 
-use fraktor_actor_rs::std::logging::TracingLoggerSubscriber;
 use fraktor_actor_rs::{
-  core::{
-    error::ActorError,
-    logging::LogLevel,
-  },
+  core::{error::ActorError, logging::LogLevel},
   std::{
     actor_prim::{Actor, ActorContext, ActorRef},
     event_stream::EventStreamSubscriber,
+    logging::TracingLoggerSubscriber,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
     system::ActorSystem,
@@ -34,9 +31,7 @@ impl Actor for GuardianActor {
 }
 
 fn main() {
-  let subscriber = tracing_subscriber::FmtSubscriber::builder()
-    .with_max_level(tracing::Level::DEBUG)
-    .finish();
+  let subscriber = tracing_subscriber::FmtSubscriber::builder().with_max_level(tracing::Level::DEBUG).finish();
   tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
   let log_subscriber: ArcShared<dyn EventStreamSubscriber> =

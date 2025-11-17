@@ -1,3 +1,4 @@
+/// Collection utilities for std environments.
 pub mod collections;
 /// Runtime toolbox and aliases for std environments.
 pub mod runtime_toolbox;

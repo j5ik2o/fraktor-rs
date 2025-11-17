@@ -25,6 +25,7 @@ resolver = "2"
 members = [
     "modules/utils",
     "modules/actor",
+    "modules/remote",
 ]
 
 [workspace.package]

@@ -1,5 +1,6 @@
 extern crate std;
 
+/// Backend implementations for queues.
 pub mod backend;
 
 use crate::{
