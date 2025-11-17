@@ -1,6 +1,5 @@
-use crate::core::runtime_toolbox::SyncMutexFamily;
-
 use super::{StdMutex, StdMutexFamily};
+use crate::core::runtime_toolbox::SyncMutexFamily;
 
 #[test]
 fn std_mutex_family_creates_mutex() {

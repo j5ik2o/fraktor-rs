@@ -4,7 +4,7 @@ extern crate alloc;
 
 use alloc::string::{String, ToString};
 
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_rs::core::{
   actor_prim::{Actor, ActorContext, actor_ref::ActorRef},
   error::ActorError,
   messaging::{AnyMessage, AnyMessageViewGeneric},

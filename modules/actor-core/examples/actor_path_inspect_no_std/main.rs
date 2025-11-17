@@ -5,7 +5,7 @@ extern crate alloc;
 use alloc::{format, string::String};
 use core::time::Duration;
 
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_rs::core::{
   actor_prim::{Actor, ActorContext, actor_path::ActorPathParser, actor_ref::ActorRef},
   config::{ActorSystemConfig, RemotingConfig},
   error::ActorError,

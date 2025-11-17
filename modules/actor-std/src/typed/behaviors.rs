@@ -1,6 +1,6 @@
 //! Std-specific typed behavior helpers that wrap the core DSL.
 
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_rs::core::{
   error::ActorError,
   typed::{BehaviorSignal, Behaviors as CoreBehaviors, actor_prim::TypedActorContextGeneric as CoreTypedActorContext},
 };

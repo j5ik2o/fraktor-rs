@@ -1,10 +1,14 @@
+#![allow(cfg_std_forbid)]
+
 use core::time::Duration;
 
-use crate::core::{
-  sync::RuntimeToolbox,
-  time::{ManualClock, SchedulerTickHandle},
+use crate::{
+  core::{
+    runtime_toolbox::RuntimeToolbox,
+    time::{ManualClock, SchedulerTickHandle},
+  },
+  std::runtime_toolbox::StdMutexFamily,
 };
-use crate::std::runtime_toolbox::StdMutexFamily;
 
 #[cfg(test)]
 mod tests;
@@ -18,7 +22,7 @@ pub struct StdToolbox {
 impl StdToolbox {
   /// Creates a toolbox whose resolution matches the desired frequency.
   #[must_use]
-  pub fn new(resolution: Duration) -> Self {
+  pub const fn new(resolution: Duration) -> Self {
     Self { clock: ManualClock::new(resolution) }
   }
 }

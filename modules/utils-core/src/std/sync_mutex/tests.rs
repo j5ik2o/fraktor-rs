@@ -1,6 +1,5 @@
-use crate::core::sync::sync_mutex_like::SyncMutexLike;
-
 use super::StdSyncMutex;
+use crate::core::sync::sync_mutex_like::SyncMutexLike;
 
 #[test]
 fn new_creates_mutex() {

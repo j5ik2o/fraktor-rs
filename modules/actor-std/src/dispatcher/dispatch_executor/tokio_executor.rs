@@ -1,4 +1,4 @@
-use fraktor_actor_core_rs::dispatcher::DispatchError;
+use fraktor_actor_core_rs::core::dispatcher::DispatchError;
 use tokio::runtime::Handle;
 
 use crate::dispatcher::{DispatchExecutor, DispatchShared};

@@ -4,7 +4,8 @@ use super::{SyncQueue, type_keys::MpscKey};
 use crate::core::{
   collections::queue::{QueueError, backend::SyncQueueBackend},
   sync::{
-    ArcShared, Shared, SharedAccess,
+    ArcShared, SharedAccess,
+    shared::Shared,
     sync_mutex_like::{SpinSyncMutex, SyncMutexLike},
   },
 };

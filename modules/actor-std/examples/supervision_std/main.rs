@@ -1,7 +1,7 @@
 use core::time::Duration as CoreDuration;
 use std::{thread, time::Duration};
 
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_rs::core::{
   error::ActorError,
   logging::{LogEvent, LogLevel, LoggerSubscriber, LoggerWriter},
   supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},

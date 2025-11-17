@@ -9,7 +9,7 @@ use core::{marker::Unsize, ops::CoerceUnsized};
 #[cfg(feature = "force-portable-arc")]
 use portable_atomic_util::Arc;
 
-use super::{Shared, SharedDyn};
+use crate::core::sync::shared::{Shared, SharedDyn};
 
 #[cfg(test)]
 mod tests;

@@ -1,6 +1,6 @@
 use core::fmt::Debug;
 
-use crate::SharedBound;
+use crate::core::sync::shared::SharedBound;
 
 /// Number of priority queue levels
 ///

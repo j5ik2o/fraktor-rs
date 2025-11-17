@@ -1,6 +1,5 @@
-use crate::core::runtime_toolbox::RuntimeToolbox;
-
 use super::StdToolbox;
+use crate::core::runtime_toolbox::RuntimeToolbox;
 
 #[test]
 fn std_toolbox_is_debug() {

@@ -1,9 +1,11 @@
+#![allow(cfg_std_forbid)]
+#![allow(clippy::disallowed_types)]
+
 extern crate std;
 
 use std::sync::Mutex;
 
-use crate::core::sync::sync_mutex_like::SyncMutexLike;
-use crate::std::sync_mutex_guard::StdSyncMutexGuard;
+use crate::{core::sync::sync_mutex_like::SyncMutexLike, std::sync_mutex_guard::StdSyncMutexGuard};
 
 #[cfg(test)]
 mod tests;
@@ -14,7 +16,8 @@ pub struct StdSyncMutex<T>(Mutex<T>);
 impl<T> StdSyncMutex<T> {
   /// Creates a new mutex-backed value.
   #[must_use]
-  pub fn new(value: T) -> Self {
+  #[allow(clippy::disallowed_types)]
+  pub const fn new(value: T) -> Self {
     Self(Mutex::new(value))
   }
 

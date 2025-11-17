@@ -1,11 +1,11 @@
 #![cfg_attr(not(feature = "unsize"), allow(dead_code))]
 
+use fraktor_utils_core_rs::core::sync::ArcShared;
+
 #[cfg(not(feature = "unsize"))]
 compile_error!(
   "`unsize` フィーチャが無効の場合、このサンプルはビルドできません。`--features unsize` を指定してください。"
 );
-
-use fraktor_utils_core_rs::ArcShared;
 
 trait Greeter {
   fn greet(&self) -> &'static str;

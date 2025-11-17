@@ -1,6 +1,6 @@
 //! Access helpers for shared backends guarded by mutex-like primitives.
 
-use crate::core::sync::{ArcShared, Shared, SharedError, sync_mutex_like::SyncMutexLike};
+use crate::core::sync::{ArcShared, SharedError, shared::Shared, sync_mutex_like::SyncMutexLike};
 
 #[cfg(test)]
 mod tests;

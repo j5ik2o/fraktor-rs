@@ -1,5 +1,6 @@
-use crate::core::runtime_toolbox::SyncMutexFamily;
-use crate::std::sync_mutex::StdSyncMutex;
+#![allow(cfg_std_forbid)]
+
+use crate::{core::runtime_toolbox::SyncMutexFamily, std::sync_mutex::StdSyncMutex};
 
 /// Mutex family backed by [`std::sync::Mutex`].
 #[derive(Clone, Copy, Debug, Default)]

@@ -4,7 +4,8 @@ use super::SyncStack;
 use crate::core::{
   collections::stack::{PushOutcome, StackError, SyncStackBackend},
   sync::{
-    ArcShared, Shared, SharedAccess,
+    ArcShared, SharedAccess,
+    shared::Shared,
     sync_mutex_like::{SpinSyncMutex, SyncMutexLike},
   },
 };

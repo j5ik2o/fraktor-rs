@@ -1,6 +1,6 @@
 use std::ops::{Deref, DerefMut};
 
-use fraktor_actor_core_rs::typed::actor_prim::TypedActorRefGeneric;
+use fraktor_actor_core_rs::core::typed::actor_prim::TypedActorRefGeneric;
 use fraktor_utils_core_rs::std::runtime_toolbox::StdToolbox;
 
 #[repr(transparent)]

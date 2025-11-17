@@ -4,7 +4,7 @@ extern crate alloc;
 
 use core::time::Duration;
 
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_rs::core::{
   error::ActorError,
   typed::{
     TypedActorSystemBuilder, TypedProps,

@@ -1,4 +1,4 @@
-use fraktor_actor_core_rs::event_stream::EventStreamSubscriber as CoreEventStreamSubscriber;
+use fraktor_actor_core_rs::core::event_stream::EventStreamSubscriber as CoreEventStreamSubscriber;
 use fraktor_utils_core_rs::std::runtime_toolbox::StdToolbox;
 
 use super::EventStreamEvent;

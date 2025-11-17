@@ -17,4 +17,4 @@ pub use typed_ask_future::*;
 pub use typed_ask_response::*;
 
 /// Type alias for behavior signals bound to the standard runtime toolbox.
-pub type BehaviorSignal = fraktor_actor_core_rs::typed::BehaviorSignal;
+pub type BehaviorSignal = fraktor_actor_core_rs::core::typed::BehaviorSignal;

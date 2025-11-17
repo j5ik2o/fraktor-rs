@@ -5,8 +5,7 @@ extern crate alloc;
 use alloc::vec::Vec;
 use core::{hint::spin_loop, num::NonZeroUsize};
 
-use fraktor_actor_core_rs::{
-  NoStdToolbox,
+use fraktor_actor_core_rs::core::{
   actor_prim::{Actor, ActorContextGeneric, ChildRef},
   error::ActorError,
   event_stream::{EventStreamEvent, EventStreamSubscriber},
@@ -15,7 +14,10 @@ use fraktor_actor_core_rs::{
   props::{MailboxConfig, Props},
   system::ActorSystem,
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::{
+  runtime_toolbox::{NoStdMutex, NoStdToolbox},
+  sync::ArcShared,
+};
 
 struct RecordingSubscriber {
   events: ArcShared<NoStdMutex<Vec<EventStreamEvent<NoStdToolbox>>>>,
@@ -102,7 +104,7 @@ fn dead_letter_event_is_published_when_send_fails() {
 
   child.suspend().expect("suspend child");
   let result = actor_ref.tell(AnyMessage::new("ping"));
-  assert!(matches!(result, Err(fraktor_actor_core_rs::error::SendError::Suspended(_))));
+  assert!(matches!(result, Err(fraktor_actor_core_rs::core::error::SendError::Suspended(_))));
 
   wait_until(|| !system.dead_letters().is_empty());
   let entries = system.dead_letters();

@@ -2,8 +2,7 @@
 
 use std::{thread, time::Duration, vec::Vec};
 
-use fraktor_actor_core_rs::{
-  NoStdToolbox,
+use fraktor_actor_core_rs::core::{
   actor_prim::{Actor, ActorContextGeneric, ChildRef},
   error::{ActorError, SendError},
   mailbox::{Mailbox, MailboxOverflowStrategy, MailboxPolicy},
@@ -12,7 +11,10 @@ use fraktor_actor_core_rs::{
   spawn::SpawnError,
   system::ActorSystem,
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::{
+  runtime_toolbox::{NoStdMutex, NoStdToolbox},
+  sync::ArcShared,
+};
 
 struct Start;
 struct Deliver(u32);

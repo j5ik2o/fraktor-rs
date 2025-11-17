@@ -60,27 +60,5 @@
 
 extern crate alloc;
 
-pub use fraktor_utils_core_rs::core::sync::{NoStdMutex, NoStdToolbox, RuntimeToolbox, ToolboxMutex};
-
-// Hierarchical package structure
-pub mod actor_prim;
-pub mod config;
-pub mod dead_letter;
-pub mod dispatcher;
-pub mod error;
-pub mod event_stream;
-mod extension;
-pub mod futures;
-pub mod lifecycle;
-pub mod logging;
-pub mod mailbox;
-pub mod messaging;
-pub mod props;
-pub mod scheduler;
-pub mod serialization;
-pub mod spawn;
-pub mod supervision;
-pub mod system;
-pub mod typed;
-
-pub use extension::{Extension, ExtensionId};
+/// Core actor runtime module containing all actor system components.
+pub mod core;

@@ -1,13 +1,13 @@
 use std::{thread, time::Duration};
 
-use fraktor_actor_core_rs::error::ActorError;
+use fraktor_actor_core_rs::core::error::ActorError;
 use fraktor_actor_std_rs::{
   actor_prim::{Actor, ActorContext, ChildRef},
   messaging::{AnyMessage, AnyMessageView},
   props::Props,
   system::ActorSystem,
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::{runtime_toolbox::NoStdMutex, sync::ArcShared};
 
 struct Start;
 struct StopChild;
@@ -69,7 +69,7 @@ impl Actor for Guardian {
   fn on_terminated(
     &mut self,
     ctx: &mut ActorContext<'_>,
-    pid: fraktor_actor_core_rs::actor_prim::Pid,
+    pid: fraktor_actor_core_rs::core::actor_prim::Pid,
   ) -> Result<(), ActorError> {
     println!("[guardian] 監視対象 {:?} の停止を検知", pid);
     println!("[guardian] DeathWatch トリガー後に子アクターを再生成します");

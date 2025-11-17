@@ -1,4 +1,4 @@
-use fraktor_actor_core_rs::{actor_prim::Pid, error::ActorError};
+use fraktor_actor_core_rs::core::{actor_prim::Pid, error::ActorError};
 use fraktor_utils_core_rs::std::runtime_toolbox::StdToolbox;
 
 use crate::{
@@ -19,7 +19,7 @@ impl<T> ActorAdapter<T> {
   }
 }
 
-impl<T> fraktor_actor_core_rs::actor_prim::Actor<StdToolbox> for ActorAdapter<T>
+impl<T> fraktor_actor_core_rs::core::actor_prim::Actor<StdToolbox> for ActorAdapter<T>
 where
   T: Actor,
 {

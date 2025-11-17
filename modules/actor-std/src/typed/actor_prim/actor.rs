@@ -1,4 +1,4 @@
-use fraktor_actor_core_rs::{actor_prim::Pid, error::ActorError, supervision::SupervisorStrategy};
+use fraktor_actor_core_rs::core::{actor_prim::Pid, error::ActorError, supervision::SupervisorStrategy};
 
 use crate::typed::actor_prim::TypedActorContext;
 

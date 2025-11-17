@@ -62,23 +62,9 @@
 
 extern crate alloc;
 
-pub use core::{
-  concurrent::{
-    AsyncBarrier, AsyncBarrierBackend, CountDownLatch, CountDownLatchBackend, GuardHandle, Synchronized,
-    SynchronizedMutexBackend, SynchronizedRw, SynchronizedRwBackend, WaitGroup, WaitGroupBackend,
-  },
-  sync::{
-    ArcShared, Flag, SendBound, Shared, SharedBound, SharedDyn, SharedFactory, SharedFn, StateCell, StaticRefShared,
-  },
-  time::{
-    ClockKind, DriftMonitor, DriftStatus, ManualClock, MonotonicClock, SchedulerCapacityProfile, SchedulerTickHandle,
-    TickEvent, TickLease, TimerEntry, TimerEntryMode, TimerHandleId, TimerInstant, TimerWheel, TimerWheelConfig,
-    TimerWheelError,
-  },
-};
-
 /// Core utilities shared across runtimes.
 pub mod core;
 /// Runtime toolbox and aliases for std environments.
+#[allow(cfg_std_forbid)]
 #[cfg(feature = "std")]
 pub mod std;

@@ -1,4 +1,4 @@
-use fraktor_actor_core_rs::{actor_prim::Pid, error::ActorError, supervision::SupervisorStrategy};
+use fraktor_actor_core_rs::core::{actor_prim::Pid, error::ActorError, supervision::SupervisorStrategy};
 
 use super::ActorContext;
 use crate::messaging::AnyMessageView;
@@ -76,9 +76,8 @@ pub trait Actor: Send {
   /// ```
   /// use core::time::Duration;
   ///
-  /// use fraktor_actor_core_rs::{
-  ///   error::ActorError,
-  ///   supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
+  /// use fraktor_actor_core_rs::core::{
+  ///   /// supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
   /// };
   /// use fraktor_actor_std_rs::{
   ///   actor_prim::{Actor, ActorContext},

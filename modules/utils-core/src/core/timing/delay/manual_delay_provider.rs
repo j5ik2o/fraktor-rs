@@ -2,7 +2,7 @@ use alloc::vec::Vec;
 use core::time::Duration;
 
 use super::{DelayProvider, delay_future::DelayFuture, delay_trigger::DelayTrigger};
-use crate::core::sync::{ArcShared, NoStdMutex};
+use crate::core::{runtime_toolbox::NoStdMutex, sync::ArcShared};
 
 #[cfg(test)]
 mod tests;

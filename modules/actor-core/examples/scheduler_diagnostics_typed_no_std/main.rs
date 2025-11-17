@@ -7,7 +7,7 @@ use core::time::Duration;
 #[cfg(not(target_os = "none"))]
 use std::{thread, time::Duration as StdDuration};
 
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_rs::core::{
   error::ActorError,
   scheduler::SchedulerDiagnosticsSubscription,
   typed::{

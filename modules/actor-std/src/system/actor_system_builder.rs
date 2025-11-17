@@ -1,4 +1,4 @@
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_rs::core::{
   config::ActorSystemConfig,
   scheduler::{SchedulerConfig, TickDriverConfig},
   system::{ActorSystemBuildError, ActorSystemBuilder as CoreActorSystemBuilder},

@@ -1,6 +1,6 @@
 use std::{fmt::Write as _, thread, time::Duration};
 
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_rs::core::{
   error::ActorError,
   logging::{LogEvent, LogLevel, LoggerSubscriber, LoggerWriter},
 };

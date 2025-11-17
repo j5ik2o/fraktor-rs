@@ -5,7 +5,7 @@ use core::ops::Deref;
 #[cfg(feature = "alloc")]
 use core::ptr;
 
-use super::{Shared, SharedDyn};
+use crate::core::sync::shared::{Shared, SharedDyn};
 
 #[cfg(all(test, feature = "alloc"))]
 mod tests;

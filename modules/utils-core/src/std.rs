@@ -1,6 +1,9 @@
 /// Runtime toolbox and aliases for std environments.
 pub mod runtime_toolbox;
 /// Synchronization primitives built on top of `std::sync::Mutex`.
-pub mod sync_mutex;
+mod sync_mutex;
 /// Guard returned by [`StdSyncMutex`](crate::StdSyncMutex).
-pub mod sync_mutex_guard;
+mod sync_mutex_guard;
+
+pub use sync_mutex::StdSyncMutex;
+pub use sync_mutex_guard::StdSyncMutexGuard;

@@ -1,10 +1,7 @@
 use core::time::Duration;
 
-use super::RuntimeToolbox;
-use crate::core::{
-  runtime_toolbox::sync_mutex_family::SpinMutexFamily,
-  time::{ManualClock, SchedulerTickHandle},
-};
+use super::{RuntimeToolbox, sync_mutex_family::SpinMutexFamily};
+use crate::core::time::{ManualClock, SchedulerTickHandle};
 
 #[cfg(test)]
 mod tests;

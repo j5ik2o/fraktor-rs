@@ -2,15 +2,17 @@
 
 use std::time::Duration;
 
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_rs::core::{
   event_stream::EventStreamGeneric,
   scheduler::{TickDriverConfig, TickDriverFactoryRef},
 };
-use fraktor_utils_core_rs::core::{
-  sync::{ArcShared, ArcShared as Arc},
-  time::TimerInstant,
+use fraktor_utils_core_rs::{
+  core::{
+    sync::{ArcShared, ArcShared as Arc},
+    time::TimerInstant,
+  },
+  std::runtime_toolbox::StdToolbox,
 };
-use fraktor_utils_core_rs::std::runtime_toolbox::StdToolbox;
 use tokio::runtime::Handle;
 
 use crate::scheduler::tick::tokio_impl::TokioIntervalDriverFactory;
@@ -44,14 +46,11 @@ impl StdTickDriverConfig {
   /// and the scheduler executor, similar to no_std hardware tick driver patterns.
   #[must_use]
   pub fn tokio_quickstart_with_resolution(resolution: Duration) -> TickDriverConfig<StdToolbox> {
-    use fraktor_actor_core_rs::{
-      ToolboxMutex,
-      scheduler::{
-        AutoDriverMetadata, AutoProfileKind, Scheduler, SchedulerTickExecutor, TickDriverControl, TickDriverHandle,
-        TickDriverKind, TickDriverRuntime, TickExecutorSignal, TickFeed, next_tick_driver_id,
-      },
+    use fraktor_actor_core_rs::core::scheduler::{
+      AutoDriverMetadata, AutoProfileKind, Scheduler, SchedulerTickExecutor, TickDriverControl, TickDriverHandle,
+      TickDriverKind, TickDriverRuntime, TickExecutorSignal, TickFeed, next_tick_driver_id,
     };
-    use fraktor_utils_core_rs::core::sync::ArcShared;
+    use fraktor_utils_core_rs::core::{runtime_toolbox::ToolboxMutex, sync::ArcShared};
     use tokio::time::{MissedTickBehavior, interval};
 
     TickDriverConfig::new(move |ctx| {
@@ -130,14 +129,12 @@ impl StdTickDriverConfig {
     event_stream: ArcShared<EventStreamGeneric<StdToolbox>>,
     metrics_interval: Duration,
   ) -> TickDriverConfig<StdToolbox> {
-    use fraktor_actor_core_rs::{
-      ToolboxMutex,
-      scheduler::{
-        AutoDriverMetadata, AutoProfileKind, Scheduler, SchedulerTickExecutor, SchedulerTickMetricsProbe,
-        TickDriverControl, TickDriverHandle, TickDriverKind, TickDriverRuntime, TickExecutorSignal, TickFeed,
-        next_tick_driver_id,
-      },
+    use fraktor_actor_core_rs::core::scheduler::{
+      AutoDriverMetadata, AutoProfileKind, Scheduler, SchedulerTickExecutor, SchedulerTickMetricsProbe,
+      TickDriverControl, TickDriverHandle, TickDriverKind, TickDriverRuntime, TickExecutorSignal, TickFeed,
+      next_tick_driver_id,
     };
+    use fraktor_utils_core_rs::core::runtime_toolbox::ToolboxMutex;
     use tokio::time::{MissedTickBehavior, interval};
 
     TickDriverConfig::new(move |ctx| {
@@ -194,7 +191,7 @@ impl StdTickDriverConfig {
           elapsed_ticks = elapsed_ticks.saturating_add(ticks_per_interval);
           let now = TimerInstant::from_ticks(elapsed_ticks, resolution);
           let metrics = probe.snapshot(now);
-          use fraktor_actor_core_rs::event_stream::EventStreamEvent;
+          use fraktor_actor_core_rs::core::event_stream::EventStreamEvent;
           metrics_event_stream.publish(&EventStreamEvent::SchedulerTick(metrics));
         }
       });
@@ -240,7 +237,7 @@ impl StdTickDriverConfig {
 mod tests {
   use std::sync::Mutex;
 
-  use fraktor_actor_core_rs::{
+  use fraktor_actor_core_rs::core::{
     event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber},
     scheduler::{AutoProfileKind, SchedulerConfig, SchedulerContext, TickDriverBootstrap, TickDriverKind},
   };

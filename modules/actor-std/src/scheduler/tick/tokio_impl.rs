@@ -1,14 +1,16 @@
 use std::{sync::Mutex, time::Duration};
 
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_rs::core::{
   event_stream::{EventStreamEvent, EventStreamGeneric},
   scheduler::{
     SchedulerTickMetricsProbe, TickDriver, TickDriverControl, TickDriverError, TickDriverFactory, TickDriverHandle,
     TickDriverId, TickDriverKind, TickFeedHandle, next_tick_driver_id,
   },
 };
-use fraktor_utils_core_rs::core::{sync::ArcShared, time::TimerInstant};
-use fraktor_utils_core_rs::std::runtime_toolbox::StdToolbox;
+use fraktor_utils_core_rs::{
+  core::{sync::ArcShared, time::TimerInstant},
+  std::runtime_toolbox::StdToolbox,
+};
 use tokio::{
   runtime::Handle,
   task::JoinHandle,

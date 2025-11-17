@@ -10,7 +10,7 @@ use fraktor_actor_std_rs::{
   event_stream::{EventStreamEvent, EventStreamSubscriber, EventStreamSubscription},
   typed::{Behavior, Behaviors, TypedActorSystem, TypedProps},
 };
-use fraktor_utils_core_rs::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 
 #[derive(Debug, Clone)]
 enum WorkerCommand {

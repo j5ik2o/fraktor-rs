@@ -4,8 +4,9 @@ use super::SyncSpscProducerShared;
 use crate::core::collections::queue::{
   OverflowPolicy, QueueError, SyncQueue, backend::VecDequeBackend, type_keys::SpscKey,
 };
+use crate::core::sync::shared::Shared;
 #[cfg(feature = "alloc")]
-use crate::core::sync::{ArcShared, Shared, SharedAccess, sync_mutex_like::SpinSyncMutex};
+use crate::core::sync::{ArcShared, SharedAccess, sync_mutex_like::SpinSyncMutex};
 
 #[cfg(feature = "alloc")]
 #[test]

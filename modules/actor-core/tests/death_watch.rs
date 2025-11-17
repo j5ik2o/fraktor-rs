@@ -5,15 +5,17 @@ use std::{
   time::{Duration, Instant},
 };
 
-use fraktor_actor_core_rs::{
-  NoStdToolbox,
+use fraktor_actor_core_rs::core::{
   actor_prim::{Actor, ActorContextGeneric, ChildRef, Pid},
   error::ActorError,
   messaging::{AnyMessage, AnyMessageViewGeneric},
   props::Props,
   system::ActorSystem,
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::{
+  runtime_toolbox::{NoStdMutex, NoStdToolbox},
+  sync::ArcShared,
+};
 
 struct SpawnChild;
 struct StopChild;

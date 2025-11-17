@@ -1,6 +1,6 @@
 use std::{string::String, time::Duration};
 
-use fraktor_actor_core_rs::error::ActorError;
+use fraktor_actor_core_rs::core::error::ActorError;
 use fraktor_actor_std_rs::{
   actor_prim::{Actor, ActorContext, ActorRef},
   dispatcher::dispatch_executor::TokioExecutor,

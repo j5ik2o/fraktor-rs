@@ -1,3 +1,5 @@
+#![allow(cfg_std_forbid)]
+
 extern crate std;
 
 use core::ops::{Deref, DerefMut};

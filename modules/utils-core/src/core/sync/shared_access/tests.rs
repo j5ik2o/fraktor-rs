@@ -1,4 +1,6 @@
-use crate::core::sync::{ArcShared, Shared, shared_access::SharedAccess, sync_mutex_like::SpinSyncMutex};
+use alloc::string::String;
+
+use crate::core::sync::{ArcShared, shared::Shared, shared_access::SharedAccess, sync_mutex_like::SpinSyncMutex};
 
 #[test]
 fn with_mut_modifies_value() {

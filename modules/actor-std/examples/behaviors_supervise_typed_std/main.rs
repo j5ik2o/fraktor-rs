@@ -9,7 +9,7 @@ use std::{
   time::Duration,
 };
 
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_rs::core::{
   error::ActorError,
   supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
 };

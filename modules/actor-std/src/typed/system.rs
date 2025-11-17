@@ -1,9 +1,8 @@
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_rs::core::{
   actor_prim::Pid, event_stream::EventStreamSubscriber as CoreEventStreamSubscriber, logging::LogLevel,
   spawn::SpawnError, typed::TypedActorSystemGeneric as CoreTypedActorSystemGeneric,
 };
-use fraktor_utils_core_rs::ArcShared;
-use fraktor_utils_core_rs::std::runtime_toolbox::StdToolbox;
+use fraktor_utils_core_rs::{core::sync::ArcShared, std::runtime_toolbox::StdToolbox};
 
 use crate::{
   dead_letter::DeadLetterEntry,

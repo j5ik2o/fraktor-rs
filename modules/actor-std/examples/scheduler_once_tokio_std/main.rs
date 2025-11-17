@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use fraktor_actor_core_rs::{error::ActorError, scheduler::SchedulerCommand};
+use fraktor_actor_core_rs::core::{error::ActorError, scheduler::SchedulerCommand};
 use fraktor_actor_std_rs::{
   actor_prim::{Actor, ActorContext},
   dispatcher::dispatch_executor::TokioExecutor,

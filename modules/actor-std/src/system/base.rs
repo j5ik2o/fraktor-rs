@@ -1,5 +1,5 @@
 use event_stream::EventStreamSubscriberAdapter;
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_rs::core::{
   actor_prim::Pid,
   config::ActorSystemConfig,
   event_stream::{EventStreamSubscriber as CoreEventStreamSubscriber, TickDriverSnapshot},
@@ -7,8 +7,7 @@ use fraktor_actor_core_rs::{
   spawn::SpawnError,
   system::{ActorSystemGeneric as CoreActorSystemGeneric, SystemStateGeneric as CoreSystemStateGeneric},
 };
-use fraktor_utils_core_rs::core::sync::ArcShared;
-use fraktor_utils_core_rs::std::runtime_toolbox::StdToolbox;
+use fraktor_utils_core_rs::{core::sync::ArcShared, std::runtime_toolbox::StdToolbox};
 
 pub use crate::dispatcher::{DispatchExecutor, DispatchShared, Dispatcher, DispatcherConfig};
 use crate::{

@@ -1,6 +1,6 @@
 use std::sync::atomic::Ordering;
 
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_rs::core::{
   dispatcher::DispatcherGeneric,
   mailbox::{MailboxGeneric, MailboxPolicy},
 };

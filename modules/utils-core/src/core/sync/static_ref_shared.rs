@@ -4,7 +4,7 @@ use core::marker::Unsize;
 use core::ops::CoerceUnsized;
 use core::ops::Deref;
 
-use super::{Shared, SharedDyn};
+use crate::core::sync::shared::{Shared, SharedDyn};
 
 #[cfg(test)]
 mod tests;

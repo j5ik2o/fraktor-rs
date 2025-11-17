@@ -1,6 +1,6 @@
 use std::{string::String, thread};
 
-use fraktor_actor_core_rs::dispatcher::DispatchError;
+use fraktor_actor_core_rs::core::dispatcher::DispatchError;
 
 use crate::dispatcher::{DispatchExecutor, DispatchShared};
 

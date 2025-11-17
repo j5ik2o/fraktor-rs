@@ -1,4 +1,4 @@
-use crate::core::sync::{Shared, SharedBound};
+use crate::core::sync::shared::{Shared, SharedBound};
 
 /// Trait alias for shared factories (Send + Sync closures returning a type).
 pub trait SharedFactory<Args, Output>: Shared<super::SharedFnTarget<Args, Output>> + SharedBound {}

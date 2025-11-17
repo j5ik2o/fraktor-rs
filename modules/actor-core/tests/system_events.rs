@@ -5,8 +5,7 @@ extern crate alloc;
 use alloc::vec::Vec;
 use core::hint::spin_loop;
 
-use fraktor_actor_core_rs::{
-  NoStdToolbox,
+use fraktor_actor_core_rs::core::{
   actor_prim::{Actor, ActorContextGeneric},
   error::ActorError,
   event_stream::{EventStreamEvent, EventStreamSubscriber},
@@ -16,7 +15,10 @@ use fraktor_actor_core_rs::{
   props::Props,
   system::ActorSystem,
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::{
+  runtime_toolbox::{NoStdMutex, NoStdToolbox},
+  sync::ArcShared,
+};
 
 struct Start;
 
@@ -67,7 +69,7 @@ fn lifecycle_and_log_events_are_published() {
   let system = ActorSystem::new(&props).expect("system");
 
   let subscriber_impl = ArcShared::new(RecordingSubscriber::new());
-  let subscriber: ArcShared<dyn fraktor_actor_core_rs::event_stream::EventStreamSubscriber<NoStdToolbox>> =
+  let subscriber: ArcShared<dyn fraktor_actor_core_rs::core::event_stream::EventStreamSubscriber<NoStdToolbox>> =
     subscriber_impl.clone();
   let _subscription = system.subscribe_event_stream(&subscriber);
 

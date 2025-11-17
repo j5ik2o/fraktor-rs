@@ -15,7 +15,8 @@ use crate::core::{
     },
   },
   sync::{
-    ArcShared, Shared, SharedAccess,
+    ArcShared, SharedAccess,
+    shared::Shared,
     sync_mutex_like::{SpinSyncMutex, SyncMutexLike},
   },
 };

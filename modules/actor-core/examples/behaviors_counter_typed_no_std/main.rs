@@ -1,6 +1,6 @@
 #![cfg_attr(all(not(test), target_os = "none"), no_std)]
 
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_rs::core::{
   error::ActorError,
   typed::{Behavior, Behaviors, TypedActorSystem, TypedProps},
 };

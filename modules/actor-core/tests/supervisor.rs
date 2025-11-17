@@ -9,8 +9,7 @@ use std::{
   time::Duration,
 };
 
-use fraktor_actor_core_rs::{
-  NoStdToolbox,
+use fraktor_actor_core_rs::core::{
   actor_prim::{Actor, ActorContextGeneric, ChildRef},
   error::{ActorError, ActorErrorReason},
   event_stream::{EventStreamEvent, EventStreamSubscriber},
@@ -20,7 +19,10 @@ use fraktor_actor_core_rs::{
   supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
   system::ActorSystem,
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::{
+  runtime_toolbox::{NoStdMutex, NoStdToolbox},
+  sync::ArcShared,
+};
 
 struct Start;
 struct TriggerRecoverable;

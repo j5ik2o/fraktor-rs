@@ -1,4 +1,4 @@
-use fraktor_actor_core_rs::typed::TypedAskFutureGeneric;
+use fraktor_actor_core_rs::core::typed::TypedAskFutureGeneric;
 use fraktor_utils_core_rs::std::runtime_toolbox::StdToolbox;
 
 /// Standard runtime typed ask future alias.

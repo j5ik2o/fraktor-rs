@@ -1,6 +1,6 @@
 use std::ops::{Deref, DerefMut};
 
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_rs::core::{
   actor_prim::Pid,
   error::SendError,
   spawn::SpawnError,

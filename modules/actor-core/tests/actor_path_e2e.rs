@@ -2,8 +2,7 @@
 
 use core::time::Duration;
 
-use fraktor_actor_core_rs::{
-  NoStdToolbox,
+use fraktor_actor_core_rs::core::{
   actor_prim::{
     actor_path::{ActorPath, ActorPathFormatter, ActorPathParser, ActorPathParts, ActorUid, PathResolutionError},
     actor_selection::{ActorSelectionError, ActorSelectionResolver},
@@ -12,6 +11,7 @@ use fraktor_actor_core_rs::{
   messaging::AnyMessage,
   system::{AuthorityState, RemoteAuthorityManager},
 };
+use fraktor_utils_core_rs::core::runtime_toolbox::NoStdToolbox;
 
 #[test]
 fn test_e2e_local_path_format_consistency() {
