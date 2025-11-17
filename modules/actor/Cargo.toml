@@ -13,12 +13,12 @@ readme = "../../README.md"
 autoexamples = false
 
 [features]
-default = ["std"]
+default = []
 alloc = []
 alloc-metrics = []
 test-support = []
 std = ["fraktor-utils-rs/std"]
-tokio-executor = ["dep:tokio"]
+tokio-executor = ["dep:tokio", "std"]
 
 [dependencies]
 async-trait = { workspace = true }

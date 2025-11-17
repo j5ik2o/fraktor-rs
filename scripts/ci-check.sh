@@ -372,7 +372,7 @@ run_dylint() {
   fi
   local -a main_package_args=()
   local -a hardware_targets=()
-  local -a feature_packages=() #("fraktor-utils-embedded-rs=embassy,arc")
+  local -a feature_packages=("fraktor-actor-rs=tokio-executor")
 
   if [[ ${#package_args[@]} -eq 0 ]]; then
     if ! command -v python3 >/dev/null 2>&1; then
