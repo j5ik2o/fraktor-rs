@@ -4,7 +4,7 @@
   - _(親タスクなので詳細は書かない)_
   - _対応要件: 1.2, 1.6, 1.7_
   - _依存タスク: -_
-- [ ] 1.1 RemotingControl API と SystemGuardian 子アクター連携を実装
+- [x] 1.1 RemotingControl API と SystemGuardian 子アクター連携を実装
   - `start/associate/quarantine/shutdown` とバックプレッシャーリスナー登録を実装し、EndpointSupervisor が呼び出せるように制御ハンドルを公開する
   - AutoStart 設定と Manual Start の分岐を RemotingExtensionConfig へ追加し、SystemGuardian 初期化時にハンドルを注入する
   - SystemGuardian からの終了通知を受けて RemotingLifecycleEvent::Shutdown を配信する経路を整備する
@@ -131,4 +131,3 @@
   - Loopback と Tokio transport の両方で Quickstart サンプルを動かし、差し替え可能性を実証する
   - _対応要件: 1.1-1.6, 2.1-2.4, 3.1-3.5, 4.1-4.4_
   - _依存タスク: 6.1_
-

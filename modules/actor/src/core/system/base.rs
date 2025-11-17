@@ -127,6 +127,12 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     }
   }
 
+  /// Returns the actor reference to the system guardian when available.
+  #[must_use]
+  pub fn system_guardian_ref(&self) -> Option<ActorRefGeneric<TB>> {
+    self.state.system_guardian().map(|cell| cell.actor_ref())
+  }
+
   /// Returns the shared system state.
   #[must_use]
   pub fn state(&self) -> ArcShared<SystemStateGeneric<TB>> {
@@ -302,6 +308,15 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   pub(crate) fn spawn(&self, props: &PropsGeneric<TB>) -> Result<ChildRefGeneric<TB>, SpawnError> {
     let guardian_pid = self.state.user_guardian_pid().ok_or_else(SpawnError::system_unavailable)?;
     self.spawn_child(guardian_pid, props)
+  }
+
+  /// Spawns a new actor as a child of the system guardian (extensions/internal subsystems).
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SpawnError::SystemUnavailable`] when the system guardian is missing.
+  pub fn spawn_system_actor(&self, props: &PropsGeneric<TB>) -> Result<ChildRefGeneric<TB>, SpawnError> {
+    self.system_actor_of(props)
   }
 
   /// Spawns a new actor under the system guardian (internal use only).
