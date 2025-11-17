@@ -1,6 +1,6 @@
 use core::any::TypeId;
 
-use fraktor_utils_core_rs::core::{
+use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
   sync::ArcShared,
 };

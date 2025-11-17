@@ -2,7 +2,7 @@
 
 use alloc::boxed::Box;
 
-use fraktor_utils_core_rs::core::runtime_toolbox::RuntimeToolbox;
+use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 #[cfg(any(test, feature = "test-support"))]
 use super::manual_test_driver::ManualTickController;

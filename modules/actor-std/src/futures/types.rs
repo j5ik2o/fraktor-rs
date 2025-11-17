@@ -1,4 +1,4 @@
-use fraktor_utils_core_rs::std::runtime_toolbox::StdToolbox;
+use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
 /// Future primitive specialised for `StdToolbox`.
 pub type ActorFuture<T> = fraktor_actor_core_rs::core::futures::ActorFuture<T, StdToolbox>;

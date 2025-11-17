@@ -1,6 +1,6 @@
 use alloc::boxed::Box;
 
-use fraktor_utils_core_rs::core::runtime_toolbox::NoStdToolbox;
+use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 
 use super::Actor;
 use crate::core::{

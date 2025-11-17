@@ -1,4 +1,4 @@
-use fraktor_utils_core_rs::core::{
+use fraktor_utils_rs::core::{
   runtime_toolbox::{RuntimeToolbox, ToolboxMutex},
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };

@@ -2,7 +2,7 @@
 
 use core::cmp;
 
-use fraktor_utils_core_rs::core::{
+use fraktor_utils_rs::core::{
   collections::queue::{
     QueueError, SyncQueue,
     backend::{OfferOutcome, OverflowPolicy, VecDequeBackend},

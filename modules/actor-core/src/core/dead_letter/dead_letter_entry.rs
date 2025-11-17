@@ -2,7 +2,7 @@
 
 use core::time::Duration;
 
-use fraktor_utils_core_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
+use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 
 use crate::core::{actor_prim::Pid, dead_letter::dead_letter_reason::DeadLetterReason, messaging::AnyMessageGeneric};
 

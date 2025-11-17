@@ -2,7 +2,7 @@
 
 use alloc::boxed::Box;
 
-use fraktor_utils_core_rs::core::time::SchedulerTickHandle;
+use fraktor_utils_rs::core::time::SchedulerTickHandle;
 
 /// Owns a `'static` tick handle for scheduler drivers.
 pub struct SchedulerTickHandleOwned {

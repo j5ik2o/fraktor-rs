@@ -4,7 +4,7 @@ use core::{
   task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
 };
 
-use fraktor_utils_core_rs::core::runtime_toolbox::NoStdToolbox;
+use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 
 use crate::core::futures::ActorFuture;
 

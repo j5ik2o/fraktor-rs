@@ -1,6 +1,6 @@
 use alloc::collections::VecDeque;
 
-use fraktor_utils_core_rs::core::runtime_toolbox::{NoStdMutex, NoStdToolbox, RuntimeToolbox};
+use fraktor_utils_rs::core::runtime_toolbox::{NoStdMutex, NoStdToolbox, RuntimeToolbox};
 
 use super::{
   dispatch_error::DispatchError, dispatch_executor::DispatchExecutor, dispatch_shared::DispatchSharedGeneric,

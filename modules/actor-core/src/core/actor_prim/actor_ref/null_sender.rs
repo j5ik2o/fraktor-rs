@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use fraktor_utils_core_rs::core::runtime_toolbox::RuntimeToolbox;
+use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use crate::core::{actor_prim::actor_ref::ActorRefSender, error::SendError, messaging::AnyMessageGeneric};
 

@@ -2,7 +2,7 @@
 
 use core::{sync::atomic::Ordering, time::Duration};
 
-use fraktor_utils_core_rs::core::runtime_toolbox::RuntimeToolbox;
+use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 use portable_atomic::AtomicU64;
 
 use super::{TickDriverError, TickDriverHandle, TickDriverId, TickDriverKind, TickFeedHandle};

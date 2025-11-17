@@ -21,7 +21,7 @@ use fraktor_actor_std_rs::{
   props::Props,
   system::ActorSystem,
 };
-use fraktor_utils_core_rs::{
+use fraktor_utils_rs::{
   core::sync::ArcShared,
   std::runtime_toolbox::{StdMutex, StdToolbox},
 };

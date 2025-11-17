@@ -1,6 +1,6 @@
 //! Tests for tick driver configuration.
 
-use fraktor_utils_core_rs::core::runtime_toolbox::NoStdToolbox;
+use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 
 use crate::core::scheduler::TickDriverConfig;
 

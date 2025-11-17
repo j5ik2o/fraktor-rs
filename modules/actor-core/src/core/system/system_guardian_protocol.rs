@@ -1,6 +1,6 @@
 //! Public protocol for interacting with the system guardian.
 
-use fraktor_utils_core_rs::core::runtime_toolbox::RuntimeToolbox;
+use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use crate::core::actor_prim::actor_ref::ActorRefGeneric;
 

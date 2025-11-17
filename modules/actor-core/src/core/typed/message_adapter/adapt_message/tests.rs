@@ -1,4 +1,4 @@
-use fraktor_utils_core_rs::core::runtime_toolbox::NoStdToolbox;
+use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 
 use crate::core::typed::message_adapter::{AdaptMessage, AdapterOutcome};
 

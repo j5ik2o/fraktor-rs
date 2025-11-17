@@ -1,6 +1,6 @@
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use fraktor_utils_core_rs::core::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
 
 use super::ActorRef;
 use crate::core::{
@@ -83,7 +83,7 @@ fn actor_ref_with_system() {
 
 #[test]
 fn actor_ref_path_resolves_segments() {
-  use fraktor_utils_core_rs::core::runtime_toolbox::NoStdToolbox;
+  use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 
   use crate::core::{
     actor_prim::{Actor, ActorCell, ActorContextGeneric},

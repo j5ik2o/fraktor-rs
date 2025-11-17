@@ -11,7 +11,7 @@ use fraktor_actor_core_rs::core::{
   messaging::AnyMessage,
   system::{AuthorityState, RemoteAuthorityManager},
 };
-use fraktor_utils_core_rs::core::runtime_toolbox::NoStdToolbox;
+use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 
 #[test]
 fn test_e2e_local_path_format_consistency() {

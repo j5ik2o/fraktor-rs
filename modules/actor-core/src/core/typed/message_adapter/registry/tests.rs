@@ -1,6 +1,6 @@
 use alloc::string::ToString;
 
-use fraktor_utils_core_rs::core::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
 
 use crate::core::{
   actor_prim::{Actor, ActorCellGeneric, ActorContextGeneric},

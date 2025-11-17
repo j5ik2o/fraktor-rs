@@ -20,7 +20,7 @@ test-support = []
 
 [dependencies]
 async-trait = { workspace = true }
-fraktor-utils-core-rs = { workspace = true, default-features = false, features = ["alloc", "unsize"] }
+fraktor-utils-rs = { workspace = true, default-features = false, features = ["alloc", "unsize"] }
 critical-section = { workspace = true, default-features = false }
 heapless = { workspace = true, default-features = false, features = ["portable-atomic"] }
 portable-atomic = { workspace = true, default-features = false, features = ["critical-section"] }

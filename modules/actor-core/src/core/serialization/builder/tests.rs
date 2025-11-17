@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, vec, vec::Vec};
 use core::any::{Any, TypeId, type_name};
 
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::serialization::{
   builder::SerializationSetupBuilder, builder_error::SerializationBuilderError, call_scope::SerializationCallScope,

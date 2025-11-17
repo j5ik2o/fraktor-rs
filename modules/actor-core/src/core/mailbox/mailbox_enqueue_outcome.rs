@@ -1,6 +1,6 @@
 //! Outcome returned by immediate enqueue attempts.
 
-use fraktor_utils_core_rs::core::runtime_toolbox::RuntimeToolbox;
+use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use super::mailbox_offer_future::MailboxOfferFutureGeneric;
 

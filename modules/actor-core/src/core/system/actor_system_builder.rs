@@ -1,4 +1,4 @@
-use fraktor_utils_core_rs::core::runtime_toolbox::RuntimeToolbox;
+use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use super::{actor_system_build_error::ActorSystemBuildError, base::ActorSystemGeneric};
 use crate::core::{

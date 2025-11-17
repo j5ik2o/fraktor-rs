@@ -5,8 +5,8 @@ use alloc::borrow::ToOwned;
 use core::time::Duration;
 
 #[cfg(any(test, feature = "test-support"))]
-use fraktor_utils_core_rs::core::time::{MonotonicClock, TimerInstant};
-use fraktor_utils_core_rs::core::{
+use fraktor_utils_rs::core::time::{MonotonicClock, TimerInstant};
+use fraktor_utils_rs::core::{
   runtime_toolbox::{RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
   sync::{
     ArcShared,

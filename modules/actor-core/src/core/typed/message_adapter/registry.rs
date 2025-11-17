@@ -6,7 +6,7 @@ mod tests;
 use alloc::{string::String, vec::Vec};
 use core::any::TypeId;
 
-use fraktor_utils_core_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
 use crate::core::{
   actor_prim::{ActorContextGeneric, Pid, actor_ref::ActorRefGeneric},

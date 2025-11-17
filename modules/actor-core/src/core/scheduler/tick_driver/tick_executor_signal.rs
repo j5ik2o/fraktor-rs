@@ -5,7 +5,7 @@ mod tests;
 
 use core::sync::atomic::{AtomicBool, Ordering};
 
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_rs::core::sync::ArcShared;
 use futures::task::AtomicWaker;
 
 use super::tick_executor_signal_future::TickExecutorSignalFuture;

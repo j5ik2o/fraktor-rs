@@ -2,7 +2,7 @@
 
 use alloc::string::{String, ToString};
 
-use fraktor_utils_core_rs::core::runtime_toolbox::RuntimeToolbox;
+use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use super::RemotingConfig;
 use crate::core::{

@@ -1,4 +1,4 @@
-use fraktor_utils_core_rs::core::runtime_toolbox::RuntimeToolbox;
+use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use super::{dispatch_error::DispatchError, dispatch_shared::DispatchSharedGeneric};
 

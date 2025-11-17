@@ -1,7 +1,7 @@
 use alloc::{string::String, vec, vec::Vec};
 use core::hint::spin_loop;
 
-use fraktor_utils_core_rs::core::{
+use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdMutex, NoStdToolbox},
   sync::ArcShared,
 };

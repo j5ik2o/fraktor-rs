@@ -1,6 +1,6 @@
 //! Logger subscriber that forwards log events to a writer sink.
 
-use fraktor_utils_core_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
 use crate::core::{
   event_stream::{EventStreamEvent, EventStreamSubscriber},

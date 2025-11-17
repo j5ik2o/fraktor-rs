@@ -1,6 +1,6 @@
 #![cfg_attr(not(feature = "unsize"), allow(dead_code))]
 
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_rs::core::sync::ArcShared;
 
 #[cfg(not(feature = "unsize"))]
 compile_error!(

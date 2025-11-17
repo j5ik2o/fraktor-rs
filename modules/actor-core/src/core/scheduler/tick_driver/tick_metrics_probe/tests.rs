@@ -2,7 +2,7 @@
 
 use core::time::Duration;
 
-use fraktor_utils_core_rs::core::{runtime_toolbox::NoStdToolbox, time::TimerInstant};
+use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, time::TimerInstant};
 
 use crate::core::scheduler::{SchedulerTickMetricsProbe, TickDriverKind, TickExecutorSignal, TickFeed};
 

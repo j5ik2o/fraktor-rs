@@ -8,7 +8,7 @@ use core::{
   time::Duration,
 };
 
-use fraktor_utils_core_rs::core::runtime_toolbox::{NoStdMutex, NoStdToolbox};
+use fraktor_utils_rs::core::runtime_toolbox::{NoStdMutex, NoStdToolbox};
 
 use crate::core::{
   dead_letter::DeadLetterReason,

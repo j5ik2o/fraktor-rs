@@ -1,4 +1,4 @@
-use fraktor_utils_core_rs::std::runtime_toolbox::StdToolbox;
+use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
 /// Owned message envelope specialised for `StdToolbox`.
 pub type AnyMessage = fraktor_actor_core_rs::core::messaging::AnyMessageGeneric<StdToolbox>;

@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use fraktor_utils_core_rs::core::time::TimerInstant;
+use fraktor_utils_rs::core::time::TimerInstant;
 
 use super::TickDriverId;
 

@@ -1,6 +1,6 @@
 //! Owned runner that encapsulates tick handle lifetime.
 
-use fraktor_utils_core_rs::core::{runtime_toolbox::RuntimeToolbox, time::SchedulerTickHandle};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, time::SchedulerTickHandle};
 
 use super::{Scheduler, SchedulerRunner, tick_driver::SchedulerTickHandleOwned};
 

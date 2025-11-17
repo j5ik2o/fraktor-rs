@@ -1,8 +1,8 @@
 //! Tick driver bootstrap orchestrates driver provisioning.
 
 #[cfg(any(test, feature = "test-support"))]
-use fraktor_utils_core_rs::core::sync::ArcShared;
-use fraktor_utils_core_rs::core::{
+use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_rs::core::{
   runtime_toolbox::RuntimeToolbox, sync::sync_mutex_like::SyncMutexLike, time::MonotonicClock,
 };
 

@@ -2,7 +2,7 @@
 
 use alloc::{string::ToString, vec::Vec};
 
-use fraktor_utils_core_rs::core::runtime_toolbox::RuntimeToolbox;
+use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use super::actor_selection_error::ActorSelectionError;
 use crate::core::{

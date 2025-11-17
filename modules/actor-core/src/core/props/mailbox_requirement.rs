@@ -1,4 +1,4 @@
-use fraktor_utils_core_rs::core::collections::queue::capabilities::{
+use fraktor_utils_rs::core::collections::queue::capabilities::{
   QueueCapability, QueueCapabilityError, QueueCapabilityRegistry,
 };
 

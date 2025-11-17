@@ -1,6 +1,6 @@
 //! Internal root guardian that supervises `/user` and `/system`.
 
-use fraktor_utils_core_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
 use crate::core::{
   actor_prim::{Actor, ActorContextGeneric, Pid, actor_ref::ActorRefGeneric},

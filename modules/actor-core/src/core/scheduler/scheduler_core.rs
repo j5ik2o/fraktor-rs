@@ -6,7 +6,7 @@ use core::{num::NonZeroU64, time::Duration};
 #[cfg(test)]
 mod tests;
 
-use fraktor_utils_core_rs::core::{
+use fraktor_utils_rs::core::{
   collections::queue::backend::{BinaryHeapPriorityBackend, OverflowPolicy},
   runtime_toolbox::RuntimeToolbox,
   sync::ArcShared,

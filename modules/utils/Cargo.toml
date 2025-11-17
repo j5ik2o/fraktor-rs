@@ -1,5 +1,5 @@
 [package]
-name = "fraktor-utils-core-rs"
+name = "fraktor-utils-rs"
 version = "0.2.11"
 edition = "2024"
 description = "Portable no_std toolbox primitives for the fraktor actor runtime"

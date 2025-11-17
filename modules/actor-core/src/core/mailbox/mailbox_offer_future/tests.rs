@@ -6,7 +6,7 @@ use core::{
   time::Duration,
 };
 
-use fraktor_utils_core_rs::core::timing::ManualDelayProvider;
+use fraktor_utils_rs::core::timing::ManualDelayProvider;
 
 use crate::core::{
   error::SendError,

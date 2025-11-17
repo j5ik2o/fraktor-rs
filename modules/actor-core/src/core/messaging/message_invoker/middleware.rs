@@ -1,6 +1,6 @@
 //! Middleware invoked around actor message handlers.
 
-use fraktor_utils_core_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
+use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 
 use crate::core::{actor_prim::ActorContextGeneric, error::ActorError, messaging::AnyMessageViewGeneric};
 

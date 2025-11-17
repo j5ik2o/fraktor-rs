@@ -1,6 +1,6 @@
 use alloc::{collections::VecDeque, vec::Vec};
 
-use fraktor_utils_core_rs::core::{runtime_toolbox::NoStdMutex, sync::ArcShared};
+use fraktor_utils_rs::core::{runtime_toolbox::NoStdMutex, sync::ArcShared};
 
 use super::SchedulerDiagnosticsEvent;
 

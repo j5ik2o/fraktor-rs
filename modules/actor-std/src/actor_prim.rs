@@ -3,7 +3,7 @@ mod actor_adapter;
 
 pub use actor::Actor;
 pub(crate) use actor_adapter::ActorAdapter;
-use fraktor_utils_core_rs::std::runtime_toolbox::StdToolbox;
+use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
 /// Context handle specialised for `StdToolbox`.
 pub type ActorContext<'a> = fraktor_actor_core_rs::core::actor_prim::ActorContextGeneric<'a, StdToolbox>;

@@ -3,7 +3,7 @@
 use alloc::{vec, vec::Vec};
 use core::time::Duration;
 
-use fraktor_utils_core_rs::core::{runtime_toolbox::NoStdToolbox, time::TimerInstant};
+use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, time::TimerInstant};
 
 use crate::core::scheduler::{TickDriverKind, TickExecutorSignal, TickFeed};
 

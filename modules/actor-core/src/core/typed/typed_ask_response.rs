@@ -1,6 +1,6 @@
 //! Typed ask response handle returned by `TypedActorRef::ask`.
 
-use fraktor_utils_core_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
+use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 
 use crate::core::{
   messaging::AskResponseGeneric,

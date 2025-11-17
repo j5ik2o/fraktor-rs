@@ -3,7 +3,7 @@
 use alloc::boxed::Box;
 use core::time::Duration;
 
-use fraktor_utils_core_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
 use super::{TickDriver, TickDriverError, TickDriverKind};
 

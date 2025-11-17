@@ -5,7 +5,7 @@ mod tests;
 
 use core::time::Duration;
 
-use fraktor_utils_core_rs::core::{runtime_toolbox::RuntimeToolbox, time::TimerInstant};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, time::TimerInstant};
 
 use super::{SchedulerTickMetrics, TickDriverKind, TickFeedHandle};
 

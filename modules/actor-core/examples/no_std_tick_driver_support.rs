@@ -12,7 +12,7 @@ use fraktor_actor_core_rs::core::scheduler::{
   HardwareKind, HardwareTickDriver, Scheduler, SchedulerTickExecutor, TickDriver, TickDriverConfig, TickDriverError,
   TickDriverRuntime, TickExecutorSignal, TickFeed, TickFeedHandle, TickPulseHandler, TickPulseSource,
 };
-use fraktor_utils_core_rs::core::{
+use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, ToolboxMutex},
   sync::{ArcShared, sync_mutex_like::SpinSyncMutex},
 };

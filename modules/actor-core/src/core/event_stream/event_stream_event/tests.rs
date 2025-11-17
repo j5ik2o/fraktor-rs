@@ -4,9 +4,9 @@ use alloc::string::String;
 use core::time::Duration;
 
 #[cfg(feature = "alloc")]
-use fraktor_utils_core_rs::core::runtime_toolbox::NoStdToolbox;
+use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 #[cfg(feature = "alloc")]
-use fraktor_utils_core_rs::core::runtime_toolbox::NoStdToolbox;
+use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 
 #[cfg(feature = "alloc")]
 use super::EventStreamEvent;

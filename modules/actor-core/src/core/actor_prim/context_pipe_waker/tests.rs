@@ -1,4 +1,4 @@
-use fraktor_utils_core_rs::core::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
 
 use crate::core::{
   actor_prim::{ContextPipeTaskId, context_pipe_waker::ContextPipeWaker},

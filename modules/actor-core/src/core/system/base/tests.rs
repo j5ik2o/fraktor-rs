@@ -5,7 +5,7 @@ use core::{
   time::Duration,
 };
 
-use fraktor_utils_core_rs::core::{
+use fraktor_utils_rs::core::{
   collections::queue::capabilities::{QueueCapabilityRegistry, QueueCapabilitySet},
   runtime_toolbox::{NoStdMutex, NoStdToolbox},
   sync::ArcShared,
@@ -278,7 +278,7 @@ fn spawn_child_fails_when_dispatcher_id_not_registered() {
 
 #[test]
 fn spawn_child_resolves_mailbox_id_with_requirements() {
-  use fraktor_utils_core_rs::core::collections::queue::capabilities::{QueueCapabilityRegistry, QueueCapabilitySet};
+  use fraktor_utils_rs::core::collections::queue::capabilities::{QueueCapabilityRegistry, QueueCapabilitySet};
 
   let system = ActorSystem::new_empty();
   let parent_pid = system.allocate_pid();

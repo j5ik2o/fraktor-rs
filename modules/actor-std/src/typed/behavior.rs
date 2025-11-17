@@ -1,4 +1,4 @@
-use fraktor_utils_core_rs::std::runtime_toolbox::StdToolbox;
+use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
 /// Convenience alias for typed behaviors bound to the standard runtime toolbox.
 pub type Behavior<M> = fraktor_actor_core_rs::core::typed::Behavior<M, StdToolbox>;

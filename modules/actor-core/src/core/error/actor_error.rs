@@ -5,7 +5,7 @@ mod tests;
 
 use alloc::format;
 
-use fraktor_utils_core_rs::core::runtime_toolbox::RuntimeToolbox;
+use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use crate::core::error::{SendError, actor_error_reason::ActorErrorReason};
 

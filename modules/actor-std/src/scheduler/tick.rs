@@ -6,7 +6,7 @@ use fraktor_actor_core_rs::core::{
   event_stream::EventStreamGeneric,
   scheduler::{TickDriverConfig, TickDriverFactoryRef},
 };
-use fraktor_utils_core_rs::{
+use fraktor_utils_rs::{
   core::{
     sync::{ArcShared, ArcShared as Arc},
     time::TimerInstant,
@@ -50,7 +50,7 @@ impl StdTickDriverConfig {
       AutoDriverMetadata, AutoProfileKind, Scheduler, SchedulerTickExecutor, TickDriverControl, TickDriverHandle,
       TickDriverKind, TickDriverRuntime, TickExecutorSignal, TickFeed, next_tick_driver_id,
     };
-    use fraktor_utils_core_rs::core::{runtime_toolbox::ToolboxMutex, sync::ArcShared};
+    use fraktor_utils_rs::core::{runtime_toolbox::ToolboxMutex, sync::ArcShared};
     use tokio::time::{MissedTickBehavior, interval};
 
     TickDriverConfig::new(move |ctx| {
@@ -134,7 +134,7 @@ impl StdTickDriverConfig {
       TickDriverControl, TickDriverHandle, TickDriverKind, TickDriverRuntime, TickExecutorSignal, TickFeed,
       next_tick_driver_id,
     };
-    use fraktor_utils_core_rs::core::runtime_toolbox::ToolboxMutex;
+    use fraktor_utils_rs::core::runtime_toolbox::ToolboxMutex;
     use tokio::time::{MissedTickBehavior, interval};
 
     TickDriverConfig::new(move |ctx| {
@@ -241,7 +241,7 @@ mod tests {
     event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber},
     scheduler::{AutoProfileKind, SchedulerConfig, SchedulerContext, TickDriverBootstrap, TickDriverKind},
   };
-  use fraktor_utils_core_rs::core::{sync::ArcShared, time::TimerInstant};
+  use fraktor_utils_rs::core::{sync::ArcShared, time::TimerInstant};
   #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
   #[allow(clippy::expect_used)]
   async fn tokio_interval_driver_produces_ticks() {

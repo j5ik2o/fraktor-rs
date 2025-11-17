@@ -1,4 +1,4 @@
-use fraktor_utils_core_rs::std::runtime_toolbox::StdToolbox;
+use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
 /// DeadLetter store specialised for `StdToolbox`.
 pub type DeadLetter = fraktor_actor_core_rs::core::dead_letter::DeadLetterGeneric<StdToolbox>;

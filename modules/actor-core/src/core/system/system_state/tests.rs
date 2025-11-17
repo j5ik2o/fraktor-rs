@@ -1,7 +1,7 @@
 use alloc::{string::ToString, vec::Vec};
 use core::time::Duration;
 
-use fraktor_utils_core_rs::core::{
+use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdMutex, NoStdToolbox},
   sync::ArcShared,
 };
@@ -213,7 +213,7 @@ fn system_state_deadletters() {
 
 #[test]
 fn system_state_register_ask_future() {
-  use fraktor_utils_core_rs::core::sync::ArcShared;
+  use fraktor_utils_rs::core::sync::ArcShared;
 
   use crate::core::futures::ActorFuture;
 

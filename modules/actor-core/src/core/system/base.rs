@@ -8,7 +8,7 @@ use alloc::{
   vec::Vec,
 };
 
-use fraktor_utils_core_rs::core::{
+use fraktor_utils_rs::core::{
   collections::queue::capabilities::QueueCapability,
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
   sync::ArcShared,

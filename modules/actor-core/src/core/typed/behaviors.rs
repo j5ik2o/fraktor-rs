@@ -1,6 +1,6 @@
 //! Functional builders for typed behaviors.
 
-use fraktor_utils_core_rs::core::runtime_toolbox::RuntimeToolbox;
+use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use super::supervise::Supervise;
 use crate::core::{

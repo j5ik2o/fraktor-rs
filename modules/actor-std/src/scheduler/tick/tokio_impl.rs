@@ -7,7 +7,7 @@ use fraktor_actor_core_rs::core::{
     TickDriverId, TickDriverKind, TickFeedHandle, next_tick_driver_id,
   },
 };
-use fraktor_utils_core_rs::{
+use fraktor_utils_rs::{
   core::{sync::ArcShared, time::TimerInstant},
   std::runtime_toolbox::StdToolbox,
 };

@@ -6,7 +6,7 @@ mod tests;
 use alloc::{boxed::Box, string::String, vec::Vec};
 use core::{future::Future, marker::PhantomData};
 
-use fraktor_utils_core_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
+use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 
 use crate::core::{
   actor_prim::{ChildRefGeneric, Pid, actor_ref::ActorRefGeneric, pipe_spawn_error::PipeSpawnError},

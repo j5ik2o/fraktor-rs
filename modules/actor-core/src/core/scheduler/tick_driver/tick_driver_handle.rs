@@ -2,7 +2,7 @@
 
 use core::time::Duration;
 
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_rs::core::sync::ArcShared;
 
 use super::{TickDriverControl, TickDriverId, TickDriverKind};
 

@@ -2,7 +2,7 @@
 
 use core::{any::Any, ptr};
 
-use fraktor_utils_core_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
 use crate::core::{actor_prim::Pid, messaging::AnyMessageGeneric};
 
