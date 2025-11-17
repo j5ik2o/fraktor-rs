@@ -1,0 +1,114 @@
+//! Middleware-enabled pipeline for invoking actors.
+
+use alloc::vec::Vec;
+
+use fraktor_utils_rs::core::{
+  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
+  sync::ArcShared,
+};
+
+use super::MessageInvokerMiddleware;
+use crate::core::{
+  actor_prim::{Actor, ActorContextGeneric, actor_ref::ActorRefGeneric},
+  error::ActorError,
+  messaging::{AnyMessageGeneric, any_message_view::AnyMessageViewGeneric},
+};
+
+/// Middleware-enabled pipeline used to invoke actor message handlers.
+pub struct MessageInvokerPipelineGeneric<TB: RuntimeToolbox + 'static> {
+  user_middlewares: Vec<ArcShared<dyn MessageInvokerMiddleware<TB>>>,
+}
+
+/// Type alias for [MessageInvokerPipelineGeneric] with the default [NoStdToolbox].
+pub type MessageInvokerPipeline = MessageInvokerPipelineGeneric<NoStdToolbox>;
+
+impl<TB: RuntimeToolbox + 'static> MessageInvokerPipelineGeneric<TB> {
+  /// Creates a pipeline without any middleware.
+  #[must_use]
+  pub const fn new() -> Self {
+    Self { user_middlewares: Vec::new() }
+  }
+
+  /// Builds a pipeline from the provided middleware list.
+  #[must_use]
+  pub fn from_middlewares(middlewares: Vec<ArcShared<dyn MessageInvokerMiddleware<TB>>>) -> Self {
+    Self { user_middlewares: middlewares }
+  }
+
+  /// Invokes the actor using the configured middleware chain.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if middleware processing fails or if the actor's handler returns an error.
+  #[allow(clippy::needless_pass_by_value)]
+  pub fn invoke_user<A>(
+    &self,
+    actor: &mut A,
+    ctx: &mut ActorContextGeneric<'_, TB>,
+    message: AnyMessageGeneric<TB>,
+  ) -> Result<(), ActorError>
+  where
+    A: Actor<TB>, {
+    let previous = ctx.reply_to().cloned();
+    let reply_target = message.reply_to().cloned();
+
+    match reply_target {
+      | Some(target) => ctx.set_reply_to(Some(target)),
+      | None => ctx.clear_reply_to(),
+    }
+
+    let view = message.as_view();
+
+    if let Err(error) = self.invoke_before(ctx, &view) {
+      restore_reply(ctx, previous);
+      return Err(error);
+    }
+
+    let mut result = actor.receive(ctx, view);
+
+    let view_after = message.as_view();
+    result = self.invoke_after(ctx, &view_after, result);
+
+    restore_reply(ctx, previous);
+    result
+  }
+
+  fn invoke_before(
+    &self,
+    ctx: &mut ActorContextGeneric<'_, TB>,
+    message: &AnyMessageViewGeneric<'_, TB>,
+  ) -> Result<(), ActorError> {
+    for middleware in &self.user_middlewares {
+      middleware.before_user(ctx, message)?;
+    }
+    Ok(())
+  }
+
+  fn invoke_after(
+    &self,
+    ctx: &mut ActorContextGeneric<'_, TB>,
+    message: &AnyMessageViewGeneric<'_, TB>,
+    mut result: Result<(), ActorError>,
+  ) -> Result<(), ActorError> {
+    for middleware in self.user_middlewares.iter().rev() {
+      result = middleware.after_user(ctx, message, result);
+    }
+    result
+  }
+}
+
+fn restore_reply<TB: RuntimeToolbox + 'static>(
+  ctx: &mut ActorContextGeneric<'_, TB>,
+  previous: Option<ActorRefGeneric<TB>>,
+) {
+  match previous {
+    | Some(target) => ctx.set_reply_to(Some(target)),
+    | None => ctx.clear_reply_to(),
+  }
+}
+
+impl<TB: RuntimeToolbox + 'static> Default for MessageInvokerPipelineGeneric<TB> {
+  fn default() -> Self {
+    Self::new()
+  }
+}

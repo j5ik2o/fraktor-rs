@@ -1,0 +1,34 @@
+[package]
+name = "fraktor-utils-rs"
+version = "0.2.11"
+edition = "2024"
+description = "Portable no_std toolbox primitives for the fraktor actor runtime"
+license = "MIT OR Apache-2.0"
+homepage = "https://github.com/j5ik2o/fraktor-rs"
+repository = "https://github.com/j5ik2o/fraktor-rs"
+documentation = "https://docs.rs/fraktor-utils-core-rs"
+readme = "../../README.md"
+keywords = ["actors", "runtime", "no-std", "embedded"]
+categories = ["concurrency", "embedded", "no-std"]
+
+[features]
+default = ["alloc", "unsize"]
+alloc = []
+interrupt-cortex-m = ["cortex-m"]
+force-portable-arc = []
+unsize = []
+std = []
+
+[dependencies]
+async-trait = { workspace = true }
+critical-section = { workspace = true, default-features = false, optional = false }
+spin = { workspace = true, default-features = false, features = ["mutex", "spin_mutex", "rwlock", "portable_atomic"] }
+portable-atomic = { workspace = true, default-features = false, features = ["critical-section"] }
+cortex-m = { workspace = true, optional = true }
+portable-atomic-util = { version = "0.2", default-features = false, features = ["alloc"] }
+thiserror = { workspace = true, default-features = false }
+
+[dev-dependencies]
+criterion = { workspace = true }
+tokio = { workspace = true, features = ["sync", "rt", "macros", "time"] }
+proptest = "1.5"
