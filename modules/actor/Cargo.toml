@@ -1,0 +1,158 @@
+[package]
+name = "fraktor-actor-rs"
+version = "0.2.11"
+edition = "2024"
+description = "fraktor no_std actor runtime"
+license = "MIT OR Apache-2.0"
+keywords = ["fraktor", "actor", "runtime", "no_std"]
+categories = ["concurrency", "embedded", "no-std"]
+repository = "https://github.com/j5ik2o/fraktor-rs"
+homepage = "https://github.com/j5ik2o/fraktor-rs"
+documentation = "https://docs.rs/fraktor-actor-rs"
+readme = "../../README.md"
+autoexamples = false
+
+[features]
+default = ["std"]
+alloc = []
+alloc-metrics = []
+test-support = []
+std = ["fraktor-utils-rs/std"]
+tokio-executor = ["dep:tokio"]
+
+[dependencies]
+async-trait = { workspace = true }
+fraktor-utils-rs = { workspace = true, default-features = false, features = ["alloc", "unsize"] }
+critical-section = { workspace = true, default-features = false }
+heapless = { workspace = true, default-features = false, features = ["portable-atomic"] }
+portable-atomic = { workspace = true, default-features = false, features = ["critical-section"] }
+portable-atomic-util = { workspace = true, default-features = false, features = ["alloc"] }
+spin = { workspace = true, default-features = false, features = ["mutex", "spin_mutex", "rwlock", "portable_atomic"] }
+cortex-m = { workspace = true, optional = true }
+hashbrown = { workspace = true, default-features = false }
+serde = { workspace = true }
+erased-serde = { workspace = true }
+bincode = { workspace = true }
+futures = { workspace = true, features = ["alloc"] }
+tokio = { workspace = true, optional = true, features = ["rt", "rt-multi-thread", "macros", "time"] }
+
+[dev-dependencies]
+criterion = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+proptest = "1.5"
+critical-section = { workspace = true, features = ["std"] }
+
+[[example]]
+name = "ping_pong_not_std"
+path = "examples/ping_pong_not_std/main.rs"
+
+[[example]]
+name = "ping_pong_typed_not_std"
+path = "examples/ping_pong_typed_not_std/main.rs"
+
+[[example]]
+name = "message_adapter_no_std"
+path = "examples/message_adapter_no_std/main.rs"
+
+[[example]]
+name = "behaviors_state_transition_typed_no_std"
+path = "examples/behaviors_state_transition_typed_no_std/main.rs"
+
+[[example]]
+name = "serialization_custom_no_std"
+path = "examples/serialization_custom_no_std/main.rs"
+
+[[example]]
+name = "scheduler_once_no_std"
+path = "examples/scheduler_once_no_std/main.rs"
+required-features = ["test-support"]
+
+[[example]]
+name = "scheduler_once_typed_no_std"
+path = "examples/scheduler_once_typed_no_std/main.rs"
+required-features = ["test-support"]
+
+[[example]]
+name = "scheduler_periodic_no_std"
+path = "examples/scheduler_periodic_no_std/main.rs"
+required-features = ["test-support"]
+
+[[example]]
+name = "scheduler_periodic_typed_no_std"
+path = "examples/scheduler_periodic_typed_no_std/main.rs"
+required-features = ["test-support"]
+
+[[example]]
+name = "scheduler_cancellation_no_std"
+path = "examples/scheduler_cancellation_no_std/main.rs"
+required-features = ["test-support"]
+
+[[example]]
+name = "scheduler_cancellation_typed_no_std"
+path = "examples/scheduler_cancellation_typed_no_std/main.rs"
+required-features = ["test-support"]
+
+[[example]]
+name = "scheduler_diagnostics_no_std"
+path = "examples/scheduler_diagnostics_no_std/main.rs"
+required-features = ["test-support"]
+
+[[example]]
+name = "scheduler_diagnostics_typed_no_std"
+path = "examples/scheduler_diagnostics_typed_no_std/main.rs"
+required-features = ["test-support"]
+
+[[example]]
+name = "ping_pong_tokio_std"
+path = "examples/ping_pong_tokio_std/main.rs"
+required-features = ["tokio-executor"]
+
+[[example]]
+name = "logger_subscriber_std"
+path = "examples/logger_subscriber_std/main.rs"
+
+[[example]]
+name = "supervision_std"
+path = "examples/supervision_std/main.rs"
+
+[[example]]
+name = "dead_letter_std"
+path = "examples/dead_letter_std/main.rs"
+required-features = ["tokio-executor"]
+
+[[example]]
+name = "named_actor_std"
+path = "examples/named_actor_std/main.rs"
+
+[[example]]
+name = "behaviors_setup_receive_std"
+path = "examples/behaviors_setup_receive_std/main.rs"
+
+[[example]]
+name = "behaviors_unhandled_std"
+path = "examples/behaviors_unhandled_std/main.rs"
+
+[[example]]
+name = "behaviors_empty_std"
+path = "examples/behaviors_empty_std/main.rs"
+
+[[example]]
+name = "behaviors_counter_typed_std"
+path = "examples/behaviors_counter_typed_std/main.rs"
+
+[[example]]
+name = "behaviors_receive_signal_std"
+path = "examples/behaviors_receive_signal_std/main.rs"
+
+[[example]]
+name = "behaviors_supervise_typed_std"
+path = "examples/behaviors_supervise_typed_std/main.rs"
+
+[[example]]
+name = "death_watch_std"
+path = "examples/death_watch_std/main.rs"
+
+[[example]]
+name = "scheduler_once_tokio_std"
+path = "examples/scheduler_once_tokio_std/main.rs"
+required-features = ["tokio-executor"]

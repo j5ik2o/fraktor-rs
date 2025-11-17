@@ -26,7 +26,7 @@ usage() {
   embedded / embassy     : embedded 系 (utils / actor) のチェックとテストを実行します
   test                   : ワークスペース全体のテストを実行します
   perf                   : Scheduler ストレス／ベンチマークテストを実行します
-  actor-path-e2e         : fraktor-actor-core-rs の actor_path_e2e テストを単体実行します
+  actor-path-e2e         : fraktor-actor-rs の actor_path_e2e テストを単体実行します
   all                    : 上記すべてを順番に実行します (引数なし時と同じ)
 複数指定で部分実行が可能です (例: scripts/ci-check.sh lint dylint module-wiring-lint)
 EOF
@@ -214,7 +214,7 @@ run_dylint() {
         break
         ;;
       -h|--help)
-        echo "利用例: scripts/ci-check.sh dylint -n mod-file-lint -m fraktor-actor-core-rs" >&2
+        echo "利用例: scripts/ci-check.sh dylint -n mod-file-lint -m fraktor-actor-rs" >&2
         return 0
         ;;
       *)
@@ -529,39 +529,39 @@ run_clippy() {
 }
 
 run_no_std() {
-  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-utils-core-rs --no-default-features --features alloc"
-  run_cargo check -p fraktor-utils-core-rs --no-default-features --features alloc || return 1
+  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-utils-rs --no-default-features --features alloc"
+  run_cargo check -p fraktor-utils-rs --no-default-features --features alloc || return 1
 
-  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-core-rs --no-default-features"
-  run_cargo check -p fraktor-actor-core-rs --no-default-features || return 1
+  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-rs --no-default-features"
+  run_cargo check -p fraktor-actor-rs --no-default-features || return 1
 
   log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-rs --no-default-features"
   run_cargo check -p fraktor-rs --no-default-features || return 1
 
   local thumb_target="thumbv8m.main-none-eabi"
   if ensure_target_installed "${thumb_target}"; then
-    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-utils-core-rs --no-default-features --features alloc --target ${thumb_target}"
-    run_cargo check -p fraktor-utils-core-rs --no-default-features --features alloc --target "${thumb_target}" || return 1
+    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-utils-rs --no-default-features --features alloc --target ${thumb_target}"
+    run_cargo check -p fraktor-utils-rs --no-default-features --features alloc --target "${thumb_target}" || return 1
 
-    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-core-rs --no-default-features --target ${thumb_target}"
-    run_cargo check -p fraktor-actor-core-rs --no-default-features --target "${thumb_target}" || return 1
+    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-rs --no-default-features --target ${thumb_target}"
+    run_cargo check -p fraktor-actor-rs --no-default-features --target "${thumb_target}" || return 1
   fi
 }
 
 run_std() {
-  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-utils-core-rs"
-  run_cargo test -p fraktor-utils-core-rs || return 1
+  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-utils-rs"
+  run_cargo test -p fraktor-utils-rs || return 1
 
-  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-actor-core-rs --lib"
-  run_cargo test -p fraktor-actor-core-rs --lib || return 1
+  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-actor-rs --lib"
+  run_cargo test -p fraktor-actor-rs --lib || return 1
 
   log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-rs --lib"
   run_cargo test -p fraktor-rs --lib || return 1
 }
 
 run_doc_tests() {
-  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-core-rs --no-default-features"
-  run_cargo check -p fraktor-actor-core-rs --no-default-features || return 1
+  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-rs --no-default-features"
+  run_cargo check -p fraktor-actor-rs --no-default-features || return 1
 }
 
 # run_embedded() {
@@ -592,11 +592,11 @@ run_doc_tests() {
 #    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-utils-core-rs --target ${target} --no-default-features --features alloc"
 #    run_cargo check -p fraktor-utils-core-rs --target "${target}" --no-default-features --features alloc || return 1
 #
-#    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-core-rs --target ${target} --no-default-features --features alloc"
-#    run_cargo check -p fraktor-actor-core-rs --target "${target}" --no-default-features --features alloc || return 1
+#    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-rs --target ${target} --no-default-features --features alloc"
+#    run_cargo check -p fraktor-actor-rs --target "${target}" --no-default-features --features alloc || return 1
 #
-#    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-core-rs --target ${target} --no-default-features --features alloc"
-#    run_cargo check -p fraktor-actor-core-rs --target "${target}" --no-default-features --features alloc || return 1
+#    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-rs --target ${target} --no-default-features --features alloc"
+#    run_cargo check -p fraktor-actor-rs --target "${target}" --no-default-features --features alloc || return 1
 #
 #    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-embedded-rs --target ${target} --no-default-features --features alloc,embedded_rc"
 #    run_cargo check -p fraktor-actor-embedded-rs --target "${target}" --no-default-features --features alloc,embedded_rc || return 1
@@ -609,8 +609,8 @@ run_tests() {
 }
 
 run_actor_path_e2e() {
-  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-actor-core-rs --test actor_path_e2e -- --nocapture"
-  run_cargo test -p fraktor-actor-core-rs --test actor_path_e2e -- --nocapture || return 1
+  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-actor-rs --test actor_path_e2e -- --nocapture"
+  run_cargo test -p fraktor-actor-rs --test actor_path_e2e -- --nocapture || return 1
 }
 
 run_examples() {
@@ -705,8 +705,8 @@ PY
 }
 
 run_perf() {
-  log_step "cargo test -p fraktor-actor-core-rs stress_scheduler_handles_"
-  run_cargo test -p fraktor-actor-core-rs stress_scheduler_handles_ || return 1
+  log_step "cargo test -p fraktor-actor-rs stress_scheduler_handles_"
+  run_cargo test -p fraktor-actor-rs stress_scheduler_handles_ || return 1
 }
 
 run_all() {

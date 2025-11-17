@@ -1,0 +1,62 @@
+extern crate std;
+use std::ops::{Deref, DerefMut};
+
+use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
+
+use crate::core::typed::TypedChildRefGeneric;
+
+#[repr(transparent)]
+/// Type-safe handle to a child actor running on the standard runtime.
+pub struct TypedChildRef<M>
+where
+  M: Send + Sync + 'static, {
+  inner: TypedChildRefGeneric<M, StdToolbox>,
+}
+
+impl<M> TypedChildRef<M>
+where
+  M: Send + Sync + 'static,
+{
+  /// Wraps a core child reference into the standard typed variant.
+  #[must_use]
+  pub const fn from_core(inner: TypedChildRefGeneric<M, StdToolbox>) -> Self {
+    Self { inner }
+  }
+
+  /// Borrows the underlying core reference.
+  #[must_use]
+  pub const fn as_core(&self) -> &TypedChildRefGeneric<M, StdToolbox> {
+    &self.inner
+  }
+
+  /// Mutably borrows the underlying core reference.
+  pub const fn as_core_mut(&mut self) -> &mut TypedChildRefGeneric<M, StdToolbox> {
+    &mut self.inner
+  }
+
+  /// Consumes the wrapper and returns the core reference.
+  #[must_use]
+  pub fn into_core(self) -> TypedChildRefGeneric<M, StdToolbox> {
+    self.inner
+  }
+}
+
+impl<M> Deref for TypedChildRef<M>
+where
+  M: Send + Sync + 'static,
+{
+  type Target = TypedChildRefGeneric<M, StdToolbox>;
+
+  fn deref(&self) -> &Self::Target {
+    &self.inner
+  }
+}
+
+impl<M> DerefMut for TypedChildRef<M>
+where
+  M: Send + Sync + 'static,
+{
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    &mut self.inner
+  }
+}
