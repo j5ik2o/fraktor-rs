@@ -44,12 +44,12 @@ fn record_entry_stores_and_publishes() {
   let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
   let _subscription = EventStream::subscribe_arc(&stream, &subscriber);
 
-  let deadletter = DeadLetter::with_default_capacity(stream.clone());
+  let dead_letter = DeadLetter::with_default_capacity(stream.clone());
   let pid = Pid::new(1, 0);
   let message = AnyMessage::new("payload");
-  deadletter.record_entry(message, DeadLetterReason::ExplicitRouting, Some(pid), Duration::from_millis(5));
+  dead_letter.record_entry(message, DeadLetterReason::ExplicitRouting, Some(pid), Duration::from_millis(5));
 
-  let entries = deadletter.entries();
+  let entries = dead_letter.entries();
   assert_eq!(entries.len(), 1);
   assert_eq!(entries[0].reason(), DeadLetterReason::ExplicitRouting);
   assert_eq!(entries[0].recipient(), Some(pid));

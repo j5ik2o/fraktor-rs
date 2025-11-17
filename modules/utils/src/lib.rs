@@ -1,4 +1,4 @@
-// #![deny(missing_docs)]
+#![deny(missing_docs)]
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_types, clippy::redundant_clone))]
 #![deny(rustdoc::broken_intra_doc_links)]
 #![deny(unsafe_op_in_unsafe_fn)]
@@ -50,15 +50,9 @@
 #![deny(cfg_std_forbid)]
 #![cfg_attr(feature = "unsize", feature(unsize, coerce_unsized, dispatch_from_dyn))]
 #![cfg_attr(feature = "unsize", allow(incomplete_features))]
-//! Core utility collection.
-//!
-//! Provides fundamental data structures such as mailboxes, synchronization primitives,
-//! and deadline-based processing intended for cross-runtime sharing, with `no_std` support.
-//! By interacting with `actor-core` through this crate, we maintain unidirectional dependencies,
-//! and each runtime only needs to satisfy the abstractions defined here with their own
-//! implementations.
-
 #![cfg_attr(not(test), no_std)]
+
+//! Utilities for the fraktor actor runtime.
 
 extern crate alloc;
 

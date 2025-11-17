@@ -1,6 +1,6 @@
 extern crate std;
 
-use alloc::{format, string::String, vec::Vec};
+use alloc::{borrow::ToOwned, format, string::String, vec::Vec};
 use core::time::Duration;
 use std::{
   fmt,
@@ -17,7 +17,7 @@ use tracing::{
 use super::TracingLoggerSubscriber;
 use crate::{
   core::logging::{LogEvent, LogLevel},
-  std::event_stream::EventStreamEvent,
+  std::event_stream::{EventStreamEvent, EventStreamSubscriber},
 };
 
 #[test]
@@ -100,13 +100,25 @@ impl Subscriber for RecordingSubscriber {
   fn exit(&self, _: &Id) {}
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 struct CapturedEvent {
   level:            Level,
   target:           String,
   message:          String,
   origin:           Option<String>,
   timestamp_micros: Option<u64>,
+}
+
+impl Default for CapturedEvent {
+  fn default() -> Self {
+    Self {
+      level:            Level::INFO,
+      target:           String::new(),
+      message:          String::new(),
+      origin:           None,
+      timestamp_micros: None,
+    }
+  }
 }
 
 #[derive(Default)]

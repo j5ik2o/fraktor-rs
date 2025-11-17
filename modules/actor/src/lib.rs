@@ -50,13 +50,7 @@
 #![deny(cfg_std_forbid)]
 #![no_std]
 
-//! Core utility collection.
-//!
-//! Provides fundamental data structures such as mailboxes, synchronization primitives,
-//! and deadline-based processing intended for cross-runtime sharing, with `no_std` support.
-//! By interacting with `actor-core` through this crate, we maintain unidirectional dependencies,
-//! and each runtime only needs to satisfy the abstractions defined here with their own
-//! implementations.
+//! Actor runtime for Rust
 
 extern crate alloc;
 
