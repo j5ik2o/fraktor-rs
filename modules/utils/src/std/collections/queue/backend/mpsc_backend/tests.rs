@@ -119,7 +119,7 @@ fn default_creates_new_backend() {
 fn works_with_sync_queue_shared() {
   use crate::core::{
     collections::queue::{SyncQueue, SyncQueueShared, type_keys::MpscKey},
-    sync::{sync_mutex_like::SpinSyncMutex, ArcShared},
+    sync::{ArcShared, sync_mutex_like::SpinSyncMutex},
   };
 
   // SyncQueueShared<T, MpscKey, MpscBackend<T>> が構築できることを確認

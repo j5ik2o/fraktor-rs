@@ -23,6 +23,9 @@ use crate::{
 
 mod tokio_impl;
 
+#[cfg(test)]
+mod tests;
+
 /// Config helpers for std tick drivers.
 pub struct StdTickDriverConfig;
 
@@ -238,6 +241,3 @@ impl StdTickDriverConfig {
     ArcShared::new(TokioIntervalDriverFactory::new(handle, resolution).with_metrics(event_stream, interval))
   }
 }
-
-#[cfg(test)]
-mod tests;

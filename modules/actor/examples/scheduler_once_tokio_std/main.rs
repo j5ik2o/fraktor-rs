@@ -7,7 +7,7 @@ use fraktor_actor_rs::{
     dispatcher::dispatch_executor::TokioExecutor,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
-    scheduler::StdTickDriverConfig,
+    scheduler::tick::StdTickDriverConfig,
     system::{ActorSystemBuilder, DispatcherConfig},
   },
 };

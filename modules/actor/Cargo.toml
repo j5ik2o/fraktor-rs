@@ -110,10 +110,12 @@ required-features = ["tokio-executor"]
 [[example]]
 name = "logger_subscriber_std"
 path = "examples/logger_subscriber_std/main.rs"
+required-features = ["std"]
 
 [[example]]
 name = "supervision_std"
 path = "examples/supervision_std/main.rs"
+required-features = ["std"]
 
 [[example]]
 name = "dead_letter_std"
@@ -123,34 +125,42 @@ required-features = ["tokio-executor"]
 [[example]]
 name = "named_actor_std"
 path = "examples/named_actor_std/main.rs"
+required-features = ["std"]
 
 [[example]]
 name = "behaviors_setup_receive_std"
 path = "examples/behaviors_setup_receive_std/main.rs"
+required-features = ["std"]
 
 [[example]]
 name = "behaviors_unhandled_std"
 path = "examples/behaviors_unhandled_std/main.rs"
+required-features = ["std"]
 
 [[example]]
 name = "behaviors_empty_std"
 path = "examples/behaviors_empty_std/main.rs"
+required-features = ["std"]
 
 [[example]]
 name = "behaviors_counter_typed_std"
 path = "examples/behaviors_counter_typed_std/main.rs"
+required-features = ["std"]
 
 [[example]]
 name = "behaviors_receive_signal_std"
 path = "examples/behaviors_receive_signal_std/main.rs"
+required-features = ["std"]
 
 [[example]]
 name = "behaviors_supervise_typed_std"
 path = "examples/behaviors_supervise_typed_std/main.rs"
+required-features = ["std"]
 
 [[example]]
 name = "death_watch_std"
 path = "examples/death_watch_std/main.rs"
+required-features = ["std"]
 
 [[example]]
 name = "scheduler_once_tokio_std"

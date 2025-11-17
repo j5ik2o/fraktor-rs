@@ -4,7 +4,8 @@ pub mod backend;
 
 use crate::{
   core::collections::queue::{
-    SyncQueue, SyncQueueShared, type_keys::{FifoKey, MpscKey, PriorityKey, SpscKey},
+    SyncQueue, SyncQueueShared,
+    type_keys::{FifoKey, MpscKey, PriorityKey, SpscKey},
   },
   std::sync_mutex::StdSyncMutex,
 };

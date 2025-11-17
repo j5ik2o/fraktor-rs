@@ -4,15 +4,17 @@ use alloc::vec::Vec;
 use core::time::Duration;
 use std::sync::Mutex;
 
-use fraktor_utils_rs::core::{sync::ArcShared, time::TimerInstant};
-use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
+use fraktor_utils_rs::{
+  core::{sync::ArcShared, time::TimerInstant},
+  std::runtime_toolbox::StdToolbox,
+};
 
 use crate::{
   core::{
     event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber},
     scheduler::{AutoProfileKind, SchedulerConfig, SchedulerContext, TickDriverBootstrap, TickDriverKind},
   },
-  std::scheduler::StdTickDriverConfig,
+  std::scheduler::tick::StdTickDriverConfig,
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

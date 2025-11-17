@@ -3,12 +3,13 @@ mod tests;
 
 extern crate std;
 
-use std::sync::{atomic::{AtomicUsize, Ordering}, mpsc};
+use std::sync::{
+  atomic::{AtomicUsize, Ordering},
+  mpsc,
+};
 
 use crate::core::{
-  collections::queue::{
-    OfferOutcome, OverflowPolicy, QueueError, SyncQueueBackend, backend::SyncQueueBackendInternal,
-  },
+  collections::queue::{OfferOutcome, OverflowPolicy, QueueError, SyncQueueBackend, backend::SyncQueueBackendInternal},
   sync::ArcShared,
 };
 
