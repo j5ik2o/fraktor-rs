@@ -6,7 +6,7 @@ use core::{num::NonZeroU64, time::Duration};
 #[cfg(test)]
 mod tests;
 
-use fraktor_utils_core_rs::{
+use fraktor_utils_core_rs::core::{
   collections::queue::backend::{BinaryHeapPriorityBackend, OverflowPolicy},
   sync::ArcShared,
   time::{SchedulerTickHandle, TimerEntry, TimerHandleId, TimerInstant, TimerWheel, TimerWheelConfig},

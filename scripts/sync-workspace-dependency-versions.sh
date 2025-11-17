@@ -25,7 +25,6 @@ text = cargo_path.read_text()
 
 deps = [
     'fraktor-utils-core-rs',
-    'fraktor-utils-std-rs',
     'fraktor-actor-core-rs',
     'fraktor-actor-std-rs',
 ]

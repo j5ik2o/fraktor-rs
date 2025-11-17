@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use fraktor_utils_core_rs::sync::NoStdToolbox;
+use fraktor_utils_core_rs::core::sync::NoStdToolbox;
 
 use crate::{RuntimeToolbox, error::SendError, messaging::AnyMessageGeneric};
 

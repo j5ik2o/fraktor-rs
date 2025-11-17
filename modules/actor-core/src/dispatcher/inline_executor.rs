@@ -1,6 +1,6 @@
 use core::marker::PhantomData;
 
-use fraktor_utils_core_rs::sync::NoStdToolbox;
+use fraktor_utils_core_rs::core::sync::NoStdToolbox;
 
 use super::{
   dispatch_error::DispatchError, dispatch_executor::DispatchExecutor, dispatch_shared::DispatchSharedGeneric,

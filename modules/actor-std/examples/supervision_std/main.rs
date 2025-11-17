@@ -13,7 +13,7 @@ use fraktor_actor_std_rs::{
   props::Props,
   system::ActorSystem,
 };
-use fraktor_utils_core_rs::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 
 struct Start;
 struct Trigger;

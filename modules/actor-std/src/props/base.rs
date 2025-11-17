@@ -7,8 +7,8 @@ use fraktor_actor_core_rs::{
   mailbox::MailboxPolicy,
   props::{ActorFactory, MailboxConfig, PropsGeneric as CorePropsGeneric},
 };
-use fraktor_utils_core_rs::sync::ArcShared;
-use fraktor_utils_std_rs::runtime_toolbox::StdToolbox;
+use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::std::runtime_toolbox::StdToolbox;
 
 use crate::{
   actor_prim::{Actor, ActorAdapter},

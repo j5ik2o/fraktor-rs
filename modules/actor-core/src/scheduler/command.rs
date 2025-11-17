@@ -2,7 +2,7 @@
 
 use core::fmt;
 
-use fraktor_utils_core_rs::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use super::{dispatcher_sender_shared::DispatcherSenderShared, runnable::SchedulerRunnable};
 use crate::{RuntimeToolbox, actor_prim::actor_ref::ActorRefGeneric, messaging::AnyMessageGeneric};

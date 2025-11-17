@@ -10,7 +10,7 @@ use alloc::{
 };
 use core::time::Duration;
 
-use fraktor_utils_core_rs::{runtime_toolbox::SyncMutexFamily, sync::sync_mutex_like::SyncMutexLike};
+use fraktor_utils_core_rs::core::{runtime_toolbox::SyncMutexFamily, sync::sync_mutex_like::SyncMutexLike};
 use hashbrown::HashMap;
 
 use crate::{

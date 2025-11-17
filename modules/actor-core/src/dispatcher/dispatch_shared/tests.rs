@@ -1,4 +1,4 @@
-use fraktor_utils_core_rs::sync::{ArcShared, Shared};
+use fraktor_utils_core_rs::core::sync::{ArcShared, Shared};
 
 use super::DispatchShared;
 use crate::{

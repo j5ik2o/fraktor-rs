@@ -9,7 +9,7 @@ use core::{
 };
 
 use critical_section::Mutex;
-use fraktor_utils_core_rs::{
+use fraktor_utils_core_rs::core::{
   sync::ArcShared,
   time::{SchedulerTickHandle, TimerInstant},
 };

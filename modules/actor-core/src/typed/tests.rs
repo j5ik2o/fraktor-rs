@@ -8,7 +8,7 @@ use core::{
   time::Duration,
 };
 
-use fraktor_utils_core_rs::sync::NoStdMutex;
+use fraktor_utils_core_rs::core::sync::NoStdMutex;
 
 use crate::{
   NoStdToolbox,

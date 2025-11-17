@@ -2,7 +2,7 @@
 
 use core::time::Duration;
 
-use fraktor_utils_core_rs::{
+use fraktor_utils_core_rs::core::{
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
   timing::{DelayFuture, DelayProvider, DelayTrigger},
 };

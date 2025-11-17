@@ -1,6 +1,6 @@
 //! Drives the core scheduler whenever ticks are available.
 
-use fraktor_utils_core_rs::sync::{ArcShared, sync_mutex_like::SyncMutexLike};
+use fraktor_utils_core_rs::core::sync::{ArcShared, sync_mutex_like::SyncMutexLike};
 
 use super::{
   super::{Scheduler, SchedulerRunnerOwned},

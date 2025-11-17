@@ -5,7 +5,7 @@ mod tests;
 
 use core::task::Waker;
 
-use fraktor_utils_core_rs::{runtime_toolbox::SyncMutexFamily, sync::sync_mutex_like::SyncMutexLike};
+use fraktor_utils_core_rs::core::{runtime_toolbox::SyncMutexFamily, sync::sync_mutex_like::SyncMutexLike};
 
 use crate::{NoStdToolbox, RuntimeToolbox, ToolboxMutex, futures::actor_future_listener::ActorFutureListener};
 

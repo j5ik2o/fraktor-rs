@@ -1,4 +1,4 @@
-use fraktor_utils_core_rs::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use super::EventStreamSubscriberEntry;
 use crate::{NoStdToolbox, event_stream::EventStreamSubscriber};

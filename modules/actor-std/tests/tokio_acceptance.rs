@@ -21,8 +21,8 @@ use fraktor_actor_std_rs::{
   props::Props,
   system::ActorSystem,
 };
-use fraktor_utils_core_rs::sync::ArcShared;
-use fraktor_utils_std_rs::runtime_toolbox::{StdMutex, StdToolbox};
+use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::std::runtime_toolbox::{StdMutex, StdToolbox};
 use tokio::{
   runtime::{Builder, Handle},
   time::{sleep, timeout},

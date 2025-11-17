@@ -15,10 +15,7 @@ use core::{
   time::Duration,
 };
 
-use fraktor_utils_core_rs::{
-  runtime_toolbox::SyncMutexFamily,
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
-};
+use fraktor_utils_core_rs::core::sync::{ArcShared, sync_mutex_like::SyncMutexLike};
 use hashbrown::HashMap;
 use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
@@ -46,6 +43,7 @@ use crate::{
 mod failure_outcome;
 
 pub use failure_outcome::FailureOutcome;
+use fraktor_utils_core_rs::core::runtime_toolbox::SyncMutexFamily;
 
 /// Type alias for ask future collections.
 type AskFutureVec<TB> = Vec<ArcShared<ActorFuture<AnyMessageGeneric<TB>, TB>>>;

@@ -2,7 +2,7 @@
 
 use alloc::vec::Vec;
 
-use fraktor_utils_core_rs::sync::{ArcShared, NoStdToolbox};
+use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdToolbox};
 
 use super::MessageInvokerMiddleware;
 use crate::{

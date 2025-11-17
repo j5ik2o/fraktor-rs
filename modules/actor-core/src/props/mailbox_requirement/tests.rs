@@ -1,4 +1,4 @@
-use fraktor_utils_core_rs::collections::queue::capabilities::QueueCapabilitySet;
+use fraktor_utils_core_rs::core::collections::queue::capabilities::QueueCapabilitySet;
 
 use super::*;
 

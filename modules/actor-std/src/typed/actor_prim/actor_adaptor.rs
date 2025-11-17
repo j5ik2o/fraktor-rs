@@ -1,7 +1,7 @@
 use fraktor_actor_core_rs::{
   actor_prim::Pid, error::ActorError, supervision::SupervisorStrategy, typed::actor_prim::TypedActorContextGeneric,
 };
-use fraktor_utils_std_rs::runtime_toolbox::StdToolbox;
+use fraktor_utils_core_rs::std::runtime_toolbox::StdToolbox;
 
 use crate::typed::actor_prim::{TypedActor, TypedActorContext};
 

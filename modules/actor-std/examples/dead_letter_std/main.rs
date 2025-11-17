@@ -15,7 +15,7 @@ use fraktor_actor_std_rs::{
   props::Props,
   system::{ActorSystem, DispatcherConfig},
 };
-use fraktor_utils_core_rs::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 use tokio::runtime::Handle;
 
 struct Start;

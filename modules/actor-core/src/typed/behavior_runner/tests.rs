@@ -1,7 +1,7 @@
 use alloc::{string::String, sync::Arc};
 use core::sync::atomic::{AtomicBool, Ordering};
 
-use fraktor_utils_core_rs::sync::NoStdToolbox;
+use fraktor_utils_core_rs::core::sync::NoStdToolbox;
 
 use super::BehaviorRunner;
 use crate::{

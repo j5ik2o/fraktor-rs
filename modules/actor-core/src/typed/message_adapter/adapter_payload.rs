@@ -5,7 +5,7 @@ mod tests;
 
 use core::any::TypeId;
 
-use fraktor_utils_core_rs::sync::{ArcShared, NoStdToolbox};
+use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdToolbox};
 
 use crate::RuntimeToolbox;
 

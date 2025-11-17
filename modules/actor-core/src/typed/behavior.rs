@@ -2,7 +2,7 @@
 
 use alloc::boxed::Box;
 
-use fraktor_utils_core_rs::sync::NoStdToolbox;
+use fraktor_utils_core_rs::core::sync::NoStdToolbox;
 
 use crate::{
   RuntimeToolbox,

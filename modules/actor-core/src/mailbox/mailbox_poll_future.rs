@@ -7,7 +7,7 @@ use core::{
   task::{Context, Poll},
 };
 
-use fraktor_utils_core_rs::sync::NoStdToolbox;
+use fraktor_utils_core_rs::core::sync::NoStdToolbox;
 
 use super::{mailbox_queue_poll_future::QueuePollFuture, map_user_queue_error};
 use crate::{RuntimeToolbox, error::SendError, messaging::AnyMessageGeneric};

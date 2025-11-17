@@ -10,7 +10,7 @@ use alloc::string::String;
 
 pub use bool_serializer::BoolSerializer;
 pub use bytes_serializer::BytesSerializer;
-use fraktor_utils_core_rs::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 pub use i32_serializer::I32Serializer;
 pub use null_serializer::NullSerializer;
 pub use string_serializer::StringSerializer;

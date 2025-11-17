@@ -557,18 +557,6 @@ run_std() {
 
   log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-rs --lib"
   run_cargo test -p fraktor-rs --lib || return 1
-
-#  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-utils-std-rs"
-#  run_cargo test -p fraktor-utils-std-rs || return 1
-#
-#  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-actor-std-rs"
-#  run_cargo test -p fraktor-actor-std-rs || return 1
-#
-#  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-remote-core-rs"
-#  run_cargo test -p fraktor-remote-core-rs || return 1
-#
-#  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-cluster-core-rs"
-#  run_cargo test -p fraktor-cluster-core-rs || return 1
 }
 
 run_doc_tests() {

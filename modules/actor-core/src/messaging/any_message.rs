@@ -6,7 +6,7 @@ mod tests;
 use alloc::fmt;
 use core::any::Any;
 
-use fraktor_utils_core_rs::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use crate::{NoStdToolbox, RuntimeToolbox, actor_prim::actor_ref::ActorRefGeneric, messaging::AnyMessageViewGeneric};
 

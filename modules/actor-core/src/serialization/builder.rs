@@ -6,7 +6,7 @@ mod tests;
 use alloc::{collections::BTreeMap, string::String, vec::Vec};
 use core::any::{TypeId, type_name};
 
-use fraktor_utils_core_rs::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 use hashbrown::HashMap;
 
 use super::{

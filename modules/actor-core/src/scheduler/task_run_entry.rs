@@ -1,6 +1,6 @@
 use core::cmp::Ordering;
 
-use fraktor_utils_core_rs::{
+use fraktor_utils_core_rs::core::{
   collections::{
     PriorityMessage,
     queue::{SyncPriorityQueue, backend::BinaryHeapPriorityBackend},

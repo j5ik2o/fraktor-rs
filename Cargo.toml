@@ -24,7 +24,6 @@ include = [
 resolver = "2"
 members = [
     "modules/utils-core",
-    "modules/utils-std",
     "modules/actor-core",
     "modules/actor-std",
 ]
@@ -46,7 +45,6 @@ libraries = [
 [workspace.dependencies]
 fraktor-actor-core-rs = { path = "modules/actor-core", version = "0.2.11" }
 fraktor-actor-std-rs = { path = "modules/actor-std", version = "0.2.11" }
-fraktor-utils-std-rs = { path = "modules/utils-std", version = "0.2.11" }
 alloc-cortex-m = "0.4"
 async-trait = { version = "0.1.89", default-features = false }
 fraktor-utils-core-rs = { path = "modules/utils-core", version = "0.2.11", default-features = false }

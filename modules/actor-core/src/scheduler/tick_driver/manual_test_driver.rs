@@ -2,7 +2,7 @@
 
 #![cfg(any(test, feature = "test-support"))]
 
-use fraktor_utils_core_rs::sync::{
+use fraktor_utils_core_rs::core::sync::{
   ArcShared,
   sync_mutex_like::{SpinSyncMutex, SyncMutexLike},
 };

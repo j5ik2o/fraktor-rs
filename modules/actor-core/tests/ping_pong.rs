@@ -12,7 +12,7 @@ use fraktor_actor_core_rs::{
   spawn::SpawnError,
   system::ActorSystem,
 };
-use fraktor_utils_core_rs::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
 
 struct Start;
 struct Deliver(u32);

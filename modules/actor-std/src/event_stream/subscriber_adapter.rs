@@ -1,6 +1,6 @@
 use fraktor_actor_core_rs::event_stream::EventStreamSubscriber as CoreEventStreamSubscriber;
-use fraktor_utils_core_rs::sync::ArcShared;
-use fraktor_utils_std_rs::runtime_toolbox::StdToolbox;
+use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::std::runtime_toolbox::StdToolbox;
 
 use super::{EventStreamEvent, EventStreamSubscriber};
 

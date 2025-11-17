@@ -20,7 +20,7 @@ use fraktor_actor_core_rs::{
   },
   system::ActorSystem,
 };
-use fraktor_utils_core_rs::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 
 const TELEMETRY_MANIFEST: &str = "sample.telemetry.TelemetryPayload";
 const SERIALIZER_NAME: &str = "telemetry";

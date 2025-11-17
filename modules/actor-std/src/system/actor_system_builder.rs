@@ -3,7 +3,7 @@ use fraktor_actor_core_rs::{
   scheduler::{SchedulerConfig, TickDriverConfig},
   system::{ActorSystemBuildError, ActorSystemBuilder as CoreActorSystemBuilder},
 };
-use fraktor_utils_std_rs::runtime_toolbox::StdToolbox;
+use fraktor_utils_core_rs::std::runtime_toolbox::StdToolbox;
 
 use super::base::ActorSystem;
 use crate::props::Props;

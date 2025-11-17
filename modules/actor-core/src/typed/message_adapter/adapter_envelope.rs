@@ -5,7 +5,7 @@ mod tests;
 
 use core::any::TypeId;
 
-use fraktor_utils_core_rs::{runtime_toolbox::SyncMutexFamily, sync::sync_mutex_like::SyncMutexLike};
+use fraktor_utils_core_rs::core::{runtime_toolbox::SyncMutexFamily, sync::sync_mutex_like::SyncMutexLike};
 
 use crate::{
   RuntimeToolbox, ToolboxMutex, actor_prim::actor_ref::ActorRefGeneric, typed::message_adapter::AdapterPayload,

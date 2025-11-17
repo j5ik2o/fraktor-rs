@@ -5,7 +5,7 @@ mod tests;
 
 use core::sync::atomic::{AtomicBool, Ordering};
 
-use fraktor_utils_core_rs::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use crate::{RuntimeToolbox, actor_prim::Pid, system::SystemStateGeneric};
 

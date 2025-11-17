@@ -1,6 +1,6 @@
 use core::ops::{Deref, DerefMut};
 
-use fraktor_utils_core_rs::{runtime_toolbox::RuntimeToolbox, sync::sync_mutex_like::SyncMutexLike};
+use fraktor_utils_core_rs::core::{runtime_toolbox::RuntimeToolbox, sync::sync_mutex_like::SyncMutexLike};
 
 use crate::{
   ToolboxMutex,

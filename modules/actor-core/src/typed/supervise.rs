@@ -1,6 +1,6 @@
 //! Builder that mirrors Fraktor's `Behaviors.supervise` DSL.
 
-use fraktor_utils_core_rs::sync::NoStdToolbox;
+use fraktor_utils_core_rs::core::sync::NoStdToolbox;
 
 use crate::{RuntimeToolbox, supervision::SupervisorStrategy, typed::behavior::Behavior};
 

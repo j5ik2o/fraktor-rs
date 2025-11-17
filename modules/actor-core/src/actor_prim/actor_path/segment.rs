@@ -2,7 +2,7 @@
 
 use alloc::string::{String, ToString};
 
-use fraktor_utils_core_rs::net::UriParser;
+use fraktor_utils_core_rs::core::net::UriParser;
 
 use super::ActorPathError;
 

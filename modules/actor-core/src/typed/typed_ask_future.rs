@@ -4,7 +4,7 @@ use core::marker::PhantomData;
 
 use fraktor_utils_core_rs::{
   Shared,
-  sync::{ArcShared, NoStdToolbox},
+  core::sync::{ArcShared, NoStdToolbox},
 };
 
 use crate::{

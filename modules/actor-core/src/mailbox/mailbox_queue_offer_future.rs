@@ -7,7 +7,7 @@ use core::{
   time::Duration,
 };
 
-use fraktor_utils_core_rs::{
+use fraktor_utils_core_rs::core::{
   collections::{
     queue::{QueueError, backend::OfferOutcome},
     wait::WaitShared,

@@ -3,7 +3,7 @@
 use alloc::boxed::Box;
 use core::{ffi::c_void, marker::PhantomData, time::Duration};
 
-use fraktor_utils_core_rs::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
 
 use super::{
   HardwareKind, TickDriver, TickDriverControl, TickDriverError, TickDriverHandle, TickDriverId, TickDriverKind,

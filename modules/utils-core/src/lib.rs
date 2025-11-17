@@ -62,26 +62,23 @@
 
 extern crate alloc;
 
-pub use concurrent::{
-  AsyncBarrier, AsyncBarrierBackend, CountDownLatch, CountDownLatchBackend, GuardHandle, Synchronized,
-  SynchronizedMutexBackend, SynchronizedRw, SynchronizedRwBackend, WaitGroup, WaitGroupBackend,
-};
-pub use sync::{
-  ArcShared, Flag, SendBound, Shared, SharedBound, SharedDyn, SharedFactory, SharedFn, StateCell, StaticRefShared,
-};
-pub use time::{
-  ClockKind, DriftMonitor, DriftStatus, ManualClock, MonotonicClock, SchedulerCapacityProfile, SchedulerTickHandle,
-  TickEvent, TickLease, TimerEntry, TimerEntryMode, TimerHandleId, TimerInstant, TimerWheel, TimerWheelConfig,
-  TimerWheelError,
+pub use core::{
+  concurrent::{
+    AsyncBarrier, AsyncBarrierBackend, CountDownLatch, CountDownLatchBackend, GuardHandle, Synchronized,
+    SynchronizedMutexBackend, SynchronizedRw, SynchronizedRwBackend, WaitGroup, WaitGroupBackend,
+  },
+  sync::{
+    ArcShared, Flag, SendBound, Shared, SharedBound, SharedDyn, SharedFactory, SharedFn, StateCell, StaticRefShared,
+  },
+  time::{
+    ClockKind, DriftMonitor, DriftStatus, ManualClock, MonotonicClock, SchedulerCapacityProfile, SchedulerTickHandle,
+    TickEvent, TickLease, TimerEntry, TimerEntryMode, TimerHandleId, TimerInstant, TimerWheel, TimerWheelConfig,
+    TimerWheelError,
+  },
 };
 
-/// Core collections shared across the Cellex runtimes.
-pub mod collections;
-mod concurrent;
-/// Network utilities for URI parsing.
-pub mod net;
-pub mod runtime_toolbox;
-/// Synchronization primitives and shared ownership abstractions.
-pub mod sync;
-pub mod time;
-pub mod timing;
+/// Core utilities shared across runtimes.
+pub mod core;
+/// Runtime toolbox and aliases for std environments.
+#[cfg(feature = "std")]
+pub mod std;

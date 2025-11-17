@@ -1,6 +1,6 @@
 //! Shared dispatcher sender handle used by scheduler APIs.
 
-use fraktor_utils_core_rs::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use crate::{RuntimeToolbox, dispatcher::DispatcherSenderGeneric};
 

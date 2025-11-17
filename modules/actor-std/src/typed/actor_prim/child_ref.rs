@@ -1,7 +1,7 @@
 use std::ops::{Deref, DerefMut};
 
 use fraktor_actor_core_rs::typed::actor_prim::TypedChildRefGeneric;
-use fraktor_utils_std_rs::runtime_toolbox::StdToolbox;
+use fraktor_utils_core_rs::std::runtime_toolbox::StdToolbox;
 
 #[repr(transparent)]
 /// Type-safe handle to a child actor running on the standard runtime.

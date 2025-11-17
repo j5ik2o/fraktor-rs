@@ -17,8 +17,7 @@ tokio-executor = ["dep:tokio"]
 
 [dependencies]
 fraktor-actor-core-rs = { workspace = true }
-fraktor-utils-core-rs = { workspace = true, default-features = false }
-fraktor-utils-std-rs = { workspace = true }
+fraktor-utils-core-rs = { workspace = true, default-features = false, features = ["std"] }
 tokio = { workspace = true, optional = true, features = ["rt", "rt-multi-thread", "macros", "time"] }
 
 [dev-dependencies]

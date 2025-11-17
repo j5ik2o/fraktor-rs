@@ -2,7 +2,7 @@
 
 use core::{future::Future, marker::PhantomData, ptr::NonNull};
 
-use fraktor_utils_core_rs::sync::NoStdToolbox;
+use fraktor_utils_core_rs::core::sync::NoStdToolbox;
 
 use crate::{
   RuntimeToolbox,

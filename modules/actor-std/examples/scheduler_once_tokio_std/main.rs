@@ -9,7 +9,7 @@ use fraktor_actor_std_rs::{
   scheduler::StdTickDriverConfig,
   system::{ActorSystemBuilder, DispatcherConfig},
 };
-use fraktor_utils_core_rs::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 use tokio::runtime::Handle;
 
 // アクターに送信されるスケジュール済みメッセージ

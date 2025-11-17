@@ -1,6 +1,6 @@
 use core::marker::PhantomData;
 
-use fraktor_utils_core_rs::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use super::MailboxPressureEvent;
 use crate::{RuntimeToolbox, dispatcher::DispatcherGeneric};

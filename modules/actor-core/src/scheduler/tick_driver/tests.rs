@@ -3,7 +3,7 @@
 use alloc::{boxed::Box, vec, vec::Vec};
 use core::time::Duration;
 
-use fraktor_utils_core_rs::{
+use fraktor_utils_core_rs::core::{
   sync::{ArcShared, NoStdMutex, sync_mutex_like::SpinSyncMutex},
   time::TimerInstant,
 };
@@ -87,7 +87,7 @@ fn spawn_test_pulse(resolution: Duration) -> &'static TestPulseSource {
 
 fn hardware_test_config(pulse: &'static dyn TickPulseSource) -> TickDriverConfig<NoStdToolbox> {
   TickDriverConfig::new(move |ctx| {
-    use fraktor_utils_core_rs::sync::ArcShared;
+    use fraktor_utils_core_rs::core::sync::ArcShared;
 
     use super::{HardwareKind, HardwareTickDriver, TickDriver, TickDriverRuntime, TickExecutorSignal, TickFeed};
     use crate::{NoStdToolbox, ToolboxMutex};

@@ -3,7 +3,7 @@
 use alloc::{string::String, vec::Vec};
 use core::any::TypeId;
 
-use fraktor_utils_core_rs::{
+use fraktor_utils_core_rs::core::{
   runtime_toolbox::SyncMutexFamily,
   sync::{ArcShared, NoStdToolbox, sync_mutex_like::SyncMutexLike},
 };

@@ -5,8 +5,8 @@ use std::{
 };
 
 use fraktor_actor_core_rs::{dispatcher::ScheduleAdapter, mailbox::ScheduleHints};
-use fraktor_utils_core_rs::sync::ArcShared;
-use fraktor_utils_std_rs::runtime_toolbox::StdToolbox;
+use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::std::runtime_toolbox::StdToolbox;
 
 use crate::dispatcher::Dispatcher;
 

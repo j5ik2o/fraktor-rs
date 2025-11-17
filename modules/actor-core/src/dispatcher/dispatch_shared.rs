@@ -1,4 +1,4 @@
-use fraktor_utils_core_rs::sync::{ArcShared, NoStdToolbox};
+use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdToolbox};
 
 #[cfg(test)]
 mod tests;

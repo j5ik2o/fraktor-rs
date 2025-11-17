@@ -8,7 +8,7 @@ use alloc::{
   vec::Vec,
 };
 
-use fraktor_utils_core_rs::net::{UriError, UriParser};
+use fraktor_utils_core_rs::core::net::{UriError, UriParser};
 
 use super::{ActorPath, ActorPathError, ActorPathParts, ActorPathScheme, ActorUid, GuardianKind, PathSegment};
 
