@@ -10,6 +10,8 @@ pub mod error;
 pub mod event_stream;
 /// Future utilities specialised for the standard toolbox.
 pub mod futures;
+/// Logging adapters specialised for the standard toolbox.
+pub mod logging;
 /// Mailbox bindings for the standard toolbox.
 pub mod mailbox;
 /// Messaging primitives specialised for the standard toolbox.
@@ -21,4 +23,5 @@ pub mod scheduler; // allow module_wiring::no_parent_reexport
 /// Actor system bindings for the standard toolbox.
 pub mod system;
 /// Typed actor utilities specialised for the standard toolbox runtime.
-pub mod typed; // allow module_wiring::no_parent_reexport
+pub mod typed;
+// allow module_wiring::no_parent_reexport
