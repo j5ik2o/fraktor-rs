@@ -1,11 +1,11 @@
 //! Concrete [`RemotingControl`] handle shared with runtime components.
 
-use alloc::vec::Vec;
+use alloc::{format, vec::Vec};
 use core::sync::atomic::{AtomicBool, Ordering};
 
 use fraktor_actor_rs::core::{
   actor_prim::{actor_path::ActorPathParts, actor_ref::ActorRefGeneric},
-  event_stream::{EventStreamEvent, EventStreamGeneric, RemotingLifecycleEvent},
+  event_stream::{BackpressureSignal, EventStreamEvent, EventStreamGeneric, RemotingBackpressureEvent, RemotingLifecycleEvent},
   system::ActorSystemGeneric,
 };
 use fraktor_utils_rs::core::{
@@ -15,6 +15,7 @@ use fraktor_utils_rs::core::{
 
 use crate::{
   RemotingBackpressureListener, RemotingConnectionSnapshot, RemotingControl, RemotingError,
+  RemotingExtensionConfig, RemoteTransport, TransportFactory,
 };
 
 struct RemotingControlShared<TB: RuntimeToolbox + 'static> {
@@ -22,6 +23,8 @@ struct RemotingControlShared<TB: RuntimeToolbox + 'static> {
   event_stream: ArcShared<EventStreamGeneric<TB>>,
   supervisor:  ToolboxMutex<Option<ActorRefGeneric<TB>>, TB>,
   listeners:   ToolboxMutex<Vec<ArcShared<dyn RemotingBackpressureListener>>, TB>,
+  transport:   ToolboxMutex<Option<ArcShared<dyn RemoteTransport<TB>>>, TB>,
+  config:      RemotingExtensionConfig,
   started:     AtomicBool,
   shutdown:    AtomicBool,
 }
@@ -34,12 +37,14 @@ pub struct RemotingControlHandle<TB: RuntimeToolbox + 'static> {
 impl<TB: RuntimeToolbox + 'static> RemotingControlHandle<TB> {
   /// Creates a new handle bound to the provided actor system.
   #[must_use]
-  pub(crate) fn new(system: &ActorSystemGeneric<TB>) -> Self {
+  pub(crate) fn new(system: &ActorSystemGeneric<TB>, config: RemotingExtensionConfig) -> Self {
     let shared = RemotingControlShared {
       _system: system.clone(),
       event_stream: system.event_stream(),
       supervisor: <TB::MutexFamily as SyncMutexFamily>::create(None),
       listeners: <TB::MutexFamily as SyncMutexFamily>::create(Vec::new()),
+      transport: <TB::MutexFamily as SyncMutexFamily>::create(None),
+      config,
       started: AtomicBool::new(false),
       shutdown: AtomicBool::new(false),
     };
@@ -67,6 +72,23 @@ impl<TB: RuntimeToolbox + 'static> RemotingControlHandle<TB> {
     let payload = EventStreamEvent::RemotingLifecycle(event);
     self.shared.event_stream.publish(&payload);
   }
+
+  fn publish_backpressure(&self, event: RemotingBackpressureEvent) {
+    self.shared.event_stream.publish(&EventStreamEvent::RemotingBackpressure(event));
+  }
+
+  fn notify_backpressure_internal(&self, signal: BackpressureSignal, authority: &str) {
+    self.publish_backpressure(RemotingBackpressureEvent::new(authority, signal));
+    let listeners = self.shared.listeners.lock().clone();
+    for listener in listeners.iter() {
+      listener.on_signal(signal, authority);
+    }
+  }
+
+  #[cfg(test)]
+  pub(crate) fn test_notify_backpressure(&self, signal: BackpressureSignal, authority: &str) {
+    self.notify_backpressure_internal(signal, authority);
+  }
 }
 
 impl<TB: RuntimeToolbox + 'static> Clone for RemotingControlHandle<TB> {
@@ -83,8 +105,18 @@ impl<TB: RuntimeToolbox + 'static> RemotingControl<TB> for RemotingControlHandle
     if self.shared.started.swap(true, Ordering::SeqCst) {
       return Err(RemotingError::AlreadyStarted);
     }
-    self.publish_event(RemotingLifecycleEvent::Starting);
-    Ok(())
+    match TransportFactory::create::<TB>(&self.shared.config) {
+      | Ok(transport) => {
+        *self.shared.transport.lock() = Some(transport);
+        self.publish_event(RemotingLifecycleEvent::Starting);
+        Ok(())
+      },
+      | Err(error) => {
+        self.shared.started.store(false, Ordering::SeqCst);
+        self.publish_event(RemotingLifecycleEvent::Error { message: format!("{error}") });
+        Err(error)
+      },
+    }
   }
 
   fn associate(&self, _address: &ActorPathParts) -> Result<(), RemotingError> {
@@ -106,15 +138,18 @@ impl<TB: RuntimeToolbox + 'static> RemotingControl<TB> for RemotingControlHandle
     Ok(())
   }
 
-  fn register_backpressure_listener<L>(&self, listener: L)
-  where
-    L: RemotingBackpressureListener,
-  {
-    let listener: ArcShared<dyn RemotingBackpressureListener> = ArcShared::new(listener);
+  fn register_backpressure_listener(&self, listener: ArcShared<dyn RemotingBackpressureListener>) {
     self.shared.listeners.lock().push(listener);
   }
 
   fn connections_snapshot(&self) -> Vec<RemotingConnectionSnapshot> {
     Vec::new()
+  }
+}
+
+impl<TB: RuntimeToolbox + 'static> RemotingControlHandle<TB> {
+  #[allow(dead_code)]
+  pub(crate) fn notify_backpressure(&self, signal: BackpressureSignal, authority: &str) {
+    self.notify_backpressure_internal(signal, authority);
   }
 }

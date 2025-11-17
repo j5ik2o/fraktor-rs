@@ -1,6 +1,6 @@
 //! Listener notified about backpressure state changes.
 
-use crate::backpressure_signal::BackpressureSignal;
+use fraktor_actor_rs::core::event_stream::BackpressureSignal;
 
 /// Observer notified whenever transports emit backpressure signals.
 pub trait RemotingBackpressureListener: Send + Sync + 'static {

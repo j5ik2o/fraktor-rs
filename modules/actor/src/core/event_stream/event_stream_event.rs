@@ -5,7 +5,12 @@ mod tests;
 
 use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 
-use super::{remoting_lifecycle_event::RemotingLifecycleEvent, remote_authority_event::RemoteAuthorityEvent, tick_driver_snapshot::TickDriverSnapshot};
+use super::{
+  remoting_backpressure_event::RemotingBackpressureEvent,
+  remoting_lifecycle_event::RemotingLifecycleEvent,
+  remote_authority_event::RemoteAuthorityEvent,
+  tick_driver_snapshot::TickDriverSnapshot,
+};
 use crate::core::{
   dead_letter::DeadLetterEntryGeneric,
   dispatcher::DispatcherDumpEvent,
@@ -40,6 +45,8 @@ pub enum EventStreamEvent<TB: RuntimeToolbox = NoStdToolbox> {
   Serialization(SerializationErrorEvent),
   /// Remote authority state transition notification.
   RemoteAuthority(RemoteAuthorityEvent),
+  /// Backpressure notifications emitted by remoting transports.
+  RemotingBackpressure(RemotingBackpressureEvent),
   /// Remoting lifecycle change notification.
   RemotingLifecycle(RemotingLifecycleEvent),
   /// Scheduler tick metrics snapshot.
@@ -61,6 +68,7 @@ impl<TB: RuntimeToolbox> Clone for EventStreamEvent<TB> {
       | Self::AdapterFailure(event) => Self::AdapterFailure(event.clone()),
       | Self::Serialization(event) => Self::Serialization(event.clone()),
       | Self::RemoteAuthority(event) => Self::RemoteAuthority(event.clone()),
+      | Self::RemotingBackpressure(event) => Self::RemotingBackpressure(event.clone()),
       | Self::RemotingLifecycle(event) => Self::RemotingLifecycle(event.clone()),
       | Self::SchedulerTick(event) => Self::SchedulerTick(event.clone()),
       | Self::TickDriver(event) => Self::TickDriver(event.clone()),

@@ -5,7 +5,7 @@ use fraktor_actor_rs::core::{
   error::ActorError,
   event_stream::{
     EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric,
-    RemotingLifecycleEvent,
+    RemotingBackpressureEvent, RemotingLifecycleEvent,
   },
   messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
   props::PropsGeneric,
@@ -16,7 +16,10 @@ use fraktor_utils_rs::core::{
   sync::ArcShared,
 };
 
-use crate::{RemotingControl, RemotingControlHandle, RemotingExtensionConfig, RemotingExtensionId};
+use crate::{
+  BackpressureSignal, RemotingBackpressureListener, RemotingControl, RemotingControlHandle,
+  RemotingExtensionConfig, RemotingExtensionId,
+};
 
 struct TestGuardian;
 
@@ -53,6 +56,18 @@ impl CollectingSubscriber {
       .iter()
       .filter_map(|event| match event {
         | EventStreamEvent::RemotingLifecycle(event) => Some(event.clone()),
+        | _ => None,
+      })
+      .collect()
+  }
+
+  fn backpressure_events(&self) -> Vec<RemotingBackpressureEvent> {
+    self
+      .events
+      .lock()
+      .iter()
+      .filter_map(|event| match event {
+        | EventStreamEvent::RemotingBackpressure(event) => Some(event.clone()),
         | _ => None,
       })
       .collect()
@@ -125,4 +140,65 @@ fn termination_hook_publishes_shutdown_event() {
     .lifecycle_events()
     .iter()
     .any(|event| matches!(event, RemotingLifecycleEvent::Shutdown)));
+}
+
+struct TestBackpressureListener {
+  signals: ToolboxMutex<Vec<(BackpressureSignal, String)>, NoStdToolbox>,
+}
+
+impl TestBackpressureListener {
+  fn new() -> ArcShared<Self> {
+    ArcShared::new(Self {
+      signals: <<NoStdToolbox as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(Vec::new()),
+    })
+  }
+
+  fn recorded(&self) -> Vec<(BackpressureSignal, String)> {
+    self
+      .signals
+      .lock()
+      .iter()
+      .map(|(signal, authority)| (*signal, authority.clone()))
+      .collect()
+  }
+}
+
+impl RemotingBackpressureListener for TestBackpressureListener {
+  fn on_signal(&self, signal: BackpressureSignal, authority: &str) {
+    self.signals.lock().push((signal, authority.to_string()));
+  }
+}
+
+#[test]
+fn backpressure_listener_and_event_stream_are_notified() {
+  let listener = TestBackpressureListener::new();
+  let system = build_actor_system();
+  let (subscriber, handle, _subscription) = install_extension(
+    &system,
+    RemotingExtensionConfig::default()
+      .with_auto_start(false)
+      .with_backpressure_listener_arc(listener.clone()),
+  );
+
+  handle.test_notify_backpressure(BackpressureSignal::Apply, "node-a");
+
+  assert_eq!(listener.recorded(), vec![(BackpressureSignal::Apply, "node-a".to_string())]);
+  assert!(subscriber
+    .backpressure_events()
+    .iter()
+    .any(|event| event.authority() == "node-a" && matches!(event.signal(), BackpressureSignal::Apply)));
+}
+
+#[test]
+fn unsupported_transport_scheme_emits_error_event() {
+  let system = build_actor_system();
+  let (subscriber, _handle, _subscription) = install_extension(
+    &system,
+    RemotingExtensionConfig::default().with_transport_scheme("fraktor.invalid"),
+  );
+
+  assert!(subscriber
+    .lifecycle_events()
+    .iter()
+    .any(|event| matches!(event, RemotingLifecycleEvent::Error { .. })));
 }

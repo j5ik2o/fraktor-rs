@@ -19,9 +19,12 @@ pub struct RemotingExtension<TB: RuntimeToolbox + 'static> {
 impl<TB: RuntimeToolbox + 'static> RemotingExtension<TB> {
   #[must_use]
   pub(crate) fn new(system: &ActorSystemGeneric<TB>, config: RemotingExtensionConfig) -> Self {
-    let control = RemotingControlHandle::new(system);
+    let control = RemotingControlHandle::new(system, config.clone());
     if let Ok(supervisor) = EndpointSupervisor::spawn(system, control.clone()) {
       control.set_supervisor(supervisor);
+    }
+    for listener in config.backpressure_listeners() {
+      control.register_backpressure_listener(listener.clone());
     }
     if config.auto_start() {
       let _ = control.start();

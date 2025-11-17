@@ -3,7 +3,7 @@
 use alloc::vec::Vec;
 
 use fraktor_actor_rs::core::actor_prim::actor_path::ActorPathParts;
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
 use crate::{
   RemotingBackpressureListener, RemotingConnectionSnapshot, RemotingError,
@@ -24,9 +24,7 @@ pub trait RemotingControl<TB: RuntimeToolbox + 'static>: Send + Sync + Clone + '
   fn shutdown(&self) -> Result<(), RemotingError>;
 
   /// Registers a listener interested in backpressure signals.
-  fn register_backpressure_listener<L>(&self, listener: L)
-  where
-    L: RemotingBackpressureListener;
+  fn register_backpressure_listener(&self, listener: ArcShared<dyn RemotingBackpressureListener>);
 
   /// Returns a snapshot view of current remote authorities.
   fn connections_snapshot(&self) -> Vec<RemotingConnectionSnapshot>;

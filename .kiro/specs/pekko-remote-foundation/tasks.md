@@ -10,7 +10,7 @@
   - SystemGuardian からの終了通知を受けて RemotingLifecycleEvent::Shutdown を配信する経路を整備する
   - _対応要件: 1.2, 1.7_
   - _依存タスク: -_
-- [ ] 1.2 Quickstart 経路とバックプレッシャーフックの初期化を検証
+- [x] 1.2 Quickstart 経路とバックプレッシャーフックの初期化を検証
   - RemotingExtensionConfig にバックプレッシャーリスナーを差し込む API を追加し、EventStream へ RemotingBackpressureEvent を流す
   - Quickstart 相当のブートコードを integration test で起動し、AutoStart=false で handle.start() を呼ぶパスを保証する
   - SystemGuardian 直下の EndpointSupervisor が backpressure フック経由で DeferredQueue に制御情報を流せるか検証する
@@ -21,7 +21,7 @@
   - _(親タスクなので詳細は書かない)_
   - _対応要件: 1.1, 1.3, 1.4, 1.5_
   - _依存タスク: 1.1_
-- [ ] 2.1 TransportFactory で scheme ごとの実装選択と構成エラー通知を行う
+- [x] 2.1 TransportFactory で scheme ごとの実装選択と構成エラー通知を行う
   - RemotingConfig の URI から `RemoteTransport` 実装を解決し、未対応スキーム時には RemotingLifecycleEvent::Error を EventStream へ発火する
   - TransportFactory が std/no_std で利用可能な TransportBind 情報を生成するヘルパを提供する
   - 不正構成を RemotingError::TransportUnavailable に変換して RemotingExtension 初期化を失敗させる

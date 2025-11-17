@@ -14,6 +14,8 @@ pub enum RemotingError {
   AlreadyStarted,
   /// Shutdown occurred before start completed.
   NotStarted,
+  /// Requested transport scheme is not available.
+  TransportUnavailable(String),
   /// Operation failed due to a runtime-specific reason.
   Message(String),
 }
@@ -33,6 +35,9 @@ impl fmt::Display for RemotingError {
       | Self::Unsupported(op) => write!(f, "operation '{op}' is not supported yet"),
       | Self::AlreadyStarted => write!(f, "remoting already started"),
       | Self::NotStarted => write!(f, "remoting not started"),
+      | Self::TransportUnavailable(scheme) => {
+        write!(f, "transport '{scheme}' is not available for this build")
+      },
       | Self::Message(msg) => f.write_str(msg),
     }
   }
