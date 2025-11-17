@@ -1,10 +1,7 @@
 //! Tick driver bootstrap integration tests.
 
 use alloc::{boxed::Box, vec, vec::Vec};
-use core::{
-  sync::atomic::{AtomicUsize, Ordering},
-  time::Duration,
-};
+use core::time::Duration;
 
 use fraktor_utils_core_rs::{
   sync::{ArcShared, NoStdMutex, sync_mutex_like::SpinSyncMutex},
@@ -16,44 +13,11 @@ use crate::{
   event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber},
   logging::LogLevel,
   scheduler::{
-    ExecutionBatch, HardwareKind, ManualTestDriver, SchedulerCommand, SchedulerConfig, SchedulerContext,
-    SchedulerRunnable, SchedulerTickExecutor, TICK_DRIVER_MATRIX, TickDriver, TickDriverBootstrap, TickDriverConfig,
-    TickDriverControl, TickDriverError, TickDriverFactory, TickDriverId, TickDriverKind, TickExecutorSignal, TickFeed,
-    TickMetricsMode, TickPulseHandler, TickPulseSource,
+    ExecutionBatch, HardwareKind, ManualTestDriver, Scheduler, SchedulerCommand, SchedulerConfig, SchedulerContext,
+    SchedulerRunnable, SchedulerTickExecutor, TICK_DRIVER_MATRIX, TickDriverBootstrap, TickDriverConfig,
+    TickDriverError, TickDriverKind, TickExecutorSignal, TickFeed, TickMetricsMode, TickPulseHandler, TickPulseSource,
   },
 };
-
-struct TestDriverFactory {
-  start_count: ArcShared<AtomicUsize>,
-  stop_count:  ArcShared<AtomicUsize>,
-}
-
-impl TestDriverFactory {
-  fn shared() -> ArcShared<Self> {
-    ArcShared::new(Self {
-      start_count: ArcShared::new(AtomicUsize::new(0)),
-      stop_count:  ArcShared::new(AtomicUsize::new(0)),
-    })
-  }
-}
-
-impl TickDriverFactory<NoStdToolbox> for TestDriverFactory {
-  fn kind(&self) -> TickDriverKind {
-    TickDriverKind::Auto
-  }
-
-  fn resolution(&self) -> Duration {
-    Duration::from_millis(10)
-  }
-
-  fn build(&self) -> Result<Box<dyn TickDriver<NoStdToolbox>>, TickDriverError> {
-    Ok(Box::new(TestDriver {
-      id:          TickDriverId::new(1),
-      start_count: self.start_count.clone(),
-      stop_count:  self.stop_count.clone(),
-    }))
-  }
-}
 
 struct RecordingSubscriber {
   events: SpinSyncMutex<Vec<EventStreamEvent<NoStdToolbox>>>,
@@ -73,61 +37,6 @@ impl EventStreamSubscriber<NoStdToolbox> for RecordingSubscriber {
   fn on_event(&self, event: &EventStreamEvent<NoStdToolbox>) {
     self.events.lock().push(event.clone());
   }
-}
-
-struct TestDriver {
-  id:          TickDriverId,
-  start_count: ArcShared<AtomicUsize>,
-  stop_count:  ArcShared<AtomicUsize>,
-}
-
-struct TestDriverControl {
-  stop_count: ArcShared<AtomicUsize>,
-}
-
-impl TickDriverControl for TestDriverControl {
-  fn shutdown(&self) {
-    self.stop_count.fetch_add(1, Ordering::SeqCst);
-  }
-}
-
-impl TickDriver<NoStdToolbox> for TestDriver {
-  fn id(&self) -> TickDriverId {
-    self.id
-  }
-
-  fn kind(&self) -> TickDriverKind {
-    TickDriverKind::Auto
-  }
-
-  fn resolution(&self) -> Duration {
-    Duration::from_millis(10)
-  }
-
-  fn start(
-    &self,
-    _feed: crate::scheduler::TickFeedHandle<NoStdToolbox>,
-  ) -> Result<crate::scheduler::TickDriverHandle, TickDriverError> {
-    self.start_count.fetch_add(1, Ordering::SeqCst);
-    Ok(crate::scheduler::TickDriverHandle::new(
-      self.id,
-      self.kind(),
-      self.resolution(),
-      ArcShared::new(TestDriverControl { stop_count: self.stop_count.clone() }),
-    ))
-  }
-}
-
-#[test]
-fn bootstrap_starts_and_stops_driver_via_factory() {
-  let factory = TestDriverFactory::shared();
-  let config = TickDriverConfig::auto_with_factory(factory.clone());
-  let ctx = SchedulerContext::new(NoStdToolbox::default(), SchedulerConfig::default());
-  let runtime = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
-  assert_eq!(factory.start_count.load(Ordering::SeqCst), 1);
-
-  TickDriverBootstrap::shutdown(runtime.driver());
-  assert_eq!(factory.stop_count.load(Ordering::SeqCst), 1);
 }
 
 struct TestPulseSource {
@@ -176,10 +85,33 @@ fn spawn_test_pulse(resolution: Duration) -> &'static TestPulseSource {
   Box::leak(Box::new(TestPulseSource::new(resolution)))
 }
 
+fn hardware_test_config(pulse: &'static dyn TickPulseSource) -> TickDriverConfig<NoStdToolbox> {
+  TickDriverConfig::new(move |ctx| {
+    use fraktor_utils_core_rs::sync::ArcShared;
+
+    use super::{HardwareKind, HardwareTickDriver, TickDriver, TickDriverRuntime, TickExecutorSignal, TickFeed};
+    use crate::{NoStdToolbox, ToolboxMutex};
+
+    let scheduler: ArcShared<ToolboxMutex<Scheduler<NoStdToolbox>, NoStdToolbox>> = ctx.scheduler();
+    let (resolution, capacity) = {
+      let guard = scheduler.lock();
+      let cfg = guard.config();
+      (cfg.resolution(), cfg.profile().tick_buffer_quota())
+    };
+
+    let driver = HardwareTickDriver::new(pulse, HardwareKind::Custom);
+    let signal = TickExecutorSignal::new();
+    let feed = TickFeed::new(resolution, capacity, signal);
+    let handle = driver.start(feed.clone())?;
+
+    Ok(TickDriverRuntime::new(handle, feed))
+  })
+}
+
 fn run_hardware_driver_enqueues_isr_pulses() {
   let pulse = spawn_test_pulse(Duration::from_millis(2));
   pulse.reset();
-  let config = TickDriverConfig::hardware(pulse);
+  let config = hardware_test_config(pulse);
   let ctx = SchedulerContext::new(NoStdToolbox::default(), SchedulerConfig::default());
   let runtime = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
 
@@ -218,7 +150,7 @@ fn enqueue_from_isr_preserves_order_and_metrics() {
 fn run_hardware_driver_watchdog_marks_inactive_on_shutdown() {
   let pulse = spawn_test_pulse(Duration::from_millis(2));
   pulse.reset();
-  let config = TickDriverConfig::hardware(pulse);
+  let config = hardware_test_config(pulse);
   let ctx = SchedulerContext::new(NoStdToolbox::default(), SchedulerConfig::default());
   let runtime = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
 
@@ -290,7 +222,7 @@ fn embedded_quickstart_template_runs_ticks() {
   let pulse = spawn_test_pulse(Duration::from_millis(2));
   pulse.reset();
   let ctx = SchedulerContext::new(NoStdToolbox::default(), SchedulerConfig::default());
-  let config = TickDriverConfig::hardware(pulse);
+  let config = hardware_test_config(pulse);
   let runtime = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
 
   let scheduler = ctx.scheduler();
@@ -361,7 +293,7 @@ fn driver_metadata_records_driver_activation() {
   let ctx = SchedulerContext::with_event_stream(NoStdToolbox::default(), SchedulerConfig::default(), event_stream);
   let pulse = spawn_test_pulse(Duration::from_millis(2));
   pulse.reset();
-  let config = TickDriverConfig::hardware(pulse);
+  let config = hardware_test_config(pulse);
 
   let runtime = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
   let metadata = ctx.driver_metadata().expect("metadata");
@@ -381,15 +313,15 @@ fn driver_snapshot_exposed_via_scheduler_context() {
   let ctx = SchedulerContext::new(NoStdToolbox::default(), SchedulerConfig::default());
   let pulse = spawn_test_pulse(Duration::from_millis(2));
   pulse.reset();
-  let config = TickDriverConfig::hardware(pulse);
+  let config = hardware_test_config(pulse);
 
   let runtime = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
 
   let snapshot = ctx.driver_snapshot().expect("driver snapshot");
   assert_eq!(snapshot.metadata.driver_id, runtime.driver().id());
   assert_eq!(snapshot.kind, TickDriverKind::Hardware { source: HardwareKind::Custom });
-  let expected_resolution = ctx.scheduler().lock().config().resolution();
-  assert_eq!(snapshot.resolution, expected_resolution);
+  // Snapshot should reflect the driver's actual resolution, not scheduler's default
+  assert_eq!(snapshot.resolution, Duration::from_millis(2));
   assert!(snapshot.auto.is_none());
 
   TickDriverBootstrap::shutdown(runtime.driver());

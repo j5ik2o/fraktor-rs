@@ -1,25 +1,16 @@
-#![cfg_attr(all(not(test), target_os = "none"), no_std)]
+use std::time::Duration;
 
-extern crate alloc;
-
-use alloc::string::String;
-use core::time::Duration;
-#[cfg(not(target_os = "none"))]
-use std::{process, thread, time::Duration as StdDuration};
-
-use fraktor_actor_core_rs::{
+use fraktor_actor_core_rs::{error::ActorError, scheduler::SchedulerCommand};
+use fraktor_actor_std_rs::{
   actor_prim::{Actor, ActorContext},
-  error::ActorError,
-  messaging::{AnyMessage, AnyMessageViewGeneric},
+  dispatcher::dispatch_executor::TokioExecutor,
+  messaging::{AnyMessage, AnyMessageView},
   props::Props,
-  scheduler::SchedulerCommand,
-  system::ActorSystemBuilder,
+  scheduler::StdTickDriverConfig,
+  system::{ActorSystemBuilder, DispatcherConfig},
 };
-
-#[cfg(not(target_os = "none"))]
-#[path = "../no_std_tick_driver_support.rs"]
-mod no_std_tick_driver_support;
-#[cfg(not(target_os = "none"))]
+use fraktor_utils_core_rs::sync::ArcShared;
+use tokio::runtime::Handle;
 
 // アクターに送信されるスケジュール済みメッセージ
 struct ScheduledMessage {
@@ -31,9 +22,8 @@ struct Start;
 struct GuardianActor;
 
 impl Actor for GuardianActor {
-  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageViewGeneric<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
-      #[cfg(not(target_os = "none"))]
       println!("[{:?}] Guardian starting scheduler example...", std::thread::current().id());
 
       // スケジューラを取得（システムから）
@@ -42,7 +32,6 @@ impl Actor for GuardianActor {
       let target = ctx.self_ref();
 
       // 100msの遅延後にメッセージを送信するようスケジュール
-      #[cfg(not(target_os = "none"))]
       println!("[{:?}] Scheduling message with 100ms delay...", std::thread::current().id());
 
       let scheduler_context = ctx.system().scheduler_context().expect("scheduler context");
@@ -56,31 +45,27 @@ impl Actor for GuardianActor {
         .schedule_once(Duration::from_millis(100), command)
         .map_err(|_| ActorError::recoverable("failed to schedule"))?;
 
-      #[cfg(not(target_os = "none"))]
       println!("[{:?}] Scheduler ticks completed", std::thread::current().id());
     } else if let Some(msg) = message.downcast_ref::<ScheduledMessage>() {
-      #[cfg(not(target_os = "none"))]
       println!("[{:?}] Received scheduled message: {}", std::thread::current().id(), msg.text);
     }
     Ok(())
   }
 }
 
-#[cfg(not(target_os = "none"))]
-fn main() {
-  let props = Props::from_fn(|| GuardianActor);
-  let system = ActorSystemBuilder::new(props)
-    .with_tick_driver(no_std_tick_driver_support::hardware_tick_driver_config())
-    .build()
-    .expect("system");
+#[tokio::main(flavor = "multi_thread")]
+async fn main() {
+  let handle = Handle::current();
+  let dispatcher: DispatcherConfig =
+    DispatcherConfig::from_executor(ArcShared::new(TokioExecutor::new(handle.clone())));
+
+  let props = Props::from_fn(|| GuardianActor).with_dispatcher(dispatcher);
+  let system =
+    ActorSystemBuilder::new(props).with_tick_driver(StdTickDriverConfig::tokio_quickstart()).build().expect("system");
 
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
 
   // スケジューラが動作する時間を与える
-  thread::sleep(StdDuration::from_millis(200));
-
-  process::exit(0);
+  tokio::time::sleep(Duration::from_millis(1000)).await;
+  println!("[{:?}] Main thread finished waiting", std::thread::current().id());
 }
-
-#[cfg(target_os = "none")]
-fn main() {}

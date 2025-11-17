@@ -30,7 +30,7 @@ where
 
   /// Configures the actor system settings applied during bootstrap.
   #[must_use]
-  pub fn with_actor_system_config(self, config: ActorSystemConfig) -> Self {
+  pub fn with_actor_system_config(self, config: ActorSystemConfig<TB>) -> Self {
     Self { inner: self.inner.with_actor_system_config(config), marker: PhantomData }
   }
 

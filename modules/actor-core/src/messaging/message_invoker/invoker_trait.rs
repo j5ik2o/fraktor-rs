@@ -1,5 +1,7 @@
 //! Trait for dispatching messages from the mailbox to actors.
 
+use fraktor_utils_core_rs::runtime_toolbox::NoStdToolbox;
+
 use crate::{
   RuntimeToolbox,
   error::ActorError,
@@ -7,7 +9,7 @@ use crate::{
 };
 
 /// Dispatches user and system messages to actor handlers.
-pub trait MessageInvoker<TB: RuntimeToolbox + 'static>: Send + Sync {
+pub trait MessageInvoker<TB: RuntimeToolbox + 'static = NoStdToolbox>: Send + Sync {
   /// Processes user messages.
   ///
   /// # Errors

@@ -1,12 +1,12 @@
 use crate::{
   actor_prim::actor_ref::ActorRef,
-  messaging::{AnyMessage, AnyMessageView},
+  messaging::{AnyMessage, AnyMessageViewGeneric},
 };
 
 #[test]
 fn downcasts_payload() {
   let message: AnyMessage = AnyMessage::new(10_i32);
-  let view: AnyMessageView<'_, _> = message.as_view();
+  let view: AnyMessageViewGeneric<'_, _> = message.as_view();
   assert_eq!(view.downcast_ref::<i32>(), Some(&10));
 }
 

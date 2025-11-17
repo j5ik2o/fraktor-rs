@@ -41,7 +41,7 @@ impl ActorSystem {
   ///
   /// Returns [`SpawnError::InvalidProps`] when the user guardian props cannot be
   /// initialised with the supplied configuration.
-  pub fn new_with_config(props: &Props, config: &ActorSystemConfig) -> Result<Self, SpawnError> {
+  pub fn new_with_config(props: &Props, config: &ActorSystemConfig<StdToolbox>) -> Result<Self, SpawnError> {
     CoreActorSystemGeneric::new_with_config(props.as_core(), config).map(Self::from_core)
   }
 

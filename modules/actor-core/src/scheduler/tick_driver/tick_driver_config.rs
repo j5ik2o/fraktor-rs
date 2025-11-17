@@ -3,23 +3,23 @@
 #[cfg(test)]
 mod tests;
 
-use core::time::Duration;
+use alloc::boxed::Box;
 
 #[cfg(any(test, feature = "test-support"))]
 use super::ManualTestDriver;
-use super::{
-  AutoDriverConfig, FallbackPolicy, TickDriverAutoLocatorRef, TickDriverFactoryRef, TickMetricsMode, TickPulseSource,
-};
-use crate::RuntimeToolbox;
+use super::{TickDriverError, TickDriverRuntime};
+use crate::{RuntimeToolbox, scheduler::SchedulerContext};
 
-/// Configuration for tick driver selection and behavior.
+/// Type alias for tick driver builder function.
+type TickDriverBuilderFn<TB> =
+  Box<dyn Fn(&SchedulerContext<TB>) -> Result<TickDriverRuntime<TB>, TickDriverError> + Send + Sync>;
+
+/// Configuration for tick driver creation.
 pub enum TickDriverConfig<TB: RuntimeToolbox> {
-  /// Automatic driver selection based on runtime environment.
-  Auto(AutoDriverConfig<TB>),
-  /// Hardware timer driver with static pulse source.
-  Hardware {
-    /// Reference to hardware timer implementation.
-    driver: &'static dyn TickPulseSource,
+  /// Builder function-based configuration (standard approach).
+  Builder {
+    /// Builder function that creates a complete tick driver runtime.
+    builder: TickDriverBuilderFn<TB>,
   },
   /// Manual test driver (test-only).
   #[cfg(any(test, feature = "test-support"))]
@@ -27,28 +27,15 @@ pub enum TickDriverConfig<TB: RuntimeToolbox> {
 }
 
 impl<TB: RuntimeToolbox> TickDriverConfig<TB> {
-  /// Creates an automatic driver configuration with default settings.
+  /// Creates a tick driver configuration with a user-provided builder function.
+  ///
+  /// The builder function receives the scheduler context and must return a complete
+  /// `TickDriverRuntime` that includes both the tick driver and scheduler executor.
   #[must_use]
-  pub fn auto() -> Self {
-    Self::Auto(AutoDriverConfig::new())
-  }
-
-  /// Creates an automatic driver configuration with explicit factory.
-  #[must_use]
-  pub fn auto_with_factory(factory: TickDriverFactoryRef<TB>) -> Self {
-    Self::Auto(AutoDriverConfig::new().with_factory(factory))
-  }
-
-  /// Creates an automatic driver configuration with custom locator.
-  #[must_use]
-  pub fn auto_with_locator(locator: TickDriverAutoLocatorRef<TB>) -> Self {
-    Self::Auto(AutoDriverConfig::new().with_locator(locator))
-  }
-
-  /// Creates a hardware driver configuration.
-  #[must_use]
-  pub const fn hardware(driver: &'static dyn TickPulseSource) -> Self {
-    Self::Hardware { driver }
+  pub fn new<F>(builder: F) -> Self
+  where
+    F: Fn(&SchedulerContext<TB>) -> Result<TickDriverRuntime<TB>, TickDriverError> + Send + Sync + 'static, {
+    Self::Builder { builder: Box::new(builder) }
   }
 
   /// Creates a manual test driver configuration.
@@ -57,31 +44,14 @@ impl<TB: RuntimeToolbox> TickDriverConfig<TB> {
   pub const fn manual(driver: ManualTestDriver<TB>) -> Self {
     Self::ManualTest(driver)
   }
+}
 
-  /// Sets fallback policy (only applies to Auto variant).
-  #[must_use]
-  pub fn with_fallback(self, policy: FallbackPolicy) -> Self {
+impl<TB: RuntimeToolbox> core::fmt::Debug for TickDriverConfig<TB> {
+  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
     match self {
-      | Self::Auto(cfg) => Self::Auto(cfg.with_fallback(policy)),
-      | other => other,
-    }
-  }
-
-  /// Sets metrics mode (only applies to Auto variant).
-  #[must_use]
-  pub fn with_metrics_mode(self, mode: TickMetricsMode) -> Self {
-    match self {
-      | Self::Auto(cfg) => Self::Auto(cfg.with_metrics_mode(mode)),
-      | other => other,
-    }
-  }
-
-  /// Sets tick resolution (only applies to Auto variant).
-  #[must_use]
-  pub fn with_resolution(self, resolution: Duration) -> Self {
-    match self {
-      | Self::Auto(cfg) => Self::Auto(cfg.with_resolution(resolution)),
-      | other => other,
+      | Self::Builder { .. } => f.debug_struct("Builder").finish_non_exhaustive(),
+      #[cfg(any(test, feature = "test-support"))]
+      | Self::ManualTest(_) => f.debug_tuple("ManualTest").finish(),
     }
   }
 }

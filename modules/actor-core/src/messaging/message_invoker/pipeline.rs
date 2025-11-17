@@ -9,7 +9,7 @@ use crate::{
   RuntimeToolbox,
   actor_prim::{Actor, ActorContextGeneric, actor_ref::ActorRefGeneric},
   error::ActorError,
-  messaging::{AnyMessageGeneric, any_message_view::AnyMessageView},
+  messaging::{AnyMessageGeneric, any_message_view::AnyMessageViewGeneric},
 };
 
 /// Middleware-enabled pipeline used to invoke actor message handlers.
@@ -74,7 +74,7 @@ impl<TB: RuntimeToolbox + 'static> MessageInvokerPipelineGeneric<TB> {
   fn invoke_before(
     &self,
     ctx: &mut ActorContextGeneric<'_, TB>,
-    message: &AnyMessageView<'_, TB>,
+    message: &AnyMessageViewGeneric<'_, TB>,
   ) -> Result<(), ActorError> {
     for middleware in &self.user_middlewares {
       middleware.before_user(ctx, message)?;
@@ -85,7 +85,7 @@ impl<TB: RuntimeToolbox + 'static> MessageInvokerPipelineGeneric<TB> {
   fn invoke_after(
     &self,
     ctx: &mut ActorContextGeneric<'_, TB>,
-    message: &AnyMessageView<'_, TB>,
+    message: &AnyMessageViewGeneric<'_, TB>,
     mut result: Result<(), ActorError>,
   ) -> Result<(), ActorError> {
     for middleware in self.user_middlewares.iter().rev() {

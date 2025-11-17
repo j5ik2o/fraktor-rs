@@ -8,7 +8,7 @@ use crate::{
   dead_letter::DeadLetterReason,
   error::{ActorError, ActorErrorReason},
   logging::LogLevel,
-  messaging::{AnyMessageGeneric, AnyMessageView},
+  messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
   supervision::SupervisorStrategy,
   typed::{
     actor_prim::{TypedActor, TypedActorContextGeneric},
@@ -141,7 +141,7 @@ where
   fn receive(
     &mut self,
     ctx: &mut ActorContextGeneric<'_, TB>,
-    message: AnyMessageView<'_, TB>,
+    message: AnyMessageViewGeneric<'_, TB>,
   ) -> Result<(), ActorError> {
     if let Some(envelope) = message.downcast_ref::<AdapterEnvelope<TB>>() {
       return self.handle_adapter_envelope(ctx, envelope);

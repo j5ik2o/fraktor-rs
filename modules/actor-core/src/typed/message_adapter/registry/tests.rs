@@ -6,7 +6,7 @@ use crate::{
   NoStdToolbox,
   actor_prim::{Actor, ActorCellGeneric, ActorContextGeneric},
   error::ActorError,
-  messaging::AnyMessageView,
+  messaging::AnyMessageViewGeneric,
   props::Props,
   system::{ActorSystemGeneric, SystemState},
   typed::message_adapter::{AdapterFailure, AdapterOutcome, AdapterPayload, MessageAdapterRegistry},
@@ -40,7 +40,7 @@ impl Actor for ProbeActor {
   fn receive(
     &mut self,
     _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    _message: AnyMessageView<'_, NoStdToolbox>,
+    _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     Ok(())
   }

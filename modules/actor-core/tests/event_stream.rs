@@ -11,7 +11,7 @@ use fraktor_actor_core_rs::{
   error::ActorError,
   event_stream::{EventStreamEvent, EventStreamSubscriber},
   mailbox::{MailboxOverflowStrategy, MailboxPolicy},
-  messaging::{AnyMessage, AnyMessageView},
+  messaging::{AnyMessage, AnyMessageViewGeneric},
   props::{MailboxConfig, Props},
   system::ActorSystem,
 };
@@ -43,7 +43,7 @@ impl Actor for NullActor {
   fn receive(
     &mut self,
     _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    _message: AnyMessageView<'_, NoStdToolbox>,
+    _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     Ok(())
   }
@@ -70,7 +70,7 @@ impl Actor for TestGuardian {
   fn receive(
     &mut self,
     _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    _message: AnyMessageView<'_, NoStdToolbox>,
+    _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     Ok(())
   }

@@ -3,20 +3,31 @@
 use alloc::string::{String, ToString};
 
 use super::RemotingConfig;
-use crate::actor_prim::actor_path::GuardianKind as PathGuardianKind;
+use crate::{
+  RuntimeToolbox,
+  actor_prim::actor_path::GuardianKind as PathGuardianKind,
+  scheduler::{SchedulerConfig, TickDriverConfig},
+};
 
 #[cfg(test)]
 mod tests;
 
 /// Configuration for the actor system.
-#[derive(Clone, Debug)]
-pub struct ActorSystemConfig {
-  system_name:      String,
-  default_guardian: PathGuardianKind,
-  remoting:         Option<RemotingConfig>,
+#[derive(Debug)]
+pub struct ActorSystemConfig<TB>
+where
+  TB: RuntimeToolbox + 'static, {
+  system_name:        String,
+  default_guardian:   PathGuardianKind,
+  remoting_config:    Option<RemotingConfig>,
+  scheduler_config:   SchedulerConfig,
+  tick_driver_config: Option<TickDriverConfig<TB>>,
 }
 
-impl ActorSystemConfig {
+impl<TB> ActorSystemConfig<TB>
+where
+  TB: RuntimeToolbox + 'static,
+{
   /// Sets the actor system name.
   #[must_use]
   pub fn with_system_name(mut self, name: impl Into<String>) -> Self {
@@ -34,7 +45,21 @@ impl ActorSystemConfig {
   /// Enables remoting with the given configuration.
   #[must_use]
   pub fn with_remoting(mut self, config: RemotingConfig) -> Self {
-    self.remoting = Some(config);
+    self.remoting_config = Some(config);
+    self
+  }
+
+  /// Configures the scheduler used by the runtime.
+  #[must_use]
+  pub const fn with_scheduler_config(mut self, config: SchedulerConfig) -> Self {
+    self.scheduler_config = config;
+    self
+  }
+
+  /// Sets the tick driver configuration.
+  #[must_use]
+  pub fn with_tick_driver(mut self, config: TickDriverConfig<TB>) -> Self {
+    self.tick_driver_config = Some(config);
     self
   }
 
@@ -52,17 +77,40 @@ impl ActorSystemConfig {
 
   /// Returns the remoting configuration if enabled.
   #[must_use]
-  pub const fn remoting(&self) -> Option<&RemotingConfig> {
-    self.remoting.as_ref()
+  pub const fn remoting_config(&self) -> Option<&RemotingConfig> {
+    self.remoting_config.as_ref()
+  }
+
+  /// Returns the scheduler configuration.
+  #[must_use]
+  pub const fn scheduler_config(&self) -> &SchedulerConfig {
+    &self.scheduler_config
+  }
+
+  /// Returns the tick driver configuration if set.
+  #[must_use]
+  pub const fn tick_driver_config(&self) -> Option<&TickDriverConfig<TB>> {
+    self.tick_driver_config.as_ref()
+  }
+
+  /// Takes the tick driver configuration.
+  #[must_use]
+  pub const fn take_tick_driver_config(&mut self) -> Option<TickDriverConfig<TB>> {
+    self.tick_driver_config.take()
   }
 }
 
-impl Default for ActorSystemConfig {
+impl<TB> Default for ActorSystemConfig<TB>
+where
+  TB: RuntimeToolbox + 'static,
+{
   fn default() -> Self {
     Self {
-      system_name:      "default-system".to_string(),
-      default_guardian: PathGuardianKind::User,
-      remoting:         None,
+      system_name:        "default-system".to_string(),
+      default_guardian:   PathGuardianKind::User,
+      remoting_config:    None,
+      scheduler_config:   SchedulerConfig::default(),
+      tick_driver_config: None,
     }
   }
 }

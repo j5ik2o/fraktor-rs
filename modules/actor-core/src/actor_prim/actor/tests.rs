@@ -5,7 +5,7 @@ use crate::{
   NoStdToolbox,
   actor_prim::{ActorContext, ActorContextGeneric},
   error::ActorError,
-  messaging::AnyMessageView,
+  messaging::AnyMessageViewGeneric,
   system::ActorSystem,
 };
 
@@ -25,7 +25,7 @@ impl Actor for TestActor {
   fn receive(
     &mut self,
     _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    _message: AnyMessageView<'_, NoStdToolbox>,
+    _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     Ok(())
   }
@@ -58,7 +58,7 @@ fn actor_box_delegates_receive() {
   let system = ActorSystem::new_empty();
   let mut ctx = ActorContext::new(&system, system.allocate_pid());
   let mut actor: Box<dyn Actor<NoStdToolbox>> = Box::new(TestActor::default());
-  let message = crate::messaging::AnyMessageView::new(&(), None);
+  let message = crate::messaging::AnyMessageViewGeneric::new(&(), None);
   assert!(actor.receive(&mut ctx, message).is_ok());
 }
 

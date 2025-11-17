@@ -7,7 +7,7 @@ use super::{ActorContext, ActorContextGeneric};
 use crate::{
   NoStdToolbox,
   actor_prim::{Actor, ActorCell, Pid},
-  messaging::{AnyMessage, AnyMessageView},
+  messaging::{AnyMessage, AnyMessageViewGeneric},
   props::Props,
   system::ActorSystem,
 };
@@ -18,7 +18,7 @@ impl Actor for TestActor {
   fn receive(
     &mut self,
     _context: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    _message: AnyMessageView<'_, NoStdToolbox>,
+    _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), crate::error::ActorError> {
     Ok(())
   }
@@ -38,7 +38,7 @@ impl Actor for RecordingActor {
   fn receive(
     &mut self,
     _context: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    _message: AnyMessageView<'_, NoStdToolbox>,
+    _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), crate::error::ActorError> {
     Ok(())
   }
@@ -67,7 +67,7 @@ impl Actor for ProbeActor {
   fn receive(
     &mut self,
     _context: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    message: AnyMessageView<'_, NoStdToolbox>,
+    message: AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), crate::error::ActorError> {
     if let Some(value) = message.downcast_ref::<i32>() {
       self.received.lock().push(*value);

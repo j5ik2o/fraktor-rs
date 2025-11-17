@@ -12,7 +12,7 @@ use crate::{
   event_stream::{EventStreamEvent, EventStreamSubscriber},
   logging::LogLevel,
   mailbox::{Mailbox, MailboxOverflowStrategy, MailboxPolicy, ScheduleHints},
-  messaging::{AnyMessage, AnyMessageView, SystemMessage},
+  messaging::{AnyMessage, AnyMessageViewGeneric, SystemMessage},
   props::{MailboxConfig, Props},
   system::ActorSystem,
 };
@@ -23,7 +23,7 @@ impl Actor for PassiveActor {
   fn receive(
     &mut self,
     _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    _message: AnyMessageView<'_, NoStdToolbox>,
+    _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     Ok(())
   }

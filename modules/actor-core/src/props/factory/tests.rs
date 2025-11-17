@@ -5,7 +5,7 @@ use crate::{
   NoStdToolbox,
   actor_prim::{Actor, ActorContextGeneric},
   error::ActorError,
-  messaging::AnyMessageView,
+  messaging::AnyMessageViewGeneric,
 };
 
 struct TestActor;
@@ -14,7 +14,7 @@ impl Actor for TestActor {
   fn receive(
     &mut self,
     _context: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    _message: AnyMessageView<'_, NoStdToolbox>,
+    _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     Ok(())
   }

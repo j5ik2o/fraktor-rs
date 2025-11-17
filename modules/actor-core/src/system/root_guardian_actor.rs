@@ -6,7 +6,7 @@ use crate::{
   RuntimeToolbox,
   actor_prim::{Actor, ActorContextGeneric, Pid, actor_ref::ActorRefGeneric},
   error::ActorError,
-  messaging::AnyMessageView,
+  messaging::AnyMessageViewGeneric,
   system::SystemStateGeneric,
 };
 
@@ -44,7 +44,7 @@ impl<TB: RuntimeToolbox + 'static> Actor<TB> for RootGuardianActor {
   fn receive(
     &mut self,
     _ctx: &mut ActorContextGeneric<'_, TB>,
-    _message: AnyMessageView<'_, TB>,
+    _message: AnyMessageViewGeneric<'_, TB>,
   ) -> Result<(), ActorError> {
     Ok(())
   }

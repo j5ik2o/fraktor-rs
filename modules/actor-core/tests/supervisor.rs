@@ -15,7 +15,7 @@ use fraktor_actor_core_rs::{
   error::{ActorError, ActorErrorReason},
   event_stream::{EventStreamEvent, EventStreamSubscriber},
   lifecycle::LifecycleStage,
-  messaging::{AnyMessage, AnyMessageView},
+  messaging::{AnyMessage, AnyMessageViewGeneric},
   props::Props,
   supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
   system::ActorSystem,
@@ -184,7 +184,7 @@ impl Actor for RestartGuardian {
   fn receive(
     &mut self,
     ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    message: AnyMessageView<'_, NoStdToolbox>,
+    message: AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() && self.child_slot.lock().is_none() {
       let log = self.log.clone();
@@ -215,7 +215,7 @@ impl Actor for RestartChild {
   fn receive(
     &mut self,
     _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    message: AnyMessageView<'_, NoStdToolbox>,
+    message: AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     if message.downcast_ref::<TriggerRecoverable>().is_some() {
       self.log.lock().push("child_fail");
@@ -244,7 +244,7 @@ impl Actor for FatalGuardian {
   fn receive(
     &mut self,
     ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    message: AnyMessageView<'_, NoStdToolbox>,
+    message: AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() && self.child_slot.lock().is_none() {
       let child_props = Props::from_fn(|| FatalChild);
@@ -261,7 +261,7 @@ impl Actor for FatalChild {
   fn receive(
     &mut self,
     _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    message: AnyMessageView<'_, NoStdToolbox>,
+    message: AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     if message.downcast_ref::<TriggerFatal>().is_some() {
       return Err(ActorError::fatal(ActorErrorReason::new("fatal failure")));
@@ -292,7 +292,7 @@ impl Actor for RootGuardian {
   fn receive(
     &mut self,
     ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    message: AnyMessageView<'_, NoStdToolbox>,
+    message: AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() && self.supervisor_slot.lock().is_none() {
       let supervisor_props = Props::from_fn({
@@ -344,7 +344,7 @@ impl Actor for SupervisorActor {
   fn receive(
     &mut self,
     ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    message: AnyMessageView<'_, NoStdToolbox>,
+    message: AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() && self.child_slot.lock().is_none() {
       let child_log = self.child_log.clone();
@@ -377,7 +377,7 @@ impl Actor for PanicGuardian {
   fn receive(
     &mut self,
     ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    message: AnyMessageView<'_, NoStdToolbox>,
+    message: AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() && self.child_slot.lock().is_none() {
       let child_props = Props::from_fn(|| PanicChild);
@@ -394,7 +394,7 @@ impl Actor for PanicChild {
   fn receive(
     &mut self,
     _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    _message: AnyMessageView<'_, NoStdToolbox>,
+    _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     panic!("child panic");
   }

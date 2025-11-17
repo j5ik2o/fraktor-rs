@@ -21,6 +21,9 @@ fraktor-utils-core-rs = { workspace = true, default-features = false }
 fraktor-utils-std-rs = { workspace = true }
 tokio = { workspace = true, optional = true, features = ["rt", "rt-multi-thread", "macros", "time"] }
 
+[dev-dependencies]
+critical-section = { workspace = true, features = ["std"] }
+
 [[example]]
 name = "ping_pong_tokio"
 path = "examples/ping_pong_tokio_std/main.rs"
@@ -54,3 +57,8 @@ path = "examples/behaviors_unhandled_std/main.rs"
 [[example]]
 name = "behaviors_empty"
 path = "examples/behaviors_empty_std/main.rs"
+
+[[example]]
+name = "scheduler_once_tokio_std"
+path = "examples/scheduler_once_tokio_std/main.rs"
+required-features = ["tokio-executor"]

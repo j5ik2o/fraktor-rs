@@ -6,7 +6,7 @@ use crate::{
   RuntimeToolbox,
   actor_prim::{Actor, ActorContextGeneric, Pid, actor_ref::ActorRefGeneric},
   error::ActorError,
-  messaging::{AnyMessageGeneric, AnyMessageView},
+  messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
   supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
   system::SystemGuardianProtocol,
 };
@@ -127,7 +127,7 @@ impl<TB: RuntimeToolbox + 'static> Actor<TB> for SystemGuardianActor<TB> {
   fn receive(
     &mut self,
     ctx: &mut ActorContextGeneric<'_, TB>,
-    message: AnyMessageView<'_, TB>,
+    message: AnyMessageViewGeneric<'_, TB>,
   ) -> Result<(), ActorError> {
     if let Some(protocol) = message.downcast_ref::<SystemGuardianProtocol<TB>>() {
       self.handle_protocol(ctx, protocol)

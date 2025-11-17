@@ -10,9 +10,9 @@ use std::{thread, time::Duration as StdDuration};
 use fraktor_actor_core_rs::{
   actor_prim::{Actor, ActorContext},
   error::ActorError,
-  messaging::{AnyMessage, AnyMessageView},
+  messaging::{AnyMessage, AnyMessageViewGeneric},
   props::Props,
-  scheduler::{SchedulerCommand, SchedulerDiagnosticsSubscription, TickDriverConfig},
+  scheduler::{SchedulerCommand, SchedulerDiagnosticsSubscription},
   system::ActorSystemBuilder,
 };
 
@@ -20,7 +20,6 @@ use fraktor_actor_core_rs::{
 #[path = "../no_std_tick_driver_support.rs"]
 mod no_std_tick_driver_support;
 #[cfg(not(target_os = "none"))]
-use no_std_tick_driver_support::{demo_pulse, start_demo_tick_driver};
 
 struct ScheduledMessage {
   text: String,
@@ -42,7 +41,7 @@ impl GuardianActor {
 }
 
 impl Actor for GuardianActor {
-  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageViewGeneric<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
       #[cfg(not(target_os = "none"))]
       println!("[{:?}] subscribing scheduler diagnostics", std::thread::current().id());
@@ -100,9 +99,10 @@ fn main() {
   use std::process;
 
   let props = Props::from_fn(GuardianActor::new);
-  let bootstrap =
-    ActorSystemBuilder::new(props).with_tick_driver(TickDriverConfig::hardware(demo_pulse())).build().expect("system");
-  let _driver = start_demo_tick_driver(&bootstrap).expect("tick driver");
+  let bootstrap = ActorSystemBuilder::new(props)
+    .with_tick_driver(no_std_tick_driver_support::hardware_tick_driver_config())
+    .build()
+    .expect("system");
   bootstrap.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
   thread::sleep(StdDuration::from_millis(400));
   process::exit(0);

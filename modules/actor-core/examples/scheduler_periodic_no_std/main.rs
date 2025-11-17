@@ -7,17 +7,15 @@ use core::time::Duration;
 use fraktor_actor_core_rs::{
   actor_prim::{Actor, ActorContext},
   error::ActorError,
-  messaging::{AnyMessage, AnyMessageView},
+  messaging::{AnyMessage, AnyMessageViewGeneric},
   props::Props,
-  scheduler::{SchedulerCommand, TickDriverConfig},
+  scheduler::SchedulerCommand,
   system::ActorSystemBuilder,
 };
 
 #[cfg(not(target_os = "none"))]
 #[path = "../no_std_tick_driver_support.rs"]
 mod no_std_tick_driver_support;
-#[cfg(not(target_os = "none"))]
-use no_std_tick_driver_support::{demo_pulse, start_demo_tick_driver};
 
 // 周期的に送信されるメッセージ
 struct PeriodicTick {
@@ -37,7 +35,7 @@ impl GuardianActor {
 }
 
 impl Actor for GuardianActor {
-  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageViewGeneric<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
       #[cfg(not(target_os = "none"))]
       println!("[{:?}] Guardian starting periodic scheduler example...", std::thread::current().id());
@@ -84,9 +82,10 @@ fn main() {
   use std::{process, thread};
 
   let props = Props::from_fn(GuardianActor::new);
-  let system =
-    ActorSystemBuilder::new(props).with_tick_driver(TickDriverConfig::hardware(demo_pulse())).build().expect("system");
-  let _driver = start_demo_tick_driver(&system).expect("tick driver");
+  let system = ActorSystemBuilder::new(props)
+    .with_tick_driver(no_std_tick_driver_support::hardware_tick_driver_config())
+    .build()
+    .expect("system");
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
 
   // スケジューラが動作する時間を与える

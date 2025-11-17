@@ -77,7 +77,7 @@ fn actor_ref_with_system() {
 fn actor_ref_path_resolves_segments() {
   use crate::{
     actor_prim::{Actor, ActorCell, ActorContextGeneric},
-    messaging::AnyMessageView,
+    messaging::AnyMessageViewGeneric,
     props::Props,
     system::SystemState,
   };
@@ -87,7 +87,7 @@ fn actor_ref_path_resolves_segments() {
     fn receive(
       &mut self,
       _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-      _message: AnyMessageView<'_, NoStdToolbox>,
+      _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
     ) -> Result<(), crate::error::ActorError> {
       Ok(())
     }

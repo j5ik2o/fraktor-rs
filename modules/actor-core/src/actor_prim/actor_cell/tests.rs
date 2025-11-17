@@ -7,7 +7,7 @@ use crate::{
   actor_prim::{Actor, ActorContextGeneric, Pid},
   error::ActorError,
   mailbox::ScheduleHints,
-  messaging::{AnyMessage, AnyMessageView, SystemMessage, message_invoker::MessageInvoker},
+  messaging::{AnyMessage, AnyMessageViewGeneric, SystemMessage, message_invoker::MessageInvoker},
   props::Props,
   system::SystemState,
 };
@@ -18,7 +18,7 @@ impl Actor for ProbeActor {
   fn receive(
     &mut self,
     _ctx: &mut ActorContextGeneric<'_, crate::NoStdToolbox>,
-    _message: AnyMessageView<'_, crate::NoStdToolbox>,
+    _message: AnyMessageViewGeneric<'_, crate::NoStdToolbox>,
   ) -> Result<(), ActorError> {
     Ok(())
   }
@@ -53,7 +53,7 @@ impl Actor for LifecycleRecorderActor {
   fn receive(
     &mut self,
     _ctx: &mut ActorContextGeneric<'_, crate::NoStdToolbox>,
-    _message: AnyMessageView<'_, crate::NoStdToolbox>,
+    _message: AnyMessageViewGeneric<'_, crate::NoStdToolbox>,
   ) -> Result<(), ActorError> {
     self.log.lock().push("receive");
     Ok(())
@@ -69,7 +69,7 @@ impl Actor for RecordingActor {
   fn receive(
     &mut self,
     _ctx: &mut ActorContextGeneric<'_, crate::NoStdToolbox>,
-    _message: AnyMessageView<'_, crate::NoStdToolbox>,
+    _message: AnyMessageViewGeneric<'_, crate::NoStdToolbox>,
   ) -> Result<(), ActorError> {
     Ok(())
   }

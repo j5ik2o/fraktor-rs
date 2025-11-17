@@ -12,7 +12,7 @@ use fraktor_actor_core_rs::{
   event_stream::{EventStreamEvent, EventStreamSubscriber},
   lifecycle::LifecycleStage,
   logging::LogLevel,
-  messaging::{AnyMessage, AnyMessageView},
+  messaging::{AnyMessage, AnyMessageViewGeneric},
   props::Props,
   system::ActorSystem,
 };
@@ -51,7 +51,7 @@ impl Actor for Guardian {
   fn receive(
     &mut self,
     ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    message: AnyMessageView<'_, NoStdToolbox>,
+    message: AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
       ctx.log(LogLevel::Info, "received Start message");
