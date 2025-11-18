@@ -1,3 +1,4 @@
+use alloc::string::String;
 use core::fmt;
 
 use crate::core::{scheduler::TickDriverError, spawn::SpawnError};
@@ -11,6 +12,8 @@ pub enum ActorSystemBuildError {
   Spawn(SpawnError),
   /// Tick driver provisioning failed.
   TickDriver(TickDriverError),
+  /// Builder-supplied configuration (extensions/providers) failed to install.
+  Configuration(String),
 }
 
 impl fmt::Display for ActorSystemBuildError {
@@ -19,6 +22,7 @@ impl fmt::Display for ActorSystemBuildError {
       | Self::MissingTickDriver => write!(f, "tick driver configuration is required"),
       | Self::Spawn(err) => write!(f, "actor system bootstrap failed: {err:?}"),
       | Self::TickDriver(err) => write!(f, "tick driver provisioning failed: {err}"),
+      | Self::Configuration(err) => write!(f, "builder configuration failed: {err}"),
     }
   }
 }

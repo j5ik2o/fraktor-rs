@@ -1,5 +1,8 @@
 #![cfg_attr(all(not(test), target_os = "none"), no_std)]
 
+#[path = "../no_std_tick_driver_support.rs"]
+mod no_std_tick_driver_support;
+
 use fraktor_actor_rs::core::typed::{Behavior, Behaviors, TypedActorSystem, TypedProps};
 
 #[derive(Clone, Copy)]
@@ -42,7 +45,8 @@ fn main() {
 
   // `cargo run --example behaviors_setup_receive` で実行する
   let props = TypedProps::from_behavior_factory(guardian_behavior);
-  let system = TypedActorSystem::new(&props).expect("system");
+  let tick_driver = no_std_tick_driver_support::hardware_tick_driver_config();
+  let system = TypedActorSystem::new(&props, tick_driver).expect("system");
   let termination = system.when_terminated();
 
   system.user_guardian_ref().tell(GuardianCommand::Start).expect("start");

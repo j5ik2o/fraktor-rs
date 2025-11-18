@@ -36,7 +36,7 @@ impl Serializer for StringSerializer {
     &self,
     bytes: &[u8],
     _type_hint: Option<core::any::TypeId>,
-  ) -> Result<Box<dyn Any + Send>, SerializationError> {
+  ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
     if bytes.len() < 4 {
       return Err(SerializationError::InvalidFormat);
     }

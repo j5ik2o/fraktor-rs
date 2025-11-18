@@ -1,5 +1,8 @@
 use std::{thread, time::Duration};
 
+#[path = "../std_tick_driver_support.rs"]
+mod std_tick_driver_support;
+
 use fraktor_actor_rs::{
   core::{error::ActorError, logging::LogLevel},
   std::{
@@ -38,7 +41,8 @@ fn main() {
     ArcShared::new(TracingLoggerSubscriber::new(LogLevel::Info));
 
   let props: Props = Props::from_fn(|| GuardianActor);
-  let system = ActorSystem::new(&props).expect("actor system を初期化できること");
+  let tick_driver = std_tick_driver_support::hardware_tick_driver_config();
+  let system = ActorSystem::new(&props, tick_driver).expect("actor system を初期化できること");
 
   let _subscription = system.subscribe_event_stream(&log_subscriber);
 

@@ -3,6 +3,9 @@ mod lifecycle_printer;
 mod printer;
 mod start_message;
 
+#[path = "../std_tick_driver_support.rs"]
+mod std_tick_driver_support;
+
 use std::{thread, time::Duration};
 
 use fraktor_actor_rs::std::{
@@ -15,7 +18,8 @@ use start_message::Start;
 
 fn main() {
   let props = Props::from_fn(|| GuardianActor).with_name("named-guardian");
-  let system = ActorSystem::new(&props).expect("ユーザーガーディアンの起動に失敗しました");
+  let tick_driver = std_tick_driver_support::hardware_tick_driver_config();
+  let system = ActorSystem::new(&props, tick_driver).expect("ユーザーガーディアンの起動に失敗しました");
 
   let lifecycle_subscriber: ArcShared<dyn EventStreamSubscriber> = ArcShared::new(LifecyclePrinter);
   let _subscription = system.subscribe_event_stream(&lifecycle_subscriber);

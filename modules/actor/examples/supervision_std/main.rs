@@ -1,6 +1,9 @@
 use core::time::Duration as CoreDuration;
 use std::{thread, time::Duration};
 
+#[path = "../std_tick_driver_support.rs"]
+mod std_tick_driver_support;
+
 use fraktor_actor_rs::{
   core::{
     error::ActorError,
@@ -63,7 +66,9 @@ impl EventStreamSubscriber for LifecyclePrinter {
       | EventStreamEvent::UnhandledMessage(_)
       | EventStreamEvent::Serialization(_)
       | EventStreamEvent::SchedulerTick(_)
-      | EventStreamEvent::TickDriver(_) => {},
+      | EventStreamEvent::TickDriver(_)
+      | EventStreamEvent::RemotingBackpressure(_)
+      | EventStreamEvent::RemotingLifecycle(_) => {},
     }
   }
 }
@@ -143,7 +148,8 @@ impl Actor for FussyWorker {
 
 fn main() {
   let props: Props = Props::from_fn(GuardianActor::new);
-  let system = ActorSystem::new(&props).expect("ガーディアンの起動に成功すること");
+  let tick_driver = std_tick_driver_support::hardware_tick_driver_config();
+  let system = ActorSystem::new(&props, tick_driver).expect("ガーディアンの起動に成功すること");
 
   let logger_writer: ArcShared<dyn LoggerWriter> = ArcShared::new(StdoutLogger);
   let logger: ArcShared<dyn EventStreamSubscriber> =

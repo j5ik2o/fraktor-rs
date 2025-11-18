@@ -11,7 +11,7 @@ use hashbrown::HashMap;
 use super::{ActorPathHandle, ReservationPolicy};
 use crate::core::actor_prim::{
   Pid,
-  actor_path::{ActorPath, ActorPathComparator, ActorUid, PathResolutionError},
+  actor_path::{ActorPath, ActorPathComparator, ActorPathParser, ActorUid, PathResolutionError},
 };
 
 /// UID reservation entry with expiration deadline.
@@ -61,6 +61,19 @@ impl ActorPathRegistry {
   /// Removes a path registration.
   pub fn unregister(&mut self, pid: &Pid) {
     self.paths.remove(pid);
+  }
+
+  /// Resolves a pid from the provided actor path when registered.
+  #[must_use]
+  pub fn pid_for(&self, path: &ActorPath) -> Option<Pid> {
+    for handle in self.paths.values() {
+      if let Ok(canonical) = ActorPathParser::parse(handle.canonical_uri())
+        && canonical.segments() == path.segments()
+      {
+        return Some(handle.pid());
+      }
+    }
+    None
   }
 
   /// Returns the canonical URI for a PID.

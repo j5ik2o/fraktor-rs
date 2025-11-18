@@ -11,26 +11,26 @@ use alloc::{
 use fraktor_utils_rs::core::{
   collections::queue::capabilities::QueueCapability,
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  sync::ArcShared,
+  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 
-use super::{RootGuardianActor, SystemGuardianActor, SystemGuardianProtocol};
+use super::{ExtendedActorSystemGeneric, RootGuardianActor, SystemGuardianActor, SystemGuardianProtocol};
 use crate::core::{
   actor_prim::{ActorCellGeneric, ChildRefGeneric, Pid, actor_ref::ActorRefGeneric},
-  config::{ActorSystemConfig, DispatchersGeneric, MailboxesGeneric},
-  dead_letter::DeadLetterEntryGeneric,
+  config::ActorSystemConfig,
+  dead_letter::{DeadLetterEntryGeneric, DeadLetterReason},
   error::SendError,
   event_stream::{
     EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric, TickDriverSnapshot,
   },
-  extension::ExtensionId,
   futures::ActorFuture,
   logging::LogLevel,
   messaging::{AnyMessageGeneric, SystemMessage},
   props::PropsGeneric,
   scheduler::{SchedulerBackedDelayProvider, SchedulerContext},
+  serialization::default_serialization_extension_id,
   spawn::SpawnError,
-  system::{RegisterExtraTopLevelError, system_state::SystemStateGeneric},
+  system::system_state::SystemStateGeneric,
 };
 
 const PARENT_MISSING: &str = "parent actor not found";
@@ -57,17 +57,6 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     Self { state }
   }
 
-  /// Creates a new actor system using the provided user guardian props.
-  ///
-  /// # Errors
-  ///
-  /// Returns [`SpawnError`] when guardian initialization fails.
-  pub fn new(user_guardian_props: &PropsGeneric<TB>) -> Result<Self, SpawnError>
-  where
-    TB: Default, {
-    Self::new_with_config_and(user_guardian_props, &ActorSystemConfig::default(), |_| Ok(()))
-  }
-
   /// Creates a new actor system and runs the provided configuration callback before startup.
   ///
   /// # Errors
@@ -78,6 +67,28 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     TB: Default,
     F: FnOnce(&ActorSystemGeneric<TB>) -> Result<(), SpawnError>, {
     Self::new_with_config_and(user_guardian_props, &ActorSystemConfig::default(), configure)
+  }
+
+  /// Creates an actor system with the required tick driver configuration.
+  ///
+  /// This is the recommended way to create an actor system with minimal configuration.
+  ///
+  /// # Arguments
+  ///
+  /// * `user_guardian_props` - Properties for the user guardian actor
+  /// * `tick_driver_config` - Tick driver configuration (required)
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SpawnError`] when guardian initialization or tick driver setup fails.
+  pub fn new(
+    user_guardian_props: &PropsGeneric<TB>,
+    tick_driver_config: crate::core::scheduler::TickDriverConfig<TB>,
+  ) -> Result<Self, SpawnError>
+  where
+    TB: Default, {
+    let config = crate::core::config::ActorSystemConfig::default().with_tick_driver(tick_driver_config);
+    Self::new_with_config(user_guardian_props, &config)
   }
 
   /// Creates an actor system with the provided configuration.
@@ -107,10 +118,27 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   where
     TB: Default,
     F: FnOnce(&ActorSystemGeneric<TB>) -> Result<(), SpawnError>, {
+    // Validate tick driver configuration is present
+    if config.tick_driver_config().is_none() {
+      return Err(SpawnError::SystemBuildError("tick driver configuration is required".into()));
+    }
+
     let system = Self::new_empty();
     system.state.apply_actor_system_config(config);
     system.install_scheduler_and_tick_driver_from_config(config)?;
     system.bootstrap(user_guardian_props, configure)?;
+
+    // Install extensions and provider after bootstrap
+    if let Some(extensions) = config.extensions_config() {
+      extensions.install_all(&system).map_err(|e| SpawnError::from_actor_system_build_error(&e))?;
+    }
+
+    if let Some(installer) = config.provider_installer() {
+      installer.install(&system).map_err(|e| SpawnError::from_actor_system_build_error(&e))?;
+    }
+
+    system.install_default_serialization_extension();
+
     Ok(system)
   }
 
@@ -127,10 +155,28 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     }
   }
 
+  /// Returns the actor reference to the system guardian when available.
+  #[must_use]
+  pub fn system_guardian_ref(&self) -> Option<ActorRefGeneric<TB>> {
+    self.state.system_guardian().map(|cell| cell.actor_ref())
+  }
+
   /// Returns the shared system state.
   #[must_use]
   pub fn state(&self) -> ArcShared<SystemStateGeneric<TB>> {
     self.state.clone()
+  }
+
+  /// Returns the canonical host/port when remoting is configured.
+  #[must_use]
+  pub fn canonical_authority(&self) -> Option<String> {
+    self.state.canonical_authority_endpoint()
+  }
+
+  /// Returns an extended view that exposes privileged runtime operations.
+  #[must_use]
+  pub fn extended(&self) -> ExtendedActorSystemGeneric<TB> {
+    ExtendedActorSystemGeneric::new(self.clone())
   }
 
   /// Installs scheduler context and tick driver runtime from configuration.
@@ -148,6 +194,18 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
       let event_stream = self.state.event_stream();
       let toolbox = TB::default();
       let scheduler_config = *config.scheduler_config();
+
+      // Apply special handling for ManualTest driver in test mode
+      #[cfg(any(test, feature = "test-support"))]
+      let scheduler_config = if let Some(tick_driver_config) = config.tick_driver_config()
+        && matches!(tick_driver_config, crate::core::scheduler::TickDriverConfig::ManualTest(_))
+        && !scheduler_config.runner_api_enabled()
+      {
+        scheduler_config.with_runner_api_enabled(true)
+      } else {
+        scheduler_config
+      };
+
       let context = SchedulerContext::with_event_stream(toolbox, scheduler_config, event_stream);
       self.state.install_scheduler_context(ArcShared::new(context));
     }
@@ -161,6 +219,13 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     }
 
     Ok(())
+  }
+
+  fn install_default_serialization_extension(&self) {
+    let id = default_serialization_extension_id();
+    if !self.extended().has_extension(&id) {
+      let _ = self.extended().register_extension(&id);
+    }
   }
 
   /// Allocates a new pid (testing helper).
@@ -199,18 +264,6 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     self.scheduler_context().map(|context| context.delay_provider())
   }
 
-  /// Returns the dispatcher registry.
-  #[must_use]
-  pub fn dispatchers(&self) -> ArcShared<DispatchersGeneric<TB>> {
-    self.state.dispatchers()
-  }
-
-  /// Returns the mailbox registry.
-  #[must_use]
-  pub fn mailboxes(&self) -> ArcShared<MailboxesGeneric<TB>> {
-    self.state.mailboxes()
-  }
-
   /// Subscribes the provided observer to the event stream.
   #[must_use]
   pub fn subscribe_event_stream(
@@ -226,18 +279,22 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     self.state.dead_letters()
   }
 
-  /// Registers an extra top-level actor name before the system finishes startup.
-  ///
-  /// # Errors
-  ///
-  /// Returns [`RegisterExtraTopLevelError`] if the name is reserved, duplicated, or registration
-  /// occurs after startup.
-  pub fn register_extra_top_level(
-    &self,
-    name: &str,
-    actor: ActorRefGeneric<TB>,
-  ) -> Result<(), RegisterExtraTopLevelError> {
-    self.state.register_extra_top_level(name, actor)
+  /// Records a deadletter entry that will also be published to the event stream.
+  pub fn record_dead_letter(&self, message: AnyMessageGeneric<TB>, reason: DeadLetterReason, recipient: Option<Pid>) {
+    self.state.record_dead_letter(message, reason, recipient);
+  }
+
+  /// Resolves the pid registered for the provided actor path.
+  #[must_use]
+  pub fn pid_by_path(&self, path: &crate::core::actor_prim::actor_path::ActorPath) -> Option<Pid> {
+    let registry = self.state.actor_path_registry().lock();
+    registry.pid_for(path)
+  }
+
+  /// Returns an actor reference for the provided pid when registered.
+  #[must_use]
+  pub fn actor_ref_by_pid(&self, pid: Pid) -> Option<ActorRefGeneric<TB>> {
+    self.state.cell(&pid).map(|cell| cell.actor_ref())
   }
 
   /// Registers a temporary actor reference under `/temp` and returns the generated segment.
@@ -268,29 +325,6 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   /// Publishes a raw event to the event stream.
   pub fn publish_event(&self, event: &EventStreamEvent<TB>) {
     self.state.publish_event(event);
-  }
-
-  /// Registers the provided extension and returns the shared instance.
-  pub fn register_extension<E>(&self, ext_id: &E) -> ArcShared<E::Ext>
-  where
-    E: ExtensionId<TB>, {
-    self.state.extension_or_insert_with(ext_id.id(), || ArcShared::new(ext_id.create_extension(self)))
-  }
-
-  /// Retrieves a previously registered extension.
-  #[must_use]
-  pub fn extension<E>(&self, ext_id: &E) -> Option<ArcShared<E::Ext>>
-  where
-    E: ExtensionId<TB>, {
-    self.state.extension(ext_id.id())
-  }
-
-  /// Returns `true` when the extension has already been registered.
-  #[must_use]
-  pub fn has_extension<E>(&self, ext_id: &E) -> bool
-  where
-    E: ExtensionId<TB>, {
-    self.state.has_extension(ext_id.id())
   }
 
   /// Spawns a new top-level actor under the user guardian.
@@ -445,9 +479,6 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     if let Some(cell) = self.state.cell(&system_guardian.pid()) {
       self.state.set_system_guardian(cell);
     }
-
-    // TODO: enable serialization extension
-    // let _ = self.register_extension(&SERIALIZATION_EXTENSION);
 
     configure(self)?;
 

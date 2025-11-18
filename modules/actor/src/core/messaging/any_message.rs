@@ -50,6 +50,15 @@ impl<TB: RuntimeToolbox> AnyMessageGeneric<TB> {
     AnyMessageViewGeneric::new(&*self.payload, self.reply_to.as_ref())
   }
 
+  /// Reconstructs a message from an erased payload pointer.
+  #[must_use]
+  pub fn from_erased(
+    payload: ArcShared<dyn Any + Send + Sync + 'static>,
+    reply_to: Option<ActorRefGeneric<TB>>,
+  ) -> Self {
+    Self::from_parts(payload, reply_to)
+  }
+
   /// Returns the payload as a trait object reference.
   #[must_use]
   pub fn payload(&self) -> &(dyn Any + Send + Sync + 'static) {

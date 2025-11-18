@@ -31,7 +31,7 @@ impl Serializer for NullSerializer {
     &self,
     _bytes: &[u8],
     _type_hint: Option<core::any::TypeId>,
-  ) -> Result<Box<dyn Any + Send>, SerializationError> {
+  ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
     Ok(Box::new(()))
   }
 

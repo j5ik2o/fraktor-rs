@@ -2,6 +2,9 @@
 
 extern crate alloc;
 
+#[path = "../no_std_tick_driver_support.rs"]
+mod no_std_tick_driver_support;
+
 use alloc::{format, string::String};
 
 use fraktor_actor_rs::core::{
@@ -59,7 +62,8 @@ fn main() {
   use std::thread;
 
   let props = Props::from_fn(|| FetchActor);
-  let system = ActorSystem::new(&props).expect("system");
+  let tick_driver = no_std_tick_driver_support::hardware_tick_driver_config();
+  let system = ActorSystem::new(&props, tick_driver).expect("system");
   let termination = system.when_terminated();
 
   system

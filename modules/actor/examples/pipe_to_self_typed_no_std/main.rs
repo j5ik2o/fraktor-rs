@@ -2,6 +2,9 @@
 
 extern crate alloc;
 
+#[path = "../no_std_tick_driver_support.rs"]
+mod no_std_tick_driver_support;
+
 use alloc::{
   format,
   string::{String, ToString},
@@ -69,7 +72,8 @@ fn main() {
   use std::thread;
 
   let props = TypedProps::new(|| FetchClient);
-  let system = TypedActorSystem::new(&props).expect("system");
+  let tick_driver = no_std_tick_driver_support::hardware_tick_driver_config();
+  let system = TypedActorSystem::new(&props, tick_driver).expect("system");
 
   let actor = system.user_guardian_ref();
   actor.tell(FetchCommand::Start(String::from("/posts"))).expect("start");

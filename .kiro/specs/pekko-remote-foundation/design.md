@@ -256,9 +256,6 @@ fn bootstrap_remoting() -> Result<ActorSystem, RemotingError> {
     .with_extensions_config(extensions_config)
     .build()?;
 
-  let remoting = system.extension::<RemotingExtension<StdToolbox>>()?;
-  remoting.handle().start()?; // AutoStart=false の場合は明示的に起動
-
   Ok(system)
 }
 ```
@@ -303,6 +300,18 @@ pub struct RemotingControlHandle {
 - **入出力**: 入力=ActorPathParts, SystemGuardian, RemotingExtension handle。出力= `RemoteActorRef`, `RemoteWatcherDaemon` の起動コマンド。
 - **依存関係**: `ActorSystemGeneric`, `RemotingControl`, `RemoteAuthorityManager`, `EndpointSupervisor`。
 - **契約**: Provider 初期化時に RemotingExtension を要求し、`ActorSystemBuilder` で `RemoteActorRefProvider::new(system, remoting_handle)` を登録。SystemGuardian に `remote_watcher_daemon` を spawn し、`watch`/`unwatch` を Remoting へ転送する。
+- **必須配線 (2025-11-18 追記)**:
+  - `ActorCell::actor_ref` / `ActorRefSender` 生成経路に Provider を組み込み、リモート authority を含む ActorPath から `RemoteActorRefSender` を返すこと。`tell/ask` は Provider 経由で RemotingControl→EndpointWriter へ委譲される必要がある。
+  - Provider は `SystemState::remote_authority_manager` と連携し、未接続 authority へ送るメッセージを defer したうえで `RemotingControl::associate` を起動する。Connected へ遷移した際に `OutboundEnvelope` を再送できるよう、宛先 (`ActorPathParts` + `RemoteNodeId`) を保持する。
+  - `RemotingControl` 側で `SerializationExtension` → `EndpointWriter`、`Loopback/Tokio` transport → `EndpointReader` の双方向パイプを必ず構築し、バックプレッシャや FlightRecorder とも同期させる。
+
+### Runtime 配線の必須条件 (2025-11-18 追記)
+- ActorSystem 側: `with_actor_ref_provider` で登録された Provider を、ActorRef 生成・Path 解決・ActorSelection 経路で必ず利用する。ローカル PID が見つからない場合は Provider がリモート authority 判定を行い、`RemoteActorRefSender` を返却する。Pekko の `ExtendedActorSystem` と同様に、拡張／provider／guardian などのメタ情報は ActorSystem が保持し、`systemActorOf`/`provider`/`guardian`/`systemGuardian` といった API も ExtendedActorSystem 側に実装する（Builder や Extension に責務を持たせない）。これにより Pekko 互換の内部 API（ライブラリ／拡張向け）を Rust 実装でも再現する。
+- ActorSystemBuilder は `build` で独自の初期化処理（extensions/provider の直接登録など）を行わない。初期化は `ActorSystemGeneric` 側に委譲し、Builder は `ActorSystemConfig` を構築して渡すだけとする。
+- ActorSystem に渡す設定はすべて `ActorSystemConfig` に集約し、個別の Builder メソッドや手続き的初期化で状態を隠し持たない。ExtensionsConfig や ActorRefProviderInstaller も Config 経由で渡すことを徹底する。
+- RemotingControl 側: EndpointWriter/Reader を保持し、transport の listen/open/send/receive までを管理する。Loopback/Tokio など transport 実装に依存せず、Outbound→Transport→Inbound→Mailbox のストリームを中核として扱う。
+- RemoteAuthorityManager: defer キューには `AnyMessage` だけでなく、宛先パス・RemoteNodeId を含む `OutboundEnvelope` を保存する。Connected へ復帰した時点で EndpointWriter に再投入できることを受け入れ条件とする。
+- Quickstart / Example: `modules/remote/tests/quickstart.rs` と `modules/remote/examples/loopback_quickstart.rs` で実際に ping/pong を往復させ、背圧と FlightRecorder の観測列まで検証する。ドキュメント (`docs/guides/remoting-quickstart.md`) とコード例は常に同期させる。
 
 ### Endpoint 管理層
 - **責務**: Association FSM、UID handshake、遅延キュー flush、Quarantine 判定。

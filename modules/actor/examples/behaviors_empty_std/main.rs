@@ -4,6 +4,9 @@
 //! where no more messages are expected, but the actor hasn't stopped yet. Unlike
 //! `ignore()`, empty() logs all received messages as unhandled events.
 
+#[path = "../std_tick_driver_support.rs"]
+mod std_tick_driver_support;
+
 use std::time::Duration;
 
 use fraktor_actor_rs::std::{
@@ -70,7 +73,8 @@ fn main() {
 
   // Create typed actor system
   let props = TypedProps::from_behavior_factory(worker_behavior);
-  let system = TypedActorSystem::new(&props).expect("Failed to create system");
+  let tick_driver = std_tick_driver_support::hardware_tick_driver_config();
+  let system = TypedActorSystem::new(&props, tick_driver).expect("Failed to create system");
 
   // Subscribe to unhandled message events
   let subscriber: ArcShared<dyn EventStreamSubscriber> = ArcShared::new(UnhandledLogger);

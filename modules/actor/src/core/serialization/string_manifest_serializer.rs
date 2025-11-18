@@ -16,5 +16,9 @@ pub trait SerializerWithStringManifest: Serializer {
   ///
   /// Returns [`SerializationError`] if decoding fails.
   #[allow(clippy::wrong_self_convention)]
-  fn from_binary_with_manifest(&self, bytes: &[u8], manifest: &str) -> Result<Box<dyn Any + Send>, SerializationError>;
+  fn from_binary_with_manifest(
+    &self,
+    bytes: &[u8],
+    manifest: &str,
+  ) -> Result<Box<dyn Any + Send + Sync>, SerializationError>;
 }

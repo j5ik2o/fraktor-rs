@@ -2,6 +2,9 @@
 
 extern crate alloc;
 
+#[path = "../no_std_tick_driver_support.rs"]
+mod no_std_tick_driver_support;
+
 use alloc::{borrow::Cow, string::String, vec::Vec};
 use core::{
   any::{Any, TypeId},
@@ -77,7 +80,11 @@ impl Serializer for TelemetrySerializer {
     Ok(buffer)
   }
 
-  fn from_binary(&self, bytes: &[u8], _type_hint: Option<TypeId>) -> Result<Box<dyn Any + Send>, SerializationError> {
+  fn from_binary(
+    &self,
+    bytes: &[u8],
+    _type_hint: Option<TypeId>,
+  ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
     let payload = Self::decode(bytes)?;
     Ok(Box::new(payload))
   }
@@ -100,7 +107,7 @@ impl SerializerWithStringManifest for TelemetrySerializer {
     &self,
     bytes: &[u8],
     _manifest: &str,
-  ) -> Result<Box<dyn Any + Send>, SerializationError> {
+  ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
     self.from_binary(bytes, None)
   }
 }
@@ -144,15 +151,14 @@ fn main() {
   let configure_id = serialization_id.clone();
 
   let props = Props::from_fn(NullActor::new).with_name("serialization-demo");
-  let system = ActorSystem::new_with(&props, move |system| {
-    // ActorSystem 起動前にシリアライゼーション拡張を登録
-    let _ = system.register_extension(&configure_id);
-    Ok(())
-  })
-  .expect("actor system");
+  let tick_driver = no_std_tick_driver_support::hardware_tick_driver_config();
+  let system = ActorSystem::new(&props, tick_driver).expect("actor system");
+
+  // ActorSystem 起動後にシリアライゼーション拡張を登録
+  let _ = system.extended().register_extension(&configure_id);
 
   let serialization: ArcShared<SerializationExtension> =
-    system.extension(&serialization_id).expect("extension registered");
+    system.extended().extension(&serialization_id).expect("extension registered");
 
   let payload = TelemetryPayload { node: 7, temperature: 24 };
   let serialized: SerializedMessage =

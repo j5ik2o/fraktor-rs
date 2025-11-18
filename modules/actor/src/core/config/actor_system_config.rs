@@ -2,19 +2,20 @@
 
 use alloc::string::{String, ToString};
 
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
 use super::RemotingConfig;
 use crate::core::{
   actor_prim::actor_path::GuardianKind as PathGuardianKind,
+  extension::ExtensionsConfig,
   scheduler::{SchedulerConfig, TickDriverConfig},
+  system::ActorRefProviderInstaller,
 };
 
 #[cfg(test)]
 mod tests;
 
 /// Configuration for the actor system.
-#[derive(Debug)]
 pub struct ActorSystemConfig<TB>
 where
   TB: RuntimeToolbox + 'static, {
@@ -23,6 +24,8 @@ where
   remoting_config:    Option<RemotingConfig>,
   scheduler_config:   SchedulerConfig,
   tick_driver_config: Option<TickDriverConfig<TB>>,
+  extensions_config:  Option<ExtensionsConfig<TB>>,
+  provider_installer: Option<ArcShared<dyn ActorRefProviderInstaller<TB>>>,
 }
 
 impl<TB> ActorSystemConfig<TB>
@@ -45,7 +48,7 @@ where
 
   /// Enables remoting with the given configuration.
   #[must_use]
-  pub fn with_remoting(mut self, config: RemotingConfig) -> Self {
+  pub fn with_remoting_config(mut self, config: RemotingConfig) -> Self {
     self.remoting_config = Some(config);
     self
   }
@@ -61,6 +64,22 @@ where
   #[must_use]
   pub fn with_tick_driver(mut self, config: TickDriverConfig<TB>) -> Self {
     self.tick_driver_config = Some(config);
+    self
+  }
+
+  /// Registers extension installers executed after bootstrap.
+  #[must_use]
+  pub fn with_extensions_config(mut self, config: ExtensionsConfig<TB>) -> Self {
+    self.extensions_config = Some(config);
+    self
+  }
+
+  /// Registers a custom actor-ref provider installer.
+  #[must_use]
+  pub fn with_actor_ref_provider<P>(mut self, provider: P) -> Self
+  where
+    P: ActorRefProviderInstaller<TB> + 'static, {
+    self.provider_installer = Some(ArcShared::new(provider));
     self
   }
 
@@ -99,6 +118,30 @@ where
   pub const fn take_tick_driver_config(&mut self) -> Option<TickDriverConfig<TB>> {
     self.tick_driver_config.take()
   }
+
+  /// Returns the extensions configuration if set.
+  #[must_use]
+  pub const fn extensions_config(&self) -> Option<&ExtensionsConfig<TB>> {
+    self.extensions_config.as_ref()
+  }
+
+  /// Takes the extensions configuration.
+  #[must_use]
+  pub const fn take_extensions_config(&mut self) -> Option<ExtensionsConfig<TB>> {
+    self.extensions_config.take()
+  }
+
+  /// Returns the provider installer if set.
+  #[must_use]
+  pub const fn provider_installer(&self) -> Option<&ArcShared<dyn ActorRefProviderInstaller<TB>>> {
+    self.provider_installer.as_ref()
+  }
+
+  /// Takes the provider installer.
+  #[must_use]
+  pub const fn take_provider_installer(&mut self) -> Option<ArcShared<dyn ActorRefProviderInstaller<TB>>> {
+    self.provider_installer.take()
+  }
 }
 
 impl<TB> Default for ActorSystemConfig<TB>
@@ -112,6 +155,8 @@ where
       remoting_config:    None,
       scheduler_config:   SchedulerConfig::default(),
       tick_driver_config: None,
+      extensions_config:  None,
+      provider_installer: None,
     }
   }
 }

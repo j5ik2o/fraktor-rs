@@ -93,6 +93,12 @@ impl ActorPathParts {
     self.guardian.segment()
   }
 
+  /// Formats the authority (`host[:port]`) when present.
+  #[must_use]
+  pub fn authority_endpoint(&self) -> Option<String> {
+    self.authority.as_ref().map(|authority| authority.endpoint())
+  }
+
   #[must_use]
   pub(crate) const fn authority(&self) -> Option<&PathAuthority> {
     self.authority.as_ref()

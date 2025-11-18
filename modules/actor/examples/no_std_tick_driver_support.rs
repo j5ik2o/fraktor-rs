@@ -1,6 +1,5 @@
 #![cfg(not(target_os = "none"))]
 
-use alloc::sync::Arc;
 use core::{
   ffi::c_void,
   sync::atomic::{AtomicBool, Ordering},
@@ -121,13 +120,13 @@ unsafe impl Sync for HandlerSlot {}
 type SchedulerArc = ArcShared<ToolboxMutex<Scheduler<NoStdToolbox>, NoStdToolbox>>;
 
 pub struct StdTickDriverPump {
-  running: Arc<AtomicBool>,
+  running: ArcShared<AtomicBool>,
   handle:  Option<thread::JoinHandle<()>>,
 }
 
 impl StdTickDriverPump {
   pub fn spawn(pulse: &'static DemoPulse, scheduler: SchedulerArc, feed: TickFeedHandle<NoStdToolbox>) -> Self {
-    let running = Arc::new(AtomicBool::new(true));
+    let running = ArcShared::new(AtomicBool::new(true));
     let signal = feed.signal();
     let sleep_interval = StdDuration::from_nanos(pulse.period);
     let handle = thread::spawn({

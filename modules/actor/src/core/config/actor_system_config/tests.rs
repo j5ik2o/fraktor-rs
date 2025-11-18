@@ -31,7 +31,7 @@ fn test_actor_system_config_with_default_guardian() {
 fn test_actor_system_config_with_remoting() {
   let remoting = RemotingConfig::default().with_canonical_host("localhost").with_canonical_port(2552);
 
-  let config = ActorSystemConfig::<NoStdToolbox>::default().with_remoting(remoting);
+  let config = ActorSystemConfig::<NoStdToolbox>::default().with_remoting_config(remoting);
 
   assert!(config.remoting_config().is_some());
   let remoting_cfg = config.remoting_config().unwrap();

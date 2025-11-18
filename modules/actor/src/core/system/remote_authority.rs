@@ -151,6 +151,11 @@ impl<TB: RuntimeToolbox + 'static> RemoteAuthorityManagerGeneric<TB> {
     }
   }
 
+  /// Returns a snapshot of all known authorities and their states.
+  pub fn snapshots(&self) -> Vec<(String, AuthorityState)> {
+    self.entries.lock().iter().map(|(authority, entry)| (authority.clone(), entry.state.clone())).collect()
+  }
+
   /// Returns count of deferred messages for an authority.
   #[must_use]
   pub fn deferred_count(&self, authority: &str) -> usize {

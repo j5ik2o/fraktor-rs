@@ -1,5 +1,8 @@
 use std::{thread, time::Duration};
 
+#[path = "../std_tick_driver_support.rs"]
+mod std_tick_driver_support;
+
 use fraktor_actor_rs::{
   core::error::ActorError,
   std::{
@@ -82,7 +85,8 @@ impl Actor for Guardian {
 
 fn main() {
   let props = Props::from_fn(Guardian::new);
-  let system = ActorSystem::new(&props).expect("build actor system");
+  let tick_driver = std_tick_driver_support::hardware_tick_driver_config();
+  let system = ActorSystem::new(&props, tick_driver).expect("build actor system");
 
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("send start");
 

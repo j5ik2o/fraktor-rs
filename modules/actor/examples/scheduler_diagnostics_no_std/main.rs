@@ -13,14 +13,13 @@ use fraktor_actor_rs::core::{
   messaging::{AnyMessage, AnyMessageViewGeneric},
   props::Props,
   scheduler::{SchedulerCommand, SchedulerDiagnosticsSubscription},
-  system::ActorSystemBuilder,
+  system::ActorSystem,
 };
 
 #[cfg(not(target_os = "none"))]
 #[path = "../no_std_tick_driver_support.rs"]
 mod no_std_tick_driver_support;
 #[cfg(not(target_os = "none"))]
-
 struct ScheduledMessage {
   text: String,
 }
@@ -78,17 +77,17 @@ impl Actor for GuardianActor {
       self.received += 1;
       #[cfg(not(target_os = "none"))]
       println!("[{:?}] diagnostics payload received: {}", std::thread::current().id(), msg.text);
-    } else if message.downcast_ref::<DumpDiagnostics>().is_some() {
-      if let Some(subscription) = self.diagnostics.as_mut() {
-        let events = subscription.drain();
-        #[cfg(not(target_os = "none"))]
-        println!(
-          "[{:?}] drained {} diagnostics events ({} scheduled messages processed)",
-          std::thread::current().id(),
-          events.len(),
-          self.received,
-        );
-      }
+    } else if message.downcast_ref::<DumpDiagnostics>().is_some()
+      && let Some(subscription) = self.diagnostics.as_mut()
+    {
+      let events = subscription.drain();
+      #[cfg(not(target_os = "none"))]
+      println!(
+        "[{:?}] drained {} diagnostics events ({} scheduled messages processed)",
+        std::thread::current().id(),
+        events.len(),
+        self.received,
+      );
     }
     Ok(())
   }
@@ -99,10 +98,7 @@ fn main() {
   use std::process;
 
   let props = Props::from_fn(GuardianActor::new);
-  let bootstrap = ActorSystemBuilder::new(props)
-    .with_tick_driver(no_std_tick_driver_support::hardware_tick_driver_config())
-    .build()
-    .expect("system");
+  let bootstrap = ActorSystem::new(&props, no_std_tick_driver_support::hardware_tick_driver_config()).expect("system");
   bootstrap.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
   thread::sleep(StdDuration::from_millis(400));
   process::exit(0);

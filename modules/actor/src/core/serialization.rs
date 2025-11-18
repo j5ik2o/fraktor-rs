@@ -5,6 +5,7 @@ mod builder_error;
 mod builtin;
 mod call_scope;
 mod config_adapter;
+mod default_setup;
 mod delegator;
 mod error;
 mod error_event;
@@ -33,6 +34,8 @@ pub use builtin::{
 pub use call_scope::SerializationCallScope;
 // Re-exports from config_adapter
 pub use config_adapter::SerializationConfigAdapter;
+// Re-exports from default_setup
+pub use default_setup::{default_serialization_extension_id, default_serialization_setup};
 // Re-exports from delegator
 pub use delegator::SerializationDelegator;
 // Re-exports from error

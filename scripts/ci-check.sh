@@ -604,13 +604,13 @@ run_doc_tests() {
 # }
 
 run_tests() {
-  log_step "cargo +${DEFAULT_TOOLCHAIN} test --workspace --verbose --lib --bins --tests --benches --examples"
-  run_cargo test --workspace --verbose --lib --bins --tests --benches --examples || return 1
+  log_step "cargo +${DEFAULT_TOOLCHAIN} test --workspace --verbose --lib --bins --tests --benches --examples --features test-support"
+  run_cargo test --workspace --verbose --lib --bins --tests --benches --examples --features test-support || return 1
 }
 
 run_actor_path_e2e() {
-  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-actor-rs --test actor_path_e2e -- --nocapture"
-  run_cargo test -p fraktor-actor-rs --test actor_path_e2e -- --nocapture || return 1
+  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-actor-rs --test actor_path_e2e --features test-support -- --nocapture"
+  run_cargo test -p fraktor-actor-rs --test actor_path_e2e --features test-support -- --nocapture || return 1
 }
 
 run_examples() {

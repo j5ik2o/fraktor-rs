@@ -10,7 +10,10 @@ use crate::{
     event_stream::{EventStreamSubscriber as CoreEventStreamSubscriber, TickDriverSnapshot},
     logging::LogLevel,
     spawn::SpawnError,
-    system::{ActorSystemGeneric as CoreActorSystemGeneric, SystemStateGeneric as CoreSystemStateGeneric},
+    system::{
+      ActorSystemGeneric as CoreActorSystemGeneric, ExtendedActorSystemGeneric,
+      SystemStateGeneric as CoreSystemStateGeneric,
+    },
   },
   std::{
     actor_prim::ActorRef,
@@ -31,13 +34,24 @@ pub struct ActorSystem {
 }
 
 impl ActorSystem {
-  /// Creates a new actor system using the provided user guardian props.
+  /// Creates a new actor system with the required tick driver configuration.
+  ///
+  /// This is the recommended way to create an actor system with minimal configuration.
+  ///
+  /// # Arguments
+  ///
+  /// * `props` - Properties for the user guardian actor
+  /// * `tick_driver_config` - Tick driver configuration (required)
   ///
   /// # Errors
   ///
-  /// Returns [`SpawnError::InvalidProps`] when the user guardian props cannot be initialised.
-  pub fn new(props: &Props) -> Result<Self, SpawnError> {
-    CoreActorSystemGeneric::new(props.as_core()).map(Self::from_core)
+  /// Returns [`SpawnError`] when the user guardian props cannot be initialised or tick driver setup
+  /// fails.
+  pub fn new(
+    props: &Props,
+    tick_driver_config: crate::core::scheduler::TickDriverConfig<StdToolbox>,
+  ) -> Result<Self, SpawnError> {
+    CoreActorSystemGeneric::new(props.as_core(), tick_driver_config).map(Self::from_core)
   }
 
   /// Creates a new actor system with an explicit configuration.
@@ -85,6 +99,12 @@ impl ActorSystem {
   #[must_use]
   pub fn state(&self) -> ArcShared<SystemState> {
     self.inner.state()
+  }
+
+  /// Returns an extended handle exposing privileged operations.
+  #[must_use]
+  pub fn extended(&self) -> ExtendedActorSystem {
+    ExtendedActorSystem::new(self.inner.clone())
   }
 
   /// Allocates a new pid (testing helper).
@@ -153,3 +173,6 @@ impl ActorSystem {
 
 /// Shared system state specialised for `StdToolbox`.
 pub type SystemState = CoreSystemStateGeneric<StdToolbox>;
+
+/// Extended actor system type specialised for `StdToolbox`.
+pub type ExtendedActorSystem = ExtendedActorSystemGeneric<StdToolbox>;

@@ -1,5 +1,8 @@
 //! Demonstrates wrapping typed behaviors with `Behaviors::supervise` to control child failures.
 
+#[path = "../std_tick_driver_support.rs"]
+mod std_tick_driver_support;
+
 use std::{
   sync::atomic::{AtomicUsize, Ordering},
   thread,
@@ -76,7 +79,8 @@ fn main() {
     TypedProps::from_behavior_factory(move || guardian(ArcShared::clone(&counter)))
   };
 
-  let system = TypedActorSystem::new(&props).expect("typed system");
+  let tick_driver = std_tick_driver_support::hardware_tick_driver_config();
+  let system = TypedActorSystem::new(&props, tick_driver).expect("typed system");
   let guardian_ref = system.user_guardian_ref();
 
   guardian_ref.tell(GuardianCommand::CrashWorker).expect("first crash");

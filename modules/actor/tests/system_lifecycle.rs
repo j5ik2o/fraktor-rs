@@ -22,7 +22,10 @@ struct Start;
 #[test]
 fn terminate_signals_future() {
   let props = Props::from_fn(|| IdleGuardian);
-  let system = ActorSystem::new(&props).expect("system");
+  let tick_driver = fraktor_actor_rs::core::scheduler::TickDriverConfig::manual(
+    fraktor_actor_rs::core::scheduler::ManualTestDriver::new(),
+  );
+  let system = ActorSystem::new(&props, tick_driver).expect("system");
   let termination = system.when_terminated();
   system.terminate().expect("terminate");
   system.run_until_terminated();
@@ -37,7 +40,10 @@ fn stop_self_propagates_to_children() {
     move || ParentGuardian::new(child_states.clone())
   });
 
-  let system = ActorSystem::new(&props).expect("system");
+  let tick_driver = fraktor_actor_rs::core::scheduler::TickDriverConfig::manual(
+    fraktor_actor_rs::core::scheduler::ManualTestDriver::new(),
+  );
+  let system = ActorSystem::new(&props, tick_driver).expect("system");
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
 
   let dead_line = std::time::Instant::now() + Duration::from_millis(20);

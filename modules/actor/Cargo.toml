@@ -17,7 +17,7 @@ default = []
 alloc = []
 alloc-metrics = []
 test-support = []
-std = ["fraktor-utils-rs/std", "dep:tracing", "dep:tracing-subscriber"]
+std = ["fraktor-utils-rs/std", "dep:tracing", "dep:tracing-subscriber", "critical-section/std"]
 tokio-executor = ["dep:tokio", "std"]
 
 [dependencies]
@@ -168,3 +168,38 @@ required-features = ["std"]
 name = "scheduler_once_tokio_std"
 path = "examples/scheduler_once_tokio_std/main.rs"
 required-features = ["tokio-executor"]
+
+[[test]]
+name = "actor_path_e2e"
+path = "tests/actor_path_e2e.rs"
+required-features = ["test-support"]
+
+[[test]]
+name = "death_watch"
+path = "tests/death_watch.rs"
+required-features = ["test-support"]
+
+[[test]]
+name = "event_stream"
+path = "tests/event_stream.rs"
+required-features = ["test-support"]
+
+[[test]]
+name = "ping_pong"
+path = "tests/ping_pong.rs"
+required-features = ["test-support"]
+
+[[test]]
+name = "supervisor"
+path = "tests/supervisor.rs"
+required-features = ["test-support"]
+
+[[test]]
+name = "system_events"
+path = "tests/system_events.rs"
+required-features = ["test-support"]
+
+[[test]]
+name = "system_lifecycle"
+path = "tests/system_lifecycle.rs"
+required-features = ["test-support"]
