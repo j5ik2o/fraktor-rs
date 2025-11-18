@@ -4,6 +4,8 @@ pub mod endpoint_reader;
 pub mod endpoint_supervisor;
 pub mod endpoint_writer;
 pub mod event_publisher;
+pub mod failure_detector;
+pub mod flight_recorder;
 pub mod inbound_envelope;
 pub mod remoting_connection_snapshot;
 pub mod remoting_control;

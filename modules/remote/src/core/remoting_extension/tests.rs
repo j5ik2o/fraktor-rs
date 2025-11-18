@@ -171,16 +171,11 @@ fn backpressure_listener_and_event_stream_are_notified() {
   handle.test_notify_backpressure(BackpressureSignal::Apply, "node-a");
 
   assert_eq!(listener.recorded(), vec![(BackpressureSignal::Apply, "node-a".to_string())]);
-  assert!(
-    subscriber
-      .backpressure_events()
-      .iter()
-      .any(|event| {
-        event.authority() == "node-a"
-          && matches!(event.signal(), BackpressureSignal::Apply)
-          && !event.correlation_id().is_nil()
-      })
-  );
+  assert!(subscriber.backpressure_events().iter().any(|event| {
+    event.authority() == "node-a"
+      && matches!(event.signal(), BackpressureSignal::Apply)
+      && !event.correlation_id().is_nil()
+  }));
 }
 
 #[test]

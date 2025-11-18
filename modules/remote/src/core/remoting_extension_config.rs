@@ -6,7 +6,9 @@ use core::{fmt, mem};
 use fraktor_actor_rs::core::config::RemotingConfig;
 use fraktor_utils_rs::core::sync::ArcShared;
 
-use crate::RemotingBackpressureListener;
+use crate::{
+  RemotingBackpressureListener, core::failure_detector::phi_failure_detector_config::PhiFailureDetectorConfig,
+};
 
 /// Configures remoting bootstrap behaviour.
 #[derive(Clone)]
@@ -15,6 +17,7 @@ pub struct RemotingExtensionConfig {
   auto_start:             bool,
   transport_scheme:       String,
   backpressure_listeners: Vec<ArcShared<dyn RemotingBackpressureListener>>,
+  failure_detector:       PhiFailureDetectorConfig,
 }
 
 impl RemotingExtensionConfig {
@@ -26,6 +29,7 @@ impl RemotingExtensionConfig {
       auto_start: true,
       transport_scheme: String::from("fraktor.loopback"),
       backpressure_listeners: Vec::new(),
+      failure_detector: PhiFailureDetectorConfig::default(),
     }
   }
 
@@ -105,6 +109,19 @@ impl RemotingExtensionConfig {
   pub fn backpressure_listeners(&self) -> &[ArcShared<dyn RemotingBackpressureListener>] {
     &self.backpressure_listeners
   }
+
+  /// Overrides the failure detector configuration.
+  #[must_use]
+  pub const fn with_failure_detector_config(mut self, config: PhiFailureDetectorConfig) -> Self {
+    self.failure_detector = config;
+    self
+  }
+
+  /// Returns the configured failure detector parameters.
+  #[must_use]
+  pub const fn failure_detector_config(&self) -> &PhiFailureDetectorConfig {
+    &self.failure_detector
+  }
 }
 
 impl Default for RemotingExtensionConfig {
@@ -120,6 +137,7 @@ impl fmt::Debug for RemotingExtensionConfig {
       .field("auto_start", &self.auto_start)
       .field("transport_scheme", &self.transport_scheme)
       .field("backpressure_listener_count", &self.backpressure_listeners.len())
+      .field("failure_detector_threshold", &self.failure_detector.threshold())
       .finish()
   }
 }

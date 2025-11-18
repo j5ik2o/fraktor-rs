@@ -96,13 +96,13 @@
   - EventPublisher API を拡張して CorrelationId と authority をイベントへ添付する
   - _対応要件: 4.1, 4.4_
   - _依存タスク: 4.2_
-- [ ] 5.2 PhiFailureDetector と Suspect 通知を組み込む
+- [x] 5.2 PhiFailureDetector と Suspect 通知を組み込む
   - Heartbeat 送受信ロジックを実装し、しきい値超過時に EndpointManager へ Suspect/Reachable を通知する
   - FailureDetector の設定を RemotingExtensionConfig から受け取り、テスト用に調整可能にする
   - Suspect イベントを RemotingFlightRecorder へ記録する
   - _対応要件: 4.2_
   - _依存タスク: 5.1_
-- [ ] 5.3 RemotingFlightRecorder と EndpointRegistry スナップショット API を実装
+- [x] 5.3 RemotingFlightRecorder と EndpointRegistry スナップショット API を実装
   - 遅延キュー深さ・往復遅延・エラーレートを記録する ring buffer と snapshot エンドポイントを作成する
   - CorrelationTrace を生成して送受信双方向で同じ ID を確認できるようにする
   - EndpointRegistry から状態別ヘルススナップショットを取得する API を公開する

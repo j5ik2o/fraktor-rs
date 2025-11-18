@@ -1,6 +1,10 @@
 //! Concrete [`RemotingControl`] handle shared with runtime components.
 
-use alloc::{format, string::{String, ToString}, vec::Vec};
+use alloc::{
+  format,
+  string::{String, ToString},
+  vec::Vec,
+};
 use core::sync::atomic::{AtomicBool, Ordering};
 
 use fraktor_actor_rs::core::{
@@ -15,18 +19,21 @@ use fraktor_utils_rs::core::{
 
 use crate::{
   RemotingBackpressureListener, RemotingConnectionSnapshot, RemotingControl, RemotingError, RemotingExtensionConfig,
-  core::{event_publisher::EventPublisher, transport::{RemoteTransport, factory::TransportFactory}},
+  core::{
+    event_publisher::EventPublisher,
+    transport::{RemoteTransport, factory::TransportFactory},
+  },
 };
 
 struct RemotingControlShared<TB: RuntimeToolbox + 'static> {
-  _system:      ActorSystemGeneric<TB>,
-  publisher:    ArcShared<EventPublisher<TB>>,
-  supervisor:   ToolboxMutex<Option<ActorRefGeneric<TB>>, TB>,
-  listeners:    ToolboxMutex<Vec<ArcShared<dyn RemotingBackpressureListener>>, TB>,
-  transport:    ToolboxMutex<Option<ArcShared<dyn RemoteTransport<TB>>>, TB>,
-  config:       RemotingExtensionConfig,
-  started:      AtomicBool,
-  shutdown:     AtomicBool,
+  _system:    ActorSystemGeneric<TB>,
+  publisher:  ArcShared<EventPublisher<TB>>,
+  supervisor: ToolboxMutex<Option<ActorRefGeneric<TB>>, TB>,
+  listeners:  ToolboxMutex<Vec<ArcShared<dyn RemotingBackpressureListener>>, TB>,
+  transport:  ToolboxMutex<Option<ArcShared<dyn RemoteTransport<TB>>>, TB>,
+  config:     RemotingExtensionConfig,
+  started:    AtomicBool,
+  shutdown:   AtomicBool,
 }
 
 /// Shared handle implementing the [`RemotingControl`] interface.
