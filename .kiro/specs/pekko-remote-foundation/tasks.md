@@ -4,14 +4,14 @@
   - _(親タスクなので詳細は書かない)_
   - _対応要件: 1.2, 1.6, 1.7_
   - _依存タスク: -_
-- [ ] 1.1 RemotingControl API と SystemGuardian 子アクター連携を実装
+- [x] 1.1 RemotingControl API と SystemGuardian 子アクター連携を実装
   - `start/associate/quarantine/shutdown` とバックプレッシャーリスナー登録を実装し、EndpointSupervisor が呼び出せるように制御ハンドルを公開する
   - AutoStart 設定と Manual Start の分岐を RemotingExtensionConfig へ追加し、SystemGuardian 初期化時にハンドルを注入する
   - SystemGuardian からの終了通知を受けて RemotingLifecycleEvent::Shutdown を配信する経路を整備する
   - _対応要件: 1.2, 1.7_
   - _依存タスク: -_
   - **完了条件**: `modules/remote/src/core/remoting_extension/tests.rs` に対応するユニットテストを追加し、`cargo test -p fraktor-remote-rs remoting_extension::tests` が GREEN になること
-- [ ] 1.2 Quickstart 経路とバックプレッシャーフックの初期化を検証
+- [x] 1.2 Quickstart 経路とバックプレッシャーフックの初期化を検証
   - RemotingExtensionConfig にバックプレッシャーリスナーを差し込む API を追加し、EventStream へ RemotingBackpressureEvent を流す
   - Quickstart 相当のブートコードを integration test で起動し、AutoStart=false で handle.start() を呼ぶパスを保証する
   - SystemGuardian 直下の EndpointSupervisor が backpressure フック経由で DeferredQueue に制御情報を流せるか検証する
@@ -19,25 +19,25 @@
   - _依存タスク: 1.1_
   - **完了条件**: `modules/remote/tests/quickstart.rs` に AutoStart=false 経路の RED テストを追加し、`cargo test -p fraktor-remote-rs --test quickstart quickstart_loopback_provider_flow` で backpressure 経路が確認できること
 
-- [ ] 2. Transport 抽象とフレーミング/エラー処理を実装する
+- [x] 2. Transport 抽象とフレーミング/エラー処理を実装する
   - _(親タスクなので詳細は書かない)_
   - _対応要件: 1.1, 1.3, 1.4, 1.5_
   - _依存タスク: 1.1_
-- [ ] 2.1 TransportFactory で scheme ごとの実装選択と構成エラー通知を行う
+- [x] 2.1 TransportFactory で scheme ごとの実装選択と構成エラー通知を行う
   - RemotingConfig の URI から `RemoteTransport` 実装を解決し、未対応スキーム時には RemotingLifecycleEvent::Error を EventStream へ発火する
   - TransportFactory が std/no_std で利用可能な TransportBind 情報を生成するヘルパを提供する
   - 不正構成を RemotingError::TransportUnavailable に変換して RemotingExtension 初期化を失敗させる
   - _対応要件: 1.1, 1.3_
   - _依存タスク: 1.1_
   - **完了条件**: `modules/remote/src/core/transport/tests.rs` に TransportFactory のスキーム解決テストを追加し、`cargo test -p fraktor-remote-rs transport::tests` が GREEN になること
-- [ ] 2.2 Tokio TCP / Loopback transport でフレーミングと backpressure hook を実装
+- [x] 2.2 Tokio TCP / Loopback transport でフレーミングと backpressure hook を実装
   - 長さプリフィクス付きフレームと CorrelationId 埋め込みを送信側で実装し、受信側で検証する
   - std feature 有効時に Tokio の非同期ソケット境界を利用し、no_std では LoopbackTransport を提供する
   - Transport から BackpressureSignal を生成して RemotingControl へ通知する hook を接続する
   - _対応要件: 1.4, 1.5, 4.4_
   - _依存タスク: 2.1_
   - **完了条件**: `modules/remote/src/core/transport/tests.rs` および `modules/remote/src/core/transport/loopback.rs` のユニットテストで送受信フレーム長と backpressure hook を RED→GREEN させ、`cargo test -p fraktor-remote-rs transport::tests` が通ること
-- [ ] 2.3 Transport 層の送受信テストと backpressure シミュレーションを追加
+- [x] 2.3 Transport 層の送受信テストと backpressure シミュレーションを追加
   - LoopbackTransport で送受信フレーム長と CorrelationId 一貫性を検証するユニットテストを作成
   - Tokio 実装で BackpressureHook をトリガするシナリオを追加し、EventStream にシグナルが届くことを確認する
   - TransportFactory のエラー経路をテーブルドリブンテストでカバーする
@@ -49,14 +49,14 @@
   - _(親タスクなので詳細は書かない)_
   - _対応要件: 2.1, 2.2, 2.3, 2.4, 2.5_
   - _依存タスク: 1.1, 2.3_
-- [ ] 3.1 ハンドシェイクと遅延キュー処理の状態遷移を実装
+- [x] 3.1 ハンドシェイクと遅延キュー処理の状態遷移を実装
   - AssociationHandshake を送受信して RemoteNodeId を確定する FSM を追加し、Unassociated→Associating→Connected の遷移を実装する
   - UID 未確定期間は EndpointRegistry にユーザーメッセージを遅延投入し、ハンドシェイク以外をブロックする
   - ハンドシェイク完了時に遅延キューを FlushDeferred コマンドで排出する
   - _対応要件: 2.1, 2.2_
   - _依存タスク: 2.3_
   - **完了条件**: `modules/remote/src/core/endpoint_manager/tests.rs` に Unassociated→Connected の RED テストを追加し、`cargo test -p fraktor-remote-rs endpoint_manager::tests` が通ること
-- [ ] 3.2 Quarantine/Gated 状態と復旧フローを実装
+- [x] 3.2 Quarantine/Gated 状態と復旧フローを実装
   - UID 不一致および手動隔離を受けて Quarantined 状態へ遷移し、破棄されるメッセージへ理由を紐付ける
   - 復旧タイムアウトと手動復旧 API を実装し、Connected 復帰時に遅延メッセージを順序維持で再送する
   - EndpointRegistry に最新状態と理由/時刻を記録し、Snapshot API へ提供する
@@ -83,7 +83,7 @@
   - _依存タスク: 3.1_
   - **完了条件**: `modules/remote/src/core/endpoint_writer/tests.rs` にシリアライズ/manifest/reply_to の RED テストを追加し、`cargo test -p fraktor-remote-rs endpoint_writer::tests` が通ること
 - [ ] 4.2 EndpointWriter の送出キューと at-most-once 制御を実装
-  - System/User キューを分離した OutboundQueue を定義し、System メッセージを常に優先送出する
+  - System/User キューを分離した OutboundQueue を定義し、System メッセージを常に優先送出する(キューはutilsのSyncFifoQueueを使って実装する)
   - BackpressureSignal を受けてユーザートラフィックを一時停止/再開する制御フローを追加し、Transport の hook と連携する
   - SerializationExtension へのアクセスを整理し、シリアライズ失敗時に DeadLetter + EventStream を発火する実装を加える
   - _対応要件: 1.2, 3.2, 3.5_

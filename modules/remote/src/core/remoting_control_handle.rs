@@ -1,0 +1,262 @@
+//! Concrete implementation of [`RemotingControl`] backed by the actor system.
+
+use alloc::{
+  string::{String, ToString},
+  vec::Vec,
+};
+use core::sync::atomic::{AtomicU64, Ordering};
+
+use fraktor_actor_rs::core::{
+  actor_prim::actor_path::ActorPathParts,
+  event_stream::{
+    BackpressureSignal, CorrelationId, EventStreamEvent, EventStreamGeneric, RemotingBackpressureEvent,
+    RemotingLifecycleEvent,
+  },
+  system::ActorSystemGeneric,
+};
+use fraktor_utils_rs::core::{
+  runtime_toolbox::{RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
+  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+};
+
+use crate::core::{
+  quarantine_reason::QuarantineReason, remote_authority_snapshot::RemoteAuthoritySnapshot,
+  remoting_backpressure_listener::RemotingBackpressureListener, remoting_control::RemotingControl,
+  remoting_error::RemotingError, remoting_extension_config::RemotingExtensionConfig,
+  transport::TransportBackpressureHook,
+};
+
+/// Shared handle used by endpoints and providers to drive remoting.
+pub struct RemotingControlHandle<TB>
+where
+  TB: RuntimeToolbox + 'static, {
+  inner: ArcShared<RemotingControlInner<TB>>,
+}
+
+impl<TB> Clone for RemotingControlHandle<TB>
+where
+  TB: RuntimeToolbox + 'static,
+{
+  fn clone(&self) -> Self {
+    Self { inner: self.inner.clone() }
+  }
+}
+
+impl<TB> RemotingControlHandle<TB>
+where
+  TB: RuntimeToolbox + 'static,
+{
+  /// Creates a new handle bound to the provided actor system.
+  pub(crate) fn new(system: ActorSystemGeneric<TB>, config: RemotingExtensionConfig) -> Self {
+    let event_stream = system.state().event_stream();
+    let mut listeners: Vec<ArcShared<dyn RemotingBackpressureListener>> = Vec::new();
+    for listener in config.backpressure_listeners() {
+      listeners.push(listener.clone());
+    }
+    let inner = RemotingControlInner {
+      system,
+      _event_stream: event_stream,
+      _canonical_host: config.canonical_host().to_string(),
+      _canonical_port: config.canonical_port(),
+      state: <TB::MutexFamily as SyncMutexFamily>::create(RemotingLifecycleState::new()),
+      listeners: <TB::MutexFamily as SyncMutexFamily>::create(listeners),
+      snapshots: <TB::MutexFamily as SyncMutexFamily>::create(Vec::new()),
+      correlation_seq: AtomicU64::new(1),
+    };
+    Self { inner: ArcShared::new(inner) }
+  }
+
+  /// Returns `true` when the handle reports a running remoting subsystem.
+  #[must_use]
+  pub fn is_running(&self) -> bool {
+    let guard = self.inner.state.lock();
+    guard.is_running()
+  }
+
+  /// Internal helper invoked by the termination hook actor.
+  pub(crate) fn notify_system_shutdown(&self) {
+    if self.inner.state.lock().mark_shutdown() {
+      self.inner.publish_lifecycle(RemotingLifecycleEvent::Shutdown);
+    }
+  }
+
+  fn ensure_can_run(&self) -> Result<(), RemotingError> {
+    let guard = self.inner.state.lock();
+    guard.ensure_running()
+  }
+
+  fn register_listener_dyn(&self, listener: ArcShared<dyn RemotingBackpressureListener>) {
+    let mut guard = self.inner.listeners.lock();
+    guard.push(listener);
+  }
+
+  fn notify_backpressure(&self, authority: &str, signal: BackpressureSignal, correlation: Option<CorrelationId>) {
+    let listeners = {
+      let guard = self.inner.listeners.lock();
+      guard.clone()
+    };
+    let correlation_id = correlation.unwrap_or_else(|| self.inner.next_correlation_id());
+    self.inner.publish_backpressure(authority, signal, correlation_id);
+    for listener in listeners {
+      listener.on_signal(signal, authority, correlation_id);
+    }
+  }
+
+  pub(crate) fn backpressure_hook(&self) -> ArcShared<dyn TransportBackpressureHook> {
+    ArcShared::new(ControlBackpressureHook { control: self.clone() })
+  }
+
+  /// Emits a backpressure signal for tests and diagnostics.
+  #[cfg(any(test, feature = "test-support"))]
+  pub fn emit_backpressure_for_test(&self, authority: &str, signal: BackpressureSignal) {
+    self.notify_backpressure(authority, signal, None);
+  }
+}
+
+impl<TB> RemotingControl<TB> for RemotingControlHandle<TB>
+where
+  TB: RuntimeToolbox + 'static,
+{
+  fn start(&self) -> Result<(), RemotingError> {
+    {
+      let mut guard = self.inner.state.lock();
+      guard.transition_to_start()?;
+    }
+    self.inner.publish_lifecycle(RemotingLifecycleEvent::Starting);
+    self.inner.publish_lifecycle(RemotingLifecycleEvent::Started);
+    Ok(())
+  }
+
+  fn associate(&self, _address: &ActorPathParts) -> Result<(), RemotingError> {
+    self.ensure_can_run()
+  }
+
+  fn quarantine(&self, _authority: &str, _reason: &QuarantineReason) -> Result<(), RemotingError> {
+    self.ensure_can_run()
+  }
+
+  fn shutdown(&self) -> Result<(), RemotingError> {
+    let mut guard = self.inner.state.lock();
+    guard.transition_to_shutdown()?;
+    drop(guard);
+    self.inner.publish_lifecycle(RemotingLifecycleEvent::Shutdown);
+    Ok(())
+  }
+
+  fn register_backpressure_listener<L>(&self, listener: L)
+  where
+    L: RemotingBackpressureListener, {
+    let concrete: ArcShared<L> = ArcShared::new(listener);
+    let dyn_listener: ArcShared<dyn RemotingBackpressureListener> = concrete;
+    self.register_listener_dyn(dyn_listener);
+  }
+
+  fn connections_snapshot(&self) -> Vec<RemoteAuthoritySnapshot> {
+    self.inner.snapshots.lock().clone()
+  }
+}
+
+struct RemotingControlInner<TB>
+where
+  TB: RuntimeToolbox + 'static, {
+  system:          ActorSystemGeneric<TB>,
+  _event_stream:   ArcShared<EventStreamGeneric<TB>>,
+  _canonical_host: String,
+  _canonical_port: Option<u16>,
+  state:           ToolboxMutex<RemotingLifecycleState, TB>,
+  listeners:       ToolboxMutex<Vec<ArcShared<dyn RemotingBackpressureListener>>, TB>,
+  snapshots:       ToolboxMutex<Vec<RemoteAuthoritySnapshot>, TB>,
+  correlation_seq: AtomicU64,
+}
+
+impl<TB> RemotingControlInner<TB>
+where
+  TB: RuntimeToolbox + 'static,
+{
+  fn publish_lifecycle(&self, event: RemotingLifecycleEvent) {
+    self.system.publish_event(&EventStreamEvent::RemotingLifecycle(event));
+  }
+
+  fn publish_backpressure(&self, authority: &str, signal: BackpressureSignal, correlation_id: CorrelationId) {
+    let event = RemotingBackpressureEvent::new(authority.to_string(), signal, correlation_id);
+    self.system.publish_event(&EventStreamEvent::RemotingBackpressure(event));
+  }
+
+  fn next_correlation_id(&self) -> CorrelationId {
+    let seq = self.correlation_seq.fetch_add(1, Ordering::Relaxed) as u128;
+    CorrelationId::from_u128(seq)
+  }
+}
+
+struct RemotingLifecycleState {
+  phase: LifecyclePhase,
+}
+
+impl RemotingLifecycleState {
+  const fn new() -> Self {
+    Self { phase: LifecyclePhase::Idle }
+  }
+
+  fn is_running(&self) -> bool {
+    matches!(self.phase, LifecyclePhase::Running)
+  }
+
+  fn ensure_running(&self) -> Result<(), RemotingError> {
+    match self.phase {
+      | LifecyclePhase::Running => Ok(()),
+      | LifecyclePhase::Idle => Err(RemotingError::NotStarted),
+      | LifecyclePhase::Stopped => Err(RemotingError::AlreadyShutdown),
+    }
+  }
+
+  fn transition_to_start(&mut self) -> Result<(), RemotingError> {
+    match self.phase {
+      | LifecyclePhase::Idle => {
+        self.phase = LifecyclePhase::Running;
+        Ok(())
+      },
+      | LifecyclePhase::Running => Err(RemotingError::AlreadyStarted),
+      | LifecyclePhase::Stopped => Err(RemotingError::AlreadyShutdown),
+    }
+  }
+
+  fn transition_to_shutdown(&mut self) -> Result<(), RemotingError> {
+    match self.phase {
+      | LifecyclePhase::Idle | LifecyclePhase::Running => {
+        self.phase = LifecyclePhase::Stopped;
+        Ok(())
+      },
+      | LifecyclePhase::Stopped => Err(RemotingError::AlreadyShutdown),
+    }
+  }
+
+  fn mark_shutdown(&mut self) -> bool {
+    if matches!(self.phase, LifecyclePhase::Stopped) {
+      false
+    } else {
+      self.phase = LifecyclePhase::Stopped;
+      true
+    }
+  }
+}
+
+enum LifecyclePhase {
+  Idle,
+  Running,
+  Stopped,
+}
+
+struct ControlBackpressureHook<TB>
+where
+  TB: RuntimeToolbox + 'static, {
+  control: RemotingControlHandle<TB>,
+}
+
+impl<TB> TransportBackpressureHook for ControlBackpressureHook<TB>
+where
+  TB: RuntimeToolbox + 'static,
+{
+  fn on_backpressure(&self, signal: BackpressureSignal, authority: &str, correlation_id: CorrelationId) {
+    self.control.notify_backpressure(authority, signal, Some(correlation_id));
+  }
+}

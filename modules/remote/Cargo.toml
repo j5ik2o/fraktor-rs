@@ -15,6 +15,7 @@ categories = ["concurrency", "network-programming"]
 default = []
 std = ["fraktor-actor-rs/std", "fraktor-utils-rs/std"]
 tokio-executor = ["std", "fraktor-actor-rs/tokio-executor"]
+test-support = []
 
 [dependencies]
 fraktor-actor-rs = { workspace = true }
@@ -25,3 +26,8 @@ portable-atomic = { workspace = true, default-features = false }
 fraktor-actor-rs = { workspace = true, features = ["test-support"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
 anyhow = { workspace = true }
+
+[[test]]
+name = "quickstart"
+path = "tests/quickstart.rs"
+required-features = ["test-support"]
