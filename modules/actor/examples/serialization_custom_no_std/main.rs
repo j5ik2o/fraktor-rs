@@ -13,6 +13,7 @@ use core::{
 
 use fraktor_actor_rs::core::{
   actor_prim::{Actor, ActorContext},
+  config::ActorSystemConfig,
   error::ActorError,
   messaging::AnyMessageViewGeneric,
   props::Props,
@@ -148,21 +149,31 @@ fn main() {
   let serializer_id = SerializerId::try_from(200).expect("valid serializer id");
   let setup = build_serialization_setup(serializer_id);
   let serialization_id = SerializationExtensionId::new(setup);
-  let configure_id = serialization_id.clone();
 
   let props = Props::from_fn(NullActor::new).with_name("serialization-demo");
-  let tick_driver = no_std_tick_driver_support::hardware_tick_driver_config();
-  let system = ActorSystem::new(&props, tick_driver).expect("actor system");
 
-  // ActorSystem 起動後にシリアライゼーション拡張を登録
-  let _ = system.extended().register_extension(&configure_id);
+  // ActorSystem 構築時にシリアライゼーション拡張を登録
+  // （デフォルト拡張がインストールされる前に登録する必要がある）
+  let ext_id_clone = serialization_id.clone();
+  let tick_driver = no_std_tick_driver_support::hardware_tick_driver_config();
+  let config = ActorSystemConfig::default().with_tick_driver(tick_driver);
+  let system = ActorSystem::new_with_config_and(&props, &config, move |system| {
+    system.extended().register_extension(&ext_id_clone);
+    Ok(())
+  })
+  .expect("actor system");
 
   let serialization: ArcShared<SerializationExtension> =
     system.extended().extension(&serialization_id).expect("extension registered");
 
   let payload = TelemetryPayload { node: 7, temperature: 24 };
-  let serialized: SerializedMessage =
-    serialization.serialize(&payload, SerializationCallScope::Remote).expect("serialize remote");
+  let serialized: SerializedMessage = match serialization.serialize(&payload, SerializationCallScope::Remote) {
+    | Ok(msg) => msg,
+    | Err(error) => {
+      println!("Serialization error: {:?}", error);
+      panic!("serialize remote: {:?}", error);
+    },
+  };
 
   println!("manifest: {:?}", serialized.manifest());
   println!("bytes: {:?}", serialized.bytes());

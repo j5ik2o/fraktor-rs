@@ -15,7 +15,7 @@ use crate::core::{
 
 /// Registry tracking per-authority state transitions and deferred queues.
 #[derive(Default)]
-pub struct EndpointRegistry {
+pub(crate) struct EndpointRegistry {
   entries: BTreeMap<String, EndpointEntry>,
 }
 
@@ -28,17 +28,17 @@ struct EndpointEntry {
 
 impl EndpointRegistry {
   /// Ensures that the authority entry exists.
-  pub fn ensure_entry(&mut self, authority: &str) {
+  pub(crate) fn ensure_entry(&mut self, authority: &str) {
     self.entries.entry(authority.to_string()).or_insert_with(EndpointEntry::new);
   }
 
   /// Returns the current association state.
-  pub fn state(&self, authority: &str) -> Option<&AssociationState> {
+  pub(crate) fn state(&self, authority: &str) -> Option<&AssociationState> {
     self.entries.get(authority).map(|entry| &entry.state)
   }
 
   /// Sets the new association state and records metadata.
-  pub fn set_state(&mut self, authority: &str, state: AssociationState, now: u64, reason: Option<&str>) {
+  pub(crate) fn set_state(&mut self, authority: &str, state: AssociationState, now: u64, reason: Option<&str>) {
     let entry = self.entries.entry(authority.to_string()).or_insert_with(EndpointEntry::new);
     entry.state = state;
     entry.last_change_ticks = now;
@@ -46,18 +46,18 @@ impl EndpointRegistry {
   }
 
   /// Pushes a deferred envelope for the given authority.
-  pub fn push_deferred(&mut self, authority: &str, envelope: DeferredEnvelope) {
+  pub(crate) fn push_deferred(&mut self, authority: &str, envelope: DeferredEnvelope) {
     self.entries.entry(authority.to_string()).or_insert_with(EndpointEntry::new).deferred.push(envelope);
   }
 
   /// Drains the deferred queue for the given authority.
-  pub fn drain_deferred(&mut self, authority: &str) -> Vec<DeferredEnvelope> {
+  pub(crate) fn drain_deferred(&mut self, authority: &str) -> Vec<DeferredEnvelope> {
     self.entries.entry(authority.to_string()).or_insert_with(EndpointEntry::new).drain_deferred()
   }
 
   /// Returns a snapshot of every tracked authority.
   #[allow(dead_code)]
-  pub fn snapshots(&self) -> Vec<RemoteAuthoritySnapshot> {
+  pub(crate) fn snapshots(&self) -> Vec<RemoteAuthoritySnapshot> {
     self
       .entries
       .iter()
