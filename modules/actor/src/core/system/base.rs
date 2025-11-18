@@ -112,6 +112,16 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     system.state.apply_actor_system_config(config);
     system.install_scheduler_and_tick_driver_from_config(config)?;
     system.bootstrap(user_guardian_props, configure)?;
+
+    // Install extensions and provider after bootstrap
+    if let Some(extensions) = config.extensions_config() {
+      extensions.install_all(&system).map_err(|e| SpawnError::from_actor_system_build_error(&e))?;
+    }
+
+    if let Some(installer) = config.provider_installer() {
+      installer.install(&system).map_err(|e| SpawnError::from_actor_system_build_error(&e))?;
+    }
+
     Ok(system)
   }
 

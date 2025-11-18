@@ -1,4 +1,4 @@
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use super::{ActorRefProviderInstaller, actor_system_build_error::ActorSystemBuildError, base::ActorSystemGeneric};
 use crate::core::{
@@ -23,8 +23,6 @@ where
   TB: RuntimeToolbox + 'static, {
   props:               PropsGeneric<TB>,
   actor_system_config: ActorSystemConfig<TB>,
-  extensions_config:   Option<ExtensionsConfig<TB>>,
-  provider_installer:  Option<ArcShared<dyn ActorRefProviderInstaller<TB>>>,
 }
 
 impl<TB> BuilderState<TB>
@@ -32,7 +30,7 @@ where
   TB: RuntimeToolbox + 'static,
 {
   fn new(props: PropsGeneric<TB>) -> Self {
-    Self { props, actor_system_config: ActorSystemConfig::default(), extensions_config: None, provider_installer: None }
+    Self { props, actor_system_config: ActorSystemConfig::default() }
   }
 }
 
@@ -70,7 +68,7 @@ where
   /// Registers extension installers executed after bootstrap.
   #[must_use]
   pub fn with_extensions_config(mut self, config: ExtensionsConfig<TB>) -> Self {
-    self.state.extensions_config = Some(config);
+    self.state.actor_system_config = self.state.actor_system_config.with_extensions_config(config);
     self
   }
 
@@ -79,7 +77,7 @@ where
   pub fn with_actor_ref_provider<P>(mut self, provider: P) -> Self
   where
     P: ActorRefProviderInstaller<TB> + 'static, {
-    self.state.provider_installer = Some(ArcShared::new(provider));
+    self.state.actor_system_config = self.state.actor_system_config.with_actor_ref_provider(provider);
     self
   }
 
@@ -93,7 +91,7 @@ where
   /// - Tick driver provisioning fails
   #[allow(unused_mut)]
   pub fn build(self) -> Result<ActorSystemGeneric<TB>, ActorSystemBuildError> {
-    let BuilderState { props, mut actor_system_config, extensions_config, provider_installer } = self.state;
+    let BuilderState { props, mut actor_system_config } = self.state;
 
     // Ensure tick driver configuration is present
     if actor_system_config.tick_driver_config().is_none() {
@@ -111,18 +109,7 @@ where
     }
 
     // Create actor system with full configuration
-    // The scheduler context and tick driver runtime will be installed automatically
-    let system =
-      ActorSystemGeneric::new_with_config(&props, &actor_system_config).map_err(ActorSystemBuildError::Spawn)?;
-
-    if let Some(config) = extensions_config {
-      config.install_all(&system)?;
-    }
-
-    if let Some(installer) = provider_installer {
-      installer.install(&system)?;
-    }
-
-    Ok(system)
+    // Extensions and provider installer will be installed automatically inside new_with_config
+    ActorSystemGeneric::new_with_config(&props, &actor_system_config).map_err(ActorSystemBuildError::Spawn)
   }
 }

@@ -22,6 +22,8 @@ pub enum SpawnError {
   /// [`MailboxOverflowStrategy::Block`](crate::core::mailbox::MailboxOverflowStrategy::Block)
   /// is used with a single-threaded executor that doesn't support blocking operations.
   InvalidMailboxConfig(String),
+  /// Actor system build error occurred during initialization.
+  SystemBuildError(String),
 }
 
 impl SpawnError {
@@ -47,5 +49,11 @@ impl SpawnError {
   #[must_use]
   pub fn invalid_mailbox_config(reason: impl Into<String>) -> Self {
     Self::InvalidMailboxConfig(reason.into())
+  }
+
+  /// Creates a system build error from ActorSystemBuildError.
+  #[must_use]
+  pub fn from_actor_system_build_error(error: &crate::core::system::ActorSystemBuildError) -> Self {
+    Self::SystemBuildError(alloc::format!("{:?}", error))
   }
 }
