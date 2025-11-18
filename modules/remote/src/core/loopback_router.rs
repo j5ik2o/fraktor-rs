@@ -1,6 +1,7 @@
 //! In-memory routing layer that delivers loopback envelopes without a physical transport.
 
 use alloc::{
+  boxed::Box,
   format,
   string::{String, ToString},
 };
@@ -11,19 +12,15 @@ use hashbrown::HashMap;
 use spin::Mutex;
 
 use crate::core::{
-  endpoint_reader::EndpointReader,
-  endpoint_writer::EndpointWriter,
-  outbound_message::OutboundMessage,
-  remote_node_id::RemoteNodeId,
-  remoting_envelope::RemotingEnvelope,
-  EndpointWriterError,
+  EndpointWriterError, endpoint_reader::EndpointReader, endpoint_writer::EndpointWriter,
+  outbound_message::OutboundMessage, remote_node_id::RemoteNodeId, remoting_envelope::RemotingEnvelope,
 };
 
 const LOOPBACK_SCHEME: &str = "fraktor.loopback";
 
 pub enum LoopbackDeliveryOutcome<TB: RuntimeToolbox + 'static> {
   Delivered,
-  Pending(OutboundMessage<TB>),
+  Pending(Box<OutboundMessage<TB>>),
 }
 
 trait LoopbackDeliverer: Send + Sync {
@@ -89,7 +86,7 @@ where
   let authority = format_authority(remote.host(), remote.port());
   let deliverer = REGISTRY.lock().as_ref().and_then(|map| map.get(&authority).cloned());
   let Some(deliverer) = deliverer else {
-    return Ok(LoopbackDeliveryOutcome::Pending(message));
+    return Ok(LoopbackDeliveryOutcome::Pending(Box::new(message)));
   };
   let envelope = writer.serialize_for_loopback(message)?;
   deliverer.deliver(envelope);

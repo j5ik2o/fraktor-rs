@@ -247,7 +247,7 @@ impl<TB: RuntimeToolbox + 'static> ActorRefSender<TB> for RemoteActorRefSender<T
     match loopback_router::try_deliver(&self.remote_node, &self.writer, outbound) {
       | Ok(LoopbackDeliveryOutcome::Delivered) => Ok(()),
       | Ok(LoopbackDeliveryOutcome::Pending(pending)) => {
-        self.writer.enqueue(pending).map_err(|error| self.map_error(error, message_clone))
+        self.writer.enqueue(*pending).map_err(|error| self.map_error(error, message_clone))
       },
       | Err(error) => Err(self.map_error(error, message_clone)),
     }
