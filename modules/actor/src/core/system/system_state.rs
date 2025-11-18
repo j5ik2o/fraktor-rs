@@ -535,7 +535,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   pub(crate) fn install_actor_ref_provider<P>(&self, provider: ArcShared<P>)
   where
     P: Any + Send + Sync + 'static, {
-    let erased: ArcShared<dyn Any + Send + Sync + 'static> = provider.clone();
+    let erased: ArcShared<dyn Any + Send + Sync + 'static> = provider;
     self.actor_ref_providers.lock().insert(TypeId::of::<P>(), erased);
   }
 

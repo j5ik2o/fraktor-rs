@@ -1,5 +1,3 @@
-#![cfg(test)]
-
 use super::{AssociationState, EndpointManager, QuarantineReason, RemoteNodeId};
 use crate::core::transport::{LoopbackTransport, RemoteTransport, TransportBind, TransportEndpoint};
 

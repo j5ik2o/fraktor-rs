@@ -1,5 +1,9 @@
 //! Failure detector primitives.
 
-pub mod failure_detector_event;
-pub mod phi_failure_detector;
-pub mod phi_failure_detector_config;
+mod failure_detector_event;
+mod phi_failure_detector;
+mod phi_failure_detector_config;
+
+pub use failure_detector_event::FailureDetectorEvent;
+pub use phi_failure_detector::PhiFailureDetector;
+pub use phi_failure_detector_config::PhiFailureDetectorConfig;

@@ -63,7 +63,9 @@ impl EventStreamSubscriber for LifecyclePrinter {
       | EventStreamEvent::UnhandledMessage(_)
       | EventStreamEvent::Serialization(_)
       | EventStreamEvent::SchedulerTick(_)
-      | EventStreamEvent::TickDriver(_) => {},
+      | EventStreamEvent::TickDriver(_)
+      | EventStreamEvent::RemotingBackpressure(_)
+      | EventStreamEvent::RemotingLifecycle(_) => {},
     }
   }
 }

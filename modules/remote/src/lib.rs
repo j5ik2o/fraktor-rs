@@ -1,35 +1,20 @@
 #![deny(missing_docs)]
 #![deny(unsafe_op_in_unsafe_fn)]
 #![cfg_attr(not(test), no_std)]
+#![allow(clippy::module_inception)]
 
 //! Remoting facilities for the fraktor actor runtime.
 
 extern crate alloc;
 
-mod core;
+/// Core remoting facilities.
+pub mod core;
+/// Standard library implementation.
+#[cfg(feature = "std")]
 mod std;
 
 pub use core::{
-  backpressure_listener::RemotingBackpressureListener,
-  endpoint_reader::EndpointReader,
-  endpoint_writer::{EndpointWriter, OutboundEnvelope, RemotingEnvelope},
-  failure_detector::{
-    failure_detector_event::FailureDetectorEvent, phi_failure_detector::PhiFailureDetector,
-    phi_failure_detector_config::PhiFailureDetectorConfig,
-  },
-  flight_recorder::{
-    correlation_trace::{CorrelationTrace, CorrelationTraceHop},
-    remoting_flight_recorder::RemotingFlightRecorder,
-    remoting_metric::RemotingMetric,
-  },
-  inbound_envelope::InboundEnvelope,
-  remote_actor_ref_provider::RemoteActorRefProvider,
-  remote_actor_ref_provider_setup::RemoteActorRefProviderSetup,
-  remoting_connection_snapshot::RemotingConnectionSnapshot,
-  remoting_control::RemotingControl,
-  remoting_control_handle::RemotingControlHandle,
-  remoting_error::RemotingError,
-  remoting_extension::RemotingExtension,
-  remoting_extension_config::RemotingExtensionConfig,
-  remoting_extension_id::RemotingExtensionId,
+  InboundEnvelope, RemoteActorRefProvider, RemoteActorRefProviderSetup, RemoteWatcherDaemon, RemoteWatcherMessage,
+  RemotingBackpressureListener, RemotingConnectionSnapshot, RemotingControl, RemotingControlHandle, RemotingError,
+  RemotingExtension, RemotingExtensionConfig, RemotingExtensionId,
 };

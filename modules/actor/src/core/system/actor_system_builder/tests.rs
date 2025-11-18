@@ -9,7 +9,7 @@ use crate::core::{
   extension::ExtensionsConfig,
   messaging::AnyMessageViewGeneric,
   props::PropsGeneric,
-  scheduler::{TickDriverConfig, tick_driver::ManualTestDriver},
+  scheduler::{ManualTestDriver, TickDriverConfig},
   system::{ActorRefProviderInstaller, ActorSystemBuildError},
 };
 
@@ -44,13 +44,25 @@ impl ActorRefProviderInstaller<NoStdToolbox> for TestProviderInstaller {
   }
 }
 
+struct TestExtensionInstaller {
+  counter: ArcShared<AtomicUsize>,
+}
+
+impl crate::core::extension::ExtensionInstaller<NoStdToolbox> for TestExtensionInstaller {
+  fn install(
+    &self,
+    _system: &crate::core::system::ActorSystemGeneric<NoStdToolbox>,
+  ) -> Result<(), ActorSystemBuildError> {
+    self.counter.fetch_add(1, Ordering::SeqCst);
+    Ok(())
+  }
+}
+
 #[test]
 fn installs_extensions_and_provider() {
-  let counter = AtomicUsize::new(0);
-  let extensions = ExtensionsConfig::default().with_extension_config(|_system| {
-    counter.fetch_add(1, Ordering::SeqCst);
-    Ok(())
-  });
+  let counter = ArcShared::new(AtomicUsize::new(0));
+  let extensions =
+    ExtensionsConfig::default().with_extension_config(TestExtensionInstaller { counter: counter.clone() });
 
   let props = PropsGeneric::from_fn(|| NoopActor).with_name("quickstart");
   let system = ActorSystemBuilder::<NoStdToolbox>::new(props)

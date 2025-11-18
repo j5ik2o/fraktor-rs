@@ -1,11 +1,7 @@
 use fraktor_actor_rs::core::{event_stream::CorrelationId, system::AuthorityState};
 
 use crate::core::{
-  flight_recorder::{
-    correlation_trace::{CorrelationTrace, CorrelationTraceHop},
-    remoting_flight_recorder::RemotingFlightRecorder,
-    remoting_metric::RemotingMetric,
-  },
+  flight_recorder::{CorrelationTrace, CorrelationTraceHop, RemotingFlightRecorder, RemotingMetric},
   remoting_connection_snapshot::RemotingConnectionSnapshot,
 };
 

@@ -20,7 +20,6 @@ use fraktor_actor_rs::core::{
 #[path = "../no_std_tick_driver_support.rs"]
 mod no_std_tick_driver_support;
 #[cfg(not(target_os = "none"))]
-
 // アクターに送信されるスケジュール済みメッセージ
 struct ScheduledMessage {
   text: String,

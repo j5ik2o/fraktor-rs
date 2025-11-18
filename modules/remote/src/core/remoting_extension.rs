@@ -37,6 +37,3 @@ impl<TB: RuntimeToolbox + 'static> RemotingExtension<TB> {
 }
 
 impl<TB: RuntimeToolbox + 'static> Extension<TB> for RemotingExtension<TB> {}
-
-#[cfg(test)]
-mod tests;

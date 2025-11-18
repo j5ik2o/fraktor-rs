@@ -7,13 +7,7 @@ use fraktor_utils_rs::core::{
   runtime_toolbox::RuntimeToolbox,
 };
 
-/// Differentiates system vs user envelopes.
-pub enum EnvelopePriority {
-  /// System messages have higher priority.
-  System,
-  /// User messages are processed after system queues drain.
-  User,
-}
+use super::envelope_priority::EnvelopePriority;
 
 /// Queues outbound envelopes while respecting system priority and backpressure signals.
 pub struct OutboundQueue<TB: RuntimeToolbox + 'static, T> {
@@ -48,7 +42,6 @@ impl<TB: RuntimeToolbox + 'static, T> OutboundQueue<TB, T> {
   }
 
   /// Pops the next element, draining system queue before user queue.
-  #[must_use]
   pub fn pop(&mut self) -> Result<Option<T>, QueueError<T>> {
     if let Some(item) = Self::poll(&mut self.system)? {
       return Ok(Some(item));

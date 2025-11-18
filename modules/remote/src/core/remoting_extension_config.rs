@@ -10,10 +10,7 @@ use fraktor_actor_rs::core::{
 };
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
-use crate::{
-  RemotingBackpressureListener, RemotingExtensionId,
-  core::failure_detector::phi_failure_detector_config::PhiFailureDetectorConfig,
-};
+use crate::{RemotingBackpressureListener, RemotingExtensionId, core::failure_detector::PhiFailureDetectorConfig};
 
 /// Configures remoting bootstrap behaviour.
 #[derive(Clone)]

@@ -13,19 +13,8 @@ use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use crate::{
   RemotingConnectionSnapshot, RemotingControl, RemotingControlHandle, RemotingError,
-  core::flight_recorder::remoting_flight_recorder::RemotingFlightRecorder,
+  core::{flight_recorder::RemotingFlightRecorder, remote_watcher_message::RemoteWatcherMessage},
 };
-
-/// Command handled by the remote watcher daemon.
-#[derive(Clone)]
-pub enum RemoteWatcherMessage {
-  /// Registers a watch request for the specified remote path.
-  Watch { target: ActorPathParts },
-  /// Cancels a previously registered watch.
-  Unwatch { target: ActorPathParts },
-  /// Requests the latest endpoint snapshot.
-  Snapshot,
-}
 
 /// Remote watcher implementation bridging watch/unwatch to remoting control.
 pub struct RemoteWatcherDaemon<TB: RuntimeToolbox + 'static> {

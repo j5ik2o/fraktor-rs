@@ -1,5 +1,8 @@
 //! Concrete [`RemotingControl`] handle shared with runtime components.
 
+#[cfg(test)]
+mod tests;
+
 use alloc::{
   format,
   string::{String, ToString},
@@ -22,12 +25,8 @@ use crate::{
   core::{
     endpoint_manager::RemoteNodeId,
     event_publisher::EventPublisher,
-    flight_recorder::{
-      correlation_trace::{CorrelationTrace, CorrelationTraceHop},
-      remoting_flight_recorder::RemotingFlightRecorder,
-      remoting_metric::RemotingMetric,
-    },
-    transport::{RemoteTransport, factory::TransportFactory},
+    flight_recorder::{CorrelationTrace, CorrelationTraceHop, RemotingFlightRecorder, RemotingMetric},
+    transport::{RemoteTransport, TransportFactory},
   },
 };
 
@@ -76,12 +75,6 @@ impl<TB: RuntimeToolbox + 'static> RemotingControlHandle<TB> {
     *self.shared.supervisor.lock() = Some(supervisor);
   }
 
-  /// Exposes the supervisor actor reference for testing.
-  #[cfg(test)]
-  pub(crate) fn supervisor_ref(&self) -> Option<ActorRefGeneric<TB>> {
-    self.shared.supervisor.lock().clone()
-  }
-
   pub(crate) fn publish_shutdown(&self) {
     if !self.shared.shutdown.swap(true, Ordering::SeqCst) {
       self.publisher().lifecycle_shutdown();
@@ -106,16 +99,6 @@ impl<TB: RuntimeToolbox + 'static> RemotingControlHandle<TB> {
 
   fn publisher(&self) -> ArcShared<EventPublisher<TB>> {
     self.shared.publisher.clone()
-  }
-
-  #[cfg(test)]
-  pub(crate) fn test_notify_backpressure(&self, signal: BackpressureSignal, authority: &str) {
-    self.notify_backpressure_internal(signal, authority);
-  }
-
-  #[cfg(test)]
-  pub(crate) fn flight_recorder_for_test(&self) -> RemotingFlightRecorder {
-    self.shared.flight_recorder.clone()
   }
 
   pub(crate) fn flight_recorder(&self) -> RemotingFlightRecorder {

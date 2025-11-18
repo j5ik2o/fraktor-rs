@@ -1,5 +1,3 @@
-#![cfg(test)]
-
 use fraktor_actor_rs::core::{
   actor_prim::{
     Actor, ActorContextGeneric,

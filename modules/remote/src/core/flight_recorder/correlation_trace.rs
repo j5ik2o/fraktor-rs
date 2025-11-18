@@ -4,16 +4,7 @@ use alloc::string::String;
 
 use fraktor_actor_rs::core::event_stream::CorrelationId;
 
-/// Enumerates trace hop kinds recorded by the flight recorder.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum CorrelationTraceHop {
-  /// Outbound send path.
-  Send,
-  /// Inbound receive path.
-  Receive,
-  /// Serialization hop.
-  Serialize,
-}
+use super::correlation_trace_hop::CorrelationTraceHop;
 
 /// Correlates remoting hops via [`CorrelationId`].
 #[derive(Clone, Debug, PartialEq, Eq)]

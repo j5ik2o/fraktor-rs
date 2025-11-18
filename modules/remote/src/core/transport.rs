@@ -1,6 +1,6 @@
 //! Transport abstractions for remoting.
 
-pub mod factory;
+mod factory;
 mod loopback;
 #[cfg(test)]
 mod tests;
@@ -12,6 +12,8 @@ mod transport_handle;
 
 use alloc::sync::Arc;
 
+#[allow(unused_imports)]
+pub use factory::*;
 use fraktor_actor_rs::core::event_stream::BackpressureSignal;
 use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 pub use loopback::LoopbackTransport;

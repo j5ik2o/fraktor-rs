@@ -103,3 +103,9 @@ impl<TB: RuntimeToolbox + 'static> RemoteTransport<TB> for LoopbackTransport {
     // nothing to do for loopback
   }
 }
+
+impl Default for LoopbackTransport {
+  fn default() -> Self {
+    Self::new()
+  }
+}

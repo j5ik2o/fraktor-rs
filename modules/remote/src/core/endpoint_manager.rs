@@ -2,6 +2,8 @@
 
 mod association_state;
 mod endpoint_manager_command;
+mod endpoint_snapshot;
+mod quarantine_reason;
 mod remote_node_id;
 #[cfg(test)]
 mod tests;
@@ -14,7 +16,9 @@ use alloc::{
 use core::time::Duration;
 
 pub use association_state::AssociationState;
+pub use endpoint_snapshot::EndpointSnapshot;
 use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex};
+pub use quarantine_reason::QuarantineReason;
 pub use remote_node_id::RemoteNodeId;
 
 #[allow(dead_code)]
@@ -35,58 +39,6 @@ impl AuthorityEntry {
       last_reason: None,
     }
   }
-}
-
-/// Snapshot of authority state for observability.
-#[allow(dead_code)]
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct EndpointSnapshot {
-  authority:   String,
-  state:       AssociationState,
-  last_change: u64,
-  last_reason: Option<String>,
-  deferred:    usize,
-}
-
-impl EndpointSnapshot {
-  /// Returns authority identifier.
-  #[must_use]
-  pub fn authority(&self) -> &str {
-    &self.authority
-  }
-
-  /// Returns association state.
-  #[must_use]
-  pub fn state(&self) -> &AssociationState {
-    &self.state
-  }
-
-  /// Returns monotonic timestamp of the last change.
-  #[must_use]
-  pub const fn last_change(&self) -> u64 {
-    self.last_change
-  }
-
-  /// Returns last transition reason when available.
-  #[must_use]
-  pub fn last_reason(&self) -> Option<&str> {
-    self.last_reason.as_deref()
-  }
-
-  /// Returns number of deferred messages.
-  #[must_use]
-  pub const fn deferred(&self) -> usize {
-    self.deferred
-  }
-}
-
-/// Describes why an authority was quarantined.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum QuarantineReason {
-  /// Remote UID mismatch was detected during handshake.
-  UidMismatch,
-  /// Manual quarantine triggered by operators.
-  Manual(String),
 }
 
 /// Manages association/handshake state per remote authority.
@@ -177,5 +129,11 @@ impl EndpointManager {
     entry.last_change = now;
     entry.last_reason = None;
     entry.deferred.drain(..).collect()
+  }
+}
+
+impl Default for EndpointManager {
+  fn default() -> Self {
+    Self::new()
   }
 }

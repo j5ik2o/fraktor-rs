@@ -5,6 +5,7 @@ use alloc::{string::String, vec::Vec};
 use super::remote_node_id::RemoteNodeId;
 
 /// Commands accepted by the endpoint manager state machine.
+#[allow(dead_code)]
 #[derive(Clone, Debug, PartialEq)]
 pub enum EndpointManagerCommand {
   /// Register an inbound handle to start a handshake.

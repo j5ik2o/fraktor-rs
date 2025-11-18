@@ -1,8 +1,8 @@
 //! Aggregates extension installers for the actor system builder.
 
-use alloc::{sync::Arc, vec::Vec};
+use alloc::vec::Vec;
 
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
 use super::ExtensionInstaller;
 use crate::core::system::{ActorSystemBuildError, ActorSystemGeneric};
@@ -11,7 +11,7 @@ use crate::core::system::{ActorSystemBuildError, ActorSystemGeneric};
 pub struct ExtensionsConfig<TB>
 where
   TB: RuntimeToolbox + 'static, {
-  installers: Vec<Arc<dyn ExtensionInstaller<TB>>>,
+  installers: Vec<ArcShared<dyn ExtensionInstaller<TB>>>,
 }
 
 impl<TB> ExtensionsConfig<TB>
@@ -23,7 +23,7 @@ where
   pub fn with_extension_config<E>(mut self, installer: E) -> Self
   where
     E: ExtensionInstaller<TB> + 'static, {
-    self.installers.push(Arc::new(installer));
+    self.installers.push(ArcShared::new(installer));
     self
   }
 

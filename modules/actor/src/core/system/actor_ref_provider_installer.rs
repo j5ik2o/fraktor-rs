@@ -9,6 +9,10 @@ pub trait ActorRefProviderInstaller<TB>: Send + Sync + 'static
 where
   TB: RuntimeToolbox + 'static, {
   /// Installs the provider.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the provider installation fails.
   fn install(&self, system: &ActorSystemGeneric<TB>) -> Result<(), ActorSystemBuildError>;
 }
 

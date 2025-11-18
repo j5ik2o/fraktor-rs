@@ -12,8 +12,8 @@ use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 use crate::{
   RemotingConnectionSnapshot, RemotingControl, RemotingControlHandle, RemotingError,
   core::{
-    remote_actor_ref_provider_setup::RemoteActorRefProviderSetup,
-    remote_watcher_daemon::{RemoteWatcherDaemon, RemoteWatcherMessage},
+    remote_actor_ref_provider_setup::RemoteActorRefProviderSetup, remote_watcher_daemon::RemoteWatcherDaemon,
+    remote_watcher_message::RemoteWatcherMessage,
   },
 };
 

@@ -40,7 +40,7 @@ impl CorrelationId {
 
   /// Constructs an identifier from a 128-bit value, truncating to 96 bits.
   #[must_use]
-  pub fn from_u128(value: u128) -> Self {
+  pub const fn from_u128(value: u128) -> Self {
     let hi = (value >> 32) as u64;
     let lo = value as u32;
     Self::new(hi, lo)
@@ -57,7 +57,7 @@ impl CorrelationId {
 
   /// Converts the identifier into a 128-bit value retaining all 96 bits of precision.
   #[must_use]
-  pub fn to_u128(&self) -> u128 {
+  pub const fn to_u128(&self) -> u128 {
     ((self.hi as u128) << 32) | (self.lo as u128)
   }
 }

@@ -1,6 +1,4 @@
-use alloc::sync::Arc;
-
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
 use super::{ActorRefProviderInstaller, actor_system_build_error::ActorSystemBuildError, base::ActorSystemGeneric};
 use crate::core::{
@@ -26,7 +24,7 @@ where
   props:               PropsGeneric<TB>,
   actor_system_config: ActorSystemConfig<TB>,
   extensions_config:   Option<ExtensionsConfig<TB>>,
-  provider_installer:  Option<Arc<dyn ActorRefProviderInstaller<TB>>>,
+  provider_installer:  Option<ArcShared<dyn ActorRefProviderInstaller<TB>>>,
 }
 
 impl<TB> BuilderState<TB>
@@ -81,7 +79,7 @@ where
   pub fn with_actor_ref_provider<P>(mut self, provider: P) -> Self
   where
     P: ActorRefProviderInstaller<TB> + 'static, {
-    self.state.provider_installer = Some(Arc::new(provider));
+    self.state.provider_installer = Some(ArcShared::new(provider));
     self
   }
 

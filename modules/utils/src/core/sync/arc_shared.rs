@@ -32,7 +32,7 @@ impl<T: ?Sized> ArcShared<T> {
 
   /// Wraps an existing [`Arc`] inside the shared wrapper.
   #[must_use]
-  pub fn from_arc(inner: Arc<T>) -> Self {
+  pub const fn from_arc(inner: Arc<T>) -> Self {
     Self(inner)
   }
 

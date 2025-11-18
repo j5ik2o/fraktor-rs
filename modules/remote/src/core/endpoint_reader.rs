@@ -10,6 +10,9 @@ use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
 use crate::core::{endpoint_writer::RemotingEnvelope, inbound_envelope::InboundEnvelope};
 
+#[cfg(test)]
+mod tests;
+
 /// Converts transport frames into inbound envelopes.
 pub struct EndpointReader<TB: RuntimeToolbox + 'static> {
   serialization: ArcShared<SerializationExtensionGeneric<TB>>,
@@ -37,6 +40,3 @@ impl<TB: RuntimeToolbox + 'static> EndpointReader<TB> {
     ))
   }
 }
-
-#[cfg(test)]
-mod tests;

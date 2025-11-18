@@ -9,6 +9,10 @@ pub trait ExtensionInstaller<TB>: Send + Sync + 'static
 where
   TB: RuntimeToolbox + 'static, {
   /// Invoked after the actor system has been created to register the extension.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the extension installation fails.
   fn install(&self, system: &ActorSystemGeneric<TB>) -> Result<(), ActorSystemBuildError>;
 }
 

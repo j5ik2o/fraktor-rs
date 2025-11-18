@@ -4,11 +4,8 @@ use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 
 use crate::core::{
   endpoint_manager::{AssociationState, EndpointManager, QuarantineReason},
-  failure_detector::{
-    failure_detector_event::FailureDetectorEvent, phi_failure_detector::PhiFailureDetector,
-    phi_failure_detector_config::PhiFailureDetectorConfig,
-  },
-  flight_recorder::remoting_flight_recorder::RemotingFlightRecorder,
+  failure_detector::{FailureDetectorEvent, PhiFailureDetector, PhiFailureDetectorConfig},
+  flight_recorder::RemotingFlightRecorder,
 };
 
 #[test]

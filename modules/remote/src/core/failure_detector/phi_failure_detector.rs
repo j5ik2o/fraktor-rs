@@ -12,7 +12,7 @@ use fraktor_utils_rs::core::{
   sync::sync_mutex_like::SyncMutexLike,
 };
 
-use crate::core::flight_recorder::remoting_flight_recorder::RemotingFlightRecorder;
+use crate::core::flight_recorder::RemotingFlightRecorder;
 
 #[cfg(test)]
 mod tests;
@@ -84,14 +84,13 @@ impl Probe {
   }
 
   fn record_heartbeat(&mut self, now: Duration, min_interval: Duration) {
-    if let Some(last) = self.last_heartbeat {
-      if let Some(interval) = now.checked_sub(last) {
-        if interval >= min_interval {
-          self.samples.push_back(interval);
-          if self.samples.len() > self.capacity {
-            self.samples.pop_front();
-          }
-        }
+    if let Some(last) = self.last_heartbeat
+      && let Some(interval) = now.checked_sub(last)
+      && interval >= min_interval
+    {
+      self.samples.push_back(interval);
+      if self.samples.len() > self.capacity {
+        self.samples.pop_front();
       }
     }
 
