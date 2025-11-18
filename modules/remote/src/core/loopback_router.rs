@@ -18,7 +18,7 @@ use crate::core::{
 
 const LOOPBACK_SCHEME: &str = "fraktor.loopback";
 
-pub enum LoopbackDeliveryOutcome<TB: RuntimeToolbox + 'static> {
+pub(crate) enum LoopbackDeliveryOutcome<TB: RuntimeToolbox + 'static> {
   Delivered,
   Pending(Box<OutboundMessage<TB>>),
 }
@@ -64,11 +64,11 @@ type ArcDeliverer = ArcShared<dyn LoopbackDeliverer>;
 
 static REGISTRY: Mutex<Option<HashMap<String, ArcDeliverer>>> = Mutex::new(None);
 
-pub fn scheme() -> &'static str {
+pub(crate) fn scheme() -> &'static str {
   LOOPBACK_SCHEME
 }
 
-pub fn register_endpoint<TB>(authority: String, reader: EndpointReader<TB>, system: ActorSystemGeneric<TB>)
+pub(crate) fn register_endpoint<TB>(authority: String, reader: EndpointReader<TB>, system: ActorSystemGeneric<TB>)
 where
   TB: RuntimeToolbox + 'static, {
   let deliverer: ArcDeliverer = ArcShared::new(LoopbackDelivererImpl::new(reader, system));
@@ -76,7 +76,7 @@ where
   guard.get_or_insert_with(HashMap::new).insert(authority, deliverer);
 }
 
-pub fn try_deliver<TB>(
+pub(crate) fn try_deliver<TB>(
   remote: &RemoteNodeId,
   writer: &EndpointWriter<TB>,
   message: OutboundMessage<TB>,

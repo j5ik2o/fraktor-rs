@@ -35,7 +35,7 @@ mod remoting_error;
 mod remoting_extension;
 mod remoting_extension_config;
 mod remoting_extension_id;
-mod transport;
+pub mod transport;
 
 pub use association_state::AssociationState;
 pub use deferred_envelope::DeferredEnvelope;

@@ -1,7 +1,7 @@
 #![allow(clippy::print_stdout)]
 
-#[cfg(not(all(feature = "std", feature = "test-support")))]
-compile_error!("loopback_quickstart example requires `--features std,test-support`");
+#[cfg(not(all(feature = "std", feature = "test-support", feature = "tokio-transport")))]
+compile_error!("tokio_tcp_quickstart example requires `--features std,test-support,tokio-transport`");
 
 use std::{thread, time::Duration};
 
@@ -17,24 +17,25 @@ use fraktor_actor_rs::core::{
   messaging::AnyMessageView,
   props::Props,
   scheduler::{ManualTestDriver, TickDriverConfig},
-  system::{ActorSystem, ActorSystemGeneric},
+  system::ActorSystem,
 };
 use fraktor_remote_rs::core::{RemoteActorRefProvider, RemotingExtensionConfig, RemotingExtensionId};
 use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 
 const HOST: &str = "127.0.0.1";
-const RECEIVER_PORT: u16 = 25520;
-const SENDER_PORT: u16 = 25521;
+const RECEIVER_PORT: u16 = 25530;
+const SENDER_PORT: u16 = 25531;
 
-fn main() -> Result<()> {
-  let receiver = build_loopback_system(
-    "loopback-receiver",
+#[tokio::main]
+async fn main() -> Result<()> {
+  let receiver = build_tokio_tcp_system(
+    "tokio-tcp-receiver",
     RECEIVER_PORT,
     Props::from_fn(ReceiverGuardian::new).with_name("receiver-guardian"),
     receiver_transport_config(),
   )?;
-  let sender = build_loopback_system(
-    "loopback-sender",
+  let sender = build_tokio_tcp_system(
+    "tokio-tcp-sender",
     SENDER_PORT,
     Props::from_fn(SenderGuardian::new).with_name("sender-guardian"),
     sender_transport_config(),
@@ -58,7 +59,7 @@ fn main() -> Result<()> {
   Ok(())
 }
 
-fn build_loopback_system(
+fn build_tokio_tcp_system(
   system_name: &str,
   canonical_port: u16,
   guardian: Props,
@@ -71,22 +72,28 @@ fn build_loopback_system(
     .with_actor_ref_provider(RemoteActorRefProvider::loopback())
     .with_extensions_config(extensions)
     .with_remoting_config(RemotingConfig::default().with_canonical_host(HOST).with_canonical_port(canonical_port));
-  let system = ActorSystemGeneric::new_with_config(&guardian, &system_config).map_err(|error| anyhow!("{error:?}"))?;
+  let system = ActorSystem::new_with_config(&guardian, &system_config).map_err(|error| anyhow!("{error:?}"))?;
   let id = RemotingExtensionId::<NoStdToolbox>::new(transport_config);
   let _ = system.extended().extension(&id).expect("extension registered");
   Ok(system)
 }
 
 fn receiver_transport_config() -> RemotingExtensionConfig {
-  RemotingExtensionConfig::default().with_canonical_host(HOST).with_canonical_port(RECEIVER_PORT)
+  RemotingExtensionConfig::default()
+    .with_canonical_host(HOST)
+    .with_canonical_port(RECEIVER_PORT)
+    .with_transport_scheme("fraktor.tcp")
 }
 
 fn sender_transport_config() -> RemotingExtensionConfig {
-  RemotingExtensionConfig::default().with_canonical_host(HOST).with_canonical_port(SENDER_PORT)
+  RemotingExtensionConfig::default()
+    .with_canonical_host(HOST)
+    .with_canonical_port(SENDER_PORT)
+    .with_transport_scheme("fraktor.tcp")
 }
 
 fn receiver_authority_parts() -> ActorPathParts {
-  ActorPathParts::with_authority("loopback-receiver", Some((HOST, RECEIVER_PORT)))
+  ActorPathParts::with_authority("tokio-tcp-receiver", Some((HOST, RECEIVER_PORT)))
 }
 
 fn remote_echo_path() -> ActorPath {

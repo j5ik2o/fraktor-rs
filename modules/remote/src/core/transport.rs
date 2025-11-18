@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-mod backpressure_hook;
+pub mod backpressure_hook;
 mod factory;
 mod loopback_transport;
 mod remote_transport;

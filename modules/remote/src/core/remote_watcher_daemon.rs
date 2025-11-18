@@ -17,7 +17,7 @@ use crate::core::{
 };
 
 /// System actor that proxies watch/unwatch commands to the remoting control plane.
-pub struct RemoteWatcherDaemon<TB>
+pub(crate) struct RemoteWatcherDaemon<TB>
 where
   TB: RuntimeToolbox + 'static, {
   control:  RemotingControlHandle<TB>,
@@ -34,7 +34,7 @@ where
   }
 
   /// Spawns the daemon under the system guardian hierarchy.
-  pub fn spawn(
+  pub(crate) fn spawn(
     system: &ActorSystemGeneric<TB>,
     control: RemotingControlHandle<TB>,
   ) -> Result<ActorRefGeneric<TB>, RemotingError> {
