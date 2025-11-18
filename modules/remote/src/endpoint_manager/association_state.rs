@@ -1,5 +1,7 @@
 //! Association state machine for endpoints.
 
+use alloc::string::String;
+
 use super::remote_node_id::RemoteNodeId;
 
 /// State of an endpoint association to a remote authority.
@@ -16,5 +18,14 @@ pub enum AssociationState {
   Connected {
     /// Remote node identifier.
     remote: RemoteNodeId,
+  },
+  /// Authority has been quarantined and message delivery is rejected.
+  Quarantined {
+    /// Reason for quarantine.
+    reason: String,
+    /// Timestamp when the quarantine started.
+    since: u64,
+    /// Optional deadline when quarantine should be lifted.
+    deadline: Option<u64>,
   },
 }

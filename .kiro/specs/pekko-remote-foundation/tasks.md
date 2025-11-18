@@ -50,13 +50,13 @@
   - ハンドシェイク完了時に遅延キューを FlushDeferred コマンドで排出する
   - _対応要件: 2.1, 2.2_
   - _依存タスク: 2.3_
-- [ ] 3.2 Quarantine/Gated 状態と復旧フローを実装
+- [x] 3.2 Quarantine/Gated 状態と復旧フローを実装
   - UID 不一致および手動隔離を受けて Quarantined 状態へ遷移し、破棄されるメッセージへ理由を紐付ける
   - 復旧タイムアウトと手動復旧 API を実装し、Connected 復帰時に遅延メッセージを順序維持で再送する
   - EndpointRegistry に最新状態と理由/時刻を記録し、Snapshot API へ提供する
   - _対応要件: 2.3, 2.4, 2.5_
   - _依存タスク: 3.1_
-- [ ] 3.3 Loopback ベースの Association/E2E テストを追加
+- [x] 3.3 Loopback ベースの Association/E2E テストを追加
   - 2 系統の ActorSystem を LoopbackTransport で接続し、ハンドシェイク成功後にユーザーメッセージが再送されることを検証する
   - Quarantine → manual override → Connected のシナリオを再現し、遅延キュー破棄と EventStream 通知を確認する
   - Suspect 通知をシミュレーションし、EndpointManager が状態遷移を正しく行うか asserts する
@@ -67,7 +67,7 @@
   - _(親タスクなので詳細は書かない)_
   - _対応要件: 3.1, 3.2, 3.3, 3.4, 3.5_
   - _依存タスク: 3.1_
-- [ ] 4.1 Outbound シリアライズと reply_to メタデータの付与
+- [x] 4.1 Outbound シリアライズと reply_to メタデータの付与
   - EndpointWriter で ActorPath/UID/serializer manifest を含む SerializedMessage を生成し、RemotingEnvelope へ詰める
   - reply_to が指定されているメッセージに対して復路 ActorPath をメタデータに追加する
   - Serializer 失敗を分類して DeadLetter へ送る準備を整える

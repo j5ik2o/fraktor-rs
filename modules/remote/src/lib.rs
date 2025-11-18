@@ -9,6 +9,7 @@ extern crate alloc;
 mod backpressure_listener;
 mod endpoint_supervisor;
 mod endpoint_manager;
+mod endpoint_writer;
 mod remoting_connection_snapshot;
 mod remoting_control;
 mod remoting_control_handle;
@@ -37,4 +38,5 @@ pub use transport::{
   TransportHandle,
   TransportError,
 };
-pub use endpoint_manager::{AssociationState, EndpointManager, EndpointManagerCommand, RemoteNodeId};
+pub use endpoint_manager::{AssociationState, EndpointManager, EndpointManagerCommand, EndpointSnapshot, QuarantineReason, RemoteNodeId};
+pub use endpoint_writer::{EndpointWriter, OutboundEnvelope, RemotingEnvelope};
