@@ -17,7 +17,7 @@ default = []
 alloc = []
 alloc-metrics = []
 test-support = []
-std = ["fraktor-utils-rs/std", "dep:tracing", "dep:tracing-subscriber"]
+std = ["fraktor-utils-rs/std", "dep:tracing", "dep:tracing-subscriber", "critical-section/std"]
 tokio-executor = ["dep:tokio", "std"]
 
 [dependencies]

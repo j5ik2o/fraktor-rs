@@ -82,4 +82,4 @@ Tokio を使う場合は:
 
 ---
 
-これで RemotingExtension/RemoteActorRefProvider を Builder に統合した最小構成が完成します。実装中の API は `modules/remote/tests/quickstart.rs` とこのガイドを同期更新してください。
+これで RemotingExtension/RemoteActorRefProvider を Builder に統合した最小構成が完成します。実装中の API は `modules/remote/tests/quickstart.rs` とこのガイドを同期更新してください。実際に手元で挙動を確かめたい場合は `modules/remote/examples/loopback_quickstart.rs` を参考にし、`cargo run -p fraktor-remote-rs --example loopback_quickstart --features tokio-executor` を実行することで 2 系統の LoopbackTransport を観察できます。
