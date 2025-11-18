@@ -108,7 +108,7 @@
   - EndpointRegistry から状態別ヘルススナップショットを取得する API を公開する
   - _対応要件: 4.3, 4.4, 4.5_
   - _依存タスク: 5.2_
-- [ ] 5.4 観測/FailureDetector の統合テストを追加
+- [x] 5.4 観測/FailureDetector の統合テストを追加
   - Heartbeat 欠損シナリオを再現して Suspect→Quarantine の流れとイベント発火を確認する
   - FlightRecorder snapshot が BackpressureEvent と同じ CorrelationId を保持することを E2E テストで検証する
   - EndpointRegistry スナップショット API が全ステータスの要約を返すことを asserts する

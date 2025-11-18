@@ -13,7 +13,7 @@ use fraktor_actor_rs::core::{
   },
   messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
   props::PropsGeneric,
-  system::{ActorSystemGeneric, SystemGuardianProtocol},
+  system::{ActorSystemGeneric, AuthorityState, SystemGuardianProtocol},
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
@@ -21,7 +21,8 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::{
-  RemotingBackpressureListener, RemotingControl, RemotingControlHandle, RemotingExtensionConfig, RemotingExtensionId,
+  RemotingBackpressureListener, RemotingConnectionSnapshot, RemotingControl, RemotingControlHandle,
+  RemotingExtensionConfig, RemotingExtensionId,
 };
 
 struct TestGuardian;
@@ -176,6 +177,32 @@ fn backpressure_listener_and_event_stream_are_notified() {
       && matches!(event.signal(), BackpressureSignal::Apply)
       && !event.correlation_id().is_nil()
   }));
+}
+
+#[test]
+fn backpressure_trace_records_correlation_id() {
+  let system = build_actor_system();
+  let (subscriber, handle, _subscription) =
+    install_extension(&system, RemotingExtensionConfig::default().with_auto_start(false));
+
+  handle.test_notify_backpressure(BackpressureSignal::Apply, "node-a");
+
+  let event = subscriber.backpressure_events().into_iter().next().expect("backpressure event published");
+  let traces = handle.flight_recorder_for_test().traces_snapshot();
+
+  assert!(traces.iter().any(|trace| trace.authority() == "node-a" && trace.correlation_id() == event.correlation_id()));
+}
+
+#[test]
+fn connections_snapshot_returns_cached_entries() {
+  let system = build_actor_system();
+  let (_subscriber, handle, _subscription) = install_extension(&system, RemotingExtensionConfig::default());
+
+  let recorder = handle.flight_recorder_for_test();
+  let snapshot = RemotingConnectionSnapshot::new("node-a", AuthorityState::Connected);
+  recorder.update_endpoint_snapshot(vec![snapshot.clone()]);
+
+  assert_eq!(handle.connections_snapshot(), vec![snapshot]);
 }
 
 #[test]

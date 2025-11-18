@@ -21,19 +21,27 @@ use crate::{
   RemotingBackpressureListener, RemotingConnectionSnapshot, RemotingControl, RemotingError, RemotingExtensionConfig,
   core::{
     event_publisher::EventPublisher,
+    flight_recorder::{
+      correlation_trace::{CorrelationTrace, CorrelationTraceHop},
+      remoting_flight_recorder::RemotingFlightRecorder,
+      remoting_metric::RemotingMetric,
+    },
     transport::{RemoteTransport, factory::TransportFactory},
   },
 };
 
+const DEFAULT_RECORDER_CAPACITY: usize = 64;
+
 struct RemotingControlShared<TB: RuntimeToolbox + 'static> {
-  _system:    ActorSystemGeneric<TB>,
-  publisher:  ArcShared<EventPublisher<TB>>,
-  supervisor: ToolboxMutex<Option<ActorRefGeneric<TB>>, TB>,
-  listeners:  ToolboxMutex<Vec<ArcShared<dyn RemotingBackpressureListener>>, TB>,
-  transport:  ToolboxMutex<Option<ArcShared<dyn RemoteTransport<TB>>>, TB>,
-  config:     RemotingExtensionConfig,
-  started:    AtomicBool,
-  shutdown:   AtomicBool,
+  _system:         ActorSystemGeneric<TB>,
+  publisher:       ArcShared<EventPublisher<TB>>,
+  supervisor:      ToolboxMutex<Option<ActorRefGeneric<TB>>, TB>,
+  listeners:       ToolboxMutex<Vec<ArcShared<dyn RemotingBackpressureListener>>, TB>,
+  transport:       ToolboxMutex<Option<ArcShared<dyn RemoteTransport<TB>>>, TB>,
+  flight_recorder: RemotingFlightRecorder,
+  config:          RemotingExtensionConfig,
+  started:         AtomicBool,
+  shutdown:        AtomicBool,
 }
 
 /// Shared handle implementing the [`RemotingControl`] interface.
@@ -47,12 +55,14 @@ impl<TB: RuntimeToolbox + 'static> RemotingControlHandle<TB> {
   pub(crate) fn new(system: &ActorSystemGeneric<TB>, config: RemotingExtensionConfig) -> Self {
     let event_stream = system.event_stream();
     let publisher = ArcShared::new(EventPublisher::new(event_stream));
+    let flight_recorder = RemotingFlightRecorder::new(DEFAULT_RECORDER_CAPACITY);
     let shared = RemotingControlShared {
       _system: system.clone(),
       publisher,
       supervisor: <TB::MutexFamily as SyncMutexFamily>::create(None),
       listeners: <TB::MutexFamily as SyncMutexFamily>::create(Vec::new()),
       transport: <TB::MutexFamily as SyncMutexFamily>::create(None),
+      flight_recorder,
       config,
       started: AtomicBool::new(false),
       shutdown: AtomicBool::new(false),
@@ -81,6 +91,12 @@ impl<TB: RuntimeToolbox + 'static> RemotingControlHandle<TB> {
     let publisher = self.publisher();
     let correlation_id = publisher.next_correlation_id();
     publisher.backpressure(authority.to_string(), signal, correlation_id);
+    self.shared.flight_recorder.record_trace(CorrelationTrace::new(
+      correlation_id,
+      authority.to_string(),
+      CorrelationTraceHop::Send,
+    ));
+    self.shared.flight_recorder.record_metric(RemotingMetric::new(authority).with_backpressure(Some(signal)));
     let listeners = self.shared.listeners.lock().clone();
     for listener in listeners.iter() {
       listener.on_signal(signal, authority);
@@ -94,6 +110,11 @@ impl<TB: RuntimeToolbox + 'static> RemotingControlHandle<TB> {
   #[cfg(test)]
   pub(crate) fn test_notify_backpressure(&self, signal: BackpressureSignal, authority: &str) {
     self.notify_backpressure_internal(signal, authority);
+  }
+
+  #[cfg(test)]
+  pub(crate) fn flight_recorder_for_test(&self) -> RemotingFlightRecorder {
+    self.shared.flight_recorder.clone()
   }
 }
 
@@ -152,7 +173,7 @@ impl<TB: RuntimeToolbox + 'static> RemotingControl<TB> for RemotingControlHandle
   }
 
   fn connections_snapshot(&self) -> Vec<RemotingConnectionSnapshot> {
-    Vec::new()
+    self.shared.flight_recorder.endpoint_snapshot()
   }
 }
 
