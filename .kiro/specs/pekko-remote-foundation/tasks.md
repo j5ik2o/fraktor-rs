@@ -63,7 +63,7 @@
   - _対応要件: 2.3, 2.4, 2.5_
   - _依存タスク: 3.1_
   - **完了条件**: Quarantine/復旧シナリオを `modules/remote/src/core/endpoint_manager/tests.rs` に実装し、`cargo test -p fraktor-remote-rs endpoint_manager::tests` で検証すること
-- [ ] 3.3 Loopback ベースの Association/E2E テストを追加
+- [x] 3.3 Loopback ベースの Association/E2E テストを追加
   - 2 系統の ActorSystem を LoopbackTransport で接続し、ハンドシェイク成功後にユーザーメッセージが再送されることを検証する
   - Quarantine → manual override → Connected のシナリオを再現し、遅延キュー破棄と EventStream 通知を確認する
   - Suspect 通知をシミュレーションし、EndpointManager が状態遷移を正しく行うか asserts する

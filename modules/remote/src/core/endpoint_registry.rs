@@ -1,6 +1,10 @@
 //! Stores the association state and deferred queues for each authority.
 
-use alloc::{collections::BTreeMap, string::{String, ToString}, vec::Vec};
+use alloc::{
+  collections::BTreeMap,
+  string::{String, ToString},
+  vec::Vec,
+};
 
 use crate::core::{association_state::AssociationState, deferred_envelope::DeferredEnvelope};
 

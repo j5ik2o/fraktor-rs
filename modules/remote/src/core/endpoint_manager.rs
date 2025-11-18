@@ -1,8 +1,11 @@
 //! Manages association state and deferred queues for remote endpoints.
 
 use alloc::{string::String, vec, vec::Vec};
+use core::sync::atomic::Ordering;
 
+use fraktor_actor_rs::core::event_stream::{CorrelationId, RemotingLifecycleEvent};
 use fraktor_utils_rs::core::{runtime_toolbox::NoStdMutex, sync::ArcShared};
+use portable_atomic::AtomicU64;
 
 use crate::core::{
   association_state::AssociationState, deferred_envelope::DeferredEnvelope, endpoint_registry::EndpointRegistry,
@@ -11,7 +14,8 @@ use crate::core::{
 
 /// Tracks per-authority association state.
 pub struct EndpointManager {
-  registry: ArcShared<NoStdMutex<EndpointRegistry>>,
+  registry:        ArcShared<NoStdMutex<EndpointRegistry>>,
+  correlation_seq: AtomicU64,
 }
 
 /// Commands accepted by the endpoint manager FSM.
@@ -106,6 +110,8 @@ pub enum EndpointManagerEffect {
     /// Envelopes that were dropped.
     envelopes: Vec<DeferredEnvelope>,
   },
+  /// Requests the caller to publish a lifecycle event.
+  Lifecycle(RemotingLifecycleEvent),
 }
 
 /// Result returned after handling a command.
@@ -119,7 +125,10 @@ impl EndpointManager {
   /// Creates a new endpoint manager instance.
   #[must_use]
   pub fn new() -> Self {
-    Self { registry: ArcShared::new(NoStdMutex::new(EndpointRegistry::default())) }
+    Self {
+      registry:        ArcShared::new(NoStdMutex::new(EndpointRegistry::default())),
+      correlation_seq: AtomicU64::new(1),
+    }
   }
 
   /// Returns the current association state for the provided authority when available.
@@ -127,6 +136,11 @@ impl EndpointManager {
   pub fn state(&self, authority: &str) -> Option<AssociationState> {
     let registry = self.registry.lock();
     registry.state(authority).cloned()
+  }
+
+  fn next_correlation_id(&self) -> CorrelationId {
+    let seq = self.correlation_seq.fetch_add(1, Ordering::Relaxed) as u128;
+    CorrelationId::from_u128(seq)
   }
 
   /// Handles a command and returns the produced effects.
@@ -169,11 +183,18 @@ impl EndpointManager {
           Some("connected"),
         );
         let envelopes = registry.drain_deferred(&authority);
-        if envelopes.is_empty() {
-          EndpointManagerResult::default()
-        } else {
-          EndpointManagerResult { effects: vec![EndpointManagerEffect::DeliverEnvelopes { authority, envelopes }] }
+        let mut effects = Vec::new();
+        if !envelopes.is_empty() {
+          effects.push(EndpointManagerEffect::DeliverEnvelopes { authority: authority.clone(), envelopes });
         }
+        let correlation_id = self.next_correlation_id();
+        effects.push(EndpointManagerEffect::Lifecycle(RemotingLifecycleEvent::Connected {
+          authority,
+          remote_system: remote_node.system().to_string(),
+          remote_uid: remote_node.uid(),
+          correlation_id,
+        }));
+        EndpointManagerResult { effects }
       },
       | EndpointManagerCommand::Quarantine { authority, reason, resume_at, now } => {
         let mut registry = self.registry.lock();
@@ -185,19 +206,30 @@ impl EndpointManager {
           now,
           Some(reason.message()),
         );
-        if envelopes.is_empty() {
-          EndpointManagerResult::default()
-        } else {
-          EndpointManagerResult {
-            effects: vec![EndpointManagerEffect::DiscardDeferred { authority, reason, envelopes }],
-          }
+        let mut effects = Vec::new();
+        if !envelopes.is_empty() {
+          effects.push(EndpointManagerEffect::DiscardDeferred {
+            authority: authority.clone(),
+            reason: reason.clone(),
+            envelopes,
+          });
         }
+        let correlation_id = self.next_correlation_id();
+        effects.push(EndpointManagerEffect::Lifecycle(RemotingLifecycleEvent::Quarantined {
+          authority,
+          reason: reason.message().to_string(),
+          correlation_id,
+        }));
+        EndpointManagerResult { effects }
       },
       | EndpointManagerCommand::Gate { authority, resume_at, now } => {
         let mut registry = self.registry.lock();
         registry.ensure_entry(&authority);
         registry.set_state(&authority, AssociationState::Gated { resume_at }, now, Some("gated"));
-        EndpointManagerResult::default()
+        let correlation_id = self.next_correlation_id();
+        EndpointManagerResult {
+          effects: vec![EndpointManagerEffect::Lifecycle(RemotingLifecycleEvent::Gated { authority, correlation_id })],
+        }
       },
       | EndpointManagerCommand::Recover { authority, endpoint, now } => {
         let mut registry = self.registry.lock();
