@@ -105,6 +105,10 @@ fn auto_start_publishes_start_event() {
     install_extension(&system, RemotingExtensionConfig::default().with_auto_start(true));
 
   assert!(subscriber.lifecycle_events().iter().any(|event| matches!(event, RemotingLifecycleEvent::Starting)));
+  assert!(subscriber.lifecycle_events().iter().any(|event| match event {
+    | RemotingLifecycleEvent::ListenStarted { authority, .. } => authority == "localhost",
+    | _ => false,
+  }));
 }
 
 #[test]
@@ -171,7 +175,11 @@ fn backpressure_listener_and_event_stream_are_notified() {
     subscriber
       .backpressure_events()
       .iter()
-      .any(|event| event.authority() == "node-a" && matches!(event.signal(), BackpressureSignal::Apply))
+      .any(|event| {
+        event.authority() == "node-a"
+          && matches!(event.signal(), BackpressureSignal::Apply)
+          && !event.correlation_id().is_nil()
+      })
   );
 }
 

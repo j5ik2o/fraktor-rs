@@ -90,7 +90,7 @@
   - _(親タスクなので詳細は書かない)_
   - _対応要件: 4.1, 4.2, 4.3, 4.4, 4.5_
   - _依存タスク: 3.2, 4.2_
-- [ ] 5.1 EventPublisher と RemotingLifecycleEvent/BackpressureEvent を配信
+- [x] 5.1 EventPublisher と RemotingLifecycleEvent/BackpressureEvent を配信
   - トランスポート/Association 状態変化時に RemotingLifecycleEvent::ListenStarted/Connected/Quarantined/Gated を発火する
   - BackpressureSignal を EventStream の RemotingBackpressureEvent に変換し、監視ツールが深度を追跡できるようにする
   - EventPublisher API を拡張して CorrelationId と authority をイベントへ添付する

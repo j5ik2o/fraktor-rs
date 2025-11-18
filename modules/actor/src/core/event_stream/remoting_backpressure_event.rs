@@ -2,20 +2,21 @@
 
 use alloc::string::String;
 
-use super::backpressure_signal::BackpressureSignal;
+use super::{backpressure_signal::BackpressureSignal, correlation_id::CorrelationId};
 
 /// Snapshot of a backpressure notification emitted to observers.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RemotingBackpressureEvent {
-  authority: String,
-  signal:    BackpressureSignal,
+  authority:      String,
+  signal:         BackpressureSignal,
+  correlation_id: CorrelationId,
 }
 
 impl RemotingBackpressureEvent {
   /// Creates a new event for the specified authority and signal.
   #[must_use]
-  pub fn new(authority: impl Into<String>, signal: BackpressureSignal) -> Self {
-    Self { authority: authority.into(), signal }
+  pub fn new(authority: impl Into<String>, signal: BackpressureSignal, correlation_id: CorrelationId) -> Self {
+    Self { authority: authority.into(), signal, correlation_id }
   }
 
   /// Returns the authority identifier.
@@ -28,5 +29,11 @@ impl RemotingBackpressureEvent {
   #[must_use]
   pub const fn signal(&self) -> BackpressureSignal {
     self.signal
+  }
+
+  /// Returns the correlation identifier assigned to this event.
+  #[must_use]
+  pub const fn correlation_id(&self) -> CorrelationId {
+    self.correlation_id
   }
 }

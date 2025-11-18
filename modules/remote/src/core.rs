@@ -3,6 +3,7 @@ pub mod endpoint_manager;
 pub mod endpoint_reader;
 pub mod endpoint_supervisor;
 pub mod endpoint_writer;
+pub mod event_publisher;
 pub mod inbound_envelope;
 pub mod remoting_connection_snapshot;
 pub mod remoting_control;
