@@ -160,7 +160,8 @@ fn main() {
   let system = ActorSystem::new_with_config_and(&props, &config, move |system| {
     system.extended().register_extension(&ext_id_clone);
     Ok(())
-  }).expect("actor system");
+  })
+  .expect("actor system");
 
   let serialization: ArcShared<SerializationExtension> =
     system.extended().extension(&serialization_id).expect("extension registered");
