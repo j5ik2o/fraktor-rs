@@ -28,6 +28,7 @@ use crate::core::{
   messaging::{AnyMessageGeneric, SystemMessage},
   props::PropsGeneric,
   scheduler::{SchedulerBackedDelayProvider, SchedulerContext},
+  serialization::default_serialization_extension_id,
   spawn::SpawnError,
   system::system_state::SystemStateGeneric,
 };
@@ -120,6 +121,8 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
       installer.install(&system).map_err(|e| SpawnError::from_actor_system_build_error(&e))?;
     }
 
+    system.install_default_serialization_extension();
+
     Ok(system)
   }
 
@@ -146,6 +149,12 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   #[must_use]
   pub fn state(&self) -> ArcShared<SystemStateGeneric<TB>> {
     self.state.clone()
+  }
+
+  /// Returns the canonical host/port when remoting is configured.
+  #[must_use]
+  pub fn canonical_authority(&self) -> Option<String> {
+    self.state.canonical_authority_endpoint()
   }
 
   /// Returns an extended view that exposes privileged runtime operations.
@@ -182,6 +191,13 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     }
 
     Ok(())
+  }
+
+  fn install_default_serialization_extension(&self) {
+    let id = default_serialization_extension_id();
+    if !self.extended().has_extension(&id) {
+      let _ = self.extended().register_extension(&id);
+    }
   }
 
   /// Allocates a new pid (testing helper).
@@ -435,9 +451,6 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     if let Some(cell) = self.state.cell(&system_guardian.pid()) {
       self.state.set_system_guardian(cell);
     }
-
-    // TODO: enable serialization extension
-    // let _ = self.extended().register_extension(&SERIALIZATION_EXTENSION);
 
     configure(self)?;
 

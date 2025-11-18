@@ -249,6 +249,20 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     self.path_identity.lock().quarantine_duration
   }
 
+  /// Returns the configured canonical host/port pair when remoting is enabled.
+  pub fn canonical_authority_components(&self) -> Option<(String, Option<u16>)> {
+    let identity = self.path_identity.lock();
+    identity.canonical_host.as_ref().map(|host| (host.clone(), identity.canonical_port))
+  }
+
+  /// Returns the canonical authority string (`host[:port]`) when available.
+  pub fn canonical_authority_endpoint(&self) -> Option<String> {
+    self.canonical_authority_components().map(|(host, port)| match port {
+      | Some(port) => format!("{host}:{port}"),
+      | None => host,
+    })
+  }
+
   fn publish_remote_authority_event(&self, authority: String, state: AuthorityState) {
     let event = RemoteAuthorityEvent::new(authority, state);
     self.event_stream.publish(&EventStreamEvent::RemoteAuthority(event));

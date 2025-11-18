@@ -1,8 +1,12 @@
 //! Builder-facing installer for the remote actor-ref provider.
 
-use alloc::{format, string::String};
+use alloc::{
+  format,
+  string::{String, ToString},
+};
 
 use fraktor_actor_rs::core::{
+  logging::LogLevel,
   serialization::{
     SerializationExtensionGeneric, SerializationSetup, SerializationSetupBuilder, SerializerId, StringSerializer,
   },
@@ -11,8 +15,8 @@ use fraktor_actor_rs::core::{
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
 use crate::core::{
-  endpoint_writer::EndpointWriter, remote_actor_ref_provider::RemoteActorRefProvider,
-  remoting_extension::RemotingExtension,
+  endpoint_reader::EndpointReader, endpoint_writer::EndpointWriter, loopback_router,
+  remote_actor_ref_provider::RemoteActorRefProvider, remoting_extension::RemotingExtension,
 };
 
 /// Installer registered via [`ActorSystemBuilder::with_actor_ref_provider`].
@@ -50,7 +54,24 @@ impl<TB: RuntimeToolbox + 'static> ActorRefProviderInstaller<TB> for RemoteActor
       .map_err(|error| ActorSystemBuildError::Configuration(format!("{error}")))?;
     let provider = ArcShared::new(provider);
     extended.register_actor_ref_provider(provider.clone());
-    extended.register_remote_watch_hook(provider);
+    extended.register_remote_watch_hook(provider.clone());
+
+    if extension.transport_scheme() == loopback_router::scheme() {
+      if let Some(authority) = system.canonical_authority() {
+        if let Some(serialization_ext) = extended.extension_by_type::<SerializationExtensionGeneric<TB>>() {
+          let reader = EndpointReader::new(system.clone(), serialization_ext);
+          loopback_router::register_endpoint(authority, reader, system.clone());
+        } else {
+          system.emit_log(
+            LogLevel::Warn,
+            "serialization extension missing; loopback routing disabled".to_string(),
+            None,
+          );
+        }
+      } else {
+        system.emit_log(LogLevel::Warn, "canonical authority missing; loopback routing disabled".to_string(), None);
+      }
+    }
     Ok(())
   }
 }

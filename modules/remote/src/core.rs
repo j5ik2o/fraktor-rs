@@ -16,6 +16,7 @@ mod failure_detector;
 mod flight_recorder;
 mod fn_remoting_backpressure_listener;
 mod inbound_envelope;
+mod loopback_router;
 mod outbound_message;
 mod outbound_priority;
 mod quarantine_reason;

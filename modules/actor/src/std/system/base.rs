@@ -11,8 +11,7 @@ use crate::{
     logging::LogLevel,
     spawn::SpawnError,
     system::{
-      ActorSystemGeneric as CoreActorSystemGeneric,
-      ExtendedActorSystemGeneric,
+      ActorSystemGeneric as CoreActorSystemGeneric, ExtendedActorSystemGeneric,
       SystemStateGeneric as CoreSystemStateGeneric,
     },
   },

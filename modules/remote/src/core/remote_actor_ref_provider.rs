@@ -25,8 +25,9 @@ use fraktor_utils_rs::core::{
 use hashbrown::HashMap;
 
 use crate::core::{
-  endpoint_writer::EndpointWriter, endpoint_writer_error::EndpointWriterError, outbound_message::OutboundMessage,
-  outbound_priority::OutboundPriority, remote_actor_ref_provider_error::RemoteActorRefProviderError,
+  endpoint_writer::EndpointWriter, endpoint_writer_error::EndpointWriterError, loopback_router,
+  loopback_router::LoopbackDeliveryOutcome, outbound_message::OutboundMessage, outbound_priority::OutboundPriority,
+  remote_actor_ref_provider_error::RemoteActorRefProviderError,
   remote_actor_ref_provider_installer::RemoteActorRefProviderInstaller,
   remote_authority_snapshot::RemoteAuthoritySnapshot, remote_node_id::RemoteNodeId,
   remote_watcher_command::RemoteWatcherCommand, remote_watcher_daemon::RemoteWatcherDaemon,
@@ -229,6 +230,7 @@ impl<TB: RuntimeToolbox + 'static> RemoteActorRefSender<TB> {
 impl<TB: RuntimeToolbox + 'static> ActorRefSender<TB> for RemoteActorRefSender<TB> {
   fn send(&self, message: AnyMessageGeneric<TB>) -> Result<(), SendError<TB>> {
     let priority = Self::determine_priority(&message);
+    let message_clone = message.clone();
     let mut outbound = match priority {
       | OutboundPriority::System => {
         OutboundMessage::system(message.clone(), self.recipient.clone(), self.remote_node.clone())
@@ -242,7 +244,13 @@ impl<TB: RuntimeToolbox + 'static> ActorRefSender<TB> for RemoteActorRefSender<T
     {
       outbound = outbound.with_reply_to(reply_path);
     }
-    self.writer.enqueue(outbound).map_err(|error| self.map_error(error, message))
+    match loopback_router::try_deliver(&self.remote_node, &self.writer, outbound) {
+      | Ok(LoopbackDeliveryOutcome::Delivered) => Ok(()),
+      | Ok(LoopbackDeliveryOutcome::Pending(pending)) => {
+        self.writer.enqueue(pending).map_err(|error| self.map_error(error, message_clone))
+      },
+      | Err(error) => Err(self.map_error(error, message_clone)),
+    }
   }
 }
 

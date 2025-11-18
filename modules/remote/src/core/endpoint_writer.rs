@@ -82,6 +82,12 @@ impl<TB: RuntimeToolbox + 'static> EndpointWriter<TB> {
     Ok(None)
   }
 
+  /// Serializes the outbound message immediately (used by loopback routing).
+  pub fn serialize_for_loopback(&self, message: OutboundMessage<TB>) -> Result<RemotingEnvelope, EndpointWriterError> {
+    let priority = message.priority();
+    self.serialize(message, priority)
+  }
+
   /// Applies the provided backpressure signal.
   pub fn handle_backpressure(&self, signal: BackpressureSignal) {
     match signal {

@@ -1,6 +1,9 @@
 //! Extension entry point wiring remoting control and supervisor actors.
 
-use alloc::format;
+use alloc::{
+  format,
+  string::{String, ToString},
+};
 
 use fraktor_actor_rs::core::{
   actor_prim::{Actor, ActorContextGeneric, actor_ref::ActorRefGeneric},
@@ -26,8 +29,9 @@ const ENDPOINT_SUPERVISOR_NAME: &str = "remoting-endpoint-supervisor";
 pub struct RemotingExtension<TB>
 where
   TB: RuntimeToolbox + 'static, {
-  control:    RemotingControlHandle<TB>,
-  _transport: ArcShared<dyn RemoteTransport>,
+  control:          RemotingControlHandle<TB>,
+  transport_scheme: String,
+  _transport:       ArcShared<dyn RemoteTransport>,
 }
 
 impl<TB> RemotingExtension<TB>
@@ -51,13 +55,19 @@ where
     if config.auto_start() {
       control.start()?;
     }
-    Ok(Self { control, _transport: transport })
+    Ok(Self { control, transport_scheme: config.transport_scheme().to_string(), _transport: transport })
   }
 
   /// Returns the shared control handle.
   #[must_use]
   pub fn handle(&self) -> RemotingControlHandle<TB> {
     self.control.clone()
+  }
+
+  /// Returns the configured transport scheme.
+  #[must_use]
+  pub fn transport_scheme(&self) -> &str {
+    &self.transport_scheme
   }
 }
 
