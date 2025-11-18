@@ -197,12 +197,14 @@ fn backpressure_trace_records_correlation_id() {
 fn connections_snapshot_returns_cached_entries() {
   let system = build_actor_system();
   let (_subscriber, handle, _subscription) = install_extension(&system, RemotingExtensionConfig::default());
+  let state = system.state();
+  let _ = state.remote_authority_set_connected("node-a");
 
-  let recorder = handle.flight_recorder_for_test();
-  let snapshot = RemotingConnectionSnapshot::new("node-a", AuthorityState::Connected);
-  recorder.update_endpoint_snapshot(vec![snapshot.clone()]);
-
-  assert_eq!(handle.connections_snapshot(), vec![snapshot]);
+  let snapshot = handle.connections_snapshot();
+  assert_eq!(snapshot.len(), 1);
+  let entry = &snapshot[0];
+  assert_eq!(entry.authority(), "node-a");
+  assert!(matches!(entry.state(), AuthorityState::Connected));
 }
 
 #[test]

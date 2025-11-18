@@ -4,8 +4,9 @@ use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use crate::core::{
   config::ActorSystemConfig,
+  extension::ExtensionsConfig,
   scheduler::{SchedulerConfig, TickDriverConfig},
-  system::{ActorSystemBuildError, ActorSystemBuilder},
+  system::{ActorRefProviderInstaller, ActorSystemBuildError, ActorSystemBuilder},
   typed::{TypedActorSystemGeneric, TypedPropsGeneric},
 };
 
@@ -45,6 +46,20 @@ where
   #[must_use]
   pub fn with_tick_driver(self, config: TickDriverConfig<TB>) -> Self {
     Self { inner: self.inner.with_tick_driver(config), marker: PhantomData }
+  }
+
+  /// Registers extension installers executed after bootstrap.
+  #[must_use]
+  pub fn with_extensions_config(self, config: ExtensionsConfig<TB>) -> Self {
+    Self { inner: self.inner.with_extensions_config(config), marker: PhantomData }
+  }
+
+  /// Installs a custom actor-ref provider during bootstrap.
+  #[must_use]
+  pub fn with_actor_ref_provider<P>(self, provider: P) -> Self
+  where
+    P: ActorRefProviderInstaller<TB> + 'static, {
+    Self { inner: self.inner.with_actor_ref_provider(provider), marker: PhantomData }
   }
 
   /// Builds the typed actor system and provisions the tick driver.

@@ -17,6 +17,7 @@ pub use association_state::AssociationState;
 use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex};
 pub use remote_node_id::RemoteNodeId;
 
+#[allow(dead_code)]
 struct AuthorityEntry {
   state:       AssociationState,
   deferred:    VecDeque<Vec<u8>>,
@@ -25,6 +26,7 @@ struct AuthorityEntry {
 }
 
 impl AuthorityEntry {
+  #[allow(dead_code)]
   fn new() -> Self {
     Self {
       state:       AssociationState::Unassociated,
@@ -36,6 +38,7 @@ impl AuthorityEntry {
 }
 
 /// Snapshot of authority state for observability.
+#[allow(dead_code)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EndpointSnapshot {
   authority:   String,

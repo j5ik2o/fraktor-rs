@@ -4,8 +4,9 @@ use super::base::ActorSystem;
 use crate::{
   core::{
     config::ActorSystemConfig,
+    extension::ExtensionsConfig,
     scheduler::{SchedulerConfig, TickDriverConfig},
-    system::{ActorSystemBuildError, ActorSystemBuilder as CoreActorSystemBuilder},
+    system::{ActorRefProviderInstaller, ActorSystemBuildError, ActorSystemBuilder as CoreActorSystemBuilder},
   },
   std::props::Props,
 };
@@ -40,6 +41,22 @@ impl ActorSystemBuilder {
   #[must_use]
   pub fn with_tick_driver(mut self, config: TickDriverConfig<StdToolbox>) -> Self {
     self.inner = self.inner.with_tick_driver(config);
+    self
+  }
+
+  /// Registers extension installers executed after bootstrap.
+  #[must_use]
+  pub fn with_extensions_config(mut self, config: ExtensionsConfig<StdToolbox>) -> Self {
+    self.inner = self.inner.with_extensions_config(config);
+    self
+  }
+
+  /// Installs a custom actor-ref provider during bootstrap.
+  #[must_use]
+  pub fn with_actor_ref_provider<P>(mut self, provider: P) -> Self
+  where
+    P: ActorRefProviderInstaller<StdToolbox> + 'static, {
+    self.inner = self.inner.with_actor_ref_provider(provider);
     self
   }
 

@@ -23,6 +23,8 @@ pub use core::{
     remoting_metric::RemotingMetric,
   },
   inbound_envelope::InboundEnvelope,
+  remote_actor_ref_provider::RemoteActorRefProvider,
+  remote_actor_ref_provider_setup::RemoteActorRefProviderSetup,
   remoting_connection_snapshot::RemotingConnectionSnapshot,
   remoting_control::RemotingControl,
   remoting_control_handle::RemotingControlHandle,

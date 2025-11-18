@@ -3,11 +3,16 @@
 use alloc::{string::String, vec::Vec};
 use core::{fmt, mem};
 
-use fraktor_actor_rs::core::config::RemotingConfig;
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_actor_rs::core::{
+  config::RemotingConfig,
+  extension::ExtensionInstaller,
+  system::{ActorSystemBuildError, ActorSystemGeneric},
+};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
 use crate::{
-  RemotingBackpressureListener, core::failure_detector::phi_failure_detector_config::PhiFailureDetectorConfig,
+  RemotingBackpressureListener, RemotingExtensionId,
+  core::failure_detector::phi_failure_detector_config::PhiFailureDetectorConfig,
 };
 
 /// Configures remoting bootstrap behaviour.
@@ -139,5 +144,16 @@ impl fmt::Debug for RemotingExtensionConfig {
       .field("backpressure_listener_count", &self.backpressure_listeners.len())
       .field("failure_detector_threshold", &self.failure_detector.threshold())
       .finish()
+  }
+}
+
+impl<TB> ExtensionInstaller<TB> for RemotingExtensionConfig
+where
+  TB: RuntimeToolbox + 'static,
+{
+  fn install(&self, system: &ActorSystemGeneric<TB>) -> Result<(), ActorSystemBuildError> {
+    let id = RemotingExtensionId::new(self.clone());
+    let _ = system.register_extension(&id);
+    Ok(())
   }
 }

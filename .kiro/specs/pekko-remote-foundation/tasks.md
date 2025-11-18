@@ -119,13 +119,13 @@
   - _(親タスクなので詳細は書かない)_
   - _対応要件: 1.6, 1.7, 2.1-2.4, 3.1-3.5, 4.1-4.4_
   - _依存タスク: 1.2, 3.3, 4.3, 5.4_
-- [ ] 6.1 RemoteActorRefProvider を RemotingControl/RemoteAuthorityManager と接続
+- [x] 6.1 RemoteActorRefProvider を RemotingControl/RemoteAuthorityManager と接続
   - Provider から RemotingControl を取得し、リモート ActorPath 解決時に associate/shutdown をトリガする
   - RemoteWatcherDaemon を SystemGuardian 配下へ登録し、watch/unwatch を Remoting 経由で伝搬する
   - Provider 切り替え時の回帰テストを追加し、ローカル ActorPath との互換性を維持する
   - _対応要件: 1.7, 2.1, 2.3_
   - _依存タスク: 5.4_
-- [ ] 6.2 Quickstart/E2E シナリオで全経路を検証
+- [x] 6.2 Quickstart/E2E シナリオで全経路を検証
   - Quickstart 相当の 2 ActorSystem 構成を起動し、RemotingControl::start→associate→メッセージ交換を通じて end-to-end を検証する
   - Backpressure シミュレーションと FlightRecorder snapshot 取得を同じシナリオ内で実施し、イベントとメトリクスが揃うことを確認する
   - Loopback と Tokio transport の両方で Quickstart サンプルを動かし、差し替え可能性を実証する

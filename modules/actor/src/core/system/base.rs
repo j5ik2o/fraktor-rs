@@ -7,6 +7,7 @@ use alloc::{
   string::{String, ToString},
   vec::Vec,
 };
+use core::any::Any;
 
 use fraktor_utils_rs::core::{
   collections::queue::capabilities::QueueCapability,
@@ -23,7 +24,7 @@ use crate::core::{
   event_stream::{
     EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric, TickDriverSnapshot,
   },
-  extension::ExtensionId,
+  extension::{Extension, ExtensionId},
   futures::ActorFuture,
   logging::LogLevel,
   messaging::{AnyMessageGeneric, SystemMessage},
@@ -297,6 +298,29 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   where
     E: ExtensionId<TB>, {
     self.state.has_extension(ext_id.id())
+  }
+
+  /// Registers an actor-ref provider for later retrieval.
+  pub fn register_actor_ref_provider<P>(&self, provider: ArcShared<P>)
+  where
+    P: Any + Send + Sync + 'static, {
+    self.state.install_actor_ref_provider(provider);
+  }
+
+  /// Returns the actor-ref provider of the requested type when registered.
+  #[must_use]
+  pub fn actor_ref_provider<P>(&self) -> Option<ArcShared<P>>
+  where
+    P: Any + Send + Sync + 'static, {
+    self.state.actor_ref_provider::<P>()
+  }
+
+  /// Returns the extension instance by concrete type.
+  #[must_use]
+  pub fn extension_by_type<E>(&self) -> Option<ArcShared<E>>
+  where
+    E: Extension<TB> + 'static, {
+    self.state.extension_by_type::<E>()
   }
 
   /// Spawns a new top-level actor under the user guardian.

@@ -20,6 +20,7 @@ use fraktor_utils_rs::core::{
 use crate::{
   RemotingBackpressureListener, RemotingConnectionSnapshot, RemotingControl, RemotingError, RemotingExtensionConfig,
   core::{
+    endpoint_manager::RemoteNodeId,
     event_publisher::EventPublisher,
     flight_recorder::{
       correlation_trace::{CorrelationTrace, CorrelationTraceHop},
@@ -116,6 +117,10 @@ impl<TB: RuntimeToolbox + 'static> RemotingControlHandle<TB> {
   pub(crate) fn flight_recorder_for_test(&self) -> RemotingFlightRecorder {
     self.shared.flight_recorder.clone()
   }
+
+  pub(crate) fn flight_recorder(&self) -> RemotingFlightRecorder {
+    self.shared.flight_recorder.clone()
+  }
 }
 
 impl<TB: RuntimeToolbox + 'static> Clone for RemotingControlHandle<TB> {
@@ -149,8 +154,20 @@ impl<TB: RuntimeToolbox + 'static> RemotingControl<TB> for RemotingControlHandle
     }
   }
 
-  fn associate(&self, _address: &ActorPathParts) -> Result<(), RemotingError> {
-    Err(RemotingError::Unsupported("associate"))
+  fn associate(&self, address: &ActorPathParts) -> Result<(), RemotingError> {
+    if !self.shared.started.load(Ordering::SeqCst) {
+      return Err(RemotingError::NotStarted);
+    }
+    let (authority, host, port) = parse_authority(address)?;
+    let remote = RemoteNodeId::new(address.system().to_string(), host, port, 0);
+    let state = self.shared._system.state();
+    let _ = state.remote_authority_set_connected(&authority);
+    let publisher = self.publisher();
+    let correlation = publisher.next_correlation_id();
+    publisher.lifecycle_connected(authority.clone(), &remote, correlation);
+    self.shared.flight_recorder.record_metric(RemotingMetric::new(authority.clone()));
+    self.refresh_snapshot();
+    Ok(())
   }
 
   fn quarantine(&self, _authority: &str, _reason: &str) -> Result<(), RemotingError> {
@@ -173,6 +190,7 @@ impl<TB: RuntimeToolbox + 'static> RemotingControl<TB> for RemotingControlHandle
   }
 
   fn connections_snapshot(&self) -> Vec<RemotingConnectionSnapshot> {
+    self.refresh_snapshot();
     self.shared.flight_recorder.endpoint_snapshot()
   }
 }
@@ -189,5 +207,25 @@ fn canonical_authority(config: &RemotingExtensionConfig) -> String {
   match config.remoting().canonical_port() {
     | Some(port) => format!("{host}:{port}"),
     | None => host.to_string(),
+  }
+}
+
+fn parse_authority(parts: &ActorPathParts) -> Result<(String, String, Option<u16>), RemotingError> {
+  let endpoint = parts.authority_endpoint().ok_or_else(|| RemotingError::message("authority missing"))?;
+  let mut split = endpoint.splitn(2, ':');
+  let host = split.next().unwrap_or_default().to_string();
+  let port = split.next().and_then(|value| value.parse::<u16>().ok());
+  Ok((endpoint, host, port))
+}
+
+impl<TB: RuntimeToolbox + 'static> RemotingControlHandle<TB> {
+  fn refresh_snapshot(&self) {
+    let state = self.shared._system.state();
+    let snapshot: Vec<RemotingConnectionSnapshot> = state
+      .remote_authority_snapshots()
+      .into_iter()
+      .map(|(authority, status)| RemotingConnectionSnapshot::new(authority, status))
+      .collect();
+    self.shared.flight_recorder.update_endpoint_snapshot(snapshot);
   }
 }

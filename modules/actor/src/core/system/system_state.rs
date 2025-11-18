@@ -99,6 +99,7 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   failure_escalate_total: AtomicU64,
   failure_inflight:       AtomicU64,
   extensions:             ToolboxMutex<HashMap<TypeId, ArcShared<dyn Any + Send + Sync + 'static>>, TB>,
+  actor_ref_providers:    ToolboxMutex<HashMap<TypeId, ArcShared<dyn Any + Send + Sync + 'static>>, TB>,
   dispatchers:            ArcShared<DispatchersGeneric<TB>>,
   mailboxes:              ArcShared<MailboxesGeneric<TB>>,
   path_identity:          ToolboxMutex<PathIdentity, TB>,
@@ -146,6 +147,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       failure_escalate_total: AtomicU64::new(0),
       failure_inflight: AtomicU64::new(0),
       extensions: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::new()),
+      actor_ref_providers: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::new()),
       dispatchers,
       mailboxes,
       path_identity: <TB::MutexFamily as SyncMutexFamily>::create(PathIdentity::default()),
@@ -518,6 +520,31 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     extension
   }
 
+  pub(crate) fn extension_by_type<E>(&self) -> Option<ArcShared<E>>
+  where
+    E: Any + Send + Sync + 'static, {
+    let guard = self.extensions.lock();
+    for handle in guard.values() {
+      if let Ok(extension) = handle.clone().downcast::<E>() {
+        return Some(extension);
+      }
+    }
+    None
+  }
+
+  pub(crate) fn install_actor_ref_provider<P>(&self, provider: ArcShared<P>)
+  where
+    P: Any + Send + Sync + 'static, {
+    let erased: ArcShared<dyn Any + Send + Sync + 'static> = provider.clone();
+    self.actor_ref_providers.lock().insert(TypeId::of::<P>(), erased);
+  }
+
+  pub(crate) fn actor_ref_provider<P>(&self) -> Option<ArcShared<P>>
+  where
+    P: Any + Send + Sync + 'static, {
+    self.actor_ref_providers.lock().get(&TypeId::of::<P>()).cloned().and_then(|provider| provider.downcast::<P>().ok())
+  }
+
   /// Registers a child under the specified parent pid.
   pub(crate) fn register_child(&self, parent: Pid, child: Pid) {
     if let Some(cell) = self.cell(&parent) {
@@ -785,6 +812,11 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   #[must_use]
   pub fn remote_authority_state(&self, authority: &str) -> AuthorityState {
     self.remote_authority_mgr.state(authority)
+  }
+
+  /// Returns a snapshot of known remote authorities and their states.
+  pub fn remote_authority_snapshots(&self) -> Vec<(String, AuthorityState)> {
+    self.remote_authority_mgr.snapshots()
   }
 
   /// Marks the authority as connected and emits an event.
