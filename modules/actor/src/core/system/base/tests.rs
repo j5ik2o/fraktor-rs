@@ -290,7 +290,7 @@ fn spawn_child_resolves_mailbox_id_with_requirements() {
   let registry = QueueCapabilityRegistry::new(QueueCapabilitySet::defaults().with_deque(false));
   let constrained =
     MailboxConfig::default().with_requirement(MailboxRequirement::requires_deque()).with_capabilities(registry);
-  system.mailboxes().register("constrained", constrained).expect("register mailbox");
+  system.extended().mailboxes().register("constrained", constrained).expect("register mailbox");
 
   let props = Props::from_fn(|| TestActor)
     .with_mailbox_id("constrained")

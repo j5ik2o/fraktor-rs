@@ -40,7 +40,8 @@ impl<TB: RuntimeToolbox + 'static> ActorRefProviderInstaller<TB> for RemoteActor
   fn install(&self, system: &ActorSystemGeneric<TB>) -> Result<(), ActorSystemBuildError> {
     let serialization = ArcShared::new(SerializationExtensionGeneric::new(system, self.setup.clone()));
     let writer = ArcShared::new(EndpointWriter::new(system.clone(), serialization));
-    let Some(extension) = system.extension_by_type::<RemotingExtension<TB>>() else {
+    let extended = system.extended();
+    let Some(extension) = extended.extension_by_type::<RemotingExtension<TB>>() else {
       return Err(ActorSystemBuildError::Configuration("remoting extension not installed".into()));
     };
     let control = extension.handle();
@@ -48,8 +49,8 @@ impl<TB: RuntimeToolbox + 'static> ActorRefProviderInstaller<TB> for RemoteActor
     let provider = RemoteActorRefProvider::from_components(system.clone(), writer, control, authority_manager)
       .map_err(|error| ActorSystemBuildError::Configuration(format!("{error}")))?;
     let provider = ArcShared::new(provider);
-    system.register_actor_ref_provider(provider.clone());
-    system.register_remote_watch_hook(provider);
+    extended.register_actor_ref_provider(provider.clone());
+    extended.register_remote_watch_hook(provider);
     Ok(())
   }
 }

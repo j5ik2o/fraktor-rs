@@ -44,7 +44,7 @@ fn build_system(
     .build()
     .map_err(|error| anyhow::anyhow!("{error}"))?;
   let id = RemotingExtensionId::<NoStdToolbox>::new(config);
-  let extension = system.extension(&id).expect("extension registered");
+  let extension = system.extended().extension(&id).expect("extension registered");
   Ok((system, extension.handle()))
 }
 
@@ -58,7 +58,8 @@ fn main() -> Result<()> {
   let (system, handle) = build_system(config)?;
   handle.start().map_err(|error| anyhow::anyhow!("{error}"))?;
 
-  let provider = system.actor_ref_provider::<RemoteActorRefProvider<NoStdToolbox>>().expect("provider installed");
+  let provider =
+    system.extended().actor_ref_provider::<RemoteActorRefProvider<NoStdToolbox>>().expect("provider installed");
   let parts =
     ActorPathParts::with_authority("remote-demo", Some(("127.0.0.1", 25520))).with_guardian(GuardianKind::User);
   provider.watch_remote(parts).map_err(|error| anyhow::anyhow!("{error}"))?;

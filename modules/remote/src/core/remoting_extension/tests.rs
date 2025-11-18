@@ -72,7 +72,7 @@ fn bootstrap(
     .build()
     .expect("actor system");
   let id = RemotingExtensionId::<NoStdToolbox>::new(config);
-  let extension = system.extension(&id).expect("extension registered");
+  let extension = system.extended().extension(&id).expect("extension registered");
   (system, extension.handle())
 }
 

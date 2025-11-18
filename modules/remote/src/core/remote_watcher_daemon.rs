@@ -43,7 +43,7 @@ where
       move || RemoteWatcherDaemon::new(handle.clone())
     })
     .with_name("remote-watcher-daemon");
-    let actor = system.spawn_system_actor(&props).map_err(RemotingError::from)?;
+    let actor = system.extended().spawn_system_actor(&props).map_err(RemotingError::from)?;
     Ok(actor.actor_ref().clone())
   }
 }

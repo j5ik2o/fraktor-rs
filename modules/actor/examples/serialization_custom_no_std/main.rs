@@ -150,13 +150,13 @@ fn main() {
   let props = Props::from_fn(NullActor::new).with_name("serialization-demo");
   let system = ActorSystem::new_with(&props, move |system| {
     // ActorSystem 起動前にシリアライゼーション拡張を登録
-    let _ = system.register_extension(&configure_id);
+    let _ = system.extended().register_extension(&configure_id);
     Ok(())
   })
   .expect("actor system");
 
   let serialization: ArcShared<SerializationExtension> =
-    system.extension(&serialization_id).expect("extension registered");
+    system.extended().extension(&serialization_id).expect("extension registered");
 
   let payload = TelemetryPayload { node: 7, temperature: 24 };
   let serialized: SerializedMessage =

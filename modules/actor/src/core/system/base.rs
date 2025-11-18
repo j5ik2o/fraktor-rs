@@ -7,7 +7,6 @@ use alloc::{
   string::{String, ToString},
   vec::Vec,
 };
-use core::any::Any;
 
 use fraktor_utils_rs::core::{
   collections::queue::capabilities::QueueCapability,
@@ -15,23 +14,22 @@ use fraktor_utils_rs::core::{
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 
-use super::{RemoteWatchHook, RootGuardianActor, SystemGuardianActor, SystemGuardianProtocol};
+use super::{ExtendedActorSystemGeneric, RootGuardianActor, SystemGuardianActor, SystemGuardianProtocol};
 use crate::core::{
   actor_prim::{ActorCellGeneric, ChildRefGeneric, Pid, actor_ref::ActorRefGeneric},
-  config::{ActorSystemConfig, DispatchersGeneric, MailboxesGeneric},
+  config::ActorSystemConfig,
   dead_letter::{DeadLetterEntryGeneric, DeadLetterReason},
   error::SendError,
   event_stream::{
     EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric, TickDriverSnapshot,
   },
-  extension::{Extension, ExtensionId},
   futures::ActorFuture,
   logging::LogLevel,
   messaging::{AnyMessageGeneric, SystemMessage},
   props::PropsGeneric,
   scheduler::{SchedulerBackedDelayProvider, SchedulerContext},
   spawn::SpawnError,
-  system::{RegisterExtraTopLevelError, system_state::SystemStateGeneric},
+  system::system_state::SystemStateGeneric,
 };
 
 const PARENT_MISSING: &str = "parent actor not found";
@@ -150,6 +148,12 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     self.state.clone()
   }
 
+  /// Returns an extended view that exposes privileged runtime operations.
+  #[must_use]
+  pub fn extended(&self) -> ExtendedActorSystemGeneric<TB> {
+    ExtendedActorSystemGeneric::new(self.clone())
+  }
+
   /// Installs scheduler context and tick driver runtime from configuration.
   ///
   /// # Errors
@@ -216,18 +220,6 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     self.scheduler_context().map(|context| context.delay_provider())
   }
 
-  /// Returns the dispatcher registry.
-  #[must_use]
-  pub fn dispatchers(&self) -> ArcShared<DispatchersGeneric<TB>> {
-    self.state.dispatchers()
-  }
-
-  /// Returns the mailbox registry.
-  #[must_use]
-  pub fn mailboxes(&self) -> ArcShared<MailboxesGeneric<TB>> {
-    self.state.mailboxes()
-  }
-
   /// Subscribes the provided observer to the event stream.
   #[must_use]
   pub fn subscribe_event_stream(
@@ -261,20 +253,6 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     self.state.cell(&pid).map(|cell| cell.actor_ref())
   }
 
-  /// Registers an extra top-level actor name before the system finishes startup.
-  ///
-  /// # Errors
-  ///
-  /// Returns [`RegisterExtraTopLevelError`] if the name is reserved, duplicated, or registration
-  /// occurs after startup.
-  pub fn register_extra_top_level(
-    &self,
-    name: &str,
-    actor: ActorRefGeneric<TB>,
-  ) -> Result<(), RegisterExtraTopLevelError> {
-    self.state.register_extra_top_level(name, actor)
-  }
-
   /// Registers a temporary actor reference under `/temp` and returns the generated segment.
   #[must_use]
   #[allow(dead_code)]
@@ -305,60 +283,6 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     self.state.publish_event(event);
   }
 
-  /// Registers the provided extension and returns the shared instance.
-  pub fn register_extension<E>(&self, ext_id: &E) -> ArcShared<E::Ext>
-  where
-    E: ExtensionId<TB>, {
-    self.state.extension_or_insert_with(ext_id.id(), || ArcShared::new(ext_id.create_extension(self)))
-  }
-
-  /// Retrieves a previously registered extension.
-  #[must_use]
-  pub fn extension<E>(&self, ext_id: &E) -> Option<ArcShared<E::Ext>>
-  where
-    E: ExtensionId<TB>, {
-    self.state.extension(ext_id.id())
-  }
-
-  /// Returns `true` when the extension has already been registered.
-  #[must_use]
-  pub fn has_extension<E>(&self, ext_id: &E) -> bool
-  where
-    E: ExtensionId<TB>, {
-    self.state.has_extension(ext_id.id())
-  }
-
-  /// Registers an actor-ref provider for later retrieval.
-  pub fn register_actor_ref_provider<P>(&self, provider: ArcShared<P>)
-  where
-    P: Any + Send + Sync + 'static, {
-    self.state.install_actor_ref_provider(provider);
-  }
-
-  /// Registers a remote watch hook that intercepts watch/unwatch to remote actors.
-  pub fn register_remote_watch_hook<H>(&self, hook: ArcShared<H>)
-  where
-    H: RemoteWatchHook<TB>, {
-    let dyn_hook: ArcShared<dyn RemoteWatchHook<TB>> = hook;
-    self.state.register_remote_watch_hook(dyn_hook);
-  }
-
-  /// Returns the actor-ref provider of the requested type when registered.
-  #[must_use]
-  pub fn actor_ref_provider<P>(&self) -> Option<ArcShared<P>>
-  where
-    P: Any + Send + Sync + 'static, {
-    self.state.actor_ref_provider::<P>()
-  }
-
-  /// Returns the extension instance by concrete type.
-  #[must_use]
-  pub fn extension_by_type<E>(&self) -> Option<ArcShared<E>>
-  where
-    E: Extension<TB> + 'static, {
-    self.state.extension_by_type::<E>()
-  }
-
   /// Spawns a new top-level actor under the user guardian.
   ///
   /// # Errors
@@ -368,15 +292,6 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   pub(crate) fn spawn(&self, props: &PropsGeneric<TB>) -> Result<ChildRefGeneric<TB>, SpawnError> {
     let guardian_pid = self.state.user_guardian_pid().ok_or_else(SpawnError::system_unavailable)?;
     self.spawn_child(guardian_pid, props)
-  }
-
-  /// Spawns a new actor as a child of the system guardian (extensions/internal subsystems).
-  ///
-  /// # Errors
-  ///
-  /// Returns [`SpawnError::SystemUnavailable`] when the system guardian is missing.
-  pub fn spawn_system_actor(&self, props: &PropsGeneric<TB>) -> Result<ChildRefGeneric<TB>, SpawnError> {
-    self.system_actor_of(props)
   }
 
   /// Spawns a new actor under the system guardian (internal use only).
@@ -522,7 +437,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     }
 
     // TODO: enable serialization extension
-    // let _ = self.register_extension(&SERIALIZATION_EXTENSION);
+    // let _ = self.extended().register_extension(&SERIALIZATION_EXTENSION);
 
     configure(self)?;
 

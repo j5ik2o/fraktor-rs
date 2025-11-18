@@ -161,7 +161,7 @@ fn deliver_routes_message_to_local_actor() {
     move || RecordingActor { events: events.clone() }
   })
   .with_name("recorder");
-  let child = system.spawn_system_actor(&props).expect("spawn");
+  let child = system.extended().spawn_system_actor(&props).expect("spawn");
   let actor_ref = child.actor_ref().clone();
   let recipient = actor_ref.path().expect("recipient path");
 

@@ -10,7 +10,11 @@ use crate::{
     event_stream::{EventStreamSubscriber as CoreEventStreamSubscriber, TickDriverSnapshot},
     logging::LogLevel,
     spawn::SpawnError,
-    system::{ActorSystemGeneric as CoreActorSystemGeneric, SystemStateGeneric as CoreSystemStateGeneric},
+    system::{
+      ActorSystemGeneric as CoreActorSystemGeneric,
+      ExtendedActorSystemGeneric,
+      SystemStateGeneric as CoreSystemStateGeneric,
+    },
   },
   std::{
     actor_prim::ActorRef,
@@ -87,6 +91,12 @@ impl ActorSystem {
     self.inner.state()
   }
 
+  /// Returns an extended handle exposing privileged operations.
+  #[must_use]
+  pub fn extended(&self) -> ExtendedActorSystem {
+    ExtendedActorSystem::new(self.inner.clone())
+  }
+
   /// Allocates a new pid (testing helper).
   #[must_use]
   pub fn allocate_pid(&self) -> Pid {
@@ -153,3 +163,6 @@ impl ActorSystem {
 
 /// Shared system state specialised for `StdToolbox`.
 pub type SystemState = CoreSystemStateGeneric<StdToolbox>;
+
+/// Extended actor system type specialised for `StdToolbox`.
+pub type ExtendedActorSystem = ExtendedActorSystemGeneric<StdToolbox>;

@@ -39,7 +39,7 @@ impl ActorRefProviderInstaller<NoStdToolbox> for TestProviderInstaller {
     &self,
     system: &crate::core::system::ActorSystemGeneric<NoStdToolbox>,
   ) -> Result<(), ActorSystemBuildError> {
-    system.register_actor_ref_provider(ArcShared::new(TestProvider { marker: self.marker }));
+    system.extended().register_actor_ref_provider(ArcShared::new(TestProvider { marker: self.marker }));
     Ok(())
   }
 }
@@ -73,6 +73,6 @@ fn installs_extensions_and_provider() {
     .expect("builder");
 
   assert_eq!(counter.load(Ordering::SeqCst), 1);
-  let provider = system.actor_ref_provider::<TestProvider>().expect("provider registered");
+  let provider = system.extended().actor_ref_provider::<TestProvider>().expect("provider registered");
   assert_eq!(provider.marker, 7);
 }

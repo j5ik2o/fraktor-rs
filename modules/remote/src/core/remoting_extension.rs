@@ -76,7 +76,7 @@ where
     move || EndpointSupervisorActor::new(handle.clone(), guardian_ref.clone())
   })
   .with_name(ENDPOINT_SUPERVISOR_NAME);
-  let child = system.spawn_system_actor(&props).map_err(RemotingError::from)?;
+  let child = system.extended().spawn_system_actor(&props).map_err(RemotingError::from)?;
   Ok(child.actor_ref().clone())
 }
 

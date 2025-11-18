@@ -137,7 +137,7 @@ where
 {
   fn install(&self, system: &ActorSystemGeneric<TB>) -> Result<(), ActorSystemBuildError> {
     let id = RemotingExtensionId::<TB>::new(self.clone());
-    let _ = system.register_extension(&id);
+    let _ = system.extended().register_extension(&id);
     Ok(())
   }
 }
