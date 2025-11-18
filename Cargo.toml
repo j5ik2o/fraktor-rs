@@ -81,5 +81,5 @@ tokio-util = "0.7.16"
 tracing = { version = "0.1.41", default-features = false }
 tracing-subscriber = { version = "0.3", default-features = false }
 heapless = { version = "0.9", default-features = false }
-hashbrown = { version = "0.16.0", default-features = false, features = ["ahash"] }
+hashbrown = { version = "0.14", default-features = false, features = ["ahash"] }
 anyhow = "1.0"
