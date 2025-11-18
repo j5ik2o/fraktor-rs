@@ -1,6 +1,6 @@
 # fraktor-rs
 
-[![CI](https://github.com/j5ik2o/fraktor-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/j5ik2o/fraktor-rs/actions/workflows/ci.yml)
+[![ci](https://github.com/j5ik2o/fraktor-rs/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/j5ik2o/fraktor-rs/actions/workflows/ci.yml)
 [![crates.io](https://img.shields.io/crates/v/fraktor-rs.svg)](https://crates.io/crates/fraktor-rs)
 [![docs.rs](https://docs.rs/fraktor-rs/badge.svg)](https://docs.rs/faktor-rs)
 [![Renovate](https://img.shields.io/badge/renovate-enabled-brightgreen.svg)](https://renovatebot.com)
