@@ -13,9 +13,13 @@ jobs:
   tokei:
     name: Update tokei badge
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout source
         uses: actions/checkout@v5
+        with:
+          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
 
       - name: Install tokei
         run: |
@@ -46,13 +50,15 @@ jobs:
           }
           EOF
 
-      - name: Update Gist
-        uses: exuanbo/actions-deploy-gist@v1
-        with:
-          token: ${{ secrets.GIST_TOKEN }}
-          gist_id: ${{ secrets.TOKEI_GIST_ID }}
-          file_path: tokei_badge.json
-          file_type: text
+      - name: Commit badge JSON
+        run: |
+          mkdir -p .github/badges
+          mv tokei_badge.json .github/badges/
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .github/badges/tokei_badge.json
+          git diff --quiet && git diff --staged --quiet || git commit -m "chore: update tokei badge [skip ci]"
+          git push
 
       - name: Display results
         run: |
