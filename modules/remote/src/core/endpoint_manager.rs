@@ -1,6 +1,10 @@
 //! Manages association state and deferred queues for remote endpoints.
 
-use alloc::{string::String, vec, vec::Vec};
+use alloc::{
+  string::{String, ToString},
+  vec,
+  vec::Vec,
+};
 use core::sync::atomic::Ordering;
 
 use fraktor_actor_rs::core::event_stream::{CorrelationId, RemotingLifecycleEvent};

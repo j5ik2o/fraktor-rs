@@ -2,9 +2,13 @@
 
 pub mod association_state;
 pub mod deferred_envelope;
+pub mod endpoint_writer;
 pub mod endpoint_manager;
+pub mod endpoint_writer_error;
 pub mod endpoint_registry;
 pub mod quarantine_reason;
+pub mod outbound_message;
+pub mod outbound_priority;
 pub mod remote_authority_snapshot;
 pub mod remote_node_id;
 pub mod remoting_backpressure_listener;
@@ -14,11 +18,16 @@ pub mod remoting_error;
 pub mod remoting_extension;
 pub mod remoting_extension_config;
 pub mod remoting_extension_id;
+pub mod remoting_envelope;
 pub mod transport;
 
 pub use association_state::AssociationState;
 pub use deferred_envelope::DeferredEnvelope;
+pub use endpoint_writer::EndpointWriter;
+pub use endpoint_writer_error::EndpointWriterError;
 pub use endpoint_manager::{EndpointManager, EndpointManagerCommand, EndpointManagerEffect, EndpointManagerResult};
+pub use outbound_message::OutboundMessage;
+pub use outbound_priority::OutboundPriority;
 pub use quarantine_reason::QuarantineReason;
 pub use remote_authority_snapshot::RemoteAuthoritySnapshot;
 pub use remote_node_id::RemoteNodeId;
@@ -29,6 +38,7 @@ pub use remoting_error::RemotingError;
 pub use remoting_extension::RemotingExtension;
 pub use remoting_extension_config::RemotingExtensionConfig;
 pub use remoting_extension_id::RemotingExtensionId;
+pub use remoting_envelope::RemotingEnvelope;
 pub use transport::{
   LoopbackTransport, RemoteTransport, TransportBackpressureHook, TransportBind, TransportChannel, TransportEndpoint,
   TransportError, TransportFactory, TransportHandle,

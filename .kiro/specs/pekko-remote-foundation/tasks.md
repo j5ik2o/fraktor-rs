@@ -75,14 +75,14 @@
   - _(親タスクなので詳細は書かない)_
   - _対応要件: 3.1, 3.2, 3.3, 3.4, 3.5_
   - _依存タスク: 3.1_
-- [ ] 4.1 Outbound シリアライズと reply_to メタデータの付与
+- [x] 4.1 Outbound シリアライズと reply_to メタデータの付与
   - EndpointWriter で ActorPath/UID/serializer manifest を含む SerializedMessage を生成し、RemotingEnvelope へ詰める
   - reply_to が指定されているメッセージに対して復路 ActorPath をメタデータに追加する
   - Serializer 失敗を分類して DeadLetter へ送る準備を整える
   - _対応要件: 3.1, 3.3, 3.4_
   - _依存タスク: 3.1_
   - **完了条件**: `modules/remote/src/core/endpoint_writer/tests.rs` にシリアライズ/manifest/reply_to の RED テストを追加し、`cargo test -p fraktor-remote-rs endpoint_writer::tests` が通ること
-- [ ] 4.2 EndpointWriter の送出キューと at-most-once 制御を実装
+- [x] 4.2 EndpointWriter の送出キューと at-most-once 制御を実装
   - System/User キューを分離した OutboundQueue を定義し、System メッセージを常に優先送出する(キューはutilsのSyncFifoQueueを使って実装する)
   - BackpressureSignal を受けてユーザートラフィックを一時停止/再開する制御フローを追加し、Transport の hook と連携する
   - SerializationExtension へのアクセスを整理し、シリアライズ失敗時に DeadLetter + EventStream を発火する実装を加える
