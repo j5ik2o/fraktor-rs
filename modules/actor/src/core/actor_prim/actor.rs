@@ -91,12 +91,13 @@ pub trait Actor<TB: RuntimeToolbox = NoStdToolbox>: Send {
   /// ```
   /// use core::time::Duration;
   ///
-  /// use fraktor_actor_rs::{
-  ///   actor_prim::{Actor, ActorContext},
+  /// use fraktor_actor_rs::core::{
+  ///   actor_prim::{Actor, ActorContextGeneric},
   ///   error::ActorError,
   ///   messaging::AnyMessageViewGeneric,
   ///   supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
   /// };
+  /// use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
   ///
   /// struct ResilientWorker {
   ///   consecutive_errors: u32,
@@ -105,13 +106,16 @@ pub trait Actor<TB: RuntimeToolbox = NoStdToolbox>: Send {
   /// impl Actor for ResilientWorker {
   ///   fn receive(
   ///     &mut self,
-  ///     _ctx: &mut ActorContext<'_>,
+  ///     _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
   ///     _message: AnyMessageViewGeneric<'_>,
   ///   ) -> Result<(), ActorError> {
   ///     Ok(())
   ///   }
   ///
-  ///   fn supervisor_strategy(&mut self, _ctx: &mut ActorContext) -> SupervisorStrategy {
+  ///   fn supervisor_strategy(
+  ///     &mut self,
+  ///     _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
+  ///   ) -> SupervisorStrategy {
   ///     if self.consecutive_errors > 10 {
   ///       // Too many errors: stop immediately
   ///       SupervisorStrategy::new(

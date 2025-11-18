@@ -73,7 +73,7 @@ impl Serializer for TestSerializer {
     &self,
     bytes: &[u8],
     _type_hint: Option<TypeId>,
-  ) -> Result<Box<dyn Any + Send>, crate::core::serialization::error::SerializationError> {
+  ) -> Result<Box<dyn Any + Send + Sync>, crate::core::serialization::error::SerializationError> {
     Ok(Box::new(TestPayload(bytes.first().copied().unwrap_or_default())))
   }
 
@@ -177,7 +177,11 @@ impl Serializer for ManifestSerializer {
     Ok(vec![payload.0])
   }
 
-  fn from_binary(&self, bytes: &[u8], _type_hint: Option<TypeId>) -> Result<Box<dyn Any + Send>, SerializationError> {
+  fn from_binary(
+    &self,
+    bytes: &[u8],
+    _type_hint: Option<TypeId>,
+  ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
     Ok(Box::new(TestPayload(bytes[0])))
   }
 
@@ -199,7 +203,7 @@ impl SerializerWithStringManifest for ManifestSerializer {
     &self,
     bytes: &[u8],
     _manifest: &str,
-  ) -> Result<Box<dyn Any + Send>, SerializationError> {
+  ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
     self.from_manifest_calls.fetch_add(1, Ordering::Relaxed);
     Ok(Box::new(TestPayload(bytes[0])))
   }
@@ -538,7 +542,11 @@ impl Serializer for FailingSerializer {
     )))
   }
 
-  fn from_binary(&self, _bytes: &[u8], _type_hint: Option<TypeId>) -> Result<Box<dyn Any + Send>, SerializationError> {
+  fn from_binary(
+    &self,
+    _bytes: &[u8],
+    _type_hint: Option<TypeId>,
+  ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
     Err(SerializationError::InvalidFormat)
   }
 
@@ -571,7 +579,11 @@ impl Serializer for VersionedSerializer {
     Ok(vec![payload.0])
   }
 
-  fn from_binary(&self, bytes: &[u8], _type_hint: Option<TypeId>) -> Result<Box<dyn Any + Send>, SerializationError> {
+  fn from_binary(
+    &self,
+    bytes: &[u8],
+    _type_hint: Option<TypeId>,
+  ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
     Ok(Box::new(TestPayload(bytes[0])))
   }
 
@@ -589,7 +601,11 @@ impl SerializerWithStringManifest for VersionedSerializer {
     Cow::Borrowed("current.Manifest")
   }
 
-  fn from_binary_with_manifest(&self, bytes: &[u8], manifest: &str) -> Result<Box<dyn Any + Send>, SerializationError> {
+  fn from_binary_with_manifest(
+    &self,
+    bytes: &[u8],
+    manifest: &str,
+  ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
     if manifest == "current.Manifest" {
       return Ok(Box::new(TestPayload(bytes[0])));
     }
@@ -621,7 +637,11 @@ impl Serializer for LegacySerializer {
     Ok(vec![payload.0])
   }
 
-  fn from_binary(&self, bytes: &[u8], _type_hint: Option<TypeId>) -> Result<Box<dyn Any + Send>, SerializationError> {
+  fn from_binary(
+    &self,
+    bytes: &[u8],
+    _type_hint: Option<TypeId>,
+  ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
     Ok(Box::new(TestPayload(bytes[0])))
   }
 
@@ -643,7 +663,7 @@ impl SerializerWithStringManifest for LegacySerializer {
     &self,
     bytes: &[u8],
     _manifest: &str,
-  ) -> Result<Box<dyn Any + Send>, SerializationError> {
+  ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
     Ok(Box::new(TestPayload(bytes[0])))
   }
 }
@@ -672,7 +692,11 @@ impl Serializer for SecondarySerializer {
     Ok(vec![payload.0])
   }
 
-  fn from_binary(&self, bytes: &[u8], _type_hint: Option<TypeId>) -> Result<Box<dyn Any + Send>, SerializationError> {
+  fn from_binary(
+    &self,
+    bytes: &[u8],
+    _type_hint: Option<TypeId>,
+  ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
     Ok(Box::new(SecondaryPayload(bytes[0])))
   }
 

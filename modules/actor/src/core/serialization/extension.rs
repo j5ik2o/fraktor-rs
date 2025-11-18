@@ -137,7 +137,7 @@ impl<TB: RuntimeToolbox + 'static> SerializationExtensionGeneric<TB> {
     &self,
     msg: &SerializedMessage,
     type_hint: Option<TypeId>,
-  ) -> Result<Box<dyn Any + Send>, SerializationError> {
+  ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
     self.ensure_active()?;
     let transport_hint = self.current_transport_information();
     let serializer = match self.registry.serializer_by_id(msg.serializer_id()) {
@@ -270,7 +270,7 @@ impl<TB: RuntimeToolbox + 'static> SerializationExtensionGeneric<TB> {
     msg: &SerializedMessage,
     type_hint: Option<TypeId>,
     transport_hint: Option<TransportInformation>,
-  ) -> Result<Box<dyn Any + Send>, SerializationError> {
+  ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
     let candidates = self.registry.serializers_for_manifest(&manifest);
     for serializer in candidates {
       let outcome = if let Some(provider) = serializer.as_string_manifest() {
@@ -296,7 +296,7 @@ impl<TB: RuntimeToolbox + 'static> SerializationExtensionGeneric<TB> {
     manifest: String,
     msg: &SerializedMessage,
     transport_hint: Option<TransportInformation>,
-  ) -> Result<Box<dyn Any + Send>, SerializationError> {
+  ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
     let log_message = format!("manifest '{manifest}' not resolved (serializer {:?})", msg.serializer_id());
     self.system_state.emit_log(LogLevel::Warn, log_message, None);
     let payload =

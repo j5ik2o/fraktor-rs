@@ -38,7 +38,7 @@ impl Serializer for DummySerializer {
     &self,
     _bytes: &[u8],
     _type_hint: Option<TypeId>,
-  ) -> Result<Box<dyn Any + Send>, crate::core::serialization::error::SerializationError> {
+  ) -> Result<Box<dyn Any + Send + Sync>, crate::core::serialization::error::SerializationError> {
     Ok(Box::new(()))
   }
 

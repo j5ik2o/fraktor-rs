@@ -37,7 +37,11 @@ impl Serializer for RecordingSerializer {
     Ok(vec![0])
   }
 
-  fn from_binary(&self, _bytes: &[u8], _type_hint: Option<TypeId>) -> Result<Box<dyn Any + Send>, SerializationError> {
+  fn from_binary(
+    &self,
+    _bytes: &[u8],
+    _type_hint: Option<TypeId>,
+  ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
     Ok(Box::new(()))
   }
 

@@ -77,7 +77,11 @@ impl Serializer for TelemetrySerializer {
     Ok(buffer)
   }
 
-  fn from_binary(&self, bytes: &[u8], _type_hint: Option<TypeId>) -> Result<Box<dyn Any + Send>, SerializationError> {
+  fn from_binary(
+    &self,
+    bytes: &[u8],
+    _type_hint: Option<TypeId>,
+  ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
     let payload = Self::decode(bytes)?;
     Ok(Box::new(payload))
   }
@@ -100,7 +104,7 @@ impl SerializerWithStringManifest for TelemetrySerializer {
     &self,
     bytes: &[u8],
     _manifest: &str,
-  ) -> Result<Box<dyn Any + Send>, SerializationError> {
+  ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
     self.from_binary(bytes, None)
   }
 }

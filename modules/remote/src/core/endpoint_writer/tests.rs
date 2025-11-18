@@ -1,7 +1,10 @@
 #![cfg(test)]
 
 use fraktor_actor_rs::core::{
-  actor_prim::{Actor, ActorContextGeneric, actor_path::ActorPathParts},
+  actor_prim::{
+    Actor, ActorContextGeneric,
+    actor_path::{ActorPathParts, GuardianKind},
+  },
   error::ActorError,
   event_stream::BackpressureSignal,
   messaging::{AnyMessageGeneric, SystemMessage},
@@ -16,7 +19,7 @@ use fraktor_utils_rs::core::{
 
 use crate::core::{
   endpoint_manager::RemoteNodeId,
-  endpoint_writer::{EndpointWriter, OutboundEnvelope},
+  endpoint_writer::{EndpointWriter, OutboundEnvelope, RemotingEnvelope},
 };
 
 struct NullActor;
@@ -121,4 +124,28 @@ fn writer_pauses_user_queue_during_backpressure() {
   writer.notify_backpressure(BackpressureSignal::Release);
   let resumed = writer.dequeue().unwrap_or_else(|_| panic!("dequeue result")).expect("user resumed");
   assert!(!resumed.message.payload().is::<SystemMessage>());
+}
+
+#[test]
+fn remoting_envelope_roundtrips_via_frame() {
+  let system = build_system();
+  let serialization = build_serialization_extension(&system);
+  let writer = EndpointWriter::new(serialization.clone());
+  let target =
+    ActorPathParts::with_authority("cluster", Some(("remote-host", 2552))).with_guardian(GuardianKind::System);
+  let remote = RemoteNodeId::new("clusterB", "remote-host", Some(1550), 77);
+  let envelope = writer
+    .write(OutboundEnvelope {
+      target:  target.clone(),
+      remote:  remote.clone(),
+      message: AnyMessageGeneric::new(SystemMessage::Stop),
+    })
+    .expect("serialize");
+
+  let encoded = envelope.encode();
+  let decoded = RemotingEnvelope::decode(&encoded).expect("decode");
+
+  assert_eq!(decoded.target().system(), target.system());
+  assert_eq!(decoded.remote().uid(), remote.uid());
+  assert!(decoded.payload().bytes().is_empty());
 }

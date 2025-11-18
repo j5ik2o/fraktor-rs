@@ -32,7 +32,7 @@ impl Serializer for I32Serializer {
     &self,
     bytes: &[u8],
     _type_hint: Option<core::any::TypeId>,
-  ) -> Result<Box<dyn Any + Send>, SerializationError> {
+  ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
     if bytes.len() < core::mem::size_of::<i32>() {
       return Err(SerializationError::InvalidFormat);
     }

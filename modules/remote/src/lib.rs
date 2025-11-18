@@ -11,7 +11,9 @@ mod std;
 
 pub use core::{
   backpressure_listener::RemotingBackpressureListener,
+  endpoint_reader::EndpointReader,
   endpoint_writer::{EndpointWriter, OutboundEnvelope, RemotingEnvelope},
+  inbound_envelope::InboundEnvelope,
   remoting_connection_snapshot::RemotingConnectionSnapshot,
   remoting_control::RemotingControl,
   remoting_control_handle::RemotingControlHandle,
