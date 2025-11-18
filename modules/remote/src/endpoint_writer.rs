@@ -2,12 +2,16 @@
 
 use fraktor_actor_rs::core::{
   actor_prim::actor_path::ActorPathParts,
-  messaging::AnyMessageGeneric,
+  event_stream::BackpressureSignal,
+  messaging::{AnyMessageGeneric, SystemMessage},
   serialization::{SerializationCallScope, SerializationError, SerializationExtensionGeneric, SerializedMessage},
 };
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
 use crate::RemoteNodeId;
+use self::outbound_queue::{EnvelopePriority, OutboundQueue};
+
+pub mod outbound_queue;
 
 /// Envelope emitted by the endpoint writer, ready for transport serialization.
 pub struct RemotingEnvelope {
@@ -56,13 +60,14 @@ pub struct OutboundEnvelope<TB: RuntimeToolbox + 'static> {
 /// Serializes outbound envelopes using the actor serialization extension.
 pub struct EndpointWriter<TB: RuntimeToolbox + 'static> {
   serialization: ArcShared<SerializationExtensionGeneric<TB>>,
+  queue:         OutboundQueue<TB, OutboundEnvelope<TB>>,
 }
 
 impl<TB: RuntimeToolbox + 'static> EndpointWriter<TB> {
   /// Creates a writer backed by the provided serialization extension.
   #[must_use]
   pub fn new(serialization: ArcShared<SerializationExtensionGeneric<TB>>) -> Self {
-    Self { serialization }
+    Self { serialization, queue: OutboundQueue::new() }
   }
 
   /// Serializes the outbound envelope into a remoting envelope.
@@ -76,6 +81,31 @@ impl<TB: RuntimeToolbox + 'static> EndpointWriter<TB> {
       .and_then(|reply| reply.path().map(|path| path.parts().clone()));
 
     Ok(RemotingEnvelope { target: envelope.target, remote: envelope.remote, payload, reply_to })
+  }
+
+  /// Enqueues an envelope for later transmission.
+  pub fn enqueue(&mut self, envelope: OutboundEnvelope<TB>) {
+    self.queue.push(envelope, |env| {
+      if env.message.payload().is::<SystemMessage>() {
+        EnvelopePriority::System
+      } else {
+        EnvelopePriority::User
+      }
+    });
+  }
+
+  /// Pops the next envelope respecting system priority.
+  #[must_use]
+  pub fn dequeue(&mut self) -> Option<OutboundEnvelope<TB>> {
+    self.queue.pop()
+  }
+
+  /// Applies transport backpressure signals to pause/resume user traffic.
+  pub fn notify_backpressure(&mut self, signal: BackpressureSignal) {
+    match signal {
+      | BackpressureSignal::Apply => self.queue.pause_user(),
+      | BackpressureSignal::Release => self.queue.resume_user(),
+    }
   }
 }
 

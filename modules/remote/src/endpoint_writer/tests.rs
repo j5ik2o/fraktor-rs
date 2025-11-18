@@ -3,7 +3,8 @@
 use fraktor_actor_rs::core::{
   actor_prim::{Actor, ActorContextGeneric, actor_path::ActorPathParts},
   error::ActorError,
-  messaging::AnyMessageGeneric,
+  event_stream::BackpressureSignal,
+  messaging::{AnyMessageGeneric, SystemMessage},
   props::PropsGeneric,
   serialization::{
     NullSerializer,
@@ -15,7 +16,7 @@ use fraktor_actor_rs::core::{
   system::ActorSystemGeneric,
 };
 use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
-
+use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 use crate::{endpoint_writer::{EndpointWriter, OutboundEnvelope}, RemoteNodeId};
 
 struct NullActor;
@@ -69,4 +70,52 @@ fn writer_serializes_payload_and_reply_metadata() {
   assert_eq!(envelope.payload().bytes(), &[]);
   let reply_path = envelope.reply_to().expect("reply path");
   assert_eq!(reply_path.system(), reply_ref.path().unwrap().parts().system());
+}
+
+fn system_envelope<TB: RuntimeToolbox + 'static>(remote: RemoteNodeId, target: ActorPathParts) -> OutboundEnvelope<TB> {
+  let message = AnyMessageGeneric::new(SystemMessage::Stop);
+  OutboundEnvelope { target, remote, message }
+}
+
+fn user_envelope<TB: RuntimeToolbox + 'static>(remote: RemoteNodeId, target: ActorPathParts) -> OutboundEnvelope<TB> {
+  let message = AnyMessageGeneric::new(());
+  OutboundEnvelope { target, remote, message }
+}
+
+#[test]
+fn writer_prioritizes_system_envelopes() {
+  let system = build_system();
+  let serialization = build_serialization_extension(&system);
+  let mut writer = EndpointWriter::new(serialization.clone());
+  let target = ActorPathParts::with_authority("cluster", Some(("remote", 2552)));
+  let remote = RemoteNodeId::new("cluster", "remote", Some(2552), 1);
+
+  writer.enqueue(user_envelope(remote.clone(), target.clone()));
+  writer.enqueue(system_envelope(remote.clone(), target.clone()));
+
+  let first = writer.dequeue().expect("first");
+  assert!(first.message.payload().is::<SystemMessage>());
+  let second = writer.dequeue().expect("second");
+  assert!(!second.message.payload().is::<SystemMessage>());
+}
+
+#[test]
+fn writer_pauses_user_queue_during_backpressure() {
+  let system = build_system();
+  let serialization = build_serialization_extension(&system);
+  let mut writer = EndpointWriter::new(serialization.clone());
+  let target = ActorPathParts::with_authority("cluster", Some(("remote", 2552)));
+  let remote = RemoteNodeId::new("cluster", "remote", Some(2552), 1);
+
+  writer.enqueue(user_envelope(remote.clone(), target.clone()));
+  writer.enqueue(system_envelope(remote.clone(), target.clone()));
+
+  writer.notify_backpressure(BackpressureSignal::Apply);
+  let first = writer.dequeue().expect("system available");
+  assert!(first.message.payload().is::<SystemMessage>());
+  assert!(writer.dequeue().is_none());
+
+  writer.notify_backpressure(BackpressureSignal::Release);
+  let resumed = writer.dequeue().expect("user resumed");
+  assert!(!resumed.message.payload().is::<SystemMessage>());
 }
