@@ -22,7 +22,7 @@ pub enum EndpointManagerCommand {
     /// Authority being confirmed.
     authority: String,
     /// Remote node descriptor that completed the handshake.
-    remote: RemoteNodeId,
+    remote:    RemoteNodeId,
   },
   /// Flush deferred messages for the authority.
   FlushDeferred {
@@ -34,6 +34,6 @@ pub enum EndpointManagerCommand {
     /// Authority whose queue will store the message.
     authority: String,
     /// Deferred payload bytes.
-    payload: Vec<u8>,
+    payload:   Vec<u8>,
   },
 }

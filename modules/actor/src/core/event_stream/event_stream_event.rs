@@ -6,10 +6,8 @@ mod tests;
 use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 
 use super::{
-  remoting_backpressure_event::RemotingBackpressureEvent,
-  remoting_lifecycle_event::RemotingLifecycleEvent,
-  remote_authority_event::RemoteAuthorityEvent,
-  tick_driver_snapshot::TickDriverSnapshot,
+  remote_authority_event::RemoteAuthorityEvent, remoting_backpressure_event::RemotingBackpressureEvent,
+  remoting_lifecycle_event::RemotingLifecycleEvent, tick_driver_snapshot::TickDriverSnapshot,
 };
 use crate::core::{
   dead_letter::DeadLetterEntryGeneric,

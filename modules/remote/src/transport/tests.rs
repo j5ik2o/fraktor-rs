@@ -3,34 +3,24 @@
 use std::sync::{Arc, Mutex};
 
 use fraktor_actor_rs::core::event_stream::BackpressureSignal;
+use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 
 use crate::{
-  LoopbackTransport,
-  RemoteTransport,
-  RemotingError,
-  RemotingExtensionConfig,
-  TransportBind,
-  TransportEndpoint,
+  LoopbackTransport, RemoteTransport, RemotingError, RemotingExtensionConfig, TransportBind, TransportEndpoint,
   TransportFactory,
 };
-use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 
 #[test]
 fn loopback_transport_frames_payload_with_length_prefix() {
   let transport = LoopbackTransport::new();
-  let handle = <LoopbackTransport as RemoteTransport<NoStdToolbox>>::spawn_listener(
-    &transport,
-    &TransportBind::new("local"),
-  )
-  .expect("listener");
-  let channel = <LoopbackTransport as RemoteTransport<NoStdToolbox>>::open_channel(
-    &transport,
-    &TransportEndpoint::new("local"),
-  )
-  .expect("channel");
+  let handle =
+    <LoopbackTransport as RemoteTransport<NoStdToolbox>>::spawn_listener(&transport, &TransportBind::new("local"))
+      .expect("listener");
+  let channel =
+    <LoopbackTransport as RemoteTransport<NoStdToolbox>>::open_channel(&transport, &TransportEndpoint::new("local"))
+      .expect("channel");
 
-  <LoopbackTransport as RemoteTransport<NoStdToolbox>>::send(&transport, &channel, b"ping")
-    .expect("send");
+  <LoopbackTransport as RemoteTransport<NoStdToolbox>>::send(&transport, &channel, b"ping").expect("send");
   let frames = handle.take_frames();
   assert_eq!(frames.len(), 1);
   let frame = &frames[0];
@@ -60,41 +50,27 @@ fn loopback_transport_invokes_backpressure_hook() {
     }),
   );
 
-  let handle = <LoopbackTransport as RemoteTransport<NoStdToolbox>>::spawn_listener(
-    &transport,
-    &TransportBind::new(authority),
-  )
-  .expect("listener");
-  let channel = <LoopbackTransport as RemoteTransport<NoStdToolbox>>::open_channel(
-    &transport,
-    &TransportEndpoint::new(authority),
-  )
-  .expect("channel");
+  let handle =
+    <LoopbackTransport as RemoteTransport<NoStdToolbox>>::spawn_listener(&transport, &TransportBind::new(authority))
+      .expect("listener");
+  let channel =
+    <LoopbackTransport as RemoteTransport<NoStdToolbox>>::open_channel(&transport, &TransportEndpoint::new(authority))
+      .expect("channel");
 
   for _ in 0..10 {
-    <LoopbackTransport as RemoteTransport<NoStdToolbox>>::send(
-      &transport,
-      &channel,
-      b"payload",
-    )
-    .expect("send");
+    <LoopbackTransport as RemoteTransport<NoStdToolbox>>::send(&transport, &channel, b"payload").expect("send");
   }
 
   assert!(counter.load(Ordering::Relaxed) > 0);
-  assert!(recordings.lock().unwrap().iter().any(|(signal, auth)| *signal == BackpressureSignal::Apply && auth == authority));
+  assert!(
+    recordings.lock().unwrap().iter().any(|(signal, auth)| *signal == BackpressureSignal::Apply && auth == authority)
+  );
 
   let _ = handle.take_frames();
-  <LoopbackTransport as RemoteTransport<NoStdToolbox>>::send(
-    &transport,
-    &channel,
-    b"resume",
-  )
-  .expect("send");
-  assert!(recordings
-    .lock()
-    .unwrap()
-    .iter()
-    .any(|(signal, auth)| *signal == BackpressureSignal::Release && auth == authority));
+  <LoopbackTransport as RemoteTransport<NoStdToolbox>>::send(&transport, &channel, b"resume").expect("send");
+  assert!(
+    recordings.lock().unwrap().iter().any(|(signal, auth)| *signal == BackpressureSignal::Release && auth == authority)
+  );
 }
 
 #[test]

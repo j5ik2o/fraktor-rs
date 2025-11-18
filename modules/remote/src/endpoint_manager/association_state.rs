@@ -22,9 +22,9 @@ pub enum AssociationState {
   /// Authority has been quarantined and message delivery is rejected.
   Quarantined {
     /// Reason for quarantine.
-    reason: String,
+    reason:   String,
     /// Timestamp when the quarantine started.
-    since: u64,
+    since:    u64,
     /// Optional deadline when quarantine should be lifted.
     deadline: Option<u64>,
   },

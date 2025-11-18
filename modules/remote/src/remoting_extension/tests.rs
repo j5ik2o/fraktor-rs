@@ -17,8 +17,8 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::{
-  BackpressureSignal, RemotingBackpressureListener, RemotingControl, RemotingControlHandle,
-  RemotingExtensionConfig, RemotingExtensionId,
+  BackpressureSignal, RemotingBackpressureListener, RemotingControl, RemotingControlHandle, RemotingExtensionConfig,
+  RemotingExtensionId,
 };
 
 struct TestGuardian;
@@ -83,11 +83,8 @@ impl EventStreamSubscriber for CollectingSubscriber {
 fn install_extension(
   system: &ActorSystemGeneric<NoStdToolbox>,
   config: RemotingExtensionConfig,
-) -> (
-  ArcShared<CollectingSubscriber>,
-  RemotingControlHandle<NoStdToolbox>,
-  EventStreamSubscriptionGeneric<NoStdToolbox>,
-) {
+) -> (ArcShared<CollectingSubscriber>, RemotingControlHandle<NoStdToolbox>, EventStreamSubscriptionGeneric<NoStdToolbox>)
+{
   let stream = system.event_stream();
   let subscriber = CollectingSubscriber::new();
   let subscriber_ref: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber.clone();
@@ -104,10 +101,7 @@ fn auto_start_publishes_start_event() {
   let (subscriber, _handle, _subscription) =
     install_extension(&system, RemotingExtensionConfig::default().with_auto_start(true));
 
-  assert!(subscriber
-    .lifecycle_events()
-    .iter()
-    .any(|event| matches!(event, RemotingLifecycleEvent::Starting)));
+  assert!(subscriber.lifecycle_events().iter().any(|event| matches!(event, RemotingLifecycleEvent::Starting)));
 }
 
 #[test]
@@ -120,10 +114,7 @@ fn manual_start_requires_explicit_invocation() {
 
   let _ = handle.start();
 
-  assert!(subscriber
-    .lifecycle_events()
-    .iter()
-    .any(|event| matches!(event, RemotingLifecycleEvent::Starting)));
+  assert!(subscriber.lifecycle_events().iter().any(|event| matches!(event, RemotingLifecycleEvent::Starting)));
 }
 
 #[test]
@@ -136,10 +127,7 @@ fn termination_hook_publishes_shutdown_event() {
     .tell(AnyMessageGeneric::new(SystemGuardianProtocol::<NoStdToolbox>::TerminationHook))
     .expect("hook delivery");
 
-  assert!(subscriber
-    .lifecycle_events()
-    .iter()
-    .any(|event| matches!(event, RemotingLifecycleEvent::Shutdown)));
+  assert!(subscriber.lifecycle_events().iter().any(|event| matches!(event, RemotingLifecycleEvent::Shutdown)));
 }
 
 struct TestBackpressureListener {
@@ -154,12 +142,7 @@ impl TestBackpressureListener {
   }
 
   fn recorded(&self) -> Vec<(BackpressureSignal, String)> {
-    self
-      .signals
-      .lock()
-      .iter()
-      .map(|(signal, authority)| (*signal, authority.clone()))
-      .collect()
+    self.signals.lock().iter().map(|(signal, authority)| (*signal, authority.clone())).collect()
   }
 }
 
@@ -175,30 +158,25 @@ fn backpressure_listener_and_event_stream_are_notified() {
   let system = build_actor_system();
   let (subscriber, handle, _subscription) = install_extension(
     &system,
-    RemotingExtensionConfig::default()
-      .with_auto_start(false)
-      .with_backpressure_listener_arc(listener.clone()),
+    RemotingExtensionConfig::default().with_auto_start(false).with_backpressure_listener_arc(listener.clone()),
   );
 
   handle.test_notify_backpressure(BackpressureSignal::Apply, "node-a");
 
   assert_eq!(listener.recorded(), vec![(BackpressureSignal::Apply, "node-a".to_string())]);
-  assert!(subscriber
-    .backpressure_events()
-    .iter()
-    .any(|event| event.authority() == "node-a" && matches!(event.signal(), BackpressureSignal::Apply)));
+  assert!(
+    subscriber
+      .backpressure_events()
+      .iter()
+      .any(|event| event.authority() == "node-a" && matches!(event.signal(), BackpressureSignal::Apply))
+  );
 }
 
 #[test]
 fn unsupported_transport_scheme_emits_error_event() {
   let system = build_actor_system();
-  let (subscriber, _handle, _subscription) = install_extension(
-    &system,
-    RemotingExtensionConfig::default().with_transport_scheme("fraktor.invalid"),
-  );
+  let (subscriber, _handle, _subscription) =
+    install_extension(&system, RemotingExtensionConfig::default().with_transport_scheme("fraktor.invalid"));
 
-  assert!(subscriber
-    .lifecycle_events()
-    .iter()
-    .any(|event| matches!(event, RemotingLifecycleEvent::Error { .. })));
+  assert!(subscriber.lifecycle_events().iter().any(|event| matches!(event, RemotingLifecycleEvent::Error { .. })));
 }

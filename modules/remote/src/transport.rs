@@ -2,19 +2,18 @@
 
 pub mod factory;
 mod loopback;
+#[cfg(test)]
+mod tests;
 mod transport_bind;
 mod transport_channel;
 mod transport_endpoint;
-mod transport_handle;
 mod transport_error;
-#[cfg(test)]
-mod tests;
+mod transport_handle;
 
 use alloc::sync::Arc;
 
 use fraktor_actor_rs::core::event_stream::BackpressureSignal;
 use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
-
 pub use loopback::LoopbackTransport;
 pub use transport_bind::TransportBind;
 pub use transport_channel::TransportChannel;

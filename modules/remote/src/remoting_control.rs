@@ -5,9 +5,7 @@ use alloc::vec::Vec;
 use fraktor_actor_rs::core::actor_prim::actor_path::ActorPathParts;
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
-use crate::{
-  RemotingBackpressureListener, RemotingConnectionSnapshot, RemotingError,
-};
+use crate::{RemotingBackpressureListener, RemotingConnectionSnapshot, RemotingError};
 
 /// High-level control surface for remoting subsystems.
 pub trait RemotingControl<TB: RuntimeToolbox + 'static>: Send + Sync + Clone + 'static {

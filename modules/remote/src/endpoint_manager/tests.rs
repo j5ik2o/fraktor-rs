@@ -63,16 +63,12 @@ fn loopback_roundtrip_after_handshake_flushes_deferred_payloads() {
   let manager = EndpointManager::new();
   let authority = "loopback";
   let transport = LoopbackTransport::new();
-  let handle = <LoopbackTransport as RemoteTransport<NoStdToolbox>>::spawn_listener(
-    &transport,
-    &TransportBind::new(authority),
-  )
-  .expect("listener");
-  let channel = <LoopbackTransport as RemoteTransport<NoStdToolbox>>::open_channel(
-    &transport,
-    &TransportEndpoint::new(authority),
-  )
-  .expect("channel");
+  let handle =
+    <LoopbackTransport as RemoteTransport<NoStdToolbox>>::spawn_listener(&transport, &TransportBind::new(authority))
+      .expect("listener");
+  let channel =
+    <LoopbackTransport as RemoteTransport<NoStdToolbox>>::open_channel(&transport, &TransportEndpoint::new(authority))
+      .expect("channel");
 
   manager.start_association(authority, 1);
   manager.defer_message(authority, b"hello".to_vec());
@@ -80,8 +76,7 @@ fn loopback_roundtrip_after_handshake_flushes_deferred_payloads() {
   let remote = RemoteNodeId::new("sys", "host", Some(2552), 100);
   let deferred = manager.complete_handshake(authority, remote, 10);
   for payload in deferred {
-    <LoopbackTransport as RemoteTransport<NoStdToolbox>>::send(&transport, &channel, &payload)
-      .expect("send");
+    <LoopbackTransport as RemoteTransport<NoStdToolbox>>::send(&transport, &channel, &payload).expect("send");
   }
   let frames = handle.take_frames();
   assert_eq!(frames.len(), 2);

@@ -6,18 +6,18 @@ use fraktor_actor_rs::core::{
   event_stream::BackpressureSignal,
   messaging::{AnyMessageGeneric, SystemMessage},
   props::PropsGeneric,
-  serialization::{
-    NullSerializer,
-    SerializationExtensionGeneric,
-    SerializationSetupBuilder,
-    Serializer,
-    SerializerId,
-  },
+  serialization::{NullSerializer, SerializationExtensionGeneric, SerializationSetupBuilder, Serializer, SerializerId},
   system::ActorSystemGeneric,
 };
-use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
-use crate::{endpoint_writer::{EndpointWriter, OutboundEnvelope}, RemoteNodeId};
+use fraktor_utils_rs::core::{
+  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
+  sync::ArcShared,
+};
+
+use crate::{
+  RemoteNodeId,
+  endpoint_writer::{EndpointWriter, OutboundEnvelope},
+};
 
 struct NullActor;
 
@@ -36,7 +36,9 @@ fn build_system() -> ActorSystemGeneric<NoStdToolbox> {
   ActorSystemGeneric::new(&props).expect("actor system")
 }
 
-fn build_serialization_extension(system: &ActorSystemGeneric<NoStdToolbox>) -> ArcShared<SerializationExtensionGeneric<NoStdToolbox>> {
+fn build_serialization_extension(
+  system: &ActorSystemGeneric<NoStdToolbox>,
+) -> ArcShared<SerializationExtensionGeneric<NoStdToolbox>> {
   let serializer_id = SerializerId::try_from(200).expect("id");
   let serializer: ArcShared<dyn Serializer> = ArcShared::new(NullSerializer::new(serializer_id));
   let setup = SerializationSetupBuilder::new()
@@ -64,7 +66,8 @@ fn writer_serializes_payload_and_reply_metadata() {
   let target = ActorPathParts::with_authority("cluster", Some(("remote-host", 2552)));
   let remote = RemoteNodeId::new("cluster", "remote-host", Some(2552), 99);
 
-  let envelope = writer.write(OutboundEnvelope { target: target.clone(), remote: remote.clone(), message }).expect("write");
+  let envelope =
+    writer.write(OutboundEnvelope { target: target.clone(), remote: remote.clone(), message }).expect("write");
   assert_eq!(envelope.target().system(), target.system());
   assert_eq!(envelope.remote().uid(), remote.uid());
   assert_eq!(envelope.payload().bytes(), &[]);
@@ -90,12 +93,12 @@ fn writer_prioritizes_system_envelopes() {
   let target = ActorPathParts::with_authority("cluster", Some(("remote", 2552)));
   let remote = RemoteNodeId::new("cluster", "remote", Some(2552), 1);
 
-  writer.enqueue(user_envelope(remote.clone(), target.clone()));
-  writer.enqueue(system_envelope(remote.clone(), target.clone()));
+  writer.enqueue(user_envelope(remote.clone(), target.clone())).unwrap_or_else(|_| panic!("enqueue user"));
+  writer.enqueue(system_envelope(remote.clone(), target.clone())).unwrap_or_else(|_| panic!("enqueue system"));
 
-  let first = writer.dequeue().expect("first");
+  let first = writer.dequeue().unwrap_or_else(|_| panic!("dequeue result")).expect("first");
   assert!(first.message.payload().is::<SystemMessage>());
-  let second = writer.dequeue().expect("second");
+  let second = writer.dequeue().unwrap_or_else(|_| panic!("dequeue result")).expect("second");
   assert!(!second.message.payload().is::<SystemMessage>());
 }
 
@@ -107,15 +110,15 @@ fn writer_pauses_user_queue_during_backpressure() {
   let target = ActorPathParts::with_authority("cluster", Some(("remote", 2552)));
   let remote = RemoteNodeId::new("cluster", "remote", Some(2552), 1);
 
-  writer.enqueue(user_envelope(remote.clone(), target.clone()));
-  writer.enqueue(system_envelope(remote.clone(), target.clone()));
+  writer.enqueue(user_envelope(remote.clone(), target.clone())).unwrap_or_else(|_| panic!("enqueue user"));
+  writer.enqueue(system_envelope(remote.clone(), target.clone())).unwrap_or_else(|_| panic!("enqueue system"));
 
   writer.notify_backpressure(BackpressureSignal::Apply);
-  let first = writer.dequeue().expect("system available");
+  let first = writer.dequeue().unwrap_or_else(|_| panic!("dequeue result")).expect("system available");
   assert!(first.message.payload().is::<SystemMessage>());
-  assert!(writer.dequeue().is_none());
+  assert!(writer.dequeue().unwrap_or_else(|_| panic!("paused dequeue")).is_none());
 
   writer.notify_backpressure(BackpressureSignal::Release);
-  let resumed = writer.dequeue().expect("user resumed");
+  let resumed = writer.dequeue().unwrap_or_else(|_| panic!("dequeue result")).expect("user resumed");
   assert!(!resumed.message.payload().is::<SystemMessage>());
 }

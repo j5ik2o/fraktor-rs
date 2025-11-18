@@ -6,18 +6,18 @@ use fraktor_actor_rs::core::{
   messaging::{AnyMessageGeneric, SystemMessage},
   serialization::{SerializationCallScope, SerializationError, SerializationExtensionGeneric, SerializedMessage},
 };
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::{collections::queue::QueueError, runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
-use crate::RemoteNodeId;
 use self::outbound_queue::{EnvelopePriority, OutboundQueue};
+use crate::RemoteNodeId;
 
 pub mod outbound_queue;
 
 /// Envelope emitted by the endpoint writer, ready for transport serialization.
 pub struct RemotingEnvelope {
-  target: ActorPathParts,
-  remote: RemoteNodeId,
-  payload: SerializedMessage,
+  target:   ActorPathParts,
+  remote:   RemoteNodeId,
+  payload:  SerializedMessage,
   reply_to: Option<ActorPathParts>,
 }
 
@@ -50,9 +50,9 @@ impl RemotingEnvelope {
 /// Outbound envelope submitted to the writer.
 pub struct OutboundEnvelope<TB: RuntimeToolbox + 'static> {
   /// Destination actor path.
-  pub target: ActorPathParts,
+  pub target:  ActorPathParts,
   /// Remote node metadata.
-  pub remote: RemoteNodeId,
+  pub remote:  RemoteNodeId,
   /// Message payload.
   pub message: AnyMessageGeneric<TB>,
 }
@@ -72,31 +72,22 @@ impl<TB: RuntimeToolbox + 'static> EndpointWriter<TB> {
 
   /// Serializes the outbound envelope into a remoting envelope.
   pub fn write(&self, envelope: OutboundEnvelope<TB>) -> Result<RemotingEnvelope, SerializationError> {
-    let payload = self
-      .serialization
-      .serialize(envelope.message.payload(), SerializationCallScope::Remote)?;
-    let reply_to = envelope
-      .message
-      .reply_to()
-      .and_then(|reply| reply.path().map(|path| path.parts().clone()));
+    let payload = self.serialization.serialize(envelope.message.payload(), SerializationCallScope::Remote)?;
+    let reply_to = envelope.message.reply_to().and_then(|reply| reply.path().map(|path| path.parts().clone()));
 
     Ok(RemotingEnvelope { target: envelope.target, remote: envelope.remote, payload, reply_to })
   }
 
   /// Enqueues an envelope for later transmission.
-  pub fn enqueue(&mut self, envelope: OutboundEnvelope<TB>) {
+  pub fn enqueue(&mut self, envelope: OutboundEnvelope<TB>) -> Result<(), QueueError<OutboundEnvelope<TB>>> {
     self.queue.push(envelope, |env| {
-      if env.message.payload().is::<SystemMessage>() {
-        EnvelopePriority::System
-      } else {
-        EnvelopePriority::User
-      }
-    });
+      if env.message.payload().is::<SystemMessage>() { EnvelopePriority::System } else { EnvelopePriority::User }
+    })
   }
 
   /// Pops the next envelope respecting system priority.
   #[must_use]
-  pub fn dequeue(&mut self) -> Option<OutboundEnvelope<TB>> {
+  pub fn dequeue(&mut self) -> Result<Option<OutboundEnvelope<TB>>, QueueError<OutboundEnvelope<TB>>> {
     self.queue.pop()
   }
 

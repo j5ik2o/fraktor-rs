@@ -1,7 +1,10 @@
 //! Handle returned by transport listeners.
 
 use alloc::{string::String, vec::Vec};
-use core::{mem, sync::atomic::{AtomicU64, Ordering}};
+use core::{
+  mem,
+  sync::atomic::{AtomicU64, Ordering},
+};
 
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
@@ -18,8 +21,8 @@ impl TransportHandleInner {
   fn new(authority: impl Into<String>) -> Self {
     Self {
       authority: authority.into(),
-      frames: <<NoStdToolbox as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(Vec::new()),
-      sequence: AtomicU64::new(0),
+      frames:    <<NoStdToolbox as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(Vec::new()),
+      sequence:  AtomicU64::new(0),
     }
   }
 }

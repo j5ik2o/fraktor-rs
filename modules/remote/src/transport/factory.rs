@@ -4,9 +4,8 @@ use alloc::borrow::ToOwned;
 
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
-use crate::{RemotingError, RemotingExtensionConfig};
-
 use super::{LoopbackTransport, RemoteTransport};
+use crate::{RemotingError, RemotingExtensionConfig};
 
 /// Factory for creating transport instances based on configuration.
 pub struct TransportFactory;

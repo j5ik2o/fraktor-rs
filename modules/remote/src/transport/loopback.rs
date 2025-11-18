@@ -1,13 +1,20 @@
 //! Placeholder loopback transport implementation used for tests.
 
-use alloc::{collections::BTreeMap, string::{String, ToString}, vec::Vec};
+use alloc::{
+  collections::BTreeMap,
+  string::{String, ToString},
+  vec::Vec,
+};
 
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
   sync::ArcShared,
 };
 
-use super::{BackpressureHook, RemoteTransport, TransportBind, TransportChannel, TransportEndpoint, TransportError, TransportHandle};
+use super::{
+  BackpressureHook, RemoteTransport, TransportBind, TransportChannel, TransportEndpoint, TransportError,
+  TransportHandle,
+};
 
 struct LoopbackInner {
   listeners: ToolboxMutex<BTreeMap<String, TransportHandle>, NoStdToolbox>,
@@ -19,7 +26,7 @@ impl LoopbackInner {
   fn new() -> Self {
     Self {
       listeners: <<NoStdToolbox as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(BTreeMap::new()),
-      hook: <<NoStdToolbox as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(None),
+      hook:      <<NoStdToolbox as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(None),
       threshold: 8,
     }
   }

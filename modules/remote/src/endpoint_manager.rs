@@ -6,36 +6,44 @@ mod remote_node_id;
 #[cfg(test)]
 mod tests;
 
-use alloc::{collections::{BTreeMap, VecDeque}, string::{String, ToString}, vec::Vec};
+use alloc::{
+  collections::{BTreeMap, VecDeque},
+  string::{String, ToString},
+  vec::Vec,
+};
 use core::time::Duration;
-
-use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex};
 
 pub use association_state::AssociationState;
 pub use endpoint_manager_command::EndpointManagerCommand;
+use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex};
 pub use remote_node_id::RemoteNodeId;
 
 struct AuthorityEntry {
-  state:    AssociationState,
-  deferred: VecDeque<Vec<u8>>,
+  state:       AssociationState,
+  deferred:    VecDeque<Vec<u8>>,
   last_change: u64,
   last_reason: Option<String>,
 }
 
 impl AuthorityEntry {
   fn new() -> Self {
-    Self { state: AssociationState::Unassociated, deferred: VecDeque::new(), last_change: 0, last_reason: None }
+    Self {
+      state:       AssociationState::Unassociated,
+      deferred:    VecDeque::new(),
+      last_change: 0,
+      last_reason: None,
+    }
   }
 }
 
 /// Snapshot of authority state for observability.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EndpointSnapshot {
-  authority:  String,
-  state:      AssociationState,
+  authority:   String,
+  state:       AssociationState,
   last_change: u64,
   last_reason: Option<String>,
-  deferred:   usize,
+  deferred:    usize,
 }
 
 impl EndpointSnapshot {
@@ -88,9 +96,7 @@ impl EndpointManager {
   /// Creates a new endpoint manager.
   #[must_use]
   pub fn new() -> Self {
-    Self {
-      entries: <<NoStdToolbox as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(BTreeMap::new()),
-    }
+    Self { entries: <<NoStdToolbox as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(BTreeMap::new()) }
   }
 
   /// Returns current state for the authority.
@@ -107,11 +113,11 @@ impl EndpointManager {
       .lock()
       .iter()
       .map(|(authority, entry)| EndpointSnapshot {
-        authority:  authority.clone(),
-        state:      entry.state.clone(),
+        authority:   authority.clone(),
+        state:       entry.state.clone(),
         last_change: entry.last_change,
         last_reason: entry.last_reason.clone(),
-        deferred:   entry.deferred.len(),
+        deferred:    entry.deferred.len(),
       })
       .collect()
   }
@@ -147,13 +153,7 @@ impl EndpointManager {
   }
 
   /// Marks an authority as quarantined and clears deferred messages.
-  pub fn set_quarantine(
-    &self,
-    authority: &str,
-    reason: QuarantineReason,
-    since: u64,
-    deadline: Option<Duration>,
-  ) {
+  pub fn set_quarantine(&self, authority: &str, reason: QuarantineReason, since: u64, deadline: Option<Duration>) {
     let mut entries = self.entries.lock();
     let entry = entries.entry(authority.to_string()).or_insert_with(AuthorityEntry::new);
     let deadline_secs = deadline.map(|dur| since + dur.as_secs());
@@ -168,12 +168,7 @@ impl EndpointManager {
   }
 
   /// Manually overrides quarantine and transitions to Connected.
-  pub fn manual_override_to_connected(
-    &self,
-    authority: &str,
-    remote: RemoteNodeId,
-    now: u64,
-  ) -> Vec<Vec<u8>> {
+  pub fn manual_override_to_connected(&self, authority: &str, remote: RemoteNodeId, now: u64) -> Vec<Vec<u8>> {
     let mut entries = self.entries.lock();
     let entry = entries.entry(authority.to_string()).or_insert_with(AuthorityEntry::new);
     entry.state = AssociationState::Connected { remote };

@@ -3,12 +3,7 @@
 use fraktor_actor_rs::core::{extension::Extension, system::ActorSystemGeneric};
 use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
-use crate::{
-  endpoint_supervisor::EndpointSupervisor,
-  RemotingControl,
-  RemotingControlHandle,
-  RemotingExtensionConfig,
-};
+use crate::{RemotingControl, RemotingControlHandle, RemotingExtensionConfig, endpoint_supervisor::EndpointSupervisor};
 
 /// Extension registered inside an actor system to expose remoting controls.
 pub struct RemotingExtension<TB: RuntimeToolbox + 'static> {

@@ -11,17 +11,22 @@ use crate::RemotingBackpressureListener;
 /// Configures remoting bootstrap behaviour.
 #[derive(Clone)]
 pub struct RemotingExtensionConfig {
-  remoting:                RemotingConfig,
-  auto_start:              bool,
-  transport_scheme:        String,
-  backpressure_listeners:  Vec<ArcShared<dyn RemotingBackpressureListener>>,
+  remoting:               RemotingConfig,
+  auto_start:             bool,
+  transport_scheme:       String,
+  backpressure_listeners: Vec<ArcShared<dyn RemotingBackpressureListener>>,
 }
 
 impl RemotingExtensionConfig {
   /// Creates a new configuration from an existing remoting config.
   #[must_use]
   pub fn new(remoting: RemotingConfig) -> Self {
-    Self { remoting, auto_start: true, transport_scheme: String::from("fraktor.loopback"), backpressure_listeners: Vec::new() }
+    Self {
+      remoting,
+      auto_start: true,
+      transport_scheme: String::from("fraktor.loopback"),
+      backpressure_listeners: Vec::new(),
+    }
   }
 
   /// Sets whether remoting should automatically start during actor system bootstrap.
@@ -91,8 +96,7 @@ impl RemotingExtensionConfig {
   #[must_use]
   pub fn with_backpressure_listener<L>(self, listener: L) -> Self
   where
-    L: RemotingBackpressureListener,
-  {
+    L: RemotingBackpressureListener, {
     self.with_backpressure_listener_arc(ArcShared::new(listener))
   }
 

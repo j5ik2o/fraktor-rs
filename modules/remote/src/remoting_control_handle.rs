@@ -5,7 +5,9 @@ use core::sync::atomic::{AtomicBool, Ordering};
 
 use fraktor_actor_rs::core::{
   actor_prim::{actor_path::ActorPathParts, actor_ref::ActorRefGeneric},
-  event_stream::{BackpressureSignal, EventStreamEvent, EventStreamGeneric, RemotingBackpressureEvent, RemotingLifecycleEvent},
+  event_stream::{
+    BackpressureSignal, EventStreamEvent, EventStreamGeneric, RemotingBackpressureEvent, RemotingLifecycleEvent,
+  },
   system::ActorSystemGeneric,
 };
 use fraktor_utils_rs::core::{
@@ -14,19 +16,19 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::{
-  RemotingBackpressureListener, RemotingConnectionSnapshot, RemotingControl, RemotingError,
-  RemotingExtensionConfig, RemoteTransport, TransportFactory,
+  RemoteTransport, RemotingBackpressureListener, RemotingConnectionSnapshot, RemotingControl, RemotingError,
+  RemotingExtensionConfig, TransportFactory,
 };
 
 struct RemotingControlShared<TB: RuntimeToolbox + 'static> {
-  _system:     ActorSystemGeneric<TB>,
+  _system:      ActorSystemGeneric<TB>,
   event_stream: ArcShared<EventStreamGeneric<TB>>,
-  supervisor:  ToolboxMutex<Option<ActorRefGeneric<TB>>, TB>,
-  listeners:   ToolboxMutex<Vec<ArcShared<dyn RemotingBackpressureListener>>, TB>,
-  transport:   ToolboxMutex<Option<ArcShared<dyn RemoteTransport<TB>>>, TB>,
-  config:      RemotingExtensionConfig,
-  started:     AtomicBool,
-  shutdown:    AtomicBool,
+  supervisor:   ToolboxMutex<Option<ActorRefGeneric<TB>>, TB>,
+  listeners:    ToolboxMutex<Vec<ArcShared<dyn RemotingBackpressureListener>>, TB>,
+  transport:    ToolboxMutex<Option<ArcShared<dyn RemoteTransport<TB>>>, TB>,
+  config:       RemotingExtensionConfig,
+  started:      AtomicBool,
+  shutdown:     AtomicBool,
 }
 
 /// Shared handle implementing the [`RemotingControl`] interface.
