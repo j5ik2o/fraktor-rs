@@ -22,7 +22,9 @@ use fraktor_utils_rs::core::{
 use hashbrown::HashMap;
 use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
-use super::{ActorPathRegistry, AuthorityState, GuardianKind, RemoteAuthorityError, RemoteAuthorityManagerGeneric};
+use super::{
+  ActorPathRegistry, AuthorityState, GuardianKind, RemoteAuthorityError, RemoteAuthorityManagerGeneric, RemoteWatchHook,
+};
 use crate::core::{
   actor_prim::{
     ActorCellGeneric, Pid,
@@ -100,6 +102,7 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   failure_inflight:       AtomicU64,
   extensions:             ToolboxMutex<HashMap<TypeId, ArcShared<dyn Any + Send + Sync + 'static>>, TB>,
   actor_ref_providers:    ToolboxMutex<HashMap<TypeId, ArcShared<dyn Any + Send + Sync + 'static>>, TB>,
+  remote_watch_hook:      ToolboxMutex<Option<ArcShared<dyn RemoteWatchHook<TB>>>, TB>,
   dispatchers:            ArcShared<DispatchersGeneric<TB>>,
   mailboxes:              ArcShared<MailboxesGeneric<TB>>,
   path_identity:          ToolboxMutex<PathIdentity, TB>,
@@ -148,6 +151,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       failure_inflight: AtomicU64::new(0),
       extensions: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::new()),
       actor_ref_providers: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::new()),
+      remote_watch_hook: <TB::MutexFamily as SyncMutexFamily>::create(None),
       dispatchers,
       mailboxes,
       path_identity: <TB::MutexFamily as SyncMutexFamily>::create(PathIdentity::default()),
@@ -539,10 +543,27 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     self.actor_ref_providers.lock().insert(TypeId::of::<P>(), erased);
   }
 
+  pub(crate) fn register_remote_watch_hook(&self, hook: ArcShared<dyn RemoteWatchHook<TB>>) {
+    let mut guard = self.remote_watch_hook.lock();
+    *guard = Some(hook);
+  }
+
   pub(crate) fn actor_ref_provider<P>(&self) -> Option<ArcShared<P>>
   where
     P: Any + Send + Sync + 'static, {
     self.actor_ref_providers.lock().get(&TypeId::of::<P>()).cloned().and_then(|provider| provider.downcast::<P>().ok())
+  }
+
+  fn remote_watch_hook(&self) -> Option<ArcShared<dyn RemoteWatchHook<TB>>> {
+    self.remote_watch_hook.lock().clone()
+  }
+
+  fn forward_remote_watch(&self, target: Pid, watcher: Pid) -> bool {
+    self.remote_watch_hook().is_some_and(|hook| hook.handle_watch(target, watcher))
+  }
+
+  fn forward_remote_unwatch(&self, target: Pid, watcher: Pid) -> bool {
+    self.remote_watch_hook().is_some_and(|hook| hook.handle_unwatch(target, watcher))
   }
 
   /// Registers a child under the specified parent pid.
@@ -578,10 +599,18 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     } else {
       match message {
         | SystemMessage::Watch(watcher) => {
+          if self.forward_remote_watch(pid, watcher) {
+            return Ok(());
+          }
           let _ = self.send_system_message(watcher, SystemMessage::Terminated(pid));
           Ok(())
         },
-        | SystemMessage::Unwatch(_) => Ok(()),
+        | SystemMessage::Unwatch(watcher) => {
+          if self.forward_remote_unwatch(pid, watcher) {
+            return Ok(());
+          }
+          Ok(())
+        },
         | SystemMessage::Terminated(_) => Ok(()),
         | SystemMessage::PipeTask(_) => Ok(()),
         | other => Err(SendError::<TB>::closed(AnyMessageGeneric::new(other))),

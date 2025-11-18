@@ -23,8 +23,8 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::core::{
-  endpoint_writer_error::EndpointWriterError, outbound_message::OutboundMessage,
-  outbound_priority::OutboundPriority, remoting_envelope::RemotingEnvelope,
+  endpoint_writer_error::EndpointWriterError, outbound_message::OutboundMessage, outbound_priority::OutboundPriority,
+  remoting_envelope::RemotingEnvelope,
 };
 
 const DEFAULT_QUEUE_CAPACITY: usize = 128;
@@ -52,7 +52,7 @@ impl<TB: RuntimeToolbox + 'static> EndpointWriter<TB> {
       user_queue: Self::new_queue(),
       user_paused: AtomicBool::new(false),
       correlation: AtomicU64::new(1),
-      _marker:     PhantomData,
+      _marker: PhantomData,
     }
   }
 
@@ -97,9 +97,9 @@ impl<TB: RuntimeToolbox + 'static> EndpointWriter<TB> {
     priority: OutboundPriority,
   ) -> Result<(), EndpointWriterError> {
     match queue.offer(message) {
-      | Ok(OfferOutcome::Enqueued) | Ok(OfferOutcome::DroppedNewest { .. }) | Ok(OfferOutcome::DroppedOldest { .. }) => {
-        Ok(())
-      },
+      | Ok(OfferOutcome::Enqueued)
+      | Ok(OfferOutcome::DroppedNewest { .. })
+      | Ok(OfferOutcome::DroppedOldest { .. }) => Ok(()),
       | Ok(OfferOutcome::GrewTo { .. }) => Ok(()),
       | Err(error) => Err(Self::map_offer_error(priority, error)),
     }

@@ -13,18 +13,19 @@ use fraktor_actor_rs::core::{
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
 use crate::core::{
-  remoting_backpressure_listener::{FnRemotingBackpressureListener, RemotingBackpressureListener},
-  remoting_extension_id::RemotingExtensionId,
+  fn_remoting_backpressure_listener::FnRemotingBackpressureListener,
+  remoting_backpressure_listener::RemotingBackpressureListener, remoting_extension_id::RemotingExtensionId,
 };
 
 /// Declarative configuration applied when the remoting extension is installed.
 #[derive(Clone)]
 pub struct RemotingExtensionConfig {
-  canonical_host:         String,
-  canonical_port:         Option<u16>,
-  auto_start:             bool,
-  transport_scheme:       String,
-  backpressure_listeners: Vec<ArcShared<dyn RemotingBackpressureListener>>,
+  canonical_host:           String,
+  canonical_port:           Option<u16>,
+  auto_start:               bool,
+  transport_scheme:         String,
+  backpressure_listeners:   Vec<ArcShared<dyn RemotingBackpressureListener>>,
+  flight_recorder_capacity: usize,
 }
 
 impl RemotingExtensionConfig {
@@ -32,11 +33,12 @@ impl RemotingExtensionConfig {
   #[must_use]
   pub fn new() -> Self {
     Self {
-      canonical_host:         "127.0.0.1".to_string(),
-      canonical_port:         None,
-      auto_start:             true,
-      transport_scheme:       "fraktor.loopback".to_string(),
-      backpressure_listeners: Vec::new(),
+      canonical_host:           "127.0.0.1".to_string(),
+      canonical_port:           None,
+      auto_start:               true,
+      transport_scheme:         "fraktor.loopback".to_string(),
+      backpressure_listeners:   Vec::new(),
+      flight_recorder_capacity: 128,
     }
   }
 
@@ -79,6 +81,13 @@ impl RemotingExtensionConfig {
     self
   }
 
+  /// Overrides the flight recorder capacity.
+  #[must_use]
+  pub fn with_flight_recorder_capacity(mut self, capacity: usize) -> Self {
+    self.flight_recorder_capacity = capacity.max(1);
+    self
+  }
+
   /// Returns the configured canonical host.
   #[must_use]
   pub fn canonical_host(&self) -> &str {
@@ -107,6 +116,12 @@ impl RemotingExtensionConfig {
   #[must_use]
   pub fn transport_scheme(&self) -> &str {
     &self.transport_scheme
+  }
+
+  /// Returns the configured flight recorder capacity.
+  #[must_use]
+  pub const fn flight_recorder_capacity(&self) -> usize {
+    self.flight_recorder_capacity
   }
 }
 

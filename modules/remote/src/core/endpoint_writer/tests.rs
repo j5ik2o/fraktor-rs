@@ -1,10 +1,8 @@
 use alloc::string::String;
 
-use super::*;
 use fraktor_actor_rs::core::{
   actor_prim::{
-    Actor,
-    ActorContextGeneric,
+    Actor, ActorContextGeneric,
     actor_path::{ActorPath, ActorPathParts, GuardianKind},
   },
   error::ActorError,
@@ -19,7 +17,10 @@ use fraktor_actor_rs::core::{
 };
 use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
 
-use crate::core::{outbound_message::OutboundMessage, outbound_priority::OutboundPriority, remote_node_id::RemoteNodeId};
+use super::*;
+use crate::core::{
+  outbound_message::OutboundMessage, outbound_priority::OutboundPriority, remote_node_id::RemoteNodeId,
+};
 
 struct NoopActor;
 

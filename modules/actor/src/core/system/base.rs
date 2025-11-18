@@ -12,14 +12,14 @@ use core::any::Any;
 use fraktor_utils_rs::core::{
   collections::queue::capabilities::QueueCapability,
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  sync::ArcShared,
+  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 
-use super::{RootGuardianActor, SystemGuardianActor, SystemGuardianProtocol};
+use super::{RemoteWatchHook, RootGuardianActor, SystemGuardianActor, SystemGuardianProtocol};
 use crate::core::{
   actor_prim::{ActorCellGeneric, ChildRefGeneric, Pid, actor_ref::ActorRefGeneric},
   config::{ActorSystemConfig, DispatchersGeneric, MailboxesGeneric},
-  dead_letter::DeadLetterEntryGeneric,
+  dead_letter::{DeadLetterEntryGeneric, DeadLetterReason},
   error::SendError,
   event_stream::{
     EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric, TickDriverSnapshot,
@@ -243,6 +243,24 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     self.state.dead_letters()
   }
 
+  /// Records a deadletter entry that will also be published to the event stream.
+  pub fn record_dead_letter(&self, message: AnyMessageGeneric<TB>, reason: DeadLetterReason, recipient: Option<Pid>) {
+    self.state.record_dead_letter(message, reason, recipient);
+  }
+
+  /// Resolves the pid registered for the provided actor path.
+  #[must_use]
+  pub fn pid_by_path(&self, path: &crate::core::actor_prim::actor_path::ActorPath) -> Option<Pid> {
+    let registry = self.state.actor_path_registry().lock();
+    registry.pid_for(path)
+  }
+
+  /// Returns an actor reference for the provided pid when registered.
+  #[must_use]
+  pub fn actor_ref_by_pid(&self, pid: Pid) -> Option<ActorRefGeneric<TB>> {
+    self.state.cell(&pid).map(|cell| cell.actor_ref())
+  }
+
   /// Registers an extra top-level actor name before the system finishes startup.
   ///
   /// # Errors
@@ -315,6 +333,14 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   where
     P: Any + Send + Sync + 'static, {
     self.state.install_actor_ref_provider(provider);
+  }
+
+  /// Registers a remote watch hook that intercepts watch/unwatch to remote actors.
+  pub fn register_remote_watch_hook<H>(&self, hook: ArcShared<H>)
+  where
+    H: RemoteWatchHook<TB>, {
+    let dyn_hook: ArcShared<dyn RemoteWatchHook<TB>> = hook;
+    self.state.register_remote_watch_hook(dyn_hook);
   }
 
   /// Returns the actor-ref provider of the requested type when registered.

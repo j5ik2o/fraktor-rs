@@ -6,19 +6,20 @@ use alloc::{format, vec::Vec};
 
 use anyhow::{Result, anyhow};
 use fraktor_actor_rs::core::{
-  actor_prim::{Actor, ActorContextGeneric},
+  actor_prim::{Actor, ActorContextGeneric, Pid, actor_path::ActorPathParts},
   error::ActorError,
   event_stream::{
     BackpressureSignal, EventStreamEvent, EventStreamSubscriber, EventStreamSubscriptionGeneric, RemotingLifecycleEvent,
   },
   extension::ExtensionsConfig,
-  messaging::AnyMessageViewGeneric,
+  messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
   props::PropsGeneric,
   scheduler::{ManualTestDriver, TickDriverConfig},
-  system::{ActorSystemBuilder, ActorSystemGeneric},
+  system::{ActorSystemBuilder, ActorSystemGeneric, AuthorityState, RemoteWatchHook},
 };
 use fraktor_remote_rs::core::{
-  FnRemotingBackpressureListener, RemotingControl, RemotingControlHandle, RemotingExtensionConfig, RemotingExtensionId,
+  FlightMetricKind, FnRemotingBackpressureListener, RemoteActorRefProvider, RemotingControl, RemotingControlHandle,
+  RemotingExtensionConfig, RemotingExtensionId,
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdMutex, NoStdToolbox},
@@ -62,6 +63,7 @@ fn build_system(
   let system = ActorSystemBuilder::new(props)
     .with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()))
     .with_extensions_config(extensions)
+    .with_actor_ref_provider(RemoteActorRefProvider::loopback())
     .build()
     .expect("system");
   let id = RemotingExtensionId::<NoStdToolbox>::new(config);
@@ -78,6 +80,16 @@ fn subscribe(
   (subscriber_impl, subscription)
 }
 
+fn remote_path() -> fraktor_actor_rs::core::actor_prim::actor_path::ActorPath {
+  use fraktor_actor_rs::core::actor_prim::actor_path::{ActorPath, ActorPathParts, GuardianKind};
+  let mut parts = ActorPathParts::with_authority("remote-system", Some(("127.0.0.1", 25520)));
+  parts = parts.with_guardian(GuardianKind::User);
+  let mut path = ActorPath::from_parts(parts);
+  path = path.child("user");
+  path = path.child("svc");
+  path
+}
+
 #[test]
 fn quickstart_loopback_provider_flow() -> Result<()> {
   let config_hits: ArcShared<NoStdMutex<Vec<String>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
@@ -90,6 +102,7 @@ fn quickstart_loopback_provider_flow() -> Result<()> {
       move |signal, authority, _| hits.lock().push(format!("{authority}:{signal:?}"))
     });
   let (system, handle) = build_system(config);
+  let provider = system.actor_ref_provider::<RemoteActorRefProvider<NoStdToolbox>>().expect("provider installed");
   let runtime_hits: ArcShared<NoStdMutex<Vec<String>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
   handle.register_backpressure_listener(FnRemotingBackpressureListener::new({
     let hits = runtime_hits.clone();
@@ -100,7 +113,11 @@ fn quickstart_loopback_provider_flow() -> Result<()> {
   assert!(!handle.is_running());
   handle.start().map_err(|error| anyhow!("{error}"))?;
 
-  handle.emit_backpressure_for_test("127.0.0.1:4321", BackpressureSignal::Apply);
+  provider
+    .watch_remote(ActorPathParts::with_authority("remote-system", Some(("127.0.0.1", 4321))))
+    .map_err(|error| anyhow!("{error}"))?;
+
+  handle.emit_backpressure_signal("127.0.0.1:4321", BackpressureSignal::Apply);
 
   assert!(matches!(
     recorder
@@ -123,5 +140,55 @@ fn quickstart_loopback_provider_flow() -> Result<()> {
 
   assert!(recorder.events.lock().iter().any(|event| matches!(event, EventStreamEvent::RemotingBackpressure(_))));
 
+  let authority = "127.0.0.1:4321";
+  let snapshots = provider.connections_snapshot();
+  let snapshot = snapshots.iter().find(|entry| entry.authority() == authority).expect("snapshot exists");
+  assert!(matches!(snapshot.state(), AuthorityState::Unresolved));
+
+  let recorder_snapshot = handle.flight_recorder_snapshot();
+  let metrics = recorder_snapshot.records();
+  assert!(matches!(
+    metrics.last(),
+    Some(metric)
+      if metric.authority() == authority
+        && matches!(metric.kind(), FlightMetricKind::Backpressure(BackpressureSignal::Apply))
+  ));
+
+  Ok(())
+}
+
+#[test]
+fn remote_provider_enqueues_message() -> Result<()> {
+  let config = RemotingExtensionConfig::default().with_auto_start(false);
+  let (system, handle) = build_system(config);
+  handle.start().map_err(|error| anyhow!("{error}"))?;
+  let provider = system.actor_ref_provider::<RemoteActorRefProvider<NoStdToolbox>>().expect("provider installed");
+  provider
+    .watch_remote(ActorPathParts::with_authority("remote-system", Some(("127.0.0.1", 25520))))
+    .map_err(|error| anyhow!("{error}"))?;
+  let remote = provider.actor_ref(remote_path()).expect("actor ref");
+  remote.tell(AnyMessageGeneric::new("loopback".to_string())).expect("send succeeds");
+
+  let writer = provider.writer_for_test();
+  let envelope = writer.try_next().expect("poll writer").expect("envelope");
+  assert_eq!(envelope.recipient().to_relative_string(), "/user/user/svc");
+  assert_eq!(envelope.remote_node().host(), "127.0.0.1");
+  assert_eq!(envelope.remote_node().port(), Some(25520));
+  Ok(())
+}
+
+#[test]
+fn remote_watch_hook_handles_system_watch_messages() -> Result<()> {
+  let config = RemotingExtensionConfig::default().with_auto_start(false);
+  let (system, handle) = build_system(config);
+  handle.start().map_err(|error| anyhow!("{error}"))?;
+  let provider = system.actor_ref_provider::<RemoteActorRefProvider<NoStdToolbox>>().expect("provider installed");
+  let remote = provider.actor_ref(remote_path()).expect("remote actor ref");
+  let watcher = Pid::new(7777, 0);
+
+  assert!(RemoteWatchHook::handle_watch(&*provider, remote.pid(), watcher));
+
+  let watchers = provider.remote_watchers_for_test(remote.pid()).expect("entry snapshot");
+  assert_eq!(watchers, vec![watcher]);
   Ok(())
 }

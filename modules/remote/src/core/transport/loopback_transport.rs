@@ -71,7 +71,7 @@ impl LoopbackTransport {
       .listeners
       .get_mut(handle.authority())
       .map(|listener| core::mem::take(&mut listener.frames))
-      .unwrap_or_else(Vec::new)
+      .unwrap_or_default()
   }
 
   /// Test helper to emit a backpressure signal without queue state thresholds.

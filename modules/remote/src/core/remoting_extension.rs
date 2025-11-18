@@ -124,10 +124,10 @@ where
     ctx: &mut ActorContextGeneric<'_, TB>,
     message: AnyMessageViewGeneric<'_, TB>,
   ) -> Result<(), ActorError> {
-    if let Some(protocol) = message.downcast_ref::<SystemGuardianProtocol<TB>>() {
-      if matches!(protocol, SystemGuardianProtocol::TerminationHook) {
-        self.acknowledge_shutdown(ctx)?;
-      }
+    if let Some(protocol) = message.downcast_ref::<SystemGuardianProtocol<TB>>()
+      && matches!(protocol, SystemGuardianProtocol::TerminationHook)
+    {
+      self.acknowledge_shutdown(ctx)?;
     }
     Ok(())
   }

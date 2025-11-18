@@ -8,10 +8,7 @@ use core::sync::atomic::{AtomicU64, Ordering};
 
 use fraktor_actor_rs::core::{
   actor_prim::actor_path::ActorPathParts,
-  event_stream::{
-    BackpressureSignal, CorrelationId, EventStreamEvent, EventStreamGeneric, RemotingBackpressureEvent,
-    RemotingLifecycleEvent,
-  },
+  event_stream::{BackpressureSignal, CorrelationId, RemotingLifecycleEvent},
   system::ActorSystemGeneric,
 };
 use fraktor_utils_rs::core::{
@@ -20,9 +17,14 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::core::{
-  quarantine_reason::QuarantineReason, remote_authority_snapshot::RemoteAuthoritySnapshot,
-  remoting_backpressure_listener::RemotingBackpressureListener, remoting_control::RemotingControl,
-  remoting_error::RemotingError, remoting_extension_config::RemotingExtensionConfig,
+  event_publisher::EventPublisher,
+  flight_recorder::{RemotingFlightRecorder, RemotingFlightRecorderSnapshot},
+  quarantine_reason::QuarantineReason,
+  remote_authority_snapshot::RemoteAuthoritySnapshot,
+  remoting_backpressure_listener::RemotingBackpressureListener,
+  remoting_control::RemotingControl,
+  remoting_error::RemotingError,
+  remoting_extension_config::RemotingExtensionConfig,
   transport::TransportBackpressureHook,
 };
 
@@ -48,19 +50,20 @@ where
 {
   /// Creates a new handle bound to the provided actor system.
   pub(crate) fn new(system: ActorSystemGeneric<TB>, config: RemotingExtensionConfig) -> Self {
-    let event_stream = system.state().event_stream();
     let mut listeners: Vec<ArcShared<dyn RemotingBackpressureListener>> = Vec::new();
     for listener in config.backpressure_listeners() {
       listeners.push(listener.clone());
     }
+    let publisher = EventPublisher::new(system.clone());
     let inner = RemotingControlInner {
       system,
-      _event_stream: event_stream,
+      event_publisher: publisher,
       _canonical_host: config.canonical_host().to_string(),
       _canonical_port: config.canonical_port(),
       state: <TB::MutexFamily as SyncMutexFamily>::create(RemotingLifecycleState::new()),
       listeners: <TB::MutexFamily as SyncMutexFamily>::create(listeners),
       snapshots: <TB::MutexFamily as SyncMutexFamily>::create(Vec::new()),
+      recorder: RemotingFlightRecorder::new(config.flight_recorder_capacity()),
       correlation_seq: AtomicU64::new(1),
     };
     Self { inner: ArcShared::new(inner) }
@@ -76,7 +79,7 @@ where
   /// Internal helper invoked by the termination hook actor.
   pub(crate) fn notify_system_shutdown(&self) {
     if self.inner.state.lock().mark_shutdown() {
-      self.inner.publish_lifecycle(RemotingLifecycleEvent::Shutdown);
+      self.inner.event_publisher.publish_lifecycle(RemotingLifecycleEvent::Shutdown);
     }
   }
 
@@ -90,13 +93,23 @@ where
     guard.push(listener);
   }
 
+  pub(crate) fn record_authority_snapshot(&self, snapshot: RemoteAuthoritySnapshot) {
+    let mut guard = self.inner.snapshots.lock();
+    if let Some(existing) = guard.iter_mut().find(|entry| entry.authority() == snapshot.authority()) {
+      *existing = snapshot;
+    } else {
+      guard.push(snapshot);
+    }
+  }
+
   fn notify_backpressure(&self, authority: &str, signal: BackpressureSignal, correlation: Option<CorrelationId>) {
     let listeners = {
       let guard = self.inner.listeners.lock();
       guard.clone()
     };
     let correlation_id = correlation.unwrap_or_else(|| self.inner.next_correlation_id());
-    self.inner.publish_backpressure(authority, signal, correlation_id);
+    self.inner.event_publisher.publish_backpressure(authority.to_string(), signal, correlation_id);
+    self.inner.record_backpressure(authority, signal, correlation_id);
     for listener in listeners {
       listener.on_signal(signal, authority, correlation_id);
     }
@@ -106,10 +119,15 @@ where
     ArcShared::new(ControlBackpressureHook { control: self.clone() })
   }
 
-  /// Emits a backpressure signal for tests and diagnostics.
-  #[cfg(any(test, feature = "test-support"))]
-  pub fn emit_backpressure_for_test(&self, authority: &str, signal: BackpressureSignal) {
+  /// Emits a synthetic backpressure signal for diagnostics.
+  pub fn emit_backpressure_signal(&self, authority: &str, signal: BackpressureSignal) {
     self.notify_backpressure(authority, signal, None);
+  }
+
+  /// Returns the most recent flight recorder snapshot.
+  #[must_use]
+  pub fn flight_recorder_snapshot(&self) -> RemotingFlightRecorderSnapshot {
+    self.inner.recorder.snapshot()
   }
 }
 
@@ -122,8 +140,8 @@ where
       let mut guard = self.inner.state.lock();
       guard.transition_to_start()?;
     }
-    self.inner.publish_lifecycle(RemotingLifecycleEvent::Starting);
-    self.inner.publish_lifecycle(RemotingLifecycleEvent::Started);
+    self.inner.event_publisher.publish_lifecycle(RemotingLifecycleEvent::Starting);
+    self.inner.event_publisher.publish_lifecycle(RemotingLifecycleEvent::Started);
     Ok(())
   }
 
@@ -139,7 +157,7 @@ where
     let mut guard = self.inner.state.lock();
     guard.transition_to_shutdown()?;
     drop(guard);
-    self.inner.publish_lifecycle(RemotingLifecycleEvent::Shutdown);
+    self.inner.event_publisher.publish_lifecycle(RemotingLifecycleEvent::Shutdown);
     Ok(())
   }
 
@@ -160,12 +178,13 @@ struct RemotingControlInner<TB>
 where
   TB: RuntimeToolbox + 'static, {
   system:          ActorSystemGeneric<TB>,
-  _event_stream:   ArcShared<EventStreamGeneric<TB>>,
+  event_publisher: EventPublisher<TB>,
   _canonical_host: String,
   _canonical_port: Option<u16>,
   state:           ToolboxMutex<RemotingLifecycleState, TB>,
   listeners:       ToolboxMutex<Vec<ArcShared<dyn RemotingBackpressureListener>>, TB>,
   snapshots:       ToolboxMutex<Vec<RemoteAuthoritySnapshot>, TB>,
+  recorder:        RemotingFlightRecorder,
   correlation_seq: AtomicU64,
 }
 
@@ -173,18 +192,14 @@ impl<TB> RemotingControlInner<TB>
 where
   TB: RuntimeToolbox + 'static,
 {
-  fn publish_lifecycle(&self, event: RemotingLifecycleEvent) {
-    self.system.publish_event(&EventStreamEvent::RemotingLifecycle(event));
-  }
-
-  fn publish_backpressure(&self, authority: &str, signal: BackpressureSignal, correlation_id: CorrelationId) {
-    let event = RemotingBackpressureEvent::new(authority.to_string(), signal, correlation_id);
-    self.system.publish_event(&EventStreamEvent::RemotingBackpressure(event));
-  }
-
   fn next_correlation_id(&self) -> CorrelationId {
     let seq = self.correlation_seq.fetch_add(1, Ordering::Relaxed) as u128;
     CorrelationId::from_u128(seq)
+  }
+
+  fn record_backpressure(&self, authority: &str, signal: BackpressureSignal, correlation_id: CorrelationId) {
+    let millis = self.system.state().monotonic_now().as_millis() as u64;
+    self.recorder.record_backpressure(authority.to_string(), signal, correlation_id, millis);
   }
 }
 

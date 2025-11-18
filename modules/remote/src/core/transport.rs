@@ -1,17 +1,17 @@
 //! Transport abstractions bridging remoting and physical channels.
 
-pub mod backpressure_hook;
-pub mod factory;
-pub mod loopback_transport;
-pub mod remote_transport;
-pub mod transport_bind;
-pub mod transport_channel;
-pub mod transport_endpoint;
-pub mod transport_error;
-pub mod transport_handle;
-
 #[cfg(test)]
 mod tests;
+
+mod backpressure_hook;
+mod factory;
+mod loopback_transport;
+mod remote_transport;
+mod transport_bind;
+mod transport_channel;
+mod transport_endpoint;
+mod transport_error;
+mod transport_handle;
 
 pub use backpressure_hook::TransportBackpressureHook;
 pub use factory::TransportFactory;

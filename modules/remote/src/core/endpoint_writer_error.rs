@@ -1,7 +1,8 @@
 //! Error variants produced by [`EndpointWriter`](crate::core::endpoint_writer::EndpointWriter).
 
-use crate::core::outbound_priority::OutboundPriority;
 use fraktor_actor_rs::core::serialization::SerializationError;
+
+use crate::core::outbound_priority::OutboundPriority;
 
 /// Error raised when enqueueing or polling fails.
 #[derive(Debug)]

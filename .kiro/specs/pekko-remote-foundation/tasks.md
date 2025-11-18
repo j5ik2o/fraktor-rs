@@ -89,21 +89,21 @@
   - _対応要件: 1.2, 3.2, 3.5_
   - _依存タスク: 4.1_
   - **完了条件**: OutboundQueue の優先度制御と backpressure 割り込みを `modules/remote/src/core/endpoint_writer/tests.rs` でテストし、`cargo test -p fraktor-remote-rs endpoint_writer::tests` が GREEN になること
-- [ ] 4.3 EndpointReader と DeadLetter 経路の実装・検証
+- [x] 4.3 EndpointReader と DeadLetter 経路の実装・検証
   - RemotingEnvelope を受け取り SerializedMessage を Deserialization して ActorSystem へ再配送する Reader を実装し、CorrelationId/reply_to を保持する
   - デシリアライズ失敗時に DeadLetter + EventStream(Serialization) へエラーを通知し、事前に録り溜めた DeferredQueue と統合する
   - Loopback transport を用いた E2E テストで EndpointWriter/Reader/Transport が協調してユーザーメッセージを round-trip できることを確認する
   - _対応要件: 2.1, 2.3, 3.3, 3.4, 3.5_
   - _依存タスク: 4.2_
   - **完了条件**: `modules/remote/src/core/endpoint_reader/tests.rs` で RemotingEnvelope→InboundEnvelope→DeadLetter の流れを RED→GREEN にし、`cargo test -p fraktor-remote-rs endpoint_reader::tests` が通ること
-- [ ] 4.4 RemoteActorRefProvider から EndpointWriter への送信経路を配線する
+- [x] 4.4 RemoteActorRefProvider から EndpointWriter への送信経路を配線する
   - ActorRef の `tell/ask` からリモート authority を検出し、RemoteActorRefProvider が RemotingControl/EndpointWriter へメッセージを enqueue するルートを実装する
   - ActorPathRegistry/RemoteAuthorityManager と連携して未接続時は defer、接続済みなら即送信できることを保証する
   - System テストでローカル/リモート双方の ActorRef を同一 API で扱えることを検証する
   - **完了条件**: `modules/remote/tests/quickstart.rs` にリモート送信の RED テストを追加し、`cargo test -p fraktor-remote-rs --test quickstart quickstart_loopback_provider_flow` が GREEN になること
   - _対応要件: 3.1, 3.2, 3.5_
   - _依存タスク: 3.3, 4.3_
-- [ ] 4.5 InboundEnvelope の再配送を ActorSystem へ接続する
+- [x] 4.5 InboundEnvelope の再配送を ActorSystem へ接続する
   - EndpointReader が復号した InboundEnvelope を ActorSystem の mail box へ投げ込む配線を追加し、system/user guardian を問わずリモートメッセージが処理されるようにする
   - 失敗時には DeadLetter や EventStream へ適切なエラーを送出し、FlightRecorder に記録する
   - LoopbackTransport を使った E2E テストで ping/pong の実メッセージ往復を確認し、Quickstart で参照できるようにする
@@ -111,32 +111,32 @@
   - _対応要件: 3.3, 3.4, 3.5_
   - _依存タスク: 4.4_
 
-- [ ] 5. 観測性・FailureDetector・FlightRecorder を構築する
+- [x] 5. 観測性・FailureDetector・FlightRecorder を構築する
   - _(親タスクなので詳細は書かない)_
   - _対応要件: 4.1, 4.2, 4.3, 4.4, 4.5_
   - _依存タスク: 3.2, 4.2_
-- [ ] 5.1 EventPublisher と RemotingLifecycleEvent/BackpressureEvent を配信
+- [x] 5.1 EventPublisher と RemotingLifecycleEvent/BackpressureEvent を配信
   - トランスポート/Association 状態変化時に RemotingLifecycleEvent::ListenStarted/Connected/Quarantined/Gated を発火する
   - BackpressureSignal を EventStream の RemotingBackpressureEvent に変換し、監視ツールが深度を追跡できるようにする
   - EventPublisher API を拡張して CorrelationId と authority をイベントへ添付する
   - _対応要件: 4.1, 4.4_
   - _依存タスク: 4.2_
   - **完了条件**: `modules/remote/src/core/event_publisher/tests.rs` に listen/backpressure の RED テストを追加し、`cargo test -p fraktor-remote-rs event_publisher::tests` が通ること
-- [ ] 5.2 PhiFailureDetector と Suspect 通知を組み込む
+- [x] 5.2 PhiFailureDetector と Suspect 通知を組み込む
   - Heartbeat 送受信ロジックを実装し、しきい値超過時に EndpointManager へ Suspect/Reachable を通知する
   - FailureDetector の設定を RemotingExtensionConfig から受け取り、テスト用に調整可能にする
   - Suspect イベントを RemotingFlightRecorder へ記録する
   - _対応要件: 4.2_
   - _依存タスク: 5.1_
   - **完了条件**: `modules/remote/src/core/failure_detector/phi_failure_detector/tests.rs` で Suspect/Reachable の RED→GREEN を確認し、`cargo test -p fraktor-remote-rs phi_failure_detector::tests` が通ること
-- [ ] 5.3 RemotingFlightRecorder と EndpointRegistry スナップショット API を実装
+- [x] 5.3 RemotingFlightRecorder と EndpointRegistry スナップショット API を実装
   - 遅延キュー深さ・往復遅延・エラーレートを記録する ring buffer と snapshot エンドポイントを作成する
   - CorrelationTrace を生成して送受信双方向で同じ ID を確認できるようにする
   - EndpointRegistry から状態別ヘルススナップショットを取得する API を公開する
   - _対応要件: 4.3, 4.4, 4.5_
   - _依存タスク: 5.2_
   - **完了条件**: FlightRecorder の snapshot/metrics を `modules/remote/src/core/flight_recorder/remoting_flight_recorder/tests.rs` で RED→GREEN にし、`cargo test -p fraktor-remote-rs remoting_flight_recorder::tests` が通ること
-- [ ] 5.4 観測/FailureDetector の統合テストを追加
+- [x] 5.4 観測/FailureDetector の統合テストを追加
   - Heartbeat 欠損シナリオを再現して Suspect→Quarantine の流れとイベント発火を確認する
   - FlightRecorder snapshot が BackpressureEvent と同じ CorrelationId を保持することを E2E テストで検証する
   - EndpointRegistry スナップショット API が全ステータスの要約を返すことを asserts する
@@ -144,18 +144,18 @@
   - _依存タスク: 5.3_
   - **完了条件**: Suspect→Quarantine フローと FlightRecorder snapshot を `cargo test -p fraktor-remote-rs remoting_flight_recorder::tests` および `phi_failure_detector::tests` で検証し、観測イベントが一致すること
 
-- [ ] 6. RemoteActorRefProvider と E2E Quickstart シナリオを統合する
+- [x] 6. RemoteActorRefProvider と E2E Quickstart シナリオを統合する
   - _(親タスクなので詳細は書かない)_
   - _対応要件: 1.6, 1.7, 2.1-2.4, 3.1-3.5, 4.1-4.4_
   - _依存タスク: 1.2, 3.3, 4.3, 5.4_
-- [ ] 6.1 RemoteActorRefProvider を RemotingControl/RemoteAuthorityManager と接続
+- [x] 6.1 RemoteActorRefProvider を RemotingControl/RemoteAuthorityManager と接続
   - Provider から RemotingControl を取得し、リモート ActorPath 解決時に associate/shutdown をトリガする
   - RemoteWatcherDaemon を SystemGuardian 配下へ登録し、watch/unwatch を Remoting 経由で伝搬する
   - Provider 切り替え時の回帰テストを追加し、ローカル ActorPath との互換性を維持する
   - _対応要件: 1.7, 2.1, 2.3_
   - _依存タスク: 5.4_
   - **完了条件**: RemoteWatcher/Control の連携を `modules/remote/tests/quickstart.rs` もしくは `modules/remote/src/core/remote_watcher_daemon.rs` 用ユニットテストで RED→GREEN にし、`cargo test -p fraktor-remote-rs --test quickstart` が通ること
-- [ ] 6.2 Quickstart/E2E シナリオで全経路を検証
+- [x] 6.2 Quickstart/E2E シナリオで全経路を検証
   - Quickstart 相当の 2 ActorSystem 構成を起動し、RemotingControl::start→associate→メッセージ交換を通じて end-to-end を検証する
   - Backpressure シミュレーションと FlightRecorder snapshot 取得を同じシナリオ内で実施し、イベントとメトリクスが揃うことを確認する
   - Loopback と Tokio transport の両方で Quickstart サンプルを動かし、差し替え可能性を実証する

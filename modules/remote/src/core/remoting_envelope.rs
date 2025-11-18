@@ -1,9 +1,7 @@
 //! Serialized outbound frame metadata used by transports.
 
 use fraktor_actor_rs::core::{
-  actor_prim::actor_path::ActorPath,
-  event_stream::CorrelationId,
-  serialization::SerializedMessage,
+  actor_prim::actor_path::ActorPath, event_stream::CorrelationId, serialization::SerializedMessage,
 };
 
 use crate::core::{outbound_priority::OutboundPriority, remote_node_id::RemoteNodeId};

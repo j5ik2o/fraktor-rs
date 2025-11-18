@@ -6,7 +6,12 @@ use alloc::{
   vec::Vec,
 };
 
-use crate::core::{association_state::AssociationState, deferred_envelope::DeferredEnvelope};
+use fraktor_actor_rs::core::system::AuthorityState;
+
+use crate::core::{
+  association_state::AssociationState, deferred_envelope::DeferredEnvelope,
+  remote_authority_snapshot::RemoteAuthoritySnapshot,
+};
 
 /// Registry tracking per-authority state transitions and deferred queues.
 #[derive(Default)]
@@ -48,6 +53,34 @@ impl EndpointRegistry {
   /// Drains the deferred queue for the given authority.
   pub fn drain_deferred(&mut self, authority: &str) -> Vec<DeferredEnvelope> {
     self.entries.entry(authority.to_string()).or_insert_with(EndpointEntry::new).drain_deferred()
+  }
+
+  /// Returns a snapshot of every tracked authority.
+  #[allow(dead_code)]
+  pub fn snapshots(&self) -> Vec<RemoteAuthoritySnapshot> {
+    self
+      .entries
+      .iter()
+      .map(|(authority, entry)| {
+        RemoteAuthoritySnapshot::new(
+          authority.clone(),
+          map_state(&entry.state),
+          entry.last_change_ticks,
+          entry.deferred.len() as u32,
+        )
+      })
+      .collect()
+  }
+}
+
+#[allow(dead_code)]
+fn map_state(state: &AssociationState) -> AuthorityState {
+  match state {
+    | AssociationState::Connected { .. } => AuthorityState::Connected,
+    | AssociationState::Quarantined { resume_at, .. } | AssociationState::Gated { resume_at } => {
+      AuthorityState::Quarantine { deadline: *resume_at }
+    },
+    | AssociationState::Unassociated | AssociationState::Associating { .. } => AuthorityState::Unresolved,
   }
 }
 

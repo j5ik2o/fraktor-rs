@@ -148,7 +148,7 @@ fn backpressure_listener_invoked_and_eventstream_emits() {
   }));
   let (recorder, _subscription) = subscribe_events(&system);
 
-  handle.emit_backpressure_for_test("loopback:9000", BackpressureSignal::Apply);
+  handle.emit_backpressure_signal("loopback:9000", BackpressureSignal::Apply);
 
   let config_snapshot = config_calls.lock().clone();
   assert_eq!(config_snapshot, vec!["loopback:9000:Apply".to_string()]);

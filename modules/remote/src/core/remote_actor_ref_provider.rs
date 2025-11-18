@@ -1,0 +1,285 @@
+//! Provides actor references targeting remote authorities.
+
+#[cfg(test)]
+mod tests;
+
+use alloc::{
+  string::{String, ToString},
+  vec::Vec,
+};
+
+use fraktor_actor_rs::core::{
+  actor_prim::{
+    Pid,
+    actor_path::{ActorPath, ActorPathParts},
+    actor_ref::{ActorRefGeneric, ActorRefSender},
+  },
+  error::SendError,
+  messaging::{AnyMessageGeneric, SystemMessage},
+  system::{ActorSystemGeneric, RemoteAuthorityManagerGeneric, RemoteWatchHook},
+};
+use fraktor_utils_rs::core::{
+  runtime_toolbox::{NoStdMutex, RuntimeToolbox},
+  sync::ArcShared,
+};
+use hashbrown::HashMap;
+
+use crate::core::{
+  endpoint_writer::EndpointWriter, endpoint_writer_error::EndpointWriterError, outbound_message::OutboundMessage,
+  outbound_priority::OutboundPriority, remote_actor_ref_provider_error::RemoteActorRefProviderError,
+  remote_actor_ref_provider_installer::RemoteActorRefProviderInstaller,
+  remote_authority_snapshot::RemoteAuthoritySnapshot, remote_node_id::RemoteNodeId,
+  remote_watcher_command::RemoteWatcherCommand, remote_watcher_daemon::RemoteWatcherDaemon,
+  remoting_control::RemotingControl, remoting_control_handle::RemotingControlHandle, remoting_error::RemotingError,
+};
+
+/// Provider that creates [`ActorRefGeneric`] instances for remote recipients.
+pub struct RemoteActorRefProvider<TB: RuntimeToolbox + 'static> {
+  system:            ActorSystemGeneric<TB>,
+  writer:            ArcShared<EndpointWriter<TB>>,
+  control:           RemotingControlHandle<TB>,
+  authority_manager: ArcShared<RemoteAuthorityManagerGeneric<TB>>,
+  watcher_daemon:    ActorRefGeneric<TB>,
+  watch_entries:     NoStdMutex<HashMap<Pid, RemoteWatchEntry>>,
+}
+
+impl<TB: RuntimeToolbox + 'static> RemoteActorRefProvider<TB> {
+  /// Returns an installer configured for the loopback transport.
+  #[must_use]
+  pub fn loopback() -> RemoteActorRefProviderInstaller<TB> {
+    RemoteActorRefProviderInstaller::loopback()
+  }
+
+  /// Creates an installer with a custom serialization setup.
+  #[must_use]
+  pub fn with_serialization_setup(
+    setup: fraktor_actor_rs::core::serialization::SerializationSetup,
+  ) -> RemoteActorRefProviderInstaller<TB> {
+    RemoteActorRefProviderInstaller::with_serialization_setup(setup)
+  }
+
+  /// Creates a remote actor reference for the provided path.
+  pub fn actor_ref(&self, path: ActorPath) -> Result<ActorRefGeneric<TB>, RemoteActorRefProviderError> {
+    self.control.associate(path.parts()).map_err(RemoteActorRefProviderError::from)?;
+    let sender = self.sender_for_path(&path)?;
+    let pid = self.system.allocate_pid();
+    self.register_remote_entry(pid, path.clone());
+    Ok(ActorRefGeneric::new(pid, ArcShared::new(sender)))
+  }
+
+  pub(crate) fn from_components(
+    system: ActorSystemGeneric<TB>,
+    writer: ArcShared<EndpointWriter<TB>>,
+    control: RemotingControlHandle<TB>,
+    authority_manager: ArcShared<RemoteAuthorityManagerGeneric<TB>>,
+  ) -> Result<Self, RemoteActorRefProviderError> {
+    let daemon = RemoteWatcherDaemon::spawn(&system, control.clone())?;
+    Ok(Self {
+      system,
+      writer,
+      control,
+      authority_manager,
+      watcher_daemon: daemon,
+      watch_entries: NoStdMutex::new(HashMap::new()),
+    })
+  }
+
+  fn sender_for_path(&self, path: &ActorPath) -> Result<RemoteActorRefSender<TB>, RemoteActorRefProviderError> {
+    let (host, port) = Self::parse_authority(path.parts())?;
+    let uid = path.uid().map(|uid| uid.value()).unwrap_or(0);
+    let remote = RemoteNodeId::new(path.parts().system(), host, port, uid);
+    Ok(RemoteActorRefSender { writer: self.writer.clone(), recipient: path.clone(), remote_node: remote })
+  }
+
+  fn parse_authority(parts: &ActorPathParts) -> Result<(String, Option<u16>), RemoteActorRefProviderError> {
+    let Some(endpoint) = parts.authority_endpoint() else {
+      return Err(RemoteActorRefProviderError::MissingAuthority);
+    };
+    if let Some((host, port_str)) = endpoint.split_once(':') {
+      let port =
+        port_str.parse::<u16>().map_err(|_| RemoteActorRefProviderError::InvalidAuthority(endpoint.clone()))?;
+      Ok((host.to_string(), Some(port)))
+    } else {
+      Ok((endpoint, None))
+    }
+  }
+
+  #[cfg(any(test, feature = "test-support"))]
+  /// Returns the underlying writer handle (testing helper).
+  pub fn writer_for_test(&self) -> ArcShared<EndpointWriter<TB>> {
+    self.writer.clone()
+  }
+
+  /// Requests an association/watch with the provided remote address.
+  pub fn watch_remote(&self, parts: ActorPathParts) -> Result<(), RemotingError> {
+    let Some(authority) = parts.authority_endpoint() else {
+      return Err(RemotingError::TransportUnavailable("missing authority".into()));
+    };
+    let _ = self.authority_manager.state(&authority);
+    self.record_snapshot_from_parts(&parts);
+    self.control.associate(&parts)
+  }
+
+  /// Returns the latest remote authority snapshots recorded by the control plane.
+  #[must_use]
+  pub fn connections_snapshot(&self) -> Vec<crate::core::remote_authority_snapshot::RemoteAuthoritySnapshot> {
+    self.control.connections_snapshot()
+  }
+
+  fn register_remote_entry(&self, pid: Pid, path: ActorPath) {
+    let mut guard = self.watch_entries.lock();
+    guard.entry(pid).or_insert_with(|| RemoteWatchEntry::new(path.clone()));
+    self.record_snapshot_from_parts(path.parts());
+  }
+
+  fn record_snapshot_from_parts(&self, parts: &ActorPathParts) {
+    let Some(authority) = parts.authority_endpoint() else {
+      return;
+    };
+    let deferred = self.authority_manager.deferred_count(&authority) as u32;
+    let state = self.system.state().remote_authority_state(&authority);
+    let ticks = self.system.state().monotonic_now().as_millis() as u64;
+    let snapshot = RemoteAuthoritySnapshot::new(authority, state, ticks, deferred);
+    self.control.record_authority_snapshot(snapshot);
+  }
+
+  fn dispatch_remote_watch(&self, command: RemoteWatcherCommand) {
+    let _ = self.watcher_daemon.tell(AnyMessageGeneric::new(command));
+  }
+
+  fn track_watch(&self, target: Pid, watcher: Pid) -> Option<(ActorPathParts, bool)> {
+    let mut guard = self.watch_entries.lock();
+    guard.get_mut(&target).map(|entry| {
+      let added = entry.add_watcher(watcher);
+      (entry.target_parts(), added)
+    })
+  }
+
+  fn track_unwatch(&self, target: Pid, watcher: Pid) -> Option<(ActorPathParts, bool)> {
+    let mut guard = self.watch_entries.lock();
+    guard.get_mut(&target).map(|entry| {
+      let removed = entry.remove_watcher(watcher);
+      (entry.target_parts(), removed)
+    })
+  }
+
+  #[cfg(any(test, feature = "test-support"))]
+  /// Returns the set of remote PIDs tracked by the provider (test helper).
+  pub fn registered_remote_pids_for_test(&self) -> Vec<Pid> {
+    self.watch_entries.lock().keys().copied().collect()
+  }
+
+  #[cfg(any(test, feature = "test-support"))]
+  /// Returns the watchers registered for a remote PID (test helper).
+  pub fn remote_watchers_for_test(&self, pid: Pid) -> Option<Vec<Pid>> {
+    self.watch_entries.lock().get(&pid).map(|entry| entry.watchers().to_vec())
+  }
+}
+
+impl<TB: RuntimeToolbox + 'static> RemoteWatchHook<TB> for RemoteActorRefProvider<TB> {
+  fn handle_watch(&self, target: Pid, watcher: Pid) -> bool {
+    if let Some((parts, should_send)) = self.track_watch(target, watcher) {
+      if should_send {
+        self.dispatch_remote_watch(RemoteWatcherCommand::Watch { target: parts, watcher });
+      }
+      true
+    } else {
+      false
+    }
+  }
+
+  fn handle_unwatch(&self, target: Pid, watcher: Pid) -> bool {
+    if let Some((parts, removed)) = self.track_unwatch(target, watcher) {
+      if removed {
+        self.dispatch_remote_watch(RemoteWatcherCommand::Unwatch { target: parts, watcher });
+      }
+      true
+    } else {
+      false
+    }
+  }
+}
+
+struct RemoteActorRefSender<TB: RuntimeToolbox + 'static> {
+  writer:      ArcShared<EndpointWriter<TB>>,
+  recipient:   ActorPath,
+  remote_node: RemoteNodeId,
+}
+
+impl<TB: RuntimeToolbox + 'static> RemoteActorRefSender<TB> {
+  fn determine_priority(message: &AnyMessageGeneric<TB>) -> OutboundPriority {
+    if message.as_view().downcast_ref::<SystemMessage>().is_some() {
+      OutboundPriority::System
+    } else {
+      OutboundPriority::User
+    }
+  }
+
+  fn map_error(&self, error: EndpointWriterError, message: AnyMessageGeneric<TB>) -> SendError<TB> {
+    match error {
+      | EndpointWriterError::QueueFull(_) => SendError::full(message),
+      | EndpointWriterError::QueueClosed(_) | EndpointWriterError::QueueUnavailable { .. } => {
+        SendError::closed(message)
+      },
+      | EndpointWriterError::Serialization(_) => SendError::closed(message),
+    }
+  }
+}
+
+impl<TB: RuntimeToolbox + 'static> ActorRefSender<TB> for RemoteActorRefSender<TB> {
+  fn send(&self, message: AnyMessageGeneric<TB>) -> Result<(), SendError<TB>> {
+    let priority = Self::determine_priority(&message);
+    let mut outbound = match priority {
+      | OutboundPriority::System => {
+        OutboundMessage::system(message.clone(), self.recipient.clone(), self.remote_node.clone())
+      },
+      | OutboundPriority::User => {
+        OutboundMessage::user(message.clone(), self.recipient.clone(), self.remote_node.clone())
+      },
+    };
+    if let Some(reply_to) = message.reply_to()
+      && let Some(reply_path) = reply_to.path()
+    {
+      outbound = outbound.with_reply_to(reply_path);
+    }
+    self.writer.enqueue(outbound).map_err(|error| self.map_error(error, message))
+  }
+}
+
+struct RemoteWatchEntry {
+  path:     ActorPath,
+  watchers: Vec<Pid>,
+}
+
+impl RemoteWatchEntry {
+  fn new(path: ActorPath) -> Self {
+    Self { path, watchers: Vec::new() }
+  }
+
+  fn add_watcher(&mut self, watcher: Pid) -> bool {
+    if self.watchers.contains(&watcher) {
+      false
+    } else {
+      self.watchers.push(watcher);
+      true
+    }
+  }
+
+  fn remove_watcher(&mut self, watcher: Pid) -> bool {
+    if let Some(index) = self.watchers.iter().position(|existing| *existing == watcher) {
+      self.watchers.swap_remove(index);
+      true
+    } else {
+      false
+    }
+  }
+
+  fn target_parts(&self) -> ActorPathParts {
+    self.path.parts().clone()
+  }
+
+  #[cfg(any(test, feature = "test-support"))]
+  fn watchers(&self) -> &[Pid] {
+    &self.watchers
+  }
+}
