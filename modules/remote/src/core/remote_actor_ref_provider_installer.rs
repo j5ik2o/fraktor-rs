@@ -16,7 +16,7 @@ use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
 use crate::core::{
   endpoint_reader::EndpointReader, endpoint_writer::EndpointWriter, loopback_router,
-  remote_actor_ref_provider::RemoteActorRefProvider, remoting_extension::RemotingExtension,
+  remote_actor_ref_provider::RemoteActorRefProviderGeneric, remoting_extension::RemotingExtension,
 };
 
 /// Installer registered via [`ActorSystemBuilder::with_actor_ref_provider`].
@@ -50,7 +50,7 @@ impl<TB: RuntimeToolbox + 'static> ActorRefProviderInstaller<TB> for RemoteActor
     };
     let control = extension.handle();
     let authority_manager = system.state().remote_authority_manager().clone();
-    let provider = RemoteActorRefProvider::from_components(system.clone(), writer, control, authority_manager)
+    let provider = RemoteActorRefProviderGeneric::from_components(system.clone(), writer, control, authority_manager)
       .map_err(|error| ActorSystemBuildError::Configuration(format!("{error}")))?;
     let provider = ArcShared::new(provider);
     extended.register_actor_ref_provider(provider.clone());

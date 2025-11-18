@@ -40,8 +40,7 @@ fn main() -> Result<()> {
     sender_transport_config(),
   )?;
 
-  let provider =
-    sender.extended().actor_ref_provider::<RemoteActorRefProvider<NoStdToolbox>>().expect("provider installed");
+  let provider = sender.extended().actor_ref_provider::<RemoteActorRefProvider>().expect("provider installed");
 
   provider.watch_remote(receiver_authority_parts()).map_err(|error| anyhow!("{error}"))?;
 

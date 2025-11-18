@@ -19,7 +19,7 @@ use fraktor_actor_rs::core::{
   system::{ActorSystemGeneric, RemoteAuthorityManagerGeneric, RemoteWatchHook},
 };
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdMutex, RuntimeToolbox},
+  runtime_toolbox::{NoStdMutex, NoStdToolbox, RuntimeToolbox},
   sync::ArcShared,
 };
 use hashbrown::HashMap;
@@ -35,7 +35,7 @@ use crate::core::{
 };
 
 /// Provider that creates [`ActorRefGeneric`] instances for remote recipients.
-pub struct RemoteActorRefProvider<TB: RuntimeToolbox + 'static> {
+pub struct RemoteActorRefProviderGeneric<TB: RuntimeToolbox + 'static> {
   system:            ActorSystemGeneric<TB>,
   writer:            ArcShared<EndpointWriter<TB>>,
   control:           RemotingControlHandle<TB>,
@@ -44,7 +44,10 @@ pub struct RemoteActorRefProvider<TB: RuntimeToolbox + 'static> {
   watch_entries:     NoStdMutex<HashMap<Pid, RemoteWatchEntry>>,
 }
 
-impl<TB: RuntimeToolbox + 'static> RemoteActorRefProvider<TB> {
+/// Provider that creates [`ActorRefGeneric`] instances for remote recipients.
+pub type RemoteActorRefProvider = RemoteActorRefProviderGeneric<NoStdToolbox>;
+
+impl<TB: RuntimeToolbox + 'static> RemoteActorRefProviderGeneric<TB> {
   /// Returns an installer configured for the loopback transport.
   #[must_use]
   pub fn loopback() -> RemoteActorRefProviderInstaller<TB> {
@@ -177,7 +180,7 @@ impl<TB: RuntimeToolbox + 'static> RemoteActorRefProvider<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> RemoteWatchHook<TB> for RemoteActorRefProvider<TB> {
+impl<TB: RuntimeToolbox + 'static> RemoteWatchHook<TB> for RemoteActorRefProviderGeneric<TB> {
   fn handle_watch(&self, target: Pid, watcher: Pid) -> bool {
     if let Some((parts, should_send)) = self.track_watch(target, watcher) {
       if should_send {

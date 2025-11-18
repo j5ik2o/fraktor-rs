@@ -55,7 +55,7 @@ pub use inbound_envelope::InboundEnvelope;
 pub use outbound_message::OutboundMessage;
 pub use outbound_priority::OutboundPriority;
 pub use quarantine_reason::QuarantineReason;
-pub use remote_actor_ref_provider::RemoteActorRefProvider;
+pub use remote_actor_ref_provider::{RemoteActorRefProvider, RemoteActorRefProviderGeneric};
 pub use remote_actor_ref_provider_error::RemoteActorRefProviderError;
 pub use remote_actor_ref_provider_installer::RemoteActorRefProviderInstaller;
 pub use remote_authority_snapshot::RemoteAuthoritySnapshot;

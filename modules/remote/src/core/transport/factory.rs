@@ -1,5 +1,5 @@
 //! Transport factory resolving schemes from configuration.
-
+#![allow(cfg_std_forbid)]
 #[cfg(not(feature = "std"))]
 use alloc::string::ToString;
 
