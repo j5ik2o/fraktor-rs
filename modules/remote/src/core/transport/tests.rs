@@ -8,7 +8,7 @@ use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 
 use crate::{
   RemotingError, RemotingExtensionConfig,
-  transport::{LoopbackTransport, RemoteTransport, TransportBind, TransportEndpoint, factory::TransportFactory},
+  core::transport::{LoopbackTransport, RemoteTransport, TransportBind, TransportEndpoint, factory::TransportFactory},
 };
 
 #[test]

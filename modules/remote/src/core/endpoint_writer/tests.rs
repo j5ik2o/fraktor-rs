@@ -14,7 +14,7 @@ use fraktor_utils_rs::core::{
   sync::ArcShared,
 };
 
-use crate::{
+use crate::core::{
   endpoint_manager::RemoteNodeId,
   endpoint_writer::{EndpointWriter, OutboundEnvelope},
 };

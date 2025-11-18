@@ -14,7 +14,6 @@ use alloc::{
 use core::time::Duration;
 
 pub use association_state::AssociationState;
-pub use endpoint_manager_command::EndpointManagerCommand;
 use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex};
 pub use remote_node_id::RemoteNodeId;
 

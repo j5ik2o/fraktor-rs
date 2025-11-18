@@ -1,7 +1,7 @@
 #![cfg(test)]
 
 use super::{AssociationState, EndpointManager, QuarantineReason, RemoteNodeId};
-use crate::transport::{LoopbackTransport, RemoteTransport, TransportBind, TransportEndpoint};
+use crate::core::transport::{LoopbackTransport, RemoteTransport, TransportBind, TransportEndpoint};
 
 #[test]
 fn handshake_transitions_and_flushes_deferred_messages() {
