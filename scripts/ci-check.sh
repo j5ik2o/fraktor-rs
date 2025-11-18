@@ -619,6 +619,13 @@ run_examples() {
     return 1
   fi
 
+  local rustflags_value
+  if [[ -n "${RUSTFLAGS-}" ]]; then
+    rustflags_value="${RUSTFLAGS} -Dwarnings -Adeprecated"
+  else
+    rustflags_value="-Dwarnings -Adeprecated"
+  fi
+
   local example_file
   example_file="$(mktemp)"
   if ! python3 <<'PY' >"${example_file}"; then
@@ -678,14 +685,14 @@ PY
     local log_file
     log_file="$(mktemp)"
     if [[ -n "${DEFAULT_TOOLCHAIN}" ]]; then
-      cargo "+${DEFAULT_TOOLCHAIN}" "${cargo_args[@]}" \
+      RUSTFLAGS="${rustflags_value}" cargo "+${DEFAULT_TOOLCHAIN}" "${cargo_args[@]}" \
         >"${log_file}" 2>&1 || {
           cat "${log_file}"
           rm -f "${log_file}" "${example_file}"
           return 1
         }
     else
-      cargo "${cargo_args[@]}" \
+      RUSTFLAGS="${rustflags_value}" cargo "${cargo_args[@]}" \
         >"${log_file}" 2>&1 || {
           cat "${log_file}"
           rm -f "${log_file}" "${example_file}"
