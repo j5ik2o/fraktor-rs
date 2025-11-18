@@ -73,13 +73,13 @@
   - Serializer 失敗を分類して DeadLetter へ送る準備を整える
   - _対応要件: 3.1, 3.3, 3.4_
   - _依存タスク: 3.1_
-- [ ] 4.2 EndpointWriter の送出キューと at-most-once 制御を実装
+- [x] 4.2 EndpointWriter の送出キューと at-most-once 制御を実装
   - System/User キューを分離した OutboundQueue を定義し、System メッセージを常に優先送出する
   - BackpressureSignal を受けてユーザートラフィックを一時停止/再開する制御フローを追加し、Transport の hook と連携する
   - SerializationExtension へのアクセスを整理し、シリアライズ失敗時に DeadLetter + EventStream を発火する実装を加える
   - _対応要件: 1.2, 3.2, 3.5_
   - _依存タスク: 4.1_
-- [ ] 4.3 EndpointReader と DeadLetter 経路の実装・検証
+- [x] 4.3 EndpointReader と DeadLetter 経路の実装・検証
   - RemotingEnvelope を受け取り SerializedMessage を Deserialization して ActorSystem へ再配送する Reader を実装し、CorrelationId/reply_to を保持する
   - デシリアライズ失敗時に DeadLetter + EventStream(Serialization) へエラーを通知し、事前に録り溜めた DeferredQueue と統合する
   - Loopback transport を用いた E2E テストで EndpointWriter/Reader/Transport が協調してユーザーメッセージを round-trip できることを確認する
