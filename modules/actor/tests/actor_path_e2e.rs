@@ -140,7 +140,8 @@ fn test_e2e_config_integration() {
     .with_canonical_port(2552)
     .with_quarantine_duration(Duration::from_secs(600));
 
-  let config = ActorSystemConfig::<NoStdToolbox>::default().with_system_name("e2e-system").with_remoting(remoting);
+  let config =
+    ActorSystemConfig::<NoStdToolbox>::default().with_system_name("e2e-system").with_remoting_config(remoting);
 
   assert_eq!(config.system_name(), "e2e-system");
 

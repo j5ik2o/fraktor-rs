@@ -7,6 +7,7 @@ use alloc::{format, vec::Vec};
 use anyhow::{Result, anyhow};
 use fraktor_actor_rs::core::{
   actor_prim::{Actor, ActorContextGeneric, Pid, actor_path::ActorPathParts},
+  config::ActorSystemConfig,
   error::ActorError,
   event_stream::{
     BackpressureSignal, EventStreamEvent, EventStreamSubscriber, EventStreamSubscriptionGeneric, RemotingLifecycleEvent,
@@ -15,7 +16,7 @@ use fraktor_actor_rs::core::{
   messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
   props::PropsGeneric,
   scheduler::{ManualTestDriver, TickDriverConfig},
-  system::{ActorSystemBuilder, ActorSystemGeneric, AuthorityState, RemoteWatchHook},
+  system::{ActorSystemGeneric, AuthorityState, RemoteWatchHook},
 };
 use fraktor_remote_rs::core::{
   FlightMetricKind, FnRemotingBackpressureListener, RemoteActorRefProvider, RemotingControl, RemotingControlHandle,
@@ -60,12 +61,11 @@ fn build_system(
 ) -> (ActorSystemGeneric<NoStdToolbox>, RemotingControlHandle<NoStdToolbox>) {
   let props = PropsGeneric::from_fn(|| NoopActor).with_name("quickstart-guardian");
   let extensions = ExtensionsConfig::default().with_extension_config(config.clone());
-  let system = ActorSystemBuilder::new(props)
+  let system_config = ActorSystemConfig::default()
     .with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()))
     .with_extensions_config(extensions)
-    .with_actor_ref_provider(RemoteActorRefProvider::loopback())
-    .build()
-    .expect("system");
+    .with_actor_ref_provider(RemoteActorRefProvider::loopback());
+  let system = ActorSystemGeneric::new_with_config(&props, &system_config).expect("system");
   let id = RemotingExtensionId::<NoStdToolbox>::new(config);
   let extension = system.extended().extension(&id).expect("extension registered");
   (system, extension.handle())

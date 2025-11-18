@@ -34,13 +34,24 @@ pub struct ActorSystem {
 }
 
 impl ActorSystem {
-  /// Creates a new actor system using the provided user guardian props.
+  /// Creates a new actor system with the required tick driver configuration.
+  ///
+  /// This is the recommended way to create an actor system with minimal configuration.
+  ///
+  /// # Arguments
+  ///
+  /// * `props` - Properties for the user guardian actor
+  /// * `tick_driver_config` - Tick driver configuration (required)
   ///
   /// # Errors
   ///
-  /// Returns [`SpawnError::InvalidProps`] when the user guardian props cannot be initialised.
-  pub fn new(props: &Props) -> Result<Self, SpawnError> {
-    CoreActorSystemGeneric::new(props.as_core()).map(Self::from_core)
+  /// Returns [`SpawnError`] when the user guardian props cannot be initialised or tick driver setup
+  /// fails.
+  pub fn new(
+    props: &Props,
+    tick_driver_config: crate::core::scheduler::TickDriverConfig<StdToolbox>,
+  ) -> Result<Self, SpawnError> {
+    CoreActorSystemGeneric::new(props.as_core(), tick_driver_config).map(Self::from_core)
   }
 
   /// Creates a new actor system with an explicit configuration.

@@ -2,6 +2,9 @@
 
 extern crate alloc;
 
+#[path = "../no_std_tick_driver_support.rs"]
+mod no_std_tick_driver_support;
+
 use alloc::{borrow::Cow, string::String, vec::Vec};
 use core::{
   any::{Any, TypeId},
@@ -148,12 +151,11 @@ fn main() {
   let configure_id = serialization_id.clone();
 
   let props = Props::from_fn(NullActor::new).with_name("serialization-demo");
-  let system = ActorSystem::new_with(&props, move |system| {
-    // ActorSystem 起動前にシリアライゼーション拡張を登録
-    let _ = system.extended().register_extension(&configure_id);
-    Ok(())
-  })
-  .expect("actor system");
+  let tick_driver = no_std_tick_driver_support::hardware_tick_driver_config();
+  let system = ActorSystem::new(&props, tick_driver).expect("actor system");
+
+  // ActorSystem 起動後にシリアライゼーション拡張を登録
+  let _ = system.extended().register_extension(&configure_id);
 
   let serialization: ArcShared<SerializationExtension> =
     system.extended().extension(&serialization_id).expect("extension registered");

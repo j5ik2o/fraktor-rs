@@ -409,7 +409,8 @@ fn poll_delay(future: &mut DelayFuture) -> Poll<()> {
 #[test]
 fn actor_system_scheduler_context_handles_delays() {
   let props = Props::from_fn(|| TestActor);
-  let system = ActorSystem::new(&props).expect("system");
+  let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
+  let system = ActorSystem::new(&props, tick_driver).expect("system");
   let provider = system.delay_provider().expect("delay provider");
   let mut future = provider.delay(Duration::from_millis(1));
   assert!(matches!(poll_delay(&mut future), Poll::Pending));
@@ -427,7 +428,8 @@ fn actor_system_scheduler_context_handles_delays() {
 #[test]
 fn actor_system_terminate_runs_scheduler_tasks() {
   let props = Props::from_fn(|| TestActor);
-  let system = ActorSystem::new(&props).expect("system");
+  let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
+  let system = ActorSystem::new(&props, tick_driver).expect("system");
   let log = ArcShared::new(NoStdMutex::new(Vec::new()));
   {
     let context = system.scheduler_context().expect("context");
@@ -472,7 +474,8 @@ fn poll_delay_future(future: &mut DelayFuture) -> Poll<()> {
 #[test]
 fn actor_system_installs_scheduler_context() {
   let props = Props::from_fn(|| TestActor);
-  let system = ActorSystem::new(&props).expect("actor system");
+  let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
+  let system = ActorSystem::new(&props, tick_driver).expect("actor system");
   let provider = system.delay_provider().expect("delay provider");
   let mut future = provider.delay(Duration::from_millis(1));
   assert!(matches!(poll_delay_future(&mut future), Poll::Pending));

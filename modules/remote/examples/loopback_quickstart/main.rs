@@ -17,7 +17,7 @@ use fraktor_actor_rs::core::{
   messaging::AnyMessageViewGeneric,
   props::PropsGeneric,
   scheduler::{ManualTestDriver, TickDriverConfig},
-  system::{ActorSystemBuilder, ActorSystemGeneric},
+  system::ActorSystemGeneric,
 };
 use fraktor_remote_rs::core::{RemoteActorRefProvider, RemotingExtensionConfig, RemotingExtensionId};
 use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
@@ -64,17 +64,14 @@ fn build_loopback_system(
   guardian: PropsGeneric<NoStdToolbox>,
   transport_config: RemotingExtensionConfig,
 ) -> Result<ActorSystemGeneric<NoStdToolbox>> {
+  let extensions = ExtensionsConfig::default().with_extension_config(transport_config.clone());
   let system_config = ActorSystemConfig::default()
     .with_system_name(system_name.to_string())
-    .with_remoting(RemotingConfig::default().with_canonical_host(HOST).with_canonical_port(canonical_port));
-  let extensions = ExtensionsConfig::default().with_extension_config(transport_config.clone());
-  let system = ActorSystemBuilder::new(guardian)
-    .with_actor_system_config(system_config)
     .with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()))
-    .with_extensions_config(extensions)
     .with_actor_ref_provider(RemoteActorRefProvider::loopback())
-    .build()
-    .map_err(|error| anyhow!("{error}"))?;
+    .with_extensions_config(extensions)
+    .with_remoting_config(RemotingConfig::default().with_canonical_host(HOST).with_canonical_port(canonical_port));
+  let system = ActorSystemGeneric::new_with_config(&guardian, &system_config).map_err(|error| anyhow!("{error:?}"))?;
   let id = RemotingExtensionId::<NoStdToolbox>::new(transport_config);
   let _ = system.extended().extension(&id).expect("extension registered");
   Ok(system)
@@ -105,7 +102,7 @@ impl SenderGuardian {
   }
 }
 
-impl Actor<NoStdToolbox> for SenderGuardian {
+impl Actor for SenderGuardian {
   fn receive(
     &mut self,
     _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
@@ -123,7 +120,7 @@ impl ReceiverGuardian {
   }
 }
 
-impl Actor<NoStdToolbox> for ReceiverGuardian {
+impl Actor for ReceiverGuardian {
   fn pre_start(&mut self, ctx: &mut ActorContextGeneric<'_, NoStdToolbox>) -> Result<(), ActorError> {
     let props = PropsGeneric::from_fn(EchoActor::new).with_name("echo");
     ctx
@@ -149,7 +146,7 @@ impl EchoActor {
   }
 }
 
-impl Actor<NoStdToolbox> for EchoActor {
+impl Actor for EchoActor {
   fn receive(
     &mut self,
     _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,

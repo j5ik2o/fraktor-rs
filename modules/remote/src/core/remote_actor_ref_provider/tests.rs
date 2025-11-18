@@ -7,6 +7,7 @@ use fraktor_actor_rs::core::{
     Actor, ActorContextGeneric, Pid,
     actor_path::{ActorPath, ActorPathParts, GuardianKind},
   },
+  config::ActorSystemConfig,
   error::ActorError,
   messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
   props::PropsGeneric,
@@ -15,7 +16,7 @@ use fraktor_actor_rs::core::{
     SerializationCallScope, SerializationExtensionGeneric, SerializationSetup, SerializationSetupBuilder, Serializer,
     SerializerId, StringSerializer,
   },
-  system::{ActorSystemBuilder, ActorSystemGeneric, RemoteWatchHook},
+  system::{ActorSystemGeneric, RemoteWatchHook},
 };
 use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
 
@@ -39,10 +40,8 @@ impl Actor<NoStdToolbox> for NoopActor {
 
 fn build_system() -> ActorSystemGeneric<NoStdToolbox> {
   let props = PropsGeneric::from_fn(|| NoopActor).with_name("provider-tests");
-  ActorSystemBuilder::new(props)
-    .with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()))
-    .build()
-    .expect("system builds")
+  let system_config = ActorSystemConfig::default().with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()));
+  ActorSystemGeneric::new_with_config(&props, &system_config).expect("system builds")
 }
 
 fn serialization_setup() -> SerializationSetup {

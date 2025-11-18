@@ -48,13 +48,21 @@ where
     Self { inner: ActorSystemGeneric::new_empty(), marker: PhantomData }
   }
 
-  /// Creates a new typed actor system using the supplied guardian behavior.
+  /// Creates a new typed actor system with the required tick driver configuration.
+  ///
+  /// # Arguments
+  ///
+  /// * `guardian` - Typed properties for the user guardian actor
+  /// * `tick_driver_config` - Tick driver configuration (required)
   ///
   /// # Errors
   ///
-  /// Returns an error if the guardian actor cannot be spawned.
-  pub fn new(guardian: &TypedPropsGeneric<M, TB>) -> Result<Self, SpawnError> {
-    Ok(Self { inner: ActorSystemGeneric::new(guardian.to_untyped())?, marker: PhantomData })
+  /// Returns an error if the guardian actor cannot be spawned or tick driver setup fails.
+  pub fn new(
+    guardian: &TypedPropsGeneric<M, TB>,
+    tick_driver_config: crate::core::scheduler::TickDriverConfig<TB>,
+  ) -> Result<Self, SpawnError> {
+    Ok(Self { inner: ActorSystemGeneric::new(guardian.to_untyped(), tick_driver_config)?, marker: PhantomData })
   }
 
   /// Creates a typed actor system using the supplied configuration.

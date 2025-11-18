@@ -4,6 +4,7 @@ use alloc::{format, vec::Vec};
 
 use fraktor_actor_rs::core::{
   actor_prim::{Actor, ActorContextGeneric},
+  config::ActorSystemConfig,
   error::ActorError,
   event_stream::{
     event_stream_event::EventStreamEvent,
@@ -16,7 +17,7 @@ use fraktor_actor_rs::core::{
   messaging::AnyMessageViewGeneric,
   props::PropsGeneric,
   scheduler::{ManualTestDriver, TickDriverConfig},
-  system::{ActorSystemBuilder, ActorSystemGeneric},
+  system::ActorSystemGeneric,
 };
 use fraktor_utils_rs::core::{runtime_toolbox::{NoStdMutex, NoStdToolbox}, sync::ArcShared};
 
@@ -66,10 +67,10 @@ fn bootstrap(
 ) -> (ActorSystemGeneric<NoStdToolbox>, RemotingControlHandle<NoStdToolbox>) {
   let props = PropsGeneric::from_fn(|| NoopActor).with_name("remoting-test-guardian");
   let extensions = ExtensionsConfig::default().with_extension_config(config.clone());
-  let system = ActorSystemBuilder::new(props)
+  let system_config = ActorSystemConfig::default()
     .with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()))
-    .with_extensions_config(extensions)
-    .build()
+    .with_extensions_config(extensions);
+  let system = ActorSystemGeneric::new_with_config(&props, &system_config)
     .expect("actor system");
   let id = RemotingExtensionId::<NoStdToolbox>::new(config);
   let extension = system.extended().extension(&id).expect("extension registered");

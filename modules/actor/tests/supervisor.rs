@@ -59,7 +59,10 @@ fn recoverable_failure_restarts_child() {
     move || RestartGuardian::new(log.clone(), child_slot.clone())
   });
 
-  let system = ActorSystem::new(&props).expect("system");
+  let tick_driver = fraktor_actor_rs::core::scheduler::TickDriverConfig::manual(
+    fraktor_actor_rs::core::scheduler::ManualTestDriver::new(),
+  );
+  let system = ActorSystem::new(&props, tick_driver).expect("system");
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
 
   let child = child_slot.lock().clone().expect("child");
@@ -79,7 +82,10 @@ fn fatal_failure_stops_child() {
     move || FatalGuardian::new(child_slot.clone())
   });
 
-  let system = ActorSystem::new(&props).expect("system");
+  let tick_driver = fraktor_actor_rs::core::scheduler::TickDriverConfig::manual(
+    fraktor_actor_rs::core::scheduler::ManualTestDriver::new(),
+  );
+  let system = ActorSystem::new(&props, tick_driver).expect("system");
 
   let subscriber_impl = ArcShared::new(RecordingSubscriber::new());
   let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
@@ -117,7 +123,10 @@ fn escalate_failure_restarts_supervisor() {
     move || RootGuardian::new(supervisor_slot.clone(), child_slot.clone(), supervisor_log.clone(), child_log.clone())
   });
 
-  let system = ActorSystem::new(&props).expect("system");
+  let tick_driver = fraktor_actor_rs::core::scheduler::TickDriverConfig::manual(
+    fraktor_actor_rs::core::scheduler::ManualTestDriver::new(),
+  );
+  let system = ActorSystem::new(&props, tick_driver).expect("system");
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
 
   wait_until(|| child_slot.lock().is_some(), Duration::from_millis(20));
@@ -152,7 +161,10 @@ fn panic_propagates_without_intervention() {
     move || PanicGuardian::new(child_slot.clone())
   });
 
-  let system = ActorSystem::new(&props).expect("system");
+  let tick_driver = fraktor_actor_rs::core::scheduler::TickDriverConfig::manual(
+    fraktor_actor_rs::core::scheduler::ManualTestDriver::new(),
+  );
+  let system = ActorSystem::new(&props, tick_driver).expect("system");
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
   wait_until(|| child_slot.lock().is_some(), Duration::from_millis(20));
   let child = child_slot.lock().clone().expect("child");

@@ -285,7 +285,10 @@ fn death_watch_notifies_parent_on_child_stop() {
     let child_slot = child_slot.clone();
     move || HarnessWatcher::new(terminated.clone(), order.clone(), child_slot.clone())
   });
-  let system = ActorSystem::new(&props).expect("system");
+  let tick_driver = fraktor_actor_rs::core::scheduler::TickDriverConfig::manual(
+    fraktor_actor_rs::core::scheduler::ManualTestDriver::new(),
+  );
+  let system = ActorSystem::new(&props, tick_driver).expect("system");
 
   system.user_guardian_ref().tell(AnyMessage::new(SpawnChild)).expect("spawn child");
   system.user_guardian_ref().tell(AnyMessage::new(StopChild)).expect("stop child");
@@ -308,7 +311,10 @@ fn death_watch_unwatch_suppresses_notifications() {
     let child_slot = child_slot.clone();
     move || HarnessWatcher::new(terminated.clone(), order.clone(), child_slot.clone())
   });
-  let system = ActorSystem::new(&props).expect("system");
+  let tick_driver = fraktor_actor_rs::core::scheduler::TickDriverConfig::manual(
+    fraktor_actor_rs::core::scheduler::ManualTestDriver::new(),
+  );
+  let system = ActorSystem::new(&props, tick_driver).expect("system");
 
   system.user_guardian_ref().tell(AnyMessage::new(SpawnChild)).expect("spawn child");
   system.user_guardian_ref().tell(AnyMessage::new(UnwatchChild)).expect("unwatch");
@@ -330,7 +336,10 @@ fn death_watch_handles_multiple_watchers() {
     let child_slot = child_slot.clone();
     move || HarnessWatcher::new(primary_log.clone(), order.clone(), child_slot.clone())
   });
-  let system = ActorSystem::new(&props).expect("system");
+  let tick_driver = fraktor_actor_rs::core::scheduler::TickDriverConfig::manual(
+    fraktor_actor_rs::core::scheduler::ManualTestDriver::new(),
+  );
+  let system = ActorSystem::new(&props, tick_driver).expect("system");
 
   system.user_guardian_ref().tell(AnyMessage::new(SpawnChild)).expect("spawn child");
   system
@@ -358,7 +367,10 @@ fn watch_after_stop_triggers_immediate_notification() {
     let child_slot = child_slot.clone();
     move || HarnessWatcher::new(terminated.clone(), order.clone(), child_slot.clone())
   });
-  let system = ActorSystem::new(&props).expect("system");
+  let tick_driver = fraktor_actor_rs::core::scheduler::TickDriverConfig::manual(
+    fraktor_actor_rs::core::scheduler::ManualTestDriver::new(),
+  );
+  let system = ActorSystem::new(&props, tick_driver).expect("system");
 
   system.user_guardian_ref().tell(AnyMessage::new(SpawnChild)).expect("spawn child");
   system.user_guardian_ref().tell(AnyMessage::new(StopChild)).expect("stop child");
@@ -379,7 +391,10 @@ fn spawn_child_watched_notifies_on_stop() {
     let terminated = terminated.clone();
     move || SpawnWatchedGuardian::new(terminated.clone())
   });
-  let system = ActorSystem::new(&props).expect("system");
+  let tick_driver = fraktor_actor_rs::core::scheduler::TickDriverConfig::manual(
+    fraktor_actor_rs::core::scheduler::ManualTestDriver::new(),
+  );
+  let system = ActorSystem::new(&props, tick_driver).expect("system");
 
   system.user_guardian_ref().tell(AnyMessage::new(SpawnChild)).expect("spawn");
   let observed = wait_until(200, &|| !terminated.lock().is_empty());
@@ -397,7 +412,10 @@ fn terminated_messages_precede_user_queue() {
     let child_slot = child_slot.clone();
     move || HarnessWatcher::new(terminated.clone(), order.clone(), child_slot.clone())
   });
-  let system = ActorSystem::new(&props).expect("system");
+  let tick_driver = fraktor_actor_rs::core::scheduler::TickDriverConfig::manual(
+    fraktor_actor_rs::core::scheduler::ManualTestDriver::new(),
+  );
+  let system = ActorSystem::new(&props, tick_driver).expect("system");
 
   system.user_guardian_ref().tell(AnyMessage::new(SpawnChild)).expect("spawn child");
   system.user_guardian_ref().tell(AnyMessage::new(QueueUserEvent)).expect("queue event");
@@ -416,7 +434,10 @@ fn cyclic_watchers_do_not_deadlock() {
     let log_b = log_b.clone();
     move || CycleGuardian::new(log_a.clone(), log_b.clone())
   });
-  let system = ActorSystem::new(&props).expect("system");
+  let tick_driver = fraktor_actor_rs::core::scheduler::TickDriverConfig::manual(
+    fraktor_actor_rs::core::scheduler::ManualTestDriver::new(),
+  );
+  let system = ActorSystem::new(&props, tick_driver).expect("system");
 
   system.user_guardian_ref().tell(AnyMessage::new(StartCycle)).expect("start cycle");
 

@@ -8,7 +8,7 @@ use core::time::Duration;
 use fraktor_actor_rs::core::{
   error::ActorError,
   typed::{
-    TypedActorSystemBuilder, TypedProps,
+    TypedActorSystem, TypedProps,
     actor_prim::{TypedActor, TypedActorContext},
   },
 };
@@ -78,10 +78,8 @@ fn main() {
   use std::{process, thread};
 
   let props = TypedProps::new(|| GuardianActor);
-  let system = TypedActorSystemBuilder::new(props)
-    .with_tick_driver(no_std_tick_driver_support::hardware_tick_driver_config())
-    .build()
-    .expect("system");
+  let tick_driver = no_std_tick_driver_support::hardware_tick_driver_config();
+  let system = TypedActorSystem::new(&props, tick_driver).expect("system");
   system.user_guardian_ref().tell(GuardianCommand::Start).expect("start");
 
   // スケジューラが動作する時間を与える

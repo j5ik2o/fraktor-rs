@@ -48,7 +48,7 @@ where
 
   /// Enables remoting with the given configuration.
   #[must_use]
-  pub fn with_remoting(mut self, config: RemotingConfig) -> Self {
+  pub fn with_remoting_config(mut self, config: RemotingConfig) -> Self {
     self.remoting_config = Some(config);
     self
   }

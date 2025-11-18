@@ -58,7 +58,8 @@ fn mailbox_metrics_and_warnings_are_emitted() {
   let mailbox_config = MailboxConfig::new(MailboxPolicy::bounded(capacity, MailboxOverflowStrategy::DropNewest, None))
     .with_warn_threshold(Some(warn_threshold));
   let props = Props::from_fn(|| PassiveActor).with_mailbox(mailbox_config);
-  let system = ActorSystem::new(&props).expect("system");
+  let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
+  let system = ActorSystem::new(&props, tick_driver).expect("system");
 
   let subscriber_impl = ArcShared::new(RecordingSubscriber::new());
   let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();

@@ -13,7 +13,7 @@ use fraktor_actor_rs::core::{
   messaging::{AnyMessage, AnyMessageViewGeneric},
   props::Props,
   scheduler::{SchedulerCommand, SchedulerDiagnosticsSubscription},
-  system::ActorSystemBuilder,
+  system::ActorSystem,
 };
 
 #[cfg(not(target_os = "none"))]
@@ -98,10 +98,7 @@ fn main() {
   use std::process;
 
   let props = Props::from_fn(GuardianActor::new);
-  let bootstrap = ActorSystemBuilder::new(props)
-    .with_tick_driver(no_std_tick_driver_support::hardware_tick_driver_config())
-    .build()
-    .expect("system");
+  let bootstrap = ActorSystem::new(&props, no_std_tick_driver_support::hardware_tick_driver_config()).expect("system");
   bootstrap.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
   thread::sleep(StdDuration::from_millis(400));
   process::exit(0);

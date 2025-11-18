@@ -4,6 +4,9 @@
 //! a message was not handled by the current behavior. Unlike `ignore()`,
 //! this emits an `UnhandledMessage` event to the event stream for monitoring.
 
+#[path = "../std_tick_driver_support.rs"]
+mod std_tick_driver_support;
+
 use std::time::Duration;
 
 use fraktor_actor_rs::std::{
@@ -60,7 +63,8 @@ fn main() {
 
   // Create typed actor system
   let props = TypedProps::from_behavior_factory(selective_behavior);
-  let system = TypedActorSystem::new(&props).expect("Failed to create system");
+  let tick_driver = std_tick_driver_support::hardware_tick_driver_config();
+  let system = TypedActorSystem::new(&props, tick_driver).expect("Failed to create system");
 
   // Subscribe to unhandled message events
   let subscriber: ArcShared<dyn EventStreamSubscriber> = ArcShared::new(UnhandledMessageLogger);

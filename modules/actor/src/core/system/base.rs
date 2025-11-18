@@ -57,17 +57,6 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     Self { state }
   }
 
-  /// Creates a new actor system using the provided user guardian props.
-  ///
-  /// # Errors
-  ///
-  /// Returns [`SpawnError`] when guardian initialization fails.
-  pub fn new(user_guardian_props: &PropsGeneric<TB>) -> Result<Self, SpawnError>
-  where
-    TB: Default, {
-    Self::new_with_config_and(user_guardian_props, &ActorSystemConfig::default(), |_| Ok(()))
-  }
-
   /// Creates a new actor system and runs the provided configuration callback before startup.
   ///
   /// # Errors
@@ -78,6 +67,28 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     TB: Default,
     F: FnOnce(&ActorSystemGeneric<TB>) -> Result<(), SpawnError>, {
     Self::new_with_config_and(user_guardian_props, &ActorSystemConfig::default(), configure)
+  }
+
+  /// Creates an actor system with the required tick driver configuration.
+  ///
+  /// This is the recommended way to create an actor system with minimal configuration.
+  ///
+  /// # Arguments
+  ///
+  /// * `user_guardian_props` - Properties for the user guardian actor
+  /// * `tick_driver_config` - Tick driver configuration (required)
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SpawnError`] when guardian initialization or tick driver setup fails.
+  pub fn new(
+    user_guardian_props: &PropsGeneric<TB>,
+    tick_driver_config: crate::core::scheduler::TickDriverConfig<TB>,
+  ) -> Result<Self, SpawnError>
+  where
+    TB: Default, {
+    let config = crate::core::config::ActorSystemConfig::default().with_tick_driver(tick_driver_config);
+    Self::new_with_config(user_guardian_props, &config)
   }
 
   /// Creates an actor system with the provided configuration.
@@ -107,6 +118,11 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   where
     TB: Default,
     F: FnOnce(&ActorSystemGeneric<TB>) -> Result<(), SpawnError>, {
+    // Validate tick driver configuration is present
+    if config.tick_driver_config().is_none() {
+      return Err(SpawnError::SystemBuildError("tick driver configuration is required".into()));
+    }
+
     let system = Self::new_empty();
     system.state.apply_actor_system_config(config);
     system.install_scheduler_and_tick_driver_from_config(config)?;
@@ -178,6 +194,18 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
       let event_stream = self.state.event_stream();
       let toolbox = TB::default();
       let scheduler_config = *config.scheduler_config();
+
+      // Apply special handling for ManualTest driver in test mode
+      #[cfg(any(test, feature = "test-support"))]
+      let scheduler_config = if let Some(tick_driver_config) = config.tick_driver_config()
+        && matches!(tick_driver_config, crate::core::scheduler::TickDriverConfig::ManualTest(_))
+        && !scheduler_config.runner_api_enabled()
+      {
+        scheduler_config.with_runner_api_enabled(true)
+      } else {
+        scheduler_config
+      };
+
       let context = SchedulerContext::with_event_stream(toolbox, scheduler_config, event_stream);
       self.state.install_scheduler_context(ArcShared::new(context));
     }

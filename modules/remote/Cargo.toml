@@ -36,5 +36,5 @@ required-features = ["test-support"]
 
 [[example]]
 name = "loopback_quickstart"
-path = "examples/loopback_quickstart.rs"
+path = "examples/loopback_quickstart/main.rs"
 required-features = ["std", "test-support"]

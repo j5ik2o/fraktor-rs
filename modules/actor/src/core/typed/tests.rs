@@ -75,7 +75,8 @@ impl TypedActor<CounterMessage> for CounterActor {
 #[test]
 fn typed_actor_system_handles_basic_flow() {
   let props = TypedPropsGeneric::<CounterMessage, NoStdToolbox>::new(CounterActor::new);
-  let system = TypedActorSystemGeneric::<CounterMessage, NoStdToolbox>::new(&props).expect("system");
+  let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
+  let system = TypedActorSystemGeneric::<CounterMessage, NoStdToolbox>::new(&props, tick_driver).expect("system");
   let counter = system.user_guardian_ref();
 
   counter.tell(CounterMessage::Increment(2)).expect("tell increment one");
@@ -94,7 +95,8 @@ fn typed_actor_system_handles_basic_flow() {
 #[test]
 fn typed_behaviors_handle_recursive_state() {
   let props = TypedPropsGeneric::<CounterMessage, NoStdToolbox>::from_behavior_factory(|| behavior_counter(0));
-  let system = TypedActorSystemGeneric::<CounterMessage, NoStdToolbox>::new(&props).expect("system");
+  let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
+  let system = TypedActorSystemGeneric::<CounterMessage, NoStdToolbox>::new(&props, tick_driver).expect("system");
   let counter = system.user_guardian_ref();
 
   counter.tell(CounterMessage::Increment(3)).expect("increment one");
@@ -113,7 +115,8 @@ fn typed_behaviors_handle_recursive_state() {
 #[test]
 fn typed_behaviors_ignore_keeps_current_state() {
   let props = TypedPropsGeneric::<IgnoreCommand, NoStdToolbox>::from_behavior_factory(|| ignore_gate(0));
-  let system = TypedActorSystemGeneric::<IgnoreCommand, NoStdToolbox>::new(&props).expect("system");
+  let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
+  let system = TypedActorSystemGeneric::<IgnoreCommand, NoStdToolbox>::new(&props, tick_driver).expect("system");
   let gate = system.user_guardian_ref();
 
   gate.tell(IgnoreCommand::Add(1)).expect("add before reject");
@@ -143,7 +146,8 @@ fn typed_behaviors_receive_signal_notifications() {
   let props = TypedPropsGeneric::<LifecycleCommand, NoStdToolbox>::from_behavior_factory(move || {
     signal_probe_behavior(&start_probe, &stop_probe)
   });
-  let system = TypedActorSystemGeneric::<LifecycleCommand, NoStdToolbox>::new(&props).expect("system");
+  let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
+  let system = TypedActorSystemGeneric::<LifecycleCommand, NoStdToolbox>::new(&props, tick_driver).expect("system");
   system.terminate().expect("terminate");
   system.as_untyped().run_until_terminated();
 
@@ -202,7 +206,8 @@ impl TypedActor<SchedulerProbeCommand> for SchedulerProbeActor {
 #[test]
 fn typed_ask_reports_type_mismatch() {
   let props = TypedPropsGeneric::<MismatchCommand, NoStdToolbox>::new(|| MismatchActor);
-  let system = TypedActorSystemGeneric::<MismatchCommand, NoStdToolbox>::new(&props).expect("system");
+  let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
+  let system = TypedActorSystemGeneric::<MismatchCommand, NoStdToolbox>::new(&props, tick_driver).expect("system");
   let actor = system.user_guardian_ref();
 
   let response = actor.ask::<i32>(MismatchCommand::Trigger).expect("ask");
@@ -218,7 +223,9 @@ fn typed_ask_reports_type_mismatch() {
 #[test]
 fn typed_context_exposes_scheduler_context() {
   let props = TypedPropsGeneric::<SchedulerProbeCommand, NoStdToolbox>::new(|| SchedulerProbeActor);
-  let system = TypedActorSystemGeneric::<SchedulerProbeCommand, NoStdToolbox>::new(&props).expect("system");
+  let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
+  let system =
+    TypedActorSystemGeneric::<SchedulerProbeCommand, NoStdToolbox>::new(&props, tick_driver).expect("system");
   let actor = system.user_guardian_ref();
 
   let response = actor.ask::<bool>(SchedulerProbeCommand::Check).expect("ask");
@@ -344,7 +351,9 @@ fn behaviors_supervise_restarts_children() {
     SupervisorDirective::Restart
   });
   let parent_props = supervised_parent_props(restart_strategy, child);
-  let system = TypedActorSystemGeneric::<SupervisorCommand, NoStdToolbox>::new(&parent_props).expect("system");
+  let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
+  let system =
+    TypedActorSystemGeneric::<SupervisorCommand, NoStdToolbox>::new(&parent_props, tick_driver).expect("system");
   let parent = system.user_guardian_ref();
 
   wait_until(|| start_counter.load(Ordering::SeqCst) == 1);
@@ -364,7 +373,9 @@ fn behaviors_supervise_stops_children() {
     SupervisorDirective::Stop
   });
   let parent_props = supervised_parent_props(stop_strategy, child);
-  let system = TypedActorSystemGeneric::<SupervisorCommand, NoStdToolbox>::new(&parent_props).expect("system");
+  let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
+  let system =
+    TypedActorSystemGeneric::<SupervisorCommand, NoStdToolbox>::new(&parent_props, tick_driver).expect("system");
   let parent = system.user_guardian_ref();
 
   wait_until(|| start_counter.load(Ordering::SeqCst) == 1);
@@ -412,7 +423,9 @@ fn message_adapter_converts_external_messages() {
     let slot = adapter_slot.clone();
     move || adapter_counter_behavior(&slot)
   });
-  let system = TypedActorSystemGeneric::<AdapterCounterCommand, NoStdToolbox>::new(&props).expect("system");
+  let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
+  let system =
+    TypedActorSystemGeneric::<AdapterCounterCommand, NoStdToolbox>::new(&props, tick_driver).expect("system");
   let actor = system.user_guardian_ref();
 
   assert!(wait_for(|| adapter_slot.lock().is_some()), "adapter never registered");
@@ -440,7 +453,9 @@ fn adapter_not_found_routes_to_dead_letter() {
       counter_behavior(0)
     })
   });
-  let system = TypedActorSystemGeneric::<AdapterCounterCommand, NoStdToolbox>::new(&props).expect("system");
+  let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
+  let system =
+    TypedActorSystemGeneric::<AdapterCounterCommand, NoStdToolbox>::new(&props, tick_driver).expect("system");
   let actor = system.user_guardian_ref();
   let untyped = actor.as_untyped().clone();
 
@@ -474,7 +489,9 @@ fn pipe_to_self_converts_messages_via_adapter() {
       counter_behavior(0)
     })
   });
-  let system = TypedActorSystemGeneric::<AdapterCounterCommand, NoStdToolbox>::new(&props).expect("system");
+  let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
+  let system =
+    TypedActorSystemGeneric::<AdapterCounterCommand, NoStdToolbox>::new(&props, tick_driver).expect("system");
   let actor = system.user_guardian_ref();
   wait_until(|| read_counter_value(&actor) == 6);
   system.terminate().expect("terminate");
