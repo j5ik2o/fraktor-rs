@@ -23,6 +23,7 @@ fraktor-actor-rs = { workspace = true }
 fraktor-utils-rs = { workspace = true, features = ["alloc", "unsize"] }
 portable-atomic = { workspace = true, default-features = false }
 hashbrown = { workspace = true }
+ahash = { workspace = true, default-features = false }
 spin = { workspace = true }
 tokio = { workspace = true, optional = true, features = ["rt-multi-thread", "net", "sync", "time", "io-util"] }
 

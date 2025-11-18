@@ -6,6 +6,7 @@ use core::{num::NonZeroU64, time::Duration};
 #[cfg(test)]
 mod tests;
 
+use ahash::RandomState;
 use fraktor_utils_rs::core::{
   collections::queue::backend::{BinaryHeapPriorityBackend, OverflowPolicy},
   runtime_toolbox::RuntimeToolbox,
@@ -34,7 +35,7 @@ pub struct Scheduler<TB: RuntimeToolbox> {
   metrics:       SchedulerMetrics,
   warnings:      Vec<SchedulerWarning>,
   next_handle:   u64,
-  jobs:          HashMap<u64, ScheduledJob<TB>>,
+  jobs:          HashMap<u64, ScheduledJob<TB>, RandomState>,
   current_tick:  u64,
   closed:        bool,
   task_runs:     TaskRunQueue,
@@ -100,7 +101,7 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
       metrics: SchedulerMetrics::default(),
       warnings: Vec::new(),
       next_handle: 1,
-      jobs: HashMap::new(),
+      jobs: HashMap::with_hasher(RandomState::new()),
       current_tick: 0,
       closed: false,
       task_runs: TaskRunQueue::new(task_run_backend),

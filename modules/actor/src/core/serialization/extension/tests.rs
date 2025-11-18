@@ -7,6 +7,7 @@ use alloc::{
 };
 use core::any::{Any, TypeId};
 
+use ahash::RandomState;
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdMutex, NoStdToolbox, RuntimeToolbox},
   sync::ArcShared,
@@ -471,14 +472,14 @@ fn builtin_serializer_collision_emits_warning() {
 
   let serializer_id = SerializerId::from_raw(1);
   let serializer: ArcShared<dyn Serializer> = ArcShared::new(builtin::NullSerializer::new(serializer_id));
-  let mut serializers = HashMap::new();
+  let mut serializers = HashMap::with_hasher(RandomState::new());
   serializers.insert(serializer_id, serializer);
   let setup = SerializationSetup::testing_from_raw(
     serializers,
-    HashMap::new(),
-    HashMap::new(),
-    HashMap::new(),
-    HashMap::new(),
+    HashMap::with_hasher(RandomState::new()),
+    HashMap::with_hasher(RandomState::new()),
+    HashMap::with_hasher(RandomState::new()),
+    HashMap::with_hasher(RandomState::new()),
     Vec::new(),
     serializer_id,
     Vec::new(),

@@ -1,8 +1,8 @@
 //! UID-agnostic equality helpers for actor paths.
 
-use core::hash::{BuildHasher, Hash, Hasher};
+use core::hash::{Hash, Hasher};
 
-use hashbrown::hash_map::DefaultHashBuilder;
+use ahash::AHasher;
 
 use super::ActorPath;
 
@@ -19,7 +19,7 @@ impl ActorPathComparator {
   /// Computes a hash value that excludes the UID suffix.
   #[must_use]
   pub fn hash(path: &ActorPath) -> u64 {
-    let mut hasher = DefaultHashBuilder::default().build_hasher();
+    let mut hasher = AHasher::default();
     path.parts().hash(&mut hasher);
     path.segments().hash(&mut hasher);
     hasher.finish()

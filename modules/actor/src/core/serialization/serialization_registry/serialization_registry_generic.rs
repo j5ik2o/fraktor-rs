@@ -3,6 +3,7 @@
 use alloc::{string::String, vec::Vec};
 use core::any::TypeId;
 
+use ahash::RandomState;
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
@@ -15,12 +16,13 @@ use crate::core::serialization::{
 };
 
 /// Registry that resolves serializers based on type identifiers.
+#[allow(clippy::type_complexity)]
 pub struct SerializationRegistryGeneric<TB: RuntimeToolbox> {
-  serializers:     ToolboxMutex<HashMap<SerializerId, ArcShared<dyn Serializer>>, TB>,
-  bindings:        ToolboxMutex<HashMap<TypeId, SerializerId>, TB>,
-  binding_names:   ToolboxMutex<HashMap<TypeId, String>, TB>,
-  manifest_routes: ToolboxMutex<HashMap<String, Vec<(u8, SerializerId)>>, TB>,
-  cache:           ToolboxMutex<HashMap<TypeId, SerializerId>, TB>,
+  serializers:     ToolboxMutex<HashMap<SerializerId, ArcShared<dyn Serializer>, RandomState>, TB>,
+  bindings:        ToolboxMutex<HashMap<TypeId, SerializerId, RandomState>, TB>,
+  binding_names:   ToolboxMutex<HashMap<TypeId, String, RandomState>, TB>,
+  manifest_routes: ToolboxMutex<HashMap<String, Vec<(u8, SerializerId)>, RandomState>, TB>,
+  cache:           ToolboxMutex<HashMap<TypeId, SerializerId, RandomState>, TB>,
   fallback:        SerializerId,
 }
 
@@ -28,22 +30,21 @@ impl<TB: RuntimeToolbox> SerializationRegistryGeneric<TB> {
   /// Creates a registry from the provided setup.
   #[must_use]
   pub fn from_setup(setup: &SerializationSetup) -> Self {
-    let serializers =
-      setup.serializers_ref().iter().map(|(id, serializer)| (*id, serializer.clone())).collect::<HashMap<_, _>>();
-    let bindings = setup.bindings_ref().iter().map(|(ty, id)| (*ty, *id)).collect::<HashMap<_, _>>();
-    let binding_names =
-      setup.binding_names_ref().iter().map(|(ty, name)| (*ty, name.clone())).collect::<HashMap<_, _>>();
-    let manifest_routes = setup
-      .manifest_routes_ref()
-      .iter()
-      .map(|(manifest, routes)| (manifest.clone(), routes.clone()))
-      .collect::<HashMap<_, _>>();
+    let mut serializers = HashMap::with_hasher(RandomState::new());
+    serializers.extend(setup.serializers_ref().iter().map(|(id, serializer)| (*id, serializer.clone())));
+    let mut bindings = HashMap::with_hasher(RandomState::new());
+    bindings.extend(setup.bindings_ref().iter().map(|(ty, id)| (*ty, *id)));
+    let mut binding_names = HashMap::with_hasher(RandomState::new());
+    binding_names.extend(setup.binding_names_ref().iter().map(|(ty, name)| (*ty, name.clone())));
+    let mut manifest_routes = HashMap::with_hasher(RandomState::new());
+    manifest_routes
+      .extend(setup.manifest_routes_ref().iter().map(|(manifest, routes)| (manifest.clone(), routes.clone())));
     Self {
       serializers:     <TB::MutexFamily as SyncMutexFamily>::create(serializers),
       bindings:        <TB::MutexFamily as SyncMutexFamily>::create(bindings),
       binding_names:   <TB::MutexFamily as SyncMutexFamily>::create(binding_names),
       manifest_routes: <TB::MutexFamily as SyncMutexFamily>::create(manifest_routes),
-      cache:           <TB::MutexFamily as SyncMutexFamily>::create(HashMap::new()),
+      cache:           <TB::MutexFamily as SyncMutexFamily>::create(HashMap::with_hasher(RandomState::new())),
       fallback:        setup.fallback_serializer(),
     }
   }

@@ -1,6 +1,7 @@
 use alloc::{boxed::Box, vec, vec::Vec};
 use core::any::{Any, TypeId, type_name};
 
+use ahash::RandomState;
 use fraktor_utils_rs::core::sync::ArcShared;
 use hashbrown::HashMap;
 
@@ -160,11 +161,11 @@ fn manifest_routes_return_serializers_in_priority_order() {
 fn missing_serializer_produces_not_serializable_error() {
   let serializer_id = SerializerId::try_from(170).expect("id");
   let setup = SerializationSetup::testing_from_raw(
-    HashMap::new(),
-    HashMap::new(),
-    HashMap::new(),
-    HashMap::new(),
-    HashMap::new(),
+    HashMap::with_hasher(RandomState::new()),
+    HashMap::with_hasher(RandomState::new()),
+    HashMap::with_hasher(RandomState::new()),
+    HashMap::with_hasher(RandomState::new()),
+    HashMap::with_hasher(RandomState::new()),
     Vec::new(),
     serializer_id,
     Vec::new(),

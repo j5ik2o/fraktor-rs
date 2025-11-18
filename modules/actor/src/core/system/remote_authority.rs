@@ -10,6 +10,7 @@ use alloc::{
 };
 use core::time::Duration;
 
+use ahash::RandomState;
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
   sync::sync_mutex_like::SyncMutexLike,
@@ -36,7 +37,7 @@ impl<TB: RuntimeToolbox + 'static> AuthorityEntry<TB> {
 
 /// Manages remote authority state transitions and deferred message queues.
 pub struct RemoteAuthorityManagerGeneric<TB: RuntimeToolbox + 'static> {
-  entries: ToolboxMutex<HashMap<String, AuthorityEntry<TB>>, TB>,
+  entries: ToolboxMutex<HashMap<String, AuthorityEntry<TB>, RandomState>, TB>,
 }
 
 /// Type alias using the default toolbox.
@@ -46,7 +47,7 @@ impl<TB: RuntimeToolbox + 'static> RemoteAuthorityManagerGeneric<TB> {
   /// Creates a new manager with no authorities.
   #[must_use]
   pub fn new() -> Self {
-    Self { entries: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::new()) }
+    Self { entries: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::with_hasher(RandomState::new())) }
   }
 
   /// Returns the current state of an authority.

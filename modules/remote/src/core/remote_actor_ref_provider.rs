@@ -8,6 +8,7 @@ use alloc::{
   vec::Vec,
 };
 
+use ahash::RandomState;
 use fraktor_actor_rs::core::{
   actor_prim::{
     Pid,
@@ -41,7 +42,7 @@ pub struct RemoteActorRefProviderGeneric<TB: RuntimeToolbox + 'static> {
   control:           RemotingControlHandle<TB>,
   authority_manager: ArcShared<RemoteAuthorityManagerGeneric<TB>>,
   watcher_daemon:    ActorRefGeneric<TB>,
-  watch_entries:     NoStdMutex<HashMap<Pid, RemoteWatchEntry>>,
+  watch_entries:     NoStdMutex<HashMap<Pid, RemoteWatchEntry, RandomState>>,
 }
 
 /// Provider that creates [`ActorRefGeneric`] instances for remote recipients.
@@ -84,7 +85,7 @@ impl<TB: RuntimeToolbox + 'static> RemoteActorRefProviderGeneric<TB> {
       control,
       authority_manager,
       watcher_daemon: daemon,
-      watch_entries: NoStdMutex::new(HashMap::new()),
+      watch_entries: NoStdMutex::new(HashMap::with_hasher(RandomState::new())),
     })
   }
 

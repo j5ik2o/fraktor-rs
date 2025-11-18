@@ -11,6 +11,7 @@ use core::{
   time::Duration,
 };
 
+use ahash::RandomState;
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdMutex, NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
   sync::ArcShared,
@@ -878,7 +879,7 @@ fn run_stress_profile(job_count: usize, drift_ticks: u64) -> StressReport {
     scheduler.run_for_test(1);
   }
 
-  let mut scheduled_deadlines = HashMap::new();
+  let mut scheduled_deadlines = HashMap::with_hasher(RandomState::new());
   let mut completed = 0usize;
   let mut max_drift_pct = 0u64;
 
@@ -926,7 +927,7 @@ fn assert_deterministic_invariants(events: &[DeterministicEvent]) {
     fired_ticks:    Vec<u64>,
   }
 
-  let mut map: HashMap<u64, Record> = HashMap::new();
+  let mut map: HashMap<u64, Record, RandomState> = HashMap::with_hasher(RandomState::new());
   for event in events {
     match *event {
       | DeterministicEvent::Scheduled { handle_id, scheduled_tick, deadline_tick } => {

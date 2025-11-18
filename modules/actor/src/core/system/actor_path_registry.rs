@@ -6,6 +6,7 @@ mod tests;
 use alloc::string::String;
 use core::time::Duration;
 
+use ahash::RandomState;
 use hashbrown::HashMap;
 
 use super::{ActorPathHandle, ReservationPolicy};
@@ -23,8 +24,8 @@ struct UidReservation {
 
 /// Registry for PID-to-path mappings and UID reservations.
 pub struct ActorPathRegistry {
-  paths:        HashMap<Pid, ActorPathHandle>,
-  reservations: HashMap<String, UidReservation>,
+  paths:        HashMap<Pid, ActorPathHandle, RandomState>,
+  reservations: HashMap<String, UidReservation, RandomState>,
   policy:       ReservationPolicy,
 }
 
@@ -32,13 +33,21 @@ impl ActorPathRegistry {
   /// Creates a new empty registry.
   #[must_use]
   pub fn new() -> Self {
-    Self { paths: HashMap::new(), reservations: HashMap::new(), policy: ReservationPolicy::default() }
+    Self {
+      paths:        HashMap::with_hasher(RandomState::new()),
+      reservations: HashMap::with_hasher(RandomState::new()),
+      policy:       ReservationPolicy::default(),
+    }
   }
 
   /// Creates a registry with a custom reservation policy.
   #[must_use]
   pub fn with_policy(policy: ReservationPolicy) -> Self {
-    Self { paths: HashMap::new(), reservations: HashMap::new(), policy }
+    Self {
+      paths: HashMap::with_hasher(RandomState::new()),
+      reservations: HashMap::with_hasher(RandomState::new()),
+      policy,
+    }
   }
 
   /// Applies a new reservation policy.
