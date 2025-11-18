@@ -45,6 +45,7 @@ struct ListenerHandle {
 }
 
 struct ChannelHandle {
+  #[allow(dead_code)]
   authority: String,
   sender:    mpsc::Sender<OutboundFrame>,
 }
@@ -102,6 +103,7 @@ impl TokioTcpTransport {
     frame
   }
 
+  #[allow(dead_code)]
   fn fire_backpressure(&self, authority: &str, signal: BackpressureSignal, correlation_id: CorrelationId) {
     if let Some(hook) = self.hook.lock().clone() {
       hook.on_backpressure(signal, authority, correlation_id);
