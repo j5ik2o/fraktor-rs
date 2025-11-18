@@ -15,7 +15,7 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::{
-  RemoteNodeId,
+  endpoint_manager::RemoteNodeId,
   endpoint_writer::{EndpointWriter, OutboundEnvelope},
 };
 

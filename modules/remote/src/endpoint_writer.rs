@@ -9,7 +9,7 @@ use fraktor_actor_rs::core::{
 use fraktor_utils_rs::core::{collections::queue::QueueError, runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
 use self::outbound_queue::{EnvelopePriority, OutboundQueue};
-use crate::RemoteNodeId;
+use crate::endpoint_manager::RemoteNodeId;
 
 pub mod outbound_queue;
 

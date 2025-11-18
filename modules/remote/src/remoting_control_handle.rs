@@ -16,8 +16,8 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::{
-  RemoteTransport, RemotingBackpressureListener, RemotingConnectionSnapshot, RemotingControl, RemotingError,
-  RemotingExtensionConfig, TransportFactory,
+  RemotingBackpressureListener, RemotingConnectionSnapshot, RemotingControl, RemotingError, RemotingExtensionConfig,
+  transport::{RemoteTransport, factory::TransportFactory},
 };
 
 struct RemotingControlShared<TB: RuntimeToolbox + 'static> {

@@ -1,10 +1,14 @@
-use alloc::vec::Vec;
+use alloc::{
+  string::{String, ToString},
+  vec,
+  vec::Vec,
+};
 
 use fraktor_actor_rs::core::{
   actor_prim::{Actor, ActorContextGeneric},
   error::ActorError,
   event_stream::{
-    EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric,
+    BackpressureSignal, EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric,
     RemotingBackpressureEvent, RemotingLifecycleEvent,
   },
   messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
@@ -17,8 +21,7 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::{
-  BackpressureSignal, RemotingBackpressureListener, RemotingControl, RemotingControlHandle, RemotingExtensionConfig,
-  RemotingExtensionId,
+  RemotingBackpressureListener, RemotingControl, RemotingControlHandle, RemotingExtensionConfig, RemotingExtensionId,
 };
 
 struct TestGuardian;

@@ -1,13 +1,14 @@
-#![cfg(test)]
+extern crate std;
 
+use alloc::{string::ToString, vec::Vec};
 use std::sync::{Arc, Mutex};
 
 use fraktor_actor_rs::core::event_stream::BackpressureSignal;
 use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 
 use crate::{
-  LoopbackTransport, RemoteTransport, RemotingError, RemotingExtensionConfig, TransportBind, TransportEndpoint,
-  TransportFactory,
+  RemotingError, RemotingExtensionConfig,
+  transport::{LoopbackTransport, RemoteTransport, TransportBind, TransportEndpoint, factory::TransportFactory},
 };
 
 #[test]
