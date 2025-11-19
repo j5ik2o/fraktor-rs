@@ -14,9 +14,9 @@ use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 use tokio::{sync::Mutex as TokioMutex, task::JoinHandle, time::sleep};
 
 use crate::core::{
-  AssociationState, DeferredEnvelope, EndpointManager, EndpointManagerCommand, EndpointManagerEffect, EndpointReader,
-  EndpointWriterGeneric, EventPublisherGeneric, HandshakeFrame, HandshakeKind, InboundFrame, RemoteNodeId,
-  RemoteTransport, RemotingEnvelope, TransportBind, TransportChannel, TransportEndpoint, TransportError,
+  AssociationState, DeferredEnvelope, EndpointManager, EndpointManagerCommand, EndpointManagerEffect,
+  EndpointReaderGeneric, EndpointWriterGeneric, EventPublisherGeneric, HandshakeFrame, HandshakeKind, InboundFrame,
+  RemoteNodeId, RemoteTransport, RemotingEnvelope, TransportBind, TransportChannel, TransportEndpoint, TransportError,
   TransportHandle, TransportInbound, WireError,
 };
 
@@ -29,7 +29,7 @@ pub struct EndpointDriverConfig<TB: RuntimeToolbox + 'static> {
   /// Shared endpoint writer feeding outbound frames.
   pub writer:          ArcShared<EndpointWriterGeneric<TB>>,
   /// Shared endpoint reader decoding inbound frames.
-  pub reader:          ArcShared<EndpointReader<TB>>,
+  pub reader:          ArcShared<EndpointReaderGeneric<TB>>,
   /// Active transport implementation.
   pub transport:       ArcShared<dyn RemoteTransport>,
   /// Event publisher for lifecycle/backpressure events.
@@ -58,7 +58,7 @@ pub(crate) struct EndpointDriver<TB: RuntimeToolbox + 'static> {
   system:          ActorSystemGeneric<TB>,
   event_publisher: EventPublisherGeneric<TB>,
   writer:          ArcShared<EndpointWriterGeneric<TB>>,
-  reader:          ArcShared<EndpointReader<TB>>,
+  reader:          ArcShared<EndpointReaderGeneric<TB>>,
   transport:       ArcShared<dyn RemoteTransport>,
   host:            String,
   port:            u16,

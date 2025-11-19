@@ -9,25 +9,31 @@ use fraktor_actor_rs::core::{
   actor_prim::actor_path::ActorPath, dead_letter::DeadLetterReason, error::SendError, messaging::AnyMessageGeneric,
   serialization::SerializationExtensionGeneric, system::ActorSystemGeneric,
 };
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::{
+  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
+  sync::ArcShared,
+};
 
 use crate::core::{
   endpoint_reader_error::EndpointReaderError, inbound_envelope::InboundEnvelope, remoting_envelope::RemotingEnvelope,
 };
 
 /// Deserializes inbound transport envelopes into runtime messages.
-pub struct EndpointReader<TB: RuntimeToolbox + 'static> {
+pub struct EndpointReaderGeneric<TB: RuntimeToolbox + 'static> {
   system:        ActorSystemGeneric<TB>,
   serialization: ArcShared<SerializationExtensionGeneric<TB>>,
 }
 
-impl<TB: RuntimeToolbox + 'static> Clone for EndpointReader<TB> {
+/// Type alias for `EndpointReaderGeneric` with the default `NoStdToolbox`.
+pub type EndpointReader = EndpointReaderGeneric<NoStdToolbox>;
+
+impl<TB: RuntimeToolbox + 'static> Clone for EndpointReaderGeneric<TB> {
   fn clone(&self) -> Self {
     Self { system: self.system.clone(), serialization: self.serialization.clone() }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> EndpointReader<TB> {
+impl<TB: RuntimeToolbox + 'static> EndpointReaderGeneric<TB> {
   /// Creates a new reader bound to the provided actor system.
   #[must_use]
   pub fn new(system: ActorSystemGeneric<TB>, serialization: ArcShared<SerializationExtensionGeneric<TB>>) -> Self {

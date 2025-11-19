@@ -18,7 +18,7 @@ use fraktor_utils_rs::core::{
 
 use crate::core::{
   EndpointWriterGeneric,
-  endpoint_reader::EndpointReader,
+  endpoint_reader::EndpointReaderGeneric,
   event_publisher::EventPublisherGeneric,
   flight_recorder::{RemotingFlightRecorder, RemotingFlightRecorderSnapshot},
   quarantine_reason::QuarantineReason,
@@ -105,7 +105,7 @@ where
   pub(crate) fn register_endpoint_io(
     &self,
     writer: ArcShared<EndpointWriterGeneric<TB>>,
-    reader: ArcShared<EndpointReader<TB>>,
+    reader: ArcShared<EndpointReaderGeneric<TB>>,
   ) {
     *self.inner.writer.lock() = Some(writer);
     *self.inner.reader.lock() = Some(reader);
@@ -212,7 +212,7 @@ where
   recorder:        RemotingFlightRecorder,
   correlation_seq: AtomicU64,
   writer:          ToolboxMutex<Option<ArcShared<EndpointWriterGeneric<TB>>>, TB>,
-  reader:          ToolboxMutex<Option<ArcShared<EndpointReader<TB>>>, TB>,
+  reader:          ToolboxMutex<Option<ArcShared<EndpointReaderGeneric<TB>>>, TB>,
   transport_ref:   ToolboxMutex<Option<ArcShared<dyn RemoteTransport>>, TB>,
   #[cfg(feature = "tokio-transport")]
   endpoint_driver: ToolboxMutex<Option<crate::std::runtime::endpoint_driver::EndpointDriverHandle>, TB>,

@@ -52,7 +52,7 @@ pub use endpoint_manager::EndpointManager;
 pub use endpoint_manager_command::EndpointManagerCommand;
 pub use endpoint_manager_effect::EndpointManagerEffect;
 pub use endpoint_manager_result::EndpointManagerResult;
-pub use endpoint_reader::EndpointReader;
+pub use endpoint_reader::{EndpointReader, EndpointReaderGeneric};
 pub use endpoint_reader_error::EndpointReaderError;
 pub use endpoint_writer::{EndpointWriter, EndpointWriterGeneric};
 pub use endpoint_writer_error::EndpointWriterError;

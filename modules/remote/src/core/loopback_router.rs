@@ -13,8 +13,8 @@ use hashbrown::HashMap;
 use spin::Mutex;
 
 use crate::core::{
-  EndpointWriterError, EndpointWriterGeneric, endpoint_reader::EndpointReader, outbound_message::OutboundMessage,
-  remote_node_id::RemoteNodeId, remoting_envelope::RemotingEnvelope,
+  EndpointWriterError, EndpointWriterGeneric, endpoint_reader::EndpointReaderGeneric,
+  outbound_message::OutboundMessage, remote_node_id::RemoteNodeId, remoting_envelope::RemotingEnvelope,
 };
 
 #[allow(dead_code)]
@@ -30,12 +30,12 @@ trait LoopbackDeliverer: Send + Sync {
 }
 
 struct LoopbackDelivererImpl<TB: RuntimeToolbox + 'static> {
-  reader: EndpointReader<TB>,
+  reader: EndpointReaderGeneric<TB>,
   system: ActorSystemGeneric<TB>,
 }
 
 impl<TB: RuntimeToolbox + 'static> LoopbackDelivererImpl<TB> {
-  fn new(reader: EndpointReader<TB>, system: ActorSystemGeneric<TB>) -> Self {
+  fn new(reader: EndpointReaderGeneric<TB>, system: ActorSystemGeneric<TB>) -> Self {
     Self { reader, system }
   }
 }
@@ -71,8 +71,11 @@ pub(crate) fn scheme() -> &'static str {
   LOOPBACK_SCHEME
 }
 
-pub(crate) fn register_endpoint<TB>(authority: String, reader: EndpointReader<TB>, system: ActorSystemGeneric<TB>)
-where
+pub(crate) fn register_endpoint<TB>(
+  authority: String,
+  reader: EndpointReaderGeneric<TB>,
+  system: ActorSystemGeneric<TB>,
+) where
   TB: RuntimeToolbox + 'static, {
   let deliverer: ArcDeliverer = ArcShared::new(LoopbackDelivererImpl::new(reader, system));
   let mut guard = REGISTRY.lock();

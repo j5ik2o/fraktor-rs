@@ -9,7 +9,7 @@ use fraktor_actor_rs::core::{
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
 use crate::core::{
-  EndpointWriterGeneric, endpoint_reader::EndpointReader, loopback_router,
+  EndpointReaderGeneric, EndpointWriterGeneric, loopback_router,
   remote_actor_ref_provider::RemoteActorRefProviderGeneric, remoting_extension::RemotingExtension,
 };
 
@@ -64,7 +64,7 @@ impl<TB: RuntimeToolbox + 'static> ActorRefProviderInstaller<TB> for RemoteActor
           "serialization extension missing for loopback routing".into(),
         ));
       };
-      let reader = EndpointReader::new(system.clone(), serialization_ext);
+      let reader = EndpointReaderGeneric::new(system.clone(), serialization_ext);
       loopback_router::register_endpoint(authority, reader, system.clone());
     }
     Ok(())
