@@ -11,20 +11,23 @@ use fraktor_actor_rs::core::{
   },
   system::ActorSystemGeneric,
 };
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
+use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 
 /// Helper that publishes remoting observability events.
-pub struct EventPublisher<TB: RuntimeToolbox + 'static> {
+pub struct EventPublisherGeneric<TB: RuntimeToolbox + 'static> {
   system: ActorSystemGeneric<TB>,
 }
 
-impl<TB: RuntimeToolbox + 'static> Clone for EventPublisher<TB> {
+/// Type alias for `EventPublisherGeneric` with the default `NoStdToolbox`.
+pub type EventPublisher = EventPublisherGeneric<NoStdToolbox>;
+
+impl<TB: RuntimeToolbox + 'static> Clone for EventPublisherGeneric<TB> {
   fn clone(&self) -> Self {
     Self { system: self.system.clone() }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> EventPublisher<TB> {
+impl<TB: RuntimeToolbox + 'static> EventPublisherGeneric<TB> {
   /// Creates a new publisher bound to the provided actor system.
   #[must_use]
   pub fn new(system: ActorSystemGeneric<TB>) -> Self {

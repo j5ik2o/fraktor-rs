@@ -57,7 +57,7 @@ fn serialization_setup() -> SerializationSetup {
     .expect("setup")
 }
 
-fn build_writer() -> (EndpointWriter<NoStdToolbox>, ActorSystemGeneric<NoStdToolbox>) {
+fn build_writer() -> (EndpointWriterGeneric<NoStdToolbox>, ActorSystemGeneric<NoStdToolbox>) {
   let system = build_system();
   let setup = serialization_setup();
   let serialization = ArcShared::new(SerializationExtensionGeneric::new(&system, setup));

@@ -13,8 +13,8 @@ use hashbrown::HashMap;
 use spin::Mutex;
 
 use crate::core::{
-  EndpointWriterError, endpoint_reader::EndpointReader, endpoint_writer::EndpointWriter,
-  outbound_message::OutboundMessage, remote_node_id::RemoteNodeId, remoting_envelope::RemotingEnvelope,
+  EndpointWriterError, EndpointWriterGeneric, endpoint_reader::EndpointReader, outbound_message::OutboundMessage,
+  remote_node_id::RemoteNodeId, remoting_envelope::RemotingEnvelope,
 };
 
 #[allow(dead_code)]
@@ -81,7 +81,7 @@ where
 
 pub(crate) fn try_deliver<TB>(
   remote: &RemoteNodeId,
-  writer: &EndpointWriter<TB>,
+  writer: &EndpointWriterGeneric<TB>,
   message: OutboundMessage<TB>,
 ) -> Result<LoopbackDeliveryOutcome<TB>, EndpointWriterError>
 where
