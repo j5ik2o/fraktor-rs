@@ -13,7 +13,7 @@ use fraktor_actor_rs::core::{
   },
   config::{ActorSystemConfig, RemotingConfig},
   error::ActorError,
-  extension::ExtensionsConfig,
+  extension::ExtensionInstallers,
   messaging::AnyMessageView,
   props::Props,
   scheduler::{ManualTestDriver, TickDriverConfig},
@@ -22,7 +22,7 @@ use fraktor_actor_rs::core::{
 };
 use fraktor_remote_rs::core::{
   LoopbackActorRefProvider, LoopbackActorRefProviderInstaller, RemotingExtensionConfig, RemotingExtensionId,
-  default_loopback_setup,
+  RemotingExtensionInstaller, default_loopback_setup,
 };
 use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 
@@ -67,15 +67,15 @@ fn build_loopback_system(
   guardian: Props,
   transport_config: RemotingExtensionConfig,
 ) -> Result<ActorSystem> {
-  let serialization_installer = SerializationExtensionInstaller::new(default_loopback_setup());
-  let extensions = ExtensionsConfig::default()
-    .with_extension_config(serialization_installer)
-    .with_extension_config(transport_config.clone());
   let system_config = ActorSystemConfig::default()
     .with_system_name(system_name.to_string())
     .with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()))
     .with_actor_ref_provider_installer(LoopbackActorRefProviderInstaller::default())
-    .with_extensions_config(extensions)
+    .with_extension_installers(
+      ExtensionInstallers::default()
+        .with_extension_installer(SerializationExtensionInstaller::new(default_loopback_setup()))
+        .with_extension_installer(RemotingExtensionInstaller::new(transport_config.clone())),
+    )
     .with_remoting_config(RemotingConfig::default().with_canonical_host(HOST).with_canonical_port(canonical_port));
   let system = ActorSystemGeneric::new_with_config(&guardian, &system_config).map_err(|error| anyhow!("{error:?}"))?;
   let id = RemotingExtensionId::<NoStdToolbox>::new(transport_config);

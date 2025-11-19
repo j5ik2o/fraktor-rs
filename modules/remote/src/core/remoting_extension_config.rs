@@ -5,16 +5,12 @@ use alloc::{
   vec::Vec,
 };
 
-use fraktor_actor_rs::core::{
-  event_stream::{BackpressureSignal, CorrelationId},
-  extension::ExtensionInstaller,
-  system::{ActorSystemBuildError, ActorSystemGeneric},
-};
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
+use fraktor_actor_rs::core::event_stream::{BackpressureSignal, CorrelationId};
+use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::{
   fn_remoting_backpressure_listener::FnRemotingBackpressureListener,
-  remoting_backpressure_listener::RemotingBackpressureListener, remoting_extension_id::RemotingExtensionId,
+  remoting_backpressure_listener::RemotingBackpressureListener,
 };
 
 /// Declarative configuration applied when the remoting extension is installed.
@@ -128,16 +124,5 @@ impl RemotingExtensionConfig {
 impl Default for RemotingExtensionConfig {
   fn default() -> Self {
     Self::new()
-  }
-}
-
-impl<TB> ExtensionInstaller<TB> for RemotingExtensionConfig
-where
-  TB: RuntimeToolbox + 'static,
-{
-  fn install(&self, system: &ActorSystemGeneric<TB>) -> Result<(), ActorSystemBuildError> {
-    let id = RemotingExtensionId::<TB>::new(self.clone());
-    let _ = system.extended().register_extension(&id);
-    Ok(())
   }
 }

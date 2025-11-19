@@ -13,7 +13,7 @@ use fraktor_actor_rs::core::{
   },
   config::{ActorSystemConfig, RemotingConfig},
   error::ActorError,
-  extension::ExtensionsConfig,
+  extension::ExtensionInstallers,
   messaging::AnyMessageView,
   props::Props,
   scheduler::{ManualTestDriver, TickDriverConfig},
@@ -21,8 +21,8 @@ use fraktor_actor_rs::core::{
   system::ActorSystem,
 };
 use fraktor_remote_rs::core::{
-  RemotingExtensionConfig, RemotingExtensionId, TokioActorRefProvider, TokioActorRefProviderInstaller,
-  TokioTransportConfig, default_loopback_setup,
+  RemotingExtensionConfig, RemotingExtensionId, RemotingExtensionInstaller, TokioActorRefProvider,
+  TokioActorRefProviderInstaller, TokioTransportConfig, default_loopback_setup,
 };
 use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 
@@ -68,16 +68,16 @@ fn build_tokio_tcp_system(
   guardian: Props,
   transport_config: RemotingExtensionConfig,
 ) -> Result<ActorSystem> {
-  let serialization_installer = SerializationExtensionInstaller::new(default_loopback_setup());
-  let extensions = ExtensionsConfig::default()
-    .with_extension_config(serialization_installer)
-    .with_extension_config(transport_config.clone());
   let system_config = ActorSystemConfig::default()
     .with_system_name(system_name.to_string())
     .with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()))
     .with_actor_ref_provider_installer(TokioActorRefProviderInstaller::from_config(TokioTransportConfig::default()))
-    .with_extensions_config(extensions)
-    .with_remoting_config(RemotingConfig::default().with_canonical_host(HOST).with_canonical_port(canonical_port));
+    .with_remoting_config(RemotingConfig::default().with_canonical_host(HOST).with_canonical_port(canonical_port))
+    .with_extension_installers(
+      ExtensionInstallers::default()
+        .with_extension_installer(SerializationExtensionInstaller::new(default_loopback_setup()))
+        .with_extension_installer(RemotingExtensionInstaller::new(transport_config.clone())),
+    );
   let system = ActorSystem::new_with_config(&guardian, &system_config).map_err(|error| anyhow!("{error:?}"))?;
   let id = RemotingExtensionId::<NoStdToolbox>::new(transport_config);
   let _ = system.extended().extension(&id).expect("extension registered");

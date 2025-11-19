@@ -245,15 +245,15 @@ fn bootstrap_remoting() -> Result<ActorSystem, RemotingError> {
     .with_backpressure_listener(|signal: BackpressureSignal, authority| {
       tracing::warn!(?signal, %authority, "remote backpressure");
     });
-  let extensions_config = ExtensionsConfig::default()
-    .with_extension_config(remoting_extension_config)
-    // .with_extension_config(cluster_extension_config)
+  let extension_installers = ExtensionInstallers::default()
+    .with_extension_installer(remoting_extension_config)
+    // .with_extension_installer(cluster_extension_config)
     ;
 
   let system = ActorSystemBuilder::new(user_guardian_props)
     .with_tick_driver(StdTickDriverConfig::tokio_quickstart())
     .with_actor_ref_provider(RemoteActorRefProvider::std()) // Provider をリモート対応版へ差し替える
-    .with_extensions_config(extensions_config)
+    .with_extension_installers(extension_installers)
     .build()?;
 
   Ok(system)
@@ -263,7 +263,7 @@ fn bootstrap_remoting() -> Result<ActorSystem, RemotingError> {
 ## 旧→新 API 対応表
 | 旧 API / 型 | 新 API / 型 | 置換手順 | 備考 |
 | --- | --- | --- | --- |
-| Remoting 未提供 | `ActorSystemBuilder::with_extensions_config` | RemotingExtensionConfig を builder に渡す | SystemGuardian 配下に自動で EndpointSupervisor を spawn |
+| Remoting 未提供 | `ActorSystemBuilder::with_extension_installers` | RemotingExtensionConfig を builder に渡す | SystemGuardian 配下に自動で EndpointSupervisor を spawn |
 | 明示的 Transport 実装なし | `RemoteTransport` + `TransportFactory` | RemotingConfig に scheme を記述 (`fraktor.tcp://`) | ユーザはトランスポート具象型へアクセス不要 |
 | 監視ログ手動収集 | `RemotingFlightRecorder`/EventStream | EventStream を購読する監視コードへ差し替え | RemotingLifecycleEvent で listen/associate/gate を通知 |
 
@@ -308,7 +308,7 @@ pub struct RemotingControlHandle {
 ### Runtime 配線の必須条件 (2025-11-18 追記)
 - ActorSystem 側: `with_actor_ref_provider` で登録された Provider を、ActorRef 生成・Path 解決・ActorSelection 経路で必ず利用する。ローカル PID が見つからない場合は Provider がリモート authority 判定を行い、`RemoteActorRefSender` を返却する。Pekko の `ExtendedActorSystem` と同様に、拡張／provider／guardian などのメタ情報は ActorSystem が保持し、`systemActorOf`/`provider`/`guardian`/`systemGuardian` といった API も ExtendedActorSystem 側に実装する（Builder や Extension に責務を持たせない）。これにより Pekko 互換の内部 API（ライブラリ／拡張向け）を Rust 実装でも再現する。
 - ActorSystemBuilder は `build` で独自の初期化処理（extensions/provider の直接登録など）を行わない。初期化は `ActorSystemGeneric` 側に委譲し、Builder は `ActorSystemConfig` を構築して渡すだけとする。
-- ActorSystem に渡す設定はすべて `ActorSystemConfig` に集約し、個別の Builder メソッドや手続き的初期化で状態を隠し持たない。ExtensionsConfig や ActorRefProviderInstaller も Config 経由で渡すことを徹底する。
+- ActorSystem に渡す設定はすべて `ActorSystemConfig` に集約し、個別の Builder メソッドや手続き的初期化で状態を隠し持たない。ExtensionInstallers や ActorRefProviderInstaller も Config 経由で渡すことを徹底する。
 - RemotingControl 側: EndpointWriter/Reader を保持し、transport の listen/open/send/receive までを管理する。Loopback/Tokio など transport 実装に依存せず、Outbound→Transport→Inbound→Mailbox のストリームを中核として扱う。
 - RemoteAuthorityManager: defer キューには `AnyMessage` だけでなく、宛先パス・RemoteNodeId を含む `OutboundEnvelope` を保存する。Connected へ復帰した時点で EndpointWriter に再投入できることを受け入れ条件とする。
 - Quickstart / Example: `modules/remote/tests/quickstart.rs` と `modules/remote/examples/loopback_quickstart.rs` で実際に ping/pong を往復させ、背圧と FlightRecorder の観測列まで検証する。ドキュメント (`docs/guides/remoting-quickstart.md`) とコード例は常に同期させる。

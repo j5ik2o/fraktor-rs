@@ -12,7 +12,7 @@ use fraktor_actor_rs::core::{
   event_stream::{
     BackpressureSignal, EventStreamEvent, EventStreamSubscriber, EventStreamSubscriptionGeneric, RemotingLifecycleEvent,
   },
-  extension::ExtensionsConfig,
+  extension::ExtensionInstallers,
   messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
   props::PropsGeneric,
   scheduler::{ManualTestDriver, TickDriverConfig},
@@ -21,7 +21,8 @@ use fraktor_actor_rs::core::{
 };
 use fraktor_remote_rs::core::{
   FlightMetricKind, FnRemotingBackpressureListener, LoopbackActorRefProvider, LoopbackActorRefProviderInstaller,
-  RemotingControl, RemotingControlHandle, RemotingExtensionConfig, RemotingExtensionId, default_loopback_setup,
+  RemotingControl, RemotingControlHandle, RemotingExtensionConfig, RemotingExtensionId, RemotingExtensionInstaller,
+  default_loopback_setup,
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdMutex, NoStdToolbox},
@@ -62,14 +63,15 @@ fn build_system(
 ) -> (ActorSystemGeneric<NoStdToolbox>, RemotingControlHandle<NoStdToolbox>) {
   let props = PropsGeneric::from_fn(|| NoopActor).with_name("quickstart-guardian");
   let serialization_installer = SerializationExtensionInstaller::new(default_loopback_setup());
-  let extensions =
-    ExtensionsConfig::default().with_extension_config(serialization_installer).with_extension_config(config.clone());
+  let extensions = ExtensionInstallers::default()
+    .with_extension_installer(serialization_installer)
+    .with_extension_installer(RemotingExtensionInstaller::new(config.clone()));
   let remoting_config = fraktor_actor_rs::core::config::RemotingConfig::default()
     .with_canonical_host("127.0.0.1")
     .with_canonical_port(25500);
   let system_config = ActorSystemConfig::default()
     .with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()))
-    .with_extensions_config(extensions)
+    .with_extension_installers(extensions)
     .with_actor_ref_provider_installer(LoopbackActorRefProviderInstaller::default())
     .with_remoting_config(remoting_config);
   let system = ActorSystemGeneric::new_with_config(&props, &system_config).expect("system");

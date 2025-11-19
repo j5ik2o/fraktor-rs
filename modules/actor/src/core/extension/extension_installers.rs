@@ -7,20 +7,20 @@ use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 use super::ExtensionInstaller;
 use crate::core::system::{ActorSystemBuildError, ActorSystemGeneric};
 
-/// Builder-side configuration for registering extensions automatically.
-pub struct ExtensionsConfig<TB>
+/// Collection of extension installers to be registered with the actor system.
+pub struct ExtensionInstallers<TB>
 where
   TB: RuntimeToolbox + 'static, {
   installers: Vec<ArcShared<dyn ExtensionInstaller<TB>>>,
 }
 
-impl<TB> ExtensionsConfig<TB>
+impl<TB> ExtensionInstallers<TB>
 where
   TB: RuntimeToolbox + 'static,
 {
   /// Adds a new installer to be executed after the actor system boots.
   #[must_use]
-  pub fn with_extension_config<E>(mut self, installer: E) -> Self
+  pub fn with_extension_installer<E>(mut self, installer: E) -> Self
   where
     E: ExtensionInstaller<TB> + 'static, {
     self.installers.push(ArcShared::new(installer));
@@ -35,7 +35,7 @@ where
   }
 }
 
-impl<TB> Default for ExtensionsConfig<TB>
+impl<TB> Default for ExtensionInstallers<TB>
 where
   TB: RuntimeToolbox + 'static,
 {

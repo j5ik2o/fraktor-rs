@@ -13,7 +13,7 @@ use fraktor_actor_rs::core::{
     EventStreamSubscriptionGeneric,
     BackpressureSignal,
   },
-  extension::ExtensionsConfig,
+  extension::ExtensionInstallers,
   messaging::AnyMessageViewGeneric,
   props::PropsGeneric,
   scheduler::{ManualTestDriver, TickDriverConfig},
@@ -66,10 +66,10 @@ fn bootstrap(
   config: RemotingExtensionConfig,
 ) -> (ActorSystemGeneric<NoStdToolbox>, RemotingControlHandle<NoStdToolbox>) {
   let props = PropsGeneric::from_fn(|| NoopActor).with_name("remoting-test-guardian");
-  let extensions = ExtensionsConfig::default().with_extension_config(config.clone());
+  let extensions = ExtensionInstallers::default().with_extension_installer(config.clone());
   let system_config = ActorSystemConfig::default()
     .with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()))
-    .with_extensions_config(extensions);
+    .with_extension_installers(extensions);
   let system = ActorSystemGeneric::new_with_config(&props, &system_config)
     .expect("actor system");
   let id = RemotingExtensionId::<NoStdToolbox>::new(config);

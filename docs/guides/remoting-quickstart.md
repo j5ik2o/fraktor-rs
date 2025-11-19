@@ -5,13 +5,13 @@ RemotingExtension と RemoteActorRefProvider を組み合わせて、2 つの Ac
 ## 1. RemotingExtension の設定
 
 1. `RemotingExtensionConfig` で canonical host/port、AutoStart を定義します。
-2. `ExtensionsConfig` に `with_extension_config(remoting_config)` で登録します（Builder が自動登録します）。
+2. `ExtensionInstallers` に `with_extension_installer(remoting_config)` で登録します（Builder が自動登録します）。
 3. `ActorSystemBuilder` 側で TickDriver を必ずセットします。テストでは `TickDriverConfig::manual(ManualTestDriver::new())` がシンプルです。
 
 ```rust
 use fraktor_actor_rs::core::{
   actor_prim::{Actor, ActorContextGeneric, actor_path::ActorPathParts},
-  extension::ExtensionsConfig,
+  extension::ExtensionInstallers,
   messaging::AnyMessageViewGeneric,
   props::PropsGeneric,
   scheduler::{tick_driver::ManualTestDriver, TickDriverConfig},
@@ -29,10 +29,10 @@ fn bootstrap(name: &str, port: u16) -> anyhow::Result<(
     .with_canonical_host("127.0.0.1")
     .with_canonical_port(port)
     .with_auto_start(false);
-  let extensions = ExtensionsConfig::default().with_extension_config(remoting_config.clone());
+  let extensions = ExtensionInstallers::default().with_extension_installer(remoting_config.clone());
   let system = ActorSystemBuilder::new(props)
     .with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()))
-    .with_extensions_config(extensions)
+    .with_extension_installers(extensions)
     .with_actor_ref_provider(RemoteActorRefProvider::loopback())
     .build()?;
 

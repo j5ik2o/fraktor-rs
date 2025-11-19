@@ -129,8 +129,8 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     system.bootstrap(user_guardian_props, configure)?;
 
     // Install extensions and provider after bootstrap
-    if let Some(extensions) = config.extensions_config() {
-      extensions.install_all(&system).map_err(|e| SpawnError::from_actor_system_build_error(&e))?;
+    if let Some(installers) = config.extension_installers() {
+      installers.install_all(&system).map_err(|e| SpawnError::from_actor_system_build_error(&e))?;
     }
 
     if let Some(installer) = config.provider_installer() {
