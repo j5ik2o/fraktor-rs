@@ -71,6 +71,7 @@ impl EndpointManager {
         EndpointManagerResult { effects: vec![EndpointManagerEffect::StartHandshake { authority, endpoint }] }
       },
       | EndpointManagerCommand::EnqueueDeferred { authority, envelope } => {
+        let envelope = *envelope;
         let mut registry = self.registry.lock();
         if matches!(registry.state(&authority), Some(AssociationState::Connected { .. })) {
           return EndpointManagerResult {

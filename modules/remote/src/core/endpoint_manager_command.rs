@@ -31,7 +31,7 @@ pub enum EndpointManagerCommand {
     /// Authority whose queue receives the envelope.
     authority: String,
     /// Envelope waiting for the association to complete.
-    envelope:  DeferredEnvelope,
+    envelope:  alloc::boxed::Box<DeferredEnvelope>,
   },
   /// Marks the handshake as completed and stores the remote node identity.
   HandshakeAccepted {

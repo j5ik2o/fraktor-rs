@@ -55,13 +55,15 @@ impl<TB: RuntimeToolbox + 'static> ActorRefProviderInstaller<TB> for TokioActorR
       return Err(ActorSystemBuildError::Configuration("serialization extension not installed".into()));
     };
 
-    let writer = ArcShared::new(EndpointWriter::new(system.clone(), serialization));
+    let writer = ArcShared::new(EndpointWriter::new(system.clone(), serialization.clone()));
+    let reader = ArcShared::new(EndpointReader::new(system.clone(), serialization));
 
     let Some(extension) = extended.extension_by_type::<RemotingExtension<TB>>() else {
       return Err(ActorSystemBuildError::Configuration("remoting extension not installed".into()));
     };
 
     let control = extension.handle();
+    control.register_endpoint_io(writer.clone(), reader.clone());
     let authority_manager = system.state().remote_authority_manager().clone();
     let provider = TokioActorRefProviderGeneric::from_components(
       system.clone(),
@@ -79,13 +81,7 @@ impl<TB: RuntimeToolbox + 'static> ActorRefProviderInstaller<TB> for TokioActorR
       let Some(authority) = system.canonical_authority() else {
         return Err(ActorSystemBuildError::Configuration("canonical authority missing for loopback routing".into()));
       };
-      let Some(serialization_ext) = extended.extension_by_type::<SerializationExtensionGeneric<TB>>() else {
-        return Err(ActorSystemBuildError::Configuration(
-          "serialization extension missing for loopback routing".into(),
-        ));
-      };
-      let reader = EndpointReader::new(system.clone(), serialization_ext);
-      loopback_router::register_endpoint(authority, reader, system.clone());
+      loopback_router::register_endpoint(authority, (*reader).clone(), system.clone());
     }
     Ok(())
   }

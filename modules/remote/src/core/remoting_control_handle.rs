@@ -17,6 +17,8 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::core::{
+  endpoint_reader::EndpointReader,
+  endpoint_writer::EndpointWriter,
   event_publisher::EventPublisher,
   flight_recorder::{RemotingFlightRecorder, RemotingFlightRecorderSnapshot},
   quarantine_reason::QuarantineReason,
@@ -25,7 +27,7 @@ use crate::core::{
   remoting_control::RemotingControl,
   remoting_error::RemotingError,
   remoting_extension_config::RemotingExtensionConfig,
-  transport::TransportBackpressureHook,
+  transport::{RemoteTransport, TransportBackpressureHook},
 };
 
 /// Shared handle used by endpoints and providers to drive remoting.
@@ -65,6 +67,11 @@ where
       snapshots: <TB::MutexFamily as SyncMutexFamily>::create(Vec::new()),
       recorder: RemotingFlightRecorder::new(config.flight_recorder_capacity()),
       correlation_seq: AtomicU64::new(1),
+      writer: <TB::MutexFamily as SyncMutexFamily>::create(None),
+      reader: <TB::MutexFamily as SyncMutexFamily>::create(None),
+      transport_ref: <TB::MutexFamily as SyncMutexFamily>::create(None),
+      #[cfg(feature = "tokio-transport")]
+      endpoint_driver: <TB::MutexFamily as SyncMutexFamily>::create(None),
     };
     Self { inner: ArcShared::new(inner) }
   }
@@ -86,6 +93,23 @@ where
   fn ensure_can_run(&self) -> Result<(), RemotingError> {
     let guard = self.inner.state.lock();
     guard.ensure_running()
+  }
+
+  /// Registers the transport instance used by the runtime.
+  pub(crate) fn register_transport(&self, transport: ArcShared<dyn RemoteTransport>) {
+    *self.inner.transport_ref.lock() = Some(transport);
+    let _ = self.inner.try_bootstrap_runtime();
+  }
+
+  /// Registers endpoint IO components required for transport bridging.
+  pub(crate) fn register_endpoint_io(
+    &self,
+    writer: ArcShared<EndpointWriter<TB>>,
+    reader: ArcShared<EndpointReader<TB>>,
+  ) {
+    *self.inner.writer.lock() = Some(writer);
+    *self.inner.reader.lock() = Some(reader);
+    let _ = self.inner.try_bootstrap_runtime();
   }
 
   fn register_listener_dyn(&self, listener: ArcShared<dyn RemotingBackpressureListener>) {
@@ -142,6 +166,7 @@ where
     }
     self.inner.event_publisher.publish_lifecycle(RemotingLifecycleEvent::Starting);
     self.inner.event_publisher.publish_lifecycle(RemotingLifecycleEvent::Started);
+    self.inner.try_bootstrap_runtime()?;
     Ok(())
   }
 
@@ -186,6 +211,11 @@ where
   snapshots:       ToolboxMutex<Vec<RemoteAuthoritySnapshot>, TB>,
   recorder:        RemotingFlightRecorder,
   correlation_seq: AtomicU64,
+  writer:          ToolboxMutex<Option<ArcShared<EndpointWriter<TB>>>, TB>,
+  reader:          ToolboxMutex<Option<ArcShared<EndpointReader<TB>>>, TB>,
+  transport_ref:   ToolboxMutex<Option<ArcShared<dyn RemoteTransport>>, TB>,
+  #[cfg(feature = "tokio-transport")]
+  endpoint_driver: ToolboxMutex<Option<crate::std::runtime::endpoint_driver::EndpointDriverHandle>, TB>,
 }
 
 impl<TB> RemotingControlInner<TB>
@@ -200,6 +230,48 @@ where
   fn record_backpressure(&self, authority: &str, signal: BackpressureSignal, correlation_id: CorrelationId) {
     let millis = self.system.state().monotonic_now().as_millis() as u64;
     self.recorder.record_backpressure(authority.to_string(), signal, correlation_id, millis);
+  }
+
+  fn try_bootstrap_runtime(&self) -> Result<(), RemotingError> {
+    #[cfg(feature = "tokio-transport")]
+    {
+      if !self.state.lock().is_running() {
+        return Ok(());
+      }
+      let mut driver_guard = self.endpoint_driver.lock();
+      if driver_guard.is_some() {
+        return Ok(());
+      }
+      let Some(transport) = self.transport_ref.lock().clone() else {
+        return Ok(());
+      };
+      let Some(writer) = self.writer.lock().clone() else {
+        return Ok(());
+      };
+      let Some(reader) = self.reader.lock().clone() else {
+        return Ok(());
+      };
+      if self._canonical_host.is_empty() {
+        return Err(RemotingError::TransportUnavailable("canonical host not configured".into()));
+      }
+      let port = self
+        ._canonical_port
+        .ok_or_else(|| RemotingError::TransportUnavailable("canonical port not configured".into()))?;
+      let config = crate::std::runtime::endpoint_driver::EndpointDriverConfig {
+        system: self.system.clone(),
+        writer,
+        reader,
+        transport,
+        event_publisher: self.event_publisher.clone(),
+        canonical_host: self._canonical_host.clone(),
+        canonical_port: port,
+        system_name: self.system.state().system_name(),
+      };
+      let handle = crate::std::runtime::endpoint_driver::EndpointDriver::spawn(config)
+        .map_err(|error| RemotingError::TransportUnavailable(format!("{error:?}")))?;
+      *driver_guard = Some(handle);
+    }
+    Ok(())
   }
 }
 

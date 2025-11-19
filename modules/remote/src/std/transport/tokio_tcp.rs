@@ -6,22 +6,25 @@ mod tests;
 use alloc::{
   collections::BTreeMap,
   string::{String, ToString},
+  sync::Arc,
   vec::Vec,
 };
-use core::fmt;
+use core::{fmt, future::Future};
+use std::thread;
 
 use fraktor_actor_rs::core::event_stream::{BackpressureSignal, CorrelationId};
 use fraktor_utils_rs::core::{runtime_toolbox::NoStdMutex, sync::ArcShared};
 use tokio::{
   io::{AsyncReadExt, AsyncWriteExt},
   net::{TcpListener, TcpStream},
-  runtime::Handle,
+  runtime::{Builder, Runtime},
   sync::mpsc,
+  task::JoinHandle,
 };
 
 use crate::core::{
-  RemoteTransport, TransportBackpressureHook, TransportBind, TransportChannel, TransportEndpoint, TransportError,
-  TransportHandle,
+  InboundFrame, RemoteTransport, TransportBackpressureHook, TransportBind, TransportChannel, TransportEndpoint,
+  TransportError, TransportHandle, TransportInbound,
 };
 
 const BACKPRESSURE_THRESHOLD: usize = 1024;
@@ -31,7 +34,8 @@ const CHANNEL_BUFFER_SIZE: usize = 256;
 pub struct TokioTcpTransport {
   state:   ArcShared<NoStdMutex<TokioTcpState>>,
   hook:    ArcShared<NoStdMutex<Option<ArcShared<dyn TransportBackpressureHook>>>>,
-  runtime: Handle,
+  inbound: ArcShared<NoStdMutex<Option<ArcShared<dyn TransportInbound>>>>,
+  runtime: Arc<Runtime>,
 }
 
 struct TokioTcpState {
@@ -41,7 +45,7 @@ struct TokioTcpState {
 }
 
 struct ListenerHandle {
-  _task: tokio::task::JoinHandle<()>,
+  _task: JoinHandle<()>,
 }
 
 struct ChannelHandle {
@@ -68,29 +72,48 @@ impl Default for TokioTcpTransport {
 }
 
 impl TokioTcpTransport {
-  /// Creates a new Tokio TCP transport using the current runtime.
+  /// Creates a new Tokio TCP transport backed by an internal Tokio runtime.
   #[must_use]
   pub fn new() -> Self {
-    Self::with_runtime(Handle::current())
+    Self::try_new().expect("tokio runtime unavailable")
   }
 
-  /// Creates a new Tokio TCP transport with the specified runtime handle.
-  #[must_use]
-  pub fn with_runtime(runtime: Handle) -> Self {
+  /// Attempts to create a new transport instance, returning a transport error on failure.
+  pub fn try_new() -> Result<Self, TransportError> {
+    let runtime = thread::spawn(|| Builder::new_multi_thread().enable_time().enable_io().build())
+      .join()
+      .map_err(|_| TransportError::Io("failed to join tokio runtime builder thread".into()))?
+      .map_err(|error| TransportError::Io(format!("failed to build tokio runtime: {error}")))?;
+    Ok(Self::with_runtime(runtime))
+  }
+
+  /// Creates a new Tokio TCP transport using the provided runtime.
+  pub fn with_runtime(runtime: Runtime) -> Self {
     Self {
-      state: ArcShared::new(NoStdMutex::new(TokioTcpState {
+      state:   ArcShared::new(NoStdMutex::new(TokioTcpState {
         listeners:    BTreeMap::new(),
         channels:     BTreeMap::new(),
         next_channel: 1,
       })),
-      hook: ArcShared::new(NoStdMutex::new(None)),
-      runtime,
+      hook:    ArcShared::new(NoStdMutex::new(None)),
+      inbound: ArcShared::new(NoStdMutex::new(None)),
+      runtime: Arc::new(runtime),
     }
   }
 
   /// Builds a transport instance for the factory.
   pub(crate) fn build() -> Result<Self, TransportError> {
-    Ok(Self::new())
+    Self::try_new()
+  }
+
+  fn block_on_future<F, T>(&self, future: F) -> Result<T, TransportError>
+  where
+    F: Future<Output = Result<T, TransportError>> + Send + 'static,
+    T: Send + 'static, {
+    let runtime = self.runtime.clone();
+    thread::spawn(move || runtime.block_on(future))
+      .join()
+      .map_err(|_| TransportError::Io("tokio runtime worker panicked".into()))?
   }
 
   fn encode_frame(payload: &[u8], correlation_id: CorrelationId) -> Vec<u8> {
@@ -114,14 +137,17 @@ impl TokioTcpTransport {
     listener: TcpListener,
     authority: String,
     hook: ArcShared<NoStdMutex<Option<ArcShared<dyn TransportBackpressureHook>>>>,
+    inbound: ArcShared<NoStdMutex<Option<ArcShared<dyn TransportInbound>>>>,
   ) {
     loop {
       match listener.accept().await {
-        | Ok((stream, _peer)) => {
+        | Ok((stream, peer)) => {
           let authority_clone = authority.clone();
           let hook_clone = hook.clone();
+          let inbound_clone = inbound.clone();
+          let remote = peer.to_string();
           tokio::spawn(async move {
-            if let Err(e) = Self::handle_inbound(stream, &authority_clone, hook_clone).await {
+            if let Err(e) = Self::handle_inbound(stream, &authority_clone, &remote, hook_clone, inbound_clone).await {
               eprintln!("Inbound connection error: {e:?}");
             }
           });
@@ -137,7 +163,9 @@ impl TokioTcpTransport {
   async fn handle_inbound(
     mut stream: TcpStream,
     authority: &str,
+    remote: &str,
     hook: ArcShared<NoStdMutex<Option<ArcShared<dyn TransportBackpressureHook>>>>,
+    inbound: ArcShared<NoStdMutex<Option<ArcShared<dyn TransportInbound>>>>,
   ) -> Result<(), TransportError> {
     let mut buffer = Vec::new();
     loop {
@@ -158,6 +186,9 @@ impl TokioTcpTransport {
       let _payload = &buffer[12..];
       if let Some(hook_ref) = hook.lock().clone() {
         hook_ref.on_backpressure(BackpressureSignal::Release, authority, correlation_id);
+      }
+      if let Some(handler) = inbound.lock().clone() {
+        handler.on_frame(InboundFrame::new(authority, remote.to_string(), buffer[12..].to_vec(), correlation_id));
       }
     }
     Ok(())
@@ -193,13 +224,16 @@ impl RemoteTransport for TokioTcpTransport {
   fn spawn_listener(&self, bind: &TransportBind) -> Result<TransportHandle, TransportError> {
     let authority = bind.authority().to_string();
     let hook = self.hook.clone();
+    let inbound = self.inbound.clone();
 
-    let listener = self
-      .runtime
-      .block_on(async { TcpListener::bind(&authority).await })
-      .map_err(|e| TransportError::Io(format!("bind failed: {e}")))?;
+    let listener = {
+      let authority_clone = authority.clone();
+      self.block_on_future(async move {
+        TcpListener::bind(&authority_clone).await.map_err(|e| TransportError::Io(format!("bind failed: {e}")))
+      })?
+    };
 
-    let task = self.runtime.spawn(Self::accept_loop(listener, authority.clone(), hook));
+    let task = self.runtime.spawn(Self::accept_loop(listener, authority.clone(), hook, inbound));
 
     let mut guard = self.state.lock();
     guard.listeners.insert(authority.clone(), ListenerHandle { _task: task });
@@ -211,10 +245,12 @@ impl RemoteTransport for TokioTcpTransport {
     let authority = endpoint.authority().to_string();
     let hook = self.hook.clone();
 
-    let stream = self
-      .runtime
-      .block_on(async { TcpStream::connect(&authority).await })
-      .map_err(|e| TransportError::Io(format!("connection failed: {e}")))?;
+    let stream = {
+      let authority_clone = authority.clone();
+      self.block_on_future(async move {
+        TcpStream::connect(&authority_clone).await.map_err(|e| TransportError::Io(format!("connection failed: {e}")))
+      })?
+    };
 
     let (sender, receiver) = mpsc::channel(CHANNEL_BUFFER_SIZE);
 
@@ -250,5 +286,9 @@ impl RemoteTransport for TokioTcpTransport {
 
   fn install_backpressure_hook(&self, hook: ArcShared<dyn TransportBackpressureHook>) {
     *self.hook.lock() = Some(hook);
+  }
+
+  fn install_inbound_handler(&self, handler: ArcShared<dyn TransportInbound>) {
+    *self.inbound.lock() = Some(handler);
   }
 }

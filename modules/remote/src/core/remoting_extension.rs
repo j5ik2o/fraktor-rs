@@ -49,6 +49,7 @@ where
     let control = RemotingControlHandle::new(system.clone(), config.clone());
     let transport = TransportFactory::build(config)?;
     transport.install_backpressure_hook(control.backpressure_hook());
+    control.register_transport(transport.clone());
     let guardian = system.system_guardian_ref().ok_or(RemotingError::SystemGuardianUnavailable)?;
     let supervisor = spawn_endpoint_supervisor(system, &guardian, control.clone())?;
     register_shutdown_hook(&guardian, &supervisor)?;

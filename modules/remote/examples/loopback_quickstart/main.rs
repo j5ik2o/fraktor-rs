@@ -29,20 +29,23 @@ use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 const HOST: &str = "127.0.0.1";
 const RECEIVER_PORT: u16 = 25520;
 const SENDER_PORT: u16 = 25521;
+const RECEIVER_GUARDIAN_NAME: &str = "receiver-guardian";
+const SENDER_GUARDIAN_NAME: &str = "sender-guardian";
 
 fn main() -> Result<()> {
-  let receiver = build_loopback_system(
+  let (receiver, receiver_driver) = build_loopback_system(
     "loopback-receiver",
     RECEIVER_PORT,
-    Props::from_fn(ReceiverGuardian::new).with_name("receiver-guardian"),
+    Props::from_fn(ReceiverGuardian::new).with_name(RECEIVER_GUARDIAN_NAME),
     receiver_transport_config(),
   )?;
-  let sender = build_loopback_system(
+  let (sender, sender_driver) = build_loopback_system(
     "loopback-sender",
     SENDER_PORT,
-    Props::from_fn(SenderGuardian::new).with_name("sender-guardian"),
+    Props::from_fn(SenderGuardian::new).with_name(SENDER_GUARDIAN_NAME),
     sender_transport_config(),
   )?;
+  pump_manual_drivers(&[&receiver_driver, &sender_driver], 10);
 
   let provider = sender.extended().actor_ref_provider::<LoopbackActorRefProvider>().expect("provider installed");
 
@@ -54,6 +57,7 @@ fn main() -> Result<()> {
     .map_err(|error| anyhow!("{error:?}"))?;
   println!("sender -> remote: ping over remoting");
 
+  pump_manual_drivers(&[&receiver_driver, &sender_driver], 20);
   thread::sleep(Duration::from_millis(100));
 
   drop(sender);
@@ -66,10 +70,12 @@ fn build_loopback_system(
   canonical_port: u16,
   guardian: Props,
   transport_config: RemotingExtensionConfig,
-) -> Result<ActorSystem> {
+) -> Result<(ActorSystem, ManualTestDriver<NoStdToolbox>)> {
+  let manual_driver = ManualTestDriver::new();
+  let driver_handle = manual_driver.clone();
   let system_config = ActorSystemConfig::default()
     .with_system_name(system_name.to_string())
-    .with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()))
+    .with_tick_driver(TickDriverConfig::manual(manual_driver))
     .with_actor_ref_provider_installer(LoopbackActorRefProviderInstaller::default())
     .with_extension_installers(
       ExtensionInstallers::default()
@@ -80,7 +86,16 @@ fn build_loopback_system(
   let system = ActorSystemGeneric::new_with_config(&guardian, &system_config).map_err(|error| anyhow!("{error:?}"))?;
   let id = RemotingExtensionId::<NoStdToolbox>::new(transport_config);
   let _ = system.extended().extension(&id).expect("extension registered");
-  Ok(system)
+  Ok((system, driver_handle))
+}
+
+fn pump_manual_drivers(drivers: &[&ManualTestDriver<NoStdToolbox>], ticks: u32) {
+  for _ in 0..ticks {
+    for driver in drivers {
+      let controller = driver.controller();
+      controller.inject_and_drive(1);
+    }
+  }
 }
 
 fn receiver_transport_config() -> RemotingExtensionConfig {
@@ -99,7 +114,7 @@ fn receiver_authority_parts() -> ActorPathParts {
 
 fn remote_echo_path() -> ActorPath {
   let parts = receiver_authority_parts().with_guardian(GuardianKind::User);
-  ActorPath::from_parts(parts).child("echo")
+  ActorPath::from_parts(parts).child(RECEIVER_GUARDIAN_NAME).child("echo")
 }
 
 struct SenderGuardian;

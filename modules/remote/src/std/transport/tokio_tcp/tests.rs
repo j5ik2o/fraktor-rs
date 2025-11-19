@@ -4,7 +4,6 @@ use core::time::Duration;
 use std::thread;
 
 use fraktor_actor_rs::core::event_stream::CorrelationId;
-use tokio::runtime::Runtime;
 
 use super::super::TokioTcpTransport;
 use crate::core::{RemoteTransport, TransportBind, TransportEndpoint};
@@ -15,18 +14,12 @@ fn find_free_port() -> u16 {
 
 #[test]
 fn transport_scheme_is_fraktor_tcp() {
-  let rt = Runtime::new().expect("runtime");
-  let _guard = rt.enter();
-
   let transport = TokioTcpTransport::default();
   assert_eq!(transport.scheme(), "fraktor.tcp");
 }
 
 #[test]
 fn can_spawn_listener() {
-  let rt = Runtime::new().expect("runtime");
-  let _guard = rt.enter();
-
   let transport = TokioTcpTransport::default();
   let port = find_free_port();
   let bind = TransportBind::new("127.0.0.1", Some(port));
@@ -36,9 +29,6 @@ fn can_spawn_listener() {
 
 #[test]
 fn can_open_channel() {
-  let rt = Runtime::new().expect("runtime");
-  let _guard = rt.enter();
-
   let transport = TokioTcpTransport::default();
   let port = find_free_port();
   let bind = TransportBind::new("127.0.0.1", Some(port));
@@ -54,9 +44,6 @@ fn can_open_channel() {
 
 #[test]
 fn can_send_message() {
-  let rt = Runtime::new().expect("runtime");
-  let _guard = rt.enter();
-
   let transport = TokioTcpTransport::default();
   let port = find_free_port();
   let bind = TransportBind::new("127.0.0.1", Some(port));

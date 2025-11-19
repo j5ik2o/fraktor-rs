@@ -41,12 +41,14 @@ impl<TB: RuntimeToolbox + 'static> ActorRefProviderInstaller<TB> for LoopbackAct
     };
 
     let writer = ArcShared::new(EndpointWriter::new(system.clone(), serialization.clone()));
+    let reader = ArcShared::new(EndpointReader::new(system.clone(), serialization.clone()));
 
     let Some(extension) = extended.extension_by_type::<RemotingExtension<TB>>() else {
       return Err(ActorSystemBuildError::Configuration("remoting extension not installed".into()));
     };
 
     let control = extension.handle();
+    control.register_endpoint_io(writer.clone(), reader.clone());
     let authority_manager = system.state().remote_authority_manager().clone();
     let provider = LoopbackActorRefProviderGeneric::from_components(system.clone(), writer, control, authority_manager)
       .map_err(|error| ActorSystemBuildError::Configuration(format!("{error}")))?;
@@ -58,8 +60,7 @@ impl<TB: RuntimeToolbox + 'static> ActorRefProviderInstaller<TB> for LoopbackAct
     let Some(authority) = system.canonical_authority() else {
       return Err(ActorSystemBuildError::Configuration("canonical authority missing for loopback routing".into()));
     };
-    let reader = EndpointReader::new(system.clone(), serialization);
-    loopback_router::register_endpoint(authority, reader, system.clone());
+    loopback_router::register_endpoint(authority, (*reader).clone(), system.clone());
     Ok(())
   }
 }
