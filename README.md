@@ -25,8 +25,8 @@ fraktor-rs is a specification-driven actor runtime that mirrors Akka/Pekko and p
 ```mermaid
 flowchart LR
     subgraph Utils [fraktor-utils-rs]
-        UC[core (#![no_std])]
-        US[std (host helpers)]
+        UC[core: no_std]
+        US[std: host helpers]
     end
     subgraph Actor [fraktor-actor-rs]
         AC[core]
