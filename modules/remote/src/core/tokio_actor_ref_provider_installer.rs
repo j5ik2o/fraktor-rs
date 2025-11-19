@@ -36,7 +36,7 @@ impl<TB: RuntimeToolbox + 'static> TokioActorRefProviderInstaller<TB> {
 
   /// Creates a Tokio transport installer with loopback routing enabled.
   #[must_use]
-  pub fn loopback(transport_config: TokioTransportConfig) -> Self {
+  pub fn from_config_with_loopback(transport_config: TokioTransportConfig) -> Self {
     Self::new(transport_config, true)
   }
 }
