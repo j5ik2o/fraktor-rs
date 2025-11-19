@@ -17,9 +17,13 @@ use fraktor_actor_rs::core::{
   messaging::AnyMessageView,
   props::Props,
   scheduler::{ManualTestDriver, TickDriverConfig},
+  serialization::SerializationExtensionInstaller,
   system::{ActorSystem, ActorSystemGeneric},
 };
-use fraktor_remote_rs::core::{RemoteActorRefProvider, RemotingExtensionConfig, RemotingExtensionId};
+use fraktor_remote_rs::core::{
+  LoopbackActorRefProvider, LoopbackActorRefProviderInstaller, RemotingExtensionConfig, RemotingExtensionId,
+  default_loopback_setup,
+};
 use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 
 const HOST: &str = "127.0.0.1";
@@ -40,7 +44,7 @@ fn main() -> Result<()> {
     sender_transport_config(),
   )?;
 
-  let provider = sender.extended().actor_ref_provider::<RemoteActorRefProvider>().expect("provider installed");
+  let provider = sender.extended().actor_ref_provider::<LoopbackActorRefProvider>().expect("provider installed");
 
   provider.watch_remote(receiver_authority_parts()).map_err(|error| anyhow!("{error}"))?;
 
@@ -63,11 +67,14 @@ fn build_loopback_system(
   guardian: Props,
   transport_config: RemotingExtensionConfig,
 ) -> Result<ActorSystem> {
-  let extensions = ExtensionsConfig::default().with_extension_config(transport_config.clone());
+  let serialization_installer = SerializationExtensionInstaller::new(default_loopback_setup());
+  let extensions = ExtensionsConfig::default()
+    .with_extension_config(serialization_installer)
+    .with_extension_config(transport_config.clone());
   let system_config = ActorSystemConfig::default()
     .with_system_name(system_name.to_string())
     .with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()))
-    .with_actor_ref_provider(RemoteActorRefProvider::loopback())
+    .with_actor_ref_provider_installer(LoopbackActorRefProviderInstaller::default())
     .with_extensions_config(extensions)
     .with_remoting_config(RemotingConfig::default().with_canonical_host(HOST).with_canonical_port(canonical_port));
   let system = ActorSystemGeneric::new_with_config(&guardian, &system_config).map_err(|error| anyhow!("{error:?}"))?;

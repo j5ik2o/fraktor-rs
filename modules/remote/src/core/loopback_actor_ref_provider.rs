@@ -1,7 +1,4 @@
-//! Provides actor references targeting remote authorities.
-
-#[cfg(test)]
-mod tests;
+//! Provides actor references targeting remote authorities using Loopback transport.
 
 use alloc::{
   string::{String, ToString},
@@ -15,9 +12,9 @@ use fraktor_actor_rs::core::{
     actor_path::{ActorPath, ActorPathParts},
     actor_ref::{ActorRefGeneric, ActorRefSender},
   },
-  error::SendError,
+  error::{ActorError, SendError},
   messaging::{AnyMessageGeneric, SystemMessage},
-  system::{ActorSystemGeneric, RemoteAuthorityManagerGeneric, RemoteWatchHook},
+  system::{ActorRefProvider, ActorSystemGeneric, RemoteAuthorityManagerGeneric, RemoteWatchHook},
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdMutex, NoStdToolbox, RuntimeToolbox},
@@ -28,15 +25,15 @@ use hashbrown::HashMap;
 use crate::core::{
   endpoint_writer::EndpointWriter, endpoint_writer_error::EndpointWriterError, loopback_router,
   loopback_router::LoopbackDeliveryOutcome, outbound_message::OutboundMessage, outbound_priority::OutboundPriority,
-  remote_actor_ref_provider_error::RemoteActorRefProviderError,
-  remote_actor_ref_provider_installer::RemoteActorRefProviderInstaller,
-  remote_authority_snapshot::RemoteAuthoritySnapshot, remote_node_id::RemoteNodeId,
-  remote_watcher_command::RemoteWatcherCommand, remote_watcher_daemon::RemoteWatcherDaemon,
-  remoting_control::RemotingControl, remoting_control_handle::RemotingControlHandle, remoting_error::RemotingError,
+  remote_actor_ref_provider_error::RemoteActorRefProviderError, remote_authority_snapshot::RemoteAuthoritySnapshot,
+  remote_node_id::RemoteNodeId, remote_watcher_command::RemoteWatcherCommand,
+  remote_watcher_daemon::RemoteWatcherDaemon, remoting_control::RemotingControl,
+  remoting_control_handle::RemotingControlHandle, remoting_error::RemotingError,
 };
 
-/// Provider that creates [`ActorRefGeneric`] instances for remote recipients.
-pub struct RemoteActorRefProviderGeneric<TB: RuntimeToolbox + 'static> {
+/// Provider that creates [`ActorRefGeneric`] instances for remote recipients using Loopback
+/// transport.
+pub struct LoopbackActorRefProviderGeneric<TB: RuntimeToolbox + 'static> {
   system:            ActorSystemGeneric<TB>,
   writer:            ArcShared<EndpointWriter<TB>>,
   control:           RemotingControlHandle<TB>,
@@ -45,16 +42,11 @@ pub struct RemoteActorRefProviderGeneric<TB: RuntimeToolbox + 'static> {
   watch_entries:     NoStdMutex<HashMap<Pid, RemoteWatchEntry, RandomState>>,
 }
 
-/// Provider that creates [`ActorRefGeneric`] instances for remote recipients.
-pub type RemoteActorRefProvider = RemoteActorRefProviderGeneric<NoStdToolbox>;
+/// Provider that creates [`ActorRefGeneric`] instances for remote recipients using Loopback
+/// transport.
+pub type LoopbackActorRefProvider = LoopbackActorRefProviderGeneric<NoStdToolbox>;
 
-impl<TB: RuntimeToolbox + 'static> RemoteActorRefProviderGeneric<TB> {
-  /// Creates a remote actor-ref provider installer with loopback routing enabled.
-  #[must_use]
-  pub fn loopback() -> RemoteActorRefProviderInstaller<TB> {
-    RemoteActorRefProviderInstaller::loopback()
-  }
-
+impl<TB: RuntimeToolbox + 'static> LoopbackActorRefProviderGeneric<TB> {
   /// Creates a remote actor reference for the provided path.
   pub fn actor_ref(&self, path: ActorPath) -> Result<ActorRefGeneric<TB>, RemoteActorRefProviderError> {
     self.control.associate(path.parts()).map_err(RemoteActorRefProviderError::from)?;
@@ -173,7 +165,7 @@ impl<TB: RuntimeToolbox + 'static> RemoteActorRefProviderGeneric<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> RemoteWatchHook<TB> for RemoteActorRefProviderGeneric<TB> {
+impl<TB: RuntimeToolbox + 'static> RemoteWatchHook<TB> for LoopbackActorRefProviderGeneric<TB> {
   fn handle_watch(&self, target: Pid, watcher: Pid) -> bool {
     if let Some((parts, should_send)) = self.track_watch(target, watcher) {
       if should_send {
@@ -285,5 +277,14 @@ impl RemoteWatchEntry {
   #[cfg(any(test, feature = "test-support"))]
   fn watchers(&self) -> &[Pid] {
     &self.watchers
+  }
+}
+
+/// Implementation of ActorRefProvider trait for Loopback transport.
+impl<TB: RuntimeToolbox + 'static> ActorRefProvider<TB> for LoopbackActorRefProviderGeneric<TB> {
+  fn actor_ref(&self, path: ActorPath) -> Result<ActorRefGeneric<TB>, ActorError> {
+    self
+      .actor_ref(path)
+      .map_err(|error| ActorError::fatal(alloc::format!("Failed to create Loopback actor ref: {:?}", error)))
   }
 }

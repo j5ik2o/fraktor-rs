@@ -17,9 +17,13 @@ use fraktor_actor_rs::core::{
   messaging::AnyMessageView,
   props::Props,
   scheduler::{ManualTestDriver, TickDriverConfig},
+  serialization::SerializationExtensionInstaller,
   system::ActorSystem,
 };
-use fraktor_remote_rs::core::{RemoteActorRefProvider, RemotingExtensionConfig, RemotingExtensionId};
+use fraktor_remote_rs::core::{
+  RemotingExtensionConfig, RemotingExtensionId, TokioActorRefProvider, TokioActorRefProviderInstaller,
+  TokioTransportConfig, default_loopback_setup,
+};
 use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 
 const HOST: &str = "127.0.0.1";
@@ -41,7 +45,7 @@ async fn main() -> Result<()> {
     sender_transport_config(),
   )?;
 
-  let provider = sender.extended().actor_ref_provider::<RemoteActorRefProvider>().expect("provider installed");
+  let provider = sender.extended().actor_ref_provider::<TokioActorRefProvider>().expect("provider installed");
 
   provider.watch_remote(receiver_authority_parts()).map_err(|error| anyhow!("{error}"))?;
 
@@ -64,11 +68,14 @@ fn build_tokio_tcp_system(
   guardian: Props,
   transport_config: RemotingExtensionConfig,
 ) -> Result<ActorSystem> {
-  let extensions = ExtensionsConfig::default().with_extension_config(transport_config.clone());
+  let serialization_installer = SerializationExtensionInstaller::new(default_loopback_setup());
+  let extensions = ExtensionsConfig::default()
+    .with_extension_config(serialization_installer)
+    .with_extension_config(transport_config.clone());
   let system_config = ActorSystemConfig::default()
     .with_system_name(system_name.to_string())
     .with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()))
-    .with_actor_ref_provider(RemoteActorRefProvider::loopback())
+    .with_actor_ref_provider_installer(TokioActorRefProviderInstaller::from_config(TokioTransportConfig::default()))
     .with_extensions_config(extensions)
     .with_remoting_config(RemotingConfig::default().with_canonical_host(HOST).with_canonical_port(canonical_port));
   let system = ActorSystem::new_with_config(&guardian, &system_config).map_err(|error| anyhow!("{error:?}"))?;

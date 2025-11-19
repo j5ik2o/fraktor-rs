@@ -1,4 +1,4 @@
-//! Builder-facing installer for the remote actor-ref provider.
+//! Builder-facing installer for the Tokio TCP actor-ref provider.
 
 use alloc::format;
 
@@ -10,30 +10,44 @@ use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
 use crate::core::{
   endpoint_reader::EndpointReader, endpoint_writer::EndpointWriter, loopback_router,
-  remote_actor_ref_provider::RemoteActorRefProviderGeneric, remoting_extension::RemotingExtension,
+  remoting_extension::RemotingExtension, tokio_actor_ref_provider::TokioActorRefProviderGeneric,
+  transport::TokioTransportConfig,
 };
 
-/// Installer registered via [`ActorSystemBuilder::with_actor_ref_provider`].
-pub struct RemoteActorRefProviderInstaller<TB: RuntimeToolbox + 'static> {
-  enable_loopback: bool,
-  _marker:         core::marker::PhantomData<TB>,
+/// Installer for Tokio TCP actor-ref provider.
+pub struct TokioActorRefProviderInstaller<TB: RuntimeToolbox + 'static> {
+  transport_config: TokioTransportConfig,
+  enable_loopback:  bool,
+  _marker:          core::marker::PhantomData<TB>,
 }
 
-impl<TB: RuntimeToolbox + 'static> RemoteActorRefProviderInstaller<TB> {
-  /// Creates a remote actor-ref provider installer with loopback routing enabled.
+impl<TB: RuntimeToolbox + 'static> TokioActorRefProviderInstaller<TB> {
+  /// Creates a new Tokio actor-ref provider installer.
   #[must_use]
-  pub fn loopback() -> Self {
-    Self { enable_loopback: true, _marker: core::marker::PhantomData }
+  pub fn new(transport_config: TokioTransportConfig, enable_loopback: bool) -> Self {
+    Self { transport_config, enable_loopback, _marker: core::marker::PhantomData }
+  }
+
+  /// Creates a Tokio TCP transport installer (loopback routing disabled).
+  #[must_use]
+  pub fn from_config(transport_config: TokioTransportConfig) -> Self {
+    Self::new(transport_config, false)
+  }
+
+  /// Creates a Tokio transport installer with loopback routing enabled.
+  #[must_use]
+  pub fn loopback(transport_config: TokioTransportConfig) -> Self {
+    Self::new(transport_config, true)
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Default for RemoteActorRefProviderInstaller<TB> {
+impl<TB: RuntimeToolbox + 'static> Default for TokioActorRefProviderInstaller<TB> {
   fn default() -> Self {
-    Self { enable_loopback: false, _marker: core::marker::PhantomData }
+    Self::from_config(TokioTransportConfig::default())
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> ActorRefProviderInstaller<TB> for RemoteActorRefProviderInstaller<TB> {
+impl<TB: RuntimeToolbox + 'static> ActorRefProviderInstaller<TB> for TokioActorRefProviderInstaller<TB> {
   fn install(&self, system: &ActorSystemGeneric<TB>) -> Result<(), ActorSystemBuildError> {
     let extended = system.extended();
 
@@ -49,8 +63,14 @@ impl<TB: RuntimeToolbox + 'static> ActorRefProviderInstaller<TB> for RemoteActor
 
     let control = extension.handle();
     let authority_manager = system.state().remote_authority_manager().clone();
-    let provider = RemoteActorRefProviderGeneric::from_components(system.clone(), writer, control, authority_manager)
-      .map_err(|error| ActorSystemBuildError::Configuration(format!("{error}")))?;
+    let provider = TokioActorRefProviderGeneric::from_components(
+      system.clone(),
+      writer,
+      control,
+      authority_manager,
+      self.transport_config.clone(),
+    )
+    .map_err(|error| ActorSystemBuildError::Configuration(format!("{error}")))?;
     let provider = ArcShared::new(provider);
     extended.register_actor_ref_provider(provider.clone());
     extended.register_remote_watch_hook(provider.clone());

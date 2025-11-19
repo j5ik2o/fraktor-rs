@@ -76,10 +76,10 @@ where
 
   /// Registers a custom actor-ref provider installer.
   #[must_use]
-  pub fn with_actor_ref_provider<P>(mut self, provider: P) -> Self
+  pub fn with_actor_ref_provider_installer<P>(mut self, installer: P) -> Self
   where
     P: ActorRefProviderInstaller<TB> + 'static, {
-    self.provider_installer = Some(ArcShared::new(provider));
+    self.provider_installer = Some(ArcShared::new(installer));
     self
   }
 

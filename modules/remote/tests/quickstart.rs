@@ -16,11 +16,12 @@ use fraktor_actor_rs::core::{
   messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
   props::PropsGeneric,
   scheduler::{ManualTestDriver, TickDriverConfig},
+  serialization::SerializationExtensionInstaller,
   system::{ActorSystemGeneric, AuthorityState, RemoteWatchHook},
 };
 use fraktor_remote_rs::core::{
-  FlightMetricKind, FnRemotingBackpressureListener, RemoteActorRefProvider, RemotingControl, RemotingControlHandle,
-  RemotingExtensionConfig, RemotingExtensionId,
+  FlightMetricKind, FnRemotingBackpressureListener, LoopbackActorRefProvider, LoopbackActorRefProviderInstaller,
+  RemotingControl, RemotingControlHandle, RemotingExtensionConfig, RemotingExtensionId, default_loopback_setup,
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdMutex, NoStdToolbox},
@@ -60,11 +61,17 @@ fn build_system(
   config: RemotingExtensionConfig,
 ) -> (ActorSystemGeneric<NoStdToolbox>, RemotingControlHandle<NoStdToolbox>) {
   let props = PropsGeneric::from_fn(|| NoopActor).with_name("quickstart-guardian");
-  let extensions = ExtensionsConfig::default().with_extension_config(config.clone());
+  let serialization_installer = SerializationExtensionInstaller::new(default_loopback_setup());
+  let extensions =
+    ExtensionsConfig::default().with_extension_config(serialization_installer).with_extension_config(config.clone());
+  let remoting_config = fraktor_actor_rs::core::config::RemotingConfig::default()
+    .with_canonical_host("127.0.0.1")
+    .with_canonical_port(25500);
   let system_config = ActorSystemConfig::default()
     .with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()))
     .with_extensions_config(extensions)
-    .with_actor_ref_provider(RemoteActorRefProvider::loopback());
+    .with_actor_ref_provider_installer(LoopbackActorRefProviderInstaller::default())
+    .with_remoting_config(remoting_config);
   let system = ActorSystemGeneric::new_with_config(&props, &system_config).expect("system");
   let id = RemotingExtensionId::<NoStdToolbox>::new(config);
   let extension = system.extended().extension(&id).expect("extension registered");
@@ -102,7 +109,7 @@ fn quickstart_loopback_provider_flow() -> Result<()> {
       move |signal, authority, _| hits.lock().push(format!("{authority}:{signal:?}"))
     });
   let (system, handle) = build_system(config);
-  let provider = system.extended().actor_ref_provider::<RemoteActorRefProvider>().expect("provider installed");
+  let provider = system.extended().actor_ref_provider::<LoopbackActorRefProvider>().expect("provider installed");
   let runtime_hits: ArcShared<NoStdMutex<Vec<String>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
   handle.register_backpressure_listener(FnRemotingBackpressureListener::new({
     let hits = runtime_hits.clone();
@@ -162,7 +169,7 @@ fn remote_provider_enqueues_message() -> Result<()> {
   let config = RemotingExtensionConfig::default().with_auto_start(false);
   let (system, handle) = build_system(config);
   handle.start().map_err(|error| anyhow!("{error}"))?;
-  let provider = system.extended().actor_ref_provider::<RemoteActorRefProvider>().expect("provider installed");
+  let provider = system.extended().actor_ref_provider::<LoopbackActorRefProvider>().expect("provider installed");
   provider
     .watch_remote(ActorPathParts::with_authority("remote-system", Some(("127.0.0.1", 25520))))
     .map_err(|error| anyhow!("{error}"))?;
@@ -182,7 +189,7 @@ fn remote_watch_hook_handles_system_watch_messages() -> Result<()> {
   let config = RemotingExtensionConfig::default().with_auto_start(false);
   let (system, handle) = build_system(config);
   handle.start().map_err(|error| anyhow!("{error}"))?;
-  let provider = system.extended().actor_ref_provider::<RemoteActorRefProvider>().expect("provider installed");
+  let provider = system.extended().actor_ref_provider::<LoopbackActorRefProvider>().expect("provider installed");
   let remote = provider.actor_ref(remote_path()).expect("remote actor ref");
   let watcher = Pid::new(7777, 0);
 

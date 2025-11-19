@@ -16,6 +16,8 @@ mod failure_detector;
 mod flight_recorder;
 mod fn_remoting_backpressure_listener;
 mod inbound_envelope;
+mod loopback_actor_ref_provider;
+mod loopback_actor_ref_provider_installer;
 mod loopback_router;
 mod outbound_message;
 mod outbound_priority;
@@ -35,6 +37,9 @@ mod remoting_error;
 mod remoting_extension;
 mod remoting_extension_config;
 mod remoting_extension_id;
+mod serialization_utils;
+mod tokio_actor_ref_provider;
+mod tokio_actor_ref_provider_installer;
 pub mod transport;
 
 pub use association_state::AssociationState;
@@ -52,6 +57,8 @@ pub use failure_detector::{PhiFailureDetector, PhiFailureDetectorConfig, PhiFail
 pub use flight_recorder::{FlightMetricKind, RemotingFlightRecorder, RemotingFlightRecorderSnapshot, RemotingMetric};
 pub use fn_remoting_backpressure_listener::FnRemotingBackpressureListener;
 pub use inbound_envelope::InboundEnvelope;
+pub use loopback_actor_ref_provider::{LoopbackActorRefProvider, LoopbackActorRefProviderGeneric};
+pub use loopback_actor_ref_provider_installer::LoopbackActorRefProviderInstaller;
 pub use outbound_message::OutboundMessage;
 pub use outbound_priority::OutboundPriority;
 pub use quarantine_reason::QuarantineReason;
@@ -69,7 +76,10 @@ pub use remoting_error::RemotingError;
 pub use remoting_extension::RemotingExtension;
 pub use remoting_extension_config::RemotingExtensionConfig;
 pub use remoting_extension_id::RemotingExtensionId;
+pub use serialization_utils::default_loopback_setup;
+pub use tokio_actor_ref_provider::{TokioActorRefProvider, TokioActorRefProviderGeneric};
+pub use tokio_actor_ref_provider_installer::TokioActorRefProviderInstaller;
 pub use transport::{
-  LoopbackTransport, RemoteTransport, TransportBackpressureHook, TransportBind, TransportChannel, TransportEndpoint,
-  TransportError, TransportFactory, TransportHandle,
+  LoopbackTransport, RemoteTransport, TokioTransportConfig, TransportBackpressureHook, TransportBind, TransportChannel,
+  TransportEndpoint, TransportError, TransportFactory, TransportHandle,
 };

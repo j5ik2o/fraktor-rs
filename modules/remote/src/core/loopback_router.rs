@@ -17,6 +17,7 @@ use crate::core::{
   outbound_message::OutboundMessage, remote_node_id::RemoteNodeId, remoting_envelope::RemotingEnvelope,
 };
 
+#[allow(dead_code)]
 const LOOPBACK_SCHEME: &str = "fraktor.loopback";
 
 pub(crate) enum LoopbackDeliveryOutcome<TB: RuntimeToolbox + 'static> {
@@ -65,6 +66,7 @@ type ArcDeliverer = ArcShared<dyn LoopbackDeliverer>;
 
 static REGISTRY: Mutex<Option<HashMap<String, ArcDeliverer, RandomState>>> = Mutex::new(None);
 
+#[allow(dead_code)]
 pub(crate) fn scheme() -> &'static str {
   LOOPBACK_SCHEME
 }

@@ -12,6 +12,7 @@ mod error_event;
 mod extension;
 mod not_serializable_error;
 mod serialization_extension_id;
+mod serialization_extension_installer;
 mod serialization_registry;
 mod serialization_setup;
 mod serialized_message;
@@ -48,6 +49,8 @@ pub use extension::{SerializationExtension, SerializationExtensionGeneric};
 pub use not_serializable_error::NotSerializableError;
 // Re-exports from serialization_extension_id
 pub use serialization_extension_id::SerializationExtensionId;
+// Re-exports from serialization_extension_installer
+pub use serialization_extension_installer::SerializationExtensionInstaller;
 // Re-exports from serialization_registry
 pub use serialization_registry::{SerializationRegistry, SerializationRegistryGeneric, SerializerResolutionOrigin};
 // Re-exports from serialization_setup
