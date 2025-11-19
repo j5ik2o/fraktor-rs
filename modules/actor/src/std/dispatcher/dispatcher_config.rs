@@ -2,9 +2,10 @@ use fraktor_utils_rs::{core::sync::ArcShared, std::runtime_toolbox::StdToolbox};
 
 use super::{CoreDispatchExecutorAdapter, DispatchExecutor, DispatchExecutorAdapter, Dispatcher, StdScheduleAdapter};
 use crate::core::{
-  dispatcher::{DispatchExecutor as CoreDispatchExecutor, ScheduleAdapter},
+  dispatcher::{
+    DispatchExecutor as CoreDispatchExecutor, DispatcherConfigGeneric as CoreDispatcherConfigGeneric, ScheduleAdapter,
+  },
   mailbox::MailboxGeneric,
-  props::DispatcherConfigGeneric as CoreDispatcherConfigGeneric,
   spawn::SpawnError,
 };
 

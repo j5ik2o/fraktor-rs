@@ -16,11 +16,11 @@ use fraktor_utils_rs::core::{
 use super::ActorSystem;
 use crate::core::{
   actor_prim::{Actor, ActorCell},
-  dispatcher::{DispatchError, DispatchExecutor, DispatchSharedGeneric},
+  dispatcher::{DispatchError, DispatchExecutor, DispatchSharedGeneric, DispatcherConfig},
   event_stream::{EventStreamEvent, EventStreamSubscriber},
   lifecycle::LifecycleStage,
   messaging::SystemMessage,
-  props::{DispatcherConfig, MailboxConfig, MailboxRequirement, Props},
+  props::{MailboxConfig, MailboxRequirement, Props},
   scheduler::{
     AutoDriverMetadata, AutoProfileKind, SchedulerConfig, SchedulerContext, TickDriverId, TickDriverKind,
     TickDriverMetadata,
@@ -336,11 +336,16 @@ fn actor_system_terminate_when_already_terminated() {
 fn spawn_does_not_block_when_dispatcher_never_runs() {
   let system = ActorSystem::new_empty();
   let log: ArcShared<NoStdMutex<Vec<&'static str>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
+
+  // Register NoopExecutor as "noop" dispatcher
+  let noop_config = DispatcherConfig::from_executor(ArcShared::new(NoopExecutor::new()));
+  system.state().dispatchers().register("noop", noop_config.clone()).expect("register noop dispatcher");
+
   let props = Props::from_fn({
     let log = log.clone();
     move || SpawnRecorderActor::new(log.clone())
   })
-  .with_dispatcher(DispatcherConfig::from_executor(ArcShared::new(NoopExecutor::new())));
+  .with_dispatcher_id("noop"); // Use dispatcher_id instead of with_dispatcher
 
   let child = system.spawn_with_parent(None, &props).expect("spawn succeeds");
   assert!(log.lock().is_empty());

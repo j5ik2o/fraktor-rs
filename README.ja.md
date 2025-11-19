@@ -25,8 +25,8 @@ fraktor-rs は Akka/Pekko と protoactor-go のライフサイクル／監視／
 ```mermaid
 flowchart LR
     subgraph Utils [fraktor-utils-rs]
-        UC[core (#![no_std])]
-        US[std (host helpers)]
+        UC[core: no_std]
+        US[std: host helpers]
     end
     subgraph Actor [fraktor-actor-rs]
         AC[core]

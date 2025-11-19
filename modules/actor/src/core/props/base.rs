@@ -6,21 +6,19 @@ use fraktor_utils_rs::core::{
   sync::ArcShared,
 };
 
-use super::{
-  dispatcher_config::DispatcherConfigGeneric, factory::ActorFactory, mailbox_config::MailboxConfig,
-  mailbox_requirement::MailboxRequirement,
-};
-use crate::core::{actor_prim::Actor, mailbox::MailboxPolicy};
+use super::{factory::ActorFactory, mailbox_config::MailboxConfig, mailbox_requirement::MailboxRequirement};
+use crate::core::{actor_prim::Actor, dispatcher::DispatcherConfigGeneric, mailbox::MailboxPolicy};
 
 /// Immutable configuration describing how to construct an actor.
 pub struct PropsGeneric<TB: RuntimeToolbox + 'static> {
-  factory:       ArcShared<dyn ActorFactory<TB>>,
-  name:          Option<String>,
-  mailbox:       MailboxConfig,
-  mailbox_id:    Option<String>,
-  middleware:    Vec<String>,
-  dispatcher:    DispatcherConfigGeneric<TB>,
-  dispatcher_id: Option<String>,
+  factory:           ArcShared<dyn ActorFactory<TB>>,
+  name:              Option<String>,
+  mailbox:           MailboxConfig,
+  mailbox_id:        Option<String>,
+  middleware:        Vec<String>,
+  dispatcher:        DispatcherConfigGeneric<TB>,
+  dispatcher_id:     Option<String>,
+  dispatcher_custom: bool,
 }
 
 /// Type alias for [PropsGeneric] with the default [NoStdToolbox].
@@ -38,6 +36,7 @@ impl<TB: RuntimeToolbox + 'static> PropsGeneric<TB> {
       middleware: Vec::new(),
       dispatcher: DispatcherConfigGeneric::default(),
       dispatcher_id: None,
+      dispatcher_custom: false,
     }
   }
 
@@ -98,6 +97,10 @@ impl<TB: RuntimeToolbox + 'static> PropsGeneric<TB> {
     &self.dispatcher
   }
 
+  pub(crate) const fn has_custom_dispatcher(&self) -> bool {
+    self.dispatcher_custom
+  }
+
   /// Returns the configured dispatcher identifier, if any.
   #[must_use]
   pub fn dispatcher_id(&self) -> Option<&str> {
@@ -134,6 +137,7 @@ impl<TB: RuntimeToolbox + 'static> PropsGeneric<TB> {
   pub fn with_dispatcher(mut self, dispatcher: DispatcherConfigGeneric<TB>) -> Self {
     self.dispatcher = dispatcher;
     self.dispatcher_id = None;
+    self.dispatcher_custom = true;
     self
   }
 
@@ -141,6 +145,7 @@ impl<TB: RuntimeToolbox + 'static> PropsGeneric<TB> {
   #[must_use]
   pub fn with_dispatcher_id(mut self, id: impl Into<String>) -> Self {
     self.dispatcher_id = Some(id.into());
+    self.dispatcher_custom = false;
     self
   }
 
@@ -169,6 +174,7 @@ impl<TB: RuntimeToolbox + 'static> PropsGeneric<TB> {
   pub(crate) fn with_resolved_dispatcher(mut self, dispatcher: DispatcherConfigGeneric<TB>) -> Self {
     self.dispatcher = dispatcher;
     self.dispatcher_id = None;
+    self.dispatcher_custom = true;
     self
   }
 
@@ -182,13 +188,14 @@ impl<TB: RuntimeToolbox + 'static> PropsGeneric<TB> {
 impl<TB: RuntimeToolbox + 'static> Clone for PropsGeneric<TB> {
   fn clone(&self) -> Self {
     Self {
-      factory:       self.factory.clone(),
-      name:          self.name.clone(),
-      mailbox:       self.mailbox,
-      mailbox_id:    self.mailbox_id.clone(),
-      middleware:    self.middleware.clone(),
-      dispatcher:    self.dispatcher.clone(),
-      dispatcher_id: self.dispatcher_id.clone(),
+      factory:           self.factory.clone(),
+      name:              self.name.clone(),
+      mailbox:           self.mailbox,
+      mailbox_id:        self.mailbox_id.clone(),
+      middleware:        self.middleware.clone(),
+      dispatcher:        self.dispatcher.clone(),
+      dispatcher_id:     self.dispatcher_id.clone(),
+      dispatcher_custom: self.dispatcher_custom,
     }
   }
 }

@@ -7,7 +7,7 @@ use fraktor_utils_rs::core::{
 };
 use hashbrown::HashMap;
 
-use crate::core::{config::ConfigError, props::MailboxConfig};
+use crate::core::{mailbox::MailboxRegistryError, props::MailboxConfig};
 
 #[cfg(test)]
 mod tests;
@@ -33,12 +33,12 @@ impl<TB: RuntimeToolbox + 'static> MailboxesGeneric<TB> {
   ///
   /// # Errors
   ///
-  /// Returns [`ConfigError::MailboxDuplicate`] when the identifier already exists.
-  pub fn register(&self, id: impl Into<String>, config: MailboxConfig) -> Result<(), ConfigError> {
+  /// Returns [`MailboxRegistryError::Duplicate`] when the identifier already exists.
+  pub fn register(&self, id: impl Into<String>, config: MailboxConfig) -> Result<(), MailboxRegistryError> {
     let mut entries = self.entries.lock();
     let id = id.into();
     if entries.contains_key(&id) {
-      return Err(ConfigError::mailbox_duplicate(&id));
+      return Err(MailboxRegistryError::duplicate(&id));
     }
     entries.insert(id, config);
     Ok(())
@@ -48,9 +48,9 @@ impl<TB: RuntimeToolbox + 'static> MailboxesGeneric<TB> {
   ///
   /// # Errors
   ///
-  /// Returns [`ConfigError::MailboxUnknown`] when the identifier has not been registered.
-  pub fn resolve(&self, id: &str) -> Result<MailboxConfig, ConfigError> {
-    self.entries.lock().get(id).copied().ok_or_else(|| ConfigError::mailbox_unknown(id))
+  /// Returns [`MailboxRegistryError::Unknown`] when the identifier has not been registered.
+  pub fn resolve(&self, id: &str) -> Result<MailboxConfig, MailboxRegistryError> {
+    self.entries.lock().get(id).copied().ok_or_else(|| MailboxRegistryError::unknown(id))
   }
 
   /// Ensures the default mailbox configuration is registered.

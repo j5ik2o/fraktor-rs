@@ -6,9 +6,9 @@ pub use crate::std::dispatcher::{DispatchExecutor, DispatchShared, Dispatcher, D
 use crate::{
   core::{
     actor_prim::Pid,
-    config::ActorSystemConfig,
     event_stream::{EventStreamSubscriber as CoreEventStreamSubscriber, TickDriverSnapshot},
     logging::LogLevel,
+    scheduler::TickDriverConfig,
     spawn::SpawnError,
     system::{
       ActorSystemGeneric as CoreActorSystemGeneric, ExtendedActorSystemGeneric,
@@ -25,6 +25,7 @@ use crate::{
     futures::ActorFuture,
     messaging::AnyMessage,
     props::Props,
+    system::ActorSystemConfig,
   },
 };
 
@@ -47,10 +48,7 @@ impl ActorSystem {
   ///
   /// Returns [`SpawnError`] when the user guardian props cannot be initialised or tick driver setup
   /// fails.
-  pub fn new(
-    props: &Props,
-    tick_driver_config: crate::core::scheduler::TickDriverConfig<StdToolbox>,
-  ) -> Result<Self, SpawnError> {
+  pub fn new(props: &Props, tick_driver_config: TickDriverConfig<StdToolbox>) -> Result<Self, SpawnError> {
     CoreActorSystemGeneric::new(props.as_core(), tick_driver_config).map(Self::from_core)
   }
 
@@ -60,8 +58,8 @@ impl ActorSystem {
   ///
   /// Returns [`SpawnError::InvalidProps`] when the user guardian props cannot be
   /// initialised with the supplied configuration.
-  pub fn new_with_config(props: &Props, config: &ActorSystemConfig<StdToolbox>) -> Result<Self, SpawnError> {
-    CoreActorSystemGeneric::new_with_config(props.as_core(), config).map(Self::from_core)
+  pub fn new_with_config(props: &Props, config: &ActorSystemConfig) -> Result<Self, SpawnError> {
+    CoreActorSystemGeneric::new_with_config(props.as_core(), config.as_core()).map(Self::from_core)
   }
 
   /// Creates an empty actor system without any guardian (testing helper).

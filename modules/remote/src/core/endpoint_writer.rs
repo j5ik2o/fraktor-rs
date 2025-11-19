@@ -18,7 +18,7 @@ use fraktor_utils_rs::core::{
     QueueError, SyncFifoQueueShared, SyncQueue,
     backend::{OfferOutcome, OverflowPolicy, VecDequeBackend},
   },
-  runtime_toolbox::RuntimeToolbox,
+  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
   sync::{ArcShared, sync_mutex_like::SpinSyncMutex},
 };
 
@@ -30,7 +30,7 @@ use crate::core::{
 const DEFAULT_QUEUE_CAPACITY: usize = 128;
 
 /// Serializes outbound messages, enforcing priority and backpressure.
-pub struct EndpointWriter<TB: RuntimeToolbox + 'static> {
+pub struct EndpointWriterGeneric<TB: RuntimeToolbox + 'static> {
   #[allow(dead_code)]
   system:        ActorSystemGeneric<TB>,
   serialization: ArcShared<SerializationExtensionGeneric<TB>>,
@@ -41,7 +41,10 @@ pub struct EndpointWriter<TB: RuntimeToolbox + 'static> {
   _marker:       PhantomData<TB>,
 }
 
-impl<TB: RuntimeToolbox + 'static> EndpointWriter<TB> {
+/// Type alias for `EndpointWriterGeneric` with the default `NoStdToolbox`.
+pub type EndpointWriter = EndpointWriterGeneric<NoStdToolbox>;
+
+impl<TB: RuntimeToolbox + 'static> EndpointWriterGeneric<TB> {
   /// Creates a writer bound to the provided actor system and serialization extension.
   #[must_use]
   pub fn new(system: ActorSystemGeneric<TB>, serialization: ArcShared<SerializationExtensionGeneric<TB>>) -> Self {

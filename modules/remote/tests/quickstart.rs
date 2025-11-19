@@ -7,7 +7,6 @@ use alloc::{format, vec::Vec};
 use anyhow::{Result, anyhow};
 use fraktor_actor_rs::core::{
   actor_prim::{Actor, ActorContextGeneric, Pid, actor_path::ActorPathParts},
-  config::ActorSystemConfig,
   error::ActorError,
   event_stream::{
     BackpressureSignal, EventStreamEvent, EventStreamSubscriber, EventStreamSubscriptionGeneric, RemotingLifecycleEvent,
@@ -17,7 +16,7 @@ use fraktor_actor_rs::core::{
   props::PropsGeneric,
   scheduler::{ManualTestDriver, TickDriverConfig},
   serialization::SerializationExtensionInstaller,
-  system::{ActorSystemGeneric, AuthorityState, RemoteWatchHook},
+  system::{ActorSystemConfig, ActorSystemGeneric, AuthorityState, RemoteWatchHook, RemotingConfig},
 };
 use fraktor_remote_rs::core::{
   FlightMetricKind, FnRemotingBackpressureListener, LoopbackActorRefProvider, LoopbackActorRefProviderInstaller,
@@ -66,9 +65,7 @@ fn build_system(
   let extensions = ExtensionInstallers::default()
     .with_extension_installer(serialization_installer)
     .with_extension_installer(RemotingExtensionInstaller::new(config.clone()));
-  let remoting_config = fraktor_actor_rs::core::config::RemotingConfig::default()
-    .with_canonical_host("127.0.0.1")
-    .with_canonical_port(25500);
+  let remoting_config = RemotingConfig::default().with_canonical_host("127.0.0.1").with_canonical_port(25500);
   let system_config = ActorSystemConfig::default()
     .with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()))
     .with_extension_installers(extensions)

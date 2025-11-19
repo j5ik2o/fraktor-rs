@@ -5,7 +5,7 @@ use core::marker::PhantomData;
 use fraktor_actor_rs::core::{extension::ExtensionId, system::ActorSystemGeneric};
 use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
-use crate::core::{remoting_extension::RemotingExtension, remoting_extension_config::RemotingExtensionConfig};
+use crate::core::{RemotingExtensionGeneric, remoting_extension_config::RemotingExtensionConfig};
 
 /// Registers and instantiates [`RemotingExtension`] instances.
 pub struct RemotingExtensionId<TB>
@@ -30,9 +30,9 @@ impl<TB> ExtensionId<TB> for RemotingExtensionId<TB>
 where
   TB: RuntimeToolbox + 'static,
 {
-  type Ext = RemotingExtension<TB>;
+  type Ext = RemotingExtensionGeneric<TB>;
 
   fn create_extension(&self, system: &ActorSystemGeneric<TB>) -> Self::Ext {
-    RemotingExtension::new(system, &self.config)
+    RemotingExtensionGeneric::new(system, &self.config)
   }
 }

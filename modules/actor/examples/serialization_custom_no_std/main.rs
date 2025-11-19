@@ -13,7 +13,6 @@ use core::{
 
 use fraktor_actor_rs::core::{
   actor_prim::{Actor, ActorContext},
-  config::ActorSystemConfig,
   error::ActorError,
   messaging::AnyMessageViewGeneric,
   props::Props,
@@ -22,7 +21,7 @@ use fraktor_actor_rs::core::{
     SerializationSetup, SerializationSetupBuilder, SerializedMessage, Serializer, SerializerId,
     SerializerWithStringManifest, TransportInformation,
   },
-  system::ActorSystem,
+  system::{ActorSystem, ActorSystemConfig},
 };
 use fraktor_utils_rs::core::sync::ArcShared;
 

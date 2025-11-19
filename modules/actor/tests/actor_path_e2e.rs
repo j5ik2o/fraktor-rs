@@ -7,9 +7,8 @@ use fraktor_actor_rs::core::{
     actor_path::{ActorPath, ActorPathFormatter, ActorPathParser, ActorPathParts, ActorUid, PathResolutionError},
     actor_selection::{ActorSelectionError, ActorSelectionResolver},
   },
-  config::{ActorSystemConfig, RemotingConfig},
   messaging::AnyMessage,
-  system::{AuthorityState, RemoteAuthorityManager},
+  system::{ActorSystemConfigGeneric, AuthorityState, RemoteAuthorityManager, RemotingConfig},
 };
 use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 
@@ -141,7 +140,7 @@ fn test_e2e_config_integration() {
     .with_quarantine_duration(Duration::from_secs(600));
 
   let config =
-    ActorSystemConfig::<NoStdToolbox>::default().with_system_name("e2e-system").with_remoting_config(remoting);
+    ActorSystemConfigGeneric::<NoStdToolbox>::default().with_system_name("e2e-system").with_remoting_config(remoting);
 
   assert_eq!(config.system_name(), "e2e-system");
 

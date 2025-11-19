@@ -10,8 +10,9 @@ use fraktor_utils_rs::core::{
 use super::{ActorSystemGeneric, RegisterExtraTopLevelError, RemoteWatchHook};
 use crate::core::{
   actor_prim::{ChildRefGeneric, actor_ref::ActorRefGeneric},
-  config::{DispatchersGeneric, MailboxesGeneric},
+  dispatcher::DispatchersGeneric,
   extension::{Extension, ExtensionId},
+  mailbox::MailboxesGeneric,
   props::PropsGeneric,
   spawn::SpawnError,
 };

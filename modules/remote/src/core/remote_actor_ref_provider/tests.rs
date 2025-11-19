@@ -7,7 +7,6 @@ use fraktor_actor_rs::core::{
     Actor, ActorContextGeneric, Pid,
     actor_path::{ActorPath, ActorPathParts, GuardianKind},
   },
-  config::ActorSystemConfig,
   error::ActorError,
   messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
   props::PropsGeneric,
@@ -16,7 +15,7 @@ use fraktor_actor_rs::core::{
     SerializationCallScope, SerializationExtensionGeneric, SerializationSetup, SerializationSetupBuilder, Serializer,
     SerializerId, StringSerializer,
   },
-  system::{ActorSystemGeneric, RemoteWatchHook},
+  system::{ActorSystemConfig, ActorSystemGeneric, RemoteWatchHook},
 };
 use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
 

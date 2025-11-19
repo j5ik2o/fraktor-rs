@@ -24,7 +24,8 @@ use hashbrown::HashMap;
 use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
 use super::{
-  ActorPathRegistry, AuthorityState, GuardianKind, RemoteAuthorityError, RemoteAuthorityManagerGeneric, RemoteWatchHook,
+  ActorPathRegistry, AuthorityState, GuardianKind, RemoteAuthorityError, RemoteAuthorityManagerGeneric,
+  RemoteWatchHook, RemotingConfig,
 };
 use crate::core::{
   actor_prim::{
@@ -32,12 +33,13 @@ use crate::core::{
     actor_path::{ActorPath, ActorPathParser, ActorPathParts, ActorPathScheme, GuardianKind as PathGuardianKind},
     actor_ref::ActorRefGeneric,
   },
-  config::{ActorSystemConfig, DispatchersGeneric, MailboxesGeneric, RemotingConfig},
   dead_letter::{DeadLetterEntryGeneric, DeadLetterGeneric, DeadLetterReason},
+  dispatcher::DispatchersGeneric,
   error::{ActorError, SendError},
   event_stream::{EventStreamEvent, EventStreamGeneric, RemoteAuthorityEvent, TickDriverSnapshot},
   futures::ActorFuture,
   logging::{LogEvent, LogLevel},
+  mailbox::MailboxesGeneric,
   messaging::{AnyMessageGeneric, FailurePayload, SystemMessage},
   scheduler::{SchedulerContext, TaskRunSummary, TickDriverBootstrap, TickDriverRuntime},
   spawn::{NameRegistry, NameRegistryError, SpawnError},
@@ -48,6 +50,8 @@ use crate::core::{
 mod failure_outcome;
 
 pub use failure_outcome::FailureOutcome;
+
+use crate::core::system::actor_system_config::ActorSystemConfigGeneric;
 
 /// Type alias for ask future collections.
 type AskFutureVec<TB> = Vec<ArcShared<ActorFuture<AnyMessageGeneric<TB>, TB>>>;
@@ -173,7 +177,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   }
 
   /// Applies the actor system configuration (system name, remoting settings).
-  pub fn apply_actor_system_config(&self, config: &ActorSystemConfig<TB>) {
+  pub fn apply_actor_system_config(&self, config: &ActorSystemConfigGeneric<TB>) {
     {
       let mut identity = self.path_identity.lock();
       identity.system_name = config.system_name().to_string();
@@ -191,6 +195,12 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
         // Clear RemotingConfig
         *self.remoting_config.lock() = None;
       }
+    }
+
+    // Register default dispatcher if configured
+    if let Some(dispatcher_config) = config.default_dispatcher_config() {
+      // Overwrite the "default" entry using register_or_update
+      self.dispatchers.register_or_update("default", dispatcher_config.clone());
     }
 
     let policy = ReservationPolicy::with_quarantine_duration(self.default_quarantine_duration());

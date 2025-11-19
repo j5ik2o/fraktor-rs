@@ -14,10 +14,10 @@ use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 use tokio::{sync::Mutex as TokioMutex, task::JoinHandle, time::sleep};
 
 use crate::core::{
-  AssociationState, DeferredEnvelope, EndpointManager, EndpointManagerCommand, EndpointManagerEffect, EndpointReader,
-  EndpointWriter, EventPublisher, HandshakeFrame, HandshakeKind, InboundFrame, RemoteNodeId, RemoteTransport,
-  RemotingEnvelope, TransportBind, TransportChannel, TransportEndpoint, TransportError, TransportHandle,
-  TransportInbound, WireError,
+  AssociationState, DeferredEnvelope, EndpointManager, EndpointManagerCommand, EndpointManagerEffect,
+  EndpointReaderGeneric, EndpointWriterGeneric, EventPublisherGeneric, HandshakeFrame, HandshakeKind, InboundFrame,
+  RemoteNodeId, RemoteTransport, RemotingEnvelope, TransportBind, TransportChannel, TransportEndpoint, TransportError,
+  TransportHandle, TransportInbound, WireError,
 };
 
 const OUTBOUND_IDLE_DELAY: Duration = Duration::from_millis(5);
@@ -27,13 +27,13 @@ pub struct EndpointDriverConfig<TB: RuntimeToolbox + 'static> {
   /// Actor system providing scheduling and state access.
   pub system:          ActorSystemGeneric<TB>,
   /// Shared endpoint writer feeding outbound frames.
-  pub writer:          ArcShared<EndpointWriter<TB>>,
+  pub writer:          ArcShared<EndpointWriterGeneric<TB>>,
   /// Shared endpoint reader decoding inbound frames.
-  pub reader:          ArcShared<EndpointReader<TB>>,
+  pub reader:          ArcShared<EndpointReaderGeneric<TB>>,
   /// Active transport implementation.
   pub transport:       ArcShared<dyn RemoteTransport>,
   /// Event publisher for lifecycle/backpressure events.
-  pub event_publisher: EventPublisher<TB>,
+  pub event_publisher: EventPublisherGeneric<TB>,
   /// Canonical host used when binding listeners.
   pub canonical_host:  String,
   /// Canonical port used when binding listeners.
@@ -56,9 +56,9 @@ impl EndpointDriverHandle {
 
 pub(crate) struct EndpointDriver<TB: RuntimeToolbox + 'static> {
   system:          ActorSystemGeneric<TB>,
-  event_publisher: EventPublisher<TB>,
-  writer:          ArcShared<EndpointWriter<TB>>,
-  reader:          ArcShared<EndpointReader<TB>>,
+  event_publisher: EventPublisherGeneric<TB>,
+  writer:          ArcShared<EndpointWriterGeneric<TB>>,
+  reader:          ArcShared<EndpointReaderGeneric<TB>>,
   transport:       ArcShared<dyn RemoteTransport>,
   host:            String,
   port:            u16,

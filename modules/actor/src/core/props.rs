@@ -4,8 +4,6 @@
 
 /// Props structure module.
 mod base;
-/// Dispatcher configuration module.
-mod dispatcher_config;
 /// Actor factory module.
 mod factory;
 /// Mailbox configuration module.
@@ -15,7 +13,6 @@ mod mailbox_requirement;
 mod supervisor_options;
 
 pub use base::{Props, PropsGeneric};
-pub use dispatcher_config::{DispatcherConfig, DispatcherConfigGeneric};
 pub use factory::ActorFactory;
 pub use mailbox_config::MailboxConfig;
 pub use mailbox_requirement::MailboxRequirement;

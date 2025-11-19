@@ -17,9 +17,9 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::core::{
-  endpoint_reader::EndpointReader,
-  endpoint_writer::EndpointWriter,
-  event_publisher::EventPublisher,
+  EndpointWriterGeneric,
+  endpoint_reader::EndpointReaderGeneric,
+  event_publisher::EventPublisherGeneric,
   flight_recorder::{RemotingFlightRecorder, RemotingFlightRecorderSnapshot},
   quarantine_reason::QuarantineReason,
   remote_authority_snapshot::RemoteAuthoritySnapshot,
@@ -56,7 +56,7 @@ where
     for listener in config.backpressure_listeners() {
       listeners.push(listener.clone());
     }
-    let publisher = EventPublisher::new(system.clone());
+    let publisher = EventPublisherGeneric::new(system.clone());
     let inner = RemotingControlInner {
       system,
       event_publisher: publisher,
@@ -104,8 +104,8 @@ where
   /// Registers endpoint IO components required for transport bridging.
   pub(crate) fn register_endpoint_io(
     &self,
-    writer: ArcShared<EndpointWriter<TB>>,
-    reader: ArcShared<EndpointReader<TB>>,
+    writer: ArcShared<EndpointWriterGeneric<TB>>,
+    reader: ArcShared<EndpointReaderGeneric<TB>>,
   ) {
     *self.inner.writer.lock() = Some(writer);
     *self.inner.reader.lock() = Some(reader);
@@ -203,7 +203,7 @@ struct RemotingControlInner<TB>
 where
   TB: RuntimeToolbox + 'static, {
   system:          ActorSystemGeneric<TB>,
-  event_publisher: EventPublisher<TB>,
+  event_publisher: EventPublisherGeneric<TB>,
   _canonical_host: String,
   _canonical_port: Option<u16>,
   state:           ToolboxMutex<RemotingLifecycleState, TB>,
@@ -211,8 +211,8 @@ where
   snapshots:       ToolboxMutex<Vec<RemoteAuthoritySnapshot>, TB>,
   recorder:        RemotingFlightRecorder,
   correlation_seq: AtomicU64,
-  writer:          ToolboxMutex<Option<ArcShared<EndpointWriter<TB>>>, TB>,
-  reader:          ToolboxMutex<Option<ArcShared<EndpointReader<TB>>>, TB>,
+  writer:          ToolboxMutex<Option<ArcShared<EndpointWriterGeneric<TB>>>, TB>,
+  reader:          ToolboxMutex<Option<ArcShared<EndpointReaderGeneric<TB>>>, TB>,
   transport_ref:   ToolboxMutex<Option<ArcShared<dyn RemoteTransport>>, TB>,
   #[cfg(feature = "tokio-transport")]
   endpoint_driver: ToolboxMutex<Option<crate::std::runtime::endpoint_driver::EndpointDriverHandle>, TB>,

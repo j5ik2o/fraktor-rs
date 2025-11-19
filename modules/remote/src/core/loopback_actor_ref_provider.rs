@@ -23,7 +23,7 @@ use fraktor_utils_rs::core::{
 use hashbrown::HashMap;
 
 use crate::core::{
-  endpoint_writer::EndpointWriter, endpoint_writer_error::EndpointWriterError, loopback_router,
+  EndpointWriterGeneric, endpoint_writer_error::EndpointWriterError, loopback_router,
   loopback_router::LoopbackDeliveryOutcome, outbound_message::OutboundMessage, outbound_priority::OutboundPriority,
   remote_actor_ref_provider_error::RemoteActorRefProviderError, remote_authority_snapshot::RemoteAuthoritySnapshot,
   remote_node_id::RemoteNodeId, remote_watcher_command::RemoteWatcherCommand,
@@ -35,7 +35,7 @@ use crate::core::{
 /// transport.
 pub struct LoopbackActorRefProviderGeneric<TB: RuntimeToolbox + 'static> {
   system:            ActorSystemGeneric<TB>,
-  writer:            ArcShared<EndpointWriter<TB>>,
+  writer:            ArcShared<EndpointWriterGeneric<TB>>,
   control:           RemotingControlHandle<TB>,
   authority_manager: ArcShared<RemoteAuthorityManagerGeneric<TB>>,
   watcher_daemon:    ActorRefGeneric<TB>,
@@ -58,7 +58,7 @@ impl<TB: RuntimeToolbox + 'static> LoopbackActorRefProviderGeneric<TB> {
 
   pub(crate) fn from_components(
     system: ActorSystemGeneric<TB>,
-    writer: ArcShared<EndpointWriter<TB>>,
+    writer: ArcShared<EndpointWriterGeneric<TB>>,
     control: RemotingControlHandle<TB>,
     authority_manager: ArcShared<RemoteAuthorityManagerGeneric<TB>>,
   ) -> Result<Self, RemoteActorRefProviderError> {
@@ -95,7 +95,7 @@ impl<TB: RuntimeToolbox + 'static> LoopbackActorRefProviderGeneric<TB> {
 
   #[cfg(any(test, feature = "test-support"))]
   /// Returns the underlying writer handle (testing helper).
-  pub fn writer_for_test(&self) -> ArcShared<EndpointWriter<TB>> {
+  pub fn writer_for_test(&self) -> ArcShared<EndpointWriterGeneric<TB>> {
     self.writer.clone()
   }
 
@@ -190,7 +190,7 @@ impl<TB: RuntimeToolbox + 'static> RemoteWatchHook<TB> for LoopbackActorRefProvi
 }
 
 struct RemoteActorRefSender<TB: RuntimeToolbox + 'static> {
-  writer:      ArcShared<EndpointWriter<TB>>,
+  writer:      ArcShared<EndpointWriterGeneric<TB>>,
   recipient:   ActorPath,
   remote_node: RemoteNodeId,
 }
