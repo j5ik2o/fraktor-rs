@@ -15,8 +15,7 @@ use fraktor_utils_rs::core::{
 };
 
 use super::{
-  ActorSystemConfig, ExtendedActorSystemGeneric, RemotingConfig, RootGuardianActor, SystemGuardianActor,
-  SystemGuardianProtocol,
+  ExtendedActorSystemGeneric, RemotingConfig, RootGuardianActor, SystemGuardianActor, SystemGuardianProtocol,
 };
 use crate::core::{
   actor_prim::{ActorCellGeneric, ChildRefGeneric, Pid, actor_ref::ActorRefGeneric},
@@ -29,10 +28,10 @@ use crate::core::{
   logging::LogLevel,
   messaging::{AnyMessageGeneric, SystemMessage},
   props::PropsGeneric,
-  scheduler::{SchedulerBackedDelayProvider, SchedulerContext},
+  scheduler::{SchedulerBackedDelayProvider, SchedulerContext, TickDriverConfig},
   serialization::default_serialization_extension_id,
   spawn::SpawnError,
-  system::system_state::SystemStateGeneric,
+  system::{actor_system_config::ActorSystemConfigGeneric, system_state::SystemStateGeneric},
 };
 
 const PARENT_MISSING: &str = "parent actor not found";
@@ -68,7 +67,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   where
     TB: Default,
     F: FnOnce(&ActorSystemGeneric<TB>) -> Result<(), SpawnError>, {
-    Self::new_with_config_and(user_guardian_props, &ActorSystemConfig::default(), configure)
+    Self::new_with_config_and(user_guardian_props, &ActorSystemConfigGeneric::default(), configure)
   }
 
   /// Creates an actor system with the required tick driver configuration.
@@ -85,11 +84,11 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   /// Returns [`SpawnError`] when guardian initialization or tick driver setup fails.
   pub fn new(
     user_guardian_props: &PropsGeneric<TB>,
-    tick_driver_config: crate::core::scheduler::TickDriverConfig<TB>,
+    tick_driver_config: TickDriverConfig<TB>,
   ) -> Result<Self, SpawnError>
   where
     TB: Default, {
-    let config = ActorSystemConfig::default().with_tick_driver(tick_driver_config);
+    let config = ActorSystemConfigGeneric::default().with_tick_driver(tick_driver_config);
     Self::new_with_config(user_guardian_props, &config)
   }
 
@@ -100,7 +99,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   /// Returns [`SpawnError`] when guardian initialization fails.
   pub fn new_with_config(
     user_guardian_props: &PropsGeneric<TB>,
-    config: &ActorSystemConfig<TB>,
+    config: &ActorSystemConfigGeneric<TB>,
   ) -> Result<Self, SpawnError>
   where
     TB: Default, {
@@ -114,7 +113,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   /// Returns [`SpawnError`] when guardian initialization or configuration fails.
   pub fn new_with_config_and<F>(
     user_guardian_props: &PropsGeneric<TB>,
-    config: &ActorSystemConfig<TB>,
+    config: &ActorSystemConfigGeneric<TB>,
     configure: F,
   ) -> Result<Self, SpawnError>
   where
@@ -192,7 +191,10 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   /// # Errors
   ///
   /// Returns an error if tick driver provisioning fails.
-  fn install_scheduler_and_tick_driver_from_config(&self, config: &ActorSystemConfig<TB>) -> Result<(), SpawnError>
+  fn install_scheduler_and_tick_driver_from_config(
+    &self,
+    config: &ActorSystemConfigGeneric<TB>,
+  ) -> Result<(), SpawnError>
   where
     TB: Default, {
     use crate::core::scheduler::TickDriverBootstrap;

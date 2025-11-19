@@ -13,7 +13,7 @@ use fraktor_actor_rs::{
     error::ActorError,
     extension::ExtensionInstallers,
     serialization::SerializationExtensionInstaller,
-    system::{ActorSystemConfig, RemotingConfig},
+    system::{ActorSystemConfigGeneric, RemotingConfig},
   },
   std::{
     actor_prim::{Actor, ActorContext},
@@ -96,7 +96,7 @@ fn build_tokio_tcp_system(
   let executor_adapter = DispatchExecutorAdapter::new(ArcShared::new(tokio_executor));
   let default_dispatcher = DispatcherConfigGeneric::from_executor(ArcShared::new(executor_adapter));
 
-  let system_config = ActorSystemConfig::<StdToolbox>::default()
+  let system_config = ActorSystemConfigGeneric::<StdToolbox>::default()
     .with_system_name(system_name.to_string())
     .with_tick_driver(StdTickDriverConfig::tokio_quickstart())
     .with_default_dispatcher(default_dispatcher) // デフォルトdispatcherを設定

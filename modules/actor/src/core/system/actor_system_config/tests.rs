@@ -10,7 +10,7 @@ use crate::core::{
 
 #[test]
 fn test_actor_system_config_default() {
-  let config = ActorSystemConfig::<NoStdToolbox>::default();
+  let config = ActorSystemConfig::default();
   assert_eq!(config.system_name(), "default-system");
   assert_eq!(config.default_guardian(), PathGuardianKind::User);
   assert!(config.remoting_config().is_none());
@@ -18,13 +18,13 @@ fn test_actor_system_config_default() {
 
 #[test]
 fn test_actor_system_config_with_system_name() {
-  let config = ActorSystemConfig::<NoStdToolbox>::default().with_system_name("test-system");
+  let config = ActorSystemConfig::default().with_system_name("test-system");
   assert_eq!(config.system_name(), "test-system");
 }
 
 #[test]
 fn test_actor_system_config_with_default_guardian() {
-  let config = ActorSystemConfig::<NoStdToolbox>::default().with_default_guardian(PathGuardianKind::System);
+  let config = ActorSystemConfig::default().with_default_guardian(PathGuardianKind::System);
   assert_eq!(config.default_guardian(), PathGuardianKind::System);
 }
 
@@ -32,7 +32,7 @@ fn test_actor_system_config_with_default_guardian() {
 fn test_actor_system_config_with_remoting() {
   let remoting = RemotingConfig::default().with_canonical_host("localhost").with_canonical_port(2552);
 
-  let config = ActorSystemConfig::<NoStdToolbox>::default().with_remoting_config(remoting);
+  let config = ActorSystemConfig::default().with_remoting_config(remoting);
 
   assert!(config.remoting_config().is_some());
   let remoting_cfg = config.remoting_config().unwrap();
@@ -66,7 +66,7 @@ fn test_remoting_config_rejects_short_quarantine() {
 
 #[test]
 fn test_actor_system_config_default_dispatcher_none() {
-  let config = ActorSystemConfig::<NoStdToolbox>::default();
+  let config = ActorSystemConfig::default();
   assert!(config.default_dispatcher_config().is_none());
 }
 
@@ -74,7 +74,7 @@ fn test_actor_system_config_default_dispatcher_none() {
 fn test_actor_system_config_with_default_dispatcher() {
   let dispatcher_config =
     DispatcherConfigGeneric::from_executor(ArcShared::new(InlineExecutorGeneric::<NoStdToolbox>::new()));
-  let config = ActorSystemConfig::<NoStdToolbox>::default().with_default_dispatcher(dispatcher_config);
+  let config = ActorSystemConfig::default().with_default_dispatcher(dispatcher_config);
 
   assert!(config.default_dispatcher_config().is_some());
 }

@@ -2,7 +2,10 @@
 
 use alloc::string::{String, ToString};
 
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::{
+  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
+  sync::ArcShared,
+};
 
 use crate::core::{
   actor_prim::actor_path::GuardianKind as PathGuardianKind,
@@ -16,7 +19,7 @@ use crate::core::{
 mod tests;
 
 /// Configuration for the actor system.
-pub struct ActorSystemConfig<TB>
+pub struct ActorSystemConfigGeneric<TB>
 where
   TB: RuntimeToolbox + 'static, {
   system_name:               String,
@@ -29,7 +32,10 @@ where
   default_dispatcher_config: Option<DispatcherConfigGeneric<TB>>,
 }
 
-impl<TB> ActorSystemConfig<TB>
+/// Type alias for [ActorSystemConfigGeneric] with the default [NoStdToolbox].
+pub type ActorSystemConfig = ActorSystemConfigGeneric<NoStdToolbox>;
+
+impl<TB> ActorSystemConfigGeneric<TB>
 where
   TB: RuntimeToolbox + 'static,
 {
@@ -158,7 +164,7 @@ where
   }
 }
 
-impl<TB> Default for ActorSystemConfig<TB>
+impl<TB> Default for ActorSystemConfigGeneric<TB>
 where
   TB: RuntimeToolbox + 'static,
 {

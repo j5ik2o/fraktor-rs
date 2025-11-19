@@ -30,7 +30,7 @@ pub use actor_path_registry::ActorPathRegistry;
 pub use actor_ref_provider::ActorRefProvider;
 pub use actor_ref_provider_installer::ActorRefProviderInstaller;
 pub use actor_system_build_error::ActorSystemBuildError;
-pub use actor_system_config::ActorSystemConfig;
+pub use actor_system_config::{ActorSystemConfig, ActorSystemConfigGeneric};
 pub use authority_state::AuthorityState;
 pub use base::{ActorSystem, ActorSystemGeneric};
 pub use extended_actor_system::{ExtendedActorSystem, ExtendedActorSystemGeneric};

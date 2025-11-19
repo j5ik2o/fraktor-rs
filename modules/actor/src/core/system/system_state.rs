@@ -24,8 +24,8 @@ use hashbrown::HashMap;
 use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
 use super::{
-  ActorPathRegistry, ActorSystemConfig, AuthorityState, GuardianKind, RemoteAuthorityError,
-  RemoteAuthorityManagerGeneric, RemoteWatchHook, RemotingConfig,
+  ActorPathRegistry, AuthorityState, GuardianKind, RemoteAuthorityError, RemoteAuthorityManagerGeneric,
+  RemoteWatchHook, RemotingConfig,
 };
 use crate::core::{
   actor_prim::{
@@ -50,6 +50,8 @@ use crate::core::{
 mod failure_outcome;
 
 pub use failure_outcome::FailureOutcome;
+
+use crate::core::system::actor_system_config::ActorSystemConfigGeneric;
 
 /// Type alias for ask future collections.
 type AskFutureVec<TB> = Vec<ArcShared<ActorFuture<AnyMessageGeneric<TB>, TB>>>;
@@ -175,7 +177,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   }
 
   /// Applies the actor system configuration (system name, remoting settings).
-  pub fn apply_actor_system_config(&self, config: &ActorSystemConfig<TB>) {
+  pub fn apply_actor_system_config(&self, config: &ActorSystemConfigGeneric<TB>) {
     {
       let mut identity = self.path_identity.lock();
       identity.system_name = config.system_name().to_string();

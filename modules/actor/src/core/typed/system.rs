@@ -16,7 +16,7 @@ use crate::core::{
   logging::LogLevel,
   messaging::AnyMessageGeneric,
   spawn::SpawnError,
-  system::{ActorSystemConfig, ActorSystemGeneric, SystemStateGeneric},
+  system::{ActorSystemConfigGeneric, ActorSystemGeneric, SystemStateGeneric},
   typed::{
     actor_prim::{TypedActorRefGeneric, TypedChildRefGeneric},
     props::TypedPropsGeneric,
@@ -71,7 +71,7 @@ where
   /// Returns [`SpawnError`] if guardian initialization fails.
   pub fn new_with_config(
     guardian: &TypedPropsGeneric<M, TB>,
-    config: &ActorSystemConfig<TB>,
+    config: &ActorSystemConfigGeneric<TB>,
   ) -> Result<Self, SpawnError> {
     Ok(Self { inner: ActorSystemGeneric::new_with_config(guardian.to_untyped(), config)?, marker: PhantomData })
   }
