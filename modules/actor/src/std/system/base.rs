@@ -11,7 +11,7 @@ use crate::{
     scheduler::TickDriverConfig,
     spawn::SpawnError,
     system::{
-      ActorSystemConfigGeneric, ActorSystemGeneric as CoreActorSystemGeneric, ExtendedActorSystemGeneric,
+      ActorSystemGeneric as CoreActorSystemGeneric, ExtendedActorSystemGeneric,
       SystemStateGeneric as CoreSystemStateGeneric,
     },
   },
@@ -25,6 +25,7 @@ use crate::{
     futures::ActorFuture,
     messaging::AnyMessage,
     props::Props,
+    system::ActorSystemConfig,
   },
 };
 
@@ -57,8 +58,8 @@ impl ActorSystem {
   ///
   /// Returns [`SpawnError::InvalidProps`] when the user guardian props cannot be
   /// initialised with the supplied configuration.
-  pub fn new_with_config(props: &Props, config: &ActorSystemConfigGeneric<StdToolbox>) -> Result<Self, SpawnError> {
-    CoreActorSystemGeneric::new_with_config(props.as_core(), config).map(Self::from_core)
+  pub fn new_with_config(props: &Props, config: &ActorSystemConfig) -> Result<Self, SpawnError> {
+    CoreActorSystemGeneric::new_with_config(props.as_core(), config.as_core()).map(Self::from_core)
   }
 
   /// Creates an empty actor system without any guardian (testing helper).

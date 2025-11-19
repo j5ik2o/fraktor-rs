@@ -9,19 +9,18 @@ use anyhow::{Result, anyhow};
 use fraktor_actor_rs::{
   core::{
     actor_prim::actor_path::{ActorPath, ActorPathParts, GuardianKind},
-    dispatcher::DispatcherConfigGeneric,
     error::ActorError,
     extension::ExtensionInstallers,
     serialization::SerializationExtensionInstaller,
-    system::{ActorSystemConfigGeneric, RemotingConfig},
+    system::RemotingConfig,
   },
   std::{
     actor_prim::{Actor, ActorContext},
-    dispatcher::{DispatchExecutorAdapter, dispatch_executor::TokioExecutor},
+    dispatcher::{DispatchExecutorAdapter, DispatcherConfig, dispatch_executor::TokioExecutor},
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
     scheduler::tick::StdTickDriverConfig,
-    system::ActorSystem,
+    system::{ActorSystem, ActorSystemConfig},
   },
 };
 use fraktor_remote_rs::core::{
@@ -94,9 +93,9 @@ fn build_tokio_tcp_system(
   let tokio_handle = tokio::runtime::Handle::current();
   let tokio_executor = TokioExecutor::new(tokio_handle);
   let executor_adapter = DispatchExecutorAdapter::new(ArcShared::new(tokio_executor));
-  let default_dispatcher = DispatcherConfigGeneric::from_executor(ArcShared::new(executor_adapter));
+  let default_dispatcher = DispatcherConfig::from_executor(ArcShared::new(executor_adapter));
 
-  let system_config = ActorSystemConfigGeneric::<StdToolbox>::default()
+  let system_config = ActorSystemConfig::default()
     .with_system_name(system_name.to_string())
     .with_tick_driver(StdTickDriverConfig::tokio_quickstart())
     .with_default_dispatcher(default_dispatcher) // デフォルトdispatcherを設定
