@@ -542,6 +542,11 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
         .resolve(dispatcher_id)
         .map_err(|error| SpawnError::invalid_props(error.to_string()))?;
       resolved = resolved.with_resolved_dispatcher(config);
+    } else if !resolved.has_custom_dispatcher() {
+      // If no dispatcher_id is specified, use the system's default dispatcher
+      if let Ok(default_config) = self.state.dispatchers().resolve("default") {
+        resolved = resolved.with_resolved_dispatcher(default_config);
+      }
     }
     if let Some(mailbox_id) = resolved.mailbox_id() {
       let config =

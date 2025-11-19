@@ -193,6 +193,12 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       }
     }
 
+    // Register default dispatcher if configured
+    if let Some(dispatcher_config) = config.default_dispatcher_config() {
+      // Overwrite the "default" entry using register_or_update
+      self.dispatchers.register_or_update("default", dispatcher_config.clone());
+    }
+
     let policy = ReservationPolicy::with_quarantine_duration(self.default_quarantine_duration());
     self.actor_path_registry.lock().set_policy(policy);
   }

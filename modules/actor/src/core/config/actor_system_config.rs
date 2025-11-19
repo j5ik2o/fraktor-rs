@@ -8,6 +8,7 @@ use super::RemotingConfig;
 use crate::core::{
   actor_prim::actor_path::GuardianKind as PathGuardianKind,
   extension::ExtensionInstallers,
+  props::DispatcherConfigGeneric,
   scheduler::{SchedulerConfig, TickDriverConfig},
   system::ActorRefProviderInstaller,
 };
@@ -19,13 +20,14 @@ mod tests;
 pub struct ActorSystemConfig<TB>
 where
   TB: RuntimeToolbox + 'static, {
-  system_name:          String,
-  default_guardian:     PathGuardianKind,
-  remoting_config:      Option<RemotingConfig>,
-  scheduler_config:     SchedulerConfig,
-  tick_driver_config:   Option<TickDriverConfig<TB>>,
-  extension_installers: Option<ExtensionInstallers<TB>>,
-  provider_installer:   Option<ArcShared<dyn ActorRefProviderInstaller<TB>>>,
+  system_name:               String,
+  default_guardian:          PathGuardianKind,
+  remoting_config:           Option<RemotingConfig>,
+  scheduler_config:          SchedulerConfig,
+  tick_driver_config:        Option<TickDriverConfig<TB>>,
+  extension_installers:      Option<ExtensionInstallers<TB>>,
+  provider_installer:        Option<ArcShared<dyn ActorRefProviderInstaller<TB>>>,
+  default_dispatcher_config: Option<DispatcherConfigGeneric<TB>>,
 }
 
 impl<TB> ActorSystemConfig<TB>
@@ -80,6 +82,13 @@ where
   where
     P: ActorRefProviderInstaller<TB> + 'static, {
     self.provider_installer = Some(ArcShared::new(installer));
+    self
+  }
+
+  /// Sets the default dispatcher configuration used when Props don't specify a dispatcher.
+  #[must_use]
+  pub fn with_default_dispatcher(mut self, config: DispatcherConfigGeneric<TB>) -> Self {
+    self.default_dispatcher_config = Some(config);
     self
   }
 
@@ -142,6 +151,12 @@ where
   pub const fn take_provider_installer(&mut self) -> Option<ArcShared<dyn ActorRefProviderInstaller<TB>>> {
     self.provider_installer.take()
   }
+
+  /// Returns the default dispatcher configuration if set.
+  #[must_use]
+  pub const fn default_dispatcher_config(&self) -> Option<&DispatcherConfigGeneric<TB>> {
+    self.default_dispatcher_config.as_ref()
+  }
 }
 
 impl<TB> Default for ActorSystemConfig<TB>
@@ -150,13 +165,14 @@ where
 {
   fn default() -> Self {
     Self {
-      system_name:          "default-system".to_string(),
-      default_guardian:     PathGuardianKind::User,
-      remoting_config:      None,
-      scheduler_config:     SchedulerConfig::default(),
-      tick_driver_config:   None,
-      extension_installers: None,
-      provider_installer:   None,
+      system_name:               "default-system".to_string(),
+      default_guardian:          PathGuardianKind::User,
+      remoting_config:           None,
+      scheduler_config:          SchedulerConfig::default(),
+      tick_driver_config:        None,
+      extension_installers:      None,
+      provider_installer:        None,
+      default_dispatcher_config: None,
     }
   }
 }

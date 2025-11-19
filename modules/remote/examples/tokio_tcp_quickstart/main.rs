@@ -12,10 +12,12 @@ use fraktor_actor_rs::{
     config::{ActorSystemConfig, RemotingConfig},
     error::ActorError,
     extension::ExtensionInstallers,
+    props::DispatcherConfigGeneric,
     serialization::SerializationExtensionInstaller,
   },
   std::{
     actor_prim::{Actor, ActorContext},
+    dispatcher::{DispatchExecutorAdapter, dispatch_executor::TokioExecutor},
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
     scheduler::tick::StdTickDriverConfig,
@@ -26,7 +28,7 @@ use fraktor_remote_rs::core::{
   RemotingExtensionConfig, RemotingExtensionId, RemotingExtensionInstaller, TokioActorRefProviderGeneric,
   TokioActorRefProviderInstaller, TokioTransportConfig, default_loopback_setup,
 };
-use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
+use fraktor_utils_rs::{core::sync::ArcShared, std::runtime_toolbox::StdToolbox};
 
 const HOST: &str = "127.0.0.1";
 const RECEIVER_PORT: u16 = 25530;
@@ -88,10 +90,16 @@ fn build_tokio_tcp_system(
   guardian: Props,
   transport_config: RemotingExtensionConfig,
 ) -> Result<ActorSystem> {
+  // TokioExecutorをデフォルトdispatcherとして設定
+  let tokio_handle = tokio::runtime::Handle::current();
+  let tokio_executor = TokioExecutor::new(tokio_handle);
+  let executor_adapter = DispatchExecutorAdapter::new(ArcShared::new(tokio_executor));
+  let default_dispatcher = DispatcherConfigGeneric::from_executor(ArcShared::new(executor_adapter));
+
   let system_config = ActorSystemConfig::<StdToolbox>::default()
     .with_system_name(system_name.to_string())
     .with_tick_driver(StdTickDriverConfig::tokio_quickstart())
-    // 現状のTokio TCPトランスポートはハンドシェイク層が未実装なため、例ではループバック配送を併用して疎通を確認する
+    .with_default_dispatcher(default_dispatcher) // デフォルトdispatcherを設定
     .with_actor_ref_provider_installer(TokioActorRefProviderInstaller::from_config(TokioTransportConfig::default()))
     .with_remoting_config(RemotingConfig::default().with_canonical_host(HOST).with_canonical_port(canonical_port))
     .with_extension_installers(

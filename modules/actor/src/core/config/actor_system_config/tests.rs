@@ -1,10 +1,12 @@
 use core::time::Duration;
 
-use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
+use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
 
 use crate::core::{
   actor_prim::actor_path::GuardianKind as PathGuardianKind,
   config::actor_system_config::{ActorSystemConfig, RemotingConfig},
+  dispatcher::InlineExecutorGeneric,
+  props::DispatcherConfigGeneric,
 };
 
 #[test]
@@ -61,4 +63,19 @@ fn test_remoting_config_defaults() {
 #[should_panic(expected = "quarantine duration must be >= 1 second")]
 fn test_remoting_config_rejects_short_quarantine() {
   let _ = RemotingConfig::default().with_quarantine_duration(Duration::from_millis(999));
+}
+
+#[test]
+fn test_actor_system_config_default_dispatcher_none() {
+  let config = ActorSystemConfig::<NoStdToolbox>::default();
+  assert!(config.default_dispatcher_config().is_none());
+}
+
+#[test]
+fn test_actor_system_config_with_default_dispatcher() {
+  let dispatcher_config =
+    DispatcherConfigGeneric::from_executor(ArcShared::new(InlineExecutorGeneric::<NoStdToolbox>::new()));
+  let config = ActorSystemConfig::<NoStdToolbox>::default().with_default_dispatcher(dispatcher_config);
+
+  assert!(config.default_dispatcher_config().is_some());
 }

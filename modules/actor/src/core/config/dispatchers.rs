@@ -44,6 +44,14 @@ impl<TB: RuntimeToolbox + 'static> DispatchersGeneric<TB> {
     Ok(())
   }
 
+  /// Registers or updates a dispatcher configuration for the provided identifier.
+  ///
+  /// If the identifier already exists, the configuration is updated.
+  pub fn register_or_update(&self, id: impl Into<String>, config: DispatcherConfigGeneric<TB>) {
+    let mut entries = self.entries.lock();
+    entries.insert(id.into(), config);
+  }
+
   /// Resolves the dispatcher configuration for the identifier.
   ///
   /// # Errors
