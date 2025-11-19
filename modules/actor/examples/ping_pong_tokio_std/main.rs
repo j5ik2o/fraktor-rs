@@ -103,7 +103,7 @@ async fn main() {
   })
   .with_dispatcher(dispatcher.clone());
 
-  let tick_driver = fraktor_actor_rs::std::scheduler::tick::StdTickDriverConfig::tokio_quickstart();
+  let tick_driver = fraktor_actor_rs::std::scheduler::tick::TickDriverConfig::tokio_quickstart();
   let system = ActorSystem::new(&props, tick_driver).expect("system");
   let termination = system.when_terminated();
 

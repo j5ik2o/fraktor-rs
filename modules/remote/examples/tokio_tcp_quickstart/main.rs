@@ -19,7 +19,7 @@ use fraktor_actor_rs::{
     dispatcher::{DispatchExecutorAdapter, DispatcherConfig, dispatch_executor::TokioExecutor},
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
-    scheduler::tick::StdTickDriverConfig,
+    scheduler::tick::TickDriverConfig,
     system::{ActorSystem, ActorSystemConfig},
   },
 };
@@ -97,7 +97,7 @@ fn build_tokio_tcp_system(
 
   let system_config = ActorSystemConfig::default()
     .with_system_name(system_name.to_string())
-    .with_tick_driver(StdTickDriverConfig::tokio_quickstart())
+    .with_tick_driver(TickDriverConfig::tokio_quickstart())
     .with_default_dispatcher(default_dispatcher) // デフォルトdispatcherを設定
     .with_actor_ref_provider_installer(TokioActorRefProviderInstaller::from_config(TokioTransportConfig::default()))
     .with_remoting_config(RemotingConfig::default().with_canonical_host(HOST).with_canonical_port(canonical_port))

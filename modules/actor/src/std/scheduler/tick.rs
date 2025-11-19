@@ -16,7 +16,7 @@ use tokio::runtime::Handle;
 use crate::{
   core::{
     event_stream::EventStreamGeneric,
-    scheduler::{TickDriverConfig, TickDriverFactoryRef},
+    scheduler::{TickDriverConfig as CoreTickDriverConfig, TickDriverFactoryRef},
   },
   std::scheduler::tick::tokio_impl::TokioIntervalDriverFactory,
 };
@@ -27,9 +27,9 @@ mod tokio_impl;
 mod tests;
 
 /// Config helpers for std tick drivers.
-pub struct StdTickDriverConfig;
+pub struct TickDriverConfig;
 
-impl StdTickDriverConfig {
+impl TickDriverConfig {
   /// Builds a factory using the current Tokio runtime handle.
   ///
   /// # Panics
@@ -43,7 +43,7 @@ impl StdTickDriverConfig {
 
   /// Creates a ready-to-use tick driver configuration for Tokio quickstart flows.
   #[must_use]
-  pub fn tokio_quickstart() -> TickDriverConfig<StdToolbox> {
+  pub fn tokio_quickstart() -> CoreTickDriverConfig<StdToolbox> {
     Self::tokio_quickstart_with_resolution(Duration::from_millis(10))
   }
 
@@ -52,7 +52,7 @@ impl StdTickDriverConfig {
   /// This creates a complete tick driver setup including both the tick generator
   /// and the scheduler executor, similar to no_std hardware tick driver patterns.
   #[must_use]
-  pub fn tokio_quickstart_with_resolution(resolution: Duration) -> TickDriverConfig<StdToolbox> {
+  pub fn tokio_quickstart_with_resolution(resolution: Duration) -> CoreTickDriverConfig<StdToolbox> {
     use fraktor_utils_rs::core::{runtime_toolbox::ToolboxMutex, sync::ArcShared};
     use tokio::time::{MissedTickBehavior, interval};
 
@@ -61,7 +61,7 @@ impl StdTickDriverConfig {
       TickDriverKind, TickDriverRuntime, TickExecutorSignal, TickFeed, next_tick_driver_id,
     };
 
-    TickDriverConfig::new(move |ctx| {
+    CoreTickDriverConfig::new(move |ctx| {
       let handle = Handle::try_current().expect("Tokio runtime handle unavailable");
 
       // Get scheduler, resolution, and capacity from context
@@ -136,7 +136,7 @@ impl StdTickDriverConfig {
     resolution: Duration,
     event_stream: ArcShared<EventStreamGeneric<StdToolbox>>,
     metrics_interval: Duration,
-  ) -> TickDriverConfig<StdToolbox> {
+  ) -> CoreTickDriverConfig<StdToolbox> {
     use fraktor_utils_rs::core::runtime_toolbox::ToolboxMutex;
     use tokio::time::{MissedTickBehavior, interval};
 
@@ -146,7 +146,7 @@ impl StdTickDriverConfig {
       next_tick_driver_id,
     };
 
-    TickDriverConfig::new(move |ctx| {
+    CoreTickDriverConfig::new(move |ctx| {
       let handle = Handle::try_current().expect("Tokio runtime handle unavailable");
 
       let scheduler: Arc<ToolboxMutex<Scheduler<StdToolbox>, StdToolbox>> = ctx.scheduler();
