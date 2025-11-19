@@ -32,7 +32,7 @@ use crate::core::{
     actor_path::{ActorPath, ActorPathParser, ActorPathParts, ActorPathScheme, GuardianKind as PathGuardianKind},
     actor_ref::ActorRefGeneric,
   },
-  config::{ActorSystemConfig, DispatchersGeneric, MailboxesGeneric},
+  config::{ActorSystemConfig, DispatchersGeneric, MailboxesGeneric, RemotingConfig},
   dead_letter::{DeadLetterEntryGeneric, DeadLetterGeneric, DeadLetterReason},
   error::{ActorError, SendError},
   event_stream::{EventStreamEvent, EventStreamGeneric, RemoteAuthorityEvent, TickDriverSnapshot},
@@ -111,6 +111,7 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   remote_authority_mgr:   ArcShared<RemoteAuthorityManagerGeneric<TB>>,
   scheduler_context:      ToolboxMutex<Option<ArcShared<SchedulerContext<TB>>>, TB>,
   tick_driver_runtime:    ToolboxMutex<Option<TickDriverRuntime<TB>>, TB>,
+  remoting_config:        ToolboxMutex<Option<RemotingConfig>, TB>,
 }
 
 /// Type alias for [SystemStateGeneric] with the default [NoStdToolbox].
@@ -160,6 +161,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       remote_authority_mgr: ArcShared::new(RemoteAuthorityManagerGeneric::new()),
       scheduler_context: <TB::MutexFamily as SyncMutexFamily>::create(None),
       tick_driver_runtime: <TB::MutexFamily as SyncMutexFamily>::create(None),
+      remoting_config: <TB::MutexFamily as SyncMutexFamily>::create(None),
     }
   }
 
@@ -180,10 +182,14 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
         identity.canonical_host = Some(remoting.canonical_host().to_string());
         identity.canonical_port = remoting.canonical_port();
         identity.quarantine_duration = remoting.quarantine_duration();
+        // Save the full RemotingConfig
+        *self.remoting_config.lock() = Some(remoting.clone());
       } else {
         identity.canonical_host = None;
         identity.canonical_port = None;
         identity.quarantine_duration = DEFAULT_QUARANTINE_DURATION;
+        // Clear RemotingConfig
+        *self.remoting_config.lock() = None;
       }
     }
 
@@ -705,6 +711,12 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   #[must_use]
   pub fn mailboxes(&self) -> ArcShared<MailboxesGeneric<TB>> {
     self.mailboxes.clone()
+  }
+
+  /// Returns the remoting configuration when it has been configured.
+  #[must_use]
+  pub fn remoting_config(&self) -> Option<RemotingConfig> {
+    self.remoting_config.lock().clone()
   }
 
   /// Installs the scheduler service handle.

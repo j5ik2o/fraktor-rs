@@ -85,17 +85,13 @@ fn build_tokio_tcp_system(
 }
 
 fn receiver_transport_config() -> RemotingExtensionConfig {
-  RemotingExtensionConfig::default()
-    .with_canonical_host(HOST)
-    .with_canonical_port(RECEIVER_PORT)
-    .with_transport_scheme("fraktor.tcp")
+  // canonical_host/port は ActorSystemConfig の RemotingConfig から自動的に取得される
+  RemotingExtensionConfig::default().with_transport_scheme("fraktor.tcp")
 }
 
 fn sender_transport_config() -> RemotingExtensionConfig {
-  RemotingExtensionConfig::default()
-    .with_canonical_host(HOST)
-    .with_canonical_port(SENDER_PORT)
-    .with_transport_scheme("fraktor.tcp")
+  // canonical_host/port は ActorSystemConfig の RemotingConfig から自動的に取得される
+  RemotingExtensionConfig::default().with_transport_scheme("fraktor.tcp")
 }
 
 fn receiver_authority_parts() -> ActorPathParts {

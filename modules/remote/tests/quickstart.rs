@@ -102,14 +102,11 @@ fn remote_path() -> fraktor_actor_rs::core::actor_prim::actor_path::ActorPath {
 #[test]
 fn quickstart_loopback_provider_flow() -> Result<()> {
   let config_hits: ArcShared<NoStdMutex<Vec<String>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let config = RemotingExtensionConfig::default()
-    .with_canonical_host("127.0.0.1")
-    .with_canonical_port(4321)
-    .with_auto_start(false)
-    .with_backpressure_listener({
-      let hits = config_hits.clone();
-      move |signal, authority, _| hits.lock().push(format!("{authority}:{signal:?}"))
-    });
+  // canonical_host/port は ActorSystemConfig の RemotingConfig から自動的に取得される
+  let config = RemotingExtensionConfig::default().with_auto_start(false).with_backpressure_listener({
+    let hits = config_hits.clone();
+    move |signal, authority, _| hits.lock().push(format!("{authority}:{signal:?}"))
+  });
   let (system, handle) = build_system(config);
   let provider = system.extended().actor_ref_provider::<LoopbackActorRefProvider>().expect("provider installed");
   let runtime_hits: ArcShared<NoStdMutex<Vec<String>>> = ArcShared::new(NoStdMutex::new(Vec::new()));

@@ -84,11 +84,13 @@ fn build_loopback_system(
 }
 
 fn receiver_transport_config() -> RemotingExtensionConfig {
-  RemotingExtensionConfig::default().with_canonical_host(HOST).with_canonical_port(RECEIVER_PORT)
+  // canonical_host/port は ActorSystemConfig の RemotingConfig から自動的に取得される
+  RemotingExtensionConfig::default()
 }
 
 fn sender_transport_config() -> RemotingExtensionConfig {
-  RemotingExtensionConfig::default().with_canonical_host(HOST).with_canonical_port(SENDER_PORT)
+  // canonical_host/port は ActorSystemConfig の RemotingConfig から自動的に取得される
+  RemotingExtensionConfig::default()
 }
 
 fn receiver_authority_parts() -> ActorPathParts {

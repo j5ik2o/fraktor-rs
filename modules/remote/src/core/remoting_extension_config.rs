@@ -25,11 +25,12 @@ pub struct RemotingExtensionConfig {
 }
 
 impl RemotingExtensionConfig {
-  /// Creates a config with default host (`127.0.0.1`) and auto-start enabled.
+  /// Creates a config with empty host/port (will be inherited from ActorSystem) and auto-start
+  /// enabled.
   #[must_use]
   pub fn new() -> Self {
     Self {
-      canonical_host:           "127.0.0.1".to_string(),
+      canonical_host:           String::new(),
       canonical_port:           None,
       auto_start:               true,
       transport_scheme:         "fraktor.loopback".to_string(),
