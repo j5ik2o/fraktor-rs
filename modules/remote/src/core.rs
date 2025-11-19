@@ -79,7 +79,7 @@ pub use remoting_control::RemotingControl;
 pub use remoting_control_handle::RemotingControlHandle;
 pub use remoting_envelope::RemotingEnvelope;
 pub use remoting_error::RemotingError;
-pub use remoting_extension::RemotingExtension;
+pub use remoting_extension::{RemotingExtension, RemotingExtensionGeneric};
 pub use remoting_extension_config::RemotingExtensionConfig;
 pub use remoting_extension_id::RemotingExtensionId;
 pub use remoting_extension_installer::RemotingExtensionInstaller;

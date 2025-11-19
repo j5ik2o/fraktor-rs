@@ -13,7 +13,10 @@ use fraktor_actor_rs::core::{
   props::PropsGeneric,
   system::{ActorSystemGeneric, SystemGuardianProtocol},
 };
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::{
+  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
+  sync::ArcShared,
+};
 
 use crate::core::{
   remoting_control::RemotingControl,
@@ -26,7 +29,7 @@ use crate::core::{
 const ENDPOINT_SUPERVISOR_NAME: &str = "remoting-endpoint-supervisor";
 
 /// Installs the endpoint supervisor and exposes [`RemotingControlHandle`].
-pub struct RemotingExtension<TB>
+pub struct RemotingExtensionGeneric<TB>
 where
   TB: RuntimeToolbox + 'static, {
   control:          RemotingControlHandle<TB>,
@@ -34,7 +37,10 @@ where
   _transport:       ArcShared<dyn RemoteTransport>,
 }
 
-impl<TB> RemotingExtension<TB>
+/// Type alias for `RemotingExtensionGeneric` with the default `NoStdToolbox`.
+pub type RemotingExtension = RemotingExtensionGeneric<NoStdToolbox>;
+
+impl<TB> RemotingExtensionGeneric<TB>
 where
   TB: RuntimeToolbox + 'static,
 {
@@ -72,7 +78,7 @@ where
   }
 }
 
-impl<TB> Extension<TB> for RemotingExtension<TB> where TB: RuntimeToolbox + 'static {}
+impl<TB> Extension<TB> for RemotingExtensionGeneric<TB> where TB: RuntimeToolbox + 'static {}
 
 fn spawn_endpoint_supervisor<TB>(
   system: &ActorSystemGeneric<TB>,

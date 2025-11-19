@@ -9,8 +9,8 @@ use fraktor_actor_rs::core::{
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
 use crate::core::{
-  EndpointWriterGeneric, endpoint_reader::EndpointReaderGeneric,
-  loopback_actor_ref_provider::LoopbackActorRefProviderGeneric, loopback_router, remoting_extension::RemotingExtension,
+  EndpointWriterGeneric, RemotingExtensionGeneric, endpoint_reader::EndpointReaderGeneric,
+  loopback_actor_ref_provider::LoopbackActorRefProviderGeneric, loopback_router,
 };
 
 /// Installer for Loopback actor-ref provider.
@@ -43,7 +43,7 @@ impl<TB: RuntimeToolbox + 'static> ActorRefProviderInstaller<TB> for LoopbackAct
     let writer = ArcShared::new(EndpointWriterGeneric::new(system.clone(), serialization.clone()));
     let reader = ArcShared::new(EndpointReaderGeneric::new(system.clone(), serialization.clone()));
 
-    let Some(extension) = extended.extension_by_type::<RemotingExtension<TB>>() else {
+    let Some(extension) = extended.extension_by_type::<RemotingExtensionGeneric<TB>>() else {
       return Err(ActorSystemBuildError::Configuration("remoting extension not installed".into()));
     };
 
