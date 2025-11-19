@@ -1,11 +1,20 @@
-use fraktor_actor_rs::core::event_stream::RemotingLifecycleEvent;
+use alloc::boxed::Box;
+use core::convert::TryFrom;
+
+use fraktor_actor_rs::core::{
+  actor_prim::actor_path::{ActorPath, ActorPathParts, GuardianKind},
+  event_stream::{CorrelationId, RemotingLifecycleEvent},
+  serialization::{SerializedMessage, SerializerId},
+};
 
 use super::{EndpointManager, EndpointManagerCommand, EndpointManagerEffect};
 use crate::core::{
   association_state::AssociationState,
   deferred_envelope::DeferredEnvelope,
+  outbound_priority::OutboundPriority,
   quarantine_reason::QuarantineReason,
   remote_node_id::RemoteNodeId,
+  remoting_envelope::RemotingEnvelope,
   transport::{LoopbackTransport, RemoteTransport, TransportBind, TransportEndpoint},
 };
 
@@ -26,7 +35,15 @@ fn sample_remote() -> RemoteNodeId {
 }
 
 fn envelope(label: &str) -> DeferredEnvelope {
-  DeferredEnvelope::new(label)
+  let mut parts = ActorPathParts::with_authority("remote-system", Some(("127.0.0.1", 25520)));
+  parts = parts.with_guardian(GuardianKind::User);
+  let recipient = ActorPath::from_parts(parts).child("svc");
+  let remote = RemoteNodeId::new("remote-system", "127.0.0.1", Some(25520), 0);
+  let serializer = SerializerId::try_from(41).expect("serializer id");
+  let serialized = SerializedMessage::new(serializer, None, label.as_bytes().to_vec());
+  let envelope =
+    RemotingEnvelope::new(recipient, remote, None, serialized, CorrelationId::nil(), OutboundPriority::User);
+  DeferredEnvelope::new(envelope)
 }
 
 struct LoopbackPair {
@@ -114,7 +131,8 @@ fn deferred_messages_flush_on_connected() {
     now:       2,
   });
 
-  let enqueue = EndpointManagerCommand::EnqueueDeferred { authority: authority.clone(), envelope: envelope("m1") };
+  let enqueue =
+    EndpointManagerCommand::EnqueueDeferred { authority: authority.clone(), envelope: Box::new(envelope("m1")) };
   let result = mgr.handle(enqueue);
   assert!(result.effects.is_empty());
 
@@ -141,8 +159,10 @@ fn deferred_messages_flush_on_connected() {
     | other => panic!("unexpected effect: {other:?}"),
   }
 
-  let immediate =
-    mgr.handle(EndpointManagerCommand::EnqueueDeferred { authority: authority.clone(), envelope: envelope("m2") });
+  let immediate = mgr.handle(EndpointManagerCommand::EnqueueDeferred {
+    authority: authority.clone(),
+    envelope:  Box::new(envelope("m2")),
+  });
   assert_eq!(immediate.effects, vec![EndpointManagerEffect::DeliverEnvelopes {
     authority,
     envelopes: vec![envelope("m2")],
@@ -159,7 +179,10 @@ fn quarantine_discards_deferred_messages() {
     endpoint:  sample_endpoint(),
     now:       2,
   });
-  mgr.handle(EndpointManagerCommand::EnqueueDeferred { authority: authority.clone(), envelope: envelope("m1") });
+  mgr.handle(EndpointManagerCommand::EnqueueDeferred {
+    authority: authority.clone(),
+    envelope:  Box::new(envelope("m1")),
+  });
 
   let reason = QuarantineReason::new("uid mismatch");
   let result = mgr.handle(EndpointManagerCommand::Quarantine {
@@ -210,7 +233,10 @@ fn recover_from_quarantine_restarts_handshake() {
     now:       3,
   });
 
-  mgr.handle(EndpointManagerCommand::EnqueueDeferred { authority: authority.clone(), envelope: envelope("m2") });
+  mgr.handle(EndpointManagerCommand::EnqueueDeferred {
+    authority: authority.clone(),
+    envelope:  Box::new(envelope("m2")),
+  });
 
   let result = mgr.handle(EndpointManagerCommand::Recover {
     authority: authority.clone(),
@@ -259,11 +285,11 @@ fn loopback_pair_association_flushes_deferred_and_emits_connected_events() {
 
   manager_a.handle(EndpointManagerCommand::EnqueueDeferred {
     authority: authority_for_a.clone(),
-    envelope:  envelope("a->b"),
+    envelope:  Box::new(envelope("a->b")),
   });
   manager_b.handle(EndpointManagerCommand::EnqueueDeferred {
     authority: authority_for_b.clone(),
-    envelope:  envelope("b->a"),
+    envelope:  Box::new(envelope("b->a")),
   });
 
   let handshake_a = manager_a.handle(EndpointManagerCommand::Associate {
@@ -329,7 +355,10 @@ fn loopback_quarantine_manual_override_flow_emits_events() {
   let mgr = manager();
   let authority = loopback.authority_for_manager_a();
   mgr.handle(EndpointManagerCommand::RegisterInbound { authority: authority.clone(), now: 1 });
-  mgr.handle(EndpointManagerCommand::EnqueueDeferred { authority: authority.clone(), envelope: envelope("pending") });
+  mgr.handle(EndpointManagerCommand::EnqueueDeferred {
+    authority: authority.clone(),
+    envelope:  Box::new(envelope("pending")),
+  });
 
   let reason = QuarantineReason::new("uid mismatch");
   let quarantine = mgr.handle(EndpointManagerCommand::Quarantine {
@@ -355,7 +384,10 @@ fn loopback_quarantine_manual_override_flow_emits_events() {
     | other => panic!("unexpected lifecycle effect: {other:?}"),
   }
 
-  mgr.handle(EndpointManagerCommand::EnqueueDeferred { authority: authority.clone(), envelope: envelope("retry") });
+  mgr.handle(EndpointManagerCommand::EnqueueDeferred {
+    authority: authority.clone(),
+    envelope:  Box::new(envelope("retry")),
+  });
 
   let recover = mgr.handle(EndpointManagerCommand::Recover {
     authority: authority.clone(),

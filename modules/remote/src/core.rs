@@ -15,6 +15,8 @@ mod event_publisher;
 mod failure_detector;
 mod flight_recorder;
 mod fn_remoting_backpressure_listener;
+mod handshake_frame;
+mod handshake_kind;
 mod inbound_envelope;
 mod loopback_actor_ref_provider;
 mod loopback_actor_ref_provider_installer;
@@ -42,6 +44,7 @@ mod serialization_utils;
 mod tokio_actor_ref_provider;
 mod tokio_actor_ref_provider_installer;
 pub mod transport;
+mod wire_error;
 
 pub use association_state::AssociationState;
 pub use deferred_envelope::DeferredEnvelope;
@@ -57,6 +60,8 @@ pub use event_publisher::EventPublisher;
 pub use failure_detector::{PhiFailureDetector, PhiFailureDetectorConfig, PhiFailureDetectorEffect};
 pub use flight_recorder::{FlightMetricKind, RemotingFlightRecorder, RemotingFlightRecorderSnapshot, RemotingMetric};
 pub use fn_remoting_backpressure_listener::FnRemotingBackpressureListener;
+pub use handshake_frame::HandshakeFrame;
+pub use handshake_kind::HandshakeKind;
 pub use inbound_envelope::InboundEnvelope;
 pub use loopback_actor_ref_provider::{LoopbackActorRefProvider, LoopbackActorRefProviderGeneric};
 pub use loopback_actor_ref_provider_installer::LoopbackActorRefProviderInstaller;
@@ -82,6 +87,7 @@ pub use serialization_utils::default_loopback_setup;
 pub use tokio_actor_ref_provider::{TokioActorRefProvider, TokioActorRefProviderGeneric};
 pub use tokio_actor_ref_provider_installer::TokioActorRefProviderInstaller;
 pub use transport::{
-  LoopbackTransport, RemoteTransport, TokioTransportConfig, TransportBackpressureHook, TransportBind, TransportChannel,
-  TransportEndpoint, TransportError, TransportFactory, TransportHandle,
+  InboundFrame, LoopbackTransport, RemoteTransport, TokioTransportConfig, TransportBackpressureHook, TransportBind,
+  TransportChannel, TransportEndpoint, TransportError, TransportFactory, TransportHandle, TransportInbound,
 };
+pub use wire_error::WireError;

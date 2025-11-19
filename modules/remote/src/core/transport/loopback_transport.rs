@@ -12,13 +12,14 @@ use fraktor_utils_rs::core::{runtime_toolbox::NoStdMutex, sync::ArcShared};
 use super::{
   backpressure_hook::TransportBackpressureHook, remote_transport::RemoteTransport, transport_bind::TransportBind,
   transport_channel::TransportChannel, transport_endpoint::TransportEndpoint, transport_error::TransportError,
-  transport_handle::TransportHandle,
+  transport_handle::TransportHandle, transport_inbound_handler::TransportInbound,
 };
 
 /// In-memory transport that records frames for assertions.
 pub struct LoopbackTransport {
-  state: ArcShared<NoStdMutex<LoopbackState>>,
-  hook:  ArcShared<NoStdMutex<Option<ArcShared<dyn TransportBackpressureHook>>>>,
+  state:   ArcShared<NoStdMutex<LoopbackState>>,
+  hook:    ArcShared<NoStdMutex<Option<ArcShared<dyn TransportBackpressureHook>>>>,
+  inbound: ArcShared<NoStdMutex<Option<ArcShared<dyn TransportInbound>>>>,
 }
 
 const PRESSURE_THRESHOLD: usize = 64;
@@ -36,12 +37,13 @@ struct ListenerState {
 impl Default for LoopbackTransport {
   fn default() -> Self {
     Self {
-      state: ArcShared::new(NoStdMutex::new(LoopbackState {
+      state:   ArcShared::new(NoStdMutex::new(LoopbackState {
         listeners:    BTreeMap::new(),
         channels:     BTreeMap::new(),
         next_channel: 1,
       })),
-      hook:  ArcShared::new(NoStdMutex::new(None)),
+      hook:    ArcShared::new(NoStdMutex::new(None)),
+      inbound: ArcShared::new(NoStdMutex::new(None)),
     }
   }
 }
@@ -126,5 +128,9 @@ impl RemoteTransport for LoopbackTransport {
 
   fn install_backpressure_hook(&self, hook: ArcShared<dyn TransportBackpressureHook>) {
     *self.hook.lock() = Some(hook);
+  }
+
+  fn install_inbound_handler(&self, handler: ArcShared<dyn TransportInbound>) {
+    *self.inbound.lock() = Some(handler);
   }
 }

@@ -21,6 +21,12 @@ pub struct EndpointReader<TB: RuntimeToolbox + 'static> {
   serialization: ArcShared<SerializationExtensionGeneric<TB>>,
 }
 
+impl<TB: RuntimeToolbox + 'static> Clone for EndpointReader<TB> {
+  fn clone(&self) -> Self {
+    Self { system: self.system.clone(), serialization: self.serialization.clone() }
+  }
+}
+
 impl<TB: RuntimeToolbox + 'static> EndpointReader<TB> {
   /// Creates a new reader bound to the provided actor system.
   #[must_use]

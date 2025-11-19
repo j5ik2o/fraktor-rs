@@ -270,6 +270,12 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     })
   }
 
+  /// Returns the configured actor system name.
+  #[must_use]
+  pub fn system_name(&self) -> String {
+    self.path_identity.lock().system_name.clone()
+  }
+
   fn publish_remote_authority_event(&self, authority: String, state: AuthorityState) {
     let event = RemoteAuthorityEvent::new(authority, state);
     self.event_stream.publish(&EventStreamEvent::RemoteAuthority(event));

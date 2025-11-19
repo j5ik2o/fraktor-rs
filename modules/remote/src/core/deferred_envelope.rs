@@ -1,23 +1,29 @@
-//! Placeholder for outbound envelopes queued until associations complete.
+//! Outbound envelopes queued until associations complete.
 
-use alloc::string::String;
+use crate::core::RemotingEnvelope;
 
 /// Represents a deferred outbound message.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DeferredEnvelope {
-  tag: String,
+  envelope: RemotingEnvelope,
 }
 
 impl DeferredEnvelope {
-  /// Creates a new envelope tagged with the provided identifier.
+  /// Creates a new deferred envelope backed by the provided message.
   #[must_use]
-  pub fn new(tag: impl Into<String>) -> Self {
-    Self { tag: tag.into() }
+  pub fn new(envelope: RemotingEnvelope) -> Self {
+    Self { envelope }
   }
 
-  /// Returns the tag (used for tests until actual envelope type is wired).
+  /// Borrows the underlying envelope.
   #[must_use]
-  pub fn tag(&self) -> &str {
-    &self.tag
+  pub fn as_envelope(&self) -> &RemotingEnvelope {
+    &self.envelope
+  }
+
+  /// Consumes the wrapper and returns the owned envelope.
+  #[must_use]
+  pub fn into_envelope(self) -> RemotingEnvelope {
+    self.envelope
   }
 }

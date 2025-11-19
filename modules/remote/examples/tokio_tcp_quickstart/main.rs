@@ -64,17 +64,18 @@ async fn main() -> Result<()> {
 
   let remote_ref = provider.actor_ref(remote_echo_path()).expect("remote actor ref");
   remote_ref.tell(AnyMessage::new("ping over remoting".to_string())).map_err(|error| anyhow!("{error:?}"))?;
+  println!("sender -> remote: ping over remoting");
+
+  thread::sleep(Duration::from_millis(200));
+
   #[cfg(feature = "test-support")]
   {
     if let Some(envelope) = provider.writer_for_test().try_next().map_err(|error| anyhow!("{error:?}"))? {
       println!("writer -> pending envelope: {:?}", envelope);
     } else {
-      println!("writer -> empty (delivered via loopback)");
+      println!("writer -> empty (delivered via transport)");
     }
   }
-  println!("sender -> remote: ping over remoting");
-
-  thread::sleep(Duration::from_millis(100));
 
   drop(sender);
   drop(receiver);
@@ -91,9 +92,7 @@ fn build_tokio_tcp_system(
     .with_system_name(system_name.to_string())
     .with_tick_driver(StdTickDriverConfig::tokio_quickstart())
     // 現状のTokio TCPトランスポートはハンドシェイク層が未実装なため、例ではループバック配送を併用して疎通を確認する
-    .with_actor_ref_provider_installer(TokioActorRefProviderInstaller::from_config_with_loopback(
-      TokioTransportConfig::default(),
-    ))
+    .with_actor_ref_provider_installer(TokioActorRefProviderInstaller::from_config(TokioTransportConfig::default()))
     .with_remoting_config(RemotingConfig::default().with_canonical_host(HOST).with_canonical_port(canonical_port))
     .with_extension_installers(
       ExtensionInstallers::default()
