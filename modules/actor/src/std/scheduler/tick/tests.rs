@@ -14,13 +14,13 @@ use crate::{
     event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber},
     scheduler::{AutoProfileKind, SchedulerConfig, SchedulerContext, TickDriverBootstrap, TickDriverKind},
   },
-  std::scheduler::tick::StdTickDriverConfig,
+  std::scheduler::tick::TickDriverConfig,
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[allow(clippy::expect_used)]
 async fn tokio_interval_driver_produces_ticks() {
-  let config = StdTickDriverConfig::tokio_quickstart_with_resolution(Duration::from_millis(5));
+  let config = TickDriverConfig::tokio_quickstart_with_resolution(Duration::from_millis(5));
   let ctx = SchedulerContext::new(StdToolbox::default(), SchedulerConfig::default());
   let runtime = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
 
@@ -63,7 +63,7 @@ async fn tokio_interval_driver_publishes_tick_metrics_events() {
   let subscriber: ArcShared<dyn EventStreamSubscriber<StdToolbox>> = subscriber_impl.clone();
   let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
 
-  let config = StdTickDriverConfig::tokio_quickstart_with_event_stream(
+  let config = TickDriverConfig::tokio_quickstart_with_event_stream(
     Duration::from_millis(5),
     event_stream.clone(),
     Duration::from_millis(50),
@@ -86,7 +86,7 @@ async fn tokio_interval_driver_publishes_tick_metrics_events() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[allow(clippy::expect_used)]
 async fn tokio_quickstart_helper_provisions_driver() {
-  let config = StdTickDriverConfig::tokio_quickstart();
+  let config = TickDriverConfig::tokio_quickstart();
   let ctx = SchedulerContext::new(StdToolbox::default(), SchedulerConfig::default());
   let runtime = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
 

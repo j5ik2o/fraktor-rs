@@ -7,7 +7,7 @@ use fraktor_actor_rs::{
     dispatcher::dispatch_executor::TokioExecutor,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
-    scheduler::tick::StdTickDriverConfig,
+    scheduler::tick::TickDriverConfig,
     system::{ActorSystem, DispatcherConfig},
   },
 };
@@ -62,7 +62,7 @@ async fn main() {
     DispatcherConfig::from_executor(ArcShared::new(TokioExecutor::new(handle.clone())));
 
   let props = Props::from_fn(|| GuardianActor).with_dispatcher(dispatcher);
-  let system = ActorSystem::new(&props, StdTickDriverConfig::tokio_quickstart()).expect("system");
+  let system = ActorSystem::new(&props, TickDriverConfig::tokio_quickstart()).expect("system");
 
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
 
