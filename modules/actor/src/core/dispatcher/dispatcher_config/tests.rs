@@ -3,9 +3,8 @@ use core::{num::NonZeroUsize, time::Duration};
 use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::{
-  dispatcher::InlineExecutor,
+  dispatcher::{DispatcherConfig, InlineExecutor},
   mailbox::{Mailbox, MailboxOverflowStrategy, MailboxPolicy},
-  props::DispatcherConfig,
   spawn::SpawnError,
 };
 

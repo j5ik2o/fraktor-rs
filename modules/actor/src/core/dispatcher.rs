@@ -33,6 +33,7 @@ pub use base::{Dispatcher, DispatcherGeneric};
 pub use dispatch_error::DispatchError;
 pub use dispatch_executor::DispatchExecutor;
 pub use dispatch_shared::{DispatchShared, DispatchSharedGeneric};
+pub use dispatcher_config::{DispatcherConfig, DispatcherConfigGeneric};
 pub use dispatcher_dump_event::DispatcherDumpEvent;
 pub use dispatcher_sender::{DispatcherSender, DispatcherSenderGeneric};
 pub use inline_executor::{InlineExecutor, InlineExecutorGeneric};
@@ -40,5 +41,7 @@ pub use inline_schedule_adapter::InlineScheduleAdapter;
 pub use schedule_adapter::ScheduleAdapter;
 pub use tick_executor::{TickExecutor, TickExecutorGeneric};
 
+/// Dispatcher configuration module.
+mod dispatcher_config;
 #[cfg(test)]
 mod tests;

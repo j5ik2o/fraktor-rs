@@ -5,8 +5,7 @@ use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
 use crate::core::{
   actor_prim::actor_path::GuardianKind as PathGuardianKind,
   config::actor_system_config::{ActorSystemConfig, RemotingConfig},
-  dispatcher::InlineExecutorGeneric,
-  props::DispatcherConfigGeneric,
+  dispatcher::{DispatcherConfigGeneric, InlineExecutorGeneric},
 };
 
 #[test]

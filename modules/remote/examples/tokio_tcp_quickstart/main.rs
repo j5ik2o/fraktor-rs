@@ -10,9 +10,9 @@ use fraktor_actor_rs::{
   core::{
     actor_prim::actor_path::{ActorPath, ActorPathParts, GuardianKind},
     config::{ActorSystemConfig, RemotingConfig},
+    dispatcher::DispatcherConfigGeneric,
     error::ActorError,
     extension::ExtensionInstallers,
-    props::DispatcherConfigGeneric,
     serialization::SerializationExtensionInstaller,
   },
   std::{

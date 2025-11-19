@@ -7,8 +7,8 @@ use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 use super::RemotingConfig;
 use crate::core::{
   actor_prim::actor_path::GuardianKind as PathGuardianKind,
+  dispatcher::DispatcherConfigGeneric,
   extension::ExtensionInstallers,
-  props::DispatcherConfigGeneric,
   scheduler::{SchedulerConfig, TickDriverConfig},
   system::ActorRefProviderInstaller,
 };

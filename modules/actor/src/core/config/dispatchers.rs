@@ -7,7 +7,7 @@ use fraktor_utils_rs::core::{
 };
 use hashbrown::HashMap;
 
-use crate::core::{config::ConfigError, props::DispatcherConfigGeneric};
+use crate::core::{config::ConfigError, dispatcher::DispatcherConfigGeneric};
 
 #[cfg(test)]
 mod tests;

@@ -6,11 +6,8 @@ use fraktor_utils_rs::core::{
   sync::ArcShared,
 };
 
-use super::{
-  dispatcher_config::DispatcherConfigGeneric, factory::ActorFactory, mailbox_config::MailboxConfig,
-  mailbox_requirement::MailboxRequirement,
-};
-use crate::core::{actor_prim::Actor, mailbox::MailboxPolicy};
+use super::{factory::ActorFactory, mailbox_config::MailboxConfig, mailbox_requirement::MailboxRequirement};
+use crate::core::{actor_prim::Actor, dispatcher::DispatcherConfigGeneric, mailbox::MailboxPolicy};
 
 /// Immutable configuration describing how to construct an actor.
 pub struct PropsGeneric<TB: RuntimeToolbox + 'static> {

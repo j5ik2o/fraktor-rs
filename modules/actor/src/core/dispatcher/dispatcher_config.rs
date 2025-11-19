@@ -14,7 +14,7 @@ use crate::core::{
   spawn::SpawnError,
 };
 
-/// Dispatcher configuration attached to [`Props`](super::Props).
+/// Dispatcher configuration attached to [`Props`](Props).
 pub struct DispatcherConfigGeneric<TB: RuntimeToolbox + 'static> {
   executor:            ArcShared<dyn DispatchExecutor<TB>>,
   throughput_deadline: Option<Duration>,

@@ -16,11 +16,11 @@ use fraktor_utils_rs::core::{
 use super::ActorSystem;
 use crate::core::{
   actor_prim::{Actor, ActorCell},
-  dispatcher::{DispatchError, DispatchExecutor, DispatchSharedGeneric},
+  dispatcher::{DispatchError, DispatchExecutor, DispatchSharedGeneric, DispatcherConfig},
   event_stream::{EventStreamEvent, EventStreamSubscriber},
   lifecycle::LifecycleStage,
   messaging::SystemMessage,
-  props::{DispatcherConfig, MailboxConfig, MailboxRequirement, Props},
+  props::{MailboxConfig, MailboxRequirement, Props},
   scheduler::{
     AutoDriverMetadata, AutoProfileKind, SchedulerConfig, SchedulerContext, TickDriverId, TickDriverKind,
     TickDriverMetadata,
