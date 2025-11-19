@@ -45,4 +45,4 @@ required-features = ["std", "test-support"]
 [[example]]
 name = "tokio_tcp_quickstart"
 path = "examples/tokio_tcp_quickstart/main.rs"
-required-features = ["std", "test-support", "tokio-transport"]
+required-features = ["std", "test-support", "tokio-transport", "tokio-executor"]
