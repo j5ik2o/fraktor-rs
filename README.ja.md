@@ -11,7 +11,7 @@
 
 > 英語版は [README.md](README.md) を参照してください。
 
-fraktor-rs は Akka/Pekko と protoactor-go のライフサイクル／監視／Remoting パターンを `no_std` 環境と Tokio などのホスト環境に同一 API で提供する、仕様駆動型のアクターランタイムです。ワークスペースは `fraktor-utils-rs`・`fraktor-actor-rs`・`fraktor-remote-rs` の 3 クレートで構成され、旧来の `*-core` / `*-std` クレート分割は廃止されました。各クレートは内部に `core`（`#![no_std]`）と `std` モジュールを持ち、feature で同一 API を切り替えます。
+fraktor-rs は Akka/Pekko と protoactor-go のライフサイクル／監視／Remoting パターンを `no_std` 環境と Tokio などのホスト環境に同一 API で提供する、アクターランタイムです。ワークスペースは `fraktor-utils-rs`・`fraktor-actor-rs`・`fraktor-remote-rs` の 3 クレートで構成され、旧来の `*-core` / `*-std` クレート分割は廃止されました。各クレートは内部に `core`（`#![no_std]`）と `std` モジュールを持ち、feature で同一 API を切り替えます。
 
 ## 主な機能
 - **ライフサイクル最優先 ActorSystem** – `modules/actor/src/core/lifecycle/*` と `system/*` が `SystemMessage::{Create,Recreate,Failure}` を system mailbox で優先的に処理し、Deterministic な SupervisorStrategy + DeathWatch を実現します。
