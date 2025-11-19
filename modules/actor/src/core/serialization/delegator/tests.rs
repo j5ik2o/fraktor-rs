@@ -1,6 +1,7 @@
 use alloc::{boxed::Box, vec, vec::Vec};
 use core::any::{Any, TypeId};
 
+use ahash::RandomState;
 use fraktor_utils_rs::core::sync::ArcShared;
 use hashbrown::HashMap;
 
@@ -76,11 +77,11 @@ fn delegator_serializes_payload_via_registry() {
 fn delegator_propagates_not_serializable_errors() {
   let serializer_id = SerializerId::try_from(202).expect("id");
   let setup = SerializationSetup::testing_from_raw(
-    HashMap::new(),
-    HashMap::new(),
-    HashMap::new(),
-    HashMap::new(),
-    HashMap::new(),
+    HashMap::with_hasher(RandomState::new()),
+    HashMap::with_hasher(RandomState::new()),
+    HashMap::with_hasher(RandomState::new()),
+    HashMap::with_hasher(RandomState::new()),
+    HashMap::with_hasher(RandomState::new()),
     Vec::new(),
     serializer_id,
     Vec::new(),

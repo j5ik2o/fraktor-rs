@@ -1,14 +1,20 @@
 //! Registry tracking cancellable entries by handle identifier.
 
+use ahash::RandomState;
 use fraktor_utils_rs::core::sync::ArcShared;
 use hashbrown::HashMap;
 
 use super::cancellable_entry::CancellableEntry;
 
 /// Stores cancellable entries for active scheduler handles.
-#[derive(Default)]
 pub struct CancellableRegistry {
-  entries: HashMap<u64, ArcShared<CancellableEntry>>,
+  entries: HashMap<u64, ArcShared<CancellableEntry>, RandomState>,
+}
+
+impl Default for CancellableRegistry {
+  fn default() -> Self {
+    Self { entries: HashMap::with_hasher(RandomState::new()) }
+  }
 }
 
 impl CancellableRegistry {

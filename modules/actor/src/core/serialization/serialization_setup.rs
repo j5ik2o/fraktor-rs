@@ -6,6 +6,7 @@ mod tests;
 use alloc::{string::String, vec::Vec};
 use core::any::TypeId;
 
+use ahash::RandomState;
 use fraktor_utils_rs::core::sync::ArcShared;
 use hashbrown::HashMap;
 
@@ -14,11 +15,11 @@ use super::{call_scope::SerializationCallScope, serializer::Serializer, serializ
 /// Snapshot of serialization configuration applied to the actor system.
 #[derive(Clone)]
 pub struct SerializationSetup {
-  serializers:      HashMap<SerializerId, ArcShared<dyn Serializer>>,
-  bindings:         HashMap<TypeId, SerializerId>,
-  binding_names:    HashMap<TypeId, String>,
-  remote_manifests: HashMap<TypeId, String>,
-  manifest_routes:  HashMap<String, Vec<(u8, SerializerId)>>,
+  serializers:      HashMap<SerializerId, ArcShared<dyn Serializer>, RandomState>,
+  bindings:         HashMap<TypeId, SerializerId, RandomState>,
+  binding_names:    HashMap<TypeId, String, RandomState>,
+  remote_manifests: HashMap<TypeId, String, RandomState>,
+  manifest_routes:  HashMap<String, Vec<(u8, SerializerId)>, RandomState>,
   scopes:           Vec<SerializationCallScope>,
   fallback:         SerializerId,
   adapter_metadata: Vec<String>,
@@ -29,11 +30,11 @@ impl SerializationSetup {
   #[must_use]
   #[allow(clippy::too_many_arguments)]
   pub(crate) fn from_parts(
-    serializers: HashMap<SerializerId, ArcShared<dyn Serializer>>,
-    bindings: HashMap<TypeId, SerializerId>,
-    binding_names: HashMap<TypeId, String>,
-    remote_manifests: HashMap<TypeId, String>,
-    manifest_routes: HashMap<String, Vec<(u8, SerializerId)>>,
+    serializers: HashMap<SerializerId, ArcShared<dyn Serializer>, RandomState>,
+    bindings: HashMap<TypeId, SerializerId, RandomState>,
+    binding_names: HashMap<TypeId, String, RandomState>,
+    remote_manifests: HashMap<TypeId, String, RandomState>,
+    manifest_routes: HashMap<String, Vec<(u8, SerializerId)>, RandomState>,
     scopes: Vec<SerializationCallScope>,
     fallback: SerializerId,
     adapter_metadata: Vec<String>,
@@ -73,7 +74,7 @@ impl SerializationSetup {
 
   /// Returns serialized manifest routes.
   #[must_use]
-  pub const fn manifest_routes(&self) -> &HashMap<String, Vec<(u8, SerializerId)>> {
+  pub const fn manifest_routes(&self) -> &HashMap<String, Vec<(u8, SerializerId)>, RandomState> {
     &self.manifest_routes
   }
 
@@ -90,22 +91,22 @@ impl SerializationSetup {
   }
 
   /// Returns the internal serializer mapping (crate visibility for registry construction).
-  pub(crate) fn serializers_ref(&self) -> &HashMap<SerializerId, ArcShared<dyn Serializer>> {
+  pub(crate) fn serializers_ref(&self) -> &HashMap<SerializerId, ArcShared<dyn Serializer>, RandomState> {
     &self.serializers
   }
 
   /// Returns the binding map (crate visibility).
-  pub(crate) const fn bindings_ref(&self) -> &HashMap<TypeId, SerializerId> {
+  pub(crate) const fn bindings_ref(&self) -> &HashMap<TypeId, SerializerId, RandomState> {
     &self.bindings
   }
 
   /// Returns the binding names map (crate visibility).
-  pub(crate) const fn binding_names_ref(&self) -> &HashMap<TypeId, String> {
+  pub(crate) const fn binding_names_ref(&self) -> &HashMap<TypeId, String, RandomState> {
     &self.binding_names
   }
 
   /// Returns manifest routes (crate visibility).
-  pub(crate) const fn manifest_routes_ref(&self) -> &HashMap<String, Vec<(u8, SerializerId)>> {
+  pub(crate) const fn manifest_routes_ref(&self) -> &HashMap<String, Vec<(u8, SerializerId)>, RandomState> {
     &self.manifest_routes
   }
 }

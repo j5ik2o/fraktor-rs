@@ -7,7 +7,7 @@ use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 use super::RemotingConfig;
 use crate::core::{
   actor_prim::actor_path::GuardianKind as PathGuardianKind,
-  extension::ExtensionsConfig,
+  extension::ExtensionInstallers,
   scheduler::{SchedulerConfig, TickDriverConfig},
   system::ActorRefProviderInstaller,
 };
@@ -19,13 +19,13 @@ mod tests;
 pub struct ActorSystemConfig<TB>
 where
   TB: RuntimeToolbox + 'static, {
-  system_name:        String,
-  default_guardian:   PathGuardianKind,
-  remoting_config:    Option<RemotingConfig>,
-  scheduler_config:   SchedulerConfig,
-  tick_driver_config: Option<TickDriverConfig<TB>>,
-  extensions_config:  Option<ExtensionsConfig<TB>>,
-  provider_installer: Option<ArcShared<dyn ActorRefProviderInstaller<TB>>>,
+  system_name:          String,
+  default_guardian:     PathGuardianKind,
+  remoting_config:      Option<RemotingConfig>,
+  scheduler_config:     SchedulerConfig,
+  tick_driver_config:   Option<TickDriverConfig<TB>>,
+  extension_installers: Option<ExtensionInstallers<TB>>,
+  provider_installer:   Option<ArcShared<dyn ActorRefProviderInstaller<TB>>>,
 }
 
 impl<TB> ActorSystemConfig<TB>
@@ -69,17 +69,17 @@ where
 
   /// Registers extension installers executed after bootstrap.
   #[must_use]
-  pub fn with_extensions_config(mut self, config: ExtensionsConfig<TB>) -> Self {
-    self.extensions_config = Some(config);
+  pub fn with_extension_installers(mut self, installers: ExtensionInstallers<TB>) -> Self {
+    self.extension_installers = Some(installers);
     self
   }
 
   /// Registers a custom actor-ref provider installer.
   #[must_use]
-  pub fn with_actor_ref_provider<P>(mut self, provider: P) -> Self
+  pub fn with_actor_ref_provider_installer<P>(mut self, installer: P) -> Self
   where
     P: ActorRefProviderInstaller<TB> + 'static, {
-    self.provider_installer = Some(ArcShared::new(provider));
+    self.provider_installer = Some(ArcShared::new(installer));
     self
   }
 
@@ -119,16 +119,16 @@ where
     self.tick_driver_config.take()
   }
 
-  /// Returns the extensions configuration if set.
+  /// Returns the extension installers if set.
   #[must_use]
-  pub const fn extensions_config(&self) -> Option<&ExtensionsConfig<TB>> {
-    self.extensions_config.as_ref()
+  pub const fn extension_installers(&self) -> Option<&ExtensionInstallers<TB>> {
+    self.extension_installers.as_ref()
   }
 
-  /// Takes the extensions configuration.
+  /// Takes the extension installers.
   #[must_use]
-  pub const fn take_extensions_config(&mut self) -> Option<ExtensionsConfig<TB>> {
-    self.extensions_config.take()
+  pub const fn take_extension_installers(&mut self) -> Option<ExtensionInstallers<TB>> {
+    self.extension_installers.take()
   }
 
   /// Returns the provider installer if set.
@@ -150,13 +150,13 @@ where
 {
   fn default() -> Self {
     Self {
-      system_name:        "default-system".to_string(),
-      default_guardian:   PathGuardianKind::User,
-      remoting_config:    None,
-      scheduler_config:   SchedulerConfig::default(),
-      tick_driver_config: None,
-      extensions_config:  None,
-      provider_installer: None,
+      system_name:          "default-system".to_string(),
+      default_guardian:     PathGuardianKind::User,
+      remoting_config:      None,
+      scheduler_config:     SchedulerConfig::default(),
+      tick_driver_config:   None,
+      extension_installers: None,
+      provider_installer:   None,
     }
   }
 }

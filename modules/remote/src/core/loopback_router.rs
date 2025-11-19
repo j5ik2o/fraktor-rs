@@ -6,6 +6,7 @@ use alloc::{
   string::{String, ToString},
 };
 
+use ahash::RandomState;
 use fraktor_actor_rs::core::{logging::LogLevel, system::ActorSystemGeneric};
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 use hashbrown::HashMap;
@@ -16,6 +17,7 @@ use crate::core::{
   outbound_message::OutboundMessage, remote_node_id::RemoteNodeId, remoting_envelope::RemotingEnvelope,
 };
 
+#[allow(dead_code)]
 const LOOPBACK_SCHEME: &str = "fraktor.loopback";
 
 pub(crate) enum LoopbackDeliveryOutcome<TB: RuntimeToolbox + 'static> {
@@ -62,8 +64,9 @@ fn format_authority(host: &str, port: Option<u16>) -> String {
 
 type ArcDeliverer = ArcShared<dyn LoopbackDeliverer>;
 
-static REGISTRY: Mutex<Option<HashMap<String, ArcDeliverer>>> = Mutex::new(None);
+static REGISTRY: Mutex<Option<HashMap<String, ArcDeliverer, RandomState>>> = Mutex::new(None);
 
+#[allow(dead_code)]
 pub(crate) fn scheme() -> &'static str {
   LOOPBACK_SCHEME
 }
@@ -73,7 +76,7 @@ where
   TB: RuntimeToolbox + 'static, {
   let deliverer: ArcDeliverer = ArcShared::new(LoopbackDelivererImpl::new(reader, system));
   let mut guard = REGISTRY.lock();
-  guard.get_or_insert_with(HashMap::new).insert(authority, deliverer);
+  guard.get_or_insert_with(|| HashMap::with_hasher(RandomState::new())).insert(authority, deliverer);
 }
 
 pub(crate) fn try_deliver<TB>(

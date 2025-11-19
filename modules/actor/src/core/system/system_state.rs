@@ -15,6 +15,7 @@ use core::{
   time::Duration,
 };
 
+use ahash::RandomState;
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
@@ -31,7 +32,7 @@ use crate::core::{
     actor_path::{ActorPath, ActorPathParser, ActorPathParts, ActorPathScheme, GuardianKind as PathGuardianKind},
     actor_ref::ActorRefGeneric,
   },
-  config::{ActorSystemConfig, DispatchersGeneric, MailboxesGeneric},
+  config::{ActorSystemConfig, DispatchersGeneric, MailboxesGeneric, RemotingConfig},
   dead_letter::{DeadLetterEntryGeneric, DeadLetterGeneric, DeadLetterReason},
   error::{ActorError, SendError},
   event_stream::{EventStreamEvent, EventStreamGeneric, RemoteAuthorityEvent, TickDriverSnapshot},
@@ -80,8 +81,8 @@ impl Default for PathIdentity {
 pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   next_pid:               AtomicU64,
   clock:                  AtomicU64,
-  cells:                  ToolboxMutex<HashMap<Pid, ArcShared<ActorCellGeneric<TB>>>, TB>,
-  registries:             ToolboxMutex<HashMap<Option<Pid>, NameRegistry>, TB>,
+  cells:                  ToolboxMutex<HashMap<Pid, ArcShared<ActorCellGeneric<TB>>, RandomState>, TB>,
+  registries:             ToolboxMutex<HashMap<Option<Pid>, NameRegistry, RandomState>, TB>,
   root_guardian:          ToolboxMutex<Option<ArcShared<ActorCellGeneric<TB>>>, TB>,
   system_guardian:        ToolboxMutex<Option<ArcShared<ActorCellGeneric<TB>>>, TB>,
   user_guardian:          ToolboxMutex<Option<ArcShared<ActorCellGeneric<TB>>>, TB>,
@@ -92,16 +93,16 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   root_started:           AtomicBool,
   event_stream:           ArcShared<EventStreamGeneric<TB>>,
   dead_letter:            ArcShared<DeadLetterGeneric<TB>>,
-  extra_top_levels:       ToolboxMutex<HashMap<String, ActorRefGeneric<TB>>, TB>,
-  temp_actors:            ToolboxMutex<HashMap<String, ActorRefGeneric<TB>>, TB>,
+  extra_top_levels:       ToolboxMutex<HashMap<String, ActorRefGeneric<TB>, RandomState>, TB>,
+  temp_actors:            ToolboxMutex<HashMap<String, ActorRefGeneric<TB>, RandomState>, TB>,
   temp_counter:           AtomicU64,
   failure_total:          AtomicU64,
   failure_restart_total:  AtomicU64,
   failure_stop_total:     AtomicU64,
   failure_escalate_total: AtomicU64,
   failure_inflight:       AtomicU64,
-  extensions:             ToolboxMutex<HashMap<TypeId, ArcShared<dyn Any + Send + Sync + 'static>>, TB>,
-  actor_ref_providers:    ToolboxMutex<HashMap<TypeId, ArcShared<dyn Any + Send + Sync + 'static>>, TB>,
+  extensions:             ToolboxMutex<HashMap<TypeId, ArcShared<dyn Any + Send + Sync + 'static>, RandomState>, TB>,
+  actor_ref_providers:    ToolboxMutex<HashMap<TypeId, ArcShared<dyn Any + Send + Sync + 'static>, RandomState>, TB>,
   remote_watch_hook:      ToolboxMutex<Option<ArcShared<dyn RemoteWatchHook<TB>>>, TB>,
   dispatchers:            ArcShared<DispatchersGeneric<TB>>,
   mailboxes:              ArcShared<MailboxesGeneric<TB>>,
@@ -110,6 +111,7 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   remote_authority_mgr:   ArcShared<RemoteAuthorityManagerGeneric<TB>>,
   scheduler_context:      ToolboxMutex<Option<ArcShared<SchedulerContext<TB>>>, TB>,
   tick_driver_runtime:    ToolboxMutex<Option<TickDriverRuntime<TB>>, TB>,
+  remoting_config:        ToolboxMutex<Option<RemotingConfig>, TB>,
 }
 
 /// Type alias for [SystemStateGeneric] with the default [NoStdToolbox].
@@ -129,8 +131,8 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     Self {
       next_pid: AtomicU64::new(0),
       clock: AtomicU64::new(0),
-      cells: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::new()),
-      registries: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::new()),
+      cells: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::with_hasher(RandomState::new())),
+      registries: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::with_hasher(RandomState::new())),
       root_guardian: <TB::MutexFamily as SyncMutexFamily>::create(None),
       system_guardian: <TB::MutexFamily as SyncMutexFamily>::create(None),
       user_guardian: <TB::MutexFamily as SyncMutexFamily>::create(None),
@@ -141,16 +143,16 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       root_started: AtomicBool::new(false),
       event_stream,
       dead_letter,
-      extra_top_levels: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::new()),
-      temp_actors: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::new()),
+      extra_top_levels: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::with_hasher(RandomState::new())),
+      temp_actors: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::with_hasher(RandomState::new())),
       temp_counter: AtomicU64::new(0),
       failure_total: AtomicU64::new(0),
       failure_restart_total: AtomicU64::new(0),
       failure_stop_total: AtomicU64::new(0),
       failure_escalate_total: AtomicU64::new(0),
       failure_inflight: AtomicU64::new(0),
-      extensions: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::new()),
-      actor_ref_providers: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::new()),
+      extensions: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::with_hasher(RandomState::new())),
+      actor_ref_providers: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::with_hasher(RandomState::new())),
       remote_watch_hook: <TB::MutexFamily as SyncMutexFamily>::create(None),
       dispatchers,
       mailboxes,
@@ -159,6 +161,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       remote_authority_mgr: ArcShared::new(RemoteAuthorityManagerGeneric::new()),
       scheduler_context: <TB::MutexFamily as SyncMutexFamily>::create(None),
       tick_driver_runtime: <TB::MutexFamily as SyncMutexFamily>::create(None),
+      remoting_config: <TB::MutexFamily as SyncMutexFamily>::create(None),
     }
   }
 
@@ -179,10 +182,14 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
         identity.canonical_host = Some(remoting.canonical_host().to_string());
         identity.canonical_port = remoting.canonical_port();
         identity.quarantine_duration = remoting.quarantine_duration();
+        // Save the full RemotingConfig
+        *self.remoting_config.lock() = Some(remoting.clone());
       } else {
         identity.canonical_host = None;
         identity.canonical_port = None;
         identity.quarantine_duration = DEFAULT_QUARANTINE_DURATION;
+        // Clear RemotingConfig
+        *self.remoting_config.lock() = None;
       }
     }
 
@@ -704,6 +711,12 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   #[must_use]
   pub fn mailboxes(&self) -> ArcShared<MailboxesGeneric<TB>> {
     self.mailboxes.clone()
+  }
+
+  /// Returns the remoting configuration when it has been configured.
+  #[must_use]
+  pub fn remoting_config(&self) -> Option<RemotingConfig> {
+    self.remoting_config.lock().clone()
   }
 
   /// Installs the scheduler service handle.

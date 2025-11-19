@@ -2,6 +2,7 @@
 
 use alloc::vec::Vec;
 
+use ahash::RandomState;
 use hashbrown::HashMap;
 
 use super::{builtin, serialization_extension_id::SerializationExtensionId, serialization_setup::SerializationSetup};
@@ -10,11 +11,11 @@ use super::{builtin, serialization_extension_id::SerializationExtensionId, seria
 #[must_use]
 pub fn default_serialization_setup() -> SerializationSetup {
   SerializationSetup::from_parts(
-    HashMap::new(),
-    HashMap::new(),
-    HashMap::new(),
-    HashMap::new(),
-    HashMap::new(),
+    HashMap::with_hasher(RandomState::new()),
+    HashMap::with_hasher(RandomState::new()),
+    HashMap::with_hasher(RandomState::new()),
+    HashMap::with_hasher(RandomState::new()),
+    HashMap::with_hasher(RandomState::new()),
     Vec::new(),
     builtin::STRING_ID,
     Vec::new(),

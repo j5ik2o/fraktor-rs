@@ -1,7 +1,4 @@
-//! Provides actor references targeting remote authorities.
-
-#[cfg(test)]
-mod tests;
+//! Provides actor references targeting remote authorities using Tokio TCP transport.
 
 use alloc::{
   string::{String, ToString},
@@ -15,9 +12,9 @@ use fraktor_actor_rs::core::{
     actor_path::{ActorPath, ActorPathParts},
     actor_ref::{ActorRefGeneric, ActorRefSender},
   },
-  error::SendError,
+  error::{ActorError, SendError},
   messaging::{AnyMessageGeneric, SystemMessage},
-  system::{ActorSystemGeneric, RemoteAuthorityManagerGeneric, RemoteWatchHook},
+  system::{ActorRefProvider, ActorSystemGeneric, RemoteAuthorityManagerGeneric, RemoteWatchHook},
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdMutex, NoStdToolbox, RuntimeToolbox},
@@ -28,33 +25,30 @@ use hashbrown::HashMap;
 use crate::core::{
   endpoint_writer::EndpointWriter, endpoint_writer_error::EndpointWriterError, loopback_router,
   loopback_router::LoopbackDeliveryOutcome, outbound_message::OutboundMessage, outbound_priority::OutboundPriority,
-  remote_actor_ref_provider_error::RemoteActorRefProviderError,
-  remote_actor_ref_provider_installer::RemoteActorRefProviderInstaller,
-  remote_authority_snapshot::RemoteAuthoritySnapshot, remote_node_id::RemoteNodeId,
-  remote_watcher_command::RemoteWatcherCommand, remote_watcher_daemon::RemoteWatcherDaemon,
-  remoting_control::RemotingControl, remoting_control_handle::RemotingControlHandle, remoting_error::RemotingError,
+  remote_actor_ref_provider_error::RemoteActorRefProviderError, remote_authority_snapshot::RemoteAuthoritySnapshot,
+  remote_node_id::RemoteNodeId, remote_watcher_command::RemoteWatcherCommand,
+  remote_watcher_daemon::RemoteWatcherDaemon, remoting_control::RemotingControl,
+  remoting_control_handle::RemotingControlHandle, remoting_error::RemotingError, transport::TokioTransportConfig,
 };
 
-/// Provider that creates [`ActorRefGeneric`] instances for remote recipients.
-pub struct RemoteActorRefProviderGeneric<TB: RuntimeToolbox + 'static> {
+/// Provider that creates [`ActorRefGeneric`] instances for remote recipients using Tokio TCP
+/// transport.
+pub struct TokioActorRefProviderGeneric<TB: RuntimeToolbox + 'static> {
   system:            ActorSystemGeneric<TB>,
   writer:            ArcShared<EndpointWriter<TB>>,
   control:           RemotingControlHandle<TB>,
   authority_manager: ArcShared<RemoteAuthorityManagerGeneric<TB>>,
   watcher_daemon:    ActorRefGeneric<TB>,
   watch_entries:     NoStdMutex<HashMap<Pid, RemoteWatchEntry, RandomState>>,
+  #[allow(dead_code)] // Reserved for future transport-specific configuration
+  transport_config: TokioTransportConfig,
 }
 
-/// Provider that creates [`ActorRefGeneric`] instances for remote recipients.
-pub type RemoteActorRefProvider = RemoteActorRefProviderGeneric<NoStdToolbox>;
+/// Provider that creates [`ActorRefGeneric`] instances for remote recipients using Tokio TCP
+/// transport.
+pub type TokioActorRefProvider = TokioActorRefProviderGeneric<NoStdToolbox>;
 
-impl<TB: RuntimeToolbox + 'static> RemoteActorRefProviderGeneric<TB> {
-  /// Creates a remote actor-ref provider installer with loopback routing enabled.
-  #[must_use]
-  pub fn loopback() -> RemoteActorRefProviderInstaller<TB> {
-    RemoteActorRefProviderInstaller::loopback()
-  }
-
+impl<TB: RuntimeToolbox + 'static> TokioActorRefProviderGeneric<TB> {
   /// Creates a remote actor reference for the provided path.
   pub fn actor_ref(&self, path: ActorPath) -> Result<ActorRefGeneric<TB>, RemoteActorRefProviderError> {
     self.control.associate(path.parts()).map_err(RemoteActorRefProviderError::from)?;
@@ -69,6 +63,7 @@ impl<TB: RuntimeToolbox + 'static> RemoteActorRefProviderGeneric<TB> {
     writer: ArcShared<EndpointWriter<TB>>,
     control: RemotingControlHandle<TB>,
     authority_manager: ArcShared<RemoteAuthorityManagerGeneric<TB>>,
+    transport_config: TokioTransportConfig,
   ) -> Result<Self, RemoteActorRefProviderError> {
     let daemon = RemoteWatcherDaemon::spawn(&system, control.clone())?;
     Ok(Self {
@@ -78,6 +73,7 @@ impl<TB: RuntimeToolbox + 'static> RemoteActorRefProviderGeneric<TB> {
       authority_manager,
       watcher_daemon: daemon,
       watch_entries: NoStdMutex::new(HashMap::with_hasher(RandomState::new())),
+      transport_config,
     })
   }
 
@@ -173,7 +169,7 @@ impl<TB: RuntimeToolbox + 'static> RemoteActorRefProviderGeneric<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> RemoteWatchHook<TB> for RemoteActorRefProviderGeneric<TB> {
+impl<TB: RuntimeToolbox + 'static> RemoteWatchHook<TB> for TokioActorRefProviderGeneric<TB> {
   fn handle_watch(&self, target: Pid, watcher: Pid) -> bool {
     if let Some((parts, should_send)) = self.track_watch(target, watcher) {
       if should_send {
@@ -285,5 +281,14 @@ impl RemoteWatchEntry {
   #[cfg(any(test, feature = "test-support"))]
   fn watchers(&self) -> &[Pid] {
     &self.watchers
+  }
+}
+
+/// Implementation of ActorRefProvider trait for Tokio TCP transport.
+impl<TB: RuntimeToolbox + 'static> ActorRefProvider<TB> for TokioActorRefProviderGeneric<TB> {
+  fn actor_ref(&self, path: ActorPath) -> Result<ActorRefGeneric<TB>, ActorError> {
+    self
+      .actor_ref(path)
+      .map_err(|error| ActorError::fatal(alloc::format!("Failed to create Tokio actor ref: {:?}", error)))
   }
 }

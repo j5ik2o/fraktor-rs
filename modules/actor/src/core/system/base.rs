@@ -17,7 +17,7 @@ use fraktor_utils_rs::core::{
 use super::{ExtendedActorSystemGeneric, RootGuardianActor, SystemGuardianActor, SystemGuardianProtocol};
 use crate::core::{
   actor_prim::{ActorCellGeneric, ChildRefGeneric, Pid, actor_ref::ActorRefGeneric},
-  config::ActorSystemConfig,
+  config::{ActorSystemConfig, RemotingConfig},
   dead_letter::{DeadLetterEntryGeneric, DeadLetterReason},
   error::SendError,
   event_stream::{
@@ -129,8 +129,8 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     system.bootstrap(user_guardian_props, configure)?;
 
     // Install extensions and provider after bootstrap
-    if let Some(extensions) = config.extensions_config() {
-      extensions.install_all(&system).map_err(|e| SpawnError::from_actor_system_build_error(&e))?;
+    if let Some(installers) = config.extension_installers() {
+      installers.install_all(&system).map_err(|e| SpawnError::from_actor_system_build_error(&e))?;
     }
 
     if let Some(installer) = config.provider_installer() {
@@ -171,6 +171,12 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   #[must_use]
   pub fn canonical_authority(&self) -> Option<String> {
     self.state.canonical_authority_endpoint()
+  }
+
+  /// Returns the remoting configuration when it has been configured.
+  #[must_use]
+  pub fn remoting_config(&self) -> Option<RemotingConfig> {
+    self.state.remoting_config()
   }
 
   /// Returns an extended view that exposes privileged runtime operations.

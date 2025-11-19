@@ -1,5 +1,6 @@
 use alloc::{borrow::ToOwned, string::String};
 
+use ahash::RandomState;
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
   sync::sync_mutex_like::SyncMutexLike,
@@ -15,7 +16,7 @@ const DEFAULT_MAILBOX_ID: &str = "default";
 
 /// Registry that manages mailbox configurations keyed by identifier.
 pub struct MailboxesGeneric<TB: RuntimeToolbox + 'static> {
-  entries: ToolboxMutex<HashMap<String, MailboxConfig>, TB>,
+  entries: ToolboxMutex<HashMap<String, MailboxConfig, RandomState>, TB>,
 }
 
 /// Type alias bound to the default toolbox.
@@ -25,7 +26,7 @@ impl<TB: RuntimeToolbox + 'static> MailboxesGeneric<TB> {
   /// Creates an empty mailbox registry.
   #[must_use]
   pub fn new() -> Self {
-    Self { entries: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::new()) }
+    Self { entries: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::with_hasher(RandomState::new())) }
   }
 
   /// Registers a mailbox configuration.

@@ -6,6 +6,7 @@ mod tests;
 use alloc::{collections::BTreeMap, string::String, vec::Vec};
 use core::any::{TypeId, type_name};
 
+use ahash::RandomState;
 use fraktor_utils_rs::core::sync::ArcShared;
 use hashbrown::HashMap;
 
@@ -17,12 +18,12 @@ use super::{
 
 /// Fluent builder to assemble serialization components prior to runtime initialization.
 pub struct SerializationSetupBuilder {
-  serializers_by_id: HashMap<SerializerId, ArcShared<dyn Serializer>>,
-  serializer_ids:    HashMap<String, SerializerId>,
-  bindings:          HashMap<TypeId, SerializerId>,
-  binding_names:     HashMap<TypeId, String>,
-  manifest_strings:  HashMap<TypeId, String>,
-  routes:            HashMap<String, BTreeMap<u8, SerializerId>>,
+  serializers_by_id: HashMap<SerializerId, ArcShared<dyn Serializer>, RandomState>,
+  serializer_ids:    HashMap<String, SerializerId, RandomState>,
+  bindings:          HashMap<TypeId, SerializerId, RandomState>,
+  binding_names:     HashMap<TypeId, String, RandomState>,
+  manifest_strings:  HashMap<TypeId, String, RandomState>,
+  routes:            HashMap<String, BTreeMap<u8, SerializerId>, RandomState>,
   fallback:          Option<SerializerId>,
   scopes:            Vec<SerializationCallScope>,
   adapter_metadata:  Vec<String>,
@@ -39,12 +40,12 @@ impl SerializationSetupBuilder {
   #[must_use]
   pub fn new() -> Self {
     Self {
-      serializers_by_id: HashMap::new(),
-      serializer_ids:    HashMap::new(),
-      bindings:          HashMap::new(),
-      binding_names:     HashMap::new(),
-      manifest_strings:  HashMap::new(),
-      routes:            HashMap::new(),
+      serializers_by_id: HashMap::with_hasher(RandomState::new()),
+      serializer_ids:    HashMap::with_hasher(RandomState::new()),
+      bindings:          HashMap::with_hasher(RandomState::new()),
+      binding_names:     HashMap::with_hasher(RandomState::new()),
+      manifest_strings:  HashMap::with_hasher(RandomState::new()),
+      routes:            HashMap::with_hasher(RandomState::new()),
       fallback:          None,
       scopes:            Vec::new(),
       adapter_metadata:  Vec::new(),
@@ -216,13 +217,11 @@ impl SerializationSetupBuilder {
         .unwrap_or(&SerializationCallScope::Remote);
       return Err(SerializationBuilderError::ManifestRequired(scope));
     }
-    let manifest_routes = routes
-      .into_iter()
-      .map(|(manifest, ordered)| {
-        let entries = ordered.into_iter().collect::<Vec<_>>();
-        (manifest, entries)
-      })
-      .collect();
+    let mut manifest_routes = HashMap::with_hasher(RandomState::new());
+    manifest_routes.extend(routes.into_iter().map(|(manifest, ordered)| {
+      let entries = ordered.into_iter().collect::<Vec<_>>();
+      (manifest, entries)
+    }));
     Ok(SerializationSetup::from_parts(
       serializers_by_id,
       bindings,

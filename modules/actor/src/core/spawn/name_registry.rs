@@ -5,18 +5,19 @@ mod tests;
 
 use alloc::{borrow::ToOwned, format, string::String};
 
+use ahash::RandomState;
 use hashbrown::HashMap;
 
 use crate::core::{actor_prim::Pid, spawn::NameRegistryError};
 
 /// Maintains the mapping between actor names and their pids for a scope.
 pub struct NameRegistry {
-  entries: HashMap<String, Pid>,
+  entries: HashMap<String, Pid, RandomState>,
 }
 
 impl Default for NameRegistry {
   fn default() -> Self {
-    Self { entries: HashMap::new() }
+    Self { entries: HashMap::with_hasher(RandomState::new()) }
   }
 }
 

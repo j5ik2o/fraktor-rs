@@ -4,12 +4,15 @@
 
 mod actor_path_handle;
 mod actor_path_registry;
+mod actor_ref_provider;
 mod actor_ref_provider_installer;
 mod actor_system_build_error;
 mod authority_state;
 mod base;
 mod extended_actor_system;
 mod guardian_kind;
+mod local_actor_ref_provider;
+mod local_actor_ref_provider_installer;
 mod register_extra_top_level_error;
 mod remote_authority;
 mod remote_authority_error;
@@ -22,12 +25,15 @@ mod system_state;
 
 pub use actor_path_handle::ActorPathHandle;
 pub use actor_path_registry::ActorPathRegistry;
+pub use actor_ref_provider::ActorRefProvider;
 pub use actor_ref_provider_installer::ActorRefProviderInstaller;
 pub use actor_system_build_error::ActorSystemBuildError;
 pub use authority_state::AuthorityState;
 pub use base::{ActorSystem, ActorSystemGeneric};
 pub use extended_actor_system::{ExtendedActorSystem, ExtendedActorSystemGeneric};
 pub use guardian_kind::GuardianKind;
+pub use local_actor_ref_provider::LocalActorRefProviderGeneric;
+pub use local_actor_ref_provider_installer::LocalActorRefProviderInstaller;
 pub use register_extra_top_level_error::RegisterExtraTopLevelError;
 pub use remote_authority::{RemoteAuthorityManager, RemoteAuthorityManagerGeneric};
 pub use remote_authority_error::RemoteAuthorityError;

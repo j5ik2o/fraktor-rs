@@ -30,6 +30,7 @@ portable-atomic-util = { workspace = true, default-features = false, features = 
 spin = { workspace = true, default-features = false, features = ["mutex", "spin_mutex", "rwlock", "portable_atomic"] }
 cortex-m = { workspace = true, optional = true }
 hashbrown = { workspace = true, default-features = false }
+ahash = { workspace = true, default-features = false }
 serde = { workspace = true }
 erased-serde = { workspace = true }
 bincode = { workspace = true }

@@ -1,5 +1,6 @@
 use alloc::{borrow::ToOwned, string::String};
 
+use ahash::RandomState;
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
   sync::sync_mutex_like::SyncMutexLike,
@@ -15,7 +16,7 @@ const DEFAULT_DISPATCHER_ID: &str = "default";
 
 /// Registry that resolves dispatcher identifiers to configurations.
 pub struct DispatchersGeneric<TB: RuntimeToolbox + 'static> {
-  entries: ToolboxMutex<HashMap<String, DispatcherConfigGeneric<TB>>, TB>,
+  entries: ToolboxMutex<HashMap<String, DispatcherConfigGeneric<TB>, RandomState>, TB>,
 }
 
 /// Type alias using the default toolbox.
@@ -25,7 +26,7 @@ impl<TB: RuntimeToolbox + 'static> DispatchersGeneric<TB> {
   /// Creates an empty dispatcher registry.
   #[must_use]
   pub fn new() -> Self {
-    Self { entries: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::new()) }
+    Self { entries: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::with_hasher(RandomState::new())) }
   }
 
   /// Registers a dispatcher configuration for the provided identifier.
