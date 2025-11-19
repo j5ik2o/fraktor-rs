@@ -4,7 +4,6 @@ use alloc::{format, vec::Vec};
 
 use fraktor_actor_rs::core::{
   actor_prim::{Actor, ActorContextGeneric},
-  config::ActorSystemConfig,
   error::ActorError,
   event_stream::{
     event_stream_event::EventStreamEvent,
@@ -17,7 +16,7 @@ use fraktor_actor_rs::core::{
   messaging::AnyMessageViewGeneric,
   props::PropsGeneric,
   scheduler::{ManualTestDriver, TickDriverConfig},
-  system::ActorSystemGeneric,
+  system::{ActorSystemConfig, ActorSystemGeneric},
 };
 use fraktor_utils_rs::core::{runtime_toolbox::{NoStdMutex, NoStdToolbox}, sync::ArcShared};
 

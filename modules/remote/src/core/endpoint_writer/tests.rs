@@ -5,7 +5,6 @@ use fraktor_actor_rs::core::{
     Actor, ActorContextGeneric,
     actor_path::{ActorPath, ActorPathParts, GuardianKind},
   },
-  config::ActorSystemConfig,
   error::ActorError,
   messaging::AnyMessageGeneric,
   props::PropsGeneric,
@@ -14,7 +13,7 @@ use fraktor_actor_rs::core::{
     SerializationCallScope, SerializationExtensionGeneric, SerializationSetup, SerializationSetupBuilder, Serializer,
     SerializerId, StringSerializer,
   },
-  system::ActorSystemGeneric,
+  system::{ActorSystemConfig, ActorSystemGeneric},
 };
 use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
 

@@ -20,7 +20,7 @@ fn register_duplicate_dispatcher_fails() {
   registry.ensure_default();
   let config = DispatcherConfigGeneric::default();
   registry.register("dup", config.clone()).expect("first register");
-  assert!(matches!(registry.register("dup", config), Err(ConfigError::DispatcherDuplicate(_))));
+  assert!(matches!(registry.register("dup", config), Err(DispatcherRegistryError::Duplicate(_))));
 }
 
 #[test]

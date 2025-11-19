@@ -14,10 +14,12 @@ use fraktor_utils_rs::core::{
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 
-use super::{ExtendedActorSystemGeneric, RootGuardianActor, SystemGuardianActor, SystemGuardianProtocol};
+use super::{
+  ActorSystemConfig, ExtendedActorSystemGeneric, RemotingConfig, RootGuardianActor, SystemGuardianActor,
+  SystemGuardianProtocol,
+};
 use crate::core::{
   actor_prim::{ActorCellGeneric, ChildRefGeneric, Pid, actor_ref::ActorRefGeneric},
-  config::{ActorSystemConfig, RemotingConfig},
   dead_letter::{DeadLetterEntryGeneric, DeadLetterReason},
   error::SendError,
   event_stream::{
@@ -87,7 +89,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   ) -> Result<Self, SpawnError>
   where
     TB: Default, {
-    let config = crate::core::config::ActorSystemConfig::default().with_tick_driver(tick_driver_config);
+    let config = ActorSystemConfig::default().with_tick_driver(tick_driver_config);
     Self::new_with_config(user_guardian_props, &config)
   }
 

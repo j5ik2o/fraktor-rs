@@ -9,7 +9,6 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::core::{
-  config::ActorSystemConfig,
   dead_letter::DeadLetterEntryGeneric,
   error::SendError,
   event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric},
@@ -17,7 +16,7 @@ use crate::core::{
   logging::LogLevel,
   messaging::AnyMessageGeneric,
   spawn::SpawnError,
-  system::{ActorSystemGeneric, SystemStateGeneric},
+  system::{ActorSystemConfig, ActorSystemGeneric, SystemStateGeneric},
   typed::{
     actor_prim::{TypedActorRefGeneric, TypedChildRefGeneric},
     props::TypedPropsGeneric,

@@ -4,13 +4,12 @@ use alloc::string::{String, ToString};
 
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
-use super::RemotingConfig;
 use crate::core::{
   actor_prim::actor_path::GuardianKind as PathGuardianKind,
   dispatcher::DispatcherConfigGeneric,
   extension::ExtensionInstallers,
   scheduler::{SchedulerConfig, TickDriverConfig},
-  system::ActorRefProviderInstaller,
+  system::{ActorRefProviderInstaller, RemotingConfig},
 };
 
 #[cfg(test)]

@@ -6,12 +6,11 @@ pub use crate::std::dispatcher::{DispatchExecutor, DispatchShared, Dispatcher, D
 use crate::{
   core::{
     actor_prim::Pid,
-    config::ActorSystemConfig,
     event_stream::{EventStreamSubscriber as CoreEventStreamSubscriber, TickDriverSnapshot},
     logging::LogLevel,
     spawn::SpawnError,
     system::{
-      ActorSystemGeneric as CoreActorSystemGeneric, ExtendedActorSystemGeneric,
+      ActorSystemConfig, ActorSystemGeneric as CoreActorSystemGeneric, ExtendedActorSystemGeneric,
       SystemStateGeneric as CoreSystemStateGeneric,
     },
   },

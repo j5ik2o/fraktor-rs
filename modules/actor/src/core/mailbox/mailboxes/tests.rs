@@ -1,5 +1,4 @@
 use super::*;
-use crate::core::props::MailboxConfig;
 
 #[test]
 fn register_and_resolve_mailbox() {
@@ -16,7 +15,7 @@ fn register_duplicate_mailbox_fails() {
   registry.ensure_default();
   let config = MailboxConfig::default();
   registry.register("dup", config).expect("first register");
-  assert!(matches!(registry.register("dup", MailboxConfig::default()), Err(ConfigError::MailboxDuplicate(_))));
+  assert!(matches!(registry.register("dup", MailboxConfig::default()), Err(MailboxRegistryError::Duplicate(_))));
 }
 
 #[test]

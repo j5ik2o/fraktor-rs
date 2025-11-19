@@ -7,7 +7,7 @@ use fraktor_utils_rs::core::{
 };
 use hashbrown::HashMap;
 
-use crate::core::{config::ConfigError, dispatcher::DispatcherConfigGeneric};
+use crate::core::dispatcher::{DispatcherConfigGeneric, DispatcherRegistryError};
 
 #[cfg(test)]
 mod tests;
@@ -33,12 +33,16 @@ impl<TB: RuntimeToolbox + 'static> DispatchersGeneric<TB> {
   ///
   /// # Errors
   ///
-  /// Returns [`ConfigError::DispatcherDuplicate`] when the identifier already exists.
-  pub fn register(&self, id: impl Into<String>, config: DispatcherConfigGeneric<TB>) -> Result<(), ConfigError> {
+  /// Returns [`DispatcherRegistryError::Duplicate`] when the identifier already exists.
+  pub fn register(
+    &self,
+    id: impl Into<String>,
+    config: DispatcherConfigGeneric<TB>,
+  ) -> Result<(), DispatcherRegistryError> {
     let mut entries = self.entries.lock();
     let id = id.into();
     if entries.contains_key(&id) {
-      return Err(ConfigError::dispatcher_duplicate(&id));
+      return Err(DispatcherRegistryError::duplicate(&id));
     }
     entries.insert(id, config);
     Ok(())
@@ -56,9 +60,9 @@ impl<TB: RuntimeToolbox + 'static> DispatchersGeneric<TB> {
   ///
   /// # Errors
   ///
-  /// Returns [`ConfigError::DispatcherUnknown`] when the identifier has not been registered.
-  pub fn resolve(&self, id: &str) -> Result<DispatcherConfigGeneric<TB>, ConfigError> {
-    self.entries.lock().get(id).cloned().ok_or_else(|| ConfigError::dispatcher_unknown(id))
+  /// Returns [`DispatcherRegistryError::Unknown`] when the identifier has not been registered.
+  pub fn resolve(&self, id: &str) -> Result<DispatcherConfigGeneric<TB>, DispatcherRegistryError> {
+    self.entries.lock().get(id).cloned().ok_or_else(|| DispatcherRegistryError::unknown(id))
   }
 
   /// Ensures the default dispatcher entry exists.

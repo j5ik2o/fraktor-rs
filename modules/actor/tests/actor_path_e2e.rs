@@ -7,9 +7,8 @@ use fraktor_actor_rs::core::{
     actor_path::{ActorPath, ActorPathFormatter, ActorPathParser, ActorPathParts, ActorUid, PathResolutionError},
     actor_selection::{ActorSelectionError, ActorSelectionResolver},
   },
-  config::{ActorSystemConfig, RemotingConfig},
   messaging::AnyMessage,
-  system::{AuthorityState, RemoteAuthorityManager},
+  system::{ActorSystemConfig, AuthorityState, RemoteAuthorityManager, RemotingConfig},
 };
 use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 

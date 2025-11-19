@@ -13,12 +13,11 @@ use crate::core::{
     actor_path::{ActorPath, ActorUid, GuardianKind as PathGuardianKind, PathResolutionError},
     actor_ref::ActorRefGeneric,
   },
-  config::{ActorSystemConfig, RemotingConfig},
   error::ActorError,
   event_stream::{EventStream, EventStreamEvent, EventStreamSubscriber},
   messaging::{AnyMessage, AnyMessageViewGeneric},
   props::Props,
-  system::{AuthorityState, RegisterExtraTopLevelError},
+  system::{ActorSystemConfig, AuthorityState, RegisterExtraTopLevelError, RemotingConfig},
 };
 
 #[test]

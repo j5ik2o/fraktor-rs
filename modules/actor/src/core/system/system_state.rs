@@ -24,7 +24,8 @@ use hashbrown::HashMap;
 use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
 use super::{
-  ActorPathRegistry, AuthorityState, GuardianKind, RemoteAuthorityError, RemoteAuthorityManagerGeneric, RemoteWatchHook,
+  ActorPathRegistry, ActorSystemConfig, AuthorityState, GuardianKind, RemoteAuthorityError,
+  RemoteAuthorityManagerGeneric, RemoteWatchHook, RemotingConfig,
 };
 use crate::core::{
   actor_prim::{
@@ -32,12 +33,13 @@ use crate::core::{
     actor_path::{ActorPath, ActorPathParser, ActorPathParts, ActorPathScheme, GuardianKind as PathGuardianKind},
     actor_ref::ActorRefGeneric,
   },
-  config::{ActorSystemConfig, DispatchersGeneric, MailboxesGeneric, RemotingConfig},
   dead_letter::{DeadLetterEntryGeneric, DeadLetterGeneric, DeadLetterReason},
+  dispatcher::DispatchersGeneric,
   error::{ActorError, SendError},
   event_stream::{EventStreamEvent, EventStreamGeneric, RemoteAuthorityEvent, TickDriverSnapshot},
   futures::ActorFuture,
   logging::{LogEvent, LogLevel},
+  mailbox::MailboxesGeneric,
   messaging::{AnyMessageGeneric, FailurePayload, SystemMessage},
   scheduler::{SchedulerContext, TaskRunSummary, TickDriverBootstrap, TickDriverRuntime},
   spawn::{NameRegistry, NameRegistryError, SpawnError},

@@ -11,14 +11,13 @@ use fraktor_actor_rs::core::{
     Actor, ActorContext,
     actor_path::{ActorPath, ActorPathParts, GuardianKind},
   },
-  config::{ActorSystemConfig, RemotingConfig},
   error::ActorError,
   extension::ExtensionInstallers,
   messaging::AnyMessageView,
   props::Props,
   scheduler::{ManualTestDriver, TickDriverConfig},
   serialization::SerializationExtensionInstaller,
-  system::{ActorSystem, ActorSystemGeneric},
+  system::{ActorSystem, ActorSystemConfig, ActorSystemGeneric, RemotingConfig},
 };
 use fraktor_remote_rs::core::{
   LoopbackActorRefProvider, LoopbackActorRefProviderInstaller, RemotingExtensionConfig, RemotingExtensionId,
