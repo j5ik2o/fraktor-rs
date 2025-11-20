@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout source
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
       - name: Setup Rust toolchain (nightly)
         uses: dtolnay/rust-toolchain@nightly
         with:
@@ -47,7 +47,7 @@ jobs:
             script: dylint
     steps:
       - name: Checkout source
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
       - name: Setup Rust toolchain (nightly)
         uses: dtolnay/rust-toolchain@nightly
         with:
@@ -76,7 +76,7 @@ jobs:
             script: test
     steps:
       - name: Checkout source
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
       - name: Setup Rust toolchain (nightly)
         uses: dtolnay/rust-toolchain@nightly
       - name: Setup Cargo cache
@@ -93,7 +93,7 @@ jobs:
     needs: format
     steps:
       - name: Checkout source
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
       - name: Setup Rust toolchain (nightly)
         uses: dtolnay/rust-toolchain@nightly
       - name: Setup Cargo cache
@@ -110,7 +110,7 @@ jobs:
     needs: format
     steps:
       - name: Checkout source
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
       - name: Setup Rust toolchain (nightly)
         uses: dtolnay/rust-toolchain@nightly
       - name: Setup Cargo cache
