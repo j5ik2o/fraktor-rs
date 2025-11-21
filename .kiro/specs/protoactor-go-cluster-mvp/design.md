@@ -16,8 +16,8 @@ protoactor-go 互換のクラスタ機能を Rust ランタイムへ移植し、
 ## アーキテクチャ
 
 ### 既存アーキテクチャの把握
-- ワークスペースは `modules/utils` → `modules/cluster` → `modules/actor` の一方向依存とし、クラスタ機能のコアロジックは no_std の `modules/cluster/src/core/` に置き、`modules/cluster/src/std/` はラッパー・ドライバ・アダプタのみを持つ。
-- 1 ファイル 1 型、2018 モジュール、`mod.rs` 禁止。`core` 側で `#[cfg(feature="std")]` を使わない。
+- ワークスペースは `modules/utils` → `modules/actor` → `modules/remote` の一方向依存とし、クラスタ機能のコアロジックは no_std の `modules/cluster/src/core/`(以下core) に置き、`modules/cluster/src/std/`(以下std) はラッパー・ドライバ・アダプタのみを持つ。
+- 1 ファイル 1 型、2018 モジュール、`mod.rs` 禁止。`modules/cluster/src/core` 側で `#[cfg(feature="std")]` を使わない。
 
 ### ハイレベルアーキテクチャ
 ```mermaid
@@ -76,21 +76,21 @@ graph TB
 - Consensus Checks: Gossip 収束を担保するための健全性チェック（バージョン矛盾検出、シード優先決定、分断検出）を組み込み、テスト容易性のためビルダーを用意する。
 
 #### 主要設計判断
-- **Decision**: Gossip + versioned membership を core で保持し、Transport は std に閉じ込める。  
-  **Context**: no_std を壊さずクラスタを扱う必要。  
-  **Alternatives**: 全て std 側に寄せる案（core から参照不可）、CRDT 専用実装。  
-  **Selected Approach**: core にテーブルとデフューズロジック、std が送受信。  
-  **Rationale**: 両環境で一貫した状態機械を共有しつつ I/O 依存を隔離。  
+- **Decision**: Gossip + versioned membership を core で保持し、Transport は std に閉じ込める。
+  **Context**: no_std を壊さずクラスタを扱う必要。
+  **Alternatives**: 全て std 側に寄せる案（core から参照不可）、CRDT 専用実装。
+  **Selected Approach**: core にテーブルとデフューズロジック、std が送受信。
+  **Rationale**: 両環境で一貫した状態機械を共有しつつ I/O 依存を隔離。
   **Trade-offs**: core 境界でのコピーコストが増える。
-- **Decision**: Virtual Actor と Grain RPC を IdentityTable 上の一貫キーで束ね、アクティベーション/ルーティングを同一コンポーネントで扱う。  
+- **Decision**: Virtual Actor と Grain RPC を IdentityTable 上の一貫キーで束ね、アクティベーション/ルーティングを同一コンポーネントで扱う。
   **Rationale**: Orleans/Proto.Actor に倣い、配置と呼び出しを分離しない方がシンプルかつスループット安定。
-- **Decision**: Partition 割当てに Rendezvous ハッシュを用い、PidCache を併用する。  
-  **Context**: protoactor-go の `rendezvous.go` / `pid_cache.go` 相当でキー再配置を抑制し解決を低遅延化。  
-  **Alternatives**: 一様ハッシュリングのみ、またはキャッシュなし。  
-  **Selected Approach**: Rendezvous で安定割当てし、PidCache でホットキーを低遅延化。  
+- **Decision**: Partition 割当てに Rendezvous ハッシュを用い、PidCache を併用する。
+  **Context**: protoactor-go の `rendezvous.go` / `pid_cache.go` 相当でキー再配置を抑制し解決を低遅延化。
+  **Alternatives**: 一様ハッシュリングのみ、またはキャッシュなし。
+  **Selected Approach**: Rendezvous で安定割当てし、PidCache でホットキーを低遅延化。
   **Trade-offs**: キャッシュ失効と一致判定が増えるが、往復削減が見込める。
-- **Decision**: ClusterProvider 抽象を std 側に設け、テスト用インメモリと本番 TCP/QUIC を切替可能にする。  
-  **Context**: protoactor-go の `cluster_provider.go` 相当。  
+- **Decision**: ClusterProvider 抽象を std 側に設け、テスト用インメモリと本番 TCP/QUIC を切替可能にする。
+  **Context**: protoactor-go の `cluster_provider.go` 相当。
   **Trade-offs**: 抽象化により DI が増えるが、移植性とテスト性を確保。
 
 ## システムフロー
@@ -276,16 +276,20 @@ fn quickstart() -> Result<(), ClusterError> {
 - 依存: HeartbeatDriver（std）からのハートビート欠落イベント。
 - 外部依存: なし（core 完結）。
 - コンセンサスポリシー: シード優先 → 多数決 → 手動介入の順で決定。conflicting view を検出した場合、GossipEngine はシードノードのビューを採択しつつ EventStream に衝突情報を記録し、再収束を確認するまで write を保守的に拒否する。
+- 収束状態機械: `Diffusing`（デルタ拡散）→ `Reconciling`（欠損レンジ再送、優先度付き）→ `Confirmed`（全ノードが最新バージョンを ack）。`Diffusing` は収束タイマー（デフォルト 1s）内に必要 ack を集め、足りなければ `Reconciling` でレンジ送信を指数バックオフ（最大3回）。シードノードが >50% 合意（またはシード単独構成）を得たら `Confirmed` へ遷移し、conflict 検出時は即座に `Reconciling` へ戻し拒否ビューを EventStream/メトリクスへ記録する。
 
 ### Identity / Virtual Actor
 - 責務: グレインキー→Partition→Owner 解決、一貫 PID 付与、アイドル passivation、自動再アクティベーション。
 - 入出力: `GrainKey`, `PartitionOwner`, `Pid`, `ActivationRecord`。
 - 外部依存: MembershipTable で所有者を決定、EventStream へ activation イベントを発火。
+- 解決ステータス: Resolver は `ResolveResult::{Ready(pid), Unreachable(node_id), Quarantine(authority, reason)}` を返す。PartitionOwner が `Removed/Unreachable` なら即座に `Unreachable` を返し送信を禁止。authority が `Quarantine` なら隔離理由付きで `Quarantine` を返し、ClusterTransport は送信しない。RemoteAuthorityManager と同一の状態機械を共有し、解決時に最新ステータスを参照する。
+- 状態保持/再配置方針: MVP はステートレスを基本としつつ、利用者が提供する任意のスナップショット（ActivationRecord に `snapshot: Option<Vec<u8>>` と `version` を追加）を Transport 経由で再配置ノードへ転送できる軽量フックを持つ。スナップショット未提供の場合は stateless とみなし処理を継続するが、状態が必要なのに欠落していれば隔離理由付きエラーで応答する。
 
 ### Grain RPC
 - 責務: スキーマ検証、タイムアウト、順序保持、リトライポリシー。プロトバッファを prost で生成し、コード生成 CLI でスタブを作成。
 - 入出力: `SerializedMessage`, `RpcResult`。Outbound: Transport。
 - 依存: SerializerRegistry（std）で codec を選択。
+- 並列度と順序: 同一 GrainKey に対して `concurrency_limit`（デフォルト 1）と `queue_depth` を設定し、上限超過時は `queue_drop_policy (drop_oldest|reject_new)` で制御する。シリアルキューで順序を保持し、ドロップ/拒否時は理由を含め EventStream/metrics に出力する。
 
 ### PubSub（SHOULD）
 - 責務: Topic の作成・購読・配信。分断時の遅延バッファ or ドロップポリシーを設定で制御。
@@ -298,6 +302,8 @@ fn quickstart() -> Result<(), ClusterError> {
 ### Transport / Heartbeat（std）
 - 責務: 接続管理、送受信キュー、遅延キュー、隔離状態。ハートビート送出と欠落検知。
 - 依存: SerializerRegistry で codec 選択。MembershipTable へハートビート結果を通知。トランスポート実装は `modules/remote` の抽象に準拠し、デフォルトで `TokioTcpTransport`（std）を RemoteTransportAdapter 経由で利用する。
+- 遅延キューとバックプレッシャ: `queue_capacity` と `drop_policy (drop_oldest|reject_new)` を設定値として持ち、ordering scope は PID 単位で保持。`Disconnected` 期間中は上限まで遅延キューに積み、超過時は DeadLetter + EventStream/metrics を必須で発火。`Connected` 復帰後に排出した件数も EventStream に記録する。
+- クォーランティン自動解除: `quarantine_deadline`（例: デフォルト 30s）を持ち、HeartbeatDriver もしくは専用タイマで RemoteAuthorityManager の `poll_quarantine_expiration` を周期起動する。期限超過時は `Disconnected` へ遷移し再接続を許可、イベントを EventStream/監査ログに必ず記録する。手動解除コマンドも同経路で即時 `Disconnected` へ戻す。
 
 ### ClusterProvider / PidCache（std）
 - 責務: ネットワーク実装の差し替え（in-memory/TCP/QUIC）と、GrainKey→PID の短期キャッシュで解決の往復を削減。
@@ -310,9 +316,12 @@ fn quickstart() -> Result<(), ClusterError> {
 ## データモデル
 - Membership: `NodeId`, `Authority`, `Status`, `Version`, `SeenAt`.
 - Gossip Delta: `from_version`, `to_version`, `entries`.
+- PID 解決: `ResolveResult`（`Ready(Pid)`, `Unreachable(NodeId)`, `Quarantine{authority, reason}`）。
 - Grain Identity: `GrainKey`（string/bytes）, `PartitionId`（u32 consistent hash）。
+- ActivationRecord: `pid`, `snapshot: Option<Vec<u8>>`, `version`（再配置用の軽量スナップショット）。
 - RPC Message: `type_id`（または `type_url`）、`bytes`, `schema_version`。
 - PubSub: `TopicName`, `SubscriptionId`, `DeliveryPolicy`.
+- Transport キュー: `queue_capacity`, `drop_policy`, `ordering_scope`(PID), `delayed_count`（再送記録用）。
 - ワイヤプロトコル（std 側）: `cluster.proto`（member events / heartbeat / identity）、`gossip.proto`（デルタ・収束確認）、`grain.proto`（Virtual Actor RPC）、`pubsub.proto`（トピック作成・発行・購読）を protoactor-go と同じフィールド番号で維持し、std feature 時のみ prost / gRPC 実装を生成。core は no_std のためこれらに直接依存せず、`WireEnvelope`（type_id + bytes）抽象で扱う。新規フィールド追加時は reserved 番号を避けるバージョニングポリシーを設計として規定。
 - スキーマネゴシエーション: `supported_schema_versions: Vec<u32>` をハンドシェイクで交換し、最も高い共通バージョンを選択。共通バージョンが無い場合は接続を拒否し理由を EventStream/メトリクスに記録。
 
