@@ -70,6 +70,8 @@ Provide output in the language specified in spec.json with:
 - Include file paths in code blocks
 - Keep summary concise (under 300 words)
 
+※spec.jsonの言語設定が無視されることが多いので、細心の注意をもってファイル出力せよ
+
 ## Safety & Fallback
 
 ### Error Scenarios
