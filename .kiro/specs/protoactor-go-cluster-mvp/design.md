@@ -36,10 +36,10 @@ graph TB
     Provider[ClusterProvider]
     PidCache[PidCache]
     end
-    EventStream[EventStream]
-    PubSub[PubSubBroker (optional)]
-    Rendezvous[RendezvousHasher]
-    Quickstart[QuickstartBootstrap]
+    EventStream["EventStream"]
+    PubSub["PubSubBroker (optional)"]
+    Rendezvous["RendezvousHasher"]
+    Quickstart["ClusterBootstrap"]
 
     Transport --> Membership
     Transport --> Gossip
@@ -63,7 +63,7 @@ graph TB
 - core: 無状態ロジックとテーブル管理。std: ネットワーク I/O・シリアライズ・ハートビート。
 - Steering 原則の層分離と FQCN import を維持。
 
--### 技術スタック / 設計判断
+### 技術スタック / 設計判断
 - Transport: 抽象化されたトランスポート（`modules/remote` と同じ方針）。core はトランスポート詳細を持たず、`WireEnvelope`/`WireMessage` インターフェイスでバイト列を扱うのみ。std では `modules/remote` 提供の `TokioTcpTransport` を流用／薄いアダプタで接続する。
 - ワイヤエンコード: protobuf/（必要なら）gRPC は std 側のみで使用。core は no_std 制約のためシリアライザ非依存で、`SerializerRegistry` trait を経由してバイト配列を扱う。
 - スキーマ互換: `SerializerRegistry` に `supported_schema_versions()` と `negotiate(schema_version)` を持たせ、ClusterTransport 初期ハンドシェイクで双方のサポートバージョンを交換し、一致しない場合は明示エラー＋EventStream/メトリクスへ記録する。
@@ -129,7 +129,6 @@ sequenceDiagram
 ## API ブループリント
 
 ### 型・トレイト一覧（1ファイル1型方針）
-+### 型・トレイト一覧（1ファイル1型方針）
 - `modules/cluster/src/core/membership_table.rs`: `MembershipTable`（状態: Joining/Up/Leaving/Removed/Unreachable、バージョン管理）
 - `modules/cluster/src/core/membership_delta.rs`: `MembershipDelta`
 - `modules/cluster/src/core/gossip_engine.rs`: `GossipEngine`
@@ -147,7 +146,7 @@ sequenceDiagram
 - `modules/cluster/src/std/cluster_provider.rs`: `ClusterProvider`
 - `modules/cluster/src/std/pid_cache_service.rs`: `PidCacheService`（PidCache ラッパー、観測フック付き）
 - `modules/cluster/src/std/remote_transport_adapter.rs`: `RemoteTransportAdapter`（`modules/remote` の `TokioTcpTransport` を接続）
-- `modules/cluster/src/std/quickstart_bootstrap.rs`: `QuickstartBootstrap`（要件8）
+- `modules/cluster/src/std/cluster_bootstrap.rs`: `ClusterBootstrap`（要件8、クイックスタート用プリセットは `with_quickstart_defaults()` で提供）
 
 ### シグネチャ スケッチ
 ```rust
@@ -242,7 +241,7 @@ classDiagram
 ```rust
 // pseudo-code (std feature)
 fn quickstart() -> Result<(), ClusterError> {
-    let bootstrap = QuickstartBootstrap::default()
+    let bootstrap = ClusterBootstrap::with_quickstart_defaults()
         .with_seed("node1:4050")
         .with_seed("node2:4051");
     let system = bootstrap.start()?;
@@ -264,7 +263,7 @@ fn quickstart() -> Result<(), ClusterError> {
 | 5 | VirtualActorRegistry | `ensure_activation`, `passivate_idle` | アイドル TTL 管理 |
 | 6 | GrainRpcRouter | `dispatch` | タイムアウト/シリアライズ検証 |
 | 7 | GossipEngine | `disseminate/reconcile` | 収束時間メトリクス |
-| 8 | QuickstartBootstrap | `start` | 2ノード起動とサンプル spawn |
+| 8 | ClusterBootstrap | `start`, `with_quickstart_defaults` | 2ノード起動とサンプル spawn |
 | 9 | PubSubBroker | `publish/subscribe` | OPTIONAL |
 | 10 | ClusterMetricsSink | `emit_*` | OPTIONAL |
 
@@ -299,14 +298,14 @@ fn quickstart() -> Result<(), ClusterError> {
 - 責務: EventStream + メトリクスエクスポート。メトリクス種別: メンバーシップ収束時間、RPC レイテンシ、遅延キュー長、隔離イベント数。
 - 依存: ClusterMetricsSink を std 側で exporter 実装（prometheus/text, log）。
 
-### Transport / Heartbeat（std）
-- 責務: 接続管理、送受信キュー、遅延キュー、隔離状態。ハートビート送出と欠落検知。
-- 依存: SerializerRegistry で codec 選択。MembershipTable へハートビート結果を通知。トランスポート実装は `modules/remote` の抽象に準拠し、デフォルトで `TokioTcpTransport`（std）を RemoteTransportAdapter 経由で利用する。
+### Transport / Heartbeat（抽象・状態機械は core/no_std、アダプタ・ドライバは std）
+- 責務: 接続管理、送受信キュー、遅延キュー、隔離状態、ハートビート送出と欠落検知。インターフェイスと状態機械は core(no_std) に常駐し、ソケット・タイマー等のアダプタ/ドライバのみを std 側に隔離する。
+- 依存: SerializerRegistry で codec 選択。ハートビート結果を MembershipTable に通知。トランスポート実装は `modules/remote` の抽象に準拠し、デフォルトで `TokioTcpTransport`（std）を RemoteTransportAdapter 経由で利用する。
 - 遅延キューとバックプレッシャ: `queue_capacity` と `drop_policy (drop_oldest|reject_new)` を設定値として持ち、ordering scope は PID 単位で保持。`Disconnected` 期間中は上限まで遅延キューに積み、超過時は DeadLetter + EventStream/metrics を必須で発火。`Connected` 復帰後に排出した件数も EventStream に記録する。
 - クォーランティン自動解除: `quarantine_deadline`（例: デフォルト 30s）を持ち、HeartbeatDriver もしくは専用タイマで RemoteAuthorityManager の `poll_quarantine_expiration` を周期起動する。期限超過時は `Disconnected` へ遷移し再接続を許可、イベントを EventStream/監査ログに必ず記録する。手動解除コマンドも同経路で即時 `Disconnected` へ戻す。
 
-### ClusterProvider / PidCache（std）
-- 責務: ネットワーク実装の差し替え（in-memory/TCP/QUIC）と、GrainKey→PID の短期キャッシュで解決の往復を削減。
+### ClusterProvider / PidCache（抽象・ロジックは core/no_std、ラッパは std）
+- 責務: ネットワーク実装の差し替え（in-memory/TCP/QUIC）と、GrainKey→PID の短期キャッシュで解決の往復を削減。抽象・ロジックは core(no_std) に置き、監視・メトリクス・ホストタイマなど外部リソースを使うラッパやサービスは std 側に隔離する。
 - 依存: Transport と IdentityTable にフックし、キャッシュ失効時に EventStream へ通知。
 - 失効戦略: GossipDelta 適用（owner 変更/Removed/Unreachable）、Quarantine への遷移、手動解除時に `invalidate` を必須実行。TTL と最大エントリ数は設定可能とし、溢れた場合は LRU で失効し EventStream にドロップを報告。
 
