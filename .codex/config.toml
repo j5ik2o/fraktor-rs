@@ -1,4 +1,4 @@
-model = "gpt-5.1-codex"
+model = "gpt-5.1-codex-max"
 model_reasoning_effort = "high"
 hide_agent_reasoning = true
 network_access = true
@@ -25,4 +25,5 @@ args = ["@playwright/mcp@latest"]
 
 [notice]
 hide_gpt5_1_migration_prompt = true
+"hide_gpt-5.1-codex-max_migration_prompt" = true
 
