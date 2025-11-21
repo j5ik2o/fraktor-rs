@@ -2,7 +2,7 @@
 > 最終更新: 2025-11-17
 
 ## 組織方針
-- ワークスペースは `modules/utils`（`fraktor-utils-rs`）と `modules/actor`（`fraktor-actor-rs`）の 2 クレートで構成され、各クレートが `core`（default `#![no_std]`）と `std` モジュールを持つ 2018 モジュール構成です。依存方向は utils/core → actor/core → actor/std の一方通行に固定します。
+- ワークスペースは `modules/utils`（`fraktor-utils-rs`）、`modules/actor`（`fraktor-actor-rs`）、`modules/remote`（`fraktor-remote-rs`）の 3 クレートで構成され、各クレートが `core`（default `#![no_std]`）と `std` モジュールを持つ 2018 モジュール構成です。依存方向は utils/core → actor/core → actor/std → remote/core → remote/std の一方通行に固定します。
 - 各モジュールは 2018 エディションのファイルツリー（`foo.rs` + `foo/` ディレクトリ）で構成し、`mod.rs` を使用しません。
 - `type-per-file-lint` により 1 ファイル 1 構造体/trait を原則とし、テストは `hoge/tests.rs` へ分離します。
 - 公開 API に限り `prelude` を許容し、内部は FQCN (`crate::...`) で明示的に依存をたどります。
@@ -10,9 +10,9 @@
 
 ## ディレクトリパターン
 ### ランタイムクレート階層
-**Location**: `modules/utils/src/{core,std}`, `modules/actor/src/{core,std}`
-**Purpose**: `fraktor-utils-rs::core` が RuntimeToolbox/Atomic/Timer を提供し、`fraktor-actor-rs::core` が ActorSystem/Mailbox/Remoting を no_std で構築、`std` モジュールが Tokio 実行器・ログ・Dispatcher を後掛けする直列構造。
-**Example**: `modules/actor/src/core/messaging/*.rs` がコアメッセージング、`modules/actor/src/std/messaging/*.rs` がホスト固有の同名モジュールを実装。
+**Location**: `modules/utils/src/{core,std}`, `modules/actor/src/{core,std}`, `modules/remote/src/{core,std}`
+**Purpose**: `fraktor-utils-rs::core` が RuntimeToolbox/Atomic/Timer を提供し、`fraktor-actor-rs::core` が ActorSystem/Mailbox/Remoting の基盤を no_std で構築、`std` モジュールが Tokio 実行器・ログ・Dispatcher を後掛けします。`fraktor-remote-rs::core` は Remoting 拡張・Endpoint/Watcher/Transport 抽象を actor/core の上に載せ、`std` 側が Tokio TCP などホスト固有のトランスポートを束ねる直列構造です。
+**Example**: `modules/actor/src/core/messaging/*.rs` がコアメッセージング、`modules/actor/src/std/messaging/*.rs` がホスト固有の同名モジュールを実装。`modules/remote/src/std/transport/tokio_tcp/*.rs` が std 向け TCP トランスポート実装。
 
 ### ドメインモジュール
 **Location**: `modules/actor/src/core/<domain>/`
@@ -54,7 +54,7 @@
 - **ディレクトリ**: `snake_case/`。`foo.rs` に対応する `foo/` を置き、サブモジュールを格納。
 - **型 / トレイト**: `PascalCase`。trait 名は `*Ext` や `*Service` 等の役割語尾を避け、ドメイン名を直截に記述。
 - **モジュール境界**: 1 ファイル 1 型（構造体または trait）を基本とし、補助型は `tests.rs` かサブモジュールへ退避。
-- **クレート名**: 既存は `fraktor-utils-rs`, `fraktor-actor-rs`, `fraktor-rs`。新規クレートも `fraktor-<domain>-rs` を踏襲し、Cargo features は `kebab-case`（例: `alloc-metrics`, `tokio-executor`）。
+- **クレート名**: 既存は `fraktor-utils-rs`, `fraktor-actor-rs`, `fraktor-remote-rs`, `fraktor-rs`。新規クレートも `fraktor-<domain>-rs` を踏襲し、Cargo features は `kebab-case`（例: `alloc-metrics`, `tokio-executor`）。
 - **ドキュメント言語**: rustdoc は英語、それ以外のコメント・Markdown は日本語。
 - **ActorPath 初期値**: `ActorPath::root()` は system 名に `cellactor` を用い、guardian は `GuardianKind::User/System` から自動付与するため、手動で `/cellactor` を記述しないこと。
 - **Authority 表記**: リモート authority は `host:port` 文字列で `RemoteAuthorityManager` のキーにし、`PathAuthority` 経由で host/port を保持する。命名は小文字 + `-` を基本とし、実ホスト名を抽象化します。

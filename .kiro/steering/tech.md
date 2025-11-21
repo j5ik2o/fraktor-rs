@@ -2,7 +2,7 @@
 > 最終更新: 2025-11-17
 
 ## アーキテクチャ
-ワークスペースは `modules/utils`（crate: `fraktor-utils-rs`）と `modules/actor`（crate: `fraktor-actor-rs`）の 2 クレート構成です。両クレートとも `core.rs` で no_std ドメインを `#![no_std]` のまま公開し、`std.rs` 以下を `feature = "std"`/`"tokio-executor"` で有効化する 2 階層モジュールになりました。`fraktor-utils-rs::core` が `RuntimeToolbox` / `NoStdToolbox` / `StdToolbox` を提供し、`fraktor-actor-rs::core` が ActorSystem・SystemMailbox・EventStream を no_std で構築、`std` モジュールが Tokio/ホスト固有の Dispatcher・TickDriver・Builder を後掛けします。supervisor/DeathWatch/EventStream は引き続き system mailbox で `SystemMessage` を先行処理します。
+ワークスペースは `modules/utils`（crate: `fraktor-utils-rs`）、`modules/actor`（crate: `fraktor-actor-rs`）、`modules/remote`（crate: `fraktor-remote-rs`）の 3 クレート構成です。各クレートは `core.rs` で no_std ドメインを `#![no_std]` のまま公開し、`std.rs` 以下を `feature = "std"`/`"tokio-executor"` などで有効化する 2 階層モジュールになりました。`fraktor-utils-rs::core` が `RuntimeToolbox` / `NoStdToolbox` / `StdToolbox` を提供し、`fraktor-actor-rs::core` が ActorSystem・SystemMailbox・EventStream を no_std で構築、`std` モジュールが Tokio/ホスト固有の Dispatcher・TickDriver・Builder を後掛けします。`fraktor-remote-rs::core` は RemoteActorRefProvider/EndpointManager/RemoteWatcher とトランスポート抽象を actor/core 上に積み、`std` モジュールが Tokio TCP・Loopback などの具体的トランスポートを束ねます。supervisor/DeathWatch/EventStream は引き続き system mailbox で `SystemMessage` を先行処理します。
 
 ## コア技術
 - **言語**: Rust 2024 edition（ワークスペース全体で nightly toolchain を既定とし、`core` 側は `#![no_std]` を前提）。
@@ -61,6 +61,8 @@ scripts/ci-check.sh all                  # CI と同等フルスイート
 
 ## 重要な技術判断
 - 設計における価値観は "Less is more" と "YAGNI"
+- Queue,Stack を独自実装しない。必ず `modules/utils/src/core/collections/{queue, stack}` にある共通キュー実装を再利用すること。
+- `Arc` 相当の共有所有権は独自に実装せず、`modules/utils/src/core/sync/arc_shared.rs` にある `ArcShared`（および関連ヘルパ）を必ず用いること。外部クレートの `Arc` を直接使うのは std 層に限定し、core 層は `ArcShared` を経由する。
 - **no_std ファースト**: `fraktor-actor-rs::core`/`fraktor-utils-rs::core` は `#![no_std]` で固定し、`pub mod std` 自体を feature で丸ごと切り替える。`cfg-std-forbid` lint により core 内部での `#[cfg(feature = "std")]` 分岐を禁止し、標準依存コードは `std` モジュールへ隔離。
 - **SystemMessage 先行処理**: `Create/Recreate/Failure/Terminated` をユーザメッセージより先に処理することで、Supervisor 戦略と DeathWatch を deterministic に制御。
 - **Std ActorSystemBuilder**: `modules/actor/src/std/system/actor_system_builder.rs` が TickDriver/Scheduler 設定を受け取り、`ActorSystem::from_core` に渡す前に TickDriver をブートストラップする。std 側でのビルドフローは必ずこのビルダー経由で行う。
@@ -68,7 +70,7 @@ scripts/ci-check.sh all                  # CI と同等フルスイート
 - **Authority 隔離**: `RemoteAuthorityManagerGeneric` が remoting の隔離判定を centralize し、`VecDeque` キューを掃き出してから `Connected` 化します。deadline が過ぎた quarantined authority は `poll_quarantine_expiration` で自動復旧させ、明示解除 API との二段構えで安全側に倒します。
 - **FQCN import 原則**: ランタイム内部は `crate::...` で明示的に参照し、prelude はユーザ公開面のみに限定。
 - **Classic ではなく Untyped 呼称**: 既存設計では「Classic」ではなく「Untyped」と呼ぶ。Untyped API (`Scheduler`, Classic ActorRef) と Typed API (`TypedScheduler`, `TypedActorRef`) を明確に分離し、新規開発でも Untyped/Typed という語彙を使用する。
-- **参照実装からの逆輸入**: protoactor-go / Apache Pekko を参照しつつ、Rust の所有権と `no_std` 制約に合わせた最小 API を優先する。
+- **参照実装からの逆輸入**: protoactor-go(references/protoactor-go) / Apache Pekko(references/pekko) を参照しつつ、Rust の所有権と `no_std` 制約に合わせた最小 API を優先する。
 - **命名規約**:
   - 所有権やライフサイクルを管理する型のみ `*Handle` サフィックスを許容し、`ArcShared` 等を薄く包む共有参照は `*Shared` を用いる。管理対象が複数ハンドルに及ぶ場合は `*HandleSet` / `*Context` 等で「束ね役・制御面」であることを明示し、単なる参照ラッパーでは `Handle` を名乗らない。命名段階で責務の違いが分かるようにし、Scheduler/Dispatcher まわりの API でも同ルールを徹底する。
   - Facadeというサフィックスも安易に使わない。例えばpub traitにFacadeと命名するのはもってのほか。つまりFacadeは内部実装の都合をインターフェイス名に暴露しているのと同じだからだ
