@@ -14,22 +14,22 @@ pub enum ResolveResult {
     /// Resolved path.
     actor_path: ActorPath,
     /// Membership version used.
-    version: MembershipVersion,
+    version:    MembershipVersion,
   },
   /// Authority is removed/unreachable or missing.
   Unreachable {
     /// Authority string.
     authority: String,
     /// Membership version observed.
-    version: MembershipVersion,
+    version:   MembershipVersion,
   },
   /// Authority is quarantined.
   Quarantine {
     /// Authority string.
     authority: String,
     /// Quarantine reason.
-    reason: String,
+    reason:    String,
     /// Membership version observed.
-    version: MembershipVersion,
+    version:   MembershipVersion,
   },
 }

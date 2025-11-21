@@ -4,13 +4,16 @@ use alloc::string::String;
 
 use crate::core::outbound_envelope::OutboundEnvelope;
 
+#[cfg(test)]
+mod tests;
+
 /// Event kinds that feed EventStream/metrics.
 #[derive(Debug, PartialEq, Eq)]
 pub enum OutboundEvent {
   /// Message was enqueued while disconnected.
   Enqueued {
     /// Target PID string.
-    pid: String,
+    pid:       String,
     /// Queue length after enqueue.
     queue_len: usize,
   },
@@ -19,7 +22,7 @@ pub enum OutboundEvent {
     /// Envelope that got discarded.
     dropped: OutboundEnvelope,
     /// Reason for the drop.
-    reason: String,
+    reason:  String,
   },
   /// Buffered messages were flushed after reconnection.
   Flushed {
@@ -34,7 +37,7 @@ pub enum OutboundEvent {
   /// Send was blocked by quarantine.
   BlockedByQuarantine {
     /// PID that got rejected.
-    pid: String,
+    pid:    String,
     /// Quarantine reason.
     reason: String,
   },
@@ -43,9 +46,9 @@ pub enum OutboundEvent {
     /// Target authority string.
     authority: String,
     /// Reason for entering quarantine.
-    reason: String,
+    reason:    String,
     /// Optional deadline when it should lift automatically.
-    deadline: Option<u64>,
+    deadline:  Option<u64>,
   },
   /// Quarantine was lifted.
   QuarantineLifted {
@@ -55,11 +58,8 @@ pub enum OutboundEvent {
   /// Serialization failure was detected before send.
   SerializationFailed {
     /// PID associated with the failure.
-    pid: String,
+    pid:    String,
     /// Message describing the failure.
     reason: String,
   },
 }
-
-#[cfg(test)]
-mod tests;

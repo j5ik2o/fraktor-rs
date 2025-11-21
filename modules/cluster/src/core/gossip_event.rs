@@ -10,23 +10,23 @@ pub enum GossipEvent {
   /// Delta was diffused to peers.
   Disseminated {
     /// Target peers included in this diffusion round.
-    peers: usize,
+    peers:   usize,
     /// Version diffused.
     version: MembershipVersion,
   },
   /// Missing range was requested, entering reconciling.
   ReconcilingRequested {
     /// Peer that reported missing range.
-    peer: String,
+    peer:          String,
     /// Current local version.
     local_version: MembershipVersion,
   },
   /// Conflicting view detected.
   ConflictDetected {
     /// Peer that sent the conflicting delta.
-    peer: String,
+    peer:           String,
     /// Local version at detection.
-    local_version: MembershipVersion,
+    local_version:  MembershipVersion,
     /// Remote version observed.
     remote_version: MembershipVersion,
   },

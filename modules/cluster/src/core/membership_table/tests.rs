@@ -1,13 +1,10 @@
 use alloc::string::ToString;
 
+use super::MembershipTable;
 use crate::core::{
-  membership_error::MembershipError,
-  membership_event::MembershipEvent,
-  membership_version::MembershipVersion,
+  membership_error::MembershipError, membership_event::MembershipEvent, membership_version::MembershipVersion,
   node_status::NodeStatus,
 };
-
-use super::MembershipTable;
 
 #[test]
 fn join_promotes_to_up_and_snapshots_latest_table() {
@@ -27,10 +24,10 @@ fn join_promotes_to_up_and_snapshots_latest_table() {
   assert_eq!(snapshot.entries[0].status, NodeStatus::Up);
 
   let events = table.drain_events();
-  assert_eq!(
-    events,
-    vec![MembershipEvent::Joined { node_id: "node-1".to_string(), authority: "n1:4050".to_string() }],
-  );
+  assert_eq!(events, vec![MembershipEvent::Joined {
+    node_id:   "node-1".to_string(),
+    authority: "n1:4050".to_string(),
+  }],);
 }
 
 #[test]
@@ -40,32 +37,24 @@ fn joining_with_conflicting_authority_is_rejected() {
   table.try_join("node-1".to_string(), "n1:4050".to_string()).expect("first join succeeds");
   table.drain_events();
 
-  let err = table
-    .try_join("node-2".to_string(), "n1:4050".to_string())
-    .expect_err("conflict should be rejected");
+  let err = table.try_join("node-2".to_string(), "n1:4050".to_string()).expect_err("conflict should be rejected");
 
-  assert_eq!(
-    err,
-    MembershipError::AuthorityConflict {
-      authority: "n1:4050".to_string(),
-      existing_node_id: "node-1".to_string(),
-      requested_node_id: "node-2".to_string(),
-    },
-  );
+  assert_eq!(err, MembershipError::AuthorityConflict {
+    authority:         "n1:4050".to_string(),
+    existing_node_id:  "node-1".to_string(),
+    requested_node_id: "node-2".to_string(),
+  },);
 
   let snapshot = table.snapshot();
   assert_eq!(snapshot.version, MembershipVersion::new(1));
   assert_eq!(snapshot.entries.len(), 1);
 
   let events = table.drain_events();
-  assert_eq!(
-    events,
-    vec![MembershipEvent::AuthorityConflict {
-      authority: "n1:4050".to_string(),
-      existing_node_id: "node-1".to_string(),
-      requested_node_id: "node-2".to_string(),
-    }],
-  );
+  assert_eq!(events, vec![MembershipEvent::AuthorityConflict {
+    authority:         "n1:4050".to_string(),
+    existing_node_id:  "node-1".to_string(),
+    requested_node_id: "node-2".to_string(),
+  }],);
 }
 
 #[test]
@@ -95,9 +84,7 @@ fn heartbeat_miss_marks_unreachable_after_threshold() {
   table.drain_events();
 
   assert!(table.mark_heartbeat_miss("n1:4050").is_none());
-  let delta = table
-    .mark_heartbeat_miss("n1:4050")
-    .expect("second miss should mark unreachable");
+  let delta = table.mark_heartbeat_miss("n1:4050").expect("second miss should mark unreachable");
 
   assert_eq!(delta.from, MembershipVersion::new(1));
   assert_eq!(delta.to, MembershipVersion::new(2));
@@ -108,8 +95,8 @@ fn heartbeat_miss_marks_unreachable_after_threshold() {
   assert_eq!(snapshot.entries[0].status, NodeStatus::Unreachable);
 
   let events = table.drain_events();
-  assert_eq!(
-    events,
-    vec![MembershipEvent::MarkedUnreachable { node_id: "node-1".to_string(), authority: "n1:4050".to_string() }],
-  );
+  assert_eq!(events, vec![MembershipEvent::MarkedUnreachable {
+    node_id:   "node-1".to_string(),
+    authority: "n1:4050".to_string(),
+  }],);
 }

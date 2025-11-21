@@ -48,7 +48,7 @@
 #![deny(unreachable_pub)]
 #![allow(unknown_lints)]
 #![deny(cfg_std_forbid)]
-#![no_std]
+#![cfg_attr(not(test), no_std)]
 
 //! Actor runtime for Rust
 

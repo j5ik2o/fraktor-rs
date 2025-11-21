@@ -1,11 +1,6 @@
 use crate::core::{
-  dispatch_drop_policy::DispatchDropPolicy,
-  grain_key::GrainKey,
-  grain_rpc_router::GrainRpcRouter,
-  rpc_dispatch::RpcDispatch,
-  rpc_error::RpcError,
-  rpc_event::RpcEvent,
-  serialized_message::SerializedMessage,
+  dispatch_drop_policy::DispatchDropPolicy, grain_key::GrainKey, grain_rpc_router::GrainRpcRouter,
+  rpc_dispatch::RpcDispatch, rpc_error::RpcError, rpc_event::RpcEvent, serialized_message::SerializedMessage,
 };
 
 fn key(v: &str) -> GrainKey {

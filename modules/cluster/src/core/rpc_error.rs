@@ -2,13 +2,16 @@
 
 use alloc::string::String;
 
+#[cfg(test)]
+mod tests;
+
 /// RPC failure reasons.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RpcError {
   /// Schema negotiation failed.
   SchemaMismatch {
     /// Negotiated version (if any).
-    negotiated: Option<u32>,
+    negotiated:      Option<u32>,
     /// Version carried by the message.
     message_version: u32,
   },
@@ -18,6 +21,3 @@ pub enum RpcError {
     reason: String,
   },
 }
-
-#[cfg(test)]
-mod tests;

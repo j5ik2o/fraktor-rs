@@ -12,23 +12,23 @@ pub enum IdentityEvent {
     /// Target authority.
     authority: String,
     /// Membership version used.
-    version: MembershipVersion,
+    version:   MembershipVersion,
   },
   /// Resolution was blocked by quarantine.
   Quarantined {
     /// Target authority.
     authority: String,
     /// Quarantine reason.
-    reason: String,
+    reason:    String,
     /// Current membership version.
-    version: MembershipVersion,
+    version:   MembershipVersion,
   },
   /// Authority was not present or not reachable.
   UnknownAuthority {
     /// Target authority.
     authority: String,
     /// Current membership version.
-    version: MembershipVersion,
+    version:   MembershipVersion,
   },
   /// Resolve request was rejected due to invalid format.
   InvalidFormat {

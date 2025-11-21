@@ -2,6 +2,9 @@
 
 use alloc::string::String;
 
+#[cfg(test)]
+mod tests;
+
 /// Activation failure reasons.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ActivationError {
@@ -13,6 +16,3 @@ pub enum ActivationError {
   /// No authority candidates were provided.
   NoAuthority,
 }
-
-#[cfg(test)]
-mod tests;

@@ -4,15 +4,17 @@ use alloc::string::String;
 
 use crate::core::grain_key::GrainKey;
 
+#[cfg(test)]
+mod tests;
+
 /// Selects an authority deterministically for a grain key.
 pub struct RendezvousHasher;
 
 impl RendezvousHasher {
   /// Chooses the authority with the highest hash score.
+  #[must_use]
   pub fn select<'a>(authorities: &'a [String], key: &GrainKey) -> Option<&'a String> {
-    authorities
-      .iter()
-      .max_by_key(|authority| Self::score(authority, key.value()))
+    authorities.iter().max_by_key(|authority| Self::score(authority, key.value()))
   }
 
   fn score(authority: &str, key: &str) -> u64 {
@@ -26,6 +28,3 @@ impl RendezvousHasher {
     hash
   }
 }
-
-#[cfg(test)]
-mod tests;

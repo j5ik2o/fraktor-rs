@@ -1,8 +1,15 @@
 //! Outbound message pipeline with buffering and quarantine controls.
 
-use alloc::{collections::VecDeque, string::{String, ToString}, vec::Vec};
+use alloc::{
+  collections::VecDeque,
+  string::{String, ToString},
+  vec::Vec,
+};
 
-use crate::core::{outbound_action::OutboundAction, outbound_envelope::OutboundEnvelope, outbound_event::OutboundEvent, outbound_state::OutboundState};
+use crate::core::{
+  outbound_action::OutboundAction, outbound_envelope::OutboundEnvelope, outbound_event::OutboundEvent,
+  outbound_state::OutboundState,
+};
 
 #[cfg(test)]
 mod tests;
@@ -10,30 +17,30 @@ mod tests;
 /// Manages send ordering, buffering, and quarantine for a single authority.
 pub struct OutboundPipeline {
   authority: String,
-  capacity: usize,
-  state: OutboundState,
-  queue: VecDeque<OutboundEnvelope>,
-  events: Vec<OutboundEvent>,
+  capacity:  usize,
+  state:     OutboundState,
+  queue:     VecDeque<OutboundEnvelope>,
+  events:    Vec<OutboundEvent>,
 }
 
 impl OutboundPipeline {
   /// Creates a new pipeline.
-  pub fn new(authority: String, capacity: usize) -> Self {
-    Self {
-      authority,
-      capacity,
-      state: OutboundState::Disconnected,
-      queue: VecDeque::new(),
-      events: Vec::new(),
-    }
+  #[must_use]
+  pub const fn new(authority: String, capacity: usize) -> Self {
+    Self { authority, capacity, state: OutboundState::Disconnected, queue: VecDeque::new(), events: Vec::new() }
   }
 
   /// Returns the current state.
+  #[must_use]
   pub const fn state(&self) -> &OutboundState {
     &self.state
   }
 
   /// Attempts to send an envelope.
+  ///
+  /// # Panics
+  ///
+  /// May panic if the queue is in an inconsistent state (should not happen in normal operation).
   pub fn send(&mut self, envelope: OutboundEnvelope) -> OutboundAction {
     match self.state {
       | OutboundState::Connected => {
@@ -42,13 +49,18 @@ impl OutboundPipeline {
       },
       | OutboundState::Disconnected => {
         if self.capacity == 0 {
-          self.events.push(OutboundEvent::DroppedOldest { dropped: envelope.clone(), reason: "queue overflow".to_string() });
+          self
+            .events
+            .push(OutboundEvent::DroppedOldest { dropped: envelope.clone(), reason: "queue overflow".to_string() });
           return OutboundAction::DroppedOldest { dropped: envelope, queue_len: 0 };
         }
 
-        if self.queue.len() >= self.capacity {
-          let dropped = self.queue.pop_front().expect("queue has at least one element");
-          self.events.push(OutboundEvent::DroppedOldest { dropped: dropped.clone(), reason: "queue overflow".to_string() });
+        if self.queue.len() >= self.capacity
+          && let Some(dropped) = self.queue.pop_front()
+        {
+          self
+            .events
+            .push(OutboundEvent::DroppedOldest { dropped: dropped.clone(), reason: "queue overflow".to_string() });
           self.queue.push_back(envelope);
           return OutboundAction::DroppedOldest { dropped, queue_len: self.queue.len() };
         }
@@ -87,12 +99,12 @@ impl OutboundPipeline {
 
   /// Polls quarantine expiration.
   pub fn poll_quarantine_expiration(&mut self, now: u64) -> bool {
-    if let OutboundState::Quarantine { deadline: Some(deadline), .. } = self.state {
-      if now >= deadline {
-        self.state = OutboundState::Disconnected;
-        self.events.push(OutboundEvent::QuarantineLifted { authority: self.authority.clone() });
-        return true;
-      }
+    if let OutboundState::Quarantine { deadline: Some(deadline), .. } = self.state
+      && now >= deadline
+    {
+      self.state = OutboundState::Disconnected;
+      self.events.push(OutboundEvent::QuarantineLifted { authority: self.authority.clone() });
+      return true;
     }
     false
   }

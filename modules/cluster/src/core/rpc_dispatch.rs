@@ -4,15 +4,18 @@ use alloc::string::String;
 
 use crate::core::{grain_key::GrainKey, serialized_message::SerializedMessage};
 
+#[cfg(test)]
+mod tests;
+
 /// Outcome of a dispatch attempt.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RpcDispatch {
   /// Ready to send immediately.
   Immediate {
     /// Grain key target.
-    key: GrainKey,
+    key:      GrainKey,
     /// Payload to send.
-    message: SerializedMessage,
+    message:  SerializedMessage,
     /// Absolute deadline for timeout.
     deadline: u64,
   },
@@ -27,6 +30,3 @@ pub enum RpcDispatch {
     reason: String,
   },
 }
-
-#[cfg(test)]
-mod tests;

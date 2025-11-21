@@ -1,7 +1,5 @@
 use crate::core::{
-  activation_error::ActivationError,
-  grain_key::GrainKey,
-  virtual_actor_event::VirtualActorEvent,
+  activation_error::ActivationError, grain_key::GrainKey, virtual_actor_event::VirtualActorEvent,
   virtual_actor_registry::VirtualActorRegistry,
 };
 
@@ -15,12 +13,8 @@ fn same_key_returns_same_pid_until_owner_changes() {
   let authorities = vec!["a1:4000".to_string(), "a2:4001".to_string()];
   let k = key("user:1");
 
-  let pid1 = registry
-    .ensure_activation(k.clone(), &authorities, 1, false, None)
-    .expect("activation");
-  let pid2 = registry
-    .ensure_activation(k.clone(), &authorities, 2, false, None)
-    .expect("activation");
+  let pid1 = registry.ensure_activation(&k, &authorities, 1, false, None).expect("activation");
+  let pid2 = registry.ensure_activation(&k, &authorities, 2, false, None).expect("activation");
 
   assert_eq!(pid1, pid2);
 
@@ -34,15 +28,11 @@ fn same_key_returns_same_pid_until_owner_changes() {
     .expect("activated event present");
 
   // Hitイベン ト確認のため再度呼び出し。
-  registry
-    .ensure_activation(k.clone(), &authorities, 2, false, None)
-    .expect("activation");
+  registry.ensure_activation(&k, &authorities, 2, false, None).expect("activation");
 
   registry.invalidate_authority(&owner);
 
-  let _pid3 = registry
-    .ensure_activation(k.clone(), &vec!["a2:4001".to_string()], 3, true, Some(vec![9]))
-    .expect("reactivation");
+  let _pid3 = registry.ensure_activation(&k, &["a2:4001".to_string()], 3, true, Some(vec![9])).expect("reactivation");
 
   let events = registry.drain_events();
   assert!(events.iter().any(|e| matches!(e, VirtualActorEvent::Activated { .. })));
@@ -54,9 +44,7 @@ fn same_key_returns_same_pid_until_owner_changes() {
 fn passivates_when_idle_timeout_exceeded() {
   let mut registry = VirtualActorRegistry::new(4, 60);
   let k = key("user:2");
-  registry
-    .ensure_activation(k.clone(), &vec!["a1:4000".to_string()], 0, false, None)
-    .expect("activation");
+  registry.ensure_activation(&k, &["a1:4000".to_string()], 0, false, None).expect("activation");
 
   registry.passivate_idle(15, 10);
 
@@ -69,9 +57,7 @@ fn passivates_when_idle_timeout_exceeded() {
 fn snapshot_missing_is_reported() {
   let mut registry = VirtualActorRegistry::new(2, 60);
   let k = key("user:3");
-  let err = registry
-    .ensure_activation(k.clone(), &vec!["a1:4000".to_string()], 0, true, None)
-    .expect_err("should fail");
+  let err = registry.ensure_activation(&k, &["a1:4000".to_string()], 0, true, None).expect_err("should fail");
   assert_eq!(err, ActivationError::SnapshotMissing { key: "user:3".to_string() });
 
   let events = registry.drain_events();

@@ -15,7 +15,8 @@ pub struct MembershipSnapshot {
 
 impl MembershipSnapshot {
   /// Creates a new snapshot.
-  pub fn new(version: MembershipVersion, entries: Vec<NodeRecord>) -> Self {
+  #[must_use]
+  pub const fn new(version: MembershipVersion, entries: Vec<NodeRecord>) -> Self {
     Self { version, entries }
   }
 }

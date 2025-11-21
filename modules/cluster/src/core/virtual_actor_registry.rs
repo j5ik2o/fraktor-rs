@@ -1,46 +1,56 @@
 //! Manages virtual actor activations and passivation.
 
-use alloc::{collections::BTreeMap, format, string::{String, ToString}, vec::Vec};
-
-use crate::core::{
-  activation_error::ActivationError,
-  activation_record::ActivationRecord,
-  grain_key::GrainKey,
-  pid_cache::PidCache,
-  rendezvous_hasher::RendezvousHasher,
-  virtual_actor_event::VirtualActorEvent,
+use alloc::{
+  collections::BTreeMap,
+  format,
+  string::{String, ToString},
+  vec::Vec,
 };
 
+use crate::core::{
+  activation_error::ActivationError, activation_record::ActivationRecord, grain_key::GrainKey, pid_cache::PidCache,
+  rendezvous_hasher::RendezvousHasher, virtual_actor_event::VirtualActorEvent,
+};
+
+#[cfg(test)]
+mod tests;
+
 struct ActivationEntry {
-  record: ActivationRecord,
+  record:    ActivationRecord,
   authority: String,
   last_seen: u64,
 }
 
 /// Registry that keeps track of active grains.
 pub struct VirtualActorRegistry {
-  activations: BTreeMap<GrainKey, ActivationEntry>,
-  pid_cache: PidCache,
+  activations:  BTreeMap<GrainKey, ActivationEntry>,
+  pid_cache:    PidCache,
   pid_ttl_secs: u64,
-  events: Vec<VirtualActorEvent>,
+  events:       Vec<VirtualActorEvent>,
 }
 
 impl VirtualActorRegistry {
   /// Creates a new registry.
-  pub fn new(cache_capacity: usize, pid_ttl_secs: u64) -> Self {
+  #[must_use]
+  pub const fn new(cache_capacity: usize, pid_ttl_secs: u64) -> Self {
     Self { activations: BTreeMap::new(), pid_cache: PidCache::new(cache_capacity), pid_ttl_secs, events: Vec::new() }
   }
 
   /// Ensures an activation exists and returns its PID.
+  ///
+  /// # Errors
+  ///
+  /// Returns `ActivationError::NoAuthority` if no authorities are provided.
+  /// Returns `ActivationError::SnapshotMissing` if a snapshot is required but not provided.
   pub fn ensure_activation(
     &mut self,
-    key: GrainKey,
+    key: &GrainKey,
     authorities: &[String],
     now: u64,
     snapshot_required: bool,
     snapshot: Option<Vec<u8>>,
   ) -> Result<String, ActivationError> {
-    let Some(owner) = RendezvousHasher::select(authorities, &key) else {
+    let Some(owner) = RendezvousHasher::select(authorities, key) else {
       return Err(ActivationError::NoAuthority);
     };
 
@@ -49,25 +59,33 @@ impl VirtualActorRegistry {
       return Err(ActivationError::SnapshotMissing { key: key.value().to_string() });
     }
 
-    if let Some(entry) = self.activations.get_mut(&key) {
-      if entry.authority == *owner {
-        entry.last_seen = now;
-        self.events.push(VirtualActorEvent::Hit { key: key.clone(), pid: entry.record.pid.clone() });
-        self.pid_cache.put(key.clone(), entry.record.pid.clone(), owner.clone(), now, self.pid_ttl_secs);
-        return Ok(entry.record.pid.clone());
-      }
+    if let Some(entry) = self.activations.get_mut(key)
+      && entry.authority == *owner
+    {
+      entry.last_seen = now;
+      self.events.push(VirtualActorEvent::Hit { key: key.clone(), pid: entry.record.pid.clone() });
+      self.pid_cache.put(key.clone(), entry.record.pid.clone(), owner.clone(), now, self.pid_ttl_secs);
+      return Ok(entry.record.pid.clone());
     }
 
     let pid = format!("{}::{}", owner, key.value());
     let record = ActivationRecord::new(pid.clone(), snapshot, 0);
-    let entry = ActivationEntry { record: record.clone(), authority: owner.clone(), last_seen: now };
+    let entry = ActivationEntry { record, authority: owner.clone(), last_seen: now };
     let replaced = self.activations.insert(key.clone(), entry);
     self.pid_cache.put(key.clone(), pid.clone(), owner.clone(), now, self.pid_ttl_secs);
 
     if replaced.is_some() {
-      self.events.push(VirtualActorEvent::Reactivated { key: key.clone(), pid: pid.clone(), authority: owner.clone() });
+      self.events.push(VirtualActorEvent::Reactivated {
+        key:       key.clone(),
+        pid:       pid.clone(),
+        authority: owner.clone(),
+      });
     } else {
-      self.events.push(VirtualActorEvent::Activated { key: key.clone(), pid: pid.clone(), authority: owner.clone() });
+      self.events.push(VirtualActorEvent::Activated {
+        key:       key.clone(),
+        pid:       pid.clone(),
+        authority: owner.clone(),
+      });
     }
 
     Ok(pid)
@@ -81,12 +99,8 @@ impl VirtualActorRegistry {
   /// Invalidates all activations and cache entries for an authority (e.g., quarantine).
   pub fn invalidate_authority(&mut self, authority: &str) {
     self.pid_cache.invalidate_authority(authority);
-    let to_drop: Vec<_> = self
-      .activations
-      .iter()
-      .filter(|(_, entry)| entry.authority == authority)
-      .map(|(key, _)| key.clone())
-      .collect();
+    let to_drop: Vec<_> =
+      self.activations.iter().filter(|(_, entry)| entry.authority == authority).map(|(key, _)| key.clone()).collect();
     for key in to_drop {
       self.activations.remove(&key);
       self.events.push(VirtualActorEvent::Passivated { key });
@@ -129,6 +143,3 @@ impl VirtualActorRegistry {
     core::mem::take(&mut self.events)
   }
 }
-
-#[cfg(test)]
-mod tests;

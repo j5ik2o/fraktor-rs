@@ -1,14 +1,15 @@
 //! Versioned membership table and state machine.
 
-use alloc::{collections::BTreeMap, string::{String, ToString}, vec, vec::Vec};
+use alloc::{
+  collections::BTreeMap,
+  string::{String, ToString},
+  vec,
+  vec::Vec,
+};
 
 use crate::core::{
-  membership_delta::MembershipDelta,
-  membership_error::MembershipError,
-  membership_event::MembershipEvent,
-  membership_snapshot::MembershipSnapshot,
-  membership_version::MembershipVersion,
-  node_record::NodeRecord,
+  membership_delta::MembershipDelta, membership_error::MembershipError, membership_event::MembershipEvent,
+  membership_snapshot::MembershipSnapshot, membership_version::MembershipVersion, node_record::NodeRecord,
   node_status::NodeStatus,
 };
 
@@ -18,16 +19,17 @@ mod tests;
 /// Holds membership records and emits versioned deltas.
 #[derive(Debug)]
 pub struct MembershipTable {
-  version: MembershipVersion,
-  entries: BTreeMap<String, NodeRecord>,
+  version:                 MembershipVersion,
+  entries:                 BTreeMap<String, NodeRecord>,
   heartbeat_miss_counters: BTreeMap<String, u32>,
-  max_heartbeat_misses: u32,
-  events: Vec<MembershipEvent>,
+  max_heartbeat_misses:    u32,
+  events:                  Vec<MembershipEvent>,
 }
 
 impl MembershipTable {
   /// Creates an empty membership table.
-  pub fn new(max_heartbeat_misses: u32) -> Self {
+  #[must_use]
+  pub const fn new(max_heartbeat_misses: u32) -> Self {
     Self {
       version: MembershipVersion::zero(),
       entries: BTreeMap::new(),
@@ -38,12 +40,17 @@ impl MembershipTable {
   }
 
   /// Attempts to join the cluster with the given node and authority.
+  ///
+  /// # Errors
+  ///
+  /// Returns `MembershipError::AuthorityConflict` if the authority is already registered with a
+  /// different node ID.
   pub fn try_join(&mut self, node_id: String, authority: String) -> Result<MembershipDelta, MembershipError> {
     if let Some(existing) = self.entries.get(&authority) {
       if existing.node_id != node_id {
         self.events.push(MembershipEvent::AuthorityConflict {
-          authority: authority.clone(),
-          existing_node_id: existing.node_id.clone(),
+          authority:         authority.clone(),
+          existing_node_id:  existing.node_id.clone(),
           requested_node_id: node_id.clone(),
         });
 
@@ -70,6 +77,10 @@ impl MembershipTable {
   }
 
   /// Marks the authority as leaving and then removed.
+  ///
+  /// # Errors
+  ///
+  /// Returns `MembershipError::UnknownAuthority` if the authority is not found in the table.
   pub fn mark_left(&mut self, authority: &str) -> Result<MembershipDelta, MembershipError> {
     let Some(record) = self.entries.get_mut(authority) else {
       return Err(MembershipError::UnknownAuthority { authority: authority.to_string() });
@@ -88,9 +99,7 @@ impl MembershipTable {
 
   /// Increments heartbeat misses; returns a delta when it becomes unreachable.
   pub fn mark_heartbeat_miss(&mut self, authority: &str) -> Option<MembershipDelta> {
-    let Some(record) = self.entries.get_mut(authority) else {
-      return None;
-    };
+    let record = self.entries.get_mut(authority)?;
 
     if matches!(record.status, NodeStatus::Removed | NodeStatus::Unreachable) {
       return None;
@@ -110,7 +119,7 @@ impl MembershipTable {
     record.version = self.version;
 
     self.events.push(MembershipEvent::MarkedUnreachable {
-      node_id: record.node_id.clone(),
+      node_id:   record.node_id.clone(),
       authority: record.authority.clone(),
     });
 
@@ -132,16 +141,19 @@ impl MembershipTable {
   }
 
   /// Returns a snapshot for handshake.
+  #[must_use]
   pub fn snapshot(&self) -> MembershipSnapshot {
     MembershipSnapshot::new(self.version, self.entries.values().cloned().collect())
   }
 
   /// Returns current version.
+  #[must_use]
   pub const fn version(&self) -> MembershipVersion {
     self.version
   }
 
   /// Gets a record by authority.
+  #[must_use]
   pub fn record(&self, authority: &str) -> Option<&NodeRecord> {
     self.entries.get(authority)
   }

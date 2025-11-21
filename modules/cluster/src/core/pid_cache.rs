@@ -1,38 +1,35 @@
 //! GrainKey -> PID cache with TTL and authority invalidation.
 
-use alloc::{collections::BTreeMap, format, string::{String, ToString}, vec::Vec};
+use alloc::{
+  collections::BTreeMap,
+  format,
+  string::{String, ToString},
+  vec::Vec,
+};
 
-use crate::core::grain_key::GrainKey;
+use crate::core::{grain_key::GrainKey, pid_cache_event::PidCacheEvent};
+
+#[cfg(test)]
+mod tests;
 
 #[derive(Debug, Clone)]
 struct CacheEntry {
-  pid: String,
-  authority: String,
+  pid:        String,
+  authority:  String,
   expires_at: u64,
 }
 
 /// Simple TTL-based PID cache.
 pub struct PidCache {
-  entries: BTreeMap<GrainKey, CacheEntry>,
+  entries:     BTreeMap<GrainKey, CacheEntry>,
   max_entries: usize,
-  events: Vec<PidCacheEvent>,
-}
-
-/// Events emitted from cache operations.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PidCacheEvent {
-  /// Entry was dropped due to TTL or owner change.
-  Dropped {
-    /// Key that was removed.
-    key: GrainKey,
-    /// Context of removal.
-    reason: String,
-  },
+  events:      Vec<PidCacheEvent>,
 }
 
 impl PidCache {
   /// Creates a new cache with the given capacity.
-  pub fn new(max_entries: usize) -> Self {
+  #[must_use]
+  pub const fn new(max_entries: usize) -> Self {
     Self { entries: BTreeMap::new(), max_entries, events: Vec::new() }
   }
 
@@ -52,19 +49,17 @@ impl PidCache {
     }
 
     if let Some(entry) = self.entries.remove(key) {
-      self.events.push(PidCacheEvent::Dropped { key: key.clone(), reason: format!("expired_at_{}", entry.expires_at) });
+      self
+        .events
+        .push(PidCacheEvent::Dropped { key: key.clone(), reason: format!("expired_at_{}", entry.expires_at) });
     }
     None
   }
 
   /// Invalidates entries owned by a quarantined authority.
   pub fn invalidate_authority(&mut self, authority: &str) {
-    let to_drop: Vec<_> = self
-      .entries
-      .iter()
-      .filter(|(_, entry)| entry.authority == authority)
-      .map(|(key, _)| key.clone())
-      .collect();
+    let to_drop: Vec<_> =
+      self.entries.iter().filter(|(_, entry)| entry.authority == authority).map(|(key, _)| key.clone()).collect();
     for key in to_drop {
       self.entries.remove(&key);
       self.events.push(PidCacheEvent::Dropped { key, reason: "quarantine".to_string() });
@@ -108,6 +103,3 @@ impl PidCache {
     }
   }
 }
-
-#[cfg(test)]
-mod tests;

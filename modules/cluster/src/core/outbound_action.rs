@@ -4,6 +4,9 @@ use alloc::string::String;
 
 use crate::core::outbound_envelope::OutboundEnvelope;
 
+#[cfg(test)]
+mod tests;
+
 /// Result of attempting to send an outbound envelope.
 #[derive(Debug, PartialEq, Eq)]
 pub enum OutboundAction {
@@ -20,7 +23,7 @@ pub enum OutboundAction {
   /// Oldest message was dropped to make room for the new one.
   DroppedOldest {
     /// Envelope that was discarded as DeadLetter.
-    dropped: OutboundEnvelope,
+    dropped:   OutboundEnvelope,
     /// Queue length after replacing the oldest entry.
     queue_len: usize,
   },
@@ -30,6 +33,3 @@ pub enum OutboundAction {
     reason: String,
   },
 }
-
-#[cfg(test)]
-mod tests;

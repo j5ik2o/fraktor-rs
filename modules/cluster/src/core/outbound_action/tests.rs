@@ -1,6 +1,5 @@
-use crate::core::outbound_envelope::OutboundEnvelope;
-
 use super::OutboundAction;
+use crate::core::outbound_envelope::OutboundEnvelope;
 
 #[test]
 fn immediate_carries_envelope() {

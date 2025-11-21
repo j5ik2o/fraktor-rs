@@ -8,16 +8,17 @@ use crate::core::{membership_version::MembershipVersion, node_record::NodeRecord
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MembershipDelta {
   /// Source version before applying the delta.
-  pub from: MembershipVersion,
+  pub from:    MembershipVersion,
   /// Target version after applying the delta.
-  pub to: MembershipVersion,
+  pub to:      MembershipVersion,
   /// Records updated by this delta.
   pub entries: Vec<NodeRecord>,
 }
 
 impl MembershipDelta {
   /// Creates a delta.
-  pub fn new(from: MembershipVersion, to: MembershipVersion, entries: Vec<NodeRecord>) -> Self {
+  #[must_use]
+  pub const fn new(from: MembershipVersion, to: MembershipVersion, entries: Vec<NodeRecord>) -> Self {
     Self { from, to, entries }
   }
 }

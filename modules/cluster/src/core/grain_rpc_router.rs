@@ -1,41 +1,45 @@
 //! Concurrency- and schema-aware RPC router.
 
-use alloc::{collections::{BTreeMap, VecDeque}, string::ToString, vec::Vec};
+use alloc::{
+  collections::{BTreeMap, VecDeque},
+  string::ToString,
+  vec::Vec,
+};
 
 use crate::core::{
-  dispatch_drop_policy::DispatchDropPolicy,
-  grain_key::GrainKey,
-  rpc_dispatch::RpcDispatch,
-  rpc_error::RpcError,
-  rpc_event::RpcEvent,
-  schema_negotiator::SchemaNegotiator,
-  serialized_message::SerializedMessage,
+  dispatch_drop_policy::DispatchDropPolicy, grain_key::GrainKey, rpc_dispatch::RpcDispatch, rpc_error::RpcError,
+  rpc_event::RpcEvent, schema_negotiator::SchemaNegotiator, serialized_message::SerializedMessage,
 };
+
+#[cfg(test)]
+mod tests;
 
 struct KeyState {
   in_flight: u32,
-  queue: VecDeque<Queued>,
+  queue:     VecDeque<Queued>,
 }
 
 struct Queued {
-  message: SerializedMessage,
+  message:  SerializedMessage,
   deadline: u64,
 }
 
-/// Router that enforces schema compatibility, serialization validation, and per-key concurrency limits.
+/// Router that enforces schema compatibility, serialization validation, and per-key concurrency
+/// limits.
 pub struct GrainRpcRouter {
   concurrency_limit: u32,
-  queue_depth: usize,
-  drop_policy: DispatchDropPolicy,
-  negotiator: SchemaNegotiator,
-  negotiated: Option<u32>,
-  states: BTreeMap<GrainKey, KeyState>,
-  events: Vec<RpcEvent>,
+  queue_depth:       usize,
+  drop_policy:       DispatchDropPolicy,
+  negotiator:        SchemaNegotiator,
+  negotiated:        Option<u32>,
+  states:            BTreeMap<GrainKey, KeyState>,
+  events:            Vec<RpcEvent>,
 }
 
 impl GrainRpcRouter {
   /// Creates a new router.
-  pub fn new(
+  #[must_use]
+  pub const fn new(
     concurrency_limit: u32,
     queue_depth: usize,
     drop_policy: DispatchDropPolicy,
@@ -59,6 +63,13 @@ impl GrainRpcRouter {
   }
 
   /// Dispatches a request, applying concurrency, queue, and schema rules.
+  ///
+  /// # Errors
+  ///
+  /// Returns `RpcError::EmptyPayload` if the message payload is empty.
+  /// Returns `RpcError::SchemaIncompatible` if schema negotiation has not been performed or the
+  /// message version is incompatible. Returns `RpcError::Dropped` if the queue is full and the
+  /// drop policy results in rejection.
   pub fn dispatch(
     &mut self,
     key: GrainKey,
@@ -76,9 +87,13 @@ impl GrainRpcRouter {
 
     if let Some(version) = self.negotiated {
       if version != message.schema_version {
-        local_events.push(RpcEvent::SchemaMismatch { key: key.clone(), message_version: message.schema_version });
+        local_events
+          .push(RpcEvent::SchemaMismatch { key: key.clone(), message_version: message.schema_version });
         self.events.extend(local_events);
-        return Err(RpcError::SchemaMismatch { negotiated: Some(version), message_version: message.schema_version });
+        return Err(RpcError::SchemaMismatch {
+          negotiated:      Some(version),
+          message_version: message.schema_version,
+        });
       }
     } else {
       self.events.extend(local_events);
@@ -158,12 +173,6 @@ impl GrainRpcRouter {
   }
 
   fn state_mut(&mut self, key: &GrainKey) -> &mut KeyState {
-    self
-      .states
-      .entry(key.clone())
-      .or_insert_with(|| KeyState { in_flight: 0, queue: VecDeque::new() })
+    self.states.entry(key.clone()).or_insert_with(|| KeyState { in_flight: 0, queue: VecDeque::new() })
   }
 }
-
-#[cfg(test)]
-mod tests;

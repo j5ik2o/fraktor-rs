@@ -8,9 +8,9 @@ pub enum MembershipError {
   /// Another node already owns the authority.
   AuthorityConflict {
     /// Authority in conflict.
-    authority: String,
+    authority:         String,
     /// Existing node id bound to the authority.
-    existing_node_id: String,
+    existing_node_id:  String,
     /// Requested node id that caused the collision.
     requested_node_id: String,
   },

@@ -10,12 +10,13 @@ pub struct GossipOutbound {
   /// Target peer identifier (node id).
   pub target: String,
   /// Membership delta to send.
-  pub delta: MembershipDelta,
+  pub delta:  MembershipDelta,
 }
 
 impl GossipOutbound {
   /// Creates a new outbound gossip message.
-  pub fn new(target: String, delta: MembershipDelta) -> Self {
+  #[must_use]
+  pub const fn new(target: String, delta: MembershipDelta) -> Self {
     Self { target, delta }
   }
 }

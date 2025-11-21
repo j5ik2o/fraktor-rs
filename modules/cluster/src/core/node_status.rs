@@ -17,6 +17,7 @@ pub enum NodeStatus {
 
 impl NodeStatus {
   /// Returns true when the node can serve requests.
+  #[must_use]
   pub const fn is_active(self) -> bool {
     matches!(self, Self::Joining | Self::Up)
   }
