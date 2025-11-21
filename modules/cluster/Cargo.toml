@@ -17,6 +17,6 @@ default = []
 std = []
 
 [dependencies]
+fraktor-actor-rs = { workspace = true }
 
 [dev-dependencies]
-

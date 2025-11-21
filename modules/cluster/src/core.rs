@@ -12,3 +12,7 @@ pub mod gossip_engine;
 pub mod gossip_event;
 pub mod gossip_outbound;
 pub mod gossip_state;
+pub mod identity_event;
+pub mod identity_table;
+pub mod resolve_error;
+pub mod resolve_result;

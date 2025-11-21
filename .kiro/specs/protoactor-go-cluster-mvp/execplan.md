@@ -14,6 +14,7 @@ protoactor-go 互換クラスタの MVP を fraktor-rs に追加し、メンバ�
 - [x] (2025-11-21) タスク1.1のチェックボックスを更新し、ExecPlanを反映
 - [x] (2025-11-21) GossipEngine のREDテストを追加（Diffusing→Confirmed, conflict, missing range）
 - [x] (2025-11-21) GossipEngine を実装してGREEN化、タスク1.2を完了
+- [x] (2025-11-21) IdentityTable/ResolveResult/ResolveError/IdentityEvent を追加し、PID解決テスト（Ready/Unreachable/Quarantine/InvalidFormat/最新バージョン維持）をRED→GREEN化、タスク2.1を完了
 
 ## Surprises & Discoveries
 

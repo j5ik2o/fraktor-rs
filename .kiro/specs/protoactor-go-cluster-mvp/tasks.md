@@ -22,9 +22,9 @@
 
 - [ ] 2. Authority と送達パイプラインを制御する
   - _対応要件: 2系, 3系, 4系_
-  - _依存タスク: 1.2_
+    - _依存タスク: 1.2_
 
-- [ ] 2.1 PID 解決と authority ステータス判定を実装する
+- [x] 2.1 PID 解決と authority ステータス判定を実装する
   - メンバーシップと authority から canonical ActorPath を生成し、最新バージョンに基づき Ready/Unreachable/Quarantine を返す
   - Removed/Unreachable/Quarantine への送信を拒否し、PID フォーマットが不正なときは理由付きエラーを返却する
   - authority 衝突や解決順序の乱れを検出して EventStream へ通知し、クライアントへ安定した解決結果を返す

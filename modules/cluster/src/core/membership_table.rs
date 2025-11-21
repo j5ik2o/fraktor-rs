@@ -141,6 +141,11 @@ impl MembershipTable {
     self.version
   }
 
+  /// Gets a record by authority.
+  pub fn record(&self, authority: &str) -> Option<&NodeRecord> {
+    self.entries.get(authority)
+  }
+
   /// Drains buffered events.
   pub fn drain_events(&mut self) -> Vec<MembershipEvent> {
     core::mem::take(&mut self.events)
