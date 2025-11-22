@@ -31,6 +31,12 @@ pub struct PubSubBroker {
   topic_metrics: BTreeMap<String, PubSubTopicMetrics>,
 }
 
+impl Default for PubSubBroker {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
 impl PubSubBroker {
   /// Creates an empty broker.
   #[must_use]
@@ -44,11 +50,19 @@ impl PubSubBroker {
   }
 
   /// Registers a new topic and emits a creation event.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`PubSubError::TopicAlreadyExists`] if the topic already exists.
   pub fn create_topic(&mut self, topic: String) -> Result<(), PubSubError> {
     self.create_topic_with_options(topic, DeliveryPolicy::AtLeastOnce, PartitionBehavior::DelayQueue)
   }
 
   /// Registers a new topic with explicit delivery and partition policies.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`PubSubError::TopicAlreadyExists`] if the topic already exists.
   pub fn create_topic_with_options(
     &mut self,
     topic: String,
@@ -74,6 +88,11 @@ impl PubSubBroker {
   }
 
   /// Adds a subscriber to an existing topic.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`PubSubError::TopicNotFound`] if the topic does not exist.
+  /// Returns [`PubSubError::DuplicateSubscriber`] if the subscriber is already registered.
   pub fn subscribe(&mut self, topic: &str, subscriber: String) -> Result<(), PubSubError> {
     let Some(entry) = self.topics.get_mut(topic) else {
       self.events.push(PubSubEvent::SubscriptionRejected {
@@ -100,6 +119,13 @@ impl PubSubBroker {
   }
 
   /// Validates publish readiness and returns subscribers.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`PubSubError::TopicNotFound`] if the topic does not exist.
+  /// Returns [`PubSubError::NoSubscribers`] if there are no subscribers to the topic.
+  /// Returns [`PubSubError::PartitionDrop`] if the topic is partitioned and the policy drops
+  /// messages.
   pub fn publish(&mut self, topic: &str) -> Result<Vec<String>, PubSubError> {
     let Some(entry) = self.topics.get(topic) else {
       self.events.push(PubSubEvent::PublishRejectedMissingTopic { topic: topic.to_string() });
@@ -119,6 +145,10 @@ impl PubSubBroker {
   }
 
   /// Marks or clears partition state. Returns the number of flushed queued messages when recovered.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`PubSubError::TopicNotFound`] if the topic does not exist.
   pub fn mark_partitioned(&mut self, topic: &str, partitioned: bool) -> Result<usize, PubSubError> {
     let Some(entry) = self.topics.get_mut(topic) else {
       self.events.push(PubSubEvent::PublishRejectedMissingTopic { topic: topic.to_string() });
@@ -143,7 +173,9 @@ impl PubSubBroker {
         self.events.push(PubSubEvent::PublishDroppedDueToPartition { topic: topic.to_string() });
       } else {
         self.metrics.redelivered_messages = self.metrics.redelivered_messages.saturating_add(flushed as u64);
-        self.bump_topic_metrics(topic, |m| m.redelivered_messages = m.redelivered_messages.saturating_add(flushed as u64));
+        self.bump_topic_metrics(topic, |m| {
+          m.redelivered_messages = m.redelivered_messages.saturating_add(flushed as u64)
+        });
         self.events.push(PubSubEvent::PublishQueuedFlushed { topic: topic.to_string(), count: flushed });
       }
     }
@@ -214,7 +246,7 @@ impl PubSubBroker {
   fn bump_topic_metrics<F>(&mut self, topic: &str, mut f: F)
   where
     F: FnMut(&mut PubSubTopicMetrics), {
-    let entry = self.topic_metrics.entry(topic.to_string()).or_insert_with(PubSubTopicMetrics::default);
+    let entry = self.topic_metrics.entry(topic.to_string()).or_default();
     f(entry);
   }
 }
