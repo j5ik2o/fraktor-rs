@@ -172,7 +172,7 @@ impl<TB: RuntimeToolbox + 'static> EndpointDriver<TB> {
       }
     }
     let channel = self.transport.open_channel(endpoint)?;
-    self.channels.lock().await.insert(authority.to_string(), channel.clone());
+    self.channels.lock().await.insert(authority.to_string(), channel);
     if let Some(remote) = self.peers.lock().await.get(authority).cloned() {
       let handshake = HandshakeFrame::new(HandshakeKind::Offer, &self.system_name, &self.host, Some(self.port), 0);
       let payload = handshake.encode();

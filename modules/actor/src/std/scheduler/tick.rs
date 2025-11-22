@@ -36,6 +36,7 @@ impl TickDriverConfig {
   ///
   /// Panics if no Tokio runtime handle is available in the current context.
   #[must_use]
+  #[allow(clippy::expect_used)]
   pub fn tokio_auto(resolution: Duration) -> TickDriverFactoryRef<StdToolbox> {
     let handle = Handle::try_current().expect("Tokio runtime handle unavailable");
     Self::tokio_with_handle(handle, resolution)
@@ -51,6 +52,10 @@ impl TickDriverConfig {
   ///
   /// This creates a complete tick driver setup including both the tick generator
   /// and the scheduler executor, similar to no_std hardware tick driver patterns.
+  ///
+  /// # Panics
+  ///
+  /// Panics if no Tokio runtime handle is available in the current context.
   #[must_use]
   pub fn tokio_quickstart_with_resolution(resolution: Duration) -> CoreTickDriverConfig<StdToolbox> {
     use fraktor_utils_rs::core::{runtime_toolbox::ToolboxMutex, sync::ArcShared};
@@ -62,6 +67,7 @@ impl TickDriverConfig {
     };
 
     CoreTickDriverConfig::new(move |ctx| {
+      #[allow(clippy::expect_used)]
       let handle = Handle::try_current().expect("Tokio runtime handle unavailable");
 
       // Get scheduler, resolution, and capacity from context
@@ -89,9 +95,8 @@ impl TickDriverConfig {
       // Spawn scheduler executor task
       let executor_feed = feed.clone();
       let executor_signal = executor_feed.signal();
-      let executor_scheduler = scheduler.clone();
       let executor_task = handle.spawn(async move {
-        let mut executor = SchedulerTickExecutor::new(executor_scheduler, executor_feed, executor_signal);
+        let mut executor = SchedulerTickExecutor::new(scheduler, executor_feed, executor_signal);
         loop {
           executor.drive_pending();
           tokio::time::sleep(resolution / 10).await;
@@ -147,6 +152,7 @@ impl TickDriverConfig {
     };
 
     CoreTickDriverConfig::new(move |ctx| {
+      #[allow(clippy::expect_used)]
       let handle = Handle::try_current().expect("Tokio runtime handle unavailable");
 
       let scheduler: Arc<ToolboxMutex<Scheduler<StdToolbox>, StdToolbox>> = ctx.scheduler();
@@ -172,9 +178,8 @@ impl TickDriverConfig {
       // Spawn scheduler executor task
       let executor_feed = feed.clone();
       let executor_signal = executor_feed.signal();
-      let executor_scheduler = scheduler.clone();
       let executor_task = handle.spawn(async move {
-        let mut executor = SchedulerTickExecutor::new(executor_scheduler, executor_feed, executor_signal);
+        let mut executor = SchedulerTickExecutor::new(scheduler, executor_feed, executor_signal);
         loop {
           executor.drive_pending();
           tokio::time::sleep(resolution / 10).await;

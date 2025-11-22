@@ -80,7 +80,7 @@ fn disconnected_when_receiver_dropped() {
   drop(backend);
 
   // Now offer through the cloned sender should fail
-  assert!(matches!(sender.send(1), Err(_)));
+  assert!(sender.send(1).is_err());
 }
 
 #[test]

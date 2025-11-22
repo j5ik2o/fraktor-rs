@@ -207,10 +207,10 @@ impl TokioTcpTransport {
         break;
       }
       pending_count += 1;
-      if pending_count >= BACKPRESSURE_THRESHOLD {
-        if let Some(hook_ref) = hook.lock().clone() {
-          hook_ref.on_backpressure(BackpressureSignal::Apply, &authority, frame.correlation_id);
-        }
+      if pending_count >= BACKPRESSURE_THRESHOLD
+        && let Some(hook_ref) = hook.lock().clone()
+      {
+        hook_ref.on_backpressure(BackpressureSignal::Apply, &authority, frame.correlation_id);
       }
     }
   }
