@@ -31,8 +31,8 @@ use fraktor_actor_rs::{
 };
 use fraktor_cluster_rs::core::{GrainKey, MembershipDelta, MembershipTable, RendezvousHasher, VirtualActorRegistry};
 use fraktor_remote_rs::core::{
-  RemotingExtensionConfig, RemotingExtensionId, RemotingExtensionInstaller,
-  TokioActorRefProviderGeneric, TokioActorRefProviderInstaller, TokioTransportConfig, default_loopback_setup,
+  RemotingExtensionConfig, RemotingExtensionId, RemotingExtensionInstaller, TokioActorRefProviderGeneric,
+  TokioActorRefProviderInstaller, TokioTransportConfig, default_loopback_setup,
 };
 use fraktor_utils_rs::{core::sync::ArcShared, std::runtime_toolbox::StdToolbox};
 use tokio::sync::oneshot;
