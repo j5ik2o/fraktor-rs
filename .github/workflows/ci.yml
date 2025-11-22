@@ -25,8 +25,9 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v6
       - name: Setup Rust toolchain (nightly)
-        uses: dtolnay/rust-toolchain@nightly-2025-01-15
+        uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: nightly-2025-01-15
           components: rustfmt
       - name: Setup Cargo cache
         uses: Swatinem/rust-cache@v2
@@ -49,8 +50,9 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v6
       - name: Setup Rust toolchain (nightly)
-        uses: dtolnay/rust-toolchain@nightly-2025-01-15
+        uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: nightly-2025-01-15
           components: clippy
       - name: Setup Cargo cache
         uses: Swatinem/rust-cache@v2
@@ -78,7 +80,9 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v6
       - name: Setup Rust toolchain (nightly)
-        uses: dtolnay/rust-toolchain@nightly-2025-01-15
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2025-01-15
       - name: Setup Cargo cache
         uses: Swatinem/rust-cache@v2
         with:
@@ -95,7 +99,9 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v6
       - name: Setup Rust toolchain (nightly)
-        uses: dtolnay/rust-toolchain@nightly-2025-01-15
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2025-01-15
       - name: Setup Cargo cache
         uses: Swatinem/rust-cache@v2
         with:
@@ -112,7 +118,9 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v6
       - name: Setup Rust toolchain (nightly)
-        uses: dtolnay/rust-toolchain@nightly-2025-01-15
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2025-01-15
       - name: Setup Cargo cache
         uses: Swatinem/rust-cache@v2
         with:
