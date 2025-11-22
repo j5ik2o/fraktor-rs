@@ -9,6 +9,8 @@ cd "${REPO_ROOT}"
 
 THUMB_TARGETS=("thumbv6m-none-eabi" "thumbv8m.main-none-eabi")
 declare -a HARDWARE_PACKAGES=()
+# NOTE: Nightly version is pinned in rust-toolchain.toml (nightly-2025-01-15)
+# The toolchain settings below can be overridden via environment variables if needed
 DEFAULT_TOOLCHAIN="${RUSTUP_TOOLCHAIN:-nightly}"
 FMT_TOOLCHAIN="${FMT_TOOLCHAIN:-nightly}"
 
