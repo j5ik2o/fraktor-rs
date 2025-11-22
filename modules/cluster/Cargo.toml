@@ -20,3 +20,13 @@ std = []
 fraktor-actor-rs = { workspace = true }
 
 [dev-dependencies]
+fraktor-actor-rs = { workspace = true, features = ["std", "tokio-executor", "test-support"] }
+fraktor-remote-rs = { workspace = true, features = ["std", "tokio-transport", "tokio-executor", "test-support"] }
+fraktor-utils-rs = { workspace = true, features = ["std"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "net", "sync", "io-util"] }
+anyhow = { workspace = true }
+
+[[example]]
+name = "quickstart"
+path = "examples/quickstart/main.rs"
+required-features = ["std"]
