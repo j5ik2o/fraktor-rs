@@ -1,4 +1,6 @@
 #![cfg(not(target_os = "none"))]
+#![allow(clippy::disallowed_types)]
+#![allow(clippy::collapsible_if)]
 
 use core::{
   ffi::c_void,

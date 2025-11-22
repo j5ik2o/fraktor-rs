@@ -26,6 +26,7 @@ members = [
     "modules/utils",
     "modules/actor",
     "modules/remote",
+    "modules/cluster",
 ]
 
 [workspace.package]
@@ -44,6 +45,8 @@ libraries = [
 
 [workspace.dependencies]
 fraktor-actor-rs = { path = "modules/actor", version = "0.2.11" }
+fraktor-cluster-rs = { path = "modules/cluster", version = "0.2.11", default-features = false }
+fraktor-remote-rs = { path = "modules/remote", version = "0.2.11", default-features = false }
 alloc-cortex-m = "0.4"
 async-trait = { version = "0.1.89", default-features = false }
 fraktor-utils-rs = { path = "modules/utils", version = "0.2.11", default-features = false }

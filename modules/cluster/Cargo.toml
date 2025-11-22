@@ -1,0 +1,32 @@
+[package]
+name = "fraktor-cluster-rs"
+version = "0.2.11"
+edition = "2024"
+description = "protoactor-go compatible cluster core for fraktor runtime"
+license = "MIT OR Apache-2.0"
+keywords = ["fraktor", "cluster", "actor", "no_std"]
+categories = ["concurrency", "embedded", "no-std"]
+repository = "https://github.com/j5ik2o/fraktor-rs"
+homepage = "https://github.com/j5ik2o/fraktor-rs"
+documentation = "https://docs.rs/fraktor-cluster-rs"
+readme = "../../README.md"
+autoexamples = false
+
+[features]
+default = []
+std = []
+
+[dependencies]
+fraktor-actor-rs = { workspace = true }
+
+[dev-dependencies]
+fraktor-actor-rs = { workspace = true, features = ["std", "tokio-executor", "test-support"] }
+fraktor-remote-rs = { workspace = true, features = ["std", "tokio-transport", "tokio-executor", "test-support"] }
+fraktor-utils-rs = { workspace = true, features = ["std"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "net", "sync", "io-util"] }
+anyhow = { workspace = true }
+
+[[example]]
+name = "quickstart"
+path = "examples/quickstart/main.rs"
+required-features = ["std"]

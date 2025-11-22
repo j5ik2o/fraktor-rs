@@ -13,7 +13,7 @@ pub struct TokioExecutor {
 impl TokioExecutor {
   /// Creates a new executor bound to the provided Tokio runtime handle.
   #[must_use]
-  pub fn new(handle: Handle) -> Self {
+  pub const fn new(handle: Handle) -> Self {
     Self { handle }
   }
 }

@@ -109,7 +109,7 @@ impl LoggerWriter for TracingLoggerWriter {
   }
 }
 
-fn duration_to_micros(duration: Duration) -> u64 {
+const fn duration_to_micros(duration: Duration) -> u64 {
   let micros = duration.as_micros();
   if micros > u64::MAX as u128 { u64::MAX } else { micros as u64 }
 }

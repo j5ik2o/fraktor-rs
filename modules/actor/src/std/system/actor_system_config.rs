@@ -14,6 +14,7 @@ use crate::{
 };
 
 /// Configuration for the actor system.
+#[derive(Default)]
 pub struct ActorSystemConfig {
   inner: CoreActorSystemConfigGeneric<StdToolbox>,
 }
@@ -80,7 +81,7 @@ impl ActorSystemConfig {
   /// Returns the system name.
   #[must_use]
   pub fn system_name(&self) -> &str {
-    &self.inner.system_name()
+    self.inner.system_name()
   }
 
   /// Returns the default guardian kind.
@@ -98,7 +99,7 @@ impl ActorSystemConfig {
   /// Returns the scheduler configuration.
   #[must_use]
   pub const fn scheduler_config(&self) -> &SchedulerConfig {
-    &self.inner.scheduler_config()
+    self.inner.scheduler_config()
   }
 
   /// Returns the tick driver configuration if set.
@@ -159,11 +160,5 @@ impl ActorSystemConfig {
   #[must_use]
   pub fn into_inner(self) -> CoreActorSystemConfigGeneric<StdToolbox> {
     self.inner
-  }
-}
-
-impl Default for ActorSystemConfig {
-  fn default() -> Self {
-    Self { inner: CoreActorSystemConfigGeneric::default() }
   }
 }

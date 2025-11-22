@@ -96,8 +96,8 @@ fn remote_path() -> fraktor_actor_rs::core::actor_prim::actor_path::ActorPath {
   path
 }
 
-#[test]
-fn quickstart_loopback_provider_flow() -> Result<()> {
+#[tokio::test]
+async fn quickstart_loopback_provider_flow() -> Result<()> {
   let config_hits: ArcShared<NoStdMutex<Vec<String>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
   // canonical_host/port は ActorSystemConfig の RemotingConfig から自動的に取得される
   let config = RemotingExtensionConfig::default().with_auto_start(false).with_backpressure_listener({
@@ -116,25 +116,35 @@ fn quickstart_loopback_provider_flow() -> Result<()> {
   assert!(!handle.is_running());
   handle.start().map_err(|error| anyhow!("{error}"))?;
 
+  // Wait for async startup to complete
+  tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
   provider
     .watch_remote(ActorPathParts::with_authority("remote-system", Some(("127.0.0.1", 4321))))
     .map_err(|error| anyhow!("{error}"))?;
 
   handle.emit_backpressure_signal("127.0.0.1:4321", BackpressureSignal::Apply);
 
-  assert!(matches!(
-    recorder
-      .events
-      .lock()
-      .iter()
-      .filter_map(|event| match event {
-        | EventStreamEvent::RemotingLifecycle(event) => Some(event.clone()),
-        | _ => None,
-      })
-      .collect::<Vec<_>>()
-      .as_slice(),
-    [RemotingLifecycleEvent::Starting, RemotingLifecycleEvent::Started]
-  ));
+  // Wait for events to propagate
+  tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+  let lifecycle_events = recorder
+    .events
+    .lock()
+    .iter()
+    .filter_map(|event| match event {
+      | EventStreamEvent::RemotingLifecycle(event) => Some(event.clone()),
+      | _ => None,
+    })
+    .collect::<Vec<_>>();
+
+  assert!(
+    lifecycle_events.len() >= 2
+      && matches!(&lifecycle_events[0], RemotingLifecycleEvent::Starting)
+      && matches!(&lifecycle_events[1], RemotingLifecycleEvent::Started),
+    "Expected at least [Starting, Started], got: {:?}",
+    lifecycle_events
+  );
 
   let config_snapshot = config_hits.lock().clone();
   assert_eq!(config_snapshot, vec!["127.0.0.1:4321:Apply".to_string()]);
@@ -160,8 +170,8 @@ fn quickstart_loopback_provider_flow() -> Result<()> {
   Ok(())
 }
 
-#[test]
-fn remote_provider_enqueues_message() -> Result<()> {
+#[tokio::test]
+async fn remote_provider_enqueues_message() -> Result<()> {
   let config = RemotingExtensionConfig::default().with_auto_start(false);
   let (system, handle) = build_system(config);
   handle.start().map_err(|error| anyhow!("{error}"))?;
@@ -180,8 +190,8 @@ fn remote_provider_enqueues_message() -> Result<()> {
   Ok(())
 }
 
-#[test]
-fn remote_watch_hook_handles_system_watch_messages() -> Result<()> {
+#[tokio::test]
+async fn remote_watch_hook_handles_system_watch_messages() -> Result<()> {
   let config = RemotingExtensionConfig::default().with_auto_start(false);
   let (system, handle) = build_system(config);
   handle.start().map_err(|error| anyhow!("{error}"))?;

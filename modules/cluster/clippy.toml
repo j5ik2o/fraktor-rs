@@ -1,0 +1,8 @@
+disallowed-types = [
+  { path = "alloc::sync::Arc", reason = "Use ArcShared within production code", replacement = "fraktor_utils_core_rs::sync::ArcShared" },
+  { path = "std::sync::Arc", reason = "Use ArcShared within production code", replacement = "fraktor_utils_core_rs::sync::ArcShared" },
+  { path = "alloc::rc::Rc", reason = "Use ArcShared within production code", replacement = "fraktor_utils_core_rs::sync::ArcShared" },
+  { path = "std::rc::Rc", reason = "Use ArcShared within production code", replacement = "fraktor_utils_core_rs::sync::ArcShared" },
+  { path = "heapless::pool::arc::Arc", reason = "Use ArcShared within production code", replacement = "fraktor_utils_core_rs::sync::ArcShared" },
+  { path = "std::sync::Mutex", reason = "Use impl of SyncMutexLike or AsyncMutexLike within prouction code", replacement = "fraktor_utils_core_rs::sync::(Sync|Async)MutextLike" },
+]

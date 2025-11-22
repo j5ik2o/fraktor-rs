@@ -36,13 +36,13 @@ impl<T> MpscBackend<T> {
   ///
   /// This can be cloned to create multiple producers.
   #[must_use]
-  pub fn sender(&self) -> &std::sync::mpsc::Sender<T> {
+  pub const fn sender(&self) -> &std::sync::mpsc::Sender<T> {
     &self.sender
   }
 
   /// Returns a reference to the receiver half of the channel.
   #[must_use]
-  pub fn receiver(&self) -> &std::sync::mpsc::Receiver<T> {
+  pub const fn receiver(&self) -> &std::sync::mpsc::Receiver<T> {
     &self.receiver
   }
 }

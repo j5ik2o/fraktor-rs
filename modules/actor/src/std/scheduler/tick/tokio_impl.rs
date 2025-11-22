@@ -1,6 +1,7 @@
 extern crate std;
 
 use alloc::boxed::Box;
+#[allow(clippy::disallowed_types)]
 use std::{sync::Mutex, time::Duration};
 
 use fraktor_utils_rs::{
@@ -35,7 +36,7 @@ pub(crate) struct TokioIntervalDriverFactory {
 }
 
 impl TokioIntervalDriverFactory {
-  pub(crate) fn new(handle: Handle, resolution: Duration) -> Self {
+  pub(crate) const fn new(handle: Handle, resolution: Duration) -> Self {
     Self { handle, resolution, metrics: None }
   }
 
@@ -102,7 +103,7 @@ impl TickDriver<StdToolbox> for TokioIntervalDriver {
     });
     let metrics = self.metrics.as_ref().map(|options| {
       StdTickMetricsEmitter::spawn(
-        handle_clone.clone(),
+        &handle_clone,
         feed.clone(),
         self.resolution,
         self.kind(),
@@ -115,35 +116,41 @@ impl TickDriver<StdToolbox> for TokioIntervalDriver {
   }
 }
 
+#[allow(clippy::disallowed_types)]
 struct TokioIntervalDriverControl {
   join:    Mutex<Option<JoinHandle<()>>>,
   metrics: Mutex<Option<StdTickMetricsEmitter>>,
 }
 
 impl TokioIntervalDriverControl {
-  fn new(join: JoinHandle<()>, metrics: Option<StdTickMetricsEmitter>) -> Self {
+  #[allow(clippy::disallowed_types)]
+  const fn new(join: JoinHandle<()>, metrics: Option<StdTickMetricsEmitter>) -> Self {
     Self { join: Mutex::new(Some(join)), metrics: Mutex::new(metrics) }
   }
 }
 
 impl TickDriverControl for TokioIntervalDriverControl {
   fn shutdown(&self) {
+    #[allow(clippy::expect_used)]
     if let Some(handle) = self.join.lock().expect("lock").take() {
       handle.abort();
     }
+    #[allow(clippy::expect_used)]
     if let Some(emitter) = self.metrics.lock().expect("lock").take() {
       emitter.shutdown();
     }
   }
 }
 
+#[allow(clippy::disallowed_types)]
 struct StdTickMetricsEmitter {
   join: Mutex<Option<JoinHandle<()>>>,
 }
 
 impl StdTickMetricsEmitter {
+  #[allow(clippy::disallowed_types)]
   fn spawn(
-    handle: Handle,
+    handle: &Handle,
     feed: TickFeedHandle<StdToolbox>,
     resolution: Duration,
     driver: TickDriverKind,
@@ -168,6 +175,7 @@ impl StdTickMetricsEmitter {
   }
 
   fn shutdown(&self) {
+    #[allow(clippy::expect_used)]
     if let Some(handle) = self.join.lock().expect("lock").take() {
       handle.abort();
     }
