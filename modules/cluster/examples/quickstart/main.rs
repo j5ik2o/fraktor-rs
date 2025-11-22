@@ -31,7 +31,7 @@ use fraktor_actor_rs::{
 };
 use fraktor_cluster_rs::core::{GrainKey, MembershipDelta, MembershipTable, RendezvousHasher, VirtualActorRegistry};
 use fraktor_remote_rs::core::{
-  RemotingControl, RemotingExtensionConfig, RemotingExtensionId, RemotingExtensionInstaller,
+  RemotingExtensionConfig, RemotingExtensionId, RemotingExtensionInstaller,
   TokioActorRefProviderGeneric, TokioActorRefProviderInstaller, TokioTransportConfig, default_loopback_setup,
 };
 use fraktor_utils_rs::{core::sync::ArcShared, std::runtime_toolbox::StdToolbox};
@@ -97,10 +97,8 @@ async fn main() -> Result<()> {
   tokio::time::sleep(Duration::from_millis(300)).await;
   let ext_id =
     RemotingExtensionId::<StdToolbox>::new(RemotingExtensionConfig::default().with_transport_scheme("fraktor.tcp"));
-  let ext_sender = sender.extended().extension(&ext_id).expect("ext sender");
-  let ext_receiver = receiver.extended().extension(&ext_id).expect("ext receiver");
-  let _ = ext_sender.handle().start();
-  let _ = ext_receiver.handle().start();
+  let _ = sender.extended().extension(&ext_id).expect("ext sender");
+  let _ = receiver.extended().extension(&ext_id).expect("ext receiver");
 
   // owner を Rendezvous で決定
   let authorities = vec![format!("{HOST}:{NODE_A_PORT}"), format!("{HOST}:{NODE_B_PORT}")];
