@@ -73,7 +73,7 @@ impl<TB: RuntimeToolbox + 'static> ActorRefProviderInstaller<TB> for TokioActorR
     )
     .map_err(|error| ActorSystemBuildError::Configuration(format!("{error}")))?;
     let provider = ArcShared::new(provider);
-    extended.register_actor_ref_provider(provider.clone());
+    extended.register_actor_ref_provider(&provider);
     extended.register_remote_watch_hook(provider.clone());
 
     if self.enable_loopback {

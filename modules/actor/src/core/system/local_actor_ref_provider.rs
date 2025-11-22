@@ -3,7 +3,10 @@
 use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use crate::core::{
-  actor_prim::{actor_path::ActorPath, actor_ref::ActorRefGeneric},
+  actor_prim::{
+    actor_path::{ActorPath, ActorPathScheme},
+    actor_ref::ActorRefGeneric,
+  },
   error::ActorError,
   system::ActorRefProvider,
 };
@@ -31,6 +34,10 @@ impl<TB: RuntimeToolbox + 'static> Default for LocalActorRefProviderGeneric<TB> 
 }
 
 impl<TB: RuntimeToolbox + 'static> ActorRefProvider<TB> for LocalActorRefProviderGeneric<TB> {
+  fn supported_schemes(&self) -> &'static [ActorPathScheme] {
+    &[ActorPathScheme::Fraktor]
+  }
+
   fn actor_ref(&self, path: ActorPath) -> Result<ActorRefGeneric<TB>, ActorError> {
     // Local provider only supports local paths (no authority)
     if path.parts().authority_endpoint().is_some() {

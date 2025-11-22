@@ -4,6 +4,7 @@
 mod tests;
 
 use alloc::{
+  format,
   string::{String, ToString},
   vec::Vec,
 };
@@ -15,9 +16,11 @@ use fraktor_actor_rs::core::{
     actor_path::{ActorPath, ActorPathParts},
     actor_ref::{ActorRefGeneric, ActorRefSender},
   },
-  error::SendError,
+  error::{ActorError, SendError},
   messaging::{AnyMessageGeneric, SystemMessage},
-  system::{ActorSystemGeneric, RemoteAuthorityManagerGeneric, RemoteWatchHook},
+  system::{
+    ActorRefProvider, ActorSystemGeneric, RemoteAuthorityError, RemoteAuthorityManagerGeneric, RemoteWatchHook,
+  },
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdMutex, NoStdToolbox, RuntimeToolbox},
@@ -26,8 +29,9 @@ use fraktor_utils_rs::core::{
 use hashbrown::HashMap;
 
 use crate::core::{
-  EndpointWriterGeneric, endpoint_writer_error::EndpointWriterError, loopback_router,
-  loopback_router::LoopbackDeliveryOutcome, outbound_message::OutboundMessage, outbound_priority::OutboundPriority,
+  EndpointWriterGeneric, actor_ref_field_normalizer::ActorRefFieldNormalizerGeneric,
+  endpoint_writer_error::EndpointWriterError, loopback_router, loopback_router::LoopbackDeliveryOutcome,
+  outbound_message::OutboundMessage, outbound_priority::OutboundPriority,
   remote_actor_ref_provider_error::RemoteActorRefProviderError,
   remote_actor_ref_provider_installer::RemoteActorRefProviderInstaller,
   remote_authority_snapshot::RemoteAuthoritySnapshot, remote_node_id::RemoteNodeId,
@@ -248,6 +252,14 @@ impl<TB: RuntimeToolbox + 'static> RemoteActorRefSender<TB> {
 
 impl<TB: RuntimeToolbox + 'static> ActorRefSender<TB> for RemoteActorRefSender<TB> {
   fn send(&self, message: AnyMessageGeneric<TB>) -> Result<(), SendError<TB>> {
+    let normalizer = ActorRefFieldNormalizerGeneric::new(self.writer.system().state());
+    if let Err(RemoteAuthorityError::Quarantined) = normalizer.validate_recipient(&self.recipient) {
+      return Err(SendError::closed(message));
+    }
+    if let Err(RemoteAuthorityError::Quarantined) = normalizer.validate_reply_to(&message) {
+      return Err(SendError::closed(message));
+    }
+
     let priority = Self::determine_priority(&message);
     let message_clone = message.clone();
     let mut outbound = match priority {
@@ -309,5 +321,15 @@ impl RemoteWatchEntry {
   #[cfg(any(test, feature = "test-support"))]
   fn watchers(&self) -> &[Pid] {
     &self.watchers
+  }
+}
+
+impl<TB: RuntimeToolbox + 'static> ActorRefProvider<TB> for RemoteActorRefProviderGeneric<TB> {
+  fn supported_schemes(&self) -> &'static [fraktor_actor_rs::core::actor_prim::actor_path::ActorPathScheme] {
+    &[fraktor_actor_rs::core::actor_prim::actor_path::ActorPathScheme::FraktorTcp]
+  }
+
+  fn actor_ref(&self, path: ActorPath) -> Result<ActorRefGeneric<TB>, ActorError> {
+    Self::actor_ref(self, path).map_err(|error| ActorError::fatal(format!("{error}")))
   }
 }

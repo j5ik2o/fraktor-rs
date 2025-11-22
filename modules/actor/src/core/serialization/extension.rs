@@ -181,21 +181,25 @@ impl<TB: RuntimeToolbox + 'static> SerializationExtensionGeneric<TB> {
   /// Returns `SerializationError::Uninitialized` if the extension has been shut down.
   pub fn serialized_actor_path(&self, actor_ref: &ActorRefGeneric<TB>) -> Result<String, SerializationError> {
     self.ensure_active()?;
-    let path = Self::actor_path(actor_ref);
+    if self.current_transport_information().is_none() && self.system_state.has_partial_canonical_authority() {
+      let payload = NotSerializableError::new("ActorRef", None, None, Some(actor_ref.pid()), None);
+      self.publish_not_serializable(&payload);
+      return Err(SerializationError::NotSerializable(payload));
+    }
     if let Some(info) = self.current_transport_information()
       && let Some(address) = info.address()
     {
       let mut normalized = address.to_string();
-      if !normalized.ends_with('/') && !path.starts_with('/') {
-        normalized.push('/');
-      }
-      if path.starts_with('/') && normalized.ends_with('/') {
-        normalized.push_str(path.trim_start_matches('/'));
-      } else {
-        normalized.push_str(&path);
-      }
+      let path = Self::actor_path(actor_ref);
+      Self::append_path(&mut normalized, &path);
       return Ok(normalized);
     }
+    if let Some(canonical) = actor_ref.canonical_path()
+      && canonical.parts().authority_endpoint().is_some()
+    {
+      return Ok(canonical.to_canonical_uri());
+    }
+    let path = Self::actor_path(actor_ref);
     Ok(format!("local://{path}"))
   }
 
@@ -213,6 +217,17 @@ impl<TB: RuntimeToolbox + 'static> SerializationExtensionGeneric<TB> {
     serializer_id: SerializerId,
   ) -> Result<(), SerializationError> {
     self.registry.register_binding(type_id, type_name, serializer_id)
+  }
+
+  fn append_path(prefix: &mut String, path: &str) {
+    if !prefix.ends_with('/') && !path.starts_with('/') {
+      prefix.push('/');
+    }
+    if path.starts_with('/') && prefix.ends_with('/') {
+      prefix.push_str(path.trim_start_matches('/'));
+    } else {
+      prefix.push_str(path);
+    }
   }
 
   /// Shuts down the extension making further calls fail.

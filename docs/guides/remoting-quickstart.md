@@ -4,10 +4,11 @@ RemotingExtension と RemoteActorRefProvider を組み合わせて、2 つの Ac
 
 ## 1. RemotingExtension の設定
 
-1. `ActorSystemConfig` の `RemotingConfig` で canonical host/port を定義します（システム全体の設定）。
-2. `RemotingExtensionConfig` で Transport scheme や AutoStart などの拡張固有の設定を定義します。canonical host/port を省略すると、ActorSystemConfig の RemotingConfig から自動的に取得されます。
+1. `ActorSystemConfig` の `RemotingConfig` で canonical host/port を定義します（システム全体の設定）。ここで指定したアドレスは **serialize/resolve 時に自動注入** され、TransportInformation が無い場合でも canonical URI が得られます。
+2. `RemotingExtensionConfig` で Transport scheme や AutoStart などの拡張固有の設定を定義します。canonical host/port を省略すると、ActorSystemConfig の RemotingConfig から自動的に取得されます。bind アドレスを分けたい場合は transport 実装（例: TokioTransportConfig）側で設定し、公開用は RemotingConfig の canonical_host/port を優先します。
 3. `ExtensionInstallers` に `with_extension_installer(RemotingExtensionInstaller::new(config))` で登録します。
 4. `ActorSystemConfig` 側で TickDriver を必ずセットします。テストでは `TickDriverConfig::manual(ManualTestDriver::new())` がシンプルです。
+5. feature flag 例（Tokio std 版）: `--features std,tokio-transport,tokio-executor`。Loopback/no_std 版は `std` を外せば動きます。
 
 ```rust
 use fraktor_actor_rs::core::{

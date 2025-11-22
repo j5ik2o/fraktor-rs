@@ -15,8 +15,13 @@ use fraktor_utils_rs::core::{
 
 use super::ActorSystem;
 use crate::core::{
-  actor_prim::{Actor, ActorCell},
+  actor_prim::{
+    Actor, ActorCell,
+    actor_path::{ActorPath, ActorPathParts, ActorPathScheme},
+    actor_ref::ActorRefGeneric,
+  },
   dispatcher::{DispatchError, DispatchExecutor, DispatchSharedGeneric, DispatcherConfig},
+  error::ActorError,
   event_stream::{EventStreamEvent, EventStreamSubscriber},
   lifecycle::LifecycleStage,
   messaging::SystemMessage,
@@ -25,6 +30,7 @@ use crate::core::{
     AutoDriverMetadata, AutoProfileKind, SchedulerConfig, SchedulerContext, TickDriverId, TickDriverKind,
     TickDriverMetadata,
   },
+  system::{ActorRefProvider, ActorRefResolveError, ActorSystemConfig, RemotingConfig},
 };
 
 struct TestActor;
@@ -511,4 +517,69 @@ fn lifecycle_events_cover_restart_transitions() {
 
   let snapshot = stages.lock().clone();
   assert_eq!(snapshot, vec![LifecycleStage::Started, LifecycleStage::Stopped, LifecycleStage::Restarted]);
+}
+
+struct DummyActorRefProvider {
+  last_path: ArcShared<NoStdMutex<Option<ActorPath>>>,
+}
+
+impl DummyActorRefProvider {
+  fn new(last_path: ArcShared<NoStdMutex<Option<ActorPath>>>) -> Self {
+    Self { last_path }
+  }
+}
+
+impl ActorRefProvider<NoStdToolbox> for DummyActorRefProvider {
+  fn supported_schemes(&self) -> &'static [ActorPathScheme] {
+    &[ActorPathScheme::FraktorTcp]
+  }
+
+  fn actor_ref(&self, path: ActorPath) -> Result<ActorRefGeneric<NoStdToolbox>, ActorError> {
+    *self.last_path.lock() = Some(path.clone());
+    Ok(ActorRefGeneric::null())
+  }
+}
+
+#[test]
+fn resolve_actor_ref_injects_canonical_authority() {
+  let system = ActorSystem::new_empty();
+  let remoting = RemotingConfig::default().with_canonical_host("example.com").with_canonical_port(2552);
+  let config = ActorSystemConfig::default().with_remoting_config(remoting);
+  system.state().apply_actor_system_config(&config);
+
+  let recorded = ArcShared::new(NoStdMutex::new(None));
+  let provider = ArcShared::new(DummyActorRefProvider::new(recorded.clone()));
+  system.extended().register_actor_ref_provider(&provider);
+
+  let path = ActorPath::root().child("svc");
+  let resolved = system.resolve_actor_ref(path.clone());
+
+  assert!(resolved.is_ok());
+  let stored = recorded.lock().clone().expect("path recorded");
+  assert_eq!(stored.parts().scheme(), ActorPathScheme::FraktorTcp);
+  assert_eq!(stored.parts().authority_endpoint().as_deref(), Some("example.com:2552"));
+  assert_eq!(stored.to_relative_string(), path.to_relative_string());
+}
+
+#[test]
+fn resolve_actor_ref_fails_when_authority_missing() {
+  let system = ActorSystem::new_empty();
+  let parts = ActorPathParts::local("cellactor").with_scheme(ActorPathScheme::FraktorTcp);
+  let path = ActorPath::from_parts(parts).child("svc");
+
+  let result = system.resolve_actor_ref(path);
+  assert!(matches!(result, Err(ActorRefResolveError::InvalidAuthority)));
+}
+
+#[test]
+fn resolve_actor_ref_fails_when_provider_missing() {
+  let system = ActorSystem::new_empty();
+  let remoting = RemotingConfig::default().with_canonical_host("example.com").with_canonical_port(2552);
+  let config = ActorSystemConfig::default().with_remoting_config(remoting);
+  system.state().apply_actor_system_config(&config);
+
+  let path = ActorPath::root().child("svc");
+  let result = system.resolve_actor_ref(path);
+
+  assert!(matches!(result, Err(ActorRefResolveError::ProviderMissing)));
 }

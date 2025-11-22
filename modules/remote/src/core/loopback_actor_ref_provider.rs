@@ -1,6 +1,7 @@
 //! Provides actor references targeting remote authorities using Loopback transport.
 
 use alloc::{
+  format,
   string::{String, ToString},
   vec::Vec,
 };
@@ -14,7 +15,9 @@ use fraktor_actor_rs::core::{
   },
   error::{ActorError, SendError},
   messaging::{AnyMessageGeneric, SystemMessage},
-  system::{ActorRefProvider, ActorSystemGeneric, RemoteAuthorityManagerGeneric, RemoteWatchHook},
+  system::{
+    ActorRefProvider, ActorSystemGeneric, RemoteAuthorityError, RemoteAuthorityManagerGeneric, RemoteWatchHook,
+  },
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdMutex, NoStdToolbox, RuntimeToolbox},
@@ -23,8 +26,9 @@ use fraktor_utils_rs::core::{
 use hashbrown::HashMap;
 
 use crate::core::{
-  EndpointWriterGeneric, endpoint_writer_error::EndpointWriterError, loopback_router,
-  loopback_router::LoopbackDeliveryOutcome, outbound_message::OutboundMessage, outbound_priority::OutboundPriority,
+  EndpointWriterGeneric, actor_ref_field_normalizer::ActorRefFieldNormalizerGeneric,
+  endpoint_writer_error::EndpointWriterError, loopback_router, loopback_router::LoopbackDeliveryOutcome,
+  outbound_message::OutboundMessage, outbound_priority::OutboundPriority,
   remote_actor_ref_provider_error::RemoteActorRefProviderError, remote_authority_snapshot::RemoteAuthoritySnapshot,
   remote_node_id::RemoteNodeId, remote_watcher_command::RemoteWatcherCommand,
   remote_watcher_daemon::RemoteWatcherDaemon, remoting_control::RemotingControl,
@@ -240,6 +244,14 @@ impl<TB: RuntimeToolbox + 'static> RemoteActorRefSender<TB> {
 
 impl<TB: RuntimeToolbox + 'static> ActorRefSender<TB> for RemoteActorRefSender<TB> {
   fn send(&self, message: AnyMessageGeneric<TB>) -> Result<(), SendError<TB>> {
+    let normalizer = ActorRefFieldNormalizerGeneric::new(self.writer.system().state());
+    if let Err(RemoteAuthorityError::Quarantined) = normalizer.validate_recipient(&self.recipient) {
+      return Err(SendError::closed(message));
+    }
+    if let Err(RemoteAuthorityError::Quarantined) = normalizer.validate_reply_to(&message) {
+      return Err(SendError::closed(message));
+    }
+
     let priority = Self::determine_priority(&message);
     let message_clone = message.clone();
     let mut outbound = match priority {
@@ -306,9 +318,19 @@ impl RemoteWatchEntry {
 
 /// Implementation of ActorRefProvider trait for Loopback transport.
 impl<TB: RuntimeToolbox + 'static> ActorRefProvider<TB> for LoopbackActorRefProviderGeneric<TB> {
+  fn supported_schemes(&self) -> &'static [fraktor_actor_rs::core::actor_prim::actor_path::ActorPathScheme] {
+    &[fraktor_actor_rs::core::actor_prim::actor_path::ActorPathScheme::FraktorTcp]
+  }
+
   fn actor_ref(&self, path: ActorPath) -> Result<ActorRefGeneric<TB>, ActorError> {
     self
-      .actor_ref(path)
-      .map_err(|error| ActorError::fatal(alloc::format!("Failed to create Loopback actor ref: {:?}", error)))
+      .control
+      .associate(path.parts())
+      .map_err(RemoteActorRefProviderError::from)
+      .map_err(|error| ActorError::fatal(format!("{error:?}")))?;
+    let sender = self.sender_for_path(&path).map_err(|error| ActorError::fatal(format!("{error:?}")))?;
+    let pid = self.system.allocate_pid();
+    self.register_remote_entry(pid, path.clone());
+    Ok(ActorRefGeneric::with_system(pid, ArcShared::new(sender), self.system.state()))
   }
 }

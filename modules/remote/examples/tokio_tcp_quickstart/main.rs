@@ -8,10 +8,7 @@ use std::{thread, time::Duration};
 use anyhow::{Result, anyhow};
 use fraktor_actor_rs::{
   core::{
-    actor_prim::actor_path::{ActorPath, ActorPathFormatter, ActorPathParts, ActorPathParser, ActorPathScheme, GuardianKind},
-    error::ActorError,
-    extension::ExtensionInstallers,
-    serialization::SerializationExtensionInstaller,
+    error::ActorError, extension::ExtensionInstallers, serialization::SerializationExtensionInstaller,
     system::RemotingConfig,
   },
   std::{
@@ -24,8 +21,8 @@ use fraktor_actor_rs::{
   },
 };
 use fraktor_remote_rs::core::{
-  default_loopback_setup, RemotingExtensionConfig, RemotingExtensionId, RemotingExtensionInstaller,
-  TokioActorRefProviderGeneric, TokioActorRefProviderInstaller, TokioTransportConfig,
+  RemotingExtensionConfig, RemotingExtensionId, RemotingExtensionInstaller, TokioActorRefProviderInstaller,
+  TokioTransportConfig, default_loopback_setup,
 };
 use fraktor_utils_rs::{core::sync::ArcShared, std::runtime_toolbox::StdToolbox};
 
@@ -58,19 +55,13 @@ async fn main() -> Result<()> {
     sender.user_guardian_ref().path().map(|path| path.to_string()).unwrap_or_else(|| "<unknown>".into())
   );
 
-  let provider = sender
-    .extended()
-    .actor_ref_provider::<TokioActorRefProviderGeneric<StdToolbox>>()
-    .expect("provider installed");
-  provider.watch_remote(receiver_authority_parts()).map_err(|error| anyhow!("{error}"))?;
-
-  let remote_ref = provider.actor_ref(remote_echo_path()).map_err(|error| anyhow!("{error:?}"))?;
-  let reply_path = ActorPathFormatter::format(&local_sender_path());
-  println!("reply_path canonical: {}", reply_path);
-
   sender
     .user_guardian_ref()
-    .tell(AnyMessage::new(StartPing { target: remote_ref, reply_path, text: "ping over remoting".to_string() }))
+    .tell(AnyMessage::new(StartPing {
+      // ローカルで取得した ActorRef をそのまま渡すだけ。canonical 付与とリモート配送はランタイムが自動処理する。
+      target: receiver.user_guardian_ref(),
+      text:   "ping over remoting".to_string(),
+    }))
     .map_err(|error| anyhow!("{error:?}"))?;
 
   thread::sleep(Duration::from_millis(1500));
@@ -118,24 +109,6 @@ fn sender_transport_config() -> RemotingExtensionConfig {
   RemotingExtensionConfig::default().with_transport_scheme("fraktor.tcp")
 }
 
-fn receiver_authority_parts() -> ActorPathParts {
-  ActorPathParts::with_authority("tokio-tcp-receiver", Some((HOST, RECEIVER_PORT))).with_scheme(ActorPathScheme::FraktorTcp)
-}
-
-fn remote_echo_path() -> ActorPath {
-  let parts = receiver_authority_parts().with_guardian(GuardianKind::User);
-  ActorPath::from_parts(parts).child(RECEIVER_GUARDIAN_NAME).child("echo")
-}
-
-fn sender_authority_parts() -> ActorPathParts {
-  ActorPathParts::with_authority("tokio-tcp-sender", Some((HOST, SENDER_PORT))).with_scheme(ActorPathScheme::FraktorTcp)
-}
-
-fn local_sender_path() -> ActorPath {
-  let parts = sender_authority_parts().with_guardian(GuardianKind::User);
-  ActorPath::from_parts(parts).child(SENDER_GUARDIAN_NAME)
-}
-
 struct SenderGuardian;
 
 impl SenderGuardian {
@@ -147,13 +120,8 @@ impl SenderGuardian {
 impl Actor for SenderGuardian {
   fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if let Some(cmd) = message.downcast_ref::<StartPing>() {
-      let payload = format!("{}|{}", cmd.text, cmd.reply_path);
-      let envelope = AnyMessage::new(payload).with_reply_to(ctx.self_ref());
-      println!("sender: reply_to path = {:?}", envelope.reply_to().and_then(|r| r.path()).map(|p| p.to_string()));
-      cmd
-        .target
-        .tell(envelope)
-        .map_err(|e| ActorError::recoverable(format!("send failed: {e:?}")))?;
+      let envelope = AnyMessage::new(Ping { text: cmd.text.clone(), reply_to: ctx.self_ref() });
+      cmd.target.tell(envelope).map_err(|e| ActorError::recoverable(format!("send failed: {e:?}")))?;
       println!("sender -> remote: {}", cmd.text);
     } else if let Some(pong) = message.downcast_ref::<String>() {
       println!("sender <- {}", pong);
@@ -171,51 +139,13 @@ impl ReceiverGuardian {
 }
 
 impl Actor for ReceiverGuardian {
-  fn pre_start(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
-    let props = Props::from_fn(EchoActor::new).with_name("echo");
-    ctx
-      .spawn_child(&props)
-      .map_err(|error| ActorError::recoverable(format!("failed to spawn echo actor: {:?}", error)))?;
-    Ok(())
-  }
-
-  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
-    Ok(())
-  }
-}
-
-struct EchoActor;
-
-impl EchoActor {
-  fn new() -> Self {
-    Self
-  }
-}
-
-impl Actor for EchoActor {
-  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
-    if let Some(text) = message.downcast_ref::<String>() {
-      if let Some((body, reply_path)) = text.split_once('|') {
-        println!("receiver <- {}", body);
-        println!("receiver: reply_path = {}", reply_path);
-        let reply = format!("pong to: {body}");
-        let actor_path = ActorPathParser::parse(reply_path)
-          .map_err(|e| ActorError::recoverable(format!("parse: {e:?}")))?;
-        let provider = ctx
-          .system()
-          .extended()
-          .actor_ref_provider::<TokioActorRefProviderGeneric<StdToolbox>>()
-          .ok_or_else(|| ActorError::recoverable("actor_ref_provider missing".to_string()))?;
-        provider
-          .actor_ref(actor_path)
-          .map_err(|e| ActorError::recoverable(format!("resolve reply_to failed: {e:?}")))?
-          .tell(AnyMessage::new(reply))
-          .map_err(|e| ActorError::recoverable(format!("reply failed: {e:?}")))?;
-      } else {
-        println!("receiver <- malformed payload: {text}");
-      }
-    } else {
-      println!("receiver <- unsupported payload");
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    if let Some(ping) = message.downcast_ref::<Ping>() {
+      ping
+        .reply_to
+        .tell(AnyMessage::new(ping.text.clone()))
+        .map_err(|e| ActorError::recoverable(format!("forward failed: {e:?}")))?;
+      println!("receiver <- {}", ping.text);
     }
     Ok(())
   }
@@ -224,6 +154,11 @@ impl Actor for EchoActor {
 #[derive(Clone, Debug)]
 struct StartPing {
   target: fraktor_actor_rs::std::actor_prim::ActorRef,
-  reply_path: String,
   text:   String,
+}
+
+#[derive(Clone, Debug)]
+struct Ping {
+  text:     String,
+  reply_to: fraktor_actor_rs::std::actor_prim::ActorRef,
 }
