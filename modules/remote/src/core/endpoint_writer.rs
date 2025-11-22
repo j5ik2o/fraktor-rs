@@ -59,6 +59,12 @@ impl<TB: RuntimeToolbox + 'static> EndpointWriterGeneric<TB> {
     }
   }
 
+  /// Returns the canonical authority (host[:port]) of the bound actor system when available.
+  #[must_use]
+  pub fn canonical_authority_components(&self) -> Option<(String, Option<u16>)> {
+    self.system.state().canonical_authority_components()
+  }
+
   /// Enqueues an outbound message using its declared priority.
   pub fn enqueue(&self, message: OutboundMessage<TB>) -> Result<(), EndpointWriterError> {
     let priority = message.priority();

@@ -9,6 +9,7 @@ use fraktor_actor_rs::core::{
   actor_prim::actor_path::ActorPath, dead_letter::DeadLetterReason, error::SendError, messaging::AnyMessageGeneric,
   serialization::SerializationExtensionGeneric, system::ActorSystemGeneric,
 };
+use fraktor_actor_rs::core::actor_prim::actor_ref::ActorRefGeneric;
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
   sync::ArcShared,
@@ -16,7 +17,11 @@ use fraktor_utils_rs::core::{
 
 use crate::core::{
   endpoint_reader_error::EndpointReaderError, inbound_envelope::InboundEnvelope, remoting_envelope::RemotingEnvelope,
+  remote_actor_ref_provider::RemoteActorRefProviderGeneric,
 };
+
+#[cfg(feature = "tokio-transport")]
+use crate::core::tokio_actor_ref_provider::TokioActorRefProviderGeneric;
 
 /// Deserializes inbound transport envelopes into runtime messages.
 pub struct EndpointReaderGeneric<TB: RuntimeToolbox + 'static> {
@@ -74,7 +79,12 @@ impl<TB: RuntimeToolbox + 'static> EndpointReaderGeneric<TB> {
 
   /// Delivers the provided inbound envelope to the actor system.
   pub fn deliver(&self, inbound: InboundEnvelope<TB>) -> Result<(), SendError<TB>> {
-    let (recipient, message, _reply_to) = inbound.into_delivery_parts();
+    let (recipient, mut message, reply_to_path) = inbound.into_delivery_parts();
+    if let Some(reply_path) = reply_to_path {
+      if let Some(reply_ref) = self.resolve_reply_to(&reply_path) {
+        message = message.with_reply_to(reply_ref);
+      }
+    }
     let Some(pid) = self.system.pid_by_path(&recipient) else {
       return self.record_missing_recipient(recipient, message);
     };
@@ -91,5 +101,23 @@ impl<TB: RuntimeToolbox + 'static> EndpointReaderGeneric<TB> {
   ) -> Result<(), SendError<TB>> {
     self.system.record_dead_letter(message.clone(), DeadLetterReason::RecipientUnavailable, None);
     Err(SendError::no_recipient(message))
+  }
+
+  fn resolve_reply_to(&self, path: &ActorPath) -> Option<ActorRefGeneric<TB>> {
+    // Try Tokio provider first when available, then generic remote provider as fallback.
+    #[cfg(feature = "tokio-transport")]
+    if let Some(provider) = self.system.extended().actor_ref_provider::<TokioActorRefProviderGeneric<TB>>() {
+      if let Ok(reply_ref) = provider.actor_ref(path.clone()) {
+        return Some(reply_ref);
+      }
+    }
+
+    if let Some(provider) = self.system.extended().actor_ref_provider::<RemoteActorRefProviderGeneric<TB>>() {
+      if let Ok(reply_ref) = provider.actor_ref(path.clone()) {
+        return Some(reply_ref);
+      }
+    }
+
+    None
   }
 }

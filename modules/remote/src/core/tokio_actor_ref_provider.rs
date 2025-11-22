@@ -55,7 +55,7 @@ impl<TB: RuntimeToolbox + 'static> TokioActorRefProviderGeneric<TB> {
     let sender = self.sender_for_path(&path)?;
     let pid = self.system.allocate_pid();
     self.register_remote_entry(pid, path.clone());
-    Ok(ActorRefGeneric::new(pid, ArcShared::new(sender)))
+    Ok(ActorRefGeneric::with_system(pid, ArcShared::new(sender), self.system.state()))
   }
 
   pub(crate) fn from_components(
@@ -217,6 +217,29 @@ impl<TB: RuntimeToolbox + 'static> RemoteActorRefSender<TB> {
       | EndpointWriterError::Serialization(_) => SendError::closed(message),
     }
   }
+
+  fn enrich_reply_path(&self, reply_path: &ActorPath) -> ActorPath {
+    if reply_path.parts().authority_endpoint().is_some() {
+      return reply_path.clone();
+    }
+
+    let mut parts = reply_path.parts().clone();
+    if let Some((host, port)) = self.writer.canonical_authority_components() {
+      parts = parts.with_authority_host(host);
+      if let Some(port) = port {
+        parts = parts.with_authority_port(port);
+      }
+    }
+
+    let mut rebuilt = ActorPath::from_parts(parts);
+    for segment in reply_path.segments() {
+      rebuilt = rebuilt.child(segment.as_str());
+    }
+    if let Some(uid) = reply_path.uid() {
+      rebuilt = rebuilt.with_uid(uid);
+    }
+    rebuilt
+  }
 }
 
 impl<TB: RuntimeToolbox + 'static> ActorRefSender<TB> for RemoteActorRefSender<TB> {
@@ -234,7 +257,8 @@ impl<TB: RuntimeToolbox + 'static> ActorRefSender<TB> for RemoteActorRefSender<T
     if let Some(reply_to) = message.reply_to()
       && let Some(reply_path) = reply_to.path()
     {
-      outbound = outbound.with_reply_to(reply_path);
+      let enriched = self.enrich_reply_path(&reply_path);
+      outbound = outbound.with_reply_to(enriched);
     }
     match loopback_router::try_deliver(&self.remote_node, &self.writer, outbound) {
       | Ok(LoopbackDeliveryOutcome::Delivered) => Ok(()),

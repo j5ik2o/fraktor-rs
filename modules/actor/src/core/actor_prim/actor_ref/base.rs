@@ -41,7 +41,8 @@ impl<TB: RuntimeToolbox> ActorRefGeneric<TB> {
     Self::from_parts(pid, sender, None)
   }
 
-  pub(crate) fn with_system<T>(pid: Pid, sender: ArcShared<T>, system: ArcShared<SystemStateGeneric<TB>>) -> Self
+  /// Creates an actor reference backed by the given sender and system state (path-aware).
+  pub fn with_system<T>(pid: Pid, sender: ArcShared<T>, system: ArcShared<SystemStateGeneric<TB>>) -> Self
   where
     T: ActorRefSender<TB> + 'static, {
     Self::from_parts(pid, sender, Some(system))
