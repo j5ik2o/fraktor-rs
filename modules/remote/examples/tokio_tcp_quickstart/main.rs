@@ -110,8 +110,8 @@ impl Actor for SenderGuardian {
   fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if let Some(cmd) = message.downcast_ref::<StartPing>() {
       let envelope = AnyMessage::new(Ping { text: cmd.text.clone(), reply_to: ctx.self_ref() });
-      cmd.target.tell(envelope).map_err(|e| ActorError::recoverable(format!("send failed: {e:?}")))?;
       println!("sender -> remote: {}", cmd.text);
+      cmd.target.tell(envelope).map_err(|e| ActorError::recoverable(format!("send failed: {e:?}")))?;
     } else if let Some(pong) = message.downcast_ref::<String>() {
       println!("sender <- {}", pong);
     }
