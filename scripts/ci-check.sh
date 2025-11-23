@@ -203,12 +203,27 @@ ensure_rustc_components_installed() {
 }
 
 ensure_dylint_installed() {
+  local desired_version="${DYLINT_VERSION:-4.1.0}"
+
   if command -v cargo-dylint >/dev/null 2>&1; then
-    return 0
+    local current_version
+    current_version=$(cargo-dylint --version 2>/dev/null | awk '{print $2}')
+    if [[ "${current_version}" == "${desired_version}" ]]; then
+      return 0
+    fi
+
+    echo "info: cargo-dylint ${current_version:-unknown} を ${desired_version} に更新します..." >&2
   fi
 
   echo "info: cargo-dylint がインストールされていないため、インストールします..." >&2
-  if cargo install cargo-dylint; then
+  local -a install_cmd
+  if [[ -n "${DEFAULT_TOOLCHAIN}" ]]; then
+    install_cmd=(cargo "+${DEFAULT_TOOLCHAIN}" install cargo-dylint --locked --version "${desired_version}" --force)
+  else
+    install_cmd=(cargo install cargo-dylint --locked --version "${desired_version}" --force)
+  fi
+
+  if "${install_cmd[@]}"; then
     echo "info: cargo-dylint のインストールが完了しました。" >&2
     return 0
   fi
