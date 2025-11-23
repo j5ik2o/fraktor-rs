@@ -24,7 +24,7 @@ struct Start;
 struct GuardianActor;
 
 impl Actor for GuardianActor {
-  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_, '_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
       println!("[{:?}] Guardian starting scheduler example...", std::thread::current().id());
 

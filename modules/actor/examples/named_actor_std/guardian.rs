@@ -12,7 +12,7 @@ use crate::{printer::PrinterActor, start_message::Start};
 pub struct GuardianActor;
 
 impl GuardianActor {
-  fn spawn_named_child(&self, ctx: &ActorContext<'_>, name: &str) {
+  fn spawn_named_child(&self, ctx: &ActorContext<'_, '_>, name: &str) {
     let props = Props::from_fn(|| PrinterActor).with_name(name.to_string());
     match ctx.spawn_child(&props) {
       | Ok(child) => {
@@ -28,7 +28,7 @@ impl GuardianActor {
     }
   }
 
-  fn spawn_anonymous_child(&self, ctx: &ActorContext<'_>) {
+  fn spawn_anonymous_child(&self, ctx: &ActorContext<'_, '_>) {
     let props = Props::from_fn(|| PrinterActor);
     match ctx.spawn_child(&props) {
       | Ok(child) => {
@@ -46,7 +46,7 @@ impl GuardianActor {
 }
 
 impl Actor for GuardianActor {
-  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_, '_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
       self.spawn_named_child(ctx, "worker-main");
       self.spawn_named_child(ctx, "worker-main");

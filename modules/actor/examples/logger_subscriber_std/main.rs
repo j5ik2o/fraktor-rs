@@ -21,7 +21,7 @@ struct Start;
 struct GuardianActor;
 
 impl Actor for GuardianActor {
-  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_, '_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
       ctx.log(LogLevel::Debug, "debug は閾値未満なので無視される");
       ctx.log(LogLevel::Info, "INFO: ログ購読者がメッセージを受信しました");

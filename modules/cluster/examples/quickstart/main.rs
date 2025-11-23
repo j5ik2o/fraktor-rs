@@ -197,12 +197,12 @@ impl GrainHub {
 }
 
 impl Actor for GrainHub {
-  fn pre_start(&mut self, _ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
+  fn pre_start(&mut self, _ctx: &mut ActorContext<'_, '_>) -> Result<(), ActorError> {
     println!("[info] grain hub started for {HUB_NAME}");
     Ok(())
   }
 
-  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_, '_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if let Some(register) = message.downcast_ref::<RegisterReplyChannel>() {
       self.reply_tx = Some(register.tx.clone());
       return Ok(());
@@ -239,9 +239,7 @@ impl Actor for GrainHub {
       move || GrainActor::new(reply_to.clone(), body.clone())
     })
     .with_name(child_name);
-    ctx
-      .spawn_child(&props.as_core())
-      .map_err(|e| ActorError::recoverable(format!("spawn grain actor failed: {e:?}")))?;
+    ctx.spawn_child(&props).map_err(|e| ActorError::recoverable(format!("spawn grain actor failed: {e:?}")))?;
 
     println!("[info] activation pid: {activation}");
     Ok(())
@@ -267,12 +265,12 @@ impl GrainActor {
 }
 
 impl Actor for GrainActor {
-  fn pre_start(&mut self, _ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
+  fn pre_start(&mut self, _ctx: &mut ActorContext<'_, '_>) -> Result<(), ActorError> {
     println!("[info] grain spawned for reply");
     self.send_reply()
   }
 
-  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_, '_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     self.send_reply()
   }
 }

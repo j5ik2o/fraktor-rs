@@ -107,7 +107,7 @@ impl SenderGuardian {
 }
 
 impl Actor for SenderGuardian {
-  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_, '_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if let Some(cmd) = message.downcast_ref::<StartPing>() {
       let envelope = AnyMessage::new(Ping { text: cmd.text.clone(), reply_to: ctx.self_ref() });
       println!("sender -> remote: {}", cmd.text);
@@ -128,7 +128,7 @@ impl ReceiverGuardian {
 }
 
 impl Actor for ReceiverGuardian {
-  fn receive(&mut self, _ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_, '_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if let Some(ping) = message.downcast_ref::<Ping>() {
       ping
         .reply_to
