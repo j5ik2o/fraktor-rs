@@ -61,7 +61,7 @@ impl Behaviors {
   pub fn setup<M, F>(factory: F) -> Behavior<M>
   where
     M: Send + Sync + 'static,
-    F: for<'a> Fn(&mut TypedActorContext<'a, M>) -> Behavior<M> + Send + Sync + 'static, {
+    F: for<'a> Fn(&mut TypedActorContext<'_, 'a, M>) -> Behavior<M> + Send + Sync + 'static, {
     CoreBehaviors::setup(move |ctx| with_std_ctx(ctx, |std_ctx| factory(std_ctx)))
   }
 
@@ -70,7 +70,7 @@ impl Behaviors {
   pub fn receive_message<M, F>(handler: F) -> Behavior<M>
   where
     M: Send + Sync + 'static,
-    F: for<'a> Fn(&mut TypedActorContext<'a, M>, &M) -> Result<Behavior<M>, ActorError> + Send + Sync + 'static, {
+    F: for<'a> Fn(&mut TypedActorContext<'_, 'a, M>, &M) -> Result<Behavior<M>, ActorError> + Send + Sync + 'static, {
     CoreBehaviors::receive_message(move |ctx, message| with_std_ctx(ctx, |std_ctx| handler(std_ctx, message)))
   }
 
@@ -79,7 +79,7 @@ impl Behaviors {
   pub fn receive_signal<M, F>(handler: F) -> Behavior<M>
   where
     M: Send + Sync + 'static,
-    F: for<'a> Fn(&mut TypedActorContext<'a, M>, &BehaviorSignal) -> Result<Behavior<M>, ActorError>
+    F: for<'a> Fn(&mut TypedActorContext<'_, 'a, M>, &BehaviorSignal) -> Result<Behavior<M>, ActorError>
       + Send
       + Sync
       + 'static, {
@@ -98,8 +98,7 @@ impl Behaviors {
 fn with_std_ctx<'a, M, R, F>(ctx: &mut CoreTypedActorContext<'a, M, StdToolbox>, f: F) -> R
 where
   M: Send + Sync + 'static,
-  F: FnOnce(&mut TypedActorContext<'a, M>) -> R, {
-  let ptr = ctx as *mut CoreTypedActorContext<'a, M, StdToolbox> as *mut TypedActorContext<'a, M>;
-  // SAFETY: TypedActorContext is #[repr(transparent)] over the core context type.
-  unsafe { f(&mut *ptr) }
+  F: FnOnce(&mut TypedActorContext<'_, 'a, M>) -> R, {
+  let mut wrapped = TypedActorContext::from_core_mut(ctx);
+  f(&mut wrapped)
 }

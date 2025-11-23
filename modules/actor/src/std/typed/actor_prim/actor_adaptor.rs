@@ -29,10 +29,8 @@ where
   T: TypedActor<M>,
 {
   fn pre_start(&mut self, core_ctx: &mut TypedActorContextGeneric<'_, M, StdToolbox>) -> Result<(), ActorError> {
-    // SAFETY: TypedActorContext is repr(transparent) wrapper around CoreTypedActorContextGeneric
-    let wrapped_ctx =
-      unsafe { &mut *(core_ctx as *mut TypedActorContextGeneric<'_, M, StdToolbox> as *mut TypedActorContext<'_, M>) };
-    self.inner.pre_start(wrapped_ctx)
+    let mut wrapped_ctx = TypedActorContext::from_core_mut(core_ctx);
+    self.inner.pre_start(&mut wrapped_ctx)
   }
 
   fn receive(
@@ -40,15 +38,13 @@ where
     core_ctx: &mut TypedActorContextGeneric<'_, M, StdToolbox>,
     message: &M,
   ) -> Result<(), ActorError> {
-    let wrapped_ctx =
-      unsafe { &mut *(core_ctx as *mut TypedActorContextGeneric<'_, M, StdToolbox> as *mut TypedActorContext<'_, M>) };
-    self.inner.receive(wrapped_ctx, message)
+    let mut wrapped_ctx = TypedActorContext::from_core_mut(core_ctx);
+    self.inner.receive(&mut wrapped_ctx, message)
   }
 
   fn post_stop(&mut self, core_ctx: &mut TypedActorContextGeneric<'_, M, StdToolbox>) -> Result<(), ActorError> {
-    let wrapped_ctx =
-      unsafe { &mut *(core_ctx as *mut TypedActorContextGeneric<'_, M, StdToolbox> as *mut TypedActorContext<'_, M>) };
-    self.inner.post_stop(wrapped_ctx)
+    let mut wrapped_ctx = TypedActorContext::from_core_mut(core_ctx);
+    self.inner.post_stop(&mut wrapped_ctx)
   }
 
   fn on_terminated(
@@ -56,14 +52,12 @@ where
     core_ctx: &mut TypedActorContextGeneric<'_, M, StdToolbox>,
     terminated: Pid,
   ) -> Result<(), ActorError> {
-    let wrapped_ctx =
-      unsafe { &mut *(core_ctx as *mut TypedActorContextGeneric<'_, M, StdToolbox> as *mut TypedActorContext<'_, M>) };
-    self.inner.on_terminated(wrapped_ctx, terminated)
+    let mut wrapped_ctx = TypedActorContext::from_core_mut(core_ctx);
+    self.inner.on_terminated(&mut wrapped_ctx, terminated)
   }
 
   fn supervisor_strategy(&mut self, core_ctx: &mut TypedActorContextGeneric<'_, M, StdToolbox>) -> SupervisorStrategy {
-    let wrapped_ctx =
-      unsafe { &mut *(core_ctx as *mut TypedActorContextGeneric<'_, M, StdToolbox> as *mut TypedActorContext<'_, M>) };
-    self.inner.supervisor_strategy(wrapped_ctx)
+    let mut wrapped_ctx = TypedActorContext::from_core_mut(core_ctx);
+    self.inner.supervisor_strategy(&mut wrapped_ctx)
   }
 }

@@ -17,17 +17,22 @@ use crate::{
 };
 
 /// Typed actor context wrapper for StdToolbox.
-#[repr(transparent)]
-pub struct TypedActorContext<'a, M>
+pub struct TypedActorContext<'ctx, 'inner, M>
 where
   M: Send + Sync + 'static, {
-  inner: CoreTypedActorContextGeneric<'a, M, StdToolbox>,
+  inner: &'ctx mut CoreTypedActorContextGeneric<'inner, M, StdToolbox>,
 }
 
-impl<'a, M> TypedActorContext<'a, M>
+impl<'ctx, 'inner, M> TypedActorContext<'ctx, 'inner, M>
 where
   M: Send + Sync + 'static,
 {
+  /// Builds a std-facing typed context wrapper from the core context.
+  #[must_use]
+  pub const fn from_core_mut(core: &'ctx mut CoreTypedActorContextGeneric<'inner, M, StdToolbox>) -> Self {
+    Self { inner: core }
+  }
+
   /// Returns the actor pid.
   #[must_use]
   pub const fn pid(&self) -> Pid {
@@ -114,32 +119,32 @@ where
 
   /// Provides access to the underlying core typed context.
   #[must_use]
-  pub const fn as_core(&self) -> &CoreTypedActorContextGeneric<'a, M, StdToolbox> {
-    &self.inner
+  pub const fn as_core(&self) -> &CoreTypedActorContextGeneric<'inner, M, StdToolbox> {
+    self.inner
   }
 
   /// Provides mutable access to the underlying core typed context.
-  pub const fn as_core_mut(&mut self) -> &mut CoreTypedActorContextGeneric<'a, M, StdToolbox> {
-    &mut self.inner
+  pub const fn as_core_mut(&mut self) -> &mut CoreTypedActorContextGeneric<'inner, M, StdToolbox> {
+    self.inner
   }
 }
 
-impl<'a, M> Deref for TypedActorContext<'a, M>
+impl<'inner, M> Deref for TypedActorContext<'_, 'inner, M>
 where
   M: Send + Sync + 'static,
 {
-  type Target = CoreTypedActorContextGeneric<'a, M, StdToolbox>;
+  type Target = CoreTypedActorContextGeneric<'inner, M, StdToolbox>;
 
   fn deref(&self) -> &Self::Target {
-    &self.inner
+    self.inner
   }
 }
 
-impl<M> DerefMut for TypedActorContext<'_, M>
+impl<M> DerefMut for TypedActorContext<'_, '_, M>
 where
   M: Send + Sync + 'static,
 {
   fn deref_mut(&mut self) -> &mut Self::Target {
-    &mut self.inner
+    self.inner
   }
 }

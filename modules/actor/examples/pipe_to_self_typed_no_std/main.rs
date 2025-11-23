@@ -30,7 +30,7 @@ struct FetchClient;
 impl TypedActor<FetchCommand> for FetchClient {
   fn receive(
     &mut self,
-    ctx: &mut TypedActorContext<'_, FetchCommand>,
+    ctx: &mut TypedActorContext<'_, '_, FetchCommand>,
     message: &FetchCommand,
   ) -> Result<(), ActorError> {
     match message {

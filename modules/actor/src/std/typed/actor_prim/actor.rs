@@ -11,14 +11,14 @@ where
   ///
   /// # Errors
   /// Returns an error if the implementation fails to initialize actor state.
-  fn pre_start(&mut self, _ctx: &mut TypedActorContext<'_, M>) -> Result<(), ActorError> {
+  fn pre_start(&mut self, _ctx: &mut TypedActorContext<'_, '_, M>) -> Result<(), ActorError> {
     Ok(())
   }
   /// Processes a single incoming message.
   ///
   /// # Errors
   /// Implementations return an error when message handling cannot complete successfully.
-  fn receive(&mut self, _ctx: &mut TypedActorContext<'_, M>, _message: &M) -> Result<(), ActorError> {
+  fn receive(&mut self, _ctx: &mut TypedActorContext<'_, '_, M>, _message: &M) -> Result<(), ActorError> {
     Ok(())
   }
 
@@ -26,7 +26,7 @@ where
   ///
   /// # Errors
   /// Return an error when cleanup fails and the system should treat it as actor failure.
-  fn post_stop(&mut self, _ctx: &mut TypedActorContext<'_, M>) -> Result<(), ActorError> {
+  fn post_stop(&mut self, _ctx: &mut TypedActorContext<'_, '_, M>) -> Result<(), ActorError> {
     Ok(())
   }
 
@@ -34,13 +34,13 @@ where
   ///
   /// # Errors
   /// Propagate an error when reacting to the termination cannot succeed.
-  fn on_terminated(&mut self, _ctx: &mut TypedActorContext<'_, M>, _terminated: Pid) -> Result<(), ActorError> {
+  fn on_terminated(&mut self, _ctx: &mut TypedActorContext<'_, '_, M>, _terminated: Pid) -> Result<(), ActorError> {
     Ok(())
   }
 
   /// Provides the supervision strategy for this typed actor.
   #[must_use]
-  fn supervisor_strategy(&mut self, _ctx: &mut TypedActorContext<'_, M>) -> SupervisorStrategy {
+  fn supervisor_strategy(&mut self, _ctx: &mut TypedActorContext<'_, '_, M>) -> SupervisorStrategy {
     SupervisorStrategy::default()
   }
 }
