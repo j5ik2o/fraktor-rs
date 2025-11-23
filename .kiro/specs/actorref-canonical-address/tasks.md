@@ -1,0 +1,72 @@
+# 実装計画
+
+- [x] 1. ActorRef の canonical パス公開を可能にする
+  - _対応要件: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6_
+  - _依存タスク: -_
+- [x] 1.1 ActorRef に canonical_path API を追加し、SystemState の canonical_actor_path を返す
+  - ローカル path() 互換を維持しつつ authority/UID 付きパスを取得できるようにする
+  - RemotingConfig 未設定時は authority なしで返す
+  - UID ありの場合はフラグメントを付与する
+  - _対応要件: 1.1, 1.2, 1.3_
+  - _依存タスク: -_
+  - _完了条件: canonical_path が既存 path() を壊さず取得でき、単体テストが通る_
+- [x] 1.2 SystemState が advertise (canonical_host/port) を canonical URI 生成に必ず用いる
+  - canonical_parts/canonical_actor_path が公開アドレスを優先するようにする
+  - advertise/bind が異なる場合の優先順位をテストで検証する
+  - _対応要件: 1.4, 1.5, 1.6_
+  - _依存タスク: 1.1_
+  - _完了条件: advertise 優先が確認できるテストが通る_
+
+- [x] 2. シリアライズで canonical アドレスを自動付与する
+  - _対応要件: 2.1, 2.2, 2.3, 2.4, 2.5_
+  - _依存タスク: 1.1, 1.2_
+- [x] 2.1 SerializationExtension の serialized_actor_path を拡張し、TransportInformation 不在時に RemotingConfig の canonical authority を適用する
+  - address なしの場合は `local://` をフォールバックにする
+  - advertise/bind の扱いをテストで検証する
+  - _対応要件: 2.1, 2.4, 2.5_
+  - _依存タスク: 1.2_
+  - _完了条件: シリアライズ結果が canonical URI になることをテストで確認_
+- [x] 2.2 シリアライズのエラー経路を整備し、未知プロバイダや authority 不備時の診断を追加する
+  - 解決エラー時に適切なエラー種別と EventStream 通知を行う
+  - _対応要件: 2.3_
+  - _依存タスク: 2.1_
+  - _完了条件: エラー時のイベントと戻り値が期待通りであることをテスト_
+
+- [x] 3. ActorRef フィールドの authority 補完を送信パスで一貫させる
+  - _対応要件: 3.1, 3.2, 3.3, 3.4_
+  - _依存タスク: 1.2, 2.1_
+- [x] 3.1 ActorRefFieldNormalizer を実装し、AnyMessage/MessageEnvelope 内の ActorRef 系フィールドを再帰的に補完する
+  - ActorRef/Typed/Untyped/Option/Vec を深さ5で探索し、不明ペイロードはスキップし Debug ログ
+  - 隔離状態の authority は配送拒否し EventStream に理由を出力
+  - _対応要件: 3.1, 3.3, 3.4_
+  - _依存タスク: 1.2, 2.1_
+  - _完了条件: 正常補完と隔離拒否のテストが通る_
+- [x] 3.2 Sender パイプライン（Tokio/Loopback）に Normalizer を組み込み、canonical_authority_components を利用して補完する
+  - 送信前に ActorRef 補完が常に行われることを保証
+  - _対応要件: 3.1, 3.2_
+  - _依存タスク: 3.1_
+  - _完了条件: 送信経路の統合テストで authority 補完後にリモート配送できることを確認_
+
+- [x] 4. ActorRef 解決ファサードを提供する
+  - _対応要件: 4.1, 4.2, 4.3, 4.4, 4.5_
+  - _依存タスク: 1.1, 1.2, 2.1_
+- [x] 4.1 ActorSystem/Extended に resolve_actor_ref を追加し、scheme に応じた provider を選択する
+  - authority なしなら canonical authority を補完して解決
+  - unknown scheme / provider 不在 / invalid authority に対するエラー種別を定義
+  - _対応要件: 4.1, 4.2, 4.3, 4.4, 4.5_
+  - _依存タスク: 1.2_
+  - _完了条件: 各エラーケースと成功ケースの単体テストが通る_
+
+- [x] 5. ドキュメント・サンプルを canonical フローに更新する
+  - _対応要件: 5.1, 5.2, 5.3_
+  - _依存タスク: 1–4 の完了後_
+- [x] 5.1 Tokio TCP Quickstart を provider 明示なしで動く例に書き換える
+  - ローカル取得 ActorRef をそのまま resolve_actor_ref / canonical_path で送信する形に更新
+  - _対応要件: 5.1, 5.3_
+  - _依存タスク: 4.1_
+  - _完了条件: 例がビルド・実行で成功し、期待ログが出る_
+- [x] 5.2 Remoting ガイドに canonical address 自動付与の説明を追記する
+  - feature flag と advertise/bind の注意点を明記
+  - _対応要件: 5.2_
+  - _依存タスク: 5.1_
+  - _完了条件: ガイドに記述が追加され lint/format が通る_

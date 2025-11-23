@@ -5,6 +5,7 @@ mod tests;
 
 use alloc::{
   borrow::ToOwned,
+  boxed::Box,
   collections::VecDeque,
   format,
   string::{String, ToString},
@@ -24,8 +25,8 @@ use hashbrown::HashMap;
 use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
 use super::{
-  ActorPathRegistry, AuthorityState, GuardianKind, RemoteAuthorityError, RemoteAuthorityManagerGeneric,
-  RemoteWatchHook, RemotingConfig,
+  ActorPathRegistry, ActorRefProvider, AuthorityState, GuardianKind, RemoteAuthorityError,
+  RemoteAuthorityManagerGeneric, RemoteWatchHook, RemotingConfig,
 };
 use crate::core::{
   actor_prim::{
@@ -55,6 +56,8 @@ use crate::core::system::actor_system_config::ActorSystemConfigGeneric;
 
 /// Type alias for ask future collections.
 type AskFutureVec<TB> = Vec<ArcShared<ActorFuture<AnyMessageGeneric<TB>, TB>>>;
+type ActorRefProviderCaller<TB> =
+  Box<dyn Fn(ActorPath) -> Result<ActorRefGeneric<TB>, ActorError> + Send + Sync + 'static>;
 
 const RESERVED_TOP_LEVEL: [&str; 4] = ["user", "system", "temp", "deadLetters"];
 const DEFAULT_SYSTEM_NAME: &str = "cellactor";
@@ -83,39 +86,41 @@ impl Default for PathIdentity {
 
 /// Captures global actor system state.
 pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
-  next_pid:               AtomicU64,
-  clock:                  AtomicU64,
-  cells:                  ToolboxMutex<HashMap<Pid, ArcShared<ActorCellGeneric<TB>>, RandomState>, TB>,
-  registries:             ToolboxMutex<HashMap<Option<Pid>, NameRegistry, RandomState>, TB>,
-  root_guardian:          ToolboxMutex<Option<ArcShared<ActorCellGeneric<TB>>>, TB>,
-  system_guardian:        ToolboxMutex<Option<ArcShared<ActorCellGeneric<TB>>>, TB>,
-  user_guardian:          ToolboxMutex<Option<ArcShared<ActorCellGeneric<TB>>>, TB>,
-  ask_futures:            ToolboxMutex<AskFutureVec<TB>, TB>,
-  termination:            ArcShared<ActorFuture<(), TB>>,
-  terminated:             AtomicBool,
-  terminating:            AtomicBool,
-  root_started:           AtomicBool,
-  event_stream:           ArcShared<EventStreamGeneric<TB>>,
-  dead_letter:            ArcShared<DeadLetterGeneric<TB>>,
-  extra_top_levels:       ToolboxMutex<HashMap<String, ActorRefGeneric<TB>, RandomState>, TB>,
-  temp_actors:            ToolboxMutex<HashMap<String, ActorRefGeneric<TB>, RandomState>, TB>,
-  temp_counter:           AtomicU64,
-  failure_total:          AtomicU64,
-  failure_restart_total:  AtomicU64,
-  failure_stop_total:     AtomicU64,
+  next_pid: AtomicU64,
+  clock: AtomicU64,
+  cells: ToolboxMutex<HashMap<Pid, ArcShared<ActorCellGeneric<TB>>, RandomState>, TB>,
+  registries: ToolboxMutex<HashMap<Option<Pid>, NameRegistry, RandomState>, TB>,
+  root_guardian: ToolboxMutex<Option<ArcShared<ActorCellGeneric<TB>>>, TB>,
+  system_guardian: ToolboxMutex<Option<ArcShared<ActorCellGeneric<TB>>>, TB>,
+  user_guardian: ToolboxMutex<Option<ArcShared<ActorCellGeneric<TB>>>, TB>,
+  ask_futures: ToolboxMutex<AskFutureVec<TB>, TB>,
+  termination: ArcShared<ActorFuture<(), TB>>,
+  terminated: AtomicBool,
+  terminating: AtomicBool,
+  root_started: AtomicBool,
+  event_stream: ArcShared<EventStreamGeneric<TB>>,
+  dead_letter: ArcShared<DeadLetterGeneric<TB>>,
+  extra_top_levels: ToolboxMutex<HashMap<String, ActorRefGeneric<TB>, RandomState>, TB>,
+  temp_actors: ToolboxMutex<HashMap<String, ActorRefGeneric<TB>, RandomState>, TB>,
+  temp_counter: AtomicU64,
+  failure_total: AtomicU64,
+  failure_restart_total: AtomicU64,
+  failure_stop_total: AtomicU64,
   failure_escalate_total: AtomicU64,
-  failure_inflight:       AtomicU64,
-  extensions:             ToolboxMutex<HashMap<TypeId, ArcShared<dyn Any + Send + Sync + 'static>, RandomState>, TB>,
-  actor_ref_providers:    ToolboxMutex<HashMap<TypeId, ArcShared<dyn Any + Send + Sync + 'static>, RandomState>, TB>,
-  remote_watch_hook:      ToolboxMutex<Option<ArcShared<dyn RemoteWatchHook<TB>>>, TB>,
-  dispatchers:            ArcShared<DispatchersGeneric<TB>>,
-  mailboxes:              ArcShared<MailboxesGeneric<TB>>,
-  path_identity:          ToolboxMutex<PathIdentity, TB>,
-  actor_path_registry:    ToolboxMutex<ActorPathRegistry, TB>,
-  remote_authority_mgr:   ArcShared<RemoteAuthorityManagerGeneric<TB>>,
-  scheduler_context:      ToolboxMutex<Option<ArcShared<SchedulerContext<TB>>>, TB>,
-  tick_driver_runtime:    ToolboxMutex<Option<TickDriverRuntime<TB>>, TB>,
-  remoting_config:        ToolboxMutex<Option<RemotingConfig>, TB>,
+  failure_inflight: AtomicU64,
+  extensions: ToolboxMutex<HashMap<TypeId, ArcShared<dyn Any + Send + Sync + 'static>, RandomState>, TB>,
+  actor_ref_providers: ToolboxMutex<HashMap<TypeId, ArcShared<dyn Any + Send + Sync + 'static>, RandomState>, TB>,
+  actor_ref_provider_callers_by_scheme:
+    ToolboxMutex<HashMap<ActorPathScheme, ActorRefProviderCaller<TB>, RandomState>, TB>,
+  remote_watch_hook: ToolboxMutex<Option<ArcShared<dyn RemoteWatchHook<TB>>>, TB>,
+  dispatchers: ArcShared<DispatchersGeneric<TB>>,
+  mailboxes: ArcShared<MailboxesGeneric<TB>>,
+  path_identity: ToolboxMutex<PathIdentity, TB>,
+  actor_path_registry: ToolboxMutex<ActorPathRegistry, TB>,
+  remote_authority_mgr: ArcShared<RemoteAuthorityManagerGeneric<TB>>,
+  scheduler_context: ToolboxMutex<Option<ArcShared<SchedulerContext<TB>>>, TB>,
+  tick_driver_runtime: ToolboxMutex<Option<TickDriverRuntime<TB>>, TB>,
+  remoting_config: ToolboxMutex<Option<RemotingConfig>, TB>,
 }
 
 /// Type alias for [SystemStateGeneric] with the default [NoStdToolbox].
@@ -163,6 +168,9 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       path_identity: <TB::MutexFamily as SyncMutexFamily>::create(PathIdentity::default()),
       actor_path_registry: <TB::MutexFamily as SyncMutexFamily>::create(ActorPathRegistry::new()),
       remote_authority_mgr: ArcShared::new(RemoteAuthorityManagerGeneric::new()),
+      actor_ref_provider_callers_by_scheme: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::with_hasher(
+        RandomState::new(),
+      )),
       scheduler_context: <TB::MutexFamily as SyncMutexFamily>::create(None),
       tick_driver_runtime: <TB::MutexFamily as SyncMutexFamily>::create(None),
       remoting_config: <TB::MutexFamily as SyncMutexFamily>::create(None),
@@ -239,23 +247,23 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     }
   }
 
-  fn canonical_actor_path(&self, pid: &Pid) -> Option<ActorPath> {
+  /// Returns the canonical actor path (authority-aware) for the given pid when available.
+  pub(crate) fn canonical_actor_path(&self, pid: &Pid) -> Option<ActorPath> {
     let base = self.actor_path(pid)?;
     let segments = base.segments().to_vec();
-    let parts = self.canonical_parts();
+    let parts = self.canonical_parts()?;
     Some(ActorPath::from_parts_and_segments(parts, segments, base.uid()))
   }
 
-  fn canonical_parts(&self) -> ActorPathParts {
+  fn canonical_parts(&self) -> Option<ActorPathParts> {
     let identity = self.identity_snapshot();
     let mut parts = ActorPathParts::local(identity.system_name).with_guardian(identity.guardian_kind);
-    if let Some(host) = identity.canonical_host {
-      parts = parts.with_scheme(ActorPathScheme::FraktorTcp).with_authority_host(host);
-      if let Some(port) = identity.canonical_port {
-        parts = parts.with_authority_port(port);
-      }
-    }
-    parts
+    let Some(host) = identity.canonical_host else {
+      return Some(parts);
+    };
+    let port = identity.canonical_port?;
+    parts = parts.with_scheme(ActorPathScheme::FraktorTcp).with_authority_host(host).with_authority_port(port);
+    Some(parts)
   }
 
   fn identity_snapshot(&self) -> PathIdentity {
@@ -266,10 +274,19 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     self.path_identity.lock().quarantine_duration
   }
 
-  /// Returns the configured canonical host/port pair when remoting is enabled.
+  /// Returns the configured canonical host/port pair when remoting is enabled and complete.
   pub fn canonical_authority_components(&self) -> Option<(String, Option<u16>)> {
     let identity = self.path_identity.lock();
-    identity.canonical_host.as_ref().map(|host| (host.clone(), identity.canonical_port))
+    match (&identity.canonical_host, identity.canonical_port) {
+      | (Some(host), Some(port)) => Some((host.clone(), Some(port))),
+      | _ => None,
+    }
+  }
+
+  /// Returns true when canonical_host is set but canonical_port is missing.
+  pub fn has_partial_canonical_authority(&self) -> bool {
+    let identity = self.path_identity.lock();
+    identity.canonical_host.is_some() && identity.canonical_port.is_none()
   }
 
   /// Returns the canonical authority string (`host[:port]`) when available.
@@ -573,11 +590,17 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     None
   }
 
-  pub(crate) fn install_actor_ref_provider<P>(&self, provider: ArcShared<P>)
+  pub(crate) fn install_actor_ref_provider<P>(&self, provider: &ArcShared<P>)
   where
-    P: Any + Send + Sync + 'static, {
-    let erased: ArcShared<dyn Any + Send + Sync + 'static> = provider;
+    P: ActorRefProvider<TB> + Any + Send + Sync + 'static, {
+    let erased: ArcShared<dyn Any + Send + Sync + 'static> = provider.clone();
     self.actor_ref_providers.lock().insert(TypeId::of::<P>(), erased);
+    let schemes = provider.supported_schemes().to_vec();
+    for scheme in schemes {
+      let cloned = provider.clone();
+      let caller: ActorRefProviderCaller<TB> = Box::new(move |path| cloned.actor_ref(path));
+      self.actor_ref_provider_callers_by_scheme.lock().insert(scheme, caller);
+    }
   }
 
   pub(crate) fn register_remote_watch_hook(&self, hook: ArcShared<dyn RemoteWatchHook<TB>>) {
@@ -589,6 +612,16 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   where
     P: Any + Send + Sync + 'static, {
     self.actor_ref_providers.lock().get(&TypeId::of::<P>()).cloned().and_then(|provider| provider.downcast::<P>().ok())
+  }
+
+  /// Invokes a provider registered for the given scheme.
+  pub(crate) fn actor_ref_provider_call_for_scheme(
+    &self,
+    scheme: ActorPathScheme,
+    path: ActorPath,
+  ) -> Option<Result<ActorRefGeneric<TB>, ActorError>> {
+    let guard = self.actor_ref_provider_callers_by_scheme.lock();
+    guard.get(&scheme).map(|caller| caller(path))
   }
 
   fn remote_watch_hook(&self) -> Option<ArcShared<dyn RemoteWatchHook<TB>>> {

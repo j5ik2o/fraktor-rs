@@ -26,7 +26,7 @@ impl<TB: RuntimeToolbox + 'static> Default for LocalActorRefProviderInstaller<TB
 impl<TB: RuntimeToolbox + 'static> ActorRefProviderInstaller<TB> for LocalActorRefProviderInstaller<TB> {
   fn install(&self, system: &ActorSystemGeneric<TB>) -> Result<(), ActorSystemBuildError> {
     let provider = ArcShared::new(LocalActorRefProviderGeneric::<TB>::new());
-    system.extended().register_actor_ref_provider(provider);
+    system.extended().register_actor_ref_provider(&provider);
     Ok(())
   }
 }

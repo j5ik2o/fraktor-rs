@@ -10,7 +10,7 @@ use super::SystemState;
 use crate::core::{
   actor_prim::{
     Actor, ActorCell, ActorContextGeneric,
-    actor_path::{ActorPath, ActorUid, GuardianKind as PathGuardianKind, PathResolutionError},
+    actor_path::{ActorPath, ActorPathScheme, ActorUid, GuardianKind as PathGuardianKind, PathResolutionError},
     actor_ref::ActorRefGeneric,
   },
   error::ActorError,
@@ -133,6 +133,52 @@ fn system_state_registers_canonical_uri_with_config() {
   assert!(canonical.ends_with("/user/worker"));
 }
 
+#[test]
+fn system_state_prefers_advertise_authority_for_canonical_path() {
+  let state = ArcShared::new(SystemState::new());
+  let remoting = RemotingConfig::default().with_canonical_host("public.example.com").with_canonical_port(4100);
+  let config = ActorSystemConfig::default().with_system_name("fraktor-system").with_remoting_config(remoting);
+  state.apply_actor_system_config(&config);
+
+  let props = Props::from_fn(|| RestartProbeActor);
+  let root_pid = state.allocate_pid();
+  let root = ActorCell::create(state.clone(), root_pid, None, "root".to_string(), &props).expect("root");
+  state.register_cell(root);
+
+  let child_pid = state.allocate_pid();
+  let child =
+    ActorCell::create(state.clone(), child_pid, Some(root_pid), "worker".to_string(), &props).expect("worker");
+  state.register_cell(child);
+
+  let canonical = state.canonical_actor_path(&child_pid).expect("canonical path");
+  assert_eq!(canonical.parts().scheme(), ActorPathScheme::FraktorTcp);
+  assert_eq!(canonical.parts().authority_endpoint(), Some("public.example.com:4100".to_string()));
+  assert!(canonical.to_canonical_uri().contains("public.example.com:4100"));
+}
+
+#[test]
+fn system_state_refuses_canonical_without_port() {
+  let state = ArcShared::new(SystemState::new());
+  let remoting = RemotingConfig::default().with_canonical_host("missing-port.example");
+  let config = ActorSystemConfig::default().with_system_name("fraktor-system").with_remoting_config(remoting);
+  state.apply_actor_system_config(&config);
+
+  let props = Props::from_fn(|| RestartProbeActor);
+  let root_pid = state.allocate_pid();
+  let root = ActorCell::create(state.clone(), root_pid, None, "root".to_string(), &props).expect("root");
+  state.register_cell(root);
+
+  let child_pid = state.allocate_pid();
+  let child =
+    ActorCell::create(state.clone(), child_pid, Some(root_pid), "worker".to_string(), &props).expect("worker");
+  state.register_cell(child);
+
+  assert!(state.canonical_actor_path(&child_pid).is_none());
+  assert!(state.actor_path_registry().lock().get(&child_pid).is_none());
+  let local = state.actor_path(&child_pid).expect("local path");
+  assert_eq!(local.to_relative_string(), "/user/worker");
+  assert!(state.canonical_authority_components().is_none());
+}
 #[test]
 fn system_state_honors_default_guardian_config() {
   let state = ArcShared::new(SystemState::new());

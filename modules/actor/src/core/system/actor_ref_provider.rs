@@ -3,7 +3,10 @@
 use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use crate::core::{
-  actor_prim::{actor_path::ActorPath, actor_ref::ActorRefGeneric},
+  actor_prim::{
+    actor_path::{ActorPath, ActorPathScheme},
+    actor_ref::ActorRefGeneric,
+  },
   error::ActorError,
 };
 
@@ -19,6 +22,10 @@ use crate::core::{
 ///
 /// This trait is not intended for extension outside of fraktor-rs core.
 pub trait ActorRefProvider<TB: RuntimeToolbox + 'static>: Send + Sync {
+  /// Returns the URI schemes handled by this provider.
+  #[must_use]
+  fn supported_schemes(&self) -> &'static [ActorPathScheme];
+
   /// Creates an actor reference for the provided path.
   ///
   /// # Errors

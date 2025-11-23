@@ -11,8 +11,8 @@ THUMB_TARGETS=("thumbv6m-none-eabi" "thumbv8m.main-none-eabi")
 declare -a HARDWARE_PACKAGES=()
 # NOTE: Nightly version is pinned in rust-toolchain.toml (nightly-2025-01-15)
 # The toolchain settings below can be overridden via environment variables if needed
-DEFAULT_TOOLCHAIN="${RUSTUP_TOOLCHAIN:-nightly}"
-FMT_TOOLCHAIN="${FMT_TOOLCHAIN:-nightly}"
+DEFAULT_TOOLCHAIN="${RUSTUP_TOOLCHAIN:-nightly-2025-01-15}"
+FMT_TOOLCHAIN="${FMT_TOOLCHAIN:-nightly-2025-01-15}"
 
 usage() {
   cat <<'EOF'
@@ -324,7 +324,7 @@ run_dylint() {
   fi
 
   local toolchain
-  toolchain="nightly-$(rustc +nightly -vV | awk '/^host:/{print $2}')"
+  toolchain="nightly-2025-01-15-$(rustc +nightly-2025-01-15 -vV | awk '/^host:/{print $2}')"
   local -a lib_dirs=()
   local -a dylint_args=()
 
@@ -334,11 +334,11 @@ run_dylint() {
     local lint_path="${entry#*:}"
     local lib_name="${crate//-/_}"
 
-    log_step "cargo +nightly build --manifest-path ${lint_path}/Cargo.toml --release"
-    CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" cargo +nightly build --manifest-path "${lint_path}/Cargo.toml" --release || return 1
+    log_step "cargo +nightly-2025-01-15 build --manifest-path ${lint_path}/Cargo.toml --release"
+    CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" cargo +nightly-2025-01-15 build --manifest-path "${lint_path}/Cargo.toml" --release || return 1
 
-    log_step "cargo +nightly test --manifest-path ${lint_path}/Cargo.toml -- test ui -- --quiet"
-    CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" cargo +nightly test --manifest-path "${lint_path}/Cargo.toml" -- test ui -- --quiet || return 1
+    log_step "cargo +nightly-2025-01-15 test --manifest-path ${lint_path}/Cargo.toml -- test ui -- --quiet"
+    CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" cargo +nightly-2025-01-15 test --manifest-path "${lint_path}/Cargo.toml" -- test ui -- --quiet || return 1
 
     local dylib_ext
     dylib_ext="$(get_dylib_extension)"

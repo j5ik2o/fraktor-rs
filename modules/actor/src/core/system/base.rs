@@ -4,6 +4,7 @@
 mod tests;
 
 use alloc::{
+  format,
   string::{String, ToString},
   vec::Vec,
 };
@@ -18,7 +19,11 @@ use super::{
   ExtendedActorSystemGeneric, RemotingConfig, RootGuardianActor, SystemGuardianActor, SystemGuardianProtocol,
 };
 use crate::core::{
-  actor_prim::{ActorCellGeneric, ChildRefGeneric, Pid, actor_ref::ActorRefGeneric},
+  actor_prim::{
+    ActorCellGeneric, ChildRefGeneric, Pid,
+    actor_path::{ActorPath, ActorPathParts, ActorPathScheme, ActorUid, PathSegment},
+    actor_ref::ActorRefGeneric,
+  },
   dead_letter::{DeadLetterEntryGeneric, DeadLetterReason},
   error::SendError,
   event_stream::{
@@ -31,7 +36,7 @@ use crate::core::{
   scheduler::{SchedulerBackedDelayProvider, SchedulerContext, TickDriverConfig},
   serialization::default_serialization_extension_id,
   spawn::SpawnError,
-  system::{actor_system_config::ActorSystemConfigGeneric, system_state::SystemStateGeneric},
+  system::{ActorRefResolveError, actor_system_config::ActorSystemConfigGeneric, system_state::SystemStateGeneric},
 };
 
 const PARENT_MISSING: &str = "parent actor not found";
@@ -141,6 +146,57 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     system.install_default_serialization_extension();
 
     Ok(system)
+  }
+
+  /// Resolves an actor reference for the given path, injecting canonical authority when needed.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`ActorRefResolveError`] when the path cannot be resolved.
+  pub fn resolve_actor_ref(&self, path: ActorPath) -> Result<ActorRefGeneric<TB>, ActorRefResolveError> {
+    let resolved_path = self.prepare_actor_path(path)?;
+    let scheme = resolved_path.parts().scheme();
+    let result = self
+      .state()
+      .actor_ref_provider_call_for_scheme(scheme, resolved_path)
+      .ok_or(ActorRefResolveError::ProviderMissing)?;
+    result.map_err(|error| ActorRefResolveError::NotFound(format!("{error:?}")))
+  }
+
+  fn prepare_actor_path(&self, path: ActorPath) -> Result<ActorPath, ActorRefResolveError> {
+    let parts = path.parts().clone();
+    match parts.scheme() {
+      | ActorPathScheme::FraktorTcp => {
+        if parts.authority_endpoint().is_none() {
+          if self.state().has_partial_canonical_authority() {
+            return Err(ActorRefResolveError::InvalidAuthority);
+          }
+          let Some((host, Some(port))) = self.state().canonical_authority_components() else {
+            return Err(ActorRefResolveError::InvalidAuthority);
+          };
+          let updated_parts = parts.with_authority_host(host).with_authority_port(port);
+          return Ok(Self::rebuild_path(updated_parts, path.segments(), path.uid()));
+        }
+        Ok(path)
+      },
+      | ActorPathScheme::Fraktor => {
+        if parts.authority_endpoint().is_none() {
+          if self.state().has_partial_canonical_authority() {
+            return Err(ActorRefResolveError::InvalidAuthority);
+          }
+          if let Some((host, Some(port))) = self.state().canonical_authority_components() {
+            let updated_parts =
+              parts.with_scheme(ActorPathScheme::FraktorTcp).with_authority_host(host).with_authority_port(port);
+            return Ok(Self::rebuild_path(updated_parts, path.segments(), path.uid()));
+          }
+        }
+        Ok(path)
+      },
+    }
+  }
+
+  fn rebuild_path(parts: ActorPathParts, segments: &[PathSegment], uid: Option<ActorUid>) -> ActorPath {
+    ActorPath::from_parts_and_segments(parts, segments.to_vec(), uid)
   }
 
   /// Returns the actor reference to the user guardian.

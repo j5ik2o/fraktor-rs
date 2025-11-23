@@ -3,6 +3,7 @@
 #[cfg(test)]
 mod tests;
 
+use alloc::string::String;
 use core::{
   marker::PhantomData,
   sync::atomic::{AtomicBool, AtomicU64, Ordering},
@@ -57,6 +58,18 @@ impl<TB: RuntimeToolbox + 'static> EndpointWriterGeneric<TB> {
       correlation: AtomicU64::new(1),
       _marker: PhantomData,
     }
+  }
+
+  /// Returns the canonical authority (host[:port]) of the bound actor system when available.
+  #[must_use]
+  pub fn canonical_authority_components(&self) -> Option<(String, Option<u16>)> {
+    self.system.state().canonical_authority_components()
+  }
+
+  /// Returns a reference to the underlying actor system.
+  #[must_use]
+  pub fn system(&self) -> &ActorSystemGeneric<TB> {
+    &self.system
   }
 
   /// Enqueues an outbound message using its declared priority.
