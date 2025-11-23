@@ -26,7 +26,10 @@ use fraktor_actor_rs::{
     system::{ActorSystem, ActorSystemConfig},
   },
 };
-use fraktor_cluster_rs::core::{GrainKey, MembershipDelta, MembershipTable, RendezvousHasher, VirtualActorRegistry};
+use fraktor_cluster_rs::{
+  core::{ClusterProvider, GrainKey, MembershipDelta, MembershipTable, RendezvousHasher, VirtualActorRegistry},
+  std::noop_cluster_provider::NoopClusterProvider,
+};
 use fraktor_remote_rs::core::{
   RemotingExtensionConfig, RemotingExtensionId, RemotingExtensionInstaller, TokioActorRefProviderInstaller,
   TokioTransportConfig, default_loopback_setup,
@@ -59,7 +62,7 @@ async fn main() -> Result<()> {
     MembershipDelta::new(delta_a.from, delta_b.to, vec![delta_a.entries[0].clone(), delta_b.entries[0].clone()]);
 
   // ノードA（owner 側になる可能性あり）
-  let receiver = build_system(
+  let (receiver, receiver_provider) = build_system(
     SYSTEM_A,
     NODE_A_PORT,
     Props::from_fn({
@@ -71,7 +74,7 @@ async fn main() -> Result<()> {
   )?;
 
   // ノードB（送信 + reply channel 登録）
-  let sender = build_system(
+  let (sender, sender_provider) = build_system(
     SYSTEM_B,
     NODE_B_PORT,
     Props::from_fn({
@@ -124,6 +127,8 @@ async fn main() -> Result<()> {
 
   sender.terminate().ok();
   receiver.terminate().ok();
+  let _ = sender_provider.shutdown(true);
+  let _ = receiver_provider.shutdown(true);
   thread::sleep(Duration::from_millis(200));
   Ok(())
 }
@@ -137,11 +142,15 @@ fn build_system(
   port: u16,
   hub_props: Props,
   responder_tx: Option<Arc<Mutex<Option<oneshot::Sender<String>>>>>,
-) -> Result<ActorSystem> {
+) -> Result<(ActorSystem, NoopClusterProvider)> {
   let tokio_handle = tokio::runtime::Handle::current();
   let tokio_executor = TokioExecutor::new(tokio_handle);
   let executor_adapter = DispatchExecutorAdapter::new(ArcShared::new(tokio_executor));
   let default_dispatcher = DispatcherConfig::from_executor(ArcShared::new(executor_adapter));
+
+  // Provider (noop in this quickstart) should still follow the lifecycle contract.
+  let provider = NoopClusterProvider::new();
+  provider.start_member().map_err(|e| anyhow!("provider start failed: {}", e.reason()))?;
 
   let system_config = ActorSystemConfig::default()
     .with_system_name(system_name.to_string())
@@ -171,7 +180,7 @@ fn build_system(
     RemotingExtensionId::<StdToolbox>::new(RemotingExtensionConfig::default().with_transport_scheme("fraktor.tcp"));
   let _extension = system.extended().extension(&id).expect("extension registered");
 
-  Ok(system)
+  Ok((system, provider))
 }
 
 fn sanitize_key(key: &str) -> String {

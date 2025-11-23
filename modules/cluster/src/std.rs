@@ -1,3 +1,4 @@
-//! std-only adapters for cluster runtime (placeholder).
+//! std-only adapters for the cluster runtime.
 
-// std 実装は今後のタスクで追加する。
+/// No-op provider useful for tests and single-process runs.
+pub mod noop_cluster_provider;
