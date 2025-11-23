@@ -3,7 +3,7 @@
 //! Cluster quickstart (cluster-capable sample)
 //! - Two nodes (4050/4051) using Membership/Gossip/VirtualActorRegistry
 //! - Select an owner via Rendezvous and spawn keyed actors via VirtualActorRegistry
-//! - Reply routing is confirmed via the Responder actor
+//! - Reply routing is confirmed via in-band ActorRef on message payloads
 
 use std::{
   sync::{Arc, Mutex},
@@ -14,14 +14,11 @@ use std::{
 use anyhow::{Result, anyhow, bail};
 use fraktor_actor_rs::{
   core::{
-    actor_prim::actor_path::{ActorPath, ActorPathFormatter, ActorPathParser, ActorPathParts, GuardianKind},
-    error::ActorError,
-    extension::ExtensionInstallers,
-    serialization::SerializationExtensionInstaller,
+    error::ActorError, extension::ExtensionInstallers, serialization::SerializationExtensionInstaller,
     system::RemotingConfig,
   },
   std::{
-    actor_prim::{Actor, ActorContext},
+    actor_prim::{Actor, ActorContext, ActorRef},
     dispatcher::{DispatchExecutorAdapter, DispatcherConfig, dispatch_executor::TokioExecutor},
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
@@ -31,8 +28,8 @@ use fraktor_actor_rs::{
 };
 use fraktor_cluster_rs::core::{GrainKey, MembershipDelta, MembershipTable, RendezvousHasher, VirtualActorRegistry};
 use fraktor_remote_rs::core::{
-  RemotingExtensionConfig, RemotingExtensionId, RemotingExtensionInstaller, TokioActorRefProviderGeneric,
-  TokioActorRefProviderInstaller, TokioTransportConfig, default_loopback_setup,
+  RemotingExtensionConfig, RemotingExtensionId, RemotingExtensionInstaller, TokioActorRefProviderInstaller,
+  TokioTransportConfig, default_loopback_setup,
 };
 use fraktor_utils_rs::{core::sync::ArcShared, std::runtime_toolbox::StdToolbox};
 use tokio::sync::oneshot;
@@ -43,7 +40,6 @@ const NODE_B_PORT: u16 = 4051;
 const SYSTEM_A: &str = "cluster-receiver";
 const SYSTEM_B: &str = "cluster-sender";
 const HUB_NAME: &str = "grains";
-const RESPONDER_NAME: &str = "responder";
 const SAMPLE_KEY: &str = "user:va-1";
 
 #[tokio::main]
@@ -74,7 +70,7 @@ async fn main() -> Result<()> {
     None,
   )?;
 
-  // ノードB（送信 + Responder）
+  // ノードB（送信 + reply channel 登録）
   let sender = build_system(
     SYSTEM_B,
     NODE_B_PORT,
@@ -89,12 +85,6 @@ async fn main() -> Result<()> {
   println!("[info] receiver user guardian: {:?}", receiver.user_guardian_ref().path());
   println!("[info] sender   user guardian: {:?}", sender.user_guardian_ref().path());
 
-  let provider_sender =
-    sender.extended().actor_ref_provider::<TokioActorRefProviderGeneric<StdToolbox>>().expect("provider sender");
-
-  // 双方向 watch で remoting を有効化
-  provider_sender.watch_remote(receiver_authority_parts()).map_err(|e| anyhow!("sender watch failed: {e}"))?;
-  tokio::time::sleep(Duration::from_millis(300)).await;
   let ext_id =
     RemotingExtensionId::<StdToolbox>::new(RemotingExtensionConfig::default().with_transport_scheme("fraktor.tcp"));
   let _ = sender.extended().extension(&ext_id).expect("ext sender");
@@ -104,29 +94,31 @@ async fn main() -> Result<()> {
   let authorities = vec![format!("{HOST}:{NODE_A_PORT}"), format!("{HOST}:{NODE_B_PORT}")];
   let key = GrainKey::new(SAMPLE_KEY.to_string());
   let owner = RendezvousHasher::select(&authorities, &key).expect("owner");
-  let (owner_system, owner_port) =
-    if owner.ends_with(&NODE_A_PORT.to_string()) { (SYSTEM_A, NODE_A_PORT) } else { (SYSTEM_B, NODE_B_PORT) };
+  let (_owner_system, owner_ref) = if owner.ends_with(&NODE_A_PORT.to_string()) {
+    (SYSTEM_A, receiver.user_guardian_ref())
+  } else {
+    (SYSTEM_B, sender.user_guardian_ref())
+  };
 
-  let grain_path = grain_actor_path(owner_system, owner_port, SAMPLE_KEY);
-  let target_ref = provider_sender.actor_ref(grain_path).expect("grain actor ref");
+  // Grain 呼び出し（返信先 ActorRef をメッセージに含める）
+  let reply_to = sender.user_guardian_ref();
+  owner_ref
+    .tell(AnyMessage::new(GrainCall {
+      key: SAMPLE_KEY.to_string(),
+      body: "ping from quickstart".to_string(),
+      reply_to,
+    }))
+    .map_err(|e| anyhow!("tell failed: {e:?}"))?;
 
-  // 返信先を ActorPath で渡す
-  let reply_path = ActorPathFormatter::format(&responder_path());
-  let payload = format!("{SAMPLE_KEY}|{reply_path}|ping from quickstart");
-  target_ref.tell(AnyMessage::new(payload)).map_err(|e| anyhow!("tell failed: {e:?}"))?;
-
-  // Responder で返信を受信
+  // 返信受信
   let reply = tokio::time::timeout(Duration::from_secs(5), rx)
     .await
     .map_err(|_| anyhow!("timeout waiting reply"))?
-    .map_err(|_| anyhow!("responder dropped"))?;
+    .map_err(|_| anyhow!("reply channel dropped"))?;
 
   println!("[info] seeds       : {}", seeds.join(", "));
   println!("[info] owner       : {owner}");
-  println!(
-    "[info] grain path  : {}",
-    ActorPathFormatter::format(&grain_actor_path(owner_system, owner_port, SAMPLE_KEY))
-  );
+  println!("[info] grain path  : {:?}", owner_ref.canonical_path());
   println!("[info] reply       : {reply}");
   println!("[info] 再実行時はプロセスを停止し、ポート {NODE_A_PORT}/{NODE_B_PORT} の競合を避けてください。");
 
@@ -169,11 +161,10 @@ fn build_system(
     .map_err(|e| anyhow!("actor system build failed: {e:?}"))?;
 
   if let Some(tx) = responder_tx {
-    let responder_props = Props::from_fn(move || Responder::new(tx.clone())).with_name(RESPONDER_NAME);
     system
       .user_guardian_ref()
-      .tell(AnyMessage::new(responder_props))
-      .map_err(|e| anyhow!("failed to spawn responder: {e:?}"))?;
+      .tell(AnyMessage::new(RegisterReplyChannel { tx }))
+      .map_err(|e| anyhow!("failed to register reply channel: {e:?}"))?;
   }
 
   let id =
@@ -181,23 +172,6 @@ fn build_system(
   let _extension = system.extended().extension(&id).expect("extension registered");
 
   Ok(system)
-}
-
-fn receiver_authority_parts() -> ActorPathParts {
-  ActorPathParts::with_authority(SYSTEM_A, Some((HOST, NODE_A_PORT)))
-}
-
-fn grain_actor_path(system: &str, port: u16, _key: &str) -> ActorPath {
-  ActorPath::from_parts(ActorPathParts::with_authority(system, Some((HOST, port))).with_guardian(GuardianKind::User))
-    .child(HUB_NAME)
-}
-
-fn responder_path() -> ActorPath {
-  ActorPath::from_parts(
-    ActorPathParts::with_authority(SYSTEM_B, Some((HOST, NODE_B_PORT))).with_guardian(GuardianKind::User),
-  )
-  .child(HUB_NAME)
-  .child(RESPONDER_NAME)
 }
 
 fn sanitize_key(key: &str) -> String {
@@ -209,6 +183,7 @@ fn sanitize_key(key: &str) -> String {
 struct GrainHub {
   registry:        VirtualActorRegistry,
   owner_authority: String,
+  reply_tx:        Option<Arc<Mutex<Option<oneshot::Sender<String>>>>>,
 }
 
 impl GrainHub {
@@ -217,30 +192,39 @@ impl GrainHub {
     membership.apply_delta(delta.clone());
     let owner_authority = membership.snapshot().entries.first().map(|r| r.authority.clone()).unwrap_or_default();
 
-    Self { registry: VirtualActorRegistry::new(32, 60), owner_authority }
+    Self { registry: VirtualActorRegistry::new(32, 60), owner_authority, reply_tx: None }
   }
 }
 
 impl Actor for GrainHub {
+  fn pre_start(&mut self, _ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
+    println!("[info] grain hub started for {HUB_NAME}");
+    Ok(())
+  }
+
   fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
-    if let Some(props) = message.downcast_ref::<Props>() {
-      ctx.spawn_child(&props.as_core()).map_err(|e| ActorError::recoverable(format!("spawn child failed: {e:?}")))?;
+    if let Some(register) = message.downcast_ref::<RegisterReplyChannel>() {
+      self.reply_tx = Some(register.tx.clone());
       return Ok(());
     }
 
-    let Some(text) = message.downcast_ref::<String>() else {
-      println!("[warn] grain hub received non-string");
+    if let Some(reply) = message.downcast_ref::<GrainReply>() {
+      if let Some(tx) = &self.reply_tx {
+        if let Some(sender) = tx.lock().unwrap().take() {
+          let _ = sender.send(reply.body.clone());
+        }
+      }
+      return Ok(());
+    }
+
+    let Some(call) = message.downcast_ref::<GrainCall>() else {
+      println!("[warn] grain hub received unsupported message");
       return Ok(());
     };
 
-    let mut parts = text.splitn(3, '|');
-    let key_str = parts.next().unwrap_or("");
-    let reply_path_str = parts.next().unwrap_or("");
-    let body = parts.next().unwrap_or("");
+    println!("[info] grain hub received key={}, body={}", call.key, call.body);
 
-    println!("[info] grain hub received key={key_str}, body={body}");
-
-    let key = GrainKey::new(key_str.to_string());
+    let key = GrainKey::new(call.key.clone());
 
     // 所有者判定（自身が owner でない場合は Unreachable を返す想定だが、サンプルなので強制 owner）
     let activation = self
@@ -248,12 +232,11 @@ impl Actor for GrainHub {
       .ensure_activation(&key, &[self.owner_authority.clone()], 0, false, None)
       .map_err(|e| ActorError::recoverable(format!("activation failed: {e:?}")))?;
 
-    // Grain アクターを spawn / 再利用
     let child_name = sanitize_key(key.value());
     let props = Props::from_fn({
-      let reply_path_str = reply_path_str.to_string();
-      let body = body.to_string();
-      move || GrainActor::new(reply_path_str.clone(), body.clone())
+      let reply_to = call.reply_to.clone();
+      let body = call.body.clone();
+      move || GrainActor::new(reply_to.clone(), body.clone())
     })
     .with_name(child_name);
     ctx
@@ -266,63 +249,47 @@ impl Actor for GrainHub {
 }
 
 struct GrainActor {
-  reply_path: String,
-  body:       String,
+  reply_to: ActorRef,
+  body:     String,
 }
 
 impl GrainActor {
-  fn new(reply_path: String, body: String) -> Self {
-    Self { reply_path, body }
+  fn new(reply_to: ActorRef, body: String) -> Self {
+    Self { reply_to, body }
   }
 
-  fn send_reply(&self, ctx: &ActorContext<'_>) -> Result<(), ActorError> {
-    let Ok(reply_path) = ActorPathParser::parse(&self.reply_path) else {
-      println!("[warn] invalid reply path: {}", self.reply_path);
-      return Ok(());
-    };
-
-    if let Some(provider) = ctx.system().extended().actor_ref_provider::<TokioActorRefProviderGeneric<StdToolbox>>() {
-      match provider.actor_ref(reply_path) {
-        | Ok(reply_ref) => {
-          reply_ref
-            .tell(AnyMessage::new(format!("echo:{}", self.body)))
-            .map_err(|e| ActorError::recoverable(format!("reply failed: {e:?}")))?;
-        },
-        | Err(err) => println!("[warn] reply actor not found: {err:?}"),
-      }
-    }
-    Ok(())
+  fn send_reply(&self) -> Result<(), ActorError> {
+    self
+      .reply_to
+      .tell(AnyMessage::new(GrainReply { body: format!("echo:{}", self.body) }))
+      .map_err(|e| ActorError::recoverable(format!("reply failed: {e:?}")))
   }
 }
 
 impl Actor for GrainActor {
-  fn pre_start(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
-    println!("[info] grain spawned for reply -> {}", self.reply_path);
-    self.send_reply(ctx)
+  fn pre_start(&mut self, _ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
+    println!("[info] grain spawned for reply");
+    self.send_reply()
   }
 
-  fn receive(&mut self, ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
-    self.send_reply(ctx)
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    self.send_reply()
   }
 }
 
-struct Responder {
+#[derive(Clone, Debug)]
+struct GrainCall {
+  key:      String,
+  body:     String,
+  reply_to: ActorRef,
+}
+
+#[derive(Clone, Debug)]
+struct GrainReply {
+  body: String,
+}
+
+#[derive(Clone)]
+struct RegisterReplyChannel {
   tx: Arc<Mutex<Option<oneshot::Sender<String>>>>,
-}
-
-impl Responder {
-  fn new(tx: Arc<Mutex<Option<oneshot::Sender<String>>>>) -> Self {
-    Self { tx }
-  }
-}
-
-impl Actor for Responder {
-  fn receive(&mut self, _ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
-    if let Some(text) = message.downcast_ref::<String>() {
-      if let Some(tx) = self.tx.lock().unwrap().take() {
-        let _ = tx.send(text.clone());
-      }
-    }
-    Ok(())
-  }
 }
