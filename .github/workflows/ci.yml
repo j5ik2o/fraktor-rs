@@ -13,6 +13,7 @@ env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -D warnings
   CARGO_NET_OFFLINE: false
+  DYLINT_VERSION: "4.1.0"
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -58,6 +59,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: lint
+          cache-directories: ~/.cargo/bin
       - name: Run ${{ matrix.check.name }}
         run: ./scripts/ci-check.sh ${{ matrix.check.script }}
 
