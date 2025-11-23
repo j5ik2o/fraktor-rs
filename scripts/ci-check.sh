@@ -9,10 +9,27 @@ cd "${REPO_ROOT}"
 
 THUMB_TARGETS=("thumbv6m-none-eabi" "thumbv8m.main-none-eabi")
 declare -a HARDWARE_PACKAGES=()
-# NOTE: Nightly version is pinned in rust-toolchain.toml (nightly-2025-01-15)
-# The toolchain settings below can be overridden via environment variables if needed
-DEFAULT_TOOLCHAIN="${RUSTUP_TOOLCHAIN:-nightly-2025-01-15}"
-FMT_TOOLCHAIN="${FMT_TOOLCHAIN:-nightly-2025-01-15}"
+
+resolve_pinned_toolchain() {
+  if [[ -f "${REPO_ROOT}/rust-toolchain.toml" ]]; then
+    local channel=""
+    channel=$(awk -F'"' '/^[[:space:]]*channel[[:space:]]*=/ {print $2; exit}' "${REPO_ROOT}/rust-toolchain.toml")
+    if [[ -n "${channel}" ]]; then
+      echo "${channel}"
+      return 0
+    fi
+  fi
+
+  echo "nightly"
+}
+
+PINNED_TOOLCHAIN="$(resolve_pinned_toolchain)"
+DEFAULT_TOOLCHAIN="${PINNED_TOOLCHAIN}"
+if [[ -n "${RUSTUP_TOOLCHAIN:-}" && "${RUSTUP_TOOLCHAIN}" != "${PINNED_TOOLCHAIN}" ]]; then
+  echo "info: RUSTUP_TOOLCHAIN=${RUSTUP_TOOLCHAIN} を上書きして ${PINNED_TOOLCHAIN} を使用します" >&2
+fi
+export RUSTUP_TOOLCHAIN="${PINNED_TOOLCHAIN}"
+FMT_TOOLCHAIN="${FMT_TOOLCHAIN:-${PINNED_TOOLCHAIN}}"
 
 usage() {
   cat <<'EOF'
@@ -84,14 +101,26 @@ run_cargo() {
 ensure_target_installed() {
   local target="$1"
 
-  if rustup target list --installed --toolchain "${DEFAULT_TOOLCHAIN}" | grep -qx "${target}"; then
-    return 0
+  if [[ -n "${DEFAULT_TOOLCHAIN}" ]]; then
+    if rustup target list --installed --toolchain "${DEFAULT_TOOLCHAIN}" | grep -qx "${target}"; then
+      return 0
+    fi
+  else
+    if rustup target list --installed | grep -qx "${target}"; then
+      return 0
+    fi
   fi
 
   if [[ -n "${CI:-}" ]]; then
-    echo "info: installing target ${target} for toolchain ${DEFAULT_TOOLCHAIN}" >&2
-    if rustup target add --toolchain "${DEFAULT_TOOLCHAIN}" "${target}"; then
-      return 0
+    echo "info: installing target ${target}" >&2
+    if [[ -n "${DEFAULT_TOOLCHAIN}" ]]; then
+      if rustup target add --toolchain "${DEFAULT_TOOLCHAIN}" "${target}"; then
+        return 0
+      fi
+    else
+      if rustup target add "${target}"; then
+        return 0
+      fi
     fi
     echo "エラー: ターゲット ${target} のインストールに失敗しました。" >&2
     return 1
@@ -123,9 +152,16 @@ ensure_rustc_components_installed() {
   local -a missing_components=()
   local component_list=""
 
-  if ! component_list=$(rustup component list --toolchain "${DEFAULT_TOOLCHAIN}" 2>/dev/null); then
-    echo "エラー: rustup component list の取得に失敗しました" >&2
-    return 1
+  if [[ -n "${DEFAULT_TOOLCHAIN}" ]]; then
+    if ! component_list=$(rustup component list --toolchain "${DEFAULT_TOOLCHAIN}" 2>/dev/null); then
+      echo "エラー: rustup component list の取得に失敗しました" >&2
+      return 1
+    fi
+  else
+    if ! component_list=$(rustup component list 2>/dev/null); then
+      echo "エラー: rustup component list の取得に失敗しました" >&2
+      return 1
+    fi
   fi
 
   for component in "${required_components[@]}"; do
@@ -146,11 +182,20 @@ ensure_rustc_components_installed() {
   echo "info: 不足しているコンポーネントをインストールします: ${missing_components[*]}" >&2
   local component
   for component in "${missing_components[@]}"; do
-    if rustup component add --toolchain "${DEFAULT_TOOLCHAIN}" "${component}"; then
-      echo "info: ${component} のインストールが完了しました。" >&2
+    if [[ -n "${DEFAULT_TOOLCHAIN}" ]]; then
+      if rustup component add --toolchain "${DEFAULT_TOOLCHAIN}" "${component}"; then
+        echo "info: ${component} のインストールが完了しました。" >&2
+      else
+        echo "エラー: ${component} のインストールに失敗しました。" >&2
+        return 1
+      fi
     else
-      echo "エラー: ${component} のインストールに失敗しました。" >&2
-      return 1
+      if rustup component add "${component}"; then
+        echo "info: ${component} のインストールが完了しました。" >&2
+      else
+        echo "エラー: ${component} のインストールに失敗しました。" >&2
+        return 1
+      fi
     fi
   done
 
@@ -174,8 +219,13 @@ ensure_dylint_installed() {
 }
 
 run_lint() {
-  log_step "cargo +${FMT_TOOLCHAIN} fmt -- --check"
-  cargo "+${FMT_TOOLCHAIN}" fmt --all -- --check || return 1
+  if [[ -n "${FMT_TOOLCHAIN}" ]]; then
+    log_step "cargo +${FMT_TOOLCHAIN} fmt -- --check"
+    cargo "+${FMT_TOOLCHAIN}" fmt --all -- --check || return 1
+  else
+    log_step "cargo fmt -- --check"
+    cargo fmt --all -- --check || return 1
+  fi
 }
 
 run_dylint() {
@@ -324,7 +374,17 @@ run_dylint() {
   fi
 
   local toolchain
-  toolchain="nightly-2025-01-15-$(rustc +nightly-2025-01-15 -vV | awk '/^host:/{print $2}')"
+  if [[ -f "${REPO_ROOT}/rust-toolchain.toml" ]]; then
+     local channel
+     channel=$(awk -F'"' '/channel/ {print $2; exit}' "${REPO_ROOT}/rust-toolchain.toml")
+     if [[ -n "${channel}" ]]; then
+       toolchain="${channel}-$(rustc -vV | awk '/^host:/{print $2}')"
+     else
+       toolchain="nightly-$(rustc -vV | awk '/^host:/{print $2}')"
+     fi
+  else
+     toolchain="nightly-$(rustc -vV | awk '/^host:/{print $2}')"
+  fi
   local -a lib_dirs=()
   local -a dylint_args=()
 
@@ -334,11 +394,11 @@ run_dylint() {
     local lint_path="${entry#*:}"
     local lib_name="${crate//-/_}"
 
-    log_step "cargo +nightly-2025-01-15 build --manifest-path ${lint_path}/Cargo.toml --release"
-    CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" cargo +nightly-2025-01-15 build --manifest-path "${lint_path}/Cargo.toml" --release || return 1
+    log_step "cargo build --manifest-path ${lint_path}/Cargo.toml --release"
+    CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" cargo build --manifest-path "${lint_path}/Cargo.toml" --release || return 1
 
-    log_step "cargo +nightly-2025-01-15 test --manifest-path ${lint_path}/Cargo.toml -- test ui -- --quiet"
-    CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" cargo +nightly-2025-01-15 test --manifest-path "${lint_path}/Cargo.toml" -- test ui -- --quiet || return 1
+    log_step "cargo test --manifest-path ${lint_path}/Cargo.toml -- test ui -- --quiet"
+    CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" cargo test --manifest-path "${lint_path}/Cargo.toml" -- test ui -- --quiet || return 1
 
     local dylib_ext
     dylib_ext="$(get_dylib_extension)"
@@ -347,6 +407,13 @@ run_dylint() {
     local tagged_lib="${target_dir}/lib${lib_name}@${toolchain}.${dylib_ext}"
 
     if [[ -f "${plain_lib}" ]]; then
+      if compgen -G "${target_dir}/lib${lib_name}@*.${dylib_ext}" >/dev/null; then
+        for existing_lib in "${target_dir}"/lib"${lib_name}"@*.${dylib_ext}; do
+          [[ "${existing_lib}" == "${tagged_lib}" ]] && continue
+          rm -f "${existing_lib}"
+        done
+      fi
+
       cp -f "${plain_lib}" "${tagged_lib}"
       lib_dirs+=("$(cd "${target_dir}" && pwd)")
     else
@@ -368,6 +435,18 @@ run_dylint() {
   fi
 
   local -a common_dylint_args=("${dylint_args[@]}" "--no-metadata")
+  local sysroot_lib=""
+  sysroot_lib="$(rustc --print sysroot)/lib"
+  local dynlib_path="${sysroot_lib}"
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    if [[ -n "${DYLD_FALLBACK_LIBRARY_PATH-}" ]]; then
+      dynlib_path="${sysroot_lib}:${DYLD_FALLBACK_LIBRARY_PATH}"
+    fi
+  else
+    if [[ -n "${LD_LIBRARY_PATH-}" ]]; then
+      dynlib_path="${sysroot_lib}:${LD_LIBRARY_PATH}"
+    fi
+  fi
   local -a hardware_packages=()
   if [[ ${HARDWARE_PACKAGES+set} == set && ${#HARDWARE_PACKAGES[@]} -gt 0 ]]; then
     hardware_packages=("${HARDWARE_PACKAGES[@]}")
@@ -464,9 +543,9 @@ PY
     fi
     log_step "cargo +${DEFAULT_TOOLCHAIN} dylint ${log_main}${log_trailing} (RUSTFLAGS=${rustflags_value})"
     if [[ ${#trailing_args[@]} -gt 0 ]]; then
-      RUSTFLAGS="${rustflags_value}" DYLINT_LIBRARY_PATH="${dylint_library_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${main_invocation[@]}" -- "${trailing_args[@]}" || return 1
+      RUSTFLAGS="${rustflags_value}" DYLINT_LIBRARY_PATH="${dylint_library_path}" DYLD_FALLBACK_LIBRARY_PATH="${dynlib_path}" LD_LIBRARY_PATH="${dynlib_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${main_invocation[@]}" -- "${trailing_args[@]}" || return 1
     else
-      RUSTFLAGS="${rustflags_value}" DYLINT_LIBRARY_PATH="${dylint_library_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${main_invocation[@]}" || return 1
+      RUSTFLAGS="${rustflags_value}" DYLINT_LIBRARY_PATH="${dylint_library_path}" DYLD_FALLBACK_LIBRARY_PATH="${dynlib_path}" LD_LIBRARY_PATH="${dynlib_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${main_invocation[@]}" || return 1
     fi
   fi
 
@@ -481,9 +560,9 @@ PY
       fi
       log_step "cargo +${DEFAULT_TOOLCHAIN} dylint ${log_pkg}${log_trailing} (RUSTFLAGS=${rustflags_value})"
       if [[ ${#trailing_args[@]} -gt 0 ]]; then
-        RUSTFLAGS="${rustflags_value}" DYLINT_LIBRARY_PATH="${dylint_library_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${pkg_invocation[@]}" -- "${trailing_args[@]}" || return 1
+        RUSTFLAGS="${rustflags_value}" DYLINT_LIBRARY_PATH="${dylint_library_path}" DYLD_FALLBACK_LIBRARY_PATH="${dynlib_path}" LD_LIBRARY_PATH="${dynlib_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${pkg_invocation[@]}" -- "${trailing_args[@]}" || return 1
       else
-        RUSTFLAGS="${rustflags_value}" DYLINT_LIBRARY_PATH="${dylint_library_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${pkg_invocation[@]}" || return 1
+        RUSTFLAGS="${rustflags_value}" DYLINT_LIBRARY_PATH="${dylint_library_path}" DYLD_FALLBACK_LIBRARY_PATH="${dynlib_path}" LD_LIBRARY_PATH="${dynlib_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${pkg_invocation[@]}" || return 1
       fi
     done
   fi
@@ -520,7 +599,7 @@ PY
         feature_trailing+=("${trailing_args[@]}")
       fi
       log_step "cargo +${DEFAULT_TOOLCHAIN} dylint ${log_feature} (RUSTFLAGS=${rustflags_value})"
-      RUSTFLAGS="${rustflags_value}" DYLINT_LIBRARY_PATH="${dylint_library_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${feature_invocation[@]}" -- "${feature_trailing[@]}" || return 1
+      RUSTFLAGS="${rustflags_value}" DYLINT_LIBRARY_PATH="${dylint_library_path}" DYLD_FALLBACK_LIBRARY_PATH="${dynlib_path}" LD_LIBRARY_PATH="${dynlib_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${feature_invocation[@]}" -- "${feature_trailing[@]}" || return 1
     done
   fi
 }

@@ -14,7 +14,7 @@ pub struct StdSyncMutexGuard<'a, T> {
   pub guard: MutexGuard<'a, T>,
 }
 
-impl<'a, T> Deref for StdSyncMutexGuard<'a, T> {
+impl<T> Deref for StdSyncMutexGuard<'_, T> {
   type Target = T;
 
   fn deref(&self) -> &Self::Target {
@@ -22,7 +22,7 @@ impl<'a, T> Deref for StdSyncMutexGuard<'a, T> {
   }
 }
 
-impl<'a, T> DerefMut for StdSyncMutexGuard<'a, T> {
+impl<T> DerefMut for StdSyncMutexGuard<'_, T> {
   fn deref_mut(&mut self) -> &mut Self::Target {
     &mut self.guard
   }

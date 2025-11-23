@@ -412,7 +412,7 @@ impl<'a, TB: RuntimeToolbox> TransportScopeGuard<'a, TB> {
   }
 }
 
-impl<'a, TB: RuntimeToolbox> Drop for TransportScopeGuard<'a, TB> {
+impl<TB: RuntimeToolbox> Drop for TransportScopeGuard<'_, TB> {
   fn drop(&mut self) {
     let _ = self.stack.lock().pop();
   }

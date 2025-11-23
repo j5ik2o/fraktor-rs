@@ -43,6 +43,7 @@ impl RemotingConfig {
 
   /// Returns the canonical hostname.
   #[must_use]
+  #[allow(clippy::missing_const_for_fn)] // String の Deref が const でないため const fn にできない
   pub fn canonical_host(&self) -> &str {
     &self.canonical_host
   }

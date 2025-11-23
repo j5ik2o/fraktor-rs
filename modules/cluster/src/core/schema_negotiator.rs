@@ -25,6 +25,7 @@ impl SchemaNegotiator {
 
   /// Returns supported versions.
   #[must_use]
+  #[allow(clippy::missing_const_for_fn)] // Vec の Deref が const でないため const fn にできない
   pub fn supported(&self) -> &[u32] {
     &self.supported
   }

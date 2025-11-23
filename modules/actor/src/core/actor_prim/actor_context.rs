@@ -29,7 +29,7 @@ pub struct ActorContextGeneric<'a, TB: RuntimeToolbox + 'static> {
 /// Alias for a context with the default runtime toolbox.
 pub type ActorContext<'a> = ActorContextGeneric<'a, NoStdToolbox>;
 
-impl<'a, TB: RuntimeToolbox + 'static> ActorContextGeneric<'a, TB> {
+impl<TB: RuntimeToolbox + 'static> ActorContextGeneric<'_, TB> {
   /// Creates a new context placeholder.
   #[must_use]
   pub fn new(system: &ActorSystemGeneric<TB>, pid: Pid) -> Self {

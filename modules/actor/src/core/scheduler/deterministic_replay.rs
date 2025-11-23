@@ -18,7 +18,7 @@ impl<'a> DeterministicReplay<'a> {
   }
 }
 
-impl<'a> Iterator for DeterministicReplay<'a> {
+impl Iterator for DeterministicReplay<'_> {
   type Item = DeterministicEvent;
 
   fn next(&mut self) -> Option<Self::Item> {

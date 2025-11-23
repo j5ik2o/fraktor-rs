@@ -12,6 +12,7 @@ pub(crate) struct PathAuthority {
 impl PathAuthority {
   #[must_use]
   /// Returns the authority host if configured.
+  #[allow(clippy::missing_const_for_fn)] // String の Deref が const でないため const fn にできない
   pub(crate) fn host(&self) -> &str {
     &self.host
   }

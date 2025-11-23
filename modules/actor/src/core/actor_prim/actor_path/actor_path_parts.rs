@@ -77,6 +77,7 @@ impl ActorPathParts {
 
   #[must_use]
   /// Returns the logical actor system name.
+  #[allow(clippy::missing_const_for_fn)] // String の Deref が const でないため const fn にできない
   pub fn system(&self) -> &str {
     &self.system
   }

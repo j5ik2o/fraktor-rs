@@ -60,13 +60,13 @@ impl Actor for Guardian {
   }
 
   fn receive(&mut self, _ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
-    if message.downcast_ref::<Start>().is_some()
-      && let Some(child) = self.last_child.lock().as_ref()
-    {
-      println!("[guardian] 子アクターにクラッシュを指示します");
-      child.tell(AnyMessage::new(Crash)).map_err(|_| ActorError::recoverable("tell failed"))?;
-      println!("[guardian] 再起動後に停止指示を送ります");
-      child.tell(AnyMessage::new(StopChild)).map_err(|_| ActorError::recoverable("tell failed"))?;
+    if message.downcast_ref::<Start>().is_some() {
+      if let Some(child) = self.last_child.lock().as_ref() {
+        println!("[guardian] 子アクターにクラッシュを指示します");
+        child.tell(AnyMessage::new(Crash)).map_err(|_| ActorError::recoverable("tell failed"))?;
+        println!("[guardian] 再起動後に停止指示を送ります");
+        child.tell(AnyMessage::new(StopChild)).map_err(|_| ActorError::recoverable("tell failed"))?;
+      }
     }
     Ok(())
   }

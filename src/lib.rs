@@ -21,7 +21,7 @@
 #![deny(clippy::unused_self)]
 #![deny(clippy::unnecessary_wraps)]
 #![deny(clippy::unreachable)]
-#![deny(clippy::empty_enums)]
+#![deny(clippy::empty_enum)]
 #![deny(clippy::no_effect)]
 #![deny(dropping_copy_types)]
 #![cfg_attr(not(test), deny(clippy::unwrap_used))]

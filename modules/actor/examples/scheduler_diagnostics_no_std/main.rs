@@ -77,17 +77,17 @@ impl Actor for GuardianActor {
       self.received += 1;
       #[cfg(not(target_os = "none"))]
       println!("[{:?}] diagnostics payload received: {}", std::thread::current().id(), msg.text);
-    } else if message.downcast_ref::<DumpDiagnostics>().is_some()
-      && let Some(subscription) = self.diagnostics.as_mut()
-    {
-      let events = subscription.drain();
-      #[cfg(not(target_os = "none"))]
-      println!(
-        "[{:?}] drained {} diagnostics events ({} scheduled messages processed)",
-        std::thread::current().id(),
-        events.len(),
-        self.received,
-      );
+    } else if message.downcast_ref::<DumpDiagnostics>().is_some() {
+      if let Some(subscription) = self.diagnostics.as_mut() {
+        let events = subscription.drain();
+        #[cfg(not(target_os = "none"))]
+        println!(
+          "[{:?}] drained {} diagnostics events ({} scheduled messages processed)",
+          std::thread::current().id(),
+          events.len(),
+          self.received,
+        );
+      }
     }
     Ok(())
   }

@@ -56,6 +56,7 @@ impl SerializationSetup {
 
   /// Returns the scopes that require manifests.
   #[must_use]
+  #[allow(clippy::missing_const_for_fn)] // Vec の Deref が const でないため const fn にできない
   pub fn manifest_required_scopes(&self) -> &[SerializationCallScope] {
     &self.scopes
   }
@@ -80,6 +81,7 @@ impl SerializationSetup {
 
   /// Returns metadata recorded while applying adapters.
   #[must_use]
+  #[allow(clippy::missing_const_for_fn)] // Vec の Deref が const でないため const fn にできない
   pub fn adapter_metadata(&self) -> &[String] {
     &self.adapter_metadata
   }

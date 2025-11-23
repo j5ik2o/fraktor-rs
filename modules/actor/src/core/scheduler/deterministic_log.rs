@@ -18,6 +18,7 @@ impl DeterministicLog {
     }
   }
 
+  #[allow(clippy::missing_const_for_fn)] // Vec の Deref が const でないため const fn にできない
   pub(crate) fn entries(&self) -> &[DeterministicEvent] {
     &self.entries
   }

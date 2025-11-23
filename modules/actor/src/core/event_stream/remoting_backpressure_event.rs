@@ -21,6 +21,7 @@ impl RemotingBackpressureEvent {
 
   /// Returns the authority identifier.
   #[must_use]
+  #[allow(clippy::missing_const_for_fn)] // String の Deref が const でないため const fn にできない
   pub fn authority(&self) -> &str {
     &self.authority
   }
