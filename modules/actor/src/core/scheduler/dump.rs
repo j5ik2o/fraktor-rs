@@ -48,12 +48,14 @@ impl SchedulerDump {
 
   /// Returns pending jobs recorded in the dump.
   #[must_use]
+  #[allow(clippy::missing_const_for_fn)] // Vec の Deref が const でないため const fn にできない
   pub fn jobs(&self) -> &[SchedulerDumpJob] {
     &self.jobs
   }
 
   /// Returns warnings accumulated up to the dump.
   #[must_use]
+  #[allow(clippy::missing_const_for_fn)] // Vec の Deref が const でないため const fn にできない
   pub fn warnings(&self) -> &[SchedulerWarning] {
     &self.warnings
   }

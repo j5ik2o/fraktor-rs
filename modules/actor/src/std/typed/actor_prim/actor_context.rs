@@ -135,7 +135,7 @@ where
   }
 }
 
-impl<'a, M> DerefMut for TypedActorContext<'a, M>
+impl<M> DerefMut for TypedActorContext<'_, M>
 where
   M: Send + Sync + 'static,
 {

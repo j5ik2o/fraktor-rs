@@ -30,12 +30,14 @@ impl PathSegment {
 
   /// Returns the segment as `&str`.
   #[must_use]
+  #[allow(clippy::missing_const_for_fn)] // String の Deref が const でないため const fn にできない
   pub fn as_str(&self) -> &str {
     &self.raw
   }
 
   /// Returns the percent-decoded representation of the segment.
   #[must_use]
+  #[allow(clippy::missing_const_for_fn)] // String の Deref が const でないため const fn にできない
   pub fn decoded(&self) -> &str {
     &self.decoded
   }

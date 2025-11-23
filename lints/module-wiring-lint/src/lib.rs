@@ -8,7 +8,6 @@ extern crate rustc_span;
 use rustc_data_structures::fx::FxHashMap;
 use rustc_hir::{
   self as hir,
-  attrs::AttributeKind,
   def_id::{DefId, LocalModDefId},
   Item,
   ItemKind,
@@ -16,7 +15,7 @@ use rustc_hir::{
 };
 use rustc_lint::{LateContext, LateLintPass, LintContext};
 use rustc_middle::ty::Visibility;
-use rustc_span::{symbol::Symbol, BytePos, Span};
+use rustc_span::{sym, symbol::Symbol, BytePos, Span};
 
 dylint_linting::impl_late_lint! {
   pub NO_PARENT_REEXPORT,
@@ -39,7 +38,7 @@ impl<'tcx> LateLintPass<'tcx> for NoParentReexport {
   fn check_item(&mut self, cx: &LateContext<'tcx>, item: &Item<'tcx>) {
     match &item.kind {
       | ItemKind::Use(path, kind) => self.evaluate_use(cx, item, path, *kind),
-      | ItemKind::Mod(ident, _) => self.evaluate_mod(cx, item, ident.name),
+      | ItemKind::Mod(_) => self.evaluate_mod(cx, item, item.ident.name),
       | _ => {}
     }
   }
@@ -51,10 +50,10 @@ impl NoParentReexport {
       return;
     }
 
-    let attrs = cx.tcx.hir_attrs(item.hir_id());
+    let attrs = cx.tcx.hir().attrs(item.hir_id());
     for attr in attrs {
-      if let rustc_hir::Attribute::Parsed(AttributeKind::Path(_, span)) = attr {
-        self.emit_path_attribute_violation(cx, *span);
+      if attr.has_name(sym::path) {
+        self.emit_path_attribute_violation(cx, attr.span);
         return;
       }
     }
@@ -117,7 +116,7 @@ impl NoParentReexport {
     }
 
     let binding_ident = match kind {
-      | UseKind::Single(ident) => Some(ident.name),
+      | UseKind::Single => Some(item.ident.name),
       | UseKind::Glob => None,
       | UseKind::ListStem => {
         return;
@@ -138,8 +137,8 @@ impl NoParentReexport {
       return;
     }
 
-    if let (Some(last_segment), Some(binding_name)) = (path.segments.last(), binding_ident) {
-      if binding_name != last_segment.ident.name {
+    if let (Some(binding_name), Some(original_name)) = (binding_ident, path.segments.last().map(|seg| seg.ident.name)) {
+      if binding_name != original_name {
         self.emit_violation(
           cx,
           item.span,
@@ -178,8 +177,8 @@ impl NoParentReexport {
       let def_id = item_id.owner_id.def_id;
       let node = cx.tcx.hir_node_by_def_id(def_id);
       let item = node.expect_item();
-      if let ItemKind::Mod(ident, _) = item.kind {
-        if ident.name == target {
+      if let ItemKind::Mod(_) = item.kind {
+        if item.ident.name == target {
           return Some(LocalModDefId::new_unchecked(def_id));
         }
       }
@@ -198,7 +197,7 @@ impl NoParentReexport {
       let def_id = item_id.owner_id.def_id;
       let node = cx.tcx.hir_node_by_def_id(def_id);
       let item = node.expect_item();
-      if matches!(item.kind, ItemKind::Mod(_, _)) {
+      if matches!(item.kind, ItemKind::Mod(_)) {
         is_leaf = false;
         break;
       }

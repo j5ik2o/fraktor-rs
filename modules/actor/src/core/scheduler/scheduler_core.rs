@@ -137,6 +137,7 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
 
   /// Returns recorded scheduler warnings.
   #[must_use]
+  #[allow(clippy::missing_const_for_fn)] // Vec の Deref が const でないため const fn にできない
   pub fn warnings(&self) -> &[SchedulerWarning] {
     &self.warnings
   }

@@ -37,6 +37,7 @@ impl SerializedMessage {
 
   /// Returns the raw byte payload.
   #[must_use]
+  #[allow(clippy::missing_const_for_fn)] // Vec の Deref が const でないため const fn にできない
   pub fn bytes(&self) -> &[u8] {
     &self.bytes
   }

@@ -41,7 +41,9 @@ impl<TB: RuntimeToolbox> ActorRefGeneric<TB> {
     Self::from_parts(pid, sender, None)
   }
 
-  pub(crate) fn with_system<T>(pid: Pid, sender: ArcShared<T>, system: ArcShared<SystemStateGeneric<TB>>) -> Self
+  /// Creates an actor reference backed by the given sender and system state (path-aware).
+  #[must_use]
+  pub fn with_system<T>(pid: Pid, sender: ArcShared<T>, system: ArcShared<SystemStateGeneric<TB>>) -> Self
   where
     T: ActorRefSender<TB> + 'static, {
     Self::from_parts(pid, sender, Some(system))
@@ -64,6 +66,12 @@ impl<TB: RuntimeToolbox> ActorRefGeneric<TB> {
   #[must_use]
   pub fn path(&self) -> Option<ActorPath> {
     self.system.as_ref().and_then(|system| system.actor_path(&self.pid))
+  }
+
+  /// Returns the canonical actor path including authority and UID when available.
+  #[must_use]
+  pub fn canonical_path(&self) -> Option<ActorPath> {
+    self.system.as_ref().and_then(|system| system.canonical_actor_path(&self.pid))
   }
 
   /// Sends a message to the referenced actor.

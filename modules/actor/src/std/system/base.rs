@@ -5,13 +5,13 @@ use fraktor_utils_rs::{core::sync::ArcShared, std::runtime_toolbox::StdToolbox};
 pub use crate::std::dispatcher::{DispatchExecutor, DispatchShared, Dispatcher, DispatcherConfig};
 use crate::{
   core::{
-    actor_prim::Pid,
+    actor_prim::{Pid, actor_path::ActorPath},
     event_stream::{EventStreamSubscriber as CoreEventStreamSubscriber, TickDriverSnapshot},
     logging::LogLevel,
     scheduler::TickDriverConfig,
     spawn::SpawnError,
     system::{
-      ActorSystemGeneric as CoreActorSystemGeneric, ExtendedActorSystemGeneric,
+      ActorRefResolveError, ActorSystemGeneric as CoreActorSystemGeneric, ExtendedActorSystemGeneric,
       SystemStateGeneric as CoreSystemStateGeneric,
     },
   },
@@ -166,6 +166,15 @@ impl ActorSystem {
   #[must_use]
   pub fn when_terminated(&self) -> ArcShared<ActorFuture<()>> {
     self.inner.when_terminated()
+  }
+
+  /// Resolves an actor reference for the provided canonical or logical path.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`ActorRefResolveError`] when the path cannot be resolved.
+  pub fn resolve_actor_ref(&self, path: ActorPath) -> Result<ActorRef, ActorRefResolveError> {
+    self.inner.resolve_actor_ref(path)
   }
 }
 

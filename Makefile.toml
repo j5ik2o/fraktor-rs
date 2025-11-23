@@ -3,14 +3,23 @@ description = "Format source code"
 workspace = false
 install_script = ['''
 #!/usr/bin/env bash
-rustup which rustfmt --toolchain nightly
-if [ $? -ne 0 ]; then
-  rustup install nightly
+set -euo pipefail
+CHANNEL=$(awk -F'"' '/^\s*channel\s*=/ {print $2; exit}' rust-toolchain.toml)
+if [ -z "${CHANNEL}" ]; then
+  CHANNEL=nightly
+fi
+if ! rustup which rustfmt --toolchain "${CHANNEL}" >/dev/null 2>&1; then
+  rustup install "${CHANNEL}"
 fi
 ''']
 script = '''
 #!/usr/bin/env bash
-cargo +nightly fmt
+set -euo pipefail
+CHANNEL=$(awk -F'"' '/^\s*channel\s*=/ {print $2; exit}' rust-toolchain.toml)
+if [ -z "${CHANNEL}" ]; then
+  CHANNEL=nightly
+fi
+cargo +"${CHANNEL}" fmt
 '''
 
 [tasks.sort-dependencies]

@@ -36,6 +36,7 @@ impl LifecycleEvent {
 
   /// Returns the logical actor name.
   #[must_use]
+  #[allow(clippy::missing_const_for_fn)] // String の Deref が const でないため const fn にできない
   pub fn name(&self) -> &str {
     &self.name
   }

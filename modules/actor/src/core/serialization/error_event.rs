@@ -45,6 +45,7 @@ impl SerializationErrorEvent {
 
   /// Returns the failing type name.
   #[must_use]
+  #[allow(clippy::missing_const_for_fn)] // String の Deref が const でないため const fn にできない
   pub fn type_name(&self) -> &str {
     &self.type_name
   }

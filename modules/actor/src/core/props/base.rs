@@ -87,6 +87,7 @@ impl<TB: RuntimeToolbox + 'static> PropsGeneric<TB> {
 
   /// Returns the registered middleware identifiers.
   #[must_use]
+  #[allow(clippy::missing_const_for_fn)] // Vec の Deref が const でないため const fn にできない
   pub fn middleware(&self) -> &[String] {
     &self.middleware
   }

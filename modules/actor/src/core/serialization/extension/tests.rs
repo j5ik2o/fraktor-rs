@@ -18,11 +18,13 @@ use portable_atomic::{AtomicUsize, Ordering};
 use super::*;
 use crate::core::{
   actor_prim::{
-    Pid,
+    Actor, ActorCell, ActorContextGeneric, Pid,
     actor_ref::{ActorRefGeneric, NullSender},
   },
   dead_letter::DeadLetterReason,
   event_stream::{EventStreamEvent, EventStreamSubscriber},
+  messaging::AnyMessageViewGeneric,
+  props::Props,
   serialization::{
     builtin, call_scope::SerializationCallScope, error::SerializationError, error_event::SerializationErrorEvent,
     not_serializable_error::NotSerializableError, serialization_registry::SerializationRegistryGeneric,
@@ -30,7 +32,7 @@ use crate::core::{
     serializer_id::SerializerId, string_manifest_serializer::SerializerWithStringManifest,
     transport_information::TransportInformation,
   },
-  system::ActorSystemGeneric,
+  system::{ActorSystemConfig, ActorSystemGeneric, RemotingConfig},
 };
 
 impl<TB: RuntimeToolbox + 'static> SerializationExtensionGeneric<TB> {
@@ -143,6 +145,84 @@ fn serialized_actor_path_prefers_transport_address() {
   let info = TransportInformation::new(Some("fraktor://sys@host:2552".into()));
   let path = extension.with_transport_information(info, || extension.serialized_actor_path(&actor_ref)).expect("path");
   assert!(path.starts_with("fraktor://sys@host:2552"));
+}
+
+struct NoopActor;
+
+impl Actor for NoopActor {
+  fn receive(
+    &mut self,
+    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
+    _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
+  ) -> Result<(), crate::core::error::ActorError> {
+    Ok(())
+  }
+}
+
+fn build_system_with_remoting(remoting: Option<RemotingConfig>, system_name: &str) -> ActorSystemGeneric<NoStdToolbox> {
+  let state = ArcShared::new(crate::core::system::SystemState::new());
+  let mut config = ActorSystemConfig::default().with_system_name(system_name.to_string());
+  if let Some(remoting) = remoting {
+    config = config.with_remoting_config(remoting);
+  }
+  state.apply_actor_system_config(&config);
+  ActorSystemGeneric::from_state(state)
+}
+
+fn build_extension_with_system(
+  system: &ActorSystemGeneric<NoStdToolbox>,
+) -> SerializationExtensionGeneric<NoStdToolbox> {
+  let serializer_id = SerializerId::try_from(700).expect("id");
+  let serializer: ArcShared<dyn Serializer> = ArcShared::new(TestSerializer::new(serializer_id));
+  let builder = crate::core::serialization::builder::SerializationSetupBuilder::new()
+    .register_serializer("test", serializer_id, serializer)
+    .expect("register")
+    .set_fallback("test")
+    .expect("fallback")
+    .bind::<TestPayload>("test")
+    .expect("bind");
+  let setup = builder.build().expect("build");
+  SerializationExtensionGeneric::new(system, setup)
+}
+
+fn build_actor_ref_with_path(system: &ActorSystemGeneric<NoStdToolbox>) -> ActorRefGeneric<NoStdToolbox> {
+  let props = Props::from_fn(|| NoopActor);
+  let state = system.state();
+  let root_pid = state.allocate_pid();
+  let root = ActorCell::create(state.clone(), root_pid, None, "root".to_string(), &props).expect("root");
+  state.register_cell(root);
+
+  let child_pid = state.allocate_pid();
+  let child =
+    ActorCell::create(state.clone(), child_pid, Some(root_pid), "worker".to_string(), &props).expect("worker");
+  state.register_cell(child.clone());
+  child.actor_ref()
+}
+
+#[test]
+fn serialized_actor_path_uses_canonical_when_transport_absent() {
+  let remoting = RemotingConfig::default().with_canonical_host("example.com").with_canonical_port(2552);
+  let system = build_system_with_remoting(Some(remoting), "serialization-test");
+  let actor_ref = build_actor_ref_with_path(&system);
+  let extension = build_extension_with_system(&system);
+
+  let path = extension.serialized_actor_path(&actor_ref).expect("path");
+  assert!(path.starts_with("fraktor.tcp://serialization-test@example.com:2552"));
+  assert!(path.ends_with("/user/worker"));
+}
+
+#[test]
+fn serialized_actor_path_falls_back_to_local_without_complete_canonical() {
+  let remoting = RemotingConfig::default().with_canonical_host("example.com");
+  let system = build_system_with_remoting(Some(remoting), "serialization-test");
+  let actor_ref = build_actor_ref_with_path(&system);
+  let extension = build_extension_with_system(&system);
+
+  let error = extension.serialized_actor_path(&actor_ref).expect_err("should fail");
+  assert!(matches!(error, SerializationError::NotSerializable(_)));
+
+  let dead_letters = system.state().dead_letters();
+  assert_eq!(dead_letters.len(), 1);
 }
 
 #[test]

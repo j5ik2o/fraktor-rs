@@ -19,6 +19,7 @@ impl<E> WaitShared<E> {
     Self { node }
   }
 
+  #[allow(clippy::missing_const_for_fn)] // ArcShared の Deref が const でないため const fn 化できない
   fn node(&self) -> &WaitNode<E> {
     &self.node
   }

@@ -19,6 +19,7 @@ impl ActorErrorReason {
 
   /// Returns the underlying message as a string slice.
   #[must_use]
+  #[allow(clippy::missing_const_for_fn)] // Cow<str> の Deref が const でないため const fn にできない
   pub fn as_str(&self) -> &str {
     &self.0
   }

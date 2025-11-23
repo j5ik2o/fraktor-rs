@@ -99,6 +99,7 @@ where
 
   /// Returns the system name.
   #[must_use]
+  #[allow(clippy::missing_const_for_fn)] // String の Deref が const でないため const fn にできない
   pub fn system_name(&self) -> &str {
     &self.system_name
   }

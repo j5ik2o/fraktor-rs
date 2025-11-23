@@ -1,3 +1,4 @@
+#![feature(let_chains)]
 #![deny(missing_docs)]
 #![deny(unsafe_op_in_unsafe_fn)]
 #![cfg_attr(all(not(test), not(feature = "std")), no_std)]

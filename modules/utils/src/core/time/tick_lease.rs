@@ -11,7 +11,7 @@ pub struct TickLease<'a> {
   _scope: PhantomData<&'a TickState>,
 }
 
-impl<'a> TickLease<'a> {
+impl TickLease<'_> {
   pub(crate) const fn new(state: ArcShared<TickState>) -> Self {
     Self { state, _scope: PhantomData }
   }

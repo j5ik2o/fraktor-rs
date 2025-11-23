@@ -20,6 +20,7 @@ pub struct TypedSchedulerGuard<'a, TB: RuntimeToolbox + 'static> {
 
 impl<'a, TB: RuntimeToolbox + 'static> TypedSchedulerGuard<'a, TB> {
   /// Provides a typed scheduler facade scoped to the current lock.
+  #[allow(clippy::missing_const_for_fn)] // ロック取得が必要なため const fn にできない
   pub fn scheduler(&'a mut self) -> TypedScheduler<'a, TB> {
     TypedScheduler::new(&mut self.guard)
   }
@@ -107,7 +108,7 @@ impl<'a, TB: RuntimeToolbox + 'static> TypedSchedulerGuard<'a, TB> {
   }
 }
 
-impl<'a, TB: RuntimeToolbox + 'static> Deref for TypedSchedulerGuard<'a, TB> {
+impl<TB: RuntimeToolbox + 'static> Deref for TypedSchedulerGuard<'_, TB> {
   type Target = Scheduler<TB>;
 
   fn deref(&self) -> &Self::Target {
@@ -115,7 +116,7 @@ impl<'a, TB: RuntimeToolbox + 'static> Deref for TypedSchedulerGuard<'a, TB> {
   }
 }
 
-impl<'a, TB: RuntimeToolbox + 'static> DerefMut for TypedSchedulerGuard<'a, TB> {
+impl<TB: RuntimeToolbox + 'static> DerefMut for TypedSchedulerGuard<'_, TB> {
   fn deref_mut(&mut self) -> &mut Self::Target {
     &mut self.guard
   }

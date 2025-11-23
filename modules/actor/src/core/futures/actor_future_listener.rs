@@ -27,7 +27,7 @@ where
   }
 }
 
-impl<'a, T, TB> Future for ActorFutureListener<'a, T, TB>
+impl<T, TB> Future for ActorFutureListener<'_, T, TB>
 where
   T: Send + 'static,
   TB: RuntimeToolbox,
@@ -44,7 +44,7 @@ where
   }
 }
 
-impl<'a, T, TB> Unpin for ActorFutureListener<'a, T, TB>
+impl<T, TB> Unpin for ActorFutureListener<'_, T, TB>
 where
   T: Send + 'static,
   TB: RuntimeToolbox,

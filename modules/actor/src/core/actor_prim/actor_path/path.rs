@@ -98,6 +98,7 @@ impl ActorPath {
 
   /// Returns validated segments.
   #[must_use]
+  #[allow(clippy::missing_const_for_fn)] // Vec の Deref が const でないため const fn にできない
   pub fn segments(&self) -> &[PathSegment] {
     &self.segments
   }

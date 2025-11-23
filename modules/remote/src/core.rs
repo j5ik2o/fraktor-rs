@@ -1,5 +1,6 @@
 //! Core remoting primitives shared between std and no_std configurations.
 
+mod actor_ref_field_normalizer;
 mod association_state;
 mod deferred_envelope;
 mod endpoint_manager;

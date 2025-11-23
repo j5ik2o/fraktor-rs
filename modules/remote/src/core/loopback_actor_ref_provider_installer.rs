@@ -53,7 +53,7 @@ impl<TB: RuntimeToolbox + 'static> ActorRefProviderInstaller<TB> for LoopbackAct
     let provider = LoopbackActorRefProviderGeneric::from_components(system.clone(), writer, control, authority_manager)
       .map_err(|error| ActorSystemBuildError::Configuration(format!("{error}")))?;
     let provider = ArcShared::new(provider);
-    extended.register_actor_ref_provider(provider.clone());
+    extended.register_actor_ref_provider(&provider);
     extended.register_remote_watch_hook(provider.clone());
 
     // Always register loopback routing for LoopbackActorRefProvider

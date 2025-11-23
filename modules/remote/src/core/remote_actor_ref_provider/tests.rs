@@ -1,13 +1,14 @@
 #![cfg(any(test, feature = "test-support"))]
 
 use alloc::string::String;
+use core::time::Duration;
 
 use fraktor_actor_rs::core::{
   actor_prim::{
     Actor, ActorContextGeneric, Pid,
     actor_path::{ActorPath, ActorPathParts, GuardianKind},
   },
-  error::ActorError,
+  error::{ActorError, SendError},
   messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
   props::PropsGeneric,
   scheduler::{ManualTestDriver, TickDriverConfig},
@@ -132,4 +133,15 @@ fn remote_watch_hook_tracks_watcher_lifecycle() {
   assert!(RemoteWatchHook::handle_unwatch(&provider, remote.pid(), watcher));
   let watchers = provider.remote_watchers_for_test(remote.pid()).expect("entry");
   assert!(watchers.is_empty());
+}
+
+#[test]
+fn sender_rejects_quarantined_authority() {
+  let system = build_system();
+  let provider = provider(&system);
+  let remote = provider.actor_ref(remote_path()).expect("actor ref");
+
+  system.state().remote_authority_set_quarantine("127.0.0.1:4100", Some(Duration::from_secs(10)));
+  let result = remote.tell(AnyMessageGeneric::new("hello".to_string()));
+  assert!(matches!(result, Err(SendError::Closed(_))));
 }
