@@ -38,7 +38,7 @@ async fn main() -> Result<()> {
     "tokio-tcp-receiver",
     RECEIVER_PORT,
     Props::from_fn(ReceiverGuardian::new).with_name(RECEIVER_GUARDIAN_NAME),
-    receiver_transport_config(),
+    RemotingExtensionConfig::default().with_transport_scheme("fraktor.tcp"),
   )?;
   println!(
     "receiver user guardian path: {}",
@@ -48,7 +48,7 @@ async fn main() -> Result<()> {
     "tokio-tcp-sender",
     SENDER_PORT,
     Props::from_fn(SenderGuardian::new).with_name(SENDER_GUARDIAN_NAME),
-    sender_transport_config(),
+    RemotingExtensionConfig::default().with_transport_scheme("fraktor.tcp"),
   )?;
   println!(
     "sender user guardian path: {}",
@@ -76,7 +76,6 @@ fn build_tokio_tcp_system(
   guardian: Props,
   transport_config: RemotingExtensionConfig,
 ) -> Result<ActorSystem> {
-  // TokioExecutorをデフォルトdispatcherとして設定
   let tokio_handle = tokio::runtime::Handle::current();
   let tokio_executor = TokioExecutor::new(tokio_handle);
   let executor_adapter = DispatchExecutorAdapter::new(ArcShared::new(tokio_executor));
@@ -85,7 +84,7 @@ fn build_tokio_tcp_system(
   let system_config = ActorSystemConfig::default()
     .with_system_name(system_name.to_string())
     .with_tick_driver(TickDriverConfig::tokio_quickstart())
-    .with_default_dispatcher(default_dispatcher) // デフォルトdispatcherを設定
+    .with_default_dispatcher(default_dispatcher)
     .with_actor_ref_provider_installer(TokioActorRefProviderInstaller::from_config(TokioTransportConfig::default()))
     .with_remoting_config(RemotingConfig::default().with_canonical_host(HOST).with_canonical_port(canonical_port))
     .with_extension_installers(
@@ -97,16 +96,6 @@ fn build_tokio_tcp_system(
   let id = RemotingExtensionId::<StdToolbox>::new(transport_config);
   let _ = system.extended().extension(&id).expect("extension registered");
   Ok(system)
-}
-
-fn receiver_transport_config() -> RemotingExtensionConfig {
-  // canonical_host/port は ActorSystemConfig の RemotingConfig から自動的に取得される
-  RemotingExtensionConfig::default().with_transport_scheme("fraktor.tcp")
-}
-
-fn sender_transport_config() -> RemotingExtensionConfig {
-  // canonical_host/port は ActorSystemConfig の RemotingConfig から自動的に取得される
-  RemotingExtensionConfig::default().with_transport_scheme("fraktor.tcp")
 }
 
 struct SenderGuardian;
