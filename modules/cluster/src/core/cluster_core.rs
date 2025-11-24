@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::{string::String, vec::Vec};
+use alloc::{format, string::String, vec::Vec};
 use alloc::string::ToString;
 
 use fraktor_actor_rs::core::event_stream::{EventStreamEvent, EventStreamGeneric};
@@ -16,7 +16,7 @@ use fraktor_utils_rs::core::{
 
 use crate::core::{
   ActivatedKind, ClusterError, ClusterEvent, ClusterExtensionConfig, ClusterProvider, IdentityLookup, IdentitySetupError,
-  KindRegistry, StartupMode,
+  KindRegistry, StartupMode, ClusterPubSub, Gossiper,
 };
 
 /// Aggregates configuration and shared dependencies for cluster runtime flows.
@@ -25,6 +25,8 @@ pub struct ClusterCore<TB: RuntimeToolbox + 'static> {
   provider:            ArcShared<dyn ClusterProvider>,
   block_list_provider: ArcShared<dyn BlockListProvider>,
   event_stream:        ArcShared<EventStreamGeneric<TB>>,
+  gossiper:            ArcShared<dyn Gossiper>,
+  pubsub:              ArcShared<dyn ClusterPubSub>,
   startup_state:       ToolboxMutex<ClusterStartupState, TB>,
   metrics_enabled:     bool,
   kind_registry:       KindRegistry,
@@ -41,6 +43,8 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
     provider: ArcShared<dyn ClusterProvider>,
     block_list_provider: ArcShared<dyn BlockListProvider>,
     event_stream: ArcShared<EventStreamGeneric<TB>>,
+    gossiper: ArcShared<dyn Gossiper>,
+    pubsub: ArcShared<dyn ClusterPubSub>,
     kind_registry: KindRegistry,
     identity_lookup: ArcShared<dyn IdentityLookup>,
   ) -> Self {
@@ -53,6 +57,8 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
       provider,
       block_list_provider,
       event_stream,
+      gossiper,
+      pubsub,
       startup_state: <TB::MutexFamily as SyncMutexFamily>::create(startup_state),
       metrics_enabled,
       kind_registry,
@@ -125,6 +131,21 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
   /// Starts the cluster in member mode.
   pub fn start_member(&mut self) -> Result<(), ClusterError> {
     let address = self.startup_address();
+    self.pubsub.start().map_err(ClusterError::from).map_err(|error| {
+      let reason = format!("pubsub: {error:?}");
+      self.publish_cluster_event(ClusterEvent::StartupFailed { address: address.clone(), mode: StartupMode::Member, reason });
+      error
+    })?;
+
+    self.gossiper.start().map_err(|reason| {
+      self.publish_cluster_event(ClusterEvent::StartupFailed {
+        address: address.clone(),
+        mode:    StartupMode::Member,
+        reason:  reason.to_string(),
+      });
+      ClusterError::Gossip(reason)
+    })?;
+
     match self.provider.start_member() {
       | Ok(()) => {
         self.mode = Some(StartupMode::Member);
@@ -142,6 +163,12 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
   /// Starts the cluster in client mode.
   pub fn start_client(&mut self) -> Result<(), ClusterError> {
     let address = self.startup_address();
+    self.pubsub.start().map_err(ClusterError::from).map_err(|error| {
+      let reason = format!("pubsub: {error:?}");
+      self.publish_cluster_event(ClusterEvent::StartupFailed { address: address.clone(), mode: StartupMode::Client, reason });
+      error
+    })?;
+
     match self.provider.start_client() {
       | Ok(()) => {
         self.mode = Some(StartupMode::Client);
@@ -160,6 +187,21 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
   pub fn shutdown(&mut self, graceful: bool) -> Result<(), ClusterError> {
     let address = self.startup_address();
     let mode = self.mode.unwrap_or(StartupMode::Member);
+    self.pubsub.stop().map_err(ClusterError::from).map_err(|error| {
+      let reason = format!("pubsub: {error:?}");
+      self.publish_cluster_event(ClusterEvent::ShutdownFailed { address: address.clone(), mode, reason });
+      error
+    })?;
+
+    self.gossiper.stop().map_err(|reason| {
+      self.publish_cluster_event(ClusterEvent::ShutdownFailed {
+        address: address.clone(),
+        mode,
+        reason: reason.to_string(),
+      });
+      ClusterError::Gossip(reason)
+    })?;
+
     match self.provider.shutdown(graceful) {
       | Ok(()) => {
         self.virtual_actor_count = 0;

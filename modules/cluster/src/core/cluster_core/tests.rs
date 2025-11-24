@@ -1,10 +1,10 @@
 use alloc::{string::String, vec, vec::Vec};
 
 use super::*;
-use crate::core::failing_provider::FailingProvider;
+use crate::core::{failing_provider::FailingProvider, ClusterPubSub, Gossiper};
 use crate::core::{
   ActivatedKind, ClusterEvent, ClusterProviderError, IdentityLookup, IdentitySetupError, KindRegistry, StartupMode,
-  TOPIC_ACTOR_KIND,
+  TOPIC_ACTOR_KIND, pub_sub_error::PubSubError,
 };
 use fraktor_actor_rs::core::event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber};
 use fraktor_remote_rs::core::BlockListProvider;
@@ -91,6 +91,124 @@ impl IdentityLookup for StubIdentityLookup {
 }
 
 #[derive(Clone)]
+struct StubGossiper {
+  started: ArcShared<NoStdMutex<bool>>,
+  stopped: ArcShared<NoStdMutex<bool>>,
+  fail_start: bool,
+  fail_stop:  bool,
+}
+
+impl StubGossiper {
+  fn new() -> Self {
+    Self {
+      started: ArcShared::new(NoStdMutex::new(false)),
+      stopped: ArcShared::new(NoStdMutex::new(false)),
+      fail_start: false,
+      fail_stop: false,
+    }
+  }
+
+  fn failing_start() -> Self {
+    Self { fail_start: true, ..Self::new() }
+  }
+
+  fn failing_stop() -> Self {
+    Self { fail_stop: true, ..Self::new() }
+  }
+
+  fn started(&self) -> bool {
+    *self.started.lock()
+  }
+
+  fn stopped(&self) -> bool {
+    *self.stopped.lock()
+  }
+}
+
+impl Gossiper for StubGossiper {
+  fn start(&self) -> Result<(), &'static str> {
+    if self.fail_start {
+      return Err("gossip-start");
+    }
+    *self.started.lock() = true;
+    Ok(())
+  }
+
+  fn stop(&self) -> Result<(), &'static str> {
+    if self.fail_stop {
+      return Err("gossip-stop");
+    }
+    *self.stopped.lock() = true;
+    Ok(())
+  }
+}
+
+impl Default for StubGossiper {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
+#[derive(Clone)]
+struct StubPubSub {
+  started: ArcShared<NoStdMutex<bool>>,
+  stopped: ArcShared<NoStdMutex<bool>>,
+  fail_start: bool,
+  fail_stop:  bool,
+}
+
+impl StubPubSub {
+  fn new() -> Self {
+    Self {
+      started: ArcShared::new(NoStdMutex::new(false)),
+      stopped: ArcShared::new(NoStdMutex::new(false)),
+      fail_start: false,
+      fail_stop: false,
+    }
+  }
+
+  fn failing_start() -> Self {
+    Self { fail_start: true, ..Self::new() }
+  }
+
+  fn failing_stop() -> Self {
+    Self { fail_stop: true, ..Self::new() }
+  }
+
+  fn started(&self) -> bool {
+    *self.started.lock()
+  }
+
+  fn stopped(&self) -> bool {
+    *self.stopped.lock()
+  }
+}
+
+impl ClusterPubSub for StubPubSub {
+  fn start(&self) -> Result<(), PubSubError> {
+    if self.fail_start {
+      return Err(PubSubError::TopicAlreadyExists { topic: String::from("pubsub-error") });
+    }
+    *self.started.lock() = true;
+    Ok(())
+  }
+
+  fn stop(&self) -> Result<(), PubSubError> {
+    if self.fail_stop {
+      return Err(PubSubError::TopicNotFound { topic: String::from("pubsub-error") });
+    }
+    *self.stopped.lock() = true;
+    Ok(())
+  }
+}
+
+impl Default for StubPubSub {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
+#[derive(Clone)]
 struct RecordingClusterEvents {
   events: ArcShared<NoStdMutex<Vec<ClusterEvent>>>,
 }
@@ -123,8 +241,19 @@ fn build_core_with_config(config: ClusterExtensionConfig) -> ClusterCore<NoStdTo
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
   let identity_lookup: ArcShared<dyn IdentityLookup> = ArcShared::new(StubIdentityLookup::new());
+  let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
+  let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
 
-  ClusterCore::new(config, provider, block_list_provider, event_stream, kind_registry, identity_lookup)
+  ClusterCore::new(
+    config,
+    provider,
+    block_list_provider,
+    event_stream,
+    gossiper,
+    pubsub,
+    kind_registry,
+    identity_lookup,
+  )
 }
 
 #[test]
@@ -138,12 +267,16 @@ fn new_core_stores_dependencies_and_startup_params() {
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
   let identity_lookup: ArcShared<dyn IdentityLookup> = ArcShared::new(StubIdentityLookup::new());
+  let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
+  let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
 
   let core = ClusterCore::new(
     config.clone(),
     provider.clone(),
     block_list_provider.clone(),
     event_stream.clone(),
+    gossiper,
+    pubsub,
     kind_registry,
     identity_lookup,
   );
@@ -181,11 +314,15 @@ fn setup_member_kinds_registers_and_updates_virtual_actor_count() {
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
   let identity_lookup = ArcShared::new(StubIdentityLookup::new());
+  let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
+  let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
   let mut core = ClusterCore::new(
     ClusterExtensionConfig::new(),
     provider,
     block_list_provider,
     event_stream,
+    gossiper,
+    pubsub,
     kind_registry,
     identity_lookup.clone(),
   );
@@ -211,11 +348,15 @@ fn setup_client_kinds_registers_and_updates_virtual_actor_count() {
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
   let identity_lookup = ArcShared::new(StubIdentityLookup::new());
+  let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
+  let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
   let mut core = ClusterCore::new(
     ClusterExtensionConfig::new(),
     provider,
     block_list_provider,
     event_stream,
+    gossiper,
+    pubsub,
     kind_registry,
     identity_lookup.clone(),
   );
@@ -237,11 +378,15 @@ fn start_member_emits_startup_event_and_sets_mode() {
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
   let identity_lookup = ArcShared::new(StubIdentityLookup::new());
+  let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
+  let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
   let mut core = ClusterCore::new(
     ClusterExtensionConfig::new().with_advertised_address("proto://member"),
     provider,
     block_list_provider,
     event_stream.clone(),
+    gossiper,
+    pubsub,
     kind_registry,
     identity_lookup,
   );
@@ -266,11 +411,15 @@ fn start_member_failure_emits_startup_failed() {
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
   let identity_lookup = ArcShared::new(StubIdentityLookup::new());
+  let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
+  let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
   let mut core = ClusterCore::new(
     ClusterExtensionConfig::new().with_advertised_address("proto://member"),
     provider,
     block_list_provider,
     event_stream.clone(),
+    gossiper,
+    pubsub,
     kind_registry,
     identity_lookup,
   );
@@ -296,11 +445,15 @@ fn start_client_emits_startup_event_and_sets_mode() {
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
   let identity_lookup = ArcShared::new(StubIdentityLookup::new());
+  let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
+  let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
   let mut core = ClusterCore::new(
     ClusterExtensionConfig::new().with_advertised_address("proto://client"),
     provider,
     block_list_provider,
     event_stream.clone(),
+    gossiper,
+    pubsub,
     kind_registry,
     identity_lookup,
   );
@@ -325,11 +478,15 @@ fn start_client_failure_emits_startup_failed() {
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
   let identity_lookup = ArcShared::new(StubIdentityLookup::new());
+  let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
+  let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
   let mut core = ClusterCore::new(
     ClusterExtensionConfig::new().with_advertised_address("proto://client"),
     provider,
     block_list_provider,
     event_stream.clone(),
+    gossiper,
+    pubsub,
     kind_registry,
     identity_lookup,
   );
@@ -349,17 +506,114 @@ fn start_client_failure_emits_startup_failed() {
 }
 
 #[test]
+fn start_member_fails_when_gossip_start_fails() {
+  let provider = ArcShared::new(StubProvider::default());
+  let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
+  let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let kind_registry = KindRegistry::new();
+  let identity_lookup = ArcShared::new(StubIdentityLookup::new());
+  let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::failing_start());
+  let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
+  let mut core = ClusterCore::new(
+    ClusterExtensionConfig::new().with_advertised_address("proto://member"),
+    provider,
+    block_list_provider,
+    event_stream.clone(),
+    gossiper,
+    pubsub,
+    kind_registry,
+    identity_lookup,
+  );
+
+  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
+  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
+  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+
+  let result = core.start_member();
+  assert!(result.is_err());
+  let events = subscriber_impl.events();
+  assert!(events.iter().any(|event| matches!(event,
+    ClusterEvent::StartupFailed { address, mode, reason }
+      if address == "proto://member" && *mode == StartupMode::Member && reason == "gossip-start"
+  )));
+}
+
+#[test]
+fn start_member_fails_when_pubsub_start_fails() {
+  let provider = ArcShared::new(StubProvider::default());
+  let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
+  let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let kind_registry = KindRegistry::new();
+  let identity_lookup = ArcShared::new(StubIdentityLookup::new());
+  let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
+  let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::failing_start());
+  let mut core = ClusterCore::new(
+    ClusterExtensionConfig::new().with_advertised_address("proto://member"),
+    provider,
+    block_list_provider,
+    event_stream.clone(),
+    gossiper,
+    pubsub,
+    kind_registry,
+    identity_lookup,
+  );
+
+  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
+  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
+  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+
+  let result = core.start_member();
+  assert!(result.is_err());
+  let events = subscriber_impl.events();
+  assert!(events.iter().any(|event| matches!(event,
+    ClusterEvent::StartupFailed { address, mode, reason }
+      if address == "proto://member" && *mode == StartupMode::Member && reason.contains("pubsub")
+  )));
+}
+
+#[test]
+fn shutdown_stops_pubsub_then_gossip() {
+  let provider = ArcShared::new(StubProvider::default());
+  let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
+  let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let kind_registry = KindRegistry::new();
+  let identity_lookup = ArcShared::new(StubIdentityLookup::new());
+  let gossiper = ArcShared::new(StubGossiper::new());
+  let pubsub = ArcShared::new(StubPubSub::new());
+  let mut core = ClusterCore::new(
+    ClusterExtensionConfig::new().with_advertised_address("proto://member"),
+    provider,
+    block_list_provider,
+    event_stream.clone(),
+    gossiper.clone(),
+    pubsub.clone(),
+    kind_registry,
+    identity_lookup,
+  );
+
+  core.start_member().unwrap();
+  core.shutdown(true).unwrap();
+
+  assert!(pubsub.stopped());
+  assert!(gossiper.stopped());
+}
+
+#[test]
 fn shutdown_resets_virtual_actor_count_and_emits_event() {
   let provider = ArcShared::new(StubProvider::default());
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
   let identity_lookup = ArcShared::new(StubIdentityLookup::new());
+  let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
+  let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
   let mut core = ClusterCore::new(
     ClusterExtensionConfig::new().with_advertised_address("proto://member"),
     provider,
     block_list_provider,
     event_stream.clone(),
+    gossiper,
+    pubsub,
     kind_registry,
     identity_lookup,
   );
@@ -388,11 +642,15 @@ fn shutdown_failure_emits_shutdown_failed() {
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
   let identity_lookup = ArcShared::new(StubIdentityLookup::new());
+  let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
+  let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
   let mut core = ClusterCore::new(
     ClusterExtensionConfig::new().with_advertised_address("proto://member"),
     provider,
     block_list_provider,
     event_stream.clone(),
+    gossiper,
+    pubsub,
     kind_registry,
     identity_lookup,
   );
