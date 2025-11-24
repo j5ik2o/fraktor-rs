@@ -2,6 +2,8 @@
 
 mod cluster_core;
 mod cluster_extension_config;
+mod identity_lookup;
+mod identity_setup_error;
 mod activated_kind;
 mod activation_error;
 mod activation_record;
@@ -53,6 +55,8 @@ mod virtual_actor_registry;
 pub use activated_kind::ActivatedKind;
 pub use cluster_core::ClusterCore;
 pub use cluster_extension_config::ClusterExtensionConfig;
+pub use identity_lookup::IdentityLookup;
+pub use identity_setup_error::IdentitySetupError;
 pub use activation_error::ActivationError;
 pub use activation_record::ActivationRecord;
 pub use cluster_provider::ClusterProvider;

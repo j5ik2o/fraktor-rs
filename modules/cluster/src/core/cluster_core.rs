@@ -3,7 +3,8 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::string::String;
+use alloc::{string::String, vec::Vec};
+use alloc::string::ToString;
 
 use fraktor_actor_rs::core::event_stream::EventStreamGeneric;
 use fraktor_remote_rs::core::BlockListProvider;
@@ -12,7 +13,7 @@ use fraktor_utils_rs::core::{
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 
-use crate::core::{ClusterExtensionConfig, ClusterProvider};
+use crate::core::{ActivatedKind, ClusterExtensionConfig, ClusterProvider, IdentityLookup, IdentitySetupError, KindRegistry};
 
 /// Aggregates configuration and shared dependencies for cluster runtime flows.
 pub struct ClusterCore<TB: RuntimeToolbox + 'static> {
@@ -22,6 +23,9 @@ pub struct ClusterCore<TB: RuntimeToolbox + 'static> {
   event_stream:        ArcShared<EventStreamGeneric<TB>>,
   startup_state:       ToolboxMutex<ClusterStartupState, TB>,
   metrics_enabled:     bool,
+  kind_registry:       KindRegistry,
+  identity_lookup:     ArcShared<dyn IdentityLookup>,
+  virtual_actor_count: i64,
 }
 
 impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
@@ -32,10 +36,13 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
     provider: ArcShared<dyn ClusterProvider>,
     block_list_provider: ArcShared<dyn BlockListProvider>,
     event_stream: ArcShared<EventStreamGeneric<TB>>,
+    kind_registry: KindRegistry,
+    identity_lookup: ArcShared<dyn IdentityLookup>,
   ) -> Self {
     let advertised_address = config.advertised_address().to_string();
     let startup_state = ClusterStartupState { address: advertised_address };
     let metrics_enabled = config.metrics_enabled();
+    let virtual_actor_count = kind_registry.virtual_actor_count();
     Self {
       config,
       provider,
@@ -43,6 +50,9 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
       event_stream,
       startup_state: <TB::MutexFamily as SyncMutexFamily>::create(startup_state),
       metrics_enabled,
+      kind_registry,
+      identity_lookup,
+      virtual_actor_count,
     }
   }
 
@@ -80,6 +90,30 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
   #[must_use]
   pub(crate) fn event_stream(&self) -> &ArcShared<EventStreamGeneric<TB>> {
     &self.event_stream
+  }
+
+  /// Initializes kinds and sets up identity lookup in member mode.
+  pub fn setup_member_kinds(&mut self, kinds: Vec<ActivatedKind>) -> Result<(), IdentitySetupError> {
+    self.kind_registry.register_all(kinds);
+    self.virtual_actor_count = self.kind_registry.virtual_actor_count();
+    let snapshot = self.kind_registry.all();
+    self.identity_lookup.setup_member(&snapshot)?;
+    Ok(())
+  }
+
+  /// Initializes kinds and sets up identity lookup in client mode.
+  pub fn setup_client_kinds(&mut self, kinds: Vec<ActivatedKind>) -> Result<(), IdentitySetupError> {
+    self.kind_registry.register_all(kinds);
+    self.virtual_actor_count = self.kind_registry.virtual_actor_count();
+    let snapshot = self.kind_registry.all();
+    self.identity_lookup.setup_client(&snapshot)?;
+    Ok(())
+  }
+
+  /// Returns the aggregated virtual actor count.
+  #[must_use]
+  pub const fn virtual_actor_count(&self) -> i64 {
+    self.virtual_actor_count
   }
 }
 
