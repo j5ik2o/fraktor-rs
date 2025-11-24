@@ -1,7 +1,6 @@
 //! Consolidated cluster errors.
 
-use crate::core::{ClusterProviderError, IdentitySetupError};
-use crate::core::pub_sub_error::PubSubError;
+use crate::core::{ClusterProviderError, IdentitySetupError, pub_sub_error::PubSubError};
 
 /// Error type returned by cluster lifecycle operations.
 #[derive(Clone, Debug, PartialEq, Eq)]

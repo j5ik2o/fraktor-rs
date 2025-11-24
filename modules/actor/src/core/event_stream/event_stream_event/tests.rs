@@ -95,15 +95,15 @@ fn event_stream_event_mailbox_clone() {
 #[test]
 fn event_stream_event_extension_clone() {
   let payload = AnyMessage::new(String::from("cluster-startup"));
-  let event = EventStreamEvent::<NoStdToolbox>::Extension {
-    name: String::from("cluster"),
-    payload: payload.clone(),
-  };
+  let event =
+    EventStreamEvent::<NoStdToolbox>::Extension { name: String::from("cluster"), payload: payload.clone() };
   let cloned = event.clone();
 
   match (event, cloned) {
-    | (EventStreamEvent::Extension { name: left_name, payload: left_payload },
-       EventStreamEvent::Extension { name: right_name, payload: right_payload }) => {
+    | (
+      EventStreamEvent::Extension { name: left_name, payload: left_payload },
+      EventStreamEvent::Extension { name: right_name, payload: right_payload },
+    ) => {
       assert_eq!(left_name, right_name);
       let left_str = left_payload.payload().downcast_ref::<String>().unwrap();
       let right_str = right_payload.payload().downcast_ref::<String>().unwrap();

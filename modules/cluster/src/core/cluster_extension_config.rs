@@ -15,11 +15,8 @@ pub struct ClusterExtensionConfig {
 impl ClusterExtensionConfig {
   /// Creates a configuration with an empty advertised address and metrics disabled.
   #[must_use]
-  pub fn new() -> Self {
-    Self {
-      advertised_address: String::new(),
-      metrics_enabled:    false,
-    }
+  pub const fn new() -> Self {
+    Self { advertised_address: String::new(), metrics_enabled: false }
   }
 
   /// Overrides the advertised address used in cluster events.
@@ -31,13 +28,14 @@ impl ClusterExtensionConfig {
 
   /// Enables or disables cluster metrics.
   #[must_use]
-  pub fn with_metrics_enabled(mut self, enabled: bool) -> Self {
+  pub const fn with_metrics_enabled(mut self, enabled: bool) -> Self {
     self.metrics_enabled = enabled;
     self
   }
 
   /// Returns the configured advertised address.
   #[must_use]
+  #[allow(clippy::missing_const_for_fn)]
   pub fn advertised_address(&self) -> &str {
     &self.advertised_address
   }

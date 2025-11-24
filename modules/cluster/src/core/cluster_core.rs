@@ -3,11 +3,16 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::{format, string::String, vec::Vec};
-use alloc::string::ToString;
+use alloc::{
+  format,
+  string::{String, ToString},
+  vec::Vec,
+};
 
-use fraktor_actor_rs::core::event_stream::{EventStreamEvent, EventStreamGeneric};
-use fraktor_actor_rs::core::messaging::AnyMessageGeneric;
+use fraktor_actor_rs::core::{
+  event_stream::{EventStreamEvent, EventStreamGeneric},
+  messaging::AnyMessageGeneric,
+};
 use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{
   runtime_toolbox::{RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
@@ -15,13 +20,13 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::core::{
-  ActivatedKind, ClusterError, ClusterEvent, ClusterExtensionConfig, ClusterProvider, IdentityLookup, IdentitySetupError,
-  KindRegistry, StartupMode, ClusterPubSub, Gossiper,
+  ActivatedKind, ClusterError, ClusterEvent, ClusterExtensionConfig, ClusterMetrics, ClusterMetricsSnapshot,
+  ClusterProvider, ClusterPubSub, ClusterTopology, Gossiper, IdentityLookup, IdentitySetupError, KindRegistry,
+  MetricsError, PidCache, StartupMode,
 };
 
 /// Aggregates configuration and shared dependencies for cluster runtime flows.
 pub struct ClusterCore<TB: RuntimeToolbox + 'static> {
-  config:              ClusterExtensionConfig,
   provider:            ArcShared<dyn ClusterProvider>,
   block_list_provider: ArcShared<dyn BlockListProvider>,
   event_stream:        ArcShared<EventStreamGeneric<TB>>,
@@ -33,13 +38,19 @@ pub struct ClusterCore<TB: RuntimeToolbox + 'static> {
   identity_lookup:     ArcShared<dyn IdentityLookup>,
   virtual_actor_count: i64,
   mode:                Option<StartupMode>,
+  metrics:             Option<ClusterMetrics>,
+  blocked_members:     Vec<String>,
+  member_count:        usize,
+  pid_cache:           Option<PidCache>,
+  last_topology_hash:  Option<u64>,
 }
 
 impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
   /// Builds a new cluster core from the provided dependencies.
   #[must_use]
+  #[allow(clippy::too_many_arguments)]
   pub fn new(
-    config: ClusterExtensionConfig,
+    config: &ClusterExtensionConfig,
     provider: ArcShared<dyn ClusterProvider>,
     block_list_provider: ArcShared<dyn BlockListProvider>,
     event_stream: ArcShared<EventStreamGeneric<TB>>,
@@ -52,8 +63,8 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
     let startup_state = ClusterStartupState { address: advertised_address };
     let metrics_enabled = config.metrics_enabled();
     let virtual_actor_count = kind_registry.virtual_actor_count();
+    let metrics: Option<ClusterMetrics> = if metrics_enabled { Some(ClusterMetrics::new()) } else { None };
     Self {
-      config,
       provider,
       block_list_provider,
       event_stream,
@@ -65,6 +76,11 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
       identity_lookup,
       virtual_actor_count,
       mode: None,
+      metrics,
+      blocked_members: Vec::new(),
+      member_count: 0,
+      pid_cache: None,
+      last_topology_hash: None,
     }
   }
 
@@ -80,31 +96,11 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
     self.startup_state.lock().address.clone()
   }
 
-  /// Returns the configuration captured at construction time.
-  #[must_use]
-  pub(crate) fn config(&self) -> &ClusterExtensionConfig {
-    &self.config
-  }
-
-  /// Exposes the injected provider for internal callers.
-  #[must_use]
-  pub(crate) fn provider(&self) -> &ArcShared<dyn ClusterProvider> {
-    &self.provider
-  }
-
-  /// Exposes the injected block list provider for internal callers.
-  #[must_use]
-  pub(crate) fn block_list_provider(&self) -> &ArcShared<dyn BlockListProvider> {
-    &self.block_list_provider
-  }
-
-  /// Exposes the event stream handle.
-  #[must_use]
-  pub(crate) fn event_stream(&self) -> &ArcShared<EventStreamGeneric<TB>> {
-    &self.event_stream
-  }
-
   /// Initializes kinds and sets up identity lookup in member mode.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if identity lookup setup fails.
   pub fn setup_member_kinds(&mut self, kinds: Vec<ActivatedKind>) -> Result<(), IdentitySetupError> {
     self.kind_registry.register_all(kinds);
     self.virtual_actor_count = self.kind_registry.virtual_actor_count();
@@ -114,6 +110,10 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
   }
 
   /// Initializes kinds and sets up identity lookup in client mode.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if identity lookup setup fails.
   pub fn setup_client_kinds(&mut self, kinds: Vec<ActivatedKind>) -> Result<(), IdentitySetupError> {
     self.kind_registry.register_all(kinds);
     self.virtual_actor_count = self.kind_registry.virtual_actor_count();
@@ -128,12 +128,46 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
     self.virtual_actor_count
   }
 
+  /// Returns the cached blocked members retrieved from the provider.
+  #[must_use]
+  #[allow(clippy::missing_const_for_fn)]
+  pub fn blocked_members(&self) -> &[String] {
+    &self.blocked_members
+  }
+
+  /// Installs a PID cache used for topology-driven invalidation (tests/core wiring).
+  pub fn set_pid_cache(&mut self, cache: PidCache) {
+    self.pid_cache = Some(cache);
+  }
+
+  /// Returns collected metrics snapshot if metrics are enabled.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`MetricsError::Disabled`] if metrics collection is not enabled.
+  pub const fn metrics(&self) -> Result<ClusterMetricsSnapshot, MetricsError> {
+    match &self.metrics {
+      | Some(metrics) => Ok(metrics.snapshot()),
+      | None => Err(MetricsError::Disabled),
+    }
+  }
+
   /// Starts the cluster in member mode.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if pub/sub, gossiper, or provider startup fails.
   pub fn start_member(&mut self) -> Result<(), ClusterError> {
     let address = self.startup_address();
+    self.refresh_blocked_members();
+
     self.pubsub.start().map_err(ClusterError::from).map_err(|error| {
       let reason = format!("pubsub: {error:?}");
-      self.publish_cluster_event(ClusterEvent::StartupFailed { address: address.clone(), mode: StartupMode::Member, reason });
+      self.publish_cluster_event(ClusterEvent::StartupFailed {
+        address: address.clone(),
+        mode: StartupMode::Member,
+        reason,
+      });
       error
     })?;
 
@@ -149,6 +183,8 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
     match self.provider.start_member() {
       | Ok(()) => {
         self.mode = Some(StartupMode::Member);
+        self.member_count = 1;
+        self.update_metrics(self.member_count, self.virtual_actor_count);
         self.publish_cluster_event(ClusterEvent::Startup { address, mode: StartupMode::Member });
         Ok(())
       },
@@ -161,17 +197,29 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
   }
 
   /// Starts the cluster in client mode.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if pub/sub or provider startup fails.
   pub fn start_client(&mut self) -> Result<(), ClusterError> {
     let address = self.startup_address();
+    self.refresh_blocked_members();
+
     self.pubsub.start().map_err(ClusterError::from).map_err(|error| {
       let reason = format!("pubsub: {error:?}");
-      self.publish_cluster_event(ClusterEvent::StartupFailed { address: address.clone(), mode: StartupMode::Client, reason });
+      self.publish_cluster_event(ClusterEvent::StartupFailed {
+        address: address.clone(),
+        mode: StartupMode::Client,
+        reason,
+      });
       error
     })?;
 
     match self.provider.start_client() {
       | Ok(()) => {
         self.mode = Some(StartupMode::Client);
+        self.member_count = 1;
+        self.update_metrics(self.member_count, self.virtual_actor_count);
         self.publish_cluster_event(ClusterEvent::Startup { address, mode: StartupMode::Client });
         Ok(())
       },
@@ -184,6 +232,10 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
   }
 
   /// Shuts down the cluster and resets metrics.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if pub/sub, gossiper, or provider shutdown fails.
   pub fn shutdown(&mut self, graceful: bool) -> Result<(), ClusterError> {
     let address = self.startup_address();
     let mode = self.mode.unwrap_or(StartupMode::Member);
@@ -205,6 +257,9 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
     match self.provider.shutdown(graceful) {
       | Ok(()) => {
         self.virtual_actor_count = 0;
+        self.member_count = 0;
+        self.update_metrics(self.member_count, 0);
+        self.blocked_members.clear();
         self.mode = None;
         self.publish_cluster_event(ClusterEvent::Shutdown { address, mode });
         Ok(())
@@ -221,6 +276,46 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
     let payload = AnyMessageGeneric::new(event);
     let extension_event = EventStreamEvent::Extension { name: String::from("cluster"), payload };
     self.event_stream.publish(&extension_event);
+  }
+
+  const fn update_metrics(&mut self, members: usize, virtual_actors: i64) {
+    if let Some(metrics) = self.metrics.as_mut() {
+      metrics.update_members(members);
+      metrics.update_virtual_actors(virtual_actors);
+    }
+  }
+
+  fn refresh_blocked_members(&mut self) {
+    self.blocked_members = self.block_list_provider.blocked_members();
+  }
+
+  /// Applies a topology update, emitting a cluster event and updating metrics.
+  pub fn on_topology(&mut self, topology: &ClusterTopology) {
+    if self.last_topology_hash == Some(topology.hash()) {
+      return;
+    }
+    self.last_topology_hash = Some(topology.hash());
+    self.refresh_blocked_members();
+
+    // Adjust member count using joined/left delta (saturating at zero).
+    let joined = topology.joined().len();
+    let left = topology.left().len();
+    self.member_count = self.member_count.saturating_add(joined).saturating_sub(left);
+    self.update_metrics(self.member_count, self.virtual_actor_count);
+
+    if let Some(cache) = self.pid_cache.as_mut() {
+      for authority in topology.left() {
+        cache.invalidate_authority(authority);
+      }
+    }
+
+    let event = ClusterEvent::Topology {
+      topology_hash: topology.hash(),
+      joined:        topology.joined().clone(),
+      left:          topology.left().clone(),
+      blocked:       self.blocked_members.clone(),
+    };
+    self.publish_cluster_event(event);
   }
 }
 

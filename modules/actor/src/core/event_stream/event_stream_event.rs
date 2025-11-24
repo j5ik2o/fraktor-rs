@@ -4,6 +4,7 @@
 mod tests;
 
 use alloc::string::String;
+
 use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 
 use super::{
@@ -56,7 +57,7 @@ pub enum EventStreamEvent<TB: RuntimeToolbox = NoStdToolbox> {
   /// Extension-provided event namespaced by extension identifier.
   Extension {
     /// Extension identifier (e.g. "cluster").
-    name: String,
+    name:    String,
     /// Payload carried by the extension event.
     payload: AnyMessageGeneric<TB>,
   },

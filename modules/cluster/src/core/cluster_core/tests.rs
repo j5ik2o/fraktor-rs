@@ -1,14 +1,18 @@
 use alloc::{string::String, vec, vec::Vec};
 
-use super::*;
-use crate::core::{failing_provider::FailingProvider, ClusterPubSub, Gossiper};
-use crate::core::{
-  ActivatedKind, ClusterEvent, ClusterProviderError, IdentityLookup, IdentitySetupError, KindRegistry, StartupMode,
-  TOPIC_ACTOR_KIND, pub_sub_error::PubSubError,
-};
 use fraktor_actor_rs::core::event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber};
 use fraktor_remote_rs::core::BlockListProvider;
-use fraktor_utils_rs::core::{runtime_toolbox::{NoStdMutex, NoStdToolbox}, sync::ArcShared};
+use fraktor_utils_rs::core::{
+  runtime_toolbox::{NoStdMutex, NoStdToolbox},
+  sync::ArcShared,
+};
+
+use super::*;
+use crate::core::{
+  ActivatedKind, ClusterEvent, ClusterProviderError, ClusterPubSub, ClusterTopology, Gossiper, IdentityLookup,
+  IdentitySetupError, KindRegistry, MetricsError, PidCacheEvent, StartupMode, TOPIC_ACTOR_KIND, grain_key::GrainKey,
+  pid_cache::PidCache, pub_sub_error::PubSubError,
+};
 
 #[derive(Debug, Default)]
 struct StubProvider;
@@ -27,6 +31,62 @@ impl ClusterProvider for StubProvider {
   }
 }
 
+#[derive(Clone, Debug)]
+struct FailingProvider {
+  start_member_error: Option<ClusterProviderError>,
+  start_client_error: Option<ClusterProviderError>,
+  shutdown_error:     Option<ClusterProviderError>,
+}
+
+impl FailingProvider {
+  fn member_fail(reason: impl Into<String>) -> Self {
+    Self {
+      start_member_error: Some(ClusterProviderError::start_member(reason)),
+      start_client_error: None,
+      shutdown_error:     None,
+    }
+  }
+
+  fn client_fail(reason: impl Into<String>) -> Self {
+    Self {
+      start_member_error: None,
+      start_client_error: Some(ClusterProviderError::start_client(reason)),
+      shutdown_error:     None,
+    }
+  }
+
+  fn shutdown_fail(reason: impl Into<String>) -> Self {
+    Self {
+      start_member_error: None,
+      start_client_error: None,
+      shutdown_error:     Some(ClusterProviderError::shutdown(reason)),
+    }
+  }
+}
+
+impl ClusterProvider for FailingProvider {
+  fn start_member(&self) -> Result<(), ClusterProviderError> {
+    if let Some(err) = &self.start_member_error {
+      return Err(err.clone());
+    }
+    Ok(())
+  }
+
+  fn start_client(&self) -> Result<(), ClusterProviderError> {
+    if let Some(err) = &self.start_client_error {
+      return Err(err.clone());
+    }
+    Ok(())
+  }
+
+  fn shutdown(&self, _graceful: bool) -> Result<(), ClusterProviderError> {
+    if let Some(err) = &self.shutdown_error {
+      return Err(err.clone());
+    }
+    Ok(())
+  }
+}
+
 #[derive(Debug, Clone)]
 struct StubBlockListProvider {
   blocked: Vec<String>,
@@ -40,6 +100,9 @@ impl StubBlockListProvider {
 
 impl BlockListProvider for StubBlockListProvider {
   fn blocked_members(&self) -> Vec<String> {
+    if self.blocked.is_empty() {
+      return vec![String::from("blocked-node")];
+    }
     self.blocked.clone()
   }
 }
@@ -92,8 +155,8 @@ impl IdentityLookup for StubIdentityLookup {
 
 #[derive(Clone)]
 struct StubGossiper {
-  started: ArcShared<NoStdMutex<bool>>,
-  stopped: ArcShared<NoStdMutex<bool>>,
+  started:    ArcShared<NoStdMutex<bool>>,
+  stopped:    ArcShared<NoStdMutex<bool>>,
   fail_start: bool,
   fail_stop:  bool,
 }
@@ -101,10 +164,10 @@ struct StubGossiper {
 impl StubGossiper {
   fn new() -> Self {
     Self {
-      started: ArcShared::new(NoStdMutex::new(false)),
-      stopped: ArcShared::new(NoStdMutex::new(false)),
+      started:    ArcShared::new(NoStdMutex::new(false)),
+      stopped:    ArcShared::new(NoStdMutex::new(false)),
       fail_start: false,
-      fail_stop: false,
+      fail_stop:  false,
     }
   }
 
@@ -112,10 +175,12 @@ impl StubGossiper {
     Self { fail_start: true, ..Self::new() }
   }
 
+  #[allow(dead_code)]
   fn failing_stop() -> Self {
     Self { fail_stop: true, ..Self::new() }
   }
 
+  #[allow(dead_code)]
   fn started(&self) -> bool {
     *self.started.lock()
   }
@@ -151,8 +216,8 @@ impl Default for StubGossiper {
 
 #[derive(Clone)]
 struct StubPubSub {
-  started: ArcShared<NoStdMutex<bool>>,
-  stopped: ArcShared<NoStdMutex<bool>>,
+  started:    ArcShared<NoStdMutex<bool>>,
+  stopped:    ArcShared<NoStdMutex<bool>>,
   fail_start: bool,
   fail_stop:  bool,
 }
@@ -160,10 +225,10 @@ struct StubPubSub {
 impl StubPubSub {
   fn new() -> Self {
     Self {
-      started: ArcShared::new(NoStdMutex::new(false)),
-      stopped: ArcShared::new(NoStdMutex::new(false)),
+      started:    ArcShared::new(NoStdMutex::new(false)),
+      stopped:    ArcShared::new(NoStdMutex::new(false)),
       fail_start: false,
-      fail_stop: false,
+      fail_stop:  false,
     }
   }
 
@@ -171,10 +236,12 @@ impl StubPubSub {
     Self { fail_start: true, ..Self::new() }
   }
 
+  #[allow(dead_code)]
   fn failing_stop() -> Self {
     Self { fail_stop: true, ..Self::new() }
   }
 
+  #[allow(dead_code)]
   fn started(&self) -> bool {
     *self.started.lock()
   }
@@ -235,8 +302,8 @@ impl EventStreamSubscriber<NoStdToolbox> for RecordingClusterEvents {
   }
 }
 
-fn build_core_with_config(config: ClusterExtensionConfig) -> ClusterCore<NoStdToolbox> {
-  let provider = ArcShared::new(StubProvider::default());
+fn build_core_with_config(config: &ClusterExtensionConfig) -> ClusterCore<NoStdToolbox> {
+  let provider = ArcShared::new(StubProvider);
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec!["blocked-node".to_string()]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
@@ -258,11 +325,9 @@ fn build_core_with_config(config: ClusterExtensionConfig) -> ClusterCore<NoStdTo
 
 #[test]
 fn new_core_stores_dependencies_and_startup_params() {
-  let config = ClusterExtensionConfig::new()
-    .with_advertised_address("proto://node-a")
-    .with_metrics_enabled(true);
+  let config = ClusterExtensionConfig::new().with_advertised_address("proto://node-a").with_metrics_enabled(true);
 
-  let provider = ArcShared::new(StubProvider::default());
+  let provider = ArcShared::new(StubProvider);
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec!["blocked-node".to_string()]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
@@ -271,7 +336,7 @@ fn new_core_stores_dependencies_and_startup_params() {
   let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
 
   let core = ClusterCore::new(
-    config.clone(),
+    &config,
     provider.clone(),
     block_list_provider.clone(),
     event_stream.clone(),
@@ -283,15 +348,16 @@ fn new_core_stores_dependencies_and_startup_params() {
 
   // 依存がそのまま保持されていること
   let provider_dyn: ArcShared<dyn ClusterProvider> = provider.clone();
-  assert!(core.provider() == &provider_dyn);
+  assert!(core.provider == provider_dyn);
 
   let block_list_provider_dyn: ArcShared<dyn BlockListProvider> = block_list_provider.clone();
-  assert!(core.block_list_provider() == &block_list_provider_dyn);
+  assert!(core.block_list_provider == block_list_provider_dyn);
 
-  assert!(core.event_stream() == &event_stream);
+  assert!(core.event_stream == event_stream);
 
   // 構成が保持されていること
-  assert_eq!(core.config().advertised_address(), config.advertised_address());
+  // startup_state内部のアドレスが正しく設定されていることを確認
+  assert_eq!(core.startup_address(), config.advertised_address());
 
   // 起動パラメータが両モードで再利用できる形で保持されること
   assert_eq!(core.startup_address(), config.advertised_address());
@@ -300,24 +366,28 @@ fn new_core_stores_dependencies_and_startup_params() {
 
 #[test]
 fn metrics_flag_reflects_config_setting() {
-  let enabled_core = build_core_with_config(ClusterExtensionConfig::new().with_metrics_enabled(true));
+  let enabled_core = build_core_with_config(&ClusterExtensionConfig::new().with_metrics_enabled(true));
   assert!(enabled_core.metrics_enabled());
+  let snapshot = enabled_core.metrics().unwrap();
+  assert_eq!(snapshot.members(), 0);
+  assert_eq!(snapshot.virtual_actors(), 0);
 
-  let disabled_core = build_core_with_config(ClusterExtensionConfig::new().with_metrics_enabled(false));
+  let disabled_core = build_core_with_config(&ClusterExtensionConfig::new().with_metrics_enabled(false));
   assert!(!disabled_core.metrics_enabled());
+  assert!(matches!(disabled_core.metrics(), Err(MetricsError::Disabled)));
 }
 
 #[test]
 fn setup_member_kinds_registers_and_updates_virtual_actor_count() {
-  let provider = ArcShared::new(StubProvider::default());
-  let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
+  let provider = ArcShared::new(StubProvider);
+  let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![String::from("blocked-node")]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
   let identity_lookup = ArcShared::new(StubIdentityLookup::new());
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
   let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
   let mut core = ClusterCore::new(
-    ClusterExtensionConfig::new(),
+    &ClusterExtensionConfig::new(),
     provider,
     block_list_provider,
     event_stream,
@@ -343,7 +413,7 @@ fn setup_member_kinds_registers_and_updates_virtual_actor_count() {
 
 #[test]
 fn setup_client_kinds_registers_and_updates_virtual_actor_count() {
-  let provider = ArcShared::new(StubProvider::default());
+  let provider = ArcShared::new(StubProvider);
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
@@ -351,7 +421,7 @@ fn setup_client_kinds_registers_and_updates_virtual_actor_count() {
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
   let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
   let mut core = ClusterCore::new(
-    ClusterExtensionConfig::new(),
+    &ClusterExtensionConfig::new(),
     provider,
     block_list_provider,
     event_stream,
@@ -372,8 +442,152 @@ fn setup_client_kinds_registers_and_updates_virtual_actor_count() {
 }
 
 #[test]
+fn topology_event_includes_blocked_and_updates_metrics() {
+  let provider = ArcShared::new(StubProvider);
+  let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![String::from("blocked-a")]));
+  let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let kind_registry = KindRegistry::new();
+  let identity_lookup = ArcShared::new(StubIdentityLookup::new());
+  let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
+  let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
+  let mut core = ClusterCore::new(
+    &ClusterExtensionConfig::new().with_metrics_enabled(true),
+    provider,
+    block_list_provider,
+    event_stream.clone(),
+    gossiper,
+    pubsub,
+    kind_registry,
+    identity_lookup,
+  );
+
+  // prepare pid cache with authority that will leave
+  let mut pid_cache = PidCache::new(4);
+  pid_cache.put(GrainKey::new("grain-1".into()), "pid-1".into(), "node-c".into(), 0, 60);
+  core.set_pid_cache(pid_cache);
+
+  // start with one member
+  core.start_member().unwrap();
+
+  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
+  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
+  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+
+  let topology = ClusterTopology::new(100, vec![String::from("node-b")], vec![String::from("node-c")]);
+  core.on_topology(&topology);
+
+  // member count: 1 +1 -1 =1
+  let metrics = core.metrics().unwrap();
+  assert_eq!(metrics.members(), 1);
+
+  let events = subscriber_impl.events();
+  assert!(events.iter().any(|event| matches!(event,
+    ClusterEvent::Topology { topology_hash, joined, left, blocked }
+      if *topology_hash == 100
+        && joined == &vec![String::from("node-b")]
+        && left == &vec![String::from("node-c")]
+        && blocked == &vec![String::from("blocked-a")]
+  )));
+
+  // pid cache invalidated for left authority
+  if let Some(cache) = core.pid_cache.as_mut() {
+    let events = cache.drain_events();
+    assert!(events.iter().any(|e| matches!(e, PidCacheEvent::Dropped { reason, .. } if reason == "quarantine")));
+  }
+}
+
+#[test]
+fn topology_with_same_hash_is_suppressed() {
+  let provider = ArcShared::new(StubProvider);
+  let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![String::from("blocked-a")]));
+  let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let kind_registry = KindRegistry::new();
+  let identity_lookup = ArcShared::new(StubIdentityLookup::new());
+  let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
+  let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
+  let mut core = ClusterCore::new(
+    &ClusterExtensionConfig::new().with_metrics_enabled(true),
+    provider,
+    block_list_provider,
+    event_stream.clone(),
+    gossiper,
+    pubsub,
+    kind_registry,
+    identity_lookup,
+  );
+
+  core.start_member().unwrap();
+  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
+  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
+  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+
+  let topology = ClusterTopology::new(200, vec![String::from("n2")], vec![]);
+  core.on_topology(&topology);
+  // same hash should be ignored
+  core.on_topology(&topology);
+
+  let events = subscriber_impl.events();
+  let topology_events: Vec<_> = events.iter().filter(|e| matches!(e, ClusterEvent::Topology { .. })).collect();
+  assert_eq!(1, topology_events.len());
+}
+
+#[test]
+fn multi_node_topology_flow_updates_metrics_and_pid_cache() {
+  let provider = ArcShared::new(StubProvider);
+  let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![String::from("blocked-b")]));
+  let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let kind_registry = KindRegistry::new();
+  let identity_lookup = ArcShared::new(StubIdentityLookup::new());
+  let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
+  let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
+  let mut core = ClusterCore::new(
+    &ClusterExtensionConfig::new().with_metrics_enabled(true),
+    provider,
+    block_list_provider,
+    event_stream.clone(),
+    gossiper,
+    pubsub,
+    kind_registry,
+    identity_lookup,
+  );
+
+  core.start_member().unwrap();
+  let mut pid_cache = PidCache::new(8);
+  pid_cache.put(GrainKey::new("grain-1".into()), "pid-1".into(), "n2".into(), 0, 60);
+  pid_cache.put(GrainKey::new("grain-2".into()), "pid-2".into(), "n3".into(), 0, 60);
+  core.set_pid_cache(pid_cache);
+
+  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
+  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
+  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+
+  // node n2 joins, n3 leaves
+  let topology = ClusterTopology::new(300, vec![String::from("n2")], vec![String::from("n3")]);
+  core.on_topology(&topology);
+
+  // members: start 1 -> +1 -1 =1
+  let metrics = core.metrics().unwrap();
+  assert_eq!(metrics.members(), 1);
+
+  // pid cache should have dropped n3 entries
+  if let Some(cache) = core.pid_cache.as_mut() {
+    let events = cache.drain_events();
+    assert!(events.iter().any(|e| matches!(e, PidCacheEvent::Dropped { reason, .. } if reason == "quarantine")));
+  }
+
+  let events = subscriber_impl.events();
+  assert!(events.iter().any(|event| matches!(event,
+    ClusterEvent::Topology { topology_hash, joined, left, blocked }
+      if *topology_hash == 300
+        && joined.contains(&"n2".to_string())
+        && left.contains(&"n3".to_string())
+        && blocked.contains(&"blocked-b".to_string())
+  )));
+}
+
+#[test]
 fn start_member_emits_startup_event_and_sets_mode() {
-  let provider = ArcShared::new(StubProvider::default());
+  let provider = ArcShared::new(StubProvider);
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
@@ -381,7 +595,7 @@ fn start_member_emits_startup_event_and_sets_mode() {
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
   let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
   let mut core = ClusterCore::new(
-    ClusterExtensionConfig::new().with_advertised_address("proto://member"),
+    &ClusterExtensionConfig::new().with_advertised_address("proto://member").with_metrics_enabled(true),
     provider,
     block_list_provider,
     event_stream.clone(),
@@ -395,13 +609,20 @@ fn start_member_emits_startup_event_and_sets_mode() {
   let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
   let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
 
+  core.setup_member_kinds(vec![ActivatedKind::new("worker"), ActivatedKind::new("analytics")]).unwrap();
   core.start_member().unwrap();
 
+  let metrics = core.metrics().unwrap();
+  assert_eq!(metrics.members(), 1);
+  assert_eq!(metrics.virtual_actors(), 3);
+
   let events = subscriber_impl.events();
-  assert!(events.contains(&ClusterEvent::Startup {
-    address: String::from("proto://member"),
-    mode: StartupMode::Member,
-  }));
+  assert!(
+    events.contains(&ClusterEvent::Startup { address: String::from("proto://member"), mode: StartupMode::Member })
+  );
+
+  // BlockList がキャッシュされることを確認
+  assert_eq!(core.blocked_members(), &[String::from("blocked-node")]);
 }
 
 #[test]
@@ -414,7 +635,7 @@ fn start_member_failure_emits_startup_failed() {
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
   let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
   let mut core = ClusterCore::new(
-    ClusterExtensionConfig::new().with_advertised_address("proto://member"),
+    &ClusterExtensionConfig::new().with_advertised_address("proto://member"),
     provider,
     block_list_provider,
     event_stream.clone(),
@@ -440,7 +661,7 @@ fn start_member_failure_emits_startup_failed() {
 
 #[test]
 fn start_client_emits_startup_event_and_sets_mode() {
-  let provider = ArcShared::new(StubProvider::default());
+  let provider = ArcShared::new(StubProvider);
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
@@ -448,7 +669,7 @@ fn start_client_emits_startup_event_and_sets_mode() {
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
   let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
   let mut core = ClusterCore::new(
-    ClusterExtensionConfig::new().with_advertised_address("proto://client"),
+    &ClusterExtensionConfig::new().with_advertised_address("proto://client"),
     provider,
     block_list_provider,
     event_stream.clone(),
@@ -465,10 +686,9 @@ fn start_client_emits_startup_event_and_sets_mode() {
   core.start_client().unwrap();
 
   let events = subscriber_impl.events();
-  assert!(events.contains(&ClusterEvent::Startup {
-    address: String::from("proto://client"),
-    mode: StartupMode::Client,
-  }));
+  assert!(
+    events.contains(&ClusterEvent::Startup { address: String::from("proto://client"), mode: StartupMode::Client })
+  );
 }
 
 #[test]
@@ -481,7 +701,7 @@ fn start_client_failure_emits_startup_failed() {
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
   let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
   let mut core = ClusterCore::new(
-    ClusterExtensionConfig::new().with_advertised_address("proto://client"),
+    &ClusterExtensionConfig::new().with_advertised_address("proto://client"),
     provider,
     block_list_provider,
     event_stream.clone(),
@@ -507,7 +727,7 @@ fn start_client_failure_emits_startup_failed() {
 
 #[test]
 fn start_member_fails_when_gossip_start_fails() {
-  let provider = ArcShared::new(StubProvider::default());
+  let provider = ArcShared::new(StubProvider);
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
@@ -515,7 +735,7 @@ fn start_member_fails_when_gossip_start_fails() {
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::failing_start());
   let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
   let mut core = ClusterCore::new(
-    ClusterExtensionConfig::new().with_advertised_address("proto://member"),
+    &ClusterExtensionConfig::new().with_advertised_address("proto://member"),
     provider,
     block_list_provider,
     event_stream.clone(),
@@ -540,7 +760,7 @@ fn start_member_fails_when_gossip_start_fails() {
 
 #[test]
 fn start_member_fails_when_pubsub_start_fails() {
-  let provider = ArcShared::new(StubProvider::default());
+  let provider = ArcShared::new(StubProvider);
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
@@ -548,7 +768,7 @@ fn start_member_fails_when_pubsub_start_fails() {
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
   let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::failing_start());
   let mut core = ClusterCore::new(
-    ClusterExtensionConfig::new().with_advertised_address("proto://member"),
+    &ClusterExtensionConfig::new().with_advertised_address("proto://member"),
     provider,
     block_list_provider,
     event_stream.clone(),
@@ -573,7 +793,7 @@ fn start_member_fails_when_pubsub_start_fails() {
 
 #[test]
 fn shutdown_stops_pubsub_then_gossip() {
-  let provider = ArcShared::new(StubProvider::default());
+  let provider = ArcShared::new(StubProvider);
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
@@ -581,7 +801,7 @@ fn shutdown_stops_pubsub_then_gossip() {
   let gossiper = ArcShared::new(StubGossiper::new());
   let pubsub = ArcShared::new(StubPubSub::new());
   let mut core = ClusterCore::new(
-    ClusterExtensionConfig::new().with_advertised_address("proto://member"),
+    &ClusterExtensionConfig::new().with_advertised_address("proto://member"),
     provider,
     block_list_provider,
     event_stream.clone(),
@@ -600,7 +820,7 @@ fn shutdown_stops_pubsub_then_gossip() {
 
 #[test]
 fn shutdown_resets_virtual_actor_count_and_emits_event() {
-  let provider = ArcShared::new(StubProvider::default());
+  let provider = ArcShared::new(StubProvider);
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
@@ -608,7 +828,7 @@ fn shutdown_resets_virtual_actor_count_and_emits_event() {
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
   let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
   let mut core = ClusterCore::new(
-    ClusterExtensionConfig::new().with_advertised_address("proto://member"),
+    &ClusterExtensionConfig::new().with_advertised_address("proto://member"),
     provider,
     block_list_provider,
     event_stream.clone(),
@@ -628,11 +848,11 @@ fn shutdown_resets_virtual_actor_count_and_emits_event() {
   core.shutdown(true).unwrap();
 
   assert_eq!(0, core.virtual_actor_count());
+  assert!(core.blocked_members().is_empty());
   let events = subscriber_impl.events();
-  assert!(events.contains(&ClusterEvent::Shutdown {
-    address: String::from("proto://member"),
-    mode: StartupMode::Member,
-  }));
+  assert!(
+    events.contains(&ClusterEvent::Shutdown { address: String::from("proto://member"), mode: StartupMode::Member })
+  );
 }
 
 #[test]
@@ -645,7 +865,7 @@ fn shutdown_failure_emits_shutdown_failed() {
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
   let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
   let mut core = ClusterCore::new(
-    ClusterExtensionConfig::new().with_advertised_address("proto://member"),
+    &ClusterExtensionConfig::new().with_advertised_address("proto://member"),
     provider,
     block_list_provider,
     event_stream.clone(),

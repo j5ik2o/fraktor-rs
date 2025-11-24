@@ -3,9 +3,7 @@ use super::*;
 #[test]
 fn metrics_flag_and_address_are_preserved() {
   // metrics を有効に設定した構成がそのまま保持されることを確認
-  let config = ClusterExtensionConfig::new()
-    .with_advertised_address("proto://node-a")
-    .with_metrics_enabled(true);
+  let config = ClusterExtensionConfig::new().with_advertised_address("proto://node-a").with_metrics_enabled(true);
   assert_eq!(config.advertised_address(), "proto://node-a");
   assert!(config.metrics_enabled());
 

@@ -14,7 +14,8 @@ autoexamples = false
 
 [features]
 default = []
-std = []
+std = ["fraktor-actor-rs/std", "fraktor-remote-rs/std", "fraktor-utils-rs/std"]
+test-support = ["std", "fraktor-actor-rs/test-support", "fraktor-remote-rs/test-support"]
 
 [dependencies]
 fraktor-actor-rs = { workspace = true }
@@ -31,4 +32,14 @@ anyhow = { workspace = true }
 [[example]]
 name = "quickstart"
 path = "examples/quickstart/main.rs"
+required-features = ["std"]
+
+[[example]]
+name = "cluster_extension_no_std"
+path = "examples/cluster_extension_no_std/main.rs"
+required-features = ["test-support"]
+
+[[example]]
+name = "cluster_extension_tokio"
+path = "examples/cluster_extension_tokio/main.rs"
 required-features = ["std"]

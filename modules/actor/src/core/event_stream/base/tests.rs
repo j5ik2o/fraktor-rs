@@ -89,7 +89,7 @@ fn extension_events_are_buffered_and_delivered() {
 
   // publish before subscription to ensure replay works
   stream.publish(&EventStreamEvent::Extension {
-    name: String::from("cluster"),
+    name:    String::from("cluster"),
     payload: AnyMessage::new(String::from("startup")),
   });
 
@@ -98,7 +98,7 @@ fn extension_events_are_buffered_and_delivered() {
   let _subscription = EventStream::subscribe_arc(&stream, &subscriber);
 
   stream.publish(&EventStreamEvent::Extension {
-    name: String::from("cluster"),
+    name:    String::from("cluster"),
     payload: AnyMessage::new(String::from("shutdown")),
   });
 
@@ -106,15 +106,13 @@ fn extension_events_are_buffered_and_delivered() {
   assert_eq!(events.len(), 2);
   assert!(events.iter().any(|event| match event {
     | EventStreamEvent::Extension { name, payload } => {
-      name == "cluster"
-        && payload.payload().downcast_ref::<String>().map(|s| s == "startup").unwrap_or(false)
+      name == "cluster" && payload.payload().downcast_ref::<String>().map(|s| s == "startup").unwrap_or(false)
     },
     | _ => false,
   }));
   assert!(events.iter().any(|event| match event {
     | EventStreamEvent::Extension { name, payload } => {
-      name == "cluster"
-        && payload.payload().downcast_ref::<String>().map(|s| s == "shutdown").unwrap_or(false)
+      name == "cluster" && payload.payload().downcast_ref::<String>().map(|s| s == "shutdown").unwrap_or(false)
     },
     | _ => false,
   }));

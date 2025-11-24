@@ -17,6 +17,7 @@ impl ActivatedKind {
 
   /// Returns the kind name.
   #[must_use]
+  #[allow(clippy::missing_const_for_fn)]
   pub fn name(&self) -> &str {
     &self.name
   }

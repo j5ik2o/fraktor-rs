@@ -3,7 +3,11 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::{collections::BTreeMap, string::String, string::ToString, vec::Vec};
+use alloc::{
+  collections::BTreeMap,
+  string::{String, ToString},
+  vec::Vec,
+};
 
 use crate::core::activated_kind::ActivatedKind;
 
@@ -12,17 +16,22 @@ pub const TOPIC_ACTOR_KIND: &str = "prototopic";
 
 /// Maintains the set of activated kinds, including the mandatory topic kind.
 pub struct KindRegistry {
-  kinds: BTreeMap<String, ActivatedKind>,
+  kinds:            BTreeMap<String, ActivatedKind>,
   invalid_requests: Vec<String>,
-  generation: u64,
-  last_snapshot: Vec<String>,
+  generation:       u64,
+  last_snapshot:    Vec<String>,
 }
 
 impl KindRegistry {
   /// Creates an empty registry.
   #[must_use]
-  pub fn new() -> Self {
-    Self { kinds: BTreeMap::new(), invalid_requests: Vec::new(), generation: 0, last_snapshot: Vec::new() }
+  pub const fn new() -> Self {
+    Self {
+      kinds:            BTreeMap::new(),
+      invalid_requests: Vec::new(),
+      generation:       0,
+      last_snapshot:    Vec::new(),
+    }
   }
 
   /// Registers the provided kinds and ensures the topic actor kind is present.
@@ -79,9 +88,7 @@ impl KindRegistry {
   }
 
   fn ensure_topic_actor_kind(&mut self) {
-    self.kinds
-      .entry(TOPIC_ACTOR_KIND.to_string())
-      .or_insert_with(|| ActivatedKind::new(TOPIC_ACTOR_KIND));
+    self.kinds.entry(TOPIC_ACTOR_KIND.to_string()).or_insert_with(|| ActivatedKind::new(TOPIC_ACTOR_KIND));
   }
 
   fn snapshot_names(&self) -> Vec<String> {
