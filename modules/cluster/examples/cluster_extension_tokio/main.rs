@@ -1,6 +1,15 @@
 #![allow(clippy::print_stdout)]
 
-//! Cluster extension quickstart (Tokio + fraktor.tcp)
+//! Cluster extension quickstart (Tokio + SampleTcpProvider)
+//!
+//! This example demonstrates using SampleTcpProvider to publish topology events
+//! to EventStream. ClusterExtension automatically subscribes to these events
+//! and applies topology updates to ClusterCore.
+//!
+//! Provider差し替え方法:
+//! - SampleTcpProvider: 静的トポロジ or join/leave イベント経由のトポロジ配布（本サンプル）
+//! - etcd/zk/automanaged provider: 外部サービス連携（Phase2以降で対応予定）
+//!
 //! 実行例:
 //! `cargo run -p fraktor-cluster-rs --example cluster_extension_tokio --features std`
 
@@ -34,7 +43,7 @@ use fraktor_cluster_rs::{
     ActivatedKind, ClusterEvent, ClusterExtensionConfig, ClusterExtensionId, ClusterPubSub, ClusterTopology, Gossiper,
     IdentityLookup, IdentitySetupError,
   },
-  std::noop_cluster_provider::NoopClusterProvider,
+  std::sample_tcp_provider::SampleTcpProvider,
 };
 use fraktor_remote_rs::core::{
   BlockListProvider, RemotingExtensionConfig, RemotingExtensionInstaller, TokioActorRefProviderInstaller,
@@ -52,16 +61,22 @@ const SAMPLE_KEY: &str = "user:va-1";
 
 #[tokio::main]
 async fn main() -> Result<()> {
+  println!("=== Cluster Extension Tokio Demo ===");
+  println!("Demonstrates EventStream-based topology with SampleTcpProvider\n");
+
   // 返信待機チャネル（ノードB→ノードA→ノードB）
   let (reply_tx, reply_rx) = oneshot::channel::<String>();
   let shared_reply = Arc::new(Mutex::new(Some(reply_tx)));
 
-  // ノードA: 受信・Grain 起動側
-  let node_a = build_cluster_node("cluster-node-a", NODE_A_PORT, None)?;
-  // ノードB: 送信・返信受信側
-  let node_b = build_cluster_node("cluster-node-b", NODE_B_PORT, Some(shared_reply.clone()))?;
+  // ノードA: 受信・Grain 起動側（静的トポロジ: node-b が join）
+  let static_topology_a = ClusterTopology::new(1, vec![format!("{HOST}:{NODE_B_PORT}")], Vec::new());
+  let node_a = build_cluster_node("cluster-node-a", NODE_A_PORT, None, Some(static_topology_a))?;
 
-  // Kind を登録し、クラスタをメンバーモードで起動
+  // ノードB: 送信・返信受信側（静的トポロジ: node-a が join）
+  let static_topology_b = ClusterTopology::new(2, vec![format!("{HOST}:{NODE_A_PORT}")], Vec::new());
+  let node_b = build_cluster_node("cluster-node-b", NODE_B_PORT, Some(shared_reply.clone()), Some(static_topology_b))?;
+
+  // Kind を登録
   node_a
     .cluster
     .setup_member_kinds(vec![ActivatedKind::new(GRAIN_KIND)])
@@ -70,15 +85,31 @@ async fn main() -> Result<()> {
     .cluster
     .setup_member_kinds(vec![ActivatedKind::new(GRAIN_KIND)])
     .map_err(|e| anyhow!("identity setup (node b): {e:?}"))?;
+
+  // クラスタをメンバーモードで起動
+  // start_member() で SampleTcpProvider が静的トポロジを EventStream に publish
+  // ClusterExtension が自動的に購読して apply_topology を呼ぶ
+  println!("--- Starting cluster members ---");
   node_a.cluster.start_member().map_err(|e| anyhow!("start_member node a: {e:?}"))?;
   node_b.cluster.start_member().map_err(|e| anyhow!("start_member node b: {e:?}"))?;
 
-  // トポロジを共有（シンプルな2ノード join を模擬）
-  let topology = ClusterTopology::new(1, vec![node_b.advertised.clone()], Vec::new());
-  node_a.cluster.on_topology(&topology);
-  node_b.cluster.on_topology(&ClusterTopology::new(2, vec![node_a.advertised.clone()], Vec::new()));
+  // メトリクスを確認（静的トポロジが自動適用されたことを確認）
+  println!("\n--- Checking metrics after startup ---");
+  let metrics_a = node_a.cluster.metrics().map_err(|e| anyhow!("metrics node a: {e:?}"))?;
+  let metrics_b = node_b.cluster.metrics().map_err(|e| anyhow!("metrics node b: {e:?}"))?;
+  println!("[node-a] members={}, virtual_actors={}", metrics_a.members(), metrics_a.virtual_actors());
+  println!("[node-b] members={}, virtual_actors={}", metrics_b.members(), metrics_b.virtual_actors());
+
+  // 動的な join/leave イベントをシミュレート
+  println!("\n--- Simulating dynamic join/leave ---");
+  // node-c が join（node_a の provider 経由で通知）
+  node_a.provider.on_member_join(format!("{HOST}:26052"));
+  // 少し待ってから leave
+  thread::sleep(Duration::from_millis(50));
+  node_a.provider.on_member_leave(format!("{HOST}:26052"));
 
   // Grain 呼び出し（ノードBからノードAへリモート送信）
+  println!("\n--- Sending grain call ---");
   node_b
     .system
     .user_guardian_ref()
@@ -97,17 +128,22 @@ async fn main() -> Result<()> {
   println!("[ok] grain reply: {reply}");
 
   // シャットダウン
+  println!("\n--- Shutting down ---");
   node_b.cluster.shutdown(true).map_err(|e| anyhow!("shutdown node b: {e:?}"))?;
   node_a.cluster.shutdown(true).map_err(|e| anyhow!("shutdown node a: {e:?}"))?;
   drop(node_b.system);
   drop(node_a.system);
   thread::sleep(Duration::from_millis(200));
+
+  println!("\n=== Demo complete ===");
   Ok(())
 }
 
 struct ClusterNode {
   system:     ActorSystem,
   cluster:    ArcShared<fraktor_cluster_rs::core::ClusterExtensionGeneric<StdToolbox>>,
+  provider:   ArcShared<SampleTcpProvider>,
+  #[allow(dead_code)]
   advertised: String,
 }
 
@@ -115,6 +151,7 @@ fn build_cluster_node(
   system_name: &str,
   port: u16,
   responder: Option<Arc<Mutex<Option<oneshot::Sender<String>>>>>,
+  static_topology: Option<ClusterTopology>,
 ) -> Result<ClusterNode> {
   let tokio_handle = tokio::runtime::Handle::current();
   let tokio_executor = TokioExecutor::new(tokio_handle);
@@ -145,24 +182,31 @@ fn build_cluster_node(
       .map_err(|e| anyhow!("register responder failed: {e:?}"))?;
   }
 
+  // EventStream のサブスクライバを登録（クラスタイベントを観測）
   let event_subscriber: ArcShared<dyn EventStreamSubscriber> =
     ArcShared::new(ClusterEventPrinter::new(system_name.to_string()));
   let _subscription = system.subscribe_event_stream(&event_subscriber);
 
+  // SampleTcpProvider を作成（EventStream publish 方式）
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockListProvider);
-  let provider: ArcShared<dyn fraktor_cluster_rs::core::ClusterProvider> = ArcShared::new(NoopClusterProvider::new());
+  let advertised = format!("{HOST}:{port}");
+  let mut provider_builder = SampleTcpProvider::new(system.event_stream(), block_list.clone(), &advertised);
+  if let Some(topology) = static_topology {
+    provider_builder = provider_builder.with_static_topology(topology);
+  }
+  let provider = ArcShared::new(provider_builder);
+
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(LoggingGossiper::new(system_name));
   let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(LoggingPubSub::new(system_name));
   let identity: ArcShared<dyn IdentityLookup> = ArcShared::new(LoggingIdentityLookup::new(system_name));
 
-  let advertised = format!("{HOST}:{port}");
   let cluster_config =
     ClusterExtensionConfig::default().with_advertised_address(advertised.clone()).with_metrics_enabled(true);
   let cluster_id =
-    ClusterExtensionId::<StdToolbox>::new(cluster_config, provider, block_list, gossiper, pubsub, identity);
+    ClusterExtensionId::<StdToolbox>::new(cluster_config, provider.clone(), block_list, gossiper, pubsub, identity);
   let cluster = system.extended().register_extension(&cluster_id);
 
-  Ok(ClusterNode { system, cluster, advertised })
+  Ok(ClusterNode { system, cluster, provider, advertised })
 }
 
 // === EventStream subscriber ===
@@ -190,7 +234,7 @@ impl EventStreamSubscriber for ClusterEventPrinter {
   }
 }
 
-// === Cluster dependencies (no-ops forサンプル) ===
+// === Cluster dependencies ===
 
 #[derive(Default)]
 struct EmptyBlockListProvider;
@@ -216,7 +260,7 @@ impl Gossiper for LoggingGossiper {
   fn start(&self) -> Result<(), &'static str> {
     let mut guard = self.started.lock().expect("gossiper lock");
     if !*guard {
-      println!("[gossip][{}] start", self.label);
+      println!("[gossip][{}] start (no-op in Phase1)", self.label);
       *guard = true;
     }
     Ok(())

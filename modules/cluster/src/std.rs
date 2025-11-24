@@ -2,3 +2,5 @@
 
 /// No-op provider useful for tests and single-process runs.
 pub mod noop_cluster_provider;
+/// Sample TCP provider for Tokio-based cluster scenarios.
+pub mod sample_tcp_provider;

@@ -11,11 +11,11 @@
   - _Requirements: 1.1,1.3,1.4,5.1,5.3_
 
 - [ ] 2. サンプル用 Provider/Gossiper/PubSub を EventStream 方式に差し替える
-- [ ] 2.1 SampleTcpProvider を EventStream publish 方式で実装する
+- [x] 2.1 SampleTcpProvider を EventStream publish 方式で実装する
   - Remoting/TokioTcpTransport の membership イベントを ClusterTopology へ写像し、TopologyUpdated を publish する
   - join/leave で joined/left を構成し、BlockListProvider の値を blocked に含める
   - _Requirements: 2.1,2.2,2.3,2.4,3.1,3.2,4.4,5.3_
-- [ ] 2.2 InprocSampleProvider/Gossiper/PubSub を静的トポロジ publish に対応させる
+- [x] 2.2 InprocSampleProvider/Gossiper/PubSub を静的トポロジ publish に対応させる
   - 静的 ClusterTopology を EventStream に publish し、自動適用を確認できるようにする
   - GossipEngine は Phase1 では未使用とし、in-process サンプルは静的 publish のみで動作させる
   - _Requirements: 1.1,1.2,1.4,4.1,4.4,5.1_
