@@ -1,29 +1,82 @@
 //! Cluster extension wiring for actor systems.
 
+#[cfg(test)]
+mod tests;
+
 use alloc::{string::String, vec::Vec};
 
-use fraktor_actor_rs::core::system::ActorSystemGeneric;
+use fraktor_actor_rs::core::{
+  event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric},
+  system::ActorSystemGeneric,
+};
 use fraktor_utils_rs::core::{
   runtime_toolbox::{RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 
 use crate::core::{
-  ActivatedKind, ClusterCore, ClusterError, ClusterMetricsSnapshot, ClusterTopology, IdentitySetupError, MetricsError,
+  ActivatedKind, ClusterCore, ClusterError, ClusterEvent, ClusterMetricsSnapshot, ClusterTopology, IdentitySetupError,
+  MetricsError,
 };
+
+/// Internal subscriber that applies topology updates to ClusterCore.
+struct ClusterTopologySubscriber<TB: RuntimeToolbox + 'static> {
+  core: ArcShared<ToolboxMutex<ClusterCore<TB>, TB>>,
+}
+
+impl<TB: RuntimeToolbox + 'static> ClusterTopologySubscriber<TB> {
+  fn new(core: ArcShared<ToolboxMutex<ClusterCore<TB>, TB>>) -> Self {
+    Self { core }
+  }
+}
+
+impl<TB: RuntimeToolbox + 'static> EventStreamSubscriber<TB> for ClusterTopologySubscriber<TB> {
+  fn on_event(&self, event: &EventStreamEvent<TB>) {
+    // cluster 拡張イベントのみを処理
+    if let EventStreamEvent::Extension { name, payload } = event {
+      if name == "cluster" {
+        // TopologyUpdated イベントを検出して apply_topology を呼ぶ
+        // （既に EventStream 経由で受信したイベントなので再 publish しない）
+        if let Some(cluster_event) = payload.payload().downcast_ref::<ClusterEvent>() {
+          if let ClusterEvent::TopologyUpdated { topology, .. } = cluster_event {
+            self.core.lock().apply_topology(topology);
+          }
+        }
+      }
+    }
+  }
+}
 
 /// Cluster extension registered into `ActorSystemGeneric`.
 pub struct ClusterExtensionGeneric<TB: RuntimeToolbox + 'static> {
-  core:    ToolboxMutex<ClusterCore<TB>, TB>,
-  _system: ArcShared<ActorSystemGeneric<TB>>,
+  core:         ArcShared<ToolboxMutex<ClusterCore<TB>, TB>>,
+  event_stream: ArcShared<EventStreamGeneric<TB>>,
+  subscription: ToolboxMutex<Option<EventStreamSubscriptionGeneric<TB>>, TB>,
+  _system:      ArcShared<ActorSystemGeneric<TB>>,
 }
 
 impl<TB: RuntimeToolbox + 'static> ClusterExtensionGeneric<TB> {
   /// Creates the extension from injected dependencies.
   #[must_use]
   pub fn new(system: ArcShared<ActorSystemGeneric<TB>>, core: ClusterCore<TB>) -> Self {
+    let event_stream = system.event_stream();
     let locked = <TB::MutexFamily as SyncMutexFamily>::create(core);
-    Self { core: locked, _system: system }
+    let subscription = <TB::MutexFamily as SyncMutexFamily>::create(None);
+    Self { core: ArcShared::new(locked), event_stream, subscription, _system: system }
+  }
+
+  /// Subscribes to the event stream for topology updates.
+  fn subscribe_topology_events(&self) {
+    // 既に購読中なら何もしない
+    if self.subscription.lock().is_some() {
+      return;
+    }
+
+    // ClusterCore への共有参照を持つ subscriber を作成
+    let subscriber = ClusterTopologySubscriber::new(self.core.clone());
+    let subscriber_arc: ArcShared<dyn EventStreamSubscriber<TB>> = ArcShared::new(subscriber);
+    let sub = EventStreamGeneric::subscribe_arc(&self.event_stream, &subscriber_arc);
+    *self.subscription.lock() = Some(sub);
   }
 
   /// Starts member mode.
@@ -32,7 +85,11 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionGeneric<TB> {
   ///
   /// Returns an error if pub/sub, gossiper, or provider startup fails.
   pub fn start_member(&self) -> Result<(), ClusterError> {
-    self.core.lock().start_member()
+    let result = self.core.lock().start_member();
+    if result.is_ok() {
+      self.subscribe_topology_events();
+    }
+    result
   }
 
   /// Starts client mode.
@@ -41,7 +98,11 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionGeneric<TB> {
   ///
   /// Returns an error if pub/sub or provider startup fails.
   pub fn start_client(&self) -> Result<(), ClusterError> {
-    self.core.lock().start_client()
+    let result = self.core.lock().start_client();
+    if result.is_ok() {
+      self.subscribe_topology_events();
+    }
+    result
   }
 
   /// Graceful/forced shutdown.
@@ -50,6 +111,8 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionGeneric<TB> {
   ///
   /// Returns an error if pub/sub, gossiper, or provider shutdown fails.
   pub fn shutdown(&self, graceful: bool) -> Result<(), ClusterError> {
+    // 購読を解除
+    *self.subscription.lock() = None;
     self.core.lock().shutdown(graceful)
   }
 

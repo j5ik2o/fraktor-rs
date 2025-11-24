@@ -5,7 +5,7 @@
   - ClusterEvent enum に TopologyUpdated { topology, joined, left, blocked } を追加し、既存拡張イベントと整合させる
   - ClusterCore で直近ハッシュを保持し、同一ハッシュは publish しないロジックを組み込む
   - _Requirements: 1.2,1.3,1.4,5.1,5.3_
-- [ ] 1.2 ClusterExtension が EventStream を購読して ClusterCore::on_topology を呼ぶようにする
+- [x] 1.2 ClusterExtension が EventStream を購読して ClusterCore::on_topology を呼ぶようにする
   - TopologyUpdated を購読する subscriber を追加し、ハッシュ抑止後のトポロジのみ適用する
   - 適用時に metrics と blocked 情報を更新し EventStream へ反映する
   - _Requirements: 1.1,1.3,1.4,5.1,5.3_

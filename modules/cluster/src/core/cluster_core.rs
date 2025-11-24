@@ -290,9 +290,34 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
   }
 
   /// Applies a topology update, emitting a cluster event and updating metrics.
+  ///
+  /// Use this method when receiving topology updates from providers directly.
+  /// For updates received via EventStream, use [`apply_topology`] instead to avoid
+  /// re-publishing the event.
   pub fn on_topology(&mut self, topology: &ClusterTopology) {
+    if self.apply_topology_internal(topology) {
+      let event = ClusterEvent::TopologyUpdated {
+        topology: topology.clone(),
+        joined:   topology.joined().clone(),
+        left:     topology.left().clone(),
+        blocked:  self.blocked_members.clone(),
+      };
+      self.publish_cluster_event(event);
+    }
+  }
+
+  /// Applies a topology update without publishing an event.
+  ///
+  /// Use this method when the topology update was already received via EventStream
+  /// to avoid re-publishing and causing infinite loops.
+  pub fn apply_topology(&mut self, topology: &ClusterTopology) {
+    self.apply_topology_internal(topology);
+  }
+
+  /// Internal helper that applies topology and returns whether the update was applied.
+  fn apply_topology_internal(&mut self, topology: &ClusterTopology) -> bool {
     if self.last_topology_hash == Some(topology.hash()) {
-      return;
+      return false;
     }
     self.last_topology_hash = Some(topology.hash());
     self.refresh_blocked_members();
@@ -308,14 +333,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
         cache.invalidate_authority(authority);
       }
     }
-
-    let event = ClusterEvent::TopologyUpdated {
-      topology: topology.clone(),
-      joined:   topology.joined().clone(),
-      left:     topology.left().clone(),
-      blocked:  self.blocked_members.clone(),
-    };
-    self.publish_cluster_event(event);
+    true
   }
 }
 
