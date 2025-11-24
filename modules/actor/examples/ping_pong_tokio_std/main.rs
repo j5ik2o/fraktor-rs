@@ -33,7 +33,7 @@ impl GuardianActor {
 }
 
 impl Actor for GuardianActor {
-  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_, '_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
       let pong_props = self.child_props(|| PongActor);
       let pong = ctx.spawn_child(&pong_props).map_err(|_| ActorError::recoverable("failed to spawn pong"))?;
@@ -68,7 +68,7 @@ struct PongReply {
 struct PingActor;
 
 impl Actor for PingActor {
-  fn receive(&mut self, _ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_, '_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if let Some(cmd) = message.downcast_ref::<StartPing>() {
       for index in 0..cmd.count {
         let payload = PingMessage { text: format!("ping-{}", index + 1), reply_to: cmd.reply_to.clone() };
@@ -82,7 +82,7 @@ impl Actor for PingActor {
 struct PongActor;
 
 impl Actor for PongActor {
-  fn receive(&mut self, _ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_, '_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if let Some(ping) = message.downcast_ref::<PingMessage>() {
       println!("[{:?}] received ping: {}", std::thread::current().id(), ping.text);
       let response = PongReply { text: ping.text.clone() };

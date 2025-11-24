@@ -2,6 +2,8 @@
 
 mod activation_error;
 mod activation_record;
+mod cluster_provider;
+mod cluster_provider_error;
 mod delivery_policy;
 mod dispatch_drop_policy;
 mod gossip_engine;
@@ -46,6 +48,8 @@ mod virtual_actor_registry;
 
 pub use activation_error::ActivationError;
 pub use activation_record::ActivationRecord;
+pub use cluster_provider::ClusterProvider;
+pub use cluster_provider_error::ClusterProviderError;
 pub use delivery_policy::DeliveryPolicy;
 pub use dispatch_drop_policy::DispatchDropPolicy;
 pub use gossip_engine::GossipEngine;

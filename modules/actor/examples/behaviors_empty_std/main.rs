@@ -31,7 +31,7 @@ fn worker_behavior() -> Behavior<WorkerCommand> {
 }
 
 fn working_behavior(
-  _ctx: &mut fraktor_actor_rs::std::typed::actor_prim::TypedActorContext<'_, WorkerCommand>,
+  _ctx: &mut fraktor_actor_rs::std::typed::actor_prim::TypedActorContext<'_, '_, WorkerCommand>,
 ) -> Behavior<WorkerCommand> {
   Behaviors::receive_message(|_ctx, message: &WorkerCommand| match message {
     | WorkerCommand::DoWork => {

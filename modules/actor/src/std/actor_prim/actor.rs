@@ -16,7 +16,7 @@ pub trait Actor: Send {
   ///
   /// Panics are not expected. Implementations should return `Err` so the
   /// supervisor can decide how to recover.
-  fn pre_start(&mut self, _ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
+  fn pre_start(&mut self, _ctx: &mut ActorContext<'_, '_>) -> Result<(), ActorError> {
     Ok(())
   }
 
@@ -29,7 +29,7 @@ pub trait Actor: Send {
   /// # Panics
   ///
   /// Panics are considered fatal and will propagate to the runtime.
-  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError>;
+  fn receive(&mut self, ctx: &mut ActorContext<'_, '_>, message: AnyMessageView<'_>) -> Result<(), ActorError>;
 
   /// Called once after the actor has been stopped.
   ///
@@ -41,7 +41,7 @@ pub trait Actor: Send {
   ///
   /// Panics are not expected. Implementations should return `Err` to allow
   /// supervisor policies to react.
-  fn post_stop(&mut self, _ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
+  fn post_stop(&mut self, _ctx: &mut ActorContext<'_, '_>) -> Result<(), ActorError> {
     Ok(())
   }
 
@@ -50,7 +50,7 @@ pub trait Actor: Send {
   /// # Errors
   ///
   /// Returns an error when the hook fails to handle the termination event.
-  fn on_terminated(&mut self, _ctx: &mut ActorContext<'_>, _terminated: Pid) -> Result<(), ActorError> {
+  fn on_terminated(&mut self, _ctx: &mut ActorContext<'_, '_>, _terminated: Pid) -> Result<(), ActorError> {
     Ok(())
   }
 
@@ -90,7 +90,7 @@ pub trait Actor: Send {
   /// impl Actor for ResilientWorker {
   ///   fn receive(
   ///     &mut self,
-  ///     _ctx: &mut ActorContext<'_>,
+  ///     _ctx: &mut ActorContext<'_, '_>,
   ///     _message: AnyMessageView<'_>,
   ///   ) -> Result<(), ActorError> {
   ///     Ok(())
@@ -125,7 +125,7 @@ pub trait Actor: Send {
   /// - [`SupervisorStrategy`] for available strategies
   /// - [`SupervisorDirective`] for failure handling options
   #[must_use]
-  fn supervisor_strategy(&mut self, _ctx: &mut ActorContext<'_>) -> SupervisorStrategy {
+  fn supervisor_strategy(&mut self, _ctx: &mut ActorContext<'_, '_>) -> SupervisorStrategy {
     SupervisorStrategy::default()
   }
 }

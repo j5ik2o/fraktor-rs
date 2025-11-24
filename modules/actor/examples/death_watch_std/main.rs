@@ -21,7 +21,7 @@ struct Crash;
 struct Worker;
 
 impl Actor for Worker {
-  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_, '_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<Crash>().is_some() {
       println!("[worker] クラッシュ要求を受信しました");
       return Err(ActorError::recoverable("intentional crash"));
@@ -44,7 +44,7 @@ impl Guardian {
     Self { last_child: ArcShared::new(NoStdMutex::new(None)) }
   }
 
-  fn spawn_watched_child(&self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
+  fn spawn_watched_child(&self, ctx: &mut ActorContext<'_, '_>) -> Result<(), ActorError> {
     let props = Props::from_fn(|| Worker);
     let child =
       ctx.spawn_child_watched(&props).map_err(|error| ActorError::recoverable(format!("spawn failed: {:?}", error)))?;
@@ -54,12 +54,12 @@ impl Guardian {
 }
 
 impl Actor for Guardian {
-  fn pre_start(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
+  fn pre_start(&mut self, ctx: &mut ActorContext<'_, '_>) -> Result<(), ActorError> {
     println!("[guardian] 子アクターを監視付きで生成します");
     self.spawn_watched_child(ctx)
   }
 
-  fn receive(&mut self, _ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_, '_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
       if let Some(child) = self.last_child.lock().as_ref() {
         println!("[guardian] 子アクターにクラッシュを指示します");
@@ -73,7 +73,7 @@ impl Actor for Guardian {
 
   fn on_terminated(
     &mut self,
-    ctx: &mut ActorContext<'_>,
+    ctx: &mut ActorContext<'_, '_>,
     pid: fraktor_actor_rs::core::actor_prim::Pid,
   ) -> Result<(), ActorError> {
     println!("[guardian] 監視対象 {:?} の停止を検知", pid);

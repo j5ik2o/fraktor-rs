@@ -44,6 +44,7 @@ criterion = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
 proptest = "1.5"
 critical-section = { workspace = true, features = ["std"] }
+serde_json = { workspace = true }
 
 [[example]]
 name = "ping_pong_not_std"
@@ -64,6 +65,15 @@ path = "examples/behaviors_state_transition_typed_no_std/main.rs"
 [[example]]
 name = "serialization_custom_no_std"
 path = "examples/serialization_custom_no_std/main.rs"
+
+[[example]]
+name = "serialization_bincode_no_std"
+path = "examples/serialization_bincode_no_std/main.rs"
+
+[[example]]
+name = "serialization_json_std"
+path = "examples/serialization_json_std/main.rs"
+required-features = ["std"]
 
 [[example]]
 name = "scheduler_once_no_std"

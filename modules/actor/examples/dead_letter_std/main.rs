@@ -56,7 +56,7 @@ impl GuardianActor {
 }
 
 impl Actor for GuardianActor {
-  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_, '_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
       ctx.log(LogLevel::Info, "キャパシティ1のboundedキューでoverflowを発生させます");
 
@@ -97,13 +97,13 @@ impl Actor for GuardianActor {
 struct OverflowActor;
 
 impl Actor for OverflowActor {
-  fn pre_start(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
+  fn pre_start(&mut self, ctx: &mut ActorContext<'_, '_>) -> Result<(), ActorError> {
     let thread_id = format!("{:?}", thread::current().id());
     ctx.log(LogLevel::Info, format!("OverflowActorが起動しました [thread={}]", thread_id));
     Ok(())
   }
 
-  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_, '_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     let thread_id = format!("{:?}", thread::current().id());
     if let Some(msg) = message.downcast_ref::<&str>() {
       ctx.log(LogLevel::Info, format!("[OverflowActor] received: {} [thread={}]", msg, thread_id));
@@ -113,7 +113,7 @@ impl Actor for OverflowActor {
     Ok(())
   }
 
-  fn post_stop(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
+  fn post_stop(&mut self, ctx: &mut ActorContext<'_, '_>) -> Result<(), ActorError> {
     ctx.log(LogLevel::Info, "OverflowActorを停止します");
     Ok(())
   }
