@@ -23,16 +23,16 @@
   - TopicActorKind 登録を前提に publish/subscribe フローを整備し、起動失敗時は EventStream にエラーを発火する
   - _Requirements: 4.1,4.2,4.3,5.3_
 
-- [ ] 3. Phase1 実行経路（静的トポロジ＋EventStream）を完成させる
-- [ ] 3.1 cluster_extension_no_std を静的トポロジ publish 版に更新する
+- [x] 3. Phase1 実行経路（静的トポロジ＋EventStream）を完成させる
+- [x] 3.1 cluster_extension_no_std を静的トポロジ publish 版に更新する
   - ダミー依存を差し替え、手動 `on_topology` 呼びを削除し EventStream publish に置換する
   - Manual TickDriver で少数ステップ回し、TopologyUpdated と metrics の出力を確認できるようにする
   - _Requirements: 1.1,1.2,1.4,5.3_
-- [ ] 3.2 cluster_extension_tokio を静的トポロジ publish で起動する手順を整備する
+- [x] 3.2 cluster_extension_tokio を静的トポロジ publish で起動する手順を整備する
   - SampleTcpProvider を静的モードで起動し、2 ノード相当の TopologyUpdated を publish して EventStream ログを確認する
   - README/サンプルコメントに差し替え手順（provider 差し替え可能）を追記する
   - _Requirements: 2.1,2.2,5.4_
-- [ ] 3.3 Phase1 統合テストを追加する
+- [x] 3.3 Phase1 統合テストを追加する
   - 静的 TopologyUpdated を publish → ClusterCore が metrics/イベントを更新し、PID キャッシュ無効化・blocked 反映を確認する
   - _Requirements: 1.1,1.2,1.4,3.3,5.1,5.3_
 
