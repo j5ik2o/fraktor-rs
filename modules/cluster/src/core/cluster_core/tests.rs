@@ -480,13 +480,18 @@ fn topology_event_includes_blocked_and_updates_metrics() {
   let metrics = core.metrics().unwrap();
   assert_eq!(metrics.members(), 1);
 
+  let expected_joined = vec![String::from("node-b")];
+  let expected_left = vec![String::from("node-c")];
+  let expected_blocked = vec![String::from("blocked-a")];
   let events = subscriber_impl.events();
   assert!(events.iter().any(|event| matches!(event,
-    ClusterEvent::Topology { topology_hash, joined, left, blocked }
-      if *topology_hash == 100
-        && joined == &vec![String::from("node-b")]
-        && left == &vec![String::from("node-c")]
-        && blocked == &vec![String::from("blocked-a")]
+    ClusterEvent::TopologyUpdated { topology, joined, left, blocked }
+      if topology.hash() == 100
+        && topology.joined() == &expected_joined
+        && topology.left() == &expected_left
+        && joined == &expected_joined
+        && left == &expected_left
+        && blocked == &expected_blocked
   )));
 
   // pid cache invalidated for left authority
@@ -527,7 +532,8 @@ fn topology_with_same_hash_is_suppressed() {
   core.on_topology(&topology);
 
   let events = subscriber_impl.events();
-  let topology_events: Vec<_> = events.iter().filter(|e| matches!(e, ClusterEvent::Topology { .. })).collect();
+  let topology_events: Vec<_> =
+    events.iter().filter(|event| matches!(event, ClusterEvent::TopologyUpdated { .. })).collect();
   assert_eq!(1, topology_events.len());
 }
 
@@ -577,8 +583,10 @@ fn multi_node_topology_flow_updates_metrics_and_pid_cache() {
 
   let events = subscriber_impl.events();
   assert!(events.iter().any(|event| matches!(event,
-    ClusterEvent::Topology { topology_hash, joined, left, blocked }
-      if *topology_hash == 300
+    ClusterEvent::TopologyUpdated { topology, joined, left, blocked }
+      if topology.hash() == 300
+        && topology.joined().contains(&"n2".to_string())
+        && topology.left().contains(&"n3".to_string())
         && joined.contains(&"n2".to_string())
         && left.contains(&"n3".to_string())
         && blocked.contains(&"blocked-b".to_string())

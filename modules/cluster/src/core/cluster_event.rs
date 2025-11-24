@@ -2,7 +2,7 @@
 
 use alloc::{string::String, vec::Vec};
 
-use crate::core::startup_mode::StartupMode;
+use crate::core::{startup_mode::StartupMode, ClusterTopology};
 
 /// Event payload published via `EventStreamEvent::Extension { name: "cluster", .. }`.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -40,14 +40,14 @@ pub enum ClusterEvent {
     reason:  String,
   },
   /// Topology changed (joined/left/blocked members).
-  Topology {
-    /// Topology hash for change detection.
-    topology_hash: u64,
-    /// Joined members.
-    joined:        Vec<String>,
-    /// Left members.
-    left:          Vec<String>,
+  TopologyUpdated {
+    /// Full topology snapshot including hash and deltas.
+    topology: ClusterTopology,
+    /// Joined members (duplicated for convenience).
+    joined:   Vec<String>,
+    /// Left members (duplicated for convenience).
+    left:     Vec<String>,
     /// Blocked members from BlockListProvider.
-    blocked:       Vec<String>,
+    blocked:  Vec<String>,
   },
 }

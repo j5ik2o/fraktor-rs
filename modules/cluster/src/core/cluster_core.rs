@@ -309,11 +309,11 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
       }
     }
 
-    let event = ClusterEvent::Topology {
-      topology_hash: topology.hash(),
-      joined:        topology.joined().clone(),
-      left:          topology.left().clone(),
-      blocked:       self.blocked_members.clone(),
+    let event = ClusterEvent::TopologyUpdated {
+      topology: topology.clone(),
+      joined:   topology.joined().clone(),
+      left:     topology.left().clone(),
+      blocked:  self.blocked_members.clone(),
     };
     self.publish_cluster_event(event);
   }

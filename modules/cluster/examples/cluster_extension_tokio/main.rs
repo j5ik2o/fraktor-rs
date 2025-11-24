@@ -37,8 +37,8 @@ use fraktor_cluster_rs::{
   std::noop_cluster_provider::NoopClusterProvider,
 };
 use fraktor_remote_rs::core::{
-  BlockListProvider, RemotingExtensionConfig, RemotingExtensionId, RemotingExtensionInstaller,
-  TokioActorRefProviderInstaller, TokioTransportConfig, default_loopback_setup,
+  BlockListProvider, RemotingExtensionConfig, RemotingExtensionInstaller, TokioActorRefProviderInstaller,
+  TokioTransportConfig, default_loopback_setup,
 };
 use fraktor_utils_rs::{core::sync::ArcShared, std::runtime_toolbox::StdToolbox};
 use tokio::sync::oneshot;
@@ -137,9 +137,6 @@ fn build_cluster_node(
   let guardian = Props::from_fn(GrainHub::new).with_name(HUB_NAME);
   let system = ActorSystem::new_with_config(&guardian, &system_config)
     .map_err(|e| anyhow!("actor system build failed ({system_name}): {e:?}"))?;
-
-  let remoting_id = RemotingExtensionId::<StdToolbox>::new(remoting_config);
-  let _remoting = system.extended().register_extension(&remoting_id);
 
   if let Some(tx) = responder {
     system

@@ -1,0 +1,22 @@
+{
+  "feature_name": "protoactor-go-cluster-extension-samples",
+  "created_at": "2025-11-24T12:47:41Z",
+  "updated_at": "2025-11-24T13:35:28Z",
+  "language": "ja",
+  "phase": "tasks-generated",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "ready_for_implementation": true
+}
