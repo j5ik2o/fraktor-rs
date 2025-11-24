@@ -7,6 +7,7 @@ use alloc::{string::String, vec::Vec};
 
 use fraktor_actor_rs::core::{
   event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric},
+  messaging::AnyMessageGeneric,
   system::ActorSystemGeneric,
 };
 use fraktor_utils_rs::core::{
@@ -132,8 +133,19 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionGeneric<TB> {
   }
 
   /// Applies topology updates.
+  ///
+  /// This method applies the topology and publishes the event to EventStream.
+  /// The lock is released before publishing to avoid deadlocks with subscribers.
   pub fn on_topology(&self, topology: &ClusterTopology) {
-    self.core.lock().on_topology(topology);
+    // ロックを保持したまま publish するとデッドロックするため、
+    // イベントを取得してからロックを解放し、その後に publish する
+    let event_to_publish = { self.core.lock().apply_topology_for_external(topology) };
+
+    if let Some(event) = event_to_publish {
+      let payload = AnyMessageGeneric::new(event);
+      let extension_event = EventStreamEvent::Extension { name: String::from("cluster"), payload };
+      self.event_stream.publish(&extension_event);
+    }
   }
 
   /// Returns metrics snapshot if enabled.

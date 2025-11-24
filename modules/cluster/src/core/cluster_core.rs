@@ -289,11 +289,37 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
     self.blocked_members = self.block_list_provider.blocked_members();
   }
 
+  /// Applies a topology update and returns the event to be published.
+  ///
+  /// This method applies the topology internally but does NOT publish the event.
+  /// The caller is responsible for publishing the returned event after releasing
+  /// any locks to avoid deadlocks with EventStream subscribers.
+  ///
+  /// Returns `Some(ClusterEvent)` if the topology was applied (new hash),
+  /// or `None` if the topology was a duplicate.
+  #[must_use]
+  pub fn apply_topology_for_external(&mut self, topology: &ClusterTopology) -> Option<ClusterEvent> {
+    if self.apply_topology_internal(topology) {
+      Some(ClusterEvent::TopologyUpdated {
+        topology: topology.clone(),
+        joined:   topology.joined().clone(),
+        left:     topology.left().clone(),
+        blocked:  self.blocked_members.clone(),
+      })
+    } else {
+      None
+    }
+  }
+
   /// Applies a topology update, emitting a cluster event and updating metrics.
   ///
   /// Use this method when receiving topology updates from providers directly.
   /// For updates received via EventStream, use [`apply_topology`] instead to avoid
   /// re-publishing the event.
+  ///
+  /// **Warning**: This method publishes to EventStream while holding `&mut self`.
+  /// If called from a context where a lock is held, consider using
+  /// [`apply_topology_for_external`] instead to avoid deadlocks.
   pub fn on_topology(&mut self, topology: &ClusterTopology) {
     if self.apply_topology_internal(topology) {
       let event = ClusterEvent::TopologyUpdated {
