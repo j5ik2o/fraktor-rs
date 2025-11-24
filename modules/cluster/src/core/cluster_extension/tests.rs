@@ -1,9 +1,7 @@
 use alloc::{string::String, vec, vec::Vec};
 
 use fraktor_actor_rs::core::{
-  event_stream::EventStreamEvent,
-  messaging::AnyMessageGeneric,
-  system::ActorSystemGeneric,
+  event_stream::EventStreamEvent, messaging::AnyMessageGeneric, system::ActorSystemGeneric,
 };
 use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
 
@@ -14,32 +12,57 @@ use crate::core::{
 
 struct StubProvider;
 impl ClusterProvider for StubProvider {
-  fn start_member(&self) -> Result<(), ClusterProviderError> { Ok(()) }
-  fn start_client(&self) -> Result<(), ClusterProviderError> { Ok(()) }
-  fn shutdown(&self, _graceful: bool) -> Result<(), ClusterProviderError> { Ok(()) }
+  fn start_member(&self) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+
+  fn start_client(&self) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+
+  fn shutdown(&self, _graceful: bool) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
 }
 
 struct StubGossiper;
 impl Gossiper for StubGossiper {
-  fn start(&self) -> Result<(), &'static str> { Ok(()) }
-  fn stop(&self) -> Result<(), &'static str> { Ok(()) }
+  fn start(&self) -> Result<(), &'static str> {
+    Ok(())
+  }
+
+  fn stop(&self) -> Result<(), &'static str> {
+    Ok(())
+  }
 }
 
 struct StubPubSub;
 impl ClusterPubSub for StubPubSub {
-  fn start(&self) -> Result<(), crate::core::pub_sub_error::PubSubError> { Ok(()) }
-  fn stop(&self) -> Result<(), crate::core::pub_sub_error::PubSubError> { Ok(()) }
+  fn start(&self) -> Result<(), crate::core::pub_sub_error::PubSubError> {
+    Ok(())
+  }
+
+  fn stop(&self) -> Result<(), crate::core::pub_sub_error::PubSubError> {
+    Ok(())
+  }
 }
 
 struct StubIdentity;
 impl IdentityLookup for StubIdentity {
-  fn setup_member(&self, _kinds: &[ActivatedKind]) -> Result<(), IdentitySetupError> { Ok(()) }
-  fn setup_client(&self, _kinds: &[ActivatedKind]) -> Result<(), IdentitySetupError> { Ok(()) }
+  fn setup_member(&self, _kinds: &[ActivatedKind]) -> Result<(), IdentitySetupError> {
+    Ok(())
+  }
+
+  fn setup_client(&self, _kinds: &[ActivatedKind]) -> Result<(), IdentitySetupError> {
+    Ok(())
+  }
 }
 
 struct StubBlockList;
 impl fraktor_remote_rs::core::BlockListProvider for StubBlockList {
-  fn blocked_members(&self) -> Vec<String> { Vec::new() }
+  fn blocked_members(&self) -> Vec<String> {
+    Vec::new()
+  }
 }
 
 #[test]
@@ -67,9 +90,7 @@ fn subscribes_to_event_stream_and_applies_topology_on_topology_updated() {
   let event_stream = system.event_stream();
 
   let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
-    ClusterExtensionConfig::new()
-      .with_advertised_address("fraktor://demo")
-      .with_metrics_enabled(true),
+    ClusterExtensionConfig::new().with_advertised_address("fraktor://demo").with_metrics_enabled(true),
     ArcShared::new(StubProvider),
     ArcShared::new(StubBlockList),
     ArcShared::new(StubGossiper),
@@ -108,9 +129,7 @@ fn ignores_topology_with_same_hash_via_event_stream() {
   let event_stream = system.event_stream();
 
   let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
-    ClusterExtensionConfig::new()
-      .with_advertised_address("fraktor://demo")
-      .with_metrics_enabled(true),
+    ClusterExtensionConfig::new().with_advertised_address("fraktor://demo").with_metrics_enabled(true),
     ArcShared::new(StubProvider),
     ArcShared::new(StubBlockList),
     ArcShared::new(StubGossiper),

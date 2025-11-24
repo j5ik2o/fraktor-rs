@@ -25,22 +25,19 @@ struct ClusterTopologySubscriber<TB: RuntimeToolbox + 'static> {
 }
 
 impl<TB: RuntimeToolbox + 'static> ClusterTopologySubscriber<TB> {
-  fn new(core: ArcShared<ToolboxMutex<ClusterCore<TB>, TB>>) -> Self {
+  const fn new(core: ArcShared<ToolboxMutex<ClusterCore<TB>, TB>>) -> Self {
     Self { core }
   }
 }
 
 impl<TB: RuntimeToolbox + 'static> EventStreamSubscriber<TB> for ClusterTopologySubscriber<TB> {
   fn on_event(&self, event: &EventStreamEvent<TB>) {
-    // cluster 拡張イベントのみを処理
+    // cluster 拡張イベントの TopologyUpdated のみを処理
+    // （既に EventStream 経由で受信したイベントなので再 publish しない）
     if let EventStreamEvent::Extension { name, payload } = event {
       if name == "cluster" {
-        // TopologyUpdated イベントを検出して apply_topology を呼ぶ
-        // （既に EventStream 経由で受信したイベントなので再 publish しない）
-        if let Some(cluster_event) = payload.payload().downcast_ref::<ClusterEvent>() {
-          if let ClusterEvent::TopologyUpdated { topology, .. } = cluster_event {
-            self.core.lock().apply_topology(topology);
-          }
+        if let Some(ClusterEvent::TopologyUpdated { topology, .. }) = payload.payload().downcast_ref::<ClusterEvent>() {
+          self.core.lock().apply_topology(topology);
         }
       }
     }

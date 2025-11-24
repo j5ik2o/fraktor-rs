@@ -2,7 +2,7 @@
 
 use alloc::{string::String, vec::Vec};
 
-use crate::core::{startup_mode::StartupMode, ClusterTopology};
+use crate::core::{ClusterTopology, startup_mode::StartupMode};
 
 /// Event payload published via `EventStreamEvent::Extension { name: "cluster", .. }`.
 #[derive(Clone, Debug, Eq, PartialEq)]
