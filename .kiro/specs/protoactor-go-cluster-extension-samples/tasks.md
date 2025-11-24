@@ -19,7 +19,7 @@
   - 静的 ClusterTopology を EventStream に publish し、自動適用を確認できるようにする
   - GossipEngine は Phase1 では未使用とし、in-process サンプルは静的 publish のみで動作させる
   - _Requirements: 1.1,1.2,1.4,4.1,4.4,5.1_
-- [ ] 2.3 PubSubImpl を EventStream 経由に統一し TopicKind 前提で起動する
+- [x] 2.3 PubSubImpl を EventStream 経由に統一し TopicKind 前提で起動する
   - TopicActorKind 登録を前提に publish/subscribe フローを整備し、起動失敗時は EventStream にエラーを発火する
   - _Requirements: 4.1,4.2,4.3,5.3_
 
