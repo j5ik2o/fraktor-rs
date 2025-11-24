@@ -1,5 +1,8 @@
 //! Cluster core domain modules (no_std).
 
+mod cluster_core;
+mod cluster_extension_config;
+mod activated_kind;
 mod activation_error;
 mod activation_record;
 mod cluster_provider;
@@ -10,6 +13,7 @@ mod gossip_engine;
 mod gossip_event;
 mod gossip_outbound;
 mod gossip_state;
+mod kind_registry;
 mod grain_key;
 mod grain_rpc_router;
 mod identity_event;
@@ -46,6 +50,9 @@ mod serialized_message;
 mod virtual_actor_event;
 mod virtual_actor_registry;
 
+pub use activated_kind::ActivatedKind;
+pub use cluster_core::ClusterCore;
+pub use cluster_extension_config::ClusterExtensionConfig;
 pub use activation_error::ActivationError;
 pub use activation_record::ActivationRecord;
 pub use cluster_provider::ClusterProvider;
@@ -56,6 +63,7 @@ pub use gossip_engine::GossipEngine;
 pub use gossip_event::GossipEvent;
 pub use gossip_outbound::GossipOutbound;
 pub use gossip_state::GossipState;
+pub use kind_registry::{KindRegistry, TOPIC_ACTOR_KIND};
 pub use grain_key::GrainKey;
 pub use grain_rpc_router::GrainRpcRouter;
 pub use identity_event::IdentityEvent;

@@ -2,6 +2,7 @@
 
 mod actor_ref_field_normalizer;
 mod association_state;
+mod block_list_provider;
 mod deferred_envelope;
 mod endpoint_manager;
 mod endpoint_manager_command;
@@ -48,6 +49,7 @@ pub mod transport;
 mod wire_error;
 
 pub use association_state::AssociationState;
+pub use block_list_provider::BlockListProvider;
 pub use deferred_envelope::DeferredEnvelope;
 pub use endpoint_manager::EndpointManager;
 pub use endpoint_manager_command::EndpointManagerCommand;

@@ -18,6 +18,8 @@ std = []
 
 [dependencies]
 fraktor-actor-rs = { workspace = true }
+fraktor-utils-rs = { workspace = true }
+fraktor-remote-rs = { workspace = true }
 
 [dev-dependencies]
 fraktor-actor-rs = { workspace = true, features = ["std", "tokio-executor", "test-support"] }
