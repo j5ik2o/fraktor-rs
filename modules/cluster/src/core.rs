@@ -2,6 +2,8 @@
 
 mod cluster_core;
 mod cluster_extension_config;
+mod cluster_error;
+mod cluster_event;
 mod identity_lookup;
 mod identity_setup_error;
 mod activated_kind;
@@ -16,6 +18,8 @@ mod gossip_event;
 mod gossip_outbound;
 mod gossip_state;
 mod kind_registry;
+#[cfg(test)]
+mod failing_provider;
 mod grain_key;
 mod grain_rpc_router;
 mod identity_event;
@@ -55,6 +59,8 @@ mod virtual_actor_registry;
 pub use activated_kind::ActivatedKind;
 pub use cluster_core::ClusterCore;
 pub use cluster_extension_config::ClusterExtensionConfig;
+pub use cluster_error::ClusterError;
+pub use cluster_event::{ClusterEvent, StartupMode};
 pub use identity_lookup::IdentityLookup;
 pub use identity_setup_error::IdentitySetupError;
 pub use activation_error::ActivationError;

@@ -1,8 +1,12 @@
 use alloc::{string::String, vec, vec::Vec};
 
 use super::*;
-use crate::core::{ActivatedKind, ClusterProviderError, IdentityLookup, IdentitySetupError, KindRegistry, TOPIC_ACTOR_KIND};
-use fraktor_actor_rs::core::event_stream::EventStreamGeneric;
+use crate::core::failing_provider::FailingProvider;
+use crate::core::{
+  ActivatedKind, ClusterEvent, ClusterProviderError, IdentityLookup, IdentitySetupError, KindRegistry, StartupMode,
+  TOPIC_ACTOR_KIND,
+};
+use fraktor_actor_rs::core::event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber};
 use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{runtime_toolbox::{NoStdMutex, NoStdToolbox}, sync::ArcShared};
 
@@ -83,6 +87,33 @@ impl IdentityLookup for StubIdentityLookup {
   fn setup_client(&self, kinds: &[ActivatedKind]) -> Result<(), IdentitySetupError> {
     self.record(IdentityMode::Client, kinds);
     Ok(())
+  }
+}
+
+#[derive(Clone)]
+struct RecordingClusterEvents {
+  events: ArcShared<NoStdMutex<Vec<ClusterEvent>>>,
+}
+
+impl RecordingClusterEvents {
+  fn new() -> Self {
+    Self { events: ArcShared::new(NoStdMutex::new(Vec::new())) }
+  }
+
+  fn events(&self) -> Vec<ClusterEvent> {
+    self.events.lock().clone()
+  }
+}
+
+impl EventStreamSubscriber<NoStdToolbox> for RecordingClusterEvents {
+  fn on_event(&self, event: &EventStreamEvent<NoStdToolbox>) {
+    if let EventStreamEvent::Extension { name, payload } = event {
+      if name == "cluster" {
+        if let Some(cluster_event) = payload.payload().downcast_ref::<ClusterEvent>() {
+          self.events.lock().push(cluster_event.clone());
+        }
+      }
+    }
   }
 }
 
@@ -197,4 +228,187 @@ fn setup_client_kinds_registers_and_updates_virtual_actor_count() {
   assert_eq!(1, recorded.len());
   assert_eq!(IdentityMode::Client, recorded[0].mode);
   assert_eq!(recorded[0].kinds, vec![String::from(TOPIC_ACTOR_KIND), String::from("worker")]);
+}
+
+#[test]
+fn start_member_emits_startup_event_and_sets_mode() {
+  let provider = ArcShared::new(StubProvider::default());
+  let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
+  let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let kind_registry = KindRegistry::new();
+  let identity_lookup = ArcShared::new(StubIdentityLookup::new());
+  let mut core = ClusterCore::new(
+    ClusterExtensionConfig::new().with_advertised_address("proto://member"),
+    provider,
+    block_list_provider,
+    event_stream.clone(),
+    kind_registry,
+    identity_lookup,
+  );
+
+  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
+  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
+  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+
+  core.start_member().unwrap();
+
+  let events = subscriber_impl.events();
+  assert!(events.contains(&ClusterEvent::Startup {
+    address: String::from("proto://member"),
+    mode: StartupMode::Member,
+  }));
+}
+
+#[test]
+fn start_member_failure_emits_startup_failed() {
+  let provider = ArcShared::new(FailingProvider::member_fail("boom"));
+  let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
+  let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let kind_registry = KindRegistry::new();
+  let identity_lookup = ArcShared::new(StubIdentityLookup::new());
+  let mut core = ClusterCore::new(
+    ClusterExtensionConfig::new().with_advertised_address("proto://member"),
+    provider,
+    block_list_provider,
+    event_stream.clone(),
+    kind_registry,
+    identity_lookup,
+  );
+
+  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
+  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
+  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+
+  let result = core.start_member();
+  assert!(result.is_err());
+
+  let events = subscriber_impl.events();
+  assert!(events.iter().any(|event| matches!(event,
+    ClusterEvent::StartupFailed { address, mode, reason }
+      if address == "proto://member" && *mode == StartupMode::Member && reason == "boom"
+  )));
+}
+
+#[test]
+fn start_client_emits_startup_event_and_sets_mode() {
+  let provider = ArcShared::new(StubProvider::default());
+  let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
+  let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let kind_registry = KindRegistry::new();
+  let identity_lookup = ArcShared::new(StubIdentityLookup::new());
+  let mut core = ClusterCore::new(
+    ClusterExtensionConfig::new().with_advertised_address("proto://client"),
+    provider,
+    block_list_provider,
+    event_stream.clone(),
+    kind_registry,
+    identity_lookup,
+  );
+
+  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
+  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
+  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+
+  core.start_client().unwrap();
+
+  let events = subscriber_impl.events();
+  assert!(events.contains(&ClusterEvent::Startup {
+    address: String::from("proto://client"),
+    mode: StartupMode::Client,
+  }));
+}
+
+#[test]
+fn start_client_failure_emits_startup_failed() {
+  let provider = ArcShared::new(FailingProvider::client_fail("boom"));
+  let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
+  let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let kind_registry = KindRegistry::new();
+  let identity_lookup = ArcShared::new(StubIdentityLookup::new());
+  let mut core = ClusterCore::new(
+    ClusterExtensionConfig::new().with_advertised_address("proto://client"),
+    provider,
+    block_list_provider,
+    event_stream.clone(),
+    kind_registry,
+    identity_lookup,
+  );
+
+  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
+  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
+  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+
+  let result = core.start_client();
+  assert!(result.is_err());
+
+  let events = subscriber_impl.events();
+  assert!(events.iter().any(|event| matches!(event,
+    ClusterEvent::StartupFailed { address, mode, reason }
+      if address == "proto://client" && *mode == StartupMode::Client && reason == "boom"
+  )));
+}
+
+#[test]
+fn shutdown_resets_virtual_actor_count_and_emits_event() {
+  let provider = ArcShared::new(StubProvider::default());
+  let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
+  let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let kind_registry = KindRegistry::new();
+  let identity_lookup = ArcShared::new(StubIdentityLookup::new());
+  let mut core = ClusterCore::new(
+    ClusterExtensionConfig::new().with_advertised_address("proto://member"),
+    provider,
+    block_list_provider,
+    event_stream.clone(),
+    kind_registry,
+    identity_lookup,
+  );
+
+  core.setup_member_kinds(vec![ActivatedKind::new("worker")]).unwrap();
+  core.start_member().unwrap();
+
+  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
+  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
+  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+
+  core.shutdown(true).unwrap();
+
+  assert_eq!(0, core.virtual_actor_count());
+  let events = subscriber_impl.events();
+  assert!(events.contains(&ClusterEvent::Shutdown {
+    address: String::from("proto://member"),
+    mode: StartupMode::Member,
+  }));
+}
+
+#[test]
+fn shutdown_failure_emits_shutdown_failed() {
+  let provider = ArcShared::new(FailingProvider::shutdown_fail("stop-error"));
+  let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
+  let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let kind_registry = KindRegistry::new();
+  let identity_lookup = ArcShared::new(StubIdentityLookup::new());
+  let mut core = ClusterCore::new(
+    ClusterExtensionConfig::new().with_advertised_address("proto://member"),
+    provider,
+    block_list_provider,
+    event_stream.clone(),
+    kind_registry,
+    identity_lookup,
+  );
+
+  core.start_member().ok();
+
+  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
+  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
+  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+
+  let result = core.shutdown(true);
+  assert!(result.is_err());
+
+  let events = subscriber_impl.events();
+  assert!(events.iter().any(|event| matches!(event,
+    ClusterEvent::ShutdownFailed { address, mode, reason }
+      if address == "proto://member" && *mode == StartupMode::Member && reason == "stop-error"
+  )));
 }

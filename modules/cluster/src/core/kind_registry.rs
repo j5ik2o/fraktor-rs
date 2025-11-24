@@ -15,18 +15,19 @@ pub struct KindRegistry {
   kinds: BTreeMap<String, ActivatedKind>,
   invalid_requests: Vec<String>,
   generation: u64,
+  last_snapshot: Vec<String>,
 }
 
 impl KindRegistry {
   /// Creates an empty registry.
   #[must_use]
   pub fn new() -> Self {
-    Self { kinds: BTreeMap::new(), invalid_requests: Vec::new(), generation: 0 }
+    Self { kinds: BTreeMap::new(), invalid_requests: Vec::new(), generation: 0, last_snapshot: Vec::new() }
   }
 
   /// Registers the provided kinds and ensures the topic actor kind is present.
   pub fn register_all(&mut self, kinds: Vec<ActivatedKind>) {
-    let before = self.snapshot_names();
+    let before = self.last_snapshot.clone();
     for kind in kinds {
       self.kinds.insert(kind.name().to_string(), kind);
     }
@@ -34,6 +35,7 @@ impl KindRegistry {
     let after = self.snapshot_names();
     if before != after {
       self.generation = self.generation.saturating_add(1);
+      self.last_snapshot = after;
     }
   }
 
