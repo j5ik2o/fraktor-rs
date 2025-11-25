@@ -9,7 +9,7 @@ use alloc::{
 
 use crate::core::{
   activation_error::ActivationError, activation_record::ActivationRecord, grain_key::GrainKey, pid_cache::PidCache,
-  rendezvous_hasher::RendezvousHasher, virtual_actor_event::VirtualActorEvent,
+  pid_cache_event::PidCacheEvent, rendezvous_hasher::RendezvousHasher, virtual_actor_event::VirtualActorEvent,
 };
 
 #[cfg(test)]
@@ -138,8 +138,29 @@ impl VirtualActorRegistry {
     }
   }
 
-  /// Drains events.
+  /// Removes an activation and its cache entry for the given key.
+  ///
+  /// If the key exists, generates a [`VirtualActorEvent::Passivated`] event.
+  /// If the key does not exist, this method does nothing.
+  pub fn remove_activation(&mut self, key: &GrainKey) {
+    // アクティベーションが存在する場合のみ削除処理を実行
+    if self.activations.remove(key).is_some() {
+      // 対応するキャッシュエントリも削除
+      self.pid_cache.invalidate_key(key);
+      // Passivated イベントを生成
+      self.events.push(VirtualActorEvent::Passivated { key: key.clone() });
+    }
+  }
+
+  /// Drains virtual actor events.
   pub fn drain_events(&mut self) -> Vec<VirtualActorEvent> {
     core::mem::take(&mut self.events)
+  }
+
+  /// Drains PID cache events.
+  ///
+  /// Returns all accumulated cache events and clears the internal buffer.
+  pub fn drain_cache_events(&mut self) -> Vec<PidCacheEvent> {
+    self.pid_cache.drain_events()
   }
 }

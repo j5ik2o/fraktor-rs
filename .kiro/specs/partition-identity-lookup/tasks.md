@@ -12,7 +12,7 @@
   - _対応要件: 5, 7, 11_
   - _依存タスク: -_
 
-- [ ] 1.1 VirtualActorRegistry に `remove_activation` メソッドを追加
+- [x] 1.1 VirtualActorRegistry に `remove_activation` メソッドを追加
   - 指定された GrainKey のアクティベーションレコードを削除する機能を実装
   - 対応するキャッシュエントリも同時に削除
   - 存在しないキーに対しては何もせずに正常終了
@@ -22,7 +22,7 @@
   - _依存タスク: -_
   - _完了条件: remove_activation のテストがすべてパスし、既存テストも影響なし_
 
-- [ ] 1.2 VirtualActorRegistry に `drain_cache_events` メソッドを追加
+- [x] 1.2 VirtualActorRegistry に `drain_cache_events` メソッドを追加
   - 内部の PidCache から蓄積されたイベントを取得する機能を実装
   - PidCacheEvent のベクターを返却
   - 取得後はイベントバッファをクリア
