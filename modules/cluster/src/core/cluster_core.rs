@@ -31,7 +31,7 @@ pub struct ClusterCore<TB: RuntimeToolbox + 'static> {
   provider:            ArcShared<ToolboxMutex<Box<dyn ClusterProvider>, TB>>,
   block_list_provider: ArcShared<dyn BlockListProvider>,
   event_stream:        ArcShared<EventStreamGeneric<TB>>,
-  gossiper:            ArcShared<dyn Gossiper>,
+  gossiper:            ArcShared<ToolboxMutex<Box<dyn Gossiper>, TB>>,
   pub_sub:             ArcShared<ToolboxMutex<Box<dyn ClusterPubSub>, TB>>,
   startup_state:       ToolboxMutex<ClusterStartupState, TB>,
   metrics_enabled:     bool,
@@ -55,7 +55,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
     provider: ArcShared<ToolboxMutex<Box<dyn ClusterProvider>, TB>>,
     block_list_provider: ArcShared<dyn BlockListProvider>,
     event_stream: ArcShared<EventStreamGeneric<TB>>,
-    gossiper: ArcShared<dyn Gossiper>,
+    gossiper: ArcShared<ToolboxMutex<Box<dyn Gossiper>, TB>>,
     pubsub: ArcShared<ToolboxMutex<Box<dyn ClusterPubSub>, TB>>,
     kind_registry: KindRegistry,
     identity_lookup: ArcShared<ToolboxMutex<Box<dyn IdentityLookup>, TB>>,
@@ -172,7 +172,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
       error
     })?;
 
-    self.gossiper.start().map_err(|reason| {
+    self.gossiper.lock().start().map_err(|reason| {
       self.publish_cluster_event(ClusterEvent::StartupFailed {
         address: address.clone(),
         mode:    StartupMode::Member,
@@ -250,7 +250,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
       error
     })?;
 
-    self.gossiper.stop().map_err(|reason| {
+    self.gossiper.lock().stop().map_err(|reason| {
       self.publish_cluster_event(ClusterEvent::ShutdownFailed {
         address: address.clone(),
         mode,

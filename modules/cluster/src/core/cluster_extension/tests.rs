@@ -33,11 +33,11 @@ impl ClusterProvider for StubProvider {
 
 struct StubGossiper;
 impl Gossiper for StubGossiper {
-  fn start(&self) -> Result<(), &'static str> {
+  fn start(&mut self) -> Result<(), &'static str> {
     Ok(())
   }
 
-  fn stop(&self) -> Result<(), &'static str> {
+  fn stop(&mut self) -> Result<(), &'static str> {
     Ok(())
   }
 }
@@ -79,7 +79,7 @@ fn registers_extension_and_starts_member() {
     ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"),
     Box::new(StubProvider),
     ArcShared::new(StubBlockList),
-    ArcShared::new(StubGossiper),
+    Box::new(StubGossiper),
     Box::new(StubPubSub),
     Box::new(StubIdentity),
   );
@@ -99,7 +99,7 @@ fn subscribes_to_event_stream_and_applies_topology_on_topology_updated() {
     ClusterExtensionConfig::new().with_advertised_address("fraktor://demo").with_metrics_enabled(true),
     Box::new(StubProvider),
     ArcShared::new(StubBlockList),
-    ArcShared::new(StubGossiper),
+    Box::new(StubGossiper),
     Box::new(StubPubSub),
     Box::new(StubIdentity),
   );
@@ -138,7 +138,7 @@ fn ignores_topology_with_same_hash_via_event_stream() {
     ClusterExtensionConfig::new().with_advertised_address("fraktor://demo").with_metrics_enabled(true),
     Box::new(StubProvider),
     ArcShared::new(StubBlockList),
-    ArcShared::new(StubGossiper),
+    Box::new(StubGossiper),
     Box::new(StubPubSub),
     Box::new(StubIdentity),
   );
@@ -245,7 +245,7 @@ fn phase1_integration_static_topology_publishes_to_event_stream_and_applies_to_c
     ClusterExtensionConfig::new().with_advertised_address("node-a").with_metrics_enabled(true),
     Box::new(provider),
     block_list,
-    ArcShared::new(StubGossiper),
+    Box::new(StubGossiper),
     Box::new(StubPubSub),
     Box::new(StubIdentity),
   );
@@ -303,7 +303,7 @@ fn phase1_integration_topology_updated_includes_blocked_members() {
     ClusterExtensionConfig::new().with_advertised_address("node-a").with_metrics_enabled(true),
     Box::new(provider),
     block_list,
-    ArcShared::new(StubGossiper),
+    Box::new(StubGossiper),
     Box::new(StubPubSub),
     Box::new(StubIdentity),
   );
@@ -350,7 +350,7 @@ fn phase1_integration_duplicate_hash_topology_is_suppressed() {
     ClusterExtensionConfig::new().with_advertised_address("node-a").with_metrics_enabled(true),
     Box::new(StubProvider),
     block_list,
-    ArcShared::new(StubGossiper),
+    Box::new(StubGossiper),
     Box::new(StubPubSub),
     Box::new(StubIdentity),
   );
@@ -381,7 +381,7 @@ fn phase1_integration_metrics_include_members_and_virtual_actors() {
     ClusterExtensionConfig::new().with_advertised_address("node-a").with_metrics_enabled(true),
     Box::new(StubProvider),
     block_list,
-    ArcShared::new(StubGossiper),
+    Box::new(StubGossiper),
     Box::new(StubPubSub),
     Box::new(StubIdentity),
   );
@@ -440,7 +440,7 @@ fn phase2_integration_join_leave_events_produce_topology_updated() {
     ClusterExtensionConfig::new().with_advertised_address("node-a").with_metrics_enabled(true),
     Box::new(StubProvider),
     block_list,
-    ArcShared::new(StubGossiper),
+    Box::new(StubGossiper),
     Box::new(StubPubSub),
     Box::new(StubIdentity),
   );
@@ -504,7 +504,7 @@ fn phase2_integration_blocklist_reflected_in_topology_events() {
     ClusterExtensionConfig::new().with_advertised_address("node-a").with_metrics_enabled(true),
     Box::new(StubProvider),
     block_list,
-    ArcShared::new(StubGossiper),
+    Box::new(StubGossiper),
     Box::new(StubPubSub),
     Box::new(StubIdentity),
   );
@@ -549,7 +549,7 @@ fn phase2_integration_metrics_updated_correctly_with_dynamic_topology() {
     ClusterExtensionConfig::new().with_advertised_address("node-a").with_metrics_enabled(true),
     Box::new(StubProvider),
     block_list,
-    ArcShared::new(StubGossiper),
+    Box::new(StubGossiper),
     Box::new(StubPubSub),
     Box::new(StubIdentity),
   );
@@ -604,7 +604,7 @@ fn phase2_integration_shutdown_resets_metrics_and_emits_event() {
     ClusterExtensionConfig::new().with_advertised_address("node-a").with_metrics_enabled(true),
     Box::new(StubProvider),
     block_list,
-    ArcShared::new(StubGossiper),
+    Box::new(StubGossiper),
     Box::new(StubPubSub),
     Box::new(StubIdentity),
   );

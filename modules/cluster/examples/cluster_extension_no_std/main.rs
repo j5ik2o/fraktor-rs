@@ -81,11 +81,11 @@ use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
 #[derive(Default)]
 struct DemoGossiper;
 impl Gossiper for DemoGossiper {
-  fn start(&self) -> Result<(), &'static str> {
+  fn start(&mut self) -> Result<(), &'static str> {
     Ok(())
   }
 
-  fn stop(&self) -> Result<(), &'static str> {
+  fn stop(&mut self) -> Result<(), &'static str> {
     Ok(())
   }
 }
@@ -211,7 +211,7 @@ impl ClusterNode {
       ClusterExtensionConfig::new().with_advertised_address(name).with_metrics_enabled(true),
       Box::new(provider),
       ArcShared::new(DemoBlockList::default()),
-      ArcShared::new(DemoGossiper::default()),
+      Box::new(DemoGossiper::default()),
       Box::new(DemoPubSub::default()),
       Box::new(DemoIdentityLookup::default()),
     );

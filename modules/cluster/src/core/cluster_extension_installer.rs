@@ -39,6 +39,9 @@ pub type ClusterProviderFactory<TB> = ArcShared<
     + Sync,
 >;
 
+/// Factory function type for creating a `Gossiper`.
+type GossiperFactory = ArcShared<dyn Fn() -> Box<dyn Gossiper> + Send + Sync>;
+
 /// Factory function type for creating a `ClusterPubSub`.
 type PubSubFactory = ArcShared<dyn Fn() -> Box<dyn ClusterPubSub> + Send + Sync>;
 
@@ -74,7 +77,7 @@ pub struct ClusterExtensionInstaller<TB: RuntimeToolbox + 'static> {
   config:              ClusterExtensionConfig,
   provider_f:          ClusterProviderFactory<TB>,
   block_list_provider: Option<ArcShared<dyn BlockListProvider>>,
-  gossiper:            Option<ArcShared<dyn Gossiper>>,
+  gossiper_f:          Option<GossiperFactory>,
   pubsub_f:            Option<PubSubFactory>,
   identity_lookup_f:   Option<IdentityLookupFactory>,
 }
@@ -85,7 +88,7 @@ impl<TB: RuntimeToolbox + 'static> Clone for ClusterExtensionInstaller<TB> {
       config:              self.config.clone(),
       provider_f:          ArcShared::clone(&self.provider_f),
       block_list_provider: self.block_list_provider.clone(),
-      gossiper:            self.gossiper.clone(),
+      gossiper_f:          self.gossiper_f.clone(),
       pubsub_f:            self.pubsub_f.clone(),
       identity_lookup_f:   self.identity_lookup_f.clone(),
     }
@@ -123,7 +126,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
       config,
       provider_f: ArcShared::new(provider_f),
       block_list_provider: None,
-      gossiper: None,
+      gossiper_f: None,
       pubsub_f: None,
       identity_lookup_f: None,
     }
@@ -193,10 +196,14 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
     self
   }
 
-  /// Sets a custom gossiper implementation.
+  /// Sets a custom gossiper factory.
+  ///
+  /// The factory is called during installation to create a fresh `Gossiper` instance.
   #[must_use]
-  pub fn with_gossiper(mut self, gossiper: ArcShared<dyn Gossiper>) -> Self {
-    self.gossiper = Some(gossiper);
+  pub fn with_gossiper_factory<F>(mut self, factory: F) -> Self
+  where
+    F: Fn() -> Box<dyn Gossiper> + Send + Sync + 'static, {
+    self.gossiper_f = Some(ArcShared::new(factory));
     self
   }
 
@@ -249,7 +256,8 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
     // デフォルト実装を使用（未指定の場合）
     let block_list_provider: ArcShared<dyn BlockListProvider> =
       self.block_list_provider.clone().unwrap_or_else(|| ArcShared::new(EmptyBlockListProvider));
-    let gossiper: ArcShared<dyn Gossiper> = self.gossiper.clone().unwrap_or_else(|| ArcShared::new(NoopGossiper));
+    // Gossiper はファクトリ経由で作成（Clone できないため）
+    let gossiper: Box<dyn Gossiper> = self.gossiper_f.as_ref().map(|f| f()).unwrap_or_else(|| Box::new(NoopGossiper));
     // ClusterPubSub はファクトリ経由で作成（Clone できないため）
     let pubsub: Box<dyn ClusterPubSub> =
       self.pubsub_f.as_ref().map(|f| f()).unwrap_or_else(|| Box::new(NoopClusterPubSub));

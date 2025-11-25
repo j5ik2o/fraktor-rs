@@ -18,11 +18,11 @@ impl NoopGossiper {
 }
 
 impl Gossiper for NoopGossiper {
-  fn start(&self) -> Result<(), &'static str> {
+  fn start(&mut self) -> Result<(), &'static str> {
     Ok(())
   }
 
-  fn stop(&self) -> Result<(), &'static str> {
+  fn stop(&mut self) -> Result<(), &'static str> {
     Ok(())
   }
 }
