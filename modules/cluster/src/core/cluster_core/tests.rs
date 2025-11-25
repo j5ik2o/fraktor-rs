@@ -1,9 +1,9 @@
-use alloc::{string::String, vec, vec::Vec};
+use alloc::{boxed::Box, string::String, vec, vec::Vec};
 
 use fraktor_actor_rs::core::event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber};
 use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdMutex, NoStdToolbox},
+  runtime_toolbox::{NoStdMutex, NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
   sync::ArcShared,
 };
 
@@ -136,18 +136,19 @@ impl StubIdentityLookup {
     guard.push(IdentityCall { mode, kinds: names });
   }
 
+  #[allow(dead_code)]
   fn calls(&self) -> Vec<IdentityCall> {
     self.calls.lock().clone()
   }
 }
 
 impl IdentityLookup for StubIdentityLookup {
-  fn setup_member(&self, kinds: &[ActivatedKind]) -> Result<(), IdentitySetupError> {
+  fn setup_member(&mut self, kinds: &[ActivatedKind]) -> Result<(), IdentitySetupError> {
     self.record(IdentityMode::Member, kinds);
     Ok(())
   }
 
-  fn setup_client(&self, kinds: &[ActivatedKind]) -> Result<(), IdentitySetupError> {
+  fn setup_client(&mut self, kinds: &[ActivatedKind]) -> Result<(), IdentitySetupError> {
     self.record(IdentityMode::Client, kinds);
     Ok(())
   }
@@ -302,12 +303,22 @@ impl EventStreamSubscriber<NoStdToolbox> for RecordingClusterEvents {
   }
 }
 
+/// IdentityLookup を ArcShared<ToolboxMutex<Box<dyn IdentityLookup>>> にラップするヘルパー
+fn wrap_identity_lookup<I: IdentityLookup + 'static>(
+  lookup: I,
+) -> ArcShared<ToolboxMutex<Box<dyn IdentityLookup>, NoStdToolbox>> {
+  let boxed: Box<dyn IdentityLookup> = Box::new(lookup);
+  let mutex: ToolboxMutex<Box<dyn IdentityLookup>, NoStdToolbox> =
+    <NoStdToolbox as RuntimeToolbox>::MutexFamily::create(boxed);
+  ArcShared::new(mutex)
+}
+
 fn build_core_with_config(config: &ClusterExtensionConfig) -> ClusterCore<NoStdToolbox> {
   let provider = ArcShared::new(StubProvider);
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec!["blocked-node".to_string()]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
-  let identity_lookup: ArcShared<dyn IdentityLookup> = ArcShared::new(StubIdentityLookup::new());
+  let identity_lookup = wrap_identity_lookup(StubIdentityLookup::new());
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
   let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
 
@@ -331,7 +342,7 @@ fn new_core_stores_dependencies_and_startup_params() {
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec!["blocked-node".to_string()]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
-  let identity_lookup: ArcShared<dyn IdentityLookup> = ArcShared::new(StubIdentityLookup::new());
+  let identity_lookup = wrap_identity_lookup(StubIdentityLookup::new());
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
   let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
 
@@ -383,7 +394,9 @@ fn setup_member_kinds_registers_and_updates_virtual_actor_count() {
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![String::from("blocked-node")]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
-  let identity_lookup = ArcShared::new(StubIdentityLookup::new());
+  // calls を共有して後で参照できるようにする
+  let calls: ArcShared<NoStdMutex<Vec<IdentityCall>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let identity_lookup = StubIdentityLookup { calls: calls.clone() };
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
   let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
   let mut core = ClusterCore::new(
@@ -394,14 +407,14 @@ fn setup_member_kinds_registers_and_updates_virtual_actor_count() {
     gossiper,
     pubsub,
     kind_registry,
-    identity_lookup.clone(),
+    wrap_identity_lookup(identity_lookup),
   );
 
   core.setup_member_kinds(vec![ActivatedKind::new("worker"), ActivatedKind::new("analytics")]).unwrap();
 
   assert_eq!(3, core.virtual_actor_count()); // worker + analytics + topic kind
 
-  let recorded = identity_lookup.calls();
+  let recorded = calls.lock().clone();
   assert_eq!(1, recorded.len());
   assert_eq!(recorded[0].mode, IdentityMode::Member);
   assert_eq!(recorded[0].kinds, vec![
@@ -417,7 +430,9 @@ fn setup_client_kinds_registers_and_updates_virtual_actor_count() {
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
-  let identity_lookup = ArcShared::new(StubIdentityLookup::new());
+  // calls を共有して後で参照できるようにする
+  let calls: ArcShared<NoStdMutex<Vec<IdentityCall>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let identity_lookup = StubIdentityLookup { calls: calls.clone() };
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
   let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
   let mut core = ClusterCore::new(
@@ -428,14 +443,14 @@ fn setup_client_kinds_registers_and_updates_virtual_actor_count() {
     gossiper,
     pubsub,
     kind_registry,
-    identity_lookup.clone(),
+    wrap_identity_lookup(identity_lookup),
   );
 
   core.setup_client_kinds(vec![ActivatedKind::new("worker")]).unwrap();
 
   assert_eq!(2, core.virtual_actor_count());
 
-  let recorded = identity_lookup.calls();
+  let recorded = calls.lock().clone();
   assert_eq!(1, recorded.len());
   assert_eq!(IdentityMode::Client, recorded[0].mode);
   assert_eq!(recorded[0].kinds, vec![String::from(TOPIC_ACTOR_KIND), String::from("worker")]);
@@ -447,7 +462,7 @@ fn topology_event_includes_blocked_and_updates_metrics() {
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![String::from("blocked-a")]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
-  let identity_lookup = ArcShared::new(StubIdentityLookup::new());
+  let identity_lookup = wrap_identity_lookup(StubIdentityLookup::new());
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
   let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
   let mut core = ClusterCore::new(
@@ -507,7 +522,7 @@ fn topology_with_same_hash_is_suppressed() {
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![String::from("blocked-a")]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
-  let identity_lookup = ArcShared::new(StubIdentityLookup::new());
+  let identity_lookup = wrap_identity_lookup(StubIdentityLookup::new());
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
   let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
   let mut core = ClusterCore::new(
@@ -543,7 +558,7 @@ fn multi_node_topology_flow_updates_metrics_and_pid_cache() {
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![String::from("blocked-b")]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
-  let identity_lookup = ArcShared::new(StubIdentityLookup::new());
+  let identity_lookup = wrap_identity_lookup(StubIdentityLookup::new());
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
   let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
   let mut core = ClusterCore::new(
@@ -599,7 +614,7 @@ fn start_member_emits_startup_event_and_sets_mode() {
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
-  let identity_lookup = ArcShared::new(StubIdentityLookup::new());
+  let identity_lookup = wrap_identity_lookup(StubIdentityLookup::new());
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
   let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
   let mut core = ClusterCore::new(
@@ -639,7 +654,7 @@ fn start_member_failure_emits_startup_failed() {
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
-  let identity_lookup = ArcShared::new(StubIdentityLookup::new());
+  let identity_lookup = wrap_identity_lookup(StubIdentityLookup::new());
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
   let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
   let mut core = ClusterCore::new(
@@ -673,7 +688,7 @@ fn start_client_emits_startup_event_and_sets_mode() {
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
-  let identity_lookup = ArcShared::new(StubIdentityLookup::new());
+  let identity_lookup = wrap_identity_lookup(StubIdentityLookup::new());
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
   let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
   let mut core = ClusterCore::new(
@@ -705,7 +720,7 @@ fn start_client_failure_emits_startup_failed() {
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
-  let identity_lookup = ArcShared::new(StubIdentityLookup::new());
+  let identity_lookup = wrap_identity_lookup(StubIdentityLookup::new());
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
   let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
   let mut core = ClusterCore::new(
@@ -739,7 +754,7 @@ fn start_member_fails_when_gossip_start_fails() {
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
-  let identity_lookup = ArcShared::new(StubIdentityLookup::new());
+  let identity_lookup = wrap_identity_lookup(StubIdentityLookup::new());
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::failing_start());
   let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
   let mut core = ClusterCore::new(
@@ -772,7 +787,7 @@ fn start_member_fails_when_pubsub_start_fails() {
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
-  let identity_lookup = ArcShared::new(StubIdentityLookup::new());
+  let identity_lookup = wrap_identity_lookup(StubIdentityLookup::new());
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
   let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::failing_start());
   let mut core = ClusterCore::new(
@@ -805,7 +820,7 @@ fn shutdown_stops_pubsub_then_gossip() {
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
-  let identity_lookup = ArcShared::new(StubIdentityLookup::new());
+  let identity_lookup = wrap_identity_lookup(StubIdentityLookup::new());
   let gossiper = ArcShared::new(StubGossiper::new());
   let pubsub = ArcShared::new(StubPubSub::new());
   let mut core = ClusterCore::new(
@@ -832,7 +847,7 @@ fn shutdown_resets_virtual_actor_count_and_emits_event() {
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
-  let identity_lookup = ArcShared::new(StubIdentityLookup::new());
+  let identity_lookup = wrap_identity_lookup(StubIdentityLookup::new());
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
   let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
   let mut core = ClusterCore::new(
@@ -869,7 +884,7 @@ fn shutdown_failure_emits_shutdown_failed() {
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
-  let identity_lookup = ArcShared::new(StubIdentityLookup::new());
+  let identity_lookup = wrap_identity_lookup(StubIdentityLookup::new());
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
   let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
   let mut core = ClusterCore::new(
@@ -920,7 +935,7 @@ fn metrics_disabled_still_emits_startup_event() {
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
-  let identity_lookup = ArcShared::new(StubIdentityLookup::new());
+  let identity_lookup = wrap_identity_lookup(StubIdentityLookup::new());
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
   let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
   let mut core = ClusterCore::new(
@@ -959,7 +974,7 @@ fn metrics_disabled_still_emits_topology_updated_event() {
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![String::from("blocked-x")]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
-  let identity_lookup = ArcShared::new(StubIdentityLookup::new());
+  let identity_lookup = wrap_identity_lookup(StubIdentityLookup::new());
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
   let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
   let mut core = ClusterCore::new(
@@ -1006,7 +1021,7 @@ fn metrics_disabled_still_emits_shutdown_event() {
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
-  let identity_lookup = ArcShared::new(StubIdentityLookup::new());
+  let identity_lookup = wrap_identity_lookup(StubIdentityLookup::new());
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
   let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
   let mut core = ClusterCore::new(
@@ -1049,7 +1064,7 @@ fn metrics_disabled_full_lifecycle_events_continue() {
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![String::from("blocked-z")]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
-  let identity_lookup = ArcShared::new(StubIdentityLookup::new());
+  let identity_lookup = wrap_identity_lookup(StubIdentityLookup::new());
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
   let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
   let mut core = ClusterCore::new(

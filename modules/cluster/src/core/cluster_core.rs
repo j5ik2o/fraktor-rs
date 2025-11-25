@@ -35,7 +35,7 @@ pub struct ClusterCore<TB: RuntimeToolbox + 'static> {
   startup_state:       ToolboxMutex<ClusterStartupState, TB>,
   metrics_enabled:     bool,
   kind_registry:       KindRegistry,
-  identity_lookup:     ArcShared<dyn IdentityLookup>,
+  identity_lookup:     ArcShared<ToolboxMutex<alloc::boxed::Box<dyn IdentityLookup>, TB>>,
   virtual_actor_count: i64,
   mode:                Option<StartupMode>,
   metrics:             Option<ClusterMetrics>,
@@ -57,7 +57,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
     gossiper: ArcShared<dyn Gossiper>,
     pubsub: ArcShared<dyn ClusterPubSub>,
     kind_registry: KindRegistry,
-    identity_lookup: ArcShared<dyn IdentityLookup>,
+    identity_lookup: ArcShared<ToolboxMutex<alloc::boxed::Box<dyn IdentityLookup>, TB>>,
   ) -> Self {
     let advertised_address = config.advertised_address().to_string();
     let startup_state = ClusterStartupState { address: advertised_address };
@@ -105,7 +105,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
     self.kind_registry.register_all(kinds);
     self.virtual_actor_count = self.kind_registry.virtual_actor_count();
     let snapshot = self.kind_registry.all();
-    self.identity_lookup.setup_member(&snapshot)?;
+    self.identity_lookup.lock().setup_member(&snapshot)?;
     Ok(())
   }
 
@@ -118,7 +118,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
     self.kind_registry.register_all(kinds);
     self.virtual_actor_count = self.kind_registry.virtual_actor_count();
     let snapshot = self.kind_registry.all();
-    self.identity_lookup.setup_client(&snapshot)?;
+    self.identity_lookup.lock().setup_client(&snapshot)?;
     Ok(())
   }
 
@@ -359,6 +359,17 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
         cache.invalidate_authority(authority);
       }
     }
+
+    // IdentityLookup に離脱メンバーを伝播
+    // 注: update_topology は完全なメンバーリストを必要とするため、
+    // ClusterTopology のデルタ情報からは on_member_left のみを呼び出す
+    {
+      let mut identity_guard = self.identity_lookup.lock();
+      for authority in topology.left() {
+        identity_guard.on_member_left(authority);
+      }
+    }
+
     true
   }
 }

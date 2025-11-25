@@ -1,9 +1,13 @@
 //! Extension identifier for cluster runtime.
 
+use alloc::boxed::Box;
 use core::marker::PhantomData;
 
 use fraktor_actor_rs::core::{extension::ExtensionId, system::ActorSystemGeneric};
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::{
+  runtime_toolbox::{RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
+  sync::ArcShared,
+};
 
 use crate::core::{
   ClusterCore, ClusterExtensionConfig, ClusterExtensionGeneric, ClusterProvider, ClusterPubSub, Gossiper,
@@ -11,19 +15,34 @@ use crate::core::{
 };
 
 /// Registers the cluster extension into an actor system.
-#[derive(Clone)]
 pub struct ClusterExtensionId<TB: RuntimeToolbox + 'static> {
   config:              ClusterExtensionConfig,
   provider:            ArcShared<dyn ClusterProvider>,
   block_list_provider: ArcShared<dyn fraktor_remote_rs::core::BlockListProvider>,
   gossiper:            ArcShared<dyn Gossiper>,
   pubsub:              ArcShared<dyn ClusterPubSub>,
-  identity_lookup:     ArcShared<dyn IdentityLookup>,
+  identity_lookup:     ArcShared<ToolboxMutex<Box<dyn IdentityLookup>, TB>>,
   _marker:             PhantomData<TB>,
+}
+
+impl<TB: RuntimeToolbox + 'static> Clone for ClusterExtensionId<TB> {
+  fn clone(&self) -> Self {
+    Self {
+      config:              self.config.clone(),
+      provider:            self.provider.clone(),
+      block_list_provider: self.block_list_provider.clone(),
+      gossiper:            self.gossiper.clone(),
+      pubsub:              self.pubsub.clone(),
+      identity_lookup:     self.identity_lookup.clone(),
+      _marker:             PhantomData,
+    }
+  }
 }
 
 impl<TB: RuntimeToolbox + 'static> ClusterExtensionId<TB> {
   /// Creates a new identifier with injected dependencies.
+  ///
+  /// The `identity_lookup` is wrapped in `ToolboxMutex` for thread-safe mutable access.
   #[must_use]
   pub fn new(
     config: ClusterExtensionConfig,
@@ -31,9 +50,19 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionId<TB> {
     block_list_provider: ArcShared<dyn fraktor_remote_rs::core::BlockListProvider>,
     gossiper: ArcShared<dyn Gossiper>,
     pubsub: ArcShared<dyn ClusterPubSub>,
-    identity_lookup: ArcShared<dyn IdentityLookup>,
+    identity_lookup: Box<dyn IdentityLookup>,
   ) -> Self {
-    Self { config, provider, block_list_provider, gossiper, pubsub, identity_lookup, _marker: PhantomData }
+    let mutex: ToolboxMutex<Box<dyn IdentityLookup>, TB> =
+      <TB::MutexFamily as SyncMutexFamily>::create(identity_lookup);
+    Self {
+      config,
+      provider,
+      block_list_provider,
+      gossiper,
+      pubsub,
+      identity_lookup: ArcShared::new(mutex),
+      _marker: PhantomData,
+    }
   }
 }
 

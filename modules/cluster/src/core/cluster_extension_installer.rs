@@ -1,5 +1,7 @@
 //! Installs the cluster extension into an actor system.
 
+use alloc::boxed::Box;
+
 use fraktor_actor_rs::core::{
   event_stream::EventStreamGeneric,
   extension::ExtensionInstaller,
@@ -37,6 +39,9 @@ pub type ClusterProviderFactory<TB> = ArcShared<
     + Sync,
 >;
 
+/// Factory function type for creating an `IdentityLookup`.
+type IdentityLookupFactory = ArcShared<dyn Fn() -> Box<dyn IdentityLookup> + Send + Sync>;
+
 /// Registers the cluster extension at actor system build time.
 ///
 /// This installer simplifies cluster setup by automatically creating default
@@ -68,7 +73,7 @@ pub struct ClusterExtensionInstaller<TB: RuntimeToolbox + 'static> {
   block_list_provider: Option<ArcShared<dyn BlockListProvider>>,
   gossiper:            Option<ArcShared<dyn Gossiper>>,
   pubsub:              Option<ArcShared<dyn ClusterPubSub>>,
-  identity_lookup:     Option<ArcShared<dyn IdentityLookup>>,
+  identity_lookup_f:   Option<IdentityLookupFactory>,
 }
 
 impl<TB: RuntimeToolbox + 'static> Clone for ClusterExtensionInstaller<TB> {
@@ -79,7 +84,7 @@ impl<TB: RuntimeToolbox + 'static> Clone for ClusterExtensionInstaller<TB> {
       block_list_provider: self.block_list_provider.clone(),
       gossiper:            self.gossiper.clone(),
       pubsub:              self.pubsub.clone(),
-      identity_lookup:     self.identity_lookup.clone(),
+      identity_lookup_f:   self.identity_lookup_f.clone(),
     }
   }
 }
@@ -117,7 +122,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
       block_list_provider: None,
       gossiper: None,
       pubsub: None,
-      identity_lookup: None,
+      identity_lookup_f: None,
     }
   }
 
@@ -199,10 +204,14 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
     self
   }
 
-  /// Sets a custom identity lookup implementation.
+  /// Sets a custom identity lookup factory.
+  ///
+  /// The factory is called during installation to create a fresh `IdentityLookup` instance.
   #[must_use]
-  pub fn with_identity_lookup(mut self, identity_lookup: ArcShared<dyn IdentityLookup>) -> Self {
-    self.identity_lookup = Some(identity_lookup);
+  pub fn with_identity_lookup_factory<F>(mut self, factory: F) -> Self
+  where
+    F: Fn() -> Box<dyn IdentityLookup> + Send + Sync + 'static, {
+    self.identity_lookup_f = Some(ArcShared::new(factory));
     self
   }
 }
@@ -235,8 +244,9 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
       self.block_list_provider.clone().unwrap_or_else(|| ArcShared::new(EmptyBlockListProvider));
     let gossiper: ArcShared<dyn Gossiper> = self.gossiper.clone().unwrap_or_else(|| ArcShared::new(NoopGossiper));
     let pubsub: ArcShared<dyn ClusterPubSub> = self.pubsub.clone().unwrap_or_else(|| ArcShared::new(NoopClusterPubSub));
-    let identity_lookup: ArcShared<dyn IdentityLookup> =
-      self.identity_lookup.clone().unwrap_or_else(|| ArcShared::new(NoopIdentityLookup));
+    // IdentityLookup はファクトリ経由で作成（Clone できないため）
+    let identity_lookup: Box<dyn IdentityLookup> =
+      self.identity_lookup_f.as_ref().map(|f| f()).unwrap_or_else(|| Box::new(NoopIdentityLookup));
 
     // ファクトリー関数を呼び出して ClusterProvider を作成
     let provider = (self.provider_f)(system.event_stream(), block_list_provider.clone(), config.advertised_address());
