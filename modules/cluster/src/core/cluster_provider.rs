@@ -5,6 +5,17 @@
 
 use crate::core::cluster_provider_error::ClusterProviderError;
 
+/// Local cluster provider for membership-aware scenarios.
+mod local_cluster_provider;
+/// No-op provider useful for tests and single-process runs.
+mod noop_cluster_provider;
+/// Static cluster provider for predetermined topology scenarios.
+mod static_cluster_provider;
+
+pub use local_cluster_provider::LocalClusterProvider;
+pub use noop_cluster_provider::NoopClusterProvider;
+pub use static_cluster_provider::StaticClusterProvider;
+
 /// Integrates the cluster runtime with an external membership system.
 pub trait ClusterProvider: Send + Sync {
   /// Starts the node as a full cluster member.

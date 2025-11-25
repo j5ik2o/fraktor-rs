@@ -1,11 +1,11 @@
 #![allow(clippy::print_stdout)]
 
-//! Cluster extension quickstart (no_std + InprocSampleProvider)
+//! Cluster extension quickstart (no_std + StaticClusterProvider)
 //!
 //! # 概要
 //!
 //! このサンプルは EventStream 主導のトポロジ通知方式を no_std 環境で実装しています：
-//! 1. `InprocSampleProvider` が `ClusterEvent::TopologyUpdated` を EventStream に publish
+//! 1. `StaticClusterProvider` が `ClusterEvent::TopologyUpdated` を EventStream に publish
 //! 2. `ClusterExtension` が EventStream を購読し、自動的に `ClusterCore::on_topology` を呼び出す
 //! 3. 手動の `on_topology` 呼び出しは不要
 //!
@@ -16,14 +16,14 @@
 //!
 //! # Phase1 (静的トポロジ)
 //!
-//! `InprocSampleProvider` に静的トポロジを設定し、`start_member()` 時に publish します。
+//! `StaticClusterProvider` に静的トポロジを設定し、`start_member()` 時に publish します。
 //! no_std 環境では GossipEngine を使用せず、静的トポロジのみで動作します。
 //!
 //! # Provider 差し替え方法
 //!
 //! `ClusterProvider` トレイトを実装することで、Provider を差し替えられます：
-//! - `InprocSampleProvider`: no_std 環境向け静的トポロジ（本サンプル）
-//! - `SampleTcpProvider`: std/Tokio 環境向け、Transport イベント自動検知
+//! - `StaticClusterProvider`: no_std 環境向け静的トポロジ（本サンプル）
+//! - `LocalClusterProvider`: std/Tokio 環境向け、Transport イベント自動検知
 //! - etcd/zk/automanaged provider: 外部サービス連携（Phase2以降で対応予定）
 //!
 //! 詳細は `.kiro/specs/protoactor-go-cluster-extension-samples/example.md` を参照。
@@ -38,7 +38,7 @@
 //!
 //! ```text
 //! === Cluster Extension No-Std Demo ===
-//! Demonstrates EventStream-based topology with InprocSampleProvider
+//! Demonstrates EventStream-based topology with StaticClusterProvider
 //! (No manual on_topology calls - topology is automatically published)
 //!
 //! --- Starting cluster members ---
@@ -72,7 +72,7 @@ use fraktor_actor_rs::core::{
 };
 use fraktor_cluster_rs::core::{
   ActivatedKind, ClusterEvent, ClusterExtensionConfig, ClusterExtensionGeneric, ClusterExtensionId, ClusterPubSub,
-  ClusterTopology, Gossiper, IdentityLookup, IdentitySetupError, InprocSampleProvider,
+  ClusterTopology, Gossiper, IdentityLookup, IdentitySetupError, StaticClusterProvider,
 };
 use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
@@ -200,10 +200,10 @@ impl ClusterNode {
       ArcShared::new(ClusterEventLogger::new(name));
     let _subscription = system.subscribe_event_stream(&event_subscriber);
 
-    // 静的トポロジを設定した InprocSampleProvider を作成
+    // 静的トポロジを設定した StaticClusterProvider を作成
     // start_member() 時に EventStream へ TopologyUpdated を自動 publish する
     let static_topology = ClusterTopology::new(1, vec![peer_name.to_string()], vec![]);
-    let provider = InprocSampleProvider::new(system.event_stream(), ArcShared::new(DemoBlockList::default()), name)
+    let provider = StaticClusterProvider::new(system.event_stream(), ArcShared::new(DemoBlockList::default()), name)
       .with_static_topology(static_topology);
 
     // ClusterExtension を登録
@@ -253,7 +253,7 @@ impl ClusterNode {
 
 fn main() {
   println!("=== Cluster Extension No-Std Demo ===");
-  println!("Demonstrates EventStream-based topology with InprocSampleProvider");
+  println!("Demonstrates EventStream-based topology with StaticClusterProvider");
   println!("(No manual on_topology calls - topology is automatically published)\n");
 
   // 1. 2ノードを作成（それぞれ相手をピアとして静的トポロジを設定）
@@ -261,7 +261,7 @@ fn main() {
   let node_b = ClusterNode::new("node-b", "node-a");
 
   // 2. クラスタを開始
-  //    - start_member() で InprocSampleProvider が TopologyUpdated を EventStream に publish
+  //    - start_member() で StaticClusterProvider が TopologyUpdated を EventStream に publish
   //    - ClusterExtension が自動的に購読してトポロジを適用
   println!("--- Starting cluster members ---");
   node_a.start();

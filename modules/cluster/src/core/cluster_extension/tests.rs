@@ -13,7 +13,7 @@ use fraktor_utils_rs::core::{
 
 use crate::core::{
   ActivatedKind, ClusterEvent, ClusterExtensionConfig, ClusterExtensionId, ClusterProvider, ClusterProviderError,
-  ClusterPubSub, ClusterTopology, Gossiper, IdentityLookup, IdentitySetupError, InprocSampleProvider,
+  ClusterPubSub, ClusterTopology, Gossiper, IdentityLookup, IdentitySetupError, StaticClusterProvider,
 };
 
 struct StubProvider;
@@ -219,7 +219,7 @@ impl EventStreamSubscriber<NoStdToolbox> for RecordingClusterEvents {
   }
 }
 
-/// Phase1 統合テスト: InprocSampleProvider の静的トポロジが EventStream に publish され、
+/// Phase1 統合テスト: StaticClusterProvider の静的トポロジが EventStream に publish され、
 /// ClusterExtension が自動的に購読して ClusterCore に適用することを検証
 #[test]
 fn phase1_integration_static_topology_publishes_to_event_stream_and_applies_to_core() {
@@ -233,12 +233,12 @@ fn phase1_integration_static_topology_publishes_to_event_stream_and_applies_to_c
   let _subscription =
     fraktor_actor_rs::core::event_stream::EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
 
-  // 3. InprocSampleProvider を静的トポロジで構成
+  // 3. StaticClusterProvider を静的トポロジで構成
   let block_list: ArcShared<dyn BlockListProvider> =
     ArcShared::new(RecordingBlockList::new(vec![String::from("blocked-node-a")]));
   let static_topology = ClusterTopology::new(1000, vec![String::from("node-b"), String::from("node-c")], vec![]);
-  let provider =
-    InprocSampleProvider::new(event_stream.clone(), block_list.clone(), "node-a").with_static_topology(static_topology);
+  let provider = StaticClusterProvider::new(event_stream.clone(), block_list.clone(), "node-a")
+    .with_static_topology(static_topology);
 
   // 4. ClusterExtension をセットアップ（metrics 有効）
   let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
@@ -293,10 +293,10 @@ fn phase1_integration_topology_updated_includes_blocked_members() {
     String::from("blocked-3"),
   ]));
 
-  // 4. InprocSampleProvider を設定
+  // 4. StaticClusterProvider を設定
   let static_topology = ClusterTopology::new(3000, vec![String::from("node-b")], vec![]);
-  let provider =
-    InprocSampleProvider::new(event_stream.clone(), block_list.clone(), "node-a").with_static_topology(static_topology);
+  let provider = StaticClusterProvider::new(event_stream.clone(), block_list.clone(), "node-a")
+    .with_static_topology(static_topology);
 
   // 5. ClusterExtension をセットアップ
   let ext_id = ClusterExtensionId::<NoStdToolbox>::new(

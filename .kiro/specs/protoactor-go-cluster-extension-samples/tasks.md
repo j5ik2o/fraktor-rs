@@ -11,11 +11,11 @@
   - _Requirements: 1.1,1.3,1.4,5.1,5.3_
 
 - [ ] 2. サンプル用 Provider/Gossiper/PubSub を EventStream 方式に差し替える
-- [x] 2.1 SampleTcpProvider を EventStream publish 方式で実装する
+- [x] 2.1 LocalClusterProvider を EventStream publish 方式で実装する
   - Remoting/TokioTcpTransport の membership イベントを ClusterTopology へ写像し、TopologyUpdated を publish する
   - join/leave で joined/left を構成し、BlockListProvider の値を blocked に含める
   - _Requirements: 2.1,2.2,2.3,2.4,3.1,3.2,4.4,5.3_
-- [x] 2.2 InprocSampleProvider/Gossiper/PubSub を静的トポロジ publish に対応させる
+- [x] 2.2 StaticClusterProvider/Gossiper/PubSub を静的トポロジ publish に対応させる
   - 静的 ClusterTopology を EventStream に publish し、自動適用を確認できるようにする
   - GossipEngine は Phase1 では未使用とし、in-process サンプルは静的 publish のみで動作させる
   - _Requirements: 1.1,1.2,1.4,4.1,4.4,5.1_
@@ -29,7 +29,7 @@
   - Manual TickDriver で少数ステップ回し、TopologyUpdated と metrics の出力を確認できるようにする
   - _Requirements: 1.1,1.2,1.4,5.3_
 - [x] 3.2 cluster_extension_tokio を静的トポロジ publish で起動する手順を整備する
-  - SampleTcpProvider を静的モードで起動し、2 ノード相当の TopologyUpdated を publish して EventStream ログを確認する
+  - LocalClusterProvider を静的モードで起動し、2 ノード相当の TopologyUpdated を publish して EventStream ログを確認する
   - README/サンプルコメントに差し替え手順（provider 差し替え可能）を追記する
   - _Requirements: 2.1,2.2,5.4_
 - [x] 3.3 Phase1 統合テストを追加する
@@ -37,7 +37,7 @@
   - _Requirements: 1.1,1.2,1.4,3.3,5.1,5.3_
 
 - [ ] 4. Phase2: GossipEngine + TokioTcpTransport を結線する
-- [x] 4.1 SampleTcpProvider で seed/authority を GossipEngine に渡す経路を実装する
+- [x] 4.1 LocalClusterProvider で seed/authority を GossipEngine に渡す経路を実装する
   - Remoting 初期化後に GossipEngine へ seed/authority を登録し、起動/停止イベントを EventStream に発火する
   - _Requirements: 2.1,2.2,2.3,2.4,3.1,3.2_
 - [x] 4.2 GossipEngine からの join/leave を EventStream に流す
@@ -49,7 +49,7 @@
 - [x] 4.4 Phase2 統合テスト（Tokio 2ノード）を追加する
   - join/leave/BlockList 反映・metrics 更新・EventStream TopologyUpdated 出力を確認する統合テストを追加
   - _Requirements: 2.1,2.2,2.3,2.4,3.1,3.2,4.1,4.4,5.1,5.3_
-- [x] 4.5 TokioTcpTransport のコネクション/切断イベントを SampleTcpProvider が自動検知し TopologyUpdated を publish する
+- [x] 4.5 TokioTcpTransport のコネクション/切断イベントを LocalClusterProvider が自動検知し TopologyUpdated を publish する
   - Transport の membership イベント（コネクション確立/切断）を Provider が購読し、手動の on_member_join/leave 呼び出しを不要にする
   - サンプルコードから手動の on_member_join/leave 呼び出しを削除し、Transport 駆動の自動トポロジ更新を実証する
   - _Requirements: 2.1,2.2,2.3,2.4,3.1,3.2_

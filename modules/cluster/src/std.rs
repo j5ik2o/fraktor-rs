@@ -1,6 +1,5 @@
 //! std-only adapters for the cluster runtime.
 
-/// No-op provider useful for tests and single-process runs.
-pub mod noop_cluster_provider;
-/// Sample TCP provider for Tokio-based cluster scenarios.
-pub mod sample_tcp_provider;
+mod local_cluster_provider_ext;
+
+pub use local_cluster_provider_ext::subscribe_remoting_events;

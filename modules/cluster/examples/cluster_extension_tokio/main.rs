@@ -1,11 +1,11 @@
 #![allow(clippy::print_stdout)]
 
-//! Cluster extension quickstart (Tokio + SampleTcpProvider)
+//! Cluster extension quickstart (Tokio + LocalClusterProvider)
 //!
 //! # 概要
 //!
 //! このサンプルは EventStream 主導のトポロジ通知方式を実装しています：
-//! 1. `SampleTcpProvider` が `ClusterEvent::TopologyUpdated` を EventStream に publish
+//! 1. `LocalClusterProvider` が `ClusterEvent::TopologyUpdated` を EventStream に publish
 //! 2. `ClusterExtension` が EventStream を購読し、自動的に `ClusterCore::on_topology` を呼び出す
 //! 3. 手動の `on_topology` 呼び出しは不要
 //!
@@ -16,15 +16,15 @@
 //!
 //! # Phase1 (静的トポロジ) vs Phase2 (動的トポロジ)
 //!
-//! - **Phase1**: `SampleTcpProvider` に静的トポロジを設定し、`start_member()` 時に publish
+//! - **Phase1**: `LocalClusterProvider` に静的トポロジを設定し、`start_member()` 時に publish
 //! - **Phase2**: `subscribe_remoting_events()` で Transport イベント（Connected/Quarantined）を
 //!   自動検知し、動的にトポロジを更新
 //!
 //! # Provider 差し替え方法
 //!
 //! `ClusterProvider` トレイトを実装することで、Provider を差し替えられます：
-//! - `SampleTcpProvider`: 静的トポロジ + Transport イベント自動検知（本サンプル）
-//! - `InprocSampleProvider`: no_std 環境向け静的トポロジ
+//! - `LocalClusterProvider`: 静的トポロジ + Transport イベント自動検知（本サンプル）
+//! - `StaticClusterProvider`: no_std 環境向け静的トポロジ
 //! - etcd/zk/automanaged provider: 外部サービス連携（Phase2以降で対応予定）
 //!
 //! 詳細は `.kiro/specs/protoactor-go-cluster-extension-samples/example.md` を参照。
@@ -39,7 +39,7 @@
 //!
 //! ```text
 //! === Cluster Extension Tokio Demo ===
-//! Demonstrates EventStream-based topology with SampleTcpProvider
+//! Demonstrates EventStream-based topology with LocalClusterProvider
 //!
 //! --- Starting cluster members ---
 //! [identity][cluster-node-a] member kinds: ["grain", "topic"]
@@ -80,19 +80,16 @@ use fraktor_actor_rs::{
   std::{
     actor_prim::{Actor, ActorContext, ActorRef},
     dispatcher::{DispatchExecutorAdapter, DispatcherConfig, dispatch_executor::TokioExecutor},
-    event_stream::{EventStreamEvent, EventStreamSubscriber},
+    event_stream::{EventStreamEvent, EventStreamSubscriber, EventStreamSubscription},
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
     scheduler::tick::TickDriverConfig,
     system::{ActorSystem, ActorSystemConfig},
   },
 };
-use fraktor_cluster_rs::{
-  core::{
-    ActivatedKind, ClusterEvent, ClusterExtensionConfig, ClusterExtensionId, ClusterPubSub, ClusterTopology, Gossiper,
-    IdentityLookup, IdentitySetupError,
-  },
-  std::sample_tcp_provider::SampleTcpProvider,
+use fraktor_cluster_rs::core::{
+  ActivatedKind, ClusterEvent, ClusterExtensionConfig, ClusterExtensionId, ClusterPubSub, ClusterTopology, Gossiper,
+  IdentityLookup, IdentitySetupError, LocalClusterProvider,
 };
 use fraktor_remote_rs::core::{
   BlockListProvider, RemotingExtensionConfig, RemotingExtensionInstaller, TokioActorRefProviderInstaller,
@@ -111,7 +108,7 @@ const SAMPLE_KEY: &str = "user:va-1";
 #[tokio::main]
 async fn main() -> Result<()> {
   println!("=== Cluster Extension Tokio Demo ===");
-  println!("Demonstrates EventStream-based topology with SampleTcpProvider\n");
+  println!("Demonstrates EventStream-based topology with LocalClusterProvider\n");
 
   // 返信待機チャネル（ノードB→ノードA→ノードB）
   let (reply_tx, reply_rx) = oneshot::channel::<String>();
@@ -184,15 +181,18 @@ async fn main() -> Result<()> {
 }
 
 struct ClusterNode {
-  system:     ActorSystem,
-  cluster:    ArcShared<fraktor_cluster_rs::core::ClusterExtensionGeneric<StdToolbox>>,
+  system:              ActorSystem,
+  cluster:             ArcShared<fraktor_cluster_rs::core::ClusterExtensionGeneric<StdToolbox>>,
   // Task 4.5: provider は subscribe_remoting_events() 後に自動的に Transport イベントを監視
   // 手動の on_member_join/on_member_leave 呼び出しは不要になったが、
   // デバッグや拡張用途のために保持
   #[allow(dead_code)]
-  provider:   ArcShared<SampleTcpProvider>,
+  provider:            ArcShared<LocalClusterProvider<StdToolbox>>,
   #[allow(dead_code)]
-  advertised: String,
+  advertised:          String,
+  // EventStream サブスクリプションを保持（ドロップされると解除されるため）
+  #[allow(dead_code)]
+  _event_subscription: EventStreamSubscription,
 }
 
 fn build_cluster_node(
@@ -231,14 +231,15 @@ fn build_cluster_node(
   }
 
   // EventStream のサブスクライバを登録（クラスタイベントを観測）
+  // 注意: サブスクリプションはドロップされると解除されるため、構造体で保持する必要がある
   let event_subscriber: ArcShared<dyn EventStreamSubscriber> =
     ArcShared::new(ClusterEventPrinter::new(system_name.to_string()));
-  let _subscription = system.subscribe_event_stream(&event_subscriber);
+  let event_subscription = system.subscribe_event_stream(&event_subscriber);
 
-  // SampleTcpProvider を作成（EventStream publish 方式）
+  // LocalClusterProvider を作成（EventStream publish 方式）
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockListProvider);
   let advertised = format!("{HOST}:{port}");
-  let mut provider_builder = SampleTcpProvider::new(system.event_stream(), block_list.clone(), &advertised);
+  let mut provider_builder = LocalClusterProvider::new(system.event_stream(), block_list.clone(), &advertised);
   if let Some(topology) = static_topology {
     provider_builder = provider_builder.with_static_topology(topology);
   }
@@ -247,7 +248,7 @@ fn build_cluster_node(
   // Task 4.5: Transport イベントを自動検知するためのサブスクリプションを開始
   // RemotingLifecycleEvent::Connected/Quarantined を監視し、
   // 自動的に TopologyUpdated を publish する
-  SampleTcpProvider::subscribe_remoting_events(&provider);
+  fraktor_cluster_rs::std::subscribe_remoting_events(&provider);
 
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(LoggingGossiper::new(system_name));
   let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(LoggingPubSub::new(system_name));
@@ -259,7 +260,7 @@ fn build_cluster_node(
     ClusterExtensionId::<StdToolbox>::new(cluster_config, provider.clone(), block_list, gossiper, pubsub, identity);
   let cluster = system.extended().register_extension(&cluster_id);
 
-  Ok(ClusterNode { system, cluster, provider, advertised })
+  Ok(ClusterNode { system, cluster, provider, advertised, _event_subscription: event_subscription })
 }
 
 // === EventStream subscriber ===

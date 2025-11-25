@@ -1,4 +1,4 @@
-//! In-process sample provider for static topology scenarios.
+//! Static cluster provider for static topology scenarios.
 //!
 //! This provider publishes a static ClusterTopology to EventStream, enabling
 //! automatic topology application without network dependencies. Useful for
@@ -15,20 +15,20 @@ use crate::core::{ClusterProvider, ClusterProviderError, ClusterTopology};
 #[cfg(test)]
 mod tests;
 
-/// Sample provider that publishes static topology to EventStream.
+/// Static cluster provider that publishes static topology to EventStream.
 ///
 /// Unlike network-based providers, this provider does not perform any remote
 /// communication. It simply publishes a predetermined topology when started,
 /// making it ideal for testing and single-process demonstrations.
-pub struct InprocSampleProvider<TB: RuntimeToolbox + 'static> {
+pub struct StaticClusterProvider<TB: RuntimeToolbox + 'static> {
   event_stream:        ArcShared<EventStreamGeneric<TB>>,
   block_list_provider: ArcShared<dyn BlockListProvider>,
   static_topology:     Option<ClusterTopology>,
   advertised_address:  String,
 }
 
-impl<TB: RuntimeToolbox + 'static> InprocSampleProvider<TB> {
-  /// Creates a new in-process sample provider.
+impl<TB: RuntimeToolbox + 'static> StaticClusterProvider<TB> {
+  /// Creates a new static cluster provider.
   #[must_use]
   pub fn new(
     event_stream: ArcShared<EventStreamGeneric<TB>>,
@@ -73,7 +73,7 @@ impl<TB: RuntimeToolbox + 'static> InprocSampleProvider<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> ClusterProvider for InprocSampleProvider<TB> {
+impl<TB: RuntimeToolbox + 'static> ClusterProvider for StaticClusterProvider<TB> {
   fn start_member(&self) -> Result<(), ClusterProviderError> {
     self.publish_topology();
     Ok(())

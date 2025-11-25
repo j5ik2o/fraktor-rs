@@ -33,9 +33,9 @@ graph TB
       GossipEngine --> EventStream
     end
     subgraph ProviderLayer
-      SampleTcpProvider --> RemotingBootstrap
+      LocalClusterProvider --> RemotingBootstrap
       RemotingBootstrap --> TokioTcpTransport
-      SampleTcpProvider --> EventStream
+      LocalClusterProvider --> EventStream
     end
     subgraph PubSubLayer
       ClusterPubSubImpl --> PubSubBroker
@@ -56,17 +56,17 @@ graph TB
 - **Pub/Sub 起動前提**: ClusterExtension は初期化時に `TopicActorKind` を必ず登録し、PubSubImpl 起動の前提とする。
 - **ブロックリスト**: BlockListProvider の結果を `blocked` に含め、TopologyUpdated と同時に発行。
 
-#### Remoting → Topology 変換仕様（SampleTcpProvider）
-- Remoting/TokioTcpTransport の membership イベントを ClusterTopology に写像し、`ClusterEvent::TopologyUpdated` として EventStream に publish（同一ハッシュは抑止）。  
-  - Join: authority=host:port を `joined` に追加、`left` 空、`hash = fnv64(sorted(joined|left|version))`。  
-  - Leave/Disconnect: authority を `left` に追加、`joined` 空。  
-  - Version: Remoting の membership version を優先し、無ければ内部カウンタ。  
-  - BlockList: BlockListProvider の結果を `blocked` として付与。  
+#### Remoting → Topology 変換仕様（LocalClusterProvider）
+- Remoting/TokioTcpTransport の membership イベントを ClusterTopology に写像し、`ClusterEvent::TopologyUpdated` として EventStream に publish（同一ハッシュは抑止）。
+  - Join: authority=host:port を `joined` に追加、`left` 空、`hash = fnv64(sorted(joined|left|version))`。
+  - Leave/Disconnect: authority を `left` に追加、`joined` 空。
+  - Version: Remoting の membership version を優先し、無ければ内部カウンタ。
+  - BlockList: BlockListProvider の結果を `blocked` として付与。
 - エラー: Remoting 由来エラーは `ClusterError::Provider` として StartupFailed/ShutdownFailed を EventStream に発火。
 
 ## システムフロー
-- **Phase1（静的トポロジ＋EventStream）**: SampleTcpProvider（または InprocSampleProvider）が静的 ClusterTopology を EventStream に publish → ClusterExtension が購読し `ClusterCore::on_topology` を実行 → metrics/blocked/イベント更新を確認。GossipEngine は未使用。
-- **Phase2（Gossip＋Tokio TCP）**: SampleTcpProvider が Remoting/TokioTcpTransport を起動し seed/authority を GossipEngine に渡す → GossipEngine/Remoting が join/leave を ClusterTopology に変換し EventStream へ publish → ClusterExtension が購読し `on_topology` → PubSubBroker/Remote メッセージ配送を実ノード間で検証。
+- **Phase1（静的トポロジ＋EventStream）**: LocalClusterProvider（または StaticClusterProvider）が静的 ClusterTopology を EventStream に publish → ClusterExtension が購読し `ClusterCore::on_topology` を実行 → metrics/blocked/イベント更新を確認。GossipEngine は未使用。
+- **Phase2（Gossip＋Tokio TCP）**: LocalClusterProvider が Remoting/TokioTcpTransport を起動し seed/authority を GossipEngine に渡す → GossipEngine/Remoting が join/leave を ClusterTopology に変換し EventStream へ publish → ClusterExtension が購読し `on_topology` → PubSubBroker/Remote メッセージ配送を実ノード間で検証。
 - **シャットダウン**: `shutdown(graceful)` で PubSub→Gossip→Identity→MemberList の順に停止し、停止時はトポロジイベントを publish しない。最後に EventStream へ Shutdown/ShutdownFailed を発火。
 
 ## API ブループリント
@@ -75,7 +75,7 @@ graph TB
 - `core/gossiper.rs`: start/stop は維持し、トポロジ通知は EventStream publish で行う（新規コールバックなし）。
 - `core/cluster_provider.rs`: start_member/client/shutdown は維持し、トポロジ通知は EventStream publish に統一。
 - `core/cluster_extension.rs`: EventStream 購読者を登録し、`TopologyUpdated` を受信したら `ClusterCore::on_topology` を呼ぶ。
-- `std/provider/sample_tcp_provider.rs`（新規・サンプル専用）: Remoting/TokioTcpTransport を起動し、membership 変更を `ClusterEvent::TopologyUpdated` として publish。protoactor-go の etcd/zk/test/automanaged provider の差し替え例を示す。
+- `std/provider/local_cluster_provider.rs`（新規・サンプル専用）: Remoting/TokioTcpTransport を起動し、membership 変更を `ClusterEvent::TopologyUpdated` として publish。protoactor-go の etcd/zk/test/automanaged provider の差し替え例を示す。
 - `core/cluster_pub_sub_impl.rs`（新規）: PubSubBroker を駆動する ClusterPubSub 実装（no_std 対応）。イベント通知は EventStream 経由。
 
 ### シグネチャ スケッチ
@@ -125,7 +125,7 @@ classDiagram
   }
   class GossipEngine
   class PubSubBroker
-  class SampleTcpProvider
+  class LocalClusterProvider
   class PubSubImpl
   class EventStream
 
@@ -134,14 +134,14 @@ classDiagram
   EventStream --> ClusterExtensionGeneric
   Gossiper --> GossipEngine
   GossipEngine --> EventStream
-  SampleTcpProvider --> EventStream
+  LocalClusterProvider --> EventStream
   PubSubImpl --> PubSubBroker
-  SampleTcpProvider --> TokioTcpTransport
+  LocalClusterProvider --> TokioTcpTransport
 ```
 
 ## クイックスタート / 利用例
-- **cluster_extension_no_std/main.rs**: InprocSampleProvider/Gossiper/PubSub に差し替え、静的 `ClusterEvent::TopologyUpdated` を EventStream に publish して自動 `on_topology` を確認。Manual TickDriver を継続。
-- **cluster_extension_tokio/main.rs**: NoopProvider/Logging* を SampleTcpProvider + (net-backed) Gossiper/PubSubImpl に置換し、2 ノード join/leave と PubSub メッセージ配送を実際に流す。EventStream publish/subscribe 方式でトポロジを適用し、冒頭コメントと README で provider 差し替え（etcd/zk/test/automanaged 等）手順を明示。
+- **cluster_extension_no_std/main.rs**: StaticClusterProvider/Gossiper/PubSub に差し替え、静的 `ClusterEvent::TopologyUpdated` を EventStream に publish して自動 `on_topology` を確認。Manual TickDriver を継続。
+- **cluster_extension_tokio/main.rs**: NoopProvider/Logging* を LocalClusterProvider + (net-backed) Gossiper/PubSubImpl に置換し、2 ノード join/leave と PubSub メッセージ配送を実際に流す。EventStream publish/subscribe 方式でトポロジを適用し、冒頭コメントと README で provider 差し替え（etcd/zk/test/automanaged 等）手順を明示。
 
 ## データモデル
 - トポロジ: 既存 `ClusterTopology { joined: Vec<String>, left: Vec<String>, hash }` を継続使用。`TopologyUpdated` に含めて配信。
@@ -151,11 +151,11 @@ classDiagram
 ## エラーハンドリング
 - Gossiper/Provider/PubSub start 失敗時は ClusterError 経由で StartupFailed を EventStream に発火し、起動を中断。
 - トポロジ通知でハッシュが同一の場合は publish しない（重複抑止）。
-- SampleTcpProvider が remoting bind に失敗した場合は理由付きで StartMember 失敗を返し、EventStream に StartupFailed を発火。
+- LocalClusterProvider が remoting bind に失敗した場合は理由付きで StartMember 失敗を返し、EventStream に StartupFailed を発火。
 - metrics 無効時は MetricsError::Disabled をそのまま返す。
 
 ## テスト戦略
-- **ユニット**: PubSubImpl の TopicKind 前提 publish/subscribe、ClusterExtension の EventStream 購読による重複ハッシュ抑止、SampleTcpProvider の Remoting→Topology 変換。
+- **ユニット**: PubSubImpl の TopicKind 前提 publish/subscribe、ClusterExtension の EventStream 購読による重複ハッシュ抑止、LocalClusterProvider の Remoting→Topology 変換。
 - **統合 (Phase1)**: 静的トポロジを EventStream publish → ClusterExtension が metrics/イベントを更新することを確認。
 - **統合 (Phase2)**: Tokio 2 ノードで join/leave, BlockList 反映, Grain メッセージ往復, PubSub publish/subscribe を確認。`cluster_extension_tokio` を cargo test/example 実行で再現し、EventStream に `TopologyUpdated` が流れることを検証。
 - **ドキュメント検証**: example.md の手順を CI で smoke 実行（可能なら doctest 形式）。

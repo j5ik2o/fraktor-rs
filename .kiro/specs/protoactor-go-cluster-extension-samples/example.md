@@ -32,13 +32,13 @@ fraktor-rs のクラスタ拡張サンプルは、EventStream 主導のトポロ
 
 ## Phase1: 静的トポロジ + EventStream 統合
 
-### InprocSampleProvider（no_std 環境向け）
+### StaticClusterProvider（no_std 環境向け）
 
-`InprocSampleProvider` は静的トポロジを EventStream に publish するサンプル Provider です。
+`StaticClusterProvider` は静的トポロジを EventStream に publish するサンプル Provider です。
 
 ```rust
 use fraktor_cluster_rs::core::{
-    ClusterExtensionId, ClusterExtensionConfig, ClusterTopology, InprocSampleProvider,
+    ClusterExtensionId, ClusterExtensionConfig, ClusterTopology, StaticClusterProvider,
 };
 
 // 静的トポロジを設定
@@ -49,7 +49,7 @@ let static_topology = ClusterTopology::new(
 );
 
 // Provider を作成
-let provider = InprocSampleProvider::new(
+let provider = StaticClusterProvider::new(
     event_stream.clone(),
     block_list_provider,
     "node-a",
@@ -85,7 +85,7 @@ cargo run -p fraktor-cluster-rs --example cluster_extension_no_std --features te
 
 ```
 === Cluster Extension No-Std Demo ===
-Demonstrates EventStream-based topology with InprocSampleProvider
+Demonstrates EventStream-based topology with StaticClusterProvider
 (No manual on_topology calls - topology is automatically published)
 
 --- Starting cluster members ---
@@ -111,15 +111,15 @@ Demonstrates EventStream-based topology with InprocSampleProvider
 
 ## Phase2: 動的トポロジ + Tokio TCP
 
-### SampleTcpProvider（std 環境向け）
+### LocalClusterProvider（std 環境向け）
 
-`SampleTcpProvider` は Remoting/TokioTcpTransport と連携し、Transport イベントを自動検知してトポロジを更新するサンプル Provider です。
+`LocalClusterProvider` は Remoting/TokioTcpTransport と連携し、Transport イベントを自動検知してトポロジを更新するサンプル Provider です。
 
 ```rust
-use fraktor_cluster_rs::std::sample_tcp_provider::SampleTcpProvider;
+use fraktor_cluster_rs::std::local_cluster_provider::LocalClusterProvider;
 
 // Provider を作成
-let provider = SampleTcpProvider::new(
+let provider = LocalClusterProvider::new(
     event_stream.clone(),
     block_list_provider,
     &format!("{}:{}", HOST, port),
@@ -131,7 +131,7 @@ let provider = ArcShared::new(provider);
 // Transport イベントの自動検知を開始
 // RemotingLifecycleEvent::Connected/Quarantined を監視し、
 // 自動的に TopologyUpdated を publish する
-SampleTcpProvider::subscribe_remoting_events(&provider);
+LocalClusterProvider::subscribe_remoting_events(&provider);
 ```
 
 ### 実行例（Tokio）
@@ -144,7 +144,7 @@ cargo run -p fraktor-cluster-rs --example cluster_extension_tokio --features std
 
 ```
 === Cluster Extension Tokio Demo ===
-Demonstrates EventStream-based topology with SampleTcpProvider
+Demonstrates EventStream-based topology with LocalClusterProvider
 
 --- Starting cluster members ---
 [identity][cluster-node-a] member kinds: ["grain", "topic"]
@@ -179,8 +179,8 @@ Demonstrates EventStream-based topology with SampleTcpProvider
 
 | Provider | 環境 | 用途 |
 |----------|------|------|
-| `InprocSampleProvider` | no_std | 静的トポロジ、テスト用 |
-| `SampleTcpProvider` | std/Tokio | 静的 + Transport イベント検知 |
+| `StaticClusterProvider` | no_std | 静的トポロジ、テスト用 |
+| `LocalClusterProvider` | std/Tokio | 静的 + Transport イベント検知 |
 | etcd provider | std | 本番環境（Phase2以降で対応予定） |
 | zk provider | std | 本番環境（Phase2以降で対応予定） |
 | automanaged provider | std | 本番環境（Phase2以降で対応予定） |
@@ -297,7 +297,7 @@ match ext.metrics() {
 
 ### Transport イベントが検知されない（Phase2）
 
-1. `SampleTcpProvider::subscribe_remoting_events()` が呼ばれているか確認
+1. `LocalClusterProvider::subscribe_remoting_events()` が呼ばれているか確認
 2. Remoting 拡張が正しく初期化されているか確認
 3. Transport が接続/切断イベントを発行しているか確認
 
