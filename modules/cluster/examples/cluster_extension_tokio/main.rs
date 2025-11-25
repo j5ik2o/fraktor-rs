@@ -88,12 +88,11 @@ use fraktor_actor_rs::{
   },
 };
 use fraktor_cluster_rs::core::{
-  ActivatedKind, ClusterEvent, ClusterExtensionConfig, ClusterExtensionId, ClusterPubSub, ClusterTopology, Gossiper,
-  IdentityLookup, IdentitySetupError, LocalClusterProvider,
+  ActivatedKind, ClusterEvent, ClusterExtensionConfig, ClusterExtensionInstaller, ClusterTopology,
 };
 use fraktor_remote_rs::core::{
-  BlockListProvider, RemotingExtensionConfig, RemotingExtensionInstaller, TokioActorRefProviderInstaller,
-  TokioTransportConfig, default_loopback_setup,
+  RemotingExtensionConfig, RemotingExtensionInstaller, TokioActorRefProviderInstaller, TokioTransportConfig,
+  default_loopback_setup,
 };
 use fraktor_utils_rs::{core::sync::ArcShared, std::runtime_toolbox::StdToolbox};
 use tokio::sync::oneshot;
@@ -183,13 +182,6 @@ async fn main() -> Result<()> {
 struct ClusterNode {
   system:              ActorSystem,
   cluster:             ArcShared<fraktor_cluster_rs::core::ClusterExtensionGeneric<StdToolbox>>,
-  // Task 4.5: provider は subscribe_remoting_events() 後に自動的に Transport イベントを監視
-  // 手動の on_member_join/on_member_leave 呼び出しは不要になったが、
-  // デバッグや拡張用途のために保持
-  #[allow(dead_code)]
-  provider:            ArcShared<LocalClusterProvider<StdToolbox>>,
-  #[allow(dead_code)]
-  advertised:          String,
   // EventStream サブスクリプションを保持（ドロップされると解除されるため）
   #[allow(dead_code)]
   _event_subscription: EventStreamSubscription,
@@ -206,6 +198,15 @@ fn build_cluster_node(
   let executor_adapter = DispatchExecutorAdapter::new(ArcShared::new(tokio_executor));
   let default_dispatcher = DispatcherConfig::from_executor(ArcShared::new(executor_adapter));
 
+  // ClusterExtensionInstaller を作成（static_topology を設定）
+  let advertised = format!("{HOST}:{port}");
+  let mut cluster_config =
+    ClusterExtensionConfig::default().with_advertised_address(&advertised).with_metrics_enabled(true);
+  if let Some(topology) = static_topology {
+    cluster_config = cluster_config.with_static_topology(topology);
+  }
+  let cluster_installer = ClusterExtensionInstaller::new(cluster_config);
+
   let remoting_config = RemotingExtensionConfig::default().with_transport_scheme("fraktor.tcp");
   let system_config = ActorSystemConfig::default()
     .with_system_name(system_name.to_string())
@@ -216,7 +217,8 @@ fn build_cluster_node(
     .with_extension_installers(
       ExtensionInstallers::default()
         .with_extension_installer(SerializationExtensionInstaller::new(default_loopback_setup()))
-        .with_extension_installer(RemotingExtensionInstaller::new(remoting_config.clone())),
+        .with_extension_installer(RemotingExtensionInstaller::new(remoting_config.clone()))
+        .with_extension_installer(cluster_installer.clone()),
     );
 
   let guardian = Props::from_fn(GrainHub::new).with_name(HUB_NAME);
@@ -236,31 +238,11 @@ fn build_cluster_node(
     ArcShared::new(ClusterEventPrinter::new(system_name.to_string()));
   let event_subscription = system.subscribe_event_stream(&event_subscriber);
 
-  // LocalClusterProvider を作成（EventStream publish 方式）
-  let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockListProvider);
-  let advertised = format!("{HOST}:{port}");
-  let mut provider_builder = LocalClusterProvider::new(system.event_stream(), block_list.clone(), &advertised);
-  if let Some(topology) = static_topology {
-    provider_builder = provider_builder.with_static_topology(topology);
-  }
-  let provider = ArcShared::new(provider_builder);
+  // get で既にインストールされた ClusterExtension を取得
+  // （ExtensionInstallers でインストール済みなので、同じインスタンスが返される）
+  let cluster = cluster_installer.get(system.as_core());
 
-  // Task 4.5: Transport イベントを自動検知するためのサブスクリプションを開始
-  // RemotingLifecycleEvent::Connected/Quarantined を監視し、
-  // 自動的に TopologyUpdated を publish する
-  fraktor_cluster_rs::std::subscribe_remoting_events(&provider);
-
-  let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(LoggingGossiper::new(system_name));
-  let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(LoggingPubSub::new(system_name));
-  let identity: ArcShared<dyn IdentityLookup> = ArcShared::new(LoggingIdentityLookup::new(system_name));
-
-  let cluster_config =
-    ClusterExtensionConfig::default().with_advertised_address(advertised.clone()).with_metrics_enabled(true);
-  let cluster_id =
-    ClusterExtensionId::<StdToolbox>::new(cluster_config, provider.clone(), block_list, gossiper, pubsub, identity);
-  let cluster = system.extended().register_extension(&cluster_id);
-
-  Ok(ClusterNode { system, cluster, provider, advertised, _event_subscription: event_subscription })
+  Ok(ClusterNode { system, cluster, _event_subscription: event_subscription })
 }
 
 // === EventStream subscriber ===
@@ -285,103 +267,6 @@ impl EventStreamSubscriber for ClusterEventPrinter {
         }
       }
     }
-  }
-}
-
-// === Cluster dependencies ===
-
-#[derive(Default)]
-struct EmptyBlockListProvider;
-
-impl BlockListProvider for EmptyBlockListProvider {
-  fn blocked_members(&self) -> Vec<String> {
-    Vec::new()
-  }
-}
-
-struct LoggingGossiper {
-  label:   String,
-  started: Mutex<bool>,
-}
-
-impl LoggingGossiper {
-  fn new(label: impl Into<String>) -> Self {
-    Self { label: label.into(), started: Mutex::new(false) }
-  }
-}
-
-impl Gossiper for LoggingGossiper {
-  fn start(&self) -> Result<(), &'static str> {
-    let mut guard = self.started.lock().expect("gossiper lock");
-    if !*guard {
-      println!("[gossip][{}] start (no-op in Phase1)", self.label);
-      *guard = true;
-    }
-    Ok(())
-  }
-
-  fn stop(&self) -> Result<(), &'static str> {
-    let mut guard = self.started.lock().expect("gossiper lock");
-    if *guard {
-      println!("[gossip][{}] stop", self.label);
-      *guard = false;
-    }
-    Ok(())
-  }
-}
-
-struct LoggingPubSub {
-  label:   String,
-  started: Mutex<bool>,
-}
-
-impl LoggingPubSub {
-  fn new(label: impl Into<String>) -> Self {
-    Self { label: label.into(), started: Mutex::new(false) }
-  }
-}
-
-impl ClusterPubSub for LoggingPubSub {
-  fn start(&self) -> Result<(), fraktor_cluster_rs::core::PubSubError> {
-    let mut guard = self.started.lock().expect("pubsub lock");
-    if !*guard {
-      println!("[pubsub][{}] start", self.label);
-      *guard = true;
-    }
-    Ok(())
-  }
-
-  fn stop(&self) -> Result<(), fraktor_cluster_rs::core::PubSubError> {
-    let mut guard = self.started.lock().expect("pubsub lock");
-    if *guard {
-      println!("[pubsub][{}] stop", self.label);
-      *guard = false;
-    }
-    Ok(())
-  }
-}
-
-struct LoggingIdentityLookup {
-  label: String,
-}
-
-impl LoggingIdentityLookup {
-  fn new(label: impl Into<String>) -> Self {
-    Self { label: label.into() }
-  }
-}
-
-impl IdentityLookup for LoggingIdentityLookup {
-  fn setup_member(&self, kinds: &[ActivatedKind]) -> Result<(), IdentitySetupError> {
-    let names: Vec<_> = kinds.iter().map(|k| k.name().to_string()).collect();
-    println!("[identity][{}] member kinds: {:?}", self.label, names);
-    Ok(())
-  }
-
-  fn setup_client(&self, kinds: &[ActivatedKind]) -> Result<(), IdentitySetupError> {
-    let names: Vec<_> = kinds.iter().map(|k| k.name().to_string()).collect();
-    println!("[identity][{}] client kinds: {:?}", self.label, names);
-    Ok(())
   }
 }
 
