@@ -87,3 +87,5 @@ heapless = { version = "0.8", default-features = false }
 hashbrown = { version = "0.16.0", default-features = false }
 ahash = { version = "0.8", default-features = false }
 anyhow = "1.0"
+aws-sdk-ecs = "1"
+aws-config = "1"
