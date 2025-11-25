@@ -1,6 +1,6 @@
 # 実装計画
 
-- [ ] 1. EventStream ベースのトポロジ通知経路を整備する
+- [x] 1. EventStream ベースのトポロジ通知経路を整備する
 - [x] 1.1 ClusterEvent に TopologyUpdated を追加し、重複ハッシュ抑止を実装する
   - ClusterEvent enum に TopologyUpdated { topology, joined, left, blocked } を追加し、既存拡張イベントと整合させる
   - ClusterCore で直近ハッシュを保持し、同一ハッシュは publish しないロジックを組み込む
@@ -10,7 +10,7 @@
   - 適用時に metrics と blocked 情報を更新し EventStream へ反映する
   - _Requirements: 1.1,1.3,1.4,5.1,5.3_
 
-- [ ] 2. サンプル用 Provider/Gossiper/PubSub を EventStream 方式に差し替える
+- [x] 2. サンプル用 Provider/Gossiper/PubSub を EventStream 方式に差し替える
 - [x] 2.1 LocalClusterProvider を EventStream publish 方式で実装する
   - Remoting/TokioTcpTransport の membership イベントを ClusterTopology へ写像し、TopologyUpdated を publish する
   - join/leave で joined/left を構成し、BlockListProvider の値を blocked に含める
