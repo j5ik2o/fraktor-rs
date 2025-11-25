@@ -76,6 +76,10 @@ scripts/ci-check.sh all                  # CI と同等フルスイート
   - Facadeというサフィックスも安易に使わない。例えばpub traitにFacadeと命名するのはもってのほか。つまりFacadeは内部実装の都合をインターフェイス名に暴露しているのと同じだからだ
   - Manager, Utilなどの責務が曖昧になる命名は避けて、具体的な名前を付けること
 - **Tick Driver の追加判断**: 新規 driver / executor を導入する際は `modules/actor/src/core/scheduler/tick_driver/tick_driver_matrix.rs` にエントリを追加し、`docs/guides/tick-driver-quickstart.md` のテンプレと `StdTickDriverConfig` のヘルパを同期更新する。Code/Doc の両方を更新できない場合は spec 側でギャップを明記する。
+- **トレイトメソッドの `&self` vs `&mut self` 設計方針**:
+  - **ライフサイクル制御系**（`start`, `stop`, `shutdown`, `setup_*` 等）: 低頻度呼び出しのため `&self` + interior mutability（実装内部で `ToolboxMutex` を使用）を許容。`ArcShared<dyn Trait>` で共有しやすくなる。
+  - **ホットパス・状態変更系**（`get`, `remove`, `update_*`, `on_*`, `drain_*` 等）: 高頻度呼び出しや明示的な状態変更を伴うメソッドは `&mut self` を使用。呼び出し側（`ClusterCore` 等）が `ToolboxMutex<dyn Trait>` で保護し、ロック粒度を制御する。
+  - **判断基準**: Rust 標準ライブラリの慣例に従い、状態を変更するメソッドは型シグネチャで意図を明示する。`std::collections::HashMap` の `get(&self)` vs `insert(&mut self)` パターンを参考に、副作用の有無で決定する。
 
 ---
 _スタックと標準を要約し、詳細な API 仕様は各クレートの rustdoc / guides へ委譲します。_
