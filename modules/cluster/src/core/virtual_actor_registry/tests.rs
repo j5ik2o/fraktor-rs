@@ -161,7 +161,9 @@ fn drain_cache_events_returns_pid_cache_events() {
 
   // PidCacheEvent::Dropped が生成されていることを確認
   assert!(
-    cache_events.iter().any(|e| matches!(e, PidCacheEvent::Dropped { key, reason } if *key == k && reason == "quarantine")),
+    cache_events
+      .iter()
+      .any(|e| matches!(e, PidCacheEvent::Dropped { key, reason } if *key == k && reason == "quarantine")),
     "キャッシュ無効化時に Dropped イベントが生成されるべき"
   );
 }
@@ -212,7 +214,9 @@ fn drain_cache_events_captures_ttl_expiration() {
   // キャッシュイベントを取得
   let cache_events = registry.drain_cache_events();
   assert!(
-    cache_events.iter().any(|e| matches!(e, PidCacheEvent::Dropped { key, reason } if *key == k && reason.starts_with("expired_at_"))),
+    cache_events
+      .iter()
+      .any(|e| matches!(e, PidCacheEvent::Dropped { key, reason } if *key == k && reason.starts_with("expired_at_"))),
     "TTL 期限切れ時に Dropped イベントが生成されるべき"
   );
 }

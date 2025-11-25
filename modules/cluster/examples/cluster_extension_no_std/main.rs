@@ -107,13 +107,13 @@ impl ClusterPubSub for DemoPubSub {
 #[derive(Default)]
 struct DemoIdentityLookup;
 impl IdentityLookup for DemoIdentityLookup {
-  fn setup_member(&self, kinds: &[ActivatedKind]) -> Result<(), IdentitySetupError> {
+  fn setup_member(&mut self, kinds: &[ActivatedKind]) -> Result<(), IdentitySetupError> {
     let names: Vec<_> = kinds.iter().map(|k| k.name().to_string()).collect();
     println!("[identity] setup_member: {:?}", names);
     Ok(())
   }
 
-  fn setup_client(&self, _kinds: &[ActivatedKind]) -> Result<(), IdentitySetupError> {
+  fn setup_client(&mut self, _kinds: &[ActivatedKind]) -> Result<(), IdentitySetupError> {
     Ok(())
   }
 }
@@ -213,7 +213,7 @@ impl ClusterNode {
       ArcShared::new(DemoBlockList::default()),
       ArcShared::new(DemoGossiper::default()),
       ArcShared::new(DemoPubSub::default()),
-      ArcShared::new(DemoIdentityLookup::default()),
+      Box::new(DemoIdentityLookup::default()),
     );
 
     let extension = system.extended().register_extension(&ext_id);

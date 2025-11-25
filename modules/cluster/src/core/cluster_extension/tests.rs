@@ -1,4 +1,4 @@
-use alloc::{string::String, vec, vec::Vec};
+use alloc::{boxed::Box, string::String, vec, vec::Vec};
 
 use fraktor_actor_rs::core::{
   event_stream::{EventStreamEvent, EventStreamSubscriber},
@@ -55,11 +55,11 @@ impl ClusterPubSub for StubPubSub {
 
 struct StubIdentity;
 impl IdentityLookup for StubIdentity {
-  fn setup_member(&self, _kinds: &[ActivatedKind]) -> Result<(), IdentitySetupError> {
+  fn setup_member(&mut self, _kinds: &[ActivatedKind]) -> Result<(), IdentitySetupError> {
     Ok(())
   }
 
-  fn setup_client(&self, _kinds: &[ActivatedKind]) -> Result<(), IdentitySetupError> {
+  fn setup_client(&mut self, _kinds: &[ActivatedKind]) -> Result<(), IdentitySetupError> {
     Ok(())
   }
 }
@@ -81,7 +81,7 @@ fn registers_extension_and_starts_member() {
     ArcShared::new(StubBlockList),
     ArcShared::new(StubGossiper),
     ArcShared::new(StubPubSub),
-    ArcShared::new(StubIdentity),
+    Box::new(StubIdentity),
   );
 
   let ext_shared = system.extended().register_extension(&ext_id);
@@ -101,7 +101,7 @@ fn subscribes_to_event_stream_and_applies_topology_on_topology_updated() {
     ArcShared::new(StubBlockList),
     ArcShared::new(StubGossiper),
     ArcShared::new(StubPubSub),
-    ArcShared::new(StubIdentity),
+    Box::new(StubIdentity),
   );
 
   // 2. エクステンションを登録
@@ -140,7 +140,7 @@ fn ignores_topology_with_same_hash_via_event_stream() {
     ArcShared::new(StubBlockList),
     ArcShared::new(StubGossiper),
     ArcShared::new(StubPubSub),
-    ArcShared::new(StubIdentity),
+    Box::new(StubIdentity),
   );
 
   let ext_shared = system.extended().register_extension(&ext_id);
@@ -247,7 +247,7 @@ fn phase1_integration_static_topology_publishes_to_event_stream_and_applies_to_c
     block_list,
     ArcShared::new(StubGossiper),
     ArcShared::new(StubPubSub),
-    ArcShared::new(StubIdentity),
+    Box::new(StubIdentity),
   );
   let ext_shared = system.extended().register_extension(&ext_id);
   ext_shared.setup_member_kinds(vec![ActivatedKind::new("grain-kind")]).unwrap();
@@ -305,7 +305,7 @@ fn phase1_integration_topology_updated_includes_blocked_members() {
     block_list,
     ArcShared::new(StubGossiper),
     ArcShared::new(StubPubSub),
-    ArcShared::new(StubIdentity),
+    Box::new(StubIdentity),
   );
   let ext_shared = system.extended().register_extension(&ext_id);
 
@@ -352,7 +352,7 @@ fn phase1_integration_duplicate_hash_topology_is_suppressed() {
     block_list,
     ArcShared::new(StubGossiper),
     ArcShared::new(StubPubSub),
-    ArcShared::new(StubIdentity),
+    Box::new(StubIdentity),
   );
   let ext_shared = system.extended().register_extension(&ext_id);
   ext_shared.start_member().unwrap();
@@ -383,7 +383,7 @@ fn phase1_integration_metrics_include_members_and_virtual_actors() {
     block_list,
     ArcShared::new(StubGossiper),
     ArcShared::new(StubPubSub),
-    ArcShared::new(StubIdentity),
+    Box::new(StubIdentity),
   );
   let ext_shared = system.extended().register_extension(&ext_id);
 
@@ -442,7 +442,7 @@ fn phase2_integration_join_leave_events_produce_topology_updated() {
     block_list,
     ArcShared::new(StubGossiper),
     ArcShared::new(StubPubSub),
-    ArcShared::new(StubIdentity),
+    Box::new(StubIdentity),
   );
   let ext_shared = system.extended().register_extension(&ext_id);
 
@@ -506,7 +506,7 @@ fn phase2_integration_blocklist_reflected_in_topology_events() {
     block_list,
     ArcShared::new(StubGossiper),
     ArcShared::new(StubPubSub),
-    ArcShared::new(StubIdentity),
+    Box::new(StubIdentity),
   );
   let ext_shared = system.extended().register_extension(&ext_id);
 
@@ -551,7 +551,7 @@ fn phase2_integration_metrics_updated_correctly_with_dynamic_topology() {
     block_list,
     ArcShared::new(StubGossiper),
     ArcShared::new(StubPubSub),
-    ArcShared::new(StubIdentity),
+    Box::new(StubIdentity),
   );
   let ext_shared = system.extended().register_extension(&ext_id);
 
@@ -606,7 +606,7 @@ fn phase2_integration_shutdown_resets_metrics_and_emits_event() {
     block_list,
     ArcShared::new(StubGossiper),
     ArcShared::new(StubPubSub),
-    ArcShared::new(StubIdentity),
+    Box::new(StubIdentity),
   );
   let ext_shared = system.extended().register_extension(&ext_id);
 
