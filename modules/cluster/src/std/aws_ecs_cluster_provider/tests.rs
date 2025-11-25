@@ -6,9 +6,8 @@ use fraktor_actor_rs::core::event_stream::{EventStreamEvent, EventStreamGeneric,
 use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::{core::sync::ArcShared, std::runtime_toolbox::StdToolbox};
 
-use crate::core::{ClusterEvent, ClusterProvider, StartupMode};
-
 use super::{AwsEcsClusterProvider, EcsClusterConfig};
+use crate::core::{ClusterEvent, ClusterProvider, StartupMode};
 
 struct EmptyBlockList;
 

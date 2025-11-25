@@ -259,11 +259,7 @@ impl AwsEcsClusterProvider {
       };
       let ecs_client = EcsClient::new(&aws_config);
 
-      let mut current_members: Vec<String> = if add_self {
-        vec![advertised_address.clone()]
-      } else {
-        Vec::new()
-      };
+      let mut current_members: Vec<String> = if add_self { vec![advertised_address.clone()] } else { Vec::new() };
       let mut version: u64 = 0;
 
       loop {
@@ -273,7 +269,7 @@ impl AwsEcsClusterProvider {
 
         // ECS タスクをポーリング
         match poll_ecs_tasks(&ecs_client, &config).await {
-          Ok(discovered_ips) => {
+          | Ok(discovered_ips) => {
             // 新しいメンバーリストを構築（自分自身を含める場合）
             let port = config.port;
             let mut new_members: Vec<String> =
@@ -284,10 +280,8 @@ impl AwsEcsClusterProvider {
             }
 
             // 差分を計算
-            let joined: Vec<String> =
-              new_members.iter().filter(|m| !current_members.contains(m)).cloned().collect();
-            let left: Vec<String> =
-              current_members.iter().filter(|m| !new_members.contains(m)).cloned().collect();
+            let joined: Vec<String> = new_members.iter().filter(|m| !current_members.contains(m)).cloned().collect();
+            let left: Vec<String> = current_members.iter().filter(|m| !new_members.contains(m)).cloned().collect();
 
             // 変更があればトポロジ更新をパブリッシュ
             if !joined.is_empty() || !left.is_empty() {
@@ -301,11 +295,11 @@ impl AwsEcsClusterProvider {
 
               current_members = new_members;
             }
-          }
-          Err(_e) => {
+          },
+          | Err(_e) => {
             // ポーリングエラーは無視して次のサイクルを待つ（MVP実装）
             // 本番環境ではログ出力やリトライロジックを追加
-          }
+          },
         }
 
         tokio::time::sleep(config.poll_interval).await;
@@ -354,17 +348,9 @@ async fn poll_ecs_tasks(client: &EcsClient, config: &EcsClusterConfig) -> Result
 
 /// Extracts the private IP address from an ECS task's awsvpc attachment.
 fn extract_private_ip(task: &aws_sdk_ecs::types::Task) -> Option<String> {
-  task
-    .attachments()
-    .iter()
-    .find(|a| a.r#type() == Some("ElasticNetworkInterface"))
-    .and_then(|eni| {
-      eni
-        .details()
-        .iter()
-        .find(|d| d.name() == Some("privateIPv4Address"))
-        .and_then(|d| d.value().map(String::from))
-    })
+  task.attachments().iter().find(|a| a.r#type() == Some("ElasticNetworkInterface")).and_then(|eni| {
+    eni.details().iter().find(|d| d.name() == Some("privateIPv4Address")).and_then(|d| d.value().map(String::from))
+  })
 }
 
 /// Error type for ECS polling operations.
