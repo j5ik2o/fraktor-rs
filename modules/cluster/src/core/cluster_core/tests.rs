@@ -186,6 +186,7 @@ impl StubGossiper {
     *self.started.lock()
   }
 
+  #[allow(dead_code)]
   fn stopped(&self) -> bool {
     *self.stopped.lock()
   }
@@ -247,13 +248,14 @@ impl StubPubSub {
     *self.started.lock()
   }
 
+  #[allow(dead_code)]
   fn stopped(&self) -> bool {
     *self.stopped.lock()
   }
 }
 
 impl ClusterPubSub for StubPubSub {
-  fn start(&self) -> Result<(), PubSubError> {
+  fn start(&mut self) -> Result<(), PubSubError> {
     if self.fail_start {
       return Err(PubSubError::TopicAlreadyExists { topic: String::from("pubsub-error") });
     }
@@ -261,7 +263,7 @@ impl ClusterPubSub for StubPubSub {
     Ok(())
   }
 
-  fn stop(&self) -> Result<(), PubSubError> {
+  fn stop(&mut self) -> Result<(), PubSubError> {
     if self.fail_stop {
       return Err(PubSubError::TopicNotFound { topic: String::from("pubsub-error") });
     }
@@ -323,6 +325,14 @@ fn wrap_provider<P: ClusterProvider + 'static>(
   ArcShared::new(mutex)
 }
 
+/// ClusterPubSub を ArcShared<ToolboxMutex<Box<dyn ClusterPubSub>>> にラップするヘルパー
+fn wrap_pubsub<P: ClusterPubSub + 'static>(pubsub: P) -> ArcShared<ToolboxMutex<Box<dyn ClusterPubSub>, NoStdToolbox>> {
+  let boxed: Box<dyn ClusterPubSub> = Box::new(pubsub);
+  let mutex: ToolboxMutex<Box<dyn ClusterPubSub>, NoStdToolbox> =
+    <NoStdToolbox as RuntimeToolbox>::MutexFamily::create(boxed);
+  ArcShared::new(mutex)
+}
+
 fn build_core_with_config(config: &ClusterExtensionConfig) -> ClusterCore<NoStdToolbox> {
   let provider = wrap_provider(StubProvider);
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec!["blocked-node".to_string()]));
@@ -330,7 +340,7 @@ fn build_core_with_config(config: &ClusterExtensionConfig) -> ClusterCore<NoStdT
   let kind_registry = KindRegistry::new();
   let identity_lookup = wrap_identity_lookup(StubIdentityLookup::new());
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
-  let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
+  let pubsub = wrap_pubsub(StubPubSub::new());
 
   ClusterCore::new(
     config,
@@ -354,7 +364,7 @@ fn new_core_stores_dependencies_and_startup_params() {
   let kind_registry = KindRegistry::new();
   let identity_lookup = wrap_identity_lookup(StubIdentityLookup::new());
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
-  let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
+  let pubsub = wrap_pubsub(StubPubSub::new());
 
   let core = ClusterCore::new(
     &config,
@@ -405,7 +415,7 @@ fn setup_member_kinds_registers_and_updates_virtual_actor_count() {
   let calls: ArcShared<NoStdMutex<Vec<IdentityCall>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
   let identity_lookup = StubIdentityLookup { calls: calls.clone() };
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
-  let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
+  let pubsub = wrap_pubsub(StubPubSub::new());
   let mut core = ClusterCore::new(
     &ClusterExtensionConfig::new(),
     provider,
@@ -441,7 +451,7 @@ fn setup_client_kinds_registers_and_updates_virtual_actor_count() {
   let calls: ArcShared<NoStdMutex<Vec<IdentityCall>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
   let identity_lookup = StubIdentityLookup { calls: calls.clone() };
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
-  let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
+  let pubsub = wrap_pubsub(StubPubSub::new());
   let mut core = ClusterCore::new(
     &ClusterExtensionConfig::new(),
     provider,
@@ -471,7 +481,7 @@ fn topology_event_includes_blocked_and_updates_metrics() {
   let kind_registry = KindRegistry::new();
   let identity_lookup = wrap_identity_lookup(StubIdentityLookup::new());
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
-  let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
+  let pubsub = wrap_pubsub(StubPubSub::new());
   let mut core = ClusterCore::new(
     &ClusterExtensionConfig::new().with_metrics_enabled(true),
     provider,
@@ -531,7 +541,7 @@ fn topology_with_same_hash_is_suppressed() {
   let kind_registry = KindRegistry::new();
   let identity_lookup = wrap_identity_lookup(StubIdentityLookup::new());
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
-  let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
+  let pubsub = wrap_pubsub(StubPubSub::new());
   let mut core = ClusterCore::new(
     &ClusterExtensionConfig::new().with_metrics_enabled(true),
     provider,
@@ -567,7 +577,7 @@ fn multi_node_topology_flow_updates_metrics_and_pid_cache() {
   let kind_registry = KindRegistry::new();
   let identity_lookup = wrap_identity_lookup(StubIdentityLookup::new());
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
-  let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
+  let pubsub = wrap_pubsub(StubPubSub::new());
   let mut core = ClusterCore::new(
     &ClusterExtensionConfig::new().with_metrics_enabled(true),
     provider,
@@ -623,7 +633,7 @@ fn start_member_emits_startup_event_and_sets_mode() {
   let kind_registry = KindRegistry::new();
   let identity_lookup = wrap_identity_lookup(StubIdentityLookup::new());
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
-  let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
+  let pubsub = wrap_pubsub(StubPubSub::new());
   let mut core = ClusterCore::new(
     &ClusterExtensionConfig::new().with_advertised_address("proto://member").with_metrics_enabled(true),
     provider,
@@ -663,7 +673,7 @@ fn start_member_failure_emits_startup_failed() {
   let kind_registry = KindRegistry::new();
   let identity_lookup = wrap_identity_lookup(StubIdentityLookup::new());
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
-  let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
+  let pubsub = wrap_pubsub(StubPubSub::new());
   let mut core = ClusterCore::new(
     &ClusterExtensionConfig::new().with_advertised_address("proto://member"),
     provider,
@@ -697,7 +707,7 @@ fn start_client_emits_startup_event_and_sets_mode() {
   let kind_registry = KindRegistry::new();
   let identity_lookup = wrap_identity_lookup(StubIdentityLookup::new());
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
-  let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
+  let pubsub = wrap_pubsub(StubPubSub::new());
   let mut core = ClusterCore::new(
     &ClusterExtensionConfig::new().with_advertised_address("proto://client"),
     provider,
@@ -729,7 +739,7 @@ fn start_client_failure_emits_startup_failed() {
   let kind_registry = KindRegistry::new();
   let identity_lookup = wrap_identity_lookup(StubIdentityLookup::new());
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
-  let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
+  let pubsub = wrap_pubsub(StubPubSub::new());
   let mut core = ClusterCore::new(
     &ClusterExtensionConfig::new().with_advertised_address("proto://client"),
     provider,
@@ -763,7 +773,7 @@ fn start_member_fails_when_gossip_start_fails() {
   let kind_registry = KindRegistry::new();
   let identity_lookup = wrap_identity_lookup(StubIdentityLookup::new());
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::failing_start());
-  let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
+  let pubsub = wrap_pubsub(StubPubSub::new());
   let mut core = ClusterCore::new(
     &ClusterExtensionConfig::new().with_advertised_address("proto://member"),
     provider,
@@ -796,7 +806,7 @@ fn start_member_fails_when_pubsub_start_fails() {
   let kind_registry = KindRegistry::new();
   let identity_lookup = wrap_identity_lookup(StubIdentityLookup::new());
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
-  let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::failing_start());
+  let pubsub = wrap_pubsub(StubPubSub::failing_start());
   let mut core = ClusterCore::new(
     &ClusterExtensionConfig::new().with_advertised_address("proto://member"),
     provider,
@@ -828,15 +838,27 @@ fn shutdown_stops_pubsub_then_gossip() {
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
   let identity_lookup = wrap_identity_lookup(StubIdentityLookup::new());
-  let gossiper = ArcShared::new(StubGossiper::new());
-  let pubsub = ArcShared::new(StubPubSub::new());
+  let gossiper_stopped: ArcShared<NoStdMutex<bool>> = ArcShared::new(NoStdMutex::new(false));
+  let pubsub_stopped: ArcShared<NoStdMutex<bool>> = ArcShared::new(NoStdMutex::new(false));
+  let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper {
+    started:    ArcShared::new(NoStdMutex::new(false)),
+    stopped:    gossiper_stopped.clone(),
+    fail_start: false,
+    fail_stop:  false,
+  });
+  let pubsub = wrap_pubsub(StubPubSub {
+    started:    ArcShared::new(NoStdMutex::new(false)),
+    stopped:    pubsub_stopped.clone(),
+    fail_start: false,
+    fail_stop:  false,
+  });
   let mut core = ClusterCore::new(
     &ClusterExtensionConfig::new().with_advertised_address("proto://member"),
     provider,
     block_list_provider,
     event_stream.clone(),
-    gossiper.clone(),
-    pubsub.clone(),
+    gossiper,
+    pubsub,
     kind_registry,
     identity_lookup,
   );
@@ -844,8 +866,8 @@ fn shutdown_stops_pubsub_then_gossip() {
   core.start_member().unwrap();
   core.shutdown(true).unwrap();
 
-  assert!(pubsub.stopped());
-  assert!(gossiper.stopped());
+  assert!(*pubsub_stopped.lock());
+  assert!(*gossiper_stopped.lock());
 }
 
 #[test]
@@ -856,7 +878,7 @@ fn shutdown_resets_virtual_actor_count_and_emits_event() {
   let kind_registry = KindRegistry::new();
   let identity_lookup = wrap_identity_lookup(StubIdentityLookup::new());
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
-  let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
+  let pubsub = wrap_pubsub(StubPubSub::new());
   let mut core = ClusterCore::new(
     &ClusterExtensionConfig::new().with_advertised_address("proto://member"),
     provider,
@@ -893,7 +915,7 @@ fn shutdown_failure_emits_shutdown_failed() {
   let kind_registry = KindRegistry::new();
   let identity_lookup = wrap_identity_lookup(StubIdentityLookup::new());
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
-  let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
+  let pubsub = wrap_pubsub(StubPubSub::new());
   let mut core = ClusterCore::new(
     &ClusterExtensionConfig::new().with_advertised_address("proto://member"),
     provider,
@@ -944,7 +966,7 @@ fn metrics_disabled_still_emits_startup_event() {
   let kind_registry = KindRegistry::new();
   let identity_lookup = wrap_identity_lookup(StubIdentityLookup::new());
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
-  let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
+  let pubsub = wrap_pubsub(StubPubSub::new());
   let mut core = ClusterCore::new(
     &ClusterExtensionConfig::new().with_advertised_address("proto://member").with_metrics_enabled(false),
     provider,
@@ -983,7 +1005,7 @@ fn metrics_disabled_still_emits_topology_updated_event() {
   let kind_registry = KindRegistry::new();
   let identity_lookup = wrap_identity_lookup(StubIdentityLookup::new());
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
-  let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
+  let pubsub = wrap_pubsub(StubPubSub::new());
   let mut core = ClusterCore::new(
     &ClusterExtensionConfig::new().with_advertised_address("proto://member").with_metrics_enabled(false),
     provider,
@@ -1030,7 +1052,7 @@ fn metrics_disabled_still_emits_shutdown_event() {
   let kind_registry = KindRegistry::new();
   let identity_lookup = wrap_identity_lookup(StubIdentityLookup::new());
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
-  let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
+  let pubsub = wrap_pubsub(StubPubSub::new());
   let mut core = ClusterCore::new(
     &ClusterExtensionConfig::new().with_advertised_address("proto://member").with_metrics_enabled(false),
     provider,
@@ -1073,7 +1095,7 @@ fn metrics_disabled_full_lifecycle_events_continue() {
   let kind_registry = KindRegistry::new();
   let identity_lookup = wrap_identity_lookup(StubIdentityLookup::new());
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
-  let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
+  let pubsub = wrap_pubsub(StubPubSub::new());
   let mut core = ClusterCore::new(
     &ClusterExtensionConfig::new().with_advertised_address("proto://full-lifecycle").with_metrics_enabled(false),
     provider,

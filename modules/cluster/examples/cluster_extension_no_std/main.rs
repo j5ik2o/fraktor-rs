@@ -94,11 +94,11 @@ impl Gossiper for DemoGossiper {
 #[derive(Default)]
 struct DemoPubSub;
 impl ClusterPubSub for DemoPubSub {
-  fn start(&self) -> Result<(), fraktor_cluster_rs::core::PubSubError> {
+  fn start(&mut self) -> Result<(), fraktor_cluster_rs::core::PubSubError> {
     Ok(())
   }
 
-  fn stop(&self) -> Result<(), fraktor_cluster_rs::core::PubSubError> {
+  fn stop(&mut self) -> Result<(), fraktor_cluster_rs::core::PubSubError> {
     Ok(())
   }
 }
@@ -209,10 +209,10 @@ impl ClusterNode {
     // ClusterExtension を登録
     let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
       ClusterExtensionConfig::new().with_advertised_address(name).with_metrics_enabled(true),
-      ArcShared::new(provider),
+      Box::new(provider),
       ArcShared::new(DemoBlockList::default()),
       ArcShared::new(DemoGossiper::default()),
-      ArcShared::new(DemoPubSub::default()),
+      Box::new(DemoPubSub::default()),
       Box::new(DemoIdentityLookup::default()),
     );
 

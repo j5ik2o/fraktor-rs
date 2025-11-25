@@ -100,6 +100,7 @@ impl<TB: RuntimeToolbox + 'static> LocalClusterProvider<TB> {
 
   /// Returns the configured seed nodes.
   #[must_use]
+  #[allow(clippy::missing_const_for_fn)]
   pub fn seed_nodes(&self) -> &[String] {
     &self.seed_nodes
   }
@@ -132,13 +133,14 @@ impl<TB: RuntimeToolbox + 'static> LocalClusterProvider<TB> {
 
   /// Returns the current member count.
   #[must_use]
+  #[allow(clippy::missing_const_for_fn)]
   pub fn member_count(&self) -> usize {
     self.members.len()
   }
 
   /// Returns whether the provider has been started.
   #[must_use]
-  pub fn is_started(&self) -> bool {
+  pub const fn is_started(&self) -> bool {
     self.startup_mode.is_some()
   }
 
@@ -149,6 +151,7 @@ impl<TB: RuntimeToolbox + 'static> LocalClusterProvider<TB> {
     &self.event_stream
   }
 
+  #[allow(clippy::missing_const_for_fn)]
   fn next_version(&mut self) -> u64 {
     self.version += 1;
     self.version

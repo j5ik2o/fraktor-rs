@@ -9,12 +9,12 @@ pub trait ClusterPubSub: Send + Sync {
   /// # Errors
   ///
   /// Returns an error if the pub/sub subsystem fails to start.
-  fn start(&self) -> Result<(), PubSubError>;
+  fn start(&mut self) -> Result<(), PubSubError>;
 
   /// Stops pub/sub services.
   ///
   /// # Errors
   ///
   /// Returns an error if the pub/sub subsystem fails to stop.
-  fn stop(&self) -> Result<(), PubSubError>;
+  fn stop(&mut self) -> Result<(), PubSubError>;
 }

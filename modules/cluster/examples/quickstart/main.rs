@@ -62,7 +62,7 @@ async fn main() -> Result<()> {
     MembershipDelta::new(delta_a.from, delta_b.to, vec![delta_a.entries[0].clone(), delta_b.entries[0].clone()]);
 
   // ノードA（owner 側になる可能性あり）
-  let (receiver, receiver_provider) = build_system(
+  let (receiver, mut receiver_provider) = build_system(
     SYSTEM_A,
     NODE_A_PORT,
     Props::from_fn({
@@ -74,7 +74,7 @@ async fn main() -> Result<()> {
   )?;
 
   // ノードB（送信 + reply channel 登録）
-  let (sender, sender_provider) = build_system(
+  let (sender, mut sender_provider) = build_system(
     SYSTEM_B,
     NODE_B_PORT,
     Props::from_fn({
@@ -149,7 +149,7 @@ fn build_system(
   let default_dispatcher = DispatcherConfig::from_executor(ArcShared::new(executor_adapter));
 
   // Provider (noop in this quickstart) should still follow the lifecycle contract.
-  let provider = NoopClusterProvider::new();
+  let mut provider = NoopClusterProvider::new();
   provider.start_member().map_err(|e| anyhow!("provider start failed: {}", e.reason()))?;
 
   let system_config = ActorSystemConfig::default()

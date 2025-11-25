@@ -4,11 +4,12 @@
 mod tests;
 
 use alloc::{
+  boxed::Box,
   format,
   string::{String, ToString},
   vec::Vec,
 };
-use alloc::boxed::Box;
+
 use fraktor_actor_rs::core::{
   event_stream::{EventStreamEvent, EventStreamGeneric},
   messaging::AnyMessageGeneric,
@@ -31,7 +32,7 @@ pub struct ClusterCore<TB: RuntimeToolbox + 'static> {
   block_list_provider: ArcShared<dyn BlockListProvider>,
   event_stream:        ArcShared<EventStreamGeneric<TB>>,
   gossiper:            ArcShared<dyn Gossiper>,
-  pubsub:              ArcShared<dyn ClusterPubSub>,
+  pub_sub:             ArcShared<ToolboxMutex<Box<dyn ClusterPubSub>, TB>>,
   startup_state:       ToolboxMutex<ClusterStartupState, TB>,
   metrics_enabled:     bool,
   kind_registry:       KindRegistry,
@@ -55,7 +56,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
     block_list_provider: ArcShared<dyn BlockListProvider>,
     event_stream: ArcShared<EventStreamGeneric<TB>>,
     gossiper: ArcShared<dyn Gossiper>,
-    pubsub: ArcShared<dyn ClusterPubSub>,
+    pubsub: ArcShared<ToolboxMutex<Box<dyn ClusterPubSub>, TB>>,
     kind_registry: KindRegistry,
     identity_lookup: ArcShared<ToolboxMutex<Box<dyn IdentityLookup>, TB>>,
   ) -> Self {
@@ -69,7 +70,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
       block_list_provider,
       event_stream,
       gossiper,
-      pubsub,
+      pub_sub: pubsub,
       startup_state: <TB::MutexFamily as SyncMutexFamily>::create(startup_state),
       metrics_enabled,
       kind_registry,
@@ -161,7 +162,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
     let address = self.startup_address();
     self.refresh_blocked_members();
 
-    self.pubsub.start().map_err(ClusterError::from).map_err(|error| {
+    self.pub_sub.lock().start().map_err(ClusterError::from).map_err(|error| {
       let reason = format!("pubsub: {error:?}");
       self.publish_cluster_event(ClusterEvent::StartupFailed {
         address: address.clone(),
@@ -207,7 +208,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
     let address = self.startup_address();
     self.refresh_blocked_members();
 
-    self.pubsub.start().map_err(ClusterError::from).map_err(|error| {
+    self.pub_sub.lock().start().map_err(ClusterError::from).map_err(|error| {
       let reason = format!("pubsub: {error:?}");
       self.publish_cluster_event(ClusterEvent::StartupFailed {
         address: address.clone(),
@@ -243,7 +244,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
   pub fn shutdown(&mut self, graceful: bool) -> Result<(), ClusterError> {
     let address = self.startup_address();
     let mode = self.mode.unwrap_or(StartupMode::Member);
-    self.pubsub.stop().map_err(ClusterError::from).map_err(|error| {
+    self.pub_sub.lock().stop().map_err(ClusterError::from).map_err(|error| {
       let reason = format!("pubsub: {error:?}");
       self.publish_cluster_event(ClusterEvent::ShutdownFailed { address: address.clone(), mode, reason });
       error

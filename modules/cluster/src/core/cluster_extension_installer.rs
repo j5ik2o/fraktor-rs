@@ -39,6 +39,9 @@ pub type ClusterProviderFactory<TB> = ArcShared<
     + Sync,
 >;
 
+/// Factory function type for creating a `ClusterPubSub`.
+type PubSubFactory = ArcShared<dyn Fn() -> Box<dyn ClusterPubSub> + Send + Sync>;
+
 /// Factory function type for creating an `IdentityLookup`.
 type IdentityLookupFactory = ArcShared<dyn Fn() -> Box<dyn IdentityLookup> + Send + Sync>;
 
@@ -72,7 +75,7 @@ pub struct ClusterExtensionInstaller<TB: RuntimeToolbox + 'static> {
   provider_f:          ClusterProviderFactory<TB>,
   block_list_provider: Option<ArcShared<dyn BlockListProvider>>,
   gossiper:            Option<ArcShared<dyn Gossiper>>,
-  pubsub:              Option<ArcShared<dyn ClusterPubSub>>,
+  pubsub_f:            Option<PubSubFactory>,
   identity_lookup_f:   Option<IdentityLookupFactory>,
 }
 
@@ -83,7 +86,7 @@ impl<TB: RuntimeToolbox + 'static> Clone for ClusterExtensionInstaller<TB> {
       provider_f:          ArcShared::clone(&self.provider_f),
       block_list_provider: self.block_list_provider.clone(),
       gossiper:            self.gossiper.clone(),
-      pubsub:              self.pubsub.clone(),
+      pubsub_f:            self.pubsub_f.clone(),
       identity_lookup_f:   self.identity_lookup_f.clone(),
     }
   }
@@ -121,7 +124,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
       provider_f: ArcShared::new(provider_f),
       block_list_provider: None,
       gossiper: None,
-      pubsub: None,
+      pubsub_f: None,
       identity_lookup_f: None,
     }
   }
@@ -197,10 +200,14 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
     self
   }
 
-  /// Sets a custom pub/sub implementation.
+  /// Sets a custom pub/sub factory.
+  ///
+  /// The factory is called during installation to create a fresh `ClusterPubSub` instance.
   #[must_use]
-  pub fn with_pubsub(mut self, pubsub: ArcShared<dyn ClusterPubSub>) -> Self {
-    self.pubsub = Some(pubsub);
+  pub fn with_pubsub_factory<F>(mut self, factory: F) -> Self
+  where
+    F: Fn() -> Box<dyn ClusterPubSub> + Send + Sync + 'static, {
+    self.pubsub_f = Some(ArcShared::new(factory));
     self
   }
 
@@ -243,7 +250,9 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
     let block_list_provider: ArcShared<dyn BlockListProvider> =
       self.block_list_provider.clone().unwrap_or_else(|| ArcShared::new(EmptyBlockListProvider));
     let gossiper: ArcShared<dyn Gossiper> = self.gossiper.clone().unwrap_or_else(|| ArcShared::new(NoopGossiper));
-    let pubsub: ArcShared<dyn ClusterPubSub> = self.pubsub.clone().unwrap_or_else(|| ArcShared::new(NoopClusterPubSub));
+    // ClusterPubSub はファクトリ経由で作成（Clone できないため）
+    let pubsub: Box<dyn ClusterPubSub> =
+      self.pubsub_f.as_ref().map(|f| f()).unwrap_or_else(|| Box::new(NoopClusterPubSub));
     // IdentityLookup はファクトリ経由で作成（Clone できないため）
     let identity_lookup: Box<dyn IdentityLookup> =
       self.identity_lookup_f.as_ref().map(|f| f()).unwrap_or_else(|| Box::new(NoopIdentityLookup));

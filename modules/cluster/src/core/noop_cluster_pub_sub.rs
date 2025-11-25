@@ -18,11 +18,11 @@ impl NoopClusterPubSub {
 }
 
 impl ClusterPubSub for NoopClusterPubSub {
-  fn start(&self) -> Result<(), PubSubError> {
+  fn start(&mut self) -> Result<(), PubSubError> {
     Ok(())
   }
 
-  fn stop(&self) -> Result<(), PubSubError> {
+  fn stop(&mut self) -> Result<(), PubSubError> {
     Ok(())
   }
 }

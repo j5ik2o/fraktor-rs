@@ -269,7 +269,7 @@ fn advertised_address_is_stored_correctly() {
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
 
-  let mut provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "192.168.1.100:9999");
+  let provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "192.168.1.100:9999");
 
   assert_eq!(provider.advertised_address(), "192.168.1.100:9999");
 }

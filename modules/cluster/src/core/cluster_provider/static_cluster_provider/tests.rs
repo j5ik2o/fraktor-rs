@@ -74,7 +74,8 @@ fn start_member_publishes_static_topology_to_event_stream() {
 
   // 静的トポロジを設定した Provider を作成
   let static_topology = ClusterTopology::new(100, vec![String::from("node-b")], vec![]);
-  let mut provider = StaticClusterProvider::new(event_stream, block_list, "node-a").with_static_topology(static_topology);
+  let mut provider =
+    StaticClusterProvider::new(event_stream, block_list, "node-a").with_static_topology(static_topology);
 
   // start_member を呼び出す
   provider.start_member().unwrap();
@@ -102,7 +103,8 @@ fn start_client_also_publishes_static_topology() {
   let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
 
   let static_topology = ClusterTopology::new(200, vec![], vec![String::from("leaving-node")]);
-  let mut provider = StaticClusterProvider::new(event_stream, block_list, "client-a").with_static_topology(static_topology);
+  let mut provider =
+    StaticClusterProvider::new(event_stream, block_list, "client-a").with_static_topology(static_topology);
 
   provider.start_client().unwrap();
 
@@ -179,7 +181,7 @@ fn advertised_address_is_stored_correctly() {
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
 
-  let mut provider = StaticClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "127.0.0.1:8080");
+  let provider = StaticClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "127.0.0.1:8080");
 
   assert_eq!(provider.advertised_address(), "127.0.0.1:8080");
 }
