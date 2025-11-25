@@ -26,9 +26,9 @@ use fraktor_actor_rs::{
     system::{ActorSystem, ActorSystemConfig},
   },
 };
-use fraktor_cluster_rs::{
-  core::{ClusterProvider, GrainKey, MembershipDelta, MembershipTable, RendezvousHasher, VirtualActorRegistry},
-  std::noop_cluster_provider::NoopClusterProvider,
+use fraktor_cluster_rs::core::{
+  ClusterProvider, GrainKey, MembershipDelta, MembershipTable, NoopClusterProvider, RendezvousHasher,
+  VirtualActorRegistry,
 };
 use fraktor_remote_rs::core::{
   RemotingExtensionConfig, RemotingExtensionId, RemotingExtensionInstaller, TokioActorRefProviderInstaller,

@@ -68,6 +68,7 @@ impl EventStreamSubscriber for LifecyclePrinter {
       | EventStreamEvent::SchedulerTick(_)
       | EventStreamEvent::TickDriver(_)
       | EventStreamEvent::RemotingBackpressure(_)
+      | EventStreamEvent::Extension { .. }
       | EventStreamEvent::RemotingLifecycle(_) => {},
     }
   }

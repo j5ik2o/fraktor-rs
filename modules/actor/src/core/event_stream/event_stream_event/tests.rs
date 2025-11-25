@@ -5,11 +5,19 @@ use core::time::Duration;
 
 #[cfg(feature = "alloc")]
 use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
-#[cfg(feature = "alloc")]
-use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 
 #[cfg(feature = "alloc")]
 use super::EventStreamEvent;
+#[cfg(feature = "alloc")]
+use crate::core::{
+  actor_prim::Pid,
+  dead_letter::DeadLetterEntry,
+  lifecycle::{LifecycleEvent, LifecycleStage},
+  logging::{LogEvent, LogLevel},
+  mailbox::MailboxMetricsEvent,
+  messaging::AnyMessage,
+  serialization::{SerializationErrorEvent, SerializerId},
+};
 
 #[cfg(feature = "alloc")]
 #[test]
@@ -80,6 +88,28 @@ fn event_stream_event_mailbox_clone() {
       assert_eq!(e1.user_len(), e2.user_len());
     },
     | _ => panic!("Expected Mailbox variants"),
+  }
+}
+
+#[cfg(feature = "alloc")]
+#[test]
+fn event_stream_event_extension_clone() {
+  let payload = AnyMessage::new(String::from("cluster-startup"));
+  let event =
+    EventStreamEvent::<NoStdToolbox>::Extension { name: String::from("cluster"), payload: payload.clone() };
+  let cloned = event.clone();
+
+  match (event, cloned) {
+    | (
+      EventStreamEvent::Extension { name: left_name, payload: left_payload },
+      EventStreamEvent::Extension { name: right_name, payload: right_payload },
+    ) => {
+      assert_eq!(left_name, right_name);
+      let left_str = left_payload.payload().downcast_ref::<String>().unwrap();
+      let right_str = right_payload.payload().downcast_ref::<String>().unwrap();
+      assert_eq!(left_str, right_str);
+    },
+    | _ => panic!("Expected Extension variants"),
   }
 }
 

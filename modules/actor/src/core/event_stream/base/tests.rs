@@ -14,6 +14,7 @@ use crate::core::{
   event_stream::{EventStreamEvent, EventStreamSubscriber},
   lifecycle::{LifecycleEvent, LifecycleStage},
   logging::{LogEvent, LogLevel},
+  messaging::AnyMessage,
 };
 
 struct RecordingSubscriber {
@@ -80,6 +81,41 @@ fn capacity_limits_buffer_size() {
   let events = subscriber_impl.events();
   assert_eq!(events.len(), 1);
   assert!(matches!(&events[0], EventStreamEvent::Log(event) if event.message() == "second"));
+}
+
+#[test]
+fn extension_events_are_buffered_and_delivered() {
+  let stream = ArcShared::new(EventStream::with_capacity(4));
+
+  // publish before subscription to ensure replay works
+  stream.publish(&EventStreamEvent::Extension {
+    name:    String::from("cluster"),
+    payload: AnyMessage::new(String::from("startup")),
+  });
+
+  let subscriber_impl = ArcShared::new(RecordingSubscriber::new());
+  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
+  let _subscription = EventStream::subscribe_arc(&stream, &subscriber);
+
+  stream.publish(&EventStreamEvent::Extension {
+    name:    String::from("cluster"),
+    payload: AnyMessage::new(String::from("shutdown")),
+  });
+
+  let events = subscriber_impl.events();
+  assert_eq!(events.len(), 2);
+  assert!(events.iter().any(|event| match event {
+    | EventStreamEvent::Extension { name, payload } => {
+      name == "cluster" && payload.payload().downcast_ref::<String>().map(|s| s == "startup").unwrap_or(false)
+    },
+    | _ => false,
+  }));
+  assert!(events.iter().any(|event| match event {
+    | EventStreamEvent::Extension { name, payload } => {
+      name == "cluster" && payload.payload().downcast_ref::<String>().map(|s| s == "shutdown").unwrap_or(false)
+    },
+    | _ => false,
+  }));
 }
 
 #[test]

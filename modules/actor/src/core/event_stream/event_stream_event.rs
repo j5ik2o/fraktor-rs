@@ -3,6 +3,8 @@
 #[cfg(test)]
 mod tests;
 
+use alloc::string::String;
+
 use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 
 use super::{
@@ -15,6 +17,7 @@ use crate::core::{
   lifecycle::LifecycleEvent,
   logging::LogEvent,
   mailbox::{MailboxMetricsEvent, MailboxPressureEvent},
+  messaging::AnyMessageGeneric,
   scheduler::SchedulerTickMetrics,
   serialization::SerializationErrorEvent,
   typed::{UnhandledMessageEvent, message_adapter::AdapterFailureEvent},
@@ -51,6 +54,13 @@ pub enum EventStreamEvent<TB: RuntimeToolbox = NoStdToolbox> {
   SchedulerTick(SchedulerTickMetrics),
   /// Tick driver activation snapshot.
   TickDriver(TickDriverSnapshot),
+  /// Extension-provided event namespaced by extension identifier.
+  Extension {
+    /// Extension identifier (e.g. "cluster").
+    name:    String,
+    /// Payload carried by the extension event.
+    payload: AnyMessageGeneric<TB>,
+  },
 }
 
 impl<TB: RuntimeToolbox> Clone for EventStreamEvent<TB> {
@@ -70,6 +80,7 @@ impl<TB: RuntimeToolbox> Clone for EventStreamEvent<TB> {
       | Self::RemotingLifecycle(event) => Self::RemotingLifecycle(event.clone()),
       | Self::SchedulerTick(event) => Self::SchedulerTick(event.clone()),
       | Self::TickDriver(event) => Self::TickDriver(event.clone()),
+      | Self::Extension { name, payload } => Self::Extension { name: name.clone(), payload: payload.clone() },
     }
   }
 }

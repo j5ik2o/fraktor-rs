@@ -14,10 +14,17 @@ autoexamples = false
 
 [features]
 default = []
-std = []
+std = ["fraktor-actor-rs/std", "fraktor-remote-rs/std", "fraktor-utils-rs/std"]
+aws-ecs = ["std", "dep:aws-sdk-ecs", "dep:aws-config", "dep:tokio"]
+test-support = ["std", "fraktor-actor-rs/test-support", "fraktor-remote-rs/test-support"]
 
 [dependencies]
 fraktor-actor-rs = { workspace = true }
+fraktor-utils-rs = { workspace = true }
+fraktor-remote-rs = { workspace = true }
+aws-sdk-ecs = { workspace = true, optional = true }
+aws-config = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true, features = ["rt", "sync", "time"] }
 
 [dev-dependencies]
 fraktor-actor-rs = { workspace = true, features = ["std", "tokio-executor", "test-support"] }
@@ -29,4 +36,14 @@ anyhow = { workspace = true }
 [[example]]
 name = "quickstart"
 path = "examples/quickstart/main.rs"
+required-features = ["std"]
+
+[[example]]
+name = "cluster_extension_no_std"
+path = "examples/cluster_extension_no_std/main.rs"
+required-features = ["test-support"]
+
+[[example]]
+name = "cluster_extension_tokio"
+path = "examples/cluster_extension_tokio/main.rs"
 required-features = ["std"]
