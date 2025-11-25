@@ -229,3 +229,77 @@ fn drain_events_returns_broker_events() {
   // drain_events が空になることを確認
   assert!(events.is_empty(), "events should be empty because they were already flushed to EventStream");
 }
+
+// ====================================================================
+// Phase2 タスク 4.3: 動的トポロジで PubSub/メッセージ配送を検証するテスト
+// ====================================================================
+
+#[test]
+fn pubsub_works_with_dynamic_topology_join() {
+  let mut registry = KindRegistry::new();
+  registry.register_all(Vec::new());
+
+  let event_stream: ArcShared<EventStreamGeneric<NoStdToolbox>> =
+    ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let subscriber = ArcShared::new(TestSubscriber::new());
+  let sub_ref: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber.clone();
+  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &sub_ref);
+
+  // PubSubImpl を作成して起動
+  let pubsub = ClusterPubSubImpl::new(event_stream.clone(), &registry);
+  pubsub.start().expect("start should succeed");
+
+  // 動的トポロジ更新をシミュレート（ノードが join）
+  let topology = crate::core::ClusterTopology::new(1, vec![String::from("node-b:8080")], Vec::new());
+  let topology_event = ClusterEvent::TopologyUpdated {
+    topology: topology.clone(),
+    joined:   vec![String::from("node-b:8080")],
+    left:     Vec::new(),
+    blocked:  Vec::new(),
+  };
+  let payload = fraktor_actor_rs::core::messaging::AnyMessageGeneric::new(topology_event);
+  let es_event =
+    fraktor_actor_rs::core::event_stream::EventStreamEvent::Extension { name: String::from("cluster"), payload };
+  event_stream.publish(&es_event);
+
+  // 新しいノードから購読を追加（node-b が join した後）
+  let result = pubsub.subscribe(TOPIC_ACTOR_KIND, "node-b:8080");
+  assert!(result.is_ok(), "subscription from joined node should succeed");
+
+  // publish して購読者に配信できることを確認
+  let subscribers = pubsub.publish(TOPIC_ACTOR_KIND).expect("publish should succeed");
+  assert!(subscribers.contains(&String::from("node-b:8080")), "node-b should receive messages");
+}
+
+#[test]
+fn multiple_nodes_can_subscribe_and_receive_messages() {
+  let mut registry = KindRegistry::new();
+  registry.register_all(Vec::new());
+
+  let event_stream: ArcShared<EventStreamGeneric<NoStdToolbox>> =
+    ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let subscriber = ArcShared::new(TestSubscriber::new());
+  let sub_ref: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber.clone();
+  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &sub_ref);
+
+  let pubsub = ClusterPubSubImpl::new(event_stream, &registry);
+  pubsub.start().expect("start");
+
+  // 複数ノードから購読
+  pubsub.subscribe(TOPIC_ACTOR_KIND, "node-a:8080").expect("subscribe node-a");
+  pubsub.subscribe(TOPIC_ACTOR_KIND, "node-b:8080").expect("subscribe node-b");
+  pubsub.subscribe(TOPIC_ACTOR_KIND, "node-c:8080").expect("subscribe node-c");
+
+  // publish して全購読者に配信されることを確認
+  let subscribers = pubsub.publish(TOPIC_ACTOR_KIND).expect("publish");
+  assert_eq!(subscribers.len(), 3);
+  assert!(subscribers.contains(&String::from("node-a:8080")));
+  assert!(subscribers.contains(&String::from("node-b:8080")));
+  assert!(subscribers.contains(&String::from("node-c:8080")));
+
+  // EventStream に SubscriptionAccepted イベントが3回発火されていることを確認
+  let collected = subscriber.events();
+  let pubsub_events = extract_pub_sub_events(&collected);
+  let accepted_count = pubsub_events.iter().filter(|e| matches!(e, PubSubEvent::SubscriptionAccepted { .. })).count();
+  assert_eq!(accepted_count, 3, "SubscriptionAccepted should be fired 3 times");
+}

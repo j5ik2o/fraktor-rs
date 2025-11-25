@@ -6,8 +6,13 @@
 //! to EventStream. ClusterExtension automatically subscribes to these events
 //! and applies topology updates to ClusterCore.
 //!
+//! Task 4.5: Transport のコネクション/切断イベントを SampleTcpProvider が自動検知し、
+//! `TopologyUpdated` を publish する機能を実装。`subscribe_remoting_events()` を
+//! 呼び出すことで、`RemotingLifecycleEvent::Connected` と `Quarantined` を自動的に
+//! 検知し、トポロジ更新を行います。
+//!
 //! Provider差し替え方法:
-//! - SampleTcpProvider: 静的トポロジ or join/leave イベント経由のトポロジ配布（本サンプル）
+//! - SampleTcpProvider: 静的トポロジ + Transport イベント自動検知（本サンプル）
 //! - etcd/zk/automanaged provider: 外部サービス連携（Phase2以降で対応予定）
 //!
 //! 実行例:
@@ -100,13 +105,8 @@ async fn main() -> Result<()> {
   println!("[node-a] members={}, virtual_actors={}", metrics_a.members(), metrics_a.virtual_actors());
   println!("[node-b] members={}, virtual_actors={}", metrics_b.members(), metrics_b.virtual_actors());
 
-  // 動的な join/leave イベントをシミュレート
-  println!("\n--- Simulating dynamic join/leave ---");
-  // node-c が join（node_a の provider 経由で通知）
-  node_a.provider.on_member_join(format!("{HOST}:26052"));
-  // 少し待ってから leave
-  thread::sleep(Duration::from_millis(50));
-  node_a.provider.on_member_leave(format!("{HOST}:26052"));
+  println!("\n--- Transport-driven topology updates enabled ---");
+  println!("(Connected/Quarantined events will automatically trigger TopologyUpdated)");
 
   // Grain 呼び出し（ノードBからノードAへリモート送信）
   println!("\n--- Sending grain call ---");
@@ -142,6 +142,10 @@ async fn main() -> Result<()> {
 struct ClusterNode {
   system:     ActorSystem,
   cluster:    ArcShared<fraktor_cluster_rs::core::ClusterExtensionGeneric<StdToolbox>>,
+  // Task 4.5: provider は subscribe_remoting_events() 後に自動的に Transport イベントを監視
+  // 手動の on_member_join/on_member_leave 呼び出しは不要になったが、
+  // デバッグや拡張用途のために保持
+  #[allow(dead_code)]
   provider:   ArcShared<SampleTcpProvider>,
   #[allow(dead_code)]
   advertised: String,
@@ -195,6 +199,11 @@ fn build_cluster_node(
     provider_builder = provider_builder.with_static_topology(topology);
   }
   let provider = ArcShared::new(provider_builder);
+
+  // Task 4.5: Transport イベントを自動検知するためのサブスクリプションを開始
+  // RemotingLifecycleEvent::Connected/Quarantined を監視し、
+  // 自動的に TopologyUpdated を publish する
+  SampleTcpProvider::subscribe_remoting_events(&provider);
 
   let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(LoggingGossiper::new(system_name));
   let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(LoggingPubSub::new(system_name));

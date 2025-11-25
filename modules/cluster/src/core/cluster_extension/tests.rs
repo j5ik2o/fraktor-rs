@@ -415,3 +415,226 @@ fn phase1_integration_metrics_include_members_and_virtual_actors() {
   assert_eq!(metrics.members(), 3, "Members should be 1 + 2 joined");
   assert_eq!(metrics.virtual_actors(), 3, "Virtual actors should remain unchanged");
 }
+
+// ====================================================================
+// Phase2 統合テスト（タスク 4.4）
+// join/leave/BlockList 反映・metrics 更新・EventStream TopologyUpdated 出力を確認
+// ====================================================================
+
+/// Phase2 統合テスト: join/leave イベントが EventStream に TopologyUpdated として出力される
+#[test]
+fn phase2_integration_join_leave_events_produce_topology_updated() {
+  // 1. システムをセットアップ
+  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let event_stream = system.event_stream();
+
+  // 2. EventStream に subscriber を登録
+  let recorder = ArcShared::new(RecordingClusterEvents::new());
+  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = recorder.clone();
+  let _subscription =
+    fraktor_actor_rs::core::event_stream::EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+
+  // 3. ClusterExtension をセットアップ
+  let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(StubBlockList);
+  let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
+    ClusterExtensionConfig::new().with_advertised_address("node-a").with_metrics_enabled(true),
+    ArcShared::new(StubProvider),
+    block_list,
+    ArcShared::new(StubGossiper),
+    ArcShared::new(StubPubSub),
+    ArcShared::new(StubIdentity),
+  );
+  let ext_shared = system.extended().register_extension(&ext_id);
+
+  // 4. クラスタを開始
+  ext_shared.start_member().unwrap();
+
+  // 5. ノード join のトポロジ更新
+  let join_topology = ClusterTopology::new(100, vec![String::from("node-b"), String::from("node-c")], vec![]);
+  ext_shared.on_topology(&join_topology);
+
+  // 6. ノード leave のトポロジ更新
+  let leave_topology = ClusterTopology::new(200, vec![], vec![String::from("node-c")]);
+  ext_shared.on_topology(&leave_topology);
+
+  // 7. TopologyUpdated イベントが発火されたことを確認
+  let topology_events = recorder.topology_updated_events();
+  assert!(topology_events.len() >= 2, "At least 2 TopologyUpdated events should be fired");
+
+  // 8. join イベントを確認
+  assert!(
+    topology_events.iter().any(|e| matches!(
+      e,
+      ClusterEvent::TopologyUpdated { joined, .. }
+      if joined.contains(&String::from("node-b"))
+    )),
+    "TopologyUpdated should contain node-b in joined"
+  );
+
+  // 9. leave イベントを確認
+  assert!(
+    topology_events.iter().any(|e| matches!(
+      e,
+      ClusterEvent::TopologyUpdated { left, .. }
+      if left.contains(&String::from("node-c"))
+    )),
+    "TopologyUpdated should contain node-c in left"
+  );
+}
+
+/// Phase2 統合テスト: BlockList が TopologyUpdated イベントに反映される
+#[test]
+fn phase2_integration_blocklist_reflected_in_topology_events() {
+  // 1. システムをセットアップ
+  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let event_stream = system.event_stream();
+
+  // 2. EventStream に subscriber を登録
+  let recorder = ArcShared::new(RecordingClusterEvents::new());
+  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = recorder.clone();
+  let _subscription =
+    fraktor_actor_rs::core::event_stream::EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+
+  // 3. BlockList に複数のノードを設定
+  let block_list: ArcShared<dyn BlockListProvider> =
+    ArcShared::new(RecordingBlockList::new(vec![String::from("blocked-node-1"), String::from("blocked-node-2")]));
+
+  // 4. ClusterExtension をセットアップ
+  let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
+    ClusterExtensionConfig::new().with_advertised_address("node-a").with_metrics_enabled(true),
+    ArcShared::new(StubProvider),
+    block_list,
+    ArcShared::new(StubGossiper),
+    ArcShared::new(StubPubSub),
+    ArcShared::new(StubIdentity),
+  );
+  let ext_shared = system.extended().register_extension(&ext_id);
+
+  // 5. クラスタを開始
+  ext_shared.start_member().unwrap();
+
+  // 6. トポロジ更新を行う
+  let topology = ClusterTopology::new(300, vec![String::from("node-b")], vec![]);
+  ext_shared.on_topology(&topology);
+
+  // 7. TopologyUpdated イベントに blocked が含まれていることを確認
+  let topology_events = recorder.topology_updated_events();
+  assert!(!topology_events.is_empty(), "TopologyUpdated should be fired");
+
+  // 8. blocked メンバーが含まれていることを確認
+  let has_blocked = topology_events.iter().any(|e| {
+    if let ClusterEvent::TopologyUpdated { blocked, .. } = e {
+      blocked.contains(&String::from("blocked-node-1")) && blocked.contains(&String::from("blocked-node-2"))
+    } else {
+      false
+    }
+  });
+  assert!(has_blocked, "TopologyUpdated should contain blocked members");
+
+  // 9. ClusterExtension からも blocked を取得できることを確認
+  let ext_blocked = ext_shared.blocked_members();
+  assert!(ext_blocked.contains(&String::from("blocked-node-1")));
+  assert!(ext_blocked.contains(&String::from("blocked-node-2")));
+}
+
+/// Phase2 統合テスト: metrics が正しく更新される
+#[test]
+fn phase2_integration_metrics_updated_correctly_with_dynamic_topology() {
+  // 1. システムをセットアップ
+  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+
+  // 2. ClusterExtension をセットアップ
+  let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(StubBlockList);
+  let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
+    ClusterExtensionConfig::new().with_advertised_address("node-a").with_metrics_enabled(true),
+    ArcShared::new(StubProvider),
+    block_list,
+    ArcShared::new(StubGossiper),
+    ArcShared::new(StubPubSub),
+    ArcShared::new(StubIdentity),
+  );
+  let ext_shared = system.extended().register_extension(&ext_id);
+
+  // 3. Kind を登録して起動
+  ext_shared.setup_member_kinds(vec![ActivatedKind::new("worker-kind")]).unwrap();
+  ext_shared.start_member().unwrap();
+
+  // 4. 初期メトリクス確認
+  let metrics = ext_shared.metrics().unwrap();
+  assert_eq!(metrics.members(), 1, "Initial members should be 1");
+  assert_eq!(metrics.virtual_actors(), 2, "worker + topic = 2 virtual actors");
+
+  // 5. 3ノード join
+  let topology1 =
+    ClusterTopology::new(400, vec![String::from("node-b"), String::from("node-c"), String::from("node-d")], vec![]);
+  ext_shared.on_topology(&topology1);
+
+  // 6. メトリクスが更新されたことを確認
+  let metrics = ext_shared.metrics().unwrap();
+  assert_eq!(metrics.members(), 4, "Members should be 1 + 3 joined = 4");
+
+  // 7. 2ノード leave
+  let topology2 = ClusterTopology::new(500, vec![], vec![String::from("node-b"), String::from("node-d")]);
+  ext_shared.on_topology(&topology2);
+
+  // 8. メトリクスが更新されたことを確認
+  let metrics = ext_shared.metrics().unwrap();
+  assert_eq!(metrics.members(), 2, "Members should be 4 - 2 left = 2");
+
+  // 9. virtual_actors は変化しないことを確認
+  assert_eq!(metrics.virtual_actors(), 2, "Virtual actors should remain 2");
+}
+
+/// Phase2 統合テスト: shutdown 後のメトリクスリセット
+#[test]
+fn phase2_integration_shutdown_resets_metrics_and_emits_event() {
+  // 1. システムをセットアップ
+  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let event_stream = system.event_stream();
+
+  // 2. EventStream に subscriber を登録
+  let recorder = ArcShared::new(RecordingClusterEvents::new());
+  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = recorder.clone();
+  let _subscription =
+    fraktor_actor_rs::core::event_stream::EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+
+  // 3. ClusterExtension をセットアップ
+  let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(StubBlockList);
+  let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
+    ClusterExtensionConfig::new().with_advertised_address("node-a").with_metrics_enabled(true),
+    ArcShared::new(StubProvider),
+    block_list,
+    ArcShared::new(StubGossiper),
+    ArcShared::new(StubPubSub),
+    ArcShared::new(StubIdentity),
+  );
+  let ext_shared = system.extended().register_extension(&ext_id);
+
+  // 4. Kind を登録して起動
+  ext_shared.setup_member_kinds(vec![ActivatedKind::new("worker-kind")]).unwrap();
+  ext_shared.start_member().unwrap();
+
+  // 5. トポロジ更新を行う
+  let topology = ClusterTopology::new(600, vec![String::from("node-b")], vec![]);
+  ext_shared.on_topology(&topology);
+
+  // 6. shutdown を呼ぶ
+  ext_shared.shutdown(true).unwrap();
+
+  // 7. Shutdown イベントが発火されたことを確認
+  let events = recorder.events();
+  assert!(
+    events.iter().any(|e| matches!(
+      e,
+      ClusterEvent::Shutdown { address, mode }
+      if address == "node-a" && *mode == crate::core::StartupMode::Member
+    )),
+    "Shutdown event should be fired"
+  );
+
+  // 8. virtual_actor_count がリセットされていることを確認
+  assert_eq!(ext_shared.virtual_actor_count(), 0, "virtual_actor_count should be reset after shutdown");
+
+  // 9. blocked_members がクリアされていることを確認
+  assert!(ext_shared.blocked_members().is_empty(), "blocked_members should be cleared after shutdown");
+}
