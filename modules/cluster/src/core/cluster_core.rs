@@ -8,7 +8,7 @@ use alloc::{
   string::{String, ToString},
   vec::Vec,
 };
-
+use alloc::boxed::Box;
 use fraktor_actor_rs::core::{
   event_stream::{EventStreamEvent, EventStreamGeneric},
   messaging::AnyMessageGeneric,
@@ -27,7 +27,7 @@ use crate::core::{
 
 /// Aggregates configuration and shared dependencies for cluster runtime flows.
 pub struct ClusterCore<TB: RuntimeToolbox + 'static> {
-  provider:            ArcShared<dyn ClusterProvider>,
+  provider:            ArcShared<ToolboxMutex<Box<dyn ClusterProvider>, TB>>,
   block_list_provider: ArcShared<dyn BlockListProvider>,
   event_stream:        ArcShared<EventStreamGeneric<TB>>,
   gossiper:            ArcShared<dyn Gossiper>,
@@ -35,7 +35,7 @@ pub struct ClusterCore<TB: RuntimeToolbox + 'static> {
   startup_state:       ToolboxMutex<ClusterStartupState, TB>,
   metrics_enabled:     bool,
   kind_registry:       KindRegistry,
-  identity_lookup:     ArcShared<ToolboxMutex<alloc::boxed::Box<dyn IdentityLookup>, TB>>,
+  identity_lookup:     ArcShared<ToolboxMutex<Box<dyn IdentityLookup>, TB>>,
   virtual_actor_count: i64,
   mode:                Option<StartupMode>,
   metrics:             Option<ClusterMetrics>,
@@ -51,13 +51,13 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     config: &ClusterExtensionConfig,
-    provider: ArcShared<dyn ClusterProvider>,
+    provider: ArcShared<ToolboxMutex<Box<dyn ClusterProvider>, TB>>,
     block_list_provider: ArcShared<dyn BlockListProvider>,
     event_stream: ArcShared<EventStreamGeneric<TB>>,
     gossiper: ArcShared<dyn Gossiper>,
     pubsub: ArcShared<dyn ClusterPubSub>,
     kind_registry: KindRegistry,
-    identity_lookup: ArcShared<ToolboxMutex<alloc::boxed::Box<dyn IdentityLookup>, TB>>,
+    identity_lookup: ArcShared<ToolboxMutex<Box<dyn IdentityLookup>, TB>>,
   ) -> Self {
     let advertised_address = config.advertised_address().to_string();
     let startup_state = ClusterStartupState { address: advertised_address };
@@ -180,7 +180,9 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
       ClusterError::Gossip(reason)
     })?;
 
-    match self.provider.start_member() {
+    // ガードを早期ドロップさせるため、結果を先に取得
+    let provider_result = self.provider.lock().start_member();
+    match provider_result {
       | Ok(()) => {
         self.mode = Some(StartupMode::Member);
         self.member_count = 1;
@@ -215,7 +217,9 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
       error
     })?;
 
-    match self.provider.start_client() {
+    // ガードを早期ドロップさせるため、結果を先に取得
+    let provider_result = self.provider.lock().start_client();
+    match provider_result {
       | Ok(()) => {
         self.mode = Some(StartupMode::Client);
         self.member_count = 1;
@@ -254,7 +258,9 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
       ClusterError::Gossip(reason)
     })?;
 
-    match self.provider.shutdown(graceful) {
+    // ガードを早期ドロップさせるため、結果を先に取得
+    let provider_result = self.provider.lock().shutdown(graceful);
+    match provider_result {
       | Ok(()) => {
         self.virtual_actor_count = 0;
         self.member_count = 0;

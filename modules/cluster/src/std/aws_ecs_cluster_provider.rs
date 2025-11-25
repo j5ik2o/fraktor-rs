@@ -39,10 +39,7 @@ mod tests;
 
 use std::{
   string::ToString,
-  sync::{
-    Mutex,
-    atomic::{AtomicBool, Ordering},
-  },
+  sync::atomic::{AtomicBool, Ordering},
   time::Duration,
 };
 
@@ -161,11 +158,11 @@ pub struct AwsEcsClusterProvider {
   block_list_provider: ArcShared<dyn BlockListProvider>,
   advertised_address:  String,
   config:              EcsClusterConfig,
-  members:             Mutex<Vec<String>>,
-  version:             Mutex<u64>,
-  startup_mode:        Mutex<Option<StartupMode>>,
+  members:             Vec<String>,
+  version:             u64,
+  startup_mode:        Option<StartupMode>,
   shutdown_flag:       ArcShared<AtomicBool>,
-  poller_handle:       Mutex<Option<JoinHandle<()>>>,
+  poller_handle:       Option<JoinHandle<()>>,
 }
 
 impl AwsEcsClusterProvider {
@@ -181,11 +178,11 @@ impl AwsEcsClusterProvider {
       block_list_provider,
       advertised_address: advertised_address.into(),
       config: EcsClusterConfig::new(),
-      members: Mutex::new(Vec::new()),
-      version: Mutex::new(0),
-      startup_mode: Mutex::new(None),
+      members: Vec::new(),
+      version: 0,
+      startup_mode: None,
       shutdown_flag: ArcShared::new(AtomicBool::new(false)),
-      poller_handle: Mutex::new(None),
+      poller_handle: None,
     }
   }
 
@@ -205,19 +202,18 @@ impl AwsEcsClusterProvider {
   /// Returns whether the provider has been started.
   #[must_use]
   pub fn is_started(&self) -> bool {
-    self.startup_mode.lock().unwrap().is_some()
+    self.startup_mode.is_some()
   }
 
   /// Returns the current member count.
   #[must_use]
   pub fn member_count(&self) -> usize {
-    self.members.lock().unwrap().len()
+    self.members.len()
   }
 
-  fn next_version(&self) -> u64 {
-    let mut version = self.version.lock().unwrap();
-    *version += 1;
-    *version
+  fn next_version(&mut self) -> u64 {
+    self.version += 1;
+    self.version
   }
 
   fn publish_topology(&self, version: u64, joined: Vec<String>, left: Vec<String>) {
@@ -243,7 +239,7 @@ impl AwsEcsClusterProvider {
     self.event_stream.publish(&extension_event);
   }
 
-  fn start_polling(&self, add_self: bool) {
+  fn start_polling(&mut self, add_self: bool) {
     let shutdown_flag = ArcShared::clone(&self.shutdown_flag);
     let event_stream = ArcShared::clone(&self.event_stream);
     let block_list_provider = ArcShared::clone(&self.block_list_provider);
@@ -306,7 +302,7 @@ impl AwsEcsClusterProvider {
       }
     });
 
-    *self.poller_handle.lock().unwrap() = Some(handle);
+    self.poller_handle = Some(handle);
   }
 }
 
@@ -361,16 +357,13 @@ pub enum EcsPollerError {
 }
 
 impl ClusterProvider for AwsEcsClusterProvider {
-  fn start_member(&self) -> Result<(), ClusterProviderError> {
+  fn start_member(&mut self) -> Result<(), ClusterProviderError> {
     // 起動モードを設定
-    *self.startup_mode.lock().unwrap() = Some(StartupMode::Member);
+    self.startup_mode = Some(StartupMode::Member);
 
     // 自分自身をメンバーリストに追加
-    {
-      let mut members = self.members.lock().unwrap();
-      if !members.contains(&self.advertised_address) {
-        members.push(self.advertised_address.clone());
-      }
+    if !self.members.contains(&self.advertised_address) {
+      self.members.push(self.advertised_address.clone());
     }
 
     // 初回トポロジを publish
@@ -386,9 +379,9 @@ impl ClusterProvider for AwsEcsClusterProvider {
     Ok(())
   }
 
-  fn start_client(&self) -> Result<(), ClusterProviderError> {
+  fn start_client(&mut self) -> Result<(), ClusterProviderError> {
     // 起動モードを設定
-    *self.startup_mode.lock().unwrap() = Some(StartupMode::Client);
+    self.startup_mode = Some(StartupMode::Client);
 
     // バックグラウンドポーリングを開始（自身は追加しない）
     self.start_polling(false);
@@ -399,18 +392,15 @@ impl ClusterProvider for AwsEcsClusterProvider {
     Ok(())
   }
 
-  fn shutdown(&self, _graceful: bool) -> Result<(), ClusterProviderError> {
+  fn shutdown(&mut self, _graceful: bool) -> Result<(), ClusterProviderError> {
     // シャットダウンフラグを設定
     self.shutdown_flag.store(true, Ordering::Relaxed);
 
     // 起動モードを取得してからクリア
-    let mode = self.startup_mode.lock().unwrap().take().unwrap_or(StartupMode::Member);
+    let mode = self.startup_mode.take().unwrap_or(StartupMode::Member);
 
     // メンバーリストをクリア
-    {
-      let mut members = self.members.lock().unwrap();
-      members.clear();
-    }
+    self.members.clear();
 
     // Shutdown イベントを発火
     self.publish_shutdown_event(mode);

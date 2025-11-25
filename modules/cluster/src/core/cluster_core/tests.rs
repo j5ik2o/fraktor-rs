@@ -18,15 +18,15 @@ use crate::core::{
 struct StubProvider;
 
 impl ClusterProvider for StubProvider {
-  fn start_member(&self) -> Result<(), ClusterProviderError> {
+  fn start_member(&mut self) -> Result<(), ClusterProviderError> {
     Ok(())
   }
 
-  fn start_client(&self) -> Result<(), ClusterProviderError> {
+  fn start_client(&mut self) -> Result<(), ClusterProviderError> {
     Ok(())
   }
 
-  fn shutdown(&self, _graceful: bool) -> Result<(), ClusterProviderError> {
+  fn shutdown(&mut self, _graceful: bool) -> Result<(), ClusterProviderError> {
     Ok(())
   }
 }
@@ -65,21 +65,21 @@ impl FailingProvider {
 }
 
 impl ClusterProvider for FailingProvider {
-  fn start_member(&self) -> Result<(), ClusterProviderError> {
+  fn start_member(&mut self) -> Result<(), ClusterProviderError> {
     if let Some(err) = &self.start_member_error {
       return Err(err.clone());
     }
     Ok(())
   }
 
-  fn start_client(&self) -> Result<(), ClusterProviderError> {
+  fn start_client(&mut self) -> Result<(), ClusterProviderError> {
     if let Some(err) = &self.start_client_error {
       return Err(err.clone());
     }
     Ok(())
   }
 
-  fn shutdown(&self, _graceful: bool) -> Result<(), ClusterProviderError> {
+  fn shutdown(&mut self, _graceful: bool) -> Result<(), ClusterProviderError> {
     if let Some(err) = &self.shutdown_error {
       return Err(err.clone());
     }
@@ -313,8 +313,18 @@ fn wrap_identity_lookup<I: IdentityLookup + 'static>(
   ArcShared::new(mutex)
 }
 
+/// ClusterProvider を ArcShared<ToolboxMutex<Box<dyn ClusterProvider>>> にラップするヘルパー
+fn wrap_provider<P: ClusterProvider + 'static>(
+  provider: P,
+) -> ArcShared<ToolboxMutex<Box<dyn ClusterProvider>, NoStdToolbox>> {
+  let boxed: Box<dyn ClusterProvider> = Box::new(provider);
+  let mutex: ToolboxMutex<Box<dyn ClusterProvider>, NoStdToolbox> =
+    <NoStdToolbox as RuntimeToolbox>::MutexFamily::create(boxed);
+  ArcShared::new(mutex)
+}
+
 fn build_core_with_config(config: &ClusterExtensionConfig) -> ClusterCore<NoStdToolbox> {
-  let provider = ArcShared::new(StubProvider);
+  let provider = wrap_provider(StubProvider);
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec!["blocked-node".to_string()]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
@@ -338,7 +348,7 @@ fn build_core_with_config(config: &ClusterExtensionConfig) -> ClusterCore<NoStdT
 fn new_core_stores_dependencies_and_startup_params() {
   let config = ClusterExtensionConfig::new().with_advertised_address("proto://node-a").with_metrics_enabled(true);
 
-  let provider = ArcShared::new(StubProvider);
+  let provider = wrap_provider(StubProvider);
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec!["blocked-node".to_string()]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
@@ -348,7 +358,7 @@ fn new_core_stores_dependencies_and_startup_params() {
 
   let core = ClusterCore::new(
     &config,
-    provider.clone(),
+    provider,
     block_list_provider.clone(),
     event_stream.clone(),
     gossiper,
@@ -358,9 +368,6 @@ fn new_core_stores_dependencies_and_startup_params() {
   );
 
   // 依存がそのまま保持されていること
-  let provider_dyn: ArcShared<dyn ClusterProvider> = provider.clone();
-  assert!(core.provider == provider_dyn);
-
   let block_list_provider_dyn: ArcShared<dyn BlockListProvider> = block_list_provider.clone();
   assert!(core.block_list_provider == block_list_provider_dyn);
 
@@ -390,7 +397,7 @@ fn metrics_flag_reflects_config_setting() {
 
 #[test]
 fn setup_member_kinds_registers_and_updates_virtual_actor_count() {
-  let provider = ArcShared::new(StubProvider);
+  let provider = wrap_provider(StubProvider);
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![String::from("blocked-node")]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
@@ -426,7 +433,7 @@ fn setup_member_kinds_registers_and_updates_virtual_actor_count() {
 
 #[test]
 fn setup_client_kinds_registers_and_updates_virtual_actor_count() {
-  let provider = ArcShared::new(StubProvider);
+  let provider = wrap_provider(StubProvider);
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
@@ -458,7 +465,7 @@ fn setup_client_kinds_registers_and_updates_virtual_actor_count() {
 
 #[test]
 fn topology_event_includes_blocked_and_updates_metrics() {
-  let provider = ArcShared::new(StubProvider);
+  let provider = wrap_provider(StubProvider);
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![String::from("blocked-a")]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
@@ -518,7 +525,7 @@ fn topology_event_includes_blocked_and_updates_metrics() {
 
 #[test]
 fn topology_with_same_hash_is_suppressed() {
-  let provider = ArcShared::new(StubProvider);
+  let provider = wrap_provider(StubProvider);
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![String::from("blocked-a")]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
@@ -554,7 +561,7 @@ fn topology_with_same_hash_is_suppressed() {
 
 #[test]
 fn multi_node_topology_flow_updates_metrics_and_pid_cache() {
-  let provider = ArcShared::new(StubProvider);
+  let provider = wrap_provider(StubProvider);
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![String::from("blocked-b")]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
@@ -610,7 +617,7 @@ fn multi_node_topology_flow_updates_metrics_and_pid_cache() {
 
 #[test]
 fn start_member_emits_startup_event_and_sets_mode() {
-  let provider = ArcShared::new(StubProvider);
+  let provider = wrap_provider(StubProvider);
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
@@ -650,7 +657,7 @@ fn start_member_emits_startup_event_and_sets_mode() {
 
 #[test]
 fn start_member_failure_emits_startup_failed() {
-  let provider = ArcShared::new(FailingProvider::member_fail("boom"));
+  let provider = wrap_provider(FailingProvider::member_fail("boom"));
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
@@ -684,7 +691,7 @@ fn start_member_failure_emits_startup_failed() {
 
 #[test]
 fn start_client_emits_startup_event_and_sets_mode() {
-  let provider = ArcShared::new(StubProvider);
+  let provider = wrap_provider(StubProvider);
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
@@ -716,7 +723,7 @@ fn start_client_emits_startup_event_and_sets_mode() {
 
 #[test]
 fn start_client_failure_emits_startup_failed() {
-  let provider = ArcShared::new(FailingProvider::client_fail("boom"));
+  let provider = wrap_provider(FailingProvider::client_fail("boom"));
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
@@ -750,7 +757,7 @@ fn start_client_failure_emits_startup_failed() {
 
 #[test]
 fn start_member_fails_when_gossip_start_fails() {
-  let provider = ArcShared::new(StubProvider);
+  let provider = wrap_provider(StubProvider);
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
@@ -783,7 +790,7 @@ fn start_member_fails_when_gossip_start_fails() {
 
 #[test]
 fn start_member_fails_when_pubsub_start_fails() {
-  let provider = ArcShared::new(StubProvider);
+  let provider = wrap_provider(StubProvider);
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
@@ -816,7 +823,7 @@ fn start_member_fails_when_pubsub_start_fails() {
 
 #[test]
 fn shutdown_stops_pubsub_then_gossip() {
-  let provider = ArcShared::new(StubProvider);
+  let provider = wrap_provider(StubProvider);
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
@@ -843,7 +850,7 @@ fn shutdown_stops_pubsub_then_gossip() {
 
 #[test]
 fn shutdown_resets_virtual_actor_count_and_emits_event() {
-  let provider = ArcShared::new(StubProvider);
+  let provider = wrap_provider(StubProvider);
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
@@ -880,7 +887,7 @@ fn shutdown_resets_virtual_actor_count_and_emits_event() {
 
 #[test]
 fn shutdown_failure_emits_shutdown_failed() {
-  let provider = ArcShared::new(FailingProvider::shutdown_fail("stop-error"));
+  let provider = wrap_provider(FailingProvider::shutdown_fail("stop-error"));
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
@@ -931,7 +938,7 @@ fn metrics_disabled_returns_error() {
 /// metrics 無効時でも Startup イベントは EventStream に発火されることを検証
 #[test]
 fn metrics_disabled_still_emits_startup_event() {
-  let provider = ArcShared::new(StubProvider);
+  let provider = wrap_provider(StubProvider);
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
@@ -970,7 +977,7 @@ fn metrics_disabled_still_emits_startup_event() {
 /// metrics 無効時でも TopologyUpdated イベントは EventStream に発火されることを検証
 #[test]
 fn metrics_disabled_still_emits_topology_updated_event() {
-  let provider = ArcShared::new(StubProvider);
+  let provider = wrap_provider(StubProvider);
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![String::from("blocked-x")]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
@@ -1017,7 +1024,7 @@ fn metrics_disabled_still_emits_topology_updated_event() {
 /// metrics 無効時でも Shutdown イベントは EventStream に発火されることを検証
 #[test]
 fn metrics_disabled_still_emits_shutdown_event() {
-  let provider = ArcShared::new(StubProvider);
+  let provider = wrap_provider(StubProvider);
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();
@@ -1060,7 +1067,7 @@ fn metrics_disabled_still_emits_shutdown_event() {
 /// EventStream に継続して発火されることを包括的に検証
 #[test]
 fn metrics_disabled_full_lifecycle_events_continue() {
-  let provider = ArcShared::new(StubProvider);
+  let provider = wrap_provider(StubProvider);
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![String::from("blocked-z")]));
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let kind_registry = KindRegistry::new();

@@ -70,7 +70,7 @@ fn on_member_join_publishes_topology_updated_with_joined() {
   let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
   let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
 
-  let provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
+  let mut provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
 
   // node-b が join
   provider.on_member_join("node-b:8080");
@@ -95,7 +95,7 @@ fn on_member_leave_publishes_topology_updated_with_left() {
   let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
   let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
 
-  let provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
+  let mut provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
 
   // まず node-b を join させておく
   provider.on_member_join("node-b:8080");
@@ -124,7 +124,7 @@ fn topology_includes_blocked_members_from_provider() {
   let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
   let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
 
-  let provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
+  let mut provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
 
   provider.on_member_join("node-b:8080");
 
@@ -141,7 +141,7 @@ fn start_member_adds_self_to_members() {
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
 
-  let provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
+  let mut provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
 
   provider.start_member().unwrap();
 
@@ -158,7 +158,7 @@ fn start_member_with_static_topology_publishes_it() {
   let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
 
   let static_topology = ClusterTopology::new(999, vec![String::from("static-node")], vec![]);
-  let provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080")
+  let mut provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080")
     .with_static_topology(static_topology);
 
   provider.start_member().unwrap();
@@ -189,7 +189,7 @@ fn start_client_with_static_topology_publishes_it() {
   let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
 
   let static_topology = ClusterTopology::new(888, vec![], vec![String::from("left-node")]);
-  let provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "client-a")
+  let mut provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "client-a")
     .with_static_topology(static_topology);
 
   provider.start_client().unwrap();
@@ -215,7 +215,7 @@ fn shutdown_clears_member_list() {
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
 
-  let provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
+  let mut provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
 
   provider.start_member().unwrap();
   provider.on_member_join("node-b:8080");
@@ -234,7 +234,7 @@ fn version_increments_with_each_topology_change() {
   let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
   let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
 
-  let provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
+  let mut provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
 
   provider.on_member_join("node-b:8080");
   provider.on_member_join("node-c:8080");
@@ -256,7 +256,7 @@ fn duplicate_join_does_not_add_member_twice() {
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
 
-  let provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
+  let mut provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
 
   provider.on_member_join("node-b:8080");
   provider.on_member_join("node-b:8080"); // 重複
@@ -269,7 +269,7 @@ fn advertised_address_is_stored_correctly() {
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
 
-  let provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "192.168.1.100:9999");
+  let mut provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "192.168.1.100:9999");
 
   assert_eq!(provider.advertised_address(), "192.168.1.100:9999");
 }
@@ -299,7 +299,7 @@ fn start_member_publishes_startup_event_to_event_stream() {
   let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
   let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
 
-  let provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
+  let mut provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
 
   provider.start_member().unwrap();
 
@@ -321,7 +321,7 @@ fn shutdown_publishes_shutdown_event_to_event_stream() {
   let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
   let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
 
-  let provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
+  let mut provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
 
   provider.start_member().unwrap();
   provider.shutdown(true).unwrap();
@@ -341,7 +341,7 @@ fn seed_nodes_can_be_used_to_initialize_gossip_peers() {
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
 
   let seeds = vec![String::from("seed-a:8080"), String::from("seed-b:8080")];
-  let provider =
+  let mut provider =
     LocalClusterProvider::<NoStdToolbox>::new(event_stream.clone(), block_list, "node-a:8080").with_seed_nodes(seeds);
 
   // GossipEngine を内部で初期化できることを確認
@@ -365,7 +365,7 @@ fn gossip_join_event_is_converted_to_topology_updated() {
   let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
   let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
 
-  let provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
+  let mut provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
   provider.start_member().unwrap();
 
   // GossipEngine/MembershipTable からの join イベントをシミュレート
@@ -390,7 +390,7 @@ fn gossip_leave_event_is_converted_to_topology_updated() {
   let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
   let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
 
-  let provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
+  let mut provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
   provider.start_member().unwrap();
   provider.on_member_join("node-b:8080");
 
@@ -415,7 +415,7 @@ fn multiple_gossip_events_produce_sequential_topology_versions() {
   let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
   let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
 
-  let provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
+  let mut provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
   provider.start_member().unwrap();
 
   // 複数の join/leave イベント
@@ -450,7 +450,7 @@ fn handle_connected_triggers_member_join() {
   let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
   let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
 
-  let provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
+  let mut provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
   provider.start_member().unwrap();
 
   // handle_connected を呼び出す
@@ -474,7 +474,7 @@ fn handle_connected_ignores_own_authority() {
   let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
   let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
 
-  let provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
+  let mut provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
   provider.start_member().unwrap();
 
   // 自分自身の authority で handle_connected を呼び出す
@@ -500,7 +500,7 @@ fn handle_quarantined_triggers_member_leave() {
   let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
   let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
 
-  let provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
+  let mut provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
   provider.start_member().unwrap();
 
   // まず node-b を join させる
@@ -527,7 +527,7 @@ fn handle_quarantined_ignores_non_member() {
   let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
   let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
 
-  let provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
+  let mut provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
   provider.start_member().unwrap();
 
   // node-b は join していない状態で quarantined を呼び出す
@@ -545,7 +545,7 @@ fn is_started_returns_correct_state() {
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
 
-  let provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
+  let mut provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
 
   // start前は false
   assert!(!provider.is_started());

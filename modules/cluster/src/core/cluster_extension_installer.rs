@@ -34,7 +34,7 @@ impl BlockListProvider for EmptyBlockListProvider {
 /// - `block_list_provider` - Provider for blocked member information
 /// - `advertised_address` - The address this node advertises to the cluster
 pub type ClusterProviderFactory<TB> = ArcShared<
-  dyn Fn(ArcShared<EventStreamGeneric<TB>>, ArcShared<dyn BlockListProvider>, &str) -> ArcShared<dyn ClusterProvider>
+  dyn Fn(ArcShared<EventStreamGeneric<TB>>, ArcShared<dyn BlockListProvider>, &str) -> Box<dyn ClusterProvider>
     + Send
     + Sync,
 >;
@@ -103,7 +103,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
   ///
   /// ```text
   /// let installer = ClusterExtensionInstaller::new(config, |event_stream, block_list, addr| {
-  ///     ArcShared::new(MyEtcdProvider::new(event_stream, block_list, addr))
+  ///     Box::new(MyEtcdProvider::new(event_stream, block_list, addr))
   /// });
   /// ```
   ///
@@ -112,7 +112,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
   #[must_use]
   pub fn new<F>(config: ClusterExtensionConfig, provider_f: F) -> Self
   where
-    F: Fn(ArcShared<EventStreamGeneric<TB>>, ArcShared<dyn BlockListProvider>, &str) -> ArcShared<dyn ClusterProvider>
+    F: Fn(ArcShared<EventStreamGeneric<TB>>, ArcShared<dyn BlockListProvider>, &str) -> Box<dyn ClusterProvider>
       + Send
       + Sync
       + 'static, {
@@ -141,7 +141,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
       if let Some(ref topology) = static_topology {
         provider = provider.with_static_topology(topology.clone());
       }
-      ArcShared::new(provider)
+      Box::new(provider)
     })
   }
 
@@ -176,7 +176,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
     ecs_config: crate::std::EcsClusterConfig,
   ) -> ClusterExtensionInstaller<fraktor_utils_rs::std::runtime_toolbox::StdToolbox> {
     ClusterExtensionInstaller::new(config, move |event_stream, block_list_provider, advertised_address| {
-      ArcShared::new(
+      Box::new(
         crate::std::AwsEcsClusterProvider::new(event_stream, block_list_provider, advertised_address)
           .with_ecs_config(ecs_config.clone()),
       )
