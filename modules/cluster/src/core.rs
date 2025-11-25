@@ -77,7 +77,7 @@ pub use cluster_event::ClusterEvent;
 pub use cluster_extension::ClusterExtensionGeneric;
 pub use cluster_extension_config::ClusterExtensionConfig;
 pub use cluster_extension_id::ClusterExtensionId;
-pub use cluster_extension_installer::ClusterExtensionInstaller;
+pub use cluster_extension_installer::{ClusterExtensionInstaller, ClusterProviderFactory};
 pub use cluster_metrics::ClusterMetrics;
 pub use cluster_metrics_snapshot::ClusterMetricsSnapshot;
 pub use cluster_provider::{ClusterProvider, LocalClusterProvider, NoopClusterProvider, StaticClusterProvider};

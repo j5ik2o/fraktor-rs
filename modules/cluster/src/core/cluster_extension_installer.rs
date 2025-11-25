@@ -1,6 +1,7 @@
 //! Installs the cluster extension into an actor system.
 
 use fraktor_actor_rs::core::{
+  event_stream::EventStreamGeneric,
   extension::ExtensionInstaller,
   system::{ActorSystemBuildError, ActorSystemGeneric},
 };
@@ -8,8 +9,8 @@ use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
 use crate::core::{
-  ClusterExtensionConfig, ClusterPubSub, Gossiper, IdentityLookup, LocalClusterProvider, NoopClusterPubSub,
-  NoopGossiper, NoopIdentityLookup, cluster_extension_id::ClusterExtensionId,
+  ClusterExtensionConfig, ClusterProvider, ClusterPubSub, Gossiper, IdentityLookup, LocalClusterProvider,
+  NoopClusterPubSub, NoopGossiper, NoopIdentityLookup, cluster_extension_id::ClusterExtensionId,
 };
 
 /// Empty block list provider that never blocks any members.
@@ -22,6 +23,20 @@ impl BlockListProvider for EmptyBlockListProvider {
   }
 }
 
+/// Factory function type for creating a `ClusterProvider`.
+///
+/// This function receives the necessary dependencies and returns a `ClusterProvider` instance.
+///
+/// # Arguments
+/// - `event_stream` - The actor system's event stream for publishing cluster events
+/// - `block_list_provider` - Provider for blocked member information
+/// - `advertised_address` - The address this node advertises to the cluster
+pub type ClusterProviderFactory<TB> = ArcShared<
+  dyn Fn(ArcShared<EventStreamGeneric<TB>>, ArcShared<dyn BlockListProvider>, &str) -> ArcShared<dyn ClusterProvider>
+    + Send
+    + Sync,
+>;
+
 /// Registers the cluster extension at actor system build time.
 ///
 /// This installer simplifies cluster setup by automatically creating default
@@ -31,33 +46,98 @@ impl BlockListProvider for EmptyBlockListProvider {
 /// # Example
 ///
 /// ```text
-/// use fraktor_cluster_rs::core::{ClusterExtensionConfig, ClusterExtensionInstaller, ClusterTopology};
+/// use fraktor_cluster_rs::core::{ClusterExtensionConfig, ClusterExtensionInstaller};
 ///
 /// let config = ClusterExtensionConfig::default()
 ///     .with_advertised_address("127.0.0.1:8080")
-///     .with_metrics_enabled(true)
-///     .with_static_topology(ClusterTopology::new(1, vec!["127.0.0.1:8081".into()], vec![]));
+///     .with_metrics_enabled(true);
 ///
-/// let installer = ClusterExtensionInstaller::new(config);
+/// // Use new_with_local for LocalClusterProvider (convenience)
+/// let installer = ClusterExtensionInstaller::new_with_local(config);
+///
+/// // Or use new with a custom ClusterProvider factory
+/// // let installer = ClusterExtensionInstaller::new(config, |event_stream, block_list, addr| {
+/// //     ArcShared::new(MyCustomProvider::new(event_stream, block_list, addr))
+/// // });
+///
 /// // Add to ActorSystemConfig extension_installers
 /// ```
-#[derive(Clone)]
-pub struct ClusterExtensionInstaller {
+pub struct ClusterExtensionInstaller<TB: RuntimeToolbox + 'static> {
   config:              ClusterExtensionConfig,
+  provider_f:          ClusterProviderFactory<TB>,
   block_list_provider: Option<ArcShared<dyn BlockListProvider>>,
   gossiper:            Option<ArcShared<dyn Gossiper>>,
   pubsub:              Option<ArcShared<dyn ClusterPubSub>>,
   identity_lookup:     Option<ArcShared<dyn IdentityLookup>>,
 }
 
-impl ClusterExtensionInstaller {
-  /// Creates a new installer with the provided configuration.
+impl<TB: RuntimeToolbox + 'static> Clone for ClusterExtensionInstaller<TB> {
+  fn clone(&self) -> Self {
+    Self {
+      config:              self.config.clone(),
+      provider_f:          ArcShared::clone(&self.provider_f),
+      block_list_provider: self.block_list_provider.clone(),
+      gossiper:            self.gossiper.clone(),
+      pubsub:              self.pubsub.clone(),
+      identity_lookup:     self.identity_lookup.clone(),
+    }
+  }
+}
+
+impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
+  /// Creates a new installer with the provided configuration and cluster provider factory.
+  ///
+  /// Use this constructor when you need a custom `ClusterProvider` implementation
+  /// (e.g., etcd, zookeeper, or other service discovery providers).
+  ///
+  /// # Arguments
+  /// - `config` - Cluster extension configuration
+  /// - `provider_f` - Factory function that creates the `ClusterProvider`
+  ///
+  /// # Example
+  ///
+  /// ```text
+  /// let installer = ClusterExtensionInstaller::new(config, |event_stream, block_list, addr| {
+  ///     ArcShared::new(MyEtcdProvider::new(event_stream, block_list, addr))
+  /// });
+  /// ```
   ///
   /// Default implementations will be used for `Gossiper`, `ClusterPubSub`,
   /// and `IdentityLookup` unless explicitly set.
   #[must_use]
-  pub const fn new(config: ClusterExtensionConfig) -> Self {
-    Self { config, block_list_provider: None, gossiper: None, pubsub: None, identity_lookup: None }
+  pub fn new<F>(config: ClusterExtensionConfig, provider_f: F) -> Self
+  where
+    F: Fn(ArcShared<EventStreamGeneric<TB>>, ArcShared<dyn BlockListProvider>, &str) -> ArcShared<dyn ClusterProvider>
+      + Send
+      + Sync
+      + 'static, {
+    Self {
+      config,
+      provider_f: ArcShared::new(provider_f),
+      block_list_provider: None,
+      gossiper: None,
+      pubsub: None,
+      identity_lookup: None,
+    }
+  }
+
+  /// Creates a new installer with `LocalClusterProvider`.
+  ///
+  /// This is a convenience constructor for the common case where you want to use
+  /// the built-in `LocalClusterProvider` with EventStream-based topology management.
+  ///
+  /// Default implementations will be used for `Gossiper`, `ClusterPubSub`,
+  /// and `IdentityLookup` unless explicitly set.
+  #[must_use]
+  pub fn new_with_local(config: ClusterExtensionConfig) -> Self {
+    let static_topology = config.static_topology().cloned();
+    Self::new(config, move |event_stream, block_list_provider, advertised_address| {
+      let mut provider = LocalClusterProvider::new(event_stream, block_list_provider, advertised_address);
+      if let Some(ref topology) = static_topology {
+        provider = provider.with_static_topology(topology.clone());
+      }
+      ArcShared::new(provider)
+    })
   }
 
   /// Sets a custom block list provider.
@@ -89,18 +169,19 @@ impl ClusterExtensionInstaller {
   }
 }
 
-impl ClusterExtensionInstaller {
-  /// Returns the cluster extension instance, installing it if not already present.
+impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
+  /// Installs the cluster extension into the actor system.
   ///
-  /// When used with `ExtensionInstallers`, the extension is installed during system build.
-  /// Calling this method afterward returns the existing instance.
+  /// This is a **command** that creates and registers the `ClusterExtension`.
+  /// Call this method once after system creation to install the extension.
   ///
-  /// Use this method to obtain the `ClusterExtension` for calling `start_member()`,
-  /// `setup_member_kinds()`, etc.
+  /// Returns the installed `ClusterExtension` instance for immediate use.
+  ///
+  /// # Panics
+  ///
+  /// Panics if the extension is already installed with different configuration.
   #[must_use]
-  pub fn get<TB>(&self, system: &ActorSystemGeneric<TB>) -> ArcShared<crate::core::ClusterExtensionGeneric<TB>>
-  where
-    TB: RuntimeToolbox + 'static, {
+  pub fn install(&self, system: &ActorSystemGeneric<TB>) -> ArcShared<crate::core::ClusterExtensionGeneric<TB>> {
     // システムの RemotingConfig から advertised address を取得（設定で未指定の場合）
     let mut config = self.config.clone();
     if config.advertised_address().is_empty() {
@@ -119,25 +200,20 @@ impl ClusterExtensionInstaller {
     let identity_lookup: ArcShared<dyn IdentityLookup> =
       self.identity_lookup.clone().unwrap_or_else(|| ArcShared::new(NoopIdentityLookup));
 
-    // LocalClusterProvider を作成
-    let mut provider =
-      LocalClusterProvider::new(system.event_stream(), block_list_provider.clone(), config.advertised_address());
-    if let Some(topology) = config.static_topology() {
-      provider = provider.with_static_topology(topology.clone());
-    }
-    let provider: ArcShared<dyn crate::core::ClusterProvider> = ArcShared::new(provider);
+    // ファクトリー関数を呼び出して ClusterProvider を作成
+    let provider = (self.provider_f)(system.event_stream(), block_list_provider.clone(), config.advertised_address());
 
     let id = ClusterExtensionId::<TB>::new(config, provider, block_list_provider, gossiper, pubsub, identity_lookup);
     system.extended().register_extension(&id)
   }
 }
 
-impl<TB> ExtensionInstaller<TB> for ClusterExtensionInstaller
+impl<TB> ExtensionInstaller<TB> for ClusterExtensionInstaller<TB>
 where
   TB: RuntimeToolbox + 'static,
 {
   fn install(&self, system: &ActorSystemGeneric<TB>) -> Result<(), ActorSystemBuildError> {
-    let _ = self.get(system);
+    let _ = ClusterExtensionInstaller::install(self, system);
     Ok(())
   }
 }

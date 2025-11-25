@@ -88,7 +88,8 @@ use fraktor_actor_rs::{
   },
 };
 use fraktor_cluster_rs::core::{
-  ActivatedKind, ClusterEvent, ClusterExtensionConfig, ClusterExtensionInstaller, ClusterTopology,
+  ActivatedKind, ClusterEvent, ClusterExtensionConfig, ClusterExtensionGeneric, ClusterExtensionInstaller,
+  ClusterTopology,
 };
 use fraktor_remote_rs::core::{
   RemotingExtensionConfig, RemotingExtensionInstaller, TokioActorRefProviderInstaller, TokioTransportConfig,
@@ -199,13 +200,13 @@ fn build_cluster_node(
   let default_dispatcher = DispatcherConfig::from_executor(ArcShared::new(executor_adapter));
 
   // ClusterExtensionInstaller を作成（static_topology を設定）
+  // new_with_local() を使用して LocalClusterProvider を自動的に作成
   let advertised = format!("{HOST}:{port}");
   let mut cluster_config =
     ClusterExtensionConfig::default().with_advertised_address(&advertised).with_metrics_enabled(true);
   if let Some(topology) = static_topology {
     cluster_config = cluster_config.with_static_topology(topology);
   }
-  let cluster_installer = ClusterExtensionInstaller::new(cluster_config);
 
   let remoting_config = RemotingExtensionConfig::default().with_transport_scheme("fraktor.tcp");
   let system_config = ActorSystemConfig::default()
@@ -218,7 +219,7 @@ fn build_cluster_node(
       ExtensionInstallers::default()
         .with_extension_installer(SerializationExtensionInstaller::new(default_loopback_setup()))
         .with_extension_installer(RemotingExtensionInstaller::new(remoting_config.clone()))
-        .with_extension_installer(cluster_installer.clone()),
+        .with_extension_installer(ClusterExtensionInstaller::new_with_local(cluster_config)),
     );
 
   let guardian = Props::from_fn(GrainHub::new).with_name(HUB_NAME);
@@ -232,15 +233,14 @@ fn build_cluster_node(
       .map_err(|e| anyhow!("register responder failed: {e:?}"))?;
   }
 
-  // EventStream のサブスクライバを登録（クラスタイベントを観測）
-  // 注意: サブスクリプションはドロップされると解除されるため、構造体で保持する必要がある
   let event_subscriber: ArcShared<dyn EventStreamSubscriber> =
     ArcShared::new(ClusterEventPrinter::new(system_name.to_string()));
   let event_subscription = system.subscribe_event_stream(&event_subscriber);
 
-  // get で既にインストールされた ClusterExtension を取得
-  // （ExtensionInstallers でインストール済みなので、同じインスタンスが返される）
-  let cluster = cluster_installer.get(system.as_core());
+  let cluster = system
+    .extended()
+    .extension_by_type::<ClusterExtensionGeneric<StdToolbox>>()
+    .expect("ClusterExtension not installed. Call install() first.");
 
   Ok(ClusterNode { system, cluster, _event_subscription: event_subscription })
 }
