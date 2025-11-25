@@ -4,7 +4,7 @@ use std::{thread, time::Duration};
 use fraktor_actor_rs::{
   core::{
     error::ActorError,
-    logging::{LogEvent, LogLevel, LoggerSubscriber, LoggerWriter},
+    logging::{LogEvent, LogLevel, LoggerWriter},
     mailbox::{MailboxOverflowStrategy, MailboxPolicy},
     props::MailboxConfig,
   },
@@ -12,6 +12,7 @@ use fraktor_actor_rs::{
     actor_prim::{Actor, ActorContext},
     dispatcher::dispatch_executor::TokioExecutor,
     event_stream::{EventStreamEvent, EventStreamSubscriber},
+    logging::StdLoggerSubscriber,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
     system::{ActorSystem, DispatcherConfig},
@@ -25,7 +26,7 @@ struct Start;
 struct StdoutLogger;
 
 impl LoggerWriter for StdoutLogger {
-  fn write(&self, event: &LogEvent) {
+  fn write(&mut self, event: &LogEvent) {
     println!("[LOG {:?}] origin={:?} message={}", event.level(), event.origin(), event.message());
   }
 }
@@ -133,9 +134,8 @@ async fn main() {
   let tick_driver = fraktor_actor_rs::std::scheduler::tick::TickDriverConfig::tokio_quickstart();
   let system = ActorSystem::new(&props, tick_driver).expect("actor system を初期化できること");
 
-  let logger_writer: ArcShared<dyn LoggerWriter> = ArcShared::new(StdoutLogger);
   let logger: ArcShared<dyn EventStreamSubscriber> =
-    ArcShared::new(LoggerSubscriber::new(LogLevel::Info, logger_writer));
+    ArcShared::new(StdLoggerSubscriber::new(LogLevel::Info, Box::new(StdoutLogger)));
   let _log_subscription = system.subscribe_event_stream(&logger);
 
   let printer: ArcShared<dyn EventStreamSubscriber> = ArcShared::new(DeadLetterPrinter);

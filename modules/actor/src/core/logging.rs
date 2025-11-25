@@ -9,5 +9,5 @@ mod logger_writer;
 
 pub use log_event::LogEvent;
 pub use log_level::LogLevel;
-pub use logger_subscriber::LoggerSubscriber;
+pub use logger_subscriber::{LoggerSubscriber, LoggerSubscriberGeneric};
 pub use logger_writer::LoggerWriter;

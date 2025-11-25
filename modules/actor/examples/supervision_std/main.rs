@@ -7,12 +7,13 @@ mod std_tick_driver_support;
 use fraktor_actor_rs::{
   core::{
     error::ActorError,
-    logging::{LogEvent, LogLevel, LoggerSubscriber, LoggerWriter},
+    logging::{LogEvent, LogLevel, LoggerWriter},
     supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
   },
   std::{
     actor_prim::{Actor, ActorContext},
     event_stream::{EventStreamEvent, EventStreamSubscriber},
+    logging::StdLoggerSubscriber,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
     system::ActorSystem,
@@ -26,7 +27,7 @@ struct Trigger;
 struct StdoutLogger;
 
 impl LoggerWriter for StdoutLogger {
-  fn write(&self, event: &LogEvent) {
+  fn write(&mut self, event: &LogEvent) {
     println!("[LOG {:?}] origin={:?} message={}", event.level(), event.origin(), event.message());
   }
 }
@@ -152,9 +153,8 @@ fn main() {
   let tick_driver = std_tick_driver_support::hardware_tick_driver_config();
   let system = ActorSystem::new(&props, tick_driver).expect("ガーディアンの起動に成功すること");
 
-  let logger_writer: ArcShared<dyn LoggerWriter> = ArcShared::new(StdoutLogger);
   let logger: ArcShared<dyn EventStreamSubscriber> =
-    ArcShared::new(LoggerSubscriber::new(LogLevel::Info, logger_writer));
+    ArcShared::new(StdLoggerSubscriber::new(LogLevel::Info, Box::new(StdoutLogger)));
   let _logger_subscription = system.subscribe_event_stream(&logger);
 
   let lifecycle: ArcShared<dyn EventStreamSubscriber> = ArcShared::new(LifecyclePrinter);
