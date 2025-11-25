@@ -2,12 +2,62 @@
 
 //! Cluster extension quickstart (no_std + InprocSampleProvider)
 //!
-//! This example demonstrates using InprocSampleProvider to publish static topology
-//! to EventStream, which ClusterExtension automatically subscribes to and applies
-//! to ClusterCore without manual `on_topology` calls.
+//! # 概要
 //!
-//! Run with: `cargo run -p fraktor-cluster-rs --example cluster_extension_no_std --features
-//! test-support`
+//! このサンプルは EventStream 主導のトポロジ通知方式を no_std 環境で実装しています：
+//! 1. `InprocSampleProvider` が `ClusterEvent::TopologyUpdated` を EventStream に publish
+//! 2. `ClusterExtension` が EventStream を購読し、自動的に `ClusterCore::on_topology` を呼び出す
+//! 3. 手動の `on_topology` 呼び出しは不要
+//!
+//! # EventStream 方式
+//!
+//! ProtoActor-Go と同様の設計で、Provider/Gossiper がイベントを publish し、
+//! ClusterExtension が購読して ClusterCore に適用する流れを採用しています。
+//!
+//! # Phase1 (静的トポロジ)
+//!
+//! `InprocSampleProvider` に静的トポロジを設定し、`start_member()` 時に publish します。
+//! no_std 環境では GossipEngine を使用せず、静的トポロジのみで動作します。
+//!
+//! # Provider 差し替え方法
+//!
+//! `ClusterProvider` トレイトを実装することで、Provider を差し替えられます：
+//! - `InprocSampleProvider`: no_std 環境向け静的トポロジ（本サンプル）
+//! - `SampleTcpProvider`: std/Tokio 環境向け、Transport イベント自動検知
+//! - etcd/zk/automanaged provider: 外部サービス連携（Phase2以降で対応予定）
+//!
+//! 詳細は `.kiro/specs/protoactor-go-cluster-extension-samples/example.md` を参照。
+//!
+//! # 実行例
+//!
+//! ```bash
+//! cargo run -p fraktor-cluster-rs --example cluster_extension_no_std --features test-support
+//! ```
+//!
+//! # 期待される出力
+//!
+//! ```text
+//! === Cluster Extension No-Std Demo ===
+//! Demonstrates EventStream-based topology with InprocSampleProvider
+//! (No manual on_topology calls - topology is automatically published)
+//!
+//! --- Starting cluster members ---
+//! [identity] setup_member: ["grain", "topic"]
+//! [node-a] cluster started (mode=Member)
+//! [node-a] topology updated: joined=["node-b"], left=[]
+//! ...
+//!
+//! --- Checking metrics after startup ---
+//! [node-a] members=2, virtual_actors=2
+//! [node-b] members=2, virtual_actors=2
+//!
+//! --- Sending grain message ---
+//! [grain] recv: hello from node-a
+//!
+//! --- Shutting down ---
+//! ...
+//! === Demo complete ===
+//! ```
 
 #[cfg(not(feature = "test-support"))]
 compile_error!("cluster_extension_no_std example requires --features test-support");
@@ -153,9 +203,8 @@ impl ClusterNode {
     // 静的トポロジを設定した InprocSampleProvider を作成
     // start_member() 時に EventStream へ TopologyUpdated を自動 publish する
     let static_topology = ClusterTopology::new(1, vec![peer_name.to_string()], vec![]);
-    let provider =
-      InprocSampleProvider::new(system.event_stream(), ArcShared::new(DemoBlockList::default()), name)
-        .with_static_topology(static_topology);
+    let provider = InprocSampleProvider::new(system.event_stream(), ArcShared::new(DemoBlockList::default()), name)
+      .with_static_topology(static_topology);
 
     // ClusterExtension を登録
     let ext_id = ClusterExtensionId::<NoStdToolbox>::new(

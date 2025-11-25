@@ -2,21 +2,65 @@
 
 //! Cluster extension quickstart (Tokio + SampleTcpProvider)
 //!
-//! This example demonstrates using SampleTcpProvider to publish topology events
-//! to EventStream. ClusterExtension automatically subscribes to these events
-//! and applies topology updates to ClusterCore.
+//! # 概要
 //!
-//! Task 4.5: Transport のコネクション/切断イベントを SampleTcpProvider が自動検知し、
-//! `TopologyUpdated` を publish する機能を実装。`subscribe_remoting_events()` を
-//! 呼び出すことで、`RemotingLifecycleEvent::Connected` と `Quarantined` を自動的に
-//! 検知し、トポロジ更新を行います。
+//! このサンプルは EventStream 主導のトポロジ通知方式を実装しています：
+//! 1. `SampleTcpProvider` が `ClusterEvent::TopologyUpdated` を EventStream に publish
+//! 2. `ClusterExtension` が EventStream を購読し、自動的に `ClusterCore::on_topology` を呼び出す
+//! 3. 手動の `on_topology` 呼び出しは不要
 //!
-//! Provider差し替え方法:
-//! - SampleTcpProvider: 静的トポロジ + Transport イベント自動検知（本サンプル）
+//! # EventStream 方式
+//!
+//! ProtoActor-Go と同様の設計で、Provider/Gossiper がイベントを publish し、
+//! ClusterExtension が購読して ClusterCore に適用する流れを採用しています。
+//!
+//! # Phase1 (静的トポロジ) vs Phase2 (動的トポロジ)
+//!
+//! - **Phase1**: `SampleTcpProvider` に静的トポロジを設定し、`start_member()` 時に publish
+//! - **Phase2**: `subscribe_remoting_events()` で Transport イベント（Connected/Quarantined）を
+//!   自動検知し、動的にトポロジを更新
+//!
+//! # Provider 差し替え方法
+//!
+//! `ClusterProvider` トレイトを実装することで、Provider を差し替えられます：
+//! - `SampleTcpProvider`: 静的トポロジ + Transport イベント自動検知（本サンプル）
+//! - `InprocSampleProvider`: no_std 環境向け静的トポロジ
 //! - etcd/zk/automanaged provider: 外部サービス連携（Phase2以降で対応予定）
 //!
-//! 実行例:
-//! `cargo run -p fraktor-cluster-rs --example cluster_extension_tokio --features std`
+//! 詳細は `.kiro/specs/protoactor-go-cluster-extension-samples/example.md` を参照。
+//!
+//! # 実行例
+//!
+//! ```bash
+//! cargo run -p fraktor-cluster-rs --example cluster_extension_tokio --features std
+//! ```
+//!
+//! # 期待される出力
+//!
+//! ```text
+//! === Cluster Extension Tokio Demo ===
+//! Demonstrates EventStream-based topology with SampleTcpProvider
+//!
+//! --- Starting cluster members ---
+//! [identity][cluster-node-a] member kinds: ["grain", "topic"]
+//! [pubsub][cluster-node-a] start
+//! [gossip][cluster-node-a] start (no-op in Phase1)
+//! [cluster][cluster-node-a] Startup { address: "127.0.0.1:26050", mode: Member }
+//! [cluster][cluster-node-a] TopologyUpdated { ... }
+//!
+//! --- Checking metrics after startup ---
+//! [node-a] members=2, virtual_actors=2
+//! [node-b] members=2, virtual_actors=2
+//!
+//! --- Sending grain call ---
+//! [hub] recv grain call key=user:va-1 body=hello cluster over tokio tcp
+//! [grain] start
+//! [ok] grain reply: echo:hello cluster over tokio tcp
+//!
+//! --- Shutting down ---
+//! ...
+//! === Demo complete ===
+//! ```
 
 #[cfg(not(feature = "std"))]
 compile_error!("cluster_extension_tokio example requires `--features std`");

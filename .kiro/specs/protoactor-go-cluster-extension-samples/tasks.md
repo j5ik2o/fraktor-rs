@@ -54,10 +54,10 @@
   - サンプルコードから手動の on_member_join/leave 呼び出しを削除し、Transport 駆動の自動トポロジ更新を実証する
   - _Requirements: 2.1,2.2,2.3,2.4,3.1,3.2_
 
-- [ ] 5. 観測性・ドキュメント整合を確認する
-- [ ] 5.1 metrics 無効時の挙動と EventStream 出力を検証する
+- [x] 5. 観測性・ドキュメント整合を確認する
+- [x] 5.1 metrics 無効時の挙動と EventStream 出力を検証する
   - metrics が無効構成のときに MetricsError::Disabled を返し、イベントは継続することをテストで確認
   - _Requirements: 5.2_
-- [ ] 5.2 サンプル手順とログ例を設計に沿って更新する
+- [x] 5.2 サンプル手順とログ例を設計に沿って更新する
   - example.md とサンプル冒頭コメントに EventStream 方式、provider 差し替え方法、静的→動的フェーズの実行手順を記載する
   - _Requirements: 5.4_

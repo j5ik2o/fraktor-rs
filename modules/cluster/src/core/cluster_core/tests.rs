@@ -898,3 +898,222 @@ fn shutdown_failure_emits_shutdown_failed() {
       if address == "proto://member" && *mode == StartupMode::Member && reason == "stop-error"
   )));
 }
+
+// ====================================================================
+// タスク 5.1: metrics 無効時の挙動と EventStream 出力を検証
+// 要件5.2 をカバー
+// ====================================================================
+
+/// metrics が無効構成のときに MetricsError::Disabled を返すことを検証
+#[test]
+fn metrics_disabled_returns_error() {
+  let config = ClusterExtensionConfig::new().with_metrics_enabled(false);
+  let core = build_core_with_config(&config);
+  assert!(!core.metrics_enabled());
+  assert!(matches!(core.metrics(), Err(MetricsError::Disabled)));
+}
+
+/// metrics 無効時でも Startup イベントは EventStream に発火されることを検証
+#[test]
+fn metrics_disabled_still_emits_startup_event() {
+  let provider = ArcShared::new(StubProvider);
+  let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
+  let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let kind_registry = KindRegistry::new();
+  let identity_lookup = ArcShared::new(StubIdentityLookup::new());
+  let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
+  let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
+  let mut core = ClusterCore::new(
+    &ClusterExtensionConfig::new().with_advertised_address("proto://member").with_metrics_enabled(false),
+    provider,
+    block_list_provider,
+    event_stream.clone(),
+    gossiper,
+    pubsub,
+    kind_registry,
+    identity_lookup,
+  );
+
+  // EventStream subscriber を登録
+  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
+  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
+  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+
+  // metrics は無効
+  assert!(matches!(core.metrics(), Err(MetricsError::Disabled)));
+
+  // start_member を実行
+  core.start_member().unwrap();
+
+  // Startup イベントが発火されたことを確認
+  let events = subscriber_impl.events();
+  assert!(
+    events.contains(&ClusterEvent::Startup { address: String::from("proto://member"), mode: StartupMode::Member })
+  );
+}
+
+/// metrics 無効時でも TopologyUpdated イベントは EventStream に発火されることを検証
+#[test]
+fn metrics_disabled_still_emits_topology_updated_event() {
+  let provider = ArcShared::new(StubProvider);
+  let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![String::from("blocked-x")]));
+  let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let kind_registry = KindRegistry::new();
+  let identity_lookup = ArcShared::new(StubIdentityLookup::new());
+  let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
+  let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
+  let mut core = ClusterCore::new(
+    &ClusterExtensionConfig::new().with_advertised_address("proto://member").with_metrics_enabled(false),
+    provider,
+    block_list_provider,
+    event_stream.clone(),
+    gossiper,
+    pubsub,
+    kind_registry,
+    identity_lookup,
+  );
+
+  // start_member を実行
+  core.start_member().unwrap();
+
+  // EventStream subscriber を登録
+  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
+  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
+  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+
+  // metrics は無効
+  assert!(matches!(core.metrics(), Err(MetricsError::Disabled)));
+
+  // トポロジ更新を行う
+  let topology = ClusterTopology::new(7000, vec![String::from("node-y")], vec![]);
+  core.on_topology(&topology);
+
+  // TopologyUpdated イベントが発火されたことを確認
+  let events = subscriber_impl.events();
+  assert!(events.iter().any(|event| matches!(event,
+    ClusterEvent::TopologyUpdated { topology, joined, left, blocked }
+      if topology.hash() == 7000
+        && joined == &vec![String::from("node-y")]
+        && left.is_empty()
+        && blocked.contains(&String::from("blocked-x"))
+  )));
+}
+
+/// metrics 無効時でも Shutdown イベントは EventStream に発火されることを検証
+#[test]
+fn metrics_disabled_still_emits_shutdown_event() {
+  let provider = ArcShared::new(StubProvider);
+  let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
+  let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let kind_registry = KindRegistry::new();
+  let identity_lookup = ArcShared::new(StubIdentityLookup::new());
+  let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
+  let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
+  let mut core = ClusterCore::new(
+    &ClusterExtensionConfig::new().with_advertised_address("proto://member").with_metrics_enabled(false),
+    provider,
+    block_list_provider,
+    event_stream.clone(),
+    gossiper,
+    pubsub,
+    kind_registry,
+    identity_lookup,
+  );
+
+  // start_member を実行
+  core.start_member().unwrap();
+
+  // EventStream subscriber を登録
+  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
+  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
+  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+
+  // metrics は無効
+  assert!(matches!(core.metrics(), Err(MetricsError::Disabled)));
+
+  // shutdown を実行
+  core.shutdown(true).unwrap();
+
+  // Shutdown イベントが発火されたことを確認
+  let events = subscriber_impl.events();
+  assert!(
+    events.contains(&ClusterEvent::Shutdown { address: String::from("proto://member"), mode: StartupMode::Member })
+  );
+}
+
+/// metrics 無効時でも全てのクラスタイベント（Startup/TopologyUpdated/Shutdown）が
+/// EventStream に継続して発火されることを包括的に検証
+#[test]
+fn metrics_disabled_full_lifecycle_events_continue() {
+  let provider = ArcShared::new(StubProvider);
+  let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![String::from("blocked-z")]));
+  let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let kind_registry = KindRegistry::new();
+  let identity_lookup = ArcShared::new(StubIdentityLookup::new());
+  let gossiper: ArcShared<dyn Gossiper> = ArcShared::new(StubGossiper::new());
+  let pubsub: ArcShared<dyn ClusterPubSub> = ArcShared::new(StubPubSub::new());
+  let mut core = ClusterCore::new(
+    &ClusterExtensionConfig::new().with_advertised_address("proto://full-lifecycle").with_metrics_enabled(false),
+    provider,
+    block_list_provider,
+    event_stream.clone(),
+    gossiper,
+    pubsub,
+    kind_registry,
+    identity_lookup,
+  );
+
+  // EventStream subscriber を登録
+  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
+  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
+  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+
+  // metrics が無効であることを確認
+  assert!(!core.metrics_enabled());
+  assert!(matches!(core.metrics(), Err(MetricsError::Disabled)));
+
+  // 1. start_member
+  core.start_member().unwrap();
+
+  // 2. トポロジ更新を複数回
+  let topology1 = ClusterTopology::new(8001, vec![String::from("node-1")], vec![]);
+  core.on_topology(&topology1);
+
+  let topology2 = ClusterTopology::new(8002, vec![String::from("node-2")], vec![String::from("node-1")]);
+  core.on_topology(&topology2);
+
+  // 3. shutdown
+  core.shutdown(true).unwrap();
+
+  // すべてのイベントが発火されたことを確認
+  let events = subscriber_impl.events();
+
+  // Startup イベント
+  assert!(events.contains(&ClusterEvent::Startup {
+    address: String::from("proto://full-lifecycle"),
+    mode:    StartupMode::Member,
+  }));
+
+  // 最初の TopologyUpdated イベント
+  assert!(events.iter().any(|event| matches!(event,
+    ClusterEvent::TopologyUpdated { topology, joined, .. }
+      if topology.hash() == 8001 && joined.contains(&String::from("node-1"))
+  )));
+
+  // 2番目の TopologyUpdated イベント
+  assert!(events.iter().any(|event| matches!(event,
+    ClusterEvent::TopologyUpdated { topology, joined, left, .. }
+      if topology.hash() == 8002
+        && joined.contains(&String::from("node-2"))
+        && left.contains(&String::from("node-1"))
+  )));
+
+  // Shutdown イベント
+  assert!(events.contains(&ClusterEvent::Shutdown {
+    address: String::from("proto://full-lifecycle"),
+    mode:    StartupMode::Member,
+  }));
+
+  // metrics は終始 Disabled のまま
+  assert!(matches!(core.metrics(), Err(MetricsError::Disabled)));
+}
