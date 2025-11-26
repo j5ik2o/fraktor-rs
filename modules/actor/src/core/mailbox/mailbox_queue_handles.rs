@@ -7,8 +7,8 @@ use fraktor_utils_rs::core::{
     QueueError, SyncQueue,
     backend::{OfferOutcome, OverflowPolicy, VecDequeBackend},
   },
-  runtime_toolbox::RuntimeToolbox,
-  sync::{ArcShared, sync_mutex_like::SpinSyncMutex},
+  runtime_toolbox::{RuntimeToolbox, SyncMutexFamily},
+  sync::ArcShared,
 };
 
 use super::{
@@ -44,8 +44,8 @@ where
   fn new_with(capacity: usize, overflow: OverflowPolicy) -> Self {
     let backend = VecDequeBackend::with_capacity(capacity, overflow);
     let sync_queue = SyncQueue::new(backend);
-    let mutex = SpinSyncMutex::new(sync_queue);
-    let queue = UserQueueShared::new(ArcShared::new(mutex));
+    let mutex = <TB::MutexFamily as SyncMutexFamily>::create(sync_queue);
+    let queue = UserQueueShared::<T, TB>::new(ArcShared::new(mutex));
     let state = ArcShared::new(QueueState::new(queue));
     Self { state }
   }

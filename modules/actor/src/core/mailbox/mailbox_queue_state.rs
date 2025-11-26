@@ -17,19 +17,19 @@ use super::UserQueueShared;
 pub struct QueueState<T, TB: RuntimeToolbox>
 where
   T: Send + 'static, {
-  pub(crate) queue:            UserQueueShared<T>,
+  pub(crate) queue:            UserQueueShared<T, TB>,
   pub(crate) producer_waiters: ToolboxMutex<WaitQueue<QueueError<T>>, TB>,
   pub(crate) consumer_waiters: ToolboxMutex<WaitQueue<QueueError<T>>, TB>,
   pub(crate) size:             AtomicUsize,
 }
 
-impl<T, TB: RuntimeToolbox> QueueState<T, TB>
+impl<T, TB: RuntimeToolbox + 'static> QueueState<T, TB>
 where
   T: Send + 'static,
 {
   /// Creates a new queue state wrapper.
   #[must_use]
-  pub fn new(queue: UserQueueShared<T>) -> Self {
+  pub fn new(queue: UserQueueShared<T, TB>) -> Self {
     Self {
       queue,
       producer_waiters: <TB::MutexFamily as SyncMutexFamily>::create(WaitQueue::new()),

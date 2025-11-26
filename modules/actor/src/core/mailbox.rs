@@ -3,8 +3,8 @@
 //! This module contains message queue implementations and configurations.
 
 use fraktor_utils_rs::core::{
-  collections::queue::{QueueError, SyncFifoQueueShared, backend::VecDequeBackend},
-  runtime_toolbox::RuntimeToolbox,
+  collections::queue::{QueueError, SyncFifoQueueShared, SyncQueue, backend::VecDequeBackend, type_keys::FifoKey},
+  runtime_toolbox::{RuntimeToolbox, ToolboxMutex},
 };
 
 use crate::core::{error::SendError, messaging::AnyMessageGeneric};
@@ -52,7 +52,8 @@ pub use system_queue::SystemQueue;
 #[cfg(test)]
 mod tests;
 
-pub(crate) type UserQueueShared<T> = SyncFifoQueueShared<T, VecDequeBackend<T>>;
+pub(crate) type UserQueueShared<T, TB> =
+  SyncFifoQueueShared<T, VecDequeBackend<T>, ToolboxMutex<SyncQueue<T, FifoKey, VecDequeBackend<T>>, TB>>;
 
 pub(crate) fn map_user_queue_error<TB: RuntimeToolbox>(error: QueueError<AnyMessageGeneric<TB>>) -> SendError<TB> {
   match error {
