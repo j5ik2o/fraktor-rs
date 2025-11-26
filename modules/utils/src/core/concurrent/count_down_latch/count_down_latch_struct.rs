@@ -19,12 +19,12 @@ where
   }
 
   /// Decrements the count by 1.
-  pub async fn count_down(&self) {
+  pub async fn count_down(&mut self) {
     self.backend.count_down().await;
   }
 
   /// Causes the current task to wait until the count reaches 0.
-  pub async fn wait(&self) {
+  pub async fn wait(&mut self) {
     self.backend.wait().await;
   }
 
