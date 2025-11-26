@@ -23,7 +23,7 @@ use tokio::{
 };
 
 use crate::core::{
-  InboundFrame, RemoteTransport, TransportBackpressureHook, TransportBind, TransportChannel, TransportEndpoint,
+  InboundFrame, RemoteTransport, TransportBackpressureHookShared, TransportBind, TransportChannel, TransportEndpoint,
   TransportError, TransportHandle, TransportInbound,
 };
 
@@ -33,7 +33,7 @@ const CHANNEL_BUFFER_SIZE: usize = 256;
 /// Tokio-based TCP transport implementing the Pekko wire protocol.
 pub struct TokioTcpTransport {
   state:   ArcShared<NoStdMutex<TokioTcpState>>,
-  hook:    ArcShared<NoStdMutex<Option<ArcShared<dyn TransportBackpressureHook>>>>,
+  hook:    ArcShared<NoStdMutex<Option<TransportBackpressureHookShared>>>,
   inbound: ArcShared<NoStdMutex<Option<ArcShared<dyn TransportInbound>>>>,
   runtime: Arc<Runtime>,
 }
@@ -129,14 +129,15 @@ impl TokioTcpTransport {
   #[allow(dead_code)]
   fn fire_backpressure(&self, authority: &str, signal: BackpressureSignal, correlation_id: CorrelationId) {
     if let Some(hook) = self.hook.lock().clone() {
-      hook.on_backpressure(signal, authority, correlation_id);
+      let mut guard = hook.lock();
+      guard.on_backpressure(signal, authority, correlation_id);
     }
   }
 
   async fn accept_loop(
     listener: TcpListener,
     authority: String,
-    hook: ArcShared<NoStdMutex<Option<ArcShared<dyn TransportBackpressureHook>>>>,
+    hook: ArcShared<NoStdMutex<Option<TransportBackpressureHookShared>>>,
     inbound: ArcShared<NoStdMutex<Option<ArcShared<dyn TransportInbound>>>>,
   ) {
     loop {
@@ -164,7 +165,7 @@ impl TokioTcpTransport {
     mut stream: TcpStream,
     authority: &str,
     remote: &str,
-    hook: ArcShared<NoStdMutex<Option<ArcShared<dyn TransportBackpressureHook>>>>,
+    hook: ArcShared<NoStdMutex<Option<TransportBackpressureHookShared>>>,
     inbound: ArcShared<NoStdMutex<Option<ArcShared<dyn TransportInbound>>>>,
   ) -> Result<(), TransportError> {
     let mut buffer = Vec::new();
@@ -185,7 +186,8 @@ impl TokioTcpTransport {
       let correlation_id = CorrelationId::new(hi, lo);
       let _payload = &buffer[12..];
       if let Some(hook_ref) = hook.lock().clone() {
-        hook_ref.on_backpressure(BackpressureSignal::Release, authority, correlation_id);
+        let mut guard = hook_ref.lock();
+        guard.on_backpressure(BackpressureSignal::Release, authority, correlation_id);
       }
       if let Some(handler) = inbound.lock().clone() {
         handler.on_frame(InboundFrame::new(authority, remote.to_string(), buffer[12..].to_vec(), correlation_id));
@@ -198,7 +200,7 @@ impl TokioTcpTransport {
     mut stream: TcpStream,
     authority: String,
     mut receiver: mpsc::Receiver<OutboundFrame>,
-    hook: ArcShared<NoStdMutex<Option<ArcShared<dyn TransportBackpressureHook>>>>,
+    hook: ArcShared<NoStdMutex<Option<TransportBackpressureHookShared>>>,
   ) {
     let mut pending_count = 0_usize;
     while let Some(frame) = receiver.recv().await {
@@ -210,7 +212,8 @@ impl TokioTcpTransport {
       if pending_count >= BACKPRESSURE_THRESHOLD
         && let Some(hook_ref) = hook.lock().clone()
       {
-        hook_ref.on_backpressure(BackpressureSignal::Apply, &authority, frame.correlation_id);
+        let mut guard = hook_ref.lock();
+        guard.on_backpressure(BackpressureSignal::Apply, &authority, frame.correlation_id);
       }
     }
   }
@@ -284,7 +287,7 @@ impl RemoteTransport for TokioTcpTransport {
     self.state.lock().channels.remove(&channel.id());
   }
 
-  fn install_backpressure_hook(&self, hook: ArcShared<dyn TransportBackpressureHook>) {
+  fn install_backpressure_hook(&self, hook: TransportBackpressureHookShared) {
     *self.hook.lock() = Some(hook);
   }
 

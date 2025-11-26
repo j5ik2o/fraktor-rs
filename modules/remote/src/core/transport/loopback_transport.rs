@@ -10,15 +10,14 @@ use fraktor_actor_rs::core::event_stream::{BackpressureSignal, CorrelationId};
 use fraktor_utils_rs::core::{runtime_toolbox::NoStdMutex, sync::ArcShared};
 
 use super::{
-  backpressure_hook::TransportBackpressureHook, remote_transport::RemoteTransport, transport_bind::TransportBind,
+  backpressure_hook::TransportBackpressureHookShared, remote_transport::RemoteTransport, transport_bind::TransportBind,
   transport_channel::TransportChannel, transport_endpoint::TransportEndpoint, transport_error::TransportError,
   transport_handle::TransportHandle, transport_inbound_handler::TransportInbound,
 };
-
 /// In-memory transport that records frames for assertions.
 pub struct LoopbackTransport {
   state:   ArcShared<NoStdMutex<LoopbackState>>,
-  hook:    ArcShared<NoStdMutex<Option<ArcShared<dyn TransportBackpressureHook>>>>,
+  hook:    ArcShared<NoStdMutex<Option<TransportBackpressureHookShared>>>,
   inbound: ArcShared<NoStdMutex<Option<ArcShared<dyn TransportInbound>>>>,
 }
 
@@ -60,8 +59,9 @@ impl LoopbackTransport {
   }
 
   fn fire_backpressure(&self, authority: &str, signal: BackpressureSignal, correlation_id: CorrelationId) {
-    if let Some(hook) = self.hook.lock().clone() {
-      hook.on_backpressure(signal, authority, correlation_id);
+    if let Some(hook_handle) = self.hook.lock().clone() {
+      let mut guard = hook_handle.lock();
+      guard.on_backpressure(signal, authority, correlation_id);
     }
   }
 
@@ -126,7 +126,7 @@ impl RemoteTransport for LoopbackTransport {
     self.state.lock().channels.remove(&channel.id());
   }
 
-  fn install_backpressure_hook(&self, hook: ArcShared<dyn TransportBackpressureHook>) {
+  fn install_backpressure_hook(&self, hook: TransportBackpressureHookShared) {
     *self.hook.lock() = Some(hook);
   }
 

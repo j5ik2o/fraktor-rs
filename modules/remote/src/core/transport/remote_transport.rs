@@ -1,12 +1,11 @@
 //! Trait implemented by all remoting transports.
-
 use fraktor_actor_rs::core::event_stream::CorrelationId;
 use fraktor_utils_rs::core::sync::ArcShared;
 
 use super::{
-  backpressure_hook::TransportBackpressureHook, transport_bind::TransportBind, transport_channel::TransportChannel,
-  transport_endpoint::TransportEndpoint, transport_error::TransportError, transport_handle::TransportHandle,
-  transport_inbound_handler::TransportInbound,
+  backpressure_hook::TransportBackpressureHookShared, transport_bind::TransportBind,
+  transport_channel::TransportChannel, transport_endpoint::TransportEndpoint, transport_error::TransportError,
+  transport_handle::TransportHandle, transport_inbound_handler::TransportInbound,
 };
 
 /// Abstraction over transport implementations used by remoting.
@@ -32,7 +31,7 @@ pub trait RemoteTransport: Send + Sync + 'static {
   fn close(&self, channel: &TransportChannel);
 
   /// Registers a hook used to propagate backpressure notifications.
-  fn install_backpressure_hook(&self, hook: ArcShared<dyn TransportBackpressureHook>);
+  fn install_backpressure_hook(&self, hook: TransportBackpressureHookShared);
 
   /// Registers a handler that receives inbound frames accepted by the transport.
   fn install_inbound_handler(&self, handler: ArcShared<dyn TransportInbound>);

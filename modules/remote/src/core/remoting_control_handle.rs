@@ -1,6 +1,6 @@
 //! Concrete implementation of [`RemotingControl`] backed by the actor system.
-
 use alloc::{
+  boxed::Box,
   string::{String, ToString},
   vec::Vec,
 };
@@ -12,7 +12,7 @@ use fraktor_actor_rs::core::{
   system::ActorSystemGeneric,
 };
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
+  runtime_toolbox::{NoStdMutex, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 
@@ -27,7 +27,7 @@ use crate::core::{
   remoting_control::RemotingControl,
   remoting_error::RemotingError,
   remoting_extension_config::RemotingExtensionConfig,
-  transport::{RemoteTransport, TransportBackpressureHook},
+  transport::{RemoteTransport, TransportBackpressureHook, TransportBackpressureHookShared},
 };
 
 /// Shared handle used by endpoints and providers to drive remoting.
@@ -139,8 +139,8 @@ where
     }
   }
 
-  pub(crate) fn backpressure_hook(&self) -> ArcShared<dyn TransportBackpressureHook> {
-    ArcShared::new(ControlBackpressureHook { control: self.clone() })
+  pub(crate) fn backpressure_hook(&self) -> TransportBackpressureHookShared {
+    ArcShared::new(NoStdMutex::new(Box::new(ControlBackpressureHook { control: self.clone() })))
   }
 
   /// Emits a synthetic backpressure signal for diagnostics.
@@ -343,7 +343,7 @@ impl<TB> TransportBackpressureHook for ControlBackpressureHook<TB>
 where
   TB: RuntimeToolbox + 'static,
 {
-  fn on_backpressure(&self, signal: BackpressureSignal, authority: &str, correlation_id: CorrelationId) {
+  fn on_backpressure(&mut self, signal: BackpressureSignal, authority: &str, correlation_id: CorrelationId) {
     self.control.notify_backpressure(authority, signal, Some(correlation_id));
   }
 }

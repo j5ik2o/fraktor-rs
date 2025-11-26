@@ -16,7 +16,7 @@ mod transport_handle;
 mod transport_inbound_frame;
 mod transport_inbound_handler;
 
-pub use backpressure_hook::TransportBackpressureHook;
+pub use backpressure_hook::{TransportBackpressureHook, TransportBackpressureHookShared};
 pub use factory::TransportFactory;
 pub use loopback_transport::LoopbackTransport;
 pub use remote_transport::RemoteTransport;
