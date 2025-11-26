@@ -28,17 +28,17 @@ where
   }
 
   /// Adds the specified number to the counter.
-  pub fn add(&self, n: usize) {
+  pub fn add(&mut self, n: usize) {
     self.backend.add(n);
   }
 
   /// Decrements the counter by 1.
-  pub fn done(&self) {
+  pub fn done(&mut self) {
     self.backend.done();
   }
 
   /// Asynchronously waits until the counter reaches 0.
-  pub async fn wait(&self) {
+  pub async fn wait(&mut self) {
     self.backend.wait().await;
   }
 

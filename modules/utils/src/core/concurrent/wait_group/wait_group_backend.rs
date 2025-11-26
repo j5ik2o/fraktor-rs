@@ -12,11 +12,11 @@ pub trait WaitGroupBackend: Clone {
   fn with_count(count: usize) -> Self;
 
   /// Adds the specified number to the counter.
-  fn add(&self, n: usize);
+  fn add(&mut self, n: usize);
 
   /// Decrements the counter by 1.
-  fn done(&self);
+  fn done(&mut self);
 
   /// Waits until the counter reaches 0.
-  async fn wait(&self);
+  async fn wait(&mut self);
 }

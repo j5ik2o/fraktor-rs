@@ -9,5 +9,5 @@ pub trait AsyncBarrierBackend: Clone {
   fn new(count: usize) -> Self;
 
   /// Waits at the barrier point.
-  async fn wait(&self);
+  async fn wait(&mut self);
 }
