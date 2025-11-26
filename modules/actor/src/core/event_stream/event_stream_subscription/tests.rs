@@ -1,12 +1,12 @@
 use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
 
 use super::EventStreamSubscription;
-use crate::core::event_stream::EventStream;
+use crate::core::event_stream::{EventStream, EventStreamEvent, EventStreamSubscriber};
 
 struct MockSubscriber;
 
-impl crate::core::event_stream::EventStreamSubscriber<NoStdToolbox> for MockSubscriber {
-  fn on_event(&self, _event: &crate::core::event_stream::EventStreamEvent<NoStdToolbox>) {}
+impl EventStreamSubscriber<NoStdToolbox> for MockSubscriber {
+  fn on_event(&self, _event: &EventStreamEvent<NoStdToolbox>) {}
 }
 
 #[test]
@@ -26,15 +26,13 @@ fn event_stream_subscription_id() {
 #[test]
 fn event_stream_subscription_drop_unsubscribes() {
   let stream = ArcShared::new(EventStream::default());
-  let subscriber: ArcShared<dyn crate::core::event_stream::EventStreamSubscriber<NoStdToolbox>> =
-    ArcShared::new(MockSubscriber);
+  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = ArcShared::new(MockSubscriber);
   let subscription = EventStream::subscribe_arc(&stream, &subscriber);
   let id = subscription.id();
 
   drop(subscription);
 
-  let subscriber2: ArcShared<dyn crate::core::event_stream::EventStreamSubscriber<NoStdToolbox>> =
-    ArcShared::new(MockSubscriber);
+  let subscriber2: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = ArcShared::new(MockSubscriber);
   let subscription2 = EventStream::subscribe_arc(&stream, &subscriber2);
   assert!(subscription2.id() > id);
 }
