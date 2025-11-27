@@ -4,12 +4,12 @@ use alloc::boxed::Box;
 use core::{ffi::c_void, marker::PhantomData, time::Duration};
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::RuntimeToolbox,
+  runtime_toolbox::{RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
   sync::{ArcShared, sync_mutex_like::SpinSyncMutex},
 };
 
 use super::{
-  HardwareKind, TickDriver, TickDriverControl, TickDriverError, TickDriverHandle, TickDriverId, TickDriverKind,
+  HardwareKind, TickDriver, TickDriverControl, TickDriverError, TickDriverHandleGeneric, TickDriverId, TickDriverKind,
   TickFeedHandle, TickPulseHandler, TickPulseSource, next_tick_driver_id,
 };
 
@@ -28,8 +28,13 @@ impl<TB: RuntimeToolbox> HardwareTickDriver<TB> {
     Self { pulse, kind, id: next_tick_driver_id(), _pd: PhantomData }
   }
 
-  fn build_control(&self, ctx: *mut c_void, feed: TickFeedHandle<TB>) -> ArcShared<HardwareDriverControl<TB>> {
-    ArcShared::new(HardwareDriverControl::new(self.pulse, ctx, feed))
+  fn build_control(
+    &self,
+    ctx: *mut c_void,
+    feed: TickFeedHandle<TB>,
+  ) -> ArcShared<ToolboxMutex<Box<dyn TickDriverControl>, TB>> {
+    let control: Box<dyn TickDriverControl> = Box::new(HardwareDriverControl::new(self.pulse, ctx, feed));
+    ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(control))
   }
 }
 
@@ -46,14 +51,14 @@ impl<TB: RuntimeToolbox> TickDriver<TB> for HardwareTickDriver<TB> {
     self.pulse.resolution()
   }
 
-  fn start(&self, feed: TickFeedHandle<TB>) -> Result<TickDriverHandle, TickDriverError> {
+  fn start(&self, feed: TickFeedHandle<TB>) -> Result<TickDriverHandleGeneric<TB>, TickDriverError> {
     let context = Box::new(PulseContext { feed: feed.clone() });
     let ptr = Box::into_raw(context) as *mut c_void;
     let handler = TickPulseHandler { func: pulse_trampoline::<TB>, ctx: ptr };
     self.pulse.set_callback(handler);
     self.pulse.enable()?;
     let control = self.build_control(ptr, feed);
-    Ok(TickDriverHandle::new(self.id(), self.kind(), self.resolution(), control))
+    Ok(TickDriverHandleGeneric::new(self.id(), self.kind(), self.resolution(), control))
   }
 }
 
@@ -74,7 +79,7 @@ impl<TB: RuntimeToolbox> HardwareDriverControl<TB> {
 }
 
 impl<TB: RuntimeToolbox> TickDriverControl for HardwareDriverControl<TB> {
-  fn shutdown(&self) {
+  fn shutdown(&mut self) {
     self.pulse.disable();
     if let Some(ptr) = self.ctx.lock().take() {
       unsafe {

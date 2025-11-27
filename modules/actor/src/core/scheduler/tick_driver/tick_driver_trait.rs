@@ -5,7 +5,7 @@ use core::{sync::atomic::Ordering, time::Duration};
 use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 use portable_atomic::AtomicU64;
 
-use super::{TickDriverError, TickDriverHandle, TickDriverId, TickDriverKind, TickFeedHandle};
+use super::{TickDriverError, TickDriverHandleGeneric, TickDriverId, TickDriverKind, TickFeedHandle};
 
 static NEXT_DRIVER_ID: AtomicU64 = AtomicU64::new(1);
 
@@ -28,5 +28,5 @@ pub trait TickDriver<TB: RuntimeToolbox>: Send + Sync + 'static {
   /// # Errors
   ///
   /// Returns [`TickDriverError`] when the driver fails to initialize.
-  fn start(&self, feed: TickFeedHandle<TB>) -> Result<TickDriverHandle, TickDriverError>;
+  fn start(&self, feed: TickFeedHandle<TB>) -> Result<TickDriverHandleGeneric<TB>, TickDriverError>;
 }

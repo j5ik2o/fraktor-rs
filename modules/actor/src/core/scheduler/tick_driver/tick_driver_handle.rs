@@ -1,28 +1,37 @@
 //! Handle owning the lifetime of a running tick driver instance.
 
+use alloc::boxed::Box;
 use core::time::Duration;
 
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_rs::core::{
+  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex},
+  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+};
 
 use super::{TickDriverControl, TickDriverId, TickDriverKind};
 
 /// Handle owning the lifetime of a running tick driver instance.
-#[derive(Clone)]
-pub struct TickDriverHandle {
+pub struct TickDriverHandleGeneric<TB: RuntimeToolbox> {
   id:         TickDriverId,
   kind:       TickDriverKind,
   resolution: Duration,
-  control:    ArcShared<dyn TickDriverControl>,
+  control:    ArcShared<ToolboxMutex<Box<dyn TickDriverControl>, TB>>,
 }
 
-impl TickDriverHandle {
+impl<TB: RuntimeToolbox> Clone for TickDriverHandleGeneric<TB> {
+  fn clone(&self) -> Self {
+    Self { id: self.id, kind: self.kind, resolution: self.resolution, control: self.control.clone() }
+  }
+}
+
+impl<TB: RuntimeToolbox> TickDriverHandleGeneric<TB> {
   /// Creates a new driver handle.
   #[must_use]
   pub fn new(
     id: TickDriverId,
     kind: TickDriverKind,
     resolution: Duration,
-    control: ArcShared<dyn TickDriverControl>,
+    control: ArcShared<ToolboxMutex<Box<dyn TickDriverControl>, TB>>,
   ) -> Self {
     Self { id, kind, resolution, control }
   }
@@ -47,6 +56,9 @@ impl TickDriverHandle {
 
   /// Stops the underlying driver.
   pub fn shutdown(&self) {
-    self.control.shutdown();
+    self.control.lock().shutdown();
   }
 }
+
+/// Type alias for `TickDriverHandleGeneric` with the default `NoStdToolbox`.
+pub type TickDriverHandle = TickDriverHandleGeneric<NoStdToolbox>;

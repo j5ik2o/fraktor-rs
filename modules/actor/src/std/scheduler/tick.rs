@@ -58,12 +58,20 @@ impl TickDriverConfig {
   /// Panics if no Tokio runtime handle is available in the current context.
   #[must_use]
   pub fn tokio_quickstart_with_resolution(resolution: Duration) -> CoreTickDriverConfig<StdToolbox> {
-    use fraktor_utils_rs::core::{runtime_toolbox::ToolboxMutex, sync::ArcShared};
+    use alloc::boxed::Box;
+
+    use fraktor_utils_rs::{
+      core::{
+        runtime_toolbox::{SyncMutexFamily, ToolboxMutex},
+        sync::ArcShared,
+      },
+      std::runtime_toolbox::StdMutexFamily,
+    };
     use tokio::time::{MissedTickBehavior, interval};
 
     use crate::core::scheduler::{
-      AutoDriverMetadata, AutoProfileKind, Scheduler, SchedulerTickExecutor, TickDriverControl, TickDriverHandle,
-      TickDriverKind, TickDriverRuntime, TickExecutorSignal, TickFeed, next_tick_driver_id,
+      AutoDriverMetadata, AutoProfileKind, Scheduler, SchedulerTickExecutor, TickDriverControl,
+      TickDriverHandleGeneric, TickDriverKind, TickDriverRuntime, TickExecutorSignal, TickFeed, next_tick_driver_id,
     };
 
     CoreTickDriverConfig::new(move |ctx| {
@@ -109,15 +117,17 @@ impl TickDriverConfig {
         executor_task: tokio::task::JoinHandle<()>,
       }
       impl TickDriverControl for TokioQuickstartControl {
-        fn shutdown(&self) {
+        fn shutdown(&mut self) {
           self.tick_task.abort();
           self.executor_task.abort();
         }
       }
 
       let driver_id = next_tick_driver_id();
-      let control = ArcShared::new(TokioQuickstartControl { tick_task, executor_task });
-      let driver_handle = TickDriverHandle::new(driver_id, TickDriverKind::Auto, resolution, control);
+      let control: Box<dyn TickDriverControl> = Box::new(TokioQuickstartControl { tick_task, executor_task });
+      let control = ArcShared::new(<StdMutexFamily as SyncMutexFamily>::create(control));
+      let driver_handle =
+        TickDriverHandleGeneric::<StdToolbox>::new(driver_id, TickDriverKind::Auto, resolution, control);
       let metadata = AutoDriverMetadata { profile: AutoProfileKind::Tokio, driver_id, resolution };
 
       // Create runtime
@@ -142,12 +152,17 @@ impl TickDriverConfig {
     event_stream: ArcShared<EventStreamGeneric<StdToolbox>>,
     metrics_interval: Duration,
   ) -> CoreTickDriverConfig<StdToolbox> {
-    use fraktor_utils_rs::core::runtime_toolbox::ToolboxMutex;
+    use alloc::boxed::Box;
+
+    use fraktor_utils_rs::{
+      core::runtime_toolbox::{SyncMutexFamily, ToolboxMutex},
+      std::runtime_toolbox::StdMutexFamily,
+    };
     use tokio::time::{MissedTickBehavior, interval};
 
     use crate::core::scheduler::{
       AutoDriverMetadata, AutoProfileKind, Scheduler, SchedulerTickExecutor, SchedulerTickMetricsProbe,
-      TickDriverControl, TickDriverHandle, TickDriverKind, TickDriverRuntime, TickExecutorSignal, TickFeed,
+      TickDriverControl, TickDriverHandleGeneric, TickDriverKind, TickDriverRuntime, TickExecutorSignal, TickFeed,
       next_tick_driver_id,
     };
 
@@ -217,7 +232,7 @@ impl TickDriverConfig {
         metrics_task:  Option<tokio::task::JoinHandle<()>>,
       }
       impl TickDriverControl for TokioQuickstartControl {
-        fn shutdown(&self) {
+        fn shutdown(&mut self) {
           self.tick_task.abort();
           self.executor_task.abort();
           if let Some(task) = &self.metrics_task {
@@ -227,8 +242,11 @@ impl TickDriverConfig {
       }
 
       let driver_id = next_tick_driver_id();
-      let control = Arc::new(TokioQuickstartControl { tick_task, executor_task, metrics_task: Some(metrics_task) });
-      let driver_handle = TickDriverHandle::new(driver_id, TickDriverKind::Auto, resolution, control);
+      let control: Box<dyn TickDriverControl> =
+        Box::new(TokioQuickstartControl { tick_task, executor_task, metrics_task: Some(metrics_task) });
+      let control = Arc::new(<StdMutexFamily as SyncMutexFamily>::create(control));
+      let driver_handle =
+        TickDriverHandleGeneric::<StdToolbox>::new(driver_id, TickDriverKind::Auto, resolution, control);
       let metadata = AutoDriverMetadata { profile: AutoProfileKind::Tokio, driver_id, resolution };
 
       Ok(TickDriverRuntime::new(driver_handle, feed).with_auto_metadata(metadata))

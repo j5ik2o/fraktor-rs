@@ -18,6 +18,8 @@ impl CountDownLatchBackend for MockBackend {
   }
 
   async fn wait(&mut self) {
+    // Note: In real usage, count_down would be called from other threads
+    #[allow(clippy::while_immutable_condition)]
     while self.count > 0 {
       core::hint::spin_loop();
     }
