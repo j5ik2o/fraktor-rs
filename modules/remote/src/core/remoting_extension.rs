@@ -13,17 +13,14 @@ use fraktor_actor_rs::core::{
   props::PropsGeneric,
   system::{ActorSystemGeneric, SystemGuardianProtocol},
 };
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 
 use crate::core::{
   remoting_control::RemotingControl,
   remoting_control_handle::RemotingControlHandle,
   remoting_error::RemotingError,
   remoting_extension_config::RemotingExtensionConfig,
-  transport::{RemoteTransport, TransportFactory},
+  transport::{RemoteTransportShared, TransportFactory},
 };
 
 const ENDPOINT_SUPERVISOR_NAME: &str = "remoting-endpoint-supervisor";
@@ -34,7 +31,7 @@ where
   TB: RuntimeToolbox + 'static, {
   control:          RemotingControlHandle<TB>,
   transport_scheme: String,
-  _transport:       ArcShared<dyn RemoteTransport>,
+  _transport:       RemoteTransportShared<TB>,
 }
 
 /// Type alias for `RemotingExtensionGeneric` with the default `NoStdToolbox`.
@@ -53,16 +50,17 @@ where
   /// Attempts to install the extension, returning an error if invariants are violated.
   pub fn try_new(system: &ActorSystemGeneric<TB>, config: &RemotingExtensionConfig) -> Result<Self, RemotingError> {
     let control = RemotingControlHandle::new(system.clone(), config.clone());
-    let transport = TransportFactory::build(config)?;
+    let mut transport = TransportFactory::build(config)?;
     transport.install_backpressure_hook(control.backpressure_hook());
-    control.register_transport(transport.clone());
+    let shared_transport: RemoteTransportShared<TB> = RemoteTransportShared::new(transport);
+    control.register_remote_transport_shared(shared_transport.clone());
     let guardian = system.system_guardian_ref().ok_or(RemotingError::SystemGuardianUnavailable)?;
     let supervisor = spawn_endpoint_supervisor(system, &guardian, control.clone())?;
     register_shutdown_hook(&guardian, &supervisor)?;
     if config.auto_start() {
       control.start()?;
     }
-    Ok(Self { control, transport_scheme: config.transport_scheme().to_string(), _transport: transport })
+    Ok(Self { control, transport_scheme: config.transport_scheme().to_string(), _transport: shared_transport })
   }
 
   /// Returns the shared control handle.

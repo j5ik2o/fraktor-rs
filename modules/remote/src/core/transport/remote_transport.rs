@@ -9,30 +9,34 @@ use super::{
 };
 
 /// Abstraction over transport implementations used by remoting.
-pub trait RemoteTransport: Send + Sync + 'static {
+///
+/// Methods that mutate transport state take `&mut self`, while pure accessors
+/// take `&self`. Callers requiring shared ownership should wrap implementations
+/// in [`RemoteTransportShared`].
+pub trait RemoteTransport: Send + 'static {
   /// Returns the URI scheme handled by this transport.
   fn scheme(&self) -> &str;
 
   /// Binds a listener to the specified authority.
-  fn spawn_listener(&self, bind: &TransportBind) -> Result<TransportHandle, TransportError>;
+  fn spawn_listener(&mut self, bind: &TransportBind) -> Result<TransportHandle, TransportError>;
 
   /// Opens or reuses an outbound channel targeting the specified endpoint.
-  fn open_channel(&self, endpoint: &TransportEndpoint) -> Result<TransportChannel, TransportError>;
+  fn open_channel(&mut self, endpoint: &TransportEndpoint) -> Result<TransportChannel, TransportError>;
 
   /// Sends the provided payload over the channel, embedding the correlation id.
   fn send(
-    &self,
+    &mut self,
     channel: &TransportChannel,
     payload: &[u8],
     correlation_id: CorrelationId,
   ) -> Result<(), TransportError>;
 
   /// Closes the provided channel if it exists.
-  fn close(&self, channel: &TransportChannel);
+  fn close(&mut self, channel: &TransportChannel);
 
   /// Registers a hook used to propagate backpressure notifications.
-  fn install_backpressure_hook(&self, hook: TransportBackpressureHookShared);
+  fn install_backpressure_hook(&mut self, hook: TransportBackpressureHookShared);
 
   /// Registers a handler that receives inbound frames accepted by the transport.
-  fn install_inbound_handler(&self, handler: ArcShared<dyn TransportInbound>);
+  fn install_inbound_handler(&mut self, handler: ArcShared<dyn TransportInbound>);
 }

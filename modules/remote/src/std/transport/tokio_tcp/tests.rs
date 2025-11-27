@@ -20,7 +20,7 @@ fn transport_scheme_is_fraktor_tcp() {
 
 #[test]
 fn can_spawn_listener() {
-  let transport = TokioTcpTransport::default();
+  let mut transport = TokioTcpTransport::default();
   let port = find_free_port();
   let bind = TransportBind::new("127.0.0.1", Some(port));
   let handle = transport.spawn_listener(&bind);
@@ -29,7 +29,7 @@ fn can_spawn_listener() {
 
 #[test]
 fn can_open_channel() {
-  let transport = TokioTcpTransport::default();
+  let mut transport = TokioTcpTransport::default();
   let port = find_free_port();
   let bind = TransportBind::new("127.0.0.1", Some(port));
   let _handle = transport.spawn_listener(&bind).expect("listener");
@@ -44,7 +44,7 @@ fn can_open_channel() {
 
 #[test]
 fn can_send_message() {
-  let transport = TokioTcpTransport::default();
+  let mut transport = TokioTcpTransport::default();
   let port = find_free_port();
   let bind = TransportBind::new("127.0.0.1", Some(port));
   let _handle = transport.spawn_listener(&bind).expect("listener");

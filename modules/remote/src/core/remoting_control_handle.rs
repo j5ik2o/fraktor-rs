@@ -27,7 +27,7 @@ use crate::core::{
   remoting_control::RemotingControl,
   remoting_error::RemotingError,
   remoting_extension_config::RemotingExtensionConfig,
-  transport::{RemoteTransport, TransportBackpressureHook, TransportBackpressureHookShared},
+  transport::{RemoteTransport, RemoteTransportShared, TransportBackpressureHook, TransportBackpressureHookShared},
 };
 
 /// Shared handle used by endpoints and providers to drive remoting.
@@ -96,7 +96,14 @@ where
   }
 
   /// Registers the transport instance used by the runtime.
-  pub(crate) fn register_transport(&self, transport: ArcShared<dyn RemoteTransport>) {
+  #[allow(dead_code)]
+  pub(crate) fn register_transport(&self, transport: Box<dyn RemoteTransport>) {
+    let shared: RemoteTransportShared<TB> = RemoteTransportShared::new(transport);
+    self.register_remote_transport_shared(shared);
+  }
+
+  /// Registers a pre-wrapped shared transport instance.
+  pub(crate) fn register_remote_transport_shared(&self, transport: RemoteTransportShared<TB>) {
     *self.inner.transport_ref.lock() = Some(transport);
     let _ = self.inner.try_bootstrap_runtime();
   }
@@ -213,7 +220,7 @@ where
   correlation_seq: AtomicU64,
   writer:          ToolboxMutex<Option<ArcShared<EndpointWriterGeneric<TB>>>, TB>,
   reader:          ToolboxMutex<Option<ArcShared<EndpointReaderGeneric<TB>>>, TB>,
-  transport_ref:   ToolboxMutex<Option<ArcShared<dyn RemoteTransport>>, TB>,
+  transport_ref:   ToolboxMutex<Option<RemoteTransportShared<TB>>, TB>,
   #[cfg(feature = "tokio-transport")]
   endpoint_driver: ToolboxMutex<Option<crate::std::runtime::endpoint_driver::EndpointDriverHandle>, TB>,
 }

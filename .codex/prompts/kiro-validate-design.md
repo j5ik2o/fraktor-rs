@@ -91,5 +91,3 @@ Provide output in the language specified in spec.json with:
 - Re-validate with `/prompts:kiro-validate-design $1`
 
 **Note**: Design validation is recommended but optional. Quality review helps catch issues early.
-
-ultrathink

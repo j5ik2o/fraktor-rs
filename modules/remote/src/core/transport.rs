@@ -7,6 +7,7 @@ mod backpressure_hook;
 mod factory;
 mod loopback_transport;
 mod remote_transport;
+mod remote_transport_shared;
 mod tokio_transport_config;
 mod transport_bind;
 mod transport_channel;
@@ -20,6 +21,7 @@ pub use backpressure_hook::{TransportBackpressureHook, TransportBackpressureHook
 pub use factory::TransportFactory;
 pub use loopback_transport::LoopbackTransport;
 pub use remote_transport::RemoteTransport;
+pub use remote_transport_shared::RemoteTransportShared;
 pub use tokio_transport_config::TokioTransportConfig;
 pub use transport_bind::TransportBind;
 pub use transport_channel::TransportChannel;

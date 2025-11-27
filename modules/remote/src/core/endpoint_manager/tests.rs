@@ -54,7 +54,7 @@ struct LoopbackPair {
 
 impl LoopbackPair {
   fn new() -> Self {
-    let transport = LoopbackTransport::default();
+    let mut transport = LoopbackTransport::default();
     let bind_a = TransportBind::new("loopback-a.local", Some(4100));
     let handle_a = transport.spawn_listener(&bind_a).expect("listener a");
     let bind_b = TransportBind::new("loopback-b.local", Some(4200));

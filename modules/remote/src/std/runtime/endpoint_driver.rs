@@ -10,14 +10,17 @@ use alloc::{
 use core::time::Duration;
 
 use fraktor_actor_rs::core::{event_stream::CorrelationId, logging::LogLevel, system::ActorSystemGeneric};
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::{
+  runtime_toolbox::RuntimeToolbox,
+  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+};
 use tokio::{sync::Mutex as TokioMutex, task::JoinHandle, time::sleep};
 
 use crate::core::{
   AssociationState, DeferredEnvelope, EndpointManager, EndpointManagerCommand, EndpointManagerEffect,
   EndpointReaderGeneric, EndpointWriterGeneric, EventPublisherGeneric, HandshakeFrame, HandshakeKind, InboundFrame,
-  RemoteNodeId, RemoteTransport, RemotingEnvelope, TransportBind, TransportChannel, TransportEndpoint, TransportError,
-  TransportHandle, TransportInbound, WireError,
+  RemoteNodeId, RemoteTransportShared, RemotingEnvelope, TransportBind, TransportChannel, TransportEndpoint,
+  TransportError, TransportHandle, TransportInbound, WireError,
 };
 
 const OUTBOUND_IDLE_DELAY: Duration = Duration::from_millis(5);
@@ -30,8 +33,8 @@ pub struct EndpointDriverConfig<TB: RuntimeToolbox + 'static> {
   pub writer:          ArcShared<EndpointWriterGeneric<TB>>,
   /// Shared endpoint reader decoding inbound frames.
   pub reader:          ArcShared<EndpointReaderGeneric<TB>>,
-  /// Active transport implementation.
-  pub transport:       ArcShared<dyn RemoteTransport>,
+  /// Active transport implementation wrapped in a mutex for shared mutable access.
+  pub transport:       RemoteTransportShared<TB>,
   /// Event publisher for lifecycle/backpressure events.
   pub event_publisher: EventPublisherGeneric<TB>,
   /// Canonical host used when binding listeners.
@@ -59,7 +62,7 @@ pub(crate) struct EndpointDriver<TB: RuntimeToolbox + 'static> {
   event_publisher: EventPublisherGeneric<TB>,
   writer:          ArcShared<EndpointWriterGeneric<TB>>,
   reader:          ArcShared<EndpointReaderGeneric<TB>>,
-  transport:       ArcShared<dyn RemoteTransport>,
+  transport:       RemoteTransportShared<TB>,
   host:            String,
   port:            u16,
   system_name:     String,
@@ -90,10 +93,10 @@ impl<TB: RuntimeToolbox + 'static> EndpointDriver<TB> {
   pub(crate) fn spawn(config: EndpointDriverConfig<TB>) -> Result<EndpointDriverHandle, TransportError> {
     let driver = Self::new(config);
     let bind = TransportBind::new(driver.host.clone(), Some(driver.port));
-    let handle = driver.transport.spawn_listener(&bind)?;
+    let handle = driver.transport.inner().lock().spawn_listener(&bind)?;
     driver.event_publisher.publish_listen_started(bind.authority(), CorrelationId::from_u128(0));
     *driver.listener.try_lock().expect("listener mutex uncontended") = Some(handle);
-    driver.transport.install_inbound_handler(ArcShared::new(InboundHandler::new(driver.clone())));
+    driver.transport.inner().lock().install_inbound_handler(ArcShared::new(InboundHandler::new(driver.clone())));
     let send_task = tokio::spawn(Self::drive_outbound(driver.clone()));
     Ok(EndpointDriverHandle { send_task })
   }
@@ -171,12 +174,12 @@ impl<TB: RuntimeToolbox + 'static> EndpointDriver<TB> {
         return Ok(Vec::new());
       }
     }
-    let channel = self.transport.open_channel(endpoint)?;
+    let channel = self.transport.inner().lock().open_channel(endpoint)?;
     self.channels.lock().await.insert(authority.to_string(), channel);
     if let Some(remote) = self.peers.lock().await.get(authority).cloned() {
       let handshake = HandshakeFrame::new(HandshakeKind::Offer, &self.system_name, &self.host, Some(self.port), 0);
       let payload = handshake.encode();
-      self.transport.send(&channel, &payload, CorrelationId::nil())?;
+      self.transport.inner().lock().send(&channel, &payload, CorrelationId::nil())?;
       let accept = self.manager.handle(EndpointManagerCommand::HandshakeAccepted {
         authority:   authority.to_string(),
         remote_node: remote,
@@ -191,14 +194,14 @@ impl<TB: RuntimeToolbox + 'static> EndpointDriver<TB> {
     let envelope = deferred.into_envelope();
     let payload = envelope.encode_frame();
     let channel = self.ensure_channel(authority).await?;
-    self.transport.send(&channel, &payload, envelope.correlation_id())?;
+    self.transport.inner().lock().send(&channel, &payload, envelope.correlation_id())?;
     Ok(())
   }
 
   async fn ensure_channel(&self, authority: &str) -> Result<TransportChannel, TransportError> {
     if !self.channels.lock().await.contains_key(authority) {
       let endpoint = TransportEndpoint::new(authority.to_string());
-      let channel = self.transport.open_channel(&endpoint)?;
+      let channel = self.transport.inner().lock().open_channel(&endpoint)?;
       self.channels.lock().await.insert(authority.to_string(), channel);
     }
     let channels = self.channels.lock().await;

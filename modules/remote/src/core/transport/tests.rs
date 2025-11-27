@@ -35,7 +35,7 @@ fn factory_rejects_unknown_scheme() {
 
 #[test]
 fn loopback_frames_include_length_and_correlation() {
-  let transport = LoopbackTransport::default();
+  let mut transport = LoopbackTransport::default();
   let bind = TransportBind::new("127.0.0.1", Some(4100));
   let handle = transport.spawn_listener(&bind).expect("listener");
   let endpoint = TransportEndpoint::new("127.0.0.1:4100".into());
@@ -67,7 +67,7 @@ fn loopback_backpressure_hook_triggers_listener() {
     }
   }
 
-  let transport = LoopbackTransport::default();
+  let mut transport = LoopbackTransport::default();
   let hook: TransportBackpressureHookShared = ArcShared::new(NoStdMutex::new(Box::new(RecordingHook)));
   transport.install_backpressure_hook(hook);
   transport.emit_backpressure_for_test("loopback:test", BackpressureSignal::Apply, CorrelationId::from_u128(42));

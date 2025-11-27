@@ -90,8 +90,8 @@ pub use serialization_utils::default_loopback_setup;
 pub use tokio_actor_ref_provider::{TokioActorRefProvider, TokioActorRefProviderGeneric};
 pub use tokio_actor_ref_provider_installer::TokioActorRefProviderInstaller;
 pub use transport::{
-  InboundFrame, LoopbackTransport, RemoteTransport, TokioTransportConfig, TransportBackpressureHook,
-  TransportBackpressureHookShared, TransportBind, TransportChannel, TransportEndpoint, TransportError,
-  TransportFactory, TransportHandle, TransportInbound,
+  InboundFrame, LoopbackTransport, RemoteTransport, RemoteTransportShared, TokioTransportConfig,
+  TransportBackpressureHook, TransportBackpressureHookShared, TransportBind, TransportChannel, TransportEndpoint,
+  TransportError, TransportFactory, TransportHandle, TransportInbound,
 };
 pub use wire_error::WireError;

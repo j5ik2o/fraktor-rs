@@ -1,9 +1,8 @@
 //! Transport factory resolving schemes from configuration.
 #![allow(cfg_std_forbid)]
+use alloc::boxed::Box;
 #[cfg(not(feature = "std"))]
 use alloc::string::ToString;
-
-use fraktor_utils_rs::core::sync::ArcShared;
 
 #[cfg(not(feature = "std"))]
 use super::loopback_transport::LoopbackTransport;
@@ -15,7 +14,9 @@ pub struct TransportFactory;
 
 impl TransportFactory {
   /// Resolves a transport instance for the provided config.
-  pub fn build(config: &RemotingExtensionConfig) -> Result<ArcShared<dyn RemoteTransport>, TransportError> {
+  ///
+  /// Returns a boxed transport that callers can wrap in a mutex for shared access.
+  pub fn build(config: &RemotingExtensionConfig) -> Result<Box<dyn RemoteTransport>, TransportError> {
     #[cfg(feature = "std")]
     {
       // std feature が有効な場合は StdTransportFactory を使用
@@ -26,7 +27,7 @@ impl TransportFactory {
     {
       // no_std の場合は loopback のみサポート
       match config.transport_scheme() {
-        | "fraktor.loopback" => Ok(ArcShared::new(LoopbackTransport::default())),
+        | "fraktor.loopback" => Ok(Box::new(LoopbackTransport::default())),
         | scheme => Err(TransportError::UnsupportedScheme(scheme.to_string())),
       }
     }

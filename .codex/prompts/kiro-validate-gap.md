@@ -87,5 +87,4 @@ Provide output in the language specified in spec.json with:
 - Or `/prompts:kiro-spec-design $1 -y` to auto-approve requirements and proceed directly
 
 **Note**: Gap analysis is optional but recommended for brownfield projects to inform design decisions.
-
-ultrathink
+**Note**: 生成されたギャップ分析ファイルが存在するか必ず確認すること
