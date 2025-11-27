@@ -89,6 +89,6 @@ pub use tick_driver::{
   TickDriverBootstrap, TickDriverConfig, TickDriverControl, TickDriverError, TickDriverFactory, TickDriverFactoryRef,
   TickDriverGuideEntry, TickDriverHandle, TickDriverHandleGeneric, TickDriverId, TickDriverKind, TickDriverMetadata,
   TickDriverRuntime, TickExecutorSignal, TickFeed, TickFeedHandle, TickMetricsMode, TickPulseHandler, TickPulseSource,
-  next_tick_driver_id,
+  TickPulseSourceShared, next_tick_driver_id,
 };
 pub use warning::SchedulerWarning;

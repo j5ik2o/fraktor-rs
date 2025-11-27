@@ -1,11 +1,11 @@
 //! Hardware-backed tick driver implementation.
 
 use alloc::boxed::Box;
-use core::{ffi::c_void, marker::PhantomData, time::Duration};
+use core::{ffi::c_void, time::Duration};
 
 use fraktor_utils_rs::core::{
   runtime_toolbox::{RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::{ArcShared, sync_mutex_like::SpinSyncMutex},
+  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 
 use super::{
@@ -13,19 +13,27 @@ use super::{
   TickFeedHandle, TickPulseHandler, TickPulseSource, next_tick_driver_id,
 };
 
+/// Shared reference to a pulse source protected by a toolbox mutex.
+pub type TickPulseSourceShared<TB> = ArcShared<ToolboxMutex<Box<dyn TickPulseSource>, TB>>;
+
 /// Tick driver that bridges hardware pulse sources into tick feeds.
 pub struct HardwareTickDriver<TB: RuntimeToolbox> {
-  pulse: &'static dyn TickPulseSource,
+  pulse: TickPulseSourceShared<TB>,
   kind:  HardwareKind,
   id:    TickDriverId,
-  _pd:   PhantomData<TB>,
 }
 
 impl<TB: RuntimeToolbox> HardwareTickDriver<TB> {
   /// Creates a new driver wrapping the provided pulse source.
   #[must_use]
-  pub fn new(pulse: &'static dyn TickPulseSource, kind: HardwareKind) -> Self {
-    Self { pulse, kind, id: next_tick_driver_id(), _pd: PhantomData }
+  pub fn new(pulse: TickPulseSourceShared<TB>, kind: HardwareKind) -> Self {
+    Self { pulse, kind, id: next_tick_driver_id() }
+  }
+
+  /// Creates a shared pulse source from a boxed implementation.
+  #[must_use]
+  pub fn wrap_pulse(pulse: Box<dyn TickPulseSource>) -> TickPulseSourceShared<TB> {
+    ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(pulse))
   }
 
   fn build_control(
@@ -33,7 +41,7 @@ impl<TB: RuntimeToolbox> HardwareTickDriver<TB> {
     ctx: *mut c_void,
     feed: TickFeedHandle<TB>,
   ) -> ArcShared<ToolboxMutex<Box<dyn TickDriverControl>, TB>> {
-    let control: Box<dyn TickDriverControl> = Box::new(HardwareDriverControl::new(self.pulse, ctx, feed));
+    let control: Box<dyn TickDriverControl> = Box::new(HardwareDriverControl::new(self.pulse.clone(), ctx, feed));
     ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(control))
   }
 }
@@ -48,15 +56,18 @@ impl<TB: RuntimeToolbox> TickDriver<TB> for HardwareTickDriver<TB> {
   }
 
   fn resolution(&self) -> Duration {
-    self.pulse.resolution()
+    self.pulse.lock().resolution()
   }
 
   fn start(&self, feed: TickFeedHandle<TB>) -> Result<TickDriverHandleGeneric<TB>, TickDriverError> {
     let context = Box::new(PulseContext { feed: feed.clone() });
     let ptr = Box::into_raw(context) as *mut c_void;
     let handler = TickPulseHandler { func: pulse_trampoline::<TB>, ctx: ptr };
-    self.pulse.set_callback(handler);
-    self.pulse.enable()?;
+    {
+      let mut pulse = self.pulse.lock();
+      pulse.set_callback(handler);
+      pulse.enable()?;
+    }
     let control = self.build_control(ptr, feed);
     Ok(TickDriverHandleGeneric::new(self.id(), self.kind(), self.resolution(), control))
   }
@@ -67,21 +78,21 @@ struct PulseContext<TB: RuntimeToolbox> {
 }
 
 struct HardwareDriverControl<TB: RuntimeToolbox> {
-  pulse: &'static dyn TickPulseSource,
-  ctx:   SpinSyncMutex<Option<*mut PulseContext<TB>>>,
+  pulse: TickPulseSourceShared<TB>,
+  ctx:   Option<*mut PulseContext<TB>>,
   feed:  TickFeedHandle<TB>,
 }
 
 impl<TB: RuntimeToolbox> HardwareDriverControl<TB> {
-  fn new(pulse: &'static dyn TickPulseSource, ctx: *mut c_void, feed: TickFeedHandle<TB>) -> Self {
-    Self { pulse, ctx: SpinSyncMutex::new(Some(ctx as *mut PulseContext<TB>)), feed }
+  fn new(pulse: TickPulseSourceShared<TB>, ctx: *mut c_void, feed: TickFeedHandle<TB>) -> Self {
+    Self { pulse, ctx: Some(ctx as *mut PulseContext<TB>), feed }
   }
 }
 
 impl<TB: RuntimeToolbox> TickDriverControl for HardwareDriverControl<TB> {
   fn shutdown(&mut self) {
-    self.pulse.disable();
-    if let Some(ptr) = self.ctx.lock().take() {
+    self.pulse.lock().disable();
+    if let Some(ptr) = self.ctx.take() {
       unsafe {
         drop(Box::from_raw(ptr));
       }
