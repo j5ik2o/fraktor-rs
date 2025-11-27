@@ -1,4 +1,4 @@
-use alloc::{vec, vec::Vec};
+use alloc::{boxed::Box, vec, vec::Vec};
 use core::{
   pin::Pin,
   task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
@@ -120,7 +120,7 @@ impl NoopExecutor {
 }
 
 impl DispatchExecutor<NoStdToolbox> for NoopExecutor {
-  fn execute(&self, _dispatcher: DispatchSharedGeneric<NoStdToolbox>) -> Result<(), DispatchError> {
+  fn execute(&mut self, _dispatcher: DispatchSharedGeneric<NoStdToolbox>) -> Result<(), DispatchError> {
     Ok(())
   }
 }
@@ -344,7 +344,7 @@ fn spawn_does_not_block_when_dispatcher_never_runs() {
   let log: ArcShared<NoStdMutex<Vec<&'static str>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
 
   // Register NoopExecutor as "noop" dispatcher
-  let noop_config = DispatcherConfig::from_executor(ArcShared::new(NoopExecutor::new()));
+  let noop_config = DispatcherConfig::from_executor(Box::new(NoopExecutor::new()));
   system.state().dispatchers().register("noop", noop_config.clone()).expect("register noop dispatcher");
 
   let props = Props::from_fn({
@@ -395,7 +395,7 @@ fn create_send_failure_triggers_rollback() {
 fn spawn_returns_child_ref_even_if_dispatcher_is_idle() {
   let system = ActorSystem::new_empty();
   let props =
-    Props::from_fn(|| TestActor).with_dispatcher(DispatcherConfig::from_executor(ArcShared::new(NoopExecutor::new())));
+    Props::from_fn(|| TestActor).with_dispatcher(DispatcherConfig::from_executor(Box::new(NoopExecutor::new())));
   let result = system.spawn_with_parent(None, &props);
 
   assert!(result.is_ok());

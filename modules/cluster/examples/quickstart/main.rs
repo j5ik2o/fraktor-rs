@@ -19,7 +19,7 @@ use fraktor_actor_rs::{
   },
   std::{
     actor_prim::{Actor, ActorContext, ActorRef},
-    dispatcher::{DispatchExecutorAdapter, DispatcherConfig, dispatch_executor::TokioExecutor},
+    dispatcher::{DispatcherConfig, dispatch_executor::TokioExecutor},
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
     scheduler::tick::TickDriverConfig,
@@ -145,8 +145,7 @@ fn build_system(
 ) -> Result<(ActorSystem, NoopClusterProvider)> {
   let tokio_handle = tokio::runtime::Handle::current();
   let tokio_executor = TokioExecutor::new(tokio_handle);
-  let executor_adapter = DispatchExecutorAdapter::new(ArcShared::new(tokio_executor));
-  let default_dispatcher = DispatcherConfig::from_executor(ArcShared::new(executor_adapter));
+  let default_dispatcher = DispatcherConfig::from_executor(ArcShared::new(tokio_executor));
 
   // Provider (noop in this quickstart) should still follow the lifecycle contract.
   let mut provider = NoopClusterProvider::new();

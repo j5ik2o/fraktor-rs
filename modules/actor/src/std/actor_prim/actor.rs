@@ -72,47 +72,6 @@ pub trait Actor: Send {
   /// Override this method to provide dynamic supervision based on actor state.
   /// The `ctx` parameter allows access to system configuration and logging.
   ///
-  /// # Examples
-  ///
-  /// ```
-  /// use core::time::Duration;
-  ///
-  /// use fraktor_actor_rs::core::{
-  ///   /// supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
-  /// };
-  /// use fraktor_actor_std_rs::{
-  ///   /// messaging::AnyMessageView,
-  /// };
-  /// struct ResilientWorker {
-  ///   consecutive_errors: u32,
-  /// }
-  ///
-  /// impl Actor for ResilientWorker {
-  ///   fn receive(
-  ///     &mut self,
-  ///     _ctx: &mut ActorContext<'_, '_>,
-  ///     _message: AnyMessageView<'_>,
-  ///   ) -> Result<(), ActorError> {
-  ///     Ok(())
-  ///   }
-  ///
-  ///   fn supervisor_strategy(&mut self, _ctx: &mut ActorContext) -> SupervisorStrategy {
-  ///     if self.consecutive_errors > 10 {
-  ///       // Too many errors: stop immediately
-  ///       SupervisorStrategy::new(
-  ///         SupervisorStrategyKind::OneForOne,
-  ///         0,
-  ///         Duration::from_secs(0),
-  ///         |_| SupervisorDirective::Stop,
-  ///       )
-  ///     } else {
-  ///       // Normal operation: allow retries
-  ///       SupervisorStrategy::default()
-  ///     }
-  ///   }
-  /// }
-  /// ```
-  ///
   /// # Implementation Requirements
   ///
   /// - **Must be panic-free**: This method is called during failure handling. Panics will cause

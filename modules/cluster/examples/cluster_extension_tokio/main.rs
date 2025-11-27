@@ -79,7 +79,7 @@ use fraktor_actor_rs::{
   },
   std::{
     actor_prim::{Actor, ActorContext, ActorRef},
-    dispatcher::{DispatchExecutorAdapter, DispatcherConfig, dispatch_executor::TokioExecutor},
+    dispatcher::{DispatcherConfig, dispatch_executor::TokioExecutor},
     event_stream::{EventStreamEvent, EventStreamSubscriber, EventStreamSubscription},
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
@@ -196,8 +196,7 @@ fn build_cluster_node(
 ) -> Result<ClusterNode> {
   let tokio_handle = tokio::runtime::Handle::current();
   let tokio_executor = TokioExecutor::new(tokio_handle);
-  let executor_adapter = DispatchExecutorAdapter::new(ArcShared::new(tokio_executor));
-  let default_dispatcher = DispatcherConfig::from_executor(ArcShared::new(executor_adapter));
+  let default_dispatcher = DispatcherConfig::from_executor(ArcShared::new(tokio_executor));
 
   // ClusterExtensionInstaller を作成（static_topology を設定）
   // new_with_local() を使用して LocalClusterProvider を自動的に作成

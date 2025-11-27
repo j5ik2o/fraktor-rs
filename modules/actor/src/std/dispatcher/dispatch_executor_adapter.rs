@@ -17,7 +17,7 @@ impl DispatchExecutorAdapter {
 }
 
 impl CoreDispatchExecutor<StdToolbox> for DispatchExecutorAdapter {
-  fn execute(&self, dispatcher: DispatchShared) -> Result<(), DispatchError> {
+  fn execute(&mut self, dispatcher: DispatchShared) -> Result<(), DispatchError> {
     self.inner.execute(dispatcher)
   }
 }

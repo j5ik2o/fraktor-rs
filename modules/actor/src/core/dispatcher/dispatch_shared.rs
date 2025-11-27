@@ -12,13 +12,18 @@ use super::dispatcher_core::DispatcherCore;
 ///
 /// This type wraps `DispatcherCore` in an `ArcShared`, allowing multiple
 /// threads to safely access and execute dispatcher batches.
-#[derive(Clone)]
 pub struct DispatchSharedGeneric<TB: RuntimeToolbox + 'static> {
   core: ArcShared<DispatcherCore<TB>>,
 }
 
 /// Type alias for `DispatchShared` with the default `NoStdToolbox`.
 pub type DispatchShared = DispatchSharedGeneric<NoStdToolbox>;
+
+impl<TB: RuntimeToolbox + 'static> Clone for DispatchSharedGeneric<TB> {
+  fn clone(&self) -> Self {
+    Self { core: self.core.clone() }
+  }
+}
 
 impl<TB: RuntimeToolbox + 'static> DispatchSharedGeneric<TB> {
   pub(crate) const fn new(core: ArcShared<DispatcherCore<TB>>) -> Self {

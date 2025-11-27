@@ -13,7 +13,7 @@ use fraktor_actor_rs::{
   },
   std::{
     actor_prim::{Actor, ActorContext},
-    dispatcher::{DispatchExecutorAdapter, DispatcherConfig, dispatch_executor::TokioExecutor},
+    dispatcher::{DispatcherConfig, dispatch_executor::TokioExecutor},
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
     scheduler::tick::TickDriverConfig,
@@ -78,8 +78,7 @@ fn build_tokio_tcp_system(
 ) -> Result<ActorSystem> {
   let tokio_handle = tokio::runtime::Handle::current();
   let tokio_executor = TokioExecutor::new(tokio_handle);
-  let executor_adapter = DispatchExecutorAdapter::new(ArcShared::new(tokio_executor));
-  let default_dispatcher = DispatcherConfig::from_executor(ArcShared::new(executor_adapter));
+  let default_dispatcher = DispatcherConfig::from_executor(ArcShared::new(tokio_executor));
 
   let system_config = ActorSystemConfig::default()
     .with_system_name(system_name.to_string())

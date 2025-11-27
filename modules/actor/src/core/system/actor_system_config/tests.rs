@@ -1,6 +1,7 @@
+use alloc::boxed::Box;
 use core::time::Duration;
 
-use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 
 use crate::core::{
   actor_prim::actor_path::GuardianKind as PathGuardianKind,
@@ -73,7 +74,7 @@ fn test_actor_system_config_default_dispatcher_none() {
 #[test]
 fn test_actor_system_config_with_default_dispatcher() {
   let dispatcher_config =
-    DispatcherConfigGeneric::from_executor(ArcShared::new(InlineExecutorGeneric::<NoStdToolbox>::new()));
+    DispatcherConfigGeneric::from_executor(Box::new(InlineExecutorGeneric::<NoStdToolbox>::new()));
   let config = ActorSystemConfig::default().with_default_dispatcher(dispatcher_config);
 
   assert!(config.default_dispatcher_config().is_some());

@@ -18,6 +18,7 @@
 mod base;
 mod dispatch_error;
 mod dispatch_executor;
+mod dispatch_executor_runner;
 mod dispatch_shared;
 mod dispatcher_core;
 mod dispatcher_dump_event;
@@ -34,6 +35,7 @@ mod tick_executor;
 pub use base::{Dispatcher, DispatcherGeneric};
 pub use dispatch_error::DispatchError;
 pub use dispatch_executor::DispatchExecutor;
+pub use dispatch_executor_runner::DispatchExecutorRunner;
 pub use dispatch_shared::{DispatchShared, DispatchSharedGeneric};
 pub use dispatcher_config::{DispatcherConfig, DispatcherConfigGeneric};
 pub use dispatcher_dump_event::DispatcherDumpEvent;
