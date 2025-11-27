@@ -122,15 +122,15 @@ fn registers_remote_entry_for_remote_pid() {
 #[test]
 fn remote_watch_hook_tracks_watcher_lifecycle() {
   let system = build_system();
-  let provider = provider(&system);
+  let mut provider = provider(&system);
   let remote = provider.actor_ref(remote_path()).expect("actor ref");
   let watcher = Pid::new(42, 0);
 
-  assert!(RemoteWatchHook::handle_watch(&provider, remote.pid(), watcher));
+  assert!(RemoteWatchHook::handle_watch(&mut provider, remote.pid(), watcher));
   let watchers = provider.remote_watchers_for_test(remote.pid()).expect("entry");
   assert_eq!(watchers, vec![watcher]);
 
-  assert!(RemoteWatchHook::handle_unwatch(&provider, remote.pid(), watcher));
+  assert!(RemoteWatchHook::handle_unwatch(&mut provider, remote.pid(), watcher));
   let watchers = provider.remote_watchers_for_test(remote.pid()).expect("entry");
   assert!(watchers.is_empty());
 }

@@ -112,7 +112,7 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   actor_ref_providers: ToolboxMutex<HashMap<TypeId, ArcShared<dyn Any + Send + Sync + 'static>, RandomState>, TB>,
   actor_ref_provider_callers_by_scheme:
     ToolboxMutex<HashMap<ActorPathScheme, ActorRefProviderCaller<TB>, RandomState>, TB>,
-  remote_watch_hook: ToolboxMutex<Option<ArcShared<dyn RemoteWatchHook<TB>>>, TB>,
+  remote_watch_hook: ToolboxMutex<Option<Box<dyn RemoteWatchHook<TB>>>, TB>,
   dispatchers: ArcShared<DispatchersGeneric<TB>>,
   mailboxes: ArcShared<MailboxesGeneric<TB>>,
   path_identity: ToolboxMutex<PathIdentity, TB>,
@@ -603,7 +603,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     }
   }
 
-  pub(crate) fn register_remote_watch_hook(&self, hook: ArcShared<dyn RemoteWatchHook<TB>>) {
+  pub(crate) fn register_remote_watch_hook(&self, hook: Box<dyn RemoteWatchHook<TB>>) {
     let mut guard = self.remote_watch_hook.lock();
     *guard = Some(hook);
   }
@@ -624,16 +624,14 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     guard.get(&scheme).map(|caller| caller(path))
   }
 
-  fn remote_watch_hook(&self) -> Option<ArcShared<dyn RemoteWatchHook<TB>>> {
-    self.remote_watch_hook.lock().clone()
-  }
-
   fn forward_remote_watch(&self, target: Pid, watcher: Pid) -> bool {
-    self.remote_watch_hook().is_some_and(|hook| hook.handle_watch(target, watcher))
+    let mut guard = self.remote_watch_hook.lock();
+    guard.as_mut().is_some_and(|hook| hook.handle_watch(target, watcher))
   }
 
   fn forward_remote_unwatch(&self, target: Pid, watcher: Pid) -> bool {
-    self.remote_watch_hook().is_some_and(|hook| hook.handle_unwatch(target, watcher))
+    let mut guard = self.remote_watch_hook.lock();
+    guard.as_mut().is_some_and(|hook| hook.handle_unwatch(target, watcher))
   }
 
   /// Registers a child under the specified parent pid.

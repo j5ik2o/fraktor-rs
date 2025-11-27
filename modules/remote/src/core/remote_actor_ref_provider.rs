@@ -178,7 +178,7 @@ impl<TB: RuntimeToolbox + 'static> RemoteActorRefProviderGeneric<TB> {
 }
 
 impl<TB: RuntimeToolbox + 'static> RemoteWatchHook<TB> for RemoteActorRefProviderGeneric<TB> {
-  fn handle_watch(&self, target: Pid, watcher: Pid) -> bool {
+  fn handle_watch(&mut self, target: Pid, watcher: Pid) -> bool {
     if let Some((parts, should_send)) = self.track_watch(target, watcher) {
       if should_send {
         self.dispatch_remote_watch(RemoteWatcherCommand::Watch { target: parts, watcher });
@@ -189,7 +189,7 @@ impl<TB: RuntimeToolbox + 'static> RemoteWatchHook<TB> for RemoteActorRefProvide
     }
   }
 
-  fn handle_unwatch(&self, target: Pid, watcher: Pid) -> bool {
+  fn handle_unwatch(&mut self, target: Pid, watcher: Pid) -> bool {
     if let Some((parts, removed)) = self.track_unwatch(target, watcher) {
       if removed {
         self.dispatch_remote_watch(RemoteWatcherCommand::Unwatch { target: parts, watcher });

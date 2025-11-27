@@ -3,8 +3,9 @@
 use alloc::format;
 
 use fraktor_actor_rs::core::{
+  actor_prim::actor_path::ActorPathScheme,
   serialization::SerializationExtensionGeneric,
-  system::{ActorRefProviderInstaller, ActorSystemBuildError, ActorSystemGeneric},
+  system::{ActorRefProviderInstaller, ActorSystemBuildError, ActorSystemGeneric, RemoteWatchHookShared},
 };
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
@@ -52,9 +53,10 @@ impl<TB: RuntimeToolbox + 'static> ActorRefProviderInstaller<TB> for LoopbackAct
     let authority_manager = system.state().remote_authority_manager().clone();
     let provider = LoopbackActorRefProviderGeneric::from_components(system.clone(), writer, control, authority_manager)
       .map_err(|error| ActorSystemBuildError::Configuration(format!("{error}")))?;
-    let provider = ArcShared::new(provider);
-    extended.register_actor_ref_provider(&provider);
-    extended.register_remote_watch_hook(provider.clone());
+    let shared = RemoteWatchHookShared::new(provider, &[ActorPathScheme::FraktorTcp]);
+    let shared_arc = ArcShared::new(shared.clone());
+    extended.register_actor_ref_provider(&shared_arc);
+    extended.register_remote_watch_hook(shared);
 
     // Always register loopback routing for LoopbackActorRefProvider
     let Some(authority) = system.canonical_authority() else {
