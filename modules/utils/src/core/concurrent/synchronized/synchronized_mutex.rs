@@ -46,7 +46,7 @@ where
   ///
   /// Panics when the underlying backend refuses to acquire the lock, typically because blocking is
   /// not permitted in the current context.
-  pub async fn read<R>(&self, f: impl FnOnce(&B::Guard<'_>) -> R) -> R {
+  pub async fn read<R>(&mut self, f: impl FnOnce(&B::Guard<'_>) -> R) -> R {
     match self.backend.lock().await {
       | Ok(guard) => f(&guard),
       | Err(_) => panic!("Synchronized::read requires blocking to be allowed"),
@@ -59,7 +59,7 @@ where
   ///
   /// Panics when the underlying backend refuses to acquire the lock, typically because blocking is
   /// not permitted in the current context.
-  pub async fn write<R>(&self, f: impl FnOnce(&mut B::Guard<'_>) -> R) -> R {
+  pub async fn write<R>(&mut self, f: impl FnOnce(&mut B::Guard<'_>) -> R) -> R {
     match self.backend.lock().await {
       | Ok(mut guard) => f(&mut guard),
       | Err(_) => panic!("Synchronized::write requires blocking to be allowed"),
@@ -72,7 +72,7 @@ where
   ///
   /// Panics when the underlying backend refuses to acquire the lock, typically because blocking is
   /// not permitted in the current context.
-  pub async fn lock(&self) -> GuardHandle<B::Guard<'_>> {
+  pub async fn lock(&mut self) -> GuardHandle<B::Guard<'_>> {
     match self.backend.lock().await {
       | Ok(guard) => GuardHandle::new(guard),
       | Err(_) => panic!("Synchronized::lock requires blocking to be allowed"),

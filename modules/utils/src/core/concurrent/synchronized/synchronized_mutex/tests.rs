@@ -57,7 +57,7 @@ impl<T> SynchronizedMutexBackend<T> for MockBackend<T> {
     Self::new_success(value)
   }
 
-  async fn lock(&self) -> Result<Self::Guard<'_>, SharedError> {
+  async fn lock(&mut self) -> Result<Self::Guard<'_>, SharedError> {
     if self.should_fail.load(Ordering::SeqCst) {
       Err(SharedError::InterruptContext)
     } else {
@@ -137,14 +137,14 @@ fn block_on<F: core::future::Future>(mut future: F) -> F::Output {
 
 #[test]
 fn read_executes_closure_with_guard() {
-  let sync = Synchronized::<MockBackend<i32>, i32>::new(100);
+  let mut sync = Synchronized::<MockBackend<i32>, i32>::new(100);
   let result = block_on(sync.read(|guard| **guard));
   assert_eq!(result, 100);
 }
 
 #[test]
 fn write_executes_closure_with_mutable_guard() {
-  let sync = Synchronized::<MockBackend<i32>, i32>::new(50);
+  let mut sync = Synchronized::<MockBackend<i32>, i32>::new(50);
   block_on(sync.write(|guard| {
     **guard = 200;
   }));
@@ -154,7 +154,7 @@ fn write_executes_closure_with_mutable_guard() {
 
 #[test]
 fn write_modifies_and_read_verifies() {
-  let sync = Synchronized::<MockBackend<i32>, i32>::new(10);
+  let mut sync = Synchronized::<MockBackend<i32>, i32>::new(10);
   block_on(sync.write(|guard| {
     **guard *= 2;
   }));
@@ -165,20 +165,20 @@ fn write_modifies_and_read_verifies() {
 #[test]
 #[should_panic(expected = "Synchronized::read requires blocking to be allowed")]
 fn read_panics_on_lock_failure() {
-  let sync = Synchronized::<MockBackend<i32>, i32>::from_backend(MockBackend::new_failing(100));
+  let mut sync = Synchronized::<MockBackend<i32>, i32>::from_backend(MockBackend::new_failing(100));
   block_on(sync.read(|_| {}));
 }
 
 #[test]
 #[should_panic(expected = "Synchronized::write requires blocking to be allowed")]
 fn write_panics_on_lock_failure() {
-  let sync = Synchronized::<MockBackend<i32>, i32>::from_backend(MockBackend::new_failing(100));
+  let mut sync = Synchronized::<MockBackend<i32>, i32>::from_backend(MockBackend::new_failing(100));
   block_on(sync.write(|_| {}));
 }
 
 #[test]
 fn lock_returns_guard_handle() {
-  let sync = Synchronized::<MockBackend<i32>, i32>::new(30);
+  let mut sync = Synchronized::<MockBackend<i32>, i32>::new(30);
   let guard = block_on(sync.lock());
   assert_eq!(**guard, 30);
 }

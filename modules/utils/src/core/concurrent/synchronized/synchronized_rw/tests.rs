@@ -57,11 +57,11 @@ impl<T> SynchronizedRwBackend<T> for MockBackend<T> {
     Self { value: Arc::new(value) }
   }
 
-  async fn read(&self) -> Self::ReadGuard<'_> {
+  async fn read(&mut self) -> Self::ReadGuard<'_> {
     MockReadGuard { value: Arc::clone(&self.value) }
   }
 
-  async fn write(&self) -> Self::WriteGuard<'_> {
+  async fn write(&mut self) -> Self::WriteGuard<'_> {
     MockWriteGuard { value: Arc::clone(&self.value) }
   }
 }
@@ -137,14 +137,14 @@ fn block_on<F: core::future::Future>(mut future: F) -> F::Output {
 
 #[test]
 fn read_executes_closure() {
-  let sync = SynchronizedRw::<MockBackend<i32>, i32>::new(100);
+  let mut sync = SynchronizedRw::<MockBackend<i32>, i32>::new(100);
   let result = block_on(sync.read(|guard| **guard));
   assert_eq!(result, 100);
 }
 
 #[test]
 fn write_executes_closure() {
-  let sync = SynchronizedRw::<MockBackend<i32>, i32>::new(50);
+  let mut sync = SynchronizedRw::<MockBackend<i32>, i32>::new(50);
   block_on(sync.write(|guard| {
     **guard = 300;
   }));
@@ -154,14 +154,14 @@ fn write_executes_closure() {
 
 #[test]
 fn read_guard_returns_handle() {
-  let sync = SynchronizedRw::<MockBackend<i32>, i32>::new(15);
+  let mut sync = SynchronizedRw::<MockBackend<i32>, i32>::new(15);
   let guard = block_on(sync.read_guard());
   assert_eq!(**guard, 15);
 }
 
 #[test]
 fn write_guard_returns_handle() {
-  let sync = SynchronizedRw::<MockBackend<i32>, i32>::new(20);
+  let mut sync = SynchronizedRw::<MockBackend<i32>, i32>::new(20);
   let mut guard = block_on(sync.write_guard());
   **guard = 60;
   drop(guard);

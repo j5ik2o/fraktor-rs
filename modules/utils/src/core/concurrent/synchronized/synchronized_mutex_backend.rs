@@ -19,5 +19,5 @@ pub trait SynchronizedMutexBackend<T: ?Sized> {
     T: Sized;
 
   /// Locks the mutex and obtains a guard.
-  async fn lock(&self) -> Result<Self::Guard<'_>, SharedError>;
+  async fn lock(&mut self) -> Result<Self::Guard<'_>, SharedError>;
 }
