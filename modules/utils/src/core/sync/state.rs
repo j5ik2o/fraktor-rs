@@ -3,68 +3,60 @@ use core::ops::{Deref, DerefMut};
 #[cfg(test)]
 mod tests;
 
-/// Trait abstracting an internal mutable cell for storing actor state.
+/// Trait abstracting a state holder that expects exclusive access from callers.
 ///
-/// This trait is intentionally designed to be lightweight, allowing runtimes
-/// to provide implementations using `Rc<RefCell<T>>`, `Arc<Mutex<T>>`, `Arc<RwLock<T>>`, etc.,
-/// while enabling state to be referenced and updated through a unified API.
+/// This trait no longer relies on interior mutability. Callers must guarantee
+/// exclusive access (e.g., by holding an external lock) before invoking
+/// mutating methods. Implementations can therefore use plain mutable references
+/// internally without embedding synchronization primitives.
 ///
 /// # Design Philosophy
 ///
 /// - **Abstraction**: Hides implementation details, enabling the same code to work across different
 ///   runtime environments
-/// - **Flexibility**: Allows choosing appropriate implementation for the environment (e.g.,
-///   `Rc<RefCell<T>>` for single-threaded, `Arc<Mutex<T>>` for multi-threaded)
+/// - **Flexibility**: Lets callers combine the state holder with external synchronization that
+///   suits the environment (e.g., single-threaded tests, system-level mutexes)
 /// - **Type Safety**: Leverages Generic Associated Types (GAT) to guarantee type safety at compile
 ///   time
 ///
 /// # Example Implementation
 ///
 /// ```rust
-/// use std::{
-///   cell::{Ref, RefCell, RefMut},
-///   rc::Rc,
-/// };
 /// # use core::ops::{Deref, DerefMut};
 /// # pub trait StateCell<T>: Clone {
 /// #   type Ref<'a>: Deref<Target = T> where Self: 'a, T: 'a;
 /// #   type RefMut<'a>: DerefMut<Target = T> where Self: 'a, T: 'a;
 /// #   fn new(value: T) -> Self where Self: Sized;
-/// #   fn borrow(&self) -> Self::Ref<'_>;
-/// #   fn borrow_mut(&self) -> Self::RefMut<'_>;
+/// #   fn borrow(&mut self) -> Self::Ref<'_>;
+/// #   fn borrow_mut(&mut self) -> Self::RefMut<'_>;
 /// # }
 ///
-/// // Implementation for single-threaded environments
-/// struct RcState<T>(Rc<RefCell<T>>);
+/// // Minimal implementation that stores the value directly.
+/// #[derive(Clone)]
+/// struct InlineState<T: Clone>(T);
 ///
-/// impl<T> Clone for RcState<T> {
-///   fn clone(&self) -> Self {
-///     Self(self.0.clone())
-///   }
-/// }
-///
-/// impl<T> StateCell<T> for RcState<T> {
+/// impl<T: Clone> StateCell<T> for InlineState<T> {
 ///   type Ref<'a>
-///     = Ref<'a, T>
+///     = &'a T
 ///   where
 ///     Self: 'a,
 ///     T: 'a;
 ///   type RefMut<'a>
-///     = RefMut<'a, T>
+///     = &'a mut T
 ///   where
 ///     Self: 'a,
 ///     T: 'a;
 ///
 ///   fn new(value: T) -> Self {
-///     Self(Rc::new(RefCell::new(value)))
+///     Self(value)
 ///   }
 ///
-///   fn borrow(&self) -> Self::Ref<'_> {
-///     self.0.borrow()
+///   fn borrow(&mut self) -> Self::Ref<'_> {
+///     &self.0
 ///   }
 ///
-///   fn borrow_mut(&self) -> Self::RefMut<'_> {
-///     self.0.borrow_mut()
+///   fn borrow_mut(&mut self) -> Self::RefMut<'_> {
+///     &mut self.0
 ///   }
 /// }
 /// ```
@@ -116,7 +108,7 @@ pub trait StateCell<T>: Clone {
   ///
   /// Depending on the implementation, may panic if a mutable borrow already exists
   /// (e.g., `RefCell`-based implementations).
-  fn borrow(&self) -> Self::Ref<'_>;
+  fn borrow(&mut self) -> Self::Ref<'_>;
 
   /// Borrows the state mutably.
   ///
@@ -131,7 +123,7 @@ pub trait StateCell<T>: Clone {
   ///
   /// Depending on the implementation, may panic if any borrow already exists
   /// (e.g., `RefCell`-based implementations).
-  fn borrow_mut(&self) -> Self::RefMut<'_>;
+  fn borrow_mut(&mut self) -> Self::RefMut<'_>;
 
   /// Executes a closure with an immutable reference to the state.
   ///
@@ -147,7 +139,7 @@ pub trait StateCell<T>: Clone {
   /// # Returns
   ///
   /// Result of executing the closure
-  fn with_ref<R>(&self, f: impl FnOnce(&T) -> R) -> R {
+  fn with_ref<R>(&mut self, f: impl FnOnce(&T) -> R) -> R {
     let guard = self.borrow();
     f(&*guard)
   }
@@ -165,7 +157,7 @@ pub trait StateCell<T>: Clone {
   /// # Returns
   ///
   /// Result of executing the closure
-  fn with_ref_mut<R>(&self, f: impl FnOnce(&mut T) -> R) -> R {
+  fn with_ref_mut<R>(&mut self, f: impl FnOnce(&mut T) -> R) -> R {
     let mut guard = self.borrow_mut();
     f(&mut *guard)
   }
