@@ -113,7 +113,8 @@ fn main() {
   use std::{process, thread};
 
   let props = Props::from_fn(GuardianActor::new);
-  let bootstrap = ActorSystem::new(&props, no_std_tick_driver_support::hardware_tick_driver_config()).expect("system");
+  let (tick_driver, _pulse_handle) = no_std_tick_driver_support::hardware_tick_driver_config();
+  let bootstrap = ActorSystem::new(&props, tick_driver).expect("system");
   bootstrap.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
 
   // スケジューラが動作する時間を与える

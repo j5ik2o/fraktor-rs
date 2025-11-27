@@ -56,7 +56,7 @@ fn main() {
   use std::thread;
 
   let props = TypedProps::from_behavior_factory(fetch_behavior);
-  let tick_driver = no_std_tick_driver_support::hardware_tick_driver_config();
+  let (tick_driver, _pulse_handle) = no_std_tick_driver_support::hardware_tick_driver_config();
   let system = TypedActorSystem::new(&props, tick_driver).expect("system");
   system.user_guardian_ref().tell(Command::Start(String::from("/behavior-start"))).expect("start");
 

@@ -35,7 +35,7 @@ mod tests;
 pub use auto_driver_metadata::AutoDriverMetadata;
 pub use auto_profile_kind::AutoProfileKind;
 pub use bootstrap::TickDriverBootstrap;
-pub use hardware_driver::{HardwareTickDriver, TickPulseSourceShared};
+pub use hardware_driver::HardwareTickDriver;
 pub use hardware_kind::HardwareKind;
 #[cfg(any(test, feature = "test-support"))]
 pub use manual_test_driver::ManualTestDriver;

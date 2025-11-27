@@ -73,7 +73,7 @@ fn main() {
 
   // Create typed actor system
   let props = TypedProps::from_behavior_factory(worker_behavior);
-  let tick_driver = std_tick_driver_support::hardware_tick_driver_config();
+  let (tick_driver, _pulse_handle) = std_tick_driver_support::hardware_tick_driver_config();
   let system = TypedActorSystem::new(&props, tick_driver).expect("Failed to create system");
 
   // Subscribe to unhandled message events

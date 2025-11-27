@@ -68,7 +68,7 @@ impl Actor for GuardianActor {
 #[cfg(not(target_os = "none"))]
 fn main() {
   let props = Props::from_fn(|| GuardianActor);
-  let tick_driver = no_std_tick_driver_support::hardware_tick_driver_config();
+  let (tick_driver, _pulse_handle) = no_std_tick_driver_support::hardware_tick_driver_config();
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");

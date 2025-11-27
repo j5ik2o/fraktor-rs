@@ -100,7 +100,7 @@ fn main() {
   let config = ActorSystemConfig::default().with_system_name("fraktor-inspector").with_remoting(remoting);
 
   let props = Props::from_fn(|| InspectorGuardian);
-  let tick_driver = no_std_tick_driver_support::hardware_tick_driver_config();
+  let (tick_driver, _pulse_handle) = no_std_tick_driver_support::hardware_tick_driver_config();
   let system = ActorSystem::new_with_config(&props, &config, tick_driver).expect("actor system");
   let termination = system.when_terminated();
 

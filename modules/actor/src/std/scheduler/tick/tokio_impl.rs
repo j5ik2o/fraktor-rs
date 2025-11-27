@@ -89,7 +89,10 @@ impl TickDriver<StdToolbox> for TokioIntervalDriver {
     self.resolution
   }
 
-  fn start(&self, feed: TickFeedHandle<StdToolbox>) -> Result<TickDriverHandleGeneric<StdToolbox>, TickDriverError> {
+  fn start(
+    &mut self,
+    feed: TickFeedHandle<StdToolbox>,
+  ) -> Result<TickDriverHandleGeneric<StdToolbox>, TickDriverError> {
     let mut ticker = interval(self.resolution);
     ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
     let handle_clone = self.handle.clone();

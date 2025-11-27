@@ -98,7 +98,8 @@ fn main() {
   use std::process;
 
   let props = Props::from_fn(GuardianActor::new);
-  let bootstrap = ActorSystem::new(&props, no_std_tick_driver_support::hardware_tick_driver_config()).expect("system");
+  let (tick_driver, _pulse_handle) = no_std_tick_driver_support::hardware_tick_driver_config();
+  let bootstrap = ActorSystem::new(&props, tick_driver).expect("system");
   bootstrap.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
   thread::sleep(StdDuration::from_millis(400));
   process::exit(0);

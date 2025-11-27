@@ -95,7 +95,7 @@ fn main() {
   use std::{process, thread};
 
   let props = TypedProps::new(GuardianActor::new);
-  let tick_driver = no_std_tick_driver_support::hardware_tick_driver_config();
+  let (tick_driver, _pulse_handle) = no_std_tick_driver_support::hardware_tick_driver_config();
   let system = TypedActorSystem::new(&props, tick_driver).expect("system");
   system.user_guardian_ref().tell(GuardianCommand::Start).expect("start");
 

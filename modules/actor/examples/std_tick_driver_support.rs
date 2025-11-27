@@ -17,7 +17,6 @@ use std::{
 use fraktor_actor_rs::core::scheduler::{
   HardwareKind, HardwareTickDriver, Scheduler, SchedulerTickExecutor, TickDriver, TickDriverConfig, TickDriverError,
   TickDriverRuntime, TickExecutorSignal, TickFeed, TickFeedHandle, TickPulseHandler, TickPulseSource,
-  TickPulseSourceShared,
 };
 use fraktor_utils_rs::{
   core::{runtime_toolbox::ToolboxMutex, sync::ArcShared},
@@ -29,14 +28,14 @@ const PULSE_PERIOD_NANOS: u64 = 10_000_000; // 10ms
 /// Shared handler state for demo pulse source control.
 type DemoPulseHandlerState = Arc<Mutex<Option<HandlerSlot>>>;
 
-/// Creates a demo pulse source with its control handle.
-pub fn create_demo_pulse() -> (TickPulseSourceShared<StdToolbox>, DemoPulseHandle) {
+/// Creates a demo pulse handle that can control the pulse source.
+///
+/// The returned handle can be used to trigger pulses. The actual pulse source
+/// should be created inside the tick driver configuration closure.
+pub fn create_demo_pulse_handle() -> DemoPulseHandle {
   let handler = Arc::new(Mutex::new(None));
   let enabled = Arc::new(AtomicBool::new(false));
-  let handle = DemoPulseHandle { handler: handler.clone(), enabled: enabled.clone(), period: PULSE_PERIOD_NANOS };
-  let source = DemoPulse::new(PULSE_PERIOD_NANOS, handler, enabled);
-  let shared = HardwareTickDriver::<StdToolbox>::wrap_pulse(Box::new(source));
-  (shared, handle)
+  DemoPulseHandle { handler, enabled, period: PULSE_PERIOD_NANOS }
 }
 
 /// Creates a hardware-based tick driver configuration for demos.
@@ -44,18 +43,16 @@ pub fn create_demo_pulse() -> (TickPulseSourceShared<StdToolbox>, DemoPulseHandl
 /// This is a convenience helper that wraps the builder configuration pattern,
 /// combining a hardware tick driver with a scheduler executor.
 /// Creates the demo pulse source internally.
-pub fn hardware_tick_driver_config() -> TickDriverConfig<StdToolbox> {
-  let (pulse, handle) = create_demo_pulse();
-  hardware_tick_driver_config_with_pulse(pulse, handle)
+pub fn hardware_tick_driver_config() -> (TickDriverConfig<StdToolbox>, DemoPulseHandle) {
+  let handle = create_demo_pulse_handle();
+  let config = hardware_tick_driver_config_with_handle(handle.clone());
+  (config, handle)
 }
 
-/// Creates a hardware-based tick driver configuration with a custom pulse source.
+/// Creates a hardware-based tick driver configuration with a custom pulse handle.
 ///
 /// Use this when you need more control over the pulse source.
-pub fn hardware_tick_driver_config_with_pulse(
-  pulse: TickPulseSourceShared<StdToolbox>,
-  handle: DemoPulseHandle,
-) -> TickDriverConfig<StdToolbox> {
+pub fn hardware_tick_driver_config_with_handle(handle: DemoPulseHandle) -> TickDriverConfig<StdToolbox> {
   TickDriverConfig::new(move |ctx| {
     // Get resolution and capacity from SchedulerContext
     let scheduler: ArcShared<ToolboxMutex<Scheduler<StdToolbox>, StdToolbox>> = ctx.scheduler();
@@ -65,8 +62,11 @@ pub fn hardware_tick_driver_config_with_pulse(
       (cfg.resolution(), cfg.profile().tick_buffer_quota())
     };
 
+    // Create pulse source with shared handler state
+    let source = DemoPulse::new(PULSE_PERIOD_NANOS, handle.handler.clone(), handle.enabled.clone());
+
     // Create and start tick driver
-    let driver = HardwareTickDriver::new(pulse.clone(), HardwareKind::Custom);
+    let mut driver = HardwareTickDriver::new(Box::new(source), HardwareKind::Custom);
     let signal = TickExecutorSignal::new();
     let feed = TickFeed::new(resolution, capacity, signal);
     let driver_handle = driver.start(feed.clone())?;

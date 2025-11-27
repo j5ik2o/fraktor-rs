@@ -147,7 +147,7 @@ fn main() {
   });
 
   let props = Props::from_fn(NullActor::new).with_name("serialization-json-demo");
-  let tick_driver = std_tick_driver_support::hardware_tick_driver_config();
+  let (tick_driver, _pulse_handle) = std_tick_driver_support::hardware_tick_driver_config();
   let config = ActorSystemConfig::default().with_tick_driver(tick_driver).with_extension_installers(installers);
 
   let system = ActorSystem::new_with_config(&props, &config).expect("actor system");

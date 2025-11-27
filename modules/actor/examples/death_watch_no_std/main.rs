@@ -115,7 +115,7 @@ fn main() {
   use std::{thread, time::Duration};
 
   let props = Props::from_fn(GuardianActor::new);
-  let tick_driver = no_std_tick_driver_support::hardware_tick_driver_config();
+  let (tick_driver, _pulse_handle) = no_std_tick_driver_support::hardware_tick_driver_config();
   let system = ActorSystem::new(&props, tick_driver).expect("system");
   let termination = system.when_terminated();
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
