@@ -39,7 +39,7 @@ where
   }
 
   /// Attempts to offer a message into the queue.
-  pub(crate) fn offer(&self, message: T) -> Result<OfferOutcome, QueueError<T>> {
+  pub(crate) fn offer(&mut self, message: T) -> Result<OfferOutcome, QueueError<T>> {
     let result = self.queue.offer(message);
 
     if result.is_ok() {
@@ -51,7 +51,7 @@ where
   }
 
   /// Attempts to poll a message from the queue.
-  pub(crate) fn poll(&self) -> Result<T, QueueError<T>> {
+  pub(crate) fn poll(&mut self) -> Result<T, QueueError<T>> {
     let result = self.queue.poll();
 
     if result.is_ok() {

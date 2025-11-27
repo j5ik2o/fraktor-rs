@@ -8,13 +8,16 @@ use alloc::{
 
 use ahash::RandomState;
 use fraktor_actor_rs::core::{logging::LogLevel, system::ActorSystemGeneric};
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::{
+  runtime_toolbox::RuntimeToolbox,
+  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+};
 use hashbrown::HashMap;
 use spin::Mutex;
 
 use crate::core::{
-  EndpointWriterError, EndpointWriterGeneric, endpoint_reader::EndpointReaderGeneric,
-  outbound_message::OutboundMessage, remote_node_id::RemoteNodeId, remoting_envelope::RemotingEnvelope,
+  EndpointWriterError, EndpointWriterShared, endpoint_reader::EndpointReaderGeneric, outbound_message::OutboundMessage,
+  remote_node_id::RemoteNodeId, remoting_envelope::RemotingEnvelope,
 };
 
 #[allow(dead_code)]
@@ -84,7 +87,7 @@ pub(crate) fn register_endpoint<TB>(
 
 pub(crate) fn try_deliver<TB>(
   remote: &RemoteNodeId,
-  writer: &EndpointWriterGeneric<TB>,
+  writer: &EndpointWriterShared<TB>,
   message: OutboundMessage<TB>,
 ) -> Result<LoopbackDeliveryOutcome<TB>, EndpointWriterError>
 where
@@ -94,7 +97,7 @@ where
   let Some(deliverer) = deliverer else {
     return Ok(LoopbackDeliveryOutcome::Pending(Box::new(message)));
   };
-  let envelope = writer.serialize_for_loopback(message)?;
+  let envelope = writer.lock().serialize_for_loopback(message)?;
   deliverer.deliver(envelope);
   Ok(LoopbackDeliveryOutcome::Delivered)
 }

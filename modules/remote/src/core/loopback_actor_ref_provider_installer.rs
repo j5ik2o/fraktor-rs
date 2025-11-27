@@ -7,7 +7,10 @@ use fraktor_actor_rs::core::{
   serialization::SerializationExtensionGeneric,
   system::{ActorRefProviderInstaller, ActorSystemBuildError, ActorSystemGeneric, RemoteWatchHookShared},
 };
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::{
+  runtime_toolbox::{RuntimeToolbox, SyncMutexFamily},
+  sync::ArcShared,
+};
 
 use crate::core::{
   EndpointWriterGeneric, RemotingExtensionGeneric, endpoint_reader::EndpointReaderGeneric,
@@ -41,7 +44,10 @@ impl<TB: RuntimeToolbox + 'static> ActorRefProviderInstaller<TB> for LoopbackAct
       return Err(ActorSystemBuildError::Configuration("serialization extension not installed".into()));
     };
 
-    let writer = ArcShared::new(EndpointWriterGeneric::new(system.clone(), serialization.clone()));
+    let writer = ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(EndpointWriterGeneric::new(
+      system.clone(),
+      serialization.clone(),
+    )));
     let reader = ArcShared::new(EndpointReaderGeneric::new(system.clone(), serialization.clone()));
 
     let Some(extension) = extended.extension_by_type::<RemotingExtensionGeneric<TB>>() else {

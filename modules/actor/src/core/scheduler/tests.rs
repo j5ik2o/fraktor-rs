@@ -73,17 +73,17 @@ struct RecordingTask {
 }
 
 impl RecordingTask {
-  fn succeed(log: ArcShared<NoStdMutex<Vec<&'static str>>>, label: &'static str) -> ArcShared<Self> {
-    ArcShared::new(Self { log, label, should_err: false })
+  fn succeed(log: ArcShared<NoStdMutex<Vec<&'static str>>>, label: &'static str) -> Self {
+    Self { log, label, should_err: false }
   }
 
-  fn fail(log: ArcShared<NoStdMutex<Vec<&'static str>>>, label: &'static str) -> ArcShared<Self> {
-    ArcShared::new(Self { log, label, should_err: true })
+  fn fail(log: ArcShared<NoStdMutex<Vec<&'static str>>>, label: &'static str) -> Self {
+    Self { log, label, should_err: true }
   }
 }
 
 impl TaskRunOnClose for RecordingTask {
-  fn run(&self) -> Result<(), TaskRunError> {
+  fn run(&mut self) -> Result<(), TaskRunError> {
     self.log.lock().push(self.label);
     if self.should_err { Err(TaskRunError::new("fail")) } else { Ok(()) }
   }

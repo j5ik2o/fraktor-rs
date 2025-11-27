@@ -1,21 +1,18 @@
+use alloc::boxed::Box;
 use core::cmp::Ordering;
 
-use fraktor_utils_rs::core::{
-  collections::{
-    PriorityMessage,
-    queue::{SyncPriorityQueue, backend::BinaryHeapPriorityBackend},
-  },
-  sync::ArcShared,
+use fraktor_utils_rs::core::collections::{
+  PriorityMessage,
+  queue::{SyncPriorityQueue, backend::BinaryHeapPriorityBackend},
 };
 
 use crate::core::scheduler::{TaskRunHandle, TaskRunOnClose, TaskRunPriority};
 
-#[derive(Clone)]
 pub(crate) struct TaskRunEntry {
   pub(crate) priority: TaskRunPriority,
   pub(crate) sequence: u64,
   pub(crate) handle:   TaskRunHandle,
-  pub(crate) task:     ArcShared<dyn TaskRunOnClose>,
+  pub(crate) task:     Box<dyn TaskRunOnClose>,
 }
 
 impl core::fmt::Debug for TaskRunEntry {
@@ -34,7 +31,7 @@ impl TaskRunEntry {
     priority: TaskRunPriority,
     sequence: u64,
     handle: TaskRunHandle,
-    task: ArcShared<dyn TaskRunOnClose>,
+    task: Box<dyn TaskRunOnClose>,
   ) -> Self {
     Self { priority, sequence, handle, task }
   }

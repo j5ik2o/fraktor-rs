@@ -192,7 +192,7 @@ async fn remote_provider_enqueues_message() -> Result<()> {
   remote.tell(AnyMessageGeneric::new("loopback".to_string())).expect("send succeeds");
 
   let writer = provider.inner().lock().writer_for_test();
-  let envelope = writer.try_next().expect("poll writer").expect("envelope");
+  let envelope = writer.lock().try_next().expect("poll writer").expect("envelope");
   assert_eq!(envelope.recipient().to_relative_string(), "/user/user/svc");
   assert_eq!(envelope.remote_node().host(), "127.0.0.1");
   assert_eq!(envelope.remote_node().port(), Some(25520));

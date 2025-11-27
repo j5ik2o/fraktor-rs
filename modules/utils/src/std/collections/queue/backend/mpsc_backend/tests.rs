@@ -130,7 +130,7 @@ fn works_with_sync_queue_shared() {
   let sync_queue = SyncQueue::<i32, MpscKey, MpscBackend<i32>>::new(backend);
   let mutex = SpinSyncMutex::new(sync_queue);
   let shared = ArcShared::new(mutex);
-  let queue = SyncQueueShared::<i32, MpscKey, MpscBackend<i32>>::new(shared);
+  let mut queue = SyncQueueShared::<i32, MpscKey, MpscBackend<i32>>::new(shared);
 
   // 基本的な操作ができることを確認
   queue.offer(1).unwrap();
@@ -147,7 +147,7 @@ fn works_with_std_sync_mpsc_queue_shared() {
   let sync_queue = SyncQueue::new(backend);
   let mutex = StdSyncMutex::new(sync_queue);
   let shared = ArcShared::new(mutex);
-  let queue = StdSyncMpscQueueShared::<i32, MpscBackend<i32>>::new(shared);
+  let mut queue = StdSyncMpscQueueShared::<i32, MpscBackend<i32>>::new(shared);
 
   // 基本的な操作ができることを確認
   queue.offer(10).unwrap();

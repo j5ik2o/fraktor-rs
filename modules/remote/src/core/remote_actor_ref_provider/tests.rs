@@ -18,7 +18,10 @@ use fraktor_actor_rs::core::{
   },
   system::{ActorSystemConfig, ActorSystemGeneric, RemoteWatchHook},
 };
-use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::{
+  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily},
+  sync::ArcShared,
+};
 
 use crate::core::{
   endpoint_writer::EndpointWriter, remote_actor_ref_provider::RemoteActorRefProvider,
@@ -69,7 +72,10 @@ fn serialization_extension(
 
 fn provider(system: &ActorSystemGeneric<NoStdToolbox>) -> RemoteActorRefProvider {
   let serialization = serialization_extension(system);
-  let writer = ArcShared::new(EndpointWriter::new(system.clone(), serialization));
+  let writer = ArcShared::new(<NoStdToolbox as RuntimeToolbox>::MutexFamily::create(EndpointWriter::new(
+    system.clone(),
+    serialization,
+  )));
   let control = RemotingControlHandle::new(system.clone(), RemotingExtensionConfig::default());
   control.start().expect("control start");
   let authority_manager = system.state().remote_authority_manager().clone();
@@ -94,7 +100,7 @@ fn actor_ref_sends_messages_via_endpoint_writer() {
 
   remote.tell(AnyMessageGeneric::new("hello".to_string())).expect("send succeeds");
 
-  let envelope = writer.try_next().expect("poll writer").expect("envelope exists");
+  let envelope = writer.lock().try_next().expect("poll writer").expect("envelope exists");
   assert_eq!(envelope.recipient().to_relative_string(), "/user/user/svc");
   assert_eq!(envelope.remote_node().system(), "remote-app");
   assert_eq!(envelope.remote_node().host(), "127.0.0.1");

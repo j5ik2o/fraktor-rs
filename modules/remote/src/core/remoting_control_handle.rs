@@ -17,7 +17,7 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::core::{
-  EndpointWriterGeneric,
+  EndpointWriterShared,
   endpoint_reader::EndpointReaderGeneric,
   event_publisher::EventPublisherGeneric,
   flight_recorder::{RemotingFlightRecorder, RemotingFlightRecorderSnapshot},
@@ -111,7 +111,7 @@ where
   /// Registers endpoint IO components required for transport bridging.
   pub(crate) fn register_endpoint_io(
     &self,
-    writer: ArcShared<EndpointWriterGeneric<TB>>,
+    writer: EndpointWriterShared<TB>,
     reader: ArcShared<EndpointReaderGeneric<TB>>,
   ) {
     *self.inner.writer.lock() = Some(writer);
@@ -218,7 +218,7 @@ where
   snapshots:       ToolboxMutex<Vec<RemoteAuthoritySnapshot>, TB>,
   recorder:        RemotingFlightRecorder,
   correlation_seq: AtomicU64,
-  writer:          ToolboxMutex<Option<ArcShared<EndpointWriterGeneric<TB>>>, TB>,
+  writer:          ToolboxMutex<Option<EndpointWriterShared<TB>>, TB>,
   reader:          ToolboxMutex<Option<ArcShared<EndpointReaderGeneric<TB>>>, TB>,
   transport_ref:   ToolboxMutex<Option<RemoteTransportShared<TB>>, TB>,
   #[cfg(feature = "tokio-transport")]

@@ -15,7 +15,7 @@ fn make_stack<T>(capacity: usize, policy: StackOverflowPolicy) -> SyncStackShare
 
 #[test]
 fn push_pop_maintains_lifo() {
-  let stack = make_stack(2, StackOverflowPolicy::Block);
+  let mut stack = make_stack(2, StackOverflowPolicy::Block);
 
   assert_eq!(stack.push(1).unwrap(), PushOutcome::Pushed);
   assert_eq!(stack.push(2).unwrap(), PushOutcome::Pushed);
@@ -26,7 +26,7 @@ fn push_pop_maintains_lifo() {
 
 #[test]
 fn block_policy_reports_full() {
-  let stack = make_stack(1, StackOverflowPolicy::Block);
+  let mut stack = make_stack(1, StackOverflowPolicy::Block);
 
   assert_eq!(stack.push(10).unwrap(), PushOutcome::Pushed);
   let err = stack.push(20).unwrap_err();
@@ -35,7 +35,7 @@ fn block_policy_reports_full() {
 
 #[test]
 fn grow_policy_increases_capacity() {
-  let stack = make_stack(1, StackOverflowPolicy::Grow);
+  let mut stack = make_stack(1, StackOverflowPolicy::Grow);
 
   assert_eq!(stack.push(1).unwrap(), PushOutcome::Pushed);
   let outcome = stack.push(2).unwrap();
@@ -51,7 +51,7 @@ fn grow_policy_increases_capacity() {
 
 #[test]
 fn peek_returns_top_element() {
-  let stack = make_stack(3, StackOverflowPolicy::Block);
+  let mut stack = make_stack(3, StackOverflowPolicy::Block);
 
   assert_eq!(stack.peek().unwrap(), None);
   stack.push(5).unwrap();

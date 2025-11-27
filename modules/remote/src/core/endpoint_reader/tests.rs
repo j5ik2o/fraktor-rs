@@ -110,7 +110,7 @@ fn decode_round_trip_returns_inbound_envelope() {
   let reader = EndpointReader::new(system.clone(), serialization.clone());
   let recipient = recipient_path("remote-app", GuardianKind::User, &["user", "svc"]);
   let outbound = outbound_message(&recipient);
-  let writer = crate::core::EndpointWriter::new(system.clone(), serialization.clone());
+  let mut writer = crate::core::EndpointWriter::new(system.clone(), serialization.clone());
   writer.enqueue(outbound).expect("enqueue");
   let remoting_envelope = writer.try_next().expect("serialize").expect("envelope");
 

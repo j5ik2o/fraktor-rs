@@ -7,8 +7,8 @@ use fraktor_utils_rs::core::{
     QueueError, SyncQueue,
     backend::{OfferOutcome, OverflowPolicy, VecDequeBackend},
   },
-  runtime_toolbox::{RuntimeToolbox, SyncMutexFamily},
-  sync::ArcShared,
+  runtime_toolbox::{RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
+  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 
 use super::{
@@ -25,7 +25,7 @@ const DEFAULT_QUEUE_CAPACITY: usize = 16;
 pub struct QueueHandles<T, TB: RuntimeToolbox>
 where
   T: Send + 'static, {
-  pub(crate) state: ArcShared<QueueState<T, TB>>,
+  pub(crate) state: ArcShared<ToolboxMutex<QueueState<T, TB>, TB>>,
 }
 
 impl<T, TB> QueueHandles<T, TB>
@@ -46,16 +46,19 @@ where
     let sync_queue = SyncQueue::new(backend);
     let mutex = <TB::MutexFamily as SyncMutexFamily>::create(sync_queue);
     let queue = UserQueueShared::<T, TB>::new(ArcShared::new(mutex));
-    let state = ArcShared::new(QueueState::new(queue));
+    let state_mutex = <TB::MutexFamily as SyncMutexFamily>::create(QueueState::new(queue));
+    let state = ArcShared::new(state_mutex);
     Self { state }
   }
 
   pub(crate) fn offer(&self, message: T) -> Result<OfferOutcome, QueueError<T>> {
-    self.state.offer(message)
+    let mut state = self.state.lock();
+    state.offer(message)
   }
 
   pub(crate) fn poll(&self) -> Result<T, QueueError<T>> {
-    self.state.poll()
+    let mut state = self.state.lock();
+    state.poll()
   }
 
   pub(crate) fn offer_blocking(&self, message: T) -> QueueOfferFuture<T, TB> {
@@ -70,7 +73,7 @@ where
   /// Returns the current queue size without acquiring a lock.
   #[must_use]
   pub(crate) fn len(&self) -> usize {
-    self.state.len()
+    self.state.lock().len()
   }
 }
 

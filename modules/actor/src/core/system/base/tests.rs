@@ -447,7 +447,7 @@ fn actor_system_terminate_runs_scheduler_tasks() {
     let scheduler = context.scheduler();
     let mut guard = scheduler.lock();
     let task = RecordingShutdownTask { log: log.clone() };
-    guard.register_on_close(ArcShared::new(task), crate::core::scheduler::TaskRunPriority::User).expect("register");
+    guard.register_on_close(task, crate::core::scheduler::TaskRunPriority::User).expect("register");
   }
 
   system.terminate().expect("terminate");
@@ -460,7 +460,7 @@ struct RecordingShutdownTask {
 }
 
 impl crate::core::scheduler::TaskRunOnClose for RecordingShutdownTask {
-  fn run(&self) -> Result<(), crate::core::scheduler::TaskRunError> {
+  fn run(&mut self) -> Result<(), crate::core::scheduler::TaskRunError> {
     self.log.lock().push("shutdown");
     Ok(())
   }

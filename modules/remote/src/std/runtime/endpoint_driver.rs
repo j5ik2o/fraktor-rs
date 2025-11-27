@@ -11,7 +11,7 @@ use core::time::Duration;
 
 use fraktor_actor_rs::core::{event_stream::CorrelationId, logging::LogLevel, system::ActorSystemGeneric};
 use fraktor_utils_rs::core::{
-  runtime_toolbox::RuntimeToolbox,
+  runtime_toolbox::{RuntimeToolbox, ToolboxMutex},
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 use tokio::{sync::Mutex as TokioMutex, task::JoinHandle, time::sleep};
@@ -30,7 +30,7 @@ pub struct EndpointDriverConfig<TB: RuntimeToolbox + 'static> {
   /// Actor system providing scheduling and state access.
   pub system:          ActorSystemGeneric<TB>,
   /// Shared endpoint writer feeding outbound frames.
-  pub writer:          ArcShared<EndpointWriterGeneric<TB>>,
+  pub writer:          ArcShared<ToolboxMutex<EndpointWriterGeneric<TB>, TB>>,
   /// Shared endpoint reader decoding inbound frames.
   pub reader:          ArcShared<EndpointReaderGeneric<TB>>,
   /// Active transport implementation wrapped in a mutex for shared mutable access.
@@ -60,7 +60,7 @@ impl EndpointDriverHandle {
 pub(crate) struct EndpointDriver<TB: RuntimeToolbox + 'static> {
   system:          ActorSystemGeneric<TB>,
   event_publisher: EventPublisherGeneric<TB>,
-  writer:          ArcShared<EndpointWriterGeneric<TB>>,
+  writer:          ArcShared<ToolboxMutex<EndpointWriterGeneric<TB>, TB>>,
   reader:          ArcShared<EndpointReaderGeneric<TB>>,
   transport:       RemoteTransportShared<TB>,
   host:            String,
@@ -103,7 +103,11 @@ impl<TB: RuntimeToolbox + 'static> EndpointDriver<TB> {
 
   async fn drive_outbound(self: Arc<Self>) {
     loop {
-      match self.writer.try_next() {
+      let next = {
+        let mut writer = self.writer.lock();
+        writer.try_next()
+      };
+      match next {
         | Ok(Some(envelope)) => {
           if let Err(error) = self.handle_outbound_envelope(envelope).await {
             self.emit_error(format!("failed to process outbound envelope: {error:?}"));

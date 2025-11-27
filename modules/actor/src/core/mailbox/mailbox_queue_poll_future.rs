@@ -8,8 +8,8 @@ use core::{
 
 use fraktor_utils_rs::core::{
   collections::{queue::QueueError, wait::WaitShared},
-  runtime_toolbox::RuntimeToolbox,
-  sync::ArcShared,
+  runtime_toolbox::{RuntimeToolbox, ToolboxMutex},
+  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 
 use super::mailbox_queue_state::QueueState;
@@ -18,7 +18,7 @@ use super::mailbox_queue_state::QueueState;
 pub struct QueuePollFuture<T, TB: RuntimeToolbox>
 where
   T: Send + 'static, {
-  state:  ArcShared<QueueState<T, TB>>,
+  state:  ArcShared<ToolboxMutex<QueueState<T, TB>, TB>>,
   waiter: Option<WaitShared<QueueError<T>>>,
 }
 
@@ -27,13 +27,13 @@ where
   T: Send + 'static,
 {
   #[allow(dead_code)]
-  pub(crate) const fn new(state: ArcShared<QueueState<T, TB>>) -> Self {
+  pub(crate) const fn new(state: ArcShared<ToolboxMutex<QueueState<T, TB>, TB>>) -> Self {
     Self { state, waiter: None }
   }
 
   fn ensure_waiter(&mut self) -> Result<&mut WaitShared<QueueError<T>>, QueueError<T>> {
     if self.waiter.is_none() {
-      let waiter = self.state.register_consumer_waiter().map_err(|_| QueueError::Disconnected)?;
+      let waiter = self.state.lock().register_consumer_waiter().map_err(|_| QueueError::Disconnected)?;
       self.waiter = Some(waiter);
     }
     // SAFETY: waiter is guaranteed to be Some after the above check.
@@ -58,7 +58,11 @@ where
   fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
     let this = self.get_mut();
     loop {
-      match this.state.poll() {
+      let poll_result = {
+        let mut state = this.state.lock();
+        state.poll()
+      };
+      match poll_result {
         | Ok(item) => {
           this.waiter.take();
           return Poll::Ready(Ok(item));
