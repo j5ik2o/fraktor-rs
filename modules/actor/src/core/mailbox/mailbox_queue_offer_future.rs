@@ -37,7 +37,7 @@ where
     Self { state, message: Some(message), waiter: None, timeout: None }
   }
 
-  pub(crate) fn with_timeout(mut self, duration: Duration, provider: &dyn DelayProvider) -> Self {
+  pub(crate) fn with_timeout(mut self, duration: Duration, provider: &mut dyn DelayProvider) -> Self {
     self.timeout = Some(provider.delay(duration));
     self
   }

@@ -635,7 +635,7 @@ fn fixed_delay_backlog_marks_handle_cancelled() {
 
 #[test]
 fn scheduler_backed_delay_provider_completes_future() {
-  let (shared, provider) = shared_scheduler_state();
+  let (shared, mut provider) = shared_scheduler_state();
   let mut future = provider.delay(Duration::from_millis(1));
   assert!(matches!(poll_delay_future(&mut future), Poll::Pending));
 
@@ -649,7 +649,7 @@ fn scheduler_backed_delay_provider_completes_future() {
 
 #[test]
 fn scheduler_backed_delay_provider_cancels_on_drop() {
-  let (shared, provider) = shared_scheduler_state();
+  let (shared, mut provider) = shared_scheduler_state();
   let future = provider.delay(Duration::from_millis(5));
   drop(future);
 
