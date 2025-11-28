@@ -45,7 +45,7 @@ fn actor_ref_subscriber_forwards_events_to_actor() {
   let sender = ArcShared::new(CollectorSender::new());
   let actor_ref = ActorRefGeneric::new(Pid::new(1, 0), sender.clone());
 
-  let subscriber = ActorRefEventStreamSubscriber::new(actor_ref.clone());
+  let mut subscriber = ActorRefEventStreamSubscriber::new(actor_ref.clone());
 
   let event = EventStreamEvent::Log(LogEvent::new(
     LogLevel::Info,
@@ -66,7 +66,7 @@ fn actor_ref_subscriber_handles_multiple_events() {
   let sender = ArcShared::new(CollectorSender::new());
   let actor_ref = ActorRefGeneric::new(Pid::new(1, 0), sender.clone());
 
-  let subscriber = ActorRefEventStreamSubscriber::new(actor_ref.clone());
+  let mut subscriber = ActorRefEventStreamSubscriber::new(actor_ref.clone());
 
   for i in 0..10 {
     let event = EventStreamEvent::Log(LogEvent::new(

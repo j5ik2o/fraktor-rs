@@ -12,7 +12,10 @@ use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 use tracing::{Level, event};
 
 use crate::{
-  core::logging::{LogEvent, LogLevel, LoggerSubscriberGeneric, LoggerWriter},
+  core::{
+    event_stream::EventStreamSubscriber as CoreEventStreamSubscriber,
+    logging::{LogEvent, LogLevel, LoggerSubscriberGeneric, LoggerWriter},
+  },
   std::event_stream::{EventStreamEvent, EventStreamSubscriber},
 };
 
@@ -40,8 +43,8 @@ impl TracingLoggerSubscriber {
 }
 
 impl EventStreamSubscriber for TracingLoggerSubscriber {
-  fn on_event(&self, event: &EventStreamEvent) {
-    self.inner.on_event(event);
+  fn on_event(&mut self, event: &EventStreamEvent) {
+    CoreEventStreamSubscriber::on_event(&mut self.inner, event);
   }
 }
 

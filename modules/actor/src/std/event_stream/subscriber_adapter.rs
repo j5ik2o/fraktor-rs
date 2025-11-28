@@ -1,23 +1,24 @@
-use fraktor_utils_rs::{core::sync::ArcShared, std::runtime_toolbox::StdToolbox};
+use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
-use super::{EventStreamEvent, EventStreamSubscriber};
+use super::{EventStreamEvent, EventStreamSubscriberShared};
 use crate::core::event_stream::EventStreamSubscriber as CoreEventStreamSubscriber;
 
 /// Adapter bridging standard [`EventStreamSubscriber`] to the core runtime trait.
 pub struct EventStreamSubscriberAdapter {
-  inner: ArcShared<dyn EventStreamSubscriber>,
+  inner: EventStreamSubscriberShared,
 }
 
 impl EventStreamSubscriberAdapter {
   /// Creates a new adapter wrapping the given subscriber.
   #[must_use]
-  pub const fn new(inner: ArcShared<dyn EventStreamSubscriber>) -> Self {
+  pub const fn new(inner: EventStreamSubscriberShared) -> Self {
     Self { inner }
   }
 }
 
 impl CoreEventStreamSubscriber<StdToolbox> for EventStreamSubscriberAdapter {
-  fn on_event(&self, event: &EventStreamEvent) {
-    self.inner.on_event(event);
+  fn on_event(&mut self, event: &EventStreamEvent) {
+    let mut guard = self.inner.lock();
+    guard.on_event(event);
   }
 }

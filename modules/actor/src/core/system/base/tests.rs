@@ -22,7 +22,7 @@ use crate::core::{
   },
   dispatcher::{DispatchError, DispatchExecutor, DispatchSharedGeneric, DispatcherConfig},
   error::ActorError,
-  event_stream::{EventStreamEvent, EventStreamSubscriber},
+  event_stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   lifecycle::LifecycleStage,
   messaging::SystemMessage,
   props::{MailboxConfig, MailboxRequirement, Props},
@@ -104,7 +104,7 @@ impl LifecycleEventWatcher {
 }
 
 impl EventStreamSubscriber<NoStdToolbox> for LifecycleEventWatcher {
-  fn on_event(&self, event: &EventStreamEvent<NoStdToolbox>) {
+  fn on_event(&mut self, event: &EventStreamEvent<NoStdToolbox>) {
     if let EventStreamEvent::Lifecycle(lifecycle) = event {
       self.stages.lock().push(lifecycle.stage());
     }
@@ -505,8 +505,7 @@ fn actor_system_installs_scheduler_context() {
 fn lifecycle_events_cover_restart_transitions() {
   let system = ActorSystem::new_empty();
   let stages: ArcShared<NoStdMutex<Vec<LifecycleStage>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let subscriber_impl = ArcShared::new(LifecycleEventWatcher::new(stages.clone()));
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl;
+  let subscriber = subscriber_handle(LifecycleEventWatcher::new(stages.clone()));
   let _subscription = system.subscribe_event_stream(&subscriber);
 
   let props = Props::from_fn(|| TestActor);

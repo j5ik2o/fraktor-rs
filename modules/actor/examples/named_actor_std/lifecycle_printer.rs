@@ -9,7 +9,7 @@ impl Default for LifecyclePrinter {
 }
 
 impl EventStreamSubscriber for LifecyclePrinter {
-  fn on_event(&self, event: &EventStreamEvent) {
+  fn on_event(&mut self, event: &EventStreamEvent) {
     if let EventStreamEvent::Lifecycle(lifecycle) = event {
       println!("[lifecycle] name={} pid={} stage={:?}", lifecycle.name(), lifecycle.pid(), lifecycle.stage());
     }

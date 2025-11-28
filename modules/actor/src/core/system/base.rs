@@ -27,7 +27,8 @@ use crate::core::{
   dead_letter::{DeadLetterEntryGeneric, DeadLetterReason},
   error::SendError,
   event_stream::{
-    EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric, TickDriverSnapshot,
+    EventStreamEvent, EventStreamGeneric, EventStreamSubscriberShared, EventStreamSubscriptionGeneric,
+    TickDriverSnapshot,
   },
   futures::ActorFuture,
   logging::LogLevel,
@@ -334,7 +335,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   #[must_use]
   pub fn subscribe_event_stream(
     &self,
-    subscriber: &ArcShared<dyn EventStreamSubscriber<TB>>,
+    subscriber: &EventStreamSubscriberShared<TB>,
   ) -> EventStreamSubscriptionGeneric<TB> {
     EventStreamGeneric::subscribe_arc(&self.state.event_stream(), subscriber)
   }

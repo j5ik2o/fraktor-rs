@@ -9,9 +9,11 @@ mod std_tick_driver_support;
 use std::{thread, time::Duration};
 
 use fraktor_actor_rs::std::{
-  event_stream::EventStreamSubscriber, messaging::AnyMessage, props::Props, system::ActorSystem,
+  event_stream::{EventStreamSubscriberShared, subscriber_handle},
+  messaging::AnyMessage,
+  props::Props,
+  system::ActorSystem,
 };
-use fraktor_utils_rs::core::sync::ArcShared;
 use guardian::GuardianActor;
 use lifecycle_printer::LifecyclePrinter;
 use start_message::Start;
@@ -21,7 +23,7 @@ fn main() {
   let (tick_driver, _pulse_handle) = std_tick_driver_support::hardware_tick_driver_config();
   let system = ActorSystem::new(&props, tick_driver).expect("ユーザーガーディアンの起動に失敗しました");
 
-  let lifecycle_subscriber: ArcShared<dyn EventStreamSubscriber> = ArcShared::new(LifecyclePrinter);
+  let lifecycle_subscriber: EventStreamSubscriberShared = subscriber_handle(LifecyclePrinter);
   let _subscription = system.subscribe_event_stream(&lifecycle_subscriber);
 
   let termination = system.when_terminated();

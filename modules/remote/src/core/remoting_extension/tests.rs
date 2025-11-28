@@ -11,6 +11,7 @@ use fraktor_actor_rs::core::{
     EventStreamSubscriber,
     EventStreamSubscriptionGeneric,
     BackpressureSignal,
+    subscriber_handle,
   },
   extension::ExtensionInstallers,
   messaging::AnyMessageViewGeneric,
@@ -56,7 +57,7 @@ impl EventRecorder {
 }
 
 impl EventStreamSubscriber<NoStdToolbox> for EventRecorder {
-  fn on_event(&self, event: &EventStreamEvent<NoStdToolbox>) {
+  fn on_event(&mut self, event: &EventStreamEvent<NoStdToolbox>) {
     self.events.lock().push(event.clone());
   }
 }
@@ -80,7 +81,7 @@ fn subscribe_events(
   system: &ActorSystemGeneric<NoStdToolbox>,
 ) -> (EventRecorder, EventStreamSubscriptionGeneric<NoStdToolbox>) {
   let recorder = EventRecorder::new();
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = ArcShared::new(recorder.clone());
+  let subscriber = subscriber_handle(recorder.clone());
   let subscription = system.subscribe_event_stream(&subscriber);
   (recorder, subscription)
 }

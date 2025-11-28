@@ -50,7 +50,7 @@
 #![deny(unreachable_pub)]
 #![allow(unknown_lints)]
 #![deny(cfg_std_forbid)]
-#![cfg_attr(not(test), no_std)]
+#![cfg_attr(all(not(test), not(feature = "std")), no_std)]
 
 //! Cluster runtime components compatible with Proto.Actor/Pekko semantics.
 

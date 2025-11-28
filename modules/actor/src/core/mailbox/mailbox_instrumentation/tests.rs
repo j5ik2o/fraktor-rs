@@ -5,7 +5,7 @@ use fraktor_utils_rs::core::{runtime_toolbox::NoStdMutex, sync::ArcShared};
 use super::MailboxInstrumentation;
 use crate::core::{
   actor_prim::Pid,
-  event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber},
+  event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, subscriber_handle},
   mailbox::BackpressurePublisherGeneric,
   system::SystemState,
 };
@@ -52,7 +52,7 @@ fn mailbox_instrumentation_emits_pressure_event() {
   let instrumentation = MailboxInstrumentation::new(system_state.clone(), pid, Some(4), None, None);
 
   let events = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let subscriber: ArcShared<dyn EventStreamSubscriber> = ArcShared::new(TestSubscriber::new(events.clone()));
+  let subscriber = subscriber_handle(TestSubscriber::new(events.clone()));
   let _subscription = EventStreamGeneric::subscribe_arc(&system_state.event_stream(), &subscriber);
 
   instrumentation.publish(3, 0);
@@ -90,7 +90,7 @@ fn mailbox_pressure_event_captures_threshold() {
   let instrumentation = MailboxInstrumentation::new(system_state.clone(), pid, Some(4), None, Some(3));
 
   let events = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let subscriber: ArcShared<dyn EventStreamSubscriber> = ArcShared::new(TestSubscriber::new(events.clone()));
+  let subscriber = subscriber_handle(TestSubscriber::new(events.clone()));
   let _subscription = EventStreamGeneric::subscribe_arc(&system_state.event_stream(), &subscriber);
 
   instrumentation.publish(3, 0);
@@ -117,7 +117,7 @@ impl TestSubscriber {
 }
 
 impl EventStreamSubscriber for TestSubscriber {
-  fn on_event(&self, event: &EventStreamEvent) {
+  fn on_event(&mut self, event: &EventStreamEvent) {
     self.events.lock().push(event.clone());
   }
 }

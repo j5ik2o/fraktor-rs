@@ -11,7 +11,7 @@ use fraktor_utils_rs::core::{
 use crate::core::{
   actor_prim::{Actor, ActorContextGeneric},
   error::ActorError,
-  event_stream::{EventStreamEvent, EventStreamSubscriber},
+  event_stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   logging::LogLevel,
   mailbox::{Mailbox, MailboxOverflowStrategy, MailboxPolicy, ScheduleHints},
   messaging::{AnyMessage, AnyMessageViewGeneric, SystemMessage},
@@ -35,18 +35,8 @@ struct RecordingSubscriber {
   events: ArcShared<NoStdMutex<Vec<EventStreamEvent<NoStdToolbox>>>>,
 }
 
-impl RecordingSubscriber {
-  fn new() -> Self {
-    Self { events: ArcShared::new(NoStdMutex::new(Vec::new())) }
-  }
-
-  fn events(&self) -> Vec<EventStreamEvent<NoStdToolbox>> {
-    self.events.lock().clone()
-  }
-}
-
 impl EventStreamSubscriber<NoStdToolbox> for RecordingSubscriber {
-  fn on_event(&self, event: &EventStreamEvent<NoStdToolbox>) {
+  fn on_event(&mut self, event: &EventStreamEvent<NoStdToolbox>) {
     self.events.lock().push(event.clone());
   }
 }
@@ -61,14 +51,14 @@ fn mailbox_metrics_and_warnings_are_emitted() {
   let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 
-  let subscriber_impl = ArcShared::new(RecordingSubscriber::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
+  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let subscriber = subscriber_handle(RecordingSubscriber { events: events.clone() });
   let _subscription = system.subscribe_event_stream(&subscriber);
 
   system.user_guardian_ref().tell(AnyMessage::new("first")).expect("send");
 
   wait_until(|| {
-    let events = subscriber_impl.events();
+    let events = events.lock().clone();
     let has_metrics = events.iter().any(|event| matches!(event, EventStreamEvent::Mailbox(_)));
     let has_warning =
       events.iter().any(|event| matches!(event, EventStreamEvent::Log(log) if log.level() == LogLevel::Warn));

@@ -1,7 +1,9 @@
 use alloc::{boxed::Box, string::String, vec, vec::Vec};
 
 use fraktor_actor_rs::core::{
-  event_stream::{EventStreamEvent, EventStreamSubscriber},
+  event_stream::{
+    EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric, subscriber_handle,
+  },
   messaging::AnyMessageGeneric,
   system::ActorSystemGeneric,
 };
@@ -208,7 +210,7 @@ impl RecordingClusterEvents {
 }
 
 impl EventStreamSubscriber<NoStdToolbox> for RecordingClusterEvents {
-  fn on_event(&self, event: &EventStreamEvent<NoStdToolbox>) {
+  fn on_event(&mut self, event: &EventStreamEvent<NoStdToolbox>) {
     if let EventStreamEvent::Extension { name, payload } = event {
       if name == "cluster" {
         if let Some(cluster_event) = payload.payload().downcast_ref::<ClusterEvent>() {
@@ -217,6 +219,15 @@ impl EventStreamSubscriber<NoStdToolbox> for RecordingClusterEvents {
       }
     }
   }
+}
+
+fn subscribe_recorder(
+  event_stream: &ArcShared<EventStreamGeneric<NoStdToolbox>>,
+) -> (RecordingClusterEvents, EventStreamSubscriptionGeneric<NoStdToolbox>) {
+  let recorder = RecordingClusterEvents::new();
+  let subscriber = subscriber_handle(recorder.clone());
+  let subscription = EventStreamGeneric::subscribe_arc(event_stream, &subscriber);
+  (recorder, subscription)
 }
 
 /// Phase1 統合テスト: StaticClusterProvider の静的トポロジが EventStream に publish され、
@@ -228,10 +239,7 @@ fn phase1_integration_static_topology_publishes_to_event_stream_and_applies_to_c
   let event_stream = system.event_stream();
 
   // 2. EventStream に subscriber を登録してイベントを記録
-  let recorder = ArcShared::new(RecordingClusterEvents::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = recorder.clone();
-  let _subscription =
-    fraktor_actor_rs::core::event_stream::EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let (recorder, _subscription) = subscribe_recorder(&event_stream);
 
   // 3. StaticClusterProvider を静的トポロジで構成
   let block_list: ArcShared<dyn BlockListProvider> =
@@ -281,10 +289,7 @@ fn phase1_integration_topology_updated_includes_blocked_members() {
   let event_stream = system.event_stream();
 
   // 2. EventStream に subscriber を登録
-  let recorder = ArcShared::new(RecordingClusterEvents::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = recorder.clone();
-  let _subscription =
-    fraktor_actor_rs::core::event_stream::EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let (recorder, _subscription) = subscribe_recorder(&event_stream);
 
   // 3. BlockList に複数のブロックされたノードを設定
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(RecordingBlockList::new(vec![
@@ -339,10 +344,7 @@ fn phase1_integration_duplicate_hash_topology_is_suppressed() {
   let event_stream = system.event_stream();
 
   // 2. EventStream に subscriber を登録
-  let recorder = ArcShared::new(RecordingClusterEvents::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = recorder.clone();
-  let _subscription =
-    fraktor_actor_rs::core::event_stream::EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let (recorder, _subscription) = subscribe_recorder(&event_stream);
 
   // 3. ClusterExtension をセットアップ
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(StubBlockList);
@@ -429,10 +431,7 @@ fn phase2_integration_join_leave_events_produce_topology_updated() {
   let event_stream = system.event_stream();
 
   // 2. EventStream に subscriber を登録
-  let recorder = ArcShared::new(RecordingClusterEvents::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = recorder.clone();
-  let _subscription =
-    fraktor_actor_rs::core::event_stream::EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let (recorder, _subscription) = subscribe_recorder(&event_stream);
 
   // 3. ClusterExtension をセットアップ
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(StubBlockList);
@@ -490,10 +489,7 @@ fn phase2_integration_blocklist_reflected_in_topology_events() {
   let event_stream = system.event_stream();
 
   // 2. EventStream に subscriber を登録
-  let recorder = ArcShared::new(RecordingClusterEvents::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = recorder.clone();
-  let _subscription =
-    fraktor_actor_rs::core::event_stream::EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let (recorder, _subscription) = subscribe_recorder(&event_stream);
 
   // 3. BlockList に複数のノードを設定
   let block_list: ArcShared<dyn BlockListProvider> =
@@ -593,10 +589,7 @@ fn phase2_integration_shutdown_resets_metrics_and_emits_event() {
   let event_stream = system.event_stream();
 
   // 2. EventStream に subscriber を登録
-  let recorder = ArcShared::new(RecordingClusterEvents::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = recorder.clone();
-  let _subscription =
-    fraktor_actor_rs::core::event_stream::EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let (recorder, _subscription) = subscribe_recorder(&event_stream);
 
   // 3. ClusterExtension をセットアップ
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(StubBlockList);

@@ -4,7 +4,8 @@
 //! that is only available in std environments.
 
 use fraktor_actor_rs::core::event_stream::{
-  EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric, RemotingLifecycleEvent,
+  EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, EventStreamSubscriberShared,
+  EventStreamSubscriptionGeneric, RemotingLifecycleEvent, subscriber_handle,
 };
 use fraktor_utils_rs::{
   core::{
@@ -32,7 +33,7 @@ pub fn subscribe_remoting_events(provider: &SharedLocalClusterProvider) {
   }
 
   impl EventStreamSubscriber<StdToolbox> for RemotingEventHandler {
-    fn on_event(&self, event: &EventStreamEvent<StdToolbox>) {
+    fn on_event(&mut self, event: &EventStreamEvent<StdToolbox>) {
       if let EventStreamEvent::Extension { name, payload } = event {
         if name == "remoting" {
           // 起動前は無視
@@ -58,7 +59,7 @@ pub fn subscribe_remoting_events(provider: &SharedLocalClusterProvider) {
   // event_stream への参照を取得
   let event_stream = provider.lock().event_stream().clone();
   let handler = RemotingEventHandler { provider: provider.clone() };
-  let subscriber: ArcShared<dyn EventStreamSubscriber<StdToolbox>> = ArcShared::new(handler);
+  let subscriber: EventStreamSubscriberShared<StdToolbox> = subscriber_handle(handler);
   let _subscription: EventStreamSubscriptionGeneric<StdToolbox> =
     EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
   // Note: subscription は provider のライフタイムに依存するので、

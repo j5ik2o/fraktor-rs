@@ -40,7 +40,7 @@ impl<TB: RuntimeToolbox + 'static> ActorRefEventStreamSubscriber<TB> {
 }
 
 impl<TB: RuntimeToolbox + 'static> EventStreamSubscriber<TB> for ActorRefEventStreamSubscriber<TB> {
-  fn on_event(&self, event: &EventStreamEvent<TB>) {
+  fn on_event(&mut self, event: &EventStreamEvent<TB>) {
     // Non-blocking message send to actor's mailbox
     let message = AnyMessageGeneric::new(event.clone());
     let _ = self.actor_ref.tell(message);

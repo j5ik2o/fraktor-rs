@@ -3,23 +3,20 @@
 #[cfg(test)]
 mod tests;
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 
-use crate::core::event_stream::EventStreamSubscriber;
+use crate::core::event_stream::EventStreamSubscriberShared;
 
 /// Maps subscription identifiers to subscriber instances.
 pub struct EventStreamSubscriberEntryGeneric<TB: RuntimeToolbox> {
   id:         u64,
-  subscriber: ArcShared<dyn EventStreamSubscriber<TB>>,
+  subscriber: EventStreamSubscriberShared<TB>,
 }
 
 impl<TB: RuntimeToolbox> EventStreamSubscriberEntryGeneric<TB> {
   /// Creates a new subscriber entry.
   #[must_use]
-  pub const fn new(id: u64, subscriber: ArcShared<dyn EventStreamSubscriber<TB>>) -> Self {
+  pub const fn new(id: u64, subscriber: EventStreamSubscriberShared<TB>) -> Self {
     Self { id, subscriber }
   }
 
@@ -31,7 +28,7 @@ impl<TB: RuntimeToolbox> EventStreamSubscriberEntryGeneric<TB> {
 
   /// Returns the subscriber handle.
   #[must_use]
-  pub fn subscriber(&self) -> ArcShared<dyn EventStreamSubscriber<TB>> {
+  pub fn subscriber(&self) -> EventStreamSubscriberShared<TB> {
     self.subscriber.clone()
   }
 }

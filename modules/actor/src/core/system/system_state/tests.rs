@@ -14,7 +14,7 @@ use crate::core::{
     actor_ref::ActorRefGeneric,
   },
   error::ActorError,
-  event_stream::{EventStream, EventStreamEvent, EventStreamSubscriber},
+  event_stream::{EventStream, EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   messaging::{AnyMessage, AnyMessageViewGeneric},
   props::Props,
   system::{ActorSystemConfig, AuthorityState, RegisterExtraTopLevelError, RemotingConfig},
@@ -345,29 +345,29 @@ fn system_state_temp_actor_round_trip() {
 fn system_state_remote_authority_events() {
   let state = SystemState::new();
   let stream = state.event_stream();
-  let subscriber_impl = ArcShared::new(RemoteEventRecorder::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
+  let events_shared = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let subscriber = subscriber_handle(RemoteEventRecorder::new(events_shared.clone()));
   let _subscription = EventStream::subscribe_arc(&stream, &subscriber);
 
   state.remote_authority_set_quarantine("node:2552", Some(Duration::from_secs(0)));
   state.poll_remote_authorities();
 
-  let events = subscriber_impl.events();
-  assert!(events.iter().any(|event| matches!(event, EventStreamEvent::RemoteAuthority(remote)
+  let events_snapshot = events_shared.lock().clone();
+  assert!(events_snapshot.iter().any(|event| matches!(event, EventStreamEvent::RemoteAuthority(remote)
     if remote.authority() == "node:2552" && matches!(remote.state(), AuthorityState::Quarantine { .. }))));
-  assert!(events.iter().any(|event| matches!(event, EventStreamEvent::RemoteAuthority(remote)
+  assert!(events_snapshot.iter().any(|event| matches!(event, EventStreamEvent::RemoteAuthority(remote)
     if remote.authority() == "node:2552" && matches!(remote.state(), AuthorityState::Unresolved))));
 
   // InvalidAssociation による隔離通知
   state.remote_authority_handle_invalid_association("node:2552", Some(Duration::from_secs(5)));
-  let events = subscriber_impl.events();
-  assert!(events.iter().any(|event| matches!(event, EventStreamEvent::RemoteAuthority(remote)
+  let events_snapshot = events_shared.lock().clone();
+  assert!(events_snapshot.iter().any(|event| matches!(event, EventStreamEvent::RemoteAuthority(remote)
     if remote.authority() == "node:2552" && matches!(remote.state(), AuthorityState::Quarantine { .. }))));
 
   // 手動解除と接続通知
   state.remote_authority_manual_override_to_connected("node:2552");
-  let events = subscriber_impl.events();
-  assert!(events.iter().any(|event| matches!(event, EventStreamEvent::RemoteAuthority(remote)
+  let events_snapshot = events_shared.lock().clone();
+  assert!(events_snapshot.iter().any(|event| matches!(event, EventStreamEvent::RemoteAuthority(remote)
     if remote.authority() == "node:2552" && matches!(remote.state(), AuthorityState::Connected))));
 }
 
@@ -400,23 +400,19 @@ struct RemoteEventRecorder {
 }
 
 impl RemoteEventRecorder {
-  fn new() -> Self {
-    Self { events: ArcShared::new(NoStdMutex::new(Vec::new())) }
-  }
-
-  fn events(&self) -> Vec<EventStreamEvent<NoStdToolbox>> {
-    self.events.lock().clone()
+  fn new(events: ArcShared<NoStdMutex<Vec<EventStreamEvent<NoStdToolbox>>>>) -> Self {
+    Self { events }
   }
 }
 
 impl Default for RemoteEventRecorder {
   fn default() -> Self {
-    Self::new()
+    Self::new(ArcShared::new(NoStdMutex::new(Vec::new())))
   }
 }
 
 impl EventStreamSubscriber<NoStdToolbox> for RemoteEventRecorder {
-  fn on_event(&self, event: &EventStreamEvent<NoStdToolbox>) {
+  fn on_event(&mut self, event: &EventStreamEvent<NoStdToolbox>) {
     self.events.lock().push(event.clone());
   }
 }

@@ -39,7 +39,7 @@ impl<TB: RuntimeToolbox + 'static> LoggerSubscriberGeneric<TB> {
 }
 
 impl<TB: RuntimeToolbox + 'static> EventStreamSubscriber<TB> for LoggerSubscriberGeneric<TB> {
-  fn on_event(&self, event: &EventStreamEvent<TB>) {
+  fn on_event(&mut self, event: &EventStreamEvent<TB>) {
     if let EventStreamEvent::Log(log) = event
       && log.level() >= self.level
     {

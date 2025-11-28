@@ -20,7 +20,7 @@ use crate::core::{
     DispatchError, DispatchExecutor, DispatchExecutorRunner, DispatchSharedGeneric, DispatcherGeneric, ScheduleAdapter,
     TickExecutorGeneric,
   },
-  event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber},
+  event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, subscriber_handle},
   logging::LogLevel,
   mailbox::{
     EnqueueOutcome, MailboxGeneric, MailboxInstrumentation, MailboxOverflowStrategy, MailboxPolicy, ScheduleHints,
@@ -75,8 +75,7 @@ fn register_for_execution_schedules_once_until_idle() {
 fn rejected_execution_is_retried_and_logged_on_failure() {
   let (mailbox, system) = system_instrumented_mailbox();
   let events = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let subscriber_impl = ArcShared::new(EventRecorder::new(events.clone()));
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
+  let subscriber = subscriber_handle(EventRecorder::new(events.clone()));
   let _subscription = EventStreamGeneric::subscribe_arc(&system.event_stream(), &subscriber);
 
   let (flaky, runner) = flaky_executor_with_runner(vec![DispatchError::RejectedExecution; 3]);
@@ -144,8 +143,7 @@ fn schedule_adapter_receives_pending_signal() {
 fn schedule_adapter_notified_on_rejection() {
   let (mailbox, system) = system_instrumented_mailbox();
   let events = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let subscriber_impl = ArcShared::new(EventRecorder::new(events.clone()));
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
+  let subscriber = subscriber_handle(EventRecorder::new(events.clone()));
   let _subscription = EventStreamGeneric::subscribe_arc(&system.event_stream(), &subscriber);
 
   let (flaky, runner) = flaky_executor_with_runner(vec![DispatchError::RejectedExecution; 3]);
@@ -166,8 +164,7 @@ fn schedule_adapter_notified_on_rejection() {
 fn dispatcher_dump_event_published() {
   let (mailbox, system) = system_instrumented_mailbox();
   let events = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let subscriber_impl = ArcShared::new(EventRecorder::new(events.clone()));
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
+  let subscriber = subscriber_handle(EventRecorder::new(events.clone()));
   let _subscription = EventStreamGeneric::subscribe_arc(&system.event_stream(), &subscriber);
 
   let (_recording, runner) = recording_executor_with_runner();
@@ -183,8 +180,7 @@ fn dispatcher_dump_event_published() {
 fn telemetry_captures_mailbox_pressure_and_dispatcher_dump() {
   let (mailbox, system) = bounded_mailbox(2);
   let events = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let subscriber_impl = ArcShared::new(EventRecorder::new(events.clone()));
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
+  let subscriber = subscriber_handle(EventRecorder::new(events.clone()));
   let _subscription = EventStreamGeneric::subscribe_arc(&system.event_stream(), &subscriber);
 
   let (_recording, runner) = recording_executor_with_runner();
@@ -390,7 +386,7 @@ impl EventRecorder {
 }
 
 impl EventStreamSubscriber<NoStdToolbox> for EventRecorder {
-  fn on_event(&self, event: &EventStreamEvent<NoStdToolbox>) {
+  fn on_event(&mut self, event: &EventStreamEvent<NoStdToolbox>) {
     self.events.lock().push(event.clone());
   }
 }

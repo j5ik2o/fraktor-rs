@@ -4,7 +4,8 @@ use fraktor_actor_rs::core::{
   actor_prim::{Actor, ActorContextGeneric},
   error::ActorError,
   event_stream::{
-    BackpressureSignal, EventStreamEvent, EventStreamSubscriber, EventStreamSubscriptionGeneric, RemotingLifecycleEvent,
+    BackpressureSignal, EventStreamEvent, EventStreamSubscriber, EventStreamSubscriptionGeneric,
+    RemotingLifecycleEvent, subscriber_handle,
   },
   messaging::AnyMessageViewGeneric,
   props::PropsGeneric,
@@ -48,7 +49,7 @@ impl RecordingSubscriber {
 }
 
 impl EventStreamSubscriber<NoStdToolbox> for RecordingSubscriber {
-  fn on_event(&self, event: &EventStreamEvent<NoStdToolbox>) {
+  fn on_event(&mut self, event: &EventStreamEvent<NoStdToolbox>) {
     self.events.lock().push(event.clone());
   }
 }
@@ -57,8 +58,8 @@ fn subscribe(
   system: &ActorSystemGeneric<NoStdToolbox>,
 ) -> (RecordingSubscriber, EventStreamSubscriptionGeneric<NoStdToolbox>) {
   let recorder = RecordingSubscriber::new();
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = ArcShared::new(recorder.clone());
-  let subscription = system.subscribe_event_stream(&subscriber);
+  let handle = subscriber_handle(recorder.clone());
+  let subscription = system.subscribe_event_stream(&handle);
   (recorder, subscription)
 }
 

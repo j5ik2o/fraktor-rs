@@ -10,7 +10,7 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::core::{
-  event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber},
+  event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, subscriber_handle},
   logging::LogLevel,
   scheduler::{
     ExecutionBatch, HardwareKind, ManualTestDriver, Scheduler, SchedulerCommand, SchedulerConfig, SchedulerContext,
@@ -20,21 +20,17 @@ use crate::core::{
 };
 
 struct RecordingSubscriber {
-  events: SpinSyncMutex<Vec<EventStreamEvent<NoStdToolbox>>>,
+  events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent<NoStdToolbox>>>>,
 }
 
 impl RecordingSubscriber {
-  fn new() -> Self {
-    Self { events: SpinSyncMutex::new(Vec::new()) }
-  }
-
-  fn snapshot(&self) -> Vec<EventStreamEvent<NoStdToolbox>> {
-    self.events.lock().clone()
+  fn new(events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent<NoStdToolbox>>>>) -> Self {
+    Self { events }
   }
 }
 
 impl EventStreamSubscriber<NoStdToolbox> for RecordingSubscriber {
-  fn on_event(&self, event: &EventStreamEvent<NoStdToolbox>) {
+  fn on_event(&mut self, event: &EventStreamEvent<NoStdToolbox>) {
     self.events.lock().push(event.clone());
   }
 }
@@ -321,8 +317,8 @@ fn driver_matrix_marks_manual_entry_as_test_only() {
 #[test]
 fn driver_metadata_records_driver_activation() {
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
-  let subscriber_impl = ArcShared::new(RecordingSubscriber::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
+  let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
   let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
   let ctx = SchedulerContext::with_event_stream(NoStdToolbox::default(), SchedulerConfig::default(), event_stream);
   let (handler, handle) = spawn_test_handler();
@@ -333,7 +329,7 @@ fn driver_metadata_records_driver_activation() {
   let metadata = ctx.driver_metadata().expect("metadata");
   assert_eq!(metadata.driver_id, runtime.driver().id());
 
-  let events = subscriber_impl.snapshot();
+  let events = events.lock().clone();
   assert!(
     events
       .iter()
@@ -364,8 +360,8 @@ fn driver_snapshot_exposed_via_scheduler_context() {
 #[test]
 fn manual_driver_disabled_emits_warning() {
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
-  let subscriber_impl = ArcShared::new(RecordingSubscriber::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
+  let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
   let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
   let ctx = SchedulerContext::with_event_stream(NoStdToolbox::default(), SchedulerConfig::default(), event_stream);
   let config = TickDriverConfig::manual(ManualTestDriver::new());
@@ -373,7 +369,7 @@ fn manual_driver_disabled_emits_warning() {
   let result = TickDriverBootstrap::provision(&config, &ctx);
   assert!(matches!(result, Err(TickDriverError::ManualDriverDisabled)));
 
-  let events = subscriber_impl.snapshot();
+  let events = events.lock().clone();
   assert!(
     events.iter().any(|event| matches!(event, EventStreamEvent::Log(log) if log.level() == LogLevel::Warn)),
     "warning log not observed"

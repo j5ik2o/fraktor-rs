@@ -64,7 +64,7 @@ compile_error!("cluster_extension_no_std example requires --features test-suppor
 
 use fraktor_actor_rs::core::{
   actor_prim::{Actor, ActorContextGeneric},
-  event_stream::{EventStreamEvent, EventStreamSubscriber},
+  event_stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   messaging::{AnyMessage, AnyMessageViewGeneric},
   props::Props,
   scheduler::{ManualTestDriver, TickDriverConfig},
@@ -139,7 +139,7 @@ impl ClusterEventLogger {
 }
 
 impl EventStreamSubscriber<NoStdToolbox> for ClusterEventLogger {
-  fn on_event(&self, event: &EventStreamEvent<NoStdToolbox>) {
+  fn on_event(&mut self, event: &EventStreamEvent<NoStdToolbox>) {
     if let EventStreamEvent::Extension { name, payload } = event {
       if name == "cluster" {
         if let Some(cluster_event) = payload.payload().downcast_ref::<ClusterEvent>() {
@@ -196,8 +196,7 @@ impl ClusterNode {
       ActorSystemGeneric::new_with_config(&grain_props, &system_cfg).expect("system build");
 
     // EventStream のサブスクライバを登録（クラスタイベントを観測）
-    let event_subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> =
-      ArcShared::new(ClusterEventLogger::new(name));
+    let event_subscriber = subscriber_handle(ClusterEventLogger::new(name));
     let _subscription = system.subscribe_event_stream(&event_subscriber);
 
     // 静的トポロジを設定した StaticClusterProvider を作成

@@ -1,6 +1,8 @@
 use alloc::{string::String, vec, vec::Vec};
 
-use fraktor_actor_rs::core::event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber};
+use fraktor_actor_rs::core::event_stream::{
+  EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric, subscriber_handle,
+};
 use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdMutex, NoStdToolbox},
@@ -50,7 +52,7 @@ impl RecordingClusterEvents {
 }
 
 impl EventStreamSubscriber<NoStdToolbox> for RecordingClusterEvents {
-  fn on_event(&self, event: &EventStreamEvent<NoStdToolbox>) {
+  fn on_event(&mut self, event: &EventStreamEvent<NoStdToolbox>) {
     if let EventStreamEvent::Extension { name, payload } = event {
       if name == "cluster" {
         if let Some(cluster_event) = payload.payload().downcast_ref::<ClusterEvent>() {
@@ -61,14 +63,21 @@ impl EventStreamSubscriber<NoStdToolbox> for RecordingClusterEvents {
   }
 }
 
+fn subscribe_recorder(
+  event_stream: &ArcShared<EventStreamGeneric<NoStdToolbox>>,
+) -> (RecordingClusterEvents, EventStreamSubscriptionGeneric<NoStdToolbox>) {
+  let subscriber_impl = RecordingClusterEvents::new();
+  let subscriber = subscriber_handle(subscriber_impl.clone());
+  let subscription = EventStreamGeneric::subscribe_arc(event_stream, &subscriber);
+  (subscriber_impl, subscription)
+}
+
 #[test]
 fn on_member_join_publishes_topology_updated_with_joined() {
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
 
-  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
-  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
   let mut provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
 
@@ -91,9 +100,7 @@ fn on_member_leave_publishes_topology_updated_with_left() {
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
 
-  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
-  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
   let mut provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
 
@@ -120,9 +127,7 @@ fn topology_includes_blocked_members_from_provider() {
   let block_list: ArcShared<dyn BlockListProvider> =
     ArcShared::new(RecordingBlockList::new(vec![String::from("blocked-node")]));
 
-  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
-  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
   let mut provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
 
@@ -153,9 +158,7 @@ fn start_member_with_static_topology_publishes_it() {
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
 
-  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
-  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
   let static_topology = ClusterTopology::new(999, vec![String::from("static-node")], vec![]);
   let mut provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080")
@@ -184,9 +187,7 @@ fn start_client_with_static_topology_publishes_it() {
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
 
-  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
-  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
   let static_topology = ClusterTopology::new(888, vec![], vec![String::from("left-node")]);
   let mut provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "client-a")
@@ -230,9 +231,7 @@ fn version_increments_with_each_topology_change() {
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
 
-  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
-  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
   let mut provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
 
@@ -295,9 +294,7 @@ fn start_member_publishes_startup_event_to_event_stream() {
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
 
-  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
-  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
   let mut provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
 
@@ -317,9 +314,7 @@ fn shutdown_publishes_shutdown_event_to_event_stream() {
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
 
-  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
-  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
   let mut provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
 
@@ -361,9 +356,7 @@ fn gossip_join_event_is_converted_to_topology_updated() {
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
 
-  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
-  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
   let mut provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
   provider.start_member().unwrap();
@@ -386,9 +379,7 @@ fn gossip_leave_event_is_converted_to_topology_updated() {
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
 
-  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
-  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
   let mut provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
   provider.start_member().unwrap();
@@ -411,9 +402,7 @@ fn multiple_gossip_events_produce_sequential_topology_versions() {
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
 
-  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
-  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
   let mut provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
   provider.start_member().unwrap();
@@ -446,9 +435,7 @@ fn handle_connected_triggers_member_join() {
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
 
-  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
-  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
   let mut provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
   provider.start_member().unwrap();
@@ -470,9 +457,7 @@ fn handle_connected_ignores_own_authority() {
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
 
-  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
-  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
   let mut provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
   provider.start_member().unwrap();
@@ -496,9 +481,7 @@ fn handle_quarantined_triggers_member_leave() {
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
 
-  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
-  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
   let mut provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
   provider.start_member().unwrap();
@@ -523,9 +506,7 @@ fn handle_quarantined_ignores_non_member() {
   let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
 
-  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
-  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
   let mut provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
   provider.start_member().unwrap();

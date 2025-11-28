@@ -1,6 +1,8 @@
 use alloc::{boxed::Box, string::String, vec, vec::Vec};
 
-use fraktor_actor_rs::core::event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber};
+use fraktor_actor_rs::core::event_stream::{
+  EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric, subscriber_handle,
+};
 use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdMutex, NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
@@ -294,7 +296,7 @@ impl RecordingClusterEvents {
 }
 
 impl EventStreamSubscriber<NoStdToolbox> for RecordingClusterEvents {
-  fn on_event(&self, event: &EventStreamEvent<NoStdToolbox>) {
+  fn on_event(&mut self, event: &EventStreamEvent<NoStdToolbox>) {
     if let EventStreamEvent::Extension { name, payload } = event {
       if name == "cluster" {
         if let Some(cluster_event) = payload.payload().downcast_ref::<ClusterEvent>() {
@@ -303,6 +305,15 @@ impl EventStreamSubscriber<NoStdToolbox> for RecordingClusterEvents {
       }
     }
   }
+}
+
+fn subscribe_recorder(
+  event_stream: &ArcShared<EventStreamGeneric<NoStdToolbox>>,
+) -> (RecordingClusterEvents, EventStreamSubscriptionGeneric<NoStdToolbox>) {
+  let subscriber_impl = RecordingClusterEvents::new();
+  let subscriber = subscriber_handle(subscriber_impl.clone());
+  let subscription = EventStreamGeneric::subscribe_arc(event_stream, &subscriber);
+  (subscriber_impl, subscription)
 }
 
 /// IdentityLookup を ArcShared<ToolboxMutex<Box<dyn IdentityLookup>>> にラップするヘルパー
@@ -509,9 +520,7 @@ fn topology_event_includes_blocked_and_updates_metrics() {
   // start with one member
   core.start_member().unwrap();
 
-  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
-  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
   let topology = ClusterTopology::new(100, vec![String::from("node-b")], vec![String::from("node-c")]);
   core.on_topology(&topology);
@@ -562,9 +571,7 @@ fn topology_with_same_hash_is_suppressed() {
   );
 
   core.start_member().unwrap();
-  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
-  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
   let topology = ClusterTopology::new(200, vec![String::from("n2")], vec![]);
   core.on_topology(&topology);
@@ -603,9 +610,7 @@ fn multi_node_topology_flow_updates_metrics_and_pid_cache() {
   pid_cache.put(GrainKey::new("grain-2".into()), "pid-2".into(), "n3".into(), 0, 60);
   core.set_pid_cache(pid_cache);
 
-  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
-  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
   // node n2 joins, n3 leaves
   let topology = ClusterTopology::new(300, vec![String::from("n2")], vec![String::from("n3")]);
@@ -653,9 +658,7 @@ fn start_member_emits_startup_event_and_sets_mode() {
     identity_lookup,
   );
 
-  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
-  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
   core.setup_member_kinds(vec![ActivatedKind::new("worker"), ActivatedKind::new("analytics")]).unwrap();
   core.start_member().unwrap();
@@ -693,9 +696,7 @@ fn start_member_failure_emits_startup_failed() {
     identity_lookup,
   );
 
-  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
-  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
   let result = core.start_member();
   assert!(result.is_err());
@@ -727,9 +728,7 @@ fn start_client_emits_startup_event_and_sets_mode() {
     identity_lookup,
   );
 
-  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
-  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
   core.start_client().unwrap();
 
@@ -759,9 +758,7 @@ fn start_client_failure_emits_startup_failed() {
     identity_lookup,
   );
 
-  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
-  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
   let result = core.start_client();
   assert!(result.is_err());
@@ -793,9 +790,7 @@ fn start_member_fails_when_gossip_start_fails() {
     identity_lookup,
   );
 
-  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
-  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
   let result = core.start_member();
   assert!(result.is_err());
@@ -826,9 +821,7 @@ fn start_member_fails_when_pubsub_start_fails() {
     identity_lookup,
   );
 
-  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
-  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
   let result = core.start_member();
   assert!(result.is_err());
@@ -901,9 +894,7 @@ fn shutdown_resets_virtual_actor_count_and_emits_event() {
   core.setup_member_kinds(vec![ActivatedKind::new("worker")]).unwrap();
   core.start_member().unwrap();
 
-  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
-  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
   core.shutdown(true).unwrap();
 
@@ -937,9 +928,7 @@ fn shutdown_failure_emits_shutdown_failed() {
 
   core.start_member().ok();
 
-  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
-  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
   let result = core.shutdown(true);
   assert!(result.is_err());
@@ -987,9 +976,7 @@ fn metrics_disabled_still_emits_startup_event() {
   );
 
   // EventStream subscriber を登録
-  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
-  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
   // metrics は無効
   assert!(matches!(core.metrics(), Err(MetricsError::Disabled)));
@@ -1029,9 +1016,7 @@ fn metrics_disabled_still_emits_topology_updated_event() {
   core.start_member().unwrap();
 
   // EventStream subscriber を登録
-  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
-  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
   // metrics は無効
   assert!(matches!(core.metrics(), Err(MetricsError::Disabled)));
@@ -1076,9 +1061,7 @@ fn metrics_disabled_still_emits_shutdown_event() {
   core.start_member().unwrap();
 
   // EventStream subscriber を登録
-  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
-  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
   // metrics は無効
   assert!(matches!(core.metrics(), Err(MetricsError::Disabled)));
@@ -1116,9 +1099,7 @@ fn metrics_disabled_full_lifecycle_events_continue() {
   );
 
   // EventStream subscriber を登録
-  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
-  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
   // metrics が無効であることを確認
   assert!(!core.metrics_enabled());

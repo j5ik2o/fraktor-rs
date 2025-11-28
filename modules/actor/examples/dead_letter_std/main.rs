@@ -11,7 +11,7 @@ use fraktor_actor_rs::{
   std::{
     actor_prim::{Actor, ActorContext},
     dispatcher::dispatch_executor::TokioExecutor,
-    event_stream::{EventStreamEvent, EventStreamSubscriber},
+    event_stream::{EventStreamEvent, EventStreamSubscriber, EventStreamSubscriberShared, subscriber_handle},
     logging::StdLoggerSubscriber,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
@@ -31,10 +31,24 @@ impl LoggerWriter for StdoutLogger {
   }
 }
 
+struct StdLoggerAdapter(StdLoggerSubscriber);
+
+impl StdLoggerAdapter {
+  fn new(level: LogLevel, writer: Box<dyn LoggerWriter>) -> Self {
+    Self(StdLoggerSubscriber::new(level, writer))
+  }
+}
+
+impl EventStreamSubscriber for StdLoggerAdapter {
+  fn on_event(&mut self, event: &EventStreamEvent) {
+    fraktor_actor_rs::core::event_stream::EventStreamSubscriber::on_event(&mut self.0, event);
+  }
+}
+
 struct DeadLetterPrinter;
 
 impl EventStreamSubscriber for DeadLetterPrinter {
-  fn on_event(&self, event: &EventStreamEvent) {
+  fn on_event(&mut self, event: &EventStreamEvent) {
     if let EventStreamEvent::DeadLetter(entry) = event {
       println!(
         "[DEAD LETTER] reason={:?} recipient={:?} message_type={:?}",
@@ -134,11 +148,11 @@ async fn main() {
   let tick_driver = fraktor_actor_rs::std::scheduler::tick::TickDriverConfig::tokio_quickstart();
   let system = ActorSystem::new(&props, tick_driver).expect("actor system を初期化できること");
 
-  let logger: ArcShared<dyn EventStreamSubscriber> =
-    ArcShared::new(StdLoggerSubscriber::new(LogLevel::Info, Box::new(StdoutLogger)));
+  let logger: EventStreamSubscriberShared =
+    subscriber_handle(StdLoggerAdapter::new(LogLevel::Info, Box::new(StdoutLogger)));
   let _log_subscription = system.subscribe_event_stream(&logger);
 
-  let printer: ArcShared<dyn EventStreamSubscriber> = ArcShared::new(DeadLetterPrinter);
+  let printer: EventStreamSubscriberShared = subscriber_handle(DeadLetterPrinter);
   let _deadletter_subscription = system.subscribe_event_stream(&printer);
 
   println!("\n=== Starting overflow test ===\n");

@@ -11,7 +11,7 @@ use fraktor_utils_rs::core::{
 use crate::core::{
   dead_letter::DeadLetterEntryGeneric,
   error::SendError,
-  event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric},
+  event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriberShared, EventStreamSubscriptionGeneric},
   futures::ActorFuture,
   logging::LogLevel,
   messaging::AnyMessageGeneric,
@@ -122,7 +122,7 @@ where
   #[must_use]
   pub fn subscribe_event_stream(
     &self,
-    subscriber: &ArcShared<dyn EventStreamSubscriber<TB>>,
+    subscriber: &EventStreamSubscriberShared<TB>,
   ) -> EventStreamSubscriptionGeneric<TB> {
     self.inner.subscribe_event_stream(subscriber)
   }
