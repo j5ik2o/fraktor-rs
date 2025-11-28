@@ -80,6 +80,15 @@ scripts/ci-check.sh all                  # CI と同等フルスイート
   - **ライフサイクル制御系**（`start`, `stop`, `shutdown`, `setup_*` 等）: 低頻度呼び出しのため `&self` + interior mutability（実装内部で `ToolboxMutex` を使用）を許容。`ArcShared<dyn Trait>` で共有しやすくなる。
   - **ホットパス・状態変更系**（`get`, `remove`, `update_*`, `on_*`, `drain_*` 等）: 高頻度呼び出しや明示的な状態変更を伴うメソッドは `&mut self` を使用。呼び出し側（`ClusterCore` 等）が `ToolboxMutex<dyn Trait>` で保護し、ロック粒度を制御する。
   - **判断基準**: Rust 標準ライブラリの慣例に従い、状態を変更するメソッドは型シグネチャで意図を明示する。`std::collections::HashMap` の `get(&self)` vs `insert(&mut self)` パターンを参考に、副作用の有無で決定する。
+- **共有トレイトオブジェクトのデフォルトパターン**:
+  - **デフォルト**: `ArcShared<ToolboxMutex<Box<dyn Trait>, TB>>` + `&mut self` メソッド
+    - API の意図が明確（シグネチャを見れば状態変更が分かる）
+    - Rust の借用システムの価値を活かせる
+    - `Box` のオーバーヘッド（追加のヒープ割り当て・ポインタ間接参照）は非ホットパスでは無視できるレベル
+  - **例外（`&self` + 内部可変性を選ぶ場合）**:
+    - ホットパスで性能が最優先の場合
+    - 状態変更が実装の内部詳細であり、呼び出し側に関係ない場合（例: サービスの start/stop）
+  - **設計哲学**: 内部可変性を全域で使うと `&mut self` の存在意義がなくなる。「シグネチャで意図を伝える」という Rust の設計思想を尊重し、明確性を優先する。開発者がコードを読む際の理解コストは、`Box` の微小なランタイムコストより遥かに高い。
 
 ---
 _スタックと標準を要約し、詳細な API 仕様は各クレートの rustdoc / guides へ委譲します。_

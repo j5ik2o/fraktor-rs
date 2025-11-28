@@ -14,7 +14,7 @@ fn sync_spsc_producer_offer_success() {
   let backend = VecDequeBackend::with_capacity(10, OverflowPolicy::DropOldest);
   let sync_queue = SyncQueue::new(backend);
   let mutex = ArcShared::new(SpinSyncMutex::new(sync_queue));
-  let producer = SyncSpscProducerShared::new(mutex.clone());
+  let mut producer = SyncSpscProducerShared::new(mutex.clone());
 
   let result = producer.offer(42);
   assert!(result.is_ok());
@@ -31,7 +31,7 @@ fn sync_spsc_producer_offer_closed() {
   let backend = VecDequeBackend::with_capacity(10, OverflowPolicy::DropOldest);
   let sync_queue = SyncQueue::new(backend);
   let mutex = ArcShared::new(SpinSyncMutex::new(sync_queue));
-  let producer = SyncSpscProducerShared::new(mutex.clone());
+  let mut producer = SyncSpscProducerShared::new(mutex.clone());
 
   let _ = mutex.with_mut(|q: &mut SyncQueue<u32, SpscKey, VecDequeBackend<u32>>| q.close()).unwrap();
 

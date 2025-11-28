@@ -24,14 +24,14 @@ pub trait ClusterProvider: Send + Sync {
   ///
   /// Returns [`ClusterProviderError`] when the provider fails to initialise
   /// membership, discovery, or transport wiring.
-  fn start_member(&self) -> Result<(), ClusterProviderError>;
+  fn start_member(&mut self) -> Result<(), ClusterProviderError>;
 
   /// Starts the node as a lightweight cluster client.
   ///
   /// # Errors
   ///
   /// Returns [`ClusterProviderError`] when client initialisation fails.
-  fn start_client(&self) -> Result<(), ClusterProviderError>;
+  fn start_client(&mut self) -> Result<(), ClusterProviderError>;
 
   /// Shuts down the provider and releases resources.
   ///
@@ -40,5 +40,5 @@ pub trait ClusterProvider: Send + Sync {
   /// # Errors
   ///
   /// Returns [`ClusterProviderError`] when teardown steps fail.
-  fn shutdown(&self, graceful: bool) -> Result<(), ClusterProviderError>;
+  fn shutdown(&mut self, graceful: bool) -> Result<(), ClusterProviderError>;
 }

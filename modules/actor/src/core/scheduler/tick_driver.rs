@@ -45,7 +45,7 @@ pub use tick_driver_config::TickDriverConfig;
 pub use tick_driver_control::TickDriverControl;
 pub use tick_driver_error::TickDriverError;
 pub use tick_driver_factory::{TickDriverFactory, TickDriverFactoryRef};
-pub use tick_driver_handle::TickDriverHandle;
+pub use tick_driver_handle::{TickDriverHandle, TickDriverHandleGeneric};
 pub use tick_driver_id::TickDriverId;
 pub use tick_driver_kind::TickDriverKind;
 pub use tick_driver_matrix::{TICK_DRIVER_MATRIX, TickDriverGuideEntry};

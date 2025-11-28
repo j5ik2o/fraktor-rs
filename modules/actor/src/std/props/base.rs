@@ -1,11 +1,15 @@
 extern crate std;
 
 use std::{
+  boxed::Box,
   ops::{Deref, DerefMut},
   string::String,
 };
 
-use fraktor_utils_rs::{core::sync::ArcShared, std::runtime_toolbox::StdToolbox};
+use fraktor_utils_rs::{
+  core::{runtime_toolbox::ToolboxMutex, sync::ArcShared},
+  std::runtime_toolbox::StdToolbox,
+};
 
 use crate::{
   core::{
@@ -27,15 +31,15 @@ pub struct Props {
 impl Props {
   /// Creates new props from the provided factory.
   #[must_use]
-  pub fn new(factory: ArcShared<dyn ActorFactory<StdToolbox>>) -> Self {
+  pub fn new(factory: Box<dyn ActorFactory<StdToolbox>>) -> Self {
     Self { inner: CorePropsGeneric::new(factory) }
   }
 
   /// Convenience helper to build props from a closure returning a [`Actor`].
   #[must_use]
-  pub fn from_fn<F, A>(factory: F) -> Self
+  pub fn from_fn<F, A>(mut factory: F) -> Self
   where
-    F: Fn() -> A + Send + Sync + 'static,
+    F: FnMut() -> A + Send + Sync + 'static,
     A: Actor + Sync + 'static, {
     let wrapped_factory = move || ActorAdapter::new(factory());
     Self { inner: CorePropsGeneric::from_fn(wrapped_factory) }
@@ -43,7 +47,7 @@ impl Props {
 
   /// Returns the actor factory.
   #[must_use]
-  pub fn factory(&self) -> &ArcShared<dyn ActorFactory<StdToolbox>> {
+  pub fn factory(&self) -> &ArcShared<ToolboxMutex<Box<dyn ActorFactory<StdToolbox>>, StdToolbox>> {
     self.inner.factory()
   }
 

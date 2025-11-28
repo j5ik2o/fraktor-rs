@@ -92,7 +92,7 @@ fn system_message(content: &str, recipient: &ActorPath) -> OutboundMessage<NoStd
 
 #[test]
 fn serialize_user_message_includes_manifest_and_reply_to() {
-  let (writer, _system) = build_writer();
+  let (mut writer, _system) = build_writer();
   let recipient = actor_path("remote-app", GuardianKind::User, &["user", "service"]);
   let reply_to = actor_path("local-app", GuardianKind::User, &["user", "client"]);
   writer.enqueue(user_message("ping", &recipient, Some(reply_to.clone()))).expect("enqueue user");
@@ -109,7 +109,7 @@ fn serialize_user_message_includes_manifest_and_reply_to() {
 
 #[test]
 fn system_priority_and_backpressure_control() {
-  let (writer, _system) = build_writer();
+  let (mut writer, _system) = build_writer();
   let recipient = actor_path("remote-app", GuardianKind::User, &["user", "service"]);
   writer.enqueue(user_message("user-1", &recipient, None)).expect("enqueue user");
   writer.enqueue(system_message("sys-1", &recipient)).expect("enqueue system");

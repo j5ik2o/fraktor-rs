@@ -87,8 +87,8 @@ pub use tick_driver::{
   AutoDriverMetadata, AutoProfileKind, HardwareKind, HardwareTickDriver, SchedulerTickExecutor,
   SchedulerTickHandleOwned, SchedulerTickMetrics, SchedulerTickMetricsProbe, TICK_DRIVER_MATRIX, TickDriver,
   TickDriverBootstrap, TickDriverConfig, TickDriverControl, TickDriverError, TickDriverFactory, TickDriverFactoryRef,
-  TickDriverGuideEntry, TickDriverHandle, TickDriverId, TickDriverKind, TickDriverMetadata, TickDriverRuntime,
-  TickExecutorSignal, TickFeed, TickFeedHandle, TickMetricsMode, TickPulseHandler, TickPulseSource,
+  TickDriverGuideEntry, TickDriverHandle, TickDriverHandleGeneric, TickDriverId, TickDriverKind, TickDriverMetadata,
+  TickDriverRuntime, TickExecutorSignal, TickFeed, TickFeedHandle, TickMetricsMode, TickPulseHandler, TickPulseSource,
   next_tick_driver_id,
 };
 pub use warning::SchedulerWarning;

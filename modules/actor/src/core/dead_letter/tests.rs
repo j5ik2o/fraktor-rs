@@ -12,7 +12,7 @@ use crate::core::{
   actor_prim::Pid,
   dead_letter::{DeadLetter, DeadLetterReason},
   error::SendError,
-  event_stream::{EventStream, EventStreamEvent, EventStreamSubscriber},
+  event_stream::{EventStream, EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   logging::LogLevel,
   messaging::AnyMessage,
 };
@@ -22,17 +22,13 @@ struct RecordingSubscriber {
 }
 
 impl RecordingSubscriber {
-  fn new() -> Self {
-    Self { events: ArcShared::new(NoStdMutex::new(Vec::new())) }
-  }
-
-  fn events(&self) -> Vec<EventStreamEvent<NoStdToolbox>> {
-    self.events.lock().clone()
+  fn new(events: ArcShared<NoStdMutex<Vec<EventStreamEvent<NoStdToolbox>>>>) -> Self {
+    Self { events }
   }
 }
 
 impl EventStreamSubscriber for RecordingSubscriber {
-  fn on_event(&self, event: &EventStreamEvent<NoStdToolbox>) {
+  fn on_event(&mut self, event: &EventStreamEvent<NoStdToolbox>) {
     self.events.lock().push(event.clone());
   }
 }
@@ -40,8 +36,8 @@ impl EventStreamSubscriber for RecordingSubscriber {
 #[test]
 fn record_entry_stores_and_publishes() {
   let stream = ArcShared::new(EventStream::default());
-  let subscriber_impl = ArcShared::new(RecordingSubscriber::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
+  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
   let _subscription = EventStream::subscribe_arc(&stream, &subscriber);
 
   let dead_letter = DeadLetter::with_default_capacity(stream.clone());
@@ -54,7 +50,7 @@ fn record_entry_stores_and_publishes() {
   assert_eq!(entries[0].reason(), DeadLetterReason::ExplicitRouting);
   assert_eq!(entries[0].recipient(), Some(pid));
 
-  let events = subscriber_impl.events();
+  let events = events.lock().clone();
   assert!(events.iter().any(|event| matches!(event, EventStreamEvent::DeadLetter(_))));
   assert!(events.iter().any(|event| matches!(event, EventStreamEvent::Log(log) if log.level() == LogLevel::Warn)));
 }
@@ -62,8 +58,8 @@ fn record_entry_stores_and_publishes() {
 #[test]
 fn record_send_error_converts_reason_and_honours_capacity() {
   let stream = ArcShared::new(EventStream::default());
-  let subscriber_impl = ArcShared::new(RecordingSubscriber::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
+  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
   let _subscription = EventStream::subscribe_arc(&stream, &subscriber);
 
   let deadletter = DeadLetter::new(stream, 1);
@@ -81,7 +77,7 @@ fn record_send_error_converts_reason_and_honours_capacity() {
   assert_eq!(entries.len(), 1);
   assert!(matches!(entries[0].reason(), DeadLetterReason::MailboxSuspended));
 
-  let events = subscriber_impl.events();
+  let events = events.lock().clone();
   assert!(events.iter().filter(|event| matches!(event, EventStreamEvent::DeadLetter(_))).count() >= 2);
 }
 

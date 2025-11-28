@@ -4,14 +4,15 @@ use std::{thread, time::Duration};
 use fraktor_actor_rs::{
   core::{
     error::ActorError,
-    logging::{LogEvent, LogLevel, LoggerSubscriber, LoggerWriter},
+    logging::{LogEvent, LogLevel, LoggerWriter},
     mailbox::{MailboxOverflowStrategy, MailboxPolicy},
     props::MailboxConfig,
   },
   std::{
     actor_prim::{Actor, ActorContext},
     dispatcher::dispatch_executor::TokioExecutor,
-    event_stream::{EventStreamEvent, EventStreamSubscriber},
+    event_stream::{EventStreamEvent, EventStreamSubscriber, EventStreamSubscriberShared, subscriber_handle},
+    logging::StdLoggerSubscriber,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
     system::{ActorSystem, DispatcherConfig},
@@ -25,15 +26,29 @@ struct Start;
 struct StdoutLogger;
 
 impl LoggerWriter for StdoutLogger {
-  fn write(&self, event: &LogEvent) {
+  fn write(&mut self, event: &LogEvent) {
     println!("[LOG {:?}] origin={:?} message={}", event.level(), event.origin(), event.message());
+  }
+}
+
+struct StdLoggerAdapter(StdLoggerSubscriber);
+
+impl StdLoggerAdapter {
+  fn new(level: LogLevel, writer: Box<dyn LoggerWriter>) -> Self {
+    Self(StdLoggerSubscriber::new(level, writer))
+  }
+}
+
+impl EventStreamSubscriber for StdLoggerAdapter {
+  fn on_event(&mut self, event: &EventStreamEvent) {
+    fraktor_actor_rs::core::event_stream::EventStreamSubscriber::on_event(&mut self.0, event);
   }
 }
 
 struct DeadLetterPrinter;
 
 impl EventStreamSubscriber for DeadLetterPrinter {
-  fn on_event(&self, event: &EventStreamEvent) {
+  fn on_event(&mut self, event: &EventStreamEvent) {
     if let EventStreamEvent::DeadLetter(entry) = event {
       println!(
         "[DEAD LETTER] reason={:?} recipient={:?} message_type={:?}",
@@ -133,12 +148,11 @@ async fn main() {
   let tick_driver = fraktor_actor_rs::std::scheduler::tick::TickDriverConfig::tokio_quickstart();
   let system = ActorSystem::new(&props, tick_driver).expect("actor system を初期化できること");
 
-  let logger_writer: ArcShared<dyn LoggerWriter> = ArcShared::new(StdoutLogger);
-  let logger: ArcShared<dyn EventStreamSubscriber> =
-    ArcShared::new(LoggerSubscriber::new(LogLevel::Info, logger_writer));
+  let logger: EventStreamSubscriberShared =
+    subscriber_handle(StdLoggerAdapter::new(LogLevel::Info, Box::new(StdoutLogger)));
   let _log_subscription = system.subscribe_event_stream(&logger);
 
-  let printer: ArcShared<dyn EventStreamSubscriber> = ArcShared::new(DeadLetterPrinter);
+  let printer: EventStreamSubscriberShared = subscriber_handle(DeadLetterPrinter);
   let _deadletter_subscription = system.subscribe_event_stream(&printer);
 
   println!("\n=== Starting overflow test ===\n");

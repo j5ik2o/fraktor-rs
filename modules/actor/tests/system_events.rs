@@ -8,7 +8,7 @@ use core::hint::spin_loop;
 use fraktor_actor_rs::core::{
   actor_prim::{Actor, ActorContextGeneric},
   error::ActorError,
-  event_stream::{EventStreamEvent, EventStreamSubscriber},
+  event_stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   lifecycle::LifecycleStage,
   logging::LogLevel,
   messaging::{AnyMessage, AnyMessageViewGeneric},
@@ -26,18 +26,8 @@ struct RecordingSubscriber {
   events: ArcShared<NoStdMutex<Vec<EventStreamEvent<NoStdToolbox>>>>,
 }
 
-impl RecordingSubscriber {
-  fn new() -> Self {
-    Self { events: ArcShared::new(NoStdMutex::new(Vec::new())) }
-  }
-
-  fn events(&self) -> Vec<EventStreamEvent<NoStdToolbox>> {
-    self.events.lock().clone()
-  }
-}
-
 impl EventStreamSubscriber<NoStdToolbox> for RecordingSubscriber {
-  fn on_event(&self, event: &EventStreamEvent<NoStdToolbox>) {
+  fn on_event(&mut self, event: &EventStreamEvent<NoStdToolbox>) {
     self.events.lock().push(event.clone());
   }
 }
@@ -71,25 +61,26 @@ fn lifecycle_and_log_events_are_published() {
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 
-  let subscriber_impl = ArcShared::new(RecordingSubscriber::new());
-  let subscriber: ArcShared<dyn fraktor_actor_rs::core::event_stream::EventStreamSubscriber<NoStdToolbox>> =
-    subscriber_impl.clone();
+  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let subscriber = subscriber_handle(RecordingSubscriber { events: events.clone() });
   let _subscription = system.subscribe_event_stream(&subscriber);
 
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("send start");
 
   wait_until(|| {
-    let events = subscriber_impl.events();
-    events.iter().any(
+    let snapshot = events.lock().clone();
+    snapshot.iter().any(
       |event| matches!(event, EventStreamEvent::Lifecycle(lifecycle) if lifecycle.stage() == LifecycleStage::Started),
-    ) && events.iter().any(|event| matches!(event, EventStreamEvent::Log(log) if log.message() == "guardian pre_start"))
+    ) && snapshot
+      .iter()
+      .any(|event| matches!(event, EventStreamEvent::Log(log) if log.message() == "guardian pre_start"))
   });
 
   system.terminate().expect("terminate");
   system.run_until_terminated();
 
   wait_until(|| {
-    subscriber_impl.events().iter().any(
+    events.lock().iter().any(
       |event| matches!(event, EventStreamEvent::Lifecycle(lifecycle) if lifecycle.stage() == LifecycleStage::Stopped),
     )
   });

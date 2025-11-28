@@ -1,7 +1,6 @@
 //! Dispatcher bindings tailored for the standard runtime facade.
 
 mod base;
-mod core_dispatch_executor_adapter;
 /// Dispatch executor implementations for the standard runtime.
 pub mod dispatch_executor;
 mod dispatch_executor_adapter;
@@ -12,7 +11,6 @@ mod schedule_adapter;
 mod types;
 
 pub use base::*;
-pub use core_dispatch_executor_adapter::CoreDispatchExecutorAdapter;
 pub use dispatch_executor_adapter::DispatchExecutorAdapter;
 pub use dispatcher_config::DispatcherConfig;
 pub use schedule_adapter::StdScheduleAdapter;

@@ -36,7 +36,7 @@ where
   ///
   /// Returns a `QueueError` when the backend cannot produce an element due to closure,
   /// disconnection, or backend-specific failures.
-  pub fn poll(&self) -> Result<T, QueueError<T>> {
+  pub fn poll(&mut self) -> Result<T, QueueError<T>> {
     self.inner.with_mut(|queue: &mut SyncQueue<T, MpscKey, B>| queue.poll()).map_err(QueueError::from)?
   }
 
@@ -45,7 +45,7 @@ where
   /// # Errors
   ///
   /// Returns a `QueueError` when the backend refuses to close.
-  pub fn close(&self) -> Result<(), QueueError<T>> {
+  pub fn close(&mut self) -> Result<(), QueueError<T>> {
     self.inner.with_mut(|queue: &mut SyncQueue<T, MpscKey, B>| queue.close()).map_err(QueueError::from)?
   }
 

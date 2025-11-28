@@ -6,11 +6,11 @@ use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 #[cfg(any(test, feature = "test-support"))]
 use super::manual_test_driver::ManualTickController;
-use super::{AutoDriverMetadata, TickDriverHandle, TickFeedHandle};
+use super::{AutoDriverMetadata, TickDriverHandleGeneric, TickFeedHandle};
 
 /// Runtime assets produced after provisioning a tick driver.
 pub struct TickDriverRuntime<TB: RuntimeToolbox> {
-  driver:            TickDriverHandle,
+  driver:            TickDriverHandleGeneric<TB>,
   feed:              Option<TickFeedHandle<TB>>,
   executor_shutdown: Option<Box<dyn FnOnce() + Send>>,
   auto_metadata:     Option<AutoDriverMetadata>,
@@ -34,7 +34,7 @@ impl<TB: RuntimeToolbox> Clone for TickDriverRuntime<TB> {
 impl<TB: RuntimeToolbox> TickDriverRuntime<TB> {
   /// Creates a new runtime container for automatic/hardware drivers.
   #[must_use]
-  pub const fn new(driver: TickDriverHandle, feed: TickFeedHandle<TB>) -> Self {
+  pub const fn new(driver: TickDriverHandleGeneric<TB>, feed: TickFeedHandle<TB>) -> Self {
     Self {
       driver,
       feed: Some(feed),
@@ -64,13 +64,13 @@ impl<TB: RuntimeToolbox> TickDriverRuntime<TB> {
   /// Creates a manual-driver runtime.
   #[cfg(any(test, feature = "test-support"))]
   #[must_use]
-  pub const fn new_manual(driver: TickDriverHandle, controller: ManualTickController<TB>) -> Self {
+  pub const fn new_manual(driver: TickDriverHandleGeneric<TB>, controller: ManualTickController<TB>) -> Self {
     Self { driver, feed: None, executor_shutdown: None, auto_metadata: None, manual: Some(controller) }
   }
 
   /// Returns the driver handle.
   #[must_use]
-  pub const fn driver(&self) -> &TickDriverHandle {
+  pub const fn driver(&self) -> &TickDriverHandleGeneric<TB> {
     &self.driver
   }
 

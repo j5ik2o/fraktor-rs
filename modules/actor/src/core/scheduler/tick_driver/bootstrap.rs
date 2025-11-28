@@ -1,12 +1,17 @@
 //! Tick driver bootstrap orchestrates driver provisioning.
 
 #[cfg(any(test, feature = "test-support"))]
-use fraktor_utils_rs::core::sync::ArcShared;
+use alloc::boxed::Box;
+
 use fraktor_utils_rs::core::{
   runtime_toolbox::RuntimeToolbox, sync::sync_mutex_like::SyncMutexLike, time::MonotonicClock,
 };
+#[cfg(any(test, feature = "test-support"))]
+use fraktor_utils_rs::core::{runtime_toolbox::SyncMutexFamily, sync::ArcShared};
 
-use super::{TickDriverConfig, TickDriverError, TickDriverHandle, TickDriverMetadata, TickDriverRuntime};
+#[cfg(any(test, feature = "test-support"))]
+use super::TickDriverControl;
+use super::{TickDriverConfig, TickDriverError, TickDriverHandleGeneric, TickDriverMetadata, TickDriverRuntime};
 #[cfg(any(test, feature = "test-support"))]
 use super::{
   TickDriverKind,
@@ -69,8 +74,9 @@ impl TickDriverBootstrap {
     };
     driver.attach(ctx);
     let state = driver.state();
-    let control = ArcShared::new(ManualDriverControl::new(state));
-    let handle = TickDriverHandle::new(next_tick_driver_id(), TickDriverKind::ManualTest, resolution, control);
+    let control: Box<dyn TickDriverControl> = Box::new(ManualDriverControl::new(state));
+    let control = ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(control));
+    let handle = TickDriverHandleGeneric::new(next_tick_driver_id(), TickDriverKind::ManualTest, resolution, control);
     let controller = driver.controller();
     let runtime = TickDriverRuntime::new_manual(handle.clone(), controller);
     let metadata = TickDriverMetadata::new(handle.id(), start_instant);
@@ -79,7 +85,7 @@ impl TickDriverBootstrap {
   }
 
   /// Shuts down the active driver handle.
-  pub fn shutdown(handle: &TickDriverHandle) {
+  pub fn shutdown<TB: RuntimeToolbox>(handle: &TickDriverHandleGeneric<TB>) {
     handle.shutdown();
   }
 }

@@ -22,7 +22,7 @@ where
   }
 
   /// Waits at the barrier point.
-  pub async fn wait(&self) {
+  pub async fn wait(&mut self) {
     self.backend.wait().await;
   }
 

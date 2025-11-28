@@ -8,7 +8,7 @@ use core::{hint::spin_loop, num::NonZeroUsize};
 use fraktor_actor_rs::core::{
   actor_prim::{Actor, ActorContextGeneric, ChildRef},
   error::ActorError,
-  event_stream::{EventStreamEvent, EventStreamSubscriber},
+  event_stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   mailbox::{MailboxOverflowStrategy, MailboxPolicy},
   messaging::{AnyMessage, AnyMessageViewGeneric},
   props::{MailboxConfig, Props},
@@ -24,17 +24,13 @@ struct RecordingSubscriber {
 }
 
 impl RecordingSubscriber {
-  fn new() -> Self {
-    Self { events: ArcShared::new(NoStdMutex::new(Vec::new())) }
-  }
-
-  fn events(&self) -> Vec<EventStreamEvent<NoStdToolbox>> {
-    self.events.lock().clone()
+  fn new(events: ArcShared<NoStdMutex<Vec<EventStreamEvent<NoStdToolbox>>>>) -> Self {
+    Self { events }
   }
 }
 
 impl EventStreamSubscriber<NoStdToolbox> for RecordingSubscriber {
-  fn on_event(&self, event: &EventStreamEvent<NoStdToolbox>) {
+  fn on_event(&mut self, event: &EventStreamEvent<NoStdToolbox>) {
     self.events.lock().push(event.clone());
   }
 }
@@ -97,8 +93,8 @@ fn dead_letter_event_is_published_when_send_fails() {
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 
-  let subscriber_impl = ArcShared::new(RecordingSubscriber::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
+  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
   let _subscription = system.subscribe_event_stream(&subscriber);
 
   wait_until(|| child_slot.lock().is_some());
@@ -113,7 +109,7 @@ fn dead_letter_event_is_published_when_send_fails() {
   let entries = system.dead_letters();
   assert!(!entries.is_empty());
 
-  wait_until(|| subscriber_impl.events().iter().any(|event| matches!(event, EventStreamEvent::DeadLetter(_))));
+  wait_until(|| events.lock().iter().any(|event| matches!(event, EventStreamEvent::DeadLetter(_))));
 
   child.resume().expect("resume child");
   system.terminate().expect("terminate");

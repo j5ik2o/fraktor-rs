@@ -11,7 +11,7 @@ use fraktor_utils_rs::{
 
 use crate::{
   core::{
-    event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber},
+    event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, subscriber_handle},
     scheduler::{AutoProfileKind, SchedulerConfig, SchedulerContext, TickDriverBootstrap, TickDriverKind},
   },
   std::scheduler::tick::TickDriverConfig,
@@ -34,23 +34,18 @@ async fn tokio_interval_driver_produces_ticks() {
 }
 
 struct RecordingSubscriber {
-  events: Mutex<Vec<EventStreamEvent<StdToolbox>>>,
+  events: ArcShared<Mutex<Vec<EventStreamEvent<StdToolbox>>>>,
 }
 
 impl RecordingSubscriber {
-  fn new() -> Self {
-    Self { events: Mutex::new(Vec::new()) }
-  }
-
-  #[allow(clippy::expect_used)]
-  fn snapshot(&self) -> Vec<EventStreamEvent<StdToolbox>> {
-    self.events.lock().expect("lock").clone()
+  fn new(events: ArcShared<Mutex<Vec<EventStreamEvent<StdToolbox>>>>) -> Self {
+    Self { events }
   }
 }
 
 impl EventStreamSubscriber<StdToolbox> for RecordingSubscriber {
   #[allow(clippy::expect_used)]
-  fn on_event(&self, event: &EventStreamEvent<StdToolbox>) {
+  fn on_event(&mut self, event: &EventStreamEvent<StdToolbox>) {
     self.events.lock().expect("lock").push(event.clone());
   }
 }
@@ -59,8 +54,8 @@ impl EventStreamSubscriber<StdToolbox> for RecordingSubscriber {
 #[allow(clippy::expect_used)]
 async fn tokio_interval_driver_publishes_tick_metrics_events() {
   let event_stream = ArcShared::new(EventStreamGeneric::<StdToolbox>::default());
-  let subscriber_impl = ArcShared::new(RecordingSubscriber::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<StdToolbox>> = subscriber_impl.clone();
+  let events = ArcShared::new(Mutex::new(Vec::new()));
+  let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
   let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
 
   let config = TickDriverConfig::tokio_quickstart_with_event_stream(
@@ -75,7 +70,7 @@ async fn tokio_interval_driver_publishes_tick_metrics_events() {
 
   TickDriverBootstrap::shutdown(runtime.driver());
 
-  let events = subscriber_impl.snapshot();
+  let events = events.lock().expect("lock").clone();
   assert!(
     events
       .iter()

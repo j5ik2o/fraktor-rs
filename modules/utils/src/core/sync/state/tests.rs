@@ -31,25 +31,25 @@ impl<T> StateCell<T> for RcState<T> {
     Self(Rc::new(RefCell::new(value)))
   }
 
-  fn borrow(&self) -> Self::Ref<'_> {
+  fn borrow(&mut self) -> Self::Ref<'_> {
     self.0.borrow()
   }
 
-  fn borrow_mut(&self) -> Self::RefMut<'_> {
+  fn borrow_mut(&mut self) -> Self::RefMut<'_> {
     self.0.borrow_mut()
   }
 }
 
 #[test]
 fn with_ref_reads_current_value() {
-  let cell = RcState::new(5_u32);
+  let mut cell = RcState::new(5_u32);
   let value = cell.with_ref(|v| *v);
   assert_eq!(value, 5);
 }
 
 #[test]
 fn with_ref_mut_updates_value() {
-  let cell = RcState::new(1_u32);
+  let mut cell = RcState::new(1_u32);
   cell.with_ref_mut(|v| *v = 10);
   assert_eq!(cell.with_ref(|v| *v), 10);
 }

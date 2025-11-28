@@ -16,11 +16,11 @@ use fraktor_actor_rs::core::{
 };
 use fraktor_utils_rs::core::{
   collections::queue::{
-    QueueError, SyncFifoQueueShared, SyncQueue,
+    QueueError, SyncFifoQueue, SyncQueue,
     backend::{OfferOutcome, OverflowPolicy, VecDequeBackend},
   },
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  sync::{ArcShared, sync_mutex_like::SpinSyncMutex},
+  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily},
+  sync::ArcShared,
 };
 
 use crate::core::{
@@ -30,13 +30,17 @@ use crate::core::{
 
 const DEFAULT_QUEUE_CAPACITY: usize = 128;
 
+/// Shared writer handle protected by the toolbox mutex family.
+pub type EndpointWriterShared<TB> =
+  ArcShared<<<TB as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::Mutex<EndpointWriterGeneric<TB>>>;
+
 /// Serializes outbound messages, enforcing priority and backpressure.
 pub struct EndpointWriterGeneric<TB: RuntimeToolbox + 'static> {
   #[allow(dead_code)]
   system:        ActorSystemGeneric<TB>,
   serialization: ArcShared<SerializationExtensionGeneric<TB>>,
-  system_queue:  SyncFifoQueueShared<OutboundMessage<TB>, VecDequeBackend<OutboundMessage<TB>>>,
-  user_queue:    SyncFifoQueueShared<OutboundMessage<TB>, VecDequeBackend<OutboundMessage<TB>>>,
+  system_queue:  SyncFifoQueue<OutboundMessage<TB>, VecDequeBackend<OutboundMessage<TB>>>,
+  user_queue:    SyncFifoQueue<OutboundMessage<TB>, VecDequeBackend<OutboundMessage<TB>>>,
   user_paused:   AtomicBool,
   correlation:   AtomicU64,
   _marker:       PhantomData<TB>,
@@ -73,17 +77,17 @@ impl<TB: RuntimeToolbox + 'static> EndpointWriterGeneric<TB> {
   }
 
   /// Enqueues an outbound message using its declared priority.
-  pub fn enqueue(&self, message: OutboundMessage<TB>) -> Result<(), EndpointWriterError> {
+  pub fn enqueue(&mut self, message: OutboundMessage<TB>) -> Result<(), EndpointWriterError> {
     let priority = message.priority();
     match priority {
-      | OutboundPriority::System => self.offer(&self.system_queue, message, priority),
-      | OutboundPriority::User => self.offer(&self.user_queue, message, priority),
+      | OutboundPriority::System => self.offer_system(message),
+      | OutboundPriority::User => self.offer_user(message),
     }
   }
 
   /// Returns the next serialized envelope if available.
-  pub fn try_next(&self) -> Result<Option<RemotingEnvelope>, EndpointWriterError> {
-    if let Some(message) = self.poll_queue(&self.system_queue, OutboundPriority::System)? {
+  pub fn try_next(&mut self) -> Result<Option<RemotingEnvelope>, EndpointWriterError> {
+    if let Some(message) = self.poll_system()? {
       return self.serialize(message, OutboundPriority::System).map(Some);
     }
 
@@ -91,7 +95,7 @@ impl<TB: RuntimeToolbox + 'static> EndpointWriterGeneric<TB> {
       return Ok(None);
     }
 
-    if let Some(message) = self.poll_queue(&self.user_queue, OutboundPriority::User)? {
+    if let Some(message) = self.poll_user()? {
       return self.serialize(message, OutboundPriority::User).map(Some);
     }
 
@@ -112,30 +116,39 @@ impl<TB: RuntimeToolbox + 'static> EndpointWriterGeneric<TB> {
     }
   }
 
-  fn offer(
-    &self,
-    queue: &SyncFifoQueueShared<OutboundMessage<TB>, VecDequeBackend<OutboundMessage<TB>>>,
-    message: OutboundMessage<TB>,
-    priority: OutboundPriority,
-  ) -> Result<(), EndpointWriterError> {
-    match queue.offer(message) {
+  fn offer_system(&mut self, message: OutboundMessage<TB>) -> Result<(), EndpointWriterError> {
+    match self.system_queue.offer(message) {
       | Ok(OfferOutcome::Enqueued)
       | Ok(OfferOutcome::DroppedNewest { .. })
       | Ok(OfferOutcome::DroppedOldest { .. }) => Ok(()),
       | Ok(OfferOutcome::GrewTo { .. }) => Ok(()),
-      | Err(error) => Err(Self::map_offer_error(priority, error)),
+      | Err(error) => Err(Self::map_offer_error(OutboundPriority::System, error)),
     }
   }
 
-  fn poll_queue(
-    &self,
-    queue: &SyncFifoQueueShared<OutboundMessage<TB>, VecDequeBackend<OutboundMessage<TB>>>,
-    priority: OutboundPriority,
-  ) -> Result<Option<OutboundMessage<TB>>, EndpointWriterError> {
-    match queue.poll() {
+  fn offer_user(&mut self, message: OutboundMessage<TB>) -> Result<(), EndpointWriterError> {
+    match self.user_queue.offer(message) {
+      | Ok(OfferOutcome::Enqueued)
+      | Ok(OfferOutcome::DroppedNewest { .. })
+      | Ok(OfferOutcome::DroppedOldest { .. }) => Ok(()),
+      | Ok(OfferOutcome::GrewTo { .. }) => Ok(()),
+      | Err(error) => Err(Self::map_offer_error(OutboundPriority::User, error)),
+    }
+  }
+
+  fn poll_system(&mut self) -> Result<Option<OutboundMessage<TB>>, EndpointWriterError> {
+    match self.system_queue.poll() {
       | Ok(message) => Ok(Some(message)),
       | Err(QueueError::Empty) => Ok(None),
-      | Err(error) => Err(Self::map_poll_error(priority, error)),
+      | Err(error) => Err(Self::map_poll_error(OutboundPriority::System, error)),
+    }
+  }
+
+  fn poll_user(&mut self) -> Result<Option<OutboundMessage<TB>>, EndpointWriterError> {
+    match self.user_queue.poll() {
+      | Ok(message) => Ok(Some(message)),
+      | Err(QueueError::Empty) => Ok(None),
+      | Err(error) => Err(Self::map_poll_error(OutboundPriority::User, error)),
     }
   }
 
@@ -158,11 +171,9 @@ impl<TB: RuntimeToolbox + 'static> EndpointWriterGeneric<TB> {
     fraktor_actor_rs::core::event_stream::CorrelationId::from_u128(value)
   }
 
-  fn new_queue() -> SyncFifoQueueShared<OutboundMessage<TB>, VecDequeBackend<OutboundMessage<TB>>> {
+  fn new_queue() -> SyncFifoQueue<OutboundMessage<TB>, VecDequeBackend<OutboundMessage<TB>>> {
     let backend = VecDequeBackend::with_capacity(DEFAULT_QUEUE_CAPACITY, OverflowPolicy::Grow);
-    let queue = SyncQueue::new(backend);
-    let mutex = SpinSyncMutex::new(queue);
-    SyncFifoQueueShared::new(ArcShared::new(mutex))
+    SyncQueue::new(backend)
   }
 
   fn map_offer_error(priority: OutboundPriority, error: QueueError<OutboundMessage<TB>>) -> EndpointWriterError {

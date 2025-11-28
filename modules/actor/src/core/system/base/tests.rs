@@ -1,4 +1,4 @@
-use alloc::{vec, vec::Vec};
+use alloc::{boxed::Box, vec, vec::Vec};
 use core::{
   pin::Pin,
   task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
@@ -22,7 +22,7 @@ use crate::core::{
   },
   dispatcher::{DispatchError, DispatchExecutor, DispatchSharedGeneric, DispatcherConfig},
   error::ActorError,
-  event_stream::{EventStreamEvent, EventStreamSubscriber},
+  event_stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   lifecycle::LifecycleStage,
   messaging::SystemMessage,
   props::{MailboxConfig, MailboxRequirement, Props},
@@ -104,7 +104,7 @@ impl LifecycleEventWatcher {
 }
 
 impl EventStreamSubscriber<NoStdToolbox> for LifecycleEventWatcher {
-  fn on_event(&self, event: &EventStreamEvent<NoStdToolbox>) {
+  fn on_event(&mut self, event: &EventStreamEvent<NoStdToolbox>) {
     if let EventStreamEvent::Lifecycle(lifecycle) = event {
       self.stages.lock().push(lifecycle.stage());
     }
@@ -120,7 +120,7 @@ impl NoopExecutor {
 }
 
 impl DispatchExecutor<NoStdToolbox> for NoopExecutor {
-  fn execute(&self, _dispatcher: DispatchSharedGeneric<NoStdToolbox>) -> Result<(), DispatchError> {
+  fn execute(&mut self, _dispatcher: DispatchSharedGeneric<NoStdToolbox>) -> Result<(), DispatchError> {
     Ok(())
   }
 }
@@ -344,7 +344,7 @@ fn spawn_does_not_block_when_dispatcher_never_runs() {
   let log: ArcShared<NoStdMutex<Vec<&'static str>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
 
   // Register NoopExecutor as "noop" dispatcher
-  let noop_config = DispatcherConfig::from_executor(ArcShared::new(NoopExecutor::new()));
+  let noop_config = DispatcherConfig::from_executor(Box::new(NoopExecutor::new()));
   system.state().dispatchers().register("noop", noop_config.clone()).expect("register noop dispatcher");
 
   let props = Props::from_fn({
@@ -395,7 +395,7 @@ fn create_send_failure_triggers_rollback() {
 fn spawn_returns_child_ref_even_if_dispatcher_is_idle() {
   let system = ActorSystem::new_empty();
   let props =
-    Props::from_fn(|| TestActor).with_dispatcher(DispatcherConfig::from_executor(ArcShared::new(NoopExecutor::new())));
+    Props::from_fn(|| TestActor).with_dispatcher(DispatcherConfig::from_executor(Box::new(NoopExecutor::new())));
   let result = system.spawn_with_parent(None, &props);
 
   assert!(result.is_ok());
@@ -422,7 +422,7 @@ fn actor_system_scheduler_context_handles_delays() {
   let props = Props::from_fn(|| TestActor);
   let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
   let system = ActorSystem::new(&props, tick_driver).expect("system");
-  let provider = system.delay_provider().expect("delay provider");
+  let mut provider = system.delay_provider().expect("delay provider");
   let mut future = provider.delay(Duration::from_millis(1));
   assert!(matches!(poll_delay(&mut future), Poll::Pending));
 
@@ -447,7 +447,7 @@ fn actor_system_terminate_runs_scheduler_tasks() {
     let scheduler = context.scheduler();
     let mut guard = scheduler.lock();
     let task = RecordingShutdownTask { log: log.clone() };
-    guard.register_on_close(ArcShared::new(task), crate::core::scheduler::TaskRunPriority::User).expect("register");
+    guard.register_on_close(task, crate::core::scheduler::TaskRunPriority::User).expect("register");
   }
 
   system.terminate().expect("terminate");
@@ -460,7 +460,7 @@ struct RecordingShutdownTask {
 }
 
 impl crate::core::scheduler::TaskRunOnClose for RecordingShutdownTask {
-  fn run(&self) -> Result<(), crate::core::scheduler::TaskRunError> {
+  fn run(&mut self) -> Result<(), crate::core::scheduler::TaskRunError> {
     self.log.lock().push("shutdown");
     Ok(())
   }
@@ -487,7 +487,7 @@ fn actor_system_installs_scheduler_context() {
   let props = Props::from_fn(|| TestActor);
   let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
   let system = ActorSystem::new(&props, tick_driver).expect("actor system");
-  let provider = system.delay_provider().expect("delay provider");
+  let mut provider = system.delay_provider().expect("delay provider");
   let mut future = provider.delay(Duration::from_millis(1));
   assert!(matches!(poll_delay_future(&mut future), Poll::Pending));
 
@@ -505,8 +505,7 @@ fn actor_system_installs_scheduler_context() {
 fn lifecycle_events_cover_restart_transitions() {
   let system = ActorSystem::new_empty();
   let stages: ArcShared<NoStdMutex<Vec<LifecycleStage>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let subscriber_impl = ArcShared::new(LifecycleEventWatcher::new(stages.clone()));
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl;
+  let subscriber = subscriber_handle(LifecycleEventWatcher::new(stages.clone()));
   let _subscription = system.subscribe_event_stream(&subscriber);
 
   let props = Props::from_fn(|| TestActor);

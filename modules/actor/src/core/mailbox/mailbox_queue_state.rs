@@ -17,19 +17,19 @@ use super::UserQueueShared;
 pub struct QueueState<T, TB: RuntimeToolbox>
 where
   T: Send + 'static, {
-  pub(crate) queue:            UserQueueShared<T>,
+  pub(crate) queue:            UserQueueShared<T, TB>,
   pub(crate) producer_waiters: ToolboxMutex<WaitQueue<QueueError<T>>, TB>,
   pub(crate) consumer_waiters: ToolboxMutex<WaitQueue<QueueError<T>>, TB>,
   pub(crate) size:             AtomicUsize,
 }
 
-impl<T, TB: RuntimeToolbox> QueueState<T, TB>
+impl<T, TB: RuntimeToolbox + 'static> QueueState<T, TB>
 where
   T: Send + 'static,
 {
   /// Creates a new queue state wrapper.
   #[must_use]
-  pub fn new(queue: UserQueueShared<T>) -> Self {
+  pub fn new(queue: UserQueueShared<T, TB>) -> Self {
     Self {
       queue,
       producer_waiters: <TB::MutexFamily as SyncMutexFamily>::create(WaitQueue::new()),
@@ -39,7 +39,7 @@ where
   }
 
   /// Attempts to offer a message into the queue.
-  pub(crate) fn offer(&self, message: T) -> Result<OfferOutcome, QueueError<T>> {
+  pub(crate) fn offer(&mut self, message: T) -> Result<OfferOutcome, QueueError<T>> {
     let result = self.queue.offer(message);
 
     if result.is_ok() {
@@ -51,7 +51,7 @@ where
   }
 
   /// Attempts to poll a message from the queue.
-  pub(crate) fn poll(&self) -> Result<T, QueueError<T>> {
+  pub(crate) fn poll(&mut self) -> Result<T, QueueError<T>> {
     let result = self.queue.poll();
 
     if result.is_ok() {

@@ -12,8 +12,8 @@ use fraktor_utils_rs::core::{
     queue::{QueueError, backend::OfferOutcome},
     wait::WaitShared,
   },
-  runtime_toolbox::RuntimeToolbox,
-  sync::ArcShared,
+  runtime_toolbox::{RuntimeToolbox, ToolboxMutex},
+  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
   timing::{DelayFuture, DelayProvider},
 };
 
@@ -23,7 +23,7 @@ use super::mailbox_queue_state::QueueState;
 pub struct QueueOfferFuture<T, TB: RuntimeToolbox>
 where
   T: Send + 'static, {
-  state:   ArcShared<QueueState<T, TB>>,
+  state:   ArcShared<ToolboxMutex<QueueState<T, TB>, TB>>,
   message: Option<T>,
   waiter:  Option<WaitShared<QueueError<T>>>,
   timeout: Option<DelayFuture>,
@@ -33,18 +33,18 @@ impl<T, TB: RuntimeToolbox> QueueOfferFuture<T, TB>
 where
   T: Send + 'static,
 {
-  pub(crate) const fn new(state: ArcShared<QueueState<T, TB>>, message: T) -> Self {
+  pub(crate) const fn new(state: ArcShared<ToolboxMutex<QueueState<T, TB>, TB>>, message: T) -> Self {
     Self { state, message: Some(message), waiter: None, timeout: None }
   }
 
-  pub(crate) fn with_timeout(mut self, duration: Duration, provider: &dyn DelayProvider) -> Self {
+  pub(crate) fn with_timeout(mut self, duration: Duration, provider: &mut dyn DelayProvider) -> Self {
     self.timeout = Some(provider.delay(duration));
     self
   }
 
   fn ensure_waiter(&mut self) -> Result<&mut WaitShared<QueueError<T>>, QueueError<T>> {
     if self.waiter.is_none() {
-      let waiter = self.state.register_producer_waiter().map_err(|_| QueueError::Disconnected)?;
+      let waiter = self.state.lock().register_producer_waiter().map_err(|_| QueueError::Disconnected)?;
       self.waiter = Some(waiter);
     }
     // SAFETY: waiter is guaranteed to be Some after the above check.
@@ -79,7 +79,8 @@ where
       }
 
       if let Some(message) = this.message.take() {
-        match this.state.offer(message) {
+        let mut state = this.state.lock();
+        match state.offer(message) {
           | Ok(outcome) => {
             this.waiter.take();
             this.timeout = None;

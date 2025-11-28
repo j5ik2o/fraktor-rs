@@ -41,7 +41,7 @@ where
   ///
   /// Returns a `QueueError` when the backend cannot accept the element because the queue is closed,
   /// full, or disconnected.
-  pub fn offer(&self, item: T) -> Result<OfferOutcome, QueueError<T>> {
+  pub fn offer(&mut self, item: T) -> Result<OfferOutcome, QueueError<T>> {
     self.inner.with_mut(|queue: &mut SyncQueue<T, SpscKey, B>| queue.offer(item)).map_err(QueueError::from)?
   }
 }

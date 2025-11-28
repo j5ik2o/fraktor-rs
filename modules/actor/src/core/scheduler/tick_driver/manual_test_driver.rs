@@ -130,7 +130,7 @@ impl<TB: RuntimeToolbox> ManualDriverControl<TB> {
 }
 
 impl<TB: RuntimeToolbox> super::TickDriverControl for ManualDriverControl<TB> {
-  fn shutdown(&self) {
+  fn shutdown(&mut self) {
     self.state.reset();
   }
 }

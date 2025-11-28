@@ -25,8 +25,15 @@ impl TestExecutor {
   }
 }
 
-impl CoreDispatchExecutor<StdToolbox> for TestExecutor {
+impl DispatchExecutor for TestExecutor {
   fn execute(&self, _dispatcher: DispatchShared) -> Result<(), DispatchError> {
+    *Self::lock_state(&self.executed) = true;
+    Ok(())
+  }
+}
+
+impl CoreDispatchExecutor<StdToolbox> for TestExecutor {
+  fn execute(&mut self, _dispatcher: DispatchShared) -> Result<(), DispatchError> {
     *Self::lock_state(&self.executed) = true;
     Ok(())
   }
@@ -44,8 +51,8 @@ fn dispatch_executor_trait_implemented() {
 
 #[test]
 fn core_dispatch_executor_trait_implemented() {
-  let (executor, executed) = TestExecutor::new();
-  let executor_dyn: &dyn CoreDispatchExecutor<StdToolbox> = &executor;
+  let (mut executor, executed) = TestExecutor::new();
+  let executor_dyn: &mut dyn CoreDispatchExecutor<StdToolbox> = &mut executor;
 
   // This test just verifies trait implementation compiles correctly
   let _ = executor_dyn;

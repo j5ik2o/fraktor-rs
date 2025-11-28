@@ -70,6 +70,9 @@ impl<TB: RuntimeToolbox + 'static> EndpointReaderGeneric<TB> {
   ) -> Result<AnyMessageGeneric<TB>, fraktor_actor_rs::core::serialization::SerializationError> {
     let payload = self.serialization.deserialize(serialized, None)?;
     let arc: Arc<dyn core::any::Any + Send + Sync + 'static> = payload.into();
+    #[cfg(feature = "force-portable-arc")]
+    let shared = ArcShared::from_arc(arc.into());
+    #[cfg(not(feature = "force-portable-arc"))]
     let shared = ArcShared::from_arc(arc);
     Ok(AnyMessageGeneric::from_erased(shared, None))
   }

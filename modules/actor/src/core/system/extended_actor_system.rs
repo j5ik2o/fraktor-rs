@@ -1,5 +1,6 @@
 //! Extended ActorSystem API surface for infrastructure components.
 
+use alloc::boxed::Box;
 use core::any::Any;
 
 use fraktor_utils_rs::core::{
@@ -102,10 +103,12 @@ impl<TB: RuntimeToolbox + 'static> ExtendedActorSystemGeneric<TB> {
   }
 
   /// Registers a remote watch hook that intercepts watch/unwatch to remote actors.
-  pub fn register_remote_watch_hook<H>(&self, hook: ArcShared<H>)
+  ///
+  /// The hook will be wrapped in a `ToolboxMutex` internally for thread-safe access.
+  pub fn register_remote_watch_hook<H>(&self, hook: H)
   where
     H: RemoteWatchHook<TB>, {
-    let dyn_hook: ArcShared<dyn RemoteWatchHook<TB>> = hook;
+    let dyn_hook: Box<dyn RemoteWatchHook<TB>> = Box::new(hook);
     self.inner.state().register_remote_watch_hook(dyn_hook);
   }
 

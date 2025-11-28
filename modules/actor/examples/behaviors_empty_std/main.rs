@@ -10,10 +10,11 @@ mod std_tick_driver_support;
 use std::time::Duration;
 
 use fraktor_actor_rs::std::{
-  event_stream::{EventStreamEvent, EventStreamSubscriber, EventStreamSubscription},
+  event_stream::{
+    EventStreamEvent, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscription, subscriber_handle,
+  },
   typed::{Behavior, Behaviors, TypedActorSystem, TypedProps},
 };
-use fraktor_utils_rs::core::sync::ArcShared;
 
 #[derive(Debug, Clone)]
 enum WorkerCommand {
@@ -54,7 +55,7 @@ fn working_behavior(
 struct UnhandledLogger;
 
 impl EventStreamSubscriber for UnhandledLogger {
-  fn on_event(&self, event: &EventStreamEvent) {
+  fn on_event(&mut self, event: &EventStreamEvent) {
     if let EventStreamEvent::UnhandledMessage(unhandled) = event {
       println!(
         "[Event] UnhandledMessage: actor={:?}, message_type={}, timestamp={:?}",
@@ -73,11 +74,11 @@ fn main() {
 
   // Create typed actor system
   let props = TypedProps::from_behavior_factory(worker_behavior);
-  let tick_driver = std_tick_driver_support::hardware_tick_driver_config();
+  let (tick_driver, _pulse_handle) = std_tick_driver_support::hardware_tick_driver_config();
   let system = TypedActorSystem::new(&props, tick_driver).expect("Failed to create system");
 
   // Subscribe to unhandled message events
-  let subscriber: ArcShared<dyn EventStreamSubscriber> = ArcShared::new(UnhandledLogger);
+  let subscriber: EventStreamSubscriberShared = subscriber_handle(UnhandledLogger);
   let _subscription: EventStreamSubscription = system.subscribe_event_stream(&subscriber);
 
   let worker = system.user_guardian_ref();

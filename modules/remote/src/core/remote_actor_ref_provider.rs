@@ -24,12 +24,12 @@ use fraktor_actor_rs::core::{
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdMutex, NoStdToolbox, RuntimeToolbox},
-  sync::ArcShared,
+  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 use hashbrown::HashMap;
 
 use crate::core::{
-  EndpointWriterGeneric, actor_ref_field_normalizer::ActorRefFieldNormalizerGeneric,
+  EndpointWriterShared, actor_ref_field_normalizer::ActorRefFieldNormalizerGeneric,
   endpoint_writer_error::EndpointWriterError, loopback_router, loopback_router::LoopbackDeliveryOutcome,
   outbound_message::OutboundMessage, outbound_priority::OutboundPriority,
   remote_actor_ref_provider_error::RemoteActorRefProviderError,
@@ -42,7 +42,7 @@ use crate::core::{
 /// Provider that creates [`ActorRefGeneric`] instances for remote recipients.
 pub struct RemoteActorRefProviderGeneric<TB: RuntimeToolbox + 'static> {
   system:            ActorSystemGeneric<TB>,
-  writer:            ArcShared<EndpointWriterGeneric<TB>>,
+  writer:            EndpointWriterShared<TB>,
   control:           RemotingControlHandle<TB>,
   authority_manager: ArcShared<RemoteAuthorityManagerGeneric<TB>>,
   watcher_daemon:    ActorRefGeneric<TB>,
@@ -70,7 +70,7 @@ impl<TB: RuntimeToolbox + 'static> RemoteActorRefProviderGeneric<TB> {
 
   pub(crate) fn from_components(
     system: ActorSystemGeneric<TB>,
-    writer: ArcShared<EndpointWriterGeneric<TB>>,
+    writer: EndpointWriterShared<TB>,
     control: RemotingControlHandle<TB>,
     authority_manager: ArcShared<RemoteAuthorityManagerGeneric<TB>>,
   ) -> Result<Self, RemoteActorRefProviderError> {
@@ -107,7 +107,7 @@ impl<TB: RuntimeToolbox + 'static> RemoteActorRefProviderGeneric<TB> {
 
   #[cfg(any(test, feature = "test-support"))]
   /// Returns the underlying writer handle (testing helper).
-  pub fn writer_for_test(&self) -> ArcShared<EndpointWriterGeneric<TB>> {
+  pub fn writer_for_test(&self) -> EndpointWriterShared<TB> {
     self.writer.clone()
   }
 
@@ -178,7 +178,7 @@ impl<TB: RuntimeToolbox + 'static> RemoteActorRefProviderGeneric<TB> {
 }
 
 impl<TB: RuntimeToolbox + 'static> RemoteWatchHook<TB> for RemoteActorRefProviderGeneric<TB> {
-  fn handle_watch(&self, target: Pid, watcher: Pid) -> bool {
+  fn handle_watch(&mut self, target: Pid, watcher: Pid) -> bool {
     if let Some((parts, should_send)) = self.track_watch(target, watcher) {
       if should_send {
         self.dispatch_remote_watch(RemoteWatcherCommand::Watch { target: parts, watcher });
@@ -189,7 +189,7 @@ impl<TB: RuntimeToolbox + 'static> RemoteWatchHook<TB> for RemoteActorRefProvide
     }
   }
 
-  fn handle_unwatch(&self, target: Pid, watcher: Pid) -> bool {
+  fn handle_unwatch(&mut self, target: Pid, watcher: Pid) -> bool {
     if let Some((parts, removed)) = self.track_unwatch(target, watcher) {
       if removed {
         self.dispatch_remote_watch(RemoteWatcherCommand::Unwatch { target: parts, watcher });
@@ -202,7 +202,7 @@ impl<TB: RuntimeToolbox + 'static> RemoteWatchHook<TB> for RemoteActorRefProvide
 }
 
 struct RemoteActorRefSender<TB: RuntimeToolbox + 'static> {
-  writer:      ArcShared<EndpointWriterGeneric<TB>>,
+  writer:      EndpointWriterShared<TB>,
   recipient:   ActorPath,
   remote_node: RemoteNodeId,
 }
@@ -232,7 +232,8 @@ impl<TB: RuntimeToolbox + 'static> RemoteActorRefSender<TB> {
     }
 
     let mut parts = reply_path.parts().clone();
-    if let Some((host, port)) = self.writer.canonical_authority_components() {
+    let writer = self.writer.lock();
+    if let Some((host, port)) = writer.canonical_authority_components() {
       parts = parts.with_authority_host(host);
       if let Some(port) = port {
         parts = parts.with_authority_port(port);
@@ -252,7 +253,11 @@ impl<TB: RuntimeToolbox + 'static> RemoteActorRefSender<TB> {
 
 impl<TB: RuntimeToolbox + 'static> ActorRefSender<TB> for RemoteActorRefSender<TB> {
   fn send(&self, message: AnyMessageGeneric<TB>) -> Result<(), SendError<TB>> {
-    let normalizer = ActorRefFieldNormalizerGeneric::new(self.writer.system().state());
+    let system_state = {
+      let writer_guard = self.writer.lock();
+      writer_guard.system().state()
+    };
+    let normalizer = ActorRefFieldNormalizerGeneric::new(system_state);
     if let Err(RemoteAuthorityError::Quarantined) = normalizer.validate_recipient(&self.recipient) {
       return Err(SendError::closed(message));
     }
@@ -279,7 +284,8 @@ impl<TB: RuntimeToolbox + 'static> ActorRefSender<TB> for RemoteActorRefSender<T
     match loopback_router::try_deliver(&self.remote_node, &self.writer, outbound) {
       | Ok(LoopbackDeliveryOutcome::Delivered) => Ok(()),
       | Ok(LoopbackDeliveryOutcome::Pending(pending)) => {
-        self.writer.enqueue(*pending).map_err(|error| self.map_error(error, message_clone))
+        let mut writer = self.writer.lock();
+        writer.enqueue(*pending).map_err(|error| self.map_error(error, message_clone))
       },
       | Err(error) => Err(self.map_error(error, message_clone)),
     }

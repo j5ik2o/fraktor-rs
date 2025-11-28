@@ -55,7 +55,7 @@ impl<TB> DispatchExecutor<TB> for TickExecutorGeneric<TB>
 where
   TB: RuntimeToolbox + Send + Sync + 'static,
 {
-  fn execute(&self, dispatcher: DispatchSharedGeneric<TB>) -> Result<(), DispatchError> {
+  fn execute(&mut self, dispatcher: DispatchSharedGeneric<TB>) -> Result<(), DispatchError> {
     self.queue.lock().push_back(dispatcher);
     Ok(())
   }

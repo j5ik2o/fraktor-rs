@@ -1,6 +1,6 @@
 //! Core scheduler implementation placeholder.
 
-use alloc::vec::Vec;
+use alloc::{boxed::Box, vec::Vec};
 use core::{num::NonZeroU64, time::Duration};
 
 #[cfg(test)]
@@ -10,7 +10,6 @@ use ahash::RandomState;
 use fraktor_utils_rs::core::{
   collections::queue::backend::{BinaryHeapPriorityBackend, OverflowPolicy},
   runtime_toolbox::RuntimeToolbox,
-  sync::ArcShared,
   time::{SchedulerTickHandle, TimerEntry, TimerHandleId, TimerInstant, TimerWheel, TimerWheelConfig},
 };
 use hashbrown::HashMap;
@@ -258,11 +257,11 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
   /// Returns `SchedulerError::TaskRunCapacityExceeded` if the task run capacity is exceeded.
   pub fn register_on_close(
     &mut self,
-    task: ArcShared<dyn TaskRunOnClose>,
+    task: impl TaskRunOnClose,
     priority: TaskRunPriority,
   ) -> Result<TaskRunHandle, SchedulerError> {
     let handle = TaskRunHandle::new(self.task_run_seq);
-    let entry = TaskRunEntry::new(priority, self.task_run_seq, handle, task);
+    let entry = TaskRunEntry::new(priority, self.task_run_seq, handle, Box::new(task));
 
     match self.task_runs.offer(entry) {
       | Ok(_) => {
@@ -451,7 +450,7 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
 
   fn run_task_queue(&mut self) -> TaskRunSummary {
     let mut summary = TaskRunSummary::default();
-    while let Ok(entry) = self.task_runs.poll() {
+    while let Ok(mut entry) = self.task_runs.poll() {
       match entry.task.run() {
         | Ok(()) => summary.executed_tasks = summary.executed_tasks.saturating_add(1),
         | Err(_) => {

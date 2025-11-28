@@ -1,3 +1,4 @@
+use alloc::boxed::Box;
 use core::time::Duration;
 
 use fraktor_utils_rs::core::{
@@ -9,6 +10,7 @@ use super::{
   DispatcherSenderGeneric,
   dispatch_error::DispatchError,
   dispatch_executor::DispatchExecutor,
+  dispatch_executor_runner::DispatchExecutorRunner,
   dispatch_shared::DispatchSharedGeneric,
   dispatcher_core::{DispatcherCore, MAX_EXECUTOR_RETRIES},
   dispatcher_state::DispatcherState,
@@ -36,7 +38,7 @@ unsafe impl<TB: RuntimeToolbox + 'static> Sync for DispatcherGeneric<TB> {}
 impl<TB: RuntimeToolbox + 'static> DispatcherGeneric<TB> {
   /// Creates a new dispatcher from a mailbox and execution strategy.
   #[must_use]
-  pub fn new(mailbox: ArcShared<MailboxGeneric<TB>>, executor: ArcShared<dyn DispatchExecutor<TB>>) -> Self {
+  pub fn new(mailbox: ArcShared<MailboxGeneric<TB>>, executor: ArcShared<DispatchExecutorRunner<TB>>) -> Self {
     Self::with_executor(mailbox, executor, None, None)
   }
 
@@ -44,7 +46,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherGeneric<TB> {
   #[must_use]
   pub fn with_executor(
     mailbox: ArcShared<MailboxGeneric<TB>>,
-    executor: ArcShared<dyn DispatchExecutor<TB>>,
+    executor: ArcShared<DispatchExecutorRunner<TB>>,
     throughput_deadline: Option<Duration>,
     starvation_deadline: Option<Duration>,
   ) -> Self {
@@ -56,7 +58,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherGeneric<TB> {
   #[must_use]
   pub fn with_adapter(
     mailbox: ArcShared<MailboxGeneric<TB>>,
-    executor: ArcShared<dyn DispatchExecutor<TB>>,
+    executor: ArcShared<DispatchExecutorRunner<TB>>,
     schedule_adapter: ArcShared<dyn ScheduleAdapter<TB>>,
     throughput_deadline: Option<Duration>,
     starvation_deadline: Option<Duration>,
@@ -76,7 +78,9 @@ impl<TB: RuntimeToolbox + 'static> DispatcherGeneric<TB> {
   /// Creates a dispatcher using an inline execution strategy.
   #[must_use]
   pub fn with_inline_executor(mailbox: ArcShared<MailboxGeneric<TB>>) -> Self {
-    Self::new(mailbox, ArcShared::new(InlineExecutorGeneric::<TB>::new()))
+    let executor: Box<dyn DispatchExecutor<TB>> = Box::new(InlineExecutorGeneric::<TB>::new());
+    let runner = ArcShared::new(DispatchExecutorRunner::new(executor));
+    Self::new(mailbox, runner)
   }
 
   /// Registers an invoker.
@@ -118,7 +122,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherGeneric<TB> {
   fn try_execute(&self, attempt: usize) {
     let executor = self.core.executor().clone();
     let task = DispatchSharedGeneric::new(self.core.clone());
-    match executor.execute(task) {
+    match executor.submit(task) {
       | Ok(()) => {},
       | Err(DispatchError::RejectedExecution) if attempt < MAX_EXECUTOR_RETRIES => {
         self.try_execute(attempt + 1);

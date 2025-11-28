@@ -60,5 +60,6 @@ Show SubAgent summary to user, then provide next step guidance:
 - Provide feedback and re-run `/kiro:spec-requirements $1`
 
 **Note**: Approval is mandatory before proceeding to design phase.
+**Note**: 設定が日本語のとき、日本語で生成すること
 
 ultrathink

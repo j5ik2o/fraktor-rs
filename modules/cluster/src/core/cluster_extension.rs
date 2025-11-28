@@ -6,7 +6,9 @@ mod tests;
 use alloc::{string::String, vec::Vec};
 
 use fraktor_actor_rs::core::{
-  event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric},
+  event_stream::{
+    EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric, subscriber_handle,
+  },
   messaging::AnyMessageGeneric,
   system::ActorSystemGeneric,
 };
@@ -32,7 +34,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterTopologySubscriber<TB> {
 }
 
 impl<TB: RuntimeToolbox + 'static> EventStreamSubscriber<TB> for ClusterTopologySubscriber<TB> {
-  fn on_event(&self, event: &EventStreamEvent<TB>) {
+  fn on_event(&mut self, event: &EventStreamEvent<TB>) {
     // cluster 拡張イベントの TopologyUpdated のみを処理
     // （既に EventStream 経由で受信したイベントなので再 publish しない）
     if let EventStreamEvent::Extension { name, payload } = event {
@@ -71,9 +73,9 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionGeneric<TB> {
     }
 
     // ClusterCore への共有参照を持つ subscriber を作成
-    let subscriber = ClusterTopologySubscriber::new(self.core.clone());
-    let subscriber_arc: ArcShared<dyn EventStreamSubscriber<TB>> = ArcShared::new(subscriber);
-    let sub = EventStreamGeneric::subscribe_arc(&self.event_stream, &subscriber_arc);
+    let subscriber: ClusterTopologySubscriber<TB> = ClusterTopologySubscriber::new(self.core.clone());
+    let subscriber_handle = subscriber_handle(subscriber);
+    let sub = EventStreamGeneric::subscribe_arc(&self.event_stream, &subscriber_handle);
     *self.subscription.lock() = Some(sub);
   }
 

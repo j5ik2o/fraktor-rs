@@ -17,15 +17,15 @@ impl NoopClusterProvider {
 }
 
 impl ClusterProvider for NoopClusterProvider {
-  fn start_member(&self) -> Result<(), ClusterProviderError> {
+  fn start_member(&mut self) -> Result<(), ClusterProviderError> {
     Ok(())
   }
 
-  fn start_client(&self) -> Result<(), ClusterProviderError> {
+  fn start_client(&mut self) -> Result<(), ClusterProviderError> {
     Ok(())
   }
 
-  fn shutdown(&self, _graceful: bool) -> Result<(), ClusterProviderError> {
+  fn shutdown(&mut self, _graceful: bool) -> Result<(), ClusterProviderError> {
     Ok(())
   }
 }

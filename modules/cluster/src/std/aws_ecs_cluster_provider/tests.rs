@@ -2,7 +2,9 @@
 
 use std::sync::Mutex;
 
-use fraktor_actor_rs::core::event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber};
+use fraktor_actor_rs::core::event_stream::{
+  EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric, subscriber_handle,
+};
 use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::{core::sync::ArcShared, std::runtime_toolbox::StdToolbox};
 
@@ -33,7 +35,7 @@ impl RecordingClusterEvents {
 }
 
 impl EventStreamSubscriber<StdToolbox> for RecordingClusterEvents {
-  fn on_event(&self, event: &EventStreamEvent<StdToolbox>) {
+  fn on_event(&mut self, event: &EventStreamEvent<StdToolbox>) {
     if let EventStreamEvent::Extension { name, payload } = event {
       if name == "cluster" {
         if let Some(cluster_event) = payload.payload().downcast_ref::<ClusterEvent>() {
@@ -42,6 +44,15 @@ impl EventStreamSubscriber<StdToolbox> for RecordingClusterEvents {
       }
     }
   }
+}
+
+fn subscribe_recorder(
+  event_stream: &ArcShared<EventStreamGeneric<StdToolbox>>,
+) -> (RecordingClusterEvents, EventStreamSubscriptionGeneric<StdToolbox>) {
+  let subscriber_impl = RecordingClusterEvents::new();
+  let subscriber = subscriber_handle(subscriber_impl.clone());
+  let subscription = EventStreamGeneric::subscribe_arc(event_stream, &subscriber);
+  (subscriber_impl, subscription)
 }
 
 #[test]
@@ -102,9 +113,7 @@ fn start_member_publishes_startup_event() {
   let event_stream = ArcShared::new(EventStreamGeneric::<StdToolbox>::default());
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
 
-  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<StdToolbox>> = subscriber_impl.clone();
-  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
   let provider = AwsEcsClusterProvider::new(event_stream, block_list, "127.0.0.1:8080");
 
@@ -130,9 +139,7 @@ fn start_client_publishes_startup_event() {
   let event_stream = ArcShared::new(EventStreamGeneric::<StdToolbox>::default());
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
 
-  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<StdToolbox>> = subscriber_impl.clone();
-  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
   let provider = AwsEcsClusterProvider::new(event_stream, block_list, "127.0.0.1:8080");
 
@@ -157,9 +164,7 @@ fn shutdown_publishes_shutdown_event() {
   let event_stream = ArcShared::new(EventStreamGeneric::<StdToolbox>::default());
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
 
-  let subscriber_impl = ArcShared::new(RecordingClusterEvents::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<StdToolbox>> = subscriber_impl.clone();
-  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
   let provider = AwsEcsClusterProvider::new(event_stream, block_list, "127.0.0.1:8080");
 

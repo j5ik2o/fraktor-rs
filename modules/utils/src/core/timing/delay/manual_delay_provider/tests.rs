@@ -19,7 +19,7 @@ fn noop_waker() -> Waker {
 
 #[test]
 fn manual_delay_provider_completes_future_after_trigger() {
-  let provider = ManualDelayProvider::new();
+  let mut provider = ManualDelayProvider::new();
   let mut future = provider.delay(Duration::from_millis(10));
   let waker = noop_waker();
   let mut cx = Context::from_waker(&waker);
@@ -31,7 +31,7 @@ fn manual_delay_provider_completes_future_after_trigger() {
 
 #[test]
 fn trigger_all_completes_every_future() {
-  let provider = ManualDelayProvider::new();
+  let mut provider = ManualDelayProvider::new();
   let mut fut1 = provider.delay(Duration::from_millis(5));
   let mut fut2 = provider.delay(Duration::from_millis(10));
   let waker = noop_waker();

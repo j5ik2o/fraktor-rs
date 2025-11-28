@@ -14,6 +14,12 @@ use super::{
 };
 
 /// Provides delay futures by scheduling runnable tasks on the canonical scheduler.
+///
+/// # Interior Mutability Removed
+///
+/// This implementation now requires `&mut self` for the `delay()` method.
+/// The internal `Scheduler` is still protected by a mutex because it is a shared
+/// system resource, but callers must ensure exclusive access to this provider.
 pub struct SchedulerBackedDelayProvider<TB: RuntimeToolbox + 'static> {
   scheduler: ArcShared<ToolboxMutex<Scheduler<TB>, TB>>,
 }
@@ -25,12 +31,12 @@ impl<TB: RuntimeToolbox + 'static> SchedulerBackedDelayProvider<TB> {
     Self { scheduler }
   }
 
-  fn with_scheduler<R>(&self, f: impl FnOnce(&mut Scheduler<TB>) -> R) -> R {
+  fn with_scheduler<R>(&mut self, f: impl FnOnce(&mut Scheduler<TB>) -> R) -> R {
     let mut guard = self.scheduler.lock();
     f(&mut guard)
   }
 
-  fn schedule_delay(&self, duration: Duration, trigger: &DelayTrigger) -> Result<SchedulerHandle, SchedulerError> {
+  fn schedule_delay(&mut self, duration: Duration, trigger: &DelayTrigger) -> Result<SchedulerHandle, SchedulerError> {
     let runnable: ArcShared<dyn SchedulerRunnable> = ArcShared::new(TriggerRunnable { trigger: trigger.clone() });
     self.with_scheduler(|scheduler| {
       scheduler
@@ -54,7 +60,7 @@ impl<TB: RuntimeToolbox + 'static> Clone for SchedulerBackedDelayProvider<TB> {
 }
 
 impl<TB: RuntimeToolbox + 'static> DelayProvider for SchedulerBackedDelayProvider<TB> {
-  fn delay(&self, duration: Duration) -> DelayFuture {
+  fn delay(&mut self, duration: Duration) -> DelayFuture {
     let (future, trigger) = DelayFuture::new_pair(duration);
     match self.schedule_delay(duration, &trigger) {
       | Ok(handle) => {

@@ -32,7 +32,7 @@ impl<TB> DispatchExecutor<TB> for InlineExecutorGeneric<TB>
 where
   TB: RuntimeToolbox + Send + Sync + 'static,
 {
-  fn execute(&self, dispatcher: DispatchSharedGeneric<TB>) -> Result<(), DispatchError> {
+  fn execute(&mut self, dispatcher: DispatchSharedGeneric<TB>) -> Result<(), DispatchError> {
     dispatcher.drive();
     Ok(())
   }

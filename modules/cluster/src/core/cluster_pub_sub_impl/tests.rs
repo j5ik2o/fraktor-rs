@@ -1,6 +1,8 @@
 use alloc::{string::String, vec::Vec};
 
-use fraktor_actor_rs::core::event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber};
+use fraktor_actor_rs::core::event_stream::{
+  EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric, subscriber_handle,
+};
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdMutex, NoStdToolbox},
   sync::ArcShared,
@@ -26,9 +28,18 @@ impl TestSubscriber {
 }
 
 impl EventStreamSubscriber<NoStdToolbox> for TestSubscriber {
-  fn on_event(&self, event: &EventStreamEvent<NoStdToolbox>) {
+  fn on_event(&mut self, event: &EventStreamEvent<NoStdToolbox>) {
     self.events.lock().push(event.clone());
   }
+}
+
+fn subscribe_recorder(
+  event_stream: &ArcShared<EventStreamGeneric<NoStdToolbox>>,
+) -> (TestSubscriber, EventStreamSubscriptionGeneric<NoStdToolbox>) {
+  let subscriber = TestSubscriber::new();
+  let handle = subscriber_handle(subscriber.clone());
+  let subscription = EventStreamGeneric::subscribe_arc(event_stream, &handle);
+  (subscriber, subscription)
 }
 
 fn extract_cluster_events(events: &[EventStreamEvent<NoStdToolbox>]) -> Vec<ClusterEvent> {
@@ -70,12 +81,10 @@ fn starts_when_topic_kind_is_registered() {
     ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
 
   // サブスクライバを登録
-  let subscriber = ArcShared::new(TestSubscriber::new());
-  let sub_ref: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber.clone();
-  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &sub_ref);
+  let (_subscriber, _subscription) = subscribe_recorder(&event_stream);
 
   // PubSubImpl を作成
-  let pubsub = ClusterPubSubImpl::new(event_stream, &registry);
+  let mut pubsub = ClusterPubSubImpl::new(event_stream, &registry);
 
   // TopicActorKind が登録されているので start は成功する
   let result = pubsub.start();
@@ -92,12 +101,10 @@ fn fails_and_fires_event_when_topic_kind_missing() {
     ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
 
   // サブスクライバを登録
-  let subscriber = ArcShared::new(TestSubscriber::new());
-  let sub_ref: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber.clone();
-  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &sub_ref);
+  let (subscriber, _subscription) = subscribe_recorder(&event_stream);
 
   // PubSubImpl を作成
-  let pubsub = ClusterPubSubImpl::new(event_stream, &registry);
+  let mut pubsub = ClusterPubSubImpl::new(event_stream, &registry);
 
   // TopicActorKind が登録されていないので start は失敗する
   let result = pubsub.start();
@@ -121,11 +128,9 @@ fn creates_topic_on_start() {
 
   let event_stream: ArcShared<EventStreamGeneric<NoStdToolbox>> =
     ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
-  let subscriber = ArcShared::new(TestSubscriber::new());
-  let sub_ref: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber.clone();
-  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &sub_ref);
+  let (subscriber, _subscription) = subscribe_recorder(&event_stream);
 
-  let pubsub = ClusterPubSubImpl::new(event_stream, &registry);
+  let mut pubsub = ClusterPubSubImpl::new(event_stream, &registry);
   pubsub.start().expect("start should succeed");
 
   // TopicCreated イベントが発火されている
@@ -144,11 +149,9 @@ fn subscribe_succeeds_after_start() {
 
   let event_stream: ArcShared<EventStreamGeneric<NoStdToolbox>> =
     ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
-  let subscriber = ArcShared::new(TestSubscriber::new());
-  let sub_ref: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber.clone();
-  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &sub_ref);
+  let (subscriber, _subscription) = subscribe_recorder(&event_stream);
 
-  let pubsub = ClusterPubSubImpl::new(event_stream, &registry);
+  let mut pubsub = ClusterPubSubImpl::new(event_stream, &registry);
   pubsub.start().expect("start should succeed");
 
   // 購読を追加
@@ -172,7 +175,7 @@ fn subscribe_fails_before_start() {
 
   let event_stream: ArcShared<EventStreamGeneric<NoStdToolbox>> =
     ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
-  let pubsub = ClusterPubSubImpl::new(event_stream, &registry);
+  let mut pubsub = ClusterPubSubImpl::new(event_stream, &registry);
 
   // start 前に subscribe すると失敗
   let result = pubsub.subscribe(TOPIC_ACTOR_KIND, "subscriber-1");
@@ -186,7 +189,7 @@ fn publish_returns_subscribers() {
 
   let event_stream: ArcShared<EventStreamGeneric<NoStdToolbox>> =
     ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
-  let pubsub = ClusterPubSubImpl::new(event_stream, &registry);
+  let mut pubsub = ClusterPubSubImpl::new(event_stream, &registry);
   pubsub.start().expect("start");
 
   pubsub.subscribe(TOPIC_ACTOR_KIND, "sub-a").expect("subscribe a");
@@ -205,7 +208,7 @@ fn stop_succeeds() {
 
   let event_stream: ArcShared<EventStreamGeneric<NoStdToolbox>> =
     ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
-  let pubsub = ClusterPubSubImpl::new(event_stream, &registry);
+  let mut pubsub = ClusterPubSubImpl::new(event_stream, &registry);
   pubsub.start().expect("start");
 
   let result = pubsub.stop();
@@ -219,7 +222,7 @@ fn drain_events_returns_broker_events() {
 
   let event_stream: ArcShared<EventStreamGeneric<NoStdToolbox>> =
     ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
-  let pubsub = ClusterPubSubImpl::new(event_stream, &registry);
+  let mut pubsub = ClusterPubSubImpl::new(event_stream, &registry);
   pubsub.start().expect("start");
   pubsub.subscribe(TOPIC_ACTOR_KIND, "sub-1").expect("subscribe");
 
@@ -241,12 +244,10 @@ fn pubsub_works_with_dynamic_topology_join() {
 
   let event_stream: ArcShared<EventStreamGeneric<NoStdToolbox>> =
     ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
-  let subscriber = ArcShared::new(TestSubscriber::new());
-  let sub_ref: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber.clone();
-  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &sub_ref);
+  let (_subscriber, _subscription) = subscribe_recorder(&event_stream);
 
   // PubSubImpl を作成して起動
-  let pubsub = ClusterPubSubImpl::new(event_stream.clone(), &registry);
+  let mut pubsub = ClusterPubSubImpl::new(event_stream.clone(), &registry);
   pubsub.start().expect("start should succeed");
 
   // 動的トポロジ更新をシミュレート（ノードが join）
@@ -278,11 +279,9 @@ fn multiple_nodes_can_subscribe_and_receive_messages() {
 
   let event_stream: ArcShared<EventStreamGeneric<NoStdToolbox>> =
     ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
-  let subscriber = ArcShared::new(TestSubscriber::new());
-  let sub_ref: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber.clone();
-  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &sub_ref);
+  let (subscriber, _subscription) = subscribe_recorder(&event_stream);
 
-  let pubsub = ClusterPubSubImpl::new(event_stream, &registry);
+  let mut pubsub = ClusterPubSubImpl::new(event_stream, &registry);
   pubsub.start().expect("start");
 
   // 複数ノードから購読

@@ -15,8 +15,8 @@ use portable_atomic::AtomicU64;
 use crate::core::{
   actor_prim::actor_ref::ActorRefGeneric,
   event_stream::{
-    ActorRefEventStreamSubscriber, EventStreamSubscriber, event_stream_event::EventStreamEvent,
-    event_stream_subscriber_entry::EventStreamSubscriberEntryGeneric,
+    ActorRefEventStreamSubscriber, EventStreamSubscriberShared, event_stream_event::EventStreamEvent,
+    event_stream_subscriber::subscriber_handle, event_stream_subscriber_entry::EventStreamSubscriberEntryGeneric,
     event_stream_subscription::EventStreamSubscriptionGeneric,
   },
 };
@@ -47,7 +47,7 @@ impl<TB: RuntimeToolbox + 'static> EventStreamGeneric<TB> {
   #[must_use]
   pub fn subscribe_arc(
     stream: &ArcShared<Self>,
-    subscriber: &ArcShared<dyn EventStreamSubscriber<TB>>,
+    subscriber: &EventStreamSubscriberShared<TB>,
   ) -> EventStreamSubscriptionGeneric<TB> {
     let id = stream.next_id.fetch_add(1, Ordering::Relaxed);
     {
@@ -57,7 +57,8 @@ impl<TB: RuntimeToolbox + 'static> EventStreamGeneric<TB> {
 
     let snapshot = stream.buffer.lock().clone();
     for event in snapshot.iter() {
-      subscriber.on_event(event);
+      let mut guard = subscriber.lock();
+      guard.on_event(event);
     }
 
     EventStreamSubscriptionGeneric::new(stream.clone(), id)
@@ -75,8 +76,7 @@ impl<TB: RuntimeToolbox + 'static> EventStreamGeneric<TB> {
     stream: &ArcShared<Self>,
     actor_ref: ActorRefGeneric<TB>,
   ) -> EventStreamSubscriptionGeneric<TB> {
-    let subscriber: ArcShared<dyn EventStreamSubscriber<TB>> =
-      ArcShared::new(ActorRefEventStreamSubscriber::new(actor_ref));
+    let subscriber = subscriber_handle(ActorRefEventStreamSubscriber::new(actor_ref));
     Self::subscribe_arc(stream, &subscriber)
   }
 
@@ -101,7 +101,9 @@ impl<TB: RuntimeToolbox + 'static> EventStreamGeneric<TB> {
 
     let subscribers = self.subscribers.lock().clone();
     for entry in subscribers.iter() {
-      entry.subscriber().on_event(event);
+      let handle = entry.subscriber();
+      let mut guard = handle.lock();
+      guard.on_event(event);
     }
   }
 }

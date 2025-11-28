@@ -9,7 +9,7 @@ pub trait DispatchExecutor<TB: RuntimeToolbox + 'static>: Send + Sync {
   /// # Errors
   ///
   /// Returns [`DispatchError`] when the scheduler rejects the submitted dispatcher task.
-  fn execute(&self, dispatcher: DispatchSharedGeneric<TB>) -> Result<(), DispatchError>;
+  fn execute(&mut self, dispatcher: DispatchSharedGeneric<TB>) -> Result<(), DispatchError>;
 
   /// Returns `true` if this executor supports blocking mailbox operations.
   ///

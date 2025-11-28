@@ -1,3 +1,4 @@
+use alloc::boxed::Box;
 use core::time::Duration;
 
 use fraktor_utils_rs::core::{
@@ -9,14 +10,17 @@ use fraktor_utils_rs::core::{
 mod tests;
 
 use crate::core::{
-  dispatcher::{DispatchExecutor, DispatcherGeneric, InlineExecutorGeneric, InlineScheduleAdapter, ScheduleAdapter},
+  dispatcher::{
+    DispatchExecutor, DispatchExecutorRunner, DispatcherGeneric, InlineExecutorGeneric, InlineScheduleAdapter,
+    ScheduleAdapter,
+  },
   mailbox::{MailboxGeneric, MailboxOverflowStrategy},
   spawn::SpawnError,
 };
 
 /// Dispatcher configuration attached to [`Props`](Props).
 pub struct DispatcherConfigGeneric<TB: RuntimeToolbox + 'static> {
-  executor:            ArcShared<dyn DispatchExecutor<TB>>,
+  executor:            ArcShared<DispatchExecutorRunner<TB>>,
   throughput_deadline: Option<Duration>,
   starvation_deadline: Option<Duration>,
   schedule_adapter:    ArcShared<dyn ScheduleAdapter<TB>>,
@@ -39,18 +43,18 @@ impl<TB: RuntimeToolbox + 'static> Clone for DispatcherConfigGeneric<TB> {
 impl<TB: RuntimeToolbox + 'static> DispatcherConfigGeneric<TB> {
   /// Creates a configuration from an executor.
   #[must_use]
-  pub fn from_executor(executor: ArcShared<dyn DispatchExecutor<TB>>) -> Self {
+  pub fn from_executor(executor: Box<dyn DispatchExecutor<TB>>) -> Self {
     Self {
-      executor,
+      executor:            ArcShared::new(DispatchExecutorRunner::new(executor)),
       throughput_deadline: None,
       starvation_deadline: None,
-      schedule_adapter: ArcShared::new(InlineScheduleAdapter::new()),
+      schedule_adapter:    ArcShared::new(InlineScheduleAdapter::new()),
     }
   }
 
-  /// Returns the current executor handle.
+  /// Returns the current executor runner handle.
   #[must_use]
-  pub fn executor(&self) -> ArcShared<dyn DispatchExecutor<TB>> {
+  pub fn executor(&self) -> ArcShared<DispatchExecutorRunner<TB>> {
     self.executor.clone()
   }
 
@@ -119,7 +123,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherConfigGeneric<TB> {
 
     Ok(DispatcherGeneric::with_adapter(
       mailbox,
-      self.executor(),
+      self.executor.clone(),
       self.schedule_adapter(),
       self.throughput_deadline,
       self.starvation_deadline,
@@ -129,6 +133,6 @@ impl<TB: RuntimeToolbox + 'static> DispatcherConfigGeneric<TB> {
 
 impl<TB: RuntimeToolbox + 'static> Default for DispatcherConfigGeneric<TB> {
   fn default() -> Self {
-    Self::from_executor(ArcShared::new(InlineExecutorGeneric::<TB>::new()))
+    Self::from_executor(Box::new(InlineExecutorGeneric::<TB>::new()))
   }
 }

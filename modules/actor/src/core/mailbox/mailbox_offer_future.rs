@@ -35,7 +35,7 @@ impl<TB: RuntimeToolbox + 'static> MailboxOfferFutureGeneric<TB> {
   /// Configures the offer future to fail with a timeout if the duration elapses before enqueue
   /// succeeds.
   #[must_use]
-  pub fn with_timeout(mut self, duration: Duration, provider: &dyn DelayProvider) -> Self {
+  pub fn with_timeout(mut self, duration: Duration, provider: &mut dyn DelayProvider) -> Self {
     self.inner = self.inner.with_timeout(duration, provider);
     self
   }

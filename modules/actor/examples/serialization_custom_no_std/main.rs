@@ -154,7 +154,7 @@ fn main() {
   // ActorSystem 構築時にシリアライゼーション拡張を登録
   // （デフォルト拡張がインストールされる前に登録する必要がある）
   let ext_id_clone = serialization_id.clone();
-  let tick_driver = no_std_tick_driver_support::hardware_tick_driver_config();
+  let (tick_driver, _pulse_handle) = no_std_tick_driver_support::hardware_tick_driver_config();
   let config = ActorSystemConfig::default().with_tick_driver(tick_driver);
   let system = ActorSystem::new_with_config_and(&props, &config, move |system| {
     system.extended().register_extension(&ext_id_clone);

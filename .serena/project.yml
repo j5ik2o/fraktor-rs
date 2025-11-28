@@ -58,7 +58,7 @@ read_only: false
 #  * `restart_language_server`: Restarts the language server, may be necessary when edits not through Serena happen.
 #  * `search_for_pattern`: Performs a search for a pattern in the project.
 #  * `summarize_changes`: Provides instructions for summarizing the changes made to the codebase.
-#  * `switch_modes`: Activates modes by providing a list of their names
+#  * `switch_modes`: Activates modes by their names
 #  * `think_about_collected_information`: Thinking tool for pondering the completeness of collected information.
 #  * `think_about_task_adherence`: Thinking tool for determining whether the agent is still on track with the current task.
 #  * `think_about_whether_you_are_done`: Thinking tool for determining whether the task is truly completed.

@@ -79,7 +79,7 @@ fn main() {
     TypedProps::from_behavior_factory(move || guardian(ArcShared::clone(&counter)))
   };
 
-  let tick_driver = std_tick_driver_support::hardware_tick_driver_config();
+  let (tick_driver, _pulse_handle) = std_tick_driver_support::hardware_tick_driver_config();
   let system = TypedActorSystem::new(&props, tick_driver).expect("typed system");
   let guardian_ref = system.user_guardian_ref();
 

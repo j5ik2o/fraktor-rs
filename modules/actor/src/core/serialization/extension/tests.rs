@@ -22,7 +22,7 @@ use crate::core::{
     actor_ref::{ActorRefGeneric, NullSender},
   },
   dead_letter::DeadLetterReason,
-  event_stream::{EventStreamEvent, EventStreamSubscriber},
+  event_stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   messaging::AnyMessageViewGeneric,
   props::Props,
   serialization::{
@@ -327,9 +327,8 @@ fn not_serializable_publishes_event_and_deadletter() {
   let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
   let serialization_events = ArcShared::new(NoStdMutex::new(Vec::new()));
   let log_messages = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let subscriber_impl =
-    ArcShared::new(SerializationEventWatcher::new(serialization_events.clone(), log_messages.clone()));
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl;
+  let subscriber =
+    subscriber_handle(SerializationEventWatcher::new(serialization_events.clone(), log_messages.clone()));
   let _subscription = system.subscribe_event_stream(&subscriber);
 
   let serializer_id = SerializerId::try_from(401).expect("id");
@@ -360,9 +359,8 @@ fn not_serializable_event_records_pid_and_transport() {
   let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
   let serialization_events = ArcShared::new(NoStdMutex::new(Vec::new()));
   let log_messages = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let subscriber_impl =
-    ArcShared::new(SerializationEventWatcher::new(serialization_events.clone(), log_messages.clone()));
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl;
+  let subscriber =
+    subscriber_handle(SerializationEventWatcher::new(serialization_events.clone(), log_messages.clone()));
   let _subscription = system.subscribe_event_stream(&subscriber);
 
   let serializer_id = SerializerId::try_from(402).expect("id");
@@ -431,9 +429,8 @@ fn manifest_route_failure_surfaces_not_serializable_with_manifest() {
   let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
   let serialization_events = ArcShared::new(NoStdMutex::new(Vec::new()));
   let log_messages = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let subscriber_impl =
-    ArcShared::new(SerializationEventWatcher::new(serialization_events.clone(), log_messages.clone()));
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl;
+  let subscriber =
+    subscriber_handle(SerializationEventWatcher::new(serialization_events.clone(), log_messages.clone()));
   let _subscription = system.subscribe_event_stream(&subscriber);
 
   let serializer_id = SerializerId::try_from(422).expect("serializer");
@@ -516,8 +513,7 @@ fn cache_resolution_emits_hit_and_binding_logs() {
   let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
   let serialization_events = ArcShared::new(NoStdMutex::new(Vec::new()));
   let log_messages = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let subscriber_impl = ArcShared::new(SerializationEventWatcher::new(serialization_events, log_messages.clone()));
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl;
+  let subscriber = subscriber_handle(SerializationEventWatcher::new(serialization_events, log_messages.clone()));
   let _subscription = system.subscribe_event_stream(&subscriber);
 
   let serializer_id = SerializerId::try_from(512).expect("serializer");
@@ -546,8 +542,7 @@ fn builtin_serializer_collision_emits_warning() {
   let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
   let serialization_events = ArcShared::new(NoStdMutex::new(Vec::new()));
   let log_messages = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let subscriber_impl = ArcShared::new(SerializationEventWatcher::new(serialization_events, log_messages.clone()));
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl;
+  let subscriber = subscriber_handle(SerializationEventWatcher::new(serialization_events, log_messages.clone()));
   let _subscription = system.subscribe_event_stream(&subscriber);
 
   let serializer_id = SerializerId::from_raw(1);
@@ -585,7 +580,7 @@ impl SerializationEventWatcher {
 }
 
 impl EventStreamSubscriber<NoStdToolbox> for SerializationEventWatcher {
-  fn on_event(&self, event: &EventStreamEvent<NoStdToolbox>) {
+  fn on_event(&mut self, event: &EventStreamEvent<NoStdToolbox>) {
     match event {
       | EventStreamEvent::Serialization(payload) => {
         self.serialization_events.lock().push(payload.clone());

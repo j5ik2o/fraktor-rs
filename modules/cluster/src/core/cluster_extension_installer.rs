@@ -34,10 +34,16 @@ impl BlockListProvider for EmptyBlockListProvider {
 /// - `block_list_provider` - Provider for blocked member information
 /// - `advertised_address` - The address this node advertises to the cluster
 pub type ClusterProviderFactory<TB> = ArcShared<
-  dyn Fn(ArcShared<EventStreamGeneric<TB>>, ArcShared<dyn BlockListProvider>, &str) -> ArcShared<dyn ClusterProvider>
+  dyn Fn(ArcShared<EventStreamGeneric<TB>>, ArcShared<dyn BlockListProvider>, &str) -> Box<dyn ClusterProvider>
     + Send
     + Sync,
 >;
+
+/// Factory function type for creating a `Gossiper`.
+type GossiperFactory = ArcShared<dyn Fn() -> Box<dyn Gossiper> + Send + Sync>;
+
+/// Factory function type for creating a `ClusterPubSub`.
+type PubSubFactory = ArcShared<dyn Fn() -> Box<dyn ClusterPubSub> + Send + Sync>;
 
 /// Factory function type for creating an `IdentityLookup`.
 type IdentityLookupFactory = ArcShared<dyn Fn() -> Box<dyn IdentityLookup> + Send + Sync>;
@@ -71,8 +77,8 @@ pub struct ClusterExtensionInstaller<TB: RuntimeToolbox + 'static> {
   config:              ClusterExtensionConfig,
   provider_f:          ClusterProviderFactory<TB>,
   block_list_provider: Option<ArcShared<dyn BlockListProvider>>,
-  gossiper:            Option<ArcShared<dyn Gossiper>>,
-  pubsub:              Option<ArcShared<dyn ClusterPubSub>>,
+  gossiper_f:          Option<GossiperFactory>,
+  pubsub_f:            Option<PubSubFactory>,
   identity_lookup_f:   Option<IdentityLookupFactory>,
 }
 
@@ -82,8 +88,8 @@ impl<TB: RuntimeToolbox + 'static> Clone for ClusterExtensionInstaller<TB> {
       config:              self.config.clone(),
       provider_f:          ArcShared::clone(&self.provider_f),
       block_list_provider: self.block_list_provider.clone(),
-      gossiper:            self.gossiper.clone(),
-      pubsub:              self.pubsub.clone(),
+      gossiper_f:          self.gossiper_f.clone(),
+      pubsub_f:            self.pubsub_f.clone(),
       identity_lookup_f:   self.identity_lookup_f.clone(),
     }
   }
@@ -103,7 +109,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
   ///
   /// ```text
   /// let installer = ClusterExtensionInstaller::new(config, |event_stream, block_list, addr| {
-  ///     ArcShared::new(MyEtcdProvider::new(event_stream, block_list, addr))
+  ///     Box::new(MyEtcdProvider::new(event_stream, block_list, addr))
   /// });
   /// ```
   ///
@@ -112,7 +118,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
   #[must_use]
   pub fn new<F>(config: ClusterExtensionConfig, provider_f: F) -> Self
   where
-    F: Fn(ArcShared<EventStreamGeneric<TB>>, ArcShared<dyn BlockListProvider>, &str) -> ArcShared<dyn ClusterProvider>
+    F: Fn(ArcShared<EventStreamGeneric<TB>>, ArcShared<dyn BlockListProvider>, &str) -> Box<dyn ClusterProvider>
       + Send
       + Sync
       + 'static, {
@@ -120,8 +126,8 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
       config,
       provider_f: ArcShared::new(provider_f),
       block_list_provider: None,
-      gossiper: None,
-      pubsub: None,
+      gossiper_f: None,
+      pubsub_f: None,
       identity_lookup_f: None,
     }
   }
@@ -141,7 +147,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
       if let Some(ref topology) = static_topology {
         provider = provider.with_static_topology(topology.clone());
       }
-      ArcShared::new(provider)
+      Box::new(provider)
     })
   }
 
@@ -176,7 +182,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
     ecs_config: crate::std::EcsClusterConfig,
   ) -> ClusterExtensionInstaller<fraktor_utils_rs::std::runtime_toolbox::StdToolbox> {
     ClusterExtensionInstaller::new(config, move |event_stream, block_list_provider, advertised_address| {
-      ArcShared::new(
+      Box::new(
         crate::std::AwsEcsClusterProvider::new(event_stream, block_list_provider, advertised_address)
           .with_ecs_config(ecs_config.clone()),
       )
@@ -190,17 +196,25 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
     self
   }
 
-  /// Sets a custom gossiper implementation.
+  /// Sets a custom gossiper factory.
+  ///
+  /// The factory is called during installation to create a fresh `Gossiper` instance.
   #[must_use]
-  pub fn with_gossiper(mut self, gossiper: ArcShared<dyn Gossiper>) -> Self {
-    self.gossiper = Some(gossiper);
+  pub fn with_gossiper_factory<F>(mut self, factory: F) -> Self
+  where
+    F: Fn() -> Box<dyn Gossiper> + Send + Sync + 'static, {
+    self.gossiper_f = Some(ArcShared::new(factory));
     self
   }
 
-  /// Sets a custom pub/sub implementation.
+  /// Sets a custom pub/sub factory.
+  ///
+  /// The factory is called during installation to create a fresh `ClusterPubSub` instance.
   #[must_use]
-  pub fn with_pubsub(mut self, pubsub: ArcShared<dyn ClusterPubSub>) -> Self {
-    self.pubsub = Some(pubsub);
+  pub fn with_pubsub_factory<F>(mut self, factory: F) -> Self
+  where
+    F: Fn() -> Box<dyn ClusterPubSub> + Send + Sync + 'static, {
+    self.pubsub_f = Some(ArcShared::new(factory));
     self
   }
 
@@ -242,8 +256,11 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
     // デフォルト実装を使用（未指定の場合）
     let block_list_provider: ArcShared<dyn BlockListProvider> =
       self.block_list_provider.clone().unwrap_or_else(|| ArcShared::new(EmptyBlockListProvider));
-    let gossiper: ArcShared<dyn Gossiper> = self.gossiper.clone().unwrap_or_else(|| ArcShared::new(NoopGossiper));
-    let pubsub: ArcShared<dyn ClusterPubSub> = self.pubsub.clone().unwrap_or_else(|| ArcShared::new(NoopClusterPubSub));
+    // Gossiper はファクトリ経由で作成（Clone できないため）
+    let gossiper: Box<dyn Gossiper> = self.gossiper_f.as_ref().map(|f| f()).unwrap_or_else(|| Box::new(NoopGossiper));
+    // ClusterPubSub はファクトリ経由で作成（Clone できないため）
+    let pubsub: Box<dyn ClusterPubSub> =
+      self.pubsub_f.as_ref().map(|f| f()).unwrap_or_else(|| Box::new(NoopClusterPubSub));
     // IdentityLookup はファクトリ経由で作成（Clone できないため）
     let identity_lookup: Box<dyn IdentityLookup> =
       self.identity_lookup_f.as_ref().map(|f| f()).unwrap_or_else(|| Box::new(NoopIdentityLookup));

@@ -1,8 +1,8 @@
-use alloc::{string::String, vec::Vec};
+use alloc::{boxed::Box, string::String, vec::Vec};
 
 use fraktor_utils_rs::core::{
   collections::queue::capabilities::QueueCapabilityRegistry,
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
+  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
   sync::ArcShared,
 };
 
@@ -11,7 +11,7 @@ use crate::core::{actor_prim::Actor, dispatcher::DispatcherConfigGeneric, mailbo
 
 /// Immutable configuration describing how to construct an actor.
 pub struct PropsGeneric<TB: RuntimeToolbox + 'static> {
-  factory:           ArcShared<dyn ActorFactory<TB>>,
+  factory:           ArcShared<ToolboxMutex<Box<dyn ActorFactory<TB>>, TB>>,
   name:              Option<String>,
   mailbox:           MailboxConfig,
   mailbox_id:        Option<String>,
@@ -27,15 +27,17 @@ pub type Props = PropsGeneric<NoStdToolbox>;
 impl<TB: RuntimeToolbox + 'static> PropsGeneric<TB> {
   /// Creates new props from the provided factory.
   #[must_use]
-  pub fn new(factory: ArcShared<dyn ActorFactory<TB>>) -> Self {
+  pub fn new(factory: Box<dyn ActorFactory<TB>>) -> Self {
+    let factory_mutex: ToolboxMutex<Box<dyn ActorFactory<TB>>, TB> =
+      <TB::MutexFamily as SyncMutexFamily>::create(factory);
     Self {
-      factory,
-      name: None,
-      mailbox: MailboxConfig::default(),
-      mailbox_id: None,
-      middleware: Vec::new(),
-      dispatcher: DispatcherConfigGeneric::default(),
-      dispatcher_id: None,
+      factory:           ArcShared::new(factory_mutex),
+      name:              None,
+      mailbox:           MailboxConfig::default(),
+      mailbox_id:        None,
+      middleware:        Vec::new(),
+      dispatcher:        DispatcherConfigGeneric::default(),
+      dispatcher_id:     None,
       dispatcher_custom: false,
     }
   }
@@ -44,14 +46,14 @@ impl<TB: RuntimeToolbox + 'static> PropsGeneric<TB> {
   #[must_use]
   pub fn from_fn<F, A>(factory: F) -> Self
   where
-    F: Fn() -> A + Send + Sync + 'static,
+    F: FnMut() -> A + Send + Sync + 'static,
     A: Actor<TB> + Sync + 'static, {
-    Self::new(ArcShared::new(factory))
+    Self::new(Box::new(factory))
   }
 
   /// Returns the actor factory.
   #[must_use]
-  pub fn factory(&self) -> &ArcShared<dyn ActorFactory<TB>> {
+  pub fn factory(&self) -> &ArcShared<ToolboxMutex<Box<dyn ActorFactory<TB>>, TB>> {
     &self.factory
   }
 

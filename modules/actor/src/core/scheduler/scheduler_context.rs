@@ -8,10 +8,7 @@ use core::time::Duration;
 use fraktor_utils_rs::core::time::{MonotonicClock, TimerInstant};
 use fraktor_utils_rs::core::{
   runtime_toolbox::{RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::{
-    ArcShared,
-    sync_mutex_like::{SpinSyncMutex, SyncMutexLike},
-  },
+  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 
 use super::{
@@ -27,7 +24,7 @@ pub struct SchedulerContext<TB: RuntimeToolbox + 'static> {
   scheduler:       ArcShared<ToolboxMutex<Scheduler<TB>, TB>>,
   provider:        SchedulerBackedDelayProvider<TB>,
   event_stream:    ArcShared<EventStreamGeneric<TB>>,
-  driver_snapshot: SpinSyncMutex<Option<TickDriverSnapshot>>,
+  driver_snapshot: ToolboxMutex<Option<TickDriverSnapshot>, TB>,
 }
 
 impl<TB: RuntimeToolbox + 'static> SchedulerContext<TB> {
@@ -48,7 +45,8 @@ impl<TB: RuntimeToolbox + 'static> SchedulerContext<TB> {
     let mutex = <<TB as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(scheduler);
     let shared = ArcShared::new(mutex);
     let provider = SchedulerBackedDelayProvider::new(shared.clone());
-    Self { scheduler: shared, provider, event_stream, driver_snapshot: SpinSyncMutex::new(None) }
+    let driver_snapshot = <TB::MutexFamily as SyncMutexFamily>::create(None);
+    Self { scheduler: shared, provider, event_stream, driver_snapshot }
   }
 
   /// Returns a clone of the shared scheduler mutex.

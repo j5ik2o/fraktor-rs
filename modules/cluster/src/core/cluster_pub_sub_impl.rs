@@ -10,10 +10,7 @@ use alloc::{
 };
 
 use fraktor_actor_rs::core::{event_stream::EventStreamGeneric, messaging::AnyMessageGeneric};
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
-};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
 use crate::core::{
   ClusterEvent, ClusterPubSub, KindRegistry, PubSubBroker, PubSubError, PubSubEvent, StartupMode,
@@ -27,9 +24,9 @@ use crate::core::{
 /// events to EventStream.
 pub struct ClusterPubSubImpl<TB: RuntimeToolbox + 'static> {
   event_stream:         ArcShared<EventStreamGeneric<TB>>,
-  broker:               ToolboxMutex<PubSubBroker, TB>,
+  broker:               PubSubBroker,
   has_topic_actor_kind: bool,
-  started:              ToolboxMutex<bool, TB>,
+  started:              bool,
   advertised_address:   String,
 }
 
@@ -42,9 +39,9 @@ impl<TB: RuntimeToolbox + 'static> ClusterPubSubImpl<TB> {
     let has_topic_actor_kind = registry.contains(TOPIC_ACTOR_KIND);
     Self {
       event_stream,
-      broker: <TB::MutexFamily as SyncMutexFamily>::create(PubSubBroker::new()),
+      broker: PubSubBroker::new(),
       has_topic_actor_kind,
-      started: <TB::MutexFamily as SyncMutexFamily>::create(false),
+      started: false,
       advertised_address: String::from("pubsub"),
     }
   }
@@ -61,11 +58,11 @@ impl<TB: RuntimeToolbox + 'static> ClusterPubSubImpl<TB> {
   /// # Errors
   ///
   /// Returns an error if the topic does not exist or if the subscription fails.
-  pub fn subscribe(&self, topic: &str, subscriber: impl Into<String>) -> Result<(), PubSubError> {
-    if !*self.started.lock() {
+  pub fn subscribe(&mut self, topic: &str, subscriber: impl Into<String>) -> Result<(), PubSubError> {
+    if !self.started {
       return Err(PubSubError::TopicNotFound { topic: topic.to_string() });
     }
-    let result = self.broker.lock().subscribe(topic, subscriber.into());
+    let result = self.broker.subscribe(topic, subscriber.into());
     self.flush_broker_events_to_stream();
     result
   }
@@ -75,20 +72,20 @@ impl<TB: RuntimeToolbox + 'static> ClusterPubSubImpl<TB> {
   /// # Errors
   ///
   /// Returns an error if the topic does not exist or publish fails.
-  pub fn publish(&self, topic: &str) -> Result<Vec<String>, PubSubError> {
-    let result = self.broker.lock().publish(topic);
+  pub fn publish(&mut self, topic: &str) -> Result<Vec<String>, PubSubError> {
+    let result = self.broker.publish(topic);
     self.flush_broker_events_to_stream();
     result
   }
 
   /// Drains broker events (for testing).
   #[must_use]
-  pub fn drain_events(&self) -> Vec<PubSubEvent> {
-    self.broker.lock().drain_events()
+  pub fn drain_events(&mut self) -> Vec<PubSubEvent> {
+    self.broker.drain_events()
   }
 
-  fn flush_broker_events_to_stream(&self) {
-    let events = self.broker.lock().drain_events();
+  fn flush_broker_events_to_stream(&mut self) {
+    let events = self.broker.drain_events();
     for event in events {
       self.publish_pubsub_event(event);
     }
@@ -112,7 +109,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterPubSubImpl<TB> {
 }
 
 impl<TB: RuntimeToolbox + 'static> ClusterPubSub for ClusterPubSubImpl<TB> {
-  fn start(&self) -> Result<(), PubSubError> {
+  fn start(&mut self) -> Result<(), PubSubError> {
     // TopicActorKind がなければ起動失敗
     if !self.has_topic_actor_kind {
       let reason = format!("TopicActorKind '{}' is not registered in KindRegistry", TOPIC_ACTOR_KIND);
@@ -125,13 +122,13 @@ impl<TB: RuntimeToolbox + 'static> ClusterPubSub for ClusterPubSubImpl<TB> {
     }
 
     // prototopic トピックを作成
-    let result = self.broker.lock().create_topic(TOPIC_ACTOR_KIND.to_string());
+    let result = self.broker.create_topic(TOPIC_ACTOR_KIND.to_string());
     self.flush_broker_events_to_stream();
 
     // 重複時はエラーだが起動は成功とみなす
     match result {
       | Ok(()) | Err(PubSubError::TopicAlreadyExists { .. }) => {
-        *self.started.lock() = true;
+        self.started = true;
         Ok(())
       },
       | Err(e) => {
@@ -145,8 +142,8 @@ impl<TB: RuntimeToolbox + 'static> ClusterPubSub for ClusterPubSubImpl<TB> {
     }
   }
 
-  fn stop(&self) -> Result<(), PubSubError> {
-    *self.started.lock() = false;
+  fn stop(&mut self) -> Result<(), PubSubError> {
+    self.started = false;
     Ok(())
   }
 }

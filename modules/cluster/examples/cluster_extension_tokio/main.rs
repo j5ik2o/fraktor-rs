@@ -79,8 +79,8 @@ use fraktor_actor_rs::{
   },
   std::{
     actor_prim::{Actor, ActorContext, ActorRef},
-    dispatcher::{DispatchExecutorAdapter, DispatcherConfig, dispatch_executor::TokioExecutor},
-    event_stream::{EventStreamEvent, EventStreamSubscriber, EventStreamSubscription},
+    dispatcher::{DispatcherConfig, dispatch_executor::TokioExecutor},
+    event_stream::{EventStreamEvent, EventStreamSubscriber, EventStreamSubscription, subscriber_handle},
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
     scheduler::tick::TickDriverConfig,
@@ -196,8 +196,7 @@ fn build_cluster_node(
 ) -> Result<ClusterNode> {
   let tokio_handle = tokio::runtime::Handle::current();
   let tokio_executor = TokioExecutor::new(tokio_handle);
-  let executor_adapter = DispatchExecutorAdapter::new(ArcShared::new(tokio_executor));
-  let default_dispatcher = DispatcherConfig::from_executor(ArcShared::new(executor_adapter));
+  let default_dispatcher = DispatcherConfig::from_executor(ArcShared::new(tokio_executor));
 
   // ClusterExtensionInstaller を作成（static_topology を設定）
   // new_with_local() を使用して LocalClusterProvider を自動的に作成
@@ -233,8 +232,7 @@ fn build_cluster_node(
       .map_err(|e| anyhow!("register responder failed: {e:?}"))?;
   }
 
-  let event_subscriber: ArcShared<dyn EventStreamSubscriber> =
-    ArcShared::new(ClusterEventPrinter::new(system_name.to_string()));
+  let event_subscriber = subscriber_handle(ClusterEventPrinter::new(system_name.to_string()));
   let event_subscription = system.subscribe_event_stream(&event_subscriber);
 
   let cluster = system
@@ -258,7 +256,7 @@ impl ClusterEventPrinter {
 }
 
 impl EventStreamSubscriber for ClusterEventPrinter {
-  fn on_event(&self, event: &EventStreamEvent) {
+  fn on_event(&mut self, event: &EventStreamEvent) {
     if let EventStreamEvent::Extension { name, payload } = event {
       if name == "cluster" {
         let view = payload.as_view();

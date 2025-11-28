@@ -9,17 +9,21 @@ use fraktor_actor_rs::core::{
   actor_prim::{Actor, ActorContextGeneric, Pid, actor_path::ActorPathParts},
   error::ActorError,
   event_stream::{
-    BackpressureSignal, EventStreamEvent, EventStreamSubscriber, EventStreamSubscriptionGeneric, RemotingLifecycleEvent,
+    BackpressureSignal, EventStreamEvent, EventStreamSubscriber, EventStreamSubscriptionGeneric,
+    RemotingLifecycleEvent, subscriber_handle,
   },
   extension::ExtensionInstallers,
   messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
   props::PropsGeneric,
   scheduler::{ManualTestDriver, TickDriverConfig},
   serialization::SerializationExtensionInstaller,
-  system::{ActorSystemConfig, ActorSystemGeneric, AuthorityState, RemoteWatchHook, RemotingConfig},
+  system::{
+    ActorRefProvider, ActorSystemConfig, ActorSystemGeneric, AuthorityState, RemoteWatchHook, RemoteWatchHookShared,
+    RemotingConfig,
+  },
 };
 use fraktor_remote_rs::core::{
-  FlightMetricKind, FnRemotingBackpressureListener, LoopbackActorRefProvider, LoopbackActorRefProviderInstaller,
+  FlightMetricKind, FnRemotingBackpressureListener, LoopbackActorRefProviderGeneric, LoopbackActorRefProviderInstaller,
   RemotingControl, RemotingControlHandle, RemotingExtensionConfig, RemotingExtensionId, RemotingExtensionInstaller,
   default_loopback_setup,
 };
@@ -52,7 +56,7 @@ impl RecordingSubscriber {
 }
 
 impl EventStreamSubscriber<NoStdToolbox> for RecordingSubscriber {
-  fn on_event(&self, event: &EventStreamEvent<NoStdToolbox>) {
+  fn on_event(&mut self, event: &EventStreamEvent<NoStdToolbox>) {
     self.events.lock().push(event.clone());
   }
 }
@@ -81,7 +85,7 @@ fn subscribe(
   system: &ActorSystemGeneric<NoStdToolbox>,
 ) -> (RecordingSubscriber, EventStreamSubscriptionGeneric<NoStdToolbox>) {
   let subscriber_impl = RecordingSubscriber::new();
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = ArcShared::new(subscriber_impl.clone());
+  let subscriber = subscriber_handle(subscriber_impl.clone());
   let subscription = system.subscribe_event_stream(&subscriber);
   (subscriber_impl, subscription)
 }
@@ -98,6 +102,7 @@ fn remote_path() -> fraktor_actor_rs::core::actor_prim::actor_path::ActorPath {
 
 #[tokio::test]
 async fn quickstart_loopback_provider_flow() -> Result<()> {
+  type SharedProvider = RemoteWatchHookShared<NoStdToolbox, LoopbackActorRefProviderGeneric<NoStdToolbox>>;
   let config_hits: ArcShared<NoStdMutex<Vec<String>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
   // canonical_host/port は ActorSystemConfig の RemotingConfig から自動的に取得される
   let config = RemotingExtensionConfig::default().with_auto_start(false).with_backpressure_listener({
@@ -105,7 +110,7 @@ async fn quickstart_loopback_provider_flow() -> Result<()> {
     move |signal, authority, _| hits.lock().push(format!("{authority}:{signal:?}"))
   });
   let (system, handle) = build_system(config);
-  let provider = system.extended().actor_ref_provider::<LoopbackActorRefProvider>().expect("provider installed");
+  let provider = system.extended().actor_ref_provider::<SharedProvider>().expect("provider installed");
   let runtime_hits: ArcShared<NoStdMutex<Vec<String>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
   handle.register_backpressure_listener(FnRemotingBackpressureListener::new({
     let hits = runtime_hits.clone();
@@ -120,6 +125,8 @@ async fn quickstart_loopback_provider_flow() -> Result<()> {
   tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
   provider
+    .inner()
+    .lock()
     .watch_remote(ActorPathParts::with_authority("remote-system", Some(("127.0.0.1", 4321))))
     .map_err(|error| anyhow!("{error}"))?;
 
@@ -154,7 +161,7 @@ async fn quickstart_loopback_provider_flow() -> Result<()> {
   assert!(recorder.events.lock().iter().any(|event| matches!(event, EventStreamEvent::RemotingBackpressure(_))));
 
   let authority = "127.0.0.1:4321";
-  let snapshots = provider.connections_snapshot();
+  let snapshots = provider.inner().lock().connections_snapshot();
   let snapshot = snapshots.iter().find(|entry| entry.authority() == authority).expect("snapshot exists");
   assert!(matches!(snapshot.state(), AuthorityState::Unresolved));
 
@@ -172,18 +179,21 @@ async fn quickstart_loopback_provider_flow() -> Result<()> {
 
 #[tokio::test]
 async fn remote_provider_enqueues_message() -> Result<()> {
+  type SharedProvider = RemoteWatchHookShared<NoStdToolbox, LoopbackActorRefProviderGeneric<NoStdToolbox>>;
   let config = RemotingExtensionConfig::default().with_auto_start(false);
   let (system, handle) = build_system(config);
   handle.start().map_err(|error| anyhow!("{error}"))?;
-  let provider = system.extended().actor_ref_provider::<LoopbackActorRefProvider>().expect("provider installed");
+  let provider = system.extended().actor_ref_provider::<SharedProvider>().expect("provider installed");
   provider
+    .inner()
+    .lock()
     .watch_remote(ActorPathParts::with_authority("remote-system", Some(("127.0.0.1", 25520))))
     .map_err(|error| anyhow!("{error}"))?;
   let remote = provider.actor_ref(remote_path()).expect("actor ref");
   remote.tell(AnyMessageGeneric::new("loopback".to_string())).expect("send succeeds");
 
-  let writer = provider.writer_for_test();
-  let envelope = writer.try_next().expect("poll writer").expect("envelope");
+  let writer = provider.inner().lock().writer_for_test();
+  let envelope = writer.lock().try_next().expect("poll writer").expect("envelope");
   assert_eq!(envelope.recipient().to_relative_string(), "/user/user/svc");
   assert_eq!(envelope.remote_node().host(), "127.0.0.1");
   assert_eq!(envelope.remote_node().port(), Some(25520));
@@ -195,13 +205,15 @@ async fn remote_watch_hook_handles_system_watch_messages() -> Result<()> {
   let config = RemotingExtensionConfig::default().with_auto_start(false);
   let (system, handle) = build_system(config);
   handle.start().map_err(|error| anyhow!("{error}"))?;
-  let provider = system.extended().actor_ref_provider::<LoopbackActorRefProvider>().expect("provider installed");
+  type SharedProvider = RemoteWatchHookShared<NoStdToolbox, LoopbackActorRefProviderGeneric<NoStdToolbox>>;
+  let provider = system.extended().actor_ref_provider::<SharedProvider>().expect("provider installed");
   let remote = provider.actor_ref(remote_path()).expect("remote actor ref");
   let watcher = Pid::new(7777, 0);
 
-  assert!(RemoteWatchHook::handle_watch(&*provider, remote.pid(), watcher));
+  let mut shared_clone = (*provider).clone();
+  assert!(RemoteWatchHook::handle_watch(&mut shared_clone, remote.pid(), watcher));
 
-  let watchers = provider.remote_watchers_for_test(remote.pid()).expect("entry snapshot");
+  let watchers = provider.inner().lock().remote_watchers_for_test(remote.pid()).expect("entry snapshot");
   assert_eq!(watchers, vec![watcher]);
   Ok(())
 }

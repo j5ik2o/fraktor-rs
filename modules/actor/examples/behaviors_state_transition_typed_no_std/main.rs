@@ -65,7 +65,7 @@ fn main() {
   // `cargo run --example behaviors_state_transition_typed_no_std`
   // で実行し、出力ログで状態遷移を確認する。
   let props = TypedProps::from_behavior_factory(|| locked(0));
-  let tick_driver = no_std_tick_driver_support::hardware_tick_driver_config();
+  let (tick_driver, _pulse_handle) = no_std_tick_driver_support::hardware_tick_driver_config();
   let system = TypedActorSystem::new(&props, tick_driver).expect("system");
   let gate = system.user_guardian_ref();
   let termination = system.when_terminated();

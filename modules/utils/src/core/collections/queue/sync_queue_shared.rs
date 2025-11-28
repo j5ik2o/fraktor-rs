@@ -51,7 +51,7 @@ where
   ///
   /// Returns a `QueueError` when the backend rejects the element because the queue is closed,
   /// full, or disconnected.
-  pub fn offer(&self, item: T) -> Result<OfferOutcome, QueueError<T>> {
+  pub fn offer(&mut self, item: T) -> Result<OfferOutcome, QueueError<T>> {
     self.inner.with_mut(|queue: &mut SyncQueue<T, K, B>| queue.offer(item)).map_err(QueueError::from)?
   }
 
@@ -61,7 +61,7 @@ where
   ///
   /// Returns a `QueueError` when the backend cannot supply an element due to closure,
   /// disconnection, or backend-specific failures.
-  pub fn poll(&self) -> Result<T, QueueError<T>> {
+  pub fn poll(&mut self) -> Result<T, QueueError<T>> {
     self.inner.with_mut(|queue: &mut SyncQueue<T, K, B>| queue.poll()).map_err(QueueError::from)?
   }
 
@@ -70,7 +70,7 @@ where
   /// # Errors
   ///
   /// Returns a `QueueError` when the backend refuses to close.
-  pub fn close(&self) -> Result<(), QueueError<T>> {
+  pub fn close(&mut self) -> Result<(), QueueError<T>> {
     self.inner.with_mut(|queue: &mut SyncQueue<T, K, B>| queue.close()).map_err(QueueError::from)?
   }
 
@@ -125,7 +125,7 @@ where
   ///
   /// Returns a `QueueError` when the backend cannot access the next element due to closure,
   /// disconnection, or backend-specific failures.
-  pub fn peek_min(&self) -> Result<Option<T>, QueueError<T>> {
+  pub fn peek_min(&mut self) -> Result<Option<T>, QueueError<T>> {
     self.inner.with_mut(|queue: &mut SyncQueue<T, PriorityKey, B>| queue.peek_min()).map_err(QueueError::from)?
   }
 }

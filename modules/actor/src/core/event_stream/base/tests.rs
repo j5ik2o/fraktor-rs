@@ -11,28 +11,26 @@ use fraktor_utils_rs::core::{
 use super::EventStream;
 use crate::core::{
   actor_prim::Pid,
-  event_stream::{EventStreamEvent, EventStreamSubscriber},
+  event_stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   lifecycle::{LifecycleEvent, LifecycleStage},
   logging::{LogEvent, LogLevel},
   messaging::AnyMessage,
 };
 
 struct RecordingSubscriber {
-  events: ArcShared<NoStdMutex<Vec<EventStreamEvent<NoStdToolbox>>>>,
+  events: ArcShared<NoStdMutex<Vec<EventStreamEvent<fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox>>>>,
 }
 
 impl RecordingSubscriber {
-  fn new() -> Self {
-    Self { events: ArcShared::new(NoStdMutex::new(Vec::new())) }
-  }
-
-  fn events(&self) -> Vec<EventStreamEvent<NoStdToolbox>> {
-    self.events.lock().clone()
+  fn new(
+    events: ArcShared<NoStdMutex<Vec<EventStreamEvent<fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox>>>>,
+  ) -> Self {
+    Self { events }
   }
 }
 
 impl EventStreamSubscriber<NoStdToolbox> for RecordingSubscriber {
-  fn on_event(&self, event: &EventStreamEvent<NoStdToolbox>) {
+  fn on_event(&mut self, event: &EventStreamEvent<NoStdToolbox>) {
     self.events.lock().push(event.clone());
   }
 }
@@ -44,15 +42,15 @@ fn event_stream_replays_buffer_for_new_subscribers() {
   let log = LogEvent::new(LogLevel::Info, String::from("boot"), Duration::from_millis(1), None);
   stream.publish(&EventStreamEvent::Log(log));
 
-  let subscriber_impl = ArcShared::new(RecordingSubscriber::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
+  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
   let _subscription = EventStream::subscribe_arc(&stream, &subscriber);
 
   let lifecycle =
     LifecycleEvent::new(Pid::new(1, 0), None, String::from("actor"), LifecycleStage::Started, Duration::from_millis(2));
   stream.publish(&EventStreamEvent::Lifecycle(lifecycle));
 
-  let events = subscriber_impl.events();
+  let events = events.lock().clone();
   assert!(events.iter().any(|event| matches!(event, EventStreamEvent::Log(_))));
   assert!(events.iter().any(|event| matches!(event, EventStreamEvent::Lifecycle(_))));
 }
@@ -74,11 +72,11 @@ fn capacity_limits_buffer_size() {
     None,
   )));
 
-  let subscriber_impl = ArcShared::new(RecordingSubscriber::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
+  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
   let _subscription = EventStream::subscribe_arc(&stream, &subscriber);
 
-  let events = subscriber_impl.events();
+  let events = events.lock().clone();
   assert_eq!(events.len(), 1);
   assert!(matches!(&events[0], EventStreamEvent::Log(event) if event.message() == "second"));
 }
@@ -93,8 +91,8 @@ fn extension_events_are_buffered_and_delivered() {
     payload: AnyMessage::new(String::from("startup")),
   });
 
-  let subscriber_impl = ArcShared::new(RecordingSubscriber::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
+  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
   let _subscription = EventStream::subscribe_arc(&stream, &subscriber);
 
   stream.publish(&EventStreamEvent::Extension {
@@ -102,7 +100,7 @@ fn extension_events_are_buffered_and_delivered() {
     payload: AnyMessage::new(String::from("shutdown")),
   });
 
-  let events = subscriber_impl.events();
+  let events = events.lock().clone();
   assert_eq!(events.len(), 2);
   assert!(events.iter().any(|event| match event {
     | EventStreamEvent::Extension { name, payload } => {
@@ -121,8 +119,8 @@ fn extension_events_are_buffered_and_delivered() {
 #[test]
 fn unsubscribe_removes_subscriber() {
   let stream = ArcShared::new(EventStream::default());
-  let subscriber_impl = ArcShared::new(RecordingSubscriber::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = subscriber_impl.clone();
+  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
   let subscription = EventStream::subscribe_arc(&stream, &subscriber);
 
   stream.publish(&EventStreamEvent::Log(LogEvent::new(
@@ -141,7 +139,7 @@ fn unsubscribe_removes_subscriber() {
     None,
   )));
 
-  let events = subscriber_impl.events();
+  let events = events.lock().clone();
   assert!(
     events.iter().any(|event| matches!(event, EventStreamEvent::Log(event) if event.message() == "before unsubscribe"))
   );

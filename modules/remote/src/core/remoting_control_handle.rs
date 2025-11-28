@@ -1,6 +1,6 @@
 //! Concrete implementation of [`RemotingControl`] backed by the actor system.
-
 use alloc::{
+  boxed::Box,
   string::{String, ToString},
   vec::Vec,
 };
@@ -12,12 +12,12 @@ use fraktor_actor_rs::core::{
   system::ActorSystemGeneric,
 };
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
+  runtime_toolbox::{NoStdMutex, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 
 use crate::core::{
-  EndpointWriterGeneric,
+  EndpointWriterShared,
   endpoint_reader::EndpointReaderGeneric,
   event_publisher::EventPublisherGeneric,
   flight_recorder::{RemotingFlightRecorder, RemotingFlightRecorderSnapshot},
@@ -27,7 +27,7 @@ use crate::core::{
   remoting_control::RemotingControl,
   remoting_error::RemotingError,
   remoting_extension_config::RemotingExtensionConfig,
-  transport::{RemoteTransport, TransportBackpressureHook},
+  transport::{RemoteTransport, RemoteTransportShared, TransportBackpressureHook, TransportBackpressureHookShared},
 };
 
 /// Shared handle used by endpoints and providers to drive remoting.
@@ -96,7 +96,14 @@ where
   }
 
   /// Registers the transport instance used by the runtime.
-  pub(crate) fn register_transport(&self, transport: ArcShared<dyn RemoteTransport>) {
+  #[allow(dead_code)]
+  pub(crate) fn register_transport(&self, transport: Box<dyn RemoteTransport>) {
+    let shared: RemoteTransportShared<TB> = RemoteTransportShared::new(transport);
+    self.register_remote_transport_shared(shared);
+  }
+
+  /// Registers a pre-wrapped shared transport instance.
+  pub(crate) fn register_remote_transport_shared(&self, transport: RemoteTransportShared<TB>) {
     *self.inner.transport_ref.lock() = Some(transport);
     let _ = self.inner.try_bootstrap_runtime();
   }
@@ -104,7 +111,7 @@ where
   /// Registers endpoint IO components required for transport bridging.
   pub(crate) fn register_endpoint_io(
     &self,
-    writer: ArcShared<EndpointWriterGeneric<TB>>,
+    writer: EndpointWriterShared<TB>,
     reader: ArcShared<EndpointReaderGeneric<TB>>,
   ) {
     *self.inner.writer.lock() = Some(writer);
@@ -139,8 +146,8 @@ where
     }
   }
 
-  pub(crate) fn backpressure_hook(&self) -> ArcShared<dyn TransportBackpressureHook> {
-    ArcShared::new(ControlBackpressureHook { control: self.clone() })
+  pub(crate) fn backpressure_hook(&self) -> TransportBackpressureHookShared {
+    ArcShared::new(NoStdMutex::new(Box::new(ControlBackpressureHook { control: self.clone() })))
   }
 
   /// Emits a synthetic backpressure signal for diagnostics.
@@ -211,9 +218,9 @@ where
   snapshots:       ToolboxMutex<Vec<RemoteAuthoritySnapshot>, TB>,
   recorder:        RemotingFlightRecorder,
   correlation_seq: AtomicU64,
-  writer:          ToolboxMutex<Option<ArcShared<EndpointWriterGeneric<TB>>>, TB>,
+  writer:          ToolboxMutex<Option<EndpointWriterShared<TB>>, TB>,
   reader:          ToolboxMutex<Option<ArcShared<EndpointReaderGeneric<TB>>>, TB>,
-  transport_ref:   ToolboxMutex<Option<ArcShared<dyn RemoteTransport>>, TB>,
+  transport_ref:   ToolboxMutex<Option<RemoteTransportShared<TB>>, TB>,
   #[cfg(feature = "tokio-transport")]
   endpoint_driver: ToolboxMutex<Option<crate::std::runtime::endpoint_driver::EndpointDriverHandle>, TB>,
 }
@@ -343,7 +350,7 @@ impl<TB> TransportBackpressureHook for ControlBackpressureHook<TB>
 where
   TB: RuntimeToolbox + 'static,
 {
-  fn on_backpressure(&self, signal: BackpressureSignal, authority: &str, correlation_id: CorrelationId) {
+  fn on_backpressure(&mut self, signal: BackpressureSignal, authority: &str, correlation_id: CorrelationId) {
     self.control.notify_backpressure(authority, signal, Some(correlation_id));
   }
 }

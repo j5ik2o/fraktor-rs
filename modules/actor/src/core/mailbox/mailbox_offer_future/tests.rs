@@ -87,8 +87,9 @@ fn mailbox_offer_future_times_out_and_returns_send_error() {
 
   assert!(matches!(mailbox.enqueue_user(AnyMessage::new(0)), Ok(EnqueueOutcome::Enqueued)));
 
-  let provider = ManualDelayProvider::new();
-  let mut future = mailbox.enqueue_user_future(AnyMessage::new(1)).with_timeout(Duration::from_millis(5), &provider);
+  let mut provider = ManualDelayProvider::new();
+  let mut future =
+    mailbox.enqueue_user_future(AnyMessage::new(1)).with_timeout(Duration::from_millis(5), &mut provider);
 
   let waker = noop_waker();
   let mut context = Context::from_waker(&waker);

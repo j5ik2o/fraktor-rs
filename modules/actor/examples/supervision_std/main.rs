@@ -7,18 +7,18 @@ mod std_tick_driver_support;
 use fraktor_actor_rs::{
   core::{
     error::ActorError,
-    logging::{LogEvent, LogLevel, LoggerSubscriber, LoggerWriter},
+    logging::{LogEvent, LogLevel, LoggerWriter},
     supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
   },
   std::{
     actor_prim::{Actor, ActorContext},
-    event_stream::{EventStreamEvent, EventStreamSubscriber},
+    event_stream::{EventStreamEvent, EventStreamSubscriber, EventStreamSubscriberShared, subscriber_handle},
+    logging::StdLoggerSubscriber,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
     system::ActorSystem,
   },
 };
-use fraktor_utils_rs::core::sync::ArcShared;
 
 struct Start;
 struct Trigger;
@@ -26,15 +26,29 @@ struct Trigger;
 struct StdoutLogger;
 
 impl LoggerWriter for StdoutLogger {
-  fn write(&self, event: &LogEvent) {
+  fn write(&mut self, event: &LogEvent) {
     println!("[LOG {:?}] origin={:?} message={}", event.level(), event.origin(), event.message());
+  }
+}
+
+struct StdLoggerAdapter(StdLoggerSubscriber);
+
+impl StdLoggerAdapter {
+  fn new(level: LogLevel, writer: Box<dyn LoggerWriter>) -> Self {
+    Self(StdLoggerSubscriber::new(level, writer))
+  }
+}
+
+impl EventStreamSubscriber for StdLoggerAdapter {
+  fn on_event(&mut self, event: &EventStreamEvent) {
+    fraktor_actor_rs::core::event_stream::EventStreamSubscriber::on_event(&mut self.0, event);
   }
 }
 
 struct LifecyclePrinter;
 
 impl EventStreamSubscriber for LifecyclePrinter {
-  fn on_event(&self, event: &EventStreamEvent) {
+  fn on_event(&mut self, event: &EventStreamEvent) {
     match event {
       | EventStreamEvent::Lifecycle(lifecycle) => {
         println!("[LIFECYCLE] pid={:?} stage={:?}", lifecycle.pid(), lifecycle.stage());
@@ -149,15 +163,14 @@ impl Actor for FussyWorker {
 
 fn main() {
   let props: Props = Props::from_fn(GuardianActor::new);
-  let tick_driver = std_tick_driver_support::hardware_tick_driver_config();
+  let (tick_driver, _pulse_handle) = std_tick_driver_support::hardware_tick_driver_config();
   let system = ActorSystem::new(&props, tick_driver).expect("ガーディアンの起動に成功すること");
 
-  let logger_writer: ArcShared<dyn LoggerWriter> = ArcShared::new(StdoutLogger);
-  let logger: ArcShared<dyn EventStreamSubscriber> =
-    ArcShared::new(LoggerSubscriber::new(LogLevel::Info, logger_writer));
+  let logger: EventStreamSubscriberShared =
+    subscriber_handle(StdLoggerAdapter::new(LogLevel::Info, Box::new(StdoutLogger)));
   let _logger_subscription = system.subscribe_event_stream(&logger);
 
-  let lifecycle: ArcShared<dyn EventStreamSubscriber> = ArcShared::new(LifecyclePrinter);
+  let lifecycle: EventStreamSubscriberShared = subscriber_handle(LifecyclePrinter);
   let _lifecycle_subscription = system.subscribe_event_stream(&lifecycle);
 
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("ガーディアンに Start を送信できること");

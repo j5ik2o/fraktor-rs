@@ -9,8 +9,8 @@ pub trait CountDownLatchBackend: Clone {
   fn new(count: usize) -> Self;
 
   /// Decrements the count by 1.
-  async fn count_down(&self);
+  async fn count_down(&mut self);
 
   /// Waits until the count reaches 0.
-  async fn wait(&self);
+  async fn wait(&mut self);
 }

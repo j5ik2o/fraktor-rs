@@ -113,8 +113,8 @@ fn main() {
   use std::{process, thread};
 
   let props = TypedProps::new(GuardianActor::new);
-  let bootstrap =
-    TypedActorSystem::new(&props, no_std_tick_driver_support::hardware_tick_driver_config()).expect("system");
+  let (tick_driver, _pulse_handle) = no_std_tick_driver_support::hardware_tick_driver_config();
+  let bootstrap = TypedActorSystem::new(&props, tick_driver).expect("system");
   bootstrap.user_guardian_ref().tell(GuardianCommand::Start).expect("start");
 
   // スケジューラが動作する時間を与える

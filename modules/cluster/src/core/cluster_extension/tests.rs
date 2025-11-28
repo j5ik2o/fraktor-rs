@@ -1,7 +1,9 @@
 use alloc::{boxed::Box, string::String, vec, vec::Vec};
 
 use fraktor_actor_rs::core::{
-  event_stream::{EventStreamEvent, EventStreamSubscriber},
+  event_stream::{
+    EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric, subscriber_handle,
+  },
   messaging::AnyMessageGeneric,
   system::ActorSystemGeneric,
 };
@@ -18,37 +20,37 @@ use crate::core::{
 
 struct StubProvider;
 impl ClusterProvider for StubProvider {
-  fn start_member(&self) -> Result<(), ClusterProviderError> {
+  fn start_member(&mut self) -> Result<(), ClusterProviderError> {
     Ok(())
   }
 
-  fn start_client(&self) -> Result<(), ClusterProviderError> {
+  fn start_client(&mut self) -> Result<(), ClusterProviderError> {
     Ok(())
   }
 
-  fn shutdown(&self, _graceful: bool) -> Result<(), ClusterProviderError> {
+  fn shutdown(&mut self, _graceful: bool) -> Result<(), ClusterProviderError> {
     Ok(())
   }
 }
 
 struct StubGossiper;
 impl Gossiper for StubGossiper {
-  fn start(&self) -> Result<(), &'static str> {
+  fn start(&mut self) -> Result<(), &'static str> {
     Ok(())
   }
 
-  fn stop(&self) -> Result<(), &'static str> {
+  fn stop(&mut self) -> Result<(), &'static str> {
     Ok(())
   }
 }
 
 struct StubPubSub;
 impl ClusterPubSub for StubPubSub {
-  fn start(&self) -> Result<(), crate::core::pub_sub_error::PubSubError> {
+  fn start(&mut self) -> Result<(), crate::core::pub_sub_error::PubSubError> {
     Ok(())
   }
 
-  fn stop(&self) -> Result<(), crate::core::pub_sub_error::PubSubError> {
+  fn stop(&mut self) -> Result<(), crate::core::pub_sub_error::PubSubError> {
     Ok(())
   }
 }
@@ -77,10 +79,10 @@ fn registers_extension_and_starts_member() {
 
   let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
     ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"),
-    ArcShared::new(StubProvider),
+    Box::new(StubProvider),
     ArcShared::new(StubBlockList),
-    ArcShared::new(StubGossiper),
-    ArcShared::new(StubPubSub),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
     Box::new(StubIdentity),
   );
 
@@ -97,10 +99,10 @@ fn subscribes_to_event_stream_and_applies_topology_on_topology_updated() {
 
   let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
     ClusterExtensionConfig::new().with_advertised_address("fraktor://demo").with_metrics_enabled(true),
-    ArcShared::new(StubProvider),
+    Box::new(StubProvider),
     ArcShared::new(StubBlockList),
-    ArcShared::new(StubGossiper),
-    ArcShared::new(StubPubSub),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
     Box::new(StubIdentity),
   );
 
@@ -136,10 +138,10 @@ fn ignores_topology_with_same_hash_via_event_stream() {
 
   let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
     ClusterExtensionConfig::new().with_advertised_address("fraktor://demo").with_metrics_enabled(true),
-    ArcShared::new(StubProvider),
+    Box::new(StubProvider),
     ArcShared::new(StubBlockList),
-    ArcShared::new(StubGossiper),
-    ArcShared::new(StubPubSub),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
     Box::new(StubIdentity),
   );
 
@@ -208,7 +210,7 @@ impl RecordingClusterEvents {
 }
 
 impl EventStreamSubscriber<NoStdToolbox> for RecordingClusterEvents {
-  fn on_event(&self, event: &EventStreamEvent<NoStdToolbox>) {
+  fn on_event(&mut self, event: &EventStreamEvent<NoStdToolbox>) {
     if let EventStreamEvent::Extension { name, payload } = event {
       if name == "cluster" {
         if let Some(cluster_event) = payload.payload().downcast_ref::<ClusterEvent>() {
@@ -217,6 +219,15 @@ impl EventStreamSubscriber<NoStdToolbox> for RecordingClusterEvents {
       }
     }
   }
+}
+
+fn subscribe_recorder(
+  event_stream: &ArcShared<EventStreamGeneric<NoStdToolbox>>,
+) -> (RecordingClusterEvents, EventStreamSubscriptionGeneric<NoStdToolbox>) {
+  let recorder = RecordingClusterEvents::new();
+  let subscriber = subscriber_handle(recorder.clone());
+  let subscription = EventStreamGeneric::subscribe_arc(event_stream, &subscriber);
+  (recorder, subscription)
 }
 
 /// Phase1 統合テスト: StaticClusterProvider の静的トポロジが EventStream に publish され、
@@ -228,10 +239,7 @@ fn phase1_integration_static_topology_publishes_to_event_stream_and_applies_to_c
   let event_stream = system.event_stream();
 
   // 2. EventStream に subscriber を登録してイベントを記録
-  let recorder = ArcShared::new(RecordingClusterEvents::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = recorder.clone();
-  let _subscription =
-    fraktor_actor_rs::core::event_stream::EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let (recorder, _subscription) = subscribe_recorder(&event_stream);
 
   // 3. StaticClusterProvider を静的トポロジで構成
   let block_list: ArcShared<dyn BlockListProvider> =
@@ -243,10 +251,10 @@ fn phase1_integration_static_topology_publishes_to_event_stream_and_applies_to_c
   // 4. ClusterExtension をセットアップ（metrics 有効）
   let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
     ClusterExtensionConfig::new().with_advertised_address("node-a").with_metrics_enabled(true),
-    ArcShared::new(provider),
+    Box::new(provider),
     block_list,
-    ArcShared::new(StubGossiper),
-    ArcShared::new(StubPubSub),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
     Box::new(StubIdentity),
   );
   let ext_shared = system.extended().register_extension(&ext_id);
@@ -281,10 +289,7 @@ fn phase1_integration_topology_updated_includes_blocked_members() {
   let event_stream = system.event_stream();
 
   // 2. EventStream に subscriber を登録
-  let recorder = ArcShared::new(RecordingClusterEvents::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = recorder.clone();
-  let _subscription =
-    fraktor_actor_rs::core::event_stream::EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let (recorder, _subscription) = subscribe_recorder(&event_stream);
 
   // 3. BlockList に複数のブロックされたノードを設定
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(RecordingBlockList::new(vec![
@@ -301,10 +306,10 @@ fn phase1_integration_topology_updated_includes_blocked_members() {
   // 5. ClusterExtension をセットアップ
   let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
     ClusterExtensionConfig::new().with_advertised_address("node-a").with_metrics_enabled(true),
-    ArcShared::new(provider),
+    Box::new(provider),
     block_list,
-    ArcShared::new(StubGossiper),
-    ArcShared::new(StubPubSub),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
     Box::new(StubIdentity),
   );
   let ext_shared = system.extended().register_extension(&ext_id);
@@ -339,19 +344,16 @@ fn phase1_integration_duplicate_hash_topology_is_suppressed() {
   let event_stream = system.event_stream();
 
   // 2. EventStream に subscriber を登録
-  let recorder = ArcShared::new(RecordingClusterEvents::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = recorder.clone();
-  let _subscription =
-    fraktor_actor_rs::core::event_stream::EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let (recorder, _subscription) = subscribe_recorder(&event_stream);
 
   // 3. ClusterExtension をセットアップ
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(StubBlockList);
   let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
     ClusterExtensionConfig::new().with_advertised_address("node-a").with_metrics_enabled(true),
-    ArcShared::new(StubProvider),
+    Box::new(StubProvider),
     block_list,
-    ArcShared::new(StubGossiper),
-    ArcShared::new(StubPubSub),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
     Box::new(StubIdentity),
   );
   let ext_shared = system.extended().register_extension(&ext_id);
@@ -379,10 +381,10 @@ fn phase1_integration_metrics_include_members_and_virtual_actors() {
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(StubBlockList);
   let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
     ClusterExtensionConfig::new().with_advertised_address("node-a").with_metrics_enabled(true),
-    ArcShared::new(StubProvider),
+    Box::new(StubProvider),
     block_list,
-    ArcShared::new(StubGossiper),
-    ArcShared::new(StubPubSub),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
     Box::new(StubIdentity),
   );
   let ext_shared = system.extended().register_extension(&ext_id);
@@ -429,19 +431,16 @@ fn phase2_integration_join_leave_events_produce_topology_updated() {
   let event_stream = system.event_stream();
 
   // 2. EventStream に subscriber を登録
-  let recorder = ArcShared::new(RecordingClusterEvents::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = recorder.clone();
-  let _subscription =
-    fraktor_actor_rs::core::event_stream::EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let (recorder, _subscription) = subscribe_recorder(&event_stream);
 
   // 3. ClusterExtension をセットアップ
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(StubBlockList);
   let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
     ClusterExtensionConfig::new().with_advertised_address("node-a").with_metrics_enabled(true),
-    ArcShared::new(StubProvider),
+    Box::new(StubProvider),
     block_list,
-    ArcShared::new(StubGossiper),
-    ArcShared::new(StubPubSub),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
     Box::new(StubIdentity),
   );
   let ext_shared = system.extended().register_extension(&ext_id);
@@ -490,10 +489,7 @@ fn phase2_integration_blocklist_reflected_in_topology_events() {
   let event_stream = system.event_stream();
 
   // 2. EventStream に subscriber を登録
-  let recorder = ArcShared::new(RecordingClusterEvents::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = recorder.clone();
-  let _subscription =
-    fraktor_actor_rs::core::event_stream::EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let (recorder, _subscription) = subscribe_recorder(&event_stream);
 
   // 3. BlockList に複数のノードを設定
   let block_list: ArcShared<dyn BlockListProvider> =
@@ -502,10 +498,10 @@ fn phase2_integration_blocklist_reflected_in_topology_events() {
   // 4. ClusterExtension をセットアップ
   let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
     ClusterExtensionConfig::new().with_advertised_address("node-a").with_metrics_enabled(true),
-    ArcShared::new(StubProvider),
+    Box::new(StubProvider),
     block_list,
-    ArcShared::new(StubGossiper),
-    ArcShared::new(StubPubSub),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
     Box::new(StubIdentity),
   );
   let ext_shared = system.extended().register_extension(&ext_id);
@@ -547,10 +543,10 @@ fn phase2_integration_metrics_updated_correctly_with_dynamic_topology() {
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(StubBlockList);
   let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
     ClusterExtensionConfig::new().with_advertised_address("node-a").with_metrics_enabled(true),
-    ArcShared::new(StubProvider),
+    Box::new(StubProvider),
     block_list,
-    ArcShared::new(StubGossiper),
-    ArcShared::new(StubPubSub),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
     Box::new(StubIdentity),
   );
   let ext_shared = system.extended().register_extension(&ext_id);
@@ -593,19 +589,16 @@ fn phase2_integration_shutdown_resets_metrics_and_emits_event() {
   let event_stream = system.event_stream();
 
   // 2. EventStream に subscriber を登録
-  let recorder = ArcShared::new(RecordingClusterEvents::new());
-  let subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> = recorder.clone();
-  let _subscription =
-    fraktor_actor_rs::core::event_stream::EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let (recorder, _subscription) = subscribe_recorder(&event_stream);
 
   // 3. ClusterExtension をセットアップ
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(StubBlockList);
   let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
     ClusterExtensionConfig::new().with_advertised_address("node-a").with_metrics_enabled(true),
-    ArcShared::new(StubProvider),
+    Box::new(StubProvider),
     block_list,
-    ArcShared::new(StubGossiper),
-    ArcShared::new(StubPubSub),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
     Box::new(StubIdentity),
   );
   let ext_shared = system.extended().register_extension(&ext_id);

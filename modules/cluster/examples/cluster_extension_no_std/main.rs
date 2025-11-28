@@ -64,7 +64,7 @@ compile_error!("cluster_extension_no_std example requires --features test-suppor
 
 use fraktor_actor_rs::core::{
   actor_prim::{Actor, ActorContextGeneric},
-  event_stream::{EventStreamEvent, EventStreamSubscriber},
+  event_stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   messaging::{AnyMessage, AnyMessageViewGeneric},
   props::Props,
   scheduler::{ManualTestDriver, TickDriverConfig},
@@ -81,11 +81,11 @@ use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
 #[derive(Default)]
 struct DemoGossiper;
 impl Gossiper for DemoGossiper {
-  fn start(&self) -> Result<(), &'static str> {
+  fn start(&mut self) -> Result<(), &'static str> {
     Ok(())
   }
 
-  fn stop(&self) -> Result<(), &'static str> {
+  fn stop(&mut self) -> Result<(), &'static str> {
     Ok(())
   }
 }
@@ -94,11 +94,11 @@ impl Gossiper for DemoGossiper {
 #[derive(Default)]
 struct DemoPubSub;
 impl ClusterPubSub for DemoPubSub {
-  fn start(&self) -> Result<(), fraktor_cluster_rs::core::PubSubError> {
+  fn start(&mut self) -> Result<(), fraktor_cluster_rs::core::PubSubError> {
     Ok(())
   }
 
-  fn stop(&self) -> Result<(), fraktor_cluster_rs::core::PubSubError> {
+  fn stop(&mut self) -> Result<(), fraktor_cluster_rs::core::PubSubError> {
     Ok(())
   }
 }
@@ -139,7 +139,7 @@ impl ClusterEventLogger {
 }
 
 impl EventStreamSubscriber<NoStdToolbox> for ClusterEventLogger {
-  fn on_event(&self, event: &EventStreamEvent<NoStdToolbox>) {
+  fn on_event(&mut self, event: &EventStreamEvent<NoStdToolbox>) {
     if let EventStreamEvent::Extension { name, payload } = event {
       if name == "cluster" {
         if let Some(cluster_event) = payload.payload().downcast_ref::<ClusterEvent>() {
@@ -196,8 +196,7 @@ impl ClusterNode {
       ActorSystemGeneric::new_with_config(&grain_props, &system_cfg).expect("system build");
 
     // EventStream のサブスクライバを登録（クラスタイベントを観測）
-    let event_subscriber: ArcShared<dyn EventStreamSubscriber<NoStdToolbox>> =
-      ArcShared::new(ClusterEventLogger::new(name));
+    let event_subscriber = subscriber_handle(ClusterEventLogger::new(name));
     let _subscription = system.subscribe_event_stream(&event_subscriber);
 
     // 静的トポロジを設定した StaticClusterProvider を作成
@@ -209,10 +208,10 @@ impl ClusterNode {
     // ClusterExtension を登録
     let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
       ClusterExtensionConfig::new().with_advertised_address(name).with_metrics_enabled(true),
-      ArcShared::new(provider),
+      Box::new(provider),
       ArcShared::new(DemoBlockList::default()),
-      ArcShared::new(DemoGossiper::default()),
-      ArcShared::new(DemoPubSub::default()),
+      Box::new(DemoGossiper::default()),
+      Box::new(DemoPubSub::default()),
       Box::new(DemoIdentityLookup::default()),
     );
 

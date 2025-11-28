@@ -1,7 +1,7 @@
 use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
 use crate::{
-  core::dispatcher::{DispatchError, DispatchExecutor as CoreDispatchExecutor},
+  core::dispatcher::{DispatchError, DispatchExecutorRunner},
   std::dispatcher::DispatchShared,
 };
 
@@ -9,6 +9,10 @@ use crate::{
 mod tests;
 
 /// Scheduler abstraction for driving dispatcher execution in the standard runtime.
+///
+/// Unlike `core::DispatchExecutor` which uses `&mut self`, this trait uses `&self`
+/// because standard runtime executors can leverage OS-level concurrency primitives
+/// (threads, async runtimes) that handle synchronization internally.
 pub trait DispatchExecutor: Send + Sync + 'static {
   /// Delegates dispatcher execution to the scheduler.
   ///
@@ -18,11 +22,8 @@ pub trait DispatchExecutor: Send + Sync + 'static {
   fn execute(&self, dispatcher: DispatchShared) -> Result<(), DispatchError>;
 }
 
-impl<T> DispatchExecutor for T
-where
-  T: CoreDispatchExecutor<StdToolbox> + 'static,
-{
+impl DispatchExecutor for DispatchExecutorRunner<StdToolbox> {
   fn execute(&self, dispatcher: DispatchShared) -> Result<(), DispatchError> {
-    CoreDispatchExecutor::execute(self, dispatcher)
+    self.submit(dispatcher)
   }
 }

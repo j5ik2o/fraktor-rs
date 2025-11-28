@@ -1,8 +1,6 @@
 //! Standard library transport factory with Tokio support.
 
-use alloc::string::ToString;
-
-use fraktor_utils_rs::core::sync::ArcShared;
+use alloc::{boxed::Box, string::ToString};
 
 #[cfg(feature = "tokio-transport")]
 use super::tokio_tcp::TokioTcpTransport;
@@ -13,13 +11,15 @@ pub struct StdTransportFactory;
 
 impl StdTransportFactory {
   /// Resolves a transport instance for the provided config (std compatible).
-  pub fn build(config: &RemotingExtensionConfig) -> Result<ArcShared<dyn RemoteTransport>, TransportError> {
+  ///
+  /// Returns a boxed transport that callers can wrap in a mutex for shared access.
+  pub fn build(config: &RemotingExtensionConfig) -> Result<Box<dyn RemoteTransport>, TransportError> {
     match config.transport_scheme() {
-      | "fraktor.loopback" => Ok(ArcShared::new(LoopbackTransport::default())),
+      | "fraktor.loopback" => Ok(Box::new(LoopbackTransport::default())),
       | "pekko.tcp" | "fraktor.tcp" => {
         #[cfg(feature = "tokio-transport")]
         {
-          TokioTcpTransport::build().map(|transport| ArcShared::new(transport) as ArcShared<dyn RemoteTransport>)
+          TokioTcpTransport::build().map(|transport| Box::new(transport) as Box<dyn RemoteTransport>)
         }
         #[cfg(not(feature = "tokio-transport"))]
         {

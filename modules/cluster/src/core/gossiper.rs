@@ -7,12 +7,12 @@ pub trait Gossiper: Send + Sync {
   /// # Errors
   ///
   /// Returns an error if gossip dissemination fails to start.
-  fn start(&self) -> Result<(), &'static str>;
+  fn start(&mut self) -> Result<(), &'static str>;
 
   /// Stops gossip dissemination.
   ///
   /// # Errors
   ///
   /// Returns an error if gossip dissemination fails to stop.
-  fn stop(&self) -> Result<(), &'static str>;
+  fn stop(&mut self) -> Result<(), &'static str>;
 }

@@ -39,7 +39,7 @@ fn main() {
 
   // `cargo run --example behaviors_receive_signal` で実行し、シグナルログを確認する。
   let props = TypedProps::from_behavior_factory(guardian_behavior);
-  let tick_driver = no_std_tick_driver_support::hardware_tick_driver_config();
+  let (tick_driver, _pulse_handle) = no_std_tick_driver_support::hardware_tick_driver_config();
   let system = TypedActorSystem::new(&props, tick_driver).expect("system");
   let termination = system.when_terminated();
 

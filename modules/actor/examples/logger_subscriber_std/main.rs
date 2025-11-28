@@ -7,14 +7,13 @@ use fraktor_actor_rs::{
   core::{error::ActorError, logging::LogLevel},
   std::{
     actor_prim::{Actor, ActorContext, ActorRef},
-    event_stream::EventStreamSubscriber,
+    event_stream::{EventStreamSubscriberShared, subscriber_handle},
     logging::TracingLoggerSubscriber,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
     system::ActorSystem,
   },
 };
-use fraktor_utils_rs::core::sync::ArcShared;
 
 struct Start;
 
@@ -37,11 +36,10 @@ fn main() {
   let subscriber = tracing_subscriber::FmtSubscriber::builder().with_max_level(tracing::Level::DEBUG).finish();
   tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
-  let log_subscriber: ArcShared<dyn EventStreamSubscriber> =
-    ArcShared::new(TracingLoggerSubscriber::new(LogLevel::Info));
+  let log_subscriber: EventStreamSubscriberShared = subscriber_handle(TracingLoggerSubscriber::new(LogLevel::Info));
 
   let props: Props = Props::from_fn(|| GuardianActor);
-  let tick_driver = std_tick_driver_support::hardware_tick_driver_config();
+  let (tick_driver, _pulse_handle) = std_tick_driver_support::hardware_tick_driver_config();
   let system = ActorSystem::new(&props, tick_driver).expect("actor system を初期化できること");
 
   let _subscription = system.subscribe_event_stream(&log_subscriber);

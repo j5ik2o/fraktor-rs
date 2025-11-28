@@ -6,6 +6,14 @@ use crate::core::sync::{ArcShared, SharedError, shared::Shared, sync_mutex_like:
 mod tests;
 
 /// Abstraction offering mutable access to shared backends.
+///
+/// # Design
+///
+/// - Callers do not need to bind the shared handle (e.g., `ArcShared<Mutex<T>>`) as `mut`.
+/// - Internally calls `SyncMutexLike::lock(&self)` and performs mutations via the acquired guard.
+/// - If you want to switch to a design where the lock is held externally, do not change this trait
+///   to take `&mut self`. Instead, introduce a dedicated handler type to encapsulate that
+///   responsibility.
 pub trait SharedAccess<B> {
   /// Executes the provided closure with mutable access to the backend.
   ///

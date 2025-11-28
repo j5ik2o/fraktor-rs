@@ -15,10 +15,7 @@ use fraktor_actor_rs::core::{
   messaging::AnyMessageGeneric,
 };
 use fraktor_remote_rs::core::BlockListProvider;
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
-};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
 use crate::core::{ClusterEvent, ClusterProvider, ClusterProviderError, ClusterTopology, StartupMode};
 
@@ -44,15 +41,15 @@ pub struct LocalClusterProvider<TB: RuntimeToolbox + 'static> {
   block_list_provider: ArcShared<dyn BlockListProvider>,
   advertised_address:  String,
   // 現在のメンバーリスト（join/leave イベント処理用）
-  members:             ToolboxMutex<Vec<String>, TB>,
+  members:             Vec<String>,
   // 内部バージョンカウンタ（ハッシュ生成用）
-  version:             ToolboxMutex<u64, TB>,
+  version:             u64,
   // 静的トポロジ（設定されている場合、start時に publish）
-  static_topology:     ToolboxMutex<Option<ClusterTopology>, TB>,
+  static_topology:     Option<ClusterTopology>,
   // GossipEngine 用の seed ノードリスト（Phase2）
-  seed_nodes:          ToolboxMutex<Vec<String>, TB>,
+  seed_nodes:          Vec<String>,
   // 起動モード（Member/Client）を追跡
-  startup_mode:        ToolboxMutex<Option<StartupMode>, TB>,
+  startup_mode:        Option<StartupMode>,
 }
 
 impl<TB: RuntimeToolbox + 'static> LocalClusterProvider<TB> {
@@ -67,11 +64,11 @@ impl<TB: RuntimeToolbox + 'static> LocalClusterProvider<TB> {
       event_stream,
       block_list_provider,
       advertised_address: advertised_address.into(),
-      members: <TB::MutexFamily as SyncMutexFamily>::create(Vec::new()),
-      version: <TB::MutexFamily as SyncMutexFamily>::create(0),
-      static_topology: <TB::MutexFamily as SyncMutexFamily>::create(None),
-      seed_nodes: <TB::MutexFamily as SyncMutexFamily>::create(Vec::new()),
-      startup_mode: <TB::MutexFamily as SyncMutexFamily>::create(None),
+      members: Vec::new(),
+      version: 0,
+      static_topology: None,
+      seed_nodes: Vec::new(),
+      startup_mode: None,
     }
   }
 
@@ -79,8 +76,8 @@ impl<TB: RuntimeToolbox + 'static> LocalClusterProvider<TB> {
   ///
   /// This is useful for testing or scenarios where topology is predetermined.
   #[must_use]
-  pub fn with_static_topology(self, topology: ClusterTopology) -> Self {
-    *self.static_topology.lock() = Some(topology);
+  pub fn with_static_topology(mut self, topology: ClusterTopology) -> Self {
+    self.static_topology = Some(topology);
     self
   }
 
@@ -89,8 +86,8 @@ impl<TB: RuntimeToolbox + 'static> LocalClusterProvider<TB> {
   /// These nodes will be used as initial peers when the provider starts.
   /// In Phase2, this enables GossipEngine to establish connections with known peers.
   #[must_use]
-  pub fn with_seed_nodes(self, seeds: Vec<String>) -> Self {
-    *self.seed_nodes.lock() = seeds;
+  pub fn with_seed_nodes(mut self, seeds: Vec<String>) -> Self {
+    self.seed_nodes = seeds;
     self
   }
 
@@ -103,21 +100,20 @@ impl<TB: RuntimeToolbox + 'static> LocalClusterProvider<TB> {
 
   /// Returns the configured seed nodes.
   #[must_use]
-  pub fn seed_nodes(&self) -> Vec<String> {
-    self.seed_nodes.lock().clone()
+  #[allow(clippy::missing_const_for_fn)]
+  pub fn seed_nodes(&self) -> &[String] {
+    &self.seed_nodes
   }
 
   /// Notifies the provider that a node has joined the cluster.
   ///
   /// This will publish a `ClusterEvent::TopologyUpdated` with the joined node
   /// in the `joined` list.
-  pub fn on_member_join(&self, authority: impl Into<String>) {
+  pub fn on_member_join(&mut self, authority: impl Into<String>) {
     let authority = authority.into();
-    let mut members = self.members.lock();
-    if !members.contains(&authority) {
-      members.push(authority.clone());
+    if !self.members.contains(&authority) {
+      self.members.push(authority.clone());
     }
-    drop(members);
 
     let version = self.next_version();
     self.publish_topology(version, alloc::vec![authority], alloc::vec![]);
@@ -127,11 +123,9 @@ impl<TB: RuntimeToolbox + 'static> LocalClusterProvider<TB> {
   ///
   /// This will publish a `ClusterEvent::TopologyUpdated` with the left node
   /// in the `left` list.
-  pub fn on_member_leave(&self, authority: impl Into<String>) {
+  pub fn on_member_leave(&mut self, authority: impl Into<String>) {
     let authority = authority.into();
-    let mut members = self.members.lock();
-    members.retain(|m| m != &authority);
-    drop(members);
+    self.members.retain(|m| m != &authority);
 
     let version = self.next_version();
     self.publish_topology(version, alloc::vec![], alloc::vec![authority]);
@@ -139,14 +133,15 @@ impl<TB: RuntimeToolbox + 'static> LocalClusterProvider<TB> {
 
   /// Returns the current member count.
   #[must_use]
+  #[allow(clippy::missing_const_for_fn)]
   pub fn member_count(&self) -> usize {
-    self.members.lock().len()
+    self.members.len()
   }
 
   /// Returns whether the provider has been started.
   #[must_use]
-  pub fn is_started(&self) -> bool {
-    self.startup_mode.lock().is_some()
+  pub const fn is_started(&self) -> bool {
+    self.startup_mode.is_some()
   }
 
   /// Returns the event stream reference.
@@ -156,10 +151,10 @@ impl<TB: RuntimeToolbox + 'static> LocalClusterProvider<TB> {
     &self.event_stream
   }
 
-  fn next_version(&self) -> u64 {
-    let mut version = self.version.lock();
-    *version += 1;
-    *version
+  #[allow(clippy::missing_const_for_fn)]
+  fn next_version(&mut self) -> u64 {
+    self.version += 1;
+    self.version
   }
 
   fn publish_topology(&self, version: u64, joined: Vec<String>, left: Vec<String>) {
@@ -172,8 +167,7 @@ impl<TB: RuntimeToolbox + 'static> LocalClusterProvider<TB> {
   }
 
   fn publish_static_topology(&self) {
-    let static_topology = self.static_topology.lock();
-    if let Some(topology) = static_topology.as_ref() {
+    if let Some(topology) = self.static_topology.as_ref() {
       let blocked = self.block_list_provider.blocked_members();
       let event = ClusterEvent::TopologyUpdated {
         topology: topology.clone(),
@@ -205,16 +199,13 @@ impl<TB: RuntimeToolbox + 'static> LocalClusterProvider<TB> {
   ///
   /// This is called internally when transport connection events are detected.
   /// Can also be used for manual integration with custom transport implementations.
-  pub fn handle_connected(&self, authority: &str) {
+  pub fn handle_connected(&mut self, authority: &str) {
     // 自分自身の authority は無視（既に members に含まれているはず）
     if authority == self.advertised_address {
       return;
     }
     // メンバーリストに追加されていない場合のみ join イベントを発火
-    let should_join = {
-      let members = self.members.lock();
-      !members.contains(&String::from(authority))
-    };
+    let should_join = !self.members.contains(&String::from(authority));
     if should_join {
       self.on_member_join(authority);
     }
@@ -224,16 +215,13 @@ impl<TB: RuntimeToolbox + 'static> LocalClusterProvider<TB> {
   ///
   /// This is called internally when transport quarantine events are detected.
   /// Can also be used for manual integration with custom transport implementations.
-  pub fn handle_quarantined(&self, authority: &str) {
+  pub fn handle_quarantined(&mut self, authority: &str) {
     // 自分自身の authority は無視
     if authority == self.advertised_address {
       return;
     }
     // メンバーリストに含まれている場合のみ leave イベントを発火
-    let should_leave = {
-      let members = self.members.lock();
-      members.contains(&String::from(authority))
-    };
+    let should_leave = self.members.contains(&String::from(authority));
     if should_leave {
       self.on_member_leave(authority);
     }
@@ -241,16 +229,13 @@ impl<TB: RuntimeToolbox + 'static> LocalClusterProvider<TB> {
 }
 
 impl<TB: RuntimeToolbox + 'static> ClusterProvider for LocalClusterProvider<TB> {
-  fn start_member(&self) -> Result<(), ClusterProviderError> {
+  fn start_member(&mut self) -> Result<(), ClusterProviderError> {
     // 起動モードを設定
-    *self.startup_mode.lock() = Some(StartupMode::Member);
+    self.startup_mode = Some(StartupMode::Member);
 
     // 自分自身をメンバーリストに追加
-    {
-      let mut members = self.members.lock();
-      if !members.contains(&self.advertised_address) {
-        members.push(self.advertised_address.clone());
-      }
+    if !self.members.contains(&self.advertised_address) {
+      self.members.push(self.advertised_address.clone());
     }
 
     // 静的トポロジが設定されている場合は publish
@@ -262,9 +247,9 @@ impl<TB: RuntimeToolbox + 'static> ClusterProvider for LocalClusterProvider<TB> 
     Ok(())
   }
 
-  fn start_client(&self) -> Result<(), ClusterProviderError> {
+  fn start_client(&mut self) -> Result<(), ClusterProviderError> {
     // 起動モードを設定
-    *self.startup_mode.lock() = Some(StartupMode::Client);
+    self.startup_mode = Some(StartupMode::Client);
 
     // クライアントモードでも静的トポロジを publish
     self.publish_static_topology();
@@ -275,15 +260,12 @@ impl<TB: RuntimeToolbox + 'static> ClusterProvider for LocalClusterProvider<TB> 
     Ok(())
   }
 
-  fn shutdown(&self, _graceful: bool) -> Result<(), ClusterProviderError> {
+  fn shutdown(&mut self, _graceful: bool) -> Result<(), ClusterProviderError> {
     // 起動モードを取得してからクリア
-    let mode = self.startup_mode.lock().take().unwrap_or(StartupMode::Member);
+    let mode = self.startup_mode.take().unwrap_or(StartupMode::Member);
 
     // メンバーリストをクリア
-    {
-      let mut members = self.members.lock();
-      members.clear();
-    }
+    self.members.clear();
 
     // Shutdown イベントを EventStream に発火
     self.publish_shutdown_event(mode);

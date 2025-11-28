@@ -40,25 +40,25 @@ where
   }
 
   /// Acquires a read lock and executes the specified function.
-  pub async fn read<R>(&self, f: impl FnOnce(&B::ReadGuard<'_>) -> R) -> R {
+  pub async fn read<R>(&mut self, f: impl FnOnce(&B::ReadGuard<'_>) -> R) -> R {
     let guard = self.backend.read().await;
     f(&guard)
   }
 
   /// Acquires a write lock and executes the specified function.
-  pub async fn write<R>(&self, f: impl FnOnce(&mut B::WriteGuard<'_>) -> R) -> R {
+  pub async fn write<R>(&mut self, f: impl FnOnce(&mut B::WriteGuard<'_>) -> R) -> R {
     let mut guard = self.backend.write().await;
     f(&mut guard)
   }
 
   /// Acquires a read lock and returns a guard handle.
-  pub async fn read_guard(&self) -> GuardHandle<B::ReadGuard<'_>> {
+  pub async fn read_guard(&mut self) -> GuardHandle<B::ReadGuard<'_>> {
     let guard = self.backend.read().await;
     GuardHandle::new(guard)
   }
 
   /// Acquires a write lock and returns a guard handle.
-  pub async fn write_guard(&self) -> GuardHandle<B::WriteGuard<'_>> {
+  pub async fn write_guard(&mut self) -> GuardHandle<B::WriteGuard<'_>> {
     let guard = self.backend.write().await;
     GuardHandle::new(guard)
   }

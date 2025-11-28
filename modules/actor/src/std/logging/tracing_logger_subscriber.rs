@@ -5,20 +5,23 @@ extern crate std;
 #[cfg(test)]
 mod tests;
 
-use alloc::string::ToString;
+use alloc::{boxed::Box, string::ToString};
 use core::time::Duration;
 
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 use tracing::{Level, event};
 
 use crate::{
-  core::logging::{LogEvent, LogLevel, LoggerSubscriber, LoggerWriter},
+  core::{
+    event_stream::EventStreamSubscriber as CoreEventStreamSubscriber,
+    logging::{LogEvent, LogLevel, LoggerSubscriberGeneric, LoggerWriter},
+  },
   std::event_stream::{EventStreamEvent, EventStreamSubscriber},
 };
 
 /// Event stream subscriber that forwards runtime log events to the `tracing` crate.
 pub struct TracingLoggerSubscriber {
-  inner: LoggerSubscriber,
+  inner: LoggerSubscriberGeneric<StdToolbox>,
 }
 
 impl TracingLoggerSubscriber {
@@ -28,8 +31,8 @@ impl TracingLoggerSubscriber {
   /// Creates a subscriber with the provided minimum log level.
   #[must_use]
   pub fn new(level: LogLevel) -> Self {
-    let writer = ArcShared::new(TracingLoggerWriter);
-    Self { inner: LoggerSubscriber::new(level, writer) }
+    let writer: Box<dyn LoggerWriter> = Box::new(TracingLoggerWriter);
+    Self { inner: LoggerSubscriberGeneric::new(level, writer) }
   }
 
   /// Returns the minimum severity handled by this subscriber.
@@ -40,15 +43,15 @@ impl TracingLoggerSubscriber {
 }
 
 impl EventStreamSubscriber for TracingLoggerSubscriber {
-  fn on_event(&self, event: &EventStreamEvent) {
-    self.inner.on_event(event);
+  fn on_event(&mut self, event: &EventStreamEvent) {
+    CoreEventStreamSubscriber::on_event(&mut self.inner, event);
   }
 }
 
 struct TracingLoggerWriter;
 
 impl LoggerWriter for TracingLoggerWriter {
-  fn write(&self, event: &LogEvent) {
+  fn write(&mut self, event: &LogEvent) {
     let timestamp_micros = duration_to_micros(event.timestamp());
     let origin = event.origin().map(|pid| pid.to_string());
     let origin_str = origin.as_deref().unwrap_or("n/a");

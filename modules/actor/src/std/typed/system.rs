@@ -4,20 +4,20 @@ use fraktor_utils_rs::{core::sync::ArcShared, std::runtime_toolbox::StdToolbox};
 
 use crate::{
   core::{
-    actor_prim::Pid, event_stream::EventStreamSubscriber as CoreEventStreamSubscriber, logging::LogLevel,
-    spawn::SpawnError, typed::TypedActorSystemGeneric as CoreTypedActorSystemGeneric,
+    actor_prim::Pid, event_stream::subscriber_handle as core_subscriber_handle, logging::LogLevel, spawn::SpawnError,
+    typed::TypedActorSystemGeneric as CoreTypedActorSystemGeneric,
   },
   std::{
     dead_letter::DeadLetterEntry,
     error::SendError,
-    event_stream::{
-      EventStream, EventStreamEvent, EventStreamSubscriber, EventStreamSubscriberAdapter, EventStreamSubscription,
-    },
+    event_stream::{EventStream, EventStreamEvent, EventStreamSubscriberAdapter, EventStreamSubscription},
     futures::ActorFuture,
     system::SystemState,
     typed::{TypedProps, actor_prim::TypedActorRef},
   },
 };
+
+type StdSubscriberHandle = crate::std::event_stream::EventStreamSubscriberShared;
 
 /// Typed actor system specialized for `StdToolbox`.
 ///
@@ -80,9 +80,8 @@ where
   /// This method provides std-specific type conversion from the local
   /// `EventStreamSubscriber` trait to the core trait.
   #[must_use]
-  pub fn subscribe_event_stream(&self, subscriber: &ArcShared<dyn EventStreamSubscriber>) -> EventStreamSubscription {
-    let adapter: ArcShared<dyn CoreEventStreamSubscriber<StdToolbox>> =
-      ArcShared::new(EventStreamSubscriberAdapter::new(subscriber.clone()));
+  pub fn subscribe_event_stream(&self, subscriber: &StdSubscriberHandle) -> EventStreamSubscription {
+    let adapter = core_subscriber_handle::<StdToolbox>(EventStreamSubscriberAdapter::new(subscriber.clone()));
     self.inner.subscribe_event_stream(&adapter)
   }
 

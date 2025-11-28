@@ -1,10 +1,11 @@
+extern crate alloc;
+use alloc::boxed::Box;
+
 use fraktor_utils_rs::{core::sync::ArcShared, std::runtime_toolbox::StdToolbox};
 
-use super::{CoreDispatchExecutorAdapter, DispatchExecutor, DispatchExecutorAdapter, Dispatcher, StdScheduleAdapter};
+use super::{DispatchExecutor, DispatchExecutorAdapter, Dispatcher, StdScheduleAdapter};
 use crate::core::{
-  dispatcher::{
-    DispatchExecutor as CoreDispatchExecutor, DispatcherConfigGeneric as CoreDispatcherConfigGeneric, ScheduleAdapter,
-  },
+  dispatcher::{DispatchExecutorRunner, DispatcherConfigGeneric as CoreDispatcherConfigGeneric, ScheduleAdapter},
   mailbox::MailboxGeneric,
   spawn::SpawnError,
 };
@@ -19,18 +20,19 @@ impl DispatcherConfig {
   /// Creates a configuration from a scheduler implementation.
   #[must_use]
   pub fn from_executor(executor: ArcShared<dyn DispatchExecutor>) -> Self {
-    let executor_adapter: ArcShared<dyn CoreDispatchExecutor<StdToolbox>> =
-      ArcShared::new(DispatchExecutorAdapter::new(executor));
+    let executor_adapter = Box::new(DispatchExecutorAdapter::new(executor));
     let schedule_adapter: ArcShared<dyn ScheduleAdapter<StdToolbox>> = ArcShared::new(StdScheduleAdapter::default());
     let inner = CoreDispatcherConfigGeneric::from_executor(executor_adapter).with_schedule_adapter(schedule_adapter);
     Self { inner }
   }
 
-  /// Returns the configured scheduler as a standard trait object.
+  /// Returns the configured scheduler runner.
+  ///
+  /// The returned [`DispatchExecutorRunner`] implements [`DispatchExecutor`] and can be used
+  /// to submit dispatchers for execution.
   #[must_use]
-  pub fn executor(&self) -> ArcShared<dyn DispatchExecutor> {
-    let core_executor = self.inner.executor();
-    ArcShared::new(CoreDispatchExecutorAdapter::new(core_executor))
+  pub fn executor(&self) -> ArcShared<DispatchExecutorRunner<StdToolbox>> {
+    self.inner.executor()
   }
 
   /// Builds a dispatcher using the configured scheduler.

@@ -22,8 +22,8 @@ pub trait SynchronizedRwBackend<T: ?Sized> {
     T: Sized;
 
   /// Acquires a read lock.
-  async fn read(&self) -> Self::ReadGuard<'_>;
+  async fn read(&mut self) -> Self::ReadGuard<'_>;
 
   /// Acquires a write lock.
-  async fn write(&self) -> Self::WriteGuard<'_>;
+  async fn write(&mut self) -> Self::WriteGuard<'_>;
 }

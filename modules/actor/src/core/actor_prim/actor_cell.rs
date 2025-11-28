@@ -41,7 +41,7 @@ pub struct ActorCellGeneric<TB: RuntimeToolbox + 'static> {
   parent:                 Option<Pid>,
   name:                   String,
   system:                 ArcShared<SystemStateGeneric<TB>>,
-  factory:                ArcShared<dyn ActorFactory<TB>>,
+  factory:                ArcShared<ToolboxMutex<Box<dyn ActorFactory<TB>>, TB>>,
   actor:                  ToolboxMutex<Box<dyn Actor<TB> + Send + Sync>, TB>,
   pipeline:               MessageInvokerPipelineGeneric<TB>,
   mailbox:                ArcShared<MailboxGeneric<TB>>,
@@ -92,7 +92,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     mailbox.attach_backpressure_publisher(BackpressurePublisherGeneric::from_dispatcher(dispatcher.clone()));
     let sender = dispatcher.into_sender();
     let factory = props.factory().clone();
-    let actor = <TB::MutexFamily as SyncMutexFamily>::create(factory.create());
+    let actor = <TB::MutexFamily as SyncMutexFamily>::create(factory.lock().create());
     let children = <TB::MutexFamily as SyncMutexFamily>::create(Vec::new());
     let child_stats = <TB::MutexFamily as SyncMutexFamily>::create(Vec::new());
     let watchers = <TB::MutexFamily as SyncMutexFamily>::create(Vec::new());
@@ -132,7 +132,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
   /// Recreates the actor instance from the stored factory.
   fn recreate_actor(&self) {
     let mut actor = self.actor.lock();
-    *actor = self.factory.create();
+    *actor = self.factory.lock().create();
   }
 
   /// Returns the pid associated with the cell.

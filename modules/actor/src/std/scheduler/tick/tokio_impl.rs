@@ -5,8 +5,8 @@ use alloc::boxed::Box;
 use std::{sync::Mutex, time::Duration};
 
 use fraktor_utils_rs::{
-  core::{sync::ArcShared, time::TimerInstant},
-  std::runtime_toolbox::StdToolbox,
+  core::{runtime_toolbox::SyncMutexFamily, sync::ArcShared, time::TimerInstant},
+  std::runtime_toolbox::{StdMutexFamily, StdToolbox},
 };
 use tokio::{
   runtime::Handle,
@@ -17,8 +17,8 @@ use tokio::{
 use crate::core::{
   event_stream::{EventStreamEvent, EventStreamGeneric},
   scheduler::{
-    SchedulerTickMetricsProbe, TickDriver, TickDriverControl, TickDriverError, TickDriverFactory, TickDriverHandle,
-    TickDriverId, TickDriverKind, TickFeedHandle, next_tick_driver_id,
+    SchedulerTickMetricsProbe, TickDriver, TickDriverControl, TickDriverError, TickDriverFactory,
+    TickDriverHandleGeneric, TickDriverId, TickDriverKind, TickFeedHandle, next_tick_driver_id,
   },
 };
 
@@ -89,7 +89,10 @@ impl TickDriver<StdToolbox> for TokioIntervalDriver {
     self.resolution
   }
 
-  fn start(&self, feed: TickFeedHandle<StdToolbox>) -> Result<TickDriverHandle, TickDriverError> {
+  fn start(
+    &mut self,
+    feed: TickFeedHandle<StdToolbox>,
+  ) -> Result<TickDriverHandleGeneric<StdToolbox>, TickDriverError> {
     let mut ticker = interval(self.resolution);
     ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
     let handle_clone = self.handle.clone();
@@ -111,8 +114,9 @@ impl TickDriver<StdToolbox> for TokioIntervalDriver {
         options.interval,
       )
     });
-    let control = ArcShared::new(TokioIntervalDriverControl::new(join, metrics));
-    Ok(TickDriverHandle::new(self.id, self.kind(), self.resolution, control))
+    let control: Box<dyn TickDriverControl> = Box::new(TokioIntervalDriverControl::new(join, metrics));
+    let control = ArcShared::new(<StdMutexFamily as SyncMutexFamily>::create(control));
+    Ok(TickDriverHandleGeneric::new(self.id, self.kind(), self.resolution, control))
   }
 }
 
@@ -130,13 +134,13 @@ impl TokioIntervalDriverControl {
 }
 
 impl TickDriverControl for TokioIntervalDriverControl {
-  fn shutdown(&self) {
+  fn shutdown(&mut self) {
     #[allow(clippy::expect_used)]
     if let Some(handle) = self.join.lock().expect("lock").take() {
       handle.abort();
     }
     #[allow(clippy::expect_used)]
-    if let Some(emitter) = self.metrics.lock().expect("lock").take() {
+    if let Some(mut emitter) = self.metrics.lock().expect("lock").take() {
       emitter.shutdown();
     }
   }
@@ -174,7 +178,7 @@ impl StdTickMetricsEmitter {
     Self { join: Mutex::new(Some(join)) }
   }
 
-  fn shutdown(&self) {
+  fn shutdown(&mut self) {
     #[allow(clippy::expect_used)]
     if let Some(handle) = self.join.lock().expect("lock").take() {
       handle.abort();

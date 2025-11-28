@@ -2,28 +2,32 @@ use alloc::vec::Vec;
 use core::time::Duration;
 
 use super::{DelayProvider, delay_future::DelayFuture, delay_trigger::DelayTrigger};
-use crate::core::{runtime_toolbox::NoStdMutex, sync::ArcShared};
 
 #[cfg(test)]
 mod tests;
 
 /// Manual provider used in tests to deterministically complete delay futures.
-#[derive(Clone)]
+///
+/// # Interior Mutability Removed
+///
+/// This implementation no longer uses interior mutability. All mutating methods
+/// now require `&mut self`. If shared access is needed, wrap in an external
+/// synchronization primitive (e.g., `Mutex<ManualDelayProvider>`).
 pub struct ManualDelayProvider {
-  handles: ArcShared<NoStdMutex<Vec<DelayTrigger>>>,
+  handles: Vec<DelayTrigger>,
 }
 
 impl ManualDelayProvider {
   /// Creates a provider without any scheduled delays.
   #[must_use]
-  pub fn new() -> Self {
-    Self { handles: ArcShared::new(NoStdMutex::new(Vec::new())) }
+  pub const fn new() -> Self {
+    Self { handles: Vec::new() }
   }
 
   /// Triggers the next pending delay, returning `true` if a future was completed.
   #[must_use]
-  pub fn trigger_next(&self) -> bool {
-    if let Some(handle) = self.handles.lock().pop() {
+  pub fn trigger_next(&mut self) -> bool {
+    if let Some(handle) = self.handles.pop() {
       handle.fire();
       true
     } else {
@@ -32,9 +36,8 @@ impl ManualDelayProvider {
   }
 
   /// Triggers all pending delays.
-  pub fn trigger_all(&self) {
-    let mut guard = self.handles.lock();
-    for handle in guard.drain(..) {
+  pub fn trigger_all(&mut self) {
+    for handle in self.handles.drain(..) {
       handle.fire();
     }
   }
@@ -42,7 +45,7 @@ impl ManualDelayProvider {
   /// Returns the number of pending handles (testing helper).
   #[must_use]
   pub fn pending_count(&self) -> usize {
-    self.handles.lock().len()
+    self.handles.len()
   }
 }
 
@@ -53,9 +56,9 @@ impl Default for ManualDelayProvider {
 }
 
 impl DelayProvider for ManualDelayProvider {
-  fn delay(&self, duration: Duration) -> DelayFuture {
+  fn delay(&mut self, duration: Duration) -> DelayFuture {
     let (future, handle) = DelayFuture::new_pair(duration);
-    self.handles.lock().push(handle);
+    self.handles.push(handle);
     future
   }
 }

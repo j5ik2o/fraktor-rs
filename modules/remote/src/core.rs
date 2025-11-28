@@ -57,7 +57,7 @@ pub use endpoint_manager_effect::EndpointManagerEffect;
 pub use endpoint_manager_result::EndpointManagerResult;
 pub use endpoint_reader::{EndpointReader, EndpointReaderGeneric};
 pub use endpoint_reader_error::EndpointReaderError;
-pub use endpoint_writer::{EndpointWriter, EndpointWriterGeneric};
+pub use endpoint_writer::{EndpointWriter, EndpointWriterGeneric, EndpointWriterShared};
 pub use endpoint_writer_error::EndpointWriterError;
 pub use event_publisher::{EventPublisher, EventPublisherGeneric};
 pub use failure_detector::{PhiFailureDetector, PhiFailureDetectorConfig, PhiFailureDetectorEffect};
@@ -90,7 +90,8 @@ pub use serialization_utils::default_loopback_setup;
 pub use tokio_actor_ref_provider::{TokioActorRefProvider, TokioActorRefProviderGeneric};
 pub use tokio_actor_ref_provider_installer::TokioActorRefProviderInstaller;
 pub use transport::{
-  InboundFrame, LoopbackTransport, RemoteTransport, TokioTransportConfig, TransportBackpressureHook, TransportBind,
-  TransportChannel, TransportEndpoint, TransportError, TransportFactory, TransportHandle, TransportInbound,
+  InboundFrame, LoopbackTransport, RemoteTransport, RemoteTransportShared, TokioTransportConfig,
+  TransportBackpressureHook, TransportBackpressureHookShared, TransportBind, TransportChannel, TransportEndpoint,
+  TransportError, TransportFactory, TransportHandle, TransportInbound,
 };
 pub use wire_error::WireError;

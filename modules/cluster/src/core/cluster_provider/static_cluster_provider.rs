@@ -74,17 +74,17 @@ impl<TB: RuntimeToolbox + 'static> StaticClusterProvider<TB> {
 }
 
 impl<TB: RuntimeToolbox + 'static> ClusterProvider for StaticClusterProvider<TB> {
-  fn start_member(&self) -> Result<(), ClusterProviderError> {
+  fn start_member(&mut self) -> Result<(), ClusterProviderError> {
     self.publish_topology();
     Ok(())
   }
 
-  fn start_client(&self) -> Result<(), ClusterProviderError> {
+  fn start_client(&mut self) -> Result<(), ClusterProviderError> {
     self.publish_topology();
     Ok(())
   }
 
-  fn shutdown(&self, _graceful: bool) -> Result<(), ClusterProviderError> {
+  fn shutdown(&mut self, _graceful: bool) -> Result<(), ClusterProviderError> {
     // 静的 provider なので特にクリーンアップ不要
     Ok(())
   }
