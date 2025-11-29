@@ -3,7 +3,7 @@ extern crate alloc;
 use alloc::{format, string::String, vec, vec::Vec};
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdMutex, NoStdToolbox},
+  runtime_toolbox::{NoStdMutex, NoStdToolbox, SyncMutexFamily},
   sync::ArcShared,
 };
 
@@ -101,7 +101,7 @@ impl RecordingMiddleware {
 
 impl MessageInvokerMiddleware<NoStdToolbox> for RecordingMiddleware {
   fn before_user(
-    &self,
+    &mut self,
     _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
     _message: &AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
@@ -110,7 +110,7 @@ impl MessageInvokerMiddleware<NoStdToolbox> for RecordingMiddleware {
   }
 
   fn after_user(
-    &self,
+    &mut self,
     _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
     _message: &AnyMessageViewGeneric<'_, NoStdToolbox>,
     result: Result<(), ActorError>,
@@ -166,10 +166,12 @@ fn middleware_executes_in_expected_order() {
   let log = ArcShared::new(NoStdMutex::new(Vec::new()));
   let mut actor = LoggingActor::new(log.clone());
 
-  let middleware_a: ArcShared<dyn MessageInvokerMiddleware<NoStdToolbox>> =
-    ArcShared::new(RecordingMiddleware::new("a", log.clone()));
-  let middleware_b: ArcShared<dyn MessageInvokerMiddleware<NoStdToolbox>> =
-    ArcShared::new(RecordingMiddleware::new("b", log.clone()));
+  let middleware_a = ArcShared::new(<NoStdToolbox::MutexFamily as SyncMutexFamily>::create(Box::new(
+    RecordingMiddleware::new("a", log.clone()),
+  )));
+  let middleware_b = ArcShared::new(<NoStdToolbox::MutexFamily as SyncMutexFamily>::create(Box::new(
+    RecordingMiddleware::new("b", log.clone()),
+  )));
   let pipeline = MessageInvokerPipeline::from_middlewares(vec![middleware_a, middleware_b]);
 
   pipeline.invoke_user(&mut actor, &mut ctx, AnyMessage::new(1_u8)).expect("invoke");
