@@ -25,13 +25,21 @@ use fraktor_utils_rs::core::{
 use hashbrown::HashMap;
 
 use crate::core::{
-  EndpointWriterGeneric, EndpointWriterShared, actor_ref_field_normalizer::ActorRefFieldNormalizerGeneric,
-  endpoint_writer_error::EndpointWriterError, loopback_router, loopback_router::LoopbackDeliveryOutcome,
-  outbound_message::OutboundMessage, outbound_priority::OutboundPriority,
-  remote_actor_ref_provider_error::RemoteActorRefProviderError, remote_authority_snapshot::RemoteAuthoritySnapshot,
-  remote_node_id::RemoteNodeId, remote_watcher_command::RemoteWatcherCommand,
-  remote_watcher_daemon::RemoteWatcherDaemon, remoting_control::RemotingControl,
-  remoting_control_handle::RemotingControlHandle, remoting_error::RemotingError, transport::TokioTransportConfig,
+  EndpointWriterGeneric, EndpointWriterShared,
+  actor_ref_field_normalizer::ActorRefFieldNormalizerGeneric,
+  endpoint_writer_error::EndpointWriterError,
+  loopback_router,
+  loopback_router::LoopbackDeliveryOutcome,
+  outbound_message::OutboundMessage,
+  outbound_priority::OutboundPriority,
+  remote_actor_ref_provider_error::RemoteActorRefProviderError,
+  remote_authority_snapshot::RemoteAuthoritySnapshot,
+  remote_node_id::RemoteNodeId,
+  remote_watcher_command::RemoteWatcherCommand,
+  remote_watcher_daemon::RemoteWatcherDaemon,
+  remoting_control::{RemotingControl, RemotingControlShared},
+  remoting_error::RemotingError,
+  transport::TokioTransportConfig,
 };
 
 /// Provider that creates [`ActorRefGeneric`] instances for remote recipients using Tokio TCP
@@ -39,7 +47,7 @@ use crate::core::{
 pub struct TokioActorRefProviderGeneric<TB: RuntimeToolbox + 'static> {
   system:            ActorSystemGeneric<TB>,
   writer:            EndpointWriterShared<TB>,
-  control:           RemotingControlHandle<TB>,
+  control:           RemotingControlShared<TB>,
   authority_manager: ArcShared<RemoteAuthorityManagerGeneric<TB>>,
   watcher_daemon:    ActorRefGeneric<TB>,
   watch_entries:     NoStdMutex<HashMap<Pid, RemoteWatchEntry, RandomState>>,
@@ -54,7 +62,7 @@ pub type TokioActorRefProvider = TokioActorRefProviderGeneric<NoStdToolbox>;
 impl<TB: RuntimeToolbox + 'static> TokioActorRefProviderGeneric<TB> {
   /// Creates a remote actor reference for the provided path.
   pub fn actor_ref(&self, path: ActorPath) -> Result<ActorRefGeneric<TB>, RemoteActorRefProviderError> {
-    self.control.associate(path.parts()).map_err(RemoteActorRefProviderError::from)?;
+    self.control.lock().associate(path.parts()).map_err(RemoteActorRefProviderError::from)?;
     let sender = self.sender_for_path(&path)?;
     let pid = self.system.allocate_pid();
     self.register_remote_entry(pid, path.clone());
@@ -64,7 +72,7 @@ impl<TB: RuntimeToolbox + 'static> TokioActorRefProviderGeneric<TB> {
   pub(crate) fn from_components(
     system: ActorSystemGeneric<TB>,
     writer: ArcShared<<TB::MutexFamily as SyncMutexFamily>::Mutex<EndpointWriterGeneric<TB>>>,
-    control: RemotingControlHandle<TB>,
+    control: RemotingControlShared<TB>,
     authority_manager: ArcShared<RemoteAuthorityManagerGeneric<TB>>,
     transport_config: TokioTransportConfig,
   ) -> Result<Self, RemoteActorRefProviderError> {
@@ -113,13 +121,13 @@ impl<TB: RuntimeToolbox + 'static> TokioActorRefProviderGeneric<TB> {
     };
     let _ = self.authority_manager.state(&authority);
     self.record_snapshot_from_parts(&parts);
-    self.control.associate(&parts)
+    self.control.lock().associate(&parts)
   }
 
   /// Returns the latest remote authority snapshots recorded by the control plane.
   #[must_use]
   pub fn connections_snapshot(&self) -> Vec<crate::core::remote_authority_snapshot::RemoteAuthoritySnapshot> {
-    self.control.connections_snapshot()
+    self.control.lock().connections_snapshot()
   }
 
   fn register_remote_entry(&self, pid: Pid, path: ActorPath) {
@@ -136,7 +144,7 @@ impl<TB: RuntimeToolbox + 'static> TokioActorRefProviderGeneric<TB> {
     let state = self.system.state().remote_authority_state(&authority);
     let ticks = self.system.state().monotonic_now().as_millis() as u64;
     let snapshot = RemoteAuthoritySnapshot::new(authority, state, ticks, deferred);
-    self.control.record_authority_snapshot(snapshot);
+    self.control.lock().record_authority_snapshot(snapshot);
   }
 
   fn dispatch_remote_watch(&self, command: RemoteWatcherCommand) {

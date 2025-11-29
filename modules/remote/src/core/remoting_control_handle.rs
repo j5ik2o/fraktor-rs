@@ -171,7 +171,7 @@ impl<TB> RemotingControl<TB> for RemotingControlHandle<TB>
 where
   TB: RuntimeToolbox + 'static,
 {
-  fn start(&self) -> Result<(), RemotingError> {
+  fn start(&mut self) -> Result<(), RemotingError> {
     {
       let mut guard = self.inner.state.lock();
       guard.transition_to_start()?;
@@ -182,15 +182,15 @@ where
     Ok(())
   }
 
-  fn associate(&self, _address: &ActorPathParts) -> Result<(), RemotingError> {
+  fn associate(&mut self, _address: &ActorPathParts) -> Result<(), RemotingError> {
     self.ensure_can_run()
   }
 
-  fn quarantine(&self, _authority: &str, _reason: &QuarantineReason) -> Result<(), RemotingError> {
+  fn quarantine(&mut self, _authority: &str, _reason: &QuarantineReason) -> Result<(), RemotingError> {
     self.ensure_can_run()
   }
 
-  fn shutdown(&self) -> Result<(), RemotingError> {
+  fn shutdown(&mut self) -> Result<(), RemotingError> {
     let mut guard = self.inner.state.lock();
     guard.transition_to_shutdown()?;
     drop(guard);
@@ -198,7 +198,7 @@ where
     Ok(())
   }
 
-  fn register_backpressure_listener<L>(&self, listener: L)
+  fn register_backpressure_listener<L>(&mut self, listener: L)
   where
     L: RemotingBackpressureListener, {
     let dyn_listener: RemotingBackpressureListenerShared<TB> =

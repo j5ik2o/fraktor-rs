@@ -81,7 +81,7 @@ pub use remote_authority_snapshot::RemoteAuthoritySnapshot;
 pub use remote_node_id::RemoteNodeId;
 pub use remote_watcher_command::RemoteWatcherCommand;
 pub use remoting_backpressure_listener::RemotingBackpressureListener;
-pub use remoting_control::RemotingControl;
+pub use remoting_control::{RemotingControl, RemotingControlShared};
 pub use remoting_control_handle::RemotingControlHandle;
 pub use remoting_envelope::RemotingEnvelope;
 pub use remoting_error::RemotingError;

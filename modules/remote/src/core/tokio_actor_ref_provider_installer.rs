@@ -9,7 +9,7 @@ use fraktor_actor_rs::core::{
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::{RuntimeToolbox, SyncMutexFamily},
-  sync::ArcShared,
+  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 
 use crate::core::{
@@ -69,7 +69,7 @@ impl<TB: RuntimeToolbox + 'static> ActorRefProviderInstaller<TB> for TokioActorR
     };
 
     let control = extension.handle();
-    control.register_endpoint_io(writer.clone(), reader.clone());
+    control.lock().register_endpoint_io(writer.clone(), reader.clone());
     let authority_manager = system.state().remote_authority_manager().clone();
     let provider = TokioActorRefProviderGeneric::from_components(
       system.clone(),

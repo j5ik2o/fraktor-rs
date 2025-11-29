@@ -24,8 +24,10 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::core::{
-  endpoint_writer::EndpointWriter, remote_actor_ref_provider::RemoteActorRefProvider,
-  remoting_control::RemotingControl, remoting_control_handle::RemotingControlHandle,
+  endpoint_writer::EndpointWriter,
+  remote_actor_ref_provider::RemoteActorRefProvider,
+  remoting_control::{RemotingControl, RemotingControlShared},
+  remoting_control_handle::RemotingControlHandle,
   remoting_extension_config::RemotingExtensionConfig,
 };
 
@@ -76,8 +78,10 @@ fn provider(system: &ActorSystemGeneric<NoStdToolbox>) -> RemoteActorRefProvider
     system.clone(),
     serialization,
   )));
-  let control = RemotingControlHandle::new(system.clone(), RemotingExtensionConfig::default());
-  control.start().expect("control start");
+  let control_handle = RemotingControlHandle::new(system.clone(), RemotingExtensionConfig::default());
+  let control: RemotingControlShared<NoStdToolbox> =
+    ArcShared::new(<<NoStdToolbox as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(control_handle));
+  control.lock().start().expect("control start");
   let authority_manager = system.state().remote_authority_manager().clone();
   RemoteActorRefProvider::from_components(system.clone(), writer, control, authority_manager).expect("provider builds")
 }

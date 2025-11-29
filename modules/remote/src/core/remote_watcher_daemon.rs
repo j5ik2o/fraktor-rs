@@ -9,18 +9,19 @@ use fraktor_actor_rs::core::{
   props::PropsGeneric,
   system::ActorSystemGeneric,
 };
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::sync_mutex_like::SyncMutexLike};
 
 use crate::core::{
-  remote_watcher_command::RemoteWatcherCommand, remoting_control::RemotingControl,
-  remoting_control_handle::RemotingControlHandle, remoting_error::RemotingError,
+  remote_watcher_command::RemoteWatcherCommand,
+  remoting_control::{RemotingControl, RemotingControlShared},
+  remoting_error::RemotingError,
 };
 
 /// System actor that proxies watch/unwatch commands to the remoting control plane.
 pub(crate) struct RemoteWatcherDaemon<TB>
 where
   TB: RuntimeToolbox + 'static, {
-  control:  RemotingControlHandle<TB>,
+  control:  RemotingControlShared<TB>,
   #[allow(dead_code)]
   watchers: Vec<(Pid, ActorPathParts)>,
 }
@@ -29,14 +30,14 @@ impl<TB> RemoteWatcherDaemon<TB>
 where
   TB: RuntimeToolbox + 'static,
 {
-  fn new(control: RemotingControlHandle<TB>) -> Self {
+  fn new(control: RemotingControlShared<TB>) -> Self {
     Self { control, watchers: Vec::new() }
   }
 
   /// Spawns the daemon under the system guardian hierarchy.
   pub(crate) fn spawn(
     system: &ActorSystemGeneric<TB>,
-    control: RemotingControlHandle<TB>,
+    control: RemotingControlShared<TB>,
   ) -> Result<ActorRefGeneric<TB>, RemotingError> {
     let props = PropsGeneric::from_fn({
       let handle = control.clone();
@@ -60,7 +61,7 @@ where
     if let Some(command) = message.downcast_ref::<RemoteWatcherCommand>() {
       match command {
         | RemoteWatcherCommand::Watch { target, .. } => {
-          let _ = self.control.associate(target);
+          let _ = self.control.lock().associate(target);
         },
         | RemoteWatcherCommand::Unwatch { target: _, .. } => {},
       }
