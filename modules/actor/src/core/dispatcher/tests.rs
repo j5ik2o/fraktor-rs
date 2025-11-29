@@ -9,7 +9,7 @@ use core::{
 use std::thread;
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdMutex, NoStdToolbox},
+  runtime_toolbox::{NoStdMutex, NoStdToolbox, SyncMutexFamily},
   sync::{ArcShared, sync_mutex_like::SpinSyncMutex},
 };
 
@@ -105,7 +105,12 @@ fn dispatcher_respects_throughput_and_deadline_limits() {
 
   let (tick, runner) = tick_executor_with_runner();
   let dispatcher = dispatcher_with_executor(mailbox.clone(), runner, Some(Duration::from_millis(1)), None);
-  dispatcher.register_invoker(ArcShared::new(RecordingInvoker::default()));
+  let invoker = ArcShared::new(
+    <<NoStdToolbox as fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(
+      Box::new(RecordingInvoker::default()) as Box<dyn MessageInvoker<NoStdToolbox>>,
+    ),
+  );
+  dispatcher.register_invoker(invoker);
 
   mailbox.enqueue_user(AnyMessage::new(1usize)).unwrap();
   mailbox.enqueue_user(AnyMessage::new(2usize)).unwrap();
@@ -122,7 +127,12 @@ fn schedule_adapter_receives_pending_signal() {
   let (tick, runner) = tick_executor_with_runner();
   let adapter = ArcShared::new(CountingScheduleAdapter::default());
   let dispatcher = dispatcher_with_executor_and_adapter(mailbox.clone(), runner, None, None, adapter.clone());
-  dispatcher.register_invoker(ArcShared::new(RecordingInvoker::default()));
+  let invoker = ArcShared::new(
+    <<NoStdToolbox as fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(
+      Box::new(RecordingInvoker::default()) as Box<dyn MessageInvoker<NoStdToolbox>>,
+    ),
+  );
+  dispatcher.register_invoker(invoker);
 
   mailbox.enqueue_user(AnyMessage::new(1usize)).expect("first message");
   let sender = dispatcher.into_sender();
@@ -186,7 +196,12 @@ fn telemetry_captures_mailbox_pressure_and_dispatcher_dump() {
   let (_recording, runner) = recording_executor_with_runner();
   let adapter = ArcShared::new(CountingScheduleAdapter::default());
   let dispatcher = dispatcher_with_executor_and_adapter(mailbox.clone(), runner, None, None, adapter);
-  dispatcher.register_invoker(ArcShared::new(RecordingInvoker::default()));
+  let invoker = ArcShared::new(
+    <<NoStdToolbox as fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(
+      Box::new(RecordingInvoker::default()) as Box<dyn MessageInvoker<NoStdToolbox>>,
+    ),
+  );
+  dispatcher.register_invoker(invoker);
 
   assert!(matches!(mailbox.enqueue_user(AnyMessage::new(1usize)), Ok(EnqueueOutcome::Enqueued)));
   assert!(matches!(mailbox.enqueue_user(AnyMessage::new(2usize)), Ok(EnqueueOutcome::Enqueued)));
@@ -360,7 +375,7 @@ impl Default for RecordingInvoker {
 }
 
 impl MessageInvoker<NoStdToolbox> for RecordingInvoker {
-  fn invoke_user_message(&self, message: AnyMessage) -> Result<(), crate::core::error::ActorError> {
+  fn invoke_user_message(&mut self, message: AnyMessage) -> Result<(), crate::core::error::ActorError> {
     if let Some(value) = message.payload().downcast_ref::<usize>() {
       self.messages.lock().push(*value);
     }
@@ -368,7 +383,7 @@ impl MessageInvoker<NoStdToolbox> for RecordingInvoker {
   }
 
   fn invoke_system_message(
-    &self,
+    &mut self,
     _message: crate::core::messaging::SystemMessage,
   ) -> Result<(), crate::core::error::ActorError> {
     Ok(())

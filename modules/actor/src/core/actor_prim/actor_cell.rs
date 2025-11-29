@@ -26,7 +26,7 @@ use crate::core::{
   mailbox::{BackpressurePublisherGeneric, MailboxCapacity, MailboxGeneric, MailboxInstrumentationGeneric},
   messaging::{
     AnyMessageGeneric, FailureMessageSnapshot, FailurePayload, SystemMessage,
-    message_invoker::{MessageInvoker, MessageInvokerPipelineGeneric},
+    message_invoker::{MessageInvoker, MessageInvokerPipelineGeneric, MessageInvokerShared},
   },
   props::{ActorFactory, PropsGeneric},
   spawn::SpawnError,
@@ -122,7 +122,8 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
 
     {
       // Dispatcher keeps a shared reference to the invoker for message delivery.
-      let invoker: ArcShared<dyn MessageInvoker<TB>> = cell.clone();
+      let invoker: MessageInvokerShared<TB> =
+        ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(Box::new(ActorCellInvoker { cell: cell.clone() })));
       cell.dispatcher.register_invoker(invoker);
     }
 
@@ -480,53 +481,57 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> MessageInvoker<TB> for ActorCellGeneric<TB> {
-  fn invoke_user_message(&self, message: AnyMessageGeneric<TB>) -> Result<(), ActorError> {
-    let system = ActorSystemGeneric::from_state(self.system.clone());
-    let mut ctx = ActorContextGeneric::new(&system, self.pid);
-    let mut actor = self.actor.lock();
+struct ActorCellInvoker<TB: RuntimeToolbox + 'static> {
+  cell: ArcShared<ActorCellGeneric<TB>>,
+}
+
+impl<TB: RuntimeToolbox + 'static> MessageInvoker<TB> for ActorCellInvoker<TB> {
+  fn invoke_user_message(&mut self, message: AnyMessageGeneric<TB>) -> Result<(), ActorError> {
+    let system = ActorSystemGeneric::from_state(self.cell.system.clone());
+    let mut ctx = ActorContextGeneric::new(&system, self.cell.pid);
+    let mut actor = self.cell.actor.lock();
     let failure_candidate = message.clone();
-    let result = self.pipeline.invoke_user(&mut *actor, &mut ctx, message);
+    let result = self.cell.pipeline.invoke_user(&mut *actor, &mut ctx, message);
     drop(actor);
     if let Err(ref error) = result {
       let snapshot = FailureMessageSnapshot::from_message(&failure_candidate);
-      self.report_failure(error, Some(snapshot));
+      self.cell.report_failure(error, Some(snapshot));
     }
     result
   }
 
-  fn invoke_system_message(&self, message: SystemMessage) -> Result<(), ActorError> {
+  fn invoke_system_message(&mut self, message: SystemMessage) -> Result<(), ActorError> {
     match message {
-      | SystemMessage::Stop => self.handle_stop(),
-      | SystemMessage::Create => self.handle_create(),
-      | SystemMessage::Recreate => self.handle_recreate(),
+      | SystemMessage::Stop => self.cell.handle_stop(),
+      | SystemMessage::Create => self.cell.handle_create(),
+      | SystemMessage::Recreate => self.cell.handle_recreate(),
       | SystemMessage::Failure(ref payload) => {
-        self.handle_failure_message(payload);
+        self.cell.handle_failure_message(payload);
         Ok(())
       },
       | SystemMessage::Suspend => {
-        self.mailbox.suspend();
+        self.cell.mailbox.suspend();
         Ok(())
       },
       | SystemMessage::Resume => {
-        self.mailbox.resume();
+        self.cell.mailbox.resume();
         Ok(())
       },
       | SystemMessage::Watch(pid) => {
-        self.handle_watch(pid);
+        self.cell.handle_watch(pid);
         Ok(())
       },
       | SystemMessage::Unwatch(pid) => {
-        self.handle_unwatch(pid);
+        self.cell.handle_unwatch(pid);
         Ok(())
       },
       | SystemMessage::StopChild(pid) => {
-        self.stop_child(pid);
+        self.cell.stop_child(pid);
         Ok(())
       },
-      | SystemMessage::Terminated(pid) => self.handle_terminated(pid),
+      | SystemMessage::Terminated(pid) => self.cell.handle_terminated(pid),
       | SystemMessage::PipeTask(task_id) => {
-        self.handle_pipe_task_ready(task_id);
+        self.cell.handle_pipe_task_ready(task_id);
         Ok(())
       },
     }

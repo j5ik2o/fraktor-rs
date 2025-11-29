@@ -188,7 +188,8 @@ fn create_system_message_runs_pre_start() {
     ActorCell::create(state.clone(), Pid::new(40, 0), None, "probe".to_string(), &props).expect("create actor cell");
   state.register_cell(cell.clone());
 
-  MessageInvoker::invoke_system_message(&*cell, SystemMessage::Create).expect("create");
+  let mut invoker = super::ActorCellInvoker { cell: cell.clone() };
+  invoker.invoke_system_message(SystemMessage::Create).expect("create");
 
   let snapshot = log.lock().clone();
   assert_eq!(snapshot, vec!["pre_start"]);
@@ -206,8 +207,9 @@ fn recreate_system_message_invokes_post_stop_then_pre_start() {
     ActorCell::create(state.clone(), Pid::new(41, 0), None, "probe".to_string(), &props).expect("create actor cell");
   state.register_cell(cell.clone());
 
-  MessageInvoker::invoke_system_message(&*cell, SystemMessage::Create).expect("create");
-  MessageInvoker::invoke_system_message(&*cell, SystemMessage::Recreate).expect("recreate");
+  let mut invoker = super::ActorCellInvoker { cell: cell.clone() };
+  invoker.invoke_system_message(SystemMessage::Create).expect("create");
+  invoker.invoke_system_message(SystemMessage::Recreate).expect("recreate");
 
   let snapshot = log.lock().clone();
   assert_eq!(snapshot, vec!["pre_start", "post_stop", "pre_start"]);

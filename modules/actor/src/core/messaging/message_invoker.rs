@@ -4,7 +4,7 @@ mod invoker_trait;
 mod middleware;
 mod pipeline;
 
-pub use invoker_trait::MessageInvoker;
+pub use invoker_trait::{MessageInvoker, MessageInvokerShared};
 pub use middleware::MessageInvokerMiddleware;
 pub use pipeline::{MessageInvokerPipeline, MessageInvokerPipelineGeneric};
 

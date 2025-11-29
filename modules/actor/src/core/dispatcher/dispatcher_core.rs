@@ -27,7 +27,7 @@ use crate::core::{
   mailbox::{
     EnqueueOutcome, MailboxGeneric, MailboxMessage, MailboxOfferFutureGeneric, MailboxPressureEvent, ScheduleHints,
   },
-  messaging::{AnyMessageGeneric, SystemMessage, message_invoker::MessageInvoker},
+  messaging::{AnyMessageGeneric, SystemMessage, message_invoker::MessageInvokerShared},
   system::SystemStateGeneric,
 };
 
@@ -39,7 +39,7 @@ pub(crate) struct DispatcherCore<TB: RuntimeToolbox + 'static> {
   mailbox:             ArcShared<MailboxGeneric<TB>>,
   executor:            ArcShared<DispatchExecutorRunner<TB>>,
   schedule_adapter:    ArcShared<dyn ScheduleAdapter<TB>>,
-  invoker:             ToolboxMutex<Option<ArcShared<dyn MessageInvoker<TB>>>, TB>,
+  invoker:             ToolboxMutex<Option<MessageInvokerShared<TB>>, TB>,
   state:               AtomicU8,
   throughput_limit:    Option<NonZeroUsize>,
   throughput_deadline: Option<Duration>,
@@ -79,7 +79,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
     &self.mailbox
   }
 
-  pub(crate) fn register_invoker(&self, invoker: ArcShared<dyn MessageInvoker<TB>>) {
+  pub(crate) fn register_invoker(&self, invoker: MessageInvokerShared<TB>) {
     *self.invoker.lock() = Some(invoker);
   }
 
@@ -202,14 +202,14 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
 
   fn invoke_user_message(&self, message: AnyMessageGeneric<TB>) -> Result<(), ActorError> {
     if let Some(invoker) = self.invoker.lock().as_ref() {
-      return invoker.invoke_user_message(message);
+      return invoker.lock().invoke_user_message(message);
     }
     Ok(())
   }
 
   fn invoke_system_message(&self, message: SystemMessage) -> Result<(), ActorError> {
     if let Some(invoker) = self.invoker.lock().as_ref() {
-      return invoker.invoke_system_message(message);
+      return invoker.lock().invoke_system_message(message);
     }
     Ok(())
   }

@@ -21,7 +21,7 @@ use super::{
 use crate::core::{
   error::SendError,
   mailbox::{MailboxGeneric, MailboxPressureEvent, ScheduleHints},
-  messaging::{AnyMessageGeneric, SystemMessage, message_invoker::MessageInvoker},
+  messaging::{AnyMessageGeneric, SystemMessage, message_invoker::MessageInvokerShared},
 };
 
 /// Dispatcher that manages mailbox processing.
@@ -84,7 +84,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherGeneric<TB> {
   }
 
   /// Registers an invoker.
-  pub(crate) fn register_invoker(&self, invoker: ArcShared<dyn MessageInvoker<TB>>) {
+  pub(crate) fn register_invoker(&self, invoker: MessageInvokerShared<TB>) {
     self.core.register_invoker(invoker);
   }
 
