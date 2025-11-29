@@ -1,3 +1,5 @@
+#![cfg(feature = "std")]
+
 use alloc::boxed::Box;
 use core::convert::TryFrom;
 
@@ -6,6 +8,7 @@ use fraktor_actor_rs::core::{
   event_stream::{CorrelationId, RemotingLifecycleEvent},
   serialization::{SerializedMessage, SerializerId},
 };
+use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
 use super::{EndpointManager, EndpointManagerCommand, EndpointManagerEffect};
 use crate::core::{
@@ -47,14 +50,14 @@ fn envelope(label: &str) -> DeferredEnvelope {
 }
 
 struct LoopbackPair {
-  _transport:  LoopbackTransport,
+  _transport:  LoopbackTransport<StdToolbox>,
   authority_a: String,
   authority_b: String,
 }
 
 impl LoopbackPair {
   fn new() -> Self {
-    let mut transport = LoopbackTransport::default();
+    let mut transport = LoopbackTransport::<StdToolbox>::default();
     let bind_a = TransportBind::new("loopback-a.local", Some(4100));
     let handle_a = transport.spawn_listener(&bind_a).expect("listener a");
     let bind_b = TransportBind::new("loopback-b.local", Some(4200));

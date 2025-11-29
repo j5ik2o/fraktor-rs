@@ -1,4 +1,5 @@
 //! Core remoting primitives shared between std and no_std configurations.
+#![allow(cfg_std_forbid)]
 
 mod actor_ref_field_normalizer;
 mod association_state;
@@ -40,7 +41,9 @@ mod remoting_envelope;
 mod remoting_error;
 mod remoting_extension;
 mod remoting_extension_config;
+#[cfg(feature = "std")]
 mod remoting_extension_id;
+#[cfg(feature = "std")]
 mod remoting_extension_installer;
 mod serialization_utils;
 mod tokio_actor_ref_provider;
@@ -84,7 +87,9 @@ pub use remoting_envelope::RemotingEnvelope;
 pub use remoting_error::RemotingError;
 pub use remoting_extension::{RemotingExtension, RemotingExtensionGeneric};
 pub use remoting_extension_config::RemotingExtensionConfig;
+#[cfg(feature = "std")]
 pub use remoting_extension_id::RemotingExtensionId;
+#[cfg(feature = "std")]
 pub use remoting_extension_installer::RemotingExtensionInstaller;
 pub use serialization_utils::default_loopback_setup;
 pub use tokio_actor_ref_provider::{TokioActorRefProvider, TokioActorRefProviderGeneric};
@@ -92,6 +97,6 @@ pub use tokio_actor_ref_provider_installer::TokioActorRefProviderInstaller;
 pub use transport::{
   InboundFrame, LoopbackTransport, RemoteTransport, RemoteTransportShared, TokioTransportConfig,
   TransportBackpressureHook, TransportBackpressureHookShared, TransportBind, TransportChannel, TransportEndpoint,
-  TransportError, TransportFactory, TransportHandle, TransportInbound,
+  TransportError, TransportFactory, TransportHandle, TransportInbound, TransportInboundShared,
 };
 pub use wire_error::WireError;

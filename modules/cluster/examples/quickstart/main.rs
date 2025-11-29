@@ -34,10 +34,7 @@ use fraktor_remote_rs::core::{
   RemotingExtensionConfig, RemotingExtensionId, RemotingExtensionInstaller, TokioActorRefProviderInstaller,
   TokioTransportConfig, default_loopback_setup,
 };
-use fraktor_utils_rs::{
-  core::sync::ArcShared,
-  std::{StdSyncMutex, runtime_toolbox::StdToolbox},
-};
+use fraktor_utils_rs::{core::sync::ArcShared, std::StdSyncMutex};
 use tokio::sync::oneshot;
 
 const HOST: &str = "127.0.0.1";
@@ -91,8 +88,7 @@ async fn main() -> Result<()> {
   println!("[info] receiver user guardian: {:?}", receiver.user_guardian_ref().path());
   println!("[info] sender   user guardian: {:?}", sender.user_guardian_ref().path());
 
-  let ext_id =
-    RemotingExtensionId::<StdToolbox>::new(RemotingExtensionConfig::default().with_transport_scheme("fraktor.tcp"));
+  let ext_id = RemotingExtensionId::new(RemotingExtensionConfig::default().with_transport_scheme("fraktor.tcp"));
   let _ = sender.extended().extension(&ext_id).expect("ext sender");
   let _ = receiver.extended().extension(&ext_id).expect("ext receiver");
 
@@ -178,8 +174,7 @@ fn build_system(
       .map_err(|e| anyhow!("failed to register reply channel: {e:?}"))?;
   }
 
-  let id =
-    RemotingExtensionId::<StdToolbox>::new(RemotingExtensionConfig::default().with_transport_scheme("fraktor.tcp"));
+  let id = RemotingExtensionId::new(RemotingExtensionConfig::default().with_transport_scheme("fraktor.tcp"));
   let _extension = system.extended().extension(&id).expect("extension registered");
 
   Ok((system, provider))

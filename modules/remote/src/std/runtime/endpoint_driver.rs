@@ -1,6 +1,7 @@
 //! Tokio-based endpoint driver that bridges EndpointWriter/Reader and transports.
 
 use alloc::{
+  boxed::Box,
   collections::{BTreeMap, VecDeque},
   format,
   string::String,
@@ -11,7 +12,7 @@ use core::time::Duration;
 
 use fraktor_actor_rs::core::{event_stream::CorrelationId, logging::LogLevel, system::ActorSystemGeneric};
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, ToolboxMutex},
+  runtime_toolbox::{RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 use tokio::{sync::Mutex as TokioMutex, task::JoinHandle, time::sleep};
@@ -20,7 +21,7 @@ use crate::core::{
   AssociationState, DeferredEnvelope, EndpointManager, EndpointManagerCommand, EndpointManagerEffect,
   EndpointReaderGeneric, EndpointWriterGeneric, EventPublisherGeneric, HandshakeFrame, HandshakeKind, InboundFrame,
   RemoteNodeId, RemoteTransportShared, RemotingEnvelope, TransportBind, TransportChannel, TransportEndpoint,
-  TransportError, TransportHandle, TransportInbound, WireError,
+  TransportError, TransportHandle, TransportInbound, TransportInboundShared, WireError,
 };
 
 const OUTBOUND_IDLE_DELAY: Duration = Duration::from_millis(5);
@@ -96,7 +97,9 @@ impl<TB: RuntimeToolbox + 'static> EndpointDriver<TB> {
     let handle = driver.transport.inner().lock().spawn_listener(&bind)?;
     driver.event_publisher.publish_listen_started(bind.authority(), CorrelationId::from_u128(0));
     *driver.listener.try_lock().expect("listener mutex uncontended") = Some(handle);
-    driver.transport.inner().lock().install_inbound_handler(ArcShared::new(InboundHandler::new(driver.clone())));
+    let handler: TransportInboundShared<TB> =
+      ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(Box::new(InboundHandler::new(driver.clone()))));
+    driver.transport.inner().lock().install_inbound_handler(handler);
     let send_task = tokio::spawn(Self::drive_outbound(driver.clone()));
     Ok(EndpointDriverHandle { send_task })
   }
@@ -281,7 +284,7 @@ impl<TB: RuntimeToolbox + 'static> InboundHandler<TB> {
 }
 
 impl<TB: RuntimeToolbox + 'static> TransportInbound for InboundHandler<TB> {
-  fn on_frame(&self, frame: InboundFrame) {
+  fn on_frame(&mut self, frame: InboundFrame) {
     let driver = self.driver.clone();
     tokio::spawn(async move {
       driver.handle_inbound_frame(frame).await;

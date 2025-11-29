@@ -5,21 +5,26 @@ use alloc::{
   string::{String, ToString},
   vec::Vec,
 };
+use core::marker::PhantomData;
 
 use fraktor_actor_rs::core::event_stream::{BackpressureSignal, CorrelationId};
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use super::{
   backpressure_hook::TransportBackpressureHookShared, remote_transport::RemoteTransport, transport_bind::TransportBind,
   transport_channel::TransportChannel, transport_endpoint::TransportEndpoint, transport_error::TransportError,
-  transport_handle::TransportHandle, transport_inbound_handler::TransportInbound,
+  transport_handle::TransportHandle, transport_inbound_handler::TransportInboundShared,
 };
 
 /// In-memory transport that records frames for assertions.
-pub struct LoopbackTransport {
+///
+/// The transport is parameterized over a [`RuntimeToolbox`] to support both std and no_std
+/// environments. The toolbox determines which mutex type is used for the inbound handler.
+pub struct LoopbackTransport<TB: RuntimeToolbox + 'static> {
   state:   LoopbackState,
   hook:    Option<TransportBackpressureHookShared>,
-  inbound: Option<ArcShared<dyn TransportInbound>>,
+  inbound: Option<TransportInboundShared<TB>>,
+  _marker: PhantomData<TB>,
 }
 
 const PRESSURE_THRESHOLD: usize = 64;
@@ -34,17 +39,18 @@ struct ListenerState {
   frames: Vec<Vec<u8>>,
 }
 
-impl Default for LoopbackTransport {
+impl<TB: RuntimeToolbox + 'static> Default for LoopbackTransport<TB> {
   fn default() -> Self {
     Self {
       state:   LoopbackState { listeners: BTreeMap::new(), channels: BTreeMap::new(), next_channel: 1 },
       hook:    None,
       inbound: None,
+      _marker: PhantomData,
     }
   }
 }
 
-impl LoopbackTransport {
+impl<TB: RuntimeToolbox + 'static> LoopbackTransport<TB> {
   fn encode_frame(payload: &[u8], correlation_id: CorrelationId) -> Vec<u8> {
     let header_len = 12_usize;
     let total = header_len + payload.len();
@@ -85,7 +91,7 @@ impl LoopbackTransport {
   }
 }
 
-impl RemoteTransport for LoopbackTransport {
+impl<TB: RuntimeToolbox + 'static> RemoteTransport<TB> for LoopbackTransport<TB> {
   fn scheme(&self) -> &str {
     "fraktor.loopback"
   }
@@ -130,7 +136,7 @@ impl RemoteTransport for LoopbackTransport {
     self.hook = Some(hook);
   }
 
-  fn install_inbound_handler(&mut self, handler: ArcShared<dyn TransportInbound>) {
+  fn install_inbound_handler(&mut self, handler: TransportInboundShared<TB>) {
     self.inbound = Some(handler);
   }
 }

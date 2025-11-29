@@ -29,4 +29,4 @@ pub use transport_endpoint::TransportEndpoint;
 pub use transport_error::TransportError;
 pub use transport_handle::TransportHandle;
 pub use transport_inbound_frame::InboundFrame;
-pub use transport_inbound_handler::TransportInbound;
+pub use transport_inbound_handler::{TransportInbound, TransportInboundShared};

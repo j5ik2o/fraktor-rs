@@ -1,19 +1,23 @@
 //! Trait implemented by all remoting transports.
 use fraktor_actor_rs::core::event_stream::CorrelationId;
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use super::{
   backpressure_hook::TransportBackpressureHookShared, transport_bind::TransportBind,
   transport_channel::TransportChannel, transport_endpoint::TransportEndpoint, transport_error::TransportError,
-  transport_handle::TransportHandle, transport_inbound_handler::TransportInbound,
+  transport_handle::TransportHandle, transport_inbound_handler::TransportInboundShared,
 };
 
 /// Abstraction over transport implementations used by remoting.
 ///
+/// The trait is parameterized over a [`RuntimeToolbox`] to support both std and no_std
+/// environments. The toolbox determines which mutex type is used for shared inbound
+/// handler access.
+///
 /// Methods that mutate transport state take `&mut self`, while pure accessors
 /// take `&self`. Callers requiring shared ownership should wrap implementations
 /// in [`RemoteTransportShared`].
-pub trait RemoteTransport: Send + 'static {
+pub trait RemoteTransport<TB: RuntimeToolbox>: Send + 'static {
   /// Returns the URI scheme handled by this transport.
   fn scheme(&self) -> &str;
 
@@ -38,5 +42,8 @@ pub trait RemoteTransport: Send + 'static {
   fn install_backpressure_hook(&mut self, hook: TransportBackpressureHookShared);
 
   /// Registers a handler that receives inbound frames accepted by the transport.
-  fn install_inbound_handler(&mut self, handler: ArcShared<dyn TransportInbound>);
+  ///
+  /// The handler is wrapped in a mutex from the toolbox's `MutexFamily`, allowing
+  /// `on_frame(&mut self)` to be called safely from shared contexts.
+  fn install_inbound_handler(&mut self, handler: TransportInboundShared<TB>);
 }
