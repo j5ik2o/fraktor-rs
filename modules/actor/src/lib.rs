@@ -1,5 +1,3 @@
-#![feature(let_chains)]
-#![feature(const_vec_string_slice)]
 #![deny(missing_docs)]
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_types, clippy::redundant_clone))]
 #![deny(rustdoc::broken_intra_doc_links)]
@@ -50,6 +48,8 @@
 #![deny(unreachable_pub)]
 #![allow(unknown_lints)]
 #![deny(cfg_std_forbid)]
+#![feature(let_chains)]
+#![feature(const_vec_string_slice)]
 #![cfg_attr(not(test), no_std)]
 
 //! Actor runtime for Rust

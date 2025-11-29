@@ -95,7 +95,10 @@ use fraktor_remote_rs::core::{
   RemotingExtensionConfig, RemotingExtensionInstaller, TokioActorRefProviderInstaller, TokioTransportConfig,
   default_loopback_setup,
 };
-use fraktor_utils_rs::{core::sync::ArcShared, std::runtime_toolbox::StdToolbox};
+use fraktor_utils_rs::{
+  core::sync::ArcShared,
+  std::{StdSyncMutex, runtime_toolbox::StdToolbox},
+};
 use tokio::sync::oneshot;
 
 const HOST: &str = "127.0.0.1";
@@ -196,7 +199,7 @@ fn build_cluster_node(
 ) -> Result<ClusterNode> {
   let tokio_handle = tokio::runtime::Handle::current();
   let tokio_executor = TokioExecutor::new(tokio_handle);
-  let default_dispatcher = DispatcherConfig::from_executor(ArcShared::new(tokio_executor));
+  let default_dispatcher = DispatcherConfig::from_executor(ArcShared::new(StdSyncMutex::new(Box::new(tokio_executor))));
 
   // ClusterExtensionInstaller を作成（static_topology を設定）
   // new_with_local() を使用して LocalClusterProvider を自動的に作成

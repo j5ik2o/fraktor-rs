@@ -46,10 +46,10 @@ fn extract_cluster_events(events: &[EventStreamEvent<NoStdToolbox>]) -> Vec<Clus
   events
     .iter()
     .filter_map(|e| {
-      if let EventStreamEvent::Extension { name, payload } = e {
-        if name == "cluster" {
-          return payload.payload().downcast_ref::<ClusterEvent>().cloned();
-        }
+      if let EventStreamEvent::Extension { name, payload } = e
+        && name == "cluster"
+      {
+        return payload.payload().downcast_ref::<ClusterEvent>().cloned();
       }
       None
     })
@@ -60,10 +60,10 @@ fn extract_pub_sub_events(events: &[EventStreamEvent<NoStdToolbox>]) -> Vec<PubS
   events
     .iter()
     .filter_map(|e| {
-      if let EventStreamEvent::Extension { name, payload } = e {
-        if name == "cluster-pubsub" {
-          return payload.payload().downcast_ref::<PubSubEvent>().cloned();
-        }
+      if let EventStreamEvent::Extension { name, payload } = e
+        && name == "cluster-pubsub"
+      {
+        return payload.payload().downcast_ref::<PubSubEvent>().cloned();
       }
       None
     })

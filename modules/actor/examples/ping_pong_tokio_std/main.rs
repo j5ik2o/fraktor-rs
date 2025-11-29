@@ -10,7 +10,7 @@ use fraktor_actor_rs::{
     system::{ActorSystem, DispatcherConfig},
   },
 };
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_rs::{core::sync::ArcShared, std::StdSyncMutex};
 use tokio::runtime::Handle;
 
 struct Start;
@@ -95,7 +95,8 @@ impl Actor for PongActor {
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
   let handle = Handle::current();
-  let dispatcher: DispatcherConfig = DispatcherConfig::from_executor(ArcShared::new(TokioExecutor::new(handle)));
+  let dispatcher: DispatcherConfig =
+    DispatcherConfig::from_executor(ArcShared::new(StdSyncMutex::new(Box::new(TokioExecutor::new(handle)))));
 
   let props: Props = Props::from_fn({
     let dispatcher = dispatcher.clone();

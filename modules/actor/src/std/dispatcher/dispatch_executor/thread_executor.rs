@@ -32,7 +32,7 @@ impl Default for ThreadedExecutor {
 }
 
 impl DispatchExecutor for ThreadedExecutor {
-  fn execute(&self, dispatcher: DispatchShared) -> Result<(), DispatchError> {
+  fn execute(&mut self, dispatcher: DispatchShared) -> Result<(), DispatchError> {
     let mut builder = thread::Builder::new();
     if let Some(name) = &self.name {
       builder = builder.name(name.clone());

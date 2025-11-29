@@ -1,7 +1,10 @@
 extern crate alloc;
 use alloc::boxed::Box;
 
-use fraktor_utils_rs::{core::sync::ArcShared, std::runtime_toolbox::StdToolbox};
+use fraktor_utils_rs::{
+  core::sync::ArcShared,
+  std::{StdSyncMutex, runtime_toolbox::StdToolbox},
+};
 
 use super::{DispatchExecutor, DispatchExecutorAdapter, Dispatcher, StdScheduleAdapter};
 use crate::core::{
@@ -18,8 +21,10 @@ pub struct DispatcherConfig {
 
 impl DispatcherConfig {
   /// Creates a configuration from a scheduler implementation.
+  ///
+  /// The executor is wrapped in a `StdSyncMutex` for external synchronization.
   #[must_use]
-  pub fn from_executor(executor: ArcShared<dyn DispatchExecutor>) -> Self {
+  pub fn from_executor(executor: ArcShared<StdSyncMutex<Box<dyn DispatchExecutor>>>) -> Self {
     let executor_adapter = Box::new(DispatchExecutorAdapter::new(executor));
     let schedule_adapter: ArcShared<dyn ScheduleAdapter<StdToolbox>> = ArcShared::new(StdScheduleAdapter::default());
     let inner = CoreDispatcherConfigGeneric::from_executor(executor_adapter).with_schedule_adapter(schedule_adapter);

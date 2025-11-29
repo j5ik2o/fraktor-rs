@@ -1,4 +1,3 @@
-#![feature(let_chains)]
 #![deny(missing_docs)]
 #![deny(unsafe_op_in_unsafe_fn)]
 #![cfg_attr(all(not(test), not(feature = "std")), no_std)]
@@ -6,6 +5,7 @@
 #![deny(unreachable_pub)]
 #![allow(unknown_lints)]
 #![deny(cfg_std_forbid)]
+#![feature(let_chains)]
 //! Remoting facilities for the fraktor actor runtime.
 
 extern crate alloc;

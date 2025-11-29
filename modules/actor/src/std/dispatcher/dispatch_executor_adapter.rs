@@ -1,23 +1,35 @@
-use fraktor_utils_rs::{core::sync::ArcShared, std::runtime_toolbox::StdToolbox};
+extern crate alloc;
+
+use alloc::boxed::Box;
+
+use fraktor_utils_rs::{
+  core::sync::ArcShared,
+  std::{StdSyncMutex, runtime_toolbox::StdToolbox},
+};
 
 use super::{DispatchExecutor, DispatchShared};
 use crate::core::dispatcher::{DispatchError, DispatchExecutor as CoreDispatchExecutor};
 
 /// Adapter bridging [`DispatchExecutor`] trait objects to the core runtime.
+///
+/// Wraps an executor in an external lock (`StdSyncMutex`) and provides
+/// synchronized access when implementing `CoreDispatchExecutor`.
 pub struct DispatchExecutorAdapter {
-  inner: ArcShared<dyn DispatchExecutor>,
+  // 外部ロックで同期を取る。呼び出し元は interior mutability を持たない
+  inner: ArcShared<StdSyncMutex<Box<dyn DispatchExecutor>>>,
 }
 
 impl DispatchExecutorAdapter {
-  /// Creates a new adapter wrapping the given executor.
+  /// Creates a new adapter wrapping the given executor with external locking.
   #[must_use]
-  pub const fn new(inner: ArcShared<dyn DispatchExecutor>) -> Self {
+  pub fn new(inner: ArcShared<StdSyncMutex<Box<dyn DispatchExecutor>>>) -> Self {
     Self { inner }
   }
 }
 
 impl CoreDispatchExecutor<StdToolbox> for DispatchExecutorAdapter {
   fn execute(&mut self, dispatcher: DispatchShared) -> Result<(), DispatchError> {
-    self.inner.execute(dispatcher)
+    // 外部ロックを取得してから execute を呼び出す
+    self.inner.lock().execute(dispatcher)
   }
 }

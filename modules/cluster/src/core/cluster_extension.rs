@@ -37,12 +37,11 @@ impl<TB: RuntimeToolbox + 'static> EventStreamSubscriber<TB> for ClusterTopology
   fn on_event(&mut self, event: &EventStreamEvent<TB>) {
     // cluster 拡張イベントの TopologyUpdated のみを処理
     // （既に EventStream 経由で受信したイベントなので再 publish しない）
-    if let EventStreamEvent::Extension { name, payload } = event {
-      if name == "cluster" {
-        if let Some(ClusterEvent::TopologyUpdated { topology, .. }) = payload.payload().downcast_ref::<ClusterEvent>() {
-          self.core.lock().apply_topology(topology);
-        }
-      }
+    if let EventStreamEvent::Extension { name, payload } = event
+      && name == "cluster"
+      && let Some(ClusterEvent::TopologyUpdated { topology, .. }) = payload.payload().downcast_ref::<ClusterEvent>()
+    {
+      self.core.lock().apply_topology(topology);
     }
   }
 }

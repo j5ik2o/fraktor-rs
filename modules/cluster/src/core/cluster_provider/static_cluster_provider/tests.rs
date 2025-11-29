@@ -53,12 +53,11 @@ impl RecordingClusterEvents {
 
 impl EventStreamSubscriber<NoStdToolbox> for RecordingClusterEvents {
   fn on_event(&mut self, event: &EventStreamEvent<NoStdToolbox>) {
-    if let EventStreamEvent::Extension { name, payload } = event {
-      if name == "cluster" {
-        if let Some(cluster_event) = payload.payload().downcast_ref::<ClusterEvent>() {
-          self.events.lock().push(cluster_event.clone());
-        }
-      }
+    if let EventStreamEvent::Extension { name, payload } = event
+      && name == "cluster"
+      && let Some(cluster_event) = payload.payload().downcast_ref::<ClusterEvent>()
+    {
+      self.events.lock().push(cluster_event.clone());
     }
   }
 }
