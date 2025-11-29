@@ -10,7 +10,7 @@ use fraktor_utils_rs::core::{
 
 use super::{
   RemoteTransport, TransportBackpressureHookShared, TransportBind, TransportChannel, TransportEndpoint, TransportError,
-  TransportHandle, TransportInbound,
+  TransportHandle, TransportInboundShared,
 };
 
 /// Shared wrapper that provides thread-safe access to a [`RemoteTransport`]
@@ -26,20 +26,20 @@ use super::{
 /// 2. Clone and share as needed
 /// 3. Call transport methods through the wrapper (automatically acquires lock)
 pub struct RemoteTransportShared<TB: RuntimeToolbox + 'static> {
-  inner:  ArcShared<ToolboxMutex<Box<dyn RemoteTransport>, TB>>,
+  inner:  ArcShared<ToolboxMutex<Box<dyn RemoteTransport<TB>>, TB>>,
   scheme: String,
 }
 
 impl<TB: RuntimeToolbox + 'static> RemoteTransportShared<TB> {
   /// Creates a new shared wrapper around the provided transport implementation.
-  pub fn new(transport: Box<dyn RemoteTransport>) -> Self {
+  pub fn new(transport: Box<dyn RemoteTransport<TB>>) -> Self {
     let scheme = transport.scheme().into();
     Self { inner: ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(transport)), scheme }
   }
 
   /// Returns a reference to the inner shared mutex.
   #[must_use]
-  pub const fn inner(&self) -> &ArcShared<ToolboxMutex<Box<dyn RemoteTransport>, TB>> {
+  pub const fn inner(&self) -> &ArcShared<ToolboxMutex<Box<dyn RemoteTransport<TB>>, TB>> {
     &self.inner
   }
 }
@@ -50,7 +50,7 @@ impl<TB: RuntimeToolbox + 'static> Clone for RemoteTransportShared<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> RemoteTransport for RemoteTransportShared<TB> {
+impl<TB: RuntimeToolbox + 'static> RemoteTransport<TB> for RemoteTransportShared<TB> {
   fn scheme(&self) -> &str {
     &self.scheme
   }
@@ -80,7 +80,7 @@ impl<TB: RuntimeToolbox + 'static> RemoteTransport for RemoteTransportShared<TB>
     self.inner.lock().install_backpressure_hook(hook)
   }
 
-  fn install_inbound_handler(&mut self, handler: ArcShared<dyn TransportInbound>) {
+  fn install_inbound_handler(&mut self, handler: TransportInboundShared<TB>) {
     self.inner.lock().install_inbound_handler(handler)
   }
 }

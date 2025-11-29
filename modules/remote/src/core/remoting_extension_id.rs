@@ -1,38 +1,30 @@
 //! Extension identifier bridging the actor system registry and the remoting implementation.
 
-use core::marker::PhantomData;
-
 use fraktor_actor_rs::core::{extension::ExtensionId, system::ActorSystemGeneric};
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
+use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
 use crate::core::{RemotingExtensionGeneric, remoting_extension_config::RemotingExtensionConfig};
 
 /// Registers and instantiates [`RemotingExtension`] instances.
-pub struct RemotingExtensionId<TB>
-where
-  TB: RuntimeToolbox + 'static, {
+///
+/// This type is only available with the `std` feature because the extension
+/// initialization requires `TransportFactory` which depends on standard library facilities.
+pub struct RemotingExtensionId {
   config: RemotingExtensionConfig,
-  marker: PhantomData<TB>,
 }
 
-impl<TB> RemotingExtensionId<TB>
-where
-  TB: RuntimeToolbox + 'static,
-{
+impl RemotingExtensionId {
   /// Creates a new identifier with the provided configuration.
   #[must_use]
   pub fn new(config: RemotingExtensionConfig) -> Self {
-    Self { config, marker: PhantomData }
+    Self { config }
   }
 }
 
-impl<TB> ExtensionId<TB> for RemotingExtensionId<TB>
-where
-  TB: RuntimeToolbox + 'static,
-{
-  type Ext = RemotingExtensionGeneric<TB>;
+impl ExtensionId<StdToolbox> for RemotingExtensionId {
+  type Ext = RemotingExtensionGeneric<StdToolbox>;
 
-  fn create_extension(&self, system: &ActorSystemGeneric<TB>) -> Self::Ext {
+  fn create_extension(&self, system: &ActorSystemGeneric<StdToolbox>) -> Self::Ext {
     RemotingExtensionGeneric::new(system, &self.config)
   }
 }

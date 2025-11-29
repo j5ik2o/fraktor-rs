@@ -19,7 +19,7 @@ impl TokioExecutor {
 }
 
 impl DispatchExecutor for TokioExecutor {
-  fn execute(&self, dispatcher: DispatchShared) -> Result<(), DispatchError> {
+  fn execute(&mut self, dispatcher: DispatchShared) -> Result<(), DispatchError> {
     #[allow(clippy::let_underscore_future)]
     let _ = self.handle.spawn_blocking(move || dispatcher.drive());
     Ok(())

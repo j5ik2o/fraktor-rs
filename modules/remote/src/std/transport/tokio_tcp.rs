@@ -13,7 +13,10 @@ use core::{fmt, future::Future};
 use std::thread;
 
 use fraktor_actor_rs::core::event_stream::{BackpressureSignal, CorrelationId};
-use fraktor_utils_rs::core::{runtime_toolbox::NoStdMutex, sync::ArcShared};
+use fraktor_utils_rs::{
+  core::{runtime_toolbox::NoStdMutex, sync::ArcShared},
+  std::runtime_toolbox::StdToolbox,
+};
 use tokio::{
   io::{AsyncReadExt, AsyncWriteExt},
   net::{TcpListener, TcpStream},
@@ -24,18 +27,22 @@ use tokio::{
 
 use crate::core::{
   InboundFrame, RemoteTransport, TransportBackpressureHookShared, TransportBind, TransportChannel, TransportEndpoint,
-  TransportError, TransportHandle, TransportInbound,
+  TransportError, TransportHandle, TransportInboundShared,
 };
 
 const BACKPRESSURE_THRESHOLD: usize = 1024;
 const CHANNEL_BUFFER_SIZE: usize = 256;
 
 /// Tokio-based TCP transport implementing the Pekko wire protocol.
+///
+/// This transport is specialized for [`StdToolbox`] because it uses Tokio's async runtime
+/// and requires `Send + Sync` bounds on the inbound handler that are only available
+/// with standard library mutex implementations.
 pub struct TokioTcpTransport {
   state:   TokioTcpState,
   // hook と inbound は非同期タスクとの共有のため Arc<Mutex> を維持
   hook:    ArcShared<NoStdMutex<Option<TransportBackpressureHookShared>>>,
-  inbound: ArcShared<NoStdMutex<Option<ArcShared<dyn TransportInbound>>>>,
+  inbound: ArcShared<NoStdMutex<Option<TransportInboundShared<StdToolbox>>>>,
   runtime: Arc<Runtime>,
 }
 
@@ -135,7 +142,7 @@ impl TokioTcpTransport {
     listener: TcpListener,
     authority: String,
     hook: ArcShared<NoStdMutex<Option<TransportBackpressureHookShared>>>,
-    inbound: ArcShared<NoStdMutex<Option<ArcShared<dyn TransportInbound>>>>,
+    inbound: ArcShared<NoStdMutex<Option<TransportInboundShared<StdToolbox>>>>,
   ) {
     loop {
       match listener.accept().await {
@@ -145,7 +152,7 @@ impl TokioTcpTransport {
           let inbound_clone = inbound.clone();
           let remote = peer.to_string();
           tokio::spawn(async move {
-            if let Err(e) = Self::handle_inbound(stream, &authority_clone, &remote, hook_clone, inbound_clone).await {
+            if let Err(e) = Self::handle_inbound(stream, authority_clone, remote, hook_clone, inbound_clone).await {
               eprintln!("Inbound connection error: {e:?}");
             }
           });
@@ -160,10 +167,10 @@ impl TokioTcpTransport {
 
   async fn handle_inbound(
     mut stream: TcpStream,
-    authority: &str,
-    remote: &str,
+    authority: String,
+    remote: String,
     hook: ArcShared<NoStdMutex<Option<TransportBackpressureHookShared>>>,
-    inbound: ArcShared<NoStdMutex<Option<ArcShared<dyn TransportInbound>>>>,
+    inbound: ArcShared<NoStdMutex<Option<TransportInboundShared<StdToolbox>>>>,
   ) -> Result<(), TransportError> {
     let mut buffer = Vec::new();
     loop {
@@ -184,10 +191,10 @@ impl TokioTcpTransport {
       let _payload = &buffer[12..];
       if let Some(hook_ref) = hook.lock().clone() {
         let mut guard = hook_ref.lock();
-        guard.on_backpressure(BackpressureSignal::Release, authority, correlation_id);
+        guard.on_backpressure(BackpressureSignal::Release, &authority, correlation_id);
       }
       if let Some(handler) = inbound.lock().clone() {
-        handler.on_frame(InboundFrame::new(authority, remote.to_string(), buffer[12..].to_vec(), correlation_id));
+        handler.lock().on_frame(InboundFrame::new(&authority, remote.clone(), buffer[12..].to_vec(), correlation_id));
       }
     }
     Ok(())
@@ -216,7 +223,7 @@ impl TokioTcpTransport {
   }
 }
 
-impl RemoteTransport for TokioTcpTransport {
+impl RemoteTransport<StdToolbox> for TokioTcpTransport {
   fn scheme(&self) -> &str {
     "fraktor.tcp"
   }
@@ -285,7 +292,7 @@ impl RemoteTransport for TokioTcpTransport {
     *self.hook.lock() = Some(hook);
   }
 
-  fn install_inbound_handler(&mut self, handler: ArcShared<dyn TransportInbound>) {
+  fn install_inbound_handler(&mut self, handler: TransportInboundShared<StdToolbox>) {
     *self.inbound.lock() = Some(handler);
   }
 }

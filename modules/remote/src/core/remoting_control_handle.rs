@@ -51,6 +51,7 @@ where
   TB: RuntimeToolbox + 'static,
 {
   /// Creates a new handle bound to the provided actor system.
+  #[allow(dead_code)]
   pub(crate) fn new(system: ActorSystemGeneric<TB>, config: RemotingExtensionConfig) -> Self {
     let mut listeners: Vec<ArcShared<dyn RemotingBackpressureListener>> = Vec::new();
     for listener in config.backpressure_listeners() {
@@ -84,6 +85,7 @@ where
   }
 
   /// Internal helper invoked by the termination hook actor.
+  #[allow(dead_code)]
   pub(crate) fn notify_system_shutdown(&self) {
     if self.inner.state.lock().mark_shutdown() {
       self.inner.event_publisher.publish_lifecycle(RemotingLifecycleEvent::Shutdown);
@@ -97,7 +99,7 @@ where
 
   /// Registers the transport instance used by the runtime.
   #[allow(dead_code)]
-  pub(crate) fn register_transport(&self, transport: Box<dyn RemoteTransport>) {
+  pub(crate) fn register_transport(&self, transport: Box<dyn RemoteTransport<TB>>) {
     let shared: RemoteTransportShared<TB> = RemoteTransportShared::new(transport);
     self.register_remote_transport_shared(shared);
   }
@@ -146,6 +148,7 @@ where
     }
   }
 
+  #[allow(dead_code)]
   pub(crate) fn backpressure_hook(&self) -> TransportBackpressureHookShared {
     ArcShared::new(NoStdMutex::new(Box::new(ControlBackpressureHook { control: self.clone() })))
   }
@@ -287,6 +290,7 @@ struct RemotingLifecycleState {
 }
 
 impl RemotingLifecycleState {
+  #[allow(dead_code)]
   const fn new() -> Self {
     Self { phase: LifecyclePhase::Idle }
   }
@@ -324,6 +328,7 @@ impl RemotingLifecycleState {
     }
   }
 
+  #[allow(dead_code)]
   fn mark_shutdown(&mut self) -> bool {
     if matches!(self.phase, LifecyclePhase::Stopped) {
       false
@@ -334,12 +339,14 @@ impl RemotingLifecycleState {
   }
 }
 
+#[allow(dead_code)]
 enum LifecyclePhase {
   Idle,
   Running,
   Stopped,
 }
 
+#[allow(dead_code)]
 struct ControlBackpressureHook<TB>
 where
   TB: RuntimeToolbox + 'static, {

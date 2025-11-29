@@ -245,12 +245,12 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
   pub fn install(&self, system: &ActorSystemGeneric<TB>) -> ArcShared<crate::core::ClusterExtensionGeneric<TB>> {
     // システムの RemotingConfig から advertised address を取得（設定で未指定の場合）
     let mut config = self.config.clone();
-    if config.advertised_address().is_empty() {
-      if let Some(remoting_config) = system.remoting_config() {
-        let addr =
-          alloc::format!("{}:{}", remoting_config.canonical_host(), remoting_config.canonical_port().unwrap_or(0));
-        config = config.with_advertised_address(addr);
-      }
+    if config.advertised_address().is_empty()
+      && let Some(remoting_config) = system.remoting_config()
+    {
+      let addr =
+        alloc::format!("{}:{}", remoting_config.canonical_host(), remoting_config.canonical_port().unwrap_or(0));
+      config = config.with_advertised_address(addr);
     }
 
     // デフォルト実装を使用（未指定の場合）
