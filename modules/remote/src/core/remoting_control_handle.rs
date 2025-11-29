@@ -23,7 +23,7 @@ use crate::core::{
   flight_recorder::{RemotingFlightRecorder, RemotingFlightRecorderSnapshot},
   quarantine_reason::QuarantineReason,
   remote_authority_snapshot::RemoteAuthoritySnapshot,
-  remoting_backpressure_listener::RemotingBackpressureListener,
+  remoting_backpressure_listener::{RemotingBackpressureListener, RemotingBackpressureListenerShared},
   remoting_control::RemotingControl,
   remoting_error::RemotingError,
   remoting_extension_config::RemotingExtensionConfig,
@@ -53,9 +53,10 @@ where
   /// Creates a new handle bound to the provided actor system.
   #[allow(dead_code)]
   pub(crate) fn new(system: ActorSystemGeneric<TB>, config: RemotingExtensionConfig) -> Self {
-    let mut listeners: Vec<ArcShared<dyn RemotingBackpressureListener>> = Vec::new();
+    let mut listeners: Vec<RemotingBackpressureListenerShared<TB>> = Vec::new();
     for listener in config.backpressure_listeners() {
-      listeners.push(listener.clone());
+      let boxed = listener.clone_box();
+      listeners.push(ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(boxed)));
     }
     let publisher = EventPublisherGeneric::new(system.clone());
     let inner = RemotingControlInner {
@@ -121,7 +122,7 @@ where
     let _ = self.inner.try_bootstrap_runtime();
   }
 
-  fn register_listener_dyn(&self, listener: ArcShared<dyn RemotingBackpressureListener>) {
+  fn register_listener_dyn(&self, listener: RemotingBackpressureListenerShared<TB>) {
     let mut guard = self.inner.listeners.lock();
     guard.push(listener);
   }
@@ -144,7 +145,8 @@ where
     self.inner.event_publisher.publish_backpressure(authority.to_string(), signal, correlation_id);
     self.inner.record_backpressure(authority, signal, correlation_id);
     for listener in listeners {
-      listener.on_signal(signal, authority, correlation_id);
+      let mut guard = listener.lock();
+      guard.on_signal(signal, authority, correlation_id);
     }
   }
 
@@ -199,8 +201,8 @@ where
   fn register_backpressure_listener<L>(&self, listener: L)
   where
     L: RemotingBackpressureListener, {
-    let concrete: ArcShared<L> = ArcShared::new(listener);
-    let dyn_listener: ArcShared<dyn RemotingBackpressureListener> = concrete;
+    let dyn_listener: RemotingBackpressureListenerShared<TB> =
+      ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(Box::new(listener)));
     self.register_listener_dyn(dyn_listener);
   }
 
@@ -217,7 +219,7 @@ where
   _canonical_host: String,
   _canonical_port: Option<u16>,
   state:           ToolboxMutex<RemotingLifecycleState, TB>,
-  listeners:       ToolboxMutex<Vec<ArcShared<dyn RemotingBackpressureListener>>, TB>,
+  listeners:       ToolboxMutex<Vec<RemotingBackpressureListenerShared<TB>>, TB>,
   snapshots:       ToolboxMutex<Vec<RemoteAuthoritySnapshot>, TB>,
   recorder:        RemotingFlightRecorder,
   correlation_seq: AtomicU64,
