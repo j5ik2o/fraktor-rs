@@ -52,7 +52,7 @@ async-trait = { version = "0.1.89", default-features = false }
 fraktor-utils-rs = { path = "modules/utils", version = "0.2.11", default-features = false }
 cortex-m = "0.7"
 cortex-m-rt = "0.7"
-criterion = "0.7"
+criterion = "0.8"
 critical-section = { version = "1.2", default-features = false }
 dashmap = "7.0.0-rc2"
 embassy-executor = { version = "0.9", default-features = false }
