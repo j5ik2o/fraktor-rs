@@ -11,7 +11,7 @@ use fraktor_utils_rs::core::{
 use super::{ActorRefProvider, ActorSystemGeneric, RegisterExtraTopLevelError, RemoteWatchHook};
 use crate::core::{
   actor_prim::{ChildRefGeneric, actor_ref::ActorRefGeneric},
-  dispatcher::DispatchersGeneric,
+  dispatcher::DispatchersShared,
   extension::{Extension, ExtensionId},
   mailbox::MailboxesGeneric,
   props::PropsGeneric,
@@ -45,7 +45,7 @@ impl<TB: RuntimeToolbox + 'static> ExtendedActorSystemGeneric<TB> {
 
   /// Returns the dispatcher registry.
   #[must_use]
-  pub fn dispatchers(&self) -> ArcShared<DispatchersGeneric<TB>> {
+  pub fn dispatchers(&self) -> DispatchersShared<TB> {
     self.inner.state().dispatchers()
   }
 

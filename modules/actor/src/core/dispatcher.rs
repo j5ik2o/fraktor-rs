@@ -41,7 +41,7 @@ pub use dispatcher_config::{DispatcherConfig, DispatcherConfigGeneric};
 pub use dispatcher_dump_event::DispatcherDumpEvent;
 pub use dispatcher_registry_error::DispatcherRegistryError;
 pub use dispatcher_sender::{DispatcherSender, DispatcherSenderGeneric};
-pub use dispatchers::{Dispatchers, DispatchersGeneric};
+pub use dispatchers::{Dispatchers, DispatchersGeneric, DispatchersShared};
 pub use inline_executor::{InlineExecutor, InlineExecutorGeneric};
 pub use inline_schedule_adapter::InlineScheduleAdapter;
 pub use schedule_adapter::{ScheduleAdapter, ScheduleAdapterShared};
