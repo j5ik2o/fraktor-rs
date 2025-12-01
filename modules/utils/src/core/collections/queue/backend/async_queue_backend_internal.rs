@@ -10,7 +10,7 @@ use crate::core::collections::{
 
 /// Async-compatible backend trait for queue operations.
 #[async_trait(?Send)]
-pub(crate) trait AsyncQueueBackendInternal<T> {
+pub(crate) trait AsyncQueueBackendInternal<T: Send + 'static> {
   /// Adds an element to the queue according to the configured overflow policy.
   async fn offer(&mut self, item: T) -> Result<OfferOutcome, QueueError<T>>;
 

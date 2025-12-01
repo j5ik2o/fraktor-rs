@@ -1,21 +1,25 @@
-use super::{WaitError, handle_shared::WaitShared, node::WaitNode};
+use super::{WaitError, WaitNodeShared, handle_shared::WaitShared, node::WaitNode};
 use crate::core::{
   collections::queue::{
     QueueError, SyncFifoQueue,
     backend::{OverflowPolicy, VecDequeBackend},
   },
-  sync::ArcShared,
+  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily},
+  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 
 #[cfg(all(test, feature = "alloc"))]
 mod tests;
 
 /// FIFO queue managing waiter nodes.
-pub struct WaitQueue<E> {
-  waiters: SyncFifoQueue<ArcShared<WaitNode<E>>, VecDequeBackend<ArcShared<WaitNode<E>>>>,
+pub struct WaitQueue<E: Send + 'static, TB: RuntimeToolbox = NoStdToolbox> {
+  waiters: SyncFifoQueue<WaitNodeShared<E, TB>, VecDequeBackend<WaitNodeShared<E, TB>>>,
 }
 
-impl<E> WaitQueue<E> {
+impl<E: Send + 'static, TB> WaitQueue<E, TB>
+where
+  TB: RuntimeToolbox + 'static,
+{
   /// Creates an empty queue.
   #[must_use]
   pub fn new() -> Self {
@@ -29,8 +33,8 @@ impl<E> WaitQueue<E> {
   ///
   /// Returns a `WaitError` if the queue cannot accept the waiter due to allocation failure
   /// or if the queue is closed.
-  pub fn register(&mut self) -> Result<WaitShared<E>, WaitError> {
-    let node = ArcShared::new(WaitNode::new());
+  pub fn register(&mut self) -> Result<WaitShared<E, TB>, WaitError> {
+    let node: WaitNodeShared<E, TB> = ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(WaitNode::new()));
     self.waiters.offer(node.clone()).map_err(|e| match e {
       | QueueError::AllocError(_) => WaitError::AllocationFailure,
       | QueueError::Closed(_) => WaitError::QueueClosed,
@@ -43,7 +47,7 @@ impl<E> WaitQueue<E> {
   /// Notifies the oldest pending waiter with success.
   pub fn notify_success(&mut self) -> bool {
     while let Ok(node) = self.waiters.poll() {
-      if node.complete_ok() {
+      if node.lock().complete_ok() {
         return true;
       }
     }
@@ -51,7 +55,7 @@ impl<E> WaitQueue<E> {
   }
 
   /// Completes all waiters with the provided error.
-  pub fn notify_error_all(&mut self, error: E)
+  pub fn notify_error_all(&mut self, error: &E)
   where
     E: Clone, {
     self.notify_error_all_with(|| error.clone());
@@ -62,12 +66,12 @@ impl<E> WaitQueue<E> {
   where
     F: FnMut() -> E, {
     while let Ok(node) = self.waiters.poll() {
-      node.complete_with_error(make_error());
+      node.lock().complete_with_error(make_error());
     }
   }
 }
 
-impl<E> Default for WaitQueue<E> {
+impl<E: Send + 'static, TB: RuntimeToolbox + 'static> Default for WaitQueue<E, TB> {
   fn default() -> Self {
     Self::new()
   }

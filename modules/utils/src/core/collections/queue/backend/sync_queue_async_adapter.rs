@@ -20,7 +20,7 @@ use crate::core::collections::{
 /// This adapter is meant to be constructed and driven by `AsyncQueue`/`SyncQueue`
 /// helpers. Prefer those high-level APIs and implement custom backends instead of
 /// invoking this adapter directly from application logic.
-pub struct SyncQueueAsyncAdapter<T, B>
+pub struct SyncQueueAsyncAdapter<T: Send + 'static, B>
 where
   B: SyncQueueBackend<T>, {
   backend:          B,
@@ -29,7 +29,7 @@ where
   consumer_waiters: WaitQueue<QueueError<T>>,
 }
 
-impl<T, B> SyncQueueAsyncAdapter<T, B>
+impl<T: Send + 'static, B> SyncQueueAsyncAdapter<T, B>
 where
   B: SyncQueueBackend<T>,
 {
@@ -87,7 +87,7 @@ where
 }
 
 #[async_trait(?Send)]
-impl<T, B> AsyncQueueBackendInternal<T> for SyncQueueAsyncAdapter<T, B>
+impl<T: Send + 'static, B> AsyncQueueBackendInternal<T> for SyncQueueAsyncAdapter<T, B>
 where
   B: SyncQueueBackend<T>,
 {
@@ -140,11 +140,14 @@ where
   }
 }
 
-impl<T, B> AsyncQueueBackend<T> for SyncQueueAsyncAdapter<T, B> where B: SyncQueueBackend<T> {}
+impl<T: Send + 'static, B> AsyncQueueBackend<T> for SyncQueueAsyncAdapter<T, B> where B: SyncQueueBackend<T> {}
 
-impl<T: PriorityMessage, B> AsyncPriorityBackend<T> for SyncQueueAsyncAdapter<T, B> where B: SyncPriorityBackend<T> {}
+impl<T: PriorityMessage + Send + 'static, B> AsyncPriorityBackend<T> for SyncQueueAsyncAdapter<T, B> where
+  B: SyncPriorityBackend<T>
+{
+}
 
-impl<T: PriorityMessage, B> AsyncPriorityBackendInternal<T> for SyncQueueAsyncAdapter<T, B>
+impl<T: PriorityMessage + Send + 'static, B> AsyncPriorityBackendInternal<T> for SyncQueueAsyncAdapter<T, B>
 where
   B: SyncPriorityBackend<T>,
 {
