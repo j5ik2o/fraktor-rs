@@ -3,7 +3,7 @@
 use alloc::{boxed::Box, vec::Vec};
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
+  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex},
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 
@@ -14,9 +14,11 @@ use crate::core::{
   messaging::{AnyMessageGeneric, any_message_view::AnyMessageViewGeneric},
 };
 
+pub(crate) type MiddlewareShared<TB> = ArcShared<ToolboxMutex<Box<dyn MessageInvokerMiddleware<TB>>, TB>>;
+
 /// Middleware-enabled pipeline used to invoke actor message handlers.
 pub struct MessageInvokerPipelineGeneric<TB: RuntimeToolbox + 'static> {
-  user_middlewares: Vec<ArcShared<ToolboxMutex<Box<dyn MessageInvokerMiddleware<TB>>, TB>>>,
+  user_middlewares: Vec<MiddlewareShared<TB>>,
 }
 
 /// Type alias for [MessageInvokerPipelineGeneric] with the default [NoStdToolbox].
@@ -31,9 +33,7 @@ impl<TB: RuntimeToolbox + 'static> MessageInvokerPipelineGeneric<TB> {
 
   /// Builds a pipeline from the provided middleware list.
   #[must_use]
-  pub fn from_middlewares(
-    middlewares: Vec<ArcShared<ToolboxMutex<Box<dyn MessageInvokerMiddleware<TB>>, TB>>>,
-  ) -> Self {
+  pub fn from_middlewares(middlewares: Vec<MiddlewareShared<TB>>) -> Self {
     Self { user_middlewares: middlewares }
   }
 

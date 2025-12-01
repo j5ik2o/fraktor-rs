@@ -2,6 +2,7 @@ extern crate std;
 
 use alloc::{boxed::Box, vec, vec::Vec};
 use core::{
+  any::Any,
   num::NonZeroUsize,
   sync::atomic::{AtomicUsize, Ordering},
   time::Duration,
@@ -18,7 +19,7 @@ use crate::core::{
   actor_prim::actor_ref::ActorRefSender,
   dispatcher::{
     DispatchError, DispatchExecutor, DispatchExecutorRunner, DispatchSharedGeneric, DispatcherGeneric, ScheduleAdapter,
-    TickExecutorGeneric,
+    ScheduleAdapterShared, TickExecutorGeneric,
   },
   event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, subscriber_handle},
   logging::LogLevel,
@@ -125,7 +126,11 @@ fn dispatcher_respects_throughput_and_deadline_limits() {
 fn schedule_adapter_receives_pending_signal() {
   let (mailbox, _system) = bounded_mailbox(1);
   let (tick, runner) = tick_executor_with_runner();
-  let adapter = ArcShared::new(CountingScheduleAdapter::default());
+  let adapter = ArcShared::new(
+    <<NoStdToolbox as fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(
+      Box::new(CountingScheduleAdapter::default()) as Box<dyn ScheduleAdapter<NoStdToolbox>>,
+    ),
+  );
   let dispatcher = dispatcher_with_executor_and_adapter(mailbox.clone(), runner, None, None, adapter.clone());
   let invoker = ArcShared::new(
     <<NoStdToolbox as fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(
@@ -146,7 +151,10 @@ fn schedule_adapter_receives_pending_signal() {
   tick.tick();
   handle.join().expect("join");
 
-  assert!(adapter.pending_calls() > 0);
+  let pending_calls =
+    adapter.lock().as_any_mut().downcast_mut::<CountingScheduleAdapter>().expect("counting adapter").pending_calls();
+
+  assert!(pending_calls > 0);
 }
 
 #[test]
@@ -157,12 +165,19 @@ fn schedule_adapter_notified_on_rejection() {
   let _subscription = EventStreamGeneric::subscribe_arc(&system.event_stream(), &subscriber);
 
   let (flaky, runner) = flaky_executor_with_runner(vec![DispatchError::RejectedExecution; 3]);
-  let adapter = ArcShared::new(CountingScheduleAdapter::default());
+  let adapter = ArcShared::new(
+    <<NoStdToolbox as fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(
+      Box::new(CountingScheduleAdapter::default()) as Box<dyn ScheduleAdapter<NoStdToolbox>>,
+    ),
+  );
   let dispatcher = dispatcher_with_executor_and_adapter(mailbox, runner, None, None, adapter.clone());
 
   dispatcher.register_for_execution(register_user_hint());
   flaky.assert_attempts(3);
-  assert!(adapter.rejected_calls() >= 1);
+  let rejected_calls =
+    adapter.lock().as_any_mut().downcast_mut::<CountingScheduleAdapter>().expect("counting adapter").rejected_calls();
+
+  assert!(rejected_calls >= 1);
 
   let logged = events.lock().iter().any(
     |event| matches!(event, crate::core::event_stream::EventStreamEvent::Log(log) if log.level() == LogLevel::Error),
@@ -178,7 +193,11 @@ fn dispatcher_dump_event_published() {
   let _subscription = EventStreamGeneric::subscribe_arc(&system.event_stream(), &subscriber);
 
   let (_recording, runner) = recording_executor_with_runner();
-  let adapter = ArcShared::new(CountingScheduleAdapter::default());
+  let adapter = ArcShared::new(
+    <<NoStdToolbox as fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(
+      Box::new(CountingScheduleAdapter::default()) as Box<dyn ScheduleAdapter<NoStdToolbox>>,
+    ),
+  );
   let dispatcher = dispatcher_with_executor_and_adapter(mailbox, runner, None, None, adapter);
 
   dispatcher.publish_dump_metrics();
@@ -194,7 +213,11 @@ fn telemetry_captures_mailbox_pressure_and_dispatcher_dump() {
   let _subscription = EventStreamGeneric::subscribe_arc(&system.event_stream(), &subscriber);
 
   let (_recording, runner) = recording_executor_with_runner();
-  let adapter = ArcShared::new(CountingScheduleAdapter::default());
+  let adapter = ArcShared::new(
+    <<NoStdToolbox as fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(
+      Box::new(CountingScheduleAdapter::default()) as Box<dyn ScheduleAdapter<NoStdToolbox>>,
+    ),
+  );
   let dispatcher = dispatcher_with_executor_and_adapter(mailbox.clone(), runner, None, None, adapter);
   let invoker = ArcShared::new(
     <<NoStdToolbox as fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(
@@ -218,7 +241,7 @@ fn dispatcher_with_executor(
   throughput_deadline: Option<Duration>,
   starvation_deadline: Option<Duration>,
 ) -> DispatcherGeneric<NoStdToolbox> {
-  let adapter = ArcShared::new(crate::core::dispatcher::InlineScheduleAdapter::new());
+  let adapter = crate::core::dispatcher::InlineScheduleAdapter::shared::<NoStdToolbox>();
   dispatcher_with_executor_and_adapter(mailbox, executor, throughput_deadline, starvation_deadline, adapter)
 }
 
@@ -227,7 +250,7 @@ fn dispatcher_with_executor_and_adapter(
   executor: ArcShared<DispatchExecutorRunner<NoStdToolbox>>,
   throughput_deadline: Option<Duration>,
   starvation_deadline: Option<Duration>,
-  adapter: ArcShared<dyn ScheduleAdapter<NoStdToolbox>>,
+  adapter: ScheduleAdapterShared<NoStdToolbox>,
 ) -> DispatcherGeneric<NoStdToolbox> {
   DispatcherGeneric::with_adapter(mailbox, executor, adapter, throughput_deadline, starvation_deadline)
 }
@@ -432,15 +455,19 @@ impl Default for CountingScheduleAdapter {
 }
 
 impl ScheduleAdapter<NoStdToolbox> for CountingScheduleAdapter {
-  fn create_waker(&self, dispatcher: DispatcherGeneric<NoStdToolbox>) -> core::task::Waker {
+  fn create_waker(&mut self, dispatcher: DispatcherGeneric<NoStdToolbox>) -> core::task::Waker {
     ScheduleWaker::<NoStdToolbox>::into_waker(dispatcher)
   }
 
-  fn on_pending(&self) {
+  fn on_pending(&mut self) {
     *self.pending.lock() += 1;
   }
 
-  fn notify_rejected(&self, _attempts: usize) {
+  fn notify_rejected(&mut self, _attempts: usize) {
     *self.rejected.lock() += 1;
+  }
+
+  fn as_any_mut(&mut self) -> &mut dyn Any {
+    self
   }
 }
