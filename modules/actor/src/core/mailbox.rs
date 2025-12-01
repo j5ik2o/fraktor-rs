@@ -42,7 +42,7 @@ pub use mailbox_queue_offer_future::QueueOfferFuture;
 pub use mailbox_queue_poll_future::QueuePollFuture;
 pub use mailbox_queue_state::QueueState;
 pub use mailbox_registry_error::MailboxRegistryError;
-pub use mailboxes::{Mailboxes, MailboxesGeneric};
+pub use mailboxes::{Mailboxes, MailboxesGeneric, MailboxesShared};
 pub use metrics_event::{MailboxMetricsEvent, MailboxPressureEvent};
 pub use overflow_strategy::MailboxOverflowStrategy;
 pub use policy::MailboxPolicy;

@@ -13,7 +13,7 @@ use crate::core::{
   actor_prim::{ChildRefGeneric, actor_ref::ActorRefGeneric},
   dispatcher::DispatchersShared,
   extension::{Extension, ExtensionId},
-  mailbox::MailboxesGeneric,
+  mailbox::MailboxesShared,
   props::PropsGeneric,
   spawn::SpawnError,
 };
@@ -51,7 +51,7 @@ impl<TB: RuntimeToolbox + 'static> ExtendedActorSystemGeneric<TB> {
 
   /// Returns the mailbox registry.
   #[must_use]
-  pub fn mailboxes(&self) -> ArcShared<MailboxesGeneric<TB>> {
+  pub fn mailboxes(&self) -> MailboxesShared<TB> {
     self.inner.state().mailboxes()
   }
 

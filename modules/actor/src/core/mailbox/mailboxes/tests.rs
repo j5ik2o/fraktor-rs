@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn register_and_resolve_mailbox() {
-  let registry = MailboxesGeneric::<NoStdToolbox>::new();
+  let mut registry = MailboxesGeneric::<NoStdToolbox>::new();
   registry.ensure_default();
   let config = MailboxConfig::default().with_warn_threshold(None);
   registry.register("custom", config).expect("register mailbox");
@@ -11,7 +11,7 @@ fn register_and_resolve_mailbox() {
 
 #[test]
 fn register_duplicate_mailbox_fails() {
-  let registry = MailboxesGeneric::<NoStdToolbox>::new();
+  let mut registry = MailboxesGeneric::<NoStdToolbox>::new();
   registry.ensure_default();
   let config = MailboxConfig::default();
   registry.register("dup", config).expect("first register");
@@ -20,7 +20,7 @@ fn register_duplicate_mailbox_fails() {
 
 #[test]
 fn ensure_default_mailbox_is_available() {
-  let registry = MailboxesGeneric::<NoStdToolbox>::new();
+  let mut registry = MailboxesGeneric::<NoStdToolbox>::new();
   registry.ensure_default();
   assert!(registry.resolve(DEFAULT_MAILBOX_ID).is_ok());
 }

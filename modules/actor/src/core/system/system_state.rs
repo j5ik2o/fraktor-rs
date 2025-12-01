@@ -40,7 +40,7 @@ use crate::core::{
   event_stream::{EventStreamEvent, EventStreamGeneric, RemoteAuthorityEvent, TickDriverSnapshot},
   futures::ActorFuture,
   logging::{LogEvent, LogLevel},
-  mailbox::MailboxesGeneric,
+  mailbox::{MailboxesGeneric, MailboxesShared},
   messaging::{AnyMessageGeneric, FailurePayload, SystemMessage},
   scheduler::{SchedulerContext, TaskRunSummary, TickDriverBootstrap, TickDriverRuntime},
   spawn::{NameRegistry, NameRegistryError, SpawnError},
@@ -114,7 +114,7 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
     ToolboxMutex<HashMap<ActorPathScheme, ActorRefProviderCaller<TB>, RandomState>, TB>,
   remote_watch_hook: ToolboxMutex<Option<Box<dyn RemoteWatchHook<TB>>>, TB>,
   dispatchers: DispatchersShared<TB>,
-  mailboxes: ArcShared<MailboxesGeneric<TB>>,
+  mailboxes: MailboxesShared<TB>,
   path_identity: ToolboxMutex<PathIdentity, TB>,
   actor_path_registry: ToolboxMutex<ActorPathRegistry, TB>,
   remote_authority_mgr: ArcShared<RemoteAuthorityManagerGeneric<TB>>,
@@ -138,8 +138,11 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       let mut guard = dispatchers.lock();
       guard.ensure_default();
     }
-    let mailboxes = ArcShared::new(MailboxesGeneric::new());
-    mailboxes.ensure_default();
+    let mailboxes = ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(MailboxesGeneric::<TB>::new()));
+    {
+      let mut guard = mailboxes.lock();
+      guard.ensure_default();
+    }
     Self {
       next_pid: AtomicU64::new(0),
       clock: AtomicU64::new(0),
@@ -760,7 +763,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
 
   /// Returns the mailbox registry.
   #[must_use]
-  pub fn mailboxes(&self) -> ArcShared<MailboxesGeneric<TB>> {
+  pub fn mailboxes(&self) -> MailboxesShared<TB> {
     self.mailboxes.clone()
   }
 
