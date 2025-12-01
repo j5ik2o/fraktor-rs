@@ -26,6 +26,7 @@ mod tests;
 pub(crate) async fn offer_shared<T, K, B, A>(shared: &ArcShared<A>, item: T) -> Result<OfferOutcome, QueueError<T>>
 where
   K: TypeKey,
+  T: Send + 'static,
   B: AsyncQueueBackend<T>,
   A: AsyncMutexLike<AsyncQueue<T, K, B>>, {
   let mut value = Some(item);
@@ -69,6 +70,7 @@ where
 pub(crate) async fn poll_shared<T, K, B, A>(shared: &ArcShared<A>) -> Result<T, QueueError<T>>
 where
   K: TypeKey,
+  T: Send + 'static,
   B: AsyncQueueBackend<T>,
   A: AsyncMutexLike<AsyncQueue<T, K, B>>, {
   loop {
@@ -103,6 +105,7 @@ where
 pub struct AsyncQueueShared<T, K, B, A = SpinAsyncMutex<AsyncQueue<T, K, B>>>
 where
   K: TypeKey,
+  T: Send + 'static,
   B: AsyncQueueBackend<T>,
   A: AsyncMutexLike<AsyncQueue<T, K, B>>, {
   inner: ArcShared<A>,
@@ -112,6 +115,7 @@ where
 impl<T, K, B, A> Clone for AsyncQueueShared<T, K, B, A>
 where
   K: TypeKey,
+  T: Send + 'static,
   B: AsyncQueueBackend<T>,
   A: AsyncMutexLike<AsyncQueue<T, K, B>>,
 {
@@ -123,6 +127,7 @@ where
 impl<T, K, B, A> AsyncQueueShared<T, K, B, A>
 where
   K: TypeKey,
+  T: Send + 'static,
   B: AsyncQueueBackend<T>,
   A: AsyncMutexLike<AsyncQueue<T, K, B>>,
 {
@@ -212,7 +217,7 @@ where
 
 impl<T, B, A> AsyncQueueShared<T, PriorityKey, B, A>
 where
-  T: Clone + PriorityMessage,
+  T: Clone + PriorityMessage + Send + 'static,
   B: AsyncPriorityBackend<T>,
   A: AsyncMutexLike<AsyncQueue<T, PriorityKey, B>>,
   PriorityKey: SupportsPeek,
@@ -232,6 +237,7 @@ where
 
 impl<T, B, A> AsyncQueueShared<T, MpscKey, B, A>
 where
+  T: Send + 'static,
   B: AsyncQueueBackend<T>,
   A: AsyncMutexLike<AsyncQueue<T, MpscKey, B>>,
   MpscKey: MultiProducer + SingleConsumer,
@@ -259,6 +265,7 @@ where
 
 impl<T, B, A> AsyncQueueShared<T, SpscKey, B, A>
 where
+  T: Send + 'static,
   B: AsyncQueueBackend<T>,
   A: AsyncMutexLike<AsyncQueue<T, SpscKey, B>>,
   SpscKey: SingleProducer + SingleConsumer,
@@ -280,6 +287,7 @@ where
 
 impl<T, B, A> AsyncQueueShared<T, FifoKey, B, A>
 where
+  T: Send + 'static,
   B: AsyncQueueBackend<T>,
   A: AsyncMutexLike<AsyncQueue<T, FifoKey, B>>,
   FifoKey: SingleProducer + SingleConsumer,

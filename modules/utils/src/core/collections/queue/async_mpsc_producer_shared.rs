@@ -17,6 +17,7 @@ use crate::core::{
 /// [`MpscKey`](crate::core::collections::queue::type_keys::MpscKey).
 pub struct AsyncMpscProducerShared<T, B, A = SpinAsyncMutex<AsyncQueue<T, MpscKey, B>>>
 where
+  T: Send + 'static,
   B: AsyncQueueBackend<T>,
   A: AsyncMutexLike<AsyncQueue<T, MpscKey, B>>, {
   pub(crate) inner: ArcShared<A>,
@@ -25,6 +26,7 @@ where
 
 impl<T, B, A> AsyncMpscProducerShared<T, B, A>
 where
+  T: Send + 'static,
   B: AsyncQueueBackend<T>,
   A: AsyncMutexLike<AsyncQueue<T, MpscKey, B>>,
 {
@@ -51,6 +53,7 @@ where
 
 impl<T, B, A> Clone for AsyncMpscProducerShared<T, B, A>
 where
+  T: Send + 'static,
   B: AsyncQueueBackend<T>,
   A: AsyncMutexLike<AsyncQueue<T, MpscKey, B>>,
 {

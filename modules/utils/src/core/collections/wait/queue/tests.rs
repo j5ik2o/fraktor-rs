@@ -56,7 +56,8 @@ fn wait_queue_notify_error_all() {
   let _wait1 = queue.register().unwrap();
   let _wait2 = queue.register().unwrap();
 
-  queue.notify_error_all("error".to_string());
+  let error = "error".to_string();
+  queue.notify_error_all(&error);
 }
 
 #[test]
@@ -77,7 +78,7 @@ fn wait_queue_notify_error_all_with() {
 #[test]
 fn wait_queue_notify_error_all_empty() {
   let mut queue: WaitQueue<&str> = WaitQueue::new();
-  queue.notify_error_all("error");
+  queue.notify_error_all(&"error");
 }
 
 #[test]
