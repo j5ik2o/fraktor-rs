@@ -19,7 +19,7 @@ impl<TB: RuntimeToolbox + 'static> TickExecutorGeneric<TB> {
   }
 
   /// Drains all pending dispatcher batches.
-  pub fn tick(&self) {
+  pub fn tick(&mut self) {
     loop {
       let dispatcher = {
         let mut queue = self.queue.lock();
