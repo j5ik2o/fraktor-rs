@@ -35,7 +35,7 @@ use crate::core::{
     actor_ref::ActorRefGeneric,
   },
   dead_letter::{DeadLetterEntryGeneric, DeadLetterGeneric, DeadLetterReason},
-  dispatcher::DispatchersGeneric,
+  dispatcher::{DispatchersGeneric, DispatchersShared},
   error::{ActorError, SendError},
   event_stream::{EventStreamEvent, EventStreamGeneric, RemoteAuthorityEvent, TickDriverSnapshot},
   futures::ActorFuture,
@@ -113,7 +113,7 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   actor_ref_provider_callers_by_scheme:
     ToolboxMutex<HashMap<ActorPathScheme, ActorRefProviderCaller<TB>, RandomState>, TB>,
   remote_watch_hook: ToolboxMutex<Option<Box<dyn RemoteWatchHook<TB>>>, TB>,
-  dispatchers: ArcShared<DispatchersGeneric<TB>>,
+  dispatchers: DispatchersShared<TB>,
   mailboxes: ArcShared<MailboxesGeneric<TB>>,
   path_identity: ToolboxMutex<PathIdentity, TB>,
   actor_path_registry: ToolboxMutex<ActorPathRegistry, TB>,
@@ -133,8 +133,11 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     const DEAD_LETTER_CAPACITY: usize = 512;
     let event_stream = ArcShared::new(EventStreamGeneric::default());
     let dead_letter = ArcShared::new(DeadLetterGeneric::new(event_stream.clone(), DEAD_LETTER_CAPACITY));
-    let dispatchers = ArcShared::new(DispatchersGeneric::new());
-    dispatchers.ensure_default();
+    let dispatchers = ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(DispatchersGeneric::new()));
+    {
+      let mut guard = dispatchers.lock();
+      guard.ensure_default();
+    }
     let mailboxes = ArcShared::new(MailboxesGeneric::new());
     mailboxes.ensure_default();
     Self {
@@ -208,7 +211,8 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     // Register default dispatcher if configured
     if let Some(dispatcher_config) = config.default_dispatcher_config() {
       // Overwrite the "default" entry using register_or_update
-      self.dispatchers.register_or_update("default", dispatcher_config.clone());
+      let mut dispatchers = self.dispatchers.lock();
+      dispatchers.register_or_update("default", dispatcher_config.clone());
     }
 
     let policy = ReservationPolicy::with_quarantine_duration(self.default_quarantine_duration());
@@ -750,7 +754,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
 
   /// Returns the dispatcher registry.
   #[must_use]
-  pub fn dispatchers(&self) -> ArcShared<DispatchersGeneric<TB>> {
+  pub fn dispatchers(&self) -> DispatchersShared<TB> {
     self.dispatchers.clone()
   }
 

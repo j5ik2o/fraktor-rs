@@ -597,15 +597,20 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   fn resolve_props(&self, props: &PropsGeneric<TB>) -> Result<PropsGeneric<TB>, SpawnError> {
     let mut resolved = props.clone();
     if let Some(dispatcher_id) = resolved.dispatcher_id() {
-      let config = self
-        .state
-        .dispatchers()
-        .resolve(dispatcher_id)
-        .map_err(|error| SpawnError::invalid_props(error.to_string()))?;
+      let config = {
+        let dispatchers = self.state.dispatchers();
+        let guard = dispatchers.lock();
+        guard.resolve(dispatcher_id)
+      }
+      .map_err(|error| SpawnError::invalid_props(error.to_string()))?;
       resolved = resolved.with_resolved_dispatcher(config);
     } else if !resolved.has_custom_dispatcher() {
       // If no dispatcher_id is specified, use the system's default dispatcher
-      if let Ok(default_config) = self.state.dispatchers().resolve("default") {
+      if let Ok(default_config) = {
+        let dispatchers = self.state.dispatchers();
+        let guard = dispatchers.lock();
+        guard.resolve("default")
+      } {
         resolved = resolved.with_resolved_dispatcher(default_config);
       }
     }
