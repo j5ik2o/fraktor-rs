@@ -21,7 +21,7 @@ fn inline_runner() -> ArcShared<DispatchExecutorRunner<NoStdToolbox>> {
 fn dispatcher_core_new() {
   let mailbox = ArcShared::new(Mailbox::new(crate::core::mailbox::MailboxPolicy::unbounded(None)));
   let executor = inline_runner();
-  let adapter = ArcShared::new(InlineScheduleAdapter::new());
+  let adapter = InlineScheduleAdapter::shared::<NoStdToolbox>();
   let core = DispatcherCore::new(mailbox, executor, adapter, None, None, None);
   let _ = core;
 }
@@ -33,7 +33,7 @@ fn dispatcher_core_new_with_throughput_limit() {
   let mailbox = ArcShared::new(Mailbox::new(crate::core::mailbox::MailboxPolicy::unbounded(None)));
   let executor = inline_runner();
   let limit = NonZeroUsize::new(100).unwrap();
-  let adapter = ArcShared::new(InlineScheduleAdapter::new());
+  let adapter = InlineScheduleAdapter::shared::<NoStdToolbox>();
   let core = DispatcherCore::new(mailbox, executor, adapter, Some(limit), None, None);
   let _ = core;
 }
@@ -42,7 +42,7 @@ fn dispatcher_core_new_with_throughput_limit() {
 fn dispatcher_core_mailbox() {
   let mailbox = ArcShared::new(Mailbox::new(crate::core::mailbox::MailboxPolicy::unbounded(None)));
   let executor = inline_runner();
-  let adapter = ArcShared::new(InlineScheduleAdapter::new());
+  let adapter = InlineScheduleAdapter::shared::<NoStdToolbox>();
   let core = DispatcherCore::new(mailbox.clone(), executor, adapter, None, None, None);
   let retrieved = core.mailbox();
   let _ = retrieved;
@@ -52,7 +52,7 @@ fn dispatcher_core_mailbox() {
 fn dispatcher_core_executor() {
   let mailbox = ArcShared::new(Mailbox::new(crate::core::mailbox::MailboxPolicy::unbounded(None)));
   let executor = inline_runner();
-  let adapter = ArcShared::new(InlineScheduleAdapter::new());
+  let adapter = InlineScheduleAdapter::shared::<NoStdToolbox>();
   let core = DispatcherCore::new(mailbox, executor.clone(), adapter, None, None, None);
   let retrieved = core.executor();
   let _ = retrieved;
@@ -62,7 +62,7 @@ fn dispatcher_core_executor() {
 fn dispatcher_core_state() {
   let mailbox = ArcShared::new(Mailbox::new(crate::core::mailbox::MailboxPolicy::unbounded(None)));
   let executor = inline_runner();
-  let adapter = ArcShared::new(InlineScheduleAdapter::new());
+  let adapter = InlineScheduleAdapter::shared::<NoStdToolbox>();
   let core = DispatcherCore::new(mailbox, executor, adapter, None, None, None);
   let state = core.state();
   let _ = state;
@@ -72,7 +72,7 @@ fn dispatcher_core_state() {
 fn dispatcher_core_drive_with_empty_mailbox() {
   let mailbox = ArcShared::new(Mailbox::new(crate::core::mailbox::MailboxPolicy::unbounded(None)));
   let executor = inline_runner();
-  let adapter = ArcShared::new(InlineScheduleAdapter::new());
+  let adapter = InlineScheduleAdapter::shared::<NoStdToolbox>();
   let core = ArcShared::new(DispatcherCore::new(mailbox, executor, adapter, None, None, None));
 
   DispatcherCore::drive(&core);
@@ -94,7 +94,7 @@ fn dispatcher_core_register_invoker() {
 
   let mailbox = ArcShared::new(Mailbox::new(crate::core::mailbox::MailboxPolicy::unbounded(None)));
   let executor = inline_runner();
-  let adapter = ArcShared::new(InlineScheduleAdapter::new());
+  let adapter = InlineScheduleAdapter::shared::<NoStdToolbox>();
   let core = ArcShared::new(DispatcherCore::new(mailbox, executor, adapter, None, None, None));
 
   let invoker = ArcShared::new(

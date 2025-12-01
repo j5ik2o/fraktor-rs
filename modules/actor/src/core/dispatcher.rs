@@ -44,7 +44,7 @@ pub use dispatcher_sender::{DispatcherSender, DispatcherSenderGeneric};
 pub use dispatchers::{Dispatchers, DispatchersGeneric};
 pub use inline_executor::{InlineExecutor, InlineExecutorGeneric};
 pub use inline_schedule_adapter::InlineScheduleAdapter;
-pub use schedule_adapter::ScheduleAdapter;
+pub use schedule_adapter::{ScheduleAdapter, ScheduleAdapterShared};
 pub use tick_executor::{TickExecutor, TickExecutorGeneric};
 
 /// Dispatcher configuration module.

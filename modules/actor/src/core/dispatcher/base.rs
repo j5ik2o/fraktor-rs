@@ -16,7 +16,7 @@ use super::{
   dispatcher_state::DispatcherState,
   inline_executor::InlineExecutorGeneric,
   inline_schedule_adapter::InlineScheduleAdapter,
-  schedule_adapter::ScheduleAdapter,
+  schedule_adapter::ScheduleAdapterShared,
 };
 use crate::core::{
   error::SendError,
@@ -50,7 +50,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherGeneric<TB> {
     throughput_deadline: Option<Duration>,
     starvation_deadline: Option<Duration>,
   ) -> Self {
-    let adapter = ArcShared::new(InlineScheduleAdapter::new());
+    let adapter = InlineScheduleAdapter::shared::<TB>();
     Self::with_adapter(mailbox, executor, adapter, throughput_deadline, starvation_deadline)
   }
 
@@ -59,7 +59,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherGeneric<TB> {
   pub fn with_adapter(
     mailbox: ArcShared<MailboxGeneric<TB>>,
     executor: ArcShared<DispatchExecutorRunner<TB>>,
-    schedule_adapter: ArcShared<dyn ScheduleAdapter<TB>>,
+    schedule_adapter: ScheduleAdapterShared<TB>,
     throughput_deadline: Option<Duration>,
     starvation_deadline: Option<Duration>,
   ) -> Self {
@@ -160,7 +160,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherGeneric<TB> {
     ArcShared::new(DispatcherSenderGeneric::new(self.clone()))
   }
 
-  pub(crate) fn schedule_adapter(&self) -> ArcShared<dyn ScheduleAdapter<TB>> {
+  pub(crate) fn schedule_adapter(&self) -> ScheduleAdapterShared<TB> {
     self.core.schedule_adapter()
   }
 
