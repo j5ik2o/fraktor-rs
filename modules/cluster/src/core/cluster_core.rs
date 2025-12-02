@@ -16,7 +16,7 @@ use fraktor_actor_rs::core::{
 };
 use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
+  runtime_toolbox::{RuntimeToolbox, ToolboxMutex},
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 
@@ -33,7 +33,7 @@ pub struct ClusterCore<TB: RuntimeToolbox + 'static> {
   event_stream:        ArcShared<EventStreamGeneric<TB>>,
   gossiper:            ArcShared<ToolboxMutex<Box<dyn Gossiper>, TB>>,
   pub_sub:             ArcShared<ToolboxMutex<Box<dyn ClusterPubSub>, TB>>,
-  startup_state:       ToolboxMutex<ClusterStartupState, TB>,
+  startup_state:       ClusterStartupState,
   metrics_enabled:     bool,
   kind_registry:       KindRegistry,
   identity_lookup:     ArcShared<ToolboxMutex<Box<dyn IdentityLookup>, TB>>,
@@ -71,7 +71,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
       event_stream,
       gossiper,
       pub_sub: pubsub,
-      startup_state: <TB::MutexFamily as SyncMutexFamily>::create(startup_state),
+      startup_state,
       metrics_enabled,
       kind_registry,
       identity_lookup,
@@ -94,7 +94,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
   /// Returns the advertised address shared by member and client modes.
   #[must_use]
   pub(crate) fn startup_address(&self) -> String {
-    self.startup_state.lock().address.clone()
+    self.startup_state.address.clone()
   }
 
   /// Initializes kinds and sets up identity lookup in member mode.
