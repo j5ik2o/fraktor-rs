@@ -24,7 +24,7 @@ pub struct SchedulerContext<TB: RuntimeToolbox + 'static> {
   scheduler:       ArcShared<ToolboxMutex<Scheduler<TB>, TB>>,
   provider:        SchedulerBackedDelayProvider<TB>,
   event_stream:    ArcShared<EventStreamGeneric<TB>>,
-  driver_snapshot: ToolboxMutex<Option<TickDriverSnapshot>, TB>,
+  driver_snapshot: Option<TickDriverSnapshot>,
 }
 
 impl<TB: RuntimeToolbox + 'static> SchedulerContext<TB> {
@@ -45,8 +45,7 @@ impl<TB: RuntimeToolbox + 'static> SchedulerContext<TB> {
     let mutex = <<TB as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(scheduler);
     let shared = ArcShared::new(mutex);
     let provider = SchedulerBackedDelayProvider::new(shared.clone());
-    let driver_snapshot = <TB::MutexFamily as SyncMutexFamily>::create(None);
-    Self { scheduler: shared, provider, event_stream, driver_snapshot }
+    Self { scheduler: shared, provider, event_stream, driver_snapshot: None }
   }
 
   /// Returns a clone of the shared scheduler mutex.
@@ -70,30 +69,30 @@ impl<TB: RuntimeToolbox + 'static> SchedulerContext<TB> {
   /// Returns the last recorded driver metadata.
   #[must_use]
   pub fn driver_metadata(&self) -> Option<TickDriverMetadata> {
-    self.driver_snapshot.lock().as_ref().map(|snapshot| snapshot.metadata.clone())
+    self.driver_snapshot.as_ref().map(|snapshot| snapshot.metadata.clone())
   }
 
   /// Returns the last recorded auto driver metadata.
   #[must_use]
   pub fn auto_driver_metadata(&self) -> Option<AutoDriverMetadata> {
-    self.driver_snapshot.lock().as_ref().and_then(|snapshot| snapshot.auto.clone())
+    self.driver_snapshot.as_ref().and_then(|snapshot| snapshot.auto.clone())
   }
 
   /// Returns the last published driver snapshot.
   #[must_use]
   pub fn driver_snapshot(&self) -> Option<TickDriverSnapshot> {
-    self.driver_snapshot.lock().clone()
+    self.driver_snapshot.clone()
   }
 
   pub(crate) fn record_driver_metadata(
-    &self,
+    &mut self,
     kind: TickDriverKind,
     resolution: Duration,
     metadata: TickDriverMetadata,
     auto: Option<AutoDriverMetadata>,
   ) {
     let snapshot = TickDriverSnapshot::new(metadata, kind, resolution, auto);
-    *self.driver_snapshot.lock() = Some(snapshot.clone());
+    self.driver_snapshot = Some(snapshot.clone());
     self.event_stream.publish(&EventStreamEvent::TickDriver(snapshot));
   }
 

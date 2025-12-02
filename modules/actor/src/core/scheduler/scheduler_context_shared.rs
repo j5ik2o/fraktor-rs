@@ -33,6 +33,7 @@ impl<TB: RuntimeToolbox + 'static> Clone for SchedulerContextSharedGeneric<TB> {
 
 impl<TB: RuntimeToolbox + 'static> SchedulerContextSharedGeneric<TB> {
   /// Creates a new shared wrapper around the provided context.
+  #[must_use]
   pub fn new(context: SchedulerContext<TB>) -> Self {
     Self { inner: ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(context)) }
   }
