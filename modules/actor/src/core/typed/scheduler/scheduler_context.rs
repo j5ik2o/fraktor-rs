@@ -55,7 +55,7 @@ impl<TB: RuntimeToolbox + 'static> TypedSchedulerContext<TB> {
 
   /// Shuts down the underlying scheduler, returning the summary.
   #[must_use]
-  pub fn shutdown(&self) -> TaskRunSummary {
+  pub fn shutdown(&mut self) -> TaskRunSummary {
     self.inner.shutdown()
   }
 }
