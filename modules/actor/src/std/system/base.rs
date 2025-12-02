@@ -8,7 +8,7 @@ use crate::{
     actor_prim::{Pid, actor_path::ActorPath},
     event_stream::{TickDriverSnapshot, subscriber_handle as core_subscriber_handle},
     logging::LogLevel,
-    scheduler::{SchedulerContext, TickDriverConfig},
+    scheduler::{SchedulerContextSharedGeneric, TickDriverConfig},
     spawn::SpawnError,
     system::{
       ActorRefResolveError, ActorSystemGeneric as CoreActorSystemGeneric, ExtendedActorSystemGeneric,
@@ -125,7 +125,7 @@ impl ActorSystem {
 
   /// Returns the shared scheduler context if installed.
   #[must_use]
-  pub fn scheduler_context(&self) -> Option<ArcShared<SchedulerContext<StdToolbox>>> {
+  pub fn scheduler_context(&self) -> Option<SchedulerContextSharedGeneric<StdToolbox>> {
     self.inner.scheduler_context()
   }
 

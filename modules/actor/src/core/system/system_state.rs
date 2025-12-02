@@ -42,7 +42,7 @@ use crate::core::{
   logging::{LogEvent, LogLevel},
   mailbox::{MailboxesGeneric, MailboxesShared},
   messaging::{AnyMessageGeneric, FailurePayload, SystemMessage},
-  scheduler::{SchedulerContext, TaskRunSummary, TickDriverRuntime},
+  scheduler::{SchedulerContextSharedGeneric, TaskRunSummary, TickDriverRuntime},
   spawn::{NameRegistry, NameRegistryError, SpawnError},
   supervision::SupervisorDirective,
   system::{RegisterExtraTopLevelError, ReservationPolicy},
@@ -118,7 +118,7 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   path_identity: ToolboxMutex<PathIdentity, TB>,
   actor_path_registry: ToolboxMutex<ActorPathRegistry, TB>,
   remote_authority_mgr: RemoteAuthorityManagerShared<TB>,
-  scheduler_context: ToolboxMutex<Option<ArcShared<SchedulerContext<TB>>>, TB>,
+  scheduler_context: ToolboxMutex<Option<SchedulerContextSharedGeneric<TB>>, TB>,
   tick_driver_runtime: ToolboxMutex<Option<TickDriverRuntime<TB>>, TB>,
   remoting_config: ToolboxMutex<Option<RemotingConfig>, TB>,
 }
@@ -786,14 +786,14 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   }
 
   /// Installs the scheduler service handle.
-  pub fn install_scheduler_context(&self, context: ArcShared<SchedulerContext<TB>>) {
+  pub fn install_scheduler_context(&self, context: SchedulerContextSharedGeneric<TB>) {
     let mut guard = self.scheduler_context.lock();
     guard.replace(context);
   }
 
   /// Returns the scheduler context when it has been initialized.
   #[must_use]
-  pub fn scheduler_context(&self) -> Option<ArcShared<SchedulerContext<TB>>> {
+  pub fn scheduler_context(&self) -> Option<SchedulerContextSharedGeneric<TB>> {
     self.scheduler_context.lock().clone()
   }
 

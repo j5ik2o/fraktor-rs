@@ -34,7 +34,7 @@ use crate::core::{
   logging::LogLevel,
   messaging::{AnyMessageGeneric, SystemMessage},
   props::PropsGeneric,
-  scheduler::{SchedulerBackedDelayProvider, SchedulerContext, TickDriverConfig},
+  scheduler::{SchedulerBackedDelayProvider, SchedulerContextSharedGeneric, TickDriverConfig},
   serialization::default_serialization_extension_id,
   spawn::SpawnError,
   system::{ActorRefResolveError, actor_system_config::ActorSystemConfigGeneric, system_state::SystemStateGeneric},
@@ -273,8 +273,8 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
         scheduler_config
       };
 
-      let context = SchedulerContext::with_event_stream(toolbox, scheduler_config, event_stream);
-      self.state.install_scheduler_context(ArcShared::new(context));
+      let context = SchedulerContextSharedGeneric::with_event_stream(toolbox, scheduler_config, event_stream);
+      self.state.install_scheduler_context(context);
     }
 
     // Install tick driver runtime if tick_driver_config is provided
@@ -309,7 +309,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
 
   /// Returns the scheduler service when initialized.
   #[must_use]
-  pub fn scheduler_context(&self) -> Option<ArcShared<SchedulerContext<TB>>> {
+  pub fn scheduler_context(&self) -> Option<SchedulerContextSharedGeneric<TB>> {
     self.state.scheduler_context()
   }
 

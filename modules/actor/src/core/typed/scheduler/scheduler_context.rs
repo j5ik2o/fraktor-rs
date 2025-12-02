@@ -1,14 +1,16 @@
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use super::TypedSchedulerShared;
 use crate::core::{
-  scheduler::{SchedulerBackedDelayProvider, SchedulerConfig, SchedulerContext, TaskRunSummary},
+  scheduler::{
+    SchedulerBackedDelayProvider, SchedulerConfig, SchedulerContext, SchedulerContextSharedGeneric, TaskRunSummary,
+  },
   typed::TypedScheduler,
 };
 
 /// Owns the shared scheduler instance and exposes auxiliary services.
 pub struct TypedSchedulerContext<TB: RuntimeToolbox + 'static> {
-  inner: ArcShared<SchedulerContext<TB>>,
+  inner: SchedulerContextSharedGeneric<TB>,
 }
 
 impl<TB: RuntimeToolbox + 'static> TypedSchedulerContext<TB> {
@@ -21,12 +23,12 @@ impl<TB: RuntimeToolbox + 'static> TypedSchedulerContext<TB> {
   /// Creates a service from the provided scheduler instance.
   #[must_use]
   pub fn new(inner: SchedulerContext<TB>) -> Self {
-    Self::from_shared(ArcShared::new(inner))
+    Self::from_shared(SchedulerContextSharedGeneric::new(inner))
   }
 
-  /// Wraps an `ArcShared` pointing at the canonical scheduler context.
+  /// Wraps a shared context.
   #[must_use]
-  pub const fn from_shared(inner: ArcShared<SchedulerContext<TB>>) -> Self {
+  pub const fn from_shared(inner: SchedulerContextSharedGeneric<TB>) -> Self {
     Self { inner }
   }
 

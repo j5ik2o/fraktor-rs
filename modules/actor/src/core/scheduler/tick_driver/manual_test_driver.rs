@@ -10,7 +10,7 @@ use fraktor_utils_rs::core::{
   },
 };
 
-use crate::core::scheduler::{Scheduler, SchedulerContext, SchedulerRunnerOwned};
+use crate::core::scheduler::{Scheduler, SchedulerContextSharedGeneric, SchedulerRunnerOwned};
 
 type SchedulerContextMutex<TB> = SpinSyncMutex<Option<ArcShared<ToolboxMutex<Scheduler<TB>, TB>>>>;
 
@@ -33,7 +33,7 @@ impl<TB: RuntimeToolbox> ManualTestDriver<TB> {
     ManualTickController { state: self.state.clone() }
   }
 
-  pub(crate) fn attach(&self, ctx: &SchedulerContext<TB>) {
+  pub(crate) fn attach(&self, ctx: &SchedulerContextSharedGeneric<TB>) {
     self.state.attach(ctx.scheduler());
   }
 
