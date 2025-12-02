@@ -143,7 +143,7 @@ fn run_hardware_driver_enqueues_isr_pulses() {
   handle.reset();
   let config = hardware_test_config(handler, Duration::from_millis(2));
   let ctx = SchedulerContext::new(NoStdToolbox::default(), SchedulerConfig::default());
-  let runtime = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
+  let mut runtime = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
 
   handle.trigger();
   let resolution = ctx.scheduler().lock().config().resolution();
@@ -153,7 +153,7 @@ fn run_hardware_driver_enqueues_isr_pulses() {
   let metrics = feed.snapshot(now, TickDriverKind::Hardware { source: HardwareKind::Custom });
   assert_eq!(metrics.enqueued_total(), 1);
 
-  TickDriverBootstrap::shutdown(runtime.driver());
+  runtime.shutdown();
   handle.reset();
 }
 
@@ -182,13 +182,13 @@ fn run_hardware_driver_watchdog_marks_inactive_on_shutdown() {
   handle.reset();
   let config = hardware_test_config(handler, Duration::from_millis(2));
   let ctx = SchedulerContext::new(NoStdToolbox::default(), SchedulerConfig::default());
-  let runtime = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
+  let mut runtime = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
 
   handle.trigger();
-  let feed = runtime.feed().expect("feed");
+  let feed = runtime.feed().expect("feed").clone();
   assert!(feed.driver_active());
 
-  TickDriverBootstrap::shutdown(runtime.driver());
+  runtime.shutdown();
   assert!(!feed.driver_active());
   handle.reset();
 }
@@ -253,7 +253,7 @@ fn embedded_quickstart_template_runs_ticks() {
   handle.reset();
   let ctx = SchedulerContext::new(NoStdToolbox::default(), SchedulerConfig::default());
   let config = hardware_test_config(handler, Duration::from_millis(2));
-  let runtime = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
+  let mut runtime = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
 
   let scheduler = ctx.scheduler();
   let log = ArcShared::new(NoStdMutex::new(Vec::new()));
@@ -276,7 +276,7 @@ fn embedded_quickstart_template_runs_ticks() {
 
   assert_eq!(log.lock().as_slice(), &["embedded"]);
 
-  TickDriverBootstrap::shutdown(runtime.driver());
+  runtime.shutdown();
 }
 
 #[test]
@@ -345,7 +345,7 @@ fn driver_snapshot_exposed_via_scheduler_context() {
   handle.reset();
   let config = hardware_test_config(handler, Duration::from_millis(2));
 
-  let runtime = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
+  let mut runtime = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
 
   let snapshot = ctx.driver_snapshot().expect("driver snapshot");
   assert_eq!(snapshot.metadata.driver_id, runtime.driver().id());
@@ -354,7 +354,7 @@ fn driver_snapshot_exposed_via_scheduler_context() {
   assert_eq!(snapshot.resolution, Duration::from_millis(2));
   assert!(snapshot.auto.is_none());
 
-  TickDriverBootstrap::shutdown(runtime.driver());
+  runtime.shutdown();
 }
 
 #[test]
