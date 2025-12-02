@@ -8,7 +8,9 @@ use fraktor_utils_rs::core::{
   sync::ArcShared,
 };
 
-use super::{ActorRefProvider, ActorSystemGeneric, RegisterExtraTopLevelError, RemoteWatchHook};
+use super::{
+  ActorRefProvider, ActorRefProviderSharedGeneric, ActorSystemGeneric, RegisterExtraTopLevelError, RemoteWatchHook,
+};
 use crate::core::{
   actor_prim::{ChildRefGeneric, actor_ref::ActorRefGeneric},
   dispatcher::DispatchersShared,
@@ -88,7 +90,7 @@ impl<TB: RuntimeToolbox + 'static> ExtendedActorSystemGeneric<TB> {
   }
 
   /// Registers an actor-ref provider for later retrieval.
-  pub fn register_actor_ref_provider<P>(&self, provider: &ArcShared<P>)
+  pub fn register_actor_ref_provider<P>(&self, provider: &ActorRefProviderSharedGeneric<TB, P>)
   where
     P: ActorRefProvider<TB> + Any + Send + Sync + 'static, {
     self.inner.state().install_actor_ref_provider(provider);
@@ -96,9 +98,9 @@ impl<TB: RuntimeToolbox + 'static> ExtendedActorSystemGeneric<TB> {
 
   /// Returns the actor-ref provider of the requested type when registered.
   #[must_use]
-  pub fn actor_ref_provider<P>(&self) -> Option<ArcShared<P>>
+  pub fn actor_ref_provider<P>(&self) -> Option<ActorRefProviderSharedGeneric<TB, P>>
   where
-    P: Any + Send + Sync + 'static, {
+    P: ActorRefProvider<TB> + Any + Send + Sync + 'static, {
     self.inner.state().actor_ref_provider::<P>()
   }
 

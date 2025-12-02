@@ -38,7 +38,7 @@ impl<TB: RuntimeToolbox + 'static> ActorRefProvider<TB> for LocalActorRefProvide
     &[ActorPathScheme::Fraktor]
   }
 
-  fn actor_ref(&self, path: ActorPath) -> Result<ActorRefGeneric<TB>, ActorError> {
+  fn actor_ref(&mut self, path: ActorPath) -> Result<ActorRefGeneric<TB>, ActorError> {
     // Local provider only supports local paths (no authority)
     if path.parts().authority_endpoint().is_some() {
       return Err(ActorError::fatal("LocalActorRefProvider does not support remote actor paths"));

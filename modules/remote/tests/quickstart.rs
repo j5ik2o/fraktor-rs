@@ -127,6 +127,8 @@ async fn quickstart_loopback_provider_flow() -> Result<()> {
   provider
     .inner()
     .lock()
+    .inner()
+    .lock()
     .watch_remote(ActorPathParts::with_authority("remote-system", Some(("127.0.0.1", 4321))))
     .map_err(|error| anyhow!("{error}"))?;
 
@@ -161,7 +163,7 @@ async fn quickstart_loopback_provider_flow() -> Result<()> {
   assert!(recorder.events.lock().iter().any(|event| matches!(event, EventStreamEvent::RemotingBackpressure(_))));
 
   let authority = "127.0.0.1:4321";
-  let snapshots = provider.inner().lock().connections_snapshot();
+  let snapshots = provider.inner().lock().inner().lock().connections_snapshot();
   let snapshot = snapshots.iter().find(|entry| entry.authority() == authority).expect("snapshot exists");
   assert!(matches!(snapshot.state(), AuthorityState::Unresolved));
 
@@ -187,12 +189,14 @@ async fn remote_provider_enqueues_message() -> Result<()> {
   provider
     .inner()
     .lock()
+    .inner()
+    .lock()
     .watch_remote(ActorPathParts::with_authority("remote-system", Some(("127.0.0.1", 25520))))
     .map_err(|error| anyhow!("{error}"))?;
-  let remote = provider.actor_ref(remote_path()).expect("actor ref");
+  let remote = provider.clone().actor_ref(remote_path()).expect("actor ref");
   remote.tell(AnyMessageGeneric::new("loopback".to_string())).expect("send succeeds");
 
-  let writer = provider.inner().lock().writer_for_test();
+  let writer = provider.inner().lock().inner().lock().writer_for_test();
   let envelope = writer.lock().try_next().expect("poll writer").expect("envelope");
   assert_eq!(envelope.recipient().to_relative_string(), "/user/user/svc");
   assert_eq!(envelope.remote_node().host(), "127.0.0.1");
@@ -207,13 +211,12 @@ async fn remote_watch_hook_handles_system_watch_messages() -> Result<()> {
   handle.lock().start().map_err(|error| anyhow!("{error}"))?;
   type SharedProvider = RemoteWatchHookShared<StdToolbox, LoopbackActorRefProviderGeneric<StdToolbox>>;
   let provider = system.extended().actor_ref_provider::<SharedProvider>().expect("provider installed");
-  let remote = provider.actor_ref(remote_path()).expect("remote actor ref");
+  let remote = provider.get_actor_ref(remote_path()).expect("remote actor ref");
   let watcher = Pid::new(7777, 0);
 
-  let mut shared_clone = (*provider).clone();
-  assert!(RemoteWatchHook::handle_watch(&mut shared_clone, remote.pid(), watcher));
+  assert!(RemoteWatchHook::handle_watch(&mut *provider.inner().lock(), remote.pid(), watcher));
 
-  let watchers = provider.inner().lock().remote_watchers_for_test(remote.pid()).expect("entry snapshot");
+  let watchers = provider.inner().lock().inner().lock().remote_watchers_for_test(remote.pid()).expect("entry snapshot");
   assert_eq!(watchers, vec![watcher]);
   Ok(())
 }

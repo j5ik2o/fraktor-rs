@@ -17,7 +17,7 @@ use fraktor_actor_rs::core::{
   system::{ActorRefProvider, ActorSystemGeneric, RemoteAuthorityError, RemoteAuthorityManagerShared, RemoteWatchHook},
 };
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdMutex, NoStdToolbox, RuntimeToolbox, SyncMutexFamily},
+  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily},
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 use hashbrown::HashMap;
@@ -48,7 +48,7 @@ pub struct TokioActorRefProviderGeneric<TB: RuntimeToolbox + 'static> {
   control:           RemotingControlShared<TB>,
   authority_manager: RemoteAuthorityManagerShared<TB>,
   watcher_daemon:    ActorRefGeneric<TB>,
-  watch_entries:     NoStdMutex<HashMap<Pid, RemoteWatchEntry, RandomState>>,
+  watch_entries:     HashMap<Pid, RemoteWatchEntry, RandomState>,
   #[allow(dead_code)] // Reserved for future transport-specific configuration
   transport_config: TokioTransportConfig,
 }
@@ -59,7 +59,7 @@ pub type TokioActorRefProvider = TokioActorRefProviderGeneric<NoStdToolbox>;
 
 impl<TB: RuntimeToolbox + 'static> TokioActorRefProviderGeneric<TB> {
   /// Creates a remote actor reference for the provided path.
-  pub fn actor_ref(&self, path: ActorPath) -> Result<ActorRefGeneric<TB>, RemoteActorRefProviderError> {
+  pub fn actor_ref(&mut self, path: ActorPath) -> Result<ActorRefGeneric<TB>, RemoteActorRefProviderError> {
     self.control.lock().associate(path.parts()).map_err(RemoteActorRefProviderError::from)?;
     let sender = self.sender_for_path(&path)?;
     let pid = self.system.allocate_pid();
@@ -81,7 +81,7 @@ impl<TB: RuntimeToolbox + 'static> TokioActorRefProviderGeneric<TB> {
       control,
       authority_manager,
       watcher_daemon: daemon,
-      watch_entries: NoStdMutex::new(HashMap::with_hasher(RandomState::new())),
+      watch_entries: HashMap::with_hasher(RandomState::new()),
       transport_config,
     })
   }
@@ -113,7 +113,7 @@ impl<TB: RuntimeToolbox + 'static> TokioActorRefProviderGeneric<TB> {
   }
 
   /// Requests an association/watch with the provided remote address.
-  pub fn watch_remote(&self, parts: ActorPathParts) -> Result<(), RemotingError> {
+  pub fn watch_remote(&mut self, parts: ActorPathParts) -> Result<(), RemotingError> {
     if parts.authority_endpoint().is_none() {
       return Err(RemotingError::TransportUnavailable("missing authority".into()));
     }
@@ -127,9 +127,8 @@ impl<TB: RuntimeToolbox + 'static> TokioActorRefProviderGeneric<TB> {
     self.control.lock().connections_snapshot()
   }
 
-  fn register_remote_entry(&self, pid: Pid, path: ActorPath) {
-    let mut guard = self.watch_entries.lock();
-    guard.entry(pid).or_insert_with(|| RemoteWatchEntry::new(path.clone()));
+  fn register_remote_entry(&mut self, pid: Pid, path: ActorPath) {
+    self.watch_entries.entry(pid).or_insert_with(|| RemoteWatchEntry::new(path.clone()));
     self.record_snapshot_from_parts(path.parts());
   }
 
@@ -148,17 +147,15 @@ impl<TB: RuntimeToolbox + 'static> TokioActorRefProviderGeneric<TB> {
     let _ = self.watcher_daemon.tell(AnyMessageGeneric::new(command));
   }
 
-  fn track_watch(&self, target: Pid, watcher: Pid) -> Option<(ActorPathParts, bool)> {
-    let mut guard = self.watch_entries.lock();
-    guard.get_mut(&target).map(|entry| {
+  fn track_watch(&mut self, target: Pid, watcher: Pid) -> Option<(ActorPathParts, bool)> {
+    self.watch_entries.get_mut(&target).map(|entry| {
       let added = entry.add_watcher(watcher);
       (entry.target_parts(), added)
     })
   }
 
-  fn track_unwatch(&self, target: Pid, watcher: Pid) -> Option<(ActorPathParts, bool)> {
-    let mut guard = self.watch_entries.lock();
-    guard.get_mut(&target).map(|entry| {
+  fn track_unwatch(&mut self, target: Pid, watcher: Pid) -> Option<(ActorPathParts, bool)> {
+    self.watch_entries.get_mut(&target).map(|entry| {
       let removed = entry.remove_watcher(watcher);
       (entry.target_parts(), removed)
     })
@@ -167,13 +164,13 @@ impl<TB: RuntimeToolbox + 'static> TokioActorRefProviderGeneric<TB> {
   #[cfg(any(test, feature = "test-support"))]
   /// Returns the set of remote PIDs tracked by the provider (test helper).
   pub fn registered_remote_pids_for_test(&self) -> Vec<Pid> {
-    self.watch_entries.lock().keys().copied().collect()
+    self.watch_entries.keys().copied().collect()
   }
 
   #[cfg(any(test, feature = "test-support"))]
   /// Returns the watchers registered for a remote PID (test helper).
   pub fn remote_watchers_for_test(&self, pid: Pid) -> Option<Vec<Pid>> {
-    self.watch_entries.lock().get(&pid).map(|entry| entry.watchers().to_vec())
+    self.watch_entries.get(&pid).map(|entry| entry.watchers().to_vec())
   }
 }
 
@@ -333,7 +330,7 @@ impl<TB: RuntimeToolbox + 'static> ActorRefProvider<TB> for TokioActorRefProvide
     &[fraktor_actor_rs::core::actor_prim::actor_path::ActorPathScheme::FraktorTcp]
   }
 
-  fn actor_ref(&self, path: ActorPath) -> Result<ActorRefGeneric<TB>, ActorError> {
+  fn actor_ref(&mut self, path: ActorPath) -> Result<ActorRefGeneric<TB>, ActorError> {
     Self::actor_ref(self, path)
       .map_err(|error| ActorError::fatal(alloc::format!("Failed to create Tokio actor ref: {:?}", error)))
   }
