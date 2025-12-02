@@ -25,7 +25,7 @@ where
   T: Send + 'static, {
   state:   ArcShared<ToolboxMutex<QueueState<T, TB>, TB>>,
   message: Option<T>,
-  waiter:  Option<WaitShared<QueueError<T>>>,
+  waiter:  Option<WaitShared<QueueError<T>, TB>>,
   timeout: Option<DelayFuture>,
 }
 
@@ -42,9 +42,12 @@ where
     self
   }
 
-  fn ensure_waiter(&mut self) -> Result<&mut WaitShared<QueueError<T>>, QueueError<T>> {
+  fn ensure_waiter(&mut self) -> Result<&mut WaitShared<QueueError<T>, TB>, QueueError<T>> {
     if self.waiter.is_none() {
-      let waiter = self.state.lock().register_producer_waiter().map_err(|_| QueueError::Disconnected)?;
+      let waiter = {
+        let mut state = self.state.lock();
+        state.register_producer_waiter().map_err(|_| QueueError::Disconnected)?
+      };
       self.waiter = Some(waiter);
     }
     // SAFETY: waiter is guaranteed to be Some after the above check.
