@@ -63,7 +63,7 @@ impl ActorSelectionResolver {
   /// [`PathResolutionError::AuthorityQuarantined`] is returned immediately.
   pub fn ensure_authority_state<TB: RuntimeToolbox + 'static>(
     path: &ActorPath,
-    authority_manager: &RemoteAuthorityManagerGeneric<TB>,
+    authority_manager: &mut RemoteAuthorityManagerGeneric<TB>,
     message: Option<AnyMessageGeneric<TB>>,
   ) -> Result<(), PathResolutionError> {
     let Some(authority) = path.parts().authority() else {
@@ -93,7 +93,7 @@ impl ActorSelectionResolver {
   pub fn resolve_relative_with_authority<TB: RuntimeToolbox + 'static>(
     base: &ActorPath,
     selection: &str,
-    authority_manager: &RemoteAuthorityManagerGeneric<TB>,
+    authority_manager: &mut RemoteAuthorityManagerGeneric<TB>,
     message: Option<AnyMessageGeneric<TB>>,
   ) -> Result<ActorPath, ActorSelectionError> {
     let resolved = Self::resolve_relative(base, selection)?;

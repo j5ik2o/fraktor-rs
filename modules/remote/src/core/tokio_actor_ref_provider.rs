@@ -14,9 +14,7 @@ use fraktor_actor_rs::core::{
   },
   error::{ActorError, SendError},
   messaging::{AnyMessageGeneric, SystemMessage},
-  system::{
-    ActorRefProvider, ActorSystemGeneric, RemoteAuthorityError, RemoteAuthorityManagerGeneric, RemoteWatchHook,
-  },
+  system::{ActorRefProvider, ActorSystemGeneric, RemoteAuthorityError, RemoteAuthorityManagerShared, RemoteWatchHook},
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdMutex, NoStdToolbox, RuntimeToolbox, SyncMutexFamily},
@@ -48,7 +46,7 @@ pub struct TokioActorRefProviderGeneric<TB: RuntimeToolbox + 'static> {
   system:            ActorSystemGeneric<TB>,
   writer:            EndpointWriterShared<TB>,
   control:           RemotingControlShared<TB>,
-  authority_manager: ArcShared<RemoteAuthorityManagerGeneric<TB>>,
+  authority_manager: RemoteAuthorityManagerShared<TB>,
   watcher_daemon:    ActorRefGeneric<TB>,
   watch_entries:     NoStdMutex<HashMap<Pid, RemoteWatchEntry, RandomState>>,
   #[allow(dead_code)] // Reserved for future transport-specific configuration
@@ -73,7 +71,7 @@ impl<TB: RuntimeToolbox + 'static> TokioActorRefProviderGeneric<TB> {
     system: ActorSystemGeneric<TB>,
     writer: ArcShared<<TB::MutexFamily as SyncMutexFamily>::Mutex<EndpointWriterGeneric<TB>>>,
     control: RemotingControlShared<TB>,
-    authority_manager: ArcShared<RemoteAuthorityManagerGeneric<TB>>,
+    authority_manager: RemoteAuthorityManagerShared<TB>,
     transport_config: TokioTransportConfig,
   ) -> Result<Self, RemoteActorRefProviderError> {
     let daemon = RemoteWatcherDaemon::spawn(&system, control.clone())?;
@@ -116,10 +114,9 @@ impl<TB: RuntimeToolbox + 'static> TokioActorRefProviderGeneric<TB> {
 
   /// Requests an association/watch with the provided remote address.
   pub fn watch_remote(&self, parts: ActorPathParts) -> Result<(), RemotingError> {
-    let Some(authority) = parts.authority_endpoint() else {
+    if parts.authority_endpoint().is_none() {
       return Err(RemotingError::TransportUnavailable("missing authority".into()));
-    };
-    let _ = self.authority_manager.state(&authority);
+    }
     self.record_snapshot_from_parts(&parts);
     self.control.lock().associate(&parts)
   }
@@ -140,7 +137,7 @@ impl<TB: RuntimeToolbox + 'static> TokioActorRefProviderGeneric<TB> {
     let Some(authority) = parts.authority_endpoint() else {
       return;
     };
-    let deferred = self.authority_manager.deferred_count(&authority) as u32;
+    let deferred = self.authority_manager.lock().deferred_count(&authority) as u32;
     let state = self.system.state().remote_authority_state(&authority);
     let ticks = self.system.state().monotonic_now().as_millis() as u64;
     let snapshot = RemoteAuthoritySnapshot::new(authority, state, ticks, deferred);

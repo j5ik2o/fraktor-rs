@@ -15,9 +15,7 @@ use fraktor_actor_rs::core::{
   },
   error::{ActorError, SendError},
   messaging::{AnyMessageGeneric, SystemMessage},
-  system::{
-    ActorRefProvider, ActorSystemGeneric, RemoteAuthorityError, RemoteAuthorityManagerGeneric, RemoteWatchHook,
-  },
+  system::{ActorRefProvider, ActorSystemGeneric, RemoteAuthorityError, RemoteAuthorityManagerShared, RemoteWatchHook},
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdMutex, NoStdToolbox, RuntimeToolbox},
@@ -48,7 +46,7 @@ pub struct LoopbackActorRefProviderGeneric<TB: RuntimeToolbox + 'static> {
   system:            ActorSystemGeneric<TB>,
   writer:            EndpointWriterShared<TB>,
   control:           RemotingControlShared<TB>,
-  authority_manager: ArcShared<RemoteAuthorityManagerGeneric<TB>>,
+  authority_manager: RemoteAuthorityManagerShared<TB>,
   watcher_daemon:    ActorRefGeneric<TB>,
   watch_entries:     NoStdMutex<HashMap<Pid, RemoteWatchEntry, RandomState>>,
 }
@@ -71,7 +69,7 @@ impl<TB: RuntimeToolbox + 'static> LoopbackActorRefProviderGeneric<TB> {
     system: ActorSystemGeneric<TB>,
     writer: EndpointWriterShared<TB>,
     control: RemotingControlShared<TB>,
-    authority_manager: ArcShared<RemoteAuthorityManagerGeneric<TB>>,
+    authority_manager: RemoteAuthorityManagerShared<TB>,
   ) -> Result<Self, RemoteActorRefProviderError> {
     let daemon = RemoteWatcherDaemon::spawn(&system, control.clone())?;
     Ok(Self {
@@ -115,7 +113,7 @@ impl<TB: RuntimeToolbox + 'static> LoopbackActorRefProviderGeneric<TB> {
     let Some(authority) = parts.authority_endpoint() else {
       return Err(RemotingError::TransportUnavailable("missing authority".into()));
     };
-    let _ = self.authority_manager.state(&authority);
+    let _ = self.authority_manager.lock().state(&authority);
     self.record_snapshot_from_parts(&parts);
     self.control.lock().associate(&parts)
   }
@@ -136,7 +134,7 @@ impl<TB: RuntimeToolbox + 'static> LoopbackActorRefProviderGeneric<TB> {
     let Some(authority) = parts.authority_endpoint() else {
       return;
     };
-    let deferred = self.authority_manager.deferred_count(&authority) as u32;
+    let deferred = self.authority_manager.lock().deferred_count(&authority) as u32;
     let state = self.system.state().remote_authority_state(&authority);
     let ticks = self.system.state().monotonic_now().as_millis() as u64;
     let snapshot = RemoteAuthoritySnapshot::new(authority, state, ticks, deferred);

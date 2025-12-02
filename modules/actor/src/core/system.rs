@@ -41,7 +41,7 @@ pub use guardian_kind::GuardianKind;
 pub use local_actor_ref_provider::LocalActorRefProviderGeneric;
 pub use local_actor_ref_provider_installer::LocalActorRefProviderInstaller;
 pub use register_extra_top_level_error::RegisterExtraTopLevelError;
-pub use remote_authority::{RemoteAuthorityManager, RemoteAuthorityManagerGeneric};
+pub use remote_authority::{RemoteAuthorityManager, RemoteAuthorityManagerGeneric, RemoteAuthorityManagerShared};
 pub use remote_authority_error::RemoteAuthorityError;
 pub use remote_watch_hook::RemoteWatchHook;
 pub use remote_watch_hook_shared::RemoteWatchHookShared;
