@@ -10,11 +10,11 @@ use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 #[cfg(any(test, feature = "test-support"))]
 use super::ManualTestDriver;
 use super::{TickDriverError, TickDriverRuntime};
-use crate::core::scheduler::SchedulerContext;
+use crate::core::scheduler::SchedulerContextSharedGeneric;
 
 /// Type alias for tick driver builder function.
 type TickDriverBuilderFn<TB> =
-  Box<dyn Fn(&SchedulerContext<TB>) -> Result<TickDriverRuntime<TB>, TickDriverError> + Send + Sync>;
+  Box<dyn Fn(&SchedulerContextSharedGeneric<TB>) -> Result<TickDriverRuntime<TB>, TickDriverError> + Send + Sync>;
 
 /// Configuration for tick driver creation.
 pub enum TickDriverConfig<TB: RuntimeToolbox> {
@@ -36,7 +36,8 @@ impl<TB: RuntimeToolbox> TickDriverConfig<TB> {
   #[must_use]
   pub fn new<F>(builder: F) -> Self
   where
-    F: Fn(&SchedulerContext<TB>) -> Result<TickDriverRuntime<TB>, TickDriverError> + Send + Sync + 'static, {
+    F: Fn(&SchedulerContextSharedGeneric<TB>) -> Result<TickDriverRuntime<TB>, TickDriverError> + Send + Sync + 'static,
+  {
     Self::Builder { builder: Box::new(builder) }
   }
 

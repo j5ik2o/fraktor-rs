@@ -106,10 +106,8 @@ impl<TB: RuntimeToolbox + 'static> SchedulerContext<TB> {
 
   /// Shuts down the underlying scheduler, returning the summary.
   #[must_use]
-  pub fn shutdown(&self) -> TaskRunSummary {
-    let scheduler = self.scheduler.clone();
-    let mut guard = scheduler.lock();
-    guard.shutdown_with_tasks()
+  pub fn shutdown(&mut self) -> TaskRunSummary {
+    self.scheduler.lock().shutdown_with_tasks()
   }
 
   #[cfg(any(test, feature = "test-support"))]

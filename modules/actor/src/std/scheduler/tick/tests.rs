@@ -12,7 +12,7 @@ use fraktor_utils_rs::{
 use crate::{
   core::{
     event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, subscriber_handle},
-    scheduler::{AutoProfileKind, SchedulerConfig, SchedulerContext, TickDriverBootstrap, TickDriverKind},
+    scheduler::{AutoProfileKind, SchedulerConfig, SchedulerContextSharedGeneric, TickDriverBootstrap, TickDriverKind},
   },
   std::scheduler::tick::TickDriverConfig,
 };
@@ -21,7 +21,7 @@ use crate::{
 #[allow(clippy::expect_used)]
 async fn tokio_interval_driver_produces_ticks() {
   let config = TickDriverConfig::tokio_quickstart_with_resolution(Duration::from_millis(5));
-  let ctx = SchedulerContext::new(StdToolbox::default(), SchedulerConfig::default());
+  let ctx = SchedulerContextSharedGeneric::from_config(StdToolbox::default(), SchedulerConfig::default());
   let mut runtime = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
 
   tokio::time::sleep(Duration::from_millis(20)).await;
@@ -63,7 +63,7 @@ async fn tokio_interval_driver_publishes_tick_metrics_events() {
     event_stream.clone(),
     Duration::from_millis(50),
   );
-  let ctx = SchedulerContext::new(StdToolbox::default(), SchedulerConfig::default());
+  let ctx = SchedulerContextSharedGeneric::from_config(StdToolbox::default(), SchedulerConfig::default());
   let mut runtime = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
 
   tokio::time::sleep(Duration::from_millis(120)).await;
@@ -82,7 +82,7 @@ async fn tokio_interval_driver_publishes_tick_metrics_events() {
 #[allow(clippy::expect_used)]
 async fn tokio_quickstart_helper_provisions_driver() {
   let config = TickDriverConfig::tokio_quickstart();
-  let ctx = SchedulerContext::new(StdToolbox::default(), SchedulerConfig::default());
+  let ctx = SchedulerContextSharedGeneric::from_config(StdToolbox::default(), SchedulerConfig::default());
   let mut runtime = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
 
   let snapshot = ctx.driver_snapshot().expect("snapshot");

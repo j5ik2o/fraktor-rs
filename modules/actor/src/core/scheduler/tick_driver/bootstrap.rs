@@ -18,7 +18,7 @@ use super::{
   manual_test_driver::{ManualDriverControl, ManualTestDriver},
   next_tick_driver_id,
 };
-use crate::core::scheduler::SchedulerContext;
+use crate::core::scheduler::SchedulerContextSharedGeneric;
 
 /// Bootstrapper responsible for wiring drivers into the scheduler context.
 pub struct TickDriverBootstrap;
@@ -31,7 +31,7 @@ impl TickDriverBootstrap {
   /// Returns [`TickDriverError`] when driver provisioning fails.
   pub fn provision<TB: RuntimeToolbox>(
     config: &TickDriverConfig<TB>,
-    ctx: &SchedulerContext<TB>,
+    ctx: &SchedulerContextSharedGeneric<TB>,
   ) -> Result<TickDriverRuntime<TB>, TickDriverError> {
     match config {
       #[cfg(any(test, feature = "test-support"))]
@@ -55,7 +55,7 @@ impl TickDriverBootstrap {
   #[cfg(any(test, feature = "test-support"))]
   fn provision_manual<TB: RuntimeToolbox>(
     driver: &ManualTestDriver<TB>,
-    ctx: &SchedulerContext<TB>,
+    ctx: &SchedulerContextSharedGeneric<TB>,
   ) -> Result<TickDriverRuntime<TB>, TickDriverError> {
     let scheduler = ctx.scheduler();
     let runner_enabled = {

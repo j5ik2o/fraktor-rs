@@ -27,7 +27,7 @@ use crate::core::{
   messaging::SystemMessage,
   props::{MailboxConfig, MailboxRequirement, Props},
   scheduler::{
-    AutoDriverMetadata, AutoProfileKind, SchedulerConfig, SchedulerContext, TickDriverId, TickDriverKind,
+    AutoDriverMetadata, AutoProfileKind, SchedulerConfig, SchedulerContextSharedGeneric, TickDriverId, TickDriverKind,
     TickDriverMetadata,
   },
   system::{ActorRefProvider, ActorRefProviderSharedGeneric, ActorRefResolveError, ActorSystemConfig, RemotingConfig},
@@ -192,7 +192,7 @@ fn actor_system_when_terminated() {
 #[test]
 fn actor_system_reports_tick_driver_snapshot() {
   let system = ActorSystem::new_empty();
-  let ctx = ArcShared::new(SchedulerContext::new(NoStdToolbox::default(), SchedulerConfig::default()));
+  let ctx = SchedulerContextSharedGeneric::from_config(NoStdToolbox::default(), SchedulerConfig::default());
   system.state().install_scheduler_context(ctx.clone());
 
   let driver_id = TickDriverId::new(99);
