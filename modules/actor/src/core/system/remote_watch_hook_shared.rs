@@ -70,7 +70,10 @@ impl<TB: RuntimeToolbox + 'static, P: ActorRefProvider<TB> + RemoteWatchHook<TB>
     self.schemes
   }
 
-  fn actor_ref(&self, path: crate::core::actor_prim::actor_path::ActorPath) -> Result<ActorRefGeneric<TB>, ActorError> {
+  fn actor_ref(
+    &mut self,
+    path: crate::core::actor_prim::actor_path::ActorPath,
+  ) -> Result<ActorRefGeneric<TB>, ActorError> {
     self.inner.lock().actor_ref(path)
   }
 }

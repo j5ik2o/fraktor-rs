@@ -25,8 +25,8 @@ use hashbrown::HashMap;
 use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
 use super::{
-  ActorPathRegistry, ActorRefProvider, AuthorityState, GuardianKind, RemoteAuthorityError,
-  RemoteAuthorityManagerGeneric, RemoteAuthorityManagerShared, RemoteWatchHook, RemotingConfig,
+  ActorPathRegistry, ActorRefProvider, ActorRefProviderSharedGeneric, AuthorityState, GuardianKind,
+  RemoteAuthorityError, RemoteAuthorityManagerGeneric, RemoteAuthorityManagerShared, RemoteWatchHook, RemotingConfig,
 };
 use crate::core::{
   actor_prim::{
@@ -599,15 +599,15 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     None
   }
 
-  pub(crate) fn install_actor_ref_provider<P>(&self, provider: &ArcShared<P>)
+  pub(crate) fn install_actor_ref_provider<P>(&self, provider: &ActorRefProviderSharedGeneric<TB, P>)
   where
     P: ActorRefProvider<TB> + Any + Send + Sync + 'static, {
-    let erased: ArcShared<dyn Any + Send + Sync + 'static> = provider.clone();
+    let erased: ArcShared<dyn Any + Send + Sync + 'static> = provider.inner().clone();
     self.actor_ref_providers.lock().insert(TypeId::of::<P>(), erased);
     let schemes = provider.supported_schemes().to_vec();
     for scheme in schemes {
       let cloned = provider.clone();
-      let caller: ActorRefProviderCaller<TB> = Box::new(move |path| cloned.actor_ref(path));
+      let caller: ActorRefProviderCaller<TB> = Box::new(move |path| cloned.get_actor_ref(path));
       self.actor_ref_provider_callers_by_scheme.lock().insert(scheme, caller);
     }
   }
@@ -617,10 +617,20 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     *guard = Some(hook);
   }
 
-  pub(crate) fn actor_ref_provider<P>(&self) -> Option<ArcShared<P>>
+  pub(crate) fn actor_ref_provider<P>(&self) -> Option<ActorRefProviderSharedGeneric<TB, P>>
   where
-    P: Any + Send + Sync + 'static, {
-    self.actor_ref_providers.lock().get(&TypeId::of::<P>()).cloned().and_then(|provider| provider.downcast::<P>().ok())
+    P: ActorRefProvider<TB> + Any + Send + Sync + 'static, {
+    self
+      .actor_ref_providers
+      .lock()
+      .get(&TypeId::of::<P>())
+      .cloned()
+      .and_then(|provider| provider.downcast::<ToolboxMutex<P, TB>>().ok())
+      .map(|inner| {
+        // Get schemes from the inner provider
+        let schemes = inner.lock().supported_schemes();
+        ActorRefProviderSharedGeneric::from_shared(inner, schemes)
+      })
   }
 
   /// Invokes a provider registered for the given scheme.

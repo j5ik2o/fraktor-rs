@@ -1,9 +1,10 @@
 //! Installer for local-only actor-ref provider.
 
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use crate::core::system::{
-  ActorRefProviderInstaller, ActorSystemBuildError, ActorSystemGeneric, LocalActorRefProviderGeneric,
+  ActorRefProviderInstaller, ActorRefProviderSharedGeneric, ActorSystemBuildError, ActorSystemGeneric,
+  LocalActorRefProviderGeneric,
 };
 
 /// Installer for local-only actor-ref provider.
@@ -25,7 +26,7 @@ impl<TB: RuntimeToolbox + 'static> Default for LocalActorRefProviderInstaller<TB
 
 impl<TB: RuntimeToolbox + 'static> ActorRefProviderInstaller<TB> for LocalActorRefProviderInstaller<TB> {
   fn install(&self, system: &ActorSystemGeneric<TB>) -> Result<(), ActorSystemBuildError> {
-    let provider = ArcShared::new(LocalActorRefProviderGeneric::<TB>::new());
+    let provider = ActorRefProviderSharedGeneric::new(LocalActorRefProviderGeneric::<TB>::new());
     system.extended().register_actor_ref_provider(&provider);
     Ok(())
   }

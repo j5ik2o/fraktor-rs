@@ -30,7 +30,7 @@ use crate::core::{
     AutoDriverMetadata, AutoProfileKind, SchedulerConfig, SchedulerContext, TickDriverId, TickDriverKind,
     TickDriverMetadata,
   },
-  system::{ActorRefProvider, ActorRefResolveError, ActorSystemConfig, RemotingConfig},
+  system::{ActorRefProvider, ActorRefProviderSharedGeneric, ActorRefResolveError, ActorSystemConfig, RemotingConfig},
 };
 
 struct TestActor;
@@ -541,7 +541,7 @@ impl ActorRefProvider<NoStdToolbox> for DummyActorRefProvider {
     &[ActorPathScheme::FraktorTcp]
   }
 
-  fn actor_ref(&self, path: ActorPath) -> Result<ActorRefGeneric<NoStdToolbox>, ActorError> {
+  fn actor_ref(&mut self, path: ActorPath) -> Result<ActorRefGeneric<NoStdToolbox>, ActorError> {
     *self.last_path.lock() = Some(path.clone());
     Ok(ActorRefGeneric::null())
   }
@@ -555,7 +555,7 @@ fn resolve_actor_ref_injects_canonical_authority() {
   system.state().apply_actor_system_config(&config);
 
   let recorded = ArcShared::new(NoStdMutex::new(None));
-  let provider = ArcShared::new(DummyActorRefProvider::new(recorded.clone()));
+  let provider = ActorRefProviderSharedGeneric::new(DummyActorRefProvider::new(recorded.clone()));
   system.extended().register_actor_ref_provider(&provider);
 
   let path = ActorPath::root().child("svc");

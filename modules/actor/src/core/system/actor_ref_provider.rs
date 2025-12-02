@@ -31,7 +31,7 @@ pub trait ActorRefProvider<TB: RuntimeToolbox + 'static>: Send + Sync {
   /// # Errors
   ///
   /// Returns an error if the actor reference cannot be created.
-  fn actor_ref(&self, path: ActorPath) -> Result<ActorRefGeneric<TB>, ActorError>;
+  fn actor_ref(&mut self, path: ActorPath) -> Result<ActorRefGeneric<TB>, ActorError>;
 
   // Future extensions:
   // fn root_guardian(&self) -> ActorRefGeneric<TB>;
