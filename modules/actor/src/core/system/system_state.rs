@@ -42,7 +42,7 @@ use crate::core::{
   logging::{LogEvent, LogLevel},
   mailbox::{MailboxesGeneric, MailboxesShared},
   messaging::{AnyMessageGeneric, FailurePayload, SystemMessage},
-  scheduler::{SchedulerContext, TaskRunSummary, TickDriverBootstrap, TickDriverRuntime},
+  scheduler::{SchedulerContext, TaskRunSummary, TickDriverRuntime},
   spawn::{NameRegistry, NameRegistryError, SpawnError},
   supervision::SupervisorDirective,
   system::{RegisterExtraTopLevelError, ReservationPolicy},
@@ -1021,8 +1021,8 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
 
 impl<TB: RuntimeToolbox + 'static> Drop for SystemStateGeneric<TB> {
   fn drop(&mut self) {
-    if let Some(runtime) = self.tick_driver_runtime.lock().take() {
-      TickDriverBootstrap::shutdown(runtime.driver());
+    if let Some(mut runtime) = self.tick_driver_runtime.lock().take() {
+      runtime.shutdown();
     }
   }
 }

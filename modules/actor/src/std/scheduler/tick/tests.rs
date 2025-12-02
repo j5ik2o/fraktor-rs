@@ -22,7 +22,7 @@ use crate::{
 async fn tokio_interval_driver_produces_ticks() {
   let config = TickDriverConfig::tokio_quickstart_with_resolution(Duration::from_millis(5));
   let ctx = SchedulerContext::new(StdToolbox::default(), SchedulerConfig::default());
-  let runtime = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
+  let mut runtime = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
 
   tokio::time::sleep(Duration::from_millis(20)).await;
   let resolution = ctx.scheduler().lock().config().resolution();
@@ -30,7 +30,7 @@ async fn tokio_interval_driver_produces_ticks() {
   let metrics = runtime.feed().expect("feed").snapshot(now, TickDriverKind::Auto);
   assert!(metrics.enqueued_total() > 0);
 
-  TickDriverBootstrap::shutdown(runtime.driver());
+  runtime.shutdown();
 }
 
 struct RecordingSubscriber {
@@ -64,11 +64,11 @@ async fn tokio_interval_driver_publishes_tick_metrics_events() {
     Duration::from_millis(50),
   );
   let ctx = SchedulerContext::new(StdToolbox::default(), SchedulerConfig::default());
-  let runtime = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
+  let mut runtime = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
 
   tokio::time::sleep(Duration::from_millis(120)).await;
 
-  TickDriverBootstrap::shutdown(runtime.driver());
+  runtime.shutdown();
 
   let events = events.lock().expect("lock").clone();
   assert!(
@@ -83,7 +83,7 @@ async fn tokio_interval_driver_publishes_tick_metrics_events() {
 async fn tokio_quickstart_helper_provisions_driver() {
   let config = TickDriverConfig::tokio_quickstart();
   let ctx = SchedulerContext::new(StdToolbox::default(), SchedulerConfig::default());
-  let runtime = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
+  let mut runtime = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
 
   let snapshot = ctx.driver_snapshot().expect("snapshot");
   assert!(
@@ -98,5 +98,5 @@ async fn tokio_quickstart_helper_provisions_driver() {
   let metrics = runtime.feed().expect("feed").snapshot(now, TickDriverKind::Auto);
   assert!(metrics.enqueued_total() > 0);
 
-  TickDriverBootstrap::shutdown(runtime.driver());
+  runtime.shutdown();
 }

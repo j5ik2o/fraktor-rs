@@ -85,7 +85,7 @@ impl TickDriverBootstrap {
   }
 
   /// Shuts down the active driver handle.
-  pub fn shutdown<TB: RuntimeToolbox>(handle: &TickDriverHandleGeneric<TB>) {
+  pub fn shutdown<TB: RuntimeToolbox>(handle: &mut TickDriverHandleGeneric<TB>) {
     handle.shutdown();
   }
 }

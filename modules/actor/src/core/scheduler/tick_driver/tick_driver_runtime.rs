@@ -92,4 +92,9 @@ impl<TB: RuntimeToolbox> TickDriverRuntime<TB> {
   pub const fn manual_controller(&self) -> Option<&ManualTickController<TB>> {
     self.manual.as_ref()
   }
+
+  /// Shuts down the underlying driver.
+  pub fn shutdown(&mut self) {
+    self.driver.shutdown();
+  }
 }

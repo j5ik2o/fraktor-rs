@@ -55,7 +55,7 @@ impl<TB: RuntimeToolbox> TickDriverHandleGeneric<TB> {
   }
 
   /// Stops the underlying driver.
-  pub fn shutdown(&self) {
+  pub fn shutdown(&mut self) {
     self.control.lock().shutdown();
   }
 }
