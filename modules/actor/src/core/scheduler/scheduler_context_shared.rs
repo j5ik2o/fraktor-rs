@@ -115,7 +115,7 @@ impl<TB: RuntimeToolbox + 'static> SchedulerContextSharedGeneric<TB> {
 
   /// Shuts down the underlying scheduler, returning the summary.
   #[must_use]
-  pub fn shutdown(&mut self) -> TaskRunSummary {
+  pub fn shutdown(&self) -> TaskRunSummary {
     self.inner.lock().shutdown()
   }
 }

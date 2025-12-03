@@ -255,7 +255,7 @@ fn mpsc_pair_supports_multiple_producers() {
   let shared = ArcShared::new(SpinSyncMutex::new(sync_queue));
   let queue: SyncQueueShared<_, MpscKey, _, _> = SyncQueueShared::new(shared);
 
-  let (mut producer, mut consumer) = queue.into_mpsc_pair();
+  let (mut producer, consumer) = queue.into_mpsc_pair();
   let mut another = producer.clone();
 
   producer.offer(1).unwrap();
@@ -274,7 +274,7 @@ fn spsc_pair_provides_split_access() {
   let shared = ArcShared::new(SpinSyncMutex::new(sync_queue));
   let queue: SyncQueueShared<_, SpscKey, _, _> = SyncQueueShared::new(shared);
 
-  let (mut producer, mut consumer) = queue.into_spsc_pair();
+  let (mut producer, consumer) = queue.into_spsc_pair();
   producer.offer(10).unwrap();
   producer.offer(20).unwrap();
 
