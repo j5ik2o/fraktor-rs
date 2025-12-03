@@ -54,7 +54,7 @@ mod wire_error;
 pub use association_state::AssociationState;
 pub use block_list_provider::BlockListProvider;
 pub use deferred_envelope::DeferredEnvelope;
-pub use endpoint_manager::EndpointManager;
+pub use endpoint_manager::{EndpointManager, EndpointManagerShared, EndpointManagerSharedGeneric};
 pub use endpoint_manager_command::EndpointManagerCommand;
 pub use endpoint_manager_effect::EndpointManagerEffect;
 pub use endpoint_manager_result::EndpointManagerResult;
