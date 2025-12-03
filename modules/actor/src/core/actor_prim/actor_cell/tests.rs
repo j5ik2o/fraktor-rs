@@ -107,7 +107,7 @@ fn handle_watch_is_idempotent() {
   target.handle_watch(Pid::new(20, 0));
   target.handle_watch(Pid::new(20, 0));
 
-  assert_eq!(target.watchers.lock().len(), 1);
+  assert_eq!(target.watchers_snapshot().len(), 1);
 }
 
 #[test]
@@ -121,7 +121,7 @@ fn handle_unwatch_removes_pid() {
   target.handle_watch(Pid::new(21, 0));
   target.handle_unwatch(Pid::new(21, 0));
 
-  assert_eq!(target.watchers.lock().len(), 0);
+  assert_eq!(target.watchers_snapshot().len(), 0);
 }
 
 #[test]
@@ -143,7 +143,7 @@ fn notify_watchers_sends_terminated() {
   target.handle_watch(watcher.pid());
   target.notify_watchers_on_stop();
   assert_eq!(log.lock().clone(), vec![target.pid()]);
-  assert_eq!(target.watchers.lock().len(), 0);
+  assert_eq!(target.watchers_snapshot().len(), 0);
 }
 
 #[test]
