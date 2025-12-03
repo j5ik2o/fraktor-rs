@@ -38,7 +38,7 @@ pub use mailbox_instrumentation::{MailboxInstrumentation, MailboxInstrumentation
 pub use mailbox_message::MailboxMessage;
 pub use mailbox_offer_future::{MailboxOfferFuture, MailboxOfferFutureGeneric};
 pub use mailbox_poll_future::{MailboxPollFuture, MailboxPollFutureGeneric};
-pub use mailbox_queue_handles::QueueHandles;
+pub use mailbox_queue_handles::QueueStateHandle;
 pub use mailbox_queue_offer_future::QueueOfferFuture;
 pub use mailbox_queue_poll_future::QueuePollFuture;
 pub use mailbox_queue_state::QueueState;

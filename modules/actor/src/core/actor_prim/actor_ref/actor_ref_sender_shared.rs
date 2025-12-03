@@ -41,18 +41,20 @@ impl<TB: RuntimeToolbox + 'static> ActorRefSenderSharedGeneric<TB> {
   ///
   /// Returns an error if the message cannot be delivered.
   pub fn send(&self, message: AnyMessageGeneric<TB>) -> Result<(), SendError<TB>> {
+    // Acquire lock, send message, and release lock before applying outcome.
+    // This prevents deadlock when InlineExecutor synchronously invokes receive()
+    // which may call self.tell() and attempt to re-acquire the same lock.
     let outcome = {
       let mut guard = self.inner.lock();
-      guard.send(message)
-    }?;
+      guard.send(message)?
+    };
 
+    // Apply outcome after releasing lock to allow re-entrant sends
     match outcome {
-      | SendOutcome::Delivered => Ok(()),
-      | SendOutcome::Schedule(task) => {
-        task();
-        Ok(())
-      },
+      | SendOutcome::Delivered => {},
+      | SendOutcome::Schedule(task) => task(),
     }
+    Ok(())
   }
 }
 
