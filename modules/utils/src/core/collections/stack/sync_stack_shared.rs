@@ -48,7 +48,7 @@ where
   ///
   /// Propagates `StackError` when the backend cannot supply an element, typically due to closure
   /// or disconnection.
-  pub fn pop(&mut self) -> Result<T, StackError> {
+  pub fn pop(&self) -> Result<T, StackError> {
     self.inner.with_mut(|stack: &mut SyncStack<T, B>| stack.pop()).map_err(StackError::from)?
   }
 
@@ -57,7 +57,7 @@ where
   /// # Errors
   ///
   /// Propagates `StackError` when the backend cannot provide access to the top element.
-  pub fn peek(&mut self) -> Result<Option<T>, StackError>
+  pub fn peek(&self) -> Result<Option<T>, StackError>
   where
     T: Clone, {
     self.inner.with_mut(|stack: &mut SyncStack<T, B>| stack.peek()).map_err(StackError::from)?
@@ -68,7 +68,7 @@ where
   /// # Errors
   ///
   /// Propagates `StackError` when the backend refuses to close.
-  pub fn close(&mut self) -> Result<(), StackError> {
+  pub fn close(&self) -> Result<(), StackError> {
     self
       .inner
       .with_mut(|stack: &mut SyncStack<T, B>| {

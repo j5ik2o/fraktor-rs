@@ -818,7 +818,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
 
   /// Shuts down the scheduler context if configured.
   pub fn shutdown_scheduler(&self) -> Option<TaskRunSummary> {
-    self.scheduler_context().map(|mut context| context.shutdown())
+    self.scheduler_context().map(|context| context.shutdown())
   }
 
   /// Records a failure and routes it to the supervising hierarchy.
