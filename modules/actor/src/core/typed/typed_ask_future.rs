@@ -4,17 +4,17 @@ use core::marker::PhantomData;
 
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  sync::{ArcShared, shared::Shared},
+  sync::{shared::Shared, sync_mutex_like::SyncMutexLike},
 };
 
-use crate::core::{futures::ActorFuture, messaging::AnyMessageGeneric, typed::typed_ask_error::TypedAskError};
+use crate::core::{futures::ActorFutureShared, messaging::AnyMessageGeneric, typed::typed_ask_error::TypedAskError};
 
 /// Exposes typed helpers around an ask future that resolves with `R`.
 pub struct TypedAskFutureGeneric<R, TB>
 where
   R: Send + Sync + 'static,
   TB: RuntimeToolbox + 'static, {
-  inner:  ArcShared<ActorFuture<AnyMessageGeneric<TB>, TB>>,
+  inner:  ActorFutureShared<AnyMessageGeneric<TB>, TB>,
   marker: PhantomData<R>,
 }
 
@@ -36,20 +36,20 @@ where
   R: Send + Sync + 'static,
   TB: RuntimeToolbox + 'static,
 {
-  pub(crate) const fn new(inner: ArcShared<ActorFuture<AnyMessageGeneric<TB>, TB>>) -> Self {
+  pub(crate) const fn new(inner: ActorFutureShared<AnyMessageGeneric<TB>, TB>) -> Self {
     Self { inner, marker: PhantomData }
   }
 
   /// Returns whether the underlying future has resolved.
   #[must_use]
   pub fn is_ready(&self) -> bool {
-    self.inner.is_ready()
+    self.inner.lock().is_ready()
   }
 
   /// Attempts to take the reply if ready, yielding either the typed payload or an error.
   #[must_use]
   pub fn try_take(&self) -> Option<Result<R, TypedAskError>> {
-    self.inner.try_take().map(Self::map_message)
+    self.inner.lock().try_take().map(Self::map_message)
   }
 
   #[allow(clippy::needless_pass_by_value)]

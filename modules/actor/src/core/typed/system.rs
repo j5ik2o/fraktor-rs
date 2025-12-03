@@ -12,7 +12,7 @@ use crate::core::{
   dead_letter::DeadLetterEntryGeneric,
   error::SendError,
   event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriberShared, EventStreamSubscriptionGeneric},
-  futures::ActorFuture,
+  futures::ActorFutureShared,
   logging::LogLevel,
   messaging::AnyMessageGeneric,
   spawn::SpawnError,
@@ -157,7 +157,7 @@ where
 
   /// Returns a future that resolves once the actor system terminates.
   #[must_use]
-  pub fn when_terminated(&self) -> ArcShared<ActorFuture<(), TB>> {
+  pub fn when_terminated(&self) -> ActorFutureShared<(), TB> {
     self.inner.when_terminated()
   }
 
@@ -172,7 +172,7 @@ where
 
   /// Drains ask futures that have been fulfilled since the last check.
   #[must_use]
-  pub fn drain_ready_ask_futures(&self) -> Vec<ArcShared<ActorFuture<AnyMessageGeneric<TB>, TB>>> {
+  pub fn drain_ready_ask_futures(&self) -> Vec<ActorFutureShared<AnyMessageGeneric<TB>, TB>> {
     self.inner.drain_ready_ask_futures()
   }
 

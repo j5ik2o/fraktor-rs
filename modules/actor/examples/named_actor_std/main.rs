@@ -34,7 +34,7 @@ fn main() {
 
   system.terminate().expect("システムの停止に失敗しました");
 
-  while !termination.is_ready() {
+  while !termination.lock().is_ready() {
     thread::sleep(Duration::from_millis(10));
   }
 }

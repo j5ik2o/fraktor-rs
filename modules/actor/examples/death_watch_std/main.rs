@@ -95,7 +95,7 @@ fn main() {
   thread::sleep(Duration::from_millis(200));
   system.terminate().expect("terminate");
   let termination = system.when_terminated();
-  while !termination.is_ready() {
+  while !termination.lock().is_ready() {
     thread::sleep(Duration::from_millis(20));
   }
 }

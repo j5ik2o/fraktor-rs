@@ -136,7 +136,7 @@ fn main() {
   let termination = system.as_untyped().when_terminated();
   system.user_guardian_ref().tell(GuardianCommand::Start).expect("start");
   system.terminate().expect("terminate");
-  while !termination.is_ready() {
+  while !termination.lock().is_ready() {
     thread::yield_now();
   }
 }

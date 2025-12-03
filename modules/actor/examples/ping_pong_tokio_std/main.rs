@@ -5,6 +5,7 @@ use fraktor_actor_rs::{
   std::{
     actor_prim::{Actor, ActorContext, ActorRef},
     dispatcher::dispatch_executor::TokioExecutor,
+    futures::ActorFuture,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
     system::{ActorSystem, DispatcherConfig},
@@ -114,5 +115,5 @@ async fn main() {
 
   system.terminate().expect("terminate");
 
-  termination.listener().await;
+  ActorFuture::listener(termination).await;
 }

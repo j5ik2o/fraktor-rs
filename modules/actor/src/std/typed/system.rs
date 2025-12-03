@@ -11,7 +11,7 @@ use crate::{
     dead_letter::DeadLetterEntry,
     error::SendError,
     event_stream::{EventStream, EventStreamEvent, EventStreamSubscriberAdapter, EventStreamSubscription},
-    futures::ActorFuture,
+    futures::ActorFutureShared,
     system::SystemState,
     typed::{TypedProps, actor_prim::TypedActorRef},
   },
@@ -103,7 +103,7 @@ where
 
   /// Returns a future that resolves once the actor system terminates.
   #[must_use]
-  pub fn when_terminated(&self) -> ArcShared<ActorFuture<()>> {
+  pub fn when_terminated(&self) -> ActorFutureShared<()> {
     self.inner.when_terminated()
   }
 

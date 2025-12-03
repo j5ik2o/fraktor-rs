@@ -111,7 +111,7 @@ fn main() {
   // Terminate system
   println!("\n=== Terminating system ===");
   system.terminate().expect("Failed to terminate");
-  while !termination.is_ready() {
+  while !termination.lock().is_ready() {
     std::thread::yield_now();
   }
 

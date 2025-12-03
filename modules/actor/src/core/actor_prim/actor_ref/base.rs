@@ -99,7 +99,7 @@ impl<TB: RuntimeToolbox> ActorRefGeneric<TB> {
   pub fn ask(&self, message: AnyMessageGeneric<TB>) -> Result<AskResponseGeneric<TB>, SendError<TB>>
   where
     TB: 'static, {
-    let future = ArcShared::new(ActorFuture::new());
+    let future = ActorFuture::<AnyMessageGeneric<TB>, TB>::new_shared();
     let reply_sender = ArcShared::new(AskReplySenderGeneric::<TB>::new(future.clone()));
     let reply_ref = ActorRefGeneric::<TB>::new(self.pid, reply_sender);
     let envelope = message.with_reply_to(reply_ref.clone());
