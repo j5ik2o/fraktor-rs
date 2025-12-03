@@ -55,7 +55,7 @@ fn recoverable_failure_restarts_child() {
   let system = ActorSystem::new(&props, tick_driver).expect("system");
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
 
-  let child = child_slot.lock().clone().expect("child");
+  let mut child = child_slot.lock().clone().expect("child");
   assert_eq!(*log.lock(), vec!["child_pre_start"]);
 
   child.tell(AnyMessage::new(TriggerRecoverable)).expect("recoverable");
@@ -83,7 +83,7 @@ fn fatal_failure_stops_child() {
 
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
 
-  let child = child_slot.lock().clone().expect("child");
+  let mut child = child_slot.lock().clone().expect("child");
   let child_pid = child.pid();
   child.tell(AnyMessage::new(TriggerFatal)).expect("fatal");
 
@@ -122,7 +122,7 @@ fn escalate_failure_restarts_supervisor() {
   wait_until(|| child_slot.lock().is_some(), Duration::from_millis(20));
 
   let _supervisor = supervisor_slot.lock().clone().expect("supervisor");
-  let child = child_slot.lock().clone().expect("child");
+  let mut child = child_slot.lock().clone().expect("child");
 
   assert_eq!(*supervisor_log.lock(), vec!["supervisor_pre_start"]);
   assert_eq!(*child_log.lock(), vec!["child_pre_start"]);
@@ -157,7 +157,7 @@ fn panic_propagates_without_intervention() {
   let system = ActorSystem::new(&props, tick_driver).expect("system");
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
   wait_until(|| child_slot.lock().is_some(), Duration::from_millis(20));
-  let child = child_slot.lock().clone().expect("child");
+  let mut child = child_slot.lock().clone().expect("child");
 
   let result = catch_unwind(AssertUnwindSafe(|| {
     let _ = child.tell(AnyMessage::new("boom"));
@@ -306,7 +306,8 @@ impl Actor for RootGuardian {
         move || SupervisorActor::new(supervisor_log.clone(), child_slot.clone(), child_log.clone())
       });
 
-      let supervisor = ctx.spawn_child(&supervisor_props).map_err(|_| ActorError::recoverable("spawn supervisor"))?;
+      let mut supervisor =
+        ctx.spawn_child(&supervisor_props).map_err(|_| ActorError::recoverable("spawn supervisor"))?;
       self.supervisor_slot.lock().replace(supervisor.clone());
       supervisor.tell(AnyMessage::new(Start)).map_err(|_| ActorError::recoverable("start supervisor"))?;
     }

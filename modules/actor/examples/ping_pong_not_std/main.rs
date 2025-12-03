@@ -24,7 +24,7 @@ impl Actor for GuardianActor {
     if message.downcast_ref::<Start>().is_some() {
       let pong =
         ctx.spawn_child(&Props::from_fn(|| PongActor)).map_err(|_| ActorError::recoverable("failed to spawn pong"))?;
-      let ping =
+      let mut ping =
         ctx.spawn_child(&Props::from_fn(|| PingActor)).map_err(|_| ActorError::recoverable("failed to spawn ping"))?;
 
       let start_ping = StartPing { target: pong.actor_ref().clone(), reply_to: ctx.self_ref(), count: 3 };
@@ -59,7 +59,11 @@ impl Actor for PingActor {
     if let Some(cmd) = message.downcast_ref::<StartPing>() {
       for index in 0..cmd.count {
         let payload = PingMessage { text: format_message(index), reply_to: cmd.reply_to.clone() };
-        cmd.target.tell(AnyMessage::new(payload)).map_err(|_| ActorError::recoverable("failed to send ping"))?;
+        cmd
+          .target
+          .clone()
+          .tell(AnyMessage::new(payload))
+          .map_err(|_| ActorError::recoverable("failed to send ping"))?;
       }
     }
     Ok(())
@@ -75,7 +79,7 @@ impl Actor for PongActor {
       println!("[{:?}] received ping: {}", std::thread::current().id(), ping.text);
 
       let response = PongReply { text: ping.text.clone() };
-      ping.reply_to.tell(AnyMessage::new(response)).map_err(|_| ActorError::recoverable("reply failed"))?;
+      ping.reply_to.clone().tell(AnyMessage::new(response)).map_err(|_| ActorError::recoverable("reply failed"))?;
     }
     Ok(())
   }
@@ -98,7 +102,7 @@ fn main() {
   let termination = system.when_terminated();
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
   system.terminate().expect("terminate");
-  while !termination.lock().is_ready() {
+  while !termination.is_ready() {
     thread::yield_now();
   }
 }

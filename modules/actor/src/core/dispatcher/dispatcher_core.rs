@@ -29,7 +29,7 @@ use crate::core::{
     EnqueueOutcome, MailboxGeneric, MailboxMessage, MailboxOfferFutureGeneric, MailboxPressureEvent, ScheduleHints,
   },
   messaging::{AnyMessageGeneric, SystemMessage, message_invoker::MessageInvokerShared},
-  system::SystemStateGeneric,
+  system::SystemStateSharedGeneric,
 };
 
 const DEFAULT_THROUGHPUT: usize = 300;
@@ -45,7 +45,7 @@ pub(crate) struct DispatcherCore<TB: RuntimeToolbox + 'static> {
   throughput_limit:    Option<NonZeroUsize>,
   throughput_deadline: Option<Duration>,
   starvation_deadline: Option<Duration>,
-  system_state:        Option<ArcShared<SystemStateGeneric<TB>>>,
+  system_state:        Option<SystemStateSharedGeneric<TB>>,
   last_progress:       AtomicU64,
 }
 
@@ -202,14 +202,20 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
   }
 
   fn invoke_user_message(&self, message: AnyMessageGeneric<TB>) -> Result<(), ActorError> {
-    if let Some(invoker) = self.invoker.lock().as_ref() {
+    // Clone the invoker reference and release the outer lock before acquiring the inner lock.
+    // This prevents potential deadlock when actor message handlers interact with the dispatcher.
+    let invoker = self.invoker.lock().clone();
+    if let Some(invoker) = invoker {
       return invoker.lock().invoke_user_message(message);
     }
     Ok(())
   }
 
   fn invoke_system_message(&self, message: SystemMessage) -> Result<(), ActorError> {
-    if let Some(invoker) = self.invoker.lock().as_ref() {
+    // Clone the invoker reference and release the outer lock before acquiring the inner lock.
+    // This prevents potential deadlock when actor message handlers interact with the dispatcher.
+    let invoker = self.invoker.lock().clone();
+    if let Some(invoker) = invoker {
       return invoker.lock().invoke_system_message(message);
     }
     Ok(())

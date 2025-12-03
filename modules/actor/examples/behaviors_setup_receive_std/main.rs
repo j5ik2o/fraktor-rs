@@ -21,7 +21,7 @@ fn guardian_behavior() -> Behavior<GuardianCommand> {
 
     Behaviors::receive_message(move |_ctx, message| match message {
       | GuardianCommand::Start => {
-        worker.tell(WorkerCommand { text: "setup からの初期化メッセージ" }).expect("tell worker");
+        worker.clone().tell(WorkerCommand { text: "setup からの初期化メッセージ" }).expect("tell worker");
         Ok(Behaviors::same())
       },
     })
@@ -47,7 +47,7 @@ fn main() {
 
   system.user_guardian_ref().tell(GuardianCommand::Start).expect("start");
   system.terminate().expect("terminate");
-  while !termination.lock().is_ready() {
+  while !termination.is_ready() {
     thread::yield_now();
   }
 }

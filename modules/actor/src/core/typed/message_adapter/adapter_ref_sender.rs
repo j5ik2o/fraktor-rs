@@ -11,11 +11,14 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::core::{
-  actor_prim::{Pid, actor_ref::ActorRefSender},
+  actor_prim::{
+    Pid,
+    actor_ref::{ActorRefSender, ActorRefSenderSharedGeneric, SendOutcome},
+  },
   error::SendError,
   logging::LogLevel,
   messaging::AnyMessageGeneric,
-  system::SystemStateGeneric,
+  system::SystemStateSharedGeneric,
   typed::message_adapter::{AdapterEnvelope, AdapterLifecycleState, AdapterPayload, AdapterRefHandleId},
 };
 
@@ -23,27 +26,27 @@ use crate::core::{
 pub struct AdapterRefSender<TB: RuntimeToolbox + 'static = NoStdToolbox> {
   pid:       Pid,
   handle_id: AdapterRefHandleId,
-  target:    ArcShared<dyn ActorRefSender<TB>>,
+  target:    ActorRefSenderSharedGeneric<TB>,
   lifecycle: ArcShared<AdapterLifecycleState<TB>>,
-  system:    ArcShared<SystemStateGeneric<TB>>,
+  system:    SystemStateSharedGeneric<TB>,
 }
 
 impl<TB: RuntimeToolbox + 'static> AdapterRefSender<TB> {
   /// Creates a new sender instance.
   #[must_use]
-  pub fn new(
+  pub const fn new(
     pid: Pid,
     handle_id: AdapterRefHandleId,
-    target: ArcShared<dyn ActorRefSender<TB>>,
+    target: ActorRefSenderSharedGeneric<TB>,
     lifecycle: ArcShared<AdapterLifecycleState<TB>>,
-    system: ArcShared<SystemStateGeneric<TB>>,
+    system: SystemStateSharedGeneric<TB>,
   ) -> Self {
     Self { pid, handle_id, target, lifecycle, system }
   }
 }
 
 impl<TB: RuntimeToolbox + 'static> ActorRefSender<TB> for AdapterRefSender<TB> {
-  fn send(&self, message: AnyMessageGeneric<TB>) -> Result<(), SendError<TB>> {
+  fn send(&mut self, message: AnyMessageGeneric<TB>) -> Result<SendOutcome, SendError<TB>> {
     if !self.lifecycle.is_alive() {
       let error = SendError::closed(message);
       self.system.record_send_error(Some(self.pid), &error);
@@ -58,7 +61,7 @@ impl<TB: RuntimeToolbox + 'static> ActorRefSender<TB> for AdapterRefSender<TB> {
     let adapted = AnyMessageGeneric::new(envelope);
 
     match self.target.send(adapted) {
-      | Ok(()) => Ok(()),
+      | Ok(()) => Ok(SendOutcome::Delivered),
       | Err(error) => {
         self.system.record_send_error(Some(self.pid), &error);
         Err(error)

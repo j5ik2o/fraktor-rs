@@ -11,7 +11,7 @@ use fraktor_utils_rs::core::{
   sync::sync_mutex_like::SyncMutexLike,
 };
 
-use crate::core::futures::ActorFutureShared;
+use super::ActorFutureSharedGeneric;
 
 /// Future adapter that polls the underlying [`ActorFuture`].
 ///
@@ -20,7 +20,7 @@ use crate::core::futures::ActorFutureShared;
 pub struct ActorFutureListener<T, TB: RuntimeToolbox = NoStdToolbox>
 where
   T: Send + 'static, {
-  future: ActorFutureShared<T, TB>,
+  future: ActorFutureSharedGeneric<T, TB>,
 }
 
 impl<T, TB> ActorFutureListener<T, TB>
@@ -28,7 +28,9 @@ where
   T: Send + 'static,
   TB: RuntimeToolbox,
 {
-  pub(crate) const fn new(future: ActorFutureShared<T, TB>) -> Self {
+  /// Creates a new listener for the given shared future.
+  #[must_use]
+  pub const fn new(future: ActorFutureSharedGeneric<T, TB>) -> Self {
     Self { future }
   }
 }
@@ -51,7 +53,7 @@ where
   type Output = T;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-    let mut guard = self.future.lock();
+    let mut guard = self.future.inner().lock();
     if let Some(value) = guard.try_take() {
       Poll::Ready(value)
     } else {

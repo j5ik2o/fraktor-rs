@@ -82,8 +82,8 @@ impl<TB: RuntimeToolbox + 'static> ActorContextGeneric<'_, TB> {
   /// # Errors
   ///
   /// Returns an error if no reply target is set or sending fails.
-  pub fn reply(&self, message: AnyMessageGeneric<TB>) -> Result<(), SendError<TB>> {
-    match self.reply_to.as_ref() {
+  pub fn reply(&mut self, message: AnyMessageGeneric<TB>) -> Result<(), SendError<TB>> {
+    match self.reply_to.as_mut() {
       | Some(target) => target.tell(message),
       | None => Err(SendError::no_recipient(message)),
     }

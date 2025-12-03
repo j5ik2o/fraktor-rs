@@ -15,7 +15,7 @@ impl GuardianActor {
   fn spawn_named_child(&self, ctx: &ActorContext<'_, '_>, name: &str) {
     let props = Props::from_fn(|| PrinterActor).with_name(name.to_string());
     match ctx.spawn_child(&props) {
-      | Ok(child) => {
+      | Ok(mut child) => {
         println!("[guardian] 名前付き子アクターを生成しました name={} pid={}", name, child.pid());
         let payload = format!("{} として起動しました", name);
         if let Err(error) = child.tell(AnyMessage::new(payload)) {
@@ -31,7 +31,7 @@ impl GuardianActor {
   fn spawn_anonymous_child(&self, ctx: &ActorContext<'_, '_>) {
     let props = Props::from_fn(|| PrinterActor);
     match ctx.spawn_child(&props) {
-      | Ok(child) => {
+      | Ok(mut child) => {
         println!("[guardian] 匿名子アクターを生成しました pid={}", child.pid());
         let payload = "匿名アクターへの挨拶".to_string();
         if let Err(error) = child.tell(AnyMessage::new(payload)) {

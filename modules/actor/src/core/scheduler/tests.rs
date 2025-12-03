@@ -276,7 +276,7 @@ fn schedule_once_records_sender_metadata() {
 fn schedule_at_fixed_rate_executes_multiple_runs() {
   let mut scheduler = build_scheduler();
   let inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let sender = ArcShared::new(RecordingSender { inbox: inbox.clone() });
+  let sender = RecordingSender { inbox: inbox.clone() };
   let receiver = ActorRefGeneric::new(Pid::new(2, 0), sender);
   scheduler
     .schedule_at_fixed_rate(Duration::from_millis(2), Duration::from_millis(3), SchedulerCommand::SendMessage {
@@ -320,7 +320,7 @@ fn schedule_once_fn_executes_runnable() {
 fn run_for_test_executes_send_message() {
   let mut scheduler = build_scheduler();
   let inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let sender = ArcShared::new(RecordingSender { inbox: inbox.clone() });
+  let sender = RecordingSender { inbox: inbox.clone() };
   let receiver = ActorRefGeneric::new(Pid::new(1, 0), sender);
   schedule_message_command(&mut scheduler, Duration::from_millis(5), receiver, AnyMessageGeneric::new(7u32), None)
     .expect("handle");
@@ -347,7 +347,7 @@ fn schedule_once_fn_records_execution_batch() {
 fn runner_manual_processes_ticks_in_order() {
   let mut scheduler = build_scheduler();
   let inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let sender = ArcShared::new(RecordingSender { inbox: inbox.clone() });
+  let sender = RecordingSender { inbox: inbox.clone() };
   let receiver = ActorRefGeneric::new(Pid::new(7, 0), sender);
 
   schedule_message_command(
@@ -410,7 +410,7 @@ fn handle_reports_cancelled_state() {
 fn cancelled_job_is_not_delivered() {
   let mut scheduler = build_scheduler();
   let inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let sender = ArcShared::new(RecordingSender { inbox: inbox.clone() });
+  let sender = RecordingSender { inbox: inbox.clone() };
   let receiver = ActorRefGeneric::new(Pid::new(3, 0), sender);
   let handle =
     schedule_message_command(&mut scheduler, Duration::from_millis(2), receiver, AnyMessageGeneric::new(42u32), None)
@@ -1029,8 +1029,11 @@ struct RecordingSender {
 }
 
 impl ActorRefSender<NoStdToolbox> for RecordingSender {
-  fn send(&self, message: AnyMessageGeneric<NoStdToolbox>) -> Result<(), SendError<NoStdToolbox>> {
+  fn send(
+    &mut self,
+    message: AnyMessageGeneric<NoStdToolbox>,
+  ) -> Result<crate::core::actor_prim::actor_ref::SendOutcome, SendError<NoStdToolbox>> {
     self.inbox.lock().push(message);
-    Ok(())
+    Ok(crate::core::actor_prim::actor_ref::SendOutcome::Delivered)
   }
 }

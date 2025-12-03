@@ -32,7 +32,7 @@ use crate::core::{
     serializer_id::SerializerId, string_manifest_serializer::SerializerWithStringManifest,
     transport_information::TransportInformation,
   },
-  system::{ActorSystemConfig, ActorSystemGeneric, RemotingConfig},
+  system::{ActorSystemConfig, ActorSystemGeneric, RemotingConfig, SystemStateShared},
 };
 
 impl<TB: RuntimeToolbox + 'static> SerializationExtensionGeneric<TB> {
@@ -141,7 +141,7 @@ fn with_transport_information_sets_scope_temporarily() {
 #[test]
 fn serialized_actor_path_prefers_transport_address() {
   let (extension, _) = build_extension::<NoStdToolbox>(None);
-  let actor_ref = ActorRefGeneric::<NoStdToolbox>::new(Pid::new(1, 0), ArcShared::new(NullSender));
+  let actor_ref = ActorRefGeneric::<NoStdToolbox>::new(Pid::new(1, 0), NullSender);
   let info = TransportInformation::new(Some("fraktor://sys@host:2552".into()));
   let path = extension.with_transport_information(info, || extension.serialized_actor_path(&actor_ref)).expect("path");
   assert!(path.starts_with("fraktor://sys@host:2552"));
@@ -160,7 +160,7 @@ impl Actor for NoopActor {
 }
 
 fn build_system_with_remoting(remoting: Option<RemotingConfig>, system_name: &str) -> ActorSystemGeneric<NoStdToolbox> {
-  let state = ArcShared::new(crate::core::system::SystemState::new());
+  let state = SystemStateShared::new(crate::core::system::SystemState::new());
   let mut config = ActorSystemConfig::default().with_system_name(system_name.to_string());
   if let Some(remoting) = remoting {
     config = config.with_remoting_config(remoting);
@@ -503,7 +503,7 @@ fn shutdown_blocks_deserialize_and_actor_path_calls() {
   let error = extension.deserialize(&serialized, Some(TypeId::of::<TestPayload>())).expect_err("should fail");
   assert!(matches!(error, SerializationError::Uninitialized));
 
-  let actor_ref = ActorRefGeneric::<NoStdToolbox>::new(Pid::new(2, 0), ArcShared::new(NullSender));
+  let actor_ref = ActorRefGeneric::<NoStdToolbox>::new(Pid::new(2, 0), NullSender);
   let path_error = extension.serialized_actor_path(&actor_ref).expect_err("should fail");
   assert!(matches!(path_error, SerializationError::Uninitialized));
 }
@@ -808,7 +808,7 @@ fn builtin_serializers_support_primitives() {
 #[test]
 fn actor_ref_serialization_uses_helper() {
   let (extension, _) = build_extension::<NoStdToolbox>(None);
-  let actor_ref = ActorRefGeneric::<NoStdToolbox>::new(Pid::new(99, 0), ArcShared::new(NullSender));
+  let actor_ref = ActorRefGeneric::<NoStdToolbox>::new(Pid::new(99, 0), NullSender);
   let info = TransportInformation::new(Some("fraktor://sys@host:2552".into()));
   let message = extension
     .with_transport_information(info, || extension.serialize(&actor_ref, SerializationCallScope::Remote))

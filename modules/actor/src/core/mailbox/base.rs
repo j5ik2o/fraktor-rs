@@ -9,7 +9,7 @@ use core::num::NonZeroUsize;
 use fraktor_utils_rs::core::{
   collections::queue::{QueueError, backend::OfferOutcome},
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+  sync::sync_mutex_like::SyncMutexLike,
 };
 
 use super::{
@@ -23,7 +23,7 @@ use crate::core::{
   logging::LogLevel,
   mailbox::{capacity::MailboxCapacity, overflow_strategy::MailboxOverflowStrategy, policy::MailboxPolicy},
   messaging::{AnyMessageGeneric, SystemMessage},
-  system::SystemStateGeneric,
+  system::SystemStateSharedGeneric,
 };
 
 /// Priority mailbox maintaining separate queues for system and user messages.
@@ -67,7 +67,7 @@ where
   }
 
   /// Returns the system state handle if instrumentation has been installed.
-  pub(crate) fn system_state(&self) -> Option<ArcShared<SystemStateGeneric<TB>>> {
+  pub(crate) fn system_state(&self) -> Option<SystemStateSharedGeneric<TB>> {
     self.instrumentation.lock().as_ref().map(|inst| inst.system_state())
   }
 
@@ -181,6 +181,12 @@ where
   #[must_use]
   pub(crate) fn set_idle(&self) -> bool {
     self.state.set_idle()
+  }
+
+  /// Indicates whether the mailbox is currently in a running state.
+  #[must_use]
+  pub(crate) fn is_running(&self) -> bool {
+    self.state.is_running()
   }
 
   /// Computes schedule hints from the current queue lengths and suspension state.

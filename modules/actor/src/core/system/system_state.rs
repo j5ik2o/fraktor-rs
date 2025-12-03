@@ -38,7 +38,7 @@ use crate::core::{
   dispatcher::{DispatchersGeneric, DispatchersShared},
   error::{ActorError, SendError},
   event_stream::{EventStreamEvent, EventStreamGeneric, RemoteAuthorityEvent, TickDriverSnapshot},
-  futures::{ActorFuture, ActorFutureShared},
+  futures::ActorFutureSharedGeneric,
   logging::{LogEvent, LogLevel},
   mailbox::MailboxesSharedGeneric,
   messaging::{AnyMessageGeneric, FailurePayload, SystemMessage},
@@ -55,7 +55,7 @@ pub use failure_outcome::FailureOutcome;
 use crate::core::system::actor_system_config::ActorSystemConfigGeneric;
 
 /// Type alias for ask future collections.
-type AskFutureVec<TB> = Vec<ActorFutureShared<AnyMessageGeneric<TB>, TB>>;
+type AskFutureVec<TB> = Vec<ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>>;
 type ActorRefProviderCaller<TB> =
   Box<dyn Fn(ActorPath) -> Result<ActorRefGeneric<TB>, ActorError> + Send + Sync + 'static>;
 
@@ -94,7 +94,7 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   system_guardian: ToolboxMutex<Option<ArcShared<ActorCellGeneric<TB>>>, TB>,
   user_guardian: ToolboxMutex<Option<ArcShared<ActorCellGeneric<TB>>>, TB>,
   ask_futures: ToolboxMutex<AskFutureVec<TB>, TB>,
-  termination: ActorFutureShared<(), TB>,
+  termination: ActorFutureSharedGeneric<(), TB>,
   terminated: AtomicBool,
   terminating: AtomicBool,
   root_started: AtomicBool,
@@ -149,7 +149,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       system_guardian: <TB::MutexFamily as SyncMutexFamily>::create(None),
       user_guardian: <TB::MutexFamily as SyncMutexFamily>::create(None),
       ask_futures: <TB::MutexFamily as SyncMutexFamily>::create(Vec::new()),
-      termination: ActorFuture::<(), TB>::new_shared(),
+      termination: ActorFutureSharedGeneric::<(), TB>::new(),
       terminated: AtomicBool::new(false),
       terminating: AtomicBool::new(false),
       root_started: AtomicBool::new(false),
@@ -538,7 +538,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   }
 
   /// Registers an ask future so the actor system can track its completion.
-  pub(crate) fn register_ask_future(&self, future: ActorFutureShared<AnyMessageGeneric<TB>, TB>) {
+  pub(crate) fn register_ask_future(&self, future: ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>) {
     self.ask_futures.lock().push(future);
   }
 
@@ -726,7 +726,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       return;
     }
     // Lock, complete, then wake outside the lock to avoid deadlock.
-    let waker = self.termination.lock().complete(());
+    let waker = self.termination.complete(());
     if let Some(w) = waker {
       w.wake();
     }
@@ -734,18 +734,18 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
 
   /// Returns a future that resolves once the actor system terminates.
   #[must_use]
-  pub(crate) fn termination_future(&self) -> ActorFutureShared<(), TB> {
+  pub(crate) fn termination_future(&self) -> ActorFutureSharedGeneric<(), TB> {
     self.termination.clone()
   }
 
   /// Drains ask futures that have completed since the previous inspection.
-  pub(crate) fn drain_ready_ask_futures(&self) -> Vec<ActorFutureShared<AnyMessageGeneric<TB>, TB>> {
+  pub(crate) fn drain_ready_ask_futures(&self) -> Vec<ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>> {
     let mut registry = self.ask_futures.lock();
     let mut ready = Vec::new();
     let mut index = 0_usize;
 
     while index < registry.len() {
-      if registry[index].lock().is_ready() {
+      if registry[index].is_ready() {
         ready.push(registry.swap_remove(index));
       } else {
         index += 1;
@@ -867,7 +867,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   }
 
   #[allow(dead_code)]
-  fn handle_failure(&self, pid: Pid, parent: Option<Pid>, error: &ActorError) {
+  pub(crate) fn handle_failure(&self, pid: Pid, parent: Option<Pid>, error: &ActorError) {
     let Some(parent_pid) = parent else {
       self.stop_actor(pid);
       return;

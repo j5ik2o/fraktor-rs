@@ -19,6 +19,7 @@ use super::{
   schedule_adapter::ScheduleAdapterShared,
 };
 use crate::core::{
+  actor_prim::actor_ref::ActorRefSenderSharedGeneric,
   error::SendError,
   mailbox::{MailboxGeneric, MailboxPressureEvent, ScheduleHints},
   messaging::{AnyMessageGeneric, SystemMessage, message_invoker::MessageInvokerShared},
@@ -156,8 +157,8 @@ impl<TB: RuntimeToolbox + 'static> DispatcherGeneric<TB> {
   /// Constructs an `ActorRefSender` implementation with a shared handle.
   #[must_use]
   #[allow(clippy::wrong_self_convention)]
-  pub(crate) fn into_sender(&self) -> ArcShared<DispatcherSenderGeneric<TB>> {
-    ArcShared::new(DispatcherSenderGeneric::new(self.clone()))
+  pub(crate) fn into_sender(&self) -> ActorRefSenderSharedGeneric<TB> {
+    ActorRefSenderSharedGeneric::new(DispatcherSenderGeneric::new(self.clone()))
   }
 
   pub(crate) fn schedule_adapter(&self) -> ScheduleAdapterShared<TB> {

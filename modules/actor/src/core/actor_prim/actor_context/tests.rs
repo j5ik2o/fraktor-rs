@@ -10,7 +10,7 @@ use super::{ActorContext, ActorContextGeneric};
 use crate::core::{
   actor_prim::{Actor, ActorCell, Pid},
   error::ActorError,
-  futures::ActorFuture,
+  futures::{ActorFutureListener, ActorFutureSharedGeneric},
   logging::LogLevel,
   messaging::{AnyMessage, AnyMessageViewGeneric},
   props::Props,
@@ -126,7 +126,7 @@ fn actor_context_set_and_clear_reply_to() {
 fn actor_context_reply_without_reply_to() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let context = ActorContext::new(&system, pid);
+  let mut context = ActorContext::new(&system, pid);
 
   let result = context.reply(AnyMessage::new(42_u32));
   assert!(result.is_err());
@@ -205,16 +205,19 @@ fn actor_context_pipe_to_self_handles_async_future() {
   register_cell(&system, pid, "self", &props);
   let context = ActorContext::new(&system, pid);
 
-  let signal = ActorFuture::<i32>::new_shared();
+  let signal = ActorFutureSharedGeneric::<i32, NoStdToolbox>::new();
   let future = {
     let handle = signal.clone();
-    async move { ActorFuture::<i32>::listener(handle).await }
+    async move { ActorFutureListener::new(handle).await }
   };
 
   context.pipe_to_self(future, AnyMessage::new).expect("pipe to self");
   assert!(received.lock().is_empty());
 
-  ActorFuture::<i32>::complete_and_wake(&signal, 7);
+  let waker = signal.complete(7);
+  if let Some(w) = waker {
+    w.wake();
+  }
   wait_until(|| !received.lock().is_empty());
   assert_eq!(received.lock()[0], 7);
 }
@@ -254,7 +257,7 @@ fn actor_context_watch_missing_actor_notifies_self() {
   let _watcher = register_cell(&system, watcher_pid, "watcher", &watcher_props);
   let target = register_cell(&system, target_pid, "target", &target_props);
   let target_ref = target.actor_ref();
-  system.state().remove_cell(&target_pid);
+  let _ = system.state().remove_cell(&target_pid);
 
   let context = ActorContext::new(&system, watcher_pid);
   assert!(context.watch(&target_ref).is_ok());

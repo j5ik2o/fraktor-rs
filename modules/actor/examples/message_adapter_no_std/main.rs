@@ -36,8 +36,8 @@ impl GuardianActor {
     Self { adapter: None, counter: None }
   }
 
-  fn dispatch_samples(&self) -> Result<(), ActorError> {
-    let adapter = self.adapter.as_ref().ok_or_else(|| ActorError::recoverable("adapter missing"))?;
+  fn dispatch_samples(&mut self) -> Result<(), ActorError> {
+    let adapter = self.adapter.as_mut().ok_or_else(|| ActorError::recoverable("adapter missing"))?;
     #[cfg(not(target_os = "none"))]
     println!("guardian: dispatching samples");
     adapter.tell("5".to_string()).map_err(|error| ActorError::from_send_error(&error))?;
@@ -68,7 +68,7 @@ impl TypedActor<GuardianEvent> for GuardianActor {
         println!("guardian: adapter ready (counter = {})", self.counter.is_some());
         self.adapter = Some(adapter.clone());
         self.dispatch_samples()?;
-        if let Some(counter) = &self.counter {
+        if let Some(counter) = &mut self.counter {
           counter
             .tell(CounterCommand::Summarize(ctx.self_ref()))
             .map_err(|error| ActorError::from_send_error(&error))?;
@@ -108,7 +108,11 @@ impl TypedActor<CounterCommand> for CounterActor {
         payload.parse::<i32>().map(CounterCommand::Apply).map_err(|_| AdapterFailure::Custom("parse error".into()))
       })
       .map_err(|error| ActorError::recoverable(format!("adapter registration failed: {:?}", error)))?;
-    self.notify.tell(GuardianEvent::AdapterReady(adapter)).map_err(|error| ActorError::from_send_error(&error))?;
+    self
+      .notify
+      .clone()
+      .tell(GuardianEvent::AdapterReady(adapter))
+      .map_err(|error| ActorError::from_send_error(&error))?;
     Ok(())
   }
 
@@ -127,7 +131,7 @@ impl TypedActor<CounterCommand> for CounterActor {
         #[cfg(not(target_os = "none"))]
         println!("counter: summarize");
         let event = GuardianEvent::Reported(CounterReport { total: self.total });
-        target.tell(event).map_err(|error| ActorError::from_send_error(&error))?;
+        target.clone().tell(event).map_err(|error| ActorError::from_send_error(&error))?;
         ctx.stop_self().map_err(|error| ActorError::from_send_error(&error))?;
       },
     }
@@ -146,7 +150,7 @@ fn main() {
   let termination = system.as_untyped().when_terminated();
   system.user_guardian_ref().tell(GuardianEvent::Start).expect("start");
   system.terminate().expect("terminate");
-  while !termination.lock().is_ready() {
+  while !termination.is_ready() {
     thread::yield_now();
   }
   for entry in system.as_untyped().dead_letters() {

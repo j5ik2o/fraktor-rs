@@ -71,7 +71,7 @@ fn main() {
   let subscriber: EventStreamSubscriberShared = subscriber_handle(UnhandledMessageLogger);
   let _subscription: EventStreamSubscription = system.subscribe_event_stream(&subscriber);
 
-  let actor_ref = system.user_guardian_ref();
+  let mut actor_ref = system.user_guardian_ref();
   let termination = system.when_terminated();
 
   // Send Ping - will be handled
@@ -92,7 +92,7 @@ fn main() {
   // Terminate system
   println!("\n=== Terminating system ===");
   system.terminate().expect("Failed to terminate");
-  while !termination.lock().is_ready() {
+  while !termination.is_ready() {
     std::thread::yield_now();
   }
 

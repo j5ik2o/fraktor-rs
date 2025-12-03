@@ -12,11 +12,11 @@ use crate::core::{
   dead_letter::DeadLetterEntryGeneric,
   error::SendError,
   event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriberShared, EventStreamSubscriptionGeneric},
-  futures::ActorFutureShared,
+  futures::ActorFutureSharedGeneric,
   logging::LogLevel,
   messaging::AnyMessageGeneric,
   spawn::SpawnError,
-  system::{ActorSystemConfigGeneric, ActorSystemGeneric, SystemStateGeneric},
+  system::{ActorSystemConfigGeneric, ActorSystemGeneric, SystemStateSharedGeneric},
   typed::{
     actor_prim::{TypedActorRefGeneric, TypedChildRefGeneric},
     props::TypedPropsGeneric,
@@ -102,7 +102,7 @@ where
 
   /// Returns the shared system state handle.
   #[must_use]
-  pub fn state(&self) -> ArcShared<SystemStateGeneric<TB>> {
+  pub fn state(&self) -> SystemStateSharedGeneric<TB> {
     self.inner.state()
   }
 
@@ -157,7 +157,7 @@ where
 
   /// Returns a future that resolves once the actor system terminates.
   #[must_use]
-  pub fn when_terminated(&self) -> ActorFutureShared<(), TB> {
+  pub fn when_terminated(&self) -> ActorFutureSharedGeneric<(), TB> {
     self.inner.when_terminated()
   }
 
@@ -172,7 +172,7 @@ where
 
   /// Drains ask futures that have been fulfilled since the last check.
   #[must_use]
-  pub fn drain_ready_ask_futures(&self) -> Vec<ActorFutureShared<AnyMessageGeneric<TB>, TB>> {
+  pub fn drain_ready_ask_futures(&self) -> Vec<ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>> {
     self.inner.drain_ready_ask_futures()
   }
 

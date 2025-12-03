@@ -10,20 +10,20 @@ use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 use crate::core::{
   actor_prim::{ContextPipeTaskId, Pid},
   messaging::SystemMessage,
-  system::SystemStateGeneric,
+  system::SystemStateSharedGeneric,
 };
 
 #[cfg(test)]
 mod tests;
 
 struct ContextPipeWakerShared<TB: RuntimeToolbox + 'static> {
-  system: ArcShared<SystemStateGeneric<TB>>,
+  system: SystemStateSharedGeneric<TB>,
   pid:    Pid,
   task:   ContextPipeTaskId,
 }
 
 impl<TB: RuntimeToolbox + 'static> ContextPipeWakerShared<TB> {
-  const fn new(system: ArcShared<SystemStateGeneric<TB>>, pid: Pid, task: ContextPipeTaskId) -> Self {
+  const fn new(system: SystemStateSharedGeneric<TB>, pid: Pid, task: ContextPipeTaskId) -> Self {
     Self { system, pid, task }
   }
 
@@ -39,7 +39,7 @@ pub(crate) struct ContextPipeWaker<TB: RuntimeToolbox + 'static> {
 
 impl<TB: RuntimeToolbox + 'static> ContextPipeWaker<TB> {
   /// Creates a waker that notifies the owning actor cell about task readiness.
-  pub(crate) fn into_waker(system: ArcShared<SystemStateGeneric<TB>>, pid: Pid, task: ContextPipeTaskId) -> Waker {
+  pub(crate) fn into_waker(system: SystemStateSharedGeneric<TB>, pid: Pid, task: ContextPipeTaskId) -> Waker {
     let shared = ArcShared::new(ContextPipeWakerShared::new(system, pid, task));
     unsafe { Waker::from_raw(Self::raw_waker(shared)) }
   }

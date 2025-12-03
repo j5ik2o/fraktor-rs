@@ -16,7 +16,6 @@ use fraktor_utils_rs::core::{
 
 use super::schedule_waker::ScheduleWaker;
 use crate::core::{
-  actor_prim::actor_ref::ActorRefSender,
   dispatcher::{
     DispatchError, DispatchExecutor, DispatchExecutorRunner, DispatchSharedGeneric, DispatcherGeneric, ScheduleAdapter,
     ScheduleAdapterShared, TickExecutorGeneric,
@@ -27,27 +26,27 @@ use crate::core::{
     EnqueueOutcome, MailboxGeneric, MailboxInstrumentation, MailboxOverflowStrategy, MailboxPolicy, ScheduleHints,
   },
   messaging::{AnyMessage, message_invoker::MessageInvoker},
-  system::SystemState,
+  system::{SystemState, SystemStateShared},
 };
 
 fn register_user_hint() -> ScheduleHints {
   ScheduleHints { has_system_messages: false, has_user_messages: true, backpressure_active: false }
 }
 
-fn system_instrumented_mailbox() -> (ArcShared<MailboxGeneric<NoStdToolbox>>, ArcShared<SystemState>) {
+fn system_instrumented_mailbox() -> (ArcShared<MailboxGeneric<NoStdToolbox>>, SystemStateShared) {
   let mailbox = ArcShared::new(MailboxGeneric::new(MailboxPolicy::unbounded(None)));
-  let system = ArcShared::new(SystemState::new());
+  let system = SystemStateShared::new(SystemState::new());
   let pid = system.allocate_pid();
   let instrumentation = MailboxInstrumentation::new(system.clone(), pid, None, None, None);
   mailbox.set_instrumentation(instrumentation);
   (mailbox, system)
 }
 
-fn bounded_mailbox(capacity: usize) -> (ArcShared<MailboxGeneric<NoStdToolbox>>, ArcShared<SystemState>) {
+fn bounded_mailbox(capacity: usize) -> (ArcShared<MailboxGeneric<NoStdToolbox>>, SystemStateShared) {
   let policy =
     MailboxPolicy::bounded(NonZeroUsize::new(capacity).expect("capacity"), MailboxOverflowStrategy::Block, None);
   let mailbox = ArcShared::new(MailboxGeneric::new(policy));
-  let system = ArcShared::new(SystemState::new());
+  let system = SystemStateShared::new(SystemState::new());
   let pid = system.allocate_pid();
   let instrumentation = MailboxInstrumentation::new(system.clone(), pid, Some(capacity), None, None);
   mailbox.set_instrumentation(instrumentation);
@@ -100,7 +99,7 @@ fn dispatcher_respects_throughput_and_deadline_limits() {
     )
     .with_throughput_limit(Some(NonZeroUsize::new(1).unwrap())),
   ));
-  let system = ArcShared::new(SystemState::new());
+  let system = SystemStateShared::new(SystemState::new());
   let pid = system.allocate_pid();
   mailbox.set_instrumentation(MailboxInstrumentation::new(system.clone(), pid, None, None, None));
 

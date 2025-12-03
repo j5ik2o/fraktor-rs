@@ -29,7 +29,7 @@ fn terminate_signals_future() {
   let termination = system.when_terminated();
   system.terminate().expect("terminate");
   system.run_until_terminated();
-  assert!(termination.lock().is_ready());
+  assert!(termination.is_ready());
 }
 
 #[test]
