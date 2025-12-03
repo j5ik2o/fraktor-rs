@@ -117,7 +117,7 @@ impl TickDriverConfig {
         executor_task: tokio::task::JoinHandle<()>,
       }
       impl TickDriverControl for TokioQuickstartControl {
-        fn shutdown(&mut self) {
+        fn shutdown(&self) {
           self.tick_task.abort();
           self.executor_task.abort();
         }
@@ -232,7 +232,7 @@ impl TickDriverConfig {
         metrics_task:  Option<tokio::task::JoinHandle<()>>,
       }
       impl TickDriverControl for TokioQuickstartControl {
-        fn shutdown(&mut self) {
+        fn shutdown(&self) {
           self.tick_task.abort();
           self.executor_task.abort();
           if let Some(task) = &self.metrics_task {
