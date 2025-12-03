@@ -25,8 +25,9 @@ use hashbrown::HashMap;
 use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
 use super::{
-  ActorPathRegistry, ActorRefProvider, ActorRefProviderSharedGeneric, AuthorityState, GuardianKind,
-  RemoteAuthorityError, RemoteAuthorityManagerGeneric, RemoteAuthorityManagerShared, RemoteWatchHook, RemotingConfig,
+  ActorPathRegistry, ActorRefProvider, ActorRefProviderHandle, ActorRefProviderSharedGeneric, AuthorityState,
+  GuardianKind, RemoteAuthorityError, RemoteAuthorityManagerGeneric, RemoteAuthorityManagerShared, RemoteWatchHook,
+  RemotingConfig,
 };
 use crate::core::{
   actor_prim::{
@@ -622,12 +623,8 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       .lock()
       .get(&TypeId::of::<P>())
       .cloned()
-      .and_then(|provider| provider.downcast::<ToolboxMutex<P, TB>>().ok())
-      .map(|inner| {
-        // Get schemes from the inner provider
-        let schemes = inner.lock().supported_schemes();
-        ActorRefProviderSharedGeneric::from_shared(inner, schemes)
-      })
+      .and_then(|provider| provider.downcast::<ToolboxMutex<ActorRefProviderHandle<P>, TB>>().ok())
+      .map(ActorRefProviderSharedGeneric::from_shared)
   }
 
   /// Invokes a provider registered for the given scheme.

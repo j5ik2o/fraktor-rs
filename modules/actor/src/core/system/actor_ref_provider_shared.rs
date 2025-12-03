@@ -7,7 +7,7 @@ use fraktor_utils_rs::core::{
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 
-use super::ActorRefProvider;
+use super::{ActorRefProvider, ActorRefProviderHandle};
 use crate::core::{
   actor_prim::{
     actor_path::{ActorPath, ActorPathScheme},
@@ -19,9 +19,10 @@ use crate::core::{
 /// Shared wrapper that provides thread-safe access to an [`ActorRefProvider`]
 /// implementation.
 ///
-/// This adapter wraps a provider in a `ToolboxMutex`, allowing it to be shared
+/// This adapter wraps a provider handle in a `ToolboxMutex`, allowing it to be shared
 /// across multiple owners while satisfying the `&mut self` requirement of
-/// `ActorRefProvider` methods.
+/// `ActorRefProvider` methods. The wrapper itself remains a thin layer that
+/// locks and delegates only.
 ///
 /// # Usage
 ///
@@ -29,26 +30,26 @@ use crate::core::{
 /// 2. Clone and share as needed
 /// 3. Call provider methods through the wrapper (automatically acquires lock)
 pub struct ActorRefProviderSharedGeneric<TB: RuntimeToolbox + 'static, P: ActorRefProvider<TB> + 'static> {
-  inner:   ArcShared<ToolboxMutex<P, TB>>,
-  schemes: &'static [ActorPathScheme],
+  inner: ArcShared<ToolboxMutex<ActorRefProviderHandle<P>, TB>>,
 }
 
 impl<TB: RuntimeToolbox + 'static, P: ActorRefProvider<TB> + 'static> ActorRefProviderSharedGeneric<TB, P> {
   /// Creates a new shared wrapper around the provided implementation.
   pub fn new(provider: P) -> Self {
     let schemes = provider.supported_schemes();
-    Self { inner: ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(provider)), schemes }
+    let handle = ActorRefProviderHandle::new(provider, schemes);
+    Self { inner: ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(handle)) }
   }
 
   /// Creates a new shared wrapper from an existing shared mutex.
   #[must_use]
-  pub const fn from_shared(inner: ArcShared<ToolboxMutex<P, TB>>, schemes: &'static [ActorPathScheme]) -> Self {
-    Self { inner, schemes }
+  pub const fn from_shared(inner: ArcShared<ToolboxMutex<ActorRefProviderHandle<P>, TB>>) -> Self {
+    Self { inner }
   }
 
   /// Returns a reference to the inner shared mutex.
   #[must_use]
-  pub const fn inner(&self) -> &ArcShared<ToolboxMutex<P, TB>> {
+  pub const fn inner(&self) -> &ArcShared<ToolboxMutex<ActorRefProviderHandle<P>, TB>> {
     &self.inner
   }
 
@@ -61,9 +62,7 @@ impl<TB: RuntimeToolbox + 'static, P: ActorRefProvider<TB> + 'static> ActorRefPr
 
   /// Creates an actor reference for the provided path.
   ///
-  /// This method uses `&self` instead of `&mut self` because the internal mutex
-  /// provides the necessary synchronization. This allows the shared wrapper to be
-  /// used in contexts that require `Fn` closures.
+  /// Thin wrapper: lock, delegate, unlock.
   ///
   /// # Errors
   ///
@@ -75,7 +74,7 @@ impl<TB: RuntimeToolbox + 'static, P: ActorRefProvider<TB> + 'static> ActorRefPr
 
 impl<TB: RuntimeToolbox + 'static, P: ActorRefProvider<TB> + 'static> Clone for ActorRefProviderSharedGeneric<TB, P> {
   fn clone(&self) -> Self {
-    Self { inner: self.inner.clone(), schemes: self.schemes }
+    Self { inner: self.inner.clone() }
   }
 }
 
@@ -83,7 +82,7 @@ impl<TB: RuntimeToolbox + 'static, P: ActorRefProvider<TB> + 'static> ActorRefPr
   for ActorRefProviderSharedGeneric<TB, P>
 {
   fn supported_schemes(&self) -> &'static [ActorPathScheme] {
-    self.schemes
+    self.inner.lock().supported_schemes()
   }
 
   fn actor_ref(&mut self, path: ActorPath) -> Result<ActorRefGeneric<TB>, ActorError> {

@@ -5,7 +5,7 @@ use fraktor_utils_rs::core::{
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 
-use super::{ActorRefProvider, RemoteWatchHook};
+use super::{ActorRefProvider, RemoteWatchHook, RemoteWatchHookHandle};
 use crate::core::{
   actor_prim::{Pid, actor_path::ActorPathScheme, actor_ref::ActorRefGeneric},
   error::ActorError,
@@ -14,9 +14,9 @@ use crate::core::{
 /// Shared wrapper that provides thread-safe access to a provider implementing
 /// both [`ActorRefProvider`] and [`RemoteWatchHook`].
 ///
-/// This adapter wraps a provider in a `ToolboxMutex`, allowing it to be shared
+/// This adapter wraps a provider handle in a `ToolboxMutex`, allowing it to be shared
 /// across multiple owners while satisfying the `&mut self` requirement of
-/// `RemoteWatchHook` methods.
+/// the underlying traits. The wrapper itself stays thin: lock and delegate.
 ///
 /// # Usage
 ///
@@ -25,8 +25,7 @@ use crate::core::{
 /// 2. Clone and wrap in `ArcShared` for `ActorRefProvider` registration
 /// 3. Pass the original shared instance for `RemoteWatchHook` registration
 pub struct RemoteWatchHookShared<TB: RuntimeToolbox + 'static, P: Send + 'static> {
-  inner:   ArcShared<ToolboxMutex<P, TB>>,
-  schemes: &'static [ActorPathScheme],
+  inner: ArcShared<ToolboxMutex<RemoteWatchHookHandle<P>, TB>>,
 }
 
 impl<TB: RuntimeToolbox + 'static, P: Send + 'static> RemoteWatchHookShared<TB, P> {
@@ -35,19 +34,23 @@ impl<TB: RuntimeToolbox + 'static, P: Send + 'static> RemoteWatchHookShared<TB, 
   /// The `schemes` parameter specifies the actor path schemes supported by
   /// the underlying provider for `ActorRefProvider::supported_schemes()`.
   pub fn new(provider: P, schemes: &'static [ActorPathScheme]) -> Self {
-    Self { inner: ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(provider)), schemes }
+    let handle = RemoteWatchHookHandle::new(provider, schemes);
+    Self { inner: ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(handle)) }
   }
 
   /// Returns a reference to the inner shared mutex.
+  ///
+  /// This method is intended for testing and debugging purposes only.
+  #[doc(hidden)]
   #[must_use]
-  pub const fn inner(&self) -> &ArcShared<ToolboxMutex<P, TB>> {
+  pub const fn inner(&self) -> &ArcShared<ToolboxMutex<RemoteWatchHookHandle<P>, TB>> {
     &self.inner
   }
 }
 
 impl<TB: RuntimeToolbox + 'static, P: Send + 'static> Clone for RemoteWatchHookShared<TB, P> {
   fn clone(&self) -> Self {
-    Self { inner: self.inner.clone(), schemes: self.schemes }
+    Self { inner: self.inner.clone() }
   }
 }
 
@@ -67,7 +70,7 @@ impl<TB: RuntimeToolbox + 'static, P: ActorRefProvider<TB> + RemoteWatchHook<TB>
   for RemoteWatchHookShared<TB, P>
 {
   fn supported_schemes(&self) -> &'static [ActorPathScheme] {
-    self.schemes
+    self.inner.lock().supported_schemes()
   }
 
   fn actor_ref(
