@@ -90,9 +90,9 @@ impl RemotingExtensionGeneric<StdToolbox> {
     transport.install_backpressure_hook(control.lock().backpressure_hook());
     let shared_transport: RemoteTransportShared<StdToolbox> = RemoteTransportShared::new(transport);
     control.lock().register_remote_transport_shared(shared_transport.clone());
-    let guardian = system.system_guardian_ref().ok_or(RemotingError::SystemGuardianUnavailable)?;
+    let mut guardian = system.system_guardian_ref().ok_or(RemotingError::SystemGuardianUnavailable)?;
     let supervisor = spawn_endpoint_supervisor(system, &guardian, control.clone())?;
-    register_shutdown_hook(&guardian, &supervisor)?;
+    register_shutdown_hook(&mut guardian, &supervisor)?;
     if config.auto_start() {
       control.lock().start()?;
     }
@@ -122,7 +122,7 @@ where
 
 #[cfg(feature = "std")]
 fn register_shutdown_hook<TB>(
-  guardian: &ActorRefGeneric<TB>,
+  guardian: &mut ActorRefGeneric<TB>,
   supervisor: &ActorRefGeneric<TB>,
 ) -> Result<(), RemotingError>
 where
@@ -149,7 +149,7 @@ where
     Self { control, guardian }
   }
 
-  fn acknowledge_shutdown(&self, ctx: &mut ActorContextGeneric<'_, TB>) -> Result<(), ActorError> {
+  fn acknowledge_shutdown(&mut self, ctx: &mut ActorContextGeneric<'_, TB>) -> Result<(), ActorError> {
     self.control.lock().notify_system_shutdown();
     self
       .guardian

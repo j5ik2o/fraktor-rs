@@ -14,7 +14,7 @@ use fraktor_actor_rs::core::{
   actor_prim::{
     Pid,
     actor_path::{ActorPath, ActorPathParts},
-    actor_ref::{ActorRefGeneric, ActorRefSender},
+    actor_ref::{ActorRefGeneric, ActorRefSender, SendOutcome},
   },
   error::{ActorError, SendError},
   messaging::{AnyMessageGeneric, SystemMessage},
@@ -22,7 +22,7 @@ use fraktor_actor_rs::core::{
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+  sync::sync_mutex_like::SyncMutexLike,
 };
 use hashbrown::HashMap;
 
@@ -70,7 +70,7 @@ impl<TB: RuntimeToolbox + 'static> RemoteActorRefProviderGeneric<TB> {
     let sender = self.sender_for_path(&path)?;
     let pid = self.system.allocate_pid();
     self.register_remote_entry(pid, path.clone());
-    Ok(ActorRefGeneric::with_system(pid, ArcShared::new(sender), self.system.state()))
+    Ok(ActorRefGeneric::with_system(pid, sender, self.system.state()))
   }
 
   pub(crate) fn from_components(
@@ -147,7 +147,7 @@ impl<TB: RuntimeToolbox + 'static> RemoteActorRefProviderGeneric<TB> {
     self.control.lock().record_authority_snapshot(snapshot);
   }
 
-  fn dispatch_remote_watch(&self, command: RemoteWatcherCommand) {
+  fn dispatch_remote_watch(&mut self, command: RemoteWatcherCommand) {
     let _ = self.watcher_daemon.tell(AnyMessageGeneric::new(command));
   }
 
@@ -253,7 +253,7 @@ impl<TB: RuntimeToolbox + 'static> RemoteActorRefSender<TB> {
 }
 
 impl<TB: RuntimeToolbox + 'static> ActorRefSender<TB> for RemoteActorRefSender<TB> {
-  fn send(&self, message: AnyMessageGeneric<TB>) -> Result<(), SendError<TB>> {
+  fn send(&mut self, message: AnyMessageGeneric<TB>) -> Result<SendOutcome, SendError<TB>> {
     let system_state = {
       let writer_guard = self.writer.lock();
       writer_guard.system().state()
@@ -283,10 +283,10 @@ impl<TB: RuntimeToolbox + 'static> ActorRefSender<TB> for RemoteActorRefSender<T
       outbound = outbound.with_reply_to(enriched);
     }
     match loopback_router::try_deliver(&self.remote_node, &self.writer, outbound) {
-      | Ok(LoopbackDeliveryOutcome::Delivered) => Ok(()),
+      | Ok(LoopbackDeliveryOutcome::Delivered) => Ok(SendOutcome::Delivered),
       | Ok(LoopbackDeliveryOutcome::Pending(pending)) => {
         let mut writer = self.writer.lock();
-        writer.enqueue(*pending).map_err(|error| self.map_error(error, message_clone))
+        writer.enqueue(*pending).map(|()| SendOutcome::Delivered).map_err(|error| self.map_error(error, message_clone))
       },
       | Err(error) => Err(self.map_error(error, message_clone)),
     }

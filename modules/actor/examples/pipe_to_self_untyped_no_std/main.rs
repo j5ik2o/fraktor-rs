@@ -73,7 +73,7 @@ fn main() {
     .expect("fetch");
 
   system.terminate().expect("terminate");
-  while !termination.lock().is_ready() {
+  while !termination.is_ready() {
     thread::yield_now();
   }
 }

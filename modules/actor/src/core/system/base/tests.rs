@@ -134,7 +134,7 @@ fn actor_system_new_empty() {
 #[test]
 fn actor_system_from_state() {
   let state = crate::core::system::system_state::SystemState::new();
-  let system = ActorSystem::from_state(ArcShared::new(state));
+  let system = ActorSystem::from_state(crate::core::system::SystemStateShared::new(state));
   assert!(!system.state().is_terminated());
 }
 
@@ -186,7 +186,7 @@ fn actor_system_emit_log() {
 fn actor_system_when_terminated() {
   let system = ActorSystem::new_empty();
   let future = system.when_terminated();
-  assert!(!future.lock().is_ready());
+  assert!(!future.is_ready());
 }
 
 #[test]
@@ -380,7 +380,7 @@ fn create_send_failure_triggers_rollback() {
   let cell = system.build_cell_for_spawn(pid, None, name, &props).expect("セル生成に失敗");
   system.state().register_cell(cell.clone());
 
-  system.state().remove_cell(&pid);
+  let _ = system.state().remove_cell(&pid);
   let result = system.perform_create_handshake(None, pid, &cell);
 
   match result {

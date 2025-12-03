@@ -54,6 +54,7 @@ impl<TB: RuntimeToolbox + 'static, P: ActorRefProvider<TB> + 'static> ActorRefPr
 
   /// Returns the type ID of the inner provider type.
   #[must_use]
+  #[allow(clippy::missing_const_for_fn)]
   pub fn inner_type_id(&self) -> TypeId {
     TypeId::of::<P>()
   }

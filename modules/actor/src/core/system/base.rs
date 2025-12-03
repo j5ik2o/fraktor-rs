@@ -30,14 +30,16 @@ use crate::core::{
     EventStreamEvent, EventStreamGeneric, EventStreamSubscriberShared, EventStreamSubscriptionGeneric,
     TickDriverSnapshot,
   },
-  futures::ActorFutureShared,
+  futures::ActorFutureSharedGeneric,
   logging::LogLevel,
   messaging::{AnyMessageGeneric, SystemMessage},
   props::PropsGeneric,
   scheduler::{SchedulerBackedDelayProvider, SchedulerContextSharedGeneric, TickDriverConfig},
   serialization::default_serialization_extension_id,
   spawn::SpawnError,
-  system::{ActorRefResolveError, actor_system_config::ActorSystemConfigGeneric, system_state::SystemStateGeneric},
+  system::{
+    ActorRefResolveError, SystemStateGeneric, SystemStateSharedGeneric, actor_system_config::ActorSystemConfigGeneric,
+  },
 };
 
 const PARENT_MISSING: &str = "parent actor not found";
@@ -45,7 +47,7 @@ const CREATE_SEND_FAILED: &str = "create system message delivery failed";
 
 /// Core runtime structure that owns registry, guardians, and spawn logic.
 pub struct ActorSystemGeneric<TB: RuntimeToolbox + 'static> {
-  state: ArcShared<SystemStateGeneric<TB>>,
+  state: SystemStateSharedGeneric<TB>,
 }
 
 /// Type alias for [ActorSystemGeneric] with the default [NoStdToolbox].
@@ -55,12 +57,12 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   /// Creates an empty actor system without any guardian (testing only).
   #[must_use]
   pub fn new_empty() -> Self {
-    Self { state: ArcShared::new(SystemStateGeneric::new()) }
+    Self { state: SystemStateSharedGeneric::new(SystemStateGeneric::new()) }
   }
 
   /// Creates an actor system from an existing system state.
   #[must_use]
-  pub const fn from_state(state: ArcShared<SystemStateGeneric<TB>>) -> Self {
+  pub const fn from_state(state: SystemStateSharedGeneric<TB>) -> Self {
     Self { state }
   }
 
@@ -221,7 +223,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
 
   /// Returns the shared system state.
   #[must_use]
-  pub fn state(&self) -> ArcShared<SystemStateGeneric<TB>> {
+  pub fn state(&self) -> SystemStateSharedGeneric<TB> {
     self.state.clone()
   }
 
@@ -354,8 +356,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   /// Resolves the pid registered for the provided actor path.
   #[must_use]
   pub fn pid_by_path(&self, path: &crate::core::actor_prim::actor_path::ActorPath) -> Option<Pid> {
-    let registry = self.state.actor_path_registry().lock();
-    registry.pid_for(path)
+    self.state.with_actor_path_registry(|registry| registry.lock().pid_for(path))
   }
 
   /// Returns an actor reference for the provided pid when registered.
@@ -453,7 +454,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
 
   /// Drains ask futures that have been fulfilled since the last check.
   #[must_use]
-  pub fn drain_ready_ask_futures(&self) -> Vec<ActorFutureShared<AnyMessageGeneric<TB>, TB>> {
+  pub fn drain_ready_ask_futures(&self) -> Vec<ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>> {
     self.state.drain_ready_ask_futures()
   }
 
@@ -473,13 +474,13 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
         if let Some(user_pid) = self.state.user_guardian_pid() {
           return self.state.send_system_message(root_pid, SystemMessage::StopChild(user_pid));
         }
-        self.state.mark_terminated();
+        self.state.clone().mark_terminated();
         return Ok(());
       }
       if let Some(user_pid) = self.state.user_guardian_pid() {
         return self.state.send_system_message(user_pid, SystemMessage::Stop);
       }
-      self.state.mark_terminated();
+      self.state.clone().mark_terminated();
       Ok(())
     } else {
       self.force_termination_hooks();
@@ -489,14 +490,14 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
 
   /// Returns a future that resolves once the actor system terminates.
   #[must_use]
-  pub fn when_terminated(&self) -> ActorFutureShared<(), TB> {
+  pub fn when_terminated(&self) -> ActorFutureSharedGeneric<(), TB> {
     self.state.termination_future()
   }
 
   /// Blocks the current thread until the actor system has fully terminated.
   pub fn run_until_terminated(&self) {
     let future = self.when_terminated();
-    while !future.lock().is_ready() {
+    while !future.is_ready() {
       core::hint::spin_loop();
     }
   }
@@ -639,7 +640,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
 
   fn rollback_spawn(&self, parent: Option<Pid>, cell: &ArcShared<ActorCellGeneric<TB>>, pid: Pid) {
     self.state.release_name(parent, cell.name());
-    self.state.remove_cell(&pid);
+    let _ = self.state.remove_cell(&pid);
     if let Some(parent_pid) = parent {
       self.state.unregister_child(Some(parent_pid), pid);
     }

@@ -12,7 +12,7 @@ use crate::core::{
   mailbox::ScheduleHints,
   messaging::{AnyMessage, AnyMessageViewGeneric, SystemMessage, message_invoker::MessageInvoker},
   props::Props,
-  system::SystemState,
+  system::{SystemState, SystemStateShared},
 };
 
 struct ProbeActor;
@@ -85,7 +85,7 @@ impl Actor for RecordingActor {
 
 #[test]
 fn actor_cell_holds_components() {
-  let system = ArcShared::new(SystemState::new());
+  let system = SystemStateShared::new(SystemState::new());
   let props = Props::from_fn(|| ProbeActor);
   let cell = ActorCell::create(system, Pid::new(1, 0), None, "worker".to_string(), &props).expect("create actor cell");
 
@@ -98,7 +98,7 @@ fn actor_cell_holds_components() {
 
 #[test]
 fn handle_watch_is_idempotent() {
-  let system = ArcShared::new(SystemState::new());
+  let system = SystemStateShared::new(SystemState::new());
   let props = Props::from_fn(|| ProbeActor);
   let target =
     ActorCell::create(system.clone(), Pid::new(10, 0), None, "target".to_string(), &props).expect("create actor cell");
@@ -112,7 +112,7 @@ fn handle_watch_is_idempotent() {
 
 #[test]
 fn handle_unwatch_removes_pid() {
-  let system = ArcShared::new(SystemState::new());
+  let system = SystemStateShared::new(SystemState::new());
   let props = Props::from_fn(|| ProbeActor);
   let target =
     ActorCell::create(system.clone(), Pid::new(11, 0), None, "target".to_string(), &props).expect("create actor cell");
@@ -126,7 +126,7 @@ fn handle_unwatch_removes_pid() {
 
 #[test]
 fn notify_watchers_sends_terminated() {
-  let state = ArcShared::new(SystemState::new());
+  let state = SystemStateShared::new(SystemState::new());
   let props = Props::from_fn(|| ProbeActor);
   let target =
     ActorCell::create(state.clone(), Pid::new(30, 0), None, "target".to_string(), &props).expect("create actor cell");
@@ -148,7 +148,7 @@ fn notify_watchers_sends_terminated() {
 
 #[test]
 fn drop_adapter_refs_marks_lifecycle_stopped() {
-  let system = ArcShared::new(SystemState::new());
+  let system = SystemStateShared::new(SystemState::new());
   let props = Props::from_fn(|| ProbeActor);
   let cell =
     ActorCell::create(system.clone(), Pid::new(50, 0), None, "adapter".to_string(), &props).expect("create actor cell");
@@ -163,7 +163,7 @@ fn drop_adapter_refs_marks_lifecycle_stopped() {
 
 #[test]
 fn remove_adapter_handle_stops_single_handle() {
-  let system = ArcShared::new(SystemState::new());
+  let system = SystemStateShared::new(SystemState::new());
   let props = Props::from_fn(|| ProbeActor);
   let cell =
     ActorCell::create(system.clone(), Pid::new(51, 0), None, "adapter".to_string(), &props).expect("create actor cell");
@@ -178,7 +178,7 @@ fn remove_adapter_handle_stops_single_handle() {
 
 #[test]
 fn create_system_message_runs_pre_start() {
-  let state = ArcShared::new(SystemState::new());
+  let state = SystemStateShared::new(SystemState::new());
   let log = ArcShared::new(NoStdMutex::new(Vec::new()));
   let props = Props::from_fn({
     let log = log.clone();
@@ -197,7 +197,7 @@ fn create_system_message_runs_pre_start() {
 
 #[test]
 fn recreate_system_message_invokes_post_stop_then_pre_start() {
-  let state = ArcShared::new(SystemState::new());
+  let state = SystemStateShared::new(SystemState::new());
   let log = ArcShared::new(NoStdMutex::new(Vec::new()));
   let props = Props::from_fn({
     let log = log.clone();
@@ -217,7 +217,7 @@ fn recreate_system_message_invokes_post_stop_then_pre_start() {
 
 #[test]
 fn system_queue_is_drained_before_user_queue() {
-  let state = ArcShared::new(SystemState::new());
+  let state = SystemStateShared::new(SystemState::new());
   let log = ArcShared::new(NoStdMutex::new(Vec::new()));
   let props = Props::from_fn({
     let log = log.clone();

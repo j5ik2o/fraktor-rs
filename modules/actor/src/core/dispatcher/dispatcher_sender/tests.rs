@@ -17,10 +17,10 @@ fn dispatcher_sender_new() {
 fn dispatcher_sender_send_enqueued() {
   let mailbox = ArcShared::new(Mailbox::new(crate::core::mailbox::MailboxPolicy::unbounded(None)));
   let dispatcher = Dispatcher::with_inline_executor(mailbox);
-  let sender = DispatcherSenderGeneric::new(dispatcher);
+  let mut sender = DispatcherSenderGeneric::new(dispatcher);
 
   let result =
-    <DispatcherSenderGeneric<NoStdToolbox> as ActorRefSender<NoStdToolbox>>::send(&sender, AnyMessage::new(42_u32));
+    <DispatcherSenderGeneric<NoStdToolbox> as ActorRefSender<NoStdToolbox>>::send(&mut sender, AnyMessage::new(42_u32));
   assert!(result.is_ok());
 }
 
@@ -28,18 +28,18 @@ fn dispatcher_sender_send_enqueued() {
 fn dispatcher_sender_send_multiple_messages() {
   let mailbox = ArcShared::new(Mailbox::new(crate::core::mailbox::MailboxPolicy::unbounded(None)));
   let dispatcher = Dispatcher::with_inline_executor(mailbox);
-  let sender = DispatcherSenderGeneric::new(dispatcher);
+  let mut sender = DispatcherSenderGeneric::new(dispatcher);
 
   assert!(
-    <DispatcherSenderGeneric<NoStdToolbox> as ActorRefSender<NoStdToolbox>>::send(&sender, AnyMessage::new(1_u32))
+    <DispatcherSenderGeneric<NoStdToolbox> as ActorRefSender<NoStdToolbox>>::send(&mut sender, AnyMessage::new(1_u32))
       .is_ok()
   );
   assert!(
-    <DispatcherSenderGeneric<NoStdToolbox> as ActorRefSender<NoStdToolbox>>::send(&sender, AnyMessage::new(2_u32))
+    <DispatcherSenderGeneric<NoStdToolbox> as ActorRefSender<NoStdToolbox>>::send(&mut sender, AnyMessage::new(2_u32))
       .is_ok()
   );
   assert!(
-    <DispatcherSenderGeneric<NoStdToolbox> as ActorRefSender<NoStdToolbox>>::send(&sender, AnyMessage::new(3_u32))
+    <DispatcherSenderGeneric<NoStdToolbox> as ActorRefSender<NoStdToolbox>>::send(&mut sender, AnyMessage::new(3_u32))
       .is_ok()
   );
 }

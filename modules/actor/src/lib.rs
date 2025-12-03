@@ -48,9 +48,8 @@
 #![deny(unreachable_pub)]
 #![allow(unknown_lints)]
 #![deny(cfg_std_forbid)]
-#![feature(let_chains)]
-#![feature(const_vec_string_slice)]
 #![cfg_attr(not(test), no_std)]
+#![feature(let_chains)]
 
 //! Actor runtime for Rust
 

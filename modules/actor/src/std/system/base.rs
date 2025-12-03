@@ -12,7 +12,7 @@ use crate::{
     spawn::SpawnError,
     system::{
       ActorRefResolveError, ActorSystemGeneric as CoreActorSystemGeneric, ExtendedActorSystemGeneric,
-      SystemStateGeneric as CoreSystemStateGeneric,
+      SystemStateGeneric as CoreSystemStateGeneric, SystemStateSharedGeneric as CoreSystemStateSharedGeneric,
     },
   },
   std::{
@@ -95,7 +95,7 @@ impl ActorSystem {
 
   /// Returns the shared system state.
   #[must_use]
-  pub fn state(&self) -> ArcShared<SystemState> {
+  pub fn state(&self) -> SystemStateShared {
     self.inner.state()
   }
 
@@ -185,6 +185,9 @@ impl ActorSystem {
 
 /// Shared system state specialised for `StdToolbox`.
 pub type SystemState = CoreSystemStateGeneric<StdToolbox>;
+
+/// Shared system state wrapper specialised for `StdToolbox`.
+pub type SystemStateShared = CoreSystemStateSharedGeneric<StdToolbox>;
 
 /// Extended actor system type specialised for `StdToolbox`.
 pub type ExtendedActorSystem = ExtendedActorSystemGeneric<StdToolbox>;

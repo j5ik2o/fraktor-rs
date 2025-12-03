@@ -81,7 +81,7 @@ fn main() {
   let subscriber: EventStreamSubscriberShared = subscriber_handle(UnhandledLogger);
   let _subscription: EventStreamSubscription = system.subscribe_event_stream(&subscriber);
 
-  let worker = system.user_guardian_ref();
+  let mut worker = system.user_guardian_ref();
   let termination = system.when_terminated();
 
   // Worker is active - message will be processed
@@ -111,7 +111,7 @@ fn main() {
   // Terminate system
   println!("\n=== Terminating system ===");
   system.terminate().expect("Failed to terminate");
-  while !termination.lock().is_ready() {
+  while !termination.is_ready() {
     std::thread::yield_now();
   }
 

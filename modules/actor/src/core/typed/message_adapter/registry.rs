@@ -6,11 +6,11 @@ mod tests;
 use alloc::{string::String, vec::Vec};
 use core::any::TypeId;
 
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use crate::core::{
   actor_prim::{ActorContextGeneric, Pid, actor_ref::ActorRefGeneric},
-  system::SystemStateGeneric,
+  system::SystemStateSharedGeneric,
   typed::message_adapter::{
     AdapterEntry, AdapterError, AdapterFailure, AdapterOutcome, AdapterPayload, AdapterRefHandleId, AdapterRefSender,
   },
@@ -26,7 +26,7 @@ where
   entries:        Vec<AdapterEntry<M, TB>>,
   adapter_ref:    Option<ActorRefGeneric<TB>>,
   adapter_handle: Option<AdapterRefHandleId>,
-  system:         Option<ArcShared<SystemStateGeneric<TB>>>,
+  system:         Option<SystemStateSharedGeneric<TB>>,
   pid:            Option<Pid>,
 }
 
@@ -49,13 +49,15 @@ where
 
   /// Returns the number of registered adapters.
   #[must_use]
-  pub const fn len(&self) -> usize {
+  #[allow(clippy::missing_const_for_fn)]
+  pub fn len(&self) -> usize {
     self.entries.len()
   }
 
   /// Returns whether the registry contains no adapters.
   #[must_use]
-  pub const fn is_empty(&self) -> bool {
+  #[allow(clippy::missing_const_for_fn)]
+  pub fn is_empty(&self) -> bool {
     self.entries.is_empty()
   }
 
@@ -122,9 +124,7 @@ where
     let cell = system_state.cell(&pid).ok_or(AdapterError::ActorUnavailable)?;
     let (handle_id, lifecycle) = cell.acquire_adapter_handle();
     let target = cell.mailbox_sender();
-    let target_trait: ArcShared<dyn crate::core::actor_prim::actor_ref::ActorRefSender<TB>> = target;
-    let adapter_sender =
-      ArcShared::new(AdapterRefSender::new(pid, handle_id, target_trait, lifecycle, system_state.clone()));
+    let adapter_sender = AdapterRefSender::new(pid, handle_id, target, lifecycle, system_state.clone());
     let adapter_ref = ActorRefGeneric::with_system(pid, adapter_sender, system_state.clone());
 
     self.adapter_ref = Some(adapter_ref.clone());

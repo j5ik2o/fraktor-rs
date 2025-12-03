@@ -510,6 +510,7 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
     match command {
       | SchedulerCommand::Noop => {},
       | SchedulerCommand::SendMessage { receiver, message, .. } => {
+        let receiver = receiver.clone();
         let _ = receiver.tell(message.clone());
       },
       | SchedulerCommand::RunRunnable { runnable, .. } => {

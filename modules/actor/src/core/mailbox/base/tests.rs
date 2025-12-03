@@ -1,10 +1,8 @@
-use fraktor_utils_rs::core::sync::ArcShared;
-
 use crate::core::{
   actor_prim::Pid,
   mailbox::{Mailbox, MailboxInstrumentation, MailboxOverflowStrategy, MailboxPolicy},
   messaging::{AnyMessage, SystemMessage},
-  system::SystemState,
+  system::{SystemState, SystemStateShared},
 };
 
 #[test]
@@ -16,7 +14,7 @@ fn mailbox_new() {
 #[test]
 fn mailbox_set_instrumentation() {
   let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
-  let system_state = ArcShared::new(SystemState::new());
+  let system_state = SystemStateShared::new(SystemState::new());
   let pid = Pid::new(1, 0);
   let instrumentation = MailboxInstrumentation::new(system_state, pid, None, None, None);
   mailbox.set_instrumentation(instrumentation);

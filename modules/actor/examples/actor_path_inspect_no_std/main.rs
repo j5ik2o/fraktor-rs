@@ -107,7 +107,7 @@ fn main() {
 
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start inspector");
 
-  while !termination.lock().is_ready() {
+  while !termination.is_ready() {
     thread::yield_now();
   }
 }

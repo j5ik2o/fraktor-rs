@@ -44,6 +44,7 @@ impl ManualDelayProvider {
 
   /// Returns the number of pending handles (testing helper).
   #[must_use]
+  #[allow(clippy::missing_const_for_fn)]
   pub fn pending_count(&self) -> usize {
     self.handles.len()
   }

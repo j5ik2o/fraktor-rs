@@ -12,7 +12,6 @@ use crate::{
     error::SendError,
     event_stream::{EventStream, EventStreamEvent, EventStreamSubscriberAdapter, EventStreamSubscription},
     futures::ActorFutureShared,
-    system::SystemState,
     typed::{TypedProps, actor_prim::TypedActorRef},
   },
 };
@@ -59,7 +58,7 @@ where
 
   /// Returns the shared system state handle.
   #[must_use]
-  pub fn state(&self) -> ArcShared<SystemState> {
+  pub fn state(&self) -> crate::std::system::SystemStateShared {
     self.inner.state()
   }
 

@@ -18,32 +18,33 @@ use crate::core::{
 
 // Test sender that collects messages
 struct CollectorSender {
-  messages: NoStdMutex<alloc::vec::Vec<EventStreamEvent<NoStdToolbox>>>,
+  messages: ArcShared<NoStdMutex<alloc::vec::Vec<EventStreamEvent<NoStdToolbox>>>>,
 }
 
 impl CollectorSender {
-  fn new() -> Self {
-    Self { messages: NoStdMutex::new(alloc::vec::Vec::new()) }
-  }
-
-  fn take_messages(&self) -> alloc::vec::Vec<EventStreamEvent<NoStdToolbox>> {
-    self.messages.lock().drain(..).collect()
+  fn new(messages: ArcShared<NoStdMutex<alloc::vec::Vec<EventStreamEvent<NoStdToolbox>>>>) -> Self {
+    Self { messages }
   }
 }
 
 impl ActorRefSender<NoStdToolbox> for CollectorSender {
-  fn send(&self, message: AnyMessageGeneric<NoStdToolbox>) -> Result<(), SendError<NoStdToolbox>> {
+  fn send(
+    &mut self,
+    message: AnyMessageGeneric<NoStdToolbox>,
+  ) -> Result<crate::core::actor_prim::actor_ref::SendOutcome, SendError<NoStdToolbox>> {
     if let Some(event) = message.payload().downcast_ref::<EventStreamEvent<NoStdToolbox>>() {
       self.messages.lock().push(event.clone());
     }
-    Ok(())
+    Ok(crate::core::actor_prim::actor_ref::SendOutcome::Delivered)
   }
 }
 
 #[test]
 fn actor_ref_subscriber_forwards_events_to_actor() {
-  let sender = ArcShared::new(CollectorSender::new());
-  let actor_ref = ActorRefGeneric::new(Pid::new(1, 0), sender.clone());
+  let messages = ArcShared::new(NoStdMutex::new(alloc::vec::Vec::new()));
+  let messages_clone = messages.clone();
+  let sender = CollectorSender::new(messages);
+  let actor_ref = ActorRefGeneric::new(Pid::new(1, 0), sender);
 
   let mut subscriber = ActorRefEventStreamSubscriber::new(actor_ref.clone());
 
@@ -56,15 +57,17 @@ fn actor_ref_subscriber_forwards_events_to_actor() {
 
   subscriber.on_event(&event);
 
-  let messages = sender.take_messages();
-  assert_eq!(messages.len(), 1);
-  assert!(matches!(messages[0], EventStreamEvent::Log(_)));
+  let captured: alloc::vec::Vec<_> = messages_clone.lock().drain(..).collect();
+  assert_eq!(captured.len(), 1);
+  assert!(matches!(captured[0], EventStreamEvent::Log(_)));
 }
 
 #[test]
 fn actor_ref_subscriber_handles_multiple_events() {
-  let sender = ArcShared::new(CollectorSender::new());
-  let actor_ref = ActorRefGeneric::new(Pid::new(1, 0), sender.clone());
+  let messages = ArcShared::new(NoStdMutex::new(alloc::vec::Vec::new()));
+  let messages_clone = messages.clone();
+  let sender = CollectorSender::new(messages);
+  let actor_ref = ActorRefGeneric::new(Pid::new(1, 0), sender);
 
   let mut subscriber = ActorRefEventStreamSubscriber::new(actor_ref.clone());
 
@@ -78,13 +81,14 @@ fn actor_ref_subscriber_handles_multiple_events() {
     subscriber.on_event(&event);
   }
 
-  let messages = sender.take_messages();
-  assert_eq!(messages.len(), 10);
+  let captured: alloc::vec::Vec<_> = messages_clone.lock().drain(..).collect();
+  assert_eq!(captured.len(), 10);
 }
 
 #[test]
 fn actor_ref_returns_correct_reference() {
-  let sender = ArcShared::new(CollectorSender::new());
+  let messages = ArcShared::new(NoStdMutex::new(alloc::vec::Vec::new()));
+  let sender = CollectorSender::new(messages);
   let actor_ref = ActorRefGeneric::new(Pid::new(1, 0), sender);
 
   let subscriber = ActorRefEventStreamSubscriber::new(actor_ref.clone());

@@ -8,34 +8,31 @@ use core::{
   hash::{Hash, Hasher},
 };
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 
 use crate::core::{
   actor_prim::{
     Pid,
     actor_path::ActorPath,
-    actor_ref::{ActorRefSender, NullSender, ask_reply_sender::AskReplySenderGeneric},
+    actor_ref::{ActorRefSender, ActorRefSenderSharedGeneric, NullSender, ask_reply_sender::AskReplySenderGeneric},
   },
   error::SendError,
-  futures::ActorFuture,
+  futures::ActorFutureSharedGeneric,
   messaging::{AnyMessageGeneric, AskResponseGeneric},
-  system::SystemStateGeneric,
+  system::SystemStateSharedGeneric,
 };
 
 /// Handle used to communicate with an actor instance.
-pub struct ActorRefGeneric<TB: RuntimeToolbox> {
+pub struct ActorRefGeneric<TB: RuntimeToolbox + 'static> {
   pid:    Pid,
-  sender: ArcShared<dyn ActorRefSender<TB>>,
-  system: Option<ArcShared<SystemStateGeneric<TB>>>,
+  sender: ActorRefSenderSharedGeneric<TB>,
+  system: Option<SystemStateSharedGeneric<TB>>,
 }
 
-impl<TB: RuntimeToolbox> ActorRefGeneric<TB> {
+impl<TB: RuntimeToolbox + 'static> ActorRefGeneric<TB> {
   /// Creates a new actor reference backed by the provided sender.
   #[must_use]
-  pub fn new<T>(pid: Pid, sender: ArcShared<T>) -> Self
+  pub fn new<T>(pid: Pid, sender: T) -> Self
   where
     T: ActorRefSender<TB> + 'static, {
     Self::from_parts(pid, sender, None)
@@ -43,17 +40,26 @@ impl<TB: RuntimeToolbox> ActorRefGeneric<TB> {
 
   /// Creates an actor reference backed by the given sender and system state (path-aware).
   #[must_use]
-  pub fn with_system<T>(pid: Pid, sender: ArcShared<T>, system: ArcShared<SystemStateGeneric<TB>>) -> Self
+  pub fn with_system<T>(pid: Pid, sender: T, system: SystemStateSharedGeneric<TB>) -> Self
   where
     T: ActorRefSender<TB> + 'static, {
     Self::from_parts(pid, sender, Some(system))
   }
 
-  fn from_parts<T>(pid: Pid, sender: ArcShared<T>, system: Option<ArcShared<SystemStateGeneric<TB>>>) -> Self
+  fn from_parts<T>(pid: Pid, sender: T, system: Option<SystemStateSharedGeneric<TB>>) -> Self
   where
     T: ActorRefSender<TB> + 'static, {
-    let dyn_sender: ArcShared<dyn ActorRefSender<TB>> = sender;
-    Self { pid, sender: dyn_sender, system }
+    Self { pid, sender: ActorRefSenderSharedGeneric::new(sender), system }
+  }
+
+  /// Creates an actor reference from an existing shared sender.
+  #[must_use]
+  pub const fn from_shared(
+    pid: Pid,
+    sender: ActorRefSenderSharedGeneric<TB>,
+    system: SystemStateSharedGeneric<TB>,
+  ) -> Self {
+    Self { pid, sender, system: Some(system) }
   }
 
   /// Returns the unique process identifier.
@@ -75,6 +81,9 @@ impl<TB: RuntimeToolbox> ActorRefGeneric<TB> {
   }
 
   /// Sends a message to the referenced actor.
+  ///
+  /// This method delegates to the internal sender which uses interior mutability.
+  /// The `&self` signature is intentional as no external mutable borrow is required.
   ///
   /// # Errors
   ///
@@ -99,8 +108,8 @@ impl<TB: RuntimeToolbox> ActorRefGeneric<TB> {
   pub fn ask(&self, message: AnyMessageGeneric<TB>) -> Result<AskResponseGeneric<TB>, SendError<TB>>
   where
     TB: 'static, {
-    let future = ActorFuture::<AnyMessageGeneric<TB>, TB>::new_shared();
-    let reply_sender = ArcShared::new(AskReplySenderGeneric::<TB>::new(future.clone()));
+    let future = ActorFutureSharedGeneric::<AnyMessageGeneric<TB>, TB>::new();
+    let reply_sender = AskReplySenderGeneric::<TB>::new(future.clone());
     let reply_ref = ActorRefGeneric::<TB>::new(self.pid, reply_sender);
     let envelope = message.with_reply_to(reply_ref.clone());
     self.tell(envelope)?;
@@ -113,13 +122,11 @@ impl<TB: RuntimeToolbox> ActorRefGeneric<TB> {
   /// Creates a placeholder reference that rejects all messages.
   #[must_use]
   pub fn null() -> Self {
-    let sender = ArcShared::new(NullSender);
-    let dyn_sender: ArcShared<dyn ActorRefSender<TB>> = sender;
-    Self { pid: Pid::new(0, 0), sender: dyn_sender, system: None }
+    Self { pid: Pid::new(0, 0), sender: ActorRefSenderSharedGeneric::new(NullSender), system: None }
   }
 }
 
-impl<TB: RuntimeToolbox> Clone for ActorRefGeneric<TB> {
+impl<TB: RuntimeToolbox + 'static> Clone for ActorRefGeneric<TB> {
   fn clone(&self) -> Self {
     Self { pid: self.pid, sender: self.sender.clone(), system: self.system.clone() }
   }
@@ -127,25 +134,25 @@ impl<TB: RuntimeToolbox> Clone for ActorRefGeneric<TB> {
 
 // SAFETY: `ActorRefGeneric` holds `ArcShared` handles to trait objects that are required to be both
 // `Send` and `Sync`. Cloning or dropping the reference does not violate thread-safety guarantees.
-unsafe impl<TB: RuntimeToolbox> Send for ActorRefGeneric<TB> {}
+unsafe impl<TB: RuntimeToolbox + 'static> Send for ActorRefGeneric<TB> {}
 
-unsafe impl<TB: RuntimeToolbox> Sync for ActorRefGeneric<TB> {}
+unsafe impl<TB: RuntimeToolbox + 'static> Sync for ActorRefGeneric<TB> {}
 
-impl<TB: RuntimeToolbox> fmt::Debug for ActorRefGeneric<TB> {
+impl<TB: RuntimeToolbox + 'static> fmt::Debug for ActorRefGeneric<TB> {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     f.debug_struct("ActorRef").field("pid", &self.pid).finish()
   }
 }
 
-impl<TB: RuntimeToolbox> PartialEq for ActorRefGeneric<TB> {
+impl<TB: RuntimeToolbox + 'static> PartialEq for ActorRefGeneric<TB> {
   fn eq(&self, other: &Self) -> bool {
     self.pid == other.pid
   }
 }
 
-impl<TB: RuntimeToolbox> Eq for ActorRefGeneric<TB> {}
+impl<TB: RuntimeToolbox + 'static> Eq for ActorRefGeneric<TB> {}
 
-impl<TB: RuntimeToolbox> Hash for ActorRefGeneric<TB> {
+impl<TB: RuntimeToolbox + 'static> Hash for ActorRefGeneric<TB> {
   fn hash<H: Hasher>(&self, state: &mut H) {
     self.pid.hash(state);
   }

@@ -27,6 +27,7 @@ mod root_guardian_actor;
 mod system_guardian_actor;
 mod system_guardian_protocol;
 mod system_state;
+mod system_state_shared;
 
 pub use actor_path_handle::ActorPathHandle;
 pub use actor_path_registry::ActorPathRegistry;
@@ -53,3 +54,4 @@ pub(crate) use root_guardian_actor::RootGuardianActor;
 pub(crate) use system_guardian_actor::SystemGuardianActor;
 pub use system_guardian_protocol::SystemGuardianProtocol;
 pub use system_state::{FailureOutcome, SystemState, SystemStateGeneric};
+pub use system_state_shared::{SystemStateShared, SystemStateSharedGeneric};

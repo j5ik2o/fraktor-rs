@@ -21,8 +21,11 @@ use crate::core::{
 struct RecordingSender;
 
 impl ActorRefSender<NoStdToolbox> for RecordingSender {
-  fn send(&self, _message: AnyMessage) -> Result<(), SendError<NoStdToolbox>> {
-    Ok(())
+  fn send(
+    &mut self,
+    _message: AnyMessage,
+  ) -> Result<crate::core::actor_prim::actor_ref::SendOutcome, SendError<NoStdToolbox>> {
+    Ok(crate::core::actor_prim::actor_ref::SendOutcome::Delivered)
   }
 }
 
@@ -128,7 +131,7 @@ fn pipeline_sets_and_clears_reply_to() {
   let mut actor = CaptureActor::new();
   let pipeline = MessageInvokerPipeline::new();
 
-  let reply_sender = ArcShared::new(RecordingSender);
+  let reply_sender = RecordingSender;
   let reply_ref = ActorRef::new(Pid::new(2, 0), reply_sender);
 
   let message = AnyMessage::new(123_u32).with_reply_to(reply_ref.clone());
@@ -147,7 +150,7 @@ fn pipeline_restores_previous_reply_target() {
   let mut actor = CaptureActor::new();
   let pipeline = MessageInvokerPipeline::new();
 
-  let previous_sender = ArcShared::new(RecordingSender);
+  let previous_sender = RecordingSender;
   let previous_ref = ActorRef::new(Pid::new(3, 0), previous_sender);
   ctx.set_reply_to(Some(previous_ref.clone()));
 

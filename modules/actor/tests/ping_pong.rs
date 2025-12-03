@@ -61,7 +61,7 @@ impl Actor for RecordingGuardian {
   ) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
       let log = self.log.clone();
-      let child = ctx
+      let mut child = ctx
         .spawn_child(&Props::from_fn(move || RecordingChild::new(log.clone())))
         .map_err(|_| ActorError::recoverable("spawn failed"))?;
       self.child_slot.lock().replace(child.clone());

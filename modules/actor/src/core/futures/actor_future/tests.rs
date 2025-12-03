@@ -6,7 +6,7 @@ use core::{
 
 use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 
-use crate::core::futures::ActorFuture;
+use crate::core::futures::{ActorFutureListener, ActorFutureSharedGeneric};
 
 fn noop_waker() -> Waker {
   fn noop(_: *const ()) {}
@@ -19,12 +19,12 @@ fn noop_waker() -> Waker {
 
 #[test]
 fn completes_and_listens() {
-  let future = ActorFuture::<i32, NoStdToolbox>::new_shared();
-  let mut listener = ActorFuture::<i32, NoStdToolbox>::listener(future.clone());
+  let future = ActorFutureSharedGeneric::<i32, NoStdToolbox>::new();
+  let mut listener = ActorFutureListener::new(future.clone());
 
-  assert!(future.lock().try_take().is_none());
+  assert!(future.try_take().is_none());
 
-  future.lock().complete(10);
+  future.complete(10);
 
   let waker = noop_waker();
   let mut cx = Context::from_waker(&waker);

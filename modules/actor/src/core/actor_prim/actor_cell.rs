@@ -15,11 +15,11 @@ use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 use crate::core::{
   actor_prim::{
     Actor, ActorContextGeneric, ContextPipeTaskId, Pid,
-    actor_ref::ActorRefGeneric,
+    actor_ref::{ActorRefGeneric, ActorRefSenderSharedGeneric},
     context_pipe_task::{ContextPipeFuture, ContextPipeTask},
     pipe_spawn_error::PipeSpawnError,
   },
-  dispatcher::{DispatcherGeneric, DispatcherSenderGeneric},
+  dispatcher::DispatcherGeneric,
   error::ActorError,
   event_stream::EventStreamEvent,
   lifecycle::{LifecycleEvent, LifecycleStage},
@@ -31,7 +31,7 @@ use crate::core::{
   props::{ActorFactory, PropsGeneric},
   spawn::SpawnError,
   supervision::{RestartStatistics, SupervisorDirective, SupervisorStrategyKind},
-  system::{ActorSystemGeneric, FailureOutcome, GuardianKind, SystemStateGeneric},
+  system::{ActorSystemGeneric, FailureOutcome, GuardianKind, SystemStateSharedGeneric},
   typed::message_adapter::{AdapterLifecycleState, AdapterRefHandle, AdapterRefHandleId},
 };
 
@@ -40,13 +40,13 @@ pub struct ActorCellGeneric<TB: RuntimeToolbox + 'static> {
   pid:                    Pid,
   parent:                 Option<Pid>,
   name:                   String,
-  system:                 ArcShared<SystemStateGeneric<TB>>,
+  system:                 SystemStateSharedGeneric<TB>,
   factory:                ArcShared<ToolboxMutex<Box<dyn ActorFactory<TB>>, TB>>,
   actor:                  ToolboxMutex<Box<dyn Actor<TB> + Send + Sync>, TB>,
   pipeline:               MessageInvokerPipelineGeneric<TB>,
   mailbox:                ArcShared<MailboxGeneric<TB>>,
   dispatcher:             DispatcherGeneric<TB>,
-  sender:                 ArcShared<DispatcherSenderGeneric<TB>>,
+  sender:                 ActorRefSenderSharedGeneric<TB>,
   children:               ToolboxMutex<Vec<Pid>, TB>,
   child_stats:            ToolboxMutex<Vec<(Pid, RestartStatistics)>, TB>,
   watchers:               ToolboxMutex<Vec<Pid>, TB>,
@@ -68,7 +68,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
   /// Returns [`SpawnError::InvalidMailboxConfig`] if the mailbox configuration is incompatible
   /// with the dispatcher executor (e.g., using Block strategy with a non-blocking executor).
   pub fn create(
-    system: ArcShared<SystemStateGeneric<TB>>,
+    system: SystemStateSharedGeneric<TB>,
     pid: Pid,
     parent: Option<Pid>,
     name: String,
@@ -169,14 +169,14 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
 
   /// Returns a sender handle targeting this actor cell's mailbox.
   #[must_use]
-  pub(crate) fn mailbox_sender(&self) -> ArcShared<DispatcherSenderGeneric<TB>> {
+  pub(crate) fn mailbox_sender(&self) -> ActorRefSenderSharedGeneric<TB> {
     self.sender.clone()
   }
 
   /// Produces an actor reference targeting this cell.
   #[must_use]
   pub fn actor_ref(&self) -> ActorRefGeneric<TB> {
-    ActorRefGeneric::with_system(self.pid, self.sender.clone(), self.system.clone())
+    ActorRefGeneric::from_shared(self.pid, self.sender.clone(), self.system.clone())
   }
 
   /// Registers a child pid for supervision.
@@ -394,15 +394,15 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     }
 
     self.system.release_name(self.parent, &self.name);
-    self.system.remove_cell(&self.pid);
+    let _ = self.system.remove_cell(&self.pid);
 
     match self.system.clear_guardian(self.pid) {
       | Some(GuardianKind::Root) => {
-        self.system.mark_terminated();
+        self.system.clone().mark_terminated();
       },
       | Some(GuardianKind::User) | Some(GuardianKind::System) => {
         if self.system.root_guardian_pid().is_none() {
-          self.system.mark_terminated();
+          self.system.clone().mark_terminated();
         }
       },
       | None => {},

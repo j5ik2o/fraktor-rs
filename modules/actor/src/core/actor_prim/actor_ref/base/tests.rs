@@ -10,7 +10,7 @@ use crate::core::{
   },
   error::SendError,
   messaging::AnyMessage,
-  system::SystemState,
+  system::{SystemState, SystemStateShared},
 };
 
 struct RecordingSender {
@@ -18,18 +18,21 @@ struct RecordingSender {
 }
 
 impl RecordingSender {
-  fn new() -> (ArcShared<AtomicUsize>, ArcShared<Self>) {
+  fn new() -> (ArcShared<AtomicUsize>, Self) {
     let count = ArcShared::new(AtomicUsize::new(0));
-    let sender = ArcShared::new(Self { count: count.clone() });
+    let sender = Self { count: count.clone() };
     (count, sender)
   }
 }
 
 impl ActorRefSender for RecordingSender {
-  fn send(&self, _message: AnyMessage) -> Result<(), SendError<NoStdToolbox>> {
+  fn send(
+    &mut self,
+    _message: AnyMessage,
+  ) -> Result<crate::core::actor_prim::actor_ref::SendOutcome, SendError<NoStdToolbox>> {
     use core::sync::atomic::Ordering;
     self.count.fetch_add(1, Ordering::Relaxed);
-    Ok(())
+    Ok(crate::core::actor_prim::actor_ref::SendOutcome::Delivered)
   }
 }
 
@@ -73,7 +76,7 @@ fn actor_ref_with_system() {
   use crate::core::system::SystemState;
 
   let (_, sender) = RecordingSender::new();
-  let system = ArcShared::new(SystemState::new());
+  let system = SystemStateShared::new(SystemState::new());
   let pid = Pid::new(1, 0);
   let actor: ActorRef = ActorRef::with_system(pid, sender, system.clone());
 
@@ -103,7 +106,7 @@ fn actor_ref_path_resolves_segments() {
     }
   }
 
-  let system = ArcShared::new(SystemState::new());
+  let system = SystemStateShared::new(SystemState::new());
   let root_pid = system.allocate_pid();
   let child_pid = system.allocate_pid();
   let props = Props::from_fn(|| PathActor);
@@ -114,17 +117,15 @@ fn actor_ref_path_resolves_segments() {
   system.register_cell(child);
 
   use crate::core::actor_prim::actor_ref::null_sender::NullSender;
-  let sender = ArcShared::new(NullSender);
-  let actor: ActorRef = ActorRef::with_system(child_pid, sender, system.clone());
+  let actor: ActorRef = ActorRef::with_system(child_pid, NullSender, system.clone());
   assert_eq!(actor.path().expect("path").to_string(), "/user/worker");
 }
 
 #[test]
 fn actor_ref_tell_with_system_records_error() {
-  let system = ArcShared::new(SystemState::new());
+  let system = SystemStateShared::new(SystemState::new());
   let pid = Pid::new(1, 0);
-  let null_sender = ArcShared::new(NullSender);
-  let actor: ActorRef = ActorRef::with_system(pid, null_sender, system.clone());
+  let actor: ActorRef = ActorRef::with_system(pid, NullSender, system.clone());
 
   let result = actor.tell(AnyMessage::new(42_u32));
   assert!(result.is_err());
