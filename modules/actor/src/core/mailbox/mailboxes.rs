@@ -1,10 +1,7 @@
 use alloc::{borrow::ToOwned, string::String};
 
 use ahash::RandomState;
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 use hashbrown::HashMap;
 
 use crate::core::{mailbox::MailboxRegistryError, props::MailboxConfig};
@@ -22,8 +19,6 @@ pub struct MailboxesGeneric<TB: RuntimeToolbox + 'static> {
 
 /// Type alias bound to the default toolbox.
 pub type Mailboxes = MailboxesGeneric<NoStdToolbox>;
-/// Shared mailbox registry guarded by a toolbox mutex.
-pub type MailboxesShared<TB> = ArcShared<ToolboxMutex<MailboxesGeneric<TB>, TB>>;
 
 impl<TB: RuntimeToolbox + 'static> MailboxesGeneric<TB> {
   /// Creates an empty mailbox registry.

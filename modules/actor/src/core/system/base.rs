@@ -615,12 +615,8 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
       }
     }
     if let Some(mailbox_id) = resolved.mailbox_id() {
-      let config = {
-        let mailboxes = self.state.mailboxes();
-        let guard = mailboxes.lock();
-        guard.resolve(mailbox_id)
-      }
-      .map_err(|error| SpawnError::invalid_props(error.to_string()))?;
+      let config =
+        self.state.mailboxes().resolve(mailbox_id).map_err(|error| SpawnError::invalid_props(error.to_string()))?;
       resolved = resolved.with_resolved_mailbox(config);
     }
     Ok(resolved)
