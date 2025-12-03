@@ -7,7 +7,6 @@ use alloc::{string::ToString, vec, vec::Vec};
 use core::sync::atomic::Ordering;
 
 use fraktor_actor_rs::core::event_stream::{CorrelationId, RemotingLifecycleEvent};
-use fraktor_utils_rs::core::{runtime_toolbox::NoStdMutex, sync::ArcShared};
 use portable_atomic::AtomicU64;
 
 use crate::core::{
@@ -17,8 +16,13 @@ use crate::core::{
 };
 
 /// Tracks per-authority association state.
+///
+/// # Interior Mutability Removed
+///
+/// This type now requires `&mut self` for state-mutating operations.
+/// Callers requiring shared access should use [`EndpointManagerShared`].
 pub struct EndpointManager {
-  registry:        ArcShared<NoStdMutex<EndpointRegistry>>,
+  registry:        EndpointRegistry,
   correlation_seq: AtomicU64,
 }
 
@@ -32,17 +36,13 @@ impl EndpointManager {
   /// Creates a new endpoint manager instance.
   #[must_use]
   pub fn new() -> Self {
-    Self {
-      registry:        ArcShared::new(NoStdMutex::new(EndpointRegistry::default())),
-      correlation_seq: AtomicU64::new(1),
-    }
+    Self { registry: EndpointRegistry::default(), correlation_seq: AtomicU64::new(1) }
   }
 
   /// Returns the current association state for the provided authority when available.
   #[must_use]
   pub fn state(&self, authority: &str) -> Option<AssociationState> {
-    let registry = self.registry.lock();
-    registry.state(authority).cloned()
+    self.registry.state(authority).cloned()
   }
 
   fn next_correlation_id(&self) -> CorrelationId {
@@ -51,18 +51,16 @@ impl EndpointManager {
   }
 
   /// Handles a command and returns the produced effects.
-  pub fn handle(&self, command: EndpointManagerCommand) -> EndpointManagerResult {
+  pub fn handle(&mut self, command: EndpointManagerCommand) -> EndpointManagerResult {
     match command {
       | EndpointManagerCommand::RegisterInbound { authority, now } => {
-        let mut registry = self.registry.lock();
-        registry.ensure_entry(&authority);
-        registry.set_state(&authority, AssociationState::Unassociated, now, None);
+        self.registry.ensure_entry(&authority);
+        self.registry.set_state(&authority, AssociationState::Unassociated, now, None);
         EndpointManagerResult::default()
       },
       | EndpointManagerCommand::Associate { authority, endpoint, now } => {
-        let mut registry = self.registry.lock();
-        registry.ensure_entry(&authority);
-        registry.set_state(
+        self.registry.ensure_entry(&authority);
+        self.registry.set_state(
           &authority,
           AssociationState::Associating { endpoint: endpoint.clone() },
           now,
@@ -72,25 +70,23 @@ impl EndpointManager {
       },
       | EndpointManagerCommand::EnqueueDeferred { authority, envelope } => {
         let envelope = *envelope;
-        let mut registry = self.registry.lock();
-        if matches!(registry.state(&authority), Some(AssociationState::Connected { .. })) {
+        if matches!(self.registry.state(&authority), Some(AssociationState::Connected { .. })) {
           return EndpointManagerResult {
             effects: vec![EndpointManagerEffect::DeliverEnvelopes { authority, envelopes: vec![envelope] }],
           };
         }
-        registry.push_deferred(&authority, envelope);
+        self.registry.push_deferred(&authority, envelope);
         EndpointManagerResult::default()
       },
       | EndpointManagerCommand::HandshakeAccepted { authority, remote_node, now } => {
-        let mut registry = self.registry.lock();
-        registry.ensure_entry(&authority);
-        registry.set_state(
+        self.registry.ensure_entry(&authority);
+        self.registry.set_state(
           &authority,
           AssociationState::Connected { remote: remote_node.clone() },
           now,
           Some("connected"),
         );
-        let envelopes = registry.drain_deferred(&authority);
+        let envelopes = self.registry.drain_deferred(&authority);
         let mut effects = Vec::new();
         if !envelopes.is_empty() {
           effects.push(EndpointManagerEffect::DeliverEnvelopes { authority: authority.clone(), envelopes });
@@ -105,10 +101,9 @@ impl EndpointManager {
         EndpointManagerResult { effects }
       },
       | EndpointManagerCommand::Quarantine { authority, reason, resume_at, now } => {
-        let mut registry = self.registry.lock();
-        registry.ensure_entry(&authority);
-        let envelopes = registry.drain_deferred(&authority);
-        registry.set_state(
+        self.registry.ensure_entry(&authority);
+        let envelopes = self.registry.drain_deferred(&authority);
+        self.registry.set_state(
           &authority,
           AssociationState::Quarantined { reason: reason.clone(), resume_at },
           now,
@@ -131,20 +126,18 @@ impl EndpointManager {
         EndpointManagerResult { effects }
       },
       | EndpointManagerCommand::Gate { authority, resume_at, now } => {
-        let mut registry = self.registry.lock();
-        registry.ensure_entry(&authority);
-        registry.set_state(&authority, AssociationState::Gated { resume_at }, now, Some("gated"));
+        self.registry.ensure_entry(&authority);
+        self.registry.set_state(&authority, AssociationState::Gated { resume_at }, now, Some("gated"));
         let correlation_id = self.next_correlation_id();
         EndpointManagerResult {
           effects: vec![EndpointManagerEffect::Lifecycle(RemotingLifecycleEvent::Gated { authority, correlation_id })],
         }
       },
       | EndpointManagerCommand::Recover { authority, endpoint, now } => {
-        let mut registry = self.registry.lock();
-        registry.ensure_entry(&authority);
+        self.registry.ensure_entry(&authority);
         match endpoint {
           | Some(endpoint) => {
-            registry.set_state(
+            self.registry.set_state(
               &authority,
               AssociationState::Associating { endpoint: endpoint.clone() },
               now,
@@ -153,7 +146,7 @@ impl EndpointManager {
             EndpointManagerResult { effects: vec![EndpointManagerEffect::StartHandshake { authority, endpoint }] }
           },
           | None => {
-            registry.set_state(&authority, AssociationState::Unassociated, now, Some("recovered"));
+            self.registry.set_state(&authority, AssociationState::Unassociated, now, Some("recovered"));
             EndpointManagerResult::default()
           },
         }
@@ -161,3 +154,44 @@ impl EndpointManager {
     }
   }
 }
+
+use fraktor_utils_rs::core::{
+  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
+  sync::sync_mutex_like::SyncMutexLike,
+};
+
+/// Shared wrapper for [`EndpointManager`] enabling interior mutability.
+///
+/// This wrapper provides `&self` methods that internally lock the underlying
+/// [`EndpointManager`], allowing safe concurrent access from multiple owners.
+pub struct EndpointManagerSharedGeneric<TB: RuntimeToolbox + 'static> {
+  inner: ToolboxMutex<EndpointManager, TB>,
+}
+
+impl<TB: RuntimeToolbox + 'static> Default for EndpointManagerSharedGeneric<TB> {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
+impl<TB: RuntimeToolbox + 'static> EndpointManagerSharedGeneric<TB> {
+  /// Creates a new shared endpoint manager instance.
+  #[must_use]
+  pub fn new() -> Self {
+    Self { inner: <TB::MutexFamily as SyncMutexFamily>::create(EndpointManager::new()) }
+  }
+
+  /// Returns the current association state for the provided authority when available.
+  #[must_use]
+  pub fn state(&self, authority: &str) -> Option<AssociationState> {
+    self.inner.lock().state(authority)
+  }
+
+  /// Handles a command and returns the produced effects.
+  pub fn handle(&self, command: EndpointManagerCommand) -> EndpointManagerResult {
+    self.inner.lock().handle(command)
+  }
+}
+
+/// Type alias for [`EndpointManagerSharedGeneric`] using the default [`NoStdToolbox`].
+pub type EndpointManagerShared = EndpointManagerSharedGeneric<NoStdToolbox>;

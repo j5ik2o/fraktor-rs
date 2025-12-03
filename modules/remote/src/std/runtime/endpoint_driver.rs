@@ -18,7 +18,7 @@ use fraktor_utils_rs::core::{
 use tokio::{sync::Mutex as TokioMutex, task::JoinHandle, time::sleep};
 
 use crate::core::{
-  AssociationState, DeferredEnvelope, EndpointManager, EndpointManagerCommand, EndpointManagerEffect,
+  AssociationState, DeferredEnvelope, EndpointManagerCommand, EndpointManagerEffect, EndpointManagerSharedGeneric,
   EndpointReaderGeneric, EndpointWriterGeneric, EventPublisherGeneric, HandshakeFrame, HandshakeKind, InboundFrame,
   RemoteNodeId, RemoteTransportShared, RemotingEnvelope, TransportBind, TransportChannel, TransportEndpoint,
   TransportError, TransportHandle, TransportInbound, TransportInboundShared, WireError,
@@ -70,7 +70,7 @@ pub(crate) struct EndpointDriver<TB: RuntimeToolbox + 'static> {
   listener:        TokioMutex<Option<TransportHandle>>,
   channels:        TokioMutex<BTreeMap<String, TransportChannel>>,
   peers:           TokioMutex<BTreeMap<String, RemoteNodeId>>,
-  manager:         EndpointManager,
+  manager:         EndpointManagerSharedGeneric<TB>,
 }
 
 impl<TB: RuntimeToolbox + 'static> EndpointDriver<TB> {
@@ -87,7 +87,7 @@ impl<TB: RuntimeToolbox + 'static> EndpointDriver<TB> {
       listener:        TokioMutex::new(None),
       channels:        TokioMutex::new(BTreeMap::<String, TransportChannel>::new()),
       peers:           TokioMutex::new(BTreeMap::<String, RemoteNodeId>::new()),
-      manager:         EndpointManager::new(),
+      manager:         EndpointManagerSharedGeneric::new(),
     })
   }
 
