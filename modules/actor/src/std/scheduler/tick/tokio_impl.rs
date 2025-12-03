@@ -131,11 +131,11 @@ impl TokioIntervalDriverControl {
 }
 
 impl TickDriverControl for TokioIntervalDriverControl {
-  fn shutdown(&mut self) {
-    if let Some(handle) = self.join.take() {
+  fn shutdown(&self) {
+    if let Some(handle) = &self.join {
       handle.abort();
     }
-    if let Some(mut emitter) = self.metrics.take() {
+    if let Some(emitter) = &self.metrics {
       emitter.shutdown();
     }
   }
@@ -171,8 +171,8 @@ impl StdTickMetricsEmitter {
     Self { join: Some(join) }
   }
 
-  fn shutdown(&mut self) {
-    if let Some(handle) = self.join.take() {
+  fn shutdown(&self) {
+    if let Some(handle) = &self.join {
       handle.abort();
     }
   }
