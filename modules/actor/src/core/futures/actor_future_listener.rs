@@ -6,28 +6,44 @@ use core::{
   task::{Context, Poll},
 };
 
-use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
+use fraktor_utils_rs::core::{
+  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
+  sync::sync_mutex_like::SyncMutexLike,
+};
 
-use crate::core::futures::ActorFuture;
+use crate::core::futures::ActorFutureShared;
 
 /// Future adapter that polls the underlying [`ActorFuture`].
-pub struct ActorFutureListener<'a, T, TB: RuntimeToolbox = NoStdToolbox>
+///
+/// This listener holds a shared reference to the future and locks the mutex
+/// on each poll to access the inner state.
+pub struct ActorFutureListener<T, TB: RuntimeToolbox = NoStdToolbox>
 where
   T: Send + 'static, {
-  future: &'a ActorFuture<T, TB>,
+  future: ActorFutureShared<T, TB>,
 }
 
-impl<'a, T, TB> ActorFutureListener<'a, T, TB>
+impl<T, TB> ActorFutureListener<T, TB>
 where
   T: Send + 'static,
   TB: RuntimeToolbox,
 {
-  pub(crate) const fn new(future: &'a ActorFuture<T, TB>) -> Self {
+  pub(crate) const fn new(future: ActorFutureShared<T, TB>) -> Self {
     Self { future }
   }
 }
 
-impl<T, TB> Future for ActorFutureListener<'_, T, TB>
+impl<T, TB> Clone for ActorFutureListener<T, TB>
+where
+  T: Send + 'static,
+  TB: RuntimeToolbox,
+{
+  fn clone(&self) -> Self {
+    Self { future: self.future.clone() }
+  }
+}
+
+impl<T, TB> Future for ActorFutureListener<T, TB>
 where
   T: Send + 'static,
   TB: RuntimeToolbox,
@@ -35,16 +51,17 @@ where
   type Output = T;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-    if let Some(value) = self.future.try_take() {
+    let mut guard = self.future.lock();
+    if let Some(value) = guard.try_take() {
       Poll::Ready(value)
     } else {
-      self.future.register_waker(cx.waker());
+      guard.register_waker(cx.waker());
       Poll::Pending
     }
   }
 }
 
-impl<T, TB> Unpin for ActorFutureListener<'_, T, TB>
+impl<T, TB> Unpin for ActorFutureListener<T, TB>
 where
   T: Send + 'static,
   TB: RuntimeToolbox,

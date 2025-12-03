@@ -20,7 +20,7 @@ use crate::{
     dead_letter::DeadLetterEntry,
     error::SendError,
     event_stream::{EventStream, EventStreamEvent, EventStreamSubscriberAdapter, EventStreamSubscription},
-    futures::ActorFuture,
+    futures::ActorFutureShared,
     messaging::AnyMessage,
     props::Props,
     system::ActorSystemConfig,
@@ -154,7 +154,7 @@ impl ActorSystem {
 
   /// Drains ask futures that have been fulfilled since the last check.
   #[must_use]
-  pub fn drain_ready_ask_futures(&self) -> Vec<ArcShared<ActorFuture<AnyMessage>>> {
+  pub fn drain_ready_ask_futures(&self) -> Vec<ActorFutureShared<AnyMessage>> {
     self.inner.drain_ready_ask_futures()
   }
 
@@ -169,7 +169,7 @@ impl ActorSystem {
 
   /// Returns a future that resolves once the actor system terminates.
   #[must_use]
-  pub fn when_terminated(&self) -> ArcShared<ActorFuture<()>> {
+  pub fn when_terminated(&self) -> ActorFutureShared<()> {
     self.inner.when_terminated()
   }
 

@@ -173,5 +173,5 @@ fn main() {
 
   let termination = system.when_terminated();
   system.terminate().expect("terminate");
-  while !termination.is_ready() {}
+  while !termination.lock().is_ready() {}
 }

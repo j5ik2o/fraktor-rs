@@ -3,17 +3,14 @@
 #[cfg(test)]
 mod tests;
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 
-use crate::core::{actor_prim::actor_ref::ActorRefGeneric, futures::ActorFuture, messaging::AnyMessageGeneric};
+use crate::core::{actor_prim::actor_ref::ActorRefGeneric, futures::ActorFutureShared, messaging::AnyMessageGeneric};
 
 /// Combines the reply handle and future returned by `ActorRefGeneric::ask`.
 pub struct AskResponseGeneric<TB: RuntimeToolbox + 'static> {
   reply_to: ActorRefGeneric<TB>,
-  future:   ArcShared<ActorFuture<AnyMessageGeneric<TB>, TB>>,
+  future:   ActorFutureShared<AnyMessageGeneric<TB>, TB>,
 }
 
 /// Type alias for [AskResponseGeneric] with the default [NoStdToolbox].
@@ -22,7 +19,7 @@ pub type AskResponse = AskResponseGeneric<NoStdToolbox>;
 impl<TB: RuntimeToolbox + 'static> AskResponseGeneric<TB> {
   /// Creates a new ask response handle.
   #[must_use]
-  pub const fn new(reply_to: ActorRefGeneric<TB>, future: ArcShared<ActorFuture<AnyMessageGeneric<TB>, TB>>) -> Self {
+  pub const fn new(reply_to: ActorRefGeneric<TB>, future: ActorFutureShared<AnyMessageGeneric<TB>, TB>) -> Self {
     Self { reply_to, future }
   }
 
@@ -32,15 +29,15 @@ impl<TB: RuntimeToolbox + 'static> AskResponseGeneric<TB> {
     &self.reply_to
   }
 
-  /// Returns a reference to the future that resolves with the response message.
+  /// Returns a reference to the shared future that resolves with the response message.
   #[must_use]
-  pub const fn future(&self) -> &ArcShared<ActorFuture<AnyMessageGeneric<TB>, TB>> {
+  pub const fn future(&self) -> &ActorFutureShared<AnyMessageGeneric<TB>, TB> {
     &self.future
   }
 
   /// Decomposes the response into its parts.
   #[must_use]
-  pub fn into_parts(self) -> (ActorRefGeneric<TB>, ArcShared<ActorFuture<AnyMessageGeneric<TB>, TB>>) {
+  pub fn into_parts(self) -> (ActorRefGeneric<TB>, ActorFutureShared<AnyMessageGeneric<TB>, TB>) {
     (self.reply_to, self.future)
   }
 }

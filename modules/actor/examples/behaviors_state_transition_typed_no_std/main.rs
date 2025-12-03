@@ -90,7 +90,7 @@ fn main() {
   gate.tell(GateCommand::Shutdown).expect("shutdown gate");
 
   system.terminate().expect("terminate system");
-  while !termination.is_ready() {
+  while !termination.lock().is_ready() {
     thread::yield_now();
   }
 }

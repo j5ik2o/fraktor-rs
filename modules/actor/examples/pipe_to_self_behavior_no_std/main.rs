@@ -5,6 +5,7 @@ extern crate alloc;
 #[path = "../no_std_tick_driver_support.rs"]
 mod no_std_tick_driver_support;
 
+use fraktor_utils_rs::core::sync::sync_mutex_like::SyncMutexLike as _;
 use alloc::{format, string::String};
 
 use fraktor_actor_rs::core::{
@@ -62,7 +63,7 @@ fn main() {
 
   let termination = system.as_untyped().when_terminated();
   system.terminate().expect("terminate");
-  while !termination.is_ready() {
+  while !termination.lock().is_ready() {
     thread::yield_now();
   }
 }

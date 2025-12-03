@@ -5,6 +5,7 @@ extern crate alloc;
 #[path = "../no_std_tick_driver_support.rs"]
 mod no_std_tick_driver_support;
 
+use fraktor_utils_rs::core::sync::sync_mutex_like::SyncMutexLike as _;
 use alloc::{format, string::String};
 use core::time::Duration;
 
@@ -106,7 +107,7 @@ fn main() {
 
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start inspector");
 
-  while !termination.is_ready() {
+  while !termination.lock().is_ready() {
     thread::yield_now();
   }
 }

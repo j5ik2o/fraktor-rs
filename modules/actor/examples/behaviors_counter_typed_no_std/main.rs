@@ -1,5 +1,6 @@
 #![cfg_attr(all(not(test), target_os = "none"), no_std)]
 
+use fraktor_utils_rs::core::sync::sync_mutex_like::SyncMutexLike as _;
 use fraktor_actor_rs::core::{
   error::ActorError,
   typed::{Behavior, Behaviors, TypedActorSystem, TypedProps},
@@ -37,7 +38,7 @@ fn main() {
 
   let response = counter.ask::<i32>(CounterCommand::Read).expect("ask read");
   let future = response.future().clone();
-  while !future.is_ready() {
+  while !future.lock().is_ready() {
     thread::yield_now();
   }
   if let Some(result) = future.try_take() {
@@ -48,7 +49,7 @@ fn main() {
   }
 
   system.terminate().expect("terminate");
-  while !termination.is_ready() {
+  while !termination.lock().is_ready() {
     thread::yield_now();
   }
 }

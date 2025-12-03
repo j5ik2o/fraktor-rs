@@ -19,12 +19,12 @@ fn noop_waker() -> Waker {
 
 #[test]
 fn completes_and_listens() {
-  let future: ActorFuture<i32, NoStdToolbox> = ActorFuture::new();
-  let mut listener = future.listener();
+  let future = ActorFuture::<i32, NoStdToolbox>::new_shared();
+  let mut listener = ActorFuture::<i32, NoStdToolbox>::listener(future.clone());
 
-  assert!(future.try_take().is_none());
+  assert!(future.lock().try_take().is_none());
 
-  future.complete(10);
+  future.lock().complete(10);
 
   let waker = noop_waker();
   let mut cx = Context::from_waker(&waker);

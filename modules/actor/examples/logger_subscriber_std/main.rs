@@ -51,7 +51,7 @@ fn main() {
 
   system.terminate().expect("システム停止要求が成功すること");
   let termination = system.when_terminated();
-  while !termination.is_ready() {
+  while !termination.lock().is_ready() {
     thread::sleep(Duration::from_millis(10));
   }
 }

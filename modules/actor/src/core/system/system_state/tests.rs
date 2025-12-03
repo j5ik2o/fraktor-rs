@@ -60,7 +60,7 @@ fn system_state_event_stream() {
 fn system_state_termination_future() {
   let state = SystemState::new();
   let future = state.termination_future();
-  assert!(!future.is_ready());
+  assert!(!future.lock().is_ready());
 }
 
 #[test]
@@ -257,12 +257,10 @@ fn system_state_deadletters() {
 
 #[test]
 fn system_state_register_ask_future() {
-  use fraktor_utils_rs::core::sync::ArcShared;
-
   use crate::core::futures::ActorFuture;
 
   let state = SystemState::new();
-  let future = ArcShared::new(ActorFuture::<AnyMessage>::new());
+  let future = ActorFuture::<AnyMessage>::new_shared();
   state.register_ask_future(future.clone());
 
   let ready = state.drain_ready_ask_futures();

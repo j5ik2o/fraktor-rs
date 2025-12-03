@@ -3,6 +3,7 @@
 #[path = "../no_std_tick_driver_support.rs"]
 mod no_std_tick_driver_support;
 
+use fraktor_utils_rs::core::sync::sync_mutex_like::SyncMutexLike as _;
 use fraktor_actor_rs::core::typed::{Behavior, BehaviorSignal, Behaviors, TypedActorSystem, TypedProps};
 
 #[derive(Clone, Copy)]
@@ -48,7 +49,7 @@ fn main() {
   guardian.tell(GuardianCommand::Stop).expect("stop");
 
   system.terminate().expect("terminate");
-  while !termination.is_ready() {
+  while !termination.lock().is_ready() {
     thread::yield_now();
   }
 }

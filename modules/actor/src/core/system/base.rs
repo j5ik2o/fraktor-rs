@@ -30,7 +30,7 @@ use crate::core::{
     EventStreamEvent, EventStreamGeneric, EventStreamSubscriberShared, EventStreamSubscriptionGeneric,
     TickDriverSnapshot,
   },
-  futures::ActorFuture,
+  futures::ActorFutureShared,
   logging::LogLevel,
   messaging::{AnyMessageGeneric, SystemMessage},
   props::PropsGeneric,
@@ -453,7 +453,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
 
   /// Drains ask futures that have been fulfilled since the last check.
   #[must_use]
-  pub fn drain_ready_ask_futures(&self) -> Vec<ArcShared<ActorFuture<AnyMessageGeneric<TB>, TB>>> {
+  pub fn drain_ready_ask_futures(&self) -> Vec<ActorFutureShared<AnyMessageGeneric<TB>, TB>> {
     self.state.drain_ready_ask_futures()
   }
 
@@ -489,14 +489,14 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
 
   /// Returns a future that resolves once the actor system terminates.
   #[must_use]
-  pub fn when_terminated(&self) -> ArcShared<ActorFuture<(), TB>> {
+  pub fn when_terminated(&self) -> ActorFutureShared<(), TB> {
     self.state.termination_future()
   }
 
   /// Blocks the current thread until the actor system has fully terminated.
   pub fn run_until_terminated(&self) {
     let future = self.when_terminated();
-    while !future.is_ready() {
+    while !future.lock().is_ready() {
       core::hint::spin_loop();
     }
   }
