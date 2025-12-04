@@ -84,6 +84,7 @@ impl<TB: RuntimeToolbox + 'static> SchedulerContext<TB> {
     self.driver_snapshot.clone()
   }
 
+  #[allow(dead_code)]
   pub(crate) fn record_driver_metadata(
     &mut self,
     kind: TickDriverKind,
@@ -96,6 +97,7 @@ impl<TB: RuntimeToolbox + 'static> SchedulerContext<TB> {
     self.event_stream.publish(&EventStreamEvent::TickDriver(snapshot));
   }
 
+  #[allow(dead_code)]
   #[cfg(any(test, feature = "test-support"))]
   pub(crate) fn publish_driver_warning(&self, message: &str) {
     let timestamp = self.current_timestamp();
@@ -109,6 +111,7 @@ impl<TB: RuntimeToolbox + 'static> SchedulerContext<TB> {
     self.scheduler.lock().shutdown_with_tasks()
   }
 
+  #[allow(dead_code)]
   #[cfg(any(test, feature = "test-support"))]
   fn current_timestamp(&self) -> Duration {
     let scheduler = self.scheduler();
@@ -117,6 +120,7 @@ impl<TB: RuntimeToolbox + 'static> SchedulerContext<TB> {
   }
 }
 
+#[allow(dead_code)]
 #[cfg(any(test, feature = "test-support"))]
 fn instant_to_duration(instant: TimerInstant) -> Duration {
   let nanos = instant.resolution().as_nanos().saturating_mul(u128::from(instant.ticks()));
