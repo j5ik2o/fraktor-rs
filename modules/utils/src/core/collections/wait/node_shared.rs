@@ -3,7 +3,7 @@
 use super::node::WaitNode;
 use crate::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
+  sync::{ArcShared, SharedAccess},
 };
 
 /// Shared wrapper for [`WaitNode`] enabling interior mutability.

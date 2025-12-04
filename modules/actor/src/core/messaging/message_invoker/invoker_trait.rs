@@ -1,23 +1,21 @@
 //! Trait for dispatching messages from the mailbox to actors.
 
-extern crate alloc;
-
-use alloc::boxed::Box;
-
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 
 use crate::core::{
   error::ActorError,
   messaging::{AnyMessageGeneric, SystemMessage},
 };
 
-/// Shared handle for invoking a message invoker under external synchronization.
-pub type MessageInvokerShared<TB> = ArcShared<ToolboxMutex<Box<dyn MessageInvoker<TB>>, TB>>;
-
 /// Dispatches user and system messages to actor handlers.
+///
+/// Implementations should be wrapped in [`MessageInvokerShared`](super::MessageInvokerShared)
+/// for shared access using `with_write`:
+///
+/// ```text
+/// let invoker = MessageInvokerShared::new(boxed_invoker);
+/// invoker.with_write(|i| i.invoke_user_message(message))?;
+/// ```
 pub trait MessageInvoker<TB: RuntimeToolbox + 'static = NoStdToolbox>: Send + Sync {
   /// Processes user messages.
   ///

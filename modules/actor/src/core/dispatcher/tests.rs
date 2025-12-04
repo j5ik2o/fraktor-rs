@@ -25,7 +25,10 @@ use crate::core::{
   mailbox::{
     EnqueueOutcome, MailboxGeneric, MailboxInstrumentation, MailboxOverflowStrategy, MailboxPolicy, ScheduleHints,
   },
-  messaging::{AnyMessage, message_invoker::MessageInvoker},
+  messaging::{
+    AnyMessage,
+    message_invoker::{MessageInvoker, MessageInvokerShared},
+  },
   system::{SystemState, SystemStateShared},
 };
 
@@ -105,11 +108,8 @@ fn dispatcher_respects_throughput_and_deadline_limits() {
 
   let (tick, runner) = tick_executor_with_runner();
   let dispatcher = dispatcher_with_executor(mailbox.clone(), runner, Some(Duration::from_millis(1)), None);
-  let invoker = ArcShared::new(
-    <<NoStdToolbox as fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(
-      Box::new(RecordingInvoker::default()) as Box<dyn MessageInvoker<NoStdToolbox>>,
-    ),
-  );
+  let invoker =
+    MessageInvokerShared::new(Box::new(RecordingInvoker::default()) as Box<dyn MessageInvoker<NoStdToolbox>>);
   dispatcher.register_invoker(invoker);
 
   mailbox.enqueue_user(AnyMessage::new(1usize)).unwrap();
@@ -131,11 +131,8 @@ fn schedule_adapter_receives_pending_signal() {
     ),
   );
   let dispatcher = dispatcher_with_executor_and_adapter(mailbox.clone(), runner, None, None, adapter.clone());
-  let invoker = ArcShared::new(
-    <<NoStdToolbox as fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(
-      Box::new(RecordingInvoker::default()) as Box<dyn MessageInvoker<NoStdToolbox>>,
-    ),
-  );
+  let invoker =
+    MessageInvokerShared::new(Box::new(RecordingInvoker::default()) as Box<dyn MessageInvoker<NoStdToolbox>>);
   dispatcher.register_invoker(invoker);
 
   mailbox.enqueue_user(AnyMessage::new(1usize)).expect("first message");
@@ -218,11 +215,8 @@ fn telemetry_captures_mailbox_pressure_and_dispatcher_dump() {
     ),
   );
   let dispatcher = dispatcher_with_executor_and_adapter(mailbox.clone(), runner, None, None, adapter);
-  let invoker = ArcShared::new(
-    <<NoStdToolbox as fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(
-      Box::new(RecordingInvoker::default()) as Box<dyn MessageInvoker<NoStdToolbox>>,
-    ),
-  );
+  let invoker =
+    MessageInvokerShared::new(Box::new(RecordingInvoker::default()) as Box<dyn MessageInvoker<NoStdToolbox>>);
   dispatcher.register_invoker(invoker);
 
   assert!(matches!(mailbox.enqueue_user(AnyMessage::new(1usize)), Ok(EnqueueOutcome::Enqueued)));
