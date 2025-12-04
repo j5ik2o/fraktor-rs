@@ -16,7 +16,8 @@ use crate::core::{
 ///
 /// This adapter wraps a provider handle in a `ToolboxMutex`, allowing it to be shared
 /// across multiple owners while satisfying the `&mut self` requirement of
-/// the underlying traits. The wrapper itself stays thin: lock and delegate.
+/// the underlying traits. Preferred usage is via `with_mut` / `with_ref` to
+/// keep lock scopes local.
 ///
 /// # Usage
 ///
@@ -36,6 +37,20 @@ impl<TB: RuntimeToolbox + 'static, P: Send + 'static> RemoteWatchHookShared<TB, 
   pub fn new(provider: P, schemes: &'static [ActorPathScheme]) -> Self {
     let handle = RemoteWatchHookHandle::new(provider, schemes);
     Self { inner: ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(handle)) }
+  }
+
+  /// Executes a mutable operation on the inner handle while holding the lock.
+  #[inline]
+  pub fn with_mut<R>(&self, f: impl FnOnce(&mut RemoteWatchHookHandle<P>) -> R) -> R {
+    let mut guard = self.inner.lock();
+    f(&mut guard)
+  }
+
+  /// Executes a read-only operation on the inner handle while holding the lock.
+  #[inline]
+  pub fn with_ref<R>(&self, f: impl FnOnce(&RemoteWatchHookHandle<P>) -> R) -> R {
+    let guard = self.inner.lock();
+    f(&guard)
   }
 
   /// Returns a reference to the inner shared mutex.
@@ -58,11 +73,11 @@ impl<TB: RuntimeToolbox + 'static, P: RemoteWatchHook<TB> + Send + 'static> Remo
   for RemoteWatchHookShared<TB, P>
 {
   fn handle_watch(&mut self, target: Pid, watcher: Pid) -> bool {
-    self.inner.lock().handle_watch(target, watcher)
+    self.with_mut(|inner| inner.handle_watch(target, watcher))
   }
 
   fn handle_unwatch(&mut self, target: Pid, watcher: Pid) -> bool {
-    self.inner.lock().handle_unwatch(target, watcher)
+    self.with_mut(|inner| inner.handle_unwatch(target, watcher))
   }
 }
 
@@ -70,13 +85,13 @@ impl<TB: RuntimeToolbox + 'static, P: ActorRefProvider<TB> + RemoteWatchHook<TB>
   for RemoteWatchHookShared<TB, P>
 {
   fn supported_schemes(&self) -> &'static [ActorPathScheme] {
-    self.inner.lock().supported_schemes()
+    self.with_ref(|inner| inner.supported_schemes())
   }
 
   fn actor_ref(
     &mut self,
     path: crate::core::actor_prim::actor_path::ActorPath,
   ) -> Result<ActorRefGeneric<TB>, ActorError> {
-    self.inner.lock().actor_ref(path)
+    self.with_mut(|inner| inner.actor_ref(path))
   }
 }

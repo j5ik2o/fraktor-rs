@@ -2,7 +2,7 @@
 
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+  sync::{ArcShared, SharedAccess},
 };
 
 use super::MailboxesGeneric;
@@ -34,15 +34,23 @@ impl<TB: RuntimeToolbox + 'static> MailboxesSharedGeneric<TB> {
   /// Executes a mutable operation while holding the lock.
   #[inline]
   pub fn with_mut<R>(&self, f: impl FnOnce(&mut MailboxesGeneric<TB>) -> R) -> R {
-    let mut guard = self.inner.lock();
-    f(&mut guard)
+    self.inner.with_write(f)
   }
 
   /// Executes a read-only operation while holding the lock.
   #[inline]
   pub fn with_ref<R>(&self, f: impl FnOnce(&MailboxesGeneric<TB>) -> R) -> R {
-    let guard = self.inner.lock();
-    f(&guard)
+    self.inner.with_read(f)
+  }
+}
+
+impl<TB: RuntimeToolbox + 'static> SharedAccess<MailboxesGeneric<TB>> for MailboxesSharedGeneric<TB> {
+  fn with_read<R>(&self, f: impl FnOnce(&MailboxesGeneric<TB>) -> R) -> R {
+    self.inner.with_read(f)
+  }
+
+  fn with_write<R>(&self, f: impl FnOnce(&mut MailboxesGeneric<TB>) -> R) -> R {
+    self.inner.with_write(f)
   }
 }
 
