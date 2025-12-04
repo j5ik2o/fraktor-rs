@@ -68,6 +68,11 @@ impl<TB: RuntimeToolbox + 'static> ActorRefSender<TB> for DispatcherSenderGeneri
     match self.mailbox.enqueue_user(message) {
       | Ok(EnqueueOutcome::Enqueued) => {
         if self.mailbox.is_running() {
+          self.dispatcher.register_for_execution(ScheduleHints {
+            has_system_messages: false,
+            has_user_messages:   true,
+            backpressure_active: false,
+          });
           return Ok(SendOutcome::Delivered);
         }
 
