@@ -19,7 +19,7 @@ use portable_atomic::{AtomicU8, AtomicU64};
 use super::{
   dispatch_error::DispatchError, dispatch_executor_runner::DispatchExecutorRunner,
   dispatcher_dump_event::DispatcherDumpEvent, dispatcher_state::DispatcherState,
-  schedule_adapter::ScheduleAdapterShared,
+  schedule_adapter_shared::ScheduleAdapterSharedGeneric,
 };
 use crate::core::{
   error::{ActorError, SendError},
@@ -39,7 +39,7 @@ pub(crate) const MAX_EXECUTOR_RETRIES: usize = 2;
 pub(crate) struct DispatcherCore<TB: RuntimeToolbox + 'static> {
   mailbox:             ArcShared<MailboxGeneric<TB>>,
   executor:            ArcShared<DispatchExecutorRunner<TB>>,
-  schedule_adapter:    ScheduleAdapterShared<TB>,
+  schedule_adapter:    ScheduleAdapterSharedGeneric<TB>,
   invoker:             ToolboxMutex<Option<MessageInvokerShared<TB>>, TB>,
   state:               AtomicU8,
   throughput_limit:    Option<NonZeroUsize>,
@@ -56,7 +56,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
   pub(crate) fn new(
     mailbox: ArcShared<MailboxGeneric<TB>>,
     executor: ArcShared<DispatchExecutorRunner<TB>>,
-    schedule_adapter: ScheduleAdapterShared<TB>,
+    schedule_adapter: ScheduleAdapterSharedGeneric<TB>,
     throughput_limit: Option<NonZeroUsize>,
     throughput_deadline: Option<Duration>,
     starvation_deadline: Option<Duration>,
@@ -88,7 +88,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
     &self.executor
   }
 
-  pub(crate) fn schedule_adapter(&self) -> ScheduleAdapterShared<TB> {
+  pub(crate) fn schedule_adapter(&self) -> ScheduleAdapterSharedGeneric<TB> {
     self.schedule_adapter.clone()
   }
 
@@ -262,7 +262,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
   ) -> Result<(), SendError<TB>> {
     let adapter = self_arc.schedule_adapter();
     let dispatcher = super::base::DispatcherGeneric::from_core(self_arc.clone());
-    let waker = adapter.lock().create_waker(dispatcher);
+    let waker = adapter.with_write(|a| a.create_waker(dispatcher));
     let mut cx = Context::from_waker(&waker);
 
     loop {
@@ -275,7 +275,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
             has_user_messages:   true,
             backpressure_active: false,
           });
-          adapter.lock().on_pending();
+          adapter.with_write(|a| a.on_pending());
         },
       }
     }
@@ -304,7 +304,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
   pub(crate) fn handle_executor_failure(&self, attempts: usize, error: DispatchError) {
     DispatcherState::Idle.store(self.state());
     let _ = self.mailbox.set_idle();
-    self.schedule_adapter.lock().notify_rejected(attempts);
+    self.schedule_adapter.with_write(|a| a.notify_rejected(attempts));
     let message = format!("dispatcher execution failed after {} attempt(s): {}", attempts, error);
     self.mailbox.emit_log(LogLevel::Error, message);
   }

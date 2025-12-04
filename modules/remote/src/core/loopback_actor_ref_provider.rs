@@ -15,11 +15,13 @@ use fraktor_actor_rs::core::{
   },
   error::{ActorError, SendError},
   messaging::{AnyMessageGeneric, SystemMessage},
-  system::{ActorRefProvider, ActorSystemGeneric, RemoteAuthorityError, RemoteAuthorityManagerShared, RemoteWatchHook},
+  system::{
+    ActorRefProvider, ActorSystemGeneric, RemoteAuthorityError, RemoteAuthorityManagerSharedGeneric, RemoteWatchHook,
+  },
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  sync::sync_mutex_like::SyncMutexLike,
+  sync::{SharedAccess, sync_mutex_like::SyncMutexLike},
 };
 use hashbrown::HashMap;
 
@@ -46,7 +48,7 @@ pub struct LoopbackActorRefProviderGeneric<TB: RuntimeToolbox + 'static> {
   system:            ActorSystemGeneric<TB>,
   writer:            EndpointWriterShared<TB>,
   control:           RemotingControlShared<TB>,
-  authority_manager: RemoteAuthorityManagerShared<TB>,
+  authority_manager: RemoteAuthorityManagerSharedGeneric<TB>,
   watcher_daemon:    ActorRefGeneric<TB>,
   watch_entries:     HashMap<Pid, RemoteWatchEntry, RandomState>,
 }
@@ -69,7 +71,7 @@ impl<TB: RuntimeToolbox + 'static> LoopbackActorRefProviderGeneric<TB> {
     system: ActorSystemGeneric<TB>,
     writer: EndpointWriterShared<TB>,
     control: RemotingControlShared<TB>,
-    authority_manager: RemoteAuthorityManagerShared<TB>,
+    authority_manager: RemoteAuthorityManagerSharedGeneric<TB>,
   ) -> Result<Self, RemoteActorRefProviderError> {
     let daemon = RemoteWatcherDaemon::spawn(&system, control.clone())?;
     Ok(Self {
@@ -132,7 +134,7 @@ impl<TB: RuntimeToolbox + 'static> LoopbackActorRefProviderGeneric<TB> {
     let Some(authority) = parts.authority_endpoint() else {
       return;
     };
-    let deferred = self.authority_manager.lock().deferred_count(&authority) as u32;
+    let deferred = self.authority_manager.with_read(|mgr| mgr.deferred_count(&authority)) as u32;
     let state = self.system.state().remote_authority_state(&authority);
     let ticks = self.system.state().monotonic_now().as_millis() as u64;
     let snapshot = RemoteAuthoritySnapshot::new(authority, state, ticks, deferred);

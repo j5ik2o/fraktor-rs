@@ -6,13 +6,13 @@ use core::{pin::Pin, task::Context};
 
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+  sync::{ArcShared, SharedAccess},
 };
 
 use super::base::DispatcherGeneric;
 use crate::core::{
   actor_prim::actor_ref::{ActorRefSender, SendOutcome},
-  dispatcher::schedule_adapter::ScheduleAdapterShared,
+  dispatcher::schedule_adapter_shared::ScheduleAdapterSharedGeneric,
   error::SendError,
   mailbox::{EnqueueOutcome, MailboxGeneric, MailboxOfferFutureGeneric, ScheduleHints},
   messaging::AnyMessageGeneric,
@@ -40,10 +40,10 @@ impl<TB: RuntimeToolbox + 'static> DispatcherSenderGeneric<TB> {
 
   fn poll_pending(
     &self,
-    adapter: &ScheduleAdapterShared<TB>,
+    adapter: &ScheduleAdapterSharedGeneric<TB>,
     future: &mut MailboxOfferFutureGeneric<TB>,
   ) -> Result<(), SendError<TB>> {
-    let waker = adapter.lock().create_waker(self.dispatcher.clone());
+    let waker = adapter.with_write(|a| a.create_waker(self.dispatcher.clone()));
     let mut cx = Context::from_waker(&waker);
 
     loop {
@@ -56,7 +56,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherSenderGeneric<TB> {
             has_user_messages:   true,
             backpressure_active: false,
           });
-          adapter.lock().on_pending();
+          adapter.with_write(|a| a.on_pending());
         },
       }
     }
@@ -83,7 +83,7 @@ impl<TB: RuntimeToolbox + 'static> ActorRefSender<TB> for DispatcherSenderGeneri
       },
       | Ok(EnqueueOutcome::Pending(mut future)) => {
         let adapter = self.dispatcher.schedule_adapter();
-        adapter.lock().on_pending();
+        adapter.with_write(|a| a.on_pending());
         if self.mailbox.is_running() {
           self.poll_pending(&adapter, &mut future)?;
           return Ok(SendOutcome::Delivered);

@@ -11,10 +11,7 @@ use alloc::{
 use core::{marker::PhantomData, time::Duration};
 
 use ahash::RandomState;
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 use hashbrown::HashMap;
 
 use crate::core::{
@@ -43,8 +40,6 @@ pub struct RemoteAuthorityManagerGeneric<TB: RuntimeToolbox + 'static> {
 
 /// Type alias using the default toolbox.
 pub type RemoteAuthorityManager = RemoteAuthorityManagerGeneric<NoStdToolbox>;
-/// Shared manager guarded by toolbox mutex.
-pub type RemoteAuthorityManagerShared<TB> = ArcShared<ToolboxMutex<RemoteAuthorityManagerGeneric<TB>, TB>>;
 
 impl<TB: RuntimeToolbox + 'static> RemoteAuthorityManagerGeneric<TB> {
   /// Creates a new manager with no authorities.

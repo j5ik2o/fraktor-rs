@@ -345,11 +345,11 @@ fn spawn_does_not_block_when_dispatcher_never_runs() {
 
   // Register NoopExecutor as "noop" dispatcher
   let noop_config = DispatcherConfig::from_executor(Box::new(NoopExecutor::new()));
-  let dispatchers = system.state().dispatchers();
-  {
-    let mut guard = dispatchers.lock();
-    guard.register("noop", noop_config.clone()).expect("register noop dispatcher");
-  }
+  system
+    .state()
+    .dispatchers()
+    .with_write(|d| d.register("noop", noop_config.clone()))
+    .expect("register noop dispatcher");
 
   let props = Props::from_fn({
     let log = log.clone();

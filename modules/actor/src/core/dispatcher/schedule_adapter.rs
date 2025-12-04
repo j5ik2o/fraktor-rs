@@ -1,15 +1,8 @@
-use alloc::boxed::Box;
 use core::{any::Any, task::Waker};
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, ToolboxMutex},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use super::base::DispatcherGeneric;
-
-/// Shared handle for scheduler adapters with external synchronization.
-pub type ScheduleAdapterShared<TB> = ArcShared<ToolboxMutex<Box<dyn ScheduleAdapter<TB>>, TB>>;
 
 /// Adapter responsible for creating wakers and coordinating scheduler hints across runtimes.
 pub trait ScheduleAdapter<TB: RuntimeToolbox + 'static>: Send + Sync {

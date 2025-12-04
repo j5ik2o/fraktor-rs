@@ -16,7 +16,7 @@ use super::{
   dispatcher_state::DispatcherState,
   inline_executor::InlineExecutorGeneric,
   inline_schedule_adapter::InlineScheduleAdapter,
-  schedule_adapter::ScheduleAdapterShared,
+  schedule_adapter_shared::ScheduleAdapterSharedGeneric,
 };
 use crate::core::{
   actor_prim::actor_ref::ActorRefSenderSharedGeneric,
@@ -60,7 +60,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherGeneric<TB> {
   pub fn with_adapter(
     mailbox: ArcShared<MailboxGeneric<TB>>,
     executor: ArcShared<DispatchExecutorRunner<TB>>,
-    schedule_adapter: ScheduleAdapterShared<TB>,
+    schedule_adapter: ScheduleAdapterSharedGeneric<TB>,
     throughput_deadline: Option<Duration>,
     starvation_deadline: Option<Duration>,
   ) -> Self {
@@ -161,7 +161,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherGeneric<TB> {
     ActorRefSenderSharedGeneric::new(DispatcherSenderGeneric::new(self.clone()))
   }
 
-  pub(crate) fn schedule_adapter(&self) -> ScheduleAdapterShared<TB> {
+  pub(crate) fn schedule_adapter(&self) -> ScheduleAdapterSharedGeneric<TB> {
     self.core.schedule_adapter()
   }
 

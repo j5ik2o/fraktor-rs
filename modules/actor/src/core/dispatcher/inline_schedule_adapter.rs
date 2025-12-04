@@ -1,14 +1,10 @@
 use alloc::boxed::Box;
 use core::{any::Any, task::Waker};
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, SyncMutexFamily},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use super::{
-  base::DispatcherGeneric,
-  schedule_adapter::{ScheduleAdapter, ScheduleAdapterShared},
+  base::DispatcherGeneric, schedule_adapter::ScheduleAdapter, schedule_adapter_shared::ScheduleAdapterSharedGeneric,
   schedule_waker::ScheduleWaker,
 };
 
@@ -25,8 +21,8 @@ impl InlineScheduleAdapter {
 
   /// Helper that creates a shared handle with external synchronization.
   #[must_use]
-  pub fn shared<TB: RuntimeToolbox + 'static>() -> ScheduleAdapterShared<TB> {
-    ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(Box::new(InlineScheduleAdapter)))
+  pub fn shared<TB: RuntimeToolbox + 'static>() -> ScheduleAdapterSharedGeneric<TB> {
+    ScheduleAdapterSharedGeneric::new(Box::new(InlineScheduleAdapter))
   }
 }
 
