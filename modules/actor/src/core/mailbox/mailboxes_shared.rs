@@ -30,18 +30,6 @@ impl<TB: RuntimeToolbox + 'static> MailboxesSharedGeneric<TB> {
   pub fn new() -> Self {
     Self { inner: ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(MailboxesGeneric::new())) }
   }
-
-  /// Executes a mutable operation while holding the lock.
-  #[inline]
-  pub fn with_mut<R>(&self, f: impl FnOnce(&mut MailboxesGeneric<TB>) -> R) -> R {
-    self.inner.with_write(f)
-  }
-
-  /// Executes a read-only operation while holding the lock.
-  #[inline]
-  pub fn with_ref<R>(&self, f: impl FnOnce(&MailboxesGeneric<TB>) -> R) -> R {
-    self.inner.with_read(f)
-  }
 }
 
 impl<TB: RuntimeToolbox + 'static> SharedAccess<MailboxesGeneric<TB>> for MailboxesSharedGeneric<TB> {
