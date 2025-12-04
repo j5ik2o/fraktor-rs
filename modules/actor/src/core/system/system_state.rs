@@ -140,7 +140,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       guard.ensure_default();
     }
     let mailboxes = MailboxesSharedGeneric::<TB>::new();
-    mailboxes.ensure_default();
+    mailboxes.with_mut(|m| m.ensure_default());
     Self {
       next_pid: AtomicU64::new(0),
       clock: AtomicU64::new(0),
