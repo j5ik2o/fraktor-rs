@@ -14,6 +14,7 @@ use fraktor_actor_rs::core::{
   props::Props,
   system::ActorSystem,
 };
+use fraktor_utils_rs::core::sync::SharedAccess;
 
 struct Start;
 
@@ -102,7 +103,7 @@ fn main() {
   let termination = system.when_terminated();
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
   system.terminate().expect("terminate");
-  while !termination.is_ready() {
+  while !termination.with_read(|af| af.is_ready()) {
     thread::yield_now();
   }
 }

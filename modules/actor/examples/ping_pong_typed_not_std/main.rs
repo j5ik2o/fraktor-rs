@@ -14,6 +14,7 @@ use fraktor_actor_rs::core::{
     actor_prim::{TypedActor, TypedActorContext, TypedActorRef},
   },
 };
+use fraktor_utils_rs::core::sync::SharedAccess;
 
 #[derive(Clone)]
 struct PongReply {
@@ -136,7 +137,7 @@ fn main() {
   let termination = system.as_untyped().when_terminated();
   system.user_guardian_ref().tell(GuardianCommand::Start).expect("start");
   system.terminate().expect("terminate");
-  while !termination.is_ready() {
+  while !termination.with_read(|af| af.is_ready()) {
     thread::yield_now();
   }
 }

@@ -15,6 +15,7 @@ use fraktor_actor_rs::std::{
   },
   typed::{Behavior, BehaviorSignal, Behaviors, TypedActorSystem, TypedProps},
 };
+use fraktor_utils_rs::core::sync::SharedAccess;
 
 #[derive(Debug, Clone)]
 enum Command {
@@ -92,7 +93,7 @@ fn main() {
   // Terminate system
   println!("\n=== Terminating system ===");
   system.terminate().expect("Failed to terminate");
-  while !termination.is_ready() {
+  while !termination.with_read(|af| af.is_ready()) {
     std::thread::yield_now();
   }
 

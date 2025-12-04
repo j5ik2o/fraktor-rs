@@ -3,7 +3,7 @@ use core::time::Duration;
 
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdMutex, NoStdToolbox},
-  sync::ArcShared,
+  sync::{ArcShared, SharedAccess},
 };
 
 use super::SystemState;
@@ -60,7 +60,7 @@ fn system_state_event_stream() {
 fn system_state_termination_future() {
   let state = SystemState::new();
   let future = state.termination_future();
-  assert!(!future.is_ready());
+  assert!(!future.with_read(|af| af.is_ready()));
 }
 
 #[test]

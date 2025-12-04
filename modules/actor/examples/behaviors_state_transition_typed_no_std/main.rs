@@ -7,6 +7,7 @@ use fraktor_actor_rs::core::{
   error::ActorError,
   typed::{Behavior, Behaviors, TypedActorSystem, TypedProps},
 };
+use fraktor_utils_rs::core::sync::SharedAccess;
 
 #[derive(Clone, Copy)]
 enum GateCommand {
@@ -90,7 +91,7 @@ fn main() {
   gate.tell(GateCommand::Shutdown).expect("shutdown gate");
 
   system.terminate().expect("terminate system");
-  while !termination.is_ready() {
+  while !termination.with_read(|af| af.is_ready()) {
     thread::yield_now();
   }
 }

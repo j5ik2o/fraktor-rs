@@ -723,7 +723,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       return;
     }
     // Lock, complete, then wake outside the lock to avoid deadlock.
-    let waker = self.termination.complete(());
+    let waker = self.termination.with_write(|af| af.complete(()));
     if let Some(w) = waker {
       w.wake();
     }
@@ -742,7 +742,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     let mut index = 0_usize;
 
     while index < registry.len() {
-      if registry[index].is_ready() {
+      if registry[index].with_read(|af| af.is_ready()) {
         ready.push(registry.swap_remove(index));
       } else {
         index += 1;

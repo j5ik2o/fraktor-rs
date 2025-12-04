@@ -4,7 +4,7 @@ use core::marker::PhantomData;
 
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  sync::shared::Shared,
+  sync::{SharedAccess, shared::Shared},
 };
 
 use crate::core::{
@@ -45,13 +45,13 @@ where
   /// Returns whether the underlying future has resolved.
   #[must_use]
   pub fn is_ready(&self) -> bool {
-    self.inner.is_ready()
+    self.inner.with_read(|af| af.is_ready())
   }
 
   /// Attempts to take the reply if ready, yielding either the typed payload or an error.
   #[must_use]
   pub fn try_take(&mut self) -> Option<Result<R, TypedAskError>> {
-    self.inner.try_take().map(Self::map_message)
+    self.inner.with_write(|af| af.try_take().map(Self::map_message))
   }
 
   #[allow(clippy::needless_pass_by_value)]

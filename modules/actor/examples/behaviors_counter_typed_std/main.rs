@@ -5,6 +5,7 @@ use fraktor_actor_rs::{
   core::error::ActorError,
   std::typed::{Behavior, Behaviors, TypedActorSystem, TypedProps},
 };
+use fraktor_utils_rs::core::sync::SharedAccess;
 
 #[derive(Clone, Copy)]
 enum CounterCommand {
@@ -49,7 +50,7 @@ fn main() {
   }
 
   system.terminate().expect("terminate");
-  while !termination.is_ready() {
+  while !termination.with_read(|af| af.is_ready()) {
     thread::yield_now();
   }
 }

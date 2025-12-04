@@ -3,7 +3,7 @@ use core::hint::spin_loop;
 
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdMutex, NoStdToolbox},
-  sync::ArcShared,
+  sync::{ArcShared, SharedAccess},
 };
 
 use super::{ActorContext, ActorContextGeneric};
@@ -214,7 +214,7 @@ fn actor_context_pipe_to_self_handles_async_future() {
   context.pipe_to_self(future, AnyMessage::new).expect("pipe to self");
   assert!(received.lock().is_empty());
 
-  let waker = signal.complete(7);
+  let waker = signal.with_write(|af| af.complete(7));
   if let Some(w) = waker {
     w.wake();
   }
