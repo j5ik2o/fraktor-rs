@@ -9,7 +9,7 @@
   - フィールドは所有権ベースで持ち、可変メソッドは極力 `&mut self`。読み取り専用メソッドは`&self`。
   - 同期や共有の責務は持たない。
 - **共有ラッパーは `XyzShared`構造体**
-  - 典型実装: `ArcShared<ToolboxMutex<Xyz<TB>, TB>>` を内包。
+  - 典型実装: `ArcShared<ToolboxMutex<Xyz, TB>>` を内包。
 - 外向き API は `SharedAccess` 準拠の `with_read` / `with_write` に絞り、ロックを隠蔽する。
   - ガードやロックを外部に返さない（ロック区間をメソッド内に閉じる）。
 - **管理責務を持つ場合は `XyzHandle`構造体**
@@ -17,6 +17,9 @@
   - `Handle` も基本は `with_write`/`with_read` を提供し、複合操作をまとめて実行する。
 
 ## 推奨 API 例
+
+※TBを使う場合はサフィックスにGenericを付ける
+
 ```rust
 pub struct XyzGeneric<TB: RuntimeToolbox> { /* state */ }
 
