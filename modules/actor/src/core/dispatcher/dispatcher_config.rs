@@ -12,7 +12,7 @@ mod tests;
 use crate::core::{
   dispatcher::{
     DispatchExecutor, DispatchExecutorRunner, DispatcherGeneric, InlineExecutorGeneric, InlineScheduleAdapter,
-    ScheduleAdapterShared,
+    ScheduleAdapterSharedGeneric,
   },
   mailbox::{MailboxGeneric, MailboxOverflowStrategy},
   spawn::SpawnError,
@@ -23,7 +23,7 @@ pub struct DispatcherConfigGeneric<TB: RuntimeToolbox + 'static> {
   executor:            ArcShared<DispatchExecutorRunner<TB>>,
   throughput_deadline: Option<Duration>,
   starvation_deadline: Option<Duration>,
-  schedule_adapter:    ScheduleAdapterShared<TB>,
+  schedule_adapter:    ScheduleAdapterSharedGeneric<TB>,
 }
 
 /// Type alias for [DispatcherConfigGeneric] with the default [NoStdToolbox].
@@ -94,14 +94,14 @@ impl<TB: RuntimeToolbox + 'static> DispatcherConfigGeneric<TB> {
 
   /// Overrides the scheduler adapter used for creating wakers and pending hooks.
   #[must_use]
-  pub fn with_schedule_adapter(mut self, adapter: ScheduleAdapterShared<TB>) -> Self {
+  pub fn with_schedule_adapter(mut self, adapter: ScheduleAdapterSharedGeneric<TB>) -> Self {
     self.schedule_adapter = adapter;
     self
   }
 
   /// Returns the configured schedule adapter.
   #[must_use]
-  pub fn schedule_adapter(&self) -> ScheduleAdapterShared<TB> {
+  pub fn schedule_adapter(&self) -> ScheduleAdapterSharedGeneric<TB> {
     self.schedule_adapter.clone()
   }
 

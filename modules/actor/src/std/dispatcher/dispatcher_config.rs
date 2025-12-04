@@ -2,13 +2,15 @@ extern crate alloc;
 use alloc::boxed::Box;
 
 use fraktor_utils_rs::{
-  core::{runtime_toolbox::SyncMutexFamily, sync::ArcShared},
+  core::sync::ArcShared,
   std::{StdSyncMutex, runtime_toolbox::StdToolbox},
 };
 
 use super::{DispatchExecutor, DispatchExecutorAdapter, Dispatcher, StdScheduleAdapter};
 use crate::core::{
-  dispatcher::{DispatchExecutorRunner, DispatcherConfigGeneric as CoreDispatcherConfigGeneric, ScheduleAdapterShared},
+  dispatcher::{
+    DispatchExecutorRunner, DispatcherConfigGeneric as CoreDispatcherConfigGeneric, ScheduleAdapterSharedGeneric,
+  },
   mailbox::MailboxGeneric,
   spawn::SpawnError,
 };
@@ -26,11 +28,7 @@ impl DispatcherConfig {
   #[must_use]
   pub fn from_executor(executor: ArcShared<StdSyncMutex<Box<dyn DispatchExecutor>>>) -> Self {
     let executor_adapter = Box::new(DispatchExecutorAdapter::new(executor));
-    let schedule_adapter: ScheduleAdapterShared<StdToolbox> = ArcShared::new(
-      <<StdToolbox as fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(
-        Box::new(StdScheduleAdapter::default()),
-      ),
-    );
+    let schedule_adapter = ScheduleAdapterSharedGeneric::<StdToolbox>::new(Box::new(StdScheduleAdapter::default()));
     let inner = CoreDispatcherConfigGeneric::from_executor(executor_adapter).with_schedule_adapter(schedule_adapter);
     Self { inner }
   }

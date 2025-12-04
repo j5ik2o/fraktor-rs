@@ -26,8 +26,7 @@ use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
 use super::{
   ActorPathRegistry, ActorRefProvider, ActorRefProviderHandle, ActorRefProviderSharedGeneric, AuthorityState,
-  GuardianKind, RemoteAuthorityError, RemoteAuthorityManagerGeneric, RemoteAuthorityManagerShared, RemoteWatchHook,
-  RemotingConfig,
+  GuardianKind, RemoteAuthorityError, RemoteAuthorityManagerSharedGeneric, RemoteWatchHook, RemotingConfig,
 };
 use crate::core::{
   actor_prim::{
@@ -36,7 +35,7 @@ use crate::core::{
     actor_ref::ActorRefGeneric,
   },
   dead_letter::{DeadLetterEntryGeneric, DeadLetterGeneric, DeadLetterReason},
-  dispatcher::{DispatchersGeneric, DispatchersShared},
+  dispatcher::{DispatchersGeneric, DispatchersSharedGeneric},
   error::{ActorError, SendError},
   event_stream::{EventStreamEvent, EventStreamGeneric, RemoteAuthorityEvent, TickDriverSnapshot},
   futures::ActorFutureSharedGeneric,
@@ -114,11 +113,11 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   actor_ref_provider_callers_by_scheme:
     ToolboxMutex<HashMap<ActorPathScheme, ActorRefProviderCaller<TB>, RandomState>, TB>,
   remote_watch_hook: ToolboxMutex<Option<Box<dyn RemoteWatchHook<TB>>>, TB>,
-  dispatchers: DispatchersShared<TB>,
+  dispatchers: DispatchersSharedGeneric<TB>,
   mailboxes: MailboxesSharedGeneric<TB>,
   path_identity: ToolboxMutex<PathIdentity, TB>,
   actor_path_registry: ToolboxMutex<ActorPathRegistry, TB>,
-  remote_authority_mgr: RemoteAuthorityManagerShared<TB>,
+  remote_authority_mgr: RemoteAuthorityManagerSharedGeneric<TB>,
   scheduler_context: ToolboxMutex<Option<SchedulerContextSharedGeneric<TB>>, TB>,
   tick_driver_runtime: ToolboxMutex<Option<TickDriverRuntime<TB>>, TB>,
   remoting_config: ToolboxMutex<Option<RemotingConfig>, TB>,
@@ -134,11 +133,8 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     const DEAD_LETTER_CAPACITY: usize = 512;
     let event_stream = ArcShared::new(EventStreamGeneric::default());
     let dead_letter = ArcShared::new(DeadLetterGeneric::new(event_stream.clone(), DEAD_LETTER_CAPACITY));
-    let dispatchers = ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(DispatchersGeneric::new()));
-    {
-      let mut guard = dispatchers.lock();
-      guard.ensure_default();
-    }
+    let dispatchers = DispatchersSharedGeneric::new(DispatchersGeneric::new());
+    dispatchers.with_write(|d| d.ensure_default());
     let mailboxes = MailboxesSharedGeneric::<TB>::new();
     mailboxes.with_write(|m| m.ensure_default());
     Self {
@@ -171,9 +167,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       mailboxes,
       path_identity: <TB::MutexFamily as SyncMutexFamily>::create(PathIdentity::default()),
       actor_path_registry: <TB::MutexFamily as SyncMutexFamily>::create(ActorPathRegistry::new()),
-      remote_authority_mgr: ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(
-        RemoteAuthorityManagerGeneric::<TB>::new(),
-      )),
+      remote_authority_mgr: RemoteAuthorityManagerSharedGeneric::default(),
       actor_ref_provider_callers_by_scheme: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::with_hasher(
         RandomState::new(),
       )),
@@ -214,8 +208,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     // Register default dispatcher if configured
     if let Some(dispatcher_config) = config.default_dispatcher_config() {
       // Overwrite the "default" entry using register_or_update
-      let mut dispatchers = self.dispatchers.lock();
-      dispatchers.register_or_update("default", dispatcher_config.clone());
+      self.dispatchers.with_write(|d| d.register_or_update("default", dispatcher_config.clone()));
     }
 
     let policy = ReservationPolicy::with_quarantine_duration(self.default_quarantine_duration());
@@ -767,7 +760,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
 
   /// Returns the dispatcher registry.
   #[must_use]
-  pub fn dispatchers(&self) -> DispatchersShared<TB> {
+  pub fn dispatchers(&self) -> DispatchersSharedGeneric<TB> {
     self.dispatchers.clone()
   }
 
@@ -924,24 +917,24 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
 
   /// Returns a reference to the RemoteAuthorityManager.
   #[must_use]
-  pub const fn remote_authority_manager(&self) -> &RemoteAuthorityManagerShared<TB> {
+  pub const fn remote_authority_manager(&self) -> &RemoteAuthorityManagerSharedGeneric<TB> {
     &self.remote_authority_mgr
   }
 
   /// Returns the current authority state.
   #[must_use]
   pub fn remote_authority_state(&self, authority: &str) -> AuthorityState {
-    self.remote_authority_mgr.lock().state(authority)
+    self.remote_authority_mgr.with_read(|mgr| mgr.state(authority))
   }
 
   /// Returns a snapshot of known remote authorities and their states.
   pub fn remote_authority_snapshots(&self) -> Vec<(String, AuthorityState)> {
-    self.remote_authority_mgr.lock().snapshots()
+    self.remote_authority_mgr.with_read(|mgr| mgr.snapshots())
   }
 
   /// Marks the authority as connected and emits an event.
   pub fn remote_authority_set_connected(&self, authority: &str) -> Option<VecDeque<AnyMessageGeneric<TB>>> {
-    let drained = self.remote_authority_mgr.lock().set_connected(authority);
+    let drained = self.remote_authority_mgr.with_write(|mgr| mgr.set_connected(authority));
     self.publish_remote_authority_event(authority.to_string(), AuthorityState::Connected);
     drained
   }
@@ -952,11 +945,10 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     let authority = authority.into();
     let now_secs = self.monotonic_now().as_secs();
     let effective = duration.unwrap_or(self.default_quarantine_duration());
-    {
-      let mut guard = self.remote_authority_mgr.lock();
-      guard.set_quarantine(authority.clone(), now_secs, Some(effective));
-    }
-    let state = self.remote_authority_mgr.lock().state(&authority);
+    self.remote_authority_mgr.with_write(|mgr| {
+      mgr.set_quarantine(authority.clone(), now_secs, Some(effective));
+    });
+    let state = self.remote_authority_mgr.with_read(|mgr| mgr.state(&authority));
     self.publish_remote_authority_event(authority, state);
   }
 
@@ -965,17 +957,16 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     let authority = authority.into();
     let now_secs = self.monotonic_now().as_secs();
     let effective = duration.unwrap_or(self.default_quarantine_duration());
-    {
-      let mut guard = self.remote_authority_mgr.lock();
-      guard.handle_invalid_association(authority.clone(), now_secs, Some(effective));
-    }
-    let state = self.remote_authority_mgr.lock().state(&authority);
+    self.remote_authority_mgr.with_write(|mgr| {
+      mgr.handle_invalid_association(authority.clone(), now_secs, Some(effective));
+    });
+    let state = self.remote_authority_mgr.with_read(|mgr| mgr.state(&authority));
     self.publish_remote_authority_event(authority, state);
   }
 
   /// Manually overrides a quarantined authority back to connected.
   pub fn remote_authority_manual_override_to_connected(&self, authority: &str) {
-    self.remote_authority_mgr.lock().manual_override_to_connected(authority);
+    self.remote_authority_mgr.with_write(|mgr| mgr.manual_override_to_connected(authority));
     self.publish_remote_authority_event(authority.to_string(), AuthorityState::Connected);
   }
 
@@ -990,7 +981,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     authority: impl Into<String>,
     message: AnyMessageGeneric<TB>,
   ) -> Result<(), RemoteAuthorityError> {
-    self.remote_authority_mgr.lock().defer_send(authority, message)
+    self.remote_authority_mgr.with_write(|mgr| mgr.defer_send(authority, message))
   }
 
   /// Attempts to defer a message, returning an error if the authority is quarantined.
@@ -1003,14 +994,14 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     authority: impl Into<String>,
     message: AnyMessageGeneric<TB>,
   ) -> Result<(), RemoteAuthorityError> {
-    self.remote_authority_mgr.lock().try_defer_send(authority, message)
+    self.remote_authority_mgr.with_write(|mgr| mgr.try_defer_send(authority, message))
   }
 
   /// Polls all authorities for expired quarantine windows and emits events for lifted entries.
   pub fn poll_remote_authorities(&self) {
     let now_secs = self.monotonic_now().as_secs();
     self.actor_path_registry.lock().poll_expired(now_secs);
-    let lifted = self.remote_authority_mgr.lock().poll_quarantine_expiration(now_secs);
+    let lifted = self.remote_authority_mgr.with_write(|mgr| mgr.poll_quarantine_expiration(now_secs));
     for authority in lifted {
       self.publish_remote_authority_event(authority.clone(), AuthorityState::Unresolved);
     }

@@ -1,10 +1,7 @@
 use alloc::{borrow::ToOwned, string::String};
 
 use ahash::RandomState;
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 use hashbrown::HashMap;
 
 use crate::core::dispatcher::{DispatcherConfigGeneric, DispatcherRegistryError};
@@ -21,8 +18,6 @@ pub struct DispatchersGeneric<TB: RuntimeToolbox + 'static> {
 
 /// Type alias using the default toolbox.
 pub type Dispatchers = DispatchersGeneric<NoStdToolbox>;
-/// Shared dispatcher registry protected by a toolbox mutex.
-pub type DispatchersShared<TB> = ArcShared<ToolboxMutex<DispatchersGeneric<TB>, TB>>;
 
 impl<TB: RuntimeToolbox + 'static> DispatchersGeneric<TB> {
   /// Creates an empty dispatcher registry.

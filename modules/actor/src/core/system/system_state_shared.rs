@@ -19,7 +19,7 @@ use crate::core::{
     actor_ref::ActorRefGeneric,
   },
   dead_letter::{DeadLetterEntryGeneric, DeadLetterReason},
-  dispatcher::DispatchersShared,
+  dispatcher::DispatchersSharedGeneric,
   error::{ActorError, SendError},
   event_stream::{EventStreamEvent, EventStreamGeneric, TickDriverSnapshot},
   futures::ActorFutureSharedGeneric,
@@ -413,7 +413,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
 
   /// Returns the dispatcher registry.
   #[must_use]
-  pub fn dispatchers(&self) -> DispatchersShared<TB> {
+  pub fn dispatchers(&self) -> DispatchersSharedGeneric<TB> {
     self.inner.dispatchers()
   }
 
@@ -482,7 +482,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
 
   /// Returns a reference to the RemoteAuthorityManager.
   #[must_use]
-  pub fn remote_authority_manager(&self) -> super::RemoteAuthorityManagerShared<TB> {
+  pub fn remote_authority_manager(&self) -> super::RemoteAuthorityManagerSharedGeneric<TB> {
     self.inner.remote_authority_manager().clone()
   }
 
