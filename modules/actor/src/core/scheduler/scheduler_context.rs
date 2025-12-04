@@ -1,27 +1,18 @@
 //! Scheduler runtime container shared across the actor system.
-
-#[cfg(any(test, feature = "test-support"))]
-use alloc::borrow::ToOwned;
-use core::time::Duration;
-
-#[cfg(any(test, feature = "test-support"))]
-use fraktor_utils_rs::core::time::{MonotonicClock, TimerInstant};
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+  runtime_toolbox::{RuntimeToolbox, SyncMutexFamily},
+  sync::ArcShared,
 };
 
 use super::{
-  Scheduler, SchedulerBackedDelayProvider, SchedulerConfig, TaskRunSummary,
-  tick_driver::{AutoDriverMetadata, TickDriverKind, TickDriverMetadata},
+  Scheduler, SchedulerBackedDelayProvider, SchedulerConfig, SchedulerSharedGeneric, TaskRunSummary,
+  tick_driver::{AutoDriverMetadata, TickDriverMetadata},
 };
-use crate::core::event_stream::{EventStreamEvent, EventStreamGeneric, TickDriverSnapshot};
-#[cfg(any(test, feature = "test-support"))]
-use crate::core::logging::{LogEvent, LogLevel};
+use crate::core::event_stream::{EventStreamGeneric, TickDriverSnapshot};
 
 /// Owns the shared scheduler instance and exposes auxiliary services.
 pub struct SchedulerContext<TB: RuntimeToolbox + 'static> {
-  scheduler:       ArcShared<ToolboxMutex<Scheduler<TB>, TB>>,
+  scheduler:       SchedulerSharedGeneric<TB>,
   provider:        SchedulerBackedDelayProvider<TB>,
   event_stream:    ArcShared<EventStreamGeneric<TB>>,
   driver_snapshot: Option<TickDriverSnapshot>,
@@ -43,14 +34,14 @@ impl<TB: RuntimeToolbox + 'static> SchedulerContext<TB> {
   ) -> Self {
     let scheduler = Scheduler::new(toolbox, config);
     let mutex = <<TB as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(scheduler);
-    let shared = ArcShared::new(mutex);
+    let shared = SchedulerSharedGeneric::new(ArcShared::new(mutex));
     let provider = SchedulerBackedDelayProvider::new(shared.clone());
     Self { scheduler: shared, provider, event_stream, driver_snapshot: None }
   }
 
   /// Returns a clone of the shared scheduler mutex.
   #[must_use]
-  pub fn scheduler(&self) -> ArcShared<ToolboxMutex<Scheduler<TB>, TB>> {
+  pub fn scheduler(&self) -> SchedulerSharedGeneric<TB> {
     self.scheduler.clone()
   }
 
@@ -84,45 +75,9 @@ impl<TB: RuntimeToolbox + 'static> SchedulerContext<TB> {
     self.driver_snapshot.clone()
   }
 
-  #[allow(dead_code)]
-  pub(crate) fn record_driver_metadata(
-    &mut self,
-    kind: TickDriverKind,
-    resolution: Duration,
-    metadata: TickDriverMetadata,
-    auto: Option<AutoDriverMetadata>,
-  ) {
-    let snapshot = TickDriverSnapshot::new(metadata, kind, resolution, auto);
-    self.driver_snapshot = Some(snapshot.clone());
-    self.event_stream.publish(&EventStreamEvent::TickDriver(snapshot));
-  }
-
-  #[allow(dead_code)]
-  #[cfg(any(test, feature = "test-support"))]
-  pub(crate) fn publish_driver_warning(&self, message: &str) {
-    let timestamp = self.current_timestamp();
-    let event = EventStreamEvent::Log(LogEvent::new(LogLevel::Warn, message.to_owned(), timestamp, None));
-    self.event_stream.publish(&event);
-  }
-
   /// Shuts down the underlying scheduler, returning the summary.
   #[must_use]
   pub fn shutdown(&mut self) -> TaskRunSummary {
-    self.scheduler.lock().shutdown_with_tasks()
+    self.scheduler.with_mut(|s| s.shutdown_with_tasks())
   }
-
-  #[allow(dead_code)]
-  #[cfg(any(test, feature = "test-support"))]
-  fn current_timestamp(&self) -> Duration {
-    let scheduler = self.scheduler();
-    let guard = scheduler.lock();
-    instant_to_duration(guard.toolbox().clock().now())
-  }
-}
-
-#[allow(dead_code)]
-#[cfg(any(test, feature = "test-support"))]
-fn instant_to_duration(instant: TimerInstant) -> Duration {
-  let nanos = instant.resolution().as_nanos().saturating_mul(u128::from(instant.ticks()));
-  Duration::from_nanos(nanos.min(u64::MAX as u128) as u64)
 }

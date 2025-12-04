@@ -25,7 +25,7 @@ async fn tokio_interval_driver_produces_ticks() {
   let mut runtime = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
 
   tokio::time::sleep(Duration::from_millis(20)).await;
-  let resolution = ctx.scheduler().lock().config().resolution();
+  let resolution = ctx.scheduler().with_mut(|s| s.config().resolution());
   let now = TimerInstant::from_ticks(1, resolution);
   let metrics = runtime.feed().expect("feed").snapshot(now, TickDriverKind::Auto);
   assert!(metrics.enqueued_total() > 0);
@@ -93,7 +93,7 @@ async fn tokio_quickstart_helper_provisions_driver() {
 
   tokio::time::sleep(Duration::from_millis(40)).await;
 
-  let resolution = ctx.scheduler().lock().config().resolution();
+  let resolution = ctx.scheduler().with_mut(|s| s.config().resolution());
   let now = TimerInstant::from_ticks(1, resolution);
   let metrics = runtime.feed().expect("feed").snapshot(now, TickDriverKind::Auto);
   assert!(metrics.enqueued_total() > 0);

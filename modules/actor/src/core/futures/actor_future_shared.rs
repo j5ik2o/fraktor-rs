@@ -43,10 +43,11 @@ where
     Self { inner: ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(ActorFuture::new())) }
   }
 
-  /// Returns the inner `ArcShared<ToolboxMutex<...>>` reference.
-  #[must_use]
-  pub const fn inner(&self) -> &ArcShared<ToolboxMutex<ActorFuture<T, TB>, TB>> {
-    &self.inner
+  /// Runs the provided closure while holding the mutex.
+  #[inline]
+  pub fn with_mut<R>(&self, f: impl FnOnce(&mut ActorFuture<T, TB>) -> R) -> R {
+    let mut guard = self.inner.lock();
+    f(&mut guard)
   }
 
   /// Completes the future with the given value.

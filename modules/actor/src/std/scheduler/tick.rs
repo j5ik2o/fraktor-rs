@@ -60,17 +60,11 @@ impl TickDriverConfig {
   pub fn tokio_quickstart_with_resolution(resolution: Duration) -> CoreTickDriverConfig<StdToolbox> {
     use alloc::boxed::Box;
 
-    use fraktor_utils_rs::{
-      core::{
-        runtime_toolbox::{SyncMutexFamily, ToolboxMutex},
-        sync::ArcShared,
-      },
-      std::runtime_toolbox::StdMutexFamily,
-    };
+    use fraktor_utils_rs::{core::runtime_toolbox::SyncMutexFamily, std::runtime_toolbox::StdMutexFamily};
     use tokio::time::{MissedTickBehavior, interval};
 
     use crate::core::scheduler::{
-      AutoDriverMetadata, AutoProfileKind, Scheduler, SchedulerTickExecutor, TickDriverControl,
+      AutoDriverMetadata, AutoProfileKind, SchedulerSharedGeneric, SchedulerTickExecutor, TickDriverControl,
       TickDriverHandleGeneric, TickDriverKind, TickDriverRuntime, TickExecutorSignal, TickFeed, next_tick_driver_id,
     };
 
@@ -79,11 +73,8 @@ impl TickDriverConfig {
       let handle = Handle::try_current().expect("Tokio runtime handle unavailable");
 
       // Get scheduler, resolution, and capacity from context
-      let scheduler: ArcShared<ToolboxMutex<Scheduler<StdToolbox>, StdToolbox>> = ctx.scheduler();
-      let capacity = {
-        let guard = scheduler.lock();
-        guard.config().profile().tick_buffer_quota()
-      };
+      let scheduler: SchedulerSharedGeneric<StdToolbox> = ctx.scheduler();
+      let capacity = scheduler.with_mut(|s| s.config().profile().tick_buffer_quota());
 
       // Create tick driver components
       let signal = TickExecutorSignal::new();
@@ -154,14 +145,11 @@ impl TickDriverConfig {
   ) -> CoreTickDriverConfig<StdToolbox> {
     use alloc::boxed::Box;
 
-    use fraktor_utils_rs::{
-      core::runtime_toolbox::{SyncMutexFamily, ToolboxMutex},
-      std::runtime_toolbox::StdMutexFamily,
-    };
+    use fraktor_utils_rs::{core::runtime_toolbox::SyncMutexFamily, std::runtime_toolbox::StdMutexFamily};
     use tokio::time::{MissedTickBehavior, interval};
 
     use crate::core::scheduler::{
-      AutoDriverMetadata, AutoProfileKind, Scheduler, SchedulerTickExecutor, SchedulerTickMetricsProbe,
+      AutoDriverMetadata, AutoProfileKind, SchedulerSharedGeneric, SchedulerTickExecutor, SchedulerTickMetricsProbe,
       TickDriverControl, TickDriverHandleGeneric, TickDriverKind, TickDriverRuntime, TickExecutorSignal, TickFeed,
       next_tick_driver_id,
     };
@@ -170,11 +158,8 @@ impl TickDriverConfig {
       #[allow(clippy::expect_used)]
       let handle = Handle::try_current().expect("Tokio runtime handle unavailable");
 
-      let scheduler: Arc<ToolboxMutex<Scheduler<StdToolbox>, StdToolbox>> = ctx.scheduler();
-      let capacity = {
-        let guard = scheduler.lock();
-        guard.config().profile().tick_buffer_quota()
-      };
+      let scheduler: SchedulerSharedGeneric<StdToolbox> = ctx.scheduler();
+      let capacity = scheduler.with_mut(|s| s.config().profile().tick_buffer_quota());
 
       let signal = TickExecutorSignal::new();
       let feed = TickFeed::new(resolution, capacity, signal);

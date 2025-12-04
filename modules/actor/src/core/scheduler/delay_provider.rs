@@ -3,14 +3,14 @@
 use core::time::Duration;
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, ToolboxMutex},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+  runtime_toolbox::RuntimeToolbox,
+  sync::ArcShared,
   timing::{DelayFuture, DelayProvider, DelayTrigger},
 };
 
 use super::{
-  Scheduler, SchedulerCommand, SchedulerError, SchedulerHandle, execution_batch::ExecutionBatch,
-  runnable::SchedulerRunnable,
+  Scheduler, SchedulerCommand, SchedulerError, SchedulerHandle, SchedulerSharedGeneric,
+  execution_batch::ExecutionBatch, runnable::SchedulerRunnable,
 };
 
 /// Provides delay futures by scheduling runnable tasks on the canonical scheduler.
@@ -21,19 +21,18 @@ use super::{
 /// The internal `Scheduler` is still protected by a mutex because it is a shared
 /// system resource, but callers must ensure exclusive access to this provider.
 pub struct SchedulerBackedDelayProvider<TB: RuntimeToolbox + 'static> {
-  scheduler: ArcShared<ToolboxMutex<Scheduler<TB>, TB>>,
+  scheduler: SchedulerSharedGeneric<TB>,
 }
 
 impl<TB: RuntimeToolbox + 'static> SchedulerBackedDelayProvider<TB> {
   /// Creates a provider referencing the shared scheduler instance.
   #[must_use]
-  pub const fn new(scheduler: ArcShared<ToolboxMutex<Scheduler<TB>, TB>>) -> Self {
+  pub const fn new(scheduler: SchedulerSharedGeneric<TB>) -> Self {
     Self { scheduler }
   }
 
   fn with_scheduler<R>(&mut self, f: impl FnOnce(&mut Scheduler<TB>) -> R) -> R {
-    let mut guard = self.scheduler.lock();
-    f(&mut guard)
+    self.scheduler.with_mut(f)
   }
 
   fn schedule_delay(&mut self, duration: Duration, trigger: &DelayTrigger) -> Result<SchedulerHandle, SchedulerError> {
@@ -47,8 +46,9 @@ impl<TB: RuntimeToolbox + 'static> SchedulerBackedDelayProvider<TB> {
   fn install_cancel_hook(&self, handle: SchedulerHandle, trigger: &DelayTrigger) {
     let scheduler = self.scheduler.clone();
     trigger.set_cancel_hook(move || {
-      let mut guard = scheduler.lock();
-      let _ = guard.cancel(&handle);
+      scheduler.with_mut(|s| {
+        let _ = s.cancel(&handle);
+      });
     });
   }
 }
