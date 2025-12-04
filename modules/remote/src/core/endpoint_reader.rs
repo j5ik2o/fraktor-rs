@@ -11,7 +11,7 @@ use fraktor_actor_rs::core::{
   error::SendError,
   messaging::AnyMessageGeneric,
   serialization::SerializationExtensionGeneric,
-  system::ActorSystemGeneric,
+  system::{ActorSystemGeneric, RemoteWatchHookShared},
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
@@ -111,14 +111,16 @@ impl<TB: RuntimeToolbox + 'static> EndpointReaderGeneric<TB> {
   fn resolve_reply_to(&self, path: &ActorPath) -> Option<ActorRefGeneric<TB>> {
     // Try Tokio provider first when available, then generic remote provider as fallback.
     #[cfg(feature = "tokio-transport")]
-    if let Some(provider) = self.system.extended().actor_ref_provider::<TokioActorRefProviderGeneric<TB>>()
-      && let Ok(reply_ref) = provider.actor_ref(path.clone())
+    if let Some(provider) =
+      self.system.extended().actor_ref_provider::<RemoteWatchHookShared<TB, TokioActorRefProviderGeneric<TB>>>()
+      && let Ok(reply_ref) = provider.get_actor_ref(path.clone())
     {
       return Some(reply_ref);
     }
 
-    if let Some(provider) = self.system.extended().actor_ref_provider::<RemoteActorRefProviderGeneric<TB>>()
-      && let Ok(reply_ref) = provider.actor_ref(path.clone())
+    if let Some(provider) =
+      self.system.extended().actor_ref_provider::<RemoteWatchHookShared<TB, RemoteActorRefProviderGeneric<TB>>>()
+      && let Ok(reply_ref) = provider.get_actor_ref(path.clone())
     {
       return Some(reply_ref);
     }

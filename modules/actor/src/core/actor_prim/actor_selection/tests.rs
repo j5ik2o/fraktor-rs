@@ -96,7 +96,7 @@ fn test_defer_send_when_authority_unresolved() {
   let parts = ActorPathParts::with_authority("test-system", Some(("remote-host", 2552)));
   let _remote_path = ActorPath::from_parts(parts);
 
-  let manager = RemoteAuthorityManager::new();
+  let mut manager = RemoteAuthorityManager::new();
 
   // authority が未解決なので defer_send される
   let message = AnyMessage::new(42u32);
@@ -110,8 +110,9 @@ fn test_defer_send_when_authority_unresolved() {
 fn test_ensure_authority_state_defers_and_errors_when_unresolved() {
   let parts = ActorPathParts::with_authority("remote-sys", Some(("host.example.com", 2552)));
   let path = ActorPath::from_parts(parts).child("worker");
-  let manager = RemoteAuthorityManager::new();
-  let err = ActorSelectionResolver::ensure_authority_state(&path, &manager, Some(AnyMessage::new(1u32))).unwrap_err();
+  let mut manager = RemoteAuthorityManager::new();
+  let err =
+    ActorSelectionResolver::ensure_authority_state(&path, &mut manager, Some(AnyMessage::new(1u32))).unwrap_err();
   assert!(matches!(err, PathResolutionError::AuthorityUnresolved));
   assert_eq!(manager.deferred_count("host.example.com:2552"), 1);
 }
@@ -120,10 +121,11 @@ fn test_ensure_authority_state_defers_and_errors_when_unresolved() {
 fn test_ensure_authority_state_rejects_quarantine() {
   let parts = ActorPathParts::with_authority("remote-sys", Some(("blocked-host", 2553)));
   let path = ActorPath::from_parts(parts).child("logger");
-  let manager = RemoteAuthorityManager::new();
+  let mut manager = RemoteAuthorityManager::new();
   manager.set_quarantine("blocked-host:2553", 0, Some(Duration::from_secs(30)));
 
-  let err = ActorSelectionResolver::ensure_authority_state(&path, &manager, Some(AnyMessage::new("msg"))).unwrap_err();
+  let err =
+    ActorSelectionResolver::ensure_authority_state(&path, &mut manager, Some(AnyMessage::new("msg"))).unwrap_err();
   assert!(matches!(err, PathResolutionError::AuthorityQuarantined));
   assert_eq!(manager.deferred_count("blocked-host:2553"), 0);
 }
@@ -131,9 +133,13 @@ fn test_ensure_authority_state_rejects_quarantine() {
 #[test]
 fn test_resolve_relative_with_authority_reports_unresolved() {
   let base = ActorPath::from_parts(ActorPathParts::with_authority("cluster", Some(("peer", 2552))));
-  let manager = RemoteAuthorityManager::new();
-  let result =
-    ActorSelectionResolver::resolve_relative_with_authority(&base, "worker", &manager, Some(AnyMessage::new("msg")));
+  let mut manager = RemoteAuthorityManager::new();
+  let result = ActorSelectionResolver::resolve_relative_with_authority(
+    &base,
+    "worker",
+    &mut manager,
+    Some(AnyMessage::new("msg")),
+  );
   match result {
     | Err(ActorSelectionError::Authority(PathResolutionError::AuthorityUnresolved)) => {},
     | other => panic!("unexpected result {:?}", other),
@@ -144,16 +150,16 @@ fn test_resolve_relative_with_authority_reports_unresolved() {
 #[test]
 fn test_resolve_relative_with_authority_fails_on_quarantine() {
   let base = ActorPath::from_parts(ActorPathParts::with_authority("cluster", Some(("peer2", 2553))));
-  let manager = RemoteAuthorityManager::new();
+  let mut manager = RemoteAuthorityManager::new();
   manager.set_quarantine("peer2:2553", 0, Some(Duration::from_secs(100)));
   let result =
-    ActorSelectionResolver::resolve_relative_with_authority(&base, "worker", &manager, Some(AnyMessage::new(1u32)));
+    ActorSelectionResolver::resolve_relative_with_authority(&base, "worker", &mut manager, Some(AnyMessage::new(1u32)));
   assert!(matches!(result, Err(ActorSelectionError::Authority(PathResolutionError::AuthorityQuarantined))));
 }
 
 #[test]
 fn test_flush_deferred_when_connected() {
-  let manager = RemoteAuthorityManager::new();
+  let mut manager = RemoteAuthorityManager::new();
   let authority = "remote-host:2552";
 
   // Unresolved 状態でメッセージを defer
@@ -172,7 +178,7 @@ fn test_flush_deferred_when_connected() {
 
 #[test]
 fn test_reject_send_when_quarantined() {
-  let manager = RemoteAuthorityManager::new();
+  let mut manager = RemoteAuthorityManager::new();
   let authority = "quarantined-host:2552";
 
   // Quarantine へ遷移
@@ -186,7 +192,7 @@ fn test_reject_send_when_quarantined() {
 // Task 3.3: 統合シナリオテスト
 #[test]
 fn test_scenario_unresolved_to_connected_delivery() {
-  let manager = RemoteAuthorityManager::new();
+  let mut manager = RemoteAuthorityManager::new();
   let authority = "integration-host:2552";
 
   // シナリオ 1: 未解決状態でメッセージを積む

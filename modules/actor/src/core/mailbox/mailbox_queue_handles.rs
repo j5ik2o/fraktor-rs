@@ -22,13 +22,13 @@ use crate::core::mailbox::{
 const DEFAULT_QUEUE_CAPACITY: usize = 16;
 
 /// Internal handles wrapping queue producers/consumers.
-pub struct QueueHandles<T, TB: RuntimeToolbox>
+pub struct QueueStateHandle<T, TB: RuntimeToolbox>
 where
   T: Send + 'static, {
   pub(crate) state: ArcShared<ToolboxMutex<QueueState<T, TB>, TB>>,
 }
 
-impl<T, TB> QueueHandles<T, TB>
+impl<T, TB> QueueStateHandle<T, TB>
 where
   T: Send + 'static,
   TB: RuntimeToolbox + 'static,

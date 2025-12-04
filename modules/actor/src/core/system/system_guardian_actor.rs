@@ -88,7 +88,7 @@ impl<TB: RuntimeToolbox + 'static> SystemGuardianActor<TB> {
         if self.hooks.is_empty() {
           ctx.stop_self().map_err(|error| ActorError::from_send_error(&error))
         } else {
-          for hook in &self.hooks {
+          for hook in &mut self.hooks {
             hook
               .actor
               .tell(AnyMessageGeneric::new(SystemGuardianProtocol::<TB>::TerminationHook))

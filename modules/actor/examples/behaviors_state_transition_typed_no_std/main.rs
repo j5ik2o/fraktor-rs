@@ -7,6 +7,7 @@ use fraktor_actor_rs::core::{
   error::ActorError,
   typed::{Behavior, Behaviors, TypedActorSystem, TypedProps},
 };
+use fraktor_utils_rs::core::sync::SharedAccess;
 
 #[derive(Clone, Copy)]
 enum GateCommand {
@@ -67,7 +68,7 @@ fn main() {
   let props = TypedProps::from_behavior_factory(|| locked(0));
   let (tick_driver, _pulse_handle) = no_std_tick_driver_support::hardware_tick_driver_config();
   let system = TypedActorSystem::new(&props, tick_driver).expect("system");
-  let gate = system.user_guardian_ref();
+  let mut gate = system.user_guardian_ref();
   let termination = system.when_terminated();
 
   gate.tell(GateCommand::PassThrough).expect("fail first pass");
@@ -76,7 +77,7 @@ fn main() {
   gate.tell(GateCommand::PassThrough).expect("pass after unlock");
 
   let response = gate.ask::<u32>(GateCommand::ReadPassCount).expect("ask count");
-  let future = response.future().clone();
+  let mut future = response.future().clone();
   while !future.is_ready() {
     thread::yield_now();
   }
@@ -90,7 +91,7 @@ fn main() {
   gate.tell(GateCommand::Shutdown).expect("shutdown gate");
 
   system.terminate().expect("terminate system");
-  while !termination.is_ready() {
+  while !termination.with_read(|af| af.is_ready()) {
     thread::yield_now();
   }
 }

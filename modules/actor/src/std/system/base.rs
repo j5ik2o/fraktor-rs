@@ -8,11 +8,11 @@ use crate::{
     actor_prim::{Pid, actor_path::ActorPath},
     event_stream::{TickDriverSnapshot, subscriber_handle as core_subscriber_handle},
     logging::LogLevel,
-    scheduler::{SchedulerContext, TickDriverConfig},
+    scheduler::{SchedulerContextSharedGeneric, TickDriverConfig},
     spawn::SpawnError,
     system::{
       ActorRefResolveError, ActorSystemGeneric as CoreActorSystemGeneric, ExtendedActorSystemGeneric,
-      SystemStateGeneric as CoreSystemStateGeneric,
+      SystemStateGeneric as CoreSystemStateGeneric, SystemStateSharedGeneric as CoreSystemStateSharedGeneric,
     },
   },
   std::{
@@ -20,7 +20,7 @@ use crate::{
     dead_letter::DeadLetterEntry,
     error::SendError,
     event_stream::{EventStream, EventStreamEvent, EventStreamSubscriberAdapter, EventStreamSubscription},
-    futures::ActorFuture,
+    futures::ActorFutureShared,
     messaging::AnyMessage,
     props::Props,
     system::ActorSystemConfig,
@@ -95,7 +95,7 @@ impl ActorSystem {
 
   /// Returns the shared system state.
   #[must_use]
-  pub fn state(&self) -> ArcShared<SystemState> {
+  pub fn state(&self) -> SystemStateShared {
     self.inner.state()
   }
 
@@ -125,7 +125,7 @@ impl ActorSystem {
 
   /// Returns the shared scheduler context if installed.
   #[must_use]
-  pub fn scheduler_context(&self) -> Option<ArcShared<SchedulerContext<StdToolbox>>> {
+  pub fn scheduler_context(&self) -> Option<SchedulerContextSharedGeneric<StdToolbox>> {
     self.inner.scheduler_context()
   }
 
@@ -154,7 +154,7 @@ impl ActorSystem {
 
   /// Drains ask futures that have been fulfilled since the last check.
   #[must_use]
-  pub fn drain_ready_ask_futures(&self) -> Vec<ArcShared<ActorFuture<AnyMessage>>> {
+  pub fn drain_ready_ask_futures(&self) -> Vec<ActorFutureShared<AnyMessage>> {
     self.inner.drain_ready_ask_futures()
   }
 
@@ -169,7 +169,7 @@ impl ActorSystem {
 
   /// Returns a future that resolves once the actor system terminates.
   #[must_use]
-  pub fn when_terminated(&self) -> ArcShared<ActorFuture<()>> {
+  pub fn when_terminated(&self) -> ActorFutureShared<()> {
     self.inner.when_terminated()
   }
 
@@ -185,6 +185,9 @@ impl ActorSystem {
 
 /// Shared system state specialised for `StdToolbox`.
 pub type SystemState = CoreSystemStateGeneric<StdToolbox>;
+
+/// Shared system state wrapper specialised for `StdToolbox`.
+pub type SystemStateShared = CoreSystemStateSharedGeneric<StdToolbox>;
 
 /// Extended actor system type specialised for `StdToolbox`.
 pub type ExtendedActorSystem = ExtendedActorSystemGeneric<StdToolbox>;

@@ -7,12 +7,12 @@ use core::{
   task::{Context, Poll},
 };
 
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use crate::core::{
   actor_prim::{ContextPipeTaskId, Pid, context_pipe_waker::ContextPipeWaker},
   messaging::AnyMessageGeneric,
-  system::SystemStateGeneric,
+  system::SystemStateSharedGeneric,
 };
 
 /// Future type stored by context pipe tasks.
@@ -23,7 +23,7 @@ pub(crate) struct ContextPipeTask<TB: RuntimeToolbox + 'static> {
   id:     ContextPipeTaskId,
   future: ContextPipeFuture<TB>,
   pid:    Pid,
-  system: ArcShared<SystemStateGeneric<TB>>,
+  system: SystemStateSharedGeneric<TB>,
 }
 
 impl<TB: RuntimeToolbox + 'static> ContextPipeTask<TB> {
@@ -33,7 +33,7 @@ impl<TB: RuntimeToolbox + 'static> ContextPipeTask<TB> {
     id: ContextPipeTaskId,
     future: ContextPipeFuture<TB>,
     pid: Pid,
-    system: ArcShared<SystemStateGeneric<TB>>,
+    system: SystemStateSharedGeneric<TB>,
   ) -> Self {
     Self { id, future, pid, system }
   }

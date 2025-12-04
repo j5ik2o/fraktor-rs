@@ -8,18 +8,26 @@ use crate::core::{
 };
 
 /// Dispatches user and system messages to actor handlers.
+///
+/// Implementations should be wrapped in [`MessageInvokerShared`](super::MessageInvokerShared)
+/// for shared access using `with_write`:
+///
+/// ```text
+/// let invoker = MessageInvokerShared::new(boxed_invoker);
+/// invoker.with_write(|i| i.invoke_user_message(message))?;
+/// ```
 pub trait MessageInvoker<TB: RuntimeToolbox + 'static = NoStdToolbox>: Send + Sync {
   /// Processes user messages.
   ///
   /// # Errors
   ///
   /// Returns an error if message processing fails.
-  fn invoke_user_message(&self, message: AnyMessageGeneric<TB>) -> Result<(), ActorError>;
+  fn invoke_user_message(&mut self, message: AnyMessageGeneric<TB>) -> Result<(), ActorError>;
 
   /// Processes system messages.
   ///
   /// # Errors
   ///
   /// Returns an error if system message processing fails.
-  fn invoke_system_message(&self, message: SystemMessage) -> Result<(), ActorError>;
+  fn invoke_system_message(&mut self, message: SystemMessage) -> Result<(), ActorError>;
 }

@@ -38,7 +38,8 @@ impl RestartStatistics {
 
   /// Returns the number of recorded failures.
   #[must_use]
-  pub const fn failure_count(&self) -> usize {
+  #[allow(clippy::missing_const_for_fn)]
+  pub fn failure_count(&self) -> usize {
     self.failures.len()
   }
 

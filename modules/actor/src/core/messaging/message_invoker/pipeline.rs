@@ -4,10 +4,10 @@ use alloc::vec::Vec;
 
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  sync::ArcShared,
+  sync::SharedAccess,
 };
 
-use super::MessageInvokerMiddleware;
+use super::middleware_shared::MiddlewareShared;
 use crate::core::{
   actor_prim::{Actor, ActorContextGeneric, actor_ref::ActorRefGeneric},
   error::ActorError,
@@ -16,7 +16,7 @@ use crate::core::{
 
 /// Middleware-enabled pipeline used to invoke actor message handlers.
 pub struct MessageInvokerPipelineGeneric<TB: RuntimeToolbox + 'static> {
-  user_middlewares: Vec<ArcShared<dyn MessageInvokerMiddleware<TB>>>,
+  user_middlewares: Vec<MiddlewareShared<TB>>,
 }
 
 /// Type alias for [MessageInvokerPipelineGeneric] with the default [NoStdToolbox].
@@ -31,7 +31,8 @@ impl<TB: RuntimeToolbox + 'static> MessageInvokerPipelineGeneric<TB> {
 
   /// Builds a pipeline from the provided middleware list.
   #[must_use]
-  pub fn from_middlewares(middlewares: Vec<ArcShared<dyn MessageInvokerMiddleware<TB>>>) -> Self {
+  #[allow(dead_code)] // Used in tests
+  pub(crate) const fn from_middlewares(middlewares: Vec<MiddlewareShared<TB>>) -> Self {
     Self { user_middlewares: middlewares }
   }
 
@@ -79,7 +80,7 @@ impl<TB: RuntimeToolbox + 'static> MessageInvokerPipelineGeneric<TB> {
     message: &AnyMessageViewGeneric<'_, TB>,
   ) -> Result<(), ActorError> {
     for middleware in &self.user_middlewares {
-      middleware.before_user(ctx, message)?;
+      middleware.with_write(|m| m.before_user(ctx, message))?;
     }
     Ok(())
   }
@@ -91,7 +92,7 @@ impl<TB: RuntimeToolbox + 'static> MessageInvokerPipelineGeneric<TB> {
     mut result: Result<(), ActorError>,
   ) -> Result<(), ActorError> {
     for middleware in self.user_middlewares.iter().rev() {
-      result = middleware.after_user(ctx, message, result);
+      result = middleware.with_write(|m| m.after_user(ctx, message, result));
     }
     result
   }

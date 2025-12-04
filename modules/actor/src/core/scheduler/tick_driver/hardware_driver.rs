@@ -7,6 +7,7 @@ use fraktor_utils_rs::core::{
   runtime_toolbox::{RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
   sync::ArcShared,
 };
+use portable_atomic::{AtomicBool, Ordering};
 
 use super::{
   HardwareKind, TickDriver, TickDriverControl, TickDriverError, TickDriverHandleGeneric, TickDriverId, TickDriverKind,
@@ -75,21 +76,22 @@ struct PulseContext<TB: RuntimeToolbox> {
 }
 
 struct HardwareDriverControl<TB: RuntimeToolbox> {
-  ctx:  Option<*mut PulseContext<TB>>,
-  feed: TickFeedHandle<TB>,
+  ctx:   *mut PulseContext<TB>,
+  feed:  TickFeedHandle<TB>,
+  freed: AtomicBool,
 }
 
 impl<TB: RuntimeToolbox> HardwareDriverControl<TB> {
   const fn new(ctx: *mut c_void, feed: TickFeedHandle<TB>) -> Self {
-    Self { ctx: Some(ctx as *mut PulseContext<TB>), feed }
+    Self { ctx: ctx as *mut PulseContext<TB>, feed, freed: AtomicBool::new(false) }
   }
 }
 
 impl<TB: RuntimeToolbox> TickDriverControl for HardwareDriverControl<TB> {
-  fn shutdown(&mut self) {
-    if let Some(ptr) = self.ctx.take() {
+  fn shutdown(&self) {
+    if !self.freed.swap(true, Ordering::AcqRel) && !self.ctx.is_null() {
       unsafe {
-        drop(Box::from_raw(ptr));
+        drop(Box::from_raw(self.ctx));
       }
     }
     self.feed.mark_driver_inactive();

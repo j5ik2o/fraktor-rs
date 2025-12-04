@@ -56,7 +56,7 @@ fn test_e2e_format_parse_round_trip_with_uid() {
 #[test]
 fn test_e2e_authority_unresolved_deferred_connected_delivery() {
   // Authority 未解決 → 接続のシナリオ
-  let manager = RemoteAuthorityManager::new();
+  let mut manager = RemoteAuthorityManager::new();
   let authority = "e2e-host:2552";
 
   // 未解決状態でメッセージを defer
@@ -75,7 +75,7 @@ fn test_e2e_authority_unresolved_deferred_connected_delivery() {
 #[test]
 fn test_e2e_authority_quarantine_invalid_association() {
   // Quarantine シナリオ: InvalidAssociation の挙動
-  let manager = RemoteAuthorityManager::new();
+  let mut manager = RemoteAuthorityManager::new();
   let authority = "quarantine-host:2552";
 
   // 初期メッセージを defer
@@ -107,11 +107,15 @@ fn test_e2e_actor_selection_with_relative_paths() {
 #[test]
 fn test_e2e_actor_selection_remote_authority_state_sequence() {
   let base = ActorPath::from_parts(ActorPathParts::with_authority("cluster", Some(("remote-node", 2552))));
-  let manager = RemoteAuthorityManager::new();
+  let mut manager = RemoteAuthorityManager::new();
 
   // 未解決時は defer + AuthorityUnresolved
-  let result =
-    ActorSelectionResolver::resolve_relative_with_authority(&base, "worker", &manager, Some(AnyMessage::new("msg1")));
+  let result = ActorSelectionResolver::resolve_relative_with_authority(
+    &base,
+    "worker",
+    &mut manager,
+    Some(AnyMessage::new("msg1")),
+  );
   match result {
     | Err(ActorSelectionError::Authority(PathResolutionError::AuthorityUnresolved)) => {},
     | other => panic!("expected unresolved, got {:?}", other),
@@ -120,14 +124,18 @@ fn test_e2e_actor_selection_remote_authority_state_sequence() {
 
   // 接続後は成功し、deferred キューは flush されない（resolve は状態確認のみ）
   manager.set_connected("remote-node:2552");
-  let resolved = ActorSelectionResolver::resolve_relative_with_authority(&base, "worker", &manager, None)
+  let resolved = ActorSelectionResolver::resolve_relative_with_authority(&base, "worker", &mut manager, None)
     .expect("should resolve when connected");
   assert_eq!(resolved.to_canonical_uri(), ActorPathFormatter::format(&base.child("worker")));
 
   // 隔離状態へ遷移させ、即座に AuthorityQuarantined を返す
   manager.set_quarantine("remote-node:2552", 0, Some(Duration::from_secs(60)));
-  let result =
-    ActorSelectionResolver::resolve_relative_with_authority(&base, "worker", &manager, Some(AnyMessage::new("msg2")));
+  let result = ActorSelectionResolver::resolve_relative_with_authority(
+    &base,
+    "worker",
+    &mut manager,
+    Some(AnyMessage::new("msg2")),
+  );
   assert!(matches!(result, Err(ActorSelectionError::Authority(PathResolutionError::AuthorityQuarantined))));
 }
 

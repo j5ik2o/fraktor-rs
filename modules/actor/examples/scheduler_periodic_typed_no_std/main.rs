@@ -53,7 +53,6 @@ impl TypedActor<GuardianCommand> for GuardianActor {
 
         let scheduler_context = ctx.system().scheduler_context().expect("scheduler context");
         let scheduler_shared = scheduler_context.scheduler();
-        let mut scheduler = scheduler_shared.lock();
 
         #[cfg(not(target_os = "none"))]
         println!("[{:?}] Scheduling at fixed rate: initial=50ms, interval=30ms", std::thread::current().id());
@@ -62,7 +61,7 @@ impl TypedActor<GuardianCommand> for GuardianActor {
         let command = GuardianCommand::Tick(message);
 
         // TypedScheduler::schedule_at_fixed_rateを使用
-        scheduler.with(|typed_scheduler| {
+        scheduler_shared.with_write(|typed_scheduler| {
           typed_scheduler
             .schedule_at_fixed_rate(Duration::from_millis(50), Duration::from_millis(30), target, command, None, None)
             .map_err(|_| ActorError::recoverable("failed to schedule"))

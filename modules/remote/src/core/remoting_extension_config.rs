@@ -1,12 +1,12 @@
 //! Builder-style configuration for installing the remoting extension.
 
 use alloc::{
+  boxed::Box,
   string::{String, ToString},
   vec::Vec,
 };
 
 use fraktor_actor_rs::core::event_stream::{BackpressureSignal, CorrelationId};
-use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::{
   fn_remoting_backpressure_listener::FnRemotingBackpressureListener,
@@ -14,14 +14,27 @@ use crate::core::{
 };
 
 /// Declarative configuration applied when the remoting extension is installed.
-#[derive(Clone)]
 pub struct RemotingExtensionConfig {
   canonical_host:           String,
   canonical_port:           Option<u16>,
   auto_start:               bool,
   transport_scheme:         String,
-  backpressure_listeners:   Vec<ArcShared<dyn RemotingBackpressureListener>>,
+  backpressure_listeners:   Vec<Box<dyn RemotingBackpressureListener>>,
   flight_recorder_capacity: usize,
+}
+
+impl Clone for RemotingExtensionConfig {
+  fn clone(&self) -> Self {
+    let listeners = self.backpressure_listeners.iter().map(|listener| listener.clone_box()).collect();
+    Self {
+      canonical_host:           self.canonical_host.clone(),
+      canonical_port:           self.canonical_port,
+      auto_start:               self.auto_start,
+      transport_scheme:         self.transport_scheme.clone(),
+      backpressure_listeners:   listeners,
+      flight_recorder_capacity: self.flight_recorder_capacity,
+    }
+  }
 }
 
 impl RemotingExtensionConfig {
@@ -71,10 +84,9 @@ impl RemotingExtensionConfig {
   #[must_use]
   pub fn with_backpressure_listener<F>(mut self, listener: F) -> Self
   where
-    F: Fn(BackpressureSignal, &str, CorrelationId) + Send + Sync + 'static, {
+    F: FnMut(BackpressureSignal, &str, CorrelationId) + Clone + Send + Sync + 'static, {
     let concrete = FnRemotingBackpressureListener::new(listener);
-    let dyn_listener: ArcShared<dyn RemotingBackpressureListener> = ArcShared::new(concrete);
-    self.backpressure_listeners.push(dyn_listener);
+    self.backpressure_listeners.push(Box::new(concrete));
     self
   }
 
@@ -105,7 +117,7 @@ impl RemotingExtensionConfig {
 
   /// Returns the registered backpressure listeners.
   #[must_use]
-  pub fn backpressure_listeners(&self) -> &[ArcShared<dyn RemotingBackpressureListener>] {
+  pub fn backpressure_listeners(&self) -> &[Box<dyn RemotingBackpressureListener>] {
     &self.backpressure_listeners
   }
 

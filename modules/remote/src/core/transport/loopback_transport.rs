@@ -8,12 +8,12 @@ use alloc::{
 use core::marker::PhantomData;
 
 use fraktor_actor_rs::core::event_stream::{BackpressureSignal, CorrelationId};
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::SharedAccess};
 
 use super::{
-  backpressure_hook::TransportBackpressureHookShared, remote_transport::RemoteTransport, transport_bind::TransportBind,
-  transport_channel::TransportChannel, transport_endpoint::TransportEndpoint, transport_error::TransportError,
-  transport_handle::TransportHandle, transport_inbound_handler::TransportInboundShared,
+  backpressure_hook_shared::TransportBackpressureHookShared, remote_transport::RemoteTransport,
+  transport_bind::TransportBind, transport_channel::TransportChannel, transport_endpoint::TransportEndpoint,
+  transport_error::TransportError, transport_handle::TransportHandle, transport_inbound_shared::TransportInboundShared,
 };
 
 /// In-memory transport that records frames for assertions.
@@ -63,8 +63,7 @@ impl<TB: RuntimeToolbox + 'static> LoopbackTransport<TB> {
 
   fn fire_backpressure(&mut self, authority: &str, signal: BackpressureSignal, correlation_id: CorrelationId) {
     if let Some(ref hook_handle) = self.hook {
-      let mut guard = hook_handle.lock();
-      guard.on_backpressure(signal, authority, correlation_id);
+      hook_handle.with_write(|h| h.on_backpressure(signal, authority, correlation_id));
     }
   }
 

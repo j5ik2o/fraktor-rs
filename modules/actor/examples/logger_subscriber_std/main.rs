@@ -14,6 +14,7 @@ use fraktor_actor_rs::{
     system::ActorSystem,
   },
 };
+use fraktor_utils_rs::core::sync::SharedAccess;
 
 struct Start;
 
@@ -51,7 +52,7 @@ fn main() {
 
   system.terminate().expect("システム停止要求が成功すること");
   let termination = system.when_terminated();
-  while !termination.is_ready() {
+  while !termination.with_read(|af| af.is_ready()) {
     thread::sleep(Duration::from_millis(10));
   }
 }

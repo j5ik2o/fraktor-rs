@@ -1,17 +1,18 @@
 #[cfg(test)]
 mod tests;
 
+use alloc::boxed::Box;
 use core::{pin::Pin, task::Context};
 
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  sync::ArcShared,
+  sync::{ArcShared, SharedAccess},
 };
 
 use super::base::DispatcherGeneric;
 use crate::core::{
-  actor_prim::actor_ref::ActorRefSender,
-  dispatcher::ScheduleAdapter,
+  actor_prim::actor_ref::{ActorRefSender, SendOutcome},
+  dispatcher::schedule_adapter_shared::ScheduleAdapterSharedGeneric,
   error::SendError,
   mailbox::{EnqueueOutcome, MailboxGeneric, MailboxOfferFutureGeneric, ScheduleHints},
   messaging::AnyMessageGeneric,
@@ -39,10 +40,10 @@ impl<TB: RuntimeToolbox + 'static> DispatcherSenderGeneric<TB> {
 
   fn poll_pending(
     &self,
-    adapter: &ArcShared<dyn ScheduleAdapter<TB>>,
+    adapter: &ScheduleAdapterSharedGeneric<TB>,
     future: &mut MailboxOfferFutureGeneric<TB>,
   ) -> Result<(), SendError<TB>> {
-    let waker = adapter.create_waker(self.dispatcher.clone());
+    let waker = adapter.with_write(|a| a.create_waker(self.dispatcher.clone()));
     let mut cx = Context::from_waker(&waker);
 
     loop {
@@ -55,7 +56,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherSenderGeneric<TB> {
             has_user_messages:   true,
             backpressure_active: false,
           });
-          adapter.on_pending();
+          adapter.with_write(|a| a.on_pending());
         },
       }
     }
@@ -63,31 +64,46 @@ impl<TB: RuntimeToolbox + 'static> DispatcherSenderGeneric<TB> {
 }
 
 impl<TB: RuntimeToolbox + 'static> ActorRefSender<TB> for DispatcherSenderGeneric<TB> {
-  fn send(&self, message: AnyMessageGeneric<TB>) -> Result<(), SendError<TB>> {
+  fn send(&mut self, message: AnyMessageGeneric<TB>) -> Result<SendOutcome, SendError<TB>> {
     match self.mailbox.enqueue_user(message) {
       | Ok(EnqueueOutcome::Enqueued) => {
-        self.dispatcher.register_for_execution(ScheduleHints {
-          has_system_messages: false,
-          has_user_messages:   true,
-          backpressure_active: false,
-        });
-        Ok(())
+        if self.mailbox.is_running() {
+          self.dispatcher.register_for_execution(ScheduleHints {
+            has_system_messages: false,
+            has_user_messages:   true,
+            backpressure_active: false,
+          });
+          return Ok(SendOutcome::Delivered);
+        }
+
+        let dispatcher = self.dispatcher.clone();
+        let schedule = move || {
+          dispatcher.register_for_execution(ScheduleHints {
+            has_system_messages: false,
+            has_user_messages:   true,
+            backpressure_active: false,
+          });
+        };
+        Ok(SendOutcome::Schedule(Box::new(schedule)))
       },
       | Ok(EnqueueOutcome::Pending(mut future)) => {
         let adapter = self.dispatcher.schedule_adapter();
-        adapter.on_pending();
-        self.dispatcher.register_for_execution(ScheduleHints {
-          has_system_messages: false,
-          has_user_messages:   true,
-          backpressure_active: false,
-        });
+        adapter.with_write(|a| a.on_pending());
+        if self.mailbox.is_running() {
+          self.poll_pending(&adapter, &mut future)?;
+          return Ok(SendOutcome::Delivered);
+        }
+
         self.poll_pending(&adapter, &mut future)?;
-        self.dispatcher.register_for_execution(ScheduleHints {
-          has_system_messages: false,
-          has_user_messages:   true,
-          backpressure_active: false,
-        });
-        Ok(())
+        let dispatcher = self.dispatcher.clone();
+        let schedule = move || {
+          dispatcher.register_for_execution(ScheduleHints {
+            has_system_messages: false,
+            has_user_messages:   true,
+            backpressure_active: false,
+          });
+        };
+        Ok(SendOutcome::Schedule(Box::new(schedule)))
       },
       | Err(error) => Err(error),
     }

@@ -5,6 +5,7 @@ use fraktor_actor_rs::{
   core::error::ActorError,
   std::typed::{Behavior, Behaviors, TypedActorSystem, TypedProps},
 };
+use fraktor_utils_rs::core::sync::SharedAccess;
 
 #[derive(Clone, Copy)]
 enum CounterCommand {
@@ -30,14 +31,14 @@ fn main() {
   let props = TypedProps::from_behavior_factory(|| counter(0));
   let (tick_driver, _pulse_handle) = std_tick_driver_support::hardware_tick_driver_config();
   let system = TypedActorSystem::new(&props, tick_driver).expect("system");
-  let counter = system.user_guardian_ref();
+  let mut counter = system.user_guardian_ref();
   let termination = system.when_terminated();
 
   counter.tell(CounterCommand::Add(4)).expect("add first");
   counter.tell(CounterCommand::Add(6)).expect("add second");
 
   let response = counter.ask::<i32>(CounterCommand::Read).expect("ask read");
-  let future = response.future().clone();
+  let mut future = response.future().clone();
   while !future.is_ready() {
     thread::yield_now();
   }
@@ -49,7 +50,7 @@ fn main() {
   }
 
   system.terminate().expect("terminate");
-  while !termination.is_ready() {
+  while !termination.with_read(|af| af.is_ready()) {
     thread::yield_now();
   }
 }

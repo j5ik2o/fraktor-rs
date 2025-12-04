@@ -77,13 +77,13 @@ fn typed_actor_system_handles_basic_flow() {
   let props = TypedPropsGeneric::<CounterMessage, NoStdToolbox>::new(CounterActor::new);
   let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
   let system = TypedActorSystemGeneric::<CounterMessage, NoStdToolbox>::new(&props, tick_driver).expect("system");
-  let counter = system.user_guardian_ref();
+  let mut counter = system.user_guardian_ref();
 
   counter.tell(CounterMessage::Increment(2)).expect("tell increment one");
   counter.tell(CounterMessage::Increment(5)).expect("tell increment two");
 
   let response = counter.ask::<i32>(CounterMessage::Get).expect("ask get");
-  let future = response.future().clone();
+  let mut future = response.future().clone();
   wait_until(|| future.is_ready());
   let payload = future.try_take().expect("reply available").expect("typed payload");
 
@@ -97,13 +97,13 @@ fn typed_behaviors_handle_recursive_state() {
   let props = TypedPropsGeneric::<CounterMessage, NoStdToolbox>::from_behavior_factory(|| behavior_counter(0));
   let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
   let system = TypedActorSystemGeneric::<CounterMessage, NoStdToolbox>::new(&props, tick_driver).expect("system");
-  let counter = system.user_guardian_ref();
+  let mut counter = system.user_guardian_ref();
 
   counter.tell(CounterMessage::Increment(3)).expect("increment one");
   counter.tell(CounterMessage::Increment(5)).expect("increment two");
 
   let response = counter.ask::<i32>(CounterMessage::Get).expect("ask get");
-  let future = response.future().clone();
+  let mut future = response.future().clone();
   wait_until(|| future.is_ready());
   let payload = future.try_take().expect("reply available").expect("typed payload");
 
@@ -117,14 +117,14 @@ fn typed_behaviors_ignore_keeps_current_state() {
   let props = TypedPropsGeneric::<IgnoreCommand, NoStdToolbox>::from_behavior_factory(|| ignore_gate(0));
   let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
   let system = TypedActorSystemGeneric::<IgnoreCommand, NoStdToolbox>::new(&props, tick_driver).expect("system");
-  let gate = system.user_guardian_ref();
+  let mut gate = system.user_guardian_ref();
 
   gate.tell(IgnoreCommand::Add(1)).expect("add before reject");
   gate.tell(IgnoreCommand::Reject).expect("reject once");
   gate.tell(IgnoreCommand::Add(5)).expect("add after reject");
 
   let response = gate.ask::<u32>(IgnoreCommand::Read).expect("ask read");
-  let future = response.future().clone();
+  let mut future = response.future().clone();
   wait_until(|| future.is_ready());
   let payload = future.try_take().expect("reply available").expect("typed payload");
 
@@ -208,10 +208,10 @@ fn typed_ask_reports_type_mismatch() {
   let props = TypedPropsGeneric::<MismatchCommand, NoStdToolbox>::new(|| MismatchActor);
   let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
   let system = TypedActorSystemGeneric::<MismatchCommand, NoStdToolbox>::new(&props, tick_driver).expect("system");
-  let actor = system.user_guardian_ref();
+  let mut actor = system.user_guardian_ref();
 
   let response = actor.ask::<i32>(MismatchCommand::Trigger).expect("ask");
-  let future = response.future().clone();
+  let mut future = response.future().clone();
   wait_until(|| future.is_ready());
   let result = future.try_take().expect("result");
 
@@ -226,10 +226,10 @@ fn typed_context_exposes_scheduler_context() {
   let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
   let system =
     TypedActorSystemGeneric::<SchedulerProbeCommand, NoStdToolbox>::new(&props, tick_driver).expect("system");
-  let actor = system.user_guardian_ref();
+  let mut actor = system.user_guardian_ref();
 
   let response = actor.ask::<bool>(SchedulerProbeCommand::Check).expect("ask");
-  let future = response.future().clone();
+  let mut future = response.future().clone();
   wait_until(|| future.is_ready());
   let result = future.try_take().expect("result").expect("payload");
 
@@ -326,7 +326,7 @@ fn supervised_parent_behavior(
     let handle = child_ref.actor_ref();
     Behaviors::receive_message(move |_ctx, message| match message {
       | SupervisorCommand::CrashChild => {
-        handle.tell(ChildCommand::Crash).expect("crash child");
+        handle.clone().tell(ChildCommand::Crash).expect("crash child");
         Ok(Behaviors::same())
       },
     })
@@ -354,7 +354,7 @@ fn behaviors_supervise_restarts_children() {
   let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
   let system =
     TypedActorSystemGeneric::<SupervisorCommand, NoStdToolbox>::new(&parent_props, tick_driver).expect("system");
-  let parent = system.user_guardian_ref();
+  let mut parent = system.user_guardian_ref();
 
   wait_until(|| start_counter.load(Ordering::SeqCst) == 1);
 
@@ -376,7 +376,7 @@ fn behaviors_supervise_stops_children() {
   let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
   let system =
     TypedActorSystemGeneric::<SupervisorCommand, NoStdToolbox>::new(&parent_props, tick_driver).expect("system");
-  let parent = system.user_guardian_ref();
+  let mut parent = system.user_guardian_ref();
 
   wait_until(|| start_counter.load(Ordering::SeqCst) == 1);
 
@@ -426,16 +426,16 @@ fn message_adapter_converts_external_messages() {
   let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
   let system =
     TypedActorSystemGeneric::<AdapterCounterCommand, NoStdToolbox>::new(&props, tick_driver).expect("system");
-  let actor = system.user_guardian_ref();
+  let mut actor = system.user_guardian_ref();
 
   assert!(wait_for(|| adapter_slot.lock().is_some()), "adapter never registered");
-  let adapter = adapter_slot.lock().clone().expect("adapter available");
+  let mut adapter = adapter_slot.lock().clone().expect("adapter available");
 
   adapter.tell("5".to_string()).expect("set one");
   adapter.tell("3".to_string()).expect("set two");
 
-  wait_until(|| read_counter_value(&actor) == 8);
-  let value = read_counter_value(&actor);
+  wait_until(|| read_counter_value(&mut actor) == 8);
+  let value = read_counter_value(&mut actor);
   assert_eq!(value, 8);
 
   system.terminate().expect("terminate");
@@ -492,14 +492,14 @@ fn pipe_to_self_converts_messages_via_adapter() {
   let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
   let system =
     TypedActorSystemGeneric::<AdapterCounterCommand, NoStdToolbox>::new(&props, tick_driver).expect("system");
-  let actor = system.user_guardian_ref();
-  wait_until(|| read_counter_value(&actor) == 6);
+  let mut actor = system.user_guardian_ref();
+  wait_until(|| read_counter_value(&mut actor) == 6);
   system.terminate().expect("terminate");
 }
 
-fn read_counter_value(actor: &TypedActorRef<AdapterCounterCommand>) -> i32 {
+fn read_counter_value(actor: &mut TypedActorRef<AdapterCounterCommand>) -> i32 {
   let response = actor.ask::<i32>(AdapterCounterCommand::Read).expect("ask read");
-  let future = response.future().clone();
+  let mut future = response.future().clone();
   wait_until(|| future.is_ready());
   future.try_take().expect("result").expect("payload")
 }

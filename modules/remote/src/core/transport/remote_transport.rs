@@ -3,9 +3,9 @@ use fraktor_actor_rs::core::event_stream::CorrelationId;
 use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use super::{
-  backpressure_hook::TransportBackpressureHookShared, transport_bind::TransportBind,
+  backpressure_hook_shared::TransportBackpressureHookShared, transport_bind::TransportBind,
   transport_channel::TransportChannel, transport_endpoint::TransportEndpoint, transport_error::TransportError,
-  transport_handle::TransportHandle, transport_inbound_handler::TransportInboundShared,
+  transport_handle::TransportHandle, transport_inbound_shared::TransportInboundShared,
 };
 
 /// Abstraction over transport implementations used by remoting.

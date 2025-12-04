@@ -16,6 +16,7 @@ use fraktor_actor_rs::core::{
   scheduler::{SchedulerCommand, SchedulerDiagnosticsSubscription},
   system::ActorSystem,
 };
+use fraktor_utils_rs::core::sync::SharedAccess;
 
 #[cfg(not(target_os = "none"))]
 #[path = "../no_std_tick_driver_support.rs"]
@@ -48,8 +49,7 @@ impl Actor for GuardianActor {
 
       let scheduler_context = ctx.system().scheduler_context().expect("scheduler context");
       let scheduler_arc = scheduler_context.scheduler();
-      let mut scheduler = scheduler_arc.lock();
-      self.diagnostics = Some(scheduler.subscribe_diagnostics(128));
+      self.diagnostics = Some(scheduler_arc.with_write(|s| s.subscribe_diagnostics(128)));
       let target = ctx.self_ref();
 
       for i in 0..3 {
@@ -60,9 +60,10 @@ impl Actor for GuardianActor {
           dispatcher: None,
           sender:     None,
         };
-        scheduler
-          .schedule_once(Duration::from_millis(50 * (i + 1)), command)
-          .map_err(|_| ActorError::recoverable("failed to schedule"))?;
+        scheduler_arc.with_write(|s| {
+          s.schedule_once(Duration::from_millis(50 * (i + 1)), command)
+            .map_err(|_| ActorError::recoverable("failed to schedule"))
+        })?;
       }
 
       let dump = SchedulerCommand::SendMessage {
@@ -71,9 +72,10 @@ impl Actor for GuardianActor {
         dispatcher: None,
         sender:     None,
       };
-      scheduler
-        .schedule_once(Duration::from_millis(250), dump)
-        .map_err(|_| ActorError::recoverable("failed to schedule diagnostics dump"))?;
+      scheduler_arc.with_write(|s| {
+        s.schedule_once(Duration::from_millis(250), dump)
+          .map_err(|_| ActorError::recoverable("failed to schedule diagnostics dump"))
+      })?;
     } else if let Some(msg) = message.downcast_ref::<ScheduledMessage>() {
       self.received += 1;
       #[cfg(not(target_os = "none"))]

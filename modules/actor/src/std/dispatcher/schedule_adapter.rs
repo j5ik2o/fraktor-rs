@@ -1,6 +1,7 @@
 extern crate std;
 
 use std::{
+  any::Any,
   sync::atomic::{AtomicUsize, Ordering},
   task::{RawWaker, RawWakerVTable, Waker},
   thread,
@@ -37,18 +38,22 @@ impl Default for StdScheduleAdapter {
 }
 
 impl ScheduleAdapter<StdToolbox> for StdScheduleAdapter {
-  fn create_waker(&self, dispatcher: Dispatcher) -> Waker {
+  fn create_waker(&mut self, dispatcher: Dispatcher) -> Waker {
     StdScheduleWaker::into_waker(dispatcher)
   }
 
-  fn on_pending(&self) {
+  fn on_pending(&mut self) {
     self.pending_calls.fetch_add(1, Ordering::Relaxed);
     thread::yield_now();
   }
 
-  fn notify_rejected(&self, _attempts: usize) {
+  fn notify_rejected(&mut self, _attempts: usize) {
     self.rejected_calls.fetch_add(1, Ordering::Relaxed);
     thread::yield_now();
+  }
+
+  fn as_any_mut(&mut self) -> &mut dyn Any {
+    self
   }
 }
 

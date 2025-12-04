@@ -20,7 +20,7 @@ fn make_dispatch_task() -> DispatchSharedGeneric<NoStdToolbox> {
   let mailbox = ArcShared::new(Mailbox::new(MailboxPolicy::unbounded(None)));
   let inline_executor: Box<dyn DispatchExecutor<NoStdToolbox>> = Box::new(InlineExecutor::new());
   let inner_runner = ArcShared::new(DispatchExecutorRunner::<NoStdToolbox>::new(inline_executor));
-  let adapter = ArcShared::new(crate::core::dispatcher::InlineScheduleAdapter::new());
+  let adapter = crate::core::dispatcher::InlineScheduleAdapter::shared::<NoStdToolbox>();
   let core = ArcShared::new(DispatcherCore::new(mailbox, inner_runner, adapter, None, None, None));
 
   DispatchSharedGeneric::new(core)

@@ -5,11 +5,14 @@ use alloc::format;
 use fraktor_actor_rs::core::{
   actor_prim::actor_path::ActorPathScheme,
   serialization::SerializationExtensionGeneric,
-  system::{ActorRefProviderInstaller, ActorSystemBuildError, ActorSystemGeneric, RemoteWatchHookShared},
+  system::{
+    ActorRefProviderInstaller, ActorRefProviderSharedGeneric, ActorSystemBuildError, ActorSystemGeneric,
+    RemoteWatchHookShared,
+  },
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::{RuntimeToolbox, SyncMutexFamily},
-  sync::ArcShared,
+  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 
 use crate::core::{
@@ -55,13 +58,13 @@ impl<TB: RuntimeToolbox + 'static> ActorRefProviderInstaller<TB> for LoopbackAct
     };
 
     let control = extension.handle();
-    control.register_endpoint_io(writer.clone(), reader.clone());
+    control.lock().register_endpoint_io(writer.clone(), reader.clone());
     let authority_manager = system.state().remote_authority_manager().clone();
     let provider = LoopbackActorRefProviderGeneric::from_components(system.clone(), writer, control, authority_manager)
       .map_err(|error| ActorSystemBuildError::Configuration(format!("{error}")))?;
     let shared = RemoteWatchHookShared::new(provider, &[ActorPathScheme::FraktorTcp]);
-    let shared_arc = ArcShared::new(shared.clone());
-    extended.register_actor_ref_provider(&shared_arc);
+    let shared_provider = ActorRefProviderSharedGeneric::new(shared.clone());
+    extended.register_actor_ref_provider(&shared_provider);
     extended.register_remote_watch_hook(shared);
 
     // Always register loopback routing for LoopbackActorRefProvider

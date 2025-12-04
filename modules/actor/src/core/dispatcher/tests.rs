@@ -2,6 +2,7 @@ extern crate std;
 
 use alloc::{boxed::Box, vec, vec::Vec};
 use core::{
+  any::Any,
   num::NonZeroUsize,
   sync::atomic::{AtomicUsize, Ordering},
   time::Duration,
@@ -10,43 +11,45 @@ use std::thread;
 
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdMutex, NoStdToolbox},
-  sync::{ArcShared, sync_mutex_like::SpinSyncMutex},
+  sync::{ArcShared, SharedAccess, sync_mutex_like::SpinSyncMutex},
 };
 
 use super::schedule_waker::ScheduleWaker;
 use crate::core::{
-  actor_prim::actor_ref::ActorRefSender,
   dispatcher::{
     DispatchError, DispatchExecutor, DispatchExecutorRunner, DispatchSharedGeneric, DispatcherGeneric, ScheduleAdapter,
-    TickExecutorGeneric,
+    ScheduleAdapterSharedGeneric, TickExecutorGeneric,
   },
   event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, subscriber_handle},
   logging::LogLevel,
   mailbox::{
     EnqueueOutcome, MailboxGeneric, MailboxInstrumentation, MailboxOverflowStrategy, MailboxPolicy, ScheduleHints,
   },
-  messaging::{AnyMessage, message_invoker::MessageInvoker},
-  system::SystemState,
+  messaging::{
+    AnyMessage,
+    message_invoker::{MessageInvoker, MessageInvokerShared},
+  },
+  system::{SystemState, SystemStateShared},
 };
 
 fn register_user_hint() -> ScheduleHints {
   ScheduleHints { has_system_messages: false, has_user_messages: true, backpressure_active: false }
 }
 
-fn system_instrumented_mailbox() -> (ArcShared<MailboxGeneric<NoStdToolbox>>, ArcShared<SystemState>) {
+fn system_instrumented_mailbox() -> (ArcShared<MailboxGeneric<NoStdToolbox>>, SystemStateShared) {
   let mailbox = ArcShared::new(MailboxGeneric::new(MailboxPolicy::unbounded(None)));
-  let system = ArcShared::new(SystemState::new());
+  let system = SystemStateShared::new(SystemState::new());
   let pid = system.allocate_pid();
   let instrumentation = MailboxInstrumentation::new(system.clone(), pid, None, None, None);
   mailbox.set_instrumentation(instrumentation);
   (mailbox, system)
 }
 
-fn bounded_mailbox(capacity: usize) -> (ArcShared<MailboxGeneric<NoStdToolbox>>, ArcShared<SystemState>) {
+fn bounded_mailbox(capacity: usize) -> (ArcShared<MailboxGeneric<NoStdToolbox>>, SystemStateShared) {
   let policy =
     MailboxPolicy::bounded(NonZeroUsize::new(capacity).expect("capacity"), MailboxOverflowStrategy::Block, None);
   let mailbox = ArcShared::new(MailboxGeneric::new(policy));
-  let system = ArcShared::new(SystemState::new());
+  let system = SystemStateShared::new(SystemState::new());
   let pid = system.allocate_pid();
   let instrumentation = MailboxInstrumentation::new(system.clone(), pid, Some(capacity), None, None);
   mailbox.set_instrumentation(instrumentation);
@@ -99,13 +102,15 @@ fn dispatcher_respects_throughput_and_deadline_limits() {
     )
     .with_throughput_limit(Some(NonZeroUsize::new(1).unwrap())),
   ));
-  let system = ArcShared::new(SystemState::new());
+  let system = SystemStateShared::new(SystemState::new());
   let pid = system.allocate_pid();
   mailbox.set_instrumentation(MailboxInstrumentation::new(system.clone(), pid, None, None, None));
 
   let (tick, runner) = tick_executor_with_runner();
   let dispatcher = dispatcher_with_executor(mailbox.clone(), runner, Some(Duration::from_millis(1)), None);
-  dispatcher.register_invoker(ArcShared::new(RecordingInvoker::default()));
+  let invoker =
+    MessageInvokerShared::new(Box::new(RecordingInvoker::default()) as Box<dyn MessageInvoker<NoStdToolbox>>);
+  dispatcher.register_invoker(invoker);
 
   mailbox.enqueue_user(AnyMessage::new(1usize)).unwrap();
   mailbox.enqueue_user(AnyMessage::new(2usize)).unwrap();
@@ -120,9 +125,13 @@ fn dispatcher_respects_throughput_and_deadline_limits() {
 fn schedule_adapter_receives_pending_signal() {
   let (mailbox, _system) = bounded_mailbox(1);
   let (tick, runner) = tick_executor_with_runner();
-  let adapter = ArcShared::new(CountingScheduleAdapter::default());
+  let adapter = ScheduleAdapterSharedGeneric::new(
+    Box::new(CountingScheduleAdapter::default()) as Box<dyn ScheduleAdapter<NoStdToolbox>>
+  );
   let dispatcher = dispatcher_with_executor_and_adapter(mailbox.clone(), runner, None, None, adapter.clone());
-  dispatcher.register_invoker(ArcShared::new(RecordingInvoker::default()));
+  let invoker =
+    MessageInvokerShared::new(Box::new(RecordingInvoker::default()) as Box<dyn MessageInvoker<NoStdToolbox>>);
+  dispatcher.register_invoker(invoker);
 
   mailbox.enqueue_user(AnyMessage::new(1usize)).expect("first message");
   let sender = dispatcher.into_sender();
@@ -136,7 +145,11 @@ fn schedule_adapter_receives_pending_signal() {
   tick.tick();
   handle.join().expect("join");
 
-  assert!(adapter.pending_calls() > 0);
+  let pending_calls = adapter.with_write(|a| {
+    a.as_any_mut().downcast_mut::<CountingScheduleAdapter>().expect("counting adapter").pending_calls()
+  });
+
+  assert!(pending_calls > 0);
 }
 
 #[test]
@@ -147,12 +160,18 @@ fn schedule_adapter_notified_on_rejection() {
   let _subscription = EventStreamGeneric::subscribe_arc(&system.event_stream(), &subscriber);
 
   let (flaky, runner) = flaky_executor_with_runner(vec![DispatchError::RejectedExecution; 3]);
-  let adapter = ArcShared::new(CountingScheduleAdapter::default());
+  let adapter = ScheduleAdapterSharedGeneric::new(
+    Box::new(CountingScheduleAdapter::default()) as Box<dyn ScheduleAdapter<NoStdToolbox>>
+  );
   let dispatcher = dispatcher_with_executor_and_adapter(mailbox, runner, None, None, adapter.clone());
 
   dispatcher.register_for_execution(register_user_hint());
   flaky.assert_attempts(3);
-  assert!(adapter.rejected_calls() >= 1);
+  let rejected_calls = adapter.with_write(|a| {
+    a.as_any_mut().downcast_mut::<CountingScheduleAdapter>().expect("counting adapter").rejected_calls()
+  });
+
+  assert!(rejected_calls >= 1);
 
   let logged = events.lock().iter().any(
     |event| matches!(event, crate::core::event_stream::EventStreamEvent::Log(log) if log.level() == LogLevel::Error),
@@ -168,7 +187,9 @@ fn dispatcher_dump_event_published() {
   let _subscription = EventStreamGeneric::subscribe_arc(&system.event_stream(), &subscriber);
 
   let (_recording, runner) = recording_executor_with_runner();
-  let adapter = ArcShared::new(CountingScheduleAdapter::default());
+  let adapter = ScheduleAdapterSharedGeneric::new(
+    Box::new(CountingScheduleAdapter::default()) as Box<dyn ScheduleAdapter<NoStdToolbox>>
+  );
   let dispatcher = dispatcher_with_executor_and_adapter(mailbox, runner, None, None, adapter);
 
   dispatcher.publish_dump_metrics();
@@ -184,9 +205,13 @@ fn telemetry_captures_mailbox_pressure_and_dispatcher_dump() {
   let _subscription = EventStreamGeneric::subscribe_arc(&system.event_stream(), &subscriber);
 
   let (_recording, runner) = recording_executor_with_runner();
-  let adapter = ArcShared::new(CountingScheduleAdapter::default());
+  let adapter = ScheduleAdapterSharedGeneric::new(
+    Box::new(CountingScheduleAdapter::default()) as Box<dyn ScheduleAdapter<NoStdToolbox>>
+  );
   let dispatcher = dispatcher_with_executor_and_adapter(mailbox.clone(), runner, None, None, adapter);
-  dispatcher.register_invoker(ArcShared::new(RecordingInvoker::default()));
+  let invoker =
+    MessageInvokerShared::new(Box::new(RecordingInvoker::default()) as Box<dyn MessageInvoker<NoStdToolbox>>);
+  dispatcher.register_invoker(invoker);
 
   assert!(matches!(mailbox.enqueue_user(AnyMessage::new(1usize)), Ok(EnqueueOutcome::Enqueued)));
   assert!(matches!(mailbox.enqueue_user(AnyMessage::new(2usize)), Ok(EnqueueOutcome::Enqueued)));
@@ -203,7 +228,7 @@ fn dispatcher_with_executor(
   throughput_deadline: Option<Duration>,
   starvation_deadline: Option<Duration>,
 ) -> DispatcherGeneric<NoStdToolbox> {
-  let adapter = ArcShared::new(crate::core::dispatcher::InlineScheduleAdapter::new());
+  let adapter = crate::core::dispatcher::InlineScheduleAdapter::shared::<NoStdToolbox>();
   dispatcher_with_executor_and_adapter(mailbox, executor, throughput_deadline, starvation_deadline, adapter)
 }
 
@@ -212,7 +237,7 @@ fn dispatcher_with_executor_and_adapter(
   executor: ArcShared<DispatchExecutorRunner<NoStdToolbox>>,
   throughput_deadline: Option<Duration>,
   starvation_deadline: Option<Duration>,
-  adapter: ArcShared<dyn ScheduleAdapter<NoStdToolbox>>,
+  adapter: ScheduleAdapterSharedGeneric<NoStdToolbox>,
 ) -> DispatcherGeneric<NoStdToolbox> {
   DispatcherGeneric::with_adapter(mailbox, executor, adapter, throughput_deadline, starvation_deadline)
 }
@@ -360,7 +385,7 @@ impl Default for RecordingInvoker {
 }
 
 impl MessageInvoker<NoStdToolbox> for RecordingInvoker {
-  fn invoke_user_message(&self, message: AnyMessage) -> Result<(), crate::core::error::ActorError> {
+  fn invoke_user_message(&mut self, message: AnyMessage) -> Result<(), crate::core::error::ActorError> {
     if let Some(value) = message.payload().downcast_ref::<usize>() {
       self.messages.lock().push(*value);
     }
@@ -368,7 +393,7 @@ impl MessageInvoker<NoStdToolbox> for RecordingInvoker {
   }
 
   fn invoke_system_message(
-    &self,
+    &mut self,
     _message: crate::core::messaging::SystemMessage,
   ) -> Result<(), crate::core::error::ActorError> {
     Ok(())
@@ -417,15 +442,19 @@ impl Default for CountingScheduleAdapter {
 }
 
 impl ScheduleAdapter<NoStdToolbox> for CountingScheduleAdapter {
-  fn create_waker(&self, dispatcher: DispatcherGeneric<NoStdToolbox>) -> core::task::Waker {
+  fn create_waker(&mut self, dispatcher: DispatcherGeneric<NoStdToolbox>) -> core::task::Waker {
     ScheduleWaker::<NoStdToolbox>::into_waker(dispatcher)
   }
 
-  fn on_pending(&self) {
+  fn on_pending(&mut self) {
     *self.pending.lock() += 1;
   }
 
-  fn notify_rejected(&self, _attempts: usize) {
+  fn notify_rejected(&mut self, _attempts: usize) {
     *self.rejected.lock() += 1;
+  }
+
+  fn as_any_mut(&mut self) -> &mut dyn Any {
+    self
   }
 }

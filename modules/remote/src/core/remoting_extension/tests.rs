@@ -19,13 +19,13 @@ use fraktor_actor_rs::core::{
   scheduler::{ManualTestDriver, TickDriverConfig},
   system::{ActorSystemConfig, ActorSystemGeneric},
 };
-use fraktor_utils_rs::core::{runtime_toolbox::{NoStdMutex, NoStdToolbox}, sync::ArcShared};
+use fraktor_utils_rs::core::{runtime_toolbox::{NoStdMutex, NoStdToolbox}, sync::{ArcShared, sync_mutex_like::SyncMutexLike}};
 
 use crate::core::{
   remoting_backpressure_listener::FnRemotingBackpressureListener,
+  remoting_control::{RemotingControl, RemotingControlShared},
   remoting_extension_config::RemotingExtensionConfig,
   remoting_extension_id::RemotingExtensionId,
-  remoting_control_handle::RemotingControlHandle,
   remoting_error::RemotingError,
 };
 
@@ -64,7 +64,7 @@ impl EventStreamSubscriber<NoStdToolbox> for EventRecorder {
 
 fn bootstrap(
   config: RemotingExtensionConfig,
-) -> (ActorSystemGeneric<NoStdToolbox>, RemotingControlHandle<NoStdToolbox>) {
+) -> (ActorSystemGeneric<NoStdToolbox>, RemotingControlShared<NoStdToolbox>) {
   let props = PropsGeneric::from_fn(|| NoopActor).with_name("remoting-test-guardian");
   let extensions = ExtensionInstallers::default().with_extension_installer(config.clone());
   let system_config = ActorSystemConfig::default()
@@ -102,8 +102,8 @@ fn manual_start_publishes_lifecycle_events() {
   let (system, handle) = bootstrap(config);
   let (recorder, _subscription) = subscribe_events(&system);
 
-  assert!(!handle.is_running());
-  handle.start().expect("start succeeds");
+  assert!(!handle.lock().is_running());
+  handle.lock().start().expect("start succeeds");
 
   let events = recorder.snapshot();
   let lifecycle = captured_lifecycle(&events);
@@ -114,7 +114,7 @@ fn manual_start_publishes_lifecycle_events() {
 fn auto_start_enabled_runs_by_default() {
   let config = RemotingExtensionConfig::default();
   let (_system, handle) = bootstrap(config);
-  assert!(handle.is_running());
+  assert!(handle.lock().is_running());
 }
 
 #[test]
@@ -123,14 +123,14 @@ fn shutdown_emits_shutdown_event() {
   let (system, handle) = bootstrap(config);
   let (recorder, _subscription) = subscribe_events(&system);
 
-  handle.start().expect("started");
+  handle.lock().start().expect("started");
   recorder.events.lock().clear();
 
-  handle.shutdown().expect("shutdown succeeds");
+  handle.lock().shutdown().expect("shutdown succeeds");
   let lifecycle = captured_lifecycle(&recorder.snapshot());
   assert!(lifecycle.iter().any(|event| matches!(event, RemotingLifecycleEvent::Shutdown)));
 
-  let second = handle.shutdown();
+  let second = handle.lock().shutdown();
   assert!(matches!(second, Err(RemotingError::AlreadyShutdown)));
 }
 
@@ -143,13 +143,13 @@ fn backpressure_listener_invoked_and_eventstream_emits() {
   });
   let (system, handle) = bootstrap(config);
   let runtime_calls: ArcShared<NoStdMutex<Vec<String>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
-  handle.register_backpressure_listener(FnRemotingBackpressureListener::new({
+  handle.lock().register_backpressure_listener(FnRemotingBackpressureListener::new({
     let captured = runtime_calls.clone();
     move |signal, authority, _| captured.lock().push(format!("{authority}:{signal:?}"))
   }));
   let (recorder, _subscription) = subscribe_events(&system);
 
-  handle.emit_backpressure_signal("loopback:9000", BackpressureSignal::Apply);
+  handle.lock().emit_backpressure_signal("loopback:9000", BackpressureSignal::Apply);
 
   let config_snapshot = config_calls.lock().clone();
   assert_eq!(config_snapshot, vec!["loopback:9000:Apply".to_string()]);

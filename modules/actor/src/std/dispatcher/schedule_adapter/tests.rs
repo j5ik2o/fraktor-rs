@@ -21,7 +21,7 @@ impl StdScheduleAdapter {
 
 #[test]
 fn std_schedule_adapter_tracks_signals() {
-  let adapter = StdScheduleAdapter::default();
+  let mut adapter = StdScheduleAdapter::default();
   adapter.on_pending();
   adapter.on_pending();
   adapter.notify_rejected(1);
@@ -33,7 +33,7 @@ fn std_schedule_adapter_tracks_signals() {
 fn std_schedule_adapter_creates_valid_waker() {
   let mailbox = ArcShared::new(MailboxGeneric::new(MailboxPolicy::unbounded(None)));
   let dispatcher = DispatcherGeneric::with_inline_executor(mailbox);
-  let adapter = StdScheduleAdapter::default();
+  let mut adapter = StdScheduleAdapter::default();
   let waker = adapter.create_waker(dispatcher);
   waker.wake_by_ref();
 }

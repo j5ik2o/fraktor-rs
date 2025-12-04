@@ -1,12 +1,12 @@
 //! Internal root guardian that supervises `/user` and `/system`.
 
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use crate::core::{
   actor_prim::{Actor, ActorContextGeneric, Pid, actor_ref::ActorRefGeneric},
   error::ActorError,
   messaging::AnyMessageViewGeneric,
-  system::SystemStateGeneric,
+  system::SystemStateSharedGeneric,
 };
 
 /// Root guardian actor responsible for watching the system guardian.
@@ -30,7 +30,7 @@ impl RootGuardianActor {
     }
   }
 
-  fn handle_system_terminated<TB: RuntimeToolbox + 'static>(state: &ArcShared<SystemStateGeneric<TB>>) {
+  fn handle_system_terminated<TB: RuntimeToolbox + 'static>(state: &SystemStateSharedGeneric<TB>) {
     state.mark_terminated();
   }
 }

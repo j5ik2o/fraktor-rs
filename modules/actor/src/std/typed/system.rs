@@ -11,8 +11,7 @@ use crate::{
     dead_letter::DeadLetterEntry,
     error::SendError,
     event_stream::{EventStream, EventStreamEvent, EventStreamSubscriberAdapter, EventStreamSubscription},
-    futures::ActorFuture,
-    system::SystemState,
+    futures::ActorFutureShared,
     typed::{TypedProps, actor_prim::TypedActorRef},
   },
 };
@@ -59,7 +58,7 @@ where
 
   /// Returns the shared system state handle.
   #[must_use]
-  pub fn state(&self) -> ArcShared<SystemState> {
+  pub fn state(&self) -> crate::std::system::SystemStateShared {
     self.inner.state()
   }
 
@@ -103,7 +102,7 @@ where
 
   /// Returns a future that resolves once the actor system terminates.
   #[must_use]
-  pub fn when_terminated(&self) -> ArcShared<ActorFuture<()>> {
+  pub fn when_terminated(&self) -> ActorFutureShared<()> {
     self.inner.when_terminated()
   }
 

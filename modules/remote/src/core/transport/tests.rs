@@ -2,19 +2,12 @@
 #![cfg(feature = "std")]
 
 use fraktor_actor_rs::core::event_stream::{BackpressureSignal, CorrelationId};
-use fraktor_utils_rs::{
-  core::{runtime_toolbox::NoStdMutex, sync::ArcShared},
-  std::runtime_toolbox::StdToolbox,
-};
+use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
 use super::{
-  backpressure_hook::{TransportBackpressureHook, TransportBackpressureHookShared},
-  factory::TransportFactory,
-  loopback_transport::LoopbackTransport,
-  remote_transport::RemoteTransport,
-  transport_bind::TransportBind,
-  transport_endpoint::TransportEndpoint,
-  transport_error::TransportError,
+  backpressure_hook::TransportBackpressureHook, backpressure_hook_shared::TransportBackpressureHookShared,
+  factory::TransportFactory, loopback_transport::LoopbackTransport, remote_transport::RemoteTransport,
+  transport_bind::TransportBind, transport_endpoint::TransportEndpoint, transport_error::TransportError,
 };
 use crate::core::remoting_extension_config::RemotingExtensionConfig;
 
@@ -72,7 +65,7 @@ fn loopback_backpressure_hook_triggers_listener() {
   }
 
   let mut transport = LoopbackTransport::<StdToolbox>::default();
-  let hook: TransportBackpressureHookShared = ArcShared::new(NoStdMutex::new(Box::new(RecordingHook)));
+  let hook = TransportBackpressureHookShared::new(Box::new(RecordingHook));
   transport.install_backpressure_hook(hook);
   transport.emit_backpressure_for_test("loopback:test", BackpressureSignal::Apply, CorrelationId::from_u128(42));
 }

@@ -13,6 +13,7 @@ use crate::core::{
 /// [`SpscKey`](crate::core::collections::queue::type_keys::SpscKey).
 pub struct AsyncSpscConsumerShared<T, B, A = SpinAsyncMutex<AsyncQueue<T, SpscKey, B>>>
 where
+  T: Send + 'static,
   B: AsyncQueueBackend<T>,
   A: AsyncMutexLike<AsyncQueue<T, SpscKey, B>>, {
   pub(crate) inner: ArcShared<A>,
@@ -21,6 +22,7 @@ where
 
 impl<T, B, A> AsyncSpscConsumerShared<T, B, A>
 where
+  T: Send + 'static,
   B: AsyncQueueBackend<T>,
   A: AsyncMutexLike<AsyncQueue<T, SpscKey, B>>,
 {

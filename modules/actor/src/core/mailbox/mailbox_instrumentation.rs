@@ -5,10 +5,7 @@ mod tests;
 
 use alloc::{format, string::String};
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 
 use super::BackpressurePublisherGeneric;
 use crate::core::{
@@ -16,7 +13,7 @@ use crate::core::{
   event_stream::EventStreamEvent,
   logging::LogLevel,
   mailbox::{MailboxMetricsEvent, MailboxPressureEvent},
-  system::SystemStateGeneric,
+  system::SystemStateSharedGeneric,
 };
 
 const PRESSURE_THRESHOLD_PERCENT: usize = 75;
@@ -24,7 +21,7 @@ const PRESSURE_THRESHOLD_PERCENT: usize = 75;
 /// Provides mailbox metrics publication facilities.
 #[derive(Clone)]
 pub struct MailboxInstrumentationGeneric<TB: RuntimeToolbox + 'static> {
-  system_state:   ArcShared<SystemStateGeneric<TB>>,
+  system_state:   SystemStateSharedGeneric<TB>,
   capacity:       Option<usize>,
   throughput:     Option<usize>,
   warn_threshold: Option<usize>,
@@ -39,7 +36,7 @@ impl<TB: RuntimeToolbox + 'static> MailboxInstrumentationGeneric<TB> {
   /// Creates a new instrumentation helper.
   #[must_use]
   pub const fn new(
-    system_state: ArcShared<SystemStateGeneric<TB>>,
+    system_state: SystemStateSharedGeneric<TB>,
     pid: Pid,
     capacity: Option<usize>,
     throughput: Option<usize>,
@@ -92,7 +89,7 @@ impl<TB: RuntimeToolbox + 'static> MailboxInstrumentationGeneric<TB> {
 
   /// Returns the associated system state handle.
   #[must_use]
-  pub fn system_state(&self) -> ArcShared<SystemStateGeneric<TB>> {
+  pub fn system_state(&self) -> SystemStateSharedGeneric<TB> {
     self.system_state.clone()
   }
 

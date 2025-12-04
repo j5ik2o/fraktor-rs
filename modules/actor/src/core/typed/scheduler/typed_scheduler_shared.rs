@@ -1,32 +1,31 @@
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, ToolboxMutex},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
-};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::SharedAccess};
 
 use super::typed_scheduler_guard::TypedSchedulerGuard;
-use crate::core::scheduler::Scheduler;
+use crate::core::scheduler::SchedulerSharedGeneric;
 
 /// Shared handle that provides typed access to the scheduler mutex.
 pub struct TypedSchedulerShared<TB: RuntimeToolbox + 'static> {
-  inner: ArcShared<ToolboxMutex<Scheduler<TB>, TB>>,
+  inner: SchedulerSharedGeneric<TB>,
 }
 
 impl<TB: RuntimeToolbox + 'static> TypedSchedulerShared<TB> {
   /// Builds the typed view from the canonical scheduler handle.
   #[must_use]
-  pub const fn new(inner: ArcShared<ToolboxMutex<Scheduler<TB>, TB>>) -> Self {
+  pub const fn new(inner: SchedulerSharedGeneric<TB>) -> Self {
     Self { inner }
   }
 
-  /// Locks the underlying scheduler mutex and returns a typed guard.
-  #[must_use]
-  pub fn lock(&self) -> TypedSchedulerGuard<'_, TB> {
-    TypedSchedulerGuard { guard: self.inner.lock() }
+  /// Executes a closure while holding the scheduler lock, exposing a typed guard.
+  pub fn with_write<R>(&self, f: impl FnOnce(&mut TypedSchedulerGuard<'_, TB>) -> R) -> R {
+    self.inner.with_write(|scheduler| {
+      let mut guard = TypedSchedulerGuard::new(scheduler);
+      f(&mut guard)
+    })
   }
 
-  /// Returns the underlying shared mutex in case callers need raw access.
+  /// Returns the underlying shared handle (for wiring).
   #[must_use]
-  pub fn raw(&self) -> ArcShared<ToolboxMutex<Scheduler<TB>, TB>> {
+  pub fn raw(&self) -> SchedulerSharedGeneric<TB> {
     self.inner.clone()
   }
 }

@@ -1,10 +1,7 @@
 use alloc::{borrow::ToOwned, string::String};
 
 use ahash::RandomState;
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::sync_mutex_like::SyncMutexLike,
-};
+use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 use hashbrown::HashMap;
 
 use crate::core::{mailbox::MailboxRegistryError, props::MailboxConfig};
@@ -16,7 +13,8 @@ const DEFAULT_MAILBOX_ID: &str = "default";
 
 /// Registry that manages mailbox configurations keyed by identifier.
 pub struct MailboxesGeneric<TB: RuntimeToolbox + 'static> {
-  entries: ToolboxMutex<HashMap<String, MailboxConfig, RandomState>, TB>,
+  entries: HashMap<String, MailboxConfig, RandomState>,
+  _marker: core::marker::PhantomData<TB>,
 }
 
 /// Type alias bound to the default toolbox.
@@ -26,7 +24,7 @@ impl<TB: RuntimeToolbox + 'static> MailboxesGeneric<TB> {
   /// Creates an empty mailbox registry.
   #[must_use]
   pub fn new() -> Self {
-    Self { entries: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::with_hasher(RandomState::new())) }
+    Self { entries: HashMap::with_hasher(RandomState::new()), _marker: core::marker::PhantomData }
   }
 
   /// Registers a mailbox configuration.
@@ -34,13 +32,12 @@ impl<TB: RuntimeToolbox + 'static> MailboxesGeneric<TB> {
   /// # Errors
   ///
   /// Returns [`MailboxRegistryError::Duplicate`] when the identifier already exists.
-  pub fn register(&self, id: impl Into<String>, config: MailboxConfig) -> Result<(), MailboxRegistryError> {
-    let mut entries = self.entries.lock();
+  pub fn register(&mut self, id: impl Into<String>, config: MailboxConfig) -> Result<(), MailboxRegistryError> {
     let id = id.into();
-    if entries.contains_key(&id) {
+    if self.entries.contains_key(&id) {
       return Err(MailboxRegistryError::duplicate(&id));
     }
-    entries.insert(id, config);
+    self.entries.insert(id, config);
     Ok(())
   }
 
@@ -50,13 +47,12 @@ impl<TB: RuntimeToolbox + 'static> MailboxesGeneric<TB> {
   ///
   /// Returns [`MailboxRegistryError::Unknown`] when the identifier has not been registered.
   pub fn resolve(&self, id: &str) -> Result<MailboxConfig, MailboxRegistryError> {
-    self.entries.lock().get(id).copied().ok_or_else(|| MailboxRegistryError::unknown(id))
+    self.entries.get(id).copied().ok_or_else(|| MailboxRegistryError::unknown(id))
   }
 
   /// Ensures the default mailbox configuration is registered.
-  pub fn ensure_default(&self) {
-    let mut entries = self.entries.lock();
-    entries.entry(DEFAULT_MAILBOX_ID.to_owned()).or_insert_with(MailboxConfig::default);
+  pub fn ensure_default(&mut self) {
+    self.entries.entry(DEFAULT_MAILBOX_ID.to_owned()).or_default();
   }
 }
 

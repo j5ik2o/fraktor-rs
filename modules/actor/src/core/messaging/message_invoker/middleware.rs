@@ -12,7 +12,7 @@ pub trait MessageInvokerMiddleware<TB: RuntimeToolbox + 'static = NoStdToolbox>:
   ///
   /// Returning an error aborts message processing.
   fn before_user(
-    &self,
+    &mut self,
     _ctx: &mut ActorContextGeneric<'_, TB>,
     _message: &AnyMessageViewGeneric<'_, TB>,
   ) -> Result<(), ActorError> {
@@ -25,7 +25,7 @@ pub trait MessageInvokerMiddleware<TB: RuntimeToolbox + 'static = NoStdToolbox>:
   ///
   /// Returning an error replaces the original actor result.
   fn after_user(
-    &self,
+    &mut self,
     _ctx: &mut ActorContextGeneric<'_, TB>,
     _message: &AnyMessageViewGeneric<'_, TB>,
     result: Result<(), ActorError>,

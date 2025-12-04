@@ -5,30 +5,55 @@ use core::{
   task::{RawWaker, RawWakerVTable, Waker},
 };
 
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::{
+  runtime_toolbox::{RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
+  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+};
 
 use crate::core::{
   actor_prim::{ContextPipeTaskId, Pid},
   messaging::SystemMessage,
-  system::SystemStateGeneric,
+  system::SystemStateSharedGeneric,
 };
 
 #[cfg(test)]
 mod tests;
 
-struct ContextPipeWakerShared<TB: RuntimeToolbox + 'static> {
-  system: ArcShared<SystemStateGeneric<TB>>,
+struct ContextPipeWakerHandle<TB: RuntimeToolbox + 'static> {
+  system: SystemStateSharedGeneric<TB>,
   pid:    Pid,
   task:   ContextPipeTaskId,
 }
 
-impl<TB: RuntimeToolbox + 'static> ContextPipeWakerShared<TB> {
-  const fn new(system: ArcShared<SystemStateGeneric<TB>>, pid: Pid, task: ContextPipeTaskId) -> Self {
+impl<TB: RuntimeToolbox + 'static> ContextPipeWakerHandle<TB> {
+  const fn new(system: SystemStateSharedGeneric<TB>, pid: Pid, task: ContextPipeTaskId) -> Self {
     Self { system, pid, task }
   }
 
+  fn wake(&mut self) {
+    // send_system_message は内部でロックを取るため、ロック保持を避けるべくクローン後に実行
+    let system = self.system.clone();
+    let pid = self.pid;
+    let task = self.task;
+    if let Err(error) = system.send_system_message(pid, SystemMessage::PipeTask(task)) {
+      system.record_send_error(Some(pid), &error);
+    }
+  }
+}
+
+struct ContextPipeWakerShared<TB: RuntimeToolbox + 'static> {
+  inner: ArcShared<ToolboxMutex<ContextPipeWakerHandle<TB>, TB>>,
+}
+
+impl<TB: RuntimeToolbox + 'static> ContextPipeWakerShared<TB> {
+  fn new(system: SystemStateSharedGeneric<TB>, pid: Pid, task: ContextPipeTaskId) -> Self {
+    let handle = ContextPipeWakerHandle::new(system, pid, task);
+    let inner = ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(handle));
+    Self { inner }
+  }
+
   fn wake(&self) {
-    let _ = self.system.send_system_message(self.pid, SystemMessage::PipeTask(self.task));
+    self.inner.lock().wake();
   }
 }
 
@@ -39,7 +64,7 @@ pub(crate) struct ContextPipeWaker<TB: RuntimeToolbox + 'static> {
 
 impl<TB: RuntimeToolbox + 'static> ContextPipeWaker<TB> {
   /// Creates a waker that notifies the owning actor cell about task readiness.
-  pub(crate) fn into_waker(system: ArcShared<SystemStateGeneric<TB>>, pid: Pid, task: ContextPipeTaskId) -> Waker {
+  pub(crate) fn into_waker(system: SystemStateSharedGeneric<TB>, pid: Pid, task: ContextPipeTaskId) -> Waker {
     let shared = ArcShared::new(ContextPipeWakerShared::new(system, pid, task));
     unsafe { Waker::from_raw(Self::raw_waker(shared)) }
   }

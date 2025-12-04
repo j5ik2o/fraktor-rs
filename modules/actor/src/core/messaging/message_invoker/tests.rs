@@ -7,7 +7,7 @@ use fraktor_utils_rs::core::{
   sync::ArcShared,
 };
 
-use super::{MessageInvokerMiddleware, MessageInvokerPipeline};
+use super::{MessageInvokerMiddleware, MessageInvokerPipeline, middleware_shared::MiddlewareShared};
 use crate::core::{
   actor_prim::{
     Actor, ActorContext, ActorContextGeneric, Pid,
@@ -21,8 +21,11 @@ use crate::core::{
 struct RecordingSender;
 
 impl ActorRefSender<NoStdToolbox> for RecordingSender {
-  fn send(&self, _message: AnyMessage) -> Result<(), SendError<NoStdToolbox>> {
-    Ok(())
+  fn send(
+    &mut self,
+    _message: AnyMessage,
+  ) -> Result<crate::core::actor_prim::actor_ref::SendOutcome, SendError<NoStdToolbox>> {
+    Ok(crate::core::actor_prim::actor_ref::SendOutcome::Delivered)
   }
 }
 
@@ -101,7 +104,7 @@ impl RecordingMiddleware {
 
 impl MessageInvokerMiddleware<NoStdToolbox> for RecordingMiddleware {
   fn before_user(
-    &self,
+    &mut self,
     _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
     _message: &AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
@@ -110,7 +113,7 @@ impl MessageInvokerMiddleware<NoStdToolbox> for RecordingMiddleware {
   }
 
   fn after_user(
-    &self,
+    &mut self,
     _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
     _message: &AnyMessageViewGeneric<'_, NoStdToolbox>,
     result: Result<(), ActorError>,
@@ -128,7 +131,7 @@ fn pipeline_sets_and_clears_reply_to() {
   let mut actor = CaptureActor::new();
   let pipeline = MessageInvokerPipeline::new();
 
-  let reply_sender = ArcShared::new(RecordingSender);
+  let reply_sender = RecordingSender;
   let reply_ref = ActorRef::new(Pid::new(2, 0), reply_sender);
 
   let message = AnyMessage::new(123_u32).with_reply_to(reply_ref.clone());
@@ -147,7 +150,7 @@ fn pipeline_restores_previous_reply_target() {
   let mut actor = CaptureActor::new();
   let pipeline = MessageInvokerPipeline::new();
 
-  let previous_sender = ArcShared::new(RecordingSender);
+  let previous_sender = RecordingSender;
   let previous_ref = ActorRef::new(Pid::new(3, 0), previous_sender);
   ctx.set_reply_to(Some(previous_ref.clone()));
 
@@ -166,10 +169,10 @@ fn middleware_executes_in_expected_order() {
   let log = ArcShared::new(NoStdMutex::new(Vec::new()));
   let mut actor = LoggingActor::new(log.clone());
 
-  let middleware_a: ArcShared<dyn MessageInvokerMiddleware<NoStdToolbox>> =
-    ArcShared::new(RecordingMiddleware::new("a", log.clone()));
-  let middleware_b: ArcShared<dyn MessageInvokerMiddleware<NoStdToolbox>> =
-    ArcShared::new(RecordingMiddleware::new("b", log.clone()));
+  let middleware_a =
+    MiddlewareShared::new(Box::new(RecordingMiddleware::new("a", log.clone())) as Box<dyn MessageInvokerMiddleware>);
+  let middleware_b =
+    MiddlewareShared::new(Box::new(RecordingMiddleware::new("b", log.clone())) as Box<dyn MessageInvokerMiddleware>);
   let pipeline = MessageInvokerPipeline::from_middlewares(vec![middleware_a, middleware_b]);
 
   pipeline.invoke_user(&mut actor, &mut ctx, AnyMessage::new(1_u8)).expect("invoke");

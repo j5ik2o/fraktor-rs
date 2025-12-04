@@ -6,7 +6,7 @@ use crate::core::{
 
 #[test]
 fn always_returns_closed_error() {
-  let sender = NullSender;
+  let mut sender = NullSender;
   let error: SendError = sender.send(AnyMessage::new(1_u8)).unwrap_err();
   match error {
     | SendError::Closed(_) => {},

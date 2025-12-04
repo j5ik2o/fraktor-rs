@@ -19,14 +19,14 @@ use core::{
 use ahash::RandomState;
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+  sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
 };
 use hashbrown::HashMap;
 use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
 use super::{
-  ActorPathRegistry, ActorRefProvider, AuthorityState, GuardianKind, RemoteAuthorityError,
-  RemoteAuthorityManagerGeneric, RemoteWatchHook, RemotingConfig,
+  ActorPathRegistry, ActorRefProvider, ActorRefProviderHandle, ActorRefProviderSharedGeneric, AuthorityState,
+  GuardianKind, RemoteAuthorityError, RemoteAuthorityManagerSharedGeneric, RemoteWatchHook, RemotingConfig,
 };
 use crate::core::{
   actor_prim::{
@@ -35,14 +35,14 @@ use crate::core::{
     actor_ref::ActorRefGeneric,
   },
   dead_letter::{DeadLetterEntryGeneric, DeadLetterGeneric, DeadLetterReason},
-  dispatcher::DispatchersGeneric,
+  dispatcher::{DispatchersGeneric, DispatchersSharedGeneric},
   error::{ActorError, SendError},
   event_stream::{EventStreamEvent, EventStreamGeneric, RemoteAuthorityEvent, TickDriverSnapshot},
-  futures::ActorFuture,
+  futures::ActorFutureSharedGeneric,
   logging::{LogEvent, LogLevel},
-  mailbox::MailboxesGeneric,
+  mailbox::MailboxesSharedGeneric,
   messaging::{AnyMessageGeneric, FailurePayload, SystemMessage},
-  scheduler::{SchedulerContext, TaskRunSummary, TickDriverBootstrap, TickDriverRuntime},
+  scheduler::{SchedulerContextSharedGeneric, TaskRunSummary, TickDriverRuntime},
   spawn::{NameRegistry, NameRegistryError, SpawnError},
   supervision::SupervisorDirective,
   system::{RegisterExtraTopLevelError, ReservationPolicy},
@@ -55,7 +55,7 @@ pub use failure_outcome::FailureOutcome;
 use crate::core::system::actor_system_config::ActorSystemConfigGeneric;
 
 /// Type alias for ask future collections.
-type AskFutureVec<TB> = Vec<ArcShared<ActorFuture<AnyMessageGeneric<TB>, TB>>>;
+type AskFutureVec<TB> = Vec<ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>>;
 type ActorRefProviderCaller<TB> =
   Box<dyn Fn(ActorPath) -> Result<ActorRefGeneric<TB>, ActorError> + Send + Sync + 'static>;
 
@@ -94,7 +94,7 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   system_guardian: ToolboxMutex<Option<ArcShared<ActorCellGeneric<TB>>>, TB>,
   user_guardian: ToolboxMutex<Option<ArcShared<ActorCellGeneric<TB>>>, TB>,
   ask_futures: ToolboxMutex<AskFutureVec<TB>, TB>,
-  termination: ArcShared<ActorFuture<(), TB>>,
+  termination: ActorFutureSharedGeneric<(), TB>,
   terminated: AtomicBool,
   terminating: AtomicBool,
   root_started: AtomicBool,
@@ -113,12 +113,12 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   actor_ref_provider_callers_by_scheme:
     ToolboxMutex<HashMap<ActorPathScheme, ActorRefProviderCaller<TB>, RandomState>, TB>,
   remote_watch_hook: ToolboxMutex<Option<Box<dyn RemoteWatchHook<TB>>>, TB>,
-  dispatchers: ArcShared<DispatchersGeneric<TB>>,
-  mailboxes: ArcShared<MailboxesGeneric<TB>>,
+  dispatchers: DispatchersSharedGeneric<TB>,
+  mailboxes: MailboxesSharedGeneric<TB>,
   path_identity: ToolboxMutex<PathIdentity, TB>,
   actor_path_registry: ToolboxMutex<ActorPathRegistry, TB>,
-  remote_authority_mgr: ArcShared<RemoteAuthorityManagerGeneric<TB>>,
-  scheduler_context: ToolboxMutex<Option<ArcShared<SchedulerContext<TB>>>, TB>,
+  remote_authority_mgr: RemoteAuthorityManagerSharedGeneric<TB>,
+  scheduler_context: ToolboxMutex<Option<SchedulerContextSharedGeneric<TB>>, TB>,
   tick_driver_runtime: ToolboxMutex<Option<TickDriverRuntime<TB>>, TB>,
   remoting_config: ToolboxMutex<Option<RemotingConfig>, TB>,
 }
@@ -133,10 +133,10 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     const DEAD_LETTER_CAPACITY: usize = 512;
     let event_stream = ArcShared::new(EventStreamGeneric::default());
     let dead_letter = ArcShared::new(DeadLetterGeneric::new(event_stream.clone(), DEAD_LETTER_CAPACITY));
-    let dispatchers = ArcShared::new(DispatchersGeneric::new());
-    dispatchers.ensure_default();
-    let mailboxes = ArcShared::new(MailboxesGeneric::new());
-    mailboxes.ensure_default();
+    let dispatchers = DispatchersSharedGeneric::new(DispatchersGeneric::new());
+    dispatchers.with_write(|d| d.ensure_default());
+    let mailboxes = MailboxesSharedGeneric::<TB>::new();
+    mailboxes.with_write(|m| m.ensure_default());
     Self {
       next_pid: AtomicU64::new(0),
       clock: AtomicU64::new(0),
@@ -146,7 +146,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       system_guardian: <TB::MutexFamily as SyncMutexFamily>::create(None),
       user_guardian: <TB::MutexFamily as SyncMutexFamily>::create(None),
       ask_futures: <TB::MutexFamily as SyncMutexFamily>::create(Vec::new()),
-      termination: ArcShared::new(ActorFuture::<(), TB>::new()),
+      termination: ActorFutureSharedGeneric::<(), TB>::new(),
       terminated: AtomicBool::new(false),
       terminating: AtomicBool::new(false),
       root_started: AtomicBool::new(false),
@@ -167,7 +167,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       mailboxes,
       path_identity: <TB::MutexFamily as SyncMutexFamily>::create(PathIdentity::default()),
       actor_path_registry: <TB::MutexFamily as SyncMutexFamily>::create(ActorPathRegistry::new()),
-      remote_authority_mgr: ArcShared::new(RemoteAuthorityManagerGeneric::new()),
+      remote_authority_mgr: RemoteAuthorityManagerSharedGeneric::default(),
       actor_ref_provider_callers_by_scheme: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::with_hasher(
         RandomState::new(),
       )),
@@ -208,7 +208,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     // Register default dispatcher if configured
     if let Some(dispatcher_config) = config.default_dispatcher_config() {
       // Overwrite the "default" entry using register_or_update
-      self.dispatchers.register_or_update("default", dispatcher_config.clone());
+      self.dispatchers.with_write(|d| d.register_or_update("default", dispatcher_config.clone()));
     }
 
     let policy = ReservationPolicy::with_quarantine_duration(self.default_quarantine_duration());
@@ -532,7 +532,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   }
 
   /// Registers an ask future so the actor system can track its completion.
-  pub(crate) fn register_ask_future(&self, future: ArcShared<ActorFuture<AnyMessageGeneric<TB>, TB>>) {
+  pub(crate) fn register_ask_future(&self, future: ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>) {
     self.ask_futures.lock().push(future);
   }
 
@@ -590,15 +590,15 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     None
   }
 
-  pub(crate) fn install_actor_ref_provider<P>(&self, provider: &ArcShared<P>)
+  pub(crate) fn install_actor_ref_provider<P>(&self, provider: &ActorRefProviderSharedGeneric<TB, P>)
   where
     P: ActorRefProvider<TB> + Any + Send + Sync + 'static, {
-    let erased: ArcShared<dyn Any + Send + Sync + 'static> = provider.clone();
+    let erased: ArcShared<dyn Any + Send + Sync + 'static> = provider.inner().clone();
     self.actor_ref_providers.lock().insert(TypeId::of::<P>(), erased);
     let schemes = provider.supported_schemes().to_vec();
     for scheme in schemes {
       let cloned = provider.clone();
-      let caller: ActorRefProviderCaller<TB> = Box::new(move |path| cloned.actor_ref(path));
+      let caller: ActorRefProviderCaller<TB> = Box::new(move |path| cloned.get_actor_ref(path));
       self.actor_ref_provider_callers_by_scheme.lock().insert(scheme, caller);
     }
   }
@@ -608,10 +608,16 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     *guard = Some(hook);
   }
 
-  pub(crate) fn actor_ref_provider<P>(&self) -> Option<ArcShared<P>>
+  pub(crate) fn actor_ref_provider<P>(&self) -> Option<ActorRefProviderSharedGeneric<TB, P>>
   where
-    P: Any + Send + Sync + 'static, {
-    self.actor_ref_providers.lock().get(&TypeId::of::<P>()).cloned().and_then(|provider| provider.downcast::<P>().ok())
+    P: ActorRefProvider<TB> + Any + Send + Sync + 'static, {
+    self
+      .actor_ref_providers
+      .lock()
+      .get(&TypeId::of::<P>())
+      .cloned()
+      .and_then(|provider| provider.downcast::<ToolboxMutex<ActorRefProviderHandle<P>, TB>>().ok())
+      .map(ActorRefProviderSharedGeneric::from_shared)
   }
 
   /// Invokes a provider registered for the given scheme.
@@ -709,23 +715,27 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     if self.terminated.swap(true, Ordering::AcqRel) {
       return;
     }
-    self.termination.complete(());
+    // Lock, complete, then wake outside the lock to avoid deadlock.
+    let waker = self.termination.with_write(|af| af.complete(()));
+    if let Some(w) = waker {
+      w.wake();
+    }
   }
 
   /// Returns a future that resolves once the actor system terminates.
   #[must_use]
-  pub(crate) fn termination_future(&self) -> ArcShared<ActorFuture<(), TB>> {
+  pub(crate) fn termination_future(&self) -> ActorFutureSharedGeneric<(), TB> {
     self.termination.clone()
   }
 
   /// Drains ask futures that have completed since the previous inspection.
-  pub(crate) fn drain_ready_ask_futures(&self) -> Vec<ArcShared<ActorFuture<AnyMessageGeneric<TB>, TB>>> {
+  pub(crate) fn drain_ready_ask_futures(&self) -> Vec<ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>> {
     let mut registry = self.ask_futures.lock();
     let mut ready = Vec::new();
     let mut index = 0_usize;
 
     while index < registry.len() {
-      if registry[index].is_ready() {
+      if registry[index].with_read(|af| af.is_ready()) {
         ready.push(registry.swap_remove(index));
       } else {
         index += 1;
@@ -750,13 +760,13 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
 
   /// Returns the dispatcher registry.
   #[must_use]
-  pub fn dispatchers(&self) -> ArcShared<DispatchersGeneric<TB>> {
+  pub fn dispatchers(&self) -> DispatchersSharedGeneric<TB> {
     self.dispatchers.clone()
   }
 
   /// Returns the mailbox registry.
   #[must_use]
-  pub fn mailboxes(&self) -> ArcShared<MailboxesGeneric<TB>> {
+  pub fn mailboxes(&self) -> MailboxesSharedGeneric<TB> {
     self.mailboxes.clone()
   }
 
@@ -767,14 +777,14 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   }
 
   /// Installs the scheduler service handle.
-  pub fn install_scheduler_context(&self, context: ArcShared<SchedulerContext<TB>>) {
+  pub fn install_scheduler_context(&self, context: SchedulerContextSharedGeneric<TB>) {
     let mut guard = self.scheduler_context.lock();
     guard.replace(context);
   }
 
   /// Returns the scheduler context when it has been initialized.
   #[must_use]
-  pub fn scheduler_context(&self) -> Option<ArcShared<SchedulerContext<TB>>> {
+  pub fn scheduler_context(&self) -> Option<SchedulerContextSharedGeneric<TB>> {
     self.scheduler_context.lock().clone()
   }
 
@@ -847,7 +857,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   }
 
   #[allow(dead_code)]
-  fn handle_failure(&self, pid: Pid, parent: Option<Pid>, error: &ActorError) {
+  pub(crate) fn handle_failure(&self, pid: Pid, parent: Option<Pid>, error: &ActorError) {
     let Some(parent_pid) = parent else {
       self.stop_actor(pid);
       return;
@@ -907,24 +917,24 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
 
   /// Returns a reference to the RemoteAuthorityManager.
   #[must_use]
-  pub const fn remote_authority_manager(&self) -> &ArcShared<RemoteAuthorityManagerGeneric<TB>> {
+  pub const fn remote_authority_manager(&self) -> &RemoteAuthorityManagerSharedGeneric<TB> {
     &self.remote_authority_mgr
   }
 
   /// Returns the current authority state.
   #[must_use]
   pub fn remote_authority_state(&self, authority: &str) -> AuthorityState {
-    self.remote_authority_mgr.state(authority)
+    self.remote_authority_mgr.with_read(|mgr| mgr.state(authority))
   }
 
   /// Returns a snapshot of known remote authorities and their states.
   pub fn remote_authority_snapshots(&self) -> Vec<(String, AuthorityState)> {
-    self.remote_authority_mgr.snapshots()
+    self.remote_authority_mgr.with_read(|mgr| mgr.snapshots())
   }
 
   /// Marks the authority as connected and emits an event.
   pub fn remote_authority_set_connected(&self, authority: &str) -> Option<VecDeque<AnyMessageGeneric<TB>>> {
-    let drained = self.remote_authority_mgr.set_connected(authority);
+    let drained = self.remote_authority_mgr.with_write(|mgr| mgr.set_connected(authority));
     self.publish_remote_authority_event(authority.to_string(), AuthorityState::Connected);
     drained
   }
@@ -935,8 +945,10 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     let authority = authority.into();
     let now_secs = self.monotonic_now().as_secs();
     let effective = duration.unwrap_or(self.default_quarantine_duration());
-    self.remote_authority_mgr.set_quarantine(authority.clone(), now_secs, Some(effective));
-    let state = self.remote_authority_mgr.state(&authority);
+    self.remote_authority_mgr.with_write(|mgr| {
+      mgr.set_quarantine(authority.clone(), now_secs, Some(effective));
+    });
+    let state = self.remote_authority_mgr.with_read(|mgr| mgr.state(&authority));
     self.publish_remote_authority_event(authority, state);
   }
 
@@ -945,14 +957,16 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     let authority = authority.into();
     let now_secs = self.monotonic_now().as_secs();
     let effective = duration.unwrap_or(self.default_quarantine_duration());
-    self.remote_authority_mgr.handle_invalid_association(authority.clone(), now_secs, Some(effective));
-    let state = self.remote_authority_mgr.state(&authority);
+    self.remote_authority_mgr.with_write(|mgr| {
+      mgr.handle_invalid_association(authority.clone(), now_secs, Some(effective));
+    });
+    let state = self.remote_authority_mgr.with_read(|mgr| mgr.state(&authority));
     self.publish_remote_authority_event(authority, state);
   }
 
   /// Manually overrides a quarantined authority back to connected.
   pub fn remote_authority_manual_override_to_connected(&self, authority: &str) {
-    self.remote_authority_mgr.manual_override_to_connected(authority);
+    self.remote_authority_mgr.with_write(|mgr| mgr.manual_override_to_connected(authority));
     self.publish_remote_authority_event(authority.to_string(), AuthorityState::Connected);
   }
 
@@ -967,7 +981,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     authority: impl Into<String>,
     message: AnyMessageGeneric<TB>,
   ) -> Result<(), RemoteAuthorityError> {
-    self.remote_authority_mgr.defer_send(authority, message)
+    self.remote_authority_mgr.with_write(|mgr| mgr.defer_send(authority, message))
   }
 
   /// Attempts to defer a message, returning an error if the authority is quarantined.
@@ -980,14 +994,14 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     authority: impl Into<String>,
     message: AnyMessageGeneric<TB>,
   ) -> Result<(), RemoteAuthorityError> {
-    self.remote_authority_mgr.try_defer_send(authority, message)
+    self.remote_authority_mgr.with_write(|mgr| mgr.try_defer_send(authority, message))
   }
 
   /// Polls all authorities for expired quarantine windows and emits events for lifted entries.
   pub fn poll_remote_authorities(&self) {
     let now_secs = self.monotonic_now().as_secs();
     self.actor_path_registry.lock().poll_expired(now_secs);
-    let lifted = self.remote_authority_mgr.poll_quarantine_expiration(now_secs);
+    let lifted = self.remote_authority_mgr.with_write(|mgr| mgr.poll_quarantine_expiration(now_secs));
     for authority in lifted {
       self.publish_remote_authority_event(authority.clone(), AuthorityState::Unresolved);
     }
@@ -996,8 +1010,8 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
 
 impl<TB: RuntimeToolbox + 'static> Drop for SystemStateGeneric<TB> {
   fn drop(&mut self) {
-    if let Some(runtime) = self.tick_driver_runtime.lock().take() {
-      TickDriverBootstrap::shutdown(runtime.driver());
+    if let Some(mut runtime) = self.tick_driver_runtime.lock().take() {
+      runtime.shutdown();
     }
   }
 }

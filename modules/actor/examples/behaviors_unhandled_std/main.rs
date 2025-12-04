@@ -15,6 +15,7 @@ use fraktor_actor_rs::std::{
   },
   typed::{Behavior, BehaviorSignal, Behaviors, TypedActorSystem, TypedProps},
 };
+use fraktor_utils_rs::core::sync::SharedAccess;
 
 #[derive(Debug, Clone)]
 enum Command {
@@ -71,7 +72,7 @@ fn main() {
   let subscriber: EventStreamSubscriberShared = subscriber_handle(UnhandledMessageLogger);
   let _subscription: EventStreamSubscription = system.subscribe_event_stream(&subscriber);
 
-  let actor_ref = system.user_guardian_ref();
+  let mut actor_ref = system.user_guardian_ref();
   let termination = system.when_terminated();
 
   // Send Ping - will be handled
@@ -92,7 +93,7 @@ fn main() {
   // Terminate system
   println!("\n=== Terminating system ===");
   system.terminate().expect("Failed to terminate");
-  while !termination.is_ready() {
+  while !termination.with_read(|af| af.is_ready()) {
     std::thread::yield_now();
   }
 

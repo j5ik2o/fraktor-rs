@@ -2,6 +2,7 @@
 mod std_tick_driver_support;
 
 use fraktor_actor_rs::std::typed::{Behavior, BehaviorSignal, Behaviors, TypedActorSystem, TypedProps};
+use fraktor_utils_rs::core::sync::SharedAccess;
 
 #[derive(Clone, Copy)]
 enum GuardianCommand {
@@ -40,12 +41,12 @@ fn main() {
   let system = TypedActorSystem::new(&props, tick_driver).expect("system");
   let termination = system.when_terminated();
 
-  let guardian = system.user_guardian_ref();
+  let mut guardian = system.user_guardian_ref();
   guardian.tell(GuardianCommand::Start).expect("start");
   guardian.tell(GuardianCommand::Stop).expect("stop");
 
   system.terminate().expect("terminate");
-  while !termination.is_ready() {
+  while !termination.with_read(|af| af.is_ready()) {
     thread::yield_now();
   }
 }

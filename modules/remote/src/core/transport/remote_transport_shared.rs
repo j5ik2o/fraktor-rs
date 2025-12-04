@@ -5,7 +5,7 @@ use alloc::{boxed::Box, string::String};
 use fraktor_actor_rs::core::event_stream::CorrelationId;
 use fraktor_utils_rs::core::{
   runtime_toolbox::{RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+  sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
 };
 
 use super::{
@@ -22,9 +22,10 @@ use super::{
 ///
 /// # Usage
 ///
-/// 1. Create a shared wrapper: `RemoteTransportShared::new(transport)`
-/// 2. Clone and share as needed
-/// 3. Call transport methods through the wrapper (automatically acquires lock)
+/// Use [`SharedAccess`] methods (`with_read`/`with_write`) to access the
+/// underlying transport.
+///
+/// Example: `transport_shared.with_write(|t| t.open_channel(&endpoint))?;`
 pub struct RemoteTransportShared<TB: RuntimeToolbox + 'static> {
   inner:  ArcShared<ToolboxMutex<Box<dyn RemoteTransport<TB>>, TB>>,
   scheme: String,
@@ -37,16 +38,26 @@ impl<TB: RuntimeToolbox + 'static> RemoteTransportShared<TB> {
     Self { inner: ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(transport)), scheme }
   }
 
-  /// Returns a reference to the inner shared mutex.
+  /// Returns the transport scheme (e.g., "tcp", "loopback").
   #[must_use]
-  pub const fn inner(&self) -> &ArcShared<ToolboxMutex<Box<dyn RemoteTransport<TB>>, TB>> {
-    &self.inner
+  pub fn scheme(&self) -> &str {
+    &self.scheme
   }
 }
 
 impl<TB: RuntimeToolbox + 'static> Clone for RemoteTransportShared<TB> {
   fn clone(&self) -> Self {
     Self { inner: self.inner.clone(), scheme: self.scheme.clone() }
+  }
+}
+
+impl<TB: RuntimeToolbox + 'static> SharedAccess<Box<dyn RemoteTransport<TB>>> for RemoteTransportShared<TB> {
+  fn with_read<R>(&self, f: impl FnOnce(&Box<dyn RemoteTransport<TB>>) -> R) -> R {
+    self.inner.with_read(f)
+  }
+
+  fn with_write<R>(&self, f: impl FnOnce(&mut Box<dyn RemoteTransport<TB>>) -> R) -> R {
+    self.inner.with_write(f)
   }
 }
 

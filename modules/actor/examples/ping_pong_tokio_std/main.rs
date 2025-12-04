@@ -5,6 +5,7 @@ use fraktor_actor_rs::{
   std::{
     actor_prim::{Actor, ActorContext, ActorRef},
     dispatcher::dispatch_executor::TokioExecutor,
+    futures::ActorFutureListener,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
     system::{ActorSystem, DispatcherConfig},
@@ -39,7 +40,7 @@ impl Actor for GuardianActor {
       let pong = ctx.spawn_child(&pong_props).map_err(|_| ActorError::recoverable("failed to spawn pong"))?;
 
       let ping_props = self.child_props(|| PingActor);
-      let ping = ctx.spawn_child(&ping_props).map_err(|_| ActorError::recoverable("failed to spawn ping"))?;
+      let mut ping = ctx.spawn_child(&ping_props).map_err(|_| ActorError::recoverable("failed to spawn ping"))?;
 
       let start_ping = StartPing { target: pong.actor_ref().clone(), reply_to: ctx.self_ref(), count: 3 };
       ping.tell(AnyMessage::new(start_ping)).map_err(|_| ActorError::recoverable("failed to start ping actor"))?;
@@ -72,7 +73,11 @@ impl Actor for PingActor {
     if let Some(cmd) = message.downcast_ref::<StartPing>() {
       for index in 0..cmd.count {
         let payload = PingMessage { text: format!("ping-{}", index + 1), reply_to: cmd.reply_to.clone() };
-        cmd.target.tell(AnyMessage::new(payload)).map_err(|_| ActorError::recoverable("failed to send ping"))?;
+        cmd
+          .target
+          .clone()
+          .tell(AnyMessage::new(payload))
+          .map_err(|_| ActorError::recoverable("failed to send ping"))?;
       }
     }
     Ok(())
@@ -86,7 +91,7 @@ impl Actor for PongActor {
     if let Some(ping) = message.downcast_ref::<PingMessage>() {
       println!("[{:?}] received ping: {}", std::thread::current().id(), ping.text);
       let response = PongReply { text: ping.text.clone() };
-      ping.reply_to.tell(AnyMessage::new(response)).map_err(|_| ActorError::recoverable("reply failed"))?;
+      ping.reply_to.clone().tell(AnyMessage::new(response)).map_err(|_| ActorError::recoverable("reply failed"))?;
     }
     Ok(())
   }
@@ -106,7 +111,6 @@ async fn main() {
 
   let tick_driver = fraktor_actor_rs::std::scheduler::tick::TickDriverConfig::tokio_quickstart();
   let system = ActorSystem::new(&props, tick_driver).expect("system");
-  let termination = system.when_terminated();
 
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
 
@@ -114,5 +118,5 @@ async fn main() {
 
   system.terminate().expect("terminate");
 
-  termination.listener().await;
+  ActorFutureListener::new(system.when_terminated()).await;
 }

@@ -7,18 +7,10 @@ use fraktor_actor_rs::core::event_stream::{
   EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, EventStreamSubscriberShared,
   EventStreamSubscriptionGeneric, RemotingLifecycleEvent, subscriber_handle,
 };
-use fraktor_utils_rs::{
-  core::{
-    runtime_toolbox::{SyncMutexFamily, ToolboxMutex},
-    sync::ArcShared,
-  },
-  std::runtime_toolbox::StdToolbox,
-};
+use fraktor_utils_rs::{core::sync::SharedAccess, std::runtime_toolbox::StdToolbox};
 
+use super::local_cluster_provider_shared::SharedLocalClusterProvider;
 use crate::core::LocalClusterProvider;
-
-/// Type alias for thread-safe mutable LocalClusterProvider.
-pub type SharedLocalClusterProvider = ArcShared<ToolboxMutex<LocalClusterProvider<StdToolbox>, StdToolbox>>;
 
 /// Subscribes to remoting lifecycle events for automatic topology updates.
 ///
@@ -37,16 +29,16 @@ pub fn subscribe_remoting_events(provider: &SharedLocalClusterProvider) {
       if let EventStreamEvent::Extension { name, payload } = event {
         if name == "remoting" {
           // 起動前は無視
-          if !self.provider.lock().is_started() {
+          if !self.provider.with_read(|p| p.is_started()) {
             return;
           }
           if let Some(lifecycle_event) = payload.payload().downcast_ref::<RemotingLifecycleEvent>() {
             match lifecycle_event {
               | RemotingLifecycleEvent::Connected { authority, .. } => {
-                self.provider.lock().handle_connected(authority);
+                self.provider.with_write(|p| p.handle_connected(authority));
               },
               | RemotingLifecycleEvent::Quarantined { authority, .. } => {
-                self.provider.lock().handle_quarantined(authority);
+                self.provider.with_write(|p| p.handle_quarantined(authority));
               },
               | _ => {},
             }
@@ -57,7 +49,7 @@ pub fn subscribe_remoting_events(provider: &SharedLocalClusterProvider) {
   }
 
   // event_stream への参照を取得
-  let event_stream = provider.lock().event_stream().clone();
+  let event_stream = provider.with_read(|p| p.event_stream().clone());
   let handler = RemotingEventHandler { provider: provider.clone() };
   let subscriber: EventStreamSubscriberShared<StdToolbox> = subscriber_handle(handler);
   let _subscription: EventStreamSubscriptionGeneric<StdToolbox> =
@@ -68,5 +60,5 @@ pub fn subscribe_remoting_events(provider: &SharedLocalClusterProvider) {
 
 /// Creates a shared, thread-safe LocalClusterProvider wrapped in a mutex.
 pub fn wrap_local_cluster_provider(provider: LocalClusterProvider<StdToolbox>) -> SharedLocalClusterProvider {
-  ArcShared::new(<StdToolbox as fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox>::MutexFamily::create(provider))
+  SharedLocalClusterProvider::new(provider)
 }

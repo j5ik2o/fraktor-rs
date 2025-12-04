@@ -16,7 +16,7 @@ use fraktor_actor_rs::{
   },
   std::typed::{Behavior, BehaviorSignal, Behaviors, TypedActorSystem, TypedProps},
 };
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_rs::core::sync::{ArcShared, SharedAccess};
 
 #[derive(Clone, Copy)]
 enum GuardianCommand {
@@ -56,7 +56,7 @@ fn guardian(counter: ArcShared<AtomicUsize>) -> Behavior<GuardianCommand> {
     Behaviors::receive_message(move |_ctx, message| match message {
       | GuardianCommand::CrashWorker => {
         println!("guardian triggering worker crash");
-        child_ref.tell(WorkerCommand::Crash).expect("send crash");
+        child_ref.clone().tell(WorkerCommand::Crash).expect("send crash");
         Ok(Behaviors::same())
       },
     })
@@ -81,7 +81,7 @@ fn main() {
 
   let (tick_driver, _pulse_handle) = std_tick_driver_support::hardware_tick_driver_config();
   let system = TypedActorSystem::new(&props, tick_driver).expect("typed system");
-  let guardian_ref = system.user_guardian_ref();
+  let mut guardian_ref = system.user_guardian_ref();
 
   guardian_ref.tell(GuardianCommand::CrashWorker).expect("first crash");
   thread::sleep(Duration::from_millis(20));
@@ -92,7 +92,7 @@ fn main() {
 
   system.terminate().expect("terminate");
   let termination = system.when_terminated();
-  while !termination.is_ready() {
+  while !termination.with_read(|af| af.is_ready()) {
     thread::sleep(Duration::from_millis(10));
   }
 }

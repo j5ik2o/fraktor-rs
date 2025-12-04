@@ -117,7 +117,7 @@ impl Actor for HarnessWatcher {
           let log = request.log.clone();
           move || SecondaryWatcher::new(log.clone())
         });
-        let secondary = ctx
+        let mut secondary = ctx
           .spawn_child(&watcher_props)
           .map_err(|error| ActorError::recoverable(format!("spawn secondary failed: {:?}", error)))?;
         secondary.tell(AnyMessage::new(child.clone())).map_err(|_| ActorError::recoverable("link failed"))?;
@@ -242,13 +242,13 @@ impl Actor for CycleGuardian {
     message: AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     if message.downcast_ref::<StartCycle>().is_some() {
-      let actor_a = ctx
+      let mut actor_a = ctx
         .spawn_child(&Props::from_fn({
           let log_a = self.log_a.clone();
           move || CycleActor::new(log_a.clone())
         }))
         .map_err(|error| ActorError::recoverable(format!("spawn a failed: {:?}", error)))?;
-      let actor_b = ctx
+      let mut actor_b = ctx
         .spawn_child(&Props::from_fn({
           let log_b = self.log_b.clone();
           move || CycleActor::new(log_b.clone())

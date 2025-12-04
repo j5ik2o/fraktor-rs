@@ -1,12 +1,9 @@
 //! Drives the core scheduler whenever ticks are available.
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, ToolboxMutex},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
-};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::SharedAccess};
 
 use super::{
-  super::{Scheduler, SchedulerRunnerOwned},
+  super::{SchedulerRunnerOwned, SchedulerSharedGeneric},
   TickExecutorSignal, TickFeedHandle,
 };
 
@@ -15,7 +12,7 @@ mod tests;
 
 /// Executes scheduler work by draining ticks from the feed.
 pub struct SchedulerTickExecutor<TB: RuntimeToolbox + 'static> {
-  scheduler: ArcShared<ToolboxMutex<Scheduler<TB>, TB>>,
+  scheduler: SchedulerSharedGeneric<TB>,
   feed:      TickFeedHandle<TB>,
   signal:    TickExecutorSignal,
   runner:    SchedulerRunnerOwned<TB>,
@@ -24,11 +21,7 @@ pub struct SchedulerTickExecutor<TB: RuntimeToolbox + 'static> {
 impl<TB: RuntimeToolbox + 'static> SchedulerTickExecutor<TB> {
   /// Creates a new executor bound to the provided scheduler context.
   #[must_use]
-  pub fn new(
-    scheduler: ArcShared<ToolboxMutex<Scheduler<TB>, TB>>,
-    feed: TickFeedHandle<TB>,
-    signal: TickExecutorSignal,
-  ) -> Self {
+  pub fn new(scheduler: SchedulerSharedGeneric<TB>, feed: TickFeedHandle<TB>, signal: TickExecutorSignal) -> Self {
     let runner = SchedulerRunnerOwned::new();
     Self { scheduler, feed, signal, runner }
   }
@@ -48,8 +41,9 @@ impl<TB: RuntimeToolbox + 'static> SchedulerTickExecutor<TB> {
       return;
     }
 
-    let mut guard = self.scheduler.lock();
-    self.runner.drive(&mut guard);
+    self.scheduler.with_write(|s| {
+      self.runner.drive(s);
+    });
   }
 
   /// Returns the associated signal for async waiting.

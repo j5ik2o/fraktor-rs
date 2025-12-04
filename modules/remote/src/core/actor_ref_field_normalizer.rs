@@ -5,18 +5,18 @@ use alloc::string::{String, ToString};
 use fraktor_actor_rs::core::{
   actor_prim::actor_path::ActorPath,
   event_stream::{EventStreamEvent, RemoteAuthorityEvent},
-  system::{AuthorityState, RemoteAuthorityError, SystemStateGeneric},
+  system::{AuthorityState, RemoteAuthorityError, SystemStateSharedGeneric},
 };
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 /// Helper that validates actor reference fields inside messages.
 pub(crate) struct ActorRefFieldNormalizerGeneric<TB: RuntimeToolbox + 'static> {
-  system_state: ArcShared<SystemStateGeneric<TB>>,
+  system_state: SystemStateSharedGeneric<TB>,
 }
 
 impl<TB: RuntimeToolbox + 'static> ActorRefFieldNormalizerGeneric<TB> {
   /// Creates a new normalizer.
-  pub(crate) fn new(system_state: ArcShared<SystemStateGeneric<TB>>) -> Self {
+  pub(crate) fn new(system_state: SystemStateSharedGeneric<TB>) -> Self {
     Self { system_state }
   }
 

@@ -15,13 +15,10 @@ use std::{
 };
 
 use fraktor_actor_rs::core::scheduler::{
-  HardwareKind, HardwareTickDriver, Scheduler, SchedulerTickExecutor, TickDriver, TickDriverConfig, TickDriverError,
-  TickDriverRuntime, TickExecutorSignal, TickFeed, TickFeedHandle, TickPulseHandler, TickPulseSource,
+  HardwareKind, HardwareTickDriver, SchedulerSharedGeneric, SchedulerTickExecutor, TickDriver, TickDriverConfig,
+  TickDriverError, TickDriverRuntime, TickExecutorSignal, TickFeed, TickFeedHandle, TickPulseHandler, TickPulseSource,
 };
-use fraktor_utils_rs::{
-  core::{runtime_toolbox::ToolboxMutex, sync::ArcShared},
-  std::runtime_toolbox::StdToolbox,
-};
+use fraktor_utils_rs::{core::sync::SharedAccess, std::runtime_toolbox::StdToolbox};
 
 const PULSE_PERIOD_NANOS: u64 = 10_000_000; // 10ms
 
@@ -55,12 +52,9 @@ pub fn hardware_tick_driver_config() -> (TickDriverConfig<StdToolbox>, DemoPulse
 pub fn hardware_tick_driver_config_with_handle(handle: DemoPulseHandle) -> TickDriverConfig<StdToolbox> {
   TickDriverConfig::new(move |ctx| {
     // Get resolution and capacity from SchedulerContext
-    let scheduler: ArcShared<ToolboxMutex<Scheduler<StdToolbox>, StdToolbox>> = ctx.scheduler();
-    let (resolution, capacity) = {
-      let guard = scheduler.lock();
-      let cfg = guard.config();
-      (cfg.resolution(), cfg.profile().tick_buffer_quota())
-    };
+    let scheduler: SchedulerSharedGeneric<StdToolbox> = ctx.scheduler();
+    let (resolution, capacity) =
+      scheduler.with_read(|s| (s.config().resolution(), s.config().profile().tick_buffer_quota()));
 
     // Create pulse source with shared handler state
     let source = DemoPulse::new(PULSE_PERIOD_NANOS, handle.handler.clone(), handle.enabled.clone());
@@ -160,7 +154,7 @@ impl HandlerSlot {
 unsafe impl Send for HandlerSlot {}
 unsafe impl Sync for HandlerSlot {}
 
-type SchedulerArc = ArcShared<ToolboxMutex<Scheduler<StdToolbox>, StdToolbox>>;
+type SchedulerArc = SchedulerSharedGeneric<StdToolbox>;
 
 pub struct StdTickDriverPump {
   running: Arc<AtomicBool>,
