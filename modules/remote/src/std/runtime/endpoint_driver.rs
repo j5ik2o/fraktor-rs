@@ -13,7 +13,7 @@ use core::time::Duration;
 use fraktor_actor_rs::core::{event_stream::CorrelationId, logging::LogLevel, system::ActorSystemGeneric};
 use fraktor_utils_rs::core::{
   runtime_toolbox::{RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+  sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
 };
 use tokio::{sync::Mutex as TokioMutex, task::JoinHandle, time::sleep};
 
@@ -94,12 +94,12 @@ impl<TB: RuntimeToolbox + 'static> EndpointDriver<TB> {
   pub(crate) fn spawn(config: EndpointDriverConfig<TB>) -> Result<EndpointDriverHandle, TransportError> {
     let driver = Self::new(config);
     let bind = TransportBind::new(driver.host.clone(), Some(driver.port));
-    let handle = driver.transport.inner().lock().spawn_listener(&bind)?;
+    let handle = driver.transport.with_write(|t| t.spawn_listener(&bind))?;
     driver.event_publisher.publish_listen_started(bind.authority(), CorrelationId::from_u128(0));
     *driver.listener.try_lock().expect("listener mutex uncontended") = Some(handle);
     let handler: TransportInboundShared<TB> =
       ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(Box::new(InboundHandler::new(driver.clone()))));
-    driver.transport.inner().lock().install_inbound_handler(handler);
+    driver.transport.with_write(|t| t.install_inbound_handler(handler));
     let send_task = tokio::spawn(Self::drive_outbound(driver.clone()));
     Ok(EndpointDriverHandle { send_task })
   }
@@ -130,18 +130,18 @@ impl<TB: RuntimeToolbox + 'static> EndpointDriver<TB> {
       .ok_or_else(|| TransportError::AuthorityNotBound("missing remote authority".into()))?;
     self.peers.lock().await.insert(authority.clone(), envelope.remote_node().clone());
     let deferred = DeferredEnvelope::new(envelope);
-    let enqueue = self.manager.handle(EndpointManagerCommand::EnqueueDeferred {
-      authority: authority.clone(),
-      envelope:  alloc::boxed::Box::new(deferred),
+    let enqueue = self.manager.with_write(|m| {
+      m.handle(EndpointManagerCommand::EnqueueDeferred {
+        authority: authority.clone(),
+        envelope:  alloc::boxed::Box::new(deferred),
+      })
     });
     self.process_effects(enqueue.effects).await?;
 
-    if !matches!(self.manager.state(&authority), Some(AssociationState::Connected { .. })) {
+    if !matches!(self.manager.with_read(|m| m.state(&authority)), Some(AssociationState::Connected { .. })) {
       let endpoint = TransportEndpoint::new(authority.clone());
-      let associate = self.manager.handle(EndpointManagerCommand::Associate {
-        authority: authority.clone(),
-        endpoint,
-        now: self.now_millis(),
+      let associate = self.manager.with_write(|m| {
+        m.handle(EndpointManagerCommand::Associate { authority: authority.clone(), endpoint, now: self.now_millis() })
       });
       self.process_effects(associate.effects).await?;
     }
@@ -181,16 +181,18 @@ impl<TB: RuntimeToolbox + 'static> EndpointDriver<TB> {
         return Ok(Vec::new());
       }
     }
-    let channel = self.transport.inner().lock().open_channel(endpoint)?;
+    let channel = self.transport.with_write(|t| t.open_channel(endpoint))?;
     self.channels.lock().await.insert(authority.to_string(), channel);
     if let Some(remote) = self.peers.lock().await.get(authority).cloned() {
       let handshake = HandshakeFrame::new(HandshakeKind::Offer, &self.system_name, &self.host, Some(self.port), 0);
       let payload = handshake.encode();
-      self.transport.inner().lock().send(&channel, &payload, CorrelationId::nil())?;
-      let accept = self.manager.handle(EndpointManagerCommand::HandshakeAccepted {
-        authority:   authority.to_string(),
-        remote_node: remote,
-        now:         self.now_millis(),
+      self.transport.with_write(|t| t.send(&channel, &payload, CorrelationId::nil()))?;
+      let accept = self.manager.with_write(|m| {
+        m.handle(EndpointManagerCommand::HandshakeAccepted {
+          authority:   authority.to_string(),
+          remote_node: remote,
+          now:         self.now_millis(),
+        })
       });
       return Ok(accept.effects);
     }
@@ -201,14 +203,14 @@ impl<TB: RuntimeToolbox + 'static> EndpointDriver<TB> {
     let envelope = deferred.into_envelope();
     let payload = envelope.encode_frame();
     let channel = self.ensure_channel(authority).await?;
-    self.transport.inner().lock().send(&channel, &payload, envelope.correlation_id())?;
+    self.transport.with_write(|t| t.send(&channel, &payload, envelope.correlation_id()))?;
     Ok(())
   }
 
   async fn ensure_channel(&self, authority: &str) -> Result<TransportChannel, TransportError> {
     if !self.channels.lock().await.contains_key(authority) {
       let endpoint = TransportEndpoint::new(authority.to_string());
-      let channel = self.transport.inner().lock().open_channel(&endpoint)?;
+      let channel = self.transport.with_write(|t| t.open_channel(&endpoint))?;
       self.channels.lock().await.insert(authority.to_string(), channel);
     }
     let channels = self.channels.lock().await;
@@ -251,10 +253,8 @@ impl<TB: RuntimeToolbox + 'static> EndpointDriver<TB> {
       let authority = format!("{}:{port}", frame.host());
       let remote =
         RemoteNodeId::new(frame.system_name().to_string(), frame.host().to_string(), frame.port(), frame.uid());
-      let accept = self.manager.handle(EndpointManagerCommand::HandshakeAccepted {
-        authority,
-        remote_node: remote,
-        now: self.now_millis(),
+      let accept = self.manager.with_write(|m| {
+        m.handle(EndpointManagerCommand::HandshakeAccepted { authority, remote_node: remote, now: self.now_millis() })
       });
       let _ = self.process_effects(accept.effects).await;
     }

@@ -2,15 +2,16 @@
 
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::sync_mutex_like::SyncMutexLike,
+  sync::{SharedAccess, sync_mutex_like::SyncMutexLike},
 };
 
-use super::{AssociationState, EndpointManager, EndpointManagerCommand, EndpointManagerResult};
+use super::EndpointManager;
 
 /// Shared wrapper for [`EndpointManager`] enabling interior mutability.
 ///
-/// This wrapper provides `&self` methods that internally lock the underlying
-/// [`EndpointManager`], allowing safe concurrent access from multiple owners.
+/// This wrapper provides [`SharedAccess`] methods (`with_read`/`with_write`)
+/// that internally lock the underlying [`EndpointManager`], allowing safe
+/// concurrent access from multiple owners.
 pub struct EndpointManagerSharedGeneric<TB: RuntimeToolbox + 'static> {
   inner: ToolboxMutex<EndpointManager, TB>,
 }
@@ -27,16 +28,15 @@ impl<TB: RuntimeToolbox + 'static> EndpointManagerSharedGeneric<TB> {
   pub fn new() -> Self {
     Self { inner: <TB::MutexFamily as SyncMutexFamily>::create(EndpointManager::new()) }
   }
+}
 
-  /// Returns the current association state for the provided authority when available.
-  #[must_use]
-  pub fn state(&self, authority: &str) -> Option<AssociationState> {
-    self.inner.lock().state(authority)
+impl<TB: RuntimeToolbox + 'static> SharedAccess<EndpointManager> for EndpointManagerSharedGeneric<TB> {
+  fn with_read<R>(&self, f: impl FnOnce(&EndpointManager) -> R) -> R {
+    f(&self.inner.lock())
   }
 
-  /// Handles a command and returns the produced effects.
-  pub fn handle(&self, command: EndpointManagerCommand) -> EndpointManagerResult {
-    self.inner.lock().handle(command)
+  fn with_write<R>(&self, f: impl FnOnce(&mut EndpointManager) -> R) -> R {
+    f(&mut self.inner.lock())
   }
 }
 
