@@ -1,7 +1,7 @@
 //! Scheduler runtime container shared across the actor system.
 use fraktor_utils_rs::core::{
   runtime_toolbox::{RuntimeToolbox, SyncMutexFamily},
-  sync::ArcShared,
+  sync::{ArcShared, SharedAccess},
 };
 
 use super::{
@@ -78,6 +78,6 @@ impl<TB: RuntimeToolbox + 'static> SchedulerContext<TB> {
   /// Shuts down the underlying scheduler, returning the summary.
   #[must_use]
   pub fn shutdown(&mut self) -> TaskRunSummary {
-    self.scheduler.with_mut(|s| s.shutdown_with_tasks())
+    self.scheduler.with_write(|s| s.shutdown_with_tasks())
   }
 }

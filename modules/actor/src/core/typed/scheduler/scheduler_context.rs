@@ -43,7 +43,7 @@ impl<TB: RuntimeToolbox + 'static> TypedSchedulerContext<TB> {
   where
     F: for<'a> FnOnce(&mut TypedScheduler<'a, TB>) -> R, {
     let shared = self.scheduler();
-    shared.with_mut(|guard| guard.with(callback))
+    shared.with_write(|guard| guard.with(callback))
   }
 
   /// Returns a delay provider connected to this scheduler.

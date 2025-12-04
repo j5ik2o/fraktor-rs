@@ -1,10 +1,11 @@
-//! Thin shared wrapper type for `Scheduler` guarded by a toolbox mutex.
+//! Thin shared wrapper for `Scheduler`.
 //!
-//! Provides only minimal helpers: lock the mutex, or get the raw shared handle.
+//! Hides the `ArcShared<ToolboxMutex<...>>` internals and exposes only
+//! the `with_read` / `with_write` closure API.
 
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+  sync::{ArcShared, SharedAccess},
 };
 
 use super::Scheduler;
@@ -26,17 +27,17 @@ impl<TB: RuntimeToolbox + 'static> SchedulerSharedGeneric<TB> {
   pub const fn new(inner: ArcShared<ToolboxMutex<Scheduler<TB>, TB>>) -> Self {
     Self { inner }
   }
+}
 
-  /// Run a closure while holding the scheduler mutex.
+impl<TB: RuntimeToolbox + 'static> SharedAccess<Scheduler<TB>> for SchedulerSharedGeneric<TB> {
   #[inline]
-  pub fn with_mut<R>(&self, f: impl FnOnce(&mut Scheduler<TB>) -> R) -> R {
-    let mut guard = self.inner.lock();
-    f(&mut guard)
+  fn with_read<R>(&self, f: impl FnOnce(&Scheduler<TB>) -> R) -> R {
+    self.inner.with_read(f)
   }
 
-  #[allow(dead_code)]
-  pub(crate) fn lock_guard(&self) -> <ToolboxMutex<Scheduler<TB>, TB> as SyncMutexLike<Scheduler<TB>>>::Guard<'_> {
-    self.inner.lock()
+  #[inline]
+  fn with_write<R>(&self, f: impl FnOnce(&mut Scheduler<TB>) -> R) -> R {
+    self.inner.with_write(f)
   }
 }
 

@@ -4,7 +4,7 @@ use core::time::Duration;
 
 use fraktor_utils_rs::core::{
   runtime_toolbox::RuntimeToolbox,
-  sync::ArcShared,
+  sync::{ArcShared, SharedAccess},
   timing::{DelayFuture, DelayProvider, DelayTrigger},
 };
 
@@ -32,7 +32,7 @@ impl<TB: RuntimeToolbox + 'static> SchedulerBackedDelayProvider<TB> {
   }
 
   fn with_scheduler<R>(&mut self, f: impl FnOnce(&mut Scheduler<TB>) -> R) -> R {
-    self.scheduler.with_mut(f)
+    self.scheduler.with_write(f)
   }
 
   fn schedule_delay(&mut self, duration: Duration, trigger: &DelayTrigger) -> Result<SchedulerHandle, SchedulerError> {
@@ -46,7 +46,7 @@ impl<TB: RuntimeToolbox + 'static> SchedulerBackedDelayProvider<TB> {
   fn install_cancel_hook(&self, handle: SchedulerHandle, trigger: &DelayTrigger) {
     let scheduler = self.scheduler.clone();
     trigger.set_cancel_hook(move || {
-      scheduler.with_mut(|s| {
+      scheduler.with_write(|s| {
         let _ = s.cancel(&handle);
       });
     });

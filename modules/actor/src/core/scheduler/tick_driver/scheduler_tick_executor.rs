@@ -1,6 +1,6 @@
 //! Drives the core scheduler whenever ticks are available.
 
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::SharedAccess};
 
 use super::{
   super::{SchedulerRunnerOwned, SchedulerSharedGeneric},
@@ -41,7 +41,7 @@ impl<TB: RuntimeToolbox + 'static> SchedulerTickExecutor<TB> {
       return;
     }
 
-    self.scheduler.with_mut(|s| {
+    self.scheduler.with_write(|s| {
       self.runner.drive(s);
     });
   }

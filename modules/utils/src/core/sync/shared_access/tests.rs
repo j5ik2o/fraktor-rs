@@ -3,7 +3,7 @@ use alloc::string::String;
 use crate::core::sync::{ArcShared, SharedAccess, sync_mutex_like::SpinSyncMutex};
 
 #[test]
-fn with_mut_modifies_value() {
+fn with_write_modifies_value() {
   let shared: ArcShared<SpinSyncMutex<i32>> = ArcShared::new(SpinSyncMutex::new(42));
   let result = shared.with_write(|value| {
     *value = 100;
@@ -15,7 +15,7 @@ fn with_mut_modifies_value() {
 }
 
 #[test]
-fn with_mut_returns_result() {
+fn with_write_returns_result() {
   let shared: ArcShared<SpinSyncMutex<i32>> = ArcShared::new(SpinSyncMutex::new(0));
   let result = shared.with_write(|value| {
     *value += 10;
@@ -25,7 +25,7 @@ fn with_mut_returns_result() {
 }
 
 #[test]
-fn with_mut_can_be_called_multiple_times() {
+fn with_write_can_be_called_multiple_times() {
   let shared: ArcShared<SpinSyncMutex<i32>> = ArcShared::new(SpinSyncMutex::new(0));
   shared.with_write(|value| *value = 5);
   shared.with_write(|value| *value += 3);
@@ -34,7 +34,7 @@ fn with_mut_can_be_called_multiple_times() {
 }
 
 #[test]
-fn with_mut_works_with_string() {
+fn with_write_works_with_string() {
   let shared: ArcShared<SpinSyncMutex<String>> = ArcShared::new(SpinSyncMutex::new(String::from("hello")));
   let result = shared.with_write(|s| {
     s.push_str(" world");

@@ -57,12 +57,12 @@ impl TypedActor<GuardianCommand> for GuardianActor {
         let scheduler_shared = scheduler_context.scheduler();
         let target = ctx.self_ref();
 
-        self.diagnostics = Some(scheduler_shared.with_mut(|s| s.subscribe_diagnostics(128)));
+        self.diagnostics = Some(scheduler_shared.with_write(|s| s.subscribe_diagnostics(128)));
 
         #[cfg(not(target_os = "none"))]
         println!("[{:?}] Subscribed to typed diagnostics stream", std::thread::current().id());
 
-        scheduler_shared.with_mut(|typed_scheduler| {
+        scheduler_shared.with_write(|typed_scheduler| {
           for i in 0..3 {
             let msg = ScheduledMessage { text: alloc::format!("Typed Message {}", i + 1) };
             let cmd = GuardianCommand::Scheduled(msg);

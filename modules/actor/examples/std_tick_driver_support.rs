@@ -18,7 +18,7 @@ use fraktor_actor_rs::core::scheduler::{
   HardwareKind, HardwareTickDriver, SchedulerSharedGeneric, SchedulerTickExecutor, TickDriver, TickDriverConfig,
   TickDriverError, TickDriverRuntime, TickExecutorSignal, TickFeed, TickFeedHandle, TickPulseHandler, TickPulseSource,
 };
-use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
+use fraktor_utils_rs::{core::sync::SharedAccess, std::runtime_toolbox::StdToolbox};
 
 const PULSE_PERIOD_NANOS: u64 = 10_000_000; // 10ms
 
@@ -54,7 +54,7 @@ pub fn hardware_tick_driver_config_with_handle(handle: DemoPulseHandle) -> TickD
     // Get resolution and capacity from SchedulerContext
     let scheduler: SchedulerSharedGeneric<StdToolbox> = ctx.scheduler();
     let (resolution, capacity) =
-      scheduler.with_mut(|s| (s.config().resolution(), s.config().profile().tick_buffer_quota()));
+      scheduler.with_read(|s| (s.config().resolution(), s.config().profile().tick_buffer_quota()));
 
     // Create pulse source with shared handler state
     let source = DemoPulse::new(PULSE_PERIOD_NANOS, handle.handler.clone(), handle.enabled.clone());

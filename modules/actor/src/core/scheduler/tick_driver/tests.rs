@@ -5,7 +5,7 @@ use core::time::Duration;
 
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdMutex, NoStdToolbox},
-  sync::{ArcShared, sync_mutex_like::SpinSyncMutex},
+  sync::{ArcShared, SharedAccess, sync_mutex_like::SpinSyncMutex},
   time::TimerInstant,
 };
 
@@ -120,7 +120,7 @@ fn hardware_test_config(handler: TestPulseHandlerState, pulse_resolution: Durati
     use super::{HardwareKind, HardwareTickDriver, TickDriver, TickDriverRuntime, TickExecutorSignal, TickFeed};
 
     let scheduler = ctx.scheduler();
-    let (resolution, capacity) = scheduler.with_mut(|s| {
+    let (resolution, capacity) = scheduler.with_read(|s| {
       let cfg = s.config();
       (cfg.resolution(), cfg.profile().tick_buffer_quota())
     });
@@ -143,7 +143,7 @@ fn run_hardware_driver_enqueues_isr_pulses() {
   let mut runtime = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
 
   handle.trigger();
-  let resolution = ctx.scheduler().with_mut(|s| s.config().resolution());
+  let resolution = ctx.scheduler().with_read(|s| s.config().resolution());
   let now = TimerInstant::from_ticks(1, resolution);
   let feed = runtime.feed().expect("feed");
   assert!(feed.driver_active());
@@ -220,7 +220,7 @@ fn manual_driver_runs_jobs_without_executor() {
 
   let log = ArcShared::new(NoStdMutex::new(Vec::new()));
   let runnable: ArcShared<ManualRunnable> = ArcShared::new(ManualRunnable { log: log.clone(), label: "manual" });
-  ctx.scheduler().with_mut(|s| {
+  ctx.scheduler().with_write(|s| {
     s.schedule_once(Duration::from_millis(10), SchedulerCommand::RunRunnable { runnable, dispatcher: None })
       .expect("schedule");
   });
@@ -252,7 +252,7 @@ fn embedded_quickstart_template_runs_ticks() {
   let scheduler = ctx.scheduler();
   let log = ArcShared::new(NoStdMutex::new(Vec::new()));
   let runnable: ArcShared<ManualRunnable> = ArcShared::new(ManualRunnable { log: log.clone(), label: "embedded" });
-  scheduler.with_mut(|s| {
+  scheduler.with_write(|s| {
     s.schedule_once(Duration::from_millis(2), SchedulerCommand::RunRunnable { runnable, dispatcher: None })
       .expect("schedule job");
   });
