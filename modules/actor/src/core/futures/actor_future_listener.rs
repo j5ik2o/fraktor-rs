@@ -6,10 +6,7 @@ use core::{
   task::{Context, Poll},
 };
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  sync::sync_mutex_like::SyncMutexLike,
-};
+use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 
 use super::ActorFutureSharedGeneric;
 
@@ -53,13 +50,14 @@ where
   type Output = T;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-    let mut guard = self.future.inner().lock();
-    if let Some(value) = guard.try_take() {
-      Poll::Ready(value)
-    } else {
-      guard.register_waker(cx.waker());
-      Poll::Pending
-    }
+    self.future.with_mut(|inner| {
+      if let Some(value) = inner.try_take() {
+        Poll::Ready(value)
+      } else {
+        inner.register_waker(cx.waker());
+        Poll::Pending
+      }
+    })
   }
 }
 

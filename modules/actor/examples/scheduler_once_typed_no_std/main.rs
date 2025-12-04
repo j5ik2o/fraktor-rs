@@ -46,7 +46,6 @@ impl TypedActor<GuardianCommand> for GuardianActor {
 
         let scheduler_context = ctx.system().scheduler_context().expect("scheduler context");
         let scheduler_shared = scheduler_context.scheduler();
-        let mut scheduler = scheduler_shared.lock();
 
         #[cfg(not(target_os = "none"))]
         println!("[{:?}] Scheduling typed message with 100ms delay...", std::thread::current().id());
@@ -55,7 +54,7 @@ impl TypedActor<GuardianCommand> for GuardianActor {
         let command = GuardianCommand::Scheduled(message);
 
         // TypedScheduler::schedule_onceを使用
-        let _handle = scheduler.with(|typed_scheduler| {
+        let _handle = scheduler_shared.with_mut(|typed_scheduler| {
           typed_scheduler
             .schedule_once(Duration::from_millis(100), target, command, None, None)
             .map_err(|_| ActorError::recoverable("failed to schedule"))

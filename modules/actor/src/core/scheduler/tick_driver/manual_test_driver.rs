@@ -3,16 +3,13 @@
 #![cfg(any(test, feature = "test-support"))]
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, ToolboxMutex},
-  sync::{
-    ArcShared,
-    sync_mutex_like::{SpinSyncMutex, SyncMutexLike},
-  },
+  runtime_toolbox::RuntimeToolbox,
+  sync::{ArcShared, sync_mutex_like::SpinSyncMutex},
 };
 
-use crate::core::scheduler::{Scheduler, SchedulerContextSharedGeneric, SchedulerRunnerOwned};
+use crate::core::scheduler::{SchedulerContextSharedGeneric, SchedulerRunnerOwned, SchedulerSharedGeneric};
 
-type SchedulerContextMutex<TB> = SpinSyncMutex<Option<ArcShared<ToolboxMutex<Scheduler<TB>, TB>>>>;
+type SchedulerContextMutex<TB> = SpinSyncMutex<Option<SchedulerSharedGeneric<TB>>>;
 
 /// Manual tick driver for deterministic testing.
 #[derive(Clone)]
@@ -58,7 +55,7 @@ impl<TB: RuntimeToolbox> ManualDriverState<TB> {
     Self { scheduler: SpinSyncMutex::new(None), runner: SpinSyncMutex::new(None) }
   }
 
-  fn attach(&self, scheduler: ArcShared<ToolboxMutex<Scheduler<TB>, TB>>) {
+  fn attach(&self, scheduler: SchedulerSharedGeneric<TB>) {
     *self.scheduler.lock() = Some(scheduler);
     let mut runner = self.runner.lock();
     if runner.is_none() {
@@ -73,7 +70,7 @@ impl<TB: RuntimeToolbox> ManualDriverState<TB> {
 
   fn with_runner<F, R>(&self, mut f: F) -> Option<R>
   where
-    F: FnMut(&mut SchedulerRunnerOwned<TB>, &ArcShared<ToolboxMutex<Scheduler<TB>, TB>>) -> R, {
+    F: FnMut(&mut SchedulerRunnerOwned<TB>, &SchedulerSharedGeneric<TB>) -> R, {
     let scheduler = self.scheduler.lock().clone();
     let mut runner_guard = self.runner.lock();
     if let (Some(scheduler), Some(runner)) = (scheduler, runner_guard.as_mut()) {
@@ -106,8 +103,7 @@ impl<TB: RuntimeToolbox> ManualTickController<TB> {
   /// Drives the scheduler for pending ticks.
   pub fn drive(&self) {
     self.state.with_runner(|runner, scheduler| {
-      let mut guard = scheduler.lock();
-      runner.drive(&mut guard);
+      scheduler.with_mut(|s| runner.drive(s));
     });
   }
 

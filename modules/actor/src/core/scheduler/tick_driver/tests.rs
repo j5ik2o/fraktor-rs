@@ -13,10 +13,9 @@ use crate::core::{
   event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, subscriber_handle},
   logging::LogLevel,
   scheduler::{
-    ExecutionBatch, HardwareKind, ManualTestDriver, Scheduler, SchedulerCommand, SchedulerConfig,
-    SchedulerContextSharedGeneric, SchedulerRunnable, SchedulerTickExecutor, TICK_DRIVER_MATRIX, TickDriverBootstrap,
-    TickDriverConfig, TickDriverError, TickDriverKind, TickExecutorSignal, TickFeed, TickMetricsMode, TickPulseHandler,
-    TickPulseSource,
+    ExecutionBatch, HardwareKind, ManualTestDriver, SchedulerCommand, SchedulerConfig, SchedulerContextSharedGeneric,
+    SchedulerRunnable, SchedulerTickExecutor, TICK_DRIVER_MATRIX, TickDriverBootstrap, TickDriverConfig,
+    TickDriverError, TickDriverKind, TickExecutorSignal, TickFeed, TickMetricsMode, TickPulseHandler, TickPulseSource,
   },
 };
 
@@ -118,16 +117,13 @@ fn spawn_test_handler() -> (TestPulseHandlerState, TestPulseHandle) {
 
 fn hardware_test_config(handler: TestPulseHandlerState, pulse_resolution: Duration) -> TickDriverConfig<NoStdToolbox> {
   TickDriverConfig::new(move |ctx| {
-    use fraktor_utils_rs::core::{runtime_toolbox::ToolboxMutex, sync::ArcShared};
-
     use super::{HardwareKind, HardwareTickDriver, TickDriver, TickDriverRuntime, TickExecutorSignal, TickFeed};
 
-    let scheduler: ArcShared<ToolboxMutex<Scheduler<NoStdToolbox>, NoStdToolbox>> = ctx.scheduler();
-    let (resolution, capacity) = {
-      let guard = scheduler.lock();
-      let cfg = guard.config();
+    let scheduler = ctx.scheduler();
+    let (resolution, capacity) = scheduler.with_mut(|s| {
+      let cfg = s.config();
       (cfg.resolution(), cfg.profile().tick_buffer_quota())
-    };
+    });
 
     let source = TestPulseSource::new(pulse_resolution, handler.clone());
     let mut driver = HardwareTickDriver::new(Box::new(source), HardwareKind::Custom);
@@ -147,7 +143,7 @@ fn run_hardware_driver_enqueues_isr_pulses() {
   let mut runtime = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
 
   handle.trigger();
-  let resolution = ctx.scheduler().lock().config().resolution();
+  let resolution = ctx.scheduler().with_mut(|s| s.config().resolution());
   let now = TimerInstant::from_ticks(1, resolution);
   let feed = runtime.feed().expect("feed");
   assert!(feed.driver_active());
@@ -224,13 +220,10 @@ fn manual_driver_runs_jobs_without_executor() {
 
   let log = ArcShared::new(NoStdMutex::new(Vec::new()));
   let runnable: ArcShared<ManualRunnable> = ArcShared::new(ManualRunnable { log: log.clone(), label: "manual" });
-  {
-    let scheduler = ctx.scheduler();
-    let mut guard = scheduler.lock();
-    guard
-      .schedule_once(Duration::from_millis(10), SchedulerCommand::RunRunnable { runnable, dispatcher: None })
+  ctx.scheduler().with_mut(|s| {
+    s.schedule_once(Duration::from_millis(10), SchedulerCommand::RunRunnable { runnable, dispatcher: None })
       .expect("schedule");
-  }
+  });
 
   controller.inject_ticks(1);
   controller.drive();
@@ -259,12 +252,10 @@ fn embedded_quickstart_template_runs_ticks() {
   let scheduler = ctx.scheduler();
   let log = ArcShared::new(NoStdMutex::new(Vec::new()));
   let runnable: ArcShared<ManualRunnable> = ArcShared::new(ManualRunnable { log: log.clone(), label: "embedded" });
-  {
-    let mut guard = scheduler.lock();
-    guard
-      .schedule_once(Duration::from_millis(2), SchedulerCommand::RunRunnable { runnable, dispatcher: None })
+  scheduler.with_mut(|s| {
+    s.schedule_once(Duration::from_millis(2), SchedulerCommand::RunRunnable { runnable, dispatcher: None })
       .expect("schedule job");
-  }
+  });
 
   let feed = runtime.feed().expect("feed").clone();
   let signal = feed.signal();

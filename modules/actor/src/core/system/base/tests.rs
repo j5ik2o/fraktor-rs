@@ -432,10 +432,7 @@ fn actor_system_scheduler_context_handles_delays() {
 
   let context = system.scheduler_context().expect("scheduler context");
   let scheduler = context.scheduler();
-  {
-    let mut guard = scheduler.lock();
-    guard.run_for_test(1);
-  }
+  scheduler.with_mut(|s| s.run_for_test(1));
 
   assert!(matches!(poll_delay(&mut future), Poll::Ready(())));
 }
@@ -449,9 +446,10 @@ fn actor_system_terminate_runs_scheduler_tasks() {
   {
     let context = system.scheduler_context().expect("context");
     let scheduler = context.scheduler();
-    let mut guard = scheduler.lock();
-    let task = RecordingShutdownTask { log: log.clone() };
-    guard.register_on_close(task, crate::core::scheduler::TaskRunPriority::User).expect("register");
+    scheduler.with_mut(|s| {
+      let task = RecordingShutdownTask { log: log.clone() };
+      s.register_on_close(task, crate::core::scheduler::TaskRunPriority::User).expect("register");
+    });
   }
 
   system.terminate().expect("terminate");
@@ -496,11 +494,7 @@ fn actor_system_installs_scheduler_context() {
   assert!(matches!(poll_delay_future(&mut future), Poll::Pending));
 
   let context = system.scheduler_context().expect("scheduler context");
-  {
-    let scheduler = context.scheduler();
-    let mut guard = scheduler.lock();
-    guard.run_for_test(1);
-  }
+  context.scheduler().with_mut(|s| s.run_for_test(1));
 
   assert!(matches!(poll_delay_future(&mut future), Poll::Ready(())));
 }

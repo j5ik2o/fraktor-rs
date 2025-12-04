@@ -54,13 +54,12 @@ impl TypedActor<GuardianCommand> for GuardianActor {
 
         let scheduler_context = ctx.system().scheduler_context().expect("scheduler context");
         let scheduler_shared = scheduler_context.scheduler();
-        let mut scheduler = scheduler_shared.lock();
 
         #[cfg(not(target_os = "none"))]
         println!("[{:?}] Scheduling 3 typed messages...", std::thread::current().id());
 
         // 3つのメッセージをスケジュール
-        let handle2 = scheduler.with(|typed_scheduler| {
+        let handle2 = scheduler_shared.with_mut(|typed_scheduler| {
           let msg1 = ScheduledMessage { label: String::from("Typed Message 1 (will execute)") };
           let cmd1 = GuardianCommand::Scheduled(msg1);
           typed_scheduler
@@ -86,7 +85,7 @@ impl TypedActor<GuardianCommand> for GuardianActor {
         #[cfg(not(target_os = "none"))]
         println!("[{:?}] Cancelling typed message 2...", std::thread::current().id());
 
-        let cancelled = scheduler.cancel(&handle2);
+        let cancelled = scheduler_shared.with_mut(|s| s.cancel(&handle2));
 
         #[cfg(not(target_os = "none"))]
         println!("[{:?}] Cancellation result: {}", std::thread::current().id(), cancelled);

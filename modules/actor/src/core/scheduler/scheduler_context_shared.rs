@@ -12,25 +12,22 @@ use fraktor_utils_rs::core::{
 };
 
 use super::{
-  SchedulerBackedDelayProvider, SchedulerConfig, SchedulerContext, TaskRunSummary,
+  SchedulerBackedDelayProvider, SchedulerConfig, SchedulerContext, SchedulerSharedGeneric, TaskRunSummary,
   tick_driver::{AutoDriverMetadata, TickDriverKind, TickDriverMetadata},
 };
+use crate::core::event_stream::{EventStreamEvent, EventStreamGeneric, TickDriverSnapshot};
 #[cfg(any(test, feature = "test-support"))]
 use crate::core::logging::{LogEvent, LogLevel};
-use crate::core::{
-  event_stream::{EventStreamEvent, EventStreamGeneric, TickDriverSnapshot},
-  scheduler::Scheduler,
-};
 
 pub(crate) struct SchedulerContextHandle<TB: RuntimeToolbox + 'static> {
-  scheduler:       ArcShared<ToolboxMutex<Scheduler<TB>, TB>>,
+  scheduler:       SchedulerSharedGeneric<TB>,
   provider:        SchedulerBackedDelayProvider<TB>,
   event_stream:    ArcShared<EventStreamGeneric<TB>>,
   driver_snapshot: Option<TickDriverSnapshot>,
 }
 
 impl<TB: RuntimeToolbox + 'static> SchedulerContextHandle<TB> {
-  fn scheduler(&self) -> ArcShared<ToolboxMutex<Scheduler<TB>, TB>> {
+  fn scheduler(&self) -> SchedulerSharedGeneric<TB> {
     self.scheduler.clone()
   }
 
@@ -79,14 +76,13 @@ impl<TB: RuntimeToolbox + 'static> SchedulerContextHandle<TB> {
   }
 
   fn shutdown(&mut self) -> TaskRunSummary {
-    self.scheduler.lock().shutdown_with_tasks()
+    self.scheduler.with_mut(|s| s.shutdown_with_tasks())
   }
 
   #[cfg(any(test, feature = "test-support"))]
   fn current_timestamp(&self) -> Duration {
     let scheduler = self.scheduler();
-    let guard = scheduler.lock();
-    instant_to_duration(guard.toolbox().clock().now())
+    scheduler.with_mut(|s| instant_to_duration(s.toolbox().clock().now()))
   }
 }
 
@@ -135,7 +131,7 @@ impl<TB: RuntimeToolbox + 'static> SchedulerContextSharedGeneric<TB> {
 
   /// Returns a clone of the shared scheduler mutex.
   #[must_use]
-  pub fn scheduler(&self) -> ArcShared<ToolboxMutex<Scheduler<TB>, TB>> {
+  pub fn scheduler(&self) -> SchedulerSharedGeneric<TB> {
     self.inner.lock().scheduler()
   }
 
