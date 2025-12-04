@@ -1,11 +1,11 @@
-use super::{WaitError, WaitNodeShared, handle_shared::WaitShared, node::WaitNode};
+use super::{WaitError, WaitNodeShared, handle_shared::WaitShared};
 use crate::core::{
   collections::queue::{
     QueueError, SyncFifoQueue,
     backend::{OverflowPolicy, VecDequeBackend},
   },
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
+  sync::SharedAccess,
 };
 
 #[cfg(all(test, feature = "alloc"))]
@@ -34,7 +34,7 @@ where
   /// Returns a `WaitError` if the queue cannot accept the waiter due to allocation failure
   /// or if the queue is closed.
   pub fn register(&mut self) -> Result<WaitShared<E, TB>, WaitError> {
-    let node: WaitNodeShared<E, TB> = ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(WaitNode::new()));
+    let node: WaitNodeShared<E, TB> = WaitNodeShared::new();
     self.waiters.offer(node.clone()).map_err(|e| match e {
       | QueueError::AllocError(_) => WaitError::AllocationFailure,
       | QueueError::Closed(_) => WaitError::QueueClosed,
@@ -47,7 +47,7 @@ where
   /// Notifies the oldest pending waiter with success.
   pub fn notify_success(&mut self) -> bool {
     while let Ok(node) = self.waiters.poll() {
-      if node.lock().complete_ok() {
+      if node.with_write(|n| n.complete_ok()) {
         return true;
       }
     }
@@ -66,7 +66,7 @@ where
   where
     F: FnMut() -> E, {
     while let Ok(node) = self.waiters.poll() {
-      node.lock().complete_with_error(make_error());
+      node.with_write(|n| n.complete_with_error(make_error()));
     }
   }
 }
