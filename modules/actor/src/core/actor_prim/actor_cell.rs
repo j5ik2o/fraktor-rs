@@ -131,7 +131,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     {
       // Dispatcher keeps a shared reference to the invoker for message delivery.
       let invoker: MessageInvokerShared<TB> =
-        ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(Box::new(ActorCellInvoker { cell: cell.clone() })));
+        MessageInvokerShared::new(Box::new(ActorCellInvoker { cell: cell.clone() }));
       cell.dispatcher.register_invoker(invoker);
     }
 

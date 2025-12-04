@@ -12,7 +12,7 @@ use fraktor_actor_rs::core::{
   system::ActorSystemGeneric,
 };
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdMutex, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
+  runtime_toolbox::{RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 
@@ -152,7 +152,7 @@ where
 
   #[allow(dead_code)]
   pub(crate) fn backpressure_hook(&self) -> TransportBackpressureHookShared {
-    ArcShared::new(NoStdMutex::new(Box::new(ControlBackpressureHook { control: self.clone() })))
+    TransportBackpressureHookShared::new(Box::new(ControlBackpressureHook { control: self.clone() }))
   }
 
   /// Emits a synthetic backpressure signal for diagnostics.

@@ -53,11 +53,11 @@ impl<TB: RuntimeToolbox + 'static> Clone for RemoteTransportShared<TB> {
 
 impl<TB: RuntimeToolbox + 'static> SharedAccess<Box<dyn RemoteTransport<TB>>> for RemoteTransportShared<TB> {
   fn with_read<R>(&self, f: impl FnOnce(&Box<dyn RemoteTransport<TB>>) -> R) -> R {
-    f(&self.inner.lock())
+    self.inner.with_read(f)
   }
 
   fn with_write<R>(&self, f: impl FnOnce(&mut Box<dyn RemoteTransport<TB>>) -> R) -> R {
-    f(&mut self.inner.lock())
+    self.inner.with_write(f)
   }
 }
 

@@ -1,20 +1,18 @@
 //! Middleware-enabled pipeline for invoking actors.
 
-use alloc::{boxed::Box, vec::Vec};
+use alloc::vec::Vec;
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
+  sync::SharedAccess,
 };
 
-use super::MessageInvokerMiddleware;
+use super::middleware_shared::MiddlewareShared;
 use crate::core::{
   actor_prim::{Actor, ActorContextGeneric, actor_ref::ActorRefGeneric},
   error::ActorError,
   messaging::{AnyMessageGeneric, any_message_view::AnyMessageViewGeneric},
 };
-
-pub(crate) type MiddlewareShared<TB> = ArcShared<ToolboxMutex<Box<dyn MessageInvokerMiddleware<TB>>, TB>>;
 
 /// Middleware-enabled pipeline used to invoke actor message handlers.
 pub struct MessageInvokerPipelineGeneric<TB: RuntimeToolbox + 'static> {
@@ -33,7 +31,8 @@ impl<TB: RuntimeToolbox + 'static> MessageInvokerPipelineGeneric<TB> {
 
   /// Builds a pipeline from the provided middleware list.
   #[must_use]
-  pub fn from_middlewares(middlewares: Vec<MiddlewareShared<TB>>) -> Self {
+  #[allow(dead_code)] // Used in tests
+  pub(crate) const fn from_middlewares(middlewares: Vec<MiddlewareShared<TB>>) -> Self {
     Self { user_middlewares: middlewares }
   }
 
@@ -81,7 +80,7 @@ impl<TB: RuntimeToolbox + 'static> MessageInvokerPipelineGeneric<TB> {
     message: &AnyMessageViewGeneric<'_, TB>,
   ) -> Result<(), ActorError> {
     for middleware in &self.user_middlewares {
-      middleware.lock().before_user(ctx, message)?;
+      middleware.with_write(|m| m.before_user(ctx, message))?;
     }
     Ok(())
   }
@@ -93,7 +92,7 @@ impl<TB: RuntimeToolbox + 'static> MessageInvokerPipelineGeneric<TB> {
     mut result: Result<(), ActorError>,
   ) -> Result<(), ActorError> {
     for middleware in self.user_middlewares.iter().rev() {
-      result = middleware.lock().after_user(ctx, message, result);
+      result = middleware.with_write(|m| m.after_user(ctx, message, result));
     }
     result
   }

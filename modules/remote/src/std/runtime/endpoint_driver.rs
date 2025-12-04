@@ -12,7 +12,7 @@ use core::time::Duration;
 
 use fraktor_actor_rs::core::{event_stream::CorrelationId, logging::LogLevel, system::ActorSystemGeneric};
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
+  runtime_toolbox::{RuntimeToolbox, ToolboxMutex},
   sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
 };
 use tokio::{sync::Mutex as TokioMutex, task::JoinHandle, time::sleep};
@@ -98,7 +98,7 @@ impl<TB: RuntimeToolbox + 'static> EndpointDriver<TB> {
     driver.event_publisher.publish_listen_started(bind.authority(), CorrelationId::from_u128(0));
     *driver.listener.try_lock().expect("listener mutex uncontended") = Some(handle);
     let handler: TransportInboundShared<TB> =
-      ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(Box::new(InboundHandler::new(driver.clone()))));
+      TransportInboundShared::new(Box::new(InboundHandler::new(driver.clone())));
     driver.transport.with_write(|t| t.install_inbound_handler(handler));
     let send_task = tokio::spawn(Self::drive_outbound(driver.clone()));
     Ok(EndpointDriverHandle { send_task })

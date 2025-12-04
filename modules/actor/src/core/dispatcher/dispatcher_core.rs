@@ -12,7 +12,7 @@ use core::{
 
 use fraktor_utils_rs::core::{
   runtime_toolbox::{RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+  sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
 };
 use portable_atomic::{AtomicU8, AtomicU64};
 
@@ -206,7 +206,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
     // This prevents potential deadlock when actor message handlers interact with the dispatcher.
     let invoker = self.invoker.lock().clone();
     if let Some(invoker) = invoker {
-      return invoker.lock().invoke_user_message(message);
+      return invoker.with_write(|i| i.invoke_user_message(message));
     }
     Ok(())
   }
@@ -216,7 +216,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
     // This prevents potential deadlock when actor message handlers interact with the dispatcher.
     let invoker = self.invoker.lock().clone();
     if let Some(invoker) = invoker {
-      return invoker.lock().invoke_system_message(message);
+      return invoker.with_write(|i| i.invoke_system_message(message));
     }
     Ok(())
   }

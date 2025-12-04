@@ -1,16 +1,13 @@
 use alloc::boxed::Box;
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, SyncMutexFamily},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
 
 use super::DispatcherCore;
 use crate::core::{
   dispatcher::{DispatchExecutorRunner, InlineExecutor, InlineScheduleAdapter},
   error::ActorError,
   mailbox::Mailbox,
-  messaging::message_invoker::MessageInvoker,
+  messaging::message_invoker::{MessageInvoker, MessageInvokerShared},
 };
 
 fn inline_runner() -> ArcShared<DispatchExecutorRunner<NoStdToolbox>> {
@@ -97,10 +94,6 @@ fn dispatcher_core_register_invoker() {
   let adapter = InlineScheduleAdapter::shared::<NoStdToolbox>();
   let core = ArcShared::new(DispatcherCore::new(mailbox, executor, adapter, None, None, None));
 
-  let invoker = ArcShared::new(
-    <<NoStdToolbox as fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(
-      Box::new(MockInvoker) as Box<dyn MessageInvoker<NoStdToolbox>>,
-    ),
-  );
+  let invoker = MessageInvokerShared::new(Box::new(MockInvoker) as Box<dyn MessageInvoker<NoStdToolbox>>);
   core.register_invoker(invoker);
 }
