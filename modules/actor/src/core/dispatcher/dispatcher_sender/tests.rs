@@ -2,7 +2,10 @@ use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
 
 use super::DispatcherSenderGeneric;
 use crate::core::{
-  actor_prim::actor_ref::ActorRefSender, dispatcher::base::Dispatcher, mailbox::Mailbox, messaging::AnyMessage,
+  actor_prim::actor_ref::{ActorRefSender, SendOutcome},
+  dispatcher::base::Dispatcher,
+  mailbox::Mailbox,
+  messaging::AnyMessage,
 };
 
 #[test]
@@ -42,4 +45,19 @@ fn dispatcher_sender_send_multiple_messages() {
     <DispatcherSenderGeneric<NoStdToolbox> as ActorRefSender<NoStdToolbox>>::send(&mut sender, AnyMessage::new(3_u32))
       .is_ok()
   );
+}
+
+#[test]
+fn dispatcher_sender_sets_need_reschedule_when_running() {
+  let mailbox = ArcShared::new(Mailbox::new(crate::core::mailbox::MailboxPolicy::unbounded(None)));
+  let dispatcher = Dispatcher::with_inline_executor(mailbox.clone());
+  let mut sender = DispatcherSenderGeneric::new(dispatcher);
+
+  mailbox.set_running();
+  let outcome =
+    <DispatcherSenderGeneric<NoStdToolbox> as ActorRefSender<NoStdToolbox>>::send(&mut sender, AnyMessage::new(99_u32))
+      .expect("send");
+
+  assert!(matches!(outcome, SendOutcome::Delivered));
+  assert!(mailbox.set_idle());
 }
