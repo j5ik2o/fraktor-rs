@@ -25,7 +25,10 @@ use fraktor_actor_rs::{
     system::{ActorSystem, ActorSystemConfig},
   },
 };
-use fraktor_utils_rs::{core::sync::ArcShared, std::runtime_toolbox::StdToolbox};
+use fraktor_utils_rs::{
+  core::sync::{ArcShared, SharedAccess},
+  std::runtime_toolbox::StdToolbox,
+};
 use serde::{Deserialize, Serialize};
 
 const TELEMETRY_MANIFEST: &str = "sample.telemetry.TelemetryPayload";
@@ -173,5 +176,5 @@ fn main() {
 
   let termination = system.when_terminated();
   system.terminate().expect("terminate");
-  while !termination.is_ready() {}
+  while !termination.with_read(|af| af.is_ready()) {}
 }

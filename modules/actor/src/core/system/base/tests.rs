@@ -186,7 +186,7 @@ fn actor_system_emit_log() {
 fn actor_system_when_terminated() {
   let system = ActorSystem::new_empty();
   let future = system.when_terminated();
-  assert!(!future.is_ready());
+  assert!(!future.with_read(|af| af.is_ready()));
 }
 
 #[test]

@@ -1,10 +1,8 @@
 //! Shared wrapper for actor future.
 
-use core::task::Waker;
-
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+  sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
 };
 
 use super::ActorFuture;
@@ -32,6 +30,22 @@ where
   }
 }
 
+impl<T, TB> SharedAccess<ActorFuture<T, TB>> for ActorFutureSharedGeneric<T, TB>
+where
+  T: Send + 'static,
+  TB: RuntimeToolbox + 'static,
+{
+  fn with_read<R>(&self, f: impl FnOnce(&ActorFuture<T, TB>) -> R) -> R {
+    let guard = self.inner.lock();
+    f(&guard)
+  }
+
+  fn with_write<R>(&self, f: impl FnOnce(&mut ActorFuture<T, TB>) -> R) -> R {
+    let mut guard = self.inner.lock();
+    f(&mut guard)
+  }
+}
+
 impl<T, TB> ActorFutureSharedGeneric<T, TB>
 where
   T: Send + 'static,
@@ -43,45 +57,38 @@ where
     Self { inner: ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(ActorFuture::new())) }
   }
 
-  /// Runs the provided closure while holding the mutex.
-  #[inline]
-  pub fn with_mut<R>(&self, f: impl FnOnce(&mut ActorFuture<T, TB>) -> R) -> R {
-    let mut guard = self.inner.lock();
-    f(&mut guard)
-  }
-
-  /// Completes the future with the given value.
-  ///
-  /// Acquires a lock and delegates to [`ActorFuture::complete`].
-  /// The `&self` signature is intentional as the mutex provides interior mutability.
-  pub fn complete(&self, value: T) -> Option<Waker> {
-    self.inner.lock().complete(value)
-  }
-
-  /// Attempts to take the completed value if ready.
-  ///
-  /// Acquires a lock and delegates to [`ActorFuture::try_take`].
-  /// The `&self` signature is intentional as the mutex provides interior mutability.
-  #[must_use]
-  pub fn try_take(&self) -> Option<T> {
-    self.inner.lock().try_take()
-  }
-
-  /// Returns whether the future has completed.
-  ///
-  /// Acquires a lock and delegates to [`ActorFuture::is_ready`].
-  #[must_use]
-  pub fn is_ready(&self) -> bool {
-    self.inner.lock().is_ready()
-  }
-
-  /// Registers a waker to be notified when the future completes.
-  ///
-  /// Acquires a lock and delegates to [`ActorFuture::register_waker`].
-  /// The `&self` signature is intentional as the mutex provides interior mutability.
-  pub fn register_waker(&self, waker: &Waker) {
-    self.inner.lock().register_waker(waker);
-  }
+  // /// Completes the future with the given value.
+  // ///
+  // /// Acquires a lock and delegates to [`ActorFuture::complete`].
+  // /// The `&self` signature is intentional as the mutex provides interior mutability.
+  // pub fn complete(&self, value: T) -> Option<Waker> {
+  //   self.inner.lock().complete(value)
+  // }
+  //
+  // /// Attempts to take the completed value if ready.
+  // ///
+  // /// Acquires a lock and delegates to [`ActorFuture::try_take`].
+  // /// The `&self` signature is intentional as the mutex provides interior mutability.
+  // #[must_use]
+  // pub fn try_take(&self) -> Option<T> {
+  //   self.inner.lock().try_take()
+  // }
+  //
+  // /// Returns whether the future has completed.
+  // ///
+  // /// Acquires a lock and delegates to [`ActorFuture::is_ready`].
+  // #[must_use]
+  // pub fn is_ready(&self) -> bool {
+  //   self.inner.lock().is_ready()
+  // }
+  //
+  // /// Registers a waker to be notified when the future completes.
+  // ///
+  // /// Acquires a lock and delegates to [`ActorFuture::register_waker`].
+  // /// The `&self` signature is intentional as the mutex provides interior mutability.
+  // pub fn register_waker(&self, waker: &Waker) {
+  //   self.inner.lock().register_waker(waker);
+  // }
 }
 
 impl<T, TB> Default for ActorFutureSharedGeneric<T, TB>

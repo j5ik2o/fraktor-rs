@@ -497,7 +497,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   /// Blocks the current thread until the actor system has fully terminated.
   pub fn run_until_terminated(&self) {
     let future = self.when_terminated();
-    while !future.is_ready() {
+    while !future.with_read(|af| af.is_ready()) {
       core::hint::spin_loop();
     }
   }

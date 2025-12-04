@@ -14,7 +14,7 @@ use fraktor_actor_rs::core::{
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdMutex, NoStdToolbox},
-  sync::ArcShared,
+  sync::{ArcShared, SharedAccess},
 };
 
 struct Start;
@@ -29,7 +29,7 @@ fn terminate_signals_future() {
   let termination = system.when_terminated();
   system.terminate().expect("terminate");
   system.run_until_terminated();
-  assert!(termination.is_ready());
+  assert!(termination.with_read(|af| af.is_ready()));
 }
 
 #[test]
