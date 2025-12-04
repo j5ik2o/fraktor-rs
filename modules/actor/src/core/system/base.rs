@@ -12,7 +12,7 @@ use alloc::{
 use fraktor_utils_rs::core::{
   collections::queue::capabilities::QueueCapability,
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+  sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
 };
 
 use super::{
@@ -619,7 +619,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
       let config = self
         .state
         .mailboxes()
-        .with_ref(|m| m.resolve(mailbox_id))
+        .with_read(|m| m.resolve(mailbox_id))
         .map_err(|error| SpawnError::invalid_props(error.to_string()))?;
       resolved = resolved.with_resolved_mailbox(config);
     }

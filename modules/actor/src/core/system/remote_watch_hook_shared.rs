@@ -2,7 +2,7 @@
 
 use fraktor_utils_rs::core::{
   runtime_toolbox::{RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+  sync::{ArcShared, SharedAccess},
 };
 
 use super::{ActorRefProvider, RemoteWatchHook, RemoteWatchHookHandle};
@@ -14,17 +14,14 @@ use crate::core::{
 /// Shared wrapper that provides thread-safe access to a provider implementing
 /// both [`ActorRefProvider`] and [`RemoteWatchHook`].
 ///
-/// This adapter wraps a provider handle in a `ToolboxMutex`, allowing it to be shared
-/// across multiple owners while satisfying the `&mut self` requirement of
-/// the underlying traits. Preferred usage is via `with_mut` / `with_ref` to
-/// keep lock scopes local.
+/// The handle is wrapped in `ToolboxMutex` and shared via `ArcShared`, while the
+/// public surface is limited to `with_read` / `with_write` closures to hide the
+/// lock scope and reduce deadlock risk.
 ///
 /// # Usage
-///
-/// 1. Create a shared wrapper: `RemoteWatchHookShared::new(provider,
-///    &[ActorPathScheme::FraktorTcp])`
-/// 2. Clone and wrap in `ArcShared` for `ActorRefProvider` registration
-/// 3. Pass the original shared instance for `RemoteWatchHook` registration
+/// 1. Create: `RemoteWatchHookShared::new(provider, &[ActorPathScheme::FraktorTcp])`
+/// 2. Use clones for `ActorRefProvider` registration
+/// 3. Pass the same shared instance for `RemoteWatchHook` registration
 pub struct RemoteWatchHookShared<TB: RuntimeToolbox + 'static, P: Send + 'static> {
   inner: ArcShared<ToolboxMutex<RemoteWatchHookHandle<P>, TB>>,
 }
@@ -39,18 +36,16 @@ impl<TB: RuntimeToolbox + 'static, P: Send + 'static> RemoteWatchHookShared<TB, 
     Self { inner: ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(handle)) }
   }
 
-  /// Executes a mutable operation on the inner handle while holding the lock.
+  /// Acquires a write lock and applies the closure to the inner handle.
   #[inline]
-  pub fn with_mut<R>(&self, f: impl FnOnce(&mut RemoteWatchHookHandle<P>) -> R) -> R {
-    let mut guard = self.inner.lock();
-    f(&mut guard)
+  pub fn with_write<R>(&self, f: impl FnOnce(&mut RemoteWatchHookHandle<P>) -> R) -> R {
+    self.inner.with_write(f)
   }
 
-  /// Executes a read-only operation on the inner handle while holding the lock.
+  /// Acquires a read lock and applies the closure to the inner handle.
   #[inline]
-  pub fn with_ref<R>(&self, f: impl FnOnce(&RemoteWatchHookHandle<P>) -> R) -> R {
-    let guard = self.inner.lock();
-    f(&guard)
+  pub fn with_read<R>(&self, f: impl FnOnce(&RemoteWatchHookHandle<P>) -> R) -> R {
+    self.inner.with_read(f)
   }
 
   /// Returns a reference to the inner shared mutex.
@@ -60,6 +55,18 @@ impl<TB: RuntimeToolbox + 'static, P: Send + 'static> RemoteWatchHookShared<TB, 
   #[must_use]
   pub const fn inner(&self) -> &ArcShared<ToolboxMutex<RemoteWatchHookHandle<P>, TB>> {
     &self.inner
+  }
+}
+
+impl<TB: RuntimeToolbox + 'static, P: Send + 'static> SharedAccess<RemoteWatchHookHandle<P>>
+  for RemoteWatchHookShared<TB, P>
+{
+  fn with_read<R>(&self, f: impl FnOnce(&RemoteWatchHookHandle<P>) -> R) -> R {
+    self.inner.with_read(f)
+  }
+
+  fn with_write<R>(&self, f: impl FnOnce(&mut RemoteWatchHookHandle<P>) -> R) -> R {
+    self.inner.with_write(f)
   }
 }
 
@@ -73,11 +80,11 @@ impl<TB: RuntimeToolbox + 'static, P: RemoteWatchHook<TB> + Send + 'static> Remo
   for RemoteWatchHookShared<TB, P>
 {
   fn handle_watch(&mut self, target: Pid, watcher: Pid) -> bool {
-    self.with_mut(|inner| inner.handle_watch(target, watcher))
+    self.with_write(|inner| inner.handle_watch(target, watcher))
   }
 
   fn handle_unwatch(&mut self, target: Pid, watcher: Pid) -> bool {
-    self.with_mut(|inner| inner.handle_unwatch(target, watcher))
+    self.with_write(|inner| inner.handle_unwatch(target, watcher))
   }
 }
 
@@ -85,13 +92,13 @@ impl<TB: RuntimeToolbox + 'static, P: ActorRefProvider<TB> + RemoteWatchHook<TB>
   for RemoteWatchHookShared<TB, P>
 {
   fn supported_schemes(&self) -> &'static [ActorPathScheme] {
-    self.with_ref(|inner| inner.supported_schemes())
+    self.with_read(|inner| inner.supported_schemes())
   }
 
   fn actor_ref(
     &mut self,
     path: crate::core::actor_prim::actor_path::ActorPath,
   ) -> Result<ActorRefGeneric<TB>, ActorError> {
-    self.with_mut(|inner| inner.actor_ref(path))
+    self.with_write(|inner| inner.actor_ref(path))
   }
 }

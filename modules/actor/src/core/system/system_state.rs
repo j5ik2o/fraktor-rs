@@ -19,7 +19,7 @@ use core::{
 use ahash::RandomState;
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+  sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
 };
 use hashbrown::HashMap;
 use portable_atomic::{AtomicBool, AtomicU64, Ordering};
@@ -140,7 +140,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       guard.ensure_default();
     }
     let mailboxes = MailboxesSharedGeneric::<TB>::new();
-    mailboxes.with_mut(|m| m.ensure_default());
+    mailboxes.with_write(|m| m.ensure_default());
     Self {
       next_pid: AtomicU64::new(0),
       clock: AtomicU64::new(0),
