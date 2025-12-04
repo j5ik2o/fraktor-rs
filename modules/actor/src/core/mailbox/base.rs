@@ -9,12 +9,12 @@ use core::num::NonZeroUsize;
 use fraktor_utils_rs::core::{
   collections::queue::{QueueError, backend::OfferOutcome},
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+  sync::sync_mutex_like::SyncMutexLike,
 };
 
 use super::{
-  BackpressurePublisherGeneric, MailboxOfferFutureGeneric, MailboxPollFutureGeneric, MailboxStateEngine, QueueHandles,
-  ScheduleHints, SystemQueue, mailbox_enqueue_outcome::EnqueueOutcome,
+  BackpressurePublisherGeneric, MailboxOfferFutureGeneric, MailboxPollFutureGeneric, MailboxStateEngine,
+  QueueStateHandle, ScheduleHints, SystemQueue, mailbox_enqueue_outcome::EnqueueOutcome,
   mailbox_instrumentation::MailboxInstrumentationGeneric, mailbox_message::MailboxMessage, map_user_queue_error,
 };
 use crate::core::{
@@ -23,14 +23,14 @@ use crate::core::{
   logging::LogLevel,
   mailbox::{capacity::MailboxCapacity, overflow_strategy::MailboxOverflowStrategy, policy::MailboxPolicy},
   messaging::{AnyMessageGeneric, SystemMessage},
-  system::SystemStateGeneric,
+  system::SystemStateSharedGeneric,
 };
 
 /// Priority mailbox maintaining separate queues for system and user messages.
 pub struct MailboxGeneric<TB: RuntimeToolbox + 'static> {
   policy:          MailboxPolicy,
   system:          SystemQueue,
-  user:            QueueHandles<AnyMessageGeneric<TB>, TB>,
+  user:            QueueStateHandle<AnyMessageGeneric<TB>, TB>,
   state:           MailboxStateEngine,
   instrumentation: ToolboxMutex<Option<MailboxInstrumentationGeneric<TB>>, TB>,
 }
@@ -45,7 +45,7 @@ where
   /// Creates a new mailbox using the provided policy.
   #[must_use]
   pub fn new(policy: MailboxPolicy) -> Self {
-    let user_handles = QueueHandles::new_user(&policy);
+    let user_handles = QueueStateHandle::new_user(&policy);
     Self {
       policy,
       system: SystemQueue::new(),
@@ -67,7 +67,7 @@ where
   }
 
   /// Returns the system state handle if instrumentation has been installed.
-  pub(crate) fn system_state(&self) -> Option<ArcShared<SystemStateGeneric<TB>>> {
+  pub(crate) fn system_state(&self) -> Option<SystemStateSharedGeneric<TB>> {
     self.instrumentation.lock().as_ref().map(|inst| inst.system_state())
   }
 
@@ -183,6 +183,12 @@ where
     self.state.set_idle()
   }
 
+  /// Indicates whether the mailbox is currently in a running state.
+  #[must_use]
+  pub(crate) fn is_running(&self) -> bool {
+    self.state.is_running()
+  }
+
   /// Computes schedule hints from the current queue lengths and suspension state.
   #[must_use]
   pub(crate) fn current_schedule_hints(&self) -> ScheduleHints {
@@ -259,7 +265,7 @@ where
     }
   }
 
-  fn poll_queue<T: Send + 'static>(handles: &QueueHandles<T, TB>) -> Option<T> {
+  fn poll_queue<T: Send + 'static>(handles: &QueueStateHandle<T, TB>) -> Option<T> {
     match handles.poll() {
       | Ok(message) => Some(message),
       | Err(QueueError::Empty) => None,

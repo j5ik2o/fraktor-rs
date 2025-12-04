@@ -16,6 +16,7 @@ use crate::core::collections::{
 pub struct AsyncQueue<T, K, B>
 where
   K: TypeKey,
+  T: Send + 'static,
   B: AsyncQueueBackend<T>, {
   backend: B,
   _pd:     PhantomData<(T, K)>,
@@ -24,6 +25,7 @@ where
 impl<T, K, B> AsyncQueue<T, K, B>
 where
   K: TypeKey,
+  T: Send + 'static,
   B: AsyncQueueBackend<T>,
 {
   /// Creates a new async queue from the provided backend.
@@ -118,7 +120,7 @@ where
 
 impl<T, B> AsyncQueue<T, PriorityKey, B>
 where
-  T: Clone + PriorityMessage,
+  T: Clone + PriorityMessage + Send + 'static,
   B: AsyncPriorityBackend<T>,
   PriorityKey: SupportsPeek,
 {
@@ -135,6 +137,7 @@ where
 
 impl<T, B> AsyncQueue<T, MpscKey, B>
 where
+  T: Send + 'static,
   B: AsyncQueueBackend<T>,
   MpscKey: MultiProducer + SingleConsumer,
 {
@@ -147,6 +150,7 @@ where
 
 impl<T, B> AsyncQueue<T, SpscKey, B>
 where
+  T: Send + 'static,
   B: AsyncQueueBackend<T>,
   SpscKey: SingleProducer + SingleConsumer,
 {
@@ -159,6 +163,7 @@ where
 
 impl<T, B> AsyncQueue<T, FifoKey, B>
 where
+  T: Send + 'static,
   B: AsyncQueueBackend<T>,
   FifoKey: SingleProducer + SingleConsumer,
 {

@@ -1,4 +1,4 @@
-use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 
 use crate::core::{
   actor_prim::{
@@ -9,22 +9,24 @@ use crate::core::{
   error::{ActorError, SendError},
   messaging::{AnyMessage, AnyMessageViewGeneric},
   props::Props,
-  system::{ActorSystemConfig, RemotingConfig, SystemState},
+  system::{ActorSystemConfig, RemotingConfig, SystemState, SystemStateShared},
 };
 
 struct TestSender;
 
 impl ActorRefSender<NoStdToolbox> for TestSender {
-  fn send(&self, _message: AnyMessage) -> Result<(), SendError<NoStdToolbox>> {
-    Ok(())
+  fn send(
+    &mut self,
+    _message: AnyMessage,
+  ) -> Result<crate::core::actor_prim::actor_ref::SendOutcome, SendError<NoStdToolbox>> {
+    Ok(crate::core::actor_prim::actor_ref::SendOutcome::Delivered)
   }
 }
 
 #[test]
 fn tell_delegates_to_sender() {
-  let sender = ArcShared::new(TestSender);
   let pid = Pid::new(5, 1);
-  let reference: ActorRef = ActorRef::new(pid, sender);
+  let reference: ActorRef = ActorRef::new(pid, TestSender);
   assert!(reference.tell(AnyMessage::new("ping")).is_ok());
 }
 
@@ -48,7 +50,7 @@ impl Actor for NoopActor {
 }
 
 fn build_actor_ref_with_system(remoting: Option<RemotingConfig>) -> ActorRef {
-  let state = ArcShared::new(SystemState::new());
+  let state = SystemStateShared::new(SystemState::new());
   let mut config = ActorSystemConfig::default().with_system_name("canonical-test");
   if let Some(remoting_config) = remoting {
     config = config.with_remoting_config(remoting_config);
@@ -97,7 +99,6 @@ fn canonical_path_returns_local_when_remoting_disabled() {
 
 #[test]
 fn canonical_path_is_none_without_system_state() {
-  let sender = ArcShared::new(TestSender);
-  let reference: ActorRef = ActorRef::new(Pid::new(1, 0), sender);
+  let reference: ActorRef = ActorRef::new(Pid::new(1, 0), TestSender);
   assert!(reference.canonical_path().is_none());
 }

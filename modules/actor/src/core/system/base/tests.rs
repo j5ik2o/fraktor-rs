@@ -8,7 +8,7 @@ use core::{
 use fraktor_utils_rs::core::{
   collections::queue::capabilities::{QueueCapabilityRegistry, QueueCapabilitySet},
   runtime_toolbox::{NoStdMutex, NoStdToolbox},
-  sync::ArcShared,
+  sync::{ArcShared, SharedAccess},
   time::TimerInstant,
   timing::{DelayFuture, DelayProvider},
 };
@@ -27,10 +27,10 @@ use crate::core::{
   messaging::SystemMessage,
   props::{MailboxConfig, MailboxRequirement, Props},
   scheduler::{
-    AutoDriverMetadata, AutoProfileKind, SchedulerConfig, SchedulerContext, TickDriverId, TickDriverKind,
+    AutoDriverMetadata, AutoProfileKind, SchedulerConfig, SchedulerContextSharedGeneric, TickDriverId, TickDriverKind,
     TickDriverMetadata,
   },
-  system::{ActorRefProvider, ActorRefResolveError, ActorSystemConfig, RemotingConfig},
+  system::{ActorRefProvider, ActorRefProviderSharedGeneric, ActorRefResolveError, ActorSystemConfig, RemotingConfig},
 };
 
 struct TestActor;
@@ -134,7 +134,7 @@ fn actor_system_new_empty() {
 #[test]
 fn actor_system_from_state() {
   let state = crate::core::system::system_state::SystemState::new();
-  let system = ActorSystem::from_state(ArcShared::new(state));
+  let system = ActorSystem::from_state(crate::core::system::SystemStateShared::new(state));
   assert!(!system.state().is_terminated());
 }
 
@@ -186,13 +186,13 @@ fn actor_system_emit_log() {
 fn actor_system_when_terminated() {
   let system = ActorSystem::new_empty();
   let future = system.when_terminated();
-  assert!(!future.is_ready());
+  assert!(!future.with_read(|af| af.is_ready()));
 }
 
 #[test]
 fn actor_system_reports_tick_driver_snapshot() {
   let system = ActorSystem::new_empty();
-  let ctx = ArcShared::new(SchedulerContext::new(NoStdToolbox::default(), SchedulerConfig::default()));
+  let ctx = SchedulerContextSharedGeneric::from_config(NoStdToolbox::default(), SchedulerConfig::default());
   system.state().install_scheduler_context(ctx.clone());
 
   let driver_id = TickDriverId::new(99);
@@ -296,7 +296,7 @@ fn spawn_child_resolves_mailbox_id_with_requirements() {
   let registry = QueueCapabilityRegistry::new(QueueCapabilitySet::defaults().with_deque(false));
   let constrained =
     MailboxConfig::default().with_requirement(MailboxRequirement::requires_deque()).with_capabilities(registry);
-  system.extended().mailboxes().register("constrained", constrained).expect("register mailbox");
+  system.extended().mailboxes().with_write(|m| m.register("constrained", constrained)).expect("register mailbox");
 
   let props = Props::from_fn(|| TestActor)
     .with_mailbox_id("constrained")
@@ -345,7 +345,11 @@ fn spawn_does_not_block_when_dispatcher_never_runs() {
 
   // Register NoopExecutor as "noop" dispatcher
   let noop_config = DispatcherConfig::from_executor(Box::new(NoopExecutor::new()));
-  system.state().dispatchers().register("noop", noop_config.clone()).expect("register noop dispatcher");
+  system
+    .state()
+    .dispatchers()
+    .with_write(|d| d.register("noop", noop_config.clone()))
+    .expect("register noop dispatcher");
 
   let props = Props::from_fn({
     let log = log.clone();
@@ -376,7 +380,7 @@ fn create_send_failure_triggers_rollback() {
   let cell = system.build_cell_for_spawn(pid, None, name, &props).expect("セル生成に失敗");
   system.state().register_cell(cell.clone());
 
-  system.state().remove_cell(&pid);
+  let _ = system.state().remove_cell(&pid);
   let result = system.perform_create_handshake(None, pid, &cell);
 
   match result {
@@ -428,10 +432,7 @@ fn actor_system_scheduler_context_handles_delays() {
 
   let context = system.scheduler_context().expect("scheduler context");
   let scheduler = context.scheduler();
-  {
-    let mut guard = scheduler.lock();
-    guard.run_for_test(1);
-  }
+  scheduler.with_write(|s| s.run_for_test(1));
 
   assert!(matches!(poll_delay(&mut future), Poll::Ready(())));
 }
@@ -445,9 +446,10 @@ fn actor_system_terminate_runs_scheduler_tasks() {
   {
     let context = system.scheduler_context().expect("context");
     let scheduler = context.scheduler();
-    let mut guard = scheduler.lock();
-    let task = RecordingShutdownTask { log: log.clone() };
-    guard.register_on_close(task, crate::core::scheduler::TaskRunPriority::User).expect("register");
+    scheduler.with_write(|s| {
+      let task = RecordingShutdownTask { log: log.clone() };
+      s.register_on_close(task, crate::core::scheduler::TaskRunPriority::User).expect("register");
+    });
   }
 
   system.terminate().expect("terminate");
@@ -492,11 +494,7 @@ fn actor_system_installs_scheduler_context() {
   assert!(matches!(poll_delay_future(&mut future), Poll::Pending));
 
   let context = system.scheduler_context().expect("scheduler context");
-  {
-    let scheduler = context.scheduler();
-    let mut guard = scheduler.lock();
-    guard.run_for_test(1);
-  }
+  context.scheduler().with_write(|s| s.run_for_test(1));
 
   assert!(matches!(poll_delay_future(&mut future), Poll::Ready(())));
 }
@@ -533,7 +531,7 @@ impl ActorRefProvider<NoStdToolbox> for DummyActorRefProvider {
     &[ActorPathScheme::FraktorTcp]
   }
 
-  fn actor_ref(&self, path: ActorPath) -> Result<ActorRefGeneric<NoStdToolbox>, ActorError> {
+  fn actor_ref(&mut self, path: ActorPath) -> Result<ActorRefGeneric<NoStdToolbox>, ActorError> {
     *self.last_path.lock() = Some(path.clone());
     Ok(ActorRefGeneric::null())
   }
@@ -547,7 +545,7 @@ fn resolve_actor_ref_injects_canonical_authority() {
   system.state().apply_actor_system_config(&config);
 
   let recorded = ArcShared::new(NoStdMutex::new(None));
-  let provider = ArcShared::new(DummyActorRefProvider::new(recorded.clone()));
+  let provider = ActorRefProviderSharedGeneric::new(DummyActorRefProvider::new(recorded.clone()));
   system.extended().register_actor_ref_provider(&provider);
 
   let path = ActorPath::root().child("svc");

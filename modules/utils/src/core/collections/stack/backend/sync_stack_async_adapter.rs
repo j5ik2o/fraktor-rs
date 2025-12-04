@@ -66,8 +66,8 @@ where
   }
 
   pub(crate) fn fail_all_waiters(&mut self, error: StackError) {
-    self.push_waiters.notify_error_all(error);
-    self.pop_waiters.notify_error_all(error);
+    self.push_waiters.notify_error_all(&error);
+    self.pop_waiters.notify_error_all(&error);
   }
 }
 

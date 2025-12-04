@@ -13,8 +13,8 @@ use core::{
 
 use ahash::RandomState;
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdMutex, NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::ArcShared,
+  runtime_toolbox::{NoStdMutex, NoStdToolbox, RuntimeToolbox, SyncMutexFamily},
+  sync::{ArcShared, SharedAccess},
   time::{SchedulerCapacityProfile, SchedulerTickHandle},
   timing::{DelayFuture, DelayProvider},
 };
@@ -34,6 +34,7 @@ use crate::core::{
   },
   error::SendError,
   messaging::AnyMessageGeneric,
+  scheduler::SchedulerSharedGeneric,
 };
 
 fn build_scheduler() -> Scheduler<NoStdToolbox> {
@@ -89,13 +90,13 @@ impl TaskRunOnClose for RecordingTask {
   }
 }
 
-type SharedScheduler = ArcShared<ToolboxMutex<Scheduler<NoStdToolbox>, NoStdToolbox>>;
+type SharedScheduler = SchedulerSharedGeneric<NoStdToolbox>;
 
 fn shared_scheduler_state() -> (SharedScheduler, SchedulerBackedDelayProvider<NoStdToolbox>) {
   let toolbox = NoStdToolbox::default();
   let scheduler = Scheduler::new(toolbox, SchedulerConfig::default());
   let mutex = <<NoStdToolbox as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(scheduler);
-  let shared = ArcShared::new(mutex);
+  let shared = SchedulerSharedGeneric::new(ArcShared::new(mutex));
   let provider = SchedulerBackedDelayProvider::new(shared.clone());
   (shared, provider)
 }
@@ -276,7 +277,7 @@ fn schedule_once_records_sender_metadata() {
 fn schedule_at_fixed_rate_executes_multiple_runs() {
   let mut scheduler = build_scheduler();
   let inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let sender = ArcShared::new(RecordingSender { inbox: inbox.clone() });
+  let sender = RecordingSender { inbox: inbox.clone() };
   let receiver = ActorRefGeneric::new(Pid::new(2, 0), sender);
   scheduler
     .schedule_at_fixed_rate(Duration::from_millis(2), Duration::from_millis(3), SchedulerCommand::SendMessage {
@@ -320,7 +321,7 @@ fn schedule_once_fn_executes_runnable() {
 fn run_for_test_executes_send_message() {
   let mut scheduler = build_scheduler();
   let inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let sender = ArcShared::new(RecordingSender { inbox: inbox.clone() });
+  let sender = RecordingSender { inbox: inbox.clone() };
   let receiver = ActorRefGeneric::new(Pid::new(1, 0), sender);
   schedule_message_command(&mut scheduler, Duration::from_millis(5), receiver, AnyMessageGeneric::new(7u32), None)
     .expect("handle");
@@ -347,7 +348,7 @@ fn schedule_once_fn_records_execution_batch() {
 fn runner_manual_processes_ticks_in_order() {
   let mut scheduler = build_scheduler();
   let inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let sender = ArcShared::new(RecordingSender { inbox: inbox.clone() });
+  let sender = RecordingSender { inbox: inbox.clone() };
   let receiver = ActorRefGeneric::new(Pid::new(7, 0), sender);
 
   schedule_message_command(
@@ -410,7 +411,7 @@ fn handle_reports_cancelled_state() {
 fn cancelled_job_is_not_delivered() {
   let mut scheduler = build_scheduler();
   let inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let sender = ArcShared::new(RecordingSender { inbox: inbox.clone() });
+  let sender = RecordingSender { inbox: inbox.clone() };
   let receiver = ActorRefGeneric::new(Pid::new(3, 0), sender);
   let handle =
     schedule_message_command(&mut scheduler, Duration::from_millis(2), receiver, AnyMessageGeneric::new(42u32), None)
@@ -639,10 +640,7 @@ fn scheduler_backed_delay_provider_completes_future() {
   let mut future = provider.delay(Duration::from_millis(1));
   assert!(matches!(poll_delay_future(&mut future), Poll::Pending));
 
-  {
-    let mut guard = shared.lock();
-    guard.run_for_test(1);
-  }
+  shared.with_write(|s| s.run_for_test(1));
 
   assert!(matches!(poll_delay_future(&mut future), Poll::Ready(())));
 }
@@ -653,8 +651,9 @@ fn scheduler_backed_delay_provider_cancels_on_drop() {
   let future = provider.delay(Duration::from_millis(5));
   drop(future);
 
-  let guard = shared.lock();
-  assert_eq!(guard.metrics().active_timers(), 0, "timer should be cancelled when future is dropped");
+  shared.with_write(|s| {
+    assert_eq!(s.metrics().active_timers(), 0, "timer should be cancelled when future is dropped");
+  });
 }
 
 #[test]
@@ -663,11 +662,7 @@ fn scheduler_context_provides_shared_delay_provider() {
   let mut future = service.delay_provider().delay(Duration::from_millis(1));
   assert!(matches!(poll_delay_future(&mut future), Poll::Pending));
 
-  {
-    let scheduler = service.scheduler();
-    let mut guard = scheduler.lock();
-    guard.run_for_test(1);
-  }
+  service.scheduler().with_write(|s| s.run_for_test(1));
 
   assert!(matches!(poll_delay_future(&mut future), Poll::Ready(())));
 }
@@ -1029,8 +1024,11 @@ struct RecordingSender {
 }
 
 impl ActorRefSender<NoStdToolbox> for RecordingSender {
-  fn send(&self, message: AnyMessageGeneric<NoStdToolbox>) -> Result<(), SendError<NoStdToolbox>> {
+  fn send(
+    &mut self,
+    message: AnyMessageGeneric<NoStdToolbox>,
+  ) -> Result<crate::core::actor_prim::actor_ref::SendOutcome, SendError<NoStdToolbox>> {
     self.inbox.lock().push(message);
-    Ok(())
+    Ok(crate::core::actor_prim::actor_ref::SendOutcome::Delivered)
   }
 }

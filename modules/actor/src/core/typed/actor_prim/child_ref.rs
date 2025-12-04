@@ -51,7 +51,7 @@ where
   /// # Errors
   ///
   /// Returns an error if the message cannot be delivered.
-  pub fn tell(&self, message: M) -> Result<(), SendError<TB>> {
+  pub fn tell(&mut self, message: M) -> Result<(), SendError<TB>> {
     self.inner.tell(AnyMessageGeneric::new(message))
   }
 
@@ -60,7 +60,7 @@ where
   /// # Errors
   ///
   /// Returns an error if the request cannot be sent.
-  pub fn ask<R>(&self, message: M) -> Result<TypedAskResponseGeneric<R, TB>, SendError<TB>>
+  pub fn ask<R>(&mut self, message: M) -> Result<TypedAskResponseGeneric<R, TB>, SendError<TB>>
   where
     R: Send + Sync + 'static, {
     let response = self.inner.ask(AnyMessageGeneric::new(message))?;

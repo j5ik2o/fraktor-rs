@@ -1,10 +1,7 @@
 use alloc::{borrow::ToOwned, string::String};
 
 use ahash::RandomState;
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::sync_mutex_like::SyncMutexLike,
-};
+use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 use hashbrown::HashMap;
 
 use crate::core::dispatcher::{DispatcherConfigGeneric, DispatcherRegistryError};
@@ -16,7 +13,7 @@ const DEFAULT_DISPATCHER_ID: &str = "default";
 
 /// Registry that resolves dispatcher identifiers to configurations.
 pub struct DispatchersGeneric<TB: RuntimeToolbox + 'static> {
-  entries: ToolboxMutex<HashMap<String, DispatcherConfigGeneric<TB>, RandomState>, TB>,
+  entries: HashMap<String, DispatcherConfigGeneric<TB>, RandomState>,
 }
 
 /// Type alias using the default toolbox.
@@ -26,7 +23,7 @@ impl<TB: RuntimeToolbox + 'static> DispatchersGeneric<TB> {
   /// Creates an empty dispatcher registry.
   #[must_use]
   pub fn new() -> Self {
-    Self { entries: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::with_hasher(RandomState::new())) }
+    Self { entries: HashMap::with_hasher(RandomState::new()) }
   }
 
   /// Registers a dispatcher configuration for the provided identifier.
@@ -35,25 +32,23 @@ impl<TB: RuntimeToolbox + 'static> DispatchersGeneric<TB> {
   ///
   /// Returns [`DispatcherRegistryError::Duplicate`] when the identifier already exists.
   pub fn register(
-    &self,
+    &mut self,
     id: impl Into<String>,
     config: DispatcherConfigGeneric<TB>,
   ) -> Result<(), DispatcherRegistryError> {
-    let mut entries = self.entries.lock();
     let id = id.into();
-    if entries.contains_key(&id) {
+    if self.entries.contains_key(&id) {
       return Err(DispatcherRegistryError::duplicate(&id));
     }
-    entries.insert(id, config);
+    self.entries.insert(id, config);
     Ok(())
   }
 
   /// Registers or updates a dispatcher configuration for the provided identifier.
   ///
   /// If the identifier already exists, the configuration is updated.
-  pub fn register_or_update(&self, id: impl Into<String>, config: DispatcherConfigGeneric<TB>) {
-    let mut entries = self.entries.lock();
-    entries.insert(id.into(), config);
+  pub fn register_or_update(&mut self, id: impl Into<String>, config: DispatcherConfigGeneric<TB>) {
+    self.entries.insert(id.into(), config);
   }
 
   /// Resolves the dispatcher configuration for the identifier.
@@ -62,13 +57,12 @@ impl<TB: RuntimeToolbox + 'static> DispatchersGeneric<TB> {
   ///
   /// Returns [`DispatcherRegistryError::Unknown`] when the identifier has not been registered.
   pub fn resolve(&self, id: &str) -> Result<DispatcherConfigGeneric<TB>, DispatcherRegistryError> {
-    self.entries.lock().get(id).cloned().ok_or_else(|| DispatcherRegistryError::unknown(id))
+    self.entries.get(id).cloned().ok_or_else(|| DispatcherRegistryError::unknown(id))
   }
 
   /// Ensures the default dispatcher entry exists.
-  pub fn ensure_default(&self) {
-    let mut entries = self.entries.lock();
-    entries.entry(DEFAULT_DISPATCHER_ID.to_owned()).or_insert_with(DispatcherConfigGeneric::default);
+  pub fn ensure_default(&mut self) {
+    self.entries.entry(DEFAULT_DISPATCHER_ID.to_owned()).or_default();
   }
 }
 

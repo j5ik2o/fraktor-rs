@@ -4,6 +4,7 @@
 mod tests;
 
 mod backpressure_hook;
+mod backpressure_hook_shared;
 mod factory;
 mod loopback_transport;
 mod remote_transport;
@@ -16,8 +17,10 @@ mod transport_error;
 mod transport_handle;
 mod transport_inbound_frame;
 mod transport_inbound_handler;
+mod transport_inbound_shared;
 
-pub use backpressure_hook::{TransportBackpressureHook, TransportBackpressureHookShared};
+pub use backpressure_hook::TransportBackpressureHook;
+pub use backpressure_hook_shared::TransportBackpressureHookShared;
 pub use factory::TransportFactory;
 pub use loopback_transport::LoopbackTransport;
 pub use remote_transport::RemoteTransport;
@@ -29,4 +32,5 @@ pub use transport_endpoint::TransportEndpoint;
 pub use transport_error::TransportError;
 pub use transport_handle::TransportHandle;
 pub use transport_inbound_frame::InboundFrame;
-pub use transport_inbound_handler::{TransportInbound, TransportInboundShared};
+pub use transport_inbound_handler::TransportInbound;
+pub use transport_inbound_shared::TransportInboundShared;

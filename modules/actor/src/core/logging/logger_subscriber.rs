@@ -3,10 +3,7 @@
 use alloc::boxed::Box;
 use core::marker::PhantomData;
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
-};
+use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use crate::core::{
   event_stream::{EventStreamEvent, EventStreamSubscriber},
@@ -19,7 +16,7 @@ mod tests;
 /// Subscribes to log events and filters by severity.
 pub struct LoggerSubscriberGeneric<TB: RuntimeToolbox + 'static> {
   level:   LogLevel,
-  writer:  ArcShared<ToolboxMutex<Box<dyn LoggerWriter>, TB>>,
+  writer:  Box<dyn LoggerWriter>,
   _marker: PhantomData<TB>,
 }
 
@@ -27,8 +24,7 @@ impl<TB: RuntimeToolbox + 'static> LoggerSubscriberGeneric<TB> {
   /// Creates a new subscriber with the provided minimum log level.
   #[must_use]
   pub fn new(level: LogLevel, writer: Box<dyn LoggerWriter>) -> Self {
-    let writer_mutex: ToolboxMutex<Box<dyn LoggerWriter>, TB> = <TB::MutexFamily as SyncMutexFamily>::create(writer);
-    Self { level, writer: ArcShared::new(writer_mutex), _marker: PhantomData }
+    Self { level, writer, _marker: PhantomData }
   }
 
   /// Returns the minimum severity handled by this subscriber.
@@ -43,7 +39,7 @@ impl<TB: RuntimeToolbox + 'static> EventStreamSubscriber<TB> for LoggerSubscribe
     if let EventStreamEvent::Log(log) = event
       && log.level() >= self.level
     {
-      self.writer.lock().write(log);
+      self.writer.write(log);
     }
   }
 }

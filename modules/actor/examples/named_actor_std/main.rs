@@ -14,6 +14,7 @@ use fraktor_actor_rs::std::{
   props::Props,
   system::ActorSystem,
 };
+use fraktor_utils_rs::core::sync::SharedAccess;
 use guardian::GuardianActor;
 use lifecycle_printer::LifecyclePrinter;
 use start_message::Start;
@@ -34,7 +35,7 @@ fn main() {
 
   system.terminate().expect("システムの停止に失敗しました");
 
-  while !termination.is_ready() {
+  while !termination.with_read(|af| af.is_ready()) {
     thread::sleep(Duration::from_millis(10));
   }
 }

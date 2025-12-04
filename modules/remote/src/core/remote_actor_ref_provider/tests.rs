@@ -24,8 +24,10 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::core::{
-  endpoint_writer::EndpointWriter, remote_actor_ref_provider::RemoteActorRefProvider,
-  remoting_control::RemotingControl, remoting_control_handle::RemotingControlHandle,
+  endpoint_writer::EndpointWriter,
+  remote_actor_ref_provider::RemoteActorRefProvider,
+  remoting_control::{RemotingControl, RemotingControlShared},
+  remoting_control_handle::RemotingControlHandle,
   remoting_extension_config::RemotingExtensionConfig,
 };
 
@@ -76,8 +78,10 @@ fn provider(system: &ActorSystemGeneric<NoStdToolbox>) -> RemoteActorRefProvider
     system.clone(),
     serialization,
   )));
-  let control = RemotingControlHandle::new(system.clone(), RemotingExtensionConfig::default());
-  control.start().expect("control start");
+  let control_handle = RemotingControlHandle::new(system.clone(), RemotingExtensionConfig::default());
+  let control: RemotingControlShared<NoStdToolbox> =
+    ArcShared::new(<<NoStdToolbox as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(control_handle));
+  control.lock().start().expect("control start");
   let authority_manager = system.state().remote_authority_manager().clone();
   RemoteActorRefProvider::from_components(system.clone(), writer, control, authority_manager).expect("provider builds")
 }
@@ -94,7 +98,7 @@ fn remote_path() -> ActorPath {
 #[test]
 fn actor_ref_sends_messages_via_endpoint_writer() {
   let system = build_system();
-  let provider = provider(&system);
+  let mut provider = provider(&system);
   let writer = provider.writer_for_test();
   let remote = provider.actor_ref(remote_path()).expect("actor ref");
 
@@ -110,7 +114,7 @@ fn actor_ref_sends_messages_via_endpoint_writer() {
 #[test]
 fn watch_remote_associates_authority() {
   let system = build_system();
-  let provider = provider(&system);
+  let mut provider = provider(&system);
   let mut parts = ActorPathParts::with_authority("remote-app", Some(("10.0.0.1", 9000)));
   parts = parts.with_guardian(GuardianKind::User);
   provider.watch_remote(parts).expect("watch succeeds");
@@ -119,7 +123,7 @@ fn watch_remote_associates_authority() {
 #[test]
 fn registers_remote_entry_for_remote_pid() {
   let system = build_system();
-  let provider = provider(&system);
+  let mut provider = provider(&system);
   let remote = provider.actor_ref(remote_path()).expect("actor ref");
   let registered = provider.registered_remote_pids_for_test();
   assert!(registered.contains(&remote.pid()));
@@ -144,7 +148,7 @@ fn remote_watch_hook_tracks_watcher_lifecycle() {
 #[test]
 fn sender_rejects_quarantined_authority() {
   let system = build_system();
-  let provider = provider(&system);
+  let mut provider = provider(&system);
   let remote = provider.actor_ref(remote_path()).expect("actor ref");
 
   system.state().remote_authority_set_quarantine("127.0.0.1:4100", Some(Duration::from_secs(10)));

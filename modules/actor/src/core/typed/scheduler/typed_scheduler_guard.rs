@@ -1,28 +1,26 @@
 use core::ops::{Deref, DerefMut};
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, ToolboxMutex},
-  sync::sync_mutex_like::SyncMutexLike,
-};
+use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use crate::core::{
   scheduler::{DispatcherSenderShared, Scheduler, SchedulerError, SchedulerHandle},
   typed::{TypedScheduler, actor_prim::TypedActorRefGeneric},
 };
 
-type SchedulerMutex<TB> = ToolboxMutex<Scheduler<TB>, TB>;
-type SchedulerMutexGuard<'a, TB> = <SchedulerMutex<TB> as SyncMutexLike<Scheduler<TB>>>::Guard<'a>;
-
 /// Guard that keeps the scheduler lock and exposes typed scheduling APIs.
 pub struct TypedSchedulerGuard<'a, TB: RuntimeToolbox + 'static> {
-  pub(crate) guard: SchedulerMutexGuard<'a, TB>,
+  pub(crate) scheduler: &'a mut Scheduler<TB>,
 }
 
 impl<'a, TB: RuntimeToolbox + 'static> TypedSchedulerGuard<'a, TB> {
+  pub(crate) const fn new(scheduler: &'a mut Scheduler<TB>) -> Self {
+    Self { scheduler }
+  }
+
   /// Provides a typed scheduler facade scoped to the current lock.
   #[allow(clippy::missing_const_for_fn)] // ロック取得が必要なため const fn にできない
   pub fn scheduler(&'a mut self) -> TypedScheduler<'a, TB> {
-    TypedScheduler::new(&mut self.guard)
+    TypedScheduler::new(self.scheduler)
   }
 
   /// Returns mutable access to the underlying scheduler for diagnostics.
@@ -30,7 +28,7 @@ impl<'a, TB: RuntimeToolbox + 'static> TypedSchedulerGuard<'a, TB> {
   pub fn with<F, R>(&mut self, callback: F) -> R
   where
     F: for<'b> FnOnce(&mut TypedScheduler<'b, TB>) -> R, {
-    let mut typed = TypedScheduler::new(&mut self.guard);
+    let mut typed = TypedScheduler::new(self.scheduler);
     callback(&mut typed)
   }
 
@@ -50,7 +48,7 @@ impl<'a, TB: RuntimeToolbox + 'static> TypedSchedulerGuard<'a, TB> {
   ) -> Result<SchedulerHandle, SchedulerError>
   where
     M: Send + Sync + 'static, {
-    TypedScheduler::new(&mut self.guard).schedule_once(delay, receiver, message, dispatcher, sender)
+    TypedScheduler::new(self.scheduler).schedule_once(delay, receiver, message, dispatcher, sender)
   }
 
   /// Schedules a typed message at a fixed rate while holding the lock.
@@ -70,7 +68,7 @@ impl<'a, TB: RuntimeToolbox + 'static> TypedSchedulerGuard<'a, TB> {
   ) -> Result<SchedulerHandle, SchedulerError>
   where
     M: Send + Sync + 'static, {
-    TypedScheduler::new(&mut self.guard).schedule_at_fixed_rate(
+    TypedScheduler::new(self.scheduler).schedule_at_fixed_rate(
       initial_delay,
       interval,
       receiver,
@@ -97,7 +95,7 @@ impl<'a, TB: RuntimeToolbox + 'static> TypedSchedulerGuard<'a, TB> {
   ) -> Result<SchedulerHandle, SchedulerError>
   where
     M: Send + Sync + 'static, {
-    TypedScheduler::new(&mut self.guard).schedule_with_fixed_delay(
+    TypedScheduler::new(self.scheduler).schedule_with_fixed_delay(
       initial_delay,
       delay,
       receiver,
@@ -112,12 +110,12 @@ impl<TB: RuntimeToolbox + 'static> Deref for TypedSchedulerGuard<'_, TB> {
   type Target = Scheduler<TB>;
 
   fn deref(&self) -> &Self::Target {
-    &self.guard
+    self.scheduler
   }
 }
 
 impl<TB: RuntimeToolbox + 'static> DerefMut for TypedSchedulerGuard<'_, TB> {
   fn deref_mut(&mut self) -> &mut Self::Target {
-    &mut self.guard
+    self.scheduler
   }
 }

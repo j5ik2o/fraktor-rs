@@ -14,6 +14,7 @@ use fraktor_actor_rs::core::{
     actor_prim::{TypedActor, TypedActorContext, TypedActorRef},
   },
 };
+use fraktor_utils_rs::core::sync::SharedAccess;
 
 #[derive(Clone)]
 struct PongReply {
@@ -39,7 +40,7 @@ impl TypedActor<GuardianCommand> for GuardianActor {
           .spawn_child(&TypedProps::new(|| PongActor))
           .map_err(|_| ActorError::recoverable("failed to spawn pong"))?
           .actor_ref();
-        let ping_ref = ctx
+        let mut ping_ref = ctx
           .spawn_child(&TypedProps::new(|| PingActor))
           .map_err(|_| ActorError::recoverable("failed to spawn ping"))?
           .actor_ref();
@@ -80,7 +81,7 @@ impl TypedActor<PingCommand> for PingActor {
         for index in 0..cmd.count {
           let payload =
             PongCommand::Ping(PingMessage { text: format_message(index), reply_to: cmd.reply_to.clone() });
-          cmd.target.tell(payload).map_err(|_| ActorError::recoverable("failed to send ping"))?;
+          cmd.target.clone().tell(payload).map_err(|_| ActorError::recoverable("failed to send ping"))?;
         }
       },
     }
@@ -112,7 +113,7 @@ impl TypedActor<PongCommand> for PongActor {
         println!("[{:?}] received ping: {}", std::thread::current().id(), ping.text);
 
         let response = GuardianCommand::PongNotified(PongReply { text: ping.text.clone() });
-        ping.reply_to.tell(response).map_err(|_| ActorError::recoverable("reply failed"))?;
+        ping.reply_to.clone().tell(response).map_err(|_| ActorError::recoverable("reply failed"))?;
       },
     }
     Ok(())
@@ -136,7 +137,7 @@ fn main() {
   let termination = system.as_untyped().when_terminated();
   system.user_guardian_ref().tell(GuardianCommand::Start).expect("start");
   system.terminate().expect("terminate");
-  while !termination.is_ready() {
+  while !termination.with_read(|af| af.is_ready()) {
     thread::yield_now();
   }
 }

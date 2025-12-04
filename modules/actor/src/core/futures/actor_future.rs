@@ -5,19 +5,19 @@ mod tests;
 
 use core::task::Waker;
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::sync_mutex_like::SyncMutexLike,
-};
-
-use crate::core::futures::actor_future_listener::ActorFutureListener;
+use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 
 /// Represents a future that resolves with a message.
+///
+/// This type no longer uses interior mutability. Methods that modify state
+/// require `&mut self`. Use [`ActorFutureShared`] for shared ownership with
+/// external mutex synchronization.
 pub struct ActorFuture<T, TB: RuntimeToolbox = NoStdToolbox>
 where
   T: Send + 'static, {
-  value: ToolboxMutex<Option<T>, TB>,
-  waker: ToolboxMutex<Option<Waker>, TB>,
+  value:   Option<T>,
+  waker:   Option<Waker>,
+  _marker: core::marker::PhantomData<TB>,
 }
 
 impl<T, TB> ActorFuture<T, TB>
@@ -27,47 +27,42 @@ where
 {
   /// Creates a new future in the pending state.
   #[must_use]
-  pub fn new() -> Self {
-    Self {
-      value: <TB::MutexFamily as SyncMutexFamily>::create(None),
-      waker: <TB::MutexFamily as SyncMutexFamily>::create(None),
-    }
+  pub const fn new() -> Self {
+    Self { value: None, waker: None, _marker: core::marker::PhantomData }
   }
 
-  /// Completes the future with a value. Subsequent calls are ignored.
-  pub fn complete(&self, value: T) {
-    let mut slot = self.value.lock();
-    if slot.is_some() {
-      return;
+  /// Completes the future with a value and returns the waker if registered.
+  ///
+  /// Subsequent calls return `None`.
+  ///
+  /// # Important
+  ///
+  /// The caller **must** wake the returned waker after releasing the lock to
+  /// avoid deadlock. Use [`ActorFutureSharedGeneric::complete_and_wake`] for a
+  /// safe wrapper when working with shared futures.
+  pub fn complete(&mut self, value: T) -> Option<Waker> {
+    if self.value.is_some() {
+      return None;
     }
-    *slot = Some(value);
-    drop(slot);
-
-    if let Some(waker) = self.waker.lock().take() {
-      waker.wake();
-    }
+    self.value = Some(value);
+    self.waker.take()
   }
 
   /// Attempts to take the result if available.
   #[must_use]
-  pub fn try_take(&self) -> Option<T> {
-    self.value.lock().take()
+  pub const fn try_take(&mut self) -> Option<T> {
+    self.value.take()
   }
 
   /// Returns whether the future has resolved.
   #[must_use]
-  pub fn is_ready(&self) -> bool {
-    self.value.lock().is_some()
+  pub const fn is_ready(&self) -> bool {
+    self.value.is_some()
   }
 
-  /// Returns a lightweight adapter implementing [`Future`].
-  #[must_use]
-  pub const fn listener(&self) -> ActorFutureListener<'_, T, TB> {
-    ActorFutureListener::new(self)
-  }
-
-  pub(crate) fn register_waker(&self, waker: &Waker) {
-    *self.waker.lock() = Some(waker.clone());
+  /// Registers a waker to be notified when the future completes.
+  pub fn register_waker(&mut self, waker: &Waker) {
+    self.waker = Some(waker.clone());
   }
 }
 
@@ -81,8 +76,9 @@ where
   }
 }
 
-// SAFETY: `ActorFuture` delegates synchronization to the mutex implementation supplied by the
-// toolbox. As long as the stored value is `Send`, the mutex guarantees sound interior mutability.
+// SAFETY: `ActorFuture` fields are only accessed through `&mut self` methods.
+// When wrapped in `ToolboxMutex`, the mutex provides synchronization.
+// The stored value must be `Send` to allow transfer between threads.
 unsafe impl<T, TB> Send for ActorFuture<T, TB>
 where
   T: Send + 'static,

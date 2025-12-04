@@ -12,13 +12,14 @@ use core::{
 
 use fraktor_utils_rs::core::{
   runtime_toolbox::{RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+  sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
 };
 use portable_atomic::{AtomicU8, AtomicU64};
 
 use super::{
   dispatch_error::DispatchError, dispatch_executor_runner::DispatchExecutorRunner,
-  dispatcher_dump_event::DispatcherDumpEvent, dispatcher_state::DispatcherState, schedule_adapter::ScheduleAdapter,
+  dispatcher_dump_event::DispatcherDumpEvent, dispatcher_state::DispatcherState,
+  schedule_adapter_shared::ScheduleAdapterSharedGeneric,
 };
 use crate::core::{
   error::{ActorError, SendError},
@@ -27,8 +28,8 @@ use crate::core::{
   mailbox::{
     EnqueueOutcome, MailboxGeneric, MailboxMessage, MailboxOfferFutureGeneric, MailboxPressureEvent, ScheduleHints,
   },
-  messaging::{AnyMessageGeneric, SystemMessage, message_invoker::MessageInvoker},
-  system::SystemStateGeneric,
+  messaging::{AnyMessageGeneric, SystemMessage, message_invoker::MessageInvokerShared},
+  system::SystemStateSharedGeneric,
 };
 
 const DEFAULT_THROUGHPUT: usize = 300;
@@ -38,13 +39,13 @@ pub(crate) const MAX_EXECUTOR_RETRIES: usize = 2;
 pub(crate) struct DispatcherCore<TB: RuntimeToolbox + 'static> {
   mailbox:             ArcShared<MailboxGeneric<TB>>,
   executor:            ArcShared<DispatchExecutorRunner<TB>>,
-  schedule_adapter:    ArcShared<dyn ScheduleAdapter<TB>>,
-  invoker:             ToolboxMutex<Option<ArcShared<dyn MessageInvoker<TB>>>, TB>,
+  schedule_adapter:    ScheduleAdapterSharedGeneric<TB>,
+  invoker:             ToolboxMutex<Option<MessageInvokerShared<TB>>, TB>,
   state:               AtomicU8,
   throughput_limit:    Option<NonZeroUsize>,
   throughput_deadline: Option<Duration>,
   starvation_deadline: Option<Duration>,
-  system_state:        Option<ArcShared<SystemStateGeneric<TB>>>,
+  system_state:        Option<SystemStateSharedGeneric<TB>>,
   last_progress:       AtomicU64,
 }
 
@@ -55,7 +56,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
   pub(crate) fn new(
     mailbox: ArcShared<MailboxGeneric<TB>>,
     executor: ArcShared<DispatchExecutorRunner<TB>>,
-    schedule_adapter: ArcShared<dyn ScheduleAdapter<TB>>,
+    schedule_adapter: ScheduleAdapterSharedGeneric<TB>,
     throughput_limit: Option<NonZeroUsize>,
     throughput_deadline: Option<Duration>,
     starvation_deadline: Option<Duration>,
@@ -79,7 +80,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
     &self.mailbox
   }
 
-  pub(crate) fn register_invoker(&self, invoker: ArcShared<dyn MessageInvoker<TB>>) {
+  pub(crate) fn register_invoker(&self, invoker: MessageInvokerShared<TB>) {
     *self.invoker.lock() = Some(invoker);
   }
 
@@ -87,7 +88,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
     &self.executor
   }
 
-  pub(crate) fn schedule_adapter(&self) -> ArcShared<dyn ScheduleAdapter<TB>> {
+  pub(crate) fn schedule_adapter(&self) -> ScheduleAdapterSharedGeneric<TB> {
     self.schedule_adapter.clone()
   }
 
@@ -201,15 +202,21 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
   }
 
   fn invoke_user_message(&self, message: AnyMessageGeneric<TB>) -> Result<(), ActorError> {
-    if let Some(invoker) = self.invoker.lock().as_ref() {
-      return invoker.invoke_user_message(message);
+    // Clone the invoker reference and release the outer lock before acquiring the inner lock.
+    // This prevents potential deadlock when actor message handlers interact with the dispatcher.
+    let invoker = self.invoker.lock().clone();
+    if let Some(invoker) = invoker {
+      return invoker.with_write(|i| i.invoke_user_message(message));
     }
     Ok(())
   }
 
   fn invoke_system_message(&self, message: SystemMessage) -> Result<(), ActorError> {
-    if let Some(invoker) = self.invoker.lock().as_ref() {
-      return invoker.invoke_system_message(message);
+    // Clone the invoker reference and release the outer lock before acquiring the inner lock.
+    // This prevents potential deadlock when actor message handlers interact with the dispatcher.
+    let invoker = self.invoker.lock().clone();
+    if let Some(invoker) = invoker {
+      return invoker.with_write(|i| i.invoke_system_message(message));
     }
     Ok(())
   }
@@ -255,7 +262,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
   ) -> Result<(), SendError<TB>> {
     let adapter = self_arc.schedule_adapter();
     let dispatcher = super::base::DispatcherGeneric::from_core(self_arc.clone());
-    let waker = adapter.create_waker(dispatcher);
+    let waker = adapter.with_write(|a| a.create_waker(dispatcher));
     let mut cx = Context::from_waker(&waker);
 
     loop {
@@ -268,7 +275,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
             has_user_messages:   true,
             backpressure_active: false,
           });
-          adapter.on_pending();
+          adapter.with_write(|a| a.on_pending());
         },
       }
     }
@@ -297,7 +304,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
   pub(crate) fn handle_executor_failure(&self, attempts: usize, error: DispatchError) {
     DispatcherState::Idle.store(self.state());
     let _ = self.mailbox.set_idle();
-    self.schedule_adapter.notify_rejected(attempts);
+    self.schedule_adapter.with_write(|a| a.notify_rejected(attempts));
     let message = format!("dispatcher execution failed after {} attempt(s): {}", attempts, error);
     self.mailbox.emit_log(LogLevel::Error, message);
   }

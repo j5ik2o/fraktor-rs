@@ -76,10 +76,10 @@ where
   /// # Errors
   ///
   /// Returns an error if the sender is unavailable or the message cannot be delivered.
-  pub fn reply<R>(&self, message: R) -> Result<(), SendError<TB>>
+  pub fn reply<R>(&mut self, message: R) -> Result<(), SendError<TB>>
   where
     R: Send + Sync + 'static, {
-    self.inner().reply(AnyMessageGeneric::new(message))
+    self.inner_mut().reply(AnyMessageGeneric::new(message))
   }
 
   /// Spawns a typed child actor using the provided typed props

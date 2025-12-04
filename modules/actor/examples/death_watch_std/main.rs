@@ -14,7 +14,10 @@ use fraktor_actor_rs::{
     system::ActorSystem,
   },
 };
-use fraktor_utils_rs::core::{runtime_toolbox::NoStdMutex, sync::ArcShared};
+use fraktor_utils_rs::core::{
+  runtime_toolbox::NoStdMutex,
+  sync::{ArcShared, SharedAccess},
+};
 
 struct Start;
 struct StopChild;
@@ -66,9 +69,9 @@ impl Actor for Guardian {
       && let Some(child) = self.last_child.lock().as_ref()
     {
       println!("[guardian] 子アクターにクラッシュを指示します");
-      child.tell(AnyMessage::new(Crash)).map_err(|_| ActorError::recoverable("tell failed"))?;
+      child.clone().tell(AnyMessage::new(Crash)).map_err(|_| ActorError::recoverable("tell failed"))?;
       println!("[guardian] 再起動後に停止指示を送ります");
-      child.tell(AnyMessage::new(StopChild)).map_err(|_| ActorError::recoverable("tell failed"))?;
+      child.clone().tell(AnyMessage::new(StopChild)).map_err(|_| ActorError::recoverable("tell failed"))?;
     }
     Ok(())
   }
@@ -95,7 +98,7 @@ fn main() {
   thread::sleep(Duration::from_millis(200));
   system.terminate().expect("terminate");
   let termination = system.when_terminated();
-  while !termination.is_ready() {
+  while !termination.with_read(|af| af.is_ready()) {
     thread::sleep(Duration::from_millis(20));
   }
 }

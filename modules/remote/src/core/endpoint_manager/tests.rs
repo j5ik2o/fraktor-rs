@@ -88,7 +88,7 @@ impl LoopbackPair {
 
 #[test]
 fn register_and_handshake_transitions_states() {
-  let mgr = manager();
+  let mut mgr = manager();
   let register = EndpointManagerCommand::RegisterInbound { authority: "loopback:4100".into(), now: 1 };
   let result = mgr.handle(register);
   assert!(result.effects.is_empty());
@@ -125,7 +125,7 @@ fn register_and_handshake_transitions_states() {
 
 #[test]
 fn deferred_messages_flush_on_connected() {
-  let mgr = manager();
+  let mut mgr = manager();
   let authority = "loopback:4200".to_string();
   mgr.handle(EndpointManagerCommand::RegisterInbound { authority: authority.clone(), now: 1 });
   mgr.handle(EndpointManagerCommand::Associate {
@@ -174,7 +174,7 @@ fn deferred_messages_flush_on_connected() {
 
 #[test]
 fn quarantine_discards_deferred_messages() {
-  let mgr = manager();
+  let mut mgr = manager();
   let authority = "loopback:4300".to_string();
   mgr.handle(EndpointManagerCommand::RegisterInbound { authority: authority.clone(), now: 1 });
   mgr.handle(EndpointManagerCommand::Associate {
@@ -221,7 +221,7 @@ fn quarantine_discards_deferred_messages() {
 
 #[test]
 fn recover_from_quarantine_restarts_handshake() {
-  let mgr = manager();
+  let mut mgr = manager();
   let authority = "loopback:4400".to_string();
   mgr.handle(EndpointManagerCommand::RegisterInbound { authority: authority.clone(), now: 1 });
   mgr.handle(EndpointManagerCommand::Associate {
@@ -278,8 +278,8 @@ fn recover_from_quarantine_restarts_handshake() {
 #[test]
 fn loopback_pair_association_flushes_deferred_and_emits_connected_events() {
   let loopback = LoopbackPair::new();
-  let manager_a = manager();
-  let manager_b = manager();
+  let mut manager_a = manager();
+  let mut manager_b = manager();
   let authority_for_a = loopback.authority_for_manager_a();
   let authority_for_b = loopback.authority_for_manager_b();
 
@@ -355,7 +355,7 @@ fn loopback_pair_association_flushes_deferred_and_emits_connected_events() {
 #[test]
 fn loopback_quarantine_manual_override_flow_emits_events() {
   let loopback = LoopbackPair::new();
-  let mgr = manager();
+  let mut mgr = manager();
   let authority = loopback.authority_for_manager_a();
   mgr.handle(EndpointManagerCommand::RegisterInbound { authority: authority.clone(), now: 1 });
   mgr.handle(EndpointManagerCommand::EnqueueDeferred {
@@ -420,7 +420,7 @@ fn loopback_quarantine_manual_override_flow_emits_events() {
 #[test]
 fn suspect_notification_via_gate_emits_lifecycle_event() {
   let loopback = LoopbackPair::new();
-  let mgr = manager();
+  let mut mgr = manager();
   let authority = loopback.authority_for_manager_a();
   mgr.handle(EndpointManagerCommand::RegisterInbound { authority: authority.clone(), now: 1 });
 

@@ -3,7 +3,7 @@ use core::time::Duration;
 
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdMutex, NoStdToolbox},
-  sync::ArcShared,
+  sync::{ArcShared, SharedAccess},
 };
 
 use super::SystemState;
@@ -17,7 +17,7 @@ use crate::core::{
   event_stream::{EventStream, EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   messaging::{AnyMessage, AnyMessageViewGeneric},
   props::Props,
-  system::{ActorSystemConfig, AuthorityState, RegisterExtraTopLevelError, RemotingConfig},
+  system::{ActorSystemConfig, AuthorityState, RegisterExtraTopLevelError, RemotingConfig, SystemStateShared},
 };
 
 #[test]
@@ -60,7 +60,7 @@ fn system_state_event_stream() {
 fn system_state_termination_future() {
   let state = SystemState::new();
   let future = state.termination_future();
-  assert!(!future.is_ready());
+  assert!(!future.with_read(|af| af.is_ready()));
 }
 
 #[test]
@@ -73,7 +73,7 @@ fn system_state_mark_terminated() {
 
 #[test]
 fn system_state_register_and_remove_cell() {
-  let state = ArcShared::new(SystemState::new());
+  let state = SystemStateShared::new(SystemState::new());
   let root_pid = state.allocate_pid();
   let child_pid = state.allocate_pid();
   let props = Props::from_fn(|| RestartProbeActor);
@@ -87,7 +87,7 @@ fn system_state_register_and_remove_cell() {
   let path = state.actor_path(&child_pid).expect("path");
   assert_eq!(path.to_string(), "/user/worker");
 
-  state.remove_cell(&child_pid);
+  let _ = state.remove_cell(&child_pid);
   assert!(state.cell(&child_pid).is_none());
 }
 
@@ -112,7 +112,7 @@ fn system_state_remove_cell_reserves_uid() {
 
 #[test]
 fn system_state_registers_canonical_uri_with_config() {
-  let state = ArcShared::new(SystemState::new());
+  let state = SystemStateShared::new(SystemState::new());
   let remoting = RemotingConfig::default().with_canonical_host("localhost").with_canonical_port(2552);
   let config = ActorSystemConfig::default().with_system_name("fraktor-system").with_remoting_config(remoting);
   state.apply_actor_system_config(&config);
@@ -127,15 +127,15 @@ fn system_state_registers_canonical_uri_with_config() {
     ActorCell::create(state.clone(), child_pid, Some(root_pid), "worker".to_string(), &props).expect("worker");
   state.register_cell(child);
 
-  let registry = state.actor_path_registry().lock();
-  let canonical = registry.canonical_uri(&child_pid).expect("canonical uri");
+  let canonical = state
+    .with_actor_path_registry(|registry| registry.lock().canonical_uri(&child_pid).expect("canonical uri").to_string());
   assert!(canonical.starts_with("fraktor.tcp://fraktor-system@localhost:2552"));
   assert!(canonical.ends_with("/user/worker"));
 }
 
 #[test]
 fn system_state_prefers_advertise_authority_for_canonical_path() {
-  let state = ArcShared::new(SystemState::new());
+  let state = SystemStateShared::new(SystemState::new());
   let remoting = RemotingConfig::default().with_canonical_host("public.example.com").with_canonical_port(4100);
   let config = ActorSystemConfig::default().with_system_name("fraktor-system").with_remoting_config(remoting);
   state.apply_actor_system_config(&config);
@@ -158,7 +158,7 @@ fn system_state_prefers_advertise_authority_for_canonical_path() {
 
 #[test]
 fn system_state_refuses_canonical_without_port() {
-  let state = ArcShared::new(SystemState::new());
+  let state = SystemStateShared::new(SystemState::new());
   let remoting = RemotingConfig::default().with_canonical_host("missing-port.example");
   let config = ActorSystemConfig::default().with_system_name("fraktor-system").with_remoting_config(remoting);
   state.apply_actor_system_config(&config);
@@ -174,14 +174,14 @@ fn system_state_refuses_canonical_without_port() {
   state.register_cell(child);
 
   assert!(state.canonical_actor_path(&child_pid).is_none());
-  assert!(state.actor_path_registry().lock().get(&child_pid).is_none());
+  assert!(state.with_actor_path_registry(|registry| registry.lock().get(&child_pid).is_none()));
   let local = state.actor_path(&child_pid).expect("local path");
   assert_eq!(local.to_relative_string(), "/user/worker");
   assert!(state.canonical_authority_components().is_none());
 }
 #[test]
 fn system_state_honors_default_guardian_config() {
-  let state = ArcShared::new(SystemState::new());
+  let state = SystemStateShared::new(SystemState::new());
   let config =
     ActorSystemConfig::default().with_system_name("sys-guardian").with_default_guardian(PathGuardianKind::System);
   state.apply_actor_system_config(&config);
@@ -196,8 +196,8 @@ fn system_state_honors_default_guardian_config() {
     ActorCell::create(state.clone(), child_pid, Some(root_pid), "logger".to_string(), &props).expect("logger");
   state.register_cell(child);
 
-  let registry = state.actor_path_registry().lock();
-  let canonical = registry.canonical_uri(&child_pid).expect("canonical uri");
+  let canonical = state
+    .with_actor_path_registry(|registry| registry.lock().canonical_uri(&child_pid).expect("canonical uri").to_string());
   assert!(canonical.contains("/system/logger"), "canonical: {}", canonical);
 }
 
@@ -257,12 +257,10 @@ fn system_state_deadletters() {
 
 #[test]
 fn system_state_register_ask_future() {
-  use fraktor_utils_rs::core::sync::ArcShared;
-
-  use crate::core::futures::ActorFuture;
+  use crate::core::futures::ActorFutureSharedGeneric;
 
   let state = SystemState::new();
-  let future = ArcShared::new(ActorFuture::<AnyMessage>::new());
+  let future = ActorFutureSharedGeneric::<AnyMessage, NoStdToolbox>::new();
   state.register_ask_future(future.clone());
 
   let ready = state.drain_ready_ask_futures();
@@ -429,7 +427,7 @@ impl Actor for RestartProbeActor {
 
 #[test]
 fn recreate_send_failure_escalates_and_stops_parent() {
-  let state = ArcShared::new(SystemState::new());
+  let state = SystemStateShared::new(SystemState::new());
   let parent_pid = state.allocate_pid();
   let parent_props = Props::from_fn(|| RestartProbeActor);
   let parent =
@@ -443,7 +441,7 @@ fn recreate_send_failure_escalates_and_stops_parent() {
   state.register_cell(child.clone());
   state.register_child(parent_pid, child_pid);
 
-  state.remove_cell(&child_pid);
+  let _ = state.remove_cell(&child_pid);
   let error = ActorError::recoverable("boom");
   state.handle_failure(child_pid, Some(parent_pid), &error);
 

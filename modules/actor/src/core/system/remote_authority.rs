@@ -8,13 +8,10 @@ use alloc::{
   string::{String, ToString},
   vec::Vec,
 };
-use core::time::Duration;
+use core::{marker::PhantomData, time::Duration};
 
 use ahash::RandomState;
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::sync_mutex_like::SyncMutexLike,
-};
+use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 use hashbrown::HashMap;
 
 use crate::core::{
@@ -37,7 +34,8 @@ impl<TB: RuntimeToolbox + 'static> AuthorityEntry<TB> {
 
 /// Manages remote authority state transitions and deferred message queues.
 pub struct RemoteAuthorityManagerGeneric<TB: RuntimeToolbox + 'static> {
-  entries: ToolboxMutex<HashMap<String, AuthorityEntry<TB>, RandomState>, TB>,
+  entries: HashMap<String, AuthorityEntry<TB>, RandomState>,
+  _marker: PhantomData<TB>,
 }
 
 /// Type alias using the default toolbox.
@@ -47,13 +45,13 @@ impl<TB: RuntimeToolbox + 'static> RemoteAuthorityManagerGeneric<TB> {
   /// Creates a new manager with no authorities.
   #[must_use]
   pub fn new() -> Self {
-    Self { entries: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::with_hasher(RandomState::new())) }
+    Self { entries: HashMap::with_hasher(RandomState::new()), _marker: PhantomData }
   }
 
   /// Returns the current state of an authority.
   #[must_use]
   pub fn state(&self, authority: &str) -> AuthorityState {
-    self.entries.lock().get(authority).map(|e| e.state.clone()).unwrap_or(AuthorityState::Unresolved)
+    self.entries.get(authority).map(|e| e.state.clone()).unwrap_or(AuthorityState::Unresolved)
   }
 
   /// Marks an authority as unresolved and defers a message.
@@ -62,7 +60,7 @@ impl<TB: RuntimeToolbox + 'static> RemoteAuthorityManagerGeneric<TB> {
   ///
   /// Returns [`RemoteAuthorityError::Quarantined`] if the authority is quarantined.
   pub fn defer_send(
-    &self,
+    &mut self,
     authority: impl Into<String>,
     message: AnyMessageGeneric<TB>,
   ) -> Result<(), RemoteAuthorityError> {
@@ -75,16 +73,15 @@ impl<TB: RuntimeToolbox + 'static> RemoteAuthorityManagerGeneric<TB> {
   ///
   /// Returns [`RemoteAuthorityError::Quarantined`] if the authority is quarantined.
   pub fn try_defer_send(
-    &self,
+    &mut self,
     authority: impl Into<String>,
     message: AnyMessageGeneric<TB>,
   ) -> Result<(), RemoteAuthorityError> {
     self.defer_or_reject(authority.into(), message)
   }
 
-  fn defer_or_reject(&self, authority: String, message: AnyMessageGeneric<TB>) -> Result<(), RemoteAuthorityError> {
-    let mut entries = self.entries.lock();
-    let entry = entries.entry(authority).or_insert_with(|| AuthorityEntry::new(AuthorityState::Unresolved));
+  fn defer_or_reject(&mut self, authority: String, message: AnyMessageGeneric<TB>) -> Result<(), RemoteAuthorityError> {
+    let entry = self.entries.entry(authority).or_insert_with(|| AuthorityEntry::new(AuthorityState::Unresolved));
 
     // Quarantine中は拒否
     if matches!(entry.state, AuthorityState::Quarantine { .. }) {
@@ -96,41 +93,38 @@ impl<TB: RuntimeToolbox + 'static> RemoteAuthorityManagerGeneric<TB> {
   }
 
   /// Transitions an authority to Connected and returns deferred messages.
-  pub fn set_connected(&self, authority: &str) -> Option<VecDeque<AnyMessageGeneric<TB>>> {
-    let mut entries = self.entries.lock();
-    let entry = entries.entry(authority.to_string()).or_insert_with(|| AuthorityEntry::new(AuthorityState::Unresolved));
+  pub fn set_connected(&mut self, authority: &str) -> Option<VecDeque<AnyMessageGeneric<TB>>> {
+    let entry =
+      self.entries.entry(authority.to_string()).or_insert_with(|| AuthorityEntry::new(AuthorityState::Unresolved));
     entry.state = AuthorityState::Connected;
     Some(core::mem::take(&mut entry.deferred))
   }
 
   /// Transitions an authority to Quarantine and discards deferred messages.
-  pub fn set_quarantine(&self, authority: impl Into<String>, now: u64, duration: Option<Duration>) {
+  pub fn set_quarantine(&mut self, authority: impl Into<String>, now: u64, duration: Option<Duration>) {
     let authority = authority.into();
     let deadline = duration.map(|d| now + d.as_secs());
-    let mut entries = self.entries.lock();
-    let entry = entries.entry(authority).or_insert_with(|| AuthorityEntry::new(AuthorityState::Unresolved));
+    let entry = self.entries.entry(authority).or_insert_with(|| AuthorityEntry::new(AuthorityState::Unresolved));
     entry.state = AuthorityState::Quarantine { deadline };
     entry.deferred.clear();
   }
 
   /// Handles an InvalidAssociation event by transitioning to quarantine.
-  pub fn handle_invalid_association(&self, authority: impl Into<String>, now: u64, duration: Option<Duration>) {
+  pub fn handle_invalid_association(&mut self, authority: impl Into<String>, now: u64, duration: Option<Duration>) {
     self.set_quarantine(authority, now, duration);
   }
 
   /// Manually overrides quarantine and transitions to Connected.
-  pub fn manual_override_to_connected(&self, authority: &str) {
-    let mut entries = self.entries.lock();
-    if let Some(entry) = entries.get_mut(authority) {
+  pub fn manual_override_to_connected(&mut self, authority: &str) {
+    if let Some(entry) = self.entries.get_mut(authority) {
       entry.state = AuthorityState::Connected;
     }
   }
 
   /// Polls all authorities and lifts expired quarantines, returning the affected authorities.
-  pub fn poll_quarantine_expiration(&self, now: u64) -> Vec<String> {
-    let mut entries = self.entries.lock();
+  pub fn poll_quarantine_expiration(&mut self, now: u64) -> Vec<String> {
     let mut lifted = Vec::new();
-    for (authority, entry) in entries.iter_mut() {
+    for (authority, entry) in self.entries.iter_mut() {
       if let AuthorityState::Quarantine { deadline } = &entry.state
         && let Some(deadline_time) = deadline
         && now >= *deadline_time
@@ -143,9 +137,8 @@ impl<TB: RuntimeToolbox + 'static> RemoteAuthorityManagerGeneric<TB> {
   }
 
   /// Transitions quarantine back to unresolved if quarantine period elapsed.
-  pub fn lift_quarantine(&self, authority: &str) {
-    let mut entries = self.entries.lock();
-    if let Some(entry) = entries.get_mut(authority)
+  pub fn lift_quarantine(&mut self, authority: &str) {
+    if let Some(entry) = self.entries.get_mut(authority)
       && matches!(entry.state, AuthorityState::Quarantine { .. })
     {
       entry.state = AuthorityState::Unresolved;
@@ -153,14 +146,15 @@ impl<TB: RuntimeToolbox + 'static> RemoteAuthorityManagerGeneric<TB> {
   }
 
   /// Returns a snapshot of all known authorities and their states.
+  #[must_use]
   pub fn snapshots(&self) -> Vec<(String, AuthorityState)> {
-    self.entries.lock().iter().map(|(authority, entry)| (authority.clone(), entry.state.clone())).collect()
+    self.entries.iter().map(|(authority, entry)| (authority.clone(), entry.state.clone())).collect()
   }
 
   /// Returns count of deferred messages for an authority.
   #[must_use]
   pub fn deferred_count(&self, authority: &str) -> usize {
-    self.entries.lock().get(authority).map(|e| e.deferred.len()).unwrap_or(0)
+    self.entries.get(authority).map(|e| e.deferred.len()).unwrap_or(0)
   }
 }
 

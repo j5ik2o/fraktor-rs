@@ -1,8 +1,7 @@
 extern crate std;
 
 use alloc::boxed::Box;
-#[allow(clippy::disallowed_types)]
-use std::{sync::Mutex, time::Duration};
+use std::time::Duration;
 
 use fraktor_utils_rs::{
   core::{runtime_toolbox::SyncMutexFamily, sync::ArcShared, time::TimerInstant},
@@ -120,39 +119,33 @@ impl TickDriver<StdToolbox> for TokioIntervalDriver {
   }
 }
 
-#[allow(clippy::disallowed_types)]
 struct TokioIntervalDriverControl {
-  join:    Mutex<Option<JoinHandle<()>>>,
-  metrics: Mutex<Option<StdTickMetricsEmitter>>,
+  join:    Option<JoinHandle<()>>,
+  metrics: Option<StdTickMetricsEmitter>,
 }
 
 impl TokioIntervalDriverControl {
-  #[allow(clippy::disallowed_types)]
   const fn new(join: JoinHandle<()>, metrics: Option<StdTickMetricsEmitter>) -> Self {
-    Self { join: Mutex::new(Some(join)), metrics: Mutex::new(metrics) }
+    Self { join: Some(join), metrics }
   }
 }
 
 impl TickDriverControl for TokioIntervalDriverControl {
-  fn shutdown(&mut self) {
-    #[allow(clippy::expect_used)]
-    if let Some(handle) = self.join.lock().expect("lock").take() {
+  fn shutdown(&self) {
+    if let Some(handle) = &self.join {
       handle.abort();
     }
-    #[allow(clippy::expect_used)]
-    if let Some(mut emitter) = self.metrics.lock().expect("lock").take() {
+    if let Some(emitter) = &self.metrics {
       emitter.shutdown();
     }
   }
 }
 
-#[allow(clippy::disallowed_types)]
 struct StdTickMetricsEmitter {
-  join: Mutex<Option<JoinHandle<()>>>,
+  join: Option<JoinHandle<()>>,
 }
 
 impl StdTickMetricsEmitter {
-  #[allow(clippy::disallowed_types)]
   fn spawn(
     handle: &Handle,
     feed: TickFeedHandle<StdToolbox>,
@@ -175,12 +168,11 @@ impl StdTickMetricsEmitter {
         event_stream.publish(&EventStreamEvent::SchedulerTick(metrics));
       }
     });
-    Self { join: Mutex::new(Some(join)) }
+    Self { join: Some(join) }
   }
 
-  fn shutdown(&mut self) {
-    #[allow(clippy::expect_used)]
-    if let Some(handle) = self.join.lock().expect("lock").take() {
+  fn shutdown(&self) {
+    if let Some(handle) = &self.join {
       handle.abort();
     }
   }

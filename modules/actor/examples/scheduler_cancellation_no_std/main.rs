@@ -13,6 +13,7 @@ use fraktor_actor_rs::core::{
   scheduler::SchedulerCommand,
   system::ActorSystem,
 };
+use fraktor_utils_rs::core::sync::SharedAccess;
 
 #[cfg(not(target_os = "none"))]
 #[path = "../no_std_tick_driver_support.rs"]
@@ -45,7 +46,6 @@ impl Actor for GuardianActor {
 
       let scheduler_context = ctx.system().scheduler_context().expect("scheduler context");
       let scheduler_arc = scheduler_context.scheduler();
-      let mut scheduler = scheduler_arc.lock();
 
       // 3つのメッセージをスケジュール
       #[cfg(not(target_os = "none"))]
@@ -58,8 +58,8 @@ impl Actor for GuardianActor {
         dispatcher: None,
         sender:     None,
       };
-      let _handle1 = scheduler
-        .schedule_once(Duration::from_millis(50), command1)
+      let _handle1 = scheduler_arc
+        .with_write(|s| s.schedule_once(Duration::from_millis(50), command1))
         .map_err(|_| ActorError::recoverable("failed to schedule 1"))?;
 
       let msg2 = AnyMessage::new(ScheduledMessage { label: String::from("Message 2 (will be cancelled)") });
@@ -69,8 +69,8 @@ impl Actor for GuardianActor {
         dispatcher: None,
         sender:     None,
       };
-      let handle2 = scheduler
-        .schedule_once(Duration::from_millis(100), command2)
+      let handle2 = scheduler_arc
+        .with_write(|s| s.schedule_once(Duration::from_millis(100), command2))
         .map_err(|_| ActorError::recoverable("failed to schedule 2"))?;
 
       let msg3 = AnyMessage::new(ScheduledMessage { label: String::from("Message 3 (will execute)") });
@@ -80,15 +80,15 @@ impl Actor for GuardianActor {
         dispatcher: None,
         sender:     None,
       };
-      let _handle3 = scheduler
-        .schedule_once(Duration::from_millis(150), command3)
+      let _handle3 = scheduler_arc
+        .with_write(|s| s.schedule_once(Duration::from_millis(150), command3))
         .map_err(|_| ActorError::recoverable("failed to schedule 3"))?;
 
       // handle2をキャンセル
       #[cfg(not(target_os = "none"))]
       println!("[{:?}] Cancelling message 2...", std::thread::current().id());
 
-      let cancelled = scheduler.cancel(&handle2);
+      let cancelled = scheduler_arc.with_write(|s| s.cancel(&handle2));
 
       #[cfg(not(target_os = "none"))]
       println!("[{:?}] Cancellation result: {}", std::thread::current().id(), cancelled);

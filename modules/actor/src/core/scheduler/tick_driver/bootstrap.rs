@@ -3,9 +3,7 @@
 #[cfg(any(test, feature = "test-support"))]
 use alloc::boxed::Box;
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::RuntimeToolbox, sync::sync_mutex_like::SyncMutexLike, time::MonotonicClock,
-};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::SharedAccess, time::MonotonicClock};
 #[cfg(any(test, feature = "test-support"))]
 use fraktor_utils_rs::core::{runtime_toolbox::SyncMutexFamily, sync::ArcShared};
 
@@ -18,7 +16,7 @@ use super::{
   manual_test_driver::{ManualDriverControl, ManualTestDriver},
   next_tick_driver_id,
 };
-use crate::core::scheduler::SchedulerContext;
+use crate::core::scheduler::SchedulerContextSharedGeneric;
 
 /// Bootstrapper responsible for wiring drivers into the scheduler context.
 pub struct TickDriverBootstrap;
@@ -31,7 +29,7 @@ impl TickDriverBootstrap {
   /// Returns [`TickDriverError`] when driver provisioning fails.
   pub fn provision<TB: RuntimeToolbox>(
     config: &TickDriverConfig<TB>,
-    ctx: &SchedulerContext<TB>,
+    ctx: &SchedulerContextSharedGeneric<TB>,
   ) -> Result<TickDriverRuntime<TB>, TickDriverError> {
     match config {
       #[cfg(any(test, feature = "test-support"))]
@@ -39,8 +37,7 @@ impl TickDriverBootstrap {
       | TickDriverConfig::Builder { builder } => {
         let start_instant = {
           let scheduler = ctx.scheduler();
-          let guard = scheduler.lock();
-          guard.toolbox().clock().now()
+          scheduler.with_read(|s| s.toolbox().clock().now())
         };
         let runtime = builder(ctx)?;
         let handle = runtime.driver();
@@ -55,23 +52,19 @@ impl TickDriverBootstrap {
   #[cfg(any(test, feature = "test-support"))]
   fn provision_manual<TB: RuntimeToolbox>(
     driver: &ManualTestDriver<TB>,
-    ctx: &SchedulerContext<TB>,
+    ctx: &SchedulerContextSharedGeneric<TB>,
   ) -> Result<TickDriverRuntime<TB>, TickDriverError> {
     let scheduler = ctx.scheduler();
-    let runner_enabled = {
-      let guard = scheduler.lock();
-      guard.config().runner_api_enabled()
-    };
+    let runner_enabled = scheduler.with_read(|s| s.config().runner_api_enabled());
     if !runner_enabled {
       ctx.publish_driver_warning("manual tick driver was requested while runner API is disabled");
       return Err(TickDriverError::ManualDriverDisabled);
     }
-    let (resolution, start_instant) = {
-      let guard = scheduler.lock();
-      let config = guard.config();
-      let instant = guard.toolbox().clock().now();
+    let (resolution, start_instant) = scheduler.with_read(|s| {
+      let config = s.config();
+      let instant = s.toolbox().clock().now();
       (config.resolution(), instant)
-    };
+    });
     driver.attach(ctx);
     let state = driver.state();
     let control: Box<dyn TickDriverControl> = Box::new(ManualDriverControl::new(state));
@@ -85,7 +78,7 @@ impl TickDriverBootstrap {
   }
 
   /// Shuts down the active driver handle.
-  pub fn shutdown<TB: RuntimeToolbox>(handle: &TickDriverHandleGeneric<TB>) {
+  pub fn shutdown<TB: RuntimeToolbox>(handle: &mut TickDriverHandleGeneric<TB>) {
     handle.shutdown();
   }
 }

@@ -16,12 +16,13 @@ use super::{
   dispatcher_state::DispatcherState,
   inline_executor::InlineExecutorGeneric,
   inline_schedule_adapter::InlineScheduleAdapter,
-  schedule_adapter::ScheduleAdapter,
+  schedule_adapter_shared::ScheduleAdapterSharedGeneric,
 };
 use crate::core::{
+  actor_prim::actor_ref::ActorRefSenderSharedGeneric,
   error::SendError,
   mailbox::{MailboxGeneric, MailboxPressureEvent, ScheduleHints},
-  messaging::{AnyMessageGeneric, SystemMessage, message_invoker::MessageInvoker},
+  messaging::{AnyMessageGeneric, SystemMessage, message_invoker::MessageInvokerShared},
 };
 
 /// Dispatcher that manages mailbox processing.
@@ -50,7 +51,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherGeneric<TB> {
     throughput_deadline: Option<Duration>,
     starvation_deadline: Option<Duration>,
   ) -> Self {
-    let adapter = ArcShared::new(InlineScheduleAdapter::new());
+    let adapter = InlineScheduleAdapter::shared::<TB>();
     Self::with_adapter(mailbox, executor, adapter, throughput_deadline, starvation_deadline)
   }
 
@@ -59,7 +60,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherGeneric<TB> {
   pub fn with_adapter(
     mailbox: ArcShared<MailboxGeneric<TB>>,
     executor: ArcShared<DispatchExecutorRunner<TB>>,
-    schedule_adapter: ArcShared<dyn ScheduleAdapter<TB>>,
+    schedule_adapter: ScheduleAdapterSharedGeneric<TB>,
     throughput_deadline: Option<Duration>,
     starvation_deadline: Option<Duration>,
   ) -> Self {
@@ -84,7 +85,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherGeneric<TB> {
   }
 
   /// Registers an invoker.
-  pub(crate) fn register_invoker(&self, invoker: ArcShared<dyn MessageInvoker<TB>>) {
+  pub(crate) fn register_invoker(&self, invoker: MessageInvokerShared<TB>) {
     self.core.register_invoker(invoker);
   }
 
@@ -156,11 +157,11 @@ impl<TB: RuntimeToolbox + 'static> DispatcherGeneric<TB> {
   /// Constructs an `ActorRefSender` implementation with a shared handle.
   #[must_use]
   #[allow(clippy::wrong_self_convention)]
-  pub(crate) fn into_sender(&self) -> ArcShared<DispatcherSenderGeneric<TB>> {
-    ArcShared::new(DispatcherSenderGeneric::new(self.clone()))
+  pub(crate) fn into_sender(&self) -> ActorRefSenderSharedGeneric<TB> {
+    ActorRefSenderSharedGeneric::new(DispatcherSenderGeneric::new(self.clone()))
   }
 
-  pub(crate) fn schedule_adapter(&self) -> ArcShared<dyn ScheduleAdapter<TB>> {
+  pub(crate) fn schedule_adapter(&self) -> ScheduleAdapterSharedGeneric<TB> {
     self.core.schedule_adapter()
   }
 

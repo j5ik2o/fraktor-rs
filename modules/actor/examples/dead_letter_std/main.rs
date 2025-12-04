@@ -12,6 +12,7 @@ use fraktor_actor_rs::{
     actor_prim::{Actor, ActorContext},
     dispatcher::dispatch_executor::TokioExecutor,
     event_stream::{EventStreamEvent, EventStreamSubscriber, EventStreamSubscriberShared, subscriber_handle},
+    futures::ActorFutureListener,
     logging::StdLoggerSubscriber,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
@@ -166,8 +167,7 @@ async fn main() {
   system.terminate().expect("システム停止要求が成功すること");
 
   println!("\n=== Waiting for termination ===\n");
-  let termination = system.when_terminated();
-  termination.listener().await;
+  ActorFutureListener::new(system.when_terminated()).await;
 
   println!("\n=== Example completed ===\n");
 }

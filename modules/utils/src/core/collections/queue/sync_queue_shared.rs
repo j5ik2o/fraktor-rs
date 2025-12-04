@@ -16,7 +16,6 @@ use crate::core::{
   },
   sync::{
     ArcShared, SharedAccess,
-    shared::Shared,
     sync_mutex_like::{SpinSyncMutex, SyncMutexLike},
   },
 };
@@ -52,7 +51,7 @@ where
   /// Returns a `QueueError` when the backend rejects the element because the queue is closed,
   /// full, or disconnected.
   pub fn offer(&mut self, item: T) -> Result<OfferOutcome, QueueError<T>> {
-    self.inner.with_mut(|queue: &mut SyncQueue<T, K, B>| queue.offer(item)).map_err(QueueError::from)?
+    self.inner.with_write(|queue: &mut SyncQueue<T, K, B>| queue.offer(item))
   }
 
   /// Dequeues the next available item.
@@ -61,8 +60,8 @@ where
   ///
   /// Returns a `QueueError` when the backend cannot supply an element due to closure,
   /// disconnection, or backend-specific failures.
-  pub fn poll(&mut self) -> Result<T, QueueError<T>> {
-    self.inner.with_mut(|queue: &mut SyncQueue<T, K, B>| queue.poll()).map_err(QueueError::from)?
+  pub fn poll(&self) -> Result<T, QueueError<T>> {
+    self.inner.with_write(|queue: &mut SyncQueue<T, K, B>| queue.poll())
   }
 
   /// Requests the backend to transition into the closed state.
@@ -70,26 +69,20 @@ where
   /// # Errors
   ///
   /// Returns a `QueueError` when the backend refuses to close.
-  pub fn close(&mut self) -> Result<(), QueueError<T>> {
-    self.inner.with_mut(|queue: &mut SyncQueue<T, K, B>| queue.close()).map_err(QueueError::from)?
+  pub fn close(&self) -> Result<(), QueueError<T>> {
+    self.inner.with_write(|queue: &mut SyncQueue<T, K, B>| queue.close())
   }
 
   /// Returns the current number of stored elements.
   #[must_use]
   pub fn len(&self) -> usize {
-    self.inner.with_ref(|mutex: &M| {
-      let guard = mutex.lock();
-      guard.len()
-    })
+    self.inner.with_read(|queue: &SyncQueue<T, K, B>| queue.len())
   }
 
   /// Returns the storage capacity.
   #[must_use]
   pub fn capacity(&self) -> usize {
-    self.inner.with_ref(|mutex: &M| {
-      let guard = mutex.lock();
-      guard.capacity()
-    })
+    self.inner.with_read(|queue: &SyncQueue<T, K, B>| queue.capacity())
   }
 
   /// Indicates whether the queue is empty.
@@ -125,8 +118,8 @@ where
   ///
   /// Returns a `QueueError` when the backend cannot access the next element due to closure,
   /// disconnection, or backend-specific failures.
-  pub fn peek_min(&mut self) -> Result<Option<T>, QueueError<T>> {
-    self.inner.with_mut(|queue: &mut SyncQueue<T, PriorityKey, B>| queue.peek_min()).map_err(QueueError::from)?
+  pub fn peek_min(&self) -> Result<Option<T>, QueueError<T>> {
+    self.inner.with_write(|queue: &mut SyncQueue<T, PriorityKey, B>| queue.peek_min())
   }
 }
 

@@ -2,26 +2,23 @@
 
 use core::fmt;
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 
 use crate::core::{
   actor_prim::{Pid, actor_ref::ActorRefGeneric},
   error::SendError,
   messaging::{AnyMessageGeneric, AskResponseGeneric, SystemMessage},
-  system::SystemStateGeneric,
+  system::SystemStateSharedGeneric,
 };
 
 /// Provides typed accessors to a child actor owned by a parent.
 pub struct ChildRefGeneric<TB: RuntimeToolbox + 'static> {
   actor:  ActorRefGeneric<TB>,
-  system: ArcShared<SystemStateGeneric<TB>>,
+  system: SystemStateSharedGeneric<TB>,
 }
 
 impl<TB: RuntimeToolbox + 'static> ChildRefGeneric<TB> {
-  pub(crate) const fn new(actor: ActorRefGeneric<TB>, system: ArcShared<SystemStateGeneric<TB>>) -> Self {
+  pub(crate) const fn new(actor: ActorRefGeneric<TB>, system: SystemStateSharedGeneric<TB>) -> Self {
     Self { actor, system }
   }
 
@@ -42,7 +39,7 @@ impl<TB: RuntimeToolbox + 'static> ChildRefGeneric<TB> {
   /// # Errors
   ///
   /// Returns an error when the mailbox cannot accept the message.
-  pub fn tell(&self, message: AnyMessageGeneric<TB>) -> Result<(), SendError<TB>> {
+  pub fn tell(&mut self, message: AnyMessageGeneric<TB>) -> Result<(), SendError<TB>> {
     self.actor.tell(message)
   }
 
@@ -51,7 +48,7 @@ impl<TB: RuntimeToolbox + 'static> ChildRefGeneric<TB> {
   /// # Errors
   ///
   /// Returns an error when the message cannot be enqueued.
-  pub fn ask(&self, message: AnyMessageGeneric<TB>) -> Result<AskResponseGeneric<TB>, SendError<TB>> {
+  pub fn ask(&mut self, message: AnyMessageGeneric<TB>) -> Result<AskResponseGeneric<TB>, SendError<TB>> {
     self.actor.ask(message)
   }
 

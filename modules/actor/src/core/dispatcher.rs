@@ -26,9 +26,11 @@ mod dispatcher_registry_error;
 mod dispatcher_sender;
 mod dispatcher_state;
 mod dispatchers;
+mod dispatchers_shared;
 mod inline_executor;
 mod inline_schedule_adapter;
 mod schedule_adapter;
+mod schedule_adapter_shared;
 mod schedule_waker;
 mod tick_executor;
 
@@ -42,9 +44,11 @@ pub use dispatcher_dump_event::DispatcherDumpEvent;
 pub use dispatcher_registry_error::DispatcherRegistryError;
 pub use dispatcher_sender::{DispatcherSender, DispatcherSenderGeneric};
 pub use dispatchers::{Dispatchers, DispatchersGeneric};
+pub use dispatchers_shared::{DispatchersShared, DispatchersSharedGeneric};
 pub use inline_executor::{InlineExecutor, InlineExecutorGeneric};
 pub use inline_schedule_adapter::InlineScheduleAdapter;
 pub use schedule_adapter::ScheduleAdapter;
+pub use schedule_adapter_shared::{ScheduleAdapterShared, ScheduleAdapterSharedGeneric};
 pub use tick_executor::{TickExecutor, TickExecutorGeneric};
 
 /// Dispatcher configuration module.

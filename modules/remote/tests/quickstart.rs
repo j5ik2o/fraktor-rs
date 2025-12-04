@@ -24,7 +24,7 @@ use fraktor_actor_rs::core::{
 };
 use fraktor_remote_rs::core::{
   FlightMetricKind, FnRemotingBackpressureListener, LoopbackActorRefProviderGeneric, LoopbackActorRefProviderInstaller,
-  RemotingControl, RemotingControlHandle, RemotingExtensionConfig, RemotingExtensionId, RemotingExtensionInstaller,
+  RemotingControl, RemotingControlShared, RemotingExtensionConfig, RemotingExtensionId, RemotingExtensionInstaller,
   default_loopback_setup,
 };
 use fraktor_utils_rs::{
@@ -63,7 +63,7 @@ impl EventStreamSubscriber<StdToolbox> for RecordingSubscriber {
 
 fn build_system(
   config: RemotingExtensionConfig,
-) -> (ActorSystemGeneric<StdToolbox>, RemotingControlHandle<StdToolbox>) {
+) -> (ActorSystemGeneric<StdToolbox>, RemotingControlShared<StdToolbox>) {
   let props = PropsGeneric::from_fn(|| NoopActor).with_name("quickstart-guardian");
   let serialization_installer = SerializationExtensionInstaller::new(default_loopback_setup());
   let extensions = ExtensionInstallers::<StdToolbox>::default()
@@ -112,14 +112,14 @@ async fn quickstart_loopback_provider_flow() -> Result<()> {
   let (system, handle) = build_system(config);
   let provider = system.extended().actor_ref_provider::<SharedProvider>().expect("provider installed");
   let runtime_hits: ArcShared<NoStdMutex<Vec<String>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
-  handle.register_backpressure_listener(FnRemotingBackpressureListener::new({
+  handle.lock().register_backpressure_listener(FnRemotingBackpressureListener::new({
     let hits = runtime_hits.clone();
     move |signal, authority, _| hits.lock().push(format!("{authority}:{signal:?}"))
   }));
   let (recorder, _subscription) = subscribe(&system);
 
-  assert!(!handle.is_running());
-  handle.start().map_err(|error| anyhow!("{error}"))?;
+  assert!(!handle.lock().is_running());
+  handle.lock().start().map_err(|error| anyhow!("{error}"))?;
 
   // Wait for async startup to complete
   tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
@@ -127,10 +127,14 @@ async fn quickstart_loopback_provider_flow() -> Result<()> {
   provider
     .inner()
     .lock()
+    .inner()
+    .inner()
+    .lock()
+    .inner_mut()
     .watch_remote(ActorPathParts::with_authority("remote-system", Some(("127.0.0.1", 4321))))
     .map_err(|error| anyhow!("{error}"))?;
 
-  handle.emit_backpressure_signal("127.0.0.1:4321", BackpressureSignal::Apply);
+  handle.lock().emit_backpressure_signal("127.0.0.1:4321", BackpressureSignal::Apply);
 
   // Wait for events to propagate
   tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
@@ -161,11 +165,11 @@ async fn quickstart_loopback_provider_flow() -> Result<()> {
   assert!(recorder.events.lock().iter().any(|event| matches!(event, EventStreamEvent::RemotingBackpressure(_))));
 
   let authority = "127.0.0.1:4321";
-  let snapshots = provider.inner().lock().connections_snapshot();
+  let snapshots = provider.inner().lock().inner().inner().lock().inner().connections_snapshot();
   let snapshot = snapshots.iter().find(|entry| entry.authority() == authority).expect("snapshot exists");
   assert!(matches!(snapshot.state(), AuthorityState::Unresolved));
 
-  let recorder_snapshot = handle.flight_recorder_snapshot();
+  let recorder_snapshot = handle.lock().flight_recorder_snapshot();
   let metrics = recorder_snapshot.records();
   assert!(matches!(
     metrics.last(),
@@ -182,17 +186,21 @@ async fn remote_provider_enqueues_message() -> Result<()> {
   type SharedProvider = RemoteWatchHookShared<StdToolbox, LoopbackActorRefProviderGeneric<StdToolbox>>;
   let config = RemotingExtensionConfig::default().with_auto_start(false);
   let (system, handle) = build_system(config);
-  handle.start().map_err(|error| anyhow!("{error}"))?;
+  handle.lock().start().map_err(|error| anyhow!("{error}"))?;
   let provider = system.extended().actor_ref_provider::<SharedProvider>().expect("provider installed");
   provider
     .inner()
     .lock()
+    .inner()
+    .inner()
+    .lock()
+    .inner_mut()
     .watch_remote(ActorPathParts::with_authority("remote-system", Some(("127.0.0.1", 25520))))
     .map_err(|error| anyhow!("{error}"))?;
-  let remote = provider.actor_ref(remote_path()).expect("actor ref");
+  let remote = provider.clone().actor_ref(remote_path()).expect("actor ref");
   remote.tell(AnyMessageGeneric::new("loopback".to_string())).expect("send succeeds");
 
-  let writer = provider.inner().lock().writer_for_test();
+  let writer = provider.inner().lock().inner().inner().lock().inner().writer_for_test();
   let envelope = writer.lock().try_next().expect("poll writer").expect("envelope");
   assert_eq!(envelope.recipient().to_relative_string(), "/user/user/svc");
   assert_eq!(envelope.remote_node().host(), "127.0.0.1");
@@ -204,16 +212,23 @@ async fn remote_provider_enqueues_message() -> Result<()> {
 async fn remote_watch_hook_handles_system_watch_messages() -> Result<()> {
   let config = RemotingExtensionConfig::default().with_auto_start(false);
   let (system, handle) = build_system(config);
-  handle.start().map_err(|error| anyhow!("{error}"))?;
+  handle.lock().start().map_err(|error| anyhow!("{error}"))?;
   type SharedProvider = RemoteWatchHookShared<StdToolbox, LoopbackActorRefProviderGeneric<StdToolbox>>;
   let provider = system.extended().actor_ref_provider::<SharedProvider>().expect("provider installed");
-  let remote = provider.actor_ref(remote_path()).expect("remote actor ref");
+  let remote = provider.get_actor_ref(remote_path()).expect("remote actor ref");
   let watcher = Pid::new(7777, 0);
 
-  let mut shared_clone = (*provider).clone();
-  assert!(RemoteWatchHook::handle_watch(&mut shared_clone, remote.pid(), watcher));
+  assert!(RemoteWatchHook::handle_watch(provider.inner().lock().inner_mut(), remote.pid(), watcher));
 
-  let watchers = provider.inner().lock().remote_watchers_for_test(remote.pid()).expect("entry snapshot");
+  let watchers = provider
+    .inner()
+    .lock()
+    .inner()
+    .inner()
+    .lock()
+    .inner()
+    .remote_watchers_for_test(remote.pid())
+    .expect("entry snapshot");
   assert_eq!(watchers, vec![watcher]);
   Ok(())
 }

@@ -5,6 +5,7 @@ extern crate alloc;
 #[path = "../no_std_tick_driver_support.rs"]
 mod no_std_tick_driver_support;
 
+use fraktor_utils_rs::core::sync::sync_mutex_like::SyncMutexLike as _;
 use alloc::{
   format,
   string::{String, ToString},

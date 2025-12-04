@@ -14,7 +14,10 @@ use std::thread;
 
 use fraktor_actor_rs::core::event_stream::{BackpressureSignal, CorrelationId};
 use fraktor_utils_rs::{
-  core::{runtime_toolbox::NoStdMutex, sync::ArcShared},
+  core::{
+    runtime_toolbox::NoStdMutex,
+    sync::{ArcShared, SharedAccess},
+  },
   std::runtime_toolbox::StdToolbox,
 };
 use tokio::{
@@ -133,8 +136,7 @@ impl TokioTcpTransport {
   #[allow(dead_code)]
   fn fire_backpressure(&self, authority: &str, signal: BackpressureSignal, correlation_id: CorrelationId) {
     if let Some(hook) = self.hook.lock().clone() {
-      let mut guard = hook.lock();
-      guard.on_backpressure(signal, authority, correlation_id);
+      hook.with_write(|h| h.on_backpressure(signal, authority, correlation_id));
     }
   }
 
@@ -190,11 +192,12 @@ impl TokioTcpTransport {
       let correlation_id = CorrelationId::new(hi, lo);
       let _payload = &buffer[12..];
       if let Some(hook_ref) = hook.lock().clone() {
-        let mut guard = hook_ref.lock();
-        guard.on_backpressure(BackpressureSignal::Release, &authority, correlation_id);
+        hook_ref.with_write(|h| h.on_backpressure(BackpressureSignal::Release, &authority, correlation_id));
       }
       if let Some(handler) = inbound.lock().clone() {
-        handler.lock().on_frame(InboundFrame::new(&authority, remote.clone(), buffer[12..].to_vec(), correlation_id));
+        handler.with_write(|h| {
+          h.on_frame(InboundFrame::new(&authority, remote.clone(), buffer[12..].to_vec(), correlation_id))
+        });
       }
     }
     Ok(())
@@ -216,8 +219,7 @@ impl TokioTcpTransport {
       if pending_count >= BACKPRESSURE_THRESHOLD
         && let Some(hook_ref) = hook.lock().clone()
       {
-        let mut guard = hook_ref.lock();
-        guard.on_backpressure(BackpressureSignal::Apply, &authority, frame.correlation_id);
+        hook_ref.with_write(|h| h.on_backpressure(BackpressureSignal::Apply, &authority, frame.correlation_id));
       }
     }
   }

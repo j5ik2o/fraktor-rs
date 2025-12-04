@@ -12,6 +12,7 @@ use fraktor_actor_rs::core::{
   scheduler::SchedulerCommand,
   system::ActorSystem,
 };
+use fraktor_utils_rs::core::sync::SharedAccess;
 
 #[cfg(not(target_os = "none"))]
 #[path = "../no_std_tick_driver_support.rs"]
@@ -44,7 +45,6 @@ impl Actor for GuardianActor {
 
       let scheduler_context = ctx.system().scheduler_context().expect("scheduler context");
       let scheduler_arc = scheduler_context.scheduler();
-      let mut scheduler = scheduler_arc.lock();
 
       // 固定レート: 50msの初期遅延後、30msごとにメッセージを送信
       #[cfg(not(target_os = "none"))]
@@ -53,8 +53,8 @@ impl Actor for GuardianActor {
       let message = AnyMessage::new(PeriodicTick { count: 0 });
       let command = SchedulerCommand::SendMessage { receiver: target.clone(), message, dispatcher: None, sender: None };
 
-      let _handle = scheduler
-        .schedule_at_fixed_rate(Duration::from_millis(50), Duration::from_millis(30), command)
+      let _handle = scheduler_arc
+        .with_write(|s| s.schedule_at_fixed_rate(Duration::from_millis(50), Duration::from_millis(30), command))
         .map_err(|_| ActorError::recoverable("failed to schedule"))?;
 
       #[cfg(not(target_os = "none"))]

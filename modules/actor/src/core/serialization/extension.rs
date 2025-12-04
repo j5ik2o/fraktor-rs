@@ -40,7 +40,7 @@ use crate::core::{
     serializer_id::SerializerId,
     transport_information::TransportInformation,
   },
-  system::{ActorSystemGeneric, SystemStateGeneric},
+  system::{ActorSystemGeneric, SystemStateSharedGeneric},
 };
 
 /// Serialization extension type alias for the default toolbox.
@@ -50,7 +50,7 @@ pub type SerializationExtension = SerializationExtensionGeneric<NoStdToolbox>;
 pub struct SerializationExtensionGeneric<TB: RuntimeToolbox + 'static> {
   registry:        ArcShared<SerializationRegistryGeneric<TB>>,
   setup:           SerializationSetup,
-  system_state:    ArcShared<SystemStateGeneric<TB>>,
+  system_state:    SystemStateSharedGeneric<TB>,
   transport_stack: ToolboxMutex<Vec<TransportInformation>, TB>,
   uninitialized:   AtomicBool,
   _marker:         PhantomData<TB>,
