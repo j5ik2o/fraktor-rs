@@ -37,7 +37,7 @@ where
   ///
   /// Propagates `StackError` when the backend rejects the element, for example when the stack is
   /// closed or at capacity.
-  pub fn push(&mut self, item: T) -> Result<PushOutcome, StackError> {
+  pub fn push(&self, item: T) -> Result<PushOutcome, StackError> {
     self.inner.with_write(|stack: &mut SyncStack<T, B>| stack.push(item))
   }
 
