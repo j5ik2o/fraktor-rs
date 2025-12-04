@@ -15,6 +15,7 @@ use fraktor_actor_rs::core::{
   scheduler::SchedulerCommand,
   system::ActorSystem,
 };
+use fraktor_utils_rs::core::sync::SharedAccess;
 
 #[cfg(not(target_os = "none"))]
 #[path = "../no_std_tick_driver_support.rs"]
@@ -51,7 +52,7 @@ impl Actor for GuardianActor {
       let command = SchedulerCommand::SendMessage { receiver: target.clone(), message, dispatcher: None, sender: None };
 
       let _handle = scheduler_arc
-        .with_mut(|s| s.schedule_once(Duration::from_millis(100), command))
+        .with_write(|s| s.schedule_once(Duration::from_millis(100), command))
         .map_err(|_| ActorError::recoverable("failed to schedule"))?;
 
       #[cfg(not(target_os = "none"))]

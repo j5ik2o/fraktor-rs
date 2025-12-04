@@ -3,7 +3,7 @@
 #[cfg(any(test, feature = "test-support"))]
 use alloc::boxed::Box;
 
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, time::MonotonicClock};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::SharedAccess, time::MonotonicClock};
 #[cfg(any(test, feature = "test-support"))]
 use fraktor_utils_rs::core::{runtime_toolbox::SyncMutexFamily, sync::ArcShared};
 
@@ -37,7 +37,7 @@ impl TickDriverBootstrap {
       | TickDriverConfig::Builder { builder } => {
         let start_instant = {
           let scheduler = ctx.scheduler();
-          scheduler.with_mut(|s| s.toolbox().clock().now())
+          scheduler.with_read(|s| s.toolbox().clock().now())
         };
         let runtime = builder(ctx)?;
         let handle = runtime.driver();
@@ -55,12 +55,12 @@ impl TickDriverBootstrap {
     ctx: &SchedulerContextSharedGeneric<TB>,
   ) -> Result<TickDriverRuntime<TB>, TickDriverError> {
     let scheduler = ctx.scheduler();
-    let runner_enabled = scheduler.with_mut(|s| s.config().runner_api_enabled());
+    let runner_enabled = scheduler.with_read(|s| s.config().runner_api_enabled());
     if !runner_enabled {
       ctx.publish_driver_warning("manual tick driver was requested while runner API is disabled");
       return Err(TickDriverError::ManualDriverDisabled);
     }
-    let (resolution, start_instant) = scheduler.with_mut(|s| {
+    let (resolution, start_instant) = scheduler.with_read(|s| {
       let config = s.config();
       let instant = s.toolbox().clock().now();
       (config.resolution(), instant)

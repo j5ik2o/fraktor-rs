@@ -8,7 +8,7 @@ use core::time::Duration;
 use fraktor_utils_rs::core::time::{MonotonicClock, TimerInstant};
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+  sync::{ArcShared, SharedAccess},
 };
 
 use super::{
@@ -76,13 +76,13 @@ impl<TB: RuntimeToolbox + 'static> SchedulerContextHandle<TB> {
   }
 
   fn shutdown(&mut self) -> TaskRunSummary {
-    self.scheduler.with_mut(|s| s.shutdown_with_tasks())
+    self.scheduler.with_write(|s| s.shutdown_with_tasks())
   }
 
   #[cfg(any(test, feature = "test-support"))]
   fn current_timestamp(&self) -> Duration {
     let scheduler = self.scheduler();
-    scheduler.with_mut(|s| instant_to_duration(s.toolbox().clock().now()))
+    scheduler.with_write(|s| instant_to_duration(s.toolbox().clock().now()))
   }
 }
 
@@ -132,37 +132,37 @@ impl<TB: RuntimeToolbox + 'static> SchedulerContextSharedGeneric<TB> {
   /// Returns a clone of the shared scheduler mutex.
   #[must_use]
   pub fn scheduler(&self) -> SchedulerSharedGeneric<TB> {
-    self.inner.lock().scheduler()
+    self.with_read(|handle| handle.scheduler())
   }
 
   /// Returns a delay provider connected to this scheduler.
   #[must_use]
   pub fn delay_provider(&self) -> SchedulerBackedDelayProvider<TB> {
-    self.inner.lock().delay_provider()
+    self.with_read(|handle| handle.delay_provider())
   }
 
   /// Returns the event stream associated with this scheduler.
   #[must_use]
   pub fn event_stream(&self) -> ArcShared<EventStreamGeneric<TB>> {
-    self.inner.lock().event_stream()
+    self.with_read(|handle| handle.event_stream())
   }
 
   /// Returns the last recorded driver metadata.
   #[must_use]
   pub fn driver_metadata(&self) -> Option<TickDriverMetadata> {
-    self.inner.lock().driver_metadata()
+    self.with_read(|handle| handle.driver_metadata())
   }
 
   /// Returns the last recorded auto driver metadata.
   #[must_use]
   pub fn auto_driver_metadata(&self) -> Option<AutoDriverMetadata> {
-    self.inner.lock().auto_driver_metadata()
+    self.with_read(|handle| handle.auto_driver_metadata())
   }
 
   /// Returns the last published driver snapshot.
   #[must_use]
   pub fn driver_snapshot(&self) -> Option<TickDriverSnapshot> {
-    self.inner.lock().driver_snapshot()
+    self.with_read(|handle| handle.driver_snapshot())
   }
 
   /// Records driver metadata (internal use).
@@ -173,24 +173,36 @@ impl<TB: RuntimeToolbox + 'static> SchedulerContextSharedGeneric<TB> {
     metadata: TickDriverMetadata,
     auto: Option<AutoDriverMetadata>,
   ) {
-    self.inner.lock().record_driver_metadata(kind, resolution, metadata, auto);
+    self.with_write(|handle| handle.record_driver_metadata(kind, resolution, metadata, auto));
   }
 
   /// Publishes a driver warning (test support).
   #[cfg(any(test, feature = "test-support"))]
   pub(crate) fn publish_driver_warning(&self, message: &str) {
-    self.inner.lock().publish_driver_warning(message);
+    self.with_read(|handle| handle.publish_driver_warning(message));
   }
 
   /// Shuts down the underlying scheduler, returning the summary.
   #[must_use]
   pub fn shutdown(&self) -> TaskRunSummary {
-    self.inner.lock().shutdown()
+    self.with_write(|handle| handle.shutdown())
   }
 }
 
 /// Type alias for [`SchedulerContextSharedGeneric`] using the default [`NoStdToolbox`].
 pub type SchedulerContextShared = SchedulerContextSharedGeneric<NoStdToolbox>;
+
+impl<TB: RuntimeToolbox + 'static> SharedAccess<SchedulerContextHandle<TB>> for SchedulerContextSharedGeneric<TB> {
+  #[inline]
+  fn with_read<R>(&self, f: impl FnOnce(&SchedulerContextHandle<TB>) -> R) -> R {
+    self.inner.with_read(f)
+  }
+
+  #[inline]
+  fn with_write<R>(&self, f: impl FnOnce(&mut SchedulerContextHandle<TB>) -> R) -> R {
+    self.inner.with_write(f)
+  }
+}
 
 #[cfg(any(test, feature = "test-support"))]
 fn instant_to_duration(instant: TimerInstant) -> Duration {

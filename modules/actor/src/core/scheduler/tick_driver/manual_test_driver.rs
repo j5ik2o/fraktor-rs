@@ -4,7 +4,7 @@
 
 use fraktor_utils_rs::core::{
   runtime_toolbox::RuntimeToolbox,
-  sync::{ArcShared, sync_mutex_like::SpinSyncMutex},
+  sync::{ArcShared, SharedAccess, sync_mutex_like::SpinSyncMutex},
 };
 
 use crate::core::scheduler::{SchedulerContextSharedGeneric, SchedulerRunnerOwned, SchedulerSharedGeneric};
@@ -103,7 +103,7 @@ impl<TB: RuntimeToolbox> ManualTickController<TB> {
   /// Drives the scheduler for pending ticks.
   pub fn drive(&self) {
     self.state.with_runner(|runner, scheduler| {
-      scheduler.with_mut(|s| runner.drive(s));
+      scheduler.with_write(|s| runner.drive(s));
     });
   }
 

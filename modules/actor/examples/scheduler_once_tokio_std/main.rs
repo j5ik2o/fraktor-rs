@@ -11,7 +11,10 @@ use fraktor_actor_rs::{
     system::{ActorSystem, DispatcherConfig},
   },
 };
-use fraktor_utils_rs::{core::sync::ArcShared, std::StdSyncMutex};
+use fraktor_utils_rs::{
+  core::sync::{ArcShared, SharedAccess},
+  std::StdSyncMutex,
+};
 use tokio::runtime::Handle;
 
 // アクターに送信されるスケジュール済みメッセージ
@@ -43,7 +46,7 @@ impl Actor for GuardianActor {
       let command = SchedulerCommand::SendMessage { receiver: target.clone(), message, dispatcher: None, sender: None };
 
       let _handle = scheduler_arc
-        .with_mut(|s| s.schedule_once(Duration::from_millis(100), command))
+        .with_write(|s| s.schedule_once(Duration::from_millis(100), command))
         .map_err(|_| ActorError::recoverable("failed to schedule"))?;
 
       println!("[{:?}] Scheduler ticks completed", std::thread::current().id());

@@ -14,7 +14,7 @@ use core::{
 use ahash::RandomState;
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdMutex, NoStdToolbox, RuntimeToolbox, SyncMutexFamily},
-  sync::ArcShared,
+  sync::{ArcShared, SharedAccess},
   time::{SchedulerCapacityProfile, SchedulerTickHandle},
   timing::{DelayFuture, DelayProvider},
 };
@@ -640,7 +640,7 @@ fn scheduler_backed_delay_provider_completes_future() {
   let mut future = provider.delay(Duration::from_millis(1));
   assert!(matches!(poll_delay_future(&mut future), Poll::Pending));
 
-  shared.with_mut(|s| s.run_for_test(1));
+  shared.with_write(|s| s.run_for_test(1));
 
   assert!(matches!(poll_delay_future(&mut future), Poll::Ready(())));
 }
@@ -651,7 +651,7 @@ fn scheduler_backed_delay_provider_cancels_on_drop() {
   let future = provider.delay(Duration::from_millis(5));
   drop(future);
 
-  shared.with_mut(|s| {
+  shared.with_write(|s| {
     assert_eq!(s.metrics().active_timers(), 0, "timer should be cancelled when future is dropped");
   });
 }
@@ -662,7 +662,7 @@ fn scheduler_context_provides_shared_delay_provider() {
   let mut future = service.delay_provider().delay(Duration::from_millis(1));
   assert!(matches!(poll_delay_future(&mut future), Poll::Pending));
 
-  service.scheduler().with_mut(|s| s.run_for_test(1));
+  service.scheduler().with_write(|s| s.run_for_test(1));
 
   assert!(matches!(poll_delay_future(&mut future), Poll::Ready(())));
 }

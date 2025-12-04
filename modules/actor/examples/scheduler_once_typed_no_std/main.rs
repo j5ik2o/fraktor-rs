@@ -54,7 +54,7 @@ impl TypedActor<GuardianCommand> for GuardianActor {
         let command = GuardianCommand::Scheduled(message);
 
         // TypedScheduler::schedule_onceを使用
-        let _handle = scheduler_shared.with_mut(|typed_scheduler| {
+        let _handle = scheduler_shared.with_write(|typed_scheduler| {
           typed_scheduler
             .schedule_once(Duration::from_millis(100), target, command, None, None)
             .map_err(|_| ActorError::recoverable("failed to schedule"))

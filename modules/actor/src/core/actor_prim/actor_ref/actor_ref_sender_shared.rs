@@ -4,7 +4,7 @@ use alloc::boxed::Box;
 
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+  sync::{ArcShared, SharedAccess},
 };
 
 use crate::core::{
@@ -41,20 +41,25 @@ impl<TB: RuntimeToolbox + 'static> ActorRefSenderSharedGeneric<TB> {
   ///
   /// Returns an error if the message cannot be delivered.
   pub fn send(&self, message: AnyMessageGeneric<TB>) -> Result<(), SendError<TB>> {
-    // Acquire lock, send message, and release lock before applying outcome.
-    // This prevents deadlock when InlineExecutor synchronously invokes receive()
-    // which may call self.tell() and attempt to re-acquire the same lock.
-    let outcome = {
-      let mut guard = self.inner.lock();
-      guard.send(message)?
-    };
+    // ロック解放後にアウトカムを適用し、再入によるデッドロックを防ぐ
+    let outcome = self.inner.with_write(|sender| sender.send(message));
 
     // Apply outcome after releasing lock to allow re-entrant sends
-    match outcome {
+    match outcome? {
       | SendOutcome::Delivered => {},
       | SendOutcome::Schedule(task) => task(),
     }
     Ok(())
+  }
+}
+
+impl<TB: RuntimeToolbox + 'static> SharedAccess<Box<dyn ActorRefSender<TB>>> for ActorRefSenderSharedGeneric<TB> {
+  fn with_read<R>(&self, f: impl FnOnce(&Box<dyn ActorRefSender<TB>>) -> R) -> R {
+    self.inner.with_read(f)
+  }
+
+  fn with_write<R>(&self, f: impl FnOnce(&mut Box<dyn ActorRefSender<TB>>) -> R) -> R {
+    self.inner.with_write(f)
   }
 }
 

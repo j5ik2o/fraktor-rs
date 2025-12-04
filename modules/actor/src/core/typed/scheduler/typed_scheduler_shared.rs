@@ -1,4 +1,4 @@
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::SharedAccess};
 
 use super::typed_scheduler_guard::TypedSchedulerGuard;
 use crate::core::scheduler::SchedulerSharedGeneric;
@@ -16,9 +16,11 @@ impl<TB: RuntimeToolbox + 'static> TypedSchedulerShared<TB> {
   }
 
   /// Executes a closure while holding the scheduler lock, exposing a typed guard.
-  pub fn with_mut<R>(&self, f: impl FnOnce(&mut TypedSchedulerGuard<'_, TB>) -> R) -> R {
-    let mut guard = TypedSchedulerGuard { guard: self.inner.lock_guard() };
-    f(&mut guard)
+  pub fn with_write<R>(&self, f: impl FnOnce(&mut TypedSchedulerGuard<'_, TB>) -> R) -> R {
+    self.inner.with_write(|scheduler| {
+      let mut guard = TypedSchedulerGuard::new(scheduler);
+      f(&mut guard)
+    })
   }
 
   /// Returns the underlying shared handle (for wiring).

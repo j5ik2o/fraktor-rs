@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use fraktor_utils_rs::{
   core::{
-    sync::{ArcShared, ArcShared as Arc},
+    sync::{ArcShared, ArcShared as Arc, SharedAccess},
     time::TimerInstant,
   },
   std::runtime_toolbox::StdToolbox,
@@ -74,7 +74,7 @@ impl TickDriverConfig {
 
       // Get scheduler, resolution, and capacity from context
       let scheduler: SchedulerSharedGeneric<StdToolbox> = ctx.scheduler();
-      let capacity = scheduler.with_mut(|s| s.config().profile().tick_buffer_quota());
+      let capacity = scheduler.with_read(|s| s.config().profile().tick_buffer_quota());
 
       // Create tick driver components
       let signal = TickExecutorSignal::new();
@@ -159,7 +159,7 @@ impl TickDriverConfig {
       let handle = Handle::try_current().expect("Tokio runtime handle unavailable");
 
       let scheduler: SchedulerSharedGeneric<StdToolbox> = ctx.scheduler();
-      let capacity = scheduler.with_mut(|s| s.config().profile().tick_buffer_quota());
+      let capacity = scheduler.with_read(|s| s.config().profile().tick_buffer_quota());
 
       let signal = TickExecutorSignal::new();
       let feed = TickFeed::new(resolution, capacity, signal);

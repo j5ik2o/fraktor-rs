@@ -60,7 +60,7 @@ fn typed_scheduler_context_reuses_shared_scheduler_arc() {
 
   let scheduler_arc = context.scheduler();
   {
-    scheduler_arc.with_mut(|guard| {
+    scheduler_arc.with_write(|guard| {
       assert!(guard.command_for_test(&handle).is_some());
     });
   }

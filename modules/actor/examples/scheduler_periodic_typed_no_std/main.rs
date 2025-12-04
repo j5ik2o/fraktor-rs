@@ -61,7 +61,7 @@ impl TypedActor<GuardianCommand> for GuardianActor {
         let command = GuardianCommand::Tick(message);
 
         // TypedScheduler::schedule_at_fixed_rateを使用
-        scheduler_shared.with_mut(|typed_scheduler| {
+        scheduler_shared.with_write(|typed_scheduler| {
           typed_scheduler
             .schedule_at_fixed_rate(Duration::from_millis(50), Duration::from_millis(30), target, command, None, None)
             .map_err(|_| ActorError::recoverable("failed to schedule"))
