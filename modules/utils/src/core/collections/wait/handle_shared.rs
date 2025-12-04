@@ -1,13 +1,15 @@
+//! Shared wait handle for async collection operations.
+
 use core::{
   future::Future,
   pin::Pin,
   task::{Context, Poll},
 };
 
-use super::{WaitNodeShared, node::WaitNode};
+use super::WaitNodeShared;
 use crate::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  sync::sync_mutex_like::SyncMutexLike,
+  sync::SharedAccess,
 };
 
 /// Future returned when registering interest in a queue/stack event.
@@ -24,11 +26,6 @@ where
   pub const fn new(node: WaitNodeShared<E, TB>) -> Self {
     Self { node }
   }
-
-  #[allow(clippy::missing_const_for_fn)] // ArcShared の Deref が const でないため const fn 化できない
-  fn node(&self) -> &crate::core::runtime_toolbox::ToolboxMutex<WaitNode<E>, TB> {
-    &self.node
-  }
 }
 
 impl<E: Send + 'static, TB> Future for WaitShared<E, TB>
@@ -40,9 +37,7 @@ where
   fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
     let this = self.get_mut();
 
-    let mut guard = this.node().lock();
-
-    match guard.poll(cx) {
+    this.node.with_write(|guard| match guard.poll(cx) {
       | Poll::Ready(()) => {
         let result = guard.take_result().unwrap_or_else(|| {
           debug_assert!(false, "Completed waiter must provide a result");
@@ -51,17 +46,17 @@ where
         Poll::Ready(result)
       },
       | Poll::Pending => Poll::Pending,
-    }
+    })
   }
 }
 
-impl<E: Send + 'static, TB: RuntimeToolbox> Drop for WaitShared<E, TB> {
+impl<E: Send + 'static, TB: RuntimeToolbox + 'static> Drop for WaitShared<E, TB> {
   fn drop(&mut self) {
-    self.node.lock().cancel();
+    self.node.with_write(|n| n.cancel());
   }
 }
 
-impl<E: Send + 'static, TB: RuntimeToolbox> Clone for WaitShared<E, TB> {
+impl<E: Send + 'static, TB: RuntimeToolbox + 'static> Clone for WaitShared<E, TB> {
   fn clone(&self) -> Self {
     Self { node: self.node.clone() }
   }
