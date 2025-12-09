@@ -27,7 +27,7 @@ use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 use super::{
   ActorPathRegistry, ActorRefProvider, ActorRefProviderHandle, ActorRefProviderSharedGeneric, AskFuturesSharedGeneric,
   AuthorityState, CellsSharedGeneric, ExtraTopLevelsSharedGeneric, GuardianKind, RegistriesSharedGeneric,
-  RemoteAuthorityError, RemoteAuthorityManagerSharedGeneric, RemoteWatchHook, RemotingConfig,
+  RemoteAuthorityError, RemoteAuthorityManagerSharedGeneric, RemoteWatchHook, RemotingConfig, TempActorsSharedGeneric,
 };
 use crate::core::{
   actor_prim::{
@@ -100,7 +100,7 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   event_stream: ArcShared<EventStreamGeneric<TB>>,
   dead_letter: ArcShared<DeadLetterGeneric<TB>>,
   extra_top_levels: ExtraTopLevelsSharedGeneric<TB>,
-  temp_actors: ToolboxMutex<HashMap<String, ActorRefGeneric<TB>, RandomState>, TB>,
+  temp_actors: TempActorsSharedGeneric<TB>,
   temp_counter: AtomicU64,
   failure_total: AtomicU64,
   failure_restart_total: AtomicU64,
@@ -152,7 +152,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       event_stream,
       dead_letter,
       extra_top_levels: ExtraTopLevelsSharedGeneric::default(),
-      temp_actors: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::with_hasher(RandomState::new())),
+      temp_actors: TempActorsSharedGeneric::default(),
       temp_counter: AtomicU64::new(0),
       failure_total: AtomicU64::new(0),
       failure_restart_total: AtomicU64::new(0),
@@ -481,19 +481,19 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   pub(crate) fn register_temp_actor(&self, actor: ActorRefGeneric<TB>) -> String {
     let id = self.temp_counter.fetch_add(1, Ordering::Relaxed) + 1;
     let name = format!("t{:x}", id);
-    self.temp_actors.lock().insert(name.clone(), actor);
+    self.temp_actors.with_write(|temp_actors| temp_actors.insert(name.clone(), actor));
     name
   }
 
   /// Removes a temporary actor reference if registered.
   pub(crate) fn unregister_temp_actor(&self, name: &str) -> Option<ActorRefGeneric<TB>> {
-    self.temp_actors.lock().remove(name)
+    self.temp_actors.with_write(|temp_actors| temp_actors.remove(name))
   }
 
   /// Resolves a registered temporary actor reference.
   #[must_use]
   pub(crate) fn temp_actor(&self, name: &str) -> Option<ActorRefGeneric<TB>> {
-    self.temp_actors.lock().get(name).cloned()
+    self.temp_actors.with_read(|temp_actors| temp_actors.get(name))
   }
 
   /// Resolves the actor path for the specified pid if the actor exists.
