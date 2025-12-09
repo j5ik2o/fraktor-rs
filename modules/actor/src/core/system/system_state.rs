@@ -25,10 +25,10 @@ use hashbrown::HashMap;
 use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
 use super::{
-  ActorPathRegistry, ActorRefProvider, ActorRefProviderHandle, ActorRefProviderSharedGeneric, AskFuturesSharedGeneric,
-  AuthorityState, CellsSharedGeneric, ExtensionsSharedGeneric, ExtraTopLevelsSharedGeneric, GuardianKind,
-  RegistriesSharedGeneric, RemoteAuthorityError, RemoteAuthorityManagerSharedGeneric, RemoteWatchHook, RemotingConfig,
-  TempActorsSharedGeneric,
+  ActorPathRegistry, ActorRefProvider, ActorRefProviderHandle, ActorRefProviderSharedGeneric,
+  ActorRefProvidersSharedGeneric, AskFuturesSharedGeneric, AuthorityState, CellsSharedGeneric, ExtensionsSharedGeneric,
+  ExtraTopLevelsSharedGeneric, GuardianKind, RegistriesSharedGeneric, RemoteAuthorityError,
+  RemoteAuthorityManagerSharedGeneric, RemoteWatchHook, RemotingConfig, TempActorsSharedGeneric,
 };
 use crate::core::{
   actor_prim::{
@@ -109,7 +109,7 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   failure_escalate_total: AtomicU64,
   failure_inflight: AtomicU64,
   extensions: ExtensionsSharedGeneric<TB>,
-  actor_ref_providers: ToolboxMutex<HashMap<TypeId, ArcShared<dyn Any + Send + Sync + 'static>, RandomState>, TB>,
+  actor_ref_providers: ActorRefProvidersSharedGeneric<TB>,
   actor_ref_provider_callers_by_scheme:
     ToolboxMutex<HashMap<ActorPathScheme, ActorRefProviderCaller<TB>, RandomState>, TB>,
   remote_watch_hook: ToolboxMutex<Option<Box<dyn RemoteWatchHook<TB>>>, TB>,
@@ -161,7 +161,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       failure_escalate_total: AtomicU64::new(0),
       failure_inflight: AtomicU64::new(0),
       extensions: ExtensionsSharedGeneric::default(),
-      actor_ref_providers: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::with_hasher(RandomState::new())),
+      actor_ref_providers: ActorRefProvidersSharedGeneric::default(),
       remote_watch_hook: <TB::MutexFamily as SyncMutexFamily>::create(None),
       dispatchers,
       mailboxes,
@@ -602,7 +602,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   where
     P: ActorRefProvider<TB> + Any + Send + Sync + 'static, {
     let erased: ArcShared<dyn Any + Send + Sync + 'static> = provider.inner().clone();
-    self.actor_ref_providers.lock().insert(TypeId::of::<P>(), erased);
+    self.actor_ref_providers.with_write(|providers| providers.insert(TypeId::of::<P>(), erased));
     let schemes = provider.supported_schemes().to_vec();
     for scheme in schemes {
       let cloned = provider.clone();
@@ -619,13 +619,13 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   pub(crate) fn actor_ref_provider<P>(&self) -> Option<ActorRefProviderSharedGeneric<TB, P>>
   where
     P: ActorRefProvider<TB> + Any + Send + Sync + 'static, {
-    self
-      .actor_ref_providers
-      .lock()
-      .get(&TypeId::of::<P>())
-      .cloned()
-      .and_then(|provider| provider.downcast::<ToolboxMutex<ActorRefProviderHandle<P>, TB>>().ok())
-      .map(ActorRefProviderSharedGeneric::from_shared)
+    self.actor_ref_providers.with_read(|providers| {
+      providers
+        .get(&TypeId::of::<P>())
+        .cloned()
+        .and_then(|provider| provider.downcast::<ToolboxMutex<ActorRefProviderHandle<P>, TB>>().ok())
+        .map(ActorRefProviderSharedGeneric::from_shared)
+    })
   }
 
   /// Invokes a provider registered for the given scheme.
