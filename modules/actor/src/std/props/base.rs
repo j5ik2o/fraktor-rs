@@ -6,15 +6,12 @@ use std::{
   string::String,
 };
 
-use fraktor_utils_rs::{
-  core::{runtime_toolbox::ToolboxMutex, sync::ArcShared},
-  std::runtime_toolbox::StdToolbox,
-};
+use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
 use crate::{
   core::{
     mailbox::MailboxPolicy,
-    props::{ActorFactory, MailboxConfig, PropsGeneric as CorePropsGeneric},
+    props::{ActorFactory, ActorFactorySharedGeneric, MailboxConfig, PropsGeneric as CorePropsGeneric},
   },
   std::{
     actor_prim::{Actor, ActorAdapter},
@@ -47,7 +44,7 @@ impl Props {
 
   /// Returns the actor factory.
   #[must_use]
-  pub fn factory(&self) -> &ArcShared<ToolboxMutex<Box<dyn ActorFactory<StdToolbox>>, StdToolbox>> {
+  pub const fn factory(&self) -> &ActorFactorySharedGeneric<StdToolbox> {
     self.inner.factory()
   }
 

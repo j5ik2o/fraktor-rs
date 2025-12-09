@@ -49,7 +49,7 @@ impl<TB: RuntimeToolbox + 'static> MessageInvokerPipelineGeneric<TB> {
     message: AnyMessageGeneric<TB>,
   ) -> Result<(), ActorError>
   where
-    A: Actor<TB>, {
+    A: Actor<TB> + ?Sized, {
     let previous = ctx.reply_to().cloned();
     let reply_target = message.reply_to().cloned();
 
