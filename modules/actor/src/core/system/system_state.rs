@@ -26,7 +26,8 @@ use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
 use super::{
   ActorPathRegistry, ActorRefProvider, ActorRefProviderHandle, ActorRefProviderSharedGeneric, AuthorityState,
-  GuardianKind, RemoteAuthorityError, RemoteAuthorityManagerSharedGeneric, RemoteWatchHook, RemotingConfig,
+  CellsSharedGeneric, GuardianKind, RemoteAuthorityError, RemoteAuthorityManagerSharedGeneric, RemoteWatchHook,
+  RemotingConfig,
 };
 use crate::core::{
   actor_prim::{
@@ -88,7 +89,7 @@ impl Default for PathIdentity {
 pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   next_pid: AtomicU64,
   clock: AtomicU64,
-  cells: ToolboxMutex<HashMap<Pid, ArcShared<ActorCellGeneric<TB>>, RandomState>, TB>,
+  cells: CellsSharedGeneric<TB>,
   registries: ToolboxMutex<HashMap<Option<Pid>, NameRegistry, RandomState>, TB>,
   root_guardian: ToolboxMutex<Option<ArcShared<ActorCellGeneric<TB>>>, TB>,
   system_guardian: ToolboxMutex<Option<ArcShared<ActorCellGeneric<TB>>>, TB>,
@@ -140,7 +141,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     Self {
       next_pid: AtomicU64::new(0),
       clock: AtomicU64::new(0),
-      cells: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::with_hasher(RandomState::new())),
+      cells: CellsSharedGeneric::default(),
       registries: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::with_hasher(RandomState::new())),
       root_guardian: <TB::MutexFamily as SyncMutexFamily>::create(None),
       system_guardian: <TB::MutexFamily as SyncMutexFamily>::create(None),
@@ -218,7 +219,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   /// Registers the provided actor cell in the global registry.
   pub(crate) fn register_cell(&self, cell: ArcShared<ActorCellGeneric<TB>>) {
     let pid = cell.pid();
-    self.cells.lock().insert(pid, cell);
+    self.cells.with_write(|cells| cells.insert(pid, cell));
     self.register_actor_path(pid);
   }
 
@@ -238,7 +239,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     }
 
     self.actor_path_registry.lock().unregister(pid);
-    self.cells.lock().remove(pid)
+    self.cells.with_write(|cells| cells.remove(pid))
   }
 
   fn register_actor_path(&self, pid: Pid) {
@@ -311,7 +312,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   /// Retrieves an actor cell by pid.
   #[must_use]
   pub(crate) fn cell(&self, pid: &Pid) -> Option<ArcShared<ActorCellGeneric<TB>>> {
-    self.cells.lock().get(pid).cloned()
+    self.cells.with_read(|cells| cells.get(pid))
   }
 
   /// Binds an actor name within its parent's scope.
