@@ -26,8 +26,9 @@ use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
 use super::{
   ActorPathRegistry, ActorRefProvider, ActorRefProviderHandle, ActorRefProviderSharedGeneric, AskFuturesSharedGeneric,
-  AuthorityState, CellsSharedGeneric, ExtraTopLevelsSharedGeneric, GuardianKind, RegistriesSharedGeneric,
-  RemoteAuthorityError, RemoteAuthorityManagerSharedGeneric, RemoteWatchHook, RemotingConfig, TempActorsSharedGeneric,
+  AuthorityState, CellsSharedGeneric, ExtensionsSharedGeneric, ExtraTopLevelsSharedGeneric, GuardianKind,
+  RegistriesSharedGeneric, RemoteAuthorityError, RemoteAuthorityManagerSharedGeneric, RemoteWatchHook, RemotingConfig,
+  TempActorsSharedGeneric,
 };
 use crate::core::{
   actor_prim::{
@@ -107,7 +108,7 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   failure_stop_total: AtomicU64,
   failure_escalate_total: AtomicU64,
   failure_inflight: AtomicU64,
-  extensions: ToolboxMutex<HashMap<TypeId, ArcShared<dyn Any + Send + Sync + 'static>, RandomState>, TB>,
+  extensions: ExtensionsSharedGeneric<TB>,
   actor_ref_providers: ToolboxMutex<HashMap<TypeId, ArcShared<dyn Any + Send + Sync + 'static>, RandomState>, TB>,
   actor_ref_provider_callers_by_scheme:
     ToolboxMutex<HashMap<ActorPathScheme, ActorRefProviderCaller<TB>, RandomState>, TB>,
@@ -159,7 +160,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       failure_stop_total: AtomicU64::new(0),
       failure_escalate_total: AtomicU64::new(0),
       failure_inflight: AtomicU64::new(0),
-      extensions: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::with_hasher(RandomState::new())),
+      extensions: ExtensionsSharedGeneric::default(),
       actor_ref_providers: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::with_hasher(RandomState::new())),
       remote_watch_hook: <TB::MutexFamily as SyncMutexFamily>::create(None),
       dispatchers,
@@ -553,14 +554,16 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
 
   /// Returns `true` when an extension for the provided [`TypeId`] is registered.
   pub(crate) fn has_extension(&self, type_id: TypeId) -> bool {
-    self.extensions.lock().contains_key(&type_id)
+    self.extensions.with_read(|extensions| extensions.contains_key(&type_id))
   }
 
   /// Returns an extension by [`TypeId`].
   pub(crate) fn extension<E>(&self, type_id: TypeId) -> Option<ArcShared<E>>
   where
     E: Any + Send + Sync + 'static, {
-    self.extensions.lock().get(&type_id).cloned().and_then(|handle| handle.downcast::<E>().ok())
+    self
+      .extensions
+      .with_read(|extensions| extensions.get(&type_id).cloned().and_then(|handle| handle.downcast::<E>().ok()))
   }
 
   /// Inserts an extension if absent and returns the shared instance.
@@ -568,29 +571,31 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   where
     E: Any + Send + Sync + 'static,
     F: FnOnce() -> ArcShared<E>, {
-    let mut guard = self.extensions.lock();
-    if let Some(existing) = guard.get(&type_id) {
-      if let Ok(extension) = existing.clone().downcast::<E>() {
-        return extension;
+    self.extensions.with_write(|extensions| {
+      if let Some(existing) = extensions.get(&type_id) {
+        if let Ok(extension) = existing.clone().downcast::<E>() {
+          return extension;
+        }
+        panic!("extension type mismatch for id {type_id:?}");
       }
-      panic!("extension type mismatch for id {type_id:?}");
-    }
-    let extension = factory();
-    let erased: ArcShared<dyn Any + Send + Sync + 'static> = extension.clone();
-    guard.insert(type_id, erased);
-    extension
+      let extension = factory();
+      let erased: ArcShared<dyn Any + Send + Sync + 'static> = extension.clone();
+      extensions.insert(type_id, erased);
+      extension
+    })
   }
 
   pub(crate) fn extension_by_type<E>(&self) -> Option<ArcShared<E>>
   where
     E: Any + Send + Sync + 'static, {
-    let guard = self.extensions.lock();
-    for handle in guard.values() {
-      if let Ok(extension) = handle.clone().downcast::<E>() {
-        return Some(extension);
+    self.extensions.with_read(|extensions| {
+      for handle in extensions.values() {
+        if let Ok(extension) = handle.clone().downcast::<E>() {
+          return Some(extension);
+        }
       }
-    }
-    None
+      None
+    })
   }
 
   pub(crate) fn install_actor_ref_provider<P>(&self, provider: &ActorRefProviderSharedGeneric<TB, P>)
