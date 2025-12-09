@@ -408,7 +408,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
         self.system.clone().mark_terminated();
       },
       | Some(GuardianKind::User) | Some(GuardianKind::System) => {
-        if self.system.root_guardian_pid().is_none() {
+        if !self.system.guardian_alive(GuardianKind::Root) {
           self.system.clone().mark_terminated();
         }
       },
