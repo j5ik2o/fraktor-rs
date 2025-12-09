@@ -97,16 +97,15 @@ fn system_state_remove_cell_reserves_uid() {
   let pid = state.allocate_pid();
   let path = ActorPath::root().child("reserved").with_uid(ActorUid::new(777));
 
-  {
-    let mut registry = state.actor_path_registry().lock();
+  state.actor_path_registry().with_write(|registry| {
     registry.register(pid, &path);
-  }
+  });
 
   let _ = state.remove_cell(&pid);
 
-  let mut registry = state.actor_path_registry().lock();
   let now = state.monotonic_now().as_secs();
-  let result = registry.reserve_uid(&path, ActorUid::new(888), now, None);
+  let result =
+    state.actor_path_registry().with_write(|registry| registry.reserve_uid(&path, ActorUid::new(888), now, None));
   assert!(matches!(result, Err(PathResolutionError::UidReserved { .. })));
 }
 
@@ -127,8 +126,9 @@ fn system_state_registers_canonical_uri_with_config() {
     ActorCell::create(state.clone(), child_pid, Some(root_pid), "worker".to_string(), &props).expect("worker");
   state.register_cell(child);
 
-  let canonical = state
-    .with_actor_path_registry(|registry| registry.lock().canonical_uri(&child_pid).expect("canonical uri").to_string());
+  let canonical = state.with_actor_path_registry(|registry| {
+    registry.with_read(|r| r.canonical_uri(&child_pid).expect("canonical uri").to_string())
+  });
   assert!(canonical.starts_with("fraktor.tcp://fraktor-system@localhost:2552"));
   assert!(canonical.ends_with("/user/worker"));
 }
@@ -174,7 +174,7 @@ fn system_state_refuses_canonical_without_port() {
   state.register_cell(child);
 
   assert!(state.canonical_actor_path(&child_pid).is_none());
-  assert!(state.with_actor_path_registry(|registry| registry.lock().get(&child_pid).is_none()));
+  assert!(state.with_actor_path_registry(|registry| registry.with_read(|r| r.get(&child_pid).is_none())));
   let local = state.actor_path(&child_pid).expect("local path");
   assert_eq!(local.to_relative_string(), "/user/worker");
   assert!(state.canonical_authority_components().is_none());
@@ -196,8 +196,9 @@ fn system_state_honors_default_guardian_config() {
     ActorCell::create(state.clone(), child_pid, Some(root_pid), "logger".to_string(), &props).expect("logger");
   state.register_cell(child);
 
-  let canonical = state
-    .with_actor_path_registry(|registry| registry.lock().canonical_uri(&child_pid).expect("canonical uri").to_string());
+  let canonical = state.with_actor_path_registry(|registry| {
+    registry.with_read(|r| r.canonical_uri(&child_pid).expect("canonical uri").to_string())
+  });
   assert!(canonical.contains("/system/logger"), "canonical: {}", canonical);
 }
 

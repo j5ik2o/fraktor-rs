@@ -4,7 +4,10 @@
 
 mod actor_path_handle;
 mod actor_path_registry;
+mod actor_path_registry_shared;
 mod actor_ref_provider;
+mod actor_ref_provider_callers;
+mod actor_ref_provider_callers_shared;
 mod actor_ref_provider_handle;
 mod actor_ref_provider_installer;
 mod actor_ref_provider_shared;
@@ -48,7 +51,10 @@ mod temp_actors_shared;
 
 pub use actor_path_handle::ActorPathHandle;
 pub use actor_path_registry::ActorPathRegistry;
+pub use actor_path_registry_shared::{ActorPathRegistryShared, ActorPathRegistrySharedGeneric};
 pub use actor_ref_provider::ActorRefProvider;
+pub(crate) use actor_ref_provider_callers::ActorRefProviderCaller;
+pub(crate) use actor_ref_provider_callers_shared::ActorRefProviderCallersSharedGeneric;
 pub use actor_ref_provider_handle::ActorRefProviderHandle;
 pub use actor_ref_provider_installer::ActorRefProviderInstaller;
 pub use actor_ref_provider_shared::{ActorRefProviderShared, ActorRefProviderSharedGeneric};
