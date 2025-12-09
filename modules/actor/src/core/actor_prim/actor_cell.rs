@@ -8,13 +8,13 @@ use core::{mem, task::Poll, time::Duration};
 
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+  sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
 };
 use portable_atomic::{AtomicBool, Ordering};
 
 use crate::core::{
   actor_prim::{
-    Actor, ActorContextGeneric, ContextPipeTaskId, Pid,
+    Actor, ActorContextGeneric, ActorSharedGeneric, ContextPipeTaskId, Pid,
     actor_ref::{ActorRefGeneric, ActorRefSenderSharedGeneric},
     context_pipe_task::{ContextPipeFuture, ContextPipeTask},
     pipe_spawn_error::PipeSpawnError,
@@ -28,7 +28,7 @@ use crate::core::{
     AnyMessageGeneric, FailureMessageSnapshot, FailurePayload, SystemMessage,
     message_invoker::{MessageInvoker, MessageInvokerPipelineGeneric, MessageInvokerShared},
   },
-  props::{ActorFactory, PropsGeneric},
+  props::{ActorFactorySharedGeneric, PropsGeneric},
   spawn::SpawnError,
   supervision::{RestartStatistics, SupervisorDirective, SupervisorStrategyKind},
   system::{ActorSystemGeneric, FailureOutcome, GuardianKind, SystemStateSharedGeneric},
@@ -65,8 +65,8 @@ pub struct ActorCellGeneric<TB: RuntimeToolbox + 'static> {
   parent:     Option<Pid>,
   name:       String,
   system:     SystemStateSharedGeneric<TB>,
-  factory:    ArcShared<ToolboxMutex<Box<dyn ActorFactory<TB>>, TB>>,
-  actor:      ToolboxMutex<Box<dyn Actor<TB> + Send + Sync>, TB>,
+  factory:    ActorFactorySharedGeneric<TB>,
+  actor:      ActorSharedGeneric<TB>,
   pipeline:   MessageInvokerPipelineGeneric<TB>,
   mailbox:    ArcShared<MailboxGeneric<TB>>,
   dispatcher: DispatcherGeneric<TB>,
@@ -110,7 +110,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     mailbox.attach_backpressure_publisher(BackpressurePublisherGeneric::from_dispatcher(dispatcher.clone()));
     let sender = dispatcher.into_sender();
     let factory = props.factory().clone();
-    let actor = <TB::MutexFamily as SyncMutexFamily>::create(factory.lock().create());
+    let actor = ActorSharedGeneric::new(factory.with_write(|f| f.create()));
     let state = <TB::MutexFamily as SyncMutexFamily>::create(ActorCellState::new());
 
     let cell = ArcShared::new(Self {
@@ -140,8 +140,9 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
 
   /// Recreates the actor instance from the stored factory.
   fn recreate_actor(&self) {
-    let mut actor = self.actor.lock();
-    *actor = self.factory.lock().create();
+    self.actor.with_write(|actor| {
+      *actor = self.factory.with_write(|f| f.create());
+    });
   }
 
   /// Returns the pid associated with the cell.
@@ -341,9 +342,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
   pub(crate) fn handle_terminated(&self, terminated_pid: Pid) -> Result<(), ActorError> {
     let system = ActorSystemGeneric::from_state(self.system.clone());
     let mut ctx = ActorContextGeneric::new(&system, self.pid);
-    let mut actor = self.actor.lock();
-    let result = actor.on_terminated(&mut ctx, terminated_pid);
-    drop(actor);
+    let result = self.actor.with_write(|actor| actor.on_terminated(&mut ctx, terminated_pid));
     ctx.clear_reply_to();
     result
   }
@@ -360,8 +359,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     {
       let system = ActorSystemGeneric::from_state(self.system.clone());
       let mut ctx = ActorContextGeneric::new(&system, self.pid);
-      let mut actor = self.actor.lock();
-      actor.post_stop(&mut ctx)?;
+      self.actor.with_write(|actor| actor.post_stop(&mut ctx))?;
       ctx.clear_reply_to();
     }
 
@@ -383,9 +381,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
   fn handle_stop(&self) -> Result<(), ActorError> {
     let system = ActorSystemGeneric::from_state(self.system.clone());
     let mut ctx = ActorContextGeneric::new(&system, self.pid);
-    let mut actor = self.actor.lock();
-    let result = actor.post_stop(&mut ctx);
-    drop(actor);
+    let result = self.actor.with_write(|actor| actor.post_stop(&mut ctx));
     ctx.clear_reply_to();
     if result.is_ok() {
       self.publish_lifecycle(LifecycleStage::Stopped);
@@ -475,9 +471,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
   fn run_pre_start(&self, stage: LifecycleStage) -> Result<(), ActorError> {
     let system = ActorSystemGeneric::from_state(self.system.clone());
     let mut ctx = ActorContextGeneric::new(&system, self.pid);
-    let mut actor = self.actor.lock();
-    let outcome = actor.pre_start(&mut ctx);
-    drop(actor);
+    let outcome = self.actor.with_write(|actor| actor.pre_start(&mut ctx));
     ctx.clear_reply_to();
     if outcome.is_ok() {
       self.publish_lifecycle(stage);
@@ -500,10 +494,8 @@ impl<TB: RuntimeToolbox + 'static> MessageInvoker<TB> for ActorCellInvoker<TB> {
   fn invoke_user_message(&mut self, message: AnyMessageGeneric<TB>) -> Result<(), ActorError> {
     let system = ActorSystemGeneric::from_state(self.cell.system.clone());
     let mut ctx = ActorContextGeneric::new(&system, self.cell.pid);
-    let mut actor = self.cell.actor.lock();
     let failure_candidate = message.clone();
-    let result = self.cell.pipeline.invoke_user(&mut *actor, &mut ctx, message);
-    drop(actor);
+    let result = self.cell.actor.with_write(|actor| self.cell.pipeline.invoke_user(&mut **actor, &mut ctx, message));
     if let Err(ref error) = result {
       let snapshot = FailureMessageSnapshot::from_message(&failure_candidate);
       self.cell.report_failure(error, Some(snapshot));
@@ -558,10 +550,9 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
   ) -> (SupervisorDirective, Vec<Pid>) {
     // Get supervisor strategy dynamically from actor instance
     let strategy = {
-      let mut actor = self.actor.lock();
       let system = ActorSystemGeneric::from_state(self.system.clone());
       let mut ctx = ActorContextGeneric::new(&system, self.pid);
-      actor.supervisor_strategy(&mut ctx)
+      self.actor.with_write(|actor| actor.supervisor_strategy(&mut ctx))
     };
 
     let directive = {
