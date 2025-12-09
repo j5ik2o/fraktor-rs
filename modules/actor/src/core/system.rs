@@ -20,6 +20,8 @@ mod ask_futures;
 mod ask_futures_shared;
 mod authority_state;
 mod base;
+#[cfg(any(test, feature = "test-support"))]
+pub(crate) mod booting_state;
 mod cells;
 mod cells_shared;
 mod extended_actor_system;
@@ -28,6 +30,8 @@ mod extensions_shared;
 mod extra_top_levels;
 mod extra_top_levels_shared;
 mod guardian_kind;
+mod guardians_state;
+mod guardians_state_shared;
 mod local_actor_ref_provider;
 mod local_actor_ref_provider_installer;
 mod register_extra_top_level_error;
@@ -42,6 +46,8 @@ mod remote_watch_hook_shared;
 mod remoting_config;
 mod reservation_policy;
 mod root_guardian_actor;
+#[cfg(any(test, feature = "test-support"))]
+pub(crate) mod running_state;
 mod system_guardian_actor;
 mod system_guardian_protocol;
 mod system_state;
@@ -70,6 +76,7 @@ pub use extended_actor_system::{ExtendedActorSystem, ExtendedActorSystemGeneric}
 pub(crate) use extensions_shared::ExtensionsSharedGeneric;
 pub(crate) use extra_top_levels_shared::ExtraTopLevelsSharedGeneric;
 pub use guardian_kind::GuardianKind;
+pub(crate) use guardians_state_shared::GuardiansStateSharedGeneric;
 pub use local_actor_ref_provider::LocalActorRefProviderGeneric;
 pub use local_actor_ref_provider_installer::LocalActorRefProviderInstaller;
 pub use register_extra_top_level_error::RegisterExtraTopLevelError;

@@ -57,7 +57,9 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   /// Creates an empty actor system without any guardian (testing only).
   #[must_use]
   pub fn new_empty() -> Self {
-    Self { state: SystemStateSharedGeneric::new(SystemStateGeneric::new()) }
+    let state = SystemStateSharedGeneric::new(SystemStateGeneric::new());
+    state.mark_root_started();
+    Self { state }
   }
 
   /// Creates an actor system from an existing system state.
@@ -157,6 +159,9 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   ///
   /// Returns [`ActorRefResolveError`] when the path cannot be resolved.
   pub fn resolve_actor_ref(&self, path: ActorPath) -> Result<ActorRefGeneric<TB>, ActorRefResolveError> {
+    if !self.state.has_root_started() && self.state.root_guardian_pid().is_none() {
+      return Err(ActorRefResolveError::SystemNotBootstrapped);
+    }
     let resolved_path = self.prepare_actor_path(path)?;
     let scheme = resolved_path.parts().scheme();
     let result = self
@@ -419,6 +424,9 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   ///
   /// Returns [`SpawnError::InvalidProps`] when the parent pid is unknown.
   pub(crate) fn spawn_child(&self, parent: Pid, props: &PropsGeneric<TB>) -> Result<ChildRefGeneric<TB>, SpawnError> {
+    if !self.state.has_root_started() && self.state.root_guardian_pid().is_none() {
+      return Err(SpawnError::system_not_bootstrapped());
+    }
     if self.state.cell(&parent).is_none() {
       return Err(SpawnError::invalid_props(PARENT_MISSING));
     }
@@ -527,11 +535,11 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     let root_props = PropsGeneric::from_fn(RootGuardianActor::new).with_name("root");
     let root_cell = self.spawn_root_guardian_cell(&root_props)?;
     let root_pid = root_cell.pid();
-    self.state.set_root_guardian(root_cell.clone());
+    self.state.set_root_guardian(&root_cell);
 
     let user_guardian = self.spawn_child(root_pid, user_guardian_props)?;
     if let Some(cell) = self.state.cell(&user_guardian.pid()) {
-      self.state.set_user_guardian(cell);
+      self.state.set_user_guardian(&cell);
     } else {
       return Err(SpawnError::invalid_props("user guardian unavailable"));
     }
@@ -545,7 +553,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
 
     let system_guardian = self.spawn_child(root_pid, &system_props)?;
     if let Some(cell) = self.state.cell(&system_guardian.pid()) {
-      self.state.set_system_guardian(cell);
+      self.state.set_system_guardian(&cell);
     }
 
     configure(self)?;

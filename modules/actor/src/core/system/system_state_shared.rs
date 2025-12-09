@@ -132,17 +132,17 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   }
 
   /// Stores the root guardian cell reference.
-  pub fn set_root_guardian(&self, cell: ArcShared<ActorCellGeneric<TB>>) {
+  pub fn set_root_guardian(&self, cell: &ArcShared<ActorCellGeneric<TB>>) {
     self.inner.set_root_guardian(cell);
   }
 
   /// Stores the system guardian cell reference.
-  pub fn set_system_guardian(&self, cell: ArcShared<ActorCellGeneric<TB>>) {
+  pub fn set_system_guardian(&self, cell: &ArcShared<ActorCellGeneric<TB>>) {
     self.inner.set_system_guardian(cell);
   }
 
   /// Stores the user guardian cell reference.
-  pub fn set_user_guardian(&self, cell: ArcShared<ActorCellGeneric<TB>>) {
+  pub fn set_user_guardian(&self, cell: &ArcShared<ActorCellGeneric<TB>>) {
     self.inner.set_user_guardian(cell);
   }
 
@@ -186,6 +186,23 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   #[must_use]
   pub fn user_guardian_pid(&self) -> Option<Pid> {
     self.inner.user_guardian_pid()
+  }
+
+  /// Returns the PID registered for the specified guardian.
+  #[must_use]
+  pub fn guardian_pid(&self, kind: GuardianKind) -> Option<Pid> {
+    self.inner.guardian_pid(kind)
+  }
+
+  /// Registers a PID for the specified guardian kind.
+  pub fn register_guardian_pid(&self, kind: GuardianKind, pid: Pid) {
+    self.inner.register_guardian_pid(kind, pid);
+  }
+
+  /// Returns whether the specified guardian is alive.
+  #[must_use]
+  pub fn guardian_alive(&self, kind: GuardianKind) -> bool {
+    self.inner.guardian_alive(kind)
   }
 
   /// Registers an extra top-level path prior to root startup.

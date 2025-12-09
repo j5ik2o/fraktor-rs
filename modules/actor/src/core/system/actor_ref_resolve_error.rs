@@ -9,6 +9,8 @@ pub enum ActorRefResolveError {
   UnsupportedScheme,
   /// No provider is registered for the requested scheme.
   ProviderMissing,
+  /// System has not completed bootstrap.
+  SystemNotBootstrapped,
   /// Authority information is incomplete or unavailable.
   InvalidAuthority,
   /// Provider failed to resolve the path.
@@ -20,6 +22,7 @@ impl core::fmt::Display for ActorRefResolveError {
     match self {
       | Self::UnsupportedScheme => write!(f, "unsupported actor path scheme"),
       | Self::ProviderMissing => write!(f, "no actor-ref provider registered for scheme"),
+      | Self::SystemNotBootstrapped => write!(f, "actor system not bootstrapped yet"),
       | Self::InvalidAuthority => write!(f, "authority is missing or incomplete"),
       | Self::NotFound(reason) => write!(f, "actor reference could not be resolved: {reason}"),
     }

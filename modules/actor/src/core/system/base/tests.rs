@@ -16,7 +16,7 @@ use fraktor_utils_rs::core::{
 use super::ActorSystem;
 use crate::core::{
   actor_prim::{
-    Actor, ActorCell,
+    Actor, ActorCell, Pid,
     actor_path::{ActorPath, ActorPathParts, ActorPathScheme},
     actor_ref::ActorRefGeneric,
   },
@@ -30,6 +30,7 @@ use crate::core::{
     AutoDriverMetadata, AutoProfileKind, SchedulerConfig, SchedulerContextSharedGeneric, TickDriverId, TickDriverKind,
     TickDriverMetadata,
   },
+  spawn::SpawnError,
   system::{ActorRefProvider, ActorRefProviderSharedGeneric, ActorRefResolveError, ActorSystemConfig, RemotingConfig},
 };
 
@@ -109,6 +110,22 @@ impl EventStreamSubscriber<NoStdToolbox> for LifecycleEventWatcher {
       self.stages.lock().push(lifecycle.stage());
     }
   }
+}
+
+#[test]
+fn spawn_child_fails_before_root_started() {
+  let system = ActorSystem::new_empty();
+  let props = Props::from_fn(|| TestActor);
+  let err = system.spawn_child(Pid::new(999, 0), &props).unwrap_err();
+  assert!(matches!(err, SpawnError::InvalidProps(_)));
+}
+
+#[test]
+fn resolve_actor_ref_fails_before_root_started() {
+  let system = ActorSystem::new_empty();
+  let path = ActorPath::root();
+  let err = system.resolve_actor_ref(path).unwrap_err();
+  assert!(matches!(err, ActorRefResolveError::ProviderMissing | ActorRefResolveError::InvalidAuthority));
 }
 
 struct NoopExecutor;
@@ -579,4 +596,30 @@ fn resolve_actor_ref_fails_when_provider_missing() {
   let result = system.resolve_actor_ref(path);
 
   assert!(matches!(result, Err(ActorRefResolveError::ProviderMissing)));
+}
+
+#[test]
+fn guardian_refs_preserve_canonical_authority() {
+  let user_props = Props::from_fn(|| TestActor).with_name("user-guardian");
+  let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
+  let remoting = RemotingConfig::default().with_canonical_host("guardian.example.com").with_canonical_port(4101);
+  let config = ActorSystemConfig::default()
+    .with_system_name("guardian-compat")
+    .with_remoting_config(remoting)
+    .with_tick_driver(tick_driver);
+
+  let system = ActorSystem::new_with_config(&user_props, &config).expect("actor system bootstrap");
+
+  let user_pid = system.state().user_guardian_pid().expect("user guardian pid");
+  let user_ref = system.user_guardian_ref();
+  assert_eq!(user_ref.pid(), user_pid);
+
+  let user_canonical = user_ref.canonical_path().expect("canonical path for user guardian");
+  assert_eq!(user_canonical.parts().scheme(), ActorPathScheme::FraktorTcp);
+  assert_eq!(user_canonical.parts().authority_endpoint().as_deref(), Some("guardian.example.com:4101"));
+
+  let system_ref = system.system_guardian_ref().expect("system guardian ref");
+  let system_canonical = system_ref.canonical_path().expect("canonical path for system guardian");
+  assert_eq!(system_canonical.parts().scheme(), ActorPathScheme::FraktorTcp);
+  assert_eq!(system_canonical.parts().authority_endpoint().as_deref(), Some("guardian.example.com:4101"));
 }
