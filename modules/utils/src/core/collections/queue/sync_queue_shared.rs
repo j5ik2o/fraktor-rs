@@ -50,7 +50,7 @@ where
   ///
   /// Returns a `QueueError` when the backend rejects the element because the queue is closed,
   /// full, or disconnected.
-  pub fn offer(&mut self, item: T) -> Result<OfferOutcome, QueueError<T>> {
+  pub fn offer(&self, item: T) -> Result<OfferOutcome, QueueError<T>> {
     self.inner.with_write(|queue: &mut SyncQueue<T, K, B>| queue.offer(item))
   }
 

@@ -26,7 +26,8 @@ use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
 use super::{
   ActorPathRegistry, ActorRefProvider, ActorRefProviderHandle, ActorRefProviderSharedGeneric, AuthorityState,
-  GuardianKind, RemoteAuthorityError, RemoteAuthorityManagerSharedGeneric, RemoteWatchHook, RemotingConfig,
+  CellsSharedGeneric, GuardianKind, RegistriesSharedGeneric, RemoteAuthorityError, RemoteAuthorityManagerSharedGeneric,
+  RemoteWatchHook, RemotingConfig,
 };
 use crate::core::{
   actor_prim::{
@@ -43,7 +44,7 @@ use crate::core::{
   mailbox::MailboxesSharedGeneric,
   messaging::{AnyMessageGeneric, FailurePayload, SystemMessage},
   scheduler::{SchedulerContextSharedGeneric, TaskRunSummary, TickDriverRuntime},
-  spawn::{NameRegistry, NameRegistryError, SpawnError},
+  spawn::{NameRegistryError, SpawnError},
   supervision::SupervisorDirective,
   system::{RegisterExtraTopLevelError, ReservationPolicy},
 };
@@ -88,8 +89,8 @@ impl Default for PathIdentity {
 pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   next_pid: AtomicU64,
   clock: AtomicU64,
-  cells: ToolboxMutex<HashMap<Pid, ArcShared<ActorCellGeneric<TB>>, RandomState>, TB>,
-  registries: ToolboxMutex<HashMap<Option<Pid>, NameRegistry, RandomState>, TB>,
+  cells: CellsSharedGeneric<TB>,
+  registries: RegistriesSharedGeneric<TB>,
   root_guardian: ToolboxMutex<Option<ArcShared<ActorCellGeneric<TB>>>, TB>,
   system_guardian: ToolboxMutex<Option<ArcShared<ActorCellGeneric<TB>>>, TB>,
   user_guardian: ToolboxMutex<Option<ArcShared<ActorCellGeneric<TB>>>, TB>,
@@ -140,8 +141,8 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     Self {
       next_pid: AtomicU64::new(0),
       clock: AtomicU64::new(0),
-      cells: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::with_hasher(RandomState::new())),
-      registries: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::with_hasher(RandomState::new())),
+      cells: CellsSharedGeneric::default(),
+      registries: RegistriesSharedGeneric::default(),
       root_guardian: <TB::MutexFamily as SyncMutexFamily>::create(None),
       system_guardian: <TB::MutexFamily as SyncMutexFamily>::create(None),
       user_guardian: <TB::MutexFamily as SyncMutexFamily>::create(None),
@@ -218,7 +219,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   /// Registers the provided actor cell in the global registry.
   pub(crate) fn register_cell(&self, cell: ArcShared<ActorCellGeneric<TB>>) {
     let pid = cell.pid();
-    self.cells.lock().insert(pid, cell);
+    self.cells.with_write(|cells| cells.insert(pid, cell));
     self.register_actor_path(pid);
   }
 
@@ -238,7 +239,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     }
 
     self.actor_path_registry.lock().unregister(pid);
-    self.cells.lock().remove(pid)
+    self.cells.with_write(|cells| cells.remove(pid))
   }
 
   fn register_actor_path(&self, pid: Pid) {
@@ -311,7 +312,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   /// Retrieves an actor cell by pid.
   #[must_use]
   pub(crate) fn cell(&self, pid: &Pid) -> Option<ArcShared<ActorCellGeneric<TB>>> {
-    self.cells.lock().get(pid).cloned()
+    self.cells.with_read(|cells| cells.get(pid))
   }
 
   /// Binds an actor name within its parent's scope.
@@ -320,31 +321,34 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   ///
   /// Returns an error if the requested name is already taken.
   pub(crate) fn assign_name(&self, parent: Option<Pid>, hint: Option<&str>, pid: Pid) -> Result<String, SpawnError> {
-    let mut registries = self.registries.lock();
-    let registry = registries.entry(parent).or_insert_with(NameRegistry::new);
+    self.registries.with_write(|registries| {
+      let registry = registries.entry_or_insert(parent);
 
-    match hint {
-      | Some(name) => {
-        registry.register(name, pid).map_err(|error| match error {
-          | NameRegistryError::Duplicate(existing) => SpawnError::name_conflict(existing),
-        })?;
-        Ok(String::from(name))
-      },
-      | None => {
-        let generated = registry.generate_anonymous(pid);
-        registry.register(&generated, pid).map_err(|error| match error {
-          | NameRegistryError::Duplicate(existing) => SpawnError::name_conflict(existing),
-        })?;
-        Ok(generated)
-      },
-    }
+      match hint {
+        | Some(name) => {
+          registry.register(name, pid).map_err(|error| match error {
+            | NameRegistryError::Duplicate(existing) => SpawnError::name_conflict(existing),
+          })?;
+          Ok(String::from(name))
+        },
+        | None => {
+          let generated = registry.generate_anonymous(pid);
+          registry.register(&generated, pid).map_err(|error| match error {
+            | NameRegistryError::Duplicate(existing) => SpawnError::name_conflict(existing),
+          })?;
+          Ok(generated)
+        },
+      }
+    })
   }
 
   /// Releases the association between a name and its pid in the registry.
   pub(crate) fn release_name(&self, parent: Option<Pid>, name: &str) {
-    if let Some(registry) = self.registries.lock().get_mut(&parent) {
-      registry.remove(name);
-    }
+    self.registries.with_write(|registries| {
+      if let Some(registry) = registries.get_mut(&parent) {
+        registry.remove(name);
+      }
+    });
   }
 
   /// Stores the root guardian cell reference.
