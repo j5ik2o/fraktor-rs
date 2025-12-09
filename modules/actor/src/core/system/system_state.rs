@@ -25,9 +25,9 @@ use hashbrown::HashMap;
 use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
 use super::{
-  ActorPathRegistry, ActorRefProvider, ActorRefProviderHandle, ActorRefProviderSharedGeneric, AuthorityState,
-  CellsSharedGeneric, GuardianKind, RegistriesSharedGeneric, RemoteAuthorityError, RemoteAuthorityManagerSharedGeneric,
-  RemoteWatchHook, RemotingConfig,
+  ActorPathRegistry, ActorRefProvider, ActorRefProviderHandle, ActorRefProviderSharedGeneric, AskFuturesSharedGeneric,
+  AuthorityState, CellsSharedGeneric, ExtraTopLevelsSharedGeneric, GuardianKind, RegistriesSharedGeneric,
+  RemoteAuthorityError, RemoteAuthorityManagerSharedGeneric, RemoteWatchHook, RemotingConfig,
 };
 use crate::core::{
   actor_prim::{
@@ -55,8 +55,6 @@ pub use failure_outcome::FailureOutcome;
 
 use crate::core::system::actor_system_config::ActorSystemConfigGeneric;
 
-/// Type alias for ask future collections.
-type AskFutureVec<TB> = Vec<ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>>;
 type ActorRefProviderCaller<TB> =
   Box<dyn Fn(ActorPath) -> Result<ActorRefGeneric<TB>, ActorError> + Send + Sync + 'static>;
 
@@ -94,14 +92,14 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   root_guardian: ToolboxMutex<Option<ArcShared<ActorCellGeneric<TB>>>, TB>,
   system_guardian: ToolboxMutex<Option<ArcShared<ActorCellGeneric<TB>>>, TB>,
   user_guardian: ToolboxMutex<Option<ArcShared<ActorCellGeneric<TB>>>, TB>,
-  ask_futures: ToolboxMutex<AskFutureVec<TB>, TB>,
+  ask_futures: AskFuturesSharedGeneric<TB>,
   termination: ActorFutureSharedGeneric<(), TB>,
   terminated: AtomicBool,
   terminating: AtomicBool,
   root_started: AtomicBool,
   event_stream: ArcShared<EventStreamGeneric<TB>>,
   dead_letter: ArcShared<DeadLetterGeneric<TB>>,
-  extra_top_levels: ToolboxMutex<HashMap<String, ActorRefGeneric<TB>, RandomState>, TB>,
+  extra_top_levels: ExtraTopLevelsSharedGeneric<TB>,
   temp_actors: ToolboxMutex<HashMap<String, ActorRefGeneric<TB>, RandomState>, TB>,
   temp_counter: AtomicU64,
   failure_total: AtomicU64,
@@ -146,14 +144,14 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       root_guardian: <TB::MutexFamily as SyncMutexFamily>::create(None),
       system_guardian: <TB::MutexFamily as SyncMutexFamily>::create(None),
       user_guardian: <TB::MutexFamily as SyncMutexFamily>::create(None),
-      ask_futures: <TB::MutexFamily as SyncMutexFamily>::create(Vec::new()),
+      ask_futures: AskFuturesSharedGeneric::default(),
       termination: ActorFutureSharedGeneric::<(), TB>::new(),
       terminated: AtomicBool::new(false),
       terminating: AtomicBool::new(false),
       root_started: AtomicBool::new(false),
       event_stream,
       dead_letter,
-      extra_top_levels: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::with_hasher(RandomState::new())),
+      extra_top_levels: ExtraTopLevelsSharedGeneric::default(),
       temp_actors: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::with_hasher(RandomState::new())),
       temp_counter: AtomicU64::new(0),
       failure_total: AtomicU64::new(0),
@@ -438,18 +436,19 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     if name.is_empty() || RESERVED_TOP_LEVEL.iter().any(|reserved| reserved.eq_ignore_ascii_case(name)) {
       return Err(RegisterExtraTopLevelError::ReservedName(name.into()));
     }
-    let mut registry = self.extra_top_levels.lock();
-    if registry.contains_key(name) {
-      return Err(RegisterExtraTopLevelError::DuplicateName(name.into()));
-    }
-    registry.insert(name.into(), actor);
-    Ok(())
+    self.extra_top_levels.with_write(|extra_top_levels| {
+      if extra_top_levels.contains_key(name) {
+        return Err(RegisterExtraTopLevelError::DuplicateName(name.into()));
+      }
+      extra_top_levels.insert(name.into(), actor);
+      Ok(())
+    })
   }
 
   /// Returns a registered extra top-level reference if present.
   #[must_use]
   pub fn extra_top_level(&self, name: &str) -> Option<ActorRefGeneric<TB>> {
-    self.extra_top_levels.lock().get(name).cloned()
+    self.extra_top_levels.with_read(|extra_top_levels| extra_top_levels.get(name))
   }
 
   /// Marks the root guardian as fully initialised, preventing further registrations.
@@ -537,7 +536,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
 
   /// Registers an ask future so the actor system can track its completion.
   pub(crate) fn register_ask_future(&self, future: ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>) {
-    self.ask_futures.lock().push(future);
+    self.ask_futures.with_write(|ask_futures| ask_futures.push(future));
   }
 
   /// Publishes an event to all event stream subscribers.
@@ -734,19 +733,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
 
   /// Drains ask futures that have completed since the previous inspection.
   pub(crate) fn drain_ready_ask_futures(&self) -> Vec<ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>> {
-    let mut registry = self.ask_futures.lock();
-    let mut ready = Vec::new();
-    let mut index = 0_usize;
-
-    while index < registry.len() {
-      if registry[index].with_read(|af| af.is_ready()) {
-        ready.push(registry.swap_remove(index));
-      } else {
-        index += 1;
-      }
-    }
-
-    ready
+    self.ask_futures.with_write(|ask_futures| ask_futures.drain_ready())
   }
 
   /// Indicates whether the actor system has terminated.
