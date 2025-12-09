@@ -16,19 +16,18 @@ use core::{
   time::Duration,
 };
 
-use ahash::RandomState;
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
   sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
 };
-use hashbrown::HashMap;
 use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
 use super::{
-  ActorPathRegistry, ActorRefProvider, ActorRefProviderHandle, ActorRefProviderSharedGeneric,
-  ActorRefProvidersSharedGeneric, AskFuturesSharedGeneric, AuthorityState, CellsSharedGeneric, ExtensionsSharedGeneric,
-  ExtraTopLevelsSharedGeneric, GuardianKind, RegistriesSharedGeneric, RemoteAuthorityError,
-  RemoteAuthorityManagerSharedGeneric, RemoteWatchHook, RemotingConfig, TempActorsSharedGeneric,
+  ActorPathRegistrySharedGeneric, ActorRefProvider, ActorRefProviderCaller, ActorRefProviderCallersSharedGeneric,
+  ActorRefProviderHandle, ActorRefProviderSharedGeneric, ActorRefProvidersSharedGeneric, AskFuturesSharedGeneric,
+  AuthorityState, CellsSharedGeneric, ExtensionsSharedGeneric, ExtraTopLevelsSharedGeneric, GuardianKind,
+  RegistriesSharedGeneric, RemoteAuthorityError, RemoteAuthorityManagerSharedGeneric, RemoteWatchHook, RemotingConfig,
+  TempActorsSharedGeneric,
 };
 use crate::core::{
   actor_prim::{
@@ -55,9 +54,6 @@ mod failure_outcome;
 pub use failure_outcome::FailureOutcome;
 
 use crate::core::system::actor_system_config::ActorSystemConfigGeneric;
-
-type ActorRefProviderCaller<TB> =
-  Box<dyn Fn(ActorPath) -> Result<ActorRefGeneric<TB>, ActorError> + Send + Sync + 'static>;
 
 const RESERVED_TOP_LEVEL: [&str; 4] = ["user", "system", "temp", "deadLetters"];
 const DEFAULT_SYSTEM_NAME: &str = "cellactor";
@@ -110,13 +106,12 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   failure_inflight: AtomicU64,
   extensions: ExtensionsSharedGeneric<TB>,
   actor_ref_providers: ActorRefProvidersSharedGeneric<TB>,
-  actor_ref_provider_callers_by_scheme:
-    ToolboxMutex<HashMap<ActorPathScheme, ActorRefProviderCaller<TB>, RandomState>, TB>,
+  actor_ref_provider_callers_by_scheme: ActorRefProviderCallersSharedGeneric<TB>,
   remote_watch_hook: ToolboxMutex<Option<Box<dyn RemoteWatchHook<TB>>>, TB>,
   dispatchers: DispatchersSharedGeneric<TB>,
   mailboxes: MailboxesSharedGeneric<TB>,
   path_identity: ToolboxMutex<PathIdentity, TB>,
-  actor_path_registry: ToolboxMutex<ActorPathRegistry, TB>,
+  actor_path_registry: ActorPathRegistrySharedGeneric<TB>,
   remote_authority_mgr: RemoteAuthorityManagerSharedGeneric<TB>,
   scheduler_context: ToolboxMutex<Option<SchedulerContextSharedGeneric<TB>>, TB>,
   tick_driver_runtime: ToolboxMutex<Option<TickDriverRuntime<TB>>, TB>,
@@ -166,11 +161,9 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       dispatchers,
       mailboxes,
       path_identity: <TB::MutexFamily as SyncMutexFamily>::create(PathIdentity::default()),
-      actor_path_registry: <TB::MutexFamily as SyncMutexFamily>::create(ActorPathRegistry::new()),
+      actor_path_registry: ActorPathRegistrySharedGeneric::default(),
       remote_authority_mgr: RemoteAuthorityManagerSharedGeneric::default(),
-      actor_ref_provider_callers_by_scheme: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::with_hasher(
-        RandomState::new(),
-      )),
+      actor_ref_provider_callers_by_scheme: ActorRefProviderCallersSharedGeneric::default(),
       scheduler_context: <TB::MutexFamily as SyncMutexFamily>::create(None),
       tick_driver_runtime: <TB::MutexFamily as SyncMutexFamily>::create(None),
       remoting_config: <TB::MutexFamily as SyncMutexFamily>::create(None),
@@ -212,7 +205,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     }
 
     let policy = ReservationPolicy::with_quarantine_duration(self.default_quarantine_duration());
-    self.actor_path_registry.lock().set_policy(policy);
+    self.actor_path_registry.with_write(|registry| registry.set_policy(policy));
   }
 
   /// Registers the provided actor cell in the global registry.
@@ -224,26 +217,26 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
 
   /// Removes the actor cell associated with the pid.
   pub(crate) fn remove_cell(&self, pid: &Pid) -> Option<ArcShared<ActorCellGeneric<TB>>> {
-    let reservation_source = {
-      let registry = self.actor_path_registry.lock();
-      registry.get(pid).map(|handle| (handle.canonical_uri().to_string(), handle.uid()))
-    };
+    let reservation_source = self
+      .actor_path_registry
+      .with_read(|registry| registry.get(pid).map(|handle| (handle.canonical_uri().to_string(), handle.uid())));
 
     if let Some((canonical, Some(uid))) = reservation_source
       && let Ok(actor_path) = ActorPathParser::parse(&canonical)
     {
       let now_secs = self.monotonic_now().as_secs();
-      let mut registry = self.actor_path_registry.lock();
-      let _ = registry.reserve_uid(&actor_path, uid, now_secs, None);
+      self.actor_path_registry.with_write(|registry| {
+        let _ = registry.reserve_uid(&actor_path, uid, now_secs, None);
+      });
     }
 
-    self.actor_path_registry.lock().unregister(pid);
+    self.actor_path_registry.with_write(|registry| registry.unregister(pid));
     self.cells.with_write(|cells| cells.remove(pid))
   }
 
   fn register_actor_path(&self, pid: Pid) {
     if let Some(path) = self.canonical_actor_path(&pid) {
-      self.actor_path_registry.lock().register(pid, &path);
+      self.actor_path_registry.with_write(|registry| registry.register(pid, &path));
     }
   }
 
@@ -607,7 +600,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     for scheme in schemes {
       let cloned = provider.clone();
       let caller: ActorRefProviderCaller<TB> = Box::new(move |path| cloned.get_actor_ref(path));
-      self.actor_ref_provider_callers_by_scheme.lock().insert(scheme, caller);
+      self.actor_ref_provider_callers_by_scheme.with_write(|callers| callers.insert(scheme, caller));
     }
   }
 
@@ -634,8 +627,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     scheme: ActorPathScheme,
     path: ActorPath,
   ) -> Option<Result<ActorRefGeneric<TB>, ActorError>> {
-    let guard = self.actor_ref_provider_callers_by_scheme.lock();
-    guard.get(&scheme).map(|caller| caller(path))
+    self.actor_ref_provider_callers_by_scheme.with_read(|callers| callers.get(scheme).map(|caller| caller(path)))
   }
 
   fn forward_remote_watch(&self, target: Pid, watcher: Pid) -> bool {
@@ -907,7 +899,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
 
   /// Returns a reference to the ActorPathRegistry.
   #[must_use]
-  pub const fn actor_path_registry(&self) -> &ToolboxMutex<ActorPathRegistry, TB> {
+  pub const fn actor_path_registry(&self) -> &ActorPathRegistrySharedGeneric<TB> {
     &self.actor_path_registry
   }
 
@@ -996,7 +988,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   /// Polls all authorities for expired quarantine windows and emits events for lifted entries.
   pub fn poll_remote_authorities(&self) {
     let now_secs = self.monotonic_now().as_secs();
-    self.actor_path_registry.lock().poll_expired(now_secs);
+    self.actor_path_registry.with_write(|registry| registry.poll_expired(now_secs));
     let lifted = self.remote_authority_mgr.with_write(|mgr| mgr.poll_quarantine_expiration(now_secs));
     for authority in lifted {
       self.publish_remote_authority_event(authority.clone(), AuthorityState::Unresolved);

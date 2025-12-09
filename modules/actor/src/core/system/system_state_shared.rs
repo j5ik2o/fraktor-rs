@@ -4,13 +4,13 @@ use alloc::{collections::VecDeque, string::String, vec::Vec};
 use core::{any::TypeId, time::Duration};
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex},
+  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
   sync::ArcShared,
 };
 
 use super::{
-  ActorPathRegistry, ActorRefProvider, ActorRefProviderSharedGeneric, AuthorityState, GuardianKind,
-  RemoteAuthorityError, RemotingConfig, SystemStateGeneric,
+  ActorRefProvider, ActorRefProviderSharedGeneric, AuthorityState, GuardianKind, RemoteAuthorityError, RemotingConfig,
+  SystemStateGeneric,
 };
 use crate::core::{
   actor_prim::{
@@ -476,7 +476,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   /// Returns a reference to the ActorPathRegistry.
   pub fn with_actor_path_registry<R, F>(&self, f: F) -> R
   where
-    F: FnOnce(&ToolboxMutex<ActorPathRegistry, TB>) -> R, {
+    F: FnOnce(&super::ActorPathRegistrySharedGeneric<TB>) -> R, {
     f(self.inner.actor_path_registry())
   }
 
