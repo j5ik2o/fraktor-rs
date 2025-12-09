@@ -26,8 +26,8 @@ use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
 use super::{
   ActorPathRegistry, ActorRefProvider, ActorRefProviderHandle, ActorRefProviderSharedGeneric, AuthorityState,
-  CellsSharedGeneric, GuardianKind, RemoteAuthorityError, RemoteAuthorityManagerSharedGeneric, RemoteWatchHook,
-  RemotingConfig,
+  CellsSharedGeneric, GuardianKind, RegistriesSharedGeneric, RemoteAuthorityError, RemoteAuthorityManagerSharedGeneric,
+  RemoteWatchHook, RemotingConfig,
 };
 use crate::core::{
   actor_prim::{
@@ -44,7 +44,7 @@ use crate::core::{
   mailbox::MailboxesSharedGeneric,
   messaging::{AnyMessageGeneric, FailurePayload, SystemMessage},
   scheduler::{SchedulerContextSharedGeneric, TaskRunSummary, TickDriverRuntime},
-  spawn::{NameRegistry, NameRegistryError, SpawnError},
+  spawn::{NameRegistryError, SpawnError},
   supervision::SupervisorDirective,
   system::{RegisterExtraTopLevelError, ReservationPolicy},
 };
@@ -90,7 +90,7 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   next_pid: AtomicU64,
   clock: AtomicU64,
   cells: CellsSharedGeneric<TB>,
-  registries: ToolboxMutex<HashMap<Option<Pid>, NameRegistry, RandomState>, TB>,
+  registries: RegistriesSharedGeneric<TB>,
   root_guardian: ToolboxMutex<Option<ArcShared<ActorCellGeneric<TB>>>, TB>,
   system_guardian: ToolboxMutex<Option<ArcShared<ActorCellGeneric<TB>>>, TB>,
   user_guardian: ToolboxMutex<Option<ArcShared<ActorCellGeneric<TB>>>, TB>,
@@ -142,7 +142,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       next_pid: AtomicU64::new(0),
       clock: AtomicU64::new(0),
       cells: CellsSharedGeneric::default(),
-      registries: <TB::MutexFamily as SyncMutexFamily>::create(HashMap::with_hasher(RandomState::new())),
+      registries: RegistriesSharedGeneric::default(),
       root_guardian: <TB::MutexFamily as SyncMutexFamily>::create(None),
       system_guardian: <TB::MutexFamily as SyncMutexFamily>::create(None),
       user_guardian: <TB::MutexFamily as SyncMutexFamily>::create(None),
@@ -321,31 +321,34 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   ///
   /// Returns an error if the requested name is already taken.
   pub(crate) fn assign_name(&self, parent: Option<Pid>, hint: Option<&str>, pid: Pid) -> Result<String, SpawnError> {
-    let mut registries = self.registries.lock();
-    let registry = registries.entry(parent).or_insert_with(NameRegistry::new);
+    self.registries.with_write(|registries| {
+      let registry = registries.entry_or_insert(parent);
 
-    match hint {
-      | Some(name) => {
-        registry.register(name, pid).map_err(|error| match error {
-          | NameRegistryError::Duplicate(existing) => SpawnError::name_conflict(existing),
-        })?;
-        Ok(String::from(name))
-      },
-      | None => {
-        let generated = registry.generate_anonymous(pid);
-        registry.register(&generated, pid).map_err(|error| match error {
-          | NameRegistryError::Duplicate(existing) => SpawnError::name_conflict(existing),
-        })?;
-        Ok(generated)
-      },
-    }
+      match hint {
+        | Some(name) => {
+          registry.register(name, pid).map_err(|error| match error {
+            | NameRegistryError::Duplicate(existing) => SpawnError::name_conflict(existing),
+          })?;
+          Ok(String::from(name))
+        },
+        | None => {
+          let generated = registry.generate_anonymous(pid);
+          registry.register(&generated, pid).map_err(|error| match error {
+            | NameRegistryError::Duplicate(existing) => SpawnError::name_conflict(existing),
+          })?;
+          Ok(generated)
+        },
+      }
+    })
   }
 
   /// Releases the association between a name and its pid in the registry.
   pub(crate) fn release_name(&self, parent: Option<Pid>, name: &str) {
-    if let Some(registry) = self.registries.lock().get_mut(&parent) {
-      registry.remove(name);
-    }
+    self.registries.with_write(|registries| {
+      if let Some(registry) = registries.get_mut(&parent) {
+        registry.remove(name);
+      }
+    });
   }
 
   /// Stores the root guardian cell reference.
