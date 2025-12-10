@@ -78,7 +78,7 @@ fn actor_ref_with_system() {
   let (_, sender) = RecordingSender::new();
   let system = SystemStateShared::new(SystemState::new());
   let pid = Pid::new(1, 0);
-  let actor: ActorRef = ActorRef::with_system(pid, sender, system.clone());
+  let actor: ActorRef = ActorRef::with_system(pid, sender, &system);
 
   assert_eq!(actor.pid(), pid);
   let _ = actor;
@@ -117,7 +117,7 @@ fn actor_ref_path_resolves_segments() {
   system.register_cell(child);
 
   use crate::core::actor_prim::actor_ref::null_sender::NullSender;
-  let actor: ActorRef = ActorRef::with_system(child_pid, NullSender, system.clone());
+  let actor: ActorRef = ActorRef::with_system(child_pid, NullSender, &system);
   assert_eq!(actor.path().expect("path").to_string(), "/user/worker");
 }
 
@@ -125,7 +125,7 @@ fn actor_ref_path_resolves_segments() {
 fn actor_ref_tell_with_system_records_error() {
   let system = SystemStateShared::new(SystemState::new());
   let pid = Pid::new(1, 0);
-  let actor: ActorRef = ActorRef::with_system(pid, NullSender, system.clone());
+  let actor: ActorRef = ActorRef::with_system(pid, NullSender, &system);
 
   let result = actor.tell(AnyMessage::new(42_u32));
   assert!(result.is_err());

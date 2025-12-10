@@ -64,7 +64,7 @@ impl<TB: RuntimeToolbox + 'static> LoopbackActorRefProviderGeneric<TB> {
     let sender = self.sender_for_path(&path)?;
     let pid = self.system.allocate_pid();
     self.register_remote_entry(pid, path.clone());
-    Ok(ActorRefGeneric::with_system(pid, sender, self.system.state()))
+    Ok(ActorRefGeneric::with_system(pid, sender, &self.system.state()))
   }
 
   pub(crate) fn from_components(
