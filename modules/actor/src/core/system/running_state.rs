@@ -2,7 +2,7 @@
 
 #![allow(dead_code)]
 
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
 use crate::core::{
   actor_prim::{ActorCellGeneric, Pid},
@@ -10,11 +10,11 @@ use crate::core::{
 };
 
 /// Wrapper for the system state after all guardians are registered.
-pub(crate) struct RunningSystemStateGeneric<TB: fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox + 'static> {
+pub(crate) struct RunningSystemStateGeneric<TB: RuntimeToolbox + 'static> {
   state: SystemStateSharedGeneric<TB>,
 }
 
-impl<TB: fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox + 'static> RunningSystemStateGeneric<TB> {
+impl<TB: RuntimeToolbox + 'static> RunningSystemStateGeneric<TB> {
   pub(crate) const fn new(state: SystemStateSharedGeneric<TB>) -> Self {
     Self { state }
   }
