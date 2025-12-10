@@ -1,6 +1,7 @@
 //! Concrete implementation of [`RemotingControl`] backed by the actor system.
 use alloc::{
   boxed::Box,
+  format,
   string::{String, ToString},
   vec::Vec,
 };
@@ -21,6 +22,7 @@ use crate::core::{
   endpoint_reader::EndpointReaderGeneric,
   event_publisher::EventPublisherGeneric,
   flight_recorder::{RemotingFlightRecorder, RemotingFlightRecorderSnapshot},
+  loopback_router,
   quarantine_reason::QuarantineReason,
   remote_authority_snapshot::RemoteAuthoritySnapshot,
   remoting_backpressure_listener::{RemotingBackpressureListener, RemotingBackpressureListenerShared},
@@ -65,8 +67,8 @@ where
     let inner = RemotingControlInner {
       system: system_weak,
       event_publisher: publisher,
-      _canonical_host: config.canonical_host().to_string(),
-      _canonical_port: config.canonical_port(),
+      canonical_host: config.canonical_host().to_string(),
+      canonical_port: config.canonical_port(),
       state: <TB::MutexFamily as SyncMutexFamily>::create(RemotingLifecycleState::new()),
       listeners: <TB::MutexFamily as SyncMutexFamily>::create(listeners),
       snapshots: <TB::MutexFamily as SyncMutexFamily>::create(Vec::new()),
@@ -89,9 +91,15 @@ where
   }
 
   /// Internal helper invoked by the termination hook actor.
+  ///
+  /// This method also unregisters the loopback endpoint from the static registry
+  /// to prevent memory leaks when the actor system is shut down.
   #[allow(dead_code)]
   pub(crate) fn notify_system_shutdown(&self) {
     if self.inner.state.lock().mark_shutdown() {
+      // Unregister loopback endpoint to clean up static registry
+      let authority = self.inner.format_authority();
+      loopback_router::unregister_endpoint(&authority);
       self.inner.event_publisher.publish_lifecycle(RemotingLifecycleEvent::Shutdown);
     }
   }
@@ -219,8 +227,8 @@ where
   TB: RuntimeToolbox + 'static, {
   system:          ActorSystemWeakGeneric<TB>,
   event_publisher: EventPublisherGeneric<TB>,
-  _canonical_host: String,
-  _canonical_port: Option<u16>,
+  canonical_host:  String,
+  canonical_port:  Option<u16>,
   state:           ToolboxMutex<RemotingLifecycleState, TB>,
   listeners:       ToolboxMutex<Vec<RemotingBackpressureListenerShared<TB>>, TB>,
   snapshots:       ToolboxMutex<Vec<RemoteAuthoritySnapshot>, TB>,
@@ -237,6 +245,14 @@ impl<TB> RemotingControlInner<TB>
 where
   TB: RuntimeToolbox + 'static,
 {
+  /// Formats the canonical authority string from host and port.
+  fn format_authority(&self) -> String {
+    match self.canonical_port {
+      | Some(port) => format!("{}:{}", self.canonical_host, port),
+      | None => self.canonical_host.clone(),
+    }
+  }
+
   fn next_correlation_id(&self) -> CorrelationId {
     let seq = self.correlation_seq.fetch_add(1, Ordering::Relaxed) as u128;
     CorrelationId::from_u128(seq)
@@ -269,11 +285,11 @@ where
       let Some(system) = self.system.upgrade() else {
         return Err(RemotingError::TransportUnavailable("actor system has been dropped".into()));
       };
-      if self._canonical_host.is_empty() {
+      if self.canonical_host.is_empty() {
         return Err(RemotingError::TransportUnavailable("canonical host not configured".into()));
       }
       let port = self
-        ._canonical_port
+        .canonical_port
         .ok_or_else(|| RemotingError::TransportUnavailable("canonical port not configured".into()))?;
       let system_name = system.state().system_name();
       let config = crate::std::runtime::endpoint_driver::EndpointDriverConfig {
@@ -282,7 +298,7 @@ where
         reader,
         transport,
         event_publisher: self.event_publisher.clone(),
-        canonical_host: self._canonical_host.clone(),
+        canonical_host: self.canonical_host.clone(),
         canonical_port: port,
         system_name,
       };
