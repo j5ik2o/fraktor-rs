@@ -2,7 +2,7 @@
 
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::{SharedAccess, sync_mutex_like::SyncMutexLike},
+  sync::{ArcShared, SharedAccess},
 };
 
 use super::EndpointManager;
@@ -13,7 +13,7 @@ use super::EndpointManager;
 /// that internally lock the underlying [`EndpointManager`], allowing safe
 /// concurrent access from multiple owners.
 pub struct EndpointManagerSharedGeneric<TB: RuntimeToolbox + 'static> {
-  inner: ToolboxMutex<EndpointManager, TB>,
+  inner: ArcShared<ToolboxMutex<EndpointManager, TB>>,
 }
 
 impl<TB: RuntimeToolbox + 'static> Default for EndpointManagerSharedGeneric<TB> {
@@ -26,17 +26,17 @@ impl<TB: RuntimeToolbox + 'static> EndpointManagerSharedGeneric<TB> {
   /// Creates a new shared endpoint manager instance.
   #[must_use]
   pub fn new() -> Self {
-    Self { inner: <TB::MutexFamily as SyncMutexFamily>::create(EndpointManager::new()) }
+    Self { inner: ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(EndpointManager::new())) }
   }
 }
 
 impl<TB: RuntimeToolbox + 'static> SharedAccess<EndpointManager> for EndpointManagerSharedGeneric<TB> {
   fn with_read<R>(&self, f: impl FnOnce(&EndpointManager) -> R) -> R {
-    f(&self.inner.lock())
+    self.inner.with_read(f)
   }
 
   fn with_write<R>(&self, f: impl FnOnce(&mut EndpointManager) -> R) -> R {
-    f(&mut self.inner.lock())
+    self.inner.with_write(f)
   }
 }
 
