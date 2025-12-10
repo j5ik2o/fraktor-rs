@@ -31,12 +31,6 @@ impl<T: ?Sized> ArcShared<T> {
     Self(Arc::new(value))
   }
 
-  /// Wraps an existing [`Arc`] inside the shared wrapper.
-  #[must_use]
-  pub const fn from_arc(inner: Arc<T>) -> Self {
-    Self(inner)
-  }
-
   /// For Testing, Don't Use Production
   ///
   /// Wraps an existing `Arc` in the shared wrapper.
@@ -62,7 +56,7 @@ impl<T: ?Sized> ArcShared<T> {
   /// Creates a [`WeakShared`] reference to this allocation.
   #[must_use]
   pub fn downgrade(&self) -> WeakShared<T> {
-    WeakShared::from_weak(Arc::downgrade(&self.0))
+    WeakShared::___from_weak(Arc::downgrade(&self.0))
   }
 
   /// Reconstructs the shared handle from a raw pointer.

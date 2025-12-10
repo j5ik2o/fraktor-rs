@@ -25,9 +25,11 @@ impl<T: ?Sized> WeakShared<T> {
     Self(Weak::new())
   }
 
+  /// For Testing, Don't Use Production
+  ///
   /// Wraps an existing [`Weak`] inside the shared wrapper.
   #[must_use]
-  pub const fn from_weak(inner: Weak<T>) -> Self {
+  pub const fn ___from_weak(inner: Weak<T>) -> Self {
     Self(inner)
   }
 
@@ -36,7 +38,7 @@ impl<T: ?Sized> WeakShared<T> {
   /// Returns `None` if the inner value has been dropped.
   #[must_use]
   pub fn upgrade(&self) -> Option<ArcShared<T>> {
-    self.0.upgrade().map(ArcShared::from_arc)
+    self.0.upgrade().map(ArcShared::___from_arc)
   }
 
   /// Returns the number of strong references pointing to this allocation.
