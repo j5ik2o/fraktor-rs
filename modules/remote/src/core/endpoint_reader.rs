@@ -75,9 +75,9 @@ impl<TB: RuntimeToolbox + 'static> EndpointReaderGeneric<TB> {
     let payload = self.serialization.deserialize(serialized, None)?;
     let arc: Arc<dyn core::any::Any + Send + Sync + 'static> = payload.into();
     #[cfg(feature = "force-portable-arc")]
-    let shared = ArcShared::from_arc(arc.into());
+    let shared = ArcShared::__from_arc(arc.into());
     #[cfg(not(feature = "force-portable-arc"))]
-    let shared = ArcShared::from_arc(arc);
+    let shared = ArcShared::___from_arc(arc);
     Ok(AnyMessageGeneric::from_erased(shared, None))
   }
 
