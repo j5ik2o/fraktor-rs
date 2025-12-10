@@ -11,6 +11,8 @@ pub enum RemoteActorRefProviderError {
   InvalidAuthority(String),
   /// Remoting control rejected the association request.
   Remoting(String),
+  /// The actor system has been dropped and is no longer available.
+  SystemUnavailable,
 }
 
 impl core::fmt::Display for RemoteActorRefProviderError {
@@ -19,6 +21,7 @@ impl core::fmt::Display for RemoteActorRefProviderError {
       | Self::MissingAuthority => write!(f, "actor path missing remote authority"),
       | Self::InvalidAuthority(authority) => write!(f, "invalid authority format: {authority}"),
       | Self::Remoting(message) => write!(f, "remoting error: {message}"),
+      | Self::SystemUnavailable => write!(f, "actor system has been dropped"),
     }
   }
 }
