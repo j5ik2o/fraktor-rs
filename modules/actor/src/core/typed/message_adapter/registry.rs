@@ -125,7 +125,7 @@ where
     let (handle_id, lifecycle) = cell.acquire_adapter_handle();
     let target = cell.mailbox_sender();
     let adapter_sender = AdapterRefSender::new(pid, handle_id, target, lifecycle, system_state.clone());
-    let adapter_ref = ActorRefGeneric::with_system(pid, adapter_sender, system_state.clone());
+    let adapter_ref = ActorRefGeneric::with_system(pid, adapter_sender, &system_state);
 
     self.adapter_ref = Some(adapter_ref.clone());
     self.adapter_handle = Some(handle_id);

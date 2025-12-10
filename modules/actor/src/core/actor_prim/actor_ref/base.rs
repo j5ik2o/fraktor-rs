@@ -19,14 +19,17 @@ use crate::core::{
   error::SendError,
   futures::ActorFutureSharedGeneric,
   messaging::{AnyMessageGeneric, AskResponseGeneric},
-  system::SystemStateSharedGeneric,
+  system::{SystemStateSharedGeneric, SystemStateWeakGeneric},
 };
 
 /// Handle used to communicate with an actor instance.
+///
+/// Uses a weak reference to the system state to avoid circular references
+/// when actor references are stored in event stream subscribers.
 pub struct ActorRefGeneric<TB: RuntimeToolbox + 'static> {
   pid:    Pid,
   sender: ActorRefSenderSharedGeneric<TB>,
-  system: Option<SystemStateSharedGeneric<TB>>,
+  system: Option<SystemStateWeakGeneric<TB>>,
 }
 
 impl<TB: RuntimeToolbox + 'static> ActorRefGeneric<TB> {
@@ -40,13 +43,13 @@ impl<TB: RuntimeToolbox + 'static> ActorRefGeneric<TB> {
 
   /// Creates an actor reference backed by the given sender and system state (path-aware).
   #[must_use]
-  pub fn with_system<T>(pid: Pid, sender: T, system: SystemStateSharedGeneric<TB>) -> Self
+  pub fn with_system<T>(pid: Pid, sender: T, system: &SystemStateSharedGeneric<TB>) -> Self
   where
     T: ActorRefSender<TB> + 'static, {
-    Self::from_parts(pid, sender, Some(system))
+    Self::from_parts(pid, sender, Some(system.downgrade()))
   }
 
-  fn from_parts<T>(pid: Pid, sender: T, system: Option<SystemStateSharedGeneric<TB>>) -> Self
+  fn from_parts<T>(pid: Pid, sender: T, system: Option<SystemStateWeakGeneric<TB>>) -> Self
   where
     T: ActorRefSender<TB> + 'static, {
     Self { pid, sender: ActorRefSenderSharedGeneric::new(sender), system }
@@ -54,12 +57,8 @@ impl<TB: RuntimeToolbox + 'static> ActorRefGeneric<TB> {
 
   /// Creates an actor reference from an existing shared sender.
   #[must_use]
-  pub const fn from_shared(
-    pid: Pid,
-    sender: ActorRefSenderSharedGeneric<TB>,
-    system: SystemStateSharedGeneric<TB>,
-  ) -> Self {
-    Self { pid, sender, system: Some(system) }
+  pub fn from_shared(pid: Pid, sender: ActorRefSenderSharedGeneric<TB>, system: &SystemStateSharedGeneric<TB>) -> Self {
+    Self { pid, sender, system: Some(system.downgrade()) }
   }
 
   /// Returns the unique process identifier.
@@ -71,13 +70,13 @@ impl<TB: RuntimeToolbox + 'static> ActorRefGeneric<TB> {
   /// Returns the logical path of the actor if the system is still available.
   #[must_use]
   pub fn path(&self) -> Option<ActorPath> {
-    self.system.as_ref().and_then(|system| system.actor_path(&self.pid))
+    self.system.as_ref().and_then(|weak| weak.upgrade()).and_then(|system| system.actor_path(&self.pid))
   }
 
   /// Returns the canonical actor path including authority and UID when available.
   #[must_use]
   pub fn canonical_path(&self) -> Option<ActorPath> {
-    self.system.as_ref().and_then(|system| system.canonical_actor_path(&self.pid))
+    self.system.as_ref().and_then(|weak| weak.upgrade()).and_then(|system| system.canonical_actor_path(&self.pid))
   }
 
   /// Sends a message to the referenced actor.
@@ -92,7 +91,7 @@ impl<TB: RuntimeToolbox + 'static> ActorRefGeneric<TB> {
     match self.sender.send(message) {
       | Ok(()) => Ok(()),
       | Err(error) => {
-        if let Some(system) = &self.system {
+        if let Some(system) = self.system.as_ref().and_then(|weak| weak.upgrade()) {
           system.record_send_error(Some(self.pid), &error);
         }
         Err(error)
@@ -113,7 +112,7 @@ impl<TB: RuntimeToolbox + 'static> ActorRefGeneric<TB> {
     let reply_ref = ActorRefGeneric::<TB>::new(self.pid, reply_sender);
     let envelope = message.with_reply_to(reply_ref.clone());
     self.tell(envelope)?;
-    if let Some(system) = &self.system {
+    if let Some(system) = self.system.as_ref().and_then(|weak| weak.upgrade()) {
       system.register_ask_future(future.clone());
     }
     Ok(AskResponseGeneric::new(reply_ref, future))

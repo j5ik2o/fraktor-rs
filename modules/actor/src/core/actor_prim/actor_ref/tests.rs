@@ -49,7 +49,12 @@ impl Actor for NoopActor {
   }
 }
 
-fn build_actor_ref_with_system(remoting: Option<RemotingConfig>) -> ActorRef {
+/// Builds an ActorRef with an associated SystemState.
+///
+/// Returns both the ActorRef and the SystemStateShared to keep the system state alive.
+/// Since ActorRef now uses weak references to SystemState, the returned SystemStateShared
+/// must be kept alive for the ActorRef's path methods to work.
+fn build_actor_ref_with_system(remoting: Option<RemotingConfig>) -> (ActorRef, SystemStateShared) {
   let state = SystemStateShared::new(SystemState::new());
   let mut config = ActorSystemConfig::default().with_system_name("canonical-test");
   if let Some(remoting_config) = remoting {
@@ -67,13 +72,13 @@ fn build_actor_ref_with_system(remoting: Option<RemotingConfig>) -> ActorRef {
     ActorCell::create(state.clone(), child_pid, Some(root_pid), "worker".to_string(), &props).expect("child cell");
   state.register_cell(child.clone());
 
-  child.actor_ref()
+  (child.actor_ref(), state)
 }
 
 #[test]
 fn canonical_path_uses_canonical_authority_when_available() {
   let remoting = RemotingConfig::default().with_canonical_host("example.com").with_canonical_port(2552);
-  let reference = build_actor_ref_with_system(Some(remoting));
+  let (reference, _state) = build_actor_ref_with_system(Some(remoting));
 
   let canonical = reference.canonical_path().expect("canonical path");
   assert_eq!(canonical.parts().scheme(), ActorPathScheme::FraktorTcp);
@@ -86,7 +91,7 @@ fn canonical_path_uses_canonical_authority_when_available() {
 
 #[test]
 fn canonical_path_returns_local_when_remoting_disabled() {
-  let reference = build_actor_ref_with_system(None);
+  let (reference, _state) = build_actor_ref_with_system(None);
 
   let canonical = reference.canonical_path().expect("canonical path");
   assert_eq!(canonical.parts().scheme(), ActorPathScheme::Fraktor);

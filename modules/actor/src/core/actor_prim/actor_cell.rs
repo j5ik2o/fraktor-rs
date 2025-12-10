@@ -198,7 +198,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
   /// Produces an actor reference targeting this cell.
   #[must_use]
   pub fn actor_ref(&self) -> ActorRefGeneric<TB> {
-    ActorRefGeneric::from_shared(self.pid, self.sender.clone(), self.system())
+    ActorRefGeneric::from_shared(self.pid, self.sender.clone(), &self.system())
   }
 
   /// Registers a child pid for supervision.
