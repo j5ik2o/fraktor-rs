@@ -188,7 +188,7 @@ fn create_system_message_runs_pre_start() {
     ActorCell::create(state.clone(), Pid::new(40, 0), None, "probe".to_string(), &props).expect("create actor cell");
   state.register_cell(cell.clone());
 
-  let mut invoker = super::ActorCellInvoker { cell: cell.clone() };
+  let mut invoker = super::ActorCellInvoker { cell: cell.downgrade() };
   invoker.invoke_system_message(SystemMessage::Create).expect("create");
 
   let snapshot = log.lock().clone();
@@ -207,7 +207,7 @@ fn recreate_system_message_invokes_post_stop_then_pre_start() {
     ActorCell::create(state.clone(), Pid::new(41, 0), None, "probe".to_string(), &props).expect("create actor cell");
   state.register_cell(cell.clone());
 
-  let mut invoker = super::ActorCellInvoker { cell: cell.clone() };
+  let mut invoker = super::ActorCellInvoker { cell: cell.downgrade() };
   invoker.invoke_system_message(SystemMessage::Create).expect("create");
   invoker.invoke_system_message(SystemMessage::Recreate).expect("recreate");
 
