@@ -3,6 +3,9 @@
 #[cfg(test)]
 mod tests;
 
+mod path_identity;
+mod path_identity_shared;
+
 use alloc::{
   borrow::ToOwned,
   boxed::Box,
@@ -22,6 +25,7 @@ use fraktor_utils_rs::core::{
 };
 use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
+use self::{path_identity::PathIdentity, path_identity_shared::PathIdentitySharedGeneric};
 use super::{
   ActorPathRegistrySharedGeneric, ActorRefProvider, ActorRefProviderCaller, ActorRefProviderCallersSharedGeneric,
   ActorRefProviderHandle, ActorRefProviderSharedGeneric, ActorRefProvidersSharedGeneric, AskFuturesSharedGeneric,
@@ -32,7 +36,7 @@ use super::{
 use crate::core::{
   actor_prim::{
     ActorCellGeneric, Pid,
-    actor_path::{ActorPath, ActorPathParser, ActorPathParts, ActorPathScheme, GuardianKind as PathGuardianKind},
+    actor_path::{ActorPath, ActorPathParser, ActorPathParts, ActorPathScheme},
     actor_ref::ActorRefGeneric,
   },
   dead_letter::{DeadLetterEntryGeneric, DeadLetterGeneric, DeadLetterReason},
@@ -56,29 +60,6 @@ pub use failure_outcome::FailureOutcome;
 use crate::core::system::actor_system_config::ActorSystemConfigGeneric;
 
 const RESERVED_TOP_LEVEL: [&str; 4] = ["user", "system", "temp", "deadLetters"];
-const DEFAULT_SYSTEM_NAME: &str = "cellactor";
-const DEFAULT_QUARANTINE_DURATION: Duration = Duration::from_secs(5 * 24 * 3600);
-
-#[derive(Clone)]
-struct PathIdentity {
-  system_name:         String,
-  canonical_host:      Option<String>,
-  canonical_port:      Option<u16>,
-  quarantine_duration: Duration,
-  guardian_kind:       PathGuardianKind,
-}
-
-impl Default for PathIdentity {
-  fn default() -> Self {
-    Self {
-      system_name:         DEFAULT_SYSTEM_NAME.to_string(),
-      canonical_host:      None,
-      canonical_port:      None,
-      quarantine_duration: DEFAULT_QUARANTINE_DURATION,
-      guardian_kind:       PathGuardianKind::User,
-    }
-  }
-}
 
 /// Captures global actor system state.
 pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
@@ -108,7 +89,7 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   remote_watch_hook: ToolboxMutex<Option<Box<dyn RemoteWatchHook<TB>>>, TB>,
   dispatchers: DispatchersSharedGeneric<TB>,
   mailboxes: MailboxesSharedGeneric<TB>,
-  path_identity: ToolboxMutex<PathIdentity, TB>,
+  path_identity: PathIdentitySharedGeneric<TB>,
   actor_path_registry: ActorPathRegistrySharedGeneric<TB>,
   remote_authority_mgr: RemoteAuthorityManagerSharedGeneric<TB>,
   scheduler_context: ToolboxMutex<Option<SchedulerContextSharedGeneric<TB>>, TB>,
@@ -156,7 +137,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       remote_watch_hook: <TB::MutexFamily as SyncMutexFamily>::create(None),
       dispatchers,
       mailboxes,
-      path_identity: <TB::MutexFamily as SyncMutexFamily>::create(PathIdentity::default()),
+      path_identity: PathIdentitySharedGeneric::default(),
       actor_path_registry: ActorPathRegistrySharedGeneric::default(),
       remote_authority_mgr: RemoteAuthorityManagerSharedGeneric::default(),
       actor_ref_provider_callers_by_scheme: ActorRefProviderCallersSharedGeneric::default(),
@@ -175,8 +156,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
 
   /// Applies the actor system configuration (system name, remoting settings).
   pub fn apply_actor_system_config(&self, config: &ActorSystemConfigGeneric<TB>) {
-    {
-      let mut identity = self.path_identity.lock();
+    self.path_identity.with_write(|identity| {
       identity.system_name = config.system_name().to_string();
       identity.guardian_kind = config.default_guardian();
       if let Some(remoting) = config.remoting_config() {
@@ -188,11 +168,11 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       } else {
         identity.canonical_host = None;
         identity.canonical_port = None;
-        identity.quarantine_duration = DEFAULT_QUARANTINE_DURATION;
+        identity.quarantine_duration = path_identity::DEFAULT_QUARANTINE_DURATION;
         // Clear RemotingConfig
         *self.remoting_config.lock() = None;
       }
-    }
+    });
 
     // Register default dispatcher if configured
     if let Some(dispatcher_config) = config.default_dispatcher_config() {
@@ -256,26 +236,24 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   }
 
   fn identity_snapshot(&self) -> PathIdentity {
-    self.path_identity.lock().clone()
+    self.path_identity.with_read(|identity| identity.clone())
   }
 
   fn default_quarantine_duration(&self) -> Duration {
-    self.path_identity.lock().quarantine_duration
+    self.path_identity.with_read(|identity| identity.quarantine_duration)
   }
 
   /// Returns the configured canonical host/port pair when remoting is enabled and complete.
   pub fn canonical_authority_components(&self) -> Option<(String, Option<u16>)> {
-    let identity = self.path_identity.lock();
-    match (&identity.canonical_host, identity.canonical_port) {
+    self.path_identity.with_read(|identity| match (&identity.canonical_host, identity.canonical_port) {
       | (Some(host), Some(port)) => Some((host.clone(), Some(port))),
       | _ => None,
-    }
+    })
   }
 
   /// Returns true when canonical_host is set but canonical_port is missing.
   pub fn has_partial_canonical_authority(&self) -> bool {
-    let identity = self.path_identity.lock();
-    identity.canonical_host.is_some() && identity.canonical_port.is_none()
+    self.path_identity.with_read(|identity| identity.canonical_host.is_some() && identity.canonical_port.is_none())
   }
 
   /// Returns the canonical authority string (`host[:port]`) when available.
@@ -289,7 +267,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   /// Returns the configured actor system name.
   #[must_use]
   pub fn system_name(&self) -> String {
-    self.path_identity.lock().system_name.clone()
+    self.path_identity.with_read(|identity| identity.system_name.clone())
   }
 
   fn publish_remote_authority_event(&self, authority: String, state: AuthorityState) {
