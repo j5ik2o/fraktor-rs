@@ -8,7 +8,7 @@ use core::{mem, task::Poll, time::Duration};
 
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
+  sync::{ArcShared, SharedAccess, WeakShared, sync_mutex_like::SyncMutexLike},
 };
 use portable_atomic::{AtomicBool, Ordering};
 
@@ -140,9 +140,11 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     });
 
     {
-      // Dispatcher keeps a shared reference to the invoker for message delivery.
+      // Dispatcher keeps a weak reference to the invoker for message delivery.
+      // Using weak reference avoids circular reference: ActorCell → Dispatcher → DispatcherCore → Invoker
+      // → ActorCell
       let invoker: MessageInvokerShared<TB> =
-        MessageInvokerShared::new(Box::new(ActorCellInvoker { cell: cell.clone() }));
+        MessageInvokerShared::new(Box::new(ActorCellInvoker { cell: cell.downgrade() }));
       cell.dispatcher.register_invoker(invoker);
     }
 
@@ -497,55 +499,75 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
   }
 }
 
+/// Internal invoker that bridges dispatcher message delivery to actor cell.
+///
+/// Uses a weak reference to avoid circular reference between ActorCell and DispatcherCore.
 struct ActorCellInvoker<TB: RuntimeToolbox + 'static> {
-  cell: ArcShared<ActorCellGeneric<TB>>,
+  cell: WeakShared<ActorCellGeneric<TB>>,
+}
+
+impl<TB: RuntimeToolbox + 'static> ActorCellInvoker<TB> {
+  /// Upgrades the weak cell reference to a strong reference.
+  ///
+  /// Returns `None` if the actor cell has been dropped.
+  fn cell(&self) -> Option<ArcShared<ActorCellGeneric<TB>>> {
+    self.cell.upgrade()
+  }
 }
 
 impl<TB: RuntimeToolbox + 'static> MessageInvoker<TB> for ActorCellInvoker<TB> {
   fn invoke_user_message(&mut self, message: AnyMessageGeneric<TB>) -> Result<(), ActorError> {
-    let system = ActorSystemGeneric::from_state(self.cell.system());
-    let mut ctx = ActorContextGeneric::new(&system, self.cell.pid);
+    let Some(cell) = self.cell() else {
+      // ActorCell has been dropped, silently ignore the message
+      return Ok(());
+    };
+    let system = ActorSystemGeneric::from_state(cell.system());
+    let mut ctx = ActorContextGeneric::new(&system, cell.pid);
     let failure_candidate = message.clone();
-    let result = self.cell.actor.with_write(|actor| self.cell.pipeline.invoke_user(&mut **actor, &mut ctx, message));
+    let result = cell.actor.with_write(|actor| cell.pipeline.invoke_user(&mut **actor, &mut ctx, message));
     if let Err(ref error) = result {
       let snapshot = FailureMessageSnapshot::from_message(&failure_candidate);
-      self.cell.report_failure(error, Some(snapshot));
+      cell.report_failure(error, Some(snapshot));
     }
     result
   }
 
   fn invoke_system_message(&mut self, message: SystemMessage) -> Result<(), ActorError> {
+    let Some(cell) = self.cell() else {
+      // ActorCell has been dropped, silently ignore the message
+      return Ok(());
+    };
     match message {
-      | SystemMessage::Stop => self.cell.handle_stop(),
-      | SystemMessage::Create => self.cell.handle_create(),
-      | SystemMessage::Recreate => self.cell.handle_recreate(),
+      | SystemMessage::Stop => cell.handle_stop(),
+      | SystemMessage::Create => cell.handle_create(),
+      | SystemMessage::Recreate => cell.handle_recreate(),
       | SystemMessage::Failure(ref payload) => {
-        self.cell.handle_failure_message(payload);
+        cell.handle_failure_message(payload);
         Ok(())
       },
       | SystemMessage::Suspend => {
-        self.cell.mailbox.suspend();
+        cell.mailbox.suspend();
         Ok(())
       },
       | SystemMessage::Resume => {
-        self.cell.mailbox.resume();
+        cell.mailbox.resume();
         Ok(())
       },
       | SystemMessage::Watch(pid) => {
-        self.cell.handle_watch(pid);
+        cell.handle_watch(pid);
         Ok(())
       },
       | SystemMessage::Unwatch(pid) => {
-        self.cell.handle_unwatch(pid);
+        cell.handle_unwatch(pid);
         Ok(())
       },
       | SystemMessage::StopChild(pid) => {
-        self.cell.stop_child(pid);
+        cell.stop_child(pid);
         Ok(())
       },
-      | SystemMessage::Terminated(pid) => self.cell.handle_terminated(pid),
+      | SystemMessage::Terminated(pid) => cell.handle_terminated(pid),
       | SystemMessage::PipeTask(task_id) => {
-        self.cell.handle_pipe_task_ready(task_id);
+        cell.handle_pipe_task_ready(task_id);
         Ok(())
       },
     }
