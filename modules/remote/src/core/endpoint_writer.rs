@@ -12,7 +12,7 @@ use core::{
 use fraktor_actor_rs::core::{
   event_stream::BackpressureSignal,
   serialization::{SerializationCallScope, SerializationExtensionGeneric},
-  system::ActorSystemGeneric,
+  system::ActorSystemWeakGeneric,
 };
 use fraktor_utils_rs::core::{
   collections::queue::{
@@ -35,9 +35,10 @@ pub type EndpointWriterShared<TB> =
   ArcShared<<<TB as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::Mutex<EndpointWriterGeneric<TB>>>;
 
 /// Serializes outbound messages, enforcing priority and backpressure.
+///
+/// Uses a weak reference to the actor system to avoid circular references.
 pub struct EndpointWriterGeneric<TB: RuntimeToolbox + 'static> {
-  #[allow(dead_code)]
-  system:        ActorSystemGeneric<TB>,
+  system:        ActorSystemWeakGeneric<TB>,
   serialization: ArcShared<SerializationExtensionGeneric<TB>>,
   system_queue:  SyncFifoQueue<OutboundMessage<TB>, VecDequeBackend<OutboundMessage<TB>>>,
   user_queue:    SyncFifoQueue<OutboundMessage<TB>, VecDequeBackend<OutboundMessage<TB>>>,
@@ -51,8 +52,10 @@ pub type EndpointWriter = EndpointWriterGeneric<NoStdToolbox>;
 
 impl<TB: RuntimeToolbox + 'static> EndpointWriterGeneric<TB> {
   /// Creates a writer bound to the provided actor system and serialization extension.
+  ///
+  /// The writer stores a weak reference to the actor system.
   #[must_use]
-  pub fn new(system: ActorSystemGeneric<TB>, serialization: ArcShared<SerializationExtensionGeneric<TB>>) -> Self {
+  pub fn new(system: ActorSystemWeakGeneric<TB>, serialization: ArcShared<SerializationExtensionGeneric<TB>>) -> Self {
     Self {
       system,
       serialization,
@@ -65,15 +68,17 @@ impl<TB: RuntimeToolbox + 'static> EndpointWriterGeneric<TB> {
   }
 
   /// Returns the canonical authority (host[:port]) of the bound actor system when available.
+  ///
+  /// Returns `None` if the actor system has been dropped.
   #[must_use]
   pub fn canonical_authority_components(&self) -> Option<(String, Option<u16>)> {
-    self.system.state().canonical_authority_components()
+    self.system.upgrade()?.state().canonical_authority_components()
   }
 
-  /// Returns a reference to the underlying actor system.
+  /// Returns a reference to the underlying actor system if still alive.
   #[must_use]
-  pub fn system(&self) -> &ActorSystemGeneric<TB> {
-    &self.system
+  pub fn system(&self) -> Option<fraktor_actor_rs::core::system::ActorSystemGeneric<TB>> {
+    self.system.upgrade()
   }
 
   /// Enqueues an outbound message using its declared priority.

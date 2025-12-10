@@ -10,7 +10,7 @@ use alloc::{
 };
 use core::time::Duration;
 
-use fraktor_actor_rs::core::{event_stream::CorrelationId, logging::LogLevel, system::ActorSystemGeneric};
+use fraktor_actor_rs::core::{event_stream::CorrelationId, logging::LogLevel, system::ActorSystemWeakGeneric};
 use fraktor_utils_rs::core::{
   runtime_toolbox::{RuntimeToolbox, ToolboxMutex},
   sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
@@ -28,8 +28,8 @@ const OUTBOUND_IDLE_DELAY: Duration = Duration::from_millis(5);
 
 /// Configuration required to bootstrap the driver.
 pub struct EndpointDriverConfig<TB: RuntimeToolbox + 'static> {
-  /// Actor system providing scheduling and state access.
-  pub system:          ActorSystemGeneric<TB>,
+  /// Actor system providing scheduling and state access (weak reference).
+  pub system:          ActorSystemWeakGeneric<TB>,
   /// Shared endpoint writer feeding outbound frames.
   pub writer:          ArcShared<ToolboxMutex<EndpointWriterGeneric<TB>, TB>>,
   /// Shared endpoint reader decoding inbound frames.
@@ -59,7 +59,7 @@ impl EndpointDriverHandle {
 }
 
 pub(crate) struct EndpointDriver<TB: RuntimeToolbox + 'static> {
-  system:          ActorSystemGeneric<TB>,
+  system:          ActorSystemWeakGeneric<TB>,
   event_publisher: EventPublisherGeneric<TB>,
   writer:          ArcShared<ToolboxMutex<EndpointWriterGeneric<TB>, TB>>,
   reader:          ArcShared<EndpointReaderGeneric<TB>>,
@@ -218,11 +218,13 @@ impl<TB: RuntimeToolbox + 'static> EndpointDriver<TB> {
   }
 
   fn emit_error(&self, message: String) {
-    self.system.emit_log(LogLevel::Error, message, None);
+    if let Some(system) = self.system.upgrade() {
+      system.emit_log(LogLevel::Error, message, None);
+    }
   }
 
   fn now_millis(&self) -> u64 {
-    self.system.state().monotonic_now().as_millis() as u64
+    self.system.upgrade().map(|s| s.state().monotonic_now().as_millis() as u64).unwrap_or(0)
   }
 
   fn target_authority(node: &RemoteNodeId) -> Option<String> {

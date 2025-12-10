@@ -232,6 +232,16 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     self.state.clone()
   }
 
+  /// Creates a weak reference to this actor system.
+  ///
+  /// Use this when storing a reference to the actor system in components that are
+  /// themselves owned by the system (such as extensions or remoting components)
+  /// to avoid circular reference issues.
+  #[must_use]
+  pub fn downgrade(&self) -> super::ActorSystemWeakGeneric<TB> {
+    super::ActorSystemWeakGeneric { state: self.state.downgrade() }
+  }
+
   /// Returns the canonical host/port when remoting is configured.
   #[must_use]
   pub fn canonical_authority(&self) -> Option<String> {

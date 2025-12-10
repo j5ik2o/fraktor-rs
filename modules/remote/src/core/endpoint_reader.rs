@@ -11,7 +11,7 @@ use fraktor_actor_rs::core::{
   error::SendError,
   messaging::AnyMessageGeneric,
   serialization::SerializationExtensionGeneric,
-  system::{ActorSystemGeneric, RemoteWatchHookShared},
+  system::{ActorSystemWeakGeneric, RemoteWatchHookShared},
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
@@ -26,8 +26,10 @@ use crate::core::{
 };
 
 /// Deserializes inbound transport envelopes into runtime messages.
+///
+/// Uses a weak reference to the actor system to avoid circular references.
 pub struct EndpointReaderGeneric<TB: RuntimeToolbox + 'static> {
-  system:        ActorSystemGeneric<TB>,
+  system:        ActorSystemWeakGeneric<TB>,
   serialization: ArcShared<SerializationExtensionGeneric<TB>>,
 }
 
@@ -42,8 +44,10 @@ impl<TB: RuntimeToolbox + 'static> Clone for EndpointReaderGeneric<TB> {
 
 impl<TB: RuntimeToolbox + 'static> EndpointReaderGeneric<TB> {
   /// Creates a new reader bound to the provided actor system.
+  ///
+  /// The reader stores a weak reference to the actor system.
   #[must_use]
-  pub fn new(system: ActorSystemGeneric<TB>, serialization: ArcShared<SerializationExtensionGeneric<TB>>) -> Self {
+  pub fn new(system: ActorSystemWeakGeneric<TB>, serialization: ArcShared<SerializationExtensionGeneric<TB>>) -> Self {
     Self { system, serialization }
   }
 
@@ -78,48 +82,61 @@ impl<TB: RuntimeToolbox + 'static> EndpointReaderGeneric<TB> {
   }
 
   fn record_deserialization_failure(&self, recipient: &ActorPath) {
-    let message = AnyMessageGeneric::new(recipient.clone());
-    self.system.record_dead_letter(message, DeadLetterReason::SerializationError, None);
+    if let Some(system) = self.system.upgrade() {
+      let message = AnyMessageGeneric::new(recipient.clone());
+      system.record_dead_letter(message, DeadLetterReason::SerializationError, None);
+    }
   }
 
   /// Delivers the provided inbound envelope to the actor system.
+  ///
+  /// Returns an error if the actor system has been dropped or the recipient is unavailable.
   pub fn deliver(&self, inbound: InboundEnvelope<TB>) -> Result<(), SendError<TB>> {
+    let Some(system) = self.system.upgrade() else {
+      let (_, message, _) = inbound.into_delivery_parts();
+      return Err(SendError::closed(message));
+    };
     let (recipient, mut message, reply_to_path) = inbound.into_delivery_parts();
     if let Some(reply_path) = reply_to_path
-      && let Some(reply_ref) = self.resolve_reply_to(&reply_path)
+      && let Some(reply_ref) = self.resolve_reply_to_with_system(&system, &reply_path)
     {
       message = message.with_reply_to(reply_ref);
     }
-    let Some(pid) = self.system.pid_by_path(&recipient) else {
-      return self.record_missing_recipient(recipient, message);
+    let Some(pid) = system.pid_by_path(&recipient) else {
+      return self.record_missing_recipient_with_system(&system, recipient, message);
     };
-    let Some(actor_ref) = self.system.actor_ref_by_pid(pid) else {
-      return self.record_missing_recipient(recipient, message);
+    let Some(actor_ref) = system.actor_ref_by_pid(pid) else {
+      return self.record_missing_recipient_with_system(&system, recipient, message);
     };
     actor_ref.tell(message)
   }
 
-  fn record_missing_recipient(
+  fn record_missing_recipient_with_system(
     &self,
+    system: &fraktor_actor_rs::core::system::ActorSystemGeneric<TB>,
     _recipient: ActorPath,
     message: AnyMessageGeneric<TB>,
   ) -> Result<(), SendError<TB>> {
-    self.system.record_dead_letter(message.clone(), DeadLetterReason::RecipientUnavailable, None);
+    system.record_dead_letter(message.clone(), DeadLetterReason::RecipientUnavailable, None);
     Err(SendError::no_recipient(message))
   }
 
-  fn resolve_reply_to(&self, path: &ActorPath) -> Option<ActorRefGeneric<TB>> {
+  fn resolve_reply_to_with_system(
+    &self,
+    system: &fraktor_actor_rs::core::system::ActorSystemGeneric<TB>,
+    path: &ActorPath,
+  ) -> Option<ActorRefGeneric<TB>> {
     // Try Tokio provider first when available, then generic remote provider as fallback.
     #[cfg(feature = "tokio-transport")]
     if let Some(provider) =
-      self.system.extended().actor_ref_provider::<RemoteWatchHookShared<TB, TokioActorRefProviderGeneric<TB>>>()
+      system.extended().actor_ref_provider::<RemoteWatchHookShared<TB, TokioActorRefProviderGeneric<TB>>>()
       && let Ok(reply_ref) = provider.get_actor_ref(path.clone())
     {
       return Some(reply_ref);
     }
 
     if let Some(provider) =
-      self.system.extended().actor_ref_provider::<RemoteWatchHookShared<TB, RemoteActorRefProviderGeneric<TB>>>()
+      system.extended().actor_ref_provider::<RemoteWatchHookShared<TB, RemoteActorRefProviderGeneric<TB>>>()
       && let Ok(reply_ref) = provider.get_actor_ref(path.clone())
     {
       return Some(reply_ref);
