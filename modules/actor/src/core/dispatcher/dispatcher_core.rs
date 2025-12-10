@@ -29,7 +29,7 @@ use crate::core::{
     EnqueueOutcome, MailboxGeneric, MailboxMessage, MailboxOfferFutureGeneric, MailboxPressureEvent, ScheduleHints,
   },
   messaging::{AnyMessageGeneric, SystemMessage, message_invoker::MessageInvokerShared},
-  system::SystemStateSharedGeneric,
+  system::{SystemStateSharedGeneric, SystemStateWeakGeneric},
 };
 
 const DEFAULT_THROUGHPUT: usize = 300;
@@ -45,7 +45,7 @@ pub(crate) struct DispatcherCore<TB: RuntimeToolbox + 'static> {
   throughput_limit:    Option<NonZeroUsize>,
   throughput_deadline: Option<Duration>,
   starvation_deadline: Option<Duration>,
-  system_state:        Option<SystemStateSharedGeneric<TB>>,
+  system_state:        Option<SystemStateWeakGeneric<TB>>,
   last_progress:       AtomicU64,
 }
 
@@ -61,7 +61,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
     throughput_deadline: Option<Duration>,
     starvation_deadline: Option<Duration>,
   ) -> Self {
-    let system_state = mailbox.system_state();
+    let system_state = mailbox.system_state().map(|s| s.downgrade());
     Self {
       mailbox,
       executor,
@@ -96,8 +96,12 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
     &self.state
   }
 
+  fn system_state(&self) -> Option<SystemStateSharedGeneric<TB>> {
+    self.system_state.as_ref().and_then(|weak| weak.upgrade())
+  }
+
   fn record_progress(&self) {
-    if let Some(state) = &self.system_state {
+    if let Some(state) = self.system_state() {
       let tick = duration_to_millis(state.monotonic_now());
       self.last_progress.store(tick, Ordering::Release);
     }
@@ -108,7 +112,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
     if last == 0 {
       return None;
     }
-    let state = self.system_state.as_ref()?;
+    let state = self.system_state()?;
     let now = duration_to_millis(state.monotonic_now());
     let delta = now.saturating_sub(last);
     Some(Duration::from_millis(delta))
@@ -170,18 +174,14 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
   }
 
   fn deadline_anchor(&self) -> Option<Duration> {
-    if self.throughput_deadline.is_some() {
-      self.system_state.as_ref().map(|state| state.monotonic_now())
-    } else {
-      None
-    }
+    if self.throughput_deadline.is_some() { self.system_state().map(|state| state.monotonic_now()) } else { None }
   }
 
   fn deadline_reached(&self, anchor: Option<Duration>, processed: usize) -> bool {
     if processed == 0 {
       return false;
     }
-    match (self.throughput_deadline, anchor, self.system_state.as_ref()) {
+    match (self.throughput_deadline, anchor, self.system_state()) {
       | (Some(limit), Some(start), Some(state)) => state.monotonic_now().saturating_sub(start) >= limit,
       | _ => false,
     }

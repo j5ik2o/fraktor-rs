@@ -18,6 +18,8 @@ mod state;
 mod static_ref_shared;
 /// Synchronous mutex abstractions shared across runtimes.
 pub mod sync_mutex_like;
+#[allow(clippy::disallowed_types)]
+mod weak_shared;
 
 pub use arc_shared::ArcShared;
 pub use flag::Flag;
@@ -29,3 +31,4 @@ pub use shared_access::SharedAccess;
 pub use shared_error::SharedError;
 pub use state::StateCell;
 pub use static_ref_shared::StaticRefShared;
+pub use weak_shared::WeakShared;

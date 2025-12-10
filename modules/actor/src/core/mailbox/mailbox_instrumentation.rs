@@ -13,7 +13,7 @@ use crate::core::{
   event_stream::EventStreamEvent,
   logging::LogLevel,
   mailbox::{MailboxMetricsEvent, MailboxPressureEvent},
-  system::SystemStateSharedGeneric,
+  system::{SystemStateSharedGeneric, SystemStateWeakGeneric},
 };
 
 const PRESSURE_THRESHOLD_PERCENT: usize = 75;
@@ -21,7 +21,7 @@ const PRESSURE_THRESHOLD_PERCENT: usize = 75;
 /// Provides mailbox metrics publication facilities.
 #[derive(Clone)]
 pub struct MailboxInstrumentationGeneric<TB: RuntimeToolbox + 'static> {
-  system_state:   SystemStateSharedGeneric<TB>,
+  system_state:   SystemStateWeakGeneric<TB>,
   capacity:       Option<usize>,
   throughput:     Option<usize>,
   warn_threshold: Option<usize>,
@@ -35,28 +35,40 @@ pub type MailboxInstrumentation = MailboxInstrumentationGeneric<NoStdToolbox>;
 impl<TB: RuntimeToolbox + 'static> MailboxInstrumentationGeneric<TB> {
   /// Creates a new instrumentation helper.
   #[must_use]
-  pub const fn new(
+  #[allow(clippy::needless_pass_by_value)]
+  pub fn new(
     system_state: SystemStateSharedGeneric<TB>,
     pid: Pid,
     capacity: Option<usize>,
     throughput: Option<usize>,
     warn_threshold: Option<usize>,
   ) -> Self {
-    Self { system_state, capacity, throughput, warn_threshold, pid, backpressure: None }
+    Self { system_state: system_state.downgrade(), capacity, throughput, warn_threshold, pid, backpressure: None }
+  }
+
+  /// Upgrades the weak system state reference to a strong reference.
+  ///
+  /// # Panics
+  ///
+  /// Panics if the system state has been dropped.
+  #[allow(clippy::expect_used)]
+  fn get_system_state(&self) -> SystemStateSharedGeneric<TB> {
+    self.system_state.upgrade().expect("system state has been dropped")
   }
 
   /// Publishes a metrics snapshot.
   pub fn publish(&self, user_len: usize, system_len: usize) {
-    let timestamp = self.system_state.monotonic_now();
+    let system_state = self.get_system_state();
+    let timestamp = system_state.monotonic_now();
     let event = MailboxMetricsEvent::new(self.pid, user_len, system_len, self.capacity, self.throughput, timestamp);
-    self.system_state.publish_event(&EventStreamEvent::Mailbox(event));
+    system_state.publish_event(&EventStreamEvent::Mailbox(event));
     self.publish_pressure(user_len, timestamp);
 
     if let Some(threshold) = self.warn_threshold
       && user_len >= threshold
     {
       let message = format!("mailbox backlog reached {} (threshold: {})", user_len, threshold);
-      self.system_state.emit_log(LogLevel::Warn, message, Some(self.pid));
+      system_state.emit_log(LogLevel::Warn, message, Some(self.pid));
     }
   }
 
@@ -71,7 +83,7 @@ impl<TB: RuntimeToolbox + 'static> MailboxInstrumentationGeneric<TB> {
     let utilization = ((user_len.saturating_mul(100)) / capacity).min(100) as u8;
     if utilization as usize >= PRESSURE_THRESHOLD_PERCENT {
       let event = MailboxPressureEvent::new(self.pid, user_len, capacity, utilization, timestamp, self.warn_threshold);
-      self.system_state.publish_event(&EventStreamEvent::MailboxPressure(event.clone()));
+      self.get_system_state().publish_event(&EventStreamEvent::MailboxPressure(event.clone()));
       self.forward_backpressure(&event);
     }
   }
@@ -90,12 +102,12 @@ impl<TB: RuntimeToolbox + 'static> MailboxInstrumentationGeneric<TB> {
   /// Returns the associated system state handle.
   #[must_use]
   pub fn system_state(&self) -> SystemStateSharedGeneric<TB> {
-    self.system_state.clone()
+    self.get_system_state()
   }
 
   /// Emits a log event tagged with the owning actor pid.
   pub fn emit_log(&self, level: LogLevel, message: impl Into<String>) {
-    self.system_state.emit_log(level, message.into(), Some(self.pid));
+    self.get_system_state().emit_log(level, message.into(), Some(self.pid));
   }
 
   /// Returns the pid associated with this mailbox.

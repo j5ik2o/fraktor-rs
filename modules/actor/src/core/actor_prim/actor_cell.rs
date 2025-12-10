@@ -31,7 +31,7 @@ use crate::core::{
   props::{ActorFactorySharedGeneric, PropsGeneric},
   spawn::SpawnError,
   supervision::{RestartStatistics, SupervisorDirective, SupervisorStrategyKind},
-  system::{ActorSystemGeneric, FailureOutcome, GuardianKind, SystemStateSharedGeneric},
+  system::{ActorSystemGeneric, FailureOutcome, GuardianKind, SystemStateSharedGeneric, SystemStateWeakGeneric},
   typed::message_adapter::{AdapterLifecycleState, AdapterRefHandle, AdapterRefHandleId},
 };
 
@@ -64,7 +64,7 @@ pub struct ActorCellGeneric<TB: RuntimeToolbox + 'static> {
   pid:        Pid,
   parent:     Option<Pid>,
   name:       String,
-  system:     SystemStateSharedGeneric<TB>,
+  system:     SystemStateWeakGeneric<TB>,
   factory:    ActorFactorySharedGeneric<TB>,
   actor:      ActorSharedGeneric<TB>,
   pipeline:   MessageInvokerPipelineGeneric<TB>,
@@ -79,12 +79,23 @@ unsafe impl<TB: RuntimeToolbox + 'static> Send for ActorCellGeneric<TB> {}
 unsafe impl<TB: RuntimeToolbox + 'static> Sync for ActorCellGeneric<TB> {}
 
 impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
+  /// Upgrades the weak system reference to a strong reference.
+  ///
+  /// # Panics
+  ///
+  /// Panics if the system state has already been dropped.
+  #[allow(clippy::expect_used)]
+  fn system(&self) -> SystemStateSharedGeneric<TB> {
+    self.system.upgrade().expect("system state has been dropped")
+  }
+
   /// Creates a new actor cell using the provided runtime state and props.
   ///
   /// # Errors
   ///
   /// Returns [`SpawnError::InvalidMailboxConfig`] if the mailbox configuration is incompatible
   /// with the dispatcher executor (e.g., using Block strategy with a non-blocking executor).
+  #[allow(clippy::needless_pass_by_value)]
   pub fn create(
     system: SystemStateSharedGeneric<TB>,
     pid: Pid,
@@ -117,7 +128,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
       pid,
       parent,
       name,
-      system,
+      system: system.downgrade(),
       factory,
       actor,
       pipeline: MessageInvokerPipelineGeneric::new(),
@@ -185,7 +196,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
   /// Produces an actor reference targeting this cell.
   #[must_use]
   pub fn actor_ref(&self) -> ActorRefGeneric<TB> {
-    ActorRefGeneric::from_shared(self.pid, self.sender.clone(), self.system.clone())
+    ActorRefGeneric::from_shared(self.pid, self.sender.clone(), self.system())
   }
 
   /// Registers a child pid for supervision.
@@ -207,7 +218,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
   fn stop_child(&self, pid: Pid) {
     let should_stop = { self.state.lock().children.contains(&pid) };
     if should_stop {
-      let _ = self.system.send_system_message(pid, SystemMessage::Stop);
+      let _ = self.system().send_system_message(pid, SystemMessage::Stop);
     }
   }
 
@@ -234,7 +245,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
 
   pub(crate) fn handle_watch(&self, watcher: Pid) {
     if self.is_terminated() {
-      let _ = self.system.send_system_message(watcher, SystemMessage::Terminated(self.pid));
+      let _ = self.system().send_system_message(watcher, SystemMessage::Terminated(self.pid));
       return;
     }
 
@@ -254,7 +265,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     let id = state.adapter_handle_counter.wrapping_add(1);
     state.adapter_handle_counter = id;
     let handle_id = AdapterRefHandleId::new(id);
-    let lifecycle = ArcShared::new(AdapterLifecycleState::new(self.system.clone(), self.pid));
+    let lifecycle = ArcShared::new(AdapterLifecycleState::new(self.system(), self.pid));
     let handle = AdapterRefHandle::new(handle_id, lifecycle.clone());
     state.adapter_handles.push(handle);
     (handle_id, lifecycle)
@@ -287,7 +298,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     let mut state = self.state.lock();
     let id = ContextPipeTaskId::new(state.pipe_task_counter.wrapping_add(1));
     state.pipe_task_counter = id.get();
-    let task = ContextPipeTask::new(id, future, self.pid, self.system.clone());
+    let task = ContextPipeTask::new(id, future, self.pid, self.system());
     state.pipe_tasks.push(task);
     drop(state);
     self.poll_pipe_task(id);
@@ -313,7 +324,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     if let Some(message) = message {
       match self.actor_ref().tell(message) {
         | Ok(()) => {},
-        | Err(error) => self.system.record_send_error(Some(self.pid), &error),
+        | Err(error) => self.system().record_send_error(Some(self.pid), &error),
       }
     }
   }
@@ -335,12 +346,12 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     drop(state);
 
     for watcher in recipients {
-      let _ = self.system.send_system_message(watcher, SystemMessage::Terminated(self.pid));
+      let _ = self.system().send_system_message(watcher, SystemMessage::Terminated(self.pid));
     }
   }
 
   pub(crate) fn handle_terminated(&self, terminated_pid: Pid) -> Result<(), ActorError> {
-    let system = ActorSystemGeneric::from_state(self.system.clone());
+    let system = ActorSystemGeneric::from_state(self.system());
     let mut ctx = ActorContextGeneric::new(&system, self.pid);
     let result = self.actor.with_write(|actor| actor.on_terminated(&mut ctx, terminated_pid));
     ctx.clear_reply_to();
@@ -357,7 +368,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
 
   fn handle_recreate(&self) -> Result<(), ActorError> {
     {
-      let system = ActorSystemGeneric::from_state(self.system.clone());
+      let system = ActorSystemGeneric::from_state(self.system());
       let mut ctx = ActorContextGeneric::new(&system, self.pid);
       self.actor.with_write(|actor| actor.post_stop(&mut ctx))?;
       ctx.clear_reply_to();
@@ -379,7 +390,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
   }
 
   fn handle_stop(&self) -> Result<(), ActorError> {
-    let system = ActorSystemGeneric::from_state(self.system.clone());
+    let system = ActorSystemGeneric::from_state(self.system());
     let mut ctx = ActorContextGeneric::new(&system, self.pid);
     let result = self.actor.with_write(|actor| actor.post_stop(&mut ctx));
     ctx.clear_reply_to();
@@ -389,7 +400,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
 
     let children_snapshot = self.children();
     for child in &children_snapshot {
-      let _ = self.system.send_system_message(*child, SystemMessage::Stop);
+      let _ = self.system().send_system_message(*child, SystemMessage::Stop);
     }
 
     self.clear_child_stats(&children_snapshot);
@@ -397,19 +408,19 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     self.notify_watchers_on_stop();
 
     if let Some(parent) = self.parent {
-      self.system.unregister_child(Some(parent), self.pid);
+      self.system().unregister_child(Some(parent), self.pid);
     }
 
-    self.system.release_name(self.parent, &self.name);
-    let _ = self.system.remove_cell(&self.pid);
+    self.system().release_name(self.parent, &self.name);
+    let _ = self.system().remove_cell(&self.pid);
 
-    match self.system.clear_guardian(self.pid) {
+    match self.system().clear_guardian(self.pid) {
       | Some(GuardianKind::Root) => {
-        self.system.clone().mark_terminated();
+        self.system().mark_terminated();
       },
       | Some(GuardianKind::User) | Some(GuardianKind::System) => {
-        if !self.system.guardian_alive(GuardianKind::Root) {
-          self.system.clone().mark_terminated();
+        if !self.system().guardian_alive(GuardianKind::Root) {
+          self.system().mark_terminated();
         }
       },
       | None => {},
@@ -420,14 +431,14 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
 
   fn report_failure(&self, error: &ActorError, snapshot: Option<FailureMessageSnapshot>) {
     self.mailbox.suspend();
-    let timestamp = self.system.monotonic_now();
+    let timestamp = self.system().monotonic_now();
     let payload = FailurePayload::from_error(self.pid, error, snapshot, timestamp);
-    self.system.report_failure(payload);
+    self.system().report_failure(payload);
   }
 
   fn handle_failure_message(&self, payload: &FailurePayload) {
     let actor_error = payload.to_actor_error();
-    let now = self.system.monotonic_now();
+    let now = self.system().monotonic_now();
     let payload_ref = &payload;
     let (directive, affected) = self.handle_child_failure(payload.child(), &actor_error, now);
 
@@ -435,41 +446,41 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
       | SupervisorDirective::Restart => {
         let mut restart_failed = false;
         for target in affected {
-          if let Err(send_error) = self.system.send_system_message(target, SystemMessage::Recreate) {
-            self.system.record_send_error(Some(target), &send_error);
+          if let Err(send_error) = self.system().send_system_message(target, SystemMessage::Recreate) {
+            self.system().record_send_error(Some(target), &send_error);
             restart_failed = true;
           }
         }
 
         if restart_failed {
-          self.system.record_failure_outcome(payload.child(), FailureOutcome::Escalate, payload_ref);
+          self.system().record_failure_outcome(payload.child(), FailureOutcome::Escalate, payload_ref);
           let snapshot = payload.message().cloned();
-          let escalated = FailurePayload::from_error(self.pid, &actor_error, snapshot, self.system.monotonic_now());
-          self.system.report_failure(escalated);
+          let escalated = FailurePayload::from_error(self.pid, &actor_error, snapshot, self.system().monotonic_now());
+          self.system().report_failure(escalated);
         } else {
-          self.system.record_failure_outcome(payload.child(), FailureOutcome::Restart, payload_ref);
+          self.system().record_failure_outcome(payload.child(), FailureOutcome::Restart, payload_ref);
         }
       },
       | SupervisorDirective::Stop => {
         for target in affected {
-          let _ = self.system.send_system_message(target, SystemMessage::Stop);
+          let _ = self.system().send_system_message(target, SystemMessage::Stop);
         }
-        self.system.record_failure_outcome(payload.child(), FailureOutcome::Stop, payload_ref);
+        self.system().record_failure_outcome(payload.child(), FailureOutcome::Stop, payload_ref);
       },
       | SupervisorDirective::Escalate => {
         for target in affected {
-          let _ = self.system.send_system_message(target, SystemMessage::Stop);
+          let _ = self.system().send_system_message(target, SystemMessage::Stop);
         }
-        self.system.record_failure_outcome(payload.child(), FailureOutcome::Escalate, payload_ref);
+        self.system().record_failure_outcome(payload.child(), FailureOutcome::Escalate, payload_ref);
         let snapshot = payload.message().cloned();
-        let escalated = FailurePayload::from_error(self.pid, &actor_error, snapshot, self.system.monotonic_now());
-        self.system.report_failure(escalated);
+        let escalated = FailurePayload::from_error(self.pid, &actor_error, snapshot, self.system().monotonic_now());
+        self.system().report_failure(escalated);
       },
     }
   }
 
   fn run_pre_start(&self, stage: LifecycleStage) -> Result<(), ActorError> {
-    let system = ActorSystemGeneric::from_state(self.system.clone());
+    let system = ActorSystemGeneric::from_state(self.system());
     let mut ctx = ActorContextGeneric::new(&system, self.pid);
     let outcome = self.actor.with_write(|actor| actor.pre_start(&mut ctx));
     ctx.clear_reply_to();
@@ -480,9 +491,9 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
   }
 
   fn publish_lifecycle(&self, stage: LifecycleStage) {
-    let timestamp = self.system.monotonic_now();
+    let timestamp = self.system().monotonic_now();
     let event = LifecycleEvent::new(self.pid, self.parent, self.name.clone(), stage, timestamp);
-    self.system.publish_event(&EventStreamEvent::Lifecycle(event));
+    self.system().publish_event(&EventStreamEvent::Lifecycle(event));
   }
 }
 
@@ -492,7 +503,7 @@ struct ActorCellInvoker<TB: RuntimeToolbox + 'static> {
 
 impl<TB: RuntimeToolbox + 'static> MessageInvoker<TB> for ActorCellInvoker<TB> {
   fn invoke_user_message(&mut self, message: AnyMessageGeneric<TB>) -> Result<(), ActorError> {
-    let system = ActorSystemGeneric::from_state(self.cell.system.clone());
+    let system = ActorSystemGeneric::from_state(self.cell.system());
     let mut ctx = ActorContextGeneric::new(&system, self.cell.pid);
     let failure_candidate = message.clone();
     let result = self.cell.actor.with_write(|actor| self.cell.pipeline.invoke_user(&mut **actor, &mut ctx, message));
@@ -550,7 +561,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
   ) -> (SupervisorDirective, Vec<Pid>) {
     // Get supervisor strategy dynamically from actor instance
     let strategy = {
-      let system = ActorSystemGeneric::from_state(self.system.clone());
+      let system = ActorSystemGeneric::from_state(self.system());
       let mut ctx = ActorContextGeneric::new(&system, self.pid);
       self.actor.with_write(|actor| actor.supervisor_strategy(&mut ctx))
     };

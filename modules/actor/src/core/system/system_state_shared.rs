@@ -35,7 +35,7 @@ use crate::core::{
 ///
 /// Interior mutability is provided by individual field-level mutexes within [`SystemStateGeneric`].
 pub struct SystemStateSharedGeneric<TB: RuntimeToolbox + 'static> {
-  inner: ArcShared<SystemStateGeneric<TB>>,
+  pub(crate) inner: ArcShared<SystemStateGeneric<TB>>,
 }
 
 impl<TB: RuntimeToolbox + 'static> Clone for SystemStateSharedGeneric<TB> {
@@ -51,10 +51,22 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
     Self { inner: ArcShared::new(state) }
   }
 
+  /// Creates a shared wrapper from an existing [`ArcShared`].
+  #[must_use]
+  pub(crate) const fn from_arc_shared(inner: ArcShared<SystemStateGeneric<TB>>) -> Self {
+    Self { inner }
+  }
+
   /// Returns the inner reference for direct access when needed.
   #[must_use]
   pub const fn inner(&self) -> &ArcShared<SystemStateGeneric<TB>> {
     &self.inner
+  }
+
+  /// Creates a weak reference to this system state.
+  #[must_use]
+  pub fn downgrade(&self) -> super::SystemStateWeakGeneric<TB> {
+    super::SystemStateWeakGeneric { inner: self.inner.downgrade() }
   }
 
   // ====== Delegated methods from SystemStateGeneric ======
