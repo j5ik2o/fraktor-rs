@@ -6,6 +6,7 @@ use crate::core::{
   actor_prim::{Actor, ActorContextGeneric, Pid, actor_ref::ActorRefGeneric},
   error::ActorError,
   messaging::AnyMessageViewGeneric,
+  supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
   system::SystemStateSharedGeneric,
 };
 
@@ -54,15 +55,9 @@ impl<TB: RuntimeToolbox + 'static> Actor<TB> for RootGuardianActor {
     Ok(())
   }
 
-  fn supervisor_strategy(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, TB>,
-  ) -> crate::core::supervision::SupervisorStrategy {
-    crate::core::supervision::SupervisorStrategy::new(
-      crate::core::supervision::SupervisorStrategyKind::OneForOne,
-      0,
-      core::time::Duration::from_secs(0),
-      |_| crate::core::supervision::SupervisorDirective::Stop,
-    )
+  fn supervisor_strategy(&mut self, _ctx: &mut ActorContextGeneric<'_, TB>) -> SupervisorStrategy {
+    SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 0, core::time::Duration::from_secs(0), |_| {
+      SupervisorDirective::Stop
+    })
   }
 }
