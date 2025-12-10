@@ -12,7 +12,7 @@ use alloc::{
 use fraktor_utils_rs::core::{
   collections::queue::capabilities::QueueCapability,
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
+  sync::{ArcShared, SharedAccess},
 };
 
 use super::{
@@ -57,7 +57,9 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   /// Creates an empty actor system without any guardian (testing only).
   #[must_use]
   pub fn new_empty() -> Self {
-    Self { state: SystemStateSharedGeneric::new(SystemStateGeneric::new()) }
+    let state = SystemStateSharedGeneric::new(SystemStateGeneric::new());
+    state.mark_root_started();
+    Self { state }
   }
 
   /// Creates an actor system from an existing system state.
@@ -157,6 +159,9 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   ///
   /// Returns [`ActorRefResolveError`] when the path cannot be resolved.
   pub fn resolve_actor_ref(&self, path: ActorPath) -> Result<ActorRefGeneric<TB>, ActorRefResolveError> {
+    if !self.state.has_root_started() && self.state.root_guardian_pid().is_none() {
+      return Err(ActorRefResolveError::SystemNotBootstrapped);
+    }
     let resolved_path = self.prepare_actor_path(path)?;
     let scheme = resolved_path.parts().scheme();
     let result = self
@@ -225,6 +230,16 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   #[must_use]
   pub fn state(&self) -> SystemStateSharedGeneric<TB> {
     self.state.clone()
+  }
+
+  /// Creates a weak reference to this actor system.
+  ///
+  /// Use this when storing a reference to the actor system in components that are
+  /// themselves owned by the system (such as extensions or remoting components)
+  /// to avoid circular reference issues.
+  #[must_use]
+  pub fn downgrade(&self) -> super::ActorSystemWeakGeneric<TB> {
+    super::ActorSystemWeakGeneric { state: self.state.downgrade() }
   }
 
   /// Returns the canonical host/port when remoting is configured.
@@ -356,7 +371,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   /// Resolves the pid registered for the provided actor path.
   #[must_use]
   pub fn pid_by_path(&self, path: &crate::core::actor_prim::actor_path::ActorPath) -> Option<Pid> {
-    self.state.with_actor_path_registry(|registry| registry.lock().pid_for(path))
+    self.state.with_actor_path_registry(|registry| registry.with_read(|r| r.pid_for(path)))
   }
 
   /// Returns an actor reference for the provided pid when registered.
@@ -419,6 +434,9 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   ///
   /// Returns [`SpawnError::InvalidProps`] when the parent pid is unknown.
   pub(crate) fn spawn_child(&self, parent: Pid, props: &PropsGeneric<TB>) -> Result<ChildRefGeneric<TB>, SpawnError> {
+    if !self.state.has_root_started() && self.state.root_guardian_pid().is_none() {
+      return Err(SpawnError::system_not_bootstrapped());
+    }
     if self.state.cell(&parent).is_none() {
       return Err(SpawnError::invalid_props(PARENT_MISSING));
     }
@@ -527,11 +545,11 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     let root_props = PropsGeneric::from_fn(RootGuardianActor::new).with_name("root");
     let root_cell = self.spawn_root_guardian_cell(&root_props)?;
     let root_pid = root_cell.pid();
-    self.state.set_root_guardian(root_cell.clone());
+    self.state.set_root_guardian(&root_cell);
 
     let user_guardian = self.spawn_child(root_pid, user_guardian_props)?;
     if let Some(cell) = self.state.cell(&user_guardian.pid()) {
-      self.state.set_user_guardian(cell);
+      self.state.set_user_guardian(&cell);
     } else {
       return Err(SpawnError::invalid_props("user guardian unavailable"));
     }
@@ -545,7 +563,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
 
     let system_guardian = self.spawn_child(root_pid, &system_props)?;
     if let Some(cell) = self.state.cell(&system_guardian.pid()) {
-      self.state.set_system_guardian(cell);
+      self.state.set_system_guardian(&cell);
     }
 
     configure(self)?;

@@ -4,13 +4,13 @@ use alloc::{collections::VecDeque, string::String, vec::Vec};
 use core::{any::TypeId, time::Duration};
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex},
+  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
   sync::ArcShared,
 };
 
 use super::{
-  ActorPathRegistry, ActorRefProvider, ActorRefProviderSharedGeneric, AuthorityState, GuardianKind,
-  RemoteAuthorityError, RemotingConfig, SystemStateGeneric,
+  ActorRefProvider, ActorRefProviderSharedGeneric, AuthorityState, GuardianKind, RemoteAuthorityError, RemotingConfig,
+  SystemStateGeneric,
 };
 use crate::core::{
   actor_prim::{
@@ -35,7 +35,7 @@ use crate::core::{
 ///
 /// Interior mutability is provided by individual field-level mutexes within [`SystemStateGeneric`].
 pub struct SystemStateSharedGeneric<TB: RuntimeToolbox + 'static> {
-  inner: ArcShared<SystemStateGeneric<TB>>,
+  pub(crate) inner: ArcShared<SystemStateGeneric<TB>>,
 }
 
 impl<TB: RuntimeToolbox + 'static> Clone for SystemStateSharedGeneric<TB> {
@@ -51,10 +51,22 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
     Self { inner: ArcShared::new(state) }
   }
 
+  /// Creates a shared wrapper from an existing [`ArcShared`].
+  #[must_use]
+  pub(crate) const fn from_arc_shared(inner: ArcShared<SystemStateGeneric<TB>>) -> Self {
+    Self { inner }
+  }
+
   /// Returns the inner reference for direct access when needed.
   #[must_use]
   pub const fn inner(&self) -> &ArcShared<SystemStateGeneric<TB>> {
     &self.inner
+  }
+
+  /// Creates a weak reference to this system state.
+  #[must_use]
+  pub fn downgrade(&self) -> super::SystemStateWeakGeneric<TB> {
+    super::SystemStateWeakGeneric { inner: self.inner.downgrade() }
   }
 
   // ====== Delegated methods from SystemStateGeneric ======
@@ -132,17 +144,17 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   }
 
   /// Stores the root guardian cell reference.
-  pub fn set_root_guardian(&self, cell: ArcShared<ActorCellGeneric<TB>>) {
+  pub fn set_root_guardian(&self, cell: &ArcShared<ActorCellGeneric<TB>>) {
     self.inner.set_root_guardian(cell);
   }
 
   /// Stores the system guardian cell reference.
-  pub fn set_system_guardian(&self, cell: ArcShared<ActorCellGeneric<TB>>) {
+  pub fn set_system_guardian(&self, cell: &ArcShared<ActorCellGeneric<TB>>) {
     self.inner.set_system_guardian(cell);
   }
 
   /// Stores the user guardian cell reference.
-  pub fn set_user_guardian(&self, cell: ArcShared<ActorCellGeneric<TB>>) {
+  pub fn set_user_guardian(&self, cell: &ArcShared<ActorCellGeneric<TB>>) {
     self.inner.set_user_guardian(cell);
   }
 
@@ -186,6 +198,23 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   #[must_use]
   pub fn user_guardian_pid(&self) -> Option<Pid> {
     self.inner.user_guardian_pid()
+  }
+
+  /// Returns the PID registered for the specified guardian.
+  #[must_use]
+  pub fn guardian_pid(&self, kind: GuardianKind) -> Option<Pid> {
+    self.inner.guardian_pid(kind)
+  }
+
+  /// Registers a PID for the specified guardian kind.
+  pub fn register_guardian_pid(&self, kind: GuardianKind, pid: Pid) {
+    self.inner.register_guardian_pid(kind, pid);
+  }
+
+  /// Returns whether the specified guardian is alive.
+  #[must_use]
+  pub fn guardian_alive(&self, kind: GuardianKind) -> bool {
+    self.inner.guardian_alive(kind)
   }
 
   /// Registers an extra top-level path prior to root startup.
@@ -476,7 +505,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   /// Returns a reference to the ActorPathRegistry.
   pub fn with_actor_path_registry<R, F>(&self, f: F) -> R
   where
-    F: FnOnce(&ToolboxMutex<ActorPathRegistry, TB>) -> R, {
+    F: FnOnce(&super::ActorPathRegistrySharedGeneric<TB>) -> R, {
     f(self.inner.actor_path_registry())
   }
 

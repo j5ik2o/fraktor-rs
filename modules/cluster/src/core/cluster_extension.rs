@@ -10,7 +10,7 @@ use fraktor_actor_rs::core::{
     EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric, subscriber_handle,
   },
   messaging::AnyMessageGeneric,
-  system::ActorSystemGeneric,
+  system::{ActorSystemGeneric, ActorSystemWeakGeneric},
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::{RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
@@ -51,17 +51,19 @@ pub struct ClusterExtensionGeneric<TB: RuntimeToolbox + 'static> {
   core:         ArcShared<ToolboxMutex<ClusterCore<TB>, TB>>,
   event_stream: ArcShared<EventStreamGeneric<TB>>,
   subscription: ToolboxMutex<Option<EventStreamSubscriptionGeneric<TB>>, TB>,
-  _system:      ArcShared<ActorSystemGeneric<TB>>,
+  _system:      ActorSystemWeakGeneric<TB>,
 }
 
 impl<TB: RuntimeToolbox + 'static> ClusterExtensionGeneric<TB> {
   /// Creates the extension from injected dependencies.
+  ///
+  /// Uses a weak reference to the actor system to avoid circular references.
   #[must_use]
-  pub fn new(system: ArcShared<ActorSystemGeneric<TB>>, core: ClusterCore<TB>) -> Self {
+  pub fn new(system: &ActorSystemGeneric<TB>, core: ClusterCore<TB>) -> Self {
     let event_stream = system.event_stream();
     let locked = <TB::MutexFamily as SyncMutexFamily>::create(core);
     let subscription = <TB::MutexFamily as SyncMutexFamily>::create(None);
-    Self { core: ArcShared::new(locked), event_stream, subscription, _system: system }
+    Self { core: ArcShared::new(locked), event_stream, subscription, _system: system.downgrade() }
   }
 
   /// Subscribes to the event stream for topology updates.

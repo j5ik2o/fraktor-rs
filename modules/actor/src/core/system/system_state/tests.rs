@@ -13,11 +13,16 @@ use crate::core::{
     actor_path::{ActorPath, ActorPathScheme, ActorUid, GuardianKind as PathGuardianKind, PathResolutionError},
     actor_ref::ActorRefGeneric,
   },
+  dispatcher::{DispatchError, DispatchExecutor, DispatchSharedGeneric, DispatcherConfig},
   error::ActorError,
   event_stream::{EventStream, EventStreamEvent, EventStreamSubscriber, subscriber_handle},
-  messaging::{AnyMessage, AnyMessageViewGeneric},
+  mailbox::MailboxMessage,
+  messaging::{AnyMessage, AnyMessageViewGeneric, FailurePayload, SystemMessage},
   props::Props,
-  system::{ActorSystemConfig, AuthorityState, RegisterExtraTopLevelError, RemotingConfig, SystemStateShared},
+  system::{
+    ActorSystemConfig, AuthorityState, GuardianKind, RegisterExtraTopLevelError, RemotingConfig, SystemStateShared,
+    booting_state::BootingSystemStateGeneric,
+  },
 };
 
 #[test]
@@ -97,16 +102,15 @@ fn system_state_remove_cell_reserves_uid() {
   let pid = state.allocate_pid();
   let path = ActorPath::root().child("reserved").with_uid(ActorUid::new(777));
 
-  {
-    let mut registry = state.actor_path_registry().lock();
+  state.actor_path_registry().with_write(|registry| {
     registry.register(pid, &path);
-  }
+  });
 
   let _ = state.remove_cell(&pid);
 
-  let mut registry = state.actor_path_registry().lock();
   let now = state.monotonic_now().as_secs();
-  let result = registry.reserve_uid(&path, ActorUid::new(888), now, None);
+  let result =
+    state.actor_path_registry().with_write(|registry| registry.reserve_uid(&path, ActorUid::new(888), now, None));
   assert!(matches!(result, Err(PathResolutionError::UidReserved { .. })));
 }
 
@@ -127,8 +131,9 @@ fn system_state_registers_canonical_uri_with_config() {
     ActorCell::create(state.clone(), child_pid, Some(root_pid), "worker".to_string(), &props).expect("worker");
   state.register_cell(child);
 
-  let canonical = state
-    .with_actor_path_registry(|registry| registry.lock().canonical_uri(&child_pid).expect("canonical uri").to_string());
+  let canonical = state.with_actor_path_registry(|registry| {
+    registry.with_read(|r| r.canonical_uri(&child_pid).expect("canonical uri").to_string())
+  });
   assert!(canonical.starts_with("fraktor.tcp://fraktor-system@localhost:2552"));
   assert!(canonical.ends_with("/user/worker"));
 }
@@ -174,7 +179,7 @@ fn system_state_refuses_canonical_without_port() {
   state.register_cell(child);
 
   assert!(state.canonical_actor_path(&child_pid).is_none());
-  assert!(state.with_actor_path_registry(|registry| registry.lock().get(&child_pid).is_none()));
+  assert!(state.with_actor_path_registry(|registry| registry.with_read(|r| r.get(&child_pid).is_none())));
   let local = state.actor_path(&child_pid).expect("local path");
   assert_eq!(local.to_relative_string(), "/user/worker");
   assert!(state.canonical_authority_components().is_none());
@@ -196,8 +201,9 @@ fn system_state_honors_default_guardian_config() {
     ActorCell::create(state.clone(), child_pid, Some(root_pid), "logger".to_string(), &props).expect("logger");
   state.register_cell(child);
 
-  let canonical = state
-    .with_actor_path_registry(|registry| registry.lock().canonical_uri(&child_pid).expect("canonical uri").to_string());
+  let canonical = state.with_actor_path_registry(|registry| {
+    registry.with_read(|r| r.canonical_uri(&child_pid).expect("canonical uri").to_string())
+  });
   assert!(canonical.contains("/system/logger"), "canonical: {}", canonical);
 }
 
@@ -391,6 +397,124 @@ fn system_state_record_send_error() {
   state.record_send_error(Some(state.allocate_pid()), &error);
 }
 
+#[test]
+fn guardian_cell_via_cells_returns_none_when_missing() {
+  let state = SystemStateShared::new(SystemState::new());
+  let user_pid = state.allocate_pid();
+
+  state.register_guardian_pid(GuardianKind::User, user_pid);
+
+  assert!(state.user_guardian().is_none());
+  assert_eq!(state.user_guardian_pid(), Some(user_pid));
+}
+
+#[test]
+fn booting_into_running_requires_all_guardians() {
+  let state = SystemStateShared::new(SystemState::new());
+  let booting = BootingSystemStateGeneric::new(state.clone());
+
+  let root_pid = state.allocate_pid();
+  let system_pid = state.allocate_pid();
+  let user_pid = state.allocate_pid();
+
+  let props = Props::from_fn(|| RestartProbeActor);
+  let root_cell =
+    ActorCell::create(state.clone(), root_pid, None, "root".to_string(), &props).expect("root cell created");
+  let system_cell =
+    ActorCell::create(state.clone(), system_pid, Some(root_pid), "system".to_string(), &props).expect("system cell");
+  let user_cell =
+    ActorCell::create(state.clone(), user_pid, Some(root_pid), "user".to_string(), &props).expect("user cell");
+
+  state.register_cell(root_cell);
+  state.register_cell(system_cell.clone());
+  state.register_cell(user_cell.clone());
+
+  booting.register_guardian(GuardianKind::Root, root_pid);
+  booting.register_guardian(GuardianKind::System, system_pid);
+  booting.register_guardian(GuardianKind::User, user_pid);
+
+  let running = booting.into_running().expect("running state");
+  assert_eq!(running.guardian_pid(GuardianKind::User), user_pid);
+  assert!(running.guardian_cell(GuardianKind::User).is_some());
+  assert!(running.guardian_cell(GuardianKind::System).is_some());
+}
+
+#[test]
+fn booting_into_running_fails_when_guardian_missing() {
+  let state = SystemStateShared::new(SystemState::new());
+  let booting = BootingSystemStateGeneric::new(state.clone());
+
+  let root_pid = state.allocate_pid();
+  let system_pid = state.allocate_pid();
+  booting.register_guardian(GuardianKind::Root, root_pid);
+  booting.register_guardian(GuardianKind::System, system_pid);
+
+  let result = booting.into_running();
+  assert!(matches!(result, Err(crate::core::spawn::SpawnError::SystemNotBootstrapped)));
+}
+
+#[test]
+fn watch_on_missing_guardian_sends_terminated_to_watcher() {
+  let state = SystemStateShared::new(SystemState::new());
+  let watcher_pid = state.allocate_pid();
+  let target_pid = state.allocate_pid();
+
+  let noop_dispatcher = DispatcherConfig::from_executor(Box::new(NoopExecutor));
+  let props = Props::from_fn(|| RestartProbeActor).with_dispatcher(noop_dispatcher);
+  let watcher_cell =
+    ActorCell::create(state.clone(), watcher_pid, None, "watcher".to_string(), &props).expect("watcher cell");
+  state.register_cell(watcher_cell);
+
+  state.send_system_message(target_pid, SystemMessage::Watch(watcher_pid)).expect("watch send ok");
+
+  let mailbox_snapshot = state.cell(&watcher_pid).expect("watcher cell").mailbox();
+  assert_eq!(mailbox_snapshot.system_len(), 1);
+  let dequeued = mailbox_snapshot.dequeue().expect("dequeue system");
+  match dequeued {
+    | MailboxMessage::System(SystemMessage::Terminated(pid)) => assert_eq!(pid, target_pid),
+    | other => panic!("unexpected mailbox message: {:?}", other),
+  }
+}
+
+#[test]
+fn termination_future_completes_after_root_marked_terminated() {
+  let state = SystemStateShared::new(SystemState::new());
+  let root_pid = state.allocate_pid();
+  state.register_guardian_pid(GuardianKind::Root, root_pid);
+
+  assert!(!state.termination_future().with_read(|f| f.is_ready()));
+  let _ = state.clear_guardian(root_pid);
+  state.mark_terminated();
+
+  assert!(state.termination_future().with_read(|f| f.is_ready()));
+}
+
+#[test]
+fn system_state_logs_failure_with_pid_origin() {
+  use core::time::Duration;
+
+  let state = SystemState::new();
+  let events_shared: ArcShared<NoStdMutex<Vec<EventStreamEvent<NoStdToolbox>>>> =
+    ArcShared::new(NoStdMutex::new(Vec::new()));
+  let subscriber = subscriber_handle(LogRecorder::new(events_shared.clone()));
+  let _subscription = EventStream::subscribe_arc(&state.event_stream(), &subscriber);
+
+  let pid = state.allocate_pid();
+  let payload = FailurePayload::from_error(pid, &ActorError::fatal("boom"), None, Duration::from_millis(1));
+
+  state.report_failure(payload);
+
+  let events_snapshot = events_shared.lock().clone();
+  let log_event = events_snapshot.iter().find_map(|event| match event {
+    | EventStreamEvent::Log(log) => Some(log.clone()),
+    | _ => None,
+  });
+
+  let log_event = log_event.expect("log event should be published");
+  assert_eq!(log_event.origin(), Some(pid));
+  assert!(log_event.message().contains("failed"));
+}
+
 struct RestartProbeActor;
 
 struct RemoteEventRecorder {
@@ -410,6 +534,40 @@ impl Default for RemoteEventRecorder {
 }
 
 impl EventStreamSubscriber<NoStdToolbox> for RemoteEventRecorder {
+  fn on_event(&mut self, event: &EventStreamEvent<NoStdToolbox>) {
+    self.events.lock().push(event.clone());
+  }
+}
+
+struct NoopExecutor;
+
+impl DispatchExecutor<NoStdToolbox> for NoopExecutor {
+  fn execute(&mut self, _dispatcher: DispatchSharedGeneric<NoStdToolbox>) -> Result<(), DispatchError> {
+    Ok(())
+  }
+
+  fn supports_blocking(&self) -> bool {
+    false
+  }
+}
+
+struct LogRecorder {
+  events: ArcShared<NoStdMutex<Vec<EventStreamEvent<NoStdToolbox>>>>,
+}
+
+impl LogRecorder {
+  fn new(events: ArcShared<NoStdMutex<Vec<EventStreamEvent<NoStdToolbox>>>>) -> Self {
+    Self { events }
+  }
+}
+
+impl Default for LogRecorder {
+  fn default() -> Self {
+    Self::new(ArcShared::new(NoStdMutex::new(Vec::new())))
+  }
+}
+
+impl EventStreamSubscriber<NoStdToolbox> for LogRecorder {
   fn on_event(&mut self, event: &EventStreamEvent<NoStdToolbox>) {
     self.events.lock().push(event.clone());
   }

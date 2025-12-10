@@ -14,6 +14,8 @@ pub enum SpawnError {
   NameConflict(String),
   /// The actor system is shutting down or unavailable.
   SystemUnavailable,
+  /// The actor system has not completed bootstrap (guardians not ready).
+  SystemNotBootstrapped,
   /// The provided props were invalid for this actor system.
   InvalidProps(String),
   /// The mailbox configuration is incompatible with the dispatcher executor.
@@ -37,6 +39,12 @@ impl SpawnError {
   #[must_use]
   pub const fn system_unavailable() -> Self {
     Self::SystemUnavailable
+  }
+
+  /// Creates a not-bootstrapped error.
+  #[must_use]
+  pub const fn system_not_bootstrapped() -> Self {
+    Self::SystemNotBootstrapped
   }
 
   /// Creates an invalid props error with the provided reason.

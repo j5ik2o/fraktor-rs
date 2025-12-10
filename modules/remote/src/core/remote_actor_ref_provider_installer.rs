@@ -49,7 +49,7 @@ impl<TB: RuntimeToolbox + 'static> ActorRefProviderInstaller<TB> for RemoteActor
     };
 
     let writer_mutex =
-      <TB::MutexFamily as SyncMutexFamily>::create(EndpointWriterGeneric::new(system.clone(), serialization));
+      <TB::MutexFamily as SyncMutexFamily>::create(EndpointWriterGeneric::new(system.downgrade(), serialization));
     let writer = ArcShared::new(writer_mutex);
 
     let Some(extension) = extended.extension_by_type::<RemotingExtensionGeneric<TB>>() else {
@@ -74,7 +74,7 @@ impl<TB: RuntimeToolbox + 'static> ActorRefProviderInstaller<TB> for RemoteActor
           "serialization extension missing for loopback routing".into(),
         ));
       };
-      let reader = EndpointReaderGeneric::new(system.clone(), serialization_ext);
+      let reader = EndpointReaderGeneric::new(system.downgrade(), serialization_ext);
       loopback_router::register_endpoint(authority, reader, system.clone());
     }
     Ok(())

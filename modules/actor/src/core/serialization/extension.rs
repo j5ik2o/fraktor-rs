@@ -40,17 +40,20 @@ use crate::core::{
     serializer_id::SerializerId,
     transport_information::TransportInformation,
   },
-  system::{ActorSystemGeneric, SystemStateSharedGeneric},
+  system::{ActorSystemGeneric, SystemStateWeakGeneric},
 };
 
 /// Serialization extension type alias for the default toolbox.
 pub type SerializationExtension = SerializationExtensionGeneric<NoStdToolbox>;
 
 /// Serialization extension registered within the actor system.
+///
+/// Uses a weak reference to the system state to avoid circular references,
+/// since this extension is registered into the actor system.
 pub struct SerializationExtensionGeneric<TB: RuntimeToolbox + 'static> {
   registry:        ArcShared<SerializationRegistryGeneric<TB>>,
   setup:           SerializationSetup,
-  system_state:    SystemStateSharedGeneric<TB>,
+  system_state:    SystemStateWeakGeneric<TB>,
   transport_stack: ToolboxMutex<Vec<TransportInformation>, TB>,
   uninitialized:   AtomicBool,
   _marker:         PhantomData<TB>,
@@ -58,6 +61,8 @@ pub struct SerializationExtensionGeneric<TB: RuntimeToolbox + 'static> {
 
 impl<TB: RuntimeToolbox + 'static> SerializationExtensionGeneric<TB> {
   /// Creates the extension from the provided setup.
+  ///
+  /// Uses a weak reference to the actor system to avoid circular references.
   ///
   /// # Panics
   ///
@@ -82,7 +87,7 @@ impl<TB: RuntimeToolbox + 'static> SerializationExtensionGeneric<TB> {
     Self {
       registry,
       setup,
-      system_state: state,
+      system_state: state.downgrade(),
       transport_stack: <TB::MutexFamily as SyncMutexFamily>::create(Vec::new()),
       uninitialized: AtomicBool::new(false),
       _marker: PhantomData,
@@ -178,10 +183,14 @@ impl<TB: RuntimeToolbox + 'static> SerializationExtensionGeneric<TB> {
   ///
   /// # Errors
   ///
-  /// Returns `SerializationError::Uninitialized` if the extension has been shut down.
+  /// Returns `SerializationError::Uninitialized` if the extension has been shut down
+  /// or the actor system has been dropped.
   pub fn serialized_actor_path(&self, actor_ref: &ActorRefGeneric<TB>) -> Result<String, SerializationError> {
     self.ensure_active()?;
-    if self.current_transport_information().is_none() && self.system_state.has_partial_canonical_authority() {
+    let Some(system_state) = self.system_state.upgrade() else {
+      return Err(SerializationError::Uninitialized);
+    };
+    if self.current_transport_information().is_none() && system_state.has_partial_canonical_authority() {
       let payload = NotSerializableError::new("ActorRef", None, None, Some(actor_ref.pid()), None);
       self.publish_not_serializable(&payload);
       return Err(SerializationError::NotSerializable(payload));
@@ -296,7 +305,9 @@ impl<TB: RuntimeToolbox + 'static> SerializationExtensionGeneric<TB> {
       match outcome {
         | Ok(value) => {
           let message = format!("manifest '{manifest}' resolved via serializer {:?}", serializer.identifier());
-          self.system_state.emit_log(LogLevel::Info, message, None);
+          if let Some(system_state) = self.system_state.upgrade() {
+            system_state.emit_log(LogLevel::Info, message, None);
+          }
           return Ok(value);
         },
         | Err(SerializationError::UnknownManifest(_)) => continue,
@@ -313,7 +324,9 @@ impl<TB: RuntimeToolbox + 'static> SerializationExtensionGeneric<TB> {
     transport_hint: Option<TransportInformation>,
   ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
     let log_message = format!("manifest '{manifest}' not resolved (serializer {:?})", msg.serializer_id());
-    self.system_state.emit_log(LogLevel::Warn, log_message, None);
+    if let Some(system_state) = self.system_state.upgrade() {
+      system_state.emit_log(LogLevel::Warn, log_message, None);
+    }
     let payload =
       NotSerializableError::new(manifest.clone(), Some(msg.serializer_id()), Some(manifest), None, transport_hint);
     Err(self.handle_error(SerializationError::NotSerializable(payload), None, None))
@@ -326,7 +339,9 @@ impl<TB: RuntimeToolbox + 'static> SerializationExtensionGeneric<TB> {
       | SerializerResolutionOrigin::Fallback => (LogLevel::Info, "serialization fallback resolved"),
     };
     let message = format!("{source} for type {type_name} -> {:?}", serializer_id);
-    self.system_state.emit_log(level, message, None);
+    if let Some(system_state) = self.system_state.upgrade() {
+      system_state.emit_log(level, message, None);
+    }
   }
 
   fn serialize_internal(
@@ -378,12 +393,16 @@ impl<TB: RuntimeToolbox + 'static> SerializationExtensionGeneric<TB> {
   }
 
   fn publish_not_serializable(&self, payload: &NotSerializableError) {
+    let Some(system_state) = self.system_state.upgrade() else {
+      return;
+    };
+
     let event = SerializationErrorEvent::from_error(payload);
-    let event_stream = self.system_state.event_stream();
+    let event_stream = system_state.event_stream();
     event_stream.publish(&EventStreamEvent::Serialization(event));
 
     let message: AnyMessageGeneric<TB> = AnyMessageGeneric::new(payload.clone());
-    self.system_state.record_dead_letter(message, DeadLetterReason::SerializationError, payload.pid());
+    system_state.record_dead_letter(message, DeadLetterReason::SerializationError, payload.pid());
 
     let log_message = format!(
       "serialization failure for type {} (serializer: {:?}, manifest: {:?})",
@@ -391,7 +410,7 @@ impl<TB: RuntimeToolbox + 'static> SerializationExtensionGeneric<TB> {
       payload.serializer_id(),
       payload.manifest(),
     );
-    self.system_state.emit_log(LogLevel::Warn, log_message, payload.pid());
+    system_state.emit_log(LogLevel::Warn, log_message, payload.pid());
   }
 }
 

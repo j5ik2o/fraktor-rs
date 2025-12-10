@@ -66,7 +66,7 @@ fn subscribe(
 #[test]
 fn publishes_listen_started_event() {
   let system = build_system();
-  let publisher = EventPublisher::new(system.clone());
+  let publisher = EventPublisher::new(system.downgrade());
   let (recorder, _subscription) = subscribe(&system);
 
   let correlation = fraktor_actor_rs::core::event_stream::CorrelationId::from_u128(42);
@@ -85,7 +85,7 @@ fn publishes_listen_started_event() {
 #[test]
 fn publishes_backpressure_event() {
   let system = build_system();
-  let publisher = EventPublisher::new(system.clone());
+  let publisher = EventPublisher::new(system.downgrade());
   let (recorder, _subscription) = subscribe(&system);
 
   let correlation = fraktor_actor_rs::core::event_stream::CorrelationId::from_u128(7);

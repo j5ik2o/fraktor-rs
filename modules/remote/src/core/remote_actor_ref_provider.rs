@@ -19,7 +19,8 @@ use fraktor_actor_rs::core::{
   error::{ActorError, SendError},
   messaging::{AnyMessageGeneric, SystemMessage},
   system::{
-    ActorRefProvider, ActorSystemGeneric, RemoteAuthorityError, RemoteAuthorityManagerSharedGeneric, RemoteWatchHook,
+    ActorRefProvider, ActorSystemGeneric, ActorSystemWeakGeneric, RemoteAuthorityError,
+    RemoteAuthorityManagerSharedGeneric, RemoteWatchHook,
   },
 };
 use fraktor_utils_rs::core::{
@@ -47,8 +48,11 @@ use crate::core::{
 };
 
 /// Provider that creates [`ActorRefGeneric`] instances for remote recipients.
+///
+/// Uses a weak reference to the actor system to avoid circular references,
+/// since this provider is registered into the actor system's extensions.
 pub struct RemoteActorRefProviderGeneric<TB: RuntimeToolbox + 'static> {
-  system:            ActorSystemGeneric<TB>,
+  system:            ActorSystemWeakGeneric<TB>,
   writer:            EndpointWriterShared<TB>,
   control:           RemotingControlShared<TB>,
   authority_manager: RemoteAuthorityManagerSharedGeneric<TB>,
@@ -68,11 +72,12 @@ impl<TB: RuntimeToolbox + 'static> RemoteActorRefProviderGeneric<TB> {
 
   /// Creates a remote actor reference for the provided path.
   pub fn actor_ref(&mut self, path: ActorPath) -> Result<ActorRefGeneric<TB>, RemoteActorRefProviderError> {
+    let system = self.system.upgrade().ok_or(RemoteActorRefProviderError::SystemUnavailable)?;
     self.control.lock().associate(path.parts()).map_err(RemoteActorRefProviderError::from)?;
     let sender = self.sender_for_path(&path)?;
-    let pid = self.system.allocate_pid();
+    let pid = system.allocate_pid();
     self.register_remote_entry(pid, path.clone());
-    Ok(ActorRefGeneric::with_system(pid, sender, self.system.state()))
+    Ok(ActorRefGeneric::with_system(pid, sender, &system.state()))
   }
 
   pub(crate) fn from_components(
@@ -83,7 +88,7 @@ impl<TB: RuntimeToolbox + 'static> RemoteActorRefProviderGeneric<TB> {
   ) -> Result<Self, RemoteActorRefProviderError> {
     let daemon = RemoteWatcherDaemon::spawn(&system, control.clone())?;
     Ok(Self {
-      system,
+      system: system.downgrade(),
       writer,
       control,
       authority_manager,
@@ -142,9 +147,12 @@ impl<TB: RuntimeToolbox + 'static> RemoteActorRefProviderGeneric<TB> {
     let Some(authority) = parts.authority_endpoint() else {
       return;
     };
+    let Some(system) = self.system.upgrade() else {
+      return;
+    };
     let deferred = self.authority_manager.with_read(|mgr| mgr.deferred_count(&authority)) as u32;
-    let state = self.system.state().remote_authority_state(&authority);
-    let ticks = self.system.state().monotonic_now().as_millis() as u64;
+    let state = system.state().remote_authority_state(&authority);
+    let ticks = system.state().monotonic_now().as_millis() as u64;
     let snapshot = RemoteAuthoritySnapshot::new(authority, state, ticks, deferred);
     self.control.lock().record_authority_snapshot(snapshot);
   }
@@ -258,7 +266,10 @@ impl<TB: RuntimeToolbox + 'static> ActorRefSender<TB> for RemoteActorRefSender<T
   fn send(&mut self, message: AnyMessageGeneric<TB>) -> Result<SendOutcome, SendError<TB>> {
     let system_state = {
       let writer_guard = self.writer.lock();
-      writer_guard.system().state()
+      let Some(system) = writer_guard.system() else {
+        return Err(SendError::closed(message));
+      };
+      system.state()
     };
     let normalizer = ActorRefFieldNormalizerGeneric::new(system_state);
     if let Err(RemoteAuthorityError::Quarantined) = normalizer.validate_recipient(&self.recipient) {

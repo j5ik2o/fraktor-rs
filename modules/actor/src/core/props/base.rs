@@ -2,16 +2,18 @@ use alloc::{boxed::Box, string::String, vec::Vec};
 
 use fraktor_utils_rs::core::{
   collections::queue::capabilities::QueueCapabilityRegistry,
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::ArcShared,
+  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
 };
 
-use super::{factory::ActorFactory, mailbox_config::MailboxConfig, mailbox_requirement::MailboxRequirement};
+use super::{
+  factory::ActorFactory, factory_shared::ActorFactorySharedGeneric, mailbox_config::MailboxConfig,
+  mailbox_requirement::MailboxRequirement,
+};
 use crate::core::{actor_prim::Actor, dispatcher::DispatcherConfigGeneric, mailbox::MailboxPolicy};
 
 /// Immutable configuration describing how to construct an actor.
 pub struct PropsGeneric<TB: RuntimeToolbox + 'static> {
-  factory:           ArcShared<ToolboxMutex<Box<dyn ActorFactory<TB>>, TB>>,
+  factory:           ActorFactorySharedGeneric<TB>,
   name:              Option<String>,
   mailbox:           MailboxConfig,
   mailbox_id:        Option<String>,
@@ -28,10 +30,8 @@ impl<TB: RuntimeToolbox + 'static> PropsGeneric<TB> {
   /// Creates new props from the provided factory.
   #[must_use]
   pub fn new(factory: Box<dyn ActorFactory<TB>>) -> Self {
-    let factory_mutex: ToolboxMutex<Box<dyn ActorFactory<TB>>, TB> =
-      <TB::MutexFamily as SyncMutexFamily>::create(factory);
     Self {
-      factory:           ArcShared::new(factory_mutex),
+      factory:           ActorFactorySharedGeneric::new(factory),
       name:              None,
       mailbox:           MailboxConfig::default(),
       mailbox_id:        None,
@@ -53,7 +53,7 @@ impl<TB: RuntimeToolbox + 'static> PropsGeneric<TB> {
 
   /// Returns the actor factory.
   #[must_use]
-  pub fn factory(&self) -> &ArcShared<ToolboxMutex<Box<dyn ActorFactory<TB>>, TB>> {
+  pub const fn factory(&self) -> &ActorFactorySharedGeneric<TB> {
     &self.factory
   }
 

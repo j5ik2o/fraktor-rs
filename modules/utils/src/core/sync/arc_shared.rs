@@ -9,6 +9,7 @@ use core::{marker::Unsize, ops::CoerceUnsized};
 #[cfg(feature = "force-portable-arc")]
 use portable_atomic_util::Arc;
 
+use super::weak_shared::WeakShared;
 use crate::core::sync::shared::{Shared, SharedDyn};
 
 #[cfg(test)]
@@ -28,12 +29,6 @@ impl<T: ?Sized> ArcShared<T> {
   where
     T: Sized, {
     Self(Arc::new(value))
-  }
-
-  /// Wraps an existing [`Arc`] inside the shared wrapper.
-  #[must_use]
-  pub const fn from_arc(inner: Arc<T>) -> Self {
-    Self(inner)
   }
 
   /// For Testing, Don't Use Production
@@ -56,6 +51,12 @@ impl<T: ?Sized> ArcShared<T> {
   #[must_use]
   pub fn into_raw(self) -> *const T {
     Arc::into_raw(self.0)
+  }
+
+  /// Creates a [`WeakShared`] reference to this allocation.
+  #[must_use]
+  pub fn downgrade(&self) -> WeakShared<T> {
+    WeakShared::___from_weak(Arc::downgrade(&self.0))
   }
 
   /// Reconstructs the shared handle from a raw pointer.

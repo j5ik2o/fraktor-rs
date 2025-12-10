@@ -9,13 +9,15 @@ use fraktor_actor_rs::core::{
   event_stream::{
     BackpressureSignal, CorrelationId, EventStreamEvent, RemotingBackpressureEvent, RemotingLifecycleEvent,
   },
-  system::ActorSystemGeneric,
+  system::ActorSystemWeakGeneric,
 };
 use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 
 /// Helper that publishes remoting observability events.
+///
+/// Uses a weak reference to the actor system to avoid circular references.
 pub struct EventPublisherGeneric<TB: RuntimeToolbox + 'static> {
-  system: ActorSystemGeneric<TB>,
+  system: ActorSystemWeakGeneric<TB>,
 }
 
 /// Type alias for `EventPublisherGeneric` with the default `NoStdToolbox`.
@@ -29,8 +31,10 @@ impl<TB: RuntimeToolbox + 'static> Clone for EventPublisherGeneric<TB> {
 
 impl<TB: RuntimeToolbox + 'static> EventPublisherGeneric<TB> {
   /// Creates a new publisher bound to the provided actor system.
+  ///
+  /// The publisher stores a weak reference to the actor system.
   #[must_use]
-  pub fn new(system: ActorSystemGeneric<TB>) -> Self {
+  pub fn new(system: ActorSystemWeakGeneric<TB>) -> Self {
     Self { system }
   }
 
@@ -75,18 +79,26 @@ impl<TB: RuntimeToolbox + 'static> EventPublisherGeneric<TB> {
   }
 
   /// Emits an arbitrary lifecycle event (e.g., Starting/Started/Shutdown).
+  ///
+  /// If the actor system has been dropped, this is a no-op.
   pub fn publish_lifecycle(&self, event: RemotingLifecycleEvent) {
-    self.system.publish_event(&EventStreamEvent::RemotingLifecycle(event));
+    if let Some(system) = self.system.upgrade() {
+      system.publish_event(&EventStreamEvent::RemotingLifecycle(event));
+    }
   }
 
   /// Emits a backpressure event for the provided authority.
+  ///
+  /// If the actor system has been dropped, this is a no-op.
   pub fn publish_backpressure(
     &self,
     authority: impl Into<String>,
     signal: BackpressureSignal,
     correlation_id: CorrelationId,
   ) {
-    let event = RemotingBackpressureEvent::new(authority, signal, correlation_id);
-    self.system.publish_event(&EventStreamEvent::RemotingBackpressure(event));
+    if let Some(system) = self.system.upgrade() {
+      let event = RemotingBackpressureEvent::new(authority, signal, correlation_id);
+      system.publish_event(&EventStreamEvent::RemotingBackpressure(event));
+    }
   }
 }
