@@ -75,7 +75,7 @@ fn serialization_extension(
 fn provider(system: &ActorSystemGeneric<NoStdToolbox>) -> RemoteActorRefProvider {
   let serialization = serialization_extension(system);
   let writer = ArcShared::new(<NoStdToolbox as RuntimeToolbox>::MutexFamily::create(EndpointWriter::new(
-    system.clone(),
+    system.downgrade(),
     serialization,
   )));
   let control_handle = RemotingControlHandle::new(system.clone(), RemotingExtensionConfig::default());

@@ -9,7 +9,7 @@ use core::sync::atomic::{AtomicU64, Ordering};
 use fraktor_actor_rs::core::{
   actor_prim::actor_path::ActorPathParts,
   event_stream::{BackpressureSignal, CorrelationId, RemotingLifecycleEvent},
-  system::ActorSystemGeneric,
+  system::{ActorSystemGeneric, ActorSystemWeakGeneric},
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::{RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
@@ -51,6 +51,8 @@ where
   TB: RuntimeToolbox + 'static,
 {
   /// Creates a new handle bound to the provided actor system.
+  ///
+  /// The handle stores a weak reference to the actor system to avoid circular references.
   #[allow(dead_code)]
   pub(crate) fn new(system: ActorSystemGeneric<TB>, config: RemotingExtensionConfig) -> Self {
     let mut listeners: Vec<RemotingBackpressureListenerShared<TB>> = Vec::new();
@@ -58,9 +60,10 @@ where
       let boxed = listener.clone_box();
       listeners.push(ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(boxed)));
     }
-    let publisher = EventPublisherGeneric::new(system.clone());
+    let system_weak = system.downgrade();
+    let publisher = EventPublisherGeneric::new(system_weak.clone());
     let inner = RemotingControlInner {
-      system,
+      system: system_weak,
       event_publisher: publisher,
       _canonical_host: config.canonical_host().to_string(),
       _canonical_port: config.canonical_port(),
@@ -214,7 +217,7 @@ where
 struct RemotingControlInner<TB>
 where
   TB: RuntimeToolbox + 'static, {
-  system:          ActorSystemGeneric<TB>,
+  system:          ActorSystemWeakGeneric<TB>,
   event_publisher: EventPublisherGeneric<TB>,
   _canonical_host: String,
   _canonical_port: Option<u16>,
@@ -240,7 +243,7 @@ where
   }
 
   fn record_backpressure(&self, authority: &str, signal: BackpressureSignal, correlation_id: CorrelationId) {
-    let millis = self.system.state().monotonic_now().as_millis() as u64;
+    let millis = self.system.upgrade().map(|s| s.state().monotonic_now().as_millis() as u64).unwrap_or(0);
     self.recorder.record_backpressure(authority.to_string(), signal, correlation_id, millis);
   }
 
@@ -263,21 +266,25 @@ where
       let Some(reader) = self.reader.lock().clone() else {
         return Ok(());
       };
+      let Some(system) = self.system.upgrade() else {
+        return Err(RemotingError::TransportUnavailable("actor system has been dropped".into()));
+      };
       if self._canonical_host.is_empty() {
         return Err(RemotingError::TransportUnavailable("canonical host not configured".into()));
       }
       let port = self
         ._canonical_port
         .ok_or_else(|| RemotingError::TransportUnavailable("canonical port not configured".into()))?;
+      let system_name = system.state().system_name();
       let config = crate::std::runtime::endpoint_driver::EndpointDriverConfig {
-        system: self.system.clone(),
+        system: system.downgrade(),
         writer,
         reader,
         transport,
         event_publisher: self.event_publisher.clone(),
         canonical_host: self._canonical_host.clone(),
         canonical_port: port,
-        system_name: self.system.state().system_name(),
+        system_name,
       };
       let handle = crate::std::runtime::endpoint_driver::EndpointDriver::spawn(config)
         .map_err(|error| RemotingError::TransportUnavailable(format!("{error:?}")))?;

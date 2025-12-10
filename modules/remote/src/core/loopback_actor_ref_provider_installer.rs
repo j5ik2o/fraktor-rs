@@ -48,10 +48,10 @@ impl<TB: RuntimeToolbox + 'static> ActorRefProviderInstaller<TB> for LoopbackAct
     };
 
     let writer = ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(EndpointWriterGeneric::new(
-      system.clone(),
+      system.downgrade(),
       serialization.clone(),
     )));
-    let reader = ArcShared::new(EndpointReaderGeneric::new(system.clone(), serialization.clone()));
+    let reader = ArcShared::new(EndpointReaderGeneric::new(system.downgrade(), serialization.clone()));
 
     let Some(extension) = extended.extension_by_type::<RemotingExtensionGeneric<TB>>() else {
       return Err(ActorSystemBuildError::Configuration("remoting extension not installed".into()));

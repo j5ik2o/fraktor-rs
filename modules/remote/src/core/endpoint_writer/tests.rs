@@ -61,7 +61,7 @@ fn build_writer() -> (EndpointWriterGeneric<NoStdToolbox>, ActorSystemGeneric<No
   let system = build_system();
   let setup = serialization_setup();
   let serialization = ArcShared::new(SerializationExtensionGeneric::new(&system, setup));
-  (EndpointWriter::new(system.clone(), serialization), system)
+  (EndpointWriter::new(system.downgrade(), serialization), system)
 }
 
 fn remote_node() -> RemoteNodeId {

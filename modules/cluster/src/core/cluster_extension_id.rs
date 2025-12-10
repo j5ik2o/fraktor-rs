@@ -87,6 +87,6 @@ impl<TB: RuntimeToolbox + 'static> ExtensionId<TB> for ClusterExtensionId<TB> {
       kind_registry,
       self.identity_lookup.clone(),
     );
-    ClusterExtensionGeneric::new(ArcShared::new(system.clone()), core)
+    ClusterExtensionGeneric::new(system, core)
   }
 }

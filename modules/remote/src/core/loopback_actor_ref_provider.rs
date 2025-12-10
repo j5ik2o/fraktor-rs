@@ -250,7 +250,10 @@ impl<TB: RuntimeToolbox + 'static> ActorRefSender<TB> for RemoteActorRefSender<T
   fn send(&mut self, message: AnyMessageGeneric<TB>) -> Result<SendOutcome, SendError<TB>> {
     let system_state = {
       let writer_guard = self.writer.lock();
-      writer_guard.system().state()
+      let Some(system) = writer_guard.system() else {
+        return Err(SendError::closed(message));
+      };
+      system.state()
     };
     let normalizer = ActorRefFieldNormalizerGeneric::new(system_state);
     if let Err(RemoteAuthorityError::Quarantined) = normalizer.validate_recipient(&self.recipient) {

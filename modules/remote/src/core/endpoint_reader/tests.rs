@@ -107,10 +107,10 @@ fn outbound_message(recipient: &ActorPath) -> OutboundMessage<NoStdToolbox> {
 fn decode_round_trip_returns_inbound_envelope() {
   let system = build_system();
   let serialization = serialization_extension(&system);
-  let reader = EndpointReader::new(system.clone(), serialization.clone());
+  let reader = EndpointReader::new(system.downgrade(), serialization.clone());
   let recipient = recipient_path("remote-app", GuardianKind::User, &["user", "svc"]);
   let outbound = outbound_message(&recipient);
-  let mut writer = crate::core::EndpointWriter::new(system.clone(), serialization.clone());
+  let mut writer = crate::core::EndpointWriter::new(system.downgrade(), serialization.clone());
   writer.enqueue(outbound).expect("enqueue");
   let remoting_envelope = writer.try_next().expect("serialize").expect("envelope");
 
@@ -126,7 +126,7 @@ fn decode_round_trip_returns_inbound_envelope() {
 fn deserialization_failure_produces_dead_letter_error() {
   let system = build_system();
   let serialization = serialization_extension(&system);
-  let reader = EndpointReader::new(system.clone(), serialization.clone());
+  let reader = EndpointReader::new(system.downgrade(), serialization.clone());
   let recipient = recipient_path("remote-app", GuardianKind::User, &["user", "svc"]);
   let serialized = SerializedMessage::new(SerializerId::try_from(99).expect("id"), None, vec![1, 2, 3]);
   let envelope = RemotingEnvelope::new(
@@ -152,7 +152,7 @@ fn deserialization_failure_produces_dead_letter_error() {
 fn deliver_routes_message_to_local_actor() {
   let system = build_system();
   let serialization = serialization_extension(&system);
-  let reader = EndpointReader::new(system.clone(), serialization);
+  let reader = EndpointReader::new(system.downgrade(), serialization);
   let events: ArcShared<NoStdMutex<Vec<String>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
   let props = PropsGeneric::from_fn({
     let events = events.clone();
