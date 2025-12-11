@@ -2,7 +2,7 @@
 
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::{ArcShared, SharedAccess},
+  sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
 };
 
 use super::EndpointManager;
@@ -32,11 +32,13 @@ impl<TB: RuntimeToolbox + 'static> EndpointManagerSharedGeneric<TB> {
 
 impl<TB: RuntimeToolbox + 'static> SharedAccess<EndpointManager> for EndpointManagerSharedGeneric<TB> {
   fn with_read<R>(&self, f: impl FnOnce(&EndpointManager) -> R) -> R {
-    self.inner.with_read(f)
+    let guard = self.inner.lock();
+    f(&guard)
   }
 
   fn with_write<R>(&self, f: impl FnOnce(&mut EndpointManager) -> R) -> R {
-    self.inner.with_write(f)
+    let mut guard = self.inner.lock();
+    f(&mut guard)
   }
 }
 

@@ -4,7 +4,7 @@ use alloc::boxed::Box;
 
 use fraktor_utils_rs::core::{
   runtime_toolbox::{RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::{ArcShared, SharedAccess},
+  sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
 };
 
 use super::invoker_trait::MessageInvoker;
@@ -34,10 +34,12 @@ impl<TB: RuntimeToolbox + 'static> Clone for MessageInvokerShared<TB> {
 
 impl<TB: RuntimeToolbox + 'static> SharedAccess<Box<dyn MessageInvoker<TB>>> for MessageInvokerShared<TB> {
   fn with_read<R>(&self, f: impl FnOnce(&Box<dyn MessageInvoker<TB>>) -> R) -> R {
-    self.inner.with_read(f)
+    let guard = self.inner.lock();
+    f(&guard)
   }
 
   fn with_write<R>(&self, f: impl FnOnce(&mut Box<dyn MessageInvoker<TB>>) -> R) -> R {
-    self.inner.with_write(f)
+    let mut guard = self.inner.lock();
+    f(&mut guard)
   }
 }

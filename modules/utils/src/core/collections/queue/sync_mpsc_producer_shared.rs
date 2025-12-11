@@ -7,7 +7,7 @@ use crate::core::{
     backend::{OfferOutcome, SyncQueueBackend},
   },
   sync::{
-    ArcShared, SharedAccess,
+    ArcShared,
     sync_mutex_like::{SpinSyncMutex, SyncMutexLike},
   },
 };
@@ -26,7 +26,6 @@ impl<T, B, M> SyncMpscProducerShared<T, B, M>
 where
   B: SyncQueueBackend<T>,
   M: SyncMutexLike<SyncQueue<T, MpscKey, B>>,
-  ArcShared<M>: SharedAccess<SyncQueue<T, MpscKey, B>>,
 {
   pub(crate) const fn new(inner: ArcShared<M>) -> Self {
     Self { inner, _pd: PhantomData }
@@ -39,7 +38,8 @@ where
   /// Returns a `QueueError` when the backend cannot accept the element because the queue is closed,
   /// full, or disconnected.
   pub fn offer(&self, item: T) -> Result<OfferOutcome, QueueError<T>> {
-    self.inner.with_write(|queue: &mut SyncQueue<T, MpscKey, B>| queue.offer(item))
+    let mut queue = self.inner.lock();
+    queue.offer(item)
   }
 
   /// Provides access to the shared backend.
@@ -53,7 +53,6 @@ impl<T, B, M> Clone for SyncMpscProducerShared<T, B, M>
 where
   B: SyncQueueBackend<T>,
   M: SyncMutexLike<SyncQueue<T, MpscKey, B>>,
-  ArcShared<M>: SharedAccess<SyncQueue<T, MpscKey, B>>,
 {
   fn clone(&self) -> Self {
     Self::new(self.inner.clone())
