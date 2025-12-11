@@ -7,7 +7,7 @@ mod tests;
 pub struct SpinSyncRwLock<T>(spin::RwLock<T>);
 
 unsafe impl<T: Send> Send for SpinSyncRwLock<T> {}
-unsafe impl<T: Send> Sync for SpinSyncRwLock<T> {}
+unsafe impl<T: Send + Sync> Sync for SpinSyncRwLock<T> {}
 
 impl<T> SpinSyncRwLock<T> {
   /// Creates a new spin-based read-write lock.
