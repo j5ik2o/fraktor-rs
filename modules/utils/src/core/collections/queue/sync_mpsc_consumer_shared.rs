@@ -4,7 +4,7 @@ use super::{SyncQueue, type_keys::MpscKey};
 use crate::core::{
   collections::queue::{QueueError, backend::SyncQueueBackend},
   sync::{
-    ArcShared, SharedAccess,
+    ArcShared,
     sync_mutex_like::{SpinSyncMutex, SyncMutexLike},
   },
 };
@@ -23,7 +23,6 @@ impl<T, B, M> SyncMpscConsumerShared<T, B, M>
 where
   B: SyncQueueBackend<T>,
   M: SyncMutexLike<SyncQueue<T, MpscKey, B>>,
-  ArcShared<M>: SharedAccess<SyncQueue<T, MpscKey, B>>,
 {
   pub(crate) const fn new(inner: ArcShared<M>) -> Self {
     Self { inner, _pd: PhantomData }
@@ -36,7 +35,8 @@ where
   /// Returns a `QueueError` when the backend cannot produce an element due to closure,
   /// disconnection, or backend-specific failures.
   pub fn poll(&self) -> Result<T, QueueError<T>> {
-    self.inner.with_write(|queue: &mut SyncQueue<T, MpscKey, B>| queue.poll())
+    let mut queue = self.inner.lock();
+    queue.poll()
   }
 
   /// Signals that no more elements will be produced.
@@ -45,19 +45,22 @@ where
   ///
   /// Returns a `QueueError` when the backend refuses to close.
   pub fn close(&self) -> Result<(), QueueError<T>> {
-    self.inner.with_write(|queue: &mut SyncQueue<T, MpscKey, B>| queue.close())
+    let mut queue = self.inner.lock();
+    queue.close()
   }
 
   /// Returns the number of stored elements.
   #[must_use]
   pub fn len(&self) -> usize {
-    self.inner.with_read(|queue: &SyncQueue<T, MpscKey, B>| queue.len())
+    let queue = self.inner.lock();
+    queue.len()
   }
 
   /// Returns the queue capacity.
   #[must_use]
   pub fn capacity(&self) -> usize {
-    self.inner.with_read(|queue: &SyncQueue<T, MpscKey, B>| queue.capacity())
+    let queue = self.inner.lock();
+    queue.capacity()
   }
 
   /// Indicates whether the queue is empty.

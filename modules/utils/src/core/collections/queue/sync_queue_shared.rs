@@ -15,7 +15,7 @@ use crate::core::{
     },
   },
   sync::{
-    ArcShared, SharedAccess,
+    ArcShared,
     sync_mutex_like::{SpinSyncMutex, SyncMutexLike},
   },
 };
@@ -36,7 +36,6 @@ where
   K: TypeKey,
   B: SyncQueueBackend<T>,
   M: SyncMutexLike<SyncQueue<T, K, B>>,
-  ArcShared<M>: SharedAccess<SyncQueue<T, K, B>>,
 {
   /// Creates a new queue from the provided shared backend.
   #[must_use]
@@ -51,7 +50,8 @@ where
   /// Returns a `QueueError` when the backend rejects the element because the queue is closed,
   /// full, or disconnected.
   pub fn offer(&self, item: T) -> Result<OfferOutcome, QueueError<T>> {
-    self.inner.with_write(|queue: &mut SyncQueue<T, K, B>| queue.offer(item))
+    let mut queue = self.inner.lock();
+    queue.offer(item)
   }
 
   /// Dequeues the next available item.
@@ -61,7 +61,8 @@ where
   /// Returns a `QueueError` when the backend cannot supply an element due to closure,
   /// disconnection, or backend-specific failures.
   pub fn poll(&self) -> Result<T, QueueError<T>> {
-    self.inner.with_write(|queue: &mut SyncQueue<T, K, B>| queue.poll())
+    let mut queue = self.inner.lock();
+    queue.poll()
   }
 
   /// Requests the backend to transition into the closed state.
@@ -70,19 +71,22 @@ where
   ///
   /// Returns a `QueueError` when the backend refuses to close.
   pub fn close(&self) -> Result<(), QueueError<T>> {
-    self.inner.with_write(|queue: &mut SyncQueue<T, K, B>| queue.close())
+    let mut queue = self.inner.lock();
+    queue.close()
   }
 
   /// Returns the current number of stored elements.
   #[must_use]
   pub fn len(&self) -> usize {
-    self.inner.with_read(|queue: &SyncQueue<T, K, B>| queue.len())
+    let queue = self.inner.lock();
+    queue.len()
   }
 
   /// Returns the storage capacity.
   #[must_use]
   pub fn capacity(&self) -> usize {
-    self.inner.with_read(|queue: &SyncQueue<T, K, B>| queue.capacity())
+    let queue = self.inner.lock();
+    queue.capacity()
   }
 
   /// Indicates whether the queue is empty.
@@ -109,7 +113,6 @@ where
   T: Clone + PriorityMessage,
   B: SyncPriorityBackend<T>,
   M: SyncMutexLike<SyncQueue<T, PriorityKey, B>>,
-  ArcShared<M>: SharedAccess<SyncQueue<T, PriorityKey, B>>,
   PriorityKey: SupportsPeek,
 {
   /// Retrieves the smallest element without removing it.
@@ -119,7 +122,8 @@ where
   /// Returns a `QueueError` when the backend cannot access the next element due to closure,
   /// disconnection, or backend-specific failures.
   pub fn peek_min(&self) -> Result<Option<T>, QueueError<T>> {
-    self.inner.with_write(|queue: &mut SyncQueue<T, PriorityKey, B>| queue.peek_min())
+    let queue = self.inner.lock();
+    queue.peek_min()
   }
 }
 
@@ -127,7 +131,6 @@ impl<T, B, M> SyncQueueShared<T, MpscKey, B, M>
 where
   B: SyncQueueBackend<T>,
   M: SyncMutexLike<SyncQueue<T, MpscKey, B>>,
-  ArcShared<M>: SharedAccess<SyncQueue<T, MpscKey, B>>,
   MpscKey: MultiProducer + SingleConsumer,
 {
   /// Creates a queue tailored for MPSC usage.
@@ -155,7 +158,6 @@ impl<T, B, M> SyncQueueShared<T, SpscKey, B, M>
 where
   B: SyncQueueBackend<T>,
   M: SyncMutexLike<SyncQueue<T, SpscKey, B>>,
-  ArcShared<M>: SharedAccess<SyncQueue<T, SpscKey, B>>,
   SpscKey: SingleProducer + SingleConsumer,
 {
   /// Creates a queue tailored for SPSC usage.
@@ -177,7 +179,6 @@ impl<T, B, M> SyncQueueShared<T, FifoKey, B, M>
 where
   B: SyncQueueBackend<T>,
   M: SyncMutexLike<SyncQueue<T, FifoKey, B>>,
-  ArcShared<M>: SharedAccess<SyncQueue<T, FifoKey, B>>,
   FifoKey: SingleProducer + SingleConsumer,
 {
   /// Creates a queue tailored for FIFO usage.

@@ -4,7 +4,7 @@ use core::any::TypeId;
 
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::{ArcShared, SharedAccess},
+  sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
 };
 
 use super::{ActorRefProvider, ActorRefProviderHandle};
@@ -68,7 +68,8 @@ impl<TB: RuntimeToolbox + 'static, P: ActorRefProvider<TB> + 'static> ActorRefPr
   ///
   /// Returns an error if the actor reference cannot be created.
   pub fn get_actor_ref(&self, path: ActorPath) -> Result<ActorRefGeneric<TB>, ActorError> {
-    self.inner.with_write(|handle| handle.actor_ref(path))
+    let mut guard = self.inner.lock();
+    guard.actor_ref(path)
   }
 }
 
@@ -82,11 +83,13 @@ impl<TB: RuntimeToolbox + 'static, P: ActorRefProvider<TB> + 'static> ActorRefPr
   for ActorRefProviderSharedGeneric<TB, P>
 {
   fn supported_schemes(&self) -> &'static [ActorPathScheme] {
-    self.inner.with_read(|handle| handle.supported_schemes())
+    let guard = self.inner.lock();
+    guard.supported_schemes()
   }
 
   fn actor_ref(&mut self, path: ActorPath) -> Result<ActorRefGeneric<TB>, ActorError> {
-    self.inner.with_write(|handle| handle.actor_ref(path))
+    let mut guard = self.inner.lock();
+    guard.actor_ref(path)
   }
 }
 
@@ -94,11 +97,13 @@ impl<TB: RuntimeToolbox + 'static, P: ActorRefProvider<TB> + 'static> SharedAcce
   for ActorRefProviderSharedGeneric<TB, P>
 {
   fn with_read<R>(&self, f: impl FnOnce(&ActorRefProviderHandle<P>) -> R) -> R {
-    self.inner.with_read(f)
+    let guard = self.inner.lock();
+    f(&guard)
   }
 
   fn with_write<R>(&self, f: impl FnOnce(&mut ActorRefProviderHandle<P>) -> R) -> R {
-    self.inner.with_write(f)
+    let mut guard = self.inner.lock();
+    f(&mut guard)
   }
 }
 

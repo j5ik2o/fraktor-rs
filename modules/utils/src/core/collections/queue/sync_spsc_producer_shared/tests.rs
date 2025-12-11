@@ -1,11 +1,9 @@
 #[cfg(feature = "alloc")]
 use super::SyncSpscProducerShared;
 #[cfg(feature = "alloc")]
-use crate::core::collections::queue::{
-  OverflowPolicy, QueueError, SyncQueue, backend::VecDequeBackend, type_keys::SpscKey,
-};
+use crate::core::collections::queue::{OverflowPolicy, QueueError, SyncQueue, backend::VecDequeBackend};
 #[cfg(feature = "alloc")]
-use crate::core::sync::{ArcShared, SharedAccess, sync_mutex_like::SpinSyncMutex};
+use crate::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
 
 #[cfg(feature = "alloc")]
 #[test]
@@ -18,7 +16,10 @@ fn sync_spsc_producer_offer_success() {
   let result = producer.offer(42);
   assert!(result.is_ok());
 
-  let queue_len = mutex.with_read(|q: &SyncQueue<u32, SpscKey, VecDequeBackend<u32>>| q.len());
+  let queue_len = {
+    let q = mutex.lock();
+    q.len()
+  };
   assert_eq!(queue_len, 1);
 }
 
@@ -30,7 +31,10 @@ fn sync_spsc_producer_offer_closed() {
   let mutex = ArcShared::new(SpinSyncMutex::new(sync_queue));
   let producer = SyncSpscProducerShared::new(mutex.clone());
 
-  mutex.with_write(|q: &mut SyncQueue<u32, SpscKey, VecDequeBackend<u32>>| q.close()).unwrap();
+  {
+    let mut q = mutex.lock();
+    q.close().unwrap();
+  }
 
   let result = producer.offer(42);
   assert!(result.is_err());

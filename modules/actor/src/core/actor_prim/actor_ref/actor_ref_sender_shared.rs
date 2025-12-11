@@ -4,7 +4,7 @@ use alloc::boxed::Box;
 
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::{ArcShared, SharedAccess},
+  sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
 };
 
 use crate::core::{
@@ -42,7 +42,10 @@ impl<TB: RuntimeToolbox + 'static> ActorRefSenderSharedGeneric<TB> {
   /// Returns an error if the message cannot be delivered.
   pub fn send(&self, message: AnyMessageGeneric<TB>) -> Result<(), SendError<TB>> {
     // ロック解放後にアウトカムを適用し、再入によるデッドロックを防ぐ
-    let outcome = self.inner.with_write(|sender| sender.send(message));
+    let outcome = {
+      let mut sender = self.inner.lock();
+      sender.send(message)
+    };
 
     // Apply outcome after releasing lock to allow re-entrant sends
     match outcome? {
@@ -55,11 +58,13 @@ impl<TB: RuntimeToolbox + 'static> ActorRefSenderSharedGeneric<TB> {
 
 impl<TB: RuntimeToolbox + 'static> SharedAccess<Box<dyn ActorRefSender<TB>>> for ActorRefSenderSharedGeneric<TB> {
   fn with_read<R>(&self, f: impl FnOnce(&Box<dyn ActorRefSender<TB>>) -> R) -> R {
-    self.inner.with_read(f)
+    let guard = self.inner.lock();
+    f(&guard)
   }
 
   fn with_write<R>(&self, f: impl FnOnce(&mut Box<dyn ActorRefSender<TB>>) -> R) -> R {
-    self.inner.with_write(f)
+    let mut guard = self.inner.lock();
+    f(&mut guard)
   }
 }
 

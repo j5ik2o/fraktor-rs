@@ -1,8 +1,8 @@
 //! Shared wrapper for extensions registry.
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::{ArcShared, SharedAccess},
+  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncRwLockFamily, ToolboxRwLock},
+  sync::{ArcShared, SharedAccess, sync_rwlock_like::SyncRwLockLike},
 };
 
 use super::extensions::ExtensionsGeneric;
@@ -13,7 +13,7 @@ use super::extensions::ExtensionsGeneric;
 /// that internally lock the underlying registry, allowing safe
 /// concurrent access from multiple owners.
 pub(crate) struct ExtensionsSharedGeneric<TB: RuntimeToolbox + 'static> {
-  inner: ArcShared<ToolboxMutex<ExtensionsGeneric<TB>, TB>>,
+  inner: ArcShared<ToolboxRwLock<ExtensionsGeneric<TB>, TB>>,
 }
 
 /// Type alias using the default toolbox.
@@ -24,7 +24,7 @@ impl<TB: RuntimeToolbox + 'static> ExtensionsSharedGeneric<TB> {
   /// Creates a new shared wrapper around the provided extensions registry.
   #[must_use]
   pub(crate) fn new(extensions: ExtensionsGeneric<TB>) -> Self {
-    Self { inner: ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(extensions)) }
+    Self { inner: ArcShared::new(<TB::RwLockFamily as SyncRwLockFamily>::create(extensions)) }
   }
 }
 
@@ -42,10 +42,12 @@ impl<TB: RuntimeToolbox> Clone for ExtensionsSharedGeneric<TB> {
 
 impl<TB: RuntimeToolbox + 'static> SharedAccess<ExtensionsGeneric<TB>> for ExtensionsSharedGeneric<TB> {
   fn with_read<R>(&self, f: impl FnOnce(&ExtensionsGeneric<TB>) -> R) -> R {
-    self.inner.with_read(f)
+    let guard = self.inner.read();
+    f(&guard)
   }
 
   fn with_write<R>(&self, f: impl FnOnce(&mut ExtensionsGeneric<TB>) -> R) -> R {
-    self.inner.with_write(f)
+    let mut guard = self.inner.write();
+    f(&mut guard)
   }
 }
