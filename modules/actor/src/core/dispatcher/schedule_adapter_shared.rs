@@ -3,8 +3,8 @@
 use alloc::boxed::Box;
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
+  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncRwLockFamily, ToolboxRwLock},
+  sync::{ArcShared, SharedAccess, sync_rwlock_like::SyncRwLockLike},
 };
 
 use super::schedule_adapter::ScheduleAdapter;
@@ -15,7 +15,7 @@ use super::schedule_adapter::ScheduleAdapter;
 /// that internally lock the underlying adapter, allowing safe
 /// concurrent access from multiple owners.
 pub struct ScheduleAdapterSharedGeneric<TB: RuntimeToolbox + 'static> {
-  inner: ArcShared<ToolboxMutex<Box<dyn ScheduleAdapter<TB>>, TB>>,
+  inner: ArcShared<ToolboxRwLock<Box<dyn ScheduleAdapter<TB>>, TB>>,
 }
 
 /// Type alias using the default toolbox.
@@ -25,7 +25,7 @@ impl<TB: RuntimeToolbox + 'static> ScheduleAdapterSharedGeneric<TB> {
   /// Creates a new shared wrapper around the provided adapter.
   #[must_use]
   pub fn new(adapter: Box<dyn ScheduleAdapter<TB>>) -> Self {
-    Self { inner: ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(adapter)) }
+    Self { inner: ArcShared::new(<TB::RwLockFamily as SyncRwLockFamily>::create(adapter)) }
   }
 }
 
@@ -37,12 +37,12 @@ impl<TB: RuntimeToolbox> Clone for ScheduleAdapterSharedGeneric<TB> {
 
 impl<TB: RuntimeToolbox + 'static> SharedAccess<Box<dyn ScheduleAdapter<TB>>> for ScheduleAdapterSharedGeneric<TB> {
   fn with_read<R>(&self, f: impl FnOnce(&Box<dyn ScheduleAdapter<TB>>) -> R) -> R {
-    let guard = self.inner.lock();
+    let guard = self.inner.read();
     f(&guard)
   }
 
   fn with_write<R>(&self, f: impl FnOnce(&mut Box<dyn ScheduleAdapter<TB>>) -> R) -> R {
-    let mut guard = self.inner.lock();
+    let mut guard = self.inner.write();
     f(&mut guard)
   }
 }
