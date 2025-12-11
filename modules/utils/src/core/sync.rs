@@ -18,6 +18,8 @@ mod state;
 mod static_ref_shared;
 /// Synchronous mutex abstractions shared across runtimes.
 pub mod sync_mutex_like;
+/// Synchronous read-write lock abstractions shared across runtimes.
+pub mod sync_rwlock_like;
 #[allow(clippy::disallowed_types)]
 mod weak_shared;
 

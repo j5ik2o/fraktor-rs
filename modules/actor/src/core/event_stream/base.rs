@@ -7,8 +7,8 @@ use alloc::vec::Vec;
 use core::sync::atomic::Ordering;
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncRwLockFamily, ToolboxRwLock},
+  sync::{ArcShared, sync_mutex_like::SyncMutexLike, sync_rwlock_like::SyncRwLockLike},
 };
 use portable_atomic::AtomicU64;
 
@@ -25,8 +25,8 @@ const DEFAULT_CAPACITY: usize = 256;
 
 /// In-memory event bus with replay support for late subscribers.
 pub struct EventStreamGeneric<TB: RuntimeToolbox + 'static> {
-  subscribers: ToolboxMutex<Vec<EventStreamSubscriberEntryGeneric<TB>>, TB>,
-  buffer:      ToolboxMutex<Vec<EventStreamEvent<TB>>, TB>,
+  subscribers: ToolboxRwLock<Vec<EventStreamSubscriberEntryGeneric<TB>>, TB>,
+  buffer:      ToolboxRwLock<Vec<EventStreamEvent<TB>>, TB>,
   capacity:    usize,
   next_id:     AtomicU64,
 }
@@ -36,8 +36,8 @@ impl<TB: RuntimeToolbox + 'static> EventStreamGeneric<TB> {
   #[must_use]
   pub fn with_capacity(capacity: usize) -> Self {
     Self {
-      subscribers: <TB::MutexFamily as SyncMutexFamily>::create(Vec::new()),
-      buffer: <TB::MutexFamily as SyncMutexFamily>::create(Vec::new()),
+      subscribers: <TB::RwLockFamily as SyncRwLockFamily>::create(Vec::new()),
+      buffer: <TB::RwLockFamily as SyncRwLockFamily>::create(Vec::new()),
       capacity,
       next_id: AtomicU64::new(1),
     }
@@ -51,11 +51,11 @@ impl<TB: RuntimeToolbox + 'static> EventStreamGeneric<TB> {
   ) -> EventStreamSubscriptionGeneric<TB> {
     let id = stream.next_id.fetch_add(1, Ordering::Relaxed);
     {
-      let mut list = stream.subscribers.lock();
+      let mut list = stream.subscribers.write();
       list.push(EventStreamSubscriberEntryGeneric::new(id, subscriber.clone()));
     }
 
-    let snapshot = stream.buffer.lock().clone();
+    let snapshot = stream.buffer.read().clone();
     for event in snapshot.iter() {
       let mut guard = subscriber.lock();
       guard.on_event(event);
@@ -82,7 +82,7 @@ impl<TB: RuntimeToolbox + 'static> EventStreamGeneric<TB> {
 
   /// Removes the subscriber associated with the identifier.
   pub fn unsubscribe(&self, id: u64) {
-    let mut list = self.subscribers.lock();
+    let mut list = self.subscribers.write();
     if let Some(position) = list.iter().position(|entry| entry.id() == id) {
       list.swap_remove(position);
     }
@@ -91,7 +91,7 @@ impl<TB: RuntimeToolbox + 'static> EventStreamGeneric<TB> {
   /// Publishes the provided event to all registered subscribers.
   pub fn publish(&self, event: &EventStreamEvent<TB>) {
     {
-      let mut buffer = self.buffer.lock();
+      let mut buffer = self.buffer.write();
       buffer.push(event.clone());
       if buffer.len() > self.capacity {
         let discard = buffer.len() - self.capacity;
@@ -99,7 +99,7 @@ impl<TB: RuntimeToolbox + 'static> EventStreamGeneric<TB> {
       }
     }
 
-    let subscribers = self.subscribers.lock().clone();
+    let subscribers = self.subscribers.read().clone();
     for entry in subscribers.iter() {
       let handle = entry.subscriber();
       let mut guard = handle.lock();

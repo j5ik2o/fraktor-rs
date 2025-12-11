@@ -3,7 +3,7 @@
 use super::node::WaitNode;
 use crate::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::{ArcShared, SharedAccess},
+  sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
 };
 
 /// Shared wrapper for [`WaitNode`] enabling interior mutability.
@@ -37,10 +37,12 @@ impl<E: Send + 'static, TB: RuntimeToolbox> Clone for WaitNodeShared<E, TB> {
 
 impl<E: Send + 'static, TB: RuntimeToolbox + 'static> SharedAccess<WaitNode<E>> for WaitNodeShared<E, TB> {
   fn with_read<R>(&self, f: impl FnOnce(&WaitNode<E>) -> R) -> R {
-    self.inner.with_read(f)
+    let guard = self.inner.lock();
+    f(&guard)
   }
 
   fn with_write<R>(&self, f: impl FnOnce(&mut WaitNode<E>) -> R) -> R {
-    self.inner.with_write(f)
+    let mut guard = self.inner.lock();
+    f(&mut guard)
   }
 }

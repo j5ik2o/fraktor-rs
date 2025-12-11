@@ -4,7 +4,7 @@ use super::SyncStack;
 use crate::core::{
   collections::stack::{PushOutcome, StackError, SyncStackBackend},
   sync::{
-    ArcShared, SharedAccess,
+    ArcShared,
     sync_mutex_like::{SpinSyncMutex, SyncMutexLike},
   },
 };
@@ -23,7 +23,6 @@ impl<T, B, M> SyncStackShared<T, B, M>
 where
   B: SyncStackBackend<T>,
   M: SyncMutexLike<SyncStack<T, B>>,
-  ArcShared<M>: SharedAccess<SyncStack<T, B>>,
 {
   /// Creates a new stack from the provided shared stack.
   #[must_use]
@@ -38,7 +37,8 @@ where
   /// Propagates `StackError` when the backend rejects the element, for example when the stack is
   /// closed or at capacity.
   pub fn push(&self, item: T) -> Result<PushOutcome, StackError> {
-    self.inner.with_write(|stack: &mut SyncStack<T, B>| stack.push(item))
+    let mut stack = self.inner.lock();
+    stack.push(item)
   }
 
   /// Pops the top item from the stack.
@@ -48,7 +48,8 @@ where
   /// Propagates `StackError` when the backend cannot supply an element, typically due to closure
   /// or disconnection.
   pub fn pop(&self) -> Result<T, StackError> {
-    self.inner.with_write(|stack: &mut SyncStack<T, B>| stack.pop())
+    let mut stack = self.inner.lock();
+    stack.pop()
   }
 
   /// Returns the top item without removing it.
@@ -59,7 +60,8 @@ where
   pub fn peek(&self) -> Result<Option<T>, StackError>
   where
     T: Clone, {
-    self.inner.with_write(|stack: &mut SyncStack<T, B>| stack.peek())
+    let stack = self.inner.lock();
+    stack.peek()
   }
 
   /// Requests the backend to transition into the closed state.
@@ -68,22 +70,23 @@ where
   ///
   /// Propagates `StackError` when the backend refuses to close.
   pub fn close(&self) -> Result<(), StackError> {
-    self.inner.with_write(|stack: &mut SyncStack<T, B>| {
-      stack.close();
-      Ok(())
-    })
+    let mut stack = self.inner.lock();
+    stack.close();
+    Ok(())
   }
 
   /// Returns the number of stored elements.
   #[must_use]
   pub fn len(&self) -> usize {
-    self.inner.with_read(|stack: &SyncStack<T, B>| stack.len())
+    let stack = self.inner.lock();
+    stack.len()
   }
 
   /// Returns the storage capacity.
   #[must_use]
   pub fn capacity(&self) -> usize {
-    self.inner.with_read(|stack: &SyncStack<T, B>| stack.capacity())
+    let stack = self.inner.lock();
+    stack.capacity()
   }
 
   /// Indicates whether the stack is empty.

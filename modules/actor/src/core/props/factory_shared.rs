@@ -4,7 +4,7 @@ use alloc::boxed::Box;
 
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::{ArcShared, SharedAccess},
+  sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
 };
 
 use super::factory::ActorFactory;
@@ -37,10 +37,12 @@ impl<TB: RuntimeToolbox> Clone for ActorFactorySharedGeneric<TB> {
 
 impl<TB: RuntimeToolbox + 'static> SharedAccess<Box<dyn ActorFactory<TB>>> for ActorFactorySharedGeneric<TB> {
   fn with_read<R>(&self, f: impl FnOnce(&Box<dyn ActorFactory<TB>>) -> R) -> R {
-    self.inner.with_read(f)
+    let guard = self.inner.lock();
+    f(&guard)
   }
 
   fn with_write<R>(&self, f: impl FnOnce(&mut Box<dyn ActorFactory<TB>>) -> R) -> R {
-    self.inner.with_write(f)
+    let mut guard = self.inner.lock();
+    f(&mut guard)
   }
 }

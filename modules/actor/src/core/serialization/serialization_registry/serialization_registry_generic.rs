@@ -5,8 +5,8 @@ use core::any::TypeId;
 
 use ahash::RandomState;
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncRwLockFamily, ToolboxRwLock},
+  sync::{ArcShared, sync_rwlock_like::SyncRwLockLike},
 };
 use hashbrown::{HashMap, hash_map::Entry};
 
@@ -18,11 +18,11 @@ use crate::core::serialization::{
 /// Registry that resolves serializers based on type identifiers.
 #[allow(clippy::type_complexity)]
 pub struct SerializationRegistryGeneric<TB: RuntimeToolbox> {
-  serializers:     ToolboxMutex<HashMap<SerializerId, ArcShared<dyn Serializer>, RandomState>, TB>,
-  bindings:        ToolboxMutex<HashMap<TypeId, SerializerId, RandomState>, TB>,
-  binding_names:   ToolboxMutex<HashMap<TypeId, String, RandomState>, TB>,
-  manifest_routes: ToolboxMutex<HashMap<String, Vec<(u8, SerializerId)>, RandomState>, TB>,
-  cache:           ToolboxMutex<HashMap<TypeId, SerializerId, RandomState>, TB>,
+  serializers:     ToolboxRwLock<HashMap<SerializerId, ArcShared<dyn Serializer>, RandomState>, TB>,
+  bindings:        ToolboxRwLock<HashMap<TypeId, SerializerId, RandomState>, TB>,
+  binding_names:   ToolboxRwLock<HashMap<TypeId, String, RandomState>, TB>,
+  manifest_routes: ToolboxRwLock<HashMap<String, Vec<(u8, SerializerId)>, RandomState>, TB>,
+  cache:           ToolboxRwLock<HashMap<TypeId, SerializerId, RandomState>, TB>,
   fallback:        SerializerId,
 }
 
@@ -40,17 +40,17 @@ impl<TB: RuntimeToolbox> SerializationRegistryGeneric<TB> {
     manifest_routes
       .extend(setup.manifest_routes_ref().iter().map(|(manifest, routes)| (manifest.clone(), routes.clone())));
     Self {
-      serializers:     <TB::MutexFamily as SyncMutexFamily>::create(serializers),
-      bindings:        <TB::MutexFamily as SyncMutexFamily>::create(bindings),
-      binding_names:   <TB::MutexFamily as SyncMutexFamily>::create(binding_names),
-      manifest_routes: <TB::MutexFamily as SyncMutexFamily>::create(manifest_routes),
-      cache:           <TB::MutexFamily as SyncMutexFamily>::create(HashMap::with_hasher(RandomState::new())),
+      serializers:     <TB::RwLockFamily as SyncRwLockFamily>::create(serializers),
+      bindings:        <TB::RwLockFamily as SyncRwLockFamily>::create(bindings),
+      binding_names:   <TB::RwLockFamily as SyncRwLockFamily>::create(binding_names),
+      manifest_routes: <TB::RwLockFamily as SyncRwLockFamily>::create(manifest_routes),
+      cache:           <TB::RwLockFamily as SyncRwLockFamily>::create(HashMap::with_hasher(RandomState::new())),
       fallback:        setup.fallback_serializer(),
     }
   }
 
   fn serializer_by_id_raw(&self, id: SerializerId) -> Option<ArcShared<dyn Serializer>> {
-    self.serializers.lock().get(&id).cloned()
+    self.serializers.read().get(&id).cloned()
   }
 
   fn not_serializable(
@@ -62,11 +62,11 @@ impl<TB: RuntimeToolbox> SerializationRegistryGeneric<TB> {
   }
 
   fn cache_insert(&self, type_id: TypeId, serializer_id: SerializerId) {
-    self.cache.lock().insert(type_id, serializer_id);
+    self.cache.write().insert(type_id, serializer_id);
   }
 
   fn cache_remove(&self, type_id: TypeId) {
-    self.cache.lock().remove(&type_id);
+    self.cache.write().remove(&type_id);
   }
 
   /// Returns the serializer registered for the type, performing fallback resolution if required.
@@ -81,14 +81,14 @@ impl<TB: RuntimeToolbox> SerializationRegistryGeneric<TB> {
     type_name: &str,
     transport_hint: Option<TransportInformation>,
   ) -> Result<(ArcShared<dyn Serializer>, SerializerResolutionOrigin), SerializationError> {
-    if let Some(existing) = self.cache.lock().get(&type_id).copied() {
+    if let Some(existing) = self.cache.read().get(&type_id).copied() {
       if let Some(serializer) = self.serializer_by_id_raw(existing) {
         return Ok((serializer, SerializerResolutionOrigin::Cache));
       }
       self.cache_remove(type_id);
     }
 
-    let (resolved, origin) = if let Some(bound) = self.bindings.lock().get(&type_id).copied() {
+    let (resolved, origin) = if let Some(bound) = self.bindings.read().get(&type_id).copied() {
       (bound, SerializerResolutionOrigin::Binding)
     } else {
       (self.fallback, SerializerResolutionOrigin::Fallback)
@@ -114,7 +114,7 @@ impl<TB: RuntimeToolbox> SerializationRegistryGeneric<TB> {
 
   /// Inserts a serializer instance if absent.
   pub fn register_serializer(&self, id: SerializerId, serializer: ArcShared<dyn Serializer>) -> bool {
-    let mut guard = self.serializers.lock();
+    let mut guard = self.serializers.write();
     match guard.entry(id) {
       | Entry::Occupied(_) => false,
       | Entry::Vacant(slot) => {
@@ -139,8 +139,8 @@ impl<TB: RuntimeToolbox> SerializationRegistryGeneric<TB> {
     if self.serializer_by_id_raw(serializer_id).is_none() {
       return Err(SerializationError::UnknownSerializer(serializer_id));
     }
-    self.bindings.lock().insert(type_id, serializer_id);
-    self.binding_names.lock().insert(type_id, type_name.into());
+    self.bindings.write().insert(type_id, serializer_id);
+    self.binding_names.write().insert(type_id, type_name.into());
     self.cache_remove(type_id);
     Ok(())
   }
@@ -148,7 +148,7 @@ impl<TB: RuntimeToolbox> SerializationRegistryGeneric<TB> {
   /// Returns the serializers registered for the specified manifest in priority order.
   #[must_use]
   pub fn serializers_for_manifest(&self, manifest: &str) -> Vec<ArcShared<dyn Serializer>> {
-    let routes = self.manifest_routes.lock();
+    let routes = self.manifest_routes.read();
     routes
       .get(manifest)
       .map(|entries| {
@@ -160,12 +160,12 @@ impl<TB: RuntimeToolbox> SerializationRegistryGeneric<TB> {
   /// Returns the recorded binding name for the provided type identifier.
   #[must_use]
   pub fn binding_name(&self, type_id: TypeId) -> Option<String> {
-    self.binding_names.lock().get(&type_id).cloned()
+    self.binding_names.read().get(&type_id).cloned()
   }
 
   /// Clears cached lookups (used during shutdown).
   pub fn clear_cache(&self) {
-    self.cache.lock().clear();
+    self.cache.write().clear();
   }
 }
 

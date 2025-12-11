@@ -34,10 +34,12 @@ impl Clone for TransportBackpressureHookShared {
 
 impl SharedAccess<Box<dyn TransportBackpressureHook>> for TransportBackpressureHookShared {
   fn with_read<R>(&self, f: impl FnOnce(&Box<dyn TransportBackpressureHook>) -> R) -> R {
-    self.inner.with_read(f)
+    let guard = self.inner.lock();
+    f(&guard)
   }
 
   fn with_write<R>(&self, f: impl FnOnce(&mut Box<dyn TransportBackpressureHook>) -> R) -> R {
-    self.inner.with_write(f)
+    let mut guard = self.inner.lock();
+    f(&mut guard)
   }
 }

@@ -4,8 +4,8 @@ use alloc::{format, vec::Vec};
 use core::time::Duration;
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncRwLockFamily, ToolboxRwLock},
+  sync::{ArcShared, sync_rwlock_like::SyncRwLockLike},
 };
 
 use crate::core::{
@@ -21,7 +21,7 @@ const DEFAULT_CAPACITY: usize = 256;
 
 /// Collects undeliverable messages and notifies subscribers.
 pub struct DeadLetterGeneric<TB: RuntimeToolbox + 'static> {
-  entries:      ToolboxMutex<Vec<DeadLetterEntryGeneric<TB>>, TB>,
+  entries:      ToolboxRwLock<Vec<DeadLetterEntryGeneric<TB>>, TB>,
   capacity:     usize,
   event_stream: ArcShared<EventStreamGeneric<TB>>,
 }
@@ -30,7 +30,7 @@ impl<TB: RuntimeToolbox + 'static> DeadLetterGeneric<TB> {
   /// Creates a new deadletter store with the provided buffer capacity.
   #[must_use]
   pub fn new(event_stream: ArcShared<EventStreamGeneric<TB>>, capacity: usize) -> Self {
-    Self { entries: <TB::MutexFamily as SyncMutexFamily>::create(Vec::new()), capacity, event_stream }
+    Self { entries: <TB::RwLockFamily as SyncRwLockFamily>::create(Vec::new()), capacity, event_stream }
   }
 
   /// Creates a new deadletter store with the default capacity.
@@ -62,7 +62,7 @@ impl<TB: RuntimeToolbox + 'static> DeadLetterGeneric<TB> {
   ) {
     let entry = DeadLetterEntryGeneric::new(message, reason, target, timestamp);
     {
-      let mut entries = self.entries.lock();
+      let mut entries = self.entries.write();
       entries.push(entry.clone());
       if entries.len() > self.capacity {
         let overflow = entries.len() - self.capacity;
@@ -76,7 +76,7 @@ impl<TB: RuntimeToolbox + 'static> DeadLetterGeneric<TB> {
   /// Returns a snapshot of stored deadletters.
   #[must_use]
   pub fn entries(&self) -> Vec<DeadLetterEntryGeneric<TB>> {
-    self.entries.lock().clone()
+    self.entries.read().clone()
   }
 
   fn publish(&self, entry: &DeadLetterEntryGeneric<TB>) {

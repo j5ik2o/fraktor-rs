@@ -3,8 +3,8 @@
 use alloc::boxed::Box;
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::{ArcShared, SharedAccess},
+  runtime_toolbox::{RuntimeToolbox, SyncRwLockFamily, ToolboxRwLock},
+  sync::{ArcShared, SharedAccess, sync_rwlock_like::SyncRwLockLike},
 };
 
 use super::middleware::MessageInvokerMiddleware;
@@ -15,7 +15,7 @@ use super::middleware::MessageInvokerMiddleware;
 /// that internally lock the underlying middleware, allowing safe
 /// concurrent access from multiple owners.
 pub(crate) struct MiddlewareShared<TB: RuntimeToolbox + 'static> {
-  inner: ArcShared<ToolboxMutex<Box<dyn MessageInvokerMiddleware<TB>>, TB>>,
+  inner: ArcShared<ToolboxRwLock<Box<dyn MessageInvokerMiddleware<TB>>, TB>>,
 }
 
 impl<TB: RuntimeToolbox + 'static> MiddlewareShared<TB> {
@@ -23,7 +23,7 @@ impl<TB: RuntimeToolbox + 'static> MiddlewareShared<TB> {
   #[must_use]
   #[allow(dead_code)] // Used in tests
   pub(crate) fn new(middleware: Box<dyn MessageInvokerMiddleware<TB>>) -> Self {
-    Self { inner: ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(middleware)) }
+    Self { inner: ArcShared::new(<TB::RwLockFamily as SyncRwLockFamily>::create(middleware)) }
   }
 }
 
@@ -35,10 +35,12 @@ impl<TB: RuntimeToolbox + 'static> Clone for MiddlewareShared<TB> {
 
 impl<TB: RuntimeToolbox + 'static> SharedAccess<Box<dyn MessageInvokerMiddleware<TB>>> for MiddlewareShared<TB> {
   fn with_read<R>(&self, f: impl FnOnce(&Box<dyn MessageInvokerMiddleware<TB>>) -> R) -> R {
-    self.inner.with_read(f)
+    let guard = self.inner.read();
+    f(&guard)
   }
 
   fn with_write<R>(&self, f: impl FnOnce(&mut Box<dyn MessageInvokerMiddleware<TB>>) -> R) -> R {
-    self.inner.with_write(f)
+    let mut guard = self.inner.write();
+    f(&mut guard)
   }
 }
