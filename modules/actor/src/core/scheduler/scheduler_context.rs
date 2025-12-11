@@ -1,6 +1,6 @@
 //! Scheduler runtime container shared across the actor system.
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, SyncMutexFamily},
+  runtime_toolbox::{RuntimeToolbox, SyncRwLockFamily, ToolboxRwLock},
   sync::{ArcShared, SharedAccess},
 };
 
@@ -33,8 +33,8 @@ impl<TB: RuntimeToolbox + 'static> SchedulerContext<TB> {
     event_stream: ArcShared<EventStreamGeneric<TB>>,
   ) -> Self {
     let scheduler = Scheduler::new(toolbox, config);
-    let mutex = <<TB as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(scheduler);
-    let shared = SchedulerSharedGeneric::new(ArcShared::new(mutex));
+    let rwlock: ToolboxRwLock<_, TB> = <<TB as RuntimeToolbox>::RwLockFamily as SyncRwLockFamily>::create(scheduler);
+    let shared = SchedulerSharedGeneric::new(ArcShared::new(rwlock));
     let provider = SchedulerBackedDelayProvider::new(shared.clone());
     Self { scheduler: shared, provider, event_stream, driver_snapshot: None }
   }
