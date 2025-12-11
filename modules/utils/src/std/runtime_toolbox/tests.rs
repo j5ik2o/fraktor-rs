@@ -1,5 +1,8 @@
-use super::{StdMutex, StdMutexFamily};
-use crate::core::runtime_toolbox::SyncMutexFamily;
+use super::{StdMutex, StdMutexFamily, StdRwLock, StdRwLockFamily};
+use crate::core::{
+  runtime_toolbox::{SyncMutexFamily, SyncRwLockFamily},
+  sync::sync_rwlock_like::SyncRwLockLike,
+};
 
 #[test]
 fn std_mutex_family_creates_mutex() {
@@ -34,4 +37,20 @@ fn std_mutex_type_alias_works() {
   let mutex: StdMutex<i32> = <StdMutexFamily as SyncMutexFamily>::create(123);
   let guard = mutex.lock();
   assert_eq!(*guard, 123);
+}
+
+#[test]
+fn std_rwlock_family_creates_lock() {
+  let lock = <StdRwLockFamily as SyncRwLockFamily>::create(7);
+  assert_eq!(*lock.read(), 7);
+}
+
+#[test]
+fn std_rwlock_type_alias_works() {
+  let lock: StdRwLock<i32> = <StdRwLockFamily as SyncRwLockFamily>::create(1);
+  {
+    let mut guard = lock.write();
+    *guard = 2;
+  }
+  assert_eq!(*lock.read(), 2);
 }

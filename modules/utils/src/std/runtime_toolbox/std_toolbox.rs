@@ -7,7 +7,7 @@ use crate::{
     runtime_toolbox::RuntimeToolbox,
     time::{ManualClock, SchedulerTickHandle},
   },
-  std::runtime_toolbox::StdMutexFamily,
+  std::runtime_toolbox::{StdMutexFamily, StdRwLockFamily},
 };
 
 #[cfg(test)]
@@ -36,6 +36,7 @@ impl Default for StdToolbox {
 impl RuntimeToolbox for StdToolbox {
   type Clock = ManualClock;
   type MutexFamily = StdMutexFamily;
+  type RwLockFamily = StdRwLockFamily;
 
   fn clock(&self) -> &Self::Clock {
     &self.clock
