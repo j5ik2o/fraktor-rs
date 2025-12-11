@@ -13,7 +13,7 @@ use core::{
 
 use ahash::RandomState;
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdMutex, NoStdToolbox, RuntimeToolbox, SyncMutexFamily},
+  runtime_toolbox::{NoStdMutex, NoStdToolbox, RuntimeToolbox, SyncRwLockFamily},
   sync::{ArcShared, SharedAccess},
   time::{SchedulerCapacityProfile, SchedulerTickHandle},
   timing::{DelayFuture, DelayProvider},
@@ -95,8 +95,8 @@ type SharedScheduler = SchedulerSharedGeneric<NoStdToolbox>;
 fn shared_scheduler_state() -> (SharedScheduler, SchedulerBackedDelayProvider<NoStdToolbox>) {
   let toolbox = NoStdToolbox::default();
   let scheduler = Scheduler::new(toolbox, SchedulerConfig::default());
-  let mutex = <<NoStdToolbox as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(scheduler);
-  let shared = SchedulerSharedGeneric::new(ArcShared::new(mutex));
+  let rwlock = <<NoStdToolbox as RuntimeToolbox>::RwLockFamily as SyncRwLockFamily>::create(scheduler);
+  let shared = SchedulerSharedGeneric::new(ArcShared::new(rwlock));
   let provider = SchedulerBackedDelayProvider::new(shared.clone());
   (shared, provider)
 }

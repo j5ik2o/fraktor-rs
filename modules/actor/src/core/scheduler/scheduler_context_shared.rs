@@ -7,8 +7,8 @@ use core::time::Duration;
 #[cfg(any(test, feature = "test-support"))]
 use fraktor_utils_rs::core::time::{MonotonicClock, TimerInstant};
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
+  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncRwLockFamily, ToolboxRwLock},
+  sync::{ArcShared, SharedAccess, sync_rwlock_like::SyncRwLockLike},
 };
 
 use super::{
@@ -90,7 +90,7 @@ impl<TB: RuntimeToolbox + 'static> SchedulerContextHandle<TB> {
 ///
 /// Thin layer: lock and delegate to `SchedulerContextHandle`.
 pub struct SchedulerContextSharedGeneric<TB: RuntimeToolbox + 'static> {
-  inner: ArcShared<ToolboxMutex<SchedulerContextHandle<TB>, TB>>,
+  inner: ArcShared<ToolboxRwLock<SchedulerContextHandle<TB>, TB>>,
 }
 
 impl<TB: RuntimeToolbox + 'static> Clone for SchedulerContextSharedGeneric<TB> {
@@ -110,7 +110,7 @@ impl<TB: RuntimeToolbox + 'static> SchedulerContextSharedGeneric<TB> {
       event_stream:    context.event_stream(),
       driver_snapshot: context.driver_snapshot(),
     };
-    Self { inner: ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(handle)) }
+    Self { inner: ArcShared::new(<TB::RwLockFamily as SyncRwLockFamily>::create(handle)) }
   }
 
   /// Creates a shared context from the provided toolbox and configuration.
@@ -195,13 +195,13 @@ pub type SchedulerContextShared = SchedulerContextSharedGeneric<NoStdToolbox>;
 impl<TB: RuntimeToolbox + 'static> SharedAccess<SchedulerContextHandle<TB>> for SchedulerContextSharedGeneric<TB> {
   #[inline]
   fn with_read<R>(&self, f: impl FnOnce(&SchedulerContextHandle<TB>) -> R) -> R {
-    let guard = self.inner.lock();
+    let guard = self.inner.read();
     f(&guard)
   }
 
   #[inline]
   fn with_write<R>(&self, f: impl FnOnce(&mut SchedulerContextHandle<TB>) -> R) -> R {
-    let mut guard = self.inner.lock();
+    let mut guard = self.inner.write();
     f(&mut guard)
   }
 }
