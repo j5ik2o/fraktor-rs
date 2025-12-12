@@ -4,7 +4,6 @@
 mod tests;
 
 use alloc::{
-  boxed::Box,
   format,
   string::{String, ToString},
   vec::Vec,
@@ -16,14 +15,14 @@ use fraktor_actor_rs::core::{
 };
 use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, ToolboxMutex},
-  sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
+  runtime_toolbox::RuntimeToolbox,
+  sync::{ArcShared, SharedAccess},
 };
 
 use crate::core::{
   ActivatedKind, ClusterError, ClusterEvent, ClusterExtensionConfig, ClusterMetrics, ClusterMetricsSnapshot,
-  ClusterProviderShared, ClusterPubSubShared, ClusterTopology, GossiperShared, IdentityLookup, IdentitySetupError,
-  KindRegistry, MetricsError, PidCache, StartupMode,
+  ClusterProviderShared, ClusterPubSubShared, ClusterTopology, GossiperShared, IdentityLookupShared,
+  IdentitySetupError, KindRegistry, MetricsError, PidCache, StartupMode,
 };
 
 /// Aggregates configuration and shared dependencies for cluster runtime flows.
@@ -36,7 +35,7 @@ pub struct ClusterCore<TB: RuntimeToolbox + 'static> {
   startup_state:       ClusterStartupState,
   metrics_enabled:     bool,
   kind_registry:       KindRegistry,
-  identity_lookup:     ArcShared<ToolboxMutex<Box<dyn IdentityLookup>, TB>>,
+  identity_lookup:     IdentityLookupShared<TB>,
   virtual_actor_count: i64,
   mode:                Option<StartupMode>,
   metrics:             Option<ClusterMetrics>,
@@ -58,7 +57,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
     gossiper: GossiperShared<TB>,
     pubsub: ClusterPubSubShared<TB>,
     kind_registry: KindRegistry,
-    identity_lookup: ArcShared<ToolboxMutex<Box<dyn IdentityLookup>, TB>>,
+    identity_lookup: IdentityLookupShared<TB>,
   ) -> Self {
     let advertised_address = config.advertised_address().to_string();
     let startup_state = ClusterStartupState { address: advertised_address };
@@ -106,7 +105,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
     self.kind_registry.register_all(kinds);
     self.virtual_actor_count = self.kind_registry.virtual_actor_count();
     let snapshot = self.kind_registry.all();
-    self.identity_lookup.lock().setup_member(&snapshot)?;
+    self.identity_lookup.with_write(|lookup| lookup.setup_member(&snapshot))?;
     Ok(())
   }
 
@@ -119,7 +118,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
     self.kind_registry.register_all(kinds);
     self.virtual_actor_count = self.kind_registry.virtual_actor_count();
     let snapshot = self.kind_registry.all();
-    self.identity_lookup.lock().setup_client(&snapshot)?;
+    self.identity_lookup.with_write(|lookup| lookup.setup_client(&snapshot))?;
     Ok(())
   }
 
@@ -379,12 +378,11 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
     // IdentityLookup に離脱メンバーを伝播
     // 注: update_topology は完全なメンバーリストを必要とするため、
     // ClusterTopology のデルタ情報からは on_member_left のみを呼び出す
-    {
-      let mut identity_guard = self.identity_lookup.lock();
+    self.identity_lookup.with_write(|identity_lookup| {
       for authority in topology.left() {
-        identity_guard.on_member_left(authority);
+        identity_lookup.on_member_left(authority);
       }
-    }
+    });
 
     true
   }
