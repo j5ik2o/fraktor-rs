@@ -17,22 +17,22 @@ use fraktor_actor_rs::core::{
 use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{
   runtime_toolbox::{RuntimeToolbox, ToolboxMutex},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+  sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
 };
 
 use crate::core::{
   ActivatedKind, ClusterError, ClusterEvent, ClusterExtensionConfig, ClusterMetrics, ClusterMetricsSnapshot,
-  ClusterProvider, ClusterPubSub, ClusterTopology, Gossiper, IdentityLookup, IdentitySetupError, KindRegistry,
-  MetricsError, PidCache, StartupMode,
+  ClusterProviderShared, ClusterPubSubShared, ClusterTopology, GossiperShared, IdentityLookup, IdentitySetupError,
+  KindRegistry, MetricsError, PidCache, StartupMode,
 };
 
 /// Aggregates configuration and shared dependencies for cluster runtime flows.
 pub struct ClusterCore<TB: RuntimeToolbox + 'static> {
-  provider:            ArcShared<ToolboxMutex<Box<dyn ClusterProvider>, TB>>,
+  provider:            ClusterProviderShared<TB>,
   block_list_provider: ArcShared<dyn BlockListProvider>,
   event_stream:        ArcShared<EventStreamGeneric<TB>>,
-  gossiper:            ArcShared<ToolboxMutex<Box<dyn Gossiper>, TB>>,
-  pub_sub:             ArcShared<ToolboxMutex<Box<dyn ClusterPubSub>, TB>>,
+  gossiper:            GossiperShared<TB>,
+  pub_sub:             ClusterPubSubShared<TB>,
   startup_state:       ClusterStartupState,
   metrics_enabled:     bool,
   kind_registry:       KindRegistry,
@@ -52,11 +52,11 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     config: &ClusterExtensionConfig,
-    provider: ArcShared<ToolboxMutex<Box<dyn ClusterProvider>, TB>>,
+    provider: ClusterProviderShared<TB>,
     block_list_provider: ArcShared<dyn BlockListProvider>,
     event_stream: ArcShared<EventStreamGeneric<TB>>,
-    gossiper: ArcShared<ToolboxMutex<Box<dyn Gossiper>, TB>>,
-    pubsub: ArcShared<ToolboxMutex<Box<dyn ClusterPubSub>, TB>>,
+    gossiper: GossiperShared<TB>,
+    pubsub: ClusterPubSubShared<TB>,
     kind_registry: KindRegistry,
     identity_lookup: ArcShared<ToolboxMutex<Box<dyn IdentityLookup>, TB>>,
   ) -> Self {
@@ -162,7 +162,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
     let address = self.startup_address();
     self.refresh_blocked_members();
 
-    self.pub_sub.lock().start().map_err(ClusterError::from).map_err(|error| {
+    self.pub_sub.with_write(|pub_sub| pub_sub.start()).map_err(ClusterError::from).map_err(|error| {
       let reason = format!("pubsub: {error:?}");
       self.publish_cluster_event(ClusterEvent::StartupFailed {
         address: address.clone(),
@@ -172,7 +172,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
       error
     })?;
 
-    self.gossiper.lock().start().map_err(|reason| {
+    self.gossiper.with_write(|gossiper| gossiper.start()).map_err(|reason| {
       self.publish_cluster_event(ClusterEvent::StartupFailed {
         address: address.clone(),
         mode:    StartupMode::Member,
@@ -182,7 +182,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
     })?;
 
     // ガードを早期ドロップさせるため、結果を先に取得
-    let provider_result = self.provider.lock().start_member();
+    let provider_result = self.provider.with_write(|provider| provider.start_member());
     match provider_result {
       | Ok(()) => {
         self.mode = Some(StartupMode::Member);
@@ -208,7 +208,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
     let address = self.startup_address();
     self.refresh_blocked_members();
 
-    self.pub_sub.lock().start().map_err(ClusterError::from).map_err(|error| {
+    self.pub_sub.with_write(|pub_sub| pub_sub.start()).map_err(ClusterError::from).map_err(|error| {
       let reason = format!("pubsub: {error:?}");
       self.publish_cluster_event(ClusterEvent::StartupFailed {
         address: address.clone(),
@@ -218,8 +218,17 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
       error
     })?;
 
+    self.gossiper.with_write(|gossiper| gossiper.start()).map_err(|reason| {
+      self.publish_cluster_event(ClusterEvent::StartupFailed {
+        address: address.clone(),
+        mode:    StartupMode::Client,
+        reason:  reason.to_string(),
+      });
+      ClusterError::Gossip(reason)
+    })?;
+
     // ガードを早期ドロップさせるため、結果を先に取得
-    let provider_result = self.provider.lock().start_client();
+    let provider_result = self.provider.with_write(|provider| provider.start_client());
     match provider_result {
       | Ok(()) => {
         self.mode = Some(StartupMode::Client);
@@ -244,13 +253,13 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
   pub fn shutdown(&mut self, graceful: bool) -> Result<(), ClusterError> {
     let address = self.startup_address();
     let mode = self.mode.unwrap_or(StartupMode::Member);
-    self.pub_sub.lock().stop().map_err(ClusterError::from).map_err(|error| {
+    self.pub_sub.with_write(|pub_sub| pub_sub.stop()).map_err(ClusterError::from).map_err(|error| {
       let reason = format!("pubsub: {error:?}");
       self.publish_cluster_event(ClusterEvent::ShutdownFailed { address: address.clone(), mode, reason });
       error
     })?;
 
-    self.gossiper.lock().stop().map_err(|reason| {
+    self.gossiper.with_write(|gossiper| gossiper.stop()).map_err(|reason| {
       self.publish_cluster_event(ClusterEvent::ShutdownFailed {
         address: address.clone(),
         mode,
@@ -260,7 +269,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
     })?;
 
     // ガードを早期ドロップさせるため、結果を先に取得
-    let provider_result = self.provider.lock().shutdown(graceful);
+    let provider_result = self.provider.with_write(|provider| provider.shutdown(graceful));
     match provider_result {
       | Ok(()) => {
         self.virtual_actor_count = 0;
