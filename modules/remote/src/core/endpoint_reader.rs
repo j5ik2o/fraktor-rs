@@ -10,12 +10,12 @@ use fraktor_actor_rs::core::{
   dead_letter::DeadLetterReason,
   error::SendError,
   messaging::AnyMessageGeneric,
-  serialization::SerializationExtensionGeneric,
+  serialization::SerializationExtensionSharedGeneric,
   system::{ActorSystemWeakGeneric, RemoteWatchHookShared},
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  sync::ArcShared,
+  sync::{ArcShared, SharedAccess},
 };
 
 #[cfg(feature = "tokio-transport")]
@@ -30,7 +30,7 @@ use crate::core::{
 /// Uses a weak reference to the actor system to avoid circular references.
 pub struct EndpointReaderGeneric<TB: RuntimeToolbox + 'static> {
   system:        ActorSystemWeakGeneric<TB>,
-  serialization: ArcShared<SerializationExtensionGeneric<TB>>,
+  serialization: SerializationExtensionSharedGeneric<TB>,
 }
 
 /// Type alias for `EndpointReaderGeneric` with the default `NoStdToolbox`.
@@ -47,7 +47,7 @@ impl<TB: RuntimeToolbox + 'static> EndpointReaderGeneric<TB> {
   ///
   /// The reader stores a weak reference to the actor system.
   #[must_use]
-  pub fn new(system: ActorSystemWeakGeneric<TB>, serialization: ArcShared<SerializationExtensionGeneric<TB>>) -> Self {
+  pub fn new(system: ActorSystemWeakGeneric<TB>, serialization: SerializationExtensionSharedGeneric<TB>) -> Self {
     Self { system, serialization }
   }
 
@@ -72,7 +72,7 @@ impl<TB: RuntimeToolbox + 'static> EndpointReaderGeneric<TB> {
     &self,
     serialized: &fraktor_actor_rs::core::serialization::SerializedMessage,
   ) -> Result<AnyMessageGeneric<TB>, fraktor_actor_rs::core::serialization::SerializationError> {
-    let payload = self.serialization.deserialize(serialized, None)?;
+    let payload = self.serialization.with_read(|ext| ext.deserialize(serialized, None))?;
     let arc: Arc<dyn core::any::Any + Send + Sync + 'static> = payload.into();
     #[cfg(feature = "force-portable-arc")]
     let shared = ArcShared::___from_arc(arc.into());

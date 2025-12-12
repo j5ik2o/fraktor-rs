@@ -4,7 +4,10 @@ use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use crate::core::{
   extension::ExtensionId,
-  serialization::{extension::SerializationExtensionGeneric, serialization_setup::SerializationSetup},
+  serialization::{
+    extension::SerializationExtensionGeneric, extension_shared::SerializationExtensionSharedGeneric,
+    serialization_setup::SerializationSetup,
+  },
   system::ActorSystemGeneric,
 };
 
@@ -23,9 +26,10 @@ impl SerializationExtensionId {
 }
 
 impl<TB: RuntimeToolbox + 'static> ExtensionId<TB> for SerializationExtensionId {
-  type Ext = SerializationExtensionGeneric<TB>;
+  type Ext = SerializationExtensionSharedGeneric<TB>;
 
   fn create_extension(&self, system: &ActorSystemGeneric<TB>) -> Self::Ext {
-    SerializationExtensionGeneric::new(system, self.setup.clone())
+    let inner = SerializationExtensionGeneric::new(system, self.setup.clone());
+    SerializationExtensionSharedGeneric::new(inner)
   }
 }

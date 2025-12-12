@@ -5,7 +5,7 @@ extern crate alloc;
 #[path = "../no_std_tick_driver_support.rs"]
 mod no_std_tick_driver_support;
 
-use alloc::{borrow::Cow, string::String, vec::Vec};
+use alloc::{borrow::Cow, vec::Vec};
 use core::{
   any::{Any, TypeId},
   convert::TryFrom,
@@ -18,13 +18,13 @@ use fraktor_actor_rs::core::{
   messaging::AnyMessageViewGeneric,
   props::Props,
   serialization::{
-    NotSerializableError, SerializationCallScope, SerializationError, SerializationExtension, SerializationExtensionId,
-    SerializationSetup, SerializationSetupBuilder, SerializedMessage, Serializer, SerializerId,
-    SerializerWithStringManifest, TransportInformation,
+    NotSerializableError, SerializationCallScope, SerializationError, SerializationExtensionId,
+    SerializationExtensionShared, SerializationSetup, SerializationSetupBuilder, SerializedMessage, Serializer,
+    SerializerId, SerializerWithStringManifest, TransportInformation,
   },
   system::{ActorSystem, ActorSystemConfig},
 };
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_rs::core::sync::{ArcShared, SharedAccess};
 use serde::{Deserialize, Serialize};
 
 const TELEMETRY_MANIFEST: &str = "sample.telemetry.TelemetryPayload";
@@ -154,27 +154,28 @@ fn main() {
   })
   .expect("actor system");
 
-  let serialization: ArcShared<SerializationExtension> =
-    system.extended().extension(&serialization_id).expect("extension registered");
+  let serialization: SerializationExtensionShared =
+    (*system.extended().extension(&serialization_id).expect("extension registered")).clone();
 
   let payload = TelemetryPayload { node: 7, temperature: 24 };
   let serialized: SerializedMessage =
-    serialization.serialize(&payload, SerializationCallScope::Remote).expect("serialize");
+    serialization.with_read(|ext| ext.serialize(&payload, SerializationCallScope::Remote)).expect("serialize");
 
   println!("manifest: {:?}", serialized.manifest());
   println!("bytes: {:?}", serialized.bytes());
 
-  let decoded_any =
-    serialization.deserialize(&serialized, Some(TypeId::of::<TelemetryPayload>())).expect("deserialize");
+  let decoded_any = serialization
+    .with_read(|ext| ext.deserialize(&serialized, Some(TypeId::of::<TelemetryPayload>())))
+    .expect("deserialize");
   let restored = *decoded_any.downcast::<TelemetryPayload>().expect("downcast payload");
   println!("restored payload: node={}, temperature={}", restored.node, restored.temperature);
 
   // TransportInformation を付与すると、ActorRef からリモート経路形式を作れる
-  let info = TransportInformation::new(Some(String::from("fraktor://sample@localhost:2552")));
-  serialization.with_transport_information(info, || {
-    let path = serialization.serialized_actor_path(&system.user_guardian_ref()).expect("actor path");
-    println!("serialized actor path: {path}");
-  });
+  let info = TransportInformation::new(Some(alloc::string::String::from("fraktor://sample@localhost:2552")));
+  serialization.with_write(|ext| ext.push_transport_information(info));
+  let path = serialization.with_read(|ext| ext.serialized_actor_path(&system.user_guardian_ref())).expect("actor path");
+  println!("serialized actor path: {path}");
+  let _ = serialization.with_write(|ext| ext.pop_transport_information());
 
   system.terminate().expect("terminate");
   system.run_until_terminated();

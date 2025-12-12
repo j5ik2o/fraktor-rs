@@ -10,6 +10,7 @@ mod delegator;
 mod error;
 mod error_event;
 mod extension;
+mod extension_shared;
 mod not_serializable_error;
 mod serialization_extension_id;
 mod serialization_extension_installer;
@@ -45,6 +46,8 @@ pub use error::SerializationError;
 pub use error_event::SerializationErrorEvent;
 // Re-exports from extension
 pub use extension::{SerializationExtension, SerializationExtensionGeneric};
+// Re-exports from extension_shared
+pub use extension_shared::{SerializationExtensionShared, SerializationExtensionSharedGeneric};
 // Re-exports from not_serializable_error
 pub use not_serializable_error::NotSerializableError;
 // Re-exports from serialization_extension_id

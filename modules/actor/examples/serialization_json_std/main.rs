@@ -12,9 +12,9 @@ use fraktor_actor_rs::{
     error::ActorError,
     extension::ExtensionInstallers,
     serialization::{
-      NotSerializableError, SerializationCallScope, SerializationError, SerializationExtensionId, SerializationSetup,
-      SerializationSetupBuilder, SerializedMessage, Serializer, SerializerId, SerializerWithStringManifest,
-      TransportInformation,
+      NotSerializableError, SerializationCallScope, SerializationError, SerializationExtensionId,
+      SerializationExtensionSharedGeneric, SerializationSetup, SerializationSetupBuilder, SerializedMessage,
+      Serializer, SerializerId, SerializerWithStringManifest, TransportInformation,
     },
     system::ActorSystemGeneric,
   },
@@ -154,25 +154,28 @@ fn main() {
   let config = ActorSystemConfig::default().with_tick_driver(tick_driver).with_extension_installers(installers);
 
   let system = ActorSystem::new_with_config(&props, &config).expect("actor system");
-  let serialization: ArcShared<_> = system.extended().extension(&serialization_id).expect("extension registered");
+  let serialization: SerializationExtensionSharedGeneric<StdToolbox> =
+    (*system.extended().extension(&serialization_id).expect("extension registered")).clone();
 
   let payload = TelemetryPayload { node: 7, temperature: 24 };
   let serialized: SerializedMessage =
-    serialization.serialize(&payload, SerializationCallScope::Remote).expect("serialize");
+    serialization.with_read(|ext| ext.serialize(&payload, SerializationCallScope::Remote)).expect("serialize");
 
   println!("manifest: {:?}", serialized.manifest());
   println!("bytes: {:?}", serialized.bytes());
 
-  let decoded_any =
-    serialization.deserialize(&serialized, Some(TypeId::of::<TelemetryPayload>())).expect("deserialize");
+  let decoded_any = serialization
+    .with_read(|ext| ext.deserialize(&serialized, Some(TypeId::of::<TelemetryPayload>())))
+    .expect("deserialize");
   let restored = *decoded_any.downcast::<TelemetryPayload>().expect("downcast payload");
   println!("restored payload: node={}, temperature={}", restored.node, restored.temperature);
 
+  // TransportInformation を付与すると、ActorRef からリモート経路形式を作れる
   let info = TransportInformation::new(Some(String::from("fraktor://sample@localhost:2552")));
-  serialization.with_transport_information(info, || {
-    let path = serialization.serialized_actor_path(&system.user_guardian_ref()).expect("actor path");
-    println!("serialized actor path: {path}");
-  });
+  serialization.with_write(|ext| ext.push_transport_information(info));
+  let path = serialization.with_read(|ext| ext.serialized_actor_path(&system.user_guardian_ref())).expect("actor path");
+  println!("serialized actor path: {path}");
+  let _ = serialization.with_write(|ext| ext.pop_transport_information());
 
   let termination = system.when_terminated();
   system.terminate().expect("terminate");
