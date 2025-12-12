@@ -4,19 +4,19 @@ use alloc::format;
 
 use fraktor_actor_rs::core::{
   actor_prim::actor_path::ActorPathScheme,
-  serialization::SerializationExtensionGeneric,
+  serialization::SerializationExtensionSharedGeneric,
   system::{
     ActorRefProviderInstaller, ActorRefProviderSharedGeneric, ActorSystemBuildError, ActorSystemGeneric,
     RemoteWatchHookShared,
   },
 };
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, SyncMutexFamily},
+  runtime_toolbox::RuntimeToolbox,
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 
 use crate::core::{
-  EndpointWriterGeneric, RemotingExtensionGeneric, endpoint_reader::EndpointReaderGeneric,
+  EndpointWriterGeneric, EndpointWriterSharedGeneric, RemotingExtensionGeneric, endpoint_reader::EndpointReaderGeneric,
   loopback_actor_ref_provider::LoopbackActorRefProviderGeneric, loopback_router,
 };
 
@@ -43,15 +43,14 @@ impl<TB: RuntimeToolbox + 'static> ActorRefProviderInstaller<TB> for LoopbackAct
   fn install(&self, system: &ActorSystemGeneric<TB>) -> Result<(), ActorSystemBuildError> {
     let extended = system.extended();
 
-    let Some(serialization) = extended.extension_by_type::<SerializationExtensionGeneric<TB>>() else {
+    let Some(serialization_arc) = extended.extension_by_type::<SerializationExtensionSharedGeneric<TB>>() else {
       return Err(ActorSystemBuildError::Configuration("serialization extension not installed".into()));
     };
+    let serialization = (*serialization_arc).clone();
 
-    let writer = ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(EndpointWriterGeneric::new(
-      system.downgrade(),
-      serialization.clone(),
-    )));
-    let reader = ArcShared::new(EndpointReaderGeneric::new(system.downgrade(), serialization.clone()));
+    let writer =
+      EndpointWriterSharedGeneric::new(EndpointWriterGeneric::new(system.downgrade(), serialization.clone()));
+    let reader = ArcShared::new(EndpointReaderGeneric::new(system.downgrade(), serialization));
 
     let Some(extension) = extended.extension_by_type::<RemotingExtensionGeneric<TB>>() else {
       return Err(ActorSystemBuildError::Configuration("remoting extension not installed".into()));

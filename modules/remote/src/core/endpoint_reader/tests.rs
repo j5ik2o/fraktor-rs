@@ -12,8 +12,8 @@ use fraktor_actor_rs::core::{
   props::PropsGeneric,
   scheduler::{ManualTestDriver, TickDriverConfig},
   serialization::{
-    SerializationCallScope, SerializationExtensionGeneric, SerializationSetup, SerializationSetupBuilder,
-    SerializedMessage, Serializer, SerializerId, StringSerializer,
+    SerializationCallScope, SerializationExtensionGeneric, SerializationExtensionSharedGeneric, SerializationSetup,
+    SerializationSetupBuilder, SerializedMessage, Serializer, SerializerId, StringSerializer,
   },
   system::{ActorSystemConfig, ActorSystemGeneric},
 };
@@ -82,8 +82,8 @@ fn serialization_setup() -> SerializationSetup {
 
 fn serialization_extension(
   system: &ActorSystemGeneric<NoStdToolbox>,
-) -> ArcShared<SerializationExtensionGeneric<NoStdToolbox>> {
-  ArcShared::new(SerializationExtensionGeneric::new(system, serialization_setup()))
+) -> SerializationExtensionSharedGeneric<NoStdToolbox> {
+  SerializationExtensionSharedGeneric::new(SerializationExtensionGeneric::new(system, serialization_setup()))
 }
 
 fn remote_node() -> RemoteNodeId {

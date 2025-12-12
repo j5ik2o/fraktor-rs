@@ -129,21 +129,25 @@ fn serialize_remote_attaches_manifest() {
 }
 
 #[test]
-fn with_transport_information_sets_scope_temporarily() {
-  let (extension, _, _system) = build_extension::<NoStdToolbox>(None);
+fn push_pop_transport_information_sets_scope_temporarily() {
+  let (mut extension, _, _system) = build_extension::<NoStdToolbox>(None);
   assert!(extension.current_transport_information().is_none());
   let info = TransportInformation::new(Some("fraktor://sys@host".into()));
-  let value = extension.with_transport_information(info.clone(), || extension.current_transport_information());
+  extension.push_transport_information(info.clone());
+  let value = extension.current_transport_information();
   assert_eq!(value.as_ref(), Some(&info));
+  extension.pop_transport_information();
   assert!(extension.current_transport_information().is_none());
 }
 
 #[test]
 fn serialized_actor_path_prefers_transport_address() {
-  let (extension, _, _system) = build_extension::<NoStdToolbox>(None);
+  let (mut extension, _, _system) = build_extension::<NoStdToolbox>(None);
   let actor_ref = ActorRefGeneric::<NoStdToolbox>::new(Pid::new(1, 0), NullSender);
   let info = TransportInformation::new(Some("fraktor://sys@host:2552".into()));
-  let path = extension.with_transport_information(info, || extension.serialized_actor_path(&actor_ref)).expect("path");
+  extension.push_transport_information(info);
+  let path = extension.serialized_actor_path(&actor_ref).expect("path");
+  extension.pop_transport_information();
   assert!(path.starts_with("fraktor://sys@host:2552"));
 }
 
@@ -227,7 +231,7 @@ fn serialized_actor_path_falls_back_to_local_without_complete_canonical() {
 
 #[test]
 fn shutdown_rejects_future_serialization() {
-  let (extension, _, _system) = build_extension::<NoStdToolbox>(None);
+  let (mut extension, _, _system) = build_extension::<NoStdToolbox>(None);
   extension.shutdown();
   let error = extension.serialize(&TestPayload(1), SerializationCallScope::Local).expect_err("should fail");
   assert!(matches!(error, SerializationError::Uninitialized));
@@ -371,15 +375,14 @@ fn not_serializable_event_records_pid_and_transport() {
     .set_fallback("failing")
     .expect("fallback");
   let setup = builder.build().expect("build");
-  let extension = SerializationExtensionGeneric::new(&system, setup);
+  let mut extension = SerializationExtensionGeneric::new(&system, setup);
 
   let pid = Pid::new(77, 1);
   let info = TransportInformation::new(Some("fraktor://sys@host:2552".into()));
-  let error = extension
-    .with_transport_information(info.clone(), || {
-      extension.serialize_for(&TestPayload(1), SerializationCallScope::Remote, Some(pid))
-    })
-    .expect_err("should fail");
+  extension.push_transport_information(info);
+  let error =
+    extension.serialize_for(&TestPayload(1), SerializationCallScope::Remote, Some(pid)).expect_err("should fail");
+  extension.pop_transport_information();
   assert!(matches!(error, SerializationError::NotSerializable(_)));
 
   let events = serialization_events.lock();
@@ -496,7 +499,7 @@ fn runtime_binding_without_manifest_in_remote_scope_fails() {
 
 #[test]
 fn shutdown_blocks_deserialize_and_actor_path_calls() {
-  let (extension, _, _system) = build_extension::<NoStdToolbox>(None);
+  let (mut extension, _, _system) = build_extension::<NoStdToolbox>(None);
   let payload = TestPayload(5);
   let serialized = extension.serialize(&payload, SerializationCallScope::Local).expect("serialize");
   extension.shutdown();
@@ -807,12 +810,12 @@ fn builtin_serializers_support_primitives() {
 
 #[test]
 fn actor_ref_serialization_uses_helper() {
-  let (extension, _, _system) = build_extension::<NoStdToolbox>(None);
+  let (mut extension, _, _system) = build_extension::<NoStdToolbox>(None);
   let actor_ref = ActorRefGeneric::<NoStdToolbox>::new(Pid::new(99, 0), NullSender);
   let info = TransportInformation::new(Some("fraktor://sys@host:2552".into()));
-  let message = extension
-    .with_transport_information(info, || extension.serialize(&actor_ref, SerializationCallScope::Remote))
-    .expect("serialize");
+  extension.push_transport_information(info);
+  let message = extension.serialize(&actor_ref, SerializationCallScope::Remote).expect("serialize");
+  extension.pop_transport_information();
   let decoded = extension.deserialize(&message, Some(TypeId::of::<String>())).expect("decode");
   let path = decoded.downcast::<String>().unwrap();
   assert!(path.starts_with("fraktor://sys@host:2552"));

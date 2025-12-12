@@ -17,8 +17,8 @@ use core::{
 };
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
+  sync::ArcShared,
 };
 
 use crate::core::{
@@ -54,7 +54,7 @@ pub struct SerializationExtensionGeneric<TB: RuntimeToolbox + 'static> {
   registry:        ArcShared<SerializationRegistryGeneric<TB>>,
   setup:           SerializationSetup,
   system_state:    SystemStateWeakGeneric<TB>,
-  transport_stack: ToolboxMutex<Vec<TransportInformation>, TB>,
+  transport_stack: Vec<TransportInformation>,
   uninitialized:   AtomicBool,
   _marker:         PhantomData<TB>,
 }
@@ -88,7 +88,7 @@ impl<TB: RuntimeToolbox + 'static> SerializationExtensionGeneric<TB> {
       registry,
       setup,
       system_state: state.downgrade(),
-      transport_stack: <TB::MutexFamily as SyncMutexFamily>::create(Vec::new()),
+      transport_stack: Vec::new(),
       uninitialized: AtomicBool::new(false),
       _marker: PhantomData,
     }
@@ -165,18 +165,24 @@ impl<TB: RuntimeToolbox + 'static> SerializationExtensionGeneric<TB> {
     }
   }
 
-  /// Executes the closure with the specified transport information installed.
-  pub fn with_transport_information<R>(&self, info: TransportInformation, f: impl FnOnce() -> R) -> R {
-    let guard = TransportScopeGuard::<TB>::push(&self.transport_stack, info);
-    let result = f();
-    drop(guard);
-    result
+  /// Pushes the transport information onto the stack for the current scope.
+  ///
+  /// Callers should use `pop_transport_information` when done.
+  pub fn push_transport_information(&mut self, info: TransportInformation) {
+    self.transport_stack.push(info);
+  }
+
+  /// Pops the transport information from the stack.
+  ///
+  /// Returns the removed information, if any.
+  pub fn pop_transport_information(&mut self) -> Option<TransportInformation> {
+    self.transport_stack.pop()
   }
 
   /// Returns the current transport information (if any).
   #[must_use]
   pub fn current_transport_information(&self) -> Option<TransportInformation> {
-    self.transport_stack.lock().last().cloned()
+    self.transport_stack.last().cloned()
   }
 
   /// Converts the actor reference to a serialized actor path string.
@@ -240,11 +246,11 @@ impl<TB: RuntimeToolbox + 'static> SerializationExtensionGeneric<TB> {
   }
 
   /// Shuts down the extension making further calls fail.
-  pub fn shutdown(&self) {
+  pub fn shutdown(&mut self) {
     if self.uninitialized.swap(true, Ordering::SeqCst) {
       return;
     }
-    self.transport_stack.lock().clear();
+    self.transport_stack.clear();
     self.registry.clear_cache();
   }
 
@@ -418,21 +424,4 @@ impl<TB: RuntimeToolbox + 'static> Extension<TB> for SerializationExtensionGener
 
 fn fallback_path(pid: Pid) -> String {
   format!("/pid/{}:{}", pid.value(), pid.generation())
-}
-
-struct TransportScopeGuard<'a, TB: RuntimeToolbox> {
-  stack: &'a ToolboxMutex<Vec<TransportInformation>, TB>,
-}
-
-impl<'a, TB: RuntimeToolbox> TransportScopeGuard<'a, TB> {
-  fn push(stack: &'a ToolboxMutex<Vec<TransportInformation>, TB>, info: TransportInformation) -> Self {
-    stack.lock().push(info);
-    Self { stack }
-  }
-}
-
-impl<TB: RuntimeToolbox> Drop for TransportScopeGuard<'_, TB> {
-  fn drop(&mut self) {
-    let _ = self.stack.lock().pop();
-  }
 }

@@ -13,18 +13,19 @@ use fraktor_actor_rs::core::{
   props::PropsGeneric,
   scheduler::{ManualTestDriver, TickDriverConfig},
   serialization::{
-    SerializationCallScope, SerializationExtensionGeneric, SerializationSetup, SerializationSetupBuilder, Serializer,
-    SerializerId, StringSerializer,
+    SerializationCallScope, SerializationExtensionGeneric, SerializationExtensionSharedGeneric, SerializationSetup,
+    SerializationSetupBuilder, Serializer, SerializerId, StringSerializer,
   },
   system::{ActorSystemConfig, ActorSystemGeneric, RemoteWatchHook},
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily},
-  sync::ArcShared,
+  sync::{ArcShared, SharedAccess},
 };
 
 use crate::core::{
   endpoint_writer::EndpointWriter,
+  endpoint_writer_shared::EndpointWriterShared,
   remote_actor_ref_provider::RemoteActorRefProvider,
   remoting_control::{RemotingControl, RemotingControlShared},
   remoting_control_handle::RemotingControlHandle,
@@ -68,16 +69,13 @@ fn serialization_setup() -> SerializationSetup {
 
 fn serialization_extension(
   system: &ActorSystemGeneric<NoStdToolbox>,
-) -> ArcShared<SerializationExtensionGeneric<NoStdToolbox>> {
-  ArcShared::new(SerializationExtensionGeneric::new(system, serialization_setup()))
+) -> SerializationExtensionSharedGeneric<NoStdToolbox> {
+  SerializationExtensionSharedGeneric::new(SerializationExtensionGeneric::new(system, serialization_setup()))
 }
 
 fn provider(system: &ActorSystemGeneric<NoStdToolbox>) -> RemoteActorRefProvider {
   let serialization = serialization_extension(system);
-  let writer = ArcShared::new(<NoStdToolbox as RuntimeToolbox>::MutexFamily::create(EndpointWriter::new(
-    system.downgrade(),
-    serialization,
-  )));
+  let writer = EndpointWriterShared::new(EndpointWriter::new(system.downgrade(), serialization));
   let control_handle = RemotingControlHandle::new(system.clone(), RemotingExtensionConfig::default());
   let control: RemotingControlShared<NoStdToolbox> =
     ArcShared::new(<<NoStdToolbox as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(control_handle));
@@ -104,7 +102,7 @@ fn actor_ref_sends_messages_via_endpoint_writer() {
 
   remote.tell(AnyMessageGeneric::new("hello".to_string())).expect("send succeeds");
 
-  let envelope = writer.lock().try_next().expect("poll writer").expect("envelope exists");
+  let envelope = writer.with_write(|w| w.try_next()).expect("poll writer").expect("envelope exists");
   assert_eq!(envelope.recipient().to_relative_string(), "/user/user/svc");
   assert_eq!(envelope.remote_node().system(), "remote-app");
   assert_eq!(envelope.remote_node().host(), "127.0.0.1");

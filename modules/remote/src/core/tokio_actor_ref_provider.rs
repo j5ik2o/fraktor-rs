@@ -20,13 +20,13 @@ use fraktor_actor_rs::core::{
   },
 };
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily},
-  sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
+  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
+  sync::{SharedAccess, sync_mutex_like::SyncMutexLike},
 };
 use hashbrown::HashMap;
 
 use crate::core::{
-  EndpointWriterGeneric, EndpointWriterShared,
+  EndpointWriterSharedGeneric,
   actor_ref_field_normalizer::ActorRefFieldNormalizerGeneric,
   endpoint_writer_error::EndpointWriterError,
   loopback_router,
@@ -50,7 +50,7 @@ use crate::core::{
 /// since this provider is registered into the actor system's extensions.
 pub struct TokioActorRefProviderGeneric<TB: RuntimeToolbox + 'static> {
   system:            ActorSystemWeakGeneric<TB>,
-  writer:            EndpointWriterShared<TB>,
+  writer:            EndpointWriterSharedGeneric<TB>,
   control:           RemotingControlShared<TB>,
   authority_manager: RemoteAuthorityManagerSharedGeneric<TB>,
   watcher_daemon:    ActorRefGeneric<TB>,
@@ -76,7 +76,7 @@ impl<TB: RuntimeToolbox + 'static> TokioActorRefProviderGeneric<TB> {
 
   pub(crate) fn from_components(
     system: ActorSystemGeneric<TB>,
-    writer: ArcShared<<TB::MutexFamily as SyncMutexFamily>::Mutex<EndpointWriterGeneric<TB>>>,
+    writer: EndpointWriterSharedGeneric<TB>,
     control: RemotingControlShared<TB>,
     authority_manager: RemoteAuthorityManagerSharedGeneric<TB>,
     transport_config: TokioTransportConfig,
@@ -115,7 +115,7 @@ impl<TB: RuntimeToolbox + 'static> TokioActorRefProviderGeneric<TB> {
 
   #[cfg(any(test, feature = "test-support"))]
   /// Returns the underlying writer handle (testing helper).
-  pub fn writer_for_test(&self) -> EndpointWriterShared<TB> {
+  pub fn writer_for_test(&self) -> EndpointWriterSharedGeneric<TB> {
     self.writer.clone()
   }
 
@@ -209,7 +209,7 @@ impl<TB: RuntimeToolbox + 'static> RemoteWatchHook<TB> for TokioActorRefProvider
 }
 
 struct RemoteActorRefSender<TB: RuntimeToolbox + 'static> {
-  writer:      ArcShared<<TB::MutexFamily as SyncMutexFamily>::Mutex<EndpointWriterGeneric<TB>>>,
+  writer:      EndpointWriterSharedGeneric<TB>,
   recipient:   ActorPath,
   remote_node: RemoteNodeId,
 }
@@ -239,8 +239,8 @@ impl<TB: RuntimeToolbox + 'static> RemoteActorRefSender<TB> {
     }
 
     let mut parts = reply_path.parts().clone();
-    let writer = self.writer.lock();
-    if let Some((host, port)) = writer.canonical_authority_components() {
+    let authority_components = self.writer.with_read(|w| w.canonical_authority_components());
+    if let Some((host, port)) = authority_components {
       parts = parts.with_authority_host(host);
       if let Some(port) = port {
         parts = parts.with_authority_port(port);
@@ -260,13 +260,8 @@ impl<TB: RuntimeToolbox + 'static> RemoteActorRefSender<TB> {
 
 impl<TB: RuntimeToolbox + 'static> ActorRefSender<TB> for RemoteActorRefSender<TB> {
   fn send(&mut self, message: AnyMessageGeneric<TB>) -> Result<SendOutcome, SendError<TB>> {
-    let system_state = {
-      let writer_guard = self.writer.lock();
-      let Some(system) = writer_guard.system() else {
-        return Err(SendError::closed(message));
-      };
-      system.state()
-    };
+    let system_state =
+      self.writer.with_read(|w| w.system().map(|s| s.state())).ok_or_else(|| SendError::closed(message.clone()))?;
     let normalizer = ActorRefFieldNormalizerGeneric::new(system_state);
     if let Err(RemoteAuthorityError::Quarantined) = normalizer.validate_recipient(&self.recipient) {
       return Err(SendError::closed(message));
@@ -293,10 +288,11 @@ impl<TB: RuntimeToolbox + 'static> ActorRefSender<TB> for RemoteActorRefSender<T
     }
     match loopback_router::try_deliver(&self.remote_node, &self.writer, outbound) {
       | Ok(LoopbackDeliveryOutcome::Delivered) => Ok(SendOutcome::Delivered),
-      | Ok(LoopbackDeliveryOutcome::Pending(pending)) => {
-        let mut writer = self.writer.lock();
-        writer.enqueue(*pending).map(|()| SendOutcome::Delivered).map_err(|error| self.map_error(error, message_clone))
-      },
+      | Ok(LoopbackDeliveryOutcome::Pending(pending)) => self
+        .writer
+        .with_write(|w| w.enqueue(*pending))
+        .map(|()| SendOutcome::Delivered)
+        .map_err(|error| self.map_error(error, message_clone)),
       | Err(error) => Err(self.map_error(error, message_clone)),
     }
   }
