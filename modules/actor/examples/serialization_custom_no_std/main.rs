@@ -187,7 +187,9 @@ fn main() {
   // TransportInformation を付与すると、ActorRef からリモート経路形式を作れる
   let transport_information = TransportInformation::new(Some(String::from("fraktor://sample@localhost:2552")));
   serialization_extension_shared.with_write(|se| se.push_transport_information(transport_information));
-  let path = serialization_extension_shared.with_read(|se| se.serialized_actor_path(&system.user_guardian_ref())).expect("actor path");
+  let path = serialization_extension_shared
+    .with_read(|se| se.serialized_actor_path(&system.user_guardian_ref()))
+    .expect("actor path");
   println!("serialized actor path: {path}");
   let _ = serialization_extension_shared.with_write(|se| se.pop_transport_information());
 
