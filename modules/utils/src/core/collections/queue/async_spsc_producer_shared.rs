@@ -24,6 +24,17 @@ where
   _pd:              PhantomData<(T, B)>,
 }
 
+impl<T, B, A> Clone for AsyncSpscProducerShared<T, B, A>
+where
+  T: Send + 'static,
+  B: AsyncQueueBackend<T>,
+  A: AsyncMutexLike<AsyncQueue<T, SpscKey, B>>,
+{
+  fn clone(&self) -> Self {
+    Self { inner: self.inner.clone(), _pd: PhantomData }
+  }
+}
+
 impl<T, B, A> AsyncSpscProducerShared<T, B, A>
 where
   T: Send + 'static,

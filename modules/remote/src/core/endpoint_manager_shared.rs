@@ -16,6 +16,12 @@ pub struct EndpointManagerSharedGeneric<TB: RuntimeToolbox + 'static> {
   inner: ArcShared<ToolboxRwLock<EndpointManager, TB>>,
 }
 
+impl<TB: RuntimeToolbox + 'static> Clone for EndpointManagerSharedGeneric<TB> {
+  fn clone(&self) -> Self {
+    Self { inner: self.inner.clone() }
+  }
+}
+
 impl<TB: RuntimeToolbox + 'static> Default for EndpointManagerSharedGeneric<TB> {
   fn default() -> Self {
     Self::new()
