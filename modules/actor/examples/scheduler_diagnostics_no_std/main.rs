@@ -1,5 +1,4 @@
 #![cfg_attr(all(not(test), target_os = "none"), no_std)]
-#![feature(let_chains)]
 
 extern crate alloc;
 
