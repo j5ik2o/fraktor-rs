@@ -21,7 +21,7 @@
 #![deny(clippy::unused_self)]
 #![deny(clippy::unnecessary_wraps)]
 #![deny(clippy::unreachable)]
-#![deny(clippy::empty_enum)]
+#![deny(clippy::empty_enums)]
 #![deny(clippy::no_effect)]
 #![deny(dropping_copy_types)]
 #![cfg_attr(not(test), deny(clippy::unwrap_used))]
@@ -48,8 +48,6 @@
 #![deny(unreachable_pub)]
 #![allow(unknown_lints)]
 #![deny(cfg_std_forbid)]
-#![feature(let_chains)]
-#![feature(const_vec_string_slice)]
 #![cfg_attr(all(not(test), not(feature = "std")), no_std)]
 
 //! Cluster runtime components compatible with Proto.Actor/Pekko semantics.
