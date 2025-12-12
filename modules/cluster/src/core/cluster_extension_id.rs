@@ -10,17 +10,17 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::core::{
-  ClusterCore, ClusterExtensionConfig, ClusterExtensionGeneric, ClusterProvider, ClusterPubSub, Gossiper,
-  IdentityLookup, KindRegistry,
+  ClusterCore, ClusterExtensionConfig, ClusterExtensionGeneric, ClusterProvider, ClusterProviderShared, ClusterPubSub,
+  ClusterPubSubShared, Gossiper, GossiperShared, IdentityLookup, KindRegistry,
 };
 
 /// Registers the cluster extension into an actor system.
 pub struct ClusterExtensionId<TB: RuntimeToolbox + 'static> {
   config:              ClusterExtensionConfig,
-  provider:            ArcShared<ToolboxMutex<Box<dyn ClusterProvider>, TB>>,
+  provider:            ClusterProviderShared<TB>,
   block_list_provider: ArcShared<dyn fraktor_remote_rs::core::BlockListProvider>,
-  gossiper:            ArcShared<ToolboxMutex<Box<dyn Gossiper>, TB>>,
-  pubsub:              ArcShared<ToolboxMutex<Box<dyn ClusterPubSub>, TB>>,
+  gossiper:            GossiperShared<TB>,
+  pubsub:              ClusterPubSubShared<TB>,
   identity_lookup:     ArcShared<ToolboxMutex<Box<dyn IdentityLookup>, TB>>,
   _marker:             PhantomData<TB>,
 }
@@ -53,18 +53,17 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionId<TB> {
     pubsub: Box<dyn ClusterPubSub>,
     identity_lookup: Box<dyn IdentityLookup>,
   ) -> Self {
-    let provider_mutex: ToolboxMutex<Box<dyn ClusterProvider>, TB> =
-      <TB::MutexFamily as SyncMutexFamily>::create(provider);
-    let gossiper_mutex: ToolboxMutex<Box<dyn Gossiper>, TB> = <TB::MutexFamily as SyncMutexFamily>::create(gossiper);
-    let pubsub_mutex: ToolboxMutex<Box<dyn ClusterPubSub>, TB> = <TB::MutexFamily as SyncMutexFamily>::create(pubsub);
+    let provider = ClusterProviderShared::new(provider);
+    let gossiper = GossiperShared::new(gossiper);
+    let pubsub = ClusterPubSubShared::new(pubsub);
     let identity_mutex: ToolboxMutex<Box<dyn IdentityLookup>, TB> =
       <TB::MutexFamily as SyncMutexFamily>::create(identity_lookup);
     Self {
       config,
-      provider: ArcShared::new(provider_mutex),
+      provider,
       block_list_provider,
-      gossiper: ArcShared::new(gossiper_mutex),
-      pubsub: ArcShared::new(pubsub_mutex),
+      gossiper,
+      pubsub,
       identity_lookup: ArcShared::new(identity_mutex),
       _marker: PhantomData,
     }
