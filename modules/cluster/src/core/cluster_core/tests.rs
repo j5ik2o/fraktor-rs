@@ -5,16 +5,16 @@ use fraktor_actor_rs::core::event_stream::{
 };
 use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdMutex, NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
+  runtime_toolbox::{NoStdMutex, NoStdToolbox},
   sync::ArcShared,
 };
 
 use super::*;
 use crate::core::{
   ActivatedKind, ClusterEvent, ClusterProvider, ClusterProviderError, ClusterProviderShared, ClusterPubSub,
-  ClusterPubSubShared, ClusterTopology, Gossiper, GossiperShared, IdentityLookup, IdentitySetupError, KindRegistry,
-  MetricsError, PidCacheEvent, StartupMode, TOPIC_ACTOR_KIND, grain_key::GrainKey, pid_cache::PidCache,
-  pub_sub_error::PubSubError,
+  ClusterPubSubShared, ClusterTopology, Gossiper, GossiperShared, IdentityLookup, IdentityLookupShared,
+  IdentitySetupError, KindRegistry, MetricsError, PidCacheEvent, StartupMode, TOPIC_ACTOR_KIND, grain_key::GrainKey,
+  pid_cache::PidCache, pub_sub_error::PubSubError,
 };
 
 #[derive(Debug, Default)]
@@ -316,14 +316,10 @@ fn subscribe_recorder(
   (subscriber_impl, subscription)
 }
 
-/// Helper wrapping an `IdentityLookup` in `ArcShared<ToolboxMutex<...>>`.
-fn wrap_identity_lookup<I: IdentityLookup + 'static>(
-  lookup: I,
-) -> ArcShared<ToolboxMutex<Box<dyn IdentityLookup>, NoStdToolbox>> {
+/// Helper wrapping an `IdentityLookup` in `IdentityLookupShared`.
+fn wrap_identity_lookup<I: IdentityLookup + 'static>(lookup: I) -> IdentityLookupShared<NoStdToolbox> {
   let boxed: Box<dyn IdentityLookup> = Box::new(lookup);
-  let mutex: ToolboxMutex<Box<dyn IdentityLookup>, NoStdToolbox> =
-    <NoStdToolbox as RuntimeToolbox>::MutexFamily::create(boxed);
-  ArcShared::new(mutex)
+  IdentityLookupShared::new(boxed)
 }
 
 /// Helper wrapping a `ClusterProvider` in `ClusterProviderShared`.
