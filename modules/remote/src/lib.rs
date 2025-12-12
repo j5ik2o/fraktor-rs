@@ -5,7 +5,6 @@
 #![deny(unreachable_pub)]
 #![allow(unknown_lints)]
 #![deny(cfg_std_forbid)]
-#![feature(let_chains)]
 //! Remoting facilities for the fraktor actor runtime.
 
 extern crate alloc;
