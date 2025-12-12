@@ -153,21 +153,21 @@ fn main() {
 
   // ActorSystem 構築時にシリアライゼーション拡張を登録
   // （デフォルト拡張がインストールされる前に登録する必要がある）
-  let ext_id_clone = serialization_id.clone();
+  let serialization_id_cloned = serialization_id.clone();
   let (tick_driver, _pulse_handle) = no_std_tick_driver_support::hardware_tick_driver_config();
   let config = ActorSystemConfig::default().with_tick_driver(tick_driver);
   let system = ActorSystem::new_with_config_and(&props, &config, move |system| {
-    system.extended().register_extension(&ext_id_clone);
+    system.extended().register_extension(&serialization_id_cloned);
     Ok(())
   })
   .expect("actor system");
 
-  let serialization: SerializationExtensionShared =
+  let serialization_extension_shared: SerializationExtensionShared =
     (*system.extended().extension(&serialization_id).expect("extension registered")).clone();
 
   let payload = TelemetryPayload { node: 7, temperature: 24 };
   let serialized: SerializedMessage =
-    match serialization.with_read(|ext| ext.serialize(&payload, SerializationCallScope::Remote)) {
+    match serialization_extension_shared.with_read(|se| se.serialize(&payload, SerializationCallScope::Remote)) {
       | Ok(msg) => msg,
       | Err(error) => {
         println!("Serialization error: {:?}", error);
@@ -178,18 +178,18 @@ fn main() {
   println!("manifest: {:?}", serialized.manifest());
   println!("bytes: {:?}", serialized.bytes());
 
-  let decoded_any = serialization
-    .with_read(|ext| ext.deserialize(&serialized, Some(TypeId::of::<TelemetryPayload>())))
+  let decoded_any = serialization_extension_shared
+    .with_read(|se| se.deserialize(&serialized, Some(TypeId::of::<TelemetryPayload>())))
     .expect("deserialize");
   let restored = *decoded_any.downcast::<TelemetryPayload>().expect("downcast payload");
   println!("restored payload: node={}, temperature={}", restored.node, restored.temperature);
 
   // TransportInformation を付与すると、ActorRef からリモート経路形式を作れる
-  let info = TransportInformation::new(Some(alloc::string::String::from("fraktor://sample@localhost:2552")));
-  serialization.with_write(|ext| ext.push_transport_information(info));
-  let path = serialization.with_read(|ext| ext.serialized_actor_path(&system.user_guardian_ref())).expect("actor path");
+  let transport_information = TransportInformation::new(Some(String::from("fraktor://sample@localhost:2552")));
+  serialization_extension_shared.with_write(|se| se.push_transport_information(transport_information));
+  let path = serialization_extension_shared.with_read(|se| se.serialized_actor_path(&system.user_guardian_ref())).expect("actor path");
   println!("serialized actor path: {path}");
-  let _ = serialization.with_write(|ext| ext.pop_transport_information());
+  let _ = serialization_extension_shared.with_write(|se| se.pop_transport_information());
 
   system.terminate().expect("terminate");
   system.run_until_terminated();
