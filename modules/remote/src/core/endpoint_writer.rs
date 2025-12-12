@@ -11,7 +11,7 @@ use core::{
 
 use fraktor_actor_rs::core::{
   event_stream::BackpressureSignal,
-  serialization::{SerializationCallScope, SerializationExtensionGeneric},
+  serialization::{SerializationCallScope, SerializationExtensionSharedGeneric},
   system::ActorSystemWeakGeneric,
 };
 use fraktor_utils_rs::core::{
@@ -19,8 +19,8 @@ use fraktor_utils_rs::core::{
     QueueError, SyncFifoQueue, SyncQueue,
     backend::{OfferOutcome, OverflowPolicy, VecDequeBackend},
   },
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily},
-  sync::ArcShared,
+  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
+  sync::SharedAccess,
 };
 
 use crate::core::{
@@ -30,16 +30,12 @@ use crate::core::{
 
 const DEFAULT_QUEUE_CAPACITY: usize = 128;
 
-/// Shared writer handle protected by the toolbox mutex family.
-pub type EndpointWriterShared<TB> =
-  ArcShared<<<TB as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::Mutex<EndpointWriterGeneric<TB>>>;
-
 /// Serializes outbound messages, enforcing priority and backpressure.
 ///
 /// Uses a weak reference to the actor system to avoid circular references.
 pub struct EndpointWriterGeneric<TB: RuntimeToolbox + 'static> {
   system:        ActorSystemWeakGeneric<TB>,
-  serialization: ArcShared<SerializationExtensionGeneric<TB>>,
+  serialization: SerializationExtensionSharedGeneric<TB>,
   system_queue:  SyncFifoQueue<OutboundMessage<TB>, VecDequeBackend<OutboundMessage<TB>>>,
   user_queue:    SyncFifoQueue<OutboundMessage<TB>, VecDequeBackend<OutboundMessage<TB>>>,
   user_paused:   AtomicBool,
@@ -55,7 +51,7 @@ impl<TB: RuntimeToolbox + 'static> EndpointWriterGeneric<TB> {
   ///
   /// The writer stores a weak reference to the actor system.
   #[must_use]
-  pub fn new(system: ActorSystemWeakGeneric<TB>, serialization: ArcShared<SerializationExtensionGeneric<TB>>) -> Self {
+  pub fn new(system: ActorSystemWeakGeneric<TB>, serialization: SerializationExtensionSharedGeneric<TB>) -> Self {
     Self {
       system,
       serialization,
@@ -165,7 +161,7 @@ impl<TB: RuntimeToolbox + 'static> EndpointWriterGeneric<TB> {
     let (payload, recipient, remote_node, reply_to) = message.into_parts();
     let serialized = self
       .serialization
-      .serialize(payload.payload(), SerializationCallScope::Remote)
+      .with_read(|ext| ext.serialize(payload.payload(), SerializationCallScope::Remote))
       .map_err(EndpointWriterError::Serialization)?;
     let correlation_id = self.next_correlation_id();
     Ok(RemotingEnvelope::new(recipient, remote_node, reply_to, serialized, correlation_id, priority))

@@ -4,24 +4,21 @@ use alloc::boxed::Box;
 use core::marker::PhantomData;
 
 use fraktor_actor_rs::core::{extension::ExtensionId, system::ActorSystemGeneric};
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
 use crate::core::{
-  ClusterCore, ClusterExtensionConfig, ClusterExtensionGeneric, ClusterProvider, ClusterPubSub, Gossiper,
-  IdentityLookup, KindRegistry,
+  ClusterCore, ClusterExtensionConfig, ClusterExtensionGeneric, ClusterProvider, ClusterProviderShared, ClusterPubSub,
+  ClusterPubSubShared, Gossiper, GossiperShared, IdentityLookup, IdentityLookupShared, KindRegistry,
 };
 
 /// Registers the cluster extension into an actor system.
 pub struct ClusterExtensionId<TB: RuntimeToolbox + 'static> {
   config:              ClusterExtensionConfig,
-  provider:            ArcShared<ToolboxMutex<Box<dyn ClusterProvider>, TB>>,
+  provider:            ClusterProviderShared<TB>,
   block_list_provider: ArcShared<dyn fraktor_remote_rs::core::BlockListProvider>,
-  gossiper:            ArcShared<ToolboxMutex<Box<dyn Gossiper>, TB>>,
-  pubsub:              ArcShared<ToolboxMutex<Box<dyn ClusterPubSub>, TB>>,
-  identity_lookup:     ArcShared<ToolboxMutex<Box<dyn IdentityLookup>, TB>>,
+  gossiper:            GossiperShared<TB>,
+  pubsub:              ClusterPubSubShared<TB>,
+  identity_lookup:     IdentityLookupShared<TB>,
   _marker:             PhantomData<TB>,
 }
 
@@ -53,21 +50,11 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionId<TB> {
     pubsub: Box<dyn ClusterPubSub>,
     identity_lookup: Box<dyn IdentityLookup>,
   ) -> Self {
-    let provider_mutex: ToolboxMutex<Box<dyn ClusterProvider>, TB> =
-      <TB::MutexFamily as SyncMutexFamily>::create(provider);
-    let gossiper_mutex: ToolboxMutex<Box<dyn Gossiper>, TB> = <TB::MutexFamily as SyncMutexFamily>::create(gossiper);
-    let pubsub_mutex: ToolboxMutex<Box<dyn ClusterPubSub>, TB> = <TB::MutexFamily as SyncMutexFamily>::create(pubsub);
-    let identity_mutex: ToolboxMutex<Box<dyn IdentityLookup>, TB> =
-      <TB::MutexFamily as SyncMutexFamily>::create(identity_lookup);
-    Self {
-      config,
-      provider: ArcShared::new(provider_mutex),
-      block_list_provider,
-      gossiper: ArcShared::new(gossiper_mutex),
-      pubsub: ArcShared::new(pubsub_mutex),
-      identity_lookup: ArcShared::new(identity_mutex),
-      _marker: PhantomData,
-    }
+    let provider = ClusterProviderShared::new(provider);
+    let gossiper = GossiperShared::new(gossiper);
+    let pubsub = ClusterPubSubShared::new(pubsub);
+    let identity_lookup = IdentityLookupShared::new(identity_lookup);
+    Self { config, provider, block_list_provider, gossiper, pubsub, identity_lookup, _marker: PhantomData }
   }
 }
 

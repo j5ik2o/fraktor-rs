@@ -4,19 +4,16 @@ use alloc::format;
 
 use fraktor_actor_rs::core::{
   actor_prim::actor_path::ActorPathScheme,
-  serialization::SerializationExtensionGeneric,
+  serialization::SerializationExtensionSharedGeneric,
   system::{
     ActorRefProviderInstaller, ActorRefProviderSharedGeneric, ActorSystemBuildError, ActorSystemGeneric,
     RemoteWatchHookShared,
   },
 };
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, SyncMutexFamily},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use crate::core::{
-  EndpointReaderGeneric, EndpointWriterGeneric, RemotingExtensionGeneric, loopback_router,
+  EndpointReaderGeneric, EndpointWriterGeneric, EndpointWriterSharedGeneric, RemotingExtensionGeneric, loopback_router,
   remote_actor_ref_provider::RemoteActorRefProviderGeneric,
 };
 
@@ -44,13 +41,12 @@ impl<TB: RuntimeToolbox + 'static> ActorRefProviderInstaller<TB> for RemoteActor
   fn install(&self, system: &ActorSystemGeneric<TB>) -> Result<(), ActorSystemBuildError> {
     let extended = system.extended();
 
-    let Some(serialization) = extended.extension_by_type::<SerializationExtensionGeneric<TB>>() else {
+    let Some(serialization_arc) = extended.extension_by_type::<SerializationExtensionSharedGeneric<TB>>() else {
       return Err(ActorSystemBuildError::Configuration("serialization extension not installed".into()));
     };
+    let serialization = (*serialization_arc).clone();
 
-    let writer_mutex =
-      <TB::MutexFamily as SyncMutexFamily>::create(EndpointWriterGeneric::new(system.downgrade(), serialization));
-    let writer = ArcShared::new(writer_mutex);
+    let writer = EndpointWriterSharedGeneric::new(EndpointWriterGeneric::new(system.downgrade(), serialization));
 
     let Some(extension) = extended.extension_by_type::<RemotingExtensionGeneric<TB>>() else {
       return Err(ActorSystemBuildError::Configuration("remoting extension not installed".into()));
@@ -69,12 +65,12 @@ impl<TB: RuntimeToolbox + 'static> ActorRefProviderInstaller<TB> for RemoteActor
       let Some(authority) = system.canonical_authority() else {
         return Err(ActorSystemBuildError::Configuration("canonical authority missing for loopback routing".into()));
       };
-      let Some(serialization_ext) = extended.extension_by_type::<SerializationExtensionGeneric<TB>>() else {
+      let Some(serialization_ext_arc) = extended.extension_by_type::<SerializationExtensionSharedGeneric<TB>>() else {
         return Err(ActorSystemBuildError::Configuration(
           "serialization extension missing for loopback routing".into(),
         ));
       };
-      let reader = EndpointReaderGeneric::new(system.downgrade(), serialization_ext);
+      let reader = EndpointReaderGeneric::new(system.downgrade(), (*serialization_ext_arc).clone());
       loopback_router::register_endpoint(authority, reader, system.clone());
     }
     Ok(())

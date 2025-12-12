@@ -28,7 +28,10 @@ use fraktor_remote_rs::core::{
   default_loopback_setup,
 };
 use fraktor_utils_rs::{
-  core::{runtime_toolbox::NoStdMutex, sync::ArcShared},
+  core::{
+    runtime_toolbox::NoStdMutex,
+    sync::{ArcShared, SharedAccess},
+  },
   std::runtime_toolbox::StdToolbox,
 };
 
@@ -201,7 +204,7 @@ async fn remote_provider_enqueues_message() -> Result<()> {
   remote.tell(AnyMessageGeneric::new("loopback".to_string())).expect("send succeeds");
 
   let writer = provider.inner().lock().inner().inner().lock().inner().writer_for_test();
-  let envelope = writer.lock().try_next().expect("poll writer").expect("envelope");
+  let envelope = writer.with_write(|w| w.try_next()).expect("poll writer").expect("envelope");
   assert_eq!(envelope.recipient().to_relative_string(), "/user/user/svc");
   assert_eq!(envelope.remote_node().host(), "127.0.0.1");
   assert_eq!(envelope.remote_node().port(), Some(25520));

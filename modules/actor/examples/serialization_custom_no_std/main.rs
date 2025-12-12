@@ -5,7 +5,7 @@ extern crate alloc;
 #[path = "../no_std_tick_driver_support.rs"]
 mod no_std_tick_driver_support;
 
-use alloc::{borrow::Cow, string::String, vec::Vec};
+use alloc::{borrow::Cow, vec::Vec};
 use core::{
   any::{Any, TypeId},
   convert::{TryFrom, TryInto},
@@ -17,13 +17,13 @@ use fraktor_actor_rs::core::{
   messaging::AnyMessageViewGeneric,
   props::Props,
   serialization::{
-    NotSerializableError, SerializationCallScope, SerializationError, SerializationExtension, SerializationExtensionId,
-    SerializationSetup, SerializationSetupBuilder, SerializedMessage, Serializer, SerializerId,
-    SerializerWithStringManifest, TransportInformation,
+    NotSerializableError, SerializationCallScope, SerializationError, SerializationExtensionId,
+    SerializationExtensionShared, SerializationSetup, SerializationSetupBuilder, SerializedMessage, Serializer,
+    SerializerId, SerializerWithStringManifest, TransportInformation,
   },
   system::{ActorSystem, ActorSystemConfig},
 };
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_rs::core::sync::{ArcShared, SharedAccess};
 
 const TELEMETRY_MANIFEST: &str = "sample.telemetry.TelemetryPayload";
 const SERIALIZER_NAME: &str = "telemetry";
@@ -153,41 +153,45 @@ fn main() {
 
   // ActorSystem 構築時にシリアライゼーション拡張を登録
   // （デフォルト拡張がインストールされる前に登録する必要がある）
-  let ext_id_clone = serialization_id.clone();
+  let serialization_id_cloned = serialization_id.clone();
   let (tick_driver, _pulse_handle) = no_std_tick_driver_support::hardware_tick_driver_config();
   let config = ActorSystemConfig::default().with_tick_driver(tick_driver);
   let system = ActorSystem::new_with_config_and(&props, &config, move |system| {
-    system.extended().register_extension(&ext_id_clone);
+    system.extended().register_extension(&serialization_id_cloned);
     Ok(())
   })
   .expect("actor system");
 
-  let serialization: ArcShared<SerializationExtension> =
-    system.extended().extension(&serialization_id).expect("extension registered");
+  let serialization_extension_shared: SerializationExtensionShared =
+    (*system.extended().extension(&serialization_id).expect("extension registered")).clone();
 
   let payload = TelemetryPayload { node: 7, temperature: 24 };
-  let serialized: SerializedMessage = match serialization.serialize(&payload, SerializationCallScope::Remote) {
-    | Ok(msg) => msg,
-    | Err(error) => {
-      println!("Serialization error: {:?}", error);
-      panic!("serialize remote: {:?}", error);
-    },
-  };
+  let serialized: SerializedMessage =
+    match serialization_extension_shared.with_read(|se| se.serialize(&payload, SerializationCallScope::Remote)) {
+      | Ok(msg) => msg,
+      | Err(error) => {
+        println!("Serialization error: {:?}", error);
+        panic!("serialize remote: {:?}", error);
+      },
+    };
 
   println!("manifest: {:?}", serialized.manifest());
   println!("bytes: {:?}", serialized.bytes());
 
-  let decoded_any =
-    serialization.deserialize(&serialized, Some(TypeId::of::<TelemetryPayload>())).expect("deserialize");
+  let decoded_any = serialization_extension_shared
+    .with_read(|se| se.deserialize(&serialized, Some(TypeId::of::<TelemetryPayload>())))
+    .expect("deserialize");
   let restored = *decoded_any.downcast::<TelemetryPayload>().expect("downcast payload");
   println!("restored payload: node={}, temperature={}", restored.node, restored.temperature);
 
   // TransportInformation を付与すると、ActorRef からリモート経路形式を作れる
-  let info = TransportInformation::new(Some(String::from("fraktor://sample@localhost:2552")));
-  serialization.with_transport_information(info, || {
-    let path = serialization.serialized_actor_path(&system.user_guardian_ref()).expect("actor path");
-    println!("serialized actor path: {path}");
-  });
+  let transport_information = TransportInformation::new(Some(String::from("fraktor://sample@localhost:2552")));
+  serialization_extension_shared.with_write(|se| se.push_transport_information(transport_information));
+  let path = serialization_extension_shared
+    .with_read(|se| se.serialized_actor_path(&system.user_guardian_ref()))
+    .expect("actor path");
+  println!("serialized actor path: {path}");
+  let _ = serialization_extension_shared.with_write(|se| se.pop_transport_information());
 
   system.terminate().expect("terminate");
   system.run_until_terminated();

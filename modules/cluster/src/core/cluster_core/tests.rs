@@ -5,13 +5,14 @@ use fraktor_actor_rs::core::event_stream::{
 };
 use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdMutex, NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
+  runtime_toolbox::{NoStdMutex, NoStdToolbox},
   sync::ArcShared,
 };
 
 use super::*;
 use crate::core::{
-  ActivatedKind, ClusterEvent, ClusterProviderError, ClusterPubSub, ClusterTopology, Gossiper, IdentityLookup,
+  ActivatedKind, ClusterEvent, ClusterProvider, ClusterProviderError, ClusterProviderShared, ClusterPubSub,
+  ClusterPubSubShared, ClusterTopology, Gossiper, GossiperShared, IdentityLookup, IdentityLookupShared,
   IdentitySetupError, KindRegistry, MetricsError, PidCacheEvent, StartupMode, TOPIC_ACTOR_KIND, grain_key::GrainKey,
   pid_cache::PidCache, pub_sub_error::PubSubError,
 };
@@ -315,40 +316,28 @@ fn subscribe_recorder(
   (subscriber_impl, subscription)
 }
 
-/// IdentityLookup を ArcShared<ToolboxMutex<Box<dyn IdentityLookup>>> にラップするヘルパー
-fn wrap_identity_lookup<I: IdentityLookup + 'static>(
-  lookup: I,
-) -> ArcShared<ToolboxMutex<Box<dyn IdentityLookup>, NoStdToolbox>> {
+/// Helper wrapping an `IdentityLookup` in `IdentityLookupShared`.
+fn wrap_identity_lookup<I: IdentityLookup + 'static>(lookup: I) -> IdentityLookupShared<NoStdToolbox> {
   let boxed: Box<dyn IdentityLookup> = Box::new(lookup);
-  let mutex: ToolboxMutex<Box<dyn IdentityLookup>, NoStdToolbox> =
-    <NoStdToolbox as RuntimeToolbox>::MutexFamily::create(boxed);
-  ArcShared::new(mutex)
+  IdentityLookupShared::new(boxed)
 }
 
-/// ClusterProvider を ArcShared<ToolboxMutex<Box<dyn ClusterProvider>>> にラップするヘルパー
-fn wrap_provider<P: ClusterProvider + 'static>(
-  provider: P,
-) -> ArcShared<ToolboxMutex<Box<dyn ClusterProvider>, NoStdToolbox>> {
+/// Helper wrapping a `ClusterProvider` in `ClusterProviderShared`.
+fn wrap_provider<P: ClusterProvider + 'static>(provider: P) -> ClusterProviderShared<NoStdToolbox> {
   let boxed: Box<dyn ClusterProvider> = Box::new(provider);
-  let mutex: ToolboxMutex<Box<dyn ClusterProvider>, NoStdToolbox> =
-    <NoStdToolbox as RuntimeToolbox>::MutexFamily::create(boxed);
-  ArcShared::new(mutex)
+  ClusterProviderShared::new(boxed)
 }
 
-/// ClusterPubSub を ArcShared<ToolboxMutex<Box<dyn ClusterPubSub>>> にラップするヘルパー
-fn wrap_pubsub<P: ClusterPubSub + 'static>(pubsub: P) -> ArcShared<ToolboxMutex<Box<dyn ClusterPubSub>, NoStdToolbox>> {
+/// Helper wrapping a `ClusterPubSub` in `ClusterPubSubShared`.
+fn wrap_pubsub<P: ClusterPubSub + 'static>(pubsub: P) -> ClusterPubSubShared<NoStdToolbox> {
   let boxed: Box<dyn ClusterPubSub> = Box::new(pubsub);
-  let mutex: ToolboxMutex<Box<dyn ClusterPubSub>, NoStdToolbox> =
-    <NoStdToolbox as RuntimeToolbox>::MutexFamily::create(boxed);
-  ArcShared::new(mutex)
+  ClusterPubSubShared::new(boxed)
 }
 
-/// Gossiper を ArcShared<ToolboxMutex<Box<dyn Gossiper>>> にラップするヘルパー
-fn wrap_gossiper<G: Gossiper + 'static>(gossiper: G) -> ArcShared<ToolboxMutex<Box<dyn Gossiper>, NoStdToolbox>> {
+/// Helper wrapping a `Gossiper` in `GossiperShared`.
+fn wrap_gossiper<G: Gossiper + 'static>(gossiper: G) -> GossiperShared<NoStdToolbox> {
   let boxed: Box<dyn Gossiper> = Box::new(gossiper);
-  let mutex: ToolboxMutex<Box<dyn Gossiper>, NoStdToolbox> =
-    <NoStdToolbox as RuntimeToolbox>::MutexFamily::create(boxed);
-  ArcShared::new(mutex)
+  GossiperShared::new(boxed)
 }
 
 fn build_core_with_config(config: &ClusterExtensionConfig) -> ClusterCore<NoStdToolbox> {

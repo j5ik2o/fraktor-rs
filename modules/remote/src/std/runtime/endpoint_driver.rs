@@ -12,16 +12,16 @@ use core::time::Duration;
 
 use fraktor_actor_rs::core::{event_stream::CorrelationId, logging::LogLevel, system::ActorSystemWeakGeneric};
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, ToolboxMutex},
-  sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
+  runtime_toolbox::RuntimeToolbox,
+  sync::{ArcShared, SharedAccess},
 };
 use tokio::{sync::Mutex as TokioMutex, task::JoinHandle, time::sleep};
 
 use crate::core::{
   AssociationState, DeferredEnvelope, EndpointManagerCommand, EndpointManagerEffect, EndpointManagerSharedGeneric,
-  EndpointReaderGeneric, EndpointWriterGeneric, EventPublisherGeneric, HandshakeFrame, HandshakeKind, InboundFrame,
-  RemoteNodeId, RemoteTransportShared, RemotingEnvelope, TransportBind, TransportChannel, TransportEndpoint,
-  TransportError, TransportHandle, TransportInbound, TransportInboundShared, WireError,
+  EndpointReaderGeneric, EndpointWriterSharedGeneric, EventPublisherGeneric, HandshakeFrame, HandshakeKind,
+  InboundFrame, RemoteNodeId, RemoteTransportShared, RemotingEnvelope, TransportBind, TransportChannel,
+  TransportEndpoint, TransportError, TransportHandle, TransportInbound, TransportInboundShared, WireError,
 };
 
 const OUTBOUND_IDLE_DELAY: Duration = Duration::from_millis(5);
@@ -31,7 +31,7 @@ pub struct EndpointDriverConfig<TB: RuntimeToolbox + 'static> {
   /// Actor system providing scheduling and state access (weak reference).
   pub system:          ActorSystemWeakGeneric<TB>,
   /// Shared endpoint writer feeding outbound frames.
-  pub writer:          ArcShared<ToolboxMutex<EndpointWriterGeneric<TB>, TB>>,
+  pub writer:          EndpointWriterSharedGeneric<TB>,
   /// Shared endpoint reader decoding inbound frames.
   pub reader:          ArcShared<EndpointReaderGeneric<TB>>,
   /// Active transport implementation wrapped in a mutex for shared mutable access.
@@ -61,7 +61,7 @@ impl EndpointDriverHandle {
 pub(crate) struct EndpointDriver<TB: RuntimeToolbox + 'static> {
   system:          ActorSystemWeakGeneric<TB>,
   event_publisher: EventPublisherGeneric<TB>,
-  writer:          ArcShared<ToolboxMutex<EndpointWriterGeneric<TB>, TB>>,
+  writer:          EndpointWriterSharedGeneric<TB>,
   reader:          ArcShared<EndpointReaderGeneric<TB>>,
   transport:       RemoteTransportShared<TB>,
   host:            String,
@@ -106,10 +106,7 @@ impl<TB: RuntimeToolbox + 'static> EndpointDriver<TB> {
 
   async fn drive_outbound(self: Arc<Self>) {
     loop {
-      let next = {
-        let mut writer = self.writer.lock();
-        writer.try_next()
-      };
+      let next = self.writer.with_write(|w| w.try_next());
       match next {
         | Ok(Some(envelope)) => {
           if let Err(error) = self.handle_outbound_envelope(envelope).await {

@@ -10,8 +10,8 @@ use fraktor_actor_rs::core::{
   props::PropsGeneric,
   scheduler::{ManualTestDriver, TickDriverConfig},
   serialization::{
-    SerializationCallScope, SerializationExtensionGeneric, SerializationSetup, SerializationSetupBuilder, Serializer,
-    SerializerId, StringSerializer,
+    SerializationCallScope, SerializationExtensionGeneric, SerializationExtensionSharedGeneric, SerializationSetup,
+    SerializationSetupBuilder, Serializer, SerializerId, StringSerializer,
   },
   system::{ActorSystemConfig, ActorSystemGeneric},
 };
@@ -60,7 +60,7 @@ fn serialization_setup() -> SerializationSetup {
 fn build_writer() -> (EndpointWriterGeneric<NoStdToolbox>, ActorSystemGeneric<NoStdToolbox>) {
   let system = build_system();
   let setup = serialization_setup();
-  let serialization = ArcShared::new(SerializationExtensionGeneric::new(&system, setup));
+  let serialization = SerializationExtensionSharedGeneric::new(SerializationExtensionGeneric::new(&system, setup));
   (EndpointWriter::new(system.downgrade(), serialization), system)
 }
 

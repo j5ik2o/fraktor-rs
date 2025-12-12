@@ -19,6 +19,16 @@ where
   _pd:              PhantomData<(T, B)>,
 }
 
+impl<T, B, M> Clone for SyncSpscConsumerShared<T, B, M>
+where
+  B: SyncQueueBackend<T>,
+  M: SyncMutexLike<SyncQueue<T, SpscKey, B>>,
+{
+  fn clone(&self) -> Self {
+    Self { inner: self.inner.clone(), _pd: PhantomData }
+  }
+}
+
 impl<T, B, M> SyncSpscConsumerShared<T, B, M>
 where
   B: SyncQueueBackend<T>,

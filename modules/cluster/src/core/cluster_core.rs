@@ -4,7 +4,6 @@
 mod tests;
 
 use alloc::{
-  boxed::Box,
   format,
   string::{String, ToString},
   vec::Vec,
@@ -16,27 +15,27 @@ use fraktor_actor_rs::core::{
 };
 use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, ToolboxMutex},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+  runtime_toolbox::RuntimeToolbox,
+  sync::{ArcShared, SharedAccess},
 };
 
 use crate::core::{
   ActivatedKind, ClusterError, ClusterEvent, ClusterExtensionConfig, ClusterMetrics, ClusterMetricsSnapshot,
-  ClusterProvider, ClusterPubSub, ClusterTopology, Gossiper, IdentityLookup, IdentitySetupError, KindRegistry,
-  MetricsError, PidCache, StartupMode,
+  ClusterProviderShared, ClusterPubSubShared, ClusterTopology, GossiperShared, IdentityLookupShared,
+  IdentitySetupError, KindRegistry, MetricsError, PidCache, StartupMode,
 };
 
 /// Aggregates configuration and shared dependencies for cluster runtime flows.
 pub struct ClusterCore<TB: RuntimeToolbox + 'static> {
-  provider:            ArcShared<ToolboxMutex<Box<dyn ClusterProvider>, TB>>,
+  provider:            ClusterProviderShared<TB>,
   block_list_provider: ArcShared<dyn BlockListProvider>,
   event_stream:        ArcShared<EventStreamGeneric<TB>>,
-  gossiper:            ArcShared<ToolboxMutex<Box<dyn Gossiper>, TB>>,
-  pub_sub:             ArcShared<ToolboxMutex<Box<dyn ClusterPubSub>, TB>>,
+  gossiper:            GossiperShared<TB>,
+  pub_sub:             ClusterPubSubShared<TB>,
   startup_state:       ClusterStartupState,
   metrics_enabled:     bool,
   kind_registry:       KindRegistry,
-  identity_lookup:     ArcShared<ToolboxMutex<Box<dyn IdentityLookup>, TB>>,
+  identity_lookup:     IdentityLookupShared<TB>,
   virtual_actor_count: i64,
   mode:                Option<StartupMode>,
   metrics:             Option<ClusterMetrics>,
@@ -52,13 +51,13 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     config: &ClusterExtensionConfig,
-    provider: ArcShared<ToolboxMutex<Box<dyn ClusterProvider>, TB>>,
+    provider: ClusterProviderShared<TB>,
     block_list_provider: ArcShared<dyn BlockListProvider>,
     event_stream: ArcShared<EventStreamGeneric<TB>>,
-    gossiper: ArcShared<ToolboxMutex<Box<dyn Gossiper>, TB>>,
-    pubsub: ArcShared<ToolboxMutex<Box<dyn ClusterPubSub>, TB>>,
+    gossiper: GossiperShared<TB>,
+    pubsub: ClusterPubSubShared<TB>,
     kind_registry: KindRegistry,
-    identity_lookup: ArcShared<ToolboxMutex<Box<dyn IdentityLookup>, TB>>,
+    identity_lookup: IdentityLookupShared<TB>,
   ) -> Self {
     let advertised_address = config.advertised_address().to_string();
     let startup_state = ClusterStartupState { address: advertised_address };
@@ -106,7 +105,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
     self.kind_registry.register_all(kinds);
     self.virtual_actor_count = self.kind_registry.virtual_actor_count();
     let snapshot = self.kind_registry.all();
-    self.identity_lookup.lock().setup_member(&snapshot)?;
+    self.identity_lookup.with_write(|lookup| lookup.setup_member(&snapshot))?;
     Ok(())
   }
 
@@ -119,7 +118,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
     self.kind_registry.register_all(kinds);
     self.virtual_actor_count = self.kind_registry.virtual_actor_count();
     let snapshot = self.kind_registry.all();
-    self.identity_lookup.lock().setup_client(&snapshot)?;
+    self.identity_lookup.with_write(|lookup| lookup.setup_client(&snapshot))?;
     Ok(())
   }
 
@@ -162,7 +161,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
     let address = self.startup_address();
     self.refresh_blocked_members();
 
-    self.pub_sub.lock().start().map_err(ClusterError::from).map_err(|error| {
+    self.pub_sub.with_write(|pub_sub| pub_sub.start()).map_err(ClusterError::from).map_err(|error| {
       let reason = format!("pubsub: {error:?}");
       self.publish_cluster_event(ClusterEvent::StartupFailed {
         address: address.clone(),
@@ -172,7 +171,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
       error
     })?;
 
-    self.gossiper.lock().start().map_err(|reason| {
+    self.gossiper.with_write(|gossiper| gossiper.start()).map_err(|reason| {
       self.publish_cluster_event(ClusterEvent::StartupFailed {
         address: address.clone(),
         mode:    StartupMode::Member,
@@ -182,7 +181,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
     })?;
 
     // ガードを早期ドロップさせるため、結果を先に取得
-    let provider_result = self.provider.lock().start_member();
+    let provider_result = self.provider.with_write(|provider| provider.start_member());
     match provider_result {
       | Ok(()) => {
         self.mode = Some(StartupMode::Member);
@@ -208,7 +207,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
     let address = self.startup_address();
     self.refresh_blocked_members();
 
-    self.pub_sub.lock().start().map_err(ClusterError::from).map_err(|error| {
+    self.pub_sub.with_write(|pub_sub| pub_sub.start()).map_err(ClusterError::from).map_err(|error| {
       let reason = format!("pubsub: {error:?}");
       self.publish_cluster_event(ClusterEvent::StartupFailed {
         address: address.clone(),
@@ -218,8 +217,17 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
       error
     })?;
 
+    self.gossiper.with_write(|gossiper| gossiper.start()).map_err(|reason| {
+      self.publish_cluster_event(ClusterEvent::StartupFailed {
+        address: address.clone(),
+        mode:    StartupMode::Client,
+        reason:  reason.to_string(),
+      });
+      ClusterError::Gossip(reason)
+    })?;
+
     // ガードを早期ドロップさせるため、結果を先に取得
-    let provider_result = self.provider.lock().start_client();
+    let provider_result = self.provider.with_write(|provider| provider.start_client());
     match provider_result {
       | Ok(()) => {
         self.mode = Some(StartupMode::Client);
@@ -244,13 +252,13 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
   pub fn shutdown(&mut self, graceful: bool) -> Result<(), ClusterError> {
     let address = self.startup_address();
     let mode = self.mode.unwrap_or(StartupMode::Member);
-    self.pub_sub.lock().stop().map_err(ClusterError::from).map_err(|error| {
+    self.pub_sub.with_write(|pub_sub| pub_sub.stop()).map_err(ClusterError::from).map_err(|error| {
       let reason = format!("pubsub: {error:?}");
       self.publish_cluster_event(ClusterEvent::ShutdownFailed { address: address.clone(), mode, reason });
       error
     })?;
 
-    self.gossiper.lock().stop().map_err(|reason| {
+    self.gossiper.with_write(|gossiper| gossiper.stop()).map_err(|reason| {
       self.publish_cluster_event(ClusterEvent::ShutdownFailed {
         address: address.clone(),
         mode,
@@ -260,7 +268,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
     })?;
 
     // ガードを早期ドロップさせるため、結果を先に取得
-    let provider_result = self.provider.lock().shutdown(graceful);
+    let provider_result = self.provider.with_write(|provider| provider.shutdown(graceful));
     match provider_result {
       | Ok(()) => {
         self.virtual_actor_count = 0;
@@ -370,12 +378,11 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
     // IdentityLookup に離脱メンバーを伝播
     // 注: update_topology は完全なメンバーリストを必要とするため、
     // ClusterTopology のデルタ情報からは on_member_left のみを呼び出す
-    {
-      let mut identity_guard = self.identity_lookup.lock();
+    self.identity_lookup.with_write(|identity_lookup| {
       for authority in topology.left() {
-        identity_guard.on_member_left(authority);
+        identity_lookup.on_member_left(authority);
       }
-    }
+    });
 
     true
   }

@@ -1,5 +1,3 @@
-#![feature(let_chains)]
-
 use std::{thread, time::Duration};
 
 #[path = "../std_tick_driver_support.rs"]
