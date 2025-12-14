@@ -4,8 +4,8 @@ use alloc::{collections::VecDeque, string::String, vec::Vec};
 use core::{any::TypeId, time::Duration};
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  sync::ArcShared,
+  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncRwLockFamily, ToolboxRwLock},
+  sync::{ArcShared, sync_rwlock_like::SyncRwLockLike},
 };
 
 use super::{
@@ -31,11 +31,12 @@ use crate::core::{
   system::{ActorSystemConfigGeneric, RegisterExtraTopLevelError},
 };
 
-/// Shared wrapper for [`SystemStateGeneric`] providing shared ownership without external mutex.
+/// Shared wrapper for [`SystemStateGeneric`] providing thread-safe access.
 ///
-/// Interior mutability is provided by individual field-level mutexes within [`SystemStateGeneric`].
+/// This wrapper uses a read-write lock to provide safe concurrent access
+/// to the underlying system state.
 pub struct SystemStateSharedGeneric<TB: RuntimeToolbox + 'static> {
-  pub(crate) inner: ArcShared<SystemStateGeneric<TB>>,
+  pub(crate) inner: ArcShared<ToolboxRwLock<SystemStateGeneric<TB>, TB>>,
 }
 
 impl<TB: RuntimeToolbox + 'static> Clone for SystemStateSharedGeneric<TB> {
@@ -48,18 +49,18 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   /// Creates a new shared system state.
   #[must_use]
   pub fn new(state: SystemStateGeneric<TB>) -> Self {
-    Self { inner: ArcShared::new(state) }
+    Self { inner: ArcShared::new(<TB::RwLockFamily as SyncRwLockFamily>::create(state)) }
   }
 
   /// Creates a shared wrapper from an existing [`ArcShared`].
   #[must_use]
-  pub(crate) const fn from_arc_shared(inner: ArcShared<SystemStateGeneric<TB>>) -> Self {
+  pub(crate) const fn from_arc_shared(inner: ArcShared<ToolboxRwLock<SystemStateGeneric<TB>, TB>>) -> Self {
     Self { inner }
   }
 
   /// Returns the inner reference for direct access when needed.
   #[must_use]
-  pub const fn inner(&self) -> &ArcShared<SystemStateGeneric<TB>> {
+  pub const fn inner(&self) -> &ArcShared<ToolboxRwLock<SystemStateGeneric<TB>, TB>> {
     &self.inner
   }
 
@@ -74,59 +75,59 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   /// Allocates a new unique [`Pid`] for an actor.
   #[must_use]
   pub fn allocate_pid(&self) -> Pid {
-    self.inner.allocate_pid()
+    self.inner.read().allocate_pid()
   }
 
   /// Applies the actor system configuration.
   pub fn apply_actor_system_config(&self, config: &ActorSystemConfigGeneric<TB>) {
-    self.inner.apply_actor_system_config(config);
+    self.inner.write().apply_actor_system_config(config);
   }
 
   /// Registers the provided actor cell in the global registry.
   pub fn register_cell(&self, cell: ArcShared<ActorCellGeneric<TB>>) {
-    self.inner.register_cell(cell);
+    self.inner.read().register_cell(cell);
   }
 
   /// Removes the actor cell associated with the pid.
   #[must_use]
   pub fn remove_cell(&self, pid: &Pid) -> Option<ArcShared<ActorCellGeneric<TB>>> {
-    self.inner.remove_cell(pid)
+    self.inner.read().remove_cell(pid)
   }
 
   /// Returns the canonical actor path for the given pid when available.
   #[must_use]
   pub fn canonical_actor_path(&self, pid: &Pid) -> Option<ActorPath> {
-    self.inner.canonical_actor_path(pid)
+    self.inner.read().canonical_actor_path(pid)
   }
 
   /// Returns the configured canonical host/port pair when remoting is enabled.
   #[must_use]
   pub fn canonical_authority_components(&self) -> Option<(String, Option<u16>)> {
-    self.inner.canonical_authority_components()
+    self.inner.read().canonical_authority_components()
   }
 
   /// Returns true when canonical_host is set but canonical_port is missing.
   #[must_use]
   pub fn has_partial_canonical_authority(&self) -> bool {
-    self.inner.has_partial_canonical_authority()
+    self.inner.read().has_partial_canonical_authority()
   }
 
   /// Returns the canonical authority string.
   #[must_use]
   pub fn canonical_authority_endpoint(&self) -> Option<String> {
-    self.inner.canonical_authority_endpoint()
+    self.inner.read().canonical_authority_endpoint()
   }
 
   /// Returns the configured actor system name.
   #[must_use]
   pub fn system_name(&self) -> String {
-    self.inner.system_name()
+    self.inner.read().system_name()
   }
 
   /// Retrieves an actor cell by pid.
   #[must_use]
   pub fn cell(&self, pid: &Pid) -> Option<ArcShared<ActorCellGeneric<TB>>> {
-    self.inner.cell(pid)
+    self.inner.read().cell(pid)
   }
 
   /// Binds an actor name within its parent's scope.
@@ -135,86 +136,86 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   ///
   /// Returns [`SpawnError`] if the name assignment fails.
   pub fn assign_name(&self, parent: Option<Pid>, hint: Option<&str>, pid: Pid) -> Result<String, SpawnError> {
-    self.inner.assign_name(parent, hint, pid)
+    self.inner.read().assign_name(parent, hint, pid)
   }
 
   /// Releases the association between a name and its pid in the registry.
   pub fn release_name(&self, parent: Option<Pid>, name: &str) {
-    self.inner.release_name(parent, name);
+    self.inner.read().release_name(parent, name);
   }
 
   /// Stores the root guardian cell reference.
   pub fn set_root_guardian(&self, cell: &ArcShared<ActorCellGeneric<TB>>) {
-    self.inner.set_root_guardian(cell);
+    self.inner.read().set_root_guardian(cell);
   }
 
   /// Stores the system guardian cell reference.
   pub fn set_system_guardian(&self, cell: &ArcShared<ActorCellGeneric<TB>>) {
-    self.inner.set_system_guardian(cell);
+    self.inner.read().set_system_guardian(cell);
   }
 
   /// Stores the user guardian cell reference.
   pub fn set_user_guardian(&self, cell: &ArcShared<ActorCellGeneric<TB>>) {
-    self.inner.set_user_guardian(cell);
+    self.inner.read().set_user_guardian(cell);
   }
 
   /// Clears the guardian slot matching the pid and returns which guardian stopped.
   #[must_use]
   pub fn clear_guardian(&self, pid: Pid) -> Option<GuardianKind> {
-    self.inner.clear_guardian(pid)
+    self.inner.read().clear_guardian(pid)
   }
 
   /// Returns the root guardian cell if initialised.
   #[must_use]
   pub fn root_guardian(&self) -> Option<ArcShared<ActorCellGeneric<TB>>> {
-    self.inner.root_guardian()
+    self.inner.read().root_guardian()
   }
 
   /// Returns the system guardian cell if initialised.
   #[must_use]
   pub fn system_guardian(&self) -> Option<ArcShared<ActorCellGeneric<TB>>> {
-    self.inner.system_guardian()
+    self.inner.read().system_guardian()
   }
 
   /// Returns the user guardian cell if initialised.
   #[must_use]
   pub fn user_guardian(&self) -> Option<ArcShared<ActorCellGeneric<TB>>> {
-    self.inner.user_guardian()
+    self.inner.read().user_guardian()
   }
 
   /// Returns the pid of the root guardian if available.
   #[must_use]
   pub fn root_guardian_pid(&self) -> Option<Pid> {
-    self.inner.root_guardian_pid()
+    self.inner.read().root_guardian_pid()
   }
 
   /// Returns the pid of the system guardian if available.
   #[must_use]
   pub fn system_guardian_pid(&self) -> Option<Pid> {
-    self.inner.system_guardian_pid()
+    self.inner.read().system_guardian_pid()
   }
 
   /// Returns the pid of the user guardian if available.
   #[must_use]
   pub fn user_guardian_pid(&self) -> Option<Pid> {
-    self.inner.user_guardian_pid()
+    self.inner.read().user_guardian_pid()
   }
 
   /// Returns the PID registered for the specified guardian.
   #[must_use]
   pub fn guardian_pid(&self, kind: GuardianKind) -> Option<Pid> {
-    self.inner.guardian_pid(kind)
+    self.inner.read().guardian_pid(kind)
   }
 
   /// Registers a PID for the specified guardian kind.
   pub fn register_guardian_pid(&self, kind: GuardianKind, pid: Pid) {
-    self.inner.register_guardian_pid(kind, pid);
+    self.inner.read().register_guardian_pid(kind, pid);
   }
 
   /// Returns whether the specified guardian is alive.
   #[must_use]
   pub fn guardian_alive(&self, kind: GuardianKind) -> bool {
-    self.inner.guardian_alive(kind)
+    self.inner.read().guardian_alive(kind)
   }
 
   /// Registers an extra top-level path prior to root startup.
@@ -227,93 +228,93 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
     name: &str,
     actor: ActorRefGeneric<TB>,
   ) -> Result<(), RegisterExtraTopLevelError> {
-    self.inner.register_extra_top_level(name, actor)
+    self.inner.read().register_extra_top_level(name, actor)
   }
 
   /// Returns a registered extra top-level reference if present.
   #[must_use]
   pub fn extra_top_level(&self, name: &str) -> Option<ActorRefGeneric<TB>> {
-    self.inner.extra_top_level(name)
+    self.inner.read().extra_top_level(name)
   }
 
   /// Marks the root guardian as fully initialised.
   pub fn mark_root_started(&self) {
-    self.inner.mark_root_started();
+    self.inner.read().mark_root_started();
   }
 
   /// Indicates whether the root guardian has completed startup.
   #[must_use]
   pub fn has_root_started(&self) -> bool {
-    self.inner.has_root_started()
+    self.inner.read().has_root_started()
   }
 
   /// Attempts to transition the system into the terminating state.
   #[must_use]
   pub fn begin_termination(&self) -> bool {
-    self.inner.begin_termination()
+    self.inner.read().begin_termination()
   }
 
   /// Indicates whether the system is currently terminating.
   #[must_use]
   pub fn is_terminating(&self) -> bool {
-    self.inner.is_terminating()
+    self.inner.read().is_terminating()
   }
 
   /// Generates a unique `/temp` path segment and registers the supplied actor reference.
   #[must_use]
   pub fn register_temp_actor(&self, actor: ActorRefGeneric<TB>) -> String {
-    self.inner.register_temp_actor(actor)
+    self.inner.read().register_temp_actor(actor)
   }
 
   /// Removes a temporary actor reference if registered.
   #[must_use]
   pub fn unregister_temp_actor(&self, name: &str) -> Option<ActorRefGeneric<TB>> {
-    self.inner.unregister_temp_actor(name)
+    self.inner.read().unregister_temp_actor(name)
   }
 
   /// Resolves a registered temporary actor reference.
   #[must_use]
   pub fn temp_actor(&self, name: &str) -> Option<ActorRefGeneric<TB>> {
-    self.inner.temp_actor(name)
+    self.inner.read().temp_actor(name)
   }
 
   /// Resolves the actor path for the specified pid if the actor exists.
   #[must_use]
   pub fn actor_path(&self, pid: &Pid) -> Option<ActorPath> {
-    self.inner.actor_path(pid)
+    self.inner.read().actor_path(pid)
   }
 
   /// Returns the shared event stream handle.
   #[must_use]
   pub fn event_stream(&self) -> EventStreamSharedGeneric<TB> {
-    self.inner.event_stream()
+    self.inner.read().event_stream()
   }
 
   /// Returns a snapshot of deadletter entries.
   #[must_use]
   pub fn dead_letters(&self) -> Vec<DeadLetterEntryGeneric<TB>> {
-    self.inner.dead_letters()
+    self.inner.read().dead_letters()
   }
 
   /// Registers an ask future so the actor system can track its completion.
   pub fn register_ask_future(&self, future: ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>) {
-    self.inner.register_ask_future(future);
+    self.inner.read().register_ask_future(future);
   }
 
   /// Publishes an event to all event stream subscribers.
   pub fn publish_event(&self, event: &EventStreamEvent<TB>) {
-    self.inner.publish_event(event);
+    self.inner.read().publish_event(event);
   }
 
   /// Emits a log event via the event stream.
   pub fn emit_log(&self, level: LogLevel, message: String, origin: Option<Pid>) {
-    self.inner.emit_log(level, message, origin);
+    self.inner.read().emit_log(level, message, origin);
   }
 
   /// Returns `true` when an extension for the provided [`TypeId`] is registered.
   #[must_use]
   pub fn has_extension(&self, type_id: TypeId) -> bool {
-    self.inner.has_extension(type_id)
+    self.inner.read().has_extension(type_id)
   }
 
   /// Returns an extension by [`TypeId`].
@@ -321,7 +322,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   pub fn extension<E>(&self, type_id: TypeId) -> Option<ArcShared<E>>
   where
     E: core::any::Any + Send + Sync + 'static, {
-    self.inner.extension(type_id)
+    self.inner.read().extension(type_id)
   }
 
   /// Inserts an extension if absent and returns the shared instance.
@@ -329,7 +330,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   where
     E: core::any::Any + Send + Sync + 'static,
     F: FnOnce() -> ArcShared<E>, {
-    self.inner.extension_or_insert_with(type_id, factory)
+    self.inner.read().extension_or_insert_with(type_id, factory)
   }
 
   /// Returns an extension by its type.
@@ -337,19 +338,19 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   pub fn extension_by_type<E>(&self) -> Option<ArcShared<E>>
   where
     E: core::any::Any + Send + Sync + 'static, {
-    self.inner.extension_by_type()
+    self.inner.read().extension_by_type()
   }
 
   /// Installs an actor ref provider.
   pub fn install_actor_ref_provider<P>(&self, provider: &ActorRefProviderSharedGeneric<TB, P>)
   where
     P: ActorRefProvider<TB> + core::any::Any + Send + Sync + 'static, {
-    self.inner.install_actor_ref_provider(provider);
+    self.inner.read().install_actor_ref_provider(provider);
   }
 
   /// Registers a remote watch hook.
   pub fn register_remote_watch_hook(&self, hook: alloc::boxed::Box<dyn super::RemoteWatchHook<TB>>) {
-    self.inner.register_remote_watch_hook(hook);
+    self.inner.read().register_remote_watch_hook(hook);
   }
 
   /// Returns an actor ref provider.
@@ -357,7 +358,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   pub fn actor_ref_provider<P>(&self) -> Option<ActorRefProviderSharedGeneric<TB, P>>
   where
     P: ActorRefProvider<TB> + core::any::Any + Send + Sync + 'static, {
-    self.inner.actor_ref_provider()
+    self.inner.read().actor_ref_provider()
   }
 
   /// Invokes a provider registered for the given scheme.
@@ -367,23 +368,23 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
     scheme: ActorPathScheme,
     path: ActorPath,
   ) -> Option<Result<ActorRefGeneric<TB>, ActorError>> {
-    self.inner.actor_ref_provider_call_for_scheme(scheme, path)
+    self.inner.read().actor_ref_provider_call_for_scheme(scheme, path)
   }
 
   /// Registers a child under the specified parent pid.
   pub fn register_child(&self, parent: Pid, child: Pid) {
-    self.inner.register_child(parent, child);
+    self.inner.read().register_child(parent, child);
   }
 
   /// Removes a child from its parent's supervision registry.
   pub fn unregister_child(&self, parent: Option<Pid>, child: Pid) {
-    self.inner.unregister_child(parent, child);
+    self.inner.read().unregister_child(parent, child);
   }
 
   /// Returns the children supervised by the specified parent pid.
   #[must_use]
   pub fn child_pids(&self, parent: Pid) -> Vec<Pid> {
-    self.inner.child_pids(parent)
+    self.inner.read().child_pids(parent)
   }
 
   /// Sends a system message to the specified actor.
@@ -392,150 +393,150 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   ///
   /// Returns [`SendError`] if the message cannot be delivered.
   pub fn send_system_message(&self, pid: Pid, message: SystemMessage) -> Result<(), SendError<TB>> {
-    self.inner.send_system_message(pid, message)
+    self.inner.read().send_system_message(pid, message)
   }
 
   /// Records a send error for diagnostics.
   pub fn record_send_error(&self, recipient: Option<Pid>, error: &SendError<TB>) {
-    self.inner.record_send_error(recipient, error);
+    self.inner.read().record_send_error(recipient, error);
   }
 
   /// Handles a failure in a child actor according to supervision strategy.
   #[allow(dead_code)]
   pub fn handle_failure(&self, pid: Pid, parent: Option<Pid>, error: &ActorError) {
-    self.inner.handle_failure(pid, parent, error);
+    self.inner.read().handle_failure(pid, parent, error);
   }
 
   /// Records an explicit deadletter entry originating from runtime logic.
   pub fn record_dead_letter(&self, message: AnyMessageGeneric<TB>, reason: DeadLetterReason, target: Option<Pid>) {
-    self.inner.record_dead_letter(message, reason, target);
+    self.inner.read().record_dead_letter(message, reason, target);
   }
 
   /// Marks the system as terminated and completes the termination future.
   pub fn mark_terminated(&self) {
-    self.inner.mark_terminated();
+    self.inner.read().mark_terminated();
   }
 
   /// Returns a future that resolves once the actor system terminates.
   #[must_use]
   pub fn termination_future(&self) -> ActorFutureSharedGeneric<(), TB> {
-    self.inner.termination_future()
+    self.inner.read().termination_future()
   }
 
   /// Drains ask futures that have completed since the previous inspection.
   #[must_use]
   pub fn drain_ready_ask_futures(&self) -> Vec<ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>> {
-    self.inner.drain_ready_ask_futures()
+    self.inner.read().drain_ready_ask_futures()
   }
 
   /// Indicates whether the actor system has terminated.
   #[must_use]
   pub fn is_terminated(&self) -> bool {
-    self.inner.is_terminated()
+    self.inner.read().is_terminated()
   }
 
   /// Returns a monotonic timestamp for instrumentation.
   #[must_use]
   pub fn monotonic_now(&self) -> Duration {
-    self.inner.monotonic_now()
+    self.inner.read().monotonic_now()
   }
 
   /// Returns the dispatcher registry.
   #[must_use]
   pub fn dispatchers(&self) -> DispatchersSharedGeneric<TB> {
-    self.inner.dispatchers()
+    self.inner.read().dispatchers()
   }
 
   /// Returns the mailbox registry.
   #[must_use]
   pub fn mailboxes(&self) -> MailboxesSharedGeneric<TB> {
-    self.inner.mailboxes()
+    self.inner.read().mailboxes()
   }
 
   /// Returns the remoting configuration when it has been configured.
   #[must_use]
   pub fn remoting_config(&self) -> Option<RemotingConfig> {
-    self.inner.remoting_config()
+    self.inner.read().remoting_config()
   }
 
   /// Returns the scheduler context.
   #[must_use]
   pub fn scheduler_context(&self) -> SchedulerContextSharedGeneric<TB> {
-    self.inner.scheduler_context()
+    self.inner.read().scheduler_context()
   }
 
   /// Returns the tick driver runtime.
   #[must_use]
   pub fn tick_driver_runtime(&self) -> TickDriverRuntime<TB> {
-    self.inner.tick_driver_runtime()
+    self.inner.read().tick_driver_runtime()
   }
 
   /// Returns the last recorded tick driver snapshot when available.
   #[must_use]
   pub fn tick_driver_snapshot(&self) -> Option<TickDriverSnapshot> {
-    self.inner.tick_driver_snapshot()
+    self.inner.read().tick_driver_snapshot()
   }
 
   /// Shuts down the scheduler context if configured.
   #[must_use]
   pub fn shutdown_scheduler(&self) -> Option<TaskRunSummary> {
-    self.inner.shutdown_scheduler()
+    self.inner.read().shutdown_scheduler()
   }
 
   /// Records a failure and routes it to the supervising hierarchy.
   pub fn report_failure(&self, payload: FailurePayload) {
-    self.inner.report_failure(payload);
+    self.inner.read().report_failure(payload);
   }
 
   /// Records the outcome of a previously reported failure (restart/stop/escalate).
   pub fn record_failure_outcome(&self, child: Pid, outcome: super::FailureOutcome, payload: &FailurePayload) {
-    self.inner.record_failure_outcome(child, outcome, payload);
+    self.inner.read().record_failure_outcome(child, outcome, payload);
   }
 
   /// Returns a reference to the ActorPathRegistry.
   pub fn with_actor_path_registry<R, F>(&self, f: F) -> R
   where
     F: FnOnce(&super::ActorPathRegistrySharedGeneric<TB>) -> R, {
-    f(self.inner.actor_path_registry())
+    f(self.inner.read().actor_path_registry())
   }
 
   /// Returns a reference to the RemoteAuthorityManager.
   #[must_use]
   pub fn remote_authority_manager(&self) -> super::RemoteAuthorityManagerSharedGeneric<TB> {
-    self.inner.remote_authority_manager().clone()
+    self.inner.read().remote_authority_manager().clone()
   }
 
   /// Returns the current authority state.
   #[must_use]
   pub fn remote_authority_state(&self, authority: &str) -> AuthorityState {
-    self.inner.remote_authority_state(authority)
+    self.inner.read().remote_authority_state(authority)
   }
 
   /// Returns a snapshot of known remote authorities and their states.
   #[must_use]
   pub fn remote_authority_snapshots(&self) -> Vec<(String, AuthorityState)> {
-    self.inner.remote_authority_snapshots()
+    self.inner.read().remote_authority_snapshots()
   }
 
   /// Marks the authority as connected and emits an event.
   #[must_use]
   pub fn remote_authority_set_connected(&self, authority: &str) -> Option<VecDeque<AnyMessageGeneric<TB>>> {
-    self.inner.remote_authority_set_connected(authority)
+    self.inner.read().remote_authority_set_connected(authority)
   }
 
   /// Transitions the authority into quarantine.
   pub fn remote_authority_set_quarantine(&self, authority: impl Into<String>, duration: Option<Duration>) {
-    self.inner.remote_authority_set_quarantine(authority, duration);
+    self.inner.read().remote_authority_set_quarantine(authority, duration);
   }
 
   /// Handles an InvalidAssociation signal by moving the authority into quarantine.
   pub fn remote_authority_handle_invalid_association(&self, authority: impl Into<String>, duration: Option<Duration>) {
-    self.inner.remote_authority_handle_invalid_association(authority, duration);
+    self.inner.read().remote_authority_handle_invalid_association(authority, duration);
   }
 
   /// Manually overrides a quarantined authority back to connected.
   pub fn remote_authority_manual_override_to_connected(&self, authority: &str) {
-    self.inner.remote_authority_manual_override_to_connected(authority);
+    self.inner.read().remote_authority_manual_override_to_connected(authority);
   }
 
   /// Defers a message while the authority is unresolved.
@@ -548,7 +549,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
     authority: impl Into<String>,
     message: AnyMessageGeneric<TB>,
   ) -> Result<(), RemoteAuthorityError> {
-    self.inner.remote_authority_defer(authority, message)
+    self.inner.read().remote_authority_defer(authority, message)
   }
 
   /// Attempts to defer a message, returning an error if the authority is quarantined.
@@ -561,12 +562,12 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
     authority: impl Into<String>,
     message: AnyMessageGeneric<TB>,
   ) -> Result<(), RemoteAuthorityError> {
-    self.inner.remote_authority_try_defer(authority, message)
+    self.inner.read().remote_authority_try_defer(authority, message)
   }
 
   /// Polls all authorities for expired quarantine windows.
   pub fn poll_remote_authorities(&self) {
-    self.inner.poll_remote_authorities();
+    self.inner.read().poll_remote_authorities();
   }
 }
 

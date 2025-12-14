@@ -4,7 +4,6 @@
 mod tests;
 
 mod path_identity;
-mod path_identity_shared;
 
 use alloc::{
   borrow::ToOwned,
@@ -25,7 +24,7 @@ use fraktor_utils_rs::core::{
 };
 use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
-use self::{path_identity::PathIdentity, path_identity_shared::PathIdentitySharedGeneric};
+use self::path_identity::PathIdentity;
 use super::{
   ActorPathRegistrySharedGeneric, ActorRefProvider, ActorRefProviderCaller, ActorRefProviderCallersSharedGeneric,
   ActorRefProviderHandle, ActorRefProviderSharedGeneric, ActorRefProvidersSharedGeneric, AskFuturesSharedGeneric,
@@ -92,7 +91,7 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   remote_watch_hook: RemoteWatchHookDynSharedGeneric<TB>,
   dispatchers: DispatchersSharedGeneric<TB>,
   mailboxes: MailboxesSharedGeneric<TB>,
-  path_identity: PathIdentitySharedGeneric<TB>,
+  path_identity: PathIdentity,
   actor_path_registry: ActorPathRegistrySharedGeneric<TB>,
   remote_authority_mgr: RemoteAuthorityManagerSharedGeneric<TB>,
   scheduler_context: SchedulerContextSharedGeneric<TB>,
@@ -146,7 +145,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       remote_watch_hook: RemoteWatchHookDynSharedGeneric::noop(),
       dispatchers,
       mailboxes,
-      path_identity: PathIdentitySharedGeneric::default(),
+      path_identity: PathIdentity::default(),
       actor_path_registry: ActorPathRegistrySharedGeneric::default(),
       remote_authority_mgr: RemoteAuthorityManagerSharedGeneric::default(),
       actor_ref_provider_callers_by_scheme: ActorRefProviderCallersSharedGeneric::default(),
@@ -212,20 +211,18 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   }
 
   /// Applies the actor system configuration (system name, remoting settings).
-  pub fn apply_actor_system_config(&self, config: &ActorSystemConfigGeneric<TB>) {
-    self.path_identity.with_write(|identity| {
-      identity.system_name = config.system_name().to_string();
-      identity.guardian_kind = config.default_guardian();
-      if let Some(remoting) = config.remoting_config() {
-        identity.canonical_host = Some(remoting.canonical_host().to_string());
-        identity.canonical_port = remoting.canonical_port();
-        identity.quarantine_duration = remoting.quarantine_duration();
-      } else {
-        identity.canonical_host = None;
-        identity.canonical_port = None;
-        identity.quarantine_duration = path_identity::DEFAULT_QUARANTINE_DURATION;
-      }
-    });
+  pub fn apply_actor_system_config(&mut self, config: &ActorSystemConfigGeneric<TB>) {
+    self.path_identity.system_name = config.system_name().to_string();
+    self.path_identity.guardian_kind = config.default_guardian();
+    if let Some(remoting) = config.remoting_config() {
+      self.path_identity.canonical_host = Some(remoting.canonical_host().to_string());
+      self.path_identity.canonical_port = remoting.canonical_port();
+      self.path_identity.quarantine_duration = remoting.quarantine_duration();
+    } else {
+      self.path_identity.canonical_host = None;
+      self.path_identity.canonical_port = None;
+      self.path_identity.quarantine_duration = path_identity::DEFAULT_QUARANTINE_DURATION;
+    }
 
     // Register default dispatcher if configured
     if let Some(dispatcher_config) = config.default_dispatcher_config() {
@@ -289,24 +286,24 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   }
 
   fn identity_snapshot(&self) -> PathIdentity {
-    self.path_identity.with_read(|identity| identity.clone())
+    self.path_identity.clone()
   }
 
-  fn default_quarantine_duration(&self) -> Duration {
-    self.path_identity.with_read(|identity| identity.quarantine_duration)
+  const fn default_quarantine_duration(&self) -> Duration {
+    self.path_identity.quarantine_duration
   }
 
   /// Returns the configured canonical host/port pair when remoting is enabled and complete.
   pub fn canonical_authority_components(&self) -> Option<(String, Option<u16>)> {
-    self.path_identity.with_read(|identity| match (&identity.canonical_host, identity.canonical_port) {
+    match (&self.path_identity.canonical_host, self.path_identity.canonical_port) {
       | (Some(host), Some(port)) => Some((host.clone(), Some(port))),
       | _ => None,
-    })
+    }
   }
 
   /// Returns true when canonical_host is set but canonical_port is missing.
-  pub fn has_partial_canonical_authority(&self) -> bool {
-    self.path_identity.with_read(|identity| identity.canonical_host.is_some() && identity.canonical_port.is_none())
+  pub const fn has_partial_canonical_authority(&self) -> bool {
+    self.path_identity.canonical_host.is_some() && self.path_identity.canonical_port.is_none()
   }
 
   /// Returns the canonical authority string (`host[:port]`) when available.
@@ -320,7 +317,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   /// Returns the configured actor system name.
   #[must_use]
   pub fn system_name(&self) -> String {
-    self.path_identity.with_read(|identity| identity.system_name.clone())
+    self.path_identity.system_name.clone()
   }
 
   fn publish_remote_authority_event(&self, authority: String, state: AuthorityState) {
