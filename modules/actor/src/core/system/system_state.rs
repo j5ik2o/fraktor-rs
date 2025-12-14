@@ -39,7 +39,7 @@ use crate::core::{
     actor_path::{ActorPath, ActorPathParser, ActorPathParts, ActorPathScheme},
     actor_ref::ActorRefGeneric,
   },
-  dead_letter::{DeadLetterEntryGeneric, DeadLetterGeneric, DeadLetterReason},
+  dead_letter::{DeadLetterEntryGeneric, DeadLetterReason, DeadLetterSharedGeneric},
   dispatcher::{DispatchersGeneric, DispatchersSharedGeneric},
   error::{ActorError, SendError},
   event_stream::{EventStreamEvent, EventStreamSharedGeneric, RemoteAuthorityEvent, TickDriverSnapshot},
@@ -77,7 +77,7 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   terminating: AtomicBool,
   root_started: AtomicBool,
   event_stream: EventStreamSharedGeneric<TB>,
-  dead_letter: ArcShared<DeadLetterGeneric<TB>>,
+  dead_letter: DeadLetterSharedGeneric<TB>,
   extra_top_levels: ExtraTopLevelsSharedGeneric<TB>,
   temp_actors: TempActorsSharedGeneric<TB>,
   temp_counter: AtomicU64,
@@ -110,7 +110,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     TB: Default, {
     const DEAD_LETTER_CAPACITY: usize = 512;
     let event_stream = EventStreamSharedGeneric::default();
-    let dead_letter = ArcShared::new(DeadLetterGeneric::new(event_stream.clone(), DEAD_LETTER_CAPACITY));
+    let dead_letter = DeadLetterSharedGeneric::with_capacity(event_stream.clone(), DEAD_LETTER_CAPACITY);
     let dispatchers = DispatchersSharedGeneric::new(DispatchersGeneric::new());
     dispatchers.with_write(|d| d.ensure_default());
     let mailboxes = MailboxesSharedGeneric::<TB>::new();
