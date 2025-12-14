@@ -21,7 +21,7 @@ use core::{
 
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
+  sync::{ArcShared, SharedAccess},
 };
 use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
@@ -31,7 +31,7 @@ use super::{
   ActorRefProviderHandle, ActorRefProviderSharedGeneric, ActorRefProvidersSharedGeneric, AskFuturesSharedGeneric,
   AuthorityState, CellsSharedGeneric, ExtensionsSharedGeneric, ExtraTopLevelsSharedGeneric, GuardianKind,
   GuardiansStateSharedGeneric, RegistriesSharedGeneric, RemoteAuthorityError, RemoteAuthorityManagerSharedGeneric,
-  RemoteWatchHook, RemotingConfig, TempActorsSharedGeneric,
+  RemoteWatchHook, RemoteWatchHookDynSharedGeneric, RemotingConfig, TempActorsSharedGeneric,
 };
 use crate::core::{
   actor_prim::{
@@ -64,18 +64,6 @@ use crate::core::system::actor_system_config::ActorSystemConfigGeneric;
 
 const RESERVED_TOP_LEVEL: [&str; 4] = ["user", "system", "temp", "deadLetters"];
 
-struct NoopRemoteWatchHook;
-
-impl<TB: RuntimeToolbox + 'static> RemoteWatchHook<TB> for NoopRemoteWatchHook {
-  fn handle_watch(&mut self, _target: Pid, _watcher: Pid) -> bool {
-    false
-  }
-
-  fn handle_unwatch(&mut self, _target: Pid, _watcher: Pid) -> bool {
-    false
-  }
-}
-
 /// Captures global actor system state.
 pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   next_pid: AtomicU64,
@@ -101,7 +89,7 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   extensions: ExtensionsSharedGeneric<TB>,
   actor_ref_providers: ActorRefProvidersSharedGeneric<TB>,
   actor_ref_provider_callers_by_scheme: ActorRefProviderCallersSharedGeneric<TB>,
-  remote_watch_hook: ToolboxMutex<Box<dyn RemoteWatchHook<TB>>, TB>,
+  remote_watch_hook: RemoteWatchHookDynSharedGeneric<TB>,
   dispatchers: DispatchersSharedGeneric<TB>,
   mailboxes: MailboxesSharedGeneric<TB>,
   path_identity: PathIdentitySharedGeneric<TB>,
@@ -155,7 +143,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       failure_inflight: AtomicU64::new(0),
       extensions: ExtensionsSharedGeneric::default(),
       actor_ref_providers: ActorRefProvidersSharedGeneric::default(),
-      remote_watch_hook: <TB::MutexFamily as SyncMutexFamily>::create(Box::new(NoopRemoteWatchHook)),
+      remote_watch_hook: RemoteWatchHookDynSharedGeneric::noop(),
       dispatchers,
       mailboxes,
       path_identity: PathIdentitySharedGeneric::default(),
@@ -646,8 +634,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   }
 
   pub(crate) fn register_remote_watch_hook(&self, hook: Box<dyn RemoteWatchHook<TB>>) {
-    let mut guard = self.remote_watch_hook.lock();
-    *guard = hook;
+    self.remote_watch_hook.replace(hook);
   }
 
   pub(crate) fn actor_ref_provider<P>(&self) -> Option<ActorRefProviderSharedGeneric<TB, P>>
@@ -672,13 +659,11 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   }
 
   fn forward_remote_watch(&self, target: Pid, watcher: Pid) -> bool {
-    let mut guard = self.remote_watch_hook.lock();
-    guard.handle_watch(target, watcher)
+    self.remote_watch_hook.handle_watch(target, watcher)
   }
 
   fn forward_remote_unwatch(&self, target: Pid, watcher: Pid) -> bool {
-    let mut guard = self.remote_watch_hook.lock();
-    guard.handle_unwatch(target, watcher)
+    self.remote_watch_hook.handle_unwatch(target, watcher)
   }
 
   /// Registers a child under the specified parent pid.
