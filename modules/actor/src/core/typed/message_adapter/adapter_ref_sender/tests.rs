@@ -12,7 +12,7 @@ use crate::core::{
   },
   error::SendError,
   messaging::AnyMessageGeneric,
-  system::{SystemStateGeneric, SystemStateShared},
+  system::ActorSystem,
   typed::message_adapter::{AdapterEnvelope, AdapterLifecycleState, AdapterRefHandleId, AdapterRefSender},
 };
 
@@ -38,7 +38,7 @@ impl ActorRefSender<NoStdToolbox> for ProbeSender {
 
 #[test]
 fn adapter_sender_wraps_payload_into_envelope() {
-  let system = SystemStateShared::new(SystemStateGeneric::new());
+  let system = ActorSystem::new_empty().state();
   let lifecycle = ArcShared::new(AdapterLifecycleState::new(system.clone(), Pid::new(1, 0)));
   let messages = ArcShared::new(NoStdMutex::new(Vec::new()));
   let messages_clone = messages.clone();
@@ -56,7 +56,7 @@ fn adapter_sender_wraps_payload_into_envelope() {
 
 #[test]
 fn adapter_sender_rejects_when_lifecycle_stopped() {
-  let system = SystemStateShared::new(SystemStateGeneric::new());
+  let system = ActorSystem::new_empty().state();
   let lifecycle = ArcShared::new(AdapterLifecycleState::new(system.clone(), Pid::new(1, 0)));
   lifecycle.mark_stopped();
   let messages = ArcShared::new(NoStdMutex::new(Vec::new()));

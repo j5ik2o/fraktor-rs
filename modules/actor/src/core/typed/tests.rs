@@ -196,8 +196,8 @@ impl TypedActor<SchedulerProbeCommand> for SchedulerProbeActor {
   ) -> Result<(), ActorError> {
     match message {
       | SchedulerProbeCommand::Check => {
-        let has_context = ctx.system().scheduler_context().is_some();
-        ctx.reply(has_context).map_err(|error| ActorError::from_send_error(&error))
+        let _ = ctx.system().scheduler_context();
+        ctx.reply(true).map_err(|error| ActorError::from_send_error(&error))
       },
     }
   }

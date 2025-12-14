@@ -25,6 +25,7 @@ use crate::core::{
   event_stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   messaging::AnyMessageViewGeneric,
   props::Props,
+  scheduler::{ManualTestDriver, TickDriverConfig},
   serialization::{
     builtin, call_scope::SerializationCallScope, error::SerializationError, error_event::SerializationErrorEvent,
     not_serializable_error::NotSerializableError, serialization_registry::SerializationRegistryGeneric,
@@ -85,7 +86,7 @@ impl Serializer for TestSerializer {
   }
 }
 
-fn build_extension<TB: RuntimeToolbox + 'static>(
+fn build_extension<TB: RuntimeToolbox + 'static + Default>(
   manifest: Option<&str>,
 ) -> (SerializationExtensionGeneric<TB>, SerializerId, ActorSystemGeneric<TB>) {
   let serializer_id = SerializerId::try_from(300).expect("id");
@@ -164,12 +165,12 @@ impl Actor for NoopActor {
 }
 
 fn build_system_with_remoting(remoting: Option<RemotingConfig>, system_name: &str) -> ActorSystemGeneric<NoStdToolbox> {
-  let state = SystemStateShared::new(crate::core::system::SystemState::new());
-  let mut config = ActorSystemConfig::default().with_system_name(system_name.to_string());
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::<NoStdToolbox>::new());
+  let mut config = ActorSystemConfig::default().with_system_name(system_name.to_string()).with_tick_driver(tick_driver);
   if let Some(remoting) = remoting {
     config = config.with_remoting_config(remoting);
   }
-  state.apply_actor_system_config(&config);
+  let state = SystemStateShared::new(crate::core::system::SystemState::build_from_config(&config).expect("state"));
   ActorSystemGeneric::from_state(state)
 }
 

@@ -4,6 +4,9 @@ use alloc::boxed::Box;
 
 use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
+#[cfg(test)]
+mod tests;
+
 #[cfg(any(test, feature = "test-support"))]
 use super::manual_test_driver::ManualTickController;
 use super::{AutoDriverMetadata, TickDriverHandleGeneric, TickFeedHandle};
@@ -12,7 +15,7 @@ use super::{AutoDriverMetadata, TickDriverHandleGeneric, TickFeedHandle};
 pub struct TickDriverRuntime<TB: RuntimeToolbox> {
   driver:            TickDriverHandleGeneric<TB>,
   feed:              Option<TickFeedHandle<TB>>,
-  executor_shutdown: Option<Box<dyn FnOnce() + Send>>,
+  executor_shutdown: Option<Box<dyn FnOnce() + Send + Sync>>,
   auto_metadata:     Option<AutoDriverMetadata>,
   #[cfg(any(test, feature = "test-support"))]
   manual:            Option<ManualTickController<TB>>,
@@ -49,7 +52,7 @@ impl<TB: RuntimeToolbox> TickDriverRuntime<TB> {
   #[must_use]
   pub fn with_executor_shutdown<F>(mut self, shutdown: F) -> Self
   where
-    F: FnOnce() + Send + 'static, {
+    F: FnOnce() + Send + Sync + 'static, {
     self.executor_shutdown = Some(Box::new(shutdown));
     self
   }
@@ -96,5 +99,8 @@ impl<TB: RuntimeToolbox> TickDriverRuntime<TB> {
   /// Shuts down the underlying driver.
   pub fn shutdown(&mut self) {
     self.driver.shutdown();
+    if let Some(shutdown) = self.executor_shutdown.take() {
+      shutdown();
+    }
   }
 }

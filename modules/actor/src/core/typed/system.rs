@@ -43,6 +43,7 @@ where
 {
   /// Creates an empty actor system without any guardian (testing only).
   #[must_use]
+  #[cfg(any(test, feature = "test-support"))]
   pub fn new_empty() -> Self {
     Self { inner: ActorSystemGeneric::new_empty(), marker: PhantomData }
   }
@@ -184,8 +185,8 @@ where
 
   /// Returns the typed scheduler context when the runtime has an installed scheduler service.
   #[must_use]
-  pub fn scheduler_context(&self) -> Option<TypedSchedulerContext<TB>> {
-    self.inner.scheduler_context().map(TypedSchedulerContext::from_shared)
+  pub fn scheduler_context(&self) -> TypedSchedulerContext<TB> {
+    TypedSchedulerContext::from_shared(self.inner.scheduler_context())
   }
 }
 

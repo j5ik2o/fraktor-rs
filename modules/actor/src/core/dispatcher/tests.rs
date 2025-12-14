@@ -29,7 +29,7 @@ use crate::core::{
     AnyMessage,
     message_invoker::{MessageInvoker, MessageInvokerShared},
   },
-  system::{SystemState, SystemStateShared},
+  system::{ActorSystem, SystemStateShared},
 };
 
 fn register_user_hint() -> ScheduleHints {
@@ -38,7 +38,7 @@ fn register_user_hint() -> ScheduleHints {
 
 fn system_instrumented_mailbox() -> (ArcShared<MailboxGeneric<NoStdToolbox>>, SystemStateShared) {
   let mailbox = ArcShared::new(MailboxGeneric::new(MailboxPolicy::unbounded(None)));
-  let system = SystemStateShared::new(SystemState::new());
+  let system = ActorSystem::new_empty().state();
   let pid = system.allocate_pid();
   let instrumentation = MailboxInstrumentation::new(system.clone(), pid, None, None, None);
   mailbox.set_instrumentation(instrumentation);
@@ -49,7 +49,7 @@ fn bounded_mailbox(capacity: usize) -> (ArcShared<MailboxGeneric<NoStdToolbox>>,
   let policy =
     MailboxPolicy::bounded(NonZeroUsize::new(capacity).expect("capacity"), MailboxOverflowStrategy::Block, None);
   let mailbox = ArcShared::new(MailboxGeneric::new(policy));
-  let system = SystemStateShared::new(SystemState::new());
+  let system = ActorSystem::new_empty().state();
   let pid = system.allocate_pid();
   let instrumentation = MailboxInstrumentation::new(system.clone(), pid, Some(capacity), None, None);
   mailbox.set_instrumentation(instrumentation);
@@ -102,7 +102,7 @@ fn dispatcher_respects_throughput_and_deadline_limits() {
     )
     .with_throughput_limit(Some(NonZeroUsize::new(1).unwrap())),
   ));
-  let system = SystemStateShared::new(SystemState::new());
+  let system = ActorSystem::new_empty().state();
   let pid = system.allocate_pid();
   mailbox.set_instrumentation(MailboxInstrumentation::new(system.clone(), pid, None, None, None));
 

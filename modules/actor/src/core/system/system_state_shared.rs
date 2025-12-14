@@ -458,25 +458,15 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
     self.inner.remoting_config()
   }
 
-  /// Installs the scheduler service handle.
-  pub fn install_scheduler_context(&self, context: SchedulerContextSharedGeneric<TB>) {
-    self.inner.install_scheduler_context(context);
-  }
-
-  /// Returns the scheduler context when it has been initialized.
+  /// Returns the scheduler context.
   #[must_use]
-  pub fn scheduler_context(&self) -> Option<SchedulerContextSharedGeneric<TB>> {
+  pub fn scheduler_context(&self) -> SchedulerContextSharedGeneric<TB> {
     self.inner.scheduler_context()
   }
 
-  /// Installs the tick driver runtime.
-  pub fn install_tick_driver_runtime(&self, runtime: TickDriverRuntime<TB>) {
-    self.inner.install_tick_driver_runtime(runtime);
-  }
-
-  /// Returns the tick driver runtime when it has been initialized.
+  /// Returns the tick driver runtime.
   #[must_use]
-  pub fn tick_driver_runtime(&self) -> Option<TickDriverRuntime<TB>> {
+  pub fn tick_driver_runtime(&self) -> TickDriverRuntime<TB> {
     self.inner.tick_driver_runtime()
   }
 

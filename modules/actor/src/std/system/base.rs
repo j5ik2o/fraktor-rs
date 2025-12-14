@@ -64,6 +64,7 @@ impl ActorSystem {
 
   /// Creates an empty actor system without any guardian (testing helper).
   #[must_use]
+  #[cfg(any(test, feature = "test-support"))]
   pub fn new_empty() -> Self {
     Self::from_core(CoreActorSystemGeneric::new_empty())
   }
@@ -125,7 +126,7 @@ impl ActorSystem {
 
   /// Returns the shared scheduler context if installed.
   #[must_use]
-  pub fn scheduler_context(&self) -> Option<SchedulerContextSharedGeneric<StdToolbox>> {
+  pub fn scheduler_context(&self) -> SchedulerContextSharedGeneric<StdToolbox> {
     self.inner.scheduler_context()
   }
 

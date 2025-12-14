@@ -7,7 +7,7 @@ use crate::core::{
   error::ActorError,
   messaging::AnyMessageViewGeneric,
   props::Props,
-  system::{ActorSystemGeneric, SystemState, SystemStateShared},
+  system::ActorSystemGeneric,
   typed::message_adapter::{AdapterFailure, AdapterOutcome, AdapterPayload, MessageAdapterRegistry},
 };
 
@@ -18,8 +18,8 @@ struct Harness {
 
 impl Harness {
   fn new() -> Self {
-    let state = SystemStateShared::new(SystemState::new());
-    let system = ActorSystemGeneric::from_state(state.clone());
+    let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+    let state = system.state();
     let props = Props::from_fn(|| ProbeActor);
     let pid = state.allocate_pid();
     let cell =

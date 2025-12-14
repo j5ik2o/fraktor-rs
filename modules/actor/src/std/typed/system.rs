@@ -34,6 +34,7 @@ where
 {
   /// Creates an empty typed actor system (for testing).
   #[must_use]
+  #[cfg(any(test, feature = "test-support"))]
   pub fn new_empty() -> Self {
     Self { inner: CoreTypedActorSystemGeneric::new_empty() }
   }

@@ -7,12 +7,12 @@ use crate::core::{
   actor_prim::Pid,
   event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, subscriber_handle},
   mailbox::BackpressurePublisherGeneric,
-  system::{SystemState, SystemStateShared},
+  system::ActorSystem,
 };
 
 #[test]
 fn mailbox_instrumentation_new() {
-  let system_state = SystemStateShared::new(SystemState::new());
+  let system_state = ActorSystem::new_empty().state();
   let pid = Pid::new(1, 0);
   let instrumentation = MailboxInstrumentation::new(system_state.clone(), pid, Some(100), Some(50), Some(80));
   let _ = instrumentation;
@@ -20,7 +20,7 @@ fn mailbox_instrumentation_new() {
 
 #[test]
 fn mailbox_instrumentation_clone() {
-  let system_state = SystemStateShared::new(SystemState::new());
+  let system_state = ActorSystem::new_empty().state();
   let pid = Pid::new(2, 0);
   let instrumentation1 = MailboxInstrumentation::new(system_state.clone(), pid, None, None, None);
   let instrumentation2 = instrumentation1.clone();
@@ -30,7 +30,7 @@ fn mailbox_instrumentation_clone() {
 
 #[test]
 fn mailbox_instrumentation_publish() {
-  let system_state = SystemStateShared::new(SystemState::new());
+  let system_state = ActorSystem::new_empty().state();
   let pid = Pid::new(3, 0);
   let instrumentation = MailboxInstrumentation::new(system_state.clone(), pid, Some(100), Some(50), None);
   instrumentation.publish(10, 5);
@@ -38,7 +38,7 @@ fn mailbox_instrumentation_publish() {
 
 #[test]
 fn mailbox_instrumentation_publish_with_warning() {
-  let system_state = SystemStateShared::new(SystemState::new());
+  let system_state = ActorSystem::new_empty().state();
   let pid = Pid::new(4, 0);
   let instrumentation = MailboxInstrumentation::new(system_state.clone(), pid, Some(100), Some(50), Some(80));
   instrumentation.publish(80, 5);
@@ -47,7 +47,7 @@ fn mailbox_instrumentation_publish_with_warning() {
 
 #[test]
 fn mailbox_instrumentation_emits_pressure_event() {
-  let system_state = SystemStateShared::new(SystemState::new());
+  let system_state = ActorSystem::new_empty().state();
   let pid = Pid::new(5, 0);
   let instrumentation = MailboxInstrumentation::new(system_state.clone(), pid, Some(4), None, None);
 
@@ -62,7 +62,7 @@ fn mailbox_instrumentation_emits_pressure_event() {
 
 #[test]
 fn mailbox_instrumentation_notifies_backpressure_publisher() {
-  let system_state = SystemStateShared::new(SystemState::new());
+  let system_state = ActorSystem::new_empty().state();
   let pid = Pid::new(6, 0);
   let mut instrumentation = MailboxInstrumentation::new(system_state.clone(), pid, Some(4), None, None);
 
@@ -85,7 +85,7 @@ fn mailbox_instrumentation_notifies_backpressure_publisher() {
 
 #[test]
 fn mailbox_pressure_event_captures_threshold() {
-  let system_state = SystemStateShared::new(SystemState::new());
+  let system_state = ActorSystem::new_empty().state();
   let pid = Pid::new(7, 0);
   let instrumentation = MailboxInstrumentation::new(system_state.clone(), pid, Some(4), None, Some(3));
 

@@ -1,13 +1,14 @@
-use alloc::{boxed::Box, vec, vec::Vec};
+use alloc::{boxed::Box, format, vec, vec::Vec};
 use core::{
   pin::Pin,
+  sync::atomic::{AtomicUsize, Ordering},
   task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
   time::Duration,
 };
 
 use fraktor_utils_rs::core::{
   collections::queue::capabilities::{QueueCapabilityRegistry, QueueCapabilitySet},
-  runtime_toolbox::{NoStdMutex, NoStdToolbox},
+  runtime_toolbox::{NoStdMutex, NoStdToolbox, RuntimeToolbox, SyncMutexFamily},
   sync::{ArcShared, SharedAccess},
   time::TimerInstant,
   timing::{DelayFuture, DelayProvider},
@@ -27,11 +28,15 @@ use crate::core::{
   messaging::SystemMessage,
   props::{MailboxConfig, MailboxRequirement, Props},
   scheduler::{
-    AutoDriverMetadata, AutoProfileKind, SchedulerConfig, SchedulerContextSharedGeneric, TickDriverId, TickDriverKind,
-    TickDriverMetadata,
+    AutoDriverMetadata, AutoProfileKind, ManualTestDriver, SchedulerConfig, SchedulerContextSharedGeneric,
+    TickDriverConfig, TickDriverControl, TickDriverError, TickDriverHandleGeneric, TickDriverId, TickDriverKind,
+    TickDriverMetadata, TickDriverRuntime, TickExecutorSignal, TickFeed,
   },
   spawn::SpawnError,
-  system::{ActorRefProvider, ActorRefProviderSharedGeneric, ActorRefResolveError, ActorSystemConfig, RemotingConfig},
+  system::{
+    ActorRefProvider, ActorRefProviderSharedGeneric, ActorRefResolveError, ActorSystemConfig, RemotingConfig,
+    SystemState, SystemStateShared,
+  },
 };
 
 struct TestActor;
@@ -149,9 +154,89 @@ fn actor_system_new_empty() {
 }
 
 #[test]
+fn actor_system_new_empty_provides_manual_tick_driver_and_runner_api() {
+  let system = ActorSystem::new_empty();
+  let snapshot = system.tick_driver_snapshot().expect("tick driver snapshot");
+  assert_eq!(snapshot.kind, TickDriverKind::ManualTest);
+  assert!(system.scheduler_context().scheduler().with_read(|s| s.config().runner_api_enabled()));
+}
+
+#[test]
+fn actor_system_drop_shuts_down_executor_once() {
+  struct NoopControl;
+
+  impl TickDriverControl for NoopControl {
+    fn shutdown(&self) {}
+  }
+
+  let executor_calls = ArcShared::new(AtomicUsize::new(0));
+  let executor_calls_for_builder = executor_calls.clone();
+  let tick_driver = TickDriverConfig::new(move |_ctx: &SchedulerContextSharedGeneric<NoStdToolbox>| {
+    let control: Box<dyn TickDriverControl> = Box::new(NoopControl);
+    let control = ArcShared::new(<<NoStdToolbox as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(control));
+    let resolution = Duration::from_millis(1);
+    let handle = TickDriverHandleGeneric::new(TickDriverId::new(1), TickDriverKind::Auto, resolution, control);
+    let feed = TickFeed::<NoStdToolbox>::new(resolution, 1, TickExecutorSignal::new());
+    let runtime = TickDriverRuntime::new(handle, feed).with_executor_shutdown({
+      let executor_calls = executor_calls_for_builder.clone();
+      move || {
+        executor_calls.fetch_add(1, Ordering::SeqCst);
+      }
+    });
+    Ok::<_, TickDriverError>(runtime)
+  });
+  let config = ActorSystemConfig::default().with_tick_driver(tick_driver);
+
+  let state = SystemState::build_from_config(&config).expect("state");
+  let system = ActorSystem::from_state(SystemStateShared::new(state));
+  drop(system);
+
+  assert_eq!(executor_calls.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn actor_system_new_with_config_and_allows_extra_top_level_registration_in_configure() {
+  let props = Props::from_fn(|| TestActor);
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::<NoStdToolbox>::new());
+  let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
+  let config = ActorSystemConfig::default().with_scheduler_config(scheduler).with_tick_driver(tick_driver);
+
+  let system = ActorSystem::new_with_config_and(&props, &config, |system| {
+    assert!(!system.state().has_root_started());
+    let actor = ActorRefGeneric::null();
+    system
+      .extended()
+      .register_extra_top_level("metrics", actor)
+      .map_err(|error| SpawnError::SystemBuildError(format!("{error:?}")))?;
+    Ok(())
+  })
+  .expect("system should build");
+
+  assert!(system.state().has_root_started());
+  assert!(system.state().extra_top_level("metrics").is_some());
+
+  let late = system.extended().register_extra_top_level("late", ActorRefGeneric::null());
+  assert!(matches!(late, Err(crate::core::system::RegisterExtraTopLevelError::AlreadyStarted)));
+}
+
+#[test]
+fn actor_system_new_with_config_and_fails_without_tick_driver_config() {
+  let props = Props::from_fn(|| TestActor);
+  let config = ActorSystemConfig::default();
+  match ActorSystem::new_with_config_and(&props, &config, |_| Ok(())) {
+    | Ok(_) => panic!("system should not build without tick driver config"),
+    | Err(SpawnError::SystemBuildError(message)) => assert!(message.contains("tick driver configuration is required")),
+    | Err(other) => panic!("unexpected error: {other:?}"),
+  };
+}
+
+#[test]
 fn actor_system_from_state() {
-  let state = crate::core::system::system_state::SystemState::new();
-  let system = ActorSystem::from_state(crate::core::system::SystemStateShared::new(state));
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::<NoStdToolbox>::new());
+  let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
+  let config = ActorSystemConfig::default().with_scheduler_config(scheduler).with_tick_driver(tick_driver);
+  let state = SystemState::build_from_config(&config).expect("state");
+  let system = ActorSystem::from_state(SystemStateShared::new(state));
   assert!(!system.state().is_terminated());
 }
 
@@ -209,8 +294,7 @@ fn actor_system_when_terminated() {
 #[test]
 fn actor_system_reports_tick_driver_snapshot() {
   let system = ActorSystem::new_empty();
-  let ctx = SchedulerContextSharedGeneric::from_config(NoStdToolbox::default(), SchedulerConfig::default());
-  system.state().install_scheduler_context(ctx.clone());
+  let ctx = system.scheduler_context();
 
   let driver_id = TickDriverId::new(99);
   let resolution = Duration::from_millis(5);
@@ -443,11 +527,11 @@ fn actor_system_scheduler_context_handles_delays() {
   let props = Props::from_fn(|| TestActor);
   let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
   let system = ActorSystem::new(&props, tick_driver).expect("system");
-  let mut provider = system.delay_provider().expect("delay provider");
+  let mut provider = system.delay_provider();
   let mut future = provider.delay(Duration::from_millis(1));
   assert!(matches!(poll_delay(&mut future), Poll::Pending));
 
-  let context = system.scheduler_context().expect("scheduler context");
+  let context = system.scheduler_context();
   let scheduler = context.scheduler();
   scheduler.with_write(|s| s.run_for_test(1));
 
@@ -461,7 +545,7 @@ fn actor_system_terminate_runs_scheduler_tasks() {
   let system = ActorSystem::new(&props, tick_driver).expect("system");
   let log = ArcShared::new(NoStdMutex::new(Vec::new()));
   {
-    let context = system.scheduler_context().expect("context");
+    let context = system.scheduler_context();
     let scheduler = context.scheduler();
     scheduler.with_write(|s| {
       let task = RecordingShutdownTask { log: log.clone() };
@@ -506,11 +590,11 @@ fn actor_system_installs_scheduler_context() {
   let props = Props::from_fn(|| TestActor);
   let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
   let system = ActorSystem::new(&props, tick_driver).expect("actor system");
-  let mut provider = system.delay_provider().expect("delay provider");
+  let mut provider = system.delay_provider();
   let mut future = provider.delay(Duration::from_millis(1));
   assert!(matches!(poll_delay_future(&mut future), Poll::Pending));
 
-  let context = system.scheduler_context().expect("scheduler context");
+  let context = system.scheduler_context();
   context.scheduler().with_write(|s| s.run_for_test(1));
 
   assert!(matches!(poll_delay_future(&mut future), Poll::Ready(())));
@@ -556,10 +640,12 @@ impl ActorRefProvider<NoStdToolbox> for DummyActorRefProvider {
 
 #[test]
 fn resolve_actor_ref_injects_canonical_authority() {
-  let system = ActorSystem::new_empty();
   let remoting = RemotingConfig::default().with_canonical_host("example.com").with_canonical_port(2552);
-  let config = ActorSystemConfig::default().with_remoting_config(remoting);
-  system.state().apply_actor_system_config(&config);
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::<NoStdToolbox>::new());
+  let config = ActorSystemConfig::default().with_remoting_config(remoting).with_tick_driver(tick_driver);
+  let state = SystemState::build_from_config(&config).expect("state");
+  let system = ActorSystem::from_state(SystemStateShared::new(state));
+  system.state().mark_root_started();
 
   let recorded = ArcShared::new(NoStdMutex::new(None));
   let provider = ActorRefProviderSharedGeneric::new(DummyActorRefProvider::new(recorded.clone()));
@@ -587,10 +673,12 @@ fn resolve_actor_ref_fails_when_authority_missing() {
 
 #[test]
 fn resolve_actor_ref_fails_when_provider_missing() {
-  let system = ActorSystem::new_empty();
   let remoting = RemotingConfig::default().with_canonical_host("example.com").with_canonical_port(2552);
-  let config = ActorSystemConfig::default().with_remoting_config(remoting);
-  system.state().apply_actor_system_config(&config);
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::<NoStdToolbox>::new());
+  let config = ActorSystemConfig::default().with_remoting_config(remoting).with_tick_driver(tick_driver);
+  let state = SystemState::build_from_config(&config).expect("state");
+  let system = ActorSystem::from_state(SystemStateShared::new(state));
+  system.state().mark_root_started();
 
   let path = ActorPath::root().child("svc");
   let result = system.resolve_actor_ref(path);

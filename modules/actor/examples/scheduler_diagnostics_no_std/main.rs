@@ -46,7 +46,7 @@ impl Actor for GuardianActor {
       #[cfg(not(target_os = "none"))]
       println!("[{:?}] subscribing scheduler diagnostics", std::thread::current().id());
 
-      let scheduler_context = ctx.system().scheduler_context().expect("scheduler context");
+      let scheduler_context = ctx.system().scheduler_context();
       let scheduler_arc = scheduler_context.scheduler();
       self.diagnostics = Some(scheduler_arc.with_write(|s| s.subscribe_diagnostics(128)));
       let target = ctx.self_ref();

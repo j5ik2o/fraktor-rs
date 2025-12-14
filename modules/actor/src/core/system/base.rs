@@ -55,9 +55,24 @@ pub type ActorSystem = ActorSystemGeneric<NoStdToolbox>;
 
 impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   /// Creates an empty actor system without any guardian (testing only).
+  ///
+  /// # Panics
+  ///
+  /// Panics if the default test-support configuration fails to build.
   #[must_use]
-  pub fn new_empty() -> Self {
-    let state = SystemStateSharedGeneric::new(SystemStateGeneric::new());
+  #[cfg(any(test, feature = "test-support"))]
+  pub fn new_empty() -> Self
+  where
+    TB: Default, {
+    let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
+    let scheduler_config = crate::core::scheduler::SchedulerConfig::default().with_runner_api_enabled(true);
+    let config =
+      ActorSystemConfigGeneric::default().with_scheduler_config(scheduler_config).with_tick_driver(tick_driver);
+    let state = match SystemStateGeneric::build_from_config(&config) {
+      | Ok(state) => state,
+      | Err(error) => panic!("default test-support config should always build: {error:?}"),
+    };
+    let state = SystemStateSharedGeneric::new(state);
     state.mark_root_started();
     Self { state }
   }
@@ -129,14 +144,8 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   where
     TB: Default,
     F: FnOnce(&ActorSystemGeneric<TB>) -> Result<(), SpawnError>, {
-    // Validate tick driver configuration is present
-    if config.tick_driver_config().is_none() {
-      return Err(SpawnError::SystemBuildError("tick driver configuration is required".into()));
-    }
-
-    let system = Self::new_empty();
-    system.state.apply_actor_system_config(config);
-    system.install_scheduler_and_tick_driver_from_config(config)?;
+    let state = SystemStateGeneric::build_from_config(config)?;
+    let system = Self::from_state(SystemStateSharedGeneric::new(state));
     system.bootstrap(user_guardian_props, configure)?;
 
     // Install extensions and provider after bootstrap
@@ -260,51 +269,6 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     ExtendedActorSystemGeneric::new(self.clone())
   }
 
-  /// Installs scheduler context and tick driver runtime from configuration.
-  ///
-  /// # Errors
-  ///
-  /// Returns an error if tick driver provisioning fails.
-  fn install_scheduler_and_tick_driver_from_config(
-    &self,
-    config: &ActorSystemConfigGeneric<TB>,
-  ) -> Result<(), SpawnError>
-  where
-    TB: Default, {
-    use crate::core::scheduler::TickDriverBootstrap;
-
-    // Install scheduler context if not already present
-    if self.state.scheduler_context().is_none() {
-      let event_stream = self.state.event_stream();
-      let toolbox = TB::default();
-      let scheduler_config = *config.scheduler_config();
-
-      // Apply special handling for ManualTest driver in test mode
-      #[cfg(any(test, feature = "test-support"))]
-      let scheduler_config = if let Some(tick_driver_config) = config.tick_driver_config()
-        && matches!(tick_driver_config, crate::core::scheduler::TickDriverConfig::ManualTest(_))
-        && !scheduler_config.runner_api_enabled()
-      {
-        scheduler_config.with_runner_api_enabled(true)
-      } else {
-        scheduler_config
-      };
-
-      let context = SchedulerContextSharedGeneric::with_event_stream(toolbox, scheduler_config, event_stream);
-      self.state.install_scheduler_context(context);
-    }
-
-    // Install tick driver runtime if tick_driver_config is provided
-    if let Some(tick_driver_config) = config.tick_driver_config() {
-      let ctx = self.scheduler_context().ok_or(SpawnError::SystemUnavailable)?;
-      let runtime =
-        TickDriverBootstrap::provision(tick_driver_config, &ctx).map_err(|_| SpawnError::SystemUnavailable)?;
-      self.state.install_tick_driver_runtime(runtime);
-    }
-
-    Ok(())
-  }
-
   fn install_default_serialization_extension(&self) {
     let id = default_serialization_extension_id();
     if !self.extended().has_extension(&id) {
@@ -326,13 +290,13 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
 
   /// Returns the scheduler service when initialized.
   #[must_use]
-  pub fn scheduler_context(&self) -> Option<SchedulerContextSharedGeneric<TB>> {
+  pub fn scheduler_context(&self) -> SchedulerContextSharedGeneric<TB> {
     self.state.scheduler_context()
   }
 
   /// Returns the tick driver runtime when initialized.
   #[must_use]
-  pub fn tick_driver_runtime(&self) -> Option<crate::core::scheduler::TickDriverRuntime<TB>> {
+  pub fn tick_driver_runtime(&self) -> crate::core::scheduler::TickDriverRuntime<TB> {
     self.state.tick_driver_runtime()
   }
 
@@ -344,8 +308,8 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
 
   /// Returns a delay provider backed by the scheduler when available.
   #[must_use]
-  pub fn delay_provider(&self) -> Option<SchedulerBackedDelayProvider<TB>> {
-    self.scheduler_context().map(|context| context.delay_provider())
+  pub fn delay_provider(&self) -> SchedulerBackedDelayProvider<TB> {
+    self.scheduler_context().delay_provider()
   }
 
   /// Subscribes the provided observer to the event stream.

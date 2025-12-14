@@ -47,7 +47,10 @@ use crate::core::{
   logging::{LogEvent, LogLevel},
   mailbox::MailboxesSharedGeneric,
   messaging::{AnyMessageGeneric, FailurePayload, SystemMessage},
-  scheduler::{SchedulerContextSharedGeneric, TaskRunSummary, TickDriverRuntime},
+  scheduler::{
+    SchedulerConfig, SchedulerContextSharedGeneric, TaskRunSummary, TickDriverControl, TickDriverHandleGeneric,
+    TickDriverKind, TickDriverRuntime, TickExecutorSignal, TickFeed, next_tick_driver_id,
+  },
   spawn::{NameRegistryError, SpawnError},
   supervision::SupervisorDirective,
   system::{RegisterExtraTopLevelError, ReservationPolicy},
@@ -60,6 +63,18 @@ pub use failure_outcome::FailureOutcome;
 use crate::core::system::actor_system_config::ActorSystemConfigGeneric;
 
 const RESERVED_TOP_LEVEL: [&str; 4] = ["user", "system", "temp", "deadLetters"];
+
+struct NoopRemoteWatchHook;
+
+impl<TB: RuntimeToolbox + 'static> RemoteWatchHook<TB> for NoopRemoteWatchHook {
+  fn handle_watch(&mut self, _target: Pid, _watcher: Pid) -> bool {
+    false
+  }
+
+  fn handle_unwatch(&mut self, _target: Pid, _watcher: Pid) -> bool {
+    false
+  }
+}
 
 /// Captures global actor system state.
 pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
@@ -86,15 +101,14 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   extensions: ExtensionsSharedGeneric<TB>,
   actor_ref_providers: ActorRefProvidersSharedGeneric<TB>,
   actor_ref_provider_callers_by_scheme: ActorRefProviderCallersSharedGeneric<TB>,
-  remote_watch_hook: ToolboxMutex<Option<Box<dyn RemoteWatchHook<TB>>>, TB>,
+  remote_watch_hook: ToolboxMutex<Box<dyn RemoteWatchHook<TB>>, TB>,
   dispatchers: DispatchersSharedGeneric<TB>,
   mailboxes: MailboxesSharedGeneric<TB>,
   path_identity: PathIdentitySharedGeneric<TB>,
   actor_path_registry: ActorPathRegistrySharedGeneric<TB>,
   remote_authority_mgr: RemoteAuthorityManagerSharedGeneric<TB>,
-  scheduler_context: ToolboxMutex<Option<SchedulerContextSharedGeneric<TB>>, TB>,
-  tick_driver_runtime: ToolboxMutex<Option<TickDriverRuntime<TB>>, TB>,
-  remoting_config: ToolboxMutex<Option<RemotingConfig>, TB>,
+  scheduler_context: SchedulerContextSharedGeneric<TB>,
+  tick_driver_runtime: TickDriverRuntime<TB>,
 }
 
 /// Type alias for [SystemStateGeneric] with the default [NoStdToolbox].
@@ -103,7 +117,9 @@ pub type SystemState = SystemStateGeneric<NoStdToolbox>;
 impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   /// Creates a fresh state container without any registered actors.
   #[must_use]
-  pub fn new() -> Self {
+  pub fn new() -> Self
+  where
+    TB: Default, {
     const DEAD_LETTER_CAPACITY: usize = 512;
     let event_stream = ArcShared::new(EventStreamGeneric::default());
     let dead_letter = ArcShared::new(DeadLetterGeneric::new(event_stream.clone(), DEAD_LETTER_CAPACITY));
@@ -111,6 +127,11 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     dispatchers.with_write(|d| d.ensure_default());
     let mailboxes = MailboxesSharedGeneric::<TB>::new();
     mailboxes.with_write(|m| m.ensure_default());
+    let scheduler_config = SchedulerConfig::default();
+    let toolbox = TB::default();
+    let scheduler_context =
+      SchedulerContextSharedGeneric::with_event_stream(toolbox, scheduler_config, event_stream.clone());
+    let tick_driver_runtime = Self::default_tick_driver_runtime(scheduler_config.resolution());
     Self {
       next_pid: AtomicU64::new(0),
       clock: AtomicU64::new(0),
@@ -134,17 +155,65 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       failure_inflight: AtomicU64::new(0),
       extensions: ExtensionsSharedGeneric::default(),
       actor_ref_providers: ActorRefProvidersSharedGeneric::default(),
-      remote_watch_hook: <TB::MutexFamily as SyncMutexFamily>::create(None),
+      remote_watch_hook: <TB::MutexFamily as SyncMutexFamily>::create(Box::new(NoopRemoteWatchHook)),
       dispatchers,
       mailboxes,
       path_identity: PathIdentitySharedGeneric::default(),
       actor_path_registry: ActorPathRegistrySharedGeneric::default(),
       remote_authority_mgr: RemoteAuthorityManagerSharedGeneric::default(),
       actor_ref_provider_callers_by_scheme: ActorRefProviderCallersSharedGeneric::default(),
-      scheduler_context: <TB::MutexFamily as SyncMutexFamily>::create(None),
-      tick_driver_runtime: <TB::MutexFamily as SyncMutexFamily>::create(None),
-      remoting_config: <TB::MutexFamily as SyncMutexFamily>::create(None),
+      scheduler_context,
+      tick_driver_runtime,
     }
+  }
+
+  pub(crate) fn build_from_config(config: &ActorSystemConfigGeneric<TB>) -> Result<Self, SpawnError>
+  where
+    TB: Default, {
+    use crate::core::scheduler::TickDriverBootstrap;
+
+    let mut state = Self::new();
+    state.apply_actor_system_config(config);
+
+    let event_stream = state.event_stream();
+    let toolbox = TB::default();
+    let scheduler_config = *config.scheduler_config();
+    #[cfg(any(test, feature = "test-support"))]
+    let scheduler_config = if let Some(tick_driver_config) = config.tick_driver_config()
+      && matches!(tick_driver_config, crate::core::scheduler::TickDriverConfig::ManualTest(_))
+      && !scheduler_config.runner_api_enabled()
+    {
+      scheduler_config.with_runner_api_enabled(true)
+    } else {
+      scheduler_config
+    };
+
+    let context = SchedulerContextSharedGeneric::with_event_stream(toolbox, scheduler_config, event_stream);
+    state.scheduler_context = context.clone();
+
+    let tick_driver_config = config
+      .tick_driver_config()
+      .ok_or_else(|| SpawnError::SystemBuildError("tick driver configuration is required".into()))?;
+    let runtime = TickDriverBootstrap::provision(tick_driver_config, &context)
+      .map_err(|error| SpawnError::SystemBuildError(format!("tick driver provisioning failed: {error}")))?;
+    state.tick_driver_runtime = runtime;
+
+    Ok(state)
+  }
+
+  fn default_tick_driver_runtime(resolution: Duration) -> TickDriverRuntime<TB> {
+    struct NoopDriverControl;
+
+    impl TickDriverControl for NoopDriverControl {
+      fn shutdown(&self) {}
+    }
+
+    let signal = TickExecutorSignal::new();
+    let feed = TickFeed::new(resolution, 1, signal);
+    let control: Box<dyn TickDriverControl> = Box::new(NoopDriverControl);
+    let control = ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(control));
+    let handle = TickDriverHandleGeneric::new(next_tick_driver_id(), TickDriverKind::Auto, resolution, control);
+    TickDriverRuntime::new(handle, feed)
   }
 
   /// Allocates a new unique [`Pid`] for an actor.
@@ -163,14 +232,10 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
         identity.canonical_host = Some(remoting.canonical_host().to_string());
         identity.canonical_port = remoting.canonical_port();
         identity.quarantine_duration = remoting.quarantine_duration();
-        // Save the full RemotingConfig
-        *self.remoting_config.lock() = Some(remoting.clone());
       } else {
         identity.canonical_host = None;
         identity.canonical_port = None;
         identity.quarantine_duration = path_identity::DEFAULT_QUARANTINE_DURATION;
-        // Clear RemotingConfig
-        *self.remoting_config.lock() = None;
       }
     });
 
@@ -582,7 +647,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
 
   pub(crate) fn register_remote_watch_hook(&self, hook: Box<dyn RemoteWatchHook<TB>>) {
     let mut guard = self.remote_watch_hook.lock();
-    *guard = Some(hook);
+    *guard = hook;
   }
 
   pub(crate) fn actor_ref_provider<P>(&self) -> Option<ActorRefProviderSharedGeneric<TB, P>>
@@ -608,12 +673,12 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
 
   fn forward_remote_watch(&self, target: Pid, watcher: Pid) -> bool {
     let mut guard = self.remote_watch_hook.lock();
-    guard.as_mut().is_some_and(|hook| hook.handle_watch(target, watcher))
+    guard.handle_watch(target, watcher)
   }
 
   fn forward_remote_unwatch(&self, target: Pid, watcher: Pid) -> bool {
     let mut guard = self.remote_watch_hook.lock();
-    guard.as_mut().is_some_and(|hook| hook.handle_unwatch(target, watcher))
+    guard.handle_unwatch(target, watcher)
   }
 
   /// Registers a child under the specified parent pid.
@@ -737,42 +802,38 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   /// Returns the remoting configuration when it has been configured.
   #[must_use]
   pub fn remoting_config(&self) -> Option<RemotingConfig> {
-    self.remoting_config.lock().clone()
+    let identity = self.identity_snapshot();
+    identity.canonical_host.map(|host| {
+      let mut config =
+        RemotingConfig::default().with_canonical_host(host).with_quarantine_duration(identity.quarantine_duration);
+      if let Some(port) = identity.canonical_port {
+        config = config.with_canonical_port(port);
+      }
+      config
+    })
   }
 
-  /// Installs the scheduler service handle.
-  pub fn install_scheduler_context(&self, context: SchedulerContextSharedGeneric<TB>) {
-    let mut guard = self.scheduler_context.lock();
-    guard.replace(context);
-  }
-
-  /// Returns the scheduler context when it has been initialized.
+  /// Returns the scheduler context.
   #[must_use]
-  pub fn scheduler_context(&self) -> Option<SchedulerContextSharedGeneric<TB>> {
-    self.scheduler_context.lock().clone()
+  pub fn scheduler_context(&self) -> SchedulerContextSharedGeneric<TB> {
+    self.scheduler_context.clone()
   }
 
-  /// Installs the tick driver runtime.
-  pub fn install_tick_driver_runtime(&self, runtime: TickDriverRuntime<TB>) {
-    let mut guard = self.tick_driver_runtime.lock();
-    guard.replace(runtime);
-  }
-
-  /// Returns the tick driver runtime when it has been initialized.
+  /// Returns the tick driver runtime.
   #[must_use]
-  pub fn tick_driver_runtime(&self) -> Option<TickDriverRuntime<TB>> {
-    self.tick_driver_runtime.lock().as_ref().cloned()
+  pub fn tick_driver_runtime(&self) -> TickDriverRuntime<TB> {
+    self.tick_driver_runtime.clone()
   }
 
   /// Returns the last recorded tick driver snapshot when available.
   #[must_use]
   pub fn tick_driver_snapshot(&self) -> Option<TickDriverSnapshot> {
-    self.scheduler_context().and_then(|context| context.driver_snapshot())
+    self.scheduler_context().driver_snapshot()
   }
 
   /// Shuts down the scheduler context if configured.
   pub fn shutdown_scheduler(&self) -> Option<TaskRunSummary> {
-    self.scheduler_context().map(|context| context.shutdown())
+    Some(self.scheduler_context().shutdown())
   }
 
   /// Records a failure and routes it to the supervising hierarchy.
@@ -974,13 +1035,11 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
 
 impl<TB: RuntimeToolbox + 'static> Drop for SystemStateGeneric<TB> {
   fn drop(&mut self) {
-    if let Some(mut runtime) = self.tick_driver_runtime.lock().take() {
-      runtime.shutdown();
-    }
+    self.tick_driver_runtime.shutdown();
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Default for SystemStateGeneric<TB> {
+impl<TB: RuntimeToolbox + 'static + Default> Default for SystemStateGeneric<TB> {
   fn default() -> Self {
     Self::new()
   }
