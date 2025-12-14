@@ -45,7 +45,7 @@ use std::{
 
 use aws_sdk_ecs::Client as EcsClient;
 use fraktor_actor_rs::core::{
-  event_stream::{EventStreamEvent, EventStreamGeneric},
+  event_stream::{EventStreamEvent, EventStreamSharedGeneric},
   messaging::AnyMessageGeneric,
 };
 use fraktor_remote_rs::core::BlockListProvider;
@@ -154,7 +154,7 @@ impl EcsClusterConfig {
 /// This provider polls the ECS API to discover running tasks and publishes
 /// topology updates when tasks join or leave the cluster.
 pub struct AwsEcsClusterProvider {
-  event_stream:        ArcShared<EventStreamGeneric<StdToolbox>>,
+  event_stream:        EventStreamSharedGeneric<StdToolbox>,
   block_list_provider: ArcShared<dyn BlockListProvider>,
   advertised_address:  String,
   config:              EcsClusterConfig,
@@ -169,7 +169,7 @@ impl AwsEcsClusterProvider {
   /// Creates a new AWS ECS cluster provider.
   #[must_use]
   pub fn new(
-    event_stream: ArcShared<EventStreamGeneric<StdToolbox>>,
+    event_stream: EventStreamSharedGeneric<StdToolbox>,
     block_list_provider: ArcShared<dyn BlockListProvider>,
     advertised_address: impl Into<String>,
   ) -> Self {
@@ -241,7 +241,7 @@ impl AwsEcsClusterProvider {
 
   fn start_polling(&mut self, add_self: bool) {
     let shutdown_flag = ArcShared::clone(&self.shutdown_flag);
-    let event_stream = ArcShared::clone(&self.event_stream);
+    let event_stream = self.event_stream.clone();
     let block_list_provider = ArcShared::clone(&self.block_list_provider);
     let config = self.config.clone();
     let advertised_address = self.advertised_address.clone();

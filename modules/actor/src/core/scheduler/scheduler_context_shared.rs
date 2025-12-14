@@ -15,14 +15,14 @@ use super::{
   SchedulerBackedDelayProvider, SchedulerConfig, SchedulerContext, SchedulerSharedGeneric, TaskRunSummary,
   tick_driver::{AutoDriverMetadata, TickDriverKind, TickDriverMetadata},
 };
-use crate::core::event_stream::{EventStreamEvent, EventStreamGeneric, TickDriverSnapshot};
+use crate::core::event_stream::{EventStreamEvent, EventStreamSharedGeneric, TickDriverSnapshot};
 #[cfg(any(test, feature = "test-support"))]
 use crate::core::logging::{LogEvent, LogLevel};
 
 pub(crate) struct SchedulerContextHandle<TB: RuntimeToolbox + 'static> {
   scheduler:       SchedulerSharedGeneric<TB>,
   provider:        SchedulerBackedDelayProvider<TB>,
-  event_stream:    ArcShared<EventStreamGeneric<TB>>,
+  event_stream:    EventStreamSharedGeneric<TB>,
   driver_snapshot: Option<TickDriverSnapshot>,
 }
 
@@ -35,7 +35,7 @@ impl<TB: RuntimeToolbox + 'static> SchedulerContextHandle<TB> {
     self.provider.clone()
   }
 
-  fn event_stream(&self) -> ArcShared<EventStreamGeneric<TB>> {
+  fn event_stream(&self) -> EventStreamSharedGeneric<TB> {
     self.event_stream.clone()
   }
 
@@ -121,11 +121,7 @@ impl<TB: RuntimeToolbox + 'static> SchedulerContextSharedGeneric<TB> {
 
   /// Creates a shared context with the specified event stream handle.
   #[must_use]
-  pub fn with_event_stream(
-    toolbox: TB,
-    config: SchedulerConfig,
-    event_stream: ArcShared<EventStreamGeneric<TB>>,
-  ) -> Self {
+  pub fn with_event_stream(toolbox: TB, config: SchedulerConfig, event_stream: EventStreamSharedGeneric<TB>) -> Self {
     Self::new(SchedulerContext::with_event_stream(toolbox, config, event_stream))
   }
 
@@ -143,7 +139,7 @@ impl<TB: RuntimeToolbox + 'static> SchedulerContextSharedGeneric<TB> {
 
   /// Returns the event stream associated with this scheduler.
   #[must_use]
-  pub fn event_stream(&self) -> ArcShared<EventStreamGeneric<TB>> {
+  pub fn event_stream(&self) -> EventStreamSharedGeneric<TB> {
     self.with_read(|handle| handle.event_stream())
   }
 

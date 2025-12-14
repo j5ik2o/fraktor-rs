@@ -27,7 +27,7 @@ use crate::core::{
   dead_letter::{DeadLetterEntryGeneric, DeadLetterReason},
   error::SendError,
   event_stream::{
-    EventStreamEvent, EventStreamGeneric, EventStreamSubscriberShared, EventStreamSubscriptionGeneric,
+    EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriberShared, EventStreamSubscriptionGeneric,
     TickDriverSnapshot,
   },
   futures::ActorFutureSharedGeneric,
@@ -284,7 +284,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
 
   /// Returns the shared event stream handle.
   #[must_use]
-  pub fn event_stream(&self) -> ArcShared<EventStreamGeneric<TB>> {
+  pub fn event_stream(&self) -> EventStreamSharedGeneric<TB> {
     self.state.event_stream()
   }
 
@@ -318,7 +318,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     &self,
     subscriber: &EventStreamSubscriberShared<TB>,
   ) -> EventStreamSubscriptionGeneric<TB> {
-    EventStreamGeneric::subscribe_arc(&self.state.event_stream(), subscriber)
+    self.state.event_stream().subscribe(subscriber)
   }
 
   /// Returns a snapshot of recorded dead letters.

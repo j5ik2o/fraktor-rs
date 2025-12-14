@@ -5,14 +5,14 @@ use core::time::Duration;
 
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncRwLockFamily, ToolboxRwLock},
-  sync::{ArcShared, sync_rwlock_like::SyncRwLockLike},
+  sync::sync_rwlock_like::SyncRwLockLike,
 };
 
 use crate::core::{
   actor_prim::Pid,
   dead_letter::{DeadLetterEntryGeneric, dead_letter_reason::DeadLetterReason},
   error::SendError,
-  event_stream::{EventStreamEvent, EventStreamGeneric},
+  event_stream::{EventStreamEvent, EventStreamSharedGeneric},
   logging::{LogEvent, LogLevel},
   messaging::AnyMessageGeneric,
 };
@@ -23,19 +23,19 @@ const DEFAULT_CAPACITY: usize = 256;
 pub struct DeadLetterGeneric<TB: RuntimeToolbox + 'static> {
   entries:      ToolboxRwLock<Vec<DeadLetterEntryGeneric<TB>>, TB>,
   capacity:     usize,
-  event_stream: ArcShared<EventStreamGeneric<TB>>,
+  event_stream: EventStreamSharedGeneric<TB>,
 }
 
 impl<TB: RuntimeToolbox + 'static> DeadLetterGeneric<TB> {
   /// Creates a new deadletter store with the provided buffer capacity.
   #[must_use]
-  pub fn new(event_stream: ArcShared<EventStreamGeneric<TB>>, capacity: usize) -> Self {
+  pub fn new(event_stream: EventStreamSharedGeneric<TB>, capacity: usize) -> Self {
     Self { entries: <TB::RwLockFamily as SyncRwLockFamily>::create(Vec::new()), capacity, event_stream }
   }
 
   /// Creates a new deadletter store with the default capacity.
   #[must_use]
-  pub fn with_default_capacity(event_stream: ArcShared<EventStreamGeneric<TB>>) -> Self {
+  pub fn with_default_capacity(event_stream: EventStreamSharedGeneric<TB>) -> Self {
     Self::new(event_stream, DEFAULT_CAPACITY)
   }
 

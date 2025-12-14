@@ -2,7 +2,8 @@ use alloc::{boxed::Box, string::String, vec, vec::Vec};
 
 use fraktor_actor_rs::core::{
   event_stream::{
-    EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric, subscriber_handle,
+    EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric,
+    subscriber_handle,
   },
   messaging::AnyMessageGeneric,
   system::ActorSystemGeneric,
@@ -221,11 +222,11 @@ impl EventStreamSubscriber<NoStdToolbox> for RecordingClusterEvents {
 }
 
 fn subscribe_recorder(
-  event_stream: &ArcShared<EventStreamGeneric<NoStdToolbox>>,
+  event_stream: &EventStreamSharedGeneric<NoStdToolbox>,
 ) -> (RecordingClusterEvents, EventStreamSubscriptionGeneric<NoStdToolbox>) {
   let recorder = RecordingClusterEvents::new();
   let subscriber = subscriber_handle(recorder.clone());
-  let subscription = EventStreamGeneric::subscribe_arc(event_stream, &subscriber);
+  let subscription = event_stream.subscribe(&subscriber);
   (recorder, subscription)
 }
 

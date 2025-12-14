@@ -14,7 +14,7 @@ use fraktor_utils_rs::{
 
 use crate::{
   core::{
-    event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, subscriber_handle},
+    event_stream::{EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriber, subscriber_handle},
     scheduler::{AutoProfileKind, SchedulerConfig, SchedulerContextSharedGeneric, TickDriverBootstrap, TickDriverKind},
   },
   std::scheduler::tick::TickDriverConfig,
@@ -56,10 +56,10 @@ impl EventStreamSubscriber<StdToolbox> for RecordingSubscriber {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[allow(clippy::expect_used)]
 async fn tokio_interval_driver_publishes_tick_metrics_events() {
-  let event_stream = ArcShared::new(EventStreamGeneric::<StdToolbox>::default());
+  let event_stream = EventStreamSharedGeneric::<StdToolbox>::default();
   let events = ArcShared::new(Mutex::new(Vec::new()));
   let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
-  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let _subscription = event_stream.subscribe(&subscriber);
 
   let config = TickDriverConfig::tokio_quickstart_with_event_stream(
     Duration::from_millis(5),

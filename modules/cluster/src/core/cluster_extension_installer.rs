@@ -3,7 +3,7 @@
 use alloc::boxed::Box;
 
 use fraktor_actor_rs::core::{
-  event_stream::EventStreamGeneric,
+  event_stream::EventStreamSharedGeneric,
   extension::ExtensionInstaller,
   system::{ActorSystemBuildError, ActorSystemGeneric},
 };
@@ -34,7 +34,7 @@ impl BlockListProvider for EmptyBlockListProvider {
 /// - `block_list_provider` - Provider for blocked member information
 /// - `advertised_address` - The address this node advertises to the cluster
 pub type ClusterProviderFactory<TB> = ArcShared<
-  dyn Fn(ArcShared<EventStreamGeneric<TB>>, ArcShared<dyn BlockListProvider>, &str) -> Box<dyn ClusterProvider>
+  dyn Fn(EventStreamSharedGeneric<TB>, ArcShared<dyn BlockListProvider>, &str) -> Box<dyn ClusterProvider>
     + Send
     + Sync,
 >;
@@ -118,7 +118,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
   #[must_use]
   pub fn new<F>(config: ClusterExtensionConfig, provider_f: F) -> Self
   where
-    F: Fn(ArcShared<EventStreamGeneric<TB>>, ArcShared<dyn BlockListProvider>, &str) -> Box<dyn ClusterProvider>
+    F: Fn(EventStreamSharedGeneric<TB>, ArcShared<dyn BlockListProvider>, &str) -> Box<dyn ClusterProvider>
       + Send
       + Sync
       + 'static, {

@@ -21,7 +21,7 @@ use crate::core::{
   dead_letter::{DeadLetterEntryGeneric, DeadLetterReason},
   dispatcher::DispatchersSharedGeneric,
   error::{ActorError, SendError},
-  event_stream::{EventStreamEvent, EventStreamGeneric, TickDriverSnapshot},
+  event_stream::{EventStreamEvent, EventStreamSharedGeneric, TickDriverSnapshot},
   futures::ActorFutureSharedGeneric,
   logging::LogLevel,
   mailbox::MailboxesSharedGeneric,
@@ -285,7 +285,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
 
   /// Returns the shared event stream handle.
   #[must_use]
-  pub fn event_stream(&self) -> ArcShared<EventStreamGeneric<TB>> {
+  pub fn event_stream(&self) -> EventStreamSharedGeneric<TB> {
     self.inner.event_stream()
   }
 

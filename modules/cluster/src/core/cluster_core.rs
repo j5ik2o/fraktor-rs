@@ -10,7 +10,7 @@ use alloc::{
 };
 
 use fraktor_actor_rs::core::{
-  event_stream::{EventStreamEvent, EventStreamGeneric},
+  event_stream::{EventStreamEvent, EventStreamSharedGeneric},
   messaging::AnyMessageGeneric,
 };
 use fraktor_remote_rs::core::BlockListProvider;
@@ -29,7 +29,7 @@ use crate::core::{
 pub struct ClusterCore<TB: RuntimeToolbox + 'static> {
   provider:            ClusterProviderShared<TB>,
   block_list_provider: ArcShared<dyn BlockListProvider>,
-  event_stream:        ArcShared<EventStreamGeneric<TB>>,
+  event_stream:        EventStreamSharedGeneric<TB>,
   gossiper:            GossiperShared<TB>,
   pub_sub:             ClusterPubSubShared<TB>,
   startup_state:       ClusterStartupState,
@@ -53,7 +53,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
     config: &ClusterExtensionConfig,
     provider: ClusterProviderShared<TB>,
     block_list_provider: ArcShared<dyn BlockListProvider>,
-    event_stream: ArcShared<EventStreamGeneric<TB>>,
+    event_stream: EventStreamSharedGeneric<TB>,
     gossiper: GossiperShared<TB>,
     pubsub: ClusterPubSubShared<TB>,
     kind_registry: KindRegistry,

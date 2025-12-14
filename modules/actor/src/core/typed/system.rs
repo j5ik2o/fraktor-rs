@@ -3,15 +3,14 @@
 use alloc::{string::String, vec::Vec};
 use core::marker::PhantomData;
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 
 use crate::core::{
   dead_letter::DeadLetterEntryGeneric,
   error::SendError,
-  event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriberShared, EventStreamSubscriptionGeneric},
+  event_stream::{
+    EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriberShared, EventStreamSubscriptionGeneric,
+  },
   futures::ActorFutureSharedGeneric,
   logging::LogLevel,
   messaging::AnyMessageGeneric,
@@ -115,7 +114,7 @@ where
 
   /// Returns the shared event stream handle.
   #[must_use]
-  pub fn event_stream(&self) -> ArcShared<EventStreamGeneric<TB>> {
+  pub fn event_stream(&self) -> EventStreamSharedGeneric<TB> {
     self.inner.event_stream()
   }
 

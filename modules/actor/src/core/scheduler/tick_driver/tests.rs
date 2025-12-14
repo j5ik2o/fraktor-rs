@@ -10,7 +10,7 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::core::{
-  event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, subscriber_handle},
+  event_stream::{EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriber, subscriber_handle},
   logging::LogLevel,
   scheduler::{
     ExecutionBatch, HardwareKind, ManualTestDriver, SchedulerCommand, SchedulerConfig, SchedulerContextSharedGeneric,
@@ -308,10 +308,10 @@ fn driver_matrix_marks_manual_entry_as_test_only() {
 
 #[test]
 fn driver_metadata_records_driver_activation() {
-  let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let event_stream = EventStreamSharedGeneric::<NoStdToolbox>::default();
   let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
-  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let _subscription = event_stream.subscribe(&subscriber);
   let ctx =
     SchedulerContextSharedGeneric::with_event_stream(NoStdToolbox::default(), SchedulerConfig::default(), event_stream);
   let (handler, handle) = spawn_test_handler();
@@ -352,10 +352,10 @@ fn driver_snapshot_exposed_via_scheduler_context() {
 
 #[test]
 fn manual_driver_disabled_emits_warning() {
-  let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let event_stream = EventStreamSharedGeneric::<NoStdToolbox>::default();
   let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
-  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let _subscription = event_stream.subscribe(&subscriber);
   let ctx =
     SchedulerContextSharedGeneric::with_event_stream(NoStdToolbox::default(), SchedulerConfig::default(), event_stream);
   let config = TickDriverConfig::manual(ManualTestDriver::new());

@@ -11,7 +11,7 @@
 use alloc::{string::String, vec::Vec};
 
 use fraktor_actor_rs::core::{
-  event_stream::{EventStreamEvent, EventStreamGeneric},
+  event_stream::{EventStreamEvent, EventStreamSharedGeneric},
   messaging::AnyMessageGeneric,
 };
 use fraktor_remote_rs::core::BlockListProvider;
@@ -37,7 +37,7 @@ mod tests;
 /// Task 4.5: Transport `RemotingLifecycleEvent::Connected` and `Quarantined`
 /// auto-detection is available via `subscribe_remoting_events()` in std environments.
 pub struct LocalClusterProvider<TB: RuntimeToolbox + 'static> {
-  event_stream:        ArcShared<EventStreamGeneric<TB>>,
+  event_stream:        EventStreamSharedGeneric<TB>,
   block_list_provider: ArcShared<dyn BlockListProvider>,
   advertised_address:  String,
   // 現在のメンバーリスト（join/leave イベント処理用）
@@ -56,7 +56,7 @@ impl<TB: RuntimeToolbox + 'static> LocalClusterProvider<TB> {
   /// Creates a new local cluster provider.
   #[must_use]
   pub fn new(
-    event_stream: ArcShared<EventStreamGeneric<TB>>,
+    event_stream: EventStreamSharedGeneric<TB>,
     block_list_provider: ArcShared<dyn BlockListProvider>,
     advertised_address: impl Into<String>,
   ) -> Self {
@@ -147,7 +147,7 @@ impl<TB: RuntimeToolbox + 'static> LocalClusterProvider<TB> {
   /// Returns the event stream reference.
   #[must_use]
   #[allow(clippy::missing_const_for_fn)]
-  pub fn event_stream(&self) -> &ArcShared<EventStreamGeneric<TB>> {
+  pub fn event_stream(&self) -> &EventStreamSharedGeneric<TB> {
     &self.event_stream
   }
 

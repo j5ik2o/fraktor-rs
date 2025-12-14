@@ -1,7 +1,8 @@
 use alloc::{string::String, vec::Vec};
 
 use fraktor_actor_rs::core::event_stream::{
-  EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric, subscriber_handle,
+  EventStreamEvent, EventStreamShared, EventStreamSharedGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric,
+  subscriber_handle,
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdMutex, NoStdToolbox},
@@ -34,11 +35,11 @@ impl EventStreamSubscriber<NoStdToolbox> for TestSubscriber {
 }
 
 fn subscribe_recorder(
-  event_stream: &ArcShared<EventStreamGeneric<NoStdToolbox>>,
+  event_stream: &EventStreamSharedGeneric<NoStdToolbox>,
 ) -> (TestSubscriber, EventStreamSubscriptionGeneric<NoStdToolbox>) {
   let subscriber = TestSubscriber::new();
   let handle = subscriber_handle(subscriber.clone());
-  let subscription = EventStreamGeneric::subscribe_arc(event_stream, &handle);
+  let subscription = event_stream.subscribe(&handle);
   (subscriber, subscription)
 }
 
@@ -77,8 +78,7 @@ fn starts_when_topic_kind_is_registered() {
   registry.register_all(Vec::new());
 
   // EventStream を作成
-  let event_stream: ArcShared<EventStreamGeneric<NoStdToolbox>> =
-    ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let event_stream: EventStreamSharedGeneric<NoStdToolbox> = EventStreamShared::default();
 
   // サブスクライバを登録
   let (_subscriber, _subscription) = subscribe_recorder(&event_stream);
@@ -97,8 +97,7 @@ fn fails_and_fires_event_when_topic_kind_missing() {
   let registry = KindRegistry::new();
 
   // EventStream を作成
-  let event_stream: ArcShared<EventStreamGeneric<NoStdToolbox>> =
-    ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let event_stream: EventStreamSharedGeneric<NoStdToolbox> = EventStreamShared::default();
 
   // サブスクライバを登録
   let (subscriber, _subscription) = subscribe_recorder(&event_stream);
@@ -126,8 +125,7 @@ fn creates_topic_on_start() {
   let mut registry = KindRegistry::new();
   registry.register_all(Vec::new());
 
-  let event_stream: ArcShared<EventStreamGeneric<NoStdToolbox>> =
-    ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let event_stream: EventStreamSharedGeneric<NoStdToolbox> = EventStreamShared::default();
   let (subscriber, _subscription) = subscribe_recorder(&event_stream);
 
   let mut pubsub = ClusterPubSubImpl::new(event_stream, &registry);
@@ -147,8 +145,7 @@ fn subscribe_succeeds_after_start() {
   let mut registry = KindRegistry::new();
   registry.register_all(Vec::new());
 
-  let event_stream: ArcShared<EventStreamGeneric<NoStdToolbox>> =
-    ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let event_stream: EventStreamSharedGeneric<NoStdToolbox> = EventStreamShared::default();
   let (subscriber, _subscription) = subscribe_recorder(&event_stream);
 
   let mut pubsub = ClusterPubSubImpl::new(event_stream, &registry);
@@ -173,8 +170,7 @@ fn subscribe_fails_before_start() {
   let mut registry = KindRegistry::new();
   registry.register_all(Vec::new());
 
-  let event_stream: ArcShared<EventStreamGeneric<NoStdToolbox>> =
-    ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let event_stream: EventStreamSharedGeneric<NoStdToolbox> = EventStreamShared::default();
   let mut pubsub = ClusterPubSubImpl::new(event_stream, &registry);
 
   // start 前に subscribe すると失敗
@@ -187,8 +183,7 @@ fn publish_returns_subscribers() {
   let mut registry = KindRegistry::new();
   registry.register_all(Vec::new());
 
-  let event_stream: ArcShared<EventStreamGeneric<NoStdToolbox>> =
-    ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let event_stream: EventStreamSharedGeneric<NoStdToolbox> = EventStreamShared::default();
   let mut pubsub = ClusterPubSubImpl::new(event_stream, &registry);
   pubsub.start().expect("start");
 
@@ -206,8 +201,7 @@ fn stop_succeeds() {
   let mut registry = KindRegistry::new();
   registry.register_all(Vec::new());
 
-  let event_stream: ArcShared<EventStreamGeneric<NoStdToolbox>> =
-    ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let event_stream: EventStreamSharedGeneric<NoStdToolbox> = EventStreamShared::default();
   let mut pubsub = ClusterPubSubImpl::new(event_stream, &registry);
   pubsub.start().expect("start");
 
@@ -220,8 +214,7 @@ fn drain_events_returns_broker_events() {
   let mut registry = KindRegistry::new();
   registry.register_all(Vec::new());
 
-  let event_stream: ArcShared<EventStreamGeneric<NoStdToolbox>> =
-    ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let event_stream: EventStreamSharedGeneric<NoStdToolbox> = EventStreamShared::default();
   let mut pubsub = ClusterPubSubImpl::new(event_stream, &registry);
   pubsub.start().expect("start");
   pubsub.subscribe(TOPIC_ACTOR_KIND, "sub-1").expect("subscribe");
@@ -242,8 +235,7 @@ fn pubsub_works_with_dynamic_topology_join() {
   let mut registry = KindRegistry::new();
   registry.register_all(Vec::new());
 
-  let event_stream: ArcShared<EventStreamGeneric<NoStdToolbox>> =
-    ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let event_stream: EventStreamSharedGeneric<NoStdToolbox> = EventStreamShared::default();
   let (_subscriber, _subscription) = subscribe_recorder(&event_stream);
 
   // PubSubImpl を作成して起動
@@ -277,8 +269,7 @@ fn multiple_nodes_can_subscribe_and_receive_messages() {
   let mut registry = KindRegistry::new();
   registry.register_all(Vec::new());
 
-  let event_stream: ArcShared<EventStreamGeneric<NoStdToolbox>> =
-    ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let event_stream: EventStreamSharedGeneric<NoStdToolbox> = EventStreamShared::default();
   let (subscriber, _subscription) = subscribe_recorder(&event_stream);
 
   let mut pubsub = ClusterPubSubImpl::new(event_stream, &registry);

@@ -6,7 +6,7 @@
 
 use alloc::string::String;
 
-use fraktor_actor_rs::core::event_stream::EventStreamGeneric;
+use fraktor_actor_rs::core::event_stream::EventStreamSharedGeneric;
 use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
@@ -21,7 +21,7 @@ mod tests;
 /// communication. It simply publishes a predetermined topology when started,
 /// making it ideal for testing and single-process demonstrations.
 pub struct StaticClusterProvider<TB: RuntimeToolbox + 'static> {
-  event_stream:        ArcShared<EventStreamGeneric<TB>>,
+  event_stream:        EventStreamSharedGeneric<TB>,
   block_list_provider: ArcShared<dyn BlockListProvider>,
   static_topology:     Option<ClusterTopology>,
   advertised_address:  String,
@@ -31,7 +31,7 @@ impl<TB: RuntimeToolbox + 'static> StaticClusterProvider<TB> {
   /// Creates a new static cluster provider.
   #[must_use]
   pub fn new(
-    event_stream: ArcShared<EventStreamGeneric<TB>>,
+    event_stream: EventStreamSharedGeneric<TB>,
     block_list_provider: ArcShared<dyn BlockListProvider>,
     advertised_address: impl Into<String>,
   ) -> Self {

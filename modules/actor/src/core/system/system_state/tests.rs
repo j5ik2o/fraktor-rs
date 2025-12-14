@@ -18,7 +18,7 @@ use crate::core::{
   },
   dispatcher::{DispatchError, DispatchExecutor, DispatchSharedGeneric, DispatcherConfig},
   error::ActorError,
-  event_stream::{EventStream, EventStreamEvent, EventStreamSubscriber, subscriber_handle},
+  event_stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   mailbox::MailboxMessage,
   messaging::{AnyMessage, AnyMessageViewGeneric, FailurePayload, SystemMessage},
   props::Props,
@@ -441,7 +441,7 @@ fn system_state_remote_authority_events() {
   let stream = state.event_stream();
   let events_shared = ArcShared::new(NoStdMutex::new(Vec::new()));
   let subscriber = subscriber_handle(RemoteEventRecorder::new(events_shared.clone()));
-  let _subscription = EventStream::subscribe_arc(&stream, &subscriber);
+  let _subscription = stream.subscribe(&subscriber);
 
   state.remote_authority_set_quarantine("node:2552", Some(Duration::from_secs(0)));
   state.poll_remote_authorities();
@@ -685,7 +685,7 @@ fn system_state_logs_failure_with_pid_origin() {
   let events_shared: ArcShared<NoStdMutex<Vec<EventStreamEvent<NoStdToolbox>>>> =
     ArcShared::new(NoStdMutex::new(Vec::new()));
   let subscriber = subscriber_handle(LogRecorder::new(events_shared.clone()));
-  let _subscription = EventStream::subscribe_arc(&state.event_stream(), &subscriber);
+  let _subscription = state.event_stream().subscribe(&subscriber);
 
   let pid = state.allocate_pid();
   let payload = FailurePayload::from_error(pid, &ActorError::fatal("boom"), None, Duration::from_millis(1));

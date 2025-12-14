@@ -4,8 +4,8 @@
 //! that is only available in std environments.
 
 use fraktor_actor_rs::core::event_stream::{
-  EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, EventStreamSubscriberShared,
-  EventStreamSubscriptionGeneric, RemotingLifecycleEvent, subscriber_handle,
+  EventStreamEvent, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscriptionGeneric,
+  RemotingLifecycleEvent, subscriber_handle,
 };
 use fraktor_utils_rs::{core::sync::SharedAccess, std::runtime_toolbox::StdToolbox};
 
@@ -52,8 +52,7 @@ pub fn subscribe_remoting_events(provider: &SharedLocalClusterProvider) {
   let event_stream = provider.with_read(|p| p.event_stream().clone());
   let handler = RemotingEventHandler { provider: provider.clone() };
   let subscriber: EventStreamSubscriberShared<StdToolbox> = subscriber_handle(handler);
-  let _subscription: EventStreamSubscriptionGeneric<StdToolbox> =
-    EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
+  let _subscription: EventStreamSubscriptionGeneric<StdToolbox> = event_stream.subscribe(&subscriber);
   // Note: subscription は provider のライフタイムに依存するので、
   // provider がドロップされるまで有効
 }

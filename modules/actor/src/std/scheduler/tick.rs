@@ -15,7 +15,7 @@ use tokio::runtime::Handle;
 
 use crate::{
   core::{
-    event_stream::EventStreamGeneric,
+    event_stream::EventStreamSharedGeneric,
     scheduler::{TickDriverConfig as CoreTickDriverConfig, TickDriverFactoryRef},
   },
   std::scheduler::tick::tokio_impl::TokioIntervalDriverFactory,
@@ -140,7 +140,7 @@ impl TickDriverConfig {
   #[must_use]
   pub fn tokio_quickstart_with_event_stream(
     resolution: Duration,
-    event_stream: ArcShared<EventStreamGeneric<StdToolbox>>,
+    event_stream: EventStreamSharedGeneric<StdToolbox>,
     metrics_interval: Duration,
   ) -> CoreTickDriverConfig<StdToolbox> {
     use alloc::boxed::Box;
@@ -243,7 +243,7 @@ impl TickDriverConfig {
   pub fn tokio_with_handle_and_event_stream(
     handle: Handle,
     resolution: Duration,
-    event_stream: ArcShared<EventStreamGeneric<StdToolbox>>,
+    event_stream: EventStreamSharedGeneric<StdToolbox>,
     interval: Duration,
   ) -> TickDriverFactoryRef<StdToolbox> {
     ArcShared::new(TokioIntervalDriverFactory::new(handle, resolution).with_metrics(event_stream, interval))

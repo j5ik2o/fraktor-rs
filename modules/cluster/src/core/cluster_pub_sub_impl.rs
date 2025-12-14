@@ -9,8 +9,8 @@ use alloc::{
   vec::Vec,
 };
 
-use fraktor_actor_rs::core::{event_stream::EventStreamGeneric, messaging::AnyMessageGeneric};
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
+use fraktor_actor_rs::core::{event_stream::EventStreamSharedGeneric, messaging::AnyMessageGeneric};
+use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use crate::core::{
   ClusterEvent, ClusterPubSub, KindRegistry, PubSubBroker, PubSubError, PubSubEvent, StartupMode,
@@ -23,7 +23,7 @@ use crate::core::{
 /// before starting. On start, it creates the topic for TopicActorKind and publishes
 /// events to EventStream.
 pub struct ClusterPubSubImpl<TB: RuntimeToolbox + 'static> {
-  event_stream:         ArcShared<EventStreamGeneric<TB>>,
+  event_stream:         EventStreamSharedGeneric<TB>,
   broker:               PubSubBroker,
   has_topic_actor_kind: bool,
   started:              bool,
@@ -35,7 +35,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterPubSubImpl<TB> {
   ///
   /// The KindRegistry is checked for TopicActorKind presence at construction time.
   #[must_use]
-  pub fn new(event_stream: ArcShared<EventStreamGeneric<TB>>, registry: &KindRegistry) -> Self {
+  pub fn new(event_stream: EventStreamSharedGeneric<TB>, registry: &KindRegistry) -> Self {
     let has_topic_actor_kind = registry.contains(TOPIC_ACTOR_KIND);
     Self {
       event_stream,

@@ -5,7 +5,7 @@ use fraktor_utils_rs::core::{runtime_toolbox::NoStdMutex, sync::ArcShared};
 use super::MailboxInstrumentation;
 use crate::core::{
   actor_prim::Pid,
-  event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, subscriber_handle},
+  event_stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   mailbox::BackpressurePublisherGeneric,
   system::ActorSystem,
 };
@@ -53,7 +53,7 @@ fn mailbox_instrumentation_emits_pressure_event() {
 
   let events = ArcShared::new(NoStdMutex::new(Vec::new()));
   let subscriber = subscriber_handle(TestSubscriber::new(events.clone()));
-  let _subscription = EventStreamGeneric::subscribe_arc(&system_state.event_stream(), &subscriber);
+  let _subscription = system_state.event_stream().subscribe(&subscriber);
 
   instrumentation.publish(3, 0);
 
@@ -91,7 +91,7 @@ fn mailbox_pressure_event_captures_threshold() {
 
   let events = ArcShared::new(NoStdMutex::new(Vec::new()));
   let subscriber = subscriber_handle(TestSubscriber::new(events.clone()));
-  let _subscription = EventStreamGeneric::subscribe_arc(&system_state.event_stream(), &subscriber);
+  let _subscription = system_state.event_stream().subscribe(&subscriber);
 
   instrumentation.publish(3, 0);
 

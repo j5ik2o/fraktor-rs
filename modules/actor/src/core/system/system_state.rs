@@ -42,7 +42,7 @@ use crate::core::{
   dead_letter::{DeadLetterEntryGeneric, DeadLetterGeneric, DeadLetterReason},
   dispatcher::{DispatchersGeneric, DispatchersSharedGeneric},
   error::{ActorError, SendError},
-  event_stream::{EventStreamEvent, EventStreamGeneric, RemoteAuthorityEvent, TickDriverSnapshot},
+  event_stream::{EventStreamEvent, EventStreamSharedGeneric, RemoteAuthorityEvent, TickDriverSnapshot},
   futures::ActorFutureSharedGeneric,
   logging::{LogEvent, LogLevel},
   mailbox::MailboxesSharedGeneric,
@@ -76,7 +76,7 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   terminated: AtomicBool,
   terminating: AtomicBool,
   root_started: AtomicBool,
-  event_stream: ArcShared<EventStreamGeneric<TB>>,
+  event_stream: EventStreamSharedGeneric<TB>,
   dead_letter: ArcShared<DeadLetterGeneric<TB>>,
   extra_top_levels: ExtraTopLevelsSharedGeneric<TB>,
   temp_actors: TempActorsSharedGeneric<TB>,
@@ -109,7 +109,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   where
     TB: Default, {
     const DEAD_LETTER_CAPACITY: usize = 512;
-    let event_stream = ArcShared::new(EventStreamGeneric::default());
+    let event_stream = EventStreamSharedGeneric::default();
     let dead_letter = ArcShared::new(DeadLetterGeneric::new(event_stream.clone(), DEAD_LETTER_CAPACITY));
     let dispatchers = DispatchersSharedGeneric::new(DispatchersGeneric::new());
     dispatchers.with_write(|d| d.ensure_default());
@@ -547,7 +547,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
 
   /// Returns the shared event stream handle.
   #[must_use]
-  pub fn event_stream(&self) -> ArcShared<EventStreamGeneric<TB>> {
+  pub fn event_stream(&self) -> EventStreamSharedGeneric<TB> {
     self.event_stream.clone()
   }
 

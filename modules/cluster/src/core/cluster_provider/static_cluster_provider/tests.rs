@@ -1,7 +1,8 @@
 use alloc::{string::String, vec, vec::Vec};
 
 use fraktor_actor_rs::core::event_stream::{
-  EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric, subscriber_handle,
+  EventStreamEvent, EventStreamShared, EventStreamSharedGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric,
+  subscriber_handle,
 };
 use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{
@@ -63,18 +64,18 @@ impl EventStreamSubscriber<NoStdToolbox> for RecordingClusterEvents {
 }
 
 fn subscribe_recorder(
-  event_stream: &ArcShared<EventStreamGeneric<NoStdToolbox>>,
+  event_stream: &EventStreamSharedGeneric<NoStdToolbox>,
 ) -> (RecordingClusterEvents, EventStreamSubscriptionGeneric<NoStdToolbox>) {
   let subscriber_impl = RecordingClusterEvents::new();
   let subscriber = subscriber_handle(subscriber_impl.clone());
-  let subscription = EventStreamGeneric::subscribe_arc(event_stream, &subscriber);
+  let subscription = event_stream.subscribe(&subscriber);
   (subscriber_impl, subscription)
 }
 
 #[test]
 fn start_member_publishes_static_topology_to_event_stream() {
   // EventStream を作成
-  let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let event_stream = EventStreamShared::default();
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
 
   // サブスクライバを登録してイベントを記録
@@ -103,7 +104,7 @@ fn start_member_publishes_static_topology_to_event_stream() {
 
 #[test]
 fn start_client_also_publishes_static_topology() {
-  let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let event_stream = EventStreamShared::default();
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
 
   let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
@@ -125,7 +126,7 @@ fn start_client_also_publishes_static_topology() {
 
 #[test]
 fn topology_includes_blocked_members_from_block_list_provider() {
-  let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let event_stream = EventStreamShared::default();
   let block_list: ArcShared<dyn BlockListProvider> =
     ArcShared::new(RecordingBlockList::new(vec![String::from("blocked-a"), String::from("blocked-b")]));
 
@@ -148,7 +149,7 @@ fn topology_includes_blocked_members_from_block_list_provider() {
 
 #[test]
 fn no_topology_published_when_static_topology_not_set() {
-  let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let event_stream = EventStreamShared::default();
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
 
   let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
@@ -165,7 +166,7 @@ fn no_topology_published_when_static_topology_not_set() {
 
 #[test]
 fn shutdown_succeeds_without_side_effects() {
-  let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let event_stream = EventStreamShared::default();
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
 
   let mut provider = StaticClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-shutdown");
@@ -180,7 +181,7 @@ fn shutdown_succeeds_without_side_effects() {
 
 #[test]
 fn advertised_address_is_stored_correctly() {
-  let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let event_stream = EventStreamShared::default();
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
 
   let provider = StaticClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "127.0.0.1:8080");

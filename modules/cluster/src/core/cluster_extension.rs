@@ -7,7 +7,8 @@ use alloc::{string::String, vec::Vec};
 
 use fraktor_actor_rs::core::{
   event_stream::{
-    EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric, subscriber_handle,
+    EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric,
+    subscriber_handle,
   },
   messaging::AnyMessageGeneric,
   system::{ActorSystemGeneric, ActorSystemWeakGeneric},
@@ -49,7 +50,7 @@ impl<TB: RuntimeToolbox + 'static> EventStreamSubscriber<TB> for ClusterTopology
 /// Cluster extension registered into `ActorSystemGeneric`.
 pub struct ClusterExtensionGeneric<TB: RuntimeToolbox + 'static> {
   core:         ArcShared<ToolboxMutex<ClusterCore<TB>, TB>>,
-  event_stream: ArcShared<EventStreamGeneric<TB>>,
+  event_stream: EventStreamSharedGeneric<TB>,
   subscription: ToolboxMutex<Option<EventStreamSubscriptionGeneric<TB>>, TB>,
   _system:      ActorSystemWeakGeneric<TB>,
 }
@@ -76,7 +77,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionGeneric<TB> {
     // ClusterCore への共有参照を持つ subscriber を作成
     let subscriber: ClusterTopologySubscriber<TB> = ClusterTopologySubscriber::new(self.core.clone());
     let subscriber_handle = subscriber_handle(subscriber);
-    let sub = EventStreamGeneric::subscribe_arc(&self.event_stream, &subscriber_handle);
+    let sub = self.event_stream.subscribe(&subscriber_handle);
     *self.subscription.lock() = Some(sub);
   }
 
