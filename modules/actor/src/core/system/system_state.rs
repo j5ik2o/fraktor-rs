@@ -28,9 +28,9 @@ use self::path_identity::PathIdentity;
 use super::{
   ActorPathRegistrySharedGeneric, ActorRefProvider, ActorRefProviderCaller, ActorRefProviderCallersSharedGeneric,
   ActorRefProviderHandle, ActorRefProviderSharedGeneric, ActorRefProvidersSharedGeneric, AskFuturesSharedGeneric,
-  AuthorityState, CellsSharedGeneric, GuardianKind, GuardiansStateSharedGeneric, RegistriesSharedGeneric,
-  RemoteAuthorityError, RemoteAuthorityManagerSharedGeneric, RemoteWatchHook, RemoteWatchHookDynSharedGeneric,
-  RemotingConfig, TempActorsSharedGeneric, extensions::ExtensionsGeneric, extra_top_levels::ExtraTopLevelsGeneric,
+  AuthorityState, CellsSharedGeneric, ExtensionsSharedGeneric, GuardianKind, GuardiansStateSharedGeneric,
+  RegistriesSharedGeneric, RemoteAuthorityError, RemoteAuthorityManagerSharedGeneric, RemoteWatchHook,
+  RemoteWatchHookDynSharedGeneric, RemotingConfig, TempActorsSharedGeneric, extra_top_levels::ExtraTopLevelsGeneric,
 };
 use crate::core::{
   actor_prim::{
@@ -70,6 +70,9 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   cells: CellsSharedGeneric<TB>,
   registries: RegistriesSharedGeneric<TB>,
   guardians: GuardiansStateSharedGeneric<TB>,
+  root_guardian_alive: AtomicBool,
+  system_guardian_alive: AtomicBool,
+  user_guardian_alive: AtomicBool,
   ask_futures: AskFuturesSharedGeneric<TB>,
   termination: ActorFutureSharedGeneric<(), TB>,
   terminated: AtomicBool,
@@ -85,7 +88,7 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   failure_stop_total: AtomicU64,
   failure_escalate_total: AtomicU64,
   failure_inflight: AtomicU64,
-  extensions: ExtensionsGeneric<TB>,
+  extensions: ExtensionsSharedGeneric<TB>,
   actor_ref_providers: ActorRefProvidersSharedGeneric<TB>,
   actor_ref_provider_callers_by_scheme: ActorRefProviderCallersSharedGeneric<TB>,
   remote_watch_hook: RemoteWatchHookDynSharedGeneric<TB>,
@@ -125,6 +128,9 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       cells: CellsSharedGeneric::default(),
       registries: RegistriesSharedGeneric::default(),
       guardians: GuardiansStateSharedGeneric::default(),
+      root_guardian_alive: AtomicBool::new(false),
+      system_guardian_alive: AtomicBool::new(false),
+      user_guardian_alive: AtomicBool::new(false),
       ask_futures: AskFuturesSharedGeneric::default(),
       termination: ActorFutureSharedGeneric::<(), TB>::new(),
       terminated: AtomicBool::new(false),
@@ -140,7 +146,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       failure_stop_total: AtomicU64::new(0),
       failure_escalate_total: AtomicU64::new(0),
       failure_inflight: AtomicU64::new(0),
-      extensions: ExtensionsGeneric::default(),
+      extensions: ExtensionsSharedGeneric::default(),
       actor_ref_providers: ActorRefProvidersSharedGeneric::default(),
       remote_watch_hook: RemoteWatchHookDynSharedGeneric::noop(),
       dispatchers,
@@ -370,25 +376,31 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   /// Registers the root guardian PID.
   pub(crate) fn set_root_guardian(&self, cell: &ArcShared<ActorCellGeneric<TB>>) {
     self.guardians.with_write(|guardians| guardians.register(GuardianKind::Root, cell.pid()));
+    self.root_guardian_alive.store(true, Ordering::Release);
   }
 
   pub(crate) fn register_guardian_pid(&self, kind: GuardianKind, pid: Pid) {
     self.guardians.with_write(|guardians| guardians.register(kind, pid));
+    self.guardian_alive_flag(kind).store(true, Ordering::Release);
   }
 
   /// Registers the system guardian PID.
   pub(crate) fn set_system_guardian(&self, cell: &ArcShared<ActorCellGeneric<TB>>) {
     self.guardians.with_write(|guardians| guardians.register(GuardianKind::System, cell.pid()));
+    self.system_guardian_alive.store(true, Ordering::Release);
   }
 
   /// Registers the user guardian PID.
   pub(crate) fn set_user_guardian(&self, cell: &ArcShared<ActorCellGeneric<TB>>) {
     self.guardians.with_write(|guardians| guardians.register(GuardianKind::User, cell.pid()));
+    self.user_guardian_alive.store(true, Ordering::Release);
   }
 
   /// Clears the guardian slot matching the pid and returns which guardian stopped.
   pub(crate) fn clear_guardian(&self, pid: Pid) -> Option<GuardianKind> {
-    self.guardians.with_write(|guardians| guardians.clear_by_pid(pid))
+    let kind = self.guardians.with_read(|guardians| guardians.kind_by_pid(pid))?;
+    self.guardian_alive_flag(kind).store(false, Ordering::Release);
+    Some(kind)
   }
 
   /// Returns the root guardian cell if initialised.
@@ -413,35 +425,43 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   /// Returns the pid of the root guardian if available.
   #[must_use]
   pub fn root_guardian_pid(&self) -> Option<Pid> {
-    self.guardians.with_read(|g| g.pid(GuardianKind::Root))
+    self.guardians.with_read(|guardians| guardians.pid(GuardianKind::Root))
   }
 
   /// Returns the pid of the system guardian if available.
   #[must_use]
   pub fn system_guardian_pid(&self) -> Option<Pid> {
-    self.guardians.with_read(|g| g.pid(GuardianKind::System))
+    self.guardians.with_read(|guardians| guardians.pid(GuardianKind::System))
   }
 
   /// Returns the pid of the user guardian if available.
   #[must_use]
   pub fn user_guardian_pid(&self) -> Option<Pid> {
-    self.guardians.with_read(|g| g.pid(GuardianKind::User))
+    self.guardians.with_read(|guardians| guardians.pid(GuardianKind::User))
   }
 
   /// Returns whether the specified guardian is alive.
   #[must_use]
   pub fn guardian_alive(&self, kind: GuardianKind) -> bool {
-    self.guardians.with_read(|g| g.is_alive(kind))
+    self.guardian_alive_flag(kind).load(Ordering::Acquire)
   }
 
   /// Returns the PID registered for the specified guardian.
   pub fn guardian_pid(&self, kind: GuardianKind) -> Option<Pid> {
-    self.guardians.with_read(|g| g.pid(kind))
+    self.guardians.with_read(|guardians| guardians.pid(kind))
   }
 
   fn guardian_cell_via_cells(&self, kind: GuardianKind) -> Option<ArcShared<ActorCellGeneric<TB>>> {
-    let pid = self.guardians.with_read(|g| g.pid(kind))?;
+    let pid = self.guardians.with_read(|guardians| guardians.pid(kind))?;
     self.cell(&pid)
+  }
+
+  const fn guardian_alive_flag(&self, kind: GuardianKind) -> &AtomicBool {
+    match kind {
+      | GuardianKind::Root => &self.root_guardian_alive,
+      | GuardianKind::System => &self.system_guardian_alive,
+      | GuardianKind::User => &self.user_guardian_alive,
+    }
   }
 
   /// Registers an extra top-level path prior to root startup.
@@ -561,35 +581,39 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   /// Returns `true` when an extension for the provided [`TypeId`] is registered.
   #[must_use]
   pub(crate) fn has_extension(&self, type_id: TypeId) -> bool {
-    self.extensions.contains_key(&type_id)
+    self.extensions.with_read(|extensions| extensions.contains_key(&type_id))
   }
 
   /// Returns an extension by [`TypeId`].
   pub(crate) fn extension<E>(&self, type_id: TypeId) -> Option<ArcShared<E>>
   where
     E: Any + Send + Sync + 'static, {
-    self.extensions.get(&type_id).cloned().and_then(|handle| handle.downcast::<E>().ok())
+    self
+      .extensions
+      .with_read(|extensions| extensions.get(&type_id).cloned().and_then(|handle| handle.downcast::<E>().ok()))
   }
 
   /// Returns a raw extension handle by [`TypeId`].
   pub(crate) fn extension_raw(&self, type_id: &TypeId) -> Option<ArcShared<dyn Any + Send + Sync + 'static>> {
-    self.extensions.get(type_id).cloned()
+    self.extensions.with_read(|extensions| extensions.get(type_id).cloned())
   }
 
   /// Inserts an extension.
-  pub(crate) fn insert_extension(&mut self, type_id: TypeId, extension: ArcShared<dyn Any + Send + Sync + 'static>) {
-    self.extensions.insert(type_id, extension);
+  pub(crate) fn insert_extension(&self, type_id: TypeId, extension: ArcShared<dyn Any + Send + Sync + 'static>) {
+    self.extensions.with_write(|extensions| extensions.insert(type_id, extension));
   }
 
   pub(crate) fn extension_by_type<E>(&self) -> Option<ArcShared<E>>
   where
     E: Any + Send + Sync + 'static, {
-    for handle in self.extensions.values() {
-      if let Ok(extension) = handle.clone().downcast::<E>() {
-        return Some(extension);
+    self.extensions.with_read(|extensions| {
+      for handle in extensions.values() {
+        if let Ok(extension) = handle.clone().downcast::<E>() {
+          return Some(extension);
+        }
       }
-    }
-    None
+      None
+    })
   }
 
   /// Registers an ask future so the actor system can track its completion.

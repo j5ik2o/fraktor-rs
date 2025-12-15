@@ -1,4 +1,4 @@
-//! Shared wrapper for `GuardiansState`.
+//! Shared wrapper for guardian PID slots.
 
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
@@ -7,14 +7,22 @@ use fraktor_utils_rs::core::{
 
 use super::guardians_state::GuardiansState;
 
+/// Shared wrapper for [`GuardiansState`].
+///
+/// This wrapper provides [`SharedAccess`] methods (`with_read`/`with_write`)
+/// that internally lock the underlying guardian state, allowing safe
+/// concurrent access from multiple owners.
 pub(crate) struct GuardiansStateSharedGeneric<TB: RuntimeToolbox + 'static> {
   inner: ArcShared<ToolboxMutex<GuardiansState, TB>>,
 }
 
+/// Type alias using the default toolbox.
 #[allow(dead_code)]
 pub(crate) type GuardiansStateShared = GuardiansStateSharedGeneric<NoStdToolbox>;
 
 impl<TB: RuntimeToolbox + 'static> GuardiansStateSharedGeneric<TB> {
+  /// Creates a new shared wrapper around the provided guardian state.
+  #[must_use]
   pub(crate) fn new(state: GuardiansState) -> Self {
     Self { inner: ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(state)) }
   }
