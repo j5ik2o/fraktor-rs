@@ -28,9 +28,9 @@ use self::path_identity::PathIdentity;
 use super::{
   ActorPathRegistrySharedGeneric, ActorRefProvider, ActorRefProviderCaller, ActorRefProviderCallersSharedGeneric,
   ActorRefProviderHandle, ActorRefProviderSharedGeneric, ActorRefProvidersSharedGeneric, AskFuturesSharedGeneric,
-  AuthorityState, CellsSharedGeneric, ExtensionsSharedGeneric, ExtraTopLevelsSharedGeneric, GuardianKind,
-  GuardiansStateSharedGeneric, RegistriesSharedGeneric, RemoteAuthorityError, RemoteAuthorityManagerSharedGeneric,
-  RemoteWatchHook, RemoteWatchHookDynSharedGeneric, RemotingConfig, TempActorsSharedGeneric,
+  AuthorityState, CellsSharedGeneric, ExtensionsSharedGeneric, GuardianKind, GuardiansStateSharedGeneric,
+  RegistriesSharedGeneric, RemoteAuthorityError, RemoteAuthorityManagerSharedGeneric, RemoteWatchHook,
+  RemoteWatchHookDynSharedGeneric, RemotingConfig, TempActorsSharedGeneric, extra_top_levels::ExtraTopLevelsGeneric,
 };
 use crate::core::{
   actor_prim::{
@@ -77,7 +77,7 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   root_started: AtomicBool,
   event_stream: EventStreamSharedGeneric<TB>,
   dead_letter: DeadLetterSharedGeneric<TB>,
-  extra_top_levels: ExtraTopLevelsSharedGeneric<TB>,
+  extra_top_levels: ExtraTopLevelsGeneric<TB>,
   temp_actors: TempActorsSharedGeneric<TB>,
   temp_counter: AtomicU64,
   failure_total: AtomicU64,
@@ -132,7 +132,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       root_started: AtomicBool::new(false),
       event_stream,
       dead_letter,
-      extra_top_levels: ExtraTopLevelsSharedGeneric::default(),
+      extra_top_levels: ExtraTopLevelsGeneric::default(),
       temp_actors: TempActorsSharedGeneric::default(),
       temp_counter: AtomicU64::new(0),
       failure_total: AtomicU64::new(0),
@@ -446,7 +446,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
 
   /// Registers an extra top-level path prior to root startup.
   pub(crate) fn register_extra_top_level(
-    &self,
+    &mut self,
     name: &str,
     actor: ActorRefGeneric<TB>,
   ) -> Result<(), RegisterExtraTopLevelError> {
@@ -456,19 +456,17 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     if name.is_empty() || RESERVED_TOP_LEVEL.iter().any(|reserved| reserved.eq_ignore_ascii_case(name)) {
       return Err(RegisterExtraTopLevelError::ReservedName(name.into()));
     }
-    self.extra_top_levels.with_write(|extra_top_levels| {
-      if extra_top_levels.contains_key(name) {
-        return Err(RegisterExtraTopLevelError::DuplicateName(name.into()));
-      }
-      extra_top_levels.insert(name.into(), actor);
-      Ok(())
-    })
+    if self.extra_top_levels.contains_key(name) {
+      return Err(RegisterExtraTopLevelError::DuplicateName(name.into()));
+    }
+    self.extra_top_levels.insert(name.into(), actor);
+    Ok(())
   }
 
   /// Returns a registered extra top-level reference if present.
   #[must_use]
   pub fn extra_top_level(&self, name: &str) -> Option<ActorRefGeneric<TB>> {
-    self.extra_top_levels.with_read(|extra_top_levels| extra_top_levels.get(name))
+    self.extra_top_levels.get(name)
   }
 
   /// Marks the root guardian as fully initialised, preventing further registrations.

@@ -1,5 +1,8 @@
 //! Shared wrapper for system state.
 
+#[cfg(test)]
+mod tests;
+
 use alloc::{collections::VecDeque, string::String, vec::Vec};
 use core::{any::TypeId, time::Duration};
 
@@ -228,7 +231,10 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
     name: &str,
     actor: ActorRefGeneric<TB>,
   ) -> Result<(), RegisterExtraTopLevelError> {
-    self.inner.read().register_extra_top_level(name, actor)
+    if self.inner.read().has_root_started() {
+      return Err(RegisterExtraTopLevelError::AlreadyStarted);
+    }
+    self.inner.write().register_extra_top_level(name, actor)
   }
 
   /// Returns a registered extra top-level reference if present.

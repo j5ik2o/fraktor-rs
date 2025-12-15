@@ -408,7 +408,7 @@ fn system_state_user_guardian() {
 
 #[test]
 fn system_state_register_extra_top_level_success() {
-  let state = build_state();
+  let mut state = build_state();
   let actor = ActorRefGeneric::null();
   assert!(state.register_extra_top_level("metrics", actor.clone()).is_ok());
   assert!(state.extra_top_level("metrics").is_some());
@@ -416,7 +416,7 @@ fn system_state_register_extra_top_level_success() {
 
 #[test]
 fn system_state_register_extra_top_level_errors() {
-  let state = build_state();
+  let mut state = build_state();
   let actor = ActorRefGeneric::null();
   let reserved = state.register_extra_top_level("user", actor.clone());
   assert!(matches!(reserved, Err(RegisterExtraTopLevelError::ReservedName(_))));
