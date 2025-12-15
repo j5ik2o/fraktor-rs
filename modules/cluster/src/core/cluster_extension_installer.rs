@@ -1,6 +1,6 @@
 //! Installs the cluster extension into an actor system.
 
-use alloc::boxed::Box;
+use alloc::{boxed::Box, format};
 
 use fraktor_actor_rs::core::{
   event_stream::EventStreamSharedGeneric,
@@ -238,11 +238,17 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
   ///
   /// Returns the installed `ClusterExtension` instance for immediate use.
   ///
+  /// # Errors
+  ///
+  /// Returns [`ActorSystemBuildError::Configuration`] when the extension cannot be registered.
+  ///
   /// # Panics
   ///
   /// Panics if the extension is already installed with different configuration.
-  #[must_use]
-  pub fn install(&self, system: &ActorSystemGeneric<TB>) -> ArcShared<crate::core::ClusterExtensionGeneric<TB>> {
+  pub fn install(
+    &self,
+    system: &ActorSystemGeneric<TB>,
+  ) -> Result<ArcShared<crate::core::ClusterExtensionGeneric<TB>>, ActorSystemBuildError> {
     // システムの RemotingConfig から advertised address を取得（設定で未指定の場合）
     let mut config = self.config.clone();
     if config.advertised_address().is_empty()
@@ -269,7 +275,9 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
     let provider = (self.provider_f)(system.event_stream(), block_list_provider.clone(), config.advertised_address());
 
     let id = ClusterExtensionId::<TB>::new(config, provider, block_list_provider, gossiper, pubsub, identity_lookup);
-    system.extended().register_extension(&id)
+    system.extended().register_extension(&id).map_err(|error| {
+      ActorSystemBuildError::Configuration(format!("cluster extension registration failed: {error:?}"))
+    })
   }
 }
 
@@ -278,7 +286,7 @@ where
   TB: RuntimeToolbox + 'static,
 {
   fn install(&self, system: &ActorSystemGeneric<TB>) -> Result<(), ActorSystemBuildError> {
-    let _ = ClusterExtensionInstaller::install(self, system);
+    let _ = ClusterExtensionInstaller::install(self, system)?;
     Ok(())
   }
 }

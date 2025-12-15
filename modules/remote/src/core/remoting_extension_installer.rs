@@ -44,7 +44,9 @@ impl ExtensionInstaller<StdToolbox> for RemotingExtensionInstaller {
     }
 
     let id = RemotingExtensionId::new(merged_config);
-    let _ = system.extended().register_extension(&id);
+    system.extended().register_extension(&id).map(|_| ()).map_err(|error| {
+      ActorSystemBuildError::Configuration(format!("remoting extension registration failed: {error:?}"))
+    })?;
     Ok(())
   }
 }

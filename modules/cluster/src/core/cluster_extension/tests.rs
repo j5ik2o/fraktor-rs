@@ -87,7 +87,7 @@ fn registers_extension_and_starts_member() {
     Box::new(StubIdentity),
   );
 
-  let ext_shared = system.extended().register_extension(&ext_id);
+  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
   let result = ext_shared.start_member();
   assert!(result.is_ok());
 }
@@ -108,7 +108,7 @@ fn subscribes_to_event_stream_and_applies_topology_on_topology_updated() {
   );
 
   // 2. エクステンションを登録
-  let ext_shared = system.extended().register_extension(&ext_id);
+  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
 
   // 3. エクステンションを開始（この時点で EventStream を購読するべき）
   ext_shared.start_member().unwrap();
@@ -146,7 +146,7 @@ fn ignores_topology_with_same_hash_via_event_stream() {
     Box::new(StubIdentity),
   );
 
-  let ext_shared = system.extended().register_extension(&ext_id);
+  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
   ext_shared.start_member().unwrap();
 
   // 同じハッシュのトポロジを2回 publish
@@ -257,7 +257,7 @@ fn phase1_integration_static_topology_publishes_to_event_stream_and_applies_to_c
     Box::new(StubPubSub),
     Box::new(StubIdentity),
   );
-  let ext_shared = system.extended().register_extension(&ext_id);
+  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
   ext_shared.setup_member_kinds(vec![ActivatedKind::new("grain-kind")]).unwrap();
 
   // 5. クラスタを開始（start_member で provider が静的トポロジを publish）
@@ -312,7 +312,7 @@ fn phase1_integration_topology_updated_includes_blocked_members() {
     Box::new(StubPubSub),
     Box::new(StubIdentity),
   );
-  let ext_shared = system.extended().register_extension(&ext_id);
+  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
 
   // 6. クラスタを開始
   ext_shared.start_member().unwrap();
@@ -356,7 +356,7 @@ fn phase1_integration_duplicate_hash_topology_is_suppressed() {
     Box::new(StubPubSub),
     Box::new(StubIdentity),
   );
-  let ext_shared = system.extended().register_extension(&ext_id);
+  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
   ext_shared.start_member().unwrap();
 
   // 4. 同じハッシュのトポロジを複数回適用
@@ -387,7 +387,7 @@ fn phase1_integration_metrics_include_members_and_virtual_actors() {
     Box::new(StubPubSub),
     Box::new(StubIdentity),
   );
-  let ext_shared = system.extended().register_extension(&ext_id);
+  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
 
   // 3. Kind を登録（virtual_actors が増加する）
   ext_shared.setup_member_kinds(vec![ActivatedKind::new("worker-kind"), ActivatedKind::new("analytics-kind")]).unwrap();
@@ -443,7 +443,7 @@ fn phase2_integration_join_leave_events_produce_topology_updated() {
     Box::new(StubPubSub),
     Box::new(StubIdentity),
   );
-  let ext_shared = system.extended().register_extension(&ext_id);
+  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
 
   // 4. クラスタを開始
   ext_shared.start_member().unwrap();
@@ -504,7 +504,7 @@ fn phase2_integration_blocklist_reflected_in_topology_events() {
     Box::new(StubPubSub),
     Box::new(StubIdentity),
   );
-  let ext_shared = system.extended().register_extension(&ext_id);
+  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
 
   // 5. クラスタを開始
   ext_shared.start_member().unwrap();
@@ -549,7 +549,7 @@ fn phase2_integration_metrics_updated_correctly_with_dynamic_topology() {
     Box::new(StubPubSub),
     Box::new(StubIdentity),
   );
-  let ext_shared = system.extended().register_extension(&ext_id);
+  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
 
   // 3. Kind を登録して起動
   ext_shared.setup_member_kinds(vec![ActivatedKind::new("worker-kind")]).unwrap();
@@ -601,7 +601,7 @@ fn phase2_integration_shutdown_resets_metrics_and_emits_event() {
     Box::new(StubPubSub),
     Box::new(StubIdentity),
   );
-  let ext_shared = system.extended().register_extension(&ext_id);
+  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
 
   // 4. Kind を登録して起動
   ext_shared.setup_member_kinds(vec![ActivatedKind::new("worker-kind")]).unwrap();

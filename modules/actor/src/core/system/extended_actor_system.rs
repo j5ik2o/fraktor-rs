@@ -9,7 +9,8 @@ use fraktor_utils_rs::core::{
 };
 
 use super::{
-  ActorRefProvider, ActorRefProviderSharedGeneric, ActorSystemGeneric, RegisterExtraTopLevelError, RemoteWatchHook,
+  ActorRefProvider, ActorRefProviderSharedGeneric, ActorSystemGeneric, RegisterExtensionError,
+  RegisterExtraTopLevelError, RemoteWatchHook,
 };
 use crate::core::{
   actor_prim::{ChildRefGeneric, actor_ref::ActorRefGeneric},
@@ -58,7 +59,12 @@ impl<TB: RuntimeToolbox + 'static> ExtendedActorSystemGeneric<TB> {
   }
 
   /// Registers the provided extension and returns the shared instance.
-  pub fn register_extension<E>(&self, ext_id: &E) -> ArcShared<E::Ext>
+  ///
+  /// # Errors
+  ///
+  /// Returns [`RegisterExtensionError::AlreadyStarted`] when the actor system already finished
+  /// startup and the extension is not registered yet.
+  pub fn register_extension<E>(&self, ext_id: &E) -> Result<ArcShared<E::Ext>, RegisterExtensionError>
   where
     E: ExtensionId<TB>, {
     let state = self.inner.state();

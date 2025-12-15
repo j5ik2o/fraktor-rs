@@ -157,7 +157,11 @@ fn main() {
   let (tick_driver, _pulse_handle) = no_std_tick_driver_support::hardware_tick_driver_config();
   let config = ActorSystemConfig::default().with_tick_driver(tick_driver);
   let system = ActorSystem::new_with_config_and(&props, &config, move |system| {
-    system.extended().register_extension(&serialization_id_cloned);
+    system.extended().register_extension(&serialization_id_cloned).map(|_| ()).map_err(|error| {
+      fraktor_actor_rs::core::spawn::SpawnError::SystemBuildError(format!(
+        "serialization extension registration failed: {error:?}"
+      ))
+    })?;
     Ok(())
   })
   .expect("actor system");

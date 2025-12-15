@@ -144,7 +144,11 @@ fn main() {
   let installers = ExtensionInstallers::default().with_extension_installer({
     let ext_id = serialization_id.clone();
     move |system: &ActorSystemGeneric<StdToolbox>| {
-      system.extended().register_extension(&ext_id);
+      system.extended().register_extension(&ext_id).map(|_| ()).map_err(|error| {
+        fraktor_actor_rs::core::system::ActorSystemBuildError::Configuration(format!(
+          "serialization extension registration failed: {error:?}"
+        ))
+      })?;
       Ok(())
     }
   });

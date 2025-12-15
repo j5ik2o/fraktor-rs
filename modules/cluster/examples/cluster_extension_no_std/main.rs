@@ -65,14 +65,15 @@ compile_error!("cluster_extension_no_std example requires --features test-suppor
 use fraktor_actor_rs::core::{
   actor_prim::{Actor, ActorContextGeneric},
   event_stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
+  extension::ExtensionInstallers,
   messaging::{AnyMessage, AnyMessageViewGeneric},
   props::Props,
   scheduler::{ManualTestDriver, TickDriverConfig},
   system::{ActorSystemConfig, ActorSystemGeneric},
 };
 use fraktor_cluster_rs::core::{
-  ActivatedKind, ClusterEvent, ClusterExtensionConfig, ClusterExtensionGeneric, ClusterExtensionId, ClusterPubSub,
-  ClusterTopology, Gossiper, IdentityLookup, IdentitySetupError, StaticClusterProvider,
+  ActivatedKind, ClusterEvent, ClusterExtensionConfig, ClusterExtensionGeneric, ClusterExtensionInstaller,
+  ClusterPubSub, ClusterTopology, Gossiper, IdentityLookup, IdentitySetupError, StaticClusterProvider,
 };
 use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
@@ -188,8 +189,25 @@ impl ClusterNode {
     // ActorSystem を構築
     let driver = ManualTestDriver::<NoStdToolbox>::new();
     let tick_cfg = TickDriverConfig::manual(driver.clone());
-    let system_cfg =
-      ActorSystemConfig::default().with_system_name(format!("cluster-{}", name)).with_tick_driver(tick_cfg);
+    let peer_name = peer_name.to_string();
+    let cluster_installer = ClusterExtensionInstaller::new(
+      ClusterExtensionConfig::new().with_advertised_address(name).with_metrics_enabled(true),
+      move |event_stream, block_list_provider, advertised_address| {
+        let static_topology = ClusterTopology::new(1, vec![peer_name.clone()], vec![]);
+        let provider = StaticClusterProvider::new(event_stream, block_list_provider, advertised_address)
+          .with_static_topology(static_topology);
+        Box::new(provider)
+      },
+    )
+    .with_block_list_provider(ArcShared::new(DemoBlockList::default()))
+    .with_gossiper_factory(|| Box::new(DemoGossiper::default()))
+    .with_pubsub_factory(|| Box::new(DemoPubSub::default()))
+    .with_identity_lookup_factory(|| Box::new(DemoIdentityLookup::default()));
+
+    let system_cfg = ActorSystemConfig::default()
+      .with_system_name(format!("cluster-{}", name))
+      .with_tick_driver(tick_cfg)
+      .with_extension_installers(ExtensionInstallers::default().with_extension_installer(cluster_installer));
 
     let grain_props = Props::from_fn(|| GrainActor).with_name("grain");
     let system: ActorSystemGeneric<NoStdToolbox> =
@@ -199,23 +217,8 @@ impl ClusterNode {
     let event_subscriber = subscriber_handle(ClusterEventLogger::new(name));
     let _subscription = system.subscribe_event_stream(&event_subscriber);
 
-    // 静的トポロジを設定した StaticClusterProvider を作成
-    // start_member() 時に EventStream へ TopologyUpdated を自動 publish する
-    let static_topology = ClusterTopology::new(1, vec![peer_name.to_string()], vec![]);
-    let provider = StaticClusterProvider::new(system.event_stream(), ArcShared::new(DemoBlockList::default()), name)
-      .with_static_topology(static_topology);
-
-    // ClusterExtension を登録
-    let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
-      ClusterExtensionConfig::new().with_advertised_address(name).with_metrics_enabled(true),
-      Box::new(provider),
-      ArcShared::new(DemoBlockList::default()),
-      Box::new(DemoGossiper::default()),
-      Box::new(DemoPubSub::default()),
-      Box::new(DemoIdentityLookup::default()),
-    );
-
-    let extension = system.extended().register_extension(&ext_id);
+    let extension =
+      system.extended().extension_by_type::<ClusterExtensionGeneric<NoStdToolbox>>().expect("cluster extension");
     extension.setup_member_kinds(vec![ActivatedKind::new("grain")]).expect("kinds");
 
     Self { system, extension, driver }

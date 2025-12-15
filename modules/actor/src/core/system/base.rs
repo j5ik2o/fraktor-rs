@@ -157,7 +157,9 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
       installer.install(&system).map_err(|e| SpawnError::from_actor_system_build_error(&e))?;
     }
 
-    system.install_default_serialization_extension();
+    system.install_default_serialization_extension()?;
+
+    system.state.mark_root_started();
 
     Ok(system)
   }
@@ -269,11 +271,14 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     ExtendedActorSystemGeneric::new(self.clone())
   }
 
-  fn install_default_serialization_extension(&self) {
+  fn install_default_serialization_extension(&self) -> Result<(), SpawnError> {
     let id = default_serialization_extension_id();
-    if !self.extended().has_extension(&id) {
-      let _ = self.extended().register_extension(&id);
+    if self.extended().has_extension(&id) {
+      return Ok(());
     }
+    self.extended().register_extension(&id).map(|_| ()).map_err(|error| {
+      SpawnError::SystemBuildError(format!("default serialization extension registration failed: {error:?}"))
+    })
   }
 
   /// Allocates a new pid (testing helper).
@@ -536,7 +541,6 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
       self.rollback_spawn(None, &root_cell, root_pid);
       return Err(error);
     }
-    self.state.mark_root_started();
     Ok(())
   }
 

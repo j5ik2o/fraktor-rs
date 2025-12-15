@@ -12,9 +12,8 @@ use fraktor_utils_rs::core::{
 };
 
 use super::{
-  ActorPathRegistrySharedGeneric, ActorRefProvider, ActorRefProviderSharedGeneric, AuthorityState,
-  ExtensionsSharedGeneric, GuardianKind, RemoteAuthorityError, RemoteAuthorityManagerSharedGeneric, RemotingConfig,
-  SystemStateGeneric,
+  ActorPathRegistrySharedGeneric, ActorRefProvider, ActorRefProviderSharedGeneric, AuthorityState, GuardianKind,
+  RemoteAuthorityError, RemoteAuthorityManagerSharedGeneric, RemotingConfig, SystemStateGeneric,
 };
 use crate::core::{
   actor_prim::{
@@ -32,7 +31,7 @@ use crate::core::{
   messaging::{AnyMessageGeneric, FailurePayload, SystemMessage},
   scheduler::{SchedulerContextSharedGeneric, TaskRunSummary, TickDriverRuntime},
   spawn::SpawnError,
-  system::{ActorSystemConfigGeneric, RegisterExtraTopLevelError},
+  system::{ActorSystemConfigGeneric, RegisterExtensionError, RegisterExtraTopLevelError},
 };
 
 /// Shared wrapper for [`SystemStateGeneric`] providing thread-safe access.
@@ -43,7 +42,6 @@ pub struct SystemStateSharedGeneric<TB: RuntimeToolbox + 'static> {
   pub(crate) inner: ArcShared<ToolboxRwLock<SystemStateGeneric<TB>, TB>>,
   event_stream:     EventStreamSharedGeneric<TB>,
   dead_letter:      DeadLetterSharedGeneric<TB>,
-  extensions:       ExtensionsSharedGeneric<TB>,
   dispatchers:      DispatchersSharedGeneric<TB>,
   mailboxes:        MailboxesSharedGeneric<TB>,
   scheduler_ctx:    SchedulerContextSharedGeneric<TB>,
@@ -58,7 +56,6 @@ impl<TB: RuntimeToolbox + 'static> Clone for SystemStateSharedGeneric<TB> {
       inner:          self.inner.clone(),
       event_stream:   self.event_stream.clone(),
       dead_letter:    self.dead_letter.clone(),
-      extensions:     self.extensions.clone(),
       dispatchers:    self.dispatchers.clone(),
       mailboxes:      self.mailboxes.clone(),
       scheduler_ctx:  self.scheduler_ctx.clone(),
@@ -75,7 +72,6 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   pub fn new(state: SystemStateGeneric<TB>) -> Self {
     let event_stream = state.event_stream();
     let dead_letter = state.dead_letter_store();
-    let extensions = state.extensions_store();
     let dispatchers = state.dispatchers();
     let mailboxes = state.mailboxes();
     let scheduler_ctx = state.scheduler_context();
@@ -87,7 +83,6 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
       inner,
       event_stream,
       dead_letter,
-      extensions,
       dispatchers,
       mailboxes,
       scheduler_ctx,
@@ -103,7 +98,6 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
     let guard = inner.read();
     let event_stream = guard.event_stream();
     let dead_letter = guard.dead_letter_store();
-    let extensions = guard.extensions_store();
     let dispatchers = guard.dispatchers();
     let mailboxes = guard.mailboxes();
     let scheduler_ctx = guard.scheduler_context();
@@ -115,7 +109,6 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
       inner,
       event_stream,
       dead_letter,
-      extensions,
       dispatchers,
       mailboxes,
       scheduler_ctx,
@@ -384,7 +377,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   /// Returns `true` when an extension for the provided [`TypeId`] is registered.
   #[must_use]
   pub fn has_extension(&self, type_id: TypeId) -> bool {
-    self.extensions.with_read(|extensions| extensions.contains_key(&type_id))
+    self.inner.read().has_extension(type_id)
   }
 
   /// Returns an extension by [`TypeId`].
@@ -392,40 +385,55 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   pub fn extension<E>(&self, type_id: TypeId) -> Option<ArcShared<E>>
   where
     E: core::any::Any + Send + Sync + 'static, {
-    self
-      .extensions
-      .with_read(|extensions| extensions.get(&type_id).cloned().and_then(|handle| handle.downcast::<E>().ok()))
+    self.inner.read().extension(type_id)
   }
 
   /// Inserts an extension if absent and returns the shared instance.
   ///
+  /// # Errors
+  ///
+  /// Returns [`RegisterExtensionError::AlreadyStarted`] when the actor system already finished
+  /// startup and the extension is not registered yet.
+  ///
   /// # Panics
   ///
   /// Panics when an extension exists for `type_id` but cannot be downcast to `E`.
-  pub fn extension_or_insert_with<E, F>(&self, type_id: TypeId, factory: F) -> ArcShared<E>
+  pub fn extension_or_insert_with<E, F>(
+    &self,
+    type_id: TypeId,
+    factory: F,
+  ) -> Result<ArcShared<E>, RegisterExtensionError>
   where
     E: core::any::Any + Send + Sync + 'static,
     F: FnOnce() -> ArcShared<E>, {
-    if let Some(existing) = self.extensions.with_read(|extensions| extensions.get(&type_id).cloned()) {
-      if let Ok(extension) = existing.downcast::<E>() {
-        return extension;
+    {
+      let guard = self.inner.read();
+      if let Some(existing) = guard.extension_raw(&type_id) {
+        if let Ok(extension) = existing.downcast::<E>() {
+          return Ok(extension);
+        }
+        panic!("extension type mismatch for id {type_id:?}");
       }
-      panic!("extension type mismatch for id {type_id:?}");
+      if guard.has_root_started() && guard.root_guardian_pid().is_some() {
+        return Err(RegisterExtensionError::AlreadyStarted);
+      }
     }
 
     let created = factory();
     let erased: ArcShared<dyn core::any::Any + Send + Sync + 'static> = created.clone();
 
-    self.extensions.with_write(|extensions| {
-      if let Some(existing) = extensions.get(&type_id) {
-        if let Ok(extension) = existing.clone().downcast::<E>() {
-          return extension;
-        }
-        panic!("extension type mismatch for id {type_id:?}");
+    let mut guard = self.inner.write();
+    if let Some(existing) = guard.extension_raw(&type_id) {
+      if let Ok(extension) = existing.downcast::<E>() {
+        return Ok(extension);
       }
-      extensions.insert(type_id, erased);
-      created
-    })
+      panic!("extension type mismatch for id {type_id:?}");
+    }
+    if guard.has_root_started() && guard.root_guardian_pid().is_some() {
+      return Err(RegisterExtensionError::AlreadyStarted);
+    }
+    guard.insert_extension(type_id, erased);
+    Ok(created)
   }
 
   /// Returns an extension by its type.
@@ -433,14 +441,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   pub fn extension_by_type<E>(&self) -> Option<ArcShared<E>>
   where
     E: core::any::Any + Send + Sync + 'static, {
-    self.extensions.with_read(|extensions| {
-      for handle in extensions.values() {
-        if let Ok(extension) = handle.clone().downcast::<E>() {
-          return Some(extension);
-        }
-      }
-      None
-    })
+    self.inner.read().extension_by_type()
   }
 
   /// Installs an actor ref provider.

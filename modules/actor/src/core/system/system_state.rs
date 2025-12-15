@@ -28,9 +28,9 @@ use self::path_identity::PathIdentity;
 use super::{
   ActorPathRegistrySharedGeneric, ActorRefProvider, ActorRefProviderCaller, ActorRefProviderCallersSharedGeneric,
   ActorRefProviderHandle, ActorRefProviderSharedGeneric, ActorRefProvidersSharedGeneric, AskFuturesSharedGeneric,
-  AuthorityState, CellsSharedGeneric, ExtensionsSharedGeneric, GuardianKind, GuardiansStateSharedGeneric,
-  RegistriesSharedGeneric, RemoteAuthorityError, RemoteAuthorityManagerSharedGeneric, RemoteWatchHook,
-  RemoteWatchHookDynSharedGeneric, RemotingConfig, TempActorsSharedGeneric, extra_top_levels::ExtraTopLevelsGeneric,
+  AuthorityState, CellsSharedGeneric, GuardianKind, GuardiansStateSharedGeneric, RegistriesSharedGeneric,
+  RemoteAuthorityError, RemoteAuthorityManagerSharedGeneric, RemoteWatchHook, RemoteWatchHookDynSharedGeneric,
+  RemotingConfig, TempActorsSharedGeneric, extensions::ExtensionsGeneric, extra_top_levels::ExtraTopLevelsGeneric,
 };
 use crate::core::{
   actor_prim::{
@@ -85,7 +85,7 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   failure_stop_total: AtomicU64,
   failure_escalate_total: AtomicU64,
   failure_inflight: AtomicU64,
-  extensions: ExtensionsSharedGeneric<TB>,
+  extensions: ExtensionsGeneric<TB>,
   actor_ref_providers: ActorRefProvidersSharedGeneric<TB>,
   actor_ref_provider_callers_by_scheme: ActorRefProviderCallersSharedGeneric<TB>,
   remote_watch_hook: RemoteWatchHookDynSharedGeneric<TB>,
@@ -140,7 +140,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       failure_stop_total: AtomicU64::new(0),
       failure_escalate_total: AtomicU64::new(0),
       failure_inflight: AtomicU64::new(0),
-      extensions: ExtensionsSharedGeneric::default(),
+      extensions: ExtensionsGeneric::default(),
       actor_ref_providers: ActorRefProvidersSharedGeneric::default(),
       remote_watch_hook: RemoteWatchHookDynSharedGeneric::noop(),
       dispatchers,
@@ -558,10 +558,38 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     self.dead_letter.clone()
   }
 
-  /// Returns the shared extensions registry.
+  /// Returns `true` when an extension for the provided [`TypeId`] is registered.
   #[must_use]
-  pub(crate) fn extensions_store(&self) -> ExtensionsSharedGeneric<TB> {
-    self.extensions.clone()
+  pub(crate) fn has_extension(&self, type_id: TypeId) -> bool {
+    self.extensions.contains_key(&type_id)
+  }
+
+  /// Returns an extension by [`TypeId`].
+  pub(crate) fn extension<E>(&self, type_id: TypeId) -> Option<ArcShared<E>>
+  where
+    E: Any + Send + Sync + 'static, {
+    self.extensions.get(&type_id).cloned().and_then(|handle| handle.downcast::<E>().ok())
+  }
+
+  /// Returns a raw extension handle by [`TypeId`].
+  pub(crate) fn extension_raw(&self, type_id: &TypeId) -> Option<ArcShared<dyn Any + Send + Sync + 'static>> {
+    self.extensions.get(type_id).cloned()
+  }
+
+  /// Inserts an extension.
+  pub(crate) fn insert_extension(&mut self, type_id: TypeId, extension: ArcShared<dyn Any + Send + Sync + 'static>) {
+    self.extensions.insert(type_id, extension);
+  }
+
+  pub(crate) fn extension_by_type<E>(&self) -> Option<ArcShared<E>>
+  where
+    E: Any + Send + Sync + 'static, {
+    for handle in self.extensions.values() {
+      if let Ok(extension) = handle.clone().downcast::<E>() {
+        return Some(extension);
+      }
+    }
+    None
   }
 
   /// Registers an ask future so the actor system can track its completion.
