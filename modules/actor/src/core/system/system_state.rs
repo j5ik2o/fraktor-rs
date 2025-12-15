@@ -27,11 +27,11 @@ use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 use self::path_identity::PathIdentity;
 use super::{
   ActorPathRegistrySharedGeneric, ActorRefProvider, ActorRefProviderCaller, ActorRefProviderHandle,
-  ActorRefProviderSharedGeneric, AskFuturesSharedGeneric, AuthorityState, CellsSharedGeneric, ExtensionsSharedGeneric,
-  GuardianKind, GuardiansStateSharedGeneric, RegistriesSharedGeneric, RemoteAuthorityError,
-  RemoteAuthorityManagerSharedGeneric, RemoteWatchHook, RemoteWatchHookDynSharedGeneric, RemotingConfig,
-  TempActorsSharedGeneric, actor_ref_provider_callers::ActorRefProviderCallersGeneric,
-  actor_ref_providers::ActorRefProvidersGeneric, extra_top_levels::ExtraTopLevelsGeneric,
+  ActorRefProviderSharedGeneric, AskFuturesSharedGeneric, AuthorityState, CellsSharedGeneric, GuardianKind,
+  GuardiansStateSharedGeneric, RegistriesSharedGeneric, RemoteAuthorityError, RemoteAuthorityManagerSharedGeneric,
+  RemoteWatchHook, RemoteWatchHookDynSharedGeneric, RemotingConfig, TempActorsSharedGeneric,
+  actor_ref_provider_callers::ActorRefProviderCallersGeneric, actor_ref_providers::ActorRefProvidersGeneric,
+  extensions::ExtensionsGeneric, extra_top_levels::ExtraTopLevelsGeneric,
 };
 use crate::core::{
   actor_prim::{
@@ -89,7 +89,7 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   failure_stop_total: AtomicU64,
   failure_escalate_total: AtomicU64,
   failure_inflight: AtomicU64,
-  extensions: ExtensionsSharedGeneric<TB>,
+  extensions: ExtensionsGeneric<TB>,
   actor_ref_providers: ActorRefProvidersGeneric<TB>,
   actor_ref_provider_callers_by_scheme: ActorRefProviderCallersGeneric<TB>,
   remote_watch_hook: RemoteWatchHookDynSharedGeneric<TB>,
@@ -148,7 +148,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       failure_stop_total: AtomicU64::new(0),
       failure_escalate_total: AtomicU64::new(0),
       failure_inflight: AtomicU64::new(0),
-      extensions: ExtensionsSharedGeneric::default(),
+      extensions: ExtensionsGeneric::default(),
       actor_ref_providers: ActorRefProvidersGeneric::default(),
       remote_watch_hook: RemoteWatchHookDynSharedGeneric::noop(),
       dispatchers,
@@ -579,39 +579,35 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   /// Returns `true` when an extension for the provided [`TypeId`] is registered.
   #[must_use]
   pub(crate) fn has_extension(&self, type_id: TypeId) -> bool {
-    self.extensions.with_read(|extensions| extensions.contains_key(&type_id))
+    self.extensions.contains_key(&type_id)
   }
 
   /// Returns an extension by [`TypeId`].
   pub(crate) fn extension<E>(&self, type_id: TypeId) -> Option<ArcShared<E>>
   where
     E: Any + Send + Sync + 'static, {
-    self
-      .extensions
-      .with_read(|extensions| extensions.get(&type_id).cloned().and_then(|handle| handle.downcast::<E>().ok()))
+    self.extensions.get(&type_id).cloned().and_then(|handle| handle.downcast::<E>().ok())
   }
 
   /// Returns a raw extension handle by [`TypeId`].
   pub(crate) fn extension_raw(&self, type_id: &TypeId) -> Option<ArcShared<dyn Any + Send + Sync + 'static>> {
-    self.extensions.with_read(|extensions| extensions.get(type_id).cloned())
+    self.extensions.get(type_id).cloned()
   }
 
   /// Inserts an extension.
-  pub(crate) fn insert_extension(&self, type_id: TypeId, extension: ArcShared<dyn Any + Send + Sync + 'static>) {
-    self.extensions.with_write(|extensions| extensions.insert(type_id, extension));
+  pub(crate) fn insert_extension(&mut self, type_id: TypeId, extension: ArcShared<dyn Any + Send + Sync + 'static>) {
+    self.extensions.insert(type_id, extension);
   }
 
   pub(crate) fn extension_by_type<E>(&self) -> Option<ArcShared<E>>
   where
     E: Any + Send + Sync + 'static, {
-    self.extensions.with_read(|extensions| {
-      for handle in extensions.values() {
-        if let Ok(extension) = handle.clone().downcast::<E>() {
-          return Some(extension);
-        }
+    for handle in self.extensions.values() {
+      if let Ok(extension) = handle.clone().downcast::<E>() {
+        return Some(extension);
       }
-      None
-    })
+    }
+    None
   }
 
   /// Registers an ask future so the actor system can track its completion.

@@ -422,7 +422,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
     let created = factory();
     let erased: ArcShared<dyn core::any::Any + Send + Sync + 'static> = created.clone();
 
-    let guard = self.inner.read();
+    let mut guard = self.inner.write();
     if let Some(existing) = guard.extension_raw(&type_id) {
       if let Ok(extension) = existing.downcast::<E>() {
         return Ok(extension);
