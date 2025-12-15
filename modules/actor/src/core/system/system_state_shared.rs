@@ -27,7 +27,7 @@ use crate::core::{
   event_stream::{EventStreamEvent, EventStreamSharedGeneric, TickDriverSnapshot},
   futures::ActorFutureSharedGeneric,
   logging::LogLevel,
-  mailbox::MailboxesSharedGeneric,
+  mailbox::MailboxesGeneric,
   messaging::{AnyMessageGeneric, FailurePayload, SystemMessage},
   scheduler::{SchedulerContextSharedGeneric, TaskRunSummary, TickDriverRuntime},
   spawn::SpawnError,
@@ -43,7 +43,7 @@ pub struct SystemStateSharedGeneric<TB: RuntimeToolbox + 'static> {
   event_stream:     EventStreamSharedGeneric<TB>,
   dead_letter:      DeadLetterSharedGeneric<TB>,
   dispatchers:      DispatchersSharedGeneric<TB>,
-  mailboxes:        MailboxesSharedGeneric<TB>,
+  mailboxes:        ArcShared<MailboxesGeneric<TB>>,
   scheduler_ctx:    SchedulerContextSharedGeneric<TB>,
   tick_driver_rt:   TickDriverRuntime<TB>,
   path_registry:    ActorPathRegistrySharedGeneric<TB>,
@@ -552,7 +552,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
 
   /// Returns the mailbox registry.
   #[must_use]
-  pub fn mailboxes(&self) -> MailboxesSharedGeneric<TB> {
+  pub fn mailboxes(&self) -> ArcShared<MailboxesGeneric<TB>> {
     self.mailboxes.clone()
   }
 

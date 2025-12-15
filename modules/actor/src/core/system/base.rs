@@ -64,10 +64,25 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   pub fn new_empty() -> Self
   where
     TB: Default, {
+    Self::new_empty_with(|config| config)
+  }
+
+  /// Creates an empty actor system without any guardian using a customizable config (testing only).
+  ///
+  /// # Panics
+  ///
+  /// Panics if the default test-support configuration fails to build.
+  #[must_use]
+  #[cfg(any(test, feature = "test-support"))]
+  pub fn new_empty_with<F>(configure: F) -> Self
+  where
+    TB: Default,
+    F: FnOnce(ActorSystemConfigGeneric<TB>) -> ActorSystemConfigGeneric<TB>, {
     let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
     let scheduler_config = crate::core::scheduler::SchedulerConfig::default().with_runner_api_enabled(true);
     let config =
       ActorSystemConfigGeneric::default().with_scheduler_config(scheduler_config).with_tick_driver(tick_driver);
+    let config = configure(config);
     let state = match SystemStateGeneric::build_from_config(&config) {
       | Ok(state) => state,
       | Err(error) => panic!("default test-support config should always build: {error:?}"),
@@ -597,11 +612,8 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
       }
     }
     if let Some(mailbox_id) = resolved.mailbox_id() {
-      let config = self
-        .state
-        .mailboxes()
-        .with_read(|m| m.resolve(mailbox_id))
-        .map_err(|error| SpawnError::invalid_props(error.to_string()))?;
+      let config =
+        self.state.mailboxes().resolve(mailbox_id).map_err(|error| SpawnError::invalid_props(error.to_string()))?;
       resolved = resolved.with_resolved_mailbox(config);
     }
     Ok(resolved)

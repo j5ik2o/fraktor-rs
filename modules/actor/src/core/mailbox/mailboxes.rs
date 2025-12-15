@@ -20,6 +20,12 @@ pub struct MailboxesGeneric<TB: RuntimeToolbox + 'static> {
 /// Type alias bound to the default toolbox.
 pub type Mailboxes = MailboxesGeneric<NoStdToolbox>;
 
+impl<TB: RuntimeToolbox + 'static> Clone for MailboxesGeneric<TB> {
+  fn clone(&self) -> Self {
+    Self { entries: self.entries.clone(), _marker: core::marker::PhantomData }
+  }
+}
+
 impl<TB: RuntimeToolbox + 'static> MailboxesGeneric<TB> {
   /// Creates an empty mailbox registry.
   #[must_use]
@@ -39,6 +45,13 @@ impl<TB: RuntimeToolbox + 'static> MailboxesGeneric<TB> {
     }
     self.entries.insert(id, config);
     Ok(())
+  }
+
+  /// Registers or updates a mailbox configuration for the provided identifier.
+  ///
+  /// If the identifier already exists, the configuration is updated.
+  pub fn register_or_update(&mut self, id: impl Into<String>, config: MailboxConfig) {
+    self.entries.insert(id.into(), config);
   }
 
   /// Resolves the mailbox configuration for the provided identifier.

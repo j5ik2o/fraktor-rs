@@ -44,7 +44,7 @@ use crate::core::{
   event_stream::{EventStreamEvent, EventStreamSharedGeneric, RemoteAuthorityEvent, TickDriverSnapshot},
   futures::ActorFutureSharedGeneric,
   logging::{LogEvent, LogLevel},
-  mailbox::MailboxesSharedGeneric,
+  mailbox::MailboxesGeneric,
   messaging::{AnyMessageGeneric, FailurePayload, SystemMessage},
   scheduler::{
     SchedulerConfig, SchedulerContextSharedGeneric, TaskRunSummary, TickDriverControl, TickDriverHandleGeneric,
@@ -93,7 +93,7 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   actor_ref_provider_callers_by_scheme: ActorRefProviderCallersSharedGeneric<TB>,
   remote_watch_hook: RemoteWatchHookDynSharedGeneric<TB>,
   dispatchers: DispatchersSharedGeneric<TB>,
-  mailboxes: MailboxesSharedGeneric<TB>,
+  mailboxes: ArcShared<MailboxesGeneric<TB>>,
   path_identity: PathIdentity,
   actor_path_registry: ActorPathRegistrySharedGeneric<TB>,
   remote_authority_mgr: RemoteAuthorityManagerSharedGeneric<TB>,
@@ -115,8 +115,8 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     let dead_letter = DeadLetterSharedGeneric::with_capacity(event_stream.clone(), DEAD_LETTER_CAPACITY);
     let dispatchers = DispatchersSharedGeneric::new(DispatchersGeneric::new());
     dispatchers.with_write(|d| d.ensure_default());
-    let mailboxes = MailboxesSharedGeneric::<TB>::new();
-    mailboxes.with_write(|m| m.ensure_default());
+    let mut mailboxes = MailboxesGeneric::<TB>::new();
+    mailboxes.ensure_default();
     let scheduler_config = SchedulerConfig::default();
     let toolbox = TB::default();
     let scheduler_context =
@@ -150,7 +150,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       actor_ref_providers: ActorRefProvidersSharedGeneric::default(),
       remote_watch_hook: RemoteWatchHookDynSharedGeneric::noop(),
       dispatchers,
-      mailboxes,
+      mailboxes: ArcShared::new(mailboxes),
       path_identity: PathIdentity::default(),
       actor_path_registry: ActorPathRegistrySharedGeneric::default(),
       remote_authority_mgr: RemoteAuthorityManagerSharedGeneric::default(),
@@ -220,6 +220,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   pub fn apply_actor_system_config(&mut self, config: &ActorSystemConfigGeneric<TB>) {
     self.path_identity.system_name = config.system_name().to_string();
     self.path_identity.guardian_kind = config.default_guardian();
+    self.mailboxes = ArcShared::new(config.mailboxes().clone());
     if let Some(remoting) = config.remoting_config() {
       self.path_identity.canonical_host = Some(remoting.canonical_host().to_string());
       self.path_identity.canonical_port = remoting.canonical_port();
@@ -793,7 +794,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
 
   /// Returns the mailbox registry.
   #[must_use]
-  pub fn mailboxes(&self) -> MailboxesSharedGeneric<TB> {
+  pub fn mailboxes(&self) -> ArcShared<MailboxesGeneric<TB>> {
     self.mailboxes.clone()
   }
 

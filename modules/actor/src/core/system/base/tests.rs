@@ -387,17 +387,16 @@ fn spawn_child_fails_when_dispatcher_id_not_registered() {
 fn spawn_child_resolves_mailbox_id_with_requirements() {
   use fraktor_utils_rs::core::collections::queue::capabilities::{QueueCapabilityRegistry, QueueCapabilitySet};
 
-  let system = ActorSystem::new_empty();
+  let registry = QueueCapabilityRegistry::new(QueueCapabilitySet::defaults().with_deque(false));
+  let constrained =
+    MailboxConfig::default().with_requirement(MailboxRequirement::requires_deque()).with_capabilities(registry);
+
+  let system = ActorSystem::new_empty_with(|config| config.with_mailbox("constrained", constrained));
   let parent_pid = system.allocate_pid();
   let parent_name = system.state().assign_name(None, Some("parent"), parent_pid).expect("parent name");
   let parent_cell = ActorCell::create(system.state(), parent_pid, None, parent_name, &Props::from_fn(|| TestActor))
     .expect("create actor cell");
   system.state().register_cell(parent_cell);
-
-  let registry = QueueCapabilityRegistry::new(QueueCapabilitySet::defaults().with_deque(false));
-  let constrained =
-    MailboxConfig::default().with_requirement(MailboxRequirement::requires_deque()).with_capabilities(registry);
-  system.extended().mailboxes().with_write(|m| m.register("constrained", constrained)).expect("register mailbox");
 
   let props = Props::from_fn(|| TestActor)
     .with_mailbox_id("constrained")
