@@ -9,7 +9,7 @@ use fraktor_utils_rs::core::{
 
 use crate::core::{
   actor_prim::actor_path::GuardianKind as PathGuardianKind,
-  dispatcher::DispatcherConfigGeneric,
+  dispatcher::{DispatcherConfigGeneric, DispatchersGeneric},
   extension::ExtensionInstallers,
   mailbox::MailboxesGeneric,
   props::MailboxConfig,
@@ -32,6 +32,7 @@ where
   extension_installers:      Option<ExtensionInstallers<TB>>,
   provider_installer:        Option<ArcShared<dyn ActorRefProviderInstaller<TB>>>,
   default_dispatcher_config: Option<DispatcherConfigGeneric<TB>>,
+  dispatchers:               DispatchersGeneric<TB>,
   mailboxes:                 MailboxesGeneric<TB>,
 }
 
@@ -96,7 +97,15 @@ where
   /// Sets the default dispatcher configuration used when Props don't specify a dispatcher.
   #[must_use]
   pub fn with_default_dispatcher(mut self, config: DispatcherConfigGeneric<TB>) -> Self {
+    self.dispatchers.register_or_update("default", config.clone());
     self.default_dispatcher_config = Some(config);
+    self
+  }
+
+  /// Registers or updates a dispatcher configuration.
+  #[must_use]
+  pub fn with_dispatcher(mut self, id: impl Into<String>, config: DispatcherConfigGeneric<TB>) -> Self {
+    self.dispatchers.register_or_update(id, config);
     self
   }
 
@@ -174,6 +183,12 @@ where
     self.default_dispatcher_config.as_ref()
   }
 
+  /// Returns the dispatcher registry configured for the system.
+  #[must_use]
+  pub const fn dispatchers(&self) -> &DispatchersGeneric<TB> {
+    &self.dispatchers
+  }
+
   /// Returns the mailbox registry configured for the system.
   #[must_use]
   pub const fn mailboxes(&self) -> &MailboxesGeneric<TB> {
@@ -186,6 +201,8 @@ where
   TB: RuntimeToolbox + 'static,
 {
   fn default() -> Self {
+    let mut dispatchers = DispatchersGeneric::new();
+    dispatchers.ensure_default();
     let mut mailboxes = MailboxesGeneric::new();
     mailboxes.ensure_default();
     Self {
@@ -197,6 +214,7 @@ where
       extension_installers: None,
       provider_installer: None,
       default_dispatcher_config: None,
+      dispatchers,
       mailboxes,
     }
   }

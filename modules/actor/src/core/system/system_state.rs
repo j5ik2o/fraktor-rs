@@ -39,7 +39,7 @@ use crate::core::{
     actor_ref::ActorRefGeneric,
   },
   dead_letter::{DeadLetterEntryGeneric, DeadLetterReason, DeadLetterSharedGeneric},
-  dispatcher::{DispatchersGeneric, DispatchersSharedGeneric},
+  dispatcher::DispatchersGeneric,
   error::{ActorError, SendError},
   event_stream::{EventStreamEvent, EventStreamSharedGeneric, RemoteAuthorityEvent, TickDriverSnapshot},
   futures::ActorFutureSharedGeneric,
@@ -92,7 +92,7 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   actor_ref_providers: ActorRefProvidersSharedGeneric<TB>,
   actor_ref_provider_callers_by_scheme: ActorRefProviderCallersSharedGeneric<TB>,
   remote_watch_hook: RemoteWatchHookDynSharedGeneric<TB>,
-  dispatchers: DispatchersSharedGeneric<TB>,
+  dispatchers: ArcShared<DispatchersGeneric<TB>>,
   mailboxes: ArcShared<MailboxesGeneric<TB>>,
   path_identity: PathIdentity,
   actor_path_registry: ActorPathRegistrySharedGeneric<TB>,
@@ -113,8 +113,9 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     const DEAD_LETTER_CAPACITY: usize = 512;
     let event_stream = EventStreamSharedGeneric::default();
     let dead_letter = DeadLetterSharedGeneric::with_capacity(event_stream.clone(), DEAD_LETTER_CAPACITY);
-    let dispatchers = DispatchersSharedGeneric::new(DispatchersGeneric::new());
-    dispatchers.with_write(|d| d.ensure_default());
+    let mut dispatchers = DispatchersGeneric::new();
+    dispatchers.ensure_default();
+    let dispatchers = ArcShared::new(dispatchers);
     let mut mailboxes = MailboxesGeneric::<TB>::new();
     mailboxes.ensure_default();
     let scheduler_config = SchedulerConfig::default();
@@ -220,6 +221,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   pub fn apply_actor_system_config(&mut self, config: &ActorSystemConfigGeneric<TB>) {
     self.path_identity.system_name = config.system_name().to_string();
     self.path_identity.guardian_kind = config.default_guardian();
+    self.dispatchers = ArcShared::new(config.dispatchers().clone());
     self.mailboxes = ArcShared::new(config.mailboxes().clone());
     if let Some(remoting) = config.remoting_config() {
       self.path_identity.canonical_host = Some(remoting.canonical_host().to_string());
@@ -229,12 +231,6 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       self.path_identity.canonical_host = None;
       self.path_identity.canonical_port = None;
       self.path_identity.quarantine_duration = path_identity::DEFAULT_QUARANTINE_DURATION;
-    }
-
-    // Register default dispatcher if configured
-    if let Some(dispatcher_config) = config.default_dispatcher_config() {
-      // Overwrite the "default" entry using register_or_update
-      self.dispatchers.with_write(|d| d.register_or_update("default", dispatcher_config.clone()));
     }
 
     let policy = ReservationPolicy::with_quarantine_duration(self.default_quarantine_duration());
@@ -788,7 +784,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
 
   /// Returns the dispatcher registry.
   #[must_use]
-  pub fn dispatchers(&self) -> DispatchersSharedGeneric<TB> {
+  pub fn dispatchers(&self) -> ArcShared<DispatchersGeneric<TB>> {
     self.dispatchers.clone()
   }
 

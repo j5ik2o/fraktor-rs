@@ -440,16 +440,10 @@ fn actor_system_terminate_when_already_terminated() {
 
 #[test]
 fn spawn_does_not_block_when_dispatcher_never_runs() {
-  let system = ActorSystem::new_empty();
-  let log: ArcShared<NoStdMutex<Vec<&'static str>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
-
   // Register NoopExecutor as "noop" dispatcher
   let noop_config = DispatcherConfig::from_executor(Box::new(NoopExecutor::new()));
-  system
-    .state()
-    .dispatchers()
-    .with_write(|d| d.register("noop", noop_config.clone()))
-    .expect("register noop dispatcher");
+  let system = ActorSystem::new_empty_with(|config| config.with_dispatcher("noop", noop_config));
+  let log: ArcShared<NoStdMutex<Vec<&'static str>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
 
   let props = Props::from_fn({
     let log = log.clone();

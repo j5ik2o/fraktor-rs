@@ -22,7 +22,7 @@ use crate::core::{
     actor_ref::ActorRefGeneric,
   },
   dead_letter::{DeadLetterEntryGeneric, DeadLetterReason, DeadLetterSharedGeneric},
-  dispatcher::DispatchersSharedGeneric,
+  dispatcher::DispatchersGeneric,
   error::{ActorError, SendError},
   event_stream::{EventStreamEvent, EventStreamSharedGeneric, TickDriverSnapshot},
   futures::ActorFutureSharedGeneric,
@@ -42,7 +42,7 @@ pub struct SystemStateSharedGeneric<TB: RuntimeToolbox + 'static> {
   pub(crate) inner: ArcShared<ToolboxRwLock<SystemStateGeneric<TB>, TB>>,
   event_stream:     EventStreamSharedGeneric<TB>,
   dead_letter:      DeadLetterSharedGeneric<TB>,
-  dispatchers:      DispatchersSharedGeneric<TB>,
+  dispatchers:      ArcShared<DispatchersGeneric<TB>>,
   mailboxes:        ArcShared<MailboxesGeneric<TB>>,
   scheduler_ctx:    SchedulerContextSharedGeneric<TB>,
   tick_driver_rt:   TickDriverRuntime<TB>,
@@ -546,7 +546,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
 
   /// Returns the dispatcher registry.
   #[must_use]
-  pub fn dispatchers(&self) -> DispatchersSharedGeneric<TB> {
+  pub fn dispatchers(&self) -> ArcShared<DispatchersGeneric<TB>> {
     self.dispatchers.clone()
   }
 

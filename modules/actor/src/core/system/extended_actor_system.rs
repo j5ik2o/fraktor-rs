@@ -14,7 +14,7 @@ use super::{
 };
 use crate::core::{
   actor_prim::{ChildRefGeneric, actor_ref::ActorRefGeneric},
-  dispatcher::DispatchersSharedGeneric,
+  dispatcher::DispatchersGeneric,
   extension::{Extension, ExtensionId},
   mailbox::MailboxesGeneric,
   props::PropsGeneric,
@@ -48,7 +48,7 @@ impl<TB: RuntimeToolbox + 'static> ExtendedActorSystemGeneric<TB> {
 
   /// Returns the dispatcher registry.
   #[must_use]
-  pub fn dispatchers(&self) -> DispatchersSharedGeneric<TB> {
+  pub fn dispatchers(&self) -> ArcShared<DispatchersGeneric<TB>> {
     self.inner.state().dispatchers()
   }
 
