@@ -8,11 +8,12 @@ use core::{any::TypeId, time::Duration};
 
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncRwLockFamily, ToolboxRwLock},
-  sync::{ArcShared, sync_rwlock_like::SyncRwLockLike},
+  sync::{ArcShared, SharedAccess, sync_rwlock_like::SyncRwLockLike},
 };
 
 use super::{
-  ActorRefProvider, ActorRefProviderSharedGeneric, AuthorityState, GuardianKind, RemoteAuthorityError, RemotingConfig,
+  ActorPathRegistrySharedGeneric, ActorRefProvider, ActorRefProviderSharedGeneric, AuthorityState,
+  ExtensionsSharedGeneric, GuardianKind, RemoteAuthorityError, RemoteAuthorityManagerSharedGeneric, RemotingConfig,
   SystemStateGeneric,
 };
 use crate::core::{
@@ -21,7 +22,7 @@ use crate::core::{
     actor_path::{ActorPath, ActorPathScheme},
     actor_ref::ActorRefGeneric,
   },
-  dead_letter::{DeadLetterEntryGeneric, DeadLetterReason},
+  dead_letter::{DeadLetterEntryGeneric, DeadLetterReason, DeadLetterSharedGeneric},
   dispatcher::DispatchersSharedGeneric,
   error::{ActorError, SendError},
   event_stream::{EventStreamEvent, EventStreamSharedGeneric, TickDriverSnapshot},
@@ -40,11 +41,31 @@ use crate::core::{
 /// to the underlying system state.
 pub struct SystemStateSharedGeneric<TB: RuntimeToolbox + 'static> {
   pub(crate) inner: ArcShared<ToolboxRwLock<SystemStateGeneric<TB>, TB>>,
+  event_stream:     EventStreamSharedGeneric<TB>,
+  dead_letter:      DeadLetterSharedGeneric<TB>,
+  extensions:       ExtensionsSharedGeneric<TB>,
+  dispatchers:      DispatchersSharedGeneric<TB>,
+  mailboxes:        MailboxesSharedGeneric<TB>,
+  scheduler_ctx:    SchedulerContextSharedGeneric<TB>,
+  tick_driver_rt:   TickDriverRuntime<TB>,
+  path_registry:    ActorPathRegistrySharedGeneric<TB>,
+  remote_mgr:       RemoteAuthorityManagerSharedGeneric<TB>,
 }
 
 impl<TB: RuntimeToolbox + 'static> Clone for SystemStateSharedGeneric<TB> {
   fn clone(&self) -> Self {
-    Self { inner: self.inner.clone() }
+    Self {
+      inner:          self.inner.clone(),
+      event_stream:   self.event_stream.clone(),
+      dead_letter:    self.dead_letter.clone(),
+      extensions:     self.extensions.clone(),
+      dispatchers:    self.dispatchers.clone(),
+      mailboxes:      self.mailboxes.clone(),
+      scheduler_ctx:  self.scheduler_ctx.clone(),
+      tick_driver_rt: self.tick_driver_rt.clone(),
+      path_registry:  self.path_registry.clone(),
+      remote_mgr:     self.remote_mgr.clone(),
+    }
   }
 }
 
@@ -52,13 +73,56 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   /// Creates a new shared system state.
   #[must_use]
   pub fn new(state: SystemStateGeneric<TB>) -> Self {
-    Self { inner: ArcShared::new(<TB::RwLockFamily as SyncRwLockFamily>::create(state)) }
+    let event_stream = state.event_stream();
+    let dead_letter = state.dead_letter_store();
+    let extensions = state.extensions_store();
+    let dispatchers = state.dispatchers();
+    let mailboxes = state.mailboxes();
+    let scheduler_ctx = state.scheduler_context();
+    let tick_driver_rt = state.tick_driver_runtime();
+    let path_registry = state.actor_path_registry().clone();
+    let remote_mgr = state.remote_authority_manager().clone();
+    let inner = ArcShared::new(<TB::RwLockFamily as SyncRwLockFamily>::create(state));
+    Self {
+      inner,
+      event_stream,
+      dead_letter,
+      extensions,
+      dispatchers,
+      mailboxes,
+      scheduler_ctx,
+      tick_driver_rt,
+      path_registry,
+      remote_mgr,
+    }
   }
 
   /// Creates a shared wrapper from an existing [`ArcShared`].
   #[must_use]
-  pub(crate) const fn from_arc_shared(inner: ArcShared<ToolboxRwLock<SystemStateGeneric<TB>, TB>>) -> Self {
-    Self { inner }
+  pub(crate) fn from_arc_shared(inner: ArcShared<ToolboxRwLock<SystemStateGeneric<TB>, TB>>) -> Self {
+    let guard = inner.read();
+    let event_stream = guard.event_stream();
+    let dead_letter = guard.dead_letter_store();
+    let extensions = guard.extensions_store();
+    let dispatchers = guard.dispatchers();
+    let mailboxes = guard.mailboxes();
+    let scheduler_ctx = guard.scheduler_context();
+    let tick_driver_rt = guard.tick_driver_runtime();
+    let path_registry = guard.actor_path_registry().clone();
+    let remote_mgr = guard.remote_authority_manager().clone();
+    drop(guard);
+    Self {
+      inner,
+      event_stream,
+      dead_letter,
+      extensions,
+      dispatchers,
+      mailboxes,
+      scheduler_ctx,
+      tick_driver_rt,
+      path_registry,
+      remote_mgr,
+    }
   }
 
   /// Returns the inner reference for direct access when needed.
@@ -293,13 +357,13 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   /// Returns the shared event stream handle.
   #[must_use]
   pub fn event_stream(&self) -> EventStreamSharedGeneric<TB> {
-    self.inner.read().event_stream()
+    self.event_stream.clone()
   }
 
   /// Returns a snapshot of deadletter entries.
   #[must_use]
   pub fn dead_letters(&self) -> Vec<DeadLetterEntryGeneric<TB>> {
-    self.inner.read().dead_letters()
+    self.dead_letter.entries()
   }
 
   /// Registers an ask future so the actor system can track its completion.
@@ -309,7 +373,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
 
   /// Publishes an event to all event stream subscribers.
   pub fn publish_event(&self, event: &EventStreamEvent<TB>) {
-    self.inner.read().publish_event(event);
+    self.event_stream.publish(event);
   }
 
   /// Emits a log event via the event stream.
@@ -320,7 +384,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   /// Returns `true` when an extension for the provided [`TypeId`] is registered.
   #[must_use]
   pub fn has_extension(&self, type_id: TypeId) -> bool {
-    self.inner.read().has_extension(type_id)
+    self.extensions.with_read(|extensions| extensions.contains_key(&type_id))
   }
 
   /// Returns an extension by [`TypeId`].
@@ -328,15 +392,40 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   pub fn extension<E>(&self, type_id: TypeId) -> Option<ArcShared<E>>
   where
     E: core::any::Any + Send + Sync + 'static, {
-    self.inner.read().extension(type_id)
+    self
+      .extensions
+      .with_read(|extensions| extensions.get(&type_id).cloned().and_then(|handle| handle.downcast::<E>().ok()))
   }
 
   /// Inserts an extension if absent and returns the shared instance.
+  ///
+  /// # Panics
+  ///
+  /// Panics when an extension exists for `type_id` but cannot be downcast to `E`.
   pub fn extension_or_insert_with<E, F>(&self, type_id: TypeId, factory: F) -> ArcShared<E>
   where
     E: core::any::Any + Send + Sync + 'static,
     F: FnOnce() -> ArcShared<E>, {
-    self.inner.read().extension_or_insert_with(type_id, factory)
+    if let Some(existing) = self.extensions.with_read(|extensions| extensions.get(&type_id).cloned()) {
+      if let Ok(extension) = existing.downcast::<E>() {
+        return extension;
+      }
+      panic!("extension type mismatch for id {type_id:?}");
+    }
+
+    let created = factory();
+    let erased: ArcShared<dyn core::any::Any + Send + Sync + 'static> = created.clone();
+
+    self.extensions.with_write(|extensions| {
+      if let Some(existing) = extensions.get(&type_id) {
+        if let Ok(extension) = existing.clone().downcast::<E>() {
+          return extension;
+        }
+        panic!("extension type mismatch for id {type_id:?}");
+      }
+      extensions.insert(type_id, erased);
+      created
+    })
   }
 
   /// Returns an extension by its type.
@@ -344,7 +433,14 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   pub fn extension_by_type<E>(&self) -> Option<ArcShared<E>>
   where
     E: core::any::Any + Send + Sync + 'static, {
-    self.inner.read().extension_by_type()
+    self.extensions.with_read(|extensions| {
+      for handle in extensions.values() {
+        if let Ok(extension) = handle.clone().downcast::<E>() {
+          return Some(extension);
+        }
+      }
+      None
+    })
   }
 
   /// Installs an actor ref provider.
@@ -450,13 +546,13 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   /// Returns the dispatcher registry.
   #[must_use]
   pub fn dispatchers(&self) -> DispatchersSharedGeneric<TB> {
-    self.inner.read().dispatchers()
+    self.dispatchers.clone()
   }
 
   /// Returns the mailbox registry.
   #[must_use]
   pub fn mailboxes(&self) -> MailboxesSharedGeneric<TB> {
-    self.inner.read().mailboxes()
+    self.mailboxes.clone()
   }
 
   /// Returns the remoting configuration when it has been configured.
@@ -468,25 +564,25 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   /// Returns the scheduler context.
   #[must_use]
   pub fn scheduler_context(&self) -> SchedulerContextSharedGeneric<TB> {
-    self.inner.read().scheduler_context()
+    self.scheduler_ctx.clone()
   }
 
   /// Returns the tick driver runtime.
   #[must_use]
   pub fn tick_driver_runtime(&self) -> TickDriverRuntime<TB> {
-    self.inner.read().tick_driver_runtime()
+    self.tick_driver_rt.clone()
   }
 
   /// Returns the last recorded tick driver snapshot when available.
   #[must_use]
   pub fn tick_driver_snapshot(&self) -> Option<TickDriverSnapshot> {
-    self.inner.read().tick_driver_snapshot()
+    self.scheduler_ctx.driver_snapshot()
   }
 
   /// Shuts down the scheduler context if configured.
   #[must_use]
   pub fn shutdown_scheduler(&self) -> Option<TaskRunSummary> {
-    self.inner.read().shutdown_scheduler()
+    Some(self.scheduler_ctx.shutdown())
   }
 
   /// Records a failure and routes it to the supervising hierarchy.
@@ -503,25 +599,25 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   pub fn with_actor_path_registry<R, F>(&self, f: F) -> R
   where
     F: FnOnce(&super::ActorPathRegistrySharedGeneric<TB>) -> R, {
-    f(self.inner.read().actor_path_registry())
+    f(&self.path_registry)
   }
 
   /// Returns a reference to the RemoteAuthorityManager.
   #[must_use]
   pub fn remote_authority_manager(&self) -> super::RemoteAuthorityManagerSharedGeneric<TB> {
-    self.inner.read().remote_authority_manager().clone()
+    self.remote_mgr.clone()
   }
 
   /// Returns the current authority state.
   #[must_use]
   pub fn remote_authority_state(&self, authority: &str) -> AuthorityState {
-    self.inner.read().remote_authority_state(authority)
+    self.remote_mgr.with_read(|mgr| mgr.state(authority))
   }
 
   /// Returns a snapshot of known remote authorities and their states.
   #[must_use]
   pub fn remote_authority_snapshots(&self) -> Vec<(String, AuthorityState)> {
-    self.inner.read().remote_authority_snapshots()
+    self.remote_mgr.with_read(|mgr| mgr.snapshots())
   }
 
   /// Marks the authority as connected and emits an event.

@@ -552,6 +552,18 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     self.dead_letter.entries()
   }
 
+  /// Returns the shared deadletter store.
+  #[must_use]
+  pub(crate) fn dead_letter_store(&self) -> DeadLetterSharedGeneric<TB> {
+    self.dead_letter.clone()
+  }
+
+  /// Returns the shared extensions registry.
+  #[must_use]
+  pub(crate) fn extensions_store(&self) -> ExtensionsSharedGeneric<TB> {
+    self.extensions.clone()
+  }
+
   /// Registers an ask future so the actor system can track its completion.
   pub(crate) fn register_ask_future(&self, future: ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>) {
     self.ask_futures.with_write(|ask_futures| ask_futures.push(future));
@@ -567,52 +579,6 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     let timestamp = self.monotonic_now();
     let event = LogEvent::new(level, message, timestamp, origin);
     self.event_stream.publish(&EventStreamEvent::Log(event));
-  }
-
-  /// Returns `true` when an extension for the provided [`TypeId`] is registered.
-  pub(crate) fn has_extension(&self, type_id: TypeId) -> bool {
-    self.extensions.with_read(|extensions| extensions.contains_key(&type_id))
-  }
-
-  /// Returns an extension by [`TypeId`].
-  pub(crate) fn extension<E>(&self, type_id: TypeId) -> Option<ArcShared<E>>
-  where
-    E: Any + Send + Sync + 'static, {
-    self
-      .extensions
-      .with_read(|extensions| extensions.get(&type_id).cloned().and_then(|handle| handle.downcast::<E>().ok()))
-  }
-
-  /// Inserts an extension if absent and returns the shared instance.
-  pub(crate) fn extension_or_insert_with<E, F>(&self, type_id: TypeId, factory: F) -> ArcShared<E>
-  where
-    E: Any + Send + Sync + 'static,
-    F: FnOnce() -> ArcShared<E>, {
-    self.extensions.with_write(|extensions| {
-      if let Some(existing) = extensions.get(&type_id) {
-        if let Ok(extension) = existing.clone().downcast::<E>() {
-          return extension;
-        }
-        panic!("extension type mismatch for id {type_id:?}");
-      }
-      let extension = factory();
-      let erased: ArcShared<dyn Any + Send + Sync + 'static> = extension.clone();
-      extensions.insert(type_id, erased);
-      extension
-    })
-  }
-
-  pub(crate) fn extension_by_type<E>(&self) -> Option<ArcShared<E>>
-  where
-    E: Any + Send + Sync + 'static, {
-    self.extensions.with_read(|extensions| {
-      for handle in extensions.values() {
-        if let Ok(extension) = handle.clone().downcast::<E>() {
-          return Some(extension);
-        }
-      }
-      None
-    })
   }
 
   pub(crate) fn install_actor_ref_provider<P>(&self, provider: &ActorRefProviderSharedGeneric<TB, P>)
