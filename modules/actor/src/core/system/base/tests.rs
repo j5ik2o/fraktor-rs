@@ -638,11 +638,11 @@ fn resolve_actor_ref_injects_canonical_authority() {
   let config = ActorSystemConfig::default().with_remoting_config(remoting).with_tick_driver(tick_driver);
   let state = SystemState::build_from_config(&config).expect("state");
   let system = ActorSystem::from_state(SystemStateShared::new(state));
-  system.state().mark_root_started();
 
   let recorded = ArcShared::new(NoStdMutex::new(None));
   let provider = ActorRefProviderSharedGeneric::new(DummyActorRefProvider::new(recorded.clone()));
-  system.extended().register_actor_ref_provider(&provider);
+  system.extended().register_actor_ref_provider(&provider).expect("register provider");
+  system.state().mark_root_started();
 
   let path = ActorPath::root().child("svc");
   let resolved = system.resolve_actor_ref(path.clone());

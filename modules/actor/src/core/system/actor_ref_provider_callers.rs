@@ -1,9 +1,10 @@
 //! Actor reference provider callers registry by scheme.
 
-use alloc::boxed::Box;
-
 use ahash::RandomState;
-use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
+use fraktor_utils_rs::core::{
+  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
+  sync::ArcShared,
+};
 use hashbrown::HashMap;
 
 use crate::core::{
@@ -12,7 +13,7 @@ use crate::core::{
 };
 
 /// Type alias for an actor reference provider caller function.
-pub(crate) type ActorRefProviderCaller<TB> = Box<
+pub(crate) type ActorRefProviderCaller<TB> = ArcShared<
   dyn Fn(crate::core::actor_prim::actor_path::ActorPath) -> Result<ActorRefGeneric<TB>, ActorError>
     + Send
     + Sync

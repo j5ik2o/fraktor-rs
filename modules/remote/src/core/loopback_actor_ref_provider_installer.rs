@@ -63,7 +63,7 @@ impl<TB: RuntimeToolbox + 'static> ActorRefProviderInstaller<TB> for LoopbackAct
       .map_err(|error| ActorSystemBuildError::Configuration(format!("{error}")))?;
     let shared = RemoteWatchHookShared::new(provider, &[ActorPathScheme::FraktorTcp]);
     let shared_provider = ActorRefProviderSharedGeneric::new(shared.clone());
-    extended.register_actor_ref_provider(&shared_provider);
+    extended.register_actor_ref_provider(&shared_provider)?;
     extended.register_remote_watch_hook(shared);
 
     // Always register loopback routing for LoopbackActorRefProvider

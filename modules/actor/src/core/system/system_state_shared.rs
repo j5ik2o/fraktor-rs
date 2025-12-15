@@ -31,7 +31,7 @@ use crate::core::{
   messaging::{AnyMessageGeneric, FailurePayload, SystemMessage},
   scheduler::{SchedulerContextSharedGeneric, TaskRunSummary, TickDriverRuntime},
   spawn::SpawnError,
-  system::{ActorSystemConfigGeneric, RegisterExtensionError, RegisterExtraTopLevelError},
+  system::{ActorSystemBuildError, ActorSystemConfigGeneric, RegisterExtensionError, RegisterExtraTopLevelError},
 };
 
 /// Shared wrapper for [`SystemStateGeneric`] providing thread-safe access.
@@ -445,10 +445,24 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   }
 
   /// Installs an actor ref provider.
-  pub fn install_actor_ref_provider<P>(&self, provider: &ActorRefProviderSharedGeneric<TB, P>)
+  ///
+  /// # Errors
+  ///
+  /// Returns [`ActorSystemBuildError::Configuration`] when called after system startup.
+  pub fn install_actor_ref_provider<P>(
+    &self,
+    provider: &ActorRefProviderSharedGeneric<TB, P>,
+  ) -> Result<(), ActorSystemBuildError>
   where
     P: ActorRefProvider<TB> + core::any::Any + Send + Sync + 'static, {
-    self.inner.read().install_actor_ref_provider(provider);
+    let mut guard = self.inner.write();
+    if guard.has_root_started() {
+      return Err(ActorSystemBuildError::Configuration(
+        "actor-ref provider registration is only allowed before system startup".into(),
+      ));
+    }
+    guard.install_actor_ref_provider(provider);
+    Ok(())
   }
 
   /// Registers a remote watch hook.
@@ -471,7 +485,11 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
     scheme: ActorPathScheme,
     path: ActorPath,
   ) -> Option<Result<ActorRefGeneric<TB>, ActorError>> {
-    self.inner.read().actor_ref_provider_call_for_scheme(scheme, path)
+    let caller = {
+      let guard = self.inner.read();
+      guard.actor_ref_provider_caller_for_scheme(scheme)?
+    };
+    Some(caller(path))
   }
 
   /// Registers a child under the specified parent pid.

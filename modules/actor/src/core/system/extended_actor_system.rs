@@ -9,7 +9,7 @@ use fraktor_utils_rs::core::{
 };
 
 use super::{
-  ActorRefProvider, ActorRefProviderSharedGeneric, ActorSystemGeneric, RegisterExtensionError,
+  ActorRefProvider, ActorRefProviderSharedGeneric, ActorSystemBuildError, ActorSystemGeneric, RegisterExtensionError,
   RegisterExtraTopLevelError, RemoteWatchHook,
 };
 use crate::core::{
@@ -96,10 +96,17 @@ impl<TB: RuntimeToolbox + 'static> ExtendedActorSystemGeneric<TB> {
   }
 
   /// Registers an actor-ref provider for later retrieval.
-  pub fn register_actor_ref_provider<P>(&self, provider: &ActorRefProviderSharedGeneric<TB, P>)
+  ///
+  /// # Errors
+  ///
+  /// Returns [`ActorSystemBuildError::Configuration`] when called after system startup.
+  pub fn register_actor_ref_provider<P>(
+    &self,
+    provider: &ActorRefProviderSharedGeneric<TB, P>,
+  ) -> Result<(), ActorSystemBuildError>
   where
     P: ActorRefProvider<TB> + Any + Send + Sync + 'static, {
-    self.inner.state().install_actor_ref_provider(provider);
+    self.inner.state().install_actor_ref_provider(provider)
   }
 
   /// Returns the actor-ref provider of the requested type when registered.
