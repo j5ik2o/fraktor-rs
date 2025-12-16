@@ -23,6 +23,7 @@ You should not respond to this context unless it is highly relevant to your task
 - 内部可変性をデフォルトでは禁止する。可変操作はまず&mut selfで設計すること。なんでもかんでも&selfメソッド+内部可変性とするとRustらしさが失われます。
 - traitにある&mut selfメソッドはセマンティクスを重視した設計(戻り値を返さないで状態を変えるメソッドは&selfではなく&mut selfが原則です)になっているので、安易に&selfメソッド+内部可変性にリファクタリングしないこと。変更する場合は人間から許可を取ること
 - &mut selfなメソッドを持つ型Aが共有される場合は、innerにArc<ToolboxMutex<A>>を保持するASharedを新設すること。つまり内部可変性はこのときだけ許容されます。具体的にはこのガイドに従うこと docs/guides/shared_vs_handle.md
+- CQSをできるだけ守ること、消極的に違反せざるを得ないときは、人間の許可を取ること（Vec::popは読み取りだけど更新が必要なので、CQS違反しないとロジックが書けないところがあるが極力CQSを守るようにすること）
 
 </system-reminder>
 
