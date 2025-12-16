@@ -17,10 +17,9 @@ use fraktor_utils_rs::core::{
 };
 
 use super::{
-  ActorPathRegistrySharedGeneric, ActorRefProvider, ActorRefProviderSharedGeneric, AskFuturesSharedGeneric,
-  AuthorityState, CellsSharedGeneric, GuardianKind, RegistriesSharedGeneric, RemoteAuthorityError,
-  RemoteAuthorityManagerSharedGeneric, RemoteWatchHookDynSharedGeneric, RemotingConfig, SystemStateGeneric,
-  TempActorsSharedGeneric,
+  ActorPathRegistrySharedGeneric, ActorRefProvider, ActorRefProviderSharedGeneric, AuthorityState, CellsSharedGeneric,
+  GuardianKind, RegistriesSharedGeneric, RemoteAuthorityError, RemoteAuthorityManagerSharedGeneric,
+  RemoteWatchHookDynSharedGeneric, RemotingConfig, SystemStateGeneric, TempActorsSharedGeneric,
 };
 use crate::core::{
   actor_prim::{
@@ -56,7 +55,6 @@ pub struct SystemStateSharedGeneric<TB: RuntimeToolbox + 'static> {
   dead_letter:         DeadLetterSharedGeneric<TB>,
   cells:               CellsSharedGeneric<TB>,
   registries:          RegistriesSharedGeneric<TB>,
-  ask_futures:         AskFuturesSharedGeneric<TB>,
   termination:         ActorFutureSharedGeneric<(), TB>,
   temp_actors:         TempActorsSharedGeneric<TB>,
   remote_watch_hook:   RemoteWatchHookDynSharedGeneric<TB>,
@@ -79,7 +77,6 @@ impl<TB: RuntimeToolbox + 'static> Clone for SystemStateSharedGeneric<TB> {
       dead_letter:         self.dead_letter.clone(),
       cells:               self.cells.clone(),
       registries:          self.registries.clone(),
-      ask_futures:         self.ask_futures.clone(),
       termination:         self.termination.clone(),
       temp_actors:         self.temp_actors.clone(),
       remote_watch_hook:   self.remote_watch_hook.clone(),
@@ -104,7 +101,6 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
     let dead_letter = state.dead_letter_store();
     let cells = state.cells_handle();
     let registries = state.registries_handle();
-    let ask_futures = state.ask_futures_handle();
     let termination = state.termination_future();
     let temp_actors = state.temp_actors_handle();
     let remote_watch_hook = state.remote_watch_hook_handle();
@@ -124,7 +120,6 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
       dead_letter,
       cells,
       registries,
-      ask_futures,
       termination,
       temp_actors,
       remote_watch_hook,
@@ -148,7 +143,6 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
     let dead_letter = guard.dead_letter_store();
     let cells = guard.cells_handle();
     let registries = guard.registries_handle();
-    let ask_futures = guard.ask_futures_handle();
     let termination = guard.termination_future();
     let temp_actors = guard.temp_actors_handle();
     let remote_watch_hook = guard.remote_watch_hook_handle();
@@ -168,7 +162,6 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
       dead_letter,
       cells,
       registries,
-      ask_futures,
       termination,
       temp_actors,
       remote_watch_hook,
@@ -501,7 +494,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
 
   /// Registers an ask future so the actor system can track its completion.
   pub fn register_ask_future(&self, future: ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>) {
-    self.ask_futures.with_write(|ask_futures| ask_futures.push(future));
+    self.inner.write().register_ask_future(future);
   }
 
   /// Publishes an event to all event stream subscribers.
@@ -718,7 +711,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   /// Drains ask futures that have completed since the previous inspection.
   #[must_use]
   pub fn drain_ready_ask_futures(&self) -> Vec<ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>> {
-    self.ask_futures.with_write(|ask_futures| ask_futures.drain_ready())
+    self.inner.write().drain_ready_ask_futures()
   }
 
   /// Indicates whether the actor system has terminated.

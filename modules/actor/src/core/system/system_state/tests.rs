@@ -105,18 +105,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     self.temp_actors.with_read(|temp_actors| temp_actors.get(name))
   }
 
-  pub(crate) fn register_ask_future(
-    &self,
-    future: crate::core::futures::ActorFutureSharedGeneric<crate::core::messaging::AnyMessageGeneric<TB>, TB>,
-  ) {
-    self.ask_futures.with_write(|ask_futures| ask_futures.push(future));
-  }
-
-  pub(crate) fn drain_ready_ask_futures(
-    &self,
-  ) -> Vec<crate::core::futures::ActorFutureSharedGeneric<crate::core::messaging::AnyMessageGeneric<TB>, TB>> {
-    self.ask_futures.with_write(|ask_futures| ask_futures.drain_ready())
-  }
+  // ask_futures は SystemState 本体に実装しているため、テスト側の補助実装は不要
 }
 
 #[test]
@@ -442,7 +431,7 @@ fn system_state_deadletters() {
 fn system_state_register_ask_future() {
   use crate::core::futures::ActorFutureSharedGeneric;
 
-  let state = build_state();
+  let mut state = build_state();
   let future = ActorFutureSharedGeneric::<AnyMessage, NoStdToolbox>::new();
   state.register_ask_future(future.clone());
 

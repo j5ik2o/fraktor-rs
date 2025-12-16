@@ -27,10 +27,10 @@ use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 use self::path_identity::PathIdentity;
 use super::{
   ActorPathRegistrySharedGeneric, ActorRefProvider, ActorRefProviderCaller, ActorRefProviderHandle,
-  ActorRefProviderSharedGeneric, AskFuturesSharedGeneric, AuthorityState, CellsSharedGeneric, GuardianKind,
-  RegistriesSharedGeneric, RemoteAuthorityError, RemoteAuthorityManagerSharedGeneric, RemoteWatchHookDynSharedGeneric,
-  RemotingConfig, TempActorsSharedGeneric, actor_ref_provider_callers::ActorRefProviderCallersGeneric,
-  actor_ref_providers::ActorRefProvidersGeneric, extensions::ExtensionsGeneric,
+  ActorRefProviderSharedGeneric, AuthorityState, CellsSharedGeneric, GuardianKind, RegistriesSharedGeneric,
+  RemoteAuthorityError, RemoteAuthorityManagerSharedGeneric, RemoteWatchHookDynSharedGeneric, RemotingConfig,
+  TempActorsSharedGeneric, actor_ref_provider_callers::ActorRefProviderCallersGeneric,
+  actor_ref_providers::ActorRefProvidersGeneric, ask_futures::AskFuturesGeneric, extensions::ExtensionsGeneric,
   extra_top_levels::ExtraTopLevelsGeneric, guardians_state::GuardiansState,
 };
 use crate::core::{
@@ -74,7 +74,7 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   root_guardian_alive: AtomicBool,
   system_guardian_alive: AtomicBool,
   user_guardian_alive: AtomicBool,
-  ask_futures: AskFuturesSharedGeneric<TB>,
+  ask_futures: AskFuturesGeneric<TB>,
   termination: ActorFutureSharedGeneric<(), TB>,
   terminated: AtomicBool,
   terminating: AtomicBool,
@@ -133,7 +133,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       root_guardian_alive: AtomicBool::new(false),
       system_guardian_alive: AtomicBool::new(false),
       user_guardian_alive: AtomicBool::new(false),
-      ask_futures: AskFuturesSharedGeneric::default(),
+      ask_futures: AskFuturesGeneric::default(),
       termination: ActorFutureSharedGeneric::<(), TB>::new(),
       terminated: AtomicBool::new(false),
       terminating: AtomicBool::new(false),
@@ -316,10 +316,13 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     self.registries.clone()
   }
 
-  /// Returns the shared ask futures handle.
+  pub(crate) fn register_ask_future(&mut self, future: ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>) {
+    self.ask_futures.push(future);
+  }
+
   #[must_use]
-  pub(crate) fn ask_futures_handle(&self) -> AskFuturesSharedGeneric<TB> {
-    self.ask_futures.clone()
+  pub(crate) fn drain_ready_ask_futures(&mut self) -> Vec<ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>> {
+    self.ask_futures.drain_ready()
   }
 
   /// Returns the shared temporary actor registry handle.

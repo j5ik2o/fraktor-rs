@@ -16,7 +16,6 @@ mod actor_system_build_error;
 mod actor_system_config;
 mod actor_system_weak;
 mod ask_futures;
-mod ask_futures_shared;
 mod authority_state;
 mod base;
 #[cfg(any(test, feature = "test-support"))]
@@ -67,7 +66,6 @@ pub use actor_ref_resolve_error::ActorRefResolveError;
 pub use actor_system_build_error::ActorSystemBuildError;
 pub use actor_system_config::{ActorSystemConfig, ActorSystemConfigGeneric};
 pub use actor_system_weak::{ActorSystemWeak, ActorSystemWeakGeneric};
-pub(crate) use ask_futures_shared::AskFuturesSharedGeneric;
 pub use authority_state::AuthorityState;
 pub use base::{ActorSystem, ActorSystemGeneric};
 pub(crate) use cells_shared::CellsSharedGeneric;
