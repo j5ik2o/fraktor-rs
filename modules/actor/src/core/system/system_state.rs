@@ -36,7 +36,7 @@ use super::{
 use crate::core::{
   actor_prim::{
     ActorCellGeneric, Pid,
-    actor_path::{ActorPath, ActorPathParts, ActorPathScheme},
+    actor_path::{ActorPath, ActorPathScheme, GuardianKind as PathGuardianKind},
     actor_ref::ActorRefGeneric,
   },
   dead_letter::{DeadLetterEntryGeneric, DeadLetterSharedGeneric},
@@ -238,25 +238,6 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     self.actor_path_registry.with_write(|registry| registry.set_policy(policy));
   }
 
-  /// Returns the canonical actor path (authority-aware) for the given pid when available.
-  pub(crate) fn canonical_actor_path(&self, pid: &Pid) -> Option<ActorPath> {
-    let base = self.actor_path(pid)?;
-    let segments = base.segments().to_vec();
-    let parts = self.canonical_parts()?;
-    Some(ActorPath::from_parts_and_segments(parts, segments, base.uid()))
-  }
-
-  fn canonical_parts(&self) -> Option<ActorPathParts> {
-    let identity = self.identity_snapshot();
-    let mut parts = ActorPathParts::local(identity.system_name).with_guardian(identity.guardian_kind);
-    let Some(host) = identity.canonical_host else {
-      return Some(parts);
-    };
-    let port = identity.canonical_port?;
-    parts = parts.with_scheme(ActorPathScheme::FraktorTcp).with_authority_host(host).with_authority_port(port);
-    Some(parts)
-  }
-
   fn identity_snapshot(&self) -> PathIdentity {
     self.path_identity.clone()
   }
@@ -290,6 +271,26 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   #[must_use]
   pub fn system_name(&self) -> String {
     self.path_identity.system_name.clone()
+  }
+
+  #[must_use]
+  pub(crate) const fn path_guardian_kind(&self) -> PathGuardianKind {
+    self.path_identity.guardian_kind
+  }
+
+  #[must_use]
+  pub(crate) fn canonical_host(&self) -> Option<String> {
+    self.path_identity.canonical_host.clone()
+  }
+
+  #[must_use]
+  pub(crate) const fn canonical_port(&self) -> Option<u16> {
+    self.path_identity.canonical_port
+  }
+
+  #[must_use]
+  pub(crate) const fn quarantine_duration(&self) -> Duration {
+    self.path_identity.quarantine_duration
   }
 
   fn publish_remote_authority_event(&self, authority: String, state: AuthorityState) {
@@ -498,7 +499,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     if segments.is_empty() {
       return Some(ActorPath::root_with_guardian(identity.guardian_kind));
     }
-    segments.pop(); // discard root
+    segments.pop(); // ルート要素を捨てる
     if segments.is_empty() {
       return Some(ActorPath::root_with_guardian(identity.guardian_kind));
     }
@@ -655,7 +656,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     if self.terminated.swap(true, Ordering::AcqRel) {
       return;
     }
-    // Lock, complete, then wake outside the lock to avoid deadlock.
+    // ロック中に完了させ、wake はロック外で行ってデッドロックを避ける
     let waker = self.termination.with_write(|af| af.complete(()));
     if let Some(w) = waker {
       w.wake();

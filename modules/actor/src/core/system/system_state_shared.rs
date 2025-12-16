@@ -5,6 +5,7 @@ mod tests;
 
 use alloc::{
   collections::VecDeque,
+  format,
   string::{String, ToString},
   vec::Vec,
 };
@@ -24,7 +25,7 @@ use super::{
 use crate::core::{
   actor_prim::{
     ActorCellGeneric, Pid,
-    actor_path::{ActorPath, ActorPathParser, ActorPathScheme},
+    actor_path::{ActorPath, ActorPathParser, ActorPathParts, ActorPathScheme, GuardianKind as PathGuardianKind},
     actor_ref::ActorRefGeneric,
   },
   dead_letter::{DeadLetterEntryGeneric, DeadLetterReason, DeadLetterSharedGeneric},
@@ -37,7 +38,7 @@ use crate::core::{
   messaging::{AnyMessageGeneric, FailurePayload, SystemMessage},
   scheduler::{SchedulerContextSharedGeneric, TaskRunSummary, TickDriverRuntime},
   spawn::{NameRegistryError, SpawnError},
-  system::{ActorSystemBuildError, ActorSystemConfigGeneric, RegisterExtensionError, RegisterExtraTopLevelError},
+  system::{ActorSystemBuildError, RegisterExtensionError, RegisterExtraTopLevelError},
 };
 
 /// Shared wrapper for [`SystemStateGeneric`] providing thread-safe access.
@@ -45,37 +46,47 @@ use crate::core::{
 /// This wrapper uses a read-write lock to provide safe concurrent access
 /// to the underlying system state.
 pub struct SystemStateSharedGeneric<TB: RuntimeToolbox + 'static> {
-  pub(crate) inner:  ArcShared<ToolboxRwLock<SystemStateGeneric<TB>, TB>>,
-  event_stream:      EventStreamSharedGeneric<TB>,
-  dead_letter:       DeadLetterSharedGeneric<TB>,
-  cells:             CellsSharedGeneric<TB>,
-  registries:        RegistriesSharedGeneric<TB>,
-  ask_futures:       AskFuturesSharedGeneric<TB>,
-  termination:       ActorFutureSharedGeneric<(), TB>,
-  temp_actors:       TempActorsSharedGeneric<TB>,
-  remote_watch_hook: RemoteWatchHookDynSharedGeneric<TB>,
-  scheduler_ctx:     SchedulerContextSharedGeneric<TB>,
-  tick_driver_rt:    TickDriverRuntime<TB>,
-  path_registry:     ActorPathRegistrySharedGeneric<TB>,
-  remote_mgr:        RemoteAuthorityManagerSharedGeneric<TB>,
+  pub(crate) inner:    ArcShared<ToolboxRwLock<SystemStateGeneric<TB>, TB>>,
+  system_name:         String,
+  guardian_kind:       PathGuardianKind,
+  canonical_host:      Option<String>,
+  canonical_port:      Option<u16>,
+  quarantine_duration: Duration,
+  event_stream:        EventStreamSharedGeneric<TB>,
+  dead_letter:         DeadLetterSharedGeneric<TB>,
+  cells:               CellsSharedGeneric<TB>,
+  registries:          RegistriesSharedGeneric<TB>,
+  ask_futures:         AskFuturesSharedGeneric<TB>,
+  termination:         ActorFutureSharedGeneric<(), TB>,
+  temp_actors:         TempActorsSharedGeneric<TB>,
+  remote_watch_hook:   RemoteWatchHookDynSharedGeneric<TB>,
+  scheduler_ctx:       SchedulerContextSharedGeneric<TB>,
+  tick_driver_rt:      TickDriverRuntime<TB>,
+  path_registry:       ActorPathRegistrySharedGeneric<TB>,
+  remote_mgr:          RemoteAuthorityManagerSharedGeneric<TB>,
 }
 
 impl<TB: RuntimeToolbox + 'static> Clone for SystemStateSharedGeneric<TB> {
   fn clone(&self) -> Self {
     Self {
-      inner:             self.inner.clone(),
-      event_stream:      self.event_stream.clone(),
-      dead_letter:       self.dead_letter.clone(),
-      cells:             self.cells.clone(),
-      registries:        self.registries.clone(),
-      ask_futures:       self.ask_futures.clone(),
-      termination:       self.termination.clone(),
-      temp_actors:       self.temp_actors.clone(),
-      remote_watch_hook: self.remote_watch_hook.clone(),
-      scheduler_ctx:     self.scheduler_ctx.clone(),
-      tick_driver_rt:    self.tick_driver_rt.clone(),
-      path_registry:     self.path_registry.clone(),
-      remote_mgr:        self.remote_mgr.clone(),
+      inner:               self.inner.clone(),
+      system_name:         self.system_name.clone(),
+      guardian_kind:       self.guardian_kind,
+      canonical_host:      self.canonical_host.clone(),
+      canonical_port:      self.canonical_port,
+      quarantine_duration: self.quarantine_duration,
+      event_stream:        self.event_stream.clone(),
+      dead_letter:         self.dead_letter.clone(),
+      cells:               self.cells.clone(),
+      registries:          self.registries.clone(),
+      ask_futures:         self.ask_futures.clone(),
+      termination:         self.termination.clone(),
+      temp_actors:         self.temp_actors.clone(),
+      remote_watch_hook:   self.remote_watch_hook.clone(),
+      scheduler_ctx:       self.scheduler_ctx.clone(),
+      tick_driver_rt:      self.tick_driver_rt.clone(),
+      path_registry:       self.path_registry.clone(),
+      remote_mgr:          self.remote_mgr.clone(),
     }
   }
 }
@@ -84,6 +95,11 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   /// Creates a new shared system state.
   #[must_use]
   pub fn new(state: SystemStateGeneric<TB>) -> Self {
+    let system_name = state.system_name();
+    let guardian_kind = state.path_guardian_kind();
+    let canonical_host = state.canonical_host();
+    let canonical_port = state.canonical_port();
+    let quarantine_duration = state.quarantine_duration();
     let event_stream = state.event_stream();
     let dead_letter = state.dead_letter_store();
     let cells = state.cells_handle();
@@ -99,6 +115,11 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
     let inner = ArcShared::new(<TB::RwLockFamily as SyncRwLockFamily>::create(state));
     Self {
       inner,
+      system_name,
+      guardian_kind,
+      canonical_host,
+      canonical_port,
+      quarantine_duration,
       event_stream,
       dead_letter,
       cells,
@@ -118,6 +139,11 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   #[must_use]
   pub(crate) fn from_arc_shared(inner: ArcShared<ToolboxRwLock<SystemStateGeneric<TB>, TB>>) -> Self {
     let guard = inner.read();
+    let system_name = guard.system_name();
+    let guardian_kind = guard.path_guardian_kind();
+    let canonical_host = guard.canonical_host();
+    let canonical_port = guard.canonical_port();
+    let quarantine_duration = guard.quarantine_duration();
     let event_stream = guard.event_stream();
     let dead_letter = guard.dead_letter_store();
     let cells = guard.cells_handle();
@@ -133,6 +159,11 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
     drop(guard);
     Self {
       inner,
+      system_name,
+      guardian_kind,
+      canonical_host,
+      canonical_port,
+      quarantine_duration,
       event_stream,
       dead_letter,
       cells,
@@ -160,17 +191,12 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
     super::SystemStateWeakGeneric { inner: self.inner.downgrade() }
   }
 
-  // ====== Delegated methods from SystemStateGeneric ======
+  // ====== SystemStateGeneric の委譲メソッド ======
 
   /// Allocates a new unique [`Pid`] for an actor.
   #[must_use]
   pub fn allocate_pid(&self) -> Pid {
     self.inner.read().allocate_pid()
-  }
-
-  /// Applies the actor system configuration.
-  pub fn apply_actor_system_config(&self, config: &ActorSystemConfigGeneric<TB>) {
-    self.inner.write().apply_actor_system_config(config);
   }
 
   /// Registers the provided actor cell in the global registry.
@@ -204,31 +230,50 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   /// Returns the canonical actor path for the given pid when available.
   #[must_use]
   pub fn canonical_actor_path(&self, pid: &Pid) -> Option<ActorPath> {
-    self.inner.read().canonical_actor_path(pid)
+    let base = self.actor_path(pid)?;
+    let segments = base.segments().to_vec();
+    let parts = self.canonical_parts()?;
+    Some(ActorPath::from_parts_and_segments(parts, segments, base.uid()))
+  }
+
+  fn canonical_parts(&self) -> Option<ActorPathParts> {
+    let mut parts = ActorPathParts::local(self.system_name.clone()).with_guardian(self.guardian_kind);
+    let Some(host) = self.canonical_host.clone() else {
+      return Some(parts);
+    };
+    let port = self.canonical_port?;
+    parts = parts.with_scheme(ActorPathScheme::FraktorTcp).with_authority_host(host).with_authority_port(port);
+    Some(parts)
   }
 
   /// Returns the configured canonical host/port pair when remoting is enabled.
   #[must_use]
   pub fn canonical_authority_components(&self) -> Option<(String, Option<u16>)> {
-    self.inner.read().canonical_authority_components()
+    match (&self.canonical_host, self.canonical_port) {
+      | (Some(host), Some(port)) => Some((host.clone(), Some(port))),
+      | _ => None,
+    }
   }
 
   /// Returns true when canonical_host is set but canonical_port is missing.
   #[must_use]
-  pub fn has_partial_canonical_authority(&self) -> bool {
-    self.inner.read().has_partial_canonical_authority()
+  pub const fn has_partial_canonical_authority(&self) -> bool {
+    self.canonical_host.is_some() && self.canonical_port.is_none()
   }
 
   /// Returns the canonical authority string.
   #[must_use]
   pub fn canonical_authority_endpoint(&self) -> Option<String> {
-    self.inner.read().canonical_authority_endpoint()
+    self.canonical_authority_components().map(|(host, port)| match port {
+      | Some(port) => format!("{host}:{port}"),
+      | None => host,
+    })
   }
 
   /// Returns the configured actor system name.
   #[must_use]
   pub fn system_name(&self) -> String {
-    self.inner.read().system_name()
+    self.system_name.clone()
   }
 
   /// Retrieves an actor cell by pid.
@@ -420,7 +465,26 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   /// Resolves the actor path for the specified pid if the actor exists.
   #[must_use]
   pub fn actor_path(&self, pid: &Pid) -> Option<ActorPath> {
-    self.inner.read().actor_path(pid)
+    let cell = self.cell(pid)?;
+    let mut segments = Vec::new();
+    let mut current = Some(cell);
+    while let Some(cursor) = current {
+      segments.push(cursor.name().to_string());
+      current = cursor.parent().and_then(|parent_pid| self.cell(&parent_pid));
+    }
+    if segments.is_empty() {
+      return Some(ActorPath::root_with_guardian(self.guardian_kind));
+    }
+    segments.pop(); // ルート要素を捨てる
+    if segments.is_empty() {
+      return Some(ActorPath::root_with_guardian(self.guardian_kind));
+    }
+    segments.reverse();
+    let mut path = ActorPath::root_with_guardian(self.guardian_kind);
+    for segment in segments {
+      path = path.child(segment);
+    }
+    Some(path)
   }
 
   /// Returns the shared event stream handle.
@@ -684,7 +748,14 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   /// Returns the remoting configuration when it has been configured.
   #[must_use]
   pub fn remoting_config(&self) -> Option<RemotingConfig> {
-    self.inner.read().remoting_config()
+    self.canonical_host.clone().map(|host| {
+      let mut config =
+        RemotingConfig::default().with_canonical_host(host).with_quarantine_duration(self.quarantine_duration);
+      if let Some(port) = self.canonical_port {
+        config = config.with_canonical_port(port);
+      }
+      config
+    })
   }
 
   /// Returns the scheduler context.
