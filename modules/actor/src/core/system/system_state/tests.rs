@@ -9,11 +9,13 @@ use fraktor_utils_rs::core::{
   sync::{ArcShared, SharedAccess},
 };
 
-use super::SystemState;
+use super::{SystemState, SystemStateGeneric};
 use crate::core::{
   actor_prim::{
     Actor, ActorCell, ActorContextGeneric, Pid,
-    actor_path::{ActorPath, ActorPathScheme, ActorUid, GuardianKind as PathGuardianKind, PathResolutionError},
+    actor_path::{
+      ActorPath, ActorPathParser, ActorPathScheme, ActorUid, GuardianKind as PathGuardianKind, PathResolutionError,
+    },
     actor_ref::ActorRefGeneric,
   },
   dispatcher::{DispatchError, DispatchExecutor, DispatchSharedGeneric, DispatcherConfig},
@@ -26,11 +28,96 @@ use crate::core::{
     ManualTestDriver, SchedulerConfig, TickDriverConfig, TickDriverControl, TickDriverError, TickDriverHandleGeneric,
     TickDriverId, TickDriverKind, TickDriverRuntime, TickExecutorSignal, TickFeed,
   },
+  spawn::{NameRegistryError, SpawnError},
   system::{
     ActorSystemConfig, AuthorityState, GuardianKind, RegisterExtraTopLevelError, RemotingConfig, SystemStateShared,
     booting_state::BootingSystemStateGeneric,
   },
 };
+
+impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
+  pub(crate) fn remove_cell(&self, pid: &Pid) {
+    let reservation_source = self
+      .actor_path_registry
+      .with_read(|registry| registry.get(pid).map(|handle| (handle.canonical_uri().to_string(), handle.uid())));
+
+    if let Some((canonical, Some(uid))) = reservation_source
+      && let Ok(actor_path) = ActorPathParser::parse(&canonical)
+    {
+      let now_secs = self.monotonic_now().as_secs();
+      self.actor_path_registry.with_write(|registry| {
+        let _ = registry.reserve_uid(&actor_path, uid, now_secs, None);
+      });
+    }
+
+    self.actor_path_registry.with_write(|registry| registry.unregister(pid));
+    let _ = self.cells.with_write(|cells| cells.remove(pid));
+  }
+
+  #[must_use]
+  pub(crate) fn child_pids(&self, parent: Pid) -> Vec<Pid> {
+    self.cell(&parent).map_or_else(Vec::new, |cell| cell.children())
+  }
+
+  pub(crate) fn assign_name(&self, parent: Option<Pid>, hint: Option<&str>, pid: Pid) -> Result<String, SpawnError> {
+    self.registries.with_write(|registries| {
+      let registry = registries.entry_or_insert(parent);
+
+      match hint {
+        | Some(name) => {
+          registry.register(name, pid).map_err(|error| match error {
+            | NameRegistryError::Duplicate(existing) => SpawnError::name_conflict(existing),
+          })?;
+          Ok(alloc::string::String::from(name))
+        },
+        | None => {
+          let generated = registry.generate_anonymous(pid);
+          registry.register(&generated, pid).map_err(|error| match error {
+            | NameRegistryError::Duplicate(existing) => SpawnError::name_conflict(existing),
+          })?;
+          Ok(generated)
+        },
+      }
+    })
+  }
+
+  pub(crate) fn release_name(&self, parent: Option<Pid>, name: &str) {
+    self.registries.with_write(|registries| {
+      if let Some(registry) = registries.get_mut(&parent) {
+        registry.remove(name);
+      }
+    });
+  }
+
+  #[must_use]
+  pub(crate) fn register_temp_actor(&self, actor: ActorRefGeneric<TB>) -> String {
+    let name = self.next_temp_actor_name();
+    self.temp_actors.with_write(|temp_actors| temp_actors.insert(name.clone(), actor));
+    name
+  }
+
+  pub(crate) fn unregister_temp_actor(&self, name: &str) {
+    let _ = self.temp_actors.with_write(|temp_actors| temp_actors.remove(name));
+  }
+
+  #[must_use]
+  pub(crate) fn temp_actor(&self, name: &str) -> Option<ActorRefGeneric<TB>> {
+    self.temp_actors.with_read(|temp_actors| temp_actors.get(name))
+  }
+
+  pub(crate) fn register_ask_future(
+    &self,
+    future: crate::core::futures::ActorFutureSharedGeneric<crate::core::messaging::AnyMessageGeneric<TB>, TB>,
+  ) {
+    self.ask_futures.with_write(|ask_futures| ask_futures.push(future));
+  }
+
+  pub(crate) fn drain_ready_ask_futures(
+    &self,
+  ) -> Vec<crate::core::futures::ActorFutureSharedGeneric<crate::core::messaging::AnyMessageGeneric<TB>, TB>> {
+    self.ask_futures.with_write(|ask_futures| ask_futures.drain_ready())
+  }
+}
 
 #[test]
 fn system_state_build_from_config_starts_unterminated() {
@@ -154,7 +241,7 @@ fn system_state_register_and_remove_cell() {
   let path = state.actor_path(&child_pid).expect("path");
   assert_eq!(path.to_string(), "/user/worker");
 
-  let _ = state.remove_cell(&child_pid);
+  state.remove_cell(&child_pid);
   assert!(state.cell(&child_pid).is_none());
 }
 
@@ -168,7 +255,7 @@ fn system_state_remove_cell_reserves_uid() {
     registry.register(pid, &path);
   });
 
-  let _ = state.remove_cell(&pid);
+  state.remove_cell(&pid);
 
   let now = state.monotonic_now().as_secs();
   let result =
@@ -396,8 +483,8 @@ fn system_state_clear_guardian() {
   let state = build_state();
   let pid = state.allocate_pid();
 
-  let cleared = state.clear_guardian(pid);
-  assert!(cleared.is_none());
+  let kind = state.guardian_kind_by_pid(pid);
+  assert!(kind.is_none());
 }
 
 #[test]
@@ -671,7 +758,8 @@ fn termination_future_completes_after_root_marked_terminated() {
   state.register_guardian_pid(GuardianKind::Root, root_pid);
 
   assert!(!state.termination_future().with_read(|f| f.is_ready()));
-  let _ = state.clear_guardian(root_pid);
+  assert_eq!(state.guardian_kind_by_pid(root_pid), Some(GuardianKind::Root));
+  state.mark_guardian_stopped(GuardianKind::Root);
   state.mark_terminated();
 
   assert!(state.termination_future().with_read(|f| f.is_ready()));
@@ -823,7 +911,7 @@ fn recreate_send_failure_escalates_and_stops_parent() {
   state.register_cell(child.clone());
   state.register_child(parent_pid, child_pid);
 
-  let _ = state.remove_cell(&child_pid);
+  state.remove_cell(&child_pid);
   let error = ActorError::recoverable("boom");
   state.handle_failure(child_pid, Some(parent_pid), &error);
 

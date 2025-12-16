@@ -200,7 +200,10 @@ fn clear_guardian_does_not_block_on_read_lock() {
   locked_rx.recv_timeout(Duration::from_secs(1)).expect("lock ready");
 
   let clearer = std::thread::spawn(move || {
-    let result = shared_for_clear.clear_guardian(root_pid);
+    let result = shared_for_clear.guardian_kind_by_pid(root_pid);
+    if let Some(kind) = result {
+      shared_for_clear.mark_guardian_stopped(kind);
+    }
     result_tx.send(result).expect("result");
   });
 

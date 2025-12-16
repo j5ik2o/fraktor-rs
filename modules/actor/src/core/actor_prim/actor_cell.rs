@@ -414,18 +414,20 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     }
 
     self.system().release_name(self.parent, &self.name);
-    let _ = self.system().remove_cell(&self.pid);
+    self.system().remove_cell(&self.pid);
 
-    match self.system().clear_guardian(self.pid) {
-      | Some(GuardianKind::Root) => {
-        self.system().mark_terminated();
-      },
-      | Some(GuardianKind::User) | Some(GuardianKind::System) => {
-        if !self.system().guardian_alive(GuardianKind::Root) {
+    if let Some(kind) = self.system().guardian_kind_by_pid(self.pid) {
+      self.system().mark_guardian_stopped(kind);
+      match kind {
+        | GuardianKind::Root => {
           self.system().mark_terminated();
-        }
-      },
-      | None => {},
+        },
+        | GuardianKind::User | GuardianKind::System => {
+          if !self.system().guardian_alive(GuardianKind::Root) {
+            self.system().mark_terminated();
+          }
+        },
+      }
     }
 
     result

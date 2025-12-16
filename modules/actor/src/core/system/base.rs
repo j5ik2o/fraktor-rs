@@ -373,8 +373,8 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
 
   /// Removes a temporary actor mapping if present.
   #[allow(dead_code)]
-  pub(crate) fn unregister_temp_actor(&self, name: &str) -> Option<ActorRefGeneric<TB>> {
-    self.state.unregister_temp_actor(name)
+  pub(crate) fn unregister_temp_actor(&self, name: &str) {
+    self.state.unregister_temp_actor(name);
   }
 
   /// Resolves a registered temporary actor reference.
@@ -636,7 +636,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
 
   fn rollback_spawn(&self, parent: Option<Pid>, cell: &ArcShared<ActorCellGeneric<TB>>, pid: Pid) {
     self.state.release_name(parent, cell.name());
-    let _ = self.state.remove_cell(&pid);
+    self.state.remove_cell(&pid);
     if let Some(parent_pid) = parent {
       self.state.unregister_child(Some(parent_pid), pid);
     }

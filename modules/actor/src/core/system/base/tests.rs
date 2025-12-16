@@ -474,7 +474,7 @@ fn create_send_failure_triggers_rollback() {
   let cell = system.build_cell_for_spawn(pid, None, name, &props).expect("セル生成に失敗");
   system.state().register_cell(cell.clone());
 
-  let _ = system.state().remove_cell(&pid);
+  system.state().remove_cell(&pid);
   let result = system.perform_create_handshake(None, pid, &cell);
 
   match result {

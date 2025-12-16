@@ -3,7 +3,11 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::{collections::VecDeque, string::String, vec::Vec};
+use alloc::{
+  collections::VecDeque,
+  string::{String, ToString},
+  vec::Vec,
+};
 use core::{any::TypeId, time::Duration};
 
 use fraktor_utils_rs::core::{
@@ -12,13 +16,15 @@ use fraktor_utils_rs::core::{
 };
 
 use super::{
-  ActorPathRegistrySharedGeneric, ActorRefProvider, ActorRefProviderSharedGeneric, AuthorityState, GuardianKind,
-  RemoteAuthorityError, RemoteAuthorityManagerSharedGeneric, RemotingConfig, SystemStateGeneric,
+  ActorPathRegistrySharedGeneric, ActorRefProvider, ActorRefProviderSharedGeneric, AskFuturesSharedGeneric,
+  AuthorityState, CellsSharedGeneric, GuardianKind, RegistriesSharedGeneric, RemoteAuthorityError,
+  RemoteAuthorityManagerSharedGeneric, RemoteWatchHookDynSharedGeneric, RemotingConfig, SystemStateGeneric,
+  TempActorsSharedGeneric,
 };
 use crate::core::{
   actor_prim::{
     ActorCellGeneric, Pid,
-    actor_path::{ActorPath, ActorPathScheme},
+    actor_path::{ActorPath, ActorPathParser, ActorPathScheme},
     actor_ref::ActorRefGeneric,
   },
   dead_letter::{DeadLetterEntryGeneric, DeadLetterReason, DeadLetterSharedGeneric},
@@ -26,11 +32,11 @@ use crate::core::{
   error::{ActorError, SendError},
   event_stream::{EventStreamEvent, EventStreamSharedGeneric, TickDriverSnapshot},
   futures::ActorFutureSharedGeneric,
-  logging::LogLevel,
+  logging::{LogEvent, LogLevel},
   mailbox::MailboxesGeneric,
   messaging::{AnyMessageGeneric, FailurePayload, SystemMessage},
   scheduler::{SchedulerContextSharedGeneric, TaskRunSummary, TickDriverRuntime},
-  spawn::SpawnError,
+  spawn::{NameRegistryError, SpawnError},
   system::{ActorSystemBuildError, ActorSystemConfigGeneric, RegisterExtensionError, RegisterExtraTopLevelError},
 };
 
@@ -39,29 +45,37 @@ use crate::core::{
 /// This wrapper uses a read-write lock to provide safe concurrent access
 /// to the underlying system state.
 pub struct SystemStateSharedGeneric<TB: RuntimeToolbox + 'static> {
-  pub(crate) inner: ArcShared<ToolboxRwLock<SystemStateGeneric<TB>, TB>>,
-  event_stream:     EventStreamSharedGeneric<TB>,
-  dead_letter:      DeadLetterSharedGeneric<TB>,
-  dispatchers:      ArcShared<DispatchersGeneric<TB>>,
-  mailboxes:        ArcShared<MailboxesGeneric<TB>>,
-  scheduler_ctx:    SchedulerContextSharedGeneric<TB>,
-  tick_driver_rt:   TickDriverRuntime<TB>,
-  path_registry:    ActorPathRegistrySharedGeneric<TB>,
-  remote_mgr:       RemoteAuthorityManagerSharedGeneric<TB>,
+  pub(crate) inner:  ArcShared<ToolboxRwLock<SystemStateGeneric<TB>, TB>>,
+  event_stream:      EventStreamSharedGeneric<TB>,
+  dead_letter:       DeadLetterSharedGeneric<TB>,
+  cells:             CellsSharedGeneric<TB>,
+  registries:        RegistriesSharedGeneric<TB>,
+  ask_futures:       AskFuturesSharedGeneric<TB>,
+  termination:       ActorFutureSharedGeneric<(), TB>,
+  temp_actors:       TempActorsSharedGeneric<TB>,
+  remote_watch_hook: RemoteWatchHookDynSharedGeneric<TB>,
+  scheduler_ctx:     SchedulerContextSharedGeneric<TB>,
+  tick_driver_rt:    TickDriverRuntime<TB>,
+  path_registry:     ActorPathRegistrySharedGeneric<TB>,
+  remote_mgr:        RemoteAuthorityManagerSharedGeneric<TB>,
 }
 
 impl<TB: RuntimeToolbox + 'static> Clone for SystemStateSharedGeneric<TB> {
   fn clone(&self) -> Self {
     Self {
-      inner:          self.inner.clone(),
-      event_stream:   self.event_stream.clone(),
-      dead_letter:    self.dead_letter.clone(),
-      dispatchers:    self.dispatchers.clone(),
-      mailboxes:      self.mailboxes.clone(),
-      scheduler_ctx:  self.scheduler_ctx.clone(),
-      tick_driver_rt: self.tick_driver_rt.clone(),
-      path_registry:  self.path_registry.clone(),
-      remote_mgr:     self.remote_mgr.clone(),
+      inner:             self.inner.clone(),
+      event_stream:      self.event_stream.clone(),
+      dead_letter:       self.dead_letter.clone(),
+      cells:             self.cells.clone(),
+      registries:        self.registries.clone(),
+      ask_futures:       self.ask_futures.clone(),
+      termination:       self.termination.clone(),
+      temp_actors:       self.temp_actors.clone(),
+      remote_watch_hook: self.remote_watch_hook.clone(),
+      scheduler_ctx:     self.scheduler_ctx.clone(),
+      tick_driver_rt:    self.tick_driver_rt.clone(),
+      path_registry:     self.path_registry.clone(),
+      remote_mgr:        self.remote_mgr.clone(),
     }
   }
 }
@@ -72,8 +86,12 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   pub fn new(state: SystemStateGeneric<TB>) -> Self {
     let event_stream = state.event_stream();
     let dead_letter = state.dead_letter_store();
-    let dispatchers = state.dispatchers();
-    let mailboxes = state.mailboxes();
+    let cells = state.cells_handle();
+    let registries = state.registries_handle();
+    let ask_futures = state.ask_futures_handle();
+    let termination = state.termination_future();
+    let temp_actors = state.temp_actors_handle();
+    let remote_watch_hook = state.remote_watch_hook_handle();
     let scheduler_ctx = state.scheduler_context();
     let tick_driver_rt = state.tick_driver_runtime();
     let path_registry = state.actor_path_registry().clone();
@@ -83,8 +101,12 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
       inner,
       event_stream,
       dead_letter,
-      dispatchers,
-      mailboxes,
+      cells,
+      registries,
+      ask_futures,
+      termination,
+      temp_actors,
+      remote_watch_hook,
       scheduler_ctx,
       tick_driver_rt,
       path_registry,
@@ -98,8 +120,12 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
     let guard = inner.read();
     let event_stream = guard.event_stream();
     let dead_letter = guard.dead_letter_store();
-    let dispatchers = guard.dispatchers();
-    let mailboxes = guard.mailboxes();
+    let cells = guard.cells_handle();
+    let registries = guard.registries_handle();
+    let ask_futures = guard.ask_futures_handle();
+    let termination = guard.termination_future();
+    let temp_actors = guard.temp_actors_handle();
+    let remote_watch_hook = guard.remote_watch_hook_handle();
     let scheduler_ctx = guard.scheduler_context();
     let tick_driver_rt = guard.tick_driver_runtime();
     let path_registry = guard.actor_path_registry().clone();
@@ -109,8 +135,12 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
       inner,
       event_stream,
       dead_letter,
-      dispatchers,
-      mailboxes,
+      cells,
+      registries,
+      ask_futures,
+      termination,
+      temp_actors,
+      remote_watch_hook,
       scheduler_ctx,
       tick_driver_rt,
       path_registry,
@@ -145,13 +175,30 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
 
   /// Registers the provided actor cell in the global registry.
   pub fn register_cell(&self, cell: ArcShared<ActorCellGeneric<TB>>) {
-    self.inner.read().register_cell(cell);
+    let pid = cell.pid();
+    self.cells.with_write(|cells| cells.insert(pid, cell));
+    if let Some(path) = self.canonical_actor_path(&pid) {
+      self.path_registry.with_write(|registry| registry.register(pid, &path));
+    }
   }
 
   /// Removes the actor cell associated with the pid.
-  #[must_use]
-  pub fn remove_cell(&self, pid: &Pid) -> Option<ArcShared<ActorCellGeneric<TB>>> {
-    self.inner.read().remove_cell(pid)
+  pub fn remove_cell(&self, pid: &Pid) {
+    let reservation_source = self
+      .path_registry
+      .with_read(|registry| registry.get(pid).map(|handle| (handle.canonical_uri().to_string(), handle.uid())));
+
+    if let Some((canonical, Some(uid))) = reservation_source
+      && let Ok(actor_path) = ActorPathParser::parse(&canonical)
+    {
+      let now_secs = self.monotonic_now().as_secs();
+      self.path_registry.with_write(|registry| {
+        let _ = registry.reserve_uid(&actor_path, uid, now_secs, None);
+      });
+    }
+
+    self.path_registry.with_write(|registry| registry.unregister(pid));
+    let _ = self.cells.with_write(|cells| cells.remove(pid));
   }
 
   /// Returns the canonical actor path for the given pid when available.
@@ -187,7 +234,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   /// Retrieves an actor cell by pid.
   #[must_use]
   pub fn cell(&self, pid: &Pid) -> Option<ArcShared<ActorCellGeneric<TB>>> {
-    self.inner.read().cell(pid)
+    self.cells.with_read(|cells| cells.get(pid))
   }
 
   /// Binds an actor name within its parent's scope.
@@ -196,12 +243,34 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   ///
   /// Returns [`SpawnError`] if the name assignment fails.
   pub fn assign_name(&self, parent: Option<Pid>, hint: Option<&str>, pid: Pid) -> Result<String, SpawnError> {
-    self.inner.read().assign_name(parent, hint, pid)
+    self.registries.with_write(|registries| {
+      let registry = registries.entry_or_insert(parent);
+
+      match hint {
+        | Some(name) => {
+          registry.register(name, pid).map_err(|error| match error {
+            | NameRegistryError::Duplicate(existing) => SpawnError::name_conflict(existing),
+          })?;
+          Ok(String::from(name))
+        },
+        | None => {
+          let generated = registry.generate_anonymous(pid);
+          registry.register(&generated, pid).map_err(|error| match error {
+            | NameRegistryError::Duplicate(existing) => SpawnError::name_conflict(existing),
+          })?;
+          Ok(generated)
+        },
+      }
+    })
   }
 
   /// Releases the association between a name and its pid in the registry.
   pub fn release_name(&self, parent: Option<Pid>, name: &str) {
-    self.inner.read().release_name(parent, name);
+    self.registries.with_write(|registries| {
+      if let Some(registry) = registries.get_mut(&parent) {
+        registry.remove(name);
+      }
+    });
   }
 
   /// Stores the root guardian cell reference.
@@ -219,10 +288,15 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
     self.inner.write().set_user_guardian(cell);
   }
 
-  /// Clears the guardian slot matching the pid and returns which guardian stopped.
+  /// Returns the guardian kind matching the provided pid when registered.
   #[must_use]
-  pub fn clear_guardian(&self, pid: Pid) -> Option<GuardianKind> {
-    self.inner.read().clear_guardian(pid)
+  pub fn guardian_kind_by_pid(&self, pid: Pid) -> Option<GuardianKind> {
+    self.inner.read().guardian_kind_by_pid(pid)
+  }
+
+  /// Marks the specified guardian as stopped.
+  pub fn mark_guardian_stopped(&self, kind: GuardianKind) {
+    self.inner.read().mark_guardian_stopped(kind);
   }
 
   /// Returns the root guardian cell if initialised.
@@ -327,19 +401,20 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   /// Generates a unique `/temp` path segment and registers the supplied actor reference.
   #[must_use]
   pub fn register_temp_actor(&self, actor: ActorRefGeneric<TB>) -> String {
-    self.inner.read().register_temp_actor(actor)
+    let name = self.inner.read().next_temp_actor_name();
+    self.temp_actors.with_write(|temp_actors| temp_actors.insert(name.clone(), actor));
+    name
   }
 
   /// Removes a temporary actor reference if registered.
-  #[must_use]
-  pub fn unregister_temp_actor(&self, name: &str) -> Option<ActorRefGeneric<TB>> {
-    self.inner.read().unregister_temp_actor(name)
+  pub fn unregister_temp_actor(&self, name: &str) {
+    let _ = self.temp_actors.with_write(|temp_actors| temp_actors.remove(name));
   }
 
   /// Resolves a registered temporary actor reference.
   #[must_use]
   pub fn temp_actor(&self, name: &str) -> Option<ActorRefGeneric<TB>> {
-    self.inner.read().temp_actor(name)
+    self.temp_actors.with_read(|temp_actors| temp_actors.get(name))
   }
 
   /// Resolves the actor path for the specified pid if the actor exists.
@@ -362,7 +437,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
 
   /// Registers an ask future so the actor system can track its completion.
   pub fn register_ask_future(&self, future: ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>) {
-    self.inner.read().register_ask_future(future);
+    self.ask_futures.with_write(|ask_futures| ask_futures.push(future));
   }
 
   /// Publishes an event to all event stream subscribers.
@@ -372,7 +447,9 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
 
   /// Emits a log event via the event stream.
   pub fn emit_log(&self, level: LogLevel, message: String, origin: Option<Pid>) {
-    self.inner.read().emit_log(level, message, origin);
+    let timestamp = self.monotonic_now();
+    let event = LogEvent::new(level, message, timestamp, origin);
+    self.event_stream.publish(&EventStreamEvent::Log(event));
   }
 
   /// Returns `true` when an extension for the provided [`TypeId`] is registered.
@@ -468,7 +545,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
 
   /// Registers a remote watch hook.
   pub fn register_remote_watch_hook(&self, hook: alloc::boxed::Box<dyn super::RemoteWatchHook<TB>>) {
-    self.inner.read().register_remote_watch_hook(hook);
+    self.remote_watch_hook.replace(hook);
   }
 
   /// Returns an actor ref provider.
@@ -495,18 +572,24 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
 
   /// Registers a child under the specified parent pid.
   pub fn register_child(&self, parent: Pid, child: Pid) {
-    self.inner.read().register_child(parent, child);
+    if let Some(cell) = self.cell(&parent) {
+      cell.register_child(child);
+    }
   }
 
   /// Removes a child from its parent's supervision registry.
   pub fn unregister_child(&self, parent: Option<Pid>, child: Pid) {
-    self.inner.read().unregister_child(parent, child);
+    if let Some(parent_pid) = parent
+      && let Some(cell) = self.cell(&parent_pid)
+    {
+      cell.unregister_child(&child);
+    }
   }
 
   /// Returns the children supervised by the specified parent pid.
   #[must_use]
   pub fn child_pids(&self, parent: Pid) -> Vec<Pid> {
-    self.inner.read().child_pids(parent)
+    self.cell(&parent).map_or_else(Vec::new, |cell| cell.children())
   }
 
   /// Sends a system message to the specified actor.
@@ -515,12 +598,34 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   ///
   /// Returns [`SendError`] if the message cannot be delivered.
   pub fn send_system_message(&self, pid: Pid, message: SystemMessage) -> Result<(), SendError<TB>> {
-    self.inner.read().send_system_message(pid, message)
+    if let Some(cell) = self.cell(&pid) {
+      cell.dispatcher().enqueue_system(message)
+    } else {
+      match message {
+        | SystemMessage::Watch(watcher) => {
+          if self.remote_watch_hook.handle_watch(pid, watcher) {
+            return Ok(());
+          }
+          let _ = self.send_system_message(watcher, SystemMessage::Terminated(pid));
+          Ok(())
+        },
+        | SystemMessage::Unwatch(watcher) => {
+          if self.remote_watch_hook.handle_unwatch(pid, watcher) {
+            return Ok(());
+          }
+          Ok(())
+        },
+        | SystemMessage::Terminated(_) => Ok(()),
+        | SystemMessage::PipeTask(_) => Ok(()),
+        | other => Err(SendError::<TB>::closed(AnyMessageGeneric::new(other))),
+      }
+    }
   }
 
   /// Records a send error for diagnostics.
   pub fn record_send_error(&self, recipient: Option<Pid>, error: &SendError<TB>) {
-    self.inner.read().record_send_error(recipient, error);
+    let timestamp = self.monotonic_now();
+    self.dead_letter.record_send_error(recipient, error, timestamp);
   }
 
   /// Handles a failure in a child actor according to supervision strategy.
@@ -531,7 +636,8 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
 
   /// Records an explicit deadletter entry originating from runtime logic.
   pub fn record_dead_letter(&self, message: AnyMessageGeneric<TB>, reason: DeadLetterReason, target: Option<Pid>) {
-    self.inner.read().record_dead_letter(message, reason, target);
+    let timestamp = self.monotonic_now();
+    self.dead_letter.record_entry(message, reason, target, timestamp);
   }
 
   /// Marks the system as terminated and completes the termination future.
@@ -542,13 +648,13 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   /// Returns a future that resolves once the actor system terminates.
   #[must_use]
   pub fn termination_future(&self) -> ActorFutureSharedGeneric<(), TB> {
-    self.inner.read().termination_future()
+    self.termination.clone()
   }
 
   /// Drains ask futures that have completed since the previous inspection.
   #[must_use]
   pub fn drain_ready_ask_futures(&self) -> Vec<ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>> {
-    self.inner.read().drain_ready_ask_futures()
+    self.ask_futures.with_write(|ask_futures| ask_futures.drain_ready())
   }
 
   /// Indicates whether the actor system has terminated.
@@ -566,13 +672,13 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   /// Returns the dispatcher registry.
   #[must_use]
   pub fn dispatchers(&self) -> ArcShared<DispatchersGeneric<TB>> {
-    self.dispatchers.clone()
+    self.inner.read().dispatchers()
   }
 
   /// Returns the mailbox registry.
   #[must_use]
   pub fn mailboxes(&self) -> ArcShared<MailboxesGeneric<TB>> {
-    self.mailboxes.clone()
+    self.inner.read().mailboxes()
   }
 
   /// Returns the remoting configuration when it has been configured.
