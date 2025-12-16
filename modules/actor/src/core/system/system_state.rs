@@ -28,10 +28,10 @@ use self::path_identity::PathIdentity;
 use super::{
   ActorPathRegistrySharedGeneric, ActorRefProvider, ActorRefProviderCaller, ActorRefProviderHandle,
   ActorRefProviderSharedGeneric, AskFuturesSharedGeneric, AuthorityState, CellsSharedGeneric, GuardianKind,
-  GuardiansStateSharedGeneric, RegistriesSharedGeneric, RemoteAuthorityError, RemoteAuthorityManagerSharedGeneric,
-  RemoteWatchHook, RemoteWatchHookDynSharedGeneric, RemotingConfig, TempActorsSharedGeneric,
+  RegistriesSharedGeneric, RemoteAuthorityError, RemoteAuthorityManagerSharedGeneric, RemoteWatchHook,
+  RemoteWatchHookDynSharedGeneric, RemotingConfig, TempActorsSharedGeneric,
   actor_ref_provider_callers::ActorRefProviderCallersGeneric, actor_ref_providers::ActorRefProvidersGeneric,
-  extensions::ExtensionsGeneric, extra_top_levels::ExtraTopLevelsGeneric,
+  extensions::ExtensionsGeneric, extra_top_levels::ExtraTopLevelsGeneric, guardians_state::GuardiansState,
 };
 use crate::core::{
   actor_prim::{
@@ -70,7 +70,7 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   clock: AtomicU64,
   cells: CellsSharedGeneric<TB>,
   registries: RegistriesSharedGeneric<TB>,
-  guardians: GuardiansStateSharedGeneric<TB>,
+  guardians: GuardiansState,
   root_guardian_alive: AtomicBool,
   system_guardian_alive: AtomicBool,
   user_guardian_alive: AtomicBool,
@@ -129,7 +129,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       clock: AtomicU64::new(0),
       cells: CellsSharedGeneric::default(),
       registries: RegistriesSharedGeneric::default(),
-      guardians: GuardiansStateSharedGeneric::default(),
+      guardians: GuardiansState::default(),
       root_guardian_alive: AtomicBool::new(false),
       system_guardian_alive: AtomicBool::new(false),
       user_guardian_alive: AtomicBool::new(false),
@@ -372,31 +372,32 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   }
 
   /// Registers the root guardian PID.
-  pub(crate) fn set_root_guardian(&self, cell: &ArcShared<ActorCellGeneric<TB>>) {
-    self.guardians.with_write(|guardians| guardians.register(GuardianKind::Root, cell.pid()));
+  pub(crate) fn set_root_guardian(&mut self, cell: &ArcShared<ActorCellGeneric<TB>>) {
+    self.guardians.register(GuardianKind::Root, cell.pid());
     self.root_guardian_alive.store(true, Ordering::Release);
   }
 
-  pub(crate) fn register_guardian_pid(&self, kind: GuardianKind, pid: Pid) {
-    self.guardians.with_write(|guardians| guardians.register(kind, pid));
+  #[cfg(any(test, feature = "test-support"))]
+  pub(crate) fn register_guardian_pid(&mut self, kind: GuardianKind, pid: Pid) {
+    self.guardians.register(kind, pid);
     self.guardian_alive_flag(kind).store(true, Ordering::Release);
   }
 
   /// Registers the system guardian PID.
-  pub(crate) fn set_system_guardian(&self, cell: &ArcShared<ActorCellGeneric<TB>>) {
-    self.guardians.with_write(|guardians| guardians.register(GuardianKind::System, cell.pid()));
+  pub(crate) fn set_system_guardian(&mut self, cell: &ArcShared<ActorCellGeneric<TB>>) {
+    self.guardians.register(GuardianKind::System, cell.pid());
     self.system_guardian_alive.store(true, Ordering::Release);
   }
 
   /// Registers the user guardian PID.
-  pub(crate) fn set_user_guardian(&self, cell: &ArcShared<ActorCellGeneric<TB>>) {
-    self.guardians.with_write(|guardians| guardians.register(GuardianKind::User, cell.pid()));
+  pub(crate) fn set_user_guardian(&mut self, cell: &ArcShared<ActorCellGeneric<TB>>) {
+    self.guardians.register(GuardianKind::User, cell.pid());
     self.user_guardian_alive.store(true, Ordering::Release);
   }
 
   /// Clears the guardian slot matching the pid and returns which guardian stopped.
   pub(crate) fn clear_guardian(&self, pid: Pid) -> Option<GuardianKind> {
-    let kind = self.guardians.with_read(|guardians| guardians.kind_by_pid(pid))?;
+    let kind = self.guardians.kind_by_pid(pid)?;
     self.guardian_alive_flag(kind).store(false, Ordering::Release);
     Some(kind)
   }
@@ -422,20 +423,20 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
 
   /// Returns the pid of the root guardian if available.
   #[must_use]
-  pub fn root_guardian_pid(&self) -> Option<Pid> {
-    self.guardians.with_read(|guardians| guardians.pid(GuardianKind::Root))
+  pub const fn root_guardian_pid(&self) -> Option<Pid> {
+    self.guardians.pid(GuardianKind::Root)
   }
 
   /// Returns the pid of the system guardian if available.
   #[must_use]
-  pub fn system_guardian_pid(&self) -> Option<Pid> {
-    self.guardians.with_read(|guardians| guardians.pid(GuardianKind::System))
+  pub const fn system_guardian_pid(&self) -> Option<Pid> {
+    self.guardians.pid(GuardianKind::System)
   }
 
   /// Returns the pid of the user guardian if available.
   #[must_use]
-  pub fn user_guardian_pid(&self) -> Option<Pid> {
-    self.guardians.with_read(|guardians| guardians.pid(GuardianKind::User))
+  pub const fn user_guardian_pid(&self) -> Option<Pid> {
+    self.guardians.pid(GuardianKind::User)
   }
 
   /// Returns whether the specified guardian is alive.
@@ -445,12 +446,12 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   }
 
   /// Returns the PID registered for the specified guardian.
-  pub fn guardian_pid(&self, kind: GuardianKind) -> Option<Pid> {
-    self.guardians.with_read(|guardians| guardians.pid(kind))
+  pub const fn guardian_pid(&self, kind: GuardianKind) -> Option<Pid> {
+    self.guardians.pid(kind)
   }
 
   fn guardian_cell_via_cells(&self, kind: GuardianKind) -> Option<ArcShared<ActorCellGeneric<TB>>> {
-    let pid = self.guardians.with_read(|guardians| guardians.pid(kind))?;
+    let pid = self.guardians.pid(kind)?;
     self.cell(&pid)
   }
 

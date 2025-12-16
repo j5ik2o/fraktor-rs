@@ -205,18 +205,18 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   }
 
   /// Stores the root guardian cell reference.
-  pub fn set_root_guardian(&self, cell: &ArcShared<ActorCellGeneric<TB>>) {
-    self.inner.read().set_root_guardian(cell);
+  pub(crate) fn set_root_guardian(&self, cell: &ArcShared<ActorCellGeneric<TB>>) {
+    self.inner.write().set_root_guardian(cell);
   }
 
   /// Stores the system guardian cell reference.
-  pub fn set_system_guardian(&self, cell: &ArcShared<ActorCellGeneric<TB>>) {
-    self.inner.read().set_system_guardian(cell);
+  pub(crate) fn set_system_guardian(&self, cell: &ArcShared<ActorCellGeneric<TB>>) {
+    self.inner.write().set_system_guardian(cell);
   }
 
   /// Stores the user guardian cell reference.
-  pub fn set_user_guardian(&self, cell: &ArcShared<ActorCellGeneric<TB>>) {
-    self.inner.read().set_user_guardian(cell);
+  pub(crate) fn set_user_guardian(&self, cell: &ArcShared<ActorCellGeneric<TB>>) {
+    self.inner.write().set_user_guardian(cell);
   }
 
   /// Clears the guardian slot matching the pid and returns which guardian stopped.
@@ -268,8 +268,9 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   }
 
   /// Registers a PID for the specified guardian kind.
-  pub fn register_guardian_pid(&self, kind: GuardianKind, pid: Pid) {
-    self.inner.read().register_guardian_pid(kind, pid);
+  #[cfg(any(test, feature = "test-support"))]
+  pub(crate) fn register_guardian_pid(&self, kind: GuardianKind, pid: Pid) {
+    self.inner.write().register_guardian_pid(kind, pid);
   }
 
   /// Returns whether the specified guardian is alive.
