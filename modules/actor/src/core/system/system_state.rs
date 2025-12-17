@@ -29,9 +29,9 @@ use super::{
   ActorPathRegistrySharedGeneric, ActorRefProvider, ActorRefProviderCaller, ActorRefProviderHandle,
   ActorRefProviderSharedGeneric, AuthorityState, CellsSharedGeneric, GuardianKind, RegistriesSharedGeneric,
   RemoteAuthorityError, RemoteAuthorityManagerSharedGeneric, RemoteWatchHookDynSharedGeneric, RemotingConfig,
-  TempActorsSharedGeneric, actor_ref_provider_callers::ActorRefProviderCallersGeneric,
-  actor_ref_providers::ActorRefProvidersGeneric, ask_futures::AskFuturesGeneric, extensions::ExtensionsGeneric,
-  extra_top_levels::ExtraTopLevelsGeneric, guardians_state::GuardiansState,
+  actor_ref_provider_callers::ActorRefProviderCallersGeneric, actor_ref_providers::ActorRefProvidersGeneric,
+  ask_futures::AskFuturesGeneric, extensions::ExtensionsGeneric, extra_top_levels::ExtraTopLevelsGeneric,
+  guardians_state::GuardiansState, temp_actors::TempActorsGeneric,
 };
 use crate::core::{
   actor_prim::{
@@ -82,7 +82,7 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   event_stream: EventStreamSharedGeneric<TB>,
   dead_letter: DeadLetterSharedGeneric<TB>,
   extra_top_levels: ExtraTopLevelsGeneric<TB>,
-  temp_actors: TempActorsSharedGeneric<TB>,
+  temp_actors: TempActorsGeneric<TB>,
   temp_counter: AtomicU64,
   failure_total: AtomicU64,
   failure_restart_total: AtomicU64,
@@ -141,7 +141,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       event_stream,
       dead_letter,
       extra_top_levels: ExtraTopLevelsGeneric::default(),
-      temp_actors: TempActorsSharedGeneric::default(),
+      temp_actors: TempActorsGeneric::default(),
       temp_counter: AtomicU64::new(0),
       failure_total: AtomicU64::new(0),
       failure_restart_total: AtomicU64::new(0),
@@ -325,10 +325,20 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     self.ask_futures.drain_ready()
   }
 
-  /// Returns the shared temporary actor registry handle.
   #[must_use]
-  pub(crate) fn temp_actors_handle(&self) -> TempActorsSharedGeneric<TB> {
-    self.temp_actors.clone()
+  pub(crate) fn register_temp_actor(&mut self, actor: ActorRefGeneric<TB>) -> String {
+    let name = self.next_temp_actor_name();
+    self.temp_actors.insert(name.clone(), actor);
+    name
+  }
+
+  pub(crate) fn unregister_temp_actor(&mut self, name: &str) {
+    let _ = self.temp_actors.remove(name);
+  }
+
+  #[must_use]
+  pub(crate) fn temp_actor(&self, name: &str) -> Option<ActorRefGeneric<TB>> {
+    self.temp_actors.get(name)
   }
 
   /// Returns the shared remote watch hook handle.

@@ -89,23 +89,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     });
   }
 
-  #[must_use]
-  pub(crate) fn register_temp_actor(&self, actor: ActorRefGeneric<TB>) -> String {
-    let name = self.next_temp_actor_name();
-    self.temp_actors.with_write(|temp_actors| temp_actors.insert(name.clone(), actor));
-    name
-  }
-
-  pub(crate) fn unregister_temp_actor(&self, name: &str) {
-    let _ = self.temp_actors.with_write(|temp_actors| temp_actors.remove(name));
-  }
-
-  #[must_use]
-  pub(crate) fn temp_actor(&self, name: &str) -> Option<ActorRefGeneric<TB>> {
-    self.temp_actors.with_read(|temp_actors| temp_actors.get(name))
-  }
-
-  // ask_futures は SystemState 本体に実装しているため、テスト側の補助実装は不要
+  // ask_futures と temp_actors は SystemState 本体に実装しているため、テスト側の補助実装は不要
 }
 
 #[test]
@@ -503,7 +487,7 @@ fn system_state_register_extra_top_level_errors() {
 
 #[test]
 fn system_state_temp_actor_round_trip() {
-  let state = build_state();
+  let mut state = build_state();
   let actor = ActorRefGeneric::null();
   let name = state.register_temp_actor(actor.clone());
   assert!(state.temp_actor(&name).is_some());

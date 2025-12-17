@@ -19,7 +19,7 @@ use fraktor_utils_rs::core::{
 use super::{
   ActorPathRegistrySharedGeneric, ActorRefProvider, ActorRefProviderSharedGeneric, AuthorityState, CellsSharedGeneric,
   GuardianKind, RegistriesSharedGeneric, RemoteAuthorityError, RemoteAuthorityManagerSharedGeneric,
-  RemoteWatchHookDynSharedGeneric, RemotingConfig, SystemStateGeneric, TempActorsSharedGeneric,
+  RemoteWatchHookDynSharedGeneric, RemotingConfig, SystemStateGeneric,
 };
 use crate::core::{
   actor_prim::{
@@ -56,7 +56,6 @@ pub struct SystemStateSharedGeneric<TB: RuntimeToolbox + 'static> {
   cells:               CellsSharedGeneric<TB>,
   registries:          RegistriesSharedGeneric<TB>,
   termination:         ActorFutureSharedGeneric<(), TB>,
-  temp_actors:         TempActorsSharedGeneric<TB>,
   remote_watch_hook:   RemoteWatchHookDynSharedGeneric<TB>,
   scheduler_ctx:       SchedulerContextSharedGeneric<TB>,
   tick_driver_rt:      TickDriverRuntime<TB>,
@@ -78,7 +77,6 @@ impl<TB: RuntimeToolbox + 'static> Clone for SystemStateSharedGeneric<TB> {
       cells:               self.cells.clone(),
       registries:          self.registries.clone(),
       termination:         self.termination.clone(),
-      temp_actors:         self.temp_actors.clone(),
       remote_watch_hook:   self.remote_watch_hook.clone(),
       scheduler_ctx:       self.scheduler_ctx.clone(),
       tick_driver_rt:      self.tick_driver_rt.clone(),
@@ -102,7 +100,6 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
     let cells = state.cells_handle();
     let registries = state.registries_handle();
     let termination = state.termination_future();
-    let temp_actors = state.temp_actors_handle();
     let remote_watch_hook = state.remote_watch_hook_handle();
     let scheduler_ctx = state.scheduler_context();
     let tick_driver_rt = state.tick_driver_runtime();
@@ -121,7 +118,6 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
       cells,
       registries,
       termination,
-      temp_actors,
       remote_watch_hook,
       scheduler_ctx,
       tick_driver_rt,
@@ -144,7 +140,6 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
     let cells = guard.cells_handle();
     let registries = guard.registries_handle();
     let termination = guard.termination_future();
-    let temp_actors = guard.temp_actors_handle();
     let remote_watch_hook = guard.remote_watch_hook_handle();
     let scheduler_ctx = guard.scheduler_context();
     let tick_driver_rt = guard.tick_driver_runtime();
@@ -163,7 +158,6 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
       cells,
       registries,
       termination,
-      temp_actors,
       remote_watch_hook,
       scheduler_ctx,
       tick_driver_rt,
@@ -439,20 +433,18 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   /// Generates a unique `/temp` path segment and registers the supplied actor reference.
   #[must_use]
   pub fn register_temp_actor(&self, actor: ActorRefGeneric<TB>) -> String {
-    let name = self.inner.read().next_temp_actor_name();
-    self.temp_actors.with_write(|temp_actors| temp_actors.insert(name.clone(), actor));
-    name
+    self.inner.write().register_temp_actor(actor)
   }
 
   /// Removes a temporary actor reference if registered.
   pub fn unregister_temp_actor(&self, name: &str) {
-    let _ = self.temp_actors.with_write(|temp_actors| temp_actors.remove(name));
+    self.inner.write().unregister_temp_actor(name);
   }
 
   /// Resolves a registered temporary actor reference.
   #[must_use]
   pub fn temp_actor(&self, name: &str) -> Option<ActorRefGeneric<TB>> {
-    self.temp_actors.with_read(|temp_actors| temp_actors.get(name))
+    self.inner.read().temp_actor(name)
   }
 
   /// Resolves the actor path for the specified pid if the actor exists.
