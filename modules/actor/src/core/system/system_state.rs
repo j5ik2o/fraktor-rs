@@ -26,9 +26,9 @@ use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
 use self::path_identity::PathIdentity;
 use super::{
-  ActorPathRegistrySharedGeneric, ActorRefProvider, ActorRefProviderCaller, ActorRefProviderHandle,
-  ActorRefProviderSharedGeneric, AuthorityState, CellsSharedGeneric, GuardianKind, RegistriesSharedGeneric,
-  RemoteAuthorityError, RemoteAuthorityManagerSharedGeneric, RemoteWatchHookDynSharedGeneric, RemotingConfig,
+  ActorPathRegistry, ActorRefProvider, ActorRefProviderCaller, ActorRefProviderHandle, ActorRefProviderSharedGeneric,
+  AuthorityState, CellsSharedGeneric, GuardianKind, RegistriesSharedGeneric, RemoteAuthorityError,
+  RemoteAuthorityManagerSharedGeneric, RemoteWatchHookDynSharedGeneric, RemotingConfig,
   actor_ref_provider_callers::ActorRefProviderCallersGeneric, actor_ref_providers::ActorRefProvidersGeneric,
   ask_futures::AskFuturesGeneric, extensions::ExtensionsGeneric, extra_top_levels::ExtraTopLevelsGeneric,
   guardians_state::GuardiansState, temp_actors::TempActorsGeneric,
@@ -96,7 +96,7 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   dispatchers: DispatchersGeneric<TB>,
   mailboxes: ArcShared<MailboxesGeneric<TB>>,
   path_identity: PathIdentity,
-  actor_path_registry: ActorPathRegistrySharedGeneric<TB>,
+  actor_path_registry: ActorPathRegistry,
   remote_authority_mgr: RemoteAuthorityManagerSharedGeneric<TB>,
   scheduler_context: SchedulerContextSharedGeneric<TB>,
   tick_driver_runtime: TickDriverRuntime<TB>,
@@ -153,7 +153,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       dispatchers,
       mailboxes: ArcShared::new(mailboxes),
       path_identity: PathIdentity::default(),
-      actor_path_registry: ActorPathRegistrySharedGeneric::default(),
+      actor_path_registry: ActorPathRegistry::default(),
       remote_authority_mgr: RemoteAuthorityManagerSharedGeneric::default(),
       actor_ref_provider_callers_by_scheme: ActorRefProviderCallersGeneric::default(),
       scheduler_context,
@@ -234,7 +234,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     }
 
     let policy = ReservationPolicy::with_quarantine_duration(self.default_quarantine_duration());
-    self.actor_path_registry.with_write(|registry| registry.set_policy(policy));
+    self.actor_path_registry.set_policy(policy);
   }
 
   fn identity_snapshot(&self) -> PathIdentity {
@@ -746,31 +746,9 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     Some(self.scheduler_context().shutdown())
   }
 
-  /// Records a failure and routes it to the supervising hierarchy.
-  pub(crate) fn report_failure(&self, mut payload: FailurePayload) {
+  pub(crate) fn record_failure_reported(&self) {
     self.failure_total.fetch_add(1, Ordering::Relaxed);
     self.failure_inflight.fetch_add(1, Ordering::AcqRel);
-    let message = format!("actor {:?} failed: {}", payload.child(), payload.reason().as_str());
-    self.emit_log(LogLevel::Error, message, Some(payload.child()));
-
-    if let Some(parent_pid) = self.parent_of(&payload.child())
-      && let Some(parent_cell) = self.cell(&parent_pid)
-    {
-      if let Some(stats) = parent_cell.snapshot_child_restart_stats(payload.child()) {
-        payload = payload.with_restart_stats(stats);
-      }
-      if self.send_system_message(parent_pid, SystemMessage::Failure(payload.clone())).is_ok() {
-        return;
-      }
-      let payload_ref = &payload;
-      self.record_failure_outcome(payload.child(), FailureOutcome::Stop, payload_ref);
-      self.stop_actor(payload.child());
-      return;
-    }
-
-    let payload_ref = &payload;
-    self.record_failure_outcome(payload.child(), FailureOutcome::Stop, payload_ref);
-    self.stop_actor(payload.child());
   }
 
   /// Records the outcome of a previously reported failure (restart/stop/escalate).
@@ -840,14 +818,14 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     let _ = self.send_system_message(pid, SystemMessage::Stop);
   }
 
-  fn parent_of(&self, pid: &Pid) -> Option<Pid> {
-    self.cell(pid).and_then(|cell| cell.parent())
-  }
-
   /// Returns a reference to the ActorPathRegistry.
   #[must_use]
-  pub const fn actor_path_registry(&self) -> &ActorPathRegistrySharedGeneric<TB> {
+  pub const fn actor_path_registry(&self) -> &ActorPathRegistry {
     &self.actor_path_registry
+  }
+
+  pub(crate) const fn actor_path_registry_mut(&mut self) -> &mut ActorPathRegistry {
+    &mut self.actor_path_registry
   }
 
   /// Returns a reference to the RemoteAuthorityManager.
@@ -933,9 +911,9 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   }
 
   /// Polls all authorities for expired quarantine windows and emits events for lifted entries.
-  pub fn poll_remote_authorities(&self) {
+  pub fn poll_remote_authorities(&mut self) {
     let now_secs = self.monotonic_now().as_secs();
-    self.actor_path_registry.with_write(|registry| registry.poll_expired(now_secs));
+    self.actor_path_registry.poll_expired(now_secs);
     let lifted = self.remote_authority_mgr.with_write(|mgr| mgr.poll_quarantine_expiration(now_secs));
     for authority in lifted {
       self.publish_remote_authority_event(authority.clone(), AuthorityState::Unresolved);

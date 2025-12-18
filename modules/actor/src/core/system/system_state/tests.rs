@@ -36,21 +36,18 @@ use crate::core::{
 };
 
 impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
-  pub(crate) fn remove_cell(&self, pid: &Pid) {
-    let reservation_source = self
-      .actor_path_registry
-      .with_read(|registry| registry.get(pid).map(|handle| (handle.canonical_uri().to_string(), handle.uid())));
+  pub(crate) fn remove_cell(&mut self, pid: &Pid) {
+    let reservation_source =
+      self.actor_path_registry.get(pid).map(|handle| (handle.canonical_uri().to_string(), handle.uid()));
 
     if let Some((canonical, Some(uid))) = reservation_source
       && let Ok(actor_path) = ActorPathParser::parse(&canonical)
     {
       let now_secs = self.monotonic_now().as_secs();
-      self.actor_path_registry.with_write(|registry| {
-        let _ = registry.reserve_uid(&actor_path, uid, now_secs, None);
-      });
+      let _ = self.actor_path_registry.reserve_uid(&actor_path, uid, now_secs, None);
     }
 
-    self.actor_path_registry.with_write(|registry| registry.unregister(pid));
+    self.actor_path_registry.unregister(pid);
     let _ = self.cells.with_write(|cells| cells.remove(pid));
   }
 
@@ -220,19 +217,16 @@ fn system_state_register_and_remove_cell() {
 
 #[test]
 fn system_state_remove_cell_reserves_uid() {
-  let state = build_state();
+  let mut state = build_state();
   let pid = state.allocate_pid();
   let path = ActorPath::root().child("reserved").with_uid(ActorUid::new(777));
 
-  state.actor_path_registry().with_write(|registry| {
-    registry.register(pid, &path);
-  });
+  state.actor_path_registry_mut().register(pid, &path);
 
   state.remove_cell(&pid);
 
   let now = state.monotonic_now().as_secs();
-  let result =
-    state.actor_path_registry().with_write(|registry| registry.reserve_uid(&path, ActorUid::new(888), now, None));
+  let result = state.actor_path_registry_mut().reserve_uid(&path, ActorUid::new(888), now, None);
   assert!(matches!(result, Err(PathResolutionError::UidReserved { .. })));
 }
 
@@ -252,9 +246,8 @@ fn system_state_registers_canonical_uri_with_config() {
     ActorCell::create(state.clone(), child_pid, Some(root_pid), "worker".to_string(), &props).expect("worker");
   state.register_cell(child);
 
-  let canonical = state.with_actor_path_registry(|registry| {
-    registry.with_read(|r| r.canonical_uri(&child_pid).expect("canonical uri").to_string())
-  });
+  let canonical =
+    state.with_actor_path_registry(|registry| registry.canonical_uri(&child_pid).expect("canonical uri").to_string());
   assert!(canonical.starts_with("fraktor.tcp://fraktor-system@localhost:2552"));
   assert!(canonical.ends_with("/user/worker"));
 }
@@ -298,7 +291,7 @@ fn system_state_refuses_canonical_without_port() {
   state.register_cell(child);
 
   assert!(state.canonical_actor_path(&child_pid).is_none());
-  assert!(state.with_actor_path_registry(|registry| registry.with_read(|r| r.get(&child_pid).is_none())));
+  assert!(state.with_actor_path_registry(|registry| registry.get(&child_pid).is_none()));
   let local = state.actor_path(&child_pid).expect("local path");
   assert_eq!(local.to_relative_string(), "/user/worker");
   assert!(state.canonical_authority_components().is_none());
@@ -351,9 +344,8 @@ fn system_state_honors_default_guardian_config() {
     ActorCell::create(state.clone(), child_pid, Some(root_pid), "logger".to_string(), &props).expect("logger");
   state.register_cell(child);
 
-  let canonical = state.with_actor_path_registry(|registry| {
-    registry.with_read(|r| r.canonical_uri(&child_pid).expect("canonical uri").to_string())
-  });
+  let canonical =
+    state.with_actor_path_registry(|registry| registry.canonical_uri(&child_pid).expect("canonical uri").to_string());
   assert!(canonical.contains("/system/logger"), "canonical: {}", canonical);
 }
 
@@ -497,7 +489,7 @@ fn system_state_temp_actor_round_trip() {
 
 #[test]
 fn system_state_remote_authority_events() {
-  let state = build_state();
+  let mut state = build_state();
   let stream = state.event_stream();
   let events_shared = ArcShared::new(NoStdMutex::new(Vec::new()));
   let subscriber = subscriber_handle(RemoteEventRecorder::new(events_shared.clone()));
@@ -742,7 +734,7 @@ fn termination_future_completes_after_root_marked_terminated() {
 fn system_state_logs_failure_with_pid_origin() {
   use core::time::Duration;
 
-  let state = build_state();
+  let state = build_shared_state();
   let events_shared: ArcShared<NoStdMutex<Vec<EventStreamEvent<NoStdToolbox>>>> =
     ArcShared::new(NoStdMutex::new(Vec::new()));
   let subscriber = subscriber_handle(LogRecorder::new(events_shared.clone()));

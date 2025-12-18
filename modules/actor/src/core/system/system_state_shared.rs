@@ -17,9 +17,9 @@ use fraktor_utils_rs::core::{
 };
 
 use super::{
-  ActorPathRegistrySharedGeneric, ActorRefProvider, ActorRefProviderSharedGeneric, AuthorityState, CellsSharedGeneric,
-  GuardianKind, RegistriesSharedGeneric, RemoteAuthorityError, RemoteAuthorityManagerSharedGeneric,
-  RemoteWatchHookDynSharedGeneric, RemotingConfig, SystemStateGeneric,
+  ActorPathRegistry, ActorRefProvider, ActorRefProviderSharedGeneric, AuthorityState, CellsSharedGeneric, GuardianKind,
+  RegistriesSharedGeneric, RemoteAuthorityError, RemoteAuthorityManagerSharedGeneric, RemoteWatchHookDynSharedGeneric,
+  RemotingConfig, SystemStateGeneric,
 };
 use crate::core::{
   actor_prim::{
@@ -37,6 +37,7 @@ use crate::core::{
   messaging::{AnyMessageGeneric, FailurePayload, SystemMessage},
   scheduler::{SchedulerContextSharedGeneric, TaskRunSummary, TickDriverRuntime},
   spawn::{NameRegistryError, SpawnError},
+  supervision::SupervisorDirective,
   system::{ActorSystemBuildError, RegisterExtensionError, RegisterExtraTopLevelError},
 };
 
@@ -59,7 +60,6 @@ pub struct SystemStateSharedGeneric<TB: RuntimeToolbox + 'static> {
   remote_watch_hook:   RemoteWatchHookDynSharedGeneric<TB>,
   scheduler_ctx:       SchedulerContextSharedGeneric<TB>,
   tick_driver_rt:      TickDriverRuntime<TB>,
-  path_registry:       ActorPathRegistrySharedGeneric<TB>,
   remote_mgr:          RemoteAuthorityManagerSharedGeneric<TB>,
 }
 
@@ -80,7 +80,6 @@ impl<TB: RuntimeToolbox + 'static> Clone for SystemStateSharedGeneric<TB> {
       remote_watch_hook:   self.remote_watch_hook.clone(),
       scheduler_ctx:       self.scheduler_ctx.clone(),
       tick_driver_rt:      self.tick_driver_rt.clone(),
-      path_registry:       self.path_registry.clone(),
       remote_mgr:          self.remote_mgr.clone(),
     }
   }
@@ -103,7 +102,6 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
     let remote_watch_hook = state.remote_watch_hook_handle();
     let scheduler_ctx = state.scheduler_context();
     let tick_driver_rt = state.tick_driver_runtime();
-    let path_registry = state.actor_path_registry().clone();
     let remote_mgr = state.remote_authority_manager().clone();
     let inner = ArcShared::new(<TB::RwLockFamily as SyncRwLockFamily>::create(state));
     Self {
@@ -121,7 +119,6 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
       remote_watch_hook,
       scheduler_ctx,
       tick_driver_rt,
-      path_registry,
       remote_mgr,
     }
   }
@@ -143,7 +140,6 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
     let remote_watch_hook = guard.remote_watch_hook_handle();
     let scheduler_ctx = guard.scheduler_context();
     let tick_driver_rt = guard.tick_driver_runtime();
-    let path_registry = guard.actor_path_registry().clone();
     let remote_mgr = guard.remote_authority_manager().clone();
     drop(guard);
     Self {
@@ -161,7 +157,6 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
       remote_watch_hook,
       scheduler_ctx,
       tick_driver_rt,
-      path_registry,
       remote_mgr,
     }
   }
@@ -191,26 +186,28 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
     let pid = cell.pid();
     self.cells.with_write(|cells| cells.insert(pid, cell));
     if let Some(path) = self.canonical_actor_path(&pid) {
-      self.path_registry.with_write(|registry| registry.register(pid, &path));
+      self.inner.write().actor_path_registry_mut().register(pid, &path);
     }
   }
 
   /// Removes the actor cell associated with the pid.
   pub fn remove_cell(&self, pid: &Pid) {
-    let reservation_source = self
-      .path_registry
-      .with_read(|registry| registry.get(pid).map(|handle| (handle.canonical_uri().to_string(), handle.uid())));
+    let reservation_source =
+      self.inner.read().actor_path_registry().get(pid).map(|handle| (handle.canonical_uri().to_string(), handle.uid()));
 
     if let Some((canonical, Some(uid))) = reservation_source
       && let Ok(actor_path) = ActorPathParser::parse(&canonical)
     {
       let now_secs = self.monotonic_now().as_secs();
-      self.path_registry.with_write(|registry| {
-        let _ = registry.reserve_uid(&actor_path, uid, now_secs, None);
-      });
+      let mut guard = self.inner.write();
+      let _ = guard.actor_path_registry_mut().reserve_uid(&actor_path, uid, now_secs, None);
+      guard.actor_path_registry_mut().unregister(pid);
+      drop(guard);
+      let _ = self.cells.with_write(|cells| cells.remove(pid));
+      return;
     }
 
-    self.path_registry.with_write(|registry| registry.unregister(pid));
+    self.inner.write().actor_path_registry_mut().unregister(pid);
     let _ = self.cells.with_write(|cells| cells.remove(pid));
   }
 
@@ -680,7 +677,46 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   /// Handles a failure in a child actor according to supervision strategy.
   #[allow(dead_code)]
   pub fn handle_failure(&self, pid: Pid, parent: Option<Pid>, error: &ActorError) {
-    self.inner.read().handle_failure(pid, parent, error);
+    let Some(parent_pid) = parent else {
+      let _ = self.send_system_message(pid, SystemMessage::Stop);
+      return;
+    };
+
+    let Some(parent_cell) = self.cell(&parent_pid) else {
+      let _ = self.send_system_message(pid, SystemMessage::Stop);
+      return;
+    };
+
+    let parent_parent = parent_cell.parent();
+    let now = self.monotonic_now();
+    let (directive, affected) = parent_cell.handle_child_failure(pid, error, now);
+
+    match directive {
+      | SupervisorDirective::Restart => {
+        let mut escalate_due_to_recreate_failure = false;
+        for target in affected {
+          if let Err(send_error) = self.send_system_message(target, SystemMessage::Recreate) {
+            self.record_send_error(Some(target), &send_error);
+            let _ = self.send_system_message(target, SystemMessage::Stop);
+            escalate_due_to_recreate_failure = true;
+          }
+        }
+        if escalate_due_to_recreate_failure {
+          self.handle_failure(parent_pid, parent_parent, error);
+        }
+      },
+      | SupervisorDirective::Stop => {
+        for target in affected {
+          let _ = self.send_system_message(target, SystemMessage::Stop);
+        }
+      },
+      | SupervisorDirective::Escalate => {
+        for target in affected {
+          let _ = self.send_system_message(target, SystemMessage::Stop);
+        }
+        self.handle_failure(parent_pid, parent_parent, error);
+      },
+    }
   }
 
   /// Records an explicit deadletter entry originating from runtime logic.
@@ -771,8 +807,31 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   }
 
   /// Records a failure and routes it to the supervising hierarchy.
-  pub fn report_failure(&self, payload: FailurePayload) {
-    self.inner.read().report_failure(payload);
+  pub fn report_failure(&self, mut payload: FailurePayload) {
+    {
+      self.inner.read().record_failure_reported();
+    }
+
+    let child_pid = payload.child();
+    let message = format!("actor {:?} failed: {}", child_pid, payload.reason().as_str());
+    self.emit_log(LogLevel::Error, message, Some(child_pid));
+
+    if let Some(parent_pid) = self.cell(&child_pid).and_then(|cell| cell.parent())
+      && let Some(parent_cell) = self.cell(&parent_pid)
+    {
+      if let Some(stats) = parent_cell.snapshot_child_restart_stats(child_pid) {
+        payload = payload.with_restart_stats(stats);
+      }
+      if self.send_system_message(parent_pid, SystemMessage::Failure(payload.clone())).is_ok() {
+        return;
+      }
+      self.record_failure_outcome(child_pid, super::FailureOutcome::Stop, &payload);
+      let _ = self.send_system_message(child_pid, SystemMessage::Stop);
+      return;
+    }
+
+    self.record_failure_outcome(child_pid, super::FailureOutcome::Stop, &payload);
+    let _ = self.send_system_message(child_pid, SystemMessage::Stop);
   }
 
   /// Records the outcome of a previously reported failure (restart/stop/escalate).
@@ -783,8 +842,9 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   /// Returns a reference to the ActorPathRegistry.
   pub fn with_actor_path_registry<R, F>(&self, f: F) -> R
   where
-    F: FnOnce(&super::ActorPathRegistrySharedGeneric<TB>) -> R, {
-    f(&self.path_registry)
+    F: FnOnce(&ActorPathRegistry) -> R, {
+    let snapshot = { self.inner.read().actor_path_registry().clone() };
+    f(&snapshot)
   }
 
   /// Returns a reference to the RemoteAuthorityManager.
@@ -854,7 +914,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
 
   /// Polls all authorities for expired quarantine windows.
   pub fn poll_remote_authorities(&self) {
-    self.inner.read().poll_remote_authorities();
+    self.inner.write().poll_remote_authorities();
   }
 }
 

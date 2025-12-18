@@ -355,7 +355,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   /// Resolves the pid registered for the provided actor path.
   #[must_use]
   pub fn pid_by_path(&self, path: &crate::core::actor_prim::actor_path::ActorPath) -> Option<Pid> {
-    self.state.with_actor_path_registry(|registry| registry.with_read(|r| r.pid_for(path)))
+    self.state.with_actor_path_registry(|registry| registry.pid_for(path))
   }
 
   /// Returns an actor reference for the provided pid when registered.
