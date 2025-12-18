@@ -16,8 +16,8 @@ use crate::core::{
   actor_prim::{ChildRefGeneric, actor_ref::ActorRefGeneric},
   dispatcher::{DispatcherConfigGeneric, DispatcherRegistryError},
   extension::{Extension, ExtensionId},
-  mailbox::MailboxesGeneric,
-  props::PropsGeneric,
+  mailbox::MailboxRegistryError,
+  props::{MailboxConfig, PropsGeneric},
   spawn::SpawnError,
 };
 
@@ -55,10 +55,13 @@ impl<TB: RuntimeToolbox + 'static> ExtendedActorSystemGeneric<TB> {
     self.inner.state().resolve_dispatcher(id)
   }
 
-  /// Returns the mailbox registry.
-  #[must_use]
-  pub fn mailboxes(&self) -> ArcShared<MailboxesGeneric<TB>> {
-    self.inner.state().mailboxes()
+  /// Resolves the mailbox configuration for the identifier.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`MailboxRegistryError::Unknown`] when the identifier has not been registered.
+  pub fn resolve_mailbox(&self, id: &str) -> Result<MailboxConfig, MailboxRegistryError> {
+    self.inner.state().resolve_mailbox(id)
   }
 
   /// Registers the provided extension and returns the shared instance.

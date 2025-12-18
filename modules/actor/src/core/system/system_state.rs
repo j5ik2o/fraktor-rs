@@ -45,8 +45,9 @@ use crate::core::{
   event_stream::{EventStreamEvent, EventStreamSharedGeneric, RemoteAuthorityEvent, TickDriverSnapshot},
   futures::ActorFutureSharedGeneric,
   logging::{LogEvent, LogLevel},
-  mailbox::MailboxesGeneric,
+  mailbox::{MailboxRegistryError, MailboxesGeneric},
   messaging::{AnyMessageGeneric, FailurePayload, SystemMessage},
+  props::MailboxConfig,
   scheduler::{
     SchedulerConfig, SchedulerContextSharedGeneric, TaskRunSummary, TickDriverControl, TickDriverHandleGeneric,
     TickDriverKind, TickDriverRuntime, TickExecutorSignal, TickFeed, next_tick_driver_id,
@@ -94,7 +95,7 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   actor_ref_provider_callers_by_scheme: ActorRefProviderCallersGeneric<TB>,
   remote_watch_hook: RemoteWatchHookDynSharedGeneric<TB>,
   dispatchers: DispatchersGeneric<TB>,
-  mailboxes: ArcShared<MailboxesGeneric<TB>>,
+  mailboxes: MailboxesGeneric<TB>,
   path_identity: PathIdentity,
   actor_path_registry: ActorPathRegistry,
   remote_authority_mgr: RemoteAuthorityManagerSharedGeneric<TB>,
@@ -151,7 +152,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       actor_ref_providers: ActorRefProvidersGeneric::default(),
       remote_watch_hook: RemoteWatchHookDynSharedGeneric::noop(),
       dispatchers,
-      mailboxes: ArcShared::new(mailboxes),
+      mailboxes,
       path_identity: PathIdentity::default(),
       actor_path_registry: ActorPathRegistry::default(),
       remote_authority_mgr: RemoteAuthorityManagerSharedGeneric::default(),
@@ -222,7 +223,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     self.path_identity.system_name = config.system_name().to_string();
     self.path_identity.guardian_kind = config.default_guardian();
     self.dispatchers = config.dispatchers().clone();
-    self.mailboxes = ArcShared::new(config.mailboxes().clone());
+    self.mailboxes = config.mailboxes().clone();
     if let Some(remoting) = config.remoting_config() {
       self.path_identity.canonical_host = Some(remoting.canonical_host().to_string());
       self.path_identity.canonical_port = remoting.canonical_port();
@@ -703,10 +704,13 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     self.dispatchers.resolve(id)
   }
 
-  /// Returns the mailbox registry.
-  #[must_use]
-  pub fn mailboxes(&self) -> ArcShared<MailboxesGeneric<TB>> {
-    self.mailboxes.clone()
+  /// Resolves the mailbox configuration for the identifier.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`MailboxRegistryError::Unknown`] when the identifier has not been registered.
+  pub fn resolve_mailbox(&self, id: &str) -> Result<MailboxConfig, MailboxRegistryError> {
+    self.mailboxes.resolve(id)
   }
 
   /// Returns the remoting configuration when it has been configured.

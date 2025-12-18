@@ -33,8 +33,9 @@ use crate::core::{
   event_stream::{EventStreamEvent, EventStreamSharedGeneric, TickDriverSnapshot},
   futures::ActorFutureSharedGeneric,
   logging::{LogEvent, LogLevel},
-  mailbox::MailboxesGeneric,
+  mailbox::MailboxRegistryError,
   messaging::{AnyMessageGeneric, FailurePayload, SystemMessage},
+  props::MailboxConfig,
   scheduler::{SchedulerContextSharedGeneric, TaskRunSummary, TickDriverRuntime},
   spawn::{NameRegistryError, SpawnError},
   supervision::SupervisorDirective,
@@ -763,10 +764,13 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
     self.inner.read().resolve_dispatcher(id)
   }
 
-  /// Returns the mailbox registry.
-  #[must_use]
-  pub fn mailboxes(&self) -> ArcShared<MailboxesGeneric<TB>> {
-    self.inner.read().mailboxes()
+  /// Resolves the mailbox configuration for the identifier.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`MailboxRegistryError::Unknown`] when the identifier has not been registered.
+  pub fn resolve_mailbox(&self, id: &str) -> Result<MailboxConfig, MailboxRegistryError> {
+    self.inner.read().resolve_mailbox(id)
   }
 
   /// Returns the remoting configuration when it has been configured.
