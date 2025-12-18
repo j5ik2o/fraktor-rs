@@ -40,7 +40,7 @@ use crate::core::{
     actor_ref::ActorRefGeneric,
   },
   dead_letter::{DeadLetterEntryGeneric, DeadLetterSharedGeneric},
-  dispatcher::DispatchersGeneric,
+  dispatcher::{DispatcherConfigGeneric, DispatcherRegistryError, DispatchersGeneric},
   error::{ActorError, SendError},
   event_stream::{EventStreamEvent, EventStreamSharedGeneric, RemoteAuthorityEvent, TickDriverSnapshot},
   futures::ActorFutureSharedGeneric,
@@ -93,7 +93,7 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   actor_ref_providers: ActorRefProvidersGeneric<TB>,
   actor_ref_provider_callers_by_scheme: ActorRefProviderCallersGeneric<TB>,
   remote_watch_hook: RemoteWatchHookDynSharedGeneric<TB>,
-  dispatchers: ArcShared<DispatchersGeneric<TB>>,
+  dispatchers: DispatchersGeneric<TB>,
   mailboxes: ArcShared<MailboxesGeneric<TB>>,
   path_identity: PathIdentity,
   actor_path_registry: ActorPathRegistrySharedGeneric<TB>,
@@ -116,7 +116,6 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     let dead_letter = DeadLetterSharedGeneric::with_capacity(event_stream.clone(), DEAD_LETTER_CAPACITY);
     let mut dispatchers = DispatchersGeneric::new();
     dispatchers.ensure_default();
-    let dispatchers = ArcShared::new(dispatchers);
     let mut mailboxes = MailboxesGeneric::<TB>::new();
     mailboxes.ensure_default();
     let scheduler_config = SchedulerConfig::default();
@@ -222,7 +221,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   pub fn apply_actor_system_config(&mut self, config: &ActorSystemConfigGeneric<TB>) {
     self.path_identity.system_name = config.system_name().to_string();
     self.path_identity.guardian_kind = config.default_guardian();
-    self.dispatchers = ArcShared::new(config.dispatchers().clone());
+    self.dispatchers = config.dispatchers().clone();
     self.mailboxes = ArcShared::new(config.mailboxes().clone());
     if let Some(remoting) = config.remoting_config() {
       self.path_identity.canonical_host = Some(remoting.canonical_host().to_string());
@@ -695,10 +694,13 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     Duration::from_millis(ticks)
   }
 
-  /// Returns the dispatcher registry.
-  #[must_use]
-  pub fn dispatchers(&self) -> ArcShared<DispatchersGeneric<TB>> {
-    self.dispatchers.clone()
+  /// Resolves the dispatcher configuration for the identifier.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`DispatcherRegistryError::Unknown`] when the identifier has not been registered.
+  pub fn resolve_dispatcher(&self, id: &str) -> Result<DispatcherConfigGeneric<TB>, DispatcherRegistryError> {
+    self.dispatchers.resolve(id)
   }
 
   /// Returns the mailbox registry.

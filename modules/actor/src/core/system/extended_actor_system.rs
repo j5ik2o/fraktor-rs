@@ -14,7 +14,7 @@ use super::{
 };
 use crate::core::{
   actor_prim::{ChildRefGeneric, actor_ref::ActorRefGeneric},
-  dispatcher::DispatchersGeneric,
+  dispatcher::{DispatcherConfigGeneric, DispatcherRegistryError},
   extension::{Extension, ExtensionId},
   mailbox::MailboxesGeneric,
   props::PropsGeneric,
@@ -46,10 +46,13 @@ impl<TB: RuntimeToolbox + 'static> ExtendedActorSystemGeneric<TB> {
     self.inner
   }
 
-  /// Returns the dispatcher registry.
-  #[must_use]
-  pub fn dispatchers(&self) -> ArcShared<DispatchersGeneric<TB>> {
-    self.inner.state().dispatchers()
+  /// Resolves the dispatcher configuration for the identifier.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`DispatcherRegistryError::Unknown`] when the identifier has not been registered.
+  pub fn resolve_dispatcher(&self, id: &str) -> Result<DispatcherConfigGeneric<TB>, DispatcherRegistryError> {
+    self.inner.state().resolve_dispatcher(id)
   }
 
   /// Returns the mailbox registry.

@@ -28,7 +28,7 @@ use crate::core::{
     actor_ref::ActorRefGeneric,
   },
   dead_letter::{DeadLetterEntryGeneric, DeadLetterReason, DeadLetterSharedGeneric},
-  dispatcher::DispatchersGeneric,
+  dispatcher::{DispatcherConfigGeneric, DispatcherRegistryError},
   error::{ActorError, SendError},
   event_stream::{EventStreamEvent, EventStreamSharedGeneric, TickDriverSnapshot},
   futures::ActorFutureSharedGeneric,
@@ -718,10 +718,13 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
     self.inner.read().monotonic_now()
   }
 
-  /// Returns the dispatcher registry.
-  #[must_use]
-  pub fn dispatchers(&self) -> ArcShared<DispatchersGeneric<TB>> {
-    self.inner.read().dispatchers()
+  /// Resolves the dispatcher configuration for the identifier.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`DispatcherRegistryError::Unknown`] when the identifier has not been registered.
+  pub fn resolve_dispatcher(&self, id: &str) -> Result<DispatcherConfigGeneric<TB>, DispatcherRegistryError> {
+    self.inner.read().resolve_dispatcher(id)
   }
 
   /// Returns the mailbox registry.
