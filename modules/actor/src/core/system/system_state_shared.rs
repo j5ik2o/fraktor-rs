@@ -18,8 +18,7 @@ use fraktor_utils_rs::core::{
 
 use super::{
   ActorPathRegistry, ActorRefProvider, ActorRefProviderSharedGeneric, AuthorityState, CellsSharedGeneric, GuardianKind,
-  RemoteAuthorityError, RemoteAuthorityManagerSharedGeneric, RemoteWatchHookDynSharedGeneric, RemotingConfig,
-  SystemStateGeneric,
+  RemoteAuthorityError, RemoteWatchHookDynSharedGeneric, RemotingConfig, SystemStateGeneric,
 };
 use crate::core::{
   actor_prim::{
@@ -60,7 +59,6 @@ pub struct SystemStateSharedGeneric<TB: RuntimeToolbox + 'static> {
   remote_watch_hook:   RemoteWatchHookDynSharedGeneric<TB>,
   scheduler_ctx:       SchedulerContextSharedGeneric<TB>,
   tick_driver_rt:      TickDriverRuntime<TB>,
-  remote_mgr:          RemoteAuthorityManagerSharedGeneric<TB>,
 }
 
 impl<TB: RuntimeToolbox + 'static> Clone for SystemStateSharedGeneric<TB> {
@@ -79,7 +77,6 @@ impl<TB: RuntimeToolbox + 'static> Clone for SystemStateSharedGeneric<TB> {
       remote_watch_hook:   self.remote_watch_hook.clone(),
       scheduler_ctx:       self.scheduler_ctx.clone(),
       tick_driver_rt:      self.tick_driver_rt.clone(),
-      remote_mgr:          self.remote_mgr.clone(),
     }
   }
 }
@@ -100,7 +97,6 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
     let remote_watch_hook = state.remote_watch_hook_handle();
     let scheduler_ctx = state.scheduler_context();
     let tick_driver_rt = state.tick_driver_runtime();
-    let remote_mgr = state.remote_authority_manager().clone();
     let inner = ArcShared::new(<TB::RwLockFamily as SyncRwLockFamily>::create(state));
     Self {
       inner,
@@ -116,7 +112,6 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
       remote_watch_hook,
       scheduler_ctx,
       tick_driver_rt,
-      remote_mgr,
     }
   }
 
@@ -136,7 +131,6 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
     let remote_watch_hook = guard.remote_watch_hook_handle();
     let scheduler_ctx = guard.scheduler_context();
     let tick_driver_rt = guard.tick_driver_runtime();
-    let remote_mgr = guard.remote_authority_manager().clone();
     drop(guard);
     Self {
       inner,
@@ -152,7 +146,6 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
       remote_watch_hook,
       scheduler_ctx,
       tick_driver_rt,
-      remote_mgr,
     }
   }
 
@@ -823,43 +816,37 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
     f(&snapshot)
   }
 
-  /// Returns a reference to the RemoteAuthorityManager.
-  #[must_use]
-  pub fn remote_authority_manager(&self) -> super::RemoteAuthorityManagerSharedGeneric<TB> {
-    self.remote_mgr.clone()
-  }
-
   /// Returns the current authority state.
   #[must_use]
   pub fn remote_authority_state(&self, authority: &str) -> AuthorityState {
-    self.remote_mgr.with_read(|mgr| mgr.state(authority))
+    self.inner.read().remote_authority_state(authority)
   }
 
   /// Returns a snapshot of known remote authorities and their states.
   #[must_use]
   pub fn remote_authority_snapshots(&self) -> Vec<(String, AuthorityState)> {
-    self.remote_mgr.with_read(|mgr| mgr.snapshots())
+    self.inner.read().remote_authority_snapshots()
   }
 
   /// Marks the authority as connected and emits an event.
   #[must_use]
   pub fn remote_authority_set_connected(&self, authority: &str) -> Option<VecDeque<AnyMessageGeneric<TB>>> {
-    self.inner.read().remote_authority_set_connected(authority)
+    self.inner.write().remote_authority_set_connected(authority)
   }
 
   /// Transitions the authority into quarantine.
   pub fn remote_authority_set_quarantine(&self, authority: impl Into<String>, duration: Option<Duration>) {
-    self.inner.read().remote_authority_set_quarantine(authority, duration);
+    self.inner.write().remote_authority_set_quarantine(authority, duration);
   }
 
   /// Handles an InvalidAssociation signal by moving the authority into quarantine.
   pub fn remote_authority_handle_invalid_association(&self, authority: impl Into<String>, duration: Option<Duration>) {
-    self.inner.read().remote_authority_handle_invalid_association(authority, duration);
+    self.inner.write().remote_authority_handle_invalid_association(authority, duration);
   }
 
   /// Manually overrides a quarantined authority back to connected.
   pub fn remote_authority_manual_override_to_connected(&self, authority: &str) {
-    self.inner.read().remote_authority_manual_override_to_connected(authority);
+    self.inner.write().remote_authority_manual_override_to_connected(authority);
   }
 
   /// Defers a message while the authority is unresolved.
@@ -872,7 +859,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
     authority: impl Into<String>,
     message: AnyMessageGeneric<TB>,
   ) -> Result<(), RemoteAuthorityError> {
-    self.inner.read().remote_authority_defer(authority, message)
+    self.inner.write().remote_authority_defer(authority, message)
   }
 
   /// Attempts to defer a message, returning an error if the authority is quarantined.
@@ -885,12 +872,18 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
     authority: impl Into<String>,
     message: AnyMessageGeneric<TB>,
   ) -> Result<(), RemoteAuthorityError> {
-    self.inner.read().remote_authority_try_defer(authority, message)
+    self.inner.write().remote_authority_try_defer(authority, message)
   }
 
   /// Polls all authorities for expired quarantine windows.
   pub fn poll_remote_authorities(&self) {
     self.inner.write().poll_remote_authorities();
+  }
+
+  /// Returns the number of messages deferred for the provided authority.
+  #[must_use]
+  pub fn remote_authority_deferred_count(&self, authority: &str) -> usize {
+    self.inner.read().remote_authority_deferred_count(authority)
   }
 }
 

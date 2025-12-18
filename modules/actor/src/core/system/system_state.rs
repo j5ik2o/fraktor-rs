@@ -27,7 +27,7 @@ use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 use self::path_identity::PathIdentity;
 use super::{
   ActorPathRegistry, ActorRefProvider, ActorRefProviderCaller, ActorRefProviderHandle, ActorRefProviderSharedGeneric,
-  AuthorityState, CellsSharedGeneric, GuardianKind, RemoteAuthorityError, RemoteAuthorityManagerSharedGeneric,
+  AuthorityState, CellsSharedGeneric, GuardianKind, RemoteAuthorityError, RemoteAuthorityManagerGeneric,
   RemoteWatchHookDynSharedGeneric, RemotingConfig, actor_ref_provider_callers::ActorRefProviderCallersGeneric,
   actor_ref_providers::ActorRefProvidersGeneric, ask_futures::AskFuturesGeneric, extensions::ExtensionsGeneric,
   extra_top_levels::ExtraTopLevelsGeneric, guardians_state::GuardiansState, registries::RegistriesGeneric,
@@ -98,7 +98,7 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   mailboxes: MailboxesGeneric<TB>,
   path_identity: PathIdentity,
   actor_path_registry: ActorPathRegistry,
-  remote_authority_mgr: RemoteAuthorityManagerSharedGeneric<TB>,
+  remote_authority_mgr: RemoteAuthorityManagerGeneric<TB>,
   scheduler_context: SchedulerContextSharedGeneric<TB>,
   tick_driver_runtime: TickDriverRuntime<TB>,
 }
@@ -155,7 +155,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       mailboxes,
       path_identity: PathIdentity::default(),
       actor_path_registry: ActorPathRegistry::default(),
-      remote_authority_mgr: RemoteAuthorityManagerSharedGeneric::default(),
+      remote_authority_mgr: RemoteAuthorityManagerGeneric::default(),
       actor_ref_provider_callers_by_scheme: ActorRefProviderCallersGeneric::default(),
       scheduler_context,
       tick_driver_runtime,
@@ -863,58 +863,52 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     &mut self.actor_path_registry
   }
 
-  /// Returns a reference to the RemoteAuthorityManager.
-  #[must_use]
-  pub const fn remote_authority_manager(&self) -> &RemoteAuthorityManagerSharedGeneric<TB> {
-    &self.remote_authority_mgr
-  }
-
   /// Returns the current authority state.
   #[must_use]
   pub fn remote_authority_state(&self, authority: &str) -> AuthorityState {
-    self.remote_authority_mgr.with_read(|mgr| mgr.state(authority))
+    self.remote_authority_mgr.state(authority)
   }
 
   /// Returns a snapshot of known remote authorities and their states.
   pub fn remote_authority_snapshots(&self) -> Vec<(String, AuthorityState)> {
-    self.remote_authority_mgr.with_read(|mgr| mgr.snapshots())
+    self.remote_authority_mgr.snapshots()
   }
 
   /// Marks the authority as connected and emits an event.
-  pub fn remote_authority_set_connected(&self, authority: &str) -> Option<VecDeque<AnyMessageGeneric<TB>>> {
-    let drained = self.remote_authority_mgr.with_write(|mgr| mgr.set_connected(authority));
+  pub fn remote_authority_set_connected(&mut self, authority: &str) -> Option<VecDeque<AnyMessageGeneric<TB>>> {
+    let drained = self.remote_authority_mgr.set_connected(authority);
     self.publish_remote_authority_event(authority.to_string(), AuthorityState::Connected);
     drained
   }
 
   /// Transitions the authority into quarantine using the provided duration or the configured
   /// default.
-  pub fn remote_authority_set_quarantine(&self, authority: impl Into<String>, duration: Option<Duration>) {
+  pub fn remote_authority_set_quarantine(&mut self, authority: impl Into<String>, duration: Option<Duration>) {
     let authority = authority.into();
     let now_secs = self.monotonic_now().as_secs();
     let effective = duration.unwrap_or(self.default_quarantine_duration());
-    self.remote_authority_mgr.with_write(|mgr| {
-      mgr.set_quarantine(authority.clone(), now_secs, Some(effective));
-    });
-    let state = self.remote_authority_mgr.with_read(|mgr| mgr.state(&authority));
+    self.remote_authority_mgr.set_quarantine(authority.clone(), now_secs, Some(effective));
+    let state = self.remote_authority_mgr.state(&authority);
     self.publish_remote_authority_event(authority, state);
   }
 
   /// Handles an InvalidAssociation signal by moving the authority into quarantine.
-  pub fn remote_authority_handle_invalid_association(&self, authority: impl Into<String>, duration: Option<Duration>) {
+  pub fn remote_authority_handle_invalid_association(
+    &mut self,
+    authority: impl Into<String>,
+    duration: Option<Duration>,
+  ) {
     let authority = authority.into();
     let now_secs = self.monotonic_now().as_secs();
     let effective = duration.unwrap_or(self.default_quarantine_duration());
-    self.remote_authority_mgr.with_write(|mgr| {
-      mgr.handle_invalid_association(authority.clone(), now_secs, Some(effective));
-    });
-    let state = self.remote_authority_mgr.with_read(|mgr| mgr.state(&authority));
+    self.remote_authority_mgr.handle_invalid_association(authority.clone(), now_secs, Some(effective));
+    let state = self.remote_authority_mgr.state(&authority);
     self.publish_remote_authority_event(authority, state);
   }
 
   /// Manually overrides a quarantined authority back to connected.
-  pub fn remote_authority_manual_override_to_connected(&self, authority: &str) {
-    self.remote_authority_mgr.with_write(|mgr| mgr.manual_override_to_connected(authority));
+  pub fn remote_authority_manual_override_to_connected(&mut self, authority: &str) {
+    self.remote_authority_mgr.manual_override_to_connected(authority);
     self.publish_remote_authority_event(authority.to_string(), AuthorityState::Connected);
   }
 
@@ -925,11 +919,11 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   /// Returns [`RemoteAuthorityError::Quarantined`] if the target authority is currently
   /// quarantined.
   pub fn remote_authority_defer(
-    &self,
+    &mut self,
     authority: impl Into<String>,
     message: AnyMessageGeneric<TB>,
   ) -> Result<(), RemoteAuthorityError> {
-    self.remote_authority_mgr.with_write(|mgr| mgr.defer_send(authority, message))
+    self.remote_authority_mgr.defer_send(authority, message)
   }
 
   /// Attempts to defer a message, returning an error if the authority is quarantined.
@@ -938,21 +932,27 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   ///
   /// Returns [`RemoteAuthorityError::Quarantined`] when the authority remains quarantined.
   pub fn remote_authority_try_defer(
-    &self,
+    &mut self,
     authority: impl Into<String>,
     message: AnyMessageGeneric<TB>,
   ) -> Result<(), RemoteAuthorityError> {
-    self.remote_authority_mgr.with_write(|mgr| mgr.try_defer_send(authority, message))
+    self.remote_authority_mgr.try_defer_send(authority, message)
   }
 
   /// Polls all authorities for expired quarantine windows and emits events for lifted entries.
   pub fn poll_remote_authorities(&mut self) {
     let now_secs = self.monotonic_now().as_secs();
     self.actor_path_registry.poll_expired(now_secs);
-    let lifted = self.remote_authority_mgr.with_write(|mgr| mgr.poll_quarantine_expiration(now_secs));
+    let lifted = self.remote_authority_mgr.poll_quarantine_expiration(now_secs);
     for authority in lifted {
       self.publish_remote_authority_event(authority.clone(), AuthorityState::Unresolved);
     }
+  }
+
+  /// Returns the number of messages deferred for the provided authority.
+  #[must_use]
+  pub fn remote_authority_deferred_count(&self, authority: &str) -> usize {
+    self.remote_authority_mgr.deferred_count(authority)
   }
 }
 

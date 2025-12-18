@@ -72,15 +72,9 @@ impl<TB: RuntimeToolbox + 'static> ActorRefProviderInstaller<TB> for TokioActorR
 
     let control = extension.handle();
     control.lock().register_endpoint_io(writer.clone(), reader.clone());
-    let authority_manager = system.state().remote_authority_manager().clone();
-    let provider = TokioActorRefProviderGeneric::from_components(
-      system.clone(),
-      writer,
-      control,
-      authority_manager,
-      self.transport_config.clone(),
-    )
-    .map_err(|error| ActorSystemBuildError::Configuration(format!("{error}")))?;
+    let provider =
+      TokioActorRefProviderGeneric::from_components(system.clone(), writer, control, self.transport_config.clone())
+        .map_err(|error| ActorSystemBuildError::Configuration(format!("{error}")))?;
     let shared = RemoteWatchHookShared::new(provider, &[ActorPathScheme::FraktorTcp]);
     let shared_provider = ActorRefProviderSharedGeneric::new(shared.clone());
     extended.register_actor_ref_provider(&shared_provider)?;
