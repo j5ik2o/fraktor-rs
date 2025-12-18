@@ -27,11 +27,11 @@ use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 use self::path_identity::PathIdentity;
 use super::{
   ActorPathRegistry, ActorRefProvider, ActorRefProviderCaller, ActorRefProviderHandle, ActorRefProviderSharedGeneric,
-  AuthorityState, CellsSharedGeneric, GuardianKind, RegistriesSharedGeneric, RemoteAuthorityError,
-  RemoteAuthorityManagerSharedGeneric, RemoteWatchHookDynSharedGeneric, RemotingConfig,
-  actor_ref_provider_callers::ActorRefProviderCallersGeneric, actor_ref_providers::ActorRefProvidersGeneric,
-  ask_futures::AskFuturesGeneric, extensions::ExtensionsGeneric, extra_top_levels::ExtraTopLevelsGeneric,
-  guardians_state::GuardiansState, temp_actors::TempActorsGeneric,
+  AuthorityState, CellsSharedGeneric, GuardianKind, RemoteAuthorityError, RemoteAuthorityManagerSharedGeneric,
+  RemoteWatchHookDynSharedGeneric, RemotingConfig, actor_ref_provider_callers::ActorRefProviderCallersGeneric,
+  actor_ref_providers::ActorRefProvidersGeneric, ask_futures::AskFuturesGeneric, extensions::ExtensionsGeneric,
+  extra_top_levels::ExtraTopLevelsGeneric, guardians_state::GuardiansState, registries::RegistriesGeneric,
+  temp_actors::TempActorsGeneric,
 };
 use crate::core::{
   actor_prim::{
@@ -52,7 +52,7 @@ use crate::core::{
     SchedulerConfig, SchedulerContextSharedGeneric, TaskRunSummary, TickDriverControl, TickDriverHandleGeneric,
     TickDriverKind, TickDriverRuntime, TickExecutorSignal, TickFeed, next_tick_driver_id,
   },
-  spawn::SpawnError,
+  spawn::{NameRegistryError, SpawnError},
   supervision::SupervisorDirective,
   system::{RegisterExtraTopLevelError, ReservationPolicy},
 };
@@ -70,7 +70,7 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   next_pid: AtomicU64,
   clock: AtomicU64,
   cells: CellsSharedGeneric<TB>,
-  registries: RegistriesSharedGeneric<TB>,
+  registries: RegistriesGeneric<TB>,
   guardians: GuardiansState,
   root_guardian_alive: AtomicBool,
   system_guardian_alive: AtomicBool,
@@ -128,7 +128,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       next_pid: AtomicU64::new(0),
       clock: AtomicU64::new(0),
       cells: CellsSharedGeneric::default(),
-      registries: RegistriesSharedGeneric::default(),
+      registries: RegistriesGeneric::default(),
       guardians: GuardiansState::default(),
       root_guardian_alive: AtomicBool::new(false),
       system_guardian_alive: AtomicBool::new(false),
@@ -310,10 +310,41 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     self.cells.clone()
   }
 
-  /// Returns the shared name registries handle.
-  #[must_use]
-  pub(crate) fn registries_handle(&self) -> RegistriesSharedGeneric<TB> {
-    self.registries.clone()
+  /// Binds an actor name within its parent's scope.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SpawnError`] if the name assignment fails.
+  pub(crate) fn assign_name(
+    &mut self,
+    parent: Option<Pid>,
+    hint: Option<&str>,
+    pid: Pid,
+  ) -> Result<String, SpawnError> {
+    let registry = self.registries.entry_or_insert(parent);
+
+    match hint {
+      | Some(name) => {
+        registry.register(name, pid).map_err(|error| match error {
+          | NameRegistryError::Duplicate(existing) => SpawnError::name_conflict(existing),
+        })?;
+        Ok(String::from(name))
+      },
+      | None => {
+        let generated = registry.generate_anonymous(pid);
+        registry.register(&generated, pid).map_err(|error| match error {
+          | NameRegistryError::Duplicate(existing) => SpawnError::name_conflict(existing),
+        })?;
+        Ok(generated)
+      },
+    }
+  }
+
+  /// Releases the association between a name and its pid in the registry.
+  pub(crate) fn release_name(&mut self, parent: Option<Pid>, name: &str) {
+    if let Some(registry) = self.registries.get_mut(&parent) {
+      registry.remove(name);
+    }
   }
 
   pub(crate) fn register_ask_future(&mut self, future: ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>) {

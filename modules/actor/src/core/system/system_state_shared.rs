@@ -18,8 +18,8 @@ use fraktor_utils_rs::core::{
 
 use super::{
   ActorPathRegistry, ActorRefProvider, ActorRefProviderSharedGeneric, AuthorityState, CellsSharedGeneric, GuardianKind,
-  RegistriesSharedGeneric, RemoteAuthorityError, RemoteAuthorityManagerSharedGeneric, RemoteWatchHookDynSharedGeneric,
-  RemotingConfig, SystemStateGeneric,
+  RemoteAuthorityError, RemoteAuthorityManagerSharedGeneric, RemoteWatchHookDynSharedGeneric, RemotingConfig,
+  SystemStateGeneric,
 };
 use crate::core::{
   actor_prim::{
@@ -37,7 +37,7 @@ use crate::core::{
   messaging::{AnyMessageGeneric, FailurePayload, SystemMessage},
   props::MailboxConfig,
   scheduler::{SchedulerContextSharedGeneric, TaskRunSummary, TickDriverRuntime},
-  spawn::{NameRegistryError, SpawnError},
+  spawn::SpawnError,
   supervision::SupervisorDirective,
   system::{ActorSystemBuildError, RegisterExtensionError, RegisterExtraTopLevelError},
 };
@@ -56,7 +56,6 @@ pub struct SystemStateSharedGeneric<TB: RuntimeToolbox + 'static> {
   event_stream:        EventStreamSharedGeneric<TB>,
   dead_letter:         DeadLetterSharedGeneric<TB>,
   cells:               CellsSharedGeneric<TB>,
-  registries:          RegistriesSharedGeneric<TB>,
   termination:         ActorFutureSharedGeneric<(), TB>,
   remote_watch_hook:   RemoteWatchHookDynSharedGeneric<TB>,
   scheduler_ctx:       SchedulerContextSharedGeneric<TB>,
@@ -76,7 +75,6 @@ impl<TB: RuntimeToolbox + 'static> Clone for SystemStateSharedGeneric<TB> {
       event_stream:        self.event_stream.clone(),
       dead_letter:         self.dead_letter.clone(),
       cells:               self.cells.clone(),
-      registries:          self.registries.clone(),
       termination:         self.termination.clone(),
       remote_watch_hook:   self.remote_watch_hook.clone(),
       scheduler_ctx:       self.scheduler_ctx.clone(),
@@ -98,7 +96,6 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
     let event_stream = state.event_stream();
     let dead_letter = state.dead_letter_store();
     let cells = state.cells_handle();
-    let registries = state.registries_handle();
     let termination = state.termination_future();
     let remote_watch_hook = state.remote_watch_hook_handle();
     let scheduler_ctx = state.scheduler_context();
@@ -115,7 +112,6 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
       event_stream,
       dead_letter,
       cells,
-      registries,
       termination,
       remote_watch_hook,
       scheduler_ctx,
@@ -136,7 +132,6 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
     let event_stream = guard.event_stream();
     let dead_letter = guard.dead_letter_store();
     let cells = guard.cells_handle();
-    let registries = guard.registries_handle();
     let termination = guard.termination_future();
     let remote_watch_hook = guard.remote_watch_hook_handle();
     let scheduler_ctx = guard.scheduler_context();
@@ -153,7 +148,6 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
       event_stream,
       dead_letter,
       cells,
-      registries,
       termination,
       remote_watch_hook,
       scheduler_ctx,
@@ -273,34 +267,12 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   ///
   /// Returns [`SpawnError`] if the name assignment fails.
   pub fn assign_name(&self, parent: Option<Pid>, hint: Option<&str>, pid: Pid) -> Result<String, SpawnError> {
-    self.registries.with_write(|registries| {
-      let registry = registries.entry_or_insert(parent);
-
-      match hint {
-        | Some(name) => {
-          registry.register(name, pid).map_err(|error| match error {
-            | NameRegistryError::Duplicate(existing) => SpawnError::name_conflict(existing),
-          })?;
-          Ok(String::from(name))
-        },
-        | None => {
-          let generated = registry.generate_anonymous(pid);
-          registry.register(&generated, pid).map_err(|error| match error {
-            | NameRegistryError::Duplicate(existing) => SpawnError::name_conflict(existing),
-          })?;
-          Ok(generated)
-        },
-      }
-    })
+    self.inner.write().assign_name(parent, hint, pid)
   }
 
   /// Releases the association between a name and its pid in the registry.
   pub fn release_name(&self, parent: Option<Pid>, name: &str) {
-    self.registries.with_write(|registries| {
-      if let Some(registry) = registries.get_mut(&parent) {
-        registry.remove(name);
-      }
-    });
+    self.inner.write().release_name(parent, name);
   }
 
   /// Stores the root guardian cell reference.

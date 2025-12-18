@@ -28,7 +28,6 @@ use crate::core::{
     ManualTestDriver, SchedulerConfig, TickDriverConfig, TickDriverControl, TickDriverError, TickDriverHandleGeneric,
     TickDriverId, TickDriverKind, TickDriverRuntime, TickExecutorSignal, TickFeed,
   },
-  spawn::{NameRegistryError, SpawnError},
   system::{
     ActorSystemConfig, AuthorityState, GuardianKind, RegisterExtraTopLevelError, RemotingConfig, SystemStateShared,
     booting_state::BootingSystemStateGeneric,
@@ -54,36 +53,6 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   #[must_use]
   pub(crate) fn child_pids(&self, parent: Pid) -> Vec<Pid> {
     self.cell(&parent).map_or_else(Vec::new, |cell| cell.children())
-  }
-
-  pub(crate) fn assign_name(&self, parent: Option<Pid>, hint: Option<&str>, pid: Pid) -> Result<String, SpawnError> {
-    self.registries.with_write(|registries| {
-      let registry = registries.entry_or_insert(parent);
-
-      match hint {
-        | Some(name) => {
-          registry.register(name, pid).map_err(|error| match error {
-            | NameRegistryError::Duplicate(existing) => SpawnError::name_conflict(existing),
-          })?;
-          Ok(alloc::string::String::from(name))
-        },
-        | None => {
-          let generated = registry.generate_anonymous(pid);
-          registry.register(&generated, pid).map_err(|error| match error {
-            | NameRegistryError::Duplicate(existing) => SpawnError::name_conflict(existing),
-          })?;
-          Ok(generated)
-        },
-      }
-    })
-  }
-
-  pub(crate) fn release_name(&self, parent: Option<Pid>, name: &str) {
-    self.registries.with_write(|registries| {
-      if let Some(registry) = registries.get_mut(&parent) {
-        registry.remove(name);
-      }
-    });
   }
 
   // ask_futures と temp_actors は SystemState 本体に実装しているため、テスト側の補助実装は不要
@@ -351,7 +320,7 @@ fn system_state_honors_default_guardian_config() {
 
 #[test]
 fn system_state_assign_name_with_hint() {
-  let state = build_state();
+  let mut state = build_state();
   let pid = state.allocate_pid();
 
   let result = state.assign_name(None, Some("test-actor"), pid);
@@ -362,7 +331,7 @@ fn system_state_assign_name_with_hint() {
 
 #[test]
 fn system_state_assign_name_without_hint() {
-  let state = build_state();
+  let mut state = build_state();
   let pid = state.allocate_pid();
 
   let result = state.assign_name(None, None, pid);
@@ -374,7 +343,7 @@ fn system_state_assign_name_without_hint() {
 
 #[test]
 fn system_state_release_name() {
-  let state = build_state();
+  let mut state = build_state();
   let pid = state.allocate_pid();
 
   let _name = state.assign_name(None, Some("test-actor"), pid).unwrap();
