@@ -34,7 +34,7 @@ mod schedule_adapter_shared;
 mod schedule_waker;
 mod tick_executor;
 
-pub use base::{Dispatcher, DispatcherGeneric};
+pub use base::{DispatcherShared, DispatcherSharedGeneric};
 pub use dispatch_error::DispatchError;
 pub use dispatch_executor::DispatchExecutor;
 pub use dispatch_executor_runner::DispatchExecutorRunner;

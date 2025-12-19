@@ -17,8 +17,8 @@ use fraktor_utils_rs::core::{
 use super::schedule_waker::ScheduleWaker;
 use crate::core::{
   dispatcher::{
-    DispatchError, DispatchExecutor, DispatchExecutorRunner, DispatchSharedGeneric, DispatcherGeneric, ScheduleAdapter,
-    ScheduleAdapterSharedGeneric, TickExecutorGeneric,
+    DispatchError, DispatchExecutor, DispatchExecutorRunner, DispatchSharedGeneric, DispatcherSharedGeneric,
+    ScheduleAdapter, ScheduleAdapterSharedGeneric, TickExecutorGeneric,
   },
   event_stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   logging::LogLevel,
@@ -227,7 +227,7 @@ fn dispatcher_with_executor(
   executor: ArcShared<DispatchExecutorRunner<NoStdToolbox>>,
   throughput_deadline: Option<Duration>,
   starvation_deadline: Option<Duration>,
-) -> DispatcherGeneric<NoStdToolbox> {
+) -> DispatcherSharedGeneric<NoStdToolbox> {
   let adapter = crate::core::dispatcher::InlineScheduleAdapter::shared::<NoStdToolbox>();
   dispatcher_with_executor_and_adapter(mailbox, executor, throughput_deadline, starvation_deadline, adapter)
 }
@@ -238,8 +238,8 @@ fn dispatcher_with_executor_and_adapter(
   throughput_deadline: Option<Duration>,
   starvation_deadline: Option<Duration>,
   adapter: ScheduleAdapterSharedGeneric<NoStdToolbox>,
-) -> DispatcherGeneric<NoStdToolbox> {
-  DispatcherGeneric::with_adapter(mailbox, executor, adapter, throughput_deadline, starvation_deadline)
+) -> DispatcherSharedGeneric<NoStdToolbox> {
+  DispatcherSharedGeneric::with_adapter(mailbox, executor, adapter, throughput_deadline, starvation_deadline)
 }
 
 fn recording_executor_with_runner() -> (ArcShared<RecordingExecutor>, ArcShared<DispatchExecutorRunner<NoStdToolbox>>) {
@@ -442,7 +442,7 @@ impl Default for CountingScheduleAdapter {
 }
 
 impl ScheduleAdapter<NoStdToolbox> for CountingScheduleAdapter {
-  fn create_waker(&mut self, dispatcher: DispatcherGeneric<NoStdToolbox>) -> core::task::Waker {
+  fn create_waker(&mut self, dispatcher: DispatcherSharedGeneric<NoStdToolbox>) -> core::task::Waker {
     ScheduleWaker::<NoStdToolbox>::into_waker(dispatcher)
   }
 

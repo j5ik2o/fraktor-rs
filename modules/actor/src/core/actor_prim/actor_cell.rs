@@ -19,7 +19,7 @@ use crate::core::{
     context_pipe_task::{ContextPipeFuture, ContextPipeTask},
     pipe_spawn_error::PipeSpawnError,
   },
-  dispatcher::DispatcherGeneric,
+  dispatcher::DispatcherSharedGeneric,
   error::ActorError,
   event_stream::EventStreamEvent,
   lifecycle::{LifecycleEvent, LifecycleStage},
@@ -69,7 +69,7 @@ pub struct ActorCellGeneric<TB: RuntimeToolbox + 'static> {
   actor:      ActorSharedGeneric<TB>,
   pipeline:   MessageInvokerPipelineGeneric<TB>,
   mailbox:    ArcShared<MailboxGeneric<TB>>,
-  dispatcher: DispatcherGeneric<TB>,
+  dispatcher: DispatcherSharedGeneric<TB>,
   sender:     ActorRefSenderSharedGeneric<TB>,
   state:      ToolboxMutex<ActorCellState<TB>, TB>,
   terminated: AtomicBool,
@@ -185,7 +185,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
 
   /// Returns the dispatcher associated with this cell.
   #[must_use]
-  pub fn dispatcher(&self) -> DispatcherGeneric<TB> {
+  pub fn dispatcher(&self) -> DispatcherSharedGeneric<TB> {
     self.dispatcher.clone()
   }
 

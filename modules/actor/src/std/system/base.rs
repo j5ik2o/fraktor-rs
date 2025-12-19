@@ -2,7 +2,7 @@ use alloc::{string::String, vec::Vec};
 
 use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
-pub use crate::std::dispatcher::{DispatchExecutor, DispatchShared, Dispatcher, DispatcherConfig};
+pub use crate::std::dispatcher::{DispatchExecutor, DispatchShared, DispatcherConfig, DispatcherShared};
 use crate::{
   core::{
     actor_prim::{Pid, actor_path::ActorPath},

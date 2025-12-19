@@ -10,18 +10,18 @@ use fraktor_utils_rs::core::{
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 
-use super::base::DispatcherGeneric;
+use super::base::DispatcherSharedGeneric;
 use crate::core::mailbox::ScheduleHints;
 
 #[cfg(test)]
 mod tests;
 
 struct ScheduleHandle<TB: RuntimeToolbox + 'static> {
-  dispatcher: DispatcherGeneric<TB>,
+  dispatcher: DispatcherSharedGeneric<TB>,
 }
 
 impl<TB: RuntimeToolbox + 'static> ScheduleHandle<TB> {
-  const fn new(dispatcher: DispatcherGeneric<TB>) -> Self {
+  const fn new(dispatcher: DispatcherSharedGeneric<TB>) -> Self {
     Self { dispatcher }
   }
 
@@ -41,7 +41,7 @@ struct ScheduleShared<TB: RuntimeToolbox + 'static> {
 }
 
 impl<TB: RuntimeToolbox + 'static> ScheduleShared<TB> {
-  fn new(dispatcher: DispatcherGeneric<TB>) -> Self {
+  fn new(dispatcher: DispatcherSharedGeneric<TB>) -> Self {
     let handle = ScheduleHandle::new(dispatcher);
     let inner = ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(handle));
     Self { inner }
@@ -59,7 +59,7 @@ pub(crate) struct ScheduleWaker<TB: RuntimeToolbox + 'static> {
 
 impl<TB: RuntimeToolbox + 'static> ScheduleWaker<TB> {
   /// Creates a waker that schedules the dispatcher using the provided dispatcher handle.
-  pub(crate) fn into_waker(dispatcher: DispatcherGeneric<TB>) -> Waker {
+  pub(crate) fn into_waker(dispatcher: DispatcherSharedGeneric<TB>) -> Waker {
     let shared = ArcShared::new(ScheduleShared::new(dispatcher));
     unsafe { Waker::from_raw(Self::raw_waker(shared)) }
   }
