@@ -1,8 +1,10 @@
 //! Tick driver bootstrap orchestrates driver provisioning.
 
 #[cfg(any(test, feature = "test-support"))]
-use alloc::boxed::Box;
+use alloc::{borrow::ToOwned, boxed::Box};
 
+#[cfg(any(test, feature = "test-support"))]
+use fraktor_utils_rs::core::time::TimerInstant;
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::SharedAccess, time::MonotonicClock};
 #[cfg(any(test, feature = "test-support"))]
 use fraktor_utils_rs::core::{runtime_toolbox::SyncMutexFamily, sync::ArcShared};
@@ -16,21 +18,26 @@ use super::{
   manual_test_driver::{ManualDriverControl, ManualTestDriver},
   next_tick_driver_id,
 };
-use crate::core::scheduler::SchedulerContextSharedGeneric;
+#[cfg(any(test, feature = "test-support"))]
+use crate::core::logging::{LogEvent, LogLevel};
+use crate::core::{
+  event_stream::{EventStreamEvent, TickDriverSnapshot},
+  scheduler::TickDriverProvisioningContext,
+};
 
 /// Bootstrapper responsible for wiring drivers into the scheduler context.
 pub struct TickDriverBootstrap;
 
 impl TickDriverBootstrap {
-  /// Provisions the configured driver and returns the runtime assets.
+  /// Provisions the configured driver and returns the runtime assets with a snapshot.
   ///
   /// # Errors
   ///
   /// Returns [`TickDriverError`] when driver provisioning fails.
   pub fn provision<TB: RuntimeToolbox>(
     config: &TickDriverConfig<TB>,
-    ctx: &SchedulerContextSharedGeneric<TB>,
-  ) -> Result<TickDriverRuntime<TB>, TickDriverError> {
+    ctx: &TickDriverProvisioningContext<TB>,
+  ) -> Result<(TickDriverRuntime<TB>, TickDriverSnapshot), TickDriverError> {
     match config {
       #[cfg(any(test, feature = "test-support"))]
       | TickDriverConfig::ManualTest(driver) => Self::provision_manual(driver, ctx),
@@ -43,8 +50,9 @@ impl TickDriverBootstrap {
         let handle = runtime.driver();
         let metadata = TickDriverMetadata::new(handle.id(), start_instant);
         let auto_metadata = runtime.auto_metadata().cloned();
-        ctx.record_driver_metadata(handle.kind(), handle.resolution(), metadata, auto_metadata);
-        Ok(runtime)
+        let snapshot = TickDriverSnapshot::new(metadata, handle.kind(), handle.resolution(), auto_metadata);
+        ctx.event_stream().publish(&EventStreamEvent::TickDriver(snapshot.clone()));
+        Ok((runtime, snapshot))
       },
     }
   }
@@ -52,12 +60,12 @@ impl TickDriverBootstrap {
   #[cfg(any(test, feature = "test-support"))]
   fn provision_manual<TB: RuntimeToolbox>(
     driver: &ManualTestDriver<TB>,
-    ctx: &SchedulerContextSharedGeneric<TB>,
-  ) -> Result<TickDriverRuntime<TB>, TickDriverError> {
+    ctx: &TickDriverProvisioningContext<TB>,
+  ) -> Result<(TickDriverRuntime<TB>, TickDriverSnapshot), TickDriverError> {
     let scheduler = ctx.scheduler();
     let runner_enabled = scheduler.with_read(|s| s.config().runner_api_enabled());
     if !runner_enabled {
-      ctx.publish_driver_warning("manual tick driver was requested while runner API is disabled");
+      publish_driver_warning(ctx, "manual tick driver was requested while runner API is disabled");
       return Err(TickDriverError::ManualDriverDisabled);
     }
     let (resolution, start_instant) = scheduler.with_read(|s| {
@@ -73,12 +81,29 @@ impl TickDriverBootstrap {
     let controller = driver.controller();
     let runtime = TickDriverRuntime::new_manual(handle.clone(), controller);
     let metadata = TickDriverMetadata::new(handle.id(), start_instant);
-    ctx.record_driver_metadata(TickDriverKind::ManualTest, resolution, metadata, None);
-    Ok(runtime)
+    let snapshot = TickDriverSnapshot::new(metadata, TickDriverKind::ManualTest, resolution, None);
+    ctx.event_stream().publish(&EventStreamEvent::TickDriver(snapshot.clone()));
+    Ok((runtime, snapshot))
   }
 
   /// Shuts down the active driver handle.
   pub fn shutdown<TB: RuntimeToolbox>(handle: &mut TickDriverHandleGeneric<TB>) {
     handle.shutdown();
   }
+}
+
+#[cfg(any(test, feature = "test-support"))]
+fn publish_driver_warning<TB: RuntimeToolbox>(ctx: &TickDriverProvisioningContext<TB>, message: &str) {
+  let timestamp = {
+    let scheduler = ctx.scheduler();
+    scheduler.with_read(|s| instant_to_duration(s.toolbox().clock().now()))
+  };
+  let event = EventStreamEvent::Log(LogEvent::new(LogLevel::Warn, message.to_owned(), timestamp, None));
+  ctx.event_stream().publish(&event);
+}
+
+#[cfg(any(test, feature = "test-support"))]
+fn instant_to_duration(instant: TimerInstant) -> core::time::Duration {
+  let nanos = instant.resolution().as_nanos().saturating_mul(u128::from(instant.ticks()));
+  core::time::Duration::from_nanos(nanos.min(u64::MAX as u128) as u64)
 }

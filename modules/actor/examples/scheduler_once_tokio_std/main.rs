@@ -39,8 +39,7 @@ impl Actor for GuardianActor {
       // 100msの遅延後にメッセージを送信するようスケジュール
       println!("[{:?}] Scheduling message with 100ms delay...", std::thread::current().id());
 
-      let scheduler_context = ctx.system().scheduler_context();
-      let scheduler_arc = scheduler_context.scheduler();
+      let scheduler_arc = ctx.system().scheduler();
 
       let message = AnyMessage::new(ScheduledMessage { text: String::from("Hello from scheduler!") });
       let command = SchedulerCommand::SendMessage { receiver: target.clone(), message, dispatcher: None, sender: None };

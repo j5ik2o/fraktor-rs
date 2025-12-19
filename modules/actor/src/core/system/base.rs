@@ -34,7 +34,7 @@ use crate::core::{
   logging::LogLevel,
   messaging::{AnyMessageGeneric, SystemMessage},
   props::PropsGeneric,
-  scheduler::{SchedulerBackedDelayProvider, SchedulerContextSharedGeneric, TickDriverConfig},
+  scheduler::{SchedulerBackedDelayProvider, TickDriverConfig},
   serialization::default_serialization_extension_id,
   spawn::SpawnError,
   system::{
@@ -308,10 +308,10 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     self.state.event_stream()
   }
 
-  /// Returns the scheduler service when initialized.
+  /// Returns the shared scheduler handle.
   #[must_use]
-  pub fn scheduler_context(&self) -> SchedulerContextSharedGeneric<TB> {
-    self.state.scheduler_context()
+  pub fn scheduler(&self) -> crate::core::scheduler::SchedulerSharedGeneric<TB> {
+    self.state.scheduler()
   }
 
   /// Returns the tick driver runtime when initialized.
@@ -329,7 +329,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   /// Returns a delay provider backed by the scheduler when available.
   #[must_use]
   pub fn delay_provider(&self) -> SchedulerBackedDelayProvider<TB> {
-    self.scheduler_context().delay_provider()
+    self.state.delay_provider()
   }
 
   /// Subscribes the provided observer to the event stream.

@@ -35,7 +35,7 @@ use crate::core::{
   mailbox::MailboxRegistryError,
   messaging::{AnyMessageGeneric, FailurePayload, SystemMessage},
   props::MailboxConfig,
-  scheduler::{SchedulerContextSharedGeneric, TaskRunSummary, TickDriverRuntime},
+  scheduler::{SchedulerBackedDelayProvider, SchedulerSharedGeneric, TaskRunSummary, TickDriverRuntime},
   spawn::SpawnError,
   supervision::SupervisorDirective,
   system::{ActorSystemBuildError, RegisterExtensionError, RegisterExtraTopLevelError},
@@ -57,7 +57,8 @@ pub struct SystemStateSharedGeneric<TB: RuntimeToolbox + 'static> {
   cells:               CellsSharedGeneric<TB>,
   termination:         ActorFutureSharedGeneric<(), TB>,
   remote_watch_hook:   RemoteWatchHookDynSharedGeneric<TB>,
-  scheduler_ctx:       SchedulerContextSharedGeneric<TB>,
+  scheduler:           SchedulerSharedGeneric<TB>,
+  delay_provider:      SchedulerBackedDelayProvider<TB>,
   tick_driver_rt:      TickDriverRuntime<TB>,
 }
 
@@ -75,7 +76,8 @@ impl<TB: RuntimeToolbox + 'static> Clone for SystemStateSharedGeneric<TB> {
       cells:               self.cells.clone(),
       termination:         self.termination.clone(),
       remote_watch_hook:   self.remote_watch_hook.clone(),
-      scheduler_ctx:       self.scheduler_ctx.clone(),
+      scheduler:           self.scheduler.clone(),
+      delay_provider:      self.delay_provider.clone(),
       tick_driver_rt:      self.tick_driver_rt.clone(),
     }
   }
@@ -95,7 +97,8 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
     let cells = state.cells_handle();
     let termination = state.termination_future();
     let remote_watch_hook = state.remote_watch_hook_handle();
-    let scheduler_ctx = state.scheduler_context();
+    let scheduler = state.scheduler();
+    let delay_provider = state.delay_provider();
     let tick_driver_rt = state.tick_driver_runtime();
     let inner = ArcShared::new(<TB::RwLockFamily as SyncRwLockFamily>::create(state));
     Self {
@@ -110,7 +113,8 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
       cells,
       termination,
       remote_watch_hook,
-      scheduler_ctx,
+      scheduler,
+      delay_provider,
       tick_driver_rt,
     }
   }
@@ -129,7 +133,8 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
     let cells = guard.cells_handle();
     let termination = guard.termination_future();
     let remote_watch_hook = guard.remote_watch_hook_handle();
-    let scheduler_ctx = guard.scheduler_context();
+    let scheduler = guard.scheduler();
+    let delay_provider = guard.delay_provider();
     let tick_driver_rt = guard.tick_driver_runtime();
     drop(guard);
     Self {
@@ -144,7 +149,8 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
       cells,
       termination,
       remote_watch_hook,
-      scheduler_ctx,
+      scheduler,
+      delay_provider,
       tick_driver_rt,
     }
   }
@@ -751,10 +757,16 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
     })
   }
 
-  /// Returns the scheduler context.
+  /// Returns the shared scheduler handle.
   #[must_use]
-  pub fn scheduler_context(&self) -> SchedulerContextSharedGeneric<TB> {
-    self.scheduler_ctx.clone()
+  pub fn scheduler(&self) -> SchedulerSharedGeneric<TB> {
+    self.scheduler.clone()
+  }
+
+  /// Returns the delay provider connected to the scheduler.
+  #[must_use]
+  pub fn delay_provider(&self) -> SchedulerBackedDelayProvider<TB> {
+    self.delay_provider.clone()
   }
 
   /// Returns the tick driver runtime.
@@ -766,13 +778,14 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   /// Returns the last recorded tick driver snapshot when available.
   #[must_use]
   pub fn tick_driver_snapshot(&self) -> Option<TickDriverSnapshot> {
-    self.scheduler_ctx.driver_snapshot()
+    self.inner.read().tick_driver_snapshot()
   }
 
   /// Shuts down the scheduler context if configured.
   #[must_use]
   pub fn shutdown_scheduler(&self) -> Option<TaskRunSummary> {
-    Some(self.scheduler_ctx.shutdown())
+    let scheduler = self.scheduler();
+    Some(scheduler.with_write(|s| s.shutdown_with_tasks()))
   }
 
   /// Records a failure and routes it to the supervising hierarchy.

@@ -44,8 +44,7 @@ impl Actor for GuardianActor {
 
       let target = ctx.self_ref();
 
-      let scheduler_context = ctx.system().scheduler_context();
-      let scheduler_arc = scheduler_context.scheduler();
+      let scheduler_arc = ctx.system().scheduler();
 
       // 3つのメッセージをスケジュール
       #[cfg(not(target_os = "none"))]

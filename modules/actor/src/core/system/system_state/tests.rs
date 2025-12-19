@@ -66,10 +66,10 @@ fn system_state_build_from_config_starts_unterminated() {
 }
 
 #[test]
-fn system_state_build_from_config_provides_scheduler_context_and_tick_driver_runtime() {
+fn system_state_build_from_config_provides_scheduler_and_tick_driver_runtime() {
   let state = build_state();
-  let context = state.scheduler_context();
-  let resolution = context.scheduler().with_read(|s| s.config().resolution());
+  let scheduler = state.scheduler();
+  let resolution = scheduler.with_read(|s| s.config().resolution());
   let runtime = state.tick_driver_runtime();
   assert_eq!(runtime.driver().resolution(), resolution);
 }

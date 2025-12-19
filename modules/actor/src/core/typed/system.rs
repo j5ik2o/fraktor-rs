@@ -19,7 +19,7 @@ use crate::core::{
   typed::{
     actor_prim::{TypedActorRefGeneric, TypedChildRefGeneric},
     props::TypedPropsGeneric,
-    scheduler::TypedSchedulerContext,
+    scheduler::TypedSchedulerShared,
   },
 };
 
@@ -182,10 +182,16 @@ where
     Self { inner: system, marker: PhantomData }
   }
 
-  /// Returns the typed scheduler context when the runtime has an installed scheduler service.
+  /// Returns the typed scheduler handle.
   #[must_use]
-  pub fn scheduler_context(&self) -> TypedSchedulerContext<TB> {
-    TypedSchedulerContext::from_shared(self.inner.scheduler_context())
+  pub fn scheduler(&self) -> TypedSchedulerShared<TB> {
+    TypedSchedulerShared::new(self.inner.scheduler())
+  }
+
+  /// Returns a delay provider backed by the scheduler.
+  #[must_use]
+  pub fn delay_provider(&self) -> crate::core::scheduler::SchedulerBackedDelayProvider<TB> {
+    self.inner.delay_provider()
   }
 }
 

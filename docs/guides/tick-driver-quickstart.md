@@ -7,7 +7,7 @@ Tick Driver の導入手順をまとめたハンドブックです。Tokio ラ�
 ### 1.1 手順の概要
 
 1. **ドライバ構成の生成** — `StdTickDriverConfig::tokio_quickstart()` で 10ms 解像度の `TickDriverConfig<StdToolbox>` を一発生成する。（解像度を変えたい場合は `tokio_quickstart_with_resolution(Duration)` を呼ぶ）
-2. **ブートストラップ** — `TickDriverBootstrap::provision(&config, &ctx)` を呼び、`SchedulerContext` に紐づいた `TickDriverRuntime`（driver + feed）を取得する。
+2. **ブートストラップ** — `TickDriverProvisioningContext::new(system.scheduler(), system.delay_provider(), system.event_stream())` を作成し、`TickDriverBootstrap::provision(&config, &ctx)` で `TickDriverRuntime` と `TickDriverSnapshot` を取得する。
 3. **Executor ポンプの起動** — `SchedulerTickExecutor` を `tokio::spawn` で常駐させ、feed から tick を drain してスケジューラを駆動する。`feed.signal().wait_async().await` で背圧なく通知を受け取れる。
 4. **検証** — `system.tick_driver_snapshot()` または EventStream (`EventStreamEvent::TickDriver`) を監視し、driver kind/resolution/auto メタデータが記録されていることを確認する。
 
@@ -20,7 +20,7 @@ use fraktor_actor_core_rs::{
   actor_prim::{Actor, ActorContext},
   messaging::{AnyMessage, AnyMessageView},
   props::Props,
-  scheduler::{SchedulerTickExecutor, TickDriverBootstrap},
+  scheduler::{SchedulerTickExecutor, TickDriverBootstrap, TickDriverProvisioningContext},
 };
 use fraktor_actor_std_rs::{system::ActorSystem, tick::StdTickDriverConfig};
 
@@ -39,9 +39,9 @@ impl Actor for Guardian {
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> anyhow::Result<()> {
   let system = ActorSystem::new(&Props::from_fn(|| Guardian))?;
-  let ctx = system.scheduler_context().expect("scheduler context");
+  let ctx = TickDriverProvisioningContext::new(system.scheduler(), system.delay_provider(), system.event_stream());
   let config = StdTickDriverConfig::tokio_quickstart();
-  let runtime = TickDriverBootstrap::provision(&config, &ctx)?;
+  let (runtime, _snapshot) = TickDriverBootstrap::provision(&config, &ctx)?;
   let feed = runtime.feed().expect("feed").clone();
   let signal = feed.signal();
 
@@ -93,7 +93,7 @@ use fraktor_actor_core_rs::{
   actor_prim::{Actor, ActorContext},
   messaging::{AnyMessage, AnyMessageView},
   props::Props,
-  scheduler::{SchedulerCommand, SchedulerTickExecutor, TickDriverBootstrap, TickDriverConfig},
+  scheduler::{SchedulerCommand, SchedulerTickExecutor, TickDriverBootstrap, TickDriverConfig, TickDriverProvisioningContext},
   system::ActorSystem,
 };
 
@@ -106,7 +106,7 @@ struct Guardian;
 impl Actor for Guardian {
   fn receive(&mut self, ctx: &mut ActorContext<'_>, msg: AnyMessageView<'_>) -> anyhow::Result<()> {
     if msg.downcast_ref::<Start>().is_some() {
-      let scheduler = ctx.system().scheduler_context().expect("scheduler").scheduler();
+      let scheduler = ctx.system().scheduler();
       scheduler.lock().schedule_once(
         Duration::from_millis(5),
         SchedulerCommand::SendMessage {
@@ -124,9 +124,9 @@ impl Actor for Guardian {
 #[entry]
 fn main() -> ! {
   let system = ActorSystem::new(&Props::from_fn(|| Guardian)).expect("system");
-  let ctx = system.scheduler_context().expect("scheduler");
+  let ctx = TickDriverProvisioningContext::new(system.scheduler(), system.delay_provider(), system.event_stream());
   let config = TickDriverConfig::hardware(&SYS_TICK);
-  let runtime = TickDriverBootstrap::provision(&config, &ctx).expect("driver");
+  let (runtime, _snapshot) = TickDriverBootstrap::provision(&config, &ctx).expect("driver");
   let feed = runtime.feed().expect("feed").clone();
   let signal = feed.signal();
 
@@ -154,7 +154,7 @@ use core::time::Duration;
 
 use fraktor_actor_core_rs::{
   props::Props,
-  scheduler::{SchedulerCommand, SchedulerTickExecutor, TickDriverBootstrap, TickDriverConfig},
+  scheduler::{SchedulerCommand, SchedulerTickExecutor, TickDriverBootstrap, TickDriverConfig, TickDriverProvisioningContext},
   system::ActorSystem,
 };
 
@@ -165,9 +165,9 @@ fn manual_driver_quickstart() {
   let driver = ManualTestDriver::new();
   let config = TickDriverConfig::manual(driver);
   let system = ActorSystem::new(&Props::from_fn(|| GuardianActor)).expect("system");
-  let ctx = system.scheduler_context().expect("scheduler");
+  let ctx = TickDriverProvisioningContext::new(system.scheduler(), system.delay_provider(), system.event_stream());
 
-  let runtime = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
+  let (runtime, _snapshot) = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
   assert!(runtime.feed().is_none());
   let controller = runtime.manual_controller().expect("controller");
 

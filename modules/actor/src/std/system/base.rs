@@ -8,7 +8,7 @@ use crate::{
     actor_prim::{Pid, actor_path::ActorPath},
     event_stream::{TickDriverSnapshot, subscriber_handle as core_subscriber_handle},
     logging::LogLevel,
-    scheduler::{SchedulerContextSharedGeneric, TickDriverConfig},
+    scheduler::{SchedulerBackedDelayProvider, SchedulerSharedGeneric, TickDriverConfig},
     spawn::SpawnError,
     system::{
       ActorRefResolveError, ActorSystemGeneric as CoreActorSystemGeneric, ExtendedActorSystemGeneric,
@@ -124,10 +124,16 @@ impl ActorSystem {
     self.inner.tick_driver_snapshot()
   }
 
-  /// Returns the shared scheduler context if installed.
+  /// Returns the shared scheduler handle.
   #[must_use]
-  pub fn scheduler_context(&self) -> SchedulerContextSharedGeneric<StdToolbox> {
-    self.inner.scheduler_context()
+  pub fn scheduler(&self) -> SchedulerSharedGeneric<StdToolbox> {
+    self.inner.scheduler()
+  }
+
+  /// Returns a delay provider backed by the scheduler.
+  #[must_use]
+  pub fn delay_provider(&self) -> SchedulerBackedDelayProvider<StdToolbox> {
+    self.inner.delay_provider()
   }
 
   /// Subscribes the provided observer to the event stream.

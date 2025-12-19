@@ -10,7 +10,6 @@ use fraktor_utils_rs::core::{
   collections::queue::capabilities::{QueueCapabilityRegistry, QueueCapabilitySet},
   runtime_toolbox::{NoStdMutex, NoStdToolbox, RuntimeToolbox, SyncMutexFamily},
   sync::{ArcShared, SharedAccess},
-  time::TimerInstant,
   timing::{DelayFuture, DelayProvider},
 };
 
@@ -28,9 +27,9 @@ use crate::core::{
   messaging::SystemMessage,
   props::{MailboxConfig, MailboxRequirement, Props},
   scheduler::{
-    AutoDriverMetadata, AutoProfileKind, ManualTestDriver, SchedulerConfig, SchedulerContextSharedGeneric,
-    TickDriverConfig, TickDriverControl, TickDriverError, TickDriverHandleGeneric, TickDriverId, TickDriverKind,
-    TickDriverMetadata, TickDriverRuntime, TickExecutorSignal, TickFeed,
+    AutoDriverMetadata, AutoProfileKind, ManualTestDriver, SchedulerConfig, TickDriverConfig, TickDriverControl,
+    TickDriverError, TickDriverHandleGeneric, TickDriverId, TickDriverKind, TickDriverProvisioningContext,
+    TickDriverRuntime, TickExecutorSignal, TickFeed,
   },
   spawn::SpawnError,
   system::{
@@ -158,7 +157,7 @@ fn actor_system_new_empty_provides_manual_tick_driver_and_runner_api() {
   let system = ActorSystem::new_empty();
   let snapshot = system.tick_driver_snapshot().expect("tick driver snapshot");
   assert_eq!(snapshot.kind, TickDriverKind::ManualTest);
-  assert!(system.scheduler_context().scheduler().with_read(|s| s.config().runner_api_enabled()));
+  assert!(system.scheduler().with_read(|s| s.config().runner_api_enabled()));
 }
 
 #[test]
@@ -171,7 +170,7 @@ fn actor_system_drop_shuts_down_executor_once() {
 
   let executor_calls = ArcShared::new(AtomicUsize::new(0));
   let executor_calls_for_builder = executor_calls.clone();
-  let tick_driver = TickDriverConfig::new(move |_ctx: &SchedulerContextSharedGeneric<NoStdToolbox>| {
+  let tick_driver = TickDriverConfig::new(move |_ctx: &TickDriverProvisioningContext<NoStdToolbox>| {
     let control: Box<dyn TickDriverControl> = Box::new(NoopControl);
     let control = ArcShared::new(<<NoStdToolbox as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(control));
     let resolution = Duration::from_millis(1);
@@ -293,22 +292,32 @@ fn actor_system_when_terminated() {
 
 #[test]
 fn actor_system_reports_tick_driver_snapshot() {
-  let system = ActorSystem::new_empty();
-  let ctx = system.scheduler_context();
+  struct NoopControl;
+
+  impl TickDriverControl for NoopControl {
+    fn shutdown(&self) {}
+  }
 
   let driver_id = TickDriverId::new(99);
   let resolution = Duration::from_millis(5);
-  let instant = TimerInstant::from_ticks(1, resolution);
-  let metadata = TickDriverMetadata::new(driver_id, instant);
-  let auto = Some(AutoDriverMetadata { profile: AutoProfileKind::Tokio, driver_id, resolution });
-
-  ctx.record_driver_metadata(TickDriverKind::Auto, resolution, metadata, auto.clone());
+  let tick_driver = TickDriverConfig::new(move |_ctx: &TickDriverProvisioningContext<NoStdToolbox>| {
+    let control: Box<dyn TickDriverControl> = Box::new(NoopControl);
+    let control = ArcShared::new(<<NoStdToolbox as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(control));
+    let handle = TickDriverHandleGeneric::new(driver_id, TickDriverKind::Auto, resolution, control);
+    let feed = TickFeed::<NoStdToolbox>::new(resolution, 1, TickExecutorSignal::new());
+    let auto = AutoDriverMetadata { profile: AutoProfileKind::Tokio, driver_id, resolution };
+    let runtime = TickDriverRuntime::new(handle, feed).with_auto_metadata(auto);
+    Ok::<_, TickDriverError>(runtime)
+  });
+  let config = ActorSystemConfig::default().with_tick_driver(tick_driver);
+  let state = SystemState::build_from_config(&config).expect("state");
+  let system = ActorSystem::from_state(SystemStateShared::new(state));
 
   let snapshot = system.tick_driver_snapshot().expect("tick driver snapshot");
   assert_eq!(snapshot.metadata.driver_id, driver_id);
   assert_eq!(snapshot.kind, TickDriverKind::Auto);
   assert_eq!(snapshot.resolution, resolution);
-  assert_eq!(snapshot.auto.as_ref().map(|meta| meta.profile), auto.as_ref().map(|meta| meta.profile));
+  assert_eq!(snapshot.auto.as_ref().map(|meta| meta.profile), Some(AutoProfileKind::Tokio));
 }
 
 #[test]
@@ -516,7 +525,7 @@ fn poll_delay(future: &mut DelayFuture) -> Poll<()> {
 }
 
 #[test]
-fn actor_system_scheduler_context_handles_delays() {
+fn actor_system_scheduler_handles_delays() {
   let props = Props::from_fn(|| TestActor);
   let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
   let system = ActorSystem::new(&props, tick_driver).expect("system");
@@ -524,8 +533,7 @@ fn actor_system_scheduler_context_handles_delays() {
   let mut future = provider.delay(Duration::from_millis(1));
   assert!(matches!(poll_delay(&mut future), Poll::Pending));
 
-  let context = system.scheduler_context();
-  let scheduler = context.scheduler();
+  let scheduler = system.scheduler();
   scheduler.with_write(|s| s.run_for_test(1));
 
   assert!(matches!(poll_delay(&mut future), Poll::Ready(())));
@@ -538,8 +546,7 @@ fn actor_system_terminate_runs_scheduler_tasks() {
   let system = ActorSystem::new(&props, tick_driver).expect("system");
   let log = ArcShared::new(NoStdMutex::new(Vec::new()));
   {
-    let context = system.scheduler_context();
-    let scheduler = context.scheduler();
+    let scheduler = system.scheduler();
     scheduler.with_write(|s| {
       let task = RecordingShutdownTask { log: log.clone() };
       s.register_on_close(task, crate::core::scheduler::TaskRunPriority::User).expect("register");
@@ -579,7 +586,7 @@ fn poll_delay_future(future: &mut DelayFuture) -> Poll<()> {
 }
 
 #[test]
-fn actor_system_installs_scheduler_context() {
+fn actor_system_installs_scheduler() {
   let props = Props::from_fn(|| TestActor);
   let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
   let system = ActorSystem::new(&props, tick_driver).expect("actor system");
@@ -587,8 +594,7 @@ fn actor_system_installs_scheduler_context() {
   let mut future = provider.delay(Duration::from_millis(1));
   assert!(matches!(poll_delay_future(&mut future), Poll::Pending));
 
-  let context = system.scheduler_context();
-  context.scheduler().with_write(|s| s.run_for_test(1));
+  system.scheduler().with_write(|s| s.run_for_test(1));
 
   assert!(matches!(poll_delay_future(&mut future), Poll::Ready(())));
 }

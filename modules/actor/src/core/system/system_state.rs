@@ -49,8 +49,9 @@ use crate::core::{
   messaging::{AnyMessageGeneric, FailurePayload, SystemMessage},
   props::MailboxConfig,
   scheduler::{
-    SchedulerConfig, SchedulerContextSharedGeneric, TaskRunSummary, TickDriverControl, TickDriverHandleGeneric,
-    TickDriverKind, TickDriverRuntime, TickExecutorSignal, TickFeed, next_tick_driver_id,
+    SchedulerBackedDelayProvider, SchedulerConfig, SchedulerContext, SchedulerSharedGeneric, TaskRunSummary,
+    TickDriverControl, TickDriverHandleGeneric, TickDriverKind, TickDriverProvisioningContext, TickDriverRuntime,
+    TickExecutorSignal, TickFeed, next_tick_driver_id,
   },
   spawn::{NameRegistryError, SpawnError},
   supervision::SupervisorDirective,
@@ -99,7 +100,8 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   path_identity: PathIdentity,
   actor_path_registry: ActorPathRegistry,
   remote_authority_mgr: RemoteAuthorityManagerGeneric<TB>,
-  scheduler_context: SchedulerContextSharedGeneric<TB>,
+  scheduler_context: SchedulerContext<TB>,
+  tick_driver_snapshot: Option<TickDriverSnapshot>,
   tick_driver_runtime: TickDriverRuntime<TB>,
 }
 
@@ -121,8 +123,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     mailboxes.ensure_default();
     let scheduler_config = SchedulerConfig::default();
     let toolbox = TB::default();
-    let scheduler_context =
-      SchedulerContextSharedGeneric::with_event_stream(toolbox, scheduler_config, event_stream.clone());
+    let scheduler_context = SchedulerContext::with_event_stream(toolbox, scheduler_config, event_stream.clone());
     let tick_driver_runtime = Self::default_tick_driver_runtime(scheduler_config.resolution());
     Self {
       next_pid: AtomicU64::new(0),
@@ -158,6 +159,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       remote_authority_mgr: RemoteAuthorityManagerGeneric::default(),
       actor_ref_provider_callers_by_scheme: ActorRefProviderCallersGeneric::default(),
       scheduler_context,
+      tick_driver_snapshot: None,
       tick_driver_runtime,
     }
   }
@@ -183,15 +185,17 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       scheduler_config
     };
 
-    let context = SchedulerContextSharedGeneric::with_event_stream(toolbox, scheduler_config, event_stream);
-    state.scheduler_context = context.clone();
+    let context = SchedulerContext::with_event_stream(toolbox, scheduler_config, event_stream);
+    let provisioning = TickDriverProvisioningContext::from_scheduler_context(&context);
+    state.scheduler_context = context;
 
     let tick_driver_config = config
       .tick_driver_config()
       .ok_or_else(|| SpawnError::SystemBuildError("tick driver configuration is required".into()))?;
-    let runtime = TickDriverBootstrap::provision(tick_driver_config, &context)
+    let (runtime, snapshot) = TickDriverBootstrap::provision(tick_driver_config, &provisioning)
       .map_err(|error| SpawnError::SystemBuildError(format!("tick driver provisioning failed: {error}")))?;
     state.tick_driver_runtime = runtime;
+    state.tick_driver_snapshot = Some(snapshot);
 
     Ok(state)
   }
@@ -758,10 +762,16 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     })
   }
 
-  /// Returns the scheduler context.
+  /// Returns the shared scheduler handle.
   #[must_use]
-  pub fn scheduler_context(&self) -> SchedulerContextSharedGeneric<TB> {
-    self.scheduler_context.clone()
+  pub fn scheduler(&self) -> SchedulerSharedGeneric<TB> {
+    self.scheduler_context.scheduler()
+  }
+
+  /// Returns the delay provider connected to the scheduler.
+  #[must_use]
+  pub fn delay_provider(&self) -> SchedulerBackedDelayProvider<TB> {
+    self.scheduler_context.delay_provider()
   }
 
   /// Returns the tick driver runtime.
@@ -773,12 +783,13 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   /// Returns the last recorded tick driver snapshot when available.
   #[must_use]
   pub fn tick_driver_snapshot(&self) -> Option<TickDriverSnapshot> {
-    self.scheduler_context().driver_snapshot()
+    self.tick_driver_snapshot.clone()
   }
 
   /// Shuts down the scheduler context if configured.
   pub fn shutdown_scheduler(&self) -> Option<TaskRunSummary> {
-    Some(self.scheduler_context().shutdown())
+    let scheduler = self.scheduler();
+    Some(scheduler.with_write(|s| s.shutdown_with_tasks()))
   }
 
   pub(crate) fn record_failure_reported(&self) {

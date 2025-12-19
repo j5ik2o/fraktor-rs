@@ -51,8 +51,7 @@ impl TypedActor<GuardianCommand> for GuardianActor {
 
         let target = ctx.self_ref();
 
-        let scheduler_context = ctx.system().scheduler_context();
-        let scheduler_shared = scheduler_context.scheduler();
+        let scheduler_shared = ctx.system().scheduler();
 
         #[cfg(not(target_os = "none"))]
         println!("[{:?}] Scheduling at fixed rate: initial=50ms, interval=30ms", std::thread::current().id());

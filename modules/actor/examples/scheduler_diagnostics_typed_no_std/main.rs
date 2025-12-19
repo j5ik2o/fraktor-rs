@@ -53,8 +53,7 @@ impl TypedActor<GuardianCommand> for GuardianActor {
         #[cfg(not(target_os = "none"))]
         println!("[{:?}] Guardian starting typed diagnostics example...", std::thread::current().id());
 
-        let scheduler_context = ctx.system().scheduler_context();
-        let scheduler_shared = scheduler_context.scheduler();
+        let scheduler_shared = ctx.system().scheduler();
         let target = ctx.self_ref();
 
         self.diagnostics = Some(scheduler_shared.with_write(|s| s.subscribe_diagnostics(128)));
