@@ -6,6 +6,7 @@ network_access = true
 [features]
 rmcp_client=true
 web_search_request=true
+skills=true
 
 [projects."/Users/j5ik2o/Sources/fraktor-rs"]
 trust_level = "trusted"
