@@ -7,10 +7,9 @@ use fraktor_actor_rs::core::event_stream::{
   EventStreamEvent, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscriptionGeneric,
   RemotingLifecycleEvent, subscriber_handle,
 };
-use fraktor_utils_rs::{core::sync::SharedAccess, std::runtime_toolbox::StdToolbox};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::SharedAccess};
 
-use super::local_cluster_provider_shared::SharedLocalClusterProvider;
-use crate::core::LocalClusterProvider;
+use crate::core::{LocalClusterProvider, LocalClusterProviderSharedGeneric};
 
 /// Subscribes to remoting lifecycle events for automatic topology updates.
 ///
@@ -19,13 +18,15 @@ use crate::core::LocalClusterProvider;
 /// triggering `TopologyUpdated` events when nodes join or leave.
 ///
 /// **Note**: This function is only available in std environments with `StdToolbox`.
-pub fn subscribe_remoting_events(provider: &SharedLocalClusterProvider) {
-  struct RemotingEventHandler {
-    provider: SharedLocalClusterProvider,
+pub fn subscribe_remoting_events<TB>(provider: &LocalClusterProviderSharedGeneric<TB>)
+where
+  TB: RuntimeToolbox + 'static, {
+  struct RemotingEventHandler<TB: RuntimeToolbox + 'static> {
+    provider: LocalClusterProviderSharedGeneric<TB>,
   }
 
-  impl EventStreamSubscriber<StdToolbox> for RemotingEventHandler {
-    fn on_event(&mut self, event: &EventStreamEvent<StdToolbox>) {
+  impl<TB: RuntimeToolbox + 'static> EventStreamSubscriber<TB> for RemotingEventHandler<TB> {
+    fn on_event(&mut self, event: &EventStreamEvent<TB>) {
       if let EventStreamEvent::Extension { name, payload } = event {
         if name == "remoting" {
           // 起動前は無視
@@ -51,13 +52,15 @@ pub fn subscribe_remoting_events(provider: &SharedLocalClusterProvider) {
   // event_stream への参照を取得
   let event_stream = provider.with_read(|p| p.event_stream().clone());
   let handler = RemotingEventHandler { provider: provider.clone() };
-  let subscriber: EventStreamSubscriberShared<StdToolbox> = subscriber_handle(handler);
-  let _subscription: EventStreamSubscriptionGeneric<StdToolbox> = event_stream.subscribe(&subscriber);
+  let subscriber: EventStreamSubscriberShared<TB> = subscriber_handle(handler);
+  let _subscription: EventStreamSubscriptionGeneric<TB> = event_stream.subscribe(&subscriber);
   // Note: subscription は provider のライフタイムに依存するので、
   // provider がドロップされるまで有効
 }
 
 /// Creates a shared, thread-safe LocalClusterProvider wrapped in a mutex.
-pub fn wrap_local_cluster_provider(provider: LocalClusterProvider<StdToolbox>) -> SharedLocalClusterProvider {
-  SharedLocalClusterProvider::new(provider)
+pub fn wrap_local_cluster_provider<TB>(provider: LocalClusterProvider<TB>) -> LocalClusterProviderSharedGeneric<TB>
+where
+  TB: RuntimeToolbox + 'static, {
+  LocalClusterProviderSharedGeneric::new(provider)
 }

@@ -97,7 +97,9 @@ pub use cluster_identity::ClusterIdentity;
 pub use cluster_identity_error::ClusterIdentityError;
 pub use cluster_metrics::ClusterMetrics;
 pub use cluster_metrics_snapshot::ClusterMetricsSnapshot;
-pub use cluster_provider::{ClusterProvider, LocalClusterProvider, NoopClusterProvider, StaticClusterProvider};
+pub use cluster_provider::{
+  ClusterProvider, LocalClusterProvider, LocalClusterProviderSharedGeneric, NoopClusterProvider, StaticClusterProvider,
+};
 pub use cluster_provider_error::ClusterProviderError;
 pub use cluster_provider_shared::ClusterProviderShared;
 pub use cluster_pub_sub::ClusterPubSub;
