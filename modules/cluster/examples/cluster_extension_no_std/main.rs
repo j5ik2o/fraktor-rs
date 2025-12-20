@@ -23,7 +23,7 @@
 //!
 //! `ClusterProvider` トレイトを実装することで、Provider を差し替えられます：
 //! - `StaticClusterProvider`: no_std 環境向け静的トポロジ（本サンプル）
-//! - `LocalClusterProvider`: std/Tokio 環境向け、Transport イベント自動検知
+//! - `LocalClusterProviderGeneric`: std/Tokio 環境向け、Transport イベント自動検知
 //! - etcd/zk/automanaged provider: 外部サービス連携（Phase2以降で対応予定）
 //!
 //! 詳細は `.kiro/specs/protoactor-go-cluster-extension-samples/example.md` を参照。

@@ -11,7 +11,7 @@ use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
 use crate::core::{
-  ClusterExtensionConfig, ClusterProvider, ClusterPubSub, Gossiper, IdentityLookup, LocalClusterProvider,
+  ClusterExtensionConfig, ClusterProvider, ClusterPubSub, Gossiper, IdentityLookup, LocalClusterProviderGeneric,
   NoopClusterPubSub, NoopGossiper, NoopIdentityLookup, cluster_extension_id::ClusterExtensionId,
 };
 
@@ -63,7 +63,7 @@ type IdentityLookupFactory = ArcShared<dyn Fn() -> Box<dyn IdentityLookup> + Sen
 ///     .with_advertised_address("127.0.0.1:8080")
 ///     .with_metrics_enabled(true);
 ///
-/// // Use new_with_local for LocalClusterProvider (convenience)
+/// // Use new_with_local for LocalClusterProviderGeneric (convenience)
 /// let installer = ClusterExtensionInstaller::new_with_local(config);
 ///
 /// // Or use new with a custom ClusterProvider factory
@@ -132,10 +132,10 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
     }
   }
 
-  /// Creates a new installer with `LocalClusterProvider`.
+  /// Creates a new installer with `LocalClusterProviderGeneric`.
   ///
   /// This is a convenience constructor for the common case where you want to use
-  /// the built-in `LocalClusterProvider` with EventStream-based topology management.
+  /// the built-in `LocalClusterProviderGeneric` with EventStream-based topology management.
   ///
   /// Default implementations will be used for `Gossiper`, `ClusterPubSub`,
   /// and `IdentityLookup` unless explicitly set.
@@ -143,7 +143,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
   pub fn new_with_local(config: ClusterExtensionConfig) -> Self {
     let static_topology = config.static_topology().cloned();
     Self::new(config, move |event_stream, block_list_provider, advertised_address| {
-      let mut provider = LocalClusterProvider::new(event_stream, block_list_provider, advertised_address);
+      let mut provider = LocalClusterProviderGeneric::new(event_stream, block_list_provider, advertised_address);
       if let Some(ref topology) = static_topology {
         provider = provider.with_static_topology(topology.clone());
       }

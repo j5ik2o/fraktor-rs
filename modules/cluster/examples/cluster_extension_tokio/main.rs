@@ -1,11 +1,11 @@
 #![allow(clippy::print_stdout)]
 
-//! Cluster extension quickstart (Tokio + LocalClusterProvider)
+//! Cluster extension quickstart (Tokio + LocalClusterProviderGeneric)
 //!
 //! # 概要
 //!
 //! このサンプルは EventStream 主導のトポロジ通知方式を実装しています：
-//! 1. `LocalClusterProvider` が `ClusterEvent::TopologyUpdated` を EventStream に publish
+//! 1. `LocalClusterProviderGeneric` が `ClusterEvent::TopologyUpdated` を EventStream に publish
 //! 2. `ClusterExtension` が EventStream を購読し、自動的に `ClusterCore::on_topology` を呼び出す
 //! 3. 手動の `on_topology` 呼び出しは不要
 //!
@@ -16,14 +16,15 @@
 //!
 //! # Phase1 (静的トポロジ) vs Phase2 (動的トポロジ)
 //!
-//! - **Phase1**: `LocalClusterProvider` に静的トポロジを設定し、`start_member()` 時に publish
+//! - **Phase1**: `LocalClusterProviderGeneric` に静的トポロジを設定し、`start_member()` 時に
+//!   publish
 //! - **Phase2**: `subscribe_remoting_events()` で Transport イベント（Connected/Quarantined）を
 //!   自動検知し、動的にトポロジを更新
 //!
 //! # Provider 差し替え方法
 //!
 //! `ClusterProvider` トレイトを実装することで、Provider を差し替えられます：
-//! - `LocalClusterProvider`: 静的トポロジ + Transport イベント自動検知（本サンプル）
+//! - `LocalClusterProviderGeneric`: 静的トポロジ + Transport イベント自動検知（本サンプル）
 //! - `StaticClusterProvider`: no_std 環境向け静的トポロジ
 //! - etcd/zk/automanaged provider: 外部サービス連携（Phase2以降で対応予定）
 //!
@@ -39,7 +40,7 @@
 //!
 //! ```text
 //! === Cluster Extension Tokio Demo ===
-//! Demonstrates EventStream-based topology with LocalClusterProvider
+//! Demonstrates EventStream-based topology with LocalClusterProviderGeneric
 //!
 //! --- Starting cluster members ---
 //! [identity][cluster-node-a] member kinds: ["grain", "topic"]
@@ -111,7 +112,7 @@ const SAMPLE_KEY: &str = "user:va-1";
 #[tokio::main]
 async fn main() -> Result<()> {
   println!("=== Cluster Extension Tokio Demo ===");
-  println!("Demonstrates EventStream-based topology with LocalClusterProvider\n");
+  println!("Demonstrates EventStream-based topology with LocalClusterProviderGeneric\n");
 
   // 返信待機チャネル（ノードB→ノードA→ノードB）
   let (reply_tx, reply_rx) = oneshot::channel::<String>();
@@ -233,7 +234,7 @@ fn build_cluster_node(
   let default_dispatcher = DispatcherConfig::from_executor(ArcShared::new(StdSyncMutex::new(Box::new(tokio_executor))));
 
   // ClusterExtensionInstaller を作成（static_topology を設定）
-  // new_with_local() を使用して LocalClusterProvider を自動的に作成
+  // new_with_local() を使用して LocalClusterProviderGeneric を自動的に作成
   let advertised = format!("{HOST}:{port}");
   let mut cluster_config =
     ClusterExtensionConfig::default().with_advertised_address(&advertised).with_metrics_enabled(true);

@@ -36,7 +36,7 @@ mod tests;
 ///
 /// Task 4.5: Transport `RemotingLifecycleEvent::Connected` and `Quarantined`
 /// auto-detection is available via `subscribe_remoting_events()` in std environments.
-pub struct LocalClusterProvider<TB: RuntimeToolbox + 'static> {
+pub struct LocalClusterProviderGeneric<TB: RuntimeToolbox + 'static> {
   event_stream:        EventStreamSharedGeneric<TB>,
   block_list_provider: ArcShared<dyn BlockListProvider>,
   advertised_address:  String,
@@ -52,7 +52,7 @@ pub struct LocalClusterProvider<TB: RuntimeToolbox + 'static> {
   startup_mode:        Option<StartupMode>,
 }
 
-impl<TB: RuntimeToolbox + 'static> LocalClusterProvider<TB> {
+impl<TB: RuntimeToolbox + 'static> LocalClusterProviderGeneric<TB> {
   /// Creates a new local cluster provider.
   #[must_use]
   pub fn new(
@@ -228,7 +228,7 @@ impl<TB: RuntimeToolbox + 'static> LocalClusterProvider<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> ClusterProvider for LocalClusterProvider<TB> {
+impl<TB: RuntimeToolbox + 'static> ClusterProvider for LocalClusterProviderGeneric<TB> {
   fn start_member(&mut self) -> Result<(), ClusterProviderError> {
     // 起動モードを設定
     self.startup_mode = Some(StartupMode::Member);

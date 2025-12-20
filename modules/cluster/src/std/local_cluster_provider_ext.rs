@@ -1,4 +1,4 @@
-//! std-only extension for LocalClusterProvider.
+//! std-only extension for LocalClusterProviderGeneric.
 //!
 //! This module provides Transport event auto-detection functionality
 //! that is only available in std environments.
@@ -9,7 +9,7 @@ use fraktor_actor_rs::core::event_stream::{
 };
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::SharedAccess};
 
-use crate::core::{LocalClusterProvider, LocalClusterProviderSharedGeneric};
+use crate::core::{LocalClusterProviderGeneric, LocalClusterProviderSharedGeneric};
 
 /// Subscribes to remoting lifecycle events for automatic topology updates.
 ///
@@ -58,8 +58,10 @@ where
   // provider がドロップされるまで有効
 }
 
-/// Creates a shared, thread-safe LocalClusterProvider wrapped in a mutex.
-pub fn wrap_local_cluster_provider<TB>(provider: LocalClusterProvider<TB>) -> LocalClusterProviderSharedGeneric<TB>
+/// Creates a shared, thread-safe LocalClusterProviderGeneric wrapped in a mutex.
+pub fn wrap_local_cluster_provider<TB>(
+  provider: LocalClusterProviderGeneric<TB>,
+) -> LocalClusterProviderSharedGeneric<TB>
 where
   TB: RuntimeToolbox + 'static, {
   LocalClusterProviderSharedGeneric::new(provider)
