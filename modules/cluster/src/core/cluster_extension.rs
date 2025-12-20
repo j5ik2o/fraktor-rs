@@ -67,6 +67,12 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionGeneric<TB> {
     Self { core: ArcShared::new(locked), event_stream, subscription, _system: system.downgrade() }
   }
 
+  /// Returns the shared cluster core handle.
+  #[must_use]
+  pub(crate) fn core_shared(&self) -> ArcShared<ToolboxMutex<ClusterCore<TB>, TB>> {
+    self.core.clone()
+  }
+
   /// Subscribes to the event stream for topology updates.
   fn subscribe_topology_events(&self) {
     // 既に購読中なら何もしない

@@ -21,7 +21,7 @@ use fraktor_utils_rs::core::{
 
 use crate::core::{
   ActivatedKind, ClusterError, ClusterEvent, ClusterExtensionConfig, ClusterMetrics, ClusterMetricsSnapshot,
-  ClusterProviderShared, ClusterPubSubShared, ClusterTopology, GossiperShared, IdentityLookupShared,
+  ClusterProviderShared, ClusterPubSubShared, ClusterTopology, GossiperShared, GrainKey, IdentityLookupShared,
   IdentitySetupError, KindRegistry, MetricsError, PidCache, StartupMode,
 };
 
@@ -96,6 +96,18 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
     self.startup_state.address.clone()
   }
 
+  /// Returns the current startup mode when the cluster is running.
+  #[must_use]
+  pub const fn mode(&self) -> Option<StartupMode> {
+    self.mode
+  }
+
+  /// Returns true if the given kind is registered.
+  #[must_use]
+  pub fn is_kind_registered(&self, kind: &str) -> bool {
+    self.kind_registry.contains(kind)
+  }
+
   /// Initializes kinds and sets up identity lookup in member mode.
   ///
   /// # Errors
@@ -120,6 +132,12 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
     let snapshot = self.kind_registry.all();
     self.identity_lookup.with_write(|lookup| lookup.setup_client(&snapshot))?;
     Ok(())
+  }
+
+  /// Resolves a PID for the given grain key.
+  #[must_use]
+  pub fn resolve_pid(&mut self, key: &GrainKey, now: u64) -> Option<String> {
+    self.identity_lookup.with_write(|lookup| lookup.get(key, now))
   }
 
   /// Returns the aggregated virtual actor count.
