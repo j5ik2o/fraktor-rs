@@ -20,6 +20,8 @@
 
 ### 既存アーキテクチャの把握
 - `ClusterCore` はトポロジ適用、メトリクス更新、EventStream 発火を担う
+- `ClusterExtension` は EventStream を購読し、`TopologyUpdated` を `ClusterCore` へ適用する
+- `ClusterExtension` は `apply_topology_for_external` の失敗を検知した場合、`TopologyApplyFailed` を EventStream に発火する
 - `MembershipTable` と `GossipEngine` が既に存在し、版本管理と差分配布の土台がある
 - `PhiFailureDetector` が `remote/core` にあり、到達不能の検知を提供できる
 - `IdentityTable` は隔離マップを保持し、解決時に隔離を優先する
@@ -34,8 +36,9 @@ graph TB
   MembershipCoordinator --> FailureDetector[PhiFailureDetector]
   MembershipCoordinator --> QuarantineTable[QuarantineTable]
   MembershipCoordinator --> TopologyEmitter[TopologyEmitter]
-  TopologyEmitter --> ClusterCore
   TopologyEmitter --> EventStream[EventStream]
+  EventStream --> ClusterExtension[ClusterExtension]
+  ClusterExtension --> ClusterCore
   MembershipCoordinator --> GossipTransport[GossipTransport]
   GossipTransport --> Remoting[Remoting]
   ClusterCore --> ClusterMetrics[ClusterMetrics]
@@ -43,6 +46,8 @@ graph TB
 - MembershipCoordinator を core に配置し、no_std で完結する状態機械とイベント生成を担当する
 - std 拡張は remoting 受信や transport 連携のみを扱い、core に `cfg` を追加しない
 - EventStream 発火はロック外で行う設計とし、デッドロックを避ける
+- TopologyUpdated の適用は ClusterExtension を単一入口とし、MembershipCoordinator は EventStream への publish までを担当する
+- ClusterExtension は購読済みイベントを ClusterCore に適用し、再 publish は行わない
 
 ### 技術スタック / 設計判断
 - 時刻は `RuntimeToolbox::clock()` の `TimerInstant` を用い、単調増加のタイムスタンプを付与する
@@ -50,6 +55,7 @@ graph TB
 - 共有は `ArcShared<ToolboxMutex<...>>` を既定とし、状態変更 API は `&mut self` を基本とする
 - 失敗検知は `PhiFailureDetector` を再利用し、Suspect/Reachable の効果を状態遷移に反映する
 - Gossip は `GossipEngine` と `GossipTransport` に分離し、Transport 依存を core から切り離す
+- `MembershipCoordinator` は `TimerInstant` を `u64` ミリ秒へ変換するアダプタを持ち、`PhiFailureDetector` に入力する（単調性を維持）
 
 #### 主要設計判断
 - **Decision**: `MembershipCoordinator` を core に導入し、Membership/Gossip/FailureDetector を統合する  
@@ -69,7 +75,7 @@ graph TB
 - **Decision**: TopologyUpdated は同周期の変更を集約し、タイムスタンプと現行メンバー一覧を必須とする  
   **Context**: 重複イベントや変化のない更新が発生しやすく、要件に合致しない  
   **Alternatives**: 逐次イベント発火 / ClusterCore で後処理する  
-  **Selected Approach**: `MembershipCoordinator` 内の集約バッファでまとめて発火し、`ClusterCore` で適用する  
+  **Selected Approach**: `MembershipCoordinator` 内の集約バッファでまとめて発火し、ClusterExtension 経由で `ClusterCore` に適用する  
   **Rationale**: 変更のない周期を除外でき、メトリクス/イベント連動を同期できる  
   **Trade-offs**: バッファ管理のための追加状態が必要
 
@@ -82,6 +88,7 @@ sequenceDiagram
   participant MembershipCoordinator
   participant FailureDetector
   participant TopologyAggregator
+  participant ClusterExtension
   participant ClusterCore
   participant EventStream
 
@@ -91,8 +98,12 @@ sequenceDiagram
   alt suspect_or_dead
     MembershipCoordinator->>TopologyAggregator: collect_change
     TopologyAggregator-->>MembershipCoordinator: topology_updated
-    MembershipCoordinator->>ClusterCore: apply_topology
-    ClusterCore->>EventStream: publish_topology
+    MembershipCoordinator->>EventStream: publish_topology
+    EventStream->>ClusterExtension: deliver_topology
+    ClusterExtension->>ClusterCore: apply_topology
+    alt apply_failed
+      ClusterExtension->>EventStream: publish_apply_failed
+    end
     MembershipCoordinator->>EventStream: publish_member_status
   else no_change
     MembershipCoordinator-->>Provider: no_op
@@ -262,7 +273,7 @@ fn membership_coordinator_flow<TB: RuntimeToolbox + 'static>(
 | --- | --- | --- | --- |
 | `NodeStatus::Unreachable` | `NodeStatus::Suspect` / `NodeStatus::Dead` | 失敗検知で `Suspect` へ遷移し、期限超過で `Dead` へ遷移 | 旧 `Unreachable` 判定は `Dead` 扱いに統一 |
 | `ClusterEvent::TopologyUpdated { topology, joined, left, blocked }` | `ClusterEvent::TopologyUpdated { topology, members, joined, left, dead, blocked, observed_at }` | 既存購読側に timestamp と members を追加対応 | 変更集合と現行メンバー一覧を同時通知 |
-| `LocalClusterProviderGeneric::on_member_join/leave` | `MembershipCoordinator::handle_join/handle_leave` | Provider は Runtime へ委譲し、集約結果を publish | EventStream 発火は Runtime 経由 |
+| `LocalClusterProviderGeneric::on_member_join/leave` | `MembershipCoordinator::handle_join/handle_leave` | Provider は Coordinator へ委譲し、集約結果を publish | EventStream 発火は Coordinator 経由 |
 
 ## 要件トレーサビリティ
 
@@ -288,6 +299,9 @@ fn membership_coordinator_flow<TB: RuntimeToolbox + 'static>(
 - 外部依存の調査結果: Gossip と phi 失敗検知の併用は Akka/Pekko の運用パターンと整合する
 - 追加ルール: `handle_join` は `QuarantineTable` を参照し、隔離中は参加を拒否し理由を返す
 - 追加ルール: `IdentityTable` は `QuarantineTable` のスナップショットで同期し、隔離状態の単一ソースは `QuarantineTable` とする
+- 追加ルール: `PhiFailureDetector` が `Suspect` を返した時点で隔離を開始し、`MemberQuarantined` を発火する
+- 追加ルール: `Reachable` で隔離解除、`Dead` で隔離を維持し TTL を更新する
+- 追加ルール: gossip 受信での状態更新より隔離判定を優先し、隔離中の join を拒否する
 
 #### 契約定義
 **Component Interface**
@@ -329,7 +343,7 @@ pub trait GossipTransport {
 
 ### ClusterCore
 - 責務: TopologyUpdated を適用し、メトリクス更新と EventStream 発火を統合
-- 入出力: `apply_topology_for_external` で適用結果を返し、発火は呼び出し側が行う
+- 入出力: `apply_topology_for_external` で適用結果を返し、失敗時のイベント発火は呼び出し側（ClusterExtension）が行う
 - 依存関係: `ClusterMetrics`, `EventStreamSharedGeneric`
 
 ### イベント契約
@@ -339,7 +353,8 @@ pub trait GossipTransport {
   - `ClusterEvent::MemberQuarantined { authority, reason, observed_at }`
   - `ClusterEvent::TopologyApplyFailed { reason, observed_at }`
 - 購読イベント:
-  - `TopologyUpdated` は ClusterCore へ反映し、EventStream から購読される
+  - `TopologyUpdated` は EventStream で購読され、ClusterCore に反映される
+  - `TopologyApplyFailed` は ClusterExtension が適用失敗時に発火する
   - 状態遷移イベントは観測用途で購読される
 
 ### ドメインモデル
