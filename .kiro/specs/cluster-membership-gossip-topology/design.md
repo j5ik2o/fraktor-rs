@@ -30,23 +30,25 @@
 ### ハイレベルアーキテクチャ
 ```mermaid
 graph TB
-  ClusterCore[ClusterCore] --> MembershipCoordinator[MembershipCoordinator]
   MembershipCoordinator --> MembershipTable[MembershipTable]
   MembershipCoordinator --> GossipEngine[GossipEngine]
   MembershipCoordinator --> FailureDetector[PhiFailureDetector]
   MembershipCoordinator --> QuarantineTable[QuarantineTable]
   MembershipCoordinator --> TopologyEmitter[TopologyEmitter]
+  MembershipCoordinatorDriver[MembershipCoordinatorDriver] --> MembershipCoordinator
+  MembershipCoordinatorDriver --> EventStream[EventStream]
+  MembershipCoordinatorDriver --> GossipTransport[GossipTransport]
   TopologyEmitter --> EventStream[EventStream]
   EventStream --> ClusterExtension[ClusterExtension]
   ClusterExtension --> ClusterCore
-  MembershipCoordinator --> GossipTransport[GossipTransport]
   GossipTransport --> Remoting[Remoting]
   ClusterCore --> ClusterMetrics[ClusterMetrics]
 ```
 - MembershipCoordinator を core に配置し、no_std で完結する状態機械とイベント生成を担当する
 - std 拡張は remoting 受信や transport 連携のみを扱い、core に `cfg` を追加しない
 - EventStream 発火はロック外で行う設計とし、デッドロックを避ける
-- TopologyUpdated の適用は ClusterExtension を単一入口とし、MembershipCoordinator は EventStream への publish までを担当する
+- TopologyUpdated の適用は ClusterExtension を単一入口とする
+- MembershipCoordinator は副作用を持たず Outcome を返し、MembershipCoordinatorDriver が EventStream への publish と GossipTransport 送信を担当する
 - ClusterExtension は購読済みイベントを ClusterCore に適用し、再 publish は行わない
 
 ### 技術スタック / 設計判断
@@ -85,30 +87,41 @@ graph TB
 ```mermaid
 sequenceDiagram
   participant Provider
+  participant MembershipCoordinatorDriver
   participant MembershipCoordinator
   participant FailureDetector
   participant TopologyAggregator
+  participant GossipTransport
   participant ClusterExtension
   participant ClusterCore
   participant EventStream
 
-  Provider->>MembershipCoordinator: heartbeat
+  Provider->>MembershipCoordinatorDriver: heartbeat
+  MembershipCoordinatorDriver->>MembershipCoordinator: handle_heartbeat
   MembershipCoordinator->>FailureDetector: record_heartbeat
   FailureDetector-->>MembershipCoordinator: effect_or_none
   alt suspect_or_dead
     MembershipCoordinator->>TopologyAggregator: collect_change
     TopologyAggregator-->>MembershipCoordinator: topology_updated
-    MembershipCoordinator->>EventStream: publish_topology
+    MembershipCoordinator-->>MembershipCoordinatorDriver: outcome
+    MembershipCoordinatorDriver->>EventStream: publish_topology
     EventStream->>ClusterExtension: deliver_topology
     ClusterExtension->>ClusterCore: apply_topology
     alt apply_failed
       ClusterExtension->>EventStream: publish_apply_failed
     end
-    MembershipCoordinator->>EventStream: publish_member_status
+    MembershipCoordinatorDriver->>EventStream: publish_member_status
+    MembershipCoordinatorDriver->>GossipTransport: send_outbound
   else no_change
-    MembershipCoordinator-->>Provider: no_op
+    MembershipCoordinator-->>MembershipCoordinatorDriver: outcome_empty
   end
 ```
+
+### 駆動モデル
+- `MembershipCoordinator` は副作用を持たない状態機械として扱い、処理結果を `MembershipCoordinatorOutcome` にまとめる
+- std 側の `MembershipCoordinatorDriver` が定期的に `poll` を呼び、`GossipTransport::poll_deltas` の結果を `handle_gossip_delta` に投入する
+- Driver は `MembershipCoordinatorOutcome` の `topology_event`/`member_events` を EventStream へ publish し、`gossip_outbound` を `GossipTransport` で送信する
+- Driver は ClusterProvider から保持され、TickDriver/タイマ駆動で実行される
 
 ### トポロジ集約ポリシー
 - `MembershipCoordinator` は変更をバッファし、`topology_emit_interval` 経過時点で単一の `TopologyUpdated` を生成する
@@ -141,6 +154,8 @@ stateDiagram-v2
   閾値、タイムアウト、Gossip 有効化など
 - `modules/cluster/src/core/membership_coordinator_outcome.rs`: `pub struct MembershipCoordinatorOutcome`  
   生成されたイベントと送信すべき Gossip の集合
+- `modules/cluster/src/std/membership_coordinator_driver.rs`: `pub struct MembershipCoordinatorDriver<TB, TTransport>`  
+  `MembershipCoordinator` を駆動し、EventStream publish と GossipTransport 送信を担当する
 - `modules/cluster/src/core/gossip_transport.rs`: `pub trait GossipTransport`  
   Gossip の送受信契約
 - `modules/cluster/src/core/quarantine_table.rs`: `pub struct QuarantineTable`  
@@ -216,6 +231,16 @@ impl<TB: RuntimeToolbox + 'static> MembershipCoordinator<TB> {
   pub fn poll(&mut self, now: TimerInstant) -> MembershipCoordinatorOutcome;
 }
 
+pub struct MembershipCoordinatorDriver<TB: RuntimeToolbox + 'static, TTransport: GossipTransport> {
+  // fields omitted
+}
+
+impl<TB: RuntimeToolbox + 'static, TTransport: GossipTransport> MembershipCoordinatorDriver<TB, TTransport> {
+  pub fn handle_heartbeat(&mut self, authority: &str, now: TimerInstant);
+  pub fn handle_gossip_deltas(&mut self, now: TimerInstant);
+  pub fn poll(&mut self, now: TimerInstant);
+}
+
 pub trait GossipTransport {
   fn send(&mut self, outbound: GossipOutbound) -> Result<(), GossipTransportError>;
   fn poll_deltas(&mut self) -> Vec<(String, MembershipDelta)>;
@@ -234,17 +259,26 @@ classDiagram
     +handle_gossip_delta
     +poll
   }
+  class MembershipCoordinatorDriver {
+    +handle_heartbeat
+    +handle_gossip_deltas
+    +poll
+  }
   class MembershipTable
   class GossipEngine
+  class GossipTransport
+  class EventStream
   class PhiFailureDetector
   class QuarantineTable
   class ClusterCore
 
+  MembershipCoordinatorDriver --> MembershipCoordinator
+  MembershipCoordinatorDriver --> GossipTransport
+  MembershipCoordinatorDriver --> EventStream
   MembershipCoordinator --> MembershipTable
   MembershipCoordinator --> GossipEngine
   MembershipCoordinator --> PhiFailureDetector
   MembershipCoordinator --> QuarantineTable
-  MembershipCoordinator --> ClusterCore
 ```
 
 ## クイックスタート / 利用例
@@ -273,7 +307,7 @@ fn membership_coordinator_flow<TB: RuntimeToolbox + 'static>(
 | --- | --- | --- | --- |
 | `NodeStatus::Unreachable` | `NodeStatus::Suspect` / `NodeStatus::Dead` | 失敗検知で `Suspect` へ遷移し、期限超過で `Dead` へ遷移 | 旧 `Unreachable` 判定は `Dead` 扱いに統一 |
 | `ClusterEvent::TopologyUpdated { topology, joined, left, blocked }` | `ClusterEvent::TopologyUpdated { topology, members, joined, left, dead, blocked, observed_at }` | 既存購読側に timestamp と members を追加対応 | 変更集合と現行メンバー一覧を同時通知 |
-| `LocalClusterProviderGeneric::on_member_join/leave` | `MembershipCoordinator::handle_join/handle_leave` | Provider は Coordinator へ委譲し、集約結果を publish | EventStream 発火は Coordinator 経由 |
+| `LocalClusterProviderGeneric::on_member_join/leave` | `MembershipCoordinator::handle_join/handle_leave` | Provider は Coordinator へ委譲し、Driver が集約結果を publish | EventStream 発火は Driver 経由 |
 
 ## 要件トレーサビリティ
 
@@ -293,15 +327,16 @@ fn membership_coordinator_flow<TB: RuntimeToolbox + 'static>(
 ## コンポーネント & インターフェイス
 
 ### MembershipCoordinator
-- 責務: 状態遷移、失敗検知の反映、Gossip 差分配布、TopologyUpdated 集約、イベント生成
+- 責務: 状態遷移、失敗検知の反映、Gossip 差分生成、TopologyUpdated 集約、イベント生成
 - 入出力: join/leave/heartbeat/gossip_delta を受け取り、ClusterEvent と GossipOutbound を生成
 - 依存関係: `MembershipTable`, `GossipEngine`, `PhiFailureDetector`, `QuarantineTable`, `RuntimeToolbox`
 - 外部依存の調査結果: Gossip と phi 失敗検知の併用は Akka/Pekko の運用パターンと整合する
 - 追加ルール: `handle_join` は `QuarantineTable` を参照し、隔離中は参加を拒否し理由を返す
 - 追加ルール: `IdentityTable` は `QuarantineTable` のスナップショットで同期し、隔離状態の単一ソースは `QuarantineTable` とする
-- 追加ルール: `PhiFailureDetector` が `Suspect` を返した時点で隔離を開始し、`MemberQuarantined` を発火する
-- 追加ルール: `Reachable` で隔離解除、`Dead` で隔離を維持し TTL を更新する
-- 追加ルール: gossip 受信での状態更新より隔離判定を優先し、隔離中の join を拒否する
+- 追加ルール: `PhiFailureDetector` の `Suspect` は疑い状態として扱い、隔離は開始しない（Join/Heartbeat を拒否しない）
+- 追加ルール: `Suspect` が timeout で `Dead` になった時点を「到達不能」とみなし、隔離を開始して `MemberQuarantined` を発火する
+- 追加ルール: `Reachable` は Suspect を解除し、隔離中でなければ通常復帰を許可する
+- 追加ルール: 隔離は TTL 満了で解除し、隔離中は join を拒否し、gossip 更新より隔離判定を優先する
 
 #### 契約定義
 **Component Interface**
@@ -316,6 +351,12 @@ pub trait MembershipCoordinatorPort {
 - 前提条件: state が `Member` 以外のとき、入力は `NotStarted` で失敗する
 - 事後条件: 状態遷移は `NodeStatus` の許可された遷移のみを適用する
 - 不変条件: authority は一意、`Dead` と `Removed` はアクティブ集合に含めない
+
+### MembershipCoordinatorDriver
+- 責務: `MembershipCoordinator` を駆動し、EventStream publish と GossipTransport 送信をまとめて行う
+- 入出力: `poll`/`handle_*` を呼び出し、`MembershipCoordinatorOutcome` を副作用へ変換する
+- 依存関係: `MembershipCoordinatorShared`, `GossipTransport`, `EventStreamSharedGeneric`, `RuntimeToolbox`
+- 配置: `modules/cluster/src/std`（std 側の駆動ループで実行する）
 
 ### GossipTransport
 - 責務: `GossipOutbound` の送信と受信差分の収集
@@ -363,6 +404,7 @@ pub trait GossipTransport {
   - `Joining -> Up -> Suspect -> Dead` の順で遷移し、`Dead` はアクティブ集合から除外する
   - `Leaving -> Removed` を許可し、`Removed` は再参加までアクティブ集合に含めない
   - `Suspect` の解除は `Reachable` 効果でのみ許可する
+  - `Dead` 判定で隔離を開始し、TTL 満了で解除する
 
 ## データモデル
 
