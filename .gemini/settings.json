@@ -1,6 +1,7 @@
 {
   "general": {
-    "checkpointing": true
+    "checkpointing": true,
+    "previewFeatures": true
   },
   "mcpServers": {
     "serena": {
@@ -19,7 +20,10 @@
     },
     "context7": {
       "command": "npx",
-      "args": ["-y", "@upstash/context7-mcp@latest"]
+      "args": [
+        "-y",
+        "@upstash/context7-mcp@latest"
+      ]
     }
   },
   "ui": {
