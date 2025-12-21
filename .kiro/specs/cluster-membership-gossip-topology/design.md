@@ -3,7 +3,7 @@
 ## 概要
 本設計は cluster モジュールに Membership/Gossip 基盤を定義し、メンバー状態遷移、失敗検知、隔離、トポロジ更新、メトリクス/イベント連動を一貫した契約で扱う。未起動時の拒否、状態遷移の妥当性検証、同周期の変更集約を備え、運用判断のぶれを減らす。
 
-主な利用者は cluster を組み込む開発者と運用者であり、ノードの起動/停止・障害時の判断を自動化し、EventStream での観測と ClusterCore 反映を確実化する。既存の ClusterCore/LocalClusterProviderGeneric を維持しつつ、core に MembershipRuntime を導入し、NodeStatus/ClusterEvent/ClusterTopology を拡張する。
+主な利用者は cluster を組み込む開発者と運用者であり、ノードの起動/停止・障害時の判断を自動化し、EventStream での観測と ClusterCore 反映を確実化する。既存の ClusterCore/LocalClusterProviderGeneric を維持しつつ、core に MembershipCoordinator を導入し、NodeStatus/ClusterEvent/ClusterTopology を拡張する。
 
 ### 目標 (Goals)
 - Membership/Gossip の起動/停止と未起動時拒否を明確化する
@@ -28,19 +28,19 @@
 ### ハイレベルアーキテクチャ
 ```mermaid
 graph TB
-  ClusterCore[ClusterCore] --> MembershipRuntime[MembershipRuntime]
-  MembershipRuntime --> MembershipTable[MembershipTable]
-  MembershipRuntime --> GossipEngine[GossipEngine]
-  MembershipRuntime --> FailureDetector[PhiFailureDetector]
-  MembershipRuntime --> QuarantineTable[QuarantineTable]
-  MembershipRuntime --> TopologyEmitter[TopologyEmitter]
+  ClusterCore[ClusterCore] --> MembershipCoordinator[MembershipCoordinator]
+  MembershipCoordinator --> MembershipTable[MembershipTable]
+  MembershipCoordinator --> GossipEngine[GossipEngine]
+  MembershipCoordinator --> FailureDetector[PhiFailureDetector]
+  MembershipCoordinator --> QuarantineTable[QuarantineTable]
+  MembershipCoordinator --> TopologyEmitter[TopologyEmitter]
   TopologyEmitter --> ClusterCore
   TopologyEmitter --> EventStream[EventStream]
-  MembershipRuntime --> GossipTransport[GossipTransport]
+  MembershipCoordinator --> GossipTransport[GossipTransport]
   GossipTransport --> Remoting[Remoting]
   ClusterCore --> ClusterMetrics[ClusterMetrics]
 ```
-- MembershipRuntime を core に配置し、no_std で完結する状態機械とイベント生成を担当する
+- MembershipCoordinator を core に配置し、no_std で完結する状態機械とイベント生成を担当する
 - std 拡張は remoting 受信や transport 連携のみを扱い、core に `cfg` を追加しない
 - EventStream 発火はロック外で行う設計とし、デッドロックを避ける
 
@@ -52,10 +52,10 @@ graph TB
 - Gossip は `GossipEngine` と `GossipTransport` に分離し、Transport 依存を core から切り離す
 
 #### 主要設計判断
-- **Decision**: `MembershipRuntime` を core に導入し、Membership/Gossip/FailureDetector を統合する  
+- **Decision**: `MembershipCoordinator` を core に導入し、Membership/Gossip/FailureDetector を統合する  
   **Context**: 現状は LocalClusterProviderGeneric が単純な join/leave で TopologyUpdated を発火しており、失敗検知や隔離の契約が不十分  
   **Alternatives**: ClusterCore に直接ロジックを埋め込む / provider ごとに実装する  
-  **Selected Approach**: `MembershipRuntime` に状態機械と集約を集約し、`ClusterCore` は適用と観測に集中する  
+  **Selected Approach**: `MembershipCoordinator` に状態機械と集約を集約し、`ClusterCore` は適用と観測に集中する  
   **Rationale**: 1 箇所で状態遷移と集約ルールを管理でき、core/std 境界も守れる  
   **Trade-offs**: 新規モジュールと API が増える
 
@@ -69,7 +69,7 @@ graph TB
 - **Decision**: TopologyUpdated は同周期の変更を集約し、タイムスタンプと現行メンバー一覧を必須とする  
   **Context**: 重複イベントや変化のない更新が発生しやすく、要件に合致しない  
   **Alternatives**: 逐次イベント発火 / ClusterCore で後処理する  
-  **Selected Approach**: `MembershipRuntime` 内の集約バッファでまとめて発火し、`ClusterCore` で適用する  
+  **Selected Approach**: `MembershipCoordinator` 内の集約バッファでまとめて発火し、`ClusterCore` で適用する  
   **Rationale**: 変更のない周期を除外でき、メトリクス/イベント連動を同期できる  
   **Trade-offs**: バッファ管理のための追加状態が必要
 
@@ -79,28 +79,28 @@ graph TB
 ```mermaid
 sequenceDiagram
   participant Provider
-  participant MembershipRuntime
+  participant MembershipCoordinator
   participant FailureDetector
   participant TopologyAggregator
   participant ClusterCore
   participant EventStream
 
-  Provider->>MembershipRuntime: heartbeat
-  MembershipRuntime->>FailureDetector: record_heartbeat
-  FailureDetector-->>MembershipRuntime: effect_or_none
+  Provider->>MembershipCoordinator: heartbeat
+  MembershipCoordinator->>FailureDetector: record_heartbeat
+  FailureDetector-->>MembershipCoordinator: effect_or_none
   alt suspect_or_dead
-    MembershipRuntime->>TopologyAggregator: collect_change
-    TopologyAggregator-->>MembershipRuntime: topology_updated
-    MembershipRuntime->>ClusterCore: apply_topology
+    MembershipCoordinator->>TopologyAggregator: collect_change
+    TopologyAggregator-->>MembershipCoordinator: topology_updated
+    MembershipCoordinator->>ClusterCore: apply_topology
     ClusterCore->>EventStream: publish_topology
-    MembershipRuntime->>EventStream: publish_member_status
+    MembershipCoordinator->>EventStream: publish_member_status
   else no_change
-    MembershipRuntime-->>Provider: no_op
+    MembershipCoordinator-->>Provider: no_op
   end
 ```
 
 ### トポロジ集約ポリシー
-- `MembershipRuntime` は変更をバッファし、`topology_emit_interval` 経過時点で単一の `TopologyUpdated` を生成する
+- `MembershipCoordinator` は変更をバッファし、`topology_emit_interval` 経過時点で単一の `TopologyUpdated` を生成する
 - `poll(now)` は集約ウィンドウの境界判定を行い、変更が存在しない場合はイベントを生成しない
 - 集約ウィンドウは `next_topology_emit_at`（`TimerInstant`）で管理し、`now >= next_topology_emit_at` で確定する
 
@@ -120,15 +120,15 @@ stateDiagram-v2
 ## API ブループリント
 
 ### 型・トレイト一覧
-- `modules/cluster/src/core/membership_runtime.rs`: `pub struct MembershipRuntime<TB>`  
+- `modules/cluster/src/core/membership_coordinator.rs`: `pub struct MembershipCoordinator<TB>`  
   Membership/Gossip/FailureDetector を統合する実行時コンポーネント
-- `modules/cluster/src/core/membership_runtime_shared.rs`: `pub struct MembershipRuntimeShared<TB>`  
+- `modules/cluster/src/core/membership_coordinator_shared.rs`: `pub struct MembershipCoordinatorShared<TB>`  
   `ArcShared<ToolboxMutex<...>>` による共有ラッパー
-- `modules/cluster/src/core/membership_runtime_state.rs`: `pub enum MembershipRuntimeState`  
+- `modules/cluster/src/core/membership_coordinator_state.rs`: `pub enum MembershipCoordinatorState`  
   `Stopped | Member | Client`
-- `modules/cluster/src/core/membership_runtime_config.rs`: `pub struct MembershipRuntimeConfig`  
+- `modules/cluster/src/core/membership_coordinator_config.rs`: `pub struct MembershipCoordinatorConfig`  
   閾値、タイムアウト、Gossip 有効化など
-- `modules/cluster/src/core/membership_runtime_outcome.rs`: `pub struct MembershipRuntimeOutcome`  
+- `modules/cluster/src/core/membership_coordinator_outcome.rs`: `pub struct MembershipCoordinatorOutcome`  
   生成されたイベントと送信すべき Gossip の集合
 - `modules/cluster/src/core/gossip_transport.rs`: `pub trait GossipTransport`  
   Gossip の送受信契約
@@ -145,7 +145,7 @@ stateDiagram-v2
 
 ### シグネチャ スケッチ
 ```rust
-pub struct MembershipRuntimeConfig {
+pub struct MembershipCoordinatorConfig {
   pub phi_threshold: f64,
   pub suspect_timeout: Duration,
   pub dead_timeout: Duration,
@@ -155,29 +155,29 @@ pub struct MembershipRuntimeConfig {
   pub topology_emit_interval: Duration,
 }
 
-pub enum MembershipRuntimeState {
+pub enum MembershipCoordinatorState {
   Stopped,
   Member,
   Client,
 }
 
-pub struct MembershipRuntimeOutcome {
+pub struct MembershipCoordinatorOutcome {
   pub topology_event: Option<ClusterEvent>,
   pub member_events: Vec<ClusterEvent>,
   pub gossip_outbound: Vec<GossipOutbound>,
   pub membership_events: Vec<MembershipEvent>,
 }
 
-pub struct MembershipRuntime<TB: RuntimeToolbox + 'static> {
+pub struct MembershipCoordinator<TB: RuntimeToolbox + 'static> {
   // fields omitted
 }
 
-impl<TB: RuntimeToolbox + 'static> MembershipRuntime<TB> {
-  pub fn new(config: MembershipRuntimeConfig, table: MembershipTable, detector: PhiFailureDetector) -> Self;
-  pub fn state(&self) -> MembershipRuntimeState;
-  pub fn start_member(&mut self) -> Result<(), MembershipRuntimeError>;
-  pub fn start_client(&mut self) -> Result<(), MembershipRuntimeError>;
-  pub fn stop(&mut self) -> Result<(), MembershipRuntimeError>;
+impl<TB: RuntimeToolbox + 'static> MembershipCoordinator<TB> {
+  pub fn new(config: MembershipCoordinatorConfig, table: MembershipTable, detector: PhiFailureDetector) -> Self;
+  pub fn state(&self) -> MembershipCoordinatorState;
+  pub fn start_member(&mut self) -> Result<(), MembershipCoordinatorError>;
+  pub fn start_client(&mut self) -> Result<(), MembershipCoordinatorError>;
+  pub fn stop(&mut self) -> Result<(), MembershipCoordinatorError>;
   pub fn snapshot(&self) -> MembershipSnapshot;
   pub fn quarantine_snapshot(&self) -> Vec<QuarantineEntry>;
 
@@ -186,23 +186,23 @@ impl<TB: RuntimeToolbox + 'static> MembershipRuntime<TB> {
     node_id: String,
     authority: String,
     now: TimerInstant,
-  ) -> Result<MembershipRuntimeOutcome, MembershipError>;
+  ) -> Result<MembershipCoordinatorOutcome, MembershipError>;
 
   pub fn handle_leave(
     &mut self,
     authority: &str,
     now: TimerInstant,
-  ) -> Result<MembershipRuntimeOutcome, MembershipError>;
+  ) -> Result<MembershipCoordinatorOutcome, MembershipError>;
 
-  pub fn handle_heartbeat(&mut self, authority: &str, now: TimerInstant) -> MembershipRuntimeOutcome;
+  pub fn handle_heartbeat(&mut self, authority: &str, now: TimerInstant) -> MembershipCoordinatorOutcome;
   pub fn handle_gossip_delta(
     &mut self,
     peer: &str,
     delta: MembershipDelta,
     now: TimerInstant,
-  ) -> MembershipRuntimeOutcome;
+  ) -> MembershipCoordinatorOutcome;
 
-  pub fn poll(&mut self, now: TimerInstant) -> MembershipRuntimeOutcome;
+  pub fn poll(&mut self, now: TimerInstant) -> MembershipCoordinatorOutcome;
 }
 
 pub trait GossipTransport {
@@ -214,7 +214,7 @@ pub trait GossipTransport {
 ## クラス／モジュール図
 ```mermaid
 classDiagram
-  class MembershipRuntime {
+  class MembershipCoordinator {
     +start_member
     +start_client
     +stop
@@ -229,17 +229,17 @@ classDiagram
   class QuarantineTable
   class ClusterCore
 
-  MembershipRuntime --> MembershipTable
-  MembershipRuntime --> GossipEngine
-  MembershipRuntime --> PhiFailureDetector
-  MembershipRuntime --> QuarantineTable
-  MembershipRuntime --> ClusterCore
+  MembershipCoordinator --> MembershipTable
+  MembershipCoordinator --> GossipEngine
+  MembershipCoordinator --> PhiFailureDetector
+  MembershipCoordinator --> QuarantineTable
+  MembershipCoordinator --> ClusterCore
 ```
 
 ## クイックスタート / 利用例
 ```rust
-fn membership_runtime_flow<TB: RuntimeToolbox + 'static>(
-  runtime: &mut MembershipRuntime<TB>,
+fn membership_coordinator_flow<TB: RuntimeToolbox + 'static>(
+  runtime: &mut MembershipCoordinator<TB>,
   now: TimerInstant,
 ) {
   let _ = runtime.start_member();
@@ -262,26 +262,26 @@ fn membership_runtime_flow<TB: RuntimeToolbox + 'static>(
 | --- | --- | --- | --- |
 | `NodeStatus::Unreachable` | `NodeStatus::Suspect` / `NodeStatus::Dead` | 失敗検知で `Suspect` へ遷移し、期限超過で `Dead` へ遷移 | 旧 `Unreachable` 判定は `Dead` 扱いに統一 |
 | `ClusterEvent::TopologyUpdated { topology, joined, left, blocked }` | `ClusterEvent::TopologyUpdated { topology, members, joined, left, dead, blocked, observed_at }` | 既存購読側に timestamp と members を追加対応 | 変更集合と現行メンバー一覧を同時通知 |
-| `LocalClusterProviderGeneric::on_member_join/leave` | `MembershipRuntime::handle_join/handle_leave` | Provider は Runtime へ委譲し、集約結果を publish | EventStream 発火は Runtime 経由 |
+| `LocalClusterProviderGeneric::on_member_join/leave` | `MembershipCoordinator::handle_join/handle_leave` | Provider は Runtime へ委譲し、集約結果を publish | EventStream 発火は Runtime 経由 |
 
 ## 要件トレーサビリティ
 
 | 要件ID | 要約 | 実装コンポーネント | インターフェイス | 参照フロー |
 | --- | --- | --- | --- | --- |
-| 1.1 | 起動時に基盤を稼働 | MembershipRuntime | start_member | sequence |
-| 1.3 | 未起動時に拒否 | MembershipRuntime | handle_* | sequence |
-| 2.3 | Suspect 状態 | MembershipRuntime / NodeStatus | handle_heartbeat | state |
+| 1.1 | 起動時に基盤を稼働 | MembershipCoordinator | start_member | sequence |
+| 1.3 | 未起動時に拒否 | MembershipCoordinator | handle_* | sequence |
+| 2.3 | Suspect 状態 | MembershipCoordinator / NodeStatus | handle_heartbeat | state |
 | 3.1 | 隔離イベント | QuarantineTable / ClusterEvent | quarantine | sequence |
-| 3.3 | 隔離中の再参加拒否 | MembershipRuntime / QuarantineTable | handle_join | component |
+| 3.3 | 隔離中の再参加拒否 | MembershipCoordinator / QuarantineTable | handle_join | component |
 | 3.5 | 隔離一覧の参照 | QuarantineTable | snapshot | component |
-| 4.1 | TopologyUpdated 生成 | MembershipRuntime | poll | sequence |
-| 4.2 | 変更なしは生成しない | MembershipRuntime | poll | aggregation |
-| 4.3 | 同周期の集約 | MembershipRuntime | poll | aggregation |
+| 4.1 | TopologyUpdated 生成 | MembershipCoordinator | poll | sequence |
+| 4.2 | 変更なしは生成しない | MembershipCoordinator | poll | aggregation |
+| 4.3 | 同周期の集約 | MembershipCoordinator | poll | aggregation |
 | 5.4 | タイムスタンプ付与 | ClusterEvent | TopologyUpdated | sequence |
 
 ## コンポーネント & インターフェイス
 
-### MembershipRuntime
+### MembershipCoordinator
 - 責務: 状態遷移、失敗検知の反映、Gossip 差分配布、TopologyUpdated 集約、イベント生成
 - 入出力: join/leave/heartbeat/gossip_delta を受け取り、ClusterEvent と GossipOutbound を生成
 - 依存関係: `MembershipTable`, `GossipEngine`, `PhiFailureDetector`, `QuarantineTable`, `RuntimeToolbox`
@@ -292,11 +292,11 @@ fn membership_runtime_flow<TB: RuntimeToolbox + 'static>(
 #### 契約定義
 **Component Interface**
 ```rust
-pub trait MembershipRuntimePort {
-  fn start_member(&mut self) -> Result<(), MembershipRuntimeError>;
-  fn stop(&mut self) -> Result<(), MembershipRuntimeError>;
+pub trait MembershipCoordinatorPort {
+  fn start_member(&mut self) -> Result<(), MembershipCoordinatorError>;
+  fn stop(&mut self) -> Result<(), MembershipCoordinatorError>;
   fn snapshot(&self) -> MembershipSnapshot;
-  fn poll(&mut self, now: TimerInstant) -> MembershipRuntimeOutcome;
+  fn poll(&mut self, now: TimerInstant) -> MembershipCoordinatorOutcome;
 }
 ```
 - 前提条件: state が `Member` 以外のとき、入力は `NotStarted` で失敗する
@@ -405,6 +405,6 @@ graph TB
   Phase3 --> Phase4[Phase4 cleanup]
 ```
 - Phase1: `NodeStatus` と `ClusterEvent` の拡張を反映
-- Phase2: `MembershipRuntime` を core に追加し、LocalClusterProviderGeneric から利用
+- Phase2: `MembershipCoordinator` を core に追加し、LocalClusterProviderGeneric から利用
 - Phase3: std 側 transport 連携を `GossipTransport` に寄せる
 - Phase4: 旧 `Unreachable` 前提の分岐を削除
