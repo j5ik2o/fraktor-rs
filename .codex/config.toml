@@ -20,10 +20,6 @@ startup_timeout_sec = 30.0
 command = "npx"
 args = ["-y", "@upstash/context7-mcp@latest"]
 
-[mcp_servers.playwright]
-command = "npx"
-args = ["@playwright/mcp@latest"]
-
 [notice]
 hide_gpt5_1_migration_prompt = true
 "hide_gpt-5.1-codex-max_migration_prompt" = true
