@@ -21,8 +21,8 @@ use fraktor_utils_rs::core::{
 
 use crate::core::{
   ActivatedKind, ClusterError, ClusterEvent, ClusterExtensionConfig, ClusterMetrics, ClusterMetricsSnapshot,
-  ClusterProviderShared, ClusterPubSubShared, ClusterTopology, GossiperShared, GrainKey, IdentityLookupShared,
-  IdentitySetupError, KindRegistry, MetricsError, PidCache, StartupMode,
+  ClusterProviderShared, ClusterPubSubShared, GossiperShared, GrainKey, IdentityLookupShared, IdentitySetupError,
+  KindRegistry, MetricsError, PidCache, StartupMode, TopologyApplyError, TopologyUpdate,
 };
 
 /// Aggregates configuration and shared dependencies for cluster runtime flows.
@@ -330,38 +330,22 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
   ///
   /// Returns `Some(ClusterEvent)` if the topology was applied (new hash),
   /// or `None` if the topology was a duplicate.
-  #[must_use]
-  pub fn apply_topology_for_external(&mut self, topology: &ClusterTopology) -> Option<ClusterEvent> {
-    if self.apply_topology_internal(topology) {
-      Some(ClusterEvent::TopologyUpdated {
-        topology: topology.clone(),
-        joined:   topology.joined().clone(),
-        left:     topology.left().clone(),
-        blocked:  self.blocked_members.clone(),
-      })
-    } else {
-      None
+  ///
+  /// # Errors
+  ///
+  /// Returns [`TopologyApplyError::NotStarted`] if the cluster is not running,
+  /// or [`TopologyApplyError::InvalidTopology`] when the update is invalid.
+  pub fn try_apply_topology(&mut self, update: &TopologyUpdate) -> Result<Option<ClusterEvent>, TopologyApplyError> {
+    if self.mode.is_none() {
+      return Err(TopologyApplyError::NotStarted);
     }
-  }
 
-  /// Applies a topology update, emitting a cluster event and updating metrics.
-  ///
-  /// Use this method when receiving topology updates from providers directly.
-  /// For updates received via EventStream, use [`apply_topology`] instead to avoid
-  /// re-publishing the event.
-  ///
-  /// **Warning**: This method publishes to EventStream while holding `&mut self`.
-  /// If called from a context where a lock is held, consider using
-  /// [`apply_topology_for_external`] instead to avoid deadlocks.
-  pub fn on_topology(&mut self, topology: &ClusterTopology) {
-    if self.apply_topology_internal(topology) {
-      let event = ClusterEvent::TopologyUpdated {
-        topology: topology.clone(),
-        joined:   topology.joined().clone(),
-        left:     topology.left().clone(),
-        blocked:  self.blocked_members.clone(),
-      };
-      self.publish_cluster_event(event);
+    validate_topology_update(update)?;
+
+    if self.apply_topology_internal(update) {
+      Ok(Some(ClusterEvent::TopologyUpdated { update: update.clone() }))
+    } else {
+      Ok(None)
     }
   }
 
@@ -369,41 +353,82 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
   ///
   /// Use this method when the topology update was already received via EventStream
   /// to avoid re-publishing and causing infinite loops.
-  pub fn apply_topology(&mut self, topology: &ClusterTopology) {
-    self.apply_topology_internal(topology);
+  ///
+  /// # Errors
+  ///
+  /// Returns [`TopologyApplyError`] if the update cannot be applied.
+  pub fn apply_topology(&mut self, update: &TopologyUpdate) -> Result<(), TopologyApplyError> {
+    let _ = self.try_apply_topology(update)?;
+    Ok(())
   }
 
   /// Internal helper that applies topology and returns whether the update was applied.
-  fn apply_topology_internal(&mut self, topology: &ClusterTopology) -> bool {
-    if self.last_topology_hash == Some(topology.hash()) {
+  fn apply_topology_internal(&mut self, update: &TopologyUpdate) -> bool {
+    if self.last_topology_hash == Some(update.topology.hash()) {
       return false;
     }
-    self.last_topology_hash = Some(topology.hash());
-    self.refresh_blocked_members();
+    self.last_topology_hash = Some(update.topology.hash());
+    self.blocked_members = update.blocked.clone();
 
-    // Adjust member count using joined/left delta (saturating at zero).
-    let joined = topology.joined().len();
-    let left = topology.left().len();
-    self.member_count = self.member_count.saturating_add(joined).saturating_sub(left);
+    self.member_count = update.members.len();
     self.update_metrics(self.member_count, self.virtual_actor_count);
 
     if let Some(cache) = self.pid_cache.as_mut() {
-      for authority in topology.left() {
+      for authority in update.left.iter().chain(update.dead.iter()) {
         cache.invalidate_authority(authority);
       }
     }
 
-    // IdentityLookup に離脱メンバーを伝播
-    // 注: update_topology は完全なメンバーリストを必要とするため、
-    // ClusterTopology のデルタ情報からは on_member_left のみを呼び出す
+    let members = update.members.clone();
+    let left = update.left.clone();
+    let dead = update.dead.clone();
     self.identity_lookup.with_write(|identity_lookup| {
-      for authority in topology.left() {
+      identity_lookup.update_topology(members);
+      for authority in left.iter().chain(dead.iter()) {
         identity_lookup.on_member_left(authority);
       }
     });
 
     true
   }
+}
+
+fn validate_topology_update(update: &TopologyUpdate) -> Result<(), TopologyApplyError> {
+  use alloc::collections::BTreeSet;
+
+  let joined_set: BTreeSet<_> = update.joined.iter().cloned().collect();
+  if joined_set.len() != update.joined.len() {
+    return Err(TopologyApplyError::InvalidTopology { reason: "joined contains duplicates".to_string() });
+  }
+  let left_set: BTreeSet<_> = update.left.iter().cloned().collect();
+  if left_set.len() != update.left.len() {
+    return Err(TopologyApplyError::InvalidTopology { reason: "left contains duplicates".to_string() });
+  }
+  let dead_set: BTreeSet<_> = update.dead.iter().cloned().collect();
+  if dead_set.len() != update.dead.len() {
+    return Err(TopologyApplyError::InvalidTopology { reason: "dead contains duplicates".to_string() });
+  }
+
+  if joined_set.intersection(&left_set).next().is_some()
+    || joined_set.intersection(&dead_set).next().is_some()
+    || left_set.intersection(&dead_set).next().is_some()
+  {
+    return Err(TopologyApplyError::InvalidTopology { reason: "delta sets overlap".to_string() });
+  }
+
+  let member_set: BTreeSet<_> = update.members.iter().cloned().collect();
+  if member_set.len() != update.members.len() {
+    return Err(TopologyApplyError::InvalidTopology { reason: "members contains duplicates".to_string() });
+  }
+  if left_set.iter().any(|entry| member_set.contains(entry)) || dead_set.iter().any(|entry| member_set.contains(entry))
+  {
+    return Err(TopologyApplyError::InvalidTopology { reason: "members contains removed entries".to_string() });
+  }
+  if !joined_set.is_subset(&member_set) {
+    return Err(TopologyApplyError::InvalidTopology { reason: "joined not included in members".to_string() });
+  }
+
+  Ok(())
 }
 
 #[derive(Clone)]

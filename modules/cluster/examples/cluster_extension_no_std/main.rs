@@ -148,8 +148,8 @@ impl EventStreamSubscriber<NoStdToolbox> for ClusterEventLogger {
             | ClusterEvent::Startup { mode, .. } => {
               println!("[{}] cluster started (mode={:?})", self.node_name, mode);
             },
-            | ClusterEvent::TopologyUpdated { joined, left, .. } => {
-              println!("[{}] topology updated: joined={:?}, left={:?}", self.node_name, joined, left);
+            | ClusterEvent::TopologyUpdated { update } => {
+              println!("[{}] topology updated: joined={:?}, left={:?}", self.node_name, update.joined, update.left);
             },
             | ClusterEvent::Shutdown { .. } => {
               println!("[{}] cluster shutdown", self.node_name);
@@ -193,7 +193,7 @@ impl ClusterNode {
     let cluster_installer = ClusterExtensionInstaller::new(
       ClusterExtensionConfig::new().with_advertised_address(name).with_metrics_enabled(true),
       move |event_stream, block_list_provider, advertised_address| {
-        let static_topology = ClusterTopology::new(1, vec![peer_name.clone()], vec![]);
+        let static_topology = ClusterTopology::new(1, vec![peer_name.clone()], vec![], Vec::new());
         let provider = StaticClusterProvider::new(event_stream, block_list_provider, advertised_address)
           .with_static_topology(static_topology);
         Box::new(provider)

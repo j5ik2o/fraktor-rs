@@ -49,10 +49,13 @@ use fraktor_actor_rs::core::{
   messaging::AnyMessageGeneric,
 };
 use fraktor_remote_rs::core::BlockListProvider;
-use fraktor_utils_rs::{core::sync::ArcShared, std::runtime_toolbox::StdToolbox};
+use fraktor_utils_rs::{
+  core::{sync::ArcShared, time::TimerInstant},
+  std::runtime_toolbox::StdToolbox,
+};
 use tokio::task::JoinHandle;
 
-use crate::core::{ClusterEvent, ClusterProvider, ClusterProviderError, ClusterTopology, StartupMode};
+use crate::core::{ClusterEvent, ClusterProvider, ClusterProviderError, ClusterTopology, StartupMode, TopologyUpdate};
 
 /// Configuration for AWS ECS cluster provider.
 #[derive(Clone, Debug)]
@@ -218,8 +221,10 @@ impl AwsEcsClusterProvider {
 
   fn publish_topology(&self, version: u64, joined: Vec<String>, left: Vec<String>) {
     let blocked = self.block_list_provider.blocked_members();
-    let topology = ClusterTopology::new(version, joined.clone(), left.clone());
-    let event = ClusterEvent::TopologyUpdated { topology, joined, left, blocked };
+    let topology = ClusterTopology::new(version, joined.clone(), left.clone(), Vec::new());
+    let update =
+      TopologyUpdate::new(topology, self.members.clone(), joined, left, Vec::new(), blocked, self.observed_at(version));
+    let event = ClusterEvent::TopologyUpdated { update };
     let payload = AnyMessageGeneric::new(event);
     let extension_event = EventStreamEvent::Extension { name: String::from("cluster"), payload };
     self.event_stream.publish(&extension_event);
@@ -237,6 +242,10 @@ impl AwsEcsClusterProvider {
     let payload = AnyMessageGeneric::new(event);
     let extension_event = EventStreamEvent::Extension { name: String::from("cluster"), payload };
     self.event_stream.publish(&extension_event);
+  }
+
+  fn observed_at(&self, version: u64) -> TimerInstant {
+    TimerInstant::from_ticks(version, Duration::from_secs(1))
   }
 
   fn start_polling(&mut self, add_self: bool) {
@@ -283,8 +292,17 @@ impl AwsEcsClusterProvider {
             if !joined.is_empty() || !left.is_empty() {
               version += 1;
               let blocked = block_list_provider.blocked_members();
-              let topology = ClusterTopology::new(version, joined.clone(), left.clone());
-              let event = ClusterEvent::TopologyUpdated { topology, joined, left, blocked };
+              let topology = ClusterTopology::new(version, joined.clone(), left.clone(), Vec::new());
+              let update = TopologyUpdate::new(
+                topology,
+                new_members.clone(),
+                joined,
+                left,
+                Vec::new(),
+                blocked,
+                TimerInstant::from_ticks(version, Duration::from_secs(1)),
+              );
+              let event = ClusterEvent::TopologyUpdated { update };
               let payload = AnyMessageGeneric::new(event);
               let extension_event = EventStreamEvent::Extension { name: String::from("cluster"), payload };
               event_stream.publish(&extension_event);

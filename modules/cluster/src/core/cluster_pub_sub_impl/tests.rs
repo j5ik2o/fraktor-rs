@@ -1,4 +1,5 @@
 use alloc::{string::String, vec::Vec};
+use core::time::Duration;
 
 use fraktor_actor_rs::core::event_stream::{
   EventStreamEvent, EventStreamShared, EventStreamSharedGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric,
@@ -7,6 +8,7 @@ use fraktor_actor_rs::core::event_stream::{
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdMutex, NoStdToolbox},
   sync::ArcShared,
+  time::TimerInstant,
 };
 
 use super::*;
@@ -243,13 +245,17 @@ fn pubsub_works_with_dynamic_topology_join() {
   pubsub.start().expect("start should succeed");
 
   // 動的トポロジ更新をシミュレート（ノードが join）
-  let topology = crate::core::ClusterTopology::new(1, vec![String::from("node-b:8080")], Vec::new());
-  let topology_event = ClusterEvent::TopologyUpdated {
-    topology: topology.clone(),
-    joined:   vec![String::from("node-b:8080")],
-    left:     Vec::new(),
-    blocked:  Vec::new(),
-  };
+  let topology = crate::core::ClusterTopology::new(1, vec![String::from("node-b:8080")], Vec::new(), Vec::new());
+  let update = crate::core::TopologyUpdate::new(
+    topology,
+    vec![String::from("node-b:8080")],
+    vec![String::from("node-b:8080")],
+    Vec::new(),
+    Vec::new(),
+    Vec::new(),
+    TimerInstant::from_ticks(1, Duration::from_secs(1)),
+  );
+  let topology_event = ClusterEvent::TopologyUpdated { update };
   let payload = fraktor_actor_rs::core::messaging::AnyMessageGeneric::new(topology_event);
   let es_event =
     fraktor_actor_rs::core::event_stream::EventStreamEvent::Extension { name: String::from("cluster"), payload };

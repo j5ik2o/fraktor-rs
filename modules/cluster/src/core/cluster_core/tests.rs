@@ -1,22 +1,59 @@
 use alloc::{boxed::Box, string::String, vec, vec::Vec};
+use core::time::Duration;
 
-use fraktor_actor_rs::core::event_stream::{
-  EventStreamEvent, EventStreamShared, EventStreamSharedGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric,
-  subscriber_handle,
+use fraktor_actor_rs::core::{
+  event_stream::{
+    EventStreamEvent, EventStreamShared, EventStreamSharedGeneric, EventStreamSubscriber,
+    EventStreamSubscriptionGeneric, subscriber_handle,
+  },
+  messaging::AnyMessageGeneric,
 };
 use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdMutex, NoStdToolbox},
   sync::ArcShared,
+  time::TimerInstant,
 };
 
 use super::*;
 use crate::core::{
   ActivatedKind, ClusterEvent, ClusterProvider, ClusterProviderError, ClusterProviderShared, ClusterPubSub,
   ClusterPubSubShared, ClusterTopology, Gossiper, GossiperShared, IdentityLookup, IdentityLookupShared,
-  IdentitySetupError, KindRegistry, MetricsError, PidCacheEvent, StartupMode, TOPIC_ACTOR_KIND, grain_key::GrainKey,
-  pid_cache::PidCache, pub_sub_error::PubSubError,
+  IdentitySetupError, KindRegistry, MetricsError, PidCacheEvent, StartupMode, TOPIC_ACTOR_KIND, TopologyUpdate,
+  grain_key::GrainKey, pid_cache::PidCache, pub_sub_error::PubSubError,
 };
+
+fn build_update(
+  hash: u64,
+  members: Vec<String>,
+  joined: Vec<String>,
+  left: Vec<String>,
+  blocked: Vec<String>,
+) -> TopologyUpdate {
+  let topology = ClusterTopology::new(hash, joined.clone(), left.clone(), Vec::new());
+  TopologyUpdate::new(
+    topology,
+    members,
+    joined,
+    left,
+    Vec::new(),
+    blocked,
+    TimerInstant::from_ticks(hash, Duration::from_secs(1)),
+  )
+}
+
+fn apply_update_and_publish(
+  core: &mut ClusterCore<NoStdToolbox>,
+  event_stream: &EventStreamSharedGeneric<NoStdToolbox>,
+  update: &TopologyUpdate,
+) {
+  let event = core.try_apply_topology(update).expect("topology apply");
+  if let Some(event) = event {
+    let payload = AnyMessageGeneric::new(event);
+    let extension_event = EventStreamEvent::Extension { name: String::from("cluster"), payload };
+    event_stream.publish(&extension_event);
+  }
+}
 
 #[derive(Debug, Default)]
 struct StubProvider;
@@ -511,25 +548,31 @@ fn topology_event_includes_blocked_and_updates_metrics() {
 
   let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
-  let topology = ClusterTopology::new(100, vec![String::from("node-b")], vec![String::from("node-c")]);
-  core.on_topology(&topology);
+  let update = build_update(
+    100,
+    vec![String::from("node-a"), String::from("node-b")],
+    vec![String::from("node-b")],
+    vec![String::from("node-c")],
+    vec![String::from("blocked-a")],
+  );
+  apply_update_and_publish(&mut core, &event_stream, &update);
 
-  // member count: 1 +1 -1 =1
+  // member count: self + joined = 2
   let metrics = core.metrics().unwrap();
-  assert_eq!(metrics.members(), 1);
+  assert_eq!(metrics.members(), 2);
 
   let expected_joined = vec![String::from("node-b")];
   let expected_left = vec![String::from("node-c")];
   let expected_blocked = vec![String::from("blocked-a")];
   let events = subscriber_impl.events();
   assert!(events.iter().any(|event| matches!(event,
-    ClusterEvent::TopologyUpdated { topology, joined, left, blocked }
-      if topology.hash() == 100
-        && topology.joined() == &expected_joined
-        && topology.left() == &expected_left
-        && joined == &expected_joined
-        && left == &expected_left
-        && blocked == &expected_blocked
+    ClusterEvent::TopologyUpdated { update }
+      if update.topology.hash() == 100
+        && update.topology.joined() == &expected_joined
+        && update.topology.left() == &expected_left
+        && update.joined == expected_joined
+        && update.left == expected_left
+        && update.blocked == expected_blocked
   )));
 
   // pid cache invalidated for left authority
@@ -562,10 +605,10 @@ fn topology_with_same_hash_is_suppressed() {
   core.start_member().unwrap();
   let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
-  let topology = ClusterTopology::new(200, vec![String::from("n2")], vec![]);
-  core.on_topology(&topology);
+  let update = build_update(200, vec![String::from("n2")], vec![String::from("n2")], vec![], vec![]);
+  apply_update_and_publish(&mut core, &event_stream, &update);
   // same hash should be ignored
-  core.on_topology(&topology);
+  apply_update_and_publish(&mut core, &event_stream, &update);
 
   let events = subscriber_impl.events();
   let topology_events: Vec<_> =
@@ -602,8 +645,10 @@ fn multi_node_topology_flow_updates_metrics_and_pid_cache() {
   let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
   // node n2 joins, n3 leaves
-  let topology = ClusterTopology::new(300, vec![String::from("n2")], vec![String::from("n3")]);
-  core.on_topology(&topology);
+  let update = build_update(300, vec![String::from("n2")], vec![String::from("n2")], vec![String::from("n3")], vec![
+    String::from("blocked-b"),
+  ]);
+  apply_update_and_publish(&mut core, &event_stream, &update);
 
   // members: start 1 -> +1 -1 =1
   let metrics = core.metrics().unwrap();
@@ -617,13 +662,13 @@ fn multi_node_topology_flow_updates_metrics_and_pid_cache() {
 
   let events = subscriber_impl.events();
   assert!(events.iter().any(|event| matches!(event,
-    ClusterEvent::TopologyUpdated { topology, joined, left, blocked }
-      if topology.hash() == 300
-        && topology.joined().contains(&"n2".to_string())
-        && topology.left().contains(&"n3".to_string())
-        && joined.contains(&"n2".to_string())
-        && left.contains(&"n3".to_string())
-        && blocked.contains(&"blocked-b".to_string())
+    ClusterEvent::TopologyUpdated { update }
+      if update.topology.hash() == 300
+        && update.topology.joined().contains(&"n2".to_string())
+        && update.topology.left().contains(&"n3".to_string())
+        && update.joined.contains(&"n2".to_string())
+        && update.left.contains(&"n3".to_string())
+        && update.blocked.contains(&"blocked-b".to_string())
   )));
 }
 
@@ -1011,17 +1056,20 @@ fn metrics_disabled_still_emits_topology_updated_event() {
   assert!(matches!(core.metrics(), Err(MetricsError::Disabled)));
 
   // トポロジ更新を行う
-  let topology = ClusterTopology::new(7000, vec![String::from("node-y")], vec![]);
-  core.on_topology(&topology);
+  let update =
+    build_update(7000, vec![String::from("node-y")], vec![String::from("node-y")], vec![], vec![String::from(
+      "blocked-x",
+    )]);
+  apply_update_and_publish(&mut core, &event_stream, &update);
 
   // TopologyUpdated イベントが発火されたことを確認
   let events = subscriber_impl.events();
   assert!(events.iter().any(|event| matches!(event,
-    ClusterEvent::TopologyUpdated { topology, joined, left, blocked }
-      if topology.hash() == 7000
-        && joined == &vec![String::from("node-y")]
-        && left.is_empty()
-        && blocked.contains(&String::from("blocked-x"))
+    ClusterEvent::TopologyUpdated { update }
+      if update.topology.hash() == 7000
+        && update.joined == vec![String::from("node-y")]
+        && update.left.is_empty()
+        && update.blocked.contains(&String::from("blocked-x"))
   )));
 }
 
@@ -1098,11 +1146,17 @@ fn metrics_disabled_full_lifecycle_events_continue() {
   core.start_member().unwrap();
 
   // 2. トポロジ更新を複数回
-  let topology1 = ClusterTopology::new(8001, vec![String::from("node-1")], vec![]);
-  core.on_topology(&topology1);
+  let update1 =
+    build_update(8001, vec![String::from("node-1")], vec![String::from("node-1")], vec![], vec![String::from(
+      "blocked-z",
+    )]);
+  apply_update_and_publish(&mut core, &event_stream, &update1);
 
-  let topology2 = ClusterTopology::new(8002, vec![String::from("node-2")], vec![String::from("node-1")]);
-  core.on_topology(&topology2);
+  let update2 =
+    build_update(8002, vec![String::from("node-2")], vec![String::from("node-2")], vec![String::from("node-1")], vec![
+      String::from("blocked-z"),
+    ]);
+  apply_update_and_publish(&mut core, &event_stream, &update2);
 
   // 3. shutdown
   core.shutdown(true).unwrap();
@@ -1118,16 +1172,16 @@ fn metrics_disabled_full_lifecycle_events_continue() {
 
   // 最初の TopologyUpdated イベント
   assert!(events.iter().any(|event| matches!(event,
-    ClusterEvent::TopologyUpdated { topology, joined, .. }
-      if topology.hash() == 8001 && joined.contains(&String::from("node-1"))
+    ClusterEvent::TopologyUpdated { update }
+      if update.topology.hash() == 8001 && update.joined.contains(&String::from("node-1"))
   )));
 
   // 2番目の TopologyUpdated イベント
   assert!(events.iter().any(|event| matches!(event,
-    ClusterEvent::TopologyUpdated { topology, joined, left, .. }
-      if topology.hash() == 8002
-        && joined.contains(&String::from("node-2"))
-        && left.contains(&String::from("node-1"))
+    ClusterEvent::TopologyUpdated { update }
+      if update.topology.hash() == 8002
+        && update.joined.contains(&String::from("node-2"))
+        && update.left.contains(&String::from("node-1"))
   )));
 
   // Shutdown イベント

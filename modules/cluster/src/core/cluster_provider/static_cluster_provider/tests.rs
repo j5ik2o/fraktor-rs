@@ -82,7 +82,7 @@ fn start_member_publishes_static_topology_to_event_stream() {
   let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
   // 静的トポロジを設定した Provider を作成
-  let static_topology = ClusterTopology::new(100, vec![String::from("node-b")], vec![]);
+  let static_topology = ClusterTopology::new(100, vec![String::from("node-b")], vec![], Vec::new());
   let mut provider =
     StaticClusterProvider::new(event_stream, block_list, "node-a").with_static_topology(static_topology);
 
@@ -94,11 +94,11 @@ fn start_member_publishes_static_topology_to_event_stream() {
   assert_eq!(events.len(), 1);
   assert!(matches!(
     &events[0],
-    ClusterEvent::TopologyUpdated { topology, joined, left, blocked }
-    if topology.hash() == 100
-      && joined == &vec![String::from("node-b")]
-      && left.is_empty()
-      && blocked.is_empty()
+    ClusterEvent::TopologyUpdated { update }
+    if update.topology.hash() == 100
+      && update.joined == vec![String::from("node-b")]
+      && update.left.is_empty()
+      && update.blocked.is_empty()
   ));
 }
 
@@ -109,7 +109,7 @@ fn start_client_also_publishes_static_topology() {
 
   let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
-  let static_topology = ClusterTopology::new(200, vec![], vec![String::from("leaving-node")]);
+  let static_topology = ClusterTopology::new(200, vec![], vec![String::from("leaving-node")], Vec::new());
   let mut provider =
     StaticClusterProvider::new(event_stream, block_list, "client-a").with_static_topology(static_topology);
 
@@ -119,8 +119,8 @@ fn start_client_also_publishes_static_topology() {
   assert_eq!(events.len(), 1);
   assert!(matches!(
     &events[0],
-    ClusterEvent::TopologyUpdated { topology, left, .. }
-    if topology.hash() == 200 && left == &vec![String::from("leaving-node")]
+    ClusterEvent::TopologyUpdated { update }
+    if update.topology.hash() == 200 && update.left == vec![String::from("leaving-node")]
   ));
 }
 
@@ -132,7 +132,7 @@ fn topology_includes_blocked_members_from_block_list_provider() {
 
   let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
-  let static_topology = ClusterTopology::new(300, vec![String::from("node-x")], vec![]);
+  let static_topology = ClusterTopology::new(300, vec![String::from("node-x")], vec![], Vec::new());
   let mut provider =
     StaticClusterProvider::new(event_stream, block_list, "node-main").with_static_topology(static_topology);
 
@@ -140,8 +140,8 @@ fn topology_includes_blocked_members_from_block_list_provider() {
 
   let events = subscriber_impl.events();
   assert_eq!(events.len(), 1);
-  if let ClusterEvent::TopologyUpdated { blocked, .. } = &events[0] {
-    assert_eq!(blocked, &vec![String::from("blocked-a"), String::from("blocked-b")]);
+  if let ClusterEvent::TopologyUpdated { update } = &events[0] {
+    assert_eq!(update.blocked, vec![String::from("blocked-a"), String::from("blocked-b")]);
   } else {
     panic!("Expected TopologyUpdated event");
   }

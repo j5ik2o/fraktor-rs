@@ -88,10 +88,10 @@ fn on_member_join_publishes_topology_updated_with_joined() {
   assert_eq!(events.len(), 1);
   assert!(matches!(
     &events[0],
-    ClusterEvent::TopologyUpdated { topology, joined, left, .. }
-    if topology.hash() == 1
-      && joined == &vec![String::from("node-b:8080")]
-      && left.is_empty()
+    ClusterEvent::TopologyUpdated { update }
+    if update.topology.hash() == 1
+      && update.joined == vec![String::from("node-b:8080")]
+      && update.left.is_empty()
   ));
 }
 
@@ -114,10 +114,10 @@ fn on_member_leave_publishes_topology_updated_with_left() {
   assert_eq!(events.len(), 2);
   assert!(matches!(
     &events[1],
-    ClusterEvent::TopologyUpdated { topology, joined, left, .. }
-    if topology.hash() == 2
-      && joined.is_empty()
-      && left == &vec![String::from("node-b:8080")]
+    ClusterEvent::TopologyUpdated { update }
+    if update.topology.hash() == 2
+      && update.joined.is_empty()
+      && update.left == vec![String::from("node-b:8080")]
   ));
 }
 
@@ -134,8 +134,8 @@ fn topology_includes_blocked_members_from_provider() {
   provider.on_member_join("node-b:8080");
 
   let events = subscriber_impl.events();
-  if let ClusterEvent::TopologyUpdated { blocked, .. } = &events[0] {
-    assert_eq!(blocked, &vec![String::from("blocked-node")]);
+  if let ClusterEvent::TopologyUpdated { update } = &events[0] {
+    assert_eq!(update.blocked, vec![String::from("blocked-node")]);
   } else {
     panic!("Expected TopologyUpdated event");
   }
@@ -160,7 +160,7 @@ fn start_member_with_static_topology_publishes_it() {
 
   let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
-  let static_topology = ClusterTopology::new(999, vec![String::from("static-node")], vec![]);
+  let static_topology = ClusterTopology::new(999, vec![String::from("static-node")], vec![], Vec::new());
   let mut provider = LocalClusterProviderGeneric::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080")
     .with_static_topology(static_topology);
 
@@ -171,9 +171,9 @@ fn start_member_with_static_topology_publishes_it() {
   assert_eq!(events.len(), 2);
   assert!(events.iter().any(|e| matches!(
     e,
-    ClusterEvent::TopologyUpdated { topology, joined, .. }
-    if topology.hash() == 999
-      && joined == &vec![String::from("static-node")]
+    ClusterEvent::TopologyUpdated { update }
+    if update.topology.hash() == 999
+      && update.joined == vec![String::from("static-node")]
   )));
   assert!(events.iter().any(|e| matches!(
     e,
@@ -189,7 +189,7 @@ fn start_client_with_static_topology_publishes_it() {
 
   let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
-  let static_topology = ClusterTopology::new(888, vec![], vec![String::from("left-node")]);
+  let static_topology = ClusterTopology::new(888, vec![], vec![String::from("left-node")], Vec::new());
   let mut provider = LocalClusterProviderGeneric::<NoStdToolbox>::new(event_stream, block_list, "client-a")
     .with_static_topology(static_topology);
 
@@ -200,9 +200,9 @@ fn start_client_with_static_topology_publishes_it() {
   assert_eq!(events.len(), 2);
   assert!(events.iter().any(|e| matches!(
     e,
-    ClusterEvent::TopologyUpdated { topology, left, .. }
-    if topology.hash() == 888
-      && left == &vec![String::from("left-node")]
+    ClusterEvent::TopologyUpdated { update }
+    if update.topology.hash() == 888
+      && update.left == vec![String::from("left-node")]
   )));
   assert!(events.iter().any(|e| matches!(
     e,
@@ -245,7 +245,7 @@ fn version_increments_with_each_topology_change() {
   // バージョンが順番に増加していることを確認
   let hashes: Vec<u64> = events
     .iter()
-    .filter_map(|e| if let ClusterEvent::TopologyUpdated { topology, .. } = e { Some(topology.hash()) } else { None })
+    .filter_map(|e| if let ClusterEvent::TopologyUpdated { update } = e { Some(update.topology.hash()) } else { None })
     .collect();
   assert_eq!(hashes, vec![1, 2, 3]);
 }
@@ -369,8 +369,8 @@ fn gossip_join_event_is_converted_to_topology_updated() {
   // TopologyUpdated が含まれていることを確認
   assert!(events.iter().any(|e| matches!(
     e,
-    ClusterEvent::TopologyUpdated { joined, left, .. }
-    if joined.contains(&String::from("node-b:8080")) && left.is_empty()
+    ClusterEvent::TopologyUpdated { update }
+    if update.joined.contains(&String::from("node-b:8080")) && update.left.is_empty()
   )));
 }
 
@@ -392,8 +392,8 @@ fn gossip_leave_event_is_converted_to_topology_updated() {
   // 最後のイベントが leave を含む TopologyUpdated であることを確認
   let topology_events: Vec<_> = events.iter().filter(|e| matches!(e, ClusterEvent::TopologyUpdated { .. })).collect();
   assert!(topology_events.len() >= 2);
-  if let ClusterEvent::TopologyUpdated { left, .. } = topology_events.last().expect("last event") {
-    assert!(left.contains(&String::from("node-b:8080")));
+  if let ClusterEvent::TopologyUpdated { update } = topology_events.last().expect("last event") {
+    assert!(update.left.contains(&String::from("node-b:8080")));
   }
 }
 
@@ -416,7 +416,7 @@ fn multiple_gossip_events_produce_sequential_topology_versions() {
   let events = subscriber_impl.events();
   let topology_events: Vec<_> = events
     .iter()
-    .filter_map(|e| if let ClusterEvent::TopologyUpdated { topology, .. } = e { Some(topology.hash()) } else { None })
+    .filter_map(|e| if let ClusterEvent::TopologyUpdated { update } = e { Some(update.topology.hash()) } else { None })
     .collect();
 
   // バージョン（hash）が順番に増加していることを確認
@@ -447,8 +447,8 @@ fn handle_connected_triggers_member_join() {
   // TopologyUpdated が join を含むことを確認
   assert!(events.iter().any(|e| matches!(
     e,
-    ClusterEvent::TopologyUpdated { joined, .. }
-    if joined.contains(&String::from("node-b:8080"))
+    ClusterEvent::TopologyUpdated { update }
+    if update.joined.contains(&String::from("node-b:8080"))
   )));
 }
 
@@ -470,7 +470,7 @@ fn handle_connected_ignores_own_authority() {
   let topology_events: Vec<_> = events
     .iter()
     .filter(
-      |e| matches!(e, ClusterEvent::TopologyUpdated { joined, .. } if joined.contains(&String::from("node-a:8080"))),
+      |e| matches!(e, ClusterEvent::TopologyUpdated { update } if update.joined.contains(&String::from("node-a:8080"))),
     )
     .collect();
   assert!(topology_events.is_empty(), "Own authority should not trigger TopologyUpdated");
@@ -496,8 +496,8 @@ fn handle_quarantined_triggers_member_leave() {
   // TopologyUpdated が leave を含むことを確認
   assert!(events.iter().any(|e| matches!(
     e,
-    ClusterEvent::TopologyUpdated { left, .. }
-    if left.contains(&String::from("node-b:8080"))
+    ClusterEvent::TopologyUpdated { update }
+    if update.left.contains(&String::from("node-b:8080"))
   )));
 }
 
@@ -516,8 +516,10 @@ fn handle_quarantined_ignores_non_member() {
 
   let events = subscriber_impl.events();
   // leave イベントは発火されないことを確認
-  let leave_events: Vec<_> =
-    events.iter().filter(|e| matches!(e, ClusterEvent::TopologyUpdated { left, .. } if !left.is_empty())).collect();
+  let leave_events: Vec<_> = events
+    .iter()
+    .filter(|e| matches!(e, ClusterEvent::TopologyUpdated { update } if !update.left.is_empty()))
+    .collect();
   assert!(leave_events.is_empty(), "Non-member quarantine should not trigger leave event");
 }
 

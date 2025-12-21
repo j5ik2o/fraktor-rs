@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::{string::String, vec::Vec};
+use alloc::{format, string::String, vec::Vec};
 
 use fraktor_actor_rs::core::{
   event_stream::{
@@ -19,18 +19,19 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::core::{
-  ActivatedKind, ClusterCore, ClusterError, ClusterEvent, ClusterMetricsSnapshot, ClusterTopology, IdentitySetupError,
-  MetricsError,
+  ActivatedKind, ClusterCore, ClusterError, ClusterEvent, ClusterMetricsSnapshot, IdentitySetupError, MetricsError,
+  TopologyUpdate,
 };
 
 /// Internal subscriber that applies topology updates to ClusterCore.
 struct ClusterTopologySubscriber<TB: RuntimeToolbox + 'static> {
-  core: ArcShared<ToolboxMutex<ClusterCore<TB>, TB>>,
+  core:         ArcShared<ToolboxMutex<ClusterCore<TB>, TB>>,
+  event_stream: EventStreamSharedGeneric<TB>,
 }
 
 impl<TB: RuntimeToolbox + 'static> ClusterTopologySubscriber<TB> {
-  const fn new(core: ArcShared<ToolboxMutex<ClusterCore<TB>, TB>>) -> Self {
-    Self { core }
+  const fn new(core: ArcShared<ToolboxMutex<ClusterCore<TB>, TB>>, event_stream: EventStreamSharedGeneric<TB>) -> Self {
+    Self { core, event_stream }
   }
 }
 
@@ -40,9 +41,16 @@ impl<TB: RuntimeToolbox + 'static> EventStreamSubscriber<TB> for ClusterTopology
     // （既に EventStream 経由で受信したイベントなので再 publish しない）
     if let EventStreamEvent::Extension { name, payload } = event
       && name == "cluster"
-      && let Some(ClusterEvent::TopologyUpdated { topology, .. }) = payload.payload().downcast_ref::<ClusterEvent>()
+      && let Some(ClusterEvent::TopologyUpdated { update }) = payload.payload().downcast_ref::<ClusterEvent>()
     {
-      self.core.lock().apply_topology(topology);
+      let result = self.core.lock().try_apply_topology(update);
+      if let Err(error) = result {
+        let reason = format!("{error:?}");
+        let failed = ClusterEvent::TopologyApplyFailed { reason, observed_at: update.observed_at };
+        let payload = AnyMessageGeneric::new(failed);
+        let extension_event = EventStreamEvent::Extension { name: String::from("cluster"), payload };
+        self.event_stream.publish(&extension_event);
+      }
     }
   }
 }
@@ -81,7 +89,8 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionGeneric<TB> {
     }
 
     // ClusterCore への共有参照を持つ subscriber を作成
-    let subscriber: ClusterTopologySubscriber<TB> = ClusterTopologySubscriber::new(self.core.clone());
+    let subscriber: ClusterTopologySubscriber<TB> =
+      ClusterTopologySubscriber::new(self.core.clone(), self.event_stream.clone());
     let subscriber_handle = subscriber_handle(subscriber);
     let sub = self.event_stream.subscribe(&subscriber_handle);
     *self.subscription.lock() = Some(sub);
@@ -146,15 +155,25 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionGeneric<TB> {
   ///
   /// This method applies the topology and publishes the event to EventStream.
   /// The lock is released before publishing to avoid deadlocks with subscribers.
-  pub fn on_topology(&self, topology: &ClusterTopology) {
+  pub fn on_topology(&self, update: &TopologyUpdate) {
     // ロックを保持したまま publish するとデッドロックするため、
     // イベントを取得してからロックを解放し、その後に publish する
-    let event_to_publish = { self.core.lock().apply_topology_for_external(topology) };
+    let result = { self.core.lock().try_apply_topology(update) };
 
-    if let Some(event) = event_to_publish {
-      let payload = AnyMessageGeneric::new(event);
-      let extension_event = EventStreamEvent::Extension { name: String::from("cluster"), payload };
-      self.event_stream.publish(&extension_event);
+    match result {
+      | Ok(Some(event)) => {
+        let payload = AnyMessageGeneric::new(event);
+        let extension_event = EventStreamEvent::Extension { name: String::from("cluster"), payload };
+        self.event_stream.publish(&extension_event);
+      },
+      | Ok(None) => {},
+      | Err(error) => {
+        let reason = format!("{error:?}");
+        let failed = ClusterEvent::TopologyApplyFailed { reason, observed_at: update.observed_at };
+        let payload = AnyMessageGeneric::new(failed);
+        let extension_event = EventStreamEvent::Extension { name: String::from("cluster"), payload };
+        self.event_stream.publish(&extension_event);
+      },
     }
   }
 

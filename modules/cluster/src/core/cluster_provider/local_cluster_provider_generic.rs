@@ -9,15 +9,16 @@
 //! and only available in std environments.
 
 use alloc::{string::String, vec::Vec};
+use core::time::Duration;
 
 use fraktor_actor_rs::core::{
   event_stream::{EventStreamEvent, EventStreamSharedGeneric},
   messaging::AnyMessageGeneric,
 };
 use fraktor_remote_rs::core::BlockListProvider;
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared, time::TimerInstant};
 
-use crate::core::{ClusterEvent, ClusterProvider, ClusterProviderError, ClusterTopology, StartupMode};
+use crate::core::{ClusterEvent, ClusterProvider, ClusterProviderError, ClusterTopology, StartupMode, TopologyUpdate};
 
 #[cfg(test)]
 mod tests;
@@ -159,8 +160,17 @@ impl<TB: RuntimeToolbox + 'static> LocalClusterProviderGeneric<TB> {
 
   fn publish_topology(&self, version: u64, joined: Vec<String>, left: Vec<String>) {
     let blocked = self.block_list_provider.blocked_members();
-    let topology = ClusterTopology::new(version, joined.clone(), left.clone());
-    let event = ClusterEvent::TopologyUpdated { topology, joined, left, blocked };
+    let topology = ClusterTopology::new(version, joined.clone(), left.clone(), Vec::new());
+    let update = TopologyUpdate::new(
+      topology,
+      self.members.clone(),
+      joined,
+      left,
+      Vec::new(),
+      blocked,
+      Self::observed_at(version),
+    );
+    let event = ClusterEvent::TopologyUpdated { update };
     let payload = AnyMessageGeneric::new(event);
     let extension_event = EventStreamEvent::Extension { name: String::from("cluster"), payload };
     self.event_stream.publish(&extension_event);
@@ -169,16 +179,31 @@ impl<TB: RuntimeToolbox + 'static> LocalClusterProviderGeneric<TB> {
   fn publish_static_topology(&self) {
     if let Some(topology) = self.static_topology.as_ref() {
       let blocked = self.block_list_provider.blocked_members();
-      let event = ClusterEvent::TopologyUpdated {
-        topology: topology.clone(),
-        joined: topology.joined().clone(),
-        left: topology.left().clone(),
+      let mut members = self.members.clone();
+      for joined in topology.joined().iter() {
+        if !members.contains(joined) {
+          members.push(joined.clone());
+        }
+      }
+      members.retain(|member| !topology.left().contains(member) && !topology.dead().contains(member));
+      let update = TopologyUpdate::new(
+        topology.clone(),
+        members,
+        topology.joined().clone(),
+        topology.left().clone(),
+        topology.dead().clone(),
         blocked,
-      };
+        Self::observed_at(self.version),
+      );
+      let event = ClusterEvent::TopologyUpdated { update };
       let payload = AnyMessageGeneric::new(event);
       let extension_event = EventStreamEvent::Extension { name: String::from("cluster"), payload };
       self.event_stream.publish(&extension_event);
     }
+  }
+
+  const fn observed_at(version: u64) -> TimerInstant {
+    TimerInstant::from_ticks(version, Duration::from_secs(1))
   }
 
   fn publish_startup_event(&self, mode: StartupMode) {

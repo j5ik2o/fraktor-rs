@@ -119,13 +119,13 @@ async fn main() -> Result<()> {
   let shared_reply = Arc::new(Mutex::new(Some(reply_tx)));
 
   // ノードA: 受信・Grain 起動側（静的トポロジ: node-b が join）
-  let static_topology_a = ClusterTopology::new(1, vec![format!("{HOST}:{NODE_B_PORT}")], Vec::new());
+  let static_topology_a = ClusterTopology::new(1, vec![format!("{HOST}:{NODE_B_PORT}")], Vec::new(), Vec::new());
   let node_a_authority = format!("{HOST}:{NODE_A_PORT}");
   let node_a =
     build_cluster_node("cluster-node-a", NODE_A_PORT, None, Some(static_topology_a), node_a_authority.clone())?;
 
   // ノードB: 送信・返信受信側（静的トポロジ: node-a が join）
-  let static_topology_b = ClusterTopology::new(2, vec![format!("{HOST}:{NODE_A_PORT}")], Vec::new());
+  let static_topology_b = ClusterTopology::new(2, vec![format!("{HOST}:{NODE_A_PORT}")], Vec::new(), Vec::new());
   let node_b = build_cluster_node(
     "cluster-node-b",
     NODE_B_PORT,
