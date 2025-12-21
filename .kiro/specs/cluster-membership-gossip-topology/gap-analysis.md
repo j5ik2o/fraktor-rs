@@ -46,7 +46,8 @@
 - Membership/Gossip の **EventStream 発火** が未実装（`MembershipEvent`, `GossipEvent` は定義のみ）。
 
 ### 仕様上の空白（Unknown/Decision Needed）
-- `Join/Alive/Suspect/Dead/Leaving` と `NodeStatus` の対応関係（`Unreachable` を Suspect とみなすか等）
+- `Join/Alive` と設計用語 `Joining/Up` の対応関係（現設計では Join=Joining / Alive=Up と定義）
+- `Suspect/Dead/Leaving` と `NodeStatus` の対応関係（`Unreachable` を Suspect とみなすか等）
 - Consensus の定義範囲（Ack ベースか、version/epoch ベースか、protoactor-go 準拠か）
 - `TopologyUpdated` の **集約ウィンドウ/ハッシュ更新規則**
 - EventStream に **時刻情報** をどう付与するか（既存イベント型の拡張が必要か）
