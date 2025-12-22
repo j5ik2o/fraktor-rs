@@ -17,10 +17,10 @@ use fraktor_utils_rs::core::{
 use super::schedule_waker::ScheduleWaker;
 use crate::core::{
   dispatcher::{
-    DispatchError, DispatchExecutor, DispatchExecutorRunner, DispatchSharedGeneric, DispatcherGeneric, ScheduleAdapter,
-    ScheduleAdapterSharedGeneric, TickExecutorGeneric,
+    DispatchError, DispatchExecutor, DispatchExecutorRunner, DispatchSharedGeneric, DispatcherSharedGeneric,
+    ScheduleAdapter, ScheduleAdapterSharedGeneric, TickExecutorGeneric,
   },
-  event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, subscriber_handle},
+  event_stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   logging::LogLevel,
   mailbox::{
     EnqueueOutcome, MailboxGeneric, MailboxInstrumentation, MailboxOverflowStrategy, MailboxPolicy, ScheduleHints,
@@ -29,7 +29,7 @@ use crate::core::{
     AnyMessage,
     message_invoker::{MessageInvoker, MessageInvokerShared},
   },
-  system::{SystemState, SystemStateShared},
+  system::{ActorSystem, SystemStateShared},
 };
 
 fn register_user_hint() -> ScheduleHints {
@@ -38,7 +38,7 @@ fn register_user_hint() -> ScheduleHints {
 
 fn system_instrumented_mailbox() -> (ArcShared<MailboxGeneric<NoStdToolbox>>, SystemStateShared) {
   let mailbox = ArcShared::new(MailboxGeneric::new(MailboxPolicy::unbounded(None)));
-  let system = SystemStateShared::new(SystemState::new());
+  let system = ActorSystem::new_empty().state();
   let pid = system.allocate_pid();
   let instrumentation = MailboxInstrumentation::new(system.clone(), pid, None, None, None);
   mailbox.set_instrumentation(instrumentation);
@@ -49,7 +49,7 @@ fn bounded_mailbox(capacity: usize) -> (ArcShared<MailboxGeneric<NoStdToolbox>>,
   let policy =
     MailboxPolicy::bounded(NonZeroUsize::new(capacity).expect("capacity"), MailboxOverflowStrategy::Block, None);
   let mailbox = ArcShared::new(MailboxGeneric::new(policy));
-  let system = SystemStateShared::new(SystemState::new());
+  let system = ActorSystem::new_empty().state();
   let pid = system.allocate_pid();
   let instrumentation = MailboxInstrumentation::new(system.clone(), pid, Some(capacity), None, None);
   mailbox.set_instrumentation(instrumentation);
@@ -79,7 +79,7 @@ fn rejected_execution_is_retried_and_logged_on_failure() {
   let (mailbox, system) = system_instrumented_mailbox();
   let events = ArcShared::new(NoStdMutex::new(Vec::new()));
   let subscriber = subscriber_handle(EventRecorder::new(events.clone()));
-  let _subscription = EventStreamGeneric::subscribe_arc(&system.event_stream(), &subscriber);
+  let _subscription = system.event_stream().subscribe(&subscriber);
 
   let (flaky, runner) = flaky_executor_with_runner(vec![DispatchError::RejectedExecution; 3]);
   let dispatcher = dispatcher_with_executor(mailbox, runner, None, None);
@@ -102,7 +102,7 @@ fn dispatcher_respects_throughput_and_deadline_limits() {
     )
     .with_throughput_limit(Some(NonZeroUsize::new(1).unwrap())),
   ));
-  let system = SystemStateShared::new(SystemState::new());
+  let system = ActorSystem::new_empty().state();
   let pid = system.allocate_pid();
   mailbox.set_instrumentation(MailboxInstrumentation::new(system.clone(), pid, None, None, None));
 
@@ -157,7 +157,7 @@ fn schedule_adapter_notified_on_rejection() {
   let (mailbox, system) = system_instrumented_mailbox();
   let events = ArcShared::new(NoStdMutex::new(Vec::new()));
   let subscriber = subscriber_handle(EventRecorder::new(events.clone()));
-  let _subscription = EventStreamGeneric::subscribe_arc(&system.event_stream(), &subscriber);
+  let _subscription = system.event_stream().subscribe(&subscriber);
 
   let (flaky, runner) = flaky_executor_with_runner(vec![DispatchError::RejectedExecution; 3]);
   let adapter = ScheduleAdapterSharedGeneric::new(
@@ -184,7 +184,7 @@ fn dispatcher_dump_event_published() {
   let (mailbox, system) = system_instrumented_mailbox();
   let events = ArcShared::new(NoStdMutex::new(Vec::new()));
   let subscriber = subscriber_handle(EventRecorder::new(events.clone()));
-  let _subscription = EventStreamGeneric::subscribe_arc(&system.event_stream(), &subscriber);
+  let _subscription = system.event_stream().subscribe(&subscriber);
 
   let (_recording, runner) = recording_executor_with_runner();
   let adapter = ScheduleAdapterSharedGeneric::new(
@@ -202,7 +202,7 @@ fn telemetry_captures_mailbox_pressure_and_dispatcher_dump() {
   let (mailbox, system) = bounded_mailbox(2);
   let events = ArcShared::new(NoStdMutex::new(Vec::new()));
   let subscriber = subscriber_handle(EventRecorder::new(events.clone()));
-  let _subscription = EventStreamGeneric::subscribe_arc(&system.event_stream(), &subscriber);
+  let _subscription = system.event_stream().subscribe(&subscriber);
 
   let (_recording, runner) = recording_executor_with_runner();
   let adapter = ScheduleAdapterSharedGeneric::new(
@@ -227,7 +227,7 @@ fn dispatcher_with_executor(
   executor: ArcShared<DispatchExecutorRunner<NoStdToolbox>>,
   throughput_deadline: Option<Duration>,
   starvation_deadline: Option<Duration>,
-) -> DispatcherGeneric<NoStdToolbox> {
+) -> DispatcherSharedGeneric<NoStdToolbox> {
   let adapter = crate::core::dispatcher::InlineScheduleAdapter::shared::<NoStdToolbox>();
   dispatcher_with_executor_and_adapter(mailbox, executor, throughput_deadline, starvation_deadline, adapter)
 }
@@ -238,8 +238,8 @@ fn dispatcher_with_executor_and_adapter(
   throughput_deadline: Option<Duration>,
   starvation_deadline: Option<Duration>,
   adapter: ScheduleAdapterSharedGeneric<NoStdToolbox>,
-) -> DispatcherGeneric<NoStdToolbox> {
-  DispatcherGeneric::with_adapter(mailbox, executor, adapter, throughput_deadline, starvation_deadline)
+) -> DispatcherSharedGeneric<NoStdToolbox> {
+  DispatcherSharedGeneric::with_adapter(mailbox, executor, adapter, throughput_deadline, starvation_deadline)
 }
 
 fn recording_executor_with_runner() -> (ArcShared<RecordingExecutor>, ArcShared<DispatchExecutorRunner<NoStdToolbox>>) {
@@ -442,7 +442,7 @@ impl Default for CountingScheduleAdapter {
 }
 
 impl ScheduleAdapter<NoStdToolbox> for CountingScheduleAdapter {
-  fn create_waker(&mut self, dispatcher: DispatcherGeneric<NoStdToolbox>) -> core::task::Waker {
+  fn create_waker(&mut self, dispatcher: DispatcherSharedGeneric<NoStdToolbox>) -> core::task::Waker {
     ScheduleWaker::<NoStdToolbox>::into_waker(dispatcher)
   }
 

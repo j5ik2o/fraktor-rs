@@ -6,11 +6,10 @@ mod tests;
 use alloc::{
   collections::BTreeMap,
   string::{String, ToString},
-  sync::Arc,
   vec::Vec,
 };
-use core::{fmt, future::Future};
-use std::thread;
+use core::fmt;
+use std::net::{TcpListener as StdTcpListener, TcpStream as StdTcpStream};
 
 use fraktor_actor_rs::core::event_stream::{BackpressureSignal, CorrelationId};
 use fraktor_utils_rs::{
@@ -22,8 +21,8 @@ use fraktor_utils_rs::{
 };
 use tokio::{
   io::{AsyncReadExt, AsyncWriteExt},
-  net::{TcpListener, TcpStream},
-  runtime::{Builder, Runtime},
+  net::{TcpListener as TokioTcpListener, TcpStream as TokioTcpStream},
+  runtime::{Builder, Handle, Runtime},
   sync::mpsc,
   task::JoinHandle,
 };
@@ -42,11 +41,12 @@ const CHANNEL_BUFFER_SIZE: usize = 256;
 /// and requires `Send + Sync` bounds on the inbound handler that are only available
 /// with standard library mutex implementations.
 pub struct TokioTcpTransport {
-  state:   TokioTcpState,
+  state:    TokioTcpState,
   // hook と inbound は非同期タスクとの共有のため Arc<Mutex> を維持
-  hook:    ArcShared<NoStdMutex<Option<TransportBackpressureHookShared>>>,
-  inbound: ArcShared<NoStdMutex<Option<TransportInboundShared<StdToolbox>>>>,
-  runtime: Arc<Runtime>,
+  hook:     ArcShared<NoStdMutex<Option<TransportBackpressureHookShared>>>,
+  inbound:  ArcShared<NoStdMutex<Option<TransportInboundShared<StdToolbox>>>>,
+  handle:   Handle,
+  _runtime: Option<Runtime>,
 }
 
 struct TokioTcpState {
@@ -91,9 +91,14 @@ impl TokioTcpTransport {
 
   /// Attempts to create a new transport instance, returning a transport error on failure.
   pub fn try_new() -> Result<Self, TransportError> {
-    let runtime = thread::spawn(|| Builder::new_multi_thread().enable_time().enable_io().build())
-      .join()
-      .map_err(|_| TransportError::Io("failed to join tokio runtime builder thread".into()))?
+    if let Ok(handle) = Handle::try_current() {
+      return Ok(Self::with_handle(handle));
+    }
+
+    let runtime = Builder::new_multi_thread()
+      .enable_time()
+      .enable_io()
+      .build()
       .map_err(|error| TransportError::Io(format!("failed to build tokio runtime: {error}")))?;
     Ok(Self::with_runtime(runtime))
   }
@@ -101,26 +106,28 @@ impl TokioTcpTransport {
   /// Creates a new Tokio TCP transport using the provided runtime.
   pub fn with_runtime(runtime: Runtime) -> Self {
     Self {
-      state:   TokioTcpState { listeners: BTreeMap::new(), channels: BTreeMap::new(), next_channel: 1 },
-      hook:    ArcShared::new(NoStdMutex::new(None)),
+      state:    TokioTcpState { listeners: BTreeMap::new(), channels: BTreeMap::new(), next_channel: 1 },
+      hook:     ArcShared::new(NoStdMutex::new(None)),
+      inbound:  ArcShared::new(NoStdMutex::new(None)),
+      handle:   runtime.handle().clone(),
+      _runtime: Some(runtime),
+    }
+  }
+
+  /// Creates a new Tokio TCP transport using an existing Tokio runtime handle.
+  pub fn with_handle(handle: Handle) -> Self {
+    Self {
+      state: TokioTcpState { listeners: BTreeMap::new(), channels: BTreeMap::new(), next_channel: 1 },
+      hook: ArcShared::new(NoStdMutex::new(None)),
       inbound: ArcShared::new(NoStdMutex::new(None)),
-      runtime: Arc::new(runtime),
+      handle,
+      _runtime: None,
     }
   }
 
   /// Builds a transport instance for the factory.
   pub(crate) fn build() -> Result<Self, TransportError> {
     Self::try_new()
-  }
-
-  fn block_on_future<F, T>(&self, future: F) -> Result<T, TransportError>
-  where
-    F: Future<Output = Result<T, TransportError>> + Send + 'static,
-    T: Send + 'static, {
-    let runtime = self.runtime.clone();
-    thread::spawn(move || runtime.block_on(future))
-      .join()
-      .map_err(|_| TransportError::Io("tokio runtime worker panicked".into()))?
   }
 
   fn encode_frame(payload: &[u8], correlation_id: CorrelationId) -> Vec<u8> {
@@ -141,7 +148,7 @@ impl TokioTcpTransport {
   }
 
   async fn accept_loop(
-    listener: TcpListener,
+    listener: TokioTcpListener,
     authority: String,
     hook: ArcShared<NoStdMutex<Option<TransportBackpressureHookShared>>>,
     inbound: ArcShared<NoStdMutex<Option<TransportInboundShared<StdToolbox>>>>,
@@ -168,7 +175,7 @@ impl TokioTcpTransport {
   }
 
   async fn handle_inbound(
-    mut stream: TcpStream,
+    mut stream: TokioTcpStream,
     authority: String,
     remote: String,
     hook: ArcShared<NoStdMutex<Option<TransportBackpressureHookShared>>>,
@@ -204,7 +211,7 @@ impl TokioTcpTransport {
   }
 
   async fn sender_loop(
-    mut stream: TcpStream,
+    mut stream: TokioTcpStream,
     authority: String,
     mut receiver: mpsc::Receiver<OutboundFrame>,
     hook: ArcShared<NoStdMutex<Option<TransportBackpressureHookShared>>>,
@@ -235,14 +242,18 @@ impl RemoteTransport<StdToolbox> for TokioTcpTransport {
     let hook = self.hook.clone();
     let inbound = self.inbound.clone();
 
+    let authority_clone = authority.clone();
+    let std_listener =
+      StdTcpListener::bind(&authority_clone).map_err(|e| TransportError::Io(format!("bind failed: {e}")))?;
+    std_listener
+      .set_nonblocking(true)
+      .map_err(|e| TransportError::Io(format!("failed to configure non-blocking listener: {e}")))?;
     let listener = {
-      let authority_clone = authority.clone();
-      self.block_on_future(async move {
-        TcpListener::bind(&authority_clone).await.map_err(|e| TransportError::Io(format!("bind failed: {e}")))
-      })?
+      let _enter = self.handle.enter();
+      TokioTcpListener::from_std(std_listener).map_err(|e| TransportError::Io(format!("bind failed: {e}")))?
     };
 
-    let task = self.runtime.spawn(Self::accept_loop(listener, authority.clone(), hook, inbound));
+    let task = self.handle.spawn(Self::accept_loop(listener, authority.clone(), hook, inbound));
 
     self.state.listeners.insert(authority.clone(), ListenerHandle { _task: task });
 
@@ -253,16 +264,20 @@ impl RemoteTransport<StdToolbox> for TokioTcpTransport {
     let authority = endpoint.authority().to_string();
     let hook = self.hook.clone();
 
+    let authority_clone = authority.clone();
+    let std_stream =
+      StdTcpStream::connect(&authority_clone).map_err(|e| TransportError::Io(format!("connection failed: {e}")))?;
+    std_stream
+      .set_nonblocking(true)
+      .map_err(|e| TransportError::Io(format!("failed to configure non-blocking stream: {e}")))?;
     let stream = {
-      let authority_clone = authority.clone();
-      self.block_on_future(async move {
-        TcpStream::connect(&authority_clone).await.map_err(|e| TransportError::Io(format!("connection failed: {e}")))
-      })?
+      let _enter = self.handle.enter();
+      TokioTcpStream::from_std(std_stream).map_err(|e| TransportError::Io(format!("connection failed: {e}")))?
     };
 
     let (sender, receiver) = mpsc::channel(CHANNEL_BUFFER_SIZE);
 
-    self.runtime.spawn(Self::sender_loop(stream, authority.clone(), receiver, hook));
+    self.handle.spawn(Self::sender_loop(stream, authority.clone(), receiver, hook));
 
     let id = self.state.next_channel;
     self.state.next_channel += 1;

@@ -10,6 +10,20 @@ fn no_authority_variant_exists() {
 }
 
 #[test]
+fn not_ready_variant_exists() {
+  // NotReady バリアントが正しく作成できることを確認
+  let err = LookupError::NotReady;
+  assert_eq!(err, LookupError::NotReady);
+}
+
+#[test]
+fn pending_variant_exists() {
+  // Pending バリアントが正しく作成できることを確認
+  let err = LookupError::Pending;
+  assert_eq!(err, LookupError::Pending);
+}
+
+#[test]
 fn activation_failed_holds_key() {
   // ActivationFailed バリアントが GrainKey 情報を保持することを確認
   let err = LookupError::ActivationFailed { key: String::from("user:123") };

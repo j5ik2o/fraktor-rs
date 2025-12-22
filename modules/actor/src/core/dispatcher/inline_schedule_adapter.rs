@@ -4,8 +4,8 @@ use core::{any::Any, task::Waker};
 use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use super::{
-  base::DispatcherGeneric, schedule_adapter::ScheduleAdapter, schedule_adapter_shared::ScheduleAdapterSharedGeneric,
-  schedule_waker::ScheduleWaker,
+  base::DispatcherSharedGeneric, schedule_adapter::ScheduleAdapter,
+  schedule_adapter_shared::ScheduleAdapterSharedGeneric, schedule_waker::ScheduleWaker,
 };
 
 /// Inline adapter that delegates to the built-in `ScheduleWaker`.
@@ -27,7 +27,7 @@ impl InlineScheduleAdapter {
 }
 
 impl<TB: RuntimeToolbox + 'static> ScheduleAdapter<TB> for InlineScheduleAdapter {
-  fn create_waker(&mut self, dispatcher: DispatcherGeneric<TB>) -> Waker {
+  fn create_waker(&mut self, dispatcher: DispatcherSharedGeneric<TB>) -> Waker {
     ScheduleWaker::<TB>::into_waker(dispatcher)
   }
 

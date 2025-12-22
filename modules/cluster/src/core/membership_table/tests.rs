@@ -7,7 +7,7 @@ use crate::core::{
 };
 
 #[test]
-fn join_promotes_to_up_and_snapshots_latest_table() {
+fn join_registers_joining_and_snapshots_latest_table() {
   let mut table = MembershipTable::new(3);
 
   let delta = table.try_join("node-1".to_string(), "n1:4050".to_string()).expect("join should succeed");
@@ -16,12 +16,12 @@ fn join_promotes_to_up_and_snapshots_latest_table() {
   assert_eq!(delta.to, MembershipVersion::new(1));
   assert_eq!(delta.entries.len(), 1);
   let joined = &delta.entries[0];
-  assert_eq!(joined.status, NodeStatus::Up);
+  assert_eq!(joined.status, NodeStatus::Joining);
 
   let snapshot = table.snapshot();
   assert_eq!(snapshot.version, MembershipVersion::new(1));
   assert_eq!(snapshot.entries.len(), 1);
-  assert_eq!(snapshot.entries[0].status, NodeStatus::Up);
+  assert_eq!(snapshot.entries[0].status, NodeStatus::Joining);
 
   let events = table.drain_events();
   assert_eq!(events, vec![MembershipEvent::Joined {
@@ -78,24 +78,24 @@ fn leaving_transitions_to_removed_and_updates_version() {
 }
 
 #[test]
-fn heartbeat_miss_marks_unreachable_after_threshold() {
+fn heartbeat_miss_marks_suspect_after_threshold() {
   let mut table = MembershipTable::new(2);
   table.try_join("node-1".to_string(), "n1:4050".to_string()).expect("join succeeds");
   table.drain_events();
 
   assert!(table.mark_heartbeat_miss("n1:4050").is_none());
-  let delta = table.mark_heartbeat_miss("n1:4050").expect("second miss should mark unreachable");
+  let delta = table.mark_heartbeat_miss("n1:4050").expect("second miss should mark suspect");
 
   assert_eq!(delta.from, MembershipVersion::new(1));
   assert_eq!(delta.to, MembershipVersion::new(2));
-  assert_eq!(delta.entries[0].status, NodeStatus::Unreachable);
+  assert_eq!(delta.entries[0].status, NodeStatus::Suspect);
 
   let snapshot = table.snapshot();
   assert_eq!(snapshot.version, MembershipVersion::new(2));
-  assert_eq!(snapshot.entries[0].status, NodeStatus::Unreachable);
+  assert_eq!(snapshot.entries[0].status, NodeStatus::Suspect);
 
   let events = table.drain_events();
-  assert_eq!(events, vec![MembershipEvent::MarkedUnreachable {
+  assert_eq!(events, vec![MembershipEvent::MarkedSuspect {
     node_id:   "node-1".to_string(),
     authority: "n1:4050".to_string(),
   }],);

@@ -28,7 +28,6 @@ mod policy_registry;
 mod runnable;
 mod runner_mode;
 mod scheduler_context;
-mod scheduler_context_shared;
 mod scheduler_core;
 mod scheduler_diagnostics;
 mod scheduler_diagnostics_event;
@@ -71,7 +70,6 @@ pub use policy_registry::SchedulerPolicyRegistry;
 pub use runnable::SchedulerRunnable;
 pub use runner_mode::RunnerMode;
 pub use scheduler_context::SchedulerContext;
-pub use scheduler_context_shared::{SchedulerContextShared, SchedulerContextSharedGeneric};
 pub use scheduler_core::Scheduler;
 pub use scheduler_diagnostics::SchedulerDiagnostics;
 pub use scheduler_diagnostics_event::SchedulerDiagnosticsEvent;
@@ -92,7 +90,7 @@ pub use tick_driver::{
   SchedulerTickHandleOwned, SchedulerTickMetrics, SchedulerTickMetricsProbe, TICK_DRIVER_MATRIX, TickDriver,
   TickDriverBootstrap, TickDriverConfig, TickDriverControl, TickDriverError, TickDriverFactory, TickDriverFactoryRef,
   TickDriverGuideEntry, TickDriverHandle, TickDriverHandleGeneric, TickDriverId, TickDriverKind, TickDriverMetadata,
-  TickDriverRuntime, TickExecutorSignal, TickFeed, TickFeedHandle, TickMetricsMode, TickPulseHandler, TickPulseSource,
-  next_tick_driver_id,
+  TickDriverProvisioningContext, TickDriverRuntime, TickExecutorSignal, TickFeed, TickFeedHandle, TickMetricsMode,
+  TickPulseHandler, TickPulseSource, next_tick_driver_id,
 };
 pub use warning::SchedulerWarning;

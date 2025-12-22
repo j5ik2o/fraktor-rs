@@ -19,6 +19,12 @@ pub struct DispatchersGeneric<TB: RuntimeToolbox + 'static> {
 /// Type alias using the default toolbox.
 pub type Dispatchers = DispatchersGeneric<NoStdToolbox>;
 
+impl<TB: RuntimeToolbox + 'static> Clone for DispatchersGeneric<TB> {
+  fn clone(&self) -> Self {
+    Self { entries: self.entries.clone() }
+  }
+}
+
 impl<TB: RuntimeToolbox + 'static> DispatchersGeneric<TB> {
   /// Creates an empty dispatcher registry.
   #[must_use]

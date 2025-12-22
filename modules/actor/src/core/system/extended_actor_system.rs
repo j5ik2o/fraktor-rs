@@ -9,14 +9,15 @@ use fraktor_utils_rs::core::{
 };
 
 use super::{
-  ActorRefProvider, ActorRefProviderSharedGeneric, ActorSystemGeneric, RegisterExtraTopLevelError, RemoteWatchHook,
+  ActorRefProvider, ActorRefProviderSharedGeneric, ActorSystemBuildError, ActorSystemGeneric, RegisterExtensionError,
+  RegisterExtraTopLevelError, RemoteWatchHook,
 };
 use crate::core::{
   actor_prim::{ChildRefGeneric, actor_ref::ActorRefGeneric},
-  dispatcher::DispatchersSharedGeneric,
+  dispatcher::{DispatcherConfigGeneric, DispatcherRegistryError},
   extension::{Extension, ExtensionId},
-  mailbox::MailboxesSharedGeneric,
-  props::PropsGeneric,
+  mailbox::MailboxRegistryError,
+  props::{MailboxConfig, PropsGeneric},
   spawn::SpawnError,
 };
 
@@ -45,20 +46,31 @@ impl<TB: RuntimeToolbox + 'static> ExtendedActorSystemGeneric<TB> {
     self.inner
   }
 
-  /// Returns the dispatcher registry.
-  #[must_use]
-  pub fn dispatchers(&self) -> DispatchersSharedGeneric<TB> {
-    self.inner.state().dispatchers()
+  /// Resolves the dispatcher configuration for the identifier.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`DispatcherRegistryError::Unknown`] when the identifier has not been registered.
+  pub fn resolve_dispatcher(&self, id: &str) -> Result<DispatcherConfigGeneric<TB>, DispatcherRegistryError> {
+    self.inner.state().resolve_dispatcher(id)
   }
 
-  /// Returns the mailbox registry.
-  #[must_use]
-  pub fn mailboxes(&self) -> MailboxesSharedGeneric<TB> {
-    self.inner.state().mailboxes()
+  /// Resolves the mailbox configuration for the identifier.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`MailboxRegistryError::Unknown`] when the identifier has not been registered.
+  pub fn resolve_mailbox(&self, id: &str) -> Result<MailboxConfig, MailboxRegistryError> {
+    self.inner.state().resolve_mailbox(id)
   }
 
   /// Registers the provided extension and returns the shared instance.
-  pub fn register_extension<E>(&self, ext_id: &E) -> ArcShared<E::Ext>
+  ///
+  /// # Errors
+  ///
+  /// Returns [`RegisterExtensionError::AlreadyStarted`] when the actor system already finished
+  /// startup and the extension is not registered yet.
+  pub fn register_extension<E>(&self, ext_id: &E) -> Result<ArcShared<E::Ext>, RegisterExtensionError>
   where
     E: ExtensionId<TB>, {
     let state = self.inner.state();
@@ -90,10 +102,17 @@ impl<TB: RuntimeToolbox + 'static> ExtendedActorSystemGeneric<TB> {
   }
 
   /// Registers an actor-ref provider for later retrieval.
-  pub fn register_actor_ref_provider<P>(&self, provider: &ActorRefProviderSharedGeneric<TB, P>)
+  ///
+  /// # Errors
+  ///
+  /// Returns [`ActorSystemBuildError::Configuration`] when called after system startup.
+  pub fn register_actor_ref_provider<P>(
+    &self,
+    provider: &ActorRefProviderSharedGeneric<TB, P>,
+  ) -> Result<(), ActorSystemBuildError>
   where
     P: ActorRefProvider<TB> + Any + Send + Sync + 'static, {
-    self.inner.state().install_actor_ref_provider(provider);
+    self.inner.state().install_actor_ref_provider(provider)
   }
 
   /// Returns the actor-ref provider of the requested type when registered.

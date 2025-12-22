@@ -1,7 +1,8 @@
 use alloc::{string::String, vec, vec::Vec};
 
 use fraktor_actor_rs::core::event_stream::{
-  EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric, subscriber_handle,
+  EventStreamEvent, EventStreamShared, EventStreamSharedGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric,
+  subscriber_handle,
 };
 use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{
@@ -63,25 +64,25 @@ impl EventStreamSubscriber<NoStdToolbox> for RecordingClusterEvents {
 }
 
 fn subscribe_recorder(
-  event_stream: &ArcShared<EventStreamGeneric<NoStdToolbox>>,
+  event_stream: &EventStreamSharedGeneric<NoStdToolbox>,
 ) -> (RecordingClusterEvents, EventStreamSubscriptionGeneric<NoStdToolbox>) {
   let subscriber_impl = RecordingClusterEvents::new();
   let subscriber = subscriber_handle(subscriber_impl.clone());
-  let subscription = EventStreamGeneric::subscribe_arc(event_stream, &subscriber);
+  let subscription = event_stream.subscribe(&subscriber);
   (subscriber_impl, subscription)
 }
 
 #[test]
 fn start_member_publishes_static_topology_to_event_stream() {
   // EventStream を作成
-  let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let event_stream = EventStreamShared::default();
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
 
   // サブスクライバを登録してイベントを記録
   let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
   // 静的トポロジを設定した Provider を作成
-  let static_topology = ClusterTopology::new(100, vec![String::from("node-b")], vec![]);
+  let static_topology = ClusterTopology::new(100, vec![String::from("node-b")], vec![], Vec::new());
   let mut provider =
     StaticClusterProvider::new(event_stream, block_list, "node-a").with_static_topology(static_topology);
 
@@ -93,22 +94,22 @@ fn start_member_publishes_static_topology_to_event_stream() {
   assert_eq!(events.len(), 1);
   assert!(matches!(
     &events[0],
-    ClusterEvent::TopologyUpdated { topology, joined, left, blocked }
-    if topology.hash() == 100
-      && joined == &vec![String::from("node-b")]
-      && left.is_empty()
-      && blocked.is_empty()
+    ClusterEvent::TopologyUpdated { update }
+    if update.topology.hash() == 100
+      && update.joined == vec![String::from("node-b")]
+      && update.left.is_empty()
+      && update.blocked.is_empty()
   ));
 }
 
 #[test]
 fn start_client_also_publishes_static_topology() {
-  let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let event_stream = EventStreamShared::default();
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
 
   let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
-  let static_topology = ClusterTopology::new(200, vec![], vec![String::from("leaving-node")]);
+  let static_topology = ClusterTopology::new(200, vec![], vec![String::from("leaving-node")], Vec::new());
   let mut provider =
     StaticClusterProvider::new(event_stream, block_list, "client-a").with_static_topology(static_topology);
 
@@ -118,20 +119,20 @@ fn start_client_also_publishes_static_topology() {
   assert_eq!(events.len(), 1);
   assert!(matches!(
     &events[0],
-    ClusterEvent::TopologyUpdated { topology, left, .. }
-    if topology.hash() == 200 && left == &vec![String::from("leaving-node")]
+    ClusterEvent::TopologyUpdated { update }
+    if update.topology.hash() == 200 && update.left == vec![String::from("leaving-node")]
   ));
 }
 
 #[test]
 fn topology_includes_blocked_members_from_block_list_provider() {
-  let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let event_stream = EventStreamShared::default();
   let block_list: ArcShared<dyn BlockListProvider> =
     ArcShared::new(RecordingBlockList::new(vec![String::from("blocked-a"), String::from("blocked-b")]));
 
   let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
-  let static_topology = ClusterTopology::new(300, vec![String::from("node-x")], vec![]);
+  let static_topology = ClusterTopology::new(300, vec![String::from("node-x")], vec![], Vec::new());
   let mut provider =
     StaticClusterProvider::new(event_stream, block_list, "node-main").with_static_topology(static_topology);
 
@@ -139,8 +140,8 @@ fn topology_includes_blocked_members_from_block_list_provider() {
 
   let events = subscriber_impl.events();
   assert_eq!(events.len(), 1);
-  if let ClusterEvent::TopologyUpdated { blocked, .. } = &events[0] {
-    assert_eq!(blocked, &vec![String::from("blocked-a"), String::from("blocked-b")]);
+  if let ClusterEvent::TopologyUpdated { update } = &events[0] {
+    assert_eq!(update.blocked, vec![String::from("blocked-a"), String::from("blocked-b")]);
   } else {
     panic!("Expected TopologyUpdated event");
   }
@@ -148,7 +149,7 @@ fn topology_includes_blocked_members_from_block_list_provider() {
 
 #[test]
 fn no_topology_published_when_static_topology_not_set() {
-  let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let event_stream = EventStreamShared::default();
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
 
   let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
@@ -165,7 +166,7 @@ fn no_topology_published_when_static_topology_not_set() {
 
 #[test]
 fn shutdown_succeeds_without_side_effects() {
-  let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let event_stream = EventStreamShared::default();
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
 
   let mut provider = StaticClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-shutdown");
@@ -180,7 +181,7 @@ fn shutdown_succeeds_without_side_effects() {
 
 #[test]
 fn advertised_address_is_stored_correctly() {
-  let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let event_stream = EventStreamShared::default();
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
 
   let provider = StaticClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "127.0.0.1:8080");

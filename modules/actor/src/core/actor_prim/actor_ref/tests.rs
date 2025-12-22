@@ -9,6 +9,7 @@ use crate::core::{
   error::{ActorError, SendError},
   messaging::{AnyMessage, AnyMessageViewGeneric},
   props::Props,
+  scheduler::{ManualTestDriver, SchedulerConfig, TickDriverConfig},
   system::{ActorSystemConfig, RemotingConfig, SystemState, SystemStateShared},
 };
 
@@ -55,12 +56,16 @@ impl Actor for NoopActor {
 /// Since ActorRef now uses weak references to SystemState, the returned SystemStateShared
 /// must be kept alive for the ActorRef's path methods to work.
 fn build_actor_ref_with_system(remoting: Option<RemotingConfig>) -> (ActorRef, SystemStateShared) {
-  let state = SystemStateShared::new(SystemState::new());
-  let mut config = ActorSystemConfig::default().with_system_name("canonical-test");
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::<NoStdToolbox>::new());
+  let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
+  let mut config = ActorSystemConfig::default()
+    .with_system_name("canonical-test")
+    .with_scheduler_config(scheduler)
+    .with_tick_driver(tick_driver);
   if let Some(remoting_config) = remoting {
     config = config.with_remoting_config(remoting_config);
   }
-  state.apply_actor_system_config(&config);
+  let state = SystemStateShared::new(SystemState::build_from_config(&config).expect("state"));
 
   let props = Props::from_fn(|| NoopActor);
   let root_pid = state.allocate_pid();

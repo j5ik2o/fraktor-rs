@@ -19,4 +19,20 @@ pub enum MembershipError {
     /// Authority string.
     authority: String,
   },
+  /// Invalid state transition requested.
+  InvalidTransition {
+    /// Target authority.
+    authority: String,
+    /// Current status.
+    from:      crate::core::node_status::NodeStatus,
+    /// Requested status.
+    to:        crate::core::node_status::NodeStatus,
+  },
+  /// Join rejected due to quarantine.
+  Quarantined {
+    /// Quarantined authority.
+    authority: String,
+    /// Quarantine reason.
+    reason:    String,
+  },
 }

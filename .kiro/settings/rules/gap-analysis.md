@@ -1,7 +1,5 @@
 # Gap Analysis Process
 
-※ファイル出力が失敗することが多いので、必ずファイル出力された確認すること
-
 ## Objective
 Analyze the gap between requirements and existing codebase to inform implementation strategy decisions.
 

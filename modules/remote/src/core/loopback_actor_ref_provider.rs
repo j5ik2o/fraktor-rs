@@ -15,10 +15,7 @@ use fraktor_actor_rs::core::{
   },
   error::{ActorError, SendError},
   messaging::{AnyMessageGeneric, SystemMessage},
-  system::{
-    ActorRefProvider, ActorSystemGeneric, ActorSystemWeakGeneric, RemoteAuthorityError,
-    RemoteAuthorityManagerSharedGeneric, RemoteWatchHook,
-  },
+  system::{ActorRefProvider, ActorSystemGeneric, ActorSystemWeakGeneric, RemoteAuthorityError, RemoteWatchHook},
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
@@ -49,12 +46,11 @@ use crate::core::{
 /// Uses a weak reference to the actor system to avoid circular references,
 /// since this provider is registered into the actor system's extensions.
 pub struct LoopbackActorRefProviderGeneric<TB: RuntimeToolbox + 'static> {
-  system:            ActorSystemWeakGeneric<TB>,
-  writer:            EndpointWriterSharedGeneric<TB>,
-  control:           RemotingControlShared<TB>,
-  authority_manager: RemoteAuthorityManagerSharedGeneric<TB>,
-  watcher_daemon:    ActorRefGeneric<TB>,
-  watch_entries:     HashMap<Pid, RemoteWatchEntry, RandomState>,
+  system:         ActorSystemWeakGeneric<TB>,
+  writer:         EndpointWriterSharedGeneric<TB>,
+  control:        RemotingControlShared<TB>,
+  watcher_daemon: ActorRefGeneric<TB>,
+  watch_entries:  HashMap<Pid, RemoteWatchEntry, RandomState>,
 }
 
 /// Provider that creates [`ActorRefGeneric`] instances for remote recipients using Loopback
@@ -76,14 +72,12 @@ impl<TB: RuntimeToolbox + 'static> LoopbackActorRefProviderGeneric<TB> {
     system: ActorSystemGeneric<TB>,
     writer: EndpointWriterSharedGeneric<TB>,
     control: RemotingControlShared<TB>,
-    authority_manager: RemoteAuthorityManagerSharedGeneric<TB>,
   ) -> Result<Self, RemoteActorRefProviderError> {
     let daemon = RemoteWatcherDaemon::spawn(&system, control.clone())?;
     Ok(Self {
       system: system.downgrade(),
       writer,
       control,
-      authority_manager,
       watcher_daemon: daemon,
       watch_entries: HashMap::with_hasher(RandomState::new()),
     })
@@ -142,7 +136,7 @@ impl<TB: RuntimeToolbox + 'static> LoopbackActorRefProviderGeneric<TB> {
     let Some(system) = self.system.upgrade() else {
       return;
     };
-    let deferred = self.authority_manager.with_read(|mgr| mgr.deferred_count(&authority)) as u32;
+    let deferred = system.state().remote_authority_deferred_count(&authority) as u32;
     let state = system.state().remote_authority_state(&authority);
     let ticks = system.state().monotonic_now().as_millis() as u64;
     let snapshot = RemoteAuthoritySnapshot::new(authority, state, ticks, deferred);

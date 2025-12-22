@@ -8,13 +8,14 @@ pub struct ClusterTopology {
   hash:   u64,
   joined: Vec<String>,
   left:   Vec<String>,
+  dead:   Vec<String>,
 }
 
 impl ClusterTopology {
   /// Creates a new topology snapshot.
   #[must_use]
-  pub const fn new(hash: u64, joined: Vec<String>, left: Vec<String>) -> Self {
-    Self { hash, joined, left }
+  pub const fn new(hash: u64, joined: Vec<String>, left: Vec<String>, dead: Vec<String>) -> Self {
+    Self { hash, joined, left, dead }
   }
 
   /// Topology hash value.
@@ -33,5 +34,11 @@ impl ClusterTopology {
   #[must_use]
   pub const fn left(&self) -> &Vec<String> {
     &self.left
+  }
+
+  /// Dead member addresses.
+  #[must_use]
+  pub const fn dead(&self) -> &Vec<String> {
+    &self.dead
   }
 }

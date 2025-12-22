@@ -7,18 +7,20 @@ pub enum NodeStatus {
   Joining,
   /// Node is active and participates in the cluster.
   Up,
+  /// Node is suspected to be unreachable.
+  Suspect,
   /// Node initiated a graceful leave.
   Leaving,
   /// Node has completed leave and is removed from the view.
   Removed,
-  /// Node missed heartbeats and is considered unreachable.
-  Unreachable,
+  /// Node is considered dead and removed from active membership.
+  Dead,
 }
 
 impl NodeStatus {
   /// Returns true when the node can serve requests.
   #[must_use]
   pub const fn is_active(self) -> bool {
-    matches!(self, Self::Joining | Self::Up)
+    matches!(self, Self::Joining | Self::Up | Self::Suspect)
   }
 }

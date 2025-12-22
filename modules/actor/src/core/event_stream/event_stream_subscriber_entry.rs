@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
+use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use crate::core::event_stream::EventStreamSubscriberShared;
 
@@ -38,6 +38,3 @@ impl<TB: RuntimeToolbox> Clone for EventStreamSubscriberEntryGeneric<TB> {
     Self { id: self.id, subscriber: self.subscriber.clone() }
   }
 }
-
-/// Type alias for `EventStreamSubscriberEntryGeneric` with the default `NoStdToolbox`.
-pub type EventStreamSubscriberEntry = EventStreamSubscriberEntryGeneric<NoStdToolbox>;

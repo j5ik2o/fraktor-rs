@@ -10,12 +10,13 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::core::{
-  event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, subscriber_handle},
+  event_stream::{EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriber, subscriber_handle},
   logging::LogLevel,
   scheduler::{
-    ExecutionBatch, HardwareKind, ManualTestDriver, SchedulerCommand, SchedulerConfig, SchedulerContextSharedGeneric,
+    ExecutionBatch, HardwareKind, ManualTestDriver, SchedulerCommand, SchedulerConfig, SchedulerContext,
     SchedulerRunnable, SchedulerTickExecutor, TICK_DRIVER_MATRIX, TickDriverBootstrap, TickDriverConfig,
-    TickDriverError, TickDriverKind, TickExecutorSignal, TickFeed, TickMetricsMode, TickPulseHandler, TickPulseSource,
+    TickDriverError, TickDriverKind, TickDriverProvisioningContext, TickExecutorSignal, TickFeed, TickMetricsMode,
+    TickPulseHandler, TickPulseSource,
   },
 };
 
@@ -139,8 +140,9 @@ fn run_hardware_driver_enqueues_isr_pulses() {
   let (handler, handle) = spawn_test_handler();
   handle.reset();
   let config = hardware_test_config(handler, Duration::from_millis(2));
-  let ctx = SchedulerContextSharedGeneric::from_config(NoStdToolbox::default(), SchedulerConfig::default());
-  let mut runtime = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
+  let scheduler_context = SchedulerContext::new(NoStdToolbox::default(), SchedulerConfig::default());
+  let ctx = TickDriverProvisioningContext::from_scheduler_context(&scheduler_context);
+  let (mut runtime, _) = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
 
   handle.trigger();
   let resolution = ctx.scheduler().with_read(|s| s.config().resolution());
@@ -178,8 +180,9 @@ fn run_hardware_driver_watchdog_marks_inactive_on_shutdown() {
   let (handler, handle) = spawn_test_handler();
   handle.reset();
   let config = hardware_test_config(handler, Duration::from_millis(2));
-  let ctx = SchedulerContextSharedGeneric::from_config(NoStdToolbox::default(), SchedulerConfig::default());
-  let mut runtime = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
+  let scheduler_context = SchedulerContext::new(NoStdToolbox::default(), SchedulerConfig::default());
+  let ctx = TickDriverProvisioningContext::from_scheduler_context(&scheduler_context);
+  let (mut runtime, _) = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
 
   handle.trigger();
   let feed = runtime.feed().expect("feed").clone();
@@ -212,9 +215,10 @@ fn manual_driver_runs_jobs_without_executor() {
   let driver = ManualTestDriver::<NoStdToolbox>::new();
   let config = TickDriverConfig::manual(driver);
   let scheduler_config = SchedulerConfig::default().with_runner_api_enabled(true);
-  let ctx = SchedulerContextSharedGeneric::from_config(NoStdToolbox::default(), scheduler_config);
+  let scheduler_context = SchedulerContext::new(NoStdToolbox::default(), scheduler_config);
+  let ctx = TickDriverProvisioningContext::from_scheduler_context(&scheduler_context);
 
-  let runtime = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
+  let (runtime, _) = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
   assert!(runtime.feed().is_none());
   let controller = runtime.manual_controller().expect("manual controller");
 
@@ -235,7 +239,8 @@ fn manual_driver_runs_jobs_without_executor() {
 fn manual_driver_rejected_when_runner_api_disabled() {
   let driver = ManualTestDriver::<NoStdToolbox>::new();
   let config = TickDriverConfig::manual(driver);
-  let ctx = SchedulerContextSharedGeneric::from_config(NoStdToolbox::default(), SchedulerConfig::default());
+  let scheduler_context = SchedulerContext::new(NoStdToolbox::default(), SchedulerConfig::default());
+  let ctx = TickDriverProvisioningContext::from_scheduler_context(&scheduler_context);
 
   let result = TickDriverBootstrap::provision(&config, &ctx);
   assert!(matches!(result, Err(TickDriverError::ManualDriverDisabled)));
@@ -245,9 +250,10 @@ fn manual_driver_rejected_when_runner_api_disabled() {
 fn embedded_quickstart_template_runs_ticks() {
   let (handler, handle) = spawn_test_handler();
   handle.reset();
-  let ctx = SchedulerContextSharedGeneric::from_config(NoStdToolbox::default(), SchedulerConfig::default());
+  let scheduler_context = SchedulerContext::new(NoStdToolbox::default(), SchedulerConfig::default());
+  let ctx = TickDriverProvisioningContext::from_scheduler_context(&scheduler_context);
   let config = hardware_test_config(handler, Duration::from_millis(2));
-  let mut runtime = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
+  let (mut runtime, _) = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
 
   let scheduler = ctx.scheduler();
   let log = ArcShared::new(NoStdMutex::new(Vec::new()));
@@ -308,19 +314,19 @@ fn driver_matrix_marks_manual_entry_as_test_only() {
 
 #[test]
 fn driver_metadata_records_driver_activation() {
-  let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let event_stream = EventStreamSharedGeneric::<NoStdToolbox>::default();
   let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
-  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
-  let ctx =
-    SchedulerContextSharedGeneric::with_event_stream(NoStdToolbox::default(), SchedulerConfig::default(), event_stream);
+  let _subscription = event_stream.subscribe(&subscriber);
+  let scheduler_context =
+    SchedulerContext::with_event_stream(NoStdToolbox::default(), SchedulerConfig::default(), event_stream);
+  let ctx = TickDriverProvisioningContext::from_scheduler_context(&scheduler_context);
   let (handler, handle) = spawn_test_handler();
   handle.reset();
   let config = hardware_test_config(handler, Duration::from_millis(2));
 
-  let runtime = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
-  let metadata = ctx.driver_metadata().expect("metadata");
-  assert_eq!(metadata.driver_id, runtime.driver().id());
+  let (runtime, snapshot) = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
+  assert_eq!(snapshot.metadata.driver_id, runtime.driver().id());
 
   let events = events.lock().clone();
   assert!(
@@ -332,15 +338,15 @@ fn driver_metadata_records_driver_activation() {
 }
 
 #[test]
-fn driver_snapshot_exposed_via_scheduler_context() {
-  let ctx = SchedulerContextSharedGeneric::from_config(NoStdToolbox::default(), SchedulerConfig::default());
+fn driver_snapshot_exposed_via_provisioning() {
+  let scheduler_context = SchedulerContext::new(NoStdToolbox::default(), SchedulerConfig::default());
+  let ctx = TickDriverProvisioningContext::from_scheduler_context(&scheduler_context);
   let (handler, handle) = spawn_test_handler();
   handle.reset();
   let config = hardware_test_config(handler, Duration::from_millis(2));
 
-  let mut runtime = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
+  let (mut runtime, snapshot) = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
 
-  let snapshot = ctx.driver_snapshot().expect("driver snapshot");
   assert_eq!(snapshot.metadata.driver_id, runtime.driver().id());
   assert_eq!(snapshot.kind, TickDriverKind::Hardware { source: HardwareKind::Custom });
   // Snapshot should reflect the driver's actual resolution, not scheduler's default
@@ -352,12 +358,13 @@ fn driver_snapshot_exposed_via_scheduler_context() {
 
 #[test]
 fn manual_driver_disabled_emits_warning() {
-  let event_stream = ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
+  let event_stream = EventStreamSharedGeneric::<NoStdToolbox>::default();
   let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
-  let _subscription = EventStreamGeneric::subscribe_arc(&event_stream, &subscriber);
-  let ctx =
-    SchedulerContextSharedGeneric::with_event_stream(NoStdToolbox::default(), SchedulerConfig::default(), event_stream);
+  let _subscription = event_stream.subscribe(&subscriber);
+  let scheduler_context =
+    SchedulerContext::with_event_stream(NoStdToolbox::default(), SchedulerConfig::default(), event_stream);
+  let ctx = TickDriverProvisioningContext::from_scheduler_context(&scheduler_context);
   let config = TickDriverConfig::manual(ManualTestDriver::new());
 
   let result = TickDriverBootstrap::provision(&config, &ctx);

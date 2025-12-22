@@ -196,8 +196,8 @@ impl TypedActor<SchedulerProbeCommand> for SchedulerProbeActor {
   ) -> Result<(), ActorError> {
     match message {
       | SchedulerProbeCommand::Check => {
-        let has_context = ctx.system().scheduler_context().is_some();
-        ctx.reply(has_context).map_err(|error| ActorError::from_send_error(&error))
+        let _ = ctx.system().scheduler();
+        ctx.reply(true).map_err(|error| ActorError::from_send_error(&error))
       },
     }
   }
@@ -221,7 +221,7 @@ fn typed_ask_reports_type_mismatch() {
 }
 
 #[test]
-fn typed_context_exposes_scheduler_context() {
+fn typed_context_exposes_scheduler() {
   let props = TypedPropsGeneric::<SchedulerProbeCommand, NoStdToolbox>::new(|| SchedulerProbeActor);
   let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
   let system =

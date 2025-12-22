@@ -1,8 +1,10 @@
 use alloc::{boxed::Box, string::String, vec, vec::Vec};
+use core::time::Duration;
 
 use fraktor_actor_rs::core::{
   event_stream::{
-    EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric, subscriber_handle,
+    EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric,
+    subscriber_handle,
   },
   messaging::AnyMessageGeneric,
   system::ActorSystemGeneric,
@@ -11,12 +13,33 @@ use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdMutex, NoStdToolbox},
   sync::ArcShared,
+  time::TimerInstant,
 };
 
 use crate::core::{
   ActivatedKind, ClusterEvent, ClusterExtensionConfig, ClusterExtensionId, ClusterProvider, ClusterProviderError,
-  ClusterPubSub, ClusterTopology, Gossiper, IdentityLookup, IdentitySetupError, StaticClusterProvider,
+  ClusterPubSub, ClusterTopology, Gossiper, GrainKey, IdentityLookup, IdentitySetupError, LookupError,
+  PlacementResolution, StaticClusterProvider, TopologyUpdate,
 };
+
+fn build_update(
+  hash: u64,
+  members: Vec<String>,
+  joined: Vec<String>,
+  left: Vec<String>,
+  blocked: Vec<String>,
+) -> TopologyUpdate {
+  let topology = ClusterTopology::new(hash, joined.clone(), left.clone(), Vec::new());
+  TopologyUpdate::new(
+    topology,
+    members,
+    joined,
+    left,
+    Vec::new(),
+    blocked,
+    TimerInstant::from_ticks(hash, Duration::from_secs(1)),
+  )
+}
 
 struct StubProvider;
 impl ClusterProvider for StubProvider {
@@ -45,7 +68,7 @@ impl Gossiper for StubGossiper {
 }
 
 struct StubPubSub;
-impl ClusterPubSub for StubPubSub {
+impl ClusterPubSub<NoStdToolbox> for StubPubSub {
   fn start(&mut self) -> Result<(), crate::core::pub_sub_error::PubSubError> {
     Ok(())
   }
@@ -53,6 +76,31 @@ impl ClusterPubSub for StubPubSub {
   fn stop(&mut self) -> Result<(), crate::core::pub_sub_error::PubSubError> {
     Ok(())
   }
+
+  fn subscribe(
+    &mut self,
+    _topic: &crate::core::PubSubTopic,
+    _subscriber: crate::core::PubSubSubscriber<NoStdToolbox>,
+  ) -> Result<(), crate::core::pub_sub_error::PubSubError> {
+    Ok(())
+  }
+
+  fn unsubscribe(
+    &mut self,
+    _topic: &crate::core::PubSubTopic,
+    _subscriber: crate::core::PubSubSubscriber<NoStdToolbox>,
+  ) -> Result<(), crate::core::pub_sub_error::PubSubError> {
+    Ok(())
+  }
+
+  fn publish(
+    &mut self,
+    _request: crate::core::PublishRequest<NoStdToolbox>,
+  ) -> Result<crate::core::PublishAck, crate::core::pub_sub_error::PubSubError> {
+    Ok(crate::core::PublishAck::accepted())
+  }
+
+  fn on_topology(&mut self, _update: &crate::core::TopologyUpdate) {}
 }
 
 struct StubIdentity;
@@ -63,6 +111,10 @@ impl IdentityLookup for StubIdentity {
 
   fn setup_client(&mut self, _kinds: &[ActivatedKind]) -> Result<(), IdentitySetupError> {
     Ok(())
+  }
+
+  fn resolve(&mut self, _key: &GrainKey, _now: u64) -> Result<PlacementResolution, LookupError> {
+    Err(LookupError::NotReady)
   }
 }
 
@@ -86,7 +138,7 @@ fn registers_extension_and_starts_member() {
     Box::new(StubIdentity),
   );
 
-  let ext_shared = system.extended().register_extension(&ext_id);
+  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
   let result = ext_shared.start_member();
   assert!(result.is_ok());
 }
@@ -107,19 +159,20 @@ fn subscribes_to_event_stream_and_applies_topology_on_topology_updated() {
   );
 
   // 2. エクステンションを登録
-  let ext_shared = system.extended().register_extension(&ext_id);
+  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
 
   // 3. エクステンションを開始（この時点で EventStream を購読するべき）
   ext_shared.start_member().unwrap();
 
   // 4. EventStream に TopologyUpdated イベントを publish
-  let topology = ClusterTopology::new(12345, vec![String::from("node-b")], vec![]);
-  let cluster_event = ClusterEvent::TopologyUpdated {
-    topology: topology.clone(),
-    joined:   vec![String::from("node-b")],
-    left:     vec![],
-    blocked:  vec![],
-  };
+  let update = build_update(
+    12345,
+    vec![String::from("fraktor://demo"), String::from("node-b")],
+    vec![String::from("node-b")],
+    vec![],
+    vec![],
+  );
+  let cluster_event = ClusterEvent::TopologyUpdated { update };
   let payload = AnyMessageGeneric::new(cluster_event);
   let event = EventStreamEvent::Extension { name: String::from("cluster"), payload };
   event_stream.publish(&event);
@@ -145,18 +198,19 @@ fn ignores_topology_with_same_hash_via_event_stream() {
     Box::new(StubIdentity),
   );
 
-  let ext_shared = system.extended().register_extension(&ext_id);
+  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
   ext_shared.start_member().unwrap();
 
   // 同じハッシュのトポロジを2回 publish
-  let topology = ClusterTopology::new(99999, vec![String::from("node-x")], vec![]);
   for _ in 0..2 {
-    let cluster_event = ClusterEvent::TopologyUpdated {
-      topology: topology.clone(),
-      joined:   vec![String::from("node-x")],
-      left:     vec![],
-      blocked:  vec![],
-    };
+    let update = build_update(
+      99999,
+      vec![String::from("fraktor://demo"), String::from("node-x")],
+      vec![String::from("node-x")],
+      vec![],
+      vec![],
+    );
+    let cluster_event = ClusterEvent::TopologyUpdated { update };
     let payload = AnyMessageGeneric::new(cluster_event);
     let event = EventStreamEvent::Extension { name: String::from("cluster"), payload };
     event_stream.publish(&event);
@@ -221,11 +275,11 @@ impl EventStreamSubscriber<NoStdToolbox> for RecordingClusterEvents {
 }
 
 fn subscribe_recorder(
-  event_stream: &ArcShared<EventStreamGeneric<NoStdToolbox>>,
+  event_stream: &EventStreamSharedGeneric<NoStdToolbox>,
 ) -> (RecordingClusterEvents, EventStreamSubscriptionGeneric<NoStdToolbox>) {
   let recorder = RecordingClusterEvents::new();
   let subscriber = subscriber_handle(recorder.clone());
-  let subscription = EventStreamGeneric::subscribe_arc(event_stream, &subscriber);
+  let subscription = event_stream.subscribe(&subscriber);
   (recorder, subscription)
 }
 
@@ -243,7 +297,8 @@ fn phase1_integration_static_topology_publishes_to_event_stream_and_applies_to_c
   // 3. StaticClusterProvider を静的トポロジで構成
   let block_list: ArcShared<dyn BlockListProvider> =
     ArcShared::new(RecordingBlockList::new(vec![String::from("blocked-node-a")]));
-  let static_topology = ClusterTopology::new(1000, vec![String::from("node-b"), String::from("node-c")], vec![]);
+  let static_topology =
+    ClusterTopology::new(1000, vec![String::from("node-b"), String::from("node-c")], vec![], Vec::new());
   let provider = StaticClusterProvider::new(event_stream.clone(), block_list.clone(), "node-a")
     .with_static_topology(static_topology);
 
@@ -256,7 +311,7 @@ fn phase1_integration_static_topology_publishes_to_event_stream_and_applies_to_c
     Box::new(StubPubSub),
     Box::new(StubIdentity),
   );
-  let ext_shared = system.extended().register_extension(&ext_id);
+  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
   ext_shared.setup_member_kinds(vec![ActivatedKind::new("grain-kind")]).unwrap();
 
   // 5. クラスタを開始（start_member で provider が静的トポロジを publish）
@@ -298,7 +353,7 @@ fn phase1_integration_topology_updated_includes_blocked_members() {
   ]));
 
   // 4. StaticClusterProvider を設定
-  let static_topology = ClusterTopology::new(3000, vec![String::from("node-b")], vec![]);
+  let static_topology = ClusterTopology::new(3000, vec![String::from("node-b")], vec![], Vec::new());
   let provider = StaticClusterProvider::new(event_stream.clone(), block_list.clone(), "node-a")
     .with_static_topology(static_topology);
 
@@ -311,7 +366,7 @@ fn phase1_integration_topology_updated_includes_blocked_members() {
     Box::new(StubPubSub),
     Box::new(StubIdentity),
   );
-  let ext_shared = system.extended().register_extension(&ext_id);
+  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
 
   // 6. クラスタを開始
   ext_shared.start_member().unwrap();
@@ -320,10 +375,10 @@ fn phase1_integration_topology_updated_includes_blocked_members() {
   let topology_events = recorder.topology_updated_events();
   assert!(!topology_events.is_empty());
 
-  if let ClusterEvent::TopologyUpdated { blocked, .. } = &topology_events[0] {
-    assert!(blocked.contains(&String::from("blocked-1")));
-    assert!(blocked.contains(&String::from("blocked-2")));
-    assert!(blocked.contains(&String::from("blocked-3")));
+  if let ClusterEvent::TopologyUpdated { update } = &topology_events[0] {
+    assert!(update.blocked.contains(&String::from("blocked-1")));
+    assert!(update.blocked.contains(&String::from("blocked-2")));
+    assert!(update.blocked.contains(&String::from("blocked-3")));
   } else {
     panic!("Expected TopologyUpdated event");
   }
@@ -355,14 +410,20 @@ fn phase1_integration_duplicate_hash_topology_is_suppressed() {
     Box::new(StubPubSub),
     Box::new(StubIdentity),
   );
-  let ext_shared = system.extended().register_extension(&ext_id);
+  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
   ext_shared.start_member().unwrap();
 
   // 4. 同じハッシュのトポロジを複数回適用
-  let topology = ClusterTopology::new(5000, vec![String::from("node-x")], vec![]);
-  ext_shared.on_topology(&topology);
-  ext_shared.on_topology(&topology); // 重複
-  ext_shared.on_topology(&topology); // 重複
+  let update = build_update(
+    5000,
+    vec![String::from("node-a"), String::from("node-x")],
+    vec![String::from("node-x")],
+    vec![],
+    vec![],
+  );
+  ext_shared.on_topology(&update);
+  ext_shared.on_topology(&update); // 重複
+  ext_shared.on_topology(&update); // 重複
 
   // 5. TopologyUpdated は1回だけ publish されるべき
   let topology_events = recorder.topology_updated_events();
@@ -386,7 +447,7 @@ fn phase1_integration_metrics_include_members_and_virtual_actors() {
     Box::new(StubPubSub),
     Box::new(StubIdentity),
   );
-  let ext_shared = system.extended().register_extension(&ext_id);
+  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
 
   // 3. Kind を登録（virtual_actors が増加する）
   ext_shared.setup_member_kinds(vec![ActivatedKind::new("worker-kind"), ActivatedKind::new("analytics-kind")]).unwrap();
@@ -400,13 +461,14 @@ fn phase1_integration_metrics_include_members_and_virtual_actors() {
   assert_eq!(metrics.virtual_actors(), 3);
 
   // 6. トポロジを更新（2ノード join）
-  let topology = ClusterTopology::new(6000, vec![String::from("node-b"), String::from("node-c")], vec![]);
-  let cluster_event = ClusterEvent::TopologyUpdated {
-    topology: topology.clone(),
-    joined:   vec![String::from("node-b"), String::from("node-c")],
-    left:     vec![],
-    blocked:  vec![],
-  };
+  let update = build_update(
+    6000,
+    vec![String::from("node-a"), String::from("node-b"), String::from("node-c")],
+    vec![String::from("node-b"), String::from("node-c")],
+    vec![],
+    vec![],
+  );
+  let cluster_event = ClusterEvent::TopologyUpdated { update };
   let payload = AnyMessageGeneric::new(cluster_event);
   let event = EventStreamEvent::Extension { name: String::from("cluster"), payload };
   event_stream.publish(&event);
@@ -442,18 +504,30 @@ fn phase2_integration_join_leave_events_produce_topology_updated() {
     Box::new(StubPubSub),
     Box::new(StubIdentity),
   );
-  let ext_shared = system.extended().register_extension(&ext_id);
+  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
 
   // 4. クラスタを開始
   ext_shared.start_member().unwrap();
 
   // 5. ノード join のトポロジ更新
-  let join_topology = ClusterTopology::new(100, vec![String::from("node-b"), String::from("node-c")], vec![]);
-  ext_shared.on_topology(&join_topology);
+  let join_update = build_update(
+    100,
+    vec![String::from("node-a"), String::from("node-b"), String::from("node-c")],
+    vec![String::from("node-b"), String::from("node-c")],
+    vec![],
+    vec![],
+  );
+  ext_shared.on_topology(&join_update);
 
   // 6. ノード leave のトポロジ更新
-  let leave_topology = ClusterTopology::new(200, vec![], vec![String::from("node-c")]);
-  ext_shared.on_topology(&leave_topology);
+  let leave_update = build_update(
+    200,
+    vec![String::from("node-a"), String::from("node-b")],
+    vec![],
+    vec![String::from("node-c")],
+    vec![],
+  );
+  ext_shared.on_topology(&leave_update);
 
   // 7. TopologyUpdated イベントが発火されたことを確認
   let topology_events = recorder.topology_updated_events();
@@ -463,8 +537,8 @@ fn phase2_integration_join_leave_events_produce_topology_updated() {
   assert!(
     topology_events.iter().any(|e| matches!(
       e,
-      ClusterEvent::TopologyUpdated { joined, .. }
-      if joined.contains(&String::from("node-b"))
+      ClusterEvent::TopologyUpdated { update }
+      if update.joined.contains(&String::from("node-b"))
     )),
     "TopologyUpdated should contain node-b in joined"
   );
@@ -473,8 +547,8 @@ fn phase2_integration_join_leave_events_produce_topology_updated() {
   assert!(
     topology_events.iter().any(|e| matches!(
       e,
-      ClusterEvent::TopologyUpdated { left, .. }
-      if left.contains(&String::from("node-c"))
+      ClusterEvent::TopologyUpdated { update }
+      if update.left.contains(&String::from("node-c"))
     )),
     "TopologyUpdated should contain node-c in left"
   );
@@ -503,14 +577,20 @@ fn phase2_integration_blocklist_reflected_in_topology_events() {
     Box::new(StubPubSub),
     Box::new(StubIdentity),
   );
-  let ext_shared = system.extended().register_extension(&ext_id);
+  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
 
   // 5. クラスタを開始
   ext_shared.start_member().unwrap();
 
   // 6. トポロジ更新を行う
-  let topology = ClusterTopology::new(300, vec![String::from("node-b")], vec![]);
-  ext_shared.on_topology(&topology);
+  let update = build_update(
+    300,
+    vec![String::from("node-a"), String::from("node-b")],
+    vec![String::from("node-b")],
+    vec![],
+    vec![String::from("blocked-node-1"), String::from("blocked-node-2")],
+  );
+  ext_shared.on_topology(&update);
 
   // 7. TopologyUpdated イベントに blocked が含まれていることを確認
   let topology_events = recorder.topology_updated_events();
@@ -518,8 +598,9 @@ fn phase2_integration_blocklist_reflected_in_topology_events() {
 
   // 8. blocked メンバーが含まれていることを確認
   let has_blocked = topology_events.iter().any(|e| {
-    if let ClusterEvent::TopologyUpdated { blocked, .. } = e {
-      blocked.contains(&String::from("blocked-node-1")) && blocked.contains(&String::from("blocked-node-2"))
+    if let ClusterEvent::TopologyUpdated { update } = e {
+      update.blocked.contains(&String::from("blocked-node-1"))
+        && update.blocked.contains(&String::from("blocked-node-2"))
     } else {
       false
     }
@@ -548,7 +629,7 @@ fn phase2_integration_metrics_updated_correctly_with_dynamic_topology() {
     Box::new(StubPubSub),
     Box::new(StubIdentity),
   );
-  let ext_shared = system.extended().register_extension(&ext_id);
+  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
 
   // 3. Kind を登録して起動
   ext_shared.setup_member_kinds(vec![ActivatedKind::new("worker-kind")]).unwrap();
@@ -560,17 +641,28 @@ fn phase2_integration_metrics_updated_correctly_with_dynamic_topology() {
   assert_eq!(metrics.virtual_actors(), 2, "worker + topic = 2 virtual actors");
 
   // 5. 3ノード join
-  let topology1 =
-    ClusterTopology::new(400, vec![String::from("node-b"), String::from("node-c"), String::from("node-d")], vec![]);
-  ext_shared.on_topology(&topology1);
+  let update1 = build_update(
+    400,
+    vec![String::from("node-a"), String::from("node-b"), String::from("node-c"), String::from("node-d")],
+    vec![String::from("node-b"), String::from("node-c"), String::from("node-d")],
+    vec![],
+    vec![],
+  );
+  ext_shared.on_topology(&update1);
 
   // 6. メトリクスが更新されたことを確認
   let metrics = ext_shared.metrics().unwrap();
   assert_eq!(metrics.members(), 4, "Members should be 1 + 3 joined = 4");
 
   // 7. 2ノード leave
-  let topology2 = ClusterTopology::new(500, vec![], vec![String::from("node-b"), String::from("node-d")]);
-  ext_shared.on_topology(&topology2);
+  let update2 = build_update(
+    500,
+    vec![String::from("node-a"), String::from("node-c")],
+    vec![],
+    vec![String::from("node-b"), String::from("node-d")],
+    vec![],
+  );
+  ext_shared.on_topology(&update2);
 
   // 8. メトリクスが更新されたことを確認
   let metrics = ext_shared.metrics().unwrap();
@@ -600,15 +692,21 @@ fn phase2_integration_shutdown_resets_metrics_and_emits_event() {
     Box::new(StubPubSub),
     Box::new(StubIdentity),
   );
-  let ext_shared = system.extended().register_extension(&ext_id);
+  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
 
   // 4. Kind を登録して起動
   ext_shared.setup_member_kinds(vec![ActivatedKind::new("worker-kind")]).unwrap();
   ext_shared.start_member().unwrap();
 
   // 5. トポロジ更新を行う
-  let topology = ClusterTopology::new(600, vec![String::from("node-b")], vec![]);
-  ext_shared.on_topology(&topology);
+  let update = build_update(
+    600,
+    vec![String::from("node-a"), String::from("node-b")],
+    vec![String::from("node-b")],
+    vec![],
+    vec![],
+  );
+  ext_shared.on_topology(&update);
 
   // 6. shutdown を呼ぶ
   ext_shared.shutdown(true).unwrap();

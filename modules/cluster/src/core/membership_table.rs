@@ -46,7 +46,7 @@ impl MembershipTable {
   /// Returns `MembershipError::AuthorityConflict` if the authority is already registered with a
   /// different node ID.
   pub fn try_join(&mut self, node_id: String, authority: String) -> Result<MembershipDelta, MembershipError> {
-    if let Some(existing) = self.entries.get(&authority) {
+    if let Some(existing) = self.entries.get_mut(&authority) {
       if existing.node_id != node_id {
         self.events.push(MembershipEvent::AuthorityConflict {
           authority:         authority.clone(),
@@ -61,13 +61,21 @@ impl MembershipTable {
         });
       }
 
+      if matches!(existing.status, NodeStatus::Removed | NodeStatus::Dead) {
+        let from = self.version;
+        self.version = self.version.next();
+        existing.status = NodeStatus::Joining;
+        existing.version = self.version;
+        return Ok(MembershipDelta::new(from, self.version, vec![existing.clone()]));
+      }
+
       return Ok(MembershipDelta::new(self.version, self.version, vec![existing.clone()]));
     }
 
     let from = self.version;
     self.version = self.version.next();
 
-    let record = NodeRecord::new(node_id.clone(), authority.clone(), NodeStatus::Up, self.version);
+    let record = NodeRecord::new(node_id.clone(), authority.clone(), NodeStatus::Joining, self.version);
     self.entries.insert(authority.clone(), record.clone());
     self.heartbeat_miss_counters.insert(authority.clone(), 0);
 
@@ -86,6 +94,14 @@ impl MembershipTable {
       return Err(MembershipError::UnknownAuthority { authority: authority.to_string() });
     };
 
+    if matches!(record.status, NodeStatus::Removed | NodeStatus::Dead) {
+      return Err(MembershipError::InvalidTransition {
+        authority: authority.to_string(),
+        from:      record.status,
+        to:        NodeStatus::Removed,
+      });
+    }
+
     let from = self.version;
     self.version = self.version.next();
 
@@ -97,11 +113,11 @@ impl MembershipTable {
     Ok(MembershipDelta::new(from, self.version, vec![record.clone()]))
   }
 
-  /// Increments heartbeat misses; returns a delta when it becomes unreachable.
+  /// Increments heartbeat misses; returns a delta when it becomes suspect.
   pub fn mark_heartbeat_miss(&mut self, authority: &str) -> Option<MembershipDelta> {
     let record = self.entries.get_mut(authority)?;
 
-    if matches!(record.status, NodeStatus::Removed | NodeStatus::Unreachable) {
+    if matches!(record.status, NodeStatus::Removed | NodeStatus::Dead) {
       return None;
     }
 
@@ -115,15 +131,104 @@ impl MembershipTable {
     let from = self.version;
     self.version = self.version.next();
 
-    record.status = NodeStatus::Unreachable;
+    record.status = NodeStatus::Suspect;
     record.version = self.version;
 
-    self.events.push(MembershipEvent::MarkedUnreachable {
-      node_id:   record.node_id.clone(),
-      authority: record.authority.clone(),
-    });
+    self
+      .events
+      .push(MembershipEvent::MarkedSuspect { node_id: record.node_id.clone(), authority: record.authority.clone() });
 
     Some(MembershipDelta::new(from, self.version, vec![record.clone()]))
+  }
+
+  /// Marks the authority as reachable (Up) if currently Joining or Suspect.
+  ///
+  /// # Errors
+  ///
+  /// Returns `MembershipError::UnknownAuthority` if the authority is not found.
+  pub fn mark_up(&mut self, authority: &str) -> Result<Option<MembershipDelta>, MembershipError> {
+    let Some(record) = self.entries.get_mut(authority) else {
+      return Err(MembershipError::UnknownAuthority { authority: authority.to_string() });
+    };
+
+    match record.status {
+      | NodeStatus::Up => return Ok(None),
+      | NodeStatus::Joining | NodeStatus::Suspect => {},
+      | _ => {
+        return Err(MembershipError::InvalidTransition {
+          authority: authority.to_string(),
+          from:      record.status,
+          to:        NodeStatus::Up,
+        });
+      },
+    }
+
+    let from = self.version;
+    self.version = self.version.next();
+    record.status = NodeStatus::Up;
+    record.version = self.version;
+
+    Ok(Some(MembershipDelta::new(from, self.version, vec![record.clone()])))
+  }
+
+  /// Marks the authority as suspect.
+  ///
+  /// # Errors
+  ///
+  /// Returns `MembershipError::UnknownAuthority` if the authority is not found.
+  pub fn mark_suspect(&mut self, authority: &str) -> Result<Option<MembershipDelta>, MembershipError> {
+    let Some(record) = self.entries.get_mut(authority) else {
+      return Err(MembershipError::UnknownAuthority { authority: authority.to_string() });
+    };
+
+    match record.status {
+      | NodeStatus::Suspect => return Ok(None),
+      | NodeStatus::Up | NodeStatus::Joining => {},
+      | _ => {
+        return Err(MembershipError::InvalidTransition {
+          authority: authority.to_string(),
+          from:      record.status,
+          to:        NodeStatus::Suspect,
+        });
+      },
+    }
+
+    let from = self.version;
+    self.version = self.version.next();
+    record.status = NodeStatus::Suspect;
+    record.version = self.version;
+
+    Ok(Some(MembershipDelta::new(from, self.version, vec![record.clone()])))
+  }
+
+  /// Marks the authority as dead.
+  ///
+  /// # Errors
+  ///
+  /// Returns `MembershipError::UnknownAuthority` if the authority is not found.
+  pub fn mark_dead(&mut self, authority: &str) -> Result<Option<MembershipDelta>, MembershipError> {
+    let Some(record) = self.entries.get_mut(authority) else {
+      return Err(MembershipError::UnknownAuthority { authority: authority.to_string() });
+    };
+
+    match record.status {
+      | NodeStatus::Dead => return Ok(None),
+      | NodeStatus::Suspect => {},
+      | _ => {
+        return Err(MembershipError::InvalidTransition {
+          authority: authority.to_string(),
+          from:      record.status,
+          to:        NodeStatus::Dead,
+        });
+      },
+    }
+
+    let from = self.version;
+    self.version = self.version.next();
+    record.status = NodeStatus::Dead;
+    record.version = self.version;
+
+    Ok(Some(MembershipDelta::new(from, self.version, vec![record.clone()])))
   }
 
   /// Applies a received membership delta.

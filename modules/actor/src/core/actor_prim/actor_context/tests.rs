@@ -257,7 +257,7 @@ fn actor_context_watch_missing_actor_notifies_self() {
   let _watcher = register_cell(&system, watcher_pid, "watcher", &watcher_props);
   let target = register_cell(&system, target_pid, "target", &target_props);
   let target_ref = target.actor_ref();
-  let _ = system.state().remove_cell(&target_pid);
+  system.state().remove_cell(&target_pid);
 
   let context = ActorContext::new(&system, watcher_pid);
   assert!(context.watch(&target_ref).is_ok());

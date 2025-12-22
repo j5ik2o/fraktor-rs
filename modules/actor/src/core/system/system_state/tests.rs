@@ -1,35 +1,123 @@
-use alloc::{string::ToString, vec::Vec};
-use core::time::Duration;
+use alloc::{boxed::Box, string::ToString, vec::Vec};
+use core::{
+  sync::atomic::{AtomicUsize, Ordering},
+  time::Duration,
+};
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdMutex, NoStdToolbox},
+  runtime_toolbox::{NoStdMutex, NoStdToolbox, RuntimeToolbox, SyncMutexFamily},
   sync::{ArcShared, SharedAccess},
 };
 
-use super::SystemState;
+use super::{SystemState, SystemStateGeneric};
 use crate::core::{
   actor_prim::{
-    Actor, ActorCell, ActorContextGeneric,
-    actor_path::{ActorPath, ActorPathScheme, ActorUid, GuardianKind as PathGuardianKind, PathResolutionError},
+    Actor, ActorCell, ActorContextGeneric, Pid,
+    actor_path::{
+      ActorPath, ActorPathParser, ActorPathScheme, ActorUid, GuardianKind as PathGuardianKind, PathResolutionError,
+    },
     actor_ref::ActorRefGeneric,
   },
   dispatcher::{DispatchError, DispatchExecutor, DispatchSharedGeneric, DispatcherConfig},
   error::ActorError,
-  event_stream::{EventStream, EventStreamEvent, EventStreamSubscriber, subscriber_handle},
+  event_stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   mailbox::MailboxMessage,
   messaging::{AnyMessage, AnyMessageViewGeneric, FailurePayload, SystemMessage},
   props::Props,
+  scheduler::{
+    ManualTestDriver, SchedulerConfig, TickDriverConfig, TickDriverControl, TickDriverError, TickDriverHandleGeneric,
+    TickDriverId, TickDriverKind, TickDriverRuntime, TickExecutorSignal, TickFeed,
+  },
   system::{
     ActorSystemConfig, AuthorityState, GuardianKind, RegisterExtraTopLevelError, RemotingConfig, SystemStateShared,
     booting_state::BootingSystemStateGeneric,
   },
 };
 
+impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
+  pub(crate) fn remove_cell(&mut self, pid: &Pid) {
+    let reservation_source =
+      self.actor_path_registry.get(pid).map(|handle| (handle.canonical_uri().to_string(), handle.uid()));
+
+    if let Some((canonical, Some(uid))) = reservation_source
+      && let Ok(actor_path) = ActorPathParser::parse(&canonical)
+    {
+      let now_secs = self.monotonic_now().as_secs();
+      let _ = self.actor_path_registry.reserve_uid(&actor_path, uid, now_secs, None);
+    }
+
+    self.actor_path_registry.unregister(pid);
+    let _ = self.cells.with_write(|cells| cells.remove(pid));
+  }
+
+  #[must_use]
+  pub(crate) fn child_pids(&self, parent: Pid) -> Vec<Pid> {
+    self.cell(&parent).map_or_else(Vec::new, |cell| cell.children())
+  }
+
+  // ask_futures と temp_actors は SystemState 本体に実装しているため、テスト側の補助実装は不要
+}
+
 #[test]
-fn system_state_new() {
-  let state = SystemState::new();
+fn system_state_build_from_config_starts_unterminated() {
+  let state = build_state();
   assert!(!state.is_terminated());
   assert_eq!(state.dead_letters().len(), 0);
+}
+
+#[test]
+fn system_state_build_from_config_provides_scheduler_and_tick_driver_runtime() {
+  let state = build_state();
+  let scheduler = state.scheduler();
+  let resolution = scheduler.with_read(|s| s.config().resolution());
+  let runtime = state.tick_driver_runtime();
+  assert_eq!(runtime.driver().resolution(), resolution);
+}
+
+fn base_config() -> ActorSystemConfig {
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::<NoStdToolbox>::new());
+  let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
+  ActorSystemConfig::default().with_scheduler_config(scheduler).with_tick_driver(tick_driver)
+}
+
+fn build_state() -> SystemState {
+  SystemState::build_from_config(&base_config()).expect("state")
+}
+
+fn build_shared_state() -> SystemStateShared {
+  SystemStateShared::new(build_state())
+}
+
+#[test]
+fn system_state_drop_shuts_down_executor_once() {
+  struct NoopControl;
+
+  impl TickDriverControl for NoopControl {
+    fn shutdown(&self) {}
+  }
+
+  let executor_calls = ArcShared::new(AtomicUsize::new(0));
+  let executor_calls_for_builder = executor_calls.clone();
+  let tick_driver = crate::core::scheduler::TickDriverConfig::new(move |_ctx| {
+    let control: Box<dyn TickDriverControl> = Box::new(NoopControl);
+    let control = ArcShared::new(<<NoStdToolbox as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(control));
+    let resolution = Duration::from_millis(1);
+    let handle = TickDriverHandleGeneric::new(TickDriverId::new(1), TickDriverKind::Auto, resolution, control);
+    let feed = TickFeed::<NoStdToolbox>::new(resolution, 1, TickExecutorSignal::new());
+    let runtime = TickDriverRuntime::new(handle, feed).with_executor_shutdown({
+      let executor_calls = executor_calls_for_builder.clone();
+      move || {
+        executor_calls.fetch_add(1, Ordering::SeqCst);
+      }
+    });
+    Ok::<_, TickDriverError>(runtime)
+  });
+
+  let config = ActorSystemConfig::default().with_tick_driver(tick_driver);
+  let state = SystemState::build_from_config(&config).expect("state");
+  drop(state);
+
+  assert_eq!(executor_calls.load(Ordering::SeqCst), 1);
 }
 
 #[test]
@@ -40,7 +128,7 @@ fn system_state_default() {
 
 #[test]
 fn system_state_allocate_pid() {
-  let state = SystemState::new();
+  let state = build_state();
   let pid1 = state.allocate_pid();
   let pid2 = state.allocate_pid();
   assert_ne!(pid1.value(), pid2.value());
@@ -48,7 +136,7 @@ fn system_state_allocate_pid() {
 
 #[test]
 fn system_state_monotonic_now() {
-  let state = SystemState::new();
+  let state = build_state();
   let now1 = state.monotonic_now();
   let now2 = state.monotonic_now();
   assert!(now2 > now1);
@@ -56,21 +144,21 @@ fn system_state_monotonic_now() {
 
 #[test]
 fn system_state_event_stream() {
-  let state = SystemState::new();
+  let state = build_state();
   let stream = state.event_stream();
   let _ = stream;
 }
 
 #[test]
 fn system_state_termination_future() {
-  let state = SystemState::new();
+  let state = build_state();
   let future = state.termination_future();
   assert!(!future.with_read(|af| af.is_ready()));
 }
 
 #[test]
 fn system_state_mark_terminated() {
-  let state = SystemState::new();
+  let state = build_state();
   assert!(!state.is_terminated());
   state.mark_terminated();
   assert!(state.is_terminated());
@@ -78,7 +166,7 @@ fn system_state_mark_terminated() {
 
 #[test]
 fn system_state_register_and_remove_cell() {
-  let state = SystemStateShared::new(SystemState::new());
+  let state = build_shared_state();
   let root_pid = state.allocate_pid();
   let child_pid = state.allocate_pid();
   let props = Props::from_fn(|| RestartProbeActor);
@@ -92,34 +180,30 @@ fn system_state_register_and_remove_cell() {
   let path = state.actor_path(&child_pid).expect("path");
   assert_eq!(path.to_string(), "/user/worker");
 
-  let _ = state.remove_cell(&child_pid);
+  state.remove_cell(&child_pid);
   assert!(state.cell(&child_pid).is_none());
 }
 
 #[test]
 fn system_state_remove_cell_reserves_uid() {
-  let state = SystemState::new();
+  let mut state = build_state();
   let pid = state.allocate_pid();
   let path = ActorPath::root().child("reserved").with_uid(ActorUid::new(777));
 
-  state.actor_path_registry().with_write(|registry| {
-    registry.register(pid, &path);
-  });
+  state.actor_path_registry_mut().register(pid, &path);
 
-  let _ = state.remove_cell(&pid);
+  state.remove_cell(&pid);
 
   let now = state.monotonic_now().as_secs();
-  let result =
-    state.actor_path_registry().with_write(|registry| registry.reserve_uid(&path, ActorUid::new(888), now, None));
+  let result = state.actor_path_registry_mut().reserve_uid(&path, ActorUid::new(888), now, None);
   assert!(matches!(result, Err(PathResolutionError::UidReserved { .. })));
 }
 
 #[test]
 fn system_state_registers_canonical_uri_with_config() {
-  let state = SystemStateShared::new(SystemState::new());
   let remoting = RemotingConfig::default().with_canonical_host("localhost").with_canonical_port(2552);
-  let config = ActorSystemConfig::default().with_system_name("fraktor-system").with_remoting_config(remoting);
-  state.apply_actor_system_config(&config);
+  let config = base_config().with_system_name("fraktor-system").with_remoting_config(remoting);
+  let state = SystemStateShared::new(SystemState::build_from_config(&config).expect("state"));
 
   let props = Props::from_fn(|| RestartProbeActor);
   let root_pid = state.allocate_pid();
@@ -131,19 +215,17 @@ fn system_state_registers_canonical_uri_with_config() {
     ActorCell::create(state.clone(), child_pid, Some(root_pid), "worker".to_string(), &props).expect("worker");
   state.register_cell(child);
 
-  let canonical = state.with_actor_path_registry(|registry| {
-    registry.with_read(|r| r.canonical_uri(&child_pid).expect("canonical uri").to_string())
-  });
+  let canonical =
+    state.with_actor_path_registry(|registry| registry.canonical_uri(&child_pid).expect("canonical uri").to_string());
   assert!(canonical.starts_with("fraktor.tcp://fraktor-system@localhost:2552"));
   assert!(canonical.ends_with("/user/worker"));
 }
 
 #[test]
 fn system_state_prefers_advertise_authority_for_canonical_path() {
-  let state = SystemStateShared::new(SystemState::new());
   let remoting = RemotingConfig::default().with_canonical_host("public.example.com").with_canonical_port(4100);
-  let config = ActorSystemConfig::default().with_system_name("fraktor-system").with_remoting_config(remoting);
-  state.apply_actor_system_config(&config);
+  let config = base_config().with_system_name("fraktor-system").with_remoting_config(remoting);
+  let state = SystemStateShared::new(SystemState::build_from_config(&config).expect("state"));
 
   let props = Props::from_fn(|| RestartProbeActor);
   let root_pid = state.allocate_pid();
@@ -163,10 +245,9 @@ fn system_state_prefers_advertise_authority_for_canonical_path() {
 
 #[test]
 fn system_state_refuses_canonical_without_port() {
-  let state = SystemStateShared::new(SystemState::new());
   let remoting = RemotingConfig::default().with_canonical_host("missing-port.example");
-  let config = ActorSystemConfig::default().with_system_name("fraktor-system").with_remoting_config(remoting);
-  state.apply_actor_system_config(&config);
+  let config = base_config().with_system_name("fraktor-system").with_remoting_config(remoting);
+  let state = SystemStateShared::new(SystemState::build_from_config(&config).expect("state"));
 
   let props = Props::from_fn(|| RestartProbeActor);
   let root_pid = state.allocate_pid();
@@ -179,17 +260,48 @@ fn system_state_refuses_canonical_without_port() {
   state.register_cell(child);
 
   assert!(state.canonical_actor_path(&child_pid).is_none());
-  assert!(state.with_actor_path_registry(|registry| registry.with_read(|r| r.get(&child_pid).is_none())));
+  assert!(state.with_actor_path_registry(|registry| registry.get(&child_pid).is_none()));
   let local = state.actor_path(&child_pid).expect("local path");
   assert_eq!(local.to_relative_string(), "/user/worker");
   assert!(state.canonical_authority_components().is_none());
 }
+
+#[test]
+fn system_state_remoting_config_is_none_when_disabled() {
+  let config = base_config().with_system_name("fraktor-system");
+  let state = SystemState::build_from_config(&config).expect("state");
+  assert!(state.remoting_config().is_none());
+}
+
+#[test]
+fn system_state_remoting_config_matches_config_when_enabled() {
+  let remoting = RemotingConfig::default()
+    .with_canonical_host("example.com")
+    .with_canonical_port(2552)
+    .with_quarantine_duration(Duration::from_secs(10));
+  let config = base_config().with_system_name("fraktor-system").with_remoting_config(remoting.clone());
+  let state = SystemState::build_from_config(&config).expect("state");
+
+  assert_eq!(state.remoting_config(), Some(remoting));
+}
+
+#[test]
+fn system_state_remoting_config_retains_partial_authority() {
+  let remoting = RemotingConfig::default()
+    .with_canonical_host("missing-port.example")
+    .with_quarantine_duration(Duration::from_secs(10));
+  let config = base_config().with_system_name("fraktor-system").with_remoting_config(remoting.clone());
+  let state = SystemStateShared::new(SystemState::build_from_config(&config).expect("state"));
+
+  assert_eq!(state.remoting_config(), Some(remoting));
+  assert!(state.canonical_authority_components().is_none());
+  assert!(state.has_partial_canonical_authority());
+}
+
 #[test]
 fn system_state_honors_default_guardian_config() {
-  let state = SystemStateShared::new(SystemState::new());
-  let config =
-    ActorSystemConfig::default().with_system_name("sys-guardian").with_default_guardian(PathGuardianKind::System);
-  state.apply_actor_system_config(&config);
+  let config = base_config().with_system_name("sys-guardian").with_default_guardian(PathGuardianKind::System);
+  let state = SystemStateShared::new(SystemState::build_from_config(&config).expect("state"));
 
   let props = Props::from_fn(|| RestartProbeActor);
   let root_pid = state.allocate_pid();
@@ -201,15 +313,14 @@ fn system_state_honors_default_guardian_config() {
     ActorCell::create(state.clone(), child_pid, Some(root_pid), "logger".to_string(), &props).expect("logger");
   state.register_cell(child);
 
-  let canonical = state.with_actor_path_registry(|registry| {
-    registry.with_read(|r| r.canonical_uri(&child_pid).expect("canonical uri").to_string())
-  });
+  let canonical =
+    state.with_actor_path_registry(|registry| registry.canonical_uri(&child_pid).expect("canonical uri").to_string());
   assert!(canonical.contains("/system/logger"), "canonical: {}", canonical);
 }
 
 #[test]
 fn system_state_assign_name_with_hint() {
-  let state = SystemState::new();
+  let mut state = build_state();
   let pid = state.allocate_pid();
 
   let result = state.assign_name(None, Some("test-actor"), pid);
@@ -220,7 +331,7 @@ fn system_state_assign_name_with_hint() {
 
 #[test]
 fn system_state_assign_name_without_hint() {
-  let state = SystemState::new();
+  let mut state = build_state();
   let pid = state.allocate_pid();
 
   let result = state.assign_name(None, None, pid);
@@ -232,7 +343,7 @@ fn system_state_assign_name_without_hint() {
 
 #[test]
 fn system_state_release_name() {
-  let state = SystemState::new();
+  let mut state = build_state();
   let pid = state.allocate_pid();
 
   let _name = state.assign_name(None, Some("test-actor"), pid).unwrap();
@@ -241,13 +352,13 @@ fn system_state_release_name() {
 
 #[test]
 fn system_state_user_guardian_pid() {
-  let state = SystemState::new();
+  let state = build_state();
   assert!(state.user_guardian_pid().is_none());
 }
 
 #[test]
 fn system_state_child_pids() {
-  let state = SystemState::new();
+  let state = build_state();
   let parent_pid = state.allocate_pid();
 
   let children = state.child_pids(parent_pid);
@@ -256,7 +367,7 @@ fn system_state_child_pids() {
 
 #[test]
 fn system_state_deadletters() {
-  let state = SystemState::new();
+  let state = build_state();
   let dead_letters = state.dead_letters();
   assert_eq!(dead_letters.len(), 0);
 }
@@ -265,7 +376,7 @@ fn system_state_deadletters() {
 fn system_state_register_ask_future() {
   use crate::core::futures::ActorFutureSharedGeneric;
 
-  let state = SystemState::new();
+  let mut state = build_state();
   let future = ActorFutureSharedGeneric::<AnyMessage, NoStdToolbox>::new();
   state.register_ask_future(future.clone());
 
@@ -283,7 +394,7 @@ fn system_state_publish_event() {
     logging::{LogEvent, LogLevel},
   };
 
-  let state = SystemState::new();
+  let state = build_state();
   let log_event = LogEvent::new(LogLevel::Info, String::from("test"), Duration::from_millis(1), None);
   let event = EventStreamEvent::Log(log_event);
 
@@ -294,7 +405,7 @@ fn system_state_publish_event() {
 fn system_state_emit_log() {
   use alloc::string::String;
 
-  let state = SystemState::new();
+  let state = build_state();
   let pid = state.allocate_pid();
 
   state.emit_log(crate::core::logging::LogLevel::Info, String::from("test message"), Some(pid));
@@ -303,22 +414,22 @@ fn system_state_emit_log() {
 
 #[test]
 fn system_state_clear_guardian() {
-  let state = SystemState::new();
+  let state = build_state();
   let pid = state.allocate_pid();
 
-  let cleared = state.clear_guardian(pid);
-  assert!(cleared.is_none());
+  let kind = state.guardian_kind_by_pid(pid);
+  assert!(kind.is_none());
 }
 
 #[test]
 fn system_state_user_guardian() {
-  let state = SystemState::new();
+  let state = build_state();
   assert!(state.user_guardian().is_none());
 }
 
 #[test]
 fn system_state_register_extra_top_level_success() {
-  let state = SystemState::new();
+  let mut state = build_state();
   let actor = ActorRefGeneric::null();
   assert!(state.register_extra_top_level("metrics", actor.clone()).is_ok());
   assert!(state.extra_top_level("metrics").is_some());
@@ -326,7 +437,7 @@ fn system_state_register_extra_top_level_success() {
 
 #[test]
 fn system_state_register_extra_top_level_errors() {
-  let state = SystemState::new();
+  let mut state = build_state();
   let actor = ActorRefGeneric::null();
   let reserved = state.register_extra_top_level("user", actor.clone());
   assert!(matches!(reserved, Err(RegisterExtraTopLevelError::ReservedName(_))));
@@ -337,7 +448,7 @@ fn system_state_register_extra_top_level_errors() {
 
 #[test]
 fn system_state_temp_actor_round_trip() {
-  let state = SystemState::new();
+  let mut state = build_state();
   let actor = ActorRefGeneric::null();
   let name = state.register_temp_actor(actor.clone());
   assert!(state.temp_actor(&name).is_some());
@@ -347,11 +458,11 @@ fn system_state_temp_actor_round_trip() {
 
 #[test]
 fn system_state_remote_authority_events() {
-  let state = SystemState::new();
+  let mut state = build_state();
   let stream = state.event_stream();
   let events_shared = ArcShared::new(NoStdMutex::new(Vec::new()));
   let subscriber = subscriber_handle(RemoteEventRecorder::new(events_shared.clone()));
-  let _subscription = EventStream::subscribe_arc(&stream, &subscriber);
+  let _subscription = stream.subscribe(&subscriber);
 
   state.remote_authority_set_quarantine("node:2552", Some(Duration::from_secs(0)));
   state.poll_remote_authorities();
@@ -379,7 +490,7 @@ fn system_state_remote_authority_events() {
 fn system_state_send_system_message_to_nonexistent_actor() {
   use crate::core::messaging::SystemMessage;
 
-  let state = SystemState::new();
+  let state = build_state();
   let pid = state.allocate_pid();
 
   let result = state.send_system_message(pid, SystemMessage::Stop);
@@ -390,7 +501,7 @@ fn system_state_send_system_message_to_nonexistent_actor() {
 fn system_state_record_send_error() {
   use crate::core::error::SendError;
 
-  let state = SystemState::new();
+  let state = build_state();
   let error = SendError::closed(AnyMessage::new(42_u32));
 
   state.record_send_error(None, &error);
@@ -399,7 +510,7 @@ fn system_state_record_send_error() {
 
 #[test]
 fn guardian_cell_via_cells_returns_none_when_missing() {
-  let state = SystemStateShared::new(SystemState::new());
+  let state = build_shared_state();
   let user_pid = state.allocate_pid();
 
   state.register_guardian_pid(GuardianKind::User, user_pid);
@@ -410,7 +521,7 @@ fn guardian_cell_via_cells_returns_none_when_missing() {
 
 #[test]
 fn booting_into_running_requires_all_guardians() {
-  let state = SystemStateShared::new(SystemState::new());
+  let state = build_shared_state();
   let booting = BootingSystemStateGeneric::new(state.clone());
 
   let root_pid = state.allocate_pid();
@@ -441,7 +552,7 @@ fn booting_into_running_requires_all_guardians() {
 
 #[test]
 fn booting_into_running_fails_when_guardian_missing() {
-  let state = SystemStateShared::new(SystemState::new());
+  let state = build_shared_state();
   let booting = BootingSystemStateGeneric::new(state.clone());
 
   let root_pid = state.allocate_pid();
@@ -455,7 +566,7 @@ fn booting_into_running_fails_when_guardian_missing() {
 
 #[test]
 fn watch_on_missing_guardian_sends_terminated_to_watcher() {
-  let state = SystemStateShared::new(SystemState::new());
+  let state = build_shared_state();
   let watcher_pid = state.allocate_pid();
   let target_pid = state.allocate_pid();
 
@@ -477,13 +588,112 @@ fn watch_on_missing_guardian_sends_terminated_to_watcher() {
 }
 
 #[test]
+fn remote_watch_hook_consumes_watch_skips_fallback() {
+  let state = build_shared_state();
+  let watcher_pid = state.allocate_pid();
+  let target_pid = state.allocate_pid();
+
+  let noop_dispatcher = DispatcherConfig::from_executor(Box::new(NoopExecutor));
+  let props = Props::from_fn(|| RestartProbeActor).with_dispatcher(noop_dispatcher);
+  let watcher_cell =
+    ActorCell::create(state.clone(), watcher_pid, None, "watcher".to_string(), &props).expect("watcher cell");
+  state.register_cell(watcher_cell);
+
+  let calls = ArcShared::new(NoStdMutex::new(RemoteWatchHookCalls::default()));
+  state.register_remote_watch_hook(Box::new(RecordingRemoteWatchHook::new(calls.clone(), true, false)));
+
+  state.send_system_message(target_pid, SystemMessage::Watch(watcher_pid)).expect("watch send ok");
+
+  let mailbox_snapshot = state.cell(&watcher_pid).expect("watcher cell").mailbox();
+  assert_eq!(mailbox_snapshot.system_len(), 0);
+
+  let calls = calls.lock();
+  assert_eq!(calls.watch_calls, 1);
+  assert_eq!(calls.last_watch, Some((target_pid, watcher_pid)));
+}
+
+#[test]
+fn remote_watch_hook_non_consuming_watch_runs_fallback() {
+  let state = build_shared_state();
+  let watcher_pid = state.allocate_pid();
+  let target_pid = state.allocate_pid();
+
+  let noop_dispatcher = DispatcherConfig::from_executor(Box::new(NoopExecutor));
+  let props = Props::from_fn(|| RestartProbeActor).with_dispatcher(noop_dispatcher);
+  let watcher_cell =
+    ActorCell::create(state.clone(), watcher_pid, None, "watcher".to_string(), &props).expect("watcher cell");
+  state.register_cell(watcher_cell);
+
+  let calls = ArcShared::new(NoStdMutex::new(RemoteWatchHookCalls::default()));
+  state.register_remote_watch_hook(Box::new(RecordingRemoteWatchHook::new(calls.clone(), false, false)));
+
+  state.send_system_message(target_pid, SystemMessage::Watch(watcher_pid)).expect("watch send ok");
+
+  let mailbox_snapshot = state.cell(&watcher_pid).expect("watcher cell").mailbox();
+  assert_eq!(mailbox_snapshot.system_len(), 1);
+  let dequeued = mailbox_snapshot.dequeue().expect("dequeue system");
+  match dequeued {
+    | MailboxMessage::System(SystemMessage::Terminated(pid)) => assert_eq!(pid, target_pid),
+    | other => panic!("unexpected mailbox message: {:?}", other),
+  }
+
+  let calls = calls.lock();
+  assert_eq!(calls.watch_calls, 1);
+  assert_eq!(calls.last_watch, Some((target_pid, watcher_pid)));
+}
+
+#[test]
+fn remote_watch_hook_consumes_unwatch_is_invoked() {
+  let state = build_shared_state();
+  let watcher_pid = state.allocate_pid();
+  let target_pid = state.allocate_pid();
+
+  let calls = ArcShared::new(NoStdMutex::new(RemoteWatchHookCalls::default()));
+  state.register_remote_watch_hook(Box::new(RecordingRemoteWatchHook::new(calls.clone(), false, true)));
+
+  state.send_system_message(target_pid, SystemMessage::Unwatch(watcher_pid)).expect("unwatch send ok");
+
+  let calls = calls.lock();
+  assert_eq!(calls.unwatch_calls, 1);
+  assert_eq!(calls.last_unwatch, Some((target_pid, watcher_pid)));
+}
+
+#[test]
+fn remote_watch_hook_replaces_previous_registration() {
+  let state = build_shared_state();
+  let watcher_pid = state.allocate_pid();
+  let target_pid = state.allocate_pid();
+
+  let noop_dispatcher = DispatcherConfig::from_executor(Box::new(NoopExecutor));
+  let props = Props::from_fn(|| RestartProbeActor).with_dispatcher(noop_dispatcher);
+  let watcher_cell =
+    ActorCell::create(state.clone(), watcher_pid, None, "watcher".to_string(), &props).expect("watcher cell");
+  state.register_cell(watcher_cell);
+
+  let calls1 = ArcShared::new(NoStdMutex::new(RemoteWatchHookCalls::default()));
+  state.register_remote_watch_hook(Box::new(RecordingRemoteWatchHook::new(calls1.clone(), false, false)));
+
+  let calls2 = ArcShared::new(NoStdMutex::new(RemoteWatchHookCalls::default()));
+  state.register_remote_watch_hook(Box::new(RecordingRemoteWatchHook::new(calls2.clone(), true, false)));
+
+  state.send_system_message(target_pid, SystemMessage::Watch(watcher_pid)).expect("watch send ok");
+
+  let mailbox_snapshot = state.cell(&watcher_pid).expect("watcher cell").mailbox();
+  assert_eq!(mailbox_snapshot.system_len(), 0);
+
+  assert_eq!(calls1.lock().watch_calls, 0);
+  assert_eq!(calls2.lock().watch_calls, 1);
+}
+
+#[test]
 fn termination_future_completes_after_root_marked_terminated() {
-  let state = SystemStateShared::new(SystemState::new());
+  let state = build_shared_state();
   let root_pid = state.allocate_pid();
   state.register_guardian_pid(GuardianKind::Root, root_pid);
 
   assert!(!state.termination_future().with_read(|f| f.is_ready()));
-  let _ = state.clear_guardian(root_pid);
+  assert_eq!(state.guardian_kind_by_pid(root_pid), Some(GuardianKind::Root));
+  state.mark_guardian_stopped(GuardianKind::Root);
   state.mark_terminated();
 
   assert!(state.termination_future().with_read(|f| f.is_ready()));
@@ -493,11 +703,11 @@ fn termination_future_completes_after_root_marked_terminated() {
 fn system_state_logs_failure_with_pid_origin() {
   use core::time::Duration;
 
-  let state = SystemState::new();
+  let state = build_shared_state();
   let events_shared: ArcShared<NoStdMutex<Vec<EventStreamEvent<NoStdToolbox>>>> =
     ArcShared::new(NoStdMutex::new(Vec::new()));
   let subscriber = subscriber_handle(LogRecorder::new(events_shared.clone()));
-  let _subscription = EventStream::subscribe_arc(&state.event_stream(), &subscriber);
+  let _subscription = state.event_stream().subscribe(&subscriber);
 
   let pid = state.allocate_pid();
   let payload = FailurePayload::from_error(pid, &ActorError::fatal("boom"), None, Duration::from_millis(1));
@@ -516,6 +726,42 @@ fn system_state_logs_failure_with_pid_origin() {
 }
 
 struct RestartProbeActor;
+
+#[derive(Default)]
+struct RemoteWatchHookCalls {
+  watch_calls:   usize,
+  unwatch_calls: usize,
+  last_watch:    Option<(Pid, Pid)>,
+  last_unwatch:  Option<(Pid, Pid)>,
+}
+
+struct RecordingRemoteWatchHook {
+  calls:           ArcShared<NoStdMutex<RemoteWatchHookCalls>>,
+  consume_watch:   bool,
+  consume_unwatch: bool,
+}
+
+impl RecordingRemoteWatchHook {
+  fn new(calls: ArcShared<NoStdMutex<RemoteWatchHookCalls>>, consume_watch: bool, consume_unwatch: bool) -> Self {
+    Self { calls, consume_watch, consume_unwatch }
+  }
+}
+
+impl crate::core::system::RemoteWatchHook<NoStdToolbox> for RecordingRemoteWatchHook {
+  fn handle_watch(&mut self, target: Pid, watcher: Pid) -> bool {
+    let mut calls = self.calls.lock();
+    calls.watch_calls += 1;
+    calls.last_watch = Some((target, watcher));
+    self.consume_watch
+  }
+
+  fn handle_unwatch(&mut self, target: Pid, watcher: Pid) -> bool {
+    let mut calls = self.calls.lock();
+    calls.unwatch_calls += 1;
+    calls.last_unwatch = Some((target, watcher));
+    self.consume_unwatch
+  }
+}
 
 struct RemoteEventRecorder {
   events: ArcShared<NoStdMutex<Vec<EventStreamEvent<NoStdToolbox>>>>,
@@ -585,7 +831,7 @@ impl Actor for RestartProbeActor {
 
 #[test]
 fn recreate_send_failure_escalates_and_stops_parent() {
-  let state = SystemStateShared::new(SystemState::new());
+  let state = build_shared_state();
   let parent_pid = state.allocate_pid();
   let parent_props = Props::from_fn(|| RestartProbeActor);
   let parent =
@@ -599,7 +845,7 @@ fn recreate_send_failure_escalates_and_stops_parent() {
   state.register_cell(child.clone());
   state.register_child(parent_pid, child_pid);
 
-  let _ = state.remove_cell(&child_pid);
+  state.remove_cell(&child_pid);
   let error = ActorError::recoverable("boom");
   state.handle_failure(child_pid, Some(parent_pid), &error);
 

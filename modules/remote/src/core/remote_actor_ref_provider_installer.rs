@@ -53,12 +53,11 @@ impl<TB: RuntimeToolbox + 'static> ActorRefProviderInstaller<TB> for RemoteActor
     };
 
     let control = extension.handle();
-    let authority_manager = system.state().remote_authority_manager().clone();
-    let provider = RemoteActorRefProviderGeneric::from_components(system.clone(), writer, control, authority_manager)
+    let provider = RemoteActorRefProviderGeneric::from_components(system.clone(), writer, control)
       .map_err(|error| ActorSystemBuildError::Configuration(format!("{error}")))?;
     let shared = RemoteWatchHookShared::new(provider, &[ActorPathScheme::FraktorTcp]);
     let shared_provider = ActorRefProviderSharedGeneric::new(shared.clone());
-    extended.register_actor_ref_provider(&shared_provider);
+    extended.register_actor_ref_provider(&shared_provider)?;
     extended.register_remote_watch_hook(shared);
 
     if self.enable_loopback {

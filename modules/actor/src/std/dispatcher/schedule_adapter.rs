@@ -11,7 +11,7 @@ use fraktor_utils_rs::{core::sync::ArcShared, std::runtime_toolbox::StdToolbox};
 
 use crate::{
   core::{dispatcher::ScheduleAdapter, mailbox::ScheduleHints},
-  std::dispatcher::Dispatcher,
+  std::dispatcher::DispatcherShared,
 };
 
 #[cfg(test)]
@@ -38,7 +38,7 @@ impl Default for StdScheduleAdapter {
 }
 
 impl ScheduleAdapter<StdToolbox> for StdScheduleAdapter {
-  fn create_waker(&mut self, dispatcher: Dispatcher) -> Waker {
+  fn create_waker(&mut self, dispatcher: DispatcherShared) -> Waker {
     StdScheduleWaker::into_waker(dispatcher)
   }
 
@@ -58,11 +58,11 @@ impl ScheduleAdapter<StdToolbox> for StdScheduleAdapter {
 }
 
 struct StdScheduleShared {
-  dispatcher: Dispatcher,
+  dispatcher: DispatcherShared,
 }
 
 impl StdScheduleShared {
-  const fn new(dispatcher: Dispatcher) -> Self {
+  const fn new(dispatcher: DispatcherShared) -> Self {
     Self { dispatcher }
   }
 
@@ -78,7 +78,7 @@ impl StdScheduleShared {
 struct StdScheduleWaker;
 
 impl StdScheduleWaker {
-  fn into_waker(dispatcher: Dispatcher) -> Waker {
+  fn into_waker(dispatcher: DispatcherShared) -> Waker {
     let shared = ArcShared::new(StdScheduleShared::new(dispatcher));
     unsafe { Waker::from_raw(Self::raw_waker(shared)) }
   }

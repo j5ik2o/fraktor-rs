@@ -25,18 +25,18 @@ use crate::core::{
   messaging::{AnyMessageGeneric, SystemMessage, message_invoker::MessageInvokerShared},
 };
 
-/// Dispatcher that manages mailbox processing.
-pub struct DispatcherGeneric<TB: RuntimeToolbox + 'static> {
+/// Dispatcher shared handle that manages mailbox processing.
+pub struct DispatcherSharedGeneric<TB: RuntimeToolbox + 'static> {
   core: ArcShared<DispatcherCore<TB>>,
 }
 
-/// Type alias for `DispatcherGeneric` with the default `NoStdToolbox`.
-pub type Dispatcher = DispatcherGeneric<NoStdToolbox>;
+/// Type alias for `DispatcherSharedGeneric` with the default `NoStdToolbox`.
+pub type DispatcherShared = DispatcherSharedGeneric<NoStdToolbox>;
 
-unsafe impl<TB: RuntimeToolbox + 'static> Send for DispatcherGeneric<TB> {}
-unsafe impl<TB: RuntimeToolbox + 'static> Sync for DispatcherGeneric<TB> {}
+unsafe impl<TB: RuntimeToolbox + 'static> Send for DispatcherSharedGeneric<TB> {}
+unsafe impl<TB: RuntimeToolbox + 'static> Sync for DispatcherSharedGeneric<TB> {}
 
-impl<TB: RuntimeToolbox + 'static> DispatcherGeneric<TB> {
+impl<TB: RuntimeToolbox + 'static> DispatcherSharedGeneric<TB> {
   /// Creates a new dispatcher from a mailbox and execution strategy.
   #[must_use]
   pub fn new(mailbox: ArcShared<MailboxGeneric<TB>>, executor: ArcShared<DispatchExecutorRunner<TB>>) -> Self {
@@ -171,7 +171,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherGeneric<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Clone for DispatcherGeneric<TB> {
+impl<TB: RuntimeToolbox + 'static> Clone for DispatcherSharedGeneric<TB> {
   fn clone(&self) -> Self {
     Self { core: self.core.clone() }
   }

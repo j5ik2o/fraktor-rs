@@ -1,11 +1,11 @@
 #![allow(clippy::print_stdout)]
 
-//! Cluster extension quickstart (Tokio + LocalClusterProvider)
+//! Cluster extension quickstart (Tokio + LocalClusterProviderGeneric)
 //!
 //! # 概要
 //!
 //! このサンプルは EventStream 主導のトポロジ通知方式を実装しています：
-//! 1. `LocalClusterProvider` が `ClusterEvent::TopologyUpdated` を EventStream に publish
+//! 1. `LocalClusterProviderGeneric` が `ClusterEvent::TopologyUpdated` を EventStream に publish
 //! 2. `ClusterExtension` が EventStream を購読し、自動的に `ClusterCore::on_topology` を呼び出す
 //! 3. 手動の `on_topology` 呼び出しは不要
 //!
@@ -16,14 +16,15 @@
 //!
 //! # Phase1 (静的トポロジ) vs Phase2 (動的トポロジ)
 //!
-//! - **Phase1**: `LocalClusterProvider` に静的トポロジを設定し、`start_member()` 時に publish
+//! - **Phase1**: `LocalClusterProviderGeneric` に静的トポロジを設定し、`start_member()` 時に
+//!   publish
 //! - **Phase2**: `subscribe_remoting_events()` で Transport イベント（Connected/Quarantined）を
 //!   自動検知し、動的にトポロジを更新
 //!
 //! # Provider 差し替え方法
 //!
 //! `ClusterProvider` トレイトを実装することで、Provider を差し替えられます：
-//! - `LocalClusterProvider`: 静的トポロジ + Transport イベント自動検知（本サンプル）
+//! - `LocalClusterProviderGeneric`: 静的トポロジ + Transport イベント自動検知（本サンプル）
 //! - `StaticClusterProvider`: no_std 環境向け静的トポロジ
 //! - etcd/zk/automanaged provider: 外部サービス連携（Phase2以降で対応予定）
 //!
@@ -39,7 +40,7 @@
 //!
 //! ```text
 //! === Cluster Extension Tokio Demo ===
-//! Demonstrates EventStream-based topology with LocalClusterProvider
+//! Demonstrates EventStream-based topology with LocalClusterProviderGeneric
 //!
 //! --- Starting cluster members ---
 //! [identity][cluster-node-a] member kinds: ["grain", "topic"]
@@ -74,8 +75,8 @@ use std::{
 use anyhow::{Result, anyhow};
 use fraktor_actor_rs::{
   core::{
-    error::ActorError, extension::ExtensionInstallers, serialization::SerializationExtensionInstaller,
-    system::RemotingConfig,
+    actor_prim::actor_path::ActorPathParser, error::ActorError, extension::ExtensionInstallers,
+    serialization::SerializationExtensionInstaller, system::RemotingConfig,
   },
   std::{
     actor_prim::{Actor, ActorContext, ActorRef},
@@ -88,8 +89,9 @@ use fraktor_actor_rs::{
   },
 };
 use fraktor_cluster_rs::core::{
-  ActivatedKind, ClusterEvent, ClusterExtensionConfig, ClusterExtensionGeneric, ClusterExtensionInstaller,
-  ClusterTopology,
+  ActivatedKind, ClusterApiGeneric, ClusterEvent, ClusterExtensionConfig, ClusterExtensionGeneric,
+  ClusterExtensionInstaller, ClusterIdentity, ClusterTopology, GrainKey, IdentityLookup, IdentitySetupError,
+  LookupError, PlacementDecision, PlacementLocality, PlacementResolution,
 };
 use fraktor_remote_rs::core::{
   RemotingExtensionConfig, RemotingExtensionInstaller, TokioActorRefProviderInstaller, TokioTransportConfig,
@@ -111,19 +113,27 @@ const SAMPLE_KEY: &str = "user:va-1";
 #[tokio::main]
 async fn main() -> Result<()> {
   println!("=== Cluster Extension Tokio Demo ===");
-  println!("Demonstrates EventStream-based topology with LocalClusterProvider\n");
+  println!("Demonstrates EventStream-based topology with LocalClusterProviderGeneric\n");
 
   // 返信待機チャネル（ノードB→ノードA→ノードB）
   let (reply_tx, reply_rx) = oneshot::channel::<String>();
   let shared_reply = Arc::new(Mutex::new(Some(reply_tx)));
 
   // ノードA: 受信・Grain 起動側（静的トポロジ: node-b が join）
-  let static_topology_a = ClusterTopology::new(1, vec![format!("{HOST}:{NODE_B_PORT}")], Vec::new());
-  let node_a = build_cluster_node("cluster-node-a", NODE_A_PORT, None, Some(static_topology_a))?;
+  let static_topology_a = ClusterTopology::new(1, vec![format!("{HOST}:{NODE_B_PORT}")], Vec::new(), Vec::new());
+  let node_a_authority = format!("{HOST}:{NODE_A_PORT}");
+  let node_a =
+    build_cluster_node("cluster-node-a", NODE_A_PORT, None, Some(static_topology_a), node_a_authority.clone())?;
 
   // ノードB: 送信・返信受信側（静的トポロジ: node-a が join）
-  let static_topology_b = ClusterTopology::new(2, vec![format!("{HOST}:{NODE_A_PORT}")], Vec::new());
-  let node_b = build_cluster_node("cluster-node-b", NODE_B_PORT, Some(shared_reply.clone()), Some(static_topology_b))?;
+  let static_topology_b = ClusterTopology::new(2, vec![format!("{HOST}:{NODE_A_PORT}")], Vec::new(), Vec::new());
+  let node_b = build_cluster_node(
+    "cluster-node-b",
+    NODE_B_PORT,
+    Some(shared_reply.clone()),
+    Some(static_topology_b),
+    node_a_authority,
+  )?;
 
   // Kind を登録
   node_a
@@ -171,6 +181,28 @@ async fn main() -> Result<()> {
     .map_err(|_| anyhow!("reply channel dropped"))?;
   println!("[ok] grain reply: {reply}");
 
+  println!("\n--- Cluster API resolve ---");
+  let api = ClusterApiGeneric::try_from_system(node_b.system.as_core()).map_err(|e| anyhow!("cluster api: {e:?}"))?;
+  let identity = ClusterIdentity::new(GRAIN_KIND, "api-1").map_err(|e| anyhow!("identity error: {e:?}"))?;
+  let actor_ref = api.get(&identity).map_err(|e| anyhow!("cluster api get failed: {e:?}"))?;
+  let reply_path =
+    node_b.system.user_guardian_ref().canonical_path().ok_or_else(|| anyhow!("cluster api reply path unavailable"))?;
+  let reply_uri = reply_path.to_canonical_uri();
+  let api_payload = encode_cluster_api_call(SAMPLE_KEY, "hello via cluster api", &reply_uri);
+  let (api_tx, api_rx) = oneshot::channel::<String>();
+  let api_reply = Arc::new(Mutex::new(Some(api_tx)));
+  node_b
+    .system
+    .user_guardian_ref()
+    .tell(AnyMessage::new(RegisterResponder { tx: api_reply }))
+    .map_err(|e| anyhow!("register responder failed: {e:?}"))?;
+  actor_ref.tell(AnyMessage::new(api_payload)).map_err(|e| anyhow!("cluster api send failed: {e:?}"))?;
+  let api_reply = tokio::time::timeout(Duration::from_secs(5), api_rx)
+    .await
+    .map_err(|_| anyhow!("timeout waiting cluster api reply"))?
+    .map_err(|_| anyhow!("cluster api reply channel dropped"))?;
+  println!("[ok] cluster api reply: {api_reply}");
+
   // シャットダウン
   println!("\n--- Shutting down ---");
   node_b.cluster.shutdown(true).map_err(|e| anyhow!("shutdown node b: {e:?}"))?;
@@ -196,13 +228,14 @@ fn build_cluster_node(
   port: u16,
   responder: Option<Arc<Mutex<Option<oneshot::Sender<String>>>>>,
   static_topology: Option<ClusterTopology>,
+  lookup_authority: String,
 ) -> Result<ClusterNode> {
   let tokio_handle = tokio::runtime::Handle::current();
   let tokio_executor = TokioExecutor::new(tokio_handle);
   let default_dispatcher = DispatcherConfig::from_executor(ArcShared::new(StdSyncMutex::new(Box::new(tokio_executor))));
 
   // ClusterExtensionInstaller を作成（static_topology を設定）
-  // new_with_local() を使用して LocalClusterProvider を自動的に作成
+  // new_with_local() を使用して LocalClusterProviderGeneric を自動的に作成
   let advertised = format!("{HOST}:{port}");
   let mut cluster_config =
     ClusterExtensionConfig::default().with_advertised_address(&advertised).with_metrics_enabled(true);
@@ -210,9 +243,18 @@ fn build_cluster_node(
     cluster_config = cluster_config.with_static_topology(topology);
   }
 
+  let hub_path = format!("user/{HUB_NAME}");
+  let identity_lookup_factory = {
+    let hub_path = hub_path.clone();
+    let lookup_authority = lookup_authority.clone();
+    move || {
+      Box::new(StaticHubIdentityLookup::new(lookup_authority.clone(), hub_path.clone())) as Box<dyn IdentityLookup>
+    }
+  };
   let remoting_config = RemotingExtensionConfig::default().with_transport_scheme("fraktor.tcp");
   let system_config = ActorSystemConfig::default()
-    .with_system_name(system_name.to_string())
+    // ClusterApiGeneric が `cellactor` を前提にしているため system_name を揃える
+    .with_system_name("cellactor".to_string())
     .with_tick_driver(TickDriverConfig::tokio_quickstart())
     .with_default_dispatcher(default_dispatcher)
     .with_actor_ref_provider_installer(TokioActorRefProviderInstaller::from_config(TokioTransportConfig::default()))
@@ -221,7 +263,10 @@ fn build_cluster_node(
       ExtensionInstallers::default()
         .with_extension_installer(SerializationExtensionInstaller::new(default_loopback_setup()))
         .with_extension_installer(RemotingExtensionInstaller::new(remoting_config.clone()))
-        .with_extension_installer(ClusterExtensionInstaller::new_with_local(cluster_config)),
+        .with_extension_installer(
+          ClusterExtensionInstaller::new_with_local(cluster_config)
+            .with_identity_lookup_factory(identity_lookup_factory),
+        ),
     );
 
   let guardian = Props::from_fn(GrainHub::new).with_name(HUB_NAME);
@@ -297,6 +342,30 @@ impl Actor for GrainHub {
 
     if let Some(register) = message.downcast_ref::<RegisterResponder>() {
       self.responder = Some(register.tx.clone());
+      return Ok(());
+    }
+
+    if let Some(text) = message.downcast_ref::<String>() {
+      if let Some((key, body, reply_uri)) = parse_cluster_api_call(text) {
+        println!("[hub] recv cluster api key={} body={}", key, body);
+        let reply_path = ActorPathParser::parse(&reply_uri)
+          .map_err(|e| ActorError::recoverable(format!("invalid reply uri: {e:?}")))?;
+        let reply_ref = ctx
+          .system()
+          .resolve_actor_ref(reply_path)
+          .map_err(|e| ActorError::recoverable(format!("resolve failed: {e:?}")))?;
+        reply_ref
+          .tell(AnyMessage::new(format!("echo:{body}")))
+          .map_err(|e| ActorError::recoverable(format!("reply failed: {e:?}")))?;
+        return Ok(());
+      }
+      if let Some(tx) = &self.responder {
+        if let Ok(mut guard) = tx.lock() {
+          if let Some(sender) = guard.take() {
+            let _ = sender.send(text.clone());
+          }
+        }
+      }
       return Ok(());
     }
 
@@ -379,4 +448,48 @@ struct RegisterResponder {
 
 fn sanitize_key(key: &str) -> String {
   key.replace(['/', ':'], "_")
+}
+
+fn encode_cluster_api_call(key: &str, body: &str, reply_uri: &str) -> String {
+  format!("cluster-api|{key}|{body}|{reply_uri}")
+}
+
+fn parse_cluster_api_call(text: &str) -> Option<(String, String, String)> {
+  let mut parts = text.splitn(4, '|');
+  let prefix = parts.next()?;
+  if prefix != "cluster-api" {
+    return None;
+  }
+  let key = parts.next()?.to_string();
+  let body = parts.next()?.to_string();
+  let reply_uri = parts.next()?.to_string();
+  Some((key, body, reply_uri))
+}
+
+struct StaticHubIdentityLookup {
+  authority: String,
+  hub_path:  String,
+}
+
+impl StaticHubIdentityLookup {
+  fn new(authority: String, hub_path: String) -> Self {
+    Self { authority, hub_path }
+  }
+}
+
+impl IdentityLookup for StaticHubIdentityLookup {
+  fn setup_member(&mut self, _kinds: &[ActivatedKind]) -> Result<(), IdentitySetupError> {
+    Ok(())
+  }
+
+  fn setup_client(&mut self, _kinds: &[ActivatedKind]) -> Result<(), IdentitySetupError> {
+    Ok(())
+  }
+
+  fn resolve(&mut self, key: &GrainKey, now: u64) -> Result<PlacementResolution, LookupError> {
+    let decision =
+      PlacementDecision { key: key.clone(), authority: self.authority.clone(), observed_at: now };
+    let pid = format!("{}::{}", self.authority, self.hub_path);
+    Ok(PlacementResolution { decision, locality: PlacementLocality::Local, pid })
+  }
 }

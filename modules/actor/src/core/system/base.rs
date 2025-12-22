@@ -27,14 +27,14 @@ use crate::core::{
   dead_letter::{DeadLetterEntryGeneric, DeadLetterReason},
   error::SendError,
   event_stream::{
-    EventStreamEvent, EventStreamGeneric, EventStreamSubscriberShared, EventStreamSubscriptionGeneric,
+    EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriberShared, EventStreamSubscriptionGeneric,
     TickDriverSnapshot,
   },
   futures::ActorFutureSharedGeneric,
   logging::LogLevel,
   messaging::{AnyMessageGeneric, SystemMessage},
   props::PropsGeneric,
-  scheduler::{SchedulerBackedDelayProvider, SchedulerContextSharedGeneric, TickDriverConfig},
+  scheduler::{SchedulerBackedDelayProvider, TickDriverConfig},
   serialization::default_serialization_extension_id,
   spawn::SpawnError,
   system::{
@@ -55,9 +55,39 @@ pub type ActorSystem = ActorSystemGeneric<NoStdToolbox>;
 
 impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   /// Creates an empty actor system without any guardian (testing only).
+  ///
+  /// # Panics
+  ///
+  /// Panics if the default test-support configuration fails to build.
   #[must_use]
-  pub fn new_empty() -> Self {
-    let state = SystemStateSharedGeneric::new(SystemStateGeneric::new());
+  #[cfg(any(test, feature = "test-support"))]
+  pub fn new_empty() -> Self
+  where
+    TB: Default, {
+    Self::new_empty_with(|config| config)
+  }
+
+  /// Creates an empty actor system without any guardian using a customizable config (testing only).
+  ///
+  /// # Panics
+  ///
+  /// Panics if the default test-support configuration fails to build.
+  #[must_use]
+  #[cfg(any(test, feature = "test-support"))]
+  pub fn new_empty_with<F>(configure: F) -> Self
+  where
+    TB: Default,
+    F: FnOnce(ActorSystemConfigGeneric<TB>) -> ActorSystemConfigGeneric<TB>, {
+    let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
+    let scheduler_config = crate::core::scheduler::SchedulerConfig::default().with_runner_api_enabled(true);
+    let config =
+      ActorSystemConfigGeneric::default().with_scheduler_config(scheduler_config).with_tick_driver(tick_driver);
+    let config = configure(config);
+    let state = match SystemStateGeneric::build_from_config(&config) {
+      | Ok(state) => state,
+      | Err(error) => panic!("default test-support config should always build: {error:?}"),
+    };
+    let state = SystemStateSharedGeneric::new(state);
     state.mark_root_started();
     Self { state }
   }
@@ -129,14 +159,8 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   where
     TB: Default,
     F: FnOnce(&ActorSystemGeneric<TB>) -> Result<(), SpawnError>, {
-    // Validate tick driver configuration is present
-    if config.tick_driver_config().is_none() {
-      return Err(SpawnError::SystemBuildError("tick driver configuration is required".into()));
-    }
-
-    let system = Self::new_empty();
-    system.state.apply_actor_system_config(config);
-    system.install_scheduler_and_tick_driver_from_config(config)?;
+    let state = SystemStateGeneric::build_from_config(config)?;
+    let system = Self::from_state(SystemStateSharedGeneric::new(state));
     system.bootstrap(user_guardian_props, configure)?;
 
     // Install extensions and provider after bootstrap
@@ -148,7 +172,9 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
       installer.install(&system).map_err(|e| SpawnError::from_actor_system_build_error(&e))?;
     }
 
-    system.install_default_serialization_extension();
+    system.install_default_serialization_extension()?;
+
+    system.state.mark_root_started();
 
     Ok(system)
   }
@@ -260,56 +286,14 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     ExtendedActorSystemGeneric::new(self.clone())
   }
 
-  /// Installs scheduler context and tick driver runtime from configuration.
-  ///
-  /// # Errors
-  ///
-  /// Returns an error if tick driver provisioning fails.
-  fn install_scheduler_and_tick_driver_from_config(
-    &self,
-    config: &ActorSystemConfigGeneric<TB>,
-  ) -> Result<(), SpawnError>
-  where
-    TB: Default, {
-    use crate::core::scheduler::TickDriverBootstrap;
-
-    // Install scheduler context if not already present
-    if self.state.scheduler_context().is_none() {
-      let event_stream = self.state.event_stream();
-      let toolbox = TB::default();
-      let scheduler_config = *config.scheduler_config();
-
-      // Apply special handling for ManualTest driver in test mode
-      #[cfg(any(test, feature = "test-support"))]
-      let scheduler_config = if let Some(tick_driver_config) = config.tick_driver_config()
-        && matches!(tick_driver_config, crate::core::scheduler::TickDriverConfig::ManualTest(_))
-        && !scheduler_config.runner_api_enabled()
-      {
-        scheduler_config.with_runner_api_enabled(true)
-      } else {
-        scheduler_config
-      };
-
-      let context = SchedulerContextSharedGeneric::with_event_stream(toolbox, scheduler_config, event_stream);
-      self.state.install_scheduler_context(context);
-    }
-
-    // Install tick driver runtime if tick_driver_config is provided
-    if let Some(tick_driver_config) = config.tick_driver_config() {
-      let ctx = self.scheduler_context().ok_or(SpawnError::SystemUnavailable)?;
-      let runtime =
-        TickDriverBootstrap::provision(tick_driver_config, &ctx).map_err(|_| SpawnError::SystemUnavailable)?;
-      self.state.install_tick_driver_runtime(runtime);
-    }
-
-    Ok(())
-  }
-
-  fn install_default_serialization_extension(&self) {
+  fn install_default_serialization_extension(&self) -> Result<(), SpawnError> {
     let id = default_serialization_extension_id();
-    if !self.extended().has_extension(&id) {
-      let _ = self.extended().register_extension(&id);
+    if self.extended().has_extension(&id) {
+      return Ok(());
     }
+    self.extended().register_extension(&id).map(|_| ()).map_err(|error| {
+      SpawnError::SystemBuildError(format!("default serialization extension registration failed: {error:?}"))
+    })
   }
 
   /// Allocates a new pid (testing helper).
@@ -320,19 +304,19 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
 
   /// Returns the shared event stream handle.
   #[must_use]
-  pub fn event_stream(&self) -> ArcShared<EventStreamGeneric<TB>> {
+  pub fn event_stream(&self) -> EventStreamSharedGeneric<TB> {
     self.state.event_stream()
   }
 
-  /// Returns the scheduler service when initialized.
+  /// Returns the shared scheduler handle.
   #[must_use]
-  pub fn scheduler_context(&self) -> Option<SchedulerContextSharedGeneric<TB>> {
-    self.state.scheduler_context()
+  pub fn scheduler(&self) -> crate::core::scheduler::SchedulerSharedGeneric<TB> {
+    self.state.scheduler()
   }
 
   /// Returns the tick driver runtime when initialized.
   #[must_use]
-  pub fn tick_driver_runtime(&self) -> Option<crate::core::scheduler::TickDriverRuntime<TB>> {
+  pub fn tick_driver_runtime(&self) -> crate::core::scheduler::TickDriverRuntime<TB> {
     self.state.tick_driver_runtime()
   }
 
@@ -344,8 +328,8 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
 
   /// Returns a delay provider backed by the scheduler when available.
   #[must_use]
-  pub fn delay_provider(&self) -> Option<SchedulerBackedDelayProvider<TB>> {
-    self.scheduler_context().map(|context| context.delay_provider())
+  pub fn delay_provider(&self) -> SchedulerBackedDelayProvider<TB> {
+    self.state.delay_provider()
   }
 
   /// Subscribes the provided observer to the event stream.
@@ -354,7 +338,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     &self,
     subscriber: &EventStreamSubscriberShared<TB>,
   ) -> EventStreamSubscriptionGeneric<TB> {
-    EventStreamGeneric::subscribe_arc(&self.state.event_stream(), subscriber)
+    self.state.event_stream().subscribe(subscriber)
   }
 
   /// Returns a snapshot of recorded dead letters.
@@ -371,7 +355,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   /// Resolves the pid registered for the provided actor path.
   #[must_use]
   pub fn pid_by_path(&self, path: &crate::core::actor_prim::actor_path::ActorPath) -> Option<Pid> {
-    self.state.with_actor_path_registry(|registry| registry.with_read(|r| r.pid_for(path)))
+    self.state.with_actor_path_registry(|registry| registry.pid_for(path))
   }
 
   /// Returns an actor reference for the provided pid when registered.
@@ -389,8 +373,8 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
 
   /// Removes a temporary actor mapping if present.
   #[allow(dead_code)]
-  pub(crate) fn unregister_temp_actor(&self, name: &str) -> Option<ActorRefGeneric<TB>> {
-    self.state.unregister_temp_actor(name)
+  pub(crate) fn unregister_temp_actor(&self, name: &str) {
+    self.state.unregister_temp_actor(name);
   }
 
   /// Resolves a registered temporary actor reference.
@@ -572,7 +556,6 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
       self.rollback_spawn(None, &root_cell, root_pid);
       return Err(error);
     }
-    self.state.mark_root_started();
     Ok(())
   }
 
@@ -616,24 +599,18 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   fn resolve_props(&self, props: &PropsGeneric<TB>) -> Result<PropsGeneric<TB>, SpawnError> {
     let mut resolved = props.clone();
     if let Some(dispatcher_id) = resolved.dispatcher_id() {
-      let config = self
-        .state
-        .dispatchers()
-        .with_read(|d| d.resolve(dispatcher_id))
-        .map_err(|error| SpawnError::invalid_props(error.to_string()))?;
+      let config =
+        self.state.resolve_dispatcher(dispatcher_id).map_err(|error| SpawnError::invalid_props(error.to_string()))?;
       resolved = resolved.with_resolved_dispatcher(config);
     } else if !resolved.has_custom_dispatcher() {
       // If no dispatcher_id is specified, use the system's default dispatcher
-      if let Ok(default_config) = self.state.dispatchers().with_read(|d| d.resolve("default")) {
+      if let Ok(default_config) = self.state.resolve_dispatcher("default") {
         resolved = resolved.with_resolved_dispatcher(default_config);
       }
     }
     if let Some(mailbox_id) = resolved.mailbox_id() {
-      let config = self
-        .state
-        .mailboxes()
-        .with_read(|m| m.resolve(mailbox_id))
-        .map_err(|error| SpawnError::invalid_props(error.to_string()))?;
+      let config =
+        self.state.resolve_mailbox(mailbox_id).map_err(|error| SpawnError::invalid_props(error.to_string()))?;
       resolved = resolved.with_resolved_mailbox(config);
     }
     Ok(resolved)
@@ -656,7 +633,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
 
   fn rollback_spawn(&self, parent: Option<Pid>, cell: &ArcShared<ActorCellGeneric<TB>>, pid: Pid) {
     self.state.release_name(parent, cell.name());
-    let _ = self.state.remove_cell(&pid);
+    self.state.remove_cell(&pid);
     if let Some(parent_pid) = parent {
       self.state.unregister_child(Some(parent_pid), pid);
     }

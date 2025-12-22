@@ -3,84 +3,68 @@
 #[cfg(test)]
 mod tests;
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
-};
+use alloc::vec::Vec;
 
-use crate::core::{
-  actor_prim::actor_ref::ActorRefGeneric,
-  event_stream::{
-    ActorRefEventStreamSubscriber, EventStreamEvent, EventStreamEventsSharedGeneric,
-    EventStreamSubscriberEntriesSharedGeneric, EventStreamSubscriberShared, event_stream_events::DEFAULT_CAPACITY,
-    event_stream_subscriber::subscriber_handle, event_stream_subscription::EventStreamSubscriptionGeneric,
-  },
+use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
+
+use crate::core::event_stream::{
+  EventStreamEvent, EventStreamEventsGeneric, EventStreamSubscriberEntriesGeneric, EventStreamSubscriberEntryGeneric,
+  EventStreamSubscriberShared, event_stream_events::DEFAULT_CAPACITY,
 };
 
 /// In-memory event bus with replay support for late subscribers.
+///
+/// This type uses `&mut self` methods for state modification, following the
+/// interior mutability guideline. For shared access, use [`EventStreamSharedGeneric`].
+///
+/// [`EventStreamSharedGeneric`]: super::EventStreamSharedGeneric
 pub struct EventStreamGeneric<TB: RuntimeToolbox + 'static> {
-  subscribers: EventStreamSubscriberEntriesSharedGeneric<TB>,
-  events:      EventStreamEventsSharedGeneric<TB>,
+  subscribers: EventStreamSubscriberEntriesGeneric<TB>,
+  events:      EventStreamEventsGeneric<TB>,
 }
 
 impl<TB: RuntimeToolbox + 'static> EventStreamGeneric<TB> {
   /// Creates a stream with the specified buffer capacity.
   #[must_use]
-  pub fn with_capacity(capacity: usize) -> Self {
+  pub const fn with_capacity(capacity: usize) -> Self {
     Self {
-      subscribers: EventStreamSubscriberEntriesSharedGeneric::new(),
-      events:      EventStreamEventsSharedGeneric::with_capacity(capacity),
+      subscribers: EventStreamSubscriberEntriesGeneric::new(),
+      events:      EventStreamEventsGeneric::with_capacity(capacity),
     }
   }
 
-  /// Appends the subscriber and replays buffered events.
-  #[must_use]
-  pub fn subscribe_arc(
-    stream: &ArcShared<Self>,
-    subscriber: &EventStreamSubscriberShared<TB>,
-  ) -> EventStreamSubscriptionGeneric<TB> {
-    let id = stream.subscribers.add(subscriber.clone());
-
-    let snapshot = stream.events.snapshot();
-    for event in snapshot.iter() {
-      let mut guard = subscriber.lock();
-      guard.on_event(event);
-    }
-
-    EventStreamSubscriptionGeneric::new(stream.clone(), id)
-  }
-
-  /// Subscribes an ActorRef to this event stream.
+  /// Adds a subscriber and returns the assigned identifier along with a
+  /// snapshot of buffered events for replay.
   ///
-  /// Events will be delivered **asynchronously** to the actor's mailbox.
-  /// This is the **recommended way** for actor-based subscribers as it provides:
-  /// - Non-blocking `publish()` (immediate return)
-  /// - Better scalability with many subscribers
-  /// - Natural actor processing model
+  /// The caller is responsible for replaying the snapshot to the subscriber
+  /// after releasing any locks.
   #[must_use]
-  pub fn subscribe_actor(
-    stream: &ArcShared<Self>,
-    actor_ref: ActorRefGeneric<TB>,
-  ) -> EventStreamSubscriptionGeneric<TB> {
-    let subscriber = subscriber_handle(ActorRefEventStreamSubscriber::new(actor_ref));
-    Self::subscribe_arc(stream, &subscriber)
+  pub fn subscribe(&mut self, subscriber: EventStreamSubscriberShared<TB>) -> (u64, Vec<EventStreamEvent<TB>>) {
+    let id = self.subscribers.add(subscriber);
+    let snapshot = self.events.snapshot();
+    (id, snapshot)
   }
 
   /// Removes the subscriber associated with the identifier.
-  pub fn unsubscribe(&self, id: u64) {
+  pub fn unsubscribe(&mut self, id: u64) {
     self.subscribers.remove(id);
   }
 
-  /// Publishes the provided event to all registered subscribers.
-  pub fn publish(&self, event: &EventStreamEvent<TB>) {
-    self.events.push_and_trim(event.clone());
+  /// Stores the event and returns a snapshot of subscribers for notification.
+  ///
+  /// The caller is responsible for notifying subscribers after releasing any locks.
+  /// This separation prevents deadlocks by ensuring callbacks are executed without
+  /// holding the event stream lock.
+  #[must_use]
+  pub fn publish_prepare(&mut self, event: EventStreamEvent<TB>) -> Vec<EventStreamSubscriberEntryGeneric<TB>> {
+    self.events.push_and_trim(event);
+    self.subscribers.snapshot()
+  }
 
-    let subscribers = self.subscribers.snapshot();
-    for entry in subscribers.iter() {
-      let handle = entry.subscriber();
-      let mut guard = handle.lock();
-      guard.on_event(event);
-    }
+  /// Returns the buffer capacity.
+  #[must_use]
+  pub const fn capacity(&self) -> usize {
+    self.events.capacity()
   }
 }
 
