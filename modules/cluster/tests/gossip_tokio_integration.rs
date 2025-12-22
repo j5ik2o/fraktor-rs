@@ -1,0 +1,96 @@
+#![cfg(feature = "std")]
+
+use core::time::Duration;
+use std::sync::{Arc, Mutex};
+
+use fraktor_actor_rs::core::event_stream::{
+  EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriber, subscriber_handle,
+};
+use fraktor_cluster_rs::{
+  core::{
+    ClusterEvent, GossipOutbound, GossipTransport, Gossiper, MembershipCoordinatorConfig, MembershipCoordinatorGeneric,
+    MembershipCoordinatorSharedGeneric, MembershipDelta, MembershipTable, MembershipVersion, NodeRecord, NodeStatus,
+  },
+  std::{TokioGossipTransport, TokioGossipTransportConfig, TokioGossiper, TokioGossiperConfig},
+};
+use fraktor_remote_rs::core::{PhiFailureDetector, PhiFailureDetectorConfig};
+use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
+
+struct EventSink {
+  events: Arc<Mutex<Vec<ClusterEvent>>>,
+}
+
+impl EventStreamSubscriber<StdToolbox> for EventSink {
+  fn on_event(&mut self, event: &EventStreamEvent<StdToolbox>) {
+    let EventStreamEvent::Extension { name, payload } = event else {
+      return;
+    };
+    if name != "cluster" {
+      return;
+    }
+    if let Some(cluster_event) = payload.payload().downcast_ref::<ClusterEvent>() {
+      self.events.lock().expect("events lock").push(cluster_event.clone());
+    }
+  }
+}
+
+fn build_coordinator() -> MembershipCoordinatorSharedGeneric<StdToolbox> {
+  let config = MembershipCoordinatorConfig {
+    phi_threshold:          1.0,
+    suspect_timeout:        Duration::from_secs(1),
+    dead_timeout:           Duration::from_secs(1),
+    quarantine_ttl:         Duration::from_secs(1),
+    gossip_enabled:         true,
+    gossip_interval:        Duration::from_millis(20),
+    topology_emit_interval: Duration::from_millis(20),
+  };
+  let table = MembershipTable::new(3);
+  let detector = PhiFailureDetector::new(PhiFailureDetectorConfig::new(config.phi_threshold, 10, 1));
+  let mut coordinator = MembershipCoordinatorGeneric::<StdToolbox>::new(config, table, detector);
+  coordinator.start_member().expect("start_member");
+  MembershipCoordinatorSharedGeneric::new(coordinator)
+}
+
+fn join_delta(authority: &str) -> MembershipDelta {
+  let record =
+    NodeRecord::new(String::from("node-a"), authority.to_string(), NodeStatus::Up, MembershipVersion::new(1));
+  MembershipDelta::new(MembershipVersion::new(0), MembershipVersion::new(1), vec![record])
+}
+
+#[tokio::test]
+async fn gossip_delta_triggers_topology_update() {
+  let event_stream = EventStreamSharedGeneric::<StdToolbox>::default();
+  let captured = Arc::new(Mutex::new(Vec::new()));
+  let subscriber = subscriber_handle(EventSink { events: captured.clone() });
+  let _subscription = event_stream.subscribe(&subscriber);
+
+  let coordinator = build_coordinator();
+  let transport_b = TokioGossipTransport::bind(
+    TokioGossipTransportConfig::new(String::from("127.0.0.1:21110"), 1024, 8),
+    tokio::runtime::Handle::current(),
+  )
+  .expect("transport bind");
+  let mut gossiper = TokioGossiper::new(
+    TokioGossiperConfig::new(Duration::from_millis(20), Duration::from_millis(20)),
+    coordinator,
+    transport_b,
+    event_stream.clone(),
+    tokio::runtime::Handle::current(),
+  );
+  gossiper.start().expect("start");
+
+  let mut transport_a = TokioGossipTransport::bind(
+    TokioGossipTransportConfig::new(String::from("127.0.0.1:21111"), 1024, 8),
+    tokio::runtime::Handle::current(),
+  )
+  .expect("transport bind");
+  let outbound = GossipOutbound::new(String::from("127.0.0.1:21110"), join_delta("127.0.0.1:21111"));
+  transport_a.send(outbound).expect("send");
+
+  tokio::time::sleep(Duration::from_millis(120)).await;
+
+  let events = captured.lock().expect("events lock").clone();
+  assert!(events.iter().any(|event| matches!(event, ClusterEvent::TopologyUpdated { .. })));
+
+  gossiper.stop().expect("stop");
+}
