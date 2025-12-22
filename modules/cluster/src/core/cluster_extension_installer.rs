@@ -43,7 +43,7 @@ pub type ClusterProviderFactory<TB> = ArcShared<
 type GossiperFactory = ArcShared<dyn Fn() -> Box<dyn Gossiper> + Send + Sync>;
 
 /// Factory function type for creating a `ClusterPubSub`.
-type PubSubFactory = ArcShared<dyn Fn() -> Box<dyn ClusterPubSub> + Send + Sync>;
+type PubSubFactory<TB> = ArcShared<dyn Fn(&ClusterExtensionConfig) -> Box<dyn ClusterPubSub<TB>> + Send + Sync>;
 
 /// Factory function type for creating an `IdentityLookup`.
 type IdentityLookupFactory = ArcShared<dyn Fn() -> Box<dyn IdentityLookup> + Send + Sync>;
@@ -78,7 +78,7 @@ pub struct ClusterExtensionInstaller<TB: RuntimeToolbox + 'static> {
   provider_f:          ClusterProviderFactory<TB>,
   block_list_provider: Option<ArcShared<dyn BlockListProvider>>,
   gossiper_f:          Option<GossiperFactory>,
-  pubsub_f:            Option<PubSubFactory>,
+  pubsub_f:            Option<PubSubFactory<TB>>,
   identity_lookup_f:   Option<IdentityLookupFactory>,
 }
 
@@ -213,7 +213,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
   #[must_use]
   pub fn with_pubsub_factory<F>(mut self, factory: F) -> Self
   where
-    F: Fn() -> Box<dyn ClusterPubSub> + Send + Sync + 'static, {
+    F: Fn(&ClusterExtensionConfig) -> Box<dyn ClusterPubSub<TB>> + Send + Sync + 'static, {
     self.pubsub_f = Some(ArcShared::new(factory));
     self
   }
@@ -259,8 +259,8 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
     // Gossiper はファクトリ経由で作成（Clone できないため）
     let gossiper: Box<dyn Gossiper> = self.gossiper_f.as_ref().map(|f| f()).unwrap_or_else(|| Box::new(NoopGossiper));
     // ClusterPubSub はファクトリ経由で作成（Clone できないため）
-    let pubsub: Box<dyn ClusterPubSub> =
-      self.pubsub_f.as_ref().map(|f| f()).unwrap_or_else(|| Box::new(NoopClusterPubSub));
+    let pubsub: Box<dyn ClusterPubSub<TB>> =
+      self.pubsub_f.as_ref().map(|f| f(&config)).unwrap_or_else(|| Box::new(NoopClusterPubSub));
     // IdentityLookup はファクトリ経由で作成（Clone できないため）
     let identity_lookup: Box<dyn IdentityLookup> =
       self.identity_lookup_f.as_ref().map(|f| f()).unwrap_or_else(|| Box::new(NoopIdentityLookup));

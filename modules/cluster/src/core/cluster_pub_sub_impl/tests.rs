@@ -8,8 +8,13 @@ use fraktor_utils_rs::core::{
   sync::ArcShared,
 };
 
-use super::*;
-use crate::core::{ClusterEvent, ClusterPubSub, KindRegistry, PubSubEvent, kind_registry::TOPIC_ACTOR_KIND};
+use super::ClusterPubSubImpl;
+use crate::core::{
+  ClusterEvent, ClusterIdentity, ClusterPubSub, ClusterTopology, DeliverBatchRequest, DeliveryEndpoint,
+  DeliveryEndpointSharedGeneric, DeliveryReport, DeliveryStatus, KindRegistry, PubSubBatch, PubSubConfig,
+  PubSubEnvelope, PubSubEvent, PubSubSubscriber, PubSubTopic, PublishAck, PublishOptions, PublishRequest,
+  SubscriberDeliveryReport,
+};
 
 /// EventStream イベントを収集するテスト用 subscriber
 #[derive(Clone)]
@@ -70,47 +75,69 @@ fn extract_pub_sub_events(events: &[EventStreamEvent<NoStdToolbox>]) -> Vec<PubS
     .collect()
 }
 
+#[derive(Clone)]
+struct StubEndpoint {
+  failed: Vec<PubSubSubscriber<NoStdToolbox>>,
+}
+
+impl StubEndpoint {
+  fn new(failed: Vec<PubSubSubscriber<NoStdToolbox>>) -> Self {
+    Self { failed }
+  }
+}
+
+impl DeliveryEndpoint<NoStdToolbox> for StubEndpoint {
+  fn deliver(
+    &mut self,
+    request: DeliverBatchRequest<NoStdToolbox>,
+  ) -> Result<DeliveryReport<NoStdToolbox>, crate::core::PubSubError> {
+    let failed = request
+      .subscribers
+      .into_iter()
+      .filter(|subscriber| self.failed.contains(subscriber))
+      .map(|subscriber| SubscriberDeliveryReport { subscriber, status: DeliveryStatus::SubscriberUnreachable })
+      .collect();
+    Ok(DeliveryReport { status: DeliveryStatus::Delivered, failed })
+  }
+}
+
+fn make_pubsub(
+  event_stream: ArcShared<EventStreamGeneric<NoStdToolbox>>,
+  registry: &KindRegistry,
+  failed: Vec<PubSubSubscriber<NoStdToolbox>>,
+) -> ClusterPubSubImpl<NoStdToolbox> {
+  let setup = fraktor_actor_rs::core::serialization::default_serialization_setup();
+  let serialization_registry =
+    ArcShared::new(fraktor_actor_rs::core::serialization::SerializationRegistryGeneric::from_setup(&setup));
+  let endpoint = DeliveryEndpointSharedGeneric::new(Box::new(StubEndpoint::new(failed)));
+  ClusterPubSubImpl::new(event_stream, serialization_registry, endpoint, PubSubConfig::default(), registry)
+}
+
 #[test]
 fn starts_when_topic_kind_is_registered() {
-  // KindRegistry は register_all 時に TOPIC_ACTOR_KIND を自動登録する
   let mut registry = KindRegistry::new();
   registry.register_all(Vec::new());
 
-  // EventStream を作成
   let event_stream: ArcShared<EventStreamGeneric<NoStdToolbox>> =
     ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
-
-  // サブスクライバを登録
   let (_subscriber, _subscription) = subscribe_recorder(&event_stream);
 
-  // PubSubImpl を作成
-  let mut pubsub = ClusterPubSubImpl::new(event_stream, &registry);
-
-  // TopicActorKind が登録されているので start は成功する
+  let mut pubsub = make_pubsub(event_stream, &registry, Vec::new());
   let result = pubsub.start();
   assert!(result.is_ok(), "start should succeed when TopicActorKind is registered");
 }
 
 #[test]
 fn fails_and_fires_event_when_topic_kind_missing() {
-  // KindRegistry を作成するが register_all を呼ばない（TOPIC_ACTOR_KIND が無い状態）
   let registry = KindRegistry::new();
-
-  // EventStream を作成
   let event_stream: ArcShared<EventStreamGeneric<NoStdToolbox>> =
     ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
-
-  // サブスクライバを登録
   let (subscriber, _subscription) = subscribe_recorder(&event_stream);
 
-  // PubSubImpl を作成
-  let mut pubsub = ClusterPubSubImpl::new(event_stream, &registry);
-
-  // TopicActorKind が登録されていないので start は失敗する
+  let mut pubsub = make_pubsub(event_stream, &registry, Vec::new());
   let result = pubsub.start();
   assert!(result.is_err(), "start should fail when TopicActorKind is not registered");
 
-  // EventStream に StartupFailed イベントが発火されている
   let collected = subscriber.events();
   let cluster_events = extract_cluster_events(&collected);
   assert!(
@@ -122,7 +149,7 @@ fn fails_and_fires_event_when_topic_kind_missing() {
 }
 
 #[test]
-fn creates_topic_on_start() {
+fn publish_accepts_and_emits_events() {
   let mut registry = KindRegistry::new();
   registry.register_all(Vec::new());
 
@@ -130,150 +157,60 @@ fn creates_topic_on_start() {
     ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let (subscriber, _subscription) = subscribe_recorder(&event_stream);
 
-  let mut pubsub = ClusterPubSubImpl::new(event_stream, &registry);
-  pubsub.start().expect("start should succeed");
+  let mut pubsub = make_pubsub(event_stream, &registry, Vec::new());
+  pubsub.start().expect("start");
 
-  // TopicCreated イベントが発火されている
-  let collected = subscriber.events();
-  let pubsub_events = extract_pub_sub_events(&collected);
-  assert!(
-    pubsub_events.iter().any(|e| matches!(e, PubSubEvent::TopicCreated { topic } if topic == TOPIC_ACTOR_KIND)),
-    "should emit TopicCreated event for prototopic"
+  let topic = PubSubTopic::from("news");
+  let subscriber_id = PubSubSubscriber::ClusterIdentity(ClusterIdentity::new("kind", "sub-1").expect("identity"));
+  pubsub.subscribe(&topic, subscriber_id.clone()).expect("subscribe");
+
+  let batch = PubSubBatch::new(vec![PubSubEnvelope {
+    serializer_id: 41,
+    type_name:     String::from("dummy"),
+    bytes:         vec![1],
+  }]);
+  let request = PublishRequest::new(
+    topic.clone(),
+    fraktor_actor_rs::core::messaging::AnyMessageGeneric::new(batch),
+    PublishOptions::default(),
   );
-}
+  let ack = pubsub.publish(request).expect("publish");
+  assert_eq!(ack, PublishAck::accepted());
 
-#[test]
-fn subscribe_succeeds_after_start() {
-  let mut registry = KindRegistry::new();
-  registry.register_all(Vec::new());
-
-  let event_stream: ArcShared<EventStreamGeneric<NoStdToolbox>> =
-    ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
-  let (subscriber, _subscription) = subscribe_recorder(&event_stream);
-
-  let mut pubsub = ClusterPubSubImpl::new(event_stream, &registry);
-  pubsub.start().expect("start should succeed");
-
-  // 購読を追加
-  let result = pubsub.subscribe(TOPIC_ACTOR_KIND, "subscriber-1");
-  assert!(result.is_ok(), "subscribe should succeed after start");
-
-  // SubscriptionAccepted イベントが発火されている
-  let collected = subscriber.events();
-  let pubsub_events = extract_pub_sub_events(&collected);
+  let events = extract_pub_sub_events(&subscriber.events());
   assert!(
-    pubsub_events.iter().any(|e| matches!(e, PubSubEvent::SubscriptionAccepted { topic, subscriber }
-      if topic == TOPIC_ACTOR_KIND && subscriber == "subscriber-1")),
-    "should emit SubscriptionAccepted event"
+    events.iter().any(|event| matches!(event, PubSubEvent::PublishAccepted { topic: t, .. } if t.as_str() == "news"))
   );
+  assert!(events.iter().any(|event| matches!(event, PubSubEvent::DeliverySucceeded { topic: t, subscriber } if t.as_str() == "news" && subscriber == "kind/sub-1")));
 }
 
 #[test]
-fn subscribe_fails_before_start() {
+fn publish_rejects_when_no_subscribers() {
   let mut registry = KindRegistry::new();
   registry.register_all(Vec::new());
-
   let event_stream: ArcShared<EventStreamGeneric<NoStdToolbox>> =
     ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
-  let mut pubsub = ClusterPubSubImpl::new(event_stream, &registry);
 
-  // start 前に subscribe すると失敗
-  let result = pubsub.subscribe(TOPIC_ACTOR_KIND, "subscriber-1");
-  assert!(result.is_err(), "subscribe should fail before start");
-}
-
-#[test]
-fn publish_returns_subscribers() {
-  let mut registry = KindRegistry::new();
-  registry.register_all(Vec::new());
-
-  let event_stream: ArcShared<EventStreamGeneric<NoStdToolbox>> =
-    ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
-  let mut pubsub = ClusterPubSubImpl::new(event_stream, &registry);
+  let mut pubsub = make_pubsub(event_stream, &registry, Vec::new());
   pubsub.start().expect("start");
 
-  pubsub.subscribe(TOPIC_ACTOR_KIND, "sub-a").expect("subscribe a");
-  pubsub.subscribe(TOPIC_ACTOR_KIND, "sub-b").expect("subscribe b");
-
-  let subscribers = pubsub.publish(TOPIC_ACTOR_KIND).expect("publish should succeed");
-  assert_eq!(subscribers.len(), 2);
-  assert!(subscribers.contains(&String::from("sub-a")));
-  assert!(subscribers.contains(&String::from("sub-b")));
+  let topic = PubSubTopic::from("news");
+  let batch = PubSubBatch::new(vec![PubSubEnvelope {
+    serializer_id: 41,
+    type_name:     String::from("dummy"),
+    bytes:         vec![1],
+  }]);
+  let request = PublishRequest::new(
+    topic.clone(),
+    fraktor_actor_rs::core::messaging::AnyMessageGeneric::new(batch),
+    PublishOptions::default(),
+  );
+  let ack = pubsub.publish(request).expect("publish");
+  assert_eq!(ack.status, crate::core::PublishStatus::Rejected);
 }
 
 #[test]
-fn stop_succeeds() {
-  let mut registry = KindRegistry::new();
-  registry.register_all(Vec::new());
-
-  let event_stream: ArcShared<EventStreamGeneric<NoStdToolbox>> =
-    ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
-  let mut pubsub = ClusterPubSubImpl::new(event_stream, &registry);
-  pubsub.start().expect("start");
-
-  let result = pubsub.stop();
-  assert!(result.is_ok(), "stop should succeed");
-}
-
-#[test]
-fn drain_events_returns_broker_events() {
-  let mut registry = KindRegistry::new();
-  registry.register_all(Vec::new());
-
-  let event_stream: ArcShared<EventStreamGeneric<NoStdToolbox>> =
-    ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
-  let mut pubsub = ClusterPubSubImpl::new(event_stream, &registry);
-  pubsub.start().expect("start");
-  pubsub.subscribe(TOPIC_ACTOR_KIND, "sub-1").expect("subscribe");
-
-  let events = pubsub.drain_events();
-  // TopicCreated と SubscriptionAccepted が含まれる
-  // ただし start と subscribe の中で flush しているので、drain_events は空になる
-  // drain_events が空になることを確認
-  assert!(events.is_empty(), "events should be empty because they were already flushed to EventStream");
-}
-
-// ====================================================================
-// Phase2 タスク 4.3: 動的トポロジで PubSub/メッセージ配送を検証するテスト
-// ====================================================================
-
-#[test]
-fn pubsub_works_with_dynamic_topology_join() {
-  let mut registry = KindRegistry::new();
-  registry.register_all(Vec::new());
-
-  let event_stream: ArcShared<EventStreamGeneric<NoStdToolbox>> =
-    ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
-  let (_subscriber, _subscription) = subscribe_recorder(&event_stream);
-
-  // PubSubImpl を作成して起動
-  let mut pubsub = ClusterPubSubImpl::new(event_stream.clone(), &registry);
-  pubsub.start().expect("start should succeed");
-
-  // 動的トポロジ更新をシミュレート（ノードが join）
-  let topology = crate::core::ClusterTopology::new(1, vec![String::from("node-b:8080")], Vec::new());
-  let topology_event = ClusterEvent::TopologyUpdated {
-    topology: topology.clone(),
-    joined:   vec![String::from("node-b:8080")],
-    left:     Vec::new(),
-    blocked:  Vec::new(),
-  };
-  let payload = fraktor_actor_rs::core::messaging::AnyMessageGeneric::new(topology_event);
-  let es_event =
-    fraktor_actor_rs::core::event_stream::EventStreamEvent::Extension { name: String::from("cluster"), payload };
-  event_stream.publish(&es_event);
-
-  // 新しいノードから購読を追加（node-b が join した後）
-  let result = pubsub.subscribe(TOPIC_ACTOR_KIND, "node-b:8080");
-  assert!(result.is_ok(), "subscription from joined node should succeed");
-
-  // publish して購読者に配信できることを確認
-  let subscribers = pubsub.publish(TOPIC_ACTOR_KIND).expect("publish should succeed");
-  assert!(subscribers.contains(&String::from("node-b:8080")), "node-b should receive messages");
-}
-
-#[test]
-fn multiple_nodes_can_subscribe_and_receive_messages() {
+fn topology_update_reactivates_suspended_subscribers() {
   let mut registry = KindRegistry::new();
   registry.register_all(Vec::new());
 
@@ -281,24 +218,29 @@ fn multiple_nodes_can_subscribe_and_receive_messages() {
     ArcShared::new(EventStreamGeneric::<NoStdToolbox>::default());
   let (subscriber, _subscription) = subscribe_recorder(&event_stream);
 
-  let mut pubsub = ClusterPubSubImpl::new(event_stream, &registry);
+  let topic = PubSubTopic::from("news");
+  let subscriber_id = PubSubSubscriber::ClusterIdentity(ClusterIdentity::new("kind", "sub-1").expect("identity"));
+  let mut pubsub = make_pubsub(event_stream.clone(), &registry, vec![subscriber_id.clone()]);
   pubsub.start().expect("start");
+  pubsub.subscribe(&topic, subscriber_id.clone()).expect("subscribe");
 
-  // 複数ノードから購読
-  pubsub.subscribe(TOPIC_ACTOR_KIND, "node-a:8080").expect("subscribe node-a");
-  pubsub.subscribe(TOPIC_ACTOR_KIND, "node-b:8080").expect("subscribe node-b");
-  pubsub.subscribe(TOPIC_ACTOR_KIND, "node-c:8080").expect("subscribe node-c");
+  let batch = PubSubBatch::new(vec![PubSubEnvelope {
+    serializer_id: 41,
+    type_name:     String::from("dummy"),
+    bytes:         vec![1],
+  }]);
+  let request = PublishRequest::new(
+    topic.clone(),
+    fraktor_actor_rs::core::messaging::AnyMessageGeneric::new(batch),
+    PublishOptions::default(),
+  );
+  let _ = pubsub.publish(request).expect("publish");
+  let topology = ClusterTopology::new(1, vec![String::from("node-a")], Vec::new());
+  pubsub.on_topology(&topology);
 
-  // publish して全購読者に配信されることを確認
-  let subscribers = pubsub.publish(TOPIC_ACTOR_KIND).expect("publish");
-  assert_eq!(subscribers.len(), 3);
-  assert!(subscribers.contains(&String::from("node-a:8080")));
-  assert!(subscribers.contains(&String::from("node-b:8080")));
-  assert!(subscribers.contains(&String::from("node-c:8080")));
-
-  // EventStream に SubscriptionAccepted イベントが3回発火されていることを確認
-  let collected = subscriber.events();
-  let pubsub_events = extract_pub_sub_events(&collected);
-  let accepted_count = pubsub_events.iter().filter(|e| matches!(e, PubSubEvent::SubscriptionAccepted { .. })).count();
-  assert_eq!(accepted_count, 3, "SubscriptionAccepted should be fired 3 times");
+  let events = extract_pub_sub_events(&subscriber.events());
+  assert!(events.iter().any(|event| matches!(event, PubSubEvent::DeliveryFailed { topic: t, subscriber, .. }
+    if t.as_str() == "news" && subscriber == "kind/sub-1")));
+  assert!(events.iter().any(|event| matches!(event, PubSubEvent::SubscriptionAdded { topic: t, subscriber }
+    if t.as_str() == "news" && subscriber == "kind/sub-1")));
 }

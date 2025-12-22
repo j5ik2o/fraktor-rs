@@ -45,7 +45,7 @@ impl Gossiper for StubGossiper {
 }
 
 struct StubPubSub;
-impl ClusterPubSub for StubPubSub {
+impl ClusterPubSub<NoStdToolbox> for StubPubSub {
   fn start(&mut self) -> Result<(), crate::core::pub_sub_error::PubSubError> {
     Ok(())
   }
@@ -53,6 +53,31 @@ impl ClusterPubSub for StubPubSub {
   fn stop(&mut self) -> Result<(), crate::core::pub_sub_error::PubSubError> {
     Ok(())
   }
+
+  fn subscribe(
+    &mut self,
+    _topic: &crate::core::PubSubTopic,
+    _subscriber: crate::core::PubSubSubscriber<NoStdToolbox>,
+  ) -> Result<(), crate::core::pub_sub_error::PubSubError> {
+    Ok(())
+  }
+
+  fn unsubscribe(
+    &mut self,
+    _topic: &crate::core::PubSubTopic,
+    _subscriber: crate::core::PubSubSubscriber<NoStdToolbox>,
+  ) -> Result<(), crate::core::pub_sub_error::PubSubError> {
+    Ok(())
+  }
+
+  fn publish(
+    &mut self,
+    _request: crate::core::PublishRequest<NoStdToolbox>,
+  ) -> Result<crate::core::PublishAck, crate::core::pub_sub_error::PubSubError> {
+    Ok(crate::core::PublishAck::accepted())
+  }
+
+  fn on_topology(&mut self, _topology: &crate::core::ClusterTopology) {}
 }
 
 struct StubIdentity;

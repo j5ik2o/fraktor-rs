@@ -47,7 +47,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionId<TB> {
     provider: Box<dyn ClusterProvider>,
     block_list_provider: ArcShared<dyn fraktor_remote_rs::core::BlockListProvider>,
     gossiper: Box<dyn Gossiper>,
-    pubsub: Box<dyn ClusterPubSub>,
+    pubsub: Box<dyn ClusterPubSub<TB>>,
     identity_lookup: Box<dyn IdentityLookup>,
   ) -> Self {
     let provider = ClusterProviderShared::new(provider);

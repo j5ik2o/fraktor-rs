@@ -257,10 +257,10 @@ impl StubPubSub {
   }
 }
 
-impl ClusterPubSub for StubPubSub {
+impl ClusterPubSub<NoStdToolbox> for StubPubSub {
   fn start(&mut self) -> Result<(), PubSubError> {
     if self.fail_start {
-      return Err(PubSubError::TopicAlreadyExists { topic: String::from("pubsub-error") });
+      return Err(PubSubError::TopicAlreadyExists { topic: crate::core::PubSubTopic::from("pubsub-error") });
     }
     *self.started.lock() = true;
     Ok(())
@@ -268,11 +268,36 @@ impl ClusterPubSub for StubPubSub {
 
   fn stop(&mut self) -> Result<(), PubSubError> {
     if self.fail_stop {
-      return Err(PubSubError::TopicNotFound { topic: String::from("pubsub-error") });
+      return Err(PubSubError::TopicNotFound { topic: crate::core::PubSubTopic::from("pubsub-error") });
     }
     *self.stopped.lock() = true;
     Ok(())
   }
+
+  fn subscribe(
+    &mut self,
+    _topic: &crate::core::PubSubTopic,
+    _subscriber: crate::core::PubSubSubscriber<NoStdToolbox>,
+  ) -> Result<(), PubSubError> {
+    Ok(())
+  }
+
+  fn unsubscribe(
+    &mut self,
+    _topic: &crate::core::PubSubTopic,
+    _subscriber: crate::core::PubSubSubscriber<NoStdToolbox>,
+  ) -> Result<(), PubSubError> {
+    Ok(())
+  }
+
+  fn publish(
+    &mut self,
+    _request: crate::core::PublishRequest<NoStdToolbox>,
+  ) -> Result<crate::core::PublishAck, PubSubError> {
+    Ok(crate::core::PublishAck::accepted())
+  }
+
+  fn on_topology(&mut self, _topology: &crate::core::ClusterTopology) {}
 }
 
 impl Default for StubPubSub {
@@ -329,8 +354,8 @@ fn wrap_provider<P: ClusterProvider + 'static>(provider: P) -> ClusterProviderSh
 }
 
 /// Helper wrapping a `ClusterPubSub` in `ClusterPubSubShared`.
-fn wrap_pubsub<P: ClusterPubSub + 'static>(pubsub: P) -> ClusterPubSubShared<NoStdToolbox> {
-  let boxed: Box<dyn ClusterPubSub> = Box::new(pubsub);
+fn wrap_pubsub<P: ClusterPubSub<NoStdToolbox> + 'static>(pubsub: P) -> ClusterPubSubShared<NoStdToolbox> {
+  let boxed: Box<dyn ClusterPubSub<NoStdToolbox>> = Box::new(pubsub);
   ClusterPubSubShared::new(boxed)
 }
 

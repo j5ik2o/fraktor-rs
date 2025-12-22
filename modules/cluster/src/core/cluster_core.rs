@@ -128,6 +128,12 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
     self.virtual_actor_count
   }
 
+  /// Returns the shared pub/sub handle.
+  #[must_use]
+  pub(crate) fn pub_sub_shared(&self) -> ClusterPubSubShared<TB> {
+    self.pub_sub.clone()
+  }
+
   /// Returns the cached blocked members retrieved from the provider.
   #[must_use]
   #[allow(clippy::missing_const_for_fn)]
@@ -383,6 +389,8 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
         identity_lookup.on_member_left(authority);
       }
     });
+
+    self.pub_sub.with_write(|pub_sub| pub_sub.on_topology(topology));
 
     true
   }

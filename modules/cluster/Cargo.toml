@@ -47,3 +47,8 @@ required-features = ["test-support"]
 name = "cluster_extension_tokio"
 path = "examples/cluster_extension_tokio/main.rs"
 required-features = ["std"]
+
+[[example]]
+name = "distributed_pubsub"
+path = "examples/distributed_pubsub/main.rs"
+required-features = ["std"]

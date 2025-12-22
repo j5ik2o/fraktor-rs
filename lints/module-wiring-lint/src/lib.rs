@@ -38,7 +38,7 @@ impl<'tcx> LateLintPass<'tcx> for NoParentReexport {
   fn check_item(&mut self, cx: &LateContext<'tcx>, item: &Item<'tcx>) {
     match &item.kind {
       | ItemKind::Use(path, kind) => self.evaluate_use(cx, item, path, *kind),
-      | ItemKind::Mod(_) => self.evaluate_mod(cx, item, item.ident.name),
+      | ItemKind::Mod(ident, _) => self.evaluate_mod(cx, item, ident.name),
       | _ => {}
     }
   }
@@ -50,12 +50,16 @@ impl NoParentReexport {
       return;
     }
 
-    let attrs = cx.tcx.hir().attrs(item.hir_id());
+    let attrs = cx.tcx.hir_attrs(item.hir_id());
     for attr in attrs {
       if attr.has_name(sym::path) {
-        self.emit_path_attribute_violation(cx, attr.span);
+        self.emit_path_attribute_violation(cx, attr.span());
         return;
       }
+    }
+    if let Some(path_span) = find_path_attribute_span(cx, item.span) {
+      self.emit_path_attribute_violation(cx, path_span);
+      return;
     }
 
     if let Some(include_span) = find_include_invocation_span(cx, item.span) {
@@ -116,7 +120,7 @@ impl NoParentReexport {
     }
 
     let binding_ident = match kind {
-      | UseKind::Single => Some(item.ident.name),
+      | UseKind::Single(ident) => Some(ident.name),
       | UseKind::Glob => None,
       | UseKind::ListStem => {
         return;
@@ -177,8 +181,8 @@ impl NoParentReexport {
       let def_id = item_id.owner_id.def_id;
       let node = cx.tcx.hir_node_by_def_id(def_id);
       let item = node.expect_item();
-      if let ItemKind::Mod(_) = item.kind {
-        if item.ident.name == target {
+      if let ItemKind::Mod(ident, _) = item.kind {
+        if ident.name == target {
           return Some(LocalModDefId::new_unchecked(def_id));
         }
       }
@@ -197,7 +201,7 @@ impl NoParentReexport {
       let def_id = item_id.owner_id.def_id;
       let node = cx.tcx.hir_node_by_def_id(def_id);
       let item = node.expect_item();
-      if matches!(item.kind, ItemKind::Mod(_)) {
+      if matches!(item.kind, ItemKind::Mod(..)) {
         is_leaf = false;
         break;
       }
@@ -367,6 +371,34 @@ fn find_include_invocation_span(cx: &LateContext<'_>, span: Span) -> Option<Span
       return Some(span.with_lo(lo).with_hi(hi));
     }
     search_offset = absolute_pos + TARGET.len();
+  }
+
+  None
+}
+
+fn find_path_attribute_span(cx: &LateContext<'_>, span: Span) -> Option<Span> {
+  const TOKEN: &str = "#[path";
+  let sm = cx.tcx.sess.source_map();
+  let loc = sm.lookup_char_pos(span.lo());
+  let file = loc.file;
+  let base_line = loc.line.saturating_sub(1);
+  let start_line = base_line.saturating_sub(3);
+
+  for line_idx in start_line..=base_line {
+    let Some(line) = file.get_line(line_idx) else {
+      continue;
+    };
+    let line = line.as_ref();
+    let trimmed = line.trim_start();
+    if trimmed.starts_with("//") || trimmed.starts_with("/*") {
+      continue;
+    }
+    if let Some(pos) = line.find(TOKEN) {
+      let bounds = file.line_bounds(line_idx);
+      let lo = bounds.start + BytePos(pos as u32);
+      let hi = bounds.start + BytePos(line.len() as u32);
+      return Some(span.with_lo(lo).with_hi(hi));
+    }
   }
 
   None

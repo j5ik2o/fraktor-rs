@@ -27,20 +27,12 @@ use crate::core::{
   props::Props,
   serialization::{
     builtin, call_scope::SerializationCallScope, error::SerializationError, error_event::SerializationErrorEvent,
-    not_serializable_error::NotSerializableError, serialization_registry::SerializationRegistryGeneric,
-    serialization_setup::SerializationSetup, serialized_message::SerializedMessage, serializer::Serializer,
-    serializer_id::SerializerId, string_manifest_serializer::SerializerWithStringManifest,
-    transport_information::TransportInformation,
+    not_serializable_error::NotSerializableError, serialization_setup::SerializationSetup,
+    serialized_message::SerializedMessage, serializer::Serializer, serializer_id::SerializerId,
+    string_manifest_serializer::SerializerWithStringManifest, transport_information::TransportInformation,
   },
   system::{ActorSystemConfig, ActorSystemGeneric, RemotingConfig, SystemStateShared},
 };
-
-impl<TB: RuntimeToolbox + 'static> SerializationExtensionGeneric<TB> {
-  /// Returns the underlying registry handle (testing only).
-  pub const fn registry(&self) -> &ArcShared<SerializationRegistryGeneric<TB>> {
-    &self.registry
-  }
-}
 
 #[derive(Debug, PartialEq)]
 struct TestPayload(u8);

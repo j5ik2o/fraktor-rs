@@ -111,6 +111,12 @@ impl<TB: RuntimeToolbox + 'static> SerializationExtensionGeneric<TB> {
     self.serialize_for(obj, scope, None)
   }
 
+  /// Returns the shared serialization registry.
+  #[must_use]
+  pub fn registry(&self) -> ArcShared<SerializationRegistryGeneric<TB>> {
+    self.registry.clone()
+  }
+
   /// Serializes the object while annotating the originating pid for diagnostics.
   ///
   /// # Errors
