@@ -108,3 +108,4 @@ Provide brief summary in the language specified in spec.json:
 
 **Execute all pending**:
 - `/prompts:kiro-spec-impl $1` - All unchecked tasks
+
