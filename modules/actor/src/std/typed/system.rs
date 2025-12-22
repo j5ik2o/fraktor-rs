@@ -1,6 +1,6 @@
 use alloc::{string::String, vec::Vec};
 
-use fraktor_utils_rs::{core::sync::ArcShared, std::runtime_toolbox::StdToolbox};
+use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
 use crate::{
   core::{
@@ -34,6 +34,7 @@ where
 {
   /// Creates an empty typed actor system (for testing).
   #[must_use]
+  #[cfg(any(test, feature = "test-support"))]
   pub fn new_empty() -> Self {
     Self { inner: CoreTypedActorSystemGeneric::new_empty() }
   }
@@ -70,7 +71,7 @@ where
 
   /// Returns the shared event stream handle.
   #[must_use]
-  pub fn event_stream(&self) -> ArcShared<EventStream> {
+  pub fn event_stream(&self) -> EventStream {
     self.inner.event_stream()
   }
 

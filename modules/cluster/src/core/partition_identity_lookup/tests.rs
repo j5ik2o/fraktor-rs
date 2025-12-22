@@ -3,10 +3,14 @@
 use alloc::{string::ToString, vec};
 
 use crate::core::{
-  activated_kind::ActivatedKind, grain_key::GrainKey, identity_lookup::IdentityLookup,
+  activated_kind::ActivatedKind, grain_key::GrainKey, identity_lookup::IdentityLookup, lookup_error::LookupError,
   partition_identity_lookup::PartitionIdentityLookup, partition_identity_lookup_config::PartitionIdentityLookupConfig,
-  virtual_actor_event::VirtualActorEvent,
+  placement_event::PlacementEvent, placement_locality::PlacementLocality, rendezvous_hasher::RendezvousHasher,
 };
+
+fn setup_member_mode(lookup: &mut PartitionIdentityLookup) {
+  let _ = lookup.setup_member(&[]);
+}
 
 // ============================================================================
 // Task 6.1: 構造体定義と基本コンストラクタのテスト
@@ -153,91 +157,131 @@ fn test_setup_member_overwrites_previous_kinds() {
 }
 
 // ============================================================================
-// Task 6.3, 6.4: get メソッドのテスト
+// Task 6.3, 6.4: resolve メソッドのテスト
 // ============================================================================
 
 #[test]
-fn test_get_returns_none_without_authorities() {
-  // authorities がない場合は None を返すことを検証
+fn test_resolve_returns_error_without_authorities() {
+  // authorities がない場合はエラーを返すことを検証
   let mut lookup = PartitionIdentityLookup::with_defaults();
+  setup_member_mode(&mut lookup);
   let key = GrainKey::new("user/123".to_string());
   let now = 1000;
 
-  let result = lookup.get(&key, now);
+  let result = lookup.resolve(&key, now);
 
-  assert!(result.is_none());
+  assert!(matches!(result, Err(LookupError::NoAuthority)));
 }
 
 #[test]
-fn test_get_activates_and_returns_pid_with_authorities() {
+fn test_resolve_activates_and_returns_pid_with_authorities() {
   // authorities がある場合は PID を返すことを検証
   let mut lookup = PartitionIdentityLookup::with_defaults();
+  setup_member_mode(&mut lookup);
   lookup.update_topology(vec!["node1:8080".to_string()]);
 
   let key = GrainKey::new("user/123".to_string());
   let now = 1000;
 
-  let result = lookup.get(&key, now);
+  let result = lookup.resolve(&key, now);
 
-  assert!(result.is_some());
-  let pid = result.unwrap();
+  assert!(result.is_ok());
+  let pid = result.unwrap().pid;
   assert!(pid.contains("user/123"));
 }
 
 #[test]
-fn test_get_cache_hit_returns_same_pid() {
+fn test_resolve_cache_hit_returns_same_pid() {
   // キャッシュヒット時に同じ PID が返ることを検証
   let mut lookup = PartitionIdentityLookup::with_defaults();
+  setup_member_mode(&mut lookup);
   lookup.update_topology(vec!["node1:8080".to_string()]);
 
   let key = GrainKey::new("user/123".to_string());
   let now = 1000;
 
-  let pid1 = lookup.get(&key, now).unwrap();
-  let pid2 = lookup.get(&key, now).unwrap();
+  let pid1 = lookup.resolve(&key, now).unwrap().pid;
+  let pid2 = lookup.resolve(&key, now).unwrap().pid;
 
   assert_eq!(pid1, pid2);
 }
 
 #[test]
-fn test_get_generates_activated_event_on_first_call() {
+fn test_resolve_returns_remote_when_owner_is_remote() {
+  // ローカル担当ではない場合は Remote を返すことを検証
+  let mut lookup = PartitionIdentityLookup::with_defaults();
+  setup_member_mode(&mut lookup);
+  let authorities = vec!["node1:8080".to_string(), "node2:8080".to_string()];
+  lookup.update_topology(authorities.clone());
+
+  let key = GrainKey::new("user/remote".to_string());
+  let now = 1000;
+  let owner = RendezvousHasher::select(&authorities, &key).expect("owner");
+  let local = if owner == "node1:8080" { "node2:8080" } else { "node1:8080" };
+  lookup.set_local_authority(local.to_string());
+
+  let resolution = lookup.resolve(&key, now).expect("resolution");
+  assert_eq!(resolution.locality, PlacementLocality::Remote);
+}
+
+#[test]
+fn test_resolve_returns_pending_when_distributed_activation_enabled() {
+  // 分散アクティベーション有効時は保留になることを検証
+  let mut lookup = PartitionIdentityLookup::with_defaults();
+  setup_member_mode(&mut lookup);
+  let authorities = vec!["node1:8080".to_string()];
+  lookup.update_topology(authorities.clone());
+  lookup.set_local_authority("node1:8080".to_string());
+  lookup.set_distributed_activation(true);
+
+  let key = GrainKey::new("user/pending".to_string());
+  let now = 1000;
+
+  let result = lookup.resolve(&key, now);
+  assert!(matches!(result, Err(LookupError::Pending)));
+}
+
+#[test]
+fn test_resolve_generates_activated_event_on_first_call() {
   // 初回呼び出し時に Activated イベントが生成されることを検証
   let mut lookup = PartitionIdentityLookup::with_defaults();
+  setup_member_mode(&mut lookup);
   lookup.update_topology(vec!["node1:8080".to_string()]);
 
   let key = GrainKey::new("user/123".to_string());
   let now = 1000;
 
-  let _ = lookup.get(&key, now);
+  let _ = lookup.resolve(&key, now);
   let events = lookup.drain_events();
 
   assert!(!events.is_empty());
-  assert!(matches!(events[0], VirtualActorEvent::Activated { .. }));
+  assert!(events.iter().any(|event| matches!(event, PlacementEvent::Activated { .. })));
 }
 
 #[test]
-fn test_get_generates_hit_event_on_subsequent_calls() {
+fn test_resolve_generates_activated_event_on_subsequent_calls() {
   // 2回目以降の ensure_activation 経由呼び出し時に Hit イベントが生成されることを検証
   // 注: キャッシュヒット時はイベント生成なし（高速パス）
   let mut lookup = PartitionIdentityLookup::with_defaults();
+  setup_member_mode(&mut lookup);
   lookup.update_topology(vec!["node1:8080".to_string()]);
 
   let key = GrainKey::new("user/123".to_string());
   let now = 1000;
 
   // 初回: Activated イベント
-  let _ = lookup.get(&key, now);
+  let _ = lookup.resolve(&key, now);
   let _ = lookup.drain_events();
 
   // キャッシュを無効化して ensure_activation を再度通過させる
   // （通常は TTL 経過後や topology 変更時に発生）
   // ここではキャッシュを手動で無効化できないため、新しいキーでテスト
   let key2 = GrainKey::new("user/456".to_string());
-  let _ = lookup.get(&key2, now);
+  let _ = lookup.resolve(&key2, now);
   let events = lookup.drain_events();
 
   assert!(!events.is_empty());
-  assert!(matches!(events[0], VirtualActorEvent::Activated { .. }));
+  assert!(events.iter().any(|event| matches!(event, PlacementEvent::Activated { .. })));
 }
 
 // ============================================================================
@@ -248,13 +292,14 @@ fn test_get_generates_hit_event_on_subsequent_calls() {
 fn test_remove_pid_removes_activation() {
   // remove_pid がアクティベーションを削除することを検証
   let mut lookup = PartitionIdentityLookup::with_defaults();
+  setup_member_mode(&mut lookup);
   lookup.update_topology(vec!["node1:8080".to_string()]);
 
   let key = GrainKey::new("user/123".to_string());
   let now = 1000;
 
   // アクティベーションを作成
-  let pid = lookup.get(&key, now).unwrap();
+  let pid = lookup.resolve(&key, now).unwrap().pid;
   assert!(!pid.is_empty());
 
   // アクティベーションを削除
@@ -263,7 +308,7 @@ fn test_remove_pid_removes_activation() {
   // イベントを確認（Passivated イベントが生成される）
   let events = lookup.drain_events();
   // Activated + Passivated で 2 件
-  assert!(events.iter().any(|e| matches!(e, VirtualActorEvent::Passivated { key: k } if *k == key)));
+  assert!(events.iter().any(|e| matches!(e, PlacementEvent::Passivated { key: k, .. } if *k == key)));
 }
 
 #[test]
@@ -283,13 +328,14 @@ fn test_remove_pid_on_nonexistent_key_does_nothing() {
 fn test_remove_pid_invalidates_cache() {
   // remove_pid がキャッシュも無効化することを検証
   let mut lookup = PartitionIdentityLookup::with_defaults();
+  setup_member_mode(&mut lookup);
   lookup.update_topology(vec!["node1:8080".to_string()]);
 
   let key = GrainKey::new("user/123".to_string());
   let now = 1000;
 
   // アクティベーションを作成
-  let _ = lookup.get(&key, now);
+  let _ = lookup.resolve(&key, now);
   let _ = lookup.drain_events();
 
   // 削除
@@ -297,11 +343,11 @@ fn test_remove_pid_invalidates_cache() {
   let _ = lookup.drain_events();
 
   // 再度 get を呼ぶと新しいアクティベーションが作成される
-  let _ = lookup.get(&key, now);
+  let _ = lookup.resolve(&key, now);
   let events = lookup.drain_events();
 
   // 新しい Activated イベントが生成されるはず
-  assert!(events.iter().any(|e| matches!(e, VirtualActorEvent::Activated { .. })));
+  assert!(events.iter().any(|e| matches!(e, PlacementEvent::Activated { .. })));
 }
 
 // ============================================================================
@@ -337,11 +383,12 @@ fn test_update_topology_replaces_previous_authorities() {
 fn test_update_topology_invalidates_absent_authorities() {
   // update_topology が消えた authority のエントリを無効化することを検証
   let mut lookup = PartitionIdentityLookup::with_defaults();
+  setup_member_mode(&mut lookup);
   lookup.update_topology(vec!["node1:8080".to_string()]);
 
   let key = GrainKey::new("user/123".to_string());
   let now = 1000;
-  let _ = lookup.get(&key, now);
+  let _ = lookup.resolve(&key, now);
   let _ = lookup.drain_events();
 
   // node1 を含まない新しいトポロジに更新
@@ -349,7 +396,7 @@ fn test_update_topology_invalidates_absent_authorities() {
 
   // Passivated イベントが生成される
   let events = lookup.drain_events();
-  assert!(events.iter().any(|e| matches!(e, VirtualActorEvent::Passivated { .. })));
+  assert!(events.iter().any(|e| matches!(e, PlacementEvent::Passivated { .. })));
 }
 
 // ============================================================================
@@ -360,11 +407,12 @@ fn test_update_topology_invalidates_absent_authorities() {
 fn test_on_member_left_invalidates_authority_entries() {
   // on_member_left が指定 authority のエントリを無効化することを検証
   let mut lookup = PartitionIdentityLookup::with_defaults();
+  setup_member_mode(&mut lookup);
   lookup.update_topology(vec!["node1:8080".to_string()]);
 
   let key = GrainKey::new("user/123".to_string());
   let now = 1000;
-  let _ = lookup.get(&key, now);
+  let _ = lookup.resolve(&key, now);
   let _ = lookup.drain_events();
 
   // node1 が離脱
@@ -372,18 +420,19 @@ fn test_on_member_left_invalidates_authority_entries() {
 
   // Passivated イベントが生成される
   let events = lookup.drain_events();
-  assert!(events.iter().any(|e| matches!(e, VirtualActorEvent::Passivated { .. })));
+  assert!(events.iter().any(|e| matches!(e, PlacementEvent::Passivated { .. })));
 }
 
 #[test]
 fn test_on_member_left_with_unknown_authority_does_nothing() {
   // 存在しない authority に対する on_member_left は何もしないことを検証
   let mut lookup = PartitionIdentityLookup::with_defaults();
+  setup_member_mode(&mut lookup);
   lookup.update_topology(vec!["node1:8080".to_string()]);
 
   let key = GrainKey::new("user/123".to_string());
   let now = 1000;
-  let _ = lookup.get(&key, now);
+  let _ = lookup.resolve(&key, now);
   let _ = lookup.drain_events();
 
   // 存在しない node2 が離脱
@@ -391,7 +440,7 @@ fn test_on_member_left_with_unknown_authority_does_nothing() {
 
   // 何も変化なし（Passivated イベントは生成されない）
   let events = lookup.drain_events();
-  assert!(events.iter().all(|e| !matches!(e, VirtualActorEvent::Passivated { .. })));
+  assert!(events.iter().all(|e| !matches!(e, PlacementEvent::Passivated { .. })));
 }
 
 // ============================================================================
@@ -402,11 +451,12 @@ fn test_on_member_left_with_unknown_authority_does_nothing() {
 fn test_passivate_idle_removes_expired_activations() {
   // passivate_idle がアイドル時間を超えたアクティベーションを削除することを検証
   let mut lookup = PartitionIdentityLookup::with_defaults();
+  setup_member_mode(&mut lookup);
   lookup.update_topology(vec!["node1:8080".to_string()]);
 
   let key = GrainKey::new("user/123".to_string());
   let now = 1000;
-  let _ = lookup.get(&key, now);
+  let _ = lookup.resolve(&key, now);
   let _ = lookup.drain_events();
 
   // idle_ttl を超えた時間でパッシベーション
@@ -415,18 +465,19 @@ fn test_passivate_idle_removes_expired_activations() {
 
   // Passivated イベントが生成される
   let events = lookup.drain_events();
-  assert!(events.iter().any(|e| matches!(e, VirtualActorEvent::Passivated { .. })));
+  assert!(events.iter().any(|e| matches!(e, PlacementEvent::Passivated { .. })));
 }
 
 #[test]
 fn test_passivate_idle_keeps_recent_activations() {
   // passivate_idle が最近アクセスされたアクティベーションを保持することを検証
   let mut lookup = PartitionIdentityLookup::with_defaults();
+  setup_member_mode(&mut lookup);
   lookup.update_topology(vec!["node1:8080".to_string()]);
 
   let key = GrainKey::new("user/123".to_string());
   let now = 1000;
-  let _ = lookup.get(&key, now);
+  let _ = lookup.resolve(&key, now);
   let _ = lookup.drain_events();
 
   // idle_ttl 未満の時間でパッシベーション
@@ -435,7 +486,7 @@ fn test_passivate_idle_keeps_recent_activations() {
 
   // Passivated イベントは生成されない
   let events = lookup.drain_events();
-  assert!(events.iter().all(|e| !matches!(e, VirtualActorEvent::Passivated { .. })));
+  assert!(events.iter().all(|e| !matches!(e, PlacementEvent::Passivated { .. })));
 }
 
 // ============================================================================
@@ -446,11 +497,12 @@ fn test_passivate_idle_keeps_recent_activations() {
 fn test_drain_events_returns_and_clears_events() {
   // drain_events がイベントを返しつつクリアすることを検証
   let mut lookup = PartitionIdentityLookup::with_defaults();
+  setup_member_mode(&mut lookup);
   lookup.update_topology(vec!["node1:8080".to_string()]);
 
   let key = GrainKey::new("user/123".to_string());
   let now = 1000;
-  let _ = lookup.get(&key, now);
+  let _ = lookup.resolve(&key, now);
 
   // 1回目: イベントを取得
   let events1 = lookup.drain_events();
@@ -465,11 +517,12 @@ fn test_drain_events_returns_and_clears_events() {
 fn test_drain_cache_events_returns_cache_events_on_invalidation() {
   // drain_cache_events がキャッシュ無効化時にイベントを返すことを検証
   let mut lookup = PartitionIdentityLookup::with_defaults();
+  setup_member_mode(&mut lookup);
   lookup.update_topology(vec!["node1:8080".to_string()]);
 
   let key = GrainKey::new("user/123".to_string());
   let now = 1000;
-  let _ = lookup.get(&key, now);
+  let _ = lookup.resolve(&key, now);
 
   // キャッシュを無効化（remove_pid 経由で PidCache::invalidate_key が呼ばれる）
   lookup.remove_pid(&key);
@@ -483,11 +536,12 @@ fn test_drain_cache_events_returns_cache_events_on_invalidation() {
 fn test_drain_cache_events_clears_after_drain() {
   // drain_cache_events が2回目は空を返すことを検証
   let mut lookup = PartitionIdentityLookup::with_defaults();
+  setup_member_mode(&mut lookup);
   lookup.update_topology(vec!["node1:8080".to_string()]);
 
   let key = GrainKey::new("user/123".to_string());
   let now = 1000;
-  let _ = lookup.get(&key, now);
+  let _ = lookup.resolve(&key, now);
 
   // キャッシュを無効化してイベントを生成
   lookup.remove_pid(&key);

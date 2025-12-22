@@ -1,0 +1,22 @@
+{
+  "feature_name": "system-state-generic-option-removal",
+  "created_at": "2025-12-13T13:37:52Z",
+  "updated_at": "2025-12-13T14:45:01Z",
+  "language": "ja",
+  "phase": "tasks-generated",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "ready_for_implementation": true
+}

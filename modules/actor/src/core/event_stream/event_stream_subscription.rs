@@ -3,23 +3,20 @@
 #[cfg(test)]
 mod tests;
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 
-use crate::core::event_stream::EventStreamGeneric;
+use crate::core::event_stream::EventStreamSharedGeneric;
 
 /// RAII wrapper ensuring subscribers are removed when dropped.
 pub struct EventStreamSubscriptionGeneric<TB: RuntimeToolbox + 'static> {
-  stream: ArcShared<EventStreamGeneric<TB>>,
+  stream: EventStreamSharedGeneric<TB>,
   id:     u64,
 }
 
 impl<TB: RuntimeToolbox + 'static> EventStreamSubscriptionGeneric<TB> {
   /// Creates a new subscription handle.
   #[must_use]
-  pub const fn new(stream: ArcShared<EventStreamGeneric<TB>>, id: u64) -> Self {
+  pub const fn new(stream: EventStreamSharedGeneric<TB>, id: u64) -> Self {
     Self { stream, id }
   }
 

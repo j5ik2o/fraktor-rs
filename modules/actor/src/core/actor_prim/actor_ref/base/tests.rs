@@ -10,7 +10,7 @@ use crate::core::{
   },
   error::SendError,
   messaging::AnyMessage,
-  system::{SystemState, SystemStateShared},
+  system::ActorSystem,
 };
 
 struct RecordingSender {
@@ -73,10 +73,8 @@ fn actor_ref_clone() {
 
 #[test]
 fn actor_ref_with_system() {
-  use crate::core::system::SystemState;
-
   let (_, sender) = RecordingSender::new();
-  let system = SystemStateShared::new(SystemState::new());
+  let system = ActorSystem::new_empty().state();
   let pid = Pid::new(1, 0);
   let actor: ActorRef = ActorRef::with_system(pid, sender, &system);
 
@@ -92,7 +90,6 @@ fn actor_ref_path_resolves_segments() {
     actor_prim::{Actor, ActorCell, ActorContextGeneric},
     messaging::AnyMessageViewGeneric,
     props::Props,
-    system::SystemState,
   };
 
   struct PathActor;
@@ -106,7 +103,7 @@ fn actor_ref_path_resolves_segments() {
     }
   }
 
-  let system = SystemStateShared::new(SystemState::new());
+  let system = ActorSystem::new_empty().state();
   let root_pid = system.allocate_pid();
   let child_pid = system.allocate_pid();
   let props = Props::from_fn(|| PathActor);
@@ -123,7 +120,7 @@ fn actor_ref_path_resolves_segments() {
 
 #[test]
 fn actor_ref_tell_with_system_records_error() {
-  let system = SystemStateShared::new(SystemState::new());
+  let system = ActorSystem::new_empty().state();
   let pid = Pid::new(1, 0);
   let actor: ActorRef = ActorRef::with_system(pid, NullSender, &system);
 

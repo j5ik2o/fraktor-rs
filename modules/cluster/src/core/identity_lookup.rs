@@ -4,7 +4,8 @@ use alloc::{string::String, vec::Vec};
 
 use crate::core::{
   activated_kind::ActivatedKind, grain_key::GrainKey, identity_setup_error::IdentitySetupError,
-  pid_cache_event::PidCacheEvent, virtual_actor_event::VirtualActorEvent,
+  lookup_error::LookupError, pid_cache_event::PidCacheEvent, placement_event::PlacementEvent,
+  placement_resolution::PlacementResolution,
 };
 
 /// Provides identity resolution setup and lookup operations.
@@ -27,21 +28,25 @@ pub trait IdentityLookup: Send + Sync {
   /// Returns an error if identity lookup setup fails for client mode.
   fn setup_client(&mut self, kinds: &[ActivatedKind]) -> Result<(), IdentitySetupError>;
 
-  /// Resolves the PID for a grain key.
+  /// Resolves placement for a grain key.
   ///
-  /// Returns `Some(pid)` if the grain is active or can be activated,
-  /// `None` if no authority is available or activation failed.
+  /// Returns `Ok(resolution)` when placement can be resolved, or
+  /// `Err` when resolution failed or is pending.
   ///
   /// Note: This method uses `&mut self` because it may update the cache
   /// and create new activations as side effects.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when placement resolution fails or is pending.
   ///
   /// # Arguments
   ///
   /// * `key` - The grain key to resolve
   /// * `now` - Current Unix timestamp in seconds for TTL calculation
-  fn get(&mut self, key: &GrainKey, now: u64) -> Option<String> {
+  fn resolve(&mut self, key: &GrainKey, now: u64) -> Result<PlacementResolution, LookupError> {
     let _ = (key, now);
-    None
+    Err(LookupError::NotReady)
   }
 
   /// Removes a PID from the registry and cache.
@@ -86,8 +91,8 @@ pub trait IdentityLookup: Send + Sync {
     let _ = (now, idle_ttl);
   }
 
-  /// Drains pending virtual actor events.
-  fn drain_events(&mut self) -> Vec<VirtualActorEvent> {
+  /// Drains pending placement events.
+  fn drain_events(&mut self) -> Vec<PlacementEvent> {
     Vec::new()
   }
 

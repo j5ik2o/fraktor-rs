@@ -1,8 +1,10 @@
 //! Cluster lifecycle and topology events emitted to the event stream.
 
-use alloc::{string::String, vec::Vec};
+use alloc::string::String;
 
-use crate::core::{ClusterTopology, startup_mode::StartupMode};
+use fraktor_utils_rs::core::time::TimerInstant;
+
+use crate::core::{TopologyUpdate, node_status::NodeStatus, startup_mode::StartupMode};
 
 /// Event payload published via `EventStreamEvent::Extension { name: "cluster", .. }`.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -39,15 +41,38 @@ pub enum ClusterEvent {
     /// Failure reason.
     reason:  String,
   },
-  /// Topology changed (joined/left/blocked members).
+  /// Topology changed.
   TopologyUpdated {
-    /// Full topology snapshot including hash and deltas.
-    topology: ClusterTopology,
-    /// Joined members (duplicated for convenience).
-    joined:   Vec<String>,
-    /// Left members (duplicated for convenience).
-    left:     Vec<String>,
-    /// Blocked members from BlockListProvider.
-    blocked:  Vec<String>,
+    /// Topology update payload.
+    update: TopologyUpdate,
+  },
+  /// Member status changed.
+  MemberStatusChanged {
+    /// Node identifier.
+    node_id:     String,
+    /// Authority address.
+    authority:   String,
+    /// Previous status.
+    from:        NodeStatus,
+    /// Current status.
+    to:          NodeStatus,
+    /// Observation timestamp.
+    observed_at: TimerInstant,
+  },
+  /// Member quarantined.
+  MemberQuarantined {
+    /// Authority address.
+    authority:   String,
+    /// Quarantine reason.
+    reason:      String,
+    /// Observation timestamp.
+    observed_at: TimerInstant,
+  },
+  /// Topology apply failed.
+  TopologyApplyFailed {
+    /// Failure reason.
+    reason:      String,
+    /// Observation timestamp.
+    observed_at: TimerInstant,
   },
 }

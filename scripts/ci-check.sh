@@ -208,6 +208,9 @@ ensure_dylint_installed() {
   if command -v cargo-dylint >/dev/null 2>&1; then
     local current_version
     current_version=$(cargo-dylint --version 2>/dev/null | awk '{print $2}')
+    if [[ -z "${current_version}" ]]; then
+      current_version=$(cargo dylint --version 2>/dev/null | awk '{print $2}')
+    fi
     if [[ "${current_version}" == "${desired_version}" ]]; then
       return 0
     fi

@@ -1,63 +1,21 @@
-# 実装計画
+# Implementation Plan
 
-## タスク記述フォーマット
+## Task Format Template
 
-すべてのタスク生成で以下の形式を使用する:
+Use whichever pattern fits the work breakdown:
 
-- [ ] {{MAJOR_NUMBER}}. {{MAJOR_TASK_DESCRIPTION}}
+### Major task only
+- [ ] {{NUMBER}}. {{TASK_DESCRIPTION}}{{PARALLEL_MARK}}
+  - {{DETAIL_ITEM_1}} *(Include details only when needed. If the task stands alone, omit bullet items.)*
+  - _Requirements: {{REQUIREMENT_IDS}}_
+
+### Major + Sub-task structure
+- [ ] {{MAJOR_NUMBER}}. {{MAJOR_TASK_SUMMARY}}
+- [ ] {{MAJOR_NUMBER}}.{{SUB_NUMBER}} {{SUB_TASK_DESCRIPTION}}{{SUB_PARALLEL_MARK}}
   - {{DETAIL_ITEM_1}}
   - {{DETAIL_ITEM_2}}
-  - {{DETAIL_ITEM_3}}
-  - _対応要件: {{REQUIREMENT_IDS}}_
-  - _依存タスク: {{DEPENDENCY_IDS もしくは -}}_
+  - _Requirements: {{REQUIREMENT_IDS}}_ *(IDs only; do not add descriptions or parentheses.)*
 
-- [ ] {{MAJOR_NUMBER}}.{{SUB_NUMBER}} {{SUB_TASK_DESCRIPTION}}
-  - {{DETAIL_ITEM_1}}
-  - {{DETAIL_ITEM_2}}
-  - _対応要件: {{REQUIREMENT_IDS}}_
-  - _依存タスク: {{DEPENDENCY_IDS もしくは -}}_
-  - _完了条件: {{COMPLETE_CONDITION}}_
-
-> **ルール**: 親タスク (`{{MAJOR_NUMBER}}.`) は概要のみを記述し、子タスク (`{{MAJOR_NUMBER}}.{{SUB_NUMBER}}`) に具体的な作業内容を書き出す。親タスク直下に詳細 bullet を並べないこと。依存タスクが存在しない場合は `_依存タスク: -_` を必ず記載する。
-
-## 記述例（参考）
-
-- [ ] 1. プロジェクト基盤とインフラ準備
-  - _対応要件: 基盤を要する全要件_
-  - _依存タスク: -_
-- [ ] 1.1 リポジトリ初期化と環境構築
-  - 必要な技術スタックでリポジトリを初期化
-  - サーバインフラとリクエスト処理を構成
-  - データストレージとキャッシュ層を用意
-  - 設定／環境管理を整備
-  - _対応要件: 基盤を要する全要件_
-  - _依存タスク: -_
-  - _完了条件: -_
-
-- [ ] 2. 認証・ユーザ管理システムを構築
-  - _(親タスクなので詳細は書かない)_
-  - _対応要件: 5系, 7系のすべて_
-  - _依存タスク: 1.1_
-- [ ] 2.1 コア認証機能を実装
-  - バリデーション付きのユーザデータ保存領域を準備
-  - 安全な認証メカニズムを実装
-  - ユーザ登録フローを構築
-  - ログイン＋セッション管理を追加
-  - _対応要件: 7.1, 7.2_
-  - _依存タスク: 1.1_
-  - _完了条件: -_
-
-- [ ] 2.2 メールサービス連携を有効化
-  - 資格情報を安全に保存する仕組みを実装
-  - メールプロバイダ向け認証フローを構築
-  - 接続検証ロジックを追加
-  - メールアカウント管理機能を実装
-  - _対応要件: 5.1, 5.2, 5.4_
-  - _依存タスク: 2.1_
-  - _完了条件: -_
-
-- [ ] 3. 次の主要タスク...
-  - _(親タスクなので詳細は書かない)_
-  - _対応要件: 該当要件一式_
-  - _依存タスク: -_
-  - _完了条件: -_
+> **Parallel marker**: Append ` (P)` only to tasks that can be executed in parallel. Omit the marker when running in `--sequential` mode.
+>
+> **Optional test coverage**: When a sub-task is deferrable test work tied to acceptance criteria, mark the checkbox as `- [ ]*` and explain the referenced requirements in the detail bullets.

@@ -10,9 +10,9 @@ use fraktor_utils_rs::core::{
 
 use crate::core::{
   actor_prim::Pid,
-  dead_letter::{DeadLetter, DeadLetterReason},
+  dead_letter::{DeadLetterReason, DeadLetterShared},
   error::SendError,
-  event_stream::{EventStream, EventStreamEvent, EventStreamSubscriber, subscriber_handle},
+  event_stream::{EventStreamEvent, EventStreamShared, EventStreamSubscriber, subscriber_handle},
   logging::LogLevel,
   messaging::AnyMessage,
 };
@@ -35,12 +35,12 @@ impl EventStreamSubscriber for RecordingSubscriber {
 
 #[test]
 fn record_entry_stores_and_publishes() {
-  let stream = ArcShared::new(EventStream::default());
+  let stream = EventStreamShared::default();
   let events = ArcShared::new(NoStdMutex::new(Vec::new()));
   let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
-  let _subscription = EventStream::subscribe_arc(&stream, &subscriber);
+  let _subscription = stream.subscribe(&subscriber);
 
-  let dead_letter = DeadLetter::with_default_capacity(stream.clone());
+  let dead_letter = DeadLetterShared::with_default_capacity(stream.clone());
   let pid = Pid::new(1, 0);
   let message = AnyMessage::new("payload");
   dead_letter.record_entry(message, DeadLetterReason::ExplicitRouting, Some(pid), Duration::from_millis(5));
@@ -57,12 +57,12 @@ fn record_entry_stores_and_publishes() {
 
 #[test]
 fn record_send_error_converts_reason_and_honours_capacity() {
-  let stream = ArcShared::new(EventStream::default());
+  let stream = EventStreamShared::default();
   let events = ArcShared::new(NoStdMutex::new(Vec::new()));
   let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
-  let _subscription = EventStream::subscribe_arc(&stream, &subscriber);
+  let _subscription = stream.subscribe(&subscriber);
 
-  let deadletter = DeadLetter::new(stream, 1);
+  let deadletter = DeadLetterShared::with_capacity(stream, 1);
   let pid = Pid::new(7, 0);
   let error = SendError::full(AnyMessage::new("first"));
   deadletter.record_send_error(Some(pid), &error, Duration::from_millis(1));
@@ -83,8 +83,8 @@ fn record_send_error_converts_reason_and_honours_capacity() {
 
 #[test]
 fn record_send_error_maps_timeout_reason() {
-  let stream = ArcShared::new(EventStream::default());
-  let deadletter = DeadLetter::with_default_capacity(stream);
+  let stream = EventStreamShared::default();
+  let deadletter = DeadLetterShared::with_default_capacity(stream);
   let pid = Pid::new(11, 0);
   let error = SendError::timeout(AnyMessage::new("delayed"));
 

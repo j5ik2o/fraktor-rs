@@ -9,7 +9,7 @@ use fraktor_utils_rs::core::{
   sync::{ArcShared, SharedAccess},
 };
 
-use super::base::DispatcherGeneric;
+use super::base::DispatcherSharedGeneric;
 use crate::core::{
   actor_prim::actor_ref::{ActorRefSender, SendOutcome},
   dispatcher::schedule_adapter_shared::ScheduleAdapterSharedGeneric,
@@ -20,7 +20,7 @@ use crate::core::{
 
 /// Sender that enqueues messages via actor handle.
 pub struct DispatcherSenderGeneric<TB: RuntimeToolbox + 'static> {
-  dispatcher: DispatcherGeneric<TB>,
+  dispatcher: DispatcherSharedGeneric<TB>,
   mailbox:    ArcShared<MailboxGeneric<TB>>,
 }
 
@@ -33,7 +33,7 @@ unsafe impl<TB: RuntimeToolbox + 'static> Sync for DispatcherSenderGeneric<TB> {
 impl<TB: RuntimeToolbox + 'static> DispatcherSenderGeneric<TB> {
   #[must_use]
   /// Creates a sender bound to the specified dispatcher.
-  pub fn new(dispatcher: DispatcherGeneric<TB>) -> Self {
+  pub fn new(dispatcher: DispatcherSharedGeneric<TB>) -> Self {
     let mailbox = dispatcher.mailbox();
     Self { dispatcher, mailbox }
   }

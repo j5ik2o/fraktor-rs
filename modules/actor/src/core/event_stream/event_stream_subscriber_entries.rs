@@ -7,7 +7,7 @@ use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 use crate::core::event_stream::{EventStreamSubscriberEntryGeneric, EventStreamSubscriberShared};
 
 /// Collection of subscriber entries with local identifier generation.
-pub struct EventStreamSubscriberEntriesGeneric<TB: RuntimeToolbox + 'static> {
+pub(crate) struct EventStreamSubscriberEntriesGeneric<TB: RuntimeToolbox + 'static> {
   entries: Vec<EventStreamSubscriberEntryGeneric<TB>>,
   next_id: u64,
 }
@@ -15,12 +15,12 @@ pub struct EventStreamSubscriberEntriesGeneric<TB: RuntimeToolbox + 'static> {
 impl<TB: RuntimeToolbox + 'static> EventStreamSubscriberEntriesGeneric<TB> {
   /// Creates an empty collection with the initial identifier set to `1`.
   #[must_use]
-  pub const fn new() -> Self {
+  pub(crate) const fn new() -> Self {
     Self { entries: Vec::new(), next_id: 1 }
   }
 
   /// Adds a subscriber and returns the assigned identifier.
-  pub fn add(&mut self, subscriber: EventStreamSubscriberShared<TB>) -> u64 {
+  pub(crate) fn add(&mut self, subscriber: EventStreamSubscriberShared<TB>) -> u64 {
     let id = self.next_id;
     self.next_id += 1;
     self.entries.push(EventStreamSubscriberEntryGeneric::new(id, subscriber));
@@ -28,7 +28,7 @@ impl<TB: RuntimeToolbox + 'static> EventStreamSubscriberEntriesGeneric<TB> {
   }
 
   /// Removes a subscriber by identifier if it exists.
-  pub fn remove(&mut self, id: u64) {
+  pub(crate) fn remove(&mut self, id: u64) {
     if let Some(position) = self.entries.iter().position(|entry| entry.id() == id) {
       self.entries.swap_remove(position);
     }
@@ -36,7 +36,7 @@ impl<TB: RuntimeToolbox + 'static> EventStreamSubscriberEntriesGeneric<TB> {
 
   /// Returns a cloned snapshot of the current subscribers.
   #[must_use]
-  pub fn snapshot(&self) -> Vec<EventStreamSubscriberEntryGeneric<TB>> {
+  pub(crate) fn snapshot(&self) -> Vec<EventStreamSubscriberEntryGeneric<TB>> {
     self.entries.clone()
   }
 }

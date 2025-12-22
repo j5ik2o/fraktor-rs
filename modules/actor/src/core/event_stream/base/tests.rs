@@ -8,10 +8,9 @@ use fraktor_utils_rs::core::{
   sync::ArcShared,
 };
 
-use super::EventStream;
 use crate::core::{
   actor_prim::Pid,
-  event_stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
+  event_stream::{EventStreamEvent, EventStreamShared, EventStreamSubscriber, subscriber_handle},
   lifecycle::{LifecycleEvent, LifecycleStage},
   logging::{LogEvent, LogLevel},
   messaging::AnyMessage,
@@ -37,14 +36,14 @@ impl EventStreamSubscriber<NoStdToolbox> for RecordingSubscriber {
 
 #[test]
 fn event_stream_replays_buffer_for_new_subscribers() {
-  let stream = ArcShared::new(EventStream::default());
+  let stream = EventStreamShared::default();
 
   let log = LogEvent::new(LogLevel::Info, String::from("boot"), Duration::from_millis(1), None);
   stream.publish(&EventStreamEvent::Log(log));
 
   let events = ArcShared::new(NoStdMutex::new(Vec::new()));
   let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
-  let _subscription = EventStream::subscribe_arc(&stream, &subscriber);
+  let _subscription = stream.subscribe(&subscriber);
 
   let lifecycle =
     LifecycleEvent::new(Pid::new(1, 0), None, String::from("actor"), LifecycleStage::Started, Duration::from_millis(2));
@@ -57,7 +56,7 @@ fn event_stream_replays_buffer_for_new_subscribers() {
 
 #[test]
 fn capacity_limits_buffer_size() {
-  let stream = ArcShared::new(EventStream::with_capacity(1));
+  let stream = EventStreamShared::with_capacity(1);
 
   stream.publish(&EventStreamEvent::Log(LogEvent::new(
     LogLevel::Info,
@@ -74,7 +73,7 @@ fn capacity_limits_buffer_size() {
 
   let events = ArcShared::new(NoStdMutex::new(Vec::new()));
   let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
-  let _subscription = EventStream::subscribe_arc(&stream, &subscriber);
+  let _subscription = stream.subscribe(&subscriber);
 
   let events = events.lock().clone();
   assert_eq!(events.len(), 1);
@@ -83,7 +82,7 @@ fn capacity_limits_buffer_size() {
 
 #[test]
 fn extension_events_are_buffered_and_delivered() {
-  let stream = ArcShared::new(EventStream::with_capacity(4));
+  let stream = EventStreamShared::with_capacity(4);
 
   // publish before subscription to ensure replay works
   stream.publish(&EventStreamEvent::Extension {
@@ -93,7 +92,7 @@ fn extension_events_are_buffered_and_delivered() {
 
   let events = ArcShared::new(NoStdMutex::new(Vec::new()));
   let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
-  let _subscription = EventStream::subscribe_arc(&stream, &subscriber);
+  let _subscription = stream.subscribe(&subscriber);
 
   stream.publish(&EventStreamEvent::Extension {
     name:    String::from("cluster"),
@@ -118,10 +117,10 @@ fn extension_events_are_buffered_and_delivered() {
 
 #[test]
 fn unsubscribe_removes_subscriber() {
-  let stream = ArcShared::new(EventStream::default());
+  let stream = EventStreamShared::default();
   let events = ArcShared::new(NoStdMutex::new(Vec::new()));
   let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
-  let subscription = EventStream::subscribe_arc(&stream, &subscriber);
+  let subscription = stream.subscribe(&subscriber);
 
   stream.publish(&EventStreamEvent::Log(LogEvent::new(
     LogLevel::Info,
@@ -150,12 +149,12 @@ fn unsubscribe_removes_subscriber() {
 
 #[test]
 fn default_creates_stream_with_default_capacity() {
-  let stream = EventStream::default();
+  let stream = EventStreamShared::default();
   let _ = stream;
 }
 
 #[test]
 fn with_capacity_creates_stream_with_specified_capacity() {
-  let stream = EventStream::with_capacity(100);
+  let stream = EventStreamShared::with_capacity(100);
   let _ = stream;
 }

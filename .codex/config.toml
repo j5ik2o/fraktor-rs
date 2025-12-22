@@ -1,4 +1,4 @@
-model = "gpt-5.1-codex-max"
+model = "gpt-5.2-codex"
 model_reasoning_effort = "xhigh"
 hide_agent_reasoning = true
 network_access = true
@@ -6,6 +6,7 @@ network_access = true
 [features]
 rmcp_client=true
 web_search_request=true
+skills=true
 
 [projects."/Users/j5ik2o/Sources/fraktor-rs"]
 trust_level = "trusted"
@@ -19,11 +20,10 @@ startup_timeout_sec = 30.0
 command = "npx"
 args = ["-y", "@upstash/context7-mcp@latest"]
 
-[mcp_servers.playwright]
-command = "npx"
-args = ["@playwright/mcp@latest"]
-
 [notice]
 hide_gpt5_1_migration_prompt = true
 "hide_gpt-5.1-codex-max_migration_prompt" = true
+
+[notice.model_migrations]
+"gpt-5.2" = "gpt-5.2-codex"
 

@@ -6,7 +6,7 @@ use fraktor_utils_rs::{
   std::{StdSyncMutex, runtime_toolbox::StdToolbox},
 };
 
-use super::{DispatchExecutor, DispatchExecutorAdapter, Dispatcher, StdScheduleAdapter};
+use super::{DispatchExecutor, DispatchExecutorAdapter, DispatcherShared, StdScheduleAdapter};
 use crate::core::{
   dispatcher::{
     DispatchExecutorRunner, DispatcherConfigGeneric as CoreDispatcherConfigGeneric, ScheduleAdapterSharedGeneric,
@@ -48,7 +48,10 @@ impl DispatcherConfig {
   ///
   /// Returns [`SpawnError::InvalidMailboxConfig`] if the mailbox configuration is incompatible
   /// with the executor (e.g., using Block strategy with a non-blocking executor).
-  pub fn build_dispatcher(&self, mailbox: ArcShared<MailboxGeneric<StdToolbox>>) -> Result<Dispatcher, SpawnError> {
+  pub fn build_dispatcher(
+    &self,
+    mailbox: ArcShared<MailboxGeneric<StdToolbox>>,
+  ) -> Result<DispatcherShared, SpawnError> {
     self.inner.build_dispatcher(mailbox)
   }
 

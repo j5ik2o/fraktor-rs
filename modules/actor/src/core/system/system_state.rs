@@ -4,7 +4,6 @@
 mod tests;
 
 mod path_identity;
-mod path_identity_shared;
 
 use alloc::{
   borrow::ToOwned,
@@ -21,33 +20,39 @@ use core::{
 
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
+  sync::{ArcShared, SharedAccess},
 };
 use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
-use self::{path_identity::PathIdentity, path_identity_shared::PathIdentitySharedGeneric};
+use self::path_identity::PathIdentity;
 use super::{
-  ActorPathRegistrySharedGeneric, ActorRefProvider, ActorRefProviderCaller, ActorRefProviderCallersSharedGeneric,
-  ActorRefProviderHandle, ActorRefProviderSharedGeneric, ActorRefProvidersSharedGeneric, AskFuturesSharedGeneric,
-  AuthorityState, CellsSharedGeneric, ExtensionsSharedGeneric, ExtraTopLevelsSharedGeneric, GuardianKind,
-  GuardiansStateSharedGeneric, RegistriesSharedGeneric, RemoteAuthorityError, RemoteAuthorityManagerSharedGeneric,
-  RemoteWatchHook, RemotingConfig, TempActorsSharedGeneric,
+  ActorPathRegistry, ActorRefProvider, ActorRefProviderCaller, ActorRefProviderHandle, ActorRefProviderSharedGeneric,
+  AuthorityState, CellsSharedGeneric, GuardianKind, RemoteAuthorityError, RemoteAuthorityManagerGeneric,
+  RemoteWatchHookDynSharedGeneric, RemotingConfig, actor_ref_provider_callers::ActorRefProviderCallersGeneric,
+  actor_ref_providers::ActorRefProvidersGeneric, ask_futures::AskFuturesGeneric, extensions::ExtensionsGeneric,
+  extra_top_levels::ExtraTopLevelsGeneric, guardians_state::GuardiansState, registries::RegistriesGeneric,
+  temp_actors::TempActorsGeneric,
 };
 use crate::core::{
   actor_prim::{
     ActorCellGeneric, Pid,
-    actor_path::{ActorPath, ActorPathParser, ActorPathParts, ActorPathScheme},
+    actor_path::{ActorPath, ActorPathScheme, GuardianKind as PathGuardianKind},
     actor_ref::ActorRefGeneric,
   },
-  dead_letter::{DeadLetterEntryGeneric, DeadLetterGeneric, DeadLetterReason},
-  dispatcher::{DispatchersGeneric, DispatchersSharedGeneric},
+  dead_letter::{DeadLetterEntryGeneric, DeadLetterSharedGeneric},
+  dispatcher::{DispatcherConfigGeneric, DispatcherRegistryError, DispatchersGeneric},
   error::{ActorError, SendError},
-  event_stream::{EventStreamEvent, EventStreamGeneric, RemoteAuthorityEvent, TickDriverSnapshot},
+  event_stream::{EventStreamEvent, EventStreamSharedGeneric, RemoteAuthorityEvent, TickDriverSnapshot},
   futures::ActorFutureSharedGeneric,
   logging::{LogEvent, LogLevel},
-  mailbox::MailboxesSharedGeneric,
+  mailbox::{MailboxRegistryError, MailboxesGeneric},
   messaging::{AnyMessageGeneric, FailurePayload, SystemMessage},
-  scheduler::{SchedulerContextSharedGeneric, TaskRunSummary, TickDriverRuntime},
+  props::MailboxConfig,
+  scheduler::{
+    SchedulerBackedDelayProvider, SchedulerConfig, SchedulerContext, SchedulerSharedGeneric, TaskRunSummary,
+    TickDriverControl, TickDriverHandleGeneric, TickDriverKind, TickDriverProvisioningContext, TickDriverRuntime,
+    TickExecutorSignal, TickFeed, next_tick_driver_id,
+  },
   spawn::{NameRegistryError, SpawnError},
   supervision::SupervisorDirective,
   system::{RegisterExtraTopLevelError, ReservationPolicy},
@@ -66,35 +71,38 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   next_pid: AtomicU64,
   clock: AtomicU64,
   cells: CellsSharedGeneric<TB>,
-  registries: RegistriesSharedGeneric<TB>,
-  guardians: GuardiansStateSharedGeneric<TB>,
-  ask_futures: AskFuturesSharedGeneric<TB>,
+  registries: RegistriesGeneric<TB>,
+  guardians: GuardiansState,
+  root_guardian_alive: AtomicBool,
+  system_guardian_alive: AtomicBool,
+  user_guardian_alive: AtomicBool,
+  ask_futures: AskFuturesGeneric<TB>,
   termination: ActorFutureSharedGeneric<(), TB>,
   terminated: AtomicBool,
   terminating: AtomicBool,
   root_started: AtomicBool,
-  event_stream: ArcShared<EventStreamGeneric<TB>>,
-  dead_letter: ArcShared<DeadLetterGeneric<TB>>,
-  extra_top_levels: ExtraTopLevelsSharedGeneric<TB>,
-  temp_actors: TempActorsSharedGeneric<TB>,
+  event_stream: EventStreamSharedGeneric<TB>,
+  dead_letter: DeadLetterSharedGeneric<TB>,
+  extra_top_levels: ExtraTopLevelsGeneric<TB>,
+  temp_actors: TempActorsGeneric<TB>,
   temp_counter: AtomicU64,
   failure_total: AtomicU64,
   failure_restart_total: AtomicU64,
   failure_stop_total: AtomicU64,
   failure_escalate_total: AtomicU64,
   failure_inflight: AtomicU64,
-  extensions: ExtensionsSharedGeneric<TB>,
-  actor_ref_providers: ActorRefProvidersSharedGeneric<TB>,
-  actor_ref_provider_callers_by_scheme: ActorRefProviderCallersSharedGeneric<TB>,
-  remote_watch_hook: ToolboxMutex<Option<Box<dyn RemoteWatchHook<TB>>>, TB>,
-  dispatchers: DispatchersSharedGeneric<TB>,
-  mailboxes: MailboxesSharedGeneric<TB>,
-  path_identity: PathIdentitySharedGeneric<TB>,
-  actor_path_registry: ActorPathRegistrySharedGeneric<TB>,
-  remote_authority_mgr: RemoteAuthorityManagerSharedGeneric<TB>,
-  scheduler_context: ToolboxMutex<Option<SchedulerContextSharedGeneric<TB>>, TB>,
-  tick_driver_runtime: ToolboxMutex<Option<TickDriverRuntime<TB>>, TB>,
-  remoting_config: ToolboxMutex<Option<RemotingConfig>, TB>,
+  extensions: ExtensionsGeneric<TB>,
+  actor_ref_providers: ActorRefProvidersGeneric<TB>,
+  actor_ref_provider_callers_by_scheme: ActorRefProviderCallersGeneric<TB>,
+  remote_watch_hook: RemoteWatchHookDynSharedGeneric<TB>,
+  dispatchers: DispatchersGeneric<TB>,
+  mailboxes: MailboxesGeneric<TB>,
+  path_identity: PathIdentity,
+  actor_path_registry: ActorPathRegistry,
+  remote_authority_mgr: RemoteAuthorityManagerGeneric<TB>,
+  scheduler_context: SchedulerContext<TB>,
+  tick_driver_snapshot: Option<TickDriverSnapshot>,
+  tick_driver_runtime: TickDriverRuntime<TB>,
 }
 
 /// Type alias for [SystemStateGeneric] with the default [NoStdToolbox].
@@ -103,48 +111,108 @@ pub type SystemState = SystemStateGeneric<NoStdToolbox>;
 impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   /// Creates a fresh state container without any registered actors.
   #[must_use]
-  pub fn new() -> Self {
+  pub fn new() -> Self
+  where
+    TB: Default, {
     const DEAD_LETTER_CAPACITY: usize = 512;
-    let event_stream = ArcShared::new(EventStreamGeneric::default());
-    let dead_letter = ArcShared::new(DeadLetterGeneric::new(event_stream.clone(), DEAD_LETTER_CAPACITY));
-    let dispatchers = DispatchersSharedGeneric::new(DispatchersGeneric::new());
-    dispatchers.with_write(|d| d.ensure_default());
-    let mailboxes = MailboxesSharedGeneric::<TB>::new();
-    mailboxes.with_write(|m| m.ensure_default());
+    let event_stream = EventStreamSharedGeneric::default();
+    let dead_letter = DeadLetterSharedGeneric::with_capacity(event_stream.clone(), DEAD_LETTER_CAPACITY);
+    let mut dispatchers = DispatchersGeneric::new();
+    dispatchers.ensure_default();
+    let mut mailboxes = MailboxesGeneric::<TB>::new();
+    mailboxes.ensure_default();
+    let scheduler_config = SchedulerConfig::default();
+    let toolbox = TB::default();
+    let scheduler_context = SchedulerContext::with_event_stream(toolbox, scheduler_config, event_stream.clone());
+    let tick_driver_runtime = Self::default_tick_driver_runtime(scheduler_config.resolution());
     Self {
       next_pid: AtomicU64::new(0),
       clock: AtomicU64::new(0),
       cells: CellsSharedGeneric::default(),
-      registries: RegistriesSharedGeneric::default(),
-      guardians: GuardiansStateSharedGeneric::default(),
-      ask_futures: AskFuturesSharedGeneric::default(),
+      registries: RegistriesGeneric::default(),
+      guardians: GuardiansState::default(),
+      root_guardian_alive: AtomicBool::new(false),
+      system_guardian_alive: AtomicBool::new(false),
+      user_guardian_alive: AtomicBool::new(false),
+      ask_futures: AskFuturesGeneric::default(),
       termination: ActorFutureSharedGeneric::<(), TB>::new(),
       terminated: AtomicBool::new(false),
       terminating: AtomicBool::new(false),
       root_started: AtomicBool::new(false),
       event_stream,
       dead_letter,
-      extra_top_levels: ExtraTopLevelsSharedGeneric::default(),
-      temp_actors: TempActorsSharedGeneric::default(),
+      extra_top_levels: ExtraTopLevelsGeneric::default(),
+      temp_actors: TempActorsGeneric::default(),
       temp_counter: AtomicU64::new(0),
       failure_total: AtomicU64::new(0),
       failure_restart_total: AtomicU64::new(0),
       failure_stop_total: AtomicU64::new(0),
       failure_escalate_total: AtomicU64::new(0),
       failure_inflight: AtomicU64::new(0),
-      extensions: ExtensionsSharedGeneric::default(),
-      actor_ref_providers: ActorRefProvidersSharedGeneric::default(),
-      remote_watch_hook: <TB::MutexFamily as SyncMutexFamily>::create(None),
+      extensions: ExtensionsGeneric::default(),
+      actor_ref_providers: ActorRefProvidersGeneric::default(),
+      remote_watch_hook: RemoteWatchHookDynSharedGeneric::noop(),
       dispatchers,
       mailboxes,
-      path_identity: PathIdentitySharedGeneric::default(),
-      actor_path_registry: ActorPathRegistrySharedGeneric::default(),
-      remote_authority_mgr: RemoteAuthorityManagerSharedGeneric::default(),
-      actor_ref_provider_callers_by_scheme: ActorRefProviderCallersSharedGeneric::default(),
-      scheduler_context: <TB::MutexFamily as SyncMutexFamily>::create(None),
-      tick_driver_runtime: <TB::MutexFamily as SyncMutexFamily>::create(None),
-      remoting_config: <TB::MutexFamily as SyncMutexFamily>::create(None),
+      path_identity: PathIdentity::default(),
+      actor_path_registry: ActorPathRegistry::default(),
+      remote_authority_mgr: RemoteAuthorityManagerGeneric::default(),
+      actor_ref_provider_callers_by_scheme: ActorRefProviderCallersGeneric::default(),
+      scheduler_context,
+      tick_driver_snapshot: None,
+      tick_driver_runtime,
     }
+  }
+
+  pub(crate) fn build_from_config(config: &ActorSystemConfigGeneric<TB>) -> Result<Self, SpawnError>
+  where
+    TB: Default, {
+    use crate::core::scheduler::TickDriverBootstrap;
+
+    let mut state = Self::new();
+    state.apply_actor_system_config(config);
+
+    let event_stream = state.event_stream();
+    let toolbox = TB::default();
+    let scheduler_config = *config.scheduler_config();
+    #[cfg(any(test, feature = "test-support"))]
+    let scheduler_config = if let Some(tick_driver_config) = config.tick_driver_config()
+      && matches!(tick_driver_config, crate::core::scheduler::TickDriverConfig::ManualTest(_))
+      && !scheduler_config.runner_api_enabled()
+    {
+      scheduler_config.with_runner_api_enabled(true)
+    } else {
+      scheduler_config
+    };
+
+    let context = SchedulerContext::with_event_stream(toolbox, scheduler_config, event_stream);
+    let provisioning = TickDriverProvisioningContext::from_scheduler_context(&context);
+    state.scheduler_context = context;
+
+    let tick_driver_config = config
+      .tick_driver_config()
+      .ok_or_else(|| SpawnError::SystemBuildError("tick driver configuration is required".into()))?;
+    let (runtime, snapshot) = TickDriverBootstrap::provision(tick_driver_config, &provisioning)
+      .map_err(|error| SpawnError::SystemBuildError(format!("tick driver provisioning failed: {error}")))?;
+    state.tick_driver_runtime = runtime;
+    state.tick_driver_snapshot = Some(snapshot);
+
+    Ok(state)
+  }
+
+  fn default_tick_driver_runtime(resolution: Duration) -> TickDriverRuntime<TB> {
+    struct NoopDriverControl;
+
+    impl TickDriverControl for NoopDriverControl {
+      fn shutdown(&self) {}
+    }
+
+    let signal = TickExecutorSignal::new();
+    let feed = TickFeed::new(resolution, 1, signal);
+    let control: Box<dyn TickDriverControl> = Box::new(NoopDriverControl);
+    let control = ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(control));
+    let handle = TickDriverHandleGeneric::new(next_tick_driver_id(), TickDriverKind::Auto, resolution, control);
+    TickDriverRuntime::new(handle, feed)
   }
 
   /// Allocates a new unique [`Pid`] for an actor.
@@ -155,105 +223,44 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   }
 
   /// Applies the actor system configuration (system name, remoting settings).
-  pub fn apply_actor_system_config(&self, config: &ActorSystemConfigGeneric<TB>) {
-    self.path_identity.with_write(|identity| {
-      identity.system_name = config.system_name().to_string();
-      identity.guardian_kind = config.default_guardian();
-      if let Some(remoting) = config.remoting_config() {
-        identity.canonical_host = Some(remoting.canonical_host().to_string());
-        identity.canonical_port = remoting.canonical_port();
-        identity.quarantine_duration = remoting.quarantine_duration();
-        // Save the full RemotingConfig
-        *self.remoting_config.lock() = Some(remoting.clone());
-      } else {
-        identity.canonical_host = None;
-        identity.canonical_port = None;
-        identity.quarantine_duration = path_identity::DEFAULT_QUARANTINE_DURATION;
-        // Clear RemotingConfig
-        *self.remoting_config.lock() = None;
-      }
-    });
-
-    // Register default dispatcher if configured
-    if let Some(dispatcher_config) = config.default_dispatcher_config() {
-      // Overwrite the "default" entry using register_or_update
-      self.dispatchers.with_write(|d| d.register_or_update("default", dispatcher_config.clone()));
+  pub fn apply_actor_system_config(&mut self, config: &ActorSystemConfigGeneric<TB>) {
+    self.path_identity.system_name = config.system_name().to_string();
+    self.path_identity.guardian_kind = config.default_guardian();
+    self.dispatchers = config.dispatchers().clone();
+    self.mailboxes = config.mailboxes().clone();
+    if let Some(remoting) = config.remoting_config() {
+      self.path_identity.canonical_host = Some(remoting.canonical_host().to_string());
+      self.path_identity.canonical_port = remoting.canonical_port();
+      self.path_identity.quarantine_duration = remoting.quarantine_duration();
+    } else {
+      self.path_identity.canonical_host = None;
+      self.path_identity.canonical_port = None;
+      self.path_identity.quarantine_duration = path_identity::DEFAULT_QUARANTINE_DURATION;
     }
 
     let policy = ReservationPolicy::with_quarantine_duration(self.default_quarantine_duration());
-    self.actor_path_registry.with_write(|registry| registry.set_policy(policy));
-  }
-
-  /// Registers the provided actor cell in the global registry.
-  pub(crate) fn register_cell(&self, cell: ArcShared<ActorCellGeneric<TB>>) {
-    let pid = cell.pid();
-    self.cells.with_write(|cells| cells.insert(pid, cell));
-    self.register_actor_path(pid);
-  }
-
-  /// Removes the actor cell associated with the pid.
-  pub(crate) fn remove_cell(&self, pid: &Pid) -> Option<ArcShared<ActorCellGeneric<TB>>> {
-    let reservation_source = self
-      .actor_path_registry
-      .with_read(|registry| registry.get(pid).map(|handle| (handle.canonical_uri().to_string(), handle.uid())));
-
-    if let Some((canonical, Some(uid))) = reservation_source
-      && let Ok(actor_path) = ActorPathParser::parse(&canonical)
-    {
-      let now_secs = self.monotonic_now().as_secs();
-      self.actor_path_registry.with_write(|registry| {
-        let _ = registry.reserve_uid(&actor_path, uid, now_secs, None);
-      });
-    }
-
-    self.actor_path_registry.with_write(|registry| registry.unregister(pid));
-    self.cells.with_write(|cells| cells.remove(pid))
-  }
-
-  fn register_actor_path(&self, pid: Pid) {
-    if let Some(path) = self.canonical_actor_path(&pid) {
-      self.actor_path_registry.with_write(|registry| registry.register(pid, &path));
-    }
-  }
-
-  /// Returns the canonical actor path (authority-aware) for the given pid when available.
-  pub(crate) fn canonical_actor_path(&self, pid: &Pid) -> Option<ActorPath> {
-    let base = self.actor_path(pid)?;
-    let segments = base.segments().to_vec();
-    let parts = self.canonical_parts()?;
-    Some(ActorPath::from_parts_and_segments(parts, segments, base.uid()))
-  }
-
-  fn canonical_parts(&self) -> Option<ActorPathParts> {
-    let identity = self.identity_snapshot();
-    let mut parts = ActorPathParts::local(identity.system_name).with_guardian(identity.guardian_kind);
-    let Some(host) = identity.canonical_host else {
-      return Some(parts);
-    };
-    let port = identity.canonical_port?;
-    parts = parts.with_scheme(ActorPathScheme::FraktorTcp).with_authority_host(host).with_authority_port(port);
-    Some(parts)
+    self.actor_path_registry.set_policy(policy);
   }
 
   fn identity_snapshot(&self) -> PathIdentity {
-    self.path_identity.with_read(|identity| identity.clone())
+    self.path_identity.clone()
   }
 
-  fn default_quarantine_duration(&self) -> Duration {
-    self.path_identity.with_read(|identity| identity.quarantine_duration)
+  const fn default_quarantine_duration(&self) -> Duration {
+    self.path_identity.quarantine_duration
   }
 
   /// Returns the configured canonical host/port pair when remoting is enabled and complete.
   pub fn canonical_authority_components(&self) -> Option<(String, Option<u16>)> {
-    self.path_identity.with_read(|identity| match (&identity.canonical_host, identity.canonical_port) {
+    match (&self.path_identity.canonical_host, self.path_identity.canonical_port) {
       | (Some(host), Some(port)) => Some((host.clone(), Some(port))),
       | _ => None,
-    })
+    }
   }
 
   /// Returns true when canonical_host is set but canonical_port is missing.
-  pub fn has_partial_canonical_authority(&self) -> bool {
-    self.path_identity.with_read(|identity| identity.canonical_host.is_some() && identity.canonical_port.is_none())
+  pub const fn has_partial_canonical_authority(&self) -> bool {
+    self.path_identity.canonical_host.is_some() && self.path_identity.canonical_port.is_none()
   }
 
   /// Returns the canonical authority string (`host[:port]`) when available.
@@ -267,7 +274,27 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   /// Returns the configured actor system name.
   #[must_use]
   pub fn system_name(&self) -> String {
-    self.path_identity.with_read(|identity| identity.system_name.clone())
+    self.path_identity.system_name.clone()
+  }
+
+  #[must_use]
+  pub(crate) const fn path_guardian_kind(&self) -> PathGuardianKind {
+    self.path_identity.guardian_kind
+  }
+
+  #[must_use]
+  pub(crate) fn canonical_host(&self) -> Option<String> {
+    self.path_identity.canonical_host.clone()
+  }
+
+  #[must_use]
+  pub(crate) const fn canonical_port(&self) -> Option<u16> {
+    self.path_identity.canonical_port
+  }
+
+  #[must_use]
+  pub(crate) const fn quarantine_duration(&self) -> Duration {
+    self.path_identity.quarantine_duration
   }
 
   fn publish_remote_authority_event(&self, authority: String, state: AuthorityState) {
@@ -281,64 +308,112 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     self.cells.with_read(|cells| cells.get(pid))
   }
 
+  /// Returns the shared cell registry handle.
+  #[must_use]
+  pub(crate) fn cells_handle(&self) -> CellsSharedGeneric<TB> {
+    self.cells.clone()
+  }
+
   /// Binds an actor name within its parent's scope.
   ///
   /// # Errors
   ///
-  /// Returns an error if the requested name is already taken.
-  pub(crate) fn assign_name(&self, parent: Option<Pid>, hint: Option<&str>, pid: Pid) -> Result<String, SpawnError> {
-    self.registries.with_write(|registries| {
-      let registry = registries.entry_or_insert(parent);
+  /// Returns [`SpawnError`] if the name assignment fails.
+  pub(crate) fn assign_name(
+    &mut self,
+    parent: Option<Pid>,
+    hint: Option<&str>,
+    pid: Pid,
+  ) -> Result<String, SpawnError> {
+    let registry = self.registries.entry_or_insert(parent);
 
-      match hint {
-        | Some(name) => {
-          registry.register(name, pid).map_err(|error| match error {
-            | NameRegistryError::Duplicate(existing) => SpawnError::name_conflict(existing),
-          })?;
-          Ok(String::from(name))
-        },
-        | None => {
-          let generated = registry.generate_anonymous(pid);
-          registry.register(&generated, pid).map_err(|error| match error {
-            | NameRegistryError::Duplicate(existing) => SpawnError::name_conflict(existing),
-          })?;
-          Ok(generated)
-        },
-      }
-    })
+    match hint {
+      | Some(name) => {
+        registry.register(name, pid).map_err(|error| match error {
+          | NameRegistryError::Duplicate(existing) => SpawnError::name_conflict(existing),
+        })?;
+        Ok(String::from(name))
+      },
+      | None => {
+        let generated = registry.generate_anonymous(pid);
+        registry.register(&generated, pid).map_err(|error| match error {
+          | NameRegistryError::Duplicate(existing) => SpawnError::name_conflict(existing),
+        })?;
+        Ok(generated)
+      },
+    }
   }
 
   /// Releases the association between a name and its pid in the registry.
-  pub(crate) fn release_name(&self, parent: Option<Pid>, name: &str) {
-    self.registries.with_write(|registries| {
-      if let Some(registry) = registries.get_mut(&parent) {
-        registry.remove(name);
-      }
-    });
+  pub(crate) fn release_name(&mut self, parent: Option<Pid>, name: &str) {
+    if let Some(registry) = self.registries.get_mut(&parent) {
+      registry.remove(name);
+    }
+  }
+
+  pub(crate) fn register_ask_future(&mut self, future: ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>) {
+    self.ask_futures.push(future);
+  }
+
+  #[must_use]
+  pub(crate) fn drain_ready_ask_futures(&mut self) -> Vec<ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>> {
+    self.ask_futures.drain_ready()
+  }
+
+  #[must_use]
+  pub(crate) fn register_temp_actor(&mut self, actor: ActorRefGeneric<TB>) -> String {
+    let name = self.next_temp_actor_name();
+    self.temp_actors.insert(name.clone(), actor);
+    name
+  }
+
+  pub(crate) fn unregister_temp_actor(&mut self, name: &str) {
+    let _ = self.temp_actors.remove(name);
+  }
+
+  #[must_use]
+  pub(crate) fn temp_actor(&self, name: &str) -> Option<ActorRefGeneric<TB>> {
+    self.temp_actors.get(name)
+  }
+
+  /// Returns the shared remote watch hook handle.
+  #[must_use]
+  pub(crate) fn remote_watch_hook_handle(&self) -> RemoteWatchHookDynSharedGeneric<TB> {
+    self.remote_watch_hook.clone()
   }
 
   /// Registers the root guardian PID.
-  pub(crate) fn set_root_guardian(&self, cell: &ArcShared<ActorCellGeneric<TB>>) {
-    self.guardians.with_write(|guardians| guardians.register(GuardianKind::Root, cell.pid()));
+  pub(crate) fn set_root_guardian(&mut self, cell: &ArcShared<ActorCellGeneric<TB>>) {
+    self.guardians.register(GuardianKind::Root, cell.pid());
+    self.root_guardian_alive.store(true, Ordering::Release);
   }
 
-  pub(crate) fn register_guardian_pid(&self, kind: GuardianKind, pid: Pid) {
-    self.guardians.with_write(|guardians| guardians.register(kind, pid));
+  #[cfg(any(test, feature = "test-support"))]
+  pub(crate) fn register_guardian_pid(&mut self, kind: GuardianKind, pid: Pid) {
+    self.guardians.register(kind, pid);
+    self.guardian_alive_flag(kind).store(true, Ordering::Release);
   }
 
   /// Registers the system guardian PID.
-  pub(crate) fn set_system_guardian(&self, cell: &ArcShared<ActorCellGeneric<TB>>) {
-    self.guardians.with_write(|guardians| guardians.register(GuardianKind::System, cell.pid()));
+  pub(crate) fn set_system_guardian(&mut self, cell: &ArcShared<ActorCellGeneric<TB>>) {
+    self.guardians.register(GuardianKind::System, cell.pid());
+    self.system_guardian_alive.store(true, Ordering::Release);
   }
 
   /// Registers the user guardian PID.
-  pub(crate) fn set_user_guardian(&self, cell: &ArcShared<ActorCellGeneric<TB>>) {
-    self.guardians.with_write(|guardians| guardians.register(GuardianKind::User, cell.pid()));
+  pub(crate) fn set_user_guardian(&mut self, cell: &ArcShared<ActorCellGeneric<TB>>) {
+    self.guardians.register(GuardianKind::User, cell.pid());
+    self.user_guardian_alive.store(true, Ordering::Release);
   }
 
-  /// Clears the guardian slot matching the pid and returns which guardian stopped.
-  pub(crate) fn clear_guardian(&self, pid: Pid) -> Option<GuardianKind> {
-    self.guardians.with_write(|guardians| guardians.clear_by_pid(pid))
+  /// Returns the guardian kind matching the provided pid when registered.
+  pub(crate) fn guardian_kind_by_pid(&self, pid: Pid) -> Option<GuardianKind> {
+    self.guardians.kind_by_pid(pid)
+  }
+
+  /// Marks the specified guardian as stopped.
+  pub(crate) fn mark_guardian_stopped(&self, kind: GuardianKind) {
+    self.guardian_alive_flag(kind).store(false, Ordering::Release);
   }
 
   /// Returns the root guardian cell if initialised.
@@ -362,41 +437,49 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
 
   /// Returns the pid of the root guardian if available.
   #[must_use]
-  pub fn root_guardian_pid(&self) -> Option<Pid> {
-    self.guardians.with_read(|g| g.pid(GuardianKind::Root))
+  pub const fn root_guardian_pid(&self) -> Option<Pid> {
+    self.guardians.pid(GuardianKind::Root)
   }
 
   /// Returns the pid of the system guardian if available.
   #[must_use]
-  pub fn system_guardian_pid(&self) -> Option<Pid> {
-    self.guardians.with_read(|g| g.pid(GuardianKind::System))
+  pub const fn system_guardian_pid(&self) -> Option<Pid> {
+    self.guardians.pid(GuardianKind::System)
   }
 
   /// Returns the pid of the user guardian if available.
   #[must_use]
-  pub fn user_guardian_pid(&self) -> Option<Pid> {
-    self.guardians.with_read(|g| g.pid(GuardianKind::User))
+  pub const fn user_guardian_pid(&self) -> Option<Pid> {
+    self.guardians.pid(GuardianKind::User)
   }
 
   /// Returns whether the specified guardian is alive.
   #[must_use]
   pub fn guardian_alive(&self, kind: GuardianKind) -> bool {
-    self.guardians.with_read(|g| g.is_alive(kind))
+    self.guardian_alive_flag(kind).load(Ordering::Acquire)
   }
 
   /// Returns the PID registered for the specified guardian.
-  pub fn guardian_pid(&self, kind: GuardianKind) -> Option<Pid> {
-    self.guardians.with_read(|g| g.pid(kind))
+  pub const fn guardian_pid(&self, kind: GuardianKind) -> Option<Pid> {
+    self.guardians.pid(kind)
   }
 
   fn guardian_cell_via_cells(&self, kind: GuardianKind) -> Option<ArcShared<ActorCellGeneric<TB>>> {
-    let pid = self.guardians.with_read(|g| g.pid(kind))?;
+    let pid = self.guardians.pid(kind)?;
     self.cell(&pid)
+  }
+
+  const fn guardian_alive_flag(&self, kind: GuardianKind) -> &AtomicBool {
+    match kind {
+      | GuardianKind::Root => &self.root_guardian_alive,
+      | GuardianKind::System => &self.system_guardian_alive,
+      | GuardianKind::User => &self.user_guardian_alive,
+    }
   }
 
   /// Registers an extra top-level path prior to root startup.
   pub(crate) fn register_extra_top_level(
-    &self,
+    &mut self,
     name: &str,
     actor: ActorRefGeneric<TB>,
   ) -> Result<(), RegisterExtraTopLevelError> {
@@ -406,19 +489,17 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     if name.is_empty() || RESERVED_TOP_LEVEL.iter().any(|reserved| reserved.eq_ignore_ascii_case(name)) {
       return Err(RegisterExtraTopLevelError::ReservedName(name.into()));
     }
-    self.extra_top_levels.with_write(|extra_top_levels| {
-      if extra_top_levels.contains_key(name) {
-        return Err(RegisterExtraTopLevelError::DuplicateName(name.into()));
-      }
-      extra_top_levels.insert(name.into(), actor);
-      Ok(())
-    })
+    if self.extra_top_levels.contains_key(name) {
+      return Err(RegisterExtraTopLevelError::DuplicateName(name.into()));
+    }
+    self.extra_top_levels.insert(name.into(), actor);
+    Ok(())
   }
 
   /// Returns a registered extra top-level reference if present.
   #[must_use]
   pub fn extra_top_level(&self, name: &str) -> Option<ActorRefGeneric<TB>> {
-    self.extra_top_levels.with_read(|extra_top_levels| extra_top_levels.get(name))
+    self.extra_top_levels.get(name)
   }
 
   /// Marks the root guardian as fully initialised, preventing further registrations.
@@ -446,24 +527,10 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     self.terminating.load(Ordering::Acquire)
   }
 
-  /// Generates a unique `/temp` path segment and registers the supplied actor reference.
   #[must_use]
-  pub(crate) fn register_temp_actor(&self, actor: ActorRefGeneric<TB>) -> String {
+  pub(crate) fn next_temp_actor_name(&self) -> String {
     let id = self.temp_counter.fetch_add(1, Ordering::Relaxed) + 1;
-    let name = format!("t{:x}", id);
-    self.temp_actors.with_write(|temp_actors| temp_actors.insert(name.clone(), actor));
-    name
-  }
-
-  /// Removes a temporary actor reference if registered.
-  pub(crate) fn unregister_temp_actor(&self, name: &str) -> Option<ActorRefGeneric<TB>> {
-    self.temp_actors.with_write(|temp_actors| temp_actors.remove(name))
-  }
-
-  /// Resolves a registered temporary actor reference.
-  #[must_use]
-  pub(crate) fn temp_actor(&self, name: &str) -> Option<ActorRefGeneric<TB>> {
-    self.temp_actors.with_read(|temp_actors| temp_actors.get(name))
+    format!("t{:x}", id)
   }
 
   /// Resolves the actor path for the specified pid if the actor exists.
@@ -480,7 +547,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     if segments.is_empty() {
       return Some(ActorPath::root_with_guardian(identity.guardian_kind));
     }
-    segments.pop(); // discard root
+    segments.pop(); // ルート要素を捨てる
     if segments.is_empty() {
       return Some(ActorPath::root_with_guardian(identity.guardian_kind));
     }
@@ -494,7 +561,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
 
   /// Returns the shared event stream handle.
   #[must_use]
-  pub fn event_stream(&self) -> ArcShared<EventStreamGeneric<TB>> {
+  pub fn event_stream(&self) -> EventStreamSharedGeneric<TB> {
     self.event_stream.clone()
   }
 
@@ -504,9 +571,44 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     self.dead_letter.entries()
   }
 
-  /// Registers an ask future so the actor system can track its completion.
-  pub(crate) fn register_ask_future(&self, future: ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>) {
-    self.ask_futures.with_write(|ask_futures| ask_futures.push(future));
+  /// Returns the shared deadletter store.
+  #[must_use]
+  pub(crate) fn dead_letter_store(&self) -> DeadLetterSharedGeneric<TB> {
+    self.dead_letter.clone()
+  }
+
+  /// Returns `true` when an extension for the provided [`TypeId`] is registered.
+  #[must_use]
+  pub(crate) fn has_extension(&self, type_id: TypeId) -> bool {
+    self.extensions.contains_key(&type_id)
+  }
+
+  /// Returns an extension by [`TypeId`].
+  pub(crate) fn extension<E>(&self, type_id: TypeId) -> Option<ArcShared<E>>
+  where
+    E: Any + Send + Sync + 'static, {
+    self.extensions.get(&type_id).cloned().and_then(|handle| handle.downcast::<E>().ok())
+  }
+
+  /// Returns a raw extension handle by [`TypeId`].
+  pub(crate) fn extension_raw(&self, type_id: &TypeId) -> Option<ArcShared<dyn Any + Send + Sync + 'static>> {
+    self.extensions.get(type_id).cloned()
+  }
+
+  /// Inserts an extension.
+  pub(crate) fn insert_extension(&mut self, type_id: TypeId, extension: ArcShared<dyn Any + Send + Sync + 'static>) {
+    self.extensions.insert(type_id, extension);
+  }
+
+  pub(crate) fn extension_by_type<E>(&self) -> Option<ArcShared<E>>
+  where
+    E: Any + Send + Sync + 'static, {
+    for handle in self.extensions.values() {
+      if let Ok(extension) = handle.clone().downcast::<E>() {
+        return Some(extension);
+      }
+    }
+    None
   }
 
   /// Publishes an event to all event stream subscribers.
@@ -521,121 +623,43 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     self.event_stream.publish(&EventStreamEvent::Log(event));
   }
 
-  /// Returns `true` when an extension for the provided [`TypeId`] is registered.
-  pub(crate) fn has_extension(&self, type_id: TypeId) -> bool {
-    self.extensions.with_read(|extensions| extensions.contains_key(&type_id))
-  }
-
-  /// Returns an extension by [`TypeId`].
-  pub(crate) fn extension<E>(&self, type_id: TypeId) -> Option<ArcShared<E>>
-  where
-    E: Any + Send + Sync + 'static, {
-    self
-      .extensions
-      .with_read(|extensions| extensions.get(&type_id).cloned().and_then(|handle| handle.downcast::<E>().ok()))
-  }
-
-  /// Inserts an extension if absent and returns the shared instance.
-  pub(crate) fn extension_or_insert_with<E, F>(&self, type_id: TypeId, factory: F) -> ArcShared<E>
-  where
-    E: Any + Send + Sync + 'static,
-    F: FnOnce() -> ArcShared<E>, {
-    self.extensions.with_write(|extensions| {
-      if let Some(existing) = extensions.get(&type_id) {
-        if let Ok(extension) = existing.clone().downcast::<E>() {
-          return extension;
-        }
-        panic!("extension type mismatch for id {type_id:?}");
-      }
-      let extension = factory();
-      let erased: ArcShared<dyn Any + Send + Sync + 'static> = extension.clone();
-      extensions.insert(type_id, erased);
-      extension
-    })
-  }
-
-  pub(crate) fn extension_by_type<E>(&self) -> Option<ArcShared<E>>
-  where
-    E: Any + Send + Sync + 'static, {
-    self.extensions.with_read(|extensions| {
-      for handle in extensions.values() {
-        if let Ok(extension) = handle.clone().downcast::<E>() {
-          return Some(extension);
-        }
-      }
-      None
-    })
-  }
-
-  pub(crate) fn install_actor_ref_provider<P>(&self, provider: &ActorRefProviderSharedGeneric<TB, P>)
+  pub(crate) fn install_actor_ref_provider<P>(&mut self, provider: &ActorRefProviderSharedGeneric<TB, P>)
   where
     P: ActorRefProvider<TB> + Any + Send + Sync + 'static, {
     let erased: ArcShared<dyn Any + Send + Sync + 'static> = provider.inner().clone();
-    self.actor_ref_providers.with_write(|providers| providers.insert(TypeId::of::<P>(), erased));
+    self.actor_ref_providers.insert(TypeId::of::<P>(), erased);
     let schemes = provider.supported_schemes().to_vec();
     for scheme in schemes {
       let cloned = provider.clone();
-      let caller: ActorRefProviderCaller<TB> = Box::new(move |path| cloned.get_actor_ref(path));
-      self.actor_ref_provider_callers_by_scheme.with_write(|callers| callers.insert(scheme, caller));
+      let caller: ActorRefProviderCaller<TB> = ArcShared::new(move |path| cloned.get_actor_ref(path));
+      self.actor_ref_provider_callers_by_scheme.insert(scheme, caller);
     }
-  }
-
-  pub(crate) fn register_remote_watch_hook(&self, hook: Box<dyn RemoteWatchHook<TB>>) {
-    let mut guard = self.remote_watch_hook.lock();
-    *guard = Some(hook);
   }
 
   pub(crate) fn actor_ref_provider<P>(&self) -> Option<ActorRefProviderSharedGeneric<TB, P>>
   where
     P: ActorRefProvider<TB> + Any + Send + Sync + 'static, {
-    self.actor_ref_providers.with_read(|providers| {
-      providers
-        .get(&TypeId::of::<P>())
-        .cloned()
-        .and_then(|provider| provider.downcast::<ToolboxMutex<ActorRefProviderHandle<P>, TB>>().ok())
-        .map(ActorRefProviderSharedGeneric::from_shared)
-    })
+    self
+      .actor_ref_providers
+      .get(&TypeId::of::<P>())
+      .cloned()
+      .and_then(|provider| provider.downcast::<ToolboxMutex<ActorRefProviderHandle<P>, TB>>().ok())
+      .map(ActorRefProviderSharedGeneric::from_shared)
   }
 
-  /// Invokes a provider registered for the given scheme.
-  pub(crate) fn actor_ref_provider_call_for_scheme(
+  pub(crate) fn actor_ref_provider_caller_for_scheme(
     &self,
     scheme: ActorPathScheme,
-    path: ActorPath,
-  ) -> Option<Result<ActorRefGeneric<TB>, ActorError>> {
-    self.actor_ref_provider_callers_by_scheme.with_read(|callers| callers.get(scheme).map(|caller| caller(path)))
+  ) -> Option<ActorRefProviderCaller<TB>> {
+    self.actor_ref_provider_callers_by_scheme.get(scheme).cloned()
   }
 
   fn forward_remote_watch(&self, target: Pid, watcher: Pid) -> bool {
-    let mut guard = self.remote_watch_hook.lock();
-    guard.as_mut().is_some_and(|hook| hook.handle_watch(target, watcher))
+    self.remote_watch_hook.handle_watch(target, watcher)
   }
 
   fn forward_remote_unwatch(&self, target: Pid, watcher: Pid) -> bool {
-    let mut guard = self.remote_watch_hook.lock();
-    guard.as_mut().is_some_and(|hook| hook.handle_unwatch(target, watcher))
-  }
-
-  /// Registers a child under the specified parent pid.
-  pub(crate) fn register_child(&self, parent: Pid, child: Pid) {
-    if let Some(cell) = self.cell(&parent) {
-      cell.register_child(child);
-    }
-  }
-
-  /// Removes a child from its parent's supervision registry.
-  pub(crate) fn unregister_child(&self, parent: Option<Pid>, child: Pid) {
-    if let Some(parent_pid) = parent
-      && let Some(cell) = self.cell(&parent_pid)
-    {
-      cell.unregister_child(&child);
-    }
-  }
-
-  /// Returns the children supervised by the specified parent pid.
-  #[must_use]
-  pub(crate) fn child_pids(&self, parent: Pid) -> Vec<Pid> {
-    self.cell(&parent).map_or_else(Vec::new, |cell| cell.children())
+    self.remote_watch_hook.handle_unwatch(target, watcher)
   }
 
   /// Sends a system message to the specified actor.
@@ -674,24 +698,13 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     self.dead_letter.record_send_error(recipient, error, timestamp);
   }
 
-  /// Records an explicit deadletter entry originating from runtime logic.
-  pub(crate) fn record_dead_letter(
-    &self,
-    message: AnyMessageGeneric<TB>,
-    reason: DeadLetterReason,
-    target: Option<Pid>,
-  ) {
-    let timestamp = self.monotonic_now();
-    self.dead_letter.record_entry(message, reason, target, timestamp);
-  }
-
   /// Marks the system as terminated and completes the termination future.
   pub(crate) fn mark_terminated(&self) {
     self.terminating.store(true, Ordering::Release);
     if self.terminated.swap(true, Ordering::AcqRel) {
       return;
     }
-    // Lock, complete, then wake outside the lock to avoid deadlock.
+    // ロック中に完了させ、wake はロック外で行ってデッドロックを避ける
     let waker = self.termination.with_write(|af| af.complete(()));
     if let Some(w) = waker {
       w.wake();
@@ -702,11 +715,6 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   #[must_use]
   pub(crate) fn termination_future(&self) -> ActorFutureSharedGeneric<(), TB> {
     self.termination.clone()
-  }
-
-  /// Drains ask futures that have completed since the previous inspection.
-  pub(crate) fn drain_ready_ask_futures(&self) -> Vec<ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>> {
-    self.ask_futures.with_write(|ask_futures| ask_futures.drain_ready())
   }
 
   /// Indicates whether the actor system has terminated.
@@ -722,84 +730,71 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     Duration::from_millis(ticks)
   }
 
-  /// Returns the dispatcher registry.
-  #[must_use]
-  pub fn dispatchers(&self) -> DispatchersSharedGeneric<TB> {
-    self.dispatchers.clone()
+  /// Resolves the dispatcher configuration for the identifier.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`DispatcherRegistryError::Unknown`] when the identifier has not been registered.
+  pub fn resolve_dispatcher(&self, id: &str) -> Result<DispatcherConfigGeneric<TB>, DispatcherRegistryError> {
+    self.dispatchers.resolve(id)
   }
 
-  /// Returns the mailbox registry.
-  #[must_use]
-  pub fn mailboxes(&self) -> MailboxesSharedGeneric<TB> {
-    self.mailboxes.clone()
+  /// Resolves the mailbox configuration for the identifier.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`MailboxRegistryError::Unknown`] when the identifier has not been registered.
+  pub fn resolve_mailbox(&self, id: &str) -> Result<MailboxConfig, MailboxRegistryError> {
+    self.mailboxes.resolve(id)
   }
 
   /// Returns the remoting configuration when it has been configured.
   #[must_use]
   pub fn remoting_config(&self) -> Option<RemotingConfig> {
-    self.remoting_config.lock().clone()
+    let identity = self.identity_snapshot();
+    identity.canonical_host.map(|host| {
+      let mut config =
+        RemotingConfig::default().with_canonical_host(host).with_quarantine_duration(identity.quarantine_duration);
+      if let Some(port) = identity.canonical_port {
+        config = config.with_canonical_port(port);
+      }
+      config
+    })
   }
 
-  /// Installs the scheduler service handle.
-  pub fn install_scheduler_context(&self, context: SchedulerContextSharedGeneric<TB>) {
-    let mut guard = self.scheduler_context.lock();
-    guard.replace(context);
-  }
-
-  /// Returns the scheduler context when it has been initialized.
+  /// Returns the shared scheduler handle.
   #[must_use]
-  pub fn scheduler_context(&self) -> Option<SchedulerContextSharedGeneric<TB>> {
-    self.scheduler_context.lock().clone()
+  pub fn scheduler(&self) -> SchedulerSharedGeneric<TB> {
+    self.scheduler_context.scheduler()
   }
 
-  /// Installs the tick driver runtime.
-  pub fn install_tick_driver_runtime(&self, runtime: TickDriverRuntime<TB>) {
-    let mut guard = self.tick_driver_runtime.lock();
-    guard.replace(runtime);
-  }
-
-  /// Returns the tick driver runtime when it has been initialized.
+  /// Returns the delay provider connected to the scheduler.
   #[must_use]
-  pub fn tick_driver_runtime(&self) -> Option<TickDriverRuntime<TB>> {
-    self.tick_driver_runtime.lock().as_ref().cloned()
+  pub fn delay_provider(&self) -> SchedulerBackedDelayProvider<TB> {
+    self.scheduler_context.delay_provider()
+  }
+
+  /// Returns the tick driver runtime.
+  #[must_use]
+  pub fn tick_driver_runtime(&self) -> TickDriverRuntime<TB> {
+    self.tick_driver_runtime.clone()
   }
 
   /// Returns the last recorded tick driver snapshot when available.
   #[must_use]
   pub fn tick_driver_snapshot(&self) -> Option<TickDriverSnapshot> {
-    self.scheduler_context().and_then(|context| context.driver_snapshot())
+    self.tick_driver_snapshot.clone()
   }
 
   /// Shuts down the scheduler context if configured.
   pub fn shutdown_scheduler(&self) -> Option<TaskRunSummary> {
-    self.scheduler_context().map(|context| context.shutdown())
+    let scheduler = self.scheduler();
+    Some(scheduler.with_write(|s| s.shutdown_with_tasks()))
   }
 
-  /// Records a failure and routes it to the supervising hierarchy.
-  pub(crate) fn report_failure(&self, mut payload: FailurePayload) {
+  pub(crate) fn record_failure_reported(&self) {
     self.failure_total.fetch_add(1, Ordering::Relaxed);
     self.failure_inflight.fetch_add(1, Ordering::AcqRel);
-    let message = format!("actor {:?} failed: {}", payload.child(), payload.reason().as_str());
-    self.emit_log(LogLevel::Error, message, Some(payload.child()));
-
-    if let Some(parent_pid) = self.parent_of(&payload.child())
-      && let Some(parent_cell) = self.cell(&parent_pid)
-    {
-      if let Some(stats) = parent_cell.snapshot_child_restart_stats(payload.child()) {
-        payload = payload.with_restart_stats(stats);
-      }
-      if self.send_system_message(parent_pid, SystemMessage::Failure(payload.clone())).is_ok() {
-        return;
-      }
-      let payload_ref = &payload;
-      self.record_failure_outcome(payload.child(), FailureOutcome::Stop, payload_ref);
-      self.stop_actor(payload.child());
-      return;
-    }
-
-    let payload_ref = &payload;
-    self.record_failure_outcome(payload.child(), FailureOutcome::Stop, payload_ref);
-    self.stop_actor(payload.child());
   }
 
   /// Records the outcome of a previously reported failure (restart/stop/escalate).
@@ -869,68 +864,62 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     let _ = self.send_system_message(pid, SystemMessage::Stop);
   }
 
-  fn parent_of(&self, pid: &Pid) -> Option<Pid> {
-    self.cell(pid).and_then(|cell| cell.parent())
-  }
-
   /// Returns a reference to the ActorPathRegistry.
   #[must_use]
-  pub const fn actor_path_registry(&self) -> &ActorPathRegistrySharedGeneric<TB> {
+  pub const fn actor_path_registry(&self) -> &ActorPathRegistry {
     &self.actor_path_registry
   }
 
-  /// Returns a reference to the RemoteAuthorityManager.
-  #[must_use]
-  pub const fn remote_authority_manager(&self) -> &RemoteAuthorityManagerSharedGeneric<TB> {
-    &self.remote_authority_mgr
+  pub(crate) const fn actor_path_registry_mut(&mut self) -> &mut ActorPathRegistry {
+    &mut self.actor_path_registry
   }
 
   /// Returns the current authority state.
   #[must_use]
   pub fn remote_authority_state(&self, authority: &str) -> AuthorityState {
-    self.remote_authority_mgr.with_read(|mgr| mgr.state(authority))
+    self.remote_authority_mgr.state(authority)
   }
 
   /// Returns a snapshot of known remote authorities and their states.
   pub fn remote_authority_snapshots(&self) -> Vec<(String, AuthorityState)> {
-    self.remote_authority_mgr.with_read(|mgr| mgr.snapshots())
+    self.remote_authority_mgr.snapshots()
   }
 
   /// Marks the authority as connected and emits an event.
-  pub fn remote_authority_set_connected(&self, authority: &str) -> Option<VecDeque<AnyMessageGeneric<TB>>> {
-    let drained = self.remote_authority_mgr.with_write(|mgr| mgr.set_connected(authority));
+  pub fn remote_authority_set_connected(&mut self, authority: &str) -> Option<VecDeque<AnyMessageGeneric<TB>>> {
+    let drained = self.remote_authority_mgr.set_connected(authority);
     self.publish_remote_authority_event(authority.to_string(), AuthorityState::Connected);
     drained
   }
 
   /// Transitions the authority into quarantine using the provided duration or the configured
   /// default.
-  pub fn remote_authority_set_quarantine(&self, authority: impl Into<String>, duration: Option<Duration>) {
+  pub fn remote_authority_set_quarantine(&mut self, authority: impl Into<String>, duration: Option<Duration>) {
     let authority = authority.into();
     let now_secs = self.monotonic_now().as_secs();
     let effective = duration.unwrap_or(self.default_quarantine_duration());
-    self.remote_authority_mgr.with_write(|mgr| {
-      mgr.set_quarantine(authority.clone(), now_secs, Some(effective));
-    });
-    let state = self.remote_authority_mgr.with_read(|mgr| mgr.state(&authority));
+    self.remote_authority_mgr.set_quarantine(authority.clone(), now_secs, Some(effective));
+    let state = self.remote_authority_mgr.state(&authority);
     self.publish_remote_authority_event(authority, state);
   }
 
   /// Handles an InvalidAssociation signal by moving the authority into quarantine.
-  pub fn remote_authority_handle_invalid_association(&self, authority: impl Into<String>, duration: Option<Duration>) {
+  pub fn remote_authority_handle_invalid_association(
+    &mut self,
+    authority: impl Into<String>,
+    duration: Option<Duration>,
+  ) {
     let authority = authority.into();
     let now_secs = self.monotonic_now().as_secs();
     let effective = duration.unwrap_or(self.default_quarantine_duration());
-    self.remote_authority_mgr.with_write(|mgr| {
-      mgr.handle_invalid_association(authority.clone(), now_secs, Some(effective));
-    });
-    let state = self.remote_authority_mgr.with_read(|mgr| mgr.state(&authority));
+    self.remote_authority_mgr.handle_invalid_association(authority.clone(), now_secs, Some(effective));
+    let state = self.remote_authority_mgr.state(&authority);
     self.publish_remote_authority_event(authority, state);
   }
 
   /// Manually overrides a quarantined authority back to connected.
-  pub fn remote_authority_manual_override_to_connected(&self, authority: &str) {
-    self.remote_authority_mgr.with_write(|mgr| mgr.manual_override_to_connected(authority));
+  pub fn remote_authority_manual_override_to_connected(&mut self, authority: &str) {
+    self.remote_authority_mgr.manual_override_to_connected(authority);
     self.publish_remote_authority_event(authority.to_string(), AuthorityState::Connected);
   }
 
@@ -941,11 +930,11 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   /// Returns [`RemoteAuthorityError::Quarantined`] if the target authority is currently
   /// quarantined.
   pub fn remote_authority_defer(
-    &self,
+    &mut self,
     authority: impl Into<String>,
     message: AnyMessageGeneric<TB>,
   ) -> Result<(), RemoteAuthorityError> {
-    self.remote_authority_mgr.with_write(|mgr| mgr.defer_send(authority, message))
+    self.remote_authority_mgr.defer_send(authority, message)
   }
 
   /// Attempts to defer a message, returning an error if the authority is quarantined.
@@ -954,33 +943,37 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   ///
   /// Returns [`RemoteAuthorityError::Quarantined`] when the authority remains quarantined.
   pub fn remote_authority_try_defer(
-    &self,
+    &mut self,
     authority: impl Into<String>,
     message: AnyMessageGeneric<TB>,
   ) -> Result<(), RemoteAuthorityError> {
-    self.remote_authority_mgr.with_write(|mgr| mgr.try_defer_send(authority, message))
+    self.remote_authority_mgr.try_defer_send(authority, message)
   }
 
   /// Polls all authorities for expired quarantine windows and emits events for lifted entries.
-  pub fn poll_remote_authorities(&self) {
+  pub fn poll_remote_authorities(&mut self) {
     let now_secs = self.monotonic_now().as_secs();
-    self.actor_path_registry.with_write(|registry| registry.poll_expired(now_secs));
-    let lifted = self.remote_authority_mgr.with_write(|mgr| mgr.poll_quarantine_expiration(now_secs));
+    self.actor_path_registry.poll_expired(now_secs);
+    let lifted = self.remote_authority_mgr.poll_quarantine_expiration(now_secs);
     for authority in lifted {
       self.publish_remote_authority_event(authority.clone(), AuthorityState::Unresolved);
     }
+  }
+
+  /// Returns the number of messages deferred for the provided authority.
+  #[must_use]
+  pub fn remote_authority_deferred_count(&self, authority: &str) -> usize {
+    self.remote_authority_mgr.deferred_count(authority)
   }
 }
 
 impl<TB: RuntimeToolbox + 'static> Drop for SystemStateGeneric<TB> {
   fn drop(&mut self) {
-    if let Some(mut runtime) = self.tick_driver_runtime.lock().take() {
-      runtime.shutdown();
-    }
+    self.tick_driver_runtime.shutdown();
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Default for SystemStateGeneric<TB> {
+impl<TB: RuntimeToolbox + 'static + Default> Default for SystemStateGeneric<TB> {
   fn default() -> Self {
     Self::new()
   }

@@ -23,6 +23,7 @@ struct UidReservation {
 }
 
 /// Registry for PID-to-path mappings and UID reservations.
+#[derive(Clone)]
 pub struct ActorPathRegistry {
   paths:        HashMap<Pid, ActorPathHandle, RandomState>,
   reservations: HashMap<String, UidReservation, RandomState>,

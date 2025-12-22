@@ -261,7 +261,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
     future: &mut MailboxOfferFutureGeneric<TB>,
   ) -> Result<(), SendError<TB>> {
     let adapter = self_arc.schedule_adapter();
-    let dispatcher = super::base::DispatcherGeneric::from_core(self_arc.clone());
+    let dispatcher = super::base::DispatcherSharedGeneric::from_core(self_arc.clone());
     let waker = adapter.with_write(|a| a.create_waker(dispatcher));
     let mut cx = Context::from_waker(&waker);
 
@@ -290,7 +290,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
       return;
     }
     if self_arc.mailbox.request_schedule(hints) {
-      super::base::DispatcherGeneric::from_core(self_arc.clone()).spawn_execution();
+      super::base::DispatcherSharedGeneric::from_core(self_arc.clone()).spawn_execution();
     } else {
       self_arc.handle_starvation(hints);
     }

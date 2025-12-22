@@ -14,7 +14,7 @@ use tokio::{
 };
 
 use crate::core::{
-  event_stream::{EventStreamEvent, EventStreamGeneric},
+  event_stream::{EventStreamEvent, EventStreamSharedGeneric},
   scheduler::{
     SchedulerTickMetricsProbe, TickDriver, TickDriverControl, TickDriverError, TickDriverFactory,
     TickDriverHandleGeneric, TickDriverId, TickDriverKind, TickFeedHandle, next_tick_driver_id,
@@ -23,7 +23,7 @@ use crate::core::{
 
 #[derive(Clone)]
 struct StdMetricsOptions {
-  event_stream: ArcShared<EventStreamGeneric<StdToolbox>>,
+  event_stream: EventStreamSharedGeneric<StdToolbox>,
   interval:     Duration,
 }
 
@@ -39,11 +39,7 @@ impl TokioIntervalDriverFactory {
     Self { handle, resolution, metrics: None }
   }
 
-  pub(crate) fn with_metrics(
-    mut self,
-    event_stream: ArcShared<EventStreamGeneric<StdToolbox>>,
-    interval: Duration,
-  ) -> Self {
+  pub(crate) fn with_metrics(mut self, event_stream: EventStreamSharedGeneric<StdToolbox>, interval: Duration) -> Self {
     self.metrics = Some(StdMetricsOptions { event_stream, interval });
     self
   }
@@ -151,7 +147,7 @@ impl StdTickMetricsEmitter {
     feed: TickFeedHandle<StdToolbox>,
     resolution: Duration,
     driver: TickDriverKind,
-    event_stream: ArcShared<EventStreamGeneric<StdToolbox>>,
+    event_stream: EventStreamSharedGeneric<StdToolbox>,
     metrics_interval: Duration,
   ) -> Self {
     let mut ticker = interval(metrics_interval);

@@ -68,6 +68,12 @@ impl<T: ?Sized> ArcShared<T> {
     Self(unsafe { Arc::from_raw(ptr) })
   }
 
+  /// Returns true if the two `ArcShared` pointers point to the same allocation.
+  #[must_use]
+  pub fn ptr_eq(this: &Self, other: &Self) -> bool {
+    Arc::ptr_eq(&this.0, &other.0)
+  }
+
   /// Converts the shared handle into another dynamically sized representation.
   #[cfg(not(feature = "unsize"))]
   pub fn into_dyn<U: ?Sized, F>(self, cast: F) -> ArcShared<U>

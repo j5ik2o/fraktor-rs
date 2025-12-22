@@ -3,15 +3,14 @@
 use alloc::{string::String, vec::Vec};
 use core::marker::PhantomData;
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 
 use crate::core::{
   dead_letter::DeadLetterEntryGeneric,
   error::SendError,
-  event_stream::{EventStreamEvent, EventStreamGeneric, EventStreamSubscriberShared, EventStreamSubscriptionGeneric},
+  event_stream::{
+    EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriberShared, EventStreamSubscriptionGeneric,
+  },
   futures::ActorFutureSharedGeneric,
   logging::LogLevel,
   messaging::AnyMessageGeneric,
@@ -20,7 +19,7 @@ use crate::core::{
   typed::{
     actor_prim::{TypedActorRefGeneric, TypedChildRefGeneric},
     props::TypedPropsGeneric,
-    scheduler::TypedSchedulerContext,
+    scheduler::TypedSchedulerShared,
   },
 };
 
@@ -43,6 +42,7 @@ where
 {
   /// Creates an empty actor system without any guardian (testing only).
   #[must_use]
+  #[cfg(any(test, feature = "test-support"))]
   pub fn new_empty() -> Self {
     Self { inner: ActorSystemGeneric::new_empty(), marker: PhantomData }
   }
@@ -114,7 +114,7 @@ where
 
   /// Returns the shared event stream handle.
   #[must_use]
-  pub fn event_stream(&self) -> ArcShared<EventStreamGeneric<TB>> {
+  pub fn event_stream(&self) -> EventStreamSharedGeneric<TB> {
     self.inner.event_stream()
   }
 
@@ -182,10 +182,16 @@ where
     Self { inner: system, marker: PhantomData }
   }
 
-  /// Returns the typed scheduler context when the runtime has an installed scheduler service.
+  /// Returns the typed scheduler handle.
   #[must_use]
-  pub fn scheduler_context(&self) -> Option<TypedSchedulerContext<TB>> {
-    self.inner.scheduler_context().map(TypedSchedulerContext::from_shared)
+  pub fn scheduler(&self) -> TypedSchedulerShared<TB> {
+    TypedSchedulerShared::new(self.inner.scheduler())
+  }
+
+  /// Returns a delay provider backed by the scheduler.
+  #[must_use]
+  pub fn delay_provider(&self) -> crate::core::scheduler::SchedulerBackedDelayProvider<TB> {
+    self.inner.delay_provider()
   }
 }
 

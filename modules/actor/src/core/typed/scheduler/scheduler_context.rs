@@ -1,41 +1,46 @@
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::SharedAccess};
 
 use super::TypedSchedulerShared;
 use crate::core::{
   scheduler::{
-    SchedulerBackedDelayProvider, SchedulerConfig, SchedulerContext, SchedulerContextSharedGeneric, TaskRunSummary,
+    SchedulerBackedDelayProvider, SchedulerConfig, SchedulerContext, SchedulerSharedGeneric, TaskRunSummary,
   },
   typed::TypedScheduler,
 };
 
 /// Owns the shared scheduler instance and exposes auxiliary services.
 pub struct TypedSchedulerContext<TB: RuntimeToolbox + 'static> {
-  inner: SchedulerContextSharedGeneric<TB>,
+  scheduler:      SchedulerSharedGeneric<TB>,
+  delay_provider: SchedulerBackedDelayProvider<TB>,
 }
 
 impl<TB: RuntimeToolbox + 'static> TypedSchedulerContext<TB> {
   /// Creates a service from the provided toolbox and configuration.
   #[must_use]
   pub fn new_with_config(toolbox: TB, config: SchedulerConfig) -> Self {
-    Self::new(SchedulerContext::new(toolbox, config))
+    let context = SchedulerContext::new(toolbox, config);
+    Self::new(&context)
   }
 
   /// Creates a service from the provided scheduler instance.
   #[must_use]
-  pub fn new(inner: SchedulerContext<TB>) -> Self {
-    Self::from_shared(SchedulerContextSharedGeneric::new(inner))
+  pub fn new(inner: &SchedulerContext<TB>) -> Self {
+    Self::from_handles(inner.scheduler(), inner.delay_provider())
   }
 
-  /// Wraps a shared context.
+  /// Wraps scheduler handles.
   #[must_use]
-  pub const fn from_shared(inner: SchedulerContextSharedGeneric<TB>) -> Self {
-    Self { inner }
+  pub const fn from_handles(
+    scheduler: SchedulerSharedGeneric<TB>,
+    delay_provider: SchedulerBackedDelayProvider<TB>,
+  ) -> Self {
+    Self { scheduler, delay_provider }
   }
 
   /// Returns a typed view of the shared scheduler mutex.
   #[must_use]
   pub fn scheduler(&self) -> TypedSchedulerShared<TB> {
-    TypedSchedulerShared::new(self.inner.scheduler())
+    TypedSchedulerShared::new(self.scheduler.clone())
   }
 
   /// Executes the provided closure while holding the scheduler lock.
@@ -49,18 +54,18 @@ impl<TB: RuntimeToolbox + 'static> TypedSchedulerContext<TB> {
   /// Returns a delay provider connected to this scheduler.
   #[must_use]
   pub fn delay_provider(&self) -> SchedulerBackedDelayProvider<TB> {
-    self.inner.delay_provider()
+    self.delay_provider.clone()
   }
 
   /// Shuts down the underlying scheduler, returning the summary.
   #[must_use]
   pub fn shutdown(&mut self) -> TaskRunSummary {
-    self.inner.shutdown()
+    self.scheduler.with_write(|s| s.shutdown_with_tasks())
   }
 }
 
 impl<TB: RuntimeToolbox + 'static> Clone for TypedSchedulerContext<TB> {
   fn clone(&self) -> Self {
-    Self { inner: self.inner.clone() }
+    Self { scheduler: self.scheduler.clone(), delay_provider: self.delay_provider.clone() }
   }
 }

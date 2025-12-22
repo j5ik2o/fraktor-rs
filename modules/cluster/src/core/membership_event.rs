@@ -28,11 +28,11 @@ pub enum MembershipEvent {
     /// Authority associated with the leaving node.
     authority: String,
   },
-  /// Node marked unreachable after heartbeat misses.
-  MarkedUnreachable {
-    /// Node id considered unreachable.
+  /// Node marked suspect after heartbeat misses.
+  MarkedSuspect {
+    /// Node id considered suspect.
     node_id:   String,
-    /// Authority of the unreachable node.
+    /// Authority of the suspect node.
     authority: String,
   },
 }

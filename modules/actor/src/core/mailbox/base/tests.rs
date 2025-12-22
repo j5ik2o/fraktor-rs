@@ -2,7 +2,7 @@ use crate::core::{
   actor_prim::Pid,
   mailbox::{Mailbox, MailboxInstrumentation, MailboxOverflowStrategy, MailboxPolicy},
   messaging::{AnyMessage, SystemMessage},
-  system::{SystemState, SystemStateShared},
+  system::ActorSystem,
 };
 
 #[test]
@@ -14,7 +14,7 @@ fn mailbox_new() {
 #[test]
 fn mailbox_set_instrumentation() {
   let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
-  let system_state = SystemStateShared::new(SystemState::new());
+  let system_state = ActorSystem::new_empty().state();
   let pid = Pid::new(1, 0);
   let instrumentation = MailboxInstrumentation::new(system_state, pid, None, None, None);
   mailbox.set_instrumentation(instrumentation);

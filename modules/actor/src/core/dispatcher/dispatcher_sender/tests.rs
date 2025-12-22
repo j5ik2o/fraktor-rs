@@ -3,7 +3,7 @@ use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
 use super::DispatcherSenderGeneric;
 use crate::core::{
   actor_prim::actor_ref::{ActorRefSender, SendOutcome},
-  dispatcher::base::Dispatcher,
+  dispatcher::base::DispatcherShared,
   mailbox::Mailbox,
   messaging::AnyMessage,
 };
@@ -11,7 +11,7 @@ use crate::core::{
 #[test]
 fn dispatcher_sender_new() {
   let mailbox = ArcShared::new(Mailbox::new(crate::core::mailbox::MailboxPolicy::unbounded(None)));
-  let dispatcher = Dispatcher::with_inline_executor(mailbox);
+  let dispatcher = DispatcherShared::with_inline_executor(mailbox);
   let sender = DispatcherSenderGeneric::new(dispatcher);
   let _ = sender;
 }
@@ -19,7 +19,7 @@ fn dispatcher_sender_new() {
 #[test]
 fn dispatcher_sender_send_enqueued() {
   let mailbox = ArcShared::new(Mailbox::new(crate::core::mailbox::MailboxPolicy::unbounded(None)));
-  let dispatcher = Dispatcher::with_inline_executor(mailbox);
+  let dispatcher = DispatcherShared::with_inline_executor(mailbox);
   let mut sender = DispatcherSenderGeneric::new(dispatcher);
 
   let result =
@@ -30,7 +30,7 @@ fn dispatcher_sender_send_enqueued() {
 #[test]
 fn dispatcher_sender_send_multiple_messages() {
   let mailbox = ArcShared::new(Mailbox::new(crate::core::mailbox::MailboxPolicy::unbounded(None)));
-  let dispatcher = Dispatcher::with_inline_executor(mailbox);
+  let dispatcher = DispatcherShared::with_inline_executor(mailbox);
   let mut sender = DispatcherSenderGeneric::new(dispatcher);
 
   assert!(
@@ -50,7 +50,7 @@ fn dispatcher_sender_send_multiple_messages() {
 #[test]
 fn dispatcher_sender_sets_need_reschedule_when_running() {
   let mailbox = ArcShared::new(Mailbox::new(crate::core::mailbox::MailboxPolicy::unbounded(None)));
-  let dispatcher = Dispatcher::with_inline_executor(mailbox.clone());
+  let dispatcher = DispatcherShared::with_inline_executor(mailbox.clone());
   let mut sender = DispatcherSenderGeneric::new(dispatcher);
 
   mailbox.set_running();

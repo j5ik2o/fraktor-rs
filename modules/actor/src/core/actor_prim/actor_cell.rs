@@ -19,7 +19,7 @@ use crate::core::{
     context_pipe_task::{ContextPipeFuture, ContextPipeTask},
     pipe_spawn_error::PipeSpawnError,
   },
-  dispatcher::DispatcherGeneric,
+  dispatcher::DispatcherSharedGeneric,
   error::ActorError,
   event_stream::EventStreamEvent,
   lifecycle::{LifecycleEvent, LifecycleStage},
@@ -69,7 +69,7 @@ pub struct ActorCellGeneric<TB: RuntimeToolbox + 'static> {
   actor:      ActorSharedGeneric<TB>,
   pipeline:   MessageInvokerPipelineGeneric<TB>,
   mailbox:    ArcShared<MailboxGeneric<TB>>,
-  dispatcher: DispatcherGeneric<TB>,
+  dispatcher: DispatcherSharedGeneric<TB>,
   sender:     ActorRefSenderSharedGeneric<TB>,
   state:      ToolboxMutex<ActorCellState<TB>, TB>,
   terminated: AtomicBool,
@@ -185,7 +185,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
 
   /// Returns the dispatcher associated with this cell.
   #[must_use]
-  pub fn dispatcher(&self) -> DispatcherGeneric<TB> {
+  pub fn dispatcher(&self) -> DispatcherSharedGeneric<TB> {
     self.dispatcher.clone()
   }
 
@@ -414,18 +414,20 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     }
 
     self.system().release_name(self.parent, &self.name);
-    let _ = self.system().remove_cell(&self.pid);
+    self.system().remove_cell(&self.pid);
 
-    match self.system().clear_guardian(self.pid) {
-      | Some(GuardianKind::Root) => {
-        self.system().mark_terminated();
-      },
-      | Some(GuardianKind::User) | Some(GuardianKind::System) => {
-        if !self.system().guardian_alive(GuardianKind::Root) {
+    if let Some(kind) = self.system().guardian_kind_by_pid(self.pid) {
+      self.system().mark_guardian_stopped(kind);
+      match kind {
+        | GuardianKind::Root => {
           self.system().mark_terminated();
-        }
-      },
-      | None => {},
+        },
+        | GuardianKind::User | GuardianKind::System => {
+          if !self.system().guardian_alive(GuardianKind::Root) {
+            self.system().mark_terminated();
+          }
+        },
+      }
     }
 
     result

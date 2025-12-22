@@ -5,12 +5,13 @@
 //! single-process tests and no_std examples.
 
 use alloc::string::String;
+use core::time::Duration;
 
-use fraktor_actor_rs::core::event_stream::EventStreamGeneric;
+use fraktor_actor_rs::core::event_stream::EventStreamSharedGeneric;
 use fraktor_remote_rs::core::BlockListProvider;
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared, time::TimerInstant};
 
-use crate::core::{ClusterProvider, ClusterProviderError, ClusterTopology};
+use crate::core::{ClusterProvider, ClusterProviderError, ClusterTopology, TopologyUpdate};
 
 #[cfg(test)]
 mod tests;
@@ -21,7 +22,7 @@ mod tests;
 /// communication. It simply publishes a predetermined topology when started,
 /// making it ideal for testing and single-process demonstrations.
 pub struct StaticClusterProvider<TB: RuntimeToolbox + 'static> {
-  event_stream:        ArcShared<EventStreamGeneric<TB>>,
+  event_stream:        EventStreamSharedGeneric<TB>,
   block_list_provider: ArcShared<dyn BlockListProvider>,
   static_topology:     Option<ClusterTopology>,
   advertised_address:  String,
@@ -31,7 +32,7 @@ impl<TB: RuntimeToolbox + 'static> StaticClusterProvider<TB> {
   /// Creates a new static cluster provider.
   #[must_use]
   pub fn new(
-    event_stream: ArcShared<EventStreamGeneric<TB>>,
+    event_stream: EventStreamSharedGeneric<TB>,
     block_list_provider: ArcShared<dyn BlockListProvider>,
     advertised_address: impl Into<String>,
   ) -> Self {
@@ -60,12 +61,24 @@ impl<TB: RuntimeToolbox + 'static> StaticClusterProvider<TB> {
 
     if let Some(topology) = &self.static_topology {
       let blocked = self.block_list_provider.blocked_members();
-      let event = ClusterEvent::TopologyUpdated {
-        topology: topology.clone(),
-        joined: topology.joined().clone(),
-        left: topology.left().clone(),
+      let mut members = topology.joined().clone();
+      if !members.contains(&self.advertised_address)
+        && !topology.left().contains(&self.advertised_address)
+        && !topology.dead().contains(&self.advertised_address)
+      {
+        members.push(self.advertised_address.clone());
+      }
+      members.retain(|member| !topology.left().contains(member) && !topology.dead().contains(member));
+      let update = TopologyUpdate::new(
+        topology.clone(),
+        members,
+        topology.joined().clone(),
+        topology.left().clone(),
+        topology.dead().clone(),
         blocked,
-      };
+        TimerInstant::from_ticks(topology.hash(), Duration::from_secs(1)),
+      );
+      let event = ClusterEvent::TopologyUpdated { update };
       let payload = AnyMessageGeneric::new(event);
       let extension_event = EventStreamEvent::Extension { name: String::from("cluster"), payload };
       self.event_stream.publish(&extension_event);

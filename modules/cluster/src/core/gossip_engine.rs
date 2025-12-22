@@ -54,6 +54,25 @@ impl GossipEngine {
     &self.table
   }
 
+  /// Borrows the membership table mutably.
+  #[must_use]
+  pub const fn table_mut(&mut self) -> &mut MembershipTable {
+    &mut self.table
+  }
+
+  /// Replaces peer list and refreshes peer versions.
+  pub fn set_peers(&mut self, peers: Vec<String>) {
+    let current = self.table.version();
+    let mut updated_versions = BTreeMap::new();
+    for peer in peers.iter() {
+      let version = self.peer_versions.get(peer).copied().unwrap_or(current);
+      updated_versions.insert(peer.clone(), version);
+    }
+    self.peers = peers;
+    self.peer_versions = updated_versions;
+    self.outstanding.clear();
+  }
+
   /// Disseminates the given delta to all peers, entering Diffusing state.
   pub fn disseminate(&mut self, delta: &MembershipDelta) -> Vec<GossipOutbound> {
     let out = self.peers.iter().cloned().map(|peer| GossipOutbound::new(peer, delta.clone())).collect::<Vec<_>>();

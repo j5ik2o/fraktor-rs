@@ -11,7 +11,7 @@ mod tests;
 
 use crate::core::{
   dispatcher::{
-    DispatchExecutor, DispatchExecutorRunner, DispatcherGeneric, InlineExecutorGeneric, InlineScheduleAdapter,
+    DispatchExecutor, DispatchExecutorRunner, DispatcherSharedGeneric, InlineExecutorGeneric, InlineScheduleAdapter,
     ScheduleAdapterSharedGeneric,
   },
   mailbox::{MailboxGeneric, MailboxOverflowStrategy},
@@ -111,7 +111,10 @@ impl<TB: RuntimeToolbox + 'static> DispatcherConfigGeneric<TB> {
   ///
   /// Returns [`SpawnError::InvalidMailboxConfig`] if the mailbox uses
   /// [`MailboxOverflowStrategy::Block`] with an executor that doesn't support blocking operations.
-  pub fn build_dispatcher(&self, mailbox: ArcShared<MailboxGeneric<TB>>) -> Result<DispatcherGeneric<TB>, SpawnError> {
+  pub fn build_dispatcher(
+    &self,
+    mailbox: ArcShared<MailboxGeneric<TB>>,
+  ) -> Result<DispatcherSharedGeneric<TB>, SpawnError> {
     // Validate mailbox configuration against executor capabilities
     let policy = mailbox.policy();
     if policy.overflow() == MailboxOverflowStrategy::Block && !self.executor.supports_blocking() {
@@ -121,7 +124,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherConfigGeneric<TB> {
       ));
     }
 
-    Ok(DispatcherGeneric::with_adapter(
+    Ok(DispatcherSharedGeneric::with_adapter(
       mailbox,
       self.executor.clone(),
       self.schedule_adapter(),

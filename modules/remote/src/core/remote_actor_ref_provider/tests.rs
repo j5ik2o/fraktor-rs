@@ -80,8 +80,7 @@ fn provider(system: &ActorSystemGeneric<NoStdToolbox>) -> RemoteActorRefProvider
   let control: RemotingControlShared<NoStdToolbox> =
     ArcShared::new(<<NoStdToolbox as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(control_handle));
   control.lock().start().expect("control start");
-  let authority_manager = system.state().remote_authority_manager().clone();
-  RemoteActorRefProvider::from_components(system.clone(), writer, control, authority_manager).expect("provider builds")
+  RemoteActorRefProvider::from_components(system.clone(), writer, control).expect("provider builds")
 }
 
 fn remote_path() -> ActorPath {

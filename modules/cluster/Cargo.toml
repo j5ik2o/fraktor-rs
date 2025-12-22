@@ -47,3 +47,33 @@ required-features = ["test-support"]
 name = "cluster_extension_tokio"
 path = "examples/cluster_extension_tokio/main.rs"
 required-features = ["std"]
+
+[[example]]
+name = "identity_lookup_placement_no_std"
+path = "examples/identity_lookup_placement_no_std/main.rs"
+required-features = ["test-support"]
+
+[[example]]
+name = "identity_lookup_placement_std"
+path = "examples/identity_lookup_placement_std/main.rs"
+required-features = ["std"]
+
+[[example]]
+name = "membership_gossip_topology_no_std"
+path = "examples/membership_gossip_topology_no_std/main.rs"
+required-features = ["test-support"]
+
+[[example]]
+name = "membership_gossip_topology_std"
+path = "examples/membership_gossip_topology_std/main.rs"
+required-features = ["std"]
+
+[[example]]
+name = "membership_gossip_failure_no_std"
+path = "examples/membership_gossip_failure_no_std/main.rs"
+required-features = ["test-support"]
+
+[[example]]
+name = "membership_gossip_failure_std"
+path = "examples/membership_gossip_failure_std/main.rs"
+required-features = ["std"]

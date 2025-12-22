@@ -51,7 +51,7 @@ pub fn hardware_tick_driver_config() -> (TickDriverConfig<StdToolbox>, DemoPulse
 /// Use this when you need more control over the pulse source.
 pub fn hardware_tick_driver_config_with_handle(handle: DemoPulseHandle) -> TickDriverConfig<StdToolbox> {
   TickDriverConfig::new(move |ctx| {
-    // Get resolution and capacity from SchedulerContext
+    // プロビジョニングコンテキストから解像度と容量を取得
     let scheduler: SchedulerSharedGeneric<StdToolbox> = ctx.scheduler();
     let (resolution, capacity) =
       scheduler.with_read(|s| (s.config().resolution(), s.config().profile().tick_buffer_quota()));

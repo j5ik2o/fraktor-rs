@@ -9,8 +9,10 @@ use fraktor_utils_rs::core::{
 
 use crate::core::{
   actor_prim::actor_path::GuardianKind as PathGuardianKind,
-  dispatcher::DispatcherConfigGeneric,
+  dispatcher::{DispatcherConfigGeneric, DispatchersGeneric},
   extension::ExtensionInstallers,
+  mailbox::MailboxesGeneric,
+  props::MailboxConfig,
   scheduler::{SchedulerConfig, TickDriverConfig},
   system::{ActorRefProviderInstaller, RemotingConfig},
 };
@@ -30,6 +32,8 @@ where
   extension_installers:      Option<ExtensionInstallers<TB>>,
   provider_installer:        Option<ArcShared<dyn ActorRefProviderInstaller<TB>>>,
   default_dispatcher_config: Option<DispatcherConfigGeneric<TB>>,
+  dispatchers:               DispatchersGeneric<TB>,
+  mailboxes:                 MailboxesGeneric<TB>,
 }
 
 /// Type alias for [ActorSystemConfigGeneric] with the default [NoStdToolbox].
@@ -93,7 +97,22 @@ where
   /// Sets the default dispatcher configuration used when Props don't specify a dispatcher.
   #[must_use]
   pub fn with_default_dispatcher(mut self, config: DispatcherConfigGeneric<TB>) -> Self {
+    self.dispatchers.register_or_update("default", config.clone());
     self.default_dispatcher_config = Some(config);
+    self
+  }
+
+  /// Registers or updates a dispatcher configuration.
+  #[must_use]
+  pub fn with_dispatcher(mut self, id: impl Into<String>, config: DispatcherConfigGeneric<TB>) -> Self {
+    self.dispatchers.register_or_update(id, config);
+    self
+  }
+
+  /// Registers or updates a mailbox configuration.
+  #[must_use]
+  pub fn with_mailbox(mut self, id: impl Into<String>, config: MailboxConfig) -> Self {
+    self.mailboxes.register_or_update(id, config);
     self
   }
 
@@ -163,6 +182,18 @@ where
   pub const fn default_dispatcher_config(&self) -> Option<&DispatcherConfigGeneric<TB>> {
     self.default_dispatcher_config.as_ref()
   }
+
+  /// Returns the dispatcher registry configured for the system.
+  #[must_use]
+  pub const fn dispatchers(&self) -> &DispatchersGeneric<TB> {
+    &self.dispatchers
+  }
+
+  /// Returns the mailbox registry configured for the system.
+  #[must_use]
+  pub const fn mailboxes(&self) -> &MailboxesGeneric<TB> {
+    &self.mailboxes
+  }
 }
 
 impl<TB> Default for ActorSystemConfigGeneric<TB>
@@ -170,15 +201,21 @@ where
   TB: RuntimeToolbox + 'static,
 {
   fn default() -> Self {
+    let mut dispatchers = DispatchersGeneric::new();
+    dispatchers.ensure_default();
+    let mut mailboxes = MailboxesGeneric::new();
+    mailboxes.ensure_default();
     Self {
-      system_name:               "default-system".to_string(),
-      default_guardian:          PathGuardianKind::User,
-      remoting_config:           None,
-      scheduler_config:          SchedulerConfig::default(),
-      tick_driver_config:        None,
-      extension_installers:      None,
-      provider_installer:        None,
+      system_name: "default-system".to_string(),
+      default_guardian: PathGuardianKind::User,
+      remoting_config: None,
+      scheduler_config: SchedulerConfig::default(),
+      tick_driver_config: None,
+      extension_installers: None,
+      provider_installer: None,
       default_dispatcher_config: None,
+      dispatchers,
+      mailboxes,
     }
   }
 }

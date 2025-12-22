@@ -1,11 +1,13 @@
 //! Partition-based identity lookup using distributed hashing.
 
-use alloc::{string::String, vec::Vec};
+use alloc::{format, string::String, vec::Vec};
 
 use crate::core::{
   activated_kind::ActivatedKind, grain_key::GrainKey, identity_lookup::IdentityLookup,
-  identity_setup_error::IdentitySetupError, partition_identity_lookup_config::PartitionIdentityLookupConfig,
-  pid_cache_event::PidCacheEvent, virtual_actor_event::VirtualActorEvent, virtual_actor_registry::VirtualActorRegistry,
+  identity_setup_error::IdentitySetupError, lookup_error::LookupError,
+  partition_identity_lookup_config::PartitionIdentityLookupConfig, pid_cache_event::PidCacheEvent,
+  placement_coordinator::PlacementCoordinatorCore, placement_coordinator_outcome::PlacementCoordinatorOutcome,
+  placement_event::PlacementEvent, placement_resolution::PlacementResolution,
 };
 
 #[cfg(test)]
@@ -18,10 +20,8 @@ mod tests;
 /// and callers should wrap the instance in `ToolboxMutex<Box<dyn IdentityLookup>>`
 /// for thread-safe access.
 pub struct PartitionIdentityLookup {
-  /// Virtual actor registry for activation management (includes PidCache).
-  registry:     VirtualActorRegistry,
-  /// Current list of active authorities.
-  authorities:  Vec<String>,
+  /// Placement coordinator core.
+  coordinator:  PlacementCoordinatorCore,
   /// Registered activated kinds for member mode.
   member_kinds: Vec<ActivatedKind>,
   /// Registered activated kinds for client mode.
@@ -34,11 +34,8 @@ impl PartitionIdentityLookup {
   /// Creates a new partition identity lookup with the given configuration.
   #[must_use]
   pub const fn new(config: PartitionIdentityLookupConfig) -> Self {
-    let cache_capacity = config.cache_capacity();
-    let pid_ttl_secs = config.pid_ttl_secs();
     Self {
-      registry: VirtualActorRegistry::new(cache_capacity, pid_ttl_secs),
-      authorities: Vec::new(),
+      coordinator: PlacementCoordinatorCore::new(config.cache_capacity(), config.pid_ttl_secs()),
       member_kinds: Vec::new(),
       client_kinds: Vec::new(),
       config,
@@ -55,13 +52,35 @@ impl PartitionIdentityLookup {
   #[must_use]
   #[allow(clippy::missing_const_for_fn)]
   pub fn authorities(&self) -> &[String] {
-    &self.authorities
+    self.coordinator.authorities()
   }
 
   /// Returns the configuration.
   #[must_use]
   pub const fn config(&self) -> &PartitionIdentityLookupConfig {
     &self.config
+  }
+
+  /// Sets the local authority identifier.
+  pub fn set_local_authority(&mut self, authority: impl Into<String>) {
+    self.coordinator.set_local_authority(authority);
+  }
+
+  /// Enables or disables distributed activation commands.
+  pub const fn set_distributed_activation(&mut self, enabled: bool) {
+    self.coordinator.set_distributed_activation(enabled);
+  }
+
+  /// Handles a command result and records emitted events.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the coordinator rejects the result.
+  pub fn handle_command_result(
+    &mut self,
+    result: crate::core::placement_command_result::PlacementCommandResult,
+  ) -> Result<PlacementCoordinatorOutcome, crate::core::placement_coordinator_error::PlacementCoordinatorError> {
+    self.coordinator.handle_command_result(result)
   }
 
   /// Returns the registered member kinds.
@@ -82,53 +101,45 @@ impl PartitionIdentityLookup {
 impl IdentityLookup for PartitionIdentityLookup {
   fn setup_member(&mut self, kinds: &[ActivatedKind]) -> Result<(), IdentitySetupError> {
     self.member_kinds = kinds.to_vec();
+    self.coordinator.start_member().map_err(|error| IdentitySetupError::Provider(format!("{error:?}")))?;
     Ok(())
   }
 
   fn setup_client(&mut self, kinds: &[ActivatedKind]) -> Result<(), IdentitySetupError> {
     self.client_kinds = kinds.to_vec();
+    self.coordinator.start_client().map_err(|error| IdentitySetupError::Provider(format!("{error:?}")))?;
     Ok(())
   }
 
-  fn get(&mut self, key: &GrainKey, now: u64) -> Option<String> {
-    // Step 1: キャッシュを確認（高速パス、イベント生成なし）
-    if let Some(pid) = self.registry.cached_pid(key, now) {
-      return Some(pid);
+  fn resolve(&mut self, key: &GrainKey, now: u64) -> Result<PlacementResolution, LookupError> {
+    let outcome = self.coordinator.resolve(key, now)?;
+    if let Some(resolution) = outcome.resolution {
+      return Ok(resolution);
     }
-
-    // Step 2: VirtualActorRegistry 経由でアクティベーションを確保
-    // snapshot_required は false、snapshot は None で基本的なルックアップを行う
-    match self.registry.ensure_activation(key, &self.authorities, now, false, None) {
-      | Ok(pid) => Some(pid),
-      | Err(_) => None,
-    }
+    Err(LookupError::Pending)
   }
 
   fn remove_pid(&mut self, key: &GrainKey) {
-    self.registry.remove_activation(key);
+    self.coordinator.remove_pid(key);
   }
 
   fn update_topology(&mut self, authorities: Vec<String>) {
-    // 新しい authority リストに存在しないものを無効化
-    self.registry.invalidate_absent_authorities(&authorities);
-    // 内部の authority リストを更新
-    self.authorities = authorities;
+    self.coordinator.update_topology(authorities);
   }
 
   fn on_member_left(&mut self, authority: &str) {
-    // 指定された authority のエントリをすべて無効化
-    self.registry.invalidate_authority(authority);
+    self.coordinator.invalidate_authority(authority);
   }
 
   fn passivate_idle(&mut self, now: u64, idle_ttl: u64) {
-    self.registry.passivate_idle(now, idle_ttl);
+    self.coordinator.passivate_idle(now, idle_ttl);
   }
 
-  fn drain_events(&mut self) -> Vec<VirtualActorEvent> {
-    self.registry.drain_events()
+  fn drain_events(&mut self) -> Vec<PlacementEvent> {
+    self.coordinator.drain_events()
   }
 
   fn drain_cache_events(&mut self) -> Vec<PidCacheEvent> {
-    self.registry.drain_cache_events()
+    self.coordinator.drain_cache_events()
   }
 }

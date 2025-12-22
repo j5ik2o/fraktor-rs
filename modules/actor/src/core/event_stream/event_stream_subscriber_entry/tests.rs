@@ -1,7 +1,9 @@
 use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 
-use super::EventStreamSubscriberEntry;
+use super::EventStreamSubscriberEntryGeneric;
 use crate::core::event_stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle};
+
+type EventStreamSubscriberEntry = EventStreamSubscriberEntryGeneric<NoStdToolbox>;
 
 struct MockSubscriber;
 

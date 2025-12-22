@@ -1,14 +1,14 @@
 use alloc::{string::String, vec::Vec};
 
-use fraktor_utils_rs::{core::sync::ArcShared, std::runtime_toolbox::StdToolbox};
+use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
-pub use crate::std::dispatcher::{DispatchExecutor, DispatchShared, Dispatcher, DispatcherConfig};
+pub use crate::std::dispatcher::{DispatchExecutor, DispatchShared, DispatcherConfig, DispatcherShared};
 use crate::{
   core::{
     actor_prim::{Pid, actor_path::ActorPath},
     event_stream::{TickDriverSnapshot, subscriber_handle as core_subscriber_handle},
     logging::LogLevel,
-    scheduler::{SchedulerContextSharedGeneric, TickDriverConfig},
+    scheduler::{SchedulerBackedDelayProvider, SchedulerSharedGeneric, TickDriverConfig},
     spawn::SpawnError,
     system::{
       ActorRefResolveError, ActorSystemGeneric as CoreActorSystemGeneric, ExtendedActorSystemGeneric,
@@ -64,6 +64,7 @@ impl ActorSystem {
 
   /// Creates an empty actor system without any guardian (testing helper).
   #[must_use]
+  #[cfg(any(test, feature = "test-support"))]
   pub fn new_empty() -> Self {
     Self::from_core(CoreActorSystemGeneric::new_empty())
   }
@@ -113,7 +114,7 @@ impl ActorSystem {
 
   /// Returns the shared event stream handle.
   #[must_use]
-  pub fn event_stream(&self) -> ArcShared<EventStream> {
+  pub fn event_stream(&self) -> EventStream {
     self.inner.event_stream()
   }
 
@@ -123,10 +124,16 @@ impl ActorSystem {
     self.inner.tick_driver_snapshot()
   }
 
-  /// Returns the shared scheduler context if installed.
+  /// Returns the shared scheduler handle.
   #[must_use]
-  pub fn scheduler_context(&self) -> Option<SchedulerContextSharedGeneric<StdToolbox>> {
-    self.inner.scheduler_context()
+  pub fn scheduler(&self) -> SchedulerSharedGeneric<StdToolbox> {
+    self.inner.scheduler()
+  }
+
+  /// Returns a delay provider backed by the scheduler.
+  #[must_use]
+  pub fn delay_provider(&self) -> SchedulerBackedDelayProvider<StdToolbox> {
+    self.inner.delay_provider()
   }
 
   /// Subscribes the provided observer to the event stream.
