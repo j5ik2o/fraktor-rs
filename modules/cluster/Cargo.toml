@@ -14,7 +14,7 @@ autoexamples = false
 
 [features]
 default = []
-std = ["fraktor-actor-rs/std", "fraktor-remote-rs/std", "fraktor-utils-rs/std"]
+std = ["fraktor-actor-rs/std", "fraktor-remote-rs/std", "fraktor-utils-rs/std", "dep:tokio"]
 aws-ecs = ["std", "dep:aws-sdk-ecs", "dep:aws-config", "dep:tokio"]
 test-support = ["std", "fraktor-actor-rs/test-support", "fraktor-remote-rs/test-support"]
 
@@ -22,9 +22,11 @@ test-support = ["std", "fraktor-actor-rs/test-support", "fraktor-remote-rs/test-
 fraktor-actor-rs = { workspace = true }
 fraktor-utils-rs = { workspace = true }
 fraktor-remote-rs = { workspace = true }
+serde = { workspace = true }
+postcard = { workspace = true }
 aws-sdk-ecs = { workspace = true, optional = true }
 aws-config = { workspace = true, optional = true }
-tokio = { workspace = true, optional = true, features = ["rt", "sync", "time"] }
+tokio = { workspace = true, optional = true, features = ["rt", "sync", "time", "net"] }
 
 [dev-dependencies]
 fraktor-actor-rs = { workspace = true, features = ["std", "tokio-executor", "test-support"] }
@@ -76,4 +78,9 @@ required-features = ["test-support"]
 [[example]]
 name = "membership_gossip_failure_std"
 path = "examples/membership_gossip_failure_std/main.rs"
+required-features = ["std"]
+
+[[example]]
+name = "membership_gossip_tokio"
+path = "examples/membership_gossip_tokio/main.rs"
 required-features = ["std"]
