@@ -634,6 +634,9 @@ run_no_std() {
   log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-rs --no-default-features"
   run_cargo check -p fraktor-actor-rs --no-default-features || return 1
 
+  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-streams-rs --no-default-features"
+  run_cargo check -p fraktor-streams-rs --no-default-features || return 1
+
   log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-rs --no-default-features"
   run_cargo check -p fraktor-rs --no-default-features || return 1
 
@@ -644,6 +647,9 @@ run_no_std() {
 
     log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-rs --no-default-features --target ${thumb_target}"
     run_cargo check -p fraktor-actor-rs --no-default-features --target "${thumb_target}" || return 1
+
+    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-streams-rs --no-default-features --target ${thumb_target}"
+    run_cargo check -p fraktor-streams-rs --no-default-features --target "${thumb_target}" || return 1
   fi
 }
 
@@ -653,6 +659,9 @@ run_std() {
 
   log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-actor-rs --lib"
   run_cargo test -p fraktor-actor-rs --lib || return 1
+
+  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-streams-rs --lib --features std"
+  run_cargo test -p fraktor-streams-rs --lib --features std || return 1
 
   log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-rs --lib"
   run_cargo test -p fraktor-rs --lib || return 1

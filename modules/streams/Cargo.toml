@@ -1,0 +1,36 @@
+[package]
+name = "fraktor-streams-rs"
+version = "0.2.11"
+edition = "2024"
+description = "fraktor stream core for no_std and std environments"
+license = "MIT OR Apache-2.0"
+keywords = ["fraktor", "streams", "runtime", "no_std"]
+categories = ["concurrency", "embedded", "no-std"]
+repository = "https://github.com/j5ik2o/fraktor-rs"
+homepage = "https://github.com/j5ik2o/fraktor-rs"
+documentation = "https://docs.rs/fraktor-streams-rs"
+readme = "../../README.md"
+autoexamples = false
+
+[features]
+default = []
+std = ["fraktor-utils-rs/std", "dep:tokio"]
+
+[dependencies]
+fraktor-utils-rs = { workspace = true, default-features = false, features = ["alloc"] }
+portable-atomic = { workspace = true, default-features = false, features = ["critical-section"] }
+thiserror = { workspace = true, default-features = false }
+tokio = { workspace = true, optional = true, features = ["rt", "time", "sync"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "sync"] }
+
+[[example]]
+name = "stream_minimal_tokio_std"
+path = "examples/stream_minimal_tokio_std/main.rs"
+required-features = ["std"]
+
+[[example]]
+name = "stream_minimal_dsl_tokio_std"
+path = "examples/stream_minimal_dsl_tokio_std/main.rs"
+required-features = ["std"]
