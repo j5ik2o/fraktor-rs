@@ -73,7 +73,8 @@ use fraktor_actor_rs::core::{
 };
 use fraktor_cluster_rs::core::{
   ActivatedKind, ClusterEvent, ClusterExtensionConfig, ClusterExtensionGeneric, ClusterExtensionInstaller,
-  ClusterPubSub, ClusterTopology, Gossiper, IdentityLookup, IdentitySetupError, StaticClusterProvider,
+  ClusterPubSub, ClusterTopology, Gossiper, IdentityLookup, IdentitySetupError, PubSubError, PubSubSubscriber,
+  PubSubTopic, PublishAck, PublishRejectReason, PublishRequest, StaticClusterProvider, TopologyUpdate,
 };
 use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
@@ -94,14 +95,36 @@ impl Gossiper for DemoGossiper {
 // デモ用の PubSub
 #[derive(Default)]
 struct DemoPubSub;
-impl ClusterPubSub for DemoPubSub {
-  fn start(&mut self) -> Result<(), fraktor_cluster_rs::core::PubSubError> {
+impl ClusterPubSub<NoStdToolbox> for DemoPubSub {
+  fn start(&mut self) -> Result<(), PubSubError> {
     Ok(())
   }
 
-  fn stop(&mut self) -> Result<(), fraktor_cluster_rs::core::PubSubError> {
+  fn stop(&mut self) -> Result<(), PubSubError> {
     Ok(())
   }
+
+  fn subscribe(
+    &mut self,
+    _topic: &PubSubTopic,
+    _subscriber: PubSubSubscriber<NoStdToolbox>,
+  ) -> Result<(), PubSubError> {
+    Ok(())
+  }
+
+  fn unsubscribe(
+    &mut self,
+    _topic: &PubSubTopic,
+    _subscriber: PubSubSubscriber<NoStdToolbox>,
+  ) -> Result<(), PubSubError> {
+    Ok(())
+  }
+
+  fn publish(&mut self, _request: PublishRequest<NoStdToolbox>) -> Result<PublishAck, PubSubError> {
+    Ok(PublishAck::rejected(PublishRejectReason::NoSubscribers))
+  }
+
+  fn on_topology(&mut self, _update: &TopologyUpdate) {}
 }
 
 // デモ用の IdentityLookup
@@ -201,7 +224,7 @@ impl ClusterNode {
     )
     .with_block_list_provider(ArcShared::new(DemoBlockList::default()))
     .with_gossiper_factory(|| Box::new(DemoGossiper::default()))
-    .with_pubsub_factory(|| Box::new(DemoPubSub::default()))
+    .with_pubsub_factory(|_| Box::new(DemoPubSub::default()))
     .with_identity_lookup_factory(|| Box::new(DemoIdentityLookup::default()));
 
     let system_cfg = ActorSystemConfig::default()

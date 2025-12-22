@@ -8,6 +8,7 @@ mod local_cluster_provider_ext;
 mod membership_coordinator_driver;
 mod placement_coordinator_driver;
 mod placement_lock;
+mod pub_sub_delivery_actor;
 
 pub use activation_executor::ActivationExecutor;
 pub use activation_storage::ActivationStorage;
@@ -17,3 +18,4 @@ pub use local_cluster_provider_ext::{subscribe_remoting_events, wrap_local_clust
 pub use membership_coordinator_driver::MembershipCoordinatorDriverGeneric;
 pub use placement_coordinator_driver::PlacementCoordinatorDriverGeneric;
 pub use placement_lock::PlacementLock;
+pub use pub_sub_delivery_actor::PubSubDeliveryActor;

@@ -1,6 +1,11 @@
 //! No-op implementation of the ClusterPubSub trait.
 
-use crate::core::{cluster_pub_sub::ClusterPubSub, pub_sub_error::PubSubError};
+use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
+
+use crate::core::{
+  PubSubError, PubSubSubscriber, PubSubTopic, PublishAck, PublishRequest, TopologyUpdate,
+  cluster_pub_sub::ClusterPubSub,
+};
 
 /// A no-op pub/sub that does nothing.
 ///
@@ -17,7 +22,7 @@ impl NoopClusterPubSub {
   }
 }
 
-impl ClusterPubSub for NoopClusterPubSub {
+impl<TB: RuntimeToolbox> ClusterPubSub<TB> for NoopClusterPubSub {
   fn start(&mut self) -> Result<(), PubSubError> {
     Ok(())
   }
@@ -25,4 +30,18 @@ impl ClusterPubSub for NoopClusterPubSub {
   fn stop(&mut self) -> Result<(), PubSubError> {
     Ok(())
   }
+
+  fn subscribe(&mut self, _topic: &PubSubTopic, _subscriber: PubSubSubscriber<TB>) -> Result<(), PubSubError> {
+    Ok(())
+  }
+
+  fn unsubscribe(&mut self, _topic: &PubSubTopic, _subscriber: PubSubSubscriber<TB>) -> Result<(), PubSubError> {
+    Ok(())
+  }
+
+  fn publish(&mut self, _request: PublishRequest<TB>) -> Result<PublishAck, PubSubError> {
+    Ok(PublishAck::accepted())
+  }
+
+  fn on_topology(&mut self, _update: &TopologyUpdate) {}
 }
