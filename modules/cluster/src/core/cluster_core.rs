@@ -22,7 +22,8 @@ use fraktor_utils_rs::core::{
 use crate::core::{
   ActivatedKind, ClusterError, ClusterEvent, ClusterExtensionConfig, ClusterMetrics, ClusterMetricsSnapshot,
   ClusterProviderShared, ClusterPubSubShared, GossiperShared, GrainKey, IdentityLookupShared, IdentitySetupError,
-  KindRegistry, MetricsError, PidCache, StartupMode, TopologyApplyError, TopologyUpdate,
+  KindRegistry, LookupError, MetricsError, PidCache, PlacementResolution, StartupMode, TopologyApplyError,
+  TopologyUpdate,
 };
 
 /// Aggregates configuration and shared dependencies for cluster runtime flows.
@@ -135,9 +136,12 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
   }
 
   /// Resolves a PID for the given grain key.
-  #[must_use]
-  pub fn resolve_pid(&mut self, key: &GrainKey, now: u64) -> Option<String> {
-    self.identity_lookup.with_write(|lookup| lookup.get(key, now))
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when placement resolution fails or is pending.
+  pub fn resolve_pid(&mut self, key: &GrainKey, now: u64) -> Result<PlacementResolution, LookupError> {
+    self.identity_lookup.with_write(|lookup| lookup.resolve(key, now))
   }
 
   /// Returns the aggregated virtual actor count.

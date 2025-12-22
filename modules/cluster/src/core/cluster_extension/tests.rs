@@ -18,7 +18,8 @@ use fraktor_utils_rs::core::{
 
 use crate::core::{
   ActivatedKind, ClusterEvent, ClusterExtensionConfig, ClusterExtensionId, ClusterProvider, ClusterProviderError,
-  ClusterPubSub, ClusterTopology, Gossiper, IdentityLookup, IdentitySetupError, StaticClusterProvider, TopologyUpdate,
+  ClusterPubSub, ClusterTopology, Gossiper, GrainKey, IdentityLookup, IdentitySetupError, LookupError,
+  PlacementResolution, StaticClusterProvider, TopologyUpdate,
 };
 
 fn build_update(
@@ -85,6 +86,10 @@ impl IdentityLookup for StubIdentity {
 
   fn setup_client(&mut self, _kinds: &[ActivatedKind]) -> Result<(), IdentitySetupError> {
     Ok(())
+  }
+
+  fn resolve(&mut self, _key: &GrainKey, _now: u64) -> Result<PlacementResolution, LookupError> {
+    Err(LookupError::NotReady)
   }
 }
 

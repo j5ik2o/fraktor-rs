@@ -163,4 +163,19 @@ impl VirtualActorRegistry {
   pub fn drain_cache_events(&mut self) -> Vec<PidCacheEvent> {
     self.pid_cache.drain_events()
   }
+
+  /// Records an activation entry with explicit authority.
+  pub fn record_activation(&mut self, key: &GrainKey, authority: &str, record: &ActivationRecord, now: u64) {
+    let pid = record.pid.clone();
+    let entry = ActivationEntry { record: record.clone(), authority: authority.to_string(), last_seen: now };
+    let replaced = self.activations.insert(key.clone(), entry);
+    self.pid_cache.put(key.clone(), pid.clone(), authority.to_string(), now, self.pid_ttl_secs);
+
+    let event = if replaced.is_some() {
+      VirtualActorEvent::Reactivated { key: key.clone(), pid, authority: authority.to_string() }
+    } else {
+      VirtualActorEvent::Activated { key: key.clone(), pid, authority: authority.to_string() }
+    };
+    self.events.push(event);
+  }
 }

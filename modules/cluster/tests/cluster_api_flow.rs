@@ -13,7 +13,8 @@ use fraktor_actor_rs::core::{
 };
 use fraktor_cluster_rs::core::{
   ActivatedKind, ClusterApiGeneric, ClusterExtensionConfig, ClusterExtensionGeneric, ClusterExtensionInstaller,
-  ClusterIdentity, GrainKey, IdentityLookup, IdentitySetupError, NoopClusterProvider,
+  ClusterIdentity, GrainKey, IdentityLookup, IdentitySetupError, LookupError, NoopClusterProvider, PlacementDecision,
+  PlacementLocality, PlacementResolution,
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::NoStdToolbox,
@@ -92,8 +93,11 @@ impl IdentityLookup for StaticIdentityLookup {
     Ok(())
   }
 
-  fn get(&mut self, key: &GrainKey, _now: u64) -> Option<String> {
-    Some(format!("{}::{}", self.authority, key.value()))
+  fn resolve(&mut self, key: &GrainKey, now: u64) -> Result<PlacementResolution, LookupError> {
+    let decision =
+      PlacementDecision { key: key.clone(), authority: self.authority.clone(), observed_at: now };
+    let pid = format!("{}::{}", self.authority, key.value());
+    Ok(PlacementResolution { decision, locality: PlacementLocality::Local, pid })
   }
 }
 

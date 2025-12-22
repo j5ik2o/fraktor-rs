@@ -102,7 +102,8 @@ impl<TB: RuntimeToolbox + 'static> ClusterApiGeneric<TB> {
       if !guard.is_kind_registered(identity.kind()) {
         return Err(ClusterResolveError::KindNotRegistered { kind: identity.kind().to_string() });
       }
-      guard.resolve_pid(&key, now).ok_or(ClusterResolveError::LookupFailed)?
+      let resolution = guard.resolve_pid(&key, now).map_err(|_| ClusterResolveError::LookupFailed)?;
+      resolution.pid
     };
 
     let (authority, path) = split_pid(&pid)?;

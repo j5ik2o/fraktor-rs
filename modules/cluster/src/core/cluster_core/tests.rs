@@ -19,8 +19,8 @@ use super::*;
 use crate::core::{
   ActivatedKind, ClusterEvent, ClusterProvider, ClusterProviderError, ClusterProviderShared, ClusterPubSub,
   ClusterPubSubShared, ClusterTopology, Gossiper, GossiperShared, IdentityLookup, IdentityLookupShared,
-  IdentitySetupError, KindRegistry, MetricsError, PidCacheEvent, StartupMode, TOPIC_ACTOR_KIND, TopologyUpdate,
-  grain_key::GrainKey, pid_cache::PidCache, pub_sub_error::PubSubError,
+  IdentitySetupError, KindRegistry, LookupError, MetricsError, PidCacheEvent, PlacementResolution, StartupMode,
+  TOPIC_ACTOR_KIND, TopologyUpdate, grain_key::GrainKey, pid_cache::PidCache, pub_sub_error::PubSubError,
 };
 
 fn build_update(
@@ -192,6 +192,10 @@ impl IdentityLookup for StubIdentityLookup {
   fn setup_client(&mut self, kinds: &[ActivatedKind]) -> Result<(), IdentitySetupError> {
     self.record(IdentityMode::Client, kinds);
     Ok(())
+  }
+
+  fn resolve(&mut self, _key: &GrainKey, _now: u64) -> Result<PlacementResolution, LookupError> {
+    Err(LookupError::NotReady)
   }
 }
 

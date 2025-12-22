@@ -23,7 +23,8 @@ use fraktor_utils_rs::core::{
 use crate::core::{
   ActivatedKind, ClusterApiError, ClusterApiGeneric, ClusterExtensionConfig, ClusterExtensionGeneric,
   ClusterExtensionInstaller, ClusterIdentity, ClusterRequestError, ClusterResolveError, GrainKey, IdentityLookup,
-  IdentitySetupError, NoopClusterProvider, NoopIdentityLookup,
+  IdentitySetupError, LookupError, NoopClusterProvider, NoopIdentityLookup, PlacementDecision, PlacementLocality,
+  PlacementResolution,
 };
 
 #[test]
@@ -211,8 +212,13 @@ impl IdentityLookup for StaticIdentityLookup {
     Ok(())
   }
 
-  fn get(&mut self, key: &GrainKey, _now: u64) -> Option<String> {
-    Some(format!("{}::{}", self.authority, key.value()))
+  fn resolve(&mut self, key: &GrainKey, now: u64) -> Result<PlacementResolution, LookupError> {
+    let pid = format!("{}::{}", self.authority, key.value());
+    Ok(PlacementResolution {
+      decision: PlacementDecision { key: key.clone(), authority: self.authority.clone(), observed_at: now },
+      locality: PlacementLocality::Remote,
+      pid,
+    })
   }
 }
 
@@ -227,8 +233,12 @@ impl IdentityLookup for InvalidIdentityLookup {
     Ok(())
   }
 
-  fn get(&mut self, _key: &GrainKey, _now: u64) -> Option<String> {
-    Some("invalid_pid".to_string())
+  fn resolve(&mut self, key: &GrainKey, now: u64) -> Result<PlacementResolution, LookupError> {
+    Ok(PlacementResolution {
+      decision: PlacementDecision { key: key.clone(), authority: "invalid".to_string(), observed_at: now },
+      locality: PlacementLocality::Remote,
+      pid:      "invalid_pid".to_string(),
+    })
   }
 }
 

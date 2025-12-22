@@ -91,6 +91,7 @@ use fraktor_actor_rs::{
 use fraktor_cluster_rs::core::{
   ActivatedKind, ClusterApiGeneric, ClusterEvent, ClusterExtensionConfig, ClusterExtensionGeneric,
   ClusterExtensionInstaller, ClusterIdentity, ClusterTopology, GrainKey, IdentityLookup, IdentitySetupError,
+  LookupError, PlacementDecision, PlacementLocality, PlacementResolution,
 };
 use fraktor_remote_rs::core::{
   RemotingExtensionConfig, RemotingExtensionInstaller, TokioActorRefProviderInstaller, TokioTransportConfig,
@@ -485,7 +486,10 @@ impl IdentityLookup for StaticHubIdentityLookup {
     Ok(())
   }
 
-  fn get(&mut self, _key: &GrainKey, _now: u64) -> Option<String> {
-    Some(format!("{}::{}", self.authority, self.hub_path))
+  fn resolve(&mut self, key: &GrainKey, now: u64) -> Result<PlacementResolution, LookupError> {
+    let decision =
+      PlacementDecision { key: key.clone(), authority: self.authority.clone(), observed_at: now };
+    let pid = format!("{}::{}", self.authority, self.hub_path);
+    Ok(PlacementResolution { decision, locality: PlacementLocality::Local, pid })
   }
 }
