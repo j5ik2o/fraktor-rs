@@ -18,19 +18,3 @@ std = ["fraktor-utils-rs/std", "dep:tokio"]
 
 [dependencies]
 fraktor-utils-rs = { workspace = true, default-features = false, features = ["alloc"] }
-portable-atomic = { workspace = true, default-features = false, features = ["critical-section"] }
-thiserror = { workspace = true, default-features = false }
-tokio = { workspace = true, optional = true, features = ["rt", "time", "sync"] }
-
-[dev-dependencies]
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "sync"] }
-
-[[example]]
-name = "stream_minimal_tokio_std"
-path = "examples/stream_minimal_tokio_std/main.rs"
-required-features = ["std"]
-
-[[example]]
-name = "stream_minimal_dsl_tokio_std"
-path = "examples/stream_minimal_dsl_tokio_std/main.rs"
-required-features = ["std"]
