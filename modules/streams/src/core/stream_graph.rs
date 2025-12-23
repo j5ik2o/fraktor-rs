@@ -1,77 +1,172 @@
-//! Stream graph composition and connection tracking.
+use alloc::vec::Vec;
 
 #[cfg(test)]
 mod tests;
 
-use alloc::vec::Vec;
-
-use crate::core::{
-  inlet_id::InletId, mat_combine::MatCombine, outlet_id::OutletId, runnable_graph::RunnableGraph,
-  stream_error::StreamError,
+use super::{
+  Connection, FlowDefinition, Inlet, MatCombine, Outlet, PortId, SourceDefinition, StageDefinition, StageKind,
+  StreamError, StreamPlan,
 };
 
-/// Stream graph builder that tracks connections.
-#[derive(Debug, Default)]
+/// Graph that stores stage connectivity.
 pub struct StreamGraph {
-  connections:  Vec<(u64, u64, MatCombine)>,
-  last_combine: MatCombine,
+  stages:      Vec<StageDefinition>,
+  connections: Vec<Connection>,
+  ports:       Vec<PortId>,
 }
 
 impl StreamGraph {
-  /// Creates a new empty stream graph.
+  /// Creates an empty graph.
   #[must_use]
   pub const fn new() -> Self {
-    Self { connections: Vec::new(), last_combine: MatCombine::default_rule() }
+    Self { stages: Vec::new(), connections: Vec::new(), ports: Vec::new() }
   }
 
-  /// Connects an outlet to an inlet with the provided materialization rule.
+  /// Connects two ports with type safety.
   ///
   /// # Errors
   ///
-  /// Returns `StreamError::InvalidConnection` when the connection is duplicate or self-referential.
-  ///
-  /// ```compile_fail
-  /// use fraktor_streams_rs::core::{mat_combine::MatCombine, sink::Sink, source::Source, stream_graph::StreamGraph};
-  ///
-  /// let source = Source::<u8>::new();
-  /// let sink = Sink::<u16>::new();
-  /// let mut graph = StreamGraph::new();
-  /// graph.connect(source.outlet(), sink.inlet(), MatCombine::KeepLeft).unwrap();
-  /// ```
+  /// Returns [`StreamError::InvalidConnection`] when a port is unknown.
   pub fn connect<T>(
     &mut self,
-    upstream: OutletId<T>,
-    downstream: InletId<T>,
+    upstream: &Outlet<T>,
+    downstream: &Inlet<T>,
     combine: MatCombine,
   ) -> Result<(), StreamError> {
-    let upstream_token = upstream.token();
-    let downstream_token = downstream.token();
-    if upstream_token == downstream_token {
+    let from = upstream.id();
+    let to = downstream.id();
+    if !self.has_port(from) || !self.has_port(to) {
       return Err(StreamError::InvalidConnection);
     }
-    if self.connections.iter().any(|(up, down, _)| *up == upstream_token && *down == downstream_token) {
+    if let Some(existing) = self.connections.iter().find(|conn| conn.from == from && conn.to == to) {
+      let _ = existing.mat;
       return Err(StreamError::InvalidConnection);
     }
-    self.connections.push((upstream_token, downstream_token, combine));
-    self.last_combine = combine;
+    self.connections.push(Connection { from, to, mat: combine });
     Ok(())
   }
 
-  /// Returns the number of connections registered in this graph.
-  #[must_use]
-  pub const fn connection_count(&self) -> usize {
-    self.connections.len()
+  pub(super) fn push_stage(&mut self, stage: StageDefinition) {
+    if let Some(inlet) = stage.inlet() {
+      self.ports.push(inlet);
+    }
+    if let Some(outlet) = stage.outlet() {
+      self.ports.push(outlet);
+    }
+    self.stages.push(stage);
   }
 
-  /// Builds a runnable graph from the collected connections.
-  ///
-  /// # Errors
-  ///
-  /// Returns `StreamError::InvalidConnection` when the graph has no connections.
-  pub fn build(self) -> Result<RunnableGraph, StreamError> {
-    if self.connections.is_empty() {
-      return Err(StreamError::InvalidConnection);
+  pub(super) fn append(&mut self, mut other: StreamGraph) {
+    if self.stages.is_empty() {
+      self.stages = other.stages;
+      self.connections = other.connections;
+      self.ports = other.ports;
+      return;
     }
-    Ok(RunnableGraph::new(self.connections, self.last_combine))
+    if other.stages.is_empty() {
+      return;
+    }
+    if let (Some(from), Some(to)) = (self.tail_outlet(), other.head_inlet()) {
+      self.connections.push(Connection { from, to, mat: MatCombine::KeepLeft });
+    }
+    self.ports.append(&mut other.ports);
+    self.connections.append(&mut other.connections);
+    self.stages.append(&mut other.stages);
+  }
+
+  pub(super) fn into_plan(self) -> Result<StreamPlan, StreamError> {
+    let mut iter = self.stages.into_iter();
+    let source = match iter.next() {
+      | Some(stage) => {
+        Self::ensure_stage_metadata(&stage)?;
+        match stage {
+          | StageDefinition::Source(definition) => definition,
+          | _ => return Err(StreamError::InvalidConnection),
+        }
+      },
+      | None => return Err(StreamError::InvalidConnection),
+    };
+    let mut flows = Vec::new();
+    let mut sink = None;
+    for stage in iter {
+      Self::ensure_stage_metadata(&stage)?;
+      match stage {
+        | StageDefinition::Flow(definition) => flows.push(definition),
+        | StageDefinition::Sink(definition) => {
+          if sink.is_some() {
+            return Err(StreamError::InvalidConnection);
+          }
+          sink = Some(definition);
+        },
+        | StageDefinition::Source(_) => return Err(StreamError::InvalidConnection),
+      }
+    }
+    let Some(sink) = sink else {
+      return Err(StreamError::InvalidConnection);
+    };
+    Ok(StreamPlan { source, flows, sink })
+  }
+
+  pub(super) fn into_source_parts(self) -> Result<(SourceDefinition, Vec<FlowDefinition>), StreamError> {
+    let mut iter = self.stages.into_iter();
+    let source = match iter.next() {
+      | Some(stage) => {
+        Self::ensure_stage_metadata(&stage)?;
+        match stage {
+          | StageDefinition::Source(definition) => definition,
+          | _ => return Err(StreamError::InvalidConnection),
+        }
+      },
+      | None => return Err(StreamError::InvalidConnection),
+    };
+    let mut flows = Vec::new();
+    for stage in iter {
+      Self::ensure_stage_metadata(&stage)?;
+      match stage {
+        | StageDefinition::Flow(definition) => flows.push(definition),
+        | StageDefinition::Sink(_) => return Err(StreamError::InvalidConnection),
+        | StageDefinition::Source(_) => return Err(StreamError::InvalidConnection),
+      }
+    }
+    Ok((source, flows))
+  }
+
+  const fn ensure_stage_metadata(stage: &StageDefinition) -> Result<(), StreamError> {
+    let kind = stage.kind();
+    let _mat_combine = stage.mat_combine();
+    let kind_matches = match stage {
+      | StageDefinition::Source(_) => matches!(kind, StageKind::SourceSingle | StageKind::Custom),
+      | StageDefinition::Flow(_) => {
+        matches!(kind, StageKind::FlowMap | StageKind::FlowFlatMapConcat | StageKind::Custom)
+      },
+      | StageDefinition::Sink(_) => matches!(
+        kind,
+        StageKind::SinkIgnore
+          | StageKind::SinkFold
+          | StageKind::SinkHead
+          | StageKind::SinkLast
+          | StageKind::SinkForeach
+          | StageKind::Custom
+      ),
+    };
+    if kind_matches { Ok(()) } else { Err(StreamError::InvalidConnection) }
+  }
+
+  fn has_port(&self, port: PortId) -> bool {
+    self.ports.contains(&port)
+  }
+
+  pub(super) fn head_inlet(&self) -> Option<PortId> {
+    self.stages.first().and_then(StageDefinition::inlet)
+  }
+
+  pub(super) fn tail_outlet(&self) -> Option<PortId> {
+    self.stages.last().and_then(StageDefinition::outlet)
+  }
+}
+
+impl Default for StreamGraph {
+  fn default() -> Self {
+    Self::new()
   }
 }

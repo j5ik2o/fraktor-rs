@@ -1,34 +1,27 @@
-//! Materialized stream result.
+use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
-use crate::core::mat_combine::MatCombine;
+use super::StreamHandleGeneric;
 
-/// Result of materializing a runnable graph.
-#[derive(Debug)]
-pub struct Materialized<H> {
-  handle: H,
-  value:  MatCombine,
+/// Result of materializing a stream graph.
+pub struct Materialized<Mat, TB: RuntimeToolbox> {
+  handle:       StreamHandleGeneric<TB>,
+  materialized: Mat,
 }
 
-impl<H> Materialized<H> {
-  pub(crate) const fn new(handle: H, value: MatCombine) -> Self {
-    Self { handle, value }
+impl<Mat, TB: RuntimeToolbox> Materialized<Mat, TB> {
+  pub(crate) const fn new(handle: StreamHandleGeneric<TB>, materialized: Mat) -> Self {
+    Self { handle, materialized }
   }
 
-  /// Returns a reference to the stream handle.
+  /// Returns the stream handle.
   #[must_use]
-  pub const fn handle(&self) -> &H {
+  pub const fn handle(&self) -> &StreamHandleGeneric<TB> {
     &self.handle
-  }
-
-  /// Consumes the materialized result and returns the handle.
-  #[must_use]
-  pub fn into_handle(self) -> H {
-    self.handle
   }
 
   /// Returns the materialized value.
   #[must_use]
-  pub const fn value(&self) -> MatCombine {
-    self.value
+  pub const fn materialized(&self) -> &Mat {
+    &self.materialized
   }
 }

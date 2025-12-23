@@ -1,94 +1,119 @@
 # ギャップ分析: fraktor-streams
 
 ## 前提
-- 要件は生成済みだが未承認のため、分析結果は要件調整の材料として扱う。
+- 要件/設計/タスクは未承認のため、分析結果は要件・設計の調整材料として扱う。
+- `modules/streams` は骨組みのみで、実装は削除済み（または削除前提）とみなす。
 
 ## 1. 現状調査（既存アセット）
 
 ### 主要コンポーネント
-- no_std/標準の境界と同期基盤: `modules/utils/src/core/runtime_toolbox.rs`, `modules/utils/src/core/sync/*`
-- 共有キュー/バックプレッシャ基盤: `modules/utils/src/core/collections/queue/*`, `overflow_policy.rs`
-- 非同期キュー: `modules/utils/src/core/collections/queue/async_queue_shared.rs`
-- スケジューラ/ティック駆動: `modules/actor/src/core/scheduler/tick_driver/*`
-- 完了通知プリミティブ: `modules/actor/src/core/futures/actor_future.rs`
-- イベント配信: `modules/actor/src/core/event_stream/*`
-- リモートのバックプレッシャ通知: `modules/actor/src/core/event_stream/backpressure_signal.rs`
+- `modules/streams`:
+  - `src/lib.rs` に core/std のモジュール定義のみ。`src/core.rs`/`src/std.rs` は空。
+  - `Cargo.toml` に tokio 依存と例題エントリが残存するが、`examples/` 配下の実体は存在しない。
+- `modules/utils`:
+  - 共有キュー/OverflowPolicy: `modules/utils/src/core/collections/queue/*`
+  - 共有同期/所有権: `modules/utils/src/core/sync/*`（`ArcShared`/`ToolboxMutex`）
+- `modules/actor`:
+  - ActorSystem std ラッパ: `modules/actor/src/std/system/base.rs`
+  - TickDriver/スケジューラ: `modules/actor/src/core/scheduler/tick_driver/*`
+  - 拡張登録機構: `modules/actor/src/core/extension/*`, `modules/actor/src/core/system/extensions*.rs`
+  - EventStream: `modules/actor/src/core/event_stream/*`
+- `modules/remote` / `modules/cluster`:
+  - ActorSystem 側の remote/cluster が既存だが、streams は ActorSystem を通じて間接的に利用する前提。
 
 ### 観測されたパターン/制約
-- `core` は no_std、`std` 実装は `std` 配下に隔離する運用が徹底されている。
-- `ArcShared` と `ToolboxMutex` による共有ラッパ設計が既存の標準パターン。
-- キュー/スタックは `modules/utils` の共通実装を使うことが必須。
-- `mod.rs` 禁止/1ファイル1型/テストは `tests.rs` など lint 制約が強い。
+- `core` は no_std、`std` 実装は `std` 配下に隔離（`cfg-std-forbid`）。
+- `mod.rs` 禁止、1ファイル1型、テストは `tests.rs` 配置。
+- 共有は `ArcShared`/`ToolboxMutex` が標準。
+- rustdoc は英語、それ以外は日本語。
+- FQCN での import を徹底。
 
 ### 既存の統合ポイント
-- `RuntimeToolbox` が時間と同期原語を提供しており、no_std の実行基盤抽象として利用可能。
-- `TickDriver` と `Scheduler` が周期駆動の実行基盤として利用可能。
-- `EventStream` は状態・診断イベントの観測経路として再利用できる。
-- リモート側にバックプレッシャ通知の概念（`BackpressureSignal`）が存在する。
+- ActorSystem の拡張登録（materializer を extension として登録可能）。
+- TickDriver/スケジューラ（周期駆動の基盤として利用可能）。
+- EventStream（診断/状態の観測経路）。
 
 ## 2. 要件対応マップ（Requirement-to-Asset Map）
 
-| 要件 | 既存アセット | 充足状況 | ギャップ種別 | ギャップ/備考 |
+| 要件 | 既存アセット | 充足状況 | ギャップ種別 | 備考 |
 |---|---|---|---|---|
-| 要件1: コアストリーム API | 型安全 API パターン（`modules/actor/src/core/typed/*`） | **Missing** | Missing | Source/Flow/Sink のドメイン抽象が存在しない。型安全の方針は流用可能。 |
-| 要件2: グラフ合成とマテリアライズ値 | 共有ラッパ/ArcShared パターン | **Missing** | Missing | 合成規則・マテリアライズ値のモデルが未定義。 |
-| 要件3: Materializer ライフサイクル | `TickDriver`/`Scheduler`、`ActorFuture` | **Partial** | Constraint | start/stop の設計パターンはあるが、Materializer の責務・状態モデルがない。 |
-| 要件4: バックプレッシャと需要制御 | `modules/utils` のキュー/OverflowPolicy、`BackpressureSignal` | **Partial** | Constraint | キュー基盤はあるが、需要伝播・ストリームレベルのバックプレッシャは未実装。 |
-| 要件5: 完了/キャンセル/エラー伝播 | `ActorFuture`, `QueueError`, `close` 操作 | **Partial** | Missing | 完了/失敗/キャンセルの伝播規約が未定義。 |
-| 要件6: core/std 境界と no_std 互換 | core/std 分離の既存ルールと lint 群 | **Partial** | Constraint | 境界ルールは明確だが、新規ストリームモジュールの配置設計が必要。 |
-| 要件7: std 拡張の実行統合 | `StdToolbox`, `tokio` 実装群 | **Partial** | Missing | std 側の Materializer/実行ブリッジが存在しない。 |
+| 1.1-1.3 コアDSL/接続 | なし | **Missing** | Missing | Source/Flow/Sink/Graph が未実装。 |
+| 1.4 DSL コンビネータ | なし | **Missing** | Missing | `map`/`flatMapConcat`/`single`/Sink群が未実装。 |
+| 1.5 GraphStage 中核抽象 | なし | **Missing** | Missing | GraphStage/StageLogic の中核抽象が未実装。 |
+| 2.1-2.3 合成/マテリアライズ | なし | **Missing** | Missing | RunnableGraph/MatCombine 等のモデルが未定義。 |
+| 3.1-3.4 Materializer | ActorSystem 拡張機構 | **Partial** | Constraint | extension 機構はあるが streams 側の設計が未実装。 |
+| 4.1-4.3 需要/バックプレッシャ | utils queue/OverflowPolicy | **Partial** | Constraint | 基盤はあるが需要伝播/契約が未実装。 |
+| 5.1-5.3 完了/キャンセル/失敗 | EventStream/ActorFuture | **Missing** | Missing | ストリーム用の状態遷移が未定義。 |
+| 6.1-6.3 core/std 境界 | lint/構造規約 | **Partial** | Constraint | 境界ルールは明確だが streams 実装は空。 |
+| 6.4 actor core 再利用 | actor/core の Scheduler/TickDriver/Extension | **Missing** | Missing | streams/core が actor/core に依存する前提。 |
+| 6.5 actor 依存の最小化 | - | **Missing** | Missing | 必要最小限の依存に留める設計規約が必要。 |
+| 6.6 actor/core 依存方向禁止 | - | **Missing** | Constraint | actor/core → streams/core の依存を禁止。 |
+| 6.7 actor 型の非露出 | - | **Missing** | Constraint | streams 公開 API の境界定義が必要。 |
+| 7.1-7.5 Actor 実行統合 | ActorSystem/スケジューラ | **Partial** | Missing | ActorMaterializer/DriveActor が未実装。 |
+| 8.1-8.5 examples | なし | **Missing** | Missing | examples ディレクトリが空。DSL+ActorSystem 例が必要。 |
 
 ## 3. ギャップと制約
 
 ### 明確な不足（Missing）
-- Source/Flow/Sink/Graph/Materializer のドメインモデル。
-- マテリアライズ値の合成規則と API。
-- ストリーム実行の開始/停止と状態管理の実装。
-- std 側の実行ブリッジ（Tokio など）とサンプル/テスト。
+- Source/Flow/Sink と Graph/Shape のドメインモデル。
+- DSL コンビネータ（`map`, `flatMapConcat`, `single`, Sink の `ignore`/`fold`/`head`/`last`/`foreach`）。
+- GraphStage/StageLogic の中核抽象。
+- Materializer / ActorMaterializer / StreamDriveActor の実装。
+- 需要伝播・バックプレッシャ制御・完了/失敗/キャンセルの状態遷移。
+- examples とテスト（DSL + ActorSystem）。
 
 ### 仕様上の空白（Unknown/Decision Needed）
-- 需要伝播（pull/push）モデルとバッファ方針の選定。
-- Materializer が担う責務の境界（Scheduler/ActorSystem との連携度）。
-- no_std 環境での実行モデル（ポーリング/手動ステップ/外部駆動）。
-- マテリアライズ値の合成規則（右優先/左優先/ペア合成など）。
+- `flatMapConcat` の最小語義とステージ設計（Pekko のオペレータ分類に準拠）。
+- `Materializer` が ActorSystem 拡張として登録される方式。
+- ActorSystem の TickDriver/スケジューラを stream drive にどう結びつけるか。
+- remote/cluster 有効時のスモーク構成（起動のみか、簡易駆動まで含めるか）。
 
 ### 既存制約
-- `core` に `#[cfg(feature = "std")]` を置けないため、std 実装は `std` へ完全分離が必須。
-- `Queue/Stack` は `modules/utils` の実装を必ず再利用する必要がある。
-- 共有は `ArcShared`/`ToolboxMutex` を標準とし、`&mut self` 設計が原則。
+- `core` では `#[cfg(feature = "std")]` を使えない。
+- 共有プリミティブは `ArcShared`/`ToolboxMutex` を使用。
+- 1ファイル1型/`tests.rs` 配置/日本語ドキュメント。
+- fraktor-actor core 依存は必要最小限に留める（streams/core の独立性を維持）。
+- fraktor-actor core から streams/core への依存は禁止。
+- streams 公開 API に fraktor-actor の型を露出しない。
 
 ## 4. 実装アプローチの選択肢
 
-### Option A: 既存クレート拡張（actor/core へストリーム機能を追加）
-**概要**: `modules/actor/src/core` にストリーム抽象を追加し、std 側に Materializer 実装を追加する  
-**利点**: 既存の Scheduler/EventStream と密結合で利用できる  
-**欠点**: actor/core の責務肥大化、将来の分離が難しい
+### Option A: `modules/streams` を再構築（core/std に ActorMaterializer を実装）
+**概要**: 既存の streams クレートを起点に core を定義し、std に ActorMaterializer/DriveActor を追加  
+**利点**: 要件と整合しやすく、既存構造に素直に合致  
+**欠点**: ActorSystem 依存を std に閉じる設計が前提、設計/実装コストが高い
 
-### Option B: 新規クレート `fraktor-streams-rs` を追加
-**概要**: `modules/streams` を新設し、`core`/`std` を独立させる  
-**利点**: 責務分離が明確で、no_std と std の境界設計が素直  
-**欠点**: 新規 API/依存設計が必要、初期設計コストが高い
+### Option B: `fraktor-streams-actor-rs` を別クレート化
+**概要**: streams core を純粋化し、Actor 統合は別クレートに分離  
+**利点**: 依存境界がさらに明確、Materializer 実装の差し替えが容易  
+**欠点**: 現行要件（streams std 内の ActorMaterializer）に反するため仕様調整が必要
 
-### Option C: ハイブリッド（最小コア + std ブリッジのみ先行）
-**概要**: core に最小 API を定義し、std Materializer を先に提供して段階拡張  
-**利点**: YAGNI に沿った段階実装が可能  
-**欠点**: 後から API 変更が発生しやすい
+### Option C: 段階構築（core → DSL → ActorMaterializer）
+**概要**: core と DSL を先行で整備し、ActorMaterializer を後続で追加  
+**利点**: YAGNI に沿って段階的に構築可能  
+**欠点**: 途中段階では実行統合が未完となる
+
+### Option D: streams core が actor/core に依存する設計
+**概要**: Materializer の中核ロジックを actor/core の Scheduler/TickDriver/Extension に直接結び付ける  
+**利点**: boilerplate が減り、ActorSystem 統合の設計が簡潔  
+**欠点**: streams の独立性が下がり、actor/core への依存が固定化される
 
 ## 5. 複雑度/リスク評価
 - **Effort**: L（1–2週間）  
-  - 新規ドメイン設計 + core/std 分離 + テスト/サンプルが必要
+  - 新規ドメイン設計 + Actor 統合 + テスト/サンプルが必要
 - **Risk**: High  
-  - 実行モデルとバックプレッシャ設計が全体アーキテクチャに影響
+  - 実行モデル（drive）と DSL 合成規約の設計が全体に影響
 
 ## 6. Research Needed（設計フェーズ持ち越し）
-- Pekko Streams の最小 API セットと Materializer の責務整理
-- no_std での実行駆動モデル（外部ランナー/手動ポーリング/ティック駆動）
-- バックプレッシャ実装の最小構成（キュー選定・需要伝播規則）
-- マテリアライズ値合成の規則（型安全/合成順序）
+- Pekko/Akka オペレータ整理（`map`/`flatMapConcat`/Sink 群の最小語義）。
+- `StreamDriveActor` と TickDriver/スケジューラの結合方法。
+- Materializer の拡張点（ActorSystem extension として登録するか）。
+- streams/core が actor/core に依存する場合の API 境界（actor 型の非露出）。
+- remote/cluster 有効時のスモーク構成。
 
 ## 7. 設計フェーズへの提案
-- **推奨検討**: Option B または Option C を前提に core と std を厳密分離する方向で設計検討  
+- **推奨検討**: Option A か Option C を前提に、core/std 分離を守って再構築する。  
 - **要決定事項**:
-  - 需要伝播モデルとバッファ方針
-  - Materializer のライフサイクルと統合先（Scheduler/ActorSystem 連携）
-  - std 実装の最小統合範囲（Tokio 前提か、抽象層を設けるか）
+  - DSL コンビネータの最小語義（Pekko Operators Index 準拠）
+  - ActorMaterializer の登録方式（拡張/手動生成）
+  - tokio 依存の整理（削除・例題更新）

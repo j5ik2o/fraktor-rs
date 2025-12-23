@@ -1,65 +1,71 @@
-//! Demand tracker implementation.
+use super::{Demand, StreamError};
 
 #[cfg(test)]
 mod tests;
 
-use crate::core::{demand::Demand, stream_error::StreamError};
-
-/// Tracks downstream demand.
-#[derive(Debug, Clone)]
+/// Tracks aggregated demand and handles saturation.
 pub struct DemandTracker {
-  current: Demand,
+  demand: Demand,
 }
 
 impl DemandTracker {
-  /// Creates a new demand tracker with zero demand.
+  /// Creates a new tracker with zero demand.
   #[must_use]
   pub const fn new() -> Self {
-    Self { current: Demand::Finite(0) }
+    Self { demand: Demand::Finite(0) }
   }
 
-  /// Returns the default demand tracker.
+  /// Returns the current demand.
   #[must_use]
-  pub const fn default_value() -> Self {
-    Self::new()
+  pub const fn demand(&self) -> Demand {
+    self.demand
   }
 
-  /// Returns the current demand value.
+  /// Returns `true` if demand is available.
   #[must_use]
-  pub const fn current(&self) -> Demand {
-    self.current
+  pub const fn has_demand(&self) -> bool {
+    self.demand.has_demand()
   }
 
   /// Adds demand to the tracker.
   ///
   /// # Errors
   ///
-  /// Returns `StreamError::InvalidDemand` when `amount` is zero.
-  pub const fn request(&mut self, amount: u64) -> Result<Demand, StreamError> {
+  /// Returns [`StreamError::InvalidDemand`] when `amount` is zero.
+  pub const fn request(&mut self, amount: u64) -> Result<(), StreamError> {
     if amount == 0 {
-      return Err(StreamError::InvalidDemand);
+      return Err(StreamError::InvalidDemand { requested: amount });
     }
 
-    self.current = match self.current {
-      | Demand::Unbounded => Demand::Unbounded,
-      | Demand::Finite(current) => match current.checked_add(amount) {
-        | Some(total) => Demand::Finite(total),
-        | None => Demand::Unbounded,
+    match self.demand {
+      | Demand::Unbounded => Ok(()),
+      | Demand::Finite(current) => {
+        let next = current.saturating_add(amount);
+        if next == u64::MAX {
+          self.demand = Demand::Unbounded;
+        } else {
+          self.demand = Demand::Finite(next);
+        }
+        Ok(())
       },
-    };
-    Ok(self.current)
+    }
   }
 
-  /// Consumes a single unit of demand when available.
-  #[must_use]
-  pub const fn consume_one(&mut self) -> bool {
-    match self.current {
-      | Demand::Unbounded => true,
-      | Demand::Finite(value) if value > 0 => {
-        self.current = Demand::Finite(value - 1);
-        true
+  /// Consumes demand.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamError::DemandExceeded`] when `amount` exceeds the remaining demand.
+  pub const fn consume(&mut self, amount: u64) -> Result<(), StreamError> {
+    match self.demand {
+      | Demand::Unbounded => Ok(()),
+      | Demand::Finite(current) => {
+        if amount > current {
+          return Err(StreamError::DemandExceeded { requested: amount, remaining: current });
+        }
+        self.demand = Demand::Finite(current - amount);
+        Ok(())
       },
-      | Demand::Finite(_) => false,
     }
   }
 }

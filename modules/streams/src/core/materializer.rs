@@ -1,28 +1,30 @@
-//! Materializer trait for running stream graphs.
+use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
-use crate::core::{materialized::Materialized, runnable_graph::RunnableGraph, stream_error::StreamError};
+use super::{Materialized, RunnableGraph, StreamError};
 
-/// Materializer interface.
+/// Stream materializer contract.
 pub trait Materializer {
-  /// Handle type produced by this materializer.
-  type Handle;
+  /// Runtime toolbox used by this materializer.
+  type Toolbox: RuntimeToolbox;
 
   /// Starts the materializer.
   ///
   /// # Errors
   ///
-  /// Returns `StreamError::AlreadyStarted` if the materializer is already running.
+  /// Returns [`StreamError`] when startup fails.
   fn start(&mut self) -> Result<(), StreamError>;
-  /// Materializes a runnable graph.
+
+  /// Materializes the provided graph.
   ///
   /// # Errors
   ///
-  /// Returns `StreamError::NotStarted` if the materializer has not been started.
-  fn materialize(&mut self, graph: RunnableGraph) -> Result<Materialized<Self::Handle>, StreamError>;
+  /// Returns [`StreamError`] when materialization fails.
+  fn materialize<Mat>(&mut self, graph: RunnableGraph<Mat>) -> Result<Materialized<Mat, Self::Toolbox>, StreamError>;
+
   /// Shuts down the materializer.
   ///
   /// # Errors
   ///
-  /// Returns `StreamError::AlreadyShutdown` if the materializer is already stopped.
+  /// Returns [`StreamError`] when shutdown fails.
   fn shutdown(&mut self) -> Result<(), StreamError>;
 }

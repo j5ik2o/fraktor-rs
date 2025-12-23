@@ -1,81 +1,214 @@
-//! Source stage definition.
+use alloc::{boxed::Box, vec, vec::Vec};
+use core::{any::TypeId, marker::PhantomData};
 
-use crate::core::{
-  flow::Flow, inlet_id::InletId, mat_combine::MatCombine, outlet_id::OutletId, runnable_graph::RunnableGraph,
-  sink::Sink, stage_id::StageId, stream_builder::StreamBuilder, stream_error::StreamError, stream_graph::StreamGraph,
-  stream_shape::StreamShape, stream_stage::StreamStage,
+use super::{
+  DynValue, FlowDefinition, Inlet, MatCombine, MatCombineRule, Outlet, RunnableGraph, SourceDefinition, SourceLogic,
+  StageDefinition, StageKind, StreamError, StreamGraph, StreamNotUsed, StreamShape, StreamStage, downcast_value,
+  flow::{flat_map_concat_definition, map_definition},
+  graph_stage::GraphStage,
+  graph_stage_logic::GraphStageLogic,
+  sink::Sink,
+  stage_context::StageContext,
 };
 
-/// Stream source stage.
-#[derive(Debug, Clone)]
-pub struct Source<T> {
-  stage:  StageId,
-  outlet: OutletId<T>,
+/// Source stage definition.
+pub struct Source<Out, Mat> {
+  graph: StreamGraph,
+  mat:   Mat,
+  _pd:   PhantomData<fn() -> Out>,
 }
 
-impl<T> Source<T> {
-  /// Creates a new source stage.
+impl<Out> Source<Out, StreamNotUsed>
+where
+  Out: Send + Sync + 'static,
+{
+  /// Creates a source that emits a single element.
   #[must_use]
-  pub fn new() -> Self {
-    let stage = StageId::next();
-    let outlet = OutletId::new(stage);
-    Self { stage, outlet }
-  }
-
-  /// Returns the outlet port identifier.
-  #[must_use]
-  pub const fn outlet(&self) -> OutletId<T> {
-    self.outlet
-  }
-
-  /// Returns the stage identifier.
-  #[must_use]
-  pub const fn stage_id(&self) -> StageId {
-    self.stage
-  }
-
-  /// Attaches a flow stage and returns a builder for chaining.
-  ///
-  /// # Errors
-  ///
-  /// Returns `StreamError::InvalidConnection` when the connection is invalid.
-  pub fn via<Out>(self, flow: &Flow<T, Out>, combine: MatCombine) -> Result<StreamBuilder<Out>, StreamError> {
+  pub fn single(value: Out) -> Self {
     let mut graph = StreamGraph::new();
-    graph.connect(self.outlet, flow.inlet(), combine)?;
-    Ok(StreamBuilder::new(graph, flow.outlet()))
-  }
-
-  /// Attaches a sink stage and builds a runnable graph.
-  ///
-  /// # Errors
-  ///
-  /// Returns `StreamError::InvalidConnection` when the connection is invalid.
-  pub fn to(self, sink: &Sink<T>, combine: MatCombine) -> Result<RunnableGraph, StreamError> {
-    let mut graph = StreamGraph::new();
-    graph.connect(self.outlet, sink.inlet(), combine)?;
-    graph.build()
+    let outlet: Outlet<Out> = Outlet::new();
+    let logic = SingleSourceLogic { value: Some(value) };
+    let definition = SourceDefinition {
+      kind:        StageKind::SourceSingle,
+      outlet:      outlet.id(),
+      output_type: TypeId::of::<Out>(),
+      mat_combine: MatCombine::KeepRight,
+      logic:       Box::new(logic),
+    };
+    graph.push_stage(StageDefinition::Source(definition));
+    Self { graph, mat: StreamNotUsed::new(), _pd: PhantomData }
   }
 }
 
-impl<T> StreamStage for Source<T> {
-  type In = ();
-  type Out = T;
-
-  fn shape(&self) -> StreamShape {
-    StreamShape::Source
+impl<Out, Mat> Source<Out, Mat>
+where
+  Out: Send + Sync + 'static,
+{
+  /// Composes this source with a flow.
+  #[must_use]
+  pub fn via<T, Mat2>(self, flow: super::flow::Flow<Out, T, Mat2>) -> Source<T, Mat>
+  where
+    T: Send + Sync + 'static, {
+    self.via_mat(flow, super::keep_left::KeepLeft)
   }
 
-  fn inlet(&self) -> Option<InletId<Self::In>> {
-    None
+  /// Composes this source with a flow using a custom materialized rule.
+  #[must_use]
+  pub fn via_mat<T, Mat2, C>(self, flow: super::flow::Flow<Out, T, Mat2>, _combine: C) -> Source<T, C::Out>
+  where
+    T: Send + Sync + 'static,
+    C: MatCombineRule<Mat, Mat2>, {
+    let (mut graph, left_mat) = self.into_parts();
+    let (flow_graph, right_mat) = flow.into_parts();
+    graph.append(flow_graph);
+    let mat = combine_mat::<Mat, Mat2, C>(left_mat, right_mat);
+    Source { graph, mat, _pd: PhantomData }
   }
 
-  fn outlet(&self) -> Option<OutletId<Self::Out>> {
-    Some(self.outlet)
+  /// Connects this source to a sink.
+  #[must_use]
+  pub fn to<Mat2>(self, sink: Sink<Out, Mat2>) -> RunnableGraph<Mat> {
+    self.to_mat(sink, super::keep_left::KeepLeft)
+  }
+
+  /// Connects this source to a sink using a custom materialized rule.
+  ///
+  /// # Panics
+  ///
+  /// Panics when the stream graph cannot be converted into a runnable plan.
+  #[must_use]
+  pub fn to_mat<Mat2, C>(self, sink: Sink<Out, Mat2>, _combine: C) -> RunnableGraph<C::Out>
+  where
+    C: MatCombineRule<Mat, Mat2>, {
+    let (mut graph, left_mat) = self.into_parts();
+    let (sink_graph, right_mat) = sink.into_parts();
+    graph.append(sink_graph);
+    let mat = combine_mat::<Mat, Mat2, C>(left_mat, right_mat);
+    let plan = match graph.into_plan() {
+      | Ok(plan) => plan,
+      | Err(error) => panic!("invalid stream graph: {error}"),
+    };
+    RunnableGraph::new(plan, mat)
+  }
+
+  /// Adds a map stage to this source.
+  #[must_use]
+  pub fn map<T, F>(mut self, func: F) -> Source<T, Mat>
+  where
+    T: Send + Sync + 'static,
+    F: FnMut(Out) -> T + Send + Sync + 'static, {
+    let definition = map_definition::<Out, T, F>(func);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds a flatMapConcat stage to this source.
+  #[must_use]
+  pub fn flat_map_concat<T, Mat2, F>(mut self, func: F) -> Source<T, Mat>
+  where
+    T: Send + Sync + 'static,
+    Mat2: Send + Sync + 'static,
+    F: FnMut(Out) -> Source<T, Mat2> + Send + Sync + 'static, {
+    let definition = flat_map_concat_definition::<Out, T, Mat2, F>(func);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  pub(crate) fn collect_values(self) -> Result<Vec<Out>, StreamError> {
+    let (mut source, mut flows) = self.graph.into_source_parts()?;
+    let mut outputs = Vec::new();
+    while let Some(value) = source.logic.pull()? {
+      let values = apply_flows(&mut flows, value)?;
+      for value in values {
+        let item = downcast_value::<Out>(value)?;
+        outputs.push(item);
+      }
+    }
+    Ok(outputs)
+  }
+
+  pub(crate) fn into_parts(self) -> (StreamGraph, Mat) {
+    (self.graph, self.mat)
   }
 }
 
-impl<T> Default for Source<T> {
-  fn default() -> Self {
-    Self::new()
+impl<Out, Mat> StreamStage for Source<Out, Mat> {
+  type In = StreamNotUsed;
+  type Out = Out;
+
+  fn shape(&self) -> StreamShape<Self::In, Self::Out> {
+    let outlet = self.graph.tail_outlet().map(Outlet::from_id).unwrap_or_default();
+    StreamShape::new(Inlet::new(), outlet)
   }
+}
+
+fn apply_flows(flows: &mut Vec<FlowDefinition>, value: DynValue) -> Result<Vec<DynValue>, StreamError> {
+  let mut values = vec![value];
+  for flow in flows {
+    let mut next = Vec::new();
+    for value in values {
+      let outputs = flow.logic.apply(value)?;
+      next.extend(outputs);
+    }
+    values = next;
+  }
+  Ok(values)
+}
+
+struct SingleSourceLogic<Out> {
+  value: Option<Out>,
+}
+
+impl<Out> SourceLogic for SingleSourceLogic<Out>
+where
+  Out: Send + Sync + 'static,
+{
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    Ok(self.value.take().map(|value| Box::new(value) as DynValue))
+  }
+}
+
+impl<Out> GraphStageLogic<StreamNotUsed, Out, StreamNotUsed> for SingleSourceLogic<Out>
+where
+  Out: Send + Sync + 'static,
+{
+  fn on_pull(&mut self, ctx: &mut dyn StageContext<StreamNotUsed, Out>) {
+    match self.value.take() {
+      | Some(value) => ctx.push(value),
+      | None => ctx.complete(),
+    }
+  }
+
+  fn materialized(&mut self) -> StreamNotUsed {
+    StreamNotUsed::new()
+  }
+}
+
+impl<Out> GraphStage<StreamNotUsed, Out, StreamNotUsed> for SingleSourceLogic<Out>
+where
+  Out: Send + Sync + 'static + Clone,
+{
+  fn shape(&self) -> StreamShape<StreamNotUsed, Out> {
+    StreamShape::new(Inlet::new(), Outlet::new())
+  }
+
+  fn create_logic(&self) -> Box<dyn GraphStageLogic<StreamNotUsed, Out, StreamNotUsed>> {
+    Box::new(SingleSourceLogic { value: self.value.clone() })
+  }
+}
+
+fn combine_mat<Left, Right, C>(left: Left, right: Right) -> C::Out
+where
+  C: MatCombineRule<Left, Right>, {
+  C::combine(left, right)
 }

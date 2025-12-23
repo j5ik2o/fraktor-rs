@@ -24,6 +24,7 @@ struct OutboundPacket {
 
 /// Tokio-based gossip transport.
 pub struct TokioGossipTransport {
+  local_addr:  SocketAddr,
   outbound_tx: mpsc::Sender<OutboundPacket>,
   inbound_rx:  mpsc::Receiver<(String, MembershipDelta)>,
   _tasks:      Vec<tokio::task::JoinHandle<()>>,
@@ -49,7 +50,7 @@ impl TokioGossipTransport {
       .map_err(|error| GossipTransportError::SendFailed { reason: format!("set_nonblocking failed: {error}") })?;
     let socket = UdpSocket::from_std(std_socket)
       .map_err(|error| GossipTransportError::SendFailed { reason: format!("from_std failed: {error}") })?;
-    let _local_addr = socket
+    let local_addr = socket
       .local_addr()
       .map_err(|error| GossipTransportError::SendFailed { reason: format!("local addr failed: {error}") })?;
     let socket = Arc::new(socket);
@@ -79,7 +80,13 @@ impl TokioGossipTransport {
       }
     });
 
-    Ok(Self { outbound_tx, inbound_rx, _tasks: vec![recv_task, send_task] })
+    Ok(Self { local_addr, outbound_tx, inbound_rx, _tasks: vec![recv_task, send_task] })
+  }
+
+  /// Returns the bound local address.
+  #[must_use]
+  pub const fn local_addr(&self) -> SocketAddr {
+    self.local_addr
   }
 
   fn encode_delta(&self, delta: &MembershipDelta) -> Result<Vec<u8>, GossipTransportError> {

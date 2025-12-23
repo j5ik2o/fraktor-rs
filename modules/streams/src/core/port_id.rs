@@ -1,38 +1,24 @@
-//! Port identifier shared between inlet and outlet ports.
+use portable_atomic::{AtomicU64, Ordering};
 
-use core::marker::PhantomData;
+#[cfg(test)]
+mod tests;
 
-use crate::core::stage_id::StageId;
+/// Identifier for stream ports.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct PortId(u64);
 
-/// Identifier shared by stream ports.
-#[derive(Debug, PartialEq, Eq, Hash)]
-pub struct PortId<T> {
-  token:   u64,
-  stage:   StageId,
-  _marker: PhantomData<T>,
-}
+static PORT_ID_COUNTER: AtomicU64 = AtomicU64::new(1);
 
-impl<T> PortId<T> {
-  pub(crate) fn new(stage: StageId, is_outlet: bool) -> Self {
-    let token = (stage.value() << 1) | u64::from(is_outlet);
-    Self { token, stage, _marker: PhantomData }
-  }
-
-  /// Returns the stage identifier that owns this port.
+impl PortId {
+  /// Allocates a new port identifier.
   #[must_use]
-  pub const fn stage_id(&self) -> StageId {
-    self.stage
+  pub fn next() -> Self {
+    Self(PORT_ID_COUNTER.fetch_add(1, Ordering::Relaxed))
   }
 
-  pub(crate) const fn token(&self) -> u64 {
-    self.token
-  }
-}
-
-impl<T> Copy for PortId<T> {}
-
-impl<T> Clone for PortId<T> {
-  fn clone(&self) -> Self {
-    *self
+  /// Returns the raw identifier value.
+  #[must_use]
+  pub const fn value(&self) -> u64 {
+    self.0
   }
 }

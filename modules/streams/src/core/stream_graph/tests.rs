@@ -1,17 +1,36 @@
-use super::StreamGraph;
-use crate::core::{flow::Flow, mat_combine::MatCombine, sink::Sink, source::Source};
+use crate::core::{Inlet, MatCombine, Outlet, Source, StageKind, StreamGraph};
+
+impl StreamGraph {
+  fn stage_kinds(&self) -> Vec<StageKind> {
+    self.stages.iter().map(super::StageDefinition::kind).collect()
+  }
+
+  fn stage_mat_combines(&self) -> Vec<MatCombine> {
+    self.stages.iter().map(super::StageDefinition::mat_combine).collect()
+  }
+
+  fn connection_count(&self) -> usize {
+    self.connections.len()
+  }
+
+  fn connections(&self) -> Vec<(super::PortId, super::PortId, MatCombine)> {
+    self.connections.iter().map(|conn| (conn.from, conn.to, conn.mat)).collect()
+  }
+}
 
 #[test]
-fn connect_tracks_connections() {
-  let source = Source::<u32>::new();
-  let flow = Flow::<u32, u32>::new();
-  let sink = Sink::<u32>::new();
-
+fn connect_rejects_unknown_ports() {
   let mut graph = StreamGraph::new();
-  assert!(graph.connect(source.outlet(), flow.inlet(), MatCombine::KeepLeft).is_ok());
-  assert!(graph.connect(flow.outlet(), sink.inlet(), MatCombine::KeepRight).is_ok());
-  assert_eq!(graph.connection_count(), 2);
+  let result = graph.connect(&Outlet::<u32>::new(), &Inlet::<u32>::new(), MatCombine::KeepLeft);
+  assert!(result.is_err());
+}
 
-  let runnable = graph.build().expect("graph should build");
-  assert_eq!(runnable.connection_count(), 2);
+#[test]
+fn graph_tracks_stage_metadata() {
+  let source = Source::single(1_u32).map(|value| value + 1);
+  let (graph, _mat) = source.into_parts();
+  assert_eq!(graph.stage_kinds(), vec![StageKind::SourceSingle, StageKind::FlowMap]);
+  assert_eq!(graph.stage_mat_combines(), vec![MatCombine::KeepRight, MatCombine::KeepLeft]);
+  assert_eq!(graph.connection_count(), 1);
+  assert_eq!(graph.connections().len(), 1);
 }

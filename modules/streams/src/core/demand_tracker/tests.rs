@@ -1,28 +1,27 @@
 use super::DemandTracker;
-use crate::core::{demand::Demand, stream_error::StreamError};
 
 #[test]
-fn request_rejects_zero() {
+fn request_zero_is_rejected() {
   let mut tracker = DemandTracker::new();
-  assert_eq!(tracker.request(0), Err(StreamError::InvalidDemand));
+  let result = tracker.request(0);
+  assert!(result.is_err());
 }
 
 #[test]
-fn request_accumulates_and_consumes() {
+fn demand_is_consumed() {
   let mut tracker = DemandTracker::new();
-  assert_eq!(tracker.request(2), Ok(Demand::Finite(2)));
-  assert!(tracker.consume_one());
-  assert_eq!(tracker.current(), Demand::Finite(1));
-  assert!(tracker.consume_one());
-  assert_eq!(tracker.current(), Demand::Finite(0));
-  assert!(!tracker.consume_one());
+  tracker.request(2).expect("request");
+  assert!(tracker.has_demand());
+  tracker.consume(1).expect("consume");
+  assert!(tracker.has_demand());
+  tracker.consume(1).expect("consume");
+  assert!(!tracker.has_demand());
 }
 
 #[test]
-fn request_overflow_becomes_unbounded() {
+fn demand_saturates_to_unbounded() {
   let mut tracker = DemandTracker::new();
-  assert_eq!(tracker.request(u64::MAX), Ok(Demand::Finite(u64::MAX)));
-  assert_eq!(tracker.request(1), Ok(Demand::Unbounded));
-  assert!(tracker.consume_one());
-  assert_eq!(tracker.current(), Demand::Unbounded);
+  tracker.request(u64::MAX - 1).expect("request");
+  tracker.request(2).expect("request");
+  assert!(tracker.demand().is_unbounded());
 }

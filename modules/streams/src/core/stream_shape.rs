@@ -1,12 +1,28 @@
-//! Stream stage shape definitions.
+use super::{Inlet, Outlet};
 
-/// Shape of a stream stage.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StreamShape {
-  /// Source stage with only an outlet.
-  Source,
-  /// Flow stage with inlet and outlet.
-  Flow,
-  /// Sink stage with only an inlet.
-  Sink,
+/// Shape describing a single inlet and outlet.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct StreamShape<In, Out> {
+  inlet:  Inlet<In>,
+  outlet: Outlet<Out>,
+}
+
+impl<In, Out> StreamShape<In, Out> {
+  /// Creates a new shape.
+  #[must_use]
+  pub const fn new(inlet: Inlet<In>, outlet: Outlet<Out>) -> Self {
+    Self { inlet, outlet }
+  }
+
+  /// Returns the inlet.
+  #[must_use]
+  pub const fn inlet(&self) -> &Inlet<In> {
+    &self.inlet
+  }
+
+  /// Returns the outlet.
+  #[must_use]
+  pub const fn outlet(&self) -> &Outlet<Out> {
+    &self.outlet
+  }
 }

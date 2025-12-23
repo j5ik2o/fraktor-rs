@@ -1,23 +1,12 @@
-//! Materialized value combination rules.
-
-/// Rule for combining materialized values.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+/// Materialized value combine strategy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MatCombine {
-  /// Keep the left materialized value.
-  #[default]
+  /// Keeps the left materialized value.
   KeepLeft,
-  /// Keep the right materialized value.
+  /// Keeps the right materialized value.
   KeepRight,
-  /// Keep both materialized values.
+  /// Keeps both materialized values.
   KeepBoth,
-  /// Drop both materialized values.
+  /// Drops both materialized values.
   KeepNone,
-}
-
-impl MatCombine {
-  /// Returns the default combination rule.
-  #[must_use]
-  pub const fn default_rule() -> Self {
-    Self::KeepLeft
-  }
 }

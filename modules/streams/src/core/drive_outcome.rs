@@ -1,10 +1,8 @@
-//! Stream drive outcome definitions.
-
-/// Outcome of a drive cycle.
+/// Result of a drive attempt.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DriveOutcome {
-  /// Drive cycle made progress.
+  /// Progress was made.
   Progressed,
-  /// Drive cycle did not make progress.
+  /// No progress was made.
   Idle,
 }

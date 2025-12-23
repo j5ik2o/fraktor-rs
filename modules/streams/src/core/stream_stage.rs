@@ -1,18 +1,12 @@
-//! Stream stage trait definitions.
+use super::StreamShape;
 
-use crate::core::{inlet_id::InletId, outlet_id::OutletId, stream_shape::StreamShape};
-
-/// Common interface for stream stages.
+/// Trait implemented by stream stages.
 pub trait StreamStage {
-  /// Input type handled by the stage.
+  /// Input type.
   type In;
-  /// Output type produced by the stage.
+  /// Output type.
   type Out;
 
   /// Returns the stage shape.
-  fn shape(&self) -> StreamShape;
-  /// Returns the inlet port, if any.
-  fn inlet(&self) -> Option<InletId<Self::In>>;
-  /// Returns the outlet port, if any.
-  fn outlet(&self) -> Option<OutletId<Self::Out>>;
+  fn shape(&self) -> StreamShape<Self::In, Self::Out>;
 }

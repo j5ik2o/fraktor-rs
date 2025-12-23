@@ -1,41 +1,47 @@
-//! Stream buffer implementation backed by shared queue primitives.
+use fraktor_utils_rs::core::{
+  collections::queue::{
+    OfferOutcome, OverflowPolicy, QueueError, SyncFifoQueueShared, SyncQueue, backend::VecDequeBackend,
+  },
+  sync::{ArcShared, sync_mutex_like::SpinSyncMutex},
+};
+
+use super::{StreamBufferConfig, StreamError};
 
 #[cfg(test)]
 mod tests;
 
-use fraktor_utils_rs::core::collections::queue::{OverflowPolicy, QueueError, SyncFifoQueue, backend::VecDequeBackend};
-
-use crate::core::stream_error::StreamError;
-
-/// Buffer for stream elements.
+/// Queue-backed buffer used for backpressure.
 pub struct StreamBuffer<T> {
-  queue: SyncFifoQueue<T, VecDequeBackend<T>>,
+  queue:           SyncFifoQueueShared<T, VecDequeBackend<T>>,
+  overflow_policy: OverflowPolicy,
 }
 
 impl<T> StreamBuffer<T> {
-  /// Creates a new buffer with capacity and overflow policy.
+  /// Creates a new buffer using the provided configuration.
   #[must_use]
-  pub fn new(capacity: usize, policy: OverflowPolicy) -> Self {
-    let backend = VecDequeBackend::with_capacity(capacity, policy);
-    Self { queue: SyncFifoQueue::new(backend) }
+  pub fn new(config: StreamBufferConfig) -> Self {
+    let backend = VecDequeBackend::with_capacity(config.capacity(), config.overflow_policy());
+    let queue = SyncQueue::new(backend);
+    let shared = ArcShared::new(SpinSyncMutex::new(queue));
+    let queue = SyncFifoQueueShared::new_fifo(shared);
+    Self { queue, overflow_policy: config.overflow_policy() }
   }
 
-  /// Attempts to enqueue a value into the buffer.
+  /// Attempts to enqueue an element.
   ///
   /// # Errors
   ///
-  /// Returns `StreamError::BufferFull` when the buffer is full, or another buffer error otherwise.
-  pub fn offer(&mut self, value: T) -> Result<(), StreamError> {
-    self.queue.offer(value).map(|_| ()).map_err(|error| map_queue_error(&error))
+  /// Returns [`StreamError`] when the buffer rejects the element.
+  pub fn offer(&self, value: T) -> Result<OfferOutcome, StreamError> {
+    self.queue.offer(value).map_err(|error| map_queue_error(&error))
   }
 
-  /// Attempts to dequeue a value from the buffer.
+  /// Attempts to dequeue the next element.
   ///
   /// # Errors
   ///
-  /// Returns `StreamError::BufferEmpty` when the buffer is empty, or another buffer error
-  /// otherwise.
-  pub fn poll(&mut self) -> Result<T, StreamError> {
+  /// Returns [`StreamError`] when the buffer is empty or closed.
+  pub fn poll(&self) -> Result<T, StreamError> {
     self.queue.poll().map_err(|error| map_queue_error(&error))
   }
 
@@ -45,28 +51,28 @@ impl<T> StreamBuffer<T> {
     self.queue.len()
   }
 
-  /// Returns true when the buffer is empty.
+  /// Returns `true` when the buffer is empty.
   #[must_use]
   pub fn is_empty(&self) -> bool {
     self.queue.is_empty()
   }
 
-  /// Returns the buffer capacity.
+  /// Returns the capacity limit.
   #[must_use]
   pub fn capacity(&self) -> usize {
     self.queue.capacity()
+  }
+
+  /// Returns the overflow policy.
+  #[must_use]
+  pub const fn overflow_policy(&self) -> OverflowPolicy {
+    self.overflow_policy
   }
 }
 
 const fn map_queue_error<T>(error: &QueueError<T>) -> StreamError {
   match error {
-    | QueueError::Full(_) => StreamError::BufferFull,
-    | QueueError::Closed(_) => StreamError::BufferClosed,
-    | QueueError::Empty => StreamError::BufferEmpty,
-    | QueueError::Disconnected => StreamError::BufferDisconnected,
-    | QueueError::AllocError(_) => StreamError::BufferAllocation,
-    | QueueError::WouldBlock => StreamError::BufferWouldBlock,
-    | QueueError::OfferError(_) => StreamError::BufferFull,
-    | QueueError::TimedOut(_) => StreamError::BufferFull,
+    | QueueError::Full(_) | QueueError::AllocError(_) => StreamError::BufferOverflow,
+    | _ => StreamError::Failed,
   }
 }

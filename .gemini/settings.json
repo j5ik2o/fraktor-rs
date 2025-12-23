@@ -1,6 +1,5 @@
 {
   "general": {
-    "checkpointing": true,
     "previewFeatures": true
   },
   "mcpServers": {

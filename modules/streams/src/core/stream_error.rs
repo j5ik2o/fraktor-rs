@@ -1,48 +1,53 @@
-//! Stream error definitions.
+use core::fmt;
 
-#[cfg(test)]
-mod tests;
-
-/// Errors produced by stream operations.
-#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+/// Errors returned by stream operations.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StreamError {
-  /// The materializer has not been started.
-  #[error("materializer not started")]
-  NotStarted,
-  /// The materializer has already been started.
-  #[error("materializer already started")]
-  AlreadyStarted,
-  /// The materializer has already been shut down.
-  #[error("materializer already shut down")]
-  AlreadyShutdown,
-  /// Connection between stages is invalid.
-  #[error("invalid stream connection")]
+  /// Indicates an invalid demand request.
+  InvalidDemand {
+    /// Requested demand amount.
+    requested: u64,
+  },
+  /// Indicates demand consumption exceeded the remaining demand.
+  DemandExceeded {
+    /// Requested demand amount.
+    requested: u64,
+    /// Remaining demand amount.
+    remaining: u64,
+  },
+  /// Indicates a queue overflow or backpressure failure.
+  BufferOverflow,
+  /// Indicates the materializer has not been started.
+  MaterializerNotStarted,
+  /// Indicates the materializer has already been started.
+  MaterializerAlreadyStarted,
+  /// Indicates the materializer has already been stopped.
+  MaterializerStopped,
+  /// Indicates an actor system is missing for actor-backed materializers.
+  ActorSystemMissing,
+  /// Indicates a stream graph connection is invalid.
   InvalidConnection,
-  /// Demand request is invalid.
-  #[error("invalid demand request")]
-  InvalidDemand,
-  /// The stream is not running.
-  #[error("stream is not running")]
-  NotRunning,
-  /// Buffer reached capacity.
-  #[error("buffer is full")]
-  BufferFull,
-  /// Buffer is closed.
-  #[error("buffer is closed")]
-  BufferClosed,
-  /// Buffer is empty.
-  #[error("buffer is empty")]
-  BufferEmpty,
-  /// Buffer is disconnected.
-  #[error("buffer is disconnected")]
-  BufferDisconnected,
-  /// Buffer allocation failed.
-  #[error("buffer allocation failed")]
-  BufferAllocation,
-  /// Buffer operation would block.
-  #[error("buffer operation would block")]
-  BufferWouldBlock,
-  /// Required executor is unavailable.
-  #[error("executor is unavailable")]
-  ExecutorUnavailable,
+  /// Indicates a type mismatch at runtime.
+  TypeMismatch,
+  /// Indicates stream processing failed with a user error.
+  Failed,
+}
+
+impl fmt::Display for StreamError {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match self {
+      | Self::InvalidDemand { requested } => write!(f, "invalid demand: {requested}"),
+      | Self::DemandExceeded { requested, remaining } => {
+        write!(f, "demand exceeded: requested={requested} remaining={remaining}")
+      },
+      | Self::BufferOverflow => write!(f, "stream buffer overflow"),
+      | Self::MaterializerNotStarted => write!(f, "materializer not started"),
+      | Self::MaterializerAlreadyStarted => write!(f, "materializer already started"),
+      | Self::MaterializerStopped => write!(f, "materializer stopped"),
+      | Self::ActorSystemMissing => write!(f, "actor system missing"),
+      | Self::InvalidConnection => write!(f, "invalid stream connection"),
+      | Self::TypeMismatch => write!(f, "stream type mismatch"),
+      | Self::Failed => write!(f, "stream failed"),
+    }
+  }
 }

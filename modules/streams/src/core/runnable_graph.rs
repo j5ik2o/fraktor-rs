@@ -1,30 +1,23 @@
-//! Runnable graph representation.
+use super::StreamPlan;
 
-use alloc::vec::Vec;
-
-use crate::core::mat_combine::MatCombine;
-
-/// Graph that can be materialized for execution.
-#[derive(Debug)]
-pub struct RunnableGraph {
-  connections: Vec<(u64, u64, MatCombine)>,
-  mat_value:   MatCombine,
+/// Graph ready for materialization.
+pub struct RunnableGraph<Mat> {
+  plan:         StreamPlan,
+  materialized: Mat,
 }
 
-impl RunnableGraph {
-  pub(crate) const fn new(connections: Vec<(u64, u64, MatCombine)>, mat_value: MatCombine) -> Self {
-    Self { connections, mat_value }
+impl<Mat> RunnableGraph<Mat> {
+  pub(super) const fn new(plan: StreamPlan, materialized: Mat) -> Self {
+    Self { plan, materialized }
   }
 
-  /// Returns the materialized value derived from combine rules.
+  /// Returns the materialized value.
   #[must_use]
-  pub const fn materialized_value(&self) -> MatCombine {
-    self.mat_value
+  pub const fn materialized(&self) -> &Mat {
+    &self.materialized
   }
 
-  /// Returns the number of connections.
-  #[must_use]
-  pub const fn connection_count(&self) -> usize {
-    self.connections.len()
+  pub(super) fn into_parts(self) -> (StreamPlan, Mat) {
+    (self.plan, self.materialized)
   }
 }
