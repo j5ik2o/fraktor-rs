@@ -37,8 +37,8 @@ fraktor-streams は fraktor-rs にストリーム処理の最小コアを追加�
 - `StreamLayout`/`Modules` がモジュール木を形成し、`GraphInterpreter` がステージを駆動する。
 - `ActorGraphInterpreter` が actor 上で駆動ループを実行する。
 - `SystemMaterializer` と guardian が materializer のライフサイクルを管理する。
-- `GraphStage` が中核ステージ抽象として `StageLogic` を提供し、処理ロジックは GraphStage を介して実行基盤に接続される。
-- `GraphInterpreter` が StageLogic を駆動し、pull/push/complete/error の順序と伝播を制御する。
+- `GraphStage` が中核ステージ抽象として `GraphStageLogic` を提供し、処理ロジックは GraphStage を介して実行基盤に接続される。
+- `GraphInterpreter` が GraphStageLogic を駆動し、pull/push/complete/error の順序と伝播を制御する。
 
 **設計への反映**
 - core の DSL は traversal 合成を軸にし、材料化は ActorSystem 統合側に委譲する。
@@ -46,7 +46,7 @@ fraktor-streams は fraktor-rs にストリーム処理の最小コアを追加�
 - materializer は ActorSystem に結び付け、remote/cluster 有効時でも契約を維持する。
 - DSL/演算子の整理は Source/Flow/Sink のカテゴリで提供し、Pekko のオペレータ一覧に沿った分類を維持する。
 - GraphStage を中核抽象として扱い、DSL/Graph は GraphStage を生成・合成する。
-- GraphInterpreter の契約を core で定義し、StreamHandle::drive がその進行を担う。
+- GraphInterpreter の契約を core で定義し、Stream::drive がその進行を担う。
 - Materializer 実装の追加は core の trait を起点に行い、環境別の std 実装で拡張する。
 
 ### パターンと境界マップ
@@ -68,9 +68,10 @@ graph TB
     Sink --> StreamGraph
     StreamGraph --> Materializer
     Materializer --> StreamHandle
-    StreamHandle --> GraphInterpreter
+    StreamHandle --> Stream
+    Stream --> GraphInterpreter
     GraphInterpreter --> GraphStage
-    StreamHandle --> DemandTracker
+    Stream --> DemandTracker
     DemandTracker --> StreamBuffer
   end
   subgraph Std
@@ -107,7 +108,7 @@ sequenceDiagram
   Flow->>Sink: onComplete
 ```
 
-### StreamHandle の状態遷移
+### Stream の状態遷移
 ```mermaid
 stateDiagram-v2
   [*] --> Idle
@@ -128,20 +129,20 @@ stateDiagram-v2
 | 1.2 | 型不一致の拒否 | StreamGraph | StreamGraph::connect | - |
 | 1.3 | 接続関係の保持 | StreamGraph | StreamGraph | - |
 | 1.4 | DSL コンビネータ | Source, Flow, Sink | StreamStage | 需要とデータ伝播 |
-| 1.5 | カスタムステージ拡張 | GraphStage, StageLogic | GraphStage | 需要とデータ伝播 |
+| 1.5 | カスタムステージ拡張 | GraphStage, GraphStageLogic | GraphStage | 需要とデータ伝播 |
 | 2.1 | 合成後グラフ | StreamGraph, RunnableGraph | StreamGraph::build | - |
 | 2.2 | マテリアライズ値 | Materializer, StreamHandle | Materializer::materialize | - |
 | 2.3 | 合成規則の一貫性 | Materializer | Materializer | - |
 | 3.1 | Materializer 起動 | Materializer | Materializer::start | 状態遷移 |
 | 3.2 | Materializer 停止 | Materializer, StreamHandle | Materializer::shutdown | 状態遷移 |
-| 3.3 | 実行状態管理 | StreamHandle | StreamHandle | 状態遷移 |
+| 3.3 | 実行状態管理 | Stream, StreamHandle | Stream/StreamHandle | 状態遷移 |
 | 3.4 | Materializer 拡張性 | Materializer | Materializer | - |
 | 4.1 | 需要伝播 | DemandTracker | DemandTracker | 需要とデータ伝播 |
 | 4.2 | 需要なしの抑止 | DemandTracker, StreamBuffer | DemandTracker | 需要とデータ伝播 |
 | 4.3 | バックプレッシャ抑制 | StreamBuffer | StreamBuffer | - |
-| 5.1 | 完了通知 | StreamHandle | StreamHandle | 需要とデータ伝播 |
-| 5.2 | エラー伝播 | StreamHandle, StreamError | StreamHandle | 需要とデータ伝播 |
-| 5.3 | キャンセル伝播 | StreamHandle | StreamHandle::cancel | 需要とデータ伝播 |
+| 5.1 | 完了通知 | Stream, StreamHandle | Stream/StreamHandle | 需要とデータ伝播 |
+| 5.2 | エラー伝播 | Stream, StreamHandle, StreamError | Stream/StreamHandle | 需要とデータ伝播 |
+| 5.3 | キャンセル伝播 | Stream, StreamHandle | Stream/StreamHandle::cancel | 需要とデータ伝播 |
 | 6.1 | core no_std | コア全体 | - | - |
 | 6.2 | std 依存隔離 | ActorMaterializer | - | - |
 | 6.3 | core API 無依存 | コア全体 | - | - |
@@ -168,10 +169,12 @@ stateDiagram-v2
 |---------------|------------|------|----------|------------------|------|
 | StreamGraph | Core | グラフ合成と型検証 | 1.1, 1.2, 1.3, 2.1 | utils queue(P1) | Service |
 | Source/Flow/Sink | Core | ストリーム構成要素 | 1.1 | StreamGraph(P0) | Service |
-| GraphStage/StageLogic | Core | 中核ステージ抽象 | 1.5 | StreamGraph(P0) | Service |
+| GraphStage/GraphStageLogic | Core | 中核ステージ抽象 | 1.5 | StreamGraph(P0) | Service |
 | GraphInterpreter/StageRuntime | Core | GraphStage の実行契約 | 1.5, 3.1, 3.2, 3.3, 4.1, 4.2, 4.3, 5.1, 5.2, 5.3 | GraphStage(P0), DemandTracker(P0) | Service |
 | Materializer | Core | マテリアライズとライフサイクル | 2.2, 2.3, 3.1, 3.2, 6.4 | StreamHandle(P0), fraktor-actor core(P0) | Service |
-| StreamHandle | Core | 実行状態・完了/失敗/キャンセル | 3.3, 5.1, 5.2, 5.3 | DemandTracker(P0) | State |
+| Stream | Core | 実行状態の本体（内部・非公開） | 3.3, 5.1, 5.2, 5.3 | DemandTracker(P0), GraphInterpreter(P0) | State |
+| StreamShared | Core | Stream の共有ラッパー（内部） | 3.3, 5.1, 5.2, 5.3 | Stream(P0) | State |
+| StreamHandle | Core | 共有+管理責務（登録/ライフサイクル統合） | 3.3, 5.1, 5.2, 5.3 | StreamShared(P0) | Service |
 | DemandTracker/StreamBuffer | Core | 需要伝播とバッファ制御 | 4.1, 4.2, 4.3 | utils queue(P0) | State |
 | ActorMaterializer | Std | Actor 実行基盤統合 | 7.1, 7.2, 7.4 | fraktor-actor(P0) | Service |
 | StreamDriveActor | Std | 実行駆動の周期処理 | 7.1, 7.2, 7.5 | fraktor-actor(P0) | State |
@@ -194,6 +197,8 @@ stateDiagram-v2
 - マテリアライズ値の合成規則は MatCombine で指定し、未指定時は KeepLeft を用いる
 - StreamGraph は GraphStage を保持し、実行基盤が GraphStage を駆動できる形で合成する
 - DSL オペレータは traversal に StageKind を追加し、StageKind は GraphStage を生成して StreamGraph に登録する
+- `connect` は `Outlet<T>` と `Inlet<T>` の型一致をコンパイル時に保証する
+- `PortId` は内部識別子であり、公開 API では直接扱わない
 
 **依存関係**
 - Inbound: Source/Flow/Sink — 接続情報の登録（P0）
@@ -205,20 +210,20 @@ stateDiagram-v2
 ##### サービスインターフェイス（Rust）
 ```rust
 pub trait StreamGraph {
-  fn connect(
+  fn connect<T>(
     &mut self,
-    upstream: PortId,
-    downstream: PortId,
+    upstream: Outlet<T>,
+    downstream: Inlet<T>,
     combine: MatCombine
   ) -> Result<(), StreamError>;
   fn build(self) -> Result<RunnableGraph, StreamError>;
 }
 ```
-- 前提条件: すべてのポートが型整合している
+- 前提条件: 型整合は `Outlet<T>` と `Inlet<T>` によりコンパイル時に保証される
 - 事後条件: 合成済み RunnableGraph を返す
 - 不変条件: 接続関係は破壊されない
 
-#### GraphStage / StageLogic
+#### GraphStage / GraphStageLogic
 
 | 項目 | 内容 |
 |------|------|
@@ -227,11 +232,12 @@ pub trait StreamGraph {
 | オーナー/レビュー | - |
 
 **責務と制約**
-- shape と処理ロジック（StageLogic）を定義できる
+- shape と処理ロジック（GraphStageLogic）を定義できる
 - GraphStage は実行基盤の最小単位であり、組み込みステージも含めて GraphStage で表現する
 - GraphStage は traversal に追加され、MatCombine に従って合成される
 - actor 型は露出しない
 - no_std で動作可能な最小 API に留める
+- GraphStage は `In/Out/Mat` を型パラメータで保持し、`GraphStageLogic<In, Out, Mat>` と静的に結合する
 
 **依存関係**
 - Inbound: 利用者コード — カスタムステージ定義（P0）
@@ -242,15 +248,12 @@ pub trait StreamGraph {
 
 ##### サービスインターフェイス（Rust）
 ```rust
-pub trait GraphStage {
-  type In;
-  type Out;
-  type Mat;
-  fn shape(&self) -> StreamShape;
-  fn create_logic(&self) -> StageLogic<Self::Mat>;
+pub trait GraphStage<In, Out, Mat> {
+  fn shape(&self) -> StreamShape<In, Out>;
+  fn create_logic(&self) -> Box<dyn GraphStageLogic<In, Out, Mat>>;
 }
 
-pub trait StageLogic<Mat, In, Out> {
+pub trait GraphStageLogic<In, Out, Mat> {
   fn on_start(&mut self, ctx: &mut StageContext<In, Out>);
   fn on_pull(&mut self, ctx: &mut StageContext<In, Out>);
   fn on_push(&mut self, ctx: &mut StageContext<In, Out>);
@@ -281,8 +284,8 @@ pub trait StageContext<In, Out> {
 | オーナー/レビュー | - |
 
 **責務と制約**
-- GraphStage を実行する中核として StageLogic の呼び出し順序を保証する
-- `StreamHandle::drive` によって進行し、需要/バッファ/完了/失敗の伝播を統合する
+- GraphStage を実行する中核として GraphStageLogic の呼び出し順序を保証する
+- `Stream::drive` によって進行し、需要/バッファ/完了/失敗の伝播を統合する
 - pull/push のイベントは需要とバッファ状態に基づいて決定する
 - 完了/失敗/キャンセルは下流へ伝播し、上流はキャンセルされる
 - actor 型は露出しない
@@ -299,8 +302,8 @@ pub trait StageContext<In, Out> {
 - `on_push` はバッファから要素を消費し、下流へ次の遷移を進める
 
 **依存関係**
-- Inbound: StreamHandle — drive 呼び出し（P0）
-- Outbound: GraphStage/StageLogic — 実行（P0）
+- Inbound: Stream — drive 呼び出し（P0）
+- Outbound: GraphStage/GraphStageLogic — 実行（P0）
 - External: なし
 
 **契約**: Service [x] / API [ ] / Event [ ] / Batch [ ] / State [ ]
@@ -338,7 +341,7 @@ pub trait StageContext<In, Out> {
 pub trait StreamStage {
   type In;
   type Out;
-  fn shape(&self) -> StreamShape;
+  fn shape(&self) -> StreamShape<Self::In, Self::Out>;
 }
 ```
 - 前提条件: shape は不変
@@ -395,7 +398,7 @@ impl<In, Out, Mat> Flow<In, Out, Mat> {
 - マテリアライズ値を合成規則で返却する
 - start/shutdown でストリーム全体を制御する
 - no_std で動作可能な最小 API を維持する
-- no_std では実行タスクを持たず、StreamHandle::drive による手動進行を前提とする
+- no_std では実行タスクを持たず、StreamHandle::drive（内部の Stream::drive）による手動進行を前提とする
 - fraktor-actor core の Scheduler/TickDriver/Extension を再利用し、重複実装を避ける
 - fraktor-actor core 依存は内部実装に閉じ、streams 公開 API に actor 型を露出しない
 - MatCombine に従って、DSL が構成した traversal のマテリアライズ値を確定する
@@ -420,19 +423,20 @@ pub trait Materializer {
 - 事後条件: Materialized が返り、合成済みマテリアライズ値が取得できる
 - 不変条件: 合成規則は固定
 
-#### StreamHandle
+#### Stream（内部）
 
 | 項目 | 内容 |
 |------|------|
-| 目的 | 実行状態・完了/失敗/キャンセルを管理する |
+| 目的 | 実行状態の本体を保持し、drive/cancel を実行する（内部・非公開） |
 | 対応要件 | 3.3, 5.1, 5.2, 5.3 |
 | オーナー/レビュー | - |
 
 **責務と制約**
 - 完了/失敗/キャンセルの状態遷移を一貫させる
 - demand とバッファの状態を可視化可能にする
-- no_std では drive によって実行を前進させる
 - drive は GraphInterpreter を通じて GraphStage を進行させる
+- 共有責務を持たず、可変操作は `&mut self` で表現する
+- Pekko の公開 API と同様に、Stream は内部表現として公開 API に露出しない
 
 **依存関係**
 - Inbound: Materializer — 実行開始（P0）
@@ -443,10 +447,80 @@ pub trait Materializer {
 
 ##### サービスインターフェイス（Rust）
 ```rust
-pub trait StreamHandle {
+pub trait Stream {
   fn state(&self) -> StreamState;
   fn cancel(&mut self) -> Result<(), StreamError>;
   fn drive(&mut self) -> DriveOutcome;
+}
+```
+- 前提条件: Running 状態
+- 事後条件: Cancelled へ遷移
+- 不変条件: 状態遷移は単方向
+
+#### StreamShared
+
+| 項目 | 内容 |
+|------|------|
+| 目的 | Stream を共有する薄いラッパーを提供する |
+| 対応要件 | 3.3, 5.1, 5.2, 5.3 |
+| オーナー/レビュー | - |
+
+**責務と制約**
+- `ArcShared<ToolboxMutex<Stream>>` を内包して共有を実現する
+- `with_read` / `with_write` でロック区間を閉じる
+- 共有以外の責務を持たない
+- 公開 API に露出せず、同一クレート内の内部型として扱う
+- RuntimeToolbox を型パラメータ化する場合は `StreamSharedGeneric` 命名にする
+
+**依存関係**
+- Inbound: StreamHandle — 共有参照（P0）
+- Outbound: Stream — 実行状態操作（P0）
+- External: utils sync — ArcShared/ToolboxMutex（P0）
+
+**契約**: Service [ ] / API [ ] / Event [ ] / Batch [ ] / State [x]
+
+##### サービスインターフェイス（Rust）
+```rust
+#[derive(Clone)]
+pub(crate) struct StreamShared {
+  // inner: ArcShared<ToolboxMutex<Stream, TB>>
+}
+
+impl StreamShared {
+  pub(crate) fn with_read<R>(&self, f: impl FnOnce(&Stream) -> R) -> R;
+  pub(crate) fn with_write<R>(&self, f: impl FnOnce(&mut Stream) -> R) -> R;
+}
+```
+
+#### StreamHandle
+
+| 項目 | 内容 |
+|------|------|
+| 目的 | StreamShared を保持し、登録/ライフサイクル統合を担う公開ハンドル |
+| 対応要件 | 3.3, 5.1, 5.2, 5.3 |
+| オーナー/レビュー | - |
+
+**責務と制約**
+- `handle_id` を保持し、StreamDriveActor への登録単位となる
+- `drive`/`cancel` は内部の StreamShared をロックして Stream に委譲する
+- 共有 + 管理責務のみを持ち、Stream の実装詳細は露出しない
+- StreamShared を公開せず、公開 API は `state`/`drive`/`cancel` のみに限定する
+- RuntimeToolbox を型パラメータ化する場合は `StreamHandleGeneric` 命名にする
+
+**依存関係**
+- Inbound: Materializer — 実行開始（P0）
+- Outbound: StreamShared — 実行状態管理（P0）
+- External: なし
+
+**契約**: Service [x] / API [ ] / Event [ ] / Batch [ ] / State [ ]
+
+##### サービスインターフェイス（Rust）
+```rust
+pub trait StreamHandle {
+  fn id(&self) -> StreamHandleId;
+  fn state(&self) -> StreamState;
+  fn cancel(&self) -> Result<(), StreamError>;
+  fn drive(&self) -> DriveOutcome;
 }
 ```
 - 前提条件: Running 状態
@@ -468,7 +542,7 @@ pub trait StreamHandle {
 - 需要が上限に達した場合は Unbounded として扱う
 
 **依存関係**
-- Inbound: StreamHandle — 需要調整（P0）
+- Inbound: Stream — 需要調整（P0）
 - Outbound: StreamBuffer — バッファ制御（P0）
 - External: utils queue — バッファ実体（P0）
 
@@ -520,6 +594,7 @@ pub trait ActorMaterializer {
 - 登録された StreamHandle を一定間隔で drive する
 - ActorSystem 上のスケジューリングに従って実行する
 - remote/cluster が有効でも実行契約は変えない
+- StreamHandle は内部で StreamShared を保持し、drive/cancel はロック内で Stream に委譲する
 - streams 公開 API に露出せず、std 内部の実装に閉じる
 
 **依存関係**
@@ -598,12 +673,18 @@ pub trait StreamCompletion<T> {
 ### ドメインモデル
 - StreamGraph（合成単位）
 - RunnableGraph（実行単位）
-- StreamHandle（実行状態）
+- Stream（実行状態・内部）
+- StreamShared（共有ラッパー・内部）
+- StreamHandle（管理ハンドル）
+- StreamHandleId（登録識別子）
 - Demand（需要量）
 - StageKind（DSL 由来の最小ステージ表現）
 
 ### 論理データモデル
 - StageId/PortId: 接続と型整合の識別子
+- Inlet<T>/Outlet<T>: 型付きポート（内部で PortId を保持し、型一致をコンパイル時に保証）
+- StreamShape<In, Out>: `Inlet<In>` と `Outlet<Out>` を保持する最小 shape
+- StreamHandleId: StreamHandle の登録識別子
 - Traversal: DSL によって積み上げられる StageKind の列
 - Traversal は GraphStage を生成するためのランタイム表現（可変長の列）を採用し、型レベル表現は採用しない
 - StageKind:
@@ -650,7 +731,7 @@ pub trait StreamCompletion<T> {
 - 単体テスト:
   - StreamGraph の型不一致拒否
   - Demand 伝播と需要不足時の抑止
-  - StreamHandle の状態遷移
+  - Stream の状態遷移
 - 統合テスト:
   - Source->Flow->Sink の最小構成が完了まで動く
   - エラー伝播が下流に到達する
