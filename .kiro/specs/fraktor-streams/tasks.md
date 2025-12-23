@@ -11,7 +11,7 @@
   - 合成済み RunnableGraph を生成できるようにする
   - _Requirements: 1.2, 1.3, 2.1_
 
-- [ ] 1.3 Source/Flow/Sink の DSL コンビネータを追加する
+- [x] 1.3 Source/Flow/Sink の DSL コンビネータを追加する
   - Pekko Streams 準拠の基本コンビネータを提供する
   - `via`/`to` の合成規則（MatCombine）を維持する
   - `map`/`flatMapConcat` を提供する
@@ -22,7 +22,7 @@
   - DSL 経由で StreamGraph を構成できるようにする
   - _Requirements: 1.4_
 
-- [ ] 1.4 GraphStage の中核抽象を整備する
+- [x] 1.4 GraphStage の中核抽象を整備する
   - GraphStage/StageLogic の最小インターフェイスを整備する
   - 組み込みステージを GraphStage として表現できるようにする
   - GraphStage を traversal に登録できるようにする
@@ -30,7 +30,7 @@
   - 公開 API に actor 型が露出しないことを確認する
   - _Requirements: 1.5, 6.7_
 
-- [ ] 1.5 GraphInterpreter の実行契約を整備する
+- [x] 1.5 GraphInterpreter の実行契約を整備する
   - StageLogic の呼び出し順序（pull/push/complete/error）を定義する
   - StreamHandle::drive と DemandTracker/StreamBuffer の統合を定義する
   - 完了/失敗/キャンセルの伝播規則を明文化する
@@ -47,11 +47,11 @@
   - StreamHandle が実行状態を管理できるようにする
   - _Requirements: 3.1, 3.2, 3.3_
 
-- [ ] 2.3 Materializer の拡張性を確保する
-  - ActorMaterializer 以外の実装を追加できる設計であることを明文化する
+- [x] 2.3 Materializer の拡張性を確保する
+  - ActorMaterializerGeneric 以外の実装を追加できる設計であることを明文化する
   - _Requirements: 3.4_
 
-- [ ] 2.4 StreamCompletion の最小 API と std 変換を整備する
+- [x] 2.4 StreamCompletion の最小 API と std 変換を整備する
   - core 側で `poll`/`try_take` を持つ StreamCompletion を定義する
   - std 側で actor Future への変換アダプタを用意する
   - 公開 API に actor 型が露出しないことを確認する
@@ -90,34 +90,34 @@
   - std 無効時に依存が要求されない状態を作る
   - _Requirements: 6.2, 7.3_
 
-- [ ] 5.3 core で fraktor-actor の実行基盤を再利用する
+- [x] 5.3 core で fraktor-actor の実行基盤を再利用する
   - fraktor-actor std への依存を避け、core では fraktor-actor core の Scheduler/TickDriver/Extension を利用する
   - fraktor-actor 依存は必要最小限に抑える
   - _Requirements: 6.4, 6.5_
 
-- [ ] 5.4 actor/core 依存方向と API 境界を検証する
+- [x] 5.4 actor/core 依存方向と API 境界を検証する
   - actor/core から streams/core への依存が発生していないことを確認する
   - streams 公開 API に fraktor-actor の型が露出しないことを確認する
   - _Requirements: 6.6, 6.7_
 
-- [ ] 6. Actor 実行基盤との統合を整える
-- [ ] 6.1 ActorMaterializer で実行を駆動できるようにする
-  - ActorSystem と統合して実行を開始/停止する
-  - Materializer を通じた ActorSystem 利用を確認する
+- [x] 6. Actor 実行基盤との統合を整える
+- [x] 6.1 ActorMaterializerGeneric で実行を駆動できるようにする
+  - ActorSystemGeneric<TB> と統合して実行を開始/停止する
+  - Materializer を通じた ActorSystemGeneric<TB> 利用を確認する
   - ActorSystem 未提供時に起動を失敗させる
   - _Requirements: 7.1, 7.2, 7.4_
 
-- [ ] 6.2 StreamDriveActor で drive を周期実行する
+- [x] 6.2 StreamDriveActor（core）で drive を周期実行する
   - StreamHandle を登録/解除できるようにする
   - ActorSystem のスケジューラで drive tick を行う
   - _Requirements: 7.1, 7.2_
 
-- [ ] 6.3 TokioMaterializer と tokio 依存を整理する
-  - ActorSystem 統合へ一本化し、TokioMaterializer を削除/置換する
+- [x] 6.3 TokioMaterializer と tokio 依存を整理する
+  - ActorSystemGeneric<TB> 統合へ一本化し、TokioMaterializer を削除/置換する
   - examples/feature から tokio 前提を外す
   - _Requirements: 7.1, 7.2, 7.3_
 
-- [ ] 6.4 remote/cluster 環境での利用前提を満たす
+- [x] 6.4 remote/cluster 環境での利用前提を満たす
   - ActorSystem の remote/cluster 有効時でも起動条件が変わらないことを確認する
   - Materializer/DriveActor が remote/cluster の状態に依存しないことを確認する
   - _Requirements: 7.5_
@@ -133,17 +133,17 @@
   - キャンセルが上流へ伝播することを確認する
   - _Requirements: 5.1, 5.2, 5.3_
 
-- [ ] 7.3 std 統合と no_std ビルドの検証を追加する
-  - ActorMaterializer の起動/停止を検証する
+- [x] 7.3 std 統合と no_std ビルドの検証を追加する
+  - ActorMaterializerGeneric の起動/停止を検証する
   - no_std/std の両方でビルドが通ることを確認する
   - _Requirements: 6.1, 6.2, 6.3, 7.1, 7.2, 7.3, 7.4_
 
-- [ ] 7.4 remote/cluster 有効時の起動スモークを追加する
+- [x] 7.4 remote/cluster 有効時の起動スモークを追加する
   - cluster/remote の構成を有効化しても Materializer が起動できることを確認する
   - _Requirements: 7.5_
 
-- [ ] 8. examples を通じた最小利用例を用意する
-- [ ] 8.1 ActorSystem を利用した最小ストリームサンプルを追加する
+- [x] 8. examples を通じた最小利用例を用意する
+- [x] 8.1 ActorSystem を利用した最小ストリームサンプルを追加する
   - Source/Flow/Sink と Materializer の最小合成を示す
   - ActorSystem 実行基盤で動作することを示す
   - core に std 依存を持ち込まない

@@ -1,16 +1,16 @@
 # 設計ドキュメント: fraktor-streams
 
 ## 概要
-fraktor-streams は fraktor-rs にストリーム処理の最小コアを追加し、no_std でも利用できる Source/Flow/Sink と Materializer を提供する。需要伝播とバックプレッシャの契約を明文化し、実行モデルを core と std で分離することで、埋め込み環境とホスト環境の両方で一貫したストリーム API を実現する。std 環境では ActorSystem 上で動作し、remote/cluster の有効/無効に影響されない設計を採用する。
+fraktor-streams は fraktor-rs にストリーム処理の最小コアを追加し、no_std でも利用できる Source/Flow/Sink と Materializer を提供する。需要伝播とバックプレッシャの契約を明文化し、実行モデルを core(no_std) に集約して streams の std 実装を持たないことで、埋め込み環境とホスト環境の両方で一貫したストリーム API を実現する。std 環境では ActorSystem 上で core 実装を動かし、remote/cluster の有効/無効に影響されない設計を採用する。
 
-利用者は no_std 環境では手動駆動または外部実行器による進行を選択でき、std 環境では fraktor-actor の ActorSystem と統合した ActorMaterializer による自動駆動を利用する。ActorSystem が remote/cluster を有効化していても、同じ契約でストリームを実行できる。ストリームの合成とマテリアライズ値の規則を固定し、完了・失敗・キャンセルの伝播を観測可能な契約として定義する。
+利用者は no_std 環境では手動駆動または外部実行器による進行を選択でき、ActorSystem 連携は core に置く ActorMaterializerGeneric が担う。ActorMaterializerGeneric は fraktor-actor core の ActorSystemGeneric<TB> と統合し、std 環境でも同一の型を利用する。ActorSystem が remote/cluster を有効化していても、同じ契約でストリームを実行できる。ストリームの合成とマテリアライズ値の規則を固定し、完了・失敗・キャンセルの伝播を観測可能な契約として定義する。
 
-影響範囲は新規クレート `fraktor-streams-rs`（`modules/streams`）に限定し、既存の actor/remote/cluster と責務を分離する。std 拡張側で ActorSystem との統合を実装し、core は必要最小限で fraktor-actor core を再利用する。ただし actor/core から streams/core への依存は禁止し、streams の公開 API に actor 型を露出しない。
+影響範囲は新規クレート `fraktor-streams-rs`（`modules/streams`）に限定し、既存の actor/remote/cluster と責務を分離する。ActorSystem との統合は core 側の ActorMaterializerGeneric が担い、std は追加の API を持たない。actor/core から streams/core への依存は禁止し、DSL/Graph/Stage の公開 API に actor 型を露出しない（ActorMaterializerGeneric は actor core 型を利用する）。
 
 ### 目標
 - no_std でコンパイル可能なストリームの最小 API を提供する
 - Source/Flow/Sink の合成とマテリアライズ値の規則を定義する
-- std 環境向け Materializer で実行統合できる設計にする
+- std 環境でも core Materializer で実行統合できる設計にする
 - examples で最小構成の利用例を提供できる設計にする
 - Materializer の実装を追加できる拡張性を確保する（embedded/WASM など）
 
@@ -23,10 +23,10 @@ fraktor-streams は fraktor-rs にストリーム処理の最小コアを追加�
 ## アーキテクチャ
 
 ### 既存アーキテクチャ分析
-- `core` は no_std 前提、`std` 実装は `std` 配下に隔離する。
+- 既存クレートは `core`/`std` 分離だが、streams は core(no_std) に集約し std 実装を作らない。
 - 共有所有権は `ArcShared`、同期は `ToolboxMutex` を標準とする。
 - バックプレッシャ向けのキューは `modules/utils` の共通実装を必ず再利用する。
-- `modules/streams/src/core` と `modules/streams/src/std` の 2 階層で独立配置し、core は必要最小限で fraktor-actor core を利用する。
+- `modules/streams/src/core` のみで実装し、streams の `std` モジュールは作らない。std 環境でも core 実装を利用し、fraktor-actor core を最小限に利用する。
 - Materializer の中核ロジックは fraktor-actor の core 実行基盤（Scheduler/TickDriver/Extension など）を再利用する。
 - fraktor-actor core への依存は必要最小限に留め、streams/core の独立性を維持する。
 - fraktor-actor core から streams/core への依存は発生させない。
@@ -42,18 +42,18 @@ fraktor-streams は fraktor-rs にストリーム処理の最小コアを追加�
 
 **設計への反映**
 - core の DSL は traversal 合成を軸にし、材料化は ActorSystem 統合側に委譲する。
-- std 側の `StreamDriveActor` を `ActorGraphInterpreter` 相当として位置付け、駆動責務を分離する。
-- materializer は ActorSystem に結び付け、remote/cluster 有効時でも契約を維持する。
+- core 側の `StreamDriveActor` を `ActorGraphInterpreter` 相当として位置付け、駆動責務を分離する。
+- materializer は ActorSystemGeneric<TB> に結び付け、remote/cluster 有効時でも契約を維持する。
 - DSL/演算子の整理は Source/Flow/Sink のカテゴリで提供し、Pekko のオペレータ一覧に沿った分類を維持する。
 - GraphStage を中核抽象として扱い、DSL/Graph は GraphStage を生成・合成する。
 - GraphInterpreter の契約を core で定義し、Stream::drive がその進行を担う。
-- Materializer 実装の追加は core の trait を起点に行い、環境別の std 実装で拡張する。
+- Materializer 実装の追加は core の trait を起点に行い、環境別の拡張は fraktor-actor 側のアダプタで補う。
 
 ### パターンと境界マップ
 **アーキテクチャ統合**
 - 選択したパターン: データフロー型（Reactive Streams 準拠の需要伝播）
-- 境界の切り方: ストリームコアは `core` に閉じ、実行ブリッジは `std` に限定
-- 既存パターンの維持: core/std 分離・ArcShared/ToolboxMutex の共有ラッパ
+- 境界の切り方: ストリームコアは `core` に閉じ、実行ブリッジも core + TB に限定（streams の std 実装は作らない）
+- 既存パターンの維持: core 集約（streams は std モジュールなし）・ArcShared/ToolboxMutex の共有ラッパ
 - 依存方向の不変条件: actor/core → streams/core を禁止し、streams 公開 API に actor 型を露出しない
 - 新規コンポーネントの理由: ストリーム処理は actor/remote と異なる責務のため新規クレートで分離
 - ステアリング適合: no_std ファースト、Less is more、YAGNI を維持
@@ -73,12 +73,10 @@ graph TB
     GraphInterpreter --> GraphStage
     Stream --> DemandTracker
     DemandTracker --> StreamBuffer
+    ActorMaterializerGeneric --> ActorSystemGeneric
+    StreamDriveActor --> ActorSystemGeneric
   end
-  subgraph Std
-    ActorMaterializer --> ActorSystem
-    StreamDriveActor --> ActorSystem
-  end
-  ActorMaterializer --> Materializer
+  ActorMaterializerGeneric --> Materializer
 ```
 
 ### 技術スタック
@@ -144,17 +142,18 @@ stateDiagram-v2
 | 5.2 | エラー伝播 | Stream, StreamHandle, StreamError | Stream/StreamHandle | 需要とデータ伝播 |
 | 5.3 | キャンセル伝播 | Stream, StreamHandle | Stream/StreamHandle::cancel | 需要とデータ伝播 |
 | 6.1 | core no_std | コア全体 | - | - |
-| 6.2 | std 依存隔離 | ActorMaterializer | - | - |
+| 6.2 | std 依存隔離 | 境界ルール | - | - |
 | 6.3 | core API 無依存 | コア全体 | - | - |
 | 6.4 | actor core 再利用 | Materializer | Materializer | - |
 | 6.5 | actor 依存の最小化 | コア全体 | - | - |
 | 6.6 | actor/core 依存方向禁止 | 境界ルール | - | - |
-| 6.7 | actor 型の非露出 | 公開 API | - | - |
-| 7.1 | Actor 実行統合 | ActorMaterializer, StreamDriveActor | - | - |
-| 7.2 | Materializer で Actor 実行基盤利用 | ActorMaterializer | ActorMaterializer | - |
+| 6.7 | actor 型の非露出（DSL/Graph/Stage） | 公開 API | - | - |
+| 6.8 | ActorMaterializerGeneric の actor core 利用 | ActorMaterializerGeneric | ActorMaterializerGeneric | - |
+| 7.1 | Actor 実行統合 | ActorMaterializerGeneric, StreamDriveActor | - | - |
+| 7.2 | Materializer で Actor 実行基盤利用 | ActorMaterializerGeneric | ActorMaterializerGeneric | - |
 | 7.3 | std 無効時の無依存 | core 全体 | - | - |
-| 7.4 | ActorSystem 未提供時の起動失敗 | ActorMaterializer | ActorMaterializer::start | - |
-| 7.5 | remote/cluster 無制約 | ActorMaterializer, StreamDriveActor | - | - |
+| 7.4 | ActorSystem 未提供時の起動失敗 | ActorMaterializerGeneric | ActorMaterializerGeneric::start | - |
+| 7.5 | remote/cluster 無制約 | ActorMaterializerGeneric, StreamDriveActor | - | - |
 | 8.1 | examples 提供 | Examples | - | - |
 | 8.2 | core への std 非侵入 | Examples | - | - |
 | 8.3 | 最小合成の動作提示 | Examples | - | - |
@@ -163,7 +162,7 @@ stateDiagram-v2
 
 ## コンポーネントとインターフェイス
 
-ストリーム関連の型は `modules/streams/src/core` と `modules/streams/src/std` に配置し、1ファイル1型のルールを維持する。
+ストリーム関連の型は `modules/streams/src/core` のみに配置し、streams の `std` モジュールは実装しない。1ファイル1型のルールを維持する。
 
 | コンポーネント | ドメイン/層 | 目的 | 要件対応 | 主要依存 (P0/P1) | 契約 |
 |---------------|------------|------|----------|------------------|------|
@@ -176,9 +175,9 @@ stateDiagram-v2
 | StreamShared | Core | Stream の共有ラッパー（内部） | 3.3, 5.1, 5.2, 5.3 | Stream(P0) | State |
 | StreamHandle | Core | 共有+管理責務（登録/ライフサイクル統合） | 3.3, 5.1, 5.2, 5.3 | StreamShared(P0) | Service |
 | DemandTracker/StreamBuffer | Core | 需要伝播とバッファ制御 | 4.1, 4.2, 4.3 | utils queue(P0) | State |
-| ActorMaterializer | Std | Actor 実行基盤統合 | 7.1, 7.2, 7.4 | fraktor-actor(P0) | Service |
-| StreamDriveActor | Std | 実行駆動の周期処理 | 7.1, 7.2, 7.5 | fraktor-actor(P0) | State |
-| Examples | Std | 最小利用例の提供 | 8.1, 8.2, 8.3, 8.4, 8.5 | ActorMaterializer(P0), ActorSystem(P0), Source/Flow/Sink(P0) | API |
+| ActorMaterializerGeneric | Core | Actor 実行基盤統合 | 7.1, 7.2, 7.4 | fraktor-actor core(P0) | Service |
+| StreamDriveActor | Core | 実行駆動の周期処理 | 7.1, 7.2, 7.5 | fraktor-actor core(P0) | State |
+| Examples | Std（examplesのみ） | 最小利用例の提供 | 8.1, 8.2, 8.3, 8.4, 8.5 | ActorMaterializerGeneric(P0), ActorSystemGeneric(P0), Source/Flow/Sink(P0) | API |
 
 ### Core
 
@@ -301,6 +300,12 @@ pub trait StageContext<In, Out> {
 - `on_pull` は上流の demand を増加させ、`DemandTracker` に反映される
 - `on_push` はバッファから要素を消費し、下流へ次の遷移を進める
 
+**駆動開始と再駆動ルール**
+- materialize 完了時に各ステージの `on_start` を 1 回呼び出す（順序は下流 -> 上流）
+- 組み込み Sink は `on_start` で `pull` を 1 回呼び、初期需要を発火させる
+- `DriveOutcome::Progressed` は pull/push/complete/error いずれかが発生したことを示す
+- no_std の手動駆動では `Progressed` の間 `drive` を続け、`Idle` で停止し外部トリガー（次 Tick など）で再開する
+
 **依存関係**
 - Inbound: Stream — drive 呼び出し（P0）
 - Outbound: GraphStage/GraphStageLogic — 実行（P0）
@@ -327,7 +332,7 @@ pub trait StageContext<In, Out> {
 - Source に Flow を合成した結果は Source として扱い、Sink に Flow を合成した結果は Sink として扱う
 - Source と Flow の共通コンビネータは同一のシグネチャで提供し、差分が生じない設計にする
 - 1ファイル1型で配置し、内部合成は trait で共通化する
-- 各 DSL 操作は traversal に StageKind を追加し、MatCombine を明示して合成する
+- 各 DSL 操作は traversal に StageKind を追加し、MatCombineRule で合成種別を決定して MatCombine を保存する
 
 **依存関係**
 - Inbound: 利用者コード — 構成定義（P0）
@@ -366,16 +371,24 @@ pub trait StreamStage {
 ```rust
 impl<Out, Mat> Source<Out, Mat> {
   fn via<T, Mat2>(self, flow: Flow<Out, T, Mat2>) -> Source<T, Mat>;
-  fn via_mat<T, Mat2, Mat3>(self, flow: Flow<Out, T, Mat2>, combine: MatCombine) -> Source<T, Mat3>;
+  fn via_mat<T, Mat2, C>(self, flow: Flow<Out, T, Mat2>, combine: C) -> Source<T, <C as MatCombineRule<Mat, Mat2>>::Out>
+  where
+    C: MatCombineRule<Mat, Mat2>;
   fn to<Mat2>(self, sink: Sink<Out, Mat2>) -> RunnableGraph<Mat>;
-  fn to_mat<Mat2, Mat3>(self, sink: Sink<Out, Mat2>, combine: MatCombine) -> RunnableGraph<Mat3>;
+  fn to_mat<Mat2, C>(self, sink: Sink<Out, Mat2>, combine: C) -> RunnableGraph<<C as MatCombineRule<Mat, Mat2>>::Out>
+  where
+    C: MatCombineRule<Mat, Mat2>;
 }
 
 impl<In, Out, Mat> Flow<In, Out, Mat> {
   fn via<T, Mat2>(self, flow: Flow<Out, T, Mat2>) -> Flow<In, T, Mat>;
-  fn via_mat<T, Mat2, Mat3>(self, flow: Flow<Out, T, Mat2>, combine: MatCombine) -> Flow<In, T, Mat3>;
+  fn via_mat<T, Mat2, C>(self, flow: Flow<Out, T, Mat2>, combine: C) -> Flow<In, T, <C as MatCombineRule<Mat, Mat2>>::Out>
+  where
+    C: MatCombineRule<Mat, Mat2>;
   fn to<Mat2>(self, sink: Sink<Out, Mat2>) -> Sink<In, Mat>;
-  fn to_mat<Mat2, Mat3>(self, sink: Sink<Out, Mat2>, combine: MatCombine) -> Sink<In, Mat3>;
+  fn to_mat<Mat2, C>(self, sink: Sink<Out, Mat2>, combine: C) -> Sink<In, <C as MatCombineRule<Mat, Mat2>>::Out>
+  where
+    C: MatCombineRule<Mat, Mat2>;
 }
 ```
 
@@ -400,9 +413,9 @@ impl<In, Out, Mat> Flow<In, Out, Mat> {
 - no_std で動作可能な最小 API を維持する
 - no_std では実行タスクを持たず、StreamHandle::drive（内部の Stream::drive）による手動進行を前提とする
 - fraktor-actor core の Scheduler/TickDriver/Extension を再利用し、重複実装を避ける
-- fraktor-actor core 依存は内部実装に閉じ、streams 公開 API に actor 型を露出しない
+- Materializer trait は actor 型を露出しない。ActorMaterializerGeneric は actor core 型を利用する
 - MatCombine に従って、DSL が構成した traversal のマテリアライズ値を確定する
-- no_std では actor/core の抽象（Extension など）に留め、Scheduler/TickDriver は std の ActorMaterializer が利用する
+- no_std でも ActorSystemGeneric<TB> を利用できる場合は Scheduler/TickDriver をそのまま使用する
 
 **依存関係**
 - Inbound: RunnableGraph — 実行対象（P0）
@@ -541,6 +554,12 @@ pub trait StreamHandle {
 - request(0) は無効として StreamError に変換する
 - 需要が上限に達した場合は Unbounded として扱う
 
+**バッファ構成**
+- `StreamBufferConfig { capacity, overflow_policy }` を定義し、Materializer が保持して Stream 生成時に配布する
+- 既定値は `capacity = 16`、`overflow_policy = OverflowPolicy::Block` とする
+- `OverflowPolicy::Grow` は明示指定時のみ使用し、既定では過剰バッファを抑止する
+- `OverflowPolicy::Block` での offer 失敗は `StreamError` に変換し、ストリーム失敗として扱う
+
 **依存関係**
 - Inbound: Stream — 需要調整（P0）
 - Outbound: StreamBuffer — バッファ制御（P0）
@@ -548,78 +567,86 @@ pub trait StreamHandle {
 
 **契約**: Service [ ] / API [ ] / Event [ ] / Batch [ ] / State [x]
 
-### Std
-
-#### ActorMaterializer
+#### ActorMaterializerGeneric
 
 | 項目 | 内容 |
 |------|------|
-| 目的 | ActorSystem 実行基盤でストリームを駆動する |
-| 対応要件 | 7.1, 7.2, 7.3, 7.4 |
+| 目的 | ActorSystemGeneric<TB> 実行基盤でストリームを駆動する |
+| 対応要件 | 7.1, 7.2, 7.4 |
 | オーナー/レビュー | - |
 
 **責務と制約**
-- ActorSystem 上で Materializer を自動駆動する
+- ActorSystemGeneric<TB> 上で Materializer を自動駆動する
 - remote/cluster の有効/無効に関わらず同一の起動契約を維持する
-- core へ std 依存を持ち込まない
-- streams 公開 API に fraktor-actor の型を露出しない
+- std 依存を持ち込まず、alloc で完結する
+- ActorMaterializerGeneric は core(no_std) で実装し、streams の std 実装は追加しない
+- DSL/Graph/Stage の公開 API には actor 型を露出しない（ActorMaterializerGeneric は actor core 型を利用する）
 
 **依存関係**
-- Inbound: 利用者コード — std 実行環境（P0）
+- Inbound: 利用者コード — ActorSystemGeneric<TB>（P0）
 - Outbound: Materializer — 実行制御（P0）
-- External: fraktor-actor ActorSystem — 実行基盤（P0）
+- External: fraktor-actor core — ActorSystemGeneric<TB>/SchedulerSharedGeneric<TB>/AnyMessageGeneric<TB>（P0）
 
 **契約**: Service [x] / API [ ] / Event [ ] / Batch [ ] / State [ ]
 
 ##### サービスインターフェイス（Rust）
 ```rust
-pub trait ActorMaterializer {
+pub trait ActorMaterializerGeneric<TB: RuntimeToolbox> {
   fn start(&mut self) -> Result<(), StreamError>;
+  fn materialize<Mat>(&mut self, graph: RunnableGraph<Mat>) -> Result<Materialized<Mat, TB>, StreamError>;
   fn shutdown(&mut self) -> Result<(), StreamError>;
 }
 ```
-- 前提条件: ActorSystem が有効
-- 事後条件: 実行タスクが起動/停止する
-- 不変条件: 依存方向は streams/core → actor/core のみで維持される
+- 前提条件: ActorSystemGeneric<TB> が有効
+- 事後条件: StreamDriveActor を起動し、駆動タスクが稼働する
+- 不変条件: 依存方向は streams/core → actor/core のみ
 
 #### StreamDriveActor
 
 | 項目 | 内容 |
 |------|------|
-| 目的 | ActorSystem 上でストリームの drive を周期実行する |
+| 目的 | ActorSystemGeneric<TB> 上でストリームの drive を周期実行する |
 | 対応要件 | 7.1, 7.2 |
 | オーナー/レビュー | - |
 
 **責務と制約**
-- 登録された StreamHandle を一定間隔で drive する
-- ActorSystem 上のスケジューリングに従って実行する
+- 登録された StreamHandleGeneric<TB> を一定間隔で drive する
+- ActorSystemGeneric<TB> のスケジューラで Tick を生成する
 - remote/cluster が有効でも実行契約は変えない
 - StreamHandle は内部で StreamShared を保持し、drive/cancel はロック内で Stream に委譲する
-- streams 公開 API に露出せず、std 内部の実装に閉じる
+- no_std で動作するコンテナ（hashbrown など）を用いる
+- StreamDriveActor は core(no_std) で実装し、streams の std 実装は追加しない
 
 **依存関係**
-- Inbound: ActorMaterializer — ハンドル登録（P0）
-- Outbound: StreamHandle — drive 呼び出し（P0）
-- External: fraktor-actor ActorSystem — スケジューラ/メッセージング（P0）
+- Inbound: ActorMaterializerGeneric — ハンドル登録（P0）
+- Outbound: StreamHandleGeneric<TB> — drive 呼び出し（P0）
+- External: fraktor-actor core — Actor/ActorContextGeneric<TB>/AnyMessageViewGeneric<TB>（P0）
 
 **契約**: Service [ ] / API [ ] / Event [ ] / Batch [ ] / State [x]
 
-**メッセージプロトコル（std 内部）**
+**メッセージプロトコル（core 内部）**
 - `Register { handle_id, handle }`: StreamHandle を登録し、監視対象に追加する
 - `Unregister { handle_id }`: 対象ハンドルを解除する
 - `Tick`: 登録済みハンドルを drive する
 - `Shutdown`: 全ハンドルを cancel して停止連鎖を開始し、終了条件を満たしたら停止する
 
 **駆動モデル**
-- Tick 生成は ActorSystem のスケジューラで行う（TickDriver は streams から直接利用しない）
-- 周期は ActorMaterializer の設定に保持する
+- Tick 生成は ActorSystemGeneric<TB> のスケジューラで行う
+- 周期は ActorMaterializerGeneric の設定に保持する
 - Tick 毎に StreamHandle::drive を呼び、`Completed`/`Failed`/`Cancelled` に到達したハンドルは自動解除する
-- failure/cancel の伝播は StreamHandle 側の状態遷移に委譲し、StreamDriveActor は drive と解除のみを担う
+- `DriveOutcome::Progressed` の場合でも同一 Tick で再実行せず、次 Tick で再開する
 
 **ライフサイクル**
-- ActorMaterializer::start で StreamDriveActor を起動し、Tick スケジュールを開始する
-- ActorMaterializer::shutdown で `Shutdown` を送信し、全ハンドルの cancel を起点に停止連鎖を走らせる
+- ActorMaterializerGeneric::start で StreamDriveActor を起動し、Tick スケジュールを開始する
+- ActorMaterializerGeneric::shutdown で `Shutdown` を送信し、全ハンドルの cancel を起点に停止連鎖を走らせる
 - すべてのハンドルが終端状態になったら StreamDriveActor を停止する
+
+### Std
+
+**方針**
+- streams の `std` モジュールは実装しない
+- std 環境でも core(no_std) 実装をそのまま利用する
+- std 由来のコードは examples のみで扱い、core に依存を逆流させない
 
 #### Examples
 
@@ -638,24 +665,45 @@ pub trait ActorMaterializer {
 **依存関係**
 - Inbound: 利用者コード — 参照/実行（P0）
 - Outbound: なし
-- External: fraktor-actor ActorSystem — 実行基盤（P0）
+- External: fraktor-actor core ActorSystemGeneric<TB> — 実行基盤（P0）
 
 **契約**: Service [ ] / API [x] / Event [ ] / Batch [ ] / State [ ]
 
 ## データモデル
 
 ### マテリアライズ値の型契約（Pekko 準拠）
-- Source/Flow/Sink/RunnableGraph は `Mat` 型パラメータを持ち、合成は `MatCombine` で決定する
+- Source/Flow/Sink/RunnableGraph は `Mat` 型パラメータを持ち、型合成は `MatCombineRule` で決定し traversal には `MatCombine` を保持する
 - `KeepLeft/KeepRight/KeepBoth/KeepNone` の意味は Pekko と同じで、`KeepNone` は `StreamNotUsed` を返す
 - `StreamNotUsed` はマテリアライズ値が無いことを示す単一値
 - `StreamDone` は完了状態を示す単一値
-- `StreamCompletion<T>` は完了結果を受け取るハンドル（core では不透明、std で actor 側 Future に橋渡し）
+- `StreamCompletion<T>` は完了結果を受け取るハンドル（core では不透明、std 側の Future 変換は fraktor-actor のアダプタに委譲）
 - GraphStage 相当のカスタムステージは自身の `Mat` を持ち、合成は MatCombine に従う
 - streams の公開 API に fraktor-actor の型は露出しない
 
+**型合成規則（compile-time）**
+- `KeepLeft` -> `Left`
+- `KeepRight` -> `Right`
+- `KeepBoth` -> `(Left, Right)`
+- `KeepNone` -> `StreamNotUsed`
+- 合成は左から右へ順に適用する
+
+**型レベルの合成規則**
+MatCombine は traversal に保存する合成種別（enum）とし、型合成は `MatCombineRule` で決定する。
+```rust
+pub trait MatCombineRule<Left, Right> {
+  type Out;
+  fn kind() -> MatCombine;
+}
+
+pub struct KeepLeft;
+pub struct KeepRight;
+pub struct KeepBoth;
+pub struct KeepNone;
+```
+
 ### StreamCompletion の最小 API
 - core では `StreamCompletion<T>` をポーリング可能な最小 API として扱う
-- std では `StreamCompletion<T>` を actor 側 Future へ変換するアダプタを提供する
+- std 環境での Future 変換は fraktor-actor 側にアダプタを置き、streams は core の最小 API のみを提供する
 - actor 型は公開 API に露出しない
 
 ```rust
@@ -679,6 +727,8 @@ pub trait StreamCompletion<T> {
 - StreamHandleId（登録識別子）
 - Demand（需要量）
 - StageKind（DSL 由来の最小ステージ表現）
+- StreamBufferConfig（バッファ構成）
+- MatCombineRule（型合成規則）
 
 ### 論理データモデル
 - StageId/PortId: 接続と型整合の識別子
@@ -698,14 +748,16 @@ pub trait StreamCompletion<T> {
   - SinkForeach
   - Custom
 - Demand: `Finite(u64)`（1..=u64::MAX）または `Unbounded`
-- MatCombine: `KeepLeft` / `KeepRight` / `KeepBoth` / `KeepNone`（合成は左から右に適用）
+- MatCombine: `KeepLeft` / `KeepRight` / `KeepBoth` / `KeepNone`（traversal に保持する合成種別）
+- MatCombineRule: `MatCombine` を型レベルで適用する規則（`Out` を決定）
 - Materialized: `StreamHandle` と合成済みマテリアライズ値の組
-- DriveOutcome: `Progressed` / `Idle`
+- DriveOutcome: `Progressed`（pull/push/complete/error いずれかが発生）/ `Idle`（進行なし）
 - StreamState: Idle/Running/Completed/Failed/Cancelled
 - StreamNotUsed: マテリアライズ値が存在しないことを示す単一値
 - StreamDone: 完了を示す単一値
 - StreamCompletion<T>: 完了結果を受け取るハンドル
 - Completion<T>: StreamCompletion のポーリング結果（Pending/Ready）
+- StreamBufferConfig: `capacity: usize`, `overflow_policy: OverflowPolicy`
 
 ### データ契約と連携
 - なし（外部シリアライズは対象外）
@@ -735,10 +787,10 @@ pub trait StreamCompletion<T> {
 - 統合テスト:
   - Source->Flow->Sink の最小構成が完了まで動く
   - エラー伝播が下流に到達する
-  - ActorMaterializer が start/stop を実行できる
+  - ActorMaterializerGeneric が start/stop を実行できる
 - no_std/std の差分検証:
   - core の no_std ビルド
-  - std 有効時の Materializer ビルド
+  - std 環境で core Materializer がビルドできることの確認
 
 ## オプション
 
