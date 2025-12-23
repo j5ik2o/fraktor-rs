@@ -14,7 +14,17 @@ autoexamples = false
 
 [features]
 default = []
-std = ["fraktor-utils-rs/std", "dep:tokio"]
+std = ["fraktor-utils-rs/std", "fraktor-actor-rs/std", "fraktor-actor-rs/test-support"]
 
 [dependencies]
 fraktor-utils-rs = { workspace = true, default-features = false, features = ["alloc"] }
+fraktor-actor-rs = { workspace = true }
+portable-atomic = { workspace = true, default-features = false, features = ["critical-section"] }
+
+[dev-dependencies]
+fraktor-actor-rs = { workspace = true, features = ["test-support"] }
+
+[[example]]
+name = "actor_system_basic"
+path = "examples/actor_system_basic.rs"
+required-features = ["std"]

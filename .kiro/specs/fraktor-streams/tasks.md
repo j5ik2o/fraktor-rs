@@ -51,9 +51,9 @@
   - ActorMaterializerGeneric 以外の実装を追加できる設計であることを明文化する
   - _Requirements: 3.4_
 
-- [x] 2.4 StreamCompletion の最小 API と std 変換を整備する
+- [x] 2.4 StreamCompletion の最小 API を整備し、std 変換は不要とする
   - core 側で `poll`/`try_take` を持つ StreamCompletion を定義する
-  - std 側で actor Future への変換アダプタを用意する
+  - std 側で actor Future への変換アダプタは実装しない（streams に std 実装を持たない方針）
   - 公開 API に actor 型が露出しないことを確認する
   - _Requirements: 2.2, 2.3, 5.1, 5.2, 5.3, 6.7_
 

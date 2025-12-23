@@ -54,9 +54,5 @@
 
 extern crate alloc;
 
-/// Core stream components available in no_std environments.
+/// Core stream primitives.
 pub mod core;
-/// Std-only integrations such as Tokio materializer.
-#[allow(cfg_std_forbid)]
-#[cfg(feature = "std")]
-pub mod std;

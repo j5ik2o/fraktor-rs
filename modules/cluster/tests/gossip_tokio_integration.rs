@@ -66,10 +66,11 @@ async fn gossip_delta_triggers_topology_update() {
 
   let coordinator = build_coordinator();
   let transport_b = TokioGossipTransport::bind(
-    TokioGossipTransportConfig::new(String::from("127.0.0.1:21110"), 1024, 8),
+    TokioGossipTransportConfig::new(String::from("127.0.0.1:0"), 1024, 8),
     tokio::runtime::Handle::current(),
   )
   .expect("transport bind");
+  let target_b = transport_b.local_addr().to_string();
   let mut gossiper = TokioGossiper::new(
     TokioGossiperConfig::new(Duration::from_millis(20), Duration::from_millis(20)),
     coordinator,
@@ -80,11 +81,12 @@ async fn gossip_delta_triggers_topology_update() {
   gossiper.start().expect("start");
 
   let mut transport_a = TokioGossipTransport::bind(
-    TokioGossipTransportConfig::new(String::from("127.0.0.1:21111"), 1024, 8),
+    TokioGossipTransportConfig::new(String::from("127.0.0.1:0"), 1024, 8),
     tokio::runtime::Handle::current(),
   )
   .expect("transport bind");
-  let outbound = GossipOutbound::new(String::from("127.0.0.1:21110"), join_delta("127.0.0.1:21111"));
+  let local_a = transport_a.local_addr().to_string();
+  let outbound = GossipOutbound::new(target_b, join_delta(&local_a));
   transport_a.send(outbound).expect("send");
 
   tokio::time::sleep(Duration::from_millis(120)).await;
