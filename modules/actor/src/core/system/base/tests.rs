@@ -20,9 +20,9 @@ use crate::core::{
     actor_path::{ActorPath, ActorPathParts, ActorPathScheme},
     actor_ref::ActorRefGeneric,
   },
-  dispatcher::{DispatchError, DispatchExecutor, DispatchSharedGeneric, DispatcherConfig},
+  dispatch::dispatcher::{DispatchError, DispatchExecutor, DispatchSharedGeneric, DispatcherConfig},
   error::ActorError,
-  event_stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
+  event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   lifecycle::LifecycleStage,
   messaging::SystemMessage,
   props::{MailboxConfig, MailboxRequirement, Props},
@@ -280,7 +280,7 @@ fn actor_system_deadletters() {
 fn actor_system_emit_log() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  system.emit_log(crate::core::logging::LogLevel::Info, "test message", Some(pid));
+  system.emit_log(crate::core::event::logging::LogLevel::Info, "test message", Some(pid));
 }
 
 #[test]

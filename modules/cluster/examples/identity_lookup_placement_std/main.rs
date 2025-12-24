@@ -15,7 +15,7 @@ compile_error!("identity_lookup_placement_std は --features std が必要です
 
 use std::{collections::HashMap, future::Future, pin::Pin};
 
-use fraktor_actor_rs::core::event_stream::{
+use fraktor_actor_rs::core::event::stream::{
   EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriber, subscriber_handle,
 };
 use fraktor_cluster_rs::{
@@ -216,7 +216,7 @@ async fn main() {
 fn subscribe_placement_events(
   event_stream: &EventStreamSharedGeneric<StdToolbox>,
   label: &'static str,
-) -> fraktor_actor_rs::core::event_stream::EventStreamSubscriptionGeneric<StdToolbox> {
+) -> fraktor_actor_rs::core::event::stream::EventStreamSubscriptionGeneric<StdToolbox> {
   let subscriber = subscriber_handle(PlacementEventLogger::new(label));
   event_stream.subscribe(&subscriber)
 }

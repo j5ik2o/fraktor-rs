@@ -5,7 +5,7 @@ mod tests;
 
 use core::time::Duration;
 
-use fraktor_actor_rs::core::event_stream::EventStreamSharedGeneric;
+use fraktor_actor_rs::core::event::stream::EventStreamSharedGeneric;
 use fraktor_utils_rs::{core::time::TimerInstant, std::runtime_toolbox::StdToolbox};
 use tokio::sync::oneshot;
 

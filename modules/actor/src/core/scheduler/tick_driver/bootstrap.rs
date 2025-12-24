@@ -19,9 +19,9 @@ use super::{
   next_tick_driver_id,
 };
 #[cfg(any(test, feature = "test-support"))]
-use crate::core::logging::{LogEvent, LogLevel};
+use crate::core::event::logging::{LogEvent, LogLevel};
 use crate::core::{
-  event_stream::{EventStreamEvent, TickDriverSnapshot},
+  event::stream::{EventStreamEvent, TickDriverSnapshot},
   scheduler::TickDriverProvisioningContext,
 };
 

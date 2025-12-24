@@ -3,7 +3,7 @@
 use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use crate::core::{
-  event_stream::EventStreamSharedGeneric,
+  event::stream::EventStreamSharedGeneric,
   scheduler::{SchedulerBackedDelayProvider, SchedulerContext, SchedulerSharedGeneric},
 };
 

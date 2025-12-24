@@ -1,7 +1,7 @@
 //! Deserialized envelope waiting for delivery to the actor system.
 
 use fraktor_actor_rs::core::{
-  actor_prim::actor_path::ActorPath, event_stream::CorrelationId, messaging::AnyMessageGeneric,
+  actor_prim::actor_path::ActorPath, event::stream::CorrelationId, messaging::AnyMessageGeneric,
 };
 use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 

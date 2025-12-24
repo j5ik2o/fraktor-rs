@@ -26,12 +26,14 @@ use crate::core::{
   },
   dead_letter::{DeadLetterEntryGeneric, DeadLetterReason},
   error::SendError,
-  event_stream::{
-    EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriberShared, EventStreamSubscriptionGeneric,
-    TickDriverSnapshot,
+  event::{
+    logging::LogLevel,
+    stream::{
+      EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriberShared, EventStreamSubscriptionGeneric,
+      TickDriverSnapshot,
+    },
   },
   futures::ActorFutureSharedGeneric,
-  logging::LogLevel,
   messaging::{AnyMessageGeneric, SystemMessage},
   props::PropsGeneric,
   scheduler::{SchedulerBackedDelayProvider, TickDriverConfig},

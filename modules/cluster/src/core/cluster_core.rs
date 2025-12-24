@@ -10,7 +10,7 @@ use alloc::{
 };
 
 use fraktor_actor_rs::core::{
-  event_stream::{EventStreamEvent, EventStreamSharedGeneric},
+  event::stream::{EventStreamEvent, EventStreamSharedGeneric},
   messaging::AnyMessageGeneric,
 };
 use fraktor_remote_rs::core::BlockListProvider;

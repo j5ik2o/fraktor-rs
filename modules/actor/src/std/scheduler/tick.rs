@@ -15,7 +15,7 @@ use tokio::runtime::Handle;
 
 use crate::{
   core::{
-    event_stream::EventStreamSharedGeneric,
+    event::stream::EventStreamSharedGeneric,
     scheduler::{TickDriverConfig as CoreTickDriverConfig, TickDriverFactoryRef},
   },
   std::scheduler::tick::tokio_impl::TokioIntervalDriverFactory,
@@ -205,7 +205,7 @@ impl TickDriverConfig {
           elapsed_ticks = elapsed_ticks.saturating_add(ticks_per_interval);
           let now = TimerInstant::from_ticks(elapsed_ticks, resolution);
           let metrics = probe.snapshot(now);
-          use crate::core::event_stream::EventStreamEvent;
+          use crate::core::event::stream::EventStreamEvent;
           metrics_event_stream.publish(&EventStreamEvent::SchedulerTick(metrics));
         }
       });

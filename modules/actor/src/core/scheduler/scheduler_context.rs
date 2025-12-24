@@ -5,7 +5,7 @@ use fraktor_utils_rs::core::{
 };
 
 use super::{Scheduler, SchedulerBackedDelayProvider, SchedulerConfig, SchedulerSharedGeneric, TaskRunSummary};
-use crate::core::event_stream::EventStreamSharedGeneric;
+use crate::core::event::stream::EventStreamSharedGeneric;
 
 /// Owns the shared scheduler instance and exposes auxiliary services.
 pub struct SchedulerContext<TB: RuntimeToolbox + 'static> {

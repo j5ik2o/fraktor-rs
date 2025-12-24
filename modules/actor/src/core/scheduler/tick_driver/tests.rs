@@ -10,8 +10,10 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::core::{
-  event_stream::{EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriber, subscriber_handle},
-  logging::LogLevel,
+  event::{
+    logging::LogLevel,
+    stream::{EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriber, subscriber_handle},
+  },
   scheduler::{
     ExecutionBatch, HardwareKind, ManualTestDriver, SchedulerCommand, SchedulerConfig, SchedulerContext,
     SchedulerRunnable, SchedulerTickExecutor, TICK_DRIVER_MATRIX, TickDriverBootstrap, TickDriverConfig,

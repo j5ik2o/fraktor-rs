@@ -2,7 +2,7 @@
 
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
-use crate::core::dispatcher::DispatcherSenderGeneric;
+use crate::core::dispatch::dispatcher::DispatcherSenderGeneric;
 
 /// Shared dispatcher sender reference resolved from actor contexts or system defaults.
 #[derive(Clone)]

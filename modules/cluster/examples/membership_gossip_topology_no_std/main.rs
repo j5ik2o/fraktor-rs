@@ -17,7 +17,7 @@ compile_error!("membership_gossip_topology_no_std には --features test-support
 use core::time::Duration;
 
 use fraktor_actor_rs::core::{
-  event_stream::{EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriber, subscriber_handle},
+  event::stream::{EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriber, subscriber_handle},
   messaging::AnyMessageGeneric,
 };
 use fraktor_cluster_rs::core::{

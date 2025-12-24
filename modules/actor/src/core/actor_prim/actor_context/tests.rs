@@ -10,8 +10,8 @@ use super::{ActorContext, ActorContextGeneric};
 use crate::core::{
   actor_prim::{Actor, ActorCell, Pid},
   error::ActorError,
+  event::logging::LogLevel,
   futures::{ActorFutureListener, ActorFutureSharedGeneric},
-  logging::LogLevel,
   messaging::{AnyMessage, AnyMessageViewGeneric},
   props::Props,
   system::ActorSystem,

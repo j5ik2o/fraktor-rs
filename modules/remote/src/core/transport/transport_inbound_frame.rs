@@ -2,7 +2,7 @@
 
 use alloc::{string::String, vec::Vec};
 
-use fraktor_actor_rs::core::event_stream::CorrelationId;
+use fraktor_actor_rs::core::event::stream::CorrelationId;
 
 /// Metadata describing a frame received from a remote peer.
 pub struct InboundFrame {

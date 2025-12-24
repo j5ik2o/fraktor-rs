@@ -4,7 +4,7 @@ use alloc::string::{String, ToString};
 
 use fraktor_actor_rs::core::{
   actor_prim::actor_path::ActorPath,
-  event_stream::{EventStreamEvent, RemoteAuthorityEvent},
+  event::stream::{EventStreamEvent, RemoteAuthorityEvent},
   system::{AuthorityState, RemoteAuthorityError, SystemStateSharedGeneric},
 };
 use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;

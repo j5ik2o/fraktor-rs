@@ -3,7 +3,7 @@
 use core::time::Duration;
 
 use fraktor_actor_rs::core::{
-  event_stream::{
+  event::stream::{
     EventStreamEvent, EventStreamShared, EventStreamSharedGeneric, EventStreamSubscriber,
     EventStreamSubscriptionGeneric, subscriber_handle,
   },

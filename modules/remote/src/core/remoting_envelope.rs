@@ -5,7 +5,7 @@ use core::convert::TryInto;
 
 use fraktor_actor_rs::core::{
   actor_prim::actor_path::{ActorPath, ActorPathParser},
-  event_stream::CorrelationId,
+  event::stream::CorrelationId,
   serialization::SerializedMessage,
 };
 

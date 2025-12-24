@@ -4,19 +4,21 @@ use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
 use crate::{
   core::{
-    actor_prim::Pid, event_stream::subscriber_handle as core_subscriber_handle, logging::LogLevel, spawn::SpawnError,
+    actor_prim::Pid,
+    event::{logging::LogLevel, stream::subscriber_handle as core_subscriber_handle},
+    spawn::SpawnError,
     typed::TypedActorSystemGeneric as CoreTypedActorSystemGeneric,
   },
   std::{
     dead_letter::DeadLetterEntry,
     error::SendError,
-    event_stream::{EventStream, EventStreamEvent, EventStreamSubscriberAdapter, EventStreamSubscription},
+    event::stream::{EventStream, EventStreamEvent, EventStreamSubscriberAdapter, EventStreamSubscription},
     futures::ActorFutureShared,
     typed::{TypedProps, actor_prim::TypedActorRef},
   },
 };
 
-type StdSubscriberHandle = crate::std::event_stream::EventStreamSubscriberShared;
+type StdSubscriberHandle = crate::std::event::stream::EventStreamSubscriberShared;
 
 /// Typed actor system specialized for `StdToolbox`.
 ///

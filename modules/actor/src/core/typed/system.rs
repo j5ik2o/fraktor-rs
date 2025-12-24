@@ -8,11 +8,11 @@ use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 use crate::core::{
   dead_letter::DeadLetterEntryGeneric,
   error::SendError,
-  event_stream::{
-    EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriberShared, EventStreamSubscriptionGeneric,
+  event::{
+    logging::LogLevel,
+    stream::{EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriberShared, EventStreamSubscriptionGeneric},
   },
   futures::ActorFutureSharedGeneric,
-  logging::LogLevel,
   messaging::AnyMessageGeneric,
   spawn::SpawnError,
   system::{ActorSystemConfigGeneric, ActorSystemGeneric, SystemStateSharedGeneric},

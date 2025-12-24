@@ -40,12 +40,16 @@ use crate::core::{
     actor_ref::ActorRefGeneric,
   },
   dead_letter::{DeadLetterEntryGeneric, DeadLetterSharedGeneric},
-  dispatcher::{DispatcherConfigGeneric, DispatcherRegistryError, DispatchersGeneric},
+  dispatch::{
+    dispatcher::{DispatcherConfigGeneric, DispatcherRegistryError, DispatchersGeneric},
+    mailbox::{MailboxRegistryError, MailboxesGeneric},
+  },
   error::{ActorError, SendError},
-  event_stream::{EventStreamEvent, EventStreamSharedGeneric, RemoteAuthorityEvent, TickDriverSnapshot},
+  event::{
+    logging::{LogEvent, LogLevel},
+    stream::{EventStreamEvent, EventStreamSharedGeneric, RemoteAuthorityEvent, TickDriverSnapshot},
+  },
   futures::ActorFutureSharedGeneric,
-  logging::{LogEvent, LogLevel},
-  mailbox::{MailboxRegistryError, MailboxesGeneric},
   messaging::{AnyMessageGeneric, FailurePayload, SystemMessage},
   props::MailboxConfig,
   scheduler::{

@@ -10,7 +10,10 @@ use alloc::{
 };
 use core::time::Duration;
 
-use fraktor_actor_rs::core::{event_stream::CorrelationId, logging::LogLevel, system::ActorSystemWeakGeneric};
+use fraktor_actor_rs::core::{
+  event::{logging::LogLevel, stream::CorrelationId},
+  system::ActorSystemWeakGeneric,
+};
 use fraktor_utils_rs::core::{
   runtime_toolbox::RuntimeToolbox,
   sync::{ArcShared, SharedAccess},

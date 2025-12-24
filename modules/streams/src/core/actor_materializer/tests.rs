@@ -47,7 +47,7 @@ fn materialize_requires_start() {
   let system = build_system();
   let mut materializer = ActorMaterializerGeneric::new(system, ActorMaterializerConfig::default());
   let graph = Source::single(1_u32).to_mat(Sink::head(), KeepRight);
-  let result = materializer.materialize(graph);
+  let result = graph.run(&mut materializer);
   assert!(matches!(result, Err(StreamError::MaterializerNotStarted)));
 }
 
@@ -62,7 +62,7 @@ fn actor_materializer_drives_stream() {
   materializer.start().expect("start");
   let graph =
     Source::single(1_u32).map(|value| value + 1).to_mat(Sink::fold(0_u32, |acc, value| acc + value), KeepRight);
-  let materialized = materializer.materialize(graph).expect("materialize");
+  let materialized = graph.run(&mut materializer).expect("materialize");
   for _ in 0..5 {
     controller.inject_and_drive(1);
   }
@@ -77,7 +77,7 @@ fn shutdown_blocks_materialize() {
   materializer.start().expect("start");
   materializer.shutdown().expect("shutdown");
   let graph = Source::single(1_u32).to_mat(Sink::head(), KeepRight);
-  let result = materializer.materialize(graph);
+  let result = graph.run(&mut materializer);
   assert!(matches!(result, Err(StreamError::MaterializerStopped)));
 }
 

@@ -8,9 +8,11 @@ use core::hint::spin_loop;
 use fraktor_actor_rs::core::{
   actor_prim::{Actor, ActorContextGeneric},
   error::ActorError,
-  event_stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
+  event::{
+    logging::LogLevel,
+    stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
+  },
   lifecycle::LifecycleStage,
-  logging::LogLevel,
   messaging::{AnyMessage, AnyMessageViewGeneric},
   props::Props,
   system::ActorSystem,

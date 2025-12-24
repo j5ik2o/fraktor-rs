@@ -4,8 +4,8 @@ use std::{thread, time::Duration, vec::Vec};
 
 use fraktor_actor_rs::core::{
   actor_prim::{Actor, ActorContextGeneric, ChildRef},
+  dispatch::mailbox::{Mailbox, MailboxOverflowStrategy, MailboxPolicy},
   error::{ActorError, SendError},
-  mailbox::{Mailbox, MailboxOverflowStrategy, MailboxPolicy},
   messaging::{AnyMessage, AnyMessageViewGeneric},
   props::Props,
   spawn::SpawnError,

@@ -14,7 +14,7 @@ use fraktor_utils_rs::{
 
 use crate::{
   core::{
-    event_stream::{EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriber, subscriber_handle},
+    event::stream::{EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriber, subscriber_handle},
     scheduler::{
       AutoProfileKind, SchedulerConfig, SchedulerContext, TickDriverBootstrap, TickDriverKind,
       TickDriverProvisioningContext,

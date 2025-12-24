@@ -14,9 +14,11 @@ use super::{
 };
 use crate::core::{
   actor_prim::{ChildRefGeneric, actor_ref::ActorRefGeneric},
-  dispatcher::{DispatcherConfigGeneric, DispatcherRegistryError},
+  dispatch::{
+    dispatcher::{DispatcherConfigGeneric, DispatcherRegistryError},
+    mailbox::MailboxRegistryError,
+  },
   extension::{Extension, ExtensionId},
-  mailbox::MailboxRegistryError,
   props::{MailboxConfig, PropsGeneric},
   spawn::SpawnError,
 };

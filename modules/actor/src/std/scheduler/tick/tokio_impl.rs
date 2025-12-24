@@ -14,7 +14,7 @@ use tokio::{
 };
 
 use crate::core::{
-  event_stream::{EventStreamEvent, EventStreamSharedGeneric},
+  event::stream::{EventStreamEvent, EventStreamSharedGeneric},
   scheduler::{
     SchedulerTickMetricsProbe, TickDriver, TickDriverControl, TickDriverError, TickDriverFactory,
     TickDriverHandleGeneric, TickDriverId, TickDriverKind, TickFeedHandle, next_tick_driver_id,

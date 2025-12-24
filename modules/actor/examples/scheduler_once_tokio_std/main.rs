@@ -4,7 +4,7 @@ use fraktor_actor_rs::{
   core::{error::ActorError, scheduler::SchedulerCommand},
   std::{
     actor_prim::{Actor, ActorContext},
-    dispatcher::dispatch_executor::TokioExecutor,
+    dispatch::dispatcher::dispatch_executor::TokioExecutor,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
     scheduler::tick::TickDriverConfig,

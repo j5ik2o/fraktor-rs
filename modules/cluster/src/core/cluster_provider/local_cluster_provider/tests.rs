@@ -1,6 +1,6 @@
 use alloc::{string::String, vec, vec::Vec};
 
-use fraktor_actor_rs::core::event_stream::{
+use fraktor_actor_rs::core::event::stream::{
   EventStreamEvent, EventStreamGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric, subscriber_handle,
 };
 use fraktor_remote_rs::core::BlockListProvider;

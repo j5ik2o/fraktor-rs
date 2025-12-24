@@ -12,7 +12,7 @@ use std::{
 use fraktor_actor_rs::core::{
   actor_prim::{Actor, ActorContextGeneric, ChildRef},
   error::{ActorError, ActorErrorReason},
-  event_stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
+  event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   lifecycle::LifecycleStage,
   messaging::{AnyMessage, AnyMessageViewGeneric},
   props::Props,

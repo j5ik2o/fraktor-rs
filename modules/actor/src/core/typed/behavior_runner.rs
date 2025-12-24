@@ -6,7 +6,7 @@ use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 
 use crate::core::{
   error::{ActorError, ActorErrorReason},
-  event_stream::EventStreamEvent,
+  event::stream::EventStreamEvent,
   supervision::SupervisorStrategy,
   typed::{
     UnhandledMessageEvent,

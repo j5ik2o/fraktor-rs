@@ -18,10 +18,12 @@ use crate::core::{
     },
     actor_ref::ActorRefGeneric,
   },
-  dispatcher::{DispatchError, DispatchExecutor, DispatchSharedGeneric, DispatcherConfig},
+  dispatch::{
+    dispatcher::{DispatchError, DispatchExecutor, DispatchSharedGeneric, DispatcherConfig},
+    mailbox::MailboxMessage,
+  },
   error::ActorError,
-  event_stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
-  mailbox::MailboxMessage,
+  event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   messaging::{AnyMessage, AnyMessageViewGeneric, FailurePayload, SystemMessage},
   props::Props,
   scheduler::{
@@ -389,9 +391,9 @@ fn system_state_publish_event() {
   use alloc::string::String;
   use core::time::Duration;
 
-  use crate::core::{
-    event_stream::EventStreamEvent,
+  use crate::core::event::{
     logging::{LogEvent, LogLevel},
+    stream::EventStreamEvent,
   };
 
   let state = build_state();
@@ -408,8 +410,8 @@ fn system_state_emit_log() {
   let state = build_state();
   let pid = state.allocate_pid();
 
-  state.emit_log(crate::core::logging::LogLevel::Info, String::from("test message"), Some(pid));
-  state.emit_log(crate::core::logging::LogLevel::Error, String::from("error message"), None);
+  state.emit_log(crate::core::event::logging::LogLevel::Info, String::from("test message"), Some(pid));
+  state.emit_log(crate::core::event::logging::LogLevel::Error, String::from("error message"), None);
 }
 
 #[test]

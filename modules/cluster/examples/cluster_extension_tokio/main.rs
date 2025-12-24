@@ -80,8 +80,8 @@ use fraktor_actor_rs::{
   },
   std::{
     actor_prim::{Actor, ActorContext, ActorRef},
-    dispatcher::{DispatcherConfig, dispatch_executor::TokioExecutor},
-    event_stream::{EventStreamEvent, EventStreamSubscriber, EventStreamSubscription, subscriber_handle},
+    dispatch::dispatcher::{DispatcherConfig, dispatch_executor::TokioExecutor},
+    event::stream::{EventStreamEvent, EventStreamSubscriber, EventStreamSubscription, subscriber_handle},
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
     scheduler::tick::TickDriverConfig,

@@ -64,7 +64,7 @@ compile_error!("cluster_extension_no_std example requires --features test-suppor
 
 use fraktor_actor_rs::core::{
   actor_prim::{Actor, ActorContextGeneric},
-  event_stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
+  event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   extension::ExtensionInstallers,
   messaging::{AnyMessage, AnyMessageViewGeneric},
   props::Props,

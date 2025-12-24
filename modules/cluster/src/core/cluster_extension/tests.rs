@@ -2,7 +2,7 @@ use alloc::{boxed::Box, string::String, vec, vec::Vec};
 use core::time::Duration;
 
 use fraktor_actor_rs::core::{
-  event_stream::{
+  event::stream::{
     EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric,
     subscriber_handle,
   },

@@ -7,9 +7,9 @@ use core::{hint::spin_loop, num::NonZeroUsize};
 
 use fraktor_actor_rs::core::{
   actor_prim::{Actor, ActorContextGeneric, ChildRef},
+  dispatch::mailbox::{MailboxOverflowStrategy, MailboxPolicy},
   error::ActorError,
-  event_stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
-  mailbox::{MailboxOverflowStrategy, MailboxPolicy},
+  event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   messaging::{AnyMessage, AnyMessageViewGeneric},
   props::{MailboxConfig, Props},
   system::ActorSystem,

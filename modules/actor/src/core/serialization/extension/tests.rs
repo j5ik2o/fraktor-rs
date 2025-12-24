@@ -22,7 +22,7 @@ use crate::core::{
     actor_ref::{ActorRefGeneric, NullSender},
   },
   dead_letter::DeadLetterReason,
-  event_stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
+  event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   messaging::AnyMessageViewGeneric,
   props::Props,
   scheduler::{ManualTestDriver, TickDriverConfig},

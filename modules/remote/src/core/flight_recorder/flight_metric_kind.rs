@@ -1,6 +1,6 @@
 //! Kind of metric recorded by the flight recorder.
 
-use fraktor_actor_rs::core::event_stream::BackpressureSignal;
+use fraktor_actor_rs::core::event::stream::BackpressureSignal;
 
 /// Kind of metric recorded by the flight recorder.
 #[derive(Clone, Debug, PartialEq)]

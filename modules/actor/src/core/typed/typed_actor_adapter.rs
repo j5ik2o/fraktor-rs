@@ -8,7 +8,7 @@ use crate::core::{
   actor_prim::{Actor, ActorContextGeneric, actor_ref::ActorRefGeneric},
   dead_letter::DeadLetterReason,
   error::{ActorError, ActorErrorReason},
-  logging::LogLevel,
+  event::logging::LogLevel,
   messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
   supervision::SupervisorStrategy,
   typed::{

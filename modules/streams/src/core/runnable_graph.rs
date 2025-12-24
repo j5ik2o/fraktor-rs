@@ -1,4 +1,7 @@
-use super::StreamPlan;
+use super::{Materialized, Materializer, StreamError, StreamPlan};
+
+#[cfg(test)]
+mod tests;
 
 /// Graph ready for materialization.
 pub struct RunnableGraph<Mat> {
@@ -9,6 +12,17 @@ pub struct RunnableGraph<Mat> {
 impl<Mat> RunnableGraph<Mat> {
   pub(super) const fn new(plan: StreamPlan, materialized: Mat) -> Self {
     Self { plan, materialized }
+  }
+
+  /// Materializes the graph with the provided materializer.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamError`] when materialization fails.
+  pub fn run<M>(self, materializer: &mut M) -> Result<Materialized<Mat, M::Toolbox>, StreamError>
+  where
+    M: Materializer, {
+    materializer.materialize(self)
   }
 
   /// Returns the materialized value.

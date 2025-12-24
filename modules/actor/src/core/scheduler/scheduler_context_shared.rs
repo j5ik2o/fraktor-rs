@@ -15,9 +15,9 @@ use super::{
   SchedulerBackedDelayProvider, SchedulerConfig, SchedulerContext, SchedulerSharedGeneric, TaskRunSummary,
   tick_driver::{AutoDriverMetadata, TickDriverKind, TickDriverMetadata},
 };
-use crate::core::event_stream::{EventStreamEvent, EventStreamGeneric, TickDriverSnapshot};
+use crate::core::event::stream::{EventStreamEvent, EventStreamGeneric, TickDriverSnapshot};
 #[cfg(any(test, feature = "test-support"))]
-use crate::core::logging::{LogEvent, LogLevel};
+use crate::core::event::logging::{LogEvent, LogLevel};
 
 pub(crate) struct SchedulerContextHandle<TB: RuntimeToolbox + 'static> {
   scheduler:       SchedulerSharedGeneric<TB>,

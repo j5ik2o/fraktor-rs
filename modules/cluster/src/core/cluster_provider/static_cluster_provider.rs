@@ -7,7 +7,7 @@
 use alloc::string::String;
 use core::time::Duration;
 
-use fraktor_actor_rs::core::event_stream::EventStreamSharedGeneric;
+use fraktor_actor_rs::core::event::stream::EventStreamSharedGeneric;
 use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared, time::TimerInstant};
 
@@ -55,7 +55,7 @@ impl<TB: RuntimeToolbox + 'static> StaticClusterProvider<TB> {
 
   /// Publishes the static topology to EventStream.
   fn publish_topology(&self) {
-    use fraktor_actor_rs::core::{event_stream::EventStreamEvent, messaging::AnyMessageGeneric};
+    use fraktor_actor_rs::core::{event::stream::EventStreamEvent, messaging::AnyMessageGeneric};
 
     use crate::core::ClusterEvent;
 

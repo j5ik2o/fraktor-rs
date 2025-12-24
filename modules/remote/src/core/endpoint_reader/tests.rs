@@ -134,7 +134,7 @@ fn deserialization_failure_produces_dead_letter_error() {
     remote_node(),
     None,
     serialized,
-    fraktor_actor_rs::core::event_stream::CorrelationId::from_u128(1),
+    fraktor_actor_rs::core::event::stream::CorrelationId::from_u128(1),
     crate::core::OutboundPriority::User,
   );
 
@@ -168,7 +168,7 @@ fn deliver_routes_message_to_local_actor() {
     remote_node(),
     AnyMessageGeneric::new("delivered".to_string()),
     None,
-    fraktor_actor_rs::core::event_stream::CorrelationId::from_u128(1),
+    fraktor_actor_rs::core::event::stream::CorrelationId::from_u128(1),
     crate::core::OutboundPriority::User,
   );
 

@@ -7,7 +7,7 @@ use alloc::{collections::BTreeSet, format, string::String, vec, vec::Vec};
 use core::time::Duration;
 
 use fraktor_actor_rs::core::{
-  event_stream::EventStreamSharedGeneric,
+  event::stream::EventStreamSharedGeneric,
   messaging::AnyMessageGeneric,
   serialization::{SerializationError, SerializationRegistryGeneric},
 };
@@ -89,7 +89,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterPubSubImpl<TB> {
 
   fn publish_pubsub_event(&self, event: PubSubEvent) {
     let payload = AnyMessageGeneric::new(event);
-    let stream_event = fraktor_actor_rs::core::event_stream::EventStreamEvent::Extension {
+    let stream_event = fraktor_actor_rs::core::event::stream::EventStreamEvent::Extension {
       name: String::from("cluster-pubsub"),
       payload,
     };
@@ -99,7 +99,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterPubSubImpl<TB> {
   fn publish_cluster_event(&self, event: ClusterEvent) {
     let payload = AnyMessageGeneric::new(event);
     let stream_event =
-      fraktor_actor_rs::core::event_stream::EventStreamEvent::Extension { name: String::from("cluster"), payload };
+      fraktor_actor_rs::core::event::stream::EventStreamEvent::Extension { name: String::from("cluster"), payload };
     self.event_stream.publish(&stream_event);
   }
 

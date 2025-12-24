@@ -3,17 +3,19 @@ use std::{thread, time::Duration};
 
 use fraktor_actor_rs::{
   core::{
+    dispatch::mailbox::{MailboxOverflowStrategy, MailboxPolicy},
     error::ActorError,
-    logging::{LogEvent, LogLevel, LoggerWriter},
-    mailbox::{MailboxOverflowStrategy, MailboxPolicy},
+    event::logging::{LogEvent, LogLevel, LoggerWriter},
     props::MailboxConfig,
   },
   std::{
     actor_prim::{Actor, ActorContext},
-    dispatcher::dispatch_executor::TokioExecutor,
-    event_stream::{EventStreamEvent, EventStreamSubscriber, EventStreamSubscriberShared, subscriber_handle},
+    dispatch::dispatcher::dispatch_executor::TokioExecutor,
+    event::{
+      logging::StdLoggerSubscriber,
+      stream::{EventStreamEvent, EventStreamSubscriber, EventStreamSubscriberShared, subscriber_handle},
+    },
     futures::ActorFutureListener,
-    logging::StdLoggerSubscriber,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
     system::{ActorSystem, DispatcherConfig},
@@ -42,7 +44,7 @@ impl StdLoggerAdapter {
 
 impl EventStreamSubscriber for StdLoggerAdapter {
   fn on_event(&mut self, event: &EventStreamEvent) {
-    fraktor_actor_rs::core::event_stream::EventStreamSubscriber::on_event(&mut self.0, event);
+    fraktor_actor_rs::core::event::stream::EventStreamSubscriber::on_event(&mut self.0, event);
   }
 }
 

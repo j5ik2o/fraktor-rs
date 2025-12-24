@@ -4,7 +4,7 @@ use fraktor_actor_rs::{
   core::error::ActorError,
   std::{
     actor_prim::{Actor, ActorContext, ActorRef},
-    dispatcher::dispatch_executor::TokioExecutor,
+    dispatch::dispatcher::dispatch_executor::TokioExecutor,
     futures::ActorFutureListener,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
