@@ -2,14 +2,18 @@ use alloc::{boxed::Box, vec, vec::Vec};
 use core::{any::TypeId, marker::PhantomData};
 
 use super::{
-  DynValue, FlowDefinition, Inlet, MatCombine, MatCombineRule, Outlet, RunnableGraph, SourceDefinition, SourceLogic,
-  StageDefinition, StageKind, StreamError, StreamGraph, StreamNotUsed, StreamShape, StreamStage, downcast_value,
+  DynValue, FlowDefinition, Inlet, MatCombine, MatCombineRule, Materialized, Materializer, Outlet, RunnableGraph,
+  SourceDefinition, SourceLogic, StageDefinition, StageKind, StreamError, StreamGraph, StreamNotUsed, StreamShape,
+  StreamStage, downcast_value,
   flow::{flat_map_concat_definition, map_definition},
   graph_stage::GraphStage,
   graph_stage_logic::GraphStageLogic,
   sink::Sink,
   stage_context::StageContext,
 };
+
+#[cfg(test)]
+mod tests;
 
 /// Source stage definition.
 pub struct Source<Out, Mat> {
@@ -89,6 +93,21 @@ where
       | Err(error) => panic!("invalid stream graph: {error}"),
     };
     RunnableGraph::new(plan, mat)
+  }
+
+  /// Runs this source with the provided sink and materializer.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamError`] when materialization fails.
+  pub fn run_with<Mat2, M>(
+    self,
+    sink: Sink<Out, Mat2>,
+    materializer: &mut M,
+  ) -> Result<Materialized<Mat2, M::Toolbox>, StreamError>
+  where
+    M: Materializer, {
+    self.to_mat(sink, super::keep_right::KeepRight).run(materializer)
   }
 
   /// Adds a map stage to this source.

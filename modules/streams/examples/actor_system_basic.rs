@@ -40,7 +40,7 @@ fn main() {
   materializer.start().expect("materializer start");
 
   let graph = Source::single(1_u32).map(|value| value + 1).to_mat(Sink::head(), KeepRight);
-  let materialized = materializer.materialize(graph).expect("materialize");
+  let materialized = graph.run(&mut materializer).expect("run");
   let controller = driver.controller();
 
   let mut completion = None;
