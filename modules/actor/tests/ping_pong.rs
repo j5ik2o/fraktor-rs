@@ -127,8 +127,8 @@ fn spawn_and_tell_delivers_message() {
     let child_slot = child_slot.clone();
     move || RecordingGuardian::new(log.clone(), child_slot.clone())
   });
-  let tick_driver = fraktor_actor_rs::core::dispatch::scheduler::TickDriverConfig::manual(
-    fraktor_actor_rs::core::dispatch::scheduler::ManualTestDriver::new(),
+  let tick_driver = fraktor_actor_rs::core::scheduler::TickDriverConfig::manual(
+    fraktor_actor_rs::core::scheduler::ManualTestDriver::new(),
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 
@@ -166,8 +166,8 @@ fn auto_naming_and_duplicate_detection() {
     move || NamingGuardian::new(conflict.clone(), spawned.clone())
   });
 
-  let tick_driver = fraktor_actor_rs::core::dispatch::scheduler::TickDriverConfig::manual(
-    fraktor_actor_rs::core::dispatch::scheduler::ManualTestDriver::new(),
+  let tick_driver = fraktor_actor_rs::core::scheduler::TickDriverConfig::manual(
+    fraktor_actor_rs::core::scheduler::ManualTestDriver::new(),
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");

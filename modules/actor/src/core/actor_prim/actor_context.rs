@@ -11,7 +11,7 @@ use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 use crate::core::{
   actor_prim::{ChildRefGeneric, Pid, actor_ref::ActorRefGeneric, pipe_spawn_error::PipeSpawnError},
   error::SendError,
-  logging::LogLevel,
+  event::logging::LogLevel,
   messaging::{AnyMessageGeneric, SystemMessage},
   props::PropsGeneric,
   spawn::SpawnError,

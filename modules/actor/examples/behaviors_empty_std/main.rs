@@ -10,7 +10,7 @@ mod std_tick_driver_support;
 use std::time::Duration;
 
 use fraktor_actor_rs::std::{
-  event_stream::{
+  event::stream::{
     EventStreamEvent, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscription, subscriber_handle,
   },
   typed::{Behavior, Behaviors, TypedActorSystem, TypedProps},

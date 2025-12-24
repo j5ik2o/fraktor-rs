@@ -6,7 +6,7 @@ use alloc::{
   vec::Vec,
 };
 
-use fraktor_actor_rs::core::event_stream::{BackpressureSignal, CorrelationId};
+use fraktor_actor_rs::core::event::stream::{BackpressureSignal, CorrelationId};
 
 use crate::core::{
   fn_remoting_backpressure_listener::FnRemotingBackpressureListener,

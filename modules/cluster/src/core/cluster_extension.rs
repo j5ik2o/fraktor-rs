@@ -6,7 +6,7 @@ mod tests;
 use alloc::{format, string::String, vec::Vec};
 
 use fraktor_actor_rs::core::{
-  event_stream::{
+  event::stream::{
     EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric,
     subscriber_handle,
   },

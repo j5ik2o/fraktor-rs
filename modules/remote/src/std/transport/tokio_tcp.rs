@@ -11,7 +11,7 @@ use alloc::{
 use core::fmt;
 use std::net::{TcpListener as StdTcpListener, TcpStream as StdTcpStream};
 
-use fraktor_actor_rs::core::event_stream::{BackpressureSignal, CorrelationId};
+use fraktor_actor_rs::core::event::stream::{BackpressureSignal, CorrelationId};
 use fraktor_utils_rs::{
   core::{
     runtime_toolbox::NoStdMutex,

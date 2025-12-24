@@ -5,18 +5,14 @@ use alloc::{format, vec::Vec};
 use fraktor_actor_rs::core::{
   actor_prim::{Actor, ActorContextGeneric},
   error::ActorError,
-  event_stream::{
-    event_stream_event::EventStreamEvent,
-    remoting_lifecycle_event::RemotingLifecycleEvent,
-    EventStreamSubscriber,
-    EventStreamSubscriptionGeneric,
-    BackpressureSignal,
-    subscriber_handle,
+  event::stream::{
+    BackpressureSignal, EventStreamEvent, EventStreamSubscriber, EventStreamSubscriptionGeneric,
+    RemotingLifecycleEvent, subscriber_handle,
   },
   extension::ExtensionInstallers,
   messaging::AnyMessageViewGeneric,
   props::PropsGeneric,
-  dispatch::scheduler::{ManualTestDriver, TickDriverConfig},
+  scheduler::{ManualTestDriver, TickDriverConfig},
   system::{ActorSystemConfig, ActorSystemGeneric},
 };
 use fraktor_utils_rs::core::{runtime_toolbox::{NoStdMutex, NoStdToolbox}, sync::{ArcShared, sync_mutex_like::SyncMutexLike}};

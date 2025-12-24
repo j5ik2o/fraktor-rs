@@ -25,8 +25,10 @@ use crate::core::{
       EnqueueOutcome, MailboxGeneric, MailboxInstrumentation, MailboxOverflowStrategy, MailboxPolicy, ScheduleHints,
     },
   },
-  event_stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
-  logging::LogLevel,
+  event::{
+    logging::LogLevel,
+    stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
+  },
   messaging::{
     AnyMessage,
     message_invoker::{MessageInvoker, MessageInvokerShared},
@@ -89,7 +91,7 @@ fn rejected_execution_is_retried_and_logged_on_failure() {
   dispatcher.register_for_execution(register_user_hint());
   flaky.assert_attempts(3);
   let logged = events.lock().iter().any(
-    |event| matches!(event, crate::core::event_stream::EventStreamEvent::Log(log) if log.level() == LogLevel::Error),
+    |event| matches!(event, crate::core::event::stream::EventStreamEvent::Log(log) if log.level() == LogLevel::Error),
   );
   assert!(logged, "expected rejection log entry");
 }
@@ -176,7 +178,7 @@ fn schedule_adapter_notified_on_rejection() {
   assert!(rejected_calls >= 1);
 
   let logged = events.lock().iter().any(
-    |event| matches!(event, crate::core::event_stream::EventStreamEvent::Log(log) if log.level() == LogLevel::Error),
+    |event| matches!(event, crate::core::event::stream::EventStreamEvent::Log(log) if log.level() == LogLevel::Error),
   );
   assert!(logged, "expected rejection log entry");
 }

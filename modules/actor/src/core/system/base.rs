@@ -25,16 +25,18 @@ use crate::core::{
     actor_ref::ActorRefGeneric,
   },
   dead_letter::{DeadLetterEntryGeneric, DeadLetterReason},
-  dispatch::scheduler::{SchedulerBackedDelayProvider, TickDriverConfig},
   error::SendError,
-  event_stream::{
-    EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriberShared, EventStreamSubscriptionGeneric,
-    TickDriverSnapshot,
+  event::{
+    logging::LogLevel,
+    stream::{
+      EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriberShared, EventStreamSubscriptionGeneric,
+      TickDriverSnapshot,
+    },
   },
   futures::ActorFutureSharedGeneric,
-  logging::LogLevel,
   messaging::{AnyMessageGeneric, SystemMessage},
   props::PropsGeneric,
+  scheduler::{SchedulerBackedDelayProvider, TickDriverConfig},
   serialization::default_serialization_extension_id,
   spawn::SpawnError,
   system::{
@@ -78,10 +80,8 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   where
     TB: Default,
     F: FnOnce(ActorSystemConfigGeneric<TB>) -> ActorSystemConfigGeneric<TB>, {
-    let tick_driver = crate::core::dispatch::scheduler::TickDriverConfig::manual(
-      crate::core::dispatch::scheduler::ManualTestDriver::new(),
-    );
-    let scheduler_config = crate::core::dispatch::scheduler::SchedulerConfig::default().with_runner_api_enabled(true);
+    let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
+    let scheduler_config = crate::core::scheduler::SchedulerConfig::default().with_runner_api_enabled(true);
     let config =
       ActorSystemConfigGeneric::default().with_scheduler_config(scheduler_config).with_tick_driver(tick_driver);
     let config = configure(config);
@@ -312,13 +312,13 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
 
   /// Returns the shared scheduler handle.
   #[must_use]
-  pub fn scheduler(&self) -> crate::core::dispatch::scheduler::SchedulerSharedGeneric<TB> {
+  pub fn scheduler(&self) -> crate::core::scheduler::SchedulerSharedGeneric<TB> {
     self.state.scheduler()
   }
 
   /// Returns the tick driver runtime when initialized.
   #[must_use]
-  pub fn tick_driver_runtime(&self) -> crate::core::dispatch::scheduler::TickDriverRuntime<TB> {
+  pub fn tick_driver_runtime(&self) -> crate::core::scheduler::TickDriverRuntime<TB> {
     self.state.tick_driver_runtime()
   }
 

@@ -3,7 +3,7 @@
 use alloc::{boxed::Box, format};
 
 use fraktor_actor_rs::core::{
-  event_stream::EventStreamSharedGeneric,
+  event::stream::EventStreamSharedGeneric,
   extension::ExtensionInstaller,
   system::{ActorSystemBuildError, ActorSystemGeneric},
 };

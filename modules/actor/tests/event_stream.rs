@@ -9,7 +9,7 @@ use fraktor_actor_rs::core::{
   actor_prim::{Actor, ActorContextGeneric, ChildRef},
   dispatch::mailbox::{MailboxOverflowStrategy, MailboxPolicy},
   error::ActorError,
-  event_stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
+  event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   messaging::{AnyMessage, AnyMessageViewGeneric},
   props::{MailboxConfig, Props},
   system::ActorSystem,
@@ -88,8 +88,8 @@ fn dead_letter_event_is_published_when_send_fails() {
     let child_props = child_props.clone();
     move || TestGuardian::new(child_slot.clone(), child_props.clone())
   });
-  let tick_driver = fraktor_actor_rs::core::dispatch::scheduler::TickDriverConfig::manual(
-    fraktor_actor_rs::core::dispatch::scheduler::ManualTestDriver::new(),
+  let tick_driver = fraktor_actor_rs::core::scheduler::TickDriverConfig::manual(
+    fraktor_actor_rs::core::scheduler::ManualTestDriver::new(),
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 

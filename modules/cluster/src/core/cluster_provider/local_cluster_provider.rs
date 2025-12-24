@@ -11,7 +11,7 @@
 use alloc::{string::String, vec::Vec};
 
 use fraktor_actor_rs::core::{
-  event_stream::{EventStreamEvent, EventStreamGeneric},
+  event::stream::{EventStreamEvent, EventStreamGeneric},
   messaging::AnyMessageGeneric,
 };
 use fraktor_remote_rs::core::BlockListProvider;

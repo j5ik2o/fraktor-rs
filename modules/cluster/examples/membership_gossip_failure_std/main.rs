@@ -19,7 +19,7 @@ use std::{
   sync::{Arc, Mutex},
 };
 
-use fraktor_actor_rs::core::event_stream::{
+use fraktor_actor_rs::core::event::stream::{
   EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriber, subscriber_handle,
 };
 use fraktor_cluster_rs::{

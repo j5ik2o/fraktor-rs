@@ -11,8 +11,7 @@ use super::BackpressurePublisherGeneric;
 use crate::core::{
   actor_prim::Pid,
   dispatch::mailbox::{MailboxMetricsEvent, MailboxPressureEvent},
-  event_stream::EventStreamEvent,
-  logging::LogLevel,
+  event::{logging::LogLevel, stream::EventStreamEvent},
   system::{SystemStateSharedGeneric, SystemStateWeakGeneric},
 };
 

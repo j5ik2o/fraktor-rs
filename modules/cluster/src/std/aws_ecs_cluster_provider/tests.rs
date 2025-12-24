@@ -2,7 +2,7 @@
 
 use std::sync::Mutex;
 
-use fraktor_actor_rs::core::event_stream::{
+use fraktor_actor_rs::core::event::stream::{
   EventStreamEvent, EventStreamShared, EventStreamSharedGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric,
   subscriber_handle,
 };

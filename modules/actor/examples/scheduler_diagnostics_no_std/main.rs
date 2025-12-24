@@ -9,10 +9,10 @@ use std::{thread, time::Duration as StdDuration};
 
 use fraktor_actor_rs::core::{
   actor_prim::{Actor, ActorContext},
-  dispatch::scheduler::{SchedulerCommand, SchedulerDiagnosticsSubscription},
   error::ActorError,
   messaging::{AnyMessage, AnyMessageViewGeneric},
   props::Props,
+  scheduler::{SchedulerCommand, SchedulerDiagnosticsSubscription},
   system::ActorSystem,
 };
 use fraktor_utils_rs::core::sync::SharedAccess;

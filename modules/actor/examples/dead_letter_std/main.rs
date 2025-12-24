@@ -5,15 +5,17 @@ use fraktor_actor_rs::{
   core::{
     dispatch::mailbox::{MailboxOverflowStrategy, MailboxPolicy},
     error::ActorError,
-    logging::{LogEvent, LogLevel, LoggerWriter},
+    event::logging::{LogEvent, LogLevel, LoggerWriter},
     props::MailboxConfig,
   },
   std::{
     actor_prim::{Actor, ActorContext},
     dispatch::dispatcher::dispatch_executor::TokioExecutor,
-    event_stream::{EventStreamEvent, EventStreamSubscriber, EventStreamSubscriberShared, subscriber_handle},
+    event::{
+      logging::StdLoggerSubscriber,
+      stream::{EventStreamEvent, EventStreamSubscriber, EventStreamSubscriberShared, subscriber_handle},
+    },
     futures::ActorFutureListener,
-    logging::StdLoggerSubscriber,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
     system::{ActorSystem, DispatcherConfig},
@@ -42,7 +44,7 @@ impl StdLoggerAdapter {
 
 impl EventStreamSubscriber for StdLoggerAdapter {
   fn on_event(&mut self, event: &EventStreamEvent) {
-    fraktor_actor_rs::core::event_stream::EventStreamSubscriber::on_event(&mut self.0, event);
+    fraktor_actor_rs::core::event::stream::EventStreamSubscriber::on_event(&mut self.0, event);
   }
 }
 
@@ -147,7 +149,7 @@ async fn main() {
   })
   .with_dispatcher(dispatcher.clone());
 
-  let tick_driver = fraktor_actor_rs::std::dispatch::scheduler::tick::TickDriverConfig::tokio_quickstart();
+  let tick_driver = fraktor_actor_rs::std::scheduler::tick::TickDriverConfig::tokio_quickstart();
   let system = ActorSystem::new(&props, tick_driver).expect("actor system を初期化できること");
 
   let logger: EventStreamSubscriberShared =

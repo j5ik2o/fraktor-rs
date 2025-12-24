@@ -7,13 +7,15 @@ mod std_tick_driver_support;
 use fraktor_actor_rs::{
   core::{
     error::ActorError,
-    logging::{LogEvent, LogLevel, LoggerWriter},
+    event::logging::{LogEvent, LogLevel, LoggerWriter},
     supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
   },
   std::{
     actor_prim::{Actor, ActorContext},
-    event_stream::{EventStreamEvent, EventStreamSubscriber, EventStreamSubscriberShared, subscriber_handle},
-    logging::StdLoggerSubscriber,
+    event::{
+      logging::StdLoggerSubscriber,
+      stream::{EventStreamEvent, EventStreamSubscriber, EventStreamSubscriberShared, subscriber_handle},
+    },
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
     system::ActorSystem,
@@ -42,7 +44,7 @@ impl StdLoggerAdapter {
 
 impl EventStreamSubscriber for StdLoggerAdapter {
   fn on_event(&mut self, event: &EventStreamEvent) {
-    fraktor_actor_rs::core::event_stream::EventStreamSubscriber::on_event(&mut self.0, event);
+    fraktor_actor_rs::core::event::stream::EventStreamSubscriber::on_event(&mut self.0, event);
   }
 }
 

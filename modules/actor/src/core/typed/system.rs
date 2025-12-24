@@ -8,11 +8,11 @@ use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 use crate::core::{
   dead_letter::DeadLetterEntryGeneric,
   error::SendError,
-  event_stream::{
-    EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriberShared, EventStreamSubscriptionGeneric,
+  event::{
+    logging::LogLevel,
+    stream::{EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriberShared, EventStreamSubscriptionGeneric},
   },
   futures::ActorFutureSharedGeneric,
-  logging::LogLevel,
   messaging::AnyMessageGeneric,
   spawn::SpawnError,
   system::{ActorSystemConfigGeneric, ActorSystemGeneric, SystemStateSharedGeneric},
@@ -59,7 +59,7 @@ where
   /// Returns an error if the guardian actor cannot be spawned or tick driver setup fails.
   pub fn new(
     guardian: &TypedPropsGeneric<M, TB>,
-    tick_driver_config: crate::core::dispatch::scheduler::TickDriverConfig<TB>,
+    tick_driver_config: crate::core::scheduler::TickDriverConfig<TB>,
   ) -> Result<Self, SpawnError> {
     Ok(Self { inner: ActorSystemGeneric::new(guardian.to_untyped(), tick_driver_config)?, marker: PhantomData })
   }
@@ -190,7 +190,7 @@ where
 
   /// Returns a delay provider backed by the scheduler.
   #[must_use]
-  pub fn delay_provider(&self) -> crate::core::dispatch::scheduler::SchedulerBackedDelayProvider<TB> {
+  pub fn delay_provider(&self) -> crate::core::scheduler::SchedulerBackedDelayProvider<TB> {
     self.inner.delay_provider()
   }
 }

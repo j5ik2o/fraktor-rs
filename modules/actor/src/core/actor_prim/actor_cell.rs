@@ -24,7 +24,7 @@ use crate::core::{
     mailbox::{BackpressurePublisherGeneric, MailboxCapacity, MailboxGeneric, MailboxInstrumentationGeneric},
   },
   error::ActorError,
-  event_stream::EventStreamEvent,
+  event::stream::EventStreamEvent,
   lifecycle::{LifecycleEvent, LifecycleStage},
   messaging::{
     AnyMessageGeneric, FailureMessageSnapshot, FailurePayload, SystemMessage,

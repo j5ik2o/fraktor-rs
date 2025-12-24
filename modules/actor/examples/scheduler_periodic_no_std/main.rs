@@ -6,10 +6,10 @@ use core::time::Duration;
 
 use fraktor_actor_rs::core::{
   actor_prim::{Actor, ActorContext},
-  dispatch::scheduler::SchedulerCommand,
   error::ActorError,
   messaging::{AnyMessage, AnyMessageViewGeneric},
   props::Props,
+  scheduler::SchedulerCommand,
   system::ActorSystem,
 };
 use fraktor_utils_rs::core::sync::SharedAccess;

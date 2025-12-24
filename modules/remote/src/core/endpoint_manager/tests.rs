@@ -5,7 +5,7 @@ use core::convert::TryFrom;
 
 use fraktor_actor_rs::core::{
   actor_prim::actor_path::{ActorPath, ActorPathParts, GuardianKind},
-  event_stream::{CorrelationId, RemotingLifecycleEvent},
+  event::stream::{CorrelationId, RemotingLifecycleEvent},
   serialization::{SerializedMessage, SerializerId},
 };
 use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;

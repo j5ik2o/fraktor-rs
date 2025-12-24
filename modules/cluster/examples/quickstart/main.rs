@@ -19,12 +19,10 @@ use fraktor_actor_rs::{
   },
   std::{
     actor_prim::{Actor, ActorContext, ActorRef},
-    dispatch::{
-      dispatcher::{DispatcherConfig, dispatch_executor::TokioExecutor},
-      scheduler::tick::TickDriverConfig,
-    },
+    dispatch::dispatcher::{DispatcherConfig, dispatch_executor::TokioExecutor},
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
+    scheduler::tick::TickDriverConfig,
     system::{ActorSystem, ActorSystemConfig},
   },
 };

@@ -16,7 +16,7 @@ use crate::core::{
     actor_ref::{ActorRefSender, ActorRefSenderSharedGeneric, SendOutcome},
   },
   error::SendError,
-  logging::LogLevel,
+  event::logging::LogLevel,
   messaging::AnyMessageGeneric,
   system::SystemStateSharedGeneric,
   typed::message_adapter::{AdapterEnvelope, AdapterLifecycleState, AdapterPayload, AdapterRefHandleId},

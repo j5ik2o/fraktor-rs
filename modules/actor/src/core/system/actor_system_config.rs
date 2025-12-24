@@ -12,10 +12,10 @@ use crate::core::{
   dispatch::{
     dispatcher::{DispatcherConfigGeneric, DispatchersGeneric},
     mailbox::MailboxesGeneric,
-    scheduler::{SchedulerConfig, TickDriverConfig},
   },
   extension::ExtensionInstallers,
   props::MailboxConfig,
+  scheduler::{SchedulerConfig, TickDriverConfig},
   system::{ActorRefProviderInstaller, RemotingConfig},
 };
 

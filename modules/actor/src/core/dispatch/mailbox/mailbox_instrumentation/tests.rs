@@ -6,7 +6,7 @@ use super::MailboxInstrumentation;
 use crate::core::{
   actor_prim::Pid,
   dispatch::mailbox::BackpressurePublisherGeneric,
-  event_stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
+  event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   system::ActorSystem,
 };
 

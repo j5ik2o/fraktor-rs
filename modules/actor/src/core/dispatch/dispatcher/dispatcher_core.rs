@@ -26,8 +26,7 @@ use crate::core::{
     EnqueueOutcome, MailboxGeneric, MailboxMessage, MailboxOfferFutureGeneric, MailboxPressureEvent, ScheduleHints,
   },
   error::{ActorError, SendError},
-  event_stream::EventStreamEvent,
-  logging::LogLevel,
+  event::{logging::LogLevel, stream::EventStreamEvent},
   messaging::{AnyMessageGeneric, SystemMessage, message_invoker::MessageInvokerShared},
   system::{SystemStateSharedGeneric, SystemStateWeakGeneric},
 };

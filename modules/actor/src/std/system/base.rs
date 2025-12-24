@@ -6,9 +6,11 @@ pub use crate::std::dispatch::dispatcher::{DispatchExecutor, DispatchShared, Dis
 use crate::{
   core::{
     actor_prim::{Pid, actor_path::ActorPath},
-    dispatch::scheduler::{SchedulerBackedDelayProvider, SchedulerSharedGeneric, TickDriverConfig},
-    event_stream::{TickDriverSnapshot, subscriber_handle as core_subscriber_handle},
-    logging::LogLevel,
+    event::{
+      logging::LogLevel,
+      stream::{TickDriverSnapshot, subscriber_handle as core_subscriber_handle},
+    },
+    scheduler::{SchedulerBackedDelayProvider, SchedulerSharedGeneric, TickDriverConfig},
     spawn::SpawnError,
     system::{
       ActorRefResolveError, ActorSystemGeneric as CoreActorSystemGeneric, ExtendedActorSystemGeneric,
@@ -19,7 +21,7 @@ use crate::{
     actor_prim::ActorRef,
     dead_letter::DeadLetterEntry,
     error::SendError,
-    event_stream::{EventStream, EventStreamEvent, EventStreamSubscriberAdapter, EventStreamSubscription},
+    event::stream::{EventStream, EventStreamEvent, EventStreamSubscriberAdapter, EventStreamSubscription},
     futures::ActorFutureShared,
     messaging::AnyMessage,
     props::Props,
@@ -27,7 +29,7 @@ use crate::{
   },
 };
 
-type StdSubscriberHandle = crate::std::event_stream::EventStreamSubscriberShared;
+type StdSubscriberHandle = crate::std::event::stream::EventStreamSubscriberShared;
 
 /// Actor system specialised for `StdToolbox` with ergonomics for standard runtime consumers.
 pub struct ActorSystem {

@@ -20,19 +20,17 @@ use crate::core::{
     actor_path::{ActorPath, ActorPathParts, ActorPathScheme},
     actor_ref::ActorRefGeneric,
   },
-  dispatch::{
-    dispatcher::{DispatchError, DispatchExecutor, DispatchSharedGeneric, DispatcherConfig},
-    scheduler::{
-      AutoDriverMetadata, AutoProfileKind, ManualTestDriver, SchedulerConfig, TickDriverConfig, TickDriverControl,
-      TickDriverError, TickDriverHandleGeneric, TickDriverId, TickDriverKind, TickDriverProvisioningContext,
-      TickDriverRuntime, TickExecutorSignal, TickFeed,
-    },
-  },
+  dispatch::dispatcher::{DispatchError, DispatchExecutor, DispatchSharedGeneric, DispatcherConfig},
   error::ActorError,
-  event_stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
+  event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   lifecycle::LifecycleStage,
   messaging::SystemMessage,
   props::{MailboxConfig, MailboxRequirement, Props},
+  scheduler::{
+    AutoDriverMetadata, AutoProfileKind, ManualTestDriver, SchedulerConfig, TickDriverConfig, TickDriverControl,
+    TickDriverError, TickDriverHandleGeneric, TickDriverId, TickDriverKind, TickDriverProvisioningContext,
+    TickDriverRuntime, TickExecutorSignal, TickFeed,
+  },
   spawn::SpawnError,
   system::{
     ActorRefProvider, ActorRefProviderSharedGeneric, ActorRefResolveError, ActorSystemConfig, RemotingConfig,
@@ -282,7 +280,7 @@ fn actor_system_deadletters() {
 fn actor_system_emit_log() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  system.emit_log(crate::core::logging::LogLevel::Info, "test message", Some(pid));
+  system.emit_log(crate::core::event::logging::LogLevel::Info, "test message", Some(pid));
 }
 
 #[test]
@@ -529,9 +527,7 @@ fn poll_delay(future: &mut DelayFuture) -> Poll<()> {
 #[test]
 fn actor_system_scheduler_handles_delays() {
   let props = Props::from_fn(|| TestActor);
-  let tick_driver = crate::core::dispatch::scheduler::TickDriverConfig::manual(
-    crate::core::dispatch::scheduler::ManualTestDriver::new(),
-  );
+  let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
   let system = ActorSystem::new(&props, tick_driver).expect("system");
   let mut provider = system.delay_provider();
   let mut future = provider.delay(Duration::from_millis(1));
@@ -546,16 +542,14 @@ fn actor_system_scheduler_handles_delays() {
 #[test]
 fn actor_system_terminate_runs_scheduler_tasks() {
   let props = Props::from_fn(|| TestActor);
-  let tick_driver = crate::core::dispatch::scheduler::TickDriverConfig::manual(
-    crate::core::dispatch::scheduler::ManualTestDriver::new(),
-  );
+  let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
   let system = ActorSystem::new(&props, tick_driver).expect("system");
   let log = ArcShared::new(NoStdMutex::new(Vec::new()));
   {
     let scheduler = system.scheduler();
     scheduler.with_write(|s| {
       let task = RecordingShutdownTask { log: log.clone() };
-      s.register_on_close(task, crate::core::dispatch::scheduler::TaskRunPriority::User).expect("register");
+      s.register_on_close(task, crate::core::scheduler::TaskRunPriority::User).expect("register");
     });
   }
 
@@ -568,8 +562,8 @@ struct RecordingShutdownTask {
   log: ArcShared<NoStdMutex<Vec<&'static str>>>,
 }
 
-impl crate::core::dispatch::scheduler::TaskRunOnClose for RecordingShutdownTask {
-  fn run(&mut self) -> Result<(), crate::core::dispatch::scheduler::TaskRunError> {
+impl crate::core::scheduler::TaskRunOnClose for RecordingShutdownTask {
+  fn run(&mut self) -> Result<(), crate::core::scheduler::TaskRunError> {
     self.log.lock().push("shutdown");
     Ok(())
   }
@@ -594,9 +588,7 @@ fn poll_delay_future(future: &mut DelayFuture) -> Poll<()> {
 #[test]
 fn actor_system_installs_scheduler() {
   let props = Props::from_fn(|| TestActor);
-  let tick_driver = crate::core::dispatch::scheduler::TickDriverConfig::manual(
-    crate::core::dispatch::scheduler::ManualTestDriver::new(),
-  );
+  let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
   let system = ActorSystem::new(&props, tick_driver).expect("actor system");
   let mut provider = system.delay_provider();
   let mut future = provider.delay(Duration::from_millis(1));
@@ -696,9 +688,7 @@ fn resolve_actor_ref_fails_when_provider_missing() {
 #[test]
 fn guardian_refs_preserve_canonical_authority() {
   let user_props = Props::from_fn(|| TestActor).with_name("user-guardian");
-  let tick_driver = crate::core::dispatch::scheduler::TickDriverConfig::manual(
-    crate::core::dispatch::scheduler::ManualTestDriver::new(),
-  );
+  let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
   let remoting = RemotingConfig::default().with_canonical_host("guardian.example.com").with_canonical_port(4101);
   let config = ActorSystemConfig::default()
     .with_system_name("guardian-compat")

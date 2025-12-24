@@ -1,4 +1,4 @@
-use fraktor_actor_rs::core::event_stream::{BackpressureSignal, CorrelationId};
+use fraktor_actor_rs::core::event::stream::{BackpressureSignal, CorrelationId};
 
 use super::{FlightMetricKind, RemotingFlightRecorder};
 

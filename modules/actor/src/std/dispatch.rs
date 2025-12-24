@@ -2,4 +2,3 @@
 
 pub mod dispatcher;
 pub mod mailbox;
-pub mod scheduler;

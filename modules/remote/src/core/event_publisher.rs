@@ -6,7 +6,7 @@ mod tests;
 use alloc::string::String;
 
 use fraktor_actor_rs::core::{
-  event_stream::{
+  event::stream::{
     BackpressureSignal, CorrelationId, EventStreamEvent, RemotingBackpressureEvent, RemotingLifecycleEvent,
   },
   system::ActorSystemWeakGeneric,

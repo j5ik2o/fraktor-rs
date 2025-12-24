@@ -12,8 +12,10 @@ use crate::core::{
   actor_prim::Pid,
   dead_letter::{DeadLetterReason, DeadLetterShared},
   error::SendError,
-  event_stream::{EventStreamEvent, EventStreamShared, EventStreamSubscriber, subscriber_handle},
-  logging::LogLevel,
+  event::{
+    logging::LogLevel,
+    stream::{EventStreamEvent, EventStreamShared, EventStreamSubscriber, subscriber_handle},
+  },
   messaging::AnyMessage,
 };
 

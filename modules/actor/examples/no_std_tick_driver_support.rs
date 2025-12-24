@@ -10,7 +10,7 @@ use core::{
 };
 use std::{thread, time::Duration as StdDuration};
 
-use fraktor_actor_rs::core::dispatch::scheduler::{
+use fraktor_actor_rs::core::scheduler::{
   HardwareKind, HardwareTickDriver, SchedulerSharedGeneric, SchedulerTickExecutor, TickDriver, TickDriverConfig,
   TickDriverError, TickDriverRuntime, TickExecutorSignal, TickFeed, TickFeedHandle, TickPulseHandler, TickPulseSource,
 };

@@ -21,15 +21,15 @@ use crate::core::{
   dispatch::{
     dispatcher::{DispatchError, DispatchExecutor, DispatchSharedGeneric, DispatcherConfig},
     mailbox::MailboxMessage,
-    scheduler::{
-      ManualTestDriver, SchedulerConfig, TickDriverConfig, TickDriverControl, TickDriverError, TickDriverHandleGeneric,
-      TickDriverId, TickDriverKind, TickDriverRuntime, TickExecutorSignal, TickFeed,
-    },
   },
   error::ActorError,
-  event_stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
+  event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   messaging::{AnyMessage, AnyMessageViewGeneric, FailurePayload, SystemMessage},
   props::Props,
+  scheduler::{
+    ManualTestDriver, SchedulerConfig, TickDriverConfig, TickDriverControl, TickDriverError, TickDriverHandleGeneric,
+    TickDriverId, TickDriverKind, TickDriverRuntime, TickExecutorSignal, TickFeed,
+  },
   system::{
     ActorSystemConfig, AuthorityState, GuardianKind, RegisterExtraTopLevelError, RemotingConfig, SystemStateShared,
     booting_state::BootingSystemStateGeneric,
@@ -100,7 +100,7 @@ fn system_state_drop_shuts_down_executor_once() {
 
   let executor_calls = ArcShared::new(AtomicUsize::new(0));
   let executor_calls_for_builder = executor_calls.clone();
-  let tick_driver = crate::core::dispatch::scheduler::TickDriverConfig::new(move |_ctx| {
+  let tick_driver = crate::core::scheduler::TickDriverConfig::new(move |_ctx| {
     let control: Box<dyn TickDriverControl> = Box::new(NoopControl);
     let control = ArcShared::new(<<NoStdToolbox as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(control));
     let resolution = Duration::from_millis(1);
@@ -391,9 +391,9 @@ fn system_state_publish_event() {
   use alloc::string::String;
   use core::time::Duration;
 
-  use crate::core::{
-    event_stream::EventStreamEvent,
+  use crate::core::event::{
     logging::{LogEvent, LogLevel},
+    stream::EventStreamEvent,
   };
 
   let state = build_state();
@@ -410,8 +410,8 @@ fn system_state_emit_log() {
   let state = build_state();
   let pid = state.allocate_pid();
 
-  state.emit_log(crate::core::logging::LogLevel::Info, String::from("test message"), Some(pid));
-  state.emit_log(crate::core::logging::LogLevel::Error, String::from("error message"), None);
+  state.emit_log(crate::core::event::logging::LogLevel::Info, String::from("test message"), Some(pid));
+  state.emit_log(crate::core::event::logging::LogLevel::Error, String::from("error message"), None);
 }
 
 #[test]

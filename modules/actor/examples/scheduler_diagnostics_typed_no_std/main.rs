@@ -8,8 +8,8 @@ use core::time::Duration;
 use std::{thread, time::Duration as StdDuration};
 
 use fraktor_actor_rs::core::{
-  dispatch::scheduler::SchedulerDiagnosticsSubscription,
   error::ActorError,
+  scheduler::SchedulerDiagnosticsSubscription,
   typed::{
     TypedActorSystem, TypedProps,
     actor_prim::{TypedActor, TypedActorContext},

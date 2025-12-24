@@ -2,10 +2,10 @@ use std::time::Duration;
 
 use fraktor_actor_rs::core::{
   actor_prim::{Actor, ActorContextGeneric},
-  dispatch::scheduler::{ManualTestDriver, SchedulerConfig, TickDriverConfig},
   error::ActorError,
   messaging::AnyMessageViewGeneric,
   props::PropsGeneric,
+  scheduler::{ManualTestDriver, SchedulerConfig, TickDriverConfig},
   system::{ActorSystemConfigGeneric, ActorSystemGeneric},
 };
 use fraktor_streams_rs::core::{

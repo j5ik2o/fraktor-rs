@@ -21,7 +21,7 @@ use crate::core::{
   actor_prim::Pid,
   dispatch::mailbox::{capacity::MailboxCapacity, overflow_strategy::MailboxOverflowStrategy, policy::MailboxPolicy},
   error::SendError,
-  logging::LogLevel,
+  event::logging::LogLevel,
   messaging::{AnyMessageGeneric, SystemMessage},
   system::SystemStateSharedGeneric,
 };

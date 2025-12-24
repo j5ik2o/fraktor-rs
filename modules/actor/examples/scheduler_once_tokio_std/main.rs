@@ -1,12 +1,13 @@
 use std::time::Duration;
 
 use fraktor_actor_rs::{
-  core::{dispatch::scheduler::SchedulerCommand, error::ActorError},
+  core::{error::ActorError, scheduler::SchedulerCommand},
   std::{
     actor_prim::{Actor, ActorContext},
-    dispatch::{dispatcher::dispatch_executor::TokioExecutor, scheduler::tick::TickDriverConfig},
+    dispatch::dispatcher::dispatch_executor::TokioExecutor,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
+    scheduler::tick::TickDriverConfig,
     system::{ActorSystem, DispatcherConfig},
   },
 };
