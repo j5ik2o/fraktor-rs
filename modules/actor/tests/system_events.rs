@@ -56,8 +56,8 @@ impl Actor for Guardian {
 #[test]
 fn lifecycle_and_log_events_are_published() {
   let props = Props::from_fn(|| Guardian);
-  let tick_driver = fraktor_actor_rs::core::scheduler::TickDriverConfig::manual(
-    fraktor_actor_rs::core::scheduler::ManualTestDriver::new(),
+  let tick_driver = fraktor_actor_rs::core::dispatch::scheduler::TickDriverConfig::manual(
+    fraktor_actor_rs::core::dispatch::scheduler::ManualTestDriver::new(),
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 

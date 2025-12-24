@@ -21,7 +21,7 @@ pub enum SpawnError {
   /// The mailbox configuration is incompatible with the dispatcher executor.
   ///
   /// This typically occurs when
-  /// [`MailboxOverflowStrategy::Block`](crate::core::mailbox::MailboxOverflowStrategy::Block)
+  /// [`MailboxOverflowStrategy::Block`](crate::core::dispatch::mailbox::MailboxOverflowStrategy::Block)
   /// is used with a single-threaded executor that doesn't support blocking operations.
   InvalidMailboxConfig(String),
   /// Actor system build error occurred during initialization.

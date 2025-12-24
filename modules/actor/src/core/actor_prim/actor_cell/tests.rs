@@ -8,8 +8,8 @@ use fraktor_utils_rs::core::{
 use super::ActorCell;
 use crate::core::{
   actor_prim::{Actor, ActorContextGeneric, Pid},
+  dispatch::mailbox::ScheduleHints,
   error::ActorError,
-  mailbox::ScheduleHints,
   messaging::{AnyMessage, AnyMessageViewGeneric, SystemMessage, message_invoker::MessageInvoker},
   props::Props,
   system::ActorSystem,

@@ -6,8 +6,8 @@ mod tests;
 use alloc::{format, vec::Vec};
 
 use fraktor_actor_rs::core::{
+  dispatch::scheduler::{ExecutionBatch, SchedulerCommand, SchedulerRunnable, SchedulerSharedGeneric},
   messaging::AnyMessageGeneric,
-  scheduler::{ExecutionBatch, SchedulerCommand, SchedulerRunnable, SchedulerSharedGeneric},
 };
 use fraktor_utils_rs::core::{
   collections::queue::{OverflowPolicy, QueueError, SyncFifoQueue, VecDequeBackend},

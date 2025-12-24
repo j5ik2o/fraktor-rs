@@ -16,7 +16,7 @@ use fraktor_actor_rs::core::{
   extension::ExtensionInstallers,
   messaging::AnyMessageViewGeneric,
   props::PropsGeneric,
-  scheduler::{ManualTestDriver, TickDriverConfig},
+  dispatch::scheduler::{ManualTestDriver, TickDriverConfig},
   system::{ActorSystemConfig, ActorSystemGeneric},
 };
 use fraktor_utils_rs::core::{runtime_toolbox::{NoStdMutex, NoStdToolbox}, sync::{ArcShared, sync_mutex_like::SyncMutexLike}};

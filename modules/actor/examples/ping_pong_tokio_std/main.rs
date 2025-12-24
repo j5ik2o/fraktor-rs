@@ -4,7 +4,7 @@ use fraktor_actor_rs::{
   core::error::ActorError,
   std::{
     actor_prim::{Actor, ActorContext, ActorRef},
-    dispatcher::dispatch_executor::TokioExecutor,
+    dispatch::dispatcher::dispatch_executor::TokioExecutor,
     futures::ActorFutureListener,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
@@ -109,7 +109,7 @@ async fn main() {
   })
   .with_dispatcher(dispatcher.clone());
 
-  let tick_driver = fraktor_actor_rs::std::scheduler::tick::TickDriverConfig::tokio_quickstart();
+  let tick_driver = fraktor_actor_rs::std::dispatch::scheduler::tick::TickDriverConfig::tokio_quickstart();
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");

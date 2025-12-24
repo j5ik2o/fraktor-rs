@@ -64,11 +64,11 @@ compile_error!("cluster_extension_no_std example requires --features test-suppor
 
 use fraktor_actor_rs::core::{
   actor_prim::{Actor, ActorContextGeneric},
+  dispatch::scheduler::{ManualTestDriver, TickDriverConfig},
   event_stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   extension::ExtensionInstallers,
   messaging::{AnyMessage, AnyMessageViewGeneric},
   props::Props,
-  scheduler::{ManualTestDriver, TickDriverConfig},
   system::{ActorSystemConfig, ActorSystemGeneric},
 };
 use fraktor_cluster_rs::core::{

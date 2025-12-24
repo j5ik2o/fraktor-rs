@@ -8,8 +8,8 @@ use core::time::Duration;
 
 use fraktor_actor_rs::core::{
   actor_prim::{actor_path::ActorPathParser, actor_ref::ActorRefGeneric},
+  dispatch::scheduler::{ExecutionBatch, SchedulerCommand, SchedulerRunnable},
   messaging::{AnyMessageGeneric, AskResponseGeneric},
-  scheduler::{ExecutionBatch, SchedulerCommand, SchedulerRunnable},
   system::ActorSystemGeneric,
 };
 use fraktor_utils_rs::core::{

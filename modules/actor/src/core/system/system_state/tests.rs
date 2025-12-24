@@ -18,16 +18,18 @@ use crate::core::{
     },
     actor_ref::ActorRefGeneric,
   },
-  dispatcher::{DispatchError, DispatchExecutor, DispatchSharedGeneric, DispatcherConfig},
+  dispatch::{
+    dispatcher::{DispatchError, DispatchExecutor, DispatchSharedGeneric, DispatcherConfig},
+    mailbox::MailboxMessage,
+    scheduler::{
+      ManualTestDriver, SchedulerConfig, TickDriverConfig, TickDriverControl, TickDriverError, TickDriverHandleGeneric,
+      TickDriverId, TickDriverKind, TickDriverRuntime, TickExecutorSignal, TickFeed,
+    },
+  },
   error::ActorError,
   event_stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
-  mailbox::MailboxMessage,
   messaging::{AnyMessage, AnyMessageViewGeneric, FailurePayload, SystemMessage},
   props::Props,
-  scheduler::{
-    ManualTestDriver, SchedulerConfig, TickDriverConfig, TickDriverControl, TickDriverError, TickDriverHandleGeneric,
-    TickDriverId, TickDriverKind, TickDriverRuntime, TickExecutorSignal, TickFeed,
-  },
   system::{
     ActorSystemConfig, AuthorityState, GuardianKind, RegisterExtraTopLevelError, RemotingConfig, SystemStateShared,
     booting_state::BootingSystemStateGeneric,
@@ -98,7 +100,7 @@ fn system_state_drop_shuts_down_executor_once() {
 
   let executor_calls = ArcShared::new(AtomicUsize::new(0));
   let executor_calls_for_builder = executor_calls.clone();
-  let tick_driver = crate::core::scheduler::TickDriverConfig::new(move |_ctx| {
+  let tick_driver = crate::core::dispatch::scheduler::TickDriverConfig::new(move |_ctx| {
     let control: Box<dyn TickDriverControl> = Box::new(NoopControl);
     let control = ArcShared::new(<<NoStdToolbox as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(control));
     let resolution = Duration::from_millis(1);

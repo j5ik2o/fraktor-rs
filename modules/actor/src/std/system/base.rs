@@ -2,13 +2,13 @@ use alloc::{string::String, vec::Vec};
 
 use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
-pub use crate::std::dispatcher::{DispatchExecutor, DispatchShared, DispatcherConfig, DispatcherShared};
+pub use crate::std::dispatch::dispatcher::{DispatchExecutor, DispatchShared, DispatcherConfig, DispatcherShared};
 use crate::{
   core::{
     actor_prim::{Pid, actor_path::ActorPath},
+    dispatch::scheduler::{SchedulerBackedDelayProvider, SchedulerSharedGeneric, TickDriverConfig},
     event_stream::{TickDriverSnapshot, subscriber_handle as core_subscriber_handle},
     logging::LogLevel,
-    scheduler::{SchedulerBackedDelayProvider, SchedulerSharedGeneric, TickDriverConfig},
     spawn::SpawnError,
     system::{
       ActorRefResolveError, ActorSystemGeneric as CoreActorSystemGeneric, ExtendedActorSystemGeneric,

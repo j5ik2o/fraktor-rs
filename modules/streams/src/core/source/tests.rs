@@ -29,7 +29,10 @@ impl Materializer for RecordingMaterializer {
     Ok(())
   }
 
-  fn materialize<Mat>(&mut self, graph: super::super::RunnableGraph<Mat>) -> Result<Materialized<Mat, Self::Toolbox>, StreamError> {
+  fn materialize<Mat>(
+    &mut self,
+    graph: super::super::RunnableGraph<Mat>,
+  ) -> Result<Materialized<Mat, Self::Toolbox>, StreamError> {
     self.calls += 1;
     let (plan, materialized) = graph.into_parts();
     let mut stream = Stream::new(plan, StreamBufferConfig::default());

@@ -1,8 +1,8 @@
 use core::time::Duration;
 
 use fraktor_actor_rs::core::{
-  actor_prim::ChildRefGeneric, messaging::AnyMessageGeneric, props::PropsGeneric, scheduler::SchedulerCommand,
-  system::ActorSystemGeneric,
+  actor_prim::ChildRefGeneric, dispatch::scheduler::SchedulerCommand, messaging::AnyMessageGeneric,
+  props::PropsGeneric, system::ActorSystemGeneric,
 };
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::SharedAccess};
 
@@ -21,7 +21,7 @@ pub struct ActorMaterializerGeneric<TB: RuntimeToolbox + 'static> {
   config:      ActorMaterializerConfig,
   state:       MaterializerState,
   drive_actor: Option<ChildRefGeneric<TB>>,
-  tick_handle: Option<fraktor_actor_rs::core::scheduler::SchedulerHandle>,
+  tick_handle: Option<fraktor_actor_rs::core::dispatch::scheduler::SchedulerHandle>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,7 +62,7 @@ impl<TB: RuntimeToolbox + 'static> ActorMaterializerGeneric<TB> {
     system: &ActorSystemGeneric<TB>,
     actor: &ChildRefGeneric<TB>,
     interval: Duration,
-  ) -> Result<fraktor_actor_rs::core::scheduler::SchedulerHandle, StreamError> {
+  ) -> Result<fraktor_actor_rs::core::dispatch::scheduler::SchedulerHandle, StreamError> {
     let receiver = actor.actor_ref().clone();
     let command = SchedulerCommand::SendMessage {
       receiver,

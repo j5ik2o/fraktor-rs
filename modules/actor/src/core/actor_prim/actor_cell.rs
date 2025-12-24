@@ -19,11 +19,13 @@ use crate::core::{
     context_pipe_task::{ContextPipeFuture, ContextPipeTask},
     pipe_spawn_error::PipeSpawnError,
   },
-  dispatcher::DispatcherSharedGeneric,
+  dispatch::{
+    dispatcher::DispatcherSharedGeneric,
+    mailbox::{BackpressurePublisherGeneric, MailboxCapacity, MailboxGeneric, MailboxInstrumentationGeneric},
+  },
   error::ActorError,
   event_stream::EventStreamEvent,
   lifecycle::{LifecycleEvent, LifecycleStage},
-  mailbox::{BackpressurePublisherGeneric, MailboxCapacity, MailboxGeneric, MailboxInstrumentationGeneric},
   messaging::{
     AnyMessageGeneric, FailureMessageSnapshot, FailurePayload, SystemMessage,
     message_invoker::{MessageInvoker, MessageInvokerPipelineGeneric, MessageInvokerShared},

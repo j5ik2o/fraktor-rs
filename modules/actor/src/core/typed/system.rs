@@ -59,7 +59,7 @@ where
   /// Returns an error if the guardian actor cannot be spawned or tick driver setup fails.
   pub fn new(
     guardian: &TypedPropsGeneric<M, TB>,
-    tick_driver_config: crate::core::scheduler::TickDriverConfig<TB>,
+    tick_driver_config: crate::core::dispatch::scheduler::TickDriverConfig<TB>,
   ) -> Result<Self, SpawnError> {
     Ok(Self { inner: ActorSystemGeneric::new(guardian.to_untyped(), tick_driver_config)?, marker: PhantomData })
   }
@@ -190,7 +190,7 @@ where
 
   /// Returns a delay provider backed by the scheduler.
   #[must_use]
-  pub fn delay_provider(&self) -> crate::core::scheduler::SchedulerBackedDelayProvider<TB> {
+  pub fn delay_provider(&self) -> crate::core::dispatch::scheduler::SchedulerBackedDelayProvider<TB> {
     self.inner.delay_provider()
   }
 }

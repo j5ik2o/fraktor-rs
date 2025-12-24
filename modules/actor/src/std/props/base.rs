@@ -10,12 +10,12 @@ use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
 use crate::{
   core::{
-    mailbox::MailboxPolicy,
+    dispatch::mailbox::MailboxPolicy,
     props::{ActorFactory, ActorFactorySharedGeneric, MailboxConfig, PropsGeneric as CorePropsGeneric},
   },
   std::{
     actor_prim::{Actor, ActorAdapter},
-    dispatcher::DispatcherConfig,
+    dispatch::dispatcher::DispatcherConfig,
   },
 };
 

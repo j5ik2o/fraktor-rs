@@ -13,12 +13,14 @@ use super::{
 };
 use crate::core::{
   dead_letter::DeadLetterEntryGeneric,
-  dispatcher::DispatcherDumpEvent,
+  dispatch::{
+    dispatcher::DispatcherDumpEvent,
+    mailbox::{MailboxMetricsEvent, MailboxPressureEvent},
+    scheduler::SchedulerTickMetrics,
+  },
   lifecycle::LifecycleEvent,
   logging::LogEvent,
-  mailbox::{MailboxMetricsEvent, MailboxPressureEvent},
   messaging::AnyMessageGeneric,
-  scheduler::SchedulerTickMetrics,
   serialization::SerializationErrorEvent,
   typed::{UnhandledMessageEvent, message_adapter::AdapterFailureEvent},
 };

@@ -2,6 +2,7 @@ use alloc::vec::Vec;
 
 use fraktor_actor_rs::core::{
   actor_prim::{Actor, ActorContextGeneric},
+  dispatch::scheduler::{ManualTestDriver, TickDriverConfig},
   error::ActorError,
   event_stream::{
     BackpressureSignal, EventStreamEvent, EventStreamSubscriber, EventStreamSubscriptionGeneric,
@@ -9,7 +10,6 @@ use fraktor_actor_rs::core::{
   },
   messaging::AnyMessageViewGeneric,
   props::PropsGeneric,
-  scheduler::{ManualTestDriver, TickDriverConfig},
   system::{ActorSystemConfig, ActorSystemGeneric},
 };
 use fraktor_utils_rs::core::{

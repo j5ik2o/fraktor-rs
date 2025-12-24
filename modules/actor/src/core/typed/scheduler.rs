@@ -5,8 +5,8 @@ use core::time::Duration;
 use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use crate::core::{
+  dispatch::scheduler::{DispatcherSenderShared, Scheduler, SchedulerCommand, SchedulerError, SchedulerHandle},
   messaging::AnyMessageGeneric,
-  scheduler::{DispatcherSenderShared, Scheduler, SchedulerCommand, SchedulerError, SchedulerHandle},
   typed::actor_prim::TypedActorRefGeneric,
 };
 

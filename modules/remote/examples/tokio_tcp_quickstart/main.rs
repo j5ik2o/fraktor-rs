@@ -13,10 +13,12 @@ use fraktor_actor_rs::{
   },
   std::{
     actor_prim::{Actor, ActorContext},
-    dispatcher::{DispatcherConfig, dispatch_executor::TokioExecutor},
+    dispatch::{
+      dispatcher::{DispatcherConfig, dispatch_executor::TokioExecutor},
+      scheduler::tick::TickDriverConfig,
+    },
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
-    scheduler::tick::TickDriverConfig,
     system::{ActorSystem, ActorSystemConfig},
   },
 };

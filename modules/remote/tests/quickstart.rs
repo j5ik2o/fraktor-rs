@@ -7,6 +7,7 @@ use alloc::{format, vec::Vec};
 use anyhow::{Result, anyhow};
 use fraktor_actor_rs::core::{
   actor_prim::{Actor, ActorContextGeneric, Pid, actor_path::ActorPathParts},
+  dispatch::scheduler::{ManualTestDriver, TickDriverConfig},
   error::ActorError,
   event_stream::{
     BackpressureSignal, EventStreamEvent, EventStreamSubscriber, EventStreamSubscriptionGeneric,
@@ -15,7 +16,6 @@ use fraktor_actor_rs::core::{
   extension::ExtensionInstallers,
   messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
   props::PropsGeneric,
-  scheduler::{ManualTestDriver, TickDriverConfig},
   serialization::SerializationExtensionInstaller,
   system::{
     ActorRefProvider, ActorSystemConfigGeneric, ActorSystemGeneric, AuthorityState, RemoteWatchHook,

@@ -1,17 +1,15 @@
 // Hierarchical package structure
 pub mod actor_prim;
 pub mod dead_letter;
-pub mod dispatcher;
+pub mod dispatch;
 pub mod error;
 pub mod event_stream;
 pub mod extension;
 pub mod futures;
 pub mod lifecycle;
 pub mod logging;
-pub mod mailbox;
 pub mod messaging;
 pub mod props;
-pub mod scheduler;
 pub mod serialization;
 pub mod spawn;
 pub mod supervision;

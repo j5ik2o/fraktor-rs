@@ -4,11 +4,11 @@ use fraktor_actor_rs::core::{
     actor_path::{ActorPath, ActorPathScheme},
     actor_ref::{ActorRefGeneric, ActorRefSender, ActorRefSenderSharedGeneric, SendOutcome},
   },
+  dispatch::scheduler::{ManualTestDriver, SchedulerConfig, TickDriverConfig},
   error::ActorError,
   extension::ExtensionInstallers,
   messaging::AnyMessageGeneric,
   props::PropsGeneric,
-  scheduler::{ManualTestDriver, SchedulerConfig, TickDriverConfig},
   system::{ActorRefProvider, ActorRefProviderSharedGeneric, ActorSystemConfigGeneric, ActorSystemGeneric},
 };
 use fraktor_cluster_rs::core::{

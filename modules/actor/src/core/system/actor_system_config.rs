@@ -9,11 +9,13 @@ use fraktor_utils_rs::core::{
 
 use crate::core::{
   actor_prim::actor_path::GuardianKind as PathGuardianKind,
-  dispatcher::{DispatcherConfigGeneric, DispatchersGeneric},
+  dispatch::{
+    dispatcher::{DispatcherConfigGeneric, DispatchersGeneric},
+    mailbox::MailboxesGeneric,
+    scheduler::{SchedulerConfig, TickDriverConfig},
+  },
   extension::ExtensionInstallers,
-  mailbox::MailboxesGeneric,
   props::MailboxConfig,
-  scheduler::{SchedulerConfig, TickDriverConfig},
   system::{ActorRefProviderInstaller, RemotingConfig},
 };
 

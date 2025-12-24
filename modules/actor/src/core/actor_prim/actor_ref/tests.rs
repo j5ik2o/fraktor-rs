@@ -6,10 +6,10 @@ use crate::core::{
     actor_path::ActorPathScheme,
     actor_ref::{ActorRef, ActorRefSender},
   },
+  dispatch::scheduler::{ManualTestDriver, SchedulerConfig, TickDriverConfig},
   error::{ActorError, SendError},
   messaging::{AnyMessage, AnyMessageViewGeneric},
   props::Props,
-  scheduler::{ManualTestDriver, SchedulerConfig, TickDriverConfig},
   system::{ActorSystemConfig, RemotingConfig, SystemState, SystemStateShared},
 };
 

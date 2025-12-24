@@ -8,10 +8,10 @@ use fraktor_actor_rs::core::{
     Actor, ActorContextGeneric, Pid,
     actor_path::{ActorPath, ActorPathParts, GuardianKind},
   },
+  dispatch::scheduler::{ManualTestDriver, TickDriverConfig},
   error::{ActorError, SendError},
   messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
   props::PropsGeneric,
-  scheduler::{ManualTestDriver, TickDriverConfig},
   serialization::{
     SerializationCallScope, SerializationExtensionGeneric, SerializationExtensionSharedGeneric, SerializationSetup,
     SerializationSetupBuilder, Serializer, SerializerId, StringSerializer,

@@ -3,14 +3,14 @@ use std::{thread, time::Duration};
 
 use fraktor_actor_rs::{
   core::{
+    dispatch::mailbox::{MailboxOverflowStrategy, MailboxPolicy},
     error::ActorError,
     logging::{LogEvent, LogLevel, LoggerWriter},
-    mailbox::{MailboxOverflowStrategy, MailboxPolicy},
     props::MailboxConfig,
   },
   std::{
     actor_prim::{Actor, ActorContext},
-    dispatcher::dispatch_executor::TokioExecutor,
+    dispatch::dispatcher::dispatch_executor::TokioExecutor,
     event_stream::{EventStreamEvent, EventStreamSubscriber, EventStreamSubscriberShared, subscriber_handle},
     futures::ActorFutureListener,
     logging::StdLoggerSubscriber,
@@ -147,7 +147,7 @@ async fn main() {
   })
   .with_dispatcher(dispatcher.clone());
 
-  let tick_driver = fraktor_actor_rs::std::scheduler::tick::TickDriverConfig::tokio_quickstart();
+  let tick_driver = fraktor_actor_rs::std::dispatch::scheduler::tick::TickDriverConfig::tokio_quickstart();
   let system = ActorSystem::new(&props, tick_driver).expect("actor system を初期化できること");
 
   let logger: EventStreamSubscriberShared =

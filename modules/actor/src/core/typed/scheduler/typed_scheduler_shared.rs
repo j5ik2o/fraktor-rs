@@ -1,7 +1,7 @@
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::SharedAccess};
 
 use super::typed_scheduler_guard::TypedSchedulerGuard;
-use crate::core::scheduler::SchedulerSharedGeneric;
+use crate::core::dispatch::scheduler::SchedulerSharedGeneric;
 
 /// Shared handle that provides typed access to the scheduler mutex.
 pub struct TypedSchedulerShared<TB: RuntimeToolbox + 'static> {

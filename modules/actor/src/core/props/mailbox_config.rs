@@ -3,7 +3,7 @@ use core::num::NonZeroUsize;
 use fraktor_utils_rs::core::collections::queue::capabilities::QueueCapabilityRegistry;
 
 use super::MailboxRequirement;
-use crate::core::mailbox::MailboxPolicy;
+use crate::core::dispatch::mailbox::MailboxPolicy;
 
 #[cfg(test)]
 mod tests;

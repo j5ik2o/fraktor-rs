@@ -9,7 +9,10 @@ use super::{
   factory::ActorFactory, factory_shared::ActorFactorySharedGeneric, mailbox_config::MailboxConfig,
   mailbox_requirement::MailboxRequirement,
 };
-use crate::core::{actor_prim::Actor, dispatcher::DispatcherConfigGeneric, mailbox::MailboxPolicy};
+use crate::core::{
+  actor_prim::Actor,
+  dispatch::{dispatcher::DispatcherConfigGeneric, mailbox::MailboxPolicy},
+};
 
 /// Immutable configuration describing how to construct an actor.
 pub struct PropsGeneric<TB: RuntimeToolbox + 'static> {

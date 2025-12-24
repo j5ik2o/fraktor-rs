@@ -3,7 +3,7 @@ use core::ops::{Deref, DerefMut};
 use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use crate::core::{
-  scheduler::{DispatcherSenderShared, Scheduler, SchedulerError, SchedulerHandle},
+  dispatch::scheduler::{DispatcherSenderShared, Scheduler, SchedulerError, SchedulerHandle},
   typed::{TypedScheduler, actor_prim::TypedActorRefGeneric},
 };
 

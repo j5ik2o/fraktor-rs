@@ -40,19 +40,21 @@ use crate::core::{
     actor_ref::ActorRefGeneric,
   },
   dead_letter::{DeadLetterEntryGeneric, DeadLetterSharedGeneric},
-  dispatcher::{DispatcherConfigGeneric, DispatcherRegistryError, DispatchersGeneric},
+  dispatch::{
+    dispatcher::{DispatcherConfigGeneric, DispatcherRegistryError, DispatchersGeneric},
+    mailbox::{MailboxRegistryError, MailboxesGeneric},
+    scheduler::{
+      SchedulerBackedDelayProvider, SchedulerConfig, SchedulerContext, SchedulerSharedGeneric, TaskRunSummary,
+      TickDriverControl, TickDriverHandleGeneric, TickDriverKind, TickDriverProvisioningContext, TickDriverRuntime,
+      TickExecutorSignal, TickFeed, next_tick_driver_id,
+    },
+  },
   error::{ActorError, SendError},
   event_stream::{EventStreamEvent, EventStreamSharedGeneric, RemoteAuthorityEvent, TickDriverSnapshot},
   futures::ActorFutureSharedGeneric,
   logging::{LogEvent, LogLevel},
-  mailbox::{MailboxRegistryError, MailboxesGeneric},
   messaging::{AnyMessageGeneric, FailurePayload, SystemMessage},
   props::MailboxConfig,
-  scheduler::{
-    SchedulerBackedDelayProvider, SchedulerConfig, SchedulerContext, SchedulerSharedGeneric, TaskRunSummary,
-    TickDriverControl, TickDriverHandleGeneric, TickDriverKind, TickDriverProvisioningContext, TickDriverRuntime,
-    TickExecutorSignal, TickFeed, next_tick_driver_id,
-  },
   spawn::{NameRegistryError, SpawnError},
   supervision::SupervisorDirective,
   system::{RegisterExtraTopLevelError, ReservationPolicy},
@@ -167,7 +169,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   pub(crate) fn build_from_config(config: &ActorSystemConfigGeneric<TB>) -> Result<Self, SpawnError>
   where
     TB: Default, {
-    use crate::core::scheduler::TickDriverBootstrap;
+    use crate::core::dispatch::scheduler::TickDriverBootstrap;
 
     let mut state = Self::new();
     state.apply_actor_system_config(config);
@@ -177,7 +179,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     let scheduler_config = *config.scheduler_config();
     #[cfg(any(test, feature = "test-support"))]
     let scheduler_config = if let Some(tick_driver_config) = config.tick_driver_config()
-      && matches!(tick_driver_config, crate::core::scheduler::TickDriverConfig::ManualTest(_))
+      && matches!(tick_driver_config, crate::core::dispatch::scheduler::TickDriverConfig::ManualTest(_))
       && !scheduler_config.runner_api_enabled()
     {
       scheduler_config.with_runner_api_enabled(true)

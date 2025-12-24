@@ -22,10 +22,10 @@ use crate::core::{
     actor_ref::{ActorRefGeneric, NullSender},
   },
   dead_letter::DeadLetterReason,
+  dispatch::scheduler::{ManualTestDriver, TickDriverConfig},
   event_stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   messaging::AnyMessageViewGeneric,
   props::Props,
-  scheduler::{ManualTestDriver, TickDriverConfig},
   serialization::{
     builtin, call_scope::SerializationCallScope, error::SerializationError, error_event::SerializationErrorEvent,
     not_serializable_error::NotSerializableError, serialization_setup::SerializationSetup,

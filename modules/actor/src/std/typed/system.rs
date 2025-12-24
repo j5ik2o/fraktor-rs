@@ -46,7 +46,7 @@ where
   /// Returns an error if the guardian actor cannot be spawned.
   pub fn new(
     guardian: &TypedProps<M>,
-    tick_driver_config: crate::core::scheduler::TickDriverConfig<StdToolbox>,
+    tick_driver_config: crate::core::dispatch::scheduler::TickDriverConfig<StdToolbox>,
   ) -> Result<Self, SpawnError> {
     Ok(Self { inner: CoreTypedActorSystemGeneric::new(guardian.as_core(), tick_driver_config)? })
   }

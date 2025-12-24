@@ -8,11 +8,11 @@ use std::{thread, time::Duration};
 use anyhow::{Result, anyhow};
 use fraktor_actor_rs::core::{
   actor_prim::{Actor, ActorContextGeneric, actor_ref::ActorRefGeneric},
+  dispatch::scheduler::{ManualTestDriver, TickDriverConfig},
   error::ActorError,
   extension::ExtensionInstallers,
   messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
   props::PropsGeneric,
-  scheduler::{ManualTestDriver, TickDriverConfig},
   serialization::SerializationExtensionInstaller,
   system::{ActorSystemConfigGeneric, ActorSystemGeneric, RemotingConfig},
 };

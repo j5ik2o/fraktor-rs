@@ -5,12 +5,14 @@ use fraktor_utils_rs::{core::sync::ArcShared, std::runtime_toolbox::StdToolbox};
 use crate::{
   core::{
     actor_prim::actor_path::GuardianKind,
-    dispatcher::DispatcherConfigGeneric,
+    dispatch::{
+      dispatcher::DispatcherConfigGeneric,
+      scheduler::{SchedulerConfig, TickDriverConfig},
+    },
     extension::ExtensionInstallers,
-    scheduler::{SchedulerConfig, TickDriverConfig},
     system::{ActorRefProviderInstaller, ActorSystemConfigGeneric as CoreActorSystemConfigGeneric, RemotingConfig},
   },
-  std::dispatcher::DispatcherConfig,
+  std::dispatch::dispatcher::DispatcherConfig,
 };
 
 /// Configuration for the actor system.

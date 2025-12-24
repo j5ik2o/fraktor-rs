@@ -2,7 +2,7 @@
 
 use core::time::Duration;
 
-use crate::core::scheduler::{AutoDriverMetadata, TickDriverKind, TickDriverMetadata};
+use crate::core::dispatch::scheduler::{AutoDriverMetadata, TickDriverKind, TickDriverMetadata};
 
 /// Snapshot describing the active tick driver.
 #[derive(Clone, Debug)]
