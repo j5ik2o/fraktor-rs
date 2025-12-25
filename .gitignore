@@ -52,3 +52,5 @@ Cargo.lock
 /.kamui/
 /.copilot/.copilot/logs/
 /.copilot/configstore/update-notifier-@github/
+
+*.pkl
