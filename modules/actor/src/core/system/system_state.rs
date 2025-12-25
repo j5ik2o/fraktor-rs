@@ -50,7 +50,7 @@ use crate::core::{
     stream::{EventStreamEvent, EventStreamSharedGeneric, RemoteAuthorityEvent, TickDriverSnapshot},
   },
   futures::ActorFutureSharedGeneric,
-  messaging::{AnyMessageGeneric, FailurePayload, SystemMessage},
+  messaging::{AnyMessageGeneric, AskResult, FailurePayload, SystemMessage},
   props::MailboxConfig,
   scheduler::{
     SchedulerBackedDelayProvider, SchedulerConfig, SchedulerContext, SchedulerSharedGeneric, TaskRunSummary,
@@ -355,12 +355,12 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     }
   }
 
-  pub(crate) fn register_ask_future(&mut self, future: ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>) {
+  pub(crate) fn register_ask_future(&mut self, future: ActorFutureSharedGeneric<AskResult<TB>, TB>) {
     self.ask_futures.push(future);
   }
 
   #[must_use]
-  pub(crate) fn drain_ready_ask_futures(&mut self) -> Vec<ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>> {
+  pub(crate) fn drain_ready_ask_futures(&mut self) -> Vec<ActorFutureSharedGeneric<AskResult<TB>, TB>> {
     self.ask_futures.drain_ready()
   }
 

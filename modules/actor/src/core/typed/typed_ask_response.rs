@@ -8,6 +8,8 @@ use crate::core::{
 };
 
 /// Associates the typed sender handle with the typed future.
+///
+/// The future resolves with `Ok(R)` on success, or `Err(TypedAskError)` on failure.
 pub struct TypedAskResponseGeneric<R, TB>
 where
   R: Send + Sync + 'static,

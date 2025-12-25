@@ -11,7 +11,7 @@ use crate::core::{
   },
   error::SendError,
   futures::ActorFutureSharedGeneric,
-  messaging::{AnyMessageGeneric, AskResponseGeneric},
+  messaging::{AnyMessageGeneric, AskResponseGeneric, AskResult},
   typed::TypedAskResponseGeneric,
 };
 
@@ -68,6 +68,7 @@ where
   /// Sends a typed request and obtains the ask response.
   ///
   /// The request message is built with an explicit reply target.
+  /// The future resolves with `Ok(message)` on success, or `Err(AskError)` on failure.
   ///
   /// # Errors
   ///
@@ -76,7 +77,7 @@ where
   where
     R: Send + Sync + 'static,
     F: FnOnce(TypedActorRefGeneric<R, TB>) -> M, {
-    let future = ActorFutureSharedGeneric::<AnyMessageGeneric<TB>, TB>::new();
+    let future = ActorFutureSharedGeneric::<AskResult<TB>, TB>::new();
     let reply_sender = AskReplySenderGeneric::<TB>::new(future.clone());
     let reply_ref = if let Some(system) = self.inner.system_state() {
       let reply_ref = ActorRefGeneric::with_system(self.inner.pid(), reply_sender, &system);

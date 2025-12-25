@@ -376,10 +376,11 @@ fn system_state_deadletters() {
 
 #[test]
 fn system_state_register_ask_future() {
-  use crate::core::futures::ActorFutureSharedGeneric;
+  use crate::core::{futures::ActorFutureSharedGeneric, messaging::AskResult};
 
+  type TestAskResult = AskResult<NoStdToolbox>;
   let mut state = build_state();
-  let future = ActorFutureSharedGeneric::<AnyMessage, NoStdToolbox>::new();
+  let future = ActorFutureSharedGeneric::<TestAskResult, NoStdToolbox>::new();
   state.register_ask_future(future.clone());
 
   let ready = state.drain_ready_ask_futures();

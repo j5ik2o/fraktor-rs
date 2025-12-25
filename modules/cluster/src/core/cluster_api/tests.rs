@@ -183,9 +183,10 @@ fn request_future_completes_with_timeout_payload() {
 
   run_scheduler(&system, Duration::from_millis(1));
 
-  let message = future.with_write(|inner| inner.try_take()).expect("timeout payload");
-  let payload = message.payload().downcast_ref::<ClusterRequestError>().expect("payload");
-  assert_eq!(payload, &ClusterRequestError::Timeout);
+  let result = future.with_write(|inner| inner.try_take()).expect("timeout payload");
+  assert!(result.is_err(), "expect timeout error");
+  let ask_error = result.unwrap_err();
+  assert_eq!(ask_error, fraktor_actor_rs::core::messaging::AskError::Timeout);
 }
 
 fn run_scheduler(system: &ActorSystemGeneric<NoStdToolbox>, duration: Duration) {

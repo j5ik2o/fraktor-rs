@@ -7,7 +7,7 @@ use fraktor_actor_rs::core::{
   error::SendError,
   event::stream::{EventStreamEvent, EventStreamSharedGeneric},
   futures::ActorFutureSharedGeneric,
-  messaging::{AnyMessageGeneric, AskResponseGeneric},
+  messaging::{AnyMessageGeneric, AskError, AskResponseGeneric, AskResult},
   scheduler::{ExecutionBatch, SchedulerCommand, SchedulerRunnable},
   system::{ActorSystemGeneric, SystemStateSharedGeneric},
 };
@@ -94,7 +94,7 @@ impl<TB: RuntimeToolbox + 'static> GrainRefGeneric<TB> {
       },
     };
     let state = self.api.system().state();
-    let future = ActorFutureSharedGeneric::<AnyMessageGeneric<TB>, TB>::new();
+    let future = ActorFutureSharedGeneric::<AskResult<TB>, TB>::new();
     let reply_sender = GrainReplySender::new(future.clone());
     let reply_pid = state.allocate_pid();
     let reply_ref = ActorRefGeneric::with_system(reply_pid, reply_sender, &state);
@@ -156,13 +156,15 @@ impl<TB: RuntimeToolbox + 'static> GrainRefGeneric<TB> {
 
   /// Sends a request and returns the response future.
   ///
+  /// The future resolves with `Ok(message)` on success, or `Err(AskError)` on failure.
+  ///
   /// # Errors
   ///
   /// Returns an error if resolution or sending fails.
   pub fn request_future(
     &self,
     message: &AnyMessageGeneric<TB>,
-  ) -> Result<ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>, GrainCallError> {
+  ) -> Result<ActorFutureSharedGeneric<AskResult<TB>, TB>, GrainCallError> {
     let response = self.request(message)?;
     let (_, future) = response.into_parts();
     Ok(future)
@@ -222,7 +224,7 @@ enum GrainRetryAction<TB: RuntimeToolbox + 'static> {
 }
 
 struct GrainRetryRunnable<TB: RuntimeToolbox + 'static> {
-  future:  ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>,
+  future:  ActorFutureSharedGeneric<AskResult<TB>, TB>,
   context: GrainRetryContext<TB>,
   action:  GrainRetryAction<TB>,
 }
@@ -234,15 +236,12 @@ impl<TB: RuntimeToolbox + 'static> GrainRetryRunnable<TB> {
     message: AnyMessageGeneric<TB>,
     reply_ref: ActorRefGeneric<TB>,
     attempt: u32,
-    future: ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>,
+    future: ActorFutureSharedGeneric<AskResult<TB>, TB>,
   ) -> Self {
     Self { future, context, action: GrainRetryAction::Retry { actor_ref, message, reply_ref, attempt } }
   }
 
-  const fn timeout(
-    context: GrainRetryContext<TB>,
-    future: ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>,
-  ) -> Self {
+  const fn timeout(context: GrainRetryContext<TB>, future: ActorFutureSharedGeneric<AskResult<TB>, TB>) -> Self {
     Self { future, context, action: GrainRetryAction::Timeout }
   }
 }
@@ -274,7 +273,7 @@ impl<TB: RuntimeToolbox + 'static> SchedulerRunnable for GrainRetryRunnable<TB> 
             GrainEvent::CallFailed { identity: self.context.identity.clone(), reason: format!("{failure:?}") };
           publish_grain_event(&self.context.event_stream, event);
           update_grain_metrics(&self.context.metrics, |metrics| metrics.record_call_failed());
-          complete_future(&self.future, failure);
+          complete_future(&self.future, &failure);
           self.context.cleanup_temp_reply();
         }
       },
@@ -282,7 +281,7 @@ impl<TB: RuntimeToolbox + 'static> SchedulerRunnable for GrainRetryRunnable<TB> 
         let event = GrainEvent::CallTimedOut { identity: self.context.identity.clone() };
         publish_grain_event(&self.context.event_stream, event);
         update_grain_metrics(&self.context.metrics, |metrics| metrics.record_call_timed_out());
-        complete_future(&self.future, ClusterRequestError::Timeout);
+        complete_future(&self.future, &ClusterRequestError::Timeout);
         self.context.cleanup_temp_reply();
       },
     }
@@ -304,17 +303,18 @@ fn schedule_retry_with_system<TB: RuntimeToolbox + 'static>(
 }
 
 fn complete_future<TB: RuntimeToolbox + 'static>(
-  future: &ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>,
-  error: ClusterRequestError,
+  future: &ActorFutureSharedGeneric<AskResult<TB>, TB>,
+  error: &ClusterRequestError,
 ) {
-  let waker = future.with_write(|inner| {
-    if inner.is_ready() {
-      None
-    } else {
-      let message = AnyMessageGeneric::new(error);
-      inner.complete(message)
-    }
-  });
+  // ClusterRequestError を AskError に変換
+  let ask_error = match error {
+    | ClusterRequestError::Timeout => AskError::Timeout,
+    | ClusterRequestError::ResolveFailed(_) => AskError::DeadLetter,
+    | ClusterRequestError::SendFailed { .. } => AskError::SendFailed,
+    | ClusterRequestError::TimeoutScheduleFailed { .. } => AskError::SendFailed,
+  };
+
+  let waker = future.with_write(|inner| if inner.is_ready() { None } else { inner.complete(Err(ask_error)) });
   if let Some(waker) = waker {
     waker.wake();
   }
@@ -336,18 +336,18 @@ fn update_grain_metrics<TB: RuntimeToolbox + 'static>(
 }
 
 struct GrainReplySender<TB: RuntimeToolbox + 'static> {
-  future: ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>,
+  future: ActorFutureSharedGeneric<AskResult<TB>, TB>,
 }
 
 impl<TB: RuntimeToolbox + 'static> GrainReplySender<TB> {
-  const fn new(future: ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>) -> Self {
+  const fn new(future: ActorFutureSharedGeneric<AskResult<TB>, TB>) -> Self {
     Self { future }
   }
 }
 
 impl<TB: RuntimeToolbox + 'static> ActorRefSender<TB> for GrainReplySender<TB> {
   fn send(&mut self, message: AnyMessageGeneric<TB>) -> Result<SendOutcome, SendError<TB>> {
-    let waker = self.future.with_write(|inner| inner.complete(message));
+    let waker = self.future.with_write(|inner| inner.complete(Ok(message)));
     if let Some(waker) = waker {
       waker.wake();
     }

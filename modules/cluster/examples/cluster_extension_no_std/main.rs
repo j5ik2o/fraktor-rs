@@ -342,17 +342,27 @@ impl ClusterNode {
   }
 
   fn send_message(&self, msg: String) {
+    use fraktor_actor_rs::core::{futures::ActorFutureSharedGeneric, messaging::AskResult};
     let api = ClusterApiGeneric::try_from_system(&self.system).expect("cluster api");
     let identity = ClusterIdentity::new("grain", "demo").expect("identity");
     let grain_ref = GrainRefGeneric::new(api, identity);
     let request = AnyMessage::new(msg);
-    let future = grain_ref.request_future(&request).expect("grain request");
+    let future: ActorFutureSharedGeneric<AskResult<NoStdToolbox>, NoStdToolbox> =
+      grain_ref.request_future(&request).expect("grain request");
     for _ in 0..10 {
       self.tick(1);
-      if let Some(message) = future.with_write(|inner| inner.try_take()) {
-        if let Some(reply) = message.payload().downcast_ref::<String>() {
-          println!("[grain] reply: {}", reply);
-          return;
+      if let Some(ask_result) = future.with_write(|inner| inner.try_take()) {
+        match ask_result {
+          | Ok(message) => {
+            if let Some(reply) = message.payload().downcast_ref::<String>() {
+              println!("[grain] reply: {}", reply);
+              return;
+            }
+          },
+          | Err(error) => {
+            println!("[grain] ask failed: {}", error);
+            return;
+          },
         }
       }
     }

@@ -6,3 +6,5 @@ pub type AnyMessage = crate::core::messaging::AnyMessageGeneric<StdToolbox>;
 pub type AnyMessageView<'a> = crate::core::messaging::AnyMessageViewGeneric<'a, StdToolbox>;
 /// Ask-response handle specialised for `StdToolbox`.
 pub type AskResponse = crate::core::messaging::AskResponseGeneric<StdToolbox>;
+/// Result type for ask operations, specialised for `StdToolbox`.
+pub type AskResult = crate::core::messaging::AskResult<StdToolbox>;

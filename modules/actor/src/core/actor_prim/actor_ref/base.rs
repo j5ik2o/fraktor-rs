@@ -18,7 +18,7 @@ use crate::core::{
   },
   error::SendError,
   futures::ActorFutureSharedGeneric,
-  messaging::{AnyMessageGeneric, AskResponseGeneric},
+  messaging::{AnyMessageGeneric, AskResponseGeneric, AskResult},
   system::{SystemStateSharedGeneric, SystemStateWeakGeneric},
 };
 
@@ -107,13 +107,15 @@ impl<TB: RuntimeToolbox + 'static> ActorRefGeneric<TB> {
 
   /// Sends a request and obtains a future that resolves with the reply.
   ///
+  /// The future resolves with `Ok(message)` on success, or `Err(AskError)` on failure.
+  ///
   /// # Errors
   ///
   /// Returns an error if the message cannot be delivered.
   pub fn ask(&self, message: AnyMessageGeneric<TB>) -> Result<AskResponseGeneric<TB>, SendError<TB>>
   where
     TB: 'static, {
-    let future = ActorFutureSharedGeneric::<AnyMessageGeneric<TB>, TB>::new();
+    let future = ActorFutureSharedGeneric::<AskResult<TB>, TB>::new();
     let reply_sender = AskReplySenderGeneric::<TB>::new(future.clone());
     let reply_ref = ActorRefGeneric::<TB>::new(self.pid, reply_sender);
     let envelope = message.with_sender(reply_ref.clone());

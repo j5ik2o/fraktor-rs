@@ -13,7 +13,7 @@ use crate::core::{
     stream::{EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriberShared, EventStreamSubscriptionGeneric},
   },
   futures::ActorFutureSharedGeneric,
-  messaging::AnyMessageGeneric,
+  messaging::AskResult,
   spawn::SpawnError,
   system::{ActorSystemConfigGeneric, ActorSystemGeneric, SystemStateSharedGeneric},
   typed::{
@@ -172,7 +172,7 @@ where
 
   /// Drains ask futures that have been fulfilled since the last check.
   #[must_use]
-  pub fn drain_ready_ask_futures(&self) -> Vec<ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>> {
+  pub fn drain_ready_ask_futures(&self) -> Vec<ActorFutureSharedGeneric<AskResult<TB>, TB>> {
     self.inner.drain_ready_ask_futures()
   }
 

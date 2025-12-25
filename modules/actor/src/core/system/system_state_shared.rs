@@ -37,7 +37,7 @@ use crate::core::{
     stream::{EventStreamEvent, EventStreamSharedGeneric, TickDriverSnapshot},
   },
   futures::ActorFutureSharedGeneric,
-  messaging::{AnyMessageGeneric, FailurePayload, SystemMessage},
+  messaging::{AnyMessageGeneric, AskResult, FailurePayload, SystemMessage},
   props::MailboxConfig,
   scheduler::{SchedulerBackedDelayProvider, SchedulerSharedGeneric, TaskRunSummary, TickDriverRuntime},
   spawn::SpawnError,
@@ -464,7 +464,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   }
 
   /// Registers an ask future so the actor system can track its completion.
-  pub fn register_ask_future(&self, future: ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>) {
+  pub fn register_ask_future(&self, future: ActorFutureSharedGeneric<AskResult<TB>, TB>) {
     self.inner.write().register_ask_future(future);
   }
 
@@ -720,7 +720,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
 
   /// Drains ask futures that have completed since the previous inspection.
   #[must_use]
-  pub fn drain_ready_ask_futures(&self) -> Vec<ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>> {
+  pub fn drain_ready_ask_futures(&self) -> Vec<ActorFutureSharedGeneric<AskResult<TB>, TB>> {
     self.inner.write().drain_ready_ask_futures()
   }
 

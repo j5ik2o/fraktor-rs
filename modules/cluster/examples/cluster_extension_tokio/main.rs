@@ -74,13 +74,14 @@ use std::{
 use anyhow::{Result, anyhow};
 use fraktor_actor_rs::{
   core::{
-    error::ActorError, extension::ExtensionInstallers, serialization::SerializationExtensionInstaller,
-    system::RemotingConfig,
+    error::ActorError, extension::ExtensionInstallers, messaging::AskResult,
+    serialization::SerializationExtensionInstaller, system::RemotingConfig,
   },
   std::{
     actor_prim::{Actor, ActorContext},
     dispatch::dispatcher::{DispatcherConfig, dispatch_executor::TokioExecutor},
     event::stream::{EventStreamEvent, EventStreamSubscriber, EventStreamSubscription, subscriber_handle},
+    futures::ActorFutureShared,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
     scheduler::tick::TickDriverConfig,
@@ -161,7 +162,7 @@ async fn main() -> Result<()> {
   let response = grain_ref.request(&request).map_err(|e| anyhow!("grain request failed: {e:?}"))?;
   match await_grain_reply(&node_b.system, response.future().clone()).await {
     | Ok(reply) => println!("[ok] grain reply: {}", reply),
-    | Err(error) => println!("[warn] grain reply unavailable: {error:?}"),
+    | Err(error) => println!("[error] grain ask failed: {error}"),
   }
 
   // シャットダウン
@@ -296,13 +297,20 @@ impl Actor for GrainHub {
 
 async fn await_grain_reply(
   _system: &ActorSystem,
-  future: fraktor_actor_rs::std::futures::ActorFutureShared<AnyMessage>,
+  future: ActorFutureShared<AskResult<fraktor_utils_rs::std::runtime_toolbox::StdToolbox>>,
 ) -> Result<String> {
   let deadline = Instant::now() + Duration::from_secs(5);
   loop {
-    if let Some(message) = future.with_write(|inner| inner.try_take()) {
-      let reply = message.payload().downcast_ref::<String>().ok_or_else(|| anyhow!("unexpected reply payload"))?;
-      return Ok(reply.clone());
+    if let Some(ask_result) = future.with_write(|inner| inner.try_take()) {
+      match ask_result {
+        | Ok(message) => {
+          let reply = message.payload().downcast_ref::<String>().ok_or_else(|| anyhow!("unexpected reply payload"))?;
+          return Ok(reply.clone());
+        },
+        | Err(error) => {
+          return Err(anyhow!("grain ask failed: {error}"));
+        },
+      }
     }
     if Instant::now() >= deadline {
       return Err(anyhow!("timeout waiting grain reply"));

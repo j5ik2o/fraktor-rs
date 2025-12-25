@@ -34,7 +34,7 @@ use crate::core::{
     },
   },
   futures::ActorFutureSharedGeneric,
-  messaging::{AnyMessageGeneric, SystemMessage},
+  messaging::{AnyMessageGeneric, AskResult, SystemMessage},
   props::PropsGeneric,
   scheduler::{SchedulerBackedDelayProvider, TickDriverConfig},
   serialization::default_serialization_extension_id,
@@ -458,7 +458,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
 
   /// Drains ask futures that have been fulfilled since the last check.
   #[must_use]
-  pub fn drain_ready_ask_futures(&self) -> Vec<ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>> {
+  pub fn drain_ready_ask_futures(&self) -> Vec<ActorFutureSharedGeneric<AskResult<TB>, TB>> {
     self.state.drain_ready_ask_futures()
   }
 

@@ -13,7 +13,7 @@ use core::time::Duration;
 use fraktor_actor_rs::core::{
   actor_prim::{actor_path::ActorPathParser, actor_ref::ActorRefGeneric},
   event::stream::EventStreamEvent,
-  messaging::{AnyMessageGeneric, AskResponseGeneric},
+  messaging::{AnyMessageGeneric, AskError, AskResponseGeneric, AskResult},
   scheduler::{ExecutionBatch, SchedulerCommand, SchedulerRunnable},
   system::ActorSystemGeneric,
 };
@@ -89,6 +89,8 @@ impl<TB: RuntimeToolbox + 'static> ClusterApiGeneric<TB> {
 
   /// Sends a request and returns the shared response future.
   ///
+  /// The future resolves with `Ok(message)` on success, or `Err(AskError)` on failure.
+  ///
   /// # Errors
   ///
   /// Returns an error if resolution fails, sending fails, or timeout scheduling fails.
@@ -97,8 +99,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterApiGeneric<TB> {
     identity: &ClusterIdentity,
     message: AnyMessageGeneric<TB>,
     timeout: Option<Duration>,
-  ) -> Result<fraktor_actor_rs::core::futures::ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>, ClusterRequestError>
-  {
+  ) -> Result<fraktor_actor_rs::core::futures::ActorFutureSharedGeneric<AskResult<TB>, TB>, ClusterRequestError> {
     let response = self.request(identity, message, timeout)?;
     let (_, future) = response.into_parts();
     Ok(future)
@@ -141,7 +142,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterApiGeneric<TB> {
   fn schedule_timeout(
     &self,
     timeout: Duration,
-    future: fraktor_actor_rs::core::futures::ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>,
+    future: fraktor_actor_rs::core::futures::ActorFutureSharedGeneric<AskResult<TB>, TB>,
   ) -> Result<(), ClusterRequestError> {
     let runnable = ArcShared::new(TimeoutRunnable { future });
 
@@ -200,19 +201,13 @@ fn publish_grain_event<TB: RuntimeToolbox + 'static>(
 }
 
 struct TimeoutRunnable<TB: RuntimeToolbox + 'static> {
-  future: fraktor_actor_rs::core::futures::ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>,
+  future: fraktor_actor_rs::core::futures::ActorFutureSharedGeneric<AskResult<TB>, TB>,
 }
 
 impl<TB: RuntimeToolbox + 'static> SchedulerRunnable for TimeoutRunnable<TB> {
   fn run(&self, _batch: &ExecutionBatch) {
-    let waker = self.future.with_write(|inner| {
-      if inner.is_ready() {
-        None
-      } else {
-        let message = AnyMessageGeneric::new(ClusterRequestError::Timeout);
-        inner.complete(message)
-      }
-    });
+    let waker =
+      self.future.with_write(|inner| if inner.is_ready() { None } else { inner.complete(Err(AskError::Timeout)) });
     if let Some(waker) = waker {
       waker.wake();
     }

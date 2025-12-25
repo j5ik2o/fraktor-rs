@@ -25,9 +25,9 @@ use fraktor_utils_rs::core::{
 
 use crate::core::{
   ActivatedKind, ClusterApiGeneric, ClusterExtensionConfig, ClusterExtensionGeneric, ClusterExtensionInstaller,
-  ClusterIdentity, ClusterRequestError, GRAIN_EVENT_STREAM_NAME, GrainCallOptions, GrainEvent, GrainKey,
-  GrainRefGeneric, GrainRetryPolicy, IdentityLookup, IdentitySetupError, LookupError, NoopClusterProvider,
-  PlacementDecision, PlacementLocality, PlacementResolution,
+  ClusterIdentity, GRAIN_EVENT_STREAM_NAME, GrainCallOptions, GrainEvent, GrainKey, GrainRefGeneric, GrainRetryPolicy,
+  IdentityLookup, IdentitySetupError, LookupError, NoopClusterProvider, PlacementDecision, PlacementLocality,
+  PlacementResolution,
 };
 
 #[test]
@@ -73,9 +73,10 @@ fn request_retries_on_timeout_until_policy_exhausted() {
 
   run_scheduler(&system, core::time::Duration::from_millis(10));
 
-  let message = response.future().with_write(|inner| inner.try_take()).expect("timeout payload");
-  let payload = message.payload().downcast_ref::<ClusterRequestError>().expect("payload");
-  assert_eq!(payload, &ClusterRequestError::Timeout);
+  let result = response.future().with_write(|inner| inner.try_take()).expect("timeout payload");
+  assert!(result.is_err(), "expect timeout error");
+  let ask_error = result.unwrap_err();
+  assert_eq!(ask_error, fraktor_actor_rs::core::messaging::AskError::Timeout);
 
   let sends = *send_counter.lock();
   assert_eq!(sends, 3);
