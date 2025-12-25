@@ -1,4 +1,4 @@
-use alloc::string::String;
+use alloc::{string::String, vec::Vec};
 use core::time::Duration;
 
 use fraktor_actor_rs::core::{
@@ -8,6 +8,10 @@ use fraktor_actor_rs::core::{
     actor_ref::{ActorRefGeneric, ActorRefSender, ActorRefSenderSharedGeneric, SendOutcome},
   },
   error::ActorError,
+  event::stream::{
+    EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric,
+    subscriber_handle,
+  },
   extension::ExtensionInstallers,
   messaging::AnyMessageGeneric,
   props::PropsGeneric,
@@ -15,16 +19,16 @@ use fraktor_actor_rs::core::{
   system::{ActorRefProvider, ActorRefProviderSharedGeneric, ActorSystemConfigGeneric, ActorSystemGeneric},
 };
 use fraktor_utils_rs::core::{
-  runtime_toolbox::NoStdToolbox,
+  runtime_toolbox::{NoStdMutex, NoStdToolbox},
   sync::{ArcShared, SharedAccess},
   time::TimerInstant,
 };
 
 use crate::core::{
   ActivatedKind, ClusterApiError, ClusterApiGeneric, ClusterExtensionConfig, ClusterExtensionGeneric,
-  ClusterExtensionInstaller, ClusterIdentity, ClusterRequestError, ClusterResolveError, GrainKey, IdentityLookup,
-  IdentitySetupError, LookupError, NoopClusterProvider, NoopIdentityLookup, PlacementDecision, PlacementLocality,
-  PlacementResolution,
+  ClusterExtensionInstaller, ClusterIdentity, ClusterRequestError, ClusterResolveError, GRAIN_EVENT_STREAM_NAME,
+  GrainEvent, GrainKey, IdentityLookup, IdentitySetupError, LookupError, MetricsError, NoopClusterProvider,
+  NoopIdentityLookup, PlacementDecision, PlacementEvent, PlacementLocality, PlacementResolution,
 };
 
 #[test]
@@ -83,6 +87,19 @@ fn get_fails_on_invalid_pid_format() {
 }
 
 #[test]
+fn get_returns_lookup_pending_when_resolution_pending() {
+  let (system, ext) = build_system_with_extension(|| Box::new(PendingIdentityLookup::new()));
+  ext.start_member().expect("start member");
+  ext.setup_member_kinds(vec![ActivatedKind::new("user")]).expect("setup kinds");
+
+  let api = ClusterApiGeneric::try_from_system(&system).expect("cluster api");
+  let identity = ClusterIdentity::new("user", "abc").expect("identity");
+
+  let err = api.get(&identity).expect_err("pending");
+  assert_eq!(err, ClusterResolveError::LookupPending);
+}
+
+#[test]
 fn get_resolves_actor_ref_for_registered_kind() {
   let (system, ext) = build_system_with_extension(|| Box::new(StaticIdentityLookup::new("node1:8080")));
   ext.start_member().expect("start member");
@@ -93,6 +110,35 @@ fn get_resolves_actor_ref_for_registered_kind() {
 
   let actor_ref = api.get(&identity).expect("resolved actor ref");
   assert_eq!(actor_ref.pid(), Pid::new(1, 0));
+}
+
+#[test]
+fn grain_metrics_returns_disabled_when_metrics_not_enabled() {
+  let (_system, ext) = build_system_with_extension(|| Box::new(StaticIdentityLookup::new("node1:8080")));
+  assert_eq!(ext.grain_metrics(), Err(MetricsError::Disabled));
+}
+
+#[test]
+fn get_publishes_activation_events_and_updates_metrics() {
+  let (system, ext) = build_system_with_extension_config(|| Box::new(EventfulIdentityLookup::new("node1:8080")), true);
+  ext.start_member().expect("start member");
+  ext.setup_member_kinds(vec![ActivatedKind::new("user")]).expect("setup kinds");
+
+  let event_stream = system.event_stream();
+  let (recorder, _subscription) = subscribe_grain_events(&event_stream);
+
+  let api = ClusterApiGeneric::try_from_system(&system).expect("cluster api");
+  let identity = ClusterIdentity::new("user", "abc").expect("identity");
+
+  let _ = api.get(&identity).expect("resolved actor ref");
+
+  let events = recorder.events();
+  assert!(events.iter().any(|event| matches!(event, GrainEvent::ActivationCreated { .. })));
+  assert!(events.iter().any(|event| matches!(event, GrainEvent::ActivationPassivated { .. })));
+
+  let metrics = ext.grain_metrics().expect("metrics");
+  assert_eq!(metrics.activations_created(), 1);
+  assert_eq!(metrics.activations_passivated(), 1);
 }
 
 #[test]
@@ -158,9 +204,19 @@ fn build_system_with_extension<F>(
 ) -> (ActorSystemGeneric<NoStdToolbox>, ArcShared<ClusterExtensionGeneric<NoStdToolbox>>)
 where
   F: Fn() -> Box<dyn IdentityLookup> + Send + Sync + 'static, {
+  build_system_with_extension_config(identity_lookup_factory, false)
+}
+
+fn build_system_with_extension_config<F>(
+  identity_lookup_factory: F,
+  metrics_enabled: bool,
+) -> (ActorSystemGeneric<NoStdToolbox>, ArcShared<ClusterExtensionGeneric<NoStdToolbox>>)
+where
+  F: Fn() -> Box<dyn IdentityLookup> + Send + Sync + 'static, {
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let scheduler_config = SchedulerConfig::default().with_runner_api_enabled(true);
-  let cluster_config = ClusterExtensionConfig::new().with_advertised_address("node1:8080");
+  let cluster_config =
+    ClusterExtensionConfig::new().with_advertised_address("node1:8080").with_metrics_enabled(metrics_enabled);
   let cluster_installer = ClusterExtensionInstaller::new(cluster_config, |_event_stream, _block_list, _address| {
     Box::new(NoopClusterProvider::new())
   })
@@ -179,6 +235,41 @@ where
   let extension =
     system.extended().extension_by_type::<ClusterExtensionGeneric<NoStdToolbox>>().expect("cluster extension");
   (system, extension)
+}
+
+#[derive(Clone)]
+struct RecordingGrainEvents {
+  events: ArcShared<NoStdMutex<Vec<GrainEvent>>>,
+}
+
+impl RecordingGrainEvents {
+  fn new() -> Self {
+    Self { events: ArcShared::new(NoStdMutex::new(Vec::new())) }
+  }
+
+  fn events(&self) -> Vec<GrainEvent> {
+    self.events.lock().clone()
+  }
+}
+
+impl EventStreamSubscriber<NoStdToolbox> for RecordingGrainEvents {
+  fn on_event(&mut self, event: &EventStreamEvent<NoStdToolbox>) {
+    if let EventStreamEvent::Extension { name, payload } = event
+      && name == GRAIN_EVENT_STREAM_NAME
+      && let Some(grain_event) = payload.payload().downcast_ref::<GrainEvent>()
+    {
+      self.events.lock().push(grain_event.clone());
+    }
+  }
+}
+
+fn subscribe_grain_events(
+  event_stream: &EventStreamSharedGeneric<NoStdToolbox>,
+) -> (RecordingGrainEvents, EventStreamSubscriptionGeneric<NoStdToolbox>) {
+  let recorder = RecordingGrainEvents::new();
+  let subscriber = subscriber_handle(recorder.clone());
+  let subscription = event_stream.subscribe(&subscriber);
+  (recorder, subscription)
 }
 
 struct TestGuardian;
@@ -222,6 +313,46 @@ impl IdentityLookup for StaticIdentityLookup {
   }
 }
 
+struct EventfulIdentityLookup {
+  authority: String,
+  events:    Vec<PlacementEvent>,
+}
+
+impl EventfulIdentityLookup {
+  fn new(authority: &str) -> Self {
+    Self { authority: authority.to_string(), events: Vec::new() }
+  }
+}
+
+impl IdentityLookup for EventfulIdentityLookup {
+  fn setup_member(&mut self, _kinds: &[ActivatedKind]) -> Result<(), IdentitySetupError> {
+    Ok(())
+  }
+
+  fn setup_client(&mut self, _kinds: &[ActivatedKind]) -> Result<(), IdentitySetupError> {
+    Ok(())
+  }
+
+  fn resolve(&mut self, key: &GrainKey, now: u64) -> Result<PlacementResolution, LookupError> {
+    let pid = format!("{}::{}", self.authority, key.value());
+    self.events.push(PlacementEvent::Activated {
+      key:         key.clone(),
+      pid:         pid.clone(),
+      observed_at: now,
+    });
+    self.events.push(PlacementEvent::Passivated { key: key.clone(), observed_at: now });
+    Ok(PlacementResolution {
+      decision: PlacementDecision { key: key.clone(), authority: self.authority.clone(), observed_at: now },
+      locality: PlacementLocality::Remote,
+      pid,
+    })
+  }
+
+  fn drain_events(&mut self) -> Vec<PlacementEvent> {
+    core::mem::take(&mut self.events)
+  }
+}
+
 struct InvalidIdentityLookup;
 
 impl IdentityLookup for InvalidIdentityLookup {
@@ -239,6 +370,28 @@ impl IdentityLookup for InvalidIdentityLookup {
       locality: PlacementLocality::Remote,
       pid:      "invalid_pid".to_string(),
     })
+  }
+}
+
+struct PendingIdentityLookup;
+
+impl PendingIdentityLookup {
+  fn new() -> Self {
+    Self
+  }
+}
+
+impl IdentityLookup for PendingIdentityLookup {
+  fn setup_member(&mut self, _kinds: &[ActivatedKind]) -> Result<(), IdentitySetupError> {
+    Ok(())
+  }
+
+  fn setup_client(&mut self, _kinds: &[ActivatedKind]) -> Result<(), IdentitySetupError> {
+    Ok(())
+  }
+
+  fn resolve(&mut self, _key: &GrainKey, _now: u64) -> Result<PlacementResolution, LookupError> {
+    Err(LookupError::Pending)
   }
 }
 

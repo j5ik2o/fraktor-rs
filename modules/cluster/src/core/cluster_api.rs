@@ -3,11 +3,16 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::{format, string::ToString};
+use alloc::{
+  format,
+  string::{String, ToString},
+  vec::Vec,
+};
 use core::time::Duration;
 
 use fraktor_actor_rs::core::{
   actor_prim::{actor_path::ActorPathParser, actor_ref::ActorRefGeneric},
+  event::stream::EventStreamEvent,
   messaging::{AnyMessageGeneric, AskResponseGeneric},
   scheduler::{ExecutionBatch, SchedulerCommand, SchedulerRunnable},
   system::ActorSystemGeneric,
@@ -19,6 +24,7 @@ use fraktor_utils_rs::core::{
 
 use crate::core::{
   ClusterApiError, ClusterExtensionGeneric, ClusterIdentity, ClusterRequestError, ClusterResolveError,
+  GRAIN_EVENT_STREAM_NAME, GrainEvent, GrainMetricsSharedGeneric, PlacementEvent,
 };
 
 /// Cluster API facade bound to an actor system.
@@ -39,6 +45,14 @@ impl<TB: RuntimeToolbox + 'static> ClusterApiGeneric<TB> {
       .extension_by_type::<ClusterExtensionGeneric<TB>>()
       .ok_or(ClusterApiError::ExtensionNotInstalled)?;
     Ok(Self { system: system.clone(), extension })
+  }
+
+  pub(crate) const fn system(&self) -> &ActorSystemGeneric<TB> {
+    &self.system
+  }
+
+  pub(crate) fn grain_metrics_shared(&self) -> Option<GrainMetricsSharedGeneric<TB>> {
+    self.extension.grain_metrics_shared()
   }
 
   /// Resolves an identity into an actor reference.
@@ -93,7 +107,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterApiGeneric<TB> {
   fn resolve_actor_ref(&self, identity: &ClusterIdentity) -> Result<ActorRefGeneric<TB>, ClusterResolveError> {
     let key = identity.key();
     let now = self.current_time_secs();
-    let pid = {
+    let (pid_result, placement_events) = {
       let core = self.extension.core_shared();
       let mut guard = core.lock();
       if guard.mode().is_none() {
@@ -102,9 +116,15 @@ impl<TB: RuntimeToolbox + 'static> ClusterApiGeneric<TB> {
       if !guard.is_kind_registered(identity.kind()) {
         return Err(ClusterResolveError::KindNotRegistered { kind: identity.kind().to_string() });
       }
-      let resolution = guard.resolve_pid(&key, now).map_err(|_| ClusterResolveError::LookupFailed)?;
-      resolution.pid
+      let resolution = guard.resolve_pid(&key, now).map_err(|error| match error {
+        | crate::core::LookupError::Pending => ClusterResolveError::LookupPending,
+        | _ => ClusterResolveError::LookupFailed,
+      });
+      let events = guard.drain_placement_events();
+      (resolution.map(|value| value.pid), events)
     };
+    self.publish_activation_events(placement_events);
+    let pid = pid_result?;
 
     let (authority, path) = split_pid(&pid)?;
     let canonical = format!("fraktor.tcp://cellactor@{authority}/{path}");
@@ -129,6 +149,31 @@ impl<TB: RuntimeToolbox + 'static> ClusterApiGeneric<TB> {
     let result = self.system.state().scheduler().with_write(|scheduler| scheduler.schedule_once(timeout, command));
     result.map(|_| ()).map_err(|error| ClusterRequestError::TimeoutScheduleFailed { reason: format!("{error:?}") })
   }
+
+  fn publish_activation_events(&self, events: Vec<PlacementEvent>) {
+    let metrics = self.grain_metrics_shared();
+    if metrics.is_none() && events.is_empty() {
+      return;
+    }
+    let event_stream = self.system.event_stream();
+    for event in events {
+      match event {
+        | PlacementEvent::Activated { key, pid, .. } => {
+          publish_grain_event(&event_stream, GrainEvent::ActivationCreated { key, pid });
+          if let Some(metrics) = &metrics {
+            metrics.with_write(|inner| inner.record_activation_created());
+          }
+        },
+        | PlacementEvent::Passivated { key, .. } => {
+          publish_grain_event(&event_stream, GrainEvent::ActivationPassivated { key });
+          if let Some(metrics) = &metrics {
+            metrics.with_write(|inner| inner.record_activation_passivated());
+          }
+        },
+        | _ => {},
+      }
+    }
+  }
 }
 
 fn split_pid(pid: &str) -> Result<(&str, &str), ClusterResolveError> {
@@ -143,6 +188,15 @@ fn split_pid(pid: &str) -> Result<(&str, &str), ClusterResolveError> {
     return Err(ClusterResolveError::InvalidPidFormat { pid: pid.to_string(), reason: "path is empty".into() });
   }
   Ok((authority, path))
+}
+
+fn publish_grain_event<TB: RuntimeToolbox + 'static>(
+  event_stream: &fraktor_actor_rs::core::event::stream::EventStreamSharedGeneric<TB>,
+  event: GrainEvent,
+) {
+  let payload = AnyMessageGeneric::new(event);
+  let extension_event = EventStreamEvent::Extension { name: String::from(GRAIN_EVENT_STREAM_NAME), payload };
+  event_stream.publish(&extension_event);
 }
 
 struct TimeoutRunnable<TB: RuntimeToolbox + 'static> {

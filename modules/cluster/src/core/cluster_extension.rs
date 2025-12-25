@@ -15,12 +15,12 @@ use fraktor_actor_rs::core::{
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::{RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+  sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
 };
 
 use crate::core::{
-  ActivatedKind, ClusterCore, ClusterError, ClusterEvent, ClusterMetricsSnapshot, IdentitySetupError, MetricsError,
-  TopologyUpdate,
+  ActivatedKind, ClusterCore, ClusterError, ClusterEvent, ClusterMetricsSnapshot, GrainMetrics,
+  GrainMetricsSharedGeneric, GrainMetricsSnapshot, IdentitySetupError, MetricsError, TopologyUpdate,
 };
 
 /// Internal subscriber that applies topology updates to ClusterCore.
@@ -57,10 +57,11 @@ impl<TB: RuntimeToolbox + 'static> EventStreamSubscriber<TB> for ClusterTopology
 
 /// Cluster extension registered into `ActorSystemGeneric`.
 pub struct ClusterExtensionGeneric<TB: RuntimeToolbox + 'static> {
-  core:         ArcShared<ToolboxMutex<ClusterCore<TB>, TB>>,
-  event_stream: EventStreamSharedGeneric<TB>,
-  subscription: ToolboxMutex<Option<EventStreamSubscriptionGeneric<TB>>, TB>,
-  _system:      ActorSystemWeakGeneric<TB>,
+  core:          ArcShared<ToolboxMutex<ClusterCore<TB>, TB>>,
+  event_stream:  EventStreamSharedGeneric<TB>,
+  grain_metrics: Option<GrainMetricsSharedGeneric<TB>>,
+  subscription:  ToolboxMutex<Option<EventStreamSubscriptionGeneric<TB>>, TB>,
+  _system:       ActorSystemWeakGeneric<TB>,
 }
 
 impl<TB: RuntimeToolbox + 'static> ClusterExtensionGeneric<TB> {
@@ -70,9 +71,11 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionGeneric<TB> {
   #[must_use]
   pub fn new(system: &ActorSystemGeneric<TB>, core: ClusterCore<TB>) -> Self {
     let event_stream = system.event_stream();
+    let grain_metrics =
+      if core.metrics_enabled() { Some(GrainMetricsSharedGeneric::new(GrainMetrics::new())) } else { None };
     let locked = <TB::MutexFamily as SyncMutexFamily>::create(core);
     let subscription = <TB::MutexFamily as SyncMutexFamily>::create(None);
-    Self { core: ArcShared::new(locked), event_stream, subscription, _system: system.downgrade() }
+    Self { core: ArcShared::new(locked), event_stream, grain_metrics, subscription, _system: system.downgrade() }
   }
 
   /// Returns the shared cluster core handle.
@@ -85,6 +88,12 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionGeneric<TB> {
   #[must_use]
   pub(crate) fn pub_sub_shared(&self) -> crate::core::ClusterPubSubShared<TB> {
     self.core.lock().pub_sub_shared()
+  }
+
+  /// Returns the shared grain metrics handle if enabled.
+  #[must_use]
+  pub(crate) fn grain_metrics_shared(&self) -> Option<GrainMetricsSharedGeneric<TB>> {
+    self.grain_metrics.clone()
   }
 
   /// Subscribes to the event stream for topology updates.
@@ -190,6 +199,18 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionGeneric<TB> {
   /// Returns [`MetricsError::Disabled`] if metrics collection is not enabled.
   pub fn metrics(&self) -> Result<ClusterMetricsSnapshot, MetricsError> {
     self.core.lock().metrics()
+  }
+
+  /// Returns grain metrics snapshot if enabled.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`MetricsError::Disabled`] if metrics collection is not enabled.
+  pub fn grain_metrics(&self) -> Result<GrainMetricsSnapshot, MetricsError> {
+    match &self.grain_metrics {
+      | Some(metrics) => Ok(metrics.with_read(|inner| inner.snapshot())),
+      | None => Err(MetricsError::Disabled),
+    }
   }
 
   /// Returns virtual actor count.

@@ -423,7 +423,13 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   /// Resolves the actor path for the specified pid if the actor exists.
   #[must_use]
   pub fn actor_path(&self, pid: &Pid) -> Option<ActorPath> {
-    let cell = self.cell(pid)?;
+    let Some(cell) = self.cell(pid) else {
+      let canonical = {
+        let guard = self.inner.read();
+        guard.actor_path_registry().canonical_uri(pid).map(|value| value.to_string())
+      }?;
+      return ActorPathParser::parse(&canonical).ok();
+    };
     let mut segments = Vec::new();
     let mut current = Some(cell);
     while let Some(cursor) = current {

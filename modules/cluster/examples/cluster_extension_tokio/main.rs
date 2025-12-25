@@ -67,19 +67,18 @@
 compile_error!("cluster_extension_tokio example requires `--features std`");
 
 use std::{
-  sync::{Arc, Mutex},
   thread,
-  time::Duration,
+  time::{Duration, Instant},
 };
 
 use anyhow::{Result, anyhow};
 use fraktor_actor_rs::{
   core::{
-    actor_prim::actor_path::ActorPathParser, error::ActorError, extension::ExtensionInstallers,
-    serialization::SerializationExtensionInstaller, system::RemotingConfig,
+    error::ActorError, extension::ExtensionInstallers, serialization::SerializationExtensionInstaller,
+    system::RemotingConfig,
   },
   std::{
-    actor_prim::{Actor, ActorContext, ActorRef},
+    actor_prim::{Actor, ActorContext},
     dispatch::dispatcher::{DispatcherConfig, dispatch_executor::TokioExecutor},
     event::stream::{EventStreamEvent, EventStreamSubscriber, EventStreamSubscription, subscriber_handle},
     messaging::{AnyMessage, AnyMessageView},
@@ -88,20 +87,22 @@ use fraktor_actor_rs::{
     system::{ActorSystem, ActorSystemConfig},
   },
 };
-use fraktor_cluster_rs::core::{
-  ActivatedKind, ClusterApiGeneric, ClusterEvent, ClusterExtensionConfig, ClusterExtensionGeneric,
-  ClusterExtensionInstaller, ClusterIdentity, ClusterTopology, GrainKey, IdentityLookup, IdentitySetupError,
-  LookupError, PlacementDecision, PlacementLocality, PlacementResolution,
+use fraktor_cluster_rs::{
+  core::{
+    ActivatedKind, ClusterApiGeneric, ClusterEvent, ClusterExtensionConfig, ClusterExtensionGeneric,
+    ClusterExtensionInstaller, ClusterIdentity, ClusterTopology, GrainKey, GrainRefGeneric, IdentityLookup,
+    IdentitySetupError, LookupError, PlacementDecision, PlacementLocality, PlacementResolution,
+  },
+  std::default_grain_call_options,
 };
 use fraktor_remote_rs::core::{
   RemotingExtensionConfig, RemotingExtensionInstaller, TokioActorRefProviderInstaller, TokioTransportConfig,
   default_loopback_setup,
 };
 use fraktor_utils_rs::{
-  core::sync::ArcShared,
+  core::sync::{ArcShared, SharedAccess},
   std::{StdSyncMutex, runtime_toolbox::StdToolbox},
 };
-use tokio::sync::oneshot;
 
 const HOST: &str = "127.0.0.1";
 const NODE_A_PORT: u16 = 26050;
@@ -115,25 +116,14 @@ async fn main() -> Result<()> {
   println!("=== Cluster Extension Tokio Demo ===");
   println!("Demonstrates EventStream-based topology with LocalClusterProviderGeneric\n");
 
-  // 返信待機チャネル（ノードB→ノードA→ノードB）
-  let (reply_tx, reply_rx) = oneshot::channel::<String>();
-  let shared_reply = Arc::new(Mutex::new(Some(reply_tx)));
-
   // ノードA: 受信・Grain 起動側（静的トポロジ: node-b が join）
   let static_topology_a = ClusterTopology::new(1, vec![format!("{HOST}:{NODE_B_PORT}")], Vec::new(), Vec::new());
   let node_a_authority = format!("{HOST}:{NODE_A_PORT}");
-  let node_a =
-    build_cluster_node("cluster-node-a", NODE_A_PORT, None, Some(static_topology_a), node_a_authority.clone())?;
+  let node_a = build_cluster_node("cluster-node-a", NODE_A_PORT, Some(static_topology_a), node_a_authority.clone())?;
 
   // ノードB: 送信・返信受信側（静的トポロジ: node-a が join）
   let static_topology_b = ClusterTopology::new(2, vec![format!("{HOST}:{NODE_A_PORT}")], Vec::new(), Vec::new());
-  let node_b = build_cluster_node(
-    "cluster-node-b",
-    NODE_B_PORT,
-    Some(shared_reply.clone()),
-    Some(static_topology_b),
-    node_a_authority,
-  )?;
+  let node_b = build_cluster_node("cluster-node-b", NODE_B_PORT, Some(static_topology_b), node_a_authority)?;
 
   // Kind を登録
   node_a
@@ -164,44 +154,15 @@ async fn main() -> Result<()> {
 
   // Grain 呼び出し（ノードBからノードAへリモート送信）
   println!("\n--- Sending grain call ---");
-  node_b
-    .system
-    .user_guardian_ref()
-    .tell(AnyMessage::new(StartGrainCall {
-      target: node_a.system.user_guardian_ref(),
-      key:    SAMPLE_KEY.to_string(),
-      body:   "hello cluster over tokio tcp".to_string(),
-    }))
-    .map_err(|e| anyhow!("start grain send failed: {e:?}"))?;
-
-  // 返信受信
-  let reply = tokio::time::timeout(Duration::from_secs(5), reply_rx)
-    .await
-    .map_err(|_| anyhow!("timeout waiting reply"))?
-    .map_err(|_| anyhow!("reply channel dropped"))?;
-  println!("[ok] grain reply: {reply}");
-
-  println!("\n--- Cluster API resolve ---");
   let api = ClusterApiGeneric::try_from_system(node_b.system.as_core()).map_err(|e| anyhow!("cluster api: {e:?}"))?;
-  let identity = ClusterIdentity::new(GRAIN_KIND, "api-1").map_err(|e| anyhow!("identity error: {e:?}"))?;
-  let actor_ref = api.get(&identity).map_err(|e| anyhow!("cluster api get failed: {e:?}"))?;
-  let reply_path =
-    node_b.system.user_guardian_ref().canonical_path().ok_or_else(|| anyhow!("cluster api reply path unavailable"))?;
-  let reply_uri = reply_path.to_canonical_uri();
-  let api_payload = encode_cluster_api_call(SAMPLE_KEY, "hello via cluster api", &reply_uri);
-  let (api_tx, api_rx) = oneshot::channel::<String>();
-  let api_reply = Arc::new(Mutex::new(Some(api_tx)));
-  node_b
-    .system
-    .user_guardian_ref()
-    .tell(AnyMessage::new(RegisterResponder { tx: api_reply }))
-    .map_err(|e| anyhow!("register responder failed: {e:?}"))?;
-  actor_ref.tell(AnyMessage::new(api_payload)).map_err(|e| anyhow!("cluster api send failed: {e:?}"))?;
-  let api_reply = tokio::time::timeout(Duration::from_secs(5), api_rx)
-    .await
-    .map_err(|_| anyhow!("timeout waiting cluster api reply"))?
-    .map_err(|_| anyhow!("cluster api reply channel dropped"))?;
-  println!("[ok] cluster api reply: {api_reply}");
+  let identity = ClusterIdentity::new(GRAIN_KIND, SAMPLE_KEY).map_err(|e| anyhow!("identity error: {e:?}"))?;
+  let grain_ref = GrainRefGeneric::new(api, identity).with_options(default_grain_call_options());
+  let request = AnyMessage::new("hello cluster over tokio tcp".to_string());
+  let response = grain_ref.request(&request).map_err(|e| anyhow!("grain request failed: {e:?}"))?;
+  match await_grain_reply(&node_b.system, response.future().clone()).await {
+    | Ok(reply) => println!("[ok] grain reply: {}", reply),
+    | Err(error) => println!("[warn] grain reply unavailable: {error:?}"),
+  }
 
   // シャットダウン
   println!("\n--- Shutting down ---");
@@ -226,7 +187,6 @@ struct ClusterNode {
 fn build_cluster_node(
   system_name: &str,
   port: u16,
-  responder: Option<Arc<Mutex<Option<oneshot::Sender<String>>>>>,
   static_topology: Option<ClusterTopology>,
   lookup_authority: String,
 ) -> Result<ClusterNode> {
@@ -273,13 +233,6 @@ fn build_cluster_node(
   let system = ActorSystem::new_with_config(&guardian, &system_config)
     .map_err(|e| anyhow!("actor system build failed ({system_name}): {e:?}"))?;
 
-  if let Some(tx) = responder {
-    system
-      .user_guardian_ref()
-      .tell(AnyMessage::new(RegisterResponder { tx }))
-      .map_err(|e| anyhow!("register responder failed: {e:?}"))?;
-  }
-
   let event_subscriber = subscriber_handle(ClusterEventPrinter::new(system_name.to_string()));
   let event_subscription = system.subscribe_event_stream(&event_subscriber);
 
@@ -318,152 +271,44 @@ impl EventStreamSubscriber for ClusterEventPrinter {
 
 // === Actors ===
 
-struct GrainHub {
-  responder: Option<Arc<Mutex<Option<oneshot::Sender<String>>>>>,
-}
+struct GrainHub;
 
 impl GrainHub {
   fn new() -> Self {
-    Self { responder: None }
+    Self
   }
 }
 
 impl Actor for GrainHub {
   fn receive(&mut self, ctx: &mut ActorContext<'_, '_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
-    if let Some(start) = message.downcast_ref::<StartGrainCall>() {
-      let envelope = AnyMessage::new(GrainCall {
-        key:      start.key.clone(),
-        body:     start.body.clone(),
-        reply_to: ctx.self_ref(),
-      });
-      start.target.tell(envelope).map_err(|e| ActorError::recoverable(format!("remote send failed: {e:?}")))?;
-      return Ok(());
-    }
-
-    if let Some(register) = message.downcast_ref::<RegisterResponder>() {
-      self.responder = Some(register.tx.clone());
-      return Ok(());
-    }
-
-    if let Some(text) = message.downcast_ref::<String>() {
-      if let Some((key, body, reply_uri)) = parse_cluster_api_call(text) {
-        println!("[hub] recv cluster api key={} body={}", key, body);
-        let reply_path = ActorPathParser::parse(&reply_uri)
-          .map_err(|e| ActorError::recoverable(format!("invalid reply uri: {e:?}")))?;
-        let reply_ref = ctx
-          .system()
-          .resolve_actor_ref(reply_path)
-          .map_err(|e| ActorError::recoverable(format!("resolve failed: {e:?}")))?;
-        reply_ref
-          .tell(AnyMessage::new(format!("echo:{body}")))
-          .map_err(|e| ActorError::recoverable(format!("reply failed: {e:?}")))?;
-        return Ok(());
+    if let Some(request) = message.downcast_ref::<String>() {
+      println!("[hub] recv grain request body={}", request);
+      let reply = format!("echo:{request}");
+      if ctx.reply_to().is_some() {
+        ctx.reply(AnyMessage::new(reply)).map_err(|e| ActorError::recoverable(format!("reply failed: {e:?}")))?;
+      } else {
+        println!("[hub] reply_to missing; skip reply");
       }
-      if let Some(tx) = &self.responder {
-        if let Ok(mut guard) = tx.lock() {
-          if let Some(sender) = guard.take() {
-            let _ = sender.send(text.clone());
-          }
-        }
-      }
-      return Ok(());
     }
-
-    if let Some(call) = message.downcast_ref::<GrainCall>() {
-      println!("[hub] recv grain call key={} body={}", call.key, call.body);
-      let props = Props::from_fn({
-        let reply_to = call.reply_to.clone();
-        let body = call.body.clone();
-        move || GrainActor::new(reply_to.clone(), body.clone())
-      })
-      .with_name(format!("grain-{}", sanitize_key(&call.key)));
-      ctx.spawn_child(&props).map_err(|e| ActorError::recoverable(format!("spawn failed: {e:?}")))?;
-      return Ok(());
-    }
-
-    if let Some(reply) = message.downcast_ref::<GrainReply>() {
-      if let Some(tx) = &self.responder {
-        if let Ok(mut guard) = tx.lock() {
-          if let Some(sender) = guard.take() {
-            let _ = sender.send(reply.body.clone());
-          }
-        }
-      }
-      return Ok(());
-    }
-
     Ok(())
   }
 }
 
-struct GrainActor {
-  reply_to: ActorRef,
-  body:     String,
-}
-
-impl GrainActor {
-  fn new(reply_to: ActorRef, body: String) -> Self {
-    Self { reply_to, body }
+async fn await_grain_reply(
+  _system: &ActorSystem,
+  future: fraktor_actor_rs::std::futures::ActorFutureShared<AnyMessage>,
+) -> Result<String> {
+  let deadline = Instant::now() + Duration::from_secs(5);
+  loop {
+    if let Some(message) = future.with_write(|inner| inner.try_take()) {
+      let reply = message.payload().downcast_ref::<String>().ok_or_else(|| anyhow!("unexpected reply payload"))?;
+      return Ok(reply.clone());
+    }
+    if Instant::now() >= deadline {
+      return Err(anyhow!("timeout waiting grain reply"));
+    }
+    tokio::time::sleep(Duration::from_millis(10)).await;
   }
-}
-
-impl Actor for GrainActor {
-  fn pre_start(&mut self, _ctx: &mut ActorContext<'_, '_>) -> Result<(), ActorError> {
-    println!("[grain] start");
-    self
-      .reply_to
-      .tell(AnyMessage::new(GrainReply { body: format!("echo:{0}", self.body) }))
-      .map_err(|e| ActorError::recoverable(format!("reply failed: {e:?}")))?;
-    Ok(())
-  }
-
-  fn receive(&mut self, _ctx: &mut ActorContext<'_, '_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
-    Ok(())
-  }
-}
-
-#[derive(Clone)]
-struct StartGrainCall {
-  target: ActorRef,
-  key:    String,
-  body:   String,
-}
-
-#[derive(Clone)]
-struct GrainCall {
-  key:      String,
-  body:     String,
-  reply_to: ActorRef,
-}
-
-#[derive(Clone)]
-struct GrainReply {
-  body: String,
-}
-
-#[derive(Clone)]
-struct RegisterResponder {
-  tx: Arc<Mutex<Option<oneshot::Sender<String>>>>,
-}
-
-fn sanitize_key(key: &str) -> String {
-  key.replace(['/', ':'], "_")
-}
-
-fn encode_cluster_api_call(key: &str, body: &str, reply_uri: &str) -> String {
-  format!("cluster-api|{key}|{body}|{reply_uri}")
-}
-
-fn parse_cluster_api_call(text: &str) -> Option<(String, String, String)> {
-  let mut parts = text.splitn(4, '|');
-  let prefix = parts.next()?;
-  if prefix != "cluster-api" {
-    return None;
-  }
-  let key = parts.next()?.to_string();
-  let body = parts.next()?.to_string();
-  let reply_uri = parts.next()?.to_string();
-  Some((key, body, reply_uri))
 }
 
 struct StaticHubIdentityLookup {

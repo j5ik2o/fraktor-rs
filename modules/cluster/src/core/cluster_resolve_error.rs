@@ -16,6 +16,8 @@ pub enum ClusterResolveError {
   },
   /// Identity lookup did not return a PID.
   LookupFailed,
+  /// Identity lookup is still pending.
+  LookupPending,
   /// PID string could not be parsed into an actor path.
   InvalidPidFormat {
     /// Raw PID string.

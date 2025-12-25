@@ -102,6 +102,13 @@ impl<TB: RuntimeToolbox + 'static> EndpointReaderGeneric<TB> {
     {
       message = message.with_reply_to(reply_ref);
     }
+    if let Some(temp_name) = temp_actor_name(&recipient)
+      && let Some(temp_ref) = system.state().temp_actor(temp_name)
+    {
+      let result = temp_ref.tell(message);
+      system.state().unregister_temp_actor(temp_name);
+      return result;
+    }
     let Some(pid) = system.pid_by_path(&recipient) else {
       return self.record_missing_recipient_with_system(&system, recipient, message);
     };
@@ -144,4 +151,15 @@ impl<TB: RuntimeToolbox + 'static> EndpointReaderGeneric<TB> {
 
     None
   }
+}
+
+fn temp_actor_name(path: &ActorPath) -> Option<&str> {
+  let segments = path.segments();
+  if segments.len() < 3 {
+    return None;
+  }
+  if segments[1].as_str() != "temp" {
+    return None;
+  }
+  Some(segments[2].as_str())
 }
