@@ -3,7 +3,7 @@ use alloc::{string::String, vec::Vec};
 use fraktor_actor_rs::core::{
   actor_prim::{
     Actor, Pid,
-    actor_path::{ActorPath, ActorPathScheme},
+    actor_path::{ActorPath, ActorPathScheme, PathSegment},
     actor_ref::{ActorRefGeneric, ActorRefSender, ActorRefSenderSharedGeneric, SendOutcome},
   },
   error::{ActorError, SendError},
@@ -12,7 +12,7 @@ use fraktor_actor_rs::core::{
     subscriber_handle,
   },
   extension::ExtensionInstallers,
-  messaging::AnyMessageGeneric,
+  messaging::{AnyMessageGeneric, AskError},
   props::PropsGeneric,
   scheduler::{ManualTestDriver, SchedulerConfig, SchedulerSharedGeneric, TickDriverConfig},
   system::{ActorRefProvider, ActorRefProviderSharedGeneric, ActorSystemConfigGeneric, ActorSystemGeneric},
@@ -183,6 +183,7 @@ where
 enum SendBehavior {
   Ok,
   Fail,
+  Reply,
 }
 
 #[derive(Clone)]
@@ -298,14 +299,151 @@ struct TestSender {
 impl ActorRefSender<NoStdToolbox> for TestSender {
   fn send(
     &mut self,
-    _message: AnyMessageGeneric<NoStdToolbox>,
+    message: AnyMessageGeneric<NoStdToolbox>,
   ) -> Result<SendOutcome, fraktor_actor_rs::core::error::SendError<NoStdToolbox>> {
     if matches!(self.behavior, SendBehavior::Fail) {
       return Err(SendError::timeout(AnyMessageGeneric::new(())));
+    }
+    if matches!(self.behavior, SendBehavior::Reply)
+      && let Some(sender) = message.sender().cloned()
+    {
+      let reply = AnyMessageGeneric::new(String::from("reply"));
+      let _ = sender.tell(reply);
     }
     if let Some(counter) = &self.counter {
       *counter.lock() += 1;
     }
     Ok(SendOutcome::Delivered)
+  }
+}
+
+#[test]
+fn request_with_sender_forwards_reply_and_completes_future() {
+  let (system, ext) = build_system_with_extension_config(
+    || Box::new(StaticIdentityLookup::new("node1:8080")),
+    None,
+    false,
+    SendBehavior::Reply,
+  );
+  ext.start_member().expect("start member");
+  ext.setup_member_kinds(vec![ActivatedKind::new("user")]).expect("setup kinds");
+
+  let api = ClusterApiGeneric::try_from_system(&system).expect("cluster api");
+  let identity = ClusterIdentity::new("user", "abc").expect("identity");
+  let grain_ref = GrainRefGeneric::new(api, identity);
+
+  let recorder = RecordingSender::new();
+  let sender_ref = ActorRefGeneric::new(Pid::new(99, 0), recorder.clone());
+
+  let response = grain_ref
+    .request_with_sender(&AnyMessageGeneric::new(String::from("ping")), &sender_ref)
+    .expect("request with sender");
+
+  let result = response.future().with_write(|inner| inner.try_take()).expect("future ready");
+  let reply = result.expect("reply ok");
+  let reply_text = reply.payload().downcast_ref::<String>().expect("reply string");
+  assert_eq!(reply_text, "reply");
+
+  let forwarded = recorder.messages();
+  assert_eq!(forwarded.len(), 1);
+  let forwarded_text = forwarded[0].payload().downcast_ref::<String>().expect("forwarded string");
+  assert_eq!(forwarded_text, "reply");
+}
+
+#[test]
+fn request_with_sender_forward_failure_completes_error_and_emits_event() {
+  let (system, ext) = build_system_with_extension_config(
+    || Box::new(StaticIdentityLookup::new("node1:8080")),
+    None,
+    true,
+    SendBehavior::Reply,
+  );
+  ext.start_member().expect("start member");
+  ext.setup_member_kinds(vec![ActivatedKind::new("user")]).expect("setup kinds");
+
+  let event_stream = system.event_stream();
+  let (recorder, _subscription) = subscribe_grain_events(&event_stream);
+
+  let api = ClusterApiGeneric::try_from_system(&system).expect("cluster api");
+  let identity = ClusterIdentity::new("user", "abc").expect("identity");
+  let grain_ref = GrainRefGeneric::new(api, identity.clone());
+
+  let sender_ref = ActorRefGeneric::new(Pid::new(98, 0), FailingSender);
+  let response = grain_ref
+    .request_with_sender(&AnyMessageGeneric::new(String::from("ping")), &sender_ref)
+    .expect("request with sender");
+
+  let result = response.future().with_write(|inner| inner.try_take()).expect("future ready");
+  let ask_error = result.expect_err("expect send failed");
+  assert_eq!(ask_error, AskError::SendFailed);
+
+  let events = recorder.events();
+  assert!(events.iter().any(|event| matches!(event, GrainEvent::CallFailed { identity: id, .. } if id == &identity)));
+
+  let metrics = ext.grain_metrics().expect("metrics");
+  assert_eq!(metrics.call_failures(), 1);
+}
+
+#[test]
+fn request_with_sender_cleans_temp_actor_on_completion() {
+  let (system, ext) = build_system_with_extension_config(
+    || Box::new(StaticIdentityLookup::new("node1:8080")),
+    None,
+    false,
+    SendBehavior::Reply,
+  );
+  ext.start_member().expect("start member");
+  ext.setup_member_kinds(vec![ActivatedKind::new("user")]).expect("setup kinds");
+
+  let api = ClusterApiGeneric::try_from_system(&system).expect("cluster api");
+  let identity = ClusterIdentity::new("user", "abc").expect("identity");
+  let grain_ref = GrainRefGeneric::new(api, identity);
+
+  let recorder = RecordingSender::new();
+  let sender_ref = ActorRefGeneric::new(Pid::new(97, 0), recorder);
+  let response = grain_ref
+    .request_with_sender(&AnyMessageGeneric::new(String::from("ping")), &sender_ref)
+    .expect("request with sender");
+
+  let _ = response.future().with_write(|inner| inner.try_take());
+  if let Some(temp_path) = response.sender().path() {
+    let temp_name = temp_path.segments().last().map(PathSegment::as_str).expect("temp name").to_string();
+    assert!(system.state().temp_actor(&temp_name).is_none(), "temp actor should be cleaned");
+  }
+}
+
+#[derive(Clone)]
+struct RecordingSender {
+  messages: ArcShared<NoStdMutex<Vec<AnyMessageGeneric<NoStdToolbox>>>>,
+}
+
+impl RecordingSender {
+  fn new() -> Self {
+    Self { messages: ArcShared::new(NoStdMutex::new(Vec::new())) }
+  }
+
+  fn messages(&self) -> Vec<AnyMessageGeneric<NoStdToolbox>> {
+    self.messages.lock().clone()
+  }
+}
+
+impl ActorRefSender<NoStdToolbox> for RecordingSender {
+  fn send(
+    &mut self,
+    message: AnyMessageGeneric<NoStdToolbox>,
+  ) -> Result<SendOutcome, fraktor_actor_rs::core::error::SendError<NoStdToolbox>> {
+    self.messages.lock().push(message);
+    Ok(SendOutcome::Delivered)
+  }
+}
+
+struct FailingSender;
+
+impl ActorRefSender<NoStdToolbox> for FailingSender {
+  fn send(
+    &mut self,
+    _message: AnyMessageGeneric<NoStdToolbox>,
+  ) -> Result<SendOutcome, fraktor_actor_rs::core::error::SendError<NoStdToolbox>> {
+    Err(SendError::timeout(AnyMessageGeneric::new(())))
   }
 }

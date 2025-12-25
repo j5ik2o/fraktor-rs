@@ -66,22 +66,18 @@
 #[cfg(not(feature = "std"))]
 compile_error!("cluster_extension_tokio example requires `--features std`");
 
-use std::{
-  thread,
-  time::{Duration, Instant},
-};
+use std::{thread, time::Duration};
 
 use anyhow::{Result, anyhow};
 use fraktor_actor_rs::{
   core::{
-    error::ActorError, extension::ExtensionInstallers, messaging::AskResult,
-    serialization::SerializationExtensionInstaller, system::RemotingConfig,
+    error::ActorError, extension::ExtensionInstallers, serialization::SerializationExtensionInstaller,
+    system::RemotingConfig,
   },
   std::{
     actor_prim::{Actor, ActorContext},
     dispatch::dispatcher::{DispatcherConfig, dispatch_executor::TokioExecutor},
     event::stream::{EventStreamEvent, EventStreamSubscriber, EventStreamSubscription, subscriber_handle},
-    futures::ActorFutureShared,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
     scheduler::tick::TickDriverConfig,
@@ -90,18 +86,18 @@ use fraktor_actor_rs::{
 };
 use fraktor_cluster_rs::{
   core::{
-    ActivatedKind, ClusterApiGeneric, ClusterEvent, ClusterExtensionConfig, ClusterExtensionGeneric,
-    ClusterExtensionInstaller, ClusterIdentity, ClusterTopology, GrainKey, GrainRefGeneric, IdentityLookup,
-    IdentitySetupError, LookupError, PlacementDecision, PlacementLocality, PlacementResolution,
+    ActivatedKind, ClusterEvent, ClusterExtensionConfig, ClusterExtensionGeneric, ClusterExtensionInstaller,
+    ClusterIdentity, ClusterTopology, GrainKey, IdentityLookup, IdentitySetupError, LookupError, PlacementDecision,
+    PlacementLocality, PlacementResolution,
   },
-  std::default_grain_call_options,
+  std::{ClusterApi, GrainRef, default_grain_call_options},
 };
 use fraktor_remote_rs::core::{
   RemotingExtensionConfig, RemotingExtensionInstaller, TokioActorRefProviderInstaller, TokioTransportConfig,
   default_loopback_setup,
 };
 use fraktor_utils_rs::{
-  core::sync::{ArcShared, SharedAccess},
+  core::sync::ArcShared,
   std::{StdSyncMutex, runtime_toolbox::StdToolbox},
 };
 
@@ -120,11 +116,18 @@ async fn main() -> Result<()> {
   // ノードA: 受信・Grain 起動側（静的トポロジ: node-b が join）
   let static_topology_a = ClusterTopology::new(1, vec![format!("{HOST}:{NODE_B_PORT}")], Vec::new(), Vec::new());
   let node_a_authority = format!("{HOST}:{NODE_A_PORT}");
-  let node_a = build_cluster_node("cluster-node-a", NODE_A_PORT, Some(static_topology_a), node_a_authority.clone())?;
+  let node_a = build_cluster_node(
+    "cluster-node-a",
+    NODE_A_PORT,
+    Some(static_topology_a),
+    node_a_authority.clone(),
+    HubRole::Receiver,
+  )?;
 
   // ノードB: 送信・返信受信側（静的トポロジ: node-a が join）
   let static_topology_b = ClusterTopology::new(2, vec![format!("{HOST}:{NODE_A_PORT}")], Vec::new(), Vec::new());
-  let node_b = build_cluster_node("cluster-node-b", NODE_B_PORT, Some(static_topology_b), node_a_authority)?;
+  let node_b =
+    build_cluster_node("cluster-node-b", NODE_B_PORT, Some(static_topology_b), node_a_authority, HubRole::Sender)?;
 
   // Kind を登録
   node_a
@@ -155,15 +158,12 @@ async fn main() -> Result<()> {
 
   // Grain 呼び出し（ノードBからノードAへリモート送信）
   println!("\n--- Sending grain call ---");
-  let api = ClusterApiGeneric::try_from_system(node_b.system.as_core()).map_err(|e| anyhow!("cluster api: {e:?}"))?;
-  let identity = ClusterIdentity::new(GRAIN_KIND, SAMPLE_KEY).map_err(|e| anyhow!("identity error: {e:?}"))?;
-  let grain_ref = GrainRefGeneric::new(api, identity).with_options(default_grain_call_options());
-  let request = AnyMessage::new("hello cluster over tokio tcp".to_string());
-  let response = grain_ref.request(&request).map_err(|e| anyhow!("grain request failed: {e:?}"))?;
-  match await_grain_reply(&node_b.system, response.future().clone()).await {
-    | Ok(reply) => println!("[ok] grain reply: {}", reply),
-    | Err(error) => println!("[error] grain ask failed: {error}"),
-  }
+  node_b
+    .system
+    .user_guardian_ref()
+    .tell(AnyMessage::new(StartGrainCall))
+    .map_err(|e| anyhow!("start grain call failed: {e:?}"))?;
+  tokio::time::sleep(Duration::from_millis(200)).await;
 
   // シャットダウン
   println!("\n--- Shutting down ---");
@@ -190,6 +190,7 @@ fn build_cluster_node(
   port: u16,
   static_topology: Option<ClusterTopology>,
   lookup_authority: String,
+  role: HubRole,
 ) -> Result<ClusterNode> {
   let tokio_handle = tokio::runtime::Handle::current();
   let tokio_executor = TokioExecutor::new(tokio_handle);
@@ -230,7 +231,7 @@ fn build_cluster_node(
         ),
     );
 
-  let guardian = Props::from_fn(GrainHub::new).with_name(HUB_NAME);
+  let guardian = Props::from_fn(move || GrainHub::new(role)).with_name(HUB_NAME);
   let system = ActorSystem::new_with_config(&guardian, &system_config)
     .map_err(|e| anyhow!("actor system build failed ({system_name}): {e:?}"))?;
 
@@ -272,50 +273,60 @@ impl EventStreamSubscriber for ClusterEventPrinter {
 
 // === Actors ===
 
-struct GrainHub;
+#[derive(Clone, Copy)]
+enum HubRole {
+  Sender,
+  Receiver,
+}
+
+struct StartGrainCall;
+
+struct GrainHub {
+  role: HubRole,
+}
 
 impl GrainHub {
-  fn new() -> Self {
-    Self
+  fn new(role: HubRole) -> Self {
+    Self { role }
   }
 }
 
 impl Actor for GrainHub {
   fn receive(&mut self, ctx: &mut ActorContext<'_, '_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
-    if let Some(request) = message.downcast_ref::<String>() {
-      println!("[hub] recv grain request body={}", request);
-      let reply = format!("echo:{request}");
-      if ctx.sender().is_some() {
-        ctx.reply(AnyMessage::new(reply)).map_err(|e| ActorError::recoverable(format!("reply failed: {e:?}")))?;
-      } else {
-        println!("[hub] sender missing; skip reply");
+    if message.downcast_ref::<StartGrainCall>().is_some() {
+      if matches!(self.role, HubRole::Sender) {
+        let api = ClusterApi::try_from_system(&ctx.system())
+          .map_err(|e| ActorError::recoverable(format!("cluster api failed: {e:?}")))?;
+        let identity = ClusterIdentity::new(GRAIN_KIND, SAMPLE_KEY)
+          .map_err(|e| ActorError::recoverable(format!("identity error: {e:?}")))?;
+        let grain_ref = GrainRef::new(api.into_core(), identity).with_options(default_grain_call_options());
+        let request = AnyMessage::new("hello cluster over tokio tcp".to_string());
+        let sender = ctx.self_ref();
+        if let Err(error) = grain_ref.request_with_sender(&request, &sender) {
+          return Err(ActorError::recoverable(format!("grain request failed: {error:?}")));
+        }
       }
+      return Ok(());
     }
-    Ok(())
-  }
-}
 
-async fn await_grain_reply(
-  _system: &ActorSystem,
-  future: ActorFutureShared<AskResult<fraktor_utils_rs::std::runtime_toolbox::StdToolbox>>,
-) -> Result<String> {
-  let deadline = Instant::now() + Duration::from_secs(5);
-  loop {
-    if let Some(ask_result) = future.with_write(|inner| inner.try_take()) {
-      match ask_result {
-        | Ok(message) => {
-          let reply = message.payload().downcast_ref::<String>().ok_or_else(|| anyhow!("unexpected reply payload"))?;
-          return Ok(reply.clone());
+    if let Some(payload) = message.downcast_ref::<String>() {
+      match self.role {
+        | HubRole::Receiver => {
+          println!("[hub] recv grain request body={payload}");
+          let reply = format!("echo:{payload}");
+          if ctx.sender().is_some() {
+            ctx.reply(AnyMessage::new(reply)).map_err(|e| ActorError::recoverable(format!("reply failed: {e:?}")))?;
+          } else {
+            println!("[hub] sender missing; skip reply");
+          }
         },
-        | Err(error) => {
-          return Err(anyhow!("grain ask failed: {error}"));
+        | HubRole::Sender => {
+          println!("[sender] recv grain reply: {payload}");
         },
       }
     }
-    if Instant::now() >= deadline {
-      return Err(anyhow!("timeout waiting grain reply"));
-    }
-    tokio::time::sleep(Duration::from_millis(10)).await;
+
+    Ok(())
   }
 }
 

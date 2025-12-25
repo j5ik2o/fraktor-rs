@@ -381,6 +381,12 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     }
   }
 
+  pub(crate) fn unregister_temp_actor_by_pid(&mut self, pid: &Pid) {
+    if let Some((_name, actor)) = self.temp_actors.remove_by_pid(pid) {
+      self.actor_path_registry.unregister(&actor.pid());
+    }
+  }
+
   #[must_use]
   pub(crate) fn temp_actor(&self, name: &str) -> Option<ActorRefGeneric<TB>> {
     self.temp_actors.get(name)

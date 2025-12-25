@@ -157,7 +157,7 @@ pub use activation_record::ActivationRecord;
 pub use activation_storage_error::ActivationStorageError;
 pub use batching_producer_config::BatchingProducerConfig;
 pub use batching_producer_generic::BatchingProducerGeneric;
-pub use cluster_api::ClusterApiGeneric;
+pub use cluster_api::{ClusterApi, ClusterApiGeneric};
 pub use cluster_api_error::ClusterApiError;
 pub use cluster_core::ClusterCore;
 pub use cluster_error::ClusterError;

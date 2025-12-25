@@ -18,7 +18,7 @@ use fraktor_actor_rs::core::{
   system::ActorSystemGeneric,
 };
 use fraktor_utils_rs::core::{
-  runtime_toolbox::RuntimeToolbox,
+  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
   sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
 };
 
@@ -32,6 +32,9 @@ pub struct ClusterApiGeneric<TB: RuntimeToolbox + 'static> {
   system:    ActorSystemGeneric<TB>,
   extension: ArcShared<ClusterExtensionGeneric<TB>>,
 }
+
+/// Cluster API bound to the default no_std toolbox.
+pub type ClusterApi = ClusterApiGeneric<NoStdToolbox>;
 
 impl<TB: RuntimeToolbox + 'static> ClusterApiGeneric<TB> {
   /// Retrieves the cluster API from an actor system.

@@ -414,6 +414,11 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
     self.inner.write().unregister_temp_actor(name);
   }
 
+  /// Unregisters a temporary actor by pid when present.
+  pub fn unregister_temp_actor_by_pid(&self, pid: &crate::core::actor_prim::Pid) {
+    self.inner.write().unregister_temp_actor_by_pid(pid);
+  }
+
   /// Resolves a registered temporary actor reference.
   #[must_use]
   pub fn temp_actor(&self, name: &str) -> Option<ActorRefGeneric<TB>> {

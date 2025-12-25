@@ -79,79 +79,7 @@ impl<TB: RuntimeToolbox + 'static> GrainRefGeneric<TB> {
   ///
   /// Returns an error if resolution or sending fails.
   pub fn request(&self, message: &AnyMessageGeneric<TB>) -> Result<AskResponseGeneric<TB>, GrainCallError> {
-    if let Err(error) = self.validate_codec(message) {
-      self.publish_call_failed(&error);
-      self.record_call_failed();
-      return Err(error);
-    }
-    let actor_ref = match self.resolve_with_retry() {
-      | Ok(actor_ref) => actor_ref,
-      | Err(error) => {
-        let wrapped = GrainCallError::ResolveFailed(error);
-        self.publish_call_failed(&wrapped);
-        self.record_call_failed();
-        return Err(wrapped);
-      },
-    };
-    let state = self.api.system().state();
-    let future = ActorFutureSharedGeneric::<AskResult<TB>, TB>::new();
-    let reply_sender = GrainReplySender::new(future.clone());
-    let reply_pid = state.allocate_pid();
-    let reply_ref = ActorRefGeneric::with_system(reply_pid, reply_sender, &state);
-    let temp_name = state.register_temp_actor(reply_ref.clone());
-    let envelope = message.clone().with_sender(reply_ref.clone());
-    if let Err(error) = actor_ref.tell(envelope) {
-      state.unregister_temp_actor(&temp_name);
-      let call_error = GrainCallError::RequestFailed(ClusterRequestError::SendFailed { reason: format!("{error:?}") });
-      self.publish_call_failed(&call_error);
-      self.record_call_failed();
-      return Err(call_error);
-    }
-    state.register_ask_future(future.clone());
-    let response = AskResponseGeneric::new(reply_ref, future);
-    if let Some(timeout) = self.options.timeout {
-      let reply_ref = response.sender().clone();
-      let future = response.future().clone();
-      let max_retries = self.options.retry.max_retries();
-      let mut elapsed = timeout;
-      let make_context = || GrainRetryContext {
-        identity:     self.identity.clone(),
-        event_stream: self.event_stream.clone(),
-        metrics:      self.metrics.clone(),
-        state:        state.clone(),
-        temp_name:    Some(temp_name.clone()),
-      };
-
-      for attempt in 0..max_retries {
-        let delay = self.options.retry.retry_delay(attempt);
-        elapsed = elapsed.checked_add(delay).unwrap_or(elapsed);
-        let runnable = ArcShared::new(GrainRetryRunnable::retry(
-          make_context(),
-          actor_ref.clone(),
-          message.clone(),
-          reply_ref.clone(),
-          attempt,
-          future.clone(),
-        ));
-        if let Err(error) = schedule_retry_with_system(self.api.system(), elapsed, runnable) {
-          let call_error = GrainCallError::RequestFailed(error);
-          self.publish_call_failed(&call_error);
-          self.record_call_failed();
-          return Err(call_error);
-        }
-        elapsed = elapsed.checked_add(timeout).unwrap_or(elapsed);
-      }
-
-      let runnable = ArcShared::new(GrainRetryRunnable::timeout(make_context(), future));
-      if let Err(error) = schedule_retry_with_system(self.api.system(), elapsed, runnable) {
-        state.unregister_temp_actor(&temp_name);
-        let call_error = GrainCallError::RequestFailed(error);
-        self.publish_call_failed(&call_error);
-        self.record_call_failed();
-        return Err(call_error);
-      }
-    }
-    Ok(response)
+    self.request_internal(message, None)
   }
 
   /// Sends a request and returns the response future.
@@ -168,6 +96,53 @@ impl<TB: RuntimeToolbox + 'static> GrainRefGeneric<TB> {
     let response = self.request(message)?;
     let (_, future) = response.into_parts();
     Ok(future)
+  }
+
+  /// Sends a message with an explicit sender.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if resolution or sending fails.
+  pub fn tell_with_sender(
+    &self,
+    message: &AnyMessageGeneric<TB>,
+    sender: &ActorRefGeneric<TB>,
+  ) -> Result<(), GrainCallError> {
+    if let Err(error) = self.validate_codec(message) {
+      self.publish_call_failed(&error);
+      self.record_call_failed();
+      return Err(error);
+    }
+    let actor_ref = match self.resolve_with_retry() {
+      | Ok(actor_ref) => actor_ref,
+      | Err(error) => {
+        let wrapped = GrainCallError::ResolveFailed(error);
+        self.publish_call_failed(&wrapped);
+        self.record_call_failed();
+        return Err(wrapped);
+      },
+    };
+    let envelope = message.clone().with_sender(sender.clone());
+    if let Err(error) = actor_ref.tell(envelope) {
+      let call_error = GrainCallError::RequestFailed(ClusterRequestError::SendFailed { reason: format!("{error:?}") });
+      self.publish_call_failed(&call_error);
+      self.record_call_failed();
+      return Err(call_error);
+    }
+    Ok(())
+  }
+
+  /// Sends a request with an explicit sender and returns the ask response.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if resolution or sending fails.
+  pub fn request_with_sender(
+    &self,
+    message: &AnyMessageGeneric<TB>,
+    sender: &ActorRefGeneric<TB>,
+  ) -> Result<AskResponseGeneric<TB>, GrainCallError> {
+    self.request_internal(message, Some(sender.clone()))
   }
 
   fn resolve_with_retry(&self) -> Result<ActorRefGeneric<TB>, ClusterResolveError> {
@@ -203,6 +178,93 @@ impl<TB: RuntimeToolbox + 'static> GrainRefGeneric<TB> {
   fn record_call_failed(&self) {
     update_grain_metrics(&self.metrics, |metrics| metrics.record_call_failed());
   }
+
+  fn request_internal(
+    &self,
+    message: &AnyMessageGeneric<TB>,
+    forward_to: Option<ActorRefGeneric<TB>>,
+  ) -> Result<AskResponseGeneric<TB>, GrainCallError> {
+    if let Err(error) = self.validate_codec(message) {
+      self.publish_call_failed(&error);
+      self.record_call_failed();
+      return Err(error);
+    }
+    let actor_ref = match self.resolve_with_retry() {
+      | Ok(actor_ref) => actor_ref,
+      | Err(error) => {
+        let wrapped = GrainCallError::ResolveFailed(error);
+        self.publish_call_failed(&wrapped);
+        self.record_call_failed();
+        return Err(wrapped);
+      },
+    };
+    let state = self.api.system().state();
+    let future = ActorFutureSharedGeneric::<AskResult<TB>, TB>::new();
+    let reply_pid = state.allocate_pid();
+    let reply_context = GrainReplyContext {
+      identity:     self.identity.clone(),
+      event_stream: self.event_stream.clone(),
+      metrics:      self.metrics.clone(),
+      state:        state.clone(),
+      temp_pid:     Some(reply_pid),
+    };
+    let reply_sender = GrainReplySender::new(future.clone(), forward_to, reply_context);
+    let reply_ref = ActorRefGeneric::with_system(reply_pid, reply_sender, &state);
+    let temp_name = state.register_temp_actor(reply_ref.clone());
+    let envelope = message.clone().with_sender(reply_ref.clone());
+    if let Err(error) = actor_ref.tell(envelope) {
+      state.unregister_temp_actor(&temp_name);
+      let call_error = GrainCallError::RequestFailed(ClusterRequestError::SendFailed { reason: format!("{error:?}") });
+      self.publish_call_failed(&call_error);
+      self.record_call_failed();
+      return Err(call_error);
+    }
+    state.register_ask_future(future.clone());
+    let response = AskResponseGeneric::new(reply_ref, future);
+    if let Some(timeout) = self.options.timeout {
+      let reply_ref = response.sender().clone();
+      let future = response.future().clone();
+      let max_retries = self.options.retry.max_retries();
+      let mut elapsed = timeout;
+      let make_context = || GrainRetryContext {
+        identity:     self.identity.clone(),
+        event_stream: self.event_stream.clone(),
+        metrics:      self.metrics.clone(),
+        state:        state.clone(),
+        temp_pid:     Some(reply_pid),
+      };
+
+      for attempt in 0..max_retries {
+        let delay = self.options.retry.retry_delay(attempt);
+        elapsed = elapsed.checked_add(delay).unwrap_or(elapsed);
+        let runnable = ArcShared::new(GrainRetryRunnable::retry(
+          make_context(),
+          actor_ref.clone(),
+          message.clone(),
+          reply_ref.clone(),
+          attempt,
+          future.clone(),
+        ));
+        if let Err(error) = schedule_retry_with_system(self.api.system(), elapsed, runnable) {
+          let call_error = GrainCallError::RequestFailed(error);
+          self.publish_call_failed(&call_error);
+          self.record_call_failed();
+          return Err(call_error);
+        }
+        elapsed = elapsed.checked_add(timeout).unwrap_or(elapsed);
+      }
+
+      let runnable = ArcShared::new(GrainRetryRunnable::timeout(make_context(), future));
+      if let Err(error) = schedule_retry_with_system(self.api.system(), elapsed, runnable) {
+        state.unregister_temp_actor(&temp_name);
+        let call_error = GrainCallError::RequestFailed(error);
+        self.publish_call_failed(&call_error);
+        self.record_call_failed();
+        return Err(call_error);
+      }
+    }
+    Ok(response)
+  }
 }
 
 struct GrainRetryContext<TB: RuntimeToolbox + 'static> {
@@ -210,7 +272,7 @@ struct GrainRetryContext<TB: RuntimeToolbox + 'static> {
   event_stream: EventStreamSharedGeneric<TB>,
   metrics:      Option<GrainMetricsSharedGeneric<TB>>,
   state:        SystemStateSharedGeneric<TB>,
-  temp_name:    Option<String>,
+  temp_pid:     Option<fraktor_actor_rs::core::actor_prim::Pid>,
 }
 
 enum GrainRetryAction<TB: RuntimeToolbox + 'static> {
@@ -248,8 +310,8 @@ impl<TB: RuntimeToolbox + 'static> GrainRetryRunnable<TB> {
 
 impl<TB: RuntimeToolbox + 'static> GrainRetryContext<TB> {
   fn cleanup_temp_reply(&self) {
-    if let Some(name) = &self.temp_name {
-      self.state.unregister_temp_actor(name);
+    if let Some(pid) = &self.temp_pid {
+      self.state.unregister_temp_actor_by_pid(pid);
     }
   }
 }
@@ -336,21 +398,65 @@ fn update_grain_metrics<TB: RuntimeToolbox + 'static>(
 }
 
 struct GrainReplySender<TB: RuntimeToolbox + 'static> {
-  future: ActorFutureSharedGeneric<AskResult<TB>, TB>,
+  future:     ActorFutureSharedGeneric<AskResult<TB>, TB>,
+  forward_to: Option<ActorRefGeneric<TB>>,
+  context:    GrainReplyContext<TB>,
 }
 
 impl<TB: RuntimeToolbox + 'static> GrainReplySender<TB> {
-  const fn new(future: ActorFutureSharedGeneric<AskResult<TB>, TB>) -> Self {
-    Self { future }
+  const fn new(
+    future: ActorFutureSharedGeneric<AskResult<TB>, TB>,
+    forward_to: Option<ActorRefGeneric<TB>>,
+    context: GrainReplyContext<TB>,
+  ) -> Self {
+    Self { future, forward_to, context }
   }
 }
 
 impl<TB: RuntimeToolbox + 'static> ActorRefSender<TB> for GrainReplySender<TB> {
   fn send(&mut self, message: AnyMessageGeneric<TB>) -> Result<SendOutcome, SendError<TB>> {
+    if self.future.with_read(|inner| inner.is_ready()) {
+      self.context.cleanup_temp_reply();
+      return Ok(SendOutcome::Delivered);
+    }
+
+    if let Some(target) = &self.forward_to
+      && let Err(error) = target.tell(message.clone())
+    {
+      let failure = ClusterRequestError::SendFailed { reason: format!("{error:?}") };
+      self.context.publish_call_failed(&failure);
+      complete_future(&self.future, &failure);
+      self.context.cleanup_temp_reply();
+      return Ok(SendOutcome::Delivered);
+    }
+
     let waker = self.future.with_write(|inner| inner.complete(Ok(message)));
     if let Some(waker) = waker {
       waker.wake();
     }
+    self.context.cleanup_temp_reply();
     Ok(SendOutcome::Delivered)
+  }
+}
+
+struct GrainReplyContext<TB: RuntimeToolbox + 'static> {
+  identity:     ClusterIdentity,
+  event_stream: EventStreamSharedGeneric<TB>,
+  metrics:      Option<GrainMetricsSharedGeneric<TB>>,
+  state:        SystemStateSharedGeneric<TB>,
+  temp_pid:     Option<fraktor_actor_rs::core::actor_prim::Pid>,
+}
+
+impl<TB: RuntimeToolbox + 'static> GrainReplyContext<TB> {
+  fn cleanup_temp_reply(&self) {
+    if let Some(pid) = &self.temp_pid {
+      self.state.unregister_temp_actor_by_pid(pid);
+    }
+  }
+
+  fn publish_call_failed(&self, error: &ClusterRequestError) {
+    let event = GrainEvent::CallFailed { identity: self.identity.clone(), reason: format!("{error:?}") };
+    publish_grain_event(&self.event_stream, event);
+    update_grain_metrics(&self.metrics, |metrics| metrics.record_call_failed());
   }
 }

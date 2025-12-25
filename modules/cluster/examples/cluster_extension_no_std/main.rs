@@ -247,6 +247,27 @@ impl EventStreamSubscriber<NoStdToolbox> for ClusterEventLogger {
   }
 }
 
+struct GrainReplyReceiver;
+
+impl GrainReplyReceiver {
+  fn new() -> Self {
+    Self
+  }
+}
+
+impl Actor<NoStdToolbox> for GrainReplyReceiver {
+  fn receive(
+    &mut self,
+    _context: &mut ActorContextGeneric<'_, NoStdToolbox>,
+    message: AnyMessageViewGeneric<'_, NoStdToolbox>,
+  ) -> Result<(), ActorError> {
+    if let Some(reply) = message.downcast_ref::<String>() {
+      println!("[sender] recv grain reply: {reply}");
+    }
+    Ok(())
+  }
+}
+
 // デモ用の Grain アクター
 struct GrainActor;
 impl Actor for GrainActor {
@@ -347,8 +368,11 @@ impl ClusterNode {
     let identity = ClusterIdentity::new("grain", "demo").expect("identity");
     let grain_ref = GrainRefGeneric::new(api, identity);
     let request = AnyMessage::new(msg);
-    let future: ActorFutureSharedGeneric<AskResult<NoStdToolbox>, NoStdToolbox> =
-      grain_ref.request_future(&request).expect("grain request");
+    let reply_props = Props::from_fn(GrainReplyReceiver::new).with_name("grain-reply-receiver");
+    let reply_actor = self.system.extended().spawn_system_actor(&reply_props).expect("spawn reply receiver");
+    let reply_ref = reply_actor.actor_ref().clone();
+    let response = grain_ref.request_with_sender(&request, &reply_ref).expect("grain request");
+    let future: ActorFutureSharedGeneric<AskResult<NoStdToolbox>, NoStdToolbox> = response.future().clone();
     for _ in 0..10 {
       self.tick(1);
       if let Some(ask_result) = future.with_write(|inner| inner.try_take()) {
