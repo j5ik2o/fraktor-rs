@@ -299,7 +299,7 @@ impl Actor for GrainHub {
           .map_err(|e| ActorError::recoverable(format!("cluster api failed: {e:?}")))?;
         let identity = ClusterIdentity::new(GRAIN_KIND, SAMPLE_KEY)
           .map_err(|e| ActorError::recoverable(format!("identity error: {e:?}")))?;
-        let grain_ref = GrainRef::new(api.into_core(), identity).with_options(default_grain_call_options());
+        let grain_ref = GrainRef::new(api, identity).with_options(default_grain_call_options());
         let request = AnyMessage::new("hello cluster over tokio tcp".to_string());
         let sender = ctx.self_ref();
         if let Err(error) = grain_ref.request_with_sender(&request, &sender) {

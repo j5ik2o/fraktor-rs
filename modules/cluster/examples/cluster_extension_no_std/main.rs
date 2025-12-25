@@ -71,7 +71,7 @@ use fraktor_actor_rs::core::{
   error::ActorError,
   event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   extension::ExtensionInstallers,
-  messaging::{AnyMessage, AnyMessageViewGeneric},
+  messaging::{AnyMessage, AnyMessageViewGeneric, AskResponseGeneric},
   props::Props,
   scheduler::{ManualTestDriver, TickDriverConfig},
   system::{
@@ -81,16 +81,35 @@ use fraktor_actor_rs::core::{
 };
 use fraktor_cluster_rs::core::{
   ActivatedKind, ClusterApiGeneric, ClusterEvent, ClusterExtensionConfig, ClusterExtensionGeneric,
-  ClusterExtensionInstaller, ClusterIdentity, ClusterPubSub, ClusterTopology, Gossiper, GrainKey, GrainRefGeneric,
-  IdentityLookup, IdentitySetupError, LookupError, PlacementDecision, PlacementLocality, PlacementResolution,
-  PubSubError, PubSubSubscriber, PubSubTopic, PublishAck, PublishRejectReason, PublishRequest, StaticClusterProvider,
-  TopologyUpdate,
+  ClusterExtensionInstaller, ClusterIdentity, ClusterPubSub, ClusterTopology, Gossiper, GrainCallError, GrainKey,
+  GrainRefGeneric, IdentityLookup, IdentitySetupError, LookupError, PlacementDecision, PlacementLocality,
+  PlacementResolution, PubSubError, PubSubSubscriber, PubSubTopic, PublishAck, PublishRejectReason, PublishRequest,
+  StaticClusterProvider, TopologyUpdate,
 };
 use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{
   runtime_toolbox::NoStdToolbox,
   sync::{ArcShared, SharedAccess},
 };
+
+// NoStdToolbox 固定の簡易 GrainRef ラッパー
+struct GrainRef {
+  inner: GrainRefGeneric<NoStdToolbox>,
+}
+
+impl GrainRef {
+  fn new(api: ClusterApiGeneric<NoStdToolbox>, identity: ClusterIdentity) -> Self {
+    Self { inner: GrainRefGeneric::new(api, identity) }
+  }
+
+  fn request_with_sender(
+    &self,
+    message: &AnyMessage,
+    sender: &ActorRefGeneric<NoStdToolbox>,
+  ) -> Result<AskResponseGeneric<NoStdToolbox>, GrainCallError> {
+    self.inner.request_with_sender(message, sender)
+  }
+}
 
 // デモ用の Gossiper（Phase1 では未使用）
 #[derive(Default)]
@@ -366,7 +385,7 @@ impl ClusterNode {
     use fraktor_actor_rs::core::{futures::ActorFutureSharedGeneric, messaging::AskResult};
     let api = ClusterApiGeneric::try_from_system(&self.system).expect("cluster api");
     let identity = ClusterIdentity::new("grain", "demo").expect("identity");
-    let grain_ref = GrainRefGeneric::new(api, identity);
+    let grain_ref = GrainRef::new(api, identity);
     let request = AnyMessage::new(msg);
     let reply_props = Props::from_fn(GrainReplyReceiver::new).with_name("grain-reply-receiver");
     let reply_actor = self.system.extended().spawn_system_actor(&reply_props).expect("spawn reply receiver");
