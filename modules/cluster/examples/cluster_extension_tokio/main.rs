@@ -75,7 +75,7 @@ use fraktor_actor_rs::{
     system::RemotingConfig,
   },
   std::{
-    actor_prim::{Actor, ActorContext},
+    actor::{Actor, ActorContext},
     dispatch::dispatcher::{DispatcherConfig, dispatch_executor::TokioExecutor},
     event::stream::{EventStreamEvent, EventStreamSubscriber, EventStreamSubscription, subscriber_handle},
     messaging::{AnyMessage, AnyMessageView},

@@ -5,7 +5,7 @@ use core::fmt;
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
 use super::{dispatcher_sender_shared::DispatcherSenderShared, runnable::SchedulerRunnable};
-use crate::core::{actor_prim::actor_ref::ActorRefGeneric, messaging::AnyMessageGeneric};
+use crate::core::{actor::actor_ref::ActorRefGeneric, messaging::AnyMessageGeneric};
 
 /// Commands executed when scheduled timers fire.
 #[derive(Clone)]

@@ -1,7 +1,7 @@
 use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::SharedAccess};
 
 use crate::core::{
-  actor_prim::actor_ref::ActorRef,
+  actor::actor_ref::ActorRef,
   futures::ActorFutureSharedGeneric,
   messaging::{AnyMessage, AskError, AskResult, ask_response::AskResponse},
 };

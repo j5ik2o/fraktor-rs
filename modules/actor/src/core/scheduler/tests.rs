@@ -28,7 +28,7 @@ use super::{
   fixed_delay_policy::FixedDelayPolicy, fixed_rate_policy::FixedRatePolicy, handle::SchedulerHandle,
 };
 use crate::core::{
-  actor_prim::{
+  actor::{
     Pid,
     actor_ref::{ActorRefGeneric, ActorRefSender},
   },
@@ -1027,8 +1027,8 @@ impl ActorRefSender<NoStdToolbox> for RecordingSender {
   fn send(
     &mut self,
     message: AnyMessageGeneric<NoStdToolbox>,
-  ) -> Result<crate::core::actor_prim::actor_ref::SendOutcome, SendError<NoStdToolbox>> {
+  ) -> Result<crate::core::actor::actor_ref::SendOutcome, SendError<NoStdToolbox>> {
     self.inbox.lock().push(message);
-    Ok(crate::core::actor_prim::actor_ref::SendOutcome::Delivered)
+    Ok(crate::core::actor::actor_ref::SendOutcome::Delivered)
   }
 }

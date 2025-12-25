@@ -2,7 +2,7 @@
 
 use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
-use crate::core::actor_prim::Pid;
+use crate::core::actor::Pid;
 
 /// Allows custom providers to reroute `SystemMessage::Watch/Unwatch` for remote actors.
 ///

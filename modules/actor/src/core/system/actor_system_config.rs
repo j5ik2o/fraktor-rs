@@ -8,7 +8,7 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::core::{
-  actor_prim::actor_path::GuardianKind as PathGuardianKind,
+  actor::actor_path::GuardianKind as PathGuardianKind,
   dispatch::{
     dispatcher::{DispatcherConfigGeneric, DispatchersGeneric},
     mailbox::MailboxesGeneric,

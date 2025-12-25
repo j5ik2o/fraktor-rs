@@ -3,7 +3,7 @@
 use core::time::Duration;
 
 use fraktor_actor_rs::core::{
-  actor_prim::{
+  actor::{
     actor_path::{ActorPath, ActorPathFormatter, ActorPathParser, ActorPathParts, ActorUid, PathResolutionError},
     actor_selection::{ActorSelectionError, ActorSelectionResolver},
   },

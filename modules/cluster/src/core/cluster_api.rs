@@ -11,7 +11,7 @@ use alloc::{
 use core::time::Duration;
 
 use fraktor_actor_rs::core::{
-  actor_prim::{actor_path::ActorPathParser, actor_ref::ActorRefGeneric},
+  actor::{actor_path::ActorPathParser, actor_ref::ActorRefGeneric},
   event::stream::EventStreamEvent,
   messaging::{AnyMessageGeneric, AskError, AskResponseGeneric, AskResult},
   scheduler::{ExecutionBatch, SchedulerCommand, SchedulerRunnable},

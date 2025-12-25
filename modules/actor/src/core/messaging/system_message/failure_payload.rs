@@ -4,7 +4,7 @@ use core::time::Duration;
 
 use super::FailureClassification;
 use crate::core::{
-  actor_prim::Pid,
+  actor::Pid,
   error::{ActorError, ActorErrorReason},
   messaging::FailureMessageSnapshot,
   supervision::RestartStatistics,

@@ -1,7 +1,7 @@
 use core::time::Duration;
 
 use super::{FailurePayload, SystemMessage};
-use crate::core::{actor_prim::Pid, error::ActorError, messaging::AnyMessage};
+use crate::core::{actor::Pid, error::ActorError, messaging::AnyMessage};
 
 #[test]
 fn watch_message_round_trips_through_any_message() {

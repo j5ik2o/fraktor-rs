@@ -2,7 +2,7 @@
 
 use alloc::vec::Vec;
 
-use fraktor_actor_rs::core::actor_prim::actor_path::ActorPathParts;
+use fraktor_actor_rs::core::actor::actor_path::ActorPathParts;
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
 use crate::core::{

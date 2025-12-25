@@ -6,7 +6,7 @@ mod std_tick_driver_support;
 use fraktor_actor_rs::{
   core::{error::ActorError, event::logging::LogLevel},
   std::{
-    actor_prim::{Actor, ActorContext, ActorRef},
+    actor::{Actor, ActorContext, ActorRef},
     event::{
       logging::TracingLoggerSubscriber,
       stream::{EventStreamSubscriberShared, subscriber_handle},

@@ -19,7 +19,7 @@ use super::{
   ExtendedActorSystemGeneric, RemotingConfig, RootGuardianActor, SystemGuardianActor, SystemGuardianProtocol,
 };
 use crate::core::{
-  actor_prim::{
+  actor::{
     ActorCellGeneric, ChildRefGeneric, Pid,
     actor_path::{ActorPath, ActorPathParts, ActorPathScheme, ActorUid, PathSegment},
     actor_ref::ActorRefGeneric,
@@ -356,7 +356,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
 
   /// Resolves the pid registered for the provided actor path.
   #[must_use]
-  pub fn pid_by_path(&self, path: &crate::core::actor_prim::actor_path::ActorPath) -> Option<Pid> {
+  pub fn pid_by_path(&self, path: &crate::core::actor::actor_path::ActorPath) -> Option<Pid> {
     self.state.with_actor_path_registry(|registry| registry.pid_for(path))
   }
 

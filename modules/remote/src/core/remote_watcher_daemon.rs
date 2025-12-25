@@ -3,7 +3,7 @@
 use alloc::vec::Vec;
 
 use fraktor_actor_rs::core::{
-  actor_prim::{Actor, ActorContextGeneric, Pid, actor_path::ActorPathParts, actor_ref::ActorRefGeneric},
+  actor::{Actor, ActorContextGeneric, Pid, actor_path::ActorPathParts, actor_ref::ActorRefGeneric},
   error::ActorError,
   messaging::AnyMessageViewGeneric,
   props::PropsGeneric,

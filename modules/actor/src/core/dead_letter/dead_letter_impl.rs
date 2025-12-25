@@ -6,7 +6,7 @@ use core::time::Duration;
 use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 
 use crate::core::{
-  actor_prim::Pid,
+  actor::Pid,
   dead_letter::{DeadLetterEntryGeneric, dead_letter_reason::DeadLetterReason},
   error::SendError,
   messaging::AnyMessageGeneric,

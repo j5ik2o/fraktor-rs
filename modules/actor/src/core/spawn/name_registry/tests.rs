@@ -1,5 +1,5 @@
 use super::NameRegistry;
-use crate::core::{actor_prim::Pid, spawn::NameRegistryError};
+use crate::core::{actor::Pid, spawn::NameRegistryError};
 
 #[test]
 fn register_and_resolve_name() {

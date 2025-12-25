@@ -6,7 +6,7 @@ mod tests;
 use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use crate::core::{
-  actor_prim::actor_ref::ActorRefGeneric,
+  actor::actor_ref::ActorRefGeneric,
   event::stream::{EventStreamEvent, EventStreamSubscriber},
   messaging::AnyMessageGeneric,
 };

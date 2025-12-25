@@ -9,7 +9,7 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::core::{
-  actor_prim::{Actor, ActorContextGeneric},
+  actor::{Actor, ActorContextGeneric},
   dispatch::mailbox::{Mailbox, MailboxOverflowStrategy, MailboxPolicy, ScheduleHints},
   error::ActorError,
   event::{

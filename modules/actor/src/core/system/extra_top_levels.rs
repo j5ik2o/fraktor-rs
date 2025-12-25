@@ -4,7 +4,7 @@ use ahash::RandomState;
 use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 use hashbrown::HashMap;
 
-use crate::core::actor_prim::actor_ref::ActorRefGeneric;
+use crate::core::actor::actor_ref::ActorRefGeneric;
 
 /// Registry of extra top-level actor references.
 pub(crate) struct ExtraTopLevelsGeneric<TB: RuntimeToolbox + 'static> {

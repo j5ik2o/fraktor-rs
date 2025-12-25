@@ -23,7 +23,7 @@
 
 ```rust
 use fraktor_actor_std_rs::{
-    actor_prim::Actor,
+    actor::Actor,
     props::Props,
 };
 use fraktor_actor_core_rs::{
@@ -59,7 +59,7 @@ let props = Props::from_fn(MyWorker::new)
 
 ```rust
 use fraktor_actor_std_rs::{
-    actor_prim::Actor,
+    actor::Actor,
     props::Props,
 };
 use fraktor_actor_core_rs::{

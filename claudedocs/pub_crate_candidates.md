@@ -39,20 +39,20 @@
 | メソッド | 使用箇所 | 理由 |
 |---------|----------|------|
 | `register_cell` | system/base.rs | ActorSystemGenericの内部処理でのみ使用 |
-| `remove_cell` | actor_prim/actor_cell.rs, system/base.rs | アクタセルのライフサイクル管理の内部処理 |
+| `remove_cell` | actor/actor_cell.rs, system/base.rs | アクタセルのライフサイクル管理の内部処理 |
 | `cell` | system/base.rs, system/system_state.rs | 内部状態へのアクセス、公開APIでは不要 |
 | `assign_name` | system/base.rs | spawn処理の内部実装 |
-| `release_name` | actor_prim/actor_cell.rs, system/base.rs | アクタ終了時の内部処理 |
+| `release_name` | actor/actor_cell.rs, system/base.rs | アクタ終了時の内部処理 |
 | `set_user_guardian` | system/base.rs | システム初期化の内部処理 |
 | `clear_guardian` | system/base.rs | ガーディアン管理の内部処理 |
 | `user_guardian` | system/base.rs | 内部状態へのアクセス |
 | `register_child` | system/base.rs | 親子関係管理の内部処理 |
-| `unregister_child` | actor_prim/actor_cell.rs | アクタ終了時の内部処理 |
+| `unregister_child` | actor/actor_cell.rs | アクタ終了時の内部処理 |
 | `child_pids` | system/base.rs | 内部状態へのアクセス（公開APIはActorSystem経由） |
 | `send_system_message` | system/system_state.rs内部 | システムメッセージ送信の内部実装 |
-| `record_send_error` | actor_prim/actor_ref | エラーハンドリングの内部処理 |
-| `notify_failure` | actor_prim/actor_cell.rs | 障害通知の内部処理 |
-| `register_ask_future` | actor_prim/actor_ref | askパターンの内部実装 |
+| `record_send_error` | actor/actor_ref | エラーハンドリングの内部処理 |
+| `notify_failure` | actor/actor_cell.rs | 障害通知の内部処理 |
+| `register_ask_future` | actor/actor_ref | askパターンの内部実装 |
 | `mark_terminated` | system/base.rs | 終了処理の内部実装 |
 | `termination_future` | system/base.rs | 終了待機の内部実装 |
 | `drain_ready_ask_futures` | system/base.rs | askフューチャーのポーリング内部処理 |
@@ -77,13 +77,13 @@
 
 | メソッド | 使用箇所 | 理由 |
 |---------|----------|------|
-| `register_invoker` | actor_prim/actor_cell.rs | アクタセル初期化の内部処理 |
+| `register_invoker` | actor/actor_cell.rs | アクタセル初期化の内部処理 |
 | `enqueue_user` | dispatcher_sender.rs | ディスパッチャー送信者の内部実装 |
 | `enqueue_system` | dispatcher_sender.rs | システムメッセージの内部処理 |
 | `schedule` | dispatcher_sender.rs | スケジューリングの内部実装 |
-| `mailbox` | actor_prim/actor_cell.rs, props/base.rs | メールボックスアクセスの内部実装 |
+| `mailbox` | actor/actor_cell.rs, props/base.rs | メールボックスアクセスの内部実装 |
 | `create_waker` | dispatcher_sender.rs | Waker生成の内部実装 |
-| `into_sender` | actor_prim/actor_cell.rs | 送信者への変換内部処理 |
+| `into_sender` | actor/actor_cell.rs | 送信者への変換内部処理 |
 
 ### 📖 publicのまま維持すべき
 
@@ -98,14 +98,14 @@
 
 | メソッド | 使用箇所 | 理由 |
 |---------|----------|------|
-| `set_instrumentation` | actor_prim/actor_cell.rs | インストルメンテーション設定の内部処理 |
+| `set_instrumentation` | actor/actor_cell.rs | インストルメンテーション設定の内部処理 |
 | `enqueue_system` | dispatcher/base.rs | システムメッセージキューイングの内部実装 |
 | `enqueue_user` | dispatcher/base.rs | ユーザーメッセージキューイングの内部実装 |
 | `enqueue_user_future` | dispatcher/base.rs | 非同期メッセージキューイングの内部実装 |
 | `poll_user_future` | dispatcher/base.rs | 非同期メッセージポーリングの内部実装 |
 | `dequeue` | dispatcher/dispatcher_core.rs | メッセージデキューの内部実装 |
-| `suspend` | actor_prim/actor_cell.rs | メールボックス一時停止の内部処理 |
-| `resume` | actor_prim/actor_cell.rs | メールボックス再開の内部処理 |
+| `suspend` | actor/actor_cell.rs | メールボックス一時停止の内部処理 |
+| `resume` | actor/actor_cell.rs | メールボックス再開の内部処理 |
 | `is_suspended` | 未使用？ | 状態確認、テスト用か |
 | `user_len` | 未使用？ | 長さ取得、テスト用か |
 | `system_len` | 未使用？ | 長さ取得、テスト用か |

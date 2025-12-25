@@ -3,7 +3,7 @@ use std::time::Duration;
 use fraktor_actor_rs::{
   core::{error::ActorError, scheduler::SchedulerCommand},
   std::{
-    actor_prim::{Actor, ActorContext},
+    actor::{Actor, ActorContext},
     dispatch::dispatcher::dispatch_executor::TokioExecutor,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,

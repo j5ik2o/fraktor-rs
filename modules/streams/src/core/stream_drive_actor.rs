@@ -1,7 +1,7 @@
 use alloc::{collections::BTreeMap, vec::Vec};
 
 use fraktor_actor_rs::core::{
-  actor_prim::{Actor, ActorContextGeneric},
+  actor::{Actor, ActorContextGeneric},
   error::ActorError,
   messaging::AnyMessageViewGeneric,
 };

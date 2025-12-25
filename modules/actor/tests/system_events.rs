@@ -6,7 +6,7 @@ use alloc::vec::Vec;
 use core::hint::spin_loop;
 
 use fraktor_actor_rs::core::{
-  actor_prim::{Actor, ActorContextGeneric},
+  actor::{Actor, ActorContextGeneric},
   error::ActorError,
   event::{
     logging::LogLevel,

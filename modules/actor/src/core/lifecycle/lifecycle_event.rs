@@ -3,7 +3,7 @@
 use alloc::string::String;
 use core::time::Duration;
 
-use crate::core::{actor_prim::Pid, lifecycle::LifecycleStage};
+use crate::core::{actor::Pid, lifecycle::LifecycleStage};
 
 /// Event published whenever an actor transitions lifecycle state.
 #[derive(Clone, Debug)]

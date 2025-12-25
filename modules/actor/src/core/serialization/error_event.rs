@@ -6,7 +6,7 @@ use alloc::{
 };
 
 use super::{not_serializable_error::NotSerializableError, serializer_id::SerializerId};
-use crate::core::actor_prim::Pid;
+use crate::core::actor::Pid;
 
 /// Event published when serialization cannot proceed.
 #[derive(Debug, Clone, PartialEq, Eq)]

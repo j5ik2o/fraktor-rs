@@ -4,7 +4,7 @@ use alloc::boxed::Box;
 use core::convert::TryFrom;
 
 use fraktor_actor_rs::core::{
-  actor_prim::actor_path::{ActorPath, ActorPathParts, GuardianKind},
+  actor::actor_path::{ActorPath, ActorPathParts, GuardianKind},
   event::stream::{CorrelationId, RemotingLifecycleEvent},
   serialization::{SerializedMessage, SerializerId},
 };

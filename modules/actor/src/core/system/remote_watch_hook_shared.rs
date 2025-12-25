@@ -7,7 +7,7 @@ use fraktor_utils_rs::core::{
 
 use super::{ActorRefProvider, RemoteWatchHook, RemoteWatchHookHandle};
 use crate::core::{
-  actor_prim::{Pid, actor_path::ActorPathScheme, actor_ref::ActorRefGeneric},
+  actor::{Pid, actor_path::ActorPathScheme, actor_ref::ActorRefGeneric},
   error::ActorError,
 };
 
@@ -99,10 +99,7 @@ impl<TB: RuntimeToolbox + 'static, P: ActorRefProvider<TB> + RemoteWatchHook<TB>
     self.with_read(|inner| inner.supported_schemes())
   }
 
-  fn actor_ref(
-    &mut self,
-    path: crate::core::actor_prim::actor_path::ActorPath,
-  ) -> Result<ActorRefGeneric<TB>, ActorError> {
+  fn actor_ref(&mut self, path: crate::core::actor::actor_path::ActorPath) -> Result<ActorRefGeneric<TB>, ActorError> {
     self.with_write(|inner| inner.actor_ref(path))
   }
 }

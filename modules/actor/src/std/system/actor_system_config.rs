@@ -4,7 +4,7 @@ use fraktor_utils_rs::{core::sync::ArcShared, std::runtime_toolbox::StdToolbox};
 
 use crate::{
   core::{
-    actor_prim::actor_path::GuardianKind,
+    actor::actor_path::GuardianKind,
     dispatch::dispatcher::DispatcherConfigGeneric,
     extension::ExtensionInstallers,
     scheduler::{SchedulerConfig, TickDriverConfig},

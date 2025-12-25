@@ -2,7 +2,7 @@ use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
 
 use super::DispatcherSenderGeneric;
 use crate::core::{
-  actor_prim::actor_ref::{ActorRefSender, SendOutcome},
+  actor::actor_ref::{ActorRefSender, SendOutcome},
   dispatch::{dispatcher::base::DispatcherShared, mailbox::Mailbox},
   messaging::AnyMessage,
 };

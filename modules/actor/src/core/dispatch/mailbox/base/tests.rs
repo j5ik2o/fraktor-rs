@@ -1,5 +1,5 @@
 use crate::core::{
-  actor_prim::Pid,
+  actor::Pid,
   dispatch::mailbox::{Mailbox, MailboxInstrumentation, MailboxOverflowStrategy, MailboxPolicy},
   messaging::{AnyMessage, SystemMessage},
   system::ActorSystem,

@@ -18,7 +18,7 @@ use super::{
   mailbox_instrumentation::MailboxInstrumentationGeneric, mailbox_message::MailboxMessage, map_user_queue_error,
 };
 use crate::core::{
-  actor_prim::Pid,
+  actor::Pid,
   dispatch::mailbox::{capacity::MailboxCapacity, overflow_strategy::MailboxOverflowStrategy, policy::MailboxPolicy},
   error::SendError,
   event::logging::LogLevel,

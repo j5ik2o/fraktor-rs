@@ -1,5 +1,5 @@
 use crate::core::{
-  actor_prim::actor_ref::ActorRef,
+  actor::actor_ref::ActorRef,
   messaging::{AnyMessage, AnyMessageViewGeneric},
 };
 

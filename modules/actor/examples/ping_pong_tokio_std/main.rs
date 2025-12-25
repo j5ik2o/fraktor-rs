@@ -3,7 +3,7 @@ use std::{string::String, time::Duration};
 use fraktor_actor_rs::{
   core::error::ActorError,
   std::{
-    actor_prim::{Actor, ActorContext, ActorRef},
+    actor::{Actor, ActorContext, ActorRef},
     dispatch::dispatcher::dispatch_executor::TokioExecutor,
     futures::ActorFutureListener,
     messaging::{AnyMessage, AnyMessageView},

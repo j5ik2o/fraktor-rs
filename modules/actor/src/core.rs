@@ -1,5 +1,5 @@
 // Hierarchical package structure
-pub mod actor_prim;
+pub mod actor;
 pub mod dead_letter;
 pub mod dispatch;
 pub mod error;

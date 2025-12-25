@@ -6,7 +6,7 @@ mod tests;
 use alloc::sync::Arc;
 
 use fraktor_actor_rs::core::{
-  actor_prim::{actor_path::ActorPath, actor_ref::ActorRefGeneric},
+  actor::{actor_path::ActorPath, actor_ref::ActorRefGeneric},
   dead_letter::DeadLetterReason,
   error::SendError,
   messaging::AnyMessageGeneric,

@@ -4,7 +4,7 @@ use core::time::Duration;
 use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 
 use crate::core::{
-  actor_prim::actor_path::GuardianKind as PathGuardianKind,
+  actor::actor_path::GuardianKind as PathGuardianKind,
   dispatch::dispatcher::{DispatcherConfigGeneric, InlineExecutorGeneric},
   system::{ActorSystemConfig, RemotingConfig},
 };

@@ -1,5 +1,5 @@
 use fraktor_actor_rs::core::{
-  actor_prim::{
+  actor::{
     Actor, Pid,
     actor_path::{ActorPath, ActorPathScheme},
     actor_ref::{ActorRefGeneric, ActorRefSender, ActorRefSenderSharedGeneric, SendOutcome},
@@ -67,7 +67,7 @@ struct TestGuardian;
 impl Actor<NoStdToolbox> for TestGuardian {
   fn receive(
     &mut self,
-    _context: &mut fraktor_actor_rs::core::actor_prim::ActorContextGeneric<'_, NoStdToolbox>,
+    _context: &mut fraktor_actor_rs::core::actor::ActorContextGeneric<'_, NoStdToolbox>,
     _message: fraktor_actor_rs::core::messaging::AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), fraktor_actor_rs::core::error::ActorError> {
     Ok(())

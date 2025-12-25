@@ -8,7 +8,7 @@ mod no_std_tick_driver_support;
 use alloc::string::{String, ToString};
 
 use fraktor_actor_rs::core::{
-  actor_prim::{Actor, ActorContext, actor_ref::ActorRef},
+  actor::{Actor, ActorContext, actor_ref::ActorRef},
   error::ActorError,
   messaging::{AnyMessage, AnyMessageViewGeneric},
   props::Props,

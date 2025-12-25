@@ -6,7 +6,7 @@ use alloc::vec::Vec;
 use std::{thread, time::Duration};
 
 use fraktor_actor_rs::core::{
-  actor_prim::{Actor, ActorContextGeneric},
+  actor::{Actor, ActorContextGeneric},
   error::ActorError,
   messaging::{AnyMessage, AnyMessageViewGeneric},
   props::Props,

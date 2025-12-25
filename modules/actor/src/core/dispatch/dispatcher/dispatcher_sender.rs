@@ -11,7 +11,7 @@ use fraktor_utils_rs::core::{
 
 use super::base::DispatcherSharedGeneric;
 use crate::core::{
-  actor_prim::actor_ref::{ActorRefSender, SendOutcome},
+  actor::actor_ref::{ActorRefSender, SendOutcome},
   dispatch::{
     dispatcher::schedule_adapter_shared::ScheduleAdapterSharedGeneric,
     mailbox::{EnqueueOutcome, MailboxGeneric, MailboxOfferFutureGeneric, ScheduleHints},

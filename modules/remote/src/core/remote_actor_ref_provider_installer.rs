@@ -3,7 +3,7 @@
 use alloc::format;
 
 use fraktor_actor_rs::core::{
-  actor_prim::actor_path::ActorPathScheme,
+  actor::actor_path::ActorPathScheme,
   serialization::SerializationExtensionSharedGeneric,
   system::{
     ActorRefProviderInstaller, ActorRefProviderSharedGeneric, ActorSystemBuildError, ActorSystemGeneric,

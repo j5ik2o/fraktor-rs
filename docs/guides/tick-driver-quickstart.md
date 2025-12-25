@@ -17,7 +17,7 @@ Tick Driver の導入手順をまとめたハンドブックです。Tokio ラ�
 use std::time::Duration;
 
 use fraktor_actor_core_rs::{
-  actor_prim::{Actor, ActorContext},
+  actor::{Actor, ActorContext},
   messaging::{AnyMessage, AnyMessageView},
   props::Props,
   scheduler::{SchedulerTickExecutor, TickDriverBootstrap, TickDriverProvisioningContext},
@@ -90,7 +90,7 @@ async fn main() -> anyhow::Result<()> {
 use core::time::Duration;
 
 use fraktor_actor_core_rs::{
-  actor_prim::{Actor, ActorContext},
+  actor::{Actor, ActorContext},
   messaging::{AnyMessage, AnyMessageView},
   props::Props,
   scheduler::{SchedulerCommand, SchedulerTickExecutor, TickDriverBootstrap, TickDriverConfig, TickDriverProvisioningContext},

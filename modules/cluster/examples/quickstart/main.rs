@@ -18,7 +18,7 @@ use fraktor_actor_rs::{
     system::RemotingConfig,
   },
   std::{
-    actor_prim::{Actor, ActorContext, ActorRef},
+    actor::{Actor, ActorContext, ActorRef},
     dispatch::dispatcher::{DispatcherConfig, dispatch_executor::TokioExecutor},
     messaging::{AnyMessage, AnyMessageView},
     props::Props,

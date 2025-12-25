@@ -17,7 +17,7 @@ use portable_atomic::{AtomicUsize, Ordering};
 
 use super::*;
 use crate::core::{
-  actor_prim::{
+  actor::{
     Actor, ActorCell, ActorContextGeneric, Pid,
     actor_ref::{ActorRefGeneric, NullSender},
   },

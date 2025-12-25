@@ -4,7 +4,7 @@ use alloc::format;
 use core::time::Duration;
 
 use crate::core::{
-  actor_prim::{
+  actor::{
     Pid,
     actor_path::{ActorPath, ActorUid, PathResolutionError},
   },

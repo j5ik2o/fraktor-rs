@@ -9,7 +9,7 @@ use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 
 use super::BackpressurePublisherGeneric;
 use crate::core::{
-  actor_prim::Pid,
+  actor::Pid,
   dispatch::mailbox::{MailboxMetricsEvent, MailboxPressureEvent},
   event::{logging::LogLevel, stream::EventStreamEvent},
   system::{SystemStateSharedGeneric, SystemStateWeakGeneric},

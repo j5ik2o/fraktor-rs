@@ -95,7 +95,7 @@ impl<'a, M, TB> TypedActorContextGeneric<'a, M, TB> {
 ```rust
 use alloc::{boxed::Box, sync::Arc};
 use fraktor_actor_core_rs::{
-  actor_prim::{Actor, ActorContext, ActorContextGeneric, actor_ref::ActorRef},
+  actor::{Actor, ActorContext, ActorContextGeneric, actor_ref::ActorRef},
   error::ActorError,
   messaging::AnyMessage,
 };

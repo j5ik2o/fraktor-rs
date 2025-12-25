@@ -9,7 +9,7 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::core::{
-  actor_prim::Pid,
+  actor::Pid,
   event::{
     logging::{LogEvent, LogLevel},
     stream::{EventStreamEvent, EventStreamShared, EventStreamSubscriber, subscriber_handle},

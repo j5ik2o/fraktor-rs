@@ -11,7 +11,7 @@
 
 > 英語版は [README.md](README.md) を参照してください。
 
-fraktor-rs は Akka/Pekko と protoactor-go のライフサイクル／監視／Remoting パターンを `no_std` 環境と Tokio などのホスト環境に同一 API で提供する、アクターランタイムです。ワークスペースは `fraktor-utils-rs`・`fraktor-actor-rs`・`fraktor-remote-rs` の 3 クレートで構成され、旧来の `*-core` / `*-std` クレート分割は廃止されました。各クレートは内部に `core`（`#![no_std]`）と `std` モジュールを持ち、feature で同一 API を切り替えます。
+fraktor-rs は Akka/Pekko と protoactor-go のライフサイクル／監視／Remoting パターンを `no_std` 環境と Tokio などのホスト環境に同一 API で提供するアクターランタイムです。ワークスペースは `fraktor-utils-rs`・`fraktor-actor-rs`・`fraktor-remote-rs`・`fraktor-cluster-rs`・`fraktor-streams-rs` の 5 クレートで構成され、旧来の `*-core` / `*-std` クレート分割は廃止されました。各クレートは内部に `core`（`#![no_std]`）と `std` モジュールを持ち、feature で同一 API を切り替えます。
 
 ## 主な機能
 - **ライフサイクル最優先 ActorSystem** – `modules/actor/src/core/lifecycle/*` と `system/*` が `SystemMessage::{Create,Recreate,Failure}` を system mailbox で優先的に処理し、Deterministic な SupervisorStrategy + DeathWatch を実現します。
@@ -19,6 +19,8 @@ fraktor-rs は Akka/Pekko と protoactor-go のライフサイクル／監視／
 - **観測性と診断** – EventStream、DeadLetter、LoggerSubscriber、`tick_driver_snapshot` がライフサイクル／Remoting／TickDriver のメトリクスを同一フォーマットで RTT/UART と tracing subscriber へ流し、`RemoteAuthorityManagerGeneric` やスケジューラの挙動を即座に追跡できます。
 - **Remoting スタック** – `fraktor-remote-rs::core` は `RemoteActorRefProvider`、`RemoteWatcherDaemon`、`EndpointManager`、Deferred Envelope、Flight Recorder、Quarantine 管理を追加し、Pekko 互換ルールを保ったままアクター階層をノード間に拡張します。
 - **トランスポートと障害検知** – `core::loopback_router` によるループバック、`std::transport::tokio_tcp` による TCP ハンドシェイク／バックプレッシャ／`failure_detector` 連携が工場 (`transport::factory`) 経由で差し替え可能です。
+- **クラスター拡張** – `fraktor-cluster-rs` が protoactor-go 互換のクラスタープリミティブ（アイデンティティ検索、配置戦略、メンバーシップ Gossip、トポロジ管理）を提供し、AWS ECS 統合もオプションで利用可能です。
+- **ストリーム処理** – `fraktor-streams-rs` がアクターシステム上にストリーム処理プリミティブを提供し、`no_std` と `std` 両環境でリアクティブなデータフローパターンを実現します。
 - **Toolbox とアロケータ非依存プリミティブ** – `fraktor-utils-rs` が `RuntimeToolbox`、portable atomic、スピンロック、タイマー、Arc 代替を提供し、`thumbv6/v8` MCU とホスト OS が同じ API を共有します。
 
 ## アーキテクチャ
@@ -36,15 +38,26 @@ flowchart LR
         RC[core]
         RS[std + transport]
     end
+    subgraph Cluster [fraktor-cluster-rs]
+        CC[core]
+        CS[std + aws-ecs]
+    end
+    subgraph Streams [fraktor-streams-rs]
+        SC[core]
+        SS[std]
+    end
 
     UC --> AC
     AC --> RC
+    RC --> CC
+    AC --> SC
     US --> AS
     AS --> RS
-    UC --> RS
+    RS --> CS
+    AS --> SS
 ```
 
-全クレートが `core`/`std` の二層 API を共有します。`core` は割り込み安全な `#![no_std]` 実装を維持し、`std` は Tokio 実行器やログアダプタを後付けします。`fraktor-remote-rs` は actor/utils を合成して Remoting 拡張・Endpoint Registry・Remote Watcher・トランスポート配線を提供します。
+全クレートが `core`/`std` の二層 API を共有します。`core` は割り込み安全な `#![no_std]` 実装を維持し、`std` は Tokio 実行器やログアダプタを後付けします。`fraktor-remote-rs` は actor/utils を合成して Remoting 拡張を提供し、`fraktor-cluster-rs` は remote 上に分散クラスタリングを構築、`fraktor-streams-rs` はアクターシステム上にリアクティブストリーム処理を提供します。
 
 ## セットアップ
 1. **前提ツール**
@@ -71,7 +84,9 @@ flowchart LR
 | `modules/utils/` | `fraktor-utils-rs`: `RuntimeToolbox`、portable atomic、タイマー、Arc 代替などのプリミティブ (`core`/`std`)。 |
 | `modules/actor/` | `fraktor-actor-rs`: ActorSystem、Mailbox、Supervision、Typed API、Scheduler/TickDriver、EventStream、ActorPath。 |
 | `modules/remote/` | `fraktor-remote-rs`: Remoting 拡張、RemoteActorRefProvider、Endpoint Manager/Reader/Writer、Remote Watcher、Loopback/Tokio TCP トランスポート。 |
-| `modules/*/examples/` | no_std ping-pong、Tokio 監督、Remoting ループバック/TCP などのサンプル。 |
+| `modules/cluster/` | `fraktor-cluster-rs`: protoactor-go 互換クラスタープリミティブ（アイデンティティ検索、配置戦略、メンバーシップ Gossip、トポロジ管理、AWS ECS 統合）。 |
+| `modules/streams/` | `fraktor-streams-rs`: アクターシステム上のストリーム処理プリミティブ。 |
+| `modules/*/examples/` | no_std ping-pong、Tokio 監督、Remoting ループバック/TCP、クラスターメンバーシップ Gossip などのサンプル。 |
 | `docs/guides/` | ActorSystem 起動、DeathWatch 移行、TickDriver クイックスタートなどの運用ガイド。 |
 | `.kiro/steering/` | アーキテクチャ／技術／構造ポリシー。2018 モジュール・1 ファイル 1 型・rustdoc=英語/その他=日本語などを定義。 |
 | `.kiro/specs/` | 要件→設計→タスク→実装の OpenSpec ディレクトリ。 |

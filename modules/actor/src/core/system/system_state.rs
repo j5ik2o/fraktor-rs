@@ -34,7 +34,7 @@ use super::{
   temp_actors::TempActorsGeneric,
 };
 use crate::core::{
-  actor_prim::{
+  actor::{
     ActorCellGeneric, Pid,
     actor_path::{ActorPath, ActorPathParser, ActorPathScheme, GuardianKind as PathGuardianKind},
     actor_ref::ActorRefGeneric,

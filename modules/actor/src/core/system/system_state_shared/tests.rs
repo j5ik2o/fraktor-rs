@@ -4,7 +4,7 @@ use fraktor_utils_rs::core::sync::{ArcShared, sync_rwlock_like::SyncRwLockLike};
 
 use super::SystemStateShared;
 use crate::core::{
-  actor_prim::actor_ref::ActorRefGeneric,
+  actor::actor_ref::ActorRefGeneric,
   system::{GuardianKind, RegisterExtensionError, RegisterExtraTopLevelError, SystemState},
 };
 

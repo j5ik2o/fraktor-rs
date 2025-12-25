@@ -51,7 +51,7 @@ fraktor-rs/
 
 #### 主要コンポーネント
 
-- **actor_prim**: アクタープリミティブ
+- **actor**: アクタープリミティブ
 - **dead_letter**: デッドレター処理
 - **dispatcher**: メッセージディスパッチ
 - **error**: エラー型定義

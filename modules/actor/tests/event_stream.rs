@@ -6,7 +6,7 @@ use alloc::vec::Vec;
 use core::{hint::spin_loop, num::NonZeroUsize};
 
 use fraktor_actor_rs::core::{
-  actor_prim::{Actor, ActorContextGeneric, ChildRef},
+  actor::{Actor, ActorContextGeneric, ChildRef},
   dispatch::mailbox::{MailboxOverflowStrategy, MailboxPolicy},
   error::ActorError,
   event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},

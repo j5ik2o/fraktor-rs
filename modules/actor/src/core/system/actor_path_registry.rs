@@ -10,7 +10,7 @@ use ahash::RandomState;
 use hashbrown::HashMap;
 
 use super::{ActorPathHandle, ReservationPolicy};
-use crate::core::actor_prim::{
+use crate::core::actor::{
   Pid,
   actor_path::{ActorPath, ActorPathComparator, ActorPathParser, ActorUid, PathResolutionError},
 };

@@ -6,7 +6,7 @@ mod pressure_event;
 
 pub use pressure_event::MailboxPressureEvent;
 
-use crate::core::actor_prim::Pid;
+use crate::core::actor::Pid;
 
 /// Snapshot of mailbox queue lengths and capacity.
 #[derive(Clone, Debug)]

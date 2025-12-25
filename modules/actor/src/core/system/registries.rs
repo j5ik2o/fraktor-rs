@@ -4,7 +4,7 @@ use ahash::RandomState;
 use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 use hashbrown::HashMap;
 
-use crate::core::{actor_prim::Pid, spawn::NameRegistry};
+use crate::core::{actor::Pid, spawn::NameRegistry};
 
 /// Collection of name registries indexed by parent [`Pid`].
 pub(crate) struct RegistriesGeneric<TB: RuntimeToolbox + 'static> {

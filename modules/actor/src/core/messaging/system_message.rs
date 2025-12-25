@@ -10,7 +10,7 @@ pub use self::{
   failure_payload::FailurePayload,
 };
 use crate::core::{
-  actor_prim::{ContextPipeTaskId, Pid},
+  actor::{ContextPipeTaskId, Pid},
   messaging::AnyMessageGeneric,
 };
 

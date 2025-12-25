@@ -11,7 +11,7 @@ use fraktor_utils_rs::core::{
   sync::ArcShared,
 };
 
-use crate::core::{actor_prim::actor_ref::ActorRefGeneric, messaging::AnyMessageViewGeneric};
+use crate::core::{actor::actor_ref::ActorRefGeneric, messaging::AnyMessageViewGeneric};
 
 /// Wraps an arbitrary payload for message passing.
 pub struct AnyMessageGeneric<TB: RuntimeToolbox> {

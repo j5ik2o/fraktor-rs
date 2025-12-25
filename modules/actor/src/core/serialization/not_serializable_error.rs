@@ -3,7 +3,7 @@
 use alloc::string::String;
 
 use super::{serializer_id::SerializerId, transport_information::TransportInformation};
-use crate::core::actor_prim::Pid;
+use crate::core::actor::Pid;
 
 /// Carries context for serialization failures surfaced to the runtime.
 #[derive(Debug, Clone, PartialEq, Eq)]

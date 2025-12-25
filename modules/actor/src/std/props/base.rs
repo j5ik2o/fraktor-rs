@@ -14,7 +14,7 @@ use crate::{
     props::{ActorFactory, ActorFactorySharedGeneric, MailboxConfig, PropsGeneric as CorePropsGeneric},
   },
   std::{
-    actor_prim::{Actor, ActorAdapter},
+    actor::{Actor, ActorAdapter},
     dispatch::dispatcher::DispatcherConfig,
   },
 };

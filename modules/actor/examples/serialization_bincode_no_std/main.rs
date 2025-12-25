@@ -13,7 +13,7 @@ use core::{
 
 use bincode::config;
 use fraktor_actor_rs::core::{
-  actor_prim::{Actor, ActorContext},
+  actor::{Actor, ActorContext},
   error::ActorError,
   messaging::AnyMessageViewGeneric,
   props::Props,

@@ -3,7 +3,7 @@
 use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use crate::core::{
-  actor_prim::{
+  actor::{
     actor_path::{ActorPath, ActorPathScheme},
     actor_ref::ActorRefGeneric,
   },
