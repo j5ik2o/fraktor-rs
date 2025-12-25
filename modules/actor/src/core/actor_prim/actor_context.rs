@@ -20,10 +20,10 @@ use crate::core::{
 
 /// Provides contextual APIs while handling a message.
 pub struct ActorContextGeneric<'a, TB: RuntimeToolbox + 'static> {
-  system:   ActorSystemGeneric<TB>,
-  pid:      Pid,
-  reply_to: Option<ActorRefGeneric<TB>>,
-  _marker:  PhantomData<&'a ()>,
+  system:  ActorSystemGeneric<TB>,
+  pid:     Pid,
+  sender:  Option<ActorRefGeneric<TB>>,
+  _marker: PhantomData<&'a ()>,
 }
 
 /// Alias for a context with the default runtime toolbox.
@@ -33,7 +33,7 @@ impl<TB: RuntimeToolbox + 'static> ActorContextGeneric<'_, TB> {
   /// Creates a new context placeholder.
   #[must_use]
   pub fn new(system: &ActorSystemGeneric<TB>, pid: Pid) -> Self {
-    Self { system: system.clone(), pid, reply_to: None, _marker: PhantomData }
+    Self { system: system.clone(), pid, sender: None, _marker: PhantomData }
   }
 
   /// Returns a reference to the actor system.
@@ -48,20 +48,20 @@ impl<TB: RuntimeToolbox + 'static> ActorContextGeneric<'_, TB> {
     self.pid
   }
 
-  /// Returns the reply target if supplied by the message envelope.
+  /// Returns the sender if supplied by the message envelope.
   #[must_use]
-  pub const fn reply_to(&self) -> Option<&ActorRefGeneric<TB>> {
-    self.reply_to.as_ref()
+  pub const fn sender(&self) -> Option<&ActorRefGeneric<TB>> {
+    self.sender.as_ref()
   }
 
-  /// Sets the reply target (used internally by the runtime).
-  pub fn set_reply_to(&mut self, reply_to: Option<ActorRefGeneric<TB>>) {
-    self.reply_to = reply_to;
+  /// Sets the sender (used internally by the runtime).
+  pub fn set_sender(&mut self, sender: Option<ActorRefGeneric<TB>>) {
+    self.sender = sender;
   }
 
-  /// Clears the reply target after message processing completes.
-  pub fn clear_reply_to(&mut self) {
-    self.reply_to = None;
+  /// Clears the sender after message processing completes.
+  pub fn clear_sender(&mut self) {
+    self.sender = None;
   }
 
   /// Returns an [`ActorRef`] pointing to the running actor.
@@ -83,7 +83,7 @@ impl<TB: RuntimeToolbox + 'static> ActorContextGeneric<'_, TB> {
   ///
   /// Returns an error if no reply target is set or sending fails.
   pub fn reply(&mut self, message: AnyMessageGeneric<TB>) -> Result<(), SendError<TB>> {
-    match self.reply_to.as_mut() {
+    match self.sender.as_mut() {
       | Some(target) => target.tell(message),
       | None => Err(SendError::no_recipient(message)),
     }

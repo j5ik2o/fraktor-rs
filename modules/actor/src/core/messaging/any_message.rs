@@ -15,8 +15,8 @@ use crate::core::{actor_prim::actor_ref::ActorRefGeneric, messaging::AnyMessageV
 
 /// Wraps an arbitrary payload for message passing.
 pub struct AnyMessageGeneric<TB: RuntimeToolbox> {
-  payload:  ArcShared<dyn Any + Send + Sync + 'static>,
-  reply_to: Option<ActorRefGeneric<TB>>,
+  payload: ArcShared<dyn Any + Send + Sync + 'static>,
+  sender:  Option<ActorRefGeneric<TB>>,
 }
 
 /// Type alias for [AnyMessageGeneric] with the default [NoStdToolbox].
@@ -28,35 +28,32 @@ impl<TB: RuntimeToolbox> AnyMessageGeneric<TB> {
   pub fn new<T>(payload: T) -> Self
   where
     T: Any + Send + Sync + 'static, {
-    Self { payload: ArcShared::new(payload), reply_to: None }
+    Self { payload: ArcShared::new(payload), sender: None }
   }
 
-  /// Associates a reply target with this message and returns the updated instance.
+  /// Associates a sender with this message and returns the updated instance.
   #[must_use]
-  pub fn with_reply_to(mut self, reply_to: ActorRefGeneric<TB>) -> Self {
-    self.reply_to = Some(reply_to);
+  pub fn with_sender(mut self, sender: ActorRefGeneric<TB>) -> Self {
+    self.sender = Some(sender);
     self
   }
 
-  /// Returns the reply target, if any.
+  /// Returns the sender, if any.
   #[must_use]
-  pub const fn reply_to(&self) -> Option<&ActorRefGeneric<TB>> {
-    self.reply_to.as_ref()
+  pub const fn sender(&self) -> Option<&ActorRefGeneric<TB>> {
+    self.sender.as_ref()
   }
 
   /// Converts the owned message into a borrowed view.
   #[must_use]
   pub fn as_view(&self) -> AnyMessageViewGeneric<'_, TB> {
-    AnyMessageViewGeneric::new(&*self.payload, self.reply_to.as_ref())
+    AnyMessageViewGeneric::new(&*self.payload, self.sender.as_ref())
   }
 
   /// Reconstructs a message from an erased payload pointer.
   #[must_use]
-  pub fn from_erased(
-    payload: ArcShared<dyn Any + Send + Sync + 'static>,
-    reply_to: Option<ActorRefGeneric<TB>>,
-  ) -> Self {
-    Self::from_parts(payload, reply_to)
+  pub fn from_erased(payload: ArcShared<dyn Any + Send + Sync + 'static>, sender: Option<ActorRefGeneric<TB>>) -> Self {
+    Self::from_parts(payload, sender)
   }
 
   /// Returns the payload as a trait object reference.
@@ -73,22 +70,22 @@ impl<TB: RuntimeToolbox> AnyMessageGeneric<TB> {
   /// Reconstructs an envelope from erased components.
   pub(crate) fn from_parts(
     payload: ArcShared<dyn Any + Send + Sync + 'static>,
-    reply_to: Option<ActorRefGeneric<TB>>,
+    sender: Option<ActorRefGeneric<TB>>,
   ) -> Self {
-    Self { payload, reply_to }
+    Self { payload, sender }
   }
 
-  /// Consumes the message and returns the payload alongside the reply target.
-  pub(crate) fn into_payload_and_reply(
+  /// Consumes the message and returns the payload alongside the sender.
+  pub(crate) fn into_payload_and_sender(
     self,
   ) -> (ArcShared<dyn Any + Send + Sync + 'static>, Option<ActorRefGeneric<TB>>) {
-    (self.payload, self.reply_to)
+    (self.payload, self.sender)
   }
 }
 
 impl<TB: RuntimeToolbox> Clone for AnyMessageGeneric<TB> {
   fn clone(&self) -> Self {
-    Self { payload: self.payload.clone(), reply_to: self.reply_to.clone() }
+    Self { payload: self.payload.clone(), sender: self.sender.clone() }
   }
 }
 
@@ -96,7 +93,7 @@ impl<TB: RuntimeToolbox> fmt::Debug for AnyMessageGeneric<TB> {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     f.debug_struct("AnyMessage")
       .field("type_id", &self.payload.type_id())
-      .field("has_reply_to", &self.reply_to.is_some())
+      .field("has_sender", &self.sender.is_some())
       .finish()
   }
 }

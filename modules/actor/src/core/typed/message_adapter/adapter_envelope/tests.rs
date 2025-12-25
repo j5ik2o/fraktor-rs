@@ -6,12 +6,12 @@ use crate::core::{
 };
 
 #[test]
-fn envelope_exposes_type_id_and_reply_to() {
+fn envelope_exposes_type_id_and_sender() {
   let payload = AdapterPayload::<NoStdToolbox>::new(7_u32);
-  let reply = ActorRefGeneric::null();
-  let envelope = AdapterEnvelope::new(payload, Some(reply.clone()));
+  let sender = ActorRefGeneric::null();
+  let envelope = AdapterEnvelope::new(payload, Some(sender.clone()));
   assert_eq!(envelope.type_id(), core::any::TypeId::of::<u32>());
-  assert!(envelope.reply_to().is_some());
+  assert!(envelope.sender().is_some());
   let extracted = envelope.take_payload().expect("payload available");
   assert_eq!(extracted.type_id(), core::any::TypeId::of::<u32>());
   assert!(envelope.take_payload().is_none());

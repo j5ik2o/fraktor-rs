@@ -8,17 +8,17 @@ use crate::core::{
 
 #[test]
 fn exposes_parts() {
-  let reply: ActorRef = ActorRef::null();
+  let sender: ActorRef = ActorRef::null();
   let future = ActorFutureSharedGeneric::<AnyMessage, NoStdToolbox>::new();
-  let response = AskResponse::new(reply.clone(), future.clone());
+  let response = AskResponse::new(sender.clone(), future.clone());
 
-  assert_eq!(response.reply_to(), &reply);
+  assert_eq!(response.sender(), &sender);
   assert!(!response.future().with_write(|af| af.is_ready()));
 
   future.with_write(|af| af.complete(AnyMessage::new(5_u32)));
   assert!(response.future().with_read(|af| af.is_ready()));
 
-  let (reply_out, future_out) = response.into_parts();
-  assert_eq!(reply_out, reply);
+  let (sender_out, future_out) = response.into_parts();
+  assert_eq!(sender_out, sender);
   assert!(future_out.with_read(|af| af.is_ready()));
 }

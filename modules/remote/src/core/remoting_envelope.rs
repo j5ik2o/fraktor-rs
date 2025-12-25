@@ -16,7 +16,7 @@ use crate::core::{outbound_priority::OutboundPriority, remote_node_id::RemoteNod
 pub struct RemotingEnvelope {
   recipient:      ActorPath,
   remote_node:    RemoteNodeId,
-  reply_to:       Option<ActorPath>,
+  sender:         Option<ActorPath>,
   serialized:     SerializedMessage,
   correlation_id: CorrelationId,
   priority:       OutboundPriority,
@@ -28,12 +28,12 @@ impl RemotingEnvelope {
   pub const fn new(
     recipient: ActorPath,
     remote_node: RemoteNodeId,
-    reply_to: Option<ActorPath>,
+    sender: Option<ActorPath>,
     serialized: SerializedMessage,
     correlation_id: CorrelationId,
     priority: OutboundPriority,
   ) -> Self {
-    Self { recipient, remote_node, reply_to, serialized, correlation_id, priority }
+    Self { recipient, remote_node, sender, serialized, correlation_id, priority }
   }
 
   /// Returns the fully qualified recipient path.
@@ -48,10 +48,10 @@ impl RemotingEnvelope {
     &self.remote_node
   }
 
-  /// Returns the optional reply target path.
+  /// Returns the optional sender path.
   #[must_use]
-  pub fn reply_to(&self) -> Option<&ActorPath> {
-    self.reply_to.as_ref()
+  pub fn sender(&self) -> Option<&ActorPath> {
+    self.sender.as_ref()
   }
 
   /// Returns the serialized payload.
@@ -88,9 +88,9 @@ impl RemotingEnvelope {
     buffer.push(KIND_MESSAGE);
     buffer.push(self.priority.to_wire());
     write_string(&mut buffer, &self.recipient.to_canonical_uri());
-    if let Some(reply_to) = self.reply_to.as_ref() {
+    if let Some(sender) = self.sender.as_ref() {
       buffer.push(1);
-      write_string(&mut buffer, &reply_to.to_canonical_uri());
+      write_string(&mut buffer, &sender.to_canonical_uri());
     } else {
       buffer.push(0);
     }
@@ -127,7 +127,7 @@ impl RemotingEnvelope {
     let mut cursor = 3;
     let recipient = ActorPathParser::parse(&read_string(bytes, &mut cursor)?)?;
 
-    let reply_to = if read_bool(bytes, &mut cursor)? {
+    let sender = if read_bool(bytes, &mut cursor)? {
       Some(ActorPathParser::parse(&read_string(bytes, &mut cursor)?)?)
     } else {
       None
@@ -162,7 +162,7 @@ impl RemotingEnvelope {
     let payload = &bytes[cursor..cursor + payload_len];
     let serialized = SerializedMessage::decode(payload)?;
     let remote_node = RemoteNodeId::new(system_name, host, port, uid);
-    Ok(Self::new(recipient, remote_node, reply_to, serialized, correlation_id, priority))
+    Ok(Self::new(recipient, remote_node, sender, serialized, correlation_id, priority))
   }
 }
 

@@ -48,18 +48,18 @@ where
     ctx: &mut ActorContextGeneric<'_, TB>,
     envelope: &AdapterEnvelope<TB>,
   ) -> Result<(), ActorError> {
-    let reply_to = envelope.reply_to().cloned();
+    let sender = envelope.sender().cloned();
     let Some(payload) = envelope.take_payload() else {
       ctx.system().emit_log(LogLevel::Warn, "adapter envelope missing payload", Some(ctx.pid()));
       return Ok(());
     };
     if payload.type_id() != envelope.type_id() {
-      Self::record_dead_letter(ctx, payload, reply_to.as_ref(), DeadLetterReason::ExplicitRouting);
+      Self::record_dead_letter(ctx, payload, sender.as_ref(), DeadLetterReason::ExplicitRouting);
       ctx.system().emit_log(LogLevel::Error, "adapter envelope corrupted", Some(ctx.pid()));
       return Ok(());
     }
     let (outcome, leftover) = self.adapters.adapt(payload);
-    self.handle_adapter_outcome(ctx, outcome, reply_to.as_ref(), leftover)
+    self.handle_adapter_outcome(ctx, outcome, sender.as_ref(), leftover)
   }
 
   fn handle_adapt_message(
@@ -75,15 +75,15 @@ where
     &mut self,
     ctx: &mut ActorContextGeneric<'_, TB>,
     outcome: AdapterOutcome<M>,
-    reply_to: Option<&ActorRefGeneric<TB>>,
+    sender: Option<&ActorRefGeneric<TB>>,
     original_payload: Option<AdapterPayload<TB>>,
   ) -> Result<(), ActorError> {
     match outcome {
-      | AdapterOutcome::Converted(message) => self.deliver_converted_message(ctx, message, reply_to),
+      | AdapterOutcome::Converted(message) => self.deliver_converted_message(ctx, message, sender),
       | AdapterOutcome::Failure(failure) => self.forward_adapter_failure(ctx, failure),
       | AdapterOutcome::NotFound => {
         if let Some(payload) = original_payload {
-          Self::record_dead_letter(ctx, payload, reply_to, DeadLetterReason::ExplicitRouting);
+          Self::record_dead_letter(ctx, payload, sender, DeadLetterReason::ExplicitRouting);
         }
         ctx.system().emit_log(LogLevel::Warn, "adapter dropped message", Some(ctx.pid()));
         Ok(())
@@ -95,15 +95,15 @@ where
     &mut self,
     ctx: &mut ActorContextGeneric<'_, TB>,
     message: M,
-    reply_to: Option<&ActorRefGeneric<TB>>,
+    sender: Option<&ActorRefGeneric<TB>>,
   ) -> Result<(), ActorError> {
     let mut typed_ctx = TypedActorContextGeneric::from_untyped(ctx, Some(&mut self.adapters));
-    if let Some(target) = reply_to {
-      typed_ctx.as_untyped_mut().set_reply_to(Some(target.clone()));
+    if let Some(target) = sender {
+      typed_ctx.as_untyped_mut().set_sender(Some(target.clone()));
     }
     let result = self.actor.receive(&mut typed_ctx, &message);
-    if reply_to.is_some() {
-      typed_ctx.as_untyped_mut().clear_reply_to();
+    if sender.is_some() {
+      typed_ctx.as_untyped_mut().clear_sender();
     }
     result
   }
@@ -120,11 +120,11 @@ where
   fn record_dead_letter(
     ctx: &ActorContextGeneric<'_, TB>,
     payload: AdapterPayload<TB>,
-    reply_to: Option<&ActorRefGeneric<TB>>,
+    sender: Option<&ActorRefGeneric<TB>>,
     reason: DeadLetterReason,
   ) {
     let system_state = ctx.system().state();
-    let message = AnyMessageGeneric::from_parts(payload.into_erased(), reply_to.cloned());
+    let message = AnyMessageGeneric::from_parts(payload.into_erased(), sender.cloned());
     system_state.record_dead_letter(message, reason, Some(ctx.pid()));
   }
 }

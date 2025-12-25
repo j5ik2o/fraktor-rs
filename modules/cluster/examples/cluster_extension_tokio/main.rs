@@ -284,10 +284,10 @@ impl Actor for GrainHub {
     if let Some(request) = message.downcast_ref::<String>() {
       println!("[hub] recv grain request body={}", request);
       let reply = format!("echo:{request}");
-      if ctx.reply_to().is_some() {
+      if ctx.sender().is_some() {
         ctx.reply(AnyMessage::new(reply)).map_err(|e| ActorError::recoverable(format!("reply failed: {e:?}")))?;
       } else {
-        println!("[hub] reply_to missing; skip reply");
+        println!("[hub] sender missing; skip reply");
       }
     }
     Ok(())

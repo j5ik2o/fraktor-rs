@@ -99,7 +99,7 @@ impl<TB: RuntimeToolbox + 'static> GrainRefGeneric<TB> {
     let reply_pid = state.allocate_pid();
     let reply_ref = ActorRefGeneric::with_system(reply_pid, reply_sender, &state);
     let temp_name = state.register_temp_actor(reply_ref.clone());
-    let envelope = message.clone().with_reply_to(reply_ref.clone());
+    let envelope = message.clone().with_sender(reply_ref.clone());
     if let Err(error) = actor_ref.tell(envelope) {
       state.unregister_temp_actor(&temp_name);
       let call_error = GrainCallError::RequestFailed(ClusterRequestError::SendFailed { reason: format!("{error:?}") });
@@ -110,7 +110,7 @@ impl<TB: RuntimeToolbox + 'static> GrainRefGeneric<TB> {
     state.register_ask_future(future.clone());
     let response = AskResponseGeneric::new(reply_ref, future);
     if let Some(timeout) = self.options.timeout {
-      let reply_ref = response.reply_to().clone();
+      let reply_ref = response.sender().clone();
       let future = response.future().clone();
       let max_retries = self.options.retry.max_retries();
       let mut elapsed = timeout;
@@ -267,7 +267,7 @@ impl<TB: RuntimeToolbox + 'static> SchedulerRunnable for GrainRetryRunnable<TB> 
         let event = GrainEvent::CallRetrying { identity: self.context.identity.clone(), attempt: *attempt };
         publish_grain_event(&self.context.event_stream, event);
         update_grain_metrics(&self.context.metrics, |metrics| metrics.record_call_retried());
-        let envelope = message.clone().with_reply_to(reply_ref.clone());
+        let envelope = message.clone().with_sender(reply_ref.clone());
         if let Err(error) = actor_ref.tell(envelope) {
           let failure = ClusterRequestError::SendFailed { reason: format!("{error:?}") };
           let event =

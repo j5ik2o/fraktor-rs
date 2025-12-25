@@ -12,9 +12,9 @@ use crate::core::actor_prim::actor_ref::ActorRefGeneric;
 /// Represents a borrowed view of an actor message.
 #[derive(Debug)]
 pub struct AnyMessageViewGeneric<'a, TB: RuntimeToolbox = NoStdToolbox> {
-  payload:  &'a (dyn Any + Send + Sync + 'static),
-  type_id:  TypeId,
-  reply_to: Option<&'a ActorRefGeneric<TB>>,
+  payload: &'a (dyn Any + Send + Sync + 'static),
+  type_id: TypeId,
+  sender:  Option<&'a ActorRefGeneric<TB>>,
 }
 
 /// Type alias for [AnyMessageViewGeneric] with the default [NoStdToolbox].
@@ -23,8 +23,8 @@ pub type AnyMessageView<'a> = AnyMessageViewGeneric<'a, NoStdToolbox>;
 impl<'a, TB: RuntimeToolbox> AnyMessageViewGeneric<'a, TB> {
   /// Creates a new borrowed message view.
   #[must_use]
-  pub fn new(payload: &'a (dyn Any + Send + Sync + 'static), reply_to: Option<&'a ActorRefGeneric<TB>>) -> Self {
-    Self { payload, type_id: (*payload).type_id(), reply_to }
+  pub fn new(payload: &'a (dyn Any + Send + Sync + 'static), sender: Option<&'a ActorRefGeneric<TB>>) -> Self {
+    Self { payload, type_id: (*payload).type_id(), sender }
   }
 
   /// Returns the [`TypeId`] of the payload.
@@ -39,9 +39,9 @@ impl<'a, TB: RuntimeToolbox> AnyMessageViewGeneric<'a, TB> {
     self.payload.downcast_ref::<T>()
   }
 
-  /// Returns the reply target if present.
+  /// Returns the sender if present.
   #[must_use]
-  pub const fn reply_to(&self) -> Option<&'a ActorRefGeneric<TB>> {
-    self.reply_to
+  pub const fn sender(&self) -> Option<&'a ActorRefGeneric<TB>> {
+    self.sender
   }
 }

@@ -103,27 +103,27 @@ fn actor_context_pid() {
 }
 
 #[test]
-fn actor_context_reply_to_initially_none() {
+fn actor_context_sender_initially_none() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
   let context = ActorContext::new(&system, pid);
-  assert!(context.reply_to().is_none());
+  assert!(context.sender().is_none());
 }
 
 #[test]
-fn actor_context_set_and_clear_reply_to() {
+fn actor_context_set_and_clear_sender() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
   let mut context = ActorContext::new(&system, pid);
 
-  assert!(context.reply_to().is_none());
+  assert!(context.sender().is_none());
 
-  context.clear_reply_to();
-  assert!(context.reply_to().is_none());
+  context.clear_sender();
+  assert!(context.sender().is_none());
 }
 
 #[test]
-fn actor_context_reply_without_reply_to() {
+fn actor_context_reply_without_sender() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
   let mut context = ActorContext::new(&system, pid);
