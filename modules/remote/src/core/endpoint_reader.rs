@@ -55,12 +55,12 @@ impl<TB: RuntimeToolbox + 'static> EndpointReaderGeneric<TB> {
   pub fn decode(&self, envelope: RemotingEnvelope) -> Result<InboundEnvelope<TB>, EndpointReaderError> {
     let recipient = envelope.recipient().clone();
     let remote_node = envelope.remote_node().clone();
-    let reply_to = envelope.reply_to().cloned();
+    let sender = envelope.sender().cloned();
     let correlation = envelope.correlation_id();
     let priority = envelope.priority();
     let serialized = envelope.serialized_message().clone();
     match self.deserialize_message(&serialized) {
-      | Ok(message) => Ok(InboundEnvelope::new(recipient, remote_node, message, reply_to, correlation, priority)),
+      | Ok(message) => Ok(InboundEnvelope::new(recipient, remote_node, message, sender, correlation, priority)),
       | Err(error) => {
         self.record_deserialization_failure(&recipient);
         Err(EndpointReaderError::Deserialization(error))
@@ -96,11 +96,18 @@ impl<TB: RuntimeToolbox + 'static> EndpointReaderGeneric<TB> {
       let (_, message, _) = inbound.into_delivery_parts();
       return Err(SendError::closed(message));
     };
-    let (recipient, mut message, reply_to_path) = inbound.into_delivery_parts();
-    if let Some(reply_path) = reply_to_path
-      && let Some(reply_ref) = self.resolve_reply_to_with_system(&system, &reply_path)
+    let (recipient, mut message, sender_path) = inbound.into_delivery_parts();
+    if let Some(sender_path) = sender_path
+      && let Some(sender_ref) = self.resolve_sender_with_system(&system, &sender_path)
     {
-      message = message.with_reply_to(reply_ref);
+      message = message.with_sender(sender_ref);
+    }
+    if let Some(temp_name) = temp_actor_name(&recipient)
+      && let Some(temp_ref) = system.state().temp_actor(temp_name)
+    {
+      let result = temp_ref.tell(message);
+      system.state().unregister_temp_actor(temp_name);
+      return result;
     }
     let Some(pid) = system.pid_by_path(&recipient) else {
       return self.record_missing_recipient_with_system(&system, recipient, message);
@@ -121,7 +128,7 @@ impl<TB: RuntimeToolbox + 'static> EndpointReaderGeneric<TB> {
     Err(SendError::no_recipient(message))
   }
 
-  fn resolve_reply_to_with_system(
+  fn resolve_sender_with_system(
     &self,
     system: &fraktor_actor_rs::core::system::ActorSystemGeneric<TB>,
     path: &ActorPath,
@@ -130,18 +137,29 @@ impl<TB: RuntimeToolbox + 'static> EndpointReaderGeneric<TB> {
     #[cfg(feature = "tokio-transport")]
     if let Some(provider) =
       system.extended().actor_ref_provider::<RemoteWatchHookShared<TB, TokioActorRefProviderGeneric<TB>>>()
-      && let Ok(reply_ref) = provider.get_actor_ref(path.clone())
+      && let Ok(sender_ref) = provider.get_actor_ref(path.clone())
     {
-      return Some(reply_ref);
+      return Some(sender_ref);
     }
 
     if let Some(provider) =
       system.extended().actor_ref_provider::<RemoteWatchHookShared<TB, RemoteActorRefProviderGeneric<TB>>>()
-      && let Ok(reply_ref) = provider.get_actor_ref(path.clone())
+      && let Ok(sender_ref) = provider.get_actor_ref(path.clone())
     {
-      return Some(reply_ref);
+      return Some(sender_ref);
     }
 
     None
   }
+}
+
+fn temp_actor_name(path: &ActorPath) -> Option<&str> {
+  let segments = path.segments();
+  if segments.len() < 3 {
+    return None;
+  }
+  if segments[1].as_str() != "temp" {
+    return None;
+  }
+  Some(segments[2].as_str())
 }

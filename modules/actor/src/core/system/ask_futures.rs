@@ -7,11 +7,11 @@ use fraktor_utils_rs::core::{
   sync::SharedAccess,
 };
 
-use crate::core::{futures::ActorFutureSharedGeneric, messaging::AnyMessageGeneric};
+use crate::core::{futures::ActorFutureSharedGeneric, messaging::AskResult};
 
 /// Registry of pending ask futures.
 pub(crate) struct AskFuturesGeneric<TB: RuntimeToolbox + 'static> {
-  futures: Vec<ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>>,
+  futures: Vec<ActorFutureSharedGeneric<AskResult<TB>, TB>>,
 }
 
 /// Type alias using the default toolbox.
@@ -26,12 +26,12 @@ impl<TB: RuntimeToolbox + 'static> AskFuturesGeneric<TB> {
   }
 
   /// Registers an ask future for tracking.
-  pub(crate) fn push(&mut self, future: ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>) {
+  pub(crate) fn push(&mut self, future: ActorFutureSharedGeneric<AskResult<TB>, TB>) {
     self.futures.push(future);
   }
 
   /// Drains futures that have completed since the previous inspection.
-  pub(crate) fn drain_ready(&mut self) -> Vec<ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>> {
+  pub(crate) fn drain_ready(&mut self) -> Vec<ActorFutureSharedGeneric<AskResult<TB>, TB>> {
     let mut ready = Vec::new();
     let mut index = 0_usize;
 

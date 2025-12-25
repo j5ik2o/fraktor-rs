@@ -24,23 +24,23 @@ use crate::core::{
   },
 };
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 enum CounterMessage {
   Increment(i32),
-  Get,
+  Get { reply_to: TypedActorRef<i32> },
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 enum IgnoreCommand {
   Add(u32),
   Reject,
-  Read,
+  Read { reply_to: TypedActorRef<u32> },
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 enum AdapterCounterCommand {
   Set(i32),
-  Read,
+  Read { reply_to: TypedActorRef<i32> },
 }
 
 struct CounterActor {
@@ -56,7 +56,7 @@ impl CounterActor {
 impl TypedActor<CounterMessage> for CounterActor {
   fn receive(
     &mut self,
-    ctx: &mut TypedActorContextGeneric<'_, CounterMessage>,
+    _ctx: &mut TypedActorContextGeneric<'_, CounterMessage>,
     message: &CounterMessage,
   ) -> Result<(), ActorError> {
     match message {
@@ -64,8 +64,9 @@ impl TypedActor<CounterMessage> for CounterActor {
         self.total += delta;
         Ok(())
       },
-      | CounterMessage::Get => {
-        ctx.reply(self.total).map_err(|error| ActorError::from_send_error(&error))?;
+      | CounterMessage::Get { reply_to } => {
+        let mut reply_to = reply_to.clone();
+        reply_to.tell(self.total).map_err(|error| ActorError::from_send_error(&error))?;
         Ok(())
       },
     }
@@ -82,7 +83,7 @@ fn typed_actor_system_handles_basic_flow() {
   counter.tell(CounterMessage::Increment(2)).expect("tell increment one");
   counter.tell(CounterMessage::Increment(5)).expect("tell increment two");
 
-  let response = counter.ask::<i32>(CounterMessage::Get).expect("ask get");
+  let response = counter.ask::<i32, _>(|reply_to| CounterMessage::Get { reply_to }).expect("ask get");
   let mut future = response.future().clone();
   wait_until(|| future.is_ready());
   let payload = future.try_take().expect("reply available").expect("typed payload");
@@ -102,7 +103,7 @@ fn typed_behaviors_handle_recursive_state() {
   counter.tell(CounterMessage::Increment(3)).expect("increment one");
   counter.tell(CounterMessage::Increment(5)).expect("increment two");
 
-  let response = counter.ask::<i32>(CounterMessage::Get).expect("ask get");
+  let response = counter.ask::<i32, _>(|reply_to| CounterMessage::Get { reply_to }).expect("ask get");
   let mut future = response.future().clone();
   wait_until(|| future.is_ready());
   let payload = future.try_take().expect("reply available").expect("typed payload");
@@ -123,7 +124,7 @@ fn typed_behaviors_ignore_keeps_current_state() {
   gate.tell(IgnoreCommand::Reject).expect("reject once");
   gate.tell(IgnoreCommand::Add(5)).expect("add after reject");
 
-  let response = gate.ask::<u32>(IgnoreCommand::Read).expect("ask read");
+  let response = gate.ask::<u32, _>(|reply_to| IgnoreCommand::Read { reply_to }).expect("ask read");
   let mut future = response.future().clone();
   wait_until(|| future.is_ready());
   let payload = future.try_take().expect("reply available").expect("typed payload");
@@ -155,9 +156,9 @@ fn typed_behaviors_receive_signal_notifications() {
   assert_eq!(stopped.load(Ordering::SeqCst), 1);
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 enum MismatchCommand {
-  Trigger,
+  Trigger { reply_to: TypedActorRef<i32> },
 }
 
 #[derive(Clone, Copy)]
@@ -170,9 +171,9 @@ enum ChildCommand {
   Crash,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 enum SchedulerProbeCommand {
-  Check,
+  Check { reply_to: TypedActorRef<bool> },
 }
 
 struct MismatchActor;
@@ -181,10 +182,15 @@ struct SchedulerProbeActor;
 impl TypedActor<MismatchCommand> for MismatchActor {
   fn receive(
     &mut self,
-    ctx: &mut TypedActorContextGeneric<'_, MismatchCommand>,
-    _message: &MismatchCommand,
+    _ctx: &mut TypedActorContextGeneric<'_, MismatchCommand>,
+    message: &MismatchCommand,
   ) -> Result<(), ActorError> {
-    ctx.reply("unexpected".to_string()).map_err(|error| ActorError::from_send_error(&error))
+    match message {
+      | MismatchCommand::Trigger { reply_to } => reply_to
+        .as_untyped()
+        .tell(AnyMessageGeneric::new("unexpected".to_string()))
+        .map_err(|error| ActorError::from_send_error(&error)),
+    }
   }
 }
 
@@ -195,9 +201,10 @@ impl TypedActor<SchedulerProbeCommand> for SchedulerProbeActor {
     message: &SchedulerProbeCommand,
   ) -> Result<(), ActorError> {
     match message {
-      | SchedulerProbeCommand::Check => {
+      | SchedulerProbeCommand::Check { reply_to } => {
         let _ = ctx.system().scheduler();
-        ctx.reply(true).map_err(|error| ActorError::from_send_error(&error))
+        let mut reply_to = reply_to.clone();
+        reply_to.tell(true).map_err(|error| ActorError::from_send_error(&error))
       },
     }
   }
@@ -210,7 +217,7 @@ fn typed_ask_reports_type_mismatch() {
   let system = TypedActorSystemGeneric::<MismatchCommand, NoStdToolbox>::new(&props, tick_driver).expect("system");
   let mut actor = system.user_guardian_ref();
 
-  let response = actor.ask::<i32>(MismatchCommand::Trigger).expect("ask");
+  let response = actor.ask::<i32, _>(|reply_to| MismatchCommand::Trigger { reply_to }).expect("ask");
   let mut future = response.future().clone();
   wait_until(|| future.is_ready());
   let result = future.try_take().expect("result");
@@ -228,7 +235,7 @@ fn typed_context_exposes_scheduler() {
     TypedActorSystemGeneric::<SchedulerProbeCommand, NoStdToolbox>::new(&props, tick_driver).expect("system");
   let mut actor = system.user_guardian_ref();
 
-  let response = actor.ask::<bool>(SchedulerProbeCommand::Check).expect("ask");
+  let response = actor.ask::<bool, _>(|reply_to| SchedulerProbeCommand::Check { reply_to }).expect("ask");
   let mut future = response.future().clone();
   wait_until(|| future.is_ready());
   let result = future.try_take().expect("result").expect("payload");
@@ -259,21 +266,23 @@ fn wait_for(mut condition: impl FnMut() -> bool) -> bool {
 }
 
 fn behavior_counter(total: i32) -> Behavior<CounterMessage, NoStdToolbox> {
-  Behaviors::receive_message(move |ctx, message| match message {
+  Behaviors::receive_message(move |_ctx, message| match message {
     | CounterMessage::Increment(delta) => Ok(behavior_counter(total + delta)),
-    | CounterMessage::Get => {
-      ctx.reply(total).map_err(|error| ActorError::from_send_error(&error))?;
+    | CounterMessage::Get { reply_to } => {
+      let mut reply_to = reply_to.clone();
+      reply_to.tell(total).map_err(|error| ActorError::from_send_error(&error))?;
       Ok(Behaviors::same())
     },
   })
 }
 
 fn ignore_gate(total: u32) -> Behavior<IgnoreCommand, NoStdToolbox> {
-  Behaviors::receive_message(move |ctx, message| match message {
+  Behaviors::receive_message(move |_ctx, message| match message {
     | IgnoreCommand::Add(delta) => Ok(ignore_gate(total + delta)),
     | IgnoreCommand::Reject => Ok(Behaviors::ignore()),
-    | IgnoreCommand::Read => {
-      ctx.reply(total).map_err(|error| ActorError::from_send_error(&error))?;
+    | IgnoreCommand::Read { reply_to } => {
+      let mut reply_to = reply_to.clone();
+      reply_to.tell(total).map_err(|error| ActorError::from_send_error(&error))?;
       Ok(Behaviors::same())
     },
   })
@@ -407,10 +416,11 @@ fn adapter_counter_behavior(
 }
 
 fn counter_behavior(value: i32) -> Behavior<AdapterCounterCommand, NoStdToolbox> {
-  Behaviors::receive_message(move |ctx, message| match message {
+  Behaviors::receive_message(move |_ctx, message| match message {
     | AdapterCounterCommand::Set(delta) => Ok(counter_behavior(value + delta)),
-    | AdapterCounterCommand::Read => {
-      ctx.reply(value).map_err(|error| ActorError::from_send_error(&error))?;
+    | AdapterCounterCommand::Read { reply_to } => {
+      let mut reply_to = reply_to.clone();
+      reply_to.tell(value).map_err(|error| ActorError::from_send_error(&error))?;
       Ok(Behaviors::same())
     },
   })
@@ -498,7 +508,7 @@ fn pipe_to_self_converts_messages_via_adapter() {
 }
 
 fn read_counter_value(actor: &mut TypedActorRef<AdapterCounterCommand>) -> i32 {
-  let response = actor.ask::<i32>(AdapterCounterCommand::Read).expect("ask read");
+  let response = actor.ask::<i32, _>(|reply_to| AdapterCounterCommand::Read { reply_to }).expect("ask read");
   let mut future = response.future().clone();
   wait_until(|| future.is_ready());
   future.try_take().expect("result").expect("payload")

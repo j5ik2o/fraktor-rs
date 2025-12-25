@@ -6,7 +6,7 @@ use ahash::RandomState;
 use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 use hashbrown::HashMap;
 
-use crate::core::actor_prim::actor_ref::ActorRefGeneric;
+use crate::core::actor_prim::{Pid, actor_ref::ActorRefGeneric};
 
 /// Registry of temporary actor references.
 pub(crate) struct TempActorsGeneric<TB: RuntimeToolbox + 'static> {
@@ -38,6 +38,12 @@ impl<TB: RuntimeToolbox + 'static> TempActorsGeneric<TB> {
   #[must_use]
   pub(crate) fn get(&self, name: &str) -> Option<ActorRefGeneric<TB>> {
     self.map.get(name).cloned()
+  }
+
+  /// Removes an actor reference by pid if present.
+  pub(crate) fn remove_by_pid(&mut self, pid: &Pid) -> Option<(String, ActorRefGeneric<TB>)> {
+    let name = self.map.iter().find(|(_, actor)| actor.pid() == *pid).map(|(name, _)| name.clone());
+    name.and_then(|name| self.map.remove(&name).map(|actor| (name, actor)))
   }
 }
 

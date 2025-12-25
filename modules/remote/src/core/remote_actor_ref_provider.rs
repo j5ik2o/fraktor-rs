@@ -13,7 +13,7 @@ use ahash::RandomState;
 use fraktor_actor_rs::core::{
   actor_prim::{
     Pid,
-    actor_path::{ActorPath, ActorPathParts},
+    actor_path::{ActorPath, ActorPathParts, ActorPathScheme},
     actor_ref::{ActorRefGeneric, ActorRefSender, SendOutcome},
   },
   error::{ActorError, SendError},
@@ -231,25 +231,29 @@ impl<TB: RuntimeToolbox + 'static> RemoteActorRefSender<TB> {
     }
   }
 
-  fn enrich_reply_path(&self, reply_path: &ActorPath) -> ActorPath {
-    if reply_path.parts().authority_endpoint().is_some() {
-      return reply_path.clone();
+  fn enrich_sender_path(&self, sender_path: &ActorPath) -> ActorPath {
+    if sender_path.parts().authority_endpoint().is_some() {
+      return sender_path.clone();
     }
 
-    let mut parts = reply_path.parts().clone();
+    let mut parts = sender_path.parts().clone();
     let authority_components = self.writer.with_read(|w| w.canonical_authority_components());
     if let Some((host, port)) = authority_components {
+      parts = parts.with_scheme(ActorPathScheme::FraktorTcp);
       parts = parts.with_authority_host(host);
       if let Some(port) = port {
         parts = parts.with_authority_port(port);
       }
     }
 
-    let mut rebuilt = ActorPath::from_parts(parts);
-    for segment in reply_path.segments() {
+    let mut rebuilt = ActorPath::from_parts(parts.clone());
+    let guardian = parts.guardian_segment();
+    let segments = sender_path.segments();
+    let start = segments.first().is_some_and(|segment| segment.as_str() == guardian) as usize;
+    for segment in segments.iter().skip(start) {
       rebuilt = rebuilt.child(segment.as_str());
     }
-    if let Some(uid) = reply_path.uid() {
+    if let Some(uid) = sender_path.uid() {
       rebuilt = rebuilt.with_uid(uid);
     }
     rebuilt
@@ -264,7 +268,7 @@ impl<TB: RuntimeToolbox + 'static> ActorRefSender<TB> for RemoteActorRefSender<T
     if let Err(RemoteAuthorityError::Quarantined) = normalizer.validate_recipient(&self.recipient) {
       return Err(SendError::closed(message));
     }
-    if let Err(RemoteAuthorityError::Quarantined) = normalizer.validate_reply_to(&message) {
+    if let Err(RemoteAuthorityError::Quarantined) = normalizer.validate_sender(&message) {
       return Err(SendError::closed(message));
     }
 
@@ -278,11 +282,11 @@ impl<TB: RuntimeToolbox + 'static> ActorRefSender<TB> for RemoteActorRefSender<T
         OutboundMessage::user(message.clone(), self.recipient.clone(), self.remote_node.clone())
       },
     };
-    if let Some(reply_to) = message.reply_to()
-      && let Some(reply_path) = reply_to.path()
+    if let Some(sender) = message.sender()
+      && let Some(sender_path) = sender.path()
     {
-      let enriched = self.enrich_reply_path(&reply_path);
-      outbound = outbound.with_reply_to(enriched);
+      let enriched = self.enrich_sender_path(&sender_path);
+      outbound = outbound.with_sender(enriched);
     }
     match loopback_router::try_deliver(&self.remote_node, &self.writer, outbound) {
       | Ok(LoopbackDeliveryOutcome::Delivered) => Ok(SendOutcome::Delivered),

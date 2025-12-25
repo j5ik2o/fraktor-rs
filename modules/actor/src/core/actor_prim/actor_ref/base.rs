@@ -18,7 +18,7 @@ use crate::core::{
   },
   error::SendError,
   futures::ActorFutureSharedGeneric,
-  messaging::{AnyMessageGeneric, AskResponseGeneric},
+  messaging::{AnyMessageGeneric, AskResponseGeneric, AskResult},
   system::{SystemStateSharedGeneric, SystemStateWeakGeneric},
 };
 
@@ -79,6 +79,12 @@ impl<TB: RuntimeToolbox + 'static> ActorRefGeneric<TB> {
     self.system.as_ref().and_then(|weak| weak.upgrade()).and_then(|system| system.canonical_actor_path(&self.pid))
   }
 
+  /// Returns the underlying system state if available.
+  #[must_use]
+  pub(crate) fn system_state(&self) -> Option<SystemStateSharedGeneric<TB>> {
+    self.system.as_ref().and_then(|weak| weak.upgrade())
+  }
+
   /// Sends a message to the referenced actor.
   ///
   /// This method delegates to the internal sender which uses interior mutability.
@@ -101,16 +107,18 @@ impl<TB: RuntimeToolbox + 'static> ActorRefGeneric<TB> {
 
   /// Sends a request and obtains a future that resolves with the reply.
   ///
+  /// The future resolves with `Ok(message)` on success, or `Err(AskError)` on failure.
+  ///
   /// # Errors
   ///
   /// Returns an error if the message cannot be delivered.
   pub fn ask(&self, message: AnyMessageGeneric<TB>) -> Result<AskResponseGeneric<TB>, SendError<TB>>
   where
     TB: 'static, {
-    let future = ActorFutureSharedGeneric::<AnyMessageGeneric<TB>, TB>::new();
+    let future = ActorFutureSharedGeneric::<AskResult<TB>, TB>::new();
     let reply_sender = AskReplySenderGeneric::<TB>::new(future.clone());
     let reply_ref = ActorRefGeneric::<TB>::new(self.pid, reply_sender);
-    let envelope = message.with_reply_to(reply_ref.clone());
+    let envelope = message.with_sender(reply_ref.clone());
     self.tell(envelope)?;
     if let Some(system) = self.system.as_ref().and_then(|weak| weak.upgrade()) {
       system.register_ask_future(future.clone());

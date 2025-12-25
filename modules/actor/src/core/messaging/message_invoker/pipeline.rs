@@ -50,18 +50,18 @@ impl<TB: RuntimeToolbox + 'static> MessageInvokerPipelineGeneric<TB> {
   ) -> Result<(), ActorError>
   where
     A: Actor<TB> + ?Sized, {
-    let previous = ctx.reply_to().cloned();
-    let reply_target = message.reply_to().cloned();
+    let previous = ctx.sender().cloned();
+    let sender = message.sender().cloned();
 
-    match reply_target {
-      | Some(target) => ctx.set_reply_to(Some(target)),
-      | None => ctx.clear_reply_to(),
+    match sender {
+      | Some(target) => ctx.set_sender(Some(target)),
+      | None => ctx.clear_sender(),
     }
 
     let view = message.as_view();
 
     if let Err(error) = self.invoke_before(ctx, &view) {
-      restore_reply(ctx, previous);
+      restore_sender(ctx, previous);
       return Err(error);
     }
 
@@ -70,7 +70,7 @@ impl<TB: RuntimeToolbox + 'static> MessageInvokerPipelineGeneric<TB> {
     let view_after = message.as_view();
     result = self.invoke_after(ctx, &view_after, result);
 
-    restore_reply(ctx, previous);
+    restore_sender(ctx, previous);
     result
   }
 
@@ -98,13 +98,13 @@ impl<TB: RuntimeToolbox + 'static> MessageInvokerPipelineGeneric<TB> {
   }
 }
 
-fn restore_reply<TB: RuntimeToolbox + 'static>(
+fn restore_sender<TB: RuntimeToolbox + 'static>(
   ctx: &mut ActorContextGeneric<'_, TB>,
   previous: Option<ActorRefGeneric<TB>>,
 ) {
   match previous {
-    | Some(target) => ctx.set_reply_to(Some(target)),
-    | None => ctx.clear_reply_to(),
+    | Some(target) => ctx.set_sender(Some(target)),
+    | None => ctx.clear_sender(),
   }
 }
 

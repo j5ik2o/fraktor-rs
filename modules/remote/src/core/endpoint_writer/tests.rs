@@ -76,11 +76,11 @@ fn actor_path(system: &str, guardian: GuardianKind, segments: &[&str]) -> ActorP
   path
 }
 
-fn user_message(content: &str, recipient: &ActorPath, reply_to: Option<ActorPath>) -> OutboundMessage<NoStdToolbox> {
+fn user_message(content: &str, recipient: &ActorPath, sender: Option<ActorPath>) -> OutboundMessage<NoStdToolbox> {
   let message = AnyMessageGeneric::new(content.to_string());
   let remote = remote_node();
-  match reply_to {
-    | Some(path) => OutboundMessage::user(message, recipient.clone(), remote).with_reply_to(path),
+  match sender {
+    | Some(path) => OutboundMessage::user(message, recipient.clone(), remote).with_sender(path),
     | None => OutboundMessage::user(message, recipient.clone(), remote),
   }
 }
@@ -91,16 +91,16 @@ fn system_message(content: &str, recipient: &ActorPath) -> OutboundMessage<NoStd
 }
 
 #[test]
-fn serialize_user_message_includes_manifest_and_reply_to() {
+fn serialize_user_message_includes_manifest_and_sender() {
   let (mut writer, _system) = build_writer();
   let recipient = actor_path("remote-app", GuardianKind::User, &["user", "service"]);
-  let reply_to = actor_path("local-app", GuardianKind::User, &["user", "client"]);
-  writer.enqueue(user_message("ping", &recipient, Some(reply_to.clone()))).expect("enqueue user");
+  let sender = actor_path("local-app", GuardianKind::User, &["user", "client"]);
+  writer.enqueue(user_message("ping", &recipient, Some(sender.clone()))).expect("enqueue user");
 
   let envelope = writer.try_next().expect("poll success").expect("envelope present");
   assert_eq!(envelope.priority(), OutboundPriority::User);
   assert_eq!(envelope.recipient(), &recipient);
-  assert_eq!(envelope.reply_to(), Some(&reply_to));
+  assert_eq!(envelope.sender(), Some(&sender));
   assert_eq!(envelope.remote_node(), &remote_node());
   let serialized = envelope.serialized_message();
   assert_eq!(serialized.manifest(), Some("tests.String"));

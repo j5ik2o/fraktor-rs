@@ -56,39 +56,6 @@ where
   pub fn new() -> Self {
     Self { inner: ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(ActorFuture::new())) }
   }
-
-  // /// Completes the future with the given value.
-  // ///
-  // /// Acquires a lock and delegates to [`ActorFuture::complete`].
-  // /// The `&self` signature is intentional as the mutex provides interior mutability.
-  // pub fn complete(&self, value: T) -> Option<Waker> {
-  //   self.inner.lock().complete(value)
-  // }
-  //
-  // /// Attempts to take the completed value if ready.
-  // ///
-  // /// Acquires a lock and delegates to [`ActorFuture::try_take`].
-  // /// The `&self` signature is intentional as the mutex provides interior mutability.
-  // #[must_use]
-  // pub fn try_take(&self) -> Option<T> {
-  //   self.inner.lock().try_take()
-  // }
-  //
-  // /// Returns whether the future has completed.
-  // ///
-  // /// Acquires a lock and delegates to [`ActorFuture::is_ready`].
-  // #[must_use]
-  // pub fn is_ready(&self) -> bool {
-  //   self.inner.lock().is_ready()
-  // }
-  //
-  // /// Registers a waker to be notified when the future completes.
-  // ///
-  // /// Acquires a lock and delegates to [`ActorFuture::register_waker`].
-  // /// The `&self` signature is intentional as the mutex provides interior mutability.
-  // pub fn register_waker(&self, waker: &Waker) {
-  //   self.inner.lock().register_waker(waker);
-  // }
 }
 
 impl<T, TB> Default for ActorFutureSharedGeneric<T, TB>

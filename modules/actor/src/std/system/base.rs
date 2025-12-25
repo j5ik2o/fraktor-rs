@@ -23,7 +23,7 @@ use crate::{
     error::SendError,
     event::stream::{EventStream, EventStreamEvent, EventStreamSubscriberAdapter, EventStreamSubscription},
     futures::ActorFutureShared,
-    messaging::AnyMessage,
+    messaging::AskResult,
     props::Props,
     system::ActorSystemConfig,
   },
@@ -163,7 +163,7 @@ impl ActorSystem {
 
   /// Drains ask futures that have been fulfilled since the last check.
   #[must_use]
-  pub fn drain_ready_ask_futures(&self) -> Vec<ActorFutureShared<AnyMessage>> {
+  pub fn drain_ready_ask_futures(&self) -> Vec<ActorFutureShared<AskResult>> {
     self.inner.drain_ready_ask_futures()
   }
 

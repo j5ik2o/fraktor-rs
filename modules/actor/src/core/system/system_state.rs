@@ -36,7 +36,7 @@ use super::{
 use crate::core::{
   actor_prim::{
     ActorCellGeneric, Pid,
-    actor_path::{ActorPath, ActorPathScheme, GuardianKind as PathGuardianKind},
+    actor_path::{ActorPath, ActorPathParser, ActorPathScheme, GuardianKind as PathGuardianKind},
     actor_ref::ActorRefGeneric,
   },
   dead_letter::{DeadLetterEntryGeneric, DeadLetterSharedGeneric},
@@ -50,7 +50,7 @@ use crate::core::{
     stream::{EventStreamEvent, EventStreamSharedGeneric, RemoteAuthorityEvent, TickDriverSnapshot},
   },
   futures::ActorFutureSharedGeneric,
-  messaging::{AnyMessageGeneric, FailurePayload, SystemMessage},
+  messaging::{AnyMessageGeneric, AskResult, FailurePayload, SystemMessage},
   props::MailboxConfig,
   scheduler::{
     SchedulerBackedDelayProvider, SchedulerConfig, SchedulerContext, SchedulerSharedGeneric, TaskRunSummary,
@@ -355,24 +355,36 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     }
   }
 
-  pub(crate) fn register_ask_future(&mut self, future: ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>) {
+  pub(crate) fn register_ask_future(&mut self, future: ActorFutureSharedGeneric<AskResult<TB>, TB>) {
     self.ask_futures.push(future);
   }
 
   #[must_use]
-  pub(crate) fn drain_ready_ask_futures(&mut self) -> Vec<ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>> {
+  pub(crate) fn drain_ready_ask_futures(&mut self) -> Vec<ActorFutureSharedGeneric<AskResult<TB>, TB>> {
     self.ask_futures.drain_ready()
   }
 
   #[must_use]
   pub(crate) fn register_temp_actor(&mut self, actor: ActorRefGeneric<TB>) -> String {
     let name = self.next_temp_actor_name();
+    let pid = actor.pid();
     self.temp_actors.insert(name.clone(), actor);
+    let mut path = ActorPath::root_with_guardian(self.path_guardian_kind());
+    path = path.child("temp").child(&name);
+    self.actor_path_registry.register(pid, &path);
     name
   }
 
   pub(crate) fn unregister_temp_actor(&mut self, name: &str) {
-    let _ = self.temp_actors.remove(name);
+    if let Some(actor) = self.temp_actors.remove(name) {
+      self.actor_path_registry.unregister(&actor.pid());
+    }
+  }
+
+  pub(crate) fn unregister_temp_actor_by_pid(&mut self, pid: &Pid) {
+    if let Some((_name, actor)) = self.temp_actors.remove_by_pid(pid) {
+      self.actor_path_registry.unregister(&actor.pid());
+    }
   }
 
   #[must_use]
@@ -540,7 +552,10 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   /// Resolves the actor path for the specified pid if the actor exists.
   #[must_use]
   pub fn actor_path(&self, pid: &Pid) -> Option<ActorPath> {
-    let cell = self.cell(pid)?;
+    let Some(cell) = self.cell(pid) else {
+      let canonical = self.actor_path_registry.canonical_uri(pid)?.to_owned();
+      return ActorPathParser::parse(&canonical).ok();
+    };
     let mut segments = Vec::new();
     let mut current = Some(cell);
     while let Some(cursor) = current {

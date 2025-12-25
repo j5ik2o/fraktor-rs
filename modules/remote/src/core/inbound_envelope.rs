@@ -9,12 +9,12 @@ use crate::core::{outbound_priority::OutboundPriority, remote_node_id::RemoteNod
 
 /// Represents a fully decoded inbound message alongside routing metadata.
 pub struct InboundEnvelope<TB: RuntimeToolbox + 'static> {
-  recipient:     ActorPath,
-  remote_node:   RemoteNodeId,
-  message:       AnyMessageGeneric<TB>,
-  reply_to_path: Option<ActorPath>,
-  correlation:   CorrelationId,
-  priority:      OutboundPriority,
+  recipient:   ActorPath,
+  remote_node: RemoteNodeId,
+  message:     AnyMessageGeneric<TB>,
+  sender_path: Option<ActorPath>,
+  correlation: CorrelationId,
+  priority:    OutboundPriority,
 }
 
 impl<TB: RuntimeToolbox + 'static> InboundEnvelope<TB> {
@@ -24,11 +24,11 @@ impl<TB: RuntimeToolbox + 'static> InboundEnvelope<TB> {
     recipient: ActorPath,
     remote_node: RemoteNodeId,
     message: AnyMessageGeneric<TB>,
-    reply_to_path: Option<ActorPath>,
+    sender_path: Option<ActorPath>,
     correlation: CorrelationId,
     priority: OutboundPriority,
   ) -> Self {
-    Self { recipient, remote_node, message, reply_to_path, correlation, priority }
+    Self { recipient, remote_node, message, sender_path, correlation, priority }
   }
 
   /// Returns the intended recipient path.
@@ -55,10 +55,10 @@ impl<TB: RuntimeToolbox + 'static> InboundEnvelope<TB> {
     self.message
   }
 
-  /// Returns the optional reply-to actor path provided by the remote sender.
+  /// Returns the optional sender path provided by the remote sender.
   #[must_use]
-  pub fn reply_to_path(&self) -> Option<&ActorPath> {
-    self.reply_to_path.as_ref()
+  pub fn sender_path(&self) -> Option<&ActorPath> {
+    self.sender_path.as_ref()
   }
 
   /// Returns the transport correlation identifier associated with the envelope.
@@ -75,6 +75,6 @@ impl<TB: RuntimeToolbox + 'static> InboundEnvelope<TB> {
 
   /// Consumes the envelope and returns components required for delivery.
   pub fn into_delivery_parts(self) -> (ActorPath, AnyMessageGeneric<TB>, Option<ActorPath>) {
-    (self.recipient, self.message, self.reply_to_path)
+    (self.recipient, self.message, self.sender_path)
   }
 }

@@ -32,13 +32,13 @@ impl<TB: RuntimeToolbox + 'static> ActorRefFieldNormalizerGeneric<TB> {
     Ok(())
   }
 
-  /// Validates `reply_to` and rejects quarantined authority.
-  pub(crate) fn validate_reply_to(
+  /// Validates sender and rejects quarantined authority.
+  pub(crate) fn validate_sender(
     &self,
     message: &fraktor_actor_rs::core::messaging::AnyMessageGeneric<TB>,
   ) -> Result<(), RemoteAuthorityError> {
-    if let Some(reply_to) = message.reply_to()
-      && let Some(path) = reply_to.canonical_path()
+    if let Some(sender) = message.sender()
+      && let Some(path) = sender.canonical_path()
       && let Some(authority) = path.parts().authority_endpoint()
     {
       self.reject_if_quarantined(&authority)?;

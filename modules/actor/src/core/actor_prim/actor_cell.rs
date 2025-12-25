@@ -358,7 +358,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     let system = ActorSystemGeneric::from_state(self.system());
     let mut ctx = ActorContextGeneric::new(&system, self.pid);
     let result = self.actor.with_write(|actor| actor.on_terminated(&mut ctx, terminated_pid));
-    ctx.clear_reply_to();
+    ctx.clear_sender();
     result
   }
 
@@ -375,7 +375,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
       let system = ActorSystemGeneric::from_state(self.system());
       let mut ctx = ActorContextGeneric::new(&system, self.pid);
       self.actor.with_write(|actor| actor.post_stop(&mut ctx))?;
-      ctx.clear_reply_to();
+      ctx.clear_sender();
     }
 
     self.drop_pipe_tasks();
@@ -397,7 +397,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     let system = ActorSystemGeneric::from_state(self.system());
     let mut ctx = ActorContextGeneric::new(&system, self.pid);
     let result = self.actor.with_write(|actor| actor.post_stop(&mut ctx));
-    ctx.clear_reply_to();
+    ctx.clear_sender();
     if result.is_ok() {
       self.publish_lifecycle(LifecycleStage::Stopped);
     }
@@ -489,7 +489,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     let system = ActorSystemGeneric::from_state(self.system());
     let mut ctx = ActorContextGeneric::new(&system, self.pid);
     let outcome = self.actor.with_write(|actor| actor.pre_start(&mut ctx));
-    ctx.clear_reply_to();
+    ctx.clear_sender();
     if outcome.is_ok() {
       self.publish_lifecycle(stage);
     }

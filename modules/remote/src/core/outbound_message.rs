@@ -10,7 +10,7 @@ pub struct OutboundMessage<TB: RuntimeToolbox + 'static> {
   message:     AnyMessageGeneric<TB>,
   recipient:   ActorPath,
   remote_node: RemoteNodeId,
-  reply_to:    Option<ActorPath>,
+  sender:      Option<ActorPath>,
   priority:    OutboundPriority,
 }
 
@@ -18,19 +18,19 @@ impl<TB: RuntimeToolbox + 'static> OutboundMessage<TB> {
   /// Creates a user-priority message.
   #[must_use]
   pub fn user(message: AnyMessageGeneric<TB>, recipient: ActorPath, remote_node: RemoteNodeId) -> Self {
-    Self { message, recipient, remote_node, reply_to: None, priority: OutboundPriority::User }
+    Self { message, recipient, remote_node, sender: None, priority: OutboundPriority::User }
   }
 
   /// Creates a system-priority message.
   #[must_use]
   pub fn system(message: AnyMessageGeneric<TB>, recipient: ActorPath, remote_node: RemoteNodeId) -> Self {
-    Self { message, recipient, remote_node, reply_to: None, priority: OutboundPriority::System }
+    Self { message, recipient, remote_node, sender: None, priority: OutboundPriority::System }
   }
 
-  /// Attaches a reply-to actor path to the message.
+  /// Attaches a sender actor path to the message.
   #[must_use]
-  pub fn with_reply_to(mut self, reply_to: ActorPath) -> Self {
-    self.reply_to = Some(reply_to);
+  pub fn with_sender(mut self, sender: ActorPath) -> Self {
+    self.sender = Some(sender);
     self
   }
 
@@ -41,6 +41,6 @@ impl<TB: RuntimeToolbox + 'static> OutboundMessage<TB> {
   }
 
   pub(crate) fn into_parts(self) -> (AnyMessageGeneric<TB>, ActorPath, RemoteNodeId, Option<ActorPath>) {
-    (self.message, self.recipient, self.remote_node, self.reply_to)
+    (self.message, self.recipient, self.remote_node, self.sender)
   }
 }

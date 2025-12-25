@@ -207,6 +207,46 @@ fn test_resolve_cache_hit_returns_same_pid() {
 }
 
 #[test]
+fn test_resolve_uses_updated_topology_after_change() {
+  // トポロジ更新後は最新の authority に基づいて解決されることを検証
+  let mut lookup = PartitionIdentityLookup::with_defaults();
+  setup_member_mode(&mut lookup);
+  let authorities = vec!["node1:8080".to_string(), "node2:8080".to_string()];
+  lookup.update_topology(authorities.clone());
+  lookup.set_local_authority("node1:8080".to_string());
+
+  let key = GrainKey::new("user/456".to_string());
+  let first = lookup.resolve(&key, 1000).expect("resolution");
+  let first_owner = first.decision.authority.clone();
+
+  let next_authorities =
+    if first_owner == "node1:8080" { vec!["node2:8080".to_string()] } else { vec!["node1:8080".to_string()] };
+  lookup.update_topology(next_authorities.clone());
+
+  let updated = lookup.resolve(&key, 1001).expect("updated resolution");
+  assert_eq!(updated.decision.authority, next_authorities[0]);
+}
+
+#[test]
+fn test_resolve_is_deterministic_for_same_key() {
+  // 同一の識別子に対して決定的な解決結果が返ることを検証
+  let mut lookup_a = PartitionIdentityLookup::with_defaults();
+  let mut lookup_b = PartitionIdentityLookup::with_defaults();
+  setup_member_mode(&mut lookup_a);
+  setup_member_mode(&mut lookup_b);
+
+  let authorities = vec!["node1:8080".to_string(), "node2:8080".to_string(), "node3:8080".to_string()];
+  lookup_a.update_topology(authorities.clone());
+  lookup_b.update_topology(authorities);
+
+  let key = GrainKey::new("user/789".to_string());
+  let owner_a = lookup_a.resolve(&key, 1000).expect("resolution").decision.authority;
+  let owner_b = lookup_b.resolve(&key, 1000).expect("resolution").decision.authority;
+
+  assert_eq!(owner_a, owner_b);
+}
+
+#[test]
 fn test_resolve_returns_remote_when_owner_is_remote() {
   // ローカル担当ではない場合は Remote を返すことを検証
   let mut lookup = PartitionIdentityLookup::with_defaults();

@@ -158,13 +158,13 @@ impl<TB: RuntimeToolbox + 'static> EndpointWriterGeneric<TB> {
     message: OutboundMessage<TB>,
     priority: OutboundPriority,
   ) -> Result<RemotingEnvelope, EndpointWriterError> {
-    let (payload, recipient, remote_node, reply_to) = message.into_parts();
+    let (payload, recipient, remote_node, sender) = message.into_parts();
     let serialized = self
       .serialization
       .with_read(|ext| ext.serialize(payload.payload(), SerializationCallScope::Remote))
       .map_err(EndpointWriterError::Serialization)?;
     let correlation_id = self.next_correlation_id();
-    Ok(RemotingEnvelope::new(recipient, remote_node, reply_to, serialized, correlation_id, priority))
+    Ok(RemotingEnvelope::new(recipient, remote_node, sender, serialized, correlation_id, priority))
   }
 
   fn next_correlation_id(&self) -> fraktor_actor_rs::core::event::stream::CorrelationId {

@@ -11,9 +11,9 @@ fn downcasts_payload() {
 }
 
 #[test]
-fn carries_reply_reference() {
-  let reply: ActorRef = ActorRef::null();
-  let message = AnyMessage::new("ping").with_reply_to(reply.clone());
+fn carries_sender_reference() {
+  let sender: ActorRef = ActorRef::null();
+  let message = AnyMessage::new("ping").with_sender(sender.clone());
   let view = message.as_view();
-  assert!(matches!(view.reply_to(), Some(r) if r == &reply));
+  assert!(matches!(view.sender(), Some(r) if r == &sender));
 }

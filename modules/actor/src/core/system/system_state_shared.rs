@@ -37,7 +37,7 @@ use crate::core::{
     stream::{EventStreamEvent, EventStreamSharedGeneric, TickDriverSnapshot},
   },
   futures::ActorFutureSharedGeneric,
-  messaging::{AnyMessageGeneric, FailurePayload, SystemMessage},
+  messaging::{AnyMessageGeneric, AskResult, FailurePayload, SystemMessage},
   props::MailboxConfig,
   scheduler::{SchedulerBackedDelayProvider, SchedulerSharedGeneric, TaskRunSummary, TickDriverRuntime},
   spawn::SpawnError,
@@ -414,6 +414,11 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
     self.inner.write().unregister_temp_actor(name);
   }
 
+  /// Unregisters a temporary actor by pid when present.
+  pub fn unregister_temp_actor_by_pid(&self, pid: &crate::core::actor_prim::Pid) {
+    self.inner.write().unregister_temp_actor_by_pid(pid);
+  }
+
   /// Resolves a registered temporary actor reference.
   #[must_use]
   pub fn temp_actor(&self, name: &str) -> Option<ActorRefGeneric<TB>> {
@@ -423,7 +428,13 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   /// Resolves the actor path for the specified pid if the actor exists.
   #[must_use]
   pub fn actor_path(&self, pid: &Pid) -> Option<ActorPath> {
-    let cell = self.cell(pid)?;
+    let Some(cell) = self.cell(pid) else {
+      let canonical = {
+        let guard = self.inner.read();
+        guard.actor_path_registry().canonical_uri(pid).map(|value| value.to_string())
+      }?;
+      return ActorPathParser::parse(&canonical).ok();
+    };
     let mut segments = Vec::new();
     let mut current = Some(cell);
     while let Some(cursor) = current {
@@ -458,7 +469,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   }
 
   /// Registers an ask future so the actor system can track its completion.
-  pub fn register_ask_future(&self, future: ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>) {
+  pub fn register_ask_future(&self, future: ActorFutureSharedGeneric<AskResult<TB>, TB>) {
     self.inner.write().register_ask_future(future);
   }
 
@@ -714,7 +725,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
 
   /// Drains ask futures that have completed since the previous inspection.
   #[must_use]
-  pub fn drain_ready_ask_futures(&self) -> Vec<ActorFutureSharedGeneric<AnyMessageGeneric<TB>, TB>> {
+  pub fn drain_ready_ask_futures(&self) -> Vec<ActorFutureSharedGeneric<AskResult<TB>, TB>> {
     self.inner.write().drain_ready_ask_futures()
   }
 

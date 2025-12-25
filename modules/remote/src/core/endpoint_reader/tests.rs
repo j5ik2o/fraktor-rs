@@ -119,7 +119,7 @@ fn decode_round_trip_returns_inbound_envelope() {
   assert_eq!(inbound.recipient().to_relative_string(), "/user/user/svc");
   assert_eq!(inbound.remote_node().system(), "remote-system");
   assert!(matches!(inbound.message().as_view().downcast_ref::<String>(), Some(payload) if payload == "ping"));
-  assert!(inbound.reply_to_path().is_none());
+  assert!(inbound.sender_path().is_none());
 }
 
 #[test]

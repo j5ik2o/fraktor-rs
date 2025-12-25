@@ -57,7 +57,7 @@ impl Actor for CaptureActor {
     if let Some(value) = message.downcast_ref::<u32>() {
       self.payloads.lock().push(*value);
     }
-    self.replies.lock().push(ctx.reply_to().cloned());
+    self.replies.lock().push(ctx.sender().cloned());
     Ok(())
   }
 }
@@ -124,7 +124,7 @@ impl MessageInvokerMiddleware<NoStdToolbox> for RecordingMiddleware {
 }
 
 #[test]
-fn pipeline_sets_and_clears_reply_to() {
+fn pipeline_sets_and_clears_sender() {
   let system = ActorSystem::new_empty();
   let pid = Pid::new(1, 0);
   let mut ctx = ActorContext::new(&system, pid);
@@ -134,16 +134,16 @@ fn pipeline_sets_and_clears_reply_to() {
   let reply_sender = RecordingSender;
   let reply_ref = ActorRef::new(Pid::new(2, 0), reply_sender);
 
-  let message = AnyMessage::new(123_u32).with_reply_to(reply_ref.clone());
+  let message = AnyMessage::new(123_u32).with_sender(reply_ref.clone());
   pipeline.invoke_user(&mut actor, &mut ctx, message).expect("invoke user message");
 
   assert_eq!(actor.payloads(), vec![123_u32]);
   assert_eq!(actor.replies(), vec![Some(reply_ref)]);
-  assert!(ctx.reply_to().is_none());
+  assert!(ctx.sender().is_none());
 }
 
 #[test]
-fn pipeline_restores_previous_reply_target() {
+fn pipeline_restores_previous_sender() {
   let system = ActorSystem::new_empty();
   let pid = Pid::new(10, 0);
   let mut ctx = ActorContext::new(&system, pid);
@@ -152,13 +152,13 @@ fn pipeline_restores_previous_reply_target() {
 
   let previous_sender = RecordingSender;
   let previous_ref = ActorRef::new(Pid::new(3, 0), previous_sender);
-  ctx.set_reply_to(Some(previous_ref.clone()));
+  ctx.set_sender(Some(previous_ref.clone()));
 
   pipeline.invoke_user(&mut actor, &mut ctx, AnyMessage::new(7_u32)).expect("invoke");
 
   assert_eq!(actor.payloads(), vec![7_u32]);
   assert_eq!(actor.replies(), vec![None]);
-  assert_eq!(ctx.reply_to(), Some(&previous_ref));
+  assert_eq!(ctx.sender(), Some(&previous_ref));
 }
 
 #[test]

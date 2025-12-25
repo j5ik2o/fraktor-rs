@@ -14,18 +14,18 @@ use crate::core::{actor_prim::actor_ref::ActorRefGeneric, typed::message_adapter
 
 /// Wraps adapted payloads alongside metadata for typed actors.
 pub struct AdapterEnvelope<TB: RuntimeToolbox + 'static> {
-  type_id:  TypeId,
-  payload:  ToolboxMutex<Option<AdapterPayload<TB>>, TB>,
-  reply_to: Option<ActorRefGeneric<TB>>,
+  type_id: TypeId,
+  payload: ToolboxMutex<Option<AdapterPayload<TB>>, TB>,
+  sender:  Option<ActorRefGeneric<TB>>,
 }
 
 impl<TB: RuntimeToolbox + 'static> AdapterEnvelope<TB> {
-  /// Creates a new envelope from the provided payload and reply target.
+  /// Creates a new envelope from the provided payload and sender.
   #[must_use]
-  pub fn new(payload: AdapterPayload<TB>, reply_to: Option<ActorRefGeneric<TB>>) -> Self {
+  pub fn new(payload: AdapterPayload<TB>, sender: Option<ActorRefGeneric<TB>>) -> Self {
     let type_id = payload.type_id();
     let storage = <TB::MutexFamily as SyncMutexFamily>::create(Some(payload));
-    Self { type_id, payload: storage, reply_to }
+    Self { type_id, payload: storage, sender }
   }
 
   /// Returns the [`TypeId`] of the underlying adapter payload.
@@ -34,10 +34,10 @@ impl<TB: RuntimeToolbox + 'static> AdapterEnvelope<TB> {
     self.type_id
   }
 
-  /// Returns the reply target.
+  /// Returns the sender.
   #[must_use]
-  pub const fn reply_to(&self) -> Option<&ActorRefGeneric<TB>> {
-    self.reply_to.as_ref()
+  pub const fn sender(&self) -> Option<&ActorRefGeneric<TB>> {
+    self.sender.as_ref()
   }
 
   /// Takes ownership of the payload, returning `None` if it was already consumed.

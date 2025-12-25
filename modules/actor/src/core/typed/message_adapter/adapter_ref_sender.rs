@@ -55,9 +55,9 @@ impl<TB: RuntimeToolbox + 'static> ActorRefSender<TB> for AdapterRefSender<TB> {
       return Err(error);
     }
 
-    let (erased, reply_to) = message.into_payload_and_reply();
+    let (erased, sender) = message.into_payload_and_sender();
     let payload = AdapterPayload::from_erased(erased);
-    let envelope = AdapterEnvelope::new(payload, reply_to);
+    let envelope = AdapterEnvelope::new(payload, sender);
     let adapted = AnyMessageGeneric::new(envelope);
 
     match self.target.send(adapted) {
