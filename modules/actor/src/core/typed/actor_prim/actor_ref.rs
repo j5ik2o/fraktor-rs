@@ -5,9 +5,13 @@ use core::marker::PhantomData;
 use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 
 use crate::core::{
-  actor_prim::{Pid, actor_ref::ActorRefGeneric},
+  actor_prim::{
+    Pid,
+    actor_ref::{ActorRefGeneric, AskReplySenderGeneric},
+  },
   error::SendError,
-  messaging::AnyMessageGeneric,
+  futures::ActorFutureSharedGeneric,
+  messaging::{AnyMessageGeneric, AskResponseGeneric},
   typed::TypedAskResponseGeneric,
 };
 
@@ -63,14 +67,28 @@ where
 
   /// Sends a typed request and obtains the ask response.
   ///
+  /// The request message is built with an explicit reply target.
+  ///
   /// # Errors
   ///
   /// Returns an error if the request cannot be sent.
-  pub fn ask<R>(&mut self, message: M) -> Result<TypedAskResponseGeneric<R, TB>, SendError<TB>>
+  pub fn ask<R, F>(&mut self, build: F) -> Result<TypedAskResponseGeneric<R, TB>, SendError<TB>>
   where
-    R: Send + Sync + 'static, {
-    let response = self.inner.ask(AnyMessageGeneric::new(message))?;
-    Ok(TypedAskResponseGeneric::from_generic(response))
+    R: Send + Sync + 'static,
+    F: FnOnce(TypedActorRefGeneric<R, TB>) -> M, {
+    let future = ActorFutureSharedGeneric::<AnyMessageGeneric<TB>, TB>::new();
+    let reply_sender = AskReplySenderGeneric::<TB>::new(future.clone());
+    let reply_ref = if let Some(system) = self.inner.system_state() {
+      let reply_ref = ActorRefGeneric::with_system(self.inner.pid(), reply_sender, &system);
+      system.register_ask_future(future.clone());
+      reply_ref
+    } else {
+      ActorRefGeneric::new(self.inner.pid(), reply_sender)
+    };
+    let reply_typed = TypedActorRefGeneric::from_untyped(reply_ref.clone());
+    let message = build(reply_typed);
+    self.inner.tell(AnyMessageGeneric::new(message))?;
+    Ok(TypedAskResponseGeneric::from_generic(AskResponseGeneric::new(reply_ref, future)))
   }
 
   /// Maps this reference to a different message type without runtime cost.

@@ -3,21 +3,22 @@ mod std_tick_driver_support;
 
 use fraktor_actor_rs::{
   core::error::ActorError,
-  std::typed::{Behavior, Behaviors, TypedActorSystem, TypedProps},
+  std::typed::{Behavior, Behaviors, TypedActorSystem, TypedProps, actor_prim::TypedActorRef},
 };
 use fraktor_utils_rs::core::sync::SharedAccess;
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 enum CounterCommand {
   Add(i32),
-  Read,
+  Read { reply_to: TypedActorRef<i32> },
 }
 
 fn counter(total: i32) -> Behavior<CounterCommand> {
-  Behaviors::receive_message(move |ctx, message| match message {
+  Behaviors::receive_message(move |_ctx, message| match message {
     | CounterCommand::Add(delta) => Ok(counter(total + delta)),
-    | CounterCommand::Read => {
-      ctx.reply(total).map_err(|error| ActorError::from_send_error(&error))?;
+    | CounterCommand::Read { reply_to } => {
+      let mut reply_to = reply_to.clone();
+      reply_to.tell(total).map_err(|error| ActorError::from_send_error(&error))?;
       Ok(Behaviors::same())
     },
   })
@@ -37,7 +38,9 @@ fn main() {
   counter.tell(CounterCommand::Add(4)).expect("add first");
   counter.tell(CounterCommand::Add(6)).expect("add second");
 
-  let response = counter.ask::<i32>(CounterCommand::Read).expect("ask read");
+  let response = counter
+    .ask::<i32, _>(|reply_to| CounterCommand::Read { reply_to: TypedActorRef::from_core(reply_to) })
+    .expect("ask read");
   let mut future = response.future().clone();
   while !future.is_ready() {
     thread::yield_now();

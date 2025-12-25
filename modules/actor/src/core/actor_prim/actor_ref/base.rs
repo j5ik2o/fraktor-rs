@@ -79,6 +79,12 @@ impl<TB: RuntimeToolbox + 'static> ActorRefGeneric<TB> {
     self.system.as_ref().and_then(|weak| weak.upgrade()).and_then(|system| system.canonical_actor_path(&self.pid))
   }
 
+  /// Returns the underlying system state if available.
+  #[must_use]
+  pub(crate) fn system_state(&self) -> Option<SystemStateSharedGeneric<TB>> {
+    self.system.as_ref().and_then(|weak| weak.upgrade())
+  }
+
   /// Sends a message to the referenced actor.
   ///
   /// This method delegates to the internal sender which uses interior mutability.

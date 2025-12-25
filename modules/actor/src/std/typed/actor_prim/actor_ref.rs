@@ -61,3 +61,12 @@ where
     &mut self.inner
   }
 }
+
+impl<M> Clone for TypedActorRef<M>
+where
+  M: Send + Sync + 'static,
+{
+  fn clone(&self) -> Self {
+    Self { inner: self.inner.clone() }
+  }
+}

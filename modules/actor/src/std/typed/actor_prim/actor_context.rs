@@ -51,17 +51,6 @@ where
     TypedActorRef::from_core(self.inner.self_ref())
   }
 
-  /// Sends a reply to the original sender.
-  ///
-  /// # Errors
-  ///
-  /// Returns an error if the sender is unavailable or the message cannot be delivered.
-  pub fn reply<R>(&mut self, message: R) -> Result<(), SendError<StdToolbox>>
-  where
-    R: Send + Sync + 'static, {
-    self.inner.reply(message)
-  }
-
   /// Spawns a typed child actor using the provided typed props
   ///
   /// # Errors

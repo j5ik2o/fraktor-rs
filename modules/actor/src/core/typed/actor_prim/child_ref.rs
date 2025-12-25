@@ -57,14 +57,17 @@ where
 
   /// Sends a typed request to the child actor.
   ///
+  /// The request message is built with an explicit reply target.
+  ///
   /// # Errors
   ///
   /// Returns an error if the request cannot be sent.
-  pub fn ask<R>(&mut self, message: M) -> Result<TypedAskResponseGeneric<R, TB>, SendError<TB>>
+  pub fn ask<R, F>(&mut self, build: F) -> Result<TypedAskResponseGeneric<R, TB>, SendError<TB>>
   where
-    R: Send + Sync + 'static, {
-    let response = self.inner.ask(AnyMessageGeneric::new(message))?;
-    Ok(TypedAskResponseGeneric::from_generic(response))
+    R: Send + Sync + 'static,
+    F: FnOnce(TypedActorRefGeneric<R, TB>) -> M, {
+    let mut actor_ref = self.actor_ref();
+    actor_ref.ask(build)
   }
 
   /// Stops the child actor.

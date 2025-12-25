@@ -5,20 +5,20 @@ mod no_std_tick_driver_support;
 
 use fraktor_actor_rs::core::{
   error::ActorError,
-  typed::{Behavior, Behaviors, TypedActorSystem, TypedProps},
+  typed::{Behavior, Behaviors, TypedActorRef, TypedActorSystem, TypedProps},
 };
 use fraktor_utils_rs::core::sync::SharedAccess;
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 enum GateCommand {
   InsertCoin,
   PassThrough,
-  ReadPassCount,
+  ReadPassCount { reply_to: TypedActorRef<u32> },
   Shutdown,
 }
 
 fn locked(pass_count: u32) -> Behavior<GateCommand> {
-  Behaviors::receive_message(move |ctx, message| match message {
+  Behaviors::receive_message(move |_ctx, message| match message {
     | GateCommand::InsertCoin => {
       #[cfg(not(target_os = "none"))]
       println!("locked -> unlocked");
@@ -29,8 +29,9 @@ fn locked(pass_count: u32) -> Behavior<GateCommand> {
       println!("locked: PassThrough は無視されました");
       Ok(Behaviors::ignore())
     },
-    | GateCommand::ReadPassCount => {
-      ctx.reply(pass_count).map_err(|error| ActorError::from_send_error(&error))?;
+    | GateCommand::ReadPassCount { reply_to } => {
+      let mut reply_to = reply_to.clone();
+      reply_to.tell(pass_count).map_err(|error| ActorError::from_send_error(&error))?;
       Ok(Behaviors::same())
     },
     | GateCommand::Shutdown => Ok(Behaviors::stopped()),
@@ -38,7 +39,7 @@ fn locked(pass_count: u32) -> Behavior<GateCommand> {
 }
 
 fn unlocked(pass_count: u32) -> Behavior<GateCommand> {
-  Behaviors::receive_message(move |ctx, message| match message {
+  Behaviors::receive_message(move |_ctx, message| match message {
     | GateCommand::PassThrough => {
       let next_total = pass_count + 1;
       #[cfg(not(target_os = "none"))]
@@ -50,8 +51,9 @@ fn unlocked(pass_count: u32) -> Behavior<GateCommand> {
       println!("unlocked: 追加の InsertCoin は無視されました");
       Ok(Behaviors::ignore())
     },
-    | GateCommand::ReadPassCount => {
-      ctx.reply(pass_count).map_err(|error| ActorError::from_send_error(&error))?;
+    | GateCommand::ReadPassCount { reply_to } => {
+      let mut reply_to = reply_to.clone();
+      reply_to.tell(pass_count).map_err(|error| ActorError::from_send_error(&error))?;
       Ok(Behaviors::same())
     },
     | GateCommand::Shutdown => Ok(Behaviors::stopped()),
@@ -76,7 +78,7 @@ fn main() {
   gate.tell(GateCommand::InsertCoin).expect("extra coin");
   gate.tell(GateCommand::PassThrough).expect("pass after unlock");
 
-  let response = gate.ask::<u32>(GateCommand::ReadPassCount).expect("ask count");
+  let response = gate.ask::<u32, _>(|reply_to| GateCommand::ReadPassCount { reply_to }).expect("ask count");
   let mut future = response.future().clone();
   while !future.is_ready() {
     thread::yield_now();
