@@ -108,7 +108,7 @@ where
 
   /// Allocates a new pid (testing helper).
   #[must_use]
-  pub fn allocate_pid(&self) -> crate::core::actor_prim::Pid {
+  pub fn allocate_pid(&self) -> crate::core::actor::Pid {
     self.inner.allocate_pid()
   }
 
@@ -134,7 +134,7 @@ where
   }
 
   /// Emits a log event with the specified severity.
-  pub fn emit_log(&self, level: LogLevel, message: impl Into<String>, origin: Option<crate::core::actor_prim::Pid>) {
+  pub fn emit_log(&self, level: LogLevel, message: impl Into<String>, origin: Option<crate::core::actor::Pid>) {
     self.inner.emit_log(level, message, origin)
   }
 

@@ -3,7 +3,7 @@
 #![allow(dead_code)]
 
 use crate::core::{
-  actor_prim::Pid,
+  actor::Pid,
   spawn::SpawnError,
   system::{GuardianKind, SystemStateSharedGeneric, running_state::RunningSystemStateGeneric},
 };

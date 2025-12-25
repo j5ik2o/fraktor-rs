@@ -2,7 +2,7 @@
 
 use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
-use crate::core::actor_prim::actor_ref::ActorRefGeneric;
+use crate::core::actor::actor_ref::ActorRefGeneric;
 
 /// Messages understood by the system guardian actor.
 #[derive(Clone)]

@@ -10,7 +10,7 @@ use super::{
   mailbox_requirement::MailboxRequirement,
 };
 use crate::core::{
-  actor_prim::Actor,
+  actor::Actor,
   dispatch::{dispatcher::DispatcherConfigGeneric, mailbox::MailboxPolicy},
 };
 

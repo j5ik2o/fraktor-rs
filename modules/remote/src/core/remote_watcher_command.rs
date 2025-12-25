@@ -1,6 +1,6 @@
 //! Commands handled by the remote watcher daemon.
 
-use fraktor_actor_rs::core::actor_prim::{Pid, actor_path::ActorPathParts};
+use fraktor_actor_rs::core::actor::{Pid, actor_path::ActorPathParts};
 
 /// Commands handled by the remote watcher daemon.
 #[allow(dead_code)]

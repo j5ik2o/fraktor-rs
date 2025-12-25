@@ -12,7 +12,7 @@ RemotingExtension と RemoteActorRefProvider を組み合わせて、2 つの Ac
 
 ```rust
 use fraktor_actor_rs::core::{
-  actor_prim::{Actor, ActorContextGeneric, actor_path::ActorPathParts},
+  actor::{Actor, ActorContextGeneric, actor_path::ActorPathParts},
   config::{ActorSystemConfig, RemotingConfig},
   extension::ExtensionInstallers,
   messaging::AnyMessageViewGeneric,

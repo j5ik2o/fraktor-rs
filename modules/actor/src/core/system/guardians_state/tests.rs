@@ -1,5 +1,5 @@
 use crate::core::{
-  actor_prim::Pid,
+  actor::Pid,
   system::{GuardianKind, guardians_state::GuardiansState},
 };
 

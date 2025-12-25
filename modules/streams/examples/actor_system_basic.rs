@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use fraktor_actor_rs::core::{
-  actor_prim::{Actor, ActorContextGeneric},
+  actor::{Actor, ActorContextGeneric},
   error::ActorError,
   messaging::AnyMessageViewGeneric,
   props::PropsGeneric,

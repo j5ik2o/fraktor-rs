@@ -4,7 +4,7 @@ use core::{any::Any, ptr};
 
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
-use crate::core::{actor_prim::Pid, messaging::AnyMessageGeneric};
+use crate::core::{actor::Pid, messaging::AnyMessageGeneric};
 
 /// Snapshot of the user message that triggered the failure.
 #[derive(Clone)]

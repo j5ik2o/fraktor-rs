@@ -5,7 +5,7 @@ use core::{future::Future, marker::PhantomData, ptr::NonNull};
 use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 
 use crate::core::{
-  actor_prim::{ActorContextGeneric, Pid, PipeSpawnError},
+  actor::{ActorContextGeneric, Pid, PipeSpawnError},
   error::SendError,
   messaging::AnyMessageGeneric,
   spawn::SpawnError,

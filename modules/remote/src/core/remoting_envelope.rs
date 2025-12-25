@@ -4,7 +4,7 @@ use alloc::{string::String, vec::Vec};
 use core::convert::TryInto;
 
 use fraktor_actor_rs::core::{
-  actor_prim::actor_path::{ActorPath, ActorPathParser},
+  actor::actor_path::{ActorPath, ActorPathParser},
   event::stream::CorrelationId,
   serialization::SerializedMessage,
 };

@@ -1,7 +1,7 @@
 //! Std wrapper for grain references.
 
 use fraktor_actor_rs::std::{
-  actor_prim::ActorRef,
+  actor::ActorRef,
   messaging::{AnyMessage, AskResponse},
 };
 use fraktor_utils_rs::{core::sync::ArcShared, std::runtime_toolbox::StdToolbox};

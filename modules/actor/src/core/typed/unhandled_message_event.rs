@@ -3,7 +3,7 @@
 use alloc::string::String;
 use core::time::Duration;
 
-use crate::core::actor_prim::Pid;
+use crate::core::actor::Pid;
 
 /// Event emitted when a behavior returns `Behaviors.unhandled()`.
 ///

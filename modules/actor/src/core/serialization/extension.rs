@@ -22,7 +22,7 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::core::{
-  actor_prim::{Pid, actor_ref::ActorRefGeneric},
+  actor::{Pid, actor_ref::ActorRefGeneric},
   dead_letter::DeadLetterReason,
   event::{logging::LogLevel, stream::EventStreamEvent},
   extension::Extension,

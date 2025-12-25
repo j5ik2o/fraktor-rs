@@ -9,7 +9,7 @@ use core::any::TypeId;
 use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use crate::core::{
-  actor_prim::{ActorContextGeneric, Pid, actor_ref::ActorRefGeneric},
+  actor::{ActorContextGeneric, Pid, actor_ref::ActorRefGeneric},
   system::SystemStateSharedGeneric,
   typed::message_adapter::{
     AdapterEntry, AdapterError, AdapterFailure, AdapterOutcome, AdapterPayload, AdapterRefHandleId, AdapterRefSender,

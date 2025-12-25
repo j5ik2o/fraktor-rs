@@ -8,7 +8,7 @@ use alloc::{format, string::ToString};
 use fraktor_actor_rs::core::extension::Extension;
 #[cfg(feature = "std")]
 use fraktor_actor_rs::core::{
-  actor_prim::{Actor, ActorContextGeneric, actor_ref::ActorRefGeneric},
+  actor::{Actor, ActorContextGeneric, actor_ref::ActorRefGeneric},
   error::ActorError,
   messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
   props::PropsGeneric,

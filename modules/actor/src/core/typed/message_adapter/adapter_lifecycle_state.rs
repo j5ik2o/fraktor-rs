@@ -7,7 +7,7 @@ use core::sync::atomic::{AtomicBool, Ordering};
 
 use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
-use crate::core::{actor_prim::Pid, system::SystemStateSharedGeneric};
+use crate::core::{actor::Pid, system::SystemStateSharedGeneric};
 
 /// Lifecycle guard shared between adapter handles and senders.
 pub struct AdapterLifecycleState<TB: RuntimeToolbox + 'static> {

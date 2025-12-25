@@ -11,7 +11,7 @@ use fraktor_actor_rs::{
     supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
   },
   std::{
-    actor_prim::{Actor, ActorContext},
+    actor::{Actor, ActorContext},
     event::{
       logging::StdLoggerSubscriber,
       stream::{EventStreamEvent, EventStreamSubscriber, EventStreamSubscriberShared, subscriber_handle},

@@ -11,7 +11,7 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::core::{
-  actor_prim::{
+  actor::{
     Pid,
     actor_ref::{ActorRefSender, ActorRefSenderSharedGeneric, SendOutcome},
   },

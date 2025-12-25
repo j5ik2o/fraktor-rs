@@ -9,7 +9,7 @@ use fraktor_utils_rs::core::sync::sync_mutex_like::SyncMutexLike as _;
 use alloc::format;
 
 use fraktor_actor_rs::core::{
-  actor_prim::{Actor, ActorContext, ChildRef},
+  actor::{Actor, ActorContext, ChildRef},
   error::ActorError,
   messaging::{AnyMessage, AnyMessageView},
   props::Props,
@@ -70,7 +70,7 @@ impl Actor for GuardianActor {
   fn on_terminated(
     &mut self,
     ctx: &mut ActorContext<'_>,
-    pid: fraktor_actor_rs::core::actor_prim::Pid,
+    pid: fraktor_actor_rs::core::actor::Pid,
   ) -> Result<(), ActorError> {
     let mut phase = self.phase.lock();
     match *phase {

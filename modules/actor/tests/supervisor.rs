@@ -10,7 +10,7 @@ use std::{
 };
 
 use fraktor_actor_rs::core::{
-  actor_prim::{Actor, ActorContextGeneric, ChildRef},
+  actor::{Actor, ActorContextGeneric, ChildRef},
   error::{ActorError, ActorErrorReason},
   event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   lifecycle::LifecycleStage,

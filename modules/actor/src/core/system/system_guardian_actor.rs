@@ -5,7 +5,7 @@ use alloc::vec::Vec;
 use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use crate::core::{
-  actor_prim::{Actor, ActorContextGeneric, Pid, actor_ref::ActorRefGeneric},
+  actor::{Actor, ActorContextGeneric, Pid, actor_ref::ActorRefGeneric},
   error::ActorError,
   messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
   supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},

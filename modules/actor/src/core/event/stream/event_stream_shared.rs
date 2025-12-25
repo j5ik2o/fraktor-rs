@@ -10,7 +10,7 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::core::{
-  actor_prim::actor_ref::ActorRefGeneric,
+  actor::actor_ref::ActorRefGeneric,
   event::stream::{
     ActorRefEventStreamSubscriber, EventStreamEvent, EventStreamGeneric, EventStreamSubscriberShared,
     event_stream_events::DEFAULT_CAPACITY, event_stream_subscriber::subscriber_handle,

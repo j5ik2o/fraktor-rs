@@ -4,7 +4,7 @@ use alloc::string::String;
 use core::time::Duration;
 
 use super::LogLevel;
-use crate::core::actor_prim::Pid;
+use crate::core::actor::Pid;
 
 /// Structured representation of a runtime log event.
 #[derive(Clone, Debug)]

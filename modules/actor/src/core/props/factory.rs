@@ -5,7 +5,7 @@ use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 #[cfg(test)]
 mod tests;
 
-use crate::core::actor_prim::Actor;
+use crate::core::actor::Actor;
 
 /// Trait implemented by actor factories stored inside [`Props`](super::base::Props).
 pub trait ActorFactory<TB: RuntimeToolbox = NoStdToolbox>: Send + Sync {

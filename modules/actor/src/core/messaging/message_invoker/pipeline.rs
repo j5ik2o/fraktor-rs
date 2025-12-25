@@ -9,7 +9,7 @@ use fraktor_utils_rs::core::{
 
 use super::middleware_shared::MiddlewareShared;
 use crate::core::{
-  actor_prim::{Actor, ActorContextGeneric, actor_ref::ActorRefGeneric},
+  actor::{Actor, ActorContextGeneric, actor_ref::ActorRefGeneric},
   error::ActorError,
   messaging::{AnyMessageGeneric, any_message_view::AnyMessageViewGeneric},
 };

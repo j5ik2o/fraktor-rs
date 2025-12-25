@@ -5,7 +5,7 @@ use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 pub use crate::std::dispatch::dispatcher::{DispatchExecutor, DispatchShared, DispatcherConfig, DispatcherShared};
 use crate::{
   core::{
-    actor_prim::{Pid, actor_path::ActorPath},
+    actor::{Pid, actor_path::ActorPath},
     event::{
       logging::LogLevel,
       stream::{TickDriverSnapshot, subscriber_handle as core_subscriber_handle},
@@ -18,7 +18,7 @@ use crate::{
     },
   },
   std::{
-    actor_prim::ActorRef,
+    actor::ActorRef,
     dead_letter::DeadLetterEntry,
     error::SendError,
     event::stream::{EventStream, EventStreamEvent, EventStreamSubscriberAdapter, EventStreamSubscription},

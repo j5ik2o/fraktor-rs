@@ -1,6 +1,6 @@
 //! Actor path handle for registry caching.
 
-use crate::core::actor_prim::{Pid, actor_path::ActorUid};
+use crate::core::actor::{Pid, actor_path::ActorUid};
 
 /// Handle for cached actor path with UID-independent hash.
 #[derive(Clone, Debug)]

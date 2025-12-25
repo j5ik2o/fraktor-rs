@@ -3,7 +3,7 @@
 use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use super::RemoteWatchHook;
-use crate::core::actor_prim::Pid;
+use crate::core::actor::Pid;
 
 /// A no-op implementation of [`RemoteWatchHook`] that always returns `false`.
 ///

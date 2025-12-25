@@ -3,7 +3,7 @@
 use alloc::string::{String, ToString};
 use core::time::Duration;
 
-use crate::core::actor_prim::actor_path::GuardianKind as PathGuardianKind;
+use crate::core::actor::actor_path::GuardianKind as PathGuardianKind;
 
 const DEFAULT_SYSTEM_NAME: &str = "fraktor";
 pub(crate) const DEFAULT_QUARANTINE_DURATION: Duration = Duration::from_secs(5 * 24 * 3600);

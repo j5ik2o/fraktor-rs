@@ -1,5 +1,5 @@
 use crate::{
-  core::{actor_prim::Pid, error::ActorError, supervision::SupervisorStrategy},
+  core::{actor::Pid, error::ActorError, supervision::SupervisorStrategy},
   std::typed::actor_prim::TypedActorContext,
 };
 

@@ -8,7 +8,7 @@ use fraktor_utils_rs::core::{
 };
 
 use super::{RemoteWatchHook, noop_remote_watch_hook::NoopRemoteWatchHook};
-use crate::core::actor_prim::Pid;
+use crate::core::actor::Pid;
 
 /// Shared wrapper that provides thread-safe access to a boxed [`RemoteWatchHook`].
 ///

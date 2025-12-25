@@ -9,7 +9,7 @@ use fraktor_utils_rs::core::{
 
 use super::{MessageInvokerMiddleware, MessageInvokerPipeline, middleware_shared::MiddlewareShared};
 use crate::core::{
-  actor_prim::{
+  actor::{
     Actor, ActorContext, ActorContextGeneric, Pid,
     actor_ref::{ActorRef, ActorRefSender},
   },
@@ -24,8 +24,8 @@ impl ActorRefSender<NoStdToolbox> for RecordingSender {
   fn send(
     &mut self,
     _message: AnyMessage,
-  ) -> Result<crate::core::actor_prim::actor_ref::SendOutcome, SendError<NoStdToolbox>> {
-    Ok(crate::core::actor_prim::actor_ref::SendOutcome::Delivered)
+  ) -> Result<crate::core::actor::actor_ref::SendOutcome, SendError<NoStdToolbox>> {
+    Ok(crate::core::actor::actor_ref::SendOutcome::Delivered)
   }
 }
 

@@ -7,7 +7,7 @@ use std::{thread, time::Duration};
 
 use anyhow::{Result, anyhow};
 use fraktor_actor_rs::core::{
-  actor_prim::{Actor, ActorContextGeneric, actor_ref::ActorRefGeneric},
+  actor::{Actor, ActorContextGeneric, actor_ref::ActorRefGeneric},
   error::ActorError,
   extension::ExtensionInstallers,
   messaging::{AnyMessageGeneric, AnyMessageViewGeneric},

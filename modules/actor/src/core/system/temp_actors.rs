@@ -6,7 +6,7 @@ use ahash::RandomState;
 use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 use hashbrown::HashMap;
 
-use crate::core::actor_prim::{Pid, actor_ref::ActorRefGeneric};
+use crate::core::actor::{Pid, actor_ref::ActorRefGeneric};
 
 /// Registry of temporary actor references.
 pub(crate) struct TempActorsGeneric<TB: RuntimeToolbox + 'static> {

@@ -9,7 +9,7 @@ use fraktor_actor_rs::{
     props::MailboxConfig,
   },
   std::{
-    actor_prim::{Actor, ActorContext},
+    actor::{Actor, ActorContext},
     dispatch::dispatcher::dispatch_executor::TokioExecutor,
     event::{
       logging::StdLoggerSubscriber,

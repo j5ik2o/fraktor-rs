@@ -6,7 +6,7 @@ use alloc::{format, vec::Vec};
 
 use anyhow::{Result, anyhow};
 use fraktor_actor_rs::core::{
-  actor_prim::{Actor, ActorContextGeneric, Pid, actor_path::ActorPathParts},
+  actor::{Actor, ActorContextGeneric, Pid, actor_path::ActorPathParts},
   error::ActorError,
   event::stream::{
     BackpressureSignal, EventStreamEvent, EventStreamSubscriber, EventStreamSubscriptionGeneric,
@@ -93,8 +93,8 @@ fn subscribe(
   (subscriber_impl, subscription)
 }
 
-fn remote_path() -> fraktor_actor_rs::core::actor_prim::actor_path::ActorPath {
-  use fraktor_actor_rs::core::actor_prim::actor_path::{ActorPath, ActorPathParts, GuardianKind};
+fn remote_path() -> fraktor_actor_rs::core::actor::actor_path::ActorPath {
+  use fraktor_actor_rs::core::actor::actor_path::{ActorPath, ActorPathParts, GuardianKind};
   let mut parts = ActorPathParts::with_authority("remote-system", Some(("127.0.0.1", 25520)));
   parts = parts.with_guardian(GuardianKind::User);
   let mut path = ActorPath::from_parts(parts);

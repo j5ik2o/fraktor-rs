@@ -7,7 +7,7 @@ use fraktor_utils_rs::core::{
 };
 use hashbrown::HashMap;
 
-use crate::core::actor_prim::{ActorCellGeneric, Pid};
+use crate::core::actor::{ActorCellGeneric, Pid};
 
 /// Registry of actor cells indexed by their [`Pid`].
 pub(crate) struct CellsGeneric<TB: RuntimeToolbox + 'static> {

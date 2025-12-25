@@ -1,7 +1,7 @@
 use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 
 use crate::core::{
-  actor_prim::Pid, system::ActorSystem, typed::message_adapter::adapter_lifecycle_state::AdapterLifecycleState,
+  actor::Pid, system::ActorSystem, typed::message_adapter::adapter_lifecycle_state::AdapterLifecycleState,
 };
 
 #[test]

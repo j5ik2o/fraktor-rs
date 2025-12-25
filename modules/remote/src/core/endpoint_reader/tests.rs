@@ -3,7 +3,7 @@
 use alloc::string::String;
 
 use fraktor_actor_rs::core::{
-  actor_prim::{
+  actor::{
     Actor, ActorContextGeneric,
     actor_path::{ActorPath, ActorPathParts, GuardianKind},
   },

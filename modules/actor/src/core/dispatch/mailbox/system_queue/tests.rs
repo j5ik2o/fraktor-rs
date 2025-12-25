@@ -1,4 +1,4 @@
-use crate::core::{actor_prim::Pid, dispatch::mailbox::system_queue::SystemQueue, messaging::SystemMessage};
+use crate::core::{actor::Pid, dispatch::mailbox::system_queue::SystemQueue, messaging::SystemMessage};
 
 #[test]
 fn fifo_ordering_is_preserved() {

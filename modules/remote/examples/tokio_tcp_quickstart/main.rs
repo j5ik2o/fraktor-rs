@@ -12,7 +12,7 @@ use fraktor_actor_rs::{
     system::RemotingConfig,
   },
   std::{
-    actor_prim::{Actor, ActorContext},
+    actor::{Actor, ActorContext},
     dispatch::dispatcher::{DispatcherConfig, dispatch_executor::TokioExecutor},
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
@@ -142,12 +142,12 @@ impl Actor for ReceiverGuardian {
 
 #[derive(Clone, Debug)]
 struct StartPing {
-  target: fraktor_actor_rs::std::actor_prim::ActorRef,
+  target: fraktor_actor_rs::std::actor::ActorRef,
   text:   String,
 }
 
 #[derive(Clone, Debug)]
 struct Ping {
   text:     String,
-  reply_to: fraktor_actor_rs::std::actor_prim::ActorRef,
+  reply_to: fraktor_actor_rs::std::actor::ActorRef,
 }

@@ -1,5 +1,5 @@
 use super::*;
-use crate::core::actor_prim::{Pid, actor_ref::ActorRef};
+use crate::core::actor::{Pid, actor_ref::ActorRef};
 
 #[test]
 fn stores_payload_and_sender() {

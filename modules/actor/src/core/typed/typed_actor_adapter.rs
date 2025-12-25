@@ -5,7 +5,7 @@ use alloc::boxed::Box;
 use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use crate::core::{
-  actor_prim::{Actor, ActorContextGeneric, actor_ref::ActorRefGeneric},
+  actor::{Actor, ActorContextGeneric, actor_ref::ActorRefGeneric},
   dead_letter::DeadLetterReason,
   error::{ActorError, ActorErrorReason},
   event::logging::LogLevel,
@@ -165,7 +165,7 @@ where
   fn on_terminated(
     &mut self,
     ctx: &mut ActorContextGeneric<'_, TB>,
-    terminated: crate::core::actor_prim::Pid,
+    terminated: crate::core::actor::Pid,
   ) -> Result<(), ActorError> {
     self.adapters.clear();
     let mut typed_ctx = TypedActorContextGeneric::from_untyped(ctx, Some(&mut self.adapters));

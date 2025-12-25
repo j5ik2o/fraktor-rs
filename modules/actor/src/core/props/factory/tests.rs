@@ -4,7 +4,7 @@ use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 
 use super::ActorFactory;
 use crate::core::{
-  actor_prim::{Actor, ActorContextGeneric},
+  actor::{Actor, ActorContextGeneric},
   error::ActorError,
   messaging::AnyMessageViewGeneric,
 };

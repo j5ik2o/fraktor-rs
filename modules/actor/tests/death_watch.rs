@@ -6,7 +6,7 @@ use std::{
 };
 
 use fraktor_actor_rs::core::{
-  actor_prim::{Actor, ActorContextGeneric, ChildRef, Pid},
+  actor::{Actor, ActorContextGeneric, ChildRef, Pid},
   error::ActorError,
   messaging::{AnyMessage, AnyMessageViewGeneric},
   props::Props,

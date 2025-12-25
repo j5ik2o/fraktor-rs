@@ -3,7 +3,7 @@
 use core::time::Duration;
 
 use fraktor_actor_rs::std::{
-  actor_prim::ActorRef,
+  actor::ActorRef,
   futures::ActorFutureShared,
   messaging::{AnyMessage, AskResponse, AskResult},
   system::ActorSystem,

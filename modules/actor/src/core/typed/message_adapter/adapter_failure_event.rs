@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use crate::core::{actor_prim::Pid, typed::message_adapter::AdapterFailure};
+use crate::core::{actor::Pid, typed::message_adapter::AdapterFailure};
 
 /// Describes a message adaptation failure routed to the event stream.
 #[derive(Clone, Debug)]

@@ -10,7 +10,7 @@ use alloc::{format, string::String};
 use core::time::Duration;
 
 use fraktor_actor_rs::core::{
-  actor_prim::{Actor, ActorContext, actor_path::ActorPathParser, actor_ref::ActorRef},
+  actor::{Actor, ActorContext, actor_path::ActorPathParser, actor_ref::ActorRef},
   config::{ActorSystemConfig, RemotingConfig},
   error::ActorError,
   messaging::{AnyMessage, AnyMessageView},

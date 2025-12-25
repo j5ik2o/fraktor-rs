@@ -1,4 +1,4 @@
-use crate::core::actor_prim::Pid;
+use crate::core::actor::Pid;
 
 /// Snapshot describing dispatcher diagnostics for a single mailbox.
 #[derive(Clone, Debug)]

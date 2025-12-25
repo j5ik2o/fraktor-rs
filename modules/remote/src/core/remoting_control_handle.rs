@@ -8,7 +8,7 @@ use alloc::{
 use core::sync::atomic::{AtomicU64, Ordering};
 
 use fraktor_actor_rs::core::{
-  actor_prim::actor_path::ActorPathParts,
+  actor::actor_path::ActorPathParts,
   event::stream::{BackpressureSignal, CorrelationId, RemotingLifecycleEvent},
   system::{ActorSystemGeneric, ActorSystemWeakGeneric},
 };

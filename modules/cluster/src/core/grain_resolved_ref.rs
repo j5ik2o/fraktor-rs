@@ -1,6 +1,6 @@
 //! Resolved grain reference containing identity and actor ref.
 
-use fraktor_actor_rs::core::actor_prim::actor_ref::ActorRefGeneric;
+use fraktor_actor_rs::core::actor::actor_ref::ActorRefGeneric;
 use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use crate::core::ClusterIdentity;

@@ -2,7 +2,7 @@
 
 use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 
-use crate::core::{actor_prim::ActorContextGeneric, error::ActorError, messaging::AnyMessageViewGeneric};
+use crate::core::{actor::ActorContextGeneric, error::ActorError, messaging::AnyMessageViewGeneric};
 
 /// Middleware hook executed before and after user message handling.
 pub trait MessageInvokerMiddleware<TB: RuntimeToolbox + 'static = NoStdToolbox>: Send + Sync {

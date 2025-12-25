@@ -5,7 +5,7 @@ use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
 use crate::{
   core::{
-    actor_prim::Pid,
+    actor::Pid,
     error::SendError,
     spawn::SpawnError,
     typed::{TypedActorSystemGeneric, actor_prim::TypedActorContextGeneric as CoreTypedActorContextGeneric},

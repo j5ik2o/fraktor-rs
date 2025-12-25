@@ -126,7 +126,7 @@ where
   fn on_terminated(
     &mut self,
     ctx: &mut TypedActorContextGeneric<'_, M, TB>,
-    terminated: crate::core::actor_prim::Pid,
+    terminated: crate::core::actor::Pid,
   ) -> Result<(), ActorError> {
     self.dispatch_signal(ctx, &BehaviorSignal::Terminated(terminated))
   }

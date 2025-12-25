@@ -2,7 +2,7 @@
 
 use alloc::string::FromUtf8Error;
 
-use fraktor_actor_rs::core::{actor_prim::actor_path::ActorPathError, serialization::SerializationError};
+use fraktor_actor_rs::core::{actor::actor_path::ActorPathError, serialization::SerializationError};
 
 /// Represents failures while decoding transport frames.
 #[derive(Debug)]

@@ -2,7 +2,7 @@
 
 use alloc::string::String;
 
-use fraktor_actor_rs::core::actor_prim::actor_path::ActorPath;
+use fraktor_actor_rs::core::actor::actor_path::ActorPath;
 
 use crate::core::membership_version::MembershipVersion;
 

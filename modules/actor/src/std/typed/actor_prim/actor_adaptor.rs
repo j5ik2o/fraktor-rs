@@ -3,9 +3,7 @@ extern crate std;
 use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
 use crate::{
-  core::{
-    actor_prim::Pid, error::ActorError, supervision::SupervisorStrategy, typed::actor_prim::TypedActorContextGeneric,
-  },
+  core::{actor::Pid, error::ActorError, supervision::SupervisorStrategy, typed::actor_prim::TypedActorContextGeneric},
   std::typed::actor_prim::{TypedActor, TypedActorContext},
 };
 

@@ -3,7 +3,7 @@
 use std::{thread, time::Duration, vec::Vec};
 
 use fraktor_actor_rs::core::{
-  actor_prim::{Actor, ActorContextGeneric, ChildRef},
+  actor::{Actor, ActorContextGeneric, ChildRef},
   dispatch::mailbox::{Mailbox, MailboxOverflowStrategy, MailboxPolicy},
   error::{ActorError, SendError},
   messaging::{AnyMessage, AnyMessageViewGeneric},

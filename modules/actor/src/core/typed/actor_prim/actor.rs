@@ -3,7 +3,7 @@
 use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 
 use crate::core::{
-  actor_prim::Pid,
+  actor::Pid,
   error::{ActorError, ActorErrorReason},
   supervision::SupervisorStrategy,
   typed::{actor_prim::actor_context::TypedActorContextGeneric, message_adapter::AdapterFailure},

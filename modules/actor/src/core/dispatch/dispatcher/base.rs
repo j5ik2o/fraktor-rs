@@ -19,7 +19,7 @@ use super::{
   schedule_adapter_shared::ScheduleAdapterSharedGeneric,
 };
 use crate::core::{
-  actor_prim::actor_ref::ActorRefSenderSharedGeneric,
+  actor::actor_ref::ActorRefSenderSharedGeneric,
   dispatch::mailbox::{MailboxGeneric, MailboxPressureEvent, ScheduleHints},
   error::SendError,
   messaging::{AnyMessageGeneric, SystemMessage, message_invoker::MessageInvokerShared},

@@ -4,7 +4,7 @@ use fraktor_utils_rs::core::{runtime_toolbox::NoStdMutex, sync::ArcShared};
 
 use super::MailboxInstrumentation;
 use crate::core::{
-  actor_prim::Pid,
+  actor::Pid,
   dispatch::mailbox::BackpressurePublisherGeneric,
   event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   system::ActorSystem,

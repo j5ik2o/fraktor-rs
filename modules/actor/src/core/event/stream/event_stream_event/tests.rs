@@ -10,7 +10,7 @@ use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 use super::EventStreamEvent;
 #[cfg(feature = "alloc")]
 use crate::core::{
-  actor_prim::Pid,
+  actor::Pid,
   dead_letter::DeadLetterEntry,
   dispatch::mailbox::MailboxMetricsEvent,
   event::logging::{LogEvent, LogLevel},

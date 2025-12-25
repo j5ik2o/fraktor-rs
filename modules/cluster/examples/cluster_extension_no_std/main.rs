@@ -63,7 +63,7 @@
 compile_error!("cluster_extension_no_std example requires --features test-support");
 
 use fraktor_actor_rs::core::{
-  actor_prim::{
+  actor::{
     Actor, ActorContextGeneric,
     actor_path::{ActorPath, ActorPathScheme},
     actor_ref::ActorRefGeneric,

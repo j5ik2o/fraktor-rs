@@ -1,5 +1,5 @@
 use crate::core::{
-  actor_prim::Pid,
+  actor::Pid,
   typed::message_adapter::{AdapterFailure, AdapterFailureEvent},
 };
 

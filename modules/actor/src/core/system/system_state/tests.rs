@@ -11,7 +11,7 @@ use fraktor_utils_rs::core::{
 
 use super::{SystemState, SystemStateGeneric};
 use crate::core::{
-  actor_prim::{
+  actor::{
     Actor, ActorCell, ActorContextGeneric, Pid,
     actor_path::{
       ActorPath, ActorPathParser, ActorPathScheme, ActorUid, GuardianKind as PathGuardianKind, PathResolutionError,

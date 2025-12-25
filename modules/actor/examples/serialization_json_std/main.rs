@@ -19,7 +19,7 @@ use fraktor_actor_rs::{
     system::ActorSystemGeneric,
   },
   std::{
-    actor_prim::{Actor, ActorContext},
+    actor::{Actor, ActorContext},
     messaging::AnyMessageView,
     props::Props,
     system::{ActorSystem, ActorSystemConfig},

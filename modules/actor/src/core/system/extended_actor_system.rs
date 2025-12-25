@@ -13,7 +13,7 @@ use super::{
   RegisterExtraTopLevelError, RemoteWatchHook,
 };
 use crate::core::{
-  actor_prim::{ChildRefGeneric, actor_ref::ActorRefGeneric},
+  actor::{ChildRefGeneric, actor_ref::ActorRefGeneric},
   dispatch::{
     dispatcher::{DispatcherConfigGeneric, DispatcherRegistryError},
     mailbox::MailboxRegistryError,

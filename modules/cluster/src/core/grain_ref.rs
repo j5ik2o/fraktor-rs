@@ -3,7 +3,7 @@
 use alloc::{format, string::String};
 
 use fraktor_actor_rs::core::{
-  actor_prim::actor_ref::{ActorRefGeneric, ActorRefSender, SendOutcome},
+  actor::actor_ref::{ActorRefGeneric, ActorRefSender, SendOutcome},
   error::SendError,
   event::stream::{EventStreamEvent, EventStreamSharedGeneric},
   futures::ActorFutureSharedGeneric,
@@ -272,7 +272,7 @@ struct GrainRetryContext<TB: RuntimeToolbox + 'static> {
   event_stream: EventStreamSharedGeneric<TB>,
   metrics:      Option<GrainMetricsSharedGeneric<TB>>,
   state:        SystemStateSharedGeneric<TB>,
-  temp_pid:     Option<fraktor_actor_rs::core::actor_prim::Pid>,
+  temp_pid:     Option<fraktor_actor_rs::core::actor::Pid>,
 }
 
 enum GrainRetryAction<TB: RuntimeToolbox + 'static> {
@@ -444,7 +444,7 @@ struct GrainReplyContext<TB: RuntimeToolbox + 'static> {
   event_stream: EventStreamSharedGeneric<TB>,
   metrics:      Option<GrainMetricsSharedGeneric<TB>>,
   state:        SystemStateSharedGeneric<TB>,
-  temp_pid:     Option<fraktor_actor_rs::core::actor_prim::Pid>,
+  temp_pid:     Option<fraktor_actor_rs::core::actor::Pid>,
 }
 
 impl<TB: RuntimeToolbox + 'static> GrainReplyContext<TB> {

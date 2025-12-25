@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use crate::core::{actor_prim::Pid, system::GuardianKind};
+use crate::core::{actor::Pid, system::GuardianKind};
 
 /// Aggregates guardian PID handles.
 pub(crate) struct GuardiansState {

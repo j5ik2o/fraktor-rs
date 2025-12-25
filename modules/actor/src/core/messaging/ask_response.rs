@@ -6,7 +6,7 @@ mod tests;
 use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 
 use crate::core::{
-  actor_prim::actor_ref::ActorRefGeneric,
+  actor::actor_ref::ActorRefGeneric,
   futures::ActorFutureSharedGeneric,
   messaging::{AnyMessageGeneric, AskError},
 };

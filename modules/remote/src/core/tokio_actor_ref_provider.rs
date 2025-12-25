@@ -7,7 +7,7 @@ use alloc::{
 
 use ahash::RandomState;
 use fraktor_actor_rs::core::{
-  actor_prim::{
+  actor::{
     Pid,
     actor_path::{ActorPath, ActorPathParts, ActorPathScheme},
     actor_ref::{ActorRefGeneric, ActorRefSender, SendOutcome},
@@ -336,8 +336,8 @@ impl RemoteWatchEntry {
 
 /// Implementation of ActorRefProvider trait for Tokio TCP transport.
 impl<TB: RuntimeToolbox + 'static> ActorRefProvider<TB> for TokioActorRefProviderGeneric<TB> {
-  fn supported_schemes(&self) -> &'static [fraktor_actor_rs::core::actor_prim::actor_path::ActorPathScheme] {
-    &[fraktor_actor_rs::core::actor_prim::actor_path::ActorPathScheme::FraktorTcp]
+  fn supported_schemes(&self) -> &'static [fraktor_actor_rs::core::actor::actor_path::ActorPathScheme] {
+    &[fraktor_actor_rs::core::actor::actor_path::ActorPathScheme::FraktorTcp]
   }
 
   fn actor_ref(&mut self, path: ActorPath) -> Result<ActorRefGeneric<TB>, ActorError> {

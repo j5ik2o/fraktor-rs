@@ -21,7 +21,7 @@ use super::{
   RemoteAuthorityError, RemoteWatchHookDynSharedGeneric, RemotingConfig, SystemStateGeneric,
 };
 use crate::core::{
-  actor_prim::{
+  actor::{
     ActorCellGeneric, Pid,
     actor_path::{ActorPath, ActorPathParser, ActorPathParts, ActorPathScheme, GuardianKind as PathGuardianKind},
     actor_ref::ActorRefGeneric,
@@ -415,7 +415,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
   }
 
   /// Unregisters a temporary actor by pid when present.
-  pub fn unregister_temp_actor_by_pid(&self, pid: &crate::core::actor_prim::Pid) {
+  pub fn unregister_temp_actor_by_pid(&self, pid: &crate::core::actor::Pid) {
     self.inner.write().unregister_temp_actor_by_pid(pid);
   }
 

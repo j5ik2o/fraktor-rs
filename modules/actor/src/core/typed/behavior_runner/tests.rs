@@ -5,7 +5,7 @@ use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 
 use super::BehaviorRunner;
 use crate::core::{
-  actor_prim::ActorContextGeneric,
+  actor::ActorContextGeneric,
   system::ActorSystemGeneric,
   typed::{
     Behaviors,

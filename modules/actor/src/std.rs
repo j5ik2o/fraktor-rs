@@ -1,5 +1,5 @@
 /// Actor primitives specialised for the standard toolbox.
-pub mod actor_prim;
+pub mod actor;
 /// DeadLetter bindings for the standard toolbox.
 pub mod dead_letter;
 /// Dispatch bindings for the standard toolbox.

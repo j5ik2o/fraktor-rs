@@ -5,7 +5,7 @@ extern crate alloc;
 use core::time::Duration;
 
 use fraktor_actor_rs::core::{
-  actor_prim::{Actor, ActorContext},
+  actor::{Actor, ActorContext},
   error::ActorError,
   messaging::{AnyMessage, AnyMessageViewGeneric},
   props::Props,

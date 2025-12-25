@@ -7,7 +7,7 @@ use core::any::{Any, TypeId};
 
 use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 
-use crate::core::actor_prim::actor_ref::ActorRefGeneric;
+use crate::core::actor::actor_ref::ActorRefGeneric;
 
 /// Represents a borrowed view of an actor message.
 #[derive(Debug)]

@@ -9,7 +9,7 @@ use fraktor_utils_rs::core::sync::sync_mutex_like::SyncMutexLike as _;
 use alloc::{format, string::String};
 
 use fraktor_actor_rs::core::{
-  actor_prim::{Actor, ActorContext},
+  actor::{Actor, ActorContext},
   error::ActorError,
   messaging::{AnyMessage, AnyMessageView},
   props::Props,

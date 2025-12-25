@@ -5,7 +5,7 @@ use core::marker::PhantomData;
 use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 
 use crate::core::{
-  actor_prim::{ChildRefGeneric, Pid},
+  actor::{ChildRefGeneric, Pid},
   error::SendError,
   messaging::AnyMessageGeneric,
   typed::{TypedAskResponseGeneric, actor_prim::actor_ref::TypedActorRefGeneric},

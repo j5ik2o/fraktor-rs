@@ -6,7 +6,7 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::core::{
-  actor_prim::{
+  actor::{
     Pid,
     actor_ref::{ActorRefGeneric, ActorRefSender},
   },
@@ -33,11 +33,11 @@ impl ActorRefSender<NoStdToolbox> for CollectorSender {
   fn send(
     &mut self,
     message: AnyMessageGeneric<NoStdToolbox>,
-  ) -> Result<crate::core::actor_prim::actor_ref::SendOutcome, SendError<NoStdToolbox>> {
+  ) -> Result<crate::core::actor::actor_ref::SendOutcome, SendError<NoStdToolbox>> {
     if let Some(event) = message.payload().downcast_ref::<EventStreamEvent<NoStdToolbox>>() {
       self.messages.lock().push(event.clone());
     }
-    Ok(crate::core::actor_prim::actor_ref::SendOutcome::Delivered)
+    Ok(crate::core::actor::actor_ref::SendOutcome::Delivered)
   }
 }
 

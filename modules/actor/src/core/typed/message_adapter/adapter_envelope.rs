@@ -10,7 +10,7 @@ use fraktor_utils_rs::core::{
   sync::sync_mutex_like::SyncMutexLike,
 };
 
-use crate::core::{actor_prim::actor_ref::ActorRefGeneric, typed::message_adapter::AdapterPayload};
+use crate::core::{actor::actor_ref::ActorRefGeneric, typed::message_adapter::AdapterPayload};
 
 /// Wraps adapted payloads alongside metadata for typed actors.
 pub struct AdapterEnvelope<TB: RuntimeToolbox + 'static> {

@@ -4,7 +4,7 @@ use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
 use crate::{
   core::{
-    actor_prim::Pid,
+    actor::Pid,
     event::{logging::LogLevel, stream::subscriber_handle as core_subscriber_handle},
     spawn::SpawnError,
     typed::TypedActorSystemGeneric as CoreTypedActorSystemGeneric,

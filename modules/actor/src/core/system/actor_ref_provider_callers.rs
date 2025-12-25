@@ -8,16 +8,13 @@ use fraktor_utils_rs::core::{
 use hashbrown::HashMap;
 
 use crate::core::{
-  actor_prim::{actor_path::ActorPathScheme, actor_ref::ActorRefGeneric},
+  actor::{actor_path::ActorPathScheme, actor_ref::ActorRefGeneric},
   error::ActorError,
 };
 
 /// Type alias for an actor reference provider caller function.
 pub(crate) type ActorRefProviderCaller<TB> = ArcShared<
-  dyn Fn(crate::core::actor_prim::actor_path::ActorPath) -> Result<ActorRefGeneric<TB>, ActorError>
-    + Send
-    + Sync
-    + 'static,
+  dyn Fn(crate::core::actor::actor_path::ActorPath) -> Result<ActorRefGeneric<TB>, ActorError> + Send + Sync + 'static,
 >;
 
 /// Registry of actor reference provider callers by scheme.

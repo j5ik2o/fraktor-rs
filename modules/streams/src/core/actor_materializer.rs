@@ -1,7 +1,7 @@
 use core::time::Duration;
 
 use fraktor_actor_rs::core::{
-  actor_prim::ChildRefGeneric, messaging::AnyMessageGeneric, props::PropsGeneric, scheduler::SchedulerCommand,
+  actor::ChildRefGeneric, messaging::AnyMessageGeneric, props::PropsGeneric, scheduler::SchedulerCommand,
   system::ActorSystemGeneric,
 };
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::SharedAccess};

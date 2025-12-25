@@ -4,7 +4,7 @@ use alloc::string::String;
 use core::time::Duration;
 
 use fraktor_actor_rs::core::{
-  actor_prim::{
+  actor::{
     Actor, ActorContextGeneric, Pid,
     actor_path::{ActorPath, ActorPathParts, GuardianKind},
   },

@@ -1,6 +1,6 @@
 use core::time::Duration;
 
-use crate::core::actor_prim::Pid;
+use crate::core::actor::Pid;
 
 /// Event describing high mailbox utilisation.
 #[derive(Clone, Debug)]

@@ -3,7 +3,7 @@
 use alloc::string::{String, ToString};
 
 use fraktor_actor_rs::core::{
-  actor_prim::actor_path::ActorPath,
+  actor::actor_path::ActorPath,
   event::stream::{EventStreamEvent, RemoteAuthorityEvent},
   system::{AuthorityState, RemoteAuthorityError, SystemStateSharedGeneric},
 };

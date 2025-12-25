@@ -6,7 +6,7 @@ mod std_tick_driver_support;
 use fraktor_actor_rs::{
   core::error::ActorError,
   std::{
-    actor_prim::{Actor, ActorContext, ChildRef},
+    actor::{Actor, ActorContext, ChildRef},
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
     system::ActorSystem,
@@ -77,7 +77,7 @@ impl Actor for Guardian {
   fn on_terminated(
     &mut self,
     ctx: &mut ActorContext<'_, '_>,
-    pid: fraktor_actor_rs::core::actor_prim::Pid,
+    pid: fraktor_actor_rs::core::actor::Pid,
   ) -> Result<(), ActorError> {
     println!("[guardian] 監視対象 {:?} の停止を検知", pid);
     println!("[guardian] DeathWatch トリガー後に子アクターを再生成します");

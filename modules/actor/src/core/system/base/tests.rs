@@ -15,7 +15,7 @@ use fraktor_utils_rs::core::{
 
 use super::ActorSystem;
 use crate::core::{
-  actor_prim::{
+  actor::{
     Actor, ActorCell, Pid,
     actor_path::{ActorPath, ActorPathParts, ActorPathScheme},
     actor_ref::ActorRefGeneric,
@@ -43,7 +43,7 @@ struct TestActor;
 impl Actor for TestActor {
   fn receive(
     &mut self,
-    _context: &mut crate::core::actor_prim::ActorContextGeneric<'_, NoStdToolbox>,
+    _context: &mut crate::core::actor::ActorContextGeneric<'_, NoStdToolbox>,
     _message: crate::core::messaging::AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), crate::core::error::ActorError> {
     Ok(())
@@ -63,7 +63,7 @@ impl SpawnRecorderActor {
 impl Actor for SpawnRecorderActor {
   fn pre_start(
     &mut self,
-    _ctx: &mut crate::core::actor_prim::ActorContextGeneric<'_, NoStdToolbox>,
+    _ctx: &mut crate::core::actor::ActorContextGeneric<'_, NoStdToolbox>,
   ) -> Result<(), crate::core::error::ActorError> {
     self.log.lock().push("pre_start");
     Ok(())
@@ -71,7 +71,7 @@ impl Actor for SpawnRecorderActor {
 
   fn receive(
     &mut self,
-    _context: &mut crate::core::actor_prim::ActorContextGeneric<'_, NoStdToolbox>,
+    _context: &mut crate::core::actor::ActorContextGeneric<'_, NoStdToolbox>,
     _message: crate::core::messaging::AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), crate::core::error::ActorError> {
     self.log.lock().push("receive");
@@ -84,7 +84,7 @@ struct FailingStartActor;
 impl Actor for FailingStartActor {
   fn receive(
     &mut self,
-    _context: &mut crate::core::actor_prim::ActorContextGeneric<'_, NoStdToolbox>,
+    _context: &mut crate::core::actor::ActorContextGeneric<'_, NoStdToolbox>,
     _message: crate::core::messaging::AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), crate::core::error::ActorError> {
     Ok(())
@@ -92,7 +92,7 @@ impl Actor for FailingStartActor {
 
   fn pre_start(
     &mut self,
-    _ctx: &mut crate::core::actor_prim::ActorContextGeneric<'_, NoStdToolbox>,
+    _ctx: &mut crate::core::actor::ActorContextGeneric<'_, NoStdToolbox>,
   ) -> Result<(), crate::core::error::ActorError> {
     Err(crate::core::error::ActorError::recoverable("boom"))
   }

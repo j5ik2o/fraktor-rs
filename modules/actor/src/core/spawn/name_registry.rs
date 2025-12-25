@@ -8,7 +8,7 @@ use alloc::{borrow::ToOwned, format, string::String};
 use ahash::RandomState;
 use hashbrown::HashMap;
 
-use crate::core::{actor_prim::Pid, spawn::NameRegistryError};
+use crate::core::{actor::Pid, spawn::NameRegistryError};
 
 /// Maintains the mapping between actor names and their pids for a scope.
 pub struct NameRegistry {
