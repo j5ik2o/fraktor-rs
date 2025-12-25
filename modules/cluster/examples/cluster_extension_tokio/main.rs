@@ -104,6 +104,7 @@ use fraktor_utils_rs::{
 const HOST: &str = "127.0.0.1";
 const NODE_A_PORT: u16 = 26050;
 const NODE_B_PORT: u16 = 26051;
+const CLUSTER_SYSTEM_NAME: &str = "cluster-demo";
 const HUB_NAME: &str = "grain-hub";
 const GRAIN_KIND: &str = "grain";
 const SAMPLE_KEY: &str = "user:va-1";
@@ -215,8 +216,7 @@ fn build_cluster_node(
   };
   let remoting_config = RemotingExtensionConfig::default().with_transport_scheme("fraktor.tcp");
   let system_config = ActorSystemConfig::default()
-    // ClusterApiGeneric が `cellactor` を前提にしているため system_name を揃える
-    .with_system_name("cellactor".to_string())
+    .with_system_name(CLUSTER_SYSTEM_NAME.to_string())
     .with_tick_driver(TickDriverConfig::tokio_quickstart())
     .with_default_dispatcher(default_dispatcher)
     .with_actor_ref_provider_installer(TokioActorRefProviderInstaller::from_config(TokioTransportConfig::default()))

@@ -131,7 +131,8 @@ impl<TB: RuntimeToolbox + 'static> ClusterApiGeneric<TB> {
     let pid = pid_result?;
 
     let (authority, path) = split_pid(&pid)?;
-    let canonical = format!("fraktor.tcp://cellactor@{authority}/{path}");
+    let system_name = self.system.state().system_name();
+    let canonical = format!("fraktor.tcp://{system_name}@{authority}/{path}");
     let actor_path = ActorPathParser::parse(&canonical)
       .map_err(|error| ClusterResolveError::InvalidPidFormat { pid: pid.clone(), reason: error.to_string() })?;
 
