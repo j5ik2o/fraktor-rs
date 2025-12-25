@@ -71,7 +71,8 @@ use fraktor_actor_rs::core::{
   error::ActorError,
   event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   extension::ExtensionInstallers,
-  messaging::{AnyMessage, AnyMessageViewGeneric, AskResponseGeneric},
+  futures::ActorFutureSharedGeneric,
+  messaging::{AnyMessage, AnyMessageViewGeneric, AskResponseGeneric, AskResult},
   props::Props,
   scheduler::{ManualTestDriver, TickDriverConfig},
   system::{
@@ -80,7 +81,7 @@ use fraktor_actor_rs::core::{
   },
 };
 use fraktor_cluster_rs::core::{
-  ActivatedKind, ClusterApiGeneric, ClusterEvent, ClusterExtensionConfig, ClusterExtensionGeneric,
+  ActivatedKind, ClusterApi, ClusterApiGeneric, ClusterEvent, ClusterExtensionConfig, ClusterExtensionGeneric,
   ClusterExtensionInstaller, ClusterIdentity, ClusterPubSub, ClusterTopology, Gossiper, GrainCallError, GrainKey,
   GrainRefGeneric, IdentityLookup, IdentitySetupError, LookupError, PlacementDecision, PlacementLocality,
   PlacementResolution, PubSubError, PubSubSubscriber, PubSubTopic, PublishAck, PublishRejectReason, PublishRequest,
@@ -382,8 +383,7 @@ impl ClusterNode {
   }
 
   fn send_message(&self, msg: String) {
-    use fraktor_actor_rs::core::{futures::ActorFutureSharedGeneric, messaging::AskResult};
-    let api = ClusterApiGeneric::try_from_system(&self.system).expect("cluster api");
+    let api = ClusterApi::try_from_system(&self.system).expect("cluster api");
     let identity = ClusterIdentity::new("grain", "demo").expect("identity");
     let grain_ref = GrainRef::new(api, identity);
     let request = AnyMessage::new(msg);
