@@ -1,4 +1,4 @@
-//! Tokio-based endpoint driver that bridges EndpointWriter/Reader and transports.
+//! Tokio transport bridge that connects EndpointWriter/Reader with transports.
 
 use alloc::{
   boxed::Box,
@@ -21,16 +21,16 @@ use fraktor_utils_rs::core::{
 use tokio::{sync::Mutex as TokioMutex, task::JoinHandle, time::sleep};
 
 use crate::core::{
-  AssociationState, DeferredEnvelope, EndpointManagerCommand, EndpointManagerEffect, EndpointManagerSharedGeneric,
-  EndpointReaderGeneric, EndpointWriterSharedGeneric, EventPublisherGeneric, HandshakeFrame, HandshakeKind,
-  InboundFrame, RemoteNodeId, RemoteTransportShared, RemotingEnvelope, TransportBind, TransportChannel,
+  AssociationState, DeferredEnvelope, EndpointAssociationCommand, EndpointAssociationCoordinatorSharedGeneric,
+  EndpointAssociationEffect, EndpointReaderGeneric, EndpointWriterSharedGeneric, EventPublisherGeneric, HandshakeFrame,
+  HandshakeKind, InboundFrame, RemoteNodeId, RemoteTransportShared, RemotingEnvelope, TransportBind, TransportChannel,
   TransportEndpoint, TransportError, TransportHandle, TransportInbound, TransportInboundShared, WireError,
 };
 
 const OUTBOUND_IDLE_DELAY: Duration = Duration::from_millis(5);
 
-/// Configuration required to bootstrap the driver.
-pub struct EndpointDriverConfig<TB: RuntimeToolbox + 'static> {
+/// Configuration required to bootstrap the transport bridge.
+pub struct EndpointTransportBridgeConfig<TB: RuntimeToolbox + 'static> {
   /// Actor system providing scheduling and state access (weak reference).
   pub system:          ActorSystemWeakGeneric<TB>,
   /// Shared endpoint writer feeding outbound frames.
@@ -49,19 +49,19 @@ pub struct EndpointDriverConfig<TB: RuntimeToolbox + 'static> {
   pub system_name:     String,
 }
 
-/// Handle controlling driver background tasks.
-pub struct EndpointDriverHandle {
+/// Handle controlling bridge background tasks.
+pub struct EndpointTransportBridgeHandle {
   send_task: JoinHandle<()>,
 }
 
-impl EndpointDriverHandle {
+impl EndpointTransportBridgeHandle {
   /// Aborts the background outbound loop.
   pub fn shutdown(self) {
     self.send_task.abort();
   }
 }
 
-pub(crate) struct EndpointDriver<TB: RuntimeToolbox + 'static> {
+pub(crate) struct EndpointTransportBridge<TB: RuntimeToolbox + 'static> {
   system:          ActorSystemWeakGeneric<TB>,
   event_publisher: EventPublisherGeneric<TB>,
   writer:          EndpointWriterSharedGeneric<TB>,
@@ -73,11 +73,11 @@ pub(crate) struct EndpointDriver<TB: RuntimeToolbox + 'static> {
   listener:        TokioMutex<Option<TransportHandle>>,
   channels:        TokioMutex<BTreeMap<String, TransportChannel>>,
   peers:           TokioMutex<BTreeMap<String, RemoteNodeId>>,
-  manager:         EndpointManagerSharedGeneric<TB>,
+  coordinator:     EndpointAssociationCoordinatorSharedGeneric<TB>,
 }
 
-impl<TB: RuntimeToolbox + 'static> EndpointDriver<TB> {
-  fn new(config: EndpointDriverConfig<TB>) -> Arc<Self> {
+impl<TB: RuntimeToolbox + 'static> EndpointTransportBridge<TB> {
+  fn new(config: EndpointTransportBridgeConfig<TB>) -> Arc<Self> {
     Arc::new(Self {
       system:          config.system,
       event_publisher: config.event_publisher,
@@ -90,21 +90,23 @@ impl<TB: RuntimeToolbox + 'static> EndpointDriver<TB> {
       listener:        TokioMutex::new(None),
       channels:        TokioMutex::new(BTreeMap::<String, TransportChannel>::new()),
       peers:           TokioMutex::new(BTreeMap::<String, RemoteNodeId>::new()),
-      manager:         EndpointManagerSharedGeneric::new(),
+      coordinator:     EndpointAssociationCoordinatorSharedGeneric::new(),
     })
   }
 
-  pub(crate) fn spawn(config: EndpointDriverConfig<TB>) -> Result<EndpointDriverHandle, TransportError> {
-    let driver = Self::new(config);
-    let bind = TransportBind::new(driver.host.clone(), Some(driver.port));
-    let handle = driver.transport.with_write(|t| t.spawn_listener(&bind))?;
-    driver.event_publisher.publish_listen_started(bind.authority(), CorrelationId::from_u128(0));
-    *driver.listener.try_lock().expect("listener mutex uncontended") = Some(handle);
+  pub(crate) fn spawn(
+    config: EndpointTransportBridgeConfig<TB>,
+  ) -> Result<EndpointTransportBridgeHandle, TransportError> {
+    let bridge = Self::new(config);
+    let bind = TransportBind::new(bridge.host.clone(), Some(bridge.port));
+    let handle = bridge.transport.with_write(|t| t.spawn_listener(&bind))?;
+    bridge.event_publisher.publish_listen_started(bind.authority(), CorrelationId::from_u128(0));
+    *bridge.listener.try_lock().expect("listener mutex uncontended") = Some(handle);
     let handler: TransportInboundShared<TB> =
-      TransportInboundShared::new(Box::new(InboundHandler::new(driver.clone())));
-    driver.transport.with_write(|t| t.install_inbound_handler(handler));
-    let send_task = tokio::spawn(Self::drive_outbound(driver.clone()));
-    Ok(EndpointDriverHandle { send_task })
+      TransportInboundShared::new(Box::new(InboundHandler::new(bridge.clone())));
+    bridge.transport.with_write(|t| t.install_inbound_handler(handler));
+    let send_task = tokio::spawn(Self::drive_outbound(bridge.clone()));
+    Ok(EndpointTransportBridgeHandle { send_task })
   }
 
   async fn drive_outbound(self: Arc<Self>) {
@@ -130,41 +132,45 @@ impl<TB: RuntimeToolbox + 'static> EndpointDriver<TB> {
       .ok_or_else(|| TransportError::AuthorityNotBound("missing remote authority".into()))?;
     self.peers.lock().await.insert(authority.clone(), envelope.remote_node().clone());
     let deferred = DeferredEnvelope::new(envelope);
-    let enqueue = self.manager.with_write(|m| {
-      m.handle(EndpointManagerCommand::EnqueueDeferred {
+    let enqueue = self.coordinator.with_write(|m| {
+      m.handle(EndpointAssociationCommand::EnqueueDeferred {
         authority: authority.clone(),
         envelope:  alloc::boxed::Box::new(deferred),
       })
     });
     self.process_effects(enqueue.effects).await?;
 
-    if !matches!(self.manager.with_read(|m| m.state(&authority)), Some(AssociationState::Connected { .. })) {
+    if !matches!(self.coordinator.with_read(|m| m.state(&authority)), Some(AssociationState::Connected { .. })) {
       let endpoint = TransportEndpoint::new(authority.clone());
-      let associate = self.manager.with_write(|m| {
-        m.handle(EndpointManagerCommand::Associate { authority: authority.clone(), endpoint, now: self.now_millis() })
+      let associate = self.coordinator.with_write(|m| {
+        m.handle(EndpointAssociationCommand::Associate {
+          authority: authority.clone(),
+          endpoint,
+          now: self.now_millis(),
+        })
       });
       self.process_effects(associate.effects).await?;
     }
     Ok(())
   }
 
-  async fn process_effects(&self, effects: Vec<EndpointManagerEffect>) -> Result<(), TransportError> {
-    let mut queue: VecDeque<EndpointManagerEffect> = VecDeque::from(effects);
+  async fn process_effects(&self, effects: Vec<EndpointAssociationEffect>) -> Result<(), TransportError> {
+    let mut queue: VecDeque<EndpointAssociationEffect> = VecDeque::from(effects);
     while let Some(effect) = queue.pop_front() {
       match effect {
-        | EndpointManagerEffect::StartHandshake { authority, endpoint } => {
+        | EndpointAssociationEffect::StartHandshake { authority, endpoint } => {
           let additional = self.handle_start_handshake(&authority, &endpoint).await?;
           queue.extend(additional);
         },
-        | EndpointManagerEffect::DeliverEnvelopes { authority, envelopes } => {
+        | EndpointAssociationEffect::DeliverEnvelopes { authority, envelopes } => {
           for envelope in envelopes {
             self.flush_envelope(&authority, envelope).await?;
           }
         },
-        | EndpointManagerEffect::DiscardDeferred { authority, .. } => {
+        | EndpointAssociationEffect::DiscardDeferred { authority, .. } => {
           self.emit_error(format!("discarded deferred envelopes for {authority}"));
         },
-        | EndpointManagerEffect::Lifecycle(event) => self.event_publisher.publish_lifecycle(event),
+        | EndpointAssociationEffect::Lifecycle(event) => self.event_publisher.publish_lifecycle(event),
       }
     }
     Ok(())
@@ -174,7 +180,7 @@ impl<TB: RuntimeToolbox + 'static> EndpointDriver<TB> {
     &self,
     authority: &str,
     endpoint: &TransportEndpoint,
-  ) -> Result<Vec<EndpointManagerEffect>, TransportError> {
+  ) -> Result<Vec<EndpointAssociationEffect>, TransportError> {
     {
       let channels = self.channels.lock().await;
       if channels.contains_key(authority) {
@@ -187,8 +193,8 @@ impl<TB: RuntimeToolbox + 'static> EndpointDriver<TB> {
       let handshake = HandshakeFrame::new(HandshakeKind::Offer, &self.system_name, &self.host, Some(self.port), 0);
       let payload = handshake.encode();
       self.transport.with_write(|t| t.send(&channel, &payload, CorrelationId::nil()))?;
-      let accept = self.manager.with_write(|m| {
-        m.handle(EndpointManagerCommand::HandshakeAccepted {
+      let accept = self.coordinator.with_write(|m| {
+        m.handle(EndpointAssociationCommand::HandshakeAccepted {
           authority:   authority.to_string(),
           remote_node: remote,
           now:         self.now_millis(),
@@ -255,8 +261,12 @@ impl<TB: RuntimeToolbox + 'static> EndpointDriver<TB> {
       let authority = format!("{}:{port}", frame.host());
       let remote =
         RemoteNodeId::new(frame.system_name().to_string(), frame.host().to_string(), frame.port(), frame.uid());
-      let accept = self.manager.with_write(|m| {
-        m.handle(EndpointManagerCommand::HandshakeAccepted { authority, remote_node: remote, now: self.now_millis() })
+      let accept = self.coordinator.with_write(|m| {
+        m.handle(EndpointAssociationCommand::HandshakeAccepted {
+          authority,
+          remote_node: remote,
+          now: self.now_millis(),
+        })
       });
       let _ = self.process_effects(accept.effects).await;
     }
@@ -276,20 +286,20 @@ impl<TB: RuntimeToolbox + 'static> EndpointDriver<TB> {
 }
 
 struct InboundHandler<TB: RuntimeToolbox + 'static> {
-  driver: Arc<EndpointDriver<TB>>,
+  bridge: Arc<EndpointTransportBridge<TB>>,
 }
 
 impl<TB: RuntimeToolbox + 'static> InboundHandler<TB> {
-  fn new(driver: Arc<EndpointDriver<TB>>) -> Self {
-    Self { driver }
+  fn new(bridge: Arc<EndpointTransportBridge<TB>>) -> Self {
+    Self { bridge }
   }
 }
 
 impl<TB: RuntimeToolbox + 'static> TransportInbound for InboundHandler<TB> {
   fn on_frame(&mut self, frame: InboundFrame) {
-    let driver = self.driver.clone();
+    let bridge = self.bridge.clone();
     tokio::spawn(async move {
-      driver.handle_inbound_frame(frame).await;
+      bridge.handle_inbound_frame(frame).await;
     });
   }
 }

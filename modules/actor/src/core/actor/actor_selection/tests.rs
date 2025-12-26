@@ -8,7 +8,7 @@ use crate::core::{
     actor_selection::{ActorSelectionError, ActorSelectionResolver},
   },
   messaging::AnyMessage,
-  system::{RemoteAuthorityError, RemoteAuthorityManager},
+  system::{RemoteAuthorityError, RemoteAuthorityRegistry},
 };
 
 #[test]
@@ -96,116 +96,120 @@ fn test_defer_send_when_authority_unresolved() {
   let parts = ActorPathParts::with_authority("test-system", Some(("remote-host", 2552)));
   let _remote_path = ActorPath::from_parts(parts);
 
-  let mut manager = RemoteAuthorityManager::new();
+  let mut registry = RemoteAuthorityRegistry::new();
 
   // authority が未解決なので defer_send される
   let message = AnyMessage::new(42u32);
-  manager.defer_send("remote-host:2552", message).expect("defer");
+  registry.defer_send("remote-host:2552", message).expect("defer");
 
   // deferred キューにメッセージが積まれていることを確認
-  assert_eq!(manager.deferred_count("remote-host:2552"), 1);
+  assert_eq!(registry.deferred_count("remote-host:2552"), 1);
 }
 
 #[test]
 fn test_ensure_authority_state_defers_and_errors_when_unresolved() {
   let parts = ActorPathParts::with_authority("remote-sys", Some(("host.example.com", 2552)));
   let path = ActorPath::from_parts(parts).child("worker");
-  let mut manager = RemoteAuthorityManager::new();
+  let mut registry = RemoteAuthorityRegistry::new();
   let err =
-    ActorSelectionResolver::ensure_authority_state(&path, &mut manager, Some(AnyMessage::new(1u32))).unwrap_err();
+    ActorSelectionResolver::ensure_authority_state(&path, &mut registry, Some(AnyMessage::new(1u32))).unwrap_err();
   assert!(matches!(err, PathResolutionError::AuthorityUnresolved));
-  assert_eq!(manager.deferred_count("host.example.com:2552"), 1);
+  assert_eq!(registry.deferred_count("host.example.com:2552"), 1);
 }
 
 #[test]
 fn test_ensure_authority_state_rejects_quarantine() {
   let parts = ActorPathParts::with_authority("remote-sys", Some(("blocked-host", 2553)));
   let path = ActorPath::from_parts(parts).child("logger");
-  let mut manager = RemoteAuthorityManager::new();
-  manager.set_quarantine("blocked-host:2553", 0, Some(Duration::from_secs(30)));
+  let mut registry = RemoteAuthorityRegistry::new();
+  registry.set_quarantine("blocked-host:2553", 0, Some(Duration::from_secs(30)));
 
   let err =
-    ActorSelectionResolver::ensure_authority_state(&path, &mut manager, Some(AnyMessage::new("msg"))).unwrap_err();
+    ActorSelectionResolver::ensure_authority_state(&path, &mut registry, Some(AnyMessage::new("msg"))).unwrap_err();
   assert!(matches!(err, PathResolutionError::AuthorityQuarantined));
-  assert_eq!(manager.deferred_count("blocked-host:2553"), 0);
+  assert_eq!(registry.deferred_count("blocked-host:2553"), 0);
 }
 
 #[test]
 fn test_resolve_relative_with_authority_reports_unresolved() {
   let base = ActorPath::from_parts(ActorPathParts::with_authority("cluster", Some(("peer", 2552))));
-  let mut manager = RemoteAuthorityManager::new();
+  let mut registry = RemoteAuthorityRegistry::new();
   let result = ActorSelectionResolver::resolve_relative_with_authority(
     &base,
     "worker",
-    &mut manager,
+    &mut registry,
     Some(AnyMessage::new("msg")),
   );
   match result {
     | Err(ActorSelectionError::Authority(PathResolutionError::AuthorityUnresolved)) => {},
     | other => panic!("unexpected result {:?}", other),
   }
-  assert_eq!(manager.deferred_count("peer:2552"), 1);
+  assert_eq!(registry.deferred_count("peer:2552"), 1);
 }
 
 #[test]
 fn test_resolve_relative_with_authority_fails_on_quarantine() {
   let base = ActorPath::from_parts(ActorPathParts::with_authority("cluster", Some(("peer2", 2553))));
-  let mut manager = RemoteAuthorityManager::new();
-  manager.set_quarantine("peer2:2553", 0, Some(Duration::from_secs(100)));
-  let result =
-    ActorSelectionResolver::resolve_relative_with_authority(&base, "worker", &mut manager, Some(AnyMessage::new(1u32)));
+  let mut registry = RemoteAuthorityRegistry::new();
+  registry.set_quarantine("peer2:2553", 0, Some(Duration::from_secs(100)));
+  let result = ActorSelectionResolver::resolve_relative_with_authority(
+    &base,
+    "worker",
+    &mut registry,
+    Some(AnyMessage::new(1u32)),
+  );
   assert!(matches!(result, Err(ActorSelectionError::Authority(PathResolutionError::AuthorityQuarantined))));
 }
 
 #[test]
 fn test_flush_deferred_when_connected() {
-  let mut manager = RemoteAuthorityManager::new();
+  let mut registry = RemoteAuthorityRegistry::new();
   let authority = "remote-host:2552";
 
   // Unresolved 状態でメッセージを defer
-  manager.defer_send(authority, AnyMessage::new(1u32)).expect("defer");
-  manager.defer_send(authority, AnyMessage::new(2u32)).expect("defer");
-  assert_eq!(manager.deferred_count(authority), 2);
+  registry.defer_send(authority, AnyMessage::new(1u32)).expect("defer");
+  registry.defer_send(authority, AnyMessage::new(2u32)).expect("defer");
+  assert_eq!(registry.deferred_count(authority), 2);
 
   // Connected へ遷移して deferred メッセージを取得
-  let deferred = manager.set_connected(authority);
+  let deferred = registry.set_connected(authority);
   assert!(deferred.is_some());
   assert_eq!(deferred.unwrap().len(), 2);
 
   // キューがクリアされたことを確認
-  assert_eq!(manager.deferred_count(authority), 0);
+  assert_eq!(registry.deferred_count(authority), 0);
 }
 
 #[test]
 fn test_reject_send_when_quarantined() {
-  let mut manager = RemoteAuthorityManager::new();
+  let mut registry = RemoteAuthorityRegistry::new();
   let authority = "quarantined-host:2552";
 
   // Quarantine へ遷移
-  manager.set_quarantine(authority, 0, Some(Duration::from_secs(300)));
+  registry.set_quarantine(authority, 0, Some(Duration::from_secs(300)));
 
   // Quarantine 中は送信が拒否される
-  let result = manager.defer_send(authority, AnyMessage::new(42u32));
+  let result = registry.defer_send(authority, AnyMessage::new(42u32));
   assert!(matches!(result, Err(RemoteAuthorityError::Quarantined)));
 }
 
 // Task 3.3: 統合シナリオテスト
 #[test]
 fn test_scenario_unresolved_to_connected_delivery() {
-  let mut manager = RemoteAuthorityManager::new();
+  let mut registry = RemoteAuthorityRegistry::new();
   let authority = "integration-host:2552";
 
   // シナリオ 1: 未解決状態でメッセージを積む
-  manager.defer_send(authority, AnyMessage::new("msg1")).expect("defer");
-  manager.defer_send(authority, AnyMessage::new("msg2")).expect("defer");
-  manager.defer_send(authority, AnyMessage::new("msg3")).expect("defer");
+  registry.defer_send(authority, AnyMessage::new("msg1")).expect("defer");
+  registry.defer_send(authority, AnyMessage::new("msg2")).expect("defer");
+  registry.defer_send(authority, AnyMessage::new("msg3")).expect("defer");
 
-  assert_eq!(manager.deferred_count(authority), 3);
+  assert_eq!(registry.deferred_count(authority), 3);
 
   // シナリオ 2: 接続確立で deferred メッセージを取得
-  let deferred = manager.set_connected(authority).expect("deferred queue should exist");
+  let deferred = registry.set_connected(authority).expect("deferred queue should exist");
   assert_eq!(deferred.len(), 3);
-  assert_eq!(manager.deferred_count(authority), 0);
+  assert_eq!(registry.deferred_count(authority), 0);
 
   // シナリオ 3: 接続済みなので新規メッセージは即座に配送可能（キューに積まれない）
   // 注: 現在の実装では Connected 状態でも defer できるが、実際の remoting では即配送する

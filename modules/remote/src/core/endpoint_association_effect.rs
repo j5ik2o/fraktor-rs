@@ -10,7 +10,7 @@ use crate::core::{
 
 /// Effects emitted after processing a command.
 #[derive(Debug, PartialEq, Eq)]
-pub enum EndpointManagerEffect {
+pub enum EndpointAssociationEffect {
   /// Requests that a handshake frame be sent via the transport.
   StartHandshake {
     /// Authority that should start a handshake.

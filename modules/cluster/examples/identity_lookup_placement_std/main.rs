@@ -18,13 +18,11 @@ use std::{collections::HashMap, future::Future, pin::Pin};
 use fraktor_actor_rs::core::event::stream::{
   EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriber, subscriber_handle,
 };
-use fraktor_cluster_rs::{
-  core::{
-    ActivationEntry, ActivationError, ActivationRecord, ActivationStorageError, GrainKey, LookupError,
-    PlacementCoordinatorCore, PlacementCoordinatorSharedGeneric, PlacementEvent, PlacementLease, PlacementLockError,
-    PlacementResolution, RendezvousHasher,
-  },
-  std::{ActivationExecutor, ActivationStorage, PlacementCoordinatorDriverGeneric, PlacementLock},
+use fraktor_cluster_rs::core::{
+  ActivationEntry, ActivationError, ActivationExecutor, ActivationRecord, ActivationStorage, ActivationStorageError,
+  GrainKey, LookupError, PlacementCommand, PlacementCommandResult, PlacementCoordinatorCore,
+  PlacementCoordinatorDriverGeneric, PlacementCoordinatorSharedGeneric, PlacementEvent, PlacementLease, PlacementLock,
+  PlacementLockError, PlacementResolution, RendezvousHasher,
 };
 use fraktor_utils_rs::{core::sync::SharedAccess, std::runtime_toolbox::StdToolbox};
 
@@ -63,16 +61,12 @@ impl DemoLock {
 }
 
 impl PlacementLock for DemoLock {
-  fn try_acquire<'a>(
-    &'a mut self,
-    key: &'a GrainKey,
-    owner: &'a str,
-    now: u64,
-  ) -> BoxFuture<'a, Result<PlacementLease, PlacementLockError>> {
+  type ReleaseFuture<'a> = BoxFuture<'a, Result<(), PlacementLockError>>;
+  type TryAcquireFuture<'a> = BoxFuture<'a, Result<PlacementLease, PlacementLockError>>;
+
+  fn try_acquire<'a>(&'a mut self, key: GrainKey, owner: String, now: u64) -> Self::TryAcquireFuture<'a> {
     let fail = self.fail_first;
     self.fail_first = false;
-    let key = key.clone();
-    let owner = owner.to_string();
     Box::pin(async move {
       if fail {
         Err(PlacementLockError::Failed { reason: "demo lock denied".to_string() })
@@ -82,7 +76,7 @@ impl PlacementLock for DemoLock {
     })
   }
 
-  fn release<'a>(&'a mut self, _lease: PlacementLease) -> BoxFuture<'a, Result<(), PlacementLockError>> {
+  fn release<'a>(&'a mut self, _lease: PlacementLease) -> Self::ReleaseFuture<'a> {
     Box::pin(async move { Ok(()) })
   }
 }
@@ -93,19 +87,16 @@ struct DemoStorage {
 }
 
 impl ActivationStorage for DemoStorage {
-  fn load<'a>(
-    &'a mut self,
-    key: &'a GrainKey,
-  ) -> BoxFuture<'a, Result<Option<ActivationEntry>, ActivationStorageError>> {
+  type LoadFuture<'a> = BoxFuture<'a, Result<Option<ActivationEntry>, ActivationStorageError>>;
+  type RemoveFuture<'a> = BoxFuture<'a, Result<(), ActivationStorageError>>;
+  type StoreFuture<'a> = BoxFuture<'a, Result<(), ActivationStorageError>>;
+
+  fn load<'a>(&'a mut self, key: GrainKey) -> Self::LoadFuture<'a> {
     let entry = self.entries.get(key.value()).cloned();
     Box::pin(async move { Ok(entry) })
   }
 
-  fn store<'a>(
-    &'a mut self,
-    key: &'a GrainKey,
-    entry: ActivationEntry,
-  ) -> BoxFuture<'a, Result<(), ActivationStorageError>> {
+  fn store<'a>(&'a mut self, key: GrainKey, entry: ActivationEntry) -> Self::StoreFuture<'a> {
     let key = key.value().to_string();
     Box::pin(async move {
       self.entries.insert(key, entry);
@@ -113,7 +104,7 @@ impl ActivationStorage for DemoStorage {
     })
   }
 
-  fn remove<'a>(&'a mut self, key: &'a GrainKey) -> BoxFuture<'a, Result<(), ActivationStorageError>> {
+  fn remove<'a>(&'a mut self, key: GrainKey) -> Self::RemoveFuture<'a> {
     let key = key.value().to_string();
     Box::pin(async move {
       self.entries.remove(&key);
@@ -133,11 +124,9 @@ impl DemoExecutor {
 }
 
 impl ActivationExecutor for DemoExecutor {
-  fn ensure_activation<'a>(
-    &'a mut self,
-    key: &'a GrainKey,
-    owner: &'a str,
-  ) -> BoxFuture<'a, Result<ActivationRecord, ActivationError>> {
+  type EnsureActivationFuture<'a> = BoxFuture<'a, Result<ActivationRecord, ActivationError>>;
+
+  fn ensure_activation<'a>(&'a mut self, key: GrainKey, owner: String) -> Self::EnsureActivationFuture<'a> {
     self.version = self.version.saturating_add(1);
     let version = self.version;
     let pid = format!("{owner}::{}", key.value());
@@ -180,34 +169,39 @@ async fn main() {
     record:      ActivationRecord::new(format!("{local}::seed:1"), None, 0),
     observed_at: now,
   };
-  storage.store(&seed_key, seed_entry).await.expect("storage store");
-  storage.remove(&seed_key).await.expect("storage remove");
+  storage.store(seed_key.clone(), seed_entry).await.expect("storage store");
+  storage.remove(seed_key).await.expect("storage remove");
   println!("[storage] seed entry store/remove done");
 
-  let lock = DemoLock::new(true);
-  let executor = DemoExecutor::new();
-  let mut driver =
-    PlacementCoordinatorDriverGeneric::new(coordinator_shared.clone(), lock, storage, executor, event_stream.clone());
+  let mut lock = DemoLock::new(true);
+  let mut executor = DemoExecutor::new();
+  let mut driver = PlacementCoordinatorDriverGeneric::new(coordinator_shared.clone(), event_stream.clone());
 
   println!("\n--- Resolve with lock denial ---");
-  match driver.resolve(&key_local, now).await {
+  match resolve_with_driver(&mut driver, &mut lock, &mut storage, &mut executor, &key_local, now).await {
     | Ok(resolution) => println!("[unexpected] resolved: {resolution:?}"),
     | Err(LookupError::Pending) => println!("[expected] lock denied -> pending"),
     | Err(err) => println!("[unexpected] error: {err:?}"),
   }
 
   println!("\n--- Resolve after lock success ---");
-  let resolution = driver.resolve(&key_local, now + 1).await.expect("resolve after lock");
+  let resolution = resolve_with_driver(&mut driver, &mut lock, &mut storage, &mut executor, &key_local, now + 1)
+    .await
+    .expect("resolve after lock");
   print_resolution("local", &resolution);
 
   // キャッシュ削除後の再解決でストレージロードを通す
   coordinator_shared.with_write(|core| core.remove_pid(&key_local));
   println!("\n--- Resolve with storage hit ---");
-  let resolution = driver.resolve(&key_local, now + 2).await.expect("resolve with storage");
+  let resolution = resolve_with_driver(&mut driver, &mut lock, &mut storage, &mut executor, &key_local, now + 2)
+    .await
+    .expect("resolve with storage");
   print_resolution("storage-hit", &resolution);
 
   println!("\n--- Resolve remote key ---");
-  let resolution = driver.resolve(&key_remote, now + 3).await.expect("resolve remote");
+  let resolution = resolve_with_driver(&mut driver, &mut lock, &mut storage, &mut executor, &key_remote, now + 3)
+    .await
+    .expect("resolve remote");
   print_resolution("remote", &resolution);
 
   println!("\n=== Demo complete ===");
@@ -239,4 +233,62 @@ fn print_resolution(label: &str, resolution: &PlacementResolution) {
     "[{label}] pid={} locality={:?} owner={}",
     resolution.pid, resolution.locality, resolution.decision.authority
   );
+}
+
+async fn resolve_with_driver(
+  driver: &mut PlacementCoordinatorDriverGeneric<StdToolbox>,
+  lock: &mut DemoLock,
+  storage: &mut DemoStorage,
+  executor: &mut DemoExecutor,
+  key: &GrainKey,
+  now: u64,
+) -> Result<PlacementResolution, LookupError> {
+  let mut outcome = driver.resolve(key, now)?;
+  loop {
+    if let Some(resolution) = outcome.resolution.take() {
+      return Ok(resolution);
+    }
+    if outcome.commands.is_empty() {
+      return Err(LookupError::Pending);
+    }
+
+    let commands = core::mem::take(&mut outcome.commands);
+    for command in commands {
+      let result = execute_command(lock, storage, executor, command).await;
+      outcome = driver.handle_command_result(result)?;
+      if let Some(resolution) = outcome.resolution.take() {
+        return Ok(resolution);
+      }
+    }
+  }
+}
+
+async fn execute_command(
+  lock: &mut DemoLock,
+  storage: &mut DemoStorage,
+  executor: &mut DemoExecutor,
+  command: PlacementCommand,
+) -> PlacementCommandResult {
+  match command {
+    | PlacementCommand::TryAcquire { request_id, key, owner, now } => {
+      let result = lock.try_acquire(key, owner, now).await;
+      PlacementCommandResult::LockAcquired { request_id, result }
+    },
+    | PlacementCommand::LoadActivation { request_id, key } => {
+      let result = storage.load(key).await;
+      PlacementCommandResult::ActivationLoaded { request_id, result }
+    },
+    | PlacementCommand::EnsureActivation { request_id, key, owner } => {
+      let result = executor.ensure_activation(key, owner).await;
+      PlacementCommandResult::ActivationEnsured { request_id, result }
+    },
+    | PlacementCommand::StoreActivation { request_id, key, entry } => {
+      let result = storage.store(key, entry).await;
+      PlacementCommandResult::ActivationStored { request_id, result }
+    },
+    | PlacementCommand::Release { request_id, lease } => {
+      let result = lock.release(lease).await;
+      PlacementCommandResult::LockReleased { request_id, result }
+    },
+  }
 }

@@ -27,9 +27,9 @@ use crate::core::{
   messaging::SystemMessage,
   props::{MailboxConfig, MailboxRequirement, Props},
   scheduler::{
-    AutoDriverMetadata, AutoProfileKind, ManualTestDriver, SchedulerConfig, TickDriverConfig, TickDriverControl,
-    TickDriverError, TickDriverHandleGeneric, TickDriverId, TickDriverKind, TickDriverProvisioningContext,
-    TickDriverRuntime, TickExecutorSignal, TickFeed,
+    AutoDriverMetadata, AutoProfileKind, ManualTestDriver, SchedulerConfig, TickDriverBundle, TickDriverConfig,
+    TickDriverControl, TickDriverError, TickDriverHandleGeneric, TickDriverId, TickDriverKind,
+    TickDriverProvisioningContext, TickExecutorSignal, TickFeed,
   },
   spawn::SpawnError,
   system::{
@@ -176,13 +176,13 @@ fn actor_system_drop_shuts_down_executor_once() {
     let resolution = Duration::from_millis(1);
     let handle = TickDriverHandleGeneric::new(TickDriverId::new(1), TickDriverKind::Auto, resolution, control);
     let feed = TickFeed::<NoStdToolbox>::new(resolution, 1, TickExecutorSignal::new());
-    let runtime = TickDriverRuntime::new(handle, feed).with_executor_shutdown({
+    let bundle = TickDriverBundle::new(handle, feed).with_executor_shutdown({
       let executor_calls = executor_calls_for_builder.clone();
       move || {
         executor_calls.fetch_add(1, Ordering::SeqCst);
       }
     });
-    Ok::<_, TickDriverError>(runtime)
+    Ok::<_, TickDriverError>(bundle)
   });
   let config = ActorSystemConfig::default().with_tick_driver(tick_driver);
 
@@ -306,8 +306,8 @@ fn actor_system_reports_tick_driver_snapshot() {
     let handle = TickDriverHandleGeneric::new(driver_id, TickDriverKind::Auto, resolution, control);
     let feed = TickFeed::<NoStdToolbox>::new(resolution, 1, TickExecutorSignal::new());
     let auto = AutoDriverMetadata { profile: AutoProfileKind::Tokio, driver_id, resolution };
-    let runtime = TickDriverRuntime::new(handle, feed).with_auto_metadata(auto);
-    Ok::<_, TickDriverError>(runtime)
+    let bundle = TickDriverBundle::new(handle, feed).with_auto_metadata(auto);
+    Ok::<_, TickDriverError>(bundle)
   });
   let config = ActorSystemConfig::default().with_tick_driver(tick_driver);
   let state = SystemState::build_from_config(&config).expect("state");

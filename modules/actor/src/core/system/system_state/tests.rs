@@ -27,8 +27,8 @@ use crate::core::{
   messaging::{AnyMessage, AnyMessageViewGeneric, FailurePayload, SystemMessage},
   props::Props,
   scheduler::{
-    ManualTestDriver, SchedulerConfig, TickDriverConfig, TickDriverControl, TickDriverError, TickDriverHandleGeneric,
-    TickDriverId, TickDriverKind, TickDriverRuntime, TickExecutorSignal, TickFeed,
+    ManualTestDriver, SchedulerConfig, TickDriverBundle, TickDriverConfig, TickDriverControl, TickDriverError,
+    TickDriverHandleGeneric, TickDriverId, TickDriverKind, TickExecutorSignal, TickFeed,
   },
   system::{
     ActorSystemConfig, AuthorityState, GuardianKind, RegisterExtraTopLevelError, RemotingConfig, SystemStateShared,
@@ -68,12 +68,12 @@ fn system_state_build_from_config_starts_unterminated() {
 }
 
 #[test]
-fn system_state_build_from_config_provides_scheduler_and_tick_driver_runtime() {
+fn system_state_build_from_config_provides_scheduler_and_tick_driver_bundle() {
   let state = build_state();
   let scheduler = state.scheduler();
   let resolution = scheduler.with_read(|s| s.config().resolution());
-  let runtime = state.tick_driver_runtime();
-  assert_eq!(runtime.driver().resolution(), resolution);
+  let bundle = state.tick_driver_bundle();
+  assert_eq!(bundle.driver().resolution(), resolution);
 }
 
 fn base_config() -> ActorSystemConfig {
@@ -106,13 +106,13 @@ fn system_state_drop_shuts_down_executor_once() {
     let resolution = Duration::from_millis(1);
     let handle = TickDriverHandleGeneric::new(TickDriverId::new(1), TickDriverKind::Auto, resolution, control);
     let feed = TickFeed::<NoStdToolbox>::new(resolution, 1, TickExecutorSignal::new());
-    let runtime = TickDriverRuntime::new(handle, feed).with_executor_shutdown({
+    let bundle = TickDriverBundle::new(handle, feed).with_executor_shutdown({
       let executor_calls = executor_calls_for_builder.clone();
       move || {
         executor_calls.fetch_add(1, Ordering::SeqCst);
       }
     });
-    Ok::<_, TickDriverError>(runtime)
+    Ok::<_, TickDriverError>(bundle)
   });
 
   let config = ActorSystemConfig::default().with_tick_driver(tick_driver);

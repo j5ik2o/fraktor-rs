@@ -26,7 +26,7 @@ mod mailboxes;
 mod metrics_event;
 mod overflow_strategy;
 mod policy;
-mod state_engine;
+mod schedule_state;
 mod system_queue;
 
 pub use backpressure_publisher::BackpressurePublisherGeneric;
@@ -46,7 +46,7 @@ pub use mailboxes::{Mailboxes, MailboxesGeneric};
 pub use metrics_event::{MailboxMetricsEvent, MailboxPressureEvent};
 pub use overflow_strategy::MailboxOverflowStrategy;
 pub use policy::MailboxPolicy;
-pub use state_engine::{MailboxStateEngine, ScheduleHints};
+pub use schedule_state::{MailboxScheduleState, ScheduleHints};
 pub use system_queue::SystemQueue;
 
 #[cfg(test)]

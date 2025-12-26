@@ -120,7 +120,7 @@ fn spawn_test_handler() -> (TestPulseHandlerState, TestPulseHandle) {
 
 fn hardware_test_config(handler: TestPulseHandlerState, pulse_resolution: Duration) -> TickDriverConfig<NoStdToolbox> {
   TickDriverConfig::new(move |ctx| {
-    use super::{HardwareKind, HardwareTickDriver, TickDriver, TickDriverRuntime, TickExecutorSignal, TickFeed};
+    use super::{HardwareKind, HardwareTickDriver, TickDriver, TickDriverBundle, TickExecutorSignal, TickFeed};
 
     let scheduler = ctx.scheduler();
     let (resolution, capacity) = scheduler.with_read(|s| {
@@ -134,7 +134,7 @@ fn hardware_test_config(handler: TestPulseHandlerState, pulse_resolution: Durati
     let feed = TickFeed::new(resolution, capacity, signal);
     let handle = driver.start(feed.clone())?;
 
-    Ok(TickDriverRuntime::new(handle, feed))
+    Ok(TickDriverBundle::new(handle, feed))
   })
 }
 
@@ -144,17 +144,17 @@ fn run_hardware_driver_enqueues_isr_pulses() {
   let config = hardware_test_config(handler, Duration::from_millis(2));
   let scheduler_context = SchedulerContext::new(NoStdToolbox::default(), SchedulerConfig::default());
   let ctx = TickDriverProvisioningContext::from_scheduler_context(&scheduler_context);
-  let (mut runtime, _) = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
+  let (mut bundle, _) = TickDriverBootstrap::provision(&config, &ctx).expect("bundle");
 
   handle.trigger();
   let resolution = ctx.scheduler().with_read(|s| s.config().resolution());
   let now = TimerInstant::from_ticks(1, resolution);
-  let feed = runtime.feed().expect("feed");
+  let feed = bundle.feed().expect("feed");
   assert!(feed.driver_active());
   let metrics = feed.snapshot(now, TickDriverKind::Hardware { source: HardwareKind::Custom });
   assert_eq!(metrics.enqueued_total(), 1);
 
-  runtime.shutdown();
+  bundle.shutdown();
   handle.reset();
 }
 
@@ -184,13 +184,13 @@ fn run_hardware_driver_watchdog_marks_inactive_on_shutdown() {
   let config = hardware_test_config(handler, Duration::from_millis(2));
   let scheduler_context = SchedulerContext::new(NoStdToolbox::default(), SchedulerConfig::default());
   let ctx = TickDriverProvisioningContext::from_scheduler_context(&scheduler_context);
-  let (mut runtime, _) = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
+  let (mut bundle, _) = TickDriverBootstrap::provision(&config, &ctx).expect("bundle");
 
   handle.trigger();
-  let feed = runtime.feed().expect("feed").clone();
+  let feed = bundle.feed().expect("feed").clone();
   assert!(feed.driver_active());
 
-  runtime.shutdown();
+  bundle.shutdown();
   assert!(!feed.driver_active());
   handle.reset();
 }
@@ -220,9 +220,9 @@ fn manual_driver_runs_jobs_without_executor() {
   let scheduler_context = SchedulerContext::new(NoStdToolbox::default(), scheduler_config);
   let ctx = TickDriverProvisioningContext::from_scheduler_context(&scheduler_context);
 
-  let (runtime, _) = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
-  assert!(runtime.feed().is_none());
-  let controller = runtime.manual_controller().expect("manual controller");
+  let (bundle, _) = TickDriverBootstrap::provision(&config, &ctx).expect("bundle");
+  assert!(bundle.feed().is_none());
+  let controller = bundle.manual_controller().expect("manual controller");
 
   let log = ArcShared::new(NoStdMutex::new(Vec::new()));
   let runnable: ArcShared<ManualRunnable> = ArcShared::new(ManualRunnable { log: log.clone(), label: "manual" });
@@ -255,7 +255,7 @@ fn embedded_quickstart_template_runs_ticks() {
   let scheduler_context = SchedulerContext::new(NoStdToolbox::default(), SchedulerConfig::default());
   let ctx = TickDriverProvisioningContext::from_scheduler_context(&scheduler_context);
   let config = hardware_test_config(handler, Duration::from_millis(2));
-  let (mut runtime, _) = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
+  let (mut bundle, _) = TickDriverBootstrap::provision(&config, &ctx).expect("bundle");
 
   let scheduler = ctx.scheduler();
   let log = ArcShared::new(NoStdMutex::new(Vec::new()));
@@ -265,7 +265,7 @@ fn embedded_quickstart_template_runs_ticks() {
       .expect("schedule job");
   });
 
-  let feed = runtime.feed().expect("feed").clone();
+  let feed = bundle.feed().expect("feed").clone();
   let signal = feed.signal();
   let mut executor = SchedulerTickExecutor::new(scheduler.clone(), feed, signal);
 
@@ -276,7 +276,7 @@ fn embedded_quickstart_template_runs_ticks() {
 
   assert_eq!(log.lock().as_slice(), &["embedded"]);
 
-  runtime.shutdown();
+  bundle.shutdown();
 }
 
 #[test]
@@ -327,14 +327,14 @@ fn driver_metadata_records_driver_activation() {
   handle.reset();
   let config = hardware_test_config(handler, Duration::from_millis(2));
 
-  let (runtime, snapshot) = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
-  assert_eq!(snapshot.metadata.driver_id, runtime.driver().id());
+  let (bundle, snapshot) = TickDriverBootstrap::provision(&config, &ctx).expect("bundle");
+  assert_eq!(snapshot.metadata.driver_id, bundle.driver().id());
 
   let events = events.lock().clone();
   assert!(
     events
       .iter()
-      .any(|event| matches!(event, EventStreamEvent::TickDriver(snapshot) if snapshot.metadata.driver_id == runtime.driver().id())),
+      .any(|event| matches!(event, EventStreamEvent::TickDriver(snapshot) if snapshot.metadata.driver_id == bundle.driver().id())),
     "tick driver snapshot event not observed"
   );
 }
@@ -347,15 +347,15 @@ fn driver_snapshot_exposed_via_provisioning() {
   handle.reset();
   let config = hardware_test_config(handler, Duration::from_millis(2));
 
-  let (mut runtime, snapshot) = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
+  let (mut bundle, snapshot) = TickDriverBootstrap::provision(&config, &ctx).expect("bundle");
 
-  assert_eq!(snapshot.metadata.driver_id, runtime.driver().id());
+  assert_eq!(snapshot.metadata.driver_id, bundle.driver().id());
   assert_eq!(snapshot.kind, TickDriverKind::Hardware { source: HardwareKind::Custom });
   // Snapshot should reflect the driver's actual resolution, not scheduler's default
   assert_eq!(snapshot.resolution, Duration::from_millis(2));
   assert!(snapshot.auto.is_none());
 
-  runtime.shutdown();
+  bundle.shutdown();
 }
 
 #[test]

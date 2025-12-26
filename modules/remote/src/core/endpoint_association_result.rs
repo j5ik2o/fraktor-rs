@@ -2,11 +2,11 @@
 
 use alloc::vec::Vec;
 
-use crate::core::endpoint_manager_effect::EndpointManagerEffect;
+use crate::core::endpoint_association_effect::EndpointAssociationEffect;
 
 /// Result returned after handling a command.
 #[derive(Debug, Default, PartialEq, Eq)]
-pub struct EndpointManagerResult {
+pub struct EndpointAssociationResult {
   /// Side effects produced while handling the command.
-  pub effects: Vec<EndpointManagerEffect>,
+  pub effects: Vec<EndpointAssociationEffect>,
 }

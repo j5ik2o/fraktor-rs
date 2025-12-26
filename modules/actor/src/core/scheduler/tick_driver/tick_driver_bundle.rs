@@ -1,4 +1,4 @@
-//! Runtime assets produced after provisioning a tick driver.
+//! Bundle of assets produced after provisioning a tick driver.
 
 use alloc::boxed::Box;
 
@@ -11,8 +11,8 @@ mod tests;
 use super::manual_test_driver::ManualTickController;
 use super::{AutoDriverMetadata, TickDriverHandleGeneric, TickFeedHandle};
 
-/// Runtime assets produced after provisioning a tick driver.
-pub struct TickDriverRuntime<TB: RuntimeToolbox> {
+/// Bundle of assets produced after provisioning a tick driver.
+pub struct TickDriverBundle<TB: RuntimeToolbox> {
   driver:            TickDriverHandleGeneric<TB>,
   feed:              Option<TickFeedHandle<TB>>,
   executor_shutdown: Option<Box<dyn FnOnce() + Send + Sync>>,
@@ -21,7 +21,7 @@ pub struct TickDriverRuntime<TB: RuntimeToolbox> {
   manual:            Option<ManualTickController<TB>>,
 }
 
-impl<TB: RuntimeToolbox> Clone for TickDriverRuntime<TB> {
+impl<TB: RuntimeToolbox> Clone for TickDriverBundle<TB> {
   fn clone(&self) -> Self {
     Self {
       driver: self.driver.clone(),
@@ -34,8 +34,8 @@ impl<TB: RuntimeToolbox> Clone for TickDriverRuntime<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox> TickDriverRuntime<TB> {
-  /// Creates a new runtime container for automatic/hardware drivers.
+impl<TB: RuntimeToolbox> TickDriverBundle<TB> {
+  /// Creates a new bundle for automatic/hardware drivers.
   #[must_use]
   pub const fn new(driver: TickDriverHandleGeneric<TB>, feed: TickFeedHandle<TB>) -> Self {
     Self {
@@ -48,7 +48,7 @@ impl<TB: RuntimeToolbox> TickDriverRuntime<TB> {
     }
   }
 
-  /// Adds an executor shutdown callback to this runtime.
+  /// Adds an executor shutdown callback to this bundle.
   #[must_use]
   pub fn with_executor_shutdown<F>(mut self, shutdown: F) -> Self
   where
@@ -57,14 +57,14 @@ impl<TB: RuntimeToolbox> TickDriverRuntime<TB> {
     self
   }
 
-  /// Annotates the runtime with auto driver metadata.
+  /// Annotates the bundle with auto driver metadata.
   #[must_use]
   pub const fn with_auto_metadata(mut self, metadata: AutoDriverMetadata) -> Self {
     self.auto_metadata = Some(metadata);
     self
   }
 
-  /// Creates a manual-driver runtime.
+  /// Creates a manual-driver bundle.
   #[cfg(any(test, feature = "test-support"))]
   #[must_use]
   pub const fn new_manual(driver: TickDriverHandleGeneric<TB>, controller: ManualTickController<TB>) -> Self {

@@ -11,7 +11,7 @@ use fraktor_utils_rs::core::{runtime_toolbox::SyncMutexFamily, sync::ArcShared};
 
 #[cfg(any(test, feature = "test-support"))]
 use super::TickDriverControl;
-use super::{TickDriverConfig, TickDriverError, TickDriverHandleGeneric, TickDriverMetadata, TickDriverRuntime};
+use super::{TickDriverBundle, TickDriverConfig, TickDriverError, TickDriverHandleGeneric, TickDriverMetadata};
 #[cfg(any(test, feature = "test-support"))]
 use super::{
   TickDriverKind,
@@ -29,7 +29,7 @@ use crate::core::{
 pub struct TickDriverBootstrap;
 
 impl TickDriverBootstrap {
-  /// Provisions the configured driver and returns the runtime assets with a snapshot.
+  /// Provisions the configured driver and returns the bundle with a snapshot.
   ///
   /// # Errors
   ///
@@ -37,7 +37,7 @@ impl TickDriverBootstrap {
   pub fn provision<TB: RuntimeToolbox>(
     config: &TickDriverConfig<TB>,
     ctx: &TickDriverProvisioningContext<TB>,
-  ) -> Result<(TickDriverRuntime<TB>, TickDriverSnapshot), TickDriverError> {
+  ) -> Result<(TickDriverBundle<TB>, TickDriverSnapshot), TickDriverError> {
     match config {
       #[cfg(any(test, feature = "test-support"))]
       | TickDriverConfig::ManualTest(driver) => Self::provision_manual(driver, ctx),
@@ -46,13 +46,13 @@ impl TickDriverBootstrap {
           let scheduler = ctx.scheduler();
           scheduler.with_read(|s| s.toolbox().clock().now())
         };
-        let runtime = builder(ctx)?;
-        let handle = runtime.driver();
+        let bundle = builder(ctx)?;
+        let handle = bundle.driver();
         let metadata = TickDriverMetadata::new(handle.id(), start_instant);
-        let auto_metadata = runtime.auto_metadata().cloned();
+        let auto_metadata = bundle.auto_metadata().cloned();
         let snapshot = TickDriverSnapshot::new(metadata, handle.kind(), handle.resolution(), auto_metadata);
         ctx.event_stream().publish(&EventStreamEvent::TickDriver(snapshot.clone()));
-        Ok((runtime, snapshot))
+        Ok((bundle, snapshot))
       },
     }
   }
@@ -61,7 +61,7 @@ impl TickDriverBootstrap {
   fn provision_manual<TB: RuntimeToolbox>(
     driver: &ManualTestDriver<TB>,
     ctx: &TickDriverProvisioningContext<TB>,
-  ) -> Result<(TickDriverRuntime<TB>, TickDriverSnapshot), TickDriverError> {
+  ) -> Result<(TickDriverBundle<TB>, TickDriverSnapshot), TickDriverError> {
     let scheduler = ctx.scheduler();
     let runner_enabled = scheduler.with_read(|s| s.config().runner_api_enabled());
     if !runner_enabled {
@@ -79,11 +79,11 @@ impl TickDriverBootstrap {
     let control = ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(control));
     let handle = TickDriverHandleGeneric::new(next_tick_driver_id(), TickDriverKind::ManualTest, resolution, control);
     let controller = driver.controller();
-    let runtime = TickDriverRuntime::new_manual(handle.clone(), controller);
+    let bundle = TickDriverBundle::new_manual(handle.clone(), controller);
     let metadata = TickDriverMetadata::new(handle.id(), start_instant);
     let snapshot = TickDriverSnapshot::new(metadata, TickDriverKind::ManualTest, resolution, None);
     ctx.event_stream().publish(&EventStreamEvent::TickDriver(snapshot.clone()));
-    Ok((runtime, snapshot))
+    Ok((bundle, snapshot))
   }
 
   /// Shuts down the active driver handle.

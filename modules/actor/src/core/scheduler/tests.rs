@@ -658,11 +658,11 @@ fn scheduler_backed_delay_provider_cancels_on_drop() {
 
 #[test]
 fn scheduler_context_provides_shared_delay_provider() {
-  let service = SchedulerContext::new(NoStdToolbox::default(), SchedulerConfig::default());
-  let mut future = service.delay_provider().delay(Duration::from_millis(1));
+  let scheduler_context = SchedulerContext::new(NoStdToolbox::default(), SchedulerConfig::default());
+  let mut future = scheduler_context.delay_provider().delay(Duration::from_millis(1));
   assert!(matches!(poll_delay_future(&mut future), Poll::Pending));
 
-  service.scheduler().with_write(|s| s.run_for_test(1));
+  scheduler_context.scheduler().with_write(|s| s.run_for_test(1));
 
   assert!(matches!(poll_delay_future(&mut future), Poll::Ready(())));
 }

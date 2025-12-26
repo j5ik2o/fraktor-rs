@@ -273,7 +273,7 @@ fn advertised_address_is_stored_correctly() {
 }
 
 // ====================================================================
-// Phase2 タスク 4.1: seed/authority を GossipEngine に渡す経路のテスト
+// Phase2 タスク 4.1: seed/authority を GossipDisseminationCoordinator に渡す経路のテスト
 // ====================================================================
 
 #[test]
@@ -338,8 +338,8 @@ fn seed_nodes_can_be_used_to_initialize_gossip_peers() {
   let mut provider =
     LocalClusterProvider::<NoStdToolbox>::new(event_stream.clone(), block_list, "node-a:8080").with_seed_nodes(seeds);
 
-  // GossipEngine を内部で初期化できることを確認
-  // provider は seed_nodes を使って GossipEngine のピアリストを初期化できる
+  // GossipDisseminationCoordinator を内部で初期化できることを確認
+  // provider は seed_nodes を使って GossipDisseminationCoordinator のピアリストを初期化できる
   provider.start_member().unwrap();
 
   // 初期化後にピア情報が保持されていることを確認
@@ -347,7 +347,7 @@ fn seed_nodes_can_be_used_to_initialize_gossip_peers() {
 }
 
 // ====================================================================
-// Phase2 タスク 4.2: GossipEngine からの join/leave を EventStream に流すテスト
+// Phase2 タスク 4.2: GossipDisseminationCoordinator からの join/leave を EventStream に流すテスト
 // ====================================================================
 
 #[test]
@@ -360,8 +360,8 @@ fn gossip_join_event_is_converted_to_topology_updated() {
   let mut provider = LocalClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
   provider.start_member().unwrap();
 
-  // GossipEngine/MembershipTable からの join イベントをシミュレート
-  // （実際は on_member_join で代用、将来的には GossipEngine 統合）
+  // GossipDisseminationCoordinator/MembershipTable からの join イベントをシミュレート
+  // （実際は on_member_join で代用、将来的には GossipDisseminationCoordinator 統合）
   provider.on_member_join("node-b:8080");
 
   let events = subscriber_impl.events();
@@ -384,7 +384,7 @@ fn gossip_leave_event_is_converted_to_topology_updated() {
   provider.start_member().unwrap();
   provider.on_member_join("node-b:8080");
 
-  // GossipEngine/MembershipTable からの leave イベントをシミュレート
+  // GossipDisseminationCoordinator/MembershipTable からの leave イベントをシミュレート
   provider.on_member_leave("node-b:8080");
 
   let events = subscriber_impl.events();

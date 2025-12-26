@@ -54,7 +54,7 @@ fn materialize_requires_start() {
 #[test]
 fn actor_materializer_drives_stream() {
   let system = build_system();
-  let controller = system.tick_driver_runtime().manual_controller().expect("manual controller").clone();
+  let controller = system.tick_driver_bundle().manual_controller().expect("manual controller").clone();
   let mut materializer = ActorMaterializerGeneric::new(
     system,
     ActorMaterializerConfig::default().with_drive_interval(Duration::from_millis(1)),

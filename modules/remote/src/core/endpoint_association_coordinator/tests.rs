@@ -10,7 +10,7 @@ use fraktor_actor_rs::core::{
 };
 use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
-use super::{EndpointManager, EndpointManagerCommand, EndpointManagerEffect};
+use super::{EndpointAssociationCommand, EndpointAssociationCoordinator, EndpointAssociationEffect};
 use crate::core::{
   association_state::AssociationState,
   deferred_envelope::DeferredEnvelope,
@@ -21,8 +21,8 @@ use crate::core::{
   transport::{LoopbackTransport, RemoteTransport, TransportBind, TransportEndpoint},
 };
 
-fn manager() -> EndpointManager {
-  EndpointManager::new()
+fn coordinator() -> EndpointAssociationCoordinator {
+  EndpointAssociationCoordinator::new()
 }
 
 fn sample_endpoint() -> TransportEndpoint {
@@ -69,39 +69,42 @@ impl LoopbackPair {
     }
   }
 
-  fn authority_for_manager_a(&self) -> String {
+  fn authority_for_coordinator_a(&self) -> String {
     self.authority_b.clone()
   }
 
-  fn authority_for_manager_b(&self) -> String {
+  fn authority_for_coordinator_b(&self) -> String {
     self.authority_a.clone()
   }
 
-  fn endpoint_to_manager_a(&self) -> TransportEndpoint {
+  fn endpoint_to_coordinator_a(&self) -> TransportEndpoint {
     TransportEndpoint::new(self.authority_a.clone())
   }
 
-  fn endpoint_to_manager_b(&self) -> TransportEndpoint {
+  fn endpoint_to_coordinator_b(&self) -> TransportEndpoint {
     TransportEndpoint::new(self.authority_b.clone())
   }
 }
 
 #[test]
 fn register_and_handshake_transitions_states() {
-  let mut mgr = manager();
-  let register = EndpointManagerCommand::RegisterInbound { authority: "loopback:4100".into(), now: 1 };
+  let mut mgr = coordinator();
+  let register = EndpointAssociationCommand::RegisterInbound { authority: "loopback:4100".into(), now: 1 };
   let result = mgr.handle(register);
   assert!(result.effects.is_empty());
 
-  let associate =
-    EndpointManagerCommand::Associate { authority: "loopback:4100".into(), endpoint: sample_endpoint(), now: 2 };
+  let associate = EndpointAssociationCommand::Associate {
+    authority: "loopback:4100".into(),
+    endpoint:  sample_endpoint(),
+    now:       2,
+  };
   let result = mgr.handle(associate);
-  assert_eq!(result.effects, vec![EndpointManagerEffect::StartHandshake {
+  assert_eq!(result.effects, vec![EndpointAssociationEffect::StartHandshake {
     authority: "loopback:4100".into(),
     endpoint:  sample_endpoint(),
   }]);
 
-  let accept = EndpointManagerCommand::HandshakeAccepted {
+  let accept = EndpointAssociationCommand::HandshakeAccepted {
     authority:   "loopback:4100".into(),
     remote_node: sample_remote(),
     now:         3,
@@ -109,7 +112,7 @@ fn register_and_handshake_transitions_states() {
   let result = mgr.handle(accept);
   assert_eq!(result.effects.len(), 1);
   match &result.effects[0] {
-    | EndpointManagerEffect::Lifecycle(event) => match event {
+    | EndpointAssociationEffect::Lifecycle(event) => match event {
       | RemotingLifecycleEvent::Connected { authority, remote_system, remote_uid, correlation_id } => {
         assert_eq!(authority, "loopback:4100");
         assert_eq!(remote_system, "system-b");
@@ -125,35 +128,35 @@ fn register_and_handshake_transitions_states() {
 
 #[test]
 fn deferred_messages_flush_on_connected() {
-  let mut mgr = manager();
+  let mut mgr = coordinator();
   let authority = "loopback:4200".to_string();
-  mgr.handle(EndpointManagerCommand::RegisterInbound { authority: authority.clone(), now: 1 });
-  mgr.handle(EndpointManagerCommand::Associate {
+  mgr.handle(EndpointAssociationCommand::RegisterInbound { authority: authority.clone(), now: 1 });
+  mgr.handle(EndpointAssociationCommand::Associate {
     authority: authority.clone(),
     endpoint:  sample_endpoint(),
     now:       2,
   });
 
   let enqueue =
-    EndpointManagerCommand::EnqueueDeferred { authority: authority.clone(), envelope: Box::new(envelope("m1")) };
+    EndpointAssociationCommand::EnqueueDeferred { authority: authority.clone(), envelope: Box::new(envelope("m1")) };
   let result = mgr.handle(enqueue);
   assert!(result.effects.is_empty());
 
-  let result = mgr.handle(EndpointManagerCommand::HandshakeAccepted {
+  let result = mgr.handle(EndpointAssociationCommand::HandshakeAccepted {
     authority:   authority.clone(),
     remote_node: sample_remote(),
     now:         3,
   });
   assert_eq!(result.effects.len(), 2);
   match &result.effects[0] {
-    | EndpointManagerEffect::DeliverEnvelopes { authority: deliver_authority, envelopes } => {
+    | EndpointAssociationEffect::DeliverEnvelopes { authority: deliver_authority, envelopes } => {
       assert_eq!(deliver_authority, &authority);
       assert_eq!(envelopes, &vec![envelope("m1")]);
     },
     | other => panic!("unexpected effect: {other:?}"),
   }
   match &result.effects[1] {
-    | EndpointManagerEffect::Lifecycle(event) => match event {
+    | EndpointAssociationEffect::Lifecycle(event) => match event {
       | RemotingLifecycleEvent::Connected { authority: connected_authority, .. } => {
         assert_eq!(connected_authority, &authority);
       },
@@ -162,11 +165,11 @@ fn deferred_messages_flush_on_connected() {
     | other => panic!("unexpected effect: {other:?}"),
   }
 
-  let immediate = mgr.handle(EndpointManagerCommand::EnqueueDeferred {
+  let immediate = mgr.handle(EndpointAssociationCommand::EnqueueDeferred {
     authority: authority.clone(),
     envelope:  Box::new(envelope("m2")),
   });
-  assert_eq!(immediate.effects, vec![EndpointManagerEffect::DeliverEnvelopes {
+  assert_eq!(immediate.effects, vec![EndpointAssociationEffect::DeliverEnvelopes {
     authority,
     envelopes: vec![envelope("m2")],
   }]);
@@ -174,21 +177,21 @@ fn deferred_messages_flush_on_connected() {
 
 #[test]
 fn quarantine_discards_deferred_messages() {
-  let mut mgr = manager();
+  let mut mgr = coordinator();
   let authority = "loopback:4300".to_string();
-  mgr.handle(EndpointManagerCommand::RegisterInbound { authority: authority.clone(), now: 1 });
-  mgr.handle(EndpointManagerCommand::Associate {
+  mgr.handle(EndpointAssociationCommand::RegisterInbound { authority: authority.clone(), now: 1 });
+  mgr.handle(EndpointAssociationCommand::Associate {
     authority: authority.clone(),
     endpoint:  sample_endpoint(),
     now:       2,
   });
-  mgr.handle(EndpointManagerCommand::EnqueueDeferred {
+  mgr.handle(EndpointAssociationCommand::EnqueueDeferred {
     authority: authority.clone(),
     envelope:  Box::new(envelope("m1")),
   });
 
   let reason = QuarantineReason::new("uid mismatch");
-  let result = mgr.handle(EndpointManagerCommand::Quarantine {
+  let result = mgr.handle(EndpointAssociationCommand::Quarantine {
     authority: authority.clone(),
     reason:    reason.clone(),
     resume_at: Some(50),
@@ -197,7 +200,11 @@ fn quarantine_discards_deferred_messages() {
 
   assert_eq!(result.effects.len(), 2);
   match &result.effects[0] {
-    | EndpointManagerEffect::DiscardDeferred { authority: discard_authority, reason: discard_reason, envelopes } => {
+    | EndpointAssociationEffect::DiscardDeferred {
+      authority: discard_authority,
+      reason: discard_reason,
+      envelopes,
+    } => {
       assert_eq!(discard_authority, &authority);
       assert_eq!(discard_reason, &reason);
       assert_eq!(envelopes, &vec![envelope("m1")]);
@@ -205,7 +212,7 @@ fn quarantine_discards_deferred_messages() {
     | other => panic!("unexpected discard effect: {other:?}"),
   }
   match &result.effects[1] {
-    | EndpointManagerEffect::Lifecycle(event) => match event {
+    | EndpointAssociationEffect::Lifecycle(event) => match event {
       | RemotingLifecycleEvent::Quarantined { authority: quarantined_authority, reason: msg, correlation_id } => {
         assert_eq!(quarantined_authority, &authority);
         assert_eq!(msg, reason.message());
@@ -221,51 +228,51 @@ fn quarantine_discards_deferred_messages() {
 
 #[test]
 fn recover_from_quarantine_restarts_handshake() {
-  let mut mgr = manager();
+  let mut mgr = coordinator();
   let authority = "loopback:4400".to_string();
-  mgr.handle(EndpointManagerCommand::RegisterInbound { authority: authority.clone(), now: 1 });
-  mgr.handle(EndpointManagerCommand::Associate {
+  mgr.handle(EndpointAssociationCommand::RegisterInbound { authority: authority.clone(), now: 1 });
+  mgr.handle(EndpointAssociationCommand::Associate {
     authority: authority.clone(),
     endpoint:  sample_endpoint(),
     now:       2,
   });
-  mgr.handle(EndpointManagerCommand::Quarantine {
+  mgr.handle(EndpointAssociationCommand::Quarantine {
     authority: authority.clone(),
     reason:    QuarantineReason::new("network failure"),
     resume_at: None,
     now:       3,
   });
 
-  mgr.handle(EndpointManagerCommand::EnqueueDeferred {
+  mgr.handle(EndpointAssociationCommand::EnqueueDeferred {
     authority: authority.clone(),
     envelope:  Box::new(envelope("m2")),
   });
 
-  let result = mgr.handle(EndpointManagerCommand::Recover {
+  let result = mgr.handle(EndpointAssociationCommand::Recover {
     authority: authority.clone(),
     endpoint:  Some(sample_endpoint_alt()),
     now:       4,
   });
-  assert_eq!(result.effects, vec![EndpointManagerEffect::StartHandshake {
+  assert_eq!(result.effects, vec![EndpointAssociationEffect::StartHandshake {
     authority: authority.clone(),
     endpoint:  sample_endpoint_alt(),
   }]);
 
-  let result = mgr.handle(EndpointManagerCommand::HandshakeAccepted {
+  let result = mgr.handle(EndpointAssociationCommand::HandshakeAccepted {
     authority:   authority.clone(),
     remote_node: sample_remote(),
     now:         5,
   });
   assert_eq!(result.effects.len(), 2);
   match &result.effects[0] {
-    | EndpointManagerEffect::DeliverEnvelopes { authority: deliver_authority, envelopes } => {
+    | EndpointAssociationEffect::DeliverEnvelopes { authority: deliver_authority, envelopes } => {
       assert_eq!(deliver_authority, &authority);
       assert_eq!(envelopes, &vec![envelope("m2")]);
     },
     | other => panic!("unexpected effect: {other:?}"),
   }
   match &result.effects[1] {
-    | EndpointManagerEffect::Lifecycle(event) => match event {
+    | EndpointAssociationEffect::Lifecycle(event) => match event {
       | RemotingLifecycleEvent::Connected { authority: connected_authority, .. } => {
         assert_eq!(connected_authority, &authority);
       },
@@ -278,52 +285,54 @@ fn recover_from_quarantine_restarts_handshake() {
 #[test]
 fn loopback_pair_association_flushes_deferred_and_emits_connected_events() {
   let loopback = LoopbackPair::new();
-  let mut manager_a = manager();
-  let mut manager_b = manager();
-  let authority_for_a = loopback.authority_for_manager_a();
-  let authority_for_b = loopback.authority_for_manager_b();
+  let mut coordinator_a = coordinator();
+  let mut coordinator_b = coordinator();
+  let authority_for_a = loopback.authority_for_coordinator_a();
+  let authority_for_b = loopback.authority_for_coordinator_b();
 
-  manager_a.handle(EndpointManagerCommand::RegisterInbound { authority: authority_for_a.clone(), now: 1 });
-  manager_b.handle(EndpointManagerCommand::RegisterInbound { authority: authority_for_b.clone(), now: 1 });
+  coordinator_a
+    .handle(EndpointAssociationCommand::RegisterInbound { authority: authority_for_a.clone(), now: 1 });
+  coordinator_b
+    .handle(EndpointAssociationCommand::RegisterInbound { authority: authority_for_b.clone(), now: 1 });
 
-  manager_a.handle(EndpointManagerCommand::EnqueueDeferred {
+  coordinator_a.handle(EndpointAssociationCommand::EnqueueDeferred {
     authority: authority_for_a.clone(),
     envelope:  Box::new(envelope("a->b")),
   });
-  manager_b.handle(EndpointManagerCommand::EnqueueDeferred {
+  coordinator_b.handle(EndpointAssociationCommand::EnqueueDeferred {
     authority: authority_for_b.clone(),
     envelope:  Box::new(envelope("b->a")),
   });
 
-  let handshake_a = manager_a.handle(EndpointManagerCommand::Associate {
+  let handshake_a = coordinator_a.handle(EndpointAssociationCommand::Associate {
     authority: authority_for_a.clone(),
-    endpoint:  loopback.endpoint_to_manager_b(),
+    endpoint:  loopback.endpoint_to_coordinator_b(),
     now:       2,
   });
-  assert!(matches!(handshake_a.effects.as_slice(), [EndpointManagerEffect::StartHandshake { .. }]));
+  assert!(matches!(handshake_a.effects.as_slice(), [EndpointAssociationEffect::StartHandshake { .. }]));
 
-  let handshake_b = manager_b.handle(EndpointManagerCommand::Associate {
+  let handshake_b = coordinator_b.handle(EndpointAssociationCommand::Associate {
     authority: authority_for_b.clone(),
-    endpoint:  loopback.endpoint_to_manager_a(),
+    endpoint:  loopback.endpoint_to_coordinator_a(),
     now:       2,
   });
-  assert!(matches!(handshake_b.effects.as_slice(), [EndpointManagerEffect::StartHandshake { .. }]));
+  assert!(matches!(handshake_b.effects.as_slice(), [EndpointAssociationEffect::StartHandshake { .. }]));
 
   let node_b = RemoteNodeId::new("system-b", "loopback-b.local", Some(4200), 99);
-  let result_a = manager_a.handle(EndpointManagerCommand::HandshakeAccepted {
+  let result_a = coordinator_a.handle(EndpointAssociationCommand::HandshakeAccepted {
     authority:   authority_for_a.clone(),
     remote_node: node_b,
     now:         3,
   });
   assert_eq!(result_a.effects.len(), 2);
   match &result_a.effects[0] {
-    | EndpointManagerEffect::DeliverEnvelopes { envelopes, .. } => {
+    | EndpointAssociationEffect::DeliverEnvelopes { envelopes, .. } => {
       assert_eq!(envelopes, &vec![envelope("a->b")]);
     },
     | other => panic!("unexpected effect: {other:?}"),
   }
   match &result_a.effects[1] {
-    | EndpointManagerEffect::Lifecycle(RemotingLifecycleEvent::Connected { authority, remote_system, .. }) => {
+    | EndpointAssociationEffect::Lifecycle(RemotingLifecycleEvent::Connected { authority, remote_system, .. }) => {
       assert_eq!(authority, &authority_for_a);
       assert_eq!(remote_system, "system-b");
     },
@@ -331,20 +340,20 @@ fn loopback_pair_association_flushes_deferred_and_emits_connected_events() {
   }
 
   let node_a = RemoteNodeId::new("system-a", "loopback-a.local", Some(4100), 11);
-  let result_b = manager_b.handle(EndpointManagerCommand::HandshakeAccepted {
+  let result_b = coordinator_b.handle(EndpointAssociationCommand::HandshakeAccepted {
     authority:   authority_for_b.clone(),
     remote_node: node_a,
     now:         3,
   });
   assert_eq!(result_b.effects.len(), 2);
   match &result_b.effects[0] {
-    | EndpointManagerEffect::DeliverEnvelopes { envelopes, .. } => {
+    | EndpointAssociationEffect::DeliverEnvelopes { envelopes, .. } => {
       assert_eq!(envelopes, &vec![envelope("b->a")]);
     },
     | other => panic!("unexpected effect: {other:?}"),
   }
   match &result_b.effects[1] {
-    | EndpointManagerEffect::Lifecycle(RemotingLifecycleEvent::Connected { authority, remote_system, .. }) => {
+    | EndpointAssociationEffect::Lifecycle(RemotingLifecycleEvent::Connected { authority, remote_system, .. }) => {
       assert_eq!(authority, &authority_for_b);
       assert_eq!(remote_system, "system-a");
     },
@@ -355,16 +364,16 @@ fn loopback_pair_association_flushes_deferred_and_emits_connected_events() {
 #[test]
 fn loopback_quarantine_manual_override_flow_emits_events() {
   let loopback = LoopbackPair::new();
-  let mut mgr = manager();
-  let authority = loopback.authority_for_manager_a();
-  mgr.handle(EndpointManagerCommand::RegisterInbound { authority: authority.clone(), now: 1 });
-  mgr.handle(EndpointManagerCommand::EnqueueDeferred {
+  let mut mgr = coordinator();
+  let authority = loopback.authority_for_coordinator_a();
+  mgr.handle(EndpointAssociationCommand::RegisterInbound { authority: authority.clone(), now: 1 });
+  mgr.handle(EndpointAssociationCommand::EnqueueDeferred {
     authority: authority.clone(),
     envelope:  Box::new(envelope("pending")),
   });
 
   let reason = QuarantineReason::new("uid mismatch");
-  let quarantine = mgr.handle(EndpointManagerCommand::Quarantine {
+  let quarantine = mgr.handle(EndpointAssociationCommand::Quarantine {
     authority: authority.clone(),
     reason:    reason.clone(),
     resume_at: Some(200),
@@ -372,11 +381,13 @@ fn loopback_quarantine_manual_override_flow_emits_events() {
   });
   assert_eq!(quarantine.effects.len(), 2);
   match &quarantine.effects[0] {
-    | EndpointManagerEffect::DiscardDeferred { envelopes, .. } => assert_eq!(envelopes, &vec![envelope("pending")]),
+    | EndpointAssociationEffect::DiscardDeferred { envelopes, .. } => {
+      assert_eq!(envelopes, &vec![envelope("pending")])
+    },
     | other => panic!("unexpected discard effect: {other:?}"),
   }
   match &quarantine.effects[1] {
-    | EndpointManagerEffect::Lifecycle(RemotingLifecycleEvent::Quarantined {
+    | EndpointAssociationEffect::Lifecycle(RemotingLifecycleEvent::Quarantined {
       authority: quarantined,
       reason: msg,
       ..
@@ -387,30 +398,32 @@ fn loopback_quarantine_manual_override_flow_emits_events() {
     | other => panic!("unexpected lifecycle effect: {other:?}"),
   }
 
-  mgr.handle(EndpointManagerCommand::EnqueueDeferred {
+  mgr.handle(EndpointAssociationCommand::EnqueueDeferred {
     authority: authority.clone(),
     envelope:  Box::new(envelope("retry")),
   });
 
-  let recover = mgr.handle(EndpointManagerCommand::Recover {
+  let recover = mgr.handle(EndpointAssociationCommand::Recover {
     authority: authority.clone(),
-    endpoint:  Some(loopback.endpoint_to_manager_b()),
+    endpoint:  Some(loopback.endpoint_to_coordinator_b()),
     now:       3,
   });
-  assert!(matches!(recover.effects.as_slice(), [EndpointManagerEffect::StartHandshake { .. }]));
+  assert!(matches!(recover.effects.as_slice(), [EndpointAssociationEffect::StartHandshake { .. }]));
 
-  let result = mgr.handle(EndpointManagerCommand::HandshakeAccepted {
+  let result = mgr.handle(EndpointAssociationCommand::HandshakeAccepted {
     authority:   authority.clone(),
     remote_node: RemoteNodeId::new("system-b", "loopback-b.local", Some(4200), 99),
     now:         4,
   });
   assert_eq!(result.effects.len(), 2);
   match &result.effects[0] {
-    | EndpointManagerEffect::DeliverEnvelopes { envelopes, .. } => assert_eq!(envelopes, &vec![envelope("retry")]),
+    | EndpointAssociationEffect::DeliverEnvelopes { envelopes, .. } => {
+      assert_eq!(envelopes, &vec![envelope("retry")])
+    },
     | other => panic!("unexpected deliver effect: {other:?}"),
   }
   match &result.effects[1] {
-    | EndpointManagerEffect::Lifecycle(RemotingLifecycleEvent::Connected { authority: connected, .. }) => {
+    | EndpointAssociationEffect::Lifecycle(RemotingLifecycleEvent::Connected { authority: connected, .. }) => {
       assert_eq!(connected, &authority);
     },
     | other => panic!("unexpected lifecycle effect: {other:?}"),
@@ -420,15 +433,15 @@ fn loopback_quarantine_manual_override_flow_emits_events() {
 #[test]
 fn suspect_notification_via_gate_emits_lifecycle_event() {
   let loopback = LoopbackPair::new();
-  let mut mgr = manager();
-  let authority = loopback.authority_for_manager_a();
-  mgr.handle(EndpointManagerCommand::RegisterInbound { authority: authority.clone(), now: 1 });
+  let mut mgr = coordinator();
+  let authority = loopback.authority_for_coordinator_a();
+  mgr.handle(EndpointAssociationCommand::RegisterInbound { authority: authority.clone(), now: 1 });
 
   let gate =
-    mgr.handle(EndpointManagerCommand::Gate { authority: authority.clone(), resume_at: Some(999), now: 5 });
+    mgr.handle(EndpointAssociationCommand::Gate { authority: authority.clone(), resume_at: Some(999), now: 5 });
   assert_eq!(gate.effects.len(), 1);
   match &gate.effects[0] {
-    | EndpointManagerEffect::Lifecycle(RemotingLifecycleEvent::Gated { authority: gated, correlation_id }) => {
+    | EndpointAssociationEffect::Lifecycle(RemotingLifecycleEvent::Gated { authority: gated, correlation_id }) => {
       assert_eq!(gated, &authority);
       assert!(!correlation_id.is_nil());
     },

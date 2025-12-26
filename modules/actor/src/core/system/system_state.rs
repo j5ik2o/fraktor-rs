@@ -27,7 +27,7 @@ use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 use self::path_identity::PathIdentity;
 use super::{
   ActorPathRegistry, ActorRefProvider, ActorRefProviderCaller, ActorRefProviderHandle, ActorRefProviderSharedGeneric,
-  AuthorityState, CellsSharedGeneric, GuardianKind, RemoteAuthorityError, RemoteAuthorityManagerGeneric,
+  AuthorityState, CellsSharedGeneric, GuardianKind, RemoteAuthorityError, RemoteAuthorityRegistryGeneric,
   RemoteWatchHookDynSharedGeneric, RemotingConfig, actor_ref_provider_callers::ActorRefProviderCallersGeneric,
   actor_ref_providers::ActorRefProvidersGeneric, ask_futures::AskFuturesGeneric, extensions::ExtensionsGeneric,
   extra_top_levels::ExtraTopLevelsGeneric, guardians_state::GuardiansState, registries::RegistriesGeneric,
@@ -54,7 +54,7 @@ use crate::core::{
   props::MailboxConfig,
   scheduler::{
     SchedulerBackedDelayProvider, SchedulerConfig, SchedulerContext, SchedulerSharedGeneric, TaskRunSummary,
-    TickDriverControl, TickDriverHandleGeneric, TickDriverKind, TickDriverProvisioningContext, TickDriverRuntime,
+    TickDriverBundle, TickDriverControl, TickDriverHandleGeneric, TickDriverKind, TickDriverProvisioningContext,
     TickExecutorSignal, TickFeed, next_tick_driver_id,
   },
   spawn::{NameRegistryError, SpawnError},
@@ -103,10 +103,10 @@ pub struct SystemStateGeneric<TB: RuntimeToolbox + 'static> {
   mailboxes: MailboxesGeneric<TB>,
   path_identity: PathIdentity,
   actor_path_registry: ActorPathRegistry,
-  remote_authority_mgr: RemoteAuthorityManagerGeneric<TB>,
+  remote_authority_registry: RemoteAuthorityRegistryGeneric<TB>,
   scheduler_context: SchedulerContext<TB>,
   tick_driver_snapshot: Option<TickDriverSnapshot>,
-  tick_driver_runtime: TickDriverRuntime<TB>,
+  tick_driver_bundle: TickDriverBundle<TB>,
 }
 
 /// Type alias for [SystemStateGeneric] with the default [NoStdToolbox].
@@ -128,7 +128,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     let scheduler_config = SchedulerConfig::default();
     let toolbox = TB::default();
     let scheduler_context = SchedulerContext::with_event_stream(toolbox, scheduler_config, event_stream.clone());
-    let tick_driver_runtime = Self::default_tick_driver_runtime(scheduler_config.resolution());
+    let tick_driver_bundle = Self::default_tick_driver_bundle(scheduler_config.resolution());
     Self {
       next_pid: AtomicU64::new(0),
       clock: AtomicU64::new(0),
@@ -160,11 +160,11 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       mailboxes,
       path_identity: PathIdentity::default(),
       actor_path_registry: ActorPathRegistry::default(),
-      remote_authority_mgr: RemoteAuthorityManagerGeneric::default(),
+      remote_authority_registry: RemoteAuthorityRegistryGeneric::default(),
       actor_ref_provider_callers_by_scheme: ActorRefProviderCallersGeneric::default(),
       scheduler_context,
       tick_driver_snapshot: None,
-      tick_driver_runtime,
+      tick_driver_bundle,
     }
   }
 
@@ -198,13 +198,13 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       .ok_or_else(|| SpawnError::SystemBuildError("tick driver configuration is required".into()))?;
     let (runtime, snapshot) = TickDriverBootstrap::provision(tick_driver_config, &provisioning)
       .map_err(|error| SpawnError::SystemBuildError(format!("tick driver provisioning failed: {error}")))?;
-    state.tick_driver_runtime = runtime;
+    state.tick_driver_bundle = runtime;
     state.tick_driver_snapshot = Some(snapshot);
 
     Ok(state)
   }
 
-  fn default_tick_driver_runtime(resolution: Duration) -> TickDriverRuntime<TB> {
+  fn default_tick_driver_bundle(resolution: Duration) -> TickDriverBundle<TB> {
     struct NoopDriverControl;
 
     impl TickDriverControl for NoopDriverControl {
@@ -216,7 +216,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     let control: Box<dyn TickDriverControl> = Box::new(NoopDriverControl);
     let control = ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(control));
     let handle = TickDriverHandleGeneric::new(next_tick_driver_id(), TickDriverKind::Auto, resolution, control);
-    TickDriverRuntime::new(handle, feed)
+    TickDriverBundle::new(handle, feed)
   }
 
   /// Allocates a new unique [`Pid`] for an actor.
@@ -793,10 +793,10 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     self.scheduler_context.delay_provider()
   }
 
-  /// Returns the tick driver runtime.
+  /// Returns the tick driver bundle.
   #[must_use]
-  pub fn tick_driver_runtime(&self) -> TickDriverRuntime<TB> {
-    self.tick_driver_runtime.clone()
+  pub fn tick_driver_bundle(&self) -> TickDriverBundle<TB> {
+    self.tick_driver_bundle.clone()
   }
 
   /// Returns the last recorded tick driver snapshot when available.
@@ -896,17 +896,17 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   /// Returns the current authority state.
   #[must_use]
   pub fn remote_authority_state(&self, authority: &str) -> AuthorityState {
-    self.remote_authority_mgr.state(authority)
+    self.remote_authority_registry.state(authority)
   }
 
   /// Returns a snapshot of known remote authorities and their states.
   pub fn remote_authority_snapshots(&self) -> Vec<(String, AuthorityState)> {
-    self.remote_authority_mgr.snapshots()
+    self.remote_authority_registry.snapshots()
   }
 
   /// Marks the authority as connected and emits an event.
   pub fn remote_authority_set_connected(&mut self, authority: &str) -> Option<VecDeque<AnyMessageGeneric<TB>>> {
-    let drained = self.remote_authority_mgr.set_connected(authority);
+    let drained = self.remote_authority_registry.set_connected(authority);
     self.publish_remote_authority_event(authority.to_string(), AuthorityState::Connected);
     drained
   }
@@ -917,8 +917,8 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     let authority = authority.into();
     let now_secs = self.monotonic_now().as_secs();
     let effective = duration.unwrap_or(self.default_quarantine_duration());
-    self.remote_authority_mgr.set_quarantine(authority.clone(), now_secs, Some(effective));
-    let state = self.remote_authority_mgr.state(&authority);
+    self.remote_authority_registry.set_quarantine(authority.clone(), now_secs, Some(effective));
+    let state = self.remote_authority_registry.state(&authority);
     self.publish_remote_authority_event(authority, state);
   }
 
@@ -931,14 +931,14 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     let authority = authority.into();
     let now_secs = self.monotonic_now().as_secs();
     let effective = duration.unwrap_or(self.default_quarantine_duration());
-    self.remote_authority_mgr.handle_invalid_association(authority.clone(), now_secs, Some(effective));
-    let state = self.remote_authority_mgr.state(&authority);
+    self.remote_authority_registry.handle_invalid_association(authority.clone(), now_secs, Some(effective));
+    let state = self.remote_authority_registry.state(&authority);
     self.publish_remote_authority_event(authority, state);
   }
 
   /// Manually overrides a quarantined authority back to connected.
   pub fn remote_authority_manual_override_to_connected(&mut self, authority: &str) {
-    self.remote_authority_mgr.manual_override_to_connected(authority);
+    self.remote_authority_registry.manual_override_to_connected(authority);
     self.publish_remote_authority_event(authority.to_string(), AuthorityState::Connected);
   }
 
@@ -953,7 +953,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     authority: impl Into<String>,
     message: AnyMessageGeneric<TB>,
   ) -> Result<(), RemoteAuthorityError> {
-    self.remote_authority_mgr.defer_send(authority, message)
+    self.remote_authority_registry.defer_send(authority, message)
   }
 
   /// Attempts to defer a message, returning an error if the authority is quarantined.
@@ -966,14 +966,14 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     authority: impl Into<String>,
     message: AnyMessageGeneric<TB>,
   ) -> Result<(), RemoteAuthorityError> {
-    self.remote_authority_mgr.try_defer_send(authority, message)
+    self.remote_authority_registry.try_defer_send(authority, message)
   }
 
   /// Polls all authorities for expired quarantine windows and emits events for lifted entries.
   pub fn poll_remote_authorities(&mut self) {
     let now_secs = self.monotonic_now().as_secs();
     self.actor_path_registry.poll_expired(now_secs);
-    let lifted = self.remote_authority_mgr.poll_quarantine_expiration(now_secs);
+    let lifted = self.remote_authority_registry.poll_quarantine_expiration(now_secs);
     for authority in lifted {
       self.publish_remote_authority_event(authority.clone(), AuthorityState::Unresolved);
     }
@@ -982,13 +982,13 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   /// Returns the number of messages deferred for the provided authority.
   #[must_use]
   pub fn remote_authority_deferred_count(&self, authority: &str) -> usize {
-    self.remote_authority_mgr.deferred_count(authority)
+    self.remote_authority_registry.deferred_count(authority)
   }
 }
 
 impl<TB: RuntimeToolbox + 'static> Drop for SystemStateGeneric<TB> {
   fn drop(&mut self) {
-    self.tick_driver_runtime.shutdown();
+    self.tick_driver_bundle.shutdown();
   }
 }
 
