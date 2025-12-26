@@ -11,7 +11,7 @@
 
 > See [README.ja.md](README.ja.md) for the Japanese edition.
 
-fraktor-rs is an actor runtime that mirrors Akka/Pekko and protoactor-go semantics across `no_std` boards and host environments such as Tokio. The workspace ships five crates—`fraktor-utils-rs`, `fraktor-actor-rs`, `fraktor-remote-rs`, `fraktor-cluster-rs`, and `fraktor-streams-rs`—each exposing `core` (#![no_std]) and `std` modules behind features instead of maintaining legacy `*-core` / `*-std` sibling crates.
+fraktor-rs is an actor runtime that mirrors [Pekko](https://github.com/apache/pekko) and [protoactor-go](https://github.com/asynkron/protoactor-go) semantics across `no_std` boards and host environments such as Tokio. The workspace ships five crates—`fraktor-utils-rs`, `fraktor-actor-rs`, `fraktor-remote-rs`, `fraktor-cluster-rs`, and `fraktor-streams-rs`—each exposing `core` (#![no_std]) and `std` modules behind features instead of maintaining legacy `*-core` / `*-std` sibling crates.
 
 ## Key Capabilities
 - **Lifecycle-first ActorSystem** – `modules/actor/src/core/lifecycle/*` and `system/*` prioritize `SystemMessage::{Create,Recreate,Failure}` in the system mailbox, combine deterministic SupervisorStrategy flows, and surface DeathWatch decisions immediately through the guardian hierarchy.
