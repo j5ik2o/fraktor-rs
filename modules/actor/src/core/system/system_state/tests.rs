@@ -574,7 +574,7 @@ fn watch_on_missing_guardian_sends_terminated_to_watcher() {
   let target_pid = state.allocate_pid();
 
   let noop_dispatcher = DispatcherConfig::from_executor(Box::new(NoopExecutor));
-  let props = Props::from_fn(|| RestartProbeActor).with_dispatcher(noop_dispatcher);
+  let props = Props::from_fn(|| RestartProbeActor).with_dispatcher_config(noop_dispatcher);
   let watcher_cell =
     ActorCell::create(state.clone(), watcher_pid, None, "watcher".to_string(), &props).expect("watcher cell");
   state.register_cell(watcher_cell);
@@ -597,7 +597,7 @@ fn remote_watch_hook_consumes_watch_skips_fallback() {
   let target_pid = state.allocate_pid();
 
   let noop_dispatcher = DispatcherConfig::from_executor(Box::new(NoopExecutor));
-  let props = Props::from_fn(|| RestartProbeActor).with_dispatcher(noop_dispatcher);
+  let props = Props::from_fn(|| RestartProbeActor).with_dispatcher_config(noop_dispatcher);
   let watcher_cell =
     ActorCell::create(state.clone(), watcher_pid, None, "watcher".to_string(), &props).expect("watcher cell");
   state.register_cell(watcher_cell);
@@ -622,7 +622,7 @@ fn remote_watch_hook_non_consuming_watch_runs_fallback() {
   let target_pid = state.allocate_pid();
 
   let noop_dispatcher = DispatcherConfig::from_executor(Box::new(NoopExecutor));
-  let props = Props::from_fn(|| RestartProbeActor).with_dispatcher(noop_dispatcher);
+  let props = Props::from_fn(|| RestartProbeActor).with_dispatcher_config(noop_dispatcher);
   let watcher_cell =
     ActorCell::create(state.clone(), watcher_pid, None, "watcher".to_string(), &props).expect("watcher cell");
   state.register_cell(watcher_cell);
@@ -668,7 +668,7 @@ fn remote_watch_hook_replaces_previous_registration() {
   let target_pid = state.allocate_pid();
 
   let noop_dispatcher = DispatcherConfig::from_executor(Box::new(NoopExecutor));
-  let props = Props::from_fn(|| RestartProbeActor).with_dispatcher(noop_dispatcher);
+  let props = Props::from_fn(|| RestartProbeActor).with_dispatcher_config(noop_dispatcher);
   let watcher_cell =
     ActorCell::create(state.clone(), watcher_pid, None, "watcher".to_string(), &props).expect("watcher cell");
   state.register_cell(watcher_cell);

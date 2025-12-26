@@ -582,8 +582,8 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   }
 
   fn ensure_mailbox_requirements(props: &PropsGeneric<TB>) -> Result<(), SpawnError> {
-    let requirement = props.mailbox().requirement();
-    let registry = props.mailbox().capabilities();
+    let requirement = props.mailbox_config().requirement();
+    let registry = props.mailbox_config().capabilities();
     requirement.ensure_supported(&registry).map_err(|error| {
       let reason = Self::missing_capability_reason(error.missing());
       SpawnError::invalid_props(reason)
@@ -603,17 +603,17 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     if let Some(dispatcher_id) = resolved.dispatcher_id() {
       let config =
         self.state.resolve_dispatcher(dispatcher_id).map_err(|error| SpawnError::invalid_props(error.to_string()))?;
-      resolved = resolved.with_resolved_dispatcher(config);
+      resolved = resolved.with_resolved_dispatcher_config(config);
     } else if !resolved.has_custom_dispatcher() {
       // If no dispatcher_id is specified, use the system's default dispatcher
       if let Ok(default_config) = self.state.resolve_dispatcher("default") {
-        resolved = resolved.with_resolved_dispatcher(default_config);
+        resolved = resolved.with_resolved_dispatcher_config(default_config);
       }
     }
     if let Some(mailbox_id) = resolved.mailbox_id() {
       let config =
         self.state.resolve_mailbox(mailbox_id).map_err(|error| SpawnError::invalid_props(error.to_string()))?;
-      resolved = resolved.with_resolved_mailbox(config);
+      resolved = resolved.with_resolved_mailbox_config(config);
     }
     Ok(resolved)
   }

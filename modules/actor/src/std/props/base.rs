@@ -57,7 +57,7 @@ impl Props {
   /// Returns the mailbox configuration.
   #[must_use]
   pub const fn mailbox(&self) -> &MailboxConfig {
-    self.inner.mailbox()
+    self.inner.mailbox_config()
   }
 
   /// Returns the mailbox policy.
@@ -75,13 +75,13 @@ impl Props {
   /// Returns the configured dispatcher settings.
   #[must_use]
   pub fn dispatcher(&self) -> DispatcherConfig {
-    DispatcherConfig::from_core(self.inner.dispatcher().clone())
+    DispatcherConfig::from_core(self.inner.dispatcher_config().clone())
   }
 
   /// Updates the mailbox configuration.
   #[must_use]
   pub fn with_mailbox(mut self, config: MailboxConfig) -> Self {
-    self.inner = self.inner.with_mailbox(config);
+    self.inner = self.inner.with_mailbox_config(config);
     self
   }
 
@@ -105,7 +105,7 @@ impl Props {
   /// Overrides the dispatcher configuration used when constructing actors.
   #[must_use]
   pub fn with_dispatcher(mut self, dispatcher: DispatcherConfig) -> Self {
-    self.inner = self.inner.with_dispatcher(dispatcher.into_core());
+    self.inner = self.inner.with_dispatcher_config(dispatcher.into_core());
     self
   }
 

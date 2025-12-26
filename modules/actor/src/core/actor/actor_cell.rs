@@ -107,7 +107,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
   ) -> Result<ArcShared<Self>, SpawnError> {
     let mailbox = ArcShared::new(MailboxGeneric::new(props.mailbox_policy()));
     {
-      let mailbox_config = props.mailbox();
+      let mailbox_config = props.mailbox_config();
       let policy = mailbox_config.policy();
       let capacity = match policy.capacity() {
         | MailboxCapacity::Bounded { capacity } => Some(capacity.get()),
@@ -119,7 +119,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
         MailboxInstrumentationGeneric::new(system.clone(), pid, capacity, throughput, warn_threshold);
       mailbox.set_instrumentation(instrumentation);
     }
-    let dispatcher = props.dispatcher().build_dispatcher(mailbox.clone())?;
+    let dispatcher = props.dispatcher_config().build_dispatcher(mailbox.clone())?;
     mailbox.attach_backpressure_publisher(BackpressurePublisherGeneric::from_dispatcher(dispatcher.clone()));
     let sender = dispatcher.into_sender();
     let factory = props.factory().clone();

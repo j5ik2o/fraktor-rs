@@ -357,7 +357,7 @@ fn spawn_child_fails_when_deque_requirement_missing() {
   let capabilities = QueueCapabilityRegistry::new(QueueCapabilitySet::defaults().with_deque(false));
   let mailbox =
     MailboxConfig::default().with_capabilities(capabilities).with_requirement(MailboxRequirement::for_stash());
-  let props = Props::from_fn(|| TestActor).with_mailbox(mailbox);
+  let props = Props::from_fn(|| TestActor).with_mailbox_config(mailbox);
 
   let result = system.spawn_child(parent_pid, &props);
   assert!(matches!(result, Err(crate::core::spawn::SpawnError::InvalidProps(_))));
@@ -373,7 +373,7 @@ fn spawn_child_succeeds_when_requirements_met() {
   system.state().register_cell(parent_cell);
 
   let mailbox = MailboxConfig::default().with_requirement(MailboxRequirement::for_stash());
-  let props = Props::from_fn(|| TestActor).with_mailbox(mailbox);
+  let props = Props::from_fn(|| TestActor).with_mailbox_config(mailbox);
 
   assert!(system.spawn_child(parent_pid, &props).is_ok());
 }
@@ -502,7 +502,7 @@ fn create_send_failure_triggers_rollback() {
 fn spawn_returns_child_ref_even_if_dispatcher_is_idle() {
   let system = ActorSystem::new_empty();
   let props =
-    Props::from_fn(|| TestActor).with_dispatcher(DispatcherConfig::from_executor(Box::new(NoopExecutor::new())));
+    Props::from_fn(|| TestActor).with_dispatcher_config(DispatcherConfig::from_executor(Box::new(NoopExecutor::new())));
   let result = system.spawn_with_parent(None, &props);
 
   assert!(result.is_ok());
