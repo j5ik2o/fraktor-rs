@@ -8,7 +8,7 @@ use super::actor_selection_error::ActorSelectionError;
 use crate::core::{
   actor::actor_path::{ActorPath, ActorPathError, PathResolutionError, PathSegment},
   messaging::AnyMessageGeneric,
-  system::{AuthorityState, RemoteAuthorityManagerGeneric},
+  system::{AuthorityState, RemoteAuthorityRegistryGeneric},
 };
 
 /// Resolves relative actor selection expressions against a base path.
@@ -63,18 +63,18 @@ impl ActorSelectionResolver {
   /// [`PathResolutionError::AuthorityQuarantined`] is returned immediately.
   pub fn ensure_authority_state<TB: RuntimeToolbox + 'static>(
     path: &ActorPath,
-    authority_manager: &mut RemoteAuthorityManagerGeneric<TB>,
+    authority_registry: &mut RemoteAuthorityRegistryGeneric<TB>,
     message: Option<AnyMessageGeneric<TB>>,
   ) -> Result<(), PathResolutionError> {
     let Some(authority) = path.parts().authority() else {
       return Ok(());
     };
     let endpoint = authority.endpoint();
-    match authority_manager.state(&endpoint) {
+    match authority_registry.state(&endpoint) {
       | AuthorityState::Connected => Ok(()),
       | AuthorityState::Unresolved => {
         if let Some(envelope) = message {
-          authority_manager
+          authority_registry
             .defer_send(endpoint.clone(), envelope)
             .map_err(|_| PathResolutionError::AuthorityQuarantined)?;
         }
@@ -93,11 +93,11 @@ impl ActorSelectionResolver {
   pub fn resolve_relative_with_authority<TB: RuntimeToolbox + 'static>(
     base: &ActorPath,
     selection: &str,
-    authority_manager: &mut RemoteAuthorityManagerGeneric<TB>,
+    authority_registry: &mut RemoteAuthorityRegistryGeneric<TB>,
     message: Option<AnyMessageGeneric<TB>>,
   ) -> Result<ActorPath, ActorSelectionError> {
     let resolved = Self::resolve_relative(base, selection)?;
-    Self::ensure_authority_state(&resolved, authority_manager, message).map_err(ActorSelectionError::from)?;
+    Self::ensure_authority_state(&resolved, authority_registry, message).map_err(ActorSelectionError::from)?;
     Ok(resolved)
   }
 }

@@ -27,14 +27,14 @@ struct StdMetricsOptions {
   interval:     Duration,
 }
 
-/// Factory producing Tokio interval-based drivers.
-pub(crate) struct TokioIntervalDriverFactory {
+/// Factory producing Tokio interval-based tickers.
+pub(crate) struct TokioIntervalTickerFactory {
   handle:     Handle,
   resolution: Duration,
   metrics:    Option<StdMetricsOptions>,
 }
 
-impl TokioIntervalDriverFactory {
+impl TokioIntervalTickerFactory {
   pub(crate) const fn new(handle: Handle, resolution: Duration) -> Self {
     Self { handle, resolution, metrics: None }
   }
@@ -45,7 +45,7 @@ impl TokioIntervalDriverFactory {
   }
 }
 
-impl TickDriverFactory<StdToolbox> for TokioIntervalDriverFactory {
+impl TickDriverFactory<StdToolbox> for TokioIntervalTickerFactory {
   fn kind(&self) -> TickDriverKind {
     TickDriverKind::Auto
   }
@@ -55,7 +55,7 @@ impl TickDriverFactory<StdToolbox> for TokioIntervalDriverFactory {
   }
 
   fn build(&self) -> Result<Box<dyn TickDriver<StdToolbox>>, TickDriverError> {
-    Ok(Box::new(TokioIntervalDriver {
+    Ok(Box::new(TokioIntervalTicker {
       id:         next_tick_driver_id(),
       handle:     self.handle.clone(),
       resolution: self.resolution,
@@ -64,14 +64,14 @@ impl TickDriverFactory<StdToolbox> for TokioIntervalDriverFactory {
   }
 }
 
-struct TokioIntervalDriver {
+struct TokioIntervalTicker {
   id:         TickDriverId,
   handle:     Handle,
   resolution: Duration,
   metrics:    Option<StdMetricsOptions>,
 }
 
-impl TickDriver<StdToolbox> for TokioIntervalDriver {
+impl TickDriver<StdToolbox> for TokioIntervalTicker {
   fn id(&self) -> TickDriverId {
     self.id
   }
@@ -109,24 +109,24 @@ impl TickDriver<StdToolbox> for TokioIntervalDriver {
         options.interval,
       )
     });
-    let control: Box<dyn TickDriverControl> = Box::new(TokioIntervalDriverControl::new(join, metrics));
+    let control: Box<dyn TickDriverControl> = Box::new(TokioIntervalTickerControl::new(join, metrics));
     let control = ArcShared::new(<StdMutexFamily as SyncMutexFamily>::create(control));
     Ok(TickDriverHandleGeneric::new(self.id, self.kind(), self.resolution, control))
   }
 }
 
-struct TokioIntervalDriverControl {
+struct TokioIntervalTickerControl {
   join:    Option<JoinHandle<()>>,
   metrics: Option<StdTickMetricsEmitter>,
 }
 
-impl TokioIntervalDriverControl {
+impl TokioIntervalTickerControl {
   const fn new(join: JoinHandle<()>, metrics: Option<StdTickMetricsEmitter>) -> Self {
     Self { join: Some(join), metrics }
   }
 }
 
-impl TickDriverControl for TokioIntervalDriverControl {
+impl TickDriverControl for TokioIntervalTickerControl {
   fn shutdown(&self) {
     if let Some(handle) = &self.join {
       handle.abort();

@@ -78,7 +78,7 @@ where
       reader: <TB::MutexFamily as SyncMutexFamily>::create(None),
       transport_ref: <TB::MutexFamily as SyncMutexFamily>::create(None),
       #[cfg(feature = "tokio-transport")]
-      endpoint_driver: <TB::MutexFamily as SyncMutexFamily>::create(None),
+      endpoint_bridge: <TB::MutexFamily as SyncMutexFamily>::create(None),
     };
     Self { inner: ArcShared::new(inner) }
   }
@@ -238,7 +238,8 @@ where
   reader:          ToolboxMutex<Option<ArcShared<EndpointReaderGeneric<TB>>>, TB>,
   transport_ref:   ToolboxMutex<Option<RemoteTransportShared<TB>>, TB>,
   #[cfg(feature = "tokio-transport")]
-  endpoint_driver: ToolboxMutex<Option<crate::std::runtime::endpoint_driver::EndpointDriverHandle>, TB>,
+  endpoint_bridge:
+    ToolboxMutex<Option<crate::std::runtime::endpoint_transport_bridge::EndpointTransportBridgeHandle>, TB>,
 }
 
 impl<TB> RemotingControlInner<TB>
@@ -269,8 +270,8 @@ where
       if !self.state.lock().is_running() {
         return Ok(());
       }
-      let mut driver_guard = self.endpoint_driver.lock();
-      if driver_guard.is_some() {
+      let mut bridge_guard = self.endpoint_bridge.lock();
+      if bridge_guard.is_some() {
         return Ok(());
       }
       let Some(transport) = self.transport_ref.lock().clone() else {
@@ -292,7 +293,7 @@ where
         .canonical_port
         .ok_or_else(|| RemotingError::TransportUnavailable("canonical port not configured".into()))?;
       let system_name = system.state().system_name();
-      let config = crate::std::runtime::endpoint_driver::EndpointDriverConfig {
+      let config = crate::std::runtime::endpoint_transport_bridge::EndpointTransportBridgeConfig {
         system: system.downgrade(),
         writer,
         reader,
@@ -302,9 +303,9 @@ where
         canonical_port: port,
         system_name,
       };
-      let handle = crate::std::runtime::endpoint_driver::EndpointDriver::spawn(config)
+      let handle = crate::std::runtime::endpoint_transport_bridge::EndpointTransportBridge::spawn(config)
         .map_err(|error| RemotingError::TransportUnavailable(format!("{error:?}")))?;
-      *driver_guard = Some(handle);
+      *bridge_guard = Some(handle);
     }
     Ok(())
   }

@@ -1,4 +1,4 @@
-//! Gossip convergence engine coordinating membership dissemination.
+//! Gossip dissemination coordinator for membership convergence.
 
 use alloc::{
   collections::{BTreeMap, BTreeSet},
@@ -15,7 +15,7 @@ use crate::core::{
 mod tests;
 
 /// Drives gossip diffusion, reconciliation and confirmation.
-pub struct GossipEngine {
+pub struct GossipDisseminationCoordinator {
   table:            MembershipTable,
   peers:            Vec<String>,
   peer_versions:    BTreeMap<String, MembershipVersion>,
@@ -25,7 +25,7 @@ pub struct GossipEngine {
   events:           Vec<GossipEvent>,
 }
 
-impl GossipEngine {
+impl GossipDisseminationCoordinator {
   /// Creates a new engine with known peers.
   #[must_use]
   pub fn new(table: MembershipTable, peers: Vec<String>) -> Self {

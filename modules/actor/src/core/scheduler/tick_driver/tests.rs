@@ -120,7 +120,7 @@ fn spawn_test_handler() -> (TestPulseHandlerState, TestPulseHandle) {
 
 fn hardware_test_config(handler: TestPulseHandlerState, pulse_resolution: Duration) -> TickDriverConfig<NoStdToolbox> {
   TickDriverConfig::new(move |ctx| {
-    use super::{HardwareKind, HardwareTickDriver, TickDriver, TickDriverRuntime, TickExecutorSignal, TickFeed};
+    use super::{HardwareKind, HardwareTickDriver, TickDriver, TickDriverBundle, TickExecutorSignal, TickFeed};
 
     let scheduler = ctx.scheduler();
     let (resolution, capacity) = scheduler.with_read(|s| {
@@ -134,7 +134,7 @@ fn hardware_test_config(handler: TestPulseHandlerState, pulse_resolution: Durati
     let feed = TickFeed::new(resolution, capacity, signal);
     let handle = driver.start(feed.clone())?;
 
-    Ok(TickDriverRuntime::new(handle, feed))
+    Ok(TickDriverBundle::new(handle, feed))
   })
 }
 

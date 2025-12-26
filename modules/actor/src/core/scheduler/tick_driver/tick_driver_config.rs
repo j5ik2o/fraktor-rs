@@ -9,18 +9,18 @@ use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 #[cfg(any(test, feature = "test-support"))]
 use super::ManualTestDriver;
-use super::{TickDriverError, TickDriverRuntime};
+use super::{TickDriverBundle, TickDriverError};
 use crate::core::scheduler::TickDriverProvisioningContext;
 
 /// Type alias for tick driver builder function.
 type TickDriverBuilderFn<TB> =
-  Box<dyn Fn(&TickDriverProvisioningContext<TB>) -> Result<TickDriverRuntime<TB>, TickDriverError> + Send + Sync>;
+  Box<dyn Fn(&TickDriverProvisioningContext<TB>) -> Result<TickDriverBundle<TB>, TickDriverError> + Send + Sync>;
 
 /// Configuration for tick driver creation.
 pub enum TickDriverConfig<TB: RuntimeToolbox> {
   /// Builder function-based configuration (standard approach).
   Builder {
-    /// Builder function that creates a complete tick driver runtime.
+    /// Builder function that creates a complete tick driver bundle.
     builder: TickDriverBuilderFn<TB>,
   },
   /// Manual test driver (test-only).
@@ -32,11 +32,11 @@ impl<TB: RuntimeToolbox> TickDriverConfig<TB> {
   /// Creates a tick driver configuration with a user-provided builder function.
   ///
   /// The builder function receives the provisioning context and must return a complete
-  /// `TickDriverRuntime` that includes both the tick driver and scheduler executor.
+  /// `TickDriverBundle` that includes both the tick driver and scheduler executor.
   #[must_use]
   pub fn new<F>(builder: F) -> Self
   where
-    F: Fn(&TickDriverProvisioningContext<TB>) -> Result<TickDriverRuntime<TB>, TickDriverError> + Send + Sync + 'static,
+    F: Fn(&TickDriverProvisioningContext<TB>) -> Result<TickDriverBundle<TB>, TickDriverError> + Send + Sync + 'static,
   {
     Self::Builder { builder: Box::new(builder) }
   }

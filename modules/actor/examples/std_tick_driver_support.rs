@@ -15,8 +15,8 @@ use std::{
 };
 
 use fraktor_actor_rs::core::scheduler::{
-  HardwareKind, HardwareTickDriver, SchedulerSharedGeneric, SchedulerTickExecutor, TickDriver, TickDriverConfig,
-  TickDriverError, TickDriverRuntime, TickExecutorSignal, TickFeed, TickFeedHandle, TickPulseHandler, TickPulseSource,
+  HardwareKind, HardwareTickDriver, SchedulerSharedGeneric, SchedulerTickExecutor, TickDriver, TickDriverBundle,
+  TickDriverConfig, TickDriverError, TickExecutorSignal, TickFeed, TickFeedHandle, TickPulseHandler, TickPulseSource,
 };
 use fraktor_utils_rs::{core::sync::SharedAccess, std::runtime_toolbox::StdToolbox};
 
@@ -69,7 +69,7 @@ pub fn hardware_tick_driver_config_with_handle(handle: DemoPulseHandle) -> TickD
     let pump = StdTickDriverPump::spawn(handle.clone(), scheduler, feed.clone());
 
     // Create runtime with shutdown callback
-    let runtime = TickDriverRuntime::new(driver_handle, feed).with_executor_shutdown(move || {
+    let runtime = TickDriverBundle::new(driver_handle, feed).with_executor_shutdown(move || {
       drop(pump); // Drop will call stop()
     });
 

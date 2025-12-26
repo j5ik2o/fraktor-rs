@@ -13,7 +13,7 @@ use fraktor_utils_rs::core::{
 };
 
 use super::{
-  BackpressurePublisherGeneric, MailboxOfferFutureGeneric, MailboxPollFutureGeneric, MailboxStateEngine,
+  BackpressurePublisherGeneric, MailboxOfferFutureGeneric, MailboxPollFutureGeneric, MailboxScheduleState,
   QueueStateHandle, ScheduleHints, SystemQueue, mailbox_enqueue_outcome::EnqueueOutcome,
   mailbox_instrumentation::MailboxInstrumentationGeneric, mailbox_message::MailboxMessage, map_user_queue_error,
 };
@@ -31,7 +31,7 @@ pub struct MailboxGeneric<TB: RuntimeToolbox + 'static> {
   policy:          MailboxPolicy,
   system:          SystemQueue,
   user:            QueueStateHandle<AnyMessageGeneric<TB>, TB>,
-  state:           MailboxStateEngine,
+  state:           MailboxScheduleState,
   instrumentation: ToolboxMutex<Option<MailboxInstrumentationGeneric<TB>>, TB>,
 }
 
@@ -50,7 +50,7 @@ where
       policy,
       system: SystemQueue::new(),
       user: user_handles,
-      state: MailboxStateEngine::new(),
+      state: MailboxScheduleState::new(),
       instrumentation: <TB::MutexFamily as SyncMutexFamily>::create(None),
     }
   }

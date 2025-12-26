@@ -31,7 +31,7 @@ mod tests;
 /// The core implementation is no_std compatible using `RuntimeToolbox` for
 /// synchronization primitives.
 ///
-/// Phase2 features like seed_nodes for GossipEngine initialization and
+/// Phase2 features like seed_nodes for GossipDisseminationCoordinator initialization and
 /// startup/shutdown events are fully supported.
 ///
 /// Task 4.5: Transport `RemotingLifecycleEvent::Connected` and `Quarantined`
@@ -46,7 +46,7 @@ pub struct LocalClusterProvider<TB: RuntimeToolbox + 'static> {
   version:             u64,
   // 静的トポロジ（設定されている場合、start時に publish）
   static_topology:     Option<ClusterTopology>,
-  // GossipEngine 用の seed ノードリスト（Phase2）
+  // GossipDisseminationCoordinator 用の seed ノードリスト（Phase2）
   seed_nodes:          Vec<String>,
   // 起動モード（Member/Client）を追跡
   startup_mode:        Option<StartupMode>,
@@ -81,10 +81,10 @@ impl<TB: RuntimeToolbox + 'static> LocalClusterProvider<TB> {
     self
   }
 
-  /// Sets the seed nodes for GossipEngine initialization.
+  /// Sets the seed nodes for GossipDisseminationCoordinator initialization.
   ///
   /// These nodes will be used as initial peers when the provider starts.
-  /// In Phase2, this enables GossipEngine to establish connections with known peers.
+  /// In Phase2, this enables GossipDisseminationCoordinator to establish connections with known peers.
   #[must_use]
   pub fn with_seed_nodes(mut self, seeds: Vec<String>) -> Self {
     self.seed_nodes = seeds;

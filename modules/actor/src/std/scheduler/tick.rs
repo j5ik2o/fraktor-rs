@@ -18,7 +18,7 @@ use crate::{
     event::stream::EventStreamSharedGeneric,
     scheduler::{TickDriverConfig as CoreTickDriverConfig, TickDriverFactoryRef},
   },
-  std::scheduler::tick::tokio_impl::TokioIntervalDriverFactory,
+  std::scheduler::tick::tokio_impl::TokioIntervalTickerFactory,
 };
 
 mod tokio_impl;
@@ -64,8 +64,8 @@ impl TickDriverConfig {
     use tokio::time::{MissedTickBehavior, interval};
 
     use crate::core::scheduler::{
-      AutoDriverMetadata, AutoProfileKind, SchedulerSharedGeneric, SchedulerTickExecutor, TickDriverControl,
-      TickDriverHandleGeneric, TickDriverKind, TickDriverRuntime, TickExecutorSignal, TickFeed, next_tick_driver_id,
+      AutoDriverMetadata, AutoProfileKind, SchedulerSharedGeneric, SchedulerTickExecutor, TickDriverBundle,
+      TickDriverControl, TickDriverHandleGeneric, TickDriverKind, TickExecutorSignal, TickFeed, next_tick_driver_id,
     };
 
     CoreTickDriverConfig::new(move |ctx| {
@@ -122,14 +122,14 @@ impl TickDriverConfig {
       let metadata = AutoDriverMetadata { profile: AutoProfileKind::Tokio, driver_id, resolution };
 
       // Create runtime
-      Ok(TickDriverRuntime::new(driver_handle, feed).with_auto_metadata(metadata))
+      Ok(TickDriverBundle::new(driver_handle, feed).with_auto_metadata(metadata))
     })
   }
 
   /// Builds a factory using the provided Tokio runtime handle.
   #[must_use]
   pub fn tokio_with_handle(handle: Handle, resolution: Duration) -> TickDriverFactoryRef<StdToolbox> {
-    ArcShared::new(TokioIntervalDriverFactory::new(handle, resolution))
+    ArcShared::new(TokioIntervalTickerFactory::new(handle, resolution))
   }
 
   /// Creates a Tokio quickstart configuration with event stream metrics publishing.
@@ -150,7 +150,7 @@ impl TickDriverConfig {
 
     use crate::core::scheduler::{
       AutoDriverMetadata, AutoProfileKind, SchedulerSharedGeneric, SchedulerTickExecutor, SchedulerTickMetricsProbe,
-      TickDriverControl, TickDriverHandleGeneric, TickDriverKind, TickDriverRuntime, TickExecutorSignal, TickFeed,
+      TickDriverBundle, TickDriverControl, TickDriverHandleGeneric, TickDriverKind, TickExecutorSignal, TickFeed,
       next_tick_driver_id,
     };
 
@@ -234,7 +234,7 @@ impl TickDriverConfig {
         TickDriverHandleGeneric::<StdToolbox>::new(driver_id, TickDriverKind::Auto, resolution, control);
       let metadata = AutoDriverMetadata { profile: AutoProfileKind::Tokio, driver_id, resolution };
 
-      Ok(TickDriverRuntime::new(driver_handle, feed).with_auto_metadata(metadata))
+      Ok(TickDriverBundle::new(driver_handle, feed).with_auto_metadata(metadata))
     })
   }
 
@@ -246,6 +246,6 @@ impl TickDriverConfig {
     event_stream: EventStreamSharedGeneric<StdToolbox>,
     interval: Duration,
   ) -> TickDriverFactoryRef<StdToolbox> {
-    ArcShared::new(TokioIntervalDriverFactory::new(handle, resolution).with_metrics(event_stream, interval))
+    ArcShared::new(TokioIntervalTickerFactory::new(handle, resolution).with_metrics(event_stream, interval))
   }
 }

@@ -8,7 +8,7 @@ use fraktor_actor_rs::core::{
     actor_selection::{ActorSelectionError, ActorSelectionResolver},
   },
   messaging::AnyMessage,
-  system::{ActorSystemConfigGeneric, AuthorityState, RemoteAuthorityManager, RemotingConfig},
+  system::{ActorSystemConfigGeneric, AuthorityState, RemoteAuthorityRegistry, RemotingConfig},
 };
 use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 
@@ -56,7 +56,7 @@ fn test_e2e_format_parse_round_trip_with_uid() {
 #[test]
 fn test_e2e_authority_unresolved_deferred_connected_delivery() {
   // Authority 未解決 → 接続のシナリオ
-  let mut manager = RemoteAuthorityManager::new();
+  let mut manager = RemoteAuthorityRegistry::new();
   let authority = "e2e-host:2552";
 
   // 未解決状態でメッセージを defer
@@ -75,7 +75,7 @@ fn test_e2e_authority_unresolved_deferred_connected_delivery() {
 #[test]
 fn test_e2e_authority_quarantine_invalid_association() {
   // Quarantine シナリオ: InvalidAssociation の挙動
-  let mut manager = RemoteAuthorityManager::new();
+  let mut manager = RemoteAuthorityRegistry::new();
   let authority = "quarantine-host:2552";
 
   // 初期メッセージを defer
@@ -107,7 +107,7 @@ fn test_e2e_actor_selection_with_relative_paths() {
 #[test]
 fn test_e2e_actor_selection_remote_authority_state_sequence() {
   let base = ActorPath::from_parts(ActorPathParts::with_authority("cluster", Some(("remote-node", 2552))));
-  let mut manager = RemoteAuthorityManager::new();
+  let mut manager = RemoteAuthorityRegistry::new();
 
   // 未解決時は defer + AuthorityUnresolved
   let result = ActorSelectionResolver::resolve_relative_with_authority(

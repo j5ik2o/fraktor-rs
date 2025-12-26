@@ -1,4 +1,4 @@
-//! Commands accepted by the endpoint manager FSM.
+//! Commands accepted by the endpoint association FSM.
 
 use alloc::string::String;
 
@@ -7,9 +7,9 @@ use crate::core::{
   transport::TransportEndpoint,
 };
 
-/// Commands accepted by the endpoint manager FSM.
+/// Commands accepted by the endpoint association FSM.
 #[derive(Debug, PartialEq, Eq)]
-pub enum EndpointManagerCommand {
+pub enum EndpointAssociationCommand {
   /// Registers a listener for the provided authority.
   RegisterInbound {
     /// Authority identifier for the newly registered listener.

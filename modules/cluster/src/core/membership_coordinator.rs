@@ -14,16 +14,16 @@ use fraktor_remote_rs::core::{PhiFailureDetector, PhiFailureDetectorEffect};
 use fraktor_utils_rs::core::time::TimerInstant;
 
 use crate::core::{
-  ClusterEvent, ClusterTopology, GossipEngine, MembershipCoordinatorConfig, MembershipCoordinatorError,
-  MembershipCoordinatorOutcome, MembershipCoordinatorState, MembershipDelta, MembershipError, MembershipSnapshot,
-  MembershipTable, NodeStatus, QuarantineEntry, QuarantineTable, TopologyUpdate,
+  ClusterEvent, ClusterTopology, GossipDisseminationCoordinator, MembershipCoordinatorConfig,
+  MembershipCoordinatorError, MembershipCoordinatorOutcome, MembershipCoordinatorState, MembershipDelta,
+  MembershipError, MembershipSnapshot, MembershipTable, NodeStatus, QuarantineEntry, QuarantineTable, TopologyUpdate,
 };
 
 /// Membership/Gossip coordinator (no_std).
 pub struct MembershipCoordinatorGeneric<TB: fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox + 'static> {
   config:                MembershipCoordinatorConfig,
   state:                 MembershipCoordinatorState,
-  gossip:                GossipEngine,
+  gossip:                GossipDisseminationCoordinator,
   detector:              PhiFailureDetector,
   quarantine:            QuarantineTable,
   topology_accumulator:  TopologyAccumulator,
@@ -39,7 +39,7 @@ impl<TB: fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox + 'static> Memb
     Self {
       config,
       state: MembershipCoordinatorState::Stopped,
-      gossip: GossipEngine::new(table, Vec::new()),
+      gossip: GossipDisseminationCoordinator::new(table, Vec::new()),
       detector,
       quarantine: QuarantineTable::new(),
       topology_accumulator: TopologyAccumulator::new(),

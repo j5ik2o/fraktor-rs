@@ -1,4 +1,4 @@
-//! Tick driver runtime unit tests.
+//! Tick driver bundle unit tests.
 
 use alloc::boxed::Box;
 use core::{
@@ -12,7 +12,7 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::core::scheduler::{
-  TickDriverControl, TickDriverHandleGeneric, TickDriverId, TickDriverKind, TickDriverRuntime, TickExecutorSignal,
+  TickDriverBundle, TickDriverControl, TickDriverHandleGeneric, TickDriverId, TickDriverKind, TickExecutorSignal,
   TickFeed,
 };
 
@@ -29,14 +29,14 @@ impl TickDriverControl for RecordingControl {
 fn runtime_with_executor_shutdown(
   executor_calls: ArcShared<AtomicUsize>,
   driver_calls: ArcShared<AtomicUsize>,
-) -> TickDriverRuntime<NoStdToolbox> {
+) -> TickDriverBundle<NoStdToolbox> {
   let control: Box<dyn TickDriverControl> = Box::new(RecordingControl { shutdown_calls: driver_calls });
   let control = ArcShared::new(<<NoStdToolbox as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(control));
   let handle =
     TickDriverHandleGeneric::new(TickDriverId::new(1), TickDriverKind::Auto, Duration::from_millis(1), control);
   let feed = TickFeed::<NoStdToolbox>::new(Duration::from_millis(1), 1, TickExecutorSignal::new());
 
-  TickDriverRuntime::new(handle, feed).with_executor_shutdown(move || {
+  TickDriverBundle::new(handle, feed).with_executor_shutdown(move || {
     executor_calls.fetch_add(1, Ordering::SeqCst);
   })
 }

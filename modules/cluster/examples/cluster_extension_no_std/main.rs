@@ -17,7 +17,7 @@
 //! # Phase1 (静的トポロジ)
 //!
 //! `StaticClusterProvider` に静的トポロジを設定し、`start_member()` 時に publish します。
-//! no_std 環境では GossipEngine を使用せず、静的トポロジのみで動作します。
+//! no_std 環境では GossipDisseminationCoordinator を使用せず、静的トポロジのみで動作します。
 //!
 //! # Provider 差し替え方法
 //!

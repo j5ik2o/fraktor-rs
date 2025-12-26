@@ -1,8 +1,8 @@
 use core::sync::atomic::Ordering;
 
-use super::{MailboxStateEngine, ScheduleHints};
+use super::{MailboxScheduleState, ScheduleHints};
 
-impl MailboxStateEngine {
+impl MailboxScheduleState {
   fn raw_state_for_test(&self) -> u32 {
     self.state.load(Ordering::Acquire)
   }
@@ -10,7 +10,7 @@ impl MailboxStateEngine {
 
 #[test]
 fn request_schedule_only_triggers_once_until_idle() {
-  let engine = MailboxStateEngine::new();
+  let engine = MailboxScheduleState::new();
   assert_eq!(engine.raw_state_for_test(), 0);
   let hints = ScheduleHints { has_system_messages: true, has_user_messages: false, backpressure_active: false };
 
@@ -28,7 +28,7 @@ fn request_schedule_only_triggers_once_until_idle() {
 
 #[test]
 fn suspend_and_resume_control_user_messages() {
-  let engine = MailboxStateEngine::new();
+  let engine = MailboxScheduleState::new();
   assert!(!engine.is_suspended());
   engine.suspend();
   assert!(engine.is_suspended());
@@ -38,7 +38,7 @@ fn suspend_and_resume_control_user_messages() {
 
 #[test]
 fn backpressure_hint_requests_schedule_when_not_suspended() {
-  let engine = MailboxStateEngine::new();
+  let engine = MailboxScheduleState::new();
   assert!(!engine.is_suspended());
   let hints = ScheduleHints { has_system_messages: false, has_user_messages: false, backpressure_active: true };
 
@@ -55,7 +55,7 @@ fn backpressure_hint_requests_schedule_when_not_suspended() {
 
 #[test]
 fn backpressure_hint_is_ignored_while_suspended() {
-  let engine = MailboxStateEngine::new();
+  let engine = MailboxScheduleState::new();
   let hints = ScheduleHints { has_system_messages: false, has_user_messages: false, backpressure_active: true };
 
   engine.suspend();

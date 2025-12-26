@@ -13,20 +13,20 @@ const FLAG_CLOSED: u32 = 1 << 2;
 const SUSPEND_SHIFT: u32 = 3;
 const SUSPEND_MASK: u32 = !((1 << SUSPEND_SHIFT) - 1);
 
-/// Mailbox-internal state machine that tracks scheduling, running, and suspension.
-pub struct MailboxStateEngine {
+/// Mailbox-internal schedule state tracking scheduling, running, and suspension.
+pub struct MailboxScheduleState {
   state:           AtomicU32,
   need_reschedule: AtomicBool,
 }
 
-impl Default for MailboxStateEngine {
+impl Default for MailboxScheduleState {
   fn default() -> Self {
     Self::new()
   }
 }
 
-impl MailboxStateEngine {
-  /// Creates a fresh state engine in the idle state.
+impl MailboxScheduleState {
+  /// Creates a fresh schedule state in the idle state.
   #[must_use]
   pub const fn new() -> Self {
     Self { state: AtomicU32::new(0), need_reschedule: AtomicBool::new(false) }

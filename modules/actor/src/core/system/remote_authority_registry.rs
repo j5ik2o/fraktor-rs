@@ -32,17 +32,17 @@ impl<TB: RuntimeToolbox + 'static> AuthorityEntry<TB> {
   }
 }
 
-/// Manages remote authority state transitions and deferred message queues.
-pub struct RemoteAuthorityManagerGeneric<TB: RuntimeToolbox + 'static> {
+/// Tracks remote authority state transitions and deferred message queues.
+pub struct RemoteAuthorityRegistryGeneric<TB: RuntimeToolbox + 'static> {
   entries: HashMap<String, AuthorityEntry<TB>, RandomState>,
   _marker: PhantomData<TB>,
 }
 
 /// Type alias using the default toolbox.
-pub type RemoteAuthorityManager = RemoteAuthorityManagerGeneric<NoStdToolbox>;
+pub type RemoteAuthorityRegistry = RemoteAuthorityRegistryGeneric<NoStdToolbox>;
 
-impl<TB: RuntimeToolbox + 'static> RemoteAuthorityManagerGeneric<TB> {
-  /// Creates a new manager with no authorities.
+impl<TB: RuntimeToolbox + 'static> RemoteAuthorityRegistryGeneric<TB> {
+  /// Creates a new registry with no authorities.
   #[must_use]
   pub fn new() -> Self {
     Self { entries: HashMap::with_hasher(RandomState::new()), _marker: PhantomData }
@@ -158,7 +158,7 @@ impl<TB: RuntimeToolbox + 'static> RemoteAuthorityManagerGeneric<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Default for RemoteAuthorityManagerGeneric<TB> {
+impl<TB: RuntimeToolbox + 'static> Default for RemoteAuthorityRegistryGeneric<TB> {
   fn default() -> Self {
     Self::new()
   }

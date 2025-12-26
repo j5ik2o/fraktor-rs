@@ -316,10 +316,10 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     self.state.scheduler()
   }
 
-  /// Returns the tick driver runtime when initialized.
+  /// Returns the tick driver bundle when initialized.
   #[must_use]
-  pub fn tick_driver_runtime(&self) -> crate::core::scheduler::TickDriverRuntime<TB> {
-    self.state.tick_driver_runtime()
+  pub fn tick_driver_bundle(&self) -> crate::core::scheduler::TickDriverBundle<TB> {
+    self.state.tick_driver_bundle()
   }
 
   /// Returns the last reported tick driver snapshot.

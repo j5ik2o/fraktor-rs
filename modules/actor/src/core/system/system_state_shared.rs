@@ -39,7 +39,7 @@ use crate::core::{
   futures::ActorFutureSharedGeneric,
   messaging::{AnyMessageGeneric, AskResult, FailurePayload, SystemMessage},
   props::MailboxConfig,
-  scheduler::{SchedulerBackedDelayProvider, SchedulerSharedGeneric, TaskRunSummary, TickDriverRuntime},
+  scheduler::{SchedulerBackedDelayProvider, SchedulerSharedGeneric, TaskRunSummary, TickDriverBundle},
   spawn::SpawnError,
   supervision::SupervisorDirective,
   system::{ActorSystemBuildError, RegisterExtensionError, RegisterExtraTopLevelError},
@@ -63,7 +63,7 @@ pub struct SystemStateSharedGeneric<TB: RuntimeToolbox + 'static> {
   remote_watch_hook:   RemoteWatchHookDynSharedGeneric<TB>,
   scheduler:           SchedulerSharedGeneric<TB>,
   delay_provider:      SchedulerBackedDelayProvider<TB>,
-  tick_driver_rt:      TickDriverRuntime<TB>,
+  tick_driver_bundle:  TickDriverBundle<TB>,
 }
 
 impl<TB: RuntimeToolbox + 'static> Clone for SystemStateSharedGeneric<TB> {
@@ -82,7 +82,7 @@ impl<TB: RuntimeToolbox + 'static> Clone for SystemStateSharedGeneric<TB> {
       remote_watch_hook:   self.remote_watch_hook.clone(),
       scheduler:           self.scheduler.clone(),
       delay_provider:      self.delay_provider.clone(),
-      tick_driver_rt:      self.tick_driver_rt.clone(),
+      tick_driver_bundle:  self.tick_driver_bundle.clone(),
     }
   }
 }
@@ -103,7 +103,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
     let remote_watch_hook = state.remote_watch_hook_handle();
     let scheduler = state.scheduler();
     let delay_provider = state.delay_provider();
-    let tick_driver_rt = state.tick_driver_runtime();
+    let tick_driver_bundle = state.tick_driver_bundle();
     let inner = ArcShared::new(<TB::RwLockFamily as SyncRwLockFamily>::create(state));
     Self {
       inner,
@@ -119,7 +119,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
       remote_watch_hook,
       scheduler,
       delay_provider,
-      tick_driver_rt,
+      tick_driver_bundle,
     }
   }
 
@@ -139,7 +139,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
     let remote_watch_hook = guard.remote_watch_hook_handle();
     let scheduler = guard.scheduler();
     let delay_provider = guard.delay_provider();
-    let tick_driver_rt = guard.tick_driver_runtime();
+    let tick_driver_bundle = guard.tick_driver_bundle();
     drop(guard);
     Self {
       inner,
@@ -155,7 +155,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
       remote_watch_hook,
       scheduler,
       delay_provider,
-      tick_driver_rt,
+      tick_driver_bundle,
     }
   }
 
@@ -784,10 +784,10 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
     self.delay_provider.clone()
   }
 
-  /// Returns the tick driver runtime.
+  /// Returns the tick driver bundle.
   #[must_use]
-  pub fn tick_driver_runtime(&self) -> TickDriverRuntime<TB> {
-    self.tick_driver_rt.clone()
+  pub fn tick_driver_bundle(&self) -> TickDriverBundle<TB> {
+    self.tick_driver_bundle.clone()
   }
 
   /// Returns the last recorded tick driver snapshot when available.

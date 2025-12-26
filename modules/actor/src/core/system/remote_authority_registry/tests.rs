@@ -2,18 +2,18 @@ use core::time::Duration;
 
 use crate::core::{
   messaging::AnyMessage,
-  system::remote_authority::{AuthorityState, RemoteAuthorityError, RemoteAuthorityManager},
+  system::remote_authority_registry::{AuthorityState, RemoteAuthorityError, RemoteAuthorityRegistry},
 };
 
 #[test]
 fn test_initial_state_is_unresolved() {
-  let manager = RemoteAuthorityManager::new();
+  let manager = RemoteAuthorityRegistry::new();
   assert_eq!(manager.state("remote1"), AuthorityState::Unresolved);
 }
 
 #[test]
 fn test_defer_send_stores_message() {
-  let mut manager = RemoteAuthorityManager::new();
+  let mut manager = RemoteAuthorityRegistry::new();
   let message = AnyMessage::new(42i32);
 
   manager.defer_send("remote1", message).expect("defer");
@@ -24,7 +24,7 @@ fn test_defer_send_stores_message() {
 
 #[test]
 fn test_set_connected_returns_deferred_messages() {
-  let mut manager = RemoteAuthorityManager::new();
+  let mut manager = RemoteAuthorityRegistry::new();
   let msg1 = AnyMessage::new(1i32);
   let msg2 = AnyMessage::new(2i32);
 
@@ -40,7 +40,7 @@ fn test_set_connected_returns_deferred_messages() {
 
 #[test]
 fn test_transition_unresolved_to_connected() {
-  let mut manager = RemoteAuthorityManager::new();
+  let mut manager = RemoteAuthorityRegistry::new();
   manager.defer_send("remote1", AnyMessage::new(42i32)).expect("defer");
 
   assert_eq!(manager.state("remote1"), AuthorityState::Unresolved);
@@ -51,7 +51,7 @@ fn test_transition_unresolved_to_connected() {
 
 #[test]
 fn test_transition_to_quarantine_clears_deferred() {
-  let mut manager = RemoteAuthorityManager::new();
+  let mut manager = RemoteAuthorityRegistry::new();
   manager.defer_send("remote1", AnyMessage::new(1i32)).expect("defer");
   manager.defer_send("remote1", AnyMessage::new(2i32)).expect("defer");
 
@@ -65,7 +65,7 @@ fn test_transition_to_quarantine_clears_deferred() {
 
 #[test]
 fn test_lift_quarantine_returns_to_unresolved() {
-  let mut manager = RemoteAuthorityManager::new();
+  let mut manager = RemoteAuthorityRegistry::new();
   manager.set_quarantine("remote1", 0, Some(Duration::from_secs(300)));
 
   assert!(matches!(manager.state("remote1"), AuthorityState::Quarantine { .. }));
@@ -76,7 +76,7 @@ fn test_lift_quarantine_returns_to_unresolved() {
 
 #[test]
 fn test_defer_after_quarantine_is_rejected() {
-  let mut manager = RemoteAuthorityManager::new();
+  let mut manager = RemoteAuthorityRegistry::new();
   manager.set_quarantine("remote1", 0, Some(Duration::from_secs(300)));
 
   // quarantine 状態でも defer_send は呼べるが、状態がQuarantineのままであることを確認
@@ -87,7 +87,7 @@ fn test_defer_after_quarantine_is_rejected() {
 
 #[test]
 fn test_connected_to_unresolved_transition() {
-  let mut manager = RemoteAuthorityManager::new();
+  let mut manager = RemoteAuthorityRegistry::new();
   manager.defer_send("remote1", AnyMessage::new(1i32)).expect("defer");
   manager.set_connected("remote1");
 
@@ -103,7 +103,7 @@ fn test_connected_to_unresolved_transition() {
 #[test]
 fn test_quarantine_rejects_new_sends() {
   // 隔離中の authority への新規送信が拒否されることを確認
-  let mut manager = RemoteAuthorityManager::new();
+  let mut manager = RemoteAuthorityRegistry::new();
   manager.set_quarantine("remote1", 0, Some(Duration::from_secs(300)));
 
   // 隔離中は新規メッセージを受け付けない（defer_sendは呼べるが実装で拒否される想定）
@@ -115,7 +115,7 @@ fn test_quarantine_rejects_new_sends() {
 #[test]
 fn test_quarantine_duration_calculation() {
   // 隔離期間が正しく計算されることを確認
-  let mut manager = RemoteAuthorityManager::new();
+  let mut manager = RemoteAuthorityRegistry::new();
   let quarantine_duration = Duration::from_secs(600);
   manager.set_quarantine("remote1", 0, Some(quarantine_duration));
 
@@ -131,7 +131,7 @@ fn test_quarantine_duration_calculation() {
 #[test]
 fn test_quarantine_period_expiration() {
   // 隔離期間経過後、自動的に Unresolved へ戻ることを確認
-  let mut manager = RemoteAuthorityManager::new();
+  let mut manager = RemoteAuthorityRegistry::new();
   let short_duration = Duration::from_millis(1);
   manager.set_quarantine("remote1", 0, Some(short_duration));
 
@@ -147,7 +147,7 @@ fn test_quarantine_period_expiration() {
 #[test]
 fn test_invalid_association_on_quarantine() {
   // InvalidAssociation を受信したとき、quarantine へ遷移することを確認
-  let mut manager = RemoteAuthorityManager::new();
+  let mut manager = RemoteAuthorityRegistry::new();
   manager.defer_send("remote1", AnyMessage::new(1i32)).expect("defer");
   manager.set_connected("remote1");
 
@@ -162,7 +162,7 @@ fn test_invalid_association_on_quarantine() {
 #[test]
 fn test_manual_quarantine_override() {
   // 手動解除により即座に Connected へ遷移できることを確認
-  let mut manager = RemoteAuthorityManager::new();
+  let mut manager = RemoteAuthorityRegistry::new();
   manager.set_quarantine("remote1", 0, Some(Duration::from_secs(3600)));
 
   // 手動で解除して接続状態へ
@@ -175,7 +175,7 @@ fn test_manual_quarantine_override() {
 #[test]
 fn test_state_transitions_observable() {
   // 各状態遷移が発生することを確認
-  let mut manager = RemoteAuthorityManager::new();
+  let mut manager = RemoteAuthorityRegistry::new();
 
   // 初期: Unresolved
   assert_eq!(manager.state("observable-host"), AuthorityState::Unresolved);
@@ -201,7 +201,7 @@ fn test_state_transitions_observable() {
 #[test]
 fn test_remoting_config_override_applied() {
   // RemotingConfig からの隔離期間設定が適用されることを確認
-  let mut manager = RemoteAuthorityManager::new();
+  let mut manager = RemoteAuthorityRegistry::new();
   let custom_duration = Duration::from_secs(1800); // カスタム 30 分
 
   manager.set_quarantine("config-host", 0, Some(custom_duration));
@@ -217,7 +217,7 @@ fn test_remoting_config_override_applied() {
 #[test]
 fn test_multiple_authorities_independent_states() {
   // 複数の authority が独立した状態を持つことを確認
-  let mut manager = RemoteAuthorityManager::new();
+  let mut manager = RemoteAuthorityRegistry::new();
 
   manager.defer_send("host1", AnyMessage::new(1i32)).expect("defer");
   manager.defer_send("host2", AnyMessage::new(2i32)).expect("defer");
