@@ -56,3 +56,7 @@ extern crate alloc;
 
 /// Core stream primitives.
 pub mod core;
+/// Standard library implementation.
+#[allow(cfg_std_forbid)]
+#[cfg(feature = "std")]
+pub mod std;
