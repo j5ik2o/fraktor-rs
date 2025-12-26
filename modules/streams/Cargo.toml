@@ -25,6 +25,6 @@ portable-atomic = { workspace = true, default-features = false, features = ["cri
 fraktor-actor-rs = { workspace = true, features = ["test-support"] }
 
 [[example]]
-name = "actor_system_basic"
-path = "examples/actor_system_basic.rs"
+name = "actor_system_basic_std"
+path = "examples/actor_system_basic_std/main.rs"
 required-features = ["std"]

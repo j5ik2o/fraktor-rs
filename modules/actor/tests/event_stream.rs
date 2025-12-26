@@ -81,7 +81,7 @@ fn dead_letter_event_is_published_when_send_fails() {
   let mailbox_policy =
     MailboxPolicy::bounded(NonZeroUsize::new(1).expect("non-zero"), MailboxOverflowStrategy::DropNewest, None);
   let mailbox_config = MailboxConfig::new(mailbox_policy);
-  let child_props = Props::from_fn(|| NullActor).with_mailbox(mailbox_config);
+  let child_props = Props::from_fn(|| NullActor).with_mailbox_config(mailbox_config);
 
   let props = Props::from_fn({
     let child_slot = child_slot.clone();

@@ -29,8 +29,8 @@ impl ActorSystemConfig {
 
   /// Sets the default guardian segment (`/system` or `/user`).
   #[must_use]
-  pub fn with_default_guardian(mut self, guardian: GuardianKind) -> Self {
-    self.inner = self.inner.with_default_guardian(guardian);
+  pub fn with_default_guardian_kind(mut self, guardian_kind: GuardianKind) -> Self {
+    self.inner = self.inner.with_default_guardian(guardian_kind);
     self
   }
 
@@ -50,7 +50,7 @@ impl ActorSystemConfig {
 
   /// Sets the tick driver configuration.
   #[must_use]
-  pub fn with_tick_driver(mut self, config: TickDriverConfig<StdToolbox>) -> Self {
+  pub fn with_tick_driver_config(mut self, config: TickDriverConfig<StdToolbox>) -> Self {
     self.inner = self.inner.with_tick_driver(config);
     self
   }
@@ -73,7 +73,7 @@ impl ActorSystemConfig {
 
   /// Sets the default dispatcher configuration used when Props don't specify a dispatcher.
   #[must_use]
-  pub fn with_default_dispatcher(mut self, config: DispatcherConfig) -> Self {
+  pub fn with_default_dispatcher_config(mut self, config: DispatcherConfig) -> Self {
     self.inner = self.inner.with_default_dispatcher(config.into_core());
     self
   }
@@ -86,7 +86,7 @@ impl ActorSystemConfig {
 
   /// Returns the default guardian kind.
   #[must_use]
-  pub const fn default_guardian(&self) -> GuardianKind {
+  pub const fn default_guardian_kind(&self) -> GuardianKind {
     self.inner.default_guardian()
   }
 

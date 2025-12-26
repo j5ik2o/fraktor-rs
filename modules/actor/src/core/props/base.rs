@@ -18,10 +18,10 @@ use crate::core::{
 pub struct PropsGeneric<TB: RuntimeToolbox + 'static> {
   factory:           ActorFactorySharedGeneric<TB>,
   name:              Option<String>,
-  mailbox:           MailboxConfig,
+  mailbox_config:    MailboxConfig,
   mailbox_id:        Option<String>,
   middleware:        Vec<String>,
-  dispatcher:        DispatcherConfigGeneric<TB>,
+  dispatcher_config: DispatcherConfigGeneric<TB>,
   dispatcher_id:     Option<String>,
   dispatcher_custom: bool,
 }
@@ -36,10 +36,10 @@ impl<TB: RuntimeToolbox + 'static> PropsGeneric<TB> {
     Self {
       factory:           ActorFactorySharedGeneric::new(factory),
       name:              None,
-      mailbox:           MailboxConfig::default(),
+      mailbox_config:    MailboxConfig::default(),
       mailbox_id:        None,
       middleware:        Vec::new(),
-      dispatcher:        DispatcherConfigGeneric::default(),
+      dispatcher_config: DispatcherConfigGeneric::default(),
       dispatcher_id:     None,
       dispatcher_custom: false,
     }
@@ -68,8 +68,8 @@ impl<TB: RuntimeToolbox + 'static> PropsGeneric<TB> {
 
   /// Returns the mailbox configuration.
   #[must_use]
-  pub const fn mailbox(&self) -> &MailboxConfig {
-    &self.mailbox
+  pub const fn mailbox_config(&self) -> &MailboxConfig {
+    &self.mailbox_config
   }
 
   /// Returns the configured mailbox identifier, if any.
@@ -81,13 +81,13 @@ impl<TB: RuntimeToolbox + 'static> PropsGeneric<TB> {
   /// Returns the mailbox policy.
   #[must_use]
   pub const fn mailbox_policy(&self) -> MailboxPolicy {
-    self.mailbox.policy()
+    self.mailbox_config.policy()
   }
 
   /// Returns the mailbox requirements.
   #[must_use]
   pub const fn mailbox_requirement(&self) -> MailboxRequirement {
-    self.mailbox.requirement()
+    self.mailbox_config.requirement()
   }
 
   /// Returns the registered middleware identifiers.
@@ -99,8 +99,8 @@ impl<TB: RuntimeToolbox + 'static> PropsGeneric<TB> {
 
   /// Returns the configured dispatcher settings.
   #[must_use]
-  pub const fn dispatcher(&self) -> &DispatcherConfigGeneric<TB> {
-    &self.dispatcher
+  pub const fn dispatcher_config(&self) -> &DispatcherConfigGeneric<TB> {
+    &self.dispatcher_config
   }
 
   pub(crate) const fn has_custom_dispatcher(&self) -> bool {
@@ -115,8 +115,8 @@ impl<TB: RuntimeToolbox + 'static> PropsGeneric<TB> {
 
   /// Updates the mailbox configuration.
   #[must_use]
-  pub fn with_mailbox(mut self, config: MailboxConfig) -> Self {
-    self.mailbox = config;
+  pub fn with_mailbox_config(mut self, mailbox_config: MailboxConfig) -> Self {
+    self.mailbox_config = mailbox_config;
     self.mailbox_id = None;
     self
   }
@@ -140,8 +140,8 @@ impl<TB: RuntimeToolbox + 'static> PropsGeneric<TB> {
 
   /// Overrides the dispatcher configuration used when constructing actors.
   #[must_use]
-  pub fn with_dispatcher(mut self, dispatcher: DispatcherConfigGeneric<TB>) -> Self {
-    self.dispatcher = dispatcher;
+  pub fn with_dispatcher_config(mut self, dispatcher_config: DispatcherConfigGeneric<TB>) -> Self {
+    self.dispatcher_config = dispatcher_config;
     self.dispatcher_id = None;
     self.dispatcher_custom = true;
     self
@@ -157,8 +157,8 @@ impl<TB: RuntimeToolbox + 'static> PropsGeneric<TB> {
 
   /// Overrides the mailbox requirements while preserving existing policy/configuration.
   #[must_use]
-  pub const fn with_mailbox_requirement(mut self, requirement: MailboxRequirement) -> Self {
-    self.mailbox = self.mailbox.with_requirement(requirement);
+  pub const fn with_mailbox_requirement(mut self, mailbox_requirement: MailboxRequirement) -> Self {
+    self.mailbox_config = self.mailbox_config.with_requirement(mailbox_requirement);
     self
   }
 
@@ -171,21 +171,21 @@ impl<TB: RuntimeToolbox + 'static> PropsGeneric<TB> {
 
   /// Overrides the mailbox capability registry (testing helper).
   #[must_use]
-  pub fn with_mailbox_capabilities(mut self, registry: QueueCapabilityRegistry) -> Self {
-    self.mailbox = self.mailbox.with_capabilities(registry);
+  pub fn with_mailbox_capabilities(mut self, queue_capability_registry: QueueCapabilityRegistry) -> Self {
+    self.mailbox_config = self.mailbox_config.with_capabilities(queue_capability_registry);
     self.mailbox_id = None;
     self
   }
 
-  pub(crate) fn with_resolved_dispatcher(mut self, dispatcher: DispatcherConfigGeneric<TB>) -> Self {
-    self.dispatcher = dispatcher;
+  pub(crate) fn with_resolved_dispatcher_config(mut self, dispatcher_config: DispatcherConfigGeneric<TB>) -> Self {
+    self.dispatcher_config = dispatcher_config;
     self.dispatcher_id = None;
     self.dispatcher_custom = true;
     self
   }
 
-  pub(crate) fn with_resolved_mailbox(mut self, mailbox: MailboxConfig) -> Self {
-    self.mailbox = mailbox;
+  pub(crate) fn with_resolved_mailbox_config(mut self, mailbox_config: MailboxConfig) -> Self {
+    self.mailbox_config = mailbox_config;
     self.mailbox_id = None;
     self
   }
@@ -196,10 +196,10 @@ impl<TB: RuntimeToolbox + 'static> Clone for PropsGeneric<TB> {
     Self {
       factory:           self.factory.clone(),
       name:              self.name.clone(),
-      mailbox:           self.mailbox,
+      mailbox_config:    self.mailbox_config,
       mailbox_id:        self.mailbox_id.clone(),
       middleware:        self.middleware.clone(),
-      dispatcher:        self.dispatcher.clone(),
+      dispatcher_config: self.dispatcher_config.clone(),
       dispatcher_id:     self.dispatcher_id.clone(),
       dispatcher_custom: self.dispatcher_custom,
     }

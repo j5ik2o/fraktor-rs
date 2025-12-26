@@ -1,40 +1,42 @@
+//! Basic stream example driven by an actor system.
+
 use std::time::Duration;
 
-use fraktor_actor_rs::core::{
-  actor::{Actor, ActorContextGeneric},
-  error::ActorError,
-  messaging::AnyMessageViewGeneric,
-  props::PropsGeneric,
-  scheduler::{ManualTestDriver, SchedulerConfig, TickDriverConfig},
-  system::{ActorSystemConfigGeneric, ActorSystemGeneric},
+use fraktor_actor_rs::{
+  core::{
+    error::ActorError,
+    scheduler::{ManualTestDriver, SchedulerConfig, TickDriverConfig},
+  },
+  std::{
+    actor::{Actor, ActorContext},
+    messaging::AnyMessageView,
+    props::Props,
+    system::{ActorSystem, ActorSystemConfig},
+  },
 };
-use fraktor_streams_rs::core::{
-  ActorMaterializerConfig, ActorMaterializerGeneric, Completion, KeepRight, Sink, Source,
+use fraktor_streams_rs::{
+  core::{ActorMaterializerConfig, Completion, KeepRight, Sink, Source},
+  std::ActorMaterializer,
 };
-use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
 struct GuardianActor;
 
-impl Actor<StdToolbox> for GuardianActor {
-  fn receive(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, StdToolbox>,
-    _message: AnyMessageViewGeneric<'_, StdToolbox>,
-  ) -> Result<(), ActorError> {
+impl Actor for GuardianActor {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_, '_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 }
 
 fn main() {
-  let props = PropsGeneric::from_fn(|| GuardianActor);
-  let driver = ManualTestDriver::<StdToolbox>::new();
+  let props = Props::from_fn(|| GuardianActor);
+  let driver = ManualTestDriver::new();
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
   let tick_driver = TickDriverConfig::manual(driver.clone());
-  let config = ActorSystemConfigGeneric::default().with_scheduler_config(scheduler).with_tick_driver(tick_driver);
-  let system = ActorSystemGeneric::new_with_config(&props, &config).expect("actor system");
+  let config = ActorSystemConfig::default().with_scheduler_config(scheduler).with_tick_driver_config(tick_driver);
+  let system = ActorSystem::new_with_config(&props, &config).expect("actor system");
 
-  let mut materializer = ActorMaterializerGeneric::new(
-    system,
+  let mut materializer = ActorMaterializer::new(
+    system.into_core(),
     ActorMaterializerConfig::default().with_drive_interval(Duration::from_millis(1)),
   );
   materializer.start().expect("materializer start");

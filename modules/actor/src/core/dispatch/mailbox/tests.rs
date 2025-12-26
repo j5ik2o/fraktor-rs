@@ -49,7 +49,7 @@ fn mailbox_metrics_and_warnings_are_emitted() {
   let capacity = NonZeroUsize::new(2).unwrap();
   let mailbox_config = MailboxConfig::new(MailboxPolicy::bounded(capacity, MailboxOverflowStrategy::DropNewest, None))
     .with_warn_threshold(Some(warn_threshold));
-  let props = Props::from_fn(|| PassiveActor).with_mailbox(mailbox_config);
+  let props = Props::from_fn(|| PassiveActor).with_mailbox_config(mailbox_config);
   let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 
