@@ -238,8 +238,7 @@ where
   reader:          ToolboxMutex<Option<ArcShared<EndpointReaderGeneric<TB>>>, TB>,
   transport_ref:   ToolboxMutex<Option<RemoteTransportShared<TB>>, TB>,
   #[cfg(feature = "tokio-transport")]
-  endpoint_bridge:
-    ToolboxMutex<Option<crate::std::runtime::endpoint_transport_bridge::EndpointTransportBridgeHandle>, TB>,
+  endpoint_bridge: ToolboxMutex<Option<crate::std::endpoint_transport_bridge::EndpointTransportBridgeHandle>, TB>,
 }
 
 impl<TB> RemotingControlInner<TB>
@@ -293,7 +292,7 @@ where
         .canonical_port
         .ok_or_else(|| RemotingError::TransportUnavailable("canonical port not configured".into()))?;
       let system_name = system.state().system_name();
-      let config = crate::std::runtime::endpoint_transport_bridge::EndpointTransportBridgeConfig {
+      let config = crate::std::endpoint_transport_bridge::EndpointTransportBridgeConfig {
         system: system.downgrade(),
         writer,
         reader,
@@ -303,7 +302,7 @@ where
         canonical_port: port,
         system_name,
       };
-      let handle = crate::std::runtime::endpoint_transport_bridge::EndpointTransportBridge::spawn(config)
+      let handle = crate::std::endpoint_transport_bridge::EndpointTransportBridge::spawn(config)
         .map_err(|error| RemotingError::TransportUnavailable(format!("{error:?}")))?;
       *bridge_guard = Some(handle);
     }

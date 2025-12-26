@@ -1,4 +1,4 @@
-//! Serialization setup utilities for remoting examples and testing.
+//! Loopback serialization setup for remoting examples and testing.
 
 use alloc::string::String;
 

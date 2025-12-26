@@ -26,6 +26,7 @@ mod inbound_envelope;
 mod loopback_actor_ref_provider;
 mod loopback_actor_ref_provider_installer;
 mod loopback_router;
+mod loopback_serialization_setup;
 mod outbound_message;
 mod outbound_priority;
 mod quarantine_reason;
@@ -47,7 +48,6 @@ mod remoting_extension_config;
 mod remoting_extension_id;
 #[cfg(feature = "std")]
 mod remoting_extension_installer;
-mod serialization_utils;
 mod tokio_actor_ref_provider;
 mod tokio_actor_ref_provider_installer;
 pub mod transport;
@@ -77,6 +77,7 @@ pub use handshake_kind::HandshakeKind;
 pub use inbound_envelope::InboundEnvelope;
 pub use loopback_actor_ref_provider::{LoopbackActorRefProvider, LoopbackActorRefProviderGeneric};
 pub use loopback_actor_ref_provider_installer::LoopbackActorRefProviderInstaller;
+pub use loopback_serialization_setup::default_loopback_setup;
 pub use outbound_message::OutboundMessage;
 pub use outbound_priority::OutboundPriority;
 pub use quarantine_reason::QuarantineReason;
@@ -97,7 +98,6 @@ pub use remoting_extension_config::RemotingExtensionConfig;
 pub use remoting_extension_id::RemotingExtensionId;
 #[cfg(feature = "std")]
 pub use remoting_extension_installer::RemotingExtensionInstaller;
-pub use serialization_utils::default_loopback_setup;
 pub use tokio_actor_ref_provider::{TokioActorRefProvider, TokioActorRefProviderGeneric};
 pub use tokio_actor_ref_provider_installer::TokioActorRefProviderInstaller;
 pub use transport::{

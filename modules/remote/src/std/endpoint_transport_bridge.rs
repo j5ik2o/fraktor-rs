@@ -1,4 +1,4 @@
-//! Tokio-based transport bridge that connects EndpointWriter/Reader with transports.
+//! Tokio transport bridge that connects EndpointWriter/Reader with transports.
 
 use alloc::{
   boxed::Box,
