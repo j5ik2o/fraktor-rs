@@ -217,8 +217,8 @@ fn build_cluster_node(
   let remoting_config = RemotingExtensionConfig::default().with_transport_scheme("fraktor.tcp");
   let system_config = ActorSystemConfig::default()
     .with_system_name(CLUSTER_SYSTEM_NAME.to_string())
-    .with_tick_driver(TickDriverConfig::tokio_quickstart())
-    .with_default_dispatcher(default_dispatcher)
+    .with_tick_driver_config(TickDriverConfig::tokio_quickstart())
+    .with_default_dispatcher_config(default_dispatcher)
     .with_actor_ref_provider_installer(TokioActorRefProviderInstaller::from_config(TokioTransportConfig::default()))
     .with_remoting_config(RemotingConfig::default().with_canonical_host(HOST).with_canonical_port(port))
     .with_extension_installers(
