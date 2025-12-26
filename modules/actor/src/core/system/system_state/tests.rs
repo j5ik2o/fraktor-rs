@@ -106,13 +106,13 @@ fn system_state_drop_shuts_down_executor_once() {
     let resolution = Duration::from_millis(1);
     let handle = TickDriverHandleGeneric::new(TickDriverId::new(1), TickDriverKind::Auto, resolution, control);
     let feed = TickFeed::<NoStdToolbox>::new(resolution, 1, TickExecutorSignal::new());
-    let runtime = TickDriverBundle::new(handle, feed).with_executor_shutdown({
+    let bundle = TickDriverBundle::new(handle, feed).with_executor_shutdown({
       let executor_calls = executor_calls_for_builder.clone();
       move || {
         executor_calls.fetch_add(1, Ordering::SeqCst);
       }
     });
-    Ok::<_, TickDriverError>(runtime)
+    Ok::<_, TickDriverError>(bundle)
   });
 
   let config = ActorSystemConfig::default().with_tick_driver(tick_driver);

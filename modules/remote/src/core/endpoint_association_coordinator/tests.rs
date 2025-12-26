@@ -69,19 +69,19 @@ impl LoopbackPair {
     }
   }
 
-  fn authority_for_manager_a(&self) -> String {
+  fn authority_for_coordinator_a(&self) -> String {
     self.authority_b.clone()
   }
 
-  fn authority_for_manager_b(&self) -> String {
+  fn authority_for_coordinator_b(&self) -> String {
     self.authority_a.clone()
   }
 
-  fn endpoint_to_manager_a(&self) -> TransportEndpoint {
+  fn endpoint_to_coordinator_a(&self) -> TransportEndpoint {
     TransportEndpoint::new(self.authority_a.clone())
   }
 
-  fn endpoint_to_manager_b(&self) -> TransportEndpoint {
+  fn endpoint_to_coordinator_b(&self) -> TransportEndpoint {
     TransportEndpoint::new(self.authority_b.clone())
   }
 }
@@ -285,39 +285,41 @@ fn recover_from_quarantine_restarts_handshake() {
 #[test]
 fn loopback_pair_association_flushes_deferred_and_emits_connected_events() {
   let loopback = LoopbackPair::new();
-  let mut manager_a = coordinator();
-  let mut manager_b = coordinator();
-  let authority_for_a = loopback.authority_for_manager_a();
-  let authority_for_b = loopback.authority_for_manager_b();
+  let mut coordinator_a = coordinator();
+  let mut coordinator_b = coordinator();
+  let authority_for_a = loopback.authority_for_coordinator_a();
+  let authority_for_b = loopback.authority_for_coordinator_b();
 
-  manager_a.handle(EndpointAssociationCommand::RegisterInbound { authority: authority_for_a.clone(), now: 1 });
-  manager_b.handle(EndpointAssociationCommand::RegisterInbound { authority: authority_for_b.clone(), now: 1 });
+  coordinator_a
+    .handle(EndpointAssociationCommand::RegisterInbound { authority: authority_for_a.clone(), now: 1 });
+  coordinator_b
+    .handle(EndpointAssociationCommand::RegisterInbound { authority: authority_for_b.clone(), now: 1 });
 
-  manager_a.handle(EndpointAssociationCommand::EnqueueDeferred {
+  coordinator_a.handle(EndpointAssociationCommand::EnqueueDeferred {
     authority: authority_for_a.clone(),
     envelope:  Box::new(envelope("a->b")),
   });
-  manager_b.handle(EndpointAssociationCommand::EnqueueDeferred {
+  coordinator_b.handle(EndpointAssociationCommand::EnqueueDeferred {
     authority: authority_for_b.clone(),
     envelope:  Box::new(envelope("b->a")),
   });
 
-  let handshake_a = manager_a.handle(EndpointAssociationCommand::Associate {
+  let handshake_a = coordinator_a.handle(EndpointAssociationCommand::Associate {
     authority: authority_for_a.clone(),
-    endpoint:  loopback.endpoint_to_manager_b(),
+    endpoint:  loopback.endpoint_to_coordinator_b(),
     now:       2,
   });
   assert!(matches!(handshake_a.effects.as_slice(), [EndpointAssociationEffect::StartHandshake { .. }]));
 
-  let handshake_b = manager_b.handle(EndpointAssociationCommand::Associate {
+  let handshake_b = coordinator_b.handle(EndpointAssociationCommand::Associate {
     authority: authority_for_b.clone(),
-    endpoint:  loopback.endpoint_to_manager_a(),
+    endpoint:  loopback.endpoint_to_coordinator_a(),
     now:       2,
   });
   assert!(matches!(handshake_b.effects.as_slice(), [EndpointAssociationEffect::StartHandshake { .. }]));
 
   let node_b = RemoteNodeId::new("system-b", "loopback-b.local", Some(4200), 99);
-  let result_a = manager_a.handle(EndpointAssociationCommand::HandshakeAccepted {
+  let result_a = coordinator_a.handle(EndpointAssociationCommand::HandshakeAccepted {
     authority:   authority_for_a.clone(),
     remote_node: node_b,
     now:         3,
@@ -338,7 +340,7 @@ fn loopback_pair_association_flushes_deferred_and_emits_connected_events() {
   }
 
   let node_a = RemoteNodeId::new("system-a", "loopback-a.local", Some(4100), 11);
-  let result_b = manager_b.handle(EndpointAssociationCommand::HandshakeAccepted {
+  let result_b = coordinator_b.handle(EndpointAssociationCommand::HandshakeAccepted {
     authority:   authority_for_b.clone(),
     remote_node: node_a,
     now:         3,
@@ -363,7 +365,7 @@ fn loopback_pair_association_flushes_deferred_and_emits_connected_events() {
 fn loopback_quarantine_manual_override_flow_emits_events() {
   let loopback = LoopbackPair::new();
   let mut mgr = coordinator();
-  let authority = loopback.authority_for_manager_a();
+  let authority = loopback.authority_for_coordinator_a();
   mgr.handle(EndpointAssociationCommand::RegisterInbound { authority: authority.clone(), now: 1 });
   mgr.handle(EndpointAssociationCommand::EnqueueDeferred {
     authority: authority.clone(),
@@ -403,7 +405,7 @@ fn loopback_quarantine_manual_override_flow_emits_events() {
 
   let recover = mgr.handle(EndpointAssociationCommand::Recover {
     authority: authority.clone(),
-    endpoint:  Some(loopback.endpoint_to_manager_b()),
+    endpoint:  Some(loopback.endpoint_to_coordinator_b()),
     now:       3,
   });
   assert!(matches!(recover.effects.as_slice(), [EndpointAssociationEffect::StartHandshake { .. }]));
@@ -432,7 +434,7 @@ fn loopback_quarantine_manual_override_flow_emits_events() {
 fn suspect_notification_via_gate_emits_lifecycle_event() {
   let loopback = LoopbackPair::new();
   let mut mgr = coordinator();
-  let authority = loopback.authority_for_manager_a();
+  let authority = loopback.authority_for_coordinator_a();
   mgr.handle(EndpointAssociationCommand::RegisterInbound { authority: authority.clone(), now: 1 });
 
   let gate =

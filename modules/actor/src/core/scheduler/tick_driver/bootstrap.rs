@@ -46,13 +46,13 @@ impl TickDriverBootstrap {
           let scheduler = ctx.scheduler();
           scheduler.with_read(|s| s.toolbox().clock().now())
         };
-        let runtime = builder(ctx)?;
-        let handle = runtime.driver();
+        let bundle = builder(ctx)?;
+        let handle = bundle.driver();
         let metadata = TickDriverMetadata::new(handle.id(), start_instant);
-        let auto_metadata = runtime.auto_metadata().cloned();
+        let auto_metadata = bundle.auto_metadata().cloned();
         let snapshot = TickDriverSnapshot::new(metadata, handle.kind(), handle.resolution(), auto_metadata);
         ctx.event_stream().publish(&EventStreamEvent::TickDriver(snapshot.clone()));
-        Ok((runtime, snapshot))
+        Ok((bundle, snapshot))
       },
     }
   }
@@ -79,11 +79,11 @@ impl TickDriverBootstrap {
     let control = ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(control));
     let handle = TickDriverHandleGeneric::new(next_tick_driver_id(), TickDriverKind::ManualTest, resolution, control);
     let controller = driver.controller();
-    let runtime = TickDriverBundle::new_manual(handle.clone(), controller);
+    let bundle = TickDriverBundle::new_manual(handle.clone(), controller);
     let metadata = TickDriverMetadata::new(handle.id(), start_instant);
     let snapshot = TickDriverSnapshot::new(metadata, TickDriverKind::ManualTest, resolution, None);
     ctx.event_stream().publish(&EventStreamEvent::TickDriver(snapshot.clone()));
-    Ok((runtime, snapshot))
+    Ok((bundle, snapshot))
   }
 
   /// Shuts down the active driver handle.

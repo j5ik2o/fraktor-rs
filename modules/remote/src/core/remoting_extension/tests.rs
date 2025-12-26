@@ -138,9 +138,9 @@ fn backpressure_listener_invoked_and_eventstream_emits() {
     move |signal, authority, _| captured.lock().push(format!("{authority}:{signal:?}"))
   });
   let (system, handle) = bootstrap(config);
-  let runtime_calls: ArcShared<NoStdMutex<Vec<String>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let backpressure_calls: ArcShared<NoStdMutex<Vec<String>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
   handle.lock().register_backpressure_listener(FnRemotingBackpressureListener::new({
-    let captured = runtime_calls.clone();
+    let captured = backpressure_calls.clone();
     move |signal, authority, _| captured.lock().push(format!("{authority}:{signal:?}"))
   }));
   let (recorder, _subscription) = subscribe_events(&system);
@@ -150,8 +150,8 @@ fn backpressure_listener_invoked_and_eventstream_emits() {
   let config_snapshot = config_calls.lock().clone();
   assert_eq!(config_snapshot, vec!["loopback:9000:Apply".to_string()]);
 
-  let runtime_snapshot = runtime_calls.lock().clone();
-  assert_eq!(runtime_snapshot, vec!["loopback:9000:Apply".to_string()]);
+  let backpressure_snapshot = backpressure_calls.lock().clone();
+  assert_eq!(backpressure_snapshot, vec!["loopback:9000:Apply".to_string()]);
 
   let emitted = recorder.snapshot();
   assert!(emitted.iter().any(|event| matches!(event, EventStreamEvent::RemotingBackpressure(_))));

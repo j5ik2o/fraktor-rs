@@ -67,12 +67,12 @@ pub fn hardware_tick_driver_config_with_handle(handle: DemoPulseHandle) -> TickD
     // Start scheduler executor
     let pump = StdTickDriverPump::spawn(handle.clone(), scheduler, feed.clone());
 
-    // Create runtime with shutdown callback
-    let runtime = TickDriverBundle::new(driver_handle, feed).with_executor_shutdown(move || {
+    // Create bundle with shutdown callback
+    let bundle = TickDriverBundle::new(driver_handle, feed).with_executor_shutdown(move || {
       drop(pump); // Drop will call stop()
     });
 
-    Ok(runtime)
+    Ok(bundle)
   })
 }
 

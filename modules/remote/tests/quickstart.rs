@@ -114,9 +114,9 @@ async fn quickstart_loopback_provider_flow() -> Result<()> {
   });
   let (system, handle) = build_system(config);
   let provider = system.extended().actor_ref_provider::<SharedProvider>().expect("provider installed");
-  let runtime_hits: ArcShared<NoStdMutex<Vec<String>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let backpressure_hits: ArcShared<NoStdMutex<Vec<String>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
   handle.lock().register_backpressure_listener(FnRemotingBackpressureListener::new({
-    let hits = runtime_hits.clone();
+    let hits = backpressure_hits.clone();
     move |signal, authority, _| hits.lock().push(format!("{authority}:{signal:?}"))
   }));
   let (recorder, _subscription) = subscribe(&system);
@@ -162,8 +162,8 @@ async fn quickstart_loopback_provider_flow() -> Result<()> {
 
   let config_snapshot = config_hits.lock().clone();
   assert_eq!(config_snapshot, vec!["127.0.0.1:4321:Apply".to_string()]);
-  let runtime_snapshot = runtime_hits.lock().clone();
-  assert_eq!(runtime_snapshot, vec!["127.0.0.1:4321:Apply".to_string()]);
+  let backpressure_snapshot = backpressure_hits.lock().clone();
+  assert_eq!(backpressure_snapshot, vec!["127.0.0.1:4321:Apply".to_string()]);
 
   assert!(recorder.events.lock().iter().any(|event| matches!(event, EventStreamEvent::RemotingBackpressure(_))));
 
