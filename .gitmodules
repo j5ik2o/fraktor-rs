@@ -4,3 +4,6 @@
 [submodule "references/pekko"]
 	path = references/pekko
 	url = git@j5ik2o.github.com:apache/pekko.git
+[submodule "references/pekko-persistence-effector"]
+	path = references/pekko-persistence-effector
+	url = git@github.com:j5ik2o/pekko-persistence-effector.git
