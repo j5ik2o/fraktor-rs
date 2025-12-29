@@ -53,10 +53,3 @@
 //! Persistence support for the fraktor actor runtime.
 
 extern crate alloc;
-
-/// Core persistence primitives.
-pub mod core;
-/// Standard library bindings.
-#[allow(cfg_std_forbid)]
-#[cfg(feature = "std")]
-pub mod std;
