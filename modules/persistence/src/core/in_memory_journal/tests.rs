@@ -88,6 +88,25 @@ fn in_memory_journal_delete_messages_to() {
 }
 
 #[test]
+fn in_memory_journal_delete_keeps_highest_sequence_nr() {
+  let mut journal = InMemoryJournal::new();
+  let messages = build_messages("pid-1", 1, 3);
+  poll_ready(journal.write_messages(&messages)).expect("write failed");
+
+  poll_ready(journal.delete_messages_to("pid-1", 3)).expect("delete failed");
+
+  let highest = poll_ready(journal.highest_sequence_nr("pid-1")).expect("highest failed");
+  assert_eq!(highest, 3);
+
+  let mismatch = build_messages("pid-1", 1, 1);
+  let result = poll_ready(journal.write_messages(&mismatch));
+  assert_eq!(result, Err(JournalError::SequenceMismatch { expected: 4, actual: 1 }));
+
+  let next = build_messages("pid-1", 4, 1);
+  poll_ready(journal.write_messages(&next)).expect("write failed");
+}
+
+#[test]
 fn in_memory_journal_highest_sequence_nr_defaults_to_zero() {
   let journal = InMemoryJournal::new();
 

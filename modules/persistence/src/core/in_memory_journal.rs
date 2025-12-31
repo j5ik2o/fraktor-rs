@@ -29,19 +29,6 @@ impl InMemoryJournal {
   fn expected_sequence_nr(&self, persistence_id: &str) -> u64 {
     self.highest_sequence_nrs.get(persistence_id).copied().unwrap_or(0).saturating_add(1)
   }
-
-  fn update_highest_sequence_nr(&mut self, persistence_id: &str) {
-    let highest = self
-      .entries
-      .get(persistence_id)
-      .and_then(|entries| entries.iter().map(|repr| repr.sequence_nr()).max())
-      .unwrap_or(0);
-    if highest == 0 {
-      self.highest_sequence_nrs.remove(persistence_id);
-    } else {
-      self.highest_sequence_nrs.insert(persistence_id.to_string(), highest);
-    }
-  }
 }
 
 impl Journal for InMemoryJournal {
@@ -111,9 +98,6 @@ impl Journal for InMemoryJournal {
       entries.retain(|repr| repr.sequence_nr() > to_sequence_nr);
       if entries.is_empty() {
         self.entries.remove(persistence_id);
-        self.highest_sequence_nrs.remove(persistence_id);
-      } else {
-        self.update_highest_sequence_nr(persistence_id);
       }
     }
     ready(Ok(()))
