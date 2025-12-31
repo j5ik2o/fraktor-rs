@@ -1,0 +1,34 @@
+[package]
+name = "fraktor-persistence-rs"
+version = "0.2.11"
+edition = "2024"
+description = "fraktor の untyped 永続化ランタイム"
+license = "MIT OR Apache-2.0"
+keywords = ["fraktor", "persistence", "actor", "runtime", "no-std"]
+categories = ["concurrency", "embedded", "no-std"]
+repository = "https://github.com/j5ik2o/fraktor-rs"
+homepage = "https://github.com/j5ik2o/fraktor-rs"
+documentation = "https://docs.rs/fraktor-persistence-rs"
+readme = "../../README.md"
+autoexamples = false
+
+[[example]]
+name = "persistent_counter_no_std"
+path = "examples/persistent_counter_no_std/main.rs"
+
+[[example]]
+name = "at_least_once_delivery_no_std"
+path = "examples/at_least_once_delivery_no_std/main.rs"
+
+[features]
+default = []
+std = ["fraktor-utils-rs/std", "fraktor-actor-rs/std"]
+
+[dependencies]
+fraktor-actor-rs = { workspace = true }
+fraktor-utils-rs = { workspace = true, features = ["alloc", "unsize"] }
+ahash = { workspace = true }
+hashbrown = { workspace = true, default-features = false }
+
+[dev-dependencies]
+critical-section = { workspace = true, features = ["std"] }
