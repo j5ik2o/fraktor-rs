@@ -15,7 +15,8 @@ use crate::core::{
   eventsourced::Eventsourced, journal_error::JournalError, journal_message::JournalMessage,
   journal_response::JournalResponse, persistent_actor_base::PersistentActorBase,
   persistent_actor_state::PersistentActorState, persistent_repr::PersistentRepr, recovery::Recovery,
-  snapshot::Snapshot, snapshot_error::SnapshotError, snapshot_response::SnapshotResponse,
+  snapshot::Snapshot, snapshot_error::SnapshotError, snapshot_metadata::SnapshotMetadata,
+  snapshot_response::SnapshotResponse,
 };
 
 type TB = NoStdToolbox;
@@ -207,6 +208,30 @@ fn persistent_actor_base_handle_snapshot_response_transitions_and_replays() {
     },
     | _ => panic!("unexpected message"),
   }
+}
+
+#[test]
+fn persistent_actor_base_recovery_keeps_snapshot_sequence_when_no_replay() {
+  let (journal_ref, _store) = create_sender();
+  let snapshot_ref = ActorRef::null();
+  let mut base = PersistentActorBase::<DummyActor, TB>::new("pid-1".into(), journal_ref, snapshot_ref);
+  base.state = PersistentActorState::RecoveryStarted;
+  base.recovery = Recovery::default();
+  let mut actor = DummyActor::new("pid-1".into(), ActorRef::null(), ActorRef::null(), Recovery::default());
+
+  let metadata = SnapshotMetadata::new("pid-1", 10, 0);
+  let snapshot = Snapshot::new(metadata, ArcShared::new(1_i32));
+  let response = SnapshotResponse::LoadSnapshotResult { snapshot: Some(snapshot), to_sequence_nr: 10 };
+  base.handle_snapshot_response(&mut actor, &response, ActorRef::null());
+
+  assert_eq!(base.current_sequence_nr(), 10);
+  assert_eq!(base.last_sequence_nr(), 10);
+
+  let response = JournalResponse::RecoverySuccess { highest_sequence_nr: 0 };
+  base.handle_journal_response(&mut actor, &response);
+
+  assert_eq!(base.current_sequence_nr(), 10);
+  assert_eq!(base.last_sequence_nr(), 10);
 }
 
 #[test]

@@ -167,8 +167,9 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistentActorBase<A, TB> {
         self.current_sequence_nr = persistent_repr.sequence_nr();
       },
       | JournalResponse::RecoverySuccess { highest_sequence_nr } => {
-        self.last_sequence_nr = *highest_sequence_nr;
-        self.current_sequence_nr = *highest_sequence_nr;
+        let highest = (*highest_sequence_nr).max(self.current_sequence_nr).max(self.last_sequence_nr);
+        self.last_sequence_nr = highest;
+        self.current_sequence_nr = highest;
         if let Ok(state) = self.state.transition_to_processing_commands() {
           self.state = state;
         }
@@ -200,6 +201,9 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistentActorBase<A, TB> {
       | SnapshotResponse::LoadSnapshotResult { snapshot, .. } => {
         if let Some(snapshot) = snapshot {
           actor.receive_snapshot(snapshot);
+          let sequence_nr = snapshot.metadata().sequence_nr();
+          self.current_sequence_nr = sequence_nr;
+          self.last_sequence_nr = sequence_nr;
         }
         if let Ok(state) = self.state.transition_to_recovering() {
           self.state = state;
