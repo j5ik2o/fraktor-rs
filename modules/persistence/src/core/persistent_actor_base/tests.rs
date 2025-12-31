@@ -290,12 +290,20 @@ fn persistent_actor_base_persist_failure_drops_pending_invocation() {
   base.state = PersistentActorState::ProcessingCommands;
 
   let mut actor = DummyActor::new("pid-1".into(), ActorRef::null(), ActorRef::null(), Recovery::default());
-  base.add_to_event_batch(1_i32, true, Box::new(|actor: &mut DummyActor, _| {
-    actor.calls += 10;
-  }));
-  base.add_to_event_batch(2_i32, true, Box::new(|actor: &mut DummyActor, _| {
-    actor.calls += 1;
-  }));
+  base.add_to_event_batch(
+    1_i32,
+    true,
+    Box::new(|actor: &mut DummyActor, _| {
+      actor.calls += 10;
+    }),
+  );
+  base.add_to_event_batch(
+    2_i32,
+    true,
+    Box::new(|actor: &mut DummyActor, _| {
+      actor.calls += 1;
+    }),
+  );
   base.flush_batch(ActorRef::null());
   base.state = PersistentActorState::PersistingEvents;
 
