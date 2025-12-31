@@ -9,11 +9,11 @@ use fraktor_actor_rs::core::{actor::actor_ref::ActorRefGeneric, messaging::AnyMe
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
 use crate::core::{
-  eventsourced::Eventsourced, journal_message::JournalMessage, journal_response::JournalResponse,
+  journal_message::JournalMessage, journal_response::JournalResponse, journal_response_action::JournalResponseAction,
   pending_handler_invocation::PendingHandlerInvocation, persistence_error::PersistenceError,
-  persistent_actor_state::PersistentActorState, persistent_envelope::PersistentEnvelope,
-  persistent_repr::PersistentRepr, recovery::Recovery, snapshot_message::SnapshotMessage,
-  snapshot_response::SnapshotResponse,
+  persistent_actor_state::PersistentActorState, persistent_envelope::PersistentEnvelope, persistent_repr::PersistentRepr,
+  recovery::Recovery, snapshot_message::SnapshotMessage, snapshot_response::SnapshotResponse,
+  snapshot_response_action::SnapshotResponseAction,
 };
 
 type PendingHandler<A> = Box<dyn FnOnce(&mut A, &PersistentRepr) + Send>;
@@ -141,32 +141,33 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistentActorBase<A, TB> {
   }
 
   /// Handles journal responses.
-  pub fn handle_journal_response(&mut self, actor: &mut A, response: &JournalResponse)
-  where
-    A: Eventsourced<TB>, {
+  pub(crate) fn handle_journal_response(&mut self, response: &JournalResponse) -> JournalResponseAction<A> {
     match response {
       | JournalResponse::WriteMessageSuccess { repr, .. } => {
-        if let Some(invocation) = self.pending_invocations.pop_front() {
-          invocation.invoke(actor);
-        }
+        let action = self
+          .pending_invocations
+          .pop_front()
+          .map(JournalResponseAction::InvokeHandler)
+          .unwrap_or(JournalResponseAction::None);
         self.last_sequence_nr = repr.sequence_nr();
         if self.pending_invocations.is_empty()
           && let Ok(state) = self.state.transition_to_processing_commands()
         {
           self.state = state;
         }
+        action
       },
       | JournalResponse::WriteMessageFailure { repr, cause, .. } => {
         let _ = self.pending_invocations.pop_front();
-        actor.on_persist_failure(cause, repr);
+        JournalResponseAction::PersistFailure { cause: cause.clone(), repr: repr.clone() }
       },
       | JournalResponse::WriteMessageRejected { repr, cause, .. } => {
         let _ = self.pending_invocations.pop_front();
-        actor.on_persist_rejected(cause, repr);
+        JournalResponseAction::PersistRejected { cause: cause.clone(), repr: repr.clone() }
       },
       | JournalResponse::ReplayedMessage { persistent_repr } => {
-        actor.receive_recover(persistent_repr);
         self.current_sequence_nr = persistent_repr.sequence_nr();
+        JournalResponseAction::ReceiveRecover(persistent_repr.clone())
       },
       | JournalResponse::RecoverySuccess { highest_sequence_nr } => {
         let highest = (*highest_sequence_nr).max(self.current_sequence_nr).max(self.last_sequence_nr);
@@ -175,7 +176,7 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistentActorBase<A, TB> {
         if let Ok(state) = self.state.transition_to_processing_commands() {
           self.state = state;
         }
-        actor.on_recovery_completed();
+        JournalResponseAction::RecoveryCompleted
       },
       | JournalResponse::HighestSequenceNr { sequence_nr, .. } => {
         self.last_sequence_nr = *sequence_nr;
@@ -183,26 +184,27 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistentActorBase<A, TB> {
         if let Ok(state) = self.state.transition_to_processing_commands() {
           self.state = state;
         }
-        actor.on_recovery_completed();
+        JournalResponseAction::RecoveryCompleted
       },
       | JournalResponse::ReplayMessagesFailure { cause } => {
-        actor.on_recovery_failure(&PersistenceError::from(cause.clone()));
+        JournalResponseAction::RecoveryFailure(PersistenceError::from(cause.clone()))
       },
       | JournalResponse::DeleteMessagesFailure { cause, .. } => {
-        actor.on_recovery_failure(&PersistenceError::from(cause.clone()));
+        JournalResponseAction::RecoveryFailure(PersistenceError::from(cause.clone()))
       },
-      | _ => {},
+      | _ => JournalResponseAction::None,
     }
   }
 
   /// Handles snapshot responses.
-  pub fn handle_snapshot_response(&mut self, actor: &mut A, response: &SnapshotResponse, sender: ActorRefGeneric<TB>)
-  where
-    A: Eventsourced<TB>, {
+  pub(crate) fn handle_snapshot_response(
+    &mut self,
+    response: &SnapshotResponse,
+    sender: ActorRefGeneric<TB>,
+  ) -> SnapshotResponseAction {
     match response {
       | SnapshotResponse::LoadSnapshotResult { snapshot, .. } => {
         if let Some(snapshot) = snapshot {
-          actor.receive_snapshot(snapshot);
           let sequence_nr = snapshot.metadata().sequence_nr();
           self.current_sequence_nr = sequence_nr;
           self.last_sequence_nr = sequence_nr;
@@ -221,28 +223,42 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistentActorBase<A, TB> {
           sender,
         };
         let _ = self.journal_actor_ref.tell(AnyMessageGeneric::new(message));
+        snapshot
+          .as_ref()
+          .map(|snap| SnapshotResponseAction::ReceiveSnapshot(snap.clone()))
+          .unwrap_or(SnapshotResponseAction::None)
       },
       | SnapshotResponse::LoadSnapshotFailed { error } => {
-        actor.on_snapshot_failure(error);
+        if let Ok(state) = self.state.transition_to_recovering() {
+          self.state = state;
+        }
+        let recovery = self.recovery.clone();
+        let message = JournalMessage::ReplayMessages {
+          persistence_id: self.persistence_id.clone(),
+          from_sequence_nr: 0,
+          to_sequence_nr: recovery.to_sequence_nr(),
+          max: recovery.replay_max(),
+          sender,
+        };
+        let _ = self.journal_actor_ref.tell(AnyMessageGeneric::new(message));
+        SnapshotResponseAction::SnapshotFailure(error.clone())
       },
       | SnapshotResponse::SaveSnapshotFailure { error, .. } => {
-        actor.on_snapshot_failure(error);
+        SnapshotResponseAction::SnapshotFailure(error.clone())
       },
       | SnapshotResponse::DeleteSnapshotFailure { error, .. } => {
-        actor.on_snapshot_failure(error);
+        SnapshotResponseAction::SnapshotFailure(error.clone())
       },
       | SnapshotResponse::DeleteSnapshotsFailure { error, .. } => {
-        actor.on_snapshot_failure(error);
+        SnapshotResponseAction::SnapshotFailure(error.clone())
       },
-      | _ => {},
+      | _ => SnapshotResponseAction::None,
     }
   }
 
   /// Starts recovery.
-  pub fn start_recovery(&mut self, actor: &mut A, sender: ActorRefGeneric<TB>)
-  where
-    A: Eventsourced<TB>, {
-    self.recovery = actor.recovery();
+  pub(crate) fn start_recovery(&mut self, recovery: Recovery, sender: ActorRefGeneric<TB>) {
+    self.recovery = recovery;
     if let Ok(state) = self.state.transition_to_recovery_started() {
       self.state = state;
     }

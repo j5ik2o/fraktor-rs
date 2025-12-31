@@ -118,30 +118,21 @@ where
   /// Starts recovery by delegating to the base.
   fn start_recovery(&mut self, ctx: &mut ActorContextGeneric<'_, TB>) {
     let sender = ctx.self_ref();
-    let self_ptr = self as *mut Self;
-    // base と actor を同時に可変参照する必要があるため raw pointer を使う。
-    unsafe {
-      (*self_ptr).base_mut().start_recovery(&mut *self_ptr, sender);
-    }
+    let recovery = self.recovery();
+    self.base_mut().start_recovery(recovery, sender);
   }
 
   /// Handles journal responses by delegating to the base.
   fn handle_journal_response(&mut self, response: &JournalResponse) {
-    let self_ptr = self as *mut Self;
-    // base と actor の可変参照が重なるため raw pointer で調整する。
-    unsafe {
-      (*self_ptr).base_mut().handle_journal_response(&mut *self_ptr, response);
-    }
+    let action = self.base_mut().handle_journal_response(response);
+    action.apply::<TB>(self);
   }
 
   /// Handles snapshot responses by delegating to the base.
   fn handle_snapshot_response(&mut self, response: &SnapshotResponse, ctx: &mut ActorContextGeneric<'_, TB>) {
     let sender = ctx.self_ref();
-    let self_ptr = self as *mut Self;
-    // base と actor を同時に参照するので raw pointer を使う。
-    unsafe {
-      (*self_ptr).base_mut().handle_snapshot_response(&mut *self_ptr, response, sender);
-    }
+    let action = self.base_mut().handle_snapshot_response(response, sender);
+    action.apply::<TB>(self);
   }
 
   /// Forwards command handling to the actor.

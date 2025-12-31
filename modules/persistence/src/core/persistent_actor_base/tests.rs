@@ -158,7 +158,8 @@ fn persistent_actor_base_handle_journal_response_invokes_handler() {
   let payload: ArcShared<dyn core::any::Any + Send + Sync> = ArcShared::new(1_i32);
   let repr = PersistentRepr::new("pid-1", 1, payload);
   let response = JournalResponse::WriteMessageSuccess { repr, instance_id: 1 };
-  base.handle_journal_response(&mut actor, &response);
+  let action = base.handle_journal_response(&response);
+  action.apply::<TB>(&mut actor);
 
   assert_eq!(actor.calls, 1);
   assert_eq!(base.state(), PersistentActorState::ProcessingCommands);
@@ -169,9 +170,9 @@ fn persistent_actor_base_start_recovery_none_requests_highest_sequence() {
   let (journal_ref, store) = create_sender();
   let snapshot_ref = ActorRef::null();
   let mut base = PersistentActorBase::<DummyActor, TB>::new("pid-1".into(), journal_ref, snapshot_ref);
-  let mut actor = DummyActor::new("pid-1".into(), ActorRef::null(), ActorRef::null(), Recovery::none());
+  let actor = DummyActor::new("pid-1".into(), ActorRef::null(), ActorRef::null(), Recovery::none());
 
-  base.start_recovery(&mut actor, ActorRef::null());
+  base.start_recovery(actor.recovery(), ActorRef::null());
 
   assert_eq!(base.state(), PersistentActorState::Recovering);
   let messages = store.lock();
@@ -195,7 +196,8 @@ fn persistent_actor_base_handle_snapshot_response_transitions_and_replays() {
   let mut actor = DummyActor::new("pid-1".into(), ActorRef::null(), ActorRef::null(), Recovery::default());
 
   let response = SnapshotResponse::LoadSnapshotResult { snapshot: None, to_sequence_nr: 0 };
-  base.handle_snapshot_response(&mut actor, &response, ActorRef::null());
+  let action = base.handle_snapshot_response(&response, ActorRef::null());
+  action.apply::<TB>(&mut actor);
 
   assert_eq!(base.state(), PersistentActorState::Recovering);
   let messages = store.lock();
@@ -222,13 +224,15 @@ fn persistent_actor_base_recovery_keeps_snapshot_sequence_when_no_replay() {
   let metadata = SnapshotMetadata::new("pid-1", 10, 0);
   let snapshot = Snapshot::new(metadata, ArcShared::new(1_i32));
   let response = SnapshotResponse::LoadSnapshotResult { snapshot: Some(snapshot), to_sequence_nr: 10 };
-  base.handle_snapshot_response(&mut actor, &response, ActorRef::null());
+  let action = base.handle_snapshot_response(&response, ActorRef::null());
+  action.apply::<TB>(&mut actor);
 
   assert_eq!(base.current_sequence_nr(), 10);
   assert_eq!(base.last_sequence_nr(), 10);
 
   let response = JournalResponse::RecoverySuccess { highest_sequence_nr: 0 };
-  base.handle_journal_response(&mut actor, &response);
+  let action = base.handle_journal_response(&response);
+  action.apply::<TB>(&mut actor);
 
   assert_eq!(base.current_sequence_nr(), 10);
   assert_eq!(base.last_sequence_nr(), 10);
@@ -247,7 +251,8 @@ fn persistent_actor_base_handle_journal_response_calls_failure_hook() {
   let response =
     JournalResponse::WriteMessageFailure { repr, cause: JournalError::WriteFailed("boom".into()), instance_id: 1 };
 
-  base.handle_journal_response(&mut actor, &response);
+  let action = base.handle_journal_response(&response);
+  action.apply::<TB>(&mut actor);
 
   assert_eq!(actor.persist_failures, 1);
 }
@@ -261,9 +266,36 @@ fn persistent_actor_base_handle_snapshot_failure_calls_hook() {
   let mut actor = DummyActor::new("pid-1".into(), ActorRef::null(), ActorRef::null(), Recovery::default());
 
   let response = SnapshotResponse::LoadSnapshotFailed { error: SnapshotError::LoadFailed("boom".into()) };
-  base.handle_snapshot_response(&mut actor, &response, ActorRef::null());
+  let action = base.handle_snapshot_response(&response, ActorRef::null());
+  action.apply::<TB>(&mut actor);
 
   assert_eq!(actor.snapshot_failures, 1);
+}
+
+#[test]
+fn persistent_actor_base_snapshot_failure_continues_recovery() {
+  let (journal_ref, store) = create_sender();
+  let snapshot_ref = ActorRef::null();
+  let mut base = PersistentActorBase::<DummyActor, TB>::new("pid-1".into(), journal_ref, snapshot_ref);
+  base.state = PersistentActorState::RecoveryStarted;
+  base.recovery = Recovery::default();
+  let mut actor = DummyActor::new("pid-1".into(), ActorRef::null(), ActorRef::null(), Recovery::default());
+
+  let response = SnapshotResponse::LoadSnapshotFailed { error: SnapshotError::LoadFailed("boom".into()) };
+  let action = base.handle_snapshot_response(&response, ActorRef::null());
+  action.apply::<TB>(&mut actor);
+
+  assert_eq!(actor.snapshot_failures, 1);
+  assert_eq!(base.state(), PersistentActorState::Recovering);
+  let messages = store.lock();
+  assert_eq!(messages.len(), 1);
+  let message = messages[0].payload().downcast_ref::<JournalMessage<TB>>().expect("unexpected payload");
+  match message {
+    | JournalMessage::ReplayMessages { from_sequence_nr, .. } => {
+      assert_eq!(*from_sequence_nr, 0);
+    },
+    | _ => panic!("unexpected message"),
+  }
 }
 
 #[test]
@@ -275,7 +307,8 @@ fn persistent_actor_base_handle_highest_sequence_completes_recovery() {
   let mut actor = DummyActor::new("pid-1".into(), ActorRef::null(), ActorRef::null(), Recovery::default());
 
   let response = JournalResponse::HighestSequenceNr { persistence_id: "pid-1".into(), sequence_nr: 42 };
-  base.handle_journal_response(&mut actor, &response);
+  let action = base.handle_journal_response(&response);
+  action.apply::<TB>(&mut actor);
 
   assert_eq!(actor.recovery_completed, 1);
   assert_eq!(base.state(), PersistentActorState::ProcessingCommands);
@@ -314,13 +347,15 @@ fn persistent_actor_base_persist_failure_drops_pending_invocation() {
     cause:       JournalError::WriteFailed("boom".into()),
     instance_id: 1,
   };
-  base.handle_journal_response(&mut actor, &failure);
+  let action = base.handle_journal_response(&failure);
+  action.apply::<TB>(&mut actor);
   assert_eq!(actor.calls, 0);
 
   let payload2: ArcShared<dyn core::any::Any + Send + Sync> = ArcShared::new(2_i32);
   let repr2 = PersistentRepr::new("pid-1", 2, payload2);
   let success = JournalResponse::WriteMessageSuccess { repr: repr2, instance_id: 1 };
-  base.handle_journal_response(&mut actor, &success);
+  let action = base.handle_journal_response(&success);
+  action.apply::<TB>(&mut actor);
 
   assert_eq!(actor.calls, 1);
 }
