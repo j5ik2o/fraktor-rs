@@ -281,3 +281,38 @@ fn persistent_actor_base_handle_highest_sequence_completes_recovery() {
   assert_eq!(base.state(), PersistentActorState::ProcessingCommands);
   assert_eq!(base.last_sequence_nr(), 42);
 }
+
+#[test]
+fn persistent_actor_base_persist_failure_drops_pending_invocation() {
+  let (journal_ref, _store) = create_sender();
+  let snapshot_ref = ActorRef::null();
+  let mut base = PersistentActorBase::<DummyActor, TB>::new("pid-1".into(), journal_ref, snapshot_ref);
+  base.state = PersistentActorState::ProcessingCommands;
+
+  let mut actor = DummyActor::new("pid-1".into(), ActorRef::null(), ActorRef::null(), Recovery::default());
+  base.add_to_event_batch(1_i32, true, Box::new(|actor: &mut DummyActor, _| {
+    actor.calls += 10;
+  }));
+  base.add_to_event_batch(2_i32, true, Box::new(|actor: &mut DummyActor, _| {
+    actor.calls += 1;
+  }));
+  base.flush_batch(ActorRef::null());
+  base.state = PersistentActorState::PersistingEvents;
+
+  let payload1: ArcShared<dyn core::any::Any + Send + Sync> = ArcShared::new(1_i32);
+  let repr1 = PersistentRepr::new("pid-1", 1, payload1);
+  let failure = JournalResponse::WriteMessageFailure {
+    repr:        repr1,
+    cause:       JournalError::WriteFailed("boom".into()),
+    instance_id: 1,
+  };
+  base.handle_journal_response(&mut actor, &failure);
+  assert_eq!(actor.calls, 0);
+
+  let payload2: ArcShared<dyn core::any::Any + Send + Sync> = ArcShared::new(2_i32);
+  let repr2 = PersistentRepr::new("pid-1", 2, payload2);
+  let success = JournalResponse::WriteMessageSuccess { repr: repr2, instance_id: 1 };
+  base.handle_journal_response(&mut actor, &success);
+
+  assert_eq!(actor.calls, 1);
+}

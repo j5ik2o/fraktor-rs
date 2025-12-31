@@ -157,9 +157,11 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistentActorBase<A, TB> {
         }
       },
       | JournalResponse::WriteMessageFailure { repr, cause, .. } => {
+        let _ = self.pending_invocations.pop_front();
         actor.on_persist_failure(cause, repr);
       },
       | JournalResponse::WriteMessageRejected { repr, cause, .. } => {
+        let _ = self.pending_invocations.pop_front();
         actor.on_persist_rejected(cause, repr);
       },
       | JournalResponse::ReplayedMessage { persistent_repr } => {
