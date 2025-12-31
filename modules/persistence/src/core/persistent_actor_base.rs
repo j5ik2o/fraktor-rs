@@ -11,9 +11,9 @@ use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 use crate::core::{
   journal_message::JournalMessage, journal_response::JournalResponse, journal_response_action::JournalResponseAction,
   pending_handler_invocation::PendingHandlerInvocation, persistence_error::PersistenceError,
-  persistent_actor_state::PersistentActorState, persistent_envelope::PersistentEnvelope, persistent_repr::PersistentRepr,
-  recovery::Recovery, snapshot_message::SnapshotMessage, snapshot_response::SnapshotResponse,
-  snapshot_response_action::SnapshotResponseAction,
+  persistent_actor_state::PersistentActorState, persistent_envelope::PersistentEnvelope,
+  persistent_repr::PersistentRepr, recovery::Recovery, snapshot_message::SnapshotMessage,
+  snapshot_response::SnapshotResponse, snapshot_response_action::SnapshotResponseAction,
 };
 
 type PendingHandler<A> = Box<dyn FnOnce(&mut A, &PersistentRepr) + Send>;
@@ -243,12 +243,8 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistentActorBase<A, TB> {
         let _ = self.journal_actor_ref.tell(AnyMessageGeneric::new(message));
         SnapshotResponseAction::SnapshotFailure(error.clone())
       },
-      | SnapshotResponse::SaveSnapshotFailure { error, .. } => {
-        SnapshotResponseAction::SnapshotFailure(error.clone())
-      },
-      | SnapshotResponse::DeleteSnapshotFailure { error, .. } => {
-        SnapshotResponseAction::SnapshotFailure(error.clone())
-      },
+      | SnapshotResponse::SaveSnapshotFailure { error, .. } => SnapshotResponseAction::SnapshotFailure(error.clone()),
+      | SnapshotResponse::DeleteSnapshotFailure { error, .. } => SnapshotResponseAction::SnapshotFailure(error.clone()),
       | SnapshotResponse::DeleteSnapshotsFailure { error, .. } => {
         SnapshotResponseAction::SnapshotFailure(error.clone())
       },
