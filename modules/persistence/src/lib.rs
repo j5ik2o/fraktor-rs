@@ -51,5 +51,19 @@
 #![cfg_attr(not(test), no_std)]
 
 //! Persistence support for the fraktor actor runtime.
+//!
+//! This crate provides the core persistence abstractions for event sourcing:
+//!
+//! - [`Journal`](core::Journal) - Event journal trait with GATs pattern
+//! - [`SnapshotStore`](core::SnapshotStore) - Snapshot store trait with GATs pattern
+//! - [`PersistentActor`](core::PersistentActor) - Persistent actor trait (Pekko-compatible)
+//! - [`PersistentRepr`](core::PersistentRepr) - Persistent event representation
+//! - [`InMemoryJournal`](core::InMemoryJournal) - In-memory journal for testing
+//! - [`InMemorySnapshotStore`](core::InMemorySnapshotStore) - In-memory snapshot store for testing
+//! - [`PersistenceExtension`](core::PersistenceExtension) - Extension for ActorSystem integration
+//!
+//! Use `fraktor_persistence_rs::core` for convenient imports.
 
 extern crate alloc;
+
+pub mod core;
