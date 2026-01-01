@@ -276,6 +276,16 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
     if let Ok(state) = self.state.transition_to_recovery_started() {
       self.state = state;
     }
+    if self.recovery == Recovery::none() {
+      let message = JournalMessage::GetHighestSequenceNr {
+        persistence_id: self.persistence_id.clone(),
+        from_sequence_nr: 0,
+        sender,
+      };
+      let _ = self.send_write_messages(message);
+      return;
+    }
+
     let message = SnapshotMessage::LoadSnapshot {
       persistence_id: self.persistence_id.clone(),
       criteria: self.recovery.snapshot_criteria().clone(),

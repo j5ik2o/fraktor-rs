@@ -87,3 +87,27 @@ fn bind_actor_refs_rejects_second_bind() {
   let result = context.bind_actor_refs(ActorRefGeneric::null(), ActorRefGeneric::null());
   assert!(result.is_err());
 }
+
+#[test]
+fn start_recovery_none_requests_highest_sequence_nr() {
+  let (journal_ref, journal_store) = create_sender();
+  let (snapshot_ref, snapshot_store) = create_sender();
+  let mut context = DummyContext::new("pid-1".to_string());
+  context.bind_actor_refs(journal_ref, snapshot_ref).expect("bind actor refs");
+
+  context.start_recovery(crate::core::Recovery::none(), ActorRefGeneric::null());
+
+  let journal_messages = journal_store.lock();
+  assert_eq!(journal_messages.len(), 1);
+  let message = journal_messages[0].payload().downcast_ref::<JournalMessage<TB>>().expect("unexpected payload");
+  match message {
+    | JournalMessage::GetHighestSequenceNr { persistence_id, from_sequence_nr, .. } => {
+      assert_eq!(persistence_id, "pid-1");
+      assert_eq!(*from_sequence_nr, 0);
+    },
+    | _ => panic!("unexpected message"),
+  }
+
+  let snapshot_messages = snapshot_store.lock();
+  assert_eq!(snapshot_messages.len(), 0);
+}
