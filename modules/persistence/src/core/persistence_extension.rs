@@ -3,10 +3,10 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::{format, string::String};
+use alloc::format;
 
 use fraktor_actor_rs::core::{
-  actor::{Actor, ActorCellGeneric, ActorContextGeneric, actor_ref::ActorRefGeneric},
+  actor::{Actor, ActorContextGeneric, actor_ref::ActorRefGeneric},
   error::ActorError,
   extension::Extension,
   messaging::AnyMessageViewGeneric,
@@ -51,27 +51,28 @@ impl<TB: RuntimeToolbox + 'static> PersistenceExtensionGeneric<TB> {
     for<'a> S::LoadFuture<'a>: Send + 'static,
     for<'a> S::DeleteOneFuture<'a>: Send + 'static,
     for<'a> S::DeleteManyFuture<'a>: Send + 'static, {
-    let journal_actor = spawn_actor(system, "journal", move || JournalActorWrapper::new(journal.clone()))?;
-    let snapshot_actor = spawn_actor(system, "snapshot", move || SnapshotActorWrapper::new(snapshot_store.clone()))?;
+    let journal_actor = spawn_system_actor(system, "journal", move || JournalActorWrapper::new(journal.clone()))?;
+    let snapshot_actor =
+      spawn_system_actor(system, "snapshot", move || SnapshotActorWrapper::new(snapshot_store.clone()))?;
     Ok(Self { journal_actor, snapshot_actor })
   }
 
   /// Returns the journal actor reference.
   #[must_use]
-  pub const fn journal_actor(&self) -> &ActorRefGeneric<TB> {
-    &self.journal_actor
+  pub(crate) fn journal_actor_ref(&self) -> ActorRefGeneric<TB> {
+    self.journal_actor.clone()
   }
 
   /// Returns the snapshot actor reference.
   #[must_use]
-  pub const fn snapshot_actor(&self) -> &ActorRefGeneric<TB> {
-    &self.snapshot_actor
+  pub(crate) fn snapshot_actor_ref(&self) -> ActorRefGeneric<TB> {
+    self.snapshot_actor.clone()
   }
 }
 
 impl<TB: RuntimeToolbox + 'static> Extension<TB> for PersistenceExtensionGeneric<TB> {}
 
-fn spawn_actor<TB, A>(
+fn spawn_system_actor<TB, A>(
   system: &ActorSystemGeneric<TB>,
   name: &str,
   factory: impl FnMut() -> A + Send + Sync + 'static,
@@ -80,11 +81,11 @@ where
   TB: RuntimeToolbox + 'static,
   A: Actor<TB> + Sync + 'static, {
   let props = PropsGeneric::from_fn(factory).with_name(name);
-  let pid = system.allocate_pid();
-  let cell = ActorCellGeneric::create(system.state(), pid, None, String::from(name), &props)
+  let child = system
+    .extended()
+    .spawn_system_actor(&props)
     .map_err(|error| PersistenceError::MessagePassing(format!("spawn error: {error:?}")))?;
-  system.state().register_cell(cell.clone());
-  Ok(cell.actor_ref())
+  Ok(child.actor_ref().clone())
 }
 
 struct JournalActorWrapper<J: Journal, TB: RuntimeToolbox + 'static> {

@@ -3,20 +3,22 @@
 extern crate alloc;
 
 use alloc::{string::String, vec::Vec};
+use core::{
+  future::Future,
+  task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
+};
 
 use fraktor_actor_rs::core::{
-  actor::{
-    Actor, ActorCellGeneric, ActorContextGeneric, Pid,
-    actor_ref::{ActorRefGeneric, ActorRefSender, SendOutcome},
-  },
-  error::{ActorError, SendError},
+  actor::{Actor, ActorContextGeneric, actor_ref::ActorRefGeneric},
+  error::ActorError,
   messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
   props::PropsGeneric,
-  system::{ActorSystemGeneric, SystemStateGeneric, SystemStateSharedGeneric},
+  scheduler::{ManualTestDriver, SchedulerConfig, TickDriverConfig},
+  system::{ActorSystemConfigGeneric, ActorSystemGeneric},
 };
 use fraktor_persistence_rs::core::{
-  Eventsourced, JournalMessage, JournalResponse, PersistentActor, PersistentActorBase, PersistentRepr, Recovery,
-  Snapshot, SnapshotMessage, SnapshotMetadata, SnapshotResponse,
+  Eventsourced, InMemoryJournal, InMemorySnapshotStore, Journal, PersistenceContext, PersistenceExtensionInstaller,
+  PersistentActor, PersistentRepr, Snapshot, SnapshotMetadata, SnapshotStore, persistent_props, spawn_persistent,
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
@@ -24,23 +26,13 @@ use fraktor_utils_rs::core::{
 };
 
 type TB = NoStdToolbox;
-type MessageStore = ArcShared<ToolboxMutex<Vec<AnyMessageGeneric<TB>>, TB>>;
+type SharedValue = ArcShared<ToolboxMutex<i32, TB>>;
+type SharedFlag = ArcShared<ToolboxMutex<bool, TB>>;
+type SharedRefs = ArcShared<ToolboxMutex<Vec<ActorRefGeneric<TB>>, TB>>;
 
-struct TestSender {
-  messages: MessageStore,
-}
-
-impl ActorRefSender<TB> for TestSender {
-  fn send(&mut self, message: AnyMessageGeneric<TB>) -> Result<SendOutcome, SendError<TB>> {
-    self.messages.lock().push(message);
-    Ok(SendOutcome::Delivered)
-  }
-}
-
-fn create_sender() -> (ActorRefGeneric<TB>, MessageStore) {
-  let messages = ArcShared::new(<<NoStdToolbox as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(Vec::new()));
-  let sender = ActorRefGeneric::new(Pid::new(1, 1), TestSender { messages: messages.clone() });
-  (sender, messages)
+#[derive(Clone)]
+enum Command {
+  Add(i32),
 }
 
 #[derive(Clone)]
@@ -48,150 +40,248 @@ enum Event {
   Incremented(i32),
 }
 
-struct TestActor {
-  value:             i32,
-  recovered:         Vec<i32>,
-  recovery_complete: bool,
-  base:              PersistentActorBase<TestActor, TB>,
+struct CounterActor {
+  context:           PersistenceContext<CounterActor, TB>,
+  value:             SharedValue,
+  recovery_complete: SharedFlag,
 }
 
-struct NoopActor;
+impl CounterActor {
+  fn new(persistence_id: &str, value: SharedValue, recovery_complete: SharedFlag) -> Self {
+    Self { context: PersistenceContext::new(persistence_id.to_string()), value, recovery_complete }
+  }
 
-impl Actor<TB> for NoopActor {
-  fn receive(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, TB>,
-    _message: AnyMessageViewGeneric<'_, TB>,
-  ) -> Result<(), ActorError> {
-    Ok(())
+  fn apply_event(&mut self, event: &Event) {
+    let Event::Incremented(delta) = event;
+    let mut guard = self.value.lock();
+    *guard += delta;
   }
 }
 
-impl TestActor {
-  fn new(persistence_id: &str, journal: ActorRefGeneric<TB>, snapshot: ActorRefGeneric<TB>) -> Self {
-    Self {
-      value:             0,
-      recovered:         Vec::new(),
-      recovery_complete: false,
-      base:              PersistentActorBase::new(persistence_id.into(), journal, snapshot),
-    }
-  }
-}
-
-impl Eventsourced<TB> for TestActor {
+impl Eventsourced<TB> for CounterActor {
   fn persistence_id(&self) -> &str {
-    self.base.persistence_id()
+    self.context.persistence_id()
   }
 
-  fn journal_actor_ref(&self) -> &ActorRefGeneric<TB> {
-    self.base.journal_actor_ref()
-  }
-
-  fn snapshot_actor_ref(&self) -> &ActorRefGeneric<TB> {
-    self.base.snapshot_actor_ref()
-  }
-
-  fn receive_recover(&mut self, event: &PersistentRepr) {
-    if let Some(event) = event.downcast_ref::<Event>() {
-      let Event::Incremented(delta) = event;
-      self.value += delta;
-      self.recovered.push(*delta);
+  fn receive_recover(&mut self, repr: &PersistentRepr) {
+    if let Some(event) = repr.downcast_ref::<Event>() {
+      self.apply_event(event);
     }
   }
 
   fn receive_snapshot(&mut self, snapshot: &Snapshot) {
     if let Some(value) = snapshot.data().downcast_ref::<i32>() {
-      self.value = *value;
+      *self.value.lock() = *value;
     }
   }
 
   fn receive_command(
     &mut self,
-    _ctx: &mut ActorContextGeneric<'_, TB>,
-    _message: AnyMessageViewGeneric<'_, TB>,
+    ctx: &mut ActorContextGeneric<'_, TB>,
+    message: AnyMessageViewGeneric<'_, TB>,
   ) -> Result<(), ActorError> {
+    if let Some(Command::Add(delta)) = message.downcast_ref::<Command>() {
+      self.persist(ctx, Event::Incremented(*delta), |actor, event| actor.apply_event(event));
+      self.flush_batch(ctx);
+    }
     Ok(())
   }
 
   fn on_recovery_completed(&mut self) {
-    self.recovery_complete = true;
+    *self.recovery_complete.lock() = true;
   }
 
   fn last_sequence_nr(&self) -> u64 {
-    self.base.last_sequence_nr()
-  }
-
-  fn recovery(&self) -> Recovery {
-    Recovery::default()
+    self.context.last_sequence_nr()
   }
 }
 
-impl PersistentActor<TB> for TestActor {
-  fn base(&self) -> &PersistentActorBase<Self, TB> {
-    &self.base
-  }
-
-  fn base_mut(&mut self) -> &mut PersistentActorBase<Self, TB> {
-    &mut self.base
+impl PersistentActor<TB> for CounterActor {
+  fn persistence_context(&mut self) -> &mut PersistenceContext<Self, TB> {
+    &mut self.context
   }
 }
+
+#[derive(Clone)]
+struct ActorSetup {
+  persistence_id:    String,
+  value:             SharedValue,
+  recovery_complete: SharedFlag,
+}
+
+struct Guardian {
+  setups:     Vec<ActorSetup>,
+  child_refs: SharedRefs,
+}
+
+impl Guardian {
+  fn new(setups: Vec<ActorSetup>, child_refs: SharedRefs) -> Self {
+    Self { setups, child_refs }
+  }
+}
+
+impl Actor<TB> for Guardian {
+  fn receive(
+    &mut self,
+    ctx: &mut ActorContextGeneric<'_, TB>,
+    message: AnyMessageViewGeneric<'_, TB>,
+  ) -> Result<(), ActorError> {
+    if message.downcast_ref::<Start>().is_none() {
+      return Ok(());
+    }
+
+    let mut refs = self.child_refs.lock();
+    for setup in self.setups.iter() {
+      let value = setup.value.clone();
+      let recovery_complete = setup.recovery_complete.clone();
+      let persistence_id = setup.persistence_id.clone();
+      let props =
+        persistent_props(move || CounterActor::new(&persistence_id, value.clone(), recovery_complete.clone()));
+      let child = spawn_persistent(ctx, &props)
+        .map_err(|error| ActorError::recoverable(format!("spawn persistent actor failed: {error:?}")))?;
+      refs.push(child);
+    }
+    Ok(())
+  }
+}
+
+struct Start;
+
+fn shared_mutex<T: Send + 'static>(value: T) -> ArcShared<ToolboxMutex<T, TB>> {
+  ArcShared::new(<<NoStdToolbox as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(value))
+}
+
+fn drive_ready<F: Future>(future: F) -> F::Output {
+  let waker = unsafe { Waker::from_raw(raw_waker()) };
+  let mut context = Context::from_waker(&waker);
+  let mut future = core::pin::pin!(future);
+  match Future::poll(future.as_mut(), &mut context) {
+    | Poll::Ready(output) => output,
+    | Poll::Pending => panic!("future was not ready"),
+  }
+}
+
+fn raw_waker() -> RawWaker {
+  RawWaker::new(core::ptr::null(), &RAW_WAKER_VTABLE)
+}
+
+static RAW_WAKER_VTABLE: RawWakerVTable = RawWakerVTable::new(clone_raw, wake_raw, wake_raw, drop_raw);
+
+unsafe fn clone_raw(_: *const ()) -> RawWaker {
+  raw_waker()
+}
+
+const unsafe fn wake_raw(_: *const ()) {}
+
+const unsafe fn drop_raw(_: *const ()) {}
 
 #[test]
 fn recovery_flow_snapshot_then_replay() {
-  let (journal_ref, journal_store) = create_sender();
-  let (snapshot_ref, snapshot_store) = create_sender();
-  let mut actor = TestActor::new("pid-1", journal_ref, snapshot_ref);
+  let value = shared_mutex(0);
+  let recovery_complete = shared_mutex(false);
+  let refs = shared_mutex(Vec::new());
+  let setups = vec![ActorSetup {
+    persistence_id:    "pid-1".to_string(),
+    value:             value.clone(),
+    recovery_complete: recovery_complete.clone(),
+  }];
 
-  let system = ActorSystemGeneric::from_state(SystemStateSharedGeneric::new(SystemStateGeneric::new()));
-  let pid = Pid::new(1, 1);
-  let props = PropsGeneric::from_fn(|| NoopActor);
-  let cell =
-    ActorCellGeneric::create(system.state(), pid, None, String::from("self"), &props).expect("create actor cell");
-  system.state().register_cell(cell);
-  let mut ctx = ActorContextGeneric::new(&system, pid);
-  actor.start_recovery(&mut ctx);
+  let mut journal = InMemoryJournal::new();
+  let repr0 = PersistentRepr::new("pid-1", 1, ArcShared::new(Event::Incremented(4)));
+  let repr1 = PersistentRepr::new("pid-1", 2, ArcShared::new(Event::Incremented(6)));
+  let repr2 = PersistentRepr::new("pid-1", 3, ArcShared::new(Event::Incremented(2)));
+  let repr3 = PersistentRepr::new("pid-1", 4, ArcShared::new(Event::Incremented(3)));
+  let _ = drive_ready(journal.write_messages(&[repr0, repr1, repr2, repr3]));
 
-  let snapshot_messages = snapshot_store.lock();
-  assert_eq!(snapshot_messages.len(), 1);
-  let load = snapshot_messages[0].payload().downcast_ref::<SnapshotMessage<TB>>().expect("snapshot message");
-  assert!(matches!(load, SnapshotMessage::LoadSnapshot { .. }));
+  let mut snapshot_store = InMemorySnapshotStore::new();
+  let snapshot_metadata = SnapshotMetadata::new("pid-1", 2, 0);
+  let snapshot_payload: ArcShared<dyn core::any::Any + Send + Sync> = ArcShared::new(10_i32);
+  let _ = drive_ready(snapshot_store.save_snapshot(snapshot_metadata, snapshot_payload));
 
-  let snapshot = Snapshot::new(SnapshotMetadata::new("pid-1", 2, 0), ArcShared::new(10_i32));
-  let response = SnapshotResponse::LoadSnapshotResult { snapshot: Some(snapshot), to_sequence_nr: 2 };
-  actor.handle_snapshot_response(&response, &mut ctx);
+  let installer = PersistenceExtensionInstaller::new(journal, snapshot_store);
+  let installers =
+    fraktor_actor_rs::core::extension::ExtensionInstallers::default().with_extension_installer(installer);
+  let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
+  let config = ActorSystemConfigGeneric::default()
+    .with_scheduler_config(scheduler)
+    .with_tick_driver(tick_driver)
+    .with_extension_installers(installers);
+  let props = PropsGeneric::from_fn({
+    let setups = setups.clone();
+    let refs = refs.clone();
+    move || Guardian::new(setups.clone(), refs.clone())
+  });
+  let system = ActorSystemGeneric::<TB>::new_with_config(&props, &config).expect("system");
+  let controller = system.tick_driver_bundle().manual_controller().expect("manual controller").clone();
 
-  let journal_messages = journal_store.lock();
-  assert_eq!(journal_messages.len(), 1);
-  let replay = journal_messages[0].payload().downcast_ref::<JournalMessage<TB>>().expect("journal message");
-  assert!(matches!(replay, JournalMessage::ReplayMessages { .. }));
+  system.user_guardian_ref().tell(AnyMessageGeneric::new(Start)).expect("start");
 
-  let repr1 = PersistentRepr::new("pid-1", 3, ArcShared::new(Event::Incremented(2)));
-  let repr2 = PersistentRepr::new("pid-1", 4, ArcShared::new(Event::Incremented(3)));
-  actor.handle_journal_response(&JournalResponse::ReplayedMessage { persistent_repr: repr1 });
-  actor.handle_journal_response(&JournalResponse::ReplayedMessage { persistent_repr: repr2 });
-  actor.handle_journal_response(&JournalResponse::RecoverySuccess { highest_sequence_nr: 4 });
+  for _ in 0..50 {
+    controller.inject_and_drive(1);
+    if *recovery_complete.lock() {
+      break;
+    }
+  }
 
-  assert!(actor.recovery_complete);
-  assert_eq!(actor.value, 15);
-  assert_eq!(actor.recovered, vec![2, 3]);
+  assert!(*recovery_complete.lock());
+  assert_eq!(*value.lock(), 15);
+  assert_eq!(refs.lock().len(), 1);
 }
 
 #[test]
-fn persist_flow_sends_write_messages() {
-  let (journal_ref, journal_store) = create_sender();
-  let (snapshot_ref, _snapshot_store) = create_sender();
-  let mut actor = TestActor::new("pid-1", journal_ref, snapshot_ref);
+fn persist_flow_keeps_values_independent() {
+  let value_a = shared_mutex(0);
+  let value_b = shared_mutex(0);
+  let recovery_a = shared_mutex(false);
+  let recovery_b = shared_mutex(false);
+  let refs = shared_mutex(Vec::new());
+  let setups = vec![
+    ActorSetup {
+      persistence_id:    "pid-a".to_string(),
+      value:             value_a.clone(),
+      recovery_complete: recovery_a,
+    },
+    ActorSetup {
+      persistence_id:    "pid-b".to_string(),
+      value:             value_b.clone(),
+      recovery_complete: recovery_b,
+    },
+  ];
 
-  let mut ctx = ActorContextGeneric::new(
-    &ActorSystemGeneric::from_state(SystemStateSharedGeneric::new(SystemStateGeneric::new())),
-    Pid::new(1, 1),
-  );
+  let installer = PersistenceExtensionInstaller::new(InMemoryJournal::new(), InMemorySnapshotStore::new());
+  let installers =
+    fraktor_actor_rs::core::extension::ExtensionInstallers::default().with_extension_installer(installer);
+  let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
+  let config = ActorSystemConfigGeneric::default()
+    .with_scheduler_config(scheduler)
+    .with_tick_driver(tick_driver)
+    .with_extension_installers(installers);
+  let props = PropsGeneric::from_fn({
+    let setups = setups.clone();
+    let refs = refs.clone();
+    move || Guardian::new(setups.clone(), refs.clone())
+  });
+  let system = ActorSystemGeneric::<TB>::new_with_config(&props, &config).expect("system");
+  let controller = system.tick_driver_bundle().manual_controller().expect("manual controller").clone();
 
-  actor.persist(&mut ctx, Event::Incremented(1), |_actor, _| {});
-  actor.base.flush_batch(ActorRefGeneric::null());
+  system.user_guardian_ref().tell(AnyMessageGeneric::new(Start)).expect("start");
 
-  let journal_messages = journal_store.lock();
-  assert_eq!(journal_messages.len(), 1);
-  let write = journal_messages[0].payload().downcast_ref::<JournalMessage<TB>>().expect("journal message");
-  assert!(matches!(write, JournalMessage::WriteMessages { .. }));
+  for _ in 0..5 {
+    controller.inject_and_drive(1);
+  }
+
+  let refs_guard = refs.lock();
+  assert_eq!(refs_guard.len(), 2);
+  refs_guard[0].tell(AnyMessageGeneric::new(Command::Add(2))).expect("send add");
+  refs_guard[1].tell(AnyMessageGeneric::new(Command::Add(5))).expect("send add");
+  drop(refs_guard);
+
+  for _ in 0..10 {
+    controller.inject_and_drive(1);
+  }
+
+  assert_eq!(*value_a.lock(), 2);
+  assert_eq!(*value_b.lock(), 5);
 }

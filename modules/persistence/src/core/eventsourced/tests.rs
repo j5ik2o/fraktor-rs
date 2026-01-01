@@ -1,5 +1,5 @@
 use fraktor_actor_rs::core::{
-  actor::{ActorContextGeneric, Pid, actor_ref::ActorRef},
+  actor::{ActorContextGeneric, Pid},
   error::ActorError,
   messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
   system::{ActorSystemGeneric, SystemStateGeneric, SystemStateSharedGeneric},
@@ -12,22 +12,12 @@ use crate::core::{
 
 struct DummyEventsourced {
   persistence_id: String,
-  journal:        ActorRef,
-  snapshot:       ActorRef,
   last:           u64,
 }
 
 impl Eventsourced<NoStdToolbox> for DummyEventsourced {
   fn persistence_id(&self) -> &str {
     &self.persistence_id
-  }
-
-  fn journal_actor_ref(&self) -> &ActorRef {
-    &self.journal
-  }
-
-  fn snapshot_actor_ref(&self) -> &ActorRef {
-    &self.snapshot
   }
 
   fn receive_recover(&mut self, _event: &PersistentRepr) {}
@@ -49,12 +39,7 @@ impl Eventsourced<NoStdToolbox> for DummyEventsourced {
 
 #[test]
 fn eventsourced_default_recovery_is_latest() {
-  let dummy = DummyEventsourced {
-    persistence_id: "pid-1".into(),
-    journal:        ActorRef::null(),
-    snapshot:       ActorRef::null(),
-    last:           0,
-  };
+  let dummy = DummyEventsourced { persistence_id: "pid-1".into(), last: 0 };
 
   let recovery = dummy.recovery();
   assert_eq!(recovery, Recovery::default());
@@ -62,12 +47,7 @@ fn eventsourced_default_recovery_is_latest() {
 
 #[test]
 fn eventsourced_default_hooks_do_not_panic() {
-  let mut dummy = DummyEventsourced {
-    persistence_id: "pid-1".into(),
-    journal:        ActorRef::null(),
-    snapshot:       ActorRef::null(),
-    last:           0,
-  };
+  let mut dummy = DummyEventsourced { persistence_id: "pid-1".into(), last: 0 };
   let system = ActorSystemGeneric::<NoStdToolbox>::from_state(SystemStateSharedGeneric::new(SystemStateGeneric::new()));
   let pid = Pid::new(1, 1);
   let mut ctx = ActorContextGeneric::new(&system, pid);

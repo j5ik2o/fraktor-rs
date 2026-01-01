@@ -3,11 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use fraktor_actor_rs::core::{
-  actor::{ActorContextGeneric, actor_ref::ActorRefGeneric},
-  error::ActorError,
-  messaging::AnyMessageViewGeneric,
-};
+use fraktor_actor_rs::core::{actor::ActorContextGeneric, error::ActorError, messaging::AnyMessageViewGeneric};
 use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use crate::core::{
@@ -19,12 +15,6 @@ use crate::core::{
 pub trait Eventsourced<TB: RuntimeToolbox + 'static>: Send {
   /// Returns the persistence id.
   fn persistence_id(&self) -> &str;
-
-  /// Returns the journal actor reference.
-  fn journal_actor_ref(&self) -> &ActorRefGeneric<TB>;
-
-  /// Returns the snapshot actor reference.
-  fn snapshot_actor_ref(&self) -> &ActorRefGeneric<TB>;
 
   /// Returns the recovery configuration.
   fn recovery(&self) -> Recovery {
