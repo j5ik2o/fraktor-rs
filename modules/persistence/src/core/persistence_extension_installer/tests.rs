@@ -1,6 +1,7 @@
 use fraktor_actor_rs::core::{
-  actor::{Actor, ActorContextGeneric, Pid},
+  actor::{Actor, ActorContextGeneric},
   error::ActorError,
+  extension::ExtensionInstallers,
   messaging::AnyMessageViewGeneric,
   props::PropsGeneric,
   scheduler::{ManualTestDriver, SchedulerConfig, TickDriverConfig},
@@ -10,7 +11,8 @@ use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 
 use crate::core::{
   in_memory_journal::InMemoryJournal, in_memory_snapshot_store::InMemorySnapshotStore,
-  persistence_extension::PersistenceExtensionGeneric,
+  persistence_extension_installer::PersistenceExtensionInstaller,
+  persistence_extension_shared::PersistenceExtensionSharedGeneric,
 };
 
 struct NoopActor;
@@ -26,21 +28,21 @@ impl Actor<NoStdToolbox> for NoopActor {
 }
 
 #[test]
-fn persistence_extension_creates_actor_refs() {
+fn installer_registers_persistence_extension() {
+  let journal = InMemoryJournal::new();
+  let snapshot_store = InMemorySnapshotStore::new();
+  let installer = PersistenceExtensionInstaller::new(journal, snapshot_store);
+  let installers = ExtensionInstallers::default().with_extension_installer(installer);
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let config = ActorSystemConfigGeneric::default().with_scheduler_config(scheduler).with_tick_driver(tick_driver);
+  let config = ActorSystemConfigGeneric::default()
+    .with_scheduler_config(scheduler)
+    .with_tick_driver(tick_driver)
+    .with_extension_installers(installers);
   let props = PropsGeneric::from_fn(|| NoopActor);
   let system = ActorSystemGeneric::<NoStdToolbox>::new_with_config(&props, &config).expect("system");
-  let journal = InMemoryJournal::new();
-  let snapshot = InMemorySnapshotStore::new();
 
-  let extension = PersistenceExtensionGeneric::new(&system, journal, snapshot).expect("extension should build");
+  let extension = system.extended().extension_by_type::<PersistenceExtensionSharedGeneric<NoStdToolbox>>();
 
-  assert_ne!(extension.journal_actor_ref().pid(), Pid::new(0, 0));
-  assert_ne!(extension.snapshot_actor_ref().pid(), Pid::new(0, 0));
-  assert_ne!(extension.journal_actor_ref().pid(), extension.snapshot_actor_ref().pid());
-
-  let cloned = extension.clone();
-  assert_eq!(cloned.journal_actor_ref().pid(), extension.journal_actor_ref().pid());
+  assert!(extension.is_some());
 }

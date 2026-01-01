@@ -14,8 +14,8 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::core::{
-  eventsourced::Eventsourced, journal_message::JournalMessage, persistent_actor::PersistentActor,
-  persistent_actor_base::PersistentActorBase, persistent_repr::PersistentRepr, snapshot::Snapshot,
+  eventsourced::Eventsourced, journal_message::JournalMessage, persistence_context::PersistenceContext,
+  persistent_actor::PersistentActor, persistent_repr::PersistentRepr, snapshot::Snapshot,
   snapshot_message::SnapshotMessage, snapshot_selection_criteria::SnapshotSelectionCriteria,
 };
 
@@ -63,32 +63,24 @@ fn build_context() -> ActorContextGeneric<'static, TB> {
 }
 
 struct DummyPersistentActor {
-  base: PersistentActorBase<DummyPersistentActor, NoStdToolbox>,
+  context: PersistenceContext<DummyPersistentActor, NoStdToolbox>,
 }
 
 impl DummyPersistentActor {
   fn new() -> Self {
-    let journal = ActorRef::null();
-    let snapshot = ActorRef::null();
-    Self::new_with_refs(journal, snapshot)
+    Self { context: PersistenceContext::new("pid-1".into()) }
   }
 
   fn new_with_refs(journal: ActorRef, snapshot: ActorRef) -> Self {
-    Self { base: PersistentActorBase::new("pid-1".into(), journal, snapshot) }
+    let mut actor = Self::new();
+    let _ = actor.context.bind_actor_refs(journal, snapshot);
+    actor
   }
 }
 
 impl Eventsourced<NoStdToolbox> for DummyPersistentActor {
   fn persistence_id(&self) -> &str {
-    self.base.persistence_id()
-  }
-
-  fn journal_actor_ref(&self) -> &ActorRef {
-    self.base.journal_actor_ref()
-  }
-
-  fn snapshot_actor_ref(&self) -> &ActorRef {
-    self.base.snapshot_actor_ref()
+    self.context.persistence_id()
   }
 
   fn receive_recover(&mut self, _event: &PersistentRepr) {}
@@ -104,17 +96,13 @@ impl Eventsourced<NoStdToolbox> for DummyPersistentActor {
   }
 
   fn last_sequence_nr(&self) -> u64 {
-    self.base.last_sequence_nr()
+    self.context.last_sequence_nr()
   }
 }
 
 impl PersistentActor<NoStdToolbox> for DummyPersistentActor {
-  fn base(&self) -> &PersistentActorBase<Self, NoStdToolbox> {
-    &self.base
-  }
-
-  fn base_mut(&mut self) -> &mut PersistentActorBase<Self, NoStdToolbox> {
-    &mut self.base
+  fn persistence_context(&mut self) -> &mut PersistenceContext<Self, NoStdToolbox> {
+    &mut self.context
   }
 }
 
@@ -125,7 +113,7 @@ fn persistent_actor_persist_increments_sequence() {
 
   actor.persist(&mut ctx, 1_i32, |_actor, _| {});
 
-  assert_eq!(actor.base.current_sequence_nr(), 1);
+  assert_eq!(actor.context.current_sequence_nr(), 1);
 }
 
 #[test]
@@ -135,7 +123,7 @@ fn persistent_actor_persist_all_increments_sequence() {
 
   actor.persist_all(&mut ctx, vec![1_i32, 2_i32, 3_i32], |_actor, _| {});
 
-  assert_eq!(actor.base.current_sequence_nr(), 3);
+  assert_eq!(actor.context.current_sequence_nr(), 3);
 }
 
 #[test]
@@ -154,7 +142,7 @@ fn persistent_actor_save_snapshot_sends_message() {
   match message {
     | SnapshotMessage::SaveSnapshot { metadata, .. } => {
       assert_eq!(metadata.persistence_id(), "pid-1");
-      assert_eq!(metadata.sequence_nr(), actor.base.current_sequence_nr());
+      assert_eq!(metadata.sequence_nr(), actor.context.current_sequence_nr());
     },
     | _ => panic!("unexpected message"),
   }

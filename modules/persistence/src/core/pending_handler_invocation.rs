@@ -7,7 +7,7 @@ use alloc::boxed::Box;
 
 use crate::core::persistent_repr::PersistentRepr;
 
-type PendingHandler<A> = Box<dyn FnOnce(&mut A, &PersistentRepr) + Send>;
+type PendingHandler<A> = Box<dyn FnOnce(&mut A, &PersistentRepr) + Send + Sync>;
 
 /// Pending invocation stored while persisting.
 pub enum PendingHandlerInvocation<A> {
@@ -30,13 +30,16 @@ pub enum PendingHandlerInvocation<A> {
 impl<A> PendingHandlerInvocation<A> {
   /// Creates a stashing invocation.
   #[must_use]
-  pub fn stashing(repr: PersistentRepr, handler: impl FnOnce(&mut A, &PersistentRepr) + Send + 'static) -> Self {
+  pub fn stashing(repr: PersistentRepr, handler: impl FnOnce(&mut A, &PersistentRepr) + Send + Sync + 'static) -> Self {
     Self::Stashing { repr, handler: Box::new(handler) }
   }
 
   /// Creates an async invocation.
   #[must_use]
-  pub fn async_handler(repr: PersistentRepr, handler: impl FnOnce(&mut A, &PersistentRepr) + Send + 'static) -> Self {
+  pub fn async_handler(
+    repr: PersistentRepr,
+    handler: impl FnOnce(&mut A, &PersistentRepr) + Send + Sync + 'static,
+  ) -> Self {
     Self::Async { repr, handler: Box::new(handler) }
   }
 

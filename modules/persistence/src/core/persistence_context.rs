@@ -1,11 +1,14 @@
-//! Persistent actor base implementation.
+//! Persistent actor context and state.
 
 #[cfg(test)]
 mod tests;
 
-use alloc::{boxed::Box, collections::VecDeque, string::String, vec::Vec};
+use alloc::{boxed::Box, collections::VecDeque, format, string::String, vec::Vec};
 
-use fraktor_actor_rs::core::{actor::actor_ref::ActorRefGeneric, messaging::AnyMessageGeneric};
+use fraktor_actor_rs::core::{
+  actor::{Pid, actor_ref::ActorRefGeneric},
+  messaging::AnyMessageGeneric,
+};
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
 use crate::core::{
@@ -16,44 +19,61 @@ use crate::core::{
   snapshot_response::SnapshotResponse, snapshot_response_action::SnapshotResponseAction,
 };
 
-type PendingHandler<A> = Box<dyn FnOnce(&mut A, &PersistentRepr) + Send>;
+type PendingHandler<A> = Box<dyn FnOnce(&mut A, &PersistentRepr) + Send + Sync>;
 
-/// Base implementation for persistent actors.
-pub struct PersistentActorBase<A: 'static, TB: RuntimeToolbox + 'static> {
+/// Persistence context owned by persistent actors.
+pub struct PersistenceContext<A: 'static, TB: RuntimeToolbox + 'static> {
   persistence_id:      String,
   state:               PersistentActorState,
   pending_invocations: VecDeque<PendingHandlerInvocation<A>>,
   event_batch:         Vec<PersistentEnvelope<A>>,
   journal_batch:       Vec<PersistentEnvelope<A>>,
-  journal_actor_ref:   ActorRefGeneric<TB>,
-  snapshot_actor_ref:  ActorRefGeneric<TB>,
   current_sequence_nr: u64,
   last_sequence_nr:    u64,
   recovery:            Recovery,
   instance_id:         u32,
+  journal_actor_ref:   ActorRefGeneric<TB>,
+  snapshot_actor_ref:  ActorRefGeneric<TB>,
 }
 
-impl<A: 'static, TB: RuntimeToolbox + 'static> PersistentActorBase<A, TB> {
-  /// Creates a new persistent actor base.
+impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
+  /// Creates a new persistence context for the provided persistence id.
   #[must_use]
-  pub fn new(
-    persistence_id: String,
-    journal_actor_ref: ActorRefGeneric<TB>,
-    snapshot_actor_ref: ActorRefGeneric<TB>,
-  ) -> Self {
+  pub fn new(persistence_id: String) -> Self {
     Self {
       persistence_id,
       state: PersistentActorState::WaitingRecoveryPermit,
       pending_invocations: VecDeque::new(),
       event_batch: Vec::new(),
       journal_batch: Vec::new(),
-      journal_actor_ref,
-      snapshot_actor_ref,
       current_sequence_nr: 0,
       last_sequence_nr: 0,
       recovery: Recovery::default(),
       instance_id: 1,
+      journal_actor_ref: ActorRefGeneric::null(),
+      snapshot_actor_ref: ActorRefGeneric::null(),
     }
+  }
+
+  /// Binds journal and snapshot actor references.
+  ///
+  /// # Errors
+  ///
+  /// Returns `PersistenceError::StateMachine` when called more than once or refs are invalid.
+  pub fn bind_actor_refs(
+    &mut self,
+    journal_actor_ref: ActorRefGeneric<TB>,
+    snapshot_actor_ref: ActorRefGeneric<TB>,
+  ) -> Result<(), PersistenceError> {
+    if self.is_bound() {
+      return Err(PersistenceError::StateMachine("persistence actor refs already bound".into()));
+    }
+    if Self::is_null_ref(&journal_actor_ref) || Self::is_null_ref(&snapshot_actor_ref) {
+      return Err(PersistenceError::StateMachine("persistence actor refs must be bound to concrete actors".into()));
+    }
+    self.journal_actor_ref = journal_actor_ref;
+    self.snapshot_actor_ref = snapshot_actor_ref;
+    Ok(())
   }
 
   /// Returns the current state.
@@ -80,18 +100,6 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistentActorBase<A, TB> {
     self.last_sequence_nr
   }
 
-  /// Returns the journal actor reference.
-  #[must_use]
-  pub const fn journal_actor_ref(&self) -> &ActorRefGeneric<TB> {
-    &self.journal_actor_ref
-  }
-
-  /// Returns the snapshot actor reference.
-  #[must_use]
-  pub const fn snapshot_actor_ref(&self) -> &ActorRefGeneric<TB> {
-    &self.snapshot_actor_ref
-  }
-
   /// Adds an event to the batch.
   pub fn add_to_event_batch<E: core::any::Any + Send + Sync + 'static>(
     &mut self,
@@ -106,7 +114,7 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistentActorBase<A, TB> {
 
   /// Flushes the current batch to the journal.
   pub fn flush_batch(&mut self, sender: ActorRefGeneric<TB>) {
-    if self.event_batch.is_empty() {
+    if self.event_batch.is_empty() || !self.is_ready() {
       return;
     }
 
@@ -134,7 +142,7 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistentActorBase<A, TB> {
       sender,
       instance_id: self.instance_id,
     };
-    let _ = self.journal_actor_ref.tell(AnyMessageGeneric::new(message));
+    let _ = self.send_write_messages(message);
     if let Ok(state) = self.state.transition_to_persisting_events() {
       self.state = state;
     }
@@ -205,6 +213,10 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistentActorBase<A, TB> {
     response: &SnapshotResponse,
     sender: ActorRefGeneric<TB>,
   ) -> SnapshotResponseAction {
+    if !self.is_ready() {
+      return SnapshotResponseAction::None;
+    }
+
     match response {
       | SnapshotResponse::LoadSnapshotResult { snapshot, .. } => {
         if let Some(snapshot) = snapshot {
@@ -225,7 +237,7 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistentActorBase<A, TB> {
           max: recovery.replay_max(),
           sender,
         };
-        let _ = self.journal_actor_ref.tell(AnyMessageGeneric::new(message));
+        let _ = self.send_write_messages(message);
         snapshot
           .as_ref()
           .map(|snap| SnapshotResponseAction::ReceiveSnapshot(snap.clone()))
@@ -243,7 +255,7 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistentActorBase<A, TB> {
           max: recovery.replay_max(),
           sender,
         };
-        let _ = self.journal_actor_ref.tell(AnyMessageGeneric::new(message));
+        let _ = self.send_write_messages(message);
         SnapshotResponseAction::SnapshotFailure(error.clone())
       },
       | SnapshotResponse::SaveSnapshotFailure { error, .. } => SnapshotResponseAction::SnapshotFailure(error.clone()),
@@ -257,24 +269,20 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistentActorBase<A, TB> {
 
   /// Starts recovery.
   pub(crate) fn start_recovery(&mut self, recovery: Recovery, sender: ActorRefGeneric<TB>) {
+    if !self.is_ready() {
+      return;
+    }
     self.recovery = recovery;
     if let Ok(state) = self.state.transition_to_recovery_started() {
       self.state = state;
     }
-
-    if self.recovery.snapshot_criteria() == &crate::core::snapshot_selection_criteria::SnapshotSelectionCriteria::none()
-      && self.recovery.to_sequence_nr() == 0
-      && self.recovery.replay_max() == 0
-    {
-      if let Ok(state) = self.state.transition_to_recovering() {
-        self.state = state;
-      }
+    if self.recovery == Recovery::none() {
       let message = JournalMessage::GetHighestSequenceNr {
         persistence_id: self.persistence_id.clone(),
         from_sequence_nr: 0,
         sender,
       };
-      let _ = self.journal_actor_ref.tell(AnyMessageGeneric::new(message));
+      let _ = self.send_write_messages(message);
       return;
     }
 
@@ -283,6 +291,55 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistentActorBase<A, TB> {
       criteria: self.recovery.snapshot_criteria().clone(),
       sender,
     };
-    let _ = self.snapshot_actor_ref.tell(AnyMessageGeneric::new(message));
+    let _ = self.send_snapshot_message(message);
+  }
+
+  /// Sends journal messages through the persistence extension.
+  ///
+  /// # Errors
+  ///
+  /// Returns `PersistenceError::StateMachine` when context is unbound.
+  /// Returns `PersistenceError::MessagePassing` when the message cannot be delivered.
+  pub fn send_write_messages(&self, message: JournalMessage<TB>) -> Result<(), PersistenceError> {
+    self.ensure_ready()?;
+    self
+      .journal_actor_ref
+      .tell(AnyMessageGeneric::new(message))
+      .map_err(|error| PersistenceError::MessagePassing(format!("{error:?}")))
+      .map(|_| ())
+  }
+
+  /// Sends snapshot messages through the persistence extension.
+  ///
+  /// # Errors
+  ///
+  /// Returns `PersistenceError::StateMachine` when context is unbound.
+  /// Returns `PersistenceError::MessagePassing` when the message cannot be delivered.
+  pub fn send_snapshot_message(&self, message: SnapshotMessage<TB>) -> Result<(), PersistenceError> {
+    self.ensure_ready()?;
+    self
+      .snapshot_actor_ref
+      .tell(AnyMessageGeneric::new(message))
+      .map_err(|error| PersistenceError::MessagePassing(format!("{error:?}")))
+      .map(|_| ())
+  }
+
+  fn ensure_ready(&self) -> Result<(), PersistenceError> {
+    if !self.is_ready() {
+      return Err(PersistenceError::StateMachine("persistence context not bound".into()));
+    }
+    Ok(())
+  }
+
+  fn is_bound(&self) -> bool {
+    !Self::is_null_ref(&self.journal_actor_ref) || !Self::is_null_ref(&self.snapshot_actor_ref)
+  }
+
+  fn is_ready(&self) -> bool {
+    !Self::is_null_ref(&self.journal_actor_ref) && !Self::is_null_ref(&self.snapshot_actor_ref)
+  }
+
+  fn is_null_ref(actor_ref: &ActorRefGeneric<TB>) -> bool {
+    actor_ref.pid() == Pid::new(0, 0)
   }
 }

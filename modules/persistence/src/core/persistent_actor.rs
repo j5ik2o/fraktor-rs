@@ -6,11 +6,7 @@ mod tests;
 use alloc::{boxed::Box, string::ToString, vec::Vec};
 use core::any::Any;
 
-use fraktor_actor_rs::core::{
-  actor::ActorContextGeneric,
-  error::ActorError,
-  messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
-};
+use fraktor_actor_rs::core::{actor::ActorContextGeneric, error::ActorError, messaging::AnyMessageViewGeneric};
 use fraktor_utils_rs::core::{
   runtime_toolbox::{RuntimeToolbox, SyncMutexFamily},
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
@@ -18,7 +14,7 @@ use fraktor_utils_rs::core::{
 
 use crate::core::{
   eventsourced::Eventsourced, journal_message::JournalMessage, journal_response::JournalResponse,
-  persistent_actor_base::PersistentActorBase, persistent_repr::PersistentRepr, snapshot_message::SnapshotMessage,
+  persistence_context::PersistenceContext, persistent_repr::PersistentRepr, snapshot_message::SnapshotMessage,
   snapshot_response::SnapshotResponse,
 };
 
@@ -26,25 +22,22 @@ use crate::core::{
 pub trait PersistentActor<TB: RuntimeToolbox + 'static>: Eventsourced<TB> + Sized
 where
   Self: 'static, {
-  /// Returns the persistent base.
-  fn base(&self) -> &PersistentActorBase<Self, TB>;
-
-  /// Returns the mutable persistent base.
-  fn base_mut(&mut self) -> &mut PersistentActorBase<Self, TB>;
+  /// Returns the mutable persistence context.
+  fn persistence_context(&mut self) -> &mut PersistenceContext<Self, TB>;
 
   /// Persists a single event and stashes commands.
   fn persist<E: Any + Send + Sync + 'static>(
     &mut self,
     _ctx: &mut ActorContextGeneric<'_, TB>,
     event: E,
-    handler: impl FnOnce(&mut Self, &E) + Send + 'static,
+    handler: impl FnOnce(&mut Self, &E) + Send + Sync + 'static,
   ) {
     let handler_box = Box::new(move |actor: &mut Self, repr: &PersistentRepr| {
       if let Some(event) = repr.downcast_ref::<E>() {
         handler(actor, event);
       }
     });
-    self.base_mut().add_to_event_batch(event, true, handler_box);
+    self.persistence_context().add_to_event_batch(event, true, handler_box);
   }
 
   /// Persists a single event without stashing commands.
@@ -52,14 +45,14 @@ where
     &mut self,
     _ctx: &mut ActorContextGeneric<'_, TB>,
     event: E,
-    handler: impl FnOnce(&mut Self, &E) + Send + 'static,
+    handler: impl FnOnce(&mut Self, &E) + Send + Sync + 'static,
   ) {
     let handler_box = Box::new(move |actor: &mut Self, repr: &PersistentRepr| {
       if let Some(event) = repr.downcast_ref::<E>() {
         handler(actor, event);
       }
     });
-    self.base_mut().add_to_event_batch(event, false, handler_box);
+    self.persistence_context().add_to_event_batch(event, false, handler_box);
   }
 
   /// Persists multiple events.
@@ -67,7 +60,7 @@ where
     &mut self,
     _ctx: &mut ActorContextGeneric<'_, TB>,
     events: Vec<E>,
-    handler: impl FnMut(&mut Self, &E) + Send + 'static,
+    handler: impl FnMut(&mut Self, &E) + Send + Sync + 'static,
   ) {
     let handler_box = Box::new(handler);
     let shared_handler = ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(handler_box));
@@ -80,29 +73,30 @@ where
           (guard.as_mut())(actor, event);
         }
       });
-      self.base_mut().add_to_event_batch(event, true, handler_box);
+      self.persistence_context().add_to_event_batch(event, true, handler_box);
     }
+  }
+
+  /// Flushes the pending batch to the journal.
+  fn flush_batch(&mut self, ctx: &mut ActorContextGeneric<'_, TB>) {
+    let sender = ctx.self_ref();
+    self.persistence_context().flush_batch(sender);
   }
 
   /// Saves a snapshot.
   fn save_snapshot(&mut self, ctx: &mut ActorContextGeneric<'_, TB>, snapshot: ArcShared<dyn Any + Send + Sync>) {
-    let metadata = crate::core::snapshot_metadata::SnapshotMetadata::new(
-      self.persistence_id(),
-      self.base().current_sequence_nr(),
-      0,
-    );
+    let persistence_id = self.persistence_id().to_string();
+    let sequence_nr = self.persistence_context().current_sequence_nr();
+    let metadata = crate::core::snapshot_metadata::SnapshotMetadata::new(persistence_id, sequence_nr, 0);
     let message = SnapshotMessage::SaveSnapshot { metadata, snapshot, sender: ctx.self_ref() };
-    let _ = self.snapshot_actor_ref().tell(AnyMessageGeneric::new(message));
+    let _ = self.persistence_context().send_snapshot_message(message);
   }
 
   /// Deletes messages up to the given sequence number.
   fn delete_messages(&mut self, ctx: &mut ActorContextGeneric<'_, TB>, to_sequence_nr: u64) {
-    let message = JournalMessage::DeleteMessagesTo {
-      persistence_id: self.persistence_id().to_string(),
-      to_sequence_nr,
-      sender: ctx.self_ref(),
-    };
-    let _ = self.journal_actor_ref().tell(AnyMessageGeneric::new(message));
+    let persistence_id = self.persistence_id().to_string();
+    let message = JournalMessage::DeleteMessagesTo { persistence_id, to_sequence_nr, sender: ctx.self_ref() };
+    let _ = self.persistence_context().send_write_messages(message);
   }
 
   /// Deletes snapshots matching the criteria.
@@ -111,31 +105,28 @@ where
     ctx: &mut ActorContextGeneric<'_, TB>,
     criteria: crate::core::snapshot_selection_criteria::SnapshotSelectionCriteria,
   ) {
-    let message = SnapshotMessage::DeleteSnapshots {
-      persistence_id: self.persistence_id().to_string(),
-      criteria,
-      sender: ctx.self_ref(),
-    };
-    let _ = self.snapshot_actor_ref().tell(AnyMessageGeneric::new(message));
+    let persistence_id = self.persistence_id().to_string();
+    let message = SnapshotMessage::DeleteSnapshots { persistence_id, criteria, sender: ctx.self_ref() };
+    let _ = self.persistence_context().send_snapshot_message(message);
   }
 
   /// Starts recovery by delegating to the base.
   fn start_recovery(&mut self, ctx: &mut ActorContextGeneric<'_, TB>) {
     let sender = ctx.self_ref();
     let recovery = self.recovery();
-    self.base_mut().start_recovery(recovery, sender);
+    self.persistence_context().start_recovery(recovery, sender);
   }
 
   /// Handles journal responses by delegating to the base.
   fn handle_journal_response(&mut self, response: &JournalResponse) {
-    let action = self.base_mut().handle_journal_response(response);
+    let action = self.persistence_context().handle_journal_response(response);
     action.apply::<TB>(self);
   }
 
   /// Handles snapshot responses by delegating to the base.
   fn handle_snapshot_response(&mut self, response: &SnapshotResponse, ctx: &mut ActorContextGeneric<'_, TB>) {
     let sender = ctx.self_ref();
-    let action = self.base_mut().handle_snapshot_response(response, sender);
+    let action = self.persistence_context().handle_snapshot_response(response, sender);
     action.apply::<TB>(self);
   }
 

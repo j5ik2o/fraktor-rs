@@ -9,7 +9,7 @@ use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::persistent_repr::PersistentRepr;
 
-type PersistentHandler<A> = Box<dyn FnOnce(&mut A, &PersistentRepr) + Send>;
+type PersistentHandler<A> = Box<dyn FnOnce(&mut A, &PersistentRepr) + Send + Sync>;
 
 /// Persistent envelope holding event and handler.
 pub struct PersistentEnvelope<A> {

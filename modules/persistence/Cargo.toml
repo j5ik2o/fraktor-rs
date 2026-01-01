@@ -32,3 +32,4 @@ hashbrown = { workspace = true, default-features = false }
 
 [dev-dependencies]
 critical-section = { workspace = true, features = ["std"] }
+fraktor-actor-rs = { workspace = true, features = ["test-support"] }
