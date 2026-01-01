@@ -15,12 +15,12 @@ use fraktor_utils_rs::core::{
 use hashbrown::HashMap;
 
 use super::{
-  DeterministicEvent, ExecutionBatch, SchedulerDiagnostics, SchedulerDiagnosticsEvent,
-  SchedulerDiagnosticsSubscription, SchedulerHandle, SchedulerMode, SchedulerWarning, TaskRunEntry, TaskRunHandle,
-  TaskRunOnClose, TaskRunPriority, TaskRunQueue, TaskRunSummary, cancellable_registry::CancellableRegistry,
-  command::SchedulerCommand, config::SchedulerConfig, dump::SchedulerDump, dump_job::SchedulerDumpJob,
-  error::SchedulerError, fixed_delay_context::FixedDelayContext, fixed_rate_context::FixedRateContext,
-  metrics::SchedulerMetrics, periodic_batch_decision::PeriodicBatchDecision,
+  DeterministicEvent, ExecutionBatch, SchedulerDiagnosticsEvent, SchedulerDiagnosticsGeneric,
+  SchedulerDiagnosticsSubscriptionGeneric, SchedulerHandle, SchedulerMode, SchedulerWarning, TaskRunEntry,
+  TaskRunHandle, TaskRunOnClose, TaskRunPriority, TaskRunQueue, TaskRunSummary,
+  cancellable_registry::CancellableRegistry, command::SchedulerCommand, config::SchedulerConfig, dump::SchedulerDump,
+  dump_job::SchedulerDumpJob, error::SchedulerError, fixed_delay_context::FixedDelayContext,
+  fixed_rate_context::FixedRateContext, metrics::SchedulerMetrics, periodic_batch_decision::PeriodicBatchDecision,
 };
 
 const DEFAULT_DRIFT_BUDGET_PCT: u8 = 5;
@@ -40,7 +40,7 @@ pub struct Scheduler<TB: RuntimeToolbox> {
   task_runs:     TaskRunQueue,
   task_run_seq:  u64,
   shutting_down: bool,
-  diagnostics:   SchedulerDiagnostics,
+  diagnostics:   SchedulerDiagnosticsGeneric<TB>,
 }
 
 #[allow(dead_code)]
@@ -106,7 +106,7 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
       task_runs: TaskRunQueue::new(task_run_backend),
       task_run_seq: 0,
       shutting_down: false,
-      diagnostics: SchedulerDiagnostics::with_capacity(config.diagnostics_capacity()),
+      diagnostics: SchedulerDiagnosticsGeneric::with_capacity(config.diagnostics_capacity()),
     }
   }
 
@@ -148,12 +148,12 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
 
   /// Returns the diagnostics snapshot.
   #[must_use]
-  pub const fn diagnostics(&self) -> &SchedulerDiagnostics {
+  pub const fn diagnostics(&self) -> &SchedulerDiagnosticsGeneric<TB> {
     &self.diagnostics
   }
 
   /// Subscribes to the diagnostics stream.
-  pub fn subscribe_diagnostics(&mut self, capacity: usize) -> SchedulerDiagnosticsSubscription {
+  pub fn subscribe_diagnostics(&mut self, capacity: usize) -> SchedulerDiagnosticsSubscriptionGeneric<TB> {
     self.diagnostics.subscribe(capacity.max(1))
   }
 

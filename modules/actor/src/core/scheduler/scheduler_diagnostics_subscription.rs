@@ -1,22 +1,33 @@
 use alloc::vec::Vec;
 
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_rs::core::{
+  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
+  sync::ArcShared,
+};
 
 use super::{
   SchedulerDiagnosticsEvent,
-  diagnostics_registry::{DiagnosticsBuffer, DiagnosticsRegistry},
+  diagnostics_registry::{DiagnosticsBufferGeneric, DiagnosticsRegistryGeneric},
 };
 
 /// Handle returned to diagnostics subscribers for draining events.
-pub struct SchedulerDiagnosticsSubscription {
+pub struct SchedulerDiagnosticsSubscriptionGeneric<TB: RuntimeToolbox + 'static> {
   id:       u64,
-  registry: DiagnosticsRegistry,
-  buffer:   ArcShared<DiagnosticsBuffer>,
+  registry: DiagnosticsRegistryGeneric<TB>,
+  buffer:   ArcShared<DiagnosticsBufferGeneric<TB>>,
   detached: bool,
 }
 
-impl SchedulerDiagnosticsSubscription {
-  pub(crate) const fn new(id: u64, registry: DiagnosticsRegistry, buffer: ArcShared<DiagnosticsBuffer>) -> Self {
+/// Type alias using the default toolbox.
+#[allow(dead_code)]
+pub type SchedulerDiagnosticsSubscription = SchedulerDiagnosticsSubscriptionGeneric<NoStdToolbox>;
+
+impl<TB: RuntimeToolbox + 'static> SchedulerDiagnosticsSubscriptionGeneric<TB> {
+  pub(crate) const fn new(
+    id: u64,
+    registry: DiagnosticsRegistryGeneric<TB>,
+    buffer: ArcShared<DiagnosticsBufferGeneric<TB>>,
+  ) -> Self {
     Self { id, registry, buffer, detached: false }
   }
 
@@ -27,7 +38,7 @@ impl SchedulerDiagnosticsSubscription {
   }
 }
 
-impl Drop for SchedulerDiagnosticsSubscription {
+impl<TB: RuntimeToolbox + 'static> Drop for SchedulerDiagnosticsSubscriptionGeneric<TB> {
   fn drop(&mut self) {
     if !self.detached {
       self.registry.remove(self.id);

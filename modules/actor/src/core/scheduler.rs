@@ -71,9 +71,11 @@ pub use runnable::SchedulerRunnable;
 pub use runner_mode::RunnerMode;
 pub use scheduler_context::SchedulerContext;
 pub use scheduler_core::Scheduler;
-pub use scheduler_diagnostics::SchedulerDiagnostics;
+pub use scheduler_diagnostics::{SchedulerDiagnostics, SchedulerDiagnosticsGeneric};
 pub use scheduler_diagnostics_event::SchedulerDiagnosticsEvent;
-pub use scheduler_diagnostics_subscription::SchedulerDiagnosticsSubscription;
+pub use scheduler_diagnostics_subscription::{
+  SchedulerDiagnosticsSubscription, SchedulerDiagnosticsSubscriptionGeneric,
+};
 pub use scheduler_runner::SchedulerRunner;
 pub use scheduler_runner_owned::SchedulerRunnerOwned;
 pub use scheduler_shared::{SchedulerShared, SchedulerSharedGeneric};
