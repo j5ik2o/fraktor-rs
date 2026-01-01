@@ -197,8 +197,7 @@ where
   for<'a> J::WriteFuture<'a>: Send + 'static,
   for<'a> J::ReplayFuture<'a>: Send + 'static,
   for<'a> J::DeleteFuture<'a>: Send + 'static,
-  for<'a> J::HighestSeqNrFuture<'a>: Send + 'static,
-{
+  for<'a> J::HighestSeqNrFuture<'a>: Send + 'static, {
   match &mut entry {
     | JournalInFlight::Write { future, messages, sender, instance_id, retry_count } => {
       match Future::poll(future.as_mut(), cx) {
@@ -234,14 +233,14 @@ where
       }
     },
     | JournalInFlight::Replay {
-        future,
-        sender,
-        persistence_id,
-        from_sequence_nr,
-        to_sequence_nr,
-        max,
-        retry_count,
-      } => match Future::poll(future.as_mut(), cx) {
+      future,
+      sender,
+      persistence_id,
+      from_sequence_nr,
+      to_sequence_nr,
+      max,
+      retry_count,
+    } => match Future::poll(future.as_mut(), cx) {
       | Poll::Ready(Ok(messages)) => {
         let mut highest = 0;
         for repr in messages.iter().cloned() {
@@ -294,22 +293,22 @@ where
             sequence_nr,
           }));
           None
-      },
-      | Poll::Ready(Err(error)) => {
-        if *retry_count < retry_max {
-          *retry_count = retry_count.saturating_add(1);
-          *future = Box::pin(journal.highest_sequence_nr(persistence_id));
-          Some(entry)
-        } else {
-          let _ = sender.tell(AnyMessageGeneric::new(JournalResponse::HighestSequenceNrFailure {
-            persistence_id: persistence_id.clone(),
-            cause:          error,
-          }));
-          None
-        }
-      },
-      | Poll::Pending => Some(entry),
-    }
+        },
+        | Poll::Ready(Err(error)) => {
+          if *retry_count < retry_max {
+            *retry_count = retry_count.saturating_add(1);
+            *future = Box::pin(journal.highest_sequence_nr(persistence_id));
+            Some(entry)
+          } else {
+            let _ = sender.tell(AnyMessageGeneric::new(JournalResponse::HighestSequenceNrFailure {
+              persistence_id: persistence_id.clone(),
+              cause:          error,
+            }));
+            None
+          }
+        },
+        | Poll::Pending => Some(entry),
+      }
     },
   }
 }
