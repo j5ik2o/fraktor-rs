@@ -7,7 +7,9 @@ use fraktor_actor_rs::core::{
     Actor, ActorContextGeneric,
     actor_path::{ActorPath, ActorPathParts, GuardianKind},
   },
+  dead_letter::DeadLetterReason,
   error::ActorError,
+  event::stream::CorrelationId,
   messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
   props::PropsGeneric,
   scheduler::{ManualTestDriver, TickDriverConfig},
@@ -134,18 +136,13 @@ fn deserialization_failure_produces_dead_letter_error() {
     remote_node(),
     None,
     serialized,
-    fraktor_actor_rs::core::event::stream::CorrelationId::from_u128(1),
+    CorrelationId::from_u128(1),
     crate::core::OutboundPriority::User,
   );
 
   let result: Result<InboundEnvelope<_>, _> = reader.decode(envelope);
   assert!(result.is_err());
-  assert!(
-    system
-      .dead_letters()
-      .iter()
-      .any(|entry| entry.reason() == fraktor_actor_rs::core::dead_letter::DeadLetterReason::SerializationError)
-  );
+  assert!(system.dead_letters().iter().any(|entry| entry.reason() == DeadLetterReason::SerializationError));
 }
 
 #[test]
@@ -168,7 +165,7 @@ fn deliver_routes_message_to_local_actor() {
     remote_node(),
     AnyMessageGeneric::new("delivered".to_string()),
     None,
-    fraktor_actor_rs::core::event::stream::CorrelationId::from_u128(1),
+    CorrelationId::from_u128(1),
     crate::core::OutboundPriority::User,
   );
 

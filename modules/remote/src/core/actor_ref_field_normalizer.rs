@@ -5,6 +5,7 @@ use alloc::string::{String, ToString};
 use fraktor_actor_rs::core::{
   actor::actor_path::ActorPath,
   event::stream::{EventStreamEvent, RemoteAuthorityEvent},
+  messaging::AnyMessageGeneric,
   system::{AuthorityState, RemoteAuthorityError, SystemStateSharedGeneric},
 };
 use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
@@ -33,10 +34,7 @@ impl<TB: RuntimeToolbox + 'static> ActorRefFieldNormalizerGeneric<TB> {
   }
 
   /// Validates sender and rejects quarantined authority.
-  pub(crate) fn validate_sender(
-    &self,
-    message: &fraktor_actor_rs::core::messaging::AnyMessageGeneric<TB>,
-  ) -> Result<(), RemoteAuthorityError> {
+  pub(crate) fn validate_sender(&self, message: &AnyMessageGeneric<TB>) -> Result<(), RemoteAuthorityError> {
     if let Some(sender) = message.sender()
       && let Some(path) = sender.canonical_path()
       && let Some(authority) = path.parts().authority_endpoint()

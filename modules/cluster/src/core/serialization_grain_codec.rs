@@ -7,7 +7,7 @@ use alloc::{format, string::String};
 
 use fraktor_actor_rs::core::{
   messaging::AnyMessageGeneric,
-  serialization::{SerializationCallScope, SerializationError, SerializationExtensionSharedGeneric},
+  serialization::{SerializationCallScope, SerializationError, SerializationExtensionSharedGeneric, SerializedMessage},
   system::ActorSystemGeneric,
 };
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::SharedAccess};
@@ -61,20 +61,14 @@ impl<TB: RuntimeToolbox + 'static> SerializationGrainCodec<TB> {
 }
 
 impl<TB: RuntimeToolbox + 'static> GrainCodec<TB> for SerializationGrainCodec<TB> {
-  fn encode(
-    &self,
-    message: &AnyMessageGeneric<TB>,
-  ) -> Result<fraktor_actor_rs::core::serialization::SerializedMessage, GrainCodecError> {
+  fn encode(&self, message: &AnyMessageGeneric<TB>) -> Result<SerializedMessage, GrainCodecError> {
     self
       .extension
       .with_read(|ext| ext.serialize(message.payload(), self.scope))
       .map_err(|error| Self::map_error(&error, "encode"))
   }
 
-  fn decode(
-    &self,
-    payload: &fraktor_actor_rs::core::serialization::SerializedMessage,
-  ) -> Result<AnyMessageGeneric<TB>, GrainCodecError> {
+  fn decode(&self, payload: &SerializedMessage) -> Result<AnyMessageGeneric<TB>, GrainCodecError> {
     let decoded = self
       .extension
       .with_read(|ext| ext.deserialize(payload, None))

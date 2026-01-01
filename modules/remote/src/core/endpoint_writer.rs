@@ -10,9 +10,9 @@ use core::{
 };
 
 use fraktor_actor_rs::core::{
-  event::stream::BackpressureSignal,
+  event::stream::{BackpressureSignal, CorrelationId},
   serialization::{SerializationCallScope, SerializationExtensionSharedGeneric},
-  system::ActorSystemWeakGeneric,
+  system::{ActorSystemGeneric, ActorSystemWeakGeneric},
 };
 use fraktor_utils_rs::core::{
   collections::queue::{
@@ -73,7 +73,7 @@ impl<TB: RuntimeToolbox + 'static> EndpointWriterGeneric<TB> {
 
   /// Returns a reference to the underlying actor system if still alive.
   #[must_use]
-  pub fn system(&self) -> Option<fraktor_actor_rs::core::system::ActorSystemGeneric<TB>> {
+  pub fn system(&self) -> Option<ActorSystemGeneric<TB>> {
     self.system.upgrade()
   }
 
@@ -167,9 +167,9 @@ impl<TB: RuntimeToolbox + 'static> EndpointWriterGeneric<TB> {
     Ok(RemotingEnvelope::new(recipient, remote_node, sender, serialized, correlation_id, priority))
   }
 
-  fn next_correlation_id(&self) -> fraktor_actor_rs::core::event::stream::CorrelationId {
+  fn next_correlation_id(&self) -> CorrelationId {
     let value = self.correlation.fetch_add(1, Ordering::Relaxed) as u128;
-    fraktor_actor_rs::core::event::stream::CorrelationId::from_u128(value)
+    CorrelationId::from_u128(value)
   }
 
   fn new_queue() -> SyncFifoQueue<OutboundMessage<TB>, VecDequeBackend<OutboundMessage<TB>>> {
