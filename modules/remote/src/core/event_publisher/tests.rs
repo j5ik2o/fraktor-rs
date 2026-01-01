@@ -4,7 +4,7 @@ use fraktor_actor_rs::core::{
   actor::{Actor, ActorContextGeneric},
   error::ActorError,
   event::stream::{
-    BackpressureSignal, EventStreamEvent, EventStreamSubscriber, EventStreamSubscriptionGeneric,
+    BackpressureSignal, CorrelationId, EventStreamEvent, EventStreamSubscriber, EventStreamSubscriptionGeneric,
     RemotingLifecycleEvent, subscriber_handle,
   },
   messaging::AnyMessageViewGeneric,
@@ -69,7 +69,7 @@ fn publishes_listen_started_event() {
   let publisher = EventPublisher::new(system.downgrade());
   let (recorder, _subscription) = subscribe(&system);
 
-  let correlation = fraktor_actor_rs::core::event::stream::CorrelationId::from_u128(42);
+  let correlation = CorrelationId::from_u128(42);
   publisher.publish_listen_started("127.0.0.1:2552", correlation);
 
   let events = recorder.events.lock().clone();
@@ -88,7 +88,7 @@ fn publishes_backpressure_event() {
   let publisher = EventPublisher::new(system.downgrade());
   let (recorder, _subscription) = subscribe(&system);
 
-  let correlation = fraktor_actor_rs::core::event::stream::CorrelationId::from_u128(7);
+  let correlation = CorrelationId::from_u128(7);
   publisher.publish_backpressure("loopback:9000", BackpressureSignal::Apply, correlation);
 
   let events = recorder.events.lock().clone();

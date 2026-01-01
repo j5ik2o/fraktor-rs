@@ -1,11 +1,12 @@
 use fraktor_actor_rs::core::{
   actor::{
-    Actor, ActorCellGeneric, ActorContextGeneric,
+    Actor, ActorCellGeneric, ActorContextGeneric, Pid,
     actor_ref::{ActorRef, ActorRefGeneric, ActorRefSender, SendOutcome},
   },
   error::{ActorError, SendError},
   messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
-  system::ActorSystemGeneric,
+  props::PropsGeneric,
+  system::{ActorSystemGeneric, SystemStateGeneric, SystemStateSharedGeneric},
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
@@ -34,8 +35,7 @@ impl ActorRefSender<TB> for TestSender {
 
 fn create_sender() -> (ActorRefGeneric<TB>, MessageStore) {
   let messages = ArcShared::new(<<NoStdToolbox as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(Vec::new()));
-  let sender =
-    ActorRefGeneric::new(fraktor_actor_rs::core::actor::Pid::new(1, 1), TestSender { messages: messages.clone() });
+  let sender = ActorRefGeneric::new(Pid::new(1, 1), TestSender { messages: messages.clone() });
   (sender, messages)
 }
 
@@ -52,12 +52,10 @@ impl Actor<TB> for NoopActor {
 }
 
 fn build_context() -> ActorContextGeneric<'static, TB> {
-  let state = fraktor_actor_rs::core::system::SystemStateSharedGeneric::new(
-    fraktor_actor_rs::core::system::SystemStateGeneric::new(),
-  );
+  let state = SystemStateSharedGeneric::new(SystemStateGeneric::new());
   let system = ActorSystemGeneric::<TB>::from_state(state.clone());
   let pid = system.allocate_pid();
-  let props = fraktor_actor_rs::core::props::PropsGeneric::from_fn(|| NoopActor);
+  let props = PropsGeneric::from_fn(|| NoopActor);
   let cell =
     ActorCellGeneric::create(state.clone(), pid, None, "test".into(), &props).expect("actor cell should be created");
   state.register_cell(cell);

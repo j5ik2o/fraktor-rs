@@ -332,8 +332,8 @@ impl RemoteWatchEntry {
 
 /// Implementation of ActorRefProvider trait for Loopback transport.
 impl<TB: RuntimeToolbox + 'static> ActorRefProvider<TB> for LoopbackActorRefProviderGeneric<TB> {
-  fn supported_schemes(&self) -> &'static [fraktor_actor_rs::core::actor::actor_path::ActorPathScheme] {
-    &[fraktor_actor_rs::core::actor::actor_path::ActorPathScheme::FraktorTcp]
+  fn supported_schemes(&self) -> &'static [ActorPathScheme] {
+    &[ActorPathScheme::FraktorTcp]
   }
 
   fn actor_ref(&mut self, path: ActorPath) -> Result<ActorRefGeneric<TB>, ActorError> {

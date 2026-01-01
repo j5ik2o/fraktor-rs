@@ -8,6 +8,7 @@ mod in_memory_journal;
 mod in_memory_snapshot_store;
 mod journal;
 mod journal_actor;
+mod journal_actor_config;
 mod journal_error;
 mod journal_message;
 mod journal_response;
@@ -24,6 +25,7 @@ mod recovery;
 mod redelivery_tick;
 mod snapshot;
 mod snapshot_actor;
+mod snapshot_actor_config;
 mod snapshot_error;
 mod snapshot_message;
 mod snapshot_metadata;
@@ -42,6 +44,7 @@ pub use self::{
   in_memory_snapshot_store::InMemorySnapshotStore,
   journal::Journal,
   journal_actor::JournalActor,
+  journal_actor_config::JournalActorConfig,
   journal_error::JournalError,
   journal_message::JournalMessage,
   journal_response::JournalResponse,
@@ -57,6 +60,7 @@ pub use self::{
   redelivery_tick::RedeliveryTick,
   snapshot::Snapshot,
   snapshot_actor::SnapshotActor,
+  snapshot_actor_config::SnapshotActorConfig,
   snapshot_error::SnapshotError,
   snapshot_message::SnapshotMessage,
   snapshot_metadata::SnapshotMetadata,

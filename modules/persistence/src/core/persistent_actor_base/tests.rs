@@ -1,10 +1,10 @@
 use fraktor_actor_rs::core::{
   actor::{
-    Pid,
+    ActorContextGeneric, Pid,
     actor_ref::{ActorRef, ActorRefGeneric, ActorRefSender, SendOutcome},
   },
-  error::SendError,
-  messaging::AnyMessageGeneric,
+  error::{ActorError, SendError},
+  messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
@@ -44,6 +44,7 @@ struct DummyActor {
   persist_failures:   usize,
   snapshot_failures:  usize,
   recovery_completed: usize,
+  recovery_failures:  usize,
   persistence_id:     String,
   journal_ref:        ActorRefGeneric<TB>,
   snapshot_ref:       ActorRefGeneric<TB>,
@@ -62,6 +63,7 @@ impl DummyActor {
       persist_failures: 0,
       snapshot_failures: 0,
       recovery_completed: 0,
+      recovery_failures: 0,
       persistence_id,
       journal_ref,
       snapshot_ref,
@@ -89,9 +91,9 @@ impl Eventsourced<TB> for DummyActor {
 
   fn receive_command(
     &mut self,
-    _ctx: &mut fraktor_actor_rs::core::actor::ActorContextGeneric<'_, TB>,
-    _message: fraktor_actor_rs::core::messaging::AnyMessageViewGeneric<'_, TB>,
-  ) -> Result<(), fraktor_actor_rs::core::error::ActorError> {
+    _ctx: &mut ActorContextGeneric<'_, TB>,
+    _message: AnyMessageViewGeneric<'_, TB>,
+  ) -> Result<(), ActorError> {
     Ok(())
   }
 
@@ -101,6 +103,10 @@ impl Eventsourced<TB> for DummyActor {
 
   fn recovery(&self) -> Recovery {
     self.recovery.clone()
+  }
+
+  fn on_recovery_failure(&mut self, _cause: &crate::core::persistence_error::PersistenceError) {
+    self.recovery_failures += 1;
   }
 
   fn on_persist_failure(&mut self, _cause: &JournalError, _repr: &PersistentRepr) {
@@ -313,6 +319,24 @@ fn persistent_actor_base_handle_highest_sequence_completes_recovery() {
   assert_eq!(actor.recovery_completed, 1);
   assert_eq!(base.state(), PersistentActorState::ProcessingCommands);
   assert_eq!(base.last_sequence_nr(), 42);
+}
+
+#[test]
+fn persistent_actor_base_handle_highest_sequence_failure_calls_hook() {
+  let (journal_ref, _store) = create_sender();
+  let snapshot_ref = ActorRef::null();
+  let mut base = PersistentActorBase::<DummyActor, TB>::new("pid-1".into(), journal_ref, snapshot_ref);
+  base.state = PersistentActorState::Recovering;
+  let mut actor = DummyActor::new("pid-1".into(), ActorRef::null(), ActorRef::null(), Recovery::default());
+
+  let response = JournalResponse::HighestSequenceNrFailure {
+    persistence_id: "pid-1".into(),
+    cause:          JournalError::ReadFailed("boom".into()),
+  };
+  let action = base.handle_journal_response(&response);
+  action.apply::<TB>(&mut actor);
+
+  assert_eq!(actor.recovery_failures, 1);
 }
 
 #[test]

@@ -3,7 +3,7 @@
 use alloc::string::String;
 
 use fraktor_actor_rs::core::serialization::{
-  SerializationCallScope, SerializationSetup, SerializationSetupBuilder, SerializerId, StringSerializer,
+  SerializationCallScope, SerializationSetup, SerializationSetupBuilder, Serializer, SerializerId, StringSerializer,
 };
 use fraktor_utils_rs::core::sync::ArcShared;
 
@@ -20,8 +20,7 @@ use fraktor_utils_rs::core::sync::ArcShared;
 #[must_use]
 pub fn default_loopback_setup() -> SerializationSetup {
   let serializer_id = SerializerId::try_from(81).expect("serializer id");
-  let serializer: ArcShared<dyn fraktor_actor_rs::core::serialization::Serializer> =
-    ArcShared::new(StringSerializer::new(serializer_id));
+  let serializer: ArcShared<dyn Serializer> = ArcShared::new(StringSerializer::new(serializer_id));
   SerializationSetupBuilder::new()
     .register_serializer("string", serializer_id, serializer)
     .expect("register serializer")

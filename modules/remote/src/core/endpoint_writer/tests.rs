@@ -6,7 +6,7 @@ use fraktor_actor_rs::core::{
     actor_path::{ActorPath, ActorPathParts, GuardianKind},
   },
   error::ActorError,
-  messaging::AnyMessageGeneric,
+  messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
   props::PropsGeneric,
   scheduler::{ManualTestDriver, TickDriverConfig},
   serialization::{
@@ -28,7 +28,7 @@ impl Actor<NoStdToolbox> for NoopActor {
   fn receive(
     &mut self,
     _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    _message: fraktor_actor_rs::core::messaging::AnyMessageViewGeneric<'_, NoStdToolbox>,
+    _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
   ) -> Result<(), ActorError> {
     Ok(())
   }

@@ -10,8 +10,8 @@ use fraktor_actor_rs::core::{
   dead_letter::DeadLetterReason,
   error::SendError,
   messaging::AnyMessageGeneric,
-  serialization::SerializationExtensionSharedGeneric,
-  system::{ActorSystemWeakGeneric, RemoteWatchHookShared},
+  serialization::{SerializationError, SerializationExtensionSharedGeneric, SerializedMessage},
+  system::{ActorSystemGeneric, ActorSystemWeakGeneric, RemoteWatchHookShared},
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
@@ -68,10 +68,7 @@ impl<TB: RuntimeToolbox + 'static> EndpointReaderGeneric<TB> {
     }
   }
 
-  fn deserialize_message(
-    &self,
-    serialized: &fraktor_actor_rs::core::serialization::SerializedMessage,
-  ) -> Result<AnyMessageGeneric<TB>, fraktor_actor_rs::core::serialization::SerializationError> {
+  fn deserialize_message(&self, serialized: &SerializedMessage) -> Result<AnyMessageGeneric<TB>, SerializationError> {
     let payload = self.serialization.with_read(|ext| ext.deserialize(serialized, None))?;
     let arc: Arc<dyn core::any::Any + Send + Sync + 'static> = payload.into();
     #[cfg(feature = "force-portable-arc")]
@@ -120,7 +117,7 @@ impl<TB: RuntimeToolbox + 'static> EndpointReaderGeneric<TB> {
 
   fn record_missing_recipient_with_system(
     &self,
-    system: &fraktor_actor_rs::core::system::ActorSystemGeneric<TB>,
+    system: &ActorSystemGeneric<TB>,
     _recipient: ActorPath,
     message: AnyMessageGeneric<TB>,
   ) -> Result<(), SendError<TB>> {
@@ -130,7 +127,7 @@ impl<TB: RuntimeToolbox + 'static> EndpointReaderGeneric<TB> {
 
   fn resolve_sender_with_system(
     &self,
-    system: &fraktor_actor_rs::core::system::ActorSystemGeneric<TB>,
+    system: &ActorSystemGeneric<TB>,
     path: &ActorPath,
   ) -> Option<ActorRefGeneric<TB>> {
     // Try Tokio provider first when available, then generic remote provider as fallback.
