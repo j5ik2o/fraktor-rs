@@ -19,8 +19,8 @@ use fraktor_actor_rs::core::{
 use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use crate::core::{
-  snapshot::Snapshot, snapshot_error::SnapshotError, snapshot_message::SnapshotMessage,
-  snapshot_metadata::SnapshotMetadata, snapshot_response::SnapshotResponse,
+  snapshot::Snapshot, snapshot_actor_config::SnapshotActorConfig, snapshot_error::SnapshotError,
+  snapshot_message::SnapshotMessage, snapshot_metadata::SnapshotMetadata, snapshot_response::SnapshotResponse,
   snapshot_selection_criteria::SnapshotSelectionCriteria, snapshot_store::SnapshotStore,
 };
 
@@ -28,24 +28,28 @@ struct SnapshotPoll;
 
 enum SnapshotInFlight<TB: RuntimeToolbox + 'static> {
   Save {
-    future:   Pin<Box<dyn Future<Output = Result<(), SnapshotError>> + Send>>,
-    metadata: SnapshotMetadata,
-    sender:   ActorRefGeneric<TB>,
+    future:      Pin<Box<dyn Future<Output = Result<(), SnapshotError>> + Send>>,
+    metadata:    SnapshotMetadata,
+    sender:      ActorRefGeneric<TB>,
+    retry_count: u32,
   },
   Load {
-    future:   Pin<Box<dyn Future<Output = Result<Option<Snapshot>, SnapshotError>> + Send>>,
-    criteria: SnapshotSelectionCriteria,
-    sender:   ActorRefGeneric<TB>,
+    future:      Pin<Box<dyn Future<Output = Result<Option<Snapshot>, SnapshotError>> + Send>>,
+    criteria:    SnapshotSelectionCriteria,
+    sender:      ActorRefGeneric<TB>,
+    retry_count: u32,
   },
   DeleteOne {
-    future:   Pin<Box<dyn Future<Output = Result<(), SnapshotError>> + Send>>,
-    metadata: SnapshotMetadata,
-    sender:   ActorRefGeneric<TB>,
+    future:      Pin<Box<dyn Future<Output = Result<(), SnapshotError>> + Send>>,
+    metadata:    SnapshotMetadata,
+    sender:      ActorRefGeneric<TB>,
+    retry_count: u32,
   },
   DeleteMany {
-    future:   Pin<Box<dyn Future<Output = Result<(), SnapshotError>> + Send>>,
-    criteria: SnapshotSelectionCriteria,
-    sender:   ActorRefGeneric<TB>,
+    future:      Pin<Box<dyn Future<Output = Result<(), SnapshotError>> + Send>>,
+    criteria:    SnapshotSelectionCriteria,
+    sender:      ActorRefGeneric<TB>,
+    retry_count: u32,
   },
 }
 
@@ -54,6 +58,7 @@ pub struct SnapshotActor<S: SnapshotStore, TB: RuntimeToolbox + 'static> {
   snapshot_store: S,
   in_flight:      Vec<SnapshotInFlight<TB>>,
   poll_scheduled: bool,
+  config:         SnapshotActorConfig,
   _marker:        PhantomData<TB>,
 }
 
@@ -67,7 +72,13 @@ where
   /// Creates a new snapshot actor.
   #[must_use]
   pub const fn new(snapshot_store: S) -> Self {
-    Self { snapshot_store, in_flight: Vec::new(), poll_scheduled: false, _marker: PhantomData }
+    Self::new_with_config(snapshot_store, SnapshotActorConfig::default_config())
+  }
+
+  /// Creates a new snapshot actor with configuration.
+  #[must_use]
+  pub const fn new_with_config(snapshot_store: S, config: SnapshotActorConfig) -> Self {
+    Self { snapshot_store, in_flight: Vec::new(), poll_scheduled: false, config, _marker: PhantomData }
   }
 
   fn schedule_poll(&mut self, ctx: &mut ActorContextGeneric<'_, TB>) {
@@ -83,8 +94,9 @@ where
     let waker = noop_waker();
     let mut cx = Context::from_waker(&waker);
     let mut pending = Vec::new();
+    let retry_max = self.config.retry_max();
     for entry in self.in_flight.drain(..) {
-      if let Some(entry) = poll_entry(entry, &mut cx) {
+      if let Some(entry) = poll_entry(entry, &mut cx, retry_max) {
         pending.push(entry);
       }
     }
@@ -114,11 +126,21 @@ where
       match msg {
         | SnapshotMessage::SaveSnapshot { metadata, snapshot, sender } => {
           let future = Box::pin(self.snapshot_store.save_snapshot(metadata.clone(), snapshot.clone()));
-          self.in_flight.push(SnapshotInFlight::Save { future, metadata: metadata.clone(), sender: sender.clone() });
+          self.in_flight.push(SnapshotInFlight::Save {
+            future,
+            metadata: metadata.clone(),
+            sender: sender.clone(),
+            retry_count: 0,
+          });
         },
         | SnapshotMessage::LoadSnapshot { persistence_id, criteria, sender } => {
           let future = Box::pin(self.snapshot_store.load_snapshot(persistence_id, criteria.clone()));
-          self.in_flight.push(SnapshotInFlight::Load { future, criteria: criteria.clone(), sender: sender.clone() });
+          self.in_flight.push(SnapshotInFlight::Load {
+            future,
+            criteria: criteria.clone(),
+            sender: sender.clone(),
+            retry_count: 0,
+          });
         },
         | SnapshotMessage::DeleteSnapshot { metadata, sender } => {
           let future = Box::pin(self.snapshot_store.delete_snapshot(metadata));
@@ -126,6 +148,7 @@ where
             future,
             metadata: metadata.clone(),
             sender: sender.clone(),
+            retry_count: 0,
           });
         },
         | SnapshotMessage::DeleteSnapshots { persistence_id, criteria, sender } => {
@@ -134,6 +157,7 @@ where
             future,
             criteria: criteria.clone(),
             sender: sender.clone(),
+            retry_count: 0,
           });
         },
       }
@@ -156,9 +180,10 @@ const fn noop_waker() -> Waker {
 fn poll_entry<TB: RuntimeToolbox + 'static>(
   mut entry: SnapshotInFlight<TB>,
   cx: &mut Context<'_>,
+  retry_max: u32,
 ) -> Option<SnapshotInFlight<TB>> {
   match &mut entry {
-    | SnapshotInFlight::Save { future, metadata, sender } => match Future::poll(future.as_mut(), cx) {
+    | SnapshotInFlight::Save { future, metadata, sender, retry_count } => match Future::poll(future.as_mut(), cx) {
       | Poll::Ready(Ok(())) => {
         let _ =
           sender.tell(AnyMessageGeneric::new(SnapshotResponse::SaveSnapshotSuccess { metadata: metadata.clone() }));
@@ -169,9 +194,19 @@ fn poll_entry<TB: RuntimeToolbox + 'static>(
           .tell(AnyMessageGeneric::new(SnapshotResponse::SaveSnapshotFailure { metadata: metadata.clone(), error }));
         None
       },
-      | Poll::Pending => Some(entry),
+      | Poll::Pending => {
+        if *retry_count >= retry_max {
+          let error = SnapshotError::SaveFailed("retry max exceeded".into());
+          let _ = sender
+            .tell(AnyMessageGeneric::new(SnapshotResponse::SaveSnapshotFailure { metadata: metadata.clone(), error }));
+          None
+        } else {
+          *retry_count = retry_count.saturating_add(1);
+          Some(entry)
+        }
+      },
     },
-    | SnapshotInFlight::Load { future, criteria, sender } => match Future::poll(future.as_mut(), cx) {
+    | SnapshotInFlight::Load { future, criteria, sender, retry_count } => match Future::poll(future.as_mut(), cx) {
       | Poll::Ready(Ok(snapshot)) => {
         let _ = sender.tell(AnyMessageGeneric::new(SnapshotResponse::LoadSnapshotResult {
           snapshot,
@@ -183,33 +218,74 @@ fn poll_entry<TB: RuntimeToolbox + 'static>(
         let _ = sender.tell(AnyMessageGeneric::new(SnapshotResponse::LoadSnapshotFailed { error }));
         None
       },
-      | Poll::Pending => Some(entry),
+      | Poll::Pending => {
+        if *retry_count >= retry_max {
+          let error = SnapshotError::LoadFailed("retry max exceeded".into());
+          let _ = sender.tell(AnyMessageGeneric::new(SnapshotResponse::LoadSnapshotFailed { error }));
+          None
+        } else {
+          *retry_count = retry_count.saturating_add(1);
+          Some(entry)
+        }
+      },
     },
-    | SnapshotInFlight::DeleteOne { future, metadata, sender } => match Future::poll(future.as_mut(), cx) {
-      | Poll::Ready(Ok(())) => {
-        let _ =
-          sender.tell(AnyMessageGeneric::new(SnapshotResponse::DeleteSnapshotSuccess { metadata: metadata.clone() }));
-        None
-      },
-      | Poll::Ready(Err(error)) => {
-        let _ = sender
-          .tell(AnyMessageGeneric::new(SnapshotResponse::DeleteSnapshotFailure { metadata: metadata.clone(), error }));
-        None
-      },
-      | Poll::Pending => Some(entry),
+    | SnapshotInFlight::DeleteOne { future, metadata, sender, retry_count } => {
+      match Future::poll(future.as_mut(), cx) {
+        | Poll::Ready(Ok(())) => {
+          let _ =
+            sender.tell(AnyMessageGeneric::new(SnapshotResponse::DeleteSnapshotSuccess { metadata: metadata.clone() }));
+          None
+        },
+        | Poll::Ready(Err(error)) => {
+          let _ = sender.tell(AnyMessageGeneric::new(SnapshotResponse::DeleteSnapshotFailure {
+            metadata: metadata.clone(),
+            error,
+          }));
+          None
+        },
+        | Poll::Pending => {
+          if *retry_count >= retry_max {
+            let error = SnapshotError::DeleteFailed("retry max exceeded".into());
+            let _ = sender.tell(AnyMessageGeneric::new(SnapshotResponse::DeleteSnapshotFailure {
+              metadata: metadata.clone(),
+              error,
+            }));
+            None
+          } else {
+            *retry_count = retry_count.saturating_add(1);
+            Some(entry)
+          }
+        },
+      }
     },
-    | SnapshotInFlight::DeleteMany { future, criteria, sender } => match Future::poll(future.as_mut(), cx) {
-      | Poll::Ready(Ok(())) => {
-        let _ =
-          sender.tell(AnyMessageGeneric::new(SnapshotResponse::DeleteSnapshotsSuccess { criteria: criteria.clone() }));
-        None
-      },
-      | Poll::Ready(Err(error)) => {
-        let _ = sender
-          .tell(AnyMessageGeneric::new(SnapshotResponse::DeleteSnapshotsFailure { criteria: criteria.clone(), error }));
-        None
-      },
-      | Poll::Pending => Some(entry),
+    | SnapshotInFlight::DeleteMany { future, criteria, sender, retry_count } => {
+      match Future::poll(future.as_mut(), cx) {
+        | Poll::Ready(Ok(())) => {
+          let _ = sender
+            .tell(AnyMessageGeneric::new(SnapshotResponse::DeleteSnapshotsSuccess { criteria: criteria.clone() }));
+          None
+        },
+        | Poll::Ready(Err(error)) => {
+          let _ = sender.tell(AnyMessageGeneric::new(SnapshotResponse::DeleteSnapshotsFailure {
+            criteria: criteria.clone(),
+            error,
+          }));
+          None
+        },
+        | Poll::Pending => {
+          if *retry_count >= retry_max {
+            let error = SnapshotError::DeleteFailed("retry max exceeded".into());
+            let _ = sender.tell(AnyMessageGeneric::new(SnapshotResponse::DeleteSnapshotsFailure {
+              criteria: criteria.clone(),
+              error,
+            }));
+            None
+          } else {
+            *retry_count = retry_count.saturating_add(1);
+            Some(entry)
+          }
+        },
+      }
     },
   }
 }

@@ -61,6 +61,13 @@ pub enum JournalResponse {
     /// Highest sequence number.
     sequence_nr:    u64,
   },
+  /// Highest sequence number lookup failed.
+  HighestSequenceNrFailure {
+    /// Persistence id for the response.
+    persistence_id: String,
+    /// Failure cause.
+    cause:          JournalError,
+  },
   /// Replay failed.
   ReplayMessagesFailure {
     /// Failure cause.

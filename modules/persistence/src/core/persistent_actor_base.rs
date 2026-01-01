@@ -186,6 +186,9 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistentActorBase<A, TB> {
         }
         JournalResponseAction::RecoveryCompleted
       },
+      | JournalResponse::HighestSequenceNrFailure { cause, .. } => {
+        JournalResponseAction::RecoveryFailure(PersistenceError::from(cause.clone()))
+      },
       | JournalResponse::ReplayMessagesFailure { cause } => {
         JournalResponseAction::RecoveryFailure(PersistenceError::from(cause.clone()))
       },

@@ -6,7 +6,11 @@ mod tests;
 use alloc::{boxed::Box, string::ToString, vec::Vec};
 use core::any::Any;
 
-use fraktor_actor_rs::core::{actor::ActorContextGeneric, messaging::AnyMessageViewGeneric};
+use fraktor_actor_rs::core::{
+  actor::ActorContextGeneric,
+  error::ActorError,
+  messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
+};
 use fraktor_utils_rs::core::{
   runtime_toolbox::{RuntimeToolbox, SyncMutexFamily},
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
@@ -88,7 +92,7 @@ where
       0,
     );
     let message = SnapshotMessage::SaveSnapshot { metadata, snapshot, sender: ctx.self_ref() };
-    let _ = self.snapshot_actor_ref().tell(fraktor_actor_rs::core::messaging::AnyMessageGeneric::new(message));
+    let _ = self.snapshot_actor_ref().tell(AnyMessageGeneric::new(message));
   }
 
   /// Deletes messages up to the given sequence number.
@@ -98,7 +102,7 @@ where
       to_sequence_nr,
       sender: ctx.self_ref(),
     };
-    let _ = self.journal_actor_ref().tell(fraktor_actor_rs::core::messaging::AnyMessageGeneric::new(message));
+    let _ = self.journal_actor_ref().tell(AnyMessageGeneric::new(message));
   }
 
   /// Deletes snapshots matching the criteria.
@@ -112,7 +116,7 @@ where
       criteria,
       sender: ctx.self_ref(),
     };
-    let _ = self.snapshot_actor_ref().tell(fraktor_actor_rs::core::messaging::AnyMessageGeneric::new(message));
+    let _ = self.snapshot_actor_ref().tell(AnyMessageGeneric::new(message));
   }
 
   /// Starts recovery by delegating to the base.
@@ -144,7 +148,7 @@ where
     &mut self,
     ctx: &mut ActorContextGeneric<'_, TB>,
     message: AnyMessageViewGeneric<'_, TB>,
-  ) -> Result<(), fraktor_actor_rs::core::error::ActorError> {
+  ) -> Result<(), ActorError> {
     self.receive_command(ctx, message)
   }
 }

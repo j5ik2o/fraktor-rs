@@ -5,9 +5,14 @@ extern crate alloc;
 use alloc::{string::String, vec::Vec};
 
 use fraktor_actor_rs::core::{
-  actor::actor_ref::{ActorRefGeneric, ActorRefSender, SendOutcome},
+  actor::{
+    Actor, ActorCellGeneric, ActorContextGeneric, Pid,
+    actor_ref::{ActorRefGeneric, ActorRefSender, SendOutcome},
+  },
   error::{ActorError, SendError},
   messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
+  props::PropsGeneric,
+  system::{ActorSystemGeneric, SystemStateGeneric, SystemStateSharedGeneric},
 };
 use fraktor_persistence_rs::core::{
   Eventsourced, JournalMessage, JournalResponse, PersistentActor, PersistentActorBase, PersistentRepr, Recovery,
@@ -34,8 +39,7 @@ impl ActorRefSender<TB> for TestSender {
 
 fn create_sender() -> (ActorRefGeneric<TB>, MessageStore) {
   let messages = ArcShared::new(<<NoStdToolbox as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(Vec::new()));
-  let sender =
-    ActorRefGeneric::new(fraktor_actor_rs::core::actor::Pid::new(1, 1), TestSender { messages: messages.clone() });
+  let sender = ActorRefGeneric::new(Pid::new(1, 1), TestSender { messages: messages.clone() });
   (sender, messages)
 }
 
@@ -53,10 +57,10 @@ struct TestActor {
 
 struct NoopActor;
 
-impl fraktor_actor_rs::core::actor::Actor<TB> for NoopActor {
+impl Actor<TB> for NoopActor {
   fn receive(
     &mut self,
-    _ctx: &mut fraktor_actor_rs::core::actor::ActorContextGeneric<'_, TB>,
+    _ctx: &mut ActorContextGeneric<'_, TB>,
     _message: AnyMessageViewGeneric<'_, TB>,
   ) -> Result<(), ActorError> {
     Ok(())
@@ -103,7 +107,7 @@ impl Eventsourced<TB> for TestActor {
 
   fn receive_command(
     &mut self,
-    _ctx: &mut fraktor_actor_rs::core::actor::ActorContextGeneric<'_, TB>,
+    _ctx: &mut ActorContextGeneric<'_, TB>,
     _message: AnyMessageViewGeneric<'_, TB>,
   ) -> Result<(), ActorError> {
     Ok(())
@@ -138,18 +142,13 @@ fn recovery_flow_snapshot_then_replay() {
   let (snapshot_ref, snapshot_store) = create_sender();
   let mut actor = TestActor::new("pid-1", journal_ref, snapshot_ref);
 
-  let system = fraktor_actor_rs::core::system::ActorSystemGeneric::from_state(
-    fraktor_actor_rs::core::system::SystemStateSharedGeneric::new(
-      fraktor_actor_rs::core::system::SystemStateGeneric::new(),
-    ),
-  );
-  let pid = fraktor_actor_rs::core::actor::Pid::new(1, 1);
-  let props = fraktor_actor_rs::core::props::PropsGeneric::from_fn(|| NoopActor);
+  let system = ActorSystemGeneric::from_state(SystemStateSharedGeneric::new(SystemStateGeneric::new()));
+  let pid = Pid::new(1, 1);
+  let props = PropsGeneric::from_fn(|| NoopActor);
   let cell =
-    fraktor_actor_rs::core::actor::ActorCellGeneric::create(system.state(), pid, None, String::from("self"), &props)
-      .expect("create actor cell");
+    ActorCellGeneric::create(system.state(), pid, None, String::from("self"), &props).expect("create actor cell");
   system.state().register_cell(cell);
-  let mut ctx = fraktor_actor_rs::core::actor::ActorContextGeneric::new(&system, pid);
+  let mut ctx = ActorContextGeneric::new(&system, pid);
   actor.start_recovery(&mut ctx);
 
   let snapshot_messages = snapshot_store.lock();
@@ -183,13 +182,9 @@ fn persist_flow_sends_write_messages() {
   let (snapshot_ref, _snapshot_store) = create_sender();
   let mut actor = TestActor::new("pid-1", journal_ref, snapshot_ref);
 
-  let mut ctx = fraktor_actor_rs::core::actor::ActorContextGeneric::new(
-    &fraktor_actor_rs::core::system::ActorSystemGeneric::from_state(
-      fraktor_actor_rs::core::system::SystemStateSharedGeneric::new(
-        fraktor_actor_rs::core::system::SystemStateGeneric::new(),
-      ),
-    ),
-    fraktor_actor_rs::core::actor::Pid::new(1, 1),
+  let mut ctx = ActorContextGeneric::new(
+    &ActorSystemGeneric::from_state(SystemStateSharedGeneric::new(SystemStateGeneric::new())),
+    Pid::new(1, 1),
   );
 
   actor.persist(&mut ctx, Event::Incremented(1), |_actor, _| {});

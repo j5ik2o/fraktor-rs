@@ -29,6 +29,10 @@ fn journal_response_variants_hold_data() {
   let replayed = JournalResponse::ReplayedMessage { persistent_repr: repr2.clone() };
   let recovery = JournalResponse::RecoverySuccess { highest_sequence_nr: 9 };
   let highest = JournalResponse::HighestSequenceNr { persistence_id: "pid-1".into(), sequence_nr: 9 };
+  let highest_failed = JournalResponse::HighestSequenceNrFailure {
+    persistence_id: "pid-1".into(),
+    cause:          JournalError::ReadFailed("highest".into()),
+  };
   let replay_failed = JournalResponse::ReplayMessagesFailure { cause: JournalError::ReadFailed("bad".into()) };
   let delete_ok = JournalResponse::DeleteMessagesSuccess { to_sequence_nr: 3 };
   let delete_failed = JournalResponse::DeleteMessagesFailure {
@@ -82,6 +86,13 @@ fn journal_response_variants_hold_data() {
 
   match highest {
     | JournalResponse::HighestSequenceNr { sequence_nr, .. } => assert_eq!(sequence_nr, 9),
+    | _ => panic!("unexpected variant"),
+  }
+
+  match highest_failed {
+    | JournalResponse::HighestSequenceNrFailure { cause, .. } => {
+      assert_eq!(cause, JournalError::ReadFailed("highest".into()));
+    },
     | _ => panic!("unexpected variant"),
   }
 

@@ -1,8 +1,8 @@
 use fraktor_actor_rs::core::{
-  actor::{ActorContextGeneric, actor_ref::ActorRef},
+  actor::{ActorContextGeneric, Pid, actor_ref::ActorRef},
   error::ActorError,
-  messaging::AnyMessageViewGeneric,
-  system::ActorSystemGeneric,
+  messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
+  system::{ActorSystemGeneric, SystemStateGeneric, SystemStateSharedGeneric},
 };
 use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 
@@ -68,13 +68,10 @@ fn eventsourced_default_hooks_do_not_panic() {
     snapshot:       ActorRef::null(),
     last:           0,
   };
-  let system =
-    ActorSystemGeneric::<NoStdToolbox>::from_state(fraktor_actor_rs::core::system::SystemStateSharedGeneric::new(
-      fraktor_actor_rs::core::system::SystemStateGeneric::new(),
-    ));
-  let pid = fraktor_actor_rs::core::actor::Pid::new(1, 1);
+  let system = ActorSystemGeneric::<NoStdToolbox>::from_state(SystemStateSharedGeneric::new(SystemStateGeneric::new()));
+  let pid = Pid::new(1, 1);
   let mut ctx = ActorContextGeneric::new(&system, pid);
-  let message = fraktor_actor_rs::core::messaging::AnyMessageGeneric::new(1_i32);
+  let message = AnyMessageGeneric::new(1_i32);
 
   let _ = dummy.receive_command(&mut ctx, message.as_view());
 }
