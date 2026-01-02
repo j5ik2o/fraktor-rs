@@ -15,7 +15,6 @@
 //! - `system`: System lifecycle and management
 //! - `dispatcher`: Task execution and scheduling infrastructure
 
-mod base;
 mod dispatch_error;
 mod dispatch_executor;
 mod dispatch_executor_runner;
@@ -24,6 +23,7 @@ mod dispatcher_core;
 mod dispatcher_dump_event;
 mod dispatcher_registry_error;
 mod dispatcher_sender;
+mod dispatcher_shared;
 mod dispatcher_state;
 mod dispatchers;
 mod inline_executor;
@@ -33,7 +33,6 @@ mod schedule_adapter_shared;
 mod schedule_waker;
 mod tick_executor;
 
-pub use base::{DispatcherShared, DispatcherSharedGeneric};
 pub use dispatch_error::DispatchError;
 pub use dispatch_executor::DispatchExecutor;
 pub use dispatch_executor_runner::{DispatchExecutorRunner, DispatchExecutorRunnerGeneric};
@@ -42,6 +41,7 @@ pub use dispatcher_config::{DispatcherConfig, DispatcherConfigGeneric};
 pub use dispatcher_dump_event::DispatcherDumpEvent;
 pub use dispatcher_registry_error::DispatcherRegistryError;
 pub use dispatcher_sender::{DispatcherSender, DispatcherSenderGeneric};
+pub use dispatcher_shared::{DispatcherShared, DispatcherSharedGeneric};
 pub use dispatchers::{Dispatchers, DispatchersGeneric};
 pub use inline_executor::{InlineExecutor, InlineExecutorGeneric};
 pub use inline_schedule_adapter::InlineScheduleAdapter;

@@ -4,7 +4,7 @@ use core::{any::Any, task::Waker};
 use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use super::{
-  base::DispatcherSharedGeneric, schedule_adapter::ScheduleAdapter,
+  dispatcher_shared::DispatcherSharedGeneric, schedule_adapter::ScheduleAdapter,
   schedule_adapter_shared::ScheduleAdapterSharedGeneric, schedule_waker::ScheduleWaker,
 };
 

@@ -10,7 +10,7 @@ use fraktor_utils_rs::core::{
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 
-use super::base::DispatcherSharedGeneric;
+use super::dispatcher_shared::DispatcherSharedGeneric;
 use crate::core::dispatch::mailbox::ScheduleHints;
 
 #[cfg(test)]

@@ -9,7 +9,7 @@ use fraktor_utils_rs::core::{
   sync::{ArcShared, SharedAccess},
 };
 
-use super::base::DispatcherSharedGeneric;
+use super::dispatcher_shared::DispatcherSharedGeneric;
 use crate::core::{
   actor::actor_ref::{ActorRefSender, SendOutcome},
   dispatch::{
