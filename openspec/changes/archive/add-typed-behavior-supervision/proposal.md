@@ -24,7 +24,7 @@ typed API に Pekko 互換の `Behaviors::supervise` DSL を追加し、typed ac
 
 ## 影響範囲
 
-- `modules/actor-core/src/typed` 配下（`behavior.rs`, `behavior_runner.rs`, `behaviors.rs`, `typed_actor_adapter.rs`, `actor_prim/actor.rs`, `tests.rs`）。
+- `modules/actor-core/src/typed` 配下（`behavior.rs`, `behavior_runner.rs`, `behaviors.rs`, `typed_actor_adapter.rs`, `actor/actor.rs`, `tests.rs`）。
 - `modules/actor-std/examples` の typed サンプルの一部。
 - 既存 API への破壊的変更: `TypedActor` トレイトにメソッドが追加されるため、typed actors を実装しているコードは `supervisor_strategy` のデフォルト実装を受け取る。既存ユーザへの影響は最小。
 

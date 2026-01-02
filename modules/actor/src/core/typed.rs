@@ -1,7 +1,7 @@
 //! Typed interface wrappers around the untyped runtime.
 
 /// Typed actor primitives (actors, contexts, references).
-pub mod actor_prim;
+pub mod actor;
 /// Typed behavior representation.
 mod behavior;
 /// Internal executor that drives behavior state machines.
@@ -31,7 +31,7 @@ mod typed_ask_response;
 /// Unhandled message event for monitoring.
 mod unhandled_message_event;
 
-pub use actor_prim::{
+pub use actor::{
   TypedActor, TypedActorContext, TypedActorContextGeneric, TypedActorRef, TypedActorRefGeneric, TypedChildRef,
   TypedChildRefGeneric,
 };

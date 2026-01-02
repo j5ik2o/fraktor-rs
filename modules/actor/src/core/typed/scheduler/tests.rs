@@ -6,7 +6,7 @@ use crate::core::{
   actor::actor_ref::ActorRefGeneric,
   scheduler::{Scheduler, SchedulerCommand, SchedulerConfig},
   typed::{
-    actor_prim::TypedActorRefGeneric,
+    actor::TypedActorRefGeneric,
     scheduler::{TypedScheduler, TypedSchedulerContext},
   },
 };

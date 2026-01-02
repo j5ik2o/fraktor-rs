@@ -1,7 +1,7 @@
 # ギャップ分析: actorref-canonical-address
 
 ## 1. 現状把握
-- **ActorPath/Address**: `modules/actor/src/core/actor_prim/actor_path` が scheme/authority/UID 付き canonical URI を生成できる。`ActorPathParts::local` は authority なしのローカル用。  
+- **ActorPath/Address**: `modules/actor/src/core/actor/actor_path` が scheme/authority/UID 付き canonical URI を生成できる。`ActorPathParts::local` は authority なしのローカル用。  
 - **SystemState**: `system_state.rs` が `RemotingConfig` を適用し、`canonical_parts()` で host/port を保持。`canonical_actor_path` で authority 付きパスを生成・`actor_path_registry` に登録。`canonical_authority_endpoint` も取得可能。  
 - **ActorRefGeneric::path()**: `system_state.actor_path(&pid)` を返すため常に authority なし。canonical パスを公開する API が存在しない。  
 - **SerializationExtension**: `serialized_actor_path` は `actor_ref.path()` を使い、`TransportInformation` があればそれを先頭に付与、無ければ `local://` のみ。`RemotingConfig` を用いた canonical 付与は未実装。ActorRef 型を検出すると文字列に変換して再シリアライズしている。  

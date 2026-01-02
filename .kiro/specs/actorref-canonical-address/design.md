@@ -121,7 +121,7 @@ pub enum ActorRefResolveError {
 }
 
 impl ActorSystem {
-  pub fn resolve_actor_ref(&self, path: ActorPath) -> Result<actor_prim::ActorRef, ActorRefResolveError>;
+  pub fn resolve_actor_ref(&self, path: ActorPath) -> Result<actor::ActorRef, ActorRefResolveError>;
 }
 ```
 

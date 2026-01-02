@@ -11,7 +11,7 @@ use fraktor_actor_rs::core::{
   error::ActorError,
   typed::{
     AdapterFailure, TypedActorSystem, TypedProps,
-    actor_prim::{TypedActor, TypedActorContext, TypedActorRef},
+    actor::{TypedActor, TypedActorContext, TypedActorRef},
   },
 };
 use fraktor_utils_rs::core::sync::SharedAccess;

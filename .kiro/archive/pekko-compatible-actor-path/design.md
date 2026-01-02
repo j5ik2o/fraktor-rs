@@ -3,7 +3,7 @@
 ## Overview
 fraktor ランタイムの ActorPath を Pekko 互換仕様へ拡張し、ログ・DeadLetter・Remoting すべてで同一の URI 形式を提供する。ユーザは ActorSelection や監視 API から Pekko と同じパス規約を前提にでき、将来的な remoting 実装を阻害しない。
 
-本機能は ActorSystem の内部モジュール（`actor_prim`, `system`, `config`）が対象であり、外部 API は ActorSystemConfig/RemotingConfig などの明示的な型経由でパラメータ化する。これにより no_std 環境でも設定ファイルに依存せずに起動時 API だけで設定できる。
+本機能は ActorSystem の内部モジュール（`actor`, `system`, `config`）が対象であり、外部 API は ActorSystemConfig/RemotingConfig などの明示的な型経由でパラメータ化する。これにより no_std 環境でも設定ファイルに依存せずに起動時 API だけで設定できる。
 
 ### Goals
 - Pekko 互換の ActorPath 正規化／文字列表現を Rust 値オブジェクトとして再設計する。
@@ -18,7 +18,7 @@ fraktor ランタイムの ActorPath を Pekko 互換仕様へ拡張し、ログ
 ## Architecture
 
 ### Existing Architecture Analysis
-- 現状 `actor_prim::actor_path::ActorPath` は単なる `Vec<String>` でルート `/` のみを扱い、authority・スキーム・UID が欠落している。
+- 現状 `actor::actor_path::ActorPath` は単なる `Vec<String>` でルート `/` のみを扱い、authority・スキーム・UID が欠落している。
 - `SystemState::actor_path` が PID から path を再構築しているが、正規化やキャッシュは無い。`ActorSelection` の相対解決や `%` エンコードも未実装。
 - 設定は `config::*` レジストリ（dispatchers/mailboxes）に限定され、ActorSystem 全体設定は未定義。隔離期間などは値を持つ場所が無い。
 
@@ -40,7 +40,7 @@ graph TD
 ```
 
 **Architecture Integration**:
-- 既存 `actor_prim` 層に `actor_path/` ディレクトリを新設し、各型を 1 ファイル配置する 2018 モジュール構成を維持。
+- 既存 `actor` 層に `actor_path/` ディレクトリを新設し、各型を 1 ファイル配置する 2018 モジュール構成を維持。
 - 汎用 URI 解析は `utils_core::net::uri_parser`（no_std 対応モジュール）へ配置し、`actor-core` からは `UriParts` のみ依存する。
 - `ActorPathRegistry` を `system` 層に追加し、`SystemState` と `ActorRef` がここを介してパス情報へアクセスする。
 - `ActorSystemConfig` / `RemotingConfig` を `config` 層で公開し、ランタイム起動時に API 経由で設定を注入する。
@@ -132,7 +132,7 @@ stateDiagram-v2
 ### utils_core 層
 - **`net/uri_parser.rs` (`UriParser`)**: `fn parse(input: &str) -> Result<UriParts<'_>, UriError>` が RFC2396 準拠でスキーム・authority・パス・クエリ・フラグメントを AST 化する。`percent_decode`・IPv6 literal・ユーザ情報など汎用的な解析はここで完結し、`actor-core` からは `UriParts` を受け取るだけで済む。
 
-### actor_prim 層
+### actor 層
 - **`actor_path/segment.rs` (`PathSegment`)**: RFC2396 文字種と `$` 禁止の検証を行う値オブジェクト。`fn new(raw: &str) -> Result<Self, ActorPathError>` は `%HH` デコードを許容し、元の文字列と正規化後を保持。
 - **`actor_path/parts.rs` (`ActorPathParts`)**: `scheme: ActorPathScheme`, `system: SystemName`, `authority: Option<PathAuthority>` を保持。`ActorSystemConfig` から生成され、`no_std` でも `&'static str` を使ってコピー回数を制限。
 - **`actor_path/uid.rs` (`ActorUid`)**: `u64` ラッパー。`ActorRef` 再生成時に `ActorPathRegistry` が UID 予約を判断する。

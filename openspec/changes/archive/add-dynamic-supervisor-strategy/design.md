@@ -44,7 +44,7 @@
 
 ### 1. Actorトレイトの拡張
 
-**ファイル**: `modules/actor-core/src/actor_prim/actor.rs`
+**ファイル**: `modules/actor-core/src/actor/actor.rs`
 
 ```rust
 pub trait Actor<TB: RuntimeToolbox = NoStdToolbox>: Send {
@@ -126,7 +126,7 @@ pub trait Actor<TB: RuntimeToolbox = NoStdToolbox>: Send {
 
 ### 2. ActorCellの変更
 
-**ファイル**: `modules/actor-core/src/actor_prim/actor_cell.rs`
+**ファイル**: `modules/actor-core/src/actor/actor_cell.rs`
 
 #### 2.1 構造体フィールド削除
 
@@ -246,7 +246,7 @@ impl<TB: RuntimeToolbox> ActorCell<TB> {
 
 ### 3. stdモジュールの対応
 
-**ファイル**: `modules/actor-std/src/actor_prim/actor.rs`
+**ファイル**: `modules/actor-std/src/actor/actor.rs`
 
 coreモジュールと同じ変更を適用:
 

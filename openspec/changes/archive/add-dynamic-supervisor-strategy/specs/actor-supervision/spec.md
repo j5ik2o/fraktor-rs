@@ -12,8 +12,8 @@ Actor実装は`supervisor_strategy`メソッドを通じて、子アクターの
 **優先度**: HIGH
 
 **適用範囲**:
-- `modules/actor-core/src/actor_prim/actor.rs`
-- `modules/actor-std/src/actor_prim/actor.rs`
+- `modules/actor-core/src/actor/actor.rs`
+- `modules/actor-std/src/actor/actor.rs`
 
 #### Scenario: Actor実装がカスタム戦略を提供する
 
@@ -76,7 +76,7 @@ ActorCellは子アクターの失敗時に、親Actor実装から監督戦略を
 **優先度**: HIGH
 
 **適用範囲**:
-- `modules/actor-core/src/actor_prim/actor_cell.rs`
+- `modules/actor-core/src/actor/actor_cell.rs`
 
 #### Scenario: Actor実装から戦略を取得
 
@@ -144,7 +144,7 @@ ActorCellは子アクターの失敗時に、親Actor実装から監督戦略を
 **優先度**: MEDIUM
 
 **適用範囲**:
-- `modules/actor-core/src/actor_prim/actor_cell.rs`
+- `modules/actor-core/src/actor/actor_cell.rs`
 
 #### Scenario: 失敗処理時の追加コスト
 
@@ -164,7 +164,7 @@ ActorCellは子アクターの失敗時に、親Actor実装から監督戦略を
 **優先度**: CRITICAL
 
 **適用範囲**:
-- `modules/actor-core/src/actor_prim/actor.rs`
+- `modules/actor-core/src/actor/actor.rs`
 - すべてのActor実装
 
 **制約**:

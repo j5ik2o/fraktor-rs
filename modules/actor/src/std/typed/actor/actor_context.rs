@@ -8,11 +8,11 @@ use crate::{
     actor::Pid,
     error::SendError,
     spawn::SpawnError,
-    typed::{TypedActorSystemGeneric, actor_prim::TypedActorContextGeneric as CoreTypedActorContextGeneric},
+    typed::{TypedActorSystemGeneric, actor::TypedActorContextGeneric as CoreTypedActorContextGeneric},
   },
   std::typed::{
     TypedProps,
-    actor_prim::{TypedActorRef, TypedChildRef},
+    actor::{TypedActorRef, TypedChildRef},
   },
 };
 

@@ -12,7 +12,7 @@ use fraktor_actor_rs::core::{
   scheduler::SchedulerDiagnosticsSubscription,
   typed::{
     TypedActorSystem, TypedProps,
-    actor_prim::{TypedActor, TypedActorContext},
+    actor::{TypedActor, TypedActorContext},
   },
 };
 

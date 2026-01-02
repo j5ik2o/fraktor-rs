@@ -9,7 +9,7 @@ use fraktor_actor_rs::core::{
   error::ActorError,
   typed::{
     TypedActorSystem, TypedProps,
-    actor_prim::{TypedActor, TypedActorContext},
+    actor::{TypedActor, TypedActorContext},
   },
 };
 

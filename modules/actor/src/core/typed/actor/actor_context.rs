@@ -11,7 +11,7 @@ use crate::core::{
   spawn::SpawnError,
   typed::{
     TypedActorSystemGeneric,
-    actor_prim::{actor_ref::TypedActorRefGeneric, child_ref::TypedChildRefGeneric},
+    actor::{actor_ref::TypedActorRefGeneric, child_ref::TypedChildRefGeneric},
     message_adapter::{AdaptMessage, AdapterError, AdapterFailure, MessageAdapterRegistry},
     props::TypedPropsGeneric,
   },

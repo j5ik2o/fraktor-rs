@@ -7,7 +7,7 @@ use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 use crate::core::{
   props::PropsGeneric,
   typed::{
-    actor_prim::TypedActor, behavior::Behavior, behavior_runner::BehaviorRunner, typed_actor_adapter::TypedActorAdapter,
+    actor::TypedActor, behavior::Behavior, behavior_runner::BehaviorRunner, typed_actor_adapter::TypedActorAdapter,
   },
 };
 

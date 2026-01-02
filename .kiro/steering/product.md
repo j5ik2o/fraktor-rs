@@ -13,7 +13,7 @@ fraktor-rs は Akka/Pekko および protoactor-go のライフサイクル設計
 - **Toolbox & Runtime 分離**: `fraktor-utils-rs` の `RuntimeToolbox` が割り込み安全な同期原語・タイマを提供し、`fraktor-actor-rs` の `core`（no_std）と `std`（Tokio/ログ連携）が同一 API を別実装で差し替えます。
 
 ### モジュール別要約（`modules/actor/src/core`）
-- **`actor_prim/`**: `Pid`、`ActorRef`、`ActorPathParts`、`ActorSelectionResolver` などアクター識別・アドレッシング・Typed/Untyped の橋渡しを司る基本語彙を提供。
+- **`actor/`**: `Pid`、`ActorRef`、`ActorPathParts`、`ActorSelectionResolver` などアクター識別・アドレッシング・Typed/Untyped の橋渡しを司る基本語彙を提供。
 - **`config/`**: `ActorSystemConfig`・`SchedulerConfig`・`RemotingConfig` を定義し、no_std/std 共通でライフサイクル・スケジューラ・DeathWatch 設定を束ねる。
 - **`dead_letter/`**: 投入不能メッセージの保持 (`DeadLetterEntry`) と EventStream への通知を実装し、監視用 API と統合。
 - **`dispatcher/`**: メールボックスとスレッド/実行器の橋渡し、`DispatchExecutor`・`DispatchShared` などの抽象をまとめて ActorRef 送達パスを標準化。

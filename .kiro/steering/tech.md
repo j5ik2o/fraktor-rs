@@ -19,7 +19,7 @@
 - `tracing` + `tracing-subscriber`: EventStream/LoggerSubscriber をホストログや RTT へ橋渡し。
 
 ## リモーティング / アドレッシング
-- **ActorPathParts & Formatter**: `modules/actor/src/core/actor_prim/actor_path/{parts,formatter}.rs` が system 名・guardian・authority(host/port) を保持し、`ActorPath::root()` で `cellactor` ガーディアンを自動注入します。`modules/actor/src/core/actor_prim/actor_selection/resolver.rs` の `ActorSelectionResolver` は `..` を guardian 境界で遮断し、Pekko の相対選択ルールに追従します。
+- **ActorPathParts & Formatter**: `modules/actor/src/core/actor/actor_path/{parts,formatter}.rs` が system 名・guardian・authority(host/port) を保持し、`ActorPath::root()` で `cellactor` ガーディアンを自動注入します。`modules/actor/src/core/actor/actor_selection/resolver.rs` の `ActorSelectionResolver` は `..` を guardian 境界で遮断し、Pekko の相対選択ルールに追従します。
 - **RemoteAuthorityManager**: `modules/actor/src/core/system/remote_authority.rs` が `HashMap<String, AuthorityEntry>` を `ToolboxMutex` で包み、`Unresolved/Connected/Quarantine` の状態を no_std でも駆動します。`VecDeque<AnyMessageGeneric<TB>>` に deferred を蓄積し、`try_defer_send` で隔離中の新規送信を拒否、`poll_quarantine_expiration` と `manual_override_to_connected` で復旧を制御します。
 - **イベント観測**: Remoting 由来の InvalidAssociation を `handle_invalid_association` へ集約し、EventStream 通知と同期できるようにしています（spec `pekko-compatible-actor-path` に準拠）。
 

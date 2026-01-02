@@ -17,7 +17,7 @@ use crate::core::{
   spawn::SpawnError,
   system::{ActorSystemConfigGeneric, ActorSystemGeneric, SystemStateSharedGeneric},
   typed::{
-    actor_prim::{TypedActorRefGeneric, TypedChildRefGeneric},
+    actor::{TypedActorRefGeneric, TypedChildRefGeneric},
     props::TypedPropsGeneric,
     scheduler::TypedSchedulerShared,
   },

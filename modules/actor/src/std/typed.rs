@@ -1,7 +1,7 @@
 //! High-level typed actor bindings for the standard fraktor runtime.
 
 /// Core typed actor primitives including actors, contexts, and references.
-pub mod actor_prim;
+pub mod actor;
 mod behavior;
 mod behaviors;
 mod props;
