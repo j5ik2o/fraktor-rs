@@ -8,7 +8,7 @@ use crate::core::{
   actor::{ChildRefGeneric, Pid},
   error::SendError,
   messaging::AnyMessageGeneric,
-  typed::{TypedAskResponseGeneric, actor_prim::actor_ref::TypedActorRefGeneric},
+  typed::{TypedAskResponseGeneric, actor::actor_ref::TypedActorRefGeneric},
 };
 
 /// Wraps [`ChildRefGeneric`] and enforces message type `M`.

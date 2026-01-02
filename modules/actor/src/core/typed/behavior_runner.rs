@@ -10,7 +10,7 @@ use crate::core::{
   supervision::SupervisorStrategy,
   typed::{
     UnhandledMessageEvent,
-    actor_prim::{TypedActor, TypedActorContextGeneric},
+    actor::{TypedActor, TypedActorContextGeneric},
     behavior::{Behavior, BehaviorDirective},
     behavior_signal::BehaviorSignal,
     message_adapter::{AdapterFailure, AdapterFailureEvent},

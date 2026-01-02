@@ -9,7 +9,7 @@ use crate::core::{
   system::ActorSystemGeneric,
   typed::{
     Behaviors,
-    actor_prim::{TypedActor, TypedActorContextGeneric},
+    actor::{TypedActor, TypedActorContextGeneric},
     behavior_signal::BehaviorSignal,
     message_adapter::{AdapterFailure, MessageAdapterRegistry},
   },

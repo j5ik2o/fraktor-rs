@@ -2,7 +2,7 @@
 
 ## 1. 現状調査
 ### 1.1 既存資産とレイアウト
-- **アドレッシング/設定**: `modules/actor/src/core/actor_prim/actor_path/*` と `ActorPathFormatter` が Pekko URI 互換の canonical path を生成し、`ActorSystemConfig` + `RemotingConfig` (`modules/actor/src/core/config/*.rs`) が canonical host/port・隔離期間を設定する。
+- **アドレッシング/設定**: `modules/actor/src/core/actor/actor_path/*` と `ActorPathFormatter` が Pekko URI 互換の canonical path を生成し、`ActorSystemConfig` + `RemotingConfig` (`modules/actor/src/core/config/*.rs`) が canonical host/port・隔離期間を設定する。
 - **システム状態とイベント**: `SystemStateGeneric` (`modules/actor/src/core/system/system_state.rs`) が `RemoteAuthorityManager`、EventStream、DeadLetter を保持し、remoting 設定を `apply_actor_system_config` でパス ID に反映する。
 - **Authority 管理**: `RemoteAuthorityManagerGeneric` (`modules/actor/src/core/system/remote_authority.rs`) と `AuthorityState` が Unresolved/Connected/Quarantine を管理し、`ActorSelectionResolver` が送信前チェックと defer を実施する。
 - **観測フック**: EventStream (`modules/actor/src/core/event_stream/event_stream_event.rs`) に `RemoteAuthority` イベント種別があり、SystemState が state 変化時に発火。（`modules/actor/src/core/system/system_state.rs:794-818`）

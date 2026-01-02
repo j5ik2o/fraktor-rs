@@ -5,7 +5,7 @@ use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 use super::supervise::Supervise;
 use crate::core::{
   error::ActorError,
-  typed::{actor_prim::TypedActorContextGeneric, behavior::Behavior, behavior_signal::BehaviorSignal},
+  typed::{actor::TypedActorContextGeneric, behavior::Behavior, behavior_signal::BehaviorSignal},
 };
 
 /// Provides Pekko-inspired helpers for constructing [`Behavior`] instances.

@@ -6,7 +6,7 @@ use crate::{
     props::Props,
     typed::{
       Behavior,
-      actor_prim::{TypedActor, TypedActorAdapter},
+      actor::{TypedActor, TypedActorAdapter},
     },
   },
 };

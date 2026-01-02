@@ -1,6 +1,6 @@
 use crate::{
   core::{actor::Pid, error::ActorError, supervision::SupervisorStrategy},
-  std::typed::actor_prim::TypedActorContext,
+  std::typed::actor::TypedActorContext,
 };
 
 /// Trait describing typed actors that can run on the standard runtime.

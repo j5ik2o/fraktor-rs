@@ -219,16 +219,16 @@ pub struct SupervisorStrategy { /* deciderクロージャを格納できる */ }
 
 ### 変更が必要なファイル
 
-1. **modules/actor-core/src/actor_prim/actor.rs**
+1. **modules/actor-core/src/actor/actor.rs**
    - `Actor` traitに`fn supervisor_strategy(&mut self, &mut ActorContext) -> SupervisorStrategy`を追加し、RustDocでデフォルト実装・使用例を更新
 
-2. **modules/actor-std/src/actor_prim/actor.rs**
+2. **modules/actor-std/src/actor/actor.rs**
    - std版Actor traitも同じAPIへ揃え、ドキュメントを同期
 
-3. **modules/actor-core/src/actor_prim/actor_cell.rs**
+3. **modules/actor-core/src/actor/actor_cell.rs**
    - 構造体・`create`・`handle_child_failure`・`handle_failure`から`supervisor`フィールド参照を削除し、Actorから直接戦略を取得するロジックを導入
 
-4. **modules/actor-core/src/actor_prim/actor_cell/tests.rs**
+4. **modules/actor-core/src/actor/actor_cell/tests.rs**
    - ActorCell単体テストで動的なOneForOne/AllForOne切り替え、Escalateフォールバックを検証
 
 5. **modules/actor-core/src/props/base.rs**
@@ -397,7 +397,7 @@ let props = Props::from_fn(MyActor::new);
 ## 実装フェーズ
 
 ### フェーズ1: Actorトレイト拡張
-- [ ] `actor_prim/actor.rs`に`supervisor_strategy`メソッド追加
+- [ ] `actor/actor.rs`に`supervisor_strategy`メソッド追加
 - [ ] stdモジュールも同様に拡張
 - [ ] RustDocコメント追加
 

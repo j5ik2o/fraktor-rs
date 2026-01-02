@@ -17,7 +17,7 @@ use crate::core::{
   supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
   typed::{
     Behavior, BehaviorSignal, Behaviors, TypedAskError,
-    actor_prim::{TypedActor, TypedActorContextGeneric, TypedActorRef},
+    actor::{TypedActor, TypedActorContextGeneric, TypedActorRef},
     message_adapter::{AdapterEnvelope, AdapterFailure, AdapterPayload},
     props::TypedPropsGeneric,
     system::TypedActorSystemGeneric,

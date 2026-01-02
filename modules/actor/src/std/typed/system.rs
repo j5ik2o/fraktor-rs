@@ -14,7 +14,7 @@ use crate::{
     error::SendError,
     event::stream::{EventStream, EventStreamEvent, EventStreamSubscriberAdapter, EventStreamSubscription},
     futures::ActorFutureShared,
-    typed::{TypedProps, actor_prim::TypedActorRef},
+    typed::{TypedProps, actor::TypedActorRef},
   },
 };
 

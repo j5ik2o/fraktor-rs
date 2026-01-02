@@ -7,18 +7,18 @@
 ### フェーズ1: Actorトレイト拡張
 
 - [x] **actor-core**: `Actor` traitに`supervisor_strategy`メソッド追加
-  - ファイル: `modules/actor-core/src/actor_prim/actor.rs`
+  - ファイル: `modules/actor-core/src/actor/actor.rs`
   - デフォルト実装で`SupervisorStrategy::default()`を返す
   - RustDocコメント追加（使用例、注意事項を含む）
 
 - [x] **actor-std**: stdモジュールの`Actor` traitも同様に拡張
-  - ファイル: `modules/actor-std/src/actor_prim/actor.rs`
+  - ファイル: `modules/actor-std/src/actor/actor.rs`
   - coreモジュールと同じシグネチャ
 
 ### フェーズ2: ActorCell/Props変更
 
 - [x] **ActorCell構造体**: `supervisor`フィールド削除
-  - ファイル: `modules/actor-core/src/actor_prim/actor_cell.rs`
+  - ファイル: `modules/actor-core/src/actor/actor_cell.rs`
   - Props由来の固定戦略フィールドを削除
 
 - [x] **ActorCellコンストラクタ**: Props由来のsupervisor初期化を削除

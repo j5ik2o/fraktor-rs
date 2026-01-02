@@ -3,7 +3,7 @@
 1. **調査**
    - [ ] Pekko `Behaviors.supervise` の仕様要点を整理し、Rust 版で実現する範囲を記述する。
 2. **基盤の拡張**
-   - [ ] `modules/actor-core/src/typed/actor_prim/actor.rs` に `supervisor_strategy` を追加し、デフォルト実装を用意する。
+   - [ ] `modules/actor-core/src/typed/actor/actor.rs` に `supervisor_strategy` を追加し、デフォルト実装を用意する。
    - [ ] `modules/actor-core/src/typed/typed_actor_adapter.rs` で `Actor` トレイトの `supervisor_strategy` 呼び出しを typed 側へ委譲する。
    - [ ] `modules/actor-core/src/typed/behavior.rs` に監督戦略オプションを保持できるフィールド／アクセサを追加する。
 3. **DSL 実装**

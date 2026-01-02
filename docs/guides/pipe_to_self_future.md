@@ -140,7 +140,7 @@ async fn fake_http(_path: &str) -> String {
 use fraktor_actor_core_rs::{
   typed::{
     Behaviors,
-    actor_prim::{TypedActorContext, TypedActorRef},
+    actor::{TypedActorContext, TypedActorRef},
     behavior::Behavior,
   },
   NoStdToolbox,

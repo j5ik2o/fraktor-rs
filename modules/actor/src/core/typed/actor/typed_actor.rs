@@ -6,7 +6,7 @@ use crate::core::{
   actor::Pid,
   error::{ActorError, ActorErrorReason},
   supervision::SupervisorStrategy,
-  typed::{actor_prim::actor_context::TypedActorContextGeneric, message_adapter::AdapterFailure},
+  typed::{actor::actor_context::TypedActorContextGeneric, message_adapter::AdapterFailure},
 };
 
 /// Defines the lifecycle hooks for actors that operate on a typed message `M`.

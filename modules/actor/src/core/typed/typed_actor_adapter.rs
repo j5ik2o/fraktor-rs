@@ -12,7 +12,7 @@ use crate::core::{
   messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
   supervision::SupervisorStrategy,
   typed::{
-    actor_prim::{TypedActor, TypedActorContextGeneric},
+    actor::{TypedActor, TypedActorContextGeneric},
     message_adapter::{
       AdaptMessage, AdapterEnvelope, AdapterFailure, AdapterOutcome, AdapterPayload, MessageAdapterRegistry,
     },

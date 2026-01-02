@@ -7,7 +7,7 @@ use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 use crate::core::{
   messaging::AnyMessageGeneric,
   scheduler::{DispatcherSenderShared, Scheduler, SchedulerCommand, SchedulerError, SchedulerHandle},
-  typed::actor_prim::TypedActorRefGeneric,
+  typed::actor::TypedActorRefGeneric,
 };
 
 mod scheduler_context;

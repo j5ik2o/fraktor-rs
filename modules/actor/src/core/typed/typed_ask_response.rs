@@ -4,7 +4,7 @@ use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 
 use crate::core::{
   messaging::AskResponseGeneric,
-  typed::{actor_prim::TypedActorRefGeneric, typed_ask_future::TypedAskFutureGeneric},
+  typed::{actor::TypedActorRefGeneric, typed_ask_future::TypedAskFutureGeneric},
 };
 
 /// Associates the typed sender handle with the typed future.

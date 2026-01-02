@@ -7,7 +7,7 @@ use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 use crate::core::{
   error::ActorError,
   supervision::SupervisorStrategy,
-  typed::{actor_prim::TypedActorContextGeneric, behavior_signal::BehaviorSignal},
+  typed::{actor::TypedActorContextGeneric, behavior_signal::BehaviorSignal},
 };
 
 /// Captures message and signal handlers that can evolve into new behaviors after each invocation.

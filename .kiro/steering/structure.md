@@ -17,7 +17,7 @@
 ### ドメインモジュール
 **Location**: `modules/actor/src/core/<domain>/`
 **Purpose**: ActorCell, Mailbox, Supervision, Typed API などドメイン単位でサブディレクトリを持ち、`actor_context.rs` + `actor_context/` のように entry ファイルと詳細ファイルを分離。
-**Example**: `modules/actor/src/core/actor_prim/actor/tests.rs` にドメイン専用テストを配置。
+**Example**: `modules/actor/src/core/actor/actor/tests.rs` にドメイン専用テストを配置。
 
 ### std 向けバインディング
 **Location**: `modules/actor/src/std/*`
@@ -25,9 +25,9 @@
 **Example**: `modules/actor/src/std/system/base.rs` が Core ActorSystem を包む `ActorSystem` 型を提供。
 
 ### リモートアドレッシング & Authority
-**Location**: `modules/actor/src/core/actor_prim/actor_path/*`, `modules/actor/src/core/system/remote_authority.rs`
+**Location**: `modules/actor/src/core/actor/actor_path/*`, `modules/actor/src/core/system/remote_authority.rs`
 **Purpose**: `parts.rs`（`ActorPathParts`・`GuardianKind`）、`formatter.rs`、`path.rs` を分けて canonical URI 生成を単一責務化し、`RemoteAuthorityManagerGeneric` が remoting の状態管理（Unresolved/Connected/Quarantine）と deferred キューの排出を担います。
-**Example**: `actor_prim/actor_selection/tests.rs` が guardian を越えない相対解決シナリオを網羅し、`system/remote_authority/tests.rs` が quarantine/手動解除/InvalidAssociation を `tests.rs` に閉じ込めています。
+**Example**: `actor/actor_selection/tests.rs` が guardian を越えない相対解決シナリオを網羅し、`system/remote_authority/tests.rs` が quarantine/手動解除/InvalidAssociation を `tests.rs` に閉じ込めています。
 
 ### スケジューラ & Tick Driver
 **Location**: `modules/actor/src/core/scheduler/tick_driver/*`, `modules/actor/src/std/scheduler/tick.rs`, `docs/guides/tick-driver-quickstart.md`
@@ -61,7 +61,7 @@
 
 ## import 組織
 ```rust
-use crate::actor_prim::actor_ref::ActorRef;
+use crate::actor::actor_ref::ActorRef;
 use crate::system::system_message::SystemMessage; // FQCN で辿り、末端モジュールのみ再エクスポート
 
 // Prelude はユーザ公開 API のみ

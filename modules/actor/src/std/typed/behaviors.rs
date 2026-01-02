@@ -5,11 +5,9 @@ use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 use crate::{
   core::{
     error::ActorError,
-    typed::{
-      BehaviorSignal, Behaviors as CoreBehaviors, actor_prim::TypedActorContextGeneric as CoreTypedActorContext,
-    },
+    typed::{BehaviorSignal, Behaviors as CoreBehaviors, actor::TypedActorContextGeneric as CoreTypedActorContext},
   },
-  std::typed::{Behavior, Supervise, actor_prim::TypedActorContext},
+  std::typed::{Behavior, Supervise, actor::TypedActorContext},
 };
 
 /// Provides Pekko-inspired helpers that operate on std typed contexts.

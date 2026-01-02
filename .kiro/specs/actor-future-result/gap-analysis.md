@@ -7,7 +7,7 @@
   - `ActorFutureSharedGeneric` は `Future` ではなく、`ActorFutureListener` で `Future` 化
 - ask 応答
   - `modules/actor/src/core/messaging/ask_response.rs` は `AnyMessageGeneric` をそのまま future に保持
-  - `actor_ref::ask` と typed ask (`typed/actor_prim/actor_ref.rs`) も `AnyMessageGeneric` を返す
+  - `actor_ref::ask` と typed ask (`typed/actor/actor_ref.rs`) も `AnyMessageGeneric` を返す
 - 失敗表現
   - `modules/cluster/src/core/grain_ref.rs` / `cluster_api.rs` は `ClusterRequestError` を `AnyMessageGeneric` として future に流す
   - 失敗は EventStream へ通知されるが、future は型として成功/失敗を区別できない

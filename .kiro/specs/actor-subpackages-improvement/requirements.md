@@ -5,7 +5,7 @@
 本仕様は `modules/actor/src/core` および `modules/actor/src/std` 配下のサブパッケージを、protoactor-go と Apache Pekko の設計を参考にしながら改善するものである。
 
 ### 対象範囲
-- `modules/actor/src/core/` 配下のサブパッケージ（actor_prim, dispatch, supervision, typed, scheduler, messaging, event, props, dead_letter, serialization, spawn, extension, lifecycle, futures, system, error）
+- `modules/actor/src/core/` 配下のサブパッケージ（actor, dispatch, supervision, typed, scheduler, messaging, event, props, dead_letter, serialization, spawn, extension, lifecycle, futures, system, error）
 - `modules/actor/src/std/` 配下の対応するサブパッケージ
 
 ### 対象外
@@ -26,11 +26,11 @@
 
 ## 要件
 
-### 要件1: actor_prim サブパッケージの構造改善
+### 要件1: actor サブパッケージの構造改善
 **目的:** ランタイム開発者として、アクターの基本プリミティブ（Pid, ActorRef, ActorPath, ActorContext, ActorCell）を明確に分離された責務で管理し、protoactor-go/pekkoのパターンに沿った一貫性を得たい。
 
 #### 受け入れ条件
-1. actor_prim サブパッケージを変更したとき、各ファイルは単一の公開型（構造体/trait/enum）のみを含まなければならない
+1. actor サブパッケージを変更したとき、各ファイルは単一の公開型（構造体/trait/enum）のみを含まなければならない
 2. プライベートな補助型がある場合、同一ファイル内に配置するか、専用のサブモジュールに分離しなければならない
 3. actor_path サブモジュールを変更したとき、ActorPath, ActorPathParts, ActorPathFormatter は独立したファイルに配置しなければならない
 4. actor_ref サブモジュールを変更したとき、ActorRef と ActorRefGeneric は独立したファイルに配置しなければならない
@@ -69,7 +69,7 @@
 
 #### 受け入れ条件
 1. typed サブパッケージを変更したとき、Behavior 関連の型（Behavior, BehaviorSignal, Behaviors）は各々独立したファイルに配置しなければならない
-2. actor_prim サブモジュールを変更したとき、TypedActor, TypedActorContext, TypedActorRef, TypedChildRef は各々独立したファイルに配置しなければならない
+2. actor サブモジュールを変更したとき、TypedActor, TypedActorContext, TypedActorRef, TypedChildRef は各々独立したファイルに配置しなければならない
 3. message_adapter サブモジュールを変更したとき、MessageAdapterRegistry と関連型は各々独立したファイルに配置しなければならない
 4. scheduler サブモジュール内の型が複数ある場合、1ファイル1型の原則に従って分割しなければならない
 5. Supervise ビルダーは独立したファイルに配置しなければならない
@@ -223,7 +223,7 @@
 
 #### 受け入れ条件
 1. core 側のサブパッケージ構造を変更したとき、対応する std 側のサブパッケージも同様の構造原則に従わなければならない
-2. std/actor_prim を変更したとき、ActorContext と ActorAdapter は各々独立したファイルに配置しなければならない
+2. std/actor を変更したとき、ActorContext と ActorAdapter は各々独立したファイルに配置しなければならない
 3. std/typed を変更したとき、core/typed と同様の構造原則に従わなければならない
 4. std/dispatch を変更したとき、dispatcher と mailbox は各々独立したサブモジュールまたはファイルに配置しなければならない
 5. std/system を変更したとき、ActorSystemBuilder と ActorSystemConfig は各々独立したファイルに配置しなければならない

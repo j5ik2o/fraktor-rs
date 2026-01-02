@@ -3,8 +3,8 @@ extern crate std;
 use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
 use crate::{
-  core::{actor::Pid, error::ActorError, supervision::SupervisorStrategy, typed::actor_prim::TypedActorContextGeneric},
-  std::typed::actor_prim::{TypedActor, TypedActorContext},
+  core::{actor::Pid, error::ActorError, supervision::SupervisorStrategy, typed::actor::TypedActorContextGeneric},
+  std::typed::actor::{TypedActor, TypedActorContext},
 };
 
 /// Adapter bridging standard [`TypedActor`] implementations to the core runtime.
