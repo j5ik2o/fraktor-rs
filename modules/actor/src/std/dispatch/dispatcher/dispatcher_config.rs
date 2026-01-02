@@ -10,7 +10,8 @@ use super::{DispatchExecutor, DispatchExecutorAdapter, DispatcherShared, StdSche
 use crate::core::{
   dispatch::{
     dispatcher::{
-      DispatchExecutorRunner, DispatcherConfigGeneric as CoreDispatcherConfigGeneric, ScheduleAdapterSharedGeneric,
+      DispatchExecutorRunnerGeneric, DispatcherConfigGeneric as CoreDispatcherConfigGeneric,
+      ScheduleAdapterSharedGeneric,
     },
     mailbox::MailboxGeneric,
   },
@@ -37,10 +38,10 @@ impl DispatcherConfig {
 
   /// Returns the configured scheduler runner.
   ///
-  /// The returned [`DispatchExecutorRunner`] implements [`DispatchExecutor`] and can be used
+  /// The returned [`DispatchExecutorRunnerGeneric`] implements [`DispatchExecutor`] and can be used
   /// to submit dispatchers for execution.
   #[must_use]
-  pub fn executor(&self) -> ArcShared<DispatchExecutorRunner<StdToolbox>> {
+  pub fn executor(&self) -> ArcShared<DispatchExecutorRunnerGeneric<StdToolbox>> {
     self.inner.executor()
   }
 

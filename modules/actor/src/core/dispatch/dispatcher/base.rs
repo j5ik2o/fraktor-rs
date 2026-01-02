@@ -10,7 +10,7 @@ use super::{
   DispatcherSenderGeneric,
   dispatch_error::DispatchError,
   dispatch_executor::DispatchExecutor,
-  dispatch_executor_runner::DispatchExecutorRunner,
+  dispatch_executor_runner::DispatchExecutorRunnerGeneric,
   dispatch_shared::DispatchSharedGeneric,
   dispatcher_core::{DispatcherCore, MAX_EXECUTOR_RETRIES},
   dispatcher_state::DispatcherState,
@@ -39,7 +39,7 @@ unsafe impl<TB: RuntimeToolbox + 'static> Sync for DispatcherSharedGeneric<TB> {
 impl<TB: RuntimeToolbox + 'static> DispatcherSharedGeneric<TB> {
   /// Creates a new dispatcher from a mailbox and execution strategy.
   #[must_use]
-  pub fn new(mailbox: ArcShared<MailboxGeneric<TB>>, executor: ArcShared<DispatchExecutorRunner<TB>>) -> Self {
+  pub fn new(mailbox: ArcShared<MailboxGeneric<TB>>, executor: ArcShared<DispatchExecutorRunnerGeneric<TB>>) -> Self {
     Self::with_executor(mailbox, executor, None, None)
   }
 
@@ -47,7 +47,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherSharedGeneric<TB> {
   #[must_use]
   pub fn with_executor(
     mailbox: ArcShared<MailboxGeneric<TB>>,
-    executor: ArcShared<DispatchExecutorRunner<TB>>,
+    executor: ArcShared<DispatchExecutorRunnerGeneric<TB>>,
     throughput_deadline: Option<Duration>,
     starvation_deadline: Option<Duration>,
   ) -> Self {
@@ -59,7 +59,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherSharedGeneric<TB> {
   #[must_use]
   pub fn with_adapter(
     mailbox: ArcShared<MailboxGeneric<TB>>,
-    executor: ArcShared<DispatchExecutorRunner<TB>>,
+    executor: ArcShared<DispatchExecutorRunnerGeneric<TB>>,
     schedule_adapter: ScheduleAdapterSharedGeneric<TB>,
     throughput_deadline: Option<Duration>,
     starvation_deadline: Option<Duration>,
@@ -80,7 +80,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherSharedGeneric<TB> {
   #[must_use]
   pub fn with_inline_executor(mailbox: ArcShared<MailboxGeneric<TB>>) -> Self {
     let executor: Box<dyn DispatchExecutor<TB>> = Box::new(InlineExecutorGeneric::<TB>::new());
-    let runner = ArcShared::new(DispatchExecutorRunner::new(executor));
+    let runner = ArcShared::new(DispatchExecutorRunnerGeneric::new(executor));
     Self::new(mailbox, runner)
   }
 

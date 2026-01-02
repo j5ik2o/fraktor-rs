@@ -17,7 +17,7 @@ use fraktor_utils_rs::core::{
 use portable_atomic::{AtomicU8, AtomicU64};
 
 use super::{
-  dispatch_error::DispatchError, dispatch_executor_runner::DispatchExecutorRunner,
+  dispatch_error::DispatchError, dispatch_executor_runner::DispatchExecutorRunnerGeneric,
   dispatcher_dump_event::DispatcherDumpEvent, dispatcher_state::DispatcherState,
   schedule_adapter_shared::ScheduleAdapterSharedGeneric,
 };
@@ -37,7 +37,7 @@ pub(crate) const MAX_EXECUTOR_RETRIES: usize = 2;
 /// Entity that drains the mailbox and invokes messages.
 pub(crate) struct DispatcherCore<TB: RuntimeToolbox + 'static> {
   mailbox:             ArcShared<MailboxGeneric<TB>>,
-  executor:            ArcShared<DispatchExecutorRunner<TB>>,
+  executor:            ArcShared<DispatchExecutorRunnerGeneric<TB>>,
   schedule_adapter:    ScheduleAdapterSharedGeneric<TB>,
   invoker:             ToolboxMutex<Option<MessageInvokerShared<TB>>, TB>,
   state:               AtomicU8,
@@ -54,7 +54,7 @@ unsafe impl<TB: RuntimeToolbox + 'static> Sync for DispatcherCore<TB> {}
 impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
   pub(crate) fn new(
     mailbox: ArcShared<MailboxGeneric<TB>>,
-    executor: ArcShared<DispatchExecutorRunner<TB>>,
+    executor: ArcShared<DispatchExecutorRunnerGeneric<TB>>,
     schedule_adapter: ScheduleAdapterSharedGeneric<TB>,
     throughput_limit: Option<NonZeroUsize>,
     throughput_deadline: Option<Duration>,
@@ -83,7 +83,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
     *self.invoker.lock() = Some(invoker);
   }
 
-  pub(crate) const fn executor(&self) -> &ArcShared<DispatchExecutorRunner<TB>> {
+  pub(crate) const fn executor(&self) -> &ArcShared<DispatchExecutorRunnerGeneric<TB>> {
     &self.executor
   }
 

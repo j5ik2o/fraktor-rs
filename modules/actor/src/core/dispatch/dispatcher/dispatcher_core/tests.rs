@@ -5,15 +5,15 @@ use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
 use super::DispatcherCore;
 use crate::core::{
   dispatch::{
-    dispatcher::{DispatchExecutorRunner, InlineExecutor, InlineScheduleAdapter},
+    dispatcher::{DispatchExecutorRunnerGeneric, InlineExecutor, InlineScheduleAdapter},
     mailbox::Mailbox,
   },
   error::ActorError,
   messaging::message_invoker::{MessageInvoker, MessageInvokerShared},
 };
 
-fn inline_runner() -> ArcShared<DispatchExecutorRunner<NoStdToolbox>> {
-  ArcShared::new(DispatchExecutorRunner::new(Box::new(InlineExecutor::new())))
+fn inline_runner() -> ArcShared<DispatchExecutorRunnerGeneric<NoStdToolbox>> {
+  ArcShared::new(DispatchExecutorRunnerGeneric::new(Box::new(InlineExecutor::new())))
 }
 
 #[test]

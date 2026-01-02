@@ -18,7 +18,7 @@ use super::schedule_waker::ScheduleWaker;
 use crate::core::{
   dispatch::{
     dispatcher::{
-      DispatchError, DispatchExecutor, DispatchExecutorRunner, DispatchSharedGeneric, DispatcherSharedGeneric,
+      DispatchError, DispatchExecutor, DispatchExecutorRunnerGeneric, DispatchSharedGeneric, DispatcherSharedGeneric,
       ScheduleAdapter, ScheduleAdapterSharedGeneric, TickExecutorGeneric,
     },
     mailbox::{
@@ -228,7 +228,7 @@ fn telemetry_captures_mailbox_pressure_and_dispatcher_dump() {
 
 fn dispatcher_with_executor(
   mailbox: ArcShared<MailboxGeneric<NoStdToolbox>>,
-  executor: ArcShared<DispatchExecutorRunner<NoStdToolbox>>,
+  executor: ArcShared<DispatchExecutorRunnerGeneric<NoStdToolbox>>,
   throughput_deadline: Option<Duration>,
   starvation_deadline: Option<Duration>,
 ) -> DispatcherSharedGeneric<NoStdToolbox> {
@@ -238,7 +238,7 @@ fn dispatcher_with_executor(
 
 fn dispatcher_with_executor_and_adapter(
   mailbox: ArcShared<MailboxGeneric<NoStdToolbox>>,
-  executor: ArcShared<DispatchExecutorRunner<NoStdToolbox>>,
+  executor: ArcShared<DispatchExecutorRunnerGeneric<NoStdToolbox>>,
   throughput_deadline: Option<Duration>,
   starvation_deadline: Option<Duration>,
   adapter: ScheduleAdapterSharedGeneric<NoStdToolbox>,
@@ -246,27 +246,29 @@ fn dispatcher_with_executor_and_adapter(
   DispatcherSharedGeneric::with_adapter(mailbox, executor, adapter, throughput_deadline, starvation_deadline)
 }
 
-fn recording_executor_with_runner() -> (ArcShared<RecordingExecutor>, ArcShared<DispatchExecutorRunner<NoStdToolbox>>) {
+fn recording_executor_with_runner()
+-> (ArcShared<RecordingExecutor>, ArcShared<DispatchExecutorRunnerGeneric<NoStdToolbox>>) {
   let recording = ArcShared::new(RecordingExecutor::default());
   let recording_clone = recording.clone();
-  let runner = ArcShared::new(DispatchExecutorRunner::new(Box::new(RecordingExecutorWrapper { inner: recording })));
+  let runner =
+    ArcShared::new(DispatchExecutorRunnerGeneric::new(Box::new(RecordingExecutorWrapper { inner: recording })));
   (recording_clone, runner)
 }
 
 fn flaky_executor_with_runner(
   failures: Vec<DispatchError>,
-) -> (ArcShared<FlakyExecutor>, ArcShared<DispatchExecutorRunner<NoStdToolbox>>) {
+) -> (ArcShared<FlakyExecutor>, ArcShared<DispatchExecutorRunnerGeneric<NoStdToolbox>>) {
   let flaky = ArcShared::new(FlakyExecutor::new(failures));
   let flaky_clone = flaky.clone();
-  let runner = ArcShared::new(DispatchExecutorRunner::new(Box::new(FlakyExecutorWrapper { inner: flaky })));
+  let runner = ArcShared::new(DispatchExecutorRunnerGeneric::new(Box::new(FlakyExecutorWrapper { inner: flaky })));
   (flaky_clone, runner)
 }
 
 fn tick_executor_with_runner()
--> (ArcShared<TickExecutorGenericWrapper>, ArcShared<DispatchExecutorRunner<NoStdToolbox>>) {
+-> (ArcShared<TickExecutorGenericWrapper>, ArcShared<DispatchExecutorRunnerGeneric<NoStdToolbox>>) {
   let tick = ArcShared::new(TickExecutorGenericWrapper::new());
   let tick_clone = tick.clone();
-  let runner = ArcShared::new(DispatchExecutorRunner::new(Box::new(TickExecutorWrapper { inner: tick })));
+  let runner = ArcShared::new(DispatchExecutorRunnerGeneric::new(Box::new(TickExecutorWrapper { inner: tick })));
   (tick_clone, runner)
 }
 

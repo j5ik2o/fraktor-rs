@@ -6,7 +6,7 @@ use fraktor_utils_rs::core::{
   sync::ArcShared,
 };
 
-use super::DispatchExecutorRunner;
+use super::DispatchExecutorRunnerGeneric;
 use crate::core::dispatch::dispatcher::{
   DispatchError, DispatchExecutor, DispatchSharedGeneric, dispatcher_core::DispatcherCore,
 };
@@ -19,7 +19,7 @@ fn make_dispatch_task() -> DispatchSharedGeneric<NoStdToolbox> {
 
   let mailbox = ArcShared::new(Mailbox::new(MailboxPolicy::unbounded(None)));
   let inline_executor: Box<dyn DispatchExecutor<NoStdToolbox>> = Box::new(InlineExecutor::new());
-  let inner_runner = ArcShared::new(DispatchExecutorRunner::<NoStdToolbox>::new(inline_executor));
+  let inner_runner = ArcShared::new(DispatchExecutorRunnerGeneric::<NoStdToolbox>::new(inline_executor));
   let adapter = crate::core::dispatch::dispatcher::InlineScheduleAdapter::shared::<NoStdToolbox>();
   let core = ArcShared::new(DispatcherCore::new(mailbox, inner_runner, adapter, None, None, None));
 
@@ -51,7 +51,7 @@ impl DispatchExecutor<NoStdToolbox> for CountingExecutor {
 fn dispatch_executor_runner_executes_single_task() {
   let count = Arc::new(AtomicUsize::new(0));
   let executor: Box<dyn DispatchExecutor<NoStdToolbox>> = Box::new(CountingExecutor::new(count.clone()));
-  let runner = DispatchExecutorRunner::<NoStdToolbox>::new(executor);
+  let runner = DispatchExecutorRunnerGeneric::<NoStdToolbox>::new(executor);
 
   let task = make_dispatch_task();
 
@@ -64,7 +64,7 @@ fn dispatch_executor_runner_executes_single_task() {
 fn dispatch_executor_runner_supports_blocking_delegates() {
   let count = Arc::new(AtomicUsize::new(0));
   let executor: Box<dyn DispatchExecutor<NoStdToolbox>> = Box::new(CountingExecutor::new(count));
-  let runner = DispatchExecutorRunner::<NoStdToolbox>::new(executor);
+  let runner = DispatchExecutorRunnerGeneric::<NoStdToolbox>::new(executor);
 
   assert!(!runner.supports_blocking());
 }
@@ -97,7 +97,7 @@ fn failed_task_is_requeued_and_retried() {
   let outcomes = Arc::new(NoStdMutex::new(vec![Ok(()), Err(DispatchError::RejectedExecution)]));
   let calls = Arc::new(AtomicUsize::new(0));
   let executor: Box<dyn DispatchExecutor<NoStdToolbox>> = Box::new(SequenceExecutor::new(outcomes, calls.clone()));
-  let runner = DispatchExecutorRunner::<NoStdToolbox>::new(executor);
+  let runner = DispatchExecutorRunnerGeneric::<NoStdToolbox>::new(executor);
 
   let task1 = make_dispatch_task();
   let err = runner.submit(task1).expect_err("first submit should propagate rejection");

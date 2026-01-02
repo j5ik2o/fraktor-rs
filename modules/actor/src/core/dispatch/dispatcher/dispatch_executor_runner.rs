@@ -5,7 +5,7 @@ use core::sync::atomic::Ordering;
 
 use fraktor_utils_rs::core::{
   collections::queue::{OverflowPolicy, QueueError, SyncFifoQueue, backend::VecDequeBackend},
-  runtime_toolbox::{RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
+  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
   sync::sync_mutex_like::SyncMutexLike,
 };
 use portable_atomic::AtomicBool;
@@ -17,21 +17,24 @@ use super::{
 #[cfg(test)]
 mod tests;
 
-/// Type alias for the task queue used by [`DispatchExecutorRunner`].
+/// Type alias for the task queue used by [`DispatchExecutorRunnerGeneric`].
 type TaskQueue<TB> = SyncFifoQueue<DispatchSharedGeneric<TB>, VecDequeBackend<DispatchSharedGeneric<TB>>>;
 
 /// Serializing runner for [`DispatchExecutor`] that avoids deadlock on re-entry.
 ///
 /// When `submit` is called during an ongoing execution (re-entry), the task is
 /// queued instead of blocking. Only one thread drains the queue at a time.
-pub struct DispatchExecutorRunner<TB: RuntimeToolbox + 'static> {
+pub struct DispatchExecutorRunnerGeneric<TB: RuntimeToolbox + 'static> {
   executor: ToolboxMutex<Box<dyn DispatchExecutor<TB>>, TB>,
   queue:    ToolboxMutex<TaskQueue<TB>, TB>,
   running:  AtomicBool,
 }
 
-unsafe impl<TB: RuntimeToolbox + 'static> Send for DispatchExecutorRunner<TB> {}
-unsafe impl<TB: RuntimeToolbox + 'static> Sync for DispatchExecutorRunner<TB> {}
+/// Type alias for the default runner with the default `NoStdToolbox`.
+pub type DispatchExecutorRunner = DispatchExecutorRunnerGeneric<NoStdToolbox>;
+
+unsafe impl<TB: RuntimeToolbox + 'static> Send for DispatchExecutorRunnerGeneric<TB> {}
+unsafe impl<TB: RuntimeToolbox + 'static> Sync for DispatchExecutorRunnerGeneric<TB> {}
 
 /// Default initial capacity for the task queue.
 const DEFAULT_QUEUE_CAPACITY: usize = 16;
@@ -49,7 +52,7 @@ const fn queue_error_to_dispatch_error<T>(err: &QueueError<T>) -> DispatchError 
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> DispatchExecutorRunner<TB> {
+impl<TB: RuntimeToolbox + 'static> DispatchExecutorRunnerGeneric<TB> {
   /// Creates a new runner wrapping the given executor.
   #[must_use]
   pub fn new(executor: Box<dyn DispatchExecutor<TB>>) -> Self {

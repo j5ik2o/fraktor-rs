@@ -36,7 +36,7 @@ mod tick_executor;
 pub use base::{DispatcherShared, DispatcherSharedGeneric};
 pub use dispatch_error::DispatchError;
 pub use dispatch_executor::DispatchExecutor;
-pub use dispatch_executor_runner::DispatchExecutorRunner;
+pub use dispatch_executor_runner::{DispatchExecutorRunner, DispatchExecutorRunnerGeneric};
 pub use dispatch_shared::{DispatchShared, DispatchSharedGeneric};
 pub use dispatcher_config::{DispatcherConfig, DispatcherConfigGeneric};
 pub use dispatcher_dump_event::DispatcherDumpEvent;

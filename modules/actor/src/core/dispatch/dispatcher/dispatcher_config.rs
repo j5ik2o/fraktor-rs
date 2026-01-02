@@ -12,8 +12,8 @@ mod tests;
 use crate::core::{
   dispatch::{
     dispatcher::{
-      DispatchExecutor, DispatchExecutorRunner, DispatcherSharedGeneric, InlineExecutorGeneric, InlineScheduleAdapter,
-      ScheduleAdapterSharedGeneric,
+      DispatchExecutor, DispatchExecutorRunnerGeneric, DispatcherSharedGeneric, InlineExecutorGeneric,
+      InlineScheduleAdapter, ScheduleAdapterSharedGeneric,
     },
     mailbox::{MailboxGeneric, MailboxOverflowStrategy},
   },
@@ -22,7 +22,7 @@ use crate::core::{
 
 /// Dispatcher configuration attached to [`Props`](Props).
 pub struct DispatcherConfigGeneric<TB: RuntimeToolbox + 'static> {
-  executor:            ArcShared<DispatchExecutorRunner<TB>>,
+  executor:            ArcShared<DispatchExecutorRunnerGeneric<TB>>,
   throughput_deadline: Option<Duration>,
   starvation_deadline: Option<Duration>,
   schedule_adapter:    ScheduleAdapterSharedGeneric<TB>,
@@ -47,7 +47,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherConfigGeneric<TB> {
   #[must_use]
   pub fn from_executor(executor: Box<dyn DispatchExecutor<TB>>) -> Self {
     Self {
-      executor:            ArcShared::new(DispatchExecutorRunner::new(executor)),
+      executor:            ArcShared::new(DispatchExecutorRunnerGeneric::new(executor)),
       throughput_deadline: None,
       starvation_deadline: None,
       schedule_adapter:    InlineScheduleAdapter::shared::<TB>(),
@@ -56,7 +56,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherConfigGeneric<TB> {
 
   /// Returns the current executor runner handle.
   #[must_use]
-  pub fn executor(&self) -> ArcShared<DispatchExecutorRunner<TB>> {
+  pub fn executor(&self) -> ArcShared<DispatchExecutorRunnerGeneric<TB>> {
     self.executor.clone()
   }
 
