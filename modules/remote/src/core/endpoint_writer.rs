@@ -1,5 +1,7 @@
 //! Serializes outbound messages and feeds transport queues.
 
+mod error;
+mod shared;
 #[cfg(test)]
 mod tests;
 
@@ -9,6 +11,7 @@ use core::{
   sync::atomic::{AtomicBool, AtomicU64, Ordering},
 };
 
+pub use error::EndpointWriterError;
 use fraktor_actor_rs::core::{
   event::stream::{BackpressureSignal, CorrelationId},
   serialization::{SerializationCallScope, SerializationExtensionSharedGeneric},
@@ -22,11 +25,9 @@ use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
   sync::SharedAccess,
 };
+pub use shared::{EndpointWriterShared, EndpointWriterSharedGeneric};
 
-use crate::core::{
-  endpoint_writer_error::EndpointWriterError, outbound_message::OutboundMessage, outbound_priority::OutboundPriority,
-  remoting_envelope::RemotingEnvelope,
-};
+use crate::core::envelope::{OutboundMessage, OutboundPriority, RemotingEnvelope};
 
 const DEFAULT_QUEUE_CAPACITY: usize = 128;
 

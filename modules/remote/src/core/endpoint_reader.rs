@@ -1,10 +1,12 @@
 //! Converts serialized remoting envelopes back into runtime messages.
 
+mod error;
 #[cfg(test)]
 mod tests;
 
 use alloc::sync::Arc;
 
+pub use error::EndpointReaderError;
 use fraktor_actor_rs::core::{
   actor::{actor_path::ActorPath, actor_ref::ActorRefGeneric},
   dead_letter::DeadLetterReason,
@@ -19,10 +21,10 @@ use fraktor_utils_rs::core::{
 };
 
 #[cfg(feature = "tokio-transport")]
-use crate::core::tokio_actor_ref_provider::TokioActorRefProviderGeneric;
+use crate::core::TokioActorRefProviderGeneric;
 use crate::core::{
-  endpoint_reader_error::EndpointReaderError, inbound_envelope::InboundEnvelope,
-  remote_actor_ref_provider::RemoteActorRefProviderGeneric, remoting_envelope::RemotingEnvelope,
+  RemoteActorRefProviderGeneric,
+  envelope::{InboundEnvelope, RemotingEnvelope},
 };
 
 /// Deserializes inbound transport envelopes into runtime messages.

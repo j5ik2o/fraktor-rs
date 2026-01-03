@@ -7,7 +7,9 @@ use fraktor_utils_rs::core::{
 
 use super::DispatchShared;
 use crate::core::dispatch::{
-  dispatcher::{DispatchExecutorRunnerGeneric, InlineExecutor, InlineScheduleAdapter, dispatcher_core::DispatcherCoreGeneric},
+  dispatcher::{
+    DispatchExecutorRunnerGeneric, InlineExecutor, InlineScheduleAdapter, dispatcher_core::DispatcherCoreGeneric,
+  },
   mailbox::Mailbox,
 };
 

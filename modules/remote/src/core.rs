@@ -2,104 +2,53 @@
 #![allow(cfg_std_forbid)]
 
 mod actor_ref_field_normalizer;
-mod association_state;
+mod actor_ref_provider;
+mod backpressure;
 mod block_list_provider;
-mod deferred_envelope;
-mod endpoint_association_command;
-mod endpoint_association_coordinator;
-mod endpoint_association_coordinator_shared;
-mod endpoint_association_effect;
-mod endpoint_association_result;
+mod endpoint_association;
 mod endpoint_reader;
-mod endpoint_reader_error;
 mod endpoint_registry;
 mod endpoint_writer;
-mod endpoint_writer_error;
-mod endpoint_writer_shared;
+mod envelope;
 mod event_publisher;
 mod failure_detector;
 mod flight_recorder;
-mod fn_remoting_backpressure_listener;
-mod handshake_frame;
-mod handshake_kind;
-mod inbound_envelope;
-mod loopback_actor_ref_provider;
-mod loopback_actor_ref_provider_installer;
-mod loopback_router;
-mod loopback_serialization_setup;
-mod outbound_message;
-mod outbound_priority;
-mod quarantine_reason;
-mod remote_actor_ref_provider;
-mod remote_actor_ref_provider_error;
-mod remote_actor_ref_provider_installer;
+mod handshake;
 mod remote_authority_snapshot;
 mod remote_node_id;
-mod remote_watcher_command;
-mod remote_watcher_daemon;
-mod remoting_backpressure_listener;
-mod remoting_control;
-mod remoting_control_handle;
-mod remoting_envelope;
-mod remoting_error;
 mod remoting_extension;
-mod remoting_extension_config;
-#[cfg(feature = "std")]
-mod remoting_extension_id;
-#[cfg(feature = "std")]
-mod remoting_extension_installer;
-mod tokio_actor_ref_provider;
-mod tokio_actor_ref_provider_installer;
 pub mod transport;
+mod watcher;
 mod wire_error;
 
-pub use association_state::AssociationState;
-pub use block_list_provider::BlockListProvider;
-pub use deferred_envelope::DeferredEnvelope;
-pub use endpoint_association_command::EndpointAssociationCommand;
-pub use endpoint_association_coordinator::EndpointAssociationCoordinator;
-pub use endpoint_association_coordinator_shared::{
-  EndpointAssociationCoordinatorShared, EndpointAssociationCoordinatorSharedGeneric,
+pub use actor_ref_provider::{
+  LoopbackActorRefProvider, LoopbackActorRefProviderGeneric, LoopbackActorRefProviderInstaller, RemoteActorRefProvider,
+  RemoteActorRefProviderError, RemoteActorRefProviderGeneric, RemoteActorRefProviderInstaller, TokioActorRefProvider,
+  TokioActorRefProviderGeneric, TokioActorRefProviderInstaller, default_loopback_setup,
 };
-pub use endpoint_association_effect::EndpointAssociationEffect;
-pub use endpoint_association_result::EndpointAssociationResult;
-pub use endpoint_reader::{EndpointReader, EndpointReaderGeneric};
-pub use endpoint_reader_error::EndpointReaderError;
-pub use endpoint_writer::{EndpointWriter, EndpointWriterGeneric};
-pub use endpoint_writer_error::EndpointWriterError;
-pub use endpoint_writer_shared::{EndpointWriterShared, EndpointWriterSharedGeneric};
+pub use backpressure::{FnRemotingBackpressureListener, RemotingBackpressureListener};
+pub use block_list_provider::BlockListProvider;
+pub use endpoint_association::{
+  AssociationState, EndpointAssociationCommand, EndpointAssociationCoordinator, EndpointAssociationCoordinatorShared,
+  EndpointAssociationCoordinatorSharedGeneric, EndpointAssociationEffect, EndpointAssociationResult, QuarantineReason,
+};
+pub use endpoint_reader::{EndpointReader, EndpointReaderError, EndpointReaderGeneric};
+pub use endpoint_writer::{
+  EndpointWriter, EndpointWriterError, EndpointWriterGeneric, EndpointWriterShared, EndpointWriterSharedGeneric,
+};
+pub use envelope::{DeferredEnvelope, InboundEnvelope, OutboundMessage, OutboundPriority, RemotingEnvelope};
 pub use event_publisher::{EventPublisher, EventPublisherGeneric};
 pub use failure_detector::{PhiFailureDetector, PhiFailureDetectorConfig, PhiFailureDetectorEffect};
 pub use flight_recorder::{FlightMetricKind, RemotingFlightRecorder, RemotingFlightRecorderSnapshot, RemotingMetric};
-pub use fn_remoting_backpressure_listener::FnRemotingBackpressureListener;
-pub use handshake_frame::HandshakeFrame;
-pub use handshake_kind::HandshakeKind;
-pub use inbound_envelope::InboundEnvelope;
-pub use loopback_actor_ref_provider::{LoopbackActorRefProvider, LoopbackActorRefProviderGeneric};
-pub use loopback_actor_ref_provider_installer::LoopbackActorRefProviderInstaller;
-pub use loopback_serialization_setup::default_loopback_setup;
-pub use outbound_message::OutboundMessage;
-pub use outbound_priority::OutboundPriority;
-pub use quarantine_reason::QuarantineReason;
-pub use remote_actor_ref_provider::{RemoteActorRefProvider, RemoteActorRefProviderGeneric};
-pub use remote_actor_ref_provider_error::RemoteActorRefProviderError;
-pub use remote_actor_ref_provider_installer::RemoteActorRefProviderInstaller;
+pub use handshake::{HandshakeFrame, HandshakeKind};
 pub use remote_authority_snapshot::RemoteAuthoritySnapshot;
 pub use remote_node_id::RemoteNodeId;
-pub use remote_watcher_command::RemoteWatcherCommand;
-pub use remoting_backpressure_listener::RemotingBackpressureListener;
-pub use remoting_control::{RemotingControl, RemotingControlShared};
-pub use remoting_control_handle::RemotingControlHandle;
-pub use remoting_envelope::RemotingEnvelope;
-pub use remoting_error::RemotingError;
-pub use remoting_extension::{RemotingExtension, RemotingExtensionGeneric};
-pub use remoting_extension_config::RemotingExtensionConfig;
+pub use remoting_extension::{
+  RemotingControl, RemotingControlHandle, RemotingControlShared, RemotingError, RemotingExtension,
+  RemotingExtensionConfig, RemotingExtensionGeneric,
+};
 #[cfg(feature = "std")]
-pub use remoting_extension_id::RemotingExtensionId;
-#[cfg(feature = "std")]
-pub use remoting_extension_installer::RemotingExtensionInstaller;
-pub use tokio_actor_ref_provider::{TokioActorRefProvider, TokioActorRefProviderGeneric};
-pub use tokio_actor_ref_provider_installer::TokioActorRefProviderInstaller;
+pub use remoting_extension::{RemotingExtensionId, RemotingExtensionInstaller};
 pub use transport::{
   InboundFrame, LoopbackTransport, RemoteTransport, RemoteTransportShared, TokioTransportConfig,
   TransportBackpressureHook, TransportBackpressureHookShared, TransportBind, TransportChannel, TransportEndpoint,

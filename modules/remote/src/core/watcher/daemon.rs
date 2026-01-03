@@ -1,0 +1,68 @@
+//! Watches remote actors on behalf of local watchers.
+
+use alloc::vec::Vec;
+
+use fraktor_actor_rs::core::{
+  actor::{Actor, ActorContextGeneric, Pid, actor_path::ActorPathParts, actor_ref::ActorRefGeneric},
+  error::ActorError,
+  messaging::AnyMessageViewGeneric,
+  props::PropsGeneric,
+  system::ActorSystemGeneric,
+};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::sync_mutex_like::SyncMutexLike};
+
+use super::command::RemoteWatcherCommand;
+use crate::core::remoting_extension::{RemotingControl, RemotingControlShared, RemotingError};
+
+/// System actor that proxies watch/unwatch commands to the remoting control plane.
+pub(crate) struct RemoteWatcherDaemon<TB>
+where
+  TB: RuntimeToolbox + 'static, {
+  control:  RemotingControlShared<TB>,
+  #[allow(dead_code)]
+  watchers: Vec<(Pid, ActorPathParts)>,
+}
+
+impl<TB> RemoteWatcherDaemon<TB>
+where
+  TB: RuntimeToolbox + 'static,
+{
+  fn new(control: RemotingControlShared<TB>) -> Self {
+    Self { control, watchers: Vec::new() }
+  }
+
+  /// Spawns the daemon under the system guardian hierarchy.
+  pub(crate) fn spawn(
+    system: &ActorSystemGeneric<TB>,
+    control: RemotingControlShared<TB>,
+  ) -> Result<ActorRefGeneric<TB>, RemotingError> {
+    let props = PropsGeneric::from_fn({
+      let handle = control.clone();
+      move || RemoteWatcherDaemon::new(handle.clone())
+    })
+    .with_name("remote-watcher-daemon");
+    let actor = system.extended().spawn_system_actor(&props).map_err(RemotingError::from)?;
+    Ok(actor.actor_ref().clone())
+  }
+}
+
+impl<TB> Actor<TB> for RemoteWatcherDaemon<TB>
+where
+  TB: RuntimeToolbox + 'static,
+{
+  fn receive(
+    &mut self,
+    _ctx: &mut ActorContextGeneric<'_, TB>,
+    message: AnyMessageViewGeneric<'_, TB>,
+  ) -> Result<(), ActorError> {
+    if let Some(command) = message.downcast_ref::<RemoteWatcherCommand>() {
+      match command {
+        | RemoteWatcherCommand::Watch { target, .. } => {
+          let _ = self.control.lock().associate(target);
+        },
+        | RemoteWatcherCommand::Unwatch { target: _, .. } => {},
+      }
+    }
+    Ok(())
+  }
+}
