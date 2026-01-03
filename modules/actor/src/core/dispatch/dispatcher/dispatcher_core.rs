@@ -35,7 +35,7 @@ const DEFAULT_THROUGHPUT: usize = 300;
 pub(crate) const MAX_EXECUTOR_RETRIES: usize = 2;
 
 /// Entity that drains the mailbox and invokes messages.
-pub(crate) struct DispatcherCore<TB: RuntimeToolbox + 'static> {
+pub(crate) struct DispatcherCoreGeneric<TB: RuntimeToolbox + 'static> {
   mailbox:             ArcShared<MailboxGeneric<TB>>,
   executor:            ArcShared<DispatchExecutorRunnerGeneric<TB>>,
   schedule_adapter:    ScheduleAdapterSharedGeneric<TB>,
@@ -48,10 +48,10 @@ pub(crate) struct DispatcherCore<TB: RuntimeToolbox + 'static> {
   last_progress:       AtomicU64,
 }
 
-unsafe impl<TB: RuntimeToolbox + 'static> Send for DispatcherCore<TB> {}
-unsafe impl<TB: RuntimeToolbox + 'static> Sync for DispatcherCore<TB> {}
+unsafe impl<TB: RuntimeToolbox + 'static> Send for DispatcherCoreGeneric<TB> {}
+unsafe impl<TB: RuntimeToolbox + 'static> Sync for DispatcherCoreGeneric<TB> {}
 
-impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
+impl<TB: RuntimeToolbox + 'static> DispatcherCoreGeneric<TB> {
   pub(crate) fn new(
     mailbox: ArcShared<MailboxGeneric<TB>>,
     executor: ArcShared<DispatchExecutorRunnerGeneric<TB>>,
@@ -332,7 +332,7 @@ const fn duration_to_millis(duration: Duration) -> u64 {
   duration.as_millis() as u64
 }
 
-impl<TB: RuntimeToolbox + 'static> DispatcherCore<TB> {
+impl<TB: RuntimeToolbox + 'static> DispatcherCoreGeneric<TB> {
   fn handle_starvation(&self, hints: ScheduleHints) {
     if !hints.has_system_messages && !hints.has_user_messages && !hints.backpressure_active {
       return;

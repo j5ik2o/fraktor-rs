@@ -8,7 +8,7 @@ use fraktor_utils_rs::core::{
 
 use super::DispatchExecutorRunnerGeneric;
 use crate::core::dispatch::dispatcher::{
-  DispatchError, DispatchExecutor, DispatchSharedGeneric, dispatcher_core::DispatcherCore,
+  DispatchError, DispatchExecutor, DispatchSharedGeneric, dispatcher_core::DispatcherCoreGeneric,
 };
 
 fn make_dispatch_task() -> DispatchSharedGeneric<NoStdToolbox> {
@@ -21,7 +21,7 @@ fn make_dispatch_task() -> DispatchSharedGeneric<NoStdToolbox> {
   let inline_executor: Box<dyn DispatchExecutor<NoStdToolbox>> = Box::new(InlineExecutor::new());
   let inner_runner = ArcShared::new(DispatchExecutorRunnerGeneric::<NoStdToolbox>::new(inline_executor));
   let adapter = crate::core::dispatch::dispatcher::InlineScheduleAdapter::shared::<NoStdToolbox>();
-  let core = ArcShared::new(DispatcherCore::new(mailbox, inner_runner, adapter, None, None, None));
+  let core = ArcShared::new(DispatcherCoreGeneric::new(mailbox, inner_runner, adapter, None, None, None));
 
   DispatchSharedGeneric::new(core)
 }

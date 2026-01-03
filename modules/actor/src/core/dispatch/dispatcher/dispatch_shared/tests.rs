@@ -7,7 +7,7 @@ use fraktor_utils_rs::core::{
 
 use super::DispatchShared;
 use crate::core::dispatch::{
-  dispatcher::{DispatchExecutorRunnerGeneric, InlineExecutor, InlineScheduleAdapter, dispatcher_core::DispatcherCore},
+  dispatcher::{DispatchExecutorRunnerGeneric, InlineExecutor, InlineScheduleAdapter, dispatcher_core::DispatcherCoreGeneric},
   mailbox::Mailbox,
 };
 
@@ -16,7 +16,7 @@ fn dispatch_shared_new() {
   let mailbox = ArcShared::new(Mailbox::new(crate::core::dispatch::mailbox::MailboxPolicy::unbounded(None)));
   let executor = ArcShared::new(DispatchExecutorRunnerGeneric::new(Box::new(InlineExecutor::new())));
   let adapter = InlineScheduleAdapter::shared::<NoStdToolbox>();
-  let core = ArcShared::new(DispatcherCore::new(mailbox, executor, adapter, None, None, None));
+  let core = ArcShared::new(DispatcherCoreGeneric::new(mailbox, executor, adapter, None, None, None));
   let _shared = DispatchShared::new(core.clone());
   assert!(core.with_ref(|_| true));
 }
@@ -26,7 +26,7 @@ fn dispatch_shared_clone() {
   let mailbox = ArcShared::new(Mailbox::new(crate::core::dispatch::mailbox::MailboxPolicy::unbounded(None)));
   let executor = ArcShared::new(DispatchExecutorRunnerGeneric::new(Box::new(InlineExecutor::new())));
   let adapter = InlineScheduleAdapter::shared::<NoStdToolbox>();
-  let core = ArcShared::new(DispatcherCore::new(mailbox, executor, adapter, None, None, None));
+  let core = ArcShared::new(DispatcherCoreGeneric::new(mailbox, executor, adapter, None, None, None));
   let shared1 = DispatchShared::new(core.clone());
   let shared2 = shared1.clone();
   assert!(shared1.core.with_ref(|_| true));
@@ -38,7 +38,7 @@ fn dispatch_shared_drive() {
   let mailbox = ArcShared::new(Mailbox::new(crate::core::dispatch::mailbox::MailboxPolicy::unbounded(None)));
   let executor = ArcShared::new(DispatchExecutorRunnerGeneric::new(Box::new(InlineExecutor::new())));
   let adapter = InlineScheduleAdapter::shared::<NoStdToolbox>();
-  let core = ArcShared::new(DispatcherCore::new(mailbox, executor, adapter, None, None, None));
+  let core = ArcShared::new(DispatcherCoreGeneric::new(mailbox, executor, adapter, None, None, None));
   let shared = DispatchShared::new(core);
   shared.drive();
 }

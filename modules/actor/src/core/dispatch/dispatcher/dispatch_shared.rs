@@ -6,14 +6,14 @@ use fraktor_utils_rs::core::{
 #[cfg(test)]
 mod tests;
 
-use super::dispatcher_core::DispatcherCore;
+use super::dispatcher_core::DispatcherCoreGeneric;
 
 /// Shared reference for driving dispatcher execution across threads.
 ///
 /// This type wraps `DispatcherCore` in an `ArcShared`, allowing multiple
 /// threads to safely access and execute dispatcher batches.
 pub struct DispatchSharedGeneric<TB: RuntimeToolbox + 'static> {
-  core: ArcShared<DispatcherCore<TB>>,
+  core: ArcShared<DispatcherCoreGeneric<TB>>,
 }
 
 /// Type alias for `DispatchShared` with the default `NoStdToolbox`.
@@ -26,12 +26,12 @@ impl<TB: RuntimeToolbox + 'static> Clone for DispatchSharedGeneric<TB> {
 }
 
 impl<TB: RuntimeToolbox + 'static> DispatchSharedGeneric<TB> {
-  pub(crate) const fn new(core: ArcShared<DispatcherCore<TB>>) -> Self {
+  pub(crate) const fn new(core: ArcShared<DispatcherCoreGeneric<TB>>) -> Self {
     Self { core }
   }
 
   /// Runs a dispatcher batch immediately on the current thread.
   pub fn drive(&self) {
-    DispatcherCore::drive(&self.core);
+    DispatcherCoreGeneric::drive(&self.core);
   }
 }

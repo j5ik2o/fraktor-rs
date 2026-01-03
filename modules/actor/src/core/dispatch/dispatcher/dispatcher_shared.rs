@@ -12,7 +12,7 @@ use super::{
   dispatch_executor::DispatchExecutor,
   dispatch_executor_runner::DispatchExecutorRunnerGeneric,
   dispatch_shared::DispatchSharedGeneric,
-  dispatcher_core::{DispatcherCore, MAX_EXECUTOR_RETRIES},
+  dispatcher_core::{DispatcherCoreGeneric, MAX_EXECUTOR_RETRIES},
   dispatcher_state::DispatcherState,
   inline_executor::InlineExecutorGeneric,
   inline_schedule_adapter::InlineScheduleAdapter,
@@ -27,7 +27,7 @@ use crate::core::{
 
 /// Dispatcher shared handle that manages mailbox processing.
 pub struct DispatcherSharedGeneric<TB: RuntimeToolbox + 'static> {
-  core: ArcShared<DispatcherCore<TB>>,
+  core: ArcShared<DispatcherCoreGeneric<TB>>,
 }
 
 /// Type alias for `DispatcherSharedGeneric` with the default `NoStdToolbox`.
@@ -65,7 +65,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherSharedGeneric<TB> {
     starvation_deadline: Option<Duration>,
   ) -> Self {
     let throughput = mailbox.throughput_limit();
-    let core = ArcShared::new(DispatcherCore::new(
+    let core = ArcShared::new(DispatcherCoreGeneric::new(
       mailbox,
       executor,
       schedule_adapter,
@@ -96,7 +96,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherSharedGeneric<TB> {
   /// Returns an error if the mailbox is full or closed.
   #[allow(dead_code)]
   pub(crate) fn enqueue_user(&self, message: AnyMessageGeneric<TB>) -> Result<(), SendError<TB>> {
-    DispatcherCore::enqueue_user(&self.core, message)
+    DispatcherCoreGeneric::enqueue_user(&self.core, message)
   }
 
   /// Enqueues a system message.
@@ -105,7 +105,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherSharedGeneric<TB> {
   ///
   /// Returns an error if the mailbox is full or closed.
   pub(crate) fn enqueue_system(&self, message: SystemMessage) -> Result<(), SendError<TB>> {
-    DispatcherCore::enqueue_system(&self.core, message)
+    DispatcherCoreGeneric::enqueue_system(&self.core, message)
   }
 
   /// Requests execution from the scheduler.
@@ -136,7 +136,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherSharedGeneric<TB> {
 
   /// Requests scheduling with the provided hints.
   pub fn register_for_execution(&self, hints: ScheduleHints) {
-    DispatcherCore::request_execution(&self.core, hints);
+    DispatcherCoreGeneric::request_execution(&self.core, hints);
   }
 
   /// Returns a reference to the mailbox.
@@ -147,10 +147,10 @@ impl<TB: RuntimeToolbox + 'static> DispatcherSharedGeneric<TB> {
 
   /// Notifies the dispatcher about a mailbox pressure signal.
   pub(crate) fn notify_backpressure(&self, event: &MailboxPressureEvent) {
-    DispatcherCore::handle_backpressure(&self.core, event);
+    DispatcherCoreGeneric::handle_backpressure(&self.core, event);
   }
 
-  pub(crate) const fn from_core(core: ArcShared<DispatcherCore<TB>>) -> Self {
+  pub(crate) const fn from_core(core: ArcShared<DispatcherCoreGeneric<TB>>) -> Self {
     Self { core }
   }
 
@@ -167,7 +167,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherSharedGeneric<TB> {
 
   /// Publishes dispatcher diagnostics to the event stream, when instrumentation is available.
   pub fn publish_dump_metrics(&self) {
-    DispatcherCore::publish_dump(&self.core);
+    DispatcherCoreGeneric::publish_dump(&self.core);
   }
 }
 
