@@ -9,7 +9,7 @@ use super::{
   factory::TransportFactory, loopback_transport::LoopbackTransport, remote_transport::RemoteTransport,
   transport_bind::TransportBind, transport_endpoint::TransportEndpoint, transport_error::TransportError,
 };
-use crate::core::remoting_extension_config::RemotingExtensionConfig;
+use crate::core::remoting_extension::RemotingExtensionConfig;
 
 #[test]
 fn factory_resolves_loopback_scheme() {

@@ -26,8 +26,8 @@ use fraktor_utils_rs::core::{
 
 use super::EndpointReader;
 use crate::core::{
-  inbound_envelope::InboundEnvelope, outbound_message::OutboundMessage, remote_node_id::RemoteNodeId,
-  remoting_envelope::RemotingEnvelope,
+  envelope::{InboundEnvelope, OutboundMessage, RemotingEnvelope},
+  remote_node_id::RemoteNodeId,
 };
 
 struct NoopActor;

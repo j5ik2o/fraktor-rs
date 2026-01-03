@@ -26,7 +26,6 @@ mod cluster_provider;
 mod cluster_provider_error;
 mod cluster_provider_shared;
 mod cluster_pub_sub;
-mod cluster_pub_sub_impl;
 mod cluster_pub_sub_shared;
 mod cluster_request_error;
 mod cluster_resolve_error;
@@ -182,8 +181,7 @@ pub use cluster_provider::{
 };
 pub use cluster_provider_error::ClusterProviderError;
 pub use cluster_provider_shared::ClusterProviderShared;
-pub use cluster_pub_sub::ClusterPubSub;
-pub use cluster_pub_sub_impl::ClusterPubSubImpl;
+pub use cluster_pub_sub::{ClusterPubSub, ClusterPubSubImpl};
 pub use cluster_pub_sub_shared::ClusterPubSubShared;
 pub use cluster_request_error::ClusterRequestError;
 pub use cluster_resolve_error::ClusterResolveError;

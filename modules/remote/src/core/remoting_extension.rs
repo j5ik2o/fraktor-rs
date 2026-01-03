@@ -1,10 +1,25 @@
 //! Extension entry point wiring remoting control and supervisor actors.
 #![allow(cfg_std_forbid)]
 
+mod config;
+mod control;
+mod control_handle;
+mod error;
+#[cfg(feature = "std")]
+mod id;
+#[cfg(feature = "std")]
+mod installer;
+#[cfg(test)]
+mod tests;
+
 use alloc::string::String;
 #[cfg(feature = "std")]
 use alloc::{format, string::ToString};
 
+pub use config::RemotingExtensionConfig;
+pub use control::{RemotingControl, RemotingControlShared};
+pub use control_handle::RemotingControlHandle;
+pub use error::RemotingError;
 use fraktor_actor_rs::core::extension::Extension;
 #[cfg(feature = "std")]
 use fraktor_actor_rs::core::{
@@ -23,17 +38,15 @@ use fraktor_utils_rs::core::{
 };
 #[cfg(feature = "std")]
 use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
+#[cfg(feature = "std")]
+pub use id::RemotingExtensionId;
+#[cfg(feature = "std")]
+pub use installer::RemotingExtensionInstaller;
 
 #[cfg(not(feature = "std"))]
-use crate::core::{remoting_control::RemotingControlShared, transport::RemoteTransportShared};
+use crate::core::transport::RemoteTransportShared;
 #[cfg(feature = "std")]
-use crate::core::{
-  remoting_control::{RemotingControl, RemotingControlShared},
-  remoting_control_handle::RemotingControlHandle,
-  remoting_error::RemotingError,
-  remoting_extension_config::RemotingExtensionConfig,
-  transport::{RemoteTransportShared, TransportFactory},
-};
+use crate::core::transport::{RemoteTransportShared, TransportFactory};
 
 #[cfg(feature = "std")]
 const ENDPOINT_SUPERVISOR_NAME: &str = "remoting-endpoint-supervisor";

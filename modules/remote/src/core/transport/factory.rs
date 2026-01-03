@@ -12,7 +12,7 @@ use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 #[cfg(not(feature = "std"))]
 use super::loopback_transport::LoopbackTransport;
 use super::{remote_transport::RemoteTransport, transport_error::TransportError};
-use crate::core::remoting_extension_config::RemotingExtensionConfig;
+use crate::core::remoting_extension::RemotingExtensionConfig;
 
 /// Builds transports based on configuration.
 pub struct TransportFactory;

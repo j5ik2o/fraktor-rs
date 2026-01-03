@@ -1,6 +1,7 @@
 #![cfg(any(test, feature = "test-support"))]
 
-use alloc::{format, vec::Vec};
+use alloc::{format, sync::Arc, vec::Vec};
+use std::sync::Mutex;
 
 use fraktor_actor_rs::core::{
   actor::{Actor, ActorContextGeneric},
@@ -13,25 +14,23 @@ use fraktor_actor_rs::core::{
   messaging::AnyMessageViewGeneric,
   props::PropsGeneric,
   scheduler::{ManualTestDriver, TickDriverConfig},
-  system::{ActorSystemConfig, ActorSystemGeneric},
+  system::{ActorSystemConfigGeneric, ActorSystemGeneric},
 };
-use fraktor_utils_rs::core::{runtime_toolbox::{NoStdMutex, NoStdToolbox}, sync::{ArcShared, sync_mutex_like::SyncMutexLike}};
+use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
-use crate::core::{
-  remoting_backpressure_listener::FnRemotingBackpressureListener,
-  remoting_control::{RemotingControl, RemotingControlShared},
-  remoting_extension_config::RemotingExtensionConfig,
-  remoting_extension_id::RemotingExtensionId,
-  remoting_error::RemotingError,
+use super::{
+  RemotingControl, RemotingControlShared, RemotingError, RemotingExtensionConfig, RemotingExtensionId,
+  RemotingExtensionInstaller,
 };
+use crate::core::FnRemotingBackpressureListener;
 
 struct NoopActor;
 
-impl Actor<NoStdToolbox> for NoopActor {
+impl Actor<StdToolbox> for NoopActor {
   fn receive(
     &mut self,
-    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
+    _ctx: &mut ActorContextGeneric<'_, StdToolbox>,
+    _message: AnyMessageViewGeneric<'_, StdToolbox>,
   ) -> Result<(), ActorError> {
     Ok(())
   }
@@ -39,50 +38,48 @@ impl Actor<NoStdToolbox> for NoopActor {
 
 #[derive(Clone)]
 struct EventRecorder {
-  events: ArcShared<NoStdMutex<Vec<EventStreamEvent<NoStdToolbox>>>>,
+  events: Arc<Mutex<Vec<EventStreamEvent<StdToolbox>>>>,
 }
 
 impl EventRecorder {
   fn new() -> Self {
-    Self { events: ArcShared::new(NoStdMutex::new(Vec::new())) }
+    Self { events: Arc::new(Mutex::new(Vec::new())) }
   }
 
-  fn snapshot(&self) -> Vec<EventStreamEvent<NoStdToolbox>> {
-    self.events.lock().clone()
-  }
-}
-
-impl EventStreamSubscriber<NoStdToolbox> for EventRecorder {
-  fn on_event(&mut self, event: &EventStreamEvent<NoStdToolbox>) {
-    self.events.lock().push(event.clone());
+  fn snapshot(&self) -> Vec<EventStreamEvent<StdToolbox>> {
+    self.events.lock().unwrap().clone()
   }
 }
 
-fn bootstrap(
-  config: RemotingExtensionConfig,
-) -> (ActorSystemGeneric<NoStdToolbox>, RemotingControlShared<NoStdToolbox>) {
+impl EventStreamSubscriber<StdToolbox> for EventRecorder {
+  fn on_event(&mut self, event: &EventStreamEvent<StdToolbox>) {
+    self.events.lock().unwrap().push(event.clone());
+  }
+}
+
+fn bootstrap(config: RemotingExtensionConfig) -> (ActorSystemGeneric<StdToolbox>, RemotingControlShared<StdToolbox>) {
   let props = PropsGeneric::from_fn(|| NoopActor).with_name("remoting-test-guardian");
-  let extensions = ExtensionInstallers::default().with_extension_installer(config.clone());
-  let system_config = ActorSystemConfig::default()
-    .with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()))
+  let installer = RemotingExtensionInstaller::new(config.clone());
+  let extensions = ExtensionInstallers::default().with_extension_installer(installer);
+  let system_config = ActorSystemConfigGeneric::<StdToolbox>::default()
+    .with_tick_driver(TickDriverConfig::manual(ManualTestDriver::<StdToolbox>::new()))
     .with_extension_installers(extensions);
-  let system = ActorSystemGeneric::new_with_config(&props, &system_config)
-    .expect("actor system");
-  let id = RemotingExtensionId::<NoStdToolbox>::new(config);
+  let system = ActorSystemGeneric::new_with_config(&props, &system_config).expect("actor system");
+  let id = RemotingExtensionId::new(config);
   let extension = system.extended().extension(&id).expect("extension registered");
   (system, extension.handle())
 }
 
 fn subscribe_events(
-  system: &ActorSystemGeneric<NoStdToolbox>,
-) -> (EventRecorder, EventStreamSubscriptionGeneric<NoStdToolbox>) {
+  system: &ActorSystemGeneric<StdToolbox>,
+) -> (EventRecorder, EventStreamSubscriptionGeneric<StdToolbox>) {
   let recorder = EventRecorder::new();
   let subscriber = subscriber_handle(recorder.clone());
   let subscription = system.subscribe_event_stream(&subscriber);
   (recorder, subscription)
 }
 
-fn captured_lifecycle(events: &[EventStreamEvent<NoStdToolbox>]) -> Vec<RemotingLifecycleEvent> {
+fn captured_lifecycle(events: &[EventStreamEvent<StdToolbox>]) -> Vec<RemotingLifecycleEvent> {
   events
     .iter()
     .filter_map(|event| match event {
@@ -120,7 +117,7 @@ fn shutdown_emits_shutdown_event() {
   let (recorder, _subscription) = subscribe_events(&system);
 
   handle.lock().start().expect("started");
-  recorder.events.lock().clear();
+  recorder.events.lock().unwrap().clear();
 
   handle.lock().shutdown().expect("shutdown succeeds");
   let lifecycle = captured_lifecycle(&recorder.snapshot());
@@ -132,25 +129,25 @@ fn shutdown_emits_shutdown_event() {
 
 #[test]
 fn backpressure_listener_invoked_and_eventstream_emits() {
-  let config_calls: ArcShared<NoStdMutex<Vec<String>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let config_calls: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
   let config = RemotingExtensionConfig::default().with_backpressure_listener({
     let captured = config_calls.clone();
-    move |signal, authority, _| captured.lock().push(format!("{authority}:{signal:?}"))
+    move |signal, authority, _| captured.lock().unwrap().push(format!("{authority}:{signal:?}"))
   });
   let (system, handle) = bootstrap(config);
-  let backpressure_calls: ArcShared<NoStdMutex<Vec<String>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let backpressure_calls: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
   handle.lock().register_backpressure_listener(FnRemotingBackpressureListener::new({
     let captured = backpressure_calls.clone();
-    move |signal, authority, _| captured.lock().push(format!("{authority}:{signal:?}"))
+    move |signal, authority, _| captured.lock().unwrap().push(format!("{authority}:{signal:?}"))
   }));
   let (recorder, _subscription) = subscribe_events(&system);
 
   handle.lock().emit_backpressure_signal("loopback:9000", BackpressureSignal::Apply);
 
-  let config_snapshot = config_calls.lock().clone();
+  let config_snapshot = config_calls.lock().unwrap().clone();
   assert_eq!(config_snapshot, vec!["loopback:9000:Apply".to_string()]);
 
-  let backpressure_snapshot = backpressure_calls.lock().clone();
+  let backpressure_snapshot = backpressure_calls.lock().unwrap().clone();
   assert_eq!(backpressure_snapshot, vec!["loopback:9000:Apply".to_string()]);
 
   let emitted = recorder.snapshot();

@@ -9,7 +9,7 @@ use alloc::{
 use fraktor_actor_rs::core::system::AuthorityState;
 
 use crate::core::{
-  association_state::AssociationState, deferred_envelope::DeferredEnvelope,
+  endpoint_association::AssociationState, envelope::DeferredEnvelope,
   remote_authority_snapshot::RemoteAuthoritySnapshot,
 };
 

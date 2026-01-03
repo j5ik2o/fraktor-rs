@@ -19,7 +19,8 @@ use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
 
 use super::*;
 use crate::core::{
-  outbound_message::OutboundMessage, outbound_priority::OutboundPriority, remote_node_id::RemoteNodeId,
+  envelope::{OutboundMessage, OutboundPriority},
+  remote_node_id::RemoteNodeId,
 };
 
 struct NoopActor;

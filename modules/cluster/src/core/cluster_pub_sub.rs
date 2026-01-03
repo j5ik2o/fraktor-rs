@@ -4,6 +4,10 @@ use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use crate::core::{PubSubError, PubSubSubscriber, PubSubTopic, PublishAck, PublishRequest, TopologyUpdate};
 
+mod cluster_pub_sub_impl;
+
+pub use cluster_pub_sub_impl::ClusterPubSubImpl;
+
 /// Starts and stops the cluster pub/sub subsystem.
 pub trait ClusterPubSub<TB: RuntimeToolbox>: Send + Sync {
   /// Starts pub/sub services.
