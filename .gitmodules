@@ -7,3 +7,6 @@
 [submodule "references/pekko-persistence-effector"]
 	path = references/pekko-persistence-effector
 	url = git@github.com:j5ik2o/pekko-persistence-effector.git
+[submodule "references/okite-ai"]
+	path = references/okite-ai
+	url = git@github.com:j5ik2o/okite-ai.git
