@@ -1,9 +1,15 @@
 ---
+name: Kiro: Validate Design
 description: 設計の妥当性を確認する
-argument-hint: feature-name
+category: Kiro
+tags: [kiro, validate, design]
 ---
 
+## ユーザー入力
+
+```
 $ARGUMENTS
+```
 
 ## 目的
 - 設計が要件と Steering に整合しているかを点検する。

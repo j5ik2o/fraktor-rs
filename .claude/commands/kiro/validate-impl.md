@@ -1,9 +1,15 @@
 ---
+name: Kiro: Validate Implementation
 description: 実装の妥当性を確認する
-argument-hint: feature-name
+category: Kiro
+tags: [kiro, validate, implementation]
 ---
 
+## ユーザー入力
+
+```
 $ARGUMENTS
+```
 
 ## 目的
 - 実装がタスクと要件に沿っているかを検証し、残作業を明確化する。

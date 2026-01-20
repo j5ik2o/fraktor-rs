@@ -1,9 +1,15 @@
 ---
+name: Kiro: Spec Implementation
 description: 仕様タスクに沿って実装する
-argument-hint: feature-name または tasks
+category: Kiro
+tags: [kiro, spec, implementation]
 ---
 
+## ユーザー入力
+
+```
 $ARGUMENTS
+```
 
 ## 目的
 - 仕様タスクを順番に実装し、テストとタスク更新で進捗を確定させる。

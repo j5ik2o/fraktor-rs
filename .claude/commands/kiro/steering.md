@@ -1,9 +1,15 @@
 ---
+name: Kiro: Steering
 description: Steering を読み込み、方針を要約する
-argument-hint: (任意)
+category: Kiro
+tags: [kiro, steering]
 ---
 
+## ユーザー入力
+
+```
 $ARGUMENTS
+```
 
 ## 目的
 - `.kiro/steering/` の方針を読み取り、作業時の前提を明確化する。

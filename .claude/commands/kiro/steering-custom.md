@@ -1,9 +1,15 @@
 ---
+name: Kiro: Steering Custom
 description: カスタム Steering を作成または更新する
-argument-hint: steering-name
+category: Kiro
+tags: [kiro, steering]
 ---
 
+## ユーザー入力
+
+```
 $ARGUMENTS
+```
 
 ## 目的
 - 追加の方針や制約を `.kiro/steering/` に反映する。

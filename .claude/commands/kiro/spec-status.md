@@ -1,9 +1,15 @@
 ---
+name: Kiro: Spec Status
 description: 仕様の進捗を要約する
-argument-hint: feature-name
+category: Kiro
+tags: [kiro, spec, status]
 ---
 
+## ユーザー入力
+
+```
 $ARGUMENTS
+```
 
 ## 目的
 - `spec.json` とタスク進捗を確認し、現在の状態を簡潔に示す。
