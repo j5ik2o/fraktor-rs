@@ -1,64 +1,22 @@
 ---
-description: Create comprehensive technical design for a specification
-allowed-tools: Read, Task
-argument-hint: <feature-name> [-y]
+name: Kiro: Spec Design
+description: 設計ドキュメントを作成する
+category: Kiro
+tags: [kiro, spec, design]
 ---
 
-# Technical Design Generator
-
-## Parse Arguments
-- Feature name: `$1`
-- Auto-approve flag: `$2` (optional, "-y")
-
-## Validate
-Check that requirements have been completed:
-- Verify `.kiro/specs/$1/` exists
-- Verify `.kiro/specs/$1/requirements.md` exists
-
-If validation fails, inform user to complete requirements phase first.
-
-## Invoke SubAgent
-
-Delegate design generation to spec-design-agent:
-
-Use the Task tool to invoke the SubAgent with file path patterns:
+## ユーザー入力
 
 ```
-Task(
-  subagent_type="spec-design-agent",
-  description="Generate technical design",
-  prompt="""
-Feature: $1
-Spec directory: .kiro/specs/$1/
-Auto-approve: {true if $2 == "-y", else false}
-
-File patterns to read:
-- .kiro/specs/$1/*.{json,md}
-- .kiro/steering/*.md
-- .kiro/settings/rules/design-*.md
-- .kiro/settings/templates/specs/design.md
-
-Discovery: auto-detect based on requirements
-Mode: {generate or merge based on design.md existence}
-"""
-)
+$ARGUMENTS
 ```
 
-## Display Result
+## 目的
+- 要件に対する解決方針と実装方針を明確にし、影響範囲とトレーサビリティを可視化する。
 
-Show SubAgent summary to user, then provide next step guidance:
-
-### Next Phase: Task Generation
-
-**If Design Approved**:
-- Review generated design at `.kiro/specs/$1/design.md`
-- **Optional**: Run `/kiro:validate-design $1` for interactive quality review
-- Then `/kiro:spec-tasks $1 -y` to generate implementation tasks
-
-**If Modifications Needed**:
-- Provide feedback and re-run `/kiro:spec-design $1`
-- Existing design used as reference (merge mode)
-
-**Note**: Design approval is mandatory before proceeding to task generation.
-
-ultrathink
+## 手順
+1. `.kiro/specs/<feature>/requirements.md` と `spec.json` を確認する。
+2. `.kiro/steering/` の制約に従い、最小限の設計とする。
+3. `.kiro/specs/<feature>/design.md` を作成または更新する。
+4. 既存の設計ドキュメント構成（概要、目標/非目標、アーキテクチャ、フロー、要件トレーサビリティ）に合わせる。
+5. `spec.json` の `updated_at` と `phase`、`approvals.design.generated` を更新する。

@@ -1,65 +1,22 @@
 ---
-description: Generate comprehensive requirements for a specification
-allowed-tools: Read, Task
-argument-hint: <feature-name>
+name: Kiro: Spec Requirements
+description: 要件ドキュメントを作成する
+category: Kiro
+tags: [kiro, spec, requirements]
 ---
 
-# Requirements Generation
-
-## Parse Arguments
-- Feature name: `$1`
-
-## Validate
-Check that spec has been initialized:
-- Verify `.kiro/specs/$1/` exists
-- Verify `.kiro/specs/$1/spec.json` exists
-
-If validation fails, inform user to run `/kiro:spec-init` first.
-
-## Invoke SubAgent
-
-Delegate requirements generation to spec-requirements-agent:
-
-Use the Task tool to invoke the SubAgent with file path patterns:
+## ユーザー入力
 
 ```
-Task(
-  subagent_type="spec-requirements-agent",
-  description="Generate EARS requirements",
-  prompt="""
-Feature: $1
-Spec directory: .kiro/specs/$1/
-
-File patterns to read:
-- .kiro/specs/$1/spec.json
-- .kiro/specs/$1/requirements.md
-- .kiro/steering/*.md
-- .kiro/settings/rules/ears-format.md
-- .kiro/settings/templates/specs/requirements.md
-
-Mode: generate
-"""
-)
+$ARGUMENTS
 ```
 
-## Display Result
+## 目的
+- 仕様対象の目的と受け入れ条件を明確化し、以降の設計・実装の基盤にする。
 
-Show SubAgent summary to user, then provide next step guidance:
-
-### Next Phase: Design Generation
-
-**If Requirements Approved**:
-- Review generated requirements at `.kiro/specs/$1/requirements.md`
-- **Optional Gap Analysis** (for existing codebases):
-  - Run `/kiro:validate-gap $1` to analyze implementation gap with current code
-  - Identifies existing components, integration points, and implementation strategy
-  - Recommended for brownfield projects; skip for greenfield
-- Then `/kiro:spec-design $1 [-y]` to proceed to design phase
-
-**If Modifications Needed**:
-- Provide feedback and re-run `/kiro:spec-requirements $1`
-
-**Note**: Approval is mandatory before proceeding to design phase.
-**Note**: 設定が日本語のとき、日本語で生成すること
-
-ultrathink
+## 手順
+1. `.kiro/specs/<feature>/spec.json` を読み、言語とフェーズを確認する。
+2. `.kiro/steering/` の方針を反映する。
+3. `.kiro/specs/<feature>/requirements.md` を作成または更新する。
+4. 既存の仕様ドキュメントの構成（導入、要件、目的、受け入れ条件）に合わせて記述する。
+5. `spec.json` の `updated_at` と `phase`、`approvals.requirements.generated` を更新する。

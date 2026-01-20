@@ -1,56 +1,21 @@
 ---
-description: Analyze implementation gap between requirements and existing codebase
-allowed-tools: Read, Task
-argument-hint: <feature-name>
+name: Kiro: Validate Gap
+description: 既存コードと要件のギャップ分析を作成する
+category: Kiro
+tags: [kiro, validate, gap]
 ---
 
-# Implementation Gap Validation
-
-## Parse Arguments
-- Feature name: `$1`
-
-## Validate
-Check that requirements have been completed:
-- Verify `.kiro/specs/$1/` exists
-- Verify `.kiro/specs/$1/requirements.md` exists
-
-If validation fails, inform user to complete requirements phase first.
-
-## Invoke SubAgent
-
-Delegate gap analysis to validate-gap-agent:
-
-Use the Task tool to invoke the SubAgent with file path patterns:
+## ユーザー入力
 
 ```
-Task(
-  subagent_type="validate-gap-agent",
-  description="Analyze implementation gap",
-  prompt="""
-Feature: $1
-Spec directory: .kiro/specs/$1/
-
-File patterns to read:
-- .kiro/specs/$1/spec.json
-- .kiro/specs/$1/requirements.md
-- .kiro/steering/*.md
-- .kiro/settings/rules/gap-analysis.md
-"""
-)
+$ARGUMENTS
 ```
 
-## Display Result
+## 目的
+- 既存資産と要件の差分を整理し、設計フェーズの判断材料を作る。
 
-Show SubAgent summary to user, then provide next step guidance:
-
-### Next Phase: Design Generation
-
-**If Gap Analysis Complete**:
-- Review gap analysis insights
-- Run `/kiro:spec-design $1` to create technical design document
-- Or `/kiro:spec-design $1 -y` to auto-approve requirements and proceed directly
-
-**Note**: Gap analysis is optional but recommended for brownfield projects to inform design decisions.
-**Note**: 生成されたギャップ分析ファイルが存在するか必ず確認すること
-
-ultrathink
+## 手順
+1. `.kiro/specs/<feature>/requirements.md` と既存コードを確認する。
+2. `.kiro/specs/<feature>/gap-analysis.md` を作成または更新する。
+3. 現状調査、要件から見た必要事項、要件-資産マップ、実装アプローチ案を記述する。
+4. 言語は `spec.json.language` に合わせる。

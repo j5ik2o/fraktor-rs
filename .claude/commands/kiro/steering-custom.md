@@ -1,56 +1,21 @@
 ---
-description: Create custom steering documents for specialized project contexts
-allowed-tools: Task
+name: Kiro: Steering Custom
+description: カスタム Steering を作成または更新する
+category: Kiro
+tags: [kiro, steering]
 ---
 
-# Kiro Custom Steering Creation
-
-## Interactive Workflow
-
-This command starts an interactive process with the SubAgent:
-1. SubAgent asks user for domain/topic
-2. SubAgent checks for available templates
-3. SubAgent analyzes codebase for relevant patterns
-4. SubAgent generates custom steering file
-
-## Invoke SubAgent
-
-Delegate custom steering creation to steering-custom-agent:
-
-Use the Task tool to invoke the SubAgent with file path patterns:
+## ユーザー入力
 
 ```
-Task(
-  subagent_type="steering-custom-agent",
-  description="Create custom steering",
-  prompt="""
-Interactive Mode: Ask user for domain/topic
-
-File patterns to read:
-- .kiro/settings/templates/steering-custom/*.md
-- .kiro/settings/rules/steering-principles.md
-
-JIT Strategy: Analyze codebase for relevant patterns as needed
-"""
-)
+$ARGUMENTS
 ```
 
-## Display Result
+## 目的
+- 追加の方針や制約を `.kiro/steering/` に反映する。
 
-Show SubAgent summary to user:
-- Custom steering file created
-- Template used (if any)
-- Codebase patterns analyzed
-- Content overview
-
-## Available Templates
-
-Available templates in `.kiro/settings/templates/steering-custom/`:
-- api-standards.md, testing.md, security.md, database.md
-- error-handling.md, authentication.md, deployment.md
-
-## Notes
-
-- SubAgent will interact with user to understand needs
-- Templates are starting points, customized for project
-- All steering files loaded as project memory
+## 手順
+1. 追加したい方針・対象範囲・理由を整理する。
+2. `.kiro/steering/<name>.md` を作成または更新する。
+3. 既存の steering と矛盾しないか確認する。
+4. 内容は日本語で簡潔に記述する。

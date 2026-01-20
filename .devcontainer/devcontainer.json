@@ -1,0 +1,23 @@
+{
+  "name": "fraktor-rs",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "tamasfe.even-better-toml",
+        "serayuzgur.crates",
+        "vadimcn.vscode-lldb"
+      ],
+      "settings": {
+        "rust-analyzer.checkOnSave.command": "clippy",
+        "editor.formatOnSave": true
+      }
+    }
+  },
+  "postCreateCommand": "cargo --version && cargo make --version",
+  "remoteUser": "vscode"
+}
