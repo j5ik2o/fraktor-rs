@@ -1,1 +1,1 @@
-/Users/j5ik2o/Sources/fraktor-rs/references/okite-ai/.codex/prompts/kiro-spec-impl.md
+../../references/okite-ai/.codex/prompts/kiro-spec-impl.md

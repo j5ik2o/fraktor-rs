@@ -1,1 +1,1 @@
-/Users/j5ik2o/Sources/fraktor-rs/references/okite-ai/.codex/prompts/kiro-steering-custom.md
+../../references/okite-ai/.codex/prompts/kiro-steering-custom.md

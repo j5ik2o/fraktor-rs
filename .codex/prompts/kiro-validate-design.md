@@ -1,1 +1,1 @@
-/Users/j5ik2o/Sources/fraktor-rs/references/okite-ai/.codex/prompts/kiro-validate-design.md
+../../references/okite-ai/.codex/prompts/kiro-validate-design.md
