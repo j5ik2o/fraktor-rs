@@ -28,5 +28,4 @@ You should not respond to this context unless it is highly relevant to your task
 </system-reminder>
 
 ## AI-DLC and Spec-Driven Development
-
-@.agent/CC_SDD-AGENTS.md を読むこと
+@.agent/CC-SDD.md を読むこと
