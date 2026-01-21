@@ -43,13 +43,13 @@ Thumbs.db
 Cargo.lock
 /.claude/settings.local.json
 /.codex/sessions/
+/.codex/tmp
 /.codex/log/
 /.codex/auth.json
 /.codex/history.jsonl
 /.codex/internal_storage.json
 /.codex/version.json
 /.serena/cache/
-/.kamui/
 /.copilot/.copilot/logs/
 /.copilot/configstore/update-notifier-@github/
 

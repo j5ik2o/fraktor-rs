@@ -1,14 +1,1 @@
----
-description: 仕様の進捗を要約する
-argument-hint: feature-name
----
-
-$ARGUMENTS
-
-## 目的
-- `spec.json` とタスク進捗を確認し、現在の状態を簡潔に示す。
-
-## 手順
-1. `.kiro/specs/<feature>/spec.json` を読み、フェーズと承認状態を整理する。
-2. `tasks.md` のチェック状態から進捗を集計する。
-3. 次に必要なアクションを提示する。
+/Users/j5ik2o/Sources/fraktor-rs/references/okite-ai/.codex/prompts/kiro-spec-status.md
