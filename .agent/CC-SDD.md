@@ -1,1 +1,1 @@
-/Users/j5ik2o/Sources/fraktor-rs/references/okite-ai/.agent/CC-SDD.md
+../references/okite-ai/.agent/CC-SDD.md
