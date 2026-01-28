@@ -1,4 +1,5 @@
 {
+  "enableAllProjectMcpServers": true,
   "enabledPlugins": {
     "code-simplifier@claude-plugins-official": true,
     "claude-delegator@jarrodwatts-claude-delegator": true
