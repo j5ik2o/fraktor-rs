@@ -1,8 +1,8 @@
 # 技術スタック
-> 最終更新: 2025-11-17
+> 最終更新: 2025-01-29
 
 ## アーキテクチャ
-ワークスペースは `modules/utils`（crate: `fraktor-utils-rs`）、`modules/actor`（crate: `fraktor-actor-rs`）、`modules/remote`（crate: `fraktor-remote-rs`）の 3 クレート構成です。各クレートは `core.rs` で no_std ドメインを `#![no_std]` のまま公開し、`std.rs` 以下を `feature = "std"`/`"tokio-executor"` などで有効化する 2 階層モジュールになりました。`fraktor-utils-rs::core` が `RuntimeToolbox` / `NoStdToolbox` / `StdToolbox` を提供し、`fraktor-actor-rs::core` が ActorSystem・SystemMailbox・EventStream を no_std で構築、`std` モジュールが Tokio/ホスト固有の Dispatcher・TickDriver・Builder を後掛けします。`fraktor-remote-rs::core` は RemoteActorRefProvider/EndpointManager/RemoteWatcher とトランスポート抽象を actor/core 上に積み、`std` モジュールが Tokio TCP・Loopback などの具体的トランスポートを束ねます。supervisor/DeathWatch/EventStream は引き続き system mailbox で `SystemMessage` を先行処理します。
+ワークスペースは `modules/utils`（crate: `fraktor-utils-rs`）、`modules/actor`（crate: `fraktor-actor-rs`）、`modules/remote`（crate: `fraktor-remote-rs`）、`modules/cluster`（crate: `fraktor-cluster-rs`）、`modules/streams`（crate: `fraktor-streams-rs`）、`modules/persistence`（crate: `fraktor-persistence-rs`）の 6 クレート構成です。各クレートは `core.rs` で no_std ドメインを `#![no_std]` のまま公開し、`std.rs` 以下を `feature = "std"`/`"tokio-executor"` などで有効化する 2 階層モジュールになりました。`fraktor-utils-rs::core` が `RuntimeToolbox` / `NoStdToolbox` / `StdToolbox` を提供し、`fraktor-actor-rs::core` が ActorSystem・SystemMailbox・EventStream を no_std で構築、`std` モジュールが Tokio/ホスト固有の Dispatcher・TickDriver・Builder を後掛けします。`fraktor-remote-rs::core` は RemoteActorRefProvider/EndpointReader/EndpointWriter/RemotingExtension とトランスポート抽象を actor/core 上に積み、`std` モジュールが Tokio TCP・Loopback などの具体的トランスポートを束ねます。`fraktor-cluster-rs` はクラスタ管理・ゴシップ・プレースメントを、`fraktor-streams-rs` はストリーム処理を、`fraktor-persistence-rs` は永続化ランタイムを提供します。supervisor/DeathWatch/EventStream は引き続き system mailbox で `SystemMessage` を先行処理します。
 
 ## コア技術
 - **言語**: Rust 2024 edition（ワークスペース全体で nightly toolchain を既定とし、`core` 側は `#![no_std]` を前提）。
@@ -20,7 +20,8 @@
 
 ## リモーティング / アドレッシング
 - **ActorPathParts & Formatter**: `modules/actor/src/core/actor/actor_path/{parts,formatter}.rs` が system 名・guardian・authority(host/port) を保持し、`ActorPath::root()` で `cellactor` ガーディアンを自動注入します。`modules/actor/src/core/actor/actor_selection/resolver.rs` の `ActorSelectionResolver` は `..` を guardian 境界で遮断し、Pekko の相対選択ルールに追従します。
-- **RemoteAuthorityManager**: `modules/actor/src/core/system/remote_authority.rs` が `HashMap<String, AuthorityEntry>` を `ToolboxMutex` で包み、`Unresolved/Connected/Quarantine` の状態を no_std でも駆動します。`VecDeque<AnyMessageGeneric<TB>>` に deferred を蓄積し、`try_defer_send` で隔離中の新規送信を拒否、`poll_quarantine_expiration` と `manual_override_to_connected` で復旧を制御します。
+- **RemoteAuthorityRegistry**: `modules/actor/src/core/system/remote_authority_registry.rs` が `HashMap<String, AuthorityEntry>` を `ToolboxMutex` で包み、`Unresolved/Connected/Quarantine` の状態を no_std でも駆動します。`VecDeque<AnyMessageGeneric<TB>>` に deferred を蓄積し、`try_defer_send` で隔離中の新規送信を拒否、`poll_quarantine_expiration` と `manual_override_to_connected` で復旧を制御します。
+- **RemotingExtension**: `modules/remote/src/core/remoting_extension.rs` が remoting の中核を担い、`RemotingControl`・`RemotingError`・`RemotingExtensionConfig` などを提供します。
 - **イベント観測**: Remoting 由来の InvalidAssociation を `handle_invalid_association` へ集約し、EventStream 通知と同期できるようにしています（spec `pekko-compatible-actor-path` に準拠）。
 
 ## スケジューラ / Tick Driver
@@ -56,6 +57,8 @@ scripts/ci-check.sh dylint module-wiring-lint
 scripts/ci-check.sh clippy               # -D warnings をワークスペース一括
 scripts/ci-check.sh no-std std embedded  # ターゲット別テスト
 scripts/ci-check.sh doc examples test    # ドキュメント・examples・workspace test
+scripts/ci-check.sh perf                 # Scheduler ストレス・ベンチマークテスト
+scripts/ci-check.sh actor-path-e2e       # actor_path_e2e テスト単体実行
 scripts/ci-check.sh all                  # CI と同等フルスイート
 ```
 
@@ -67,7 +70,7 @@ scripts/ci-check.sh all                  # CI と同等フルスイート
 - **SystemMessage 先行処理**: `Create/Recreate/Failure/Terminated` をユーザメッセージより先に処理することで、Supervisor 戦略と DeathWatch を deterministic に制御。
 - **Std ActorSystemBuilder**: `modules/actor/src/std/system/actor_system_builder.rs` が TickDriver/Scheduler 設定を受け取り、`ActorSystem::from_core` に渡す前に TickDriver をブートストラップする。std 側でのビルドフローは必ずこのビルダー経由で行う。
 - **Pekko 互換 actor path**: `ActorPathScheme` + `ActorPathFormatter` によって `fraktor://` URI を canonical に生成し、guardian（`cellactor/system|user`）を暗黙付与します。権限情報は `PathAuthority` で host/port を保持し、Typed/Untyped いずれの API でも同じ表現を使用します。
-- **Authority 隔離**: `RemoteAuthorityManagerGeneric` が remoting の隔離判定を centralize し、`VecDeque` キューを掃き出してから `Connected` 化します。deadline が過ぎた quarantined authority は `poll_quarantine_expiration` で自動復旧させ、明示解除 API との二段構えで安全側に倒します。
+- **Authority 隔離**: `RemoteAuthorityRegistry` が remoting の隔離判定を centralize し、`VecDeque` キューを掃き出してから `Connected` 化します。deadline が過ぎた quarantined authority は `poll_quarantine_expiration` で自動復旧させ、明示解除 API との二段構えで安全側に倒します。
 - **FQCN import 原則**: ランタイム内部は `crate::...` で明示的に参照し、prelude はユーザ公開面のみに限定。
 - **Classic ではなく Untyped 呼称**: 既存設計では「Classic」ではなく「Untyped」と呼ぶ。Untyped API (`Scheduler`, Classic ActorRef) と Typed API (`TypedScheduler`, `TypedActorRef`) を明確に分離し、新規開発でも Untyped/Typed という語彙を使用する。
 - **参照実装からの逆輸入**: protoactor-go(references/protoactor-go) / Apache Pekko(references/pekko) を参照しつつ、Rust の所有権と `no_std` 制約に合わせた最小 API を優先する。

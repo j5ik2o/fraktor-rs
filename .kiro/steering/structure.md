@@ -1,8 +1,8 @@
 # プロジェクト構造
-> 最終更新: 2025-11-17
+> 最終更新: 2025-01-29
 
 ## 組織方針
-- ワークスペースは `modules/utils`（`fraktor-utils-rs`）、`modules/actor`（`fraktor-actor-rs`）、`modules/remote`（`fraktor-remote-rs`）の 3 クレートで構成され、各クレートが `core`（default `#![no_std]`）と `std` モジュールを持つ 2018 モジュール構成です。依存方向は utils/core → actor/core → actor/std → remote/core → remote/std の一方通行に固定します。
+- ワークスペースは `modules/utils`（`fraktor-utils-rs`）、`modules/actor`（`fraktor-actor-rs`）、`modules/remote`（`fraktor-remote-rs`）、`modules/cluster`（`fraktor-cluster-rs`）、`modules/streams`（`fraktor-streams-rs`）、`modules/persistence`（`fraktor-persistence-rs`）の 6 クレートで構成され、各クレートが `core`（default `#![no_std]`）と `std` モジュールを持つ 2018 モジュール構成です。依存方向は utils/core → actor/core → actor/std → remote/core → remote/std → cluster/core → cluster/std の一方通行に固定します。streams と persistence は actor に依存します。
 - 各モジュールは 2018 エディションのファイルツリー（`foo.rs` + `foo/` ディレクトリ）で構成し、`mod.rs` を使用しません。
 - `type-per-file-lint` により 1 ファイル 1 構造体/trait を原則とし、テストは `hoge/tests.rs` へ分離します。
 - 公開 API に限り `prelude` を許容し、内部は FQCN (`crate::...`) で明示的に依存をたどります。
@@ -10,14 +10,14 @@
 
 ## ディレクトリパターン
 ### ランタイムクレート階層
-**Location**: `modules/utils/src/{core,std}`, `modules/actor/src/{core,std}`, `modules/remote/src/{core,std}`
-**Purpose**: `fraktor-utils-rs::core` が RuntimeToolbox/Atomic/Timer を提供し、`fraktor-actor-rs::core` が ActorSystem/Mailbox/Remoting の基盤を no_std で構築、`std` モジュールが Tokio 実行器・ログ・Dispatcher を後掛けします。`fraktor-remote-rs::core` は Remoting 拡張・Endpoint/Watcher/Transport 抽象を actor/core の上に載せ、`std` 側が Tokio TCP などホスト固有のトランスポートを束ねる直列構造です。
-**Example**: `modules/actor/src/core/messaging/*.rs` がコアメッセージング、`modules/actor/src/std/messaging/*.rs` がホスト固有の同名モジュールを実装。`modules/remote/src/std/transport/tokio_tcp/*.rs` が std 向け TCP トランスポート実装。
+**Location**: `modules/utils/src/{core,std}`, `modules/actor/src/{core,std}`, `modules/remote/src/{core,std}`, `modules/cluster/src/{core,std}`, `modules/streams/src/{core,std}`, `modules/persistence/src/core`
+**Purpose**: `fraktor-utils-rs::core` が RuntimeToolbox/Atomic/Timer を提供し、`fraktor-actor-rs::core` が ActorSystem/Mailbox/Remoting の基盤を no_std で構築、`std` モジュールが Tokio 実行器・ログ・Dispatcher を後掛けします。`fraktor-remote-rs::core` は Remoting 拡張・EndpointReader/Writer/Transport 抽象を actor/core の上に載せ、`std` 側が Tokio TCP などホスト固有のトランスポートを束ねる直列構造です。`fraktor-cluster-rs::core` はクラスタ管理・ゴシップ・プレースメントの基盤を提供し、`std` 側が Tokio 統合を担います。`fraktor-streams-rs` はストリーム処理、`fraktor-persistence-rs` は永続化ランタイムを提供します。
+**Example**: `modules/actor/src/core/messaging/*.rs` がコアメッセージング、`modules/actor/src/std/messaging/*.rs` がホスト固有の同名モジュールを実装。`modules/remote/src/core/transport/*.rs` がトランスポート抽象、`modules/remote/src/std/` が std 向けトランスポート実装。
 
 ### ドメインモジュール
 **Location**: `modules/actor/src/core/<domain>/`
-**Purpose**: ActorCell, Mailbox, Supervision, Typed API などドメイン単位でサブディレクトリを持ち、`actor_context.rs` + `actor_context/` のように entry ファイルと詳細ファイルを分離。
-**Example**: `modules/actor/src/core/actor/actor/tests.rs` にドメイン専用テストを配置。
+**Purpose**: ActorCell, Dispatch（dispatcher/mailbox）, Supervision, Typed API などドメイン単位でサブディレクトリを持ち、`actor_context.rs` + `actor_context/` のように entry ファイルと詳細ファイルを分離。`dispatch/` は `dispatcher/` と `mailbox/` のサブモジュールを持つ。`event/` は `stream/` と `logging/` のサブモジュールを持つ。
+**Example**: `modules/actor/src/core/actor/actor_cell/tests.rs` にドメイン専用テストを配置。
 
 ### std 向けバインディング
 **Location**: `modules/actor/src/std/*`
@@ -25,9 +25,9 @@
 **Example**: `modules/actor/src/std/system/base.rs` が Core ActorSystem を包む `ActorSystem` 型を提供。
 
 ### リモートアドレッシング & Authority
-**Location**: `modules/actor/src/core/actor/actor_path/*`, `modules/actor/src/core/system/remote_authority.rs`
-**Purpose**: `parts.rs`（`ActorPathParts`・`GuardianKind`）、`formatter.rs`、`path.rs` を分けて canonical URI 生成を単一責務化し、`RemoteAuthorityManagerGeneric` が remoting の状態管理（Unresolved/Connected/Quarantine）と deferred キューの排出を担います。
-**Example**: `actor/actor_selection/tests.rs` が guardian を越えない相対解決シナリオを網羅し、`system/remote_authority/tests.rs` が quarantine/手動解除/InvalidAssociation を `tests.rs` に閉じ込めています。
+**Location**: `modules/actor/src/core/actor/actor_path/*`, `modules/actor/src/core/system/remote_authority_registry.rs`
+**Purpose**: `parts.rs`（`ActorPathParts`・`GuardianKind`）、`formatter.rs`、`path.rs` を分けて canonical URI 生成を単一責務化し、`RemoteAuthorityRegistry` が remoting の状態管理（Unresolved/Connected/Quarantine）と deferred キューの排出を担います。
+**Example**: `actor/actor_selection/tests.rs` が guardian を越えない相対解決シナリオを網羅し、`system/remote_authority_registry/tests.rs` が quarantine/手動解除/InvalidAssociation を `tests.rs` に閉じ込めています。
 
 ### スケジューラ & Tick Driver
 **Location**: `modules/actor/src/core/scheduler/tick_driver/*`, `modules/actor/src/std/scheduler/tick.rs`, `docs/guides/tick-driver-quickstart.md`
@@ -37,7 +37,7 @@
 ### ドキュメント & ガイド
 **Location**: `docs/guides`
 **Purpose**: ActorSystem 運用や DeathWatch/TickDriver 移行など運用パターンを文章化し、spec ではなく作業ガイドとして参照。
-**Example**: `docs/guides/tick-driver-quickstart.md` が TickDriver のシナリオ別導入手順を管理、`docs/guides/actor-system.md` が no_std / std 共通の初期化を示す。
+**Example**: `docs/guides/tick-driver-quickstart.md` が TickDriver のシナリオ別導入手順を管理、`docs/guides/actor-system.md` が no_std / std 共通の初期化を示す。`docs/guides/remoting-quickstart.md` が Remoting のクイックスタートを提供。`docs/guides/shared_vs_handle.md` が共有型と内部可変性の設計指針を示す。`docs/guides/pipe_to_self_future.md` が Future の自己パイプパターンを説明。
 
 ### Lint パッケージ
 **Location**: `lints/<lint-name>`
@@ -54,7 +54,7 @@
 - **ディレクトリ**: `snake_case/`。`foo.rs` に対応する `foo/` を置き、サブモジュールを格納。
 - **型 / トレイト**: `PascalCase`。trait 名は `*Ext` や `*Service` 等の役割語尾を避け、ドメイン名を直截に記述。
 - **モジュール境界**: 1 ファイル 1 型（構造体または trait）を基本とし、補助型は `tests.rs` かサブモジュールへ退避。
-- **クレート名**: 既存は `fraktor-utils-rs`, `fraktor-actor-rs`, `fraktor-remote-rs`, `fraktor-rs`。新規クレートも `fraktor-<domain>-rs` を踏襲し、Cargo features は `kebab-case`（例: `alloc-metrics`, `tokio-executor`）。
+- **クレート名**: 既存は `fraktor-utils-rs`, `fraktor-actor-rs`, `fraktor-remote-rs`, `fraktor-cluster-rs`, `fraktor-streams-rs`, `fraktor-persistence-rs`, `fraktor-rs`。新規クレートも `fraktor-<domain>-rs` を踏襲し、Cargo features は `kebab-case`（例: `alloc-metrics`, `tokio-executor`）。
 - **ドキュメント言語**: rustdoc は英語、それ以外のコメント・Markdown は日本語。
 - **ActorPath 初期値**: `ActorPath::root()` は system 名に `cellactor` を用い、guardian は `GuardianKind::User/System` から自動付与するため、手動で `/cellactor` を記述しないこと。
 - **Authority 表記**: リモート authority は `host:port` 文字列で `RemoteAuthorityManager` のキーにし、`PathAuthority` 経由で host/port を保持する。命名は小文字 + `-` を基本とし、実ホスト名を抽象化します。
