@@ -39,7 +39,7 @@ where
   }
 
   /// Executes the adapter and returns the outcome.
-  pub fn execute(&self) -> AdapterOutcome<M> {
+  pub(crate) fn execute(&self) -> AdapterOutcome<M> {
     match self.payload.lock().take() {
       | Some(payload) => self.entry.invoke(payload),
       | None => AdapterOutcome::Failure(AdapterFailure::Custom(String::from("payload_consumed"))),

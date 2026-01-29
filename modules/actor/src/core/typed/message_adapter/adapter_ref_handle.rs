@@ -11,7 +11,7 @@ use crate::core::typed::message_adapter::{
 
 /// Registered adapter handle storing lifecycle information.
 #[derive(Clone)]
-pub struct AdapterRefHandle<TB: RuntimeToolbox + 'static> {
+pub(crate) struct AdapterRefHandle<TB: RuntimeToolbox + 'static> {
   id:        AdapterRefHandleId,
   lifecycle: ArcShared<AdapterLifecycleState<TB>>,
 }
@@ -19,24 +19,18 @@ pub struct AdapterRefHandle<TB: RuntimeToolbox + 'static> {
 impl<TB: RuntimeToolbox + 'static> AdapterRefHandle<TB> {
   /// Creates a new handle.
   #[must_use]
-  pub const fn new(id: AdapterRefHandleId, lifecycle: ArcShared<AdapterLifecycleState<TB>>) -> Self {
+  pub(crate) const fn new(id: AdapterRefHandleId, lifecycle: ArcShared<AdapterLifecycleState<TB>>) -> Self {
     Self { id, lifecycle }
   }
 
   /// Returns the handle identifier.
   #[must_use]
-  pub const fn id(&self) -> AdapterRefHandleId {
+  pub(crate) const fn id(&self) -> AdapterRefHandleId {
     self.id
   }
 
   /// Marks the associated lifecycle as stopped.
-  pub fn stop(&self) {
+  pub(crate) fn stop(&self) {
     self.lifecycle.mark_stopped();
-  }
-
-  /// Returns a clone of the lifecycle state.
-  #[must_use]
-  pub fn lifecycle(&self) -> ArcShared<AdapterLifecycleState<TB>> {
-    self.lifecycle.clone()
   }
 }

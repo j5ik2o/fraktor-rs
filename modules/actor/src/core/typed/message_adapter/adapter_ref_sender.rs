@@ -23,7 +23,7 @@ use crate::core::{
 };
 
 /// Sends external messages through the adapter pipeline.
-pub struct AdapterRefSender<TB: RuntimeToolbox + 'static = NoStdToolbox> {
+pub(crate) struct AdapterRefSender<TB: RuntimeToolbox + 'static = NoStdToolbox> {
   pid:       Pid,
   handle_id: AdapterRefHandleId,
   target:    ActorRefSenderSharedGeneric<TB>,
@@ -34,7 +34,7 @@ pub struct AdapterRefSender<TB: RuntimeToolbox + 'static = NoStdToolbox> {
 impl<TB: RuntimeToolbox + 'static> AdapterRefSender<TB> {
   /// Creates a new sender instance.
   #[must_use]
-  pub const fn new(
+  pub(crate) const fn new(
     pid: Pid,
     handle_id: AdapterRefHandleId,
     target: ActorRefSenderSharedGeneric<TB>,

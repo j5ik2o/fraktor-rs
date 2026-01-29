@@ -100,7 +100,7 @@ where
 
   /// Attempts to adapt the provided payload.
   #[must_use]
-  pub fn adapt(&self, payload: AdapterPayload<TB>) -> (AdapterOutcome<M>, Option<AdapterPayload<TB>>) {
+  pub(crate) fn adapt(&self, payload: AdapterPayload<TB>) -> (AdapterOutcome<M>, Option<AdapterPayload<TB>>) {
     let payload_type = payload.type_id();
     let mut envelope = Some(payload);
     for entry in self.entries.iter().rev() {

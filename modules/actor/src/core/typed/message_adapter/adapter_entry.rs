@@ -11,7 +11,7 @@ use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::shared::Shar
 use crate::core::typed::message_adapter::{AdapterFailure, AdapterOutcome, AdapterPayload};
 
 /// Stores adapter metadata and execution closure.
-pub struct AdapterEntry<M, TB>
+pub(crate) struct AdapterEntry<M, TB>
 where
   M: Send + Sync + 'static,
   TB: RuntimeToolbox + 'static, {
@@ -26,7 +26,7 @@ where
 {
   /// Creates a new registry entry placeholder.
   #[must_use]
-  pub fn new<U, F>(type_id: TypeId, adapter: F) -> Self
+  pub(crate) fn new<U, F>(type_id: TypeId, adapter: F) -> Self
   where
     U: Send + Sync + 'static,
     F: Fn(U) -> Result<M, AdapterFailure> + Send + Sync + 'static, {
@@ -45,13 +45,13 @@ where
 
   /// Returns the payload [`TypeId`] matched by this entry.
   #[must_use]
-  pub const fn type_id(&self) -> TypeId {
+  pub(crate) const fn type_id(&self) -> TypeId {
     self.type_id
   }
 
   /// Executes the adapter closure.
   #[must_use]
-  pub fn invoke(&self, payload: AdapterPayload<TB>) -> AdapterOutcome<M> {
+  pub(crate) fn invoke(&self, payload: AdapterPayload<TB>) -> AdapterOutcome<M> {
     (self.handler)(payload)
   }
 }
