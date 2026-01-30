@@ -203,7 +203,7 @@ ensure_rustc_components_installed() {
 }
 
 ensure_dylint_installed() {
-  local desired_version="${DYLINT_VERSION:-4.1.0}"
+  local desired_version="${DYLINT_VERSION:-5.0.0}"
 
   if command -v cargo-dylint >/dev/null 2>&1; then
     local current_version
