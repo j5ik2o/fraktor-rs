@@ -13,7 +13,7 @@ use fraktor_utils_rs::core::{
 use crate::core::{actor::actor_ref::ActorRefGeneric, typed::message_adapter::AdapterPayload};
 
 /// Wraps adapted payloads alongside metadata for typed actors.
-pub struct AdapterEnvelope<TB: RuntimeToolbox + 'static> {
+pub(crate) struct AdapterEnvelope<TB: RuntimeToolbox + 'static> {
   type_id: TypeId,
   payload: ToolboxMutex<Option<AdapterPayload<TB>>, TB>,
   sender:  Option<ActorRefGeneric<TB>>,
@@ -22,7 +22,7 @@ pub struct AdapterEnvelope<TB: RuntimeToolbox + 'static> {
 impl<TB: RuntimeToolbox + 'static> AdapterEnvelope<TB> {
   /// Creates a new envelope from the provided payload and sender.
   #[must_use]
-  pub fn new(payload: AdapterPayload<TB>, sender: Option<ActorRefGeneric<TB>>) -> Self {
+  pub(crate) fn new(payload: AdapterPayload<TB>, sender: Option<ActorRefGeneric<TB>>) -> Self {
     let type_id = payload.type_id();
     let storage = <TB::MutexFamily as SyncMutexFamily>::create(Some(payload));
     Self { type_id, payload: storage, sender }
@@ -30,25 +30,19 @@ impl<TB: RuntimeToolbox + 'static> AdapterEnvelope<TB> {
 
   /// Returns the [`TypeId`] of the underlying adapter payload.
   #[must_use]
-  pub const fn type_id(&self) -> TypeId {
+  pub(crate) const fn type_id(&self) -> TypeId {
     self.type_id
   }
 
   /// Returns the sender.
   #[must_use]
-  pub const fn sender(&self) -> Option<&ActorRefGeneric<TB>> {
+  pub(crate) const fn sender(&self) -> Option<&ActorRefGeneric<TB>> {
     self.sender.as_ref()
   }
 
   /// Takes ownership of the payload, returning `None` if it was already consumed.
   #[must_use]
-  pub fn take_payload(&self) -> Option<AdapterPayload<TB>> {
+  pub(crate) fn take_payload(&self) -> Option<AdapterPayload<TB>> {
     self.payload.lock().take()
-  }
-
-  /// Consumes the envelope and returns the payload if still available.
-  #[must_use]
-  pub fn into_payload(self) -> Option<AdapterPayload<TB>> {
-    self.payload.into_inner()
   }
 }

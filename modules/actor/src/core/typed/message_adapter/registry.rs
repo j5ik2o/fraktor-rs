@@ -12,7 +12,7 @@ use crate::core::{
   actor::{ActorContextGeneric, Pid, actor_ref::ActorRefGeneric},
   system::SystemStateSharedGeneric,
   typed::message_adapter::{
-    AdapterEntry, AdapterError, AdapterFailure, AdapterOutcome, AdapterPayload, AdapterRefHandleId, AdapterRefSender,
+    AdapterEntry, AdapterError, AdapterOutcome, AdapterPayload, AdapterRefHandleId, AdapterRefSender,
   },
 };
 
@@ -74,7 +74,7 @@ where
   ) -> Result<ActorRefGeneric<TB>, AdapterError>
   where
     U: Send + Sync + 'static,
-    F: Fn(U) -> Result<M, AdapterFailure> + Send + Sync + 'static, {
+    F: Fn(U) -> Result<M, AdapterError> + Send + Sync + 'static, {
     let adapter_ref = self.ensure_adapter_ref(ctx)?;
     let type_id = TypeId::of::<U>();
     if let Some(position) = self.entries.iter().position(|entry: &AdapterEntry<M, TB>| entry.type_id() == type_id) {
@@ -108,7 +108,7 @@ where
         if let Some(concrete) = envelope.take() {
           return (entry.invoke(concrete), None);
         }
-        return (AdapterOutcome::Failure(AdapterFailure::Custom(String::from("adapter_payload_consumed"))), None);
+        return (AdapterOutcome::Failure(AdapterError::Custom(String::from("adapter_payload_consumed"))), None);
       }
     }
     (AdapterOutcome::NotFound, envelope)

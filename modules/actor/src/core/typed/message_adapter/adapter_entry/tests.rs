@@ -13,9 +13,7 @@ fn adapter_entry_type_id_round_trip() {
 fn adapter_entry_executes_handler() {
   let entry = AdapterEntry::<i32, NoStdToolbox>::new::<alloc::string::String, _>(
     core::any::TypeId::of::<alloc::string::String>(),
-    |value| {
-      value.parse::<i32>().map_err(|_| crate::core::typed::message_adapter::AdapterFailure::Custom("parse".into()))
-    },
+    |value| value.parse::<i32>().map_err(|_| crate::core::typed::message_adapter::AdapterError::Custom("parse".into())),
   );
   let payload =
     crate::core::typed::message_adapter::AdapterPayload::<NoStdToolbox>::new(alloc::string::String::from("12"));

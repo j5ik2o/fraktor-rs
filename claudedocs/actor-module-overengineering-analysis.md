@@ -169,6 +169,16 @@ pub enum TickMetricsMode {
 
 ## 推奨アクションプラン
 
+### 進捗チェック（完了/未完了）
+
+- [x] Phase 1: 公開API監査（優先度: 高）
+- [x] Phase 2: message_adapter 統合（優先度: 高）
+- [ ] Phase 3: tick_driver 統合（優先度: 高）
+- [ ] Phase 4: mailbox 整理（優先度: 中）
+- [ ] Phase 5: ルール運用見直し（優先度: 中）
+
+※Phase 1 は 2026-01-30 に監査結果を追記済み。Phase 2 は 2026-01-30 に統合完了。Phase 3 以降は未完了。
+
 ### Phase 1: 公開API監査（優先度: 高）
 
 対象: `message_adapter` / `tick_driver` / `mailbox`
@@ -177,6 +187,43 @@ pub enum TickMetricsMode {
   - `pub`: 外部APIとして必要
   - `pub(crate)`: 内部でのみ使用
   - 非公開: 特定モジュール内でのみ使用
+
+#### 監査結果（2026-01-30）
+
+判定基準: リポジトリ内の参照と公開シグネチャ。外部クレートでの利用有無は未調査。
+
+##### message_adapter（公開型: 9）
+
+- 外部API（`core::typed` から再エクスポート/公開シグネチャに登場）:
+  `AdapterError`, `AdapterFailure`, `AdapterPayload`, `MessageAdapterRegistry`
+- EventStream 経由で露出:
+  `AdapterFailureEvent`（`EventStreamEvent::AdapterFailure`）
+- 内部用途のみ（現状の参照は core 内部・テスト）:
+  `AdaptMessage`, `AdapterEnvelope`, `AdapterLifecycleState`, `AdapterRefHandleId`
+
+##### tick_driver（公開型: 27）
+
+- 外部API/公開シグネチャに登場:
+  `TickDriverConfig`, `TickDriverBundle`, `TickDriverError`, `TickDriverControl`, `TickDriverFactory`, `TickDriver`,
+  `TickDriverProvisioningContext`, `TickDriverHandleGeneric`, `TickDriverId`, `TickDriverKind`, `TickDriverMetadata`,
+  `AutoDriverMetadata`, `AutoProfileKind`, `SchedulerTickMetrics`, `TickExecutorSignal`, `TickFeed`
+- 内部実装用途（core/std 実装でのみ参照）:
+  `SchedulerTickExecutor`, `SchedulerTickMetricsProbe`, `SchedulerTickHandleOwned`, `TickDriverBootstrap`
+- テスト/feature test-support 専用:
+  `ManualTestDriver`, `ManualTickController`
+- 再エクスポートのみ/参照なし:
+  `HardwareKind`, `HardwareTickDriver`, `TickDriverGuideEntry`, `TickMetricsMode`, `TickPulseHandler`, `TickPulseSource`
+
+##### mailbox（公開型: 21）
+
+- 外部API/公開シグネチャに登場:
+  `MailboxGeneric`, `MailboxesGeneric`, `MailboxPolicy`, `MailboxOverflowStrategy`, `MailboxRegistryError`,
+  `MailboxMetricsEvent`, `MailboxPressureEvent`
+- 内部実装用途（dispatcher/actor_cell などで参照）:
+  `BackpressurePublisherGeneric`, `EnqueueOutcome`, `MailboxCapacity`, `MailboxInstrumentationGeneric`,
+  `MailboxMessage`, `MailboxOfferFutureGeneric`, `MailboxPollFutureGeneric`, `ScheduleHints`
+- 再エクスポートのみ/参照なし:
+  `MailboxScheduleState`, `QueueOfferFuture`, `QueuePollFuture`, `QueueState`, `QueueStateHandle`, `SystemQueue`
 
 ### Phase 2: message_adapter 統合（優先度: 高）
 

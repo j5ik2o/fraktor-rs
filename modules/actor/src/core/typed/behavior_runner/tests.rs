@@ -11,7 +11,7 @@ use crate::core::{
     Behaviors,
     actor::{TypedActor, TypedActorContextGeneric},
     behavior_signal::BehaviorSignal,
-    message_adapter::{AdapterFailure, MessageAdapterRegistry},
+    message_adapter::{AdapterError, MessageAdapterRegistry},
   },
 };
 
@@ -30,7 +30,7 @@ fn behavior_runner_escalates_without_signal_handler() {
   let mut runner = BehaviorRunner::new(behavior);
   let (mut ctx, mut registry) = build_context();
   let mut typed_ctx = TypedActorContextGeneric::from_untyped(&mut ctx, Some(&mut registry));
-  let result = runner.on_adapter_failure(&mut typed_ctx, AdapterFailure::Custom(String::from("boom")));
+  let result = runner.on_adapter_failure(&mut typed_ctx, AdapterError::Custom(String::from("boom")));
   assert!(result.is_err());
 }
 
@@ -47,7 +47,7 @@ fn behavior_runner_allows_handled_adapter_failure() {
   let mut runner = BehaviorRunner::new(behavior);
   let (mut ctx, mut registry) = build_context();
   let mut typed_ctx = TypedActorContextGeneric::from_untyped(&mut ctx, Some(&mut registry));
-  let result = runner.on_adapter_failure(&mut typed_ctx, AdapterFailure::Custom(String::from("oops")));
+  let result = runner.on_adapter_failure(&mut typed_ctx, AdapterError::Custom(String::from("oops")));
   assert!(result.is_ok());
   assert!(handled.load(Ordering::SeqCst));
 }

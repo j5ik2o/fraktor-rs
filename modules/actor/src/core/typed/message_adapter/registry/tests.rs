@@ -8,7 +8,7 @@ use crate::core::{
   messaging::AnyMessageViewGeneric,
   props::Props,
   system::ActorSystemGeneric,
-  typed::message_adapter::{AdapterFailure, AdapterOutcome, AdapterPayload, MessageAdapterRegistry},
+  typed::message_adapter::{AdapterError, AdapterOutcome, AdapterPayload, MessageAdapterRegistry},
 };
 
 struct Harness {
@@ -76,10 +76,10 @@ fn registry_returns_failure_from_adapter() {
   let harness = Harness::new();
   let mut registry = MessageAdapterRegistry::<i32, NoStdToolbox>::new();
   let ctx = harness.context();
-  registry.register::<u32, _>(&ctx, |_| Err(AdapterFailure::Custom("boom".into()))).expect("register");
+  registry.register::<u32, _>(&ctx, |_| Err(AdapterError::Custom("boom".into()))).expect("register");
 
   let payload = AdapterPayload::<NoStdToolbox>::new(3_u32);
   let (outcome, leftover) = registry.adapt(payload);
-  assert_eq!(outcome, AdapterOutcome::Failure(AdapterFailure::Custom("boom".into())));
+  assert_eq!(outcome, AdapterOutcome::Failure(AdapterError::Custom("boom".into())));
   assert!(leftover.is_none());
 }

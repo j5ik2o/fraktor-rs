@@ -38,7 +38,7 @@ pub use actor::{
 pub use behavior::Behavior;
 pub use behavior_signal::BehaviorSignal;
 pub use behaviors::Behaviors;
-pub use message_adapter::{AdapterError, AdapterFailure, AdapterPayload, MessageAdapterRegistry};
+pub use message_adapter::{AdapterError, AdapterPayload, MessageAdapterRegistry};
 pub use props::{TypedProps, TypedPropsGeneric};
 pub use scheduler::{TypedScheduler, TypedSchedulerContext, TypedSchedulerGuard, TypedSchedulerShared};
 pub use supervise::Supervise;

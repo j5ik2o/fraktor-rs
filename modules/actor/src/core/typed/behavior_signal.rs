@@ -1,6 +1,6 @@
 //! Signals forwarded to typed behaviors.
 
-use crate::core::{actor::Pid, typed::message_adapter::AdapterFailure};
+use crate::core::{actor::Pid, typed::message_adapter::AdapterError};
 
 /// Enumerates lifecycle notifications delivered to typed behaviors.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -12,5 +12,5 @@ pub enum BehaviorSignal {
   /// Indicates that a watched actor terminated with the provided pid.
   Terminated(Pid),
   /// Indicates that message adaptation failed before reaching the behavior.
-  AdapterFailed(AdapterFailure),
+  AdapterFailed(AdapterError),
 }

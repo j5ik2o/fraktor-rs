@@ -50,7 +50,7 @@ impl<TB: RuntimeToolbox + 'static> ActorRefSender<TB> for AdapterRefSender<TB> {
     if !self.lifecycle.is_alive() {
       let error = SendError::closed(message);
       self.system.record_send_error(Some(self.pid), &error);
-      let log = format!("adapter-ref-{} target stopped", self.handle_id.get());
+      let log = format!("adapter-ref-{} target stopped", self.handle_id);
       self.system.emit_log(LogLevel::Warn, log, Some(self.pid));
       return Err(error);
     }

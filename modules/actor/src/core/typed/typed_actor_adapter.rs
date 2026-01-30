@@ -14,7 +14,7 @@ use crate::core::{
   typed::{
     actor::{TypedActor, TypedActorContextGeneric},
     message_adapter::{
-      AdaptMessage, AdapterEnvelope, AdapterFailure, AdapterOutcome, AdapterPayload, MessageAdapterRegistry,
+      AdaptMessage, AdapterEnvelope, AdapterError, AdapterOutcome, AdapterPayload, MessageAdapterRegistry,
     },
   },
 };
@@ -111,7 +111,7 @@ where
   fn forward_adapter_failure(
     &mut self,
     ctx: &mut ActorContextGeneric<'_, TB>,
-    failure: AdapterFailure,
+    failure: AdapterError,
   ) -> Result<(), ActorError> {
     let mut typed_ctx = TypedActorContextGeneric::from_untyped(ctx, Some(&mut self.adapters));
     self.actor.on_adapter_failure(&mut typed_ctx, failure)

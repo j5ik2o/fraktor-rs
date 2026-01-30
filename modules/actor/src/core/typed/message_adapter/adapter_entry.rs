@@ -8,7 +8,7 @@ use core::any::TypeId;
 
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::shared::Shared};
 
-use crate::core::typed::message_adapter::{AdapterFailure, AdapterOutcome, AdapterPayload};
+use crate::core::typed::message_adapter::{AdapterError, AdapterOutcome, AdapterPayload};
 
 /// Stores adapter metadata and execution closure.
 pub(crate) struct AdapterEntry<M, TB>
@@ -29,16 +29,16 @@ where
   pub(crate) fn new<U, F>(type_id: TypeId, adapter: F) -> Self
   where
     U: Send + Sync + 'static,
-    F: Fn(U) -> Result<M, AdapterFailure> + Send + Sync + 'static, {
+    F: Fn(U) -> Result<M, AdapterError> + Send + Sync + 'static, {
     let handler = Box::new(move |payload: AdapterPayload<TB>| match payload.try_downcast::<U>() {
       | Ok(value) => match value.try_unwrap() {
         | Ok(concrete) => match adapter(concrete) {
           | Ok(result) => AdapterOutcome::Converted(result),
           | Err(failure) => AdapterOutcome::Failure(failure),
         },
-        | Err(_) => AdapterOutcome::Failure(AdapterFailure::Custom(String::from("payload_shared"))),
+        | Err(_) => AdapterOutcome::Failure(AdapterError::Custom(String::from("payload_shared"))),
       },
-      | Err(_) => AdapterOutcome::Failure(AdapterFailure::TypeMismatch(type_id)),
+      | Err(_) => AdapterOutcome::Failure(AdapterError::TypeMismatch(type_id)),
     });
     Self { type_id, handler }
   }

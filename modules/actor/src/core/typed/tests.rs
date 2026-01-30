@@ -18,7 +18,7 @@ use crate::core::{
   typed::{
     Behavior, BehaviorSignal, Behaviors, TypedAskError,
     actor::{TypedActor, TypedActorContextGeneric, TypedActorRef},
-    message_adapter::{AdapterEnvelope, AdapterFailure, AdapterPayload},
+    message_adapter::{AdapterEnvelope, AdapterError, AdapterPayload},
     props::TypedPropsGeneric,
     system::TypedActorSystemGeneric,
   },
@@ -407,7 +407,7 @@ fn adapter_counter_behavior(
   Behaviors::setup(move |ctx| {
     let adapter = ctx
       .message_adapter(|value: String| {
-        value.parse::<i32>().map(AdapterCounterCommand::Set).map_err(|_| AdapterFailure::Custom("parse error".into()))
+        value.parse::<i32>().map(AdapterCounterCommand::Set).map_err(|_| AdapterError::Custom("parse error".into()))
       })
       .expect("register adapter");
     slot.lock().replace(adapter);
@@ -457,7 +457,7 @@ fn adapter_not_found_routes_to_dead_letter() {
     Behaviors::setup(|ctx| {
       ctx
         .message_adapter(|value: String| {
-          value.parse::<i32>().map(AdapterCounterCommand::Set).map_err(|_| AdapterFailure::Custom("parse error".into()))
+          value.parse::<i32>().map(AdapterCounterCommand::Set).map_err(|_| AdapterError::Custom("parse error".into()))
         })
         .expect("register adapter");
       counter_behavior(0)
@@ -488,12 +488,9 @@ fn pipe_to_self_converts_messages_via_adapter() {
         .pipe_to_self(
           async { Ok::<_, ()>("6".to_string()) },
           |value: String| {
-            value
-              .parse::<i32>()
-              .map(AdapterCounterCommand::Set)
-              .map_err(|_| AdapterFailure::Custom("parse error".into()))
+            value.parse::<i32>().map(AdapterCounterCommand::Set).map_err(|_| AdapterError::Custom("parse error".into()))
           },
-          |_| Err(AdapterFailure::Custom("pipe failure".into())),
+          |_| Err(AdapterError::Custom("pipe failure".into())),
         )
         .expect("pipe");
       counter_behavior(0)

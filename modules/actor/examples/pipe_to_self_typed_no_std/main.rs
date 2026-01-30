@@ -14,7 +14,7 @@ use alloc::{
 use fraktor_actor_rs::core::{
   error::ActorError,
   typed::{
-    AdapterFailure, TypedActorSystem, TypedProps,
+    AdapterError, TypedActorSystem, TypedProps,
     actor::{TypedActor, TypedActorContext},
   },
 };
@@ -42,7 +42,7 @@ impl TypedActor<FetchCommand> for FetchClient {
         ctx
           .pipe_to_self(
             async move {
-              fake_http_call(request_path.as_ref()).await.map_err(|error| AdapterFailure::Custom(error.to_string()))
+              fake_http_call(request_path.as_ref()).await.map_err(|error| AdapterError::Custom(error.to_string()))
             },
             |body| Ok(FetchCommand::Completed(body)),
             |failure| Ok(FetchCommand::Failed(format!("{:?}", failure))),

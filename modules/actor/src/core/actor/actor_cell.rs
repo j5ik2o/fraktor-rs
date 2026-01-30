@@ -268,8 +268,8 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     let mut state = self.state.lock();
     let id = state.adapter_handle_counter.wrapping_add(1);
     state.adapter_handle_counter = id;
-    let handle_id = AdapterRefHandleId::new(id);
-    let lifecycle = ArcShared::new(AdapterLifecycleState::new(self.system(), self.pid));
+    let handle_id = id;
+    let lifecycle = ArcShared::new(AdapterLifecycleState::new());
     let handle = AdapterRefHandle::new(handle_id, lifecycle.clone());
     state.adapter_handles.push(handle);
     (handle_id, lifecycle)

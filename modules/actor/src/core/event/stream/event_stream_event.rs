@@ -12,6 +12,7 @@ use super::{
   remoting_lifecycle_event::RemotingLifecycleEvent, tick_driver_snapshot::TickDriverSnapshot,
 };
 use crate::core::{
+  actor::Pid,
   dead_letter::DeadLetterEntryGeneric,
   dispatch::{
     dispatcher::DispatcherDumpEvent,
@@ -22,7 +23,7 @@ use crate::core::{
   messaging::AnyMessageGeneric,
   scheduler::SchedulerTickMetrics,
   serialization::SerializationErrorEvent,
-  typed::{UnhandledMessageEvent, message_adapter::AdapterFailureEvent},
+  typed::{UnhandledMessageEvent, message_adapter::AdapterError},
 };
 
 /// Event selected for publication on the event stream.
@@ -43,7 +44,12 @@ pub enum EventStreamEvent<TB: RuntimeToolbox = NoStdToolbox> {
   /// Unhandled message notification from typed behaviors.
   UnhandledMessage(UnhandledMessageEvent),
   /// Message adapter failure notification.
-  AdapterFailure(AdapterFailureEvent),
+  AdapterFailure {
+    /// Actor pid that produced the failure.
+    pid:   Pid,
+    /// Adapter error describing the failure.
+    error: AdapterError,
+  },
   /// Serialization failure notification.
   Serialization(SerializationErrorEvent),
   /// Remote authority state transition notification.
@@ -75,7 +81,7 @@ impl<TB: RuntimeToolbox> Clone for EventStreamEvent<TB> {
       | Self::MailboxPressure(event) => Self::MailboxPressure(event.clone()),
       | Self::DispatcherDump(event) => Self::DispatcherDump(event.clone()),
       | Self::UnhandledMessage(event) => Self::UnhandledMessage(event.clone()),
-      | Self::AdapterFailure(event) => Self::AdapterFailure(event.clone()),
+      | Self::AdapterFailure { pid, error } => Self::AdapterFailure { pid: *pid, error: error.clone() },
       | Self::Serialization(event) => Self::Serialization(event.clone()),
       | Self::RemoteAuthority(event) => Self::RemoteAuthority(event.clone()),
       | Self::RemotingBackpressure(event) => Self::RemotingBackpressure(event.clone()),

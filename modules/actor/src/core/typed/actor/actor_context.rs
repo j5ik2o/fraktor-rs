@@ -12,7 +12,7 @@ use crate::core::{
   typed::{
     TypedActorSystemGeneric,
     actor::{actor_ref::TypedActorRefGeneric, child_ref::TypedChildRefGeneric},
-    message_adapter::{AdaptMessage, AdapterError, AdapterFailure, MessageAdapterRegistry},
+    message_adapter::{AdaptMessage, AdapterError, MessageAdapterRegistry},
     props::TypedPropsGeneric,
   },
 };
@@ -149,7 +149,7 @@ where
   pub fn message_adapter<U, F>(&mut self, adapter: F) -> Result<TypedActorRefGeneric<U, TB>, AdapterError>
   where
     U: Send + Sync + 'static,
-    F: Fn(U) -> Result<M, AdapterFailure> + Send + Sync + 'static, {
+    F: Fn(U) -> Result<M, AdapterError> + Send + Sync + 'static, {
     let ctx_ptr = self.inner;
     let registry_ptr = self.registry_ptr()?;
     let actor_ref = unsafe {
@@ -172,7 +172,7 @@ where
   ) -> Result<TypedActorRefGeneric<U, TB>, AdapterError>
   where
     U: Send + Sync + 'static,
-    F: Fn(U) -> Result<M, AdapterFailure> + Send + Sync + 'static, {
+    F: Fn(U) -> Result<M, AdapterError> + Send + Sync + 'static, {
     self.message_adapter(adapter)
   }
 
@@ -191,8 +191,8 @@ where
     Fut: Future<Output = Result<U, E>> + Send + 'static,
     U: Send + Sync + 'static,
     E: Send + Sync + 'static,
-    MapOk: Fn(U) -> Result<M, AdapterFailure> + Send + Sync + 'static,
-    MapErr: Fn(E) -> Result<M, AdapterFailure> + Send + Sync + 'static, {
+    MapOk: Fn(U) -> Result<M, AdapterError> + Send + Sync + 'static,
+    MapErr: Fn(E) -> Result<M, AdapterError> + Send + Sync + 'static, {
     let mapped = async move {
       let outcome = future.await;
       let adapt = AdaptMessage::<M, TB>::new(outcome, move |result: Result<U, E>| match result {

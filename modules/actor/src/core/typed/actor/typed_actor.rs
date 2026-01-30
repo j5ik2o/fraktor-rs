@@ -6,7 +6,7 @@ use crate::core::{
   actor::Pid,
   error::{ActorError, ActorErrorReason},
   supervision::SupervisorStrategy,
-  typed::{actor::actor_context::TypedActorContextGeneric, message_adapter::AdapterFailure},
+  typed::{actor::actor_context::TypedActorContextGeneric, message_adapter::AdapterError},
 };
 
 /// Defines the lifecycle hooks for actors that operate on a typed message `M`.
@@ -69,7 +69,7 @@ where
   fn on_adapter_failure(
     &mut self,
     _ctx: &mut TypedActorContextGeneric<'_, M, TB>,
-    _failure: AdapterFailure,
+    _failure: AdapterError,
   ) -> Result<(), ActorError> {
     Err(ActorError::recoverable(ActorErrorReason::new("message adapter failure")))
   }

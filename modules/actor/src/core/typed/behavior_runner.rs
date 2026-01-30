@@ -13,7 +13,7 @@ use crate::core::{
     actor::{TypedActor, TypedActorContextGeneric},
     behavior::{Behavior, BehaviorDirective},
     behavior_signal::BehaviorSignal,
-    message_adapter::{AdapterFailure, AdapterFailureEvent},
+    message_adapter::AdapterError,
   },
 };
 
@@ -97,8 +97,10 @@ where
     signal: &BehaviorSignal,
   ) -> Result<(), ActorError> {
     if let BehaviorSignal::AdapterFailed(failure) = signal {
-      let event = AdapterFailureEvent::new(ctx.pid(), failure.clone());
-      ctx.system().event_stream().publish(&EventStreamEvent::AdapterFailure(event));
+      ctx
+        .system()
+        .event_stream()
+        .publish(&EventStreamEvent::AdapterFailure { pid: ctx.pid(), error: failure.clone() });
     }
     let next = self.current.handle_signal(ctx, signal)?;
     self.apply_transition(ctx, next)
@@ -138,7 +140,7 @@ where
   fn on_adapter_failure(
     &mut self,
     ctx: &mut TypedActorContextGeneric<'_, M, TB>,
-    failure: AdapterFailure,
+    failure: AdapterError,
   ) -> Result<(), ActorError> {
     let has_signal_handler = self.current.has_signal_handler();
     self.dispatch_signal(ctx, &BehaviorSignal::AdapterFailed(failure))?;

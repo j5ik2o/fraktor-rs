@@ -7,42 +7,27 @@ use core::sync::atomic::{AtomicBool, Ordering};
 
 use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
-use crate::core::{actor::Pid, system::SystemStateSharedGeneric};
-
 /// Lifecycle guard shared between adapter handles and senders.
-pub struct AdapterLifecycleState<TB: RuntimeToolbox + 'static> {
-  pid:    Pid,
-  system: SystemStateSharedGeneric<TB>,
-  alive:  AtomicBool,
+pub(crate) struct AdapterLifecycleState<TB: RuntimeToolbox + 'static> {
+  alive:    AtomicBool,
+  _toolbox: core::marker::PhantomData<TB>,
 }
 
 impl<TB: RuntimeToolbox + 'static> AdapterLifecycleState<TB> {
-  /// Creates a new lifecycle state bound to the target pid.
+  /// Creates a new lifecycle state.
   #[must_use]
-  pub const fn new(system: SystemStateSharedGeneric<TB>, pid: Pid) -> Self {
-    Self { pid, system, alive: AtomicBool::new(true) }
-  }
-
-  /// Returns the target pid.
-  #[must_use]
-  pub const fn pid(&self) -> Pid {
-    self.pid
-  }
-
-  /// Returns the shared system state.
-  #[must_use]
-  pub fn system(&self) -> SystemStateSharedGeneric<TB> {
-    self.system.clone()
+  pub(crate) const fn new() -> Self {
+    Self { alive: AtomicBool::new(true), _toolbox: core::marker::PhantomData }
   }
 
   /// Returns whether the adapter is still alive.
   #[must_use]
-  pub fn is_alive(&self) -> bool {
+  pub(crate) fn is_alive(&self) -> bool {
     self.alive.load(Ordering::SeqCst)
   }
 
   /// Marks the adapter as stopped.
-  pub fn mark_stopped(&self) {
+  pub(crate) fn mark_stopped(&self) {
     self.alive.store(false, Ordering::SeqCst);
   }
 }

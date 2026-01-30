@@ -13,7 +13,7 @@ use crate::core::{
   error::SendError,
   messaging::AnyMessageGeneric,
   system::ActorSystem,
-  typed::message_adapter::{AdapterEnvelope, AdapterLifecycleState, AdapterRefHandleId, AdapterRefSender},
+  typed::message_adapter::{AdapterEnvelope, AdapterLifecycleState, AdapterRefSender},
 };
 
 struct ProbeSender {
@@ -39,12 +39,12 @@ impl ActorRefSender<NoStdToolbox> for ProbeSender {
 #[test]
 fn adapter_sender_wraps_payload_into_envelope() {
   let system = ActorSystem::new_empty().state();
-  let lifecycle = ArcShared::new(AdapterLifecycleState::new(system.clone(), Pid::new(1, 0)));
+  let lifecycle = ArcShared::new(AdapterLifecycleState::new());
   let messages = ArcShared::new(NoStdMutex::new(Vec::new()));
   let messages_clone = messages.clone();
   let probe = ProbeSender::new(messages);
   let target = ActorRefSenderSharedGeneric::new(probe);
-  let mut sender = AdapterRefSender::new(Pid::new(1, 0), AdapterRefHandleId::new(1), target, lifecycle, system);
+  let mut sender = AdapterRefSender::new(Pid::new(1, 0), 1, target, lifecycle, system);
 
   sender.send(AnyMessageGeneric::new(9_u32)).expect("send succeeds");
 
@@ -57,13 +57,13 @@ fn adapter_sender_wraps_payload_into_envelope() {
 #[test]
 fn adapter_sender_rejects_when_lifecycle_stopped() {
   let system = ActorSystem::new_empty().state();
-  let lifecycle = ArcShared::new(AdapterLifecycleState::new(system.clone(), Pid::new(1, 0)));
+  let lifecycle = ArcShared::new(AdapterLifecycleState::new());
   lifecycle.mark_stopped();
   let messages = ArcShared::new(NoStdMutex::new(Vec::new()));
   let messages_clone = messages.clone();
   let probe = ProbeSender::new(messages);
   let target = ActorRefSenderSharedGeneric::new(probe);
-  let mut sender = AdapterRefSender::new(Pid::new(1, 0), AdapterRefHandleId::new(2), target, lifecycle, system);
+  let mut sender = AdapterRefSender::new(Pid::new(1, 0), 2, target, lifecycle, system);
 
   let result = sender.send(AnyMessageGeneric::new(1_u8));
   assert!(matches!(result, Err(SendError::Closed(_))));

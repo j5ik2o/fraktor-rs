@@ -59,8 +59,8 @@ impl EventStreamSubscriber for LifecyclePrinter {
       | EventStreamEvent::DeadLetter(entry) => {
         println!("[DEAD LETTER] reason={:?} recipient={:?}", entry.reason(), entry.recipient());
       },
-      | EventStreamEvent::AdapterFailure(failure) => {
-        println!("[ADAPTER FAILURE] pid={:?} reason={:?}", failure.pid(), failure.failure());
+      | EventStreamEvent::AdapterFailure { pid, error } => {
+        println!("[ADAPTER FAILURE] pid={:?} reason={:?}", pid, error);
       },
       | EventStreamEvent::MailboxPressure(event) => {
         println!("[MAILBOX PRESSURE] pid={:?} usage={:.2}", event.pid(), event.utilization());

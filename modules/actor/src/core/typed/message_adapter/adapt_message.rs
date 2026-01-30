@@ -11,10 +11,10 @@ use fraktor_utils_rs::core::{
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 
-use crate::core::typed::message_adapter::{AdapterEntry, AdapterFailure, AdapterOutcome, AdapterPayload};
+use crate::core::typed::message_adapter::{AdapterEntry, AdapterError, AdapterOutcome, AdapterPayload};
 
 /// Represents a one-off adapter invocation scheduled on the parent actor thread.
-pub struct AdaptMessage<M, TB>
+pub(crate) struct AdaptMessage<M, TB>
 where
   M: Send + Sync + 'static,
   TB: RuntimeToolbox + 'static, {
@@ -28,10 +28,10 @@ where
   TB: RuntimeToolbox + 'static,
 {
   /// Creates a new inline adapter around the provided value and closure.
-  pub fn new<U, F>(value: U, adapter: F) -> Self
+  pub(crate) fn new<U, F>(value: U, adapter: F) -> Self
   where
     U: Send + Sync + 'static,
-    F: Fn(U) -> Result<M, AdapterFailure> + Send + Sync + 'static, {
+    F: Fn(U) -> Result<M, AdapterError> + Send + Sync + 'static, {
     let payload = AdapterPayload::new(value);
     let entry = ArcShared::new(AdapterEntry::<M, TB>::new::<U, F>(TypeId::of::<U>(), adapter));
     let storage = <TB::MutexFamily as SyncMutexFamily>::create(Some(payload));
@@ -42,7 +42,7 @@ where
   pub(crate) fn execute(&self) -> AdapterOutcome<M> {
     match self.payload.lock().take() {
       | Some(payload) => self.entry.invoke(payload),
-      | None => AdapterOutcome::Failure(AdapterFailure::Custom(String::from("payload_consumed"))),
+      | None => AdapterOutcome::Failure(AdapterError::Custom(String::from("payload_consumed"))),
     }
   }
 }

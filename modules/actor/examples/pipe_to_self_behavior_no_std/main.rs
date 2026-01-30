@@ -10,7 +10,7 @@ use alloc::{format, string::String};
 
 use fraktor_actor_rs::core::{
   error::ActorError,
-  typed::{AdapterFailure, Behavior, Behaviors, TypedActorSystem, TypedProps},
+  typed::{AdapterError, Behavior, Behaviors, TypedActorSystem, TypedProps},
 };
 
 #[derive(Clone)]
@@ -26,7 +26,7 @@ fn fetch_behavior() -> Behavior<Command> {
       let request_path = path.clone();
       ctx
         .pipe_to_self(
-          async move { fake_http_call(&request_path).await.map_err(|error| AdapterFailure::Custom(error.to_string())) },
+          async move { fake_http_call(&request_path).await.map_err(|error| AdapterError::Custom(error.to_string())) },
           |body| Ok(Command::Completed(body)),
           |failure| Ok(Command::Failed(format!("{:?}", failure))),
         )

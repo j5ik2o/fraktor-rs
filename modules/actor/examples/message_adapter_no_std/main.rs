@@ -10,7 +10,7 @@ use alloc::string::{String, ToString};
 use fraktor_actor_rs::core::{
   error::ActorError,
   typed::{
-    AdapterFailure, TypedActorSystem, TypedProps,
+    AdapterError, TypedActorSystem, TypedProps,
     actor::{TypedActor, TypedActorContext, TypedActorRef},
   },
 };
@@ -106,7 +106,7 @@ impl TypedActor<CounterCommand> for CounterActor {
   fn pre_start(&mut self, ctx: &mut TypedActorContext<'_, CounterCommand>) -> Result<(), ActorError> {
     let adapter = ctx
       .message_adapter(|payload: String| {
-        payload.parse::<i32>().map(CounterCommand::Apply).map_err(|_| AdapterFailure::Custom("parse error".into()))
+        payload.parse::<i32>().map(CounterCommand::Apply).map_err(|_| AdapterError::Custom("parse error".into()))
       })
       .map_err(|error| ActorError::recoverable(format!("adapter registration failed: {:?}", error)))?;
     self
