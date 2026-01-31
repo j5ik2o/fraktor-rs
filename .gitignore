@@ -48,6 +48,7 @@ Cargo.lock
 /.codex/auth.json
 /.codex/history.jsonl
 /.codex/internal_storage.json
+/.codex/models_cache.json
 /.codex/version.json
 /.serena/cache/
 /.copilot/.copilot/logs/
