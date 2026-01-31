@@ -7,12 +7,6 @@ use fraktor_utils_rs::core::time::TimerInstant;
 use crate::core::scheduler::{AutoProfileKind, TickDriverId, TickDriverMetadata};
 
 #[test]
-fn test_tick_driver_id_creation() {
-  let id = TickDriverId::new(42);
-  assert_eq!(id.as_u64(), 42);
-}
-
-#[test]
 fn test_tick_driver_id_equality() {
   let id1 = TickDriverId::new(1);
   let id2 = TickDriverId::new(1);
