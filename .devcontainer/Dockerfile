@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/devcontainers/rust:1-bookworm
+FROM mcr.microsoft.com/devcontainers/rust:2-bookworm
 
 # Install additional tools
 RUN cargo install cargo-make cargo-dylint dylint-link --locked
