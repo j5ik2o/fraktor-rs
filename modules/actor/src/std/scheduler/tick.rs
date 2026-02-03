@@ -65,7 +65,8 @@ impl TickDriverConfig {
 
     use crate::core::scheduler::{
       AutoDriverMetadata, AutoProfileKind, SchedulerSharedGeneric, SchedulerTickExecutor, TickDriverBundle,
-      TickDriverControl, TickDriverHandleGeneric, TickDriverKind, TickExecutorSignal, TickFeed, next_tick_driver_id,
+      TickDriverControl, TickDriverHandleGeneric, TickDriverKind, TickExecutorSignal, TickFeed,
+      tick_driver::next_tick_driver_id,
     };
 
     CoreTickDriverConfig::new(move |ctx| {
@@ -149,9 +150,9 @@ impl TickDriverConfig {
     use tokio::time::{MissedTickBehavior, interval};
 
     use crate::core::scheduler::{
-      AutoDriverMetadata, AutoProfileKind, SchedulerSharedGeneric, SchedulerTickExecutor, SchedulerTickMetricsProbe,
-      TickDriverBundle, TickDriverControl, TickDriverHandleGeneric, TickDriverKind, TickExecutorSignal, TickFeed,
-      next_tick_driver_id,
+      AutoDriverMetadata, AutoProfileKind, SchedulerSharedGeneric, SchedulerTickExecutor, TickDriverBundle,
+      TickDriverControl, TickDriverHandleGeneric, TickDriverKind, TickExecutorSignal, TickFeed,
+      tick_driver::{SchedulerTickMetricsProbe, next_tick_driver_id},
     };
 
     CoreTickDriverConfig::new(move |ctx| {

@@ -11,7 +11,7 @@ use portable_atomic::{AtomicBool, Ordering};
 
 use super::{
   HardwareKind, TickDriver, TickDriverControl, TickDriverError, TickDriverHandleGeneric, TickDriverId, TickDriverKind,
-  TickFeedHandle, TickPulseHandler, TickPulseSource, next_tick_driver_id,
+  TickFeedHandle, TickPulseHandler, TickPulseSource, tick_driver_trait::next_tick_driver_id,
 };
 
 /// Tick driver that bridges hardware pulse sources into tick feeds.

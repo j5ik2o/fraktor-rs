@@ -4,7 +4,7 @@ use alloc::boxed::Box;
 use core::time::Duration;
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex},
+  runtime_toolbox::{RuntimeToolbox, ToolboxMutex},
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 
@@ -59,6 +59,3 @@ impl<TB: RuntimeToolbox> TickDriverHandleGeneric<TB> {
     self.control.lock().shutdown();
   }
 }
-
-/// Type alias for `TickDriverHandleGeneric` with the default `NoStdToolbox`.
-pub type TickDriverHandle = TickDriverHandleGeneric<NoStdToolbox>;

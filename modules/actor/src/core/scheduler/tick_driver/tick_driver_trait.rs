@@ -11,7 +11,7 @@ static NEXT_DRIVER_ID: AtomicU64 = AtomicU64::new(1);
 
 /// Allocates a unique identifier for tick drivers.
 #[must_use]
-pub fn next_tick_driver_id() -> TickDriverId {
+pub(crate) fn next_tick_driver_id() -> TickDriverId {
   TickDriverId::new(NEXT_DRIVER_ID.fetch_add(1, Ordering::Relaxed))
 }
 

@@ -55,7 +55,7 @@ use crate::core::{
   scheduler::{
     SchedulerBackedDelayProvider, SchedulerConfig, SchedulerContext, SchedulerSharedGeneric, TaskRunSummary,
     TickDriverBundle, TickDriverControl, TickDriverHandleGeneric, TickDriverKind, TickDriverProvisioningContext,
-    TickExecutorSignal, TickFeed, next_tick_driver_id,
+    TickExecutorSignal, TickFeed, tick_driver::next_tick_driver_id,
   },
   spawn::{NameRegistryError, SpawnError},
   supervision::SupervisorDirective,
@@ -171,7 +171,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
   pub(crate) fn build_from_config(config: &ActorSystemConfigGeneric<TB>) -> Result<Self, SpawnError>
   where
     TB: Default, {
-    use crate::core::scheduler::TickDriverBootstrap;
+    use crate::core::scheduler::tick_driver::TickDriverBootstrap;
 
     let mut state = Self::new();
     state.apply_actor_system_config(config);

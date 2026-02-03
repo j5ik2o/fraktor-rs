@@ -9,6 +9,7 @@ use fraktor_utils_rs::core::{
   time::TimerInstant,
 };
 
+use super::bootstrap::TickDriverBootstrap;
 use crate::core::{
   event::{
     logging::LogLevel,
@@ -16,11 +17,78 @@ use crate::core::{
   },
   scheduler::{
     ExecutionBatch, HardwareKind, ManualTestDriver, SchedulerCommand, SchedulerConfig, SchedulerContext,
-    SchedulerRunnable, SchedulerTickExecutor, TICK_DRIVER_MATRIX, TickDriverBootstrap, TickDriverConfig,
-    TickDriverError, TickDriverKind, TickDriverProvisioningContext, TickExecutorSignal, TickFeed, TickMetricsMode,
-    TickPulseHandler, TickPulseSource,
+    SchedulerRunnable, SchedulerTickExecutor, TickDriverConfig, TickDriverError, TickDriverKind,
+    TickDriverProvisioningContext, TickExecutorSignal, TickFeed, TickPulseHandler, TickPulseSource,
   },
 };
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+enum TickMetricsMode {
+  AutoPublish {
+    interval: Duration,
+  },
+  #[default]
+  OnDemand,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct TickDriverGuideEntry {
+  kind:               TickDriverKind,
+  label:              &'static str,
+  description:        &'static str,
+  default_resolution: Duration,
+  metrics_mode:       TickMetricsMode,
+  test_only:          bool,
+}
+
+impl TickDriverGuideEntry {
+  const fn new(
+    kind: TickDriverKind,
+    label: &'static str,
+    description: &'static str,
+    default_resolution: Duration,
+    metrics_mode: TickMetricsMode,
+    test_only: bool,
+  ) -> Self {
+    Self { kind, label, description, default_resolution, metrics_mode, test_only }
+  }
+
+  const fn auto() -> Self {
+    Self::new(
+      TickDriverKind::Auto,
+      "auto-std",
+      "Tokio locator (StdTickDriverConfig::tokio_quickstart)",
+      Duration::from_millis(10),
+      TickMetricsMode::AutoPublish { interval: Duration::from_secs(1) },
+      false,
+    )
+  }
+
+  const fn hardware() -> Self {
+    Self::new(
+      TickDriverKind::Hardware { source: HardwareKind::Custom },
+      "hardware",
+      "TickPulseSource attachment for no_std targets",
+      Duration::from_millis(1),
+      TickMetricsMode::AutoPublish { interval: Duration::from_secs(1) },
+      false,
+    )
+  }
+
+  const fn manual() -> Self {
+    Self::new(
+      TickDriverKind::ManualTest,
+      "manual-test",
+      "Runner API (ManualTestDriver) for deterministic tests",
+      Duration::from_millis(10),
+      TickMetricsMode::OnDemand,
+      true,
+    )
+  }
+}
+
+const TICK_DRIVER_MATRIX: &[TickDriverGuideEntry] =
+  &[TickDriverGuideEntry::auto(), TickDriverGuideEntry::hardware(), TickDriverGuideEntry::manual()];
 
 struct RecordingSubscriber {
   events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent<NoStdToolbox>>>>,

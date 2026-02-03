@@ -16,7 +16,9 @@ use fraktor_utils_rs::core::{
 };
 use portable_atomic::AtomicU64;
 
-use super::{SchedulerTickHandleOwned, SchedulerTickMetrics, TickDriverKind, TickExecutorSignal};
+use super::{
+  SchedulerTickMetrics, TickDriverKind, TickExecutorSignal, scheduler_tick_handle_owned::SchedulerTickHandleOwned,
+};
 
 #[cfg(test)]
 mod tests;

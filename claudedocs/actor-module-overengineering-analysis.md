@@ -160,7 +160,7 @@ pub enum TickMetricsMode {
 | レベル | 対象 | 問題点 |
 |--------|------|--------|
 | **高** | message_adapter | 13サブモジュール + 薄い型多数。pekko の2型相当に対して過剰な構造化 |
-| **高** | tick_driver | 10〜20行級の公開enum/newtypeが多数。YAGNI逸脱の典型パターン |
+| **高** | tick_driver | 10〜20行級の公開enum/newtypeが多数。ドメインプリミティブとして必要なものは維持し、不要な公開だけ整理する前提 |
 | **中** | mailbox | 薄いfuture/state型が散らばりすぎ |
 | **中** | ルール運用 | 「1 file = 1 public type」原則が小型型にまで厳密適用 |
 | **低** | *_shared/*_handle | 必要性の薄い箇所まで横展開されていないか点検が必要 |
@@ -173,11 +173,11 @@ pub enum TickMetricsMode {
 
 - [x] Phase 1: 公開API監査（優先度: 高）
 - [x] Phase 2: message_adapter 統合（優先度: 高）
-- [x] Phase 3: tick_driver 統合（優先度: 高）
+- [ ] Phase 3: tick_driver ドメインプリミティブ保全（優先度: 高）
 - [ ] Phase 4: mailbox 整理（優先度: 中）
 - [ ] Phase 5: ルール運用見直し（優先度: 中）
 
-※Phase 1 は 2026-01-30 に監査結果を追記済み。Phase 2 は 2026-01-30 に統合完了。Phase 3 は 2026-01-30 に統合完了。Phase 4 以降は未完了。
+※Phase 1 は 2026-01-30 に監査結果を追記済み。Phase 2 は 2026-01-30 に統合完了。Phase 3 は 2026-02-03 に方針を「ドメインプリミティブ保全」へ変更し、未完了。Phase 4 以降は未完了。
 
 ### Phase 1: 公開API監査（優先度: 高）
 
@@ -232,10 +232,11 @@ pub enum TickMetricsMode {
 3. `AdapterRefHandleId` 等の newtype を private 化または type alias 化
 4. 公開型数を削減
 
-### Phase 3: tick_driver 統合（優先度: 高）
+### Phase 3: tick_driver ドメインプリミティブ保全（優先度: 高）
 
-1. 小型enum/newtypeを `tick_driver_config.rs` / `tick_driver_metadata.rs` に集約
-2. 非公開化または1つの公開設定型に束ねる
+1. `TickDriverId` / `TickDriverKind` / `HardwareKind` / `AutoProfileKind` / `TickMetricsMode` などのドメインプリミティブは統合しない
+2. 公開APIの露出を整理する（`pub(crate)` 化、再エクスポートの整理、未使用の公開型の見直し）
+3. ドキュメントとガイドは型境界を前提に更新し、境界でのみプリミティブへ変換する
 
 ### Phase 4: mailbox 整理（優先度: 中）
 
@@ -261,7 +262,7 @@ pub enum TickMetricsMode {
 | リスク | 緩和策 |
 |--------|--------|
 | 公開APIの破壊的変更が広範囲に波及 | モジュール単位で順次統合、利用側とテストを同時更新 |
-| newtype削減で型安全性が下がる | 外部境界では残し、内部では private/type alias で簡素化 |
+| ドメインプリミティブの統合で型安全性が下がる | 統合は行わず、公開範囲の整理に限定する |
 | no_std/core に std 依存が混入 | 統合先を core に寄せつつ std 依存型は std 側に限定維持 |
 
 ---
@@ -271,7 +272,7 @@ pub enum TickMetricsMode {
 modules/actor は**過剰設計の兆候が明確にある**。特に以下の点で改善が必要：
 
 1. **message_adapter**: pekkoの2型に対して13モジュールは過剰。統合を推奨。
-2. **tick_driver**: 29モジュール中、多くが10〜20行の小型型。集約を推奨。
+2. **tick_driver**: 29モジュール中、多くが10〜20行の小型型。ドメインプリミティブは維持し、公開範囲と再エクスポートを整理する。
 3. **35%のファイルが30行以下**: 「1 file = 1 public type」ルールの過剰適用の可能性。
 
 プロジェクトの設計価値観「Less is more」「YAGNI」に立ち返り、段階的な統合・非公開化を進めることを推奨する。

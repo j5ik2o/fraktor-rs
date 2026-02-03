@@ -11,12 +11,14 @@ use fraktor_utils_rs::core::{runtime_toolbox::SyncMutexFamily, sync::ArcShared};
 
 #[cfg(any(test, feature = "test-support"))]
 use super::TickDriverControl;
-use super::{TickDriverBundle, TickDriverConfig, TickDriverError, TickDriverHandleGeneric, TickDriverMetadata};
+#[cfg(any(test, feature = "test-support"))]
+use super::TickDriverHandleGeneric;
+use super::{TickDriverBundle, TickDriverConfig, TickDriverError, TickDriverMetadata};
 #[cfg(any(test, feature = "test-support"))]
 use super::{
   TickDriverKind,
   manual_test_driver::{ManualDriverControl, ManualTestDriver},
-  next_tick_driver_id,
+  tick_driver_trait::next_tick_driver_id,
 };
 #[cfg(any(test, feature = "test-support"))]
 use crate::core::event::logging::{LogEvent, LogLevel};
@@ -26,7 +28,7 @@ use crate::core::{
 };
 
 /// Bootstrapper responsible for wiring drivers into the scheduler context.
-pub struct TickDriverBootstrap;
+pub(crate) struct TickDriverBootstrap;
 
 impl TickDriverBootstrap {
   /// Provisions the configured driver and returns the bundle with a snapshot.
@@ -34,7 +36,7 @@ impl TickDriverBootstrap {
   /// # Errors
   ///
   /// Returns [`TickDriverError`] when driver provisioning fails.
-  pub fn provision<TB: RuntimeToolbox>(
+  pub(crate) fn provision<TB: RuntimeToolbox>(
     config: &TickDriverConfig<TB>,
     ctx: &TickDriverProvisioningContext<TB>,
   ) -> Result<(TickDriverBundle<TB>, TickDriverSnapshot), TickDriverError> {
@@ -84,11 +86,6 @@ impl TickDriverBootstrap {
     let snapshot = TickDriverSnapshot::new(metadata, TickDriverKind::ManualTest, resolution, None);
     ctx.event_stream().publish(&EventStreamEvent::TickDriver(snapshot.clone()));
     Ok((bundle, snapshot))
-  }
-
-  /// Shuts down the active driver handle.
-  pub fn shutdown<TB: RuntimeToolbox>(handle: &mut TickDriverHandleGeneric<TB>) {
-    handle.shutdown();
   }
 }
 

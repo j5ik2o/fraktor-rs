@@ -4,7 +4,7 @@ use core::time::Duration;
 
 use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, time::TimerInstant};
 
-use crate::core::scheduler::{SchedulerTickMetricsProbe, TickDriverKind, TickExecutorSignal, TickFeed};
+use crate::core::scheduler::{TickDriverKind, TickExecutorSignal, TickFeed, tick_driver::SchedulerTickMetricsProbe};
 
 #[test]
 fn snapshot_reports_tick_rate() {

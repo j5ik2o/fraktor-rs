@@ -5,7 +5,7 @@ use alloc::boxed::Box;
 use fraktor_utils_rs::core::time::SchedulerTickHandle;
 
 /// Owns a `'static` tick handle for scheduler drivers.
-pub struct SchedulerTickHandleOwned {
+pub(crate) struct SchedulerTickHandleOwned {
   handle: SchedulerTickHandle<'static>,
   scope:  *mut TickHandleScope,
 }
@@ -15,7 +15,7 @@ struct TickHandleScope;
 impl SchedulerTickHandleOwned {
   /// Creates a new owned handle.
   #[must_use]
-  pub fn new() -> Self {
+  pub(crate) fn new() -> Self {
     let scope = Box::into_raw(Box::new(TickHandleScope));
     let handle = unsafe { SchedulerTickHandle::scoped(&*scope) };
     Self { handle, scope }
@@ -23,7 +23,7 @@ impl SchedulerTickHandleOwned {
 
   /// Returns a reference to the underlying handle.
   #[must_use]
-  pub const fn handle(&self) -> &SchedulerTickHandle<'static> {
+  pub(crate) const fn handle(&self) -> &SchedulerTickHandle<'static> {
     &self.handle
   }
 }
