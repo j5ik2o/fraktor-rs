@@ -50,6 +50,7 @@ Cargo.lock
 /.codex/internal_storage.json
 /.codex/models_cache.json
 /.codex/version.json
+/.codex/.personality_migration
 /.serena/cache/
 /.copilot/.copilot/logs/
 /.copilot/configstore/update-notifier-@github/
