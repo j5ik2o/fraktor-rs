@@ -451,6 +451,7 @@ run_dylint() {
   else
     rustflags_value="-Dwarnings -Adeprecated"
   fi
+  local dylint_incremental="${DYLINT_CARGO_INCREMENTAL:-0}"
 
   local -a common_dylint_args=("${dylint_args[@]}" "--no-metadata")
   local sysroot_lib=""
@@ -559,11 +560,11 @@ PY
     if [[ ${#trailing_args[@]} -gt 0 ]]; then
       log_trailing=" -- ${trailing_args[*]}"
     fi
-    log_step "cargo +${DEFAULT_TOOLCHAIN} dylint ${log_main}${log_trailing} (RUSTFLAGS=${rustflags_value})"
+    log_step "cargo +${DEFAULT_TOOLCHAIN} dylint ${log_main}${log_trailing} (RUSTFLAGS=${rustflags_value}, CARGO_INCREMENTAL=${dylint_incremental})"
     if [[ ${#trailing_args[@]} -gt 0 ]]; then
-      RUSTFLAGS="${rustflags_value}" DYLINT_LIBRARY_PATH="${dylint_library_path}" DYLD_FALLBACK_LIBRARY_PATH="${dynlib_path}" LD_LIBRARY_PATH="${dynlib_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${main_invocation[@]}" -- "${trailing_args[@]}" || return 1
+      RUSTFLAGS="${rustflags_value}" CARGO_INCREMENTAL="${dylint_incremental}" DYLINT_LIBRARY_PATH="${dylint_library_path}" DYLD_FALLBACK_LIBRARY_PATH="${dynlib_path}" LD_LIBRARY_PATH="${dynlib_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${main_invocation[@]}" -- "${trailing_args[@]}" || return 1
     else
-      RUSTFLAGS="${rustflags_value}" DYLINT_LIBRARY_PATH="${dylint_library_path}" DYLD_FALLBACK_LIBRARY_PATH="${dynlib_path}" LD_LIBRARY_PATH="${dynlib_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${main_invocation[@]}" || return 1
+      RUSTFLAGS="${rustflags_value}" CARGO_INCREMENTAL="${dylint_incremental}" DYLINT_LIBRARY_PATH="${dylint_library_path}" DYLD_FALLBACK_LIBRARY_PATH="${dynlib_path}" LD_LIBRARY_PATH="${dynlib_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${main_invocation[@]}" || return 1
     fi
   fi
 
@@ -576,11 +577,11 @@ PY
       if [[ ${#trailing_args[@]} -gt 0 ]]; then
         log_trailing=" -- ${trailing_args[*]}"
       fi
-      log_step "cargo +${DEFAULT_TOOLCHAIN} dylint ${log_pkg}${log_trailing} (RUSTFLAGS=${rustflags_value})"
+      log_step "cargo +${DEFAULT_TOOLCHAIN} dylint ${log_pkg}${log_trailing} (RUSTFLAGS=${rustflags_value}, CARGO_INCREMENTAL=${dylint_incremental})"
       if [[ ${#trailing_args[@]} -gt 0 ]]; then
-        RUSTFLAGS="${rustflags_value}" DYLINT_LIBRARY_PATH="${dylint_library_path}" DYLD_FALLBACK_LIBRARY_PATH="${dynlib_path}" LD_LIBRARY_PATH="${dynlib_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${pkg_invocation[@]}" -- "${trailing_args[@]}" || return 1
+        RUSTFLAGS="${rustflags_value}" CARGO_INCREMENTAL="${dylint_incremental}" DYLINT_LIBRARY_PATH="${dylint_library_path}" DYLD_FALLBACK_LIBRARY_PATH="${dynlib_path}" LD_LIBRARY_PATH="${dynlib_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${pkg_invocation[@]}" -- "${trailing_args[@]}" || return 1
       else
-        RUSTFLAGS="${rustflags_value}" DYLINT_LIBRARY_PATH="${dylint_library_path}" DYLD_FALLBACK_LIBRARY_PATH="${dynlib_path}" LD_LIBRARY_PATH="${dynlib_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${pkg_invocation[@]}" || return 1
+        RUSTFLAGS="${rustflags_value}" CARGO_INCREMENTAL="${dylint_incremental}" DYLINT_LIBRARY_PATH="${dylint_library_path}" DYLD_FALLBACK_LIBRARY_PATH="${dynlib_path}" LD_LIBRARY_PATH="${dynlib_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${pkg_invocation[@]}" || return 1
       fi
     done
   fi
@@ -616,8 +617,8 @@ PY
         log_feature+=" -- ${trailing_args[*]}"
         feature_trailing+=("${trailing_args[@]}")
       fi
-      log_step "cargo +${DEFAULT_TOOLCHAIN} dylint ${log_feature} (RUSTFLAGS=${rustflags_value})"
-      RUSTFLAGS="${rustflags_value}" DYLINT_LIBRARY_PATH="${dylint_library_path}" DYLD_FALLBACK_LIBRARY_PATH="${dynlib_path}" LD_LIBRARY_PATH="${dynlib_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${feature_invocation[@]}" -- "${feature_trailing[@]}" || return 1
+      log_step "cargo +${DEFAULT_TOOLCHAIN} dylint ${log_feature} (RUSTFLAGS=${rustflags_value}, CARGO_INCREMENTAL=${dylint_incremental})"
+      RUSTFLAGS="${rustflags_value}" CARGO_INCREMENTAL="${dylint_incremental}" DYLINT_LIBRARY_PATH="${dylint_library_path}" DYLD_FALLBACK_LIBRARY_PATH="${dynlib_path}" LD_LIBRARY_PATH="${dynlib_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${feature_invocation[@]}" -- "${feature_trailing[@]}" || return 1
     done
   fi
 }
