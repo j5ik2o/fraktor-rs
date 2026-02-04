@@ -5,10 +5,31 @@ use core::{
   task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
 };
 
+use fraktor_utils_rs::core::{
+  runtime_toolbox::{RuntimeToolbox, ToolboxMutex},
+  sync::ArcShared,
+};
+
+use super::{super::mailbox_queue_state::QueueState, QueuePollFuture};
 use crate::core::{
   dispatch::mailbox::{Mailbox, MailboxPolicy},
-  messaging::AnyMessage,
+  messaging::{AnyMessage, AnyMessageGeneric},
 };
+
+impl<T, TB: RuntimeToolbox> QueuePollFuture<T, TB>
+where
+  T: Send + 'static,
+{
+  pub(crate) const fn new(state: ArcShared<ToolboxMutex<QueueState<T, TB>, TB>>) -> Self {
+    Self { state, waiter: None }
+  }
+}
+
+impl<TB: RuntimeToolbox + 'static> super::MailboxPollFutureGeneric<TB> {
+  pub(crate) const fn new(state: ArcShared<ToolboxMutex<QueueState<AnyMessageGeneric<TB>, TB>, TB>>) -> Self {
+    Self { inner: QueuePollFuture::new(state) }
+  }
+}
 
 unsafe fn noop_clone(_: *const ()) -> RawWaker {
   noop_raw_waker()

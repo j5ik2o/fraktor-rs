@@ -22,7 +22,7 @@ impl Node {
 
 /// Lock-free system queue that guarantees FIFO processing order by using
 /// a Treiber stack for writers and a pending FIFO list for readers.
-pub struct SystemQueue {
+pub(crate) struct SystemQueue {
   head:    AtomicPtr<Node>,
   pending: AtomicPtr<Node>,
   len:     AtomicUsize,
@@ -37,7 +37,7 @@ impl Default for SystemQueue {
 impl SystemQueue {
   /// Creates an empty queue.
   #[must_use]
-  pub const fn new() -> Self {
+  pub(crate) const fn new() -> Self {
     Self {
       head:    AtomicPtr::new(ptr::null_mut()),
       pending: AtomicPtr::new(ptr::null_mut()),
@@ -46,7 +46,7 @@ impl SystemQueue {
   }
 
   /// Pushes a new system message onto the queue.
-  pub fn push(&self, message: SystemMessage) {
+  pub(crate) fn push(&self, message: SystemMessage) {
     let node = Node::new(message);
     loop {
       let current_head = self.head.load(Ordering::Acquire);
@@ -61,7 +61,7 @@ impl SystemQueue {
   }
 
   /// Pops the next message in FIFO order.
-  pub fn pop(&self) -> Option<SystemMessage> {
+  pub(crate) fn pop(&self) -> Option<SystemMessage> {
     loop {
       let pending = self.pending.load(Ordering::Acquire);
       if !pending.is_null() {
@@ -93,12 +93,12 @@ impl SystemQueue {
   }
 
   /// Returns the approximate queue length.
-  pub fn len(&self) -> usize {
+  pub(crate) fn len(&self) -> usize {
     self.len.load(Ordering::Acquire)
   }
 
   /// Returns `true` when the queue has no pending elements.
-  pub fn is_empty(&self) -> bool {
+  pub(crate) fn is_empty(&self) -> bool {
     self.len() == 0
   }
 

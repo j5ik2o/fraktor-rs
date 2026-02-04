@@ -11,10 +11,7 @@ use fraktor_utils_rs::core::{
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 
-use super::{
-  UserQueueShared, mailbox_queue_offer_future::QueueOfferFuture, mailbox_queue_poll_future::QueuePollFuture,
-  mailbox_queue_state::QueueState,
-};
+use super::{UserQueueShared, mailbox_queue_state::QueueState};
 use crate::core::dispatch::mailbox::{
   capacity::MailboxCapacity, overflow_strategy::MailboxOverflowStrategy, policy::MailboxPolicy,
 };
@@ -22,7 +19,7 @@ use crate::core::dispatch::mailbox::{
 const DEFAULT_QUEUE_CAPACITY: usize = 16;
 
 /// Internal handles wrapping queue producers/consumers.
-pub struct QueueStateHandle<T, TB: RuntimeToolbox>
+pub(crate) struct QueueStateHandle<T, TB: RuntimeToolbox>
 where
   T: Send + 'static, {
   pub(crate) state: ArcShared<ToolboxMutex<QueueState<T, TB>, TB>>,
@@ -59,15 +56,6 @@ where
   pub(crate) fn poll(&self) -> Result<T, QueueError<T>> {
     let mut state = self.state.lock();
     state.poll()
-  }
-
-  pub(crate) fn offer_blocking(&self, message: T) -> QueueOfferFuture<T, TB> {
-    QueueOfferFuture::new(self.state.clone(), message)
-  }
-
-  #[allow(dead_code)]
-  pub(crate) fn poll_blocking(&self) -> QueuePollFuture<T, TB> {
-    QueuePollFuture::new(self.state.clone())
   }
 
   /// Returns the current queue size without acquiring a lock.

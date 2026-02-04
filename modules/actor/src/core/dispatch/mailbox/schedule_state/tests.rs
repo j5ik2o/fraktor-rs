@@ -1,6 +1,6 @@
 use core::sync::atomic::Ordering;
 
-use super::{MailboxScheduleState, ScheduleHints};
+use super::{super::ScheduleHints, MailboxScheduleState};
 
 impl MailboxScheduleState {
   fn raw_state_for_test(&self) -> u32 {

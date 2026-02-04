@@ -18,14 +18,13 @@ mod mailbox_message;
 mod mailbox_offer_future;
 mod mailbox_poll_future;
 mod mailbox_queue_handles;
-mod mailbox_queue_offer_future;
-mod mailbox_queue_poll_future;
 mod mailbox_queue_state;
 mod mailbox_registry_error;
 mod mailboxes;
 mod metrics_event;
 mod overflow_strategy;
 mod policy;
+mod schedule_hints;
 mod schedule_state;
 mod system_queue;
 
@@ -37,17 +36,15 @@ pub use mailbox_instrumentation::{MailboxInstrumentation, MailboxInstrumentation
 pub use mailbox_message::MailboxMessage;
 pub use mailbox_offer_future::{MailboxOfferFuture, MailboxOfferFutureGeneric};
 pub use mailbox_poll_future::{MailboxPollFuture, MailboxPollFutureGeneric};
-pub use mailbox_queue_handles::QueueStateHandle;
-pub use mailbox_queue_offer_future::QueueOfferFuture;
-pub use mailbox_queue_poll_future::QueuePollFuture;
-pub use mailbox_queue_state::QueueState;
+pub(crate) use mailbox_queue_handles::QueueStateHandle;
 pub use mailbox_registry_error::MailboxRegistryError;
 pub use mailboxes::{Mailboxes, MailboxesGeneric};
 pub use metrics_event::{MailboxMetricsEvent, MailboxPressureEvent};
 pub use overflow_strategy::MailboxOverflowStrategy;
 pub use policy::MailboxPolicy;
-pub use schedule_state::{MailboxScheduleState, ScheduleHints};
-pub use system_queue::SystemQueue;
+pub use schedule_hints::ScheduleHints;
+pub(crate) use schedule_state::MailboxScheduleState;
+pub(crate) use system_queue::SystemQueue;
 
 #[cfg(test)]
 mod tests;

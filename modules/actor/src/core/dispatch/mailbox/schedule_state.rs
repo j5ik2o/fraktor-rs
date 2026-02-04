@@ -1,8 +1,6 @@
 use core::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
-mod schedule_hints;
-
-pub use schedule_hints::ScheduleHints;
+use super::schedule_hints::ScheduleHints;
 
 #[cfg(test)]
 mod tests;
@@ -14,7 +12,7 @@ const SUSPEND_SHIFT: u32 = 3;
 const SUSPEND_MASK: u32 = !((1 << SUSPEND_SHIFT) - 1);
 
 /// Mailbox-internal schedule state tracking scheduling, running, and suspension.
-pub struct MailboxScheduleState {
+pub(crate) struct MailboxScheduleState {
   state:           AtomicU32,
   need_reschedule: AtomicBool,
 }
@@ -28,13 +26,13 @@ impl Default for MailboxScheduleState {
 impl MailboxScheduleState {
   /// Creates a fresh schedule state in the idle state.
   #[must_use]
-  pub const fn new() -> Self {
+  pub(crate) const fn new() -> Self {
     Self { state: AtomicU32::new(0), need_reschedule: AtomicBool::new(false) }
   }
 
   /// Attempts to mark the mailbox as scheduled. Returns `true` only when the caller
   /// should trigger a new dispatcher execution cycle.
-  pub fn request_schedule(&self, hints: ScheduleHints) -> bool {
+  pub(crate) fn request_schedule(&self, hints: ScheduleHints) -> bool {
     let has_pending = hints.has_system_messages || hints.has_user_messages || hints.backpressure_active;
     debug_assert!(has_pending, "schedule requested without work: {:?}", hints);
     if !has_pending {
@@ -61,7 +59,7 @@ impl MailboxScheduleState {
   }
 
   /// Marks the mailbox as running, clearing any pending scheduled flag.
-  pub fn set_running(&self) {
+  pub(crate) fn set_running(&self) {
     loop {
       let state = self.state.load(Ordering::Acquire);
       let desired = (state & !FLAG_SCHEDULED) | FLAG_RUNNING;
@@ -73,12 +71,12 @@ impl MailboxScheduleState {
 
   /// Returns `true` when the mailbox is currently being drained by a dispatcher.
   #[must_use]
-  pub fn is_running(&self) -> bool {
+  pub(crate) fn is_running(&self) -> bool {
     self.state.load(Ordering::Acquire) & FLAG_RUNNING != 0
   }
 
   /// Clears the running flag. Returns `true` if mailbox should re-schedule immediately.
-  pub fn set_idle(&self) -> bool {
+  pub(crate) fn set_idle(&self) -> bool {
     loop {
       let state = self.state.load(Ordering::Acquire);
       let desired = state & !FLAG_RUNNING;
@@ -91,17 +89,17 @@ impl MailboxScheduleState {
   }
 
   /// Increments the suspension counter, preventing user messages from executing.
-  pub fn suspend(&self) {
+  pub(crate) fn suspend(&self) {
     self.update_suspend_count(|count| count + 1);
   }
 
   /// Decrements the suspension counter.
-  pub fn resume(&self) {
+  pub(crate) fn resume(&self) {
     self.update_suspend_count(|count| count.saturating_sub(1));
   }
 
   /// Returns `true` when user message processing must remain suspended.
-  pub fn is_suspended(&self) -> bool {
+  pub(crate) fn is_suspended(&self) -> bool {
     self.current_suspend_count() > 0
   }
 

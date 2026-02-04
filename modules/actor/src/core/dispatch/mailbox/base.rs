@@ -13,9 +13,9 @@ use fraktor_utils_rs::core::{
 };
 
 use super::{
-  BackpressurePublisherGeneric, MailboxOfferFutureGeneric, MailboxPollFutureGeneric, MailboxScheduleState,
-  QueueStateHandle, ScheduleHints, SystemQueue, mailbox_enqueue_outcome::EnqueueOutcome,
-  mailbox_instrumentation::MailboxInstrumentationGeneric, mailbox_message::MailboxMessage, map_user_queue_error,
+  BackpressurePublisherGeneric, MailboxOfferFutureGeneric, MailboxScheduleState, QueueStateHandle, ScheduleHints,
+  SystemQueue, mailbox_enqueue_outcome::EnqueueOutcome, mailbox_instrumentation::MailboxInstrumentationGeneric,
+  mailbox_message::MailboxMessage, map_user_queue_error,
 };
 use crate::core::{
   actor::Pid,
@@ -110,7 +110,6 @@ where
   ///
   /// Returns an error if the mailbox is suspended, full, or closed.
   #[cfg_attr(not(test), doc(hidden))]
-  #[cfg_attr(test, allow(dead_code))]
   pub fn enqueue_user(&self, message: AnyMessageGeneric<TB>) -> Result<EnqueueOutcome<TB>, SendError<TB>> {
     if self.is_suspended() {
       return Err(SendError::suspended(message));
@@ -122,18 +121,6 @@ where
       },
       | MailboxCapacity::Unbounded => self.offer_user(message),
     }
-  }
-
-  /// Returns a future that resolves when the provided user message is enqueued.
-  #[allow(dead_code)]
-  pub(crate) fn enqueue_user_future(&self, message: AnyMessageGeneric<TB>) -> MailboxOfferFutureGeneric<TB> {
-    MailboxOfferFutureGeneric::new(self.user.offer_blocking(message))
-  }
-
-  /// Returns a future that resolves when the next user message becomes available.
-  #[allow(dead_code)]
-  pub(crate) fn poll_user_future(&self) -> MailboxPollFutureGeneric<TB> {
-    MailboxPollFutureGeneric::new(self.user.poll_blocking())
   }
 
   /// Dequeues the next available message, prioritising system queue.
@@ -193,7 +180,7 @@ where
   #[must_use]
   pub(crate) fn current_schedule_hints(&self) -> ScheduleHints {
     ScheduleHints {
-      has_system_messages: self.system_len() > 0,
+      has_system_messages: !self.system.is_empty(),
       has_user_messages:   !self.is_suspended() && self.user_len() > 0,
       backpressure_active: false,
     }
@@ -246,7 +233,7 @@ where
       | MailboxOverflowStrategy::Grow => self.offer_user(message),
       | MailboxOverflowStrategy::Block => {
         if self.user.len() >= capacity {
-          let future = MailboxOfferFutureGeneric::new(self.user.offer_blocking(message));
+          let future = MailboxOfferFutureGeneric::new(self.user.state.clone(), message);
           return Ok(EnqueueOutcome::Pending(future));
         }
         self.offer_user(message)
