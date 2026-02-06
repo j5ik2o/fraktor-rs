@@ -1,3 +1,8 @@
+//! Periodic scheduler example with typed actors for no_std environments.
+//!
+//! Demonstrates `schedule_periodic` using the `TypedActor` API for
+//! type-safe repeating timer messages.
+
 #![cfg_attr(all(not(test), target_os = "none"), no_std)]
 
 extern crate alloc;

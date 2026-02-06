@@ -1,3 +1,7 @@
+//! Demonstrates `Behaviors::setup` for one-time initialization (no_std version).
+//!
+//! Same pattern as `behaviors_setup_receive_std` but using only core APIs.
+
 #![cfg_attr(all(not(test), target_os = "none"), no_std)]
 
 #[path = "../no_std_tick_driver_support.rs"]

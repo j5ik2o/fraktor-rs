@@ -1,3 +1,8 @@
+//! One-shot scheduler example for no_std environments.
+//!
+//! Demonstrates `schedule_once` to fire a single delayed message using
+//! the `ManualTestDriver` for deterministic tick control.
+
 #![cfg_attr(all(not(test), target_os = "none"), no_std)]
 
 extern crate alloc;

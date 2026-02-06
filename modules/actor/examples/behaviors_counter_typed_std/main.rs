@@ -1,3 +1,8 @@
+//! Functional behavior-based counter using `Behaviors::receive_message`.
+//!
+//! Demonstrates immutable state transitions: each `Add` returns a new behavior
+//! capturing the updated total, and `Read` replies via the `ask` pattern.
+
 #[path = "../std_tick_driver_support.rs"]
 mod std_tick_driver_support;
 

@@ -1,3 +1,8 @@
+//! Untyped pipe-to-self example for no_std environments.
+//!
+//! Demonstrates `pipe_to_self` with the untyped `Actor` API, converting
+//! an async future result into an `AnyMessage` delivered to the actor itself.
+
 #![cfg_attr(all(not(test), target_os = "none"), no_std)]
 
 extern crate alloc;

@@ -1,3 +1,8 @@
+//! Ping-pong messaging example on a Tokio multi-thread runtime.
+//!
+//! Demonstrates the untyped `Actor` API with `DispatcherConfig::from_executor(TokioExecutor)`
+//! and `TickDriverConfig::tokio_quickstart()` for timer-driven scheduling.
+
 use std::{string::String, time::Duration};
 
 use fraktor_actor_rs::{

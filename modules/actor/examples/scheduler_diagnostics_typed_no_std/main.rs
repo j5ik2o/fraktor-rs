@@ -1,3 +1,8 @@
+//! Scheduler diagnostics example with typed actors for no_std environments.
+//!
+//! Demonstrates `SchedulerDiagnosticsSubscription` combined with the
+//! `TypedActor` API to observe scheduler internal state.
+
 #![cfg_attr(all(not(test), target_os = "none"), no_std)]
 
 extern crate alloc;

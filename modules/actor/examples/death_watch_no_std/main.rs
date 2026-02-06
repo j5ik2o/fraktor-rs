@@ -1,3 +1,8 @@
+//! DeathWatch example for no_std environments.
+//!
+//! Demonstrates `watch` and `on_terminated` callbacks to detect child actor
+//! termination without standard library dependencies.
+
 #![cfg_attr(all(not(test), target_os = "none"), no_std)]
 
 extern crate alloc;

@@ -1,3 +1,8 @@
+//! Ping-pong messaging example for no_std environments.
+//!
+//! Demonstrates the untyped `Actor` API with a hardware tick driver,
+//! using only `core` and `alloc` (no standard library dependency).
+
 #![cfg_attr(all(not(test), target_os = "none"), no_std)]
 
 extern crate alloc;

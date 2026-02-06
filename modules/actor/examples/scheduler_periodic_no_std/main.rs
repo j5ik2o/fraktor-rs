@@ -1,3 +1,8 @@
+//! Periodic scheduler example for no_std environments.
+//!
+//! Demonstrates `schedule_periodic` for repeating timer-based messages
+//! at a fixed interval using the hardware tick driver.
+
 #![cfg_attr(all(not(test), target_os = "none"), no_std)]
 
 extern crate alloc;

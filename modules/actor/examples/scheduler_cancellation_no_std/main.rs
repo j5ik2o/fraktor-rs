@@ -1,3 +1,8 @@
+//! Scheduler cancellation example for no_std environments.
+//!
+//! Demonstrates scheduling a delayed message and then cancelling it
+//! before it fires, verifying that the message is never delivered.
+
 #![cfg_attr(all(not(test), target_os = "none"), no_std)]
 
 extern crate alloc;

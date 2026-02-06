@@ -1,3 +1,8 @@
+//! Scheduler diagnostics example for no_std environments.
+//!
+//! Demonstrates `SchedulerDiagnosticsSubscription` to observe scheduler
+//! internal state such as pending task counts and tick progress.
+
 #![cfg_attr(all(not(test), target_os = "none"), no_std)]
 
 extern crate alloc;

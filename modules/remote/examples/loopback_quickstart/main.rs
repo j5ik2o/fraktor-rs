@@ -1,3 +1,9 @@
+//! Loopback remoting quickstart example.
+//!
+//! Demonstrates in-process remote messaging using the loopback transport,
+//! with message serialization/deserialization round-tripping through the
+//! remoting layer without actual network I/O.
+
 #![allow(clippy::print_stdout)]
 
 #[cfg(not(all(feature = "std", feature = "test-support")))]

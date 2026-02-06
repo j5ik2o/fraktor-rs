@@ -1,3 +1,9 @@
+//! State machine example with typed behaviors (turnstile gate).
+//!
+//! Demonstrates behavior-based state transitions: `locked` and `unlocked`
+//! behaviors replace each other on `InsertCoin` / `PassThrough` events,
+//! modeling a classic turnstile finite state machine.
+
 #![cfg_attr(all(not(test), target_os = "none"), no_std)]
 
 #[path = "../no_std_tick_driver_support.rs"]

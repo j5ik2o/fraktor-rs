@@ -1,3 +1,8 @@
+//! Actor path inspection example with remoting configuration.
+//!
+//! Demonstrates canonical URI-based actor paths (`fraktor://system@host:port/user/child`)
+//! and `ActorPathParser` for parsing and decomposing actor addresses.
+
 #![cfg_attr(all(not(test), target_os = "none"), no_std)]
 
 extern crate alloc;
