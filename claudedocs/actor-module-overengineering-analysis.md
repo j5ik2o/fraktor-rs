@@ -175,9 +175,9 @@ pub enum TickMetricsMode {
 - [x] Phase 2: message_adapter 統合（優先度: 高）
 - [x] Phase 3: tick_driver ドメインプリミティブ保全（優先度: 高）
 - [x] Phase 4: mailbox 整理（優先度: 中）
-- [x] Phase 5: ルール運用見直し（優先度: 中）— 提案1（ルール体系3層化）実施完了
+- [x] Phase 5: ルール運用見直し（優先度: 中）— 提案1〜4 全て実施完了
 
-※Phase 1 は 2026-01-30 に監査結果を追記済み。Phase 2 は 2026-01-30 に統合完了。Phase 3 は 2026-02-03 にドメインプリミティブ保全方針で完了。Phase 4 は 2026-02-03 に mailbox 整理を完了。Phase 5 は 2026-02-06 にルール体系3層化（提案1）を実施。
+※Phase 1 は 2026-01-30 に監査結果を追記済み。Phase 2 は 2026-01-30 に統合完了。Phase 3 は 2026-02-03 にドメインプリミティブ保全方針で完了。Phase 4 は 2026-02-03 に mailbox 整理を完了。Phase 5 は 2026-02-06〜07 に提案1（ルール3層化・CLAUDE.mdスリム化・.claude/rules/rust/ 5ファイル作成・okite-ai統合）、提案2（スキル3つ新設）、提案3（1file1type例外基準）、提案4（ambiguous-suffix-lint）を実施。
 
 ### Phase 1: 公開API監査（優先度: 高）
 

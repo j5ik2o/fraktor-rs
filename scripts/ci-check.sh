@@ -307,6 +307,7 @@ run_dylint() {
     "use-placement-lint:lints/use-placement-lint"
     "rustdoc-lint:lints/rustdoc-lint"
     "cfg-std-forbid-lint:lints/cfg-std-forbid-lint"
+    "ambiguous-suffix-lint:lints/ambiguous-suffix-lint"
   )
 
   local -a selected=()

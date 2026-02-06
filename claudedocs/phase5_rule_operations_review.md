@@ -1,7 +1,7 @@
 # Phase 5: ルール運用見直し — 分析レポート
 
 **作成日**: 2026-02-06
-**更新日**: 2026-02-06（提案1 実施完了）
+**更新日**: 2026-02-07（提案1〜4 全て実施完了）
 **分析対象**: プロジェクト全体のルール・スキル・lint 体系
 **前提**: Phase 1-4（公開API監査、message_adapter統合、tick_driver保全、mailbox整理）完了済み
 
@@ -61,26 +61,37 @@ Phase 1-4 の実績から分かったこと：
 
 ## 2. 提案
 
-### 提案1: ルール体系の3層化（推奨度: 高）
+### 提案1: ルール体系の3層化（推奨度: 高）— 実施完了
 
 ```
 Tier 1: Dylint lint（機械的に強制・違反即エラー）
-  → 現在の7つのlint + 今後追加可能
+  → 8つのlint（ambiguous-suffix-lint を追加済み）
 
-Tier 2: .claude/rules/（AIが必ず従うルール）
-  → CLAUDE.md から抽出した判断フロー付きルール
+Tier 2: .claude/rules/rust/（AIが必ず従うルール）
+  → 5つのルールファイル（判断フロー付き）
   → 権威ある単一の場所
 
 Tier 3: docs/guides/ + steering（参照ガイド）
   → 背景説明・設計思想・テンプレート
 ```
 
-**具体的なアクション**:
-- CLAUDE.md をスリム化し、詳細ルールは `.claude/rules/` へ移動
-- okite-ai の5ルールのうち fraktor-rs に該当するものを `.claude/rules/` へ統合
-- Serena memory の `style_and_conventions` を整理（重複排除）
+**実施済み**:
+- 3層構造の概念定義
+- `.claude/rules/rust/immutability-policy.md` 作成済み
+- `.claude/rules/rust/cqs-principle.md` 作成済み
+- `.claude/rules/rust/type-organization.md` 作成済み（提案3）
+- `.claude/rules/rust/naming-conventions.md` 作成済み（曖昧サフィックス禁止、Shared/Handle命名）
+- `.claude/rules/rust/reference-implementation.md` 作成済み（protoactor-go/pekko 参照手順）
+- CLAUDE.md をスリム化し、詳細ルールへの参照ポインタのみ残す
+- okite-ai の fraktor-rs 該当ルールを `.claude/rules/` へ統合確認済み
+- Serena memory `style_and_conventions` を3層構造で整理済み
 
-### 提案2: プロジェクト固有スキルの新設（推奨度: 高）
+### 提案2: プロジェクト固有スキルの新設（推奨度: 高）— 実施完了（2026-02-06）
+
+3つのスキルを作成済み：
+- `.claude/skills/designing-fraktor-shared-types/SKILL.md`
+- `.claude/skills/creating-fraktor-modules/SKILL.md`
+- `.claude/skills/reviewing-fraktor-types/SKILL.md`
 
 3つのスキルを提案：
 
@@ -96,7 +107,9 @@ Tier 3: docs/guides/ + steering（参照ガイド）
 - トリガー: 「型の設計をレビューして」「過剰設計チェック」「YAGNI チェック」
 - 内容: 公開型の必要性判断、参照実装との比較手順、曖昧サフィックスチェック、小型型の同居/分離判断
 
-### 提案3: 「1 file = 1 public type」の例外基準を明文化（推奨度: 高）
+### 提案3: 「1 file = 1 public type」の例外基準を明文化（推奨度: 高）— 実施完了（2026-02-06）
+
+`.claude/rules/rust/type-organization.md` を作成済み。
 
 Phase 1-4 の実績を踏まえた運用ルール案：
 
@@ -116,27 +129,29 @@ Phase 1-4 の実績を踏まえた運用ルール案：
 
 **注意**: `type-per-file-lint` の挙動もこの例外基準に合わせて調整が必要。
 
-### 提案4: 新 lint の検討（推奨度: 中）
+### 提案4: 新 lint の検討（推奨度: 中）— `ambiguous-suffix-lint` 実施完了（2026-02-06）
 
-| lint 候補 | 目的 | 複雑度 |
-|-----------|------|--------|
-| `ambiguous-suffix-lint` | Manager/Util/Facade等の禁止サフィックス検出 | 低 |
-| `cqs-method-lint` | &self メソッドが状態変更していないか検出 | 高（断念案件かも） |
+`lints/ambiguous-suffix-lint/` を作成済み。禁止サフィックス（Manager, Util, Facade, Service, Runtime, Engine）を公開型から検出する。
 
-`ambiguous-suffix-lint` は効果対コスト比が良く、既存の okite-ai ルールを機械化できる。
+| lint 候補 | 目的 | 複雑度 | 状態 |
+|-----------|------|--------|------|
+| `ambiguous-suffix-lint` | Manager/Util/Facade等の禁止サフィックス検出 | 低 | **完了** |
+| `cqs-method-lint` | &self メソッドが状態変更していないか検出 | 高 | 見送り |
+
+`cqs-method-lint` は意味解析が必要で Dylint の範囲を超えるため見送り。
 
 ---
 
 ## 3. 優先順位
 
-| # | 提案 | 効果 | 工数 | 推奨 |
+| # | 提案 | 効果 | 工数 | 状態 |
 |---|------|------|------|------|
-| 1 | 例外基準の明文化 | 高 | 小 | 最優先 |
-| 2 | `fraktor-shared-design` スキル | 高 | 中 | 次に着手 |
-| 3 | `fraktor-new-module` スキル | 高 | 中 | 同上 |
-| 4 | ルール体系3層化（CLAUDE.md スリム化） | 中 | 中 | 後続 |
-| 5 | `fraktor-type-review` スキル | 中 | 中 | 後続 |
-| 6 | `ambiguous-suffix-lint` | 低 | 中 | 任意 |
+| 1 | 例外基準の明文化（提案3） | 高 | 小 | **完了** |
+| 2 | `designing-fraktor-shared-types` スキル（提案2） | 高 | 中 | **完了** |
+| 3 | `creating-fraktor-modules` スキル（提案2） | 高 | 中 | **完了** |
+| 4 | ルール体系3層化・CLAUDE.md スリム化（提案1） | 中 | 中 | **完了** |
+| 5 | `reviewing-fraktor-types` スキル（提案2） | 中 | 中 | **完了** |
+| 6 | `ambiguous-suffix-lint`（提案4） | 低 | 中 | **完了** |
 
 ---
 

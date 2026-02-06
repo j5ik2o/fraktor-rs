@@ -1,0 +1,68 @@
+warning: `TaskManager` (struct) は曖昧なサフィックス `Manager` を含んでいます
+  --> $DIR/forbidden_suffix.rs:5:1
+   |
+LL | pub struct TaskManager;
+   | ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: `Manager` は責務の境界が不明確になりやすいサフィックスです。代替案: Registry, Coordinator, Dispatcher, Controller
+   = note: 判定基準: この名前だけで「何に依存してよいか」「責務を一文で説明できるか」を確認してください
+   = note: AI向けアドバイス: 1. `TaskManager` の責務を一文で定義する 2. その責務に合った具体的な名前を選ぶ（代替案: Registry, Coordinator, Dispatcher, Controller） 3. 外部API/フレームワーク由来の名前であれば `#[allow(ambiguous_suffix::ambiguous_suffix)]` で明示的に許可する
+   = note: `#[warn(ambiguous_suffix)]` on by default
+
+warning: `ConnectionService` (enum) は曖昧なサフィックス `Service` を含んでいます
+  --> $DIR/forbidden_suffix.rs:7:1
+   |
+LL | / pub enum ConnectionService {
+LL | |   Http,
+LL | |   Grpc,
+LL | | }
+   | |_^
+   |
+   = help: `Service` は責務の境界が不明確になりやすいサフィックスです。代替案: Executor, Scheduler, Evaluator, Repository, Policy
+   = note: 判定基準: この名前だけで「何に依存してよいか」「責務を一文で説明できるか」を確認してください
+   = note: AI向けアドバイス: 1. `ConnectionService` の責務を一文で定義する 2. その責務に合った具体的な名前を選ぶ（代替案: Executor, Scheduler, Evaluator, Repository, Policy） 3. 外部API/フレームワーク由来の名前であれば `#[allow(ambiguous_suffix::ambiguous_suffix)]` で明示的に許可する
+
+warning: `DataUtil` (trait) は曖昧なサフィックス `Util` を含んでいます
+  --> $DIR/forbidden_suffix.rs:12:1
+   |
+LL | / pub trait DataUtil {
+LL | |   fn process(&self);
+LL | | }
+   | |_^
+   |
+   = help: `Util` は責務の境界が不明確になりやすいサフィックスです。代替案: 具体的な動詞を含む名前 (例: FormatHelper → DateFormatter)
+   = note: 判定基準: この名前だけで「何に依存してよいか」「責務を一文で説明できるか」を確認してください
+   = note: AI向けアドバイス: 1. `DataUtil` の責務を一文で定義する 2. その責務に合った具体的な名前を選ぶ（代替案: 具体的な動詞を含む名前 (例: FormatHelper → DateFormatter)） 3. 外部API/フレームワーク由来の名前であれば `#[allow(ambiguous_suffix::ambiguous_suffix)]` で明示的に許可する
+
+warning: `SessionFacade` (struct) は曖昧なサフィックス `Facade` を含んでいます
+  --> $DIR/forbidden_suffix.rs:16:1
+   |
+LL | pub struct SessionFacade;
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: `Facade` は責務の境界が不明確になりやすいサフィックスです。代替案: Gateway, Adapter, Bridge
+   = note: 判定基準: この名前だけで「何に依存してよいか」「責務を一文で説明できるか」を確認してください
+   = note: AI向けアドバイス: 1. `SessionFacade` の責務を一文で定義する 2. その責務に合った具体的な名前を選ぶ（代替案: Gateway, Adapter, Bridge） 3. 外部API/フレームワーク由来の名前であれば `#[allow(ambiguous_suffix::ambiguous_suffix)]` で明示的に許可する
+
+warning: `EventRuntime` (struct) は曖昧なサフィックス `Runtime` を含んでいます
+  --> $DIR/forbidden_suffix.rs:18:1
+   |
+LL | pub struct EventRuntime;
+   | ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: `Runtime` は責務の境界が不明確になりやすいサフィックスです。代替案: Executor, Scheduler, EventLoop, Environment
+   = note: 判定基準: この名前だけで「何に依存してよいか」「責務を一文で説明できるか」を確認してください
+   = note: AI向けアドバイス: 1. `EventRuntime` の責務を一文で定義する 2. その責務に合った具体的な名前を選ぶ（代替案: Executor, Scheduler, EventLoop, Environment） 3. 外部API/フレームワーク由来の名前であれば `#[allow(ambiguous_suffix::ambiguous_suffix)]` で明示的に許可する
+
+warning: `QueryEngine` (struct) は曖昧なサフィックス `Engine` を含んでいます
+  --> $DIR/forbidden_suffix.rs:20:1
+   |
+LL | pub struct QueryEngine;
+   | ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: `Engine` は責務の境界が不明確になりやすいサフィックスです。代替案: Executor, Evaluator, Processor, Pipeline
+   = note: 判定基準: この名前だけで「何に依存してよいか」「責務を一文で説明できるか」を確認してください
+   = note: AI向けアドバイス: 1. `QueryEngine` の責務を一文で定義する 2. その責務に合った具体的な名前を選ぶ（代替案: Executor, Evaluator, Processor, Pipeline） 3. 外部API/フレームワーク由来の名前であれば `#[allow(ambiguous_suffix::ambiguous_suffix)]` で明示的に許可する
+
+warning: 6 warnings emitted
+
