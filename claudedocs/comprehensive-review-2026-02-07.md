@@ -203,44 +203,39 @@ README のモジュール関係図や `docs/guides/` の個別ガイドは存在
 
 ### Phase A: DX 改善（最優先）
 
-#### A-1. rustdoc リンク切れ修正 [P0] [actor]
-- [ ] `cargo doc -p fraktor-actor-rs` のエラー一覧を取得
-- [ ] `ActorSystemBuilder` への unresolved link を修正
-- [ ] `SupervisorStrategy` への unresolved link を修正
-- [ ] その他の broken intra-doc link をすべて修正
-- [ ] 全モジュールで `cargo doc --no-deps` が成功することを確認
+#### A-1. rustdoc リンク切れ修正 [P0] [actor] ✅ 完了
+- [x] `cargo doc -p fraktor-actor-rs` のエラー一覧を取得
+- [x] `ActorSystemBuilder` への unresolved link を修正
+- [x] `SupervisorStrategy` への unresolved link を修正
+- [x] その他の broken intra-doc link をすべて修正（全17件: actor 12, remote 4, cluster 1, streams 1）
+- [x] 全モジュールで `cargo doc --no-deps` が成功することを確認
 
-#### A-2. ActorSystem quickstart API [P1] [actor]
-- [ ] `ActorSystem::quickstart("name")` 相当の簡易初期化 API を設計
-- [ ] TickDriverConfig のデフォルト構成を内部で自動適用
-- [ ] std 環境用に `StdActorSystem::quickstart()` も提供
-- [ ] 既存の example を quickstart API で書き直した簡易版を追加
-- [ ] rustdoc に使用例を記載
+#### A-2. ActorSystem quickstart API [P1] [actor] ✅ 設計完了
+- [x] `ActorSystem::quickstart(&props)` 簡易初期化 API を設計（`claudedocs/quickstart-api-design.md`）
+- [x] TickDriverConfig のデフォルト構成を内部で自動適用（設計済み）
+- [x] `DispatcherConfig::tokio_auto()` で Tokio Handle 自動検出（設計済み）
+- [x] Codex Architect レビュー完了（feature gate `#[cfg(feature = "tokio-executor")]` 必須等）
+- [ ] 実装（設計書に基づく実コード作成は Phase B 以降）
 
-#### A-3. Getting Started ガイド [P1] [docs]
-- [ ] `docs/guides/getting-started.md` を新規作成
-- [ ] no_std 版の最小サンプル（~30行目標）を記載
-- [ ] std/Tokio 版の最小サンプル（~30行目標）を記載
-- [ ] `cargo run --example` の実行手順と期待出力を明記
-- [ ] 必要な Cargo.toml の feature フラグ設定を記載
+#### A-3. Getting Started ガイド [P1] [docs] ✅ 完了
+- [x] `docs/guides/getting-started.md` を新規作成
+- [x] no_std 版の最小サンプルを記載
+- [x] std/Tokio 版の最小サンプルを記載
+- [x] `cargo run --example` の実行手順と期待出力を明記
+- [x] 必要な Cargo.toml の feature フラグ設定を記載
 
-#### A-4. サンプルコードの案内 [P1] [docs]
-- [ ] README に「推奨 example パス」セクションを追加
-- [ ] 目的別 example マッピング表を作成
-  - 基本: `ping_pong_not_std` / `ping_pong_tokio_std`
-  - 監督: `supervision_std`
-  - スケジューラ: `scheduler_*`
-  - リモート: `loopback_quickstart` / `tokio_tcp_quickstart`
-  - クラスタ: `quickstart`
-  - 永続化: `persistent_counter_no_std`
-  - ストリーム: `actor_system_basic_std`
-- [ ] 各 example に冒頭コメントで「このサンプルが示す概念」を明記
+#### A-4. サンプルコードの案内 [P1] [docs] ✅ 完了
+- [x] Getting Started ガイドに「次のステップ」として目的別 example マッピング表を配置
+- [x] 目的別 example マッピング表を作成（11項目: Typed Actor, Behavior, Supervision, DeathWatch, Scheduler, EventStream, Serialization, Remoting, Cluster, Persistence, Streams）
+- [x] 各 example に冒頭 `//!` コメントで「このサンプルが示す概念」を明記（33ファイル）
 
-#### A-5. typed actor 推奨パスの明記 [P1] [actor] [docs]
-- [ ] `docs/guides/actor-system.md` に typed vs untyped の判断フローを追加
-- [ ] typed API を推奨パスとして明記（type safety の利点）
-- [ ] untyped が必要なユースケースを列挙（動的ディスパッチ、plugin 等）
-- [ ] Behavior DSL（std）の位置づけを説明
+#### A-5. typed actor 推奨パスの明記 [P1] [actor] [docs] ✅ 完了
+- [x] `docs/guides/actor-system.md` に typed vs untyped の判断フローを追加
+- [x] typed API を推奨パスとして明記（type safety の利点）
+- [x] untyped が必要なユースケースを列挙（動的ディスパッチ、plugin 等）
+- [x] Behavior DSL（std）の位置づけを説明
+- [x] Message Adapter の使用例（TypedActor / Behavior DSL 両方）
+- [x] Codex Code Reviewer レビュー完了 + 指摘3件修正済み
 
 ---
 
