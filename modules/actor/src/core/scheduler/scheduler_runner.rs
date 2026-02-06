@@ -37,7 +37,7 @@ impl<'a, TB: RuntimeToolbox + 'static> SchedulerRunner<'a, TB> {
     self.mode
   }
 
-  /// Injects manual ticks that will be processed on the next [`run_once`] call.
+  /// Injects manual ticks that will be processed on the next [`Self::run_once`] call.
   pub fn inject_manual_ticks(&self, ticks: u32) {
     self.tick_handle.inject_manual_ticks(ticks);
   }

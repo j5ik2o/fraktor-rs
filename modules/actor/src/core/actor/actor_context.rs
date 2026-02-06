@@ -64,7 +64,7 @@ impl<TB: RuntimeToolbox + 'static> ActorContextGeneric<'_, TB> {
     self.sender = None;
   }
 
-  /// Returns an [`ActorRef`] pointing to the running actor.
+  /// Returns an [`ActorRefGeneric`] pointing to the running actor.
   ///
   /// # Panics
   ///

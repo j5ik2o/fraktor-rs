@@ -20,7 +20,8 @@ use crate::core::endpoint_registry::EndpointRegistry;
 /// # Interior Mutability Removed
 ///
 /// This type now requires `&mut self` for state-mutating operations.
-/// Callers requiring shared access should use [`EndpointAssociationCoordinatorShared`].
+/// Callers requiring shared access should use
+/// [`EndpointAssociationCoordinatorSharedGeneric`](super::EndpointAssociationCoordinatorSharedGeneric).
 pub struct EndpointAssociationCoordinator {
   registry:        EndpointRegistry,
   correlation_seq: AtomicU64,

@@ -17,7 +17,7 @@ use crate::core::{
   EndpointReaderGeneric, EndpointWriterGeneric, EndpointWriterSharedGeneric, RemotingExtensionGeneric,
 };
 
-/// Installer registered via [`ActorSystemBuilder::with_actor_ref_provider`].
+/// Installer registered via the actor system builder's `with_actor_ref_provider` method.
 pub struct RemoteActorRefProviderInstaller<TB: RuntimeToolbox + 'static> {
   enable_loopback: bool,
   _marker:         core::marker::PhantomData<TB>,

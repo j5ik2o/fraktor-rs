@@ -10,8 +10,8 @@ use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 /// Represents a future that resolves with a message.
 ///
 /// This type no longer uses interior mutability. Methods that modify state
-/// require `&mut self`. Use [`ActorFutureShared`] for shared ownership with
-/// external mutex synchronization.
+/// require `&mut self`. Use [`ActorFutureSharedGeneric`](super::ActorFutureSharedGeneric) for
+/// shared ownership with external mutex synchronization.
 pub struct ActorFuture<T, TB: RuntimeToolbox = NoStdToolbox>
 where
   T: Send + 'static, {
@@ -38,7 +38,7 @@ where
   /// # Important
   ///
   /// The caller **must** wake the returned waker after releasing the lock to
-  /// avoid deadlock. Use [`ActorFutureSharedGeneric::complete_and_wake`] for a
+  /// avoid deadlock. See [`ActorFutureSharedGeneric`](super::ActorFutureSharedGeneric) for a
   /// safe wrapper when working with shared futures.
   pub fn complete(&mut self, value: T) -> Option<Waker> {
     if self.value.is_some() {

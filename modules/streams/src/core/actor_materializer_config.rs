@@ -2,7 +2,7 @@ use core::time::Duration;
 
 use super::StreamBufferConfig;
 
-/// Configuration for [`ActorMaterializerGeneric`].
+/// Configuration for [`ActorMaterializerGeneric`](super::ActorMaterializerGeneric).
 pub struct ActorMaterializerConfig {
   drive_interval: Duration,
   buffer_config:  StreamBufferConfig,

@@ -4,7 +4,7 @@ use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use crate::core::system::{ActorSystemBuildError, ActorSystemGeneric};
 
-/// Installs an [`Extension`] during actor system bootstrap.
+/// Installs an [`Extension`](crate::core::extension::Extension) during actor system bootstrap.
 pub trait ExtensionInstaller<TB>: Send + Sync + 'static
 where
   TB: RuntimeToolbox + 'static, {
