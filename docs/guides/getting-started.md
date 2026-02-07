@@ -313,3 +313,4 @@ cargo run -p fraktor-actor-rs --example supervision_std --features std
 - [TickDriver クイックスタート](tick-driver-quickstart.md) - スケジューラのタイマー駆動の設定方法
 - [Remoting クイックスタート](remoting-quickstart.md) - リモートアクター通信の設定方法
 - [Shared vs Handle](shared_vs_handle.md) - 共有ラッパーとハンドルの命名・分離ガイド
+- [Persistence クイックスタート](persistence-quickstart.md) - イベントソーシングによるアクター永続化
