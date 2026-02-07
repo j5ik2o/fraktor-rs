@@ -50,7 +50,7 @@ mod tests;
 pub use batch_mode::BatchMode;
 pub use cancellable_entry::CancellableEntry;
 pub use cancellable_registry::CancellableRegistry;
-pub use cancellable_state::CancellableState;
+pub(crate) use cancellable_state::CancellableState;
 pub use command::SchedulerCommand;
 pub use config::SchedulerConfig;
 pub use delay_provider::SchedulerBackedDelayProvider;

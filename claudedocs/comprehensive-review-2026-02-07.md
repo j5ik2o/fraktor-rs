@@ -162,11 +162,11 @@ README のモジュール関係図や `docs/guides/` の個別ガイドは存在
 
 ### Phase B: API 品質向上
 
-6. **public 型の整理** — internal 型を `pub(crate)` 化（actor: 252→220）
-7. **Placement 統合窓口** — cluster の API 簡素化
-8. **PersistenceContext 隠蔽** — persistence の trait 設計改善
-9. **Remote エントリーポイント簡素化** — 7階層 → 統合 API
-10. **persist_async 改名** → `persist_unfenced`
+6. **public 型の整理** — ✅ 2 型を pub(crate) 化（252→250）、残りは API 再設計が必要
+7. **Placement 統合窓口** — → Phase C 延期（新 API 設計が必要）
+8. **PersistenceContext 隠蔽** — → Phase D 延期（trait 設計の根本見直しが必要）
+9. **Remote エントリーポイント簡素化** — → Phase C 延期（ビルダー API 設計が必要）
+10. **persist_async 改名** → ✅ `persist_unfenced` に完了
 
 ### Phase C: 機能充実
 
@@ -241,55 +241,57 @@ README のモジュール関係図や `docs/guides/` の個別ガイドは存在
 
 ### Phase B: API 品質向上
 
-#### B-1. public 型の整理 [P1] [actor]
-- [ ] 252 個の公開型をリスト化し、外部向け/内部向けを分類
-- [ ] 内部型を `pub(crate)` に変更（目標: 252→220 型程度）
-  - [ ] SystemState 関連（SystemState, SystemStateShared, SystemStateWeak）
-  - [ ] DispatcherCore, DispatcherState 等の内部型
-  - [ ] MailboxQueueState, MailboxQueueHandles 等の内部型
-  - [ ] TickDriverCore, TickDriverBundle 等の内部型
-- [ ] type-per-file-lint との整合性を確認
-- [ ] 変更後に全テスト・example が通ることを確認
+#### B-1. public 型の整理 [P1] [actor] ✅ 調査・部分実施完了
+- [x] 16 個の内部型候補を特定し、外部参照を調査
+- [x] 2 型を `pub(crate)` に変更（MailboxMessage, CancellableState）
+- [x] 変更後に全テスト（521件）が通ることを確認
+- **結果**: 16型中14型は公開メソッドシグネチャに組み込まれており変更不可
+  - ScheduleHints, EnqueueOutcome, MailboxCapacity → Dispatcher/Mailbox の pub fn 引数・戻り値
+  - MailboxMetricsEvent, DispatcherDumpEvent → EventStreamEvent enum の pub variant
+  - CancellableEntry, BatchMode → CancellableRegistry/ExecutionBatch の pub fn
+  - TaskRunSummary, SchedulerWarning, SchedulerDump, SchedulerDumpJob, SchedulerMetrics → Scheduler の pub fn 戻り値
+  - FailureOutcome → SystemStateShared の pub fn 戻り値
+  - ReceiveState → placeholder 型（dead_code 警告回避のため pub 維持）
+- **判断**: 大規模な API リファクタリングなしでの削減は 2 型が限界。252→250 型。目標の 220 型達成には Phase C 以降で API 再設計が必要
 
-#### B-2. Placement 統合窓口 [P1] [cluster]
-- [ ] PlacementCoordinator/Driver/Shared を統一する窓口 API を設計
-- [ ] ClusterExtensionInstaller が 1 つの型だけで操作できるようにする
-- [ ] 既存の内部型は `pub(crate)` に変更
-- [ ] テストとサンプルを更新
+#### B-2. Placement 統合窓口 [P1] [cluster] → Phase C に延期
+- [x] 調査完了: 17 ファイルにまたがる Placement 関連 API を分析
+- **結果**: PlacementCoordinator/Driver/Shared は内部で密結合しており、単純な pub(crate) 化では不十分
+- **延期理由**: 新しいファサード API の設計が必要（Phase C の API 再設計と統合して実施）
 
-#### B-3. cluster エラー型の階層化 [P1] [cluster]
-- [ ] ClusterError を基底エラー型として統一
-- [ ] ClusterApiError, ClusterRequestError, ClusterResolveError 等を From trait で変換
-- [ ] エラー型の数を削減（現在 6+ → 統一基底 + 2-3 サブカテゴリ）
+#### B-3. cluster エラー型の階層化 [P1] [cluster] ✅ 調査完了（変更不要）
+- [x] 23 個のエラー型を調査
+- **結果**: エラー型は既にモジュール単位で適切に分離されており、各エラー型が固有のコンテキストを持つ
+- **判断**: 現状の設計は「1 エラー型 = 1 責務」の原則に合致。無理な統合は情報損失のリスクあり。変更不要
 
-#### B-4. PersistenceContext 隠蔽 [P1] [persistence]
-- [ ] PersistenceContext を `pub(crate)` に変更
-- [ ] Eventsourced trait に関連型または内部メソッドで隠蔽
-- [ ] アクター定義で PersistenceContext フィールドの明示保持を不要に
-- [ ] 既存テスト・example を更新
+#### B-4. PersistenceContext 隠蔽 [P1] [persistence] → Phase D に延期
+- [x] 調査完了: PersistenceContext は Eventsourced trait の関連型として公開が必須
+- **結果**: `type Context = PersistenceContext<...>` としてアクター定義で使用されており、trait 契約上 pub(crate) 化不可
+- **延期理由**: trait 設計の根本的見直しが必要（Phase D の構造最適化で検討）
 
-#### B-5. Remote エントリーポイント簡素化 [P1] [remote]
-- [ ] `RemotingSystemSetup::new(name, host, port).install(system)` 相当の統合窓口 API を設計
-- [ ] SerializationExtensionInstaller と RemotingExtensionInstaller の依存順序を隠蔽
-- [ ] 既存の 7 階層設定チェーンを内部化
-- [ ] example を更新（loopback_quickstart, tokio_tcp_quickstart）
+#### B-5. Remote エントリーポイント簡素化 [P1] [remote] → Phase C に延期
+- [x] 調査完了: 7 階層の設定チェーンを分析（RemotingExtensionConfig → EndpointWriterConfig → ... → Transport）
+- **結果**: RemotingSetup ビルダーで 60-75% の設定ボイラープレート削減が可能と推定
+- **延期理由**: 新しいビルダー API の設計・実装が必要（Phase C で実施）
 
-#### B-6. `persist_async` 改名 [P1] [persistence]
-- [ ] `persist_async` → `persist_unfenced` にリネーム
-- [ ] rustdoc で命名理由を説明（「async ≠ Tokio async、コマンドスタッシュなし」）
-- [ ] 全参照箇所を更新
+#### B-6. `persist_async` 改名 [P1] [persistence] ✅ 完了
+- [x] `persist_async` → `persist_unfenced` にリネーム
+- [x] rustdoc で命名理由を説明（「unfenced = コマンドスタッシュ/フェンシングなし」）
+- [x] 全参照箇所を更新（89テスト通過確認）
 
-#### B-7. cluster アーキテクチャガイド [P1] [cluster] [docs]
-- [ ] Placement state machine 図を作成
-- [ ] Membership coordinator flow を図示
-- [ ] Pub/Sub delivery guarantee を説明
-- [ ] `docs/guides/cluster-architecture.md` として配置
+#### B-7. cluster アーキテクチャガイド [P1] [cluster] [docs] ✅ 完了
+- [x] Placement state machine 図を作成（Mermaid）
+- [x] Membership coordinator flow を図示
+- [x] Pub/Sub delivery guarantee を説明
+- [x] `docs/guides/cluster-architecture.md` として配置
+- [x] protoactor-go 対応表を記載
 
-#### B-8. persistence Quickstart ガイド [P1] [persistence] [docs]
-- [ ] `docs/guides/persistence-quickstart.md` を新規作成
-- [ ] Pekko EventSourcedBehavior との概念対応表
-- [ ] 最小限の永続アクター実装手順
-- [ ] no_std 環境での使い方
+#### B-8. persistence Quickstart ガイド [P1] [persistence] [docs] ✅ 完了
+- [x] `docs/guides/persistence-quickstart.md` を新規作成
+- [x] Pekko EventSourcedBehavior との概念対応表
+- [x] 最小限の永続アクター実装手順（8ステップ）
+- [x] no_std 環境での使い方
+- [x] Getting Started ガイドにリンク追加
 
 ---
 
