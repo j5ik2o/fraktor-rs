@@ -344,8 +344,8 @@ README のモジュール関係図や `docs/guides/` の個別ガイドは存在
 
 #### C-8. Behavior DSL の充実 [P1] [actor]
 - [x] `receive_and_reply` shorthand の追加（`core/std::typed::Behaviors` に実装、unit test 追加）
-- [ ] message adapter builder の提供
-- [ ] Behavior DSL のガイドドキュメント
+- [x] message adapter builder の提供（`TypedActorContext::message_adapter_builder()` + `register` / `register_map`）
+- [x] Behavior DSL のガイドドキュメント（`docs/guides/actor-system.md` に builder 利用例を追記）
 
 ---
 

@@ -268,7 +268,7 @@ fn counter(total: i32) -> Behavior<CounterQuery> {
 | ライフサイクルフック | `pre_start` / `post_stop` / `on_terminated` を個別にオーバーライド | `receive_signal` で `BehaviorSignal` を処理 |
 | 状態遷移 | フィールドの更新（`&mut self`） | 新しい `Behavior` を返す（関数型） |
 | 監督戦略 | `supervisor_strategy` メソッドで動的に決定 | `Behaviors::supervise().on_failure()` で宣言的に設定 |
-| Message Adapter | `pre_start` 等で `ctx.message_adapter()` を利用 | `setup` 内で `ctx.message_adapter()` を利用 |
+| Message Adapter | `pre_start` 等で `ctx.message_adapter()` / `ctx.message_adapter_builder()` を利用 | `setup` 内で `ctx.message_adapter()` / `ctx.message_adapter_builder()` を利用 |
 | 適用場面 | ライフサイクル管理が複雑、手続き的なスタイルを好む | 状態遷移が明確、関数型スタイルを好む |
 
 ### 7.2 代替: untyped actor
@@ -346,17 +346,44 @@ impl TypedActor<CounterCommand> for CounterActor {
 }
 ```
 
+**Builder 形式（命名 + map/try の使い分け）**:
+
+```rust
+// 失敗しない変換: register_map
+let _infallible = ctx
+  .message_adapter_builder::<ExternalCommand>()
+  .with_name("counter-external")
+  .register_map(|payload| match payload {
+    ExternalCommand::Apply(delta) => CounterCommand::Apply(delta),
+  })
+  .map_err(|e| ActorError::Recoverable(e.to_string().into()))?;
+
+// 失敗する変換: register
+let _fallible = ctx
+  .message_adapter_builder::<String>()
+  .with_name("counter-parse")
+  .register(|payload| {
+    payload.parse::<i32>()
+      .map(CounterCommand::Apply)
+      .map_err(|_| AdapterError::Custom("parse error".into()))
+  })
+  .map_err(|e| ActorError::Recoverable(e.to_string().into()))?;
+```
+
 **Behavior DSL での利用例**:
 
 ```rust
 fn counter(total: i32) -> Behavior<CounterCommand> {
   Behaviors::setup(|ctx| {
-    // setup 内でもアダプタ登録が可能
-    let _adapter = ctx.message_adapter(|payload: String| {
-      payload.parse::<i32>()
-        .map(CounterCommand::Apply)
-        .map_err(|_| AdapterError::Custom("parse error".into()))
-    });
+    // setup 内でも builder 経由で登録可能
+    let _adapter = ctx
+      .message_adapter_builder::<String>()
+      .with_name("counter-input")
+      .register(|payload| {
+        payload.parse::<i32>()
+          .map(CounterCommand::Apply)
+          .map_err(|_| AdapterError::Custom("parse error".into()))
+      });
     Behaviors::receive_message(move |_ctx, message| match message {
       CounterCommand::Apply(delta) => Ok(counter(total + delta)),
     })
@@ -364,4 +391,4 @@ fn counter(total: i32) -> Behavior<CounterCommand> {
 }
 ```
 
-Message Adapter は TypedActor / Behavior DSL の両方で利用でき、typed actor のメッセージ型を変更せずに外部プロトコルとの橋渡しが可能です。アダプタの変換失敗時は `BehaviorSignal::AdapterFailed` としてシグナルハンドラに通知されます。
+`message_adapter` は最短経路、`message_adapter_builder` は命名や `register_map` を使った意図の明示に向きます。Message Adapter は TypedActor / Behavior DSL の両方で利用でき、typed actor のメッセージ型を変更せずに外部プロトコルとの橋渡しが可能です。アダプタの変換失敗時は `BehaviorSignal::AdapterFailed` としてシグナルハンドラに通知されます。

@@ -12,7 +12,7 @@ use crate::core::{
   typed::{
     TypedActorSystemGeneric,
     actor::{actor_ref::TypedActorRefGeneric, child_ref::TypedChildRefGeneric},
-    message_adapter::{AdaptMessage, AdapterError, MessageAdapterRegistry},
+    message_adapter::{AdaptMessage, AdapterError, MessageAdapterBuilderGeneric, MessageAdapterRegistry},
     props::TypedPropsGeneric,
   },
 };
@@ -139,6 +139,14 @@ where
 
   fn registry_ptr(&self) -> Result<NonNull<MessageAdapterRegistry<M, TB>>, AdapterError> {
     self.adapters.ok_or(AdapterError::RegistryUnavailable)
+  }
+
+  /// Creates a fluent builder for registering a message adapter.
+  #[must_use]
+  pub const fn message_adapter_builder<U>(&mut self) -> MessageAdapterBuilderGeneric<'_, 'a, M, U, TB>
+  where
+    U: Send + Sync + 'static, {
+    MessageAdapterBuilderGeneric::new(self)
   }
 
   /// Registers a message adapter for the specified payload type.
