@@ -47,11 +47,12 @@ pub use remoting_extension::{
   RemotingControl, RemotingControlHandle, RemotingControlShared, RemotingError, RemotingExtension,
   RemotingExtensionConfig, RemotingExtensionGeneric,
 };
-#[cfg(feature = "std")]
-pub use remoting_extension::{RemotingExtensionId, RemotingExtensionInstaller};
 pub use transport::{
   InboundFrame, LoopbackTransport, RemoteTransport, RemoteTransportShared, TokioTransportConfig,
   TransportBackpressureHook, TransportBackpressureHookShared, TransportBind, TransportChannel, TransportEndpoint,
   TransportError, TransportFactory, TransportHandle, TransportInbound, TransportInboundShared,
 };
 pub use wire_error::WireError;
+
+#[cfg(feature = "std")]
+pub use crate::std::{RemotingExtensionId, RemotingExtensionInstaller};

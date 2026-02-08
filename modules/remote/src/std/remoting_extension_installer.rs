@@ -1,23 +1,24 @@
 //! Installer for the remoting extension.
 
+use alloc::format;
+
 use fraktor_actor_rs::core::{
   extension::ExtensionInstaller,
   system::{ActorSystemBuildError, ActorSystemGeneric},
 };
 use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
-use super::{config::RemotingExtensionConfig, id::RemotingExtensionId};
+use super::remoting_extension_id::RemotingExtensionId;
+use crate::core::RemotingExtensionConfig;
 
 /// Installs the remoting extension into the actor system.
-///
-/// This installer is only available with the `std` feature because the extension
-/// initialization requires `TransportFactory` which depends on standard library facilities.
 pub struct RemotingExtensionInstaller {
   config: RemotingExtensionConfig,
 }
 
 impl RemotingExtensionInstaller {
   /// Creates a new remoting extension installer with the specified configuration.
+  #[must_use]
   pub fn new(config: RemotingExtensionConfig) -> Self {
     Self { config }
   }
