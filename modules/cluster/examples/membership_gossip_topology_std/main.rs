@@ -1,4 +1,3 @@
-//! Membership and gossip topology demo for std driver.
 #![allow(clippy::print_stdout)]
 
 //! Membership/Gossip topology demo (std driver).

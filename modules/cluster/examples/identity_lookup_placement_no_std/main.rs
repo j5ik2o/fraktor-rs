@@ -1,4 +1,3 @@
-//! Identity lookup and placement demo for no_std core.
 #![allow(clippy::print_stdout)]
 
 //! Identity lookup placement demo (no_std core).

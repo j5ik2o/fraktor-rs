@@ -1,4 +1,3 @@
-//! Membership and gossip Tokio demo.
 #![allow(clippy::print_stdout)]
 
 //! Membership/Gossip Tokio demo.

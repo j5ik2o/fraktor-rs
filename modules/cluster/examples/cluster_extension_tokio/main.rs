@@ -1,4 +1,3 @@
-//! Cluster extension quickstart sample for Tokio runtime.
 #![allow(clippy::print_stdout)]
 
 //! Cluster extension quickstart (Tokio + LocalClusterProviderGeneric)
