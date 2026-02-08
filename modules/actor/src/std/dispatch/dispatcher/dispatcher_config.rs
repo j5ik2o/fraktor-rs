@@ -5,7 +5,11 @@ use fraktor_utils_rs::{
   core::sync::ArcShared,
   std::{StdSyncMutex, runtime_toolbox::StdToolbox},
 };
+#[cfg(feature = "tokio-executor")]
+use tokio::runtime::Handle;
 
+#[cfg(feature = "tokio-executor")]
+use super::dispatch_executor::TokioExecutor;
 use super::{DispatchExecutor, DispatchExecutorAdapter, DispatcherShared, StdScheduleAdapter};
 use crate::core::{
   dispatch::{
@@ -17,6 +21,9 @@ use crate::core::{
   },
   spawn::SpawnError,
 };
+
+#[cfg(all(test, feature = "tokio-executor"))]
+mod tests;
 
 /// Dispatcher configuration specialised for `StdToolbox`.
 #[derive(Clone, Default)]
@@ -34,6 +41,20 @@ impl DispatcherConfig {
     let schedule_adapter = ScheduleAdapterSharedGeneric::<StdToolbox>::new(Box::new(StdScheduleAdapter::default()));
     let inner = CoreDispatcherConfigGeneric::from_executor(executor_adapter).with_schedule_adapter(schedule_adapter);
     Self { inner }
+  }
+
+  /// Creates a configuration from the current Tokio runtime handle.
+  ///
+  /// # Panics
+  ///
+  /// Panics when called outside a Tokio runtime context.
+  #[cfg(feature = "tokio-executor")]
+  #[must_use]
+  pub fn tokio_auto() -> Self {
+    let Ok(handle) = Handle::try_current() else {
+      panic!("Tokio runtime handle unavailable");
+    };
+    Self::from_executor(ArcShared::new(StdSyncMutex::new(Box::new(TokioExecutor::new(handle)))))
   }
 
   /// Returns the configured scheduler runner.
