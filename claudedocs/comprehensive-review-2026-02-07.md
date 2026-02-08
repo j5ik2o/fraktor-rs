@@ -316,9 +316,9 @@ README のモジュール関係図や `docs/guides/` の個別ガイドは存在
 - [ ] テストと example 追加
 
 #### C-4. Backpressure Protocol [P2] [actor]
-- [ ] mailbox full 時の明示的ハンドリングを設計
-- [ ] `on_mailbox_pressure()` hook または backoff integration
-- [ ] テスト追加
+- [x] mailbox full 時の明示的ハンドリングを設計（dispatcher 内 pending pressure を実行ループで処理）
+- [x] `on_mailbox_pressure()` hook を追加（`Actor` / `TypedActor` / `MessageInvoker` 経路）
+- [x] テスト追加（dispatcher core / dispatcher / actor lifecycle）
 
 #### C-5. 統合テスト拡充 [P2] [cluster] [remote]
 - [ ] cluster: failure scenario テスト（node down, network partition, slow node）

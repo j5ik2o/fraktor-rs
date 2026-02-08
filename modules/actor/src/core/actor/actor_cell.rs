@@ -21,7 +21,10 @@ use crate::core::{
   },
   dispatch::{
     dispatcher::DispatcherSharedGeneric,
-    mailbox::{BackpressurePublisherGeneric, MailboxCapacity, MailboxGeneric, MailboxInstrumentationGeneric},
+    mailbox::{
+      BackpressurePublisherGeneric, MailboxCapacity, MailboxGeneric, MailboxInstrumentationGeneric,
+      MailboxPressureEvent,
+    },
   },
   error::ActorError,
   event::stream::EventStreamEvent,
@@ -575,6 +578,20 @@ impl<TB: RuntimeToolbox + 'static> MessageInvoker<TB> for ActorCellInvoker<TB> {
         Ok(())
       },
     }
+  }
+
+  fn invoke_mailbox_pressure(&mut self, event: &MailboxPressureEvent) -> Result<(), ActorError> {
+    let Some(cell) = self.cell() else {
+      // ActorCell has been dropped, silently ignore the notification
+      return Ok(());
+    };
+    let system = ActorSystemGeneric::from_state(cell.system());
+    let mut ctx = ActorContextGeneric::new(&system, cell.pid);
+    let result = cell.actor.with_write(|actor| actor.on_mailbox_pressure(&mut ctx, event));
+    if let Err(ref error) = result {
+      cell.report_failure(error, None);
+    }
+    result
   }
 }
 

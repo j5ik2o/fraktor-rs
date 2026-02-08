@@ -4,6 +4,7 @@ use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 
 use crate::core::{
   actor::Pid,
+  dispatch::mailbox::MailboxPressureEvent,
   error::{ActorError, ActorErrorReason},
   supervision::SupervisorStrategy,
   typed::{actor::actor_context::TypedActorContextGeneric, message_adapter::AdapterError},
@@ -59,6 +60,20 @@ where
   #[must_use]
   fn supervisor_strategy(&mut self, _ctx: &mut TypedActorContextGeneric<'_, M, TB>) -> SupervisorStrategy {
     SupervisorStrategy::default()
+  }
+
+  /// Called when this actor's mailbox reaches high pressure while messages are queued.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the actor cannot handle pressure conditions.
+  #[allow(unused_variables)]
+  fn on_mailbox_pressure(
+    &mut self,
+    ctx: &mut TypedActorContextGeneric<'_, M, TB>,
+    event: &MailboxPressureEvent,
+  ) -> Result<(), ActorError> {
+    Ok(())
   }
 
   /// Called when a message adapter fails before delivering a message.

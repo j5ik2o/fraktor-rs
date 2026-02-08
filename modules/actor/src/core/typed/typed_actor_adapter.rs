@@ -7,6 +7,7 @@ use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 use crate::core::{
   actor::{Actor, ActorContextGeneric, actor_ref::ActorRefGeneric},
   dead_letter::DeadLetterReason,
+  dispatch::mailbox::MailboxPressureEvent,
   error::{ActorError, ActorErrorReason},
   event::logging::LogLevel,
   messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
@@ -175,5 +176,14 @@ where
   fn supervisor_strategy(&mut self, ctx: &mut ActorContextGeneric<'_, TB>) -> SupervisorStrategy {
     let mut typed_ctx = TypedActorContextGeneric::from_untyped(ctx, Some(&mut self.adapters));
     self.actor.supervisor_strategy(&mut typed_ctx)
+  }
+
+  fn on_mailbox_pressure(
+    &mut self,
+    ctx: &mut ActorContextGeneric<'_, TB>,
+    event: &MailboxPressureEvent,
+  ) -> Result<(), ActorError> {
+    let mut typed_ctx = TypedActorContextGeneric::from_untyped(ctx, Some(&mut self.adapters));
+    self.actor.on_mailbox_pressure(&mut typed_ctx, event)
   }
 }

@@ -9,6 +9,7 @@ use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 
 use crate::core::{
   actor::{ActorContextGeneric, Pid},
+  dispatch::mailbox::MailboxPressureEvent,
   error::ActorError,
   messaging::AnyMessageViewGeneric,
   supervision::SupervisorStrategy,
@@ -65,6 +66,19 @@ pub trait Actor<TB: RuntimeToolbox = NoStdToolbox>: Send {
   ///
   /// Returns an error when cleanup logic fails.
   fn on_terminated(&mut self, _ctx: &mut ActorContextGeneric<'_, TB>, _terminated: Pid) -> Result<(), ActorError> {
+    Ok(())
+  }
+
+  /// Called when this actor's mailbox reaches high pressure while processing inbound traffic.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the actor cannot react to pressure conditions.
+  fn on_mailbox_pressure(
+    &mut self,
+    _ctx: &mut ActorContextGeneric<'_, TB>,
+    _event: &MailboxPressureEvent,
+  ) -> Result<(), ActorError> {
     Ok(())
   }
 
@@ -173,6 +187,14 @@ where
 
   fn on_terminated(&mut self, ctx: &mut ActorContextGeneric<'_, TB>, terminated: Pid) -> Result<(), ActorError> {
     (**self).on_terminated(ctx, terminated)
+  }
+
+  fn on_mailbox_pressure(
+    &mut self,
+    ctx: &mut ActorContextGeneric<'_, TB>,
+    event: &MailboxPressureEvent,
+  ) -> Result<(), ActorError> {
+    (**self).on_mailbox_pressure(ctx, event)
   }
 
   fn supervisor_strategy(&mut self, ctx: &mut ActorContextGeneric<'_, TB>) -> SupervisorStrategy {

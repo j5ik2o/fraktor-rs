@@ -22,7 +22,8 @@ use crate::core::{
       ScheduleAdapter, ScheduleAdapterSharedGeneric, TickExecutorGeneric,
     },
     mailbox::{
-      EnqueueOutcome, MailboxGeneric, MailboxInstrumentation, MailboxOverflowStrategy, MailboxPolicy, ScheduleHints,
+      BackpressurePublisherGeneric, EnqueueOutcome, MailboxGeneric, MailboxInstrumentation, MailboxOverflowStrategy,
+      MailboxPolicy, ScheduleHints,
     },
   },
   event::{
@@ -224,6 +225,50 @@ fn telemetry_captures_mailbox_pressure_and_dispatcher_dump() {
   let guard = events.lock();
   assert!(guard.iter().any(|event| matches!(event, EventStreamEvent::MailboxPressure(_))));
   assert!(guard.iter().any(|event| matches!(event, EventStreamEvent::DispatcherDump(_))));
+}
+
+#[test]
+fn mailbox_full_notifies_invoker_pressure_hook() {
+  struct PressureInvoker {
+    pressure_calls: ArcShared<NoStdMutex<usize>>,
+  }
+
+  impl MessageInvoker<NoStdToolbox> for PressureInvoker {
+    fn invoke_user_message(&mut self, _message: AnyMessage) -> Result<(), crate::core::error::ActorError> {
+      Ok(())
+    }
+
+    fn invoke_system_message(
+      &mut self,
+      _message: crate::core::messaging::SystemMessage,
+    ) -> Result<(), crate::core::error::ActorError> {
+      Ok(())
+    }
+
+    fn invoke_mailbox_pressure(
+      &mut self,
+      _event: &crate::core::dispatch::mailbox::MailboxPressureEvent,
+    ) -> Result<(), crate::core::error::ActorError> {
+      *self.pressure_calls.lock() += 1;
+      Ok(())
+    }
+  }
+
+  let (mailbox, _system) = bounded_mailbox(1);
+  let (recording, runner) = recording_executor_with_runner();
+  let dispatcher = dispatcher_with_executor(mailbox.clone(), runner, None, None);
+  mailbox.attach_backpressure_publisher(BackpressurePublisherGeneric::from_dispatcher(dispatcher.clone()));
+
+  let pressure_calls = ArcShared::new(NoStdMutex::new(0_usize));
+  let invoker = MessageInvokerShared::new(
+    Box::new(PressureInvoker { pressure_calls: pressure_calls.clone() }) as Box<dyn MessageInvoker<NoStdToolbox>>
+  );
+  dispatcher.register_invoker(invoker);
+
+  assert!(matches!(mailbox.enqueue_user(AnyMessage::new(1usize)), Ok(EnqueueOutcome::Enqueued)));
+  recording.run_next();
+
+  assert_eq!(*pressure_calls.lock(), 1);
 }
 
 fn dispatcher_with_executor(
