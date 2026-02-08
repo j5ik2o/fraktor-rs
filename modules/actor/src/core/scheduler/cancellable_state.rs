@@ -1,6 +1,6 @@
 /// Enumerates the lifecycle of a scheduled job.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum CancellableState {
+pub(crate) enum CancellableState {
   /// Job has been allocated but not yet enqueued.
   Pending   = 0,
   /// Job is waiting in the timer wheel.

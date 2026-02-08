@@ -1,3 +1,8 @@
+//! Typed ping-pong messaging example for no_std environments.
+//!
+//! Demonstrates `TypedActor<M>` and `TypedActorRef<M>` for compile-time
+//! message type safety, running on a hardware tick driver without std.
+
 #![cfg_attr(all(not(test), target_os = "none"), no_std)]
 
 extern crate alloc;

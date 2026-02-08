@@ -111,7 +111,8 @@ impl Behaviors {
     Behavior::from_signal_handler(handler)
   }
 
-  /// Wraps a behavior so that spawned children inherit a declarative [`SupervisorStrategy`].
+  /// Wraps a behavior so that spawned children inherit a declarative
+  /// [`SupervisorStrategy`](crate::core::supervision::SupervisorStrategy).
   #[must_use]
   pub const fn supervise<M, TB>(behavior: Behavior<M, TB>) -> Supervise<M, TB>
   where

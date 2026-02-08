@@ -1,3 +1,9 @@
+//! Persistent counter example using event sourcing (no_std).
+//!
+//! Demonstrates `PersistentActor` with event-based state recovery:
+//! events are persisted to a journal and replayed on actor restart
+//! to restore the counter's accumulated value.
+
 #![cfg_attr(all(not(test), target_os = "none"), no_std)]
 
 extern crate alloc;

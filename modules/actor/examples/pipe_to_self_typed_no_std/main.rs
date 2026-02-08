@@ -1,3 +1,8 @@
+//! Typed pipe-to-self example for no_std environments.
+//!
+//! Demonstrates `pipe_to_self` to convert an async future result into a typed
+//! actor message, enabling asynchronous operations within the actor model.
+
 #![cfg_attr(all(not(test), target_os = "none"), no_std)]
 
 extern crate alloc;

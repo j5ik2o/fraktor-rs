@@ -1,3 +1,8 @@
+//! Functional behavior-based counter for no_std environments.
+//!
+//! Same counter pattern as `behaviors_counter_typed_std` but using only
+//! core APIs without standard library dependencies.
+
 #![cfg_attr(all(not(test), target_os = "none"), no_std)]
 
 use fraktor_utils_rs::core::sync::sync_mutex_like::SyncMutexLike as _;

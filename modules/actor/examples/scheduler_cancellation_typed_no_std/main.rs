@@ -1,3 +1,8 @@
+//! Scheduler cancellation example with typed actors for no_std environments.
+//!
+//! Demonstrates scheduling and then cancelling a typed message before
+//! the timer fires, verifying that the message is never delivered.
+
 #![cfg_attr(all(not(test), target_os = "none"), no_std)]
 
 extern crate alloc;

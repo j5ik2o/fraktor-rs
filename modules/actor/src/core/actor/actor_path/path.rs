@@ -139,7 +139,7 @@ impl ActorPath {
     value
   }
 
-  /// Backwards-compatible helper that forwards to [`to_relative_string`].
+  /// Backwards-compatible helper that forwards to [`Self::to_relative_string`].
   #[must_use]
   #[allow(clippy::inherent_to_string_shadow_display)]
   pub fn to_string(&self) -> String {

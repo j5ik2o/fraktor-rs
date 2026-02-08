@@ -1,6 +1,6 @@
 //! Callback hook passed to hardware pulse sources.
 
-/// Callback registry used by [`TickPulseSource`].
+/// Callback registry used by [`TickPulseSource`](super::TickPulseSource).
 #[derive(Clone, Copy)]
 pub struct TickPulseHandler {
   /// Function pointer for the callback.

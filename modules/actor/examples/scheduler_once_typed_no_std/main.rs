@@ -1,3 +1,8 @@
+//! One-shot scheduler example with typed actors for no_std environments.
+//!
+//! Demonstrates `schedule_once` using the `TypedActor` API and
+//! `ManualTestDriver` for deterministic tick advancement.
+
 #![cfg_attr(all(not(test), target_os = "none"), no_std)]
 
 extern crate alloc;

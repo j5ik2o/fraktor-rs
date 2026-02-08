@@ -14,14 +14,14 @@ use crate::core::remoting_extension::RemotingExtensionConfig;
 #[test]
 fn factory_resolves_loopback_scheme() {
   let config = RemotingExtensionConfig::default().with_transport_scheme("fraktor.loopback");
-  let transport = TransportFactory::build(&config).expect("transport resolved");
+  let transport = TransportFactory::build::<StdToolbox>(&config).expect("transport resolved");
   assert_eq!(transport.scheme(), "fraktor.loopback");
 }
 
 #[test]
 fn factory_rejects_unknown_scheme() {
   let config = RemotingExtensionConfig::default().with_transport_scheme("fraktor.invalid");
-  match TransportFactory::build(&config) {
+  match TransportFactory::build::<StdToolbox>(&config) {
     | Ok(_) => panic!("expected unsupported scheme"),
     | Err(error) => match error {
       | TransportError::UnsupportedScheme(scheme) => assert_eq!(scheme, "fraktor.invalid"),

@@ -18,11 +18,11 @@ use fraktor_actor_rs::core::{
 };
 use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
-use super::{
-  RemotingControl, RemotingControlShared, RemotingError, RemotingExtensionConfig, RemotingExtensionId,
-  RemotingExtensionInstaller,
+use super::{RemotingControl, RemotingControlShared, RemotingError, RemotingExtensionConfig};
+use crate::{
+  core::FnRemotingBackpressureListener,
+  std::{RemotingExtensionId, RemotingExtensionInstaller},
 };
-use crate::core::FnRemotingBackpressureListener;
 
 struct NoopActor;
 

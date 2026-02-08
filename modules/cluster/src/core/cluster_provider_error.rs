@@ -4,7 +4,7 @@ extern crate alloc;
 
 use alloc::string::String;
 
-/// Error type returned by [`ClusterProvider`] operations.
+/// Error type returned by [`ClusterProvider`](super::ClusterProvider) operations.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClusterProviderError {
   /// Provider failed to start a member node.

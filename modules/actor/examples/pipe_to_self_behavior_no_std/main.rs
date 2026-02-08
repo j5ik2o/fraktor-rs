@@ -1,3 +1,8 @@
+//! Behavior-based pipe-to-self example for no_std environments.
+//!
+//! Demonstrates `pipe_to_self` combined with the functional `Behaviors` API,
+//! piping an async result back into the behavior's message handler.
+
 #![cfg_attr(all(not(test), target_os = "none"), no_std)]
 
 extern crate alloc;

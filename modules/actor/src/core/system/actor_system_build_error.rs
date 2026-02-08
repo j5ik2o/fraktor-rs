@@ -3,7 +3,7 @@ use core::fmt;
 
 use crate::core::{scheduler::TickDriverError, spawn::SpawnError};
 
-/// Error emitted when [`ActorSystemBuilder`] fails to initialize the runtime.
+/// Error emitted when the actor system builder fails to initialize the runtime.
 #[derive(Debug)]
 pub enum ActorSystemBuildError {
   /// Tick driver configuration was not provided.

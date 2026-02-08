@@ -40,8 +40,13 @@ where
     self.persistence_context().add_to_event_batch(event, true, handler_box);
   }
 
-  /// Persists a single event without stashing commands.
-  fn persist_async<E: Any + Send + Sync + 'static>(
+  /// Persists a single event without command stashing (fencing).
+  ///
+  /// Unlike [`Self::persist`], this method does not stash incoming commands
+  /// while the event is being persisted. Named "unfenced" to clarify
+  /// that no fencing (command stashing) occurs, avoiding confusion
+  /// with Tokio's `async` terminology.
+  fn persist_unfenced<E: Any + Send + Sync + 'static>(
     &mut self,
     _ctx: &mut ActorContextGeneric<'_, TB>,
     event: E,

@@ -16,7 +16,7 @@ use super::{
 ///
 /// Methods that mutate transport state take `&mut self`, while pure accessors
 /// take `&self`. Callers requiring shared ownership should wrap implementations
-/// in [`RemoteTransportShared`].
+/// in [`RemoteTransportShared`](super::RemoteTransportShared).
 pub trait RemoteTransport<TB: RuntimeToolbox>: Send + 'static {
   /// Returns the URI scheme handled by this transport.
   fn scheme(&self) -> &str;

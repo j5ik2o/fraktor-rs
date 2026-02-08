@@ -64,7 +64,7 @@ impl<TB: RuntimeToolbox + 'static> EndpointWriterGeneric<TB> {
     }
   }
 
-  /// Returns the canonical authority (host[:port]) of the bound actor system when available.
+  /// Returns the canonical authority (host\[:port\]) of the bound actor system when available.
   ///
   /// Returns `None` if the actor system has been dropped.
   #[must_use]

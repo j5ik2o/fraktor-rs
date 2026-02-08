@@ -1,3 +1,9 @@
+//! Dead letter and mailbox overflow example.
+//!
+//! Creates a child actor with a bounded mailbox (capacity 1, DropNewest) and sends
+//! more messages than the mailbox can hold, triggering dead letter events visible
+//! through `EventStreamSubscriber`.
+
 use core::num::NonZeroUsize;
 use std::{thread, time::Duration};
 

@@ -1,3 +1,9 @@
+//! Bincode serialization example for no_std environments.
+//!
+//! Demonstrates custom `MessageSerializer` / `MessageDeserializer` using
+//! the bincode format, enabling binary-efficient message encoding for
+//! remoting or persistence scenarios.
+
 #![cfg_attr(all(not(test), target_os = "none"), no_std)]
 
 extern crate alloc;

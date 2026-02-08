@@ -1,3 +1,8 @@
+//! Demonstrates `receive_signal` for observing lifecycle signals (Started, Stopped, Terminated).
+//!
+//! The guardian combines `receive_message` with `receive_signal` to log
+//! both message handling and lifecycle transitions.
+
 #[path = "../std_tick_driver_support.rs"]
 mod std_tick_driver_support;
 

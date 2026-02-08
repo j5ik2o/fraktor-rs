@@ -1,3 +1,8 @@
+//! Custom (hand-rolled) serialization example for no_std environments.
+//!
+//! Demonstrates implementing `MessageSerializer` / `MessageDeserializer`
+//! with a manual byte-level encoding, without relying on serde or bincode.
+
 #![cfg_attr(all(not(test), target_os = "none"), no_std)]
 
 extern crate alloc;

@@ -1,3 +1,9 @@
+//! Message adapter example for cross-protocol type conversion.
+//!
+//! Demonstrates `ctx.message_adapter` to bridge `String` messages into typed
+//! `CounterCommand::Apply(i32)` via a parsing adapter, enabling actors with
+//! different message types to communicate.
+
 #![cfg_attr(all(not(test), target_os = "none"), no_std)]
 
 extern crate alloc;

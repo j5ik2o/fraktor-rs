@@ -1,3 +1,7 @@
+//! Demonstrates `receive_signal` for lifecycle signals (no_std version).
+//!
+//! Same pattern as `behaviors_receive_signal_std` but using only core APIs.
+
 #![cfg_attr(all(not(test), target_os = "none"), no_std)]
 
 #[path = "../no_std_tick_driver_support.rs"]

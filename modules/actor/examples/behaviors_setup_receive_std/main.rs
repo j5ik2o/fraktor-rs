@@ -1,3 +1,8 @@
+//! Demonstrates `Behaviors::setup` for one-time initialization before message processing.
+//!
+//! The guardian spawns a child actor inside `setup`, then returns a `receive_message`
+//! behavior that forwards commands to the child.
+
 #[path = "../std_tick_driver_support.rs"]
 mod std_tick_driver_support;
 

@@ -1,3 +1,8 @@
+//! JSON serialization example for std environments.
+//!
+//! Demonstrates custom `MessageSerializer` / `MessageDeserializer` using
+//! `serde_json`, enabling human-readable message encoding.
+
 #[path = "../std_tick_driver_support.rs"]
 mod std_tick_driver_support;
 

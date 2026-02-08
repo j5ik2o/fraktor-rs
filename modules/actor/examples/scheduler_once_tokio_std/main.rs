@@ -1,3 +1,8 @@
+//! One-shot scheduler example on a Tokio runtime.
+//!
+//! Demonstrates `schedule_once` to send a delayed message to an actor
+//! after a 100ms timeout, using the Tokio-backed tick driver.
+
 use std::time::Duration;
 
 use fraktor_actor_rs::{

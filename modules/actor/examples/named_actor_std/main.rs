@@ -1,3 +1,8 @@
+//! Named actor example with lifecycle event monitoring.
+//!
+//! Demonstrates `Props::with_name` for assigning human-readable names to actors
+//! and subscribing to lifecycle events via `EventStreamSubscriber`.
+
 mod guardian;
 mod lifecycle_printer;
 mod printer;

@@ -1,3 +1,8 @@
+//! Tokio TCP remoting quickstart example.
+//!
+//! Demonstrates remote actor messaging over TCP using the Tokio transport,
+//! with two actor systems communicating across separate network endpoints.
+
 #![allow(clippy::print_stdout)]
 
 #[cfg(not(all(feature = "std", feature = "test-support", feature = "tokio-transport", feature = "tokio-executor")))]

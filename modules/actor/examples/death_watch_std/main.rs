@@ -1,3 +1,8 @@
+//! DeathWatch example: monitoring child actor termination.
+//!
+//! Demonstrates `spawn_child_watched` and the `on_terminated` callback to detect
+//! when a watched child stops, enabling automatic re-spawning or cleanup.
+
 use std::{thread, time::Duration};
 
 #[path = "../std_tick_driver_support.rs"]

@@ -1,3 +1,9 @@
+//! Supervision strategy example with `OneForOne` restart policy.
+//!
+//! A guardian actor defines a `SupervisorStrategy` that restarts recoverable
+//! child failures up to 3 times within 1 second, and stops on fatal errors.
+//! Also demonstrates `EventStreamSubscriber` for lifecycle and log monitoring.
+
 use core::time::Duration as CoreDuration;
 use std::{thread, time::Duration};
 

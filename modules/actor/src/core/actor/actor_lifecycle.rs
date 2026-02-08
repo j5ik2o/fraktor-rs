@@ -142,7 +142,8 @@ pub trait Actor<TB: RuntimeToolbox = NoStdToolbox>: Send {
   /// # See Also
   ///
   /// - [`SupervisorStrategy`] for available strategies
-  /// - [`SupervisorDirective`] for failure handling options
+  /// - [`SupervisorDirective`](crate::core::supervision::SupervisorDirective) for failure handling
+  ///   options
   #[must_use]
   fn supervisor_strategy(&mut self, _ctx: &mut ActorContextGeneric<'_, TB>) -> SupervisorStrategy {
     SupervisorStrategy::default()

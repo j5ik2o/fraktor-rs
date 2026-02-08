@@ -1,14 +1,14 @@
-//! Extension identifier bridging the actor system registry and the remoting implementation.
+//! Extension identifier bridging actor-system registry and remoting implementation.
 
 use fraktor_actor_rs::core::{extension::ExtensionId, system::ActorSystemGeneric};
 use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
-use super::{RemotingExtensionGeneric, config::RemotingExtensionConfig};
+use crate::core::{RemotingExtensionConfig, RemotingExtensionGeneric};
 
-/// Registers and instantiates [`RemotingExtension`] instances.
+/// Registers and instantiates [`crate::core::RemotingExtension`] instances.
 ///
-/// This type is only available with the `std` feature because the extension
-/// initialization requires `TransportFactory` which depends on standard library facilities.
+/// This type is only available with the `std` feature because extension
+/// initialization requires transport implementations backed by standard facilities.
 pub struct RemotingExtensionId {
   config: RemotingExtensionConfig,
 }

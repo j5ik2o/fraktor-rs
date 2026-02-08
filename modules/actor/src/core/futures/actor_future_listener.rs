@@ -13,7 +13,7 @@ use fraktor_utils_rs::core::{
 
 use super::ActorFutureSharedGeneric;
 
-/// Future adapter that polls the underlying [`ActorFuture`].
+/// Future adapter that polls the underlying [`ActorFuture`](super::ActorFuture).
 ///
 /// This listener holds a shared reference to the future and locks the mutex
 /// on each poll to access the inner state.
