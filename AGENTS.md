@@ -215,6 +215,37 @@ AIは一般的なベストプラクティスに従った「教科書的に正し
 > "Perfection is achieved not when there is nothing more to add, but when there is nothing left to take away." - Antoine de Saint-Exupery
 
 
+# 編集前 Dylint 実行
+
+コード編集前に、対象モジュールのカスタム lint を先に実行してから作業する。
+
+## 目的
+
+- 編集前に構造制約を可視化し、手戻りを減らす
+- ルール本文の無差別読み込みを避け、コンテキスト消費を抑える
+- 失敗した lint だけを読んで修正方針を確定する
+
+## 基本ルール
+
+1. 編集前に対象モジュールへ次を実行する  
+   `./scripts/ci-check.sh dylint -m <module>`
+2. lint が失敗した場合のみ、該当 lint の実装・テストを読む
+3. 編集後に同コマンドを再実行し、対象テストを通す
+4. 全タスク完了時は `./scripts/ci-check.sh all` を通す
+
+## 読み込み範囲
+
+- 失敗した lint のみ読む（例: `lints/module-wiring-lint/`）
+- 成功した lint は原則読まない
+- 例外: lint を追加・変更するタスクでは全 lint を確認する
+
+## 失敗時の対応
+
+- `allow` で回避しない
+- 既存設計パターンに寄せて修正する
+- ルールに矛盾がある場合は、人間に確認してから進める
+
+
 # Prefer Immutability
 
 Rust以外の言語では、常に不変（immutable）なデータ操作を優先する。
