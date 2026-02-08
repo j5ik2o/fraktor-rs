@@ -183,6 +183,7 @@ let system = TypedActorSystem::new(&props, tick_driver).expect("system");
 | API | 用途 |
 |-----|------|
 | `Behaviors::receive_message(handler)` | メッセージハンドラを定義し `Behavior` を構築する |
+| `Behaviors::receive_and_reply(handler)` | 現在の sender に返信し、`Behavior::same()` を返す |
 | `Behaviors::setup(\|ctx\| behavior)` | 起動時にコンテキストを利用して初期化する |
 | `Behaviors::receive_signal(handler)` | `BehaviorSignal`（Started, Stopped, Terminated 等）を処理する |
 | `Behaviors::supervise(behavior)` | 子アクターの監督戦略を宣言的に設定する |
@@ -243,6 +244,20 @@ let strategy = SupervisorStrategy::new(
   },
 );
 Behaviors::supervise(behavior).on_failure(strategy)
+```
+
+**`receive_and_reply` の例**: ask パターンの定型を簡潔に記述する
+
+```rust
+enum CounterQuery {
+  GetTotal,
+}
+
+fn counter(total: i32) -> Behavior<CounterQuery> {
+  Behaviors::receive_and_reply(move |_ctx, message| match message {
+    CounterQuery::GetTotal => Ok(total),
+  })
+}
 ```
 
 #### TypedActor と Behavior DSL の使い分け

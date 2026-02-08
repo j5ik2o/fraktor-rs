@@ -343,7 +343,7 @@ README のモジュール関係図や `docs/guides/` の個別ガイドは存在
 - [ ] 全体: モジュール間依存関係図
 
 #### C-8. Behavior DSL の充実 [P1] [actor]
-- [ ] `receive_and_reply` shorthand の追加
+- [x] `receive_and_reply` shorthand の追加（`core/std::typed::Behaviors` に実装、unit test 追加）
 - [ ] message adapter builder の提供
 - [ ] Behavior DSL のガイドドキュメント
 

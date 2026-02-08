@@ -72,6 +72,16 @@ impl Behaviors {
     CoreBehaviors::receive_message(move |ctx, message| with_std_ctx(ctx, |std_ctx| handler(std_ctx, message)))
   }
 
+  /// Creates a behavior that replies to the current sender and keeps the same behavior.
+  #[must_use]
+  pub fn receive_and_reply<M, R, F>(handler: F) -> Behavior<M>
+  where
+    M: Send + Sync + 'static,
+    R: Send + Sync + 'static,
+    F: for<'a> Fn(&mut TypedActorContext<'_, 'a, M>, &M) -> Result<R, ActorError> + Send + Sync + 'static, {
+    CoreBehaviors::receive_and_reply(move |ctx, message| with_std_ctx(ctx, |std_ctx| handler(std_ctx, message)))
+  }
+
   /// Creates a behavior that only reacts to signals with the std context.
   #[must_use]
   pub fn receive_signal<M, F>(handler: F) -> Behavior<M>
