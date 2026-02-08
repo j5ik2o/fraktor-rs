@@ -1,3 +1,4 @@
+//! Identity lookup and placement demo for std driver.
 #![allow(clippy::print_stdout)]
 
 //! Identity lookup placement demo (std driver).

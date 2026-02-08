@@ -1,3 +1,4 @@
+//! Cluster extension quickstart sample for no_std.
 #![allow(clippy::print_stdout)]
 
 //! Cluster extension quickstart (no_std + StaticClusterProvider)

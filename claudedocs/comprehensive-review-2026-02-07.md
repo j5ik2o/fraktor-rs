@@ -289,7 +289,7 @@ README のモジュール関係図や `docs/guides/` の個別ガイドは存在
 #### B-8. persistence Quickstart ガイド [P1] [persistence] [docs] ✅ 完了
 - [x] `docs/guides/persistence-quickstart.md` を新規作成
 - [x] Pekko EventSourcedBehavior との概念対応表
-- [x] 最小限の永続アクター実装手順（8ステップ）
+- [x] 最小限の永続アクター実装手順（6ステップ）
 - [x] no_std 環境での使い方
 - [x] Getting Started ガイドにリンク追加
 

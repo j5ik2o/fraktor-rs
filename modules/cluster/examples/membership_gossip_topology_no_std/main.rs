@@ -1,3 +1,4 @@
+//! Membership and gossip topology demo for no_std core.
 #![allow(clippy::print_stdout)]
 
 //! Membership/Gossip topology demo (no_std core).

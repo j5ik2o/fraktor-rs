@@ -42,7 +42,7 @@ where
 
   /// Persists a single event without command stashing (fencing).
   ///
-  /// Unlike [`persist`], this method does not stash incoming commands
+  /// Unlike [`Self::persist`], this method does not stash incoming commands
   /// while the event is being persisted. Named "unfenced" to clarify
   /// that no fencing (command stashing) occurs, avoiding confusion
   /// with Tokio's `async` terminology.

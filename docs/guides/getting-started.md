@@ -269,7 +269,7 @@ cargo run -p fraktor-actor-rs --example ping_pong_tokio_std --features tokio-exe
 cargo run -p fraktor-actor-rs --example ping_pong_not_std
 ```
 
-期待される出力は Tokio 版と同様です。
+期待される出力の内容（ping/pong が3往復すること）は Tokio 版と同様ですが、実行環境の違いにより表示順は前後する場合があります。
 
 ### Typed Actor 版（no_std）
 

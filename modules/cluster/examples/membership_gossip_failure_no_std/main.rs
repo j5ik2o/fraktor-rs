@@ -1,3 +1,4 @@
+//! Membership and gossip failure-detection demo for no_std core.
 #![allow(clippy::print_stdout)]
 
 //! Membership/Gossip failure detection demo (no_std core).

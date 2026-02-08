@@ -1,9 +1,9 @@
-#![allow(clippy::print_stdout)]
-
 //! Cluster quickstart (cluster-capable sample)
 //! - Two nodes (4050/4051) using Membership/Gossip/VirtualActorRegistry
 //! - Select an owner via Rendezvous and spawn keyed actors via VirtualActorRegistry
 //! - Reply routing is confirmed via in-band ActorRef on message payloads
+
+#![allow(clippy::print_stdout)]
 
 use std::{
   sync::{Arc, Mutex},

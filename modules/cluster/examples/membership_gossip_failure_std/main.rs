@@ -1,3 +1,4 @@
+//! Membership and gossip failure-detection demo for std driver.
 #![allow(clippy::print_stdout)]
 
 //! Membership/Gossip failure detection demo (std driver).
