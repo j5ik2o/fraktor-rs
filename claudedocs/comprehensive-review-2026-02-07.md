@@ -327,13 +327,13 @@ README のモジュール関係図や `docs/guides/` の個別ガイドは存在
 - [ ] remote: Phi Failure Detector のエッジケーステスト
 
 #### C-6. streams サンプル追加 [P1] [streams]
-- [ ] 基本パターン 5 個程度の example を追加
-  - [ ] Source → Sink の最小パイプライン
-  - [ ] map / filter の基本変換
-  - [ ] fold による集約
-  - [ ] カスタム GraphStage
-  - [ ] バックプレッシャーのデモ
-- [ ] 各 example に概念説明コメントを付与
+- [x] 基本パターン 5 個程度の example を追加
+  - [x] Source → Sink の最小パイプライン
+  - [x] map / filter の基本変換
+  - [x] fold による集約
+  - [x] カスタム GraphStage
+  - [x] バックプレッシャーのデモ
+- [x] 各 example に概念説明コメントを付与
 
 #### C-7. アーキテクチャドキュメント [P2] [docs]
 - [ ] actor: Dispatcher → Mailbox → ActorCell の実行フロー図
