@@ -4,12 +4,14 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
 
 use super::super::flow::{
-  balance_definition, broadcast_definition, concat_definition, merge_definition, zip_definition,
+  balance_definition, broadcast_definition, concat_definition, flat_map_merge_definition, merge_definition,
+  zip_definition,
 };
 use crate::core::{
   Completion, DemandTracker, DriveOutcome, DynValue, FlowDefinition, FlowLogic, GraphInterpreter, Inlet, KeepRight,
   MatCombine, Outlet, Sink, SinkDecision, SinkDefinition, SinkLogic, Source, SourceDefinition, SourceLogic,
-  StageDefinition, StageKind, StreamBufferConfig, StreamCompletion, StreamDone, StreamError, StreamPlan, StreamState,
+  StageDefinition, StageKind, StreamBufferConfig, StreamCompletion, StreamDone, StreamError, StreamNotUsed, StreamPlan,
+  StreamState,
 };
 
 fn drive_to_completion(interpreter: &mut GraphInterpreter) {
@@ -62,6 +64,45 @@ fn flat_map_concat_uses_inner_source() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(completion.poll(), Completion::Ready(Ok(2)));
+}
+
+#[test]
+fn flat_map_merge_uses_configured_breadth() {
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<u32> = Inlet::new();
+  let completion = StreamCompletion::new();
+
+  let source = SourceDefinition {
+    kind:        StageKind::SourceSingle,
+    outlet:      source_outlet.id(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(SequenceSourceLogic { next: 1, end: 3 }),
+  };
+  let flat_map_merge =
+    flat_map_merge_definition::<u32, u32, StreamNotUsed, _>(2, |value| Source::single(value).broadcast(2));
+  let flat_map_merge_inlet = flat_map_merge.inlet;
+  let flat_map_merge_outlet = flat_map_merge.outlet;
+  let sink = SinkDefinition {
+    kind:        StageKind::SinkFold,
+    inlet:       sink_inlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(CollectSequenceSinkLogic { completion: completion.clone(), values: Vec::new() }),
+  };
+
+  let plan = StreamPlan::from_parts(
+    vec![StageDefinition::Source(source), StageDefinition::Flow(flat_map_merge), StageDefinition::Sink(sink)],
+    vec![
+      (source_outlet.id(), flat_map_merge_inlet, MatCombine::KeepLeft),
+      (flat_map_merge_outlet, sink_inlet.id(), MatCombine::KeepRight),
+    ],
+  );
+
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  drive_to_completion(&mut interpreter);
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![1, 1, 2, 2, 3, 3])));
 }
 
 #[test]

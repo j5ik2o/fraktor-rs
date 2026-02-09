@@ -6,8 +6,8 @@ use super::{
   SourceDefinition, SourceLogic, StageDefinition, StageKind, StreamError, StreamGraph, StreamNotUsed, StreamShape,
   StreamStage, downcast_value,
   flow::{
-    balance_definition, broadcast_definition, concat_definition, flat_map_concat_definition, map_definition,
-    merge_definition, zip_definition,
+    balance_definition, broadcast_definition, concat_definition, flat_map_concat_definition, flat_map_merge_definition,
+    map_definition, merge_definition, zip_definition,
   },
   graph_stage::GraphStage,
   graph_stage_logic::GraphStageLogic,
@@ -137,6 +137,28 @@ where
     Mat2: Send + Sync + 'static,
     F: FnMut(Out) -> Source<T, Mat2> + Send + Sync + 'static, {
     let definition = flat_map_concat_definition::<Out, T, Mat2, F>(func);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds a flatMapMerge stage to this source.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `breadth` is zero.
+  #[must_use]
+  pub fn flat_map_merge<T, Mat2, F>(mut self, breadth: usize, func: F) -> Source<T, Mat>
+  where
+    T: Send + Sync + 'static,
+    Mat2: Send + Sync + 'static,
+    F: FnMut(Out) -> Source<T, Mat2> + Send + Sync + 'static, {
+    assert!(breadth > 0, "breadth must be greater than zero");
+    let definition = flat_map_merge_definition::<Out, T, Mat2, F>(breadth, func);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));

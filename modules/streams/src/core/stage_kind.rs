@@ -7,6 +7,8 @@ pub enum StageKind {
   FlowMap,
   /// Flow stage that concatenates sub-streams.
   FlowFlatMapConcat,
+  /// Flow stage that merges sub-streams up to a configured breadth.
+  FlowFlatMapMerge,
   /// Flow stage that broadcasts each element to multiple outputs.
   FlowBroadcast,
   /// Flow stage that balances elements across outputs.

@@ -108,6 +108,28 @@ where
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
+  /// Adds a flatMapMerge stage to this flow.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `breadth` is zero.
+  #[must_use]
+  pub fn flat_map_merge<T, Mat2, F>(mut self, breadth: usize, func: F) -> Flow<In, T, Mat>
+  where
+    T: Send + Sync + 'static,
+    Mat2: Send + Sync + 'static,
+    F: FnMut(Out) -> Source<T, Mat2> + Send + Sync + 'static, {
+    assert!(breadth > 0, "breadth must be greater than zero");
+    let definition = flat_map_merge_definition::<Out, T, Mat2, F>(breadth, func);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
   /// Adds a broadcast stage that duplicates each element `fan_out` times.
   ///
   /// # Panics
@@ -255,6 +277,32 @@ where
   }
 }
 
+pub(super) fn flat_map_merge_definition<In, Out, Mat2, F>(breadth: usize, func: F) -> FlowDefinition
+where
+  In: Send + Sync + 'static,
+  Out: Send + Sync + 'static,
+  Mat2: Send + Sync + 'static,
+  F: FnMut(In) -> Source<Out, Mat2> + Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<Out> = Outlet::new();
+  let logic = FlatMapMergeLogic {
+    breadth,
+    func,
+    active_streams: VecDeque::new(),
+    waiting_streams: VecDeque::new(),
+    _pd: PhantomData,
+  };
+  FlowDefinition {
+    kind:        StageKind::FlowFlatMapMerge,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<Out>(),
+    mat_combine: MatCombine::KeepLeft,
+    logic:       Box::new(logic),
+  }
+}
+
 pub(super) fn broadcast_definition<In>(fan_out: usize) -> FlowDefinition
 where
   In: Clone + Send + Sync + 'static, {
@@ -386,6 +434,14 @@ struct FlatMapConcatLogic<In, Out, Mat2, F> {
   _pd:  PhantomData<fn(In) -> (Out, Mat2)>,
 }
 
+struct FlatMapMergeLogic<In, Out, Mat2, F> {
+  breadth:         usize,
+  func:            F,
+  active_streams:  VecDeque<VecDeque<Out>>,
+  waiting_streams: VecDeque<VecDeque<Out>>,
+  _pd:             PhantomData<fn(In) -> (Out, Mat2)>,
+}
+
 impl<In, Out, Mat2, F> FlowLogic for FlatMapConcatLogic<In, Out, Mat2, F>
 where
   In: Send + Sync + 'static,
@@ -398,6 +454,80 @@ where
     let source = (self.func)(value);
     let outputs = source.collect_values()?;
     Ok(outputs.into_iter().map(|item| Box::new(item) as DynValue).collect())
+  }
+}
+
+impl<In, Out, Mat2, F> FlatMapMergeLogic<In, Out, Mat2, F>
+where
+  In: Send + Sync + 'static,
+  Out: Send + Sync + 'static,
+  Mat2: Send + Sync + 'static,
+  F: FnMut(In) -> Source<Out, Mat2> + Send + Sync + 'static,
+{
+  fn promote_waiting(&mut self) {
+    while self.active_streams.len() < self.breadth {
+      let Some(stream) = self.waiting_streams.pop_front() else {
+        break;
+      };
+      self.active_streams.push_back(stream);
+    }
+  }
+
+  fn enqueue_inner_stream(&mut self, value: In) -> Result<(), StreamError> {
+    let source = (self.func)(value);
+    let outputs = source.collect_values()?;
+    if outputs.is_empty() {
+      return Ok(());
+    }
+    let mut stream = VecDeque::with_capacity(outputs.len());
+    stream.extend(outputs);
+    self.waiting_streams.push_back(stream);
+    self.promote_waiting();
+    Ok(())
+  }
+
+  fn pop_next_value(&mut self) -> Option<Out> {
+    self.promote_waiting();
+    loop {
+      let mut stream = self.active_streams.pop_front()?;
+      let Some(value) = stream.pop_front() else {
+        self.promote_waiting();
+        continue;
+      };
+      if stream.is_empty() {
+        self.promote_waiting();
+      } else {
+        self.active_streams.push_back(stream);
+      }
+      return Some(value);
+    }
+  }
+}
+
+impl<In, Out, Mat2, F> FlowLogic for FlatMapMergeLogic<In, Out, Mat2, F>
+where
+  In: Send + Sync + 'static,
+  Out: Send + Sync + 'static,
+  Mat2: Send + Sync + 'static,
+  F: FnMut(In) -> Source<Out, Mat2> + Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    if self.breadth == 0 {
+      return Err(StreamError::InvalidConnection);
+    }
+    let value = downcast_value::<In>(input)?;
+    self.enqueue_inner_stream(value)?;
+    if let Some(output) = self.pop_next_value() {
+      return Ok(vec![Box::new(output) as DynValue]);
+    }
+    Ok(Vec::new())
+  }
+
+  fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
+    if let Some(output) = self.pop_next_value() {
+      return Ok(vec![Box::new(output) as DynValue]);
+    }
+    Ok(Vec::new())
   }
 }
 
@@ -415,6 +545,29 @@ where
       && let Some(first) = outputs.pop()
     {
       ctx.push(first);
+    }
+  }
+
+  fn materialized(&mut self) -> StreamNotUsed {
+    StreamNotUsed::new()
+  }
+}
+
+impl<In, Out, Mat2, F> GraphStageLogic<In, Out, StreamNotUsed> for FlatMapMergeLogic<In, Out, Mat2, F>
+where
+  In: Send + Sync + 'static,
+  Out: Send + Sync + 'static,
+  Mat2: Send + Sync + 'static,
+  F: FnMut(In) -> Source<Out, Mat2> + Send + Sync + 'static,
+{
+  fn on_push(&mut self, ctx: &mut dyn StageContext<In, Out>) {
+    let value = ctx.grab();
+    if self.enqueue_inner_stream(value).is_err() {
+      ctx.fail(StreamError::Failed);
+      return;
+    }
+    if let Some(output) = self.pop_next_value() {
+      ctx.push(output);
     }
   }
 
@@ -673,6 +826,28 @@ where
 
   fn create_logic(&self) -> Box<dyn GraphStageLogic<In, Out, StreamNotUsed>> {
     Box::new(FlatMapConcatLogic { func: self.func.clone(), _pd: PhantomData })
+  }
+}
+
+impl<In, Out, Mat2, F> GraphStage<In, Out, StreamNotUsed> for FlatMapMergeLogic<In, Out, Mat2, F>
+where
+  In: Send + Sync + 'static,
+  Out: Send + Sync + 'static,
+  Mat2: Send + Sync + 'static,
+  F: FnMut(In) -> Source<Out, Mat2> + Send + Sync + Clone + 'static,
+{
+  fn shape(&self) -> StreamShape<In, Out> {
+    StreamShape::new(Inlet::new(), Outlet::new())
+  }
+
+  fn create_logic(&self) -> Box<dyn GraphStageLogic<In, Out, StreamNotUsed>> {
+    Box::new(FlatMapMergeLogic {
+      breadth:         self.breadth,
+      func:            self.func.clone(),
+      active_streams:  VecDeque::new(),
+      waiting_streams: VecDeque::new(),
+      _pd:             PhantomData,
+    })
   }
 }
 

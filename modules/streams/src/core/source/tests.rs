@@ -118,3 +118,15 @@ fn source_concat_keeps_single_path_behavior() {
 fn source_concat_rejects_zero_fan_in() {
   let _ = Source::single(1_u32).concat(0);
 }
+
+#[test]
+fn source_flat_map_merge_keeps_single_path_behavior() {
+  let values = Source::single(5_u32).flat_map_merge(2, Source::single).collect_values().expect("collect_values");
+  assert_eq!(values, vec![5_u32]);
+}
+
+#[test]
+#[should_panic(expected = "breadth must be greater than zero")]
+fn source_flat_map_merge_rejects_zero_breadth() {
+  let _ = Source::single(1_u32).flat_map_merge(0, Source::single);
+}
