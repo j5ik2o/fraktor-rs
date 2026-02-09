@@ -321,7 +321,7 @@ README のモジュール関係図や `docs/guides/` の個別ガイドは存在
 - [x] テスト追加（dispatcher core / dispatcher / actor lifecycle）
 
 #### C-5. 統合テスト拡充 [P2] [cluster] [remote]
-- [ ] cluster: failure scenario テスト（node down, network partition, slow node）
+- [x] cluster: failure scenario テスト（node down, network partition, slow node）
 - [ ] cluster: load-balanced placement 検証テスト
 - [ ] remote: 2+ ノードシナリオテスト
 - [ ] remote: Phi Failure Detector のエッジケーステスト
