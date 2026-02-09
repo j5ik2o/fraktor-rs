@@ -94,3 +94,9 @@ fn buffer_rejects_zero_capacity() {
   let flow = Flow::<u32, u32, StreamNotUsed>::new();
   let _ = flow.buffer(0, OverflowPolicy::Block);
 }
+
+#[test]
+fn async_boundary_keeps_single_path_behavior() {
+  let values = Source::single(7_u32).via(Flow::new().async_boundary()).collect_values().expect("collect_values");
+  assert_eq!(values, vec![7_u32]);
+}

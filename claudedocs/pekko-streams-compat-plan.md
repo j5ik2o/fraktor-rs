@@ -121,7 +121,7 @@
 - [x] P2-05 `Concat` を追加する。
 - [x] P2-06 `flat_map_merge` を追加する。
 - [x] P2-07 `buffer` と overflow strategy を追加する。
-- [ ] P2-08 `async boundary` を追加する。
+- [x] P2-08 `async boundary` を追加する。
 - [ ] P2-09 `group_by` / `split_when` / `split_after` を追加する。
 - [ ] P2-10 `merge_substreams` / `concat_substreams` を追加する。
 - [ ] P2-11 GraphDSL相当のpartial graph構築APIを追加する。

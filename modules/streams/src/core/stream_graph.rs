@@ -144,6 +144,7 @@ impl StreamGraph {
             | StageKind::FlowFlatMapConcat
             | StageKind::FlowFlatMapMerge
             | StageKind::FlowBuffer
+            | StageKind::FlowAsyncBoundary
             | StageKind::FlowBroadcast
             | StageKind::FlowBalance
             | StageKind::FlowMerge

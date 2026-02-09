@@ -11,6 +11,8 @@ pub enum StageKind {
   FlowFlatMapMerge,
   /// Flow stage that buffers upstream elements with an overflow strategy.
   FlowBuffer,
+  /// Flow stage that represents an asynchronous execution boundary.
+  FlowAsyncBoundary,
   /// Flow stage that broadcasts each element to multiple outputs.
   FlowBroadcast,
   /// Flow stage that balances elements across outputs.

@@ -8,8 +8,8 @@ use super::{
   SourceDefinition, SourceLogic, StageDefinition, StageKind, StreamError, StreamGraph, StreamNotUsed, StreamShape,
   StreamStage, downcast_value,
   flow::{
-    balance_definition, broadcast_definition, buffer_definition, concat_definition, flat_map_concat_definition,
-    flat_map_merge_definition, map_definition, merge_definition, zip_definition,
+    async_boundary_definition, balance_definition, broadcast_definition, buffer_definition, concat_definition,
+    flat_map_concat_definition, flat_map_merge_definition, map_definition, merge_definition, zip_definition,
   },
   graph_stage::GraphStage,
   graph_stage_logic::GraphStageLogic,
@@ -179,6 +179,19 @@ where
   pub fn buffer(mut self, capacity: usize, overflow_policy: OverflowPolicy) -> Source<Out, Mat> {
     assert!(capacity > 0, "capacity must be greater than zero");
     let definition = buffer_definition::<Out>(capacity, overflow_policy);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds an explicit async boundary stage.
+  #[must_use]
+  pub fn async_boundary(mut self) -> Source<Out, Mat> {
+    let definition = async_boundary_definition::<Out>();
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));

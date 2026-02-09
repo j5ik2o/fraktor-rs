@@ -150,6 +150,19 @@ where
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
+  /// Adds an explicit async boundary stage.
+  #[must_use]
+  pub fn async_boundary(mut self) -> Flow<In, Out, Mat> {
+    let definition = async_boundary_definition::<Out>();
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
   /// Adds a broadcast stage that duplicates each element `fan_out` times.
   ///
   /// # Panics
@@ -340,6 +353,23 @@ where
   }
 }
 
+pub(super) fn async_boundary_definition<In>() -> FlowDefinition
+where
+  In: Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = AsyncBoundaryLogic::<In> { _pd: PhantomData };
+  FlowDefinition {
+    kind:        StageKind::FlowAsyncBoundary,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    logic:       Box::new(logic),
+  }
+}
+
 pub(super) fn broadcast_definition<In>(fan_out: usize) -> FlowDefinition
 where
   In: Clone + Send + Sync + 'static, {
@@ -484,6 +514,10 @@ struct BufferLogic<In> {
   overflow_policy: OverflowPolicy,
   pending:         VecDeque<In>,
   source_done:     bool,
+}
+
+struct AsyncBoundaryLogic<In> {
+  _pd: PhantomData<fn(In)>,
 }
 
 impl<In, Out, Mat2, F> FlowLogic for FlatMapConcatLogic<In, Out, Mat2, F>
@@ -672,6 +706,15 @@ where
       return Ok(Vec::new());
     };
     Ok(vec![Box::new(value) as DynValue])
+  }
+}
+
+impl<In> FlowLogic for AsyncBoundaryLogic<In>
+where
+  In: Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    Ok(vec![input])
   }
 }
 

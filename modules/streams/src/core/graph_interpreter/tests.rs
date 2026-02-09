@@ -7,8 +7,8 @@ use fraktor_utils_rs::core::{
 };
 
 use super::super::flow::{
-  balance_definition, broadcast_definition, buffer_definition, concat_definition, flat_map_merge_definition,
-  merge_definition, zip_definition,
+  async_boundary_definition, balance_definition, broadcast_definition, buffer_definition, concat_definition,
+  flat_map_merge_definition, merge_definition, zip_definition,
 };
 use crate::core::{
   Completion, DemandTracker, DriveOutcome, DynValue, FlowDefinition, FlowLogic, GraphInterpreter, Inlet, KeepRight,
@@ -182,6 +182,44 @@ fn buffer_flow_drop_oldest_keeps_latest_elements() {
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(vec![2, 3])));
+}
+
+#[test]
+fn async_boundary_flow_preserves_input_order() {
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<u32> = Inlet::new();
+  let completion = StreamCompletion::new();
+
+  let source = SourceDefinition {
+    kind:        StageKind::SourceSingle,
+    outlet:      source_outlet.id(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(SequenceSourceLogic { next: 1, end: 3 }),
+  };
+  let async_boundary = async_boundary_definition::<u32>();
+  let async_boundary_inlet = async_boundary.inlet;
+  let async_boundary_outlet = async_boundary.outlet;
+  let sink = SinkDefinition {
+    kind:        StageKind::SinkFold,
+    inlet:       sink_inlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(CollectSequenceSinkLogic { completion: completion.clone(), values: Vec::new() }),
+  };
+
+  let plan = StreamPlan::from_parts(
+    vec![StageDefinition::Source(source), StageDefinition::Flow(async_boundary), StageDefinition::Sink(sink)],
+    vec![
+      (source_outlet.id(), async_boundary_inlet, MatCombine::KeepLeft),
+      (async_boundary_outlet, sink_inlet.id(), MatCombine::KeepRight),
+    ],
+  );
+
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  drive_to_completion(&mut interpreter);
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![1, 2, 3])));
 }
 
 #[test]

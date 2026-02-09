@@ -142,3 +142,9 @@ fn source_buffer_keeps_single_path_behavior() {
 fn source_buffer_rejects_zero_capacity() {
   let _ = Source::single(1_u32).buffer(0, OverflowPolicy::Block);
 }
+
+#[test]
+fn source_async_boundary_keeps_single_path_behavior() {
+  let values = Source::single(5_u32).async_boundary().collect_values().expect("collect_values");
+  assert_eq!(values, vec![5_u32]);
+}
