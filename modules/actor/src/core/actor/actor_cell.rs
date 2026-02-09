@@ -23,7 +23,7 @@ use crate::core::{
     dispatcher::DispatcherSharedGeneric,
     mailbox::{
       BackpressurePublisherGeneric, MailboxCapacity, MailboxGeneric, MailboxInstrumentationGeneric,
-      MailboxPressureEvent,
+      MailboxPressureEvent, ScheduleHints,
     },
   },
   error::ActorError,
@@ -285,29 +285,28 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
   ///
   /// Returns an error when mailbox enqueue fails. Remaining messages stay stashed.
   pub(crate) fn unstash_messages(&self) -> Result<usize, ActorError> {
-    let mut pending = {
+    let pending = {
       let mut state = self.state.lock();
       mem::take(&mut state.stashed_messages)
     };
 
-    let mut unstashed = 0_usize;
-    while let Some(message) = pending.pop_front() {
-      match self.dispatcher.enqueue_user(message) {
-        | Ok(()) => {
-          unstashed += 1;
-        },
-        | Err(error) => {
-          let actor_error = ActorError::from_send_error(&error);
-          pending.push_front(error.into_message());
-          let mut state = self.state.lock();
-          while let Some(remaining) = pending.pop_back() {
-            state.stashed_messages.push_front(remaining);
-          }
-          return Err(actor_error);
-        },
-      }
+    if pending.is_empty() {
+      return Ok(0);
     }
-    Ok(unstashed)
+
+    if let Err(error) = self.mailbox.prepend_user_messages(&pending) {
+      let mut state = self.state.lock();
+      state.stashed_messages = pending;
+      return Err(ActorError::from_send_error(&error));
+    }
+
+    self.dispatcher.register_for_execution(ScheduleHints {
+      has_system_messages: false,
+      has_user_messages:   true,
+      backpressure_active: false,
+    });
+
+    Ok(pending.len())
   }
 
   /// Allocates and tracks a new adapter handle for message adapters.

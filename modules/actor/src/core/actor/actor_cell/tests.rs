@@ -1,4 +1,5 @@
 use alloc::{string::ToString, vec, vec::Vec};
+use core::hint::spin_loop;
 
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdMutex, NoStdToolbox},
@@ -79,6 +80,29 @@ impl Actor for RecordingActor {
 
   fn on_terminated(&mut self, _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>, pid: Pid) -> Result<(), ActorError> {
     self.log.lock().push(pid);
+    Ok(())
+  }
+}
+
+struct OrderedMessageActor {
+  received: ArcShared<NoStdMutex<Vec<i32>>>,
+}
+
+impl OrderedMessageActor {
+  fn new(received: ArcShared<NoStdMutex<Vec<i32>>>) -> Self {
+    Self { received }
+  }
+}
+
+impl Actor for OrderedMessageActor {
+  fn receive(
+    &mut self,
+    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
+    message: AnyMessageViewGeneric<'_, NoStdToolbox>,
+  ) -> Result<(), ActorError> {
+    if let Some(value) = message.downcast_ref::<i32>() {
+      self.received.lock().push(*value);
+    }
     Ok(())
   }
 }
@@ -238,4 +262,37 @@ fn system_queue_is_drained_before_user_queue() {
 
   let snapshot = log.lock().clone();
   assert_eq!(snapshot, vec!["pre_start", "receive"]);
+}
+
+#[test]
+fn unstash_messages_are_replayed_before_existing_mailbox_messages() {
+  let state = ActorSystem::new_empty().state();
+  let received = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let props = Props::from_fn({
+    let captured = received.clone();
+    move || OrderedMessageActor::new(captured.clone())
+  });
+  let cell =
+    ActorCell::create(state.clone(), Pid::new(60, 0), None, "ordered".to_string(), &props).expect("create actor cell");
+  state.register_cell(cell.clone());
+
+  cell.dispatcher().enqueue_system(SystemMessage::Create).expect("create");
+  cell.stash_message(AnyMessage::new(1_i32));
+  cell.mailbox().enqueue_user(AnyMessage::new(2_i32)).expect("enqueue queued");
+
+  let unstashed = cell.unstash_messages().expect("unstash");
+  assert_eq!(unstashed, 1);
+
+  wait_until(|| received.lock().len() == 2);
+  assert_eq!(received.lock().clone(), vec![1, 2]);
+}
+
+fn wait_until(mut condition: impl FnMut() -> bool) {
+  for _ in 0..10_000 {
+    if condition() {
+      return;
+    }
+    spin_loop();
+  }
+  assert!(condition());
 }

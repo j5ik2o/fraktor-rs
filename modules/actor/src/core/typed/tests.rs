@@ -1,6 +1,7 @@
 use alloc::{
   string::{String, ToString},
   sync::Arc,
+  vec::Vec,
 };
 use core::{
   hint::spin_loop,
@@ -42,6 +43,14 @@ enum StashCommand {
   Buffer(u32),
   Open,
   Read { reply_to: TypedActorRef<u32> },
+}
+
+#[derive(Clone)]
+enum StashOrderCommand {
+  Buffer(String),
+  Marker(String),
+  Open,
+  Read { reply_to: TypedActorRef<Vec<String>> },
 }
 
 #[derive(Clone)]
@@ -176,6 +185,48 @@ fn typed_behaviors_with_stash_limits_capacity() {
   wait_until(|| read_stash_total(&mut actor) == 4);
   assert_eq!(read_stash_total(&mut actor), 4);
   assert_eq!(overflow_count.load(Ordering::SeqCst), 1);
+
+  system.terminate().expect("terminate");
+}
+
+#[test]
+fn typed_behaviors_with_stash_keeps_adapter_payload_after_unstash() {
+  let adapter_slot: Arc<NoStdMutex<Option<TypedActorRef<i32>>>> = Arc::new(NoStdMutex::new(None));
+  let props = TypedPropsGeneric::<StashCommand, NoStdToolbox>::from_behavior_factory({
+    let slot = adapter_slot.clone();
+    move || adapter_stash_behavior(0, &slot)
+  });
+  let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
+  let system = TypedActorSystemGeneric::<StashCommand, NoStdToolbox>::new(&props, tick_driver).expect("system");
+  let mut actor = system.user_guardian_ref();
+
+  assert!(wait_for(|| adapter_slot.lock().is_some()), "adapter never registered");
+  let mut adapter = adapter_slot.lock().clone().expect("adapter available");
+
+  adapter.tell(4).expect("buffer one");
+  adapter.tell(3).expect("buffer two");
+  actor.tell(StashCommand::Open).expect("open");
+
+  wait_until(|| read_stash_total(&mut actor) == 7);
+  assert_eq!(read_stash_total(&mut actor), 7);
+
+  system.terminate().expect("terminate");
+}
+
+#[test]
+fn typed_behaviors_unstash_replays_before_already_queued_messages() {
+  let props =
+    TypedPropsGeneric::<StashOrderCommand, NoStdToolbox>::from_behavior_factory(|| stash_order_behavior(Vec::new()));
+  let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
+  let system = TypedActorSystemGeneric::<StashOrderCommand, NoStdToolbox>::new(&props, tick_driver).expect("system");
+  let mut actor = system.user_guardian_ref();
+
+  actor.tell(StashOrderCommand::Buffer(String::from("stashed"))).expect("buffer");
+  actor.tell(StashOrderCommand::Open).expect("open");
+  actor.tell(StashOrderCommand::Marker(String::from("queued"))).expect("marker");
+
+  wait_until(|| read_stash_order_log(&mut actor).len() == 2);
+  assert_eq!(read_stash_order_log(&mut actor), vec![String::from("buffer:stashed"), String::from("marker:queued")]);
 
   system.terminate().expect("terminate");
 }
@@ -338,6 +389,24 @@ fn stash_behavior(total: u32) -> Behavior<StashCommand, NoStdToolbox> {
   Behaviors::with_stash(32, move |stash| stash_locked_behavior(total, stash))
 }
 
+fn adapter_stash_behavior(
+  total: u32,
+  slot: &Arc<NoStdMutex<Option<TypedActorRef<i32>>>>,
+) -> Behavior<StashCommand, NoStdToolbox> {
+  let slot = Arc::clone(slot);
+  Behaviors::setup(move |ctx| {
+    let adapter = ctx
+      .message_adapter(|value: i32| {
+        u32::try_from(value)
+          .map(StashCommand::Buffer)
+          .map_err(|_| AdapterError::Custom("negative value is not supported".into()))
+      })
+      .expect("register adapter");
+    slot.lock().replace(adapter);
+    stash_locked_behavior(total, StashBuffer::new(32))
+  })
+}
+
 fn stash_behavior_with_capacity_limit(
   total: u32,
   overflow_counter: Arc<AtomicUsize>,
@@ -396,6 +465,52 @@ fn stash_open_behavior(total: u32) -> Behavior<StashCommand, NoStdToolbox> {
     | StashCommand::Read { reply_to } => {
       let mut reply_to = reply_to.clone();
       reply_to.tell(total).map_err(|error| ActorError::from_send_error(&error))?;
+      Ok(Behaviors::same())
+    },
+  })
+}
+
+fn stash_order_behavior(history: Vec<String>) -> Behavior<StashOrderCommand, NoStdToolbox> {
+  Behaviors::with_stash(32, move |stash| stash_order_locked_behavior(history.clone(), stash))
+}
+
+fn stash_order_locked_behavior(
+  history: Vec<String>,
+  stash: StashBuffer<StashOrderCommand>,
+) -> Behavior<StashOrderCommand, NoStdToolbox> {
+  Behaviors::receive_message(move |ctx, message| match message {
+    | StashOrderCommand::Buffer(_) | StashOrderCommand::Marker(_) => {
+      stash.stash(ctx)?;
+      Ok(Behaviors::same())
+    },
+    | StashOrderCommand::Open => {
+      let _ = stash.unstash_all(ctx)?;
+      Ok(stash_order_open_behavior(history.clone()))
+    },
+    | StashOrderCommand::Read { reply_to } => {
+      let mut reply_to = reply_to.clone();
+      reply_to.tell(history.clone()).map_err(|error| ActorError::from_send_error(&error))?;
+      Ok(Behaviors::same())
+    },
+  })
+}
+
+fn stash_order_open_behavior(history: Vec<String>) -> Behavior<StashOrderCommand, NoStdToolbox> {
+  Behaviors::receive_message(move |_ctx, message| match message {
+    | StashOrderCommand::Buffer(value) => {
+      let mut next = history.clone();
+      next.push(format!("buffer:{value}"));
+      Ok(stash_order_open_behavior(next))
+    },
+    | StashOrderCommand::Marker(value) => {
+      let mut next = history.clone();
+      next.push(format!("marker:{value}"));
+      Ok(stash_order_open_behavior(next))
+    },
+    | StashOrderCommand::Open => Ok(Behaviors::same()),
+    | StashOrderCommand::Read { reply_to } => {
+      let mut reply_to = reply_to.clone();
+      reply_to.tell(history.clone()).map_err(|error| ActorError::from_send_error(&error))?;
       Ok(Behaviors::same())
     },
   })
@@ -626,6 +741,14 @@ fn read_counter_value(actor: &mut TypedActorRef<AdapterCounterCommand>) -> i32 {
 
 fn read_stash_total(actor: &mut TypedActorRef<StashCommand>) -> u32 {
   let response = actor.ask::<u32, _>(|reply_to| StashCommand::Read { reply_to }).expect("ask stash read");
+  let mut future = response.future().clone();
+  wait_until(|| future.is_ready());
+  future.try_take().expect("result").expect("payload")
+}
+
+fn read_stash_order_log(actor: &mut TypedActorRef<StashOrderCommand>) -> Vec<String> {
+  let response =
+    actor.ask::<Vec<String>, _>(|reply_to| StashOrderCommand::Read { reply_to }).expect("ask stash order read");
   let mut future = response.future().clone();
   wait_until(|| future.is_ready());
   future.try_take().expect("result").expect("payload")

@@ -99,10 +99,16 @@ where
     sender: Option<&ActorRefGeneric<TB>>,
   ) -> Result<(), ActorError> {
     let mut typed_ctx = TypedActorContextGeneric::from_untyped(ctx, Some(&mut self.adapters));
+    let mut current_message = AnyMessageGeneric::new(message);
     if let Some(target) = sender {
       typed_ctx.as_untyped_mut().set_sender(Some(target.clone()));
+      current_message = current_message.with_sender(target.clone());
     }
-    let result = self.actor.receive(&mut typed_ctx, &message);
+    typed_ctx.as_untyped_mut().set_current_message(Some(current_message.clone()));
+    let view = current_message.as_view();
+    let payload =
+      view.downcast_ref::<M>().ok_or_else(|| ActorError::recoverable(ActorErrorReason::new(DOWNCAST_FAILED)))?;
+    let result = self.actor.receive(&mut typed_ctx, payload);
     if sender.is_some() {
       typed_ctx.as_untyped_mut().clear_sender();
     }
