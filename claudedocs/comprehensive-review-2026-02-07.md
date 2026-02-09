@@ -322,9 +322,9 @@ README のモジュール関係図や `docs/guides/` の個別ガイドは存在
 
 #### C-5. 統合テスト拡充 [P2] [cluster] [remote]
 - [x] cluster: failure scenario テスト（node down, network partition, slow node）
-- [ ] cluster: load-balanced placement 検証テスト
-- [ ] remote: 2+ ノードシナリオテスト
-- [ ] remote: Phi Failure Detector のエッジケーステスト
+- [x] cluster: load-balanced placement 検証テスト
+- [x] remote: 2+ ノードシナリオテスト
+- [x] remote: Phi Failure Detector のエッジケーステスト
 
 #### C-6. streams サンプル追加 [P1] [streams]
 - [x] 基本パターン 5 個程度の example を追加
