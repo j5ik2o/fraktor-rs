@@ -1,4 +1,4 @@
-use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
+use fraktor_utils_rs::core::{collections::queue::OverflowPolicy, runtime_toolbox::NoStdToolbox};
 
 use super::super::{stream::Stream, stream_shared::StreamSharedGeneric};
 use crate::core::{
@@ -129,4 +129,16 @@ fn source_flat_map_merge_keeps_single_path_behavior() {
 #[should_panic(expected = "breadth must be greater than zero")]
 fn source_flat_map_merge_rejects_zero_breadth() {
   let _ = Source::single(1_u32).flat_map_merge(0, Source::single);
+}
+
+#[test]
+fn source_buffer_keeps_single_path_behavior() {
+  let values = Source::single(5_u32).buffer(2, OverflowPolicy::Block).collect_values().expect("collect_values");
+  assert_eq!(values, vec![5_u32]);
+}
+
+#[test]
+#[should_panic(expected = "capacity must be greater than zero")]
+fn source_buffer_rejects_zero_capacity() {
+  let _ = Source::single(1_u32).buffer(0, OverflowPolicy::Block);
 }

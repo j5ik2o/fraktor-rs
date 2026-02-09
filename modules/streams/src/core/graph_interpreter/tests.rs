@@ -1,11 +1,14 @@
 use core::any::TypeId;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
-use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
+use fraktor_utils_rs::core::{
+  collections::queue::OverflowPolicy,
+  sync::{ArcShared, sync_mutex_like::SpinSyncMutex},
+};
 
 use super::super::flow::{
-  balance_definition, broadcast_definition, concat_definition, flat_map_merge_definition, merge_definition,
-  zip_definition,
+  balance_definition, broadcast_definition, buffer_definition, concat_definition, flat_map_merge_definition,
+  merge_definition, zip_definition,
 };
 use crate::core::{
   Completion, DemandTracker, DriveOutcome, DynValue, FlowDefinition, FlowLogic, GraphInterpreter, Inlet, KeepRight,
@@ -103,6 +106,82 @@ fn flat_map_merge_uses_configured_breadth() {
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(vec![1, 1, 2, 2, 3, 3])));
+}
+
+#[test]
+fn buffer_flow_fails_with_block_policy_on_overflow() {
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<u32> = Inlet::new();
+  let completion = StreamCompletion::new();
+
+  let source = SourceDefinition {
+    kind:        StageKind::SourceSingle,
+    outlet:      source_outlet.id(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(SequenceSourceLogic { next: 1, end: 3 }),
+  };
+  let buffer = buffer_definition::<u32>(2, OverflowPolicy::Block);
+  let buffer_inlet = buffer.inlet;
+  let buffer_outlet = buffer.outlet;
+  let sink = SinkDefinition {
+    kind:        StageKind::SinkIgnore,
+    inlet:       sink_inlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(RecordingSinkLogic { completion: completion.clone() }),
+  };
+
+  let plan = StreamPlan::from_parts(
+    vec![StageDefinition::Source(source), StageDefinition::Flow(buffer), StageDefinition::Sink(sink)],
+    vec![
+      (source_outlet.id(), buffer_inlet, MatCombine::KeepLeft),
+      (buffer_outlet, sink_inlet.id(), MatCombine::KeepRight),
+    ],
+  );
+
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  drive_to_completion(&mut interpreter);
+  assert_eq!(interpreter.state(), StreamState::Failed);
+  assert_eq!(completion.poll(), Completion::Ready(Err(StreamError::BufferOverflow)));
+}
+
+#[test]
+fn buffer_flow_drop_oldest_keeps_latest_elements() {
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<u32> = Inlet::new();
+  let completion = StreamCompletion::new();
+
+  let source = SourceDefinition {
+    kind:        StageKind::SourceSingle,
+    outlet:      source_outlet.id(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(SequenceSourceLogic { next: 1, end: 3 }),
+  };
+  let buffer = buffer_definition::<u32>(2, OverflowPolicy::DropOldest);
+  let buffer_inlet = buffer.inlet;
+  let buffer_outlet = buffer.outlet;
+  let sink = SinkDefinition {
+    kind:        StageKind::SinkFold,
+    inlet:       sink_inlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(CollectSequenceSinkLogic { completion: completion.clone(), values: Vec::new() }),
+  };
+
+  let plan = StreamPlan::from_parts(
+    vec![StageDefinition::Source(source), StageDefinition::Flow(buffer), StageDefinition::Sink(sink)],
+    vec![
+      (source_outlet.id(), buffer_inlet, MatCombine::KeepLeft),
+      (buffer_outlet, sink_inlet.id(), MatCombine::KeepRight),
+    ],
+  );
+
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  drive_to_completion(&mut interpreter);
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![2, 3])));
 }
 
 #[test]

@@ -1,13 +1,15 @@
 use alloc::{boxed::Box, vec, vec::Vec};
 use core::{any::TypeId, marker::PhantomData};
 
+use fraktor_utils_rs::core::collections::queue::OverflowPolicy;
+
 use super::{
   DynValue, FlowDefinition, Inlet, MatCombine, MatCombineRule, Materialized, Materializer, Outlet, RunnableGraph,
   SourceDefinition, SourceLogic, StageDefinition, StageKind, StreamError, StreamGraph, StreamNotUsed, StreamShape,
   StreamStage, downcast_value,
   flow::{
-    balance_definition, broadcast_definition, concat_definition, flat_map_concat_definition, flat_map_merge_definition,
-    map_definition, merge_definition, zip_definition,
+    balance_definition, broadcast_definition, buffer_definition, concat_definition, flat_map_concat_definition,
+    flat_map_merge_definition, map_definition, merge_definition, zip_definition,
   },
   graph_stage::GraphStage,
   graph_stage_logic::GraphStageLogic,
@@ -168,6 +170,24 @@ where
     Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
+  /// Adds a buffer stage with an overflow strategy.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `capacity` is zero.
+  #[must_use]
+  pub fn buffer(mut self, capacity: usize, overflow_policy: OverflowPolicy) -> Source<Out, Mat> {
+    assert!(capacity > 0, "capacity must be greater than zero");
+    let definition = buffer_definition::<Out>(capacity, overflow_policy);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
   /// Adds a broadcast stage that duplicates each element `fan_out` times.
   ///
   /// # Panics
@@ -270,6 +290,19 @@ where
         outputs.push(item);
       }
     }
+    for flow in &mut flows {
+      flow.logic.on_source_done()?;
+    }
+    loop {
+      let values = drain_flows(&mut flows)?;
+      if values.is_empty() {
+        break;
+      }
+      for value in values {
+        let item = downcast_value::<Out>(value)?;
+        outputs.push(item);
+      }
+    }
     Ok(outputs)
   }
 
@@ -296,6 +329,21 @@ fn apply_flows(flows: &mut Vec<FlowDefinition>, value: DynValue) -> Result<Vec<D
       let outputs = flow.logic.apply(value)?;
       next.extend(outputs);
     }
+    values = next;
+  }
+  Ok(values)
+}
+
+fn drain_flows(flows: &mut Vec<FlowDefinition>) -> Result<Vec<DynValue>, StreamError> {
+  let mut values = Vec::new();
+  for flow in flows {
+    let mut next = Vec::new();
+    for value in values {
+      let outputs = flow.logic.apply(value)?;
+      next.extend(outputs);
+    }
+    let drained = flow.logic.drain_pending()?;
+    next.extend(drained);
     values = next;
   }
   Ok(values)

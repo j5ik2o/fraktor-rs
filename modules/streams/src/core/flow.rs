@@ -1,6 +1,8 @@
 use alloc::{boxed::Box, collections::VecDeque, vec, vec::Vec};
 use core::{any::TypeId, marker::PhantomData};
 
+use fraktor_utils_rs::core::collections::queue::OverflowPolicy;
+
 use super::{
   DynValue, FlowDefinition, FlowLogic, Inlet, MatCombine, MatCombineRule, Outlet, Source, StageDefinition, StageKind,
   StreamError, StreamGraph, StreamNotUsed, StreamShape, StreamStage, downcast_value, graph_stage::GraphStage,
@@ -121,6 +123,24 @@ where
     F: FnMut(Out) -> Source<T, Mat2> + Send + Sync + 'static, {
     assert!(breadth > 0, "breadth must be greater than zero");
     let definition = flat_map_merge_definition::<Out, T, Mat2, F>(breadth, func);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds a buffer stage with an overflow strategy.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `capacity` is zero.
+  #[must_use]
+  pub fn buffer(mut self, capacity: usize, overflow_policy: OverflowPolicy) -> Flow<In, Out, Mat> {
+    assert!(capacity > 0, "capacity must be greater than zero");
+    let definition = buffer_definition::<Out>(capacity, overflow_policy);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
@@ -303,6 +323,23 @@ where
   }
 }
 
+pub(super) fn buffer_definition<In>(capacity: usize, overflow_policy: OverflowPolicy) -> FlowDefinition
+where
+  In: Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = BufferLogic::<In> { capacity, overflow_policy, pending: VecDeque::new(), source_done: false };
+  FlowDefinition {
+    kind:        StageKind::FlowBuffer,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    logic:       Box::new(logic),
+  }
+}
+
 pub(super) fn broadcast_definition<In>(fan_out: usize) -> FlowDefinition
 where
   In: Clone + Send + Sync + 'static, {
@@ -442,6 +479,13 @@ struct FlatMapMergeLogic<In, Out, Mat2, F> {
   _pd:             PhantomData<fn(In) -> (Out, Mat2)>,
 }
 
+struct BufferLogic<In> {
+  capacity:        usize,
+  overflow_policy: OverflowPolicy,
+  pending:         VecDeque<In>,
+  source_done:     bool,
+}
+
 impl<In, Out, Mat2, F> FlowLogic for FlatMapConcatLogic<In, Out, Mat2, F>
 where
   In: Send + Sync + 'static,
@@ -573,6 +617,61 @@ where
 
   fn materialized(&mut self) -> StreamNotUsed {
     StreamNotUsed::new()
+  }
+}
+
+impl<In> BufferLogic<In>
+where
+  In: Send + Sync + 'static,
+{
+  fn offer_with_strategy(&mut self, value: In) -> Result<(), StreamError> {
+    if self.capacity == 0 {
+      return Err(StreamError::InvalidConnection);
+    }
+    if self.pending.len() < self.capacity {
+      self.pending.push_back(value);
+      return Ok(());
+    }
+
+    match self.overflow_policy {
+      | OverflowPolicy::Block => Err(StreamError::BufferOverflow),
+      | OverflowPolicy::DropNewest => Ok(()),
+      | OverflowPolicy::DropOldest => {
+        let _ = self.pending.pop_front();
+        self.pending.push_back(value);
+        Ok(())
+      },
+      | OverflowPolicy::Grow => {
+        self.pending.push_back(value);
+        Ok(())
+      },
+    }
+  }
+}
+
+impl<In> FlowLogic for BufferLogic<In>
+where
+  In: Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let value = downcast_value::<In>(input)?;
+    self.offer_with_strategy(value)?;
+    Ok(Vec::new())
+  }
+
+  fn on_source_done(&mut self) -> Result<(), StreamError> {
+    self.source_done = true;
+    Ok(())
+  }
+
+  fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
+    if !self.source_done {
+      return Ok(Vec::new());
+    }
+    let Some(value) = self.pending.pop_front() else {
+      return Ok(Vec::new());
+    };
+    Ok(vec![Box::new(value) as DynValue])
   }
 }
 
