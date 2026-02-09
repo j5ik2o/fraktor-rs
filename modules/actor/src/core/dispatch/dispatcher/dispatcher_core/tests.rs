@@ -143,3 +143,42 @@ fn dispatcher_core_invokes_mailbox_pressure_hook_when_full() {
 
   assert_eq!(*pressure_calls.lock(), 1);
 }
+
+#[test]
+fn dispatcher_core_invokes_mailbox_pressure_hook_when_threshold_is_reached() {
+  struct PressureInvoker {
+    pressure_calls: ArcShared<NoStdMutex<usize>>,
+  }
+
+  impl MessageInvoker<NoStdToolbox> for PressureInvoker {
+    fn invoke_user_message(&mut self, _message: crate::core::messaging::AnyMessage) -> Result<(), ActorError> {
+      Ok(())
+    }
+
+    fn invoke_system_message(&mut self, _message: crate::core::messaging::SystemMessage) -> Result<(), ActorError> {
+      Ok(())
+    }
+
+    fn invoke_mailbox_pressure(&mut self, _event: &MailboxPressureEvent) -> Result<(), ActorError> {
+      *self.pressure_calls.lock() += 1;
+      Ok(())
+    }
+  }
+
+  let mailbox = ArcShared::new(Mailbox::new(crate::core::dispatch::mailbox::MailboxPolicy::unbounded(None)));
+  let executor = inline_runner();
+  let adapter = InlineScheduleAdapter::shared::<NoStdToolbox>();
+  let core = ArcShared::new(DispatcherCoreGeneric::new(mailbox, executor, adapter, None, None, None));
+
+  let pressure_calls = ArcShared::new(NoStdMutex::new(0_usize));
+  let invoker = MessageInvokerShared::new(
+    Box::new(PressureInvoker { pressure_calls: pressure_calls.clone() }) as Box<dyn MessageInvoker<NoStdToolbox>>
+  );
+  core.register_invoker(invoker);
+
+  let event = MailboxPressureEvent::new(Pid::new(12, 0), 3, 4, 75, Duration::from_millis(1), Some(3));
+  DispatcherCoreGeneric::handle_backpressure(&core, &event);
+  DispatcherCoreGeneric::drive(&core);
+
+  assert_eq!(*pressure_calls.lock(), 1);
+}

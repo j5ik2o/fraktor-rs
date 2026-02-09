@@ -141,7 +141,7 @@ where
     self.inner().stash()
   }
 
-  /// Re-enqueues all stashed messages back to the actor mailbox.
+  /// Re-enqueues the oldest stashed message back to the actor mailbox.
   ///
   /// # Errors
   ///

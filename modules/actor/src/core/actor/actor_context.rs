@@ -95,7 +95,7 @@ impl<TB: RuntimeToolbox + 'static> ActorContextGeneric<'_, TB> {
     Ok(())
   }
 
-  /// Re-enqueues all previously stashed messages back to this actor mailbox.
+  /// Re-enqueues the oldest previously stashed message back to this actor mailbox.
   ///
   /// # Errors
   ///
@@ -106,7 +106,7 @@ impl<TB: RuntimeToolbox + 'static> ActorContextGeneric<'_, TB> {
       .state()
       .cell(&self.pid)
       .ok_or_else(|| crate::core::error::ActorError::recoverable("actor cell unavailable during unstash"))?;
-    cell.unstash_messages()
+    cell.unstash_message()
   }
 
   /// Re-enqueues all previously stashed messages back to this actor mailbox.
@@ -115,7 +115,12 @@ impl<TB: RuntimeToolbox + 'static> ActorContextGeneric<'_, TB> {
   ///
   /// Returns an error when the actor cell is unavailable or unstash dispatch fails.
   pub fn unstash_all(&self) -> Result<usize, crate::core::error::ActorError> {
-    self.unstash()
+    let cell = self
+      .system
+      .state()
+      .cell(&self.pid)
+      .ok_or_else(|| crate::core::error::ActorError::recoverable("actor cell unavailable during unstash"))?;
+    cell.unstash_messages()
   }
 
   /// Returns an [`ActorRefGeneric`] pointing to the running actor.

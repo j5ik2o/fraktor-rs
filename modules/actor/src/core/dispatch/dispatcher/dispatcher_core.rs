@@ -330,9 +330,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCoreGeneric<TB> {
   }
 
   pub(crate) fn handle_backpressure(self_arc: &ArcShared<Self>, event: &MailboxPressureEvent) {
-    if event.user_len() >= event.capacity() {
-      *self_arc.mailbox_pressure.lock() = Some(event.clone());
-    }
+    *self_arc.mailbox_pressure.lock() = Some(event.clone());
     let hints = ScheduleHints { has_system_messages: false, has_user_messages: true, backpressure_active: true };
     Self::request_execution(self_arc, hints);
   }

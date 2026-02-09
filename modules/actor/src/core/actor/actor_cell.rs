@@ -279,6 +279,41 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     self.state.lock().stashed_messages.len()
   }
 
+  /// Re-enqueues the oldest stashed user message back to this actor mailbox.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when mailbox enqueue fails. Remaining messages stay stashed.
+  pub(crate) fn unstash_message(&self) -> Result<usize, ActorError> {
+    let message = {
+      let mut state = self.state.lock();
+      state.stashed_messages.pop_front()
+    };
+
+    let Some(message) = message else {
+      return Ok(0);
+    };
+
+    let mut pending = VecDeque::new();
+    pending.push_back(message);
+
+    if let Err(error) = self.mailbox.prepend_user_messages(&pending) {
+      let mut state = self.state.lock();
+      if let Some(message) = pending.pop_front() {
+        state.stashed_messages.push_front(message);
+      }
+      return Err(ActorError::from_send_error(&error));
+    }
+
+    self.dispatcher.register_for_execution(ScheduleHints {
+      has_system_messages: false,
+      has_user_messages:   true,
+      backpressure_active: false,
+    });
+
+    Ok(pending.len())
+  }
+
   /// Re-enqueues all stashed user messages back to this actor mailbox.
   ///
   /// # Errors
