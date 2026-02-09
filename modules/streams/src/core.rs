@@ -6,6 +6,8 @@ mod actor_materializer_config;
 mod bidi_flow;
 /// Bidirectional shape definition.
 mod bidi_shape;
+/// Broadcast hub.
+mod broadcast_hub;
 /// Completion polling types.
 mod completion;
 /// Demand model types.
@@ -44,14 +46,20 @@ mod mat_combine_rule;
 mod materialized;
 /// Materializer trait.
 mod materializer;
+/// Merge hub.
+mod merge_hub;
 /// Typed outlet ports.
 mod outlet;
+/// Partition hub.
+mod partition_hub;
 /// Port identifier type.
 mod port_id;
 /// Runnable graph type.
 mod runnable_graph;
 /// Shape abstraction.
 mod shape;
+/// Shared kill switch.
+mod shared_kill_switch;
 /// Sink stage definitions.
 mod sink;
 /// Sink shape definition.
@@ -80,6 +88,8 @@ mod stream_drive_actor;
 mod stream_drive_command;
 /// Stream error definitions.
 mod stream_error;
+/// Deterministic fuzz runner for probe tests.
+mod stream_fuzz_runner;
 /// Stream graph structure.
 mod stream_graph;
 /// Stream handle trait.
@@ -98,6 +108,12 @@ mod stream_shared;
 mod stream_stage;
 /// Stream state enum.
 mod stream_state;
+/// Test sink probe.
+mod test_sink_probe;
+/// Test source probe.
+mod test_source_probe;
+/// Unique kill switch.
+mod unique_kill_switch;
 
 use alloc::{boxed::Box, vec::Vec};
 use core::any::{Any, TypeId};
@@ -106,6 +122,7 @@ pub use actor_materializer::ActorMaterializerGeneric;
 pub use actor_materializer_config::ActorMaterializerConfig;
 pub use bidi_flow::BidiFlow;
 pub use bidi_shape::BidiShape;
+pub use broadcast_hub::BroadcastHub;
 pub use completion::Completion;
 pub use demand::Demand;
 pub use demand_tracker::DemandTracker;
@@ -125,10 +142,13 @@ pub use mat_combine::MatCombine;
 pub use mat_combine_rule::MatCombineRule;
 pub use materialized::Materialized;
 pub use materializer::Materializer;
+pub use merge_hub::MergeHub;
 pub use outlet::Outlet;
+pub use partition_hub::PartitionHub;
 pub use port_id::PortId;
 pub use runnable_graph::RunnableGraph;
 pub use shape::Shape;
+pub use shared_kill_switch::SharedKillSwitch;
 pub use sink::Sink;
 pub use sink_shape::SinkShape;
 pub use source::Source;
@@ -140,6 +160,7 @@ pub use stream_buffer_config::StreamBufferConfig;
 pub use stream_completion::StreamCompletion;
 pub use stream_done::StreamDone;
 pub use stream_error::StreamError;
+pub use stream_fuzz_runner::StreamFuzzRunner;
 pub use stream_graph::StreamGraph;
 pub use stream_handle::StreamHandle;
 pub use stream_handle_generic::StreamHandleGeneric;
@@ -148,6 +169,9 @@ pub use stream_not_used::StreamNotUsed;
 pub use stream_shape::StreamShape;
 pub use stream_stage::StreamStage;
 pub use stream_state::StreamState;
+pub use test_sink_probe::TestSinkProbe;
+pub use test_source_probe::TestSourceProbe;
+pub use unique_kill_switch::UniqueKillSwitch;
 type DynValue = Box<dyn Any + Send + Sync + 'static>;
 
 enum StageDefinition {
