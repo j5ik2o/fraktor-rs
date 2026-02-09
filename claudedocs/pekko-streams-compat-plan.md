@@ -129,30 +129,30 @@
 - [x] P2-13 Phase 2対象テストを追加し全パスさせる。
 
 ### Phase 3: 障害モデル互換
-- [ ] P3-01 `recover` を追加する。
-- [ ] P3-02 `recover_with_retries` を追加する。
-- [ ] P3-03 `RestartSource` with backoff を追加する。
-- [ ] P3-04 `RestartFlow` with backoff を追加する。
-- [ ] P3-05 `RestartSink` with backoff を追加する。
-- [ ] P3-06 supervision `Stop/Resume/Restart` を導入する。
-- [ ] P3-07 演算子ごとの supervision 対応可否を仕様化する。
-- [ ] P3-08 Failure と Error のセマンティクスを整理し反映する。
-- [ ] P3-09 Phase 3対象テストを追加し全パスさせる。
+- [x] P3-01 `recover` を追加する。
+- [x] P3-02 `recover_with_retries` を追加する。
+- [x] P3-03 `RestartSource` with backoff を追加する。
+- [x] P3-04 `RestartFlow` with backoff を追加する。
+- [x] P3-05 `RestartSink` with backoff を追加する。
+- [x] P3-06 supervision `Stop/Resume/Restart` を導入する。
+- [x] P3-07 演算子ごとの supervision 対応可否を仕様化する。
+- [x] P3-08 Failure と Error のセマンティクスを整理し反映する。
+- [x] P3-09 Phase 3対象テストを追加し全パスさせる。
 
 ### Phase 4: 動的制御とテスト基盤
-- [ ] P4-01 `UniqueKillSwitch` を追加する。
-- [ ] P4-02 `SharedKillSwitch` を追加する。
-- [ ] P4-03 `MergeHub` を追加する。
-- [ ] P4-04 `BroadcastHub` を追加する。
-- [ ] P4-05 `PartitionHub` の導入方針を確定し実装する。
-- [ ] P4-06 `TestSource` probe を追加する。
-- [ ] P4-07 `TestSink` probe を追加する。
-- [ ] P4-08 需要制御・失敗注入・完了検証のテストヘルパーを整備する。
-- [ ] P4-09 fuzzing相当のテスト実行モードを追加する。
-- [ ] P4-10 Phase 4対象テストを追加し全パスさせる。
+- [x] P4-01 `UniqueKillSwitch` を追加する。
+- [x] P4-02 `SharedKillSwitch` を追加する。
+- [x] P4-03 `MergeHub` を追加する。
+- [x] P4-04 `BroadcastHub` を追加する。
+- [x] P4-05 `PartitionHub` の導入方針を確定し実装する。
+- [x] P4-06 `TestSource` probe を追加する。
+- [x] P4-07 `TestSink` probe を追加する。
+- [x] P4-08 需要制御・失敗注入・完了検証のテストヘルパーを整備する。
+- [x] P4-09 fuzzing相当のテスト実行モードを追加する。
+- [x] P4-10 Phase 4対象テストを追加し全パスさせる。
 
 ### 最終確認
-- [ ] F-01 受け入れ基準5項目をすべて満たすことを確認する。
-- [ ] F-02 命名・型配置・lint違反がないことを確認する。
-- [ ] F-03 `no_std` 前提が維持されることを確認する。
-- [ ] F-04 `./scripts/ci-check.sh all` を実行し全パスを確認する。
+- [x] F-01 受け入れ基準5項目をすべて満たすことを確認する。
+- [x] F-02 命名・型配置・lint違反がないことを確認する。
+- [x] F-03 `no_std` 前提が維持されることを確認する。
+- [x] F-04 `./scripts/ci-check.sh all` を実行し全パスを確認する。

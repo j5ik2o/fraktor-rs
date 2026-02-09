@@ -11,7 +11,7 @@ pub struct GraphDsl<In, Out, Mat> {
 impl<In, Out, Mat> GraphDsl<In, Out, Mat> {
   /// Creates a DSL builder from an existing flow fragment.
   #[must_use]
-  pub fn from_flow(flow: Flow<In, Out, Mat>) -> Self {
+  pub const fn from_flow(flow: Flow<In, Out, Mat>) -> Self {
     Self { flow }
   }
 

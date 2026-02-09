@@ -12,7 +12,10 @@ pub struct BidiFlow<InTop, OutTop, InBottom, OutBottom> {
 impl<InTop, OutTop, InBottom, OutBottom> BidiFlow<InTop, OutTop, InBottom, OutBottom> {
   /// Creates a bidirectional flow from top and bottom flow fragments.
   #[must_use]
-  pub fn from_flows(top: Flow<InTop, OutTop, StreamNotUsed>, bottom: Flow<InBottom, OutBottom, StreamNotUsed>) -> Self {
+  pub const fn from_flows(
+    top: Flow<InTop, OutTop, StreamNotUsed>,
+    bottom: Flow<InBottom, OutBottom, StreamNotUsed>,
+  ) -> Self {
     Self { top, bottom }
   }
 
