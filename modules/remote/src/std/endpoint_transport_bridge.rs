@@ -1,5 +1,8 @@
 //! Tokio transport bridge that connects EndpointWriter/Reader with transports.
 
+#[cfg(test)]
+mod tests;
+
 use alloc::{
   boxed::Box,
   collections::{BTreeMap, VecDeque},
@@ -75,7 +78,6 @@ pub(crate) struct EndpointTransportBridge<TB: RuntimeToolbox + 'static> {
   handshake_timeout: Duration,
   listener:          TokioMutex<Option<TransportHandle>>,
   channels:          TokioMutex<BTreeMap<String, TransportChannel>>,
-  peers:             TokioMutex<BTreeMap<String, RemoteNodeId>>,
   coordinator:       EndpointAssociationCoordinatorSharedGeneric<TB>,
 }
 
@@ -93,7 +95,6 @@ impl<TB: RuntimeToolbox + 'static> EndpointTransportBridge<TB> {
       handshake_timeout: config.handshake_timeout,
       listener:          TokioMutex::new(None),
       channels:          TokioMutex::new(BTreeMap::<String, TransportChannel>::new()),
-      peers:             TokioMutex::new(BTreeMap::<String, RemoteNodeId>::new()),
       coordinator:       EndpointAssociationCoordinatorSharedGeneric::new(),
     })
   }
@@ -134,7 +135,6 @@ impl<TB: RuntimeToolbox + 'static> EndpointTransportBridge<TB> {
   async fn handle_outbound_envelope(&self, envelope: RemotingEnvelope) -> Result<(), TransportError> {
     let authority = Self::target_authority(envelope.remote_node())
       .ok_or_else(|| TransportError::AuthorityNotBound("missing remote authority".into()))?;
-    self.peers.lock().await.insert(authority.clone(), envelope.remote_node().clone());
     let deferred = DeferredEnvelope::new(envelope);
     let enqueue = self.coordinator.with_write(|m| {
       m.handle(EndpointAssociationCommand::EnqueueDeferred {
@@ -212,19 +212,9 @@ impl<TB: RuntimeToolbox + 'static> EndpointTransportBridge<TB> {
     };
     self.spawn_handshake_timeout_watchdog(authority.to_string());
 
-    if let Some(remote) = self.peers.lock().await.get(authority).cloned() {
-      let handshake = HandshakeFrame::new(HandshakeKind::Offer, &self.system_name, &self.host, Some(self.port), 0);
-      let payload = handshake.encode();
-      self.transport.with_write(|t| t.send(&channel, &payload, CorrelationId::nil()))?;
-      let accept = self.coordinator.with_write(|m| {
-        m.handle(EndpointAssociationCommand::HandshakeAccepted {
-          authority:   authority.to_string(),
-          remote_node: remote,
-          now:         self.now_millis(),
-        })
-      });
-      return Ok(accept.effects);
-    }
+    let handshake = HandshakeFrame::new(HandshakeKind::Offer, &self.system_name, &self.host, Some(self.port), 0);
+    let payload = handshake.encode();
+    self.transport.with_write(|t| t.send(&channel, &payload, CorrelationId::nil()))?;
     Ok(Vec::new())
   }
 
@@ -306,6 +296,11 @@ impl<TB: RuntimeToolbox + 'static> EndpointTransportBridge<TB> {
     let frame = HandshakeFrame::decode(&payload)?;
     if let Some(port) = frame.port() {
       let authority = format!("{}:{port}", frame.host());
+      if matches!(frame.kind(), HandshakeKind::Offer)
+        && let Err(error) = self.send_handshake_ack(&authority).await
+      {
+        self.emit_error(format!("failed to send handshake ack: {error:?}"));
+      }
       let remote =
         RemoteNodeId::new(frame.system_name().to_string(), frame.host().to_string(), frame.port(), frame.uid());
       let accept = self.coordinator.with_write(|m| {
@@ -318,6 +313,13 @@ impl<TB: RuntimeToolbox + 'static> EndpointTransportBridge<TB> {
       let _ = self.process_effects(accept.effects).await;
     }
     Ok(())
+  }
+
+  async fn send_handshake_ack(&self, authority: &str) -> Result<(), TransportError> {
+    let channel = self.ensure_channel(authority).await?;
+    let ack = HandshakeFrame::new(HandshakeKind::Ack, &self.system_name, &self.host, Some(self.port), 0);
+    let payload = ack.encode();
+    self.transport.with_write(|t| t.send(&channel, &payload, CorrelationId::nil()))
   }
 
   async fn deliver_inbound(&self, envelope: RemotingEnvelope) {
