@@ -81,6 +81,12 @@ impl EndpointAssociationCoordinator {
       },
       | EndpointAssociationCommand::HandshakeAccepted { authority, remote_node, now } => {
         self.registry.ensure_entry(&authority);
+        if matches!(
+          self.registry.state(&authority),
+          Some(AssociationState::Gated { .. } | AssociationState::Quarantined { .. })
+        ) {
+          return EndpointAssociationResult::default();
+        }
         self.registry.set_state(
           &authority,
           AssociationState::Connected { remote: remote_node.clone() },
@@ -100,6 +106,20 @@ impl EndpointAssociationCoordinator {
           correlation_id,
         }));
         EndpointAssociationResult { effects }
+      },
+      | EndpointAssociationCommand::HandshakeTimedOut { authority, resume_at, now } => {
+        self.registry.ensure_entry(&authority);
+        if !matches!(self.registry.state(&authority), Some(AssociationState::Associating { .. })) {
+          return EndpointAssociationResult::default();
+        }
+        self.registry.set_state(&authority, AssociationState::Gated { resume_at }, now, Some("handshake timed out"));
+        let correlation_id = self.next_correlation_id();
+        EndpointAssociationResult {
+          effects: vec![EndpointAssociationEffect::Lifecycle(RemotingLifecycleEvent::Gated {
+            authority,
+            correlation_id,
+          })],
+        }
       },
       | EndpointAssociationCommand::Quarantine { authority, reason, resume_at, now } => {
         self.registry.ensure_entry(&authority);

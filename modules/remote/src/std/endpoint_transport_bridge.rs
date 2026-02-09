@@ -32,21 +32,23 @@ const OUTBOUND_IDLE_DELAY: Duration = Duration::from_millis(5);
 /// Configuration required to bootstrap the transport bridge.
 pub struct EndpointTransportBridgeConfig<TB: RuntimeToolbox + 'static> {
   /// Actor system providing scheduling and state access (weak reference).
-  pub system:          ActorSystemWeakGeneric<TB>,
+  pub system:            ActorSystemWeakGeneric<TB>,
   /// Shared endpoint writer feeding outbound frames.
-  pub writer:          EndpointWriterSharedGeneric<TB>,
+  pub writer:            EndpointWriterSharedGeneric<TB>,
   /// Shared endpoint reader decoding inbound frames.
-  pub reader:          ArcShared<EndpointReaderGeneric<TB>>,
+  pub reader:            ArcShared<EndpointReaderGeneric<TB>>,
   /// Active transport implementation wrapped in a mutex for shared mutable access.
-  pub transport:       RemoteTransportShared<TB>,
+  pub transport:         RemoteTransportShared<TB>,
   /// Event publisher for lifecycle/backpressure events.
-  pub event_publisher: EventPublisherGeneric<TB>,
+  pub event_publisher:   EventPublisherGeneric<TB>,
   /// Canonical host used when binding listeners.
-  pub canonical_host:  String,
+  pub canonical_host:    String,
   /// Canonical port used when binding listeners.
-  pub canonical_port:  u16,
+  pub canonical_port:    u16,
   /// Logical system name advertised during handshakes.
-  pub system_name:     String,
+  pub system_name:       String,
+  /// Timeout used while waiting for a handshake to complete.
+  pub handshake_timeout: Duration,
 }
 
 /// Handle controlling bridge background tasks.
@@ -62,35 +64,37 @@ impl EndpointTransportBridgeHandle {
 }
 
 pub(crate) struct EndpointTransportBridge<TB: RuntimeToolbox + 'static> {
-  system:          ActorSystemWeakGeneric<TB>,
-  event_publisher: EventPublisherGeneric<TB>,
-  writer:          EndpointWriterSharedGeneric<TB>,
-  reader:          ArcShared<EndpointReaderGeneric<TB>>,
-  transport:       RemoteTransportShared<TB>,
-  host:            String,
-  port:            u16,
-  system_name:     String,
-  listener:        TokioMutex<Option<TransportHandle>>,
-  channels:        TokioMutex<BTreeMap<String, TransportChannel>>,
-  peers:           TokioMutex<BTreeMap<String, RemoteNodeId>>,
-  coordinator:     EndpointAssociationCoordinatorSharedGeneric<TB>,
+  system:            ActorSystemWeakGeneric<TB>,
+  event_publisher:   EventPublisherGeneric<TB>,
+  writer:            EndpointWriterSharedGeneric<TB>,
+  reader:            ArcShared<EndpointReaderGeneric<TB>>,
+  transport:         RemoteTransportShared<TB>,
+  host:              String,
+  port:              u16,
+  system_name:       String,
+  handshake_timeout: Duration,
+  listener:          TokioMutex<Option<TransportHandle>>,
+  channels:          TokioMutex<BTreeMap<String, TransportChannel>>,
+  peers:             TokioMutex<BTreeMap<String, RemoteNodeId>>,
+  coordinator:       EndpointAssociationCoordinatorSharedGeneric<TB>,
 }
 
 impl<TB: RuntimeToolbox + 'static> EndpointTransportBridge<TB> {
   fn new(config: EndpointTransportBridgeConfig<TB>) -> Arc<Self> {
     Arc::new(Self {
-      system:          config.system,
-      event_publisher: config.event_publisher,
-      writer:          config.writer,
-      reader:          config.reader,
-      transport:       config.transport,
-      host:            config.canonical_host,
-      port:            config.canonical_port,
-      system_name:     config.system_name,
-      listener:        TokioMutex::new(None),
-      channels:        TokioMutex::new(BTreeMap::<String, TransportChannel>::new()),
-      peers:           TokioMutex::new(BTreeMap::<String, RemoteNodeId>::new()),
-      coordinator:     EndpointAssociationCoordinatorSharedGeneric::new(),
+      system:            config.system,
+      event_publisher:   config.event_publisher,
+      writer:            config.writer,
+      reader:            config.reader,
+      transport:         config.transport,
+      host:              config.canonical_host,
+      port:              config.canonical_port,
+      system_name:       config.system_name,
+      handshake_timeout: config.handshake_timeout,
+      listener:          TokioMutex::new(None),
+      channels:          TokioMutex::new(BTreeMap::<String, TransportChannel>::new()),
+      peers:             TokioMutex::new(BTreeMap::<String, RemoteNodeId>::new()),
+      coordinator:       EndpointAssociationCoordinatorSharedGeneric::new(),
     })
   }
 
@@ -140,16 +144,34 @@ impl<TB: RuntimeToolbox + 'static> EndpointTransportBridge<TB> {
     });
     self.process_effects(enqueue.effects).await?;
 
-    if !matches!(self.coordinator.with_read(|m| m.state(&authority)), Some(AssociationState::Connected { .. })) {
-      let endpoint = TransportEndpoint::new(authority.clone());
-      let associate = self.coordinator.with_write(|m| {
-        m.handle(EndpointAssociationCommand::Associate {
-          authority: authority.clone(),
-          endpoint,
-          now: self.now_millis(),
-        })
-      });
-      self.process_effects(associate.effects).await?;
+    match self.coordinator.with_read(|m| m.state(&authority)) {
+      | Some(AssociationState::Connected { .. })
+      | Some(AssociationState::Associating { .. })
+      | Some(AssociationState::Quarantined { .. }) => {},
+      | Some(AssociationState::Gated { resume_at }) => {
+        if resume_at.is_some_and(|deadline| self.now_millis() >= deadline) {
+          let endpoint = TransportEndpoint::new(authority.clone());
+          let recover = self.coordinator.with_write(|m| {
+            m.handle(EndpointAssociationCommand::Recover {
+              authority: authority.clone(),
+              endpoint:  Some(endpoint),
+              now:       self.now_millis(),
+            })
+          });
+          self.process_effects(recover.effects).await?;
+        }
+      },
+      | Some(AssociationState::Unassociated) | None => {
+        let endpoint = TransportEndpoint::new(authority.clone());
+        let associate = self.coordinator.with_write(|m| {
+          m.handle(EndpointAssociationCommand::Associate {
+            authority: authority.clone(),
+            endpoint,
+            now: self.now_millis(),
+          })
+        });
+        self.process_effects(associate.effects).await?;
+      },
     }
     Ok(())
   }
@@ -181,14 +203,15 @@ impl<TB: RuntimeToolbox + 'static> EndpointTransportBridge<TB> {
     authority: &str,
     endpoint: &TransportEndpoint,
   ) -> Result<Vec<EndpointAssociationEffect>, TransportError> {
-    {
-      let channels = self.channels.lock().await;
-      if channels.contains_key(authority) {
-        return Ok(Vec::new());
-      }
-    }
-    let channel = self.transport.with_write(|t| t.open_channel(endpoint))?;
-    self.channels.lock().await.insert(authority.to_string(), channel);
+    let channel = if let Some(existing) = self.channels.lock().await.get(authority).copied() {
+      existing
+    } else {
+      let channel = self.transport.with_write(|t| t.open_channel(endpoint))?;
+      self.channels.lock().await.insert(authority.to_string(), channel);
+      channel
+    };
+    self.spawn_handshake_timeout_watchdog(authority.to_string());
+
     if let Some(remote) = self.peers.lock().await.get(authority).cloned() {
       let handshake = HandshakeFrame::new(HandshakeKind::Offer, &self.system_name, &self.host, Some(self.port), 0);
       let payload = handshake.encode();
@@ -203,6 +226,26 @@ impl<TB: RuntimeToolbox + 'static> EndpointTransportBridge<TB> {
       return Ok(accept.effects);
     }
     Ok(Vec::new())
+  }
+
+  fn spawn_handshake_timeout_watchdog(&self, authority: String) {
+    let timeout = self.handshake_timeout;
+    let coordinator = self.coordinator.clone();
+    let event_publisher = self.event_publisher.clone();
+    let system = self.system.clone();
+    tokio::spawn(async move {
+      sleep(timeout).await;
+      let now = system.upgrade().map(|s| s.state().monotonic_now().as_millis() as u64).unwrap_or(0);
+      let resume_at = Some(now.saturating_add(Self::duration_millis(timeout)));
+      let result = coordinator.with_write(|m| {
+        m.handle(EndpointAssociationCommand::HandshakeTimedOut { authority: authority.clone(), resume_at, now })
+      });
+      for effect in result.effects {
+        if let EndpointAssociationEffect::Lifecycle(event) = effect {
+          event_publisher.publish_lifecycle(event);
+        }
+      }
+    });
   }
 
   async fn flush_envelope(&self, authority: &str, deferred: DeferredEnvelope) -> Result<(), TransportError> {
@@ -231,6 +274,10 @@ impl<TB: RuntimeToolbox + 'static> EndpointTransportBridge<TB> {
 
   fn now_millis(&self) -> u64 {
     self.system.upgrade().map(|s| s.state().monotonic_now().as_millis() as u64).unwrap_or(0)
+  }
+
+  fn duration_millis(duration: Duration) -> u64 {
+    duration.as_millis().min(u128::from(u64::MAX)) as u64
   }
 
   fn target_authority(node: &RemoteNodeId) -> Option<String> {

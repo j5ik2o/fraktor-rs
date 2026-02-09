@@ -210,12 +210,12 @@ README のモジュール関係図や `docs/guides/` の個別ガイドは存在
 - [x] その他の broken intra-doc link をすべて修正（全17件: actor 12, remote 4, cluster 1, streams 1）
 - [x] 全モジュールで `cargo doc --no-deps` が成功することを確認
 
-#### A-2. ActorSystem quickstart API [P1] [actor] ✅ 設計完了
+#### A-2. ActorSystem quickstart API [P1] [actor] ✅ 完了
 - [x] `ActorSystem::quickstart(&props)` 簡易初期化 API を設計（`claudedocs/quickstart-api-design.md`）
 - [x] TickDriverConfig のデフォルト構成を内部で自動適用（設計済み）
 - [x] `DispatcherConfig::tokio_auto()` で Tokio Handle 自動検出（設計済み）
 - [x] Codex Architect レビュー完了（feature gate `#[cfg(feature = "tokio-executor")]` 必須等）
-- [ ] 実装（設計書に基づく実コード作成は Phase B 以降）
+- [x] 実装（`ActorSystem::quickstart` / `quickstart_with` / `DispatcherConfig::tokio_auto`）
 
 #### A-3. Getting Started ガイド [P1] [docs] ✅ 完了
 - [x] `docs/guides/getting-started.md` を新規作成
@@ -304,10 +304,10 @@ README のモジュール関係図や `docs/guides/` の個別ガイドは存在
 - [ ] TLS 有効時の example を追加
 - [ ] テスト（自己署名証明書によるハンドシェイク検証）
 
-#### C-2. Handshake timeout [P1] [remote]
-- [ ] `RemotingExtensionConfig::with_handshake_timeout()` を追加
-- [ ] timeout 超過時の EndpointAssociation FSM 遷移を実装
-- [ ] recovery path のテスト
+#### C-2. Handshake timeout [P1] [remote] ✅ 完了
+- [x] `RemotingExtensionConfig::with_handshake_timeout()` を追加
+- [x] timeout 超過時の EndpointAssociation FSM 遷移を実装
+- [x] recovery path のテスト
 
 #### C-3. Stash メカニズム [P2] [actor] ✅ 完了
 - [x] `ActorContext::stash()` / `unstash()` API を設計

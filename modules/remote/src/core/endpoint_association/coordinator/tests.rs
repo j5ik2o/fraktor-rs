@@ -448,3 +448,63 @@ fn suspect_notification_via_gate_emits_lifecycle_event() {
   }
   assert_eq!(mgr.state(&authority), Some(AssociationState::Gated { resume_at: Some(999) }));
 }
+
+#[test]
+fn handshake_timeout_moves_associating_to_gated_and_requires_recover() {
+  let mut mgr = coordinator();
+  let authority = "loopback:4500".to_string();
+  mgr.handle(EndpointAssociationCommand::RegisterInbound { authority: authority.clone(), now: 1 });
+  mgr.handle(EndpointAssociationCommand::Associate {
+    authority: authority.clone(),
+    endpoint:  sample_endpoint(),
+    now:       2,
+  });
+
+  let timeout = mgr.handle(EndpointAssociationCommand::HandshakeTimedOut {
+    authority: authority.clone(),
+    resume_at: Some(20),
+    now:       10,
+  });
+  assert_eq!(timeout.effects.len(), 1);
+  match &timeout.effects[0] {
+    | EndpointAssociationEffect::Lifecycle(RemotingLifecycleEvent::Gated { authority: gated, correlation_id }) => {
+      assert_eq!(gated, &authority);
+      assert!(!correlation_id.is_nil());
+    },
+    | other => panic!("unexpected lifecycle effect: {other:?}"),
+  }
+  assert_eq!(mgr.state(&authority), Some(AssociationState::Gated { resume_at: Some(20) }));
+
+  let ignored = mgr.handle(EndpointAssociationCommand::HandshakeAccepted {
+    authority:   authority.clone(),
+    remote_node: sample_remote(),
+    now:         11,
+  });
+  assert!(ignored.effects.is_empty());
+  assert_eq!(mgr.state(&authority), Some(AssociationState::Gated { resume_at: Some(20) }));
+
+  let recover = mgr.handle(EndpointAssociationCommand::Recover {
+    authority: authority.clone(),
+    endpoint:  Some(sample_endpoint_alt()),
+    now:       12,
+  });
+  assert_eq!(recover.effects, vec![EndpointAssociationEffect::StartHandshake {
+    authority: authority.clone(),
+    endpoint:  sample_endpoint_alt(),
+  }]);
+
+  let accepted = mgr.handle(EndpointAssociationCommand::HandshakeAccepted {
+    authority:   authority.clone(),
+    remote_node: sample_remote(),
+    now:         13,
+  });
+  assert!(accepted.effects.iter().any(|effect| {
+    matches!(
+      effect,
+      EndpointAssociationEffect::Lifecycle(RemotingLifecycleEvent::Connected {
+        authority: connected_authority,
+        ..
+      }) if connected_authority == &authority
+    )
+  }));
+}
