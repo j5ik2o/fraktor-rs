@@ -1,4 +1,4 @@
-use alloc::{boxed::Box, vec, vec::Vec};
+use alloc::{boxed::Box, collections::VecDeque, vec, vec::Vec};
 use core::{any::TypeId, marker::PhantomData};
 
 use super::{
@@ -6,6 +6,9 @@ use super::{
   StreamError, StreamGraph, StreamNotUsed, StreamShape, StreamStage, downcast_value, graph_stage::GraphStage,
   graph_stage_logic::GraphStageLogic, sink::Sink, stage_context::StageContext,
 };
+
+#[cfg(test)]
+mod tests;
 
 /// Flow stage definition.
 pub struct Flow<In, Out, Mat> {
@@ -105,6 +108,98 @@ where
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
+  /// Adds a broadcast stage that duplicates each element `fan_out` times.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `fan_out` is zero.
+  #[must_use]
+  pub fn broadcast(mut self, fan_out: usize) -> Flow<In, Out, Mat>
+  where
+    Out: Clone, {
+    assert!(fan_out > 0, "fan_out must be greater than zero");
+    let definition = broadcast_definition::<Out>(fan_out);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds a balance stage that distributes elements across `fan_out` outputs.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `fan_out` is zero.
+  #[must_use]
+  pub fn balance(mut self, fan_out: usize) -> Flow<In, Out, Mat> {
+    assert!(fan_out > 0, "fan_out must be greater than zero");
+    let definition = balance_definition::<Out>(fan_out);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds a merge stage that merges `fan_in` upstream paths.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `fan_in` is zero.
+  #[must_use]
+  pub fn merge(mut self, fan_in: usize) -> Flow<In, Out, Mat> {
+    assert!(fan_in > 0, "fan_in must be greater than zero");
+    let definition = merge_definition::<Out>(fan_in);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds a zip stage that emits one vector after receiving one element from each input.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `fan_in` is zero.
+  #[must_use]
+  pub fn zip(mut self, fan_in: usize) -> Flow<In, Vec<Out>, Mat> {
+    assert!(fan_in > 0, "fan_in must be greater than zero");
+    let definition = zip_definition::<Out>(fan_in);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds a concat stage that emits all elements from each input in port order.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `fan_in` is zero.
+  #[must_use]
+  pub fn concat(mut self, fan_in: usize) -> Flow<In, Out, Mat> {
+    assert!(fan_in > 0, "fan_in must be greater than zero");
+    let definition = concat_definition::<Out>(fan_in);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
   pub(crate) fn into_parts(self) -> (StreamGraph, Mat) {
     (self.graph, self.mat)
   }
@@ -155,6 +250,97 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<Out>(),
+    mat_combine: MatCombine::KeepLeft,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(super) fn broadcast_definition<In>(fan_out: usize) -> FlowDefinition
+where
+  In: Clone + Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = BroadcastLogic::<In> { fan_out, _pd: PhantomData };
+  FlowDefinition {
+    kind:        StageKind::FlowBroadcast,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(super) fn balance_definition<In>(fan_out: usize) -> FlowDefinition
+where
+  In: Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = BalanceLogic::<In> { fan_out, _pd: PhantomData };
+  FlowDefinition {
+    kind:        StageKind::FlowBalance,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(super) fn merge_definition<In>(fan_in: usize) -> FlowDefinition
+where
+  In: Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = MergeLogic::<In> { fan_in, _pd: PhantomData };
+  FlowDefinition {
+    kind:        StageKind::FlowMerge,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(super) fn zip_definition<In>(fan_in: usize) -> FlowDefinition
+where
+  In: Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<Vec<In>> = Outlet::new();
+  let logic = ZipLogic::<In> { fan_in, edge_slots: Vec::with_capacity(fan_in), pending: Vec::with_capacity(fan_in) };
+  FlowDefinition {
+    kind:        StageKind::FlowZip,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<Vec<In>>(),
+    mat_combine: MatCombine::KeepLeft,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(super) fn concat_definition<In>(fan_in: usize) -> FlowDefinition
+where
+  In: Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = ConcatLogic::<In> {
+    fan_in,
+    edge_slots: Vec::with_capacity(fan_in),
+    pending: Vec::with_capacity(fan_in),
+    active_slot: 0,
+    source_done: false,
+  };
+  FlowDefinition {
+    kind:        StageKind::FlowConcat,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
     mat_combine: MatCombine::KeepLeft,
     logic:       Box::new(logic),
   }
@@ -234,6 +420,228 @@ where
 
   fn materialized(&mut self) -> StreamNotUsed {
     StreamNotUsed::new()
+  }
+}
+
+struct BroadcastLogic<In> {
+  fan_out: usize,
+  _pd:     PhantomData<fn(In)>,
+}
+
+impl<In> FlowLogic for BroadcastLogic<In>
+where
+  In: Clone + Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    if self.fan_out == 0 {
+      return Err(StreamError::InvalidConnection);
+    }
+    let value = downcast_value::<In>(input)?;
+    let mut outputs = Vec::with_capacity(self.fan_out);
+    for _ in 0..self.fan_out {
+      outputs.push(Box::new(value.clone()) as DynValue);
+    }
+    Ok(outputs)
+  }
+
+  fn expected_fan_out(&self) -> Option<usize> {
+    Some(self.fan_out)
+  }
+}
+
+struct BalanceLogic<In> {
+  fan_out: usize,
+  _pd:     PhantomData<fn(In)>,
+}
+
+impl<In> FlowLogic for BalanceLogic<In>
+where
+  In: Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    if self.fan_out == 0 {
+      return Err(StreamError::InvalidConnection);
+    }
+    Ok(vec![input])
+  }
+
+  fn expected_fan_out(&self) -> Option<usize> {
+    Some(self.fan_out)
+  }
+}
+
+struct MergeLogic<In> {
+  fan_in: usize,
+  _pd:    PhantomData<fn(In)>,
+}
+
+impl<In> FlowLogic for MergeLogic<In>
+where
+  In: Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    if self.fan_in == 0 {
+      return Err(StreamError::InvalidConnection);
+    }
+    Ok(vec![input])
+  }
+
+  fn expected_fan_in(&self) -> Option<usize> {
+    Some(self.fan_in)
+  }
+}
+
+struct ZipLogic<In> {
+  fan_in:     usize,
+  edge_slots: Vec<usize>,
+  pending:    Vec<VecDeque<In>>,
+}
+
+impl<In> ZipLogic<In>
+where
+  In: Send + Sync + 'static,
+{
+  fn slot_for_edge(&mut self, edge_index: usize) -> Result<usize, StreamError> {
+    if let Some(position) = self.edge_slots.iter().position(|index| *index == edge_index) {
+      return Ok(position);
+    }
+    if self.edge_slots.len() >= self.fan_in {
+      return Err(StreamError::InvalidConnection);
+    }
+    self.edge_slots.push(edge_index);
+    self.pending.push(VecDeque::new());
+    Ok(self.edge_slots.len().saturating_sub(1))
+  }
+}
+
+impl<In> FlowLogic for ZipLogic<In>
+where
+  In: Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    self.apply_with_edge(0, input)
+  }
+
+  fn apply_with_edge(&mut self, edge_index: usize, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    if self.fan_in == 0 {
+      return Err(StreamError::InvalidConnection);
+    }
+
+    let value = downcast_value::<In>(input)?;
+    let slot = self.slot_for_edge(edge_index)?;
+    self.pending[slot].push_back(value);
+
+    if self.edge_slots.len() < self.fan_in {
+      return Ok(Vec::new());
+    }
+
+    let ready = self.pending.iter().all(|queue| !queue.is_empty());
+    if !ready {
+      return Ok(Vec::new());
+    }
+
+    let mut zipped = Vec::with_capacity(self.fan_in);
+    for queue in &mut self.pending {
+      let Some(item) = queue.pop_front() else {
+        return Err(StreamError::InvalidConnection);
+      };
+      zipped.push(item);
+    }
+
+    Ok(vec![Box::new(zipped) as DynValue])
+  }
+
+  fn expected_fan_in(&self) -> Option<usize> {
+    Some(self.fan_in)
+  }
+}
+
+struct ConcatLogic<In> {
+  fan_in:      usize,
+  edge_slots:  Vec<usize>,
+  pending:     Vec<VecDeque<In>>,
+  active_slot: usize,
+  source_done: bool,
+}
+
+impl<In> ConcatLogic<In>
+where
+  In: Send + Sync + 'static,
+{
+  fn slot_for_edge(&mut self, edge_index: usize) -> Result<usize, StreamError> {
+    if let Some(position) = self.edge_slots.iter().position(|index| *index == edge_index) {
+      return Ok(position);
+    }
+    if self.edge_slots.len() >= self.fan_in {
+      return Err(StreamError::InvalidConnection);
+    }
+    let insert_at = self.edge_slots.partition_point(|index| *index < edge_index);
+    self.edge_slots.insert(insert_at, edge_index);
+    self.pending.insert(insert_at, VecDeque::new());
+    if insert_at <= self.active_slot && self.edge_slots.len() > 1 {
+      self.active_slot = self.active_slot.saturating_add(1);
+    }
+    Ok(insert_at)
+  }
+
+  fn pop_active_if_ready(&mut self) -> Option<In> {
+    if self.active_slot >= self.pending.len() {
+      return None;
+    }
+    if let Some(value) = self.pending[self.active_slot].pop_front() {
+      return Some(value);
+    }
+
+    if !self.source_done {
+      return None;
+    }
+
+    while self.active_slot < self.pending.len() && self.pending[self.active_slot].is_empty() {
+      self.active_slot = self.active_slot.saturating_add(1);
+    }
+    if self.active_slot >= self.pending.len() {
+      return None;
+    }
+    self.pending[self.active_slot].pop_front()
+  }
+}
+
+impl<In> FlowLogic for ConcatLogic<In>
+where
+  In: Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    self.apply_with_edge(0, input)
+  }
+
+  fn apply_with_edge(&mut self, edge_index: usize, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    if self.fan_in == 0 {
+      return Err(StreamError::InvalidConnection);
+    }
+    let value = downcast_value::<In>(input)?;
+    let slot = self.slot_for_edge(edge_index)?;
+    self.pending[slot].push_back(value);
+
+    if let Some(output) = self.pop_active_if_ready() {
+      return Ok(vec![Box::new(output) as DynValue]);
+    }
+    Ok(Vec::new())
+  }
+
+  fn expected_fan_in(&self) -> Option<usize> {
+    Some(self.fan_in)
+  }
+
+  fn on_source_done(&mut self) -> Result<(), StreamError> {
+    self.source_done = true;
+    Ok(())
+  }
+
+  fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
+    if let Some(output) = self.pop_active_if_ready() {
+      return Ok(vec![Box::new(output) as DynValue]);
+    }
+    Ok(Vec::new())
   }
 }
 

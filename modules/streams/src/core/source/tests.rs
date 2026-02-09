@@ -58,3 +58,63 @@ fn run_with_delegates_to_materializer_and_uses_sink_materialized_value() {
   assert_eq!(materializer.calls, 1);
   assert_eq!(*materialized.materialized(), marker);
 }
+
+#[test]
+fn source_broadcast_duplicates_each_element() {
+  let values = Source::single(5_u32).broadcast(2).collect_values().expect("collect_values");
+  assert_eq!(values, vec![5_u32, 5_u32]);
+}
+
+#[test]
+#[should_panic(expected = "fan_out must be greater than zero")]
+fn source_broadcast_rejects_zero_fan_out() {
+  let _ = Source::single(1_u32).broadcast(0);
+}
+
+#[test]
+fn source_balance_keeps_single_path_behavior() {
+  let values = Source::single(5_u32).balance(1).collect_values().expect("collect_values");
+  assert_eq!(values, vec![5_u32]);
+}
+
+#[test]
+#[should_panic(expected = "fan_out must be greater than zero")]
+fn source_balance_rejects_zero_fan_out() {
+  let _ = Source::single(1_u32).balance(0);
+}
+
+#[test]
+fn source_merge_keeps_single_path_behavior() {
+  let values = Source::single(5_u32).merge(1).collect_values().expect("collect_values");
+  assert_eq!(values, vec![5_u32]);
+}
+
+#[test]
+#[should_panic(expected = "fan_in must be greater than zero")]
+fn source_merge_rejects_zero_fan_in() {
+  let _ = Source::single(1_u32).merge(0);
+}
+
+#[test]
+fn source_zip_wraps_value_when_single_path() {
+  let values = Source::single(5_u32).zip(1).collect_values().expect("collect_values");
+  assert_eq!(values, vec![vec![5_u32]]);
+}
+
+#[test]
+#[should_panic(expected = "fan_in must be greater than zero")]
+fn source_zip_rejects_zero_fan_in() {
+  let _ = Source::single(1_u32).zip(0);
+}
+
+#[test]
+fn source_concat_keeps_single_path_behavior() {
+  let values = Source::single(5_u32).concat(1).collect_values().expect("collect_values");
+  assert_eq!(values, vec![5_u32]);
+}
+
+#[test]
+#[should_panic(expected = "fan_in must be greater than zero")]
+fn source_concat_rejects_zero_fan_in() {
+  let _ = Source::single(1_u32).concat(0);
+}

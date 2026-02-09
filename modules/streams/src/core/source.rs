@@ -5,7 +5,10 @@ use super::{
   DynValue, FlowDefinition, Inlet, MatCombine, MatCombineRule, Materialized, Materializer, Outlet, RunnableGraph,
   SourceDefinition, SourceLogic, StageDefinition, StageKind, StreamError, StreamGraph, StreamNotUsed, StreamShape,
   StreamStage, downcast_value,
-  flow::{flat_map_concat_definition, map_definition},
+  flow::{
+    balance_definition, broadcast_definition, concat_definition, flat_map_concat_definition, map_definition,
+    merge_definition, zip_definition,
+  },
   graph_stage::GraphStage,
   graph_stage_logic::GraphStageLogic,
   sink::Sink,
@@ -134,6 +137,98 @@ where
     Mat2: Send + Sync + 'static,
     F: FnMut(Out) -> Source<T, Mat2> + Send + Sync + 'static, {
     let definition = flat_map_concat_definition::<Out, T, Mat2, F>(func);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds a broadcast stage that duplicates each element `fan_out` times.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `fan_out` is zero.
+  #[must_use]
+  pub fn broadcast(mut self, fan_out: usize) -> Source<Out, Mat>
+  where
+    Out: Clone, {
+    assert!(fan_out > 0, "fan_out must be greater than zero");
+    let definition = broadcast_definition::<Out>(fan_out);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds a balance stage that distributes elements across `fan_out` outputs.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `fan_out` is zero.
+  #[must_use]
+  pub fn balance(mut self, fan_out: usize) -> Source<Out, Mat> {
+    assert!(fan_out > 0, "fan_out must be greater than zero");
+    let definition = balance_definition::<Out>(fan_out);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds a merge stage that merges `fan_in` upstream paths.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `fan_in` is zero.
+  #[must_use]
+  pub fn merge(mut self, fan_in: usize) -> Source<Out, Mat> {
+    assert!(fan_in > 0, "fan_in must be greater than zero");
+    let definition = merge_definition::<Out>(fan_in);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds a zip stage that emits one vector after receiving one element from each input.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `fan_in` is zero.
+  #[must_use]
+  pub fn zip(mut self, fan_in: usize) -> Source<Vec<Out>, Mat> {
+    assert!(fan_in > 0, "fan_in must be greater than zero");
+    let definition = zip_definition::<Out>(fan_in);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds a concat stage that emits all elements from each input in port order.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `fan_in` is zero.
+  #[must_use]
+  pub fn concat(mut self, fan_in: usize) -> Source<Out, Mat> {
+    assert!(fan_in > 0, "fan_in must be greater than zero");
+    let definition = concat_definition::<Out>(fan_in);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));

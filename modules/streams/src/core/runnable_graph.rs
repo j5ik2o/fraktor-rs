@@ -3,7 +3,11 @@ use super::{Materialized, Materializer, StreamError, StreamPlan};
 #[cfg(test)]
 mod tests;
 
-/// Graph ready for materialization.
+/// Immutable graph blueprint ready for materialization.
+///
+/// `RunnableGraph` does not execute by itself.
+/// Calling [`Self::run`] hands this blueprint to a materializer, which creates
+/// runtime state and starts stream execution.
 pub struct RunnableGraph<Mat> {
   plan:         StreamPlan,
   materialized: Mat,

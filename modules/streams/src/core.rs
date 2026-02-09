@@ -2,6 +2,8 @@
 mod actor_materializer;
 /// Actor materializer configuration.
 mod actor_materializer_config;
+/// Bidirectional shape definition.
+mod bidi_shape;
 /// Completion polling types.
 mod completion;
 /// Demand model types.
@@ -12,6 +14,8 @@ mod demand_tracker;
 mod drive_outcome;
 /// Flow stage definitions.
 mod flow;
+/// Flow shape definition.
+mod flow_shape;
 /// Graph interpreter runtime.
 mod graph_interpreter;
 /// Graph stage abstractions.
@@ -42,10 +46,16 @@ mod outlet;
 mod port_id;
 /// Runnable graph type.
 mod runnable_graph;
+/// Shape abstraction.
+mod shape;
 /// Sink stage definitions.
 mod sink;
+/// Sink shape definition.
+mod sink_shape;
 /// Source stage definitions.
 mod source;
+/// Source shape definition.
+mod source_shape;
 /// Stage execution context.
 mod stage_context;
 /// Built-in stage kinds.
@@ -90,11 +100,13 @@ use core::any::{Any, TypeId};
 
 pub use actor_materializer::ActorMaterializerGeneric;
 pub use actor_materializer_config::ActorMaterializerConfig;
+pub use bidi_shape::BidiShape;
 pub use completion::Completion;
 pub use demand::Demand;
 pub use demand_tracker::DemandTracker;
 pub use drive_outcome::DriveOutcome;
 pub use flow::Flow;
+pub use flow_shape::FlowShape;
 pub use graph_interpreter::GraphInterpreter;
 pub use graph_stage::GraphStage;
 pub use graph_stage_logic::GraphStageLogic;
@@ -110,8 +122,11 @@ pub use materializer::Materializer;
 pub use outlet::Outlet;
 pub use port_id::PortId;
 pub use runnable_graph::RunnableGraph;
+pub use shape::Shape;
 pub use sink::Sink;
+pub use sink_shape::SinkShape;
 pub use source::Source;
+pub use source_shape::SourceShape;
 pub use stage_context::StageContext;
 pub use stage_kind::StageKind;
 pub use stream_buffer::StreamBuffer;
@@ -195,16 +210,19 @@ struct SinkDefinition {
   logic:       Box<dyn SinkLogic>,
 }
 
-struct Connection {
-  from: PortId,
-  to:   PortId,
-  mat:  MatCombine,
+/// Materialization-ready immutable blueprint.
+///
+/// The plan contains only stage definitions and wiring edges.
+/// Mutable execution state is created by the interpreter during materialization.
+struct StreamPlan {
+  stages: Vec<StageDefinition>,
+  edges:  Vec<(PortId, PortId, MatCombine)>,
 }
 
-struct StreamPlan {
-  source: SourceDefinition,
-  flows:  Vec<FlowDefinition>,
-  sink:   SinkDefinition,
+impl StreamPlan {
+  const fn from_parts(stages: Vec<StageDefinition>, edges: Vec<(PortId, PortId, MatCombine)>) -> Self {
+    Self { stages, edges }
+  }
 }
 
 trait SourceLogic: Send {
@@ -213,6 +231,27 @@ trait SourceLogic: Send {
 
 trait FlowLogic: Send {
   fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError>;
+
+  fn apply_with_edge(&mut self, edge_index: usize, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let _ = edge_index;
+    self.apply(input)
+  }
+
+  fn expected_fan_out(&self) -> Option<usize> {
+    None
+  }
+
+  fn expected_fan_in(&self) -> Option<usize> {
+    None
+  }
+
+  fn on_source_done(&mut self) -> Result<(), StreamError> {
+    Ok(())
+  }
+
+  fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
+    Ok(Vec::new())
+  }
 }
 
 enum SinkDecision {
