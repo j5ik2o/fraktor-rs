@@ -14,7 +14,10 @@ use alloc::{
 use core::time::Duration;
 
 use fraktor_actor_rs::core::{
-  event::{logging::LogLevel, stream::CorrelationId},
+  event::{
+    logging::LogLevel,
+    stream::{CorrelationId, RemotingLifecycleEvent},
+  },
   system::ActorSystemWeakGeneric,
 };
 use fraktor_utils_rs::core::{
@@ -311,20 +314,22 @@ impl<TB: RuntimeToolbox + 'static> EndpointTransportBridge<TB> {
     let frame = HandshakeFrame::decode(&payload)?;
     if let Some(port) = frame.port() {
       let authority = format!("{}:{port}", frame.host());
-      if matches!(frame.kind(), HandshakeKind::Offer)
-        && let Err(error) = self.send_handshake_ack(&authority).await
-      {
-        self.emit_error(format!("failed to send handshake ack: {error:?}"));
-      }
       let remote =
         RemoteNodeId::new(frame.system_name().to_string(), frame.host().to_string(), frame.port(), frame.uid());
       let accept = self.coordinator.with_write(|m| {
         m.handle(EndpointAssociationCommand::HandshakeAccepted {
-          authority,
+          authority:   authority.clone(),
           remote_node: remote,
-          now: self.now_millis(),
+          now:         self.now_millis(),
         })
       });
+      let should_send_ack = matches!(frame.kind(), HandshakeKind::Offer)
+        && accept.effects.iter().any(|effect| {
+          matches!(effect, EndpointAssociationEffect::Lifecycle(RemotingLifecycleEvent::Connected { .. }))
+        });
+      if should_send_ack && let Err(error) = self.send_handshake_ack(&authority).await {
+        self.emit_error(format!("failed to send handshake ack: {error:?}"));
+      }
       let _ = self.process_effects(accept.effects).await;
     }
     Ok(())

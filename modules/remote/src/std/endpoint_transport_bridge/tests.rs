@@ -28,9 +28,9 @@ use fraktor_utils_rs::{
 use super::{EndpointTransportBridge, EndpointTransportBridgeConfig};
 use crate::core::{
   AssociationState, EndpointAssociationCommand, EndpointReaderGeneric, EndpointWriterGeneric,
-  EndpointWriterSharedGeneric, EventPublisherGeneric, HandshakeFrame, HandshakeKind, RemoteNodeId, RemoteTransport,
-  RemoteTransportShared, TransportBind, TransportChannel, TransportEndpoint, TransportError, TransportHandle,
-  TransportInboundShared,
+  EndpointWriterSharedGeneric, EventPublisherGeneric, HandshakeFrame, HandshakeKind, QuarantineReason, RemoteNodeId,
+  RemoteTransport, RemoteTransportShared, TransportBind, TransportChannel, TransportEndpoint, TransportError,
+  TransportHandle, TransportInboundShared,
 };
 
 struct NoopActor;
@@ -241,6 +241,43 @@ async fn receiving_offer_replies_ack_and_marks_connected() {
     },
     | other => panic!("expected connected state, got {other:?}"),
   }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn receiving_offer_does_not_reply_ack_while_gated() {
+  let (bridge, probe, _system) = build_bridge(Duration::from_millis(500));
+  let authority = "127.0.0.1:4202";
+
+  bridge.coordinator.with_write(|m| {
+    m.handle(EndpointAssociationCommand::Gate { authority: authority.to_string(), resume_at: Some(999), now: 1 })
+  });
+
+  let offer = HandshakeFrame::new(HandshakeKind::Offer, "remote-system", "127.0.0.1", Some(4202), 42);
+  bridge.process_handshake_payload(offer.encode()).await.expect("offer processing");
+
+  assert_eq!(probe.sent_handshake_kinds_for(authority), Vec::new());
+  assert!(matches!(association_state(&bridge, authority), Some(AssociationState::Gated { .. })));
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn receiving_offer_does_not_reply_ack_while_quarantined() {
+  let (bridge, probe, _system) = build_bridge(Duration::from_millis(500));
+  let authority = "127.0.0.1:4203";
+
+  bridge.coordinator.with_write(|m| {
+    m.handle(EndpointAssociationCommand::Quarantine {
+      authority: authority.to_string(),
+      reason:    QuarantineReason::new("uid mismatch"),
+      resume_at: Some(999),
+      now:       1,
+    })
+  });
+
+  let offer = HandshakeFrame::new(HandshakeKind::Offer, "remote-system", "127.0.0.1", Some(4203), 42);
+  bridge.process_handshake_payload(offer.encode()).await.expect("offer processing");
+
+  assert_eq!(probe.sent_handshake_kinds_for(authority), Vec::new());
+  assert!(matches!(association_state(&bridge, authority), Some(AssociationState::Quarantined { .. })));
 }
 
 #[tokio::test(flavor = "current_thread")]
