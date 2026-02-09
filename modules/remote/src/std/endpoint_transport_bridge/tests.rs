@@ -311,6 +311,21 @@ async fn handshake_timeout_moves_to_gated_and_recover_plus_ack_connects_again() 
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn handshake_timeout_gate_has_no_resume_deadline() {
+  let (bridge, _probe, _system) = build_bridge(Duration::from_millis(20));
+  let authority = "127.0.0.1:4302";
+  let endpoint = TransportEndpoint::new(authority.to_string());
+
+  associate(&bridge, authority, endpoint, bridge.now_millis()).await;
+  tokio::time::sleep(Duration::from_millis(80)).await;
+
+  match association_state(&bridge, authority) {
+    | Some(AssociationState::Gated { resume_at }) => assert!(resume_at.is_none()),
+    | other => panic!("expected gated state, got {other:?}"),
+  }
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn stale_handshake_timeout_does_not_gate_new_attempt() {
   let (bridge, probe, _system) = build_bridge(Duration::from_millis(100));
   let authority = "127.0.0.1:4401";

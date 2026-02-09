@@ -154,13 +154,18 @@ impl<TB: RuntimeToolbox + 'static> EndpointTransportBridge<TB> {
       | Some(AssociationState::Associating { .. })
       | Some(AssociationState::Quarantined { .. }) => {},
       | Some(AssociationState::Gated { resume_at }) => {
-        if resume_at.is_some_and(|deadline| self.now_millis() >= deadline) {
+        let now = self.now_millis();
+        let should_recover = match resume_at {
+          | Some(deadline) => now >= deadline,
+          | None => true,
+        };
+        if should_recover {
           let endpoint = TransportEndpoint::new(authority.clone());
           let recover = self.coordinator.with_write(|m| {
             m.handle(EndpointAssociationCommand::Recover {
               authority: authority.clone(),
-              endpoint:  Some(endpoint),
-              now:       self.now_millis(),
+              endpoint: Some(endpoint),
+              now,
             })
           });
           self.process_effects(recover.effects).await?;
@@ -244,7 +249,7 @@ impl<TB: RuntimeToolbox + 'static> EndpointTransportBridge<TB> {
         return;
       }
       let now = system.upgrade().map(|s| s.state().monotonic_now().as_millis() as u64).unwrap_or(0);
-      let resume_at = Some(now.saturating_add(Self::duration_millis(timeout)));
+      let resume_at = None;
       let result = coordinator.with_write(|m| {
         m.handle(EndpointAssociationCommand::HandshakeTimedOut { authority: authority.clone(), resume_at, now })
       });
@@ -282,10 +287,6 @@ impl<TB: RuntimeToolbox + 'static> EndpointTransportBridge<TB> {
 
   fn now_millis(&self) -> u64 {
     self.system.upgrade().map(|s| s.state().monotonic_now().as_millis() as u64).unwrap_or(0)
-  }
-
-  fn duration_millis(duration: Duration) -> u64 {
-    duration.as_millis().min(u128::from(u64::MAX)) as u64
   }
 
   fn target_authority(node: &RemoteNodeId) -> Option<String> {

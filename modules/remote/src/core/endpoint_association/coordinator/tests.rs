@@ -226,6 +226,39 @@ fn quarantine_discards_deferred_messages() {
 }
 
 #[test]
+fn enqueue_deferred_while_quarantined_is_discarded() {
+  let mut mgr = coordinator();
+  let authority = "loopback:4301".to_string();
+  mgr.handle(EndpointAssociationCommand::RegisterInbound { authority: authority.clone(), now: 1 });
+  let reason = QuarantineReason::new("uid mismatch");
+  mgr.handle(EndpointAssociationCommand::Quarantine {
+    authority: authority.clone(),
+    reason:    reason.clone(),
+    resume_at: Some(80),
+    now:       2,
+  });
+
+  let result = mgr.handle(EndpointAssociationCommand::EnqueueDeferred {
+    authority: authority.clone(),
+    envelope:  Box::new(envelope("drop-me")),
+  });
+
+  assert_eq!(result.effects.len(), 1);
+  match &result.effects[0] {
+    | EndpointAssociationEffect::DiscardDeferred {
+      authority: discard_authority,
+      reason: discard_reason,
+      envelopes,
+    } => {
+      assert_eq!(discard_authority, &authority);
+      assert_eq!(discard_reason, &reason);
+      assert_eq!(envelopes, &vec![envelope("drop-me")]);
+    },
+    | other => panic!("unexpected effect: {other:?}"),
+  }
+}
+
+#[test]
 fn recover_from_quarantine_restarts_handshake() {
   let mut mgr = coordinator();
   let authority = "loopback:4400".to_string();
@@ -242,10 +275,18 @@ fn recover_from_quarantine_restarts_handshake() {
     now:       3,
   });
 
-  mgr.handle(EndpointAssociationCommand::EnqueueDeferred {
+  let discarded = mgr.handle(EndpointAssociationCommand::EnqueueDeferred {
     authority: authority.clone(),
     envelope:  Box::new(envelope("m2")),
   });
+  assert_eq!(discarded.effects.len(), 1);
+  match &discarded.effects[0] {
+    | EndpointAssociationEffect::DiscardDeferred { authority: discarded_authority, envelopes, .. } => {
+      assert_eq!(discarded_authority, &authority);
+      assert_eq!(envelopes, &vec![envelope("m2")]);
+    },
+    | other => panic!("unexpected effect: {other:?}"),
+  }
 
   let result = mgr.handle(EndpointAssociationCommand::Recover {
     authority: authority.clone(),
@@ -262,15 +303,8 @@ fn recover_from_quarantine_restarts_handshake() {
     remote_node: sample_remote(),
     now:         5,
   });
-  assert_eq!(result.effects.len(), 2);
+  assert_eq!(result.effects.len(), 1);
   match &result.effects[0] {
-    | EndpointAssociationEffect::DeliverEnvelopes { authority: deliver_authority, envelopes } => {
-      assert_eq!(deliver_authority, &authority);
-      assert_eq!(envelopes, &vec![envelope("m2")]);
-    },
-    | other => panic!("unexpected effect: {other:?}"),
-  }
-  match &result.effects[1] {
     | EndpointAssociationEffect::Lifecycle(event) => match event {
       | RemotingLifecycleEvent::Connected { authority: connected_authority, .. } => {
         assert_eq!(connected_authority, &authority);
@@ -397,10 +431,17 @@ fn loopback_quarantine_manual_override_flow_emits_events() {
     | other => panic!("unexpected lifecycle effect: {other:?}"),
   }
 
-  mgr.handle(EndpointAssociationCommand::EnqueueDeferred {
+  let discarded = mgr.handle(EndpointAssociationCommand::EnqueueDeferred {
     authority: authority.clone(),
     envelope:  Box::new(envelope("retry")),
   });
+  assert_eq!(discarded.effects.len(), 1);
+  match &discarded.effects[0] {
+    | EndpointAssociationEffect::DiscardDeferred { envelopes, .. } => {
+      assert_eq!(envelopes, &vec![envelope("retry")]);
+    },
+    | other => panic!("unexpected discard effect: {other:?}"),
+  }
 
   let recover = mgr.handle(EndpointAssociationCommand::Recover {
     authority: authority.clone(),
@@ -414,14 +455,8 @@ fn loopback_quarantine_manual_override_flow_emits_events() {
     remote_node: RemoteNodeId::new("system-b", "loopback-b.local", Some(4200), 99),
     now:         4,
   });
-  assert_eq!(result.effects.len(), 2);
+  assert_eq!(result.effects.len(), 1);
   match &result.effects[0] {
-    | EndpointAssociationEffect::DeliverEnvelopes { envelopes, .. } => {
-      assert_eq!(envelopes, &vec![envelope("retry")])
-    },
-    | other => panic!("unexpected deliver effect: {other:?}"),
-  }
-  match &result.effects[1] {
     | EndpointAssociationEffect::Lifecycle(RemotingLifecycleEvent::Connected { authority: connected, .. }) => {
       assert_eq!(connected, &authority);
     },
@@ -507,4 +542,43 @@ fn handshake_timeout_moves_associating_to_gated_and_requires_recover() {
       }) if connected_authority == &authority
     )
   }));
+}
+
+#[test]
+fn handshake_timeout_discards_deferred_messages() {
+  let mut mgr = coordinator();
+  let authority = "loopback:4501".to_string();
+  mgr.handle(EndpointAssociationCommand::RegisterInbound { authority: authority.clone(), now: 1 });
+  mgr.handle(EndpointAssociationCommand::Associate {
+    authority: authority.clone(),
+    endpoint:  sample_endpoint(),
+    now:       2,
+  });
+  mgr.handle(EndpointAssociationCommand::EnqueueDeferred {
+    authority: authority.clone(),
+    envelope:  Box::new(envelope("queued-before-timeout")),
+  });
+
+  let timeout = mgr.handle(EndpointAssociationCommand::HandshakeTimedOut {
+    authority: authority.clone(),
+    resume_at: None,
+    now:       3,
+  });
+
+  assert_eq!(timeout.effects.len(), 2);
+  match &timeout.effects[0] {
+    | EndpointAssociationEffect::DiscardDeferred { authority: discard_authority, reason, envelopes } => {
+      assert_eq!(discard_authority, &authority);
+      assert_eq!(reason.message(), "handshake timed out");
+      assert_eq!(envelopes, &vec![envelope("queued-before-timeout")]);
+    },
+    | other => panic!("unexpected effect: {other:?}"),
+  }
+  match &timeout.effects[1] {
+    | EndpointAssociationEffect::Lifecycle(RemotingLifecycleEvent::Gated { authority: gated, .. }) => {
+      assert_eq!(gated, &authority);
+    },
+    | other => panic!("unexpected lifecycle effect: {other:?}"),
+  }
+  assert_eq!(mgr.state(&authority), Some(AssociationState::Gated { resume_at: None }));
 }
