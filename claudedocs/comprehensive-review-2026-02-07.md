@@ -309,11 +309,11 @@ README のモジュール関係図や `docs/guides/` の個別ガイドは存在
 - [ ] timeout 超過時の EndpointAssociation FSM 遷移を実装
 - [ ] recovery path のテスト
 
-#### C-3. Stash メカニズム [P2] [actor]
-- [ ] `ActorContext::stash()` / `unstash()` API を設計
-- [ ] typed / untyped 両方に対応
-- [ ] behavior transition 時のメッセージバッファリング実装
-- [ ] テストと example 追加
+#### C-3. Stash メカニズム [P2] [actor] ✅ 完了
+- [x] `ActorContext::stash()` / `unstash()` API を設計
+- [x] typed / untyped 両方に対応
+- [x] behavior transition 時のメッセージバッファリング実装
+- [x] テストと example 追加
 
 #### C-4. Backpressure Protocol [P2] [actor]
 - [x] mailbox full 時の明示的ハンドリングを設計（dispatcher 内 pending pressure を実行ループで処理）

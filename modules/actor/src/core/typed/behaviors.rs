@@ -9,7 +9,10 @@ use super::supervise::Supervise;
 use crate::core::{
   error::ActorError,
   messaging::AnyMessageGeneric,
-  typed::{actor::TypedActorContextGeneric, behavior::Behavior, behavior_signal::BehaviorSignal},
+  typed::{
+    actor::TypedActorContextGeneric, behavior::Behavior, behavior_signal::BehaviorSignal,
+    stash_buffer::StashBufferGeneric,
+  },
 };
 
 /// Provides Pekko-inspired helpers for constructing [`Behavior`] instances.
@@ -89,6 +92,18 @@ impl Behaviors {
       | BehaviorSignal::Started => Ok(factory(ctx)),
       | _ => Ok(Behavior::same()),
     })
+  }
+
+  /// Creates a behavior using a bounded stash helper.
+  ///
+  /// This mirrors Pekko's `Behaviors.withStash`.
+  #[must_use]
+  pub fn with_stash<M, TB, F>(capacity: usize, factory: F) -> Behavior<M, TB>
+  where
+    M: Send + Sync + 'static,
+    TB: RuntimeToolbox + 'static,
+    F: Fn(StashBufferGeneric<M, TB>) -> Behavior<M, TB> + Send + Sync + 'static, {
+    Self::setup(move |_ctx| factory(StashBufferGeneric::new(capacity)))
   }
 
   /// Creates a behavior that handles typed messages and can return the next behavior.

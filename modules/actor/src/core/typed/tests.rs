@@ -16,7 +16,7 @@ use crate::core::{
   messaging::AnyMessageGeneric,
   supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
   typed::{
-    Behavior, BehaviorSignal, Behaviors, TypedAskError,
+    Behavior, BehaviorSignal, Behaviors, StashBuffer, TypedAskError,
     actor::{TypedActor, TypedActorContextGeneric, TypedActorRef},
     message_adapter::{AdapterEnvelope, AdapterError, AdapterPayload},
     props::TypedPropsGeneric,
@@ -34,6 +34,13 @@ enum CounterMessage {
 enum IgnoreCommand {
   Add(u32),
   Reject,
+  Read { reply_to: TypedActorRef<u32> },
+}
+
+#[derive(Clone)]
+enum StashCommand {
+  Buffer(u32),
+  Open,
   Read { reply_to: TypedActorRef<u32> },
 }
 
@@ -130,6 +137,45 @@ fn typed_behaviors_ignore_keeps_current_state() {
   let payload = future.try_take().expect("reply available").expect("typed payload");
 
   assert_eq!(payload, 6);
+
+  system.terminate().expect("terminate");
+}
+
+#[test]
+fn typed_behaviors_stash_buffered_messages_across_transition() {
+  let props = TypedPropsGeneric::<StashCommand, NoStdToolbox>::from_behavior_factory(|| stash_behavior(0));
+  let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
+  let system = TypedActorSystemGeneric::<StashCommand, NoStdToolbox>::new(&props, tick_driver).expect("system");
+  let mut actor = system.user_guardian_ref();
+
+  actor.tell(StashCommand::Buffer(4)).expect("buffer one");
+  actor.tell(StashCommand::Buffer(3)).expect("buffer two");
+  actor.tell(StashCommand::Open).expect("open");
+
+  wait_until(|| read_stash_total(&mut actor) == 7);
+  assert_eq!(read_stash_total(&mut actor), 7);
+
+  system.terminate().expect("terminate");
+}
+
+#[test]
+fn typed_behaviors_with_stash_limits_capacity() {
+  let overflow_count = Arc::new(AtomicUsize::new(0));
+  let overflow_probe = Arc::clone(&overflow_count);
+  let props = TypedPropsGeneric::<StashCommand, NoStdToolbox>::from_behavior_factory(move || {
+    stash_behavior_with_capacity_limit(0, Arc::clone(&overflow_probe))
+  });
+  let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
+  let system = TypedActorSystemGeneric::<StashCommand, NoStdToolbox>::new(&props, tick_driver).expect("system");
+  let mut actor = system.user_guardian_ref();
+
+  actor.tell(StashCommand::Buffer(4)).expect("buffer one");
+  actor.tell(StashCommand::Buffer(3)).expect("buffer two");
+  actor.tell(StashCommand::Open).expect("open");
+
+  wait_until(|| read_stash_total(&mut actor) == 4);
+  assert_eq!(read_stash_total(&mut actor), 4);
+  assert_eq!(overflow_count.load(Ordering::SeqCst), 1);
 
   system.terminate().expect("terminate");
 }
@@ -281,6 +327,73 @@ fn ignore_gate(total: u32) -> Behavior<IgnoreCommand, NoStdToolbox> {
     | IgnoreCommand::Add(delta) => Ok(ignore_gate(total + delta)),
     | IgnoreCommand::Reject => Ok(Behaviors::ignore()),
     | IgnoreCommand::Read { reply_to } => {
+      let mut reply_to = reply_to.clone();
+      reply_to.tell(total).map_err(|error| ActorError::from_send_error(&error))?;
+      Ok(Behaviors::same())
+    },
+  })
+}
+
+fn stash_behavior(total: u32) -> Behavior<StashCommand, NoStdToolbox> {
+  Behaviors::with_stash(32, move |stash| stash_locked_behavior(total, stash))
+}
+
+fn stash_behavior_with_capacity_limit(
+  total: u32,
+  overflow_counter: Arc<AtomicUsize>,
+) -> Behavior<StashCommand, NoStdToolbox> {
+  Behaviors::with_stash(1, move |stash| stash_limited_locked_behavior(total, Arc::clone(&overflow_counter), stash))
+}
+
+fn stash_locked_behavior(total: u32, stash: StashBuffer<StashCommand>) -> Behavior<StashCommand, NoStdToolbox> {
+  Behaviors::receive_message(move |ctx, message| match message {
+    | StashCommand::Buffer(_) => {
+      stash.stash(ctx)?;
+      Ok(Behaviors::same())
+    },
+    | StashCommand::Open => {
+      let _ = stash.unstash_all(ctx)?;
+      Ok(stash_open_behavior(total))
+    },
+    | StashCommand::Read { reply_to } => {
+      let mut reply_to = reply_to.clone();
+      reply_to.tell(total).map_err(|error| ActorError::from_send_error(&error))?;
+      Ok(Behaviors::same())
+    },
+  })
+}
+
+fn stash_limited_locked_behavior(
+  total: u32,
+  overflow_counter: Arc<AtomicUsize>,
+  stash: StashBuffer<StashCommand>,
+) -> Behavior<StashCommand, NoStdToolbox> {
+  Behaviors::receive_message(move |ctx, message| match message {
+    | StashCommand::Buffer(_) => {
+      if stash.is_full(ctx)? {
+        overflow_counter.fetch_add(1, Ordering::SeqCst);
+        return Ok(Behaviors::same());
+      }
+      stash.stash(ctx)?;
+      Ok(Behaviors::same())
+    },
+    | StashCommand::Open => {
+      let _ = stash.unstash_all(ctx)?;
+      Ok(stash_open_behavior(total))
+    },
+    | StashCommand::Read { reply_to } => {
+      let mut reply_to = reply_to.clone();
+      reply_to.tell(total).map_err(|error| ActorError::from_send_error(&error))?;
+      Ok(Behaviors::same())
+    },
+  })
+}
+
+fn stash_open_behavior(total: u32) -> Behavior<StashCommand, NoStdToolbox> {
+  Behaviors::receive_message(move |_ctx, message| match message {
+    | StashCommand::Buffer(delta) => Ok(stash_open_behavior(total + delta)),
+    | StashCommand::Open => Ok(Behaviors::same()),
+    | StashCommand::Read { reply_to } => {
       let mut reply_to = reply_to.clone();
       reply_to.tell(total).map_err(|error| ActorError::from_send_error(&error))?;
       Ok(Behaviors::same())
@@ -506,6 +619,13 @@ fn pipe_to_self_converts_messages_via_adapter() {
 
 fn read_counter_value(actor: &mut TypedActorRef<AdapterCounterCommand>) -> i32 {
   let response = actor.ask::<i32, _>(|reply_to| AdapterCounterCommand::Read { reply_to }).expect("ask read");
+  let mut future = response.future().clone();
+  wait_until(|| future.is_ready());
+  future.try_take().expect("result").expect("payload")
+}
+
+fn read_stash_total(actor: &mut TypedActorRef<StashCommand>) -> u32 {
+  let response = actor.ask::<u32, _>(|reply_to| StashCommand::Read { reply_to }).expect("ask stash read");
   let mut future = response.future().clone();
   wait_until(|| future.is_ready());
   future.try_take().expect("result").expect("payload")

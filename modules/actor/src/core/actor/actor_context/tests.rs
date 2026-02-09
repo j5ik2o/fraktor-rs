@@ -222,6 +222,38 @@ fn actor_context_pipe_to_self_handles_async_future() {
   assert_eq!(received.lock()[0], 7);
 }
 
+#[test]
+fn actor_context_stash_requires_active_message() {
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let context = ActorContext::new(&system, pid);
+  let result = context.stash();
+  assert!(result.is_err());
+}
+
+#[test]
+fn actor_context_stash_and_unstash_replays_message() {
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let received = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let props = Props::from_fn({
+    let log = received.clone();
+    move || ProbeActor::new(log.clone())
+  });
+  let _cell = register_cell(&system, pid, "self", &props);
+
+  let mut context = ActorContext::new(&system, pid);
+  context.set_current_message(Some(AnyMessage::new(99_i32)));
+  context.stash().expect("stash");
+  context.clear_current_message();
+
+  let count = context.unstash().expect("unstash");
+  assert_eq!(count, 1);
+
+  wait_until(|| !received.lock().is_empty());
+  assert_eq!(received.lock()[0], 99);
+}
+
 fn register_cell(system: &ActorSystem, pid: Pid, name: &str, props: &Props) -> ArcShared<ActorCell> {
   let cell = ActorCell::create(system.state(), pid, None, String::from(name), props).expect("create actor cell");
   system.state().register_cell(cell.clone());

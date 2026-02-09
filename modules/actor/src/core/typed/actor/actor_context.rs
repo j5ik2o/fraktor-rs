@@ -6,7 +6,7 @@ use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 
 use crate::core::{
   actor::{ActorContextGeneric, Pid, PipeSpawnError},
-  error::SendError,
+  error::{ActorError, SendError},
   messaging::AnyMessageGeneric,
   spawn::SpawnError,
   typed::{
@@ -130,6 +130,33 @@ where
   /// Returns an error if the stop signal cannot be sent.
   pub fn stop_self(&self) -> Result<(), SendError<TB>> {
     self.inner().stop_self()
+  }
+
+  /// Stashes the currently processed message for deferred handling.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when no current message is active or actor cell access fails.
+  pub fn stash(&self) -> Result<(), ActorError> {
+    self.inner().stash()
+  }
+
+  /// Re-enqueues all stashed messages back to the actor mailbox.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when actor cell access or unstash dispatch fails.
+  pub fn unstash(&self) -> Result<usize, ActorError> {
+    self.inner().unstash()
+  }
+
+  /// Re-enqueues all stashed messages back to the actor mailbox.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when actor cell access or unstash dispatch fails.
+  pub fn unstash_all(&self) -> Result<usize, ActorError> {
+    self.inner().unstash_all()
   }
 
   /// Provides mutable access to the underlying untyped context.

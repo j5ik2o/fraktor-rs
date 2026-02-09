@@ -20,10 +20,11 @@ use crate::core::{
 
 /// Provides contextual APIs while handling a message.
 pub struct ActorContextGeneric<'a, TB: RuntimeToolbox + 'static> {
-  system:  ActorSystemGeneric<TB>,
-  pid:     Pid,
-  sender:  Option<ActorRefGeneric<TB>>,
-  _marker: PhantomData<&'a ()>,
+  system:          ActorSystemGeneric<TB>,
+  pid:             Pid,
+  sender:          Option<ActorRefGeneric<TB>>,
+  current_message: Option<AnyMessageGeneric<TB>>,
+  _marker:         PhantomData<&'a ()>,
 }
 
 /// Alias for a context with the default runtime toolbox.
@@ -33,7 +34,7 @@ impl<TB: RuntimeToolbox + 'static> ActorContextGeneric<'_, TB> {
   /// Creates a new context placeholder.
   #[must_use]
   pub fn new(system: &ActorSystemGeneric<TB>, pid: Pid) -> Self {
-    Self { system: system.clone(), pid, sender: None, _marker: PhantomData }
+    Self { system: system.clone(), pid, sender: None, current_message: None, _marker: PhantomData }
   }
 
   /// Returns a reference to the actor system.
@@ -62,6 +63,59 @@ impl<TB: RuntimeToolbox + 'static> ActorContextGeneric<'_, TB> {
   /// Clears the sender after message processing completes.
   pub fn clear_sender(&mut self) {
     self.sender = None;
+  }
+
+  /// Sets the current user message being processed (runtime use only).
+  pub(crate) fn set_current_message(&mut self, message: Option<AnyMessageGeneric<TB>>) {
+    self.current_message = message;
+  }
+
+  /// Clears the current message marker after processing completes.
+  pub(crate) fn clear_current_message(&mut self) {
+    self.current_message = None;
+  }
+
+  /// Stashes the currently processed user message for deferred handling.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when no current message is active or when the actor cell is unavailable.
+  pub fn stash(&self) -> Result<(), crate::core::error::ActorError> {
+    let message = self
+      .current_message
+      .as_ref()
+      .cloned()
+      .ok_or_else(|| crate::core::error::ActorError::recoverable("stash requires an active user message"))?;
+    let cell = self
+      .system
+      .state()
+      .cell(&self.pid)
+      .ok_or_else(|| crate::core::error::ActorError::recoverable("actor cell unavailable during stash"))?;
+    cell.stash_message(message);
+    Ok(())
+  }
+
+  /// Re-enqueues all previously stashed messages back to this actor mailbox.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the actor cell is unavailable or unstash dispatch fails.
+  pub fn unstash(&self) -> Result<usize, crate::core::error::ActorError> {
+    let cell = self
+      .system
+      .state()
+      .cell(&self.pid)
+      .ok_or_else(|| crate::core::error::ActorError::recoverable("actor cell unavailable during unstash"))?;
+    cell.unstash_messages()
+  }
+
+  /// Re-enqueues all previously stashed messages back to this actor mailbox.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the actor cell is unavailable or unstash dispatch fails.
+  pub fn unstash_all(&self) -> Result<usize, crate::core::error::ActorError> {
+    self.unstash()
   }
 
   /// Returns an [`ActorRefGeneric`] pointing to the running actor.
