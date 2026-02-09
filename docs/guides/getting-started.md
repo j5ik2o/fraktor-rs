@@ -222,14 +222,14 @@ impl Actor for PongActor {
 }
 
 // TickDriver の設定は省略（実際には TickDriverConfig の構成が必要）
-// 完全な例は examples/ping_pong_not_std を参照してください
+// 完全な例は modules/actor/examples/ping_pong_not_std/main.rs を参照してください
 
 #[cfg(not(target_os = "none"))]
 fn main() {
   use std::thread;
 
   // no_std 向け TickDriver の構成（デモ用ハードウェアパルス）
-  // 詳細は examples/no_std_tick_driver_support.rs を参照
+  // 詳細は modules/actor/examples/no_std_tick_driver_support.rs を参照
   let props = Props::from_fn(|| GuardianActor);
   // let (tick_driver, _pulse_handle) = hardware_tick_driver_config();
   // let system = ActorSystem::new(&props, tick_driver).expect("system");
