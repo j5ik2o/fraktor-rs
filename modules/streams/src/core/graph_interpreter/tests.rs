@@ -8,11 +8,11 @@ use fraktor_utils_rs::core::{
 
 use super::super::flow::{
   async_boundary_definition, balance_definition, broadcast_definition, buffer_definition, concat_definition,
-  flat_map_merge_definition, merge_definition, zip_definition,
+  flat_map_merge_definition, merge_definition, split_after_definition, split_when_definition, zip_definition,
 };
 use crate::core::{
-  Completion, DemandTracker, DriveOutcome, DynValue, FlowDefinition, FlowLogic, GraphInterpreter, Inlet, KeepRight,
-  MatCombine, Outlet, Sink, SinkDecision, SinkDefinition, SinkLogic, Source, SourceDefinition, SourceLogic,
+  Completion, DemandTracker, DriveOutcome, DynValue, Flow, FlowDefinition, FlowLogic, GraphInterpreter, Inlet,
+  KeepRight, MatCombine, Outlet, Sink, SinkDecision, SinkDefinition, SinkLogic, Source, SourceDefinition, SourceLogic,
   StageDefinition, StageKind, StreamBufferConfig, StreamCompletion, StreamDone, StreamError, StreamNotUsed, StreamPlan,
   StreamState,
 };
@@ -220,6 +220,124 @@ fn async_boundary_flow_preserves_input_order() {
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(vec![1, 2, 3])));
+}
+
+#[test]
+fn group_by_uses_key_function() {
+  let graph = Source::single(3_u32).group_by(4, |value: &u32| value % 2).to_mat(Sink::head(), KeepRight);
+  let (plan, completion) = graph.into_parts();
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  drive_to_completion(&mut interpreter);
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(completion.poll(), Completion::Ready(Ok((1_u32, 3_u32))));
+}
+
+#[test]
+fn split_when_flow_splits_before_predicate() {
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<Vec<u32>> = Inlet::new();
+  let completion = StreamCompletion::new();
+
+  let source = SourceDefinition {
+    kind:        StageKind::SourceSingle,
+    outlet:      source_outlet.id(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(SequenceSourceLogic { next: 1, end: 4 }),
+  };
+  let split_when = split_when_definition::<u32, _>(|value| value % 2 == 0);
+  let split_when_inlet = split_when.inlet;
+  let split_when_outlet = split_when.outlet;
+  let sink = SinkDefinition {
+    kind:        StageKind::SinkFold,
+    inlet:       sink_inlet.id(),
+    input_type:  TypeId::of::<Vec<u32>>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(CollectNestedSequenceSinkLogic { completion: completion.clone(), values: Vec::new() }),
+  };
+
+  let plan = StreamPlan::from_parts(
+    vec![StageDefinition::Source(source), StageDefinition::Flow(split_when), StageDefinition::Sink(sink)],
+    vec![
+      (source_outlet.id(), split_when_inlet, MatCombine::KeepLeft),
+      (split_when_outlet, sink_inlet.id(), MatCombine::KeepRight),
+    ],
+  );
+
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  drive_to_completion(&mut interpreter);
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![vec![1_u32], vec![2_u32, 3_u32], vec![4_u32]])));
+}
+
+#[test]
+fn split_after_flow_splits_after_predicate() {
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<Vec<u32>> = Inlet::new();
+  let completion = StreamCompletion::new();
+
+  let source = SourceDefinition {
+    kind:        StageKind::SourceSingle,
+    outlet:      source_outlet.id(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(SequenceSourceLogic { next: 1, end: 4 }),
+  };
+  let split_after = split_after_definition::<u32, _>(|value| value % 2 == 0);
+  let split_after_inlet = split_after.inlet;
+  let split_after_outlet = split_after.outlet;
+  let sink = SinkDefinition {
+    kind:        StageKind::SinkFold,
+    inlet:       sink_inlet.id(),
+    input_type:  TypeId::of::<Vec<u32>>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(CollectNestedSequenceSinkLogic { completion: completion.clone(), values: Vec::new() }),
+  };
+
+  let plan = StreamPlan::from_parts(
+    vec![StageDefinition::Source(source), StageDefinition::Flow(split_after), StageDefinition::Sink(sink)],
+    vec![
+      (source_outlet.id(), split_after_inlet, MatCombine::KeepLeft),
+      (split_after_outlet, sink_inlet.id(), MatCombine::KeepRight),
+    ],
+  );
+
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  drive_to_completion(&mut interpreter);
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![vec![1_u32, 2_u32], vec![3_u32, 4_u32]])));
+}
+
+#[test]
+fn merge_substreams_flattens_segment_elements() {
+  let graph = Source::single(vec![1_u32, 2_u32, 3_u32]).via(Flow::new().merge_substreams()).to_mat(
+    Sink::fold(Vec::<u32>::new(), |mut acc, value| {
+      acc.push(value);
+      acc
+    }),
+    KeepRight,
+  );
+  let (plan, completion) = graph.into_parts();
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  drive_to_completion(&mut interpreter);
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![1_u32, 2_u32, 3_u32])));
+}
+
+#[test]
+fn concat_substreams_flattens_segment_elements() {
+  let graph = Source::single(vec![1_u32, 2_u32, 3_u32]).via(Flow::new().concat_substreams()).to_mat(
+    Sink::fold(Vec::<u32>::new(), |mut acc, value| {
+      acc.push(value);
+      acc
+    }),
+    KeepRight,
+  );
+  let (plan, completion) = graph.into_parts();
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  drive_to_completion(&mut interpreter);
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![1_u32, 2_u32, 3_u32])));
 }
 
 #[test]
@@ -1227,6 +1345,34 @@ impl SinkLogic for CollectSequenceSinkLogic {
 
   fn on_push(&mut self, input: DynValue, demand: &mut DemandTracker) -> Result<SinkDecision, StreamError> {
     let value = *input.downcast::<u32>().map_err(|_| StreamError::TypeMismatch)?;
+    self.values.push(value);
+    demand.request(1)?;
+    Ok(SinkDecision::Continue)
+  }
+
+  fn on_complete(&mut self) -> Result<(), StreamError> {
+    let values = core::mem::take(&mut self.values);
+    self.completion.complete(Ok(values));
+    Ok(())
+  }
+
+  fn on_error(&mut self, error: StreamError) {
+    self.completion.complete(Err(error));
+  }
+}
+
+struct CollectNestedSequenceSinkLogic {
+  completion: StreamCompletion<Vec<Vec<u32>>>,
+  values:     Vec<Vec<u32>>,
+}
+
+impl SinkLogic for CollectNestedSequenceSinkLogic {
+  fn on_start(&mut self, demand: &mut DemandTracker) -> Result<(), StreamError> {
+    demand.request(1)
+  }
+
+  fn on_push(&mut self, input: DynValue, demand: &mut DemandTracker) -> Result<SinkDecision, StreamError> {
+    let value = *input.downcast::<Vec<u32>>().map_err(|_| StreamError::TypeMismatch)?;
     self.values.push(value);
     demand.request(1)?;
     Ok(SinkDecision::Continue)

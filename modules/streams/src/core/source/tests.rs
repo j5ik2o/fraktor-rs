@@ -148,3 +148,40 @@ fn source_async_boundary_keeps_single_path_behavior() {
   let values = Source::single(5_u32).async_boundary().collect_values().expect("collect_values");
   assert_eq!(values, vec![5_u32]);
 }
+
+#[test]
+fn source_group_by_keeps_single_path_behavior() {
+  let values = Source::single(5_u32).group_by(4, |value: &u32| value % 2).collect_values().expect("collect_values");
+  assert_eq!(values, vec![(1_u32, 5_u32)]);
+}
+
+#[test]
+#[should_panic(expected = "max_substreams must be greater than zero")]
+fn source_group_by_rejects_zero_max_substreams() {
+  let _ = Source::single(1_u32).group_by(0, |value: &u32| *value);
+}
+
+#[test]
+fn source_split_when_emits_single_segment_for_single_element() {
+  let values = Source::single(5_u32).split_when(|_| false).collect_values().expect("collect_values");
+  assert_eq!(values, vec![vec![5_u32]]);
+}
+
+#[test]
+fn source_split_after_emits_single_segment_for_single_element() {
+  let values = Source::single(5_u32).split_after(|_| false).collect_values().expect("collect_values");
+  assert_eq!(values, vec![vec![5_u32]]);
+}
+
+#[test]
+fn source_merge_substreams_flattens_single_segment() {
+  let values = Source::single(5_u32).split_after(|_| true).merge_substreams().collect_values().expect("collect_values");
+  assert_eq!(values, vec![5_u32]);
+}
+
+#[test]
+fn source_concat_substreams_flattens_single_segment() {
+  let values =
+    Source::single(5_u32).split_after(|_| true).concat_substreams().collect_values().expect("collect_values");
+  assert_eq!(values, vec![5_u32]);
+}

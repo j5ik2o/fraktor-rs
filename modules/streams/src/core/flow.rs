@@ -163,6 +163,57 @@ where
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
+  /// Adds a group-by stage that annotates elements with their computed key.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `max_substreams` is zero.
+  #[must_use]
+  pub fn group_by<K, F>(mut self, max_substreams: usize, key_fn: F) -> Flow<In, (K, Out), Mat>
+  where
+    K: Send + Sync + 'static,
+    F: FnMut(&Out) -> K + Send + Sync + 'static, {
+    assert!(max_substreams > 0, "max_substreams must be greater than zero");
+    let definition = group_by_definition::<Out, K, F>(max_substreams, key_fn);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Splits the stream before elements matching `predicate`.
+  #[must_use]
+  pub fn split_when<F>(mut self, predicate: F) -> Flow<In, Vec<Out>, Mat>
+  where
+    F: FnMut(&Out) -> bool + Send + Sync + 'static, {
+    let definition = split_when_definition::<Out, F>(predicate);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Splits the stream after elements matching `predicate`.
+  #[must_use]
+  pub fn split_after<F>(mut self, predicate: F) -> Flow<In, Vec<Out>, Mat>
+  where
+    F: FnMut(&Out) -> bool + Send + Sync + 'static, {
+    let definition = split_after_definition::<Out, F>(predicate);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
   /// Adds a broadcast stage that duplicates each element `fan_out` times.
   ///
   /// # Panics
@@ -257,6 +308,46 @@ where
 
   pub(crate) fn into_parts(self) -> (StreamGraph, Mat) {
     (self.graph, self.mat)
+  }
+}
+
+impl<In, Out, Mat> Flow<In, Vec<Out>, Mat>
+where
+  In: Send + Sync + 'static,
+  Out: Send + Sync + 'static,
+{
+  /// Merges split substreams into a single output stream.
+  #[must_use]
+  pub fn merge_substreams(mut self) -> Flow<In, Out, Mat> {
+    let definition = merge_substreams_definition::<Out>();
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(
+        &Outlet::<Vec<Out>>::from_id(from),
+        &Inlet::<Vec<Out>>::from_id(inlet_id),
+        MatCombine::KeepLeft,
+      );
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Concatenates split substreams into a single output stream.
+  #[must_use]
+  pub fn concat_substreams(mut self) -> Flow<In, Out, Mat> {
+    let definition = concat_substreams_definition::<Out>();
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(
+        &Outlet::<Vec<Out>>::from_id(from),
+        &Inlet::<Vec<Out>>::from_id(inlet_id),
+        MatCombine::KeepLeft,
+      );
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 }
 
@@ -367,6 +458,90 @@ where
     output_type: TypeId::of::<In>(),
     mat_combine: MatCombine::KeepLeft,
     logic:       Box::new(logic),
+  }
+}
+
+pub(super) fn group_by_definition<In, Key, F>(max_substreams: usize, key_fn: F) -> FlowDefinition
+where
+  In: Send + Sync + 'static,
+  Key: Send + Sync + 'static,
+  F: FnMut(&In) -> Key + Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<(Key, In)> = Outlet::new();
+  let logic = GroupByLogic::<In, Key, F> { max_substreams, key_fn, _pd: PhantomData };
+  FlowDefinition {
+    kind:        StageKind::FlowGroupBy,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<(Key, In)>(),
+    mat_combine: MatCombine::KeepLeft,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(super) fn split_when_definition<In, F>(predicate: F) -> FlowDefinition
+where
+  In: Send + Sync + 'static,
+  F: FnMut(&In) -> bool + Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<Vec<In>> = Outlet::new();
+  let logic = SplitWhenLogic::<In, F> { predicate, current: Vec::new(), source_done: false };
+  FlowDefinition {
+    kind:        StageKind::FlowSplitWhen,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<Vec<In>>(),
+    mat_combine: MatCombine::KeepLeft,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(super) fn split_after_definition<In, F>(predicate: F) -> FlowDefinition
+where
+  In: Send + Sync + 'static,
+  F: FnMut(&In) -> bool + Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<Vec<In>> = Outlet::new();
+  let logic = SplitAfterLogic::<In, F> { predicate, current: Vec::new(), source_done: false };
+  FlowDefinition {
+    kind:        StageKind::FlowSplitAfter,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<Vec<In>>(),
+    mat_combine: MatCombine::KeepLeft,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(super) fn merge_substreams_definition<In>() -> FlowDefinition
+where
+  In: Send + Sync + 'static, {
+  flatten_substreams_definition::<In>(StageKind::FlowMergeSubstreams)
+}
+
+pub(super) fn concat_substreams_definition<In>() -> FlowDefinition
+where
+  In: Send + Sync + 'static, {
+  flatten_substreams_definition::<In>(StageKind::FlowConcatSubstreams)
+}
+
+fn flatten_substreams_definition<In>(kind: StageKind) -> FlowDefinition
+where
+  In: Send + Sync + 'static, {
+  let inlet: Inlet<Vec<In>> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = FlattenSubstreamsLogic::<In> { _pd: PhantomData };
+  FlowDefinition {
+    kind,
+    inlet: inlet.id(),
+    outlet: outlet.id(),
+    input_type: TypeId::of::<Vec<In>>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    logic: Box::new(logic),
   }
 }
 
@@ -517,6 +692,28 @@ struct BufferLogic<In> {
 }
 
 struct AsyncBoundaryLogic<In> {
+  _pd: PhantomData<fn(In)>,
+}
+
+struct GroupByLogic<In, Key, F> {
+  max_substreams: usize,
+  key_fn:         F,
+  _pd:            PhantomData<fn(In) -> Key>,
+}
+
+struct SplitWhenLogic<In, F> {
+  predicate:   F,
+  current:     Vec<In>,
+  source_done: bool,
+}
+
+struct SplitAfterLogic<In, F> {
+  predicate:   F,
+  current:     Vec<In>,
+  source_done: bool,
+}
+
+struct FlattenSubstreamsLogic<In> {
   _pd: PhantomData<fn(In)>,
 }
 
@@ -715,6 +912,93 @@ where
 {
   fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
     Ok(vec![input])
+  }
+}
+
+impl<In, Key, F> FlowLogic for GroupByLogic<In, Key, F>
+where
+  In: Send + Sync + 'static,
+  Key: Send + Sync + 'static,
+  F: FnMut(&In) -> Key + Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    if self.max_substreams == 0 {
+      return Err(StreamError::InvalidConnection);
+    }
+    let value = downcast_value::<In>(input)?;
+    let key = (self.key_fn)(&value);
+    Ok(vec![Box::new((key, value)) as DynValue])
+  }
+}
+
+impl<In, F> FlowLogic for SplitWhenLogic<In, F>
+where
+  In: Send + Sync + 'static,
+  F: FnMut(&In) -> bool + Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let value = downcast_value::<In>(input)?;
+    let should_split = (self.predicate)(&value);
+    if should_split && !self.current.is_empty() {
+      let output = core::mem::take(&mut self.current);
+      self.current.push(value);
+      return Ok(vec![Box::new(output) as DynValue]);
+    }
+    self.current.push(value);
+    Ok(Vec::new())
+  }
+
+  fn on_source_done(&mut self) -> Result<(), StreamError> {
+    self.source_done = true;
+    Ok(())
+  }
+
+  fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
+    if !self.source_done || self.current.is_empty() {
+      return Ok(Vec::new());
+    }
+    let output = core::mem::take(&mut self.current);
+    Ok(vec![Box::new(output) as DynValue])
+  }
+}
+
+impl<In, F> FlowLogic for SplitAfterLogic<In, F>
+where
+  In: Send + Sync + 'static,
+  F: FnMut(&In) -> bool + Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let value = downcast_value::<In>(input)?;
+    let should_split = (self.predicate)(&value);
+    self.current.push(value);
+    if !should_split {
+      return Ok(Vec::new());
+    }
+    let output = core::mem::take(&mut self.current);
+    Ok(vec![Box::new(output) as DynValue])
+  }
+
+  fn on_source_done(&mut self) -> Result<(), StreamError> {
+    self.source_done = true;
+    Ok(())
+  }
+
+  fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
+    if !self.source_done || self.current.is_empty() {
+      return Ok(Vec::new());
+    }
+    let output = core::mem::take(&mut self.current);
+    Ok(vec![Box::new(output) as DynValue])
+  }
+}
+
+impl<In> FlowLogic for FlattenSubstreamsLogic<In>
+where
+  In: Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let values = downcast_value::<Vec<In>>(input)?;
+    Ok(values.into_iter().map(|value| Box::new(value) as DynValue).collect())
   }
 }
 

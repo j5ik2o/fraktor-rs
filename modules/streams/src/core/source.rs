@@ -9,7 +9,9 @@ use super::{
   StreamStage, downcast_value,
   flow::{
     async_boundary_definition, balance_definition, broadcast_definition, buffer_definition, concat_definition,
-    flat_map_concat_definition, flat_map_merge_definition, map_definition, merge_definition, zip_definition,
+    concat_substreams_definition, flat_map_concat_definition, flat_map_merge_definition, group_by_definition,
+    map_definition, merge_definition, merge_substreams_definition, split_after_definition, split_when_definition,
+    zip_definition,
   },
   graph_stage::GraphStage,
   graph_stage_logic::GraphStageLogic,
@@ -201,6 +203,57 @@ where
     Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
+  /// Adds a group-by stage that annotates elements with their computed key.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `max_substreams` is zero.
+  #[must_use]
+  pub fn group_by<Key, F>(mut self, max_substreams: usize, key_fn: F) -> Source<(Key, Out), Mat>
+  where
+    Key: Send + Sync + 'static,
+    F: FnMut(&Out) -> Key + Send + Sync + 'static, {
+    assert!(max_substreams > 0, "max_substreams must be greater than zero");
+    let definition = group_by_definition::<Out, Key, F>(max_substreams, key_fn);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Splits the stream before elements matching `predicate`.
+  #[must_use]
+  pub fn split_when<F>(mut self, predicate: F) -> Source<Vec<Out>, Mat>
+  where
+    F: FnMut(&Out) -> bool + Send + Sync + 'static, {
+    let definition = split_when_definition::<Out, F>(predicate);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Splits the stream after elements matching `predicate`.
+  #[must_use]
+  pub fn split_after<F>(mut self, predicate: F) -> Source<Vec<Out>, Mat>
+  where
+    F: FnMut(&Out) -> bool + Send + Sync + 'static, {
+    let definition = split_after_definition::<Out, F>(predicate);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
   /// Adds a broadcast stage that duplicates each element `fan_out` times.
   ///
   /// # Panics
@@ -321,6 +374,45 @@ where
 
   pub(crate) fn into_parts(self) -> (StreamGraph, Mat) {
     (self.graph, self.mat)
+  }
+}
+
+impl<Out, Mat> Source<Vec<Out>, Mat>
+where
+  Out: Send + Sync + 'static,
+{
+  /// Merges split substreams into a single output stream.
+  #[must_use]
+  pub fn merge_substreams(mut self) -> Source<Out, Mat> {
+    let definition = merge_substreams_definition::<Out>();
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(
+        &Outlet::<Vec<Out>>::from_id(from),
+        &Inlet::<Vec<Out>>::from_id(inlet_id),
+        MatCombine::KeepLeft,
+      );
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Concatenates split substreams into a single output stream.
+  #[must_use]
+  pub fn concat_substreams(mut self) -> Source<Out, Mat> {
+    let definition = concat_substreams_definition::<Out>();
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(
+        &Outlet::<Vec<Out>>::from_id(from),
+        &Inlet::<Vec<Out>>::from_id(inlet_id),
+        MatCombine::KeepLeft,
+      );
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 }
 

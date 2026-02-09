@@ -13,6 +13,16 @@ pub enum StageKind {
   FlowBuffer,
   /// Flow stage that represents an asynchronous execution boundary.
   FlowAsyncBoundary,
+  /// Flow stage that annotates elements with a substream key.
+  FlowGroupBy,
+  /// Flow stage that splits input before elements matching a predicate.
+  FlowSplitWhen,
+  /// Flow stage that splits input after elements matching a predicate.
+  FlowSplitAfter,
+  /// Flow stage that merges emitted substreams into a single stream.
+  FlowMergeSubstreams,
+  /// Flow stage that concatenates emitted substreams into a single stream.
+  FlowConcatSubstreams,
   /// Flow stage that broadcasts each element to multiple outputs.
   FlowBroadcast,
   /// Flow stage that balances elements across outputs.
