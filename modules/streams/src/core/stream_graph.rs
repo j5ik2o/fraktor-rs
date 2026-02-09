@@ -146,6 +146,8 @@ impl StreamGraph {
             | StageKind::FlowBuffer
             | StageKind::FlowAsyncBoundary
             | StageKind::FlowGroupBy
+            | StageKind::FlowRecover
+            | StageKind::FlowRecoverWithRetries
             | StageKind::FlowSplitWhen
             | StageKind::FlowSplitAfter
             | StageKind::FlowMergeSubstreams

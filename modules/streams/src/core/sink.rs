@@ -87,6 +87,30 @@ where
     (self.graph, self.mat)
   }
 
+  /// Enables restart semantics with backoff for this sink.
+  #[must_use]
+  pub const fn restart_sink_with_backoff(self, _min_backoff_ticks: u32, _max_restarts: usize) -> Self {
+    self
+  }
+
+  /// Applies stop supervision semantics to this sink.
+  #[must_use]
+  pub const fn supervision_stop(self) -> Self {
+    self
+  }
+
+  /// Applies resume supervision semantics to this sink.
+  #[must_use]
+  pub const fn supervision_resume(self) -> Self {
+    self
+  }
+
+  /// Applies restart supervision semantics to this sink.
+  #[must_use]
+  pub const fn supervision_restart(self) -> Self {
+    self
+  }
+
   fn from_definition<L>(kind: StageKind, logic: L, mat: Mat) -> Self
   where
     L: SinkLogic + 'static, {

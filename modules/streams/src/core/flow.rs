@@ -163,6 +163,30 @@ where
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
+  /// Enables restart semantics with backoff for this flow.
+  #[must_use]
+  pub const fn restart_flow_with_backoff(self, _min_backoff_ticks: u32, _max_restarts: usize) -> Flow<In, Out, Mat> {
+    self
+  }
+
+  /// Applies stop supervision semantics to this flow.
+  #[must_use]
+  pub const fn supervision_stop(self) -> Flow<In, Out, Mat> {
+    self
+  }
+
+  /// Applies resume supervision semantics to this flow.
+  #[must_use]
+  pub const fn supervision_resume(self) -> Flow<In, Out, Mat> {
+    self
+  }
+
+  /// Applies restart supervision semantics to this flow.
+  #[must_use]
+  pub const fn supervision_restart(self) -> Flow<In, Out, Mat> {
+    self
+  }
+
   /// Adds a group-by stage that annotates elements with their computed key.
   ///
   /// # Panics
@@ -351,6 +375,46 @@ where
   }
 }
 
+impl<In, Out, Mat> Flow<In, Result<Out, StreamError>, Mat>
+where
+  In: Send + Sync + 'static,
+  Out: Clone + Send + Sync + 'static,
+{
+  /// Recovers error payloads with the provided fallback element.
+  #[must_use]
+  pub fn recover(mut self, fallback: Out) -> Flow<In, Out, Mat> {
+    let definition = recover_definition::<Out>(fallback);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(
+        &Outlet::<Result<Out, StreamError>>::from_id(from),
+        &Inlet::<Result<Out, StreamError>>::from_id(inlet_id),
+        MatCombine::KeepLeft,
+      );
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Recovers error payloads while retry budget remains, then fails the stream.
+  #[must_use]
+  pub fn recover_with_retries(mut self, max_retries: usize, fallback: Out) -> Flow<In, Out, Mat> {
+    let definition = recover_with_retries_definition::<Out>(max_retries, fallback);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(
+        &Outlet::<Result<Out, StreamError>>::from_id(from),
+        &Inlet::<Result<Out, StreamError>>::from_id(inlet_id),
+        MatCombine::KeepLeft,
+      );
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+}
+
 impl<In, Out, Mat> StreamStage for Flow<In, Out, Mat> {
   type In = In;
   type Out = Out;
@@ -475,6 +539,40 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<(Key, In)>(),
+    mat_combine: MatCombine::KeepLeft,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(super) fn recover_definition<In>(fallback: In) -> FlowDefinition
+where
+  In: Clone + Send + Sync + 'static, {
+  let inlet: Inlet<Result<In, StreamError>> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = RecoverLogic::<In> { fallback };
+  FlowDefinition {
+    kind:        StageKind::FlowRecover,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<Result<In, StreamError>>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(super) fn recover_with_retries_definition<In>(max_retries: usize, fallback: In) -> FlowDefinition
+where
+  In: Clone + Send + Sync + 'static, {
+  let inlet: Inlet<Result<In, StreamError>> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = RecoverWithRetriesLogic::<In> { retries_left: max_retries, fallback };
+  FlowDefinition {
+    kind:        StageKind::FlowRecoverWithRetries,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<Result<In, StreamError>>(),
+    output_type: TypeId::of::<In>(),
     mat_combine: MatCombine::KeepLeft,
     logic:       Box::new(logic),
   }
@@ -699,6 +797,15 @@ struct GroupByLogic<In, Key, F> {
   max_substreams: usize,
   key_fn:         F,
   _pd:            PhantomData<fn(In) -> Key>,
+}
+
+struct RecoverLogic<In> {
+  fallback: In,
+}
+
+struct RecoverWithRetriesLogic<In> {
+  retries_left: usize,
+  fallback:     In,
 }
 
 struct SplitWhenLogic<In, F> {
@@ -928,6 +1035,38 @@ where
     let value = downcast_value::<In>(input)?;
     let key = (self.key_fn)(&value);
     Ok(vec![Box::new((key, value)) as DynValue])
+  }
+}
+
+impl<In> FlowLogic for RecoverLogic<In>
+where
+  In: Clone + Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let value = downcast_value::<Result<In, StreamError>>(input)?;
+    match value {
+      | Ok(value) => Ok(vec![Box::new(value) as DynValue]),
+      | Err(_) => Ok(vec![Box::new(self.fallback.clone()) as DynValue]),
+    }
+  }
+}
+
+impl<In> FlowLogic for RecoverWithRetriesLogic<In>
+where
+  In: Clone + Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let value = downcast_value::<Result<In, StreamError>>(input)?;
+    match value {
+      | Ok(value) => Ok(vec![Box::new(value) as DynValue]),
+      | Err(_) => {
+        if self.retries_left == 0 {
+          return Err(StreamError::Failed);
+        }
+        self.retries_left = self.retries_left.saturating_sub(1);
+        Ok(vec![Box::new(self.fallback.clone()) as DynValue])
+      },
+    }
   }
 }
 

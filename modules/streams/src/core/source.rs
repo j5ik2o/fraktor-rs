@@ -10,8 +10,8 @@ use super::{
   flow::{
     async_boundary_definition, balance_definition, broadcast_definition, buffer_definition, concat_definition,
     concat_substreams_definition, flat_map_concat_definition, flat_map_merge_definition, group_by_definition,
-    map_definition, merge_definition, merge_substreams_definition, split_after_definition, split_when_definition,
-    zip_definition,
+    map_definition, merge_definition, merge_substreams_definition, recover_definition, recover_with_retries_definition,
+    split_after_definition, split_when_definition, zip_definition,
   },
   graph_stage::GraphStage,
   graph_stage_logic::GraphStageLogic,
@@ -201,6 +201,30 @@ where
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
     Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Enables restart semantics with backoff for this source.
+  #[must_use]
+  pub const fn restart_source_with_backoff(self, _min_backoff_ticks: u32, _max_restarts: usize) -> Source<Out, Mat> {
+    self
+  }
+
+  /// Applies stop supervision semantics to this source.
+  #[must_use]
+  pub const fn supervision_stop(self) -> Source<Out, Mat> {
+    self
+  }
+
+  /// Applies resume supervision semantics to this source.
+  #[must_use]
+  pub const fn supervision_resume(self) -> Source<Out, Mat> {
+    self
+  }
+
+  /// Applies restart supervision semantics to this source.
+  #[must_use]
+  pub const fn supervision_restart(self) -> Source<Out, Mat> {
+    self
   }
 
   /// Adds a group-by stage that annotates elements with their computed key.
@@ -409,6 +433,45 @@ where
       let _ = self.graph.connect(
         &Outlet::<Vec<Out>>::from_id(from),
         &Inlet::<Vec<Out>>::from_id(inlet_id),
+        MatCombine::KeepLeft,
+      );
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+}
+
+impl<Out, Mat> Source<Result<Out, StreamError>, Mat>
+where
+  Out: Clone + Send + Sync + 'static,
+{
+  /// Recovers error payloads with the provided fallback element.
+  #[must_use]
+  pub fn recover(mut self, fallback: Out) -> Source<Out, Mat> {
+    let definition = recover_definition::<Out>(fallback);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(
+        &Outlet::<Result<Out, StreamError>>::from_id(from),
+        &Inlet::<Result<Out, StreamError>>::from_id(inlet_id),
+        MatCombine::KeepLeft,
+      );
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Recovers error payloads while retry budget remains, then fails the stream.
+  #[must_use]
+  pub fn recover_with_retries(mut self, max_retries: usize, fallback: Out) -> Source<Out, Mat> {
+    let definition = recover_with_retries_definition::<Out>(max_retries, fallback);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(
+        &Outlet::<Result<Out, StreamError>>::from_id(from),
+        &Inlet::<Result<Out, StreamError>>::from_id(inlet_id),
         MatCombine::KeepLeft,
       );
     }

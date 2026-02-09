@@ -15,6 +15,10 @@ pub enum StageKind {
   FlowAsyncBoundary,
   /// Flow stage that annotates elements with a substream key.
   FlowGroupBy,
+  /// Flow stage that recovers from error payloads with a fallback element.
+  FlowRecover,
+  /// Flow stage that recovers from error payloads with a bounded retry budget.
+  FlowRecoverWithRetries,
   /// Flow stage that splits input before elements matching a predicate.
   FlowSplitWhen,
   /// Flow stage that splits input after elements matching a predicate.

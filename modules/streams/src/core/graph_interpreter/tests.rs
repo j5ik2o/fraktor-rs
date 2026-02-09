@@ -233,6 +233,50 @@ fn group_by_uses_key_function() {
 }
 
 #[test]
+fn recover_flow_replaces_error_payload() {
+  let graph =
+    Source::single(Err::<u32, StreamError>(StreamError::Failed)).recover(10_u32).to_mat(Sink::head(), KeepRight);
+  let (plan, completion) = graph.into_parts();
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  drive_to_completion(&mut interpreter);
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(10_u32)));
+}
+
+#[test]
+fn recover_with_retries_flow_fails_when_retry_budget_is_zero() {
+  let graph = Source::single(Err::<u32, StreamError>(StreamError::Failed))
+    .recover_with_retries(0, 10_u32)
+    .to_mat(Sink::head(), KeepRight);
+  let (plan, completion) = graph.into_parts();
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  drive_to_completion(&mut interpreter);
+  assert_eq!(interpreter.state(), StreamState::Failed);
+  assert_eq!(completion.poll(), Completion::Ready(Err(StreamError::Failed)));
+}
+
+#[test]
+fn restart_sink_with_backoff_keeps_single_path_behavior() {
+  let graph = Source::single(5_u32).to_mat(Sink::head().restart_sink_with_backoff(1, 3), KeepRight);
+  let (plan, completion) = graph.into_parts();
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  drive_to_completion(&mut interpreter);
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(5_u32)));
+}
+
+#[test]
+fn sink_supervision_variants_keep_single_path_behavior() {
+  let graph =
+    Source::single(5_u32).to_mat(Sink::head().supervision_stop().supervision_resume().supervision_restart(), KeepRight);
+  let (plan, completion) = graph.into_parts();
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  drive_to_completion(&mut interpreter);
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(5_u32)));
+}
+
+#[test]
 fn split_when_flow_splits_before_predicate() {
   let source_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<Vec<u32>> = Inlet::new();

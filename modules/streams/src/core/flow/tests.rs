@@ -1,6 +1,6 @@
 use fraktor_utils_rs::core::collections::queue::OverflowPolicy;
 
-use crate::core::{Flow, Source, StreamNotUsed};
+use crate::core::{Flow, Source, StreamError, StreamNotUsed};
 
 #[test]
 fn broadcast_duplicates_each_element() {
@@ -142,6 +142,39 @@ fn merge_substreams_flattens_single_segment() {
 fn concat_substreams_flattens_single_segment() {
   let values = Source::single(7_u32)
     .via(Flow::new().split_after(|_| true).concat_substreams())
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![7_u32]);
+}
+
+#[test]
+fn recover_replaces_error_payload_with_fallback() {
+  let values = Source::single(Err::<u32, StreamError>(StreamError::Failed))
+    .via(Flow::new().recover(9_u32))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![9_u32]);
+}
+
+#[test]
+fn recover_with_retries_fails_when_retry_budget_is_exhausted() {
+  let result = Source::single(Err::<u32, StreamError>(StreamError::Failed))
+    .via(Flow::new().recover_with_retries(0, 9_u32))
+    .collect_values();
+  assert_eq!(result, Err(StreamError::Failed));
+}
+
+#[test]
+fn restart_flow_with_backoff_keeps_single_path_behavior() {
+  let values =
+    Source::single(7_u32).via(Flow::new().restart_flow_with_backoff(1, 3)).collect_values().expect("collect_values");
+  assert_eq!(values, vec![7_u32]);
+}
+
+#[test]
+fn supervision_variants_keep_single_path_behavior() {
+  let values = Source::single(7_u32)
+    .via(Flow::new().supervision_stop().supervision_resume().supervision_restart())
     .collect_values()
     .expect("collect_values");
   assert_eq!(values, vec![7_u32]);

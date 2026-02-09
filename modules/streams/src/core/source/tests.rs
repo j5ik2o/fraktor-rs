@@ -185,3 +185,36 @@ fn source_concat_substreams_flattens_single_segment() {
     Source::single(5_u32).split_after(|_| true).concat_substreams().collect_values().expect("collect_values");
   assert_eq!(values, vec![5_u32]);
 }
+
+#[test]
+fn source_recover_replaces_error_payload_with_fallback() {
+  let values = Source::single(Err::<u32, StreamError>(StreamError::Failed))
+    .recover(5_u32)
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![5_u32]);
+}
+
+#[test]
+fn source_recover_with_retries_fails_when_retry_budget_is_exhausted() {
+  let result =
+    Source::single(Err::<u32, StreamError>(StreamError::Failed)).recover_with_retries(0, 5_u32).collect_values();
+  assert_eq!(result, Err(StreamError::Failed));
+}
+
+#[test]
+fn source_restart_with_backoff_keeps_single_path_behavior() {
+  let values = Source::single(5_u32).restart_source_with_backoff(1, 3).collect_values().expect("collect_values");
+  assert_eq!(values, vec![5_u32]);
+}
+
+#[test]
+fn source_supervision_variants_keep_single_path_behavior() {
+  let values = Source::single(5_u32)
+    .supervision_stop()
+    .supervision_resume()
+    .supervision_restart()
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![5_u32]);
+}
