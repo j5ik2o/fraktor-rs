@@ -272,3 +272,36 @@ async fn handshake_timeout_moves_to_gated_and_recover_plus_ack_connects_again() 
   bridge.process_handshake_payload(ack.encode()).await.expect("ack processing");
   assert!(matches!(association_state(&bridge, authority), Some(AssociationState::Connected { .. })));
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn stale_handshake_timeout_does_not_gate_new_attempt() {
+  let (bridge, probe, _system) = build_bridge(Duration::from_millis(100));
+  let authority = "127.0.0.1:4401";
+  let endpoint = TransportEndpoint::new(authority.to_string());
+
+  associate(&bridge, authority, endpoint.clone(), bridge.now_millis()).await;
+  assert!(matches!(association_state(&bridge, authority), Some(AssociationState::Associating { .. })));
+
+  tokio::time::sleep(Duration::from_millis(20)).await;
+  let recover = bridge.coordinator.with_write(|m| {
+    m.handle(EndpointAssociationCommand::Recover {
+      authority: authority.to_string(),
+      endpoint:  Some(endpoint),
+      now:       bridge.now_millis(),
+    })
+  });
+  bridge.process_effects(recover.effects).await.expect("recover effects");
+
+  let offer_count =
+    probe.sent_handshake_kinds_for(authority).iter().filter(|kind| matches!(kind, HandshakeKind::Offer)).count();
+  assert!(offer_count >= 2);
+
+  tokio::time::sleep(Duration::from_millis(90)).await;
+  assert!(
+    matches!(association_state(&bridge, authority), Some(AssociationState::Associating { .. })),
+    "stale timeout from the previous attempt must not gate the active handshake"
+  );
+
+  tokio::time::sleep(Duration::from_millis(40)).await;
+  assert!(matches!(association_state(&bridge, authority), Some(AssociationState::Gated { .. })));
+}

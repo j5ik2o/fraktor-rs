@@ -78,6 +78,7 @@ pub(crate) struct EndpointTransportBridge<TB: RuntimeToolbox + 'static> {
   handshake_timeout: Duration,
   listener:          TokioMutex<Option<TransportHandle>>,
   channels:          TokioMutex<BTreeMap<String, TransportChannel>>,
+  watchdog_versions: Arc<TokioMutex<BTreeMap<String, u64>>>,
   coordinator:       EndpointAssociationCoordinatorSharedGeneric<TB>,
 }
 
@@ -95,6 +96,7 @@ impl<TB: RuntimeToolbox + 'static> EndpointTransportBridge<TB> {
       handshake_timeout: config.handshake_timeout,
       listener:          TokioMutex::new(None),
       channels:          TokioMutex::new(BTreeMap::<String, TransportChannel>::new()),
+      watchdog_versions: Arc::new(TokioMutex::new(BTreeMap::<String, u64>::new())),
       coordinator:       EndpointAssociationCoordinatorSharedGeneric::new(),
     })
   }
@@ -210,7 +212,8 @@ impl<TB: RuntimeToolbox + 'static> EndpointTransportBridge<TB> {
       self.channels.lock().await.insert(authority.to_string(), channel);
       channel
     };
-    self.spawn_handshake_timeout_watchdog(authority.to_string());
+    let watchdog_version = self.next_watchdog_version(authority).await;
+    self.spawn_handshake_timeout_watchdog(authority.to_string(), watchdog_version);
 
     let handshake = HandshakeFrame::new(HandshakeKind::Offer, &self.system_name, &self.host, Some(self.port), 0);
     let payload = handshake.encode();
@@ -218,13 +221,25 @@ impl<TB: RuntimeToolbox + 'static> EndpointTransportBridge<TB> {
     Ok(Vec::new())
   }
 
-  fn spawn_handshake_timeout_watchdog(&self, authority: String) {
+  async fn next_watchdog_version(&self, authority: &str) -> u64 {
+    let mut versions = self.watchdog_versions.lock().await;
+    let next = versions.get(authority).copied().unwrap_or(0).saturating_add(1);
+    versions.insert(authority.to_string(), next);
+    next
+  }
+
+  fn spawn_handshake_timeout_watchdog(&self, authority: String, watchdog_version: u64) {
     let timeout = self.handshake_timeout;
     let coordinator = self.coordinator.clone();
     let event_publisher = self.event_publisher.clone();
     let system = self.system.clone();
+    let versions = Arc::clone(&self.watchdog_versions);
     tokio::spawn(async move {
       sleep(timeout).await;
+      let is_latest = versions.lock().await.get(&authority).copied() == Some(watchdog_version);
+      if !is_latest {
+        return;
+      }
       let now = system.upgrade().map(|s| s.state().monotonic_now().as_millis() as u64).unwrap_or(0);
       let resume_at = Some(now.saturating_add(Self::duration_millis(timeout)));
       let result = coordinator.with_write(|m| {
