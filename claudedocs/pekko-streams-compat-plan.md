@@ -124,9 +124,9 @@
 - [x] P2-08 `async boundary` を追加する。
 - [x] P2-09 `group_by` / `split_when` / `split_after` を追加する。
 - [x] P2-10 `merge_substreams` / `concat_substreams` を追加する。
-- [ ] P2-11 GraphDSL相当のpartial graph構築APIを追加する。
-- [ ] P2-12 `BidiFlow` の最小構成を追加する。
-- [ ] P2-13 Phase 2対象テストを追加し全パスさせる。
+- [x] P2-11 GraphDSL相当のpartial graph構築APIを追加する。
+- [x] P2-12 `BidiFlow` の最小構成を追加する。
+- [x] P2-13 Phase 2対象テストを追加し全パスさせる。
 
 ### Phase 3: 障害モデル互換
 - [ ] P3-01 `recover` を追加する。

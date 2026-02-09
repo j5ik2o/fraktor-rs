@@ -2,6 +2,8 @@
 mod actor_materializer;
 /// Actor materializer configuration.
 mod actor_materializer_config;
+/// Bidirectional flow definition.
+mod bidi_flow;
 /// Bidirectional shape definition.
 mod bidi_shape;
 /// Completion polling types.
@@ -16,6 +18,8 @@ mod drive_outcome;
 mod flow;
 /// Flow shape definition.
 mod flow_shape;
+/// GraphDSL-like partial graph builder.
+mod graph_dsl;
 /// Graph interpreter runtime.
 mod graph_interpreter;
 /// Graph stage abstractions.
@@ -100,6 +104,7 @@ use core::any::{Any, TypeId};
 
 pub use actor_materializer::ActorMaterializerGeneric;
 pub use actor_materializer_config::ActorMaterializerConfig;
+pub use bidi_flow::BidiFlow;
 pub use bidi_shape::BidiShape;
 pub use completion::Completion;
 pub use demand::Demand;
@@ -107,6 +112,7 @@ pub use demand_tracker::DemandTracker;
 pub use drive_outcome::DriveOutcome;
 pub use flow::Flow;
 pub use flow_shape::FlowShape;
+pub use graph_dsl::GraphDsl;
 pub use graph_interpreter::GraphInterpreter;
 pub use graph_stage::GraphStage;
 pub use graph_stage_logic::GraphStageLogic;
