@@ -372,6 +372,7 @@ impl GraphInterpreter {
 
     let pulled = match pulled_result {
       | Ok(pulled) => pulled,
+      | Err(StreamError::WouldBlock) => return Ok(false),
       | Err(error) => match self.handle_source_failure(error)? {
         | FailureDisposition::Continue => return Ok(true),
         | FailureDisposition::Fail(error) => return Err(error),

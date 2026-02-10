@@ -29,6 +29,8 @@ pub enum StreamError {
   InvalidConnection,
   /// Indicates a type mismatch at runtime.
   TypeMismatch,
+  /// Indicates that processing cannot make progress yet and should be retried.
+  WouldBlock,
   /// Indicates stream processing failed with a user error.
   Failed,
 }
@@ -47,6 +49,7 @@ impl fmt::Display for StreamError {
       | Self::ActorSystemMissing => write!(f, "actor system missing"),
       | Self::InvalidConnection => write!(f, "invalid stream connection"),
       | Self::TypeMismatch => write!(f, "stream type mismatch"),
+      | Self::WouldBlock => write!(f, "stream would block"),
       | Self::Failed => write!(f, "stream failed"),
     }
   }

@@ -75,7 +75,10 @@ where
   T: Send + Sync + 'static,
 {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
-    Ok(self.queue.lock().pop_front().map(|value| Box::new(value) as DynValue))
+    match self.queue.lock().pop_front() {
+      | Some(value) => Ok(Some(Box::new(value) as DynValue)),
+      | None => Err(StreamError::WouldBlock),
+    }
   }
 }
 

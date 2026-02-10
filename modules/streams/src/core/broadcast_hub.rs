@@ -83,14 +83,10 @@ where
   T: Clone + Send + Sync + 'static,
 {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
-    Ok(
-      self
-        .subscribers
-        .lock()
-        .get_mut(self.subscriber_id)
-        .and_then(VecDeque::pop_front)
-        .map(|value| Box::new(value) as DynValue),
-    )
+    match self.subscribers.lock().get_mut(self.subscriber_id).and_then(VecDeque::pop_front) {
+      | Some(value) => Ok(Some(Box::new(value) as DynValue)),
+      | None => Err(StreamError::WouldBlock),
+    }
   }
 }
 
