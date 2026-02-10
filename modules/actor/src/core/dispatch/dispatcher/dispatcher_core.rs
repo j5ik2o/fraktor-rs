@@ -160,7 +160,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCoreGeneric<TB> {
         break;
       }
 
-      if self.process_mailbox_pressure() {
+      if self.mailbox.system_len() == 0 && self.process_mailbox_pressure() {
         self.record_progress();
         processed += 1;
         continue;
