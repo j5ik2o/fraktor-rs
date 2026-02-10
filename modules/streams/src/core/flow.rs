@@ -94,6 +94,39 @@ where
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
+  /// Adds a map-concat stage to this flow.
+  #[must_use]
+  pub fn map_concat<T, F, I>(mut self, func: F) -> Flow<In, T, Mat>
+  where
+    T: Send + Sync + 'static,
+    F: FnMut(Out) -> I + Send + Sync + 'static,
+    I: IntoIterator<Item = T> + 'static, {
+    let definition = map_concat_definition::<Out, T, F, I>(func);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds a map-option stage to this flow.
+  #[must_use]
+  pub fn map_option<T, F>(mut self, func: F) -> Flow<In, T, Mat>
+  where
+    T: Send + Sync + 'static,
+    F: FnMut(Out) -> Option<T> + Send + Sync + 'static, {
+    let definition = map_option_definition::<Out, T, F>(func);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
   /// Adds a filter stage to this flow.
   #[must_use]
   pub fn filter<F>(mut self, predicate: F) -> Flow<In, Out, Mat>
@@ -165,6 +198,21 @@ where
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
+  /// Adds a take-until stage to this flow.
+  #[must_use]
+  pub fn take_until<F>(mut self, predicate: F) -> Flow<In, Out, Mat>
+  where
+    F: FnMut(&Out) -> bool + Send + Sync + 'static, {
+    let definition = take_until_definition::<Out, F>(predicate);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
   /// Adds a grouped stage that emits vectors of size `size`.
   ///
   /// # Errors
@@ -208,6 +256,21 @@ where
     Acc: Clone + Send + Sync + 'static,
     F: FnMut(Acc, Out) -> Acc + Send + Sync + 'static, {
     let definition = scan_definition::<Out, Acc, F>(initial, func);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds an intersperse stage with start, separator and end markers.
+  #[must_use]
+  pub fn intersperse(mut self, start: Out, inject: Out, end: Out) -> Flow<In, Out, Mat>
+  where
+    Out: Clone, {
+    let definition = intersperse_definition::<Out>(start, inject, end);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
@@ -453,6 +516,19 @@ where
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
+  /// Adds a zip-with-index stage that pairs each element with an incrementing index.
+  #[must_use]
+  pub fn zip_with_index(mut self) -> Flow<In, (Out, u64), Mat> {
+    let definition = zip_with_index_definition::<Out>();
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
   /// Adds a concat stage that emits all elements from each input in port order.
   ///
   /// # Panics
@@ -609,6 +685,49 @@ where
   }
 }
 
+pub(super) fn map_concat_definition<In, Out, F, I>(func: F) -> FlowDefinition
+where
+  In: Send + Sync + 'static,
+  Out: Send + Sync + 'static,
+  F: FnMut(In) -> I + Send + Sync + 'static,
+  I: IntoIterator<Item = Out> + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<Out> = Outlet::new();
+  let logic = MapConcatLogic::<In, Out, F, I> { func, _pd: PhantomData };
+  FlowDefinition {
+    kind:        StageKind::FlowMapConcat,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<Out>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(super) fn map_option_definition<In, Out, F>(func: F) -> FlowDefinition
+where
+  In: Send + Sync + 'static,
+  Out: Send + Sync + 'static,
+  F: FnMut(In) -> Option<Out> + Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<Out> = Outlet::new();
+  let logic = MapOptionLogic::<In, Out, F> { func, _pd: PhantomData };
+  FlowDefinition {
+    kind:        StageKind::FlowMapOption,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<Out>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
 pub(super) fn filter_definition<In, F>(predicate: F) -> FlowDefinition
 where
   In: Send + Sync + 'static,
@@ -707,6 +826,26 @@ where
   }
 }
 
+pub(super) fn take_until_definition<In, F>(predicate: F) -> FlowDefinition
+where
+  In: Send + Sync + 'static,
+  F: FnMut(&In) -> bool + Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = TakeUntilLogic::<In, F> { predicate, taking: true, _pd: PhantomData };
+  FlowDefinition {
+    kind:        StageKind::FlowTakeUntil,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
 pub(super) fn grouped_definition<In>(size: usize) -> FlowDefinition
 where
   In: Send + Sync + 'static, {
@@ -766,6 +905,34 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<Acc>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(super) fn intersperse_definition<In>(start: In, inject: In, end: In) -> FlowDefinition
+where
+  In: Clone + Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = IntersperseLogic::<In> {
+    start,
+    inject,
+    end,
+    pending: VecDeque::new(),
+    needs_start: true,
+    seen_value: false,
+    source_done: false,
+    end_emitted: false,
+  };
+  FlowDefinition {
+    kind:        StageKind::FlowIntersperse,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
     mat_combine: MatCombine::KeepLeft,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
@@ -1086,6 +1253,25 @@ where
   }
 }
 
+pub(super) fn zip_with_index_definition<In>() -> FlowDefinition
+where
+  In: Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<(In, u64)> = Outlet::new();
+  let logic = ZipWithIndexLogic::<In> { next_index: 0, _pd: PhantomData };
+  FlowDefinition {
+    kind:        StageKind::FlowZipWithIndex,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<(In, u64)>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
 pub(super) fn concat_definition<In>(fan_in: usize) -> FlowDefinition
 where
   In: Send + Sync + 'static, {
@@ -1112,6 +1298,16 @@ where
 }
 
 struct MapLogic<In, Out, F> {
+  func: F,
+  _pd:  PhantomData<fn(In) -> Out>,
+}
+
+struct MapConcatLogic<In, Out, F, I> {
+  func: F,
+  _pd:  PhantomData<fn(In) -> (Out, I)>,
+}
+
+struct MapOptionLogic<In, Out, F> {
   func: F,
   _pd:  PhantomData<fn(In) -> Out>,
 }
@@ -1143,6 +1339,12 @@ struct TakeWhileLogic<In, F> {
   _pd:       PhantomData<fn(In)>,
 }
 
+struct TakeUntilLogic<In, F> {
+  predicate: F,
+  taking:    bool,
+  _pd:       PhantomData<fn(In)>,
+}
+
 struct GroupedLogic<In> {
   size:        usize,
   current:     Vec<In>,
@@ -1163,6 +1365,17 @@ struct ScanLogic<In, Acc, F> {
   _pd:             PhantomData<fn(In)>,
 }
 
+struct IntersperseLogic<In> {
+  start:       In,
+  inject:      In,
+  end:         In,
+  pending:     VecDeque<In>,
+  needs_start: bool,
+  seen_value:  bool,
+  source_done: bool,
+  end_emitted: bool,
+}
+
 impl<In, Out, F> FlowLogic for MapLogic<In, Out, F>
 where
   In: Send + Sync + 'static,
@@ -1173,6 +1386,35 @@ where
     let value = downcast_value::<In>(input)?;
     let output = (self.func)(value);
     Ok(vec![Box::new(output)])
+  }
+}
+
+impl<In, Out, F, I> FlowLogic for MapConcatLogic<In, Out, F, I>
+where
+  In: Send + Sync + 'static,
+  Out: Send + Sync + 'static,
+  F: FnMut(In) -> I + Send + Sync + 'static,
+  I: IntoIterator<Item = Out> + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let value = downcast_value::<In>(input)?;
+    let output = (self.func)(value);
+    Ok(output.into_iter().map(|value| Box::new(value) as DynValue).collect())
+  }
+}
+
+impl<In, Out, F> FlowLogic for MapOptionLogic<In, Out, F>
+where
+  In: Send + Sync + 'static,
+  Out: Send + Sync + 'static,
+  F: FnMut(In) -> Option<Out> + Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let value = downcast_value::<In>(input)?;
+    let Some(output) = (self.func)(value) else {
+      return Ok(Vec::new());
+    };
+    Ok(vec![Box::new(output) as DynValue])
   }
 }
 
@@ -1251,6 +1493,29 @@ where
     if !(self.predicate)(&value) {
       self.taking = false;
       return Ok(Vec::new());
+    }
+    Ok(vec![Box::new(value) as DynValue])
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.taking = true;
+    Ok(())
+  }
+}
+
+impl<In, F> FlowLogic for TakeUntilLogic<In, F>
+where
+  In: Send + Sync + 'static,
+  F: FnMut(&In) -> bool + Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let value = downcast_value::<In>(input)?;
+    if !self.taking {
+      return Ok(Vec::new());
+    }
+    if (self.predicate)(&value) {
+      self.taking = false;
+      return Ok(vec![Box::new(value) as DynValue]);
     }
     Ok(vec![Box::new(value) as DynValue])
   }
@@ -1361,6 +1626,53 @@ where
     self.current = self.initial.clone();
     self.initial_emitted = false;
     self.source_done = false;
+    Ok(())
+  }
+}
+
+impl<In> FlowLogic for IntersperseLogic<In>
+where
+  In: Clone + Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let value = downcast_value::<In>(input)?;
+    if self.needs_start {
+      self.pending.push_back(self.start.clone());
+      self.needs_start = false;
+    }
+    if self.seen_value {
+      self.pending.push_back(self.inject.clone());
+    }
+    self.pending.push_back(value);
+    self.seen_value = true;
+    self.drain_pending()
+  }
+
+  fn on_source_done(&mut self) -> Result<(), StreamError> {
+    self.source_done = true;
+    Ok(())
+  }
+
+  fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
+    if self.source_done {
+      if self.needs_start {
+        self.pending.push_back(self.start.clone());
+        self.needs_start = false;
+      }
+      if !self.end_emitted {
+        self.pending.push_back(self.end.clone());
+        self.end_emitted = true;
+      }
+    }
+    Ok(self.pending.drain(..).map(|value| Box::new(value) as DynValue).collect())
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.pending.clear();
+    self.needs_start = true;
+    self.seen_value = false;
+    self.source_done = false;
+    self.end_emitted = false;
     Ok(())
   }
 }
@@ -1962,6 +2274,11 @@ struct ZipLogic<In> {
   pending:    Vec<VecDeque<In>>,
 }
 
+struct ZipWithIndexLogic<In> {
+  next_index: u64,
+  _pd:        PhantomData<fn(In)>,
+}
+
 impl<In> ZipLogic<In>
 where
   In: Send + Sync + 'static,
@@ -2023,6 +2340,23 @@ where
   fn on_restart(&mut self) -> Result<(), StreamError> {
     self.edge_slots.clear();
     self.pending.clear();
+    Ok(())
+  }
+}
+
+impl<In> FlowLogic for ZipWithIndexLogic<In>
+where
+  In: Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let value = downcast_value::<In>(input)?;
+    let index = self.next_index;
+    self.next_index = self.next_index.saturating_add(1);
+    Ok(vec![Box::new((value, index)) as DynValue])
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.next_index = 0;
     Ok(())
   }
 }

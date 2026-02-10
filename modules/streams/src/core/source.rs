@@ -10,10 +10,12 @@ use super::{
   flow::{
     async_boundary_definition, balance_definition, broadcast_definition, buffer_definition, concat_definition,
     concat_substreams_definition, drop_definition, drop_while_definition, filter_definition,
-    flat_map_concat_definition, flat_map_merge_definition, group_by_definition, grouped_definition, map_definition,
-    merge_definition, merge_substreams_definition, merge_substreams_with_parallelism_definition, recover_definition,
+    flat_map_concat_definition, flat_map_merge_definition, group_by_definition, grouped_definition,
+    intersperse_definition, map_concat_definition, map_definition, map_option_definition, merge_definition,
+    merge_substreams_definition, merge_substreams_with_parallelism_definition, recover_definition,
     recover_with_retries_definition, scan_definition, sliding_definition, split_after_definition,
-    split_when_definition, take_definition, take_while_definition, zip_definition,
+    split_when_definition, take_definition, take_until_definition, take_while_definition, zip_definition,
+    zip_with_index_definition,
   },
   graph_stage::GraphStage,
   graph_stage_logic::GraphStageLogic,
@@ -156,6 +158,39 @@ where
     Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
+  /// Adds a map-concat stage to this source.
+  #[must_use]
+  pub fn map_concat<T, F, I>(mut self, func: F) -> Source<T, Mat>
+  where
+    T: Send + Sync + 'static,
+    F: FnMut(Out) -> I + Send + Sync + 'static,
+    I: IntoIterator<Item = T> + 'static, {
+    let definition = map_concat_definition::<Out, T, F, I>(func);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds a map-option stage to this source.
+  #[must_use]
+  pub fn map_option<T, F>(mut self, func: F) -> Source<T, Mat>
+  where
+    T: Send + Sync + 'static,
+    F: FnMut(Out) -> Option<T> + Send + Sync + 'static, {
+    let definition = map_option_definition::<Out, T, F>(func);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
   /// Adds a filter stage to this source.
   #[must_use]
   pub fn filter<F>(mut self, predicate: F) -> Source<Out, Mat>
@@ -227,6 +262,21 @@ where
     Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
+  /// Adds a take-until stage to this source.
+  #[must_use]
+  pub fn take_until<F>(mut self, predicate: F) -> Source<Out, Mat>
+  where
+    F: FnMut(&Out) -> bool + Send + Sync + 'static, {
+    let definition = take_until_definition::<Out, F>(predicate);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
   /// Adds a grouped stage that emits vectors of size `size`.
   ///
   /// # Errors
@@ -270,6 +320,21 @@ where
     Acc: Clone + Send + Sync + 'static,
     F: FnMut(Acc, Out) -> Acc + Send + Sync + 'static, {
     let definition = scan_definition::<Out, Acc, F>(initial, func);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds an intersperse stage with start, separator and end markers.
+  #[must_use]
+  pub fn intersperse(mut self, start: Out, inject: Out, end: Out) -> Source<Out, Mat>
+  where
+    Out: Clone, {
+    let definition = intersperse_definition::<Out>(start, inject, end);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
@@ -506,6 +571,19 @@ where
   pub fn zip(mut self, fan_in: usize) -> Source<Vec<Out>, Mat> {
     assert!(fan_in > 0, "fan_in must be greater than zero");
     let definition = zip_definition::<Out>(fan_in);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds a zip-with-index stage that pairs each element with an incrementing index.
+  #[must_use]
+  pub fn zip_with_index(mut self) -> Source<(Out, u64), Mat> {
+    let definition = zip_with_index_definition::<Out>();
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));

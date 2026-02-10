@@ -374,6 +374,24 @@ fn source_filter_keeps_matching_elements() {
 }
 
 #[test]
+fn source_map_concat_expands_each_element() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .map_concat(|value: u32| [value, value.saturating_add(10)])
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 11_u32, 2_u32, 12_u32, 3_u32, 13_u32]);
+}
+
+#[test]
+fn source_map_option_emits_only_present_elements() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4]))
+    .map_option(|value| if value % 2 == 0 { Some(value) } else { None })
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![2_u32, 4_u32]);
+}
+
+#[test]
 fn source_drop_skips_first_elements() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4]))
     .drop(2)
@@ -407,6 +425,15 @@ fn source_take_while_keeps_matching_prefix() {
     .collect_values()
     .expect("collect_values");
   assert_eq!(values, vec![1_u32, 2_u32]);
+}
+
+#[test]
+fn source_take_until_includes_first_matching_element() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4]))
+    .take_until(|value| *value >= 3)
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2_u32, 3_u32]);
 }
 
 #[test]
@@ -454,6 +481,33 @@ fn source_scan_emits_initial_and_running_accumulation() {
     .collect_values()
     .expect("collect_values");
   assert_eq!(values, vec![0_u32, 1_u32, 3_u32, 6_u32]);
+}
+
+#[test]
+fn source_intersperse_injects_markers() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .intersperse(10_u32, 99_u32, 11_u32)
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![10_u32, 1_u32, 99_u32, 2_u32, 99_u32, 3_u32, 11_u32]);
+}
+
+#[test]
+fn source_intersperse_on_empty_stream_emits_start_and_end() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[]))
+    .intersperse(10_u32, 99_u32, 11_u32)
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![10_u32, 11_u32]);
+}
+
+#[test]
+fn source_zip_with_index_pairs_each_element_with_index() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[7, 8, 9]))
+    .zip_with_index()
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![(7_u32, 0_u64), (8_u32, 1_u64), (9_u32, 2_u64)]);
 }
 
 #[test]

@@ -33,6 +33,12 @@ impl OperatorKey {
   pub const GROUPED: Self = Self::new("grouped");
   /// Key for `group_by`.
   pub const GROUP_BY: Self = Self::new("group_by");
+  /// Key for `intersperse`.
+  pub const INTERSPERSE: Self = Self::new("intersperse");
+  /// Key for `map_concat`.
+  pub const MAP_CONCAT: Self = Self::new("map_concat");
+  /// Key for `map_option`.
+  pub const MAP_OPTION: Self = Self::new("map_option");
   /// Key for `merge`.
   pub const MERGE: Self = Self::new("merge");
   /// Key for `merge_hub`.
@@ -63,12 +69,16 @@ impl OperatorKey {
   pub const SUPERVISION: Self = Self::new("supervision");
   /// Key for `take`.
   pub const TAKE: Self = Self::new("take");
+  /// Key for `take_until`.
+  pub const TAKE_UNTIL: Self = Self::new("take_until");
   /// Key for `take_while`.
   pub const TAKE_WHILE: Self = Self::new("take_while");
   /// Key for `unique_kill_switch`.
   pub const UNIQUE_KILL_SWITCH: Self = Self::new("unique_kill_switch");
   /// Key for `zip`.
   pub const ZIP: Self = Self::new("zip");
+  /// Key for `zip_with_index`.
+  pub const ZIP_WITH_INDEX: Self = Self::new("zip_with_index");
 
   /// Creates an operator key from a stable operator name.
   #[must_use]

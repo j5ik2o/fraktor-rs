@@ -5,6 +5,10 @@ pub enum StageKind {
   SourceSingle,
   /// Flow stage that maps elements.
   FlowMap,
+  /// Flow stage that expands each element into zero or more elements.
+  FlowMapConcat,
+  /// Flow stage that emits only present mapped elements.
+  FlowMapOption,
   /// Flow stage that filters elements by predicate.
   FlowFilter,
   /// Flow stage that drops the first `n` elements.
@@ -15,12 +19,16 @@ pub enum StageKind {
   FlowDropWhile,
   /// Flow stage that passes elements while predicate matches.
   FlowTakeWhile,
+  /// Flow stage that passes elements until predicate matches (inclusive).
+  FlowTakeUntil,
   /// Flow stage that groups elements into fixed-size chunks.
   FlowGrouped,
   /// Flow stage that emits a sliding window over elements.
   FlowSliding,
   /// Flow stage that emits running accumulation.
   FlowScan,
+  /// Flow stage that injects markers between elements and at boundaries.
+  FlowIntersperse,
   /// Flow stage that concatenates sub-streams.
   FlowFlatMapConcat,
   /// Flow stage that merges sub-streams up to a configured breadth.
@@ -53,6 +61,8 @@ pub enum StageKind {
   FlowMerge,
   /// Flow stage that zips elements from multiple inputs.
   FlowZip,
+  /// Flow stage that pairs each element with an incrementing index.
+  FlowZipWithIndex,
   /// Flow stage that concatenates inputs in port order.
   FlowConcat,
   /// Sink that ignores elements.

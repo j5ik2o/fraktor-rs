@@ -165,14 +165,18 @@ impl StreamGraph {
         matches!(
           kind,
           StageKind::FlowMap
+            | StageKind::FlowMapConcat
+            | StageKind::FlowMapOption
             | StageKind::FlowFilter
             | StageKind::FlowDrop
             | StageKind::FlowTake
             | StageKind::FlowDropWhile
             | StageKind::FlowTakeWhile
+            | StageKind::FlowTakeUntil
             | StageKind::FlowGrouped
             | StageKind::FlowSliding
             | StageKind::FlowScan
+            | StageKind::FlowIntersperse
             | StageKind::FlowFlatMapConcat
             | StageKind::FlowFlatMapMerge
             | StageKind::FlowBuffer
@@ -189,6 +193,7 @@ impl StreamGraph {
             | StageKind::FlowBalance
             | StageKind::FlowMerge
             | StageKind::FlowZip
+            | StageKind::FlowZipWithIndex
             | StageKind::FlowConcat
             | StageKind::Custom
         )

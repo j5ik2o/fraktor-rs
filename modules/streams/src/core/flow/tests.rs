@@ -149,6 +149,24 @@ fn filter_discards_non_matching_elements() {
 }
 
 #[test]
+fn map_concat_expands_each_element() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .via(Flow::new().map_concat(|value: u32| [value, value.saturating_add(10)]))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 11_u32, 2_u32, 12_u32, 3_u32, 13_u32]);
+}
+
+#[test]
+fn map_option_emits_only_present_elements() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4]))
+    .via(Flow::new().map_option(|value| if value % 2 == 0 { Some(value) } else { None }))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![2_u32, 4_u32]);
+}
+
+#[test]
 fn drop_skips_first_elements() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4]))
     .via(Flow::new().drop(2))
@@ -182,6 +200,15 @@ fn take_while_keeps_matching_prefix() {
     .collect_values()
     .expect("collect_values");
   assert_eq!(values, vec![1_u32, 2_u32]);
+}
+
+#[test]
+fn take_until_includes_first_matching_element() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4]))
+    .via(Flow::new().take_until(|value| *value >= 3))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2_u32, 3_u32]);
 }
 
 #[test]
@@ -229,6 +256,33 @@ fn scan_emits_initial_and_running_accumulation() {
     .collect_values()
     .expect("collect_values");
   assert_eq!(values, vec![0_u32, 1_u32, 3_u32, 6_u32]);
+}
+
+#[test]
+fn intersperse_injects_markers() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .via(Flow::new().intersperse(10_u32, 99_u32, 11_u32))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![10_u32, 1_u32, 99_u32, 2_u32, 99_u32, 3_u32, 11_u32]);
+}
+
+#[test]
+fn intersperse_on_empty_stream_emits_start_and_end() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[]))
+    .via(Flow::new().intersperse(10_u32, 99_u32, 11_u32))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![10_u32, 11_u32]);
+}
+
+#[test]
+fn zip_with_index_pairs_each_element_with_index() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[7, 8, 9]))
+    .via(Flow::new().zip_with_index())
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![(7_u32, 0_u64), (8_u32, 1_u64), (9_u32, 2_u64)]);
 }
 
 #[test]
@@ -389,6 +443,20 @@ fn concat_logic_on_restart_clears_pending_state() {
 
   let drained = logic.drain_pending().expect("drain");
   assert!(drained.is_empty());
+}
+
+#[test]
+fn zip_with_index_logic_on_restart_resets_counter() {
+  let mut logic = super::ZipWithIndexLogic::<u32> { next_index: 0, _pd: core::marker::PhantomData };
+  let first = logic.apply(Box::new(10_u32)).expect("first apply");
+  let second = logic.apply(Box::new(11_u32)).expect("second apply");
+  assert_eq!(first.len(), 1);
+  assert_eq!(second.len(), 1);
+
+  logic.on_restart().expect("restart");
+
+  let after_restart = logic.apply(Box::new(12_u32)).expect("after restart apply");
+  assert_eq!(after_restart.len(), 1);
 }
 
 #[test]
