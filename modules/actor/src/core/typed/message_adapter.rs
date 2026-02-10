@@ -9,6 +9,7 @@ mod adapter_outcome;
 mod adapter_payload;
 mod adapter_ref_handle;
 mod adapter_ref_sender;
+mod builder;
 mod registry;
 
 pub(crate) type AdapterRefHandleId = u64;
@@ -22,4 +23,5 @@ pub(crate) use adapter_outcome::AdapterOutcome;
 pub use adapter_payload::AdapterPayload;
 pub(crate) use adapter_ref_handle::AdapterRefHandle;
 pub(crate) use adapter_ref_sender::AdapterRefSender;
+pub use builder::MessageAdapterBuilderGeneric;
 pub use registry::MessageAdapterRegistry;

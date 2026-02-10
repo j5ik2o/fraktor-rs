@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::{boxed::Box, string::String, vec, vec::Vec};
+use alloc::{boxed::Box, collections::VecDeque, string::String, vec, vec::Vec};
 use core::{mem, task::Poll, time::Duration};
 
 use fraktor_utils_rs::core::{
@@ -21,7 +21,10 @@ use crate::core::{
   },
   dispatch::{
     dispatcher::DispatcherSharedGeneric,
-    mailbox::{BackpressurePublisherGeneric, MailboxCapacity, MailboxGeneric, MailboxInstrumentationGeneric},
+    mailbox::{
+      BackpressurePublisherGeneric, MailboxCapacity, MailboxGeneric, MailboxInstrumentationGeneric,
+      MailboxPressureEvent, ScheduleHints,
+    },
   },
   error::ActorError,
   event::stream::EventStreamEvent,
@@ -41,6 +44,7 @@ struct ActorCellState<TB: RuntimeToolbox + 'static> {
   children:               Vec<Pid>,
   child_stats:            Vec<(Pid, RestartStatistics)>,
   watchers:               Vec<Pid>,
+  stashed_messages:       VecDeque<AnyMessageGeneric<TB>>,
   pipe_tasks:             Vec<ContextPipeTask<TB>>,
   adapter_handles:        Vec<AdapterRefHandle<TB>>,
   adapter_handle_counter: u64,
@@ -53,6 +57,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellState<TB> {
       children:               Vec::new(),
       child_stats:            Vec::new(),
       watchers:               Vec::new(),
+      stashed_messages:       VecDeque::new(),
       pipe_tasks:             Vec::new(),
       adapter_handles:        Vec::new(),
       adapter_handle_counter: 0,
@@ -263,6 +268,82 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     self.state.lock().watchers.retain(|pid| *pid != watcher);
   }
 
+  /// Stashes a user message until explicit unstash.
+  pub(crate) fn stash_message(&self, message: AnyMessageGeneric<TB>) {
+    self.state.lock().stashed_messages.push_back(message);
+  }
+
+  /// Returns the number of messages currently held in the stash.
+  #[must_use]
+  pub(crate) fn stashed_message_len(&self) -> usize {
+    self.state.lock().stashed_messages.len()
+  }
+
+  /// Re-enqueues the oldest stashed user message back to this actor mailbox.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when mailbox enqueue fails. Remaining messages stay stashed.
+  pub(crate) fn unstash_message(&self) -> Result<usize, ActorError> {
+    let message = {
+      let mut state = self.state.lock();
+      state.stashed_messages.pop_front()
+    };
+
+    let Some(message) = message else {
+      return Ok(0);
+    };
+
+    let mut pending = VecDeque::new();
+    pending.push_back(message);
+
+    if let Err(error) = self.mailbox.prepend_user_messages(&pending) {
+      let mut state = self.state.lock();
+      if let Some(message) = pending.pop_front() {
+        state.stashed_messages.push_front(message);
+      }
+      return Err(ActorError::from_send_error(&error));
+    }
+
+    self.dispatcher.register_for_execution(ScheduleHints {
+      has_system_messages: false,
+      has_user_messages:   true,
+      backpressure_active: false,
+    });
+
+    Ok(pending.len())
+  }
+
+  /// Re-enqueues all stashed user messages back to this actor mailbox.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when mailbox enqueue fails. Remaining messages stay stashed.
+  pub(crate) fn unstash_messages(&self) -> Result<usize, ActorError> {
+    let pending = {
+      let mut state = self.state.lock();
+      mem::take(&mut state.stashed_messages)
+    };
+
+    if pending.is_empty() {
+      return Ok(0);
+    }
+
+    if let Err(error) = self.mailbox.prepend_user_messages(&pending) {
+      let mut state = self.state.lock();
+      state.stashed_messages = pending;
+      return Err(ActorError::from_send_error(&error));
+    }
+
+    self.dispatcher.register_for_execution(ScheduleHints {
+      has_system_messages: false,
+      has_user_messages:   true,
+      backpressure_active: false,
+    });
+
+    Ok(pending.len())
+  }
+
   /// Allocates and tracks a new adapter handle for message adapters.
   pub(crate) fn acquire_adapter_handle(&self) -> (AdapterRefHandleId, ArcShared<AdapterLifecycleState<TB>>) {
     let mut state = self.state.lock();
@@ -337,6 +418,10 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     self.state.lock().pipe_tasks.clear();
   }
 
+  fn drop_stash_messages(&self) {
+    self.state.lock().stashed_messages.clear();
+  }
+
   fn handle_pipe_task_ready(&self, task_id: ContextPipeTaskId) {
     self.poll_pipe_task(task_id);
   }
@@ -379,6 +464,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     }
 
     self.drop_pipe_tasks();
+    self.drop_stash_messages();
     self.publish_lifecycle(LifecycleStage::Stopped);
     self.recreate_actor();
     let outcome = self.run_pre_start(LifecycleStage::Restarted);
@@ -408,6 +494,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     }
 
     self.clear_child_stats(&children_snapshot);
+    self.drop_stash_messages();
     self.mark_terminated();
     self.notify_watchers_on_stop();
 
@@ -575,6 +662,20 @@ impl<TB: RuntimeToolbox + 'static> MessageInvoker<TB> for ActorCellInvoker<TB> {
         Ok(())
       },
     }
+  }
+
+  fn invoke_mailbox_pressure(&mut self, event: &MailboxPressureEvent) -> Result<(), ActorError> {
+    let Some(cell) = self.cell() else {
+      // ActorCell has been dropped, silently ignore the notification
+      return Ok(());
+    };
+    let system = ActorSystemGeneric::from_state(cell.system());
+    let mut ctx = ActorContextGeneric::new(&system, cell.pid);
+    let result = cell.actor.with_write(|actor| actor.on_mailbox_pressure(&mut ctx, event));
+    if let Err(ref error) = result {
+      cell.report_failure(error, None);
+    }
+    result
   }
 }
 

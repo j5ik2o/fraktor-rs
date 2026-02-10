@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::string::String;
+use alloc::{collections::VecDeque, string::String};
 use core::num::NonZeroUsize;
 
 use fraktor_utils_rs::core::{
@@ -123,6 +123,79 @@ where
     }
   }
 
+  /// Prepends user messages so they are processed before already queued user messages.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the mailbox is suspended, capacity checks fail, or queue restoration
+  /// fails.
+  pub(crate) fn prepend_user_messages(&self, messages: &VecDeque<AnyMessageGeneric<TB>>) -> Result<(), SendError<TB>> {
+    let Some(first_message) = messages.front().cloned() else {
+      return Ok(());
+    };
+
+    if self.is_suspended() {
+      return Err(SendError::suspended(first_message));
+    }
+
+    if self.prepend_would_overflow(messages.len()) {
+      return Err(SendError::full(first_message));
+    }
+
+    let mut state = self.user.state.lock();
+    let mut existing = VecDeque::new();
+    loop {
+      match state.poll() {
+        | Ok(message) => existing.push_back(message),
+        | Err(QueueError::Empty | QueueError::Disconnected | QueueError::WouldBlock) => break,
+        | Err(QueueError::Full(_))
+        | Err(QueueError::OfferError(_))
+        | Err(QueueError::Closed(_))
+        | Err(QueueError::AllocError(_))
+        | Err(QueueError::TimedOut(_)) => {
+          drop(state);
+          self.publish_metrics();
+          return Err(SendError::closed(first_message));
+        },
+      }
+    }
+
+    let mut inserted = 0_usize;
+    let mut insertion_error = None;
+    for message in messages.iter().cloned().chain(existing.iter().cloned()) {
+      match state.offer(message) {
+        | Ok(outcome) => {
+          Self::handle_offer_outcome(outcome);
+          inserted += 1;
+        },
+        | Err(error) => {
+          insertion_error = Some(map_user_queue_error(error));
+          break;
+        },
+      }
+    }
+
+    if let Some(error) = insertion_error {
+      for _ in 0..inserted {
+        let _ = state.poll();
+      }
+      for message in existing.iter().cloned() {
+        if let Err(restore_error) = state.offer(message) {
+          drop(state);
+          self.publish_metrics();
+          return Err(map_user_queue_error(restore_error));
+        }
+      }
+      drop(state);
+      self.publish_metrics();
+      return Err(error);
+    }
+
+    drop(state);
+    self.publish_metrics();
+    Ok(())
+  }
+
   /// Dequeues the next available message, prioritising system queue.
   #[must_use]
   pub(crate) fn dequeue(&self) -> Option<MailboxMessage<TB>> {
@@ -208,6 +281,18 @@ where
   #[must_use]
   pub const fn throughput_limit(&self) -> Option<NonZeroUsize> {
     self.policy.throughput_limit()
+  }
+
+  fn prepend_would_overflow(&self, prepended_count: usize) -> bool {
+    let MailboxCapacity::Bounded { capacity } = self.policy.capacity() else {
+      return false;
+    };
+
+    if matches!(self.policy.overflow(), MailboxOverflowStrategy::Grow) {
+      return false;
+    }
+
+    self.user_len().saturating_add(prepended_count) > capacity.get()
   }
 
   fn enqueue_bounded_user(

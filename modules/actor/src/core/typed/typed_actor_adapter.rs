@@ -7,6 +7,7 @@ use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 use crate::core::{
   actor::{Actor, ActorContextGeneric, actor_ref::ActorRefGeneric},
   dead_letter::DeadLetterReason,
+  dispatch::mailbox::MailboxPressureEvent,
   error::{ActorError, ActorErrorReason},
   event::logging::LogLevel,
   messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
@@ -98,10 +99,16 @@ where
     sender: Option<&ActorRefGeneric<TB>>,
   ) -> Result<(), ActorError> {
     let mut typed_ctx = TypedActorContextGeneric::from_untyped(ctx, Some(&mut self.adapters));
+    let mut current_message = AnyMessageGeneric::new(message);
     if let Some(target) = sender {
       typed_ctx.as_untyped_mut().set_sender(Some(target.clone()));
+      current_message = current_message.with_sender(target.clone());
     }
-    let result = self.actor.receive(&mut typed_ctx, &message);
+    typed_ctx.as_untyped_mut().set_current_message(Some(current_message.clone()));
+    let view = current_message.as_view();
+    let payload =
+      view.downcast_ref::<M>().ok_or_else(|| ActorError::recoverable(ActorErrorReason::new(DOWNCAST_FAILED)))?;
+    let result = self.actor.receive(&mut typed_ctx, payload);
     if sender.is_some() {
       typed_ctx.as_untyped_mut().clear_sender();
     }
@@ -175,5 +182,14 @@ where
   fn supervisor_strategy(&mut self, ctx: &mut ActorContextGeneric<'_, TB>) -> SupervisorStrategy {
     let mut typed_ctx = TypedActorContextGeneric::from_untyped(ctx, Some(&mut self.adapters));
     self.actor.supervisor_strategy(&mut typed_ctx)
+  }
+
+  fn on_mailbox_pressure(
+    &mut self,
+    ctx: &mut ActorContextGeneric<'_, TB>,
+    event: &MailboxPressureEvent,
+  ) -> Result<(), ActorError> {
+    let mut typed_ctx = TypedActorContextGeneric::from_untyped(ctx, Some(&mut self.adapters));
+    self.actor.on_mailbox_pressure(&mut typed_ctx, event)
   }
 }

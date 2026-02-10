@@ -2,9 +2,10 @@ use alloc::boxed::Box;
 use core::{any::TypeId, marker::PhantomData};
 
 use super::{
-  DynValue, Inlet, MatCombine, SinkDecision, SinkDefinition, SinkLogic, StageDefinition, StageKind, StreamCompletion,
-  StreamDone, StreamError, StreamGraph, StreamNotUsed, StreamShape, StreamStage, downcast_value,
-  graph_stage::GraphStage, graph_stage_logic::GraphStageLogic, stage_context::StageContext,
+  DynValue, Inlet, MatCombine, RestartBackoff, RestartSettings, SinkDecision, SinkDefinition, SinkLogic,
+  StageDefinition, StageKind, StreamCompletion, StreamDone, StreamError, StreamGraph, StreamNotUsed, StreamShape,
+  StreamStage, SupervisionStrategy, downcast_value, graph_stage::GraphStage, graph_stage_logic::GraphStageLogic,
+  stage_context::StageContext,
 };
 
 /// Sink stage definition.
@@ -34,6 +35,17 @@ where
     let completion = StreamCompletion::new();
     let logic = ForeachSinkLogic::<In, F> { func, completion: completion.clone(), _pd: PhantomData };
     Self::from_definition(StageKind::SinkForeach, logic, completion)
+  }
+}
+
+impl<In> Sink<In, StreamNotUsed>
+where
+  In: Send + Sync + 'static,
+{
+  pub(super) fn from_logic<L>(kind: StageKind, logic: L) -> Self
+  where
+    L: SinkLogic + 'static, {
+    Self::from_definition(kind, logic, StreamNotUsed::new())
   }
 }
 
@@ -87,6 +99,41 @@ where
     (self.graph, self.mat)
   }
 
+  /// Enables restart semantics with backoff for this sink.
+  #[must_use]
+  pub fn restart_sink_with_backoff(mut self, min_backoff_ticks: u32, max_restarts: usize) -> Self {
+    self.graph.set_sink_restart(Some(RestartBackoff::new(min_backoff_ticks, max_restarts)));
+    self
+  }
+
+  /// Enables restart semantics by explicit restart settings.
+  #[must_use]
+  pub fn restart_sink_with_settings(mut self, settings: RestartSettings) -> Self {
+    self.graph.set_sink_restart(Some(RestartBackoff::from_settings(settings)));
+    self
+  }
+
+  /// Applies stop supervision semantics to this sink.
+  #[must_use]
+  pub fn supervision_stop(mut self) -> Self {
+    self.graph.set_sink_supervision(SupervisionStrategy::Stop);
+    self
+  }
+
+  /// Applies resume supervision semantics to this sink.
+  #[must_use]
+  pub fn supervision_resume(mut self) -> Self {
+    self.graph.set_sink_supervision(SupervisionStrategy::Resume);
+    self
+  }
+
+  /// Applies restart supervision semantics to this sink.
+  #[must_use]
+  pub fn supervision_restart(mut self) -> Self {
+    self.graph.set_sink_supervision(SupervisionStrategy::Restart);
+    self
+  }
+
   fn from_definition<L>(kind: StageKind, logic: L, mat: Mat) -> Self
   where
     L: SinkLogic + 'static, {
@@ -96,6 +143,8 @@ where
       inlet: inlet.id(),
       input_type: TypeId::of::<In>(),
       mat_combine: MatCombine::KeepRight,
+      supervision: SupervisionStrategy::Stop,
+      restart: None,
       logic: Box::new(logic),
     };
     let mut graph = StreamGraph::new();

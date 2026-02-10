@@ -6,13 +6,13 @@ use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 
 use crate::core::{
   actor::{ActorContextGeneric, Pid, PipeSpawnError},
-  error::SendError,
+  error::{ActorError, SendError},
   messaging::AnyMessageGeneric,
   spawn::SpawnError,
   typed::{
     TypedActorSystemGeneric,
     actor::{actor_ref::TypedActorRefGeneric, child_ref::TypedChildRefGeneric},
-    message_adapter::{AdaptMessage, AdapterError, MessageAdapterRegistry},
+    message_adapter::{AdaptMessage, AdapterError, MessageAdapterBuilderGeneric, MessageAdapterRegistry},
     props::TypedPropsGeneric,
   },
 };
@@ -132,6 +132,33 @@ where
     self.inner().stop_self()
   }
 
+  /// Stashes the currently processed message for deferred handling.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when no current message is active or actor cell access fails.
+  pub fn stash(&self) -> Result<(), ActorError> {
+    self.inner().stash()
+  }
+
+  /// Re-enqueues the oldest stashed message back to the actor mailbox.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when actor cell access or unstash dispatch fails.
+  pub fn unstash(&self) -> Result<usize, ActorError> {
+    self.inner().unstash()
+  }
+
+  /// Re-enqueues all stashed messages back to the actor mailbox.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when actor cell access or unstash dispatch fails.
+  pub fn unstash_all(&self) -> Result<usize, ActorError> {
+    self.inner().unstash_all()
+  }
+
   /// Provides mutable access to the underlying untyped context.
   pub const fn as_untyped_mut(&mut self) -> &mut ActorContextGeneric<'a, TB> {
     self.inner_mut()
@@ -139,6 +166,14 @@ where
 
   fn registry_ptr(&self) -> Result<NonNull<MessageAdapterRegistry<M, TB>>, AdapterError> {
     self.adapters.ok_or(AdapterError::RegistryUnavailable)
+  }
+
+  /// Creates a fluent builder for registering a message adapter.
+  #[must_use]
+  pub const fn message_adapter_builder<U>(&mut self) -> MessageAdapterBuilderGeneric<'_, 'a, M, U, TB>
+  where
+    U: Send + Sync + 'static, {
+    MessageAdapterBuilderGeneric::new(self)
   }
 
   /// Registers a message adapter for the specified payload type.

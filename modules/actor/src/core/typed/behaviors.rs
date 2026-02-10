@@ -1,11 +1,18 @@
 //! Functional builders for typed behaviors.
 
+#[cfg(test)]
+mod tests;
+
 use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use super::supervise::Supervise;
 use crate::core::{
   error::ActorError,
-  typed::{actor::TypedActorContextGeneric, behavior::Behavior, behavior_signal::BehaviorSignal},
+  messaging::AnyMessageGeneric,
+  typed::{
+    actor::TypedActorContextGeneric, behavior::Behavior, behavior_signal::BehaviorSignal,
+    stash_buffer::StashBufferGeneric,
+  },
 };
 
 /// Provides Pekko-inspired helpers for constructing [`Behavior`] instances.
@@ -87,6 +94,18 @@ impl Behaviors {
     })
   }
 
+  /// Creates a behavior using a bounded stash helper.
+  ///
+  /// This mirrors Pekko's `Behaviors.withStash`.
+  #[must_use]
+  pub fn with_stash<M, TB, F>(capacity: usize, factory: F) -> Behavior<M, TB>
+  where
+    M: Send + Sync + 'static,
+    TB: RuntimeToolbox + 'static,
+    F: Fn(StashBufferGeneric<M, TB>) -> Behavior<M, TB> + Send + Sync + 'static, {
+    Self::setup(move |_ctx| factory(StashBufferGeneric::new(capacity)))
+  }
+
   /// Creates a behavior that handles typed messages and can return the next behavior.
   pub fn receive_message<M, TB, F>(handler: F) -> Behavior<M, TB>
   where
@@ -97,6 +116,30 @@ impl Behaviors {
       + Sync
       + 'static, {
     Behavior::from_message_handler(handler)
+  }
+
+  /// Creates a behavior that handles typed messages and replies to the current sender.
+  ///
+  /// The behavior keeps the current state by returning [`Behaviors::same`].
+  /// Use [`Behaviors::receive_message`] when explicit state transitions are needed.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the handler fails or when no sender is available.
+  pub fn receive_and_reply<M, TB, R, F>(handler: F) -> Behavior<M, TB>
+  where
+    M: Send + Sync + 'static,
+    R: Send + Sync + 'static,
+    TB: RuntimeToolbox + 'static,
+    F: for<'a> Fn(&mut TypedActorContextGeneric<'a, M, TB>, &M) -> Result<R, ActorError> + Send + Sync + 'static, {
+    Behavior::from_message_handler(move |ctx, message| {
+      let response = handler(ctx, message)?;
+      ctx
+        .as_untyped_mut()
+        .reply(AnyMessageGeneric::new(response))
+        .map_err(|error| ActorError::from_send_error(&error))?;
+      Ok(Behavior::same())
+    })
   }
 
   /// Creates a behavior that only reacts to signals.

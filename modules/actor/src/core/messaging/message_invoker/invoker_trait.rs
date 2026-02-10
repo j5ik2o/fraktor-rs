@@ -3,6 +3,7 @@
 use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 
 use crate::core::{
+  dispatch::mailbox::MailboxPressureEvent,
   error::ActorError,
   messaging::{AnyMessageGeneric, SystemMessage},
 };
@@ -30,4 +31,14 @@ pub trait MessageInvoker<TB: RuntimeToolbox + 'static = NoStdToolbox>: Send + Sy
   ///
   /// Returns an error if system message processing fails.
   fn invoke_system_message(&mut self, message: SystemMessage) -> Result<(), ActorError>;
+
+  /// Processes mailbox-pressure notifications emitted by dispatcher instrumentation.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if pressure handling fails.
+  #[allow(unused_variables)]
+  fn invoke_mailbox_pressure(&mut self, event: &MailboxPressureEvent) -> Result<(), ActorError> {
+    Ok(())
+  }
 }

@@ -40,6 +40,7 @@ pub(crate) struct DispatcherCoreGeneric<TB: RuntimeToolbox + 'static> {
   executor:            ArcShared<DispatchExecutorRunnerGeneric<TB>>,
   schedule_adapter:    ScheduleAdapterSharedGeneric<TB>,
   invoker:             ToolboxMutex<Option<MessageInvokerShared<TB>>, TB>,
+  mailbox_pressure:    ToolboxMutex<Option<MailboxPressureEvent>, TB>,
   state:               AtomicU8,
   throughput_limit:    Option<NonZeroUsize>,
   throughput_deadline: Option<Duration>,
@@ -66,6 +67,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCoreGeneric<TB> {
       executor,
       schedule_adapter,
       invoker: <TB::MutexFamily as SyncMutexFamily>::create(None),
+      mailbox_pressure: <TB::MutexFamily as SyncMutexFamily>::create(None),
       state: AtomicU8::new(DispatcherState::Idle.as_u8()),
       throughput_limit,
       throughput_deadline,
@@ -139,7 +141,8 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCoreGeneric<TB> {
 
       let pending_reschedule = self_arc.mailbox.set_idle();
       if pending_reschedule {
-        let hints = self_arc.mailbox.current_schedule_hints();
+        let mut hints = self_arc.mailbox.current_schedule_hints();
+        hints.backpressure_active = self_arc.has_pending_mailbox_pressure();
         Self::request_execution(self_arc, hints);
       }
 
@@ -156,6 +159,13 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCoreGeneric<TB> {
       if self.deadline_reached(deadline_anchor, processed) {
         break;
       }
+
+      if self.mailbox.system_len() == 0 && self.process_mailbox_pressure() {
+        self.record_progress();
+        processed += 1;
+        continue;
+      }
+
       match self.mailbox.dequeue() {
         | Some(MailboxMessage::System(msg)) => {
           self.handle_system_message(msg);
@@ -200,6 +210,14 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCoreGeneric<TB> {
     let _ = self.invoke_user_message(message);
   }
 
+  fn process_mailbox_pressure(&self) -> bool {
+    let Some(event) = self.mailbox_pressure.lock().take() else {
+      return false;
+    };
+    let _ = self.invoke_mailbox_pressure(&event);
+    true
+  }
+
   fn invoke_user_message(&self, message: AnyMessageGeneric<TB>) -> Result<(), ActorError> {
     // Clone the invoker reference and release the outer lock before acquiring the inner lock.
     // This prevents potential deadlock when actor message handlers interact with the dispatcher.
@@ -216,6 +234,16 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCoreGeneric<TB> {
     let invoker = self.invoker.lock().clone();
     if let Some(invoker) = invoker {
       return invoker.with_write(|i| i.invoke_system_message(message));
+    }
+    Ok(())
+  }
+
+  fn invoke_mailbox_pressure(&self, event: &MailboxPressureEvent) -> Result<(), ActorError> {
+    // Clone the invoker reference and release the outer lock before acquiring the inner lock.
+    // This prevents potential deadlock when actor message handlers interact with the dispatcher.
+    let invoker = self.invoker.lock().clone();
+    if let Some(invoker) = invoker {
+      return invoker.with_write(|i| i.invoke_mailbox_pressure(event));
     }
     Ok(())
   }
@@ -281,7 +309,13 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCoreGeneric<TB> {
   }
 
   fn has_pending_work(&self) -> bool {
-    self.mailbox.system_len() > 0 || (!self.mailbox.is_suspended() && self.mailbox.user_len() > 0)
+    self.mailbox.system_len() > 0
+      || (!self.mailbox.is_suspended() && self.mailbox.user_len() > 0)
+      || self.has_pending_mailbox_pressure()
+  }
+
+  fn has_pending_mailbox_pressure(&self) -> bool {
+    self.mailbox_pressure.lock().is_some()
   }
 
   pub(crate) fn request_execution(self_arc: &ArcShared<Self>, hints: ScheduleHints) {
@@ -295,7 +329,8 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCoreGeneric<TB> {
     }
   }
 
-  pub(crate) fn handle_backpressure(self_arc: &ArcShared<Self>, _event: &MailboxPressureEvent) {
+  pub(crate) fn handle_backpressure(self_arc: &ArcShared<Self>, event: &MailboxPressureEvent) {
+    *self_arc.mailbox_pressure.lock() = Some(event.clone());
     let hints = ScheduleHints { has_system_messages: false, has_user_messages: true, backpressure_active: true };
     Self::request_execution(self_arc, hints);
   }

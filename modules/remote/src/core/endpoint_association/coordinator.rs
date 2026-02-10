@@ -10,8 +10,8 @@ use fraktor_actor_rs::core::event::stream::{CorrelationId, RemotingLifecycleEven
 use portable_atomic::AtomicU64;
 
 use super::{
-  command::EndpointAssociationCommand, effect::EndpointAssociationEffect, result::EndpointAssociationResult,
-  state::AssociationState,
+  command::EndpointAssociationCommand, effect::EndpointAssociationEffect, quarantine_reason::QuarantineReason,
+  result::EndpointAssociationResult, state::AssociationState,
 };
 use crate::core::endpoint_registry::EndpointRegistry;
 
@@ -71,16 +71,34 @@ impl EndpointAssociationCoordinator {
       },
       | EndpointAssociationCommand::EnqueueDeferred { authority, envelope } => {
         let envelope = *envelope;
-        if matches!(self.registry.state(&authority), Some(AssociationState::Connected { .. })) {
-          return EndpointAssociationResult {
-            effects: vec![EndpointAssociationEffect::DeliverEnvelopes { authority, envelopes: vec![envelope] }],
-          };
+        match self.registry.state(&authority) {
+          | Some(AssociationState::Connected { .. }) => {
+            return EndpointAssociationResult {
+              effects: vec![EndpointAssociationEffect::DeliverEnvelopes { authority, envelopes: vec![envelope] }],
+            };
+          },
+          | Some(AssociationState::Quarantined { reason, .. }) => {
+            return EndpointAssociationResult {
+              effects: vec![EndpointAssociationEffect::DiscardDeferred {
+                authority,
+                reason: reason.clone(),
+                envelopes: vec![envelope],
+              }],
+            };
+          },
+          | _ => {},
         }
         self.registry.push_deferred(&authority, envelope);
         EndpointAssociationResult::default()
       },
       | EndpointAssociationCommand::HandshakeAccepted { authority, remote_node, now } => {
         self.registry.ensure_entry(&authority);
+        if matches!(
+          self.registry.state(&authority),
+          Some(AssociationState::Gated { .. } | AssociationState::Quarantined { .. })
+        ) {
+          return EndpointAssociationResult::default();
+        }
         self.registry.set_state(
           &authority,
           AssociationState::Connected { remote: remote_node.clone() },
@@ -99,6 +117,25 @@ impl EndpointAssociationCoordinator {
           remote_uid: remote_node.uid(),
           correlation_id,
         }));
+        EndpointAssociationResult { effects }
+      },
+      | EndpointAssociationCommand::HandshakeTimedOut { authority, resume_at, now } => {
+        self.registry.ensure_entry(&authority);
+        if !matches!(self.registry.state(&authority), Some(AssociationState::Associating { .. })) {
+          return EndpointAssociationResult::default();
+        }
+        let envelopes = self.registry.drain_deferred(&authority);
+        self.registry.set_state(&authority, AssociationState::Gated { resume_at }, now, Some("handshake timed out"));
+        let correlation_id = self.next_correlation_id();
+        let mut effects = Vec::new();
+        if !envelopes.is_empty() {
+          effects.push(EndpointAssociationEffect::DiscardDeferred {
+            authority: authority.clone(),
+            reason: QuarantineReason::new("handshake timed out"),
+            envelopes,
+          });
+        }
+        effects.push(EndpointAssociationEffect::Lifecycle(RemotingLifecycleEvent::Gated { authority, correlation_id }));
         EndpointAssociationResult { effects }
       },
       | EndpointAssociationCommand::Quarantine { authority, reason, resume_at, now } => {

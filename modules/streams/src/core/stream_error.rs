@@ -29,8 +29,22 @@ pub enum StreamError {
   InvalidConnection,
   /// Indicates a type mismatch at runtime.
   TypeMismatch,
+  /// Indicates that processing cannot make progress yet and should be retried.
+  WouldBlock,
   /// Indicates stream processing failed with a user error.
   Failed,
+  /// Indicates that a partition route is invalid.
+  InvalidRoute {
+    /// Route value returned by a partitioner.
+    route:           isize,
+    /// Total partition count.
+    partition_count: usize,
+  },
+  /// Indicates that observed substream keys exceeded the configured limit.
+  SubstreamLimitExceeded {
+    /// Maximum allowed substream count.
+    max_substreams: usize,
+  },
 }
 
 impl fmt::Display for StreamError {
@@ -47,7 +61,14 @@ impl fmt::Display for StreamError {
       | Self::ActorSystemMissing => write!(f, "actor system missing"),
       | Self::InvalidConnection => write!(f, "invalid stream connection"),
       | Self::TypeMismatch => write!(f, "stream type mismatch"),
+      | Self::WouldBlock => write!(f, "stream would block"),
       | Self::Failed => write!(f, "stream failed"),
+      | Self::InvalidRoute { route, partition_count } => {
+        write!(f, "invalid partition route: route={route} partition_count={partition_count}")
+      },
+      | Self::SubstreamLimitExceeded { max_substreams } => {
+        write!(f, "substream limit exceeded: max_substreams={max_substreams}")
+      },
     }
   }
 }

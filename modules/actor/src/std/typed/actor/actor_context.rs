@@ -106,6 +106,16 @@ where
     self.inner.stop_self()
   }
 
+  /// Creates a fluent builder for registering a typed message adapter.
+  #[must_use]
+  pub const fn message_adapter_builder<U>(
+    &mut self,
+  ) -> crate::core::typed::message_adapter::MessageAdapterBuilderGeneric<'_, 'inner, M, U, StdToolbox>
+  where
+    U: Send + Sync + 'static, {
+    self.inner.message_adapter_builder()
+  }
+
   /// Provides access to the underlying core typed context.
   #[must_use]
   pub const fn as_core(&self) -> &CoreTypedActorContextGeneric<'inner, M, StdToolbox> {

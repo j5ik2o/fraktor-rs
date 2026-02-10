@@ -5,16 +5,23 @@ use alloc::{
   string::{String, ToString},
   vec::Vec,
 };
+use core::time::Duration;
 
 use fraktor_actor_rs::core::event::stream::{BackpressureSignal, CorrelationId};
 
 use crate::core::backpressure::{FnRemotingBackpressureListener, RemotingBackpressureListener};
+
+#[cfg(test)]
+mod tests;
+
+const MIN_HANDSHAKE_TIMEOUT: Duration = Duration::from_millis(1);
 
 /// Declarative configuration applied when the remoting extension is installed.
 pub struct RemotingExtensionConfig {
   canonical_host:           String,
   canonical_port:           Option<u16>,
   auto_start:               bool,
+  handshake_timeout:        Duration,
   transport_scheme:         String,
   backpressure_listeners:   Vec<Box<dyn RemotingBackpressureListener>>,
   flight_recorder_capacity: usize,
@@ -27,6 +34,7 @@ impl Clone for RemotingExtensionConfig {
       canonical_host:           self.canonical_host.clone(),
       canonical_port:           self.canonical_port,
       auto_start:               self.auto_start,
+      handshake_timeout:        self.handshake_timeout,
       transport_scheme:         self.transport_scheme.clone(),
       backpressure_listeners:   listeners,
       flight_recorder_capacity: self.flight_recorder_capacity,
@@ -43,6 +51,7 @@ impl RemotingExtensionConfig {
       canonical_host:           String::new(),
       canonical_port:           None,
       auto_start:               true,
+      handshake_timeout:        Duration::from_secs(3),
       transport_scheme:         "fraktor.loopback".to_string(),
       backpressure_listeners:   Vec::new(),
       flight_recorder_capacity: 128,
@@ -67,6 +76,18 @@ impl RemotingExtensionConfig {
   #[must_use]
   pub fn with_auto_start(mut self, enabled: bool) -> Self {
     self.auto_start = enabled;
+    self
+  }
+
+  /// Overrides the handshake timeout used while waiting for association completion.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `timeout` is shorter than one millisecond.
+  #[must_use]
+  pub fn with_handshake_timeout(mut self, timeout: Duration) -> Self {
+    assert!(timeout >= MIN_HANDSHAKE_TIMEOUT, "handshake timeout must be >= 1 millisecond");
+    self.handshake_timeout = timeout;
     self
   }
 
@@ -110,6 +131,12 @@ impl RemotingExtensionConfig {
   #[must_use]
   pub const fn auto_start(&self) -> bool {
     self.auto_start
+  }
+
+  /// Returns the configured handshake timeout.
+  #[must_use]
+  pub const fn handshake_timeout(&self) -> Duration {
+    self.handshake_timeout
   }
 
   /// Returns the registered backpressure listeners.

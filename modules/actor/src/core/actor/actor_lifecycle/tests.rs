@@ -5,6 +5,7 @@ use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 use super::Actor;
 use crate::core::{
   actor::{ActorContext, ActorContextGeneric, Pid},
+  dispatch::mailbox::MailboxPressureEvent,
   error::ActorError,
   messaging::AnyMessageViewGeneric,
   system::ActorSystem,
@@ -15,6 +16,7 @@ struct TestActor {
   pre_start_called:     bool,
   post_stop_called:     bool,
   on_terminated_called: bool,
+  mailbox_pressure:     bool,
 }
 
 impl Actor for TestActor {
@@ -42,6 +44,15 @@ impl Actor for TestActor {
     _terminated: Pid,
   ) -> Result<(), ActorError> {
     self.on_terminated_called = true;
+    Ok(())
+  }
+
+  fn on_mailbox_pressure(
+    &mut self,
+    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
+    _event: &MailboxPressureEvent,
+  ) -> Result<(), ActorError> {
+    self.mailbox_pressure = true;
     Ok(())
   }
 }
@@ -78,4 +89,14 @@ fn actor_box_delegates_on_terminated() {
   let mut ctx = ActorContext::new(&system, pid);
   let mut actor: Box<dyn Actor<NoStdToolbox>> = Box::new(TestActor::default());
   assert!(actor.on_terminated(&mut ctx, pid).is_ok());
+}
+
+#[test]
+fn actor_box_delegates_on_mailbox_pressure() {
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let mut ctx = ActorContext::new(&system, pid);
+  let mut actor: Box<dyn Actor<NoStdToolbox>> = Box::new(TestActor::default());
+  let event = MailboxPressureEvent::new(pid, 8, 8, 100, core::time::Duration::from_millis(1), Some(6));
+  assert!(actor.on_mailbox_pressure(&mut ctx, &event).is_ok());
 }

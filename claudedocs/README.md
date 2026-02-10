@@ -47,6 +47,11 @@
   - 開発規約
   - ライセンス
 
+- **[become/unbecome 判断メモ（2026-02-09）](./decision-become-unbecome-2026-02-09.md)**
+  - `become/unbecome` を現時点で必須にしない理由
+  - 現在維持している互換レベル
+  - 将来実装を再評価する条件
+
 ## その他のドキュメント
 
 ### 📖 公式ガイド（docs/guides/）

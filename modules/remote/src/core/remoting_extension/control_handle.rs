@@ -6,6 +6,8 @@ use alloc::{
   vec::Vec,
 };
 use core::sync::atomic::{AtomicU64, Ordering};
+#[cfg(feature = "tokio-transport")]
+use core::time::Duration;
 
 use fraktor_actor_rs::core::{
   actor::actor_path::ActorPathParts,
@@ -67,6 +69,8 @@ where
       event_publisher: publisher,
       canonical_host: config.canonical_host().to_string(),
       canonical_port: config.canonical_port(),
+      #[cfg(feature = "tokio-transport")]
+      handshake_timeout: config.handshake_timeout(),
       state: <TB::MutexFamily as SyncMutexFamily>::create(RemotingLifecycleState::new()),
       listeners: <TB::MutexFamily as SyncMutexFamily>::create(listeners),
       snapshots: <TB::MutexFamily as SyncMutexFamily>::create(Vec::new()),
@@ -223,20 +227,22 @@ where
 struct RemotingControlInner<TB>
 where
   TB: RuntimeToolbox + 'static, {
-  system:          ActorSystemWeakGeneric<TB>,
-  event_publisher: EventPublisherGeneric<TB>,
-  canonical_host:  String,
-  canonical_port:  Option<u16>,
-  state:           ToolboxMutex<RemotingLifecycleState, TB>,
-  listeners:       ToolboxMutex<Vec<RemotingBackpressureListenerShared<TB>>, TB>,
-  snapshots:       ToolboxMutex<Vec<RemoteAuthoritySnapshot>, TB>,
-  recorder:        RemotingFlightRecorder,
-  correlation_seq: AtomicU64,
-  writer:          ToolboxMutex<Option<EndpointWriterSharedGeneric<TB>>, TB>,
-  reader:          ToolboxMutex<Option<ArcShared<EndpointReaderGeneric<TB>>>, TB>,
-  transport_ref:   ToolboxMutex<Option<RemoteTransportShared<TB>>, TB>,
+  system:            ActorSystemWeakGeneric<TB>,
+  event_publisher:   EventPublisherGeneric<TB>,
+  canonical_host:    String,
+  canonical_port:    Option<u16>,
   #[cfg(feature = "tokio-transport")]
-  endpoint_bridge: ToolboxMutex<Option<crate::std::endpoint_transport_bridge::EndpointTransportBridgeHandle>, TB>,
+  handshake_timeout: Duration,
+  state:             ToolboxMutex<RemotingLifecycleState, TB>,
+  listeners:         ToolboxMutex<Vec<RemotingBackpressureListenerShared<TB>>, TB>,
+  snapshots:         ToolboxMutex<Vec<RemoteAuthoritySnapshot>, TB>,
+  recorder:          RemotingFlightRecorder,
+  correlation_seq:   AtomicU64,
+  writer:            ToolboxMutex<Option<EndpointWriterSharedGeneric<TB>>, TB>,
+  reader:            ToolboxMutex<Option<ArcShared<EndpointReaderGeneric<TB>>>, TB>,
+  transport_ref:     ToolboxMutex<Option<RemoteTransportShared<TB>>, TB>,
+  #[cfg(feature = "tokio-transport")]
+  endpoint_bridge:   ToolboxMutex<Option<crate::std::endpoint_transport_bridge::EndpointTransportBridgeHandle>, TB>,
 }
 
 impl<TB> RemotingControlInner<TB>
@@ -299,6 +305,8 @@ where
         canonical_host: self.canonical_host.clone(),
         canonical_port: port,
         system_name,
+        #[cfg(feature = "tokio-transport")]
+        handshake_timeout: self.handshake_timeout,
       };
       let handle = crate::std::endpoint_transport_bridge::EndpointTransportBridge::spawn(config)
         .map_err(|error| RemotingError::TransportUnavailable(format!("{error:?}")))?;

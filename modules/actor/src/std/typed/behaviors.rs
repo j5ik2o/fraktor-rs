@@ -7,7 +7,7 @@ use crate::{
     error::ActorError,
     typed::{BehaviorSignal, Behaviors as CoreBehaviors, actor::TypedActorContextGeneric as CoreTypedActorContext},
   },
-  std::typed::{Behavior, Supervise, actor::TypedActorContext},
+  std::typed::{Behavior, StashBuffer, Supervise, actor::TypedActorContext},
 };
 
 /// Provides Pekko-inspired helpers that operate on std typed contexts.
@@ -63,6 +63,17 @@ impl Behaviors {
     CoreBehaviors::setup(move |ctx| with_std_ctx(ctx, |std_ctx| factory(std_ctx)))
   }
 
+  /// Creates a behavior using a bounded stash helper.
+  ///
+  /// This mirrors Pekko's `Behaviors.withStash`.
+  #[must_use]
+  pub fn with_stash<M, F>(capacity: usize, factory: F) -> Behavior<M>
+  where
+    M: Send + Sync + 'static,
+    F: Fn(StashBuffer<M>) -> Behavior<M> + Send + Sync + 'static, {
+    CoreBehaviors::with_stash(capacity, factory)
+  }
+
   /// Creates a behavior that handles typed messages using the std context.
   #[must_use]
   pub fn receive_message<M, F>(handler: F) -> Behavior<M>
@@ -70,6 +81,16 @@ impl Behaviors {
     M: Send + Sync + 'static,
     F: for<'a> Fn(&mut TypedActorContext<'_, 'a, M>, &M) -> Result<Behavior<M>, ActorError> + Send + Sync + 'static, {
     CoreBehaviors::receive_message(move |ctx, message| with_std_ctx(ctx, |std_ctx| handler(std_ctx, message)))
+  }
+
+  /// Creates a behavior that replies to the current sender and keeps the same behavior.
+  #[must_use]
+  pub fn receive_and_reply<M, R, F>(handler: F) -> Behavior<M>
+  where
+    M: Send + Sync + 'static,
+    R: Send + Sync + 'static,
+    F: for<'a> Fn(&mut TypedActorContext<'_, 'a, M>, &M) -> Result<R, ActorError> + Send + Sync + 'static, {
+    CoreBehaviors::receive_and_reply(move |ctx, message| with_std_ctx(ctx, |std_ctx| handler(std_ctx, message)))
   }
 
   /// Creates a behavior that only reacts to signals with the std context.

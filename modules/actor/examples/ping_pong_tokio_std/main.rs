@@ -1,7 +1,7 @@
 //! Ping-pong messaging example on a Tokio multi-thread runtime.
 //!
-//! Demonstrates the untyped `Actor` API with `DispatcherConfig::from_executor(TokioExecutor)`
-//! and `TickDriverConfig::tokio_quickstart()` for timer-driven scheduling.
+//! Demonstrates the untyped `Actor` API with `ActorSystem::quickstart()`
+//! for Tokio-based scheduling and dispatcher defaults.
 
 use std::{string::String, time::Duration};
 
@@ -9,42 +9,24 @@ use fraktor_actor_rs::{
   core::error::ActorError,
   std::{
     actor::{Actor, ActorContext, ActorRef},
-    dispatch::dispatcher::dispatch_executor::TokioExecutor,
     futures::ActorFutureListener,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
-    system::{ActorSystem, DispatcherConfig},
+    system::ActorSystem,
   },
 };
-use fraktor_utils_rs::{core::sync::ArcShared, std::StdSyncMutex};
-use tokio::runtime::Handle;
 
 struct Start;
 
-struct GuardianActor {
-  dispatcher: DispatcherConfig,
-}
-
-impl GuardianActor {
-  fn new(dispatcher: DispatcherConfig) -> Self {
-    Self { dispatcher }
-  }
-
-  fn child_props<F, A>(&self, factory: F) -> Props
-  where
-    F: Fn() -> A + Send + Sync + 'static,
-    A: Actor + Sync + 'static, {
-    Props::from_fn(factory).with_dispatcher(self.dispatcher.clone())
-  }
-}
+struct GuardianActor;
 
 impl Actor for GuardianActor {
   fn receive(&mut self, ctx: &mut ActorContext<'_, '_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
-      let pong_props = self.child_props(|| PongActor);
+      let pong_props = Props::from_fn(|| PongActor);
       let pong = ctx.spawn_child(&pong_props).map_err(|_| ActorError::recoverable("failed to spawn pong"))?;
 
-      let ping_props = self.child_props(|| PingActor);
+      let ping_props = Props::from_fn(|| PingActor);
       let mut ping = ctx.spawn_child(&ping_props).map_err(|_| ActorError::recoverable("failed to spawn ping"))?;
 
       let start_ping = StartPing { target: pong.actor_ref().clone(), reply_to: ctx.self_ref(), count: 3 };
@@ -104,18 +86,8 @@ impl Actor for PongActor {
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
-  let handle = Handle::current();
-  let dispatcher: DispatcherConfig =
-    DispatcherConfig::from_executor(ArcShared::new(StdSyncMutex::new(Box::new(TokioExecutor::new(handle)))));
-
-  let props: Props = Props::from_fn({
-    let dispatcher = dispatcher.clone();
-    move || GuardianActor::new(dispatcher.clone())
-  })
-  .with_dispatcher(dispatcher.clone());
-
-  let tick_driver = fraktor_actor_rs::std::scheduler::tick::TickDriverConfig::tokio_quickstart();
-  let system = ActorSystem::new(&props, tick_driver).expect("system");
+  let props: Props = Props::from_fn(|| GuardianActor);
+  let system = ActorSystem::quickstart(&props).expect("system");
 
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
 

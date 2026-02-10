@@ -210,12 +210,12 @@ README のモジュール関係図や `docs/guides/` の個別ガイドは存在
 - [x] その他の broken intra-doc link をすべて修正（全17件: actor 12, remote 4, cluster 1, streams 1）
 - [x] 全モジュールで `cargo doc --no-deps` が成功することを確認
 
-#### A-2. ActorSystem quickstart API [P1] [actor] ✅ 設計完了
+#### A-2. ActorSystem quickstart API [P1] [actor] ✅ 完了
 - [x] `ActorSystem::quickstart(&props)` 簡易初期化 API を設計（`claudedocs/quickstart-api-design.md`）
 - [x] TickDriverConfig のデフォルト構成を内部で自動適用（設計済み）
 - [x] `DispatcherConfig::tokio_auto()` で Tokio Handle 自動検出（設計済み）
 - [x] Codex Architect レビュー完了（feature gate `#[cfg(feature = "tokio-executor")]` 必須等）
-- [ ] 実装（設計書に基づく実コード作成は Phase B 以降）
+- [x] 実装（`ActorSystem::quickstart` / `quickstart_with` / `DispatcherConfig::tokio_auto`）
 
 #### A-3. Getting Started ガイド [P1] [docs] ✅ 完了
 - [x] `docs/guides/getting-started.md` を新規作成
@@ -304,36 +304,36 @@ README のモジュール関係図や `docs/guides/` の個別ガイドは存在
 - [ ] TLS 有効時の example を追加
 - [ ] テスト（自己署名証明書によるハンドシェイク検証）
 
-#### C-2. Handshake timeout [P1] [remote]
-- [ ] `RemotingExtensionConfig::with_handshake_timeout()` を追加
-- [ ] timeout 超過時の EndpointAssociation FSM 遷移を実装
-- [ ] recovery path のテスト
+#### C-2. Handshake timeout [P1] [remote] ✅ 完了
+- [x] `RemotingExtensionConfig::with_handshake_timeout()` を追加
+- [x] timeout 超過時の EndpointAssociation FSM 遷移を実装
+- [x] recovery path のテスト
 
-#### C-3. Stash メカニズム [P2] [actor]
-- [ ] `ActorContext::stash()` / `unstash()` API を設計
-- [ ] typed / untyped 両方に対応
-- [ ] behavior transition 時のメッセージバッファリング実装
-- [ ] テストと example 追加
+#### C-3. Stash メカニズム [P2] [actor] ✅ 完了
+- [x] `ActorContext::stash()` / `unstash()` API を設計
+- [x] typed / untyped 両方に対応
+- [x] behavior transition 時のメッセージバッファリング実装
+- [x] テストと example 追加
 
 #### C-4. Backpressure Protocol [P2] [actor]
-- [ ] mailbox full 時の明示的ハンドリングを設計
-- [ ] `on_mailbox_pressure()` hook または backoff integration
-- [ ] テスト追加
+- [x] mailbox full 時の明示的ハンドリングを設計（dispatcher 内 pending pressure を実行ループで処理）
+- [x] `on_mailbox_pressure()` hook を追加（`Actor` / `TypedActor` / `MessageInvoker` 経路）
+- [x] テスト追加（dispatcher core / dispatcher / actor lifecycle）
 
 #### C-5. 統合テスト拡充 [P2] [cluster] [remote]
-- [ ] cluster: failure scenario テスト（node down, network partition, slow node）
-- [ ] cluster: load-balanced placement 検証テスト
-- [ ] remote: 2+ ノードシナリオテスト
-- [ ] remote: Phi Failure Detector のエッジケーステスト
+- [x] cluster: failure scenario テスト（node down, network partition, slow node）
+- [x] cluster: load-balanced placement 検証テスト
+- [x] remote: 2+ ノードシナリオテスト
+- [x] remote: Phi Failure Detector のエッジケーステスト
 
 #### C-6. streams サンプル追加 [P1] [streams]
-- [ ] 基本パターン 5 個程度の example を追加
-  - [ ] Source → Sink の最小パイプライン
-  - [ ] map / filter の基本変換
-  - [ ] fold による集約
-  - [ ] カスタム GraphStage
-  - [ ] バックプレッシャーのデモ
-- [ ] 各 example に概念説明コメントを付与
+- [x] 基本パターン 5 個程度の example を追加
+  - [x] Source → Sink の最小パイプライン
+  - [x] map / filter の基本変換
+  - [x] fold による集約
+  - [x] カスタム GraphStage
+  - [x] バックプレッシャーのデモ
+- [x] 各 example に概念説明コメントを付与
 
 #### C-7. アーキテクチャドキュメント [P2] [docs]
 - [ ] actor: Dispatcher → Mailbox → ActorCell の実行フロー図
@@ -343,9 +343,9 @@ README のモジュール関係図や `docs/guides/` の個別ガイドは存在
 - [ ] 全体: モジュール間依存関係図
 
 #### C-8. Behavior DSL の充実 [P1] [actor]
-- [ ] `receive_and_reply` shorthand の追加
-- [ ] message adapter builder の提供
-- [ ] Behavior DSL のガイドドキュメント
+- [x] `receive_and_reply` shorthand の追加（`core/std::typed::Behaviors` に実装、unit test 追加）
+- [x] message adapter builder の提供（`TypedActorContext::message_adapter_builder()` + `register` / `register_map`）
+- [x] Behavior DSL のガイドドキュメント（`docs/guides/actor-system.md` に builder 利用例を追記）
 
 ---
 

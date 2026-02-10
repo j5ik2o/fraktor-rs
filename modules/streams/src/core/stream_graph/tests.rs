@@ -2,19 +2,19 @@ use crate::core::{Inlet, MatCombine, Outlet, Source, StageKind, StreamGraph};
 
 impl StreamGraph {
   fn stage_kinds(&self) -> Vec<StageKind> {
-    self.stages.iter().map(super::StageDefinition::kind).collect()
+    self.nodes.iter().map(|node| node.stage.kind()).collect()
   }
 
   fn stage_mat_combines(&self) -> Vec<MatCombine> {
-    self.stages.iter().map(super::StageDefinition::mat_combine).collect()
+    self.nodes.iter().map(|node| node.stage.mat_combine()).collect()
   }
 
   fn connection_count(&self) -> usize {
-    self.connections.len()
+    self.edges.len()
   }
 
   fn connections(&self) -> Vec<(super::PortId, super::PortId, MatCombine)> {
-    self.connections.iter().map(|conn| (conn.from, conn.to, conn.mat)).collect()
+    self.edges.iter().map(|edge| (edge.from, edge.to, edge.mat)).collect()
   }
 }
 

@@ -40,6 +40,15 @@ pub enum EndpointAssociationCommand {
     /// Timestamp (monotonic ticks) of the event.
     now:         u64,
   },
+  /// Marks an association attempt as timed out.
+  HandshakeTimedOut {
+    /// Authority whose handshake attempt timed out.
+    authority: String,
+    /// Optional deadline when automatic retry can be attempted.
+    resume_at: Option<u64>,
+    /// Timestamp (monotonic ticks) of the timeout event.
+    now:       u64,
+  },
   /// Forces the authority into a quarantined state and discards queued envelopes.
   Quarantine {
     /// Target authority to quarantine.

@@ -57,10 +57,12 @@ impl<TB: RuntimeToolbox + 'static> MessageInvokerPipelineGeneric<TB> {
       | Some(target) => ctx.set_sender(Some(target)),
       | None => ctx.clear_sender(),
     }
+    ctx.set_current_message(Some(message.clone()));
 
     let view = message.as_view();
 
     if let Err(error) = self.invoke_before(ctx, &view) {
+      ctx.clear_current_message();
       restore_sender(ctx, previous);
       return Err(error);
     }
@@ -70,6 +72,7 @@ impl<TB: RuntimeToolbox + 'static> MessageInvokerPipelineGeneric<TB> {
     let view_after = message.as_view();
     result = self.invoke_after(ctx, &view_after, result);
 
+    ctx.clear_current_message();
     restore_sender(ctx, previous);
     result
   }
