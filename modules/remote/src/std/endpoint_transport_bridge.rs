@@ -254,8 +254,14 @@ impl<TB: RuntimeToolbox + 'static> EndpointTransportBridge<TB> {
         m.handle(EndpointAssociationCommand::HandshakeTimedOut { authority: authority.clone(), resume_at, now })
       });
       for effect in result.effects {
-        if let EndpointAssociationEffect::Lifecycle(event) = effect {
-          event_publisher.publish_lifecycle(event);
+        match effect {
+          | EndpointAssociationEffect::DiscardDeferred { authority, .. } => {
+            if let Some(system) = system.upgrade() {
+              system.emit_log(LogLevel::Error, format!("discarded deferred envelopes for {authority}"), None);
+            }
+          },
+          | EndpointAssociationEffect::Lifecycle(event) => event_publisher.publish_lifecycle(event),
+          | EndpointAssociationEffect::StartHandshake { .. } | EndpointAssociationEffect::DeliverEnvelopes { .. } => {},
         }
       }
     });

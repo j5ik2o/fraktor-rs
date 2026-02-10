@@ -4,19 +4,27 @@ use alloc::{
   sync::Arc,
   vec::Vec,
 };
-use core::time::Duration;
+use core::{convert::TryFrom, time::Duration};
 use std::sync::Mutex;
 
 use fraktor_actor_rs::core::{
-  actor::{Actor, ActorContextGeneric},
+  actor::{
+    Actor, ActorContextGeneric,
+    actor_path::{ActorPath, ActorPathParts, GuardianKind},
+  },
   error::ActorError,
-  event::stream::CorrelationId,
+  event::{
+    logging::LogLevel,
+    stream::{
+      CorrelationId, EventStreamEvent, EventStreamSubscriber, EventStreamSubscriptionGeneric, subscriber_handle,
+    },
+  },
   messaging::AnyMessageViewGeneric,
   props::PropsGeneric,
   scheduler::{ManualTestDriver, TickDriverConfig},
   serialization::{
     SerializationCallScope, SerializationExtensionGeneric, SerializationExtensionSharedGeneric, SerializationSetup,
-    SerializationSetupBuilder, Serializer, SerializerId, StringSerializer,
+    SerializationSetupBuilder, SerializedMessage, Serializer, SerializerId, StringSerializer,
   },
   system::{ActorSystemConfigGeneric, ActorSystemGeneric},
 };
@@ -28,9 +36,9 @@ use fraktor_utils_rs::{
 use super::{EndpointTransportBridge, EndpointTransportBridgeConfig};
 use crate::core::{
   AssociationState, EndpointAssociationCommand, EndpointReaderGeneric, EndpointWriterGeneric,
-  EndpointWriterSharedGeneric, EventPublisherGeneric, HandshakeFrame, HandshakeKind, QuarantineReason, RemoteNodeId,
-  RemoteTransport, RemoteTransportShared, TransportBind, TransportChannel, TransportEndpoint, TransportError,
-  TransportHandle, TransportInboundShared,
+  EndpointWriterSharedGeneric, EventPublisherGeneric, HandshakeFrame, HandshakeKind, OutboundPriority,
+  QuarantineReason, RemoteNodeId, RemoteTransport, RemoteTransportShared, RemotingEnvelope, TransportBind,
+  TransportChannel, TransportEndpoint, TransportError, TransportHandle, TransportInboundShared,
 };
 
 struct NoopActor;
@@ -143,11 +151,41 @@ impl RemoteTransport<StdToolbox> for TestTransport {
   }
 }
 
+#[derive(Clone)]
+struct EventRecorder {
+  events: Arc<Mutex<Vec<EventStreamEvent<StdToolbox>>>>,
+}
+
+impl EventRecorder {
+  fn new() -> Self {
+    Self { events: Arc::new(Mutex::new(Vec::new())) }
+  }
+
+  fn snapshot(&self) -> Vec<EventStreamEvent<StdToolbox>> {
+    self.events.lock().expect("recorder lock").clone()
+  }
+}
+
+impl EventStreamSubscriber<StdToolbox> for EventRecorder {
+  fn on_event(&mut self, event: &EventStreamEvent<StdToolbox>) {
+    self.events.lock().expect("recorder lock").push(event.clone());
+  }
+}
+
 fn build_system() -> ActorSystemGeneric<StdToolbox> {
   let props = PropsGeneric::from_fn(|| NoopActor).with_name("endpoint-bridge-tests");
   let config = ActorSystemConfigGeneric::<StdToolbox>::default()
     .with_tick_driver(TickDriverConfig::manual(ManualTestDriver::<StdToolbox>::new()));
   ActorSystemGeneric::new_with_config(&props, &config).expect("actor system")
+}
+
+fn subscribe_events(
+  system: &ActorSystemGeneric<StdToolbox>,
+) -> (EventRecorder, EventStreamSubscriptionGeneric<StdToolbox>) {
+  let recorder = EventRecorder::new();
+  let subscriber = subscriber_handle(recorder.clone());
+  let subscription = system.subscribe_event_stream(&subscriber);
+  (recorder, subscription)
 }
 
 fn serialization_setup() -> SerializationSetup {
@@ -198,6 +236,18 @@ fn association_state(
   authority: &str,
 ) -> Option<crate::core::AssociationState> {
   bridge.coordinator.with_read(|m| m.state(authority))
+}
+
+fn deferred_envelope(label: &str) -> crate::core::DeferredEnvelope {
+  let mut parts = ActorPathParts::with_authority("remote-system", Some(("127.0.0.1", 25520)));
+  parts = parts.with_guardian(GuardianKind::User);
+  let recipient = ActorPath::from_parts(parts).child("svc");
+  let remote = RemoteNodeId::new("remote-system", "127.0.0.1", Some(25520), 0);
+  let serializer = SerializerId::try_from(41).expect("serializer id");
+  let serialized = SerializedMessage::new(serializer, None, label.as_bytes().to_vec());
+  let envelope =
+    RemotingEnvelope::new(recipient, remote, None, serialized, CorrelationId::nil(), OutboundPriority::User);
+  crate::core::DeferredEnvelope::new(envelope)
 }
 
 async fn associate(
@@ -323,6 +373,31 @@ async fn handshake_timeout_gate_has_no_resume_deadline() {
     | Some(AssociationState::Gated { resume_at }) => assert!(resume_at.is_none()),
     | other => panic!("expected gated state, got {other:?}"),
   }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn handshake_timeout_emits_error_log_when_discarding_deferred_envelopes() {
+  let (bridge, _probe, system) = build_bridge(Duration::from_millis(20));
+  let (recorder, _subscription) = subscribe_events(&system);
+  let authority = "127.0.0.1:4303";
+  let endpoint = TransportEndpoint::new(authority.to_string());
+
+  associate(&bridge, authority, endpoint, bridge.now_millis()).await;
+  bridge.coordinator.with_write(|m| {
+    m.handle(EndpointAssociationCommand::EnqueueDeferred {
+      authority: authority.to_string(),
+      envelope:  Box::new(deferred_envelope("pending-timeout-message")),
+    })
+  });
+
+  tokio::time::sleep(Duration::from_millis(80)).await;
+  assert!(matches!(association_state(&bridge, authority), Some(AssociationState::Gated { .. })));
+
+  let expected = format!("discarded deferred envelopes for {authority}");
+  let events = recorder.snapshot();
+  assert!(events.iter().any(
+    |event| matches!(event, EventStreamEvent::Log(log) if log.level() == LogLevel::Error && log.message() == expected)
+  ));
 }
 
 #[tokio::test(flavor = "current_thread")]
