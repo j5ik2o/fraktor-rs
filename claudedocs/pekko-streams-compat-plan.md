@@ -162,3 +162,6 @@
 - [x] M-02 `UniqueKillSwitch` / `SharedKillSwitch` を実行中ストリームにバインドし、`shutdown`/`abort` が実際の状態遷移へ反映されるようにする。
 - [x] M-03 `MergeHub` / `BroadcastHub` / `PartitionHub` を stream の `Source`/`Sink` ロジックに接続し、実行器から駆動可能にする。
 - [x] M-04 上記3項目の回帰テストを追加し、`fraktor-streams-rs` のテストと clippy を通す。
+- [x] M-05 Hub の `Source` が一時的な空状態で完了しないようにし、後続 `offer/publish` を受信可能にする。
+- [x] M-06 `Zip` / `Concat` の restart 時に内部状態を初期化し、再起動後のセマンティクスを安定化する。
+- [x] M-07 kill switch `abort` 後に終端状態で `drive()` が継続的に進捗扱いにならないよう修正する。
