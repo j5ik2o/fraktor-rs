@@ -65,6 +65,10 @@ impl OperatorKey {
   pub const SPLIT_AFTER: Self = Self::new("split_after");
   /// Key for `split_when`.
   pub const SPLIT_WHEN: Self = Self::new("split_when");
+  /// Key for `stateful_map`.
+  pub const STATEFUL_MAP: Self = Self::new("stateful_map");
+  /// Key for `stateful_map_concat`.
+  pub const STATEFUL_MAP_CONCAT: Self = Self::new("stateful_map_concat");
   /// Key for `supervision`.
   pub const SUPERVISION: Self = Self::new("supervision");
   /// Key for `take`.

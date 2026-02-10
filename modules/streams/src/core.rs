@@ -435,6 +435,10 @@ trait FlowLogic: Send {
     Ok(())
   }
 
+  fn take_shutdown_request(&mut self) -> bool {
+    false
+  }
+
   fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
     Ok(Vec::new())
   }

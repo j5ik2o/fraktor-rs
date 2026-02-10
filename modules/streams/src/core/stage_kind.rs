@@ -5,6 +5,10 @@ pub enum StageKind {
   SourceSingle,
   /// Flow stage that maps elements.
   FlowMap,
+  /// Flow stage that creates a stateful mapper per materialization.
+  FlowStatefulMap,
+  /// Flow stage that creates a stateful map-concat mapper per materialization.
+  FlowStatefulMapConcat,
   /// Flow stage that expands each element into zero or more elements.
   FlowMapConcat,
   /// Flow stage that emits only present mapped elements.

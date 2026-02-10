@@ -392,6 +392,36 @@ fn source_map_option_emits_only_present_elements() {
 }
 
 #[test]
+fn source_stateful_map_emits_stateful_results() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .stateful_map(|| {
+      let mut sum = 0_u32;
+      move |value| {
+        sum = sum.saturating_add(value);
+        sum
+      }
+    })
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 3_u32, 6_u32]);
+}
+
+#[test]
+fn source_stateful_map_concat_expands_with_stateful_mapper() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .stateful_map_concat(|| {
+      let mut sum = 0_u32;
+      move |value| {
+        sum = sum.saturating_add(value);
+        [sum, sum.saturating_add(100)]
+      }
+    })
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 101_u32, 3_u32, 103_u32, 6_u32, 106_u32]);
+}
+
+#[test]
 fn source_drop_skips_first_elements() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4]))
     .drop(2)

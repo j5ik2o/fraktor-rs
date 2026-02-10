@@ -94,6 +94,41 @@ where
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
+  /// Adds a stateful-map stage to this flow.
+  #[must_use]
+  pub fn stateful_map<T, Factory, Mapper>(mut self, factory: Factory) -> Flow<In, T, Mat>
+  where
+    T: Send + Sync + 'static,
+    Factory: FnMut() -> Mapper + Send + Sync + 'static,
+    Mapper: FnMut(Out) -> T + Send + Sync + 'static, {
+    let definition = stateful_map_definition::<Out, T, Factory, Mapper>(factory);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds a stateful-map-concat stage to this flow.
+  #[must_use]
+  pub fn stateful_map_concat<T, Factory, Mapper, I>(mut self, factory: Factory) -> Flow<In, T, Mat>
+  where
+    T: Send + Sync + 'static,
+    Factory: FnMut() -> Mapper + Send + Sync + 'static,
+    Mapper: FnMut(Out) -> I + Send + Sync + 'static,
+    I: IntoIterator<Item = T> + 'static, {
+    let definition = stateful_map_concat_definition::<Out, T, Factory, Mapper, I>(factory);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
   /// Adds a map-concat stage to this flow.
   #[must_use]
   pub fn map_concat<T, F, I>(mut self, func: F) -> Flow<In, T, Mat>
@@ -685,6 +720,55 @@ where
   }
 }
 
+pub(super) fn stateful_map_definition<In, Out, Factory, Mapper>(factory: Factory) -> FlowDefinition
+where
+  In: Send + Sync + 'static,
+  Out: Send + Sync + 'static,
+  Factory: FnMut() -> Mapper + Send + Sync + 'static,
+  Mapper: FnMut(In) -> Out + Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<Out> = Outlet::new();
+  let mut factory = factory;
+  let mapper = factory();
+  let logic = StatefulMapLogic::<In, Out, Factory, Mapper> { factory, mapper, _pd: PhantomData };
+  FlowDefinition {
+    kind:        StageKind::FlowStatefulMap,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<Out>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(super) fn stateful_map_concat_definition<In, Out, Factory, Mapper, I>(factory: Factory) -> FlowDefinition
+where
+  In: Send + Sync + 'static,
+  Out: Send + Sync + 'static,
+  Factory: FnMut() -> Mapper + Send + Sync + 'static,
+  Mapper: FnMut(In) -> I + Send + Sync + 'static,
+  I: IntoIterator<Item = Out> + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<Out> = Outlet::new();
+  let mut factory = factory;
+  let mapper = factory();
+  let logic = StatefulMapConcatLogic::<In, Out, Factory, Mapper, I> { factory, mapper, _pd: PhantomData };
+  FlowDefinition {
+    kind:        StageKind::FlowStatefulMapConcat,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<Out>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
 pub(super) fn map_concat_definition<In, Out, F, I>(func: F) -> FlowDefinition
 where
   In: Send + Sync + 'static,
@@ -832,7 +916,7 @@ where
   F: FnMut(&In) -> bool + Send + Sync + 'static, {
   let inlet: Inlet<In> = Inlet::new();
   let outlet: Outlet<In> = Outlet::new();
-  let logic = TakeUntilLogic::<In, F> { predicate, taking: true, _pd: PhantomData };
+  let logic = TakeUntilLogic::<In, F> { predicate, taking: true, shutdown_requested: false, _pd: PhantomData };
   FlowDefinition {
     kind:        StageKind::FlowTakeUntil,
     inlet:       inlet.id(),
@@ -1302,6 +1386,18 @@ struct MapLogic<In, Out, F> {
   _pd:  PhantomData<fn(In) -> Out>,
 }
 
+struct StatefulMapLogic<In, Out, Factory, Mapper> {
+  factory: Factory,
+  mapper:  Mapper,
+  _pd:     PhantomData<fn(In) -> Out>,
+}
+
+struct StatefulMapConcatLogic<In, Out, Factory, Mapper, I> {
+  factory: Factory,
+  mapper:  Mapper,
+  _pd:     PhantomData<fn(In) -> (Out, I)>,
+}
+
 struct MapConcatLogic<In, Out, F, I> {
   func: F,
   _pd:  PhantomData<fn(In) -> (Out, I)>,
@@ -1340,9 +1436,10 @@ struct TakeWhileLogic<In, F> {
 }
 
 struct TakeUntilLogic<In, F> {
-  predicate: F,
-  taking:    bool,
-  _pd:       PhantomData<fn(In)>,
+  predicate:          F,
+  taking:             bool,
+  shutdown_requested: bool,
+  _pd:                PhantomData<fn(In)>,
 }
 
 struct GroupedLogic<In> {
@@ -1386,6 +1483,45 @@ where
     let value = downcast_value::<In>(input)?;
     let output = (self.func)(value);
     Ok(vec![Box::new(output)])
+  }
+}
+
+impl<In, Out, Factory, Mapper> FlowLogic for StatefulMapLogic<In, Out, Factory, Mapper>
+where
+  In: Send + Sync + 'static,
+  Out: Send + Sync + 'static,
+  Factory: FnMut() -> Mapper + Send + Sync + 'static,
+  Mapper: FnMut(In) -> Out + Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let value = downcast_value::<In>(input)?;
+    let output = (self.mapper)(value);
+    Ok(vec![Box::new(output) as DynValue])
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.mapper = (self.factory)();
+    Ok(())
+  }
+}
+
+impl<In, Out, Factory, Mapper, I> FlowLogic for StatefulMapConcatLogic<In, Out, Factory, Mapper, I>
+where
+  In: Send + Sync + 'static,
+  Out: Send + Sync + 'static,
+  Factory: FnMut() -> Mapper + Send + Sync + 'static,
+  Mapper: FnMut(In) -> I + Send + Sync + 'static,
+  I: IntoIterator<Item = Out> + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let value = downcast_value::<In>(input)?;
+    let output = (self.mapper)(value);
+    Ok(output.into_iter().map(|value| Box::new(value) as DynValue).collect())
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.mapper = (self.factory)();
+    Ok(())
   }
 }
 
@@ -1515,13 +1651,21 @@ where
     }
     if (self.predicate)(&value) {
       self.taking = false;
+      self.shutdown_requested = true;
       return Ok(vec![Box::new(value) as DynValue]);
     }
     Ok(vec![Box::new(value) as DynValue])
   }
 
+  fn take_shutdown_request(&mut self) -> bool {
+    let requested = self.shutdown_requested;
+    self.shutdown_requested = false;
+    requested
+  }
+
   fn on_restart(&mut self) -> Result<(), StreamError> {
     self.taking = true;
+    self.shutdown_requested = false;
     Ok(())
   }
 }

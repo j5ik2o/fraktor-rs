@@ -65,6 +65,20 @@ impl OperatorCatalog for DefaultOperatorCatalog {
         failure_condition: "Propagates upstream or mapper failures.",
         requirement_ids: &["1.1", "1.3"],
       }),
+      | "stateful_map" => Ok(OperatorContract {
+        key,
+        input_condition: "Creates a mapper from factory and applies it in element order.",
+        completion_condition: "Completes when upstream completes.",
+        failure_condition: "Propagates upstream, factory, or mapper failures.",
+        requirement_ids: &["1.1", "1.3"],
+      }),
+      | "stateful_map_concat" => Ok(OperatorContract {
+        key,
+        input_condition: "Creates a map-concat mapper from factory and expands each element in order.",
+        completion_condition: "Completes when upstream completes and expanded elements are drained.",
+        failure_condition: "Propagates upstream, factory, or mapper failures.",
+        requirement_ids: &["1.1", "1.3"],
+      }),
       | "drop" => Ok(OperatorContract {
         key,
         input_condition: "Skips the first configured number of elements.",
@@ -287,7 +301,7 @@ impl OperatorCatalog for DefaultOperatorCatalog {
   }
 
   fn coverage(&self) -> &'static [OperatorCoverage] {
-    const COVERAGE: [OperatorCoverage; 37] = [
+    const COVERAGE: [OperatorCoverage; 39] = [
       OperatorCoverage {
         key:             OperatorKey::ASYNC_BOUNDARY,
         requirement_ids: &["1.1", "1.3", "7.1", "7.2", "7.3", "7.4"],
@@ -329,6 +343,8 @@ impl OperatorCatalog for DefaultOperatorCatalog {
       OperatorCoverage { key: OperatorKey::RECOVER, requirement_ids: &["1.1", "1.3", "3.4"] },
       OperatorCoverage { key: OperatorKey::RECOVER_WITH_RETRIES, requirement_ids: &["1.1", "1.3", "3.4"] },
       OperatorCoverage { key: OperatorKey::RESTART, requirement_ids: &["1.1", "1.3", "6.1", "6.2", "6.3"] },
+      OperatorCoverage { key: OperatorKey::STATEFUL_MAP, requirement_ids: &["1.1", "1.3"] },
+      OperatorCoverage { key: OperatorKey::STATEFUL_MAP_CONCAT, requirement_ids: &["1.1", "1.3"] },
       OperatorCoverage {
         key:             OperatorKey::SHARED_KILL_SWITCH,
         requirement_ids: &["1.1", "1.3", "5.3", "5.4", "5.5"],

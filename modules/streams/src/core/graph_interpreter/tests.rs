@@ -62,6 +62,33 @@ fn source_head_completes_after_first() {
 }
 
 #[test]
+fn take_until_requests_source_shutdown_after_first_match() {
+  let pulls = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let cancels = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let graph = Source::<u32, _>::from_logic(StageKind::Custom, CancelAwareSequenceSourceLogic {
+    next:    1,
+    end:     100,
+    pulls:   pulls.clone(),
+    cancels: cancels.clone(),
+  })
+  .take_until(|value| *value >= 3)
+  .to_mat(
+    Sink::fold(Vec::new(), |mut acc: Vec<u32>, value| {
+      acc.push(value);
+      acc
+    }),
+    KeepRight,
+  );
+  let (plan, completion) = graph.into_parts();
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  drive_to_completion(&mut interpreter);
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![1_u32, 2_u32, 3_u32])));
+  assert_eq!(*cancels.lock(), 1_u32);
+  assert!(*pulls.lock() < 100_u32);
+}
+
+#[test]
 fn flat_map_concat_uses_inner_source() {
   let graph = Source::single(1_u32).flat_map_concat(|value| Source::single(value + 1)).to_mat(Sink::head(), KeepRight);
   let (plan, completion) = graph.into_parts();
@@ -1774,6 +1801,30 @@ fn rejects_concat_flow_when_fan_in_does_not_match_wiring() {
 struct CountingSourceLogic {
   remaining: u32,
   pulls:     ArcShared<SpinSyncMutex<u32>>,
+}
+
+struct CancelAwareSequenceSourceLogic {
+  next:    u32,
+  end:     u32,
+  pulls:   ArcShared<SpinSyncMutex<u32>>,
+  cancels: ArcShared<SpinSyncMutex<u32>>,
+}
+
+impl SourceLogic for CancelAwareSequenceSourceLogic {
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    *self.pulls.lock() += 1;
+    if self.next > self.end {
+      return Ok(None);
+    }
+    let value = self.next;
+    self.next = self.next.saturating_add(1);
+    Ok(Some(Box::new(value)))
+  }
+
+  fn on_cancel(&mut self) -> Result<(), StreamError> {
+    *self.cancels.lock() += 1;
+    Ok(())
+  }
 }
 
 impl SourceLogic for CountingSourceLogic {

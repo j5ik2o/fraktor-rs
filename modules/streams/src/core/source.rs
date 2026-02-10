@@ -14,8 +14,8 @@ use super::{
     intersperse_definition, map_concat_definition, map_definition, map_option_definition, merge_definition,
     merge_substreams_definition, merge_substreams_with_parallelism_definition, recover_definition,
     recover_with_retries_definition, scan_definition, sliding_definition, split_after_definition,
-    split_when_definition, take_definition, take_until_definition, take_while_definition, zip_definition,
-    zip_with_index_definition,
+    split_when_definition, stateful_map_concat_definition, stateful_map_definition, take_definition,
+    take_until_definition, take_while_definition, zip_definition, zip_with_index_definition,
   },
   graph_stage::GraphStage,
   graph_stage_logic::GraphStageLogic,
@@ -149,6 +149,41 @@ where
     T: Send + Sync + 'static,
     F: FnMut(Out) -> T + Send + Sync + 'static, {
     let definition = map_definition::<Out, T, F>(func);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds a stateful-map stage to this source.
+  #[must_use]
+  pub fn stateful_map<T, Factory, Mapper>(mut self, factory: Factory) -> Source<T, Mat>
+  where
+    T: Send + Sync + 'static,
+    Factory: FnMut() -> Mapper + Send + Sync + 'static,
+    Mapper: FnMut(Out) -> T + Send + Sync + 'static, {
+    let definition = stateful_map_definition::<Out, T, Factory, Mapper>(factory);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds a stateful-map-concat stage to this source.
+  #[must_use]
+  pub fn stateful_map_concat<T, Factory, Mapper, I>(mut self, factory: Factory) -> Source<T, Mat>
+  where
+    T: Send + Sync + 'static,
+    Factory: FnMut() -> Mapper + Send + Sync + 'static,
+    Mapper: FnMut(Out) -> I + Send + Sync + 'static,
+    I: IntoIterator<Item = T> + 'static, {
+    let definition = stateful_map_concat_definition::<Out, T, Factory, Mapper, I>(factory);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));

@@ -167,6 +167,36 @@ fn map_option_emits_only_present_elements() {
 }
 
 #[test]
+fn stateful_map_emits_stateful_results() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .via(Flow::new().stateful_map(|| {
+      let mut sum = 0_u32;
+      move |value| {
+        sum = sum.saturating_add(value);
+        sum
+      }
+    }))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 3_u32, 6_u32]);
+}
+
+#[test]
+fn stateful_map_concat_expands_with_stateful_mapper() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .via(Flow::new().stateful_map_concat(|| {
+      let mut sum = 0_u32;
+      move |value| {
+        sum = sum.saturating_add(value);
+        [sum, sum.saturating_add(100)]
+      }
+    }))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 101_u32, 3_u32, 103_u32, 6_u32, 106_u32]);
+}
+
+#[test]
 fn drop_skips_first_elements() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4]))
     .via(Flow::new().drop(2))
@@ -460,6 +490,57 @@ fn zip_with_index_logic_on_restart_resets_counter() {
 }
 
 #[test]
+fn stateful_map_logic_on_restart_recreates_mapper() {
+  let factory = || {
+    let mut sum = 0_u32;
+    move |value: u32| {
+      sum = sum.saturating_add(value);
+      sum
+    }
+  };
+  let mapper = factory();
+  let mut logic = super::StatefulMapLogic::<u32, u32, _, _> { factory, mapper, _pd: core::marker::PhantomData };
+
+  let first = logic.apply(Box::new(1_u32)).expect("first apply");
+  let second = logic.apply(Box::new(2_u32)).expect("second apply");
+  assert_eq!(first.len(), 1);
+  assert_eq!(second.len(), 1);
+
+  logic.on_restart().expect("restart");
+
+  let third = logic.apply(Box::new(3_u32)).expect("third apply");
+  assert_eq!(third.len(), 1);
+
+  let third_value = *third.into_iter().next().expect("third value").downcast::<u32>().expect("u32");
+  assert_eq!(third_value, 3_u32);
+}
+
+#[test]
+fn stateful_map_concat_logic_on_restart_recreates_mapper() {
+  let factory = || {
+    let mut sum = 0_u32;
+    move |value: u32| {
+      sum = sum.saturating_add(value);
+      [sum]
+    }
+  };
+  let mapper = factory();
+  let mut logic =
+    super::StatefulMapConcatLogic::<u32, u32, _, _, [u32; 1]> { factory, mapper, _pd: core::marker::PhantomData };
+
+  let first = logic.apply(Box::new(1_u32)).expect("first apply");
+  let second = logic.apply(Box::new(2_u32)).expect("second apply");
+  assert_eq!(first.len(), 1);
+  assert_eq!(second.len(), 1);
+
+  logic.on_restart().expect("restart");
+
+  let third = logic.apply(Box::new(3_u32)).expect("third apply");
+  let third_value = *third.into_iter().next().expect("third value").downcast::<u32>().expect("u32");
+  assert_eq!(third_value, 3_u32);
+}
+
+#[test]
 fn operator_catalog_lookup_returns_contract_for_supported_operator() {
   let catalog = DefaultOperatorCatalog::new();
   let contract = catalog.lookup(OperatorKey::GROUP_BY).expect("lookup");
@@ -472,6 +553,22 @@ fn operator_catalog_lookup_returns_filter_contract() {
   let catalog = DefaultOperatorCatalog::new();
   let contract = catalog.lookup(OperatorKey::FILTER).expect("lookup");
   assert_eq!(contract.key, OperatorKey::FILTER);
+  assert_eq!(contract.requirement_ids, &["1.1", "1.3"]);
+}
+
+#[test]
+fn operator_catalog_lookup_returns_stateful_map_contract() {
+  let catalog = DefaultOperatorCatalog::new();
+  let contract = catalog.lookup(OperatorKey::STATEFUL_MAP).expect("lookup");
+  assert_eq!(contract.key, OperatorKey::STATEFUL_MAP);
+  assert_eq!(contract.requirement_ids, &["1.1", "1.3"]);
+}
+
+#[test]
+fn operator_catalog_lookup_returns_stateful_map_concat_contract() {
+  let catalog = DefaultOperatorCatalog::new();
+  let contract = catalog.lookup(OperatorKey::STATEFUL_MAP_CONCAT).expect("lookup");
+  assert_eq!(contract.key, OperatorKey::STATEFUL_MAP_CONCAT);
   assert_eq!(contract.requirement_ids, &["1.1", "1.3"]);
 }
 

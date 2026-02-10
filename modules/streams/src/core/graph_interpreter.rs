@@ -547,6 +547,17 @@ impl GraphInterpreter {
         progressed = true;
       }
 
+      let shutdown_requested = {
+        let StageDefinition::Flow(flow) = &mut self.stages[stage_index] else {
+          return Err(StreamError::InvalidConnection);
+        };
+        flow.logic.take_shutdown_request()
+      };
+      if shutdown_requested {
+        self.request_shutdown()?;
+        progressed = true;
+      }
+
       if outputs.is_empty() {
         continue;
       }
