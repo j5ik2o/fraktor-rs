@@ -1338,6 +1338,12 @@ where
   fn expected_fan_in(&self) -> Option<usize> {
     Some(self.fan_in)
   }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.edge_slots.clear();
+    self.pending.clear();
+    Ok(())
+  }
 }
 
 struct ConcatLogic<In> {
@@ -1426,6 +1432,14 @@ where
       return Ok(vec![Box::new(output) as DynValue]);
     }
     Ok(Vec::new())
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.edge_slots.clear();
+    self.pending.clear();
+    self.active_slot = 0;
+    self.source_done = false;
+    Ok(())
   }
 }
 

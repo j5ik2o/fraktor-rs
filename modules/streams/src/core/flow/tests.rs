@@ -1,6 +1,6 @@
 use fraktor_utils_rs::core::collections::queue::OverflowPolicy;
 
-use crate::core::{Flow, Source, StreamError, StreamNotUsed};
+use crate::core::{Flow, FlowLogic, Source, StreamError, StreamNotUsed};
 
 #[test]
 fn broadcast_duplicates_each_element() {
@@ -178,4 +178,39 @@ fn supervision_variants_keep_single_path_behavior() {
     .collect_values()
     .expect("collect_values");
   assert_eq!(values, vec![7_u32]);
+}
+
+#[test]
+fn zip_logic_on_restart_clears_pending_state() {
+  let mut logic = super::ZipLogic::<u32> { fan_in: 2, edge_slots: Vec::new(), pending: Vec::new() };
+
+  let first = logic.apply_with_edge(0, Box::new(1_u32)).expect("first apply");
+  assert!(first.is_empty());
+
+  logic.on_restart().expect("restart");
+
+  let second = logic.apply_with_edge(1, Box::new(2_u32)).expect("second apply");
+  assert!(second.is_empty());
+}
+
+#[test]
+fn concat_logic_on_restart_clears_pending_state() {
+  let mut logic = super::ConcatLogic::<u32> {
+    fan_in:      2,
+    edge_slots:  Vec::new(),
+    pending:     Vec::new(),
+    active_slot: 0,
+    source_done: false,
+  };
+
+  let from_left = logic.apply_with_edge(0, Box::new(1_u32)).expect("left apply");
+  assert_eq!(from_left.len(), 1);
+  let initial = logic.apply_with_edge(1, Box::new(9_u32)).expect("right apply");
+  assert!(initial.is_empty());
+  logic.on_source_done().expect("source done");
+
+  logic.on_restart().expect("restart");
+
+  let drained = logic.drain_pending().expect("drain");
+  assert!(drained.is_empty());
 }
