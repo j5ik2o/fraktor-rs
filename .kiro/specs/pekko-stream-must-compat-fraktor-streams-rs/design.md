@@ -51,6 +51,7 @@ graph TB
     subgraph ExecutionCore
         GraphPlanner
         IslandPlanner
+        IslandExecutor
         SubstreamCoordinator
         FlatMapCoordinator
         DemandRelay
@@ -74,7 +75,9 @@ graph TB
     Flow --> GraphPlanner
     SubFlow --> SubstreamCoordinator
     GraphPlanner --> IslandPlanner
-    IslandPlanner --> SubstreamCoordinator
+    IslandPlanner --> IslandExecutor
+    IslandExecutor --> SubstreamCoordinator
+    IslandExecutor --> AsyncBuffer
     SubstreamCoordinator --> DemandRelay
     FlatMapCoordinator --> DemandRelay
     AsyncBuffer --> DemandRelay
@@ -113,11 +116,18 @@ graph TB
 - Substream:
   - `mergeSubstreams` は無制限マージ（`mergeSubstreamsWithParallelism(Int.MaxValue)` と同等）である。
   - `concatSubstreams` は `mergeSubstreamsWithParallelism(1)` と同等である。
+- API Surface:
+  - `groupBy/splitWhen/splitAfter` は `SubFlow` を返し、`mergeSubstreams/concatSubstreams` で `Source/Flow` に明示的に戻す。
+  - substream 演算子は `SubFlow` を第一級とし、`Tuple/Vec` 近似の戻り値は採用しない。
+- Async Boundary:
+  - `asyncBoundary` は fused 区間を island に分割し、island 間の需要伝播は境界バッファ経由で行う。
+  - island 実行は計画 (`IslandPlanner`) と駆動 (`IslandExecutor`) を分離し、実行責務を混在させない。
 - Restart:
   - `RestartSettings` は `minBackoff`, `maxBackoff`, `randomFactor`, `maxRestarts`, `maxRestartsWithin` を持つ。
   - fail/complete のいずれでも再起動し、`maxRestartsWithin` を超えて再起動が発生しなければ backoff を `minBackoff` にリセットする。
   - `maxRestarts` 到達時の終端は Pekko 互換MUST範囲では `Complete` を既定とする。
     （`Fail` は互換MUST外の拡張オプション）
+  - 実運用は単調時計 + jitter 供給器を注入し、互換検証では固定 seed により決定論を確保する。
 - Supervision:
   - `splitWhen/splitAfter` では `restart` を `resume` と同等に扱う。
 
@@ -125,7 +135,15 @@ graph TB
 - `references/pekko/docs/src/main/paradox/stream/stream-dynamic.md`
 - `references/pekko/stream/src/main/scala/org/apache/pekko/stream/scaladsl/Hub.scala`
 - `references/pekko/stream/src/main/scala/org/apache/pekko/stream/impl/fusing/StreamOfStreams.scala`
+- `references/pekko/stream/src/main/scala/org/apache/pekko/stream/scaladsl/SubFlow.scala`
+- `references/pekko/stream/src/main/scala/org/apache/pekko/stream/Attributes.scala`
+- `references/pekko/stream/src/main/scala/org/apache/pekko/stream/impl/fusing/ActorGraphInterpreter.scala`
 - `references/pekko/stream/src/main/scala/org/apache/pekko/stream/RestartSettings.scala`
+- `references/pekko/docs/src/main/paradox/stream/stream-flows-and-basics.md`
+- `references/pekko/docs/src/main/paradox/stream/stream-composition.md`
+- `references/pekko/docs/src/main/paradox/stream/operators/Source-or-Flow/groupBy.md`
+- `references/pekko/docs/src/main/paradox/stream/operators/Source-or-Flow/flatMapConcat.md`
+- `references/pekko/docs/src/main/paradox/stream/operators/Source-or-Flow/flatMapMerge.md`
 - `references/pekko/docs/src/main/paradox/stream/operators/Source-or-Flow/splitWhen.md`
 - `references/pekko/docs/src/main/paradox/stream/operators/Source-or-Flow/splitAfter.md`
 
@@ -177,6 +195,8 @@ stateDiagram-v2
 
 フロー決定事項:
 - `async_boundary` は実行アイランドを分割し、境界バッファ飽和時は上流へ backpressure を返す
+- `IslandPlanner` は `ExecutionPlan` 生成に専念し、island 駆動・wake・境界 drain は `IslandExecutor` が担う
+- `IslandExecutor` の wake 条件は `downstream demand` / `upstream push` / `boundary writable` / `control signal` に固定する
 - `shutdown/abort` は初回制御のみ有効、後続制御は無視する
 - Restart は fail/complete を同一トリガとして扱い、予算とバックオフで遷移を決定する
 
@@ -231,9 +251,9 @@ sequenceDiagram
 | 6.5 | `supervision_restart` で状態初期化 | SupervisionDecider | `on_stage_error` | F4 |
 | 6.6 | split系の restart==resume | SupervisionDecider, SubstreamCoordinator | `on_stage_error` | F4 |
 | 7.1 | 境界なしで fused 実行 | GraphPlanner | `plan` | F5 |
-| 7.2 | 境界ありで実行区間分離 | IslandPlanner | `plan` | F5 |
-| 7.3 | 区間内順序保持 | AsyncBuffer | `push`, `drain` | F5 |
-| 7.4 | バッファ飽和時の圧力返却 | AsyncBuffer, DemandRelay | `push` | F5 |
+| 7.2 | 境界ありで実行区間分離 | IslandPlanner, IslandExecutor | `plan`, `install` | F5 |
+| 7.3 | 区間内順序保持 | IslandExecutor, AsyncBuffer | `tick`, `push`, `drain` | F5 |
+| 7.4 | バッファ飽和時の圧力返却 | IslandExecutor, AsyncBuffer, DemandRelay | `tick`, `push` | F5 |
 | 8.1 | 演算子別期待結果判定 | CompatSuite | `run_case` | F6 |
 | 8.2 | core no_std ビルド維持 | CiGate | `check_core_no_std` | F6 |
 | 8.3 | 不一致箇所の識別提示 | CompatReport | `record_mismatch` | F6 |
@@ -248,17 +268,18 @@ sequenceDiagram
 | Component | Domain/Layer | Intent | Req Coverage | Key Dependencies (P0/P1) | Contracts |
 |-----------|--------------|--------|--------------|--------------------------|-----------|
 | CompatCatalog | Public DSL | 互換演算子の契約と対応範囲を提供 | 1.1-1.4, 9.4 | GraphPlanner(P0), CompatReport(P1) | Service, State |
-| SubFlow | Public DSL | substream を第一級として扱う | 2.1-2.6, 3.1 | SubstreamCoordinator(P0) | Service |
+| SubstreamSurface | Public DSL | Source/Flow 上で substream 操作を提供する | 2.1-2.6, 3.1 | SubstreamCoordinator(P0) | Service |
 | SubstreamCoordinator | Execution Core | group/split/merge/concat の状態制御 | 2.1-2.6, 6.6 | DemandRelay(P0), AsyncBuffer(P1) | Service, State |
 | FlatMapCoordinator | Execution Core | concat/merge の内側ストリーム制御 | 3.1-3.4 | DemandRelay(P0), RestartCoordinator(P1) | Service, State |
 | IslandPlanner | Execution Core | fused/async 境界ごとの実行計画を作る | 7.1-7.4 | GraphPlanner(P0), AsyncBuffer(P0) | Service |
+| IslandExecutor | Execution Core | island 実行を駆動し wake/backpressure を仲介する | 7.2-7.4 | IslandPlanner(P0), AsyncBuffer(P0), DemandRelay(P0) | Service, State |
 | HubCoordinator | Control Plane | Merge/Broadcast/Partition の動的接続制御 | 4.1-4.5 | DemandRelay(P0) | Service, State |
 | KillSwitchCoordinator | Control Plane | shutdown/abort と shared flow 差し込み | 5.1-5.5 | DemandRelay(P0) | Service, State |
-| RestartCoordinator | Control Plane | backoff 予算と再起動遷移の制御 | 6.1-6.6 | SupervisionDecider(P0) | Service, State |
+| RestartCoordinator | Control Plane | backoff 予算と再起動遷移の制御 | 6.1-6.6 | SupervisionDecider(P0), BackoffClock(P0), JitterGenerator(P0) | Service, State |
 | SupervisionDecider | Control Plane | stage障害時の resume/restart/stop 判定 | 6.4-6.6 | SubstreamCoordinator(P1), RestartCoordinator(P0) | Service |
-| CompatSuite | Verification | 要件ID単位の互換検証 | 8.1-8.4 | CompatReport(P0), CiGate(P1) | Batch, State |
-| MigrationPolicyGuard | Verification | 破壊的変更ポリシー適合確認 | 9.1-9.4 | CiGate(P0), CompatCatalog(P1) | Service |
-| CiGate | Verification | CI通過条件の統合評価 | 8.2, 9.2 | CompatSuite(P0) | Batch |
+| CompatSuite | Verification (tests) | tests 側で要件ID単位の互換検証を実行する | 8.1-8.4 | CompatReport(P0), CiGate(P1) | Batch, State |
+| MigrationPolicyGuard | Verification (tests) | tests 側で破壊的変更ポリシー適合を確認する | 9.1-9.4 | CiGate(P0), CompatCatalog(P1) | Service |
+| CiGate | Verification (tests) | tests 側で CI 通過条件を統合評価する | 8.2, 9.2 | CompatSuite(P0) | Batch |
 
 ### Public DSL
 
@@ -292,18 +313,18 @@ pub trait PekkoCompatOperatorCatalog {
 - Postconditions: 互換対象なら契約を返す
 - Invariants: coverage 定義は要件IDと1:1対応を保つ
 
-#### SubFlow
+#### SubstreamSurface
 
 | Field | Detail |
 |-------|--------|
-| Intent | Substream の生成・統合を第一級操作として提供する |
+| Intent | Source/Flow のサーフェス上で substream 生成・統合を提供する |
 | Requirements | 2.1, 2.5, 2.6, 3.1 |
 
 **Responsibilities & Constraints**
-- `group_by/split_when/split_after` の結果を `SubFlow` として保持する
-- `merge_substreams/merge_substreams_with_parallelism/concat_substreams` を `SubFlow` 上で実行する
+- `group_by/split_when/split_after` は Source/Flow から直接返す
+- `merge_substreams/merge_substreams_with_parallelism/concat_substreams` は `Vec` を出力する Source/Flow 上で実行する
 - materialized value の規約を `Source/Flow` と整合させる
-- MUST 範囲の引数は検証済み型を経由して受け取り、無効値を構築時に拒否する
+- MUST 範囲の引数は `validate_positive_argument` で構築時に検証する
 
 **Dependencies**
 - Inbound: Source/Flow の substream 演算子 (P0)
@@ -314,33 +335,69 @@ pub trait PekkoCompatOperatorCatalog {
 
 ##### Service Interface
 ```rust
-pub trait SubflowGraph<Out, Mat> {
-    fn merge_substreams(self) -> Result<Source<Out, Mat>, CompatError>;
-    fn merge_substreams_with_parallelism(
+impl<Out, Mat> Source<Out, Mat> {
+    pub fn group_by<Key, F>(
         self,
-        parallelism: MergeParallelism,
-    ) -> Result<Source<Out, Mat>, CompatError>;
-    fn concat_substreams(self) -> Result<Source<Out, Mat>, CompatError>;
+        max_substreams: usize,
+        key_fn: F,
+    ) -> Result<Source<(Key, Out), Mat>, StreamDslError>;
+    pub fn split_when<F>(self, predicate: F) -> Source<Vec<Out>, Mat>;
+    pub fn split_after<F>(self, predicate: F) -> Source<Vec<Out>, Mat>;
 }
 
-pub struct SubstreamLimit(NonZeroUsize);
-pub struct MergeParallelism(NonZeroUsize);
-pub struct MergeBreadth(NonZeroUsize);
-pub struct HubBufferSize(NonZeroUsize);
-pub struct StartAfterNrOfConsumers(usize);
+impl<In, Out, Mat> Flow<In, Out, Mat> {
+    pub fn group_by<Key, F>(
+        self,
+        max_substreams: usize,
+        key_fn: F,
+    ) -> Result<Flow<In, (Key, Out), Mat>, StreamDslError>;
+    pub fn split_when<F>(self, predicate: F) -> Flow<In, Vec<Out>, Mat>;
+    pub fn split_after<F>(self, predicate: F) -> Flow<In, Vec<Out>, Mat>;
+}
+
+impl<Out, Mat> Source<Vec<Out>, Mat> {
+    pub fn merge_substreams(self) -> Source<Out, Mat>;
+    pub fn merge_substreams_with_parallelism(
+        self,
+        parallelism: usize,
+    ) -> Result<Source<Out, Mat>, StreamDslError>;
+    pub fn concat_substreams(self) -> Source<Out, Mat>;
+}
+
+impl<In, Out, Mat> Flow<In, Vec<Out>, Mat> {
+    pub fn merge_substreams(self) -> Flow<In, Out, Mat>;
+    pub fn merge_substreams_with_parallelism(
+        self,
+        parallelism: usize,
+    ) -> Result<Flow<In, Out, Mat>, StreamDslError>;
+    pub fn concat_substreams(self) -> Flow<In, Out, Mat>;
+}
 ```
-- Preconditions: 検証済み型は `new(...) -> Result<_, CompatError>` でのみ生成される
-- Postconditions: 無効引数は stream 構築時点で `CompatError::InvalidArgument` を返す
+- Preconditions: `max_substreams` / `parallelism` は正の値である
+- Postconditions: 無効引数は stream 構築時点で `StreamDslError::InvalidArgument` を返す
 - Invariants: 実行中に引数整合性が崩れない
+
+##### 公開API契約（実装整合）
+
+| 対象 | 採用シグネチャ | 意味論契約 | Mat規約 |
+|------|----------------|------------|---------|
+| `Source::group_by/split_when/split_after` | `Source<(Key, Out), Mat>` / `Source<Vec<Out>, Mat>` | 分岐と分割の意味論を保持 | 生成時に upstream の Mat を保持 |
+| `Flow::group_by/split_when/split_after` | `Flow<In, (Key, Out), Mat>` / `Flow<In, Vec<Out>, Mat>` | 分岐と分割の意味論を保持 | 生成時に upstream の Mat を保持 |
+| `Source<Vec<Out>>::merge_substreams` | `Source<Out, Mat>` | `parallelism = usize::MAX` 相当のマージ | flatten 後も Mat を変更しない |
+| `Source<Vec<Out>>::concat_substreams` | `Source<Out, Mat>` | `parallelism = 1` 相当の連結 | flatten 後も Mat を変更しない |
+| `Flow<In, Vec<Out>>::merge_substreams` | `Flow<In, Out, Mat>` | `parallelism = usize::MAX` 相当のマージ | flatten 後も Mat を変更しない |
+| `Flow<In, Vec<Out>>::concat_substreams` | `Flow<In, Out, Mat>` | `parallelism = 1` 相当の連結 | flatten 後も Mat を変更しない |
+
+補足:
+- Mat を合成する必要がある場合は `to_mat/via_mat` の既存規約を使い、暗黙合成を導入しない。
+- 破壊的変更は要件9に基づき許容し、旧シグネチャ互換層は導入しない。
 
 ##### Validation Contract
 ```rust
-pub trait PekkoArgumentValidation {
-    fn validate_substream_limit(limit: usize) -> Result<SubstreamLimit, CompatError>;
-    fn validate_merge_parallelism(value: usize) -> Result<MergeParallelism, CompatError>;
-    fn validate_merge_breadth(value: usize) -> Result<MergeBreadth, CompatError>;
-    fn validate_hub_buffer_size(value: usize) -> Result<HubBufferSize, CompatError>;
-}
+pub const fn validate_positive_argument(
+    name: &'static str,
+    value: usize,
+) -> Result<usize, StreamDslError>;
 ```
 
 ### Execution Core
@@ -414,7 +471,7 @@ pub trait FlatMapCoordinator<In, Out> {
 
 **Dependencies**
 - Inbound: GraphPlanner (P0)
-- Outbound: AsyncBuffer (P0), DemandRelay (P0)
+- Outbound: IslandExecutor (P0)
 - External: なし
 
 **Contracts**: Service [x] / API [ ] / Event [ ] / Batch [ ] / State [ ]
@@ -423,6 +480,36 @@ pub trait FlatMapCoordinator<In, Out> {
 ```rust
 pub trait ExecutionIslandPlanner {
     fn plan(&self, graph: StreamGraph) -> Result<ExecutionPlan, CompatError>;
+}
+```
+
+#### IslandExecutor
+
+| Field | Detail |
+|-------|--------|
+| Intent | island 実行を駆動し、境界越しの圧力伝播を一元化する |
+| Requirements | 7.2, 7.3, 7.4 |
+
+**Responsibilities & Constraints**
+- `ExecutionPlan` を install し、island ごとの drive ループを実行する
+- wake 条件（需要/入力/境界書込可/制御イベント）以外では不要な再駆動を行わない
+- 境界バッファ飽和時は `DemandRelay` を通じて upstream backpressure を返す
+- island 内順序は保持し、順序保証は island 間で混在させない
+
+**Dependencies**
+- Inbound: IslandPlanner (P0), 下流 demand (P0), 上流イベント (P0)
+- Outbound: AsyncBuffer (P0), DemandRelay (P0), SubstreamCoordinator (P1)
+- External: なし
+
+**Contracts**: Service [x] / API [ ] / Event [ ] / Batch [ ] / State [x]
+
+##### Service Interface
+```rust
+pub trait ExecutionIslandExecutor {
+    fn install(&mut self, plan: ExecutionPlan) -> Result<(), CompatError>;
+    fn on_downstream_demand(&mut self, demand: Demand) -> DemandEffect;
+    fn on_upstream_event(&mut self, event: UpstreamEvent) -> DriveOutcome;
+    fn tick(&mut self) -> DriveOutcome;
 }
 ```
 
@@ -511,16 +598,27 @@ pub trait SharedKillSwitchFlow {
 - backoff は指数増加 + jitter（`random_factor`）で計算し、`maxRestartsWithin` を超えて再起動が発生しない場合は `min_backoff` へ戻す
 - `max_restarts` 到達時は `on_max_restarts` で定義された終端へ遷移する（互換MUST既定は `Complete`）
 - restart 過程は lossy であることを明示し、観測イベントで可視化する
+- 時間源は `BackoffClock`、jitter 源は `JitterGenerator` として注入し、`std` 依存の時刻/乱数呼び出しを直接持たない
+- 互換検証プロファイルでは固定 seed の `JitterGenerator` を用いて再現性を保証する
 
 **Dependencies**
 - Inbound: Stage terminal/error イベント (P0)
 - Outbound: DemandRelay (P0), SubstreamCoordinator (P1)
-- External: なし
+- External: BackoffClock (P0), JitterGenerator (P0)
 
 **Contracts**: Service [x] / API [ ] / Event [ ] / Batch [ ] / State [x]
 
 ##### Service Interface
 ```rust
+pub trait BackoffClock {
+    fn now(&self) -> MonotonicTime;
+}
+
+pub trait JitterGenerator {
+    fn next_unit_interval(&mut self) -> f64;
+    fn reseed(&mut self, seed: u64);
+}
+
 pub enum RestartLimitTerminalAction {
     Complete,
     Fail(StreamError),
@@ -534,16 +632,23 @@ pub struct BackoffPolicy {
     pub max_restarts_within: Duration,
     pub restart_on: RestartOnPredicate,
     pub on_max_restarts: RestartLimitTerminalAction,
+    pub jitter_seed: Option<u64>,
 }
 
 pub trait RestartBackoffCoordinator {
-    fn configure(&mut self, policy: BackoffPolicy) -> Result<(), CompatError>;
-    fn on_stage_terminal(&mut self, reason: TerminalReason, now: MonotonicTime) -> RestartDecision;
+    fn configure(
+        &mut self,
+        policy: BackoffPolicy,
+        clock: &dyn BackoffClock,
+        jitter: &mut dyn JitterGenerator,
+    ) -> Result<(), CompatError>;
+    fn on_stage_terminal(&mut self, reason: TerminalReason) -> RestartDecision;
     fn on_stage_error(&mut self, error: StreamError) -> SupervisionDecision;
-    fn poll(&mut self, now: MonotonicTime) -> RestartTick;
+    fn poll(&mut self) -> RestartTick;
 }
 ```
 - Preconditions: `BackoffPolicy::on_max_restarts` は互換MUSTプロファイルで `Complete` を指定する
+- Preconditions: 互換検証時は `jitter_seed` を必須化し、`BackoffClock` は単調時刻を返す
 - Postconditions: `max_restarts` 到達時に `on_max_restarts` に従い確定終端する
 
 #### SupervisionDecider
@@ -574,7 +679,7 @@ pub trait SupervisionDecider {
 
 ### Verification
 
-#### CompatSuite
+#### CompatSuite（tests）
 
 | Field | Detail |
 |-------|--------|
@@ -585,6 +690,7 @@ pub trait SupervisionDecider {
 - `emits/backpressures/completes/fails` の観測結果をケースごとに判定する
 - 要件IDごとに再現可能なテストシナリオを維持する
 - mismatch は再実行可能な文脈付きで記録する
+- 実装配置は `modules/streams/tests/compat_validation.rs` と `modules/streams/tests/requirement_traceability.rs` に限定する
 
 **Dependencies**
 - Inbound: CompatCatalog, 各Coordinator (P0)
@@ -597,9 +703,9 @@ pub trait SupervisionDecider {
 - Trigger: CI またはローカル互換検証実行
 - Input / validation: 要件IDと演算子シナリオ定義
 - Output / destination: `CompatReport`（要件ID別の pass/fail）
-- Idempotency & recovery: 同一シナリオで再実行時に同一判定を返す
+- Idempotency & recovery: 同一シナリオ + 同一 seed + 同一 clock 条件で再実行時に同一判定を返す
 
-#### MigrationPolicyGuard
+#### MigrationPolicyGuard（tests）
 
 | Field | Detail |
 |-------|--------|
@@ -610,6 +716,7 @@ pub trait SupervisionDecider {
 - 後方互換維持コードを残さない方針をチェックする
 - `core` no_std 検証と全体 CI 成功をマージ条件にする
 - 仕様準拠より弱い判断を拒否する
+- 実装配置は `modules/streams/tests/compat_validation.rs` に限定する
 
 **Dependencies**
 - Inbound: CompatReport, CI 実行結果 (P0)
@@ -627,7 +734,7 @@ pub trait SupervisionDecider {
   - `SubflowLane`（laneごとの順序と demand を保持）
   - `HubEndpoint`（producer/consumer 接続状態）
 - Value Object:
-  - `SubflowId`, `LaneId`, `Demand`, `BackoffBudget`, `OperatorKey`
+  - `SubflowId`, `LaneId`, `Demand`, `BackoffBudget`, `OperatorKey`, `MonotonicTime`, `JitterSeed`
   - `SubstreamLimit`, `MergeParallelism`, `MergeBreadth`, `HubBufferSize`, `StartAfterNrOfConsumers`
   - `BackoffPolicy`
 - Domain Event:
@@ -642,7 +749,7 @@ pub trait SupervisionDecider {
   - columns: `producers`, `consumers`, `routing_policy`, `availability`
 - `RestartStateTable`
   - key: `StageId`
-  - columns: `restart_count`, `window_started_at`, `next_retry_at`, `decision`
+  - columns: `restart_count`, `window_started_at`, `next_retry_at`, `decision`, `jitter_seed`, `last_backoff`
 - `CompatibilityCaseTable`
   - key: `RequirementId`
   - columns: `scenario_name`, `expected`, `actual`, `status`, `diagnostic`
@@ -683,6 +790,7 @@ pub trait SupervisionDecider {
 
 - 契約テスト:
   - `1.1`〜`9.4` を要件ID単位で 1 ケース以上作成する
+  - 要件IDトレーサビリティ行列を `modules/streams/tests/requirement_traceability.rs` で維持する
   - substream と flatMap は順序・pressure・終端を同時観測する
 - 統合テスト:
   - Hub 動的接続（receiver-first, consumer late join, no consumer）
