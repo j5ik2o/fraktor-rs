@@ -47,9 +47,10 @@ impl Materializer for TestMaterializer {
 #[test]
 fn merge_hub_preserves_offer_order() {
   let hub = MergeHub::new();
-  hub.offer(1_u32);
-  hub.offer(2_u32);
-  hub.offer(3_u32);
+  let _source = hub.source();
+  hub.offer(1_u32).expect("offer 1");
+  hub.offer(2_u32).expect("offer 2");
+  hub.offer(3_u32).expect("offer 3");
 
   assert_eq!(hub.poll(), Some(1_u32));
   assert_eq!(hub.poll(), Some(2_u32));
@@ -60,8 +61,9 @@ fn merge_hub_preserves_offer_order() {
 #[test]
 fn merge_hub_source_drains_as_stream_source() {
   let hub = MergeHub::new();
-  hub.offer(10_u32);
-  hub.offer(20_u32);
+  let _source = hub.source();
+  hub.offer(10_u32).expect("offer 10");
+  hub.offer(20_u32).expect("offer 20");
   let mut materializer = TestMaterializer::default();
 
   let first_graph = hub.source().to_mat(Sink::head(), KeepRight);
@@ -98,7 +100,7 @@ fn merge_hub_source_waits_for_later_offer_without_completing() {
   assert_eq!(materialized.handle().state(), StreamState::Running);
   assert_eq!(materialized.materialized().poll(), Completion::Pending);
 
-  hub.offer(42_u32);
+  hub.offer(42_u32).expect("offer 42");
   for _ in 0..4 {
     let _ = materialized.handle().drive();
     if materialized.handle().state().is_terminal() {
@@ -107,4 +109,16 @@ fn merge_hub_source_waits_for_later_offer_without_completing() {
   }
   assert_eq!(materialized.handle().state(), StreamState::Completed);
   assert_eq!(materialized.materialized().poll(), Completion::Ready(Ok(42_u32)));
+}
+
+#[test]
+fn merge_hub_rejects_offer_until_receiver_is_activated() {
+  let hub = MergeHub::new();
+
+  let blocked = hub.offer(1_u32);
+  assert_eq!(blocked, Err(StreamError::WouldBlock));
+
+  let _source = hub.source();
+  assert!(hub.offer(2_u32).is_ok());
+  assert_eq!(hub.poll(), Some(2_u32));
 }

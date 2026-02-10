@@ -13,10 +13,9 @@ pub(crate) struct Stream {
 
 impl Stream {
   pub(super) fn new(plan: StreamPlan, buffer_config: StreamBufferConfig) -> Self {
-    Self {
-      interpreter:       GraphInterpreter::new(plan, buffer_config),
-      kill_switch_state: ArcShared::new(SpinSyncMutex::new(KillSwitchState::Running)),
-    }
+    let kill_switch_state =
+      plan.shared_kill_switch_state().unwrap_or_else(|| ArcShared::new(SpinSyncMutex::new(KillSwitchState::Running)));
+    Self { interpreter: GraphInterpreter::new(plan, buffer_config), kill_switch_state }
   }
 
   pub(crate) fn start(&mut self) -> Result<(), StreamError> {
@@ -45,7 +44,7 @@ impl Stream {
     self.interpreter.drive()
   }
 
-  pub(crate) const fn cancel(&mut self) -> Result<(), StreamError> {
+  pub(crate) fn cancel(&mut self) -> Result<(), StreamError> {
     self.interpreter.cancel()
   }
 

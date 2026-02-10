@@ -25,6 +25,8 @@ pub enum StageKind {
   FlowSplitAfter,
   /// Flow stage that merges emitted substreams into a single stream.
   FlowMergeSubstreams,
+  /// Flow stage that merges emitted substreams with configured parallelism.
+  FlowMergeSubstreamsWithParallelism,
   /// Flow stage that concatenates emitted substreams into a single stream.
   FlowConcatSubstreams,
   /// Flow stage that broadcasts each element to multiple outputs.

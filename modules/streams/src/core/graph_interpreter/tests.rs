@@ -8,13 +8,14 @@ use fraktor_utils_rs::core::{
 
 use super::super::flow::{
   async_boundary_definition, balance_definition, broadcast_definition, buffer_definition, concat_definition,
-  flat_map_merge_definition, merge_definition, split_after_definition, split_when_definition, zip_definition,
+  flat_map_merge_definition, merge_definition, merge_substreams_with_parallelism_definition, split_after_definition,
+  split_when_definition, zip_definition,
 };
 use crate::core::{
   Completion, DemandTracker, DriveOutcome, DynValue, Flow, FlowDefinition, FlowLogic, GraphInterpreter, Inlet,
-  KeepRight, MatCombine, Outlet, Sink, SinkDecision, SinkDefinition, SinkLogic, Source, SourceDefinition, SourceLogic,
-  StageDefinition, StageKind, StreamBufferConfig, StreamCompletion, StreamDone, StreamError, StreamNotUsed, StreamPlan,
-  StreamState, SupervisionStrategy,
+  KeepRight, MatCombine, Outlet, RestartBackoff, Sink, SinkDecision, SinkDefinition, SinkLogic, Source,
+  SourceDefinition, SourceLogic, StageDefinition, StageKind, StreamBufferConfig, StreamCompletion, StreamDone,
+  StreamError, StreamNotUsed, StreamPlan, StreamState, SupervisionStrategy,
 };
 
 fn drive_to_completion(interpreter: &mut GraphInterpreter) {
@@ -70,6 +71,24 @@ fn flat_map_concat_uses_inner_source() {
 }
 
 #[test]
+fn flat_map_concat_respects_backpressure_when_inner_emits_multiple_elements() {
+  let graph = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic { next: 1, end: 2 })
+    .flat_map_concat(|value| Source::single(value).broadcast(2))
+    .to_mat(
+      Sink::fold(Vec::new(), |mut acc: Vec<u32>, value| {
+        acc.push(value);
+        acc
+      }),
+      KeepRight,
+    );
+  let (plan, completion) = graph.into_parts();
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::new(1, OverflowPolicy::Block));
+  drive_to_completion(&mut interpreter);
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![1_u32, 1_u32, 2_u32, 2_u32])));
+}
+
+#[test]
 fn flat_map_merge_uses_configured_breadth() {
   let source_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
@@ -109,7 +128,81 @@ fn flat_map_merge_uses_configured_breadth() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![1, 1, 2, 2, 3, 3])));
+  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![1, 1, 2, 3, 2, 3])));
+}
+
+#[test]
+fn flat_map_merge_delays_new_inner_creation_until_breadth_slot_is_released() {
+  let created = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let graph = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic { next: 1, end: 2 })
+    .flat_map_merge(1, {
+      let created = created.clone();
+      move |value| {
+        let mut guard = created.lock();
+        *guard = guard.saturating_add(1);
+        Source::single(value).broadcast(2)
+      }
+    })
+    .expect("flat_map_merge")
+    .to_mat(Sink::ignore(), KeepRight);
+  let (plan, completion) = graph.into_parts();
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  interpreter.start().expect("start");
+
+  assert_eq!(*created.lock(), 0);
+  assert_eq!(interpreter.drive(), DriveOutcome::Progressed);
+  assert_eq!(*created.lock(), 1);
+  assert_eq!(interpreter.drive(), DriveOutcome::Progressed);
+  assert_eq!(*created.lock(), 1);
+
+  while interpreter.state() == StreamState::Running {
+    let _ = interpreter.drive();
+  }
+
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(*created.lock(), 2);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(StreamDone::new())));
+}
+
+#[test]
+fn flat_map_concat_fails_stream_when_inner_source_fails_without_recovery() {
+  struct FailingInnerSourceLogic;
+
+  impl SourceLogic for FailingInnerSourceLogic {
+    fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+      Err(StreamError::Failed)
+    }
+  }
+
+  let graph = Source::single(1_u32)
+    .flat_map_concat(|_| Source::<u32, _>::from_logic(StageKind::Custom, FailingInnerSourceLogic))
+    .to_mat(Sink::head(), KeepRight);
+  let (plan, completion) = graph.into_parts();
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  drive_to_completion(&mut interpreter);
+  assert_eq!(interpreter.state(), StreamState::Failed);
+  assert_eq!(completion.poll(), Completion::Ready(Err(StreamError::Failed)));
+}
+
+#[test]
+fn flat_map_merge_fails_stream_when_inner_source_fails_without_recovery() {
+  struct FailingInnerSourceLogic;
+
+  impl SourceLogic for FailingInnerSourceLogic {
+    fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+      Err(StreamError::Failed)
+    }
+  }
+
+  let graph = Source::single(1_u32)
+    .flat_map_merge(1, |_| Source::<u32, _>::from_logic(StageKind::Custom, FailingInnerSourceLogic))
+    .expect("flat_map_merge")
+    .to_mat(Sink::head(), KeepRight);
+  let (plan, completion) = graph.into_parts();
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  drive_to_completion(&mut interpreter);
+  assert_eq!(interpreter.state(), StreamState::Failed);
+  assert_eq!(completion.poll(), Completion::Ready(Err(StreamError::Failed)));
 }
 
 #[test]
@@ -240,12 +333,16 @@ fn async_boundary_flow_preserves_input_order() {
 
 #[test]
 fn group_by_uses_key_function() {
-  let graph = Source::single(3_u32).group_by(4, |value: &u32| value % 2).to_mat(Sink::head(), KeepRight);
+  let graph = Source::single(3_u32)
+    .group_by(4, |value: &u32| value % 2)
+    .expect("group_by")
+    .merge_substreams()
+    .to_mat(Sink::head(), KeepRight);
   let (plan, completion) = graph.into_parts();
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok((1_u32, 3_u32))));
+  assert_eq!(completion.poll(), Completion::Ready(Ok(3_u32)));
 }
 
 #[test]
@@ -290,6 +387,356 @@ fn sink_supervision_variants_keep_single_path_behavior() {
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(5_u32)));
+}
+
+#[test]
+fn restart_budget_exhaustion_completes_with_default_terminal_action() {
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<u32> = Inlet::new();
+  let completion = StreamCompletion::new();
+  let source = SourceDefinition {
+    kind:        StageKind::SourceSingle,
+    outlet:      source_outlet.id(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(AlwaysFailSourceLogic),
+    supervision: SupervisionStrategy::Stop,
+    restart:     Some(RestartBackoff::new(0, 1)),
+  };
+  let sink = SinkDefinition {
+    kind:        StageKind::SinkIgnore,
+    inlet:       sink_inlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(RecordingSinkLogic { completion: completion.clone() }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  };
+  let plan = StreamPlan::from_parts(vec![StageDefinition::Source(source), StageDefinition::Sink(sink)], vec![(
+    source_outlet.id(),
+    sink_inlet.id(),
+    MatCombine::KeepRight,
+  )]);
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  drive_to_completion(&mut interpreter);
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(StreamDone::new())));
+}
+
+#[test]
+fn source_completion_triggers_restart_until_budget_is_exhausted() {
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<u32> = Inlet::new();
+  let completion = StreamCompletion::new();
+  let source = SourceDefinition {
+    kind:        StageKind::SourceSingle,
+    outlet:      source_outlet.id(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(RestartableSingleSourceLogic { value: 9, emitted: false }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     Some(RestartBackoff::new(0, 1)),
+  };
+  let sink = SinkDefinition {
+    kind:        StageKind::SinkFold,
+    inlet:       sink_inlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(CollectSequenceSinkLogic { completion: completion.clone(), values: Vec::new() }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  };
+  let plan = StreamPlan::from_parts(vec![StageDefinition::Source(source), StageDefinition::Sink(sink)], vec![(
+    source_outlet.id(),
+    sink_inlet.id(),
+    MatCombine::KeepRight,
+  )]);
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  drive_to_completion(&mut interpreter);
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![9_u32, 9_u32])));
+}
+
+#[test]
+fn split_when_restart_supervision_behaves_like_resume() {
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let flow_inlet: Inlet<u32> = Inlet::new();
+  let flow_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<u32> = Inlet::new();
+  let completion = StreamCompletion::new();
+  let restart_calls = ArcShared::new(SpinSyncMutex::new(0_u32));
+
+  let source = SourceDefinition {
+    kind:        StageKind::SourceSingle,
+    outlet:      source_outlet.id(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(SequenceSourceLogic { next: 1, end: 3 }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  };
+  let flow = FlowDefinition {
+    kind:        StageKind::FlowSplitWhen,
+    inlet:       flow_inlet.id(),
+    outlet:      flow_outlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepLeft,
+    logic:       Box::new(RestartCounterFlowLogic { restart_calls: restart_calls.clone() }),
+    supervision: SupervisionStrategy::Restart,
+    restart:     None,
+  };
+  let sink = SinkDefinition {
+    kind:        StageKind::SinkIgnore,
+    inlet:       sink_inlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(RecordingSinkLogic { completion: completion.clone() }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  };
+  let plan = linear_plan(source, vec![flow], sink);
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  drive_to_completion(&mut interpreter);
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(StreamDone::new())));
+  assert_eq!(*restart_calls.lock(), 0_u32);
+}
+
+#[test]
+fn non_split_restart_supervision_calls_on_restart() {
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let flow_inlet: Inlet<u32> = Inlet::new();
+  let flow_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<u32> = Inlet::new();
+  let completion = StreamCompletion::new();
+  let restart_calls = ArcShared::new(SpinSyncMutex::new(0_u32));
+
+  let source = SourceDefinition {
+    kind:        StageKind::SourceSingle,
+    outlet:      source_outlet.id(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(SequenceSourceLogic { next: 1, end: 3 }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  };
+  let flow = FlowDefinition {
+    kind:        StageKind::FlowMap,
+    inlet:       flow_inlet.id(),
+    outlet:      flow_outlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepLeft,
+    logic:       Box::new(RestartCounterFlowLogic { restart_calls: restart_calls.clone() }),
+    supervision: SupervisionStrategy::Restart,
+    restart:     None,
+  };
+  let sink = SinkDefinition {
+    kind:        StageKind::SinkIgnore,
+    inlet:       sink_inlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(RecordingSinkLogic { completion: completion.clone() }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  };
+  let plan = linear_plan(source, vec![flow], sink);
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  drive_to_completion(&mut interpreter);
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(StreamDone::new())));
+  assert!(*restart_calls.lock() > 0_u32);
+}
+
+#[test]
+fn async_boundary_backpressures_instead_of_failing_when_downstream_stalls() {
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<u32> = Inlet::new();
+  let pulls = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let completion = StreamCompletion::new();
+
+  let source = SourceDefinition {
+    kind:        StageKind::SourceSingle,
+    outlet:      source_outlet.id(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(CountingSourceLogic { remaining: 8, pulls: pulls.clone() }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  };
+  let async_boundary = async_boundary_definition::<u32>();
+  let async_boundary_inlet = async_boundary.inlet;
+  let async_boundary_outlet = async_boundary.outlet;
+  let sink = SinkDefinition {
+    kind:        StageKind::SinkIgnore,
+    inlet:       sink_inlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(BlockedSinkLogic { completion }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  };
+
+  let plan = StreamPlan::from_parts(
+    vec![StageDefinition::Source(source), StageDefinition::Flow(async_boundary), StageDefinition::Sink(sink)],
+    vec![
+      (source_outlet.id(), async_boundary_inlet, MatCombine::KeepLeft),
+      (async_boundary_outlet, sink_inlet.id(), MatCombine::KeepRight),
+    ],
+  );
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::new(1, OverflowPolicy::Block));
+  interpreter.start().expect("start");
+  for _ in 0..8 {
+    let _ = interpreter.drive();
+    assert_ne!(interpreter.state(), StreamState::Failed);
+  }
+  assert_eq!(interpreter.state(), StreamState::Running);
+  assert_eq!(*pulls.lock(), 2_u32);
+}
+
+#[test]
+fn cross_operator_backpressure_propagates_through_substream_and_async_boundary() {
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<u32> = Inlet::new();
+  let pulls = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let completion = StreamCompletion::new();
+
+  let source = SourceDefinition {
+    kind:        StageKind::SourceSingle,
+    outlet:      source_outlet.id(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(CountingSourceLogic { remaining: 12, pulls: pulls.clone() }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  };
+  let flat_map_merge =
+    flat_map_merge_definition::<u32, u32, StreamNotUsed, _>(1, |value| Source::single(value).broadcast(2));
+  let flat_map_merge_inlet = flat_map_merge.inlet;
+  let flat_map_merge_outlet = flat_map_merge.outlet;
+  let split_after = split_after_definition::<u32, _>(|_| true);
+  let split_after_inlet = split_after.inlet;
+  let split_after_outlet = split_after.outlet;
+  let merge_substreams = merge_substreams_with_parallelism_definition::<u32>(1);
+  let merge_substreams_inlet = merge_substreams.inlet;
+  let merge_substreams_outlet = merge_substreams.outlet;
+  let async_boundary = async_boundary_definition::<u32>();
+  let async_boundary_inlet = async_boundary.inlet;
+  let async_boundary_outlet = async_boundary.outlet;
+  let sink = SinkDefinition {
+    kind:        StageKind::SinkIgnore,
+    inlet:       sink_inlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(BlockedSinkLogic { completion }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  };
+  let plan = StreamPlan::from_parts(
+    vec![
+      StageDefinition::Source(source),
+      StageDefinition::Flow(flat_map_merge),
+      StageDefinition::Flow(split_after),
+      StageDefinition::Flow(merge_substreams),
+      StageDefinition::Flow(async_boundary),
+      StageDefinition::Sink(sink),
+    ],
+    vec![
+      (source_outlet.id(), flat_map_merge_inlet, MatCombine::KeepLeft),
+      (flat_map_merge_outlet, split_after_inlet, MatCombine::KeepLeft),
+      (split_after_outlet, merge_substreams_inlet, MatCombine::KeepLeft),
+      (merge_substreams_outlet, async_boundary_inlet, MatCombine::KeepLeft),
+      (async_boundary_outlet, sink_inlet.id(), MatCombine::KeepRight),
+    ],
+  );
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::new(1, OverflowPolicy::Block));
+  interpreter.start().expect("start");
+  for _ in 0..16 {
+    let _ = interpreter.drive();
+    assert_ne!(interpreter.state(), StreamState::Failed);
+  }
+  assert_eq!(interpreter.state(), StreamState::Running);
+  assert!(*pulls.lock() <= 3_u32);
+}
+
+#[test]
+fn cross_operator_failure_propagates_from_flat_map_to_substream_merge_chain() {
+  struct FailingInnerSourceLogic;
+
+  impl SourceLogic for FailingInnerSourceLogic {
+    fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+      Err(StreamError::Failed)
+    }
+  }
+
+  let graph = Source::single(1_u32)
+    .flat_map_merge(1, |_| Source::<u32, _>::from_logic(StageKind::Custom, FailingInnerSourceLogic))
+    .expect("flat_map_merge")
+    .split_after(|_| true)
+    .merge_substreams_with_parallelism(1)
+    .expect("merge_substreams_with_parallelism")
+    .async_boundary()
+    .to_mat(Sink::head(), KeepRight);
+  let (plan, completion) = graph.into_parts();
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::new(1, OverflowPolicy::Block));
+  drive_to_completion(&mut interpreter);
+  assert_eq!(interpreter.state(), StreamState::Failed);
+  assert_eq!(completion.poll(), Completion::Ready(Err(StreamError::Failed)));
+}
+
+#[test]
+fn source_restart_is_preserved_across_substream_and_async_boundary_chain() {
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<u32> = Inlet::new();
+  let completion = StreamCompletion::new();
+
+  let source = SourceDefinition {
+    kind:        StageKind::SourceSingle,
+    outlet:      source_outlet.id(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(RestartableSingleSourceLogic { value: 7, emitted: false }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     Some(RestartBackoff::new(0, 1)),
+  };
+  let split_after = split_after_definition::<u32, _>(|_| true);
+  let split_after_inlet = split_after.inlet;
+  let split_after_outlet = split_after.outlet;
+  let merge_substreams = merge_substreams_with_parallelism_definition::<u32>(1);
+  let merge_substreams_inlet = merge_substreams.inlet;
+  let merge_substreams_outlet = merge_substreams.outlet;
+  let async_boundary = async_boundary_definition::<u32>();
+  let async_boundary_inlet = async_boundary.inlet;
+  let async_boundary_outlet = async_boundary.outlet;
+  let sink = SinkDefinition {
+    kind:        StageKind::SinkFold,
+    inlet:       sink_inlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(CollectSequenceSinkLogic { completion: completion.clone(), values: Vec::new() }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  };
+  let plan = StreamPlan::from_parts(
+    vec![
+      StageDefinition::Source(source),
+      StageDefinition::Flow(split_after),
+      StageDefinition::Flow(merge_substreams),
+      StageDefinition::Flow(async_boundary),
+      StageDefinition::Sink(sink),
+    ],
+    vec![
+      (source_outlet.id(), split_after_inlet, MatCombine::KeepLeft),
+      (split_after_outlet, merge_substreams_inlet, MatCombine::KeepLeft),
+      (merge_substreams_outlet, async_boundary_inlet, MatCombine::KeepLeft),
+      (async_boundary_outlet, sink_inlet.id(), MatCombine::KeepRight),
+    ],
+  );
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  drive_to_completion(&mut interpreter);
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![7_u32, 7_u32])));
 }
 
 #[test]
@@ -1367,6 +1814,34 @@ impl SourceLogic for SequenceSourceLogic {
   }
 }
 
+struct AlwaysFailSourceLogic;
+
+impl SourceLogic for AlwaysFailSourceLogic {
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    Err(StreamError::Failed)
+  }
+}
+
+struct RestartableSingleSourceLogic {
+  value:   u32,
+  emitted: bool,
+}
+
+impl SourceLogic for RestartableSingleSourceLogic {
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    if self.emitted {
+      return Ok(None);
+    }
+    self.emitted = true;
+    Ok(Some(Box::new(self.value)))
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.emitted = false;
+    Ok(())
+  }
+}
+
 struct NoDemandSinkLogic {
   completion: StreamCompletion<StreamDone>,
 }
@@ -1374,6 +1849,33 @@ struct NoDemandSinkLogic {
 impl SinkLogic for NoDemandSinkLogic {
   fn on_start(&mut self, _demand: &mut DemandTracker) -> Result<(), StreamError> {
     Ok(())
+  }
+
+  fn on_push(&mut self, _input: DynValue, _demand: &mut DemandTracker) -> Result<SinkDecision, StreamError> {
+    Ok(SinkDecision::Continue)
+  }
+
+  fn on_complete(&mut self) -> Result<(), StreamError> {
+    self.completion.complete(Ok(StreamDone::new()));
+    Ok(())
+  }
+
+  fn on_error(&mut self, error: StreamError) {
+    self.completion.complete(Err(error));
+  }
+}
+
+struct BlockedSinkLogic {
+  completion: StreamCompletion<StreamDone>,
+}
+
+impl SinkLogic for BlockedSinkLogic {
+  fn can_accept_input(&self) -> bool {
+    false
+  }
+
+  fn on_start(&mut self, demand: &mut DemandTracker) -> Result<(), StreamError> {
+    demand.request(8)
   }
 
   fn on_push(&mut self, _input: DynValue, _demand: &mut DemandTracker) -> Result<SinkDecision, StreamError> {
@@ -1439,6 +1941,22 @@ impl FlowLogic for AddFlowLogic {
   fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
     let value = *input.downcast::<u32>().map_err(|_| StreamError::TypeMismatch)?;
     Ok(vec![Box::new(value + self.add)])
+  }
+}
+
+struct RestartCounterFlowLogic {
+  restart_calls: ArcShared<SpinSyncMutex<u32>>,
+}
+
+impl FlowLogic for RestartCounterFlowLogic {
+  fn apply(&mut self, _input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    Err(StreamError::Failed)
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    let mut restart_calls = self.restart_calls.lock();
+    *restart_calls = restart_calls.saturating_add(1);
+    Ok(())
   }
 }
 

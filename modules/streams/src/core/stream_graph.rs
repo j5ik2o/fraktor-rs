@@ -4,8 +4,8 @@ use alloc::vec::Vec;
 mod tests;
 
 use super::{
-  FlowDefinition, Inlet, MatCombine, Outlet, PortId, RestartBackoff, SourceDefinition, StageDefinition, StageKind,
-  StreamError, StreamPlan, SupervisionStrategy,
+  Inlet, MatCombine, Outlet, PortId, RestartBackoff, StageDefinition, StageKind, StreamError, StreamPlan,
+  SupervisionStrategy,
 };
 
 /// Immutable blueprint that stores stage connectivity.
@@ -156,30 +156,6 @@ impl StreamGraph {
     Ok(StreamPlan::from_parts(stages, edges))
   }
 
-  pub(super) fn into_source_parts(self) -> Result<(SourceDefinition, Vec<FlowDefinition>), StreamError> {
-    let mut iter = self.nodes.into_iter().map(|node| node.stage);
-    let source = match iter.next() {
-      | Some(stage) => {
-        Self::ensure_stage_metadata(&stage)?;
-        match stage {
-          | StageDefinition::Source(definition) => definition,
-          | _ => return Err(StreamError::InvalidConnection),
-        }
-      },
-      | None => return Err(StreamError::InvalidConnection),
-    };
-    let mut flows = Vec::new();
-    for stage in iter {
-      Self::ensure_stage_metadata(&stage)?;
-      match stage {
-        | StageDefinition::Flow(definition) => flows.push(definition),
-        | StageDefinition::Sink(_) => return Err(StreamError::InvalidConnection),
-        | StageDefinition::Source(_) => return Err(StreamError::InvalidConnection),
-      }
-    }
-    Ok((source, flows))
-  }
-
   const fn ensure_stage_metadata(stage: &StageDefinition) -> Result<(), StreamError> {
     let kind = stage.kind();
     let _mat_combine = stage.mat_combine();
@@ -199,6 +175,7 @@ impl StreamGraph {
             | StageKind::FlowSplitWhen
             | StageKind::FlowSplitAfter
             | StageKind::FlowMergeSubstreams
+            | StageKind::FlowMergeSubstreamsWithParallelism
             | StageKind::FlowConcatSubstreams
             | StageKind::FlowBroadcast
             | StageKind::FlowBalance
@@ -231,6 +208,17 @@ impl StreamGraph {
 
   pub(super) fn tail_outlet(&self) -> Option<PortId> {
     self.nodes.last().and_then(|node| node.stage.outlet())
+  }
+
+  pub(super) fn expected_fan_out_for_outlet(&self, outlet: PortId) -> Option<usize> {
+    for node in &self.nodes {
+      if let StageDefinition::Flow(definition) = &node.stage
+        && definition.outlet == outlet
+      {
+        return definition.logic.expected_fan_out();
+      }
+    }
+    None
   }
 }
 

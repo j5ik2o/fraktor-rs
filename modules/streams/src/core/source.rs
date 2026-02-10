@@ -4,19 +4,20 @@ use core::{any::TypeId, marker::PhantomData};
 use fraktor_utils_rs::core::collections::queue::OverflowPolicy;
 
 use super::{
-  DynValue, FlowDefinition, Inlet, MatCombine, MatCombineRule, Materialized, Materializer, Outlet, RestartBackoff,
-  RunnableGraph, SourceDefinition, SourceLogic, StageDefinition, StageKind, StreamError, StreamGraph, StreamNotUsed,
-  StreamShape, StreamStage, SupervisionStrategy, downcast_value,
+  DynValue, Inlet, MatCombine, MatCombineRule, Materialized, Materializer, Outlet, RestartBackoff, RestartSettings,
+  RunnableGraph, SourceDefinition, SourceLogic, SourceSubFlow, StageDefinition, StageKind, StreamDslError, StreamError,
+  StreamGraph, StreamNotUsed, StreamShape, StreamStage, SupervisionStrategy,
   flow::{
     async_boundary_definition, balance_definition, broadcast_definition, buffer_definition, concat_definition,
     concat_substreams_definition, flat_map_concat_definition, flat_map_merge_definition, group_by_definition,
-    map_definition, merge_definition, merge_substreams_definition, recover_definition, recover_with_retries_definition,
-    split_after_definition, split_when_definition, zip_definition,
+    map_definition, merge_definition, merge_substreams_definition, merge_substreams_with_parallelism_definition,
+    recover_definition, recover_with_retries_definition, split_after_definition, split_when_definition, zip_definition,
   },
   graph_stage::GraphStage,
   graph_stage_logic::GraphStageLogic,
   sink::Sink,
   stage_context::StageContext,
+  validate_positive_argument,
 };
 
 #[cfg(test)]
@@ -172,16 +173,15 @@ where
 
   /// Adds a flatMapMerge stage to this source.
   ///
-  /// # Panics
+  /// # Errors
   ///
-  /// Panics when `breadth` is zero.
-  #[must_use]
-  pub fn flat_map_merge<T, Mat2, F>(mut self, breadth: usize, func: F) -> Source<T, Mat>
+  /// Returns [`StreamDslError`] when `breadth` is zero.
+  pub fn flat_map_merge<T, Mat2, F>(mut self, breadth: usize, func: F) -> Result<Source<T, Mat>, StreamDslError>
   where
     T: Send + Sync + 'static,
     Mat2: Send + Sync + 'static,
     F: FnMut(Out) -> Source<T, Mat2> + Send + Sync + 'static, {
-    assert!(breadth > 0, "breadth must be greater than zero");
+    let breadth = validate_positive_argument("breadth", breadth)?;
     let definition = flat_map_merge_definition::<Out, T, Mat2, F>(breadth, func);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
@@ -189,17 +189,20 @@ where
     if let Some(from) = from {
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
-    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+    Ok(Source { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
   /// Adds a buffer stage with an overflow strategy.
   ///
-  /// # Panics
+  /// # Errors
   ///
-  /// Panics when `capacity` is zero.
-  #[must_use]
-  pub fn buffer(mut self, capacity: usize, overflow_policy: OverflowPolicy) -> Source<Out, Mat> {
-    assert!(capacity > 0, "capacity must be greater than zero");
+  /// Returns [`StreamDslError`] when `capacity` is zero.
+  pub fn buffer(
+    mut self,
+    capacity: usize,
+    overflow_policy: OverflowPolicy,
+  ) -> Result<Source<Out, Mat>, StreamDslError> {
+    let capacity = validate_positive_argument("capacity", capacity)?;
     let definition = buffer_definition::<Out>(capacity, overflow_policy);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
@@ -207,7 +210,7 @@ where
     if let Some(from) = from {
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
-    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+    Ok(Source { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
   /// Adds an explicit async boundary stage.
@@ -227,6 +230,13 @@ where
   #[must_use]
   pub fn restart_source_with_backoff(mut self, min_backoff_ticks: u32, max_restarts: usize) -> Source<Out, Mat> {
     self.graph.set_source_restart(Some(RestartBackoff::new(min_backoff_ticks, max_restarts)));
+    self
+  }
+
+  /// Enables restart semantics by explicit restart settings.
+  #[must_use]
+  pub fn restart_source_with_settings(mut self, settings: RestartSettings) -> Source<Out, Mat> {
+    self.graph.set_source_restart(Some(RestartBackoff::from_settings(settings)));
     self
   }
 
@@ -251,17 +261,20 @@ where
     self
   }
 
-  /// Adds a group-by stage that annotates elements with their computed key.
+  /// Adds a group-by stage and returns substream surface for merge operations.
   ///
-  /// # Panics
+  /// # Errors
   ///
-  /// Panics when `max_substreams` is zero.
-  #[must_use]
-  pub fn group_by<Key, F>(mut self, max_substreams: usize, key_fn: F) -> Source<(Key, Out), Mat>
+  /// Returns [`StreamDslError`] when `max_substreams` is zero.
+  pub fn group_by<Key, F>(
+    mut self,
+    max_substreams: usize,
+    key_fn: F,
+  ) -> Result<SourceSubFlow<Out, Mat>, StreamDslError>
   where
-    Key: Send + Sync + 'static,
+    Key: Clone + PartialEq + Send + Sync + 'static,
     F: FnMut(&Out) -> Key + Send + Sync + 'static, {
-    assert!(max_substreams > 0, "max_substreams must be greater than zero");
+    let max_substreams = validate_positive_argument("max_substreams", max_substreams)?;
     let definition = group_by_definition::<Out, Key, F>(max_substreams, key_fn);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
@@ -269,12 +282,13 @@ where
     if let Some(from) = from {
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
-    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+    let grouped = Source::<(Key, Out), Mat> { graph: self.graph, mat: self.mat, _pd: PhantomData };
+    Ok(SourceSubFlow::from_source(grouped.map(|(_, value)| vec![value])))
   }
 
   /// Splits the stream before elements matching `predicate`.
   #[must_use]
-  pub fn split_when<F>(mut self, predicate: F) -> Source<Vec<Out>, Mat>
+  pub fn split_when<F>(mut self, predicate: F) -> SourceSubFlow<Out, Mat>
   where
     F: FnMut(&Out) -> bool + Send + Sync + 'static, {
     let definition = split_when_definition::<Out, F>(predicate);
@@ -284,12 +298,12 @@ where
     if let Some(from) = from {
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
-    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+    SourceSubFlow::from_source(Source { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
   /// Splits the stream after elements matching `predicate`.
   #[must_use]
-  pub fn split_after<F>(mut self, predicate: F) -> Source<Vec<Out>, Mat>
+  pub fn split_after<F>(mut self, predicate: F) -> SourceSubFlow<Out, Mat>
   where
     F: FnMut(&Out) -> bool + Send + Sync + 'static, {
     let definition = split_after_definition::<Out, F>(predicate);
@@ -299,7 +313,7 @@ where
     if let Some(from) = from {
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
-    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+    SourceSubFlow::from_source(Source { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
   /// Adds a broadcast stage that duplicates each element `fan_out` times.
@@ -394,30 +408,58 @@ where
     Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
-  pub(crate) fn collect_values(self) -> Result<Vec<Out>, StreamError> {
-    let (mut source, mut flows) = self.graph.into_source_parts()?;
-    let mut outputs = Vec::new();
-    while let Some(value) = source.logic.pull()? {
-      let values = apply_flows(&mut flows, value)?;
-      for value in values {
-        let item = downcast_value::<Out>(value)?;
-        outputs.push(item);
+  /// Runs this source to completion and collects emitted elements.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamError`] when graph construction or execution fails.
+  pub fn collect_values(self) -> Result<Vec<Out>, StreamError> {
+    let mut graph = self.graph;
+    let Some(tail_outlet_id) = graph.tail_outlet() else {
+      return Err(StreamError::InvalidConnection);
+    };
+    let tail_outlet = Outlet::<Out>::from_id(tail_outlet_id);
+    let sink = Sink::fold(Vec::new(), |mut acc: Vec<Out>, value| {
+      acc.push(value);
+      acc
+    });
+    let (sink_graph, completion) = sink.into_parts();
+    let Some(sink_inlet_id) = sink_graph.head_inlet() else {
+      return Err(StreamError::InvalidConnection);
+    };
+    graph.append(sink_graph);
+    let sink_inlet = Inlet::<Out>::from_id(sink_inlet_id);
+
+    if let Some(expected_fan_out) = graph.expected_fan_out_for_outlet(tail_outlet_id) {
+      for _ in 1..expected_fan_out {
+        let branch = map_definition::<Out, Out, _>(|value| value);
+        let branch_inlet = Inlet::<Out>::from_id(branch.inlet);
+        let branch_outlet = Outlet::<Out>::from_id(branch.outlet);
+        graph.push_stage(StageDefinition::Flow(branch));
+        graph.connect(&tail_outlet, &branch_inlet, MatCombine::KeepLeft)?;
+        graph.connect(&branch_outlet, &sink_inlet, MatCombine::KeepRight)?;
       }
     }
-    for flow in &mut flows {
-      flow.logic.on_source_done()?;
-    }
-    loop {
-      let values = drain_flows(&mut flows)?;
-      if values.is_empty() {
-        break;
+
+    let plan = graph.into_plan()?;
+    let mut stream = super::stream::Stream::new(plan, super::StreamBufferConfig::default());
+    stream.start()?;
+    let mut idle_budget = 1024_usize;
+    while !stream.state().is_terminal() {
+      match stream.drive() {
+        | super::DriveOutcome::Progressed => idle_budget = 1024,
+        | super::DriveOutcome::Idle => {
+          if idle_budget == 0 {
+            return Err(StreamError::WouldBlock);
+          }
+          idle_budget = idle_budget.saturating_sub(1);
+        },
       }
-      for value in values {
-        let item = downcast_value::<Out>(value)?;
-        outputs.push(item);
-      }
     }
-    Ok(outputs)
+    match completion.try_take() {
+      | Some(result) => result,
+      | None => Err(StreamError::Failed),
+    }
   }
 
   pub(crate) fn into_parts(self) -> (StreamGraph, Mat) {
@@ -444,6 +486,27 @@ where
       );
     }
     Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Merges split substreams with an explicit parallelism value.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `parallelism` is zero.
+  pub fn merge_substreams_with_parallelism(mut self, parallelism: usize) -> Result<Source<Out, Mat>, StreamDslError> {
+    let parallelism = validate_positive_argument("parallelism", parallelism)?;
+    let definition = merge_substreams_with_parallelism_definition::<Out>(parallelism);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(
+        &Outlet::<Vec<Out>>::from_id(from),
+        &Inlet::<Vec<Out>>::from_id(inlet_id),
+        MatCombine::KeepLeft,
+      );
+    }
+    Ok(Source { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
   /// Concatenates split substreams into a single output stream.
@@ -511,34 +574,6 @@ impl<Out, Mat> StreamStage for Source<Out, Mat> {
     let outlet = self.graph.tail_outlet().map(Outlet::from_id).unwrap_or_default();
     StreamShape::new(Inlet::new(), outlet)
   }
-}
-
-fn apply_flows(flows: &mut Vec<FlowDefinition>, value: DynValue) -> Result<Vec<DynValue>, StreamError> {
-  let mut values = vec![value];
-  for flow in flows {
-    let mut next = Vec::new();
-    for value in values {
-      let outputs = flow.logic.apply(value)?;
-      next.extend(outputs);
-    }
-    values = next;
-  }
-  Ok(values)
-}
-
-fn drain_flows(flows: &mut Vec<FlowDefinition>) -> Result<Vec<DynValue>, StreamError> {
-  let mut values = Vec::new();
-  for flow in flows {
-    let mut next = Vec::new();
-    for value in values {
-      let outputs = flow.logic.apply(value)?;
-      next.extend(outputs);
-    }
-    let drained = flow.logic.drain_pending()?;
-    next.extend(drained);
-    values = next;
-  }
-  Ok(values)
 }
 
 struct SingleSourceLogic<Out> {

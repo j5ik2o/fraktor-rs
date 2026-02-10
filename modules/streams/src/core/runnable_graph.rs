@@ -1,4 +1,4 @@
-use super::{Materialized, Materializer, StreamError, StreamPlan};
+use super::{Materialized, Materializer, SharedKillSwitch, StreamError, StreamPlan};
 
 #[cfg(test)]
 mod tests;
@@ -16,6 +16,13 @@ pub struct RunnableGraph<Mat> {
 impl<Mat> RunnableGraph<Mat> {
   pub(super) const fn new(plan: StreamPlan, materialized: Mat) -> Self {
     Self { plan, materialized }
+  }
+
+  /// Binds a pre-created shared kill switch to this graph before materialization.
+  #[must_use]
+  pub fn with_shared_kill_switch(mut self, shared_kill_switch: &SharedKillSwitch) -> Self {
+    self.plan = self.plan.with_shared_kill_switch_state(shared_kill_switch.state_handle());
+    self
   }
 
   /// Materializes the graph with the provided materializer.

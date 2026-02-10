@@ -25,14 +25,26 @@ impl SharedKillSwitch {
     Self { state }
   }
 
+  pub(super) fn state_handle(&self) -> KillSwitchStateHandle {
+    self.state.clone()
+  }
+
   /// Requests graceful shutdown.
   pub fn shutdown(&self) {
-    *self.state.lock() = KillSwitchState::Shutdown;
+    let mut state = self.state.lock();
+    if !matches!(&*state, KillSwitchState::Running) {
+      return;
+    }
+    *state = KillSwitchState::Shutdown;
   }
 
   /// Requests abort with an error.
   pub fn abort(&self, error: StreamError) {
-    *self.state.lock() = KillSwitchState::Aborted(error);
+    let mut state = self.state.lock();
+    if !matches!(&*state, KillSwitchState::Running) {
+      return;
+    }
+    *state = KillSwitchState::Aborted(error);
   }
 
   /// Returns true when the switch has been shut down.

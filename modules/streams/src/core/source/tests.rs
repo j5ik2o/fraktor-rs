@@ -1,11 +1,16 @@
-use alloc::boxed::Box;
+use alloc::{boxed::Box, collections::VecDeque};
 
-use fraktor_utils_rs::core::{collections::queue::OverflowPolicy, runtime_toolbox::NoStdToolbox};
+use fraktor_utils_rs::core::{
+  collections::queue::OverflowPolicy,
+  runtime_toolbox::NoStdToolbox,
+  sync::{ArcShared, sync_mutex_like::SpinSyncMutex},
+};
 
 use super::super::{stream::Stream, stream_shared::StreamSharedGeneric};
 use crate::core::{
-  DriveOutcome, DynValue, KeepRight, Materialized, Materializer, Sink, Source, SourceLogic, StageKind,
-  StreamBufferConfig, StreamCompletion, StreamDone, StreamError, StreamHandleGeneric, StreamHandleId, StreamState,
+  DriveOutcome, DynValue, KeepRight, Materialized, Materializer, RestartSettings, SharedKillSwitch, Sink, Source,
+  SourceLogic, StageKind, StreamBufferConfig, StreamCompletion, StreamDone, StreamDslError, StreamError,
+  StreamHandleGeneric, StreamHandleId, StreamState,
 };
 
 struct RecordingMaterializer {
@@ -66,6 +71,48 @@ impl SourceLogic for EndlessSourceLogic {
   }
 }
 
+struct SequenceSourceLogic {
+  values: VecDeque<u32>,
+}
+
+impl SequenceSourceLogic {
+  fn new(values: &[u32]) -> Self {
+    let mut queue = VecDeque::with_capacity(values.len());
+    queue.extend(values.iter().copied());
+    Self { values: queue }
+  }
+}
+
+impl SourceLogic for SequenceSourceLogic {
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    Ok(self.values.pop_front().map(|value| Box::new(value) as DynValue))
+  }
+}
+
+struct CancelAwareSourceLogic {
+  next:         u32,
+  cancel_count: ArcShared<SpinSyncMutex<u32>>,
+}
+
+impl CancelAwareSourceLogic {
+  fn new(cancel_count: ArcShared<SpinSyncMutex<u32>>) -> Self {
+    Self { next: 0, cancel_count }
+  }
+}
+
+impl SourceLogic for CancelAwareSourceLogic {
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    self.next = self.next.saturating_add(1);
+    Ok(Some(Box::new(self.next)))
+  }
+
+  fn on_cancel(&mut self) -> Result<(), StreamError> {
+    let mut count = self.cancel_count.lock();
+    *count = count.saturating_add(1);
+    Ok(())
+  }
+}
+
 #[test]
 fn run_with_delegates_to_materializer_and_uses_sink_materialized_value() {
   let (graph, _completion) = Sink::<u32, StreamCompletion<StreamDone>>::ignore().into_parts();
@@ -123,6 +170,97 @@ fn materialized_shared_kill_switch_shutdown_completes_stream() {
   }
 
   assert_eq!(materialized.handle().state(), StreamState::Completed);
+}
+
+#[test]
+fn materialized_unique_kill_switch_ignores_later_abort_after_shutdown() {
+  let source = Source::<u32, _>::from_logic(StageKind::Custom, EndlessSourceLogic::new());
+  let graph = source.to_mat(Sink::ignore(), KeepRight);
+  let mut materializer = RecordingMaterializer::default();
+  let materialized = graph.run(&mut materializer).expect("materialize");
+  let kill_switch = materialized.unique_kill_switch();
+
+  kill_switch.shutdown();
+  kill_switch.abort(StreamError::Failed);
+
+  for _ in 0..4 {
+    let _ = materialized.handle().drive();
+    if materialized.handle().state().is_terminal() {
+      break;
+    }
+  }
+  assert_eq!(materialized.handle().state(), StreamState::Completed);
+}
+
+#[test]
+fn materialized_shared_kill_switch_shutdown_cancels_upstream_once() {
+  let cancel_count = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let source = Source::<u32, _>::from_logic(StageKind::Custom, CancelAwareSourceLogic::new(cancel_count.clone()));
+  let graph = source.to_mat(Sink::ignore(), KeepRight);
+  let mut materializer = RecordingMaterializer::default();
+  let materialized = graph.run(&mut materializer).expect("materialize");
+  let kill_switch = materialized.shared_kill_switch();
+
+  kill_switch.shutdown();
+  for _ in 0..4 {
+    let _ = materialized.handle().drive();
+    if materialized.handle().state().is_terminal() {
+      break;
+    }
+  }
+
+  assert_eq!(materialized.handle().state(), StreamState::Completed);
+  assert_eq!(*cancel_count.lock(), 1);
+}
+
+#[test]
+fn materialized_unique_kill_switch_abort_cancels_upstream_once() {
+  let cancel_count = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let source = Source::<u32, _>::from_logic(StageKind::Custom, CancelAwareSourceLogic::new(cancel_count.clone()));
+  let graph = source.to_mat(Sink::ignore(), KeepRight);
+  let mut materializer = RecordingMaterializer::default();
+  let materialized = graph.run(&mut materializer).expect("materialize");
+  let kill_switch = materialized.unique_kill_switch();
+
+  kill_switch.abort(StreamError::Failed);
+  let _ = materialized.handle().drive();
+
+  assert_eq!(materialized.handle().state(), StreamState::Failed);
+  assert_eq!(*cancel_count.lock(), 1);
+}
+
+#[test]
+fn shared_kill_switch_created_before_materialization_controls_multiple_streams() {
+  let shared_kill_switch = SharedKillSwitch::new();
+  let graph_left = Source::<u32, _>::from_logic(StageKind::Custom, EndlessSourceLogic::new())
+    .to_mat(Sink::ignore(), KeepRight)
+    .with_shared_kill_switch(&shared_kill_switch);
+  let graph_right = Source::<u32, _>::from_logic(StageKind::Custom, EndlessSourceLogic::new())
+    .to_mat(Sink::ignore(), KeepRight)
+    .with_shared_kill_switch(&shared_kill_switch);
+  let mut materializer = RecordingMaterializer::default();
+
+  let left = graph_left.run(&mut materializer).expect("left materialize");
+  let right = graph_right.run(&mut materializer).expect("right materialize");
+
+  for _ in 0..3 {
+    let _ = left.handle().drive();
+    let _ = right.handle().drive();
+  }
+  assert_eq!(left.handle().state(), StreamState::Running);
+  assert_eq!(right.handle().state(), StreamState::Running);
+
+  shared_kill_switch.shutdown();
+  for _ in 0..8 {
+    let _ = left.handle().drive();
+    let _ = right.handle().drive();
+    if left.handle().state().is_terminal() && right.handle().state().is_terminal() {
+      break;
+    }
+  }
+
+  assert_eq!(left.handle().state(), StreamState::Completed);
+  assert_eq!(right.handle().state(), StreamState::Completed);
 }
 
 #[test]
@@ -187,26 +325,37 @@ fn source_concat_rejects_zero_fan_in() {
 
 #[test]
 fn source_flat_map_merge_keeps_single_path_behavior() {
-  let values = Source::single(5_u32).flat_map_merge(2, Source::single).collect_values().expect("collect_values");
+  let values = Source::single(5_u32)
+    .flat_map_merge(2, Source::single)
+    .expect("flat_map_merge")
+    .collect_values()
+    .expect("collect_values");
   assert_eq!(values, vec![5_u32]);
 }
 
 #[test]
-#[should_panic(expected = "breadth must be greater than zero")]
 fn source_flat_map_merge_rejects_zero_breadth() {
-  let _ = Source::single(1_u32).flat_map_merge(0, Source::single);
+  let result = Source::single(1_u32).flat_map_merge(0, Source::single);
+  assert!(matches!(
+    result,
+    Err(StreamDslError::InvalidArgument { name: "breadth", value: 0, reason: "must be greater than zero" })
+  ));
 }
 
 #[test]
 fn source_buffer_keeps_single_path_behavior() {
-  let values = Source::single(5_u32).buffer(2, OverflowPolicy::Block).collect_values().expect("collect_values");
+  let values =
+    Source::single(5_u32).buffer(2, OverflowPolicy::Block).expect("buffer").collect_values().expect("collect_values");
   assert_eq!(values, vec![5_u32]);
 }
 
 #[test]
-#[should_panic(expected = "capacity must be greater than zero")]
 fn source_buffer_rejects_zero_capacity() {
-  let _ = Source::single(1_u32).buffer(0, OverflowPolicy::Block);
+  let result = Source::single(1_u32).buffer(0, OverflowPolicy::Block);
+  assert!(matches!(
+    result,
+    Err(StreamDslError::InvalidArgument { name: "capacity", value: 0, reason: "must be greater than zero" })
+  ));
 }
 
 #[test]
@@ -217,26 +366,54 @@ fn source_async_boundary_keeps_single_path_behavior() {
 
 #[test]
 fn source_group_by_keeps_single_path_behavior() {
-  let values = Source::single(5_u32).group_by(4, |value: &u32| value % 2).collect_values().expect("collect_values");
-  assert_eq!(values, vec![(1_u32, 5_u32)]);
+  let values = Source::single(5_u32)
+    .group_by(4, |value: &u32| value % 2)
+    .expect("group_by")
+    .merge_substreams()
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![5_u32]);
 }
 
 #[test]
-#[should_panic(expected = "max_substreams must be greater than zero")]
 fn source_group_by_rejects_zero_max_substreams() {
-  let _ = Source::single(1_u32).group_by(0, |value: &u32| *value);
+  let result = Source::single(1_u32).group_by(0, |value: &u32| *value);
+  assert!(matches!(
+    result,
+    Err(StreamDslError::InvalidArgument { name: "max_substreams", value: 0, reason: "must be greater than zero" })
+  ));
 }
 
 #[test]
 fn source_split_when_emits_single_segment_for_single_element() {
-  let values = Source::single(5_u32).split_when(|_| false).collect_values().expect("collect_values");
+  let values = Source::single(5_u32).split_when(|_| false).into_source().collect_values().expect("collect_values");
   assert_eq!(values, vec![vec![5_u32]]);
 }
 
 #[test]
 fn source_split_after_emits_single_segment_for_single_element() {
-  let values = Source::single(5_u32).split_after(|_| false).collect_values().expect("collect_values");
+  let values = Source::single(5_u32).split_after(|_| false).into_source().collect_values().expect("collect_values");
   assert_eq!(values, vec![vec![5_u32]]);
+}
+
+#[test]
+fn source_split_when_starts_new_segment_with_matching_element() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4]))
+    .split_when(|value| value % 2 == 0)
+    .into_source()
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![vec![1_u32], vec![2_u32, 3_u32], vec![4_u32]]);
+}
+
+#[test]
+fn source_split_after_keeps_matching_element_in_current_segment() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4]))
+    .split_after(|value| value % 2 == 0)
+    .into_source()
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![vec![1_u32, 2_u32], vec![3_u32, 4_u32]]);
 }
 
 #[test]
@@ -250,6 +427,36 @@ fn source_concat_substreams_flattens_single_segment() {
   let values =
     Source::single(5_u32).split_after(|_| true).concat_substreams().collect_values().expect("collect_values");
   assert_eq!(values, vec![5_u32]);
+}
+
+#[test]
+fn source_merge_substreams_with_parallelism_flattens_single_segment() {
+  let values = Source::single(5_u32)
+    .split_after(|_| true)
+    .merge_substreams_with_parallelism(2)
+    .expect("merge_substreams_with_parallelism")
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![5_u32]);
+}
+
+#[test]
+fn source_merge_substreams_with_parallelism_rejects_zero_parallelism() {
+  let result = Source::single(5_u32).split_after(|_| true).merge_substreams_with_parallelism(0);
+  assert!(matches!(
+    result,
+    Err(StreamDslError::InvalidArgument { name: "parallelism", value: 0, reason: "must be greater than zero" })
+  ));
+}
+
+#[test]
+fn source_group_by_fails_when_unique_key_count_exceeds_limit() {
+  let result = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .group_by(2, |value: &u32| *value)
+    .expect("group_by")
+    .merge_substreams()
+    .collect_values();
+  assert_eq!(result, Err(StreamError::SubstreamLimitExceeded { max_substreams: 2 }));
 }
 
 #[test]
@@ -271,6 +478,16 @@ fn source_recover_with_retries_fails_when_retry_budget_is_exhausted() {
 #[test]
 fn source_restart_with_backoff_keeps_single_path_behavior() {
   let values = Source::single(5_u32).restart_source_with_backoff(1, 3).collect_values().expect("collect_values");
+  assert_eq!(values, vec![5_u32]);
+}
+
+#[test]
+fn source_restart_with_settings_keeps_single_path_behavior() {
+  let settings = RestartSettings::new(1, 4, 3)
+    .with_random_factor_permille(250)
+    .with_max_restarts_within_ticks(16)
+    .with_jitter_seed(11);
+  let values = Source::single(5_u32).restart_source_with_settings(settings).collect_values().expect("collect_values");
   assert_eq!(values, vec![5_u32]);
 }
 

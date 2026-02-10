@@ -2,9 +2,10 @@ use alloc::boxed::Box;
 use core::{any::TypeId, marker::PhantomData};
 
 use super::{
-  DynValue, Inlet, MatCombine, RestartBackoff, SinkDecision, SinkDefinition, SinkLogic, StageDefinition, StageKind,
-  StreamCompletion, StreamDone, StreamError, StreamGraph, StreamNotUsed, StreamShape, StreamStage, SupervisionStrategy,
-  downcast_value, graph_stage::GraphStage, graph_stage_logic::GraphStageLogic, stage_context::StageContext,
+  DynValue, Inlet, MatCombine, RestartBackoff, RestartSettings, SinkDecision, SinkDefinition, SinkLogic,
+  StageDefinition, StageKind, StreamCompletion, StreamDone, StreamError, StreamGraph, StreamNotUsed, StreamShape,
+  StreamStage, SupervisionStrategy, downcast_value, graph_stage::GraphStage, graph_stage_logic::GraphStageLogic,
+  stage_context::StageContext,
 };
 
 /// Sink stage definition.
@@ -102,6 +103,13 @@ where
   #[must_use]
   pub fn restart_sink_with_backoff(mut self, min_backoff_ticks: u32, max_restarts: usize) -> Self {
     self.graph.set_sink_restart(Some(RestartBackoff::new(min_backoff_ticks, max_restarts)));
+    self
+  }
+
+  /// Enables restart semantics by explicit restart settings.
+  #[must_use]
+  pub fn restart_sink_with_settings(mut self, settings: RestartSettings) -> Self {
+    self.graph.set_sink_restart(Some(RestartBackoff::from_settings(settings)));
     self
   }
 

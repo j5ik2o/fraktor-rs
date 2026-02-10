@@ -10,6 +10,8 @@ mod bidi_shape;
 mod broadcast_hub;
 /// Completion polling types.
 mod completion;
+/// Default operator catalog.
+mod default_operator_catalog;
 /// Demand model types.
 mod demand;
 /// Demand tracking utilities.
@@ -20,6 +22,8 @@ mod drive_outcome;
 mod flow;
 /// Flow shape definition.
 mod flow_shape;
+/// Flow-oriented substream surface.
+mod flow_sub_flow;
 /// GraphDSL-like partial graph builder.
 mod graph_dsl;
 /// Graph interpreter runtime.
@@ -48,12 +52,22 @@ mod materialized;
 mod materializer;
 /// Merge hub.
 mod merge_hub;
+/// Operator catalog contract.
+mod operator_catalog;
+/// Operator compatibility contract.
+mod operator_contract;
+/// Operator compatibility coverage metadata.
+mod operator_coverage;
+/// Operator key model.
+mod operator_key;
 /// Typed outlet ports.
 mod outlet;
 /// Partition hub.
 mod partition_hub;
 /// Port identifier type.
 mod port_id;
+/// Restart/backoff configuration.
+mod restart_settings;
 /// Runnable graph type.
 mod runnable_graph;
 /// Shape abstraction.
@@ -68,6 +82,8 @@ mod sink_shape;
 mod source;
 /// Source shape definition.
 mod source_shape;
+/// Source-oriented substream surface.
+mod source_sub_flow;
 /// Stage execution context.
 mod stage_context;
 /// Built-in stage kinds.
@@ -86,6 +102,8 @@ mod stream_done;
 mod stream_drive_actor;
 /// Stream drive command (internal).
 mod stream_drive_command;
+/// Stream DSL error definitions.
+mod stream_dsl_error;
 /// Stream error definitions.
 mod stream_error;
 /// Deterministic fuzz runner for probe tests.
@@ -114,6 +132,8 @@ mod test_sink_probe;
 mod test_source_probe;
 /// Unique kill switch.
 mod unique_kill_switch;
+/// Positive argument validator.
+mod validate_positive_argument;
 
 use alloc::{boxed::Box, vec::Vec};
 use core::any::{Any, TypeId};
@@ -124,11 +144,13 @@ pub use bidi_flow::BidiFlow;
 pub use bidi_shape::BidiShape;
 pub use broadcast_hub::BroadcastHub;
 pub use completion::Completion;
+pub use default_operator_catalog::DefaultOperatorCatalog;
 pub use demand::Demand;
 pub use demand_tracker::DemandTracker;
 pub use drive_outcome::DriveOutcome;
 pub use flow::Flow;
 pub use flow_shape::FlowShape;
+pub use flow_sub_flow::FlowSubFlow;
 pub use graph_dsl::GraphDsl;
 pub use graph_interpreter::GraphInterpreter;
 pub use graph_stage::GraphStage;
@@ -143,9 +165,14 @@ pub use mat_combine_rule::MatCombineRule;
 pub use materialized::Materialized;
 pub use materializer::Materializer;
 pub use merge_hub::MergeHub;
+pub use operator_catalog::OperatorCatalog;
+pub use operator_contract::OperatorContract;
+pub use operator_coverage::OperatorCoverage;
+pub use operator_key::OperatorKey;
 pub use outlet::Outlet;
 pub use partition_hub::PartitionHub;
 pub use port_id::PortId;
+pub use restart_settings::RestartSettings;
 pub use runnable_graph::RunnableGraph;
 pub use shape::Shape;
 pub use shared_kill_switch::SharedKillSwitch;
@@ -153,12 +180,14 @@ pub use sink::Sink;
 pub use sink_shape::SinkShape;
 pub use source::Source;
 pub use source_shape::SourceShape;
+pub use source_sub_flow::SourceSubFlow;
 pub use stage_context::StageContext;
 pub use stage_kind::StageKind;
 pub use stream_buffer::StreamBuffer;
 pub use stream_buffer_config::StreamBufferConfig;
 pub use stream_completion::StreamCompletion;
 pub use stream_done::StreamDone;
+pub use stream_dsl_error::StreamDslError;
 pub use stream_error::StreamError;
 pub use stream_fuzz_runner::StreamFuzzRunner;
 pub use stream_graph::StreamGraph;
@@ -172,6 +201,7 @@ pub use stream_state::StreamState;
 pub use test_sink_probe::TestSinkProbe;
 pub use test_source_probe::TestSourceProbe;
 pub use unique_kill_switch::UniqueKillSwitch;
+pub use validate_positive_argument::validate_positive_argument;
 type DynValue = Box<dyn Any + Send + Sync + 'static>;
 
 enum StageDefinition {
@@ -255,33 +285,54 @@ enum SupervisionStrategy {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct RestartBackoff {
-  min_backoff_ticks: u32,
-  max_restarts:      usize,
-  restart_count:     usize,
-  cooldown_ticks:    u32,
-  pending:           bool,
+  settings:              RestartSettings,
+  restart_count:         usize,
+  cooldown_ticks:        u32,
+  pending:               bool,
+  current_backoff_ticks: u32,
+  last_schedule_tick:    u64,
+  jitter_state:          u64,
 }
 
 impl RestartBackoff {
   const fn new(min_backoff_ticks: u32, max_restarts: usize) -> Self {
-    Self { min_backoff_ticks, max_restarts, restart_count: 0, cooldown_ticks: 0, pending: false }
+    Self::from_settings(RestartSettings::new(min_backoff_ticks, min_backoff_ticks, max_restarts))
+  }
+
+  const fn from_settings(settings: RestartSettings) -> Self {
+    Self {
+      settings,
+      restart_count: 0,
+      cooldown_ticks: 0,
+      pending: false,
+      current_backoff_ticks: settings.min_backoff_ticks(),
+      last_schedule_tick: 0,
+      jitter_state: settings.jitter_seed(),
+    }
   }
 
   const fn is_waiting(&self) -> bool {
     self.pending
   }
 
-  const fn schedule(&mut self) -> bool {
-    if self.restart_count >= self.max_restarts {
+  const fn complete_on_max_restarts(self) -> bool {
+    self.settings.complete_on_max_restarts()
+  }
+
+  fn schedule(&mut self, now_tick: u64) -> bool {
+    self.reset_backoff_if_window_elapsed(now_tick);
+    if self.restart_count >= self.settings.max_restarts() {
       return false;
     }
     self.restart_count = self.restart_count.saturating_add(1);
-    self.cooldown_ticks = self.min_backoff_ticks;
+    self.last_schedule_tick = now_tick;
+    self.cooldown_ticks = self.next_cooldown_ticks();
     self.pending = true;
     true
   }
 
-  const fn tick(&mut self) -> bool {
+  fn tick(&mut self, now_tick: u64) -> bool {
+    self.reset_backoff_if_window_elapsed(now_tick);
     if !self.pending {
       return false;
     }
@@ -292,6 +343,35 @@ impl RestartBackoff {
     self.pending = false;
     true
   }
+
+  fn next_cooldown_ticks(&mut self) -> u32 {
+    let min_ticks = self.settings.min_backoff_ticks();
+    let max_ticks = self.settings.max_backoff_ticks();
+    let base = self.current_backoff_ticks.max(min_ticks).min(max_ticks);
+    let jitter_ticks = self.compute_jitter_ticks(base);
+    self.current_backoff_ticks = base.saturating_mul(2).min(max_ticks).max(min_ticks);
+    base.saturating_add(jitter_ticks).min(max_ticks)
+  }
+
+  fn reset_backoff_if_window_elapsed(&mut self, now_tick: u64) {
+    let window = u64::from(self.settings.max_restarts_within_ticks());
+    if window == 0 {
+      return;
+    }
+    if now_tick.saturating_sub(self.last_schedule_tick) > window {
+      self.current_backoff_ticks = self.settings.min_backoff_ticks();
+    }
+  }
+
+  fn compute_jitter_ticks(&mut self, base_ticks: u32) -> u32 {
+    let factor = u32::from(self.settings.random_factor_permille());
+    if factor == 0 || base_ticks == 0 {
+      return 0;
+    }
+    self.jitter_state = self.jitter_state.wrapping_mul(6364136223846793005).wrapping_add(1);
+    let ratio_permille = (self.jitter_state >> 32) as u32 % 1001;
+    base_ticks.saturating_mul(factor).saturating_mul(ratio_permille) / 1_000_000
+  }
 }
 
 /// Materialization-ready immutable blueprint.
@@ -299,18 +379,32 @@ impl RestartBackoff {
 /// The plan contains only stage definitions and wiring edges.
 /// Mutable execution state is created by the interpreter during materialization.
 struct StreamPlan {
-  stages: Vec<StageDefinition>,
-  edges:  Vec<(PortId, PortId, MatCombine)>,
+  stages:            Vec<StageDefinition>,
+  edges:             Vec<(PortId, PortId, MatCombine)>,
+  kill_switch_state: Option<unique_kill_switch::KillSwitchStateHandle>,
 }
 
 impl StreamPlan {
   const fn from_parts(stages: Vec<StageDefinition>, edges: Vec<(PortId, PortId, MatCombine)>) -> Self {
-    Self { stages, edges }
+    Self { stages, edges, kill_switch_state: None }
+  }
+
+  fn with_shared_kill_switch_state(mut self, kill_switch_state: unique_kill_switch::KillSwitchStateHandle) -> Self {
+    self.kill_switch_state = Some(kill_switch_state);
+    self
+  }
+
+  fn shared_kill_switch_state(&self) -> Option<unique_kill_switch::KillSwitchStateHandle> {
+    self.kill_switch_state.clone()
   }
 }
 
 trait SourceLogic: Send {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError>;
+
+  fn on_cancel(&mut self) -> Result<(), StreamError> {
+    Ok(())
+  }
 
   fn on_restart(&mut self) -> Result<(), StreamError> {
     Ok(())
@@ -319,6 +413,10 @@ trait SourceLogic: Send {
 
 trait FlowLogic: Send {
   fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError>;
+
+  fn can_accept_input(&self) -> bool {
+    true
+  }
 
   fn apply_with_edge(&mut self, edge_index: usize, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
     let _ = edge_index;
@@ -352,6 +450,10 @@ enum SinkDecision {
 }
 
 trait SinkLogic: Send {
+  fn can_accept_input(&self) -> bool {
+    true
+  }
+
   fn on_start(&mut self, demand: &mut DemandTracker) -> Result<(), StreamError>;
   fn on_push(&mut self, input: DynValue, demand: &mut DemandTracker) -> Result<SinkDecision, StreamError>;
   fn on_complete(&mut self) -> Result<(), StreamError>;

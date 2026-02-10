@@ -4,9 +4,10 @@ use core::{any::TypeId, marker::PhantomData};
 use fraktor_utils_rs::core::collections::queue::OverflowPolicy;
 
 use super::{
-  DynValue, FlowDefinition, FlowLogic, Inlet, MatCombine, MatCombineRule, Outlet, RestartBackoff, Source,
-  StageDefinition, StageKind, StreamError, StreamGraph, StreamNotUsed, StreamShape, StreamStage, SupervisionStrategy,
-  downcast_value, graph_stage::GraphStage, graph_stage_logic::GraphStageLogic, sink::Sink, stage_context::StageContext,
+  DynValue, FlowDefinition, FlowLogic, FlowSubFlow, Inlet, MatCombine, MatCombineRule, Outlet, RestartBackoff,
+  RestartSettings, Source, StageDefinition, StageKind, StreamDslError, StreamError, StreamGraph, StreamNotUsed,
+  StreamShape, StreamStage, SupervisionStrategy, downcast_value, graph_stage::GraphStage,
+  graph_stage_logic::GraphStageLogic, sink::Sink, stage_context::StageContext, validate_positive_argument,
 };
 
 #[cfg(test)]
@@ -112,16 +113,15 @@ where
 
   /// Adds a flatMapMerge stage to this flow.
   ///
-  /// # Panics
+  /// # Errors
   ///
-  /// Panics when `breadth` is zero.
-  #[must_use]
-  pub fn flat_map_merge<T, Mat2, F>(mut self, breadth: usize, func: F) -> Flow<In, T, Mat>
+  /// Returns [`StreamDslError`] when `breadth` is zero.
+  pub fn flat_map_merge<T, Mat2, F>(mut self, breadth: usize, func: F) -> Result<Flow<In, T, Mat>, StreamDslError>
   where
     T: Send + Sync + 'static,
     Mat2: Send + Sync + 'static,
     F: FnMut(Out) -> Source<T, Mat2> + Send + Sync + 'static, {
-    assert!(breadth > 0, "breadth must be greater than zero");
+    let breadth = validate_positive_argument("breadth", breadth)?;
     let definition = flat_map_merge_definition::<Out, T, Mat2, F>(breadth, func);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
@@ -129,17 +129,20 @@ where
     if let Some(from) = from {
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
-    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+    Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
   /// Adds a buffer stage with an overflow strategy.
   ///
-  /// # Panics
+  /// # Errors
   ///
-  /// Panics when `capacity` is zero.
-  #[must_use]
-  pub fn buffer(mut self, capacity: usize, overflow_policy: OverflowPolicy) -> Flow<In, Out, Mat> {
-    assert!(capacity > 0, "capacity must be greater than zero");
+  /// Returns [`StreamDslError`] when `capacity` is zero.
+  pub fn buffer(
+    mut self,
+    capacity: usize,
+    overflow_policy: OverflowPolicy,
+  ) -> Result<Flow<In, Out, Mat>, StreamDslError> {
+    let capacity = validate_positive_argument("capacity", capacity)?;
     let definition = buffer_definition::<Out>(capacity, overflow_policy);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
@@ -147,7 +150,7 @@ where
     if let Some(from) = from {
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
-    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+    Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
   /// Adds an explicit async boundary stage.
@@ -167,6 +170,13 @@ where
   #[must_use]
   pub fn restart_flow_with_backoff(mut self, min_backoff_ticks: u32, max_restarts: usize) -> Flow<In, Out, Mat> {
     self.graph.set_flow_restart(Some(RestartBackoff::new(min_backoff_ticks, max_restarts)));
+    self
+  }
+
+  /// Enables restart semantics by explicit restart settings.
+  #[must_use]
+  pub fn restart_flow_with_settings(mut self, settings: RestartSettings) -> Flow<In, Out, Mat> {
+    self.graph.set_flow_restart(Some(RestartBackoff::from_settings(settings)));
     self
   }
 
@@ -191,17 +201,20 @@ where
     self
   }
 
-  /// Adds a group-by stage that annotates elements with their computed key.
+  /// Adds a group-by stage and returns substream surface for merge operations.
   ///
-  /// # Panics
+  /// # Errors
   ///
-  /// Panics when `max_substreams` is zero.
-  #[must_use]
-  pub fn group_by<K, F>(mut self, max_substreams: usize, key_fn: F) -> Flow<In, (K, Out), Mat>
+  /// Returns [`StreamDslError`] when `max_substreams` is zero.
+  pub fn group_by<K, F>(
+    mut self,
+    max_substreams: usize,
+    key_fn: F,
+  ) -> Result<FlowSubFlow<In, Out, Mat>, StreamDslError>
   where
-    K: Send + Sync + 'static,
+    K: Clone + PartialEq + Send + Sync + 'static,
     F: FnMut(&Out) -> K + Send + Sync + 'static, {
-    assert!(max_substreams > 0, "max_substreams must be greater than zero");
+    let max_substreams = validate_positive_argument("max_substreams", max_substreams)?;
     let definition = group_by_definition::<Out, K, F>(max_substreams, key_fn);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
@@ -209,12 +222,13 @@ where
     if let Some(from) = from {
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
-    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+    let grouped = Flow::<In, (K, Out), Mat> { graph: self.graph, mat: self.mat, _pd: PhantomData };
+    Ok(FlowSubFlow::from_flow(grouped.map(|(_, value)| vec![value])))
   }
 
   /// Splits the stream before elements matching `predicate`.
   #[must_use]
-  pub fn split_when<F>(mut self, predicate: F) -> Flow<In, Vec<Out>, Mat>
+  pub fn split_when<F>(mut self, predicate: F) -> FlowSubFlow<In, Out, Mat>
   where
     F: FnMut(&Out) -> bool + Send + Sync + 'static, {
     let definition = split_when_definition::<Out, F>(predicate);
@@ -224,12 +238,12 @@ where
     if let Some(from) = from {
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
-    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+    FlowSubFlow::from_flow(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
   /// Splits the stream after elements matching `predicate`.
   #[must_use]
-  pub fn split_after<F>(mut self, predicate: F) -> Flow<In, Vec<Out>, Mat>
+  pub fn split_after<F>(mut self, predicate: F) -> FlowSubFlow<In, Out, Mat>
   where
     F: FnMut(&Out) -> bool + Send + Sync + 'static, {
     let definition = split_after_definition::<Out, F>(predicate);
@@ -239,7 +253,7 @@ where
     if let Some(from) = from {
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
-    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+    FlowSubFlow::from_flow(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
   /// Adds a broadcast stage that duplicates each element `fan_out` times.
@@ -361,6 +375,27 @@ where
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
+  /// Merges split substreams with an explicit parallelism value.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `parallelism` is zero.
+  pub fn merge_substreams_with_parallelism(mut self, parallelism: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
+    let parallelism = validate_positive_argument("parallelism", parallelism)?;
+    let definition = merge_substreams_with_parallelism_definition::<Out>(parallelism);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(
+        &Outlet::<Vec<Out>>::from_id(from),
+        &Inlet::<Vec<Out>>::from_id(inlet_id),
+        MatCombine::KeepLeft,
+      );
+    }
+    Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
+  }
+
   /// Concatenates split substreams into a single output stream.
   #[must_use]
   pub fn concat_substreams(mut self) -> Flow<In, Out, Mat> {
@@ -459,7 +494,7 @@ where
   F: FnMut(In) -> Source<Out, Mat2> + Send + Sync + 'static, {
   let inlet: Inlet<In> = Inlet::new();
   let outlet: Outlet<Out> = Outlet::new();
-  let logic = FlatMapConcatLogic { func, _pd: PhantomData };
+  let logic = FlatMapConcatLogic { func, active_inner: None, pending_outer: VecDeque::new(), _pd: PhantomData };
   FlowDefinition {
     kind:        StageKind::FlowFlatMapConcat,
     inlet:       inlet.id(),
@@ -485,7 +520,7 @@ where
     breadth,
     func,
     active_streams: VecDeque::new(),
-    waiting_streams: VecDeque::new(),
+    pending_outer: VecDeque::new(),
     _pd: PhantomData,
   };
   FlowDefinition {
@@ -525,7 +560,7 @@ where
   In: Send + Sync + 'static, {
   let inlet: Inlet<In> = Inlet::new();
   let outlet: Outlet<In> = Outlet::new();
-  let logic = AsyncBoundaryLogic::<In> { _pd: PhantomData };
+  let logic = AsyncBoundaryLogic::<In> { pending: VecDeque::new(), capacity: 16 };
   FlowDefinition {
     kind:        StageKind::FlowAsyncBoundary,
     inlet:       inlet.id(),
@@ -542,11 +577,11 @@ where
 pub(super) fn group_by_definition<In, Key, F>(max_substreams: usize, key_fn: F) -> FlowDefinition
 where
   In: Send + Sync + 'static,
-  Key: Send + Sync + 'static,
+  Key: Clone + PartialEq + Send + Sync + 'static,
   F: FnMut(&In) -> Key + Send + Sync + 'static, {
   let inlet: Inlet<In> = Inlet::new();
   let outlet: Outlet<(Key, In)> = Outlet::new();
-  let logic = GroupByLogic::<In, Key, F> { max_substreams, key_fn, _pd: PhantomData };
+  let logic = GroupByLogic::<In, Key, F> { max_substreams, seen_keys: Vec::new(), key_fn, _pd: PhantomData };
   FlowDefinition {
     kind:        StageKind::FlowGroupBy,
     inlet:       inlet.id(),
@@ -642,6 +677,25 @@ pub(super) fn merge_substreams_definition<In>() -> FlowDefinition
 where
   In: Send + Sync + 'static, {
   flatten_substreams_definition::<In>(StageKind::FlowMergeSubstreams)
+}
+
+pub(super) fn merge_substreams_with_parallelism_definition<In>(parallelism: usize) -> FlowDefinition
+where
+  In: Send + Sync + 'static, {
+  let inlet: Inlet<Vec<In>> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = FlattenSubstreamsWithParallelismLogic::<In> { parallelism, _pd: PhantomData };
+  FlowDefinition {
+    kind:        StageKind::FlowMergeSubstreamsWithParallelism,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<Vec<In>>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
 }
 
 pub(super) fn concat_substreams_definition<In>() -> FlowDefinition
@@ -806,16 +860,18 @@ where
 }
 
 struct FlatMapConcatLogic<In, Out, Mat2, F> {
-  func: F,
-  _pd:  PhantomData<fn(In) -> (Out, Mat2)>,
+  func:          F,
+  active_inner:  Option<VecDeque<Out>>,
+  pending_outer: VecDeque<In>,
+  _pd:           PhantomData<fn(In) -> (Out, Mat2)>,
 }
 
 struct FlatMapMergeLogic<In, Out, Mat2, F> {
-  breadth:         usize,
-  func:            F,
-  active_streams:  VecDeque<VecDeque<Out>>,
-  waiting_streams: VecDeque<VecDeque<Out>>,
-  _pd:             PhantomData<fn(In) -> (Out, Mat2)>,
+  breadth:        usize,
+  func:           F,
+  active_streams: VecDeque<VecDeque<Out>>,
+  pending_outer:  VecDeque<In>,
+  _pd:            PhantomData<fn(In) -> (Out, Mat2)>,
 }
 
 struct BufferLogic<In> {
@@ -826,11 +882,13 @@ struct BufferLogic<In> {
 }
 
 struct AsyncBoundaryLogic<In> {
-  _pd: PhantomData<fn(In)>,
+  pending:  VecDeque<In>,
+  capacity: usize,
 }
 
 struct GroupByLogic<In, Key, F> {
   max_substreams: usize,
+  seen_keys:      Vec<Key>,
   key_fn:         F,
   _pd:            PhantomData<fn(In) -> Key>,
 }
@@ -861,6 +919,48 @@ struct FlattenSubstreamsLogic<In> {
   _pd: PhantomData<fn(In)>,
 }
 
+struct FlattenSubstreamsWithParallelismLogic<In> {
+  parallelism: usize,
+  _pd:         PhantomData<fn(In)>,
+}
+
+impl<In, Out, Mat2, F> FlatMapConcatLogic<In, Out, Mat2, F>
+where
+  In: Send + Sync + 'static,
+  Out: Send + Sync + 'static,
+  Mat2: Send + Sync + 'static,
+  F: FnMut(In) -> Source<Out, Mat2> + Send + Sync + 'static,
+{
+  fn promote_outer_if_needed(&mut self) -> Result<(), StreamError> {
+    while self.active_inner.is_none() {
+      let Some(outer) = self.pending_outer.pop_front() else {
+        return Ok(());
+      };
+      let source = (self.func)(outer);
+      let outputs = source.collect_values()?;
+      if outputs.is_empty() {
+        continue;
+      }
+      let mut stream = VecDeque::with_capacity(outputs.len());
+      stream.extend(outputs);
+      self.active_inner = Some(stream);
+    }
+    Ok(())
+  }
+
+  fn pop_next_value(&mut self) -> Result<Option<Out>, StreamError> {
+    self.promote_outer_if_needed()?;
+    let Some(stream) = &mut self.active_inner else {
+      return Ok(None);
+    };
+    let value = stream.pop_front();
+    if stream.is_empty() {
+      self.active_inner = None;
+    }
+    Ok(value)
+  }
+}
+
 impl<In, Out, Mat2, F> FlowLogic for FlatMapConcatLogic<In, Out, Mat2, F>
 where
   In: Send + Sync + 'static,
@@ -870,9 +970,25 @@ where
 {
   fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
     let value = downcast_value::<In>(input)?;
-    let source = (self.func)(value);
-    let outputs = source.collect_values()?;
-    Ok(outputs.into_iter().map(|item| Box::new(item) as DynValue).collect())
+    self.pending_outer.push_back(value);
+    self.drain_pending()
+  }
+
+  fn can_accept_input(&self) -> bool {
+    self.active_inner.is_none() && self.pending_outer.is_empty()
+  }
+
+  fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
+    if let Some(output) = self.pop_next_value()? {
+      return Ok(vec![Box::new(output) as DynValue]);
+    }
+    Ok(Vec::new())
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.active_inner = None;
+    self.pending_outer.clear();
+    Ok(())
   }
 }
 
@@ -883,16 +999,7 @@ where
   Mat2: Send + Sync + 'static,
   F: FnMut(In) -> Source<Out, Mat2> + Send + Sync + 'static,
 {
-  fn promote_waiting(&mut self) {
-    while self.active_streams.len() < self.breadth {
-      let Some(stream) = self.waiting_streams.pop_front() else {
-        break;
-      };
-      self.active_streams.push_back(stream);
-    }
-  }
-
-  fn enqueue_inner_stream(&mut self, value: In) -> Result<(), StreamError> {
+  fn enqueue_active_inner(&mut self, value: In) -> Result<(), StreamError> {
     let source = (self.func)(value);
     let outputs = source.collect_values()?;
     if outputs.is_empty() {
@@ -900,25 +1007,36 @@ where
     }
     let mut stream = VecDeque::with_capacity(outputs.len());
     stream.extend(outputs);
-    self.waiting_streams.push_back(stream);
-    self.promote_waiting();
+    self.active_streams.push_back(stream);
     Ok(())
   }
 
-  fn pop_next_value(&mut self) -> Option<Out> {
-    self.promote_waiting();
+  fn promote_pending(&mut self) -> Result<(), StreamError> {
+    while self.active_streams.len() < self.breadth {
+      let Some(value) = self.pending_outer.pop_front() else {
+        break;
+      };
+      self.enqueue_active_inner(value)?;
+    }
+    Ok(())
+  }
+
+  fn pop_next_value(&mut self) -> Result<Option<Out>, StreamError> {
+    self.promote_pending()?;
     loop {
-      let mut stream = self.active_streams.pop_front()?;
+      let Some(mut stream) = self.active_streams.pop_front() else {
+        return Ok(None);
+      };
       let Some(value) = stream.pop_front() else {
-        self.promote_waiting();
+        self.promote_pending()?;
         continue;
       };
       if stream.is_empty() {
-        self.promote_waiting();
+        self.promote_pending()?;
       } else {
         self.active_streams.push_back(stream);
       }
-      return Some(value);
+      return Ok(Some(value));
     }
   }
 }
@@ -935,15 +1053,19 @@ where
       return Err(StreamError::InvalidConnection);
     }
     let value = downcast_value::<In>(input)?;
-    self.enqueue_inner_stream(value)?;
-    if let Some(output) = self.pop_next_value() {
+    self.pending_outer.push_back(value);
+    if let Some(output) = self.pop_next_value()? {
       return Ok(vec![Box::new(output) as DynValue]);
     }
     Ok(Vec::new())
   }
 
+  fn can_accept_input(&self) -> bool {
+    self.breadth > 0 && self.pending_outer.is_empty() && self.active_streams.len() < self.breadth
+  }
+
   fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
-    if let Some(output) = self.pop_next_value() {
+    if let Some(output) = self.pop_next_value()? {
       return Ok(vec![Box::new(output) as DynValue]);
     }
     Ok(Vec::new())
@@ -951,7 +1073,7 @@ where
 
   fn on_restart(&mut self) -> Result<(), StreamError> {
     self.active_streams.clear();
-    self.waiting_streams.clear();
+    self.pending_outer.clear();
     Ok(())
   }
 }
@@ -965,11 +1087,11 @@ where
 {
   fn on_push(&mut self, ctx: &mut dyn StageContext<In, Out>) {
     let value = ctx.grab();
-    let source = (self.func)(value);
-    if let Ok(mut outputs) = source.collect_values()
-      && let Some(first) = outputs.pop()
-    {
-      ctx.push(first);
+    self.pending_outer.push_back(value);
+    match self.pop_next_value() {
+      | Ok(Some(output)) => ctx.push(output),
+      | Ok(None) => {},
+      | Err(error) => ctx.fail(error),
     }
   }
 
@@ -987,12 +1109,11 @@ where
 {
   fn on_push(&mut self, ctx: &mut dyn StageContext<In, Out>) {
     let value = ctx.grab();
-    if self.enqueue_inner_stream(value).is_err() {
-      ctx.fail(StreamError::Failed);
-      return;
-    }
-    if let Some(output) = self.pop_next_value() {
-      ctx.push(output);
+    self.pending_outer.push_back(value);
+    match self.pop_next_value() {
+      | Ok(Some(output)) => ctx.push(output),
+      | Ok(None) => {},
+      | Err(error) => ctx.fail(error),
     }
   }
 
@@ -1067,14 +1188,32 @@ where
   In: Send + Sync + 'static,
 {
   fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
-    Ok(vec![input])
+    let value = downcast_value::<In>(input)?;
+    self.pending.push_back(value);
+    Ok(Vec::new())
+  }
+
+  fn can_accept_input(&self) -> bool {
+    self.pending.len() < self.capacity
+  }
+
+  fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
+    let Some(value) = self.pending.pop_front() else {
+      return Ok(Vec::new());
+    };
+    Ok(vec![Box::new(value) as DynValue])
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.pending.clear();
+    Ok(())
   }
 }
 
 impl<In, Key, F> FlowLogic for GroupByLogic<In, Key, F>
 where
   In: Send + Sync + 'static,
-  Key: Send + Sync + 'static,
+  Key: Clone + PartialEq + Send + Sync + 'static,
   F: FnMut(&In) -> Key + Send + Sync + 'static,
 {
   fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
@@ -1083,6 +1222,12 @@ where
     }
     let value = downcast_value::<In>(input)?;
     let key = (self.key_fn)(&value);
+    if !self.seen_keys.contains(&key) {
+      if self.seen_keys.len() >= self.max_substreams {
+        return Err(StreamError::SubstreamLimitExceeded { max_substreams: self.max_substreams });
+      }
+      self.seen_keys.push(key.clone());
+    }
     Ok(vec![Box::new((key, value)) as DynValue])
   }
 }
@@ -1202,6 +1347,19 @@ where
   In: Send + Sync + 'static,
 {
   fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let values = downcast_value::<Vec<In>>(input)?;
+    Ok(values.into_iter().map(|value| Box::new(value) as DynValue).collect())
+  }
+}
+
+impl<In> FlowLogic for FlattenSubstreamsWithParallelismLogic<In>
+where
+  In: Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    if self.parallelism == 0 {
+      return Err(StreamError::InvalidConnection);
+    }
     let values = downcast_value::<Vec<In>>(input)?;
     Ok(values.into_iter().map(|value| Box::new(value) as DynValue).collect())
   }
@@ -1470,7 +1628,12 @@ where
   }
 
   fn create_logic(&self) -> Box<dyn GraphStageLogic<In, Out, StreamNotUsed>> {
-    Box::new(FlatMapConcatLogic { func: self.func.clone(), _pd: PhantomData })
+    Box::new(FlatMapConcatLogic {
+      func:          self.func.clone(),
+      active_inner:  None,
+      pending_outer: VecDeque::new(),
+      _pd:           PhantomData,
+    })
   }
 }
 
@@ -1487,11 +1650,11 @@ where
 
   fn create_logic(&self) -> Box<dyn GraphStageLogic<In, Out, StreamNotUsed>> {
     Box::new(FlatMapMergeLogic {
-      breadth:         self.breadth,
-      func:            self.func.clone(),
-      active_streams:  VecDeque::new(),
-      waiting_streams: VecDeque::new(),
-      _pd:             PhantomData,
+      breadth:        self.breadth,
+      func:           self.func.clone(),
+      active_streams: VecDeque::new(),
+      pending_outer:  VecDeque::new(),
+      _pd:            PhantomData,
     })
   }
 }

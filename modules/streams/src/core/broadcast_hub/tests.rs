@@ -50,8 +50,8 @@ fn broadcast_hub_delivers_to_all_subscribers() {
   let left = hub.subscribe();
   let right = hub.subscribe();
 
-  hub.publish(10_u32);
-  hub.publish(20_u32);
+  hub.publish(10_u32).expect("publish 10");
+  hub.publish(20_u32).expect("publish 20");
 
   assert_eq!(hub.poll(left), Some(10_u32));
   assert_eq!(hub.poll(left), Some(20_u32));
@@ -64,8 +64,8 @@ fn broadcast_hub_source_for_drains_subscriber_queue() {
   let hub = BroadcastHub::new();
   let left = hub.subscribe();
   let _right = hub.subscribe();
-  hub.publish(1_u32);
-  hub.publish(2_u32);
+  hub.publish(1_u32).expect("publish 1");
+  hub.publish(2_u32).expect("publish 2");
   let mut materializer = TestMaterializer::default();
 
   let first_graph = hub.source_for(left).to_mat(Sink::head(), KeepRight);
@@ -103,7 +103,7 @@ fn broadcast_hub_source_waits_for_later_publish_without_completing() {
   assert_eq!(materialized.handle().state(), StreamState::Running);
   assert_eq!(materialized.materialized().poll(), Completion::Pending);
 
-  hub.publish(55_u32);
+  hub.publish(55_u32).expect("publish 55");
   for _ in 0..4 {
     let _ = materialized.handle().drive();
     if materialized.handle().state().is_terminal() {
@@ -112,4 +112,10 @@ fn broadcast_hub_source_waits_for_later_publish_without_completing() {
   }
   assert_eq!(materialized.handle().state(), StreamState::Completed);
   assert_eq!(materialized.materialized().poll(), Completion::Ready(Ok(55_u32)));
+}
+
+#[test]
+fn broadcast_hub_backpressures_when_no_subscriber_exists() {
+  let hub = BroadcastHub::<u32>::new();
+  assert_eq!(hub.publish(1_u32), Err(StreamError::WouldBlock));
 }
