@@ -156,3 +156,9 @@
 - [x] F-02 命名・型配置・lint違反がないことを確認する。
 - [x] F-03 `no_std` 前提が維持されることを確認する。
 - [x] F-04 `./scripts/ci-check.sh all` を実行し全パスを確認する。
+
+### MUST是正（自己レビュー反映）
+- [x] M-01 restart/supervision の no-op 実装を廃止し、`GraphInterpreter` の失敗処理と再起動処理に接続する。
+- [x] M-02 `UniqueKillSwitch` / `SharedKillSwitch` を実行中ストリームにバインドし、`shutdown`/`abort` が実際の状態遷移へ反映されるようにする。
+- [x] M-03 `MergeHub` / `BroadcastHub` / `PartitionHub` を stream の `Source`/`Sink` ロジックに接続し、実行器から駆動可能にする。
+- [x] M-04 上記3項目の回帰テストを追加し、`fraktor-streams-rs` のテストと clippy を通す。
