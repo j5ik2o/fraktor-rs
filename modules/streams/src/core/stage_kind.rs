@@ -7,6 +7,38 @@ pub enum StageKind {
   FlowMap,
   /// Flow stage that concatenates sub-streams.
   FlowFlatMapConcat,
+  /// Flow stage that merges sub-streams up to a configured breadth.
+  FlowFlatMapMerge,
+  /// Flow stage that buffers upstream elements with an overflow strategy.
+  FlowBuffer,
+  /// Flow stage that represents an asynchronous execution boundary.
+  FlowAsyncBoundary,
+  /// Flow stage that annotates elements with a substream key.
+  FlowGroupBy,
+  /// Flow stage that recovers from error payloads with a fallback element.
+  FlowRecover,
+  /// Flow stage that recovers from error payloads with a bounded retry budget.
+  FlowRecoverWithRetries,
+  /// Flow stage that splits input before elements matching a predicate.
+  FlowSplitWhen,
+  /// Flow stage that splits input after elements matching a predicate.
+  FlowSplitAfter,
+  /// Flow stage that merges emitted substreams into a single stream.
+  FlowMergeSubstreams,
+  /// Flow stage that merges emitted substreams with configured parallelism.
+  FlowMergeSubstreamsWithParallelism,
+  /// Flow stage that concatenates emitted substreams into a single stream.
+  FlowConcatSubstreams,
+  /// Flow stage that broadcasts each element to multiple outputs.
+  FlowBroadcast,
+  /// Flow stage that balances elements across outputs.
+  FlowBalance,
+  /// Flow stage that merges elements from multiple inputs.
+  FlowMerge,
+  /// Flow stage that zips elements from multiple inputs.
+  FlowZip,
+  /// Flow stage that concatenates inputs in port order.
+  FlowConcat,
   /// Sink that ignores elements.
   SinkIgnore,
   /// Sink that folds elements.

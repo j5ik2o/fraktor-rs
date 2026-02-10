@@ -1,4 +1,4 @@
-use super::{Inlet, Outlet};
+use super::{Inlet, Outlet, Shape};
 
 /// Shape describing a single inlet and outlet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -25,4 +25,9 @@ impl<In, Out> StreamShape<In, Out> {
   pub const fn outlet(&self) -> &Outlet<Out> {
     &self.outlet
   }
+}
+
+impl<In, Out> Shape for StreamShape<In, Out> {
+  type In = In;
+  type Out = Out;
 }

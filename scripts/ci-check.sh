@@ -204,26 +204,35 @@ ensure_rustc_components_installed() {
 
 ensure_dylint_installed() {
   local desired_version="${DYLINT_VERSION:-5.0.0}"
+  local current_version=""
 
   if command -v cargo-dylint >/dev/null 2>&1; then
-    local current_version
     current_version=$(cargo-dylint --version 2>/dev/null | awk '{print $2}')
-    if [[ -z "${current_version}" ]]; then
-      current_version=$(cargo dylint --version 2>/dev/null | awk '{print $2}')
-    fi
-    if [[ "${current_version}" == "${desired_version}" ]]; then
-      return 0
-    fi
-
-    echo "info: cargo-dylint ${current_version:-unknown} を ${desired_version} に更新します..." >&2
   fi
 
-  echo "info: cargo-dylint がインストールされていないため、インストールします..." >&2
+  if [[ -z "${current_version}" ]]; then
+    current_version=$(cargo dylint --version 2>/dev/null | awk '{print $2}')
+  fi
+
+  if [[ "${current_version}" == "${desired_version}" ]]; then
+    return 0
+  fi
+
+  if [[ -n "${current_version}" ]]; then
+    echo "info: cargo-dylint ${current_version:-unknown} を ${desired_version} に更新します..." >&2
+  else
+    echo "info: cargo-dylint がインストールされていないため、インストールします..." >&2
+  fi
+
   local -a install_cmd
   if [[ -n "${DEFAULT_TOOLCHAIN}" ]]; then
-    install_cmd=(cargo "+${DEFAULT_TOOLCHAIN}" install cargo-dylint --locked --version "${desired_version}" --force)
+    install_cmd=(cargo "+${DEFAULT_TOOLCHAIN}" install cargo-dylint --locked --version "${desired_version}")
   else
-    install_cmd=(cargo install cargo-dylint --locked --version "${desired_version}" --force)
+    install_cmd=(cargo install cargo-dylint --locked --version "${desired_version}")
+  fi
+
+  if [[ -n "${current_version}" ]]; then
+    install_cmd+=(--force)
   fi
 
   if "${install_cmd[@]}"; then
