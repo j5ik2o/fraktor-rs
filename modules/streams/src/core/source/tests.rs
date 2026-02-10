@@ -4,8 +4,8 @@ use fraktor_utils_rs::core::{collections::queue::OverflowPolicy, runtime_toolbox
 
 use super::super::{stream::Stream, stream_shared::StreamSharedGeneric};
 use crate::core::{
-  DynValue, KeepRight, Materialized, Materializer, Sink, Source, SourceLogic, StageKind, StreamBufferConfig,
-  StreamCompletion, StreamDone, StreamError, StreamHandleGeneric, StreamHandleId, StreamState,
+  DriveOutcome, DynValue, KeepRight, Materialized, Materializer, Sink, Source, SourceLogic, StageKind,
+  StreamBufferConfig, StreamCompletion, StreamDone, StreamError, StreamHandleGeneric, StreamHandleId, StreamState,
 };
 
 struct RecordingMaterializer {
@@ -90,6 +90,20 @@ fn materialized_unique_kill_switch_abort_fails_stream() {
   let _ = materialized.handle().drive();
 
   assert_eq!(materialized.handle().state(), StreamState::Failed);
+}
+
+#[test]
+fn materialized_unique_kill_switch_abort_stops_reporting_progress_after_failure() {
+  let source = Source::<u32, _>::from_logic(StageKind::Custom, EndlessSourceLogic::new());
+  let graph = source.to_mat(Sink::ignore(), KeepRight);
+  let mut materializer = RecordingMaterializer::default();
+  let materialized = graph.run(&mut materializer).expect("materialize");
+  let kill_switch = materialized.unique_kill_switch();
+
+  kill_switch.abort(StreamError::Failed);
+  assert_eq!(materialized.handle().drive(), DriveOutcome::Progressed);
+  assert_eq!(materialized.handle().state(), StreamState::Failed);
+  assert_eq!(materialized.handle().drive(), DriveOutcome::Idle);
 }
 
 #[test]

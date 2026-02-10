@@ -37,8 +37,9 @@ impl Stream {
         }
       },
       | KillSwitchState::Aborted(error) => {
+        let was_terminal = self.interpreter.state().is_terminal();
         self.interpreter.abort(error);
-        return DriveOutcome::Progressed;
+        return if was_terminal { DriveOutcome::Idle } else { DriveOutcome::Progressed };
       },
     }
     self.interpreter.drive()
