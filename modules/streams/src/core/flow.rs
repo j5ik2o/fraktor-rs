@@ -94,6 +94,129 @@ where
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
+  /// Adds a filter stage to this flow.
+  #[must_use]
+  pub fn filter<F>(mut self, predicate: F) -> Flow<In, Out, Mat>
+  where
+    F: FnMut(&Out) -> bool + Send + Sync + 'static, {
+    let definition = filter_definition::<Out, F>(predicate);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds a drop stage that skips the first `count` elements.
+  #[must_use]
+  pub fn drop(mut self, count: usize) -> Flow<In, Out, Mat> {
+    let definition = drop_definition::<Out>(count);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds a take stage that emits up to `count` elements.
+  #[must_use]
+  pub fn take(mut self, count: usize) -> Flow<In, Out, Mat> {
+    let definition = take_definition::<Out>(count);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds a drop-while stage to this flow.
+  #[must_use]
+  pub fn drop_while<F>(mut self, predicate: F) -> Flow<In, Out, Mat>
+  where
+    F: FnMut(&Out) -> bool + Send + Sync + 'static, {
+    let definition = drop_while_definition::<Out, F>(predicate);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds a take-while stage to this flow.
+  #[must_use]
+  pub fn take_while<F>(mut self, predicate: F) -> Flow<In, Out, Mat>
+  where
+    F: FnMut(&Out) -> bool + Send + Sync + 'static, {
+    let definition = take_while_definition::<Out, F>(predicate);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds a grouped stage that emits vectors of size `size`.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `size` is zero.
+  pub fn grouped(mut self, size: usize) -> Result<Flow<In, Vec<Out>, Mat>, StreamDslError> {
+    let size = validate_positive_argument("size", size)?;
+    let definition = grouped_definition::<Out>(size);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
+  }
+
+  /// Adds a sliding stage that emits windows with size `size`.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `size` is zero.
+  pub fn sliding(mut self, size: usize) -> Result<Flow<In, Vec<Out>, Mat>, StreamDslError>
+  where
+    Out: Clone, {
+    let size = validate_positive_argument("size", size)?;
+    let definition = sliding_definition::<Out>(size);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
+  }
+
+  /// Adds a scan stage that emits running accumulation from `initial`.
+  #[must_use]
+  pub fn scan<Acc, F>(mut self, initial: Acc, func: F) -> Flow<In, Acc, Mat>
+  where
+    Acc: Clone + Send + Sync + 'static,
+    F: FnMut(Acc, Out) -> Acc + Send + Sync + 'static, {
+    let definition = scan_definition::<Out, Acc, F>(initial, func);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
   /// Adds a flatMapConcat stage to this flow.
   #[must_use]
   pub fn flat_map_concat<T, Mat2, F>(mut self, func: F) -> Flow<In, T, Mat>
@@ -486,6 +609,170 @@ where
   }
 }
 
+pub(super) fn filter_definition<In, F>(predicate: F) -> FlowDefinition
+where
+  In: Send + Sync + 'static,
+  F: FnMut(&In) -> bool + Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = FilterLogic::<In, F> { predicate, _pd: PhantomData };
+  FlowDefinition {
+    kind:        StageKind::FlowFilter,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(super) fn drop_definition<In>(count: usize) -> FlowDefinition
+where
+  In: Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = DropLogic::<In> { remaining: count, _pd: PhantomData };
+  FlowDefinition {
+    kind:        StageKind::FlowDrop,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(super) fn take_definition<In>(count: usize) -> FlowDefinition
+where
+  In: Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = TakeLogic::<In> { remaining: count, _pd: PhantomData };
+  FlowDefinition {
+    kind:        StageKind::FlowTake,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(super) fn drop_while_definition<In, F>(predicate: F) -> FlowDefinition
+where
+  In: Send + Sync + 'static,
+  F: FnMut(&In) -> bool + Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = DropWhileLogic::<In, F> { predicate, dropping: true, _pd: PhantomData };
+  FlowDefinition {
+    kind:        StageKind::FlowDropWhile,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(super) fn take_while_definition<In, F>(predicate: F) -> FlowDefinition
+where
+  In: Send + Sync + 'static,
+  F: FnMut(&In) -> bool + Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = TakeWhileLogic::<In, F> { predicate, taking: true, _pd: PhantomData };
+  FlowDefinition {
+    kind:        StageKind::FlowTakeWhile,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(super) fn grouped_definition<In>(size: usize) -> FlowDefinition
+where
+  In: Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<Vec<In>> = Outlet::new();
+  let logic = GroupedLogic::<In> { size, current: Vec::new(), source_done: false };
+  FlowDefinition {
+    kind:        StageKind::FlowGrouped,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<Vec<In>>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(super) fn sliding_definition<In>(size: usize) -> FlowDefinition
+where
+  In: Clone + Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<Vec<In>> = Outlet::new();
+  let logic = SlidingLogic::<In> { size, window: VecDeque::new() };
+  FlowDefinition {
+    kind:        StageKind::FlowSliding,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<Vec<In>>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(super) fn scan_definition<In, Acc, F>(initial: Acc, func: F) -> FlowDefinition
+where
+  In: Send + Sync + 'static,
+  Acc: Clone + Send + Sync + 'static,
+  F: FnMut(Acc, In) -> Acc + Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<Acc> = Outlet::new();
+  let logic = ScanLogic::<In, Acc, F> {
+    initial: initial.clone(),
+    current: initial,
+    func,
+    initial_emitted: false,
+    source_done: false,
+    _pd: PhantomData,
+  };
+  FlowDefinition {
+    kind:        StageKind::FlowScan,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<Acc>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
 pub(super) fn flat_map_concat_definition<In, Out, Mat2, F>(func: F) -> FlowDefinition
 where
   In: Send + Sync + 'static,
@@ -829,6 +1116,53 @@ struct MapLogic<In, Out, F> {
   _pd:  PhantomData<fn(In) -> Out>,
 }
 
+struct FilterLogic<In, F> {
+  predicate: F,
+  _pd:       PhantomData<fn(In)>,
+}
+
+struct DropLogic<In> {
+  remaining: usize,
+  _pd:       PhantomData<fn(In)>,
+}
+
+struct TakeLogic<In> {
+  remaining: usize,
+  _pd:       PhantomData<fn(In)>,
+}
+
+struct DropWhileLogic<In, F> {
+  predicate: F,
+  dropping:  bool,
+  _pd:       PhantomData<fn(In)>,
+}
+
+struct TakeWhileLogic<In, F> {
+  predicate: F,
+  taking:    bool,
+  _pd:       PhantomData<fn(In)>,
+}
+
+struct GroupedLogic<In> {
+  size:        usize,
+  current:     Vec<In>,
+  source_done: bool,
+}
+
+struct SlidingLogic<In> {
+  size:   usize,
+  window: VecDeque<In>,
+}
+
+struct ScanLogic<In, Acc, F> {
+  initial:         Acc,
+  current:         Acc,
+  func:            F,
+  initial_emitted: bool,
+  source_done:     bool,
+  _pd:             PhantomData<fn(In)>,
+}
+
 impl<In, Out, F> FlowLogic for MapLogic<In, Out, F>
 where
   In: Send + Sync + 'static,
@@ -839,6 +1173,195 @@ where
     let value = downcast_value::<In>(input)?;
     let output = (self.func)(value);
     Ok(vec![Box::new(output)])
+  }
+}
+
+impl<In, F> FlowLogic for FilterLogic<In, F>
+where
+  In: Send + Sync + 'static,
+  F: FnMut(&In) -> bool + Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let value = downcast_value::<In>(input)?;
+    if (self.predicate)(&value) {
+      return Ok(vec![Box::new(value) as DynValue]);
+    }
+    Ok(Vec::new())
+  }
+}
+
+impl<In> FlowLogic for DropLogic<In>
+where
+  In: Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let value = downcast_value::<In>(input)?;
+    if self.remaining > 0 {
+      self.remaining = self.remaining.saturating_sub(1);
+      return Ok(Vec::new());
+    }
+    Ok(vec![Box::new(value) as DynValue])
+  }
+}
+
+impl<In> FlowLogic for TakeLogic<In>
+where
+  In: Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let value = downcast_value::<In>(input)?;
+    if self.remaining == 0 {
+      return Ok(Vec::new());
+    }
+    self.remaining = self.remaining.saturating_sub(1);
+    Ok(vec![Box::new(value) as DynValue])
+  }
+}
+
+impl<In, F> FlowLogic for DropWhileLogic<In, F>
+where
+  In: Send + Sync + 'static,
+  F: FnMut(&In) -> bool + Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let value = downcast_value::<In>(input)?;
+    if self.dropping && (self.predicate)(&value) {
+      return Ok(Vec::new());
+    }
+    self.dropping = false;
+    Ok(vec![Box::new(value) as DynValue])
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.dropping = true;
+    Ok(())
+  }
+}
+
+impl<In, F> FlowLogic for TakeWhileLogic<In, F>
+where
+  In: Send + Sync + 'static,
+  F: FnMut(&In) -> bool + Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let value = downcast_value::<In>(input)?;
+    if !self.taking {
+      return Ok(Vec::new());
+    }
+    if !(self.predicate)(&value) {
+      self.taking = false;
+      return Ok(Vec::new());
+    }
+    Ok(vec![Box::new(value) as DynValue])
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.taking = true;
+    Ok(())
+  }
+}
+
+impl<In> FlowLogic for GroupedLogic<In>
+where
+  In: Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    if self.size == 0 {
+      return Err(StreamError::InvalidConnection);
+    }
+    let value = downcast_value::<In>(input)?;
+    self.current.push(value);
+    if self.current.len() < self.size {
+      return Ok(Vec::new());
+    }
+    let output = core::mem::take(&mut self.current);
+    Ok(vec![Box::new(output) as DynValue])
+  }
+
+  fn on_source_done(&mut self) -> Result<(), StreamError> {
+    self.source_done = true;
+    Ok(())
+  }
+
+  fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
+    if !self.source_done || self.current.is_empty() {
+      return Ok(Vec::new());
+    }
+    let output = core::mem::take(&mut self.current);
+    Ok(vec![Box::new(output) as DynValue])
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.current.clear();
+    self.source_done = false;
+    Ok(())
+  }
+}
+
+impl<In> FlowLogic for SlidingLogic<In>
+where
+  In: Clone + Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    if self.size == 0 {
+      return Err(StreamError::InvalidConnection);
+    }
+    let value = downcast_value::<In>(input)?;
+    self.window.push_back(value);
+    if self.window.len() < self.size {
+      return Ok(Vec::new());
+    }
+    if self.window.len() > self.size {
+      let _ = self.window.pop_front();
+    }
+    let output = self.window.iter().cloned().collect::<Vec<In>>();
+    let _ = self.window.pop_front();
+    Ok(vec![Box::new(output) as DynValue])
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.window.clear();
+    Ok(())
+  }
+}
+
+impl<In, Acc, F> FlowLogic for ScanLogic<In, Acc, F>
+where
+  In: Send + Sync + 'static,
+  Acc: Clone + Send + Sync + 'static,
+  F: FnMut(Acc, In) -> Acc + Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let value = downcast_value::<In>(input)?;
+    let mut outputs = Vec::new();
+    if !self.initial_emitted {
+      outputs.push(Box::new(self.current.clone()) as DynValue);
+      self.initial_emitted = true;
+    }
+    let next = (self.func)(self.current.clone(), value);
+    self.current = next.clone();
+    outputs.push(Box::new(next) as DynValue);
+    Ok(outputs)
+  }
+
+  fn on_source_done(&mut self) -> Result<(), StreamError> {
+    self.source_done = true;
+    Ok(())
+  }
+
+  fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
+    if !self.source_done || self.initial_emitted {
+      return Ok(Vec::new());
+    }
+    self.initial_emitted = true;
+    Ok(vec![Box::new(self.current.clone()) as DynValue])
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.current = self.initial.clone();
+    self.initial_emitted = false;
+    self.source_done = false;
+    Ok(())
   }
 }
 

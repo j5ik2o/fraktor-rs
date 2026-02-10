@@ -5,6 +5,22 @@ pub enum StageKind {
   SourceSingle,
   /// Flow stage that maps elements.
   FlowMap,
+  /// Flow stage that filters elements by predicate.
+  FlowFilter,
+  /// Flow stage that drops the first `n` elements.
+  FlowDrop,
+  /// Flow stage that passes only the first `n` elements.
+  FlowTake,
+  /// Flow stage that drops elements while predicate matches.
+  FlowDropWhile,
+  /// Flow stage that passes elements while predicate matches.
+  FlowTakeWhile,
+  /// Flow stage that groups elements into fixed-size chunks.
+  FlowGrouped,
+  /// Flow stage that emits a sliding window over elements.
+  FlowSliding,
+  /// Flow stage that emits running accumulation.
+  FlowScan,
   /// Flow stage that concatenates sub-streams.
   FlowFlatMapConcat,
   /// Flow stage that merges sub-streams up to a configured breadth.

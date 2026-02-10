@@ -9,9 +9,11 @@ use super::{
   StreamGraph, StreamNotUsed, StreamShape, StreamStage, SupervisionStrategy,
   flow::{
     async_boundary_definition, balance_definition, broadcast_definition, buffer_definition, concat_definition,
-    concat_substreams_definition, flat_map_concat_definition, flat_map_merge_definition, group_by_definition,
-    map_definition, merge_definition, merge_substreams_definition, merge_substreams_with_parallelism_definition,
-    recover_definition, recover_with_retries_definition, split_after_definition, split_when_definition, zip_definition,
+    concat_substreams_definition, drop_definition, drop_while_definition, filter_definition,
+    flat_map_concat_definition, flat_map_merge_definition, group_by_definition, grouped_definition, map_definition,
+    merge_definition, merge_substreams_definition, merge_substreams_with_parallelism_definition, recover_definition,
+    recover_with_retries_definition, scan_definition, sliding_definition, split_after_definition,
+    split_when_definition, take_definition, take_while_definition, zip_definition,
   },
   graph_stage::GraphStage,
   graph_stage_logic::GraphStageLogic,
@@ -145,6 +147,129 @@ where
     T: Send + Sync + 'static,
     F: FnMut(Out) -> T + Send + Sync + 'static, {
     let definition = map_definition::<Out, T, F>(func);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds a filter stage to this source.
+  #[must_use]
+  pub fn filter<F>(mut self, predicate: F) -> Source<Out, Mat>
+  where
+    F: FnMut(&Out) -> bool + Send + Sync + 'static, {
+    let definition = filter_definition::<Out, F>(predicate);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds a drop stage that skips the first `count` elements.
+  #[must_use]
+  pub fn drop(mut self, count: usize) -> Source<Out, Mat> {
+    let definition = drop_definition::<Out>(count);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds a take stage that emits up to `count` elements.
+  #[must_use]
+  pub fn take(mut self, count: usize) -> Source<Out, Mat> {
+    let definition = take_definition::<Out>(count);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds a drop-while stage to this source.
+  #[must_use]
+  pub fn drop_while<F>(mut self, predicate: F) -> Source<Out, Mat>
+  where
+    F: FnMut(&Out) -> bool + Send + Sync + 'static, {
+    let definition = drop_while_definition::<Out, F>(predicate);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds a take-while stage to this source.
+  #[must_use]
+  pub fn take_while<F>(mut self, predicate: F) -> Source<Out, Mat>
+  where
+    F: FnMut(&Out) -> bool + Send + Sync + 'static, {
+    let definition = take_while_definition::<Out, F>(predicate);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds a grouped stage that emits vectors of size `size`.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `size` is zero.
+  pub fn grouped(mut self, size: usize) -> Result<Source<Vec<Out>, Mat>, StreamDslError> {
+    let size = validate_positive_argument("size", size)?;
+    let definition = grouped_definition::<Out>(size);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Ok(Source { graph: self.graph, mat: self.mat, _pd: PhantomData })
+  }
+
+  /// Adds a sliding stage that emits windows with size `size`.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `size` is zero.
+  pub fn sliding(mut self, size: usize) -> Result<Source<Vec<Out>, Mat>, StreamDslError>
+  where
+    Out: Clone, {
+    let size = validate_positive_argument("size", size)?;
+    let definition = sliding_definition::<Out>(size);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Ok(Source { graph: self.graph, mat: self.mat, _pd: PhantomData })
+  }
+
+  /// Adds a scan stage that emits running accumulation from `initial`.
+  #[must_use]
+  pub fn scan<Acc, F>(mut self, initial: Acc, func: F) -> Source<Acc, Mat>
+  where
+    Acc: Clone + Send + Sync + 'static,
+    F: FnMut(Acc, Out) -> Acc + Send + Sync + 'static, {
+    let definition = scan_definition::<Out, Acc, F>(initial, func);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));

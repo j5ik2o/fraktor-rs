@@ -1,9 +1,29 @@
+use alloc::{boxed::Box, collections::VecDeque};
+
 use fraktor_utils_rs::core::collections::queue::OverflowPolicy;
 
 use crate::core::{
-  DefaultOperatorCatalog, Flow, FlowLogic, OperatorCatalog, OperatorKey, RestartSettings, Source, StreamDslError,
-  StreamError, StreamNotUsed,
+  DefaultOperatorCatalog, DynValue, Flow, FlowLogic, OperatorCatalog, OperatorKey, RestartSettings, Source,
+  SourceLogic, StageKind, StreamDslError, StreamError, StreamNotUsed,
 };
+
+struct SequenceSourceLogic {
+  values: VecDeque<u32>,
+}
+
+impl SequenceSourceLogic {
+  fn new(values: &[u32]) -> Self {
+    let mut queue = VecDeque::with_capacity(values.len());
+    queue.extend(values.iter().copied());
+    Self { values: queue }
+  }
+}
+
+impl SourceLogic for SequenceSourceLogic {
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    Ok(self.values.pop_front().map(|value| Box::new(value) as DynValue))
+  }
+}
 
 #[test]
 fn broadcast_duplicates_each_element() {
@@ -112,6 +132,103 @@ fn buffer_rejects_zero_capacity() {
 fn async_boundary_keeps_single_path_behavior() {
   let values = Source::single(7_u32).via(Flow::new().async_boundary()).collect_values().expect("collect_values");
   assert_eq!(values, vec![7_u32]);
+}
+
+#[test]
+fn filter_keeps_matching_elements() {
+  let values =
+    Source::single(7_u32).via(Flow::new().filter(|value| *value % 2 == 1)).collect_values().expect("collect_values");
+  assert_eq!(values, vec![7_u32]);
+}
+
+#[test]
+fn filter_discards_non_matching_elements() {
+  let values =
+    Source::single(8_u32).via(Flow::new().filter(|value| *value % 2 == 1)).collect_values().expect("collect_values");
+  assert_eq!(values, Vec::<u32>::new());
+}
+
+#[test]
+fn drop_skips_first_elements() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4]))
+    .via(Flow::new().drop(2))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![3_u32, 4_u32]);
+}
+
+#[test]
+fn take_limits_emitted_elements() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4]))
+    .via(Flow::new().take(2))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2_u32]);
+}
+
+#[test]
+fn drop_while_skips_matching_prefix() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4]))
+    .via(Flow::new().drop_while(|value| *value < 3))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![3_u32, 4_u32]);
+}
+
+#[test]
+fn take_while_keeps_matching_prefix() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4]))
+    .via(Flow::new().take_while(|value| *value < 3))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2_u32]);
+}
+
+#[test]
+fn grouped_emits_fixed_size_chunks() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4, 5]))
+    .via(Flow::new().grouped(2).expect("grouped"))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![vec![1_u32, 2_u32], vec![3_u32, 4_u32], vec![5_u32]]);
+}
+
+#[test]
+fn grouped_rejects_zero_size() {
+  let flow = Flow::<u32, u32, StreamNotUsed>::new();
+  let result = flow.grouped(0);
+  assert!(matches!(
+    result,
+    Err(StreamDslError::InvalidArgument { name: "size", value: 0, reason: "must be greater than zero" })
+  ));
+}
+
+#[test]
+fn sliding_emits_overlapping_windows() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4]))
+    .via(Flow::new().sliding(3).expect("sliding"))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![vec![1_u32, 2_u32, 3_u32], vec![2_u32, 3_u32, 4_u32]]);
+}
+
+#[test]
+fn sliding_rejects_zero_size() {
+  let flow = Flow::<u32, u32, StreamNotUsed>::new();
+  let result = flow.sliding(0);
+  assert!(matches!(
+    result,
+    Err(StreamDslError::InvalidArgument { name: "size", value: 0, reason: "must be greater than zero" })
+  ));
+}
+
+#[test]
+fn scan_emits_initial_and_running_accumulation() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .via(Flow::new().scan(0_u32, |acc, value| acc + value))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![0_u32, 1_u32, 3_u32, 6_u32]);
 }
 
 #[test]
@@ -280,6 +397,14 @@ fn operator_catalog_lookup_returns_contract_for_supported_operator() {
   let contract = catalog.lookup(OperatorKey::GROUP_BY).expect("lookup");
   assert_eq!(contract.key, OperatorKey::GROUP_BY);
   assert_eq!(contract.requirement_ids, &["1.1", "1.3", "2.1", "2.2"]);
+}
+
+#[test]
+fn operator_catalog_lookup_returns_filter_contract() {
+  let catalog = DefaultOperatorCatalog::new();
+  let contract = catalog.lookup(OperatorKey::FILTER).expect("lookup");
+  assert_eq!(contract.key, OperatorKey::FILTER);
+  assert_eq!(contract.requirement_ids, &["1.1", "1.3"]);
 }
 
 #[test]

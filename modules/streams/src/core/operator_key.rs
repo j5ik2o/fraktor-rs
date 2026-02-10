@@ -19,10 +19,18 @@ impl OperatorKey {
   pub const CONCAT: Self = Self::new("concat");
   /// Key for `concat_substreams`.
   pub const CONCAT_SUBSTREAMS: Self = Self::new("concat_substreams");
+  /// Key for `drop`.
+  pub const DROP: Self = Self::new("drop");
+  /// Key for `drop_while`.
+  pub const DROP_WHILE: Self = Self::new("drop_while");
+  /// Key for `filter`.
+  pub const FILTER: Self = Self::new("filter");
   /// Key for `flat_map_concat`.
   pub const FLAT_MAP_CONCAT: Self = Self::new("flat_map_concat");
   /// Key for `flat_map_merge`.
   pub const FLAT_MAP_MERGE: Self = Self::new("flat_map_merge");
+  /// Key for `grouped`.
+  pub const GROUPED: Self = Self::new("grouped");
   /// Key for `group_by`.
   pub const GROUP_BY: Self = Self::new("group_by");
   /// Key for `merge`.
@@ -41,14 +49,22 @@ impl OperatorKey {
   pub const RECOVER_WITH_RETRIES: Self = Self::new("recover_with_retries");
   /// Key for `restart`.
   pub const RESTART: Self = Self::new("restart");
+  /// Key for `scan`.
+  pub const SCAN: Self = Self::new("scan");
   /// Key for `shared_kill_switch`.
   pub const SHARED_KILL_SWITCH: Self = Self::new("shared_kill_switch");
+  /// Key for `sliding`.
+  pub const SLIDING: Self = Self::new("sliding");
   /// Key for `split_after`.
   pub const SPLIT_AFTER: Self = Self::new("split_after");
   /// Key for `split_when`.
   pub const SPLIT_WHEN: Self = Self::new("split_when");
   /// Key for `supervision`.
   pub const SUPERVISION: Self = Self::new("supervision");
+  /// Key for `take`.
+  pub const TAKE: Self = Self::new("take");
+  /// Key for `take_while`.
+  pub const TAKE_WHILE: Self = Self::new("take_while");
   /// Key for `unique_kill_switch`.
   pub const UNIQUE_KILL_SWITCH: Self = Self::new("unique_kill_switch");
   /// Key for `zip`.

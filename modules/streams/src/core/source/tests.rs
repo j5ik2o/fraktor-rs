@@ -365,6 +365,98 @@ fn source_async_boundary_keeps_single_path_behavior() {
 }
 
 #[test]
+fn source_filter_keeps_matching_elements() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4]))
+    .filter(|value| value % 2 == 0)
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![2_u32, 4_u32]);
+}
+
+#[test]
+fn source_drop_skips_first_elements() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4]))
+    .drop(2)
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![3_u32, 4_u32]);
+}
+
+#[test]
+fn source_take_limits_elements() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4]))
+    .take(2)
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2_u32]);
+}
+
+#[test]
+fn source_drop_while_skips_matching_prefix() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4]))
+    .drop_while(|value| *value < 3)
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![3_u32, 4_u32]);
+}
+
+#[test]
+fn source_take_while_keeps_matching_prefix() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4]))
+    .take_while(|value| *value < 3)
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2_u32]);
+}
+
+#[test]
+fn source_grouped_emits_fixed_size_chunks() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4, 5]))
+    .grouped(2)
+    .expect("grouped")
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![vec![1_u32, 2_u32], vec![3_u32, 4_u32], vec![5_u32]]);
+}
+
+#[test]
+fn source_grouped_rejects_zero_size() {
+  let result = Source::single(1_u32).grouped(0);
+  assert!(matches!(
+    result,
+    Err(StreamDslError::InvalidArgument { name: "size", value: 0, reason: "must be greater than zero" })
+  ));
+}
+
+#[test]
+fn source_sliding_emits_overlapping_windows() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4]))
+    .sliding(3)
+    .expect("sliding")
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![vec![1_u32, 2_u32, 3_u32], vec![2_u32, 3_u32, 4_u32]]);
+}
+
+#[test]
+fn source_sliding_rejects_zero_size() {
+  let result = Source::single(1_u32).sliding(0);
+  assert!(matches!(
+    result,
+    Err(StreamDslError::InvalidArgument { name: "size", value: 0, reason: "must be greater than zero" })
+  ));
+}
+
+#[test]
+fn source_scan_emits_initial_and_running_accumulation() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .scan(0_u32, |acc, value| acc + value)
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![0_u32, 1_u32, 3_u32, 6_u32]);
+}
+
+#[test]
 fn source_group_by_keeps_single_path_behavior() {
   let values = Source::single(5_u32)
     .group_by(4, |value: &u32| value % 2)
