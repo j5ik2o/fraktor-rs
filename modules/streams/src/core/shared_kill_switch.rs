@@ -1,6 +1,9 @@
 use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
 
-use super::StreamError;
+use super::{
+  StreamError,
+  unique_kill_switch::{KillSwitchState, KillSwitchStateHandle},
+};
 
 #[cfg(test)]
 mod tests;
@@ -8,7 +11,7 @@ mod tests;
 /// Kill switch that can be shared across multiple stream instances.
 #[derive(Clone)]
 pub struct SharedKillSwitch {
-  state: ArcShared<SpinSyncMutex<KillSwitchState>>,
+  state: KillSwitchStateHandle,
 }
 
 impl SharedKillSwitch {
@@ -16,6 +19,10 @@ impl SharedKillSwitch {
   #[must_use]
   pub fn new() -> Self {
     Self { state: ArcShared::new(SpinSyncMutex::new(KillSwitchState::Running)) }
+  }
+
+  pub(super) const fn from_state(state: KillSwitchStateHandle) -> Self {
+    Self { state }
   }
 
   /// Requests graceful shutdown.
@@ -54,11 +61,4 @@ impl Default for SharedKillSwitch {
   fn default() -> Self {
     Self::new()
   }
-}
-
-#[derive(Clone)]
-enum KillSwitchState {
-  Running,
-  Shutdown,
-  Aborted(StreamError),
 }

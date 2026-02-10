@@ -219,6 +219,8 @@ struct SourceDefinition {
   outlet:      PortId,
   output_type: TypeId,
   mat_combine: MatCombine,
+  supervision: SupervisionStrategy,
+  restart:     Option<RestartBackoff>,
   logic:       Box<dyn SourceLogic>,
 }
 
@@ -229,6 +231,8 @@ struct FlowDefinition {
   input_type:  TypeId,
   output_type: TypeId,
   mat_combine: MatCombine,
+  supervision: SupervisionStrategy,
+  restart:     Option<RestartBackoff>,
   logic:       Box<dyn FlowLogic>,
 }
 
@@ -237,7 +241,57 @@ struct SinkDefinition {
   inlet:       PortId,
   input_type:  TypeId,
   mat_combine: MatCombine,
+  supervision: SupervisionStrategy,
+  restart:     Option<RestartBackoff>,
   logic:       Box<dyn SinkLogic>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SupervisionStrategy {
+  Stop,
+  Resume,
+  Restart,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct RestartBackoff {
+  min_backoff_ticks: u32,
+  max_restarts:      usize,
+  restart_count:     usize,
+  cooldown_ticks:    u32,
+  pending:           bool,
+}
+
+impl RestartBackoff {
+  const fn new(min_backoff_ticks: u32, max_restarts: usize) -> Self {
+    Self { min_backoff_ticks, max_restarts, restart_count: 0, cooldown_ticks: 0, pending: false }
+  }
+
+  const fn is_waiting(&self) -> bool {
+    self.pending
+  }
+
+  const fn schedule(&mut self) -> bool {
+    if self.restart_count >= self.max_restarts {
+      return false;
+    }
+    self.restart_count = self.restart_count.saturating_add(1);
+    self.cooldown_ticks = self.min_backoff_ticks;
+    self.pending = true;
+    true
+  }
+
+  const fn tick(&mut self) -> bool {
+    if !self.pending {
+      return false;
+    }
+    if self.cooldown_ticks > 0 {
+      self.cooldown_ticks = self.cooldown_ticks.saturating_sub(1);
+      return false;
+    }
+    self.pending = false;
+    true
+  }
 }
 
 /// Materialization-ready immutable blueprint.
@@ -257,6 +311,10 @@ impl StreamPlan {
 
 trait SourceLogic: Send {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError>;
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    Ok(())
+  }
 }
 
 trait FlowLogic: Send {
@@ -282,6 +340,10 @@ trait FlowLogic: Send {
   fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
     Ok(Vec::new())
   }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    Ok(())
+  }
 }
 
 enum SinkDecision {
@@ -294,6 +356,10 @@ trait SinkLogic: Send {
   fn on_push(&mut self, input: DynValue, demand: &mut DemandTracker) -> Result<SinkDecision, StreamError>;
   fn on_complete(&mut self) -> Result<(), StreamError>;
   fn on_error(&mut self, error: StreamError);
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    Ok(())
+  }
 }
 
 fn downcast_value<In>(value: DynValue) -> Result<In, StreamError>

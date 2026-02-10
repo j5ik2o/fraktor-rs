@@ -4,9 +4,9 @@ use core::{any::TypeId, marker::PhantomData};
 use fraktor_utils_rs::core::collections::queue::OverflowPolicy;
 
 use super::{
-  DynValue, FlowDefinition, Inlet, MatCombine, MatCombineRule, Materialized, Materializer, Outlet, RunnableGraph,
-  SourceDefinition, SourceLogic, StageDefinition, StageKind, StreamError, StreamGraph, StreamNotUsed, StreamShape,
-  StreamStage, downcast_value,
+  DynValue, FlowDefinition, Inlet, MatCombine, MatCombineRule, Materialized, Materializer, Outlet, RestartBackoff,
+  RunnableGraph, SourceDefinition, SourceLogic, StageDefinition, StageKind, StreamError, StreamGraph, StreamNotUsed,
+  StreamShape, StreamStage, SupervisionStrategy, downcast_value,
   flow::{
     async_boundary_definition, balance_definition, broadcast_definition, buffer_definition, concat_definition,
     concat_substreams_definition, flat_map_concat_definition, flat_map_merge_definition, group_by_definition,
@@ -44,7 +44,27 @@ where
       outlet:      outlet.id(),
       output_type: TypeId::of::<Out>(),
       mat_combine: MatCombine::KeepRight,
+      supervision: SupervisionStrategy::Stop,
+      restart:     None,
       logic:       Box::new(logic),
+    };
+    graph.push_stage(StageDefinition::Source(definition));
+    Self { graph, mat: StreamNotUsed::new(), _pd: PhantomData }
+  }
+
+  pub(super) fn from_logic<L>(kind: StageKind, logic: L) -> Self
+  where
+    L: SourceLogic + 'static, {
+    let mut graph = StreamGraph::new();
+    let outlet: Outlet<Out> = Outlet::new();
+    let definition = SourceDefinition {
+      kind,
+      outlet: outlet.id(),
+      output_type: TypeId::of::<Out>(),
+      mat_combine: MatCombine::KeepRight,
+      supervision: SupervisionStrategy::Stop,
+      restart: None,
+      logic: Box::new(logic),
     };
     graph.push_stage(StageDefinition::Source(definition));
     Self { graph, mat: StreamNotUsed::new(), _pd: PhantomData }
@@ -205,25 +225,29 @@ where
 
   /// Enables restart semantics with backoff for this source.
   #[must_use]
-  pub const fn restart_source_with_backoff(self, _min_backoff_ticks: u32, _max_restarts: usize) -> Source<Out, Mat> {
+  pub fn restart_source_with_backoff(mut self, min_backoff_ticks: u32, max_restarts: usize) -> Source<Out, Mat> {
+    self.graph.set_source_restart(Some(RestartBackoff::new(min_backoff_ticks, max_restarts)));
     self
   }
 
   /// Applies stop supervision semantics to this source.
   #[must_use]
-  pub const fn supervision_stop(self) -> Source<Out, Mat> {
+  pub fn supervision_stop(mut self) -> Source<Out, Mat> {
+    self.graph.set_source_supervision(SupervisionStrategy::Stop);
     self
   }
 
   /// Applies resume supervision semantics to this source.
   #[must_use]
-  pub const fn supervision_resume(self) -> Source<Out, Mat> {
+  pub fn supervision_resume(mut self) -> Source<Out, Mat> {
+    self.graph.set_source_supervision(SupervisionStrategy::Resume);
     self
   }
 
   /// Applies restart supervision semantics to this source.
   #[must_use]
-  pub const fn supervision_restart(self) -> Source<Out, Mat> {
+  pub fn supervision_restart(mut self) -> Source<Out, Mat> {
+    self.graph.set_source_supervision(SupervisionStrategy::Restart);
     self
   }
 

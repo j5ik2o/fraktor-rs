@@ -4,9 +4,9 @@ use core::{any::TypeId, marker::PhantomData};
 use fraktor_utils_rs::core::collections::queue::OverflowPolicy;
 
 use super::{
-  DynValue, FlowDefinition, FlowLogic, Inlet, MatCombine, MatCombineRule, Outlet, Source, StageDefinition, StageKind,
-  StreamError, StreamGraph, StreamNotUsed, StreamShape, StreamStage, downcast_value, graph_stage::GraphStage,
-  graph_stage_logic::GraphStageLogic, sink::Sink, stage_context::StageContext,
+  DynValue, FlowDefinition, FlowLogic, Inlet, MatCombine, MatCombineRule, Outlet, RestartBackoff, Source,
+  StageDefinition, StageKind, StreamError, StreamGraph, StreamNotUsed, StreamShape, StreamStage, SupervisionStrategy,
+  downcast_value, graph_stage::GraphStage, graph_stage_logic::GraphStageLogic, sink::Sink, stage_context::StageContext,
 };
 
 #[cfg(test)]
@@ -165,25 +165,29 @@ where
 
   /// Enables restart semantics with backoff for this flow.
   #[must_use]
-  pub const fn restart_flow_with_backoff(self, _min_backoff_ticks: u32, _max_restarts: usize) -> Flow<In, Out, Mat> {
+  pub fn restart_flow_with_backoff(mut self, min_backoff_ticks: u32, max_restarts: usize) -> Flow<In, Out, Mat> {
+    self.graph.set_flow_restart(Some(RestartBackoff::new(min_backoff_ticks, max_restarts)));
     self
   }
 
   /// Applies stop supervision semantics to this flow.
   #[must_use]
-  pub const fn supervision_stop(self) -> Flow<In, Out, Mat> {
+  pub fn supervision_stop(mut self) -> Flow<In, Out, Mat> {
+    self.graph.set_flow_supervision(SupervisionStrategy::Stop);
     self
   }
 
   /// Applies resume supervision semantics to this flow.
   #[must_use]
-  pub const fn supervision_resume(self) -> Flow<In, Out, Mat> {
+  pub fn supervision_resume(mut self) -> Flow<In, Out, Mat> {
+    self.graph.set_flow_supervision(SupervisionStrategy::Resume);
     self
   }
 
   /// Applies restart supervision semantics to this flow.
   #[must_use]
-  pub const fn supervision_restart(self) -> Flow<In, Out, Mat> {
+  pub fn supervision_restart(mut self) -> Flow<In, Out, Mat> {
+    self.graph.set_flow_supervision(SupervisionStrategy::Restart);
     self
   }
 
@@ -441,6 +445,8 @@ where
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<Out>(),
     mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
     logic:       Box::new(logic),
   }
 }
@@ -461,6 +467,8 @@ where
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<Out>(),
     mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
     logic:       Box::new(logic),
   }
 }
@@ -487,6 +495,8 @@ where
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<Out>(),
     mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
     logic:       Box::new(logic),
   }
 }
@@ -504,6 +514,8 @@ where
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
     mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
     logic:       Box::new(logic),
   }
 }
@@ -521,6 +533,8 @@ where
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
     mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
     logic:       Box::new(logic),
   }
 }
@@ -540,6 +554,8 @@ where
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<(Key, In)>(),
     mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
     logic:       Box::new(logic),
   }
 }
@@ -557,6 +573,8 @@ where
     input_type:  TypeId::of::<Result<In, StreamError>>(),
     output_type: TypeId::of::<In>(),
     mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
     logic:       Box::new(logic),
   }
 }
@@ -566,7 +584,7 @@ where
   In: Clone + Send + Sync + 'static, {
   let inlet: Inlet<Result<In, StreamError>> = Inlet::new();
   let outlet: Outlet<In> = Outlet::new();
-  let logic = RecoverWithRetriesLogic::<In> { retries_left: max_retries, fallback };
+  let logic = RecoverWithRetriesLogic::<In> { max_retries, retries_left: max_retries, fallback };
   FlowDefinition {
     kind:        StageKind::FlowRecoverWithRetries,
     inlet:       inlet.id(),
@@ -574,6 +592,8 @@ where
     input_type:  TypeId::of::<Result<In, StreamError>>(),
     output_type: TypeId::of::<In>(),
     mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
     logic:       Box::new(logic),
   }
 }
@@ -592,6 +612,8 @@ where
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<Vec<In>>(),
     mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
     logic:       Box::new(logic),
   }
 }
@@ -610,6 +632,8 @@ where
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<Vec<In>>(),
     mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
     logic:       Box::new(logic),
   }
 }
@@ -639,6 +663,8 @@ where
     input_type: TypeId::of::<Vec<In>>(),
     output_type: TypeId::of::<In>(),
     mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart: None,
     logic: Box::new(logic),
   }
 }
@@ -656,6 +682,8 @@ where
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
     mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
     logic:       Box::new(logic),
   }
 }
@@ -673,6 +701,8 @@ where
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
     mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
     logic:       Box::new(logic),
   }
 }
@@ -690,6 +720,8 @@ where
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
     mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
     logic:       Box::new(logic),
   }
 }
@@ -707,6 +739,8 @@ where
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<Vec<In>>(),
     mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
     logic:       Box::new(logic),
   }
 }
@@ -730,6 +764,8 @@ where
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
     mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
     logic:       Box::new(logic),
   }
 }
@@ -804,6 +840,7 @@ struct RecoverLogic<In> {
 }
 
 struct RecoverWithRetriesLogic<In> {
+  max_retries:  usize,
   retries_left: usize,
   fallback:     In,
 }
@@ -911,6 +948,12 @@ where
     }
     Ok(Vec::new())
   }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.active_streams.clear();
+    self.waiting_streams.clear();
+    Ok(())
+  }
 }
 
 impl<In, Out, Mat2, F> GraphStageLogic<In, Out, StreamNotUsed> for FlatMapConcatLogic<In, Out, Mat2, F>
@@ -1011,6 +1054,12 @@ where
     };
     Ok(vec![Box::new(value) as DynValue])
   }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.pending.clear();
+    self.source_done = false;
+    Ok(())
+  }
 }
 
 impl<In> FlowLogic for AsyncBoundaryLogic<In>
@@ -1068,6 +1117,11 @@ where
       },
     }
   }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.retries_left = self.max_retries;
+    Ok(())
+  }
 }
 
 impl<In, F> FlowLogic for SplitWhenLogic<In, F>
@@ -1099,6 +1153,12 @@ where
     let output = core::mem::take(&mut self.current);
     Ok(vec![Box::new(output) as DynValue])
   }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.current.clear();
+    self.source_done = false;
+    Ok(())
+  }
 }
 
 impl<In, F> FlowLogic for SplitAfterLogic<In, F>
@@ -1128,6 +1188,12 @@ where
     }
     let output = core::mem::take(&mut self.current);
     Ok(vec![Box::new(output) as DynValue])
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.current.clear();
+    self.source_done = false;
+    Ok(())
   }
 }
 

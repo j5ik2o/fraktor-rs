@@ -1,6 +1,9 @@
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::SharedAccess};
 
-use super::{DriveOutcome, StreamError, StreamHandle, StreamHandleId, StreamState, stream_shared::StreamSharedGeneric};
+use super::{
+  DriveOutcome, SharedKillSwitch, StreamError, StreamHandle, StreamHandleId, StreamState, UniqueKillSwitch,
+  stream_shared::StreamSharedGeneric,
+};
 
 /// Handle owning the lifecycle of a stream execution.
 pub struct StreamHandleGeneric<TB: RuntimeToolbox + 'static> {
@@ -44,6 +47,20 @@ impl<TB: RuntimeToolbox + 'static> StreamHandleGeneric<TB> {
   #[must_use]
   pub fn drive(&self) -> DriveOutcome {
     self.shared.with_write(|stream| stream.drive())
+  }
+
+  /// Returns a unique kill switch bound to this stream.
+  #[must_use]
+  pub fn unique_kill_switch(&self) -> UniqueKillSwitch {
+    let state = self.shared.with_read(|stream| stream.kill_switch_state());
+    UniqueKillSwitch::from_state(state)
+  }
+
+  /// Returns a shared kill switch bound to this stream.
+  #[must_use]
+  pub fn shared_kill_switch(&self) -> SharedKillSwitch {
+    let state = self.shared.with_read(|stream| stream.kill_switch_state());
+    SharedKillSwitch::from_state(state)
   }
 }
 

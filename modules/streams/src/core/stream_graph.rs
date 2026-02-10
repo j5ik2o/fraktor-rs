@@ -4,8 +4,8 @@ use alloc::vec::Vec;
 mod tests;
 
 use super::{
-  FlowDefinition, Inlet, MatCombine, Outlet, PortId, SourceDefinition, StageDefinition, StageKind, StreamError,
-  StreamPlan,
+  FlowDefinition, Inlet, MatCombine, Outlet, PortId, RestartBackoff, SourceDefinition, StageDefinition, StageKind,
+  StreamError, StreamPlan, SupervisionStrategy,
 };
 
 /// Immutable blueprint that stores stage connectivity.
@@ -48,6 +48,54 @@ impl StreamGraph {
     }
     self.edges.push(GraphEdge { from, to, mat: combine });
     Ok(())
+  }
+
+  pub(super) fn set_source_supervision(&mut self, supervision: SupervisionStrategy) {
+    for node in &mut self.nodes {
+      if let StageDefinition::Source(definition) = &mut node.stage {
+        definition.supervision = supervision;
+      }
+    }
+  }
+
+  pub(super) fn set_source_restart(&mut self, restart: Option<RestartBackoff>) {
+    for node in &mut self.nodes {
+      if let StageDefinition::Source(definition) = &mut node.stage {
+        definition.restart = restart;
+      }
+    }
+  }
+
+  pub(super) fn set_flow_supervision(&mut self, supervision: SupervisionStrategy) {
+    for node in &mut self.nodes {
+      if let StageDefinition::Flow(definition) = &mut node.stage {
+        definition.supervision = supervision;
+      }
+    }
+  }
+
+  pub(super) fn set_flow_restart(&mut self, restart: Option<RestartBackoff>) {
+    for node in &mut self.nodes {
+      if let StageDefinition::Flow(definition) = &mut node.stage {
+        definition.restart = restart;
+      }
+    }
+  }
+
+  pub(super) fn set_sink_supervision(&mut self, supervision: SupervisionStrategy) {
+    for node in &mut self.nodes {
+      if let StageDefinition::Sink(definition) = &mut node.stage {
+        definition.supervision = supervision;
+      }
+    }
+  }
+
+  pub(super) fn set_sink_restart(&mut self, restart: Option<RestartBackoff>) {
+    for node in &mut self.nodes {
+      if let StageDefinition::Sink(definition) = &mut node.stage {
+        definition.restart = restart;
+      }
+    }
   }
 
   pub(super) fn push_stage(&mut self, stage: StageDefinition) {

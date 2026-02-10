@@ -1,9 +1,11 @@
+use alloc::boxed::Box;
+
 use fraktor_utils_rs::core::{collections::queue::OverflowPolicy, runtime_toolbox::NoStdToolbox};
 
 use super::super::{stream::Stream, stream_shared::StreamSharedGeneric};
 use crate::core::{
-  Materialized, Materializer, Sink, Source, StreamBufferConfig, StreamCompletion, StreamDone, StreamError,
-  StreamHandleGeneric, StreamHandleId,
+  DynValue, KeepRight, Materialized, Materializer, Sink, Source, SourceLogic, StageKind, StreamBufferConfig,
+  StreamCompletion, StreamDone, StreamError, StreamHandleGeneric, StreamHandleId, StreamState,
 };
 
 struct RecordingMaterializer {
@@ -47,6 +49,23 @@ impl Materializer for RecordingMaterializer {
   }
 }
 
+struct EndlessSourceLogic {
+  next: u32,
+}
+
+impl EndlessSourceLogic {
+  const fn new() -> Self {
+    Self { next: 0 }
+  }
+}
+
+impl SourceLogic for EndlessSourceLogic {
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    self.next = self.next.saturating_add(1);
+    Ok(Some(Box::new(self.next)))
+  }
+}
+
 #[test]
 fn run_with_delegates_to_materializer_and_uses_sink_materialized_value() {
   let (graph, _completion) = Sink::<u32, StreamCompletion<StreamDone>>::ignore().into_parts();
@@ -57,6 +76,39 @@ fn run_with_delegates_to_materializer_and_uses_sink_materialized_value() {
   let materialized = source.run_with(sink, &mut materializer).expect("run_with");
   assert_eq!(materializer.calls, 1);
   assert_eq!(*materialized.materialized(), marker);
+}
+
+#[test]
+fn materialized_unique_kill_switch_abort_fails_stream() {
+  let source = Source::<u32, _>::from_logic(StageKind::Custom, EndlessSourceLogic::new());
+  let graph = source.to_mat(Sink::ignore(), KeepRight);
+  let mut materializer = RecordingMaterializer::default();
+  let materialized = graph.run(&mut materializer).expect("materialize");
+  let kill_switch = materialized.unique_kill_switch();
+
+  kill_switch.abort(StreamError::Failed);
+  let _ = materialized.handle().drive();
+
+  assert_eq!(materialized.handle().state(), StreamState::Failed);
+}
+
+#[test]
+fn materialized_shared_kill_switch_shutdown_completes_stream() {
+  let source = Source::<u32, _>::from_logic(StageKind::Custom, EndlessSourceLogic::new());
+  let graph = source.to_mat(Sink::ignore(), KeepRight);
+  let mut materializer = RecordingMaterializer::default();
+  let materialized = graph.run(&mut materializer).expect("materialize");
+  let kill_switch = materialized.shared_kill_switch();
+
+  kill_switch.shutdown();
+  for _ in 0..4 {
+    let _ = materialized.handle().drive();
+    if materialized.handle().state().is_terminal() {
+      break;
+    }
+  }
+
+  assert_eq!(materialized.handle().state(), StreamState::Completed);
 }
 
 #[test]
