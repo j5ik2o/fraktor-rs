@@ -149,6 +149,29 @@ fn filter_discards_non_matching_elements() {
 }
 
 #[test]
+fn filter_not_discards_matching_elements() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4]))
+    .via(Flow::new().filter_not(|value| *value % 2 == 0))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 3_u32]);
+}
+
+#[test]
+fn flatten_optional_emits_present_value() {
+  let values =
+    Source::single(Some(7_u32)).via(Flow::new().flatten_optional()).collect_values().expect("collect_values");
+  assert_eq!(values, vec![7_u32]);
+}
+
+#[test]
+fn flatten_optional_skips_none() {
+  let values =
+    Source::single(None::<u32>).via(Flow::new().flatten_optional()).collect_values().expect("collect_values");
+  assert_eq!(values, Vec::<u32>::new());
+}
+
+#[test]
 fn map_concat_expands_each_element() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
     .via(Flow::new().map_concat(|value: u32| [value, value.saturating_add(10)]))
@@ -553,6 +576,54 @@ fn operator_catalog_lookup_returns_filter_contract() {
   let catalog = DefaultOperatorCatalog::new();
   let contract = catalog.lookup(OperatorKey::FILTER).expect("lookup");
   assert_eq!(contract.key, OperatorKey::FILTER);
+  assert_eq!(contract.requirement_ids, &["1.1", "1.3"]);
+}
+
+#[test]
+fn operator_catalog_lookup_returns_filter_not_contract() {
+  let catalog = DefaultOperatorCatalog::new();
+  let contract = catalog.lookup(OperatorKey::FILTER_NOT).expect("lookup");
+  assert_eq!(contract.key, OperatorKey::FILTER_NOT);
+  assert_eq!(contract.requirement_ids, &["1.1", "1.3"]);
+}
+
+#[test]
+fn operator_catalog_lookup_returns_empty_contract() {
+  let catalog = DefaultOperatorCatalog::new();
+  let contract = catalog.lookup(OperatorKey::EMPTY).expect("lookup");
+  assert_eq!(contract.key, OperatorKey::EMPTY);
+  assert_eq!(contract.requirement_ids, &["1.1", "1.3"]);
+}
+
+#[test]
+fn operator_catalog_lookup_returns_from_option_contract() {
+  let catalog = DefaultOperatorCatalog::new();
+  let contract = catalog.lookup(OperatorKey::FROM_OPTION).expect("lookup");
+  assert_eq!(contract.key, OperatorKey::FROM_OPTION);
+  assert_eq!(contract.requirement_ids, &["1.1", "1.3"]);
+}
+
+#[test]
+fn operator_catalog_lookup_returns_from_array_contract() {
+  let catalog = DefaultOperatorCatalog::new();
+  let contract = catalog.lookup(OperatorKey::FROM_ARRAY).expect("lookup");
+  assert_eq!(contract.key, OperatorKey::FROM_ARRAY);
+  assert_eq!(contract.requirement_ids, &["1.1", "1.3"]);
+}
+
+#[test]
+fn operator_catalog_lookup_returns_from_iterator_contract() {
+  let catalog = DefaultOperatorCatalog::new();
+  let contract = catalog.lookup(OperatorKey::FROM_ITERATOR).expect("lookup");
+  assert_eq!(contract.key, OperatorKey::FROM_ITERATOR);
+  assert_eq!(contract.requirement_ids, &["1.1", "1.3"]);
+}
+
+#[test]
+fn operator_catalog_lookup_returns_flatten_optional_contract() {
+  let catalog = DefaultOperatorCatalog::new();
+  let contract = catalog.lookup(OperatorKey::FLATTEN_OPTIONAL).expect("lookup");
+  assert_eq!(contract.key, OperatorKey::FLATTEN_OPTIONAL);
   assert_eq!(contract.requirement_ids, &["1.1", "1.3"]);
 }
 

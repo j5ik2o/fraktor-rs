@@ -38,6 +38,38 @@ impl<Out> Source<Out, StreamNotUsed>
 where
   Out: Send + Sync + 'static,
 {
+  /// Creates a source that emits no elements and completes immediately.
+  #[must_use]
+  pub fn empty() -> Self {
+    Self::from_logic(StageKind::Custom, EmptySourceLogic)
+  }
+
+  /// Creates a source from an optional element.
+  ///
+  /// Emits one element when `value` is [`Some`], otherwise completes immediately.
+  #[must_use]
+  pub fn from_option(value: Option<Out>) -> Self {
+    match value {
+      | Some(value) => Self::single(value),
+      | None => Self::empty(),
+    }
+  }
+
+  /// Creates a source from an iterator.
+  #[must_use]
+  pub fn from_iterator<I>(values: I) -> Self
+  where
+    I: IntoIterator<Item = Out>,
+    I::IntoIter: Send + 'static, {
+    Self::from_logic(StageKind::Custom, IteratorSourceLogic { values: values.into_iter() })
+  }
+
+  /// Creates a source from an array.
+  #[must_use]
+  pub fn from_array<const N: usize>(values: [Out; N]) -> Self {
+    Self::from_iterator(values)
+  }
+
   /// Creates a source that emits a single element.
   #[must_use]
   pub fn single(value: Out) -> Self {
@@ -239,6 +271,14 @@ where
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
     Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds a filter-not stage to this source.
+  #[must_use]
+  pub fn filter_not<F>(self, mut predicate: F) -> Source<Out, Mat>
+  where
+    F: FnMut(&Out) -> bool + Send + Sync + 'static, {
+    self.filter(move |value| !predicate(value))
   }
 
   /// Adds a drop stage that skips the first `count` elements.
@@ -765,6 +805,17 @@ where
   }
 }
 
+impl<Out, Mat> Source<Option<Out>, Mat>
+where
+  Out: Send + Sync + 'static,
+{
+  /// Adds a flatten-optional stage to this source.
+  #[must_use]
+  pub fn flatten_optional(self) -> Source<Out, Mat> {
+    self.map_option(|value| value)
+  }
+}
+
 impl<Out, Mat> Source<Result<Out, StreamError>, Mat>
 where
   Out: Clone + Send + Sync + 'static,
@@ -816,6 +867,28 @@ impl<Out, Mat> StreamStage for Source<Out, Mat> {
 
 struct SingleSourceLogic<Out> {
   value: Option<Out>,
+}
+
+struct EmptySourceLogic;
+
+impl SourceLogic for EmptySourceLogic {
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    Ok(None)
+  }
+}
+
+struct IteratorSourceLogic<I> {
+  values: I,
+}
+
+impl<Out, I> SourceLogic for IteratorSourceLogic<I>
+where
+  Out: Send + Sync + 'static,
+  I: Iterator<Item = Out> + Send + 'static,
+{
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    Ok(self.values.next().map(|value| Box::new(value) as DynValue))
+  }
 }
 
 impl<Out> SourceLogic for SingleSourceLogic<Out>

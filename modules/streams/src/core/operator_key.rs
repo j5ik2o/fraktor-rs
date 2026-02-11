@@ -23,12 +23,24 @@ impl OperatorKey {
   pub const DROP: Self = Self::new("drop");
   /// Key for `drop_while`.
   pub const DROP_WHILE: Self = Self::new("drop_while");
+  /// Key for `empty`.
+  pub const EMPTY: Self = Self::new("empty");
   /// Key for `filter`.
   pub const FILTER: Self = Self::new("filter");
+  /// Key for `filter_not`.
+  pub const FILTER_NOT: Self = Self::new("filter_not");
+  /// Key for `flatten_optional`.
+  pub const FLATTEN_OPTIONAL: Self = Self::new("flatten_optional");
   /// Key for `flat_map_concat`.
   pub const FLAT_MAP_CONCAT: Self = Self::new("flat_map_concat");
   /// Key for `flat_map_merge`.
   pub const FLAT_MAP_MERGE: Self = Self::new("flat_map_merge");
+  /// Key for `from_array`.
+  pub const FROM_ARRAY: Self = Self::new("from_array");
+  /// Key for `from_iterator`.
+  pub const FROM_ITERATOR: Self = Self::new("from_iterator");
+  /// Key for `from_option`.
+  pub const FROM_OPTION: Self = Self::new("from_option");
   /// Key for `grouped`.
   pub const GROUPED: Self = Self::new("grouped");
   /// Key for `group_by`.

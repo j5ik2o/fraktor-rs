@@ -270,6 +270,48 @@ fn source_broadcast_duplicates_each_element() {
 }
 
 #[test]
+fn source_empty_completes_without_elements() {
+  let values = Source::<u32, _>::empty().collect_values().expect("collect_values");
+  assert_eq!(values, Vec::<u32>::new());
+}
+
+#[test]
+fn source_from_option_emits_present_value() {
+  let values = Source::from_option(Some(7_u32)).collect_values().expect("collect_values");
+  assert_eq!(values, vec![7_u32]);
+}
+
+#[test]
+fn source_from_option_none_completes_without_elements() {
+  let values = Source::<u32, _>::from_option(None).collect_values().expect("collect_values");
+  assert_eq!(values, Vec::<u32>::new());
+}
+
+#[test]
+fn source_from_iterator_emits_values_in_order() {
+  let values = Source::from_iterator([1_u32, 2, 3, 4]).collect_values().expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2, 3, 4]);
+}
+
+#[test]
+fn source_from_iterator_empty_iterator_completes_without_elements() {
+  let values = Source::from_iterator(core::iter::empty::<u32>()).collect_values().expect("collect_values");
+  assert_eq!(values, Vec::<u32>::new());
+}
+
+#[test]
+fn source_from_array_emits_values_in_order() {
+  let values = Source::from_array([1_u32, 2, 3, 4]).collect_values().expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2, 3, 4]);
+}
+
+#[test]
+fn source_from_array_empty_array_completes_without_elements() {
+  let values = Source::<u32, _>::from_array([]).collect_values().expect("collect_values");
+  assert_eq!(values, Vec::<u32>::new());
+}
+
+#[test]
 #[should_panic(expected = "fan_out must be greater than zero")]
 fn source_broadcast_rejects_zero_fan_out() {
   let _ = Source::single(1_u32).broadcast(0);
@@ -371,6 +413,27 @@ fn source_filter_keeps_matching_elements() {
     .collect_values()
     .expect("collect_values");
   assert_eq!(values, vec![2_u32, 4_u32]);
+}
+
+#[test]
+fn source_filter_not_keeps_non_matching_elements() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4]))
+    .filter_not(|value| value % 2 == 0)
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 3_u32]);
+}
+
+#[test]
+fn source_flatten_optional_emits_present_value() {
+  let values = Source::single(Some(7_u32)).flatten_optional().collect_values().expect("collect_values");
+  assert_eq!(values, vec![7_u32]);
+}
+
+#[test]
+fn source_flatten_optional_skips_none() {
+  let values = Source::single(None::<u32>).flatten_optional().collect_values().expect("collect_values");
+  assert_eq!(values, Vec::<u32>::new());
 }
 
 #[test]

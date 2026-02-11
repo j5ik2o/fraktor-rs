@@ -51,6 +51,13 @@ impl OperatorCatalog for DefaultOperatorCatalog {
         failure_condition: "Propagates upstream or predicate evaluation failures.",
         requirement_ids: &["1.1", "1.3"],
       }),
+      | "filter_not" => Ok(OperatorContract {
+        key,
+        input_condition: "Evaluates each element against predicate and forwards only non-matches.",
+        completion_condition: "Completes when upstream completes.",
+        failure_condition: "Propagates upstream or predicate evaluation failures.",
+        requirement_ids: &["1.1", "1.3"],
+      }),
       | "map_concat" => Ok(OperatorContract {
         key,
         input_condition: "Expands each element into zero or more elements while preserving order.",
@@ -63,6 +70,13 @@ impl OperatorCatalog for DefaultOperatorCatalog {
         input_condition: "Maps each element and emits only present values.",
         completion_condition: "Completes when upstream completes.",
         failure_condition: "Propagates upstream or mapper failures.",
+        requirement_ids: &["1.1", "1.3"],
+      }),
+      | "flatten_optional" => Ok(OperatorContract {
+        key,
+        input_condition: "Accepts optional payloads and emits only present values.",
+        completion_condition: "Completes when upstream completes.",
+        failure_condition: "Propagates upstream failures.",
         requirement_ids: &["1.1", "1.3"],
       }),
       | "stateful_map" => Ok(OperatorContract {
@@ -98,6 +112,34 @@ impl OperatorCatalog for DefaultOperatorCatalog {
         input_condition: "Drops prefix elements while predicate matches and then forwards all remaining elements.",
         completion_condition: "Completes when upstream completes.",
         failure_condition: "Propagates upstream or predicate evaluation failures.",
+        requirement_ids: &["1.1", "1.3"],
+      }),
+      | "empty" => Ok(OperatorContract {
+        key,
+        input_condition: "Emits no elements and does not pull from upstream.",
+        completion_condition: "Completes immediately after materialization.",
+        failure_condition: "Does not fail unless stream setup fails.",
+        requirement_ids: &["1.1", "1.3"],
+      }),
+      | "from_option" => Ok(OperatorContract {
+        key,
+        input_condition: "Materializes to a single-element source for Some or an empty source for None.",
+        completion_condition: "Completes immediately after emitting zero or one element.",
+        failure_condition: "Does not fail unless stream setup fails.",
+        requirement_ids: &["1.1", "1.3"],
+      }),
+      | "from_array" => Ok(OperatorContract {
+        key,
+        input_condition: "Emits array elements in order on downstream demand.",
+        completion_condition: "Completes after all array elements are emitted.",
+        failure_condition: "Does not fail unless stream setup fails.",
+        requirement_ids: &["1.1", "1.3"],
+      }),
+      | "from_iterator" => Ok(OperatorContract {
+        key,
+        input_condition: "Pulls the next element from iterator on downstream demand.",
+        completion_condition: "Completes when iterator is exhausted.",
+        failure_condition: "Does not fail unless stream setup fails.",
         requirement_ids: &["1.1", "1.3"],
       }),
       | "take_while" => Ok(OperatorContract {
@@ -301,7 +343,7 @@ impl OperatorCatalog for DefaultOperatorCatalog {
   }
 
   fn coverage(&self) -> &'static [OperatorCoverage] {
-    const COVERAGE: [OperatorCoverage; 39] = [
+    const COVERAGE: [OperatorCoverage; 45] = [
       OperatorCoverage {
         key:             OperatorKey::ASYNC_BOUNDARY,
         requirement_ids: &["1.1", "1.3", "7.1", "7.2", "7.3", "7.4"],
@@ -309,7 +351,12 @@ impl OperatorCatalog for DefaultOperatorCatalog {
       OperatorCoverage { key: OperatorKey::BALANCE, requirement_ids: &["1.1", "1.3"] },
       OperatorCoverage { key: OperatorKey::DROP, requirement_ids: &["1.1", "1.3"] },
       OperatorCoverage { key: OperatorKey::DROP_WHILE, requirement_ids: &["1.1", "1.3"] },
+      OperatorCoverage { key: OperatorKey::EMPTY, requirement_ids: &["1.1", "1.3"] },
+      OperatorCoverage { key: OperatorKey::FROM_ARRAY, requirement_ids: &["1.1", "1.3"] },
+      OperatorCoverage { key: OperatorKey::FROM_ITERATOR, requirement_ids: &["1.1", "1.3"] },
+      OperatorCoverage { key: OperatorKey::FROM_OPTION, requirement_ids: &["1.1", "1.3"] },
       OperatorCoverage { key: OperatorKey::FILTER, requirement_ids: &["1.1", "1.3"] },
+      OperatorCoverage { key: OperatorKey::FILTER_NOT, requirement_ids: &["1.1", "1.3"] },
       OperatorCoverage { key: OperatorKey::INTERSPERSE, requirement_ids: &["1.1", "1.3"] },
       OperatorCoverage { key: OperatorKey::FLAT_MAP_CONCAT, requirement_ids: &["1.1", "1.3", "3.1"] },
       OperatorCoverage {
@@ -323,6 +370,7 @@ impl OperatorCatalog for DefaultOperatorCatalog {
       OperatorCoverage { key: OperatorKey::CONCAT_SUBSTREAMS, requirement_ids: &["1.1", "1.3", "2.5"] },
       OperatorCoverage { key: OperatorKey::GROUPED, requirement_ids: &["1.1", "1.2", "1.3"] },
       OperatorCoverage { key: OperatorKey::GROUP_BY, requirement_ids: &["1.1", "1.3", "2.1", "2.2"] },
+      OperatorCoverage { key: OperatorKey::FLATTEN_OPTIONAL, requirement_ids: &["1.1", "1.3"] },
       OperatorCoverage { key: OperatorKey::MAP_CONCAT, requirement_ids: &["1.1", "1.3"] },
       OperatorCoverage { key: OperatorKey::MAP_OPTION, requirement_ids: &["1.1", "1.3"] },
       OperatorCoverage { key: OperatorKey::MERGE, requirement_ids: &["1.1", "1.3"] },

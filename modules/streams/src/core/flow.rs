@@ -177,6 +177,14 @@ where
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
+  /// Adds a filter-not stage to this flow.
+  #[must_use]
+  pub fn filter_not<F>(self, mut predicate: F) -> Flow<In, Out, Mat>
+  where
+    F: FnMut(&Out) -> bool + Send + Sync + 'static, {
+    self.filter(move |value| !predicate(value))
+  }
+
   /// Adds a drop stage that skips the first `count` elements.
   #[must_use]
   pub fn drop(mut self, count: usize) -> Flow<In, Out, Mat> {
@@ -645,6 +653,18 @@ where
       );
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+}
+
+impl<In, Out, Mat> Flow<In, Option<Out>, Mat>
+where
+  In: Send + Sync + 'static,
+  Out: Send + Sync + 'static,
+{
+  /// Adds a flatten-optional stage to this flow.
+  #[must_use]
+  pub fn flatten_optional(self) -> Flow<In, Out, Mat> {
+    self.map_option(|value| value)
   }
 }
 
