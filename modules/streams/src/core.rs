@@ -1,39 +1,13 @@
-/// Actor-backed materializer implementation.
-mod actor_materializer;
-/// Actor materializer configuration.
-mod actor_materializer_config;
-/// Bidirectional flow definition.
-mod bidi_flow;
-/// Bidirectional shape definition.
-mod bidi_shape;
-/// Broadcast hub.
-mod broadcast_hub;
 /// Completion polling types.
 mod completion;
-/// Default operator catalog.
-mod default_operator_catalog;
 /// Demand model types.
 mod demand;
 /// Demand tracking utilities.
 mod demand_tracker;
-/// Drive outcome enums.
-mod drive_outcome;
-/// Flow stage definitions.
-mod flow;
-/// Flow shape definition.
-mod flow_shape;
-/// Flow-oriented substream surface.
-mod flow_sub_flow;
-/// GraphDSL-like partial graph builder.
-mod graph_dsl;
-/// Graph interpreter runtime.
-mod graph_interpreter;
-/// Graph stage abstractions.
-mod graph_stage;
-/// Graph stage logic abstractions.
-mod graph_stage_logic;
-/// Typed inlet ports.
-mod inlet;
+/// Graph-related abstractions.
+pub mod graph;
+/// Dynamic fan-in/fan-out connectors.
+pub mod hub;
 /// Keep-both materialization rule.
 mod keep_both;
 /// Keep-left materialization rule.
@@ -42,54 +16,22 @@ mod keep_left;
 mod keep_none;
 /// Keep-right materialization rule.
 mod keep_right;
+/// Stream lifecycle and execution management.
+pub mod lifecycle;
+/// Materialization pipeline.
+pub mod mat;
 /// Materialization combination kinds.
 mod mat_combine;
 /// Materialization combination rules.
 mod mat_combine_rule;
-/// Materialized result wrapper.
-mod materialized;
-/// Materializer trait.
-mod materializer;
-/// Merge hub.
-mod merge_hub;
-/// Operator catalog contract.
-mod operator_catalog;
-/// Operator compatibility contract.
-mod operator_contract;
-/// Operator compatibility coverage metadata.
-mod operator_coverage;
-/// Operator key model.
-mod operator_key;
-/// Typed outlet ports.
-mod outlet;
-/// Partition hub.
-mod partition_hub;
-/// Port identifier type.
-mod port_id;
+/// Operator compatibility catalog.
+pub mod operator;
 /// Restart/backoff configuration.
 mod restart_settings;
-/// Runnable graph type.
-mod runnable_graph;
-/// Shape abstraction.
-mod shape;
-/// Shared kill switch.
-mod shared_kill_switch;
-/// Sink stage definitions.
-mod sink;
-/// Sink shape definition.
-mod sink_shape;
-/// Source stage definitions.
-mod source;
-/// Source shape definition.
-mod source_shape;
-/// Source-oriented substream surface.
-mod source_sub_flow;
-/// Stage execution context.
-mod stage_context;
-/// Built-in stage kinds.
-mod stage_kind;
-/// Stream execution state (internal).
-mod stream;
+/// Stream topology shapes and connection points.
+pub mod shape;
+/// Stage definitions for source, flow, and sink.
+pub mod stage;
 /// Stream buffer implementation.
 mod stream_buffer;
 /// Stream buffer configuration.
@@ -98,109 +40,48 @@ mod stream_buffer_config;
 mod stream_completion;
 /// Stream completion marker.
 mod stream_done;
-/// Stream drive actor (internal).
-mod stream_drive_actor;
-/// Stream drive command (internal).
-mod stream_drive_command;
 /// Stream DSL error definitions.
 mod stream_dsl_error;
 /// Stream error definitions.
 mod stream_error;
-/// Deterministic fuzz runner for probe tests.
-mod stream_fuzz_runner;
-/// Stream graph structure.
-mod stream_graph;
-/// Stream handle trait.
-mod stream_handle;
-/// Stream handle implementation.
-mod stream_handle_generic;
-/// Stream handle identifier.
-mod stream_handle_id;
 /// Stream not-used marker.
 mod stream_not_used;
-/// Stream shape definition.
-mod stream_shape;
-/// Stream shared wrapper (internal).
-mod stream_shared;
-/// Stream stage trait.
-mod stream_stage;
-/// Stream state enum.
-mod stream_state;
-/// Test sink probe.
-mod test_sink_probe;
-/// Test source probe.
-mod test_source_probe;
-/// Unique kill switch.
-mod unique_kill_switch;
+/// Test utilities for stream verification.
+pub mod testing;
 /// Positive argument validator.
 mod validate_positive_argument;
 
 use alloc::{boxed::Box, vec::Vec};
 use core::any::{Any, TypeId};
 
-pub use actor_materializer::ActorMaterializerGeneric;
-pub use actor_materializer_config::ActorMaterializerConfig;
-pub use bidi_flow::BidiFlow;
-pub use bidi_shape::BidiShape;
-pub use broadcast_hub::BroadcastHub;
 pub use completion::Completion;
-pub use default_operator_catalog::DefaultOperatorCatalog;
 pub use demand::Demand;
 pub use demand_tracker::DemandTracker;
-pub use drive_outcome::DriveOutcome;
-pub use flow::Flow;
-pub use flow_shape::FlowShape;
-pub use flow_sub_flow::FlowSubFlow;
-pub use graph_dsl::GraphDsl;
-pub use graph_interpreter::GraphInterpreter;
-pub use graph_stage::GraphStage;
-pub use graph_stage_logic::GraphStageLogic;
-pub use inlet::Inlet;
+pub use graph::{GraphDsl, GraphInterpreter, GraphStage, GraphStageLogic, StreamGraph};
+pub use hub::{BroadcastHub, MergeHub, PartitionHub};
 pub use keep_both::KeepBoth;
 pub use keep_left::KeepLeft;
 pub use keep_none::KeepNone;
 pub use keep_right::KeepRight;
+pub use lifecycle::{
+  DriveOutcome, SharedKillSwitch, StreamHandle, StreamHandleGeneric, StreamHandleId, StreamState, UniqueKillSwitch,
+};
+pub use mat::{ActorMaterializerConfig, ActorMaterializerGeneric, Materialized, Materializer, RunnableGraph};
 pub use mat_combine::MatCombine;
 pub use mat_combine_rule::MatCombineRule;
-pub use materialized::Materialized;
-pub use materializer::Materializer;
-pub use merge_hub::MergeHub;
-pub use operator_catalog::OperatorCatalog;
-pub use operator_contract::OperatorContract;
-pub use operator_coverage::OperatorCoverage;
-pub use operator_key::OperatorKey;
-pub use outlet::Outlet;
-pub use partition_hub::PartitionHub;
-pub use port_id::PortId;
+pub use operator::{DefaultOperatorCatalog, OperatorCatalog, OperatorContract, OperatorCoverage, OperatorKey};
 pub use restart_settings::RestartSettings;
-pub use runnable_graph::RunnableGraph;
-pub use shape::Shape;
-pub use shared_kill_switch::SharedKillSwitch;
-pub use sink::Sink;
-pub use sink_shape::SinkShape;
-pub use source::Source;
-pub use source_shape::SourceShape;
-pub use source_sub_flow::SourceSubFlow;
-pub use stage_context::StageContext;
-pub use stage_kind::StageKind;
+use shape::PortId;
+pub use shape::{Inlet, Outlet, StreamShape};
+pub use stage::{BidiFlow, Flow, FlowSubFlow, Sink, Source, SourceSubFlow, StageContext, StageKind, StreamStage};
 pub use stream_buffer::StreamBuffer;
 pub use stream_buffer_config::StreamBufferConfig;
 pub use stream_completion::StreamCompletion;
 pub use stream_done::StreamDone;
 pub use stream_dsl_error::StreamDslError;
 pub use stream_error::StreamError;
-pub use stream_fuzz_runner::StreamFuzzRunner;
-pub use stream_graph::StreamGraph;
-pub use stream_handle::StreamHandle;
-pub use stream_handle_generic::StreamHandleGeneric;
-pub use stream_handle_id::StreamHandleId;
 pub use stream_not_used::StreamNotUsed;
-pub use stream_shape::StreamShape;
-pub use stream_stage::StreamStage;
-pub use stream_state::StreamState;
-pub use test_sink_probe::TestSinkProbe;
-pub use test_source_probe::TestSourceProbe;
-pub use unique_kill_switch::UniqueKillSwitch;
+pub use testing::{StreamFuzzRunner, TestSinkProbe, TestSourceProbe};
 pub use validate_positive_argument::validate_positive_argument;
 type DynValue = Box<dyn Any + Send + Sync + 'static>;
 
@@ -381,7 +262,7 @@ impl RestartBackoff {
 struct StreamPlan {
   stages:            Vec<StageDefinition>,
   edges:             Vec<(PortId, PortId, MatCombine)>,
-  kill_switch_state: Option<unique_kill_switch::KillSwitchStateHandle>,
+  kill_switch_state: Option<lifecycle::KillSwitchStateHandle>,
 }
 
 impl StreamPlan {
@@ -389,12 +270,12 @@ impl StreamPlan {
     Self { stages, edges, kill_switch_state: None }
   }
 
-  fn with_shared_kill_switch_state(mut self, kill_switch_state: unique_kill_switch::KillSwitchStateHandle) -> Self {
+  fn with_shared_kill_switch_state(mut self, kill_switch_state: lifecycle::KillSwitchStateHandle) -> Self {
     self.kill_switch_state = Some(kill_switch_state);
     self
   }
 
-  fn shared_kill_switch_state(&self) -> Option<unique_kill_switch::KillSwitchStateHandle> {
+  fn shared_kill_switch_state(&self) -> Option<lifecycle::KillSwitchStateHandle> {
     self.kill_switch_state.clone()
   }
 }

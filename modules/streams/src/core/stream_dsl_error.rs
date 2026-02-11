@@ -1,6 +1,6 @@
 use core::fmt;
 
-use super::OperatorKey;
+use super::operator::OperatorKey;
 
 /// Errors returned by stream DSL operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -1,1 +1,1 @@
-./COMMON.md
+COMMON.md
