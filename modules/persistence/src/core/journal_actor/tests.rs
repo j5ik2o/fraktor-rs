@@ -8,10 +8,13 @@ use fraktor_actor_rs::core::{
   error::{ActorError, SendError},
   messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
   props::PropsGeneric,
-  system::{ActorSystemGeneric, SystemStateGeneric, SystemStateSharedGeneric},
+  system::{
+    ActorSystemGeneric,
+    state::{SystemStateSharedGeneric, system_state::SystemStateGeneric},
+  },
 };
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
+  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
   sync::ArcShared,
 };
 

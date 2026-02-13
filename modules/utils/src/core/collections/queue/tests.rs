@@ -32,7 +32,9 @@ mod fifo_backend {
   use super::QueueConfig;
   use crate::core::collections::queue::{
     QueueError,
-    backend::{OfferOutcome, OverflowPolicy, SyncQueueBackend, SyncQueueBackendInternal},
+    backend::{SyncQueueBackend, SyncQueueBackendInternal},
+    offer_outcome::OfferOutcome,
+    overflow_policy::OverflowPolicy,
   };
 
   /// Simple FIFO backend used for unit tests.
@@ -162,9 +164,11 @@ use priority_message::TestPriorityMessage;
 
 use crate::core::{
   collections::queue::{
-    QueueCapability, QueueCapabilityRegistry, QueueCapabilitySet,
-    backend::{BinaryHeapPriorityBackend, OfferOutcome, OverflowPolicy, VecDequeBackend},
-    capabilities::{SingleConsumer, SingleProducer, SupportsPeek},
+    OfferOutcome, OverflowPolicy,
+    backend::{BinaryHeapPriorityBackend, VecDequeBackend},
+    capabilities::{
+      QueueCapability, QueueCapabilityRegistry, QueueCapabilitySet, SingleConsumer, SingleProducer, SupportsPeek,
+    },
     type_keys::{FifoKey, MpscKey, PriorityKey, SpscKey},
   },
   sync::SharedError,

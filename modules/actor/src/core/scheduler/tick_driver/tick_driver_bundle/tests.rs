@@ -7,11 +7,11 @@ use core::{
 };
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily},
+  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, sync_mutex_family::SyncMutexFamily},
   sync::ArcShared,
 };
 
-use crate::core::scheduler::{
+use crate::core::scheduler::tick_driver::{
   TickDriverBundle, TickDriverControl, TickDriverHandleGeneric, TickDriverId, TickDriverKind, TickExecutorSignal,
   TickFeed,
 };

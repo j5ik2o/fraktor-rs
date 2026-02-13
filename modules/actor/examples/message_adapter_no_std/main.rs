@@ -16,8 +16,9 @@ use alloc::string::{String, ToString};
 use fraktor_actor_rs::core::{
   error::ActorError,
   typed::{
-    AdapterError, TypedActorSystem, TypedProps,
+    TypedActorSystem, TypedProps,
     actor::{TypedActor, TypedActorContext, TypedActorRef},
+    message_adapter::AdapterError,
   },
 };
 use fraktor_utils_rs::core::sync::SharedAccess;

@@ -18,10 +18,7 @@ use fraktor_actor_rs::core::{
   system::{ActorSystemGeneric, ActorSystemWeakGeneric},
 };
 use fraktor_utils_rs::core::{
-  collections::queue::{
-    QueueError, SyncFifoQueue, SyncQueue,
-    backend::{OfferOutcome, OverflowPolicy, VecDequeBackend},
-  },
+  collections::queue::{OfferOutcome, OverflowPolicy, QueueError, SyncFifoQueue, SyncQueue, backend::VecDequeBackend},
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
   sync::SharedAccess,
 };

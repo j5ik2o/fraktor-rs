@@ -1,6 +1,8 @@
 #![cfg(feature = "test-support")]
 
-use fraktor_remote_rs::core::{PhiFailureDetector, PhiFailureDetectorConfig, PhiFailureDetectorEffect};
+use fraktor_remote_rs::core::failure_detector::{
+  PhiFailureDetector, PhiFailureDetectorConfig, PhiFailureDetectorEffect,
+};
 
 fn detector_with(threshold: f64, max_sample_size: usize, minimum_interval_ms: u64) -> PhiFailureDetector {
   PhiFailureDetector::new(PhiFailureDetectorConfig::new(threshold, max_sample_size, minimum_interval_ms))

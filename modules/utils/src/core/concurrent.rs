@@ -1,9 +1,10 @@
-mod async_barrier;
-mod count_down_latch;
-mod synchronized;
-mod wait_group;
+//! Concurrency primitives: barriers, latches, synchronized wrappers, and wait groups.
 
-pub use async_barrier::{AsyncBarrier, AsyncBarrierBackend};
-pub use count_down_latch::{CountDownLatch, CountDownLatchBackend};
-pub use synchronized::{GuardHandle, Synchronized, SynchronizedMutexBackend, SynchronizedRw, SynchronizedRwBackend};
-pub use wait_group::{WaitGroup, WaitGroupBackend};
+/// Async-aware barrier implementation.
+pub mod async_barrier;
+/// Count-down latch for coordinating concurrent tasks.
+pub mod count_down_latch;
+/// Synchronized wrappers providing mutual-exclusion and read-write access.
+pub mod synchronized;
+/// Wait group for awaiting a set of concurrent operations.
+pub mod wait_group;

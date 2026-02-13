@@ -2,12 +2,12 @@
 
 use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 
-use crate::core::scheduler::TickDriverConfig;
+use crate::core::scheduler::tick_driver::TickDriverConfig;
 
 #[cfg(any(test, feature = "test-support"))]
 #[test]
 fn test_tick_driver_config_manual_test() {
-  use crate::core::scheduler::ManualTestDriver;
+  use crate::core::scheduler::tick_driver::ManualTestDriver;
 
   let driver = ManualTestDriver::<NoStdToolbox>::new();
   let config = TickDriverConfig::manual(driver);
@@ -21,7 +21,7 @@ fn test_tick_driver_config_manual_test() {
 
 #[test]
 fn test_tick_driver_config_builder() {
-  use crate::core::scheduler::TickDriverError;
+  use crate::core::scheduler::tick_driver::TickDriverError;
 
   let config = TickDriverConfig::<NoStdToolbox>::new(|_ctx| {
     // Dummy builder for testing

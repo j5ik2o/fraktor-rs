@@ -4,7 +4,7 @@ use alloc::boxed::Box;
 use std::time::Duration;
 
 use fraktor_utils_rs::{
-  core::{runtime_toolbox::SyncMutexFamily, sync::ArcShared, time::TimerInstant},
+  core::{runtime_toolbox::sync_mutex_family::SyncMutexFamily, sync::ArcShared, time::TimerInstant},
   std::runtime_toolbox::{StdMutexFamily, StdToolbox},
 };
 use tokio::{
@@ -15,10 +15,9 @@ use tokio::{
 
 use crate::core::{
   event::stream::{EventStreamEvent, EventStreamSharedGeneric},
-  scheduler::{
-    TickDriver, TickDriverControl, TickDriverError, TickDriverFactory, TickDriverHandleGeneric, TickDriverId,
-    TickDriverKind, TickFeedHandle,
-    tick_driver::{SchedulerTickMetricsProbe, next_tick_driver_id},
+  scheduler::tick_driver::{
+    SchedulerTickMetricsProbe, TickDriver, TickDriverControl, TickDriverError, TickDriverFactory,
+    TickDriverHandleGeneric, TickDriverId, TickDriverKind, TickFeedHandle, next_tick_driver_id,
   },
 };
 

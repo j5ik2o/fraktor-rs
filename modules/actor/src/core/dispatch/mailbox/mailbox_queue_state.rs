@@ -4,7 +4,7 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 
 use fraktor_utils_rs::core::{
   collections::{
-    queue::{QueueError, backend::OfferOutcome},
+    queue::{OfferOutcome, QueueError},
     wait::{WaitError, WaitQueue, WaitShared},
   },
   runtime_toolbox::RuntimeToolbox,

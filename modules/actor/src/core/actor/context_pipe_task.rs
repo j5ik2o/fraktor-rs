@@ -12,7 +12,7 @@ use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 use crate::core::{
   actor::{ContextPipeTaskId, Pid, context_pipe_waker::ContextPipeWaker},
   messaging::AnyMessageGeneric,
-  system::SystemStateSharedGeneric,
+  system::state::SystemStateSharedGeneric,
 };
 
 /// Future type stored by context pipe tasks.

@@ -6,7 +6,7 @@ use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 use crate::core::{
   actor::actor_path::GuardianKind as PathGuardianKind,
   dispatch::dispatcher::{DispatcherConfigGeneric, InlineExecutorGeneric},
-  system::{ActorSystemConfig, RemotingConfig},
+  system::{ActorSystemConfig, remote::RemotingConfig},
 };
 
 #[test]

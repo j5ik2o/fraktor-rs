@@ -10,15 +10,21 @@ use fraktor_actor_rs::core::{
   extension::ExtensionInstallers,
   messaging::AnyMessageGeneric,
   props::PropsGeneric,
-  scheduler::{ManualTestDriver, SchedulerConfig, TickDriverConfig},
-  system::{ActorRefProvider, ActorRefProviderSharedGeneric, ActorSystemConfigGeneric, ActorSystemGeneric},
+  scheduler::{
+    SchedulerConfig,
+    tick_driver::{ManualTestDriver, TickDriverConfig},
+  },
+  system::{
+    ActorSystemConfigGeneric, ActorSystemGeneric,
+    provider::{ActorRefProvider, ActorRefProviderSharedGeneric},
+  },
 };
 use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 
 use crate::core::{
   ActivatedKind, ClusterApiGeneric, ClusterExtensionConfig, ClusterExtensionGeneric, ClusterExtensionInstaller,
   ClusterIdentity, GrainContextGeneric, GrainContextScope, GrainKey, IdentityLookup, IdentitySetupError, LookupError,
-  NoopClusterProvider, PlacementDecision, PlacementLocality, PlacementResolution,
+  PlacementDecision, PlacementLocality, PlacementResolution, cluster_provider::NoopClusterProvider,
 };
 
 #[test]

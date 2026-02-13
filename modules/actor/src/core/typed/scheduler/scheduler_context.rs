@@ -3,9 +3,9 @@ use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::SharedAccess
 use super::TypedSchedulerShared;
 use crate::core::{
   scheduler::{
-    SchedulerBackedDelayProvider, SchedulerConfig, SchedulerContext, SchedulerSharedGeneric, TaskRunSummary,
+    SchedulerBackedDelayProvider, SchedulerConfig, SchedulerContext, SchedulerSharedGeneric, task_run::TaskRunSummary,
   },
-  typed::TypedScheduler,
+  typed::scheduler::TypedScheduler,
 };
 
 /// Owns the shared scheduler instance and exposes auxiliary services.

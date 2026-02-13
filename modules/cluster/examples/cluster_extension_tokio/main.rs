@@ -72,7 +72,7 @@ use anyhow::{Result, anyhow};
 use fraktor_actor_rs::{
   core::{
     error::ActorError, extension::ExtensionInstallers, serialization::SerializationExtensionInstaller,
-    system::RemotingConfig,
+    system::remote::RemotingConfig,
   },
   std::{
     actor::{Actor, ActorContext},
@@ -93,8 +93,10 @@ use fraktor_cluster_rs::{
   std::{ClusterApi, GrainRef, default_grain_call_options},
 };
 use fraktor_remote_rs::core::{
-  RemotingExtensionConfig, RemotingExtensionInstaller, TokioActorRefProviderInstaller, TokioTransportConfig,
-  default_loopback_setup,
+  RemotingExtensionInstaller,
+  actor_ref_provider::{TokioActorRefProviderInstaller, default_loopback_setup},
+  remoting_extension::RemotingExtensionConfig,
+  transport::TokioTransportConfig,
 };
 use fraktor_utils_rs::{
   core::sync::ArcShared,

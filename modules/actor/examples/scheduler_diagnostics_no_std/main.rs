@@ -17,7 +17,7 @@ use fraktor_actor_rs::core::{
   error::ActorError,
   messaging::{AnyMessage, AnyMessageViewGeneric},
   props::Props,
-  scheduler::{SchedulerCommand, SchedulerDiagnosticsSubscription},
+  scheduler::{SchedulerCommand, diagnostics::SchedulerDiagnosticsSubscription},
   system::ActorSystem,
 };
 use fraktor_utils_rs::core::sync::SharedAccess;

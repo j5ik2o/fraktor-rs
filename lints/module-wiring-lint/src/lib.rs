@@ -376,17 +376,17 @@ fn find_include_invocation_span(cx: &LateContext<'_>, span: Span) -> Option<Span
 
 
 fn is_public_use(cx: &LateContext<'_>, item: &Item<'_>) -> bool {
-  let sm = cx.tcx.sess.source_map();
-  if let Ok(snippet) = sm.span_to_snippet(item.span) {
-    if let Some(use_pos) = snippet.find("use") {
-      let prefix = &snippet[..use_pos];
-      if prefix.split_whitespace().any(|tok| tok.starts_with("pub")) {
+  let visibility = cx.tcx.visibility(item.owner_id.def_id);
+  let parent_mod = cx.tcx.parent_module_from_def_id(item.owner_id.def_id).to_def_id();
+  match visibility {
+    | Visibility::Public => true,
+    | Visibility::Restricted(scope) => {
+      if scope != parent_mod {
         return true;
       }
-      return false;
-    }
-    return false;
+      // クレートルートでは pub(crate) と private が同じ可視性になる。
+      // 明示的な可視性アノテーションがある場合は再エクスポート意図として検出する。
+      !item.vis_span.is_empty()
+    },
   }
-
-  matches!(cx.tcx.visibility(item.owner_id.def_id), Visibility::Public | Visibility::Restricted(_))
 }

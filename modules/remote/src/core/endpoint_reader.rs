@@ -13,7 +13,7 @@ use fraktor_actor_rs::core::{
   error::SendError,
   messaging::AnyMessageGeneric,
   serialization::{SerializationError, SerializationExtensionSharedGeneric, SerializedMessage},
-  system::{ActorSystemGeneric, ActorSystemWeakGeneric, RemoteWatchHookShared},
+  system::{ActorSystemGeneric, ActorSystemWeakGeneric, remote::RemoteWatchHookShared},
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
@@ -21,9 +21,9 @@ use fraktor_utils_rs::core::{
 };
 
 #[cfg(feature = "tokio-transport")]
-use crate::core::TokioActorRefProviderGeneric;
+use crate::core::actor_ref_provider::TokioActorRefProviderGeneric;
 use crate::core::{
-  RemoteActorRefProviderGeneric,
+  actor_ref_provider::RemoteActorRefProviderGeneric,
   envelope::{InboundEnvelope, RemotingEnvelope},
 };
 

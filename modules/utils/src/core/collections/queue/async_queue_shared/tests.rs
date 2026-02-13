@@ -8,8 +8,8 @@ use core::{
 use super::{AsyncMpscQueueShared, AsyncQueueShared, AsyncSpscQueueShared};
 use crate::core::{
   collections::queue::{
-    AsyncQueue, QueueError,
-    backend::{OfferOutcome, OverflowPolicy, SyncQueueAsyncAdapter, VecDequeBackend},
+    AsyncQueue, OfferOutcome, OverflowPolicy, QueueError,
+    backend::{SyncQueueAsyncAdapter, VecDequeBackend},
     type_keys::{MpscKey, SpscKey},
   },
   sync::{ArcShared, SharedError, async_mutex_like::SpinAsyncMutex, interrupt::InterruptContextPolicy},

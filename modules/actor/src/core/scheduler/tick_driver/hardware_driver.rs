@@ -4,7 +4,7 @@ use alloc::boxed::Box;
 use core::{ffi::c_void, time::Duration};
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
+  runtime_toolbox::{RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
   sync::ArcShared,
 };
 use portable_atomic::{AtomicBool, Ordering};

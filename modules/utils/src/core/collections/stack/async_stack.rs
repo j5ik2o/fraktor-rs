@@ -1,5 +1,5 @@
 use crate::core::collections::{
-  stack::{AsyncStackBackend, PushOutcome, StackError},
+  stack::backend::{AsyncStackBackend, PushOutcome, StackError},
   wait::{WaitError, WaitShared},
 };
 

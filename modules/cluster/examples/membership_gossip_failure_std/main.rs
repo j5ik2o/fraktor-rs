@@ -27,12 +27,15 @@ use fraktor_cluster_rs::{
     ActivatedKind, ClusterCore, ClusterEvent, ClusterExtensionConfig, ClusterProviderShared, ClusterPubSubShared,
     GossipOutbound, GossipTransport, GossipTransportError, GossiperShared, IdentityLookupShared, KindRegistry,
     MembershipCoordinatorConfig, MembershipCoordinatorGeneric, MembershipCoordinatorSharedGeneric, MembershipDelta,
-    MembershipSnapshot, MembershipTable, NodeStatus, NoopClusterProvider, NoopClusterPubSub, NoopGossiper,
-    NoopIdentityLookup,
+    MembershipSnapshot, MembershipTable, NodeStatus, NoopClusterPubSub, NoopGossiper, NoopIdentityLookup,
+    cluster_provider::NoopClusterProvider,
   },
   std::MembershipCoordinatorDriverGeneric,
 };
-use fraktor_remote_rs::core::{BlockListProvider, PhiFailureDetector, PhiFailureDetectorConfig};
+use fraktor_remote_rs::core::{
+  BlockListProvider,
+  failure_detector::{PhiFailureDetector, PhiFailureDetectorConfig},
+};
 use fraktor_utils_rs::{
   core::{
     sync::{ArcShared, SharedAccess},

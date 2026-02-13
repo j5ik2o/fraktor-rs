@@ -13,8 +13,12 @@ use fraktor_actor_rs::core::{
     actor_ref::{ActorRefGeneric, ActorRefSender, SendOutcome},
   },
   error::{ActorError, SendError},
-  messaging::{AnyMessageGeneric, SystemMessage},
-  system::{ActorRefProvider, ActorSystemGeneric, ActorSystemWeakGeneric, RemoteAuthorityError, RemoteWatchHook},
+  messaging::{AnyMessageGeneric, system_message::SystemMessage},
+  system::{
+    ActorSystemGeneric, ActorSystemWeakGeneric,
+    provider::ActorRefProvider,
+    remote::{RemoteAuthorityError, RemoteWatchHook},
+  },
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
@@ -24,9 +28,8 @@ use hashbrown::HashMap;
 
 use super::{loopback_router, loopback_router::LoopbackDeliveryOutcome, remote_error::RemoteActorRefProviderError};
 use crate::core::{
-  EndpointWriterSharedGeneric,
   actor_ref_field_normalizer::ActorRefFieldNormalizerGeneric,
-  endpoint_writer::EndpointWriterError,
+  endpoint_writer::{EndpointWriterError, EndpointWriterSharedGeneric},
   envelope::{OutboundMessage, OutboundPriority},
   remote_authority_snapshot::RemoteAuthoritySnapshot,
   remote_node_id::RemoteNodeId,

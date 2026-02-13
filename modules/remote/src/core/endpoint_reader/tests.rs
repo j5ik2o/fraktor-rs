@@ -12,10 +12,10 @@ use fraktor_actor_rs::core::{
   event::stream::CorrelationId,
   messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
   props::PropsGeneric,
-  scheduler::{ManualTestDriver, TickDriverConfig},
+  scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
   serialization::{
     SerializationCallScope, SerializationExtensionGeneric, SerializationExtensionSharedGeneric, SerializationSetup,
-    SerializationSetupBuilder, SerializedMessage, Serializer, SerializerId, StringSerializer,
+    SerializationSetupBuilder, SerializedMessage, Serializer, SerializerId, builtin::StringSerializer,
   },
   system::{ActorSystemConfig, ActorSystemGeneric},
 };
@@ -112,7 +112,7 @@ fn decode_round_trip_returns_inbound_envelope() {
   let reader = EndpointReader::new(system.downgrade(), serialization.clone());
   let recipient = recipient_path("remote-app", GuardianKind::User, &["user", "svc"]);
   let outbound = outbound_message(&recipient);
-  let mut writer = crate::core::EndpointWriter::new(system.downgrade(), serialization.clone());
+  let mut writer = crate::core::endpoint_writer::EndpointWriter::new(system.downgrade(), serialization.clone());
   writer.enqueue(outbound).expect("enqueue");
   let remoting_envelope = writer.try_next().expect("serialize").expect("envelope");
 
@@ -137,7 +137,7 @@ fn deserialization_failure_produces_dead_letter_error() {
     None,
     serialized,
     CorrelationId::from_u128(1),
-    crate::core::OutboundPriority::User,
+    crate::core::envelope::OutboundPriority::User,
   );
 
   let result: Result<InboundEnvelope<_>, _> = reader.decode(envelope);
@@ -166,7 +166,7 @@ fn deliver_routes_message_to_local_actor() {
     AnyMessageGeneric::new("delivered".to_string()),
     None,
     CorrelationId::from_u128(1),
-    crate::core::OutboundPriority::User,
+    crate::core::envelope::OutboundPriority::User,
   );
 
   reader.deliver(inbound).expect("deliver succeeds");

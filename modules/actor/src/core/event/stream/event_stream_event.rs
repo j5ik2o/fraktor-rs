@@ -16,12 +16,12 @@ use crate::core::{
   dead_letter::DeadLetterEntryGeneric,
   dispatch::{
     dispatcher::DispatcherDumpEvent,
-    mailbox::{MailboxMetricsEvent, MailboxPressureEvent},
+    mailbox::metrics_event::{MailboxMetricsEvent, MailboxPressureEvent},
   },
   event::logging::LogEvent,
   lifecycle::LifecycleEvent,
   messaging::AnyMessageGeneric,
-  scheduler::SchedulerTickMetrics,
+  scheduler::tick_driver::SchedulerTickMetrics,
   serialization::SerializationErrorEvent,
   typed::{UnhandledMessageEvent, message_adapter::AdapterError},
 };

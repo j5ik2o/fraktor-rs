@@ -14,7 +14,7 @@ use std::{thread, time::Duration as StdDuration};
 
 use fraktor_actor_rs::core::{
   error::ActorError,
-  scheduler::SchedulerDiagnosticsSubscription,
+  scheduler::diagnostics::SchedulerDiagnosticsSubscription,
   typed::{
     TypedActorSystem, TypedProps,
     actor::{TypedActor, TypedActorContext},

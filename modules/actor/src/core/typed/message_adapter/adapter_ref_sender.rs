@@ -18,7 +18,7 @@ use crate::core::{
   error::SendError,
   event::logging::LogLevel,
   messaging::AnyMessageGeneric,
-  system::SystemStateSharedGeneric,
+  system::state::SystemStateSharedGeneric,
   typed::message_adapter::{AdapterEnvelope, AdapterLifecycleState, AdapterPayload, AdapterRefHandleId},
 };
 

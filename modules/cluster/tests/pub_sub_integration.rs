@@ -8,14 +8,18 @@ use fraktor_actor_rs::core::{
     EventStreamSubscriptionGeneric, subscriber_handle,
   },
   messaging::AnyMessageGeneric,
-  serialization::{SerializationRegistryGeneric, default_serialization_setup, register_defaults},
+  serialization::{
+    builtin::register_defaults, default_serialization_setup, serialization_registry::SerializationRegistryGeneric,
+  },
 };
 use fraktor_cluster_rs::core::{
-  ClusterCore, ClusterExtensionConfig, ClusterProviderShared, ClusterPubSub, ClusterPubSubImpl, ClusterPubSubShared,
-  ClusterTopology, DeliverBatchRequest, DeliveryEndpoint, DeliveryEndpointSharedGeneric, DeliveryReport,
-  DeliveryStatus, GossiperShared, IdentityLookupShared, KindRegistry, NoopClusterProvider, NoopGossiper,
-  NoopIdentityLookup, PubSubBatch, PubSubConfig, PubSubEnvelope, PubSubError, PubSubEvent, PubSubSubscriber,
-  PubSubTopic, PublishOptions, PublishRequest, SubscriberDeliveryReport, TopologyUpdate,
+  ClusterCore, ClusterExtensionConfig, ClusterProviderShared, ClusterPubSubShared, ClusterTopology,
+  DeliverBatchRequest, DeliveryEndpoint, DeliveryEndpointSharedGeneric, DeliveryReport, DeliveryStatus, GossiperShared,
+  IdentityLookupShared, KindRegistry, NoopGossiper, NoopIdentityLookup, PubSubBatch, PubSubConfig, PubSubEnvelope,
+  PubSubError, PubSubEvent, PubSubSubscriber, PubSubTopic, PublishOptions, PublishRequest, SubscriberDeliveryReport,
+  TopologyUpdate,
+  cluster_provider::NoopClusterProvider,
+  cluster_pub_sub::{ClusterPubSub, ClusterPubSubImpl},
 };
 use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{

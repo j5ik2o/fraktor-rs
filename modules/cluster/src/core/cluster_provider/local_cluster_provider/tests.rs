@@ -10,7 +10,7 @@ use fraktor_utils_rs::core::{
 };
 
 use super::*;
-use crate::core::{ClusterEvent, ClusterProvider, ClusterTopology};
+use crate::core::{ClusterEvent, ClusterTopology, cluster_provider::ClusterProvider};
 
 struct EmptyBlockList;
 

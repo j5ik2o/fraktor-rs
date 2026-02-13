@@ -3,9 +3,9 @@
 use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 
 use crate::core::{
-  dispatch::mailbox::MailboxPressureEvent,
+  dispatch::mailbox::metrics_event::MailboxPressureEvent,
   error::ActorError,
-  messaging::{AnyMessageGeneric, SystemMessage},
+  messaging::{AnyMessageGeneric, system_message::SystemMessage},
 };
 
 /// Dispatches user and system messages to actor handlers.

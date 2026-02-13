@@ -2,7 +2,7 @@
 
 use alloc::string::String;
 
-use fraktor_actor_rs::core::system::ActorRefResolveError;
+use fraktor_actor_rs::core::system::provider::ActorRefResolveError;
 
 /// Errors returned by cluster identity resolution.
 #[derive(Debug, Clone, PartialEq, Eq)]

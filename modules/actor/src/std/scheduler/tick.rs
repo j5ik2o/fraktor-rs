@@ -16,7 +16,7 @@ use tokio::runtime::Handle;
 use crate::{
   core::{
     event::stream::EventStreamSharedGeneric,
-    scheduler::{TickDriverConfig as CoreTickDriverConfig, TickDriverFactoryRef},
+    scheduler::tick_driver::{TickDriverConfig as CoreTickDriverConfig, TickDriverFactoryRef},
   },
   std::scheduler::tick::tokio_impl::TokioIntervalTickerFactory,
 };
@@ -60,13 +60,17 @@ impl TickDriverConfig {
   pub fn tokio_quickstart_with_resolution(resolution: Duration) -> CoreTickDriverConfig<StdToolbox> {
     use alloc::boxed::Box;
 
-    use fraktor_utils_rs::{core::runtime_toolbox::SyncMutexFamily, std::runtime_toolbox::StdMutexFamily};
+    use fraktor_utils_rs::{
+      core::runtime_toolbox::sync_mutex_family::SyncMutexFamily, std::runtime_toolbox::StdMutexFamily,
+    };
     use tokio::time::{MissedTickBehavior, interval};
 
     use crate::core::scheduler::{
-      AutoDriverMetadata, AutoProfileKind, SchedulerSharedGeneric, SchedulerTickExecutor, TickDriverBundle,
-      TickDriverControl, TickDriverHandleGeneric, TickDriverKind, TickExecutorSignal, TickFeed,
-      tick_driver::next_tick_driver_id,
+      SchedulerSharedGeneric,
+      tick_driver::{
+        AutoDriverMetadata, AutoProfileKind, SchedulerTickExecutor, TickDriverBundle, TickDriverControl,
+        TickDriverHandleGeneric, TickDriverKind, TickExecutorSignal, TickFeed, next_tick_driver_id,
+      },
     };
 
     CoreTickDriverConfig::new(move |ctx| {
@@ -146,13 +150,17 @@ impl TickDriverConfig {
   ) -> CoreTickDriverConfig<StdToolbox> {
     use alloc::boxed::Box;
 
-    use fraktor_utils_rs::{core::runtime_toolbox::SyncMutexFamily, std::runtime_toolbox::StdMutexFamily};
+    use fraktor_utils_rs::{
+      core::runtime_toolbox::sync_mutex_family::SyncMutexFamily, std::runtime_toolbox::StdMutexFamily,
+    };
     use tokio::time::{MissedTickBehavior, interval};
 
     use crate::core::scheduler::{
-      AutoDriverMetadata, AutoProfileKind, SchedulerSharedGeneric, SchedulerTickExecutor, TickDriverBundle,
-      TickDriverControl, TickDriverHandleGeneric, TickDriverKind, TickExecutorSignal, TickFeed,
-      tick_driver::{SchedulerTickMetricsProbe, next_tick_driver_id},
+      SchedulerSharedGeneric,
+      tick_driver::{
+        AutoDriverMetadata, AutoProfileKind, SchedulerTickExecutor, SchedulerTickMetricsProbe, TickDriverBundle,
+        TickDriverControl, TickDriverHandleGeneric, TickDriverKind, TickExecutorSignal, TickFeed, next_tick_driver_id,
+      },
     };
 
     CoreTickDriverConfig::new(move |ctx| {

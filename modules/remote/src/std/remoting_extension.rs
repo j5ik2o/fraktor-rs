@@ -7,11 +7,11 @@ use fraktor_actor_rs::core::{
   error::ActorError,
   messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
   props::PropsGeneric,
-  system::{ActorSystemGeneric, SystemGuardianProtocol},
+  system::{ActorSystemGeneric, guardian::SystemGuardianProtocol},
 };
 use fraktor_utils_rs::{
   core::{
-    runtime_toolbox::{RuntimeToolbox, SyncMutexFamily},
+    runtime_toolbox::{RuntimeToolbox, sync_mutex_family::SyncMutexFamily},
     sync::{ArcShared, sync_mutex_like::SyncMutexLike},
   },
   std::runtime_toolbox::StdToolbox,
@@ -19,8 +19,11 @@ use fraktor_utils_rs::{
 
 use crate::{
   core::{
-    RemotingControl, RemotingControlHandle, RemotingControlShared, RemotingError, RemotingExtensionConfig,
-    RemotingExtensionGeneric, transport::RemoteTransportShared,
+    remoting_extension::{
+      RemotingControl, RemotingControlHandle, RemotingControlShared, RemotingError, RemotingExtensionConfig,
+      RemotingExtensionGeneric,
+    },
+    transport::RemoteTransportShared,
   },
   std::transport::StdTransportFactory,
 };

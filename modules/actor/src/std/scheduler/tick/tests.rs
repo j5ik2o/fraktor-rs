@@ -16,8 +16,8 @@ use crate::{
   core::{
     event::stream::{EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriber, subscriber_handle},
     scheduler::{
-      AutoProfileKind, SchedulerConfig, SchedulerContext, TickDriverKind, TickDriverProvisioningContext,
-      tick_driver::TickDriverBootstrap,
+      SchedulerConfig, SchedulerContext,
+      tick_driver::{AutoProfileKind, TickDriverBootstrap, TickDriverKind, TickDriverProvisioningContext},
     },
   },
   std::scheduler::tick::TickDriverConfig,

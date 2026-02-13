@@ -22,14 +22,6 @@ pub use async_queue_shared::{
 };
 pub use async_spsc_consumer_shared::AsyncSpscConsumerShared;
 pub use async_spsc_producer_shared::AsyncSpscProducerShared;
-pub use backend::{
-  AsyncPriorityBackend, AsyncQueueBackend, OfferOutcome, OverflowPolicy, SyncQueueAsyncAdapter, SyncQueueBackend,
-  VecDequeBackend, sync_priority_backend::SyncPriorityBackend,
-};
-pub use capabilities::{
-  MultiProducer, QueueCapability, QueueCapabilityError, QueueCapabilityRegistry, QueueCapabilitySet, SingleConsumer,
-  SingleProducer, SupportsPeek,
-};
 pub use sync_mpsc_consumer_shared::SyncMpscConsumerShared;
 pub use sync_mpsc_producer_shared::SyncMpscProducerShared;
 pub use sync_queue_shared::{
@@ -37,7 +29,6 @@ pub use sync_queue_shared::{
 };
 pub use sync_spsc_consumer_shared::SyncSpscConsumerShared;
 pub use sync_spsc_producer_shared::SyncSpscProducerShared;
-pub use type_keys::{FifoKey, MpscKey, PriorityKey, SpscKey, TypeKey};
 
 mod offer_outcome;
 mod overflow_policy;
@@ -46,5 +37,7 @@ mod sync_queue;
 #[cfg(test)]
 mod tests;
 pub use async_queue::*;
+pub use offer_outcome::OfferOutcome;
+pub use overflow_policy::OverflowPolicy;
 pub use queue_error::QueueError;
 pub use sync_queue::*;

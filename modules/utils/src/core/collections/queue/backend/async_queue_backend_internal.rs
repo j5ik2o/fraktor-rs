@@ -2,9 +2,8 @@ use alloc::boxed::Box;
 
 use async_trait::async_trait;
 
-use super::OfferOutcome;
 use crate::core::collections::{
-  queue::QueueError,
+  queue::{QueueError, offer_outcome::OfferOutcome},
   wait::{WaitError, WaitShared},
 };
 

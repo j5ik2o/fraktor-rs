@@ -27,7 +27,7 @@ use tokio::{
   task::JoinHandle,
 };
 
-use crate::core::{
+use crate::core::transport::{
   InboundFrame, RemoteTransport, TransportBackpressureHookShared, TransportBind, TransportChannel, TransportEndpoint,
   TransportError, TransportHandle, TransportInboundShared,
 };

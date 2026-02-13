@@ -11,7 +11,7 @@ use crate::core::{
   actor::{Actor, ActorContextGeneric, Pid},
   dispatch::mailbox::ScheduleHints,
   error::ActorError,
-  messaging::{AnyMessage, AnyMessageViewGeneric, SystemMessage, message_invoker::MessageInvoker},
+  messaging::{AnyMessage, AnyMessageViewGeneric, message_invoker::MessageInvoker, system_message::SystemMessage},
   props::Props,
   system::ActorSystem,
 };

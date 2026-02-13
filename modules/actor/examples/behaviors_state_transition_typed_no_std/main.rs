@@ -11,7 +11,7 @@ mod no_std_tick_driver_support;
 
 use fraktor_actor_rs::core::{
   error::ActorError,
-  typed::{Behavior, Behaviors, TypedActorRef, TypedActorSystem, TypedProps},
+  typed::{Behavior, Behaviors, TypedActorSystem, TypedProps, actor::TypedActorRef},
 };
 use fraktor_utils_rs::core::sync::SharedAccess;
 

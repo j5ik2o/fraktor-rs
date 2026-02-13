@@ -40,41 +40,39 @@ mod snapshot_selection_criteria;
 mod snapshot_store;
 mod unconfirmed_delivery;
 
-pub use self::{
-  at_least_once_delivery::{AtLeastOnceDelivery, AtLeastOnceDeliveryGeneric},
-  at_least_once_delivery_config::AtLeastOnceDeliveryConfig,
-  at_least_once_delivery_snapshot::AtLeastOnceDeliverySnapshot,
-  eventsourced::Eventsourced,
-  in_memory_journal::InMemoryJournal,
-  in_memory_snapshot_store::InMemorySnapshotStore,
-  journal::Journal,
-  journal_actor::JournalActor,
-  journal_actor_config::JournalActorConfig,
-  journal_error::JournalError,
-  journal_message::JournalMessage,
-  journal_response::JournalResponse,
-  pending_handler_invocation::PendingHandlerInvocation,
-  persistence_context::PersistenceContext,
-  persistence_error::PersistenceError,
-  persistence_extension::{PersistenceExtension, PersistenceExtensionGeneric},
-  persistence_extension_id::PersistenceExtensionId,
-  persistence_extension_installer::PersistenceExtensionInstaller,
-  persistence_extension_shared::{PersistenceExtensionShared, PersistenceExtensionSharedGeneric},
-  persistent_actor::PersistentActor,
-  persistent_actor_state::PersistentActorState,
-  persistent_envelope::PersistentEnvelope,
-  persistent_props::{persistent_props, spawn_persistent},
-  persistent_repr::PersistentRepr,
-  recovery::Recovery,
-  redelivery_tick::RedeliveryTick,
-  snapshot::Snapshot,
-  snapshot_actor::SnapshotActor,
-  snapshot_actor_config::SnapshotActorConfig,
-  snapshot_error::SnapshotError,
-  snapshot_message::SnapshotMessage,
-  snapshot_metadata::SnapshotMetadata,
-  snapshot_response::SnapshotResponse,
-  snapshot_selection_criteria::SnapshotSelectionCriteria,
-  snapshot_store::SnapshotStore,
-  unconfirmed_delivery::UnconfirmedDelivery,
-};
+pub use at_least_once_delivery::{AtLeastOnceDelivery, AtLeastOnceDeliveryGeneric};
+pub use at_least_once_delivery_config::AtLeastOnceDeliveryConfig;
+pub use at_least_once_delivery_snapshot::AtLeastOnceDeliverySnapshot;
+pub use eventsourced::Eventsourced;
+pub use in_memory_journal::InMemoryJournal;
+pub use in_memory_snapshot_store::InMemorySnapshotStore;
+pub use journal::Journal;
+pub use journal_actor::JournalActor;
+pub use journal_actor_config::JournalActorConfig;
+pub use journal_error::JournalError;
+pub use journal_message::JournalMessage;
+pub use journal_response::JournalResponse;
+pub use pending_handler_invocation::PendingHandlerInvocation;
+pub use persistence_context::PersistenceContext;
+pub use persistence_error::PersistenceError;
+pub use persistence_extension::{PersistenceExtension, PersistenceExtensionGeneric};
+pub use persistence_extension_id::PersistenceExtensionId;
+pub use persistence_extension_installer::PersistenceExtensionInstaller;
+pub use persistence_extension_shared::{PersistenceExtensionShared, PersistenceExtensionSharedGeneric};
+pub use persistent_actor::PersistentActor;
+pub use persistent_actor_state::PersistentActorState;
+pub use persistent_envelope::PersistentEnvelope;
+pub use persistent_props::{persistent_props, spawn_persistent};
+pub use persistent_repr::PersistentRepr;
+pub use recovery::Recovery;
+pub use redelivery_tick::RedeliveryTick;
+pub use snapshot::Snapshot;
+pub use snapshot_actor::SnapshotActor;
+pub use snapshot_actor_config::SnapshotActorConfig;
+pub use snapshot_error::SnapshotError;
+pub use snapshot_message::SnapshotMessage;
+pub use snapshot_metadata::SnapshotMetadata;
+pub use snapshot_response::SnapshotResponse;
+pub use snapshot_selection_criteria::SnapshotSelectionCriteria;
+pub use snapshot_store::SnapshotStore;
+pub use unconfirmed_delivery::UnconfirmedDelivery;

@@ -1,6 +1,7 @@
 //! No-op cluster provider for single-node or testing scenarios.
 
-use crate::core::{ClusterProvider, ClusterProviderError};
+use super::ClusterProvider;
+use crate::core::ClusterProviderError;
 
 /// Provider that performs no network operations.
 ///

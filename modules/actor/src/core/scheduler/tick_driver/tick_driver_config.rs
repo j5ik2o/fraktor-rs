@@ -10,7 +10,7 @@ use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 #[cfg(any(test, feature = "test-support"))]
 use super::ManualTestDriver;
 use super::{TickDriverBundle, TickDriverError};
-use crate::core::scheduler::TickDriverProvisioningContext;
+use crate::core::scheduler::tick_driver::TickDriverProvisioningContext;
 
 /// Type alias for tick driver builder function.
 type TickDriverBuilderFn<TB> =

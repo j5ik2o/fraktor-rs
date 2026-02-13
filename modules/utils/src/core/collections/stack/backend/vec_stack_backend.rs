@@ -1,9 +1,7 @@
 use alloc::vec::Vec;
 use core::cmp;
 
-use crate::core::collections::stack::{
-  PushOutcome, StackError, StackOverflowPolicy, SyncStackBackend, backend::SyncStackBackendInternal,
-};
+use super::{PushOutcome, StackError, StackOverflowPolicy, SyncStackBackend, SyncStackBackendInternal};
 
 /// Stack backend backed by a contiguous growable buffer.
 pub struct VecStackBackend<T> {

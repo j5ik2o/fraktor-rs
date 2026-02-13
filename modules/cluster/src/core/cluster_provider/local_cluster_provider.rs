@@ -17,7 +17,8 @@ use fraktor_actor_rs::core::{
 use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
-use crate::core::{ClusterEvent, ClusterProvider, ClusterProviderError, ClusterTopology, StartupMode};
+use super::ClusterProvider;
+use crate::core::{ClusterEvent, ClusterProviderError, ClusterTopology, StartupMode};
 
 #[cfg(test)]
 mod tests;

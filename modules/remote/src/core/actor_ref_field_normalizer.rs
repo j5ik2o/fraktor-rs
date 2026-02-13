@@ -6,7 +6,10 @@ use fraktor_actor_rs::core::{
   actor::actor_path::ActorPath,
   event::stream::{EventStreamEvent, RemoteAuthorityEvent},
   messaging::AnyMessageGeneric,
-  system::{AuthorityState, RemoteAuthorityError, SystemStateSharedGeneric},
+  system::{
+    remote::RemoteAuthorityError,
+    state::{AuthorityState, SystemStateSharedGeneric},
+  },
 };
 use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 

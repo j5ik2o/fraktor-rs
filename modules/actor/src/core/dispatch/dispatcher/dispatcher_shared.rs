@@ -20,9 +20,9 @@ use super::{
 };
 use crate::core::{
   actor::actor_ref::ActorRefSenderSharedGeneric,
-  dispatch::mailbox::{MailboxGeneric, MailboxPressureEvent, ScheduleHints},
+  dispatch::mailbox::{MailboxGeneric, ScheduleHints, metrics_event::MailboxPressureEvent},
   error::SendError,
-  messaging::{AnyMessageGeneric, SystemMessage, message_invoker::MessageInvokerShared},
+  messaging::{AnyMessageGeneric, message_invoker::MessageInvokerShared, system_message::SystemMessage},
 };
 
 /// Dispatcher shared handle that manages mailbox processing.

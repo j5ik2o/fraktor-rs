@@ -5,8 +5,14 @@ use fraktor_actor_rs::core::{
   error::ActorError,
   messaging::AnyMessageViewGeneric,
   props::PropsGeneric,
-  scheduler::{ManualTestDriver, SchedulerConfig, TickDriverConfig},
-  system::{ActorSystemConfigGeneric, ActorSystemGeneric, SystemStateGeneric, SystemStateSharedGeneric},
+  scheduler::{
+    SchedulerConfig,
+    tick_driver::{ManualTestDriver, TickDriverConfig},
+  },
+  system::{
+    ActorSystemConfigGeneric, ActorSystemGeneric,
+    state::{SystemStateSharedGeneric, system_state::SystemStateGeneric},
+  },
 };
 use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 

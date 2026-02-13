@@ -8,7 +8,7 @@ use super::actor_selection_error::ActorSelectionError;
 use crate::core::{
   actor::actor_path::{ActorPath, ActorPathError, PathResolutionError, PathSegment},
   messaging::AnyMessageGeneric,
-  system::{AuthorityState, RemoteAuthorityRegistryGeneric},
+  system::{remote::RemoteAuthorityRegistryGeneric, state::AuthorityState},
 };
 
 /// Resolves relative actor selection expressions against a base path.

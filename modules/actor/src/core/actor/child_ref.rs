@@ -7,8 +7,8 @@ use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 use crate::core::{
   actor::{Pid, actor_ref::ActorRefGeneric},
   error::SendError,
-  messaging::{AnyMessageGeneric, AskResponseGeneric, SystemMessage},
-  system::SystemStateSharedGeneric,
+  messaging::{AnyMessageGeneric, AskResponseGeneric, system_message::SystemMessage},
+  system::state::SystemStateSharedGeneric,
 };
 
 /// Provides typed accessors to a child actor owned by a parent.

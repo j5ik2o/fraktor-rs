@@ -7,7 +7,9 @@ use fraktor_utils_rs::core::{
   sync::{ArcShared, SharedAccess, sync_mutex_like::SpinSyncMutex},
 };
 
-use crate::core::scheduler::{SchedulerRunnerOwned, SchedulerSharedGeneric, TickDriverProvisioningContext};
+use crate::core::scheduler::{
+  SchedulerRunnerOwned, SchedulerSharedGeneric, tick_driver::TickDriverProvisioningContext,
+};
 
 type SchedulerContextMutex<TB> = SpinSyncMutex<Option<SchedulerSharedGeneric<TB>>>;
 

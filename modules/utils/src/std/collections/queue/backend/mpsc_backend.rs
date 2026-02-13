@@ -9,7 +9,10 @@ use std::sync::{
 };
 
 use crate::core::{
-  collections::queue::{OfferOutcome, OverflowPolicy, QueueError, SyncQueueBackend, backend::SyncQueueBackendInternal},
+  collections::queue::{
+    OfferOutcome, OverflowPolicy, QueueError,
+    backend::{SyncQueueBackend, SyncQueueBackendInternal},
+  },
   sync::ArcShared,
 };
 

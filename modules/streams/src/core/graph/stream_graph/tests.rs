@@ -1,0 +1,41 @@
+use crate::core::{
+  MatCombine,
+  graph::StreamGraph,
+  shape::{Inlet, Outlet, PortId},
+  stage::{Source, StageKind},
+};
+
+impl StreamGraph {
+  fn stage_kinds(&self) -> Vec<StageKind> {
+    self.nodes.iter().map(|node| node.stage.kind()).collect()
+  }
+
+  fn stage_mat_combines(&self) -> Vec<MatCombine> {
+    self.nodes.iter().map(|node| node.stage.mat_combine()).collect()
+  }
+
+  fn connection_count(&self) -> usize {
+    self.edges.len()
+  }
+
+  fn connections(&self) -> Vec<(PortId, PortId, MatCombine)> {
+    self.edges.iter().map(|edge| (edge.from, edge.to, edge.mat)).collect()
+  }
+}
+
+#[test]
+fn connect_rejects_unknown_ports() {
+  let mut graph = StreamGraph::new();
+  let result = graph.connect(&Outlet::<u32>::new(), &Inlet::<u32>::new(), MatCombine::KeepLeft);
+  assert!(result.is_err());
+}
+
+#[test]
+fn graph_tracks_stage_metadata() {
+  let source = Source::single(1_u32).map(|value| value + 1);
+  let (graph, _mat) = source.into_parts();
+  assert_eq!(graph.stage_kinds(), vec![StageKind::SourceSingle, StageKind::FlowMap]);
+  assert_eq!(graph.stage_mat_combines(), vec![MatCombine::KeepRight, MatCombine::KeepLeft]);
+  assert_eq!(graph.connection_count(), 1);
+  assert_eq!(graph.connections().len(), 1);
+}

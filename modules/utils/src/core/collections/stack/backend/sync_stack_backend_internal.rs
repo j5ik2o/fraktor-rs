@@ -1,4 +1,4 @@
-use crate::core::collections::stack::{PushOutcome, StackError, StackOverflowPolicy};
+use super::{PushOutcome, StackError, StackOverflowPolicy};
 
 /// Backend trait responsible for stack operations.
 pub(crate) trait SyncStackBackendInternal<T> {

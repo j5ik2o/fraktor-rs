@@ -6,15 +6,18 @@ use fraktor_actor_rs::core::{
   actor::actor_path::ActorPathScheme,
   serialization::SerializationExtensionSharedGeneric,
   system::{
-    ActorRefProviderInstaller, ActorRefProviderSharedGeneric, ActorSystemBuildError, ActorSystemGeneric,
-    RemoteWatchHookShared,
+    ActorSystemBuildError, ActorSystemGeneric,
+    provider::{ActorRefProviderInstaller, ActorRefProviderSharedGeneric},
+    remote::RemoteWatchHookShared,
   },
 };
 use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use super::{loopback_router, remote::RemoteActorRefProviderGeneric};
 use crate::core::{
-  EndpointReaderGeneric, EndpointWriterGeneric, EndpointWriterSharedGeneric, RemotingExtensionGeneric,
+  endpoint_reader::EndpointReaderGeneric,
+  endpoint_writer::{EndpointWriterGeneric, EndpointWriterSharedGeneric},
+  remoting_extension::RemotingExtensionGeneric,
 };
 
 /// Installer registered via the actor system builder's `with_actor_ref_provider` method.

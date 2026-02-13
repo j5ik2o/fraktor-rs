@@ -15,8 +15,11 @@ use std::{
 };
 
 use fraktor_actor_rs::core::scheduler::{
-  HardwareKind, HardwareTickDriver, SchedulerSharedGeneric, SchedulerTickExecutor, TickDriver, TickDriverBundle,
-  TickDriverConfig, TickDriverError, TickExecutorSignal, TickFeed, TickFeedHandle, TickPulseHandler, TickPulseSource,
+  SchedulerSharedGeneric,
+  tick_driver::{
+    HardwareKind, HardwareTickDriver, SchedulerTickExecutor, TickDriver, TickDriverBundle, TickDriverConfig,
+    TickDriverError, TickExecutorSignal, TickFeed, TickFeedHandle, TickPulseHandler, TickPulseSource,
+  },
 };
 use fraktor_utils_rs::{core::sync::SharedAccess, std::runtime_toolbox::StdToolbox};
 

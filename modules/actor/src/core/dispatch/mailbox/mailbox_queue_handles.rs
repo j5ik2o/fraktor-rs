@@ -3,11 +3,8 @@
 use core::cmp;
 
 use fraktor_utils_rs::core::{
-  collections::queue::{
-    QueueError, SyncQueue,
-    backend::{OfferOutcome, OverflowPolicy, VecDequeBackend},
-  },
-  runtime_toolbox::{RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
+  collections::queue::{OfferOutcome, OverflowPolicy, QueueError, SyncQueue, backend::VecDequeBackend},
+  runtime_toolbox::{RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 

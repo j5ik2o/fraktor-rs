@@ -2,7 +2,7 @@ use core::marker::PhantomData;
 
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
-use super::MailboxPressureEvent;
+use super::metrics_event::MailboxPressureEvent;
 use crate::core::dispatch::dispatcher::DispatcherSharedGeneric;
 
 type BackpressureCallback = dyn Fn(&MailboxPressureEvent) + Send + Sync + 'static;

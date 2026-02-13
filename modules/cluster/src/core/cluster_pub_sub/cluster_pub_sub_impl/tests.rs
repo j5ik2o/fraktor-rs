@@ -13,9 +13,9 @@ use fraktor_utils_rs::core::{
 
 use super::ClusterPubSubImpl;
 use crate::core::{
-  ClusterEvent, ClusterIdentity, ClusterPubSub, DeliverBatchRequest, DeliveryEndpoint, DeliveryEndpointSharedGeneric,
-  DeliveryReport, DeliveryStatus, KindRegistry, PubSubBatch, PubSubConfig, PubSubEnvelope, PubSubEvent,
-  PubSubSubscriber, PubSubTopic, PublishAck, PublishOptions, PublishRequest, SubscriberDeliveryReport, TopologyUpdate,
+  ClusterEvent, ClusterIdentity, DeliverBatchRequest, DeliveryEndpoint, DeliveryEndpointSharedGeneric, DeliveryReport,
+  DeliveryStatus, KindRegistry, PubSubBatch, PubSubConfig, PubSubEnvelope, PubSubEvent, PubSubSubscriber, PubSubTopic,
+  PublishAck, PublishOptions, PublishRequest, SubscriberDeliveryReport, TopologyUpdate, cluster_pub_sub::ClusterPubSub,
 };
 
 /// EventStream イベントを収集するテスト用 subscriber
@@ -109,8 +109,9 @@ fn make_pubsub(
   failed: Vec<PubSubSubscriber<NoStdToolbox>>,
 ) -> ClusterPubSubImpl<NoStdToolbox> {
   let setup = fraktor_actor_rs::core::serialization::default_serialization_setup();
-  let serialization_registry =
-    ArcShared::new(fraktor_actor_rs::core::serialization::SerializationRegistryGeneric::from_setup(&setup));
+  let serialization_registry = ArcShared::new(
+    fraktor_actor_rs::core::serialization::serialization_registry::SerializationRegistryGeneric::from_setup(&setup),
+  );
   let endpoint = DeliveryEndpointSharedGeneric::new(Box::new(StubEndpoint::new(failed)));
   ClusterPubSubImpl::new(event_stream, serialization_registry, endpoint, PubSubConfig::default(), registry)
 }

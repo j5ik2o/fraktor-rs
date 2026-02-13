@@ -15,17 +15,17 @@ use fraktor_actor_rs::core::{
   system::{ActorSystemGeneric, ActorSystemWeakGeneric},
 };
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
+  runtime_toolbox::{RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 
 use super::{config::RemotingExtensionConfig, control::RemotingControl, error::RemotingError};
 use crate::core::{
-  EndpointWriterSharedGeneric,
   actor_ref_provider::unregister_endpoint,
   backpressure::{RemotingBackpressureListener, RemotingBackpressureListenerShared},
   endpoint_association::QuarantineReason,
   endpoint_reader::EndpointReaderGeneric,
+  endpoint_writer::EndpointWriterSharedGeneric,
   event_publisher::EventPublisherGeneric,
   flight_recorder::{RemotingFlightRecorder, RemotingFlightRecorderSnapshot},
   remote_authority_snapshot::RemoteAuthoritySnapshot,

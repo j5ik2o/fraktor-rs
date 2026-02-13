@@ -1,4 +1,4 @@
-use fraktor_streams_rs::core::{BroadcastHub, OperatorKey, Source, StreamError};
+use fraktor_streams_rs::core::{StreamError, hub::BroadcastHub, operator::OperatorKey, stage::Source};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct CompatObservation {

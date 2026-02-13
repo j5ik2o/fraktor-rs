@@ -3,7 +3,8 @@
 use alloc::string::String;
 
 use fraktor_actor_rs::core::serialization::{
-  SerializationCallScope, SerializationSetup, SerializationSetupBuilder, Serializer, SerializerId, StringSerializer,
+  SerializationCallScope, SerializationSetup, SerializationSetupBuilder, Serializer, SerializerId,
+  builtin::StringSerializer,
 };
 use fraktor_utils_rs::core::sync::ArcShared;
 

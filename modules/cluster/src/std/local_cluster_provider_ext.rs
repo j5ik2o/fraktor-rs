@@ -9,7 +9,7 @@ use fraktor_actor_rs::core::event::stream::{
 };
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::SharedAccess};
 
-use crate::core::{LocalClusterProviderGeneric, LocalClusterProviderSharedGeneric};
+use crate::core::cluster_provider::{LocalClusterProviderGeneric, LocalClusterProviderSharedGeneric};
 
 /// Subscribes to remoting lifecycle events for automatic topology updates.
 ///

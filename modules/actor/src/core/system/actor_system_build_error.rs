@@ -1,7 +1,7 @@
 use alloc::string::String;
 use core::fmt;
 
-use crate::core::{scheduler::TickDriverError, spawn::SpawnError};
+use crate::core::{scheduler::tick_driver::TickDriverError, spawn::SpawnError};
 
 /// Error emitted when the actor system builder fails to initialize the runtime.
 #[derive(Debug)]

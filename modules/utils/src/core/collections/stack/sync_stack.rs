@@ -1,4 +1,4 @@
-use crate::core::collections::stack::{PushOutcome, StackError, SyncStackBackend};
+use crate::core::collections::stack::backend::{PushOutcome, StackError, SyncStackBackend};
 
 /// Sync stack API parameterised by element type and backend.
 pub struct SyncStack<T, B>

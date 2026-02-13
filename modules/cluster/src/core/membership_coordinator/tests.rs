@@ -1,6 +1,6 @@
 use core::time::Duration;
 
-use fraktor_remote_rs::core::{PhiFailureDetector, PhiFailureDetectorConfig};
+use fraktor_remote_rs::core::failure_detector::{PhiFailureDetector, PhiFailureDetectorConfig};
 use fraktor_utils_rs::core::time::TimerInstant;
 
 use super::MembershipCoordinatorGeneric;

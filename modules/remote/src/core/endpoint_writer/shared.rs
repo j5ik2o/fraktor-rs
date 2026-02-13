@@ -1,7 +1,7 @@
 //! Shared wrapper for endpoint writer with interior mutability.
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
+  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
   sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
 };
 

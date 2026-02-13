@@ -4,9 +4,7 @@ use core::{num::NonZeroU32, time::Duration};
 
 use fraktor_utils_rs::core::time::SchedulerCapacityProfile;
 
-use super::{
-  fixed_delay_policy::FixedDelayPolicy, fixed_rate_policy::FixedRatePolicy, policy_registry::SchedulerPolicyRegistry,
-};
+use super::policy::{FixedDelayPolicy, FixedRatePolicy, SchedulerPolicyRegistry};
 
 /// Configuration for scheduler construction.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

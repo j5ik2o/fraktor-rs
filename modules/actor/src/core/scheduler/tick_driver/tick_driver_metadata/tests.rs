@@ -4,7 +4,7 @@ use core::time::Duration;
 
 use fraktor_utils_rs::core::time::TimerInstant;
 
-use crate::core::scheduler::{AutoProfileKind, TickDriverId, TickDriverMetadata};
+use crate::core::scheduler::tick_driver::{AutoProfileKind, TickDriverId, TickDriverMetadata};
 
 #[test]
 fn test_tick_driver_id_equality() {

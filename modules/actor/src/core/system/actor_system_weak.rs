@@ -2,7 +2,7 @@
 
 use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 
-use super::{ActorSystemGeneric, SystemStateWeakGeneric};
+use super::{ActorSystemGeneric, state::SystemStateWeakGeneric};
 
 /// Weak reference wrapper for [`ActorSystemGeneric`].
 ///

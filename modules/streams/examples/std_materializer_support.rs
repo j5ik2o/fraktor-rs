@@ -3,7 +3,10 @@ use std::time::Duration;
 use fraktor_actor_rs::{
   core::{
     error::ActorError,
-    scheduler::{ManualTestDriver, SchedulerConfig, TickDriverConfig},
+    scheduler::{
+      SchedulerConfig,
+      tick_driver::{ManualTestDriver, TickDriverConfig},
+    },
   },
   std::{
     actor::{Actor, ActorContext},
@@ -13,7 +16,7 @@ use fraktor_actor_rs::{
   },
 };
 use fraktor_streams_rs::{
-  core::{ActorMaterializerConfig, Completion, StreamCompletion},
+  core::{Completion, StreamCompletion, mat::ActorMaterializerConfig},
   std::ActorMaterializer,
 };
 use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;

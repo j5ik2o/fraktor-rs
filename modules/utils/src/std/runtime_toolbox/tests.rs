@@ -1,6 +1,6 @@
 use super::{StdMutex, StdMutexFamily, StdRwLock, StdRwLockFamily};
 use crate::core::{
-  runtime_toolbox::{SyncMutexFamily, SyncRwLockFamily},
+  runtime_toolbox::{sync_mutex_family::SyncMutexFamily, sync_rwlock_family::SyncRwLockFamily},
   sync::sync_rwlock_like::SyncRwLockLike,
 };
 

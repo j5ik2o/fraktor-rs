@@ -4,8 +4,9 @@ use crate::core::collections::{
   PriorityMessage,
   queue::{
     QueueError,
-    backend::{OfferOutcome, SyncQueueBackend, sync_priority_backend::SyncPriorityBackend},
+    backend::{SyncQueueBackend, sync_priority_backend::SyncPriorityBackend},
     capabilities::SupportsPeek,
+    offer_outcome::OfferOutcome,
     type_keys::{FifoKey, MpscKey, PriorityKey, SpscKey, TypeKey},
   },
 };

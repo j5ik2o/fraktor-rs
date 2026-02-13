@@ -9,7 +9,7 @@ use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 
 use crate::core::{
   actor::{ActorContextGeneric, Pid},
-  dispatch::mailbox::MailboxPressureEvent,
+  dispatch::mailbox::metrics_event::MailboxPressureEvent,
   error::ActorError,
   messaging::AnyMessageViewGeneric,
   supervision::SupervisorStrategy,

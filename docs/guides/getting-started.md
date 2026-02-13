@@ -59,7 +59,8 @@ use fraktor_actor_rs::{
     futures::ActorFutureListener,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
-    system::{ActorSystem, DispatcherConfig},
+    dispatch::dispatcher::DispatcherConfig,
+    system::ActorSystem,
   },
 };
 use fraktor_utils_rs::{core::sync::ArcShared, std::StdSyncMutex};

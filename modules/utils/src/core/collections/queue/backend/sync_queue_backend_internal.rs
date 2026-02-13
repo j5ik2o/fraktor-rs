@@ -1,4 +1,4 @@
-use crate::core::collections::queue::{OfferOutcome, OverflowPolicy, QueueError};
+use crate::core::collections::queue::{QueueError, offer_outcome::OfferOutcome, overflow_policy::OverflowPolicy};
 
 /// Internal Backend trait responsible for queue operations.
 pub(crate) trait SyncQueueBackendInternal<T> {

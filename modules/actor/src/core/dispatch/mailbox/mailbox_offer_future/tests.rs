@@ -6,7 +6,7 @@ use core::{
   time::Duration,
 };
 
-use fraktor_utils_rs::core::timing::ManualDelayProvider;
+use fraktor_utils_rs::core::timing::delay::ManualDelayProvider;
 
 use crate::core::{
   dispatch::mailbox::{EnqueueOutcome, Mailbox, MailboxOverflowStrategy, MailboxPolicy},

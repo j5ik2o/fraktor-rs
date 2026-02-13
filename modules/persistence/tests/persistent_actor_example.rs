@@ -9,7 +9,10 @@ use fraktor_actor_rs::core::{
   error::ActorError,
   messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
   props::PropsGeneric,
-  scheduler::{ManualTestDriver, SchedulerConfig, TickDriverConfig},
+  scheduler::{
+    SchedulerConfig,
+    tick_driver::{ManualTestDriver, TickDriverConfig},
+  },
   system::{ActorSystemConfigGeneric, ActorSystemGeneric},
 };
 use fraktor_persistence_rs::core::{
@@ -17,7 +20,7 @@ use fraktor_persistence_rs::core::{
   PersistentActor, PersistentRepr, Snapshot, persistent_props, spawn_persistent,
 };
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
+  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
   sync::ArcShared,
 };
 

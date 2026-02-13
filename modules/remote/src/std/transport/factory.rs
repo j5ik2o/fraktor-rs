@@ -6,7 +6,10 @@ use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
 #[cfg(feature = "tokio-transport")]
 use super::tokio_tcp::TokioTcpTransport;
-use crate::core::{LoopbackTransport, RemoteTransport, RemotingExtensionConfig, TransportError};
+use crate::core::{
+  remoting_extension::RemotingExtensionConfig,
+  transport::{LoopbackTransport, RemoteTransport, TransportError},
+};
 
 /// Standard library transport factory that supports both loopback and Tokio TCP.
 ///

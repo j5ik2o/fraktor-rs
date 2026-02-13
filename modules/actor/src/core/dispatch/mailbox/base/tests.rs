@@ -6,7 +6,7 @@ use crate::core::{
     Mailbox, MailboxInstrumentation, MailboxOfferFutureGeneric, MailboxOverflowStrategy, MailboxPolicy,
     MailboxPollFutureGeneric,
   },
-  messaging::{AnyMessage, AnyMessageGeneric, SystemMessage},
+  messaging::{AnyMessage, AnyMessageGeneric, system_message::SystemMessage},
   system::ActorSystem,
 };
 

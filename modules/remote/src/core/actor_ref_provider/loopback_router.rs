@@ -19,8 +19,8 @@ use hashbrown::HashMap;
 use spin::Mutex;
 
 use crate::core::{
-  EndpointWriterError, EndpointWriterSharedGeneric,
   endpoint_reader::EndpointReaderGeneric,
+  endpoint_writer::{EndpointWriterError, EndpointWriterSharedGeneric},
   envelope::{OutboundMessage, RemotingEnvelope},
   remote_node_id::RemoteNodeId,
 };

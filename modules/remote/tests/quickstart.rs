@@ -15,17 +15,21 @@ use fraktor_actor_rs::core::{
   extension::ExtensionInstallers,
   messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
   props::PropsGeneric,
-  scheduler::{ManualTestDriver, TickDriverConfig},
+  scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
   serialization::SerializationExtensionInstaller,
   system::{
-    ActorRefProvider, ActorSystemConfigGeneric, ActorSystemGeneric, AuthorityState, RemoteWatchHook,
-    RemoteWatchHookShared, RemotingConfig,
+    ActorSystemConfigGeneric, ActorSystemGeneric,
+    provider::ActorRefProvider,
+    remote::{RemoteWatchHook, RemoteWatchHookShared, RemotingConfig},
+    state::AuthorityState,
   },
 };
 use fraktor_remote_rs::core::{
-  FlightMetricKind, FnRemotingBackpressureListener, LoopbackActorRefProviderGeneric, LoopbackActorRefProviderInstaller,
-  RemotingControl, RemotingControlShared, RemotingExtensionConfig, RemotingExtensionId, RemotingExtensionInstaller,
-  default_loopback_setup,
+  RemotingExtensionId, RemotingExtensionInstaller,
+  actor_ref_provider::{LoopbackActorRefProviderGeneric, LoopbackActorRefProviderInstaller, default_loopback_setup},
+  backpressure::FnRemotingBackpressureListener,
+  flight_recorder::FlightMetricKind,
+  remoting_extension::{RemotingControl, RemotingControlShared, RemotingExtensionConfig},
 };
 use fraktor_utils_rs::{
   core::{

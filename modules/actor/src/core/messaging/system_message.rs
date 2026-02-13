@@ -5,10 +5,6 @@ mod tests;
 
 use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
-pub use self::{
-  failure_classification::FailureClassification, failure_message_snapshot::FailureMessageSnapshot,
-  failure_payload::FailurePayload,
-};
 use crate::core::{
   actor::{ContextPipeTaskId, Pid},
   messaging::AnyMessageGeneric,
@@ -17,6 +13,10 @@ use crate::core::{
 mod failure_classification;
 mod failure_message_snapshot;
 mod failure_payload;
+
+pub use failure_classification::FailureClassification;
+pub use failure_message_snapshot::FailureMessageSnapshot;
+pub use failure_payload::FailurePayload;
 
 /// Lightweight enum describing system-level mailbox traffic.
 #[derive(Clone, Debug, PartialEq, Eq)]

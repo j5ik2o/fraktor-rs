@@ -34,7 +34,7 @@ use crate::core::{
     AnyMessage,
     message_invoker::{MessageInvoker, MessageInvokerShared},
   },
-  system::{ActorSystem, SystemStateShared},
+  system::{ActorSystem, state::SystemStateShared},
 };
 
 fn register_user_hint() -> ScheduleHints {
@@ -240,14 +240,14 @@ fn mailbox_full_notifies_invoker_pressure_hook() {
 
     fn invoke_system_message(
       &mut self,
-      _message: crate::core::messaging::SystemMessage,
+      _message: crate::core::messaging::system_message::SystemMessage,
     ) -> Result<(), crate::core::error::ActorError> {
       Ok(())
     }
 
     fn invoke_mailbox_pressure(
       &mut self,
-      _event: &crate::core::dispatch::mailbox::MailboxPressureEvent,
+      _event: &crate::core::dispatch::mailbox::metrics_event::MailboxPressureEvent,
     ) -> Result<(), crate::core::error::ActorError> {
       *self.pressure_calls.lock() += 1;
       Ok(())
@@ -445,7 +445,7 @@ impl MessageInvoker<NoStdToolbox> for RecordingInvoker {
 
   fn invoke_system_message(
     &mut self,
-    _message: crate::core::messaging::SystemMessage,
+    _message: crate::core::messaging::system_message::SystemMessage,
   ) -> Result<(), crate::core::error::ActorError> {
     Ok(())
   }

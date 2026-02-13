@@ -19,7 +19,7 @@ use crate::core::{
   error::SendError,
   futures::ActorFutureSharedGeneric,
   messaging::{AnyMessageGeneric, AskResponseGeneric, AskResult},
-  system::{SystemStateSharedGeneric, SystemStateWeakGeneric},
+  system::state::{SystemStateSharedGeneric, SystemStateWeakGeneric},
 };
 
 /// Handle used to communicate with an actor instance.

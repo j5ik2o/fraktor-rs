@@ -27,5 +27,3 @@ pub use sync_queue_async_adapter::SyncQueueAsyncAdapter;
 pub use sync_queue_backend::SyncQueueBackend;
 pub(crate) use sync_queue_backend_internal::SyncQueueBackendInternal;
 pub use vec_deque_backend::VecDequeBackend;
-
-pub use crate::core::collections::queue::{offer_outcome::OfferOutcome, overflow_policy::OverflowPolicy};

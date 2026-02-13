@@ -16,7 +16,7 @@ use crate::core::{
     logging::LogLevel,
     stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   },
-  messaging::{AnyMessage, AnyMessageViewGeneric, SystemMessage},
+  messaging::{AnyMessage, AnyMessageViewGeneric, system_message::SystemMessage},
   props::{MailboxConfig, Props},
   system::ActorSystem,
 };
@@ -50,7 +50,9 @@ fn mailbox_metrics_and_warnings_are_emitted() {
   let mailbox_config = MailboxConfig::new(MailboxPolicy::bounded(capacity, MailboxOverflowStrategy::DropNewest, None))
     .with_warn_threshold(Some(warn_threshold));
   let props = Props::from_fn(|| PassiveActor).with_mailbox_config(mailbox_config);
-  let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
+  let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::scheduler::tick_driver::ManualTestDriver::new(),
+  );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 
   let events = ArcShared::new(NoStdMutex::new(Vec::new()));

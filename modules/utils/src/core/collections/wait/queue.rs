@@ -1,9 +1,6 @@
 use super::{WaitError, WaitNodeShared, handle_shared::WaitShared};
 use crate::core::{
-  collections::queue::{
-    QueueError, SyncFifoQueue,
-    backend::{OverflowPolicy, VecDequeBackend},
-  },
+  collections::queue::{OverflowPolicy, QueueError, SyncFifoQueue, backend::VecDequeBackend},
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
   sync::SharedAccess,
 };

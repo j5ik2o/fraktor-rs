@@ -8,9 +8,9 @@ use core::{
 use super::AsyncMpscConsumerShared;
 use crate::core::{
   collections::queue::{
-    AsyncQueue,
+    AsyncQueue, OverflowPolicy,
     async_queue_shared::AsyncQueueShared,
-    backend::{OverflowPolicy, SyncQueueAsyncAdapter, VecDequeBackend},
+    backend::{SyncQueueAsyncAdapter, VecDequeBackend},
     type_keys::MpscKey,
   },
   sync::{ArcShared, async_mutex_like::SpinAsyncMutex},

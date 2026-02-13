@@ -10,7 +10,7 @@ use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::{core::sync::ArcShared, std::runtime_toolbox::StdToolbox};
 
 use super::{AwsEcsClusterProvider, EcsClusterConfig};
-use crate::core::{ClusterEvent, ClusterProvider, StartupMode};
+use crate::core::{ClusterEvent, StartupMode, cluster_provider::ClusterProvider};
 
 struct EmptyBlockList;
 

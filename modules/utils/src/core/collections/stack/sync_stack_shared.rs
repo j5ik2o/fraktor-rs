@@ -2,7 +2,7 @@ use core::marker::PhantomData;
 
 use super::SyncStack;
 use crate::core::{
-  collections::stack::{PushOutcome, StackError, SyncStackBackend},
+  collections::stack::backend::{PushOutcome, StackError, SyncStackBackend},
   sync::{
     ArcShared,
     sync_mutex_like::{SpinSyncMutex, SyncMutexLike},

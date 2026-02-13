@@ -49,8 +49,8 @@ fn recoverable_failure_restarts_child() {
     move || RestartGuardian::new(log.clone(), child_slot.clone())
   });
 
-  let tick_driver = fraktor_actor_rs::core::scheduler::TickDriverConfig::manual(
-    fraktor_actor_rs::core::scheduler::ManualTestDriver::new(),
+  let tick_driver = fraktor_actor_rs::core::scheduler::tick_driver::TickDriverConfig::manual(
+    fraktor_actor_rs::core::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
@@ -72,8 +72,8 @@ fn fatal_failure_stops_child() {
     move || FatalGuardian::new(child_slot.clone())
   });
 
-  let tick_driver = fraktor_actor_rs::core::scheduler::TickDriverConfig::manual(
-    fraktor_actor_rs::core::scheduler::ManualTestDriver::new(),
+  let tick_driver = fraktor_actor_rs::core::scheduler::tick_driver::TickDriverConfig::manual(
+    fraktor_actor_rs::core::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 
@@ -113,8 +113,8 @@ fn escalate_failure_restarts_supervisor() {
     move || RootGuardian::new(supervisor_slot.clone(), child_slot.clone(), supervisor_log.clone(), child_log.clone())
   });
 
-  let tick_driver = fraktor_actor_rs::core::scheduler::TickDriverConfig::manual(
-    fraktor_actor_rs::core::scheduler::ManualTestDriver::new(),
+  let tick_driver = fraktor_actor_rs::core::scheduler::tick_driver::TickDriverConfig::manual(
+    fraktor_actor_rs::core::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
@@ -151,8 +151,8 @@ fn panic_propagates_without_intervention() {
     move || PanicGuardian::new(child_slot.clone())
   });
 
-  let tick_driver = fraktor_actor_rs::core::scheduler::TickDriverConfig::manual(
-    fraktor_actor_rs::core::scheduler::ManualTestDriver::new(),
+  let tick_driver = fraktor_actor_rs::core::scheduler::tick_driver::TickDriverConfig::manual(
+    fraktor_actor_rs::core::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");

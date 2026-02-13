@@ -9,7 +9,7 @@ use fraktor_actor_rs::core::{
 use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
 use super::remoting_extension_id::RemotingExtensionId;
-use crate::core::RemotingExtensionConfig;
+use crate::core::remoting_extension::RemotingExtensionConfig;
 
 /// Installs the remoting extension into the actor system.
 pub struct RemotingExtensionInstaller {

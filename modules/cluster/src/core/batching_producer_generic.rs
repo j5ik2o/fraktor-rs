@@ -10,8 +10,8 @@ use fraktor_actor_rs::core::{
   scheduler::{ExecutionBatch, SchedulerCommand, SchedulerRunnable, SchedulerSharedGeneric},
 };
 use fraktor_utils_rs::core::{
-  collections::queue::{OverflowPolicy, QueueError, SyncFifoQueue, VecDequeBackend},
-  runtime_toolbox::{RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
+  collections::queue::{OverflowPolicy, QueueError, SyncFifoQueue, backend::VecDequeBackend},
+  runtime_toolbox::{RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
   sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
 };
 

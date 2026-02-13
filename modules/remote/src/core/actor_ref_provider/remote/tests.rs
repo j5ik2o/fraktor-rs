@@ -11,15 +11,15 @@ use fraktor_actor_rs::core::{
   error::{ActorError, SendError},
   messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
   props::PropsGeneric,
-  scheduler::{ManualTestDriver, TickDriverConfig},
+  scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
   serialization::{
     SerializationCallScope, SerializationExtensionGeneric, SerializationExtensionSharedGeneric, SerializationSetup,
-    SerializationSetupBuilder, Serializer, SerializerId, StringSerializer,
+    SerializationSetupBuilder, Serializer, SerializerId, builtin::StringSerializer,
   },
-  system::{ActorSystemConfig, ActorSystemGeneric, RemoteWatchHook},
+  system::{ActorSystemConfig, ActorSystemGeneric, remote::RemoteWatchHook},
 };
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily},
+  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, sync_mutex_family::SyncMutexFamily},
   sync::{ArcShared, SharedAccess},
 };
 

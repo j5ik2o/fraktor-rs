@@ -16,7 +16,7 @@ use fraktor_actor_rs::{
   },
   std::{
     actor::{Actor, ActorContext},
-    dispatch::dispatcher::dispatch_executor::TokioExecutor,
+    dispatch::dispatcher::{DispatcherConfig, dispatch_executor::TokioExecutor},
     event::{
       logging::StdLoggerSubscriber,
       stream::{EventStreamEvent, EventStreamSubscriber, EventStreamSubscriberShared, subscriber_handle},
@@ -24,7 +24,7 @@ use fraktor_actor_rs::{
     futures::ActorFutureListener,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
-    system::{ActorSystem, DispatcherConfig},
+    system::ActorSystem,
   },
 };
 use fraktor_utils_rs::{core::sync::ArcShared, std::StdSyncMutex};

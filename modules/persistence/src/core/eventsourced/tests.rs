@@ -2,7 +2,10 @@ use fraktor_actor_rs::core::{
   actor::{ActorContextGeneric, Pid},
   error::ActorError,
   messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
-  system::{ActorSystemGeneric, SystemStateGeneric, SystemStateSharedGeneric},
+  system::{
+    ActorSystemGeneric,
+    state::{SystemStateSharedGeneric, system_state::SystemStateGeneric},
+  },
 };
 use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 

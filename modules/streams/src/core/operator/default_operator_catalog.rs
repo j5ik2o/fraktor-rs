@@ -1,0 +1,413 @@
+use super::{OperatorCatalog, OperatorContract, OperatorCoverage, OperatorKey, StreamDslError};
+
+#[cfg(test)]
+mod tests;
+
+/// Default operator catalog for stream DSL.
+pub struct DefaultOperatorCatalog;
+
+impl DefaultOperatorCatalog {
+  /// Creates a new default catalog.
+  #[must_use]
+  pub const fn new() -> Self {
+    Self
+  }
+}
+
+impl Default for DefaultOperatorCatalog {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
+impl OperatorCatalog for DefaultOperatorCatalog {
+  fn lookup(&self, key: OperatorKey) -> Result<OperatorContract, StreamDslError> {
+    match key.as_str() {
+      | "flat_map_concat" => Ok(OperatorContract {
+        key,
+        input_condition: "Starts next inner stream only after current inner stream completes.",
+        completion_condition: "Completes after upstream completion and all inner streams completion.",
+        failure_condition: "Fails the whole stream when an inner stream fails without recovery.",
+        requirement_ids: &["1.1", "1.3", "3.1"],
+      }),
+      | "flat_map_merge" => Ok(OperatorContract {
+        key,
+        input_condition: "Enforces breadth limit and suppresses upstream pulls at saturation.",
+        completion_condition: "Completes after upstream completion and active inner streams drain.",
+        failure_condition: "Fails the whole stream when an inner stream fails without recovery.",
+        requirement_ids: &["1.1", "1.3", "3.2", "3.3", "3.4"],
+      }),
+      | "buffer" => Ok(OperatorContract {
+        key,
+        input_condition: "Rejects non-positive capacity at construction.",
+        completion_condition: "Preserves buffered elements until source completion is drained.",
+        failure_condition: "Fails with overflow semantics according to configured policy.",
+        requirement_ids: &["1.1", "1.2", "1.3"],
+      }),
+      | "filter" => Ok(OperatorContract {
+        key,
+        input_condition: "Evaluates each element against predicate and forwards only matches.",
+        completion_condition: "Completes when upstream completes.",
+        failure_condition: "Propagates upstream or predicate evaluation failures.",
+        requirement_ids: &["1.1", "1.3"],
+      }),
+      | "filter_not" => Ok(OperatorContract {
+        key,
+        input_condition: "Evaluates each element against predicate and forwards only non-matches.",
+        completion_condition: "Completes when upstream completes.",
+        failure_condition: "Propagates upstream or predicate evaluation failures.",
+        requirement_ids: &["1.1", "1.3"],
+      }),
+      | "map_concat" => Ok(OperatorContract {
+        key,
+        input_condition: "Expands each element into zero or more elements while preserving order.",
+        completion_condition: "Completes when upstream completes and expanded elements are emitted.",
+        failure_condition: "Propagates upstream or mapper failures.",
+        requirement_ids: &["1.1", "1.3"],
+      }),
+      | "map_option" => Ok(OperatorContract {
+        key,
+        input_condition: "Maps each element and emits only present values.",
+        completion_condition: "Completes when upstream completes.",
+        failure_condition: "Propagates upstream or mapper failures.",
+        requirement_ids: &["1.1", "1.3"],
+      }),
+      | "flatten_optional" => Ok(OperatorContract {
+        key,
+        input_condition: "Accepts optional payloads and emits only present values.",
+        completion_condition: "Completes when upstream completes.",
+        failure_condition: "Propagates upstream failures.",
+        requirement_ids: &["1.1", "1.3"],
+      }),
+      | "stateful_map" => Ok(OperatorContract {
+        key,
+        input_condition: "Creates a mapper from factory and applies it in element order.",
+        completion_condition: "Completes when upstream completes.",
+        failure_condition: "Propagates upstream, factory, or mapper failures.",
+        requirement_ids: &["1.1", "1.3"],
+      }),
+      | "stateful_map_concat" => Ok(OperatorContract {
+        key,
+        input_condition: "Creates a map-concat mapper from factory and expands each element in order.",
+        completion_condition: "Completes when upstream completes and expanded elements are drained.",
+        failure_condition: "Propagates upstream, factory, or mapper failures.",
+        requirement_ids: &["1.1", "1.3"],
+      }),
+      | "drop" => Ok(OperatorContract {
+        key,
+        input_condition: "Skips the first configured number of elements.",
+        completion_condition: "Completes when upstream completes.",
+        failure_condition: "Propagates upstream failures.",
+        requirement_ids: &["1.1", "1.3"],
+      }),
+      | "take" => Ok(OperatorContract {
+        key,
+        input_condition: "Emits at most the configured number of elements in arrival order.",
+        completion_condition: "Completes when upstream completes.",
+        failure_condition: "Propagates upstream failures.",
+        requirement_ids: &["1.1", "1.3"],
+      }),
+      | "drop_while" => Ok(OperatorContract {
+        key,
+        input_condition: "Drops prefix elements while predicate matches and then forwards all remaining elements.",
+        completion_condition: "Completes when upstream completes.",
+        failure_condition: "Propagates upstream or predicate evaluation failures.",
+        requirement_ids: &["1.1", "1.3"],
+      }),
+      | "empty" => Ok(OperatorContract {
+        key,
+        input_condition: "Emits no elements and does not pull from upstream.",
+        completion_condition: "Completes immediately after materialization.",
+        failure_condition: "Does not fail unless stream setup fails.",
+        requirement_ids: &["1.1", "1.3"],
+      }),
+      | "from_option" => Ok(OperatorContract {
+        key,
+        input_condition: "Materializes to a single-element source for Some or an empty source for None.",
+        completion_condition: "Completes immediately after emitting zero or one element.",
+        failure_condition: "Does not fail unless stream setup fails.",
+        requirement_ids: &["1.1", "1.3"],
+      }),
+      | "from_array" => Ok(OperatorContract {
+        key,
+        input_condition: "Emits array elements in order on downstream demand.",
+        completion_condition: "Completes after all array elements are emitted.",
+        failure_condition: "Does not fail unless stream setup fails.",
+        requirement_ids: &["1.1", "1.3"],
+      }),
+      | "from_iterator" => Ok(OperatorContract {
+        key,
+        input_condition: "Pulls the next element from iterator on downstream demand.",
+        completion_condition: "Completes when iterator is exhausted.",
+        failure_condition: "Does not fail unless stream setup fails.",
+        requirement_ids: &["1.1", "1.3"],
+      }),
+      | "take_while" => Ok(OperatorContract {
+        key,
+        input_condition: "Emits prefix elements while predicate matches and discards subsequent elements.",
+        completion_condition: "Completes when upstream completes.",
+        failure_condition: "Propagates upstream or predicate evaluation failures.",
+        requirement_ids: &["1.1", "1.3"],
+      }),
+      | "take_until" => Ok(OperatorContract {
+        key,
+        input_condition: "Emits elements until predicate first matches and includes the matching element.",
+        completion_condition: "Completes when upstream completes.",
+        failure_condition: "Propagates upstream or predicate evaluation failures.",
+        requirement_ids: &["1.1", "1.3"],
+      }),
+      | "grouped" => Ok(OperatorContract {
+        key,
+        input_condition: "Rejects non-positive group size at construction.",
+        completion_condition: "Flushes trailing partial group on upstream completion.",
+        failure_condition: "Propagates upstream failures.",
+        requirement_ids: &["1.1", "1.2", "1.3"],
+      }),
+      | "intersperse" => Ok(OperatorContract {
+        key,
+        input_condition: "Injects start/element-separator/end markers in deterministic order.",
+        completion_condition: "Emits start/end markers even when upstream is empty.",
+        failure_condition: "Propagates upstream failures.",
+        requirement_ids: &["1.1", "1.3"],
+      }),
+      | "sliding" => Ok(OperatorContract {
+        key,
+        input_condition: "Rejects non-positive window size at construction.",
+        completion_condition: "Completes when upstream completes.",
+        failure_condition: "Propagates upstream failures.",
+        requirement_ids: &["1.1", "1.2", "1.3"],
+      }),
+      | "scan" => Ok(OperatorContract {
+        key,
+        input_condition: "Emits initial value and then running accumulation for each element.",
+        completion_condition: "Emits initial value even when upstream is empty.",
+        failure_condition: "Propagates upstream or accumulator failures.",
+        requirement_ids: &["1.1", "1.3"],
+      }),
+      | "group_by" => Ok(OperatorContract {
+        key,
+        input_condition: "Rejects non-positive max_substreams at construction.",
+        completion_condition: "Routes each element to a key lane while key count stays within limit.",
+        failure_condition: "Fails when observed unique key count exceeds configured max_substreams.",
+        requirement_ids: &["1.1", "1.3", "2.1", "2.2"],
+      }),
+      | "split_when" => Ok(OperatorContract {
+        key,
+        input_condition: "Starts a new segment with the matching element.",
+        completion_condition: "Emits all completed segments and flushes trailing segment on source completion.",
+        failure_condition: "Propagates upstream/inner stage failures.",
+        requirement_ids: &["1.1", "1.3", "2.3"],
+      }),
+      | "split_after" => Ok(OperatorContract {
+        key,
+        input_condition: "Keeps the matching element at the tail of the current segment.",
+        completion_condition: "Emits all completed segments and flushes trailing segment on source completion.",
+        failure_condition: "Propagates upstream/inner stage failures.",
+        requirement_ids: &["1.1", "1.3", "2.4"],
+      }),
+      | "merge_substreams" => Ok(OperatorContract {
+        key,
+        input_condition: "Accepts segmented substream payloads and merges with unbounded parallelism semantics.",
+        completion_condition: "Emits all elements from completed segments without loss.",
+        failure_condition: "Fails on invalid substream payload type.",
+        requirement_ids: &["1.1", "1.3", "2.5"],
+      }),
+      | "merge_substreams_with_parallelism" => Ok(OperatorContract {
+        key,
+        input_condition: "Rejects non-positive parallelism at construction.",
+        completion_condition: "Emits all elements from completed segments without loss.",
+        failure_condition: "Fails on invalid substream payload type.",
+        requirement_ids: &["1.1", "1.2", "1.3", "2.5"],
+      }),
+      | "concat_substreams" => Ok(OperatorContract {
+        key,
+        input_condition: "Concatenates substreams with sequential semantics.",
+        completion_condition: "Emits all elements in segment order without loss.",
+        failure_condition: "Fails on invalid substream payload type.",
+        requirement_ids: &["1.1", "1.3", "2.5"],
+      }),
+      | "async_boundary" => Ok(OperatorContract {
+        key,
+        input_condition: "Accepts elements while boundary queue has capacity.",
+        completion_condition: "Preserves in-island ordering and drains pending boundary elements.",
+        failure_condition: "Backpressures upstream when boundary queue is saturated.",
+        requirement_ids: &["1.1", "1.3", "7.1", "7.2", "7.3", "7.4"],
+      }),
+      | "broadcast" => Ok(OperatorContract {
+        key,
+        input_condition: "Duplicates each element to all connected downstream lanes.",
+        completion_condition: "Completes when upstream completes and all duplicates are drained.",
+        failure_condition: "Fails when fan-out contract is invalid.",
+        requirement_ids: &["1.1", "1.3"],
+      }),
+      | "balance" => Ok(OperatorContract {
+        key,
+        input_condition: "Distributes each element to one downstream lane in round-robin order.",
+        completion_condition: "Completes when upstream completes and buffered elements are drained.",
+        failure_condition: "Fails when fan-out contract is invalid.",
+        requirement_ids: &["1.1", "1.3"],
+      }),
+      | "merge" => Ok(OperatorContract {
+        key,
+        input_condition: "Accepts multiple upstream lanes and emits merged output.",
+        completion_condition: "Completes when all upstream lanes complete.",
+        failure_condition: "Fails when fan-in wiring does not satisfy contract.",
+        requirement_ids: &["1.1", "1.3"],
+      }),
+      | "zip" => Ok(OperatorContract {
+        key,
+        input_condition: "Waits for one element from each upstream lane before emitting.",
+        completion_condition: "Completes when upstream lanes complete and pending zip groups are flushed.",
+        failure_condition: "Fails when fan-in wiring does not satisfy contract.",
+        requirement_ids: &["1.1", "1.3"],
+      }),
+      | "zip_with_index" => Ok(OperatorContract {
+        key,
+        input_condition: "Pairs each element with an incrementing zero-based index.",
+        completion_condition: "Completes when upstream completes.",
+        failure_condition: "Propagates upstream failures.",
+        requirement_ids: &["1.1", "1.3"],
+      }),
+      | "concat" => Ok(OperatorContract {
+        key,
+        input_condition: "Consumes upstream lanes in deterministic lane order.",
+        completion_condition: "Completes after all lanes are consumed.",
+        failure_condition: "Fails when fan-in wiring does not satisfy contract.",
+        requirement_ids: &["1.1", "1.3"],
+      }),
+      | "recover" => Ok(OperatorContract {
+        key,
+        input_condition: "Accepts Result payloads and substitutes fallback on error payloads.",
+        completion_condition: "Completes when upstream result stream completes.",
+        failure_condition: "Fails on non-result payload type mismatch.",
+        requirement_ids: &["1.1", "1.3", "3.4"],
+      }),
+      | "recover_with_retries" => Ok(OperatorContract {
+        key,
+        input_condition: "Substitutes fallback while retry budget remains.",
+        completion_condition: "Completes when upstream completes without exhausting retry budget.",
+        failure_condition: "Fails when retry budget is exhausted.",
+        requirement_ids: &["1.1", "1.3", "3.4"],
+      }),
+      | "restart" => Ok(OperatorContract {
+        key,
+        input_condition: "Schedules restart on stage failure/completion while restart budget remains.",
+        completion_condition: "Completes on max-restart exhaustion when complete-on-exhaustion is enabled.",
+        failure_condition: "Fails on max-restart exhaustion when fail-on-exhaustion is configured.",
+        requirement_ids: &["1.1", "1.3", "6.1", "6.2", "6.3"],
+      }),
+      | "supervision" => Ok(OperatorContract {
+        key,
+        input_condition: "Applies stop/resume/restart directive to stage failures.",
+        completion_condition: "Keeps stream alive for resume/restart directives.",
+        failure_condition: "Fails stream when stop directive is selected.",
+        requirement_ids: &["1.1", "1.3", "6.4", "6.5", "6.6"],
+      }),
+      | "merge_hub" => Ok(OperatorContract {
+        key,
+        input_condition: "Accepts offers only after receiver side is activated.",
+        completion_condition: "Drains queued offers through source side polling.",
+        failure_condition: "Backpressures offers when receiver is inactive or queue is full.",
+        requirement_ids: &["1.1", "1.3", "4.1", "4.2"],
+      }),
+      | "broadcast_hub" => Ok(OperatorContract {
+        key,
+        input_condition: "Delivers each element to all active subscribers.",
+        completion_condition: "Keeps source pull pending until new publish arrives.",
+        failure_condition: "Backpressures when no subscriber exists or queues are full.",
+        requirement_ids: &["1.1", "1.3", "4.2", "4.3"],
+      }),
+      | "partition_hub" => Ok(OperatorContract {
+        key,
+        input_condition: "Routes each element to exactly one active partition.",
+        completion_condition: "Drains partition queue in partition order.",
+        failure_condition: "Backpressures without active consumer and rejects invalid route values.",
+        requirement_ids: &["1.1", "1.3", "4.4", "4.5"],
+      }),
+      | "unique_kill_switch" => Ok(OperatorContract {
+        key,
+        input_condition: "Applies first shutdown or abort control signal once.",
+        completion_condition: "Shutdown cancels upstream and completes downstream.",
+        failure_condition: "Abort cancels upstream and fails downstream with provided error.",
+        requirement_ids: &["1.1", "1.3", "5.1", "5.2", "5.3"],
+      }),
+      | "shared_kill_switch" => Ok(OperatorContract {
+        key,
+        input_condition: "Allows creating shared control before stream materialization.",
+        completion_condition: "Shutdown completes all linked streams.",
+        failure_condition: "Abort fails all linked streams with first error.",
+        requirement_ids: &["1.1", "1.3", "5.3", "5.4", "5.5"],
+      }),
+      | _ => Err(StreamDslError::UnsupportedOperator { key }),
+    }
+  }
+
+  fn coverage(&self) -> &'static [OperatorCoverage] {
+    const COVERAGE: [OperatorCoverage; 45] = [
+      OperatorCoverage {
+        key:             OperatorKey::ASYNC_BOUNDARY,
+        requirement_ids: &["1.1", "1.3", "7.1", "7.2", "7.3", "7.4"],
+      },
+      OperatorCoverage { key: OperatorKey::BALANCE, requirement_ids: &["1.1", "1.3"] },
+      OperatorCoverage { key: OperatorKey::DROP, requirement_ids: &["1.1", "1.3"] },
+      OperatorCoverage { key: OperatorKey::DROP_WHILE, requirement_ids: &["1.1", "1.3"] },
+      OperatorCoverage { key: OperatorKey::EMPTY, requirement_ids: &["1.1", "1.3"] },
+      OperatorCoverage { key: OperatorKey::FROM_ARRAY, requirement_ids: &["1.1", "1.3"] },
+      OperatorCoverage { key: OperatorKey::FROM_ITERATOR, requirement_ids: &["1.1", "1.3"] },
+      OperatorCoverage { key: OperatorKey::FROM_OPTION, requirement_ids: &["1.1", "1.3"] },
+      OperatorCoverage { key: OperatorKey::FILTER, requirement_ids: &["1.1", "1.3"] },
+      OperatorCoverage { key: OperatorKey::FILTER_NOT, requirement_ids: &["1.1", "1.3"] },
+      OperatorCoverage { key: OperatorKey::INTERSPERSE, requirement_ids: &["1.1", "1.3"] },
+      OperatorCoverage { key: OperatorKey::FLAT_MAP_CONCAT, requirement_ids: &["1.1", "1.3", "3.1"] },
+      OperatorCoverage {
+        key:             OperatorKey::FLAT_MAP_MERGE,
+        requirement_ids: &["1.1", "1.3", "3.2", "3.3", "3.4"],
+      },
+      OperatorCoverage { key: OperatorKey::BUFFER, requirement_ids: &["1.1", "1.2", "1.3"] },
+      OperatorCoverage { key: OperatorKey::BROADCAST, requirement_ids: &["1.1", "1.3"] },
+      OperatorCoverage { key: OperatorKey::BROADCAST_HUB, requirement_ids: &["1.1", "1.3", "4.2", "4.3"] },
+      OperatorCoverage { key: OperatorKey::CONCAT, requirement_ids: &["1.1", "1.3"] },
+      OperatorCoverage { key: OperatorKey::CONCAT_SUBSTREAMS, requirement_ids: &["1.1", "1.3", "2.5"] },
+      OperatorCoverage { key: OperatorKey::GROUPED, requirement_ids: &["1.1", "1.2", "1.3"] },
+      OperatorCoverage { key: OperatorKey::GROUP_BY, requirement_ids: &["1.1", "1.3", "2.1", "2.2"] },
+      OperatorCoverage { key: OperatorKey::FLATTEN_OPTIONAL, requirement_ids: &["1.1", "1.3"] },
+      OperatorCoverage { key: OperatorKey::MAP_CONCAT, requirement_ids: &["1.1", "1.3"] },
+      OperatorCoverage { key: OperatorKey::MAP_OPTION, requirement_ids: &["1.1", "1.3"] },
+      OperatorCoverage { key: OperatorKey::MERGE, requirement_ids: &["1.1", "1.3"] },
+      OperatorCoverage { key: OperatorKey::MERGE_HUB, requirement_ids: &["1.1", "1.3", "4.1", "4.2"] },
+      OperatorCoverage { key: OperatorKey::SCAN, requirement_ids: &["1.1", "1.3"] },
+      OperatorCoverage { key: OperatorKey::SLIDING, requirement_ids: &["1.1", "1.2", "1.3"] },
+      OperatorCoverage { key: OperatorKey::SPLIT_WHEN, requirement_ids: &["1.1", "1.3", "2.3"] },
+      OperatorCoverage { key: OperatorKey::SPLIT_AFTER, requirement_ids: &["1.1", "1.3", "2.4"] },
+      OperatorCoverage { key: OperatorKey::TAKE, requirement_ids: &["1.1", "1.3"] },
+      OperatorCoverage { key: OperatorKey::TAKE_UNTIL, requirement_ids: &["1.1", "1.3"] },
+      OperatorCoverage { key: OperatorKey::TAKE_WHILE, requirement_ids: &["1.1", "1.3"] },
+      OperatorCoverage { key: OperatorKey::MERGE_SUBSTREAMS, requirement_ids: &["1.1", "1.3", "2.5"] },
+      OperatorCoverage {
+        key:             OperatorKey::MERGE_SUBSTREAMS_WITH_PARALLELISM,
+        requirement_ids: &["1.1", "1.2", "1.3", "2.5"],
+      },
+      OperatorCoverage { key: OperatorKey::PARTITION_HUB, requirement_ids: &["1.1", "1.3", "4.4", "4.5"] },
+      OperatorCoverage { key: OperatorKey::RECOVER, requirement_ids: &["1.1", "1.3", "3.4"] },
+      OperatorCoverage { key: OperatorKey::RECOVER_WITH_RETRIES, requirement_ids: &["1.1", "1.3", "3.4"] },
+      OperatorCoverage { key: OperatorKey::RESTART, requirement_ids: &["1.1", "1.3", "6.1", "6.2", "6.3"] },
+      OperatorCoverage { key: OperatorKey::STATEFUL_MAP, requirement_ids: &["1.1", "1.3"] },
+      OperatorCoverage { key: OperatorKey::STATEFUL_MAP_CONCAT, requirement_ids: &["1.1", "1.3"] },
+      OperatorCoverage {
+        key:             OperatorKey::SHARED_KILL_SWITCH,
+        requirement_ids: &["1.1", "1.3", "5.3", "5.4", "5.5"],
+      },
+      OperatorCoverage {
+        key:             OperatorKey::SUPERVISION,
+        requirement_ids: &["1.1", "1.3", "6.4", "6.5", "6.6"],
+      },
+      OperatorCoverage {
+        key:             OperatorKey::UNIQUE_KILL_SWITCH,
+        requirement_ids: &["1.1", "1.3", "5.1", "5.2", "5.3"],
+      },
+      OperatorCoverage { key: OperatorKey::ZIP, requirement_ids: &["1.1", "1.3"] },
+      OperatorCoverage { key: OperatorKey::ZIP_WITH_INDEX, requirement_ids: &["1.1", "1.3"] },
+    ];
+    &COVERAGE
+  }
+}

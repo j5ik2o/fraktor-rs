@@ -1,6 +1,6 @@
 #![allow(cfg_std_forbid)]
 
-use crate::{core::runtime_toolbox::SyncRwLockFamily, std::sync_rwlock::StdSyncRwLock};
+use crate::{core::runtime_toolbox::sync_rwlock_family::SyncRwLockFamily, std::sync_rwlock::StdSyncRwLock};
 
 /// RwLock family backed by [`std::sync::RwLock`].
 #[derive(Clone, Copy, Debug, Default)]

@@ -6,8 +6,8 @@ use fraktor_utils_rs::core::{
 
 use super::PubSubPublisherGeneric;
 use crate::core::{
-  ClusterPubSub, ClusterPubSubShared, PubSubError, PubSubSubscriber, PubSubTopic, PublishAck, PublishOptions,
-  PublishRejectReason, PublishRequest, TopologyUpdate,
+  ClusterPubSubShared, PubSubError, PubSubSubscriber, PubSubTopic, PublishAck, PublishOptions, PublishRejectReason,
+  PublishRequest, TopologyUpdate, cluster_pub_sub::ClusterPubSub,
 };
 
 #[derive(Clone)]
@@ -64,8 +64,9 @@ struct CustomPayload;
 #[test]
 fn publish_rejects_when_not_serializable() {
   let setup = fraktor_actor_rs::core::serialization::default_serialization_setup();
-  let registry =
-    ArcShared::new(fraktor_actor_rs::core::serialization::SerializationRegistryGeneric::from_setup(&setup));
+  let registry = ArcShared::new(
+    fraktor_actor_rs::core::serialization::serialization_registry::SerializationRegistryGeneric::from_setup(&setup),
+  );
   let stub = StubPubSub::new();
   let shared = ClusterPubSubShared::new(Box::new(stub.clone()));
   let publisher = PubSubPublisherGeneric::new(shared, registry);

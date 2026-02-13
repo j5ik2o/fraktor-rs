@@ -4,83 +4,37 @@
 
 mod actor_path_handle;
 mod actor_path_registry;
-mod actor_ref_provider;
-mod actor_ref_provider_callers;
-mod actor_ref_provider_handle;
-mod actor_ref_provider_installer;
-mod actor_ref_provider_shared;
-mod actor_ref_providers;
-mod actor_ref_resolve_error;
 mod actor_system_build_error;
 mod actor_system_config;
 mod actor_system_weak;
 mod ask_futures;
-mod authority_state;
 mod base;
-#[cfg(any(test, feature = "test-support"))]
-pub(crate) mod booting_state;
 mod cells;
 mod cells_shared;
 mod extended_actor_system;
 mod extensions;
 mod extra_top_levels;
-mod guardian_kind;
-mod guardians_state;
-mod local_actor_ref_provider;
-mod local_actor_ref_provider_installer;
-mod noop_remote_watch_hook;
+/// Guardian actor related types.
+pub mod guardian;
+/// Actor reference provider related types.
+pub mod provider;
 mod register_extension_error;
 mod register_extra_top_level_error;
 mod registries;
-mod remote_authority_error;
-mod remote_authority_registry;
-mod remote_watch_hook;
-mod remote_watch_hook_dyn_shared;
-mod remote_watch_hook_handle;
-mod remote_watch_hook_shared;
-mod remoting_config;
+/// Remote watch hook and authority related types.
+pub mod remote;
 mod reservation_policy;
-mod root_guardian_actor;
-#[cfg(any(test, feature = "test-support"))]
-pub(crate) mod running_state;
-mod system_guardian_actor;
-mod system_guardian_protocol;
-mod system_state;
-mod system_state_shared;
-mod system_state_weak;
+/// System state related types.
+pub mod state;
 mod temp_actors;
 
 pub use actor_path_handle::ActorPathHandle;
 pub use actor_path_registry::ActorPathRegistry;
-pub use actor_ref_provider::ActorRefProvider;
-pub(crate) use actor_ref_provider_callers::ActorRefProviderCaller;
-pub use actor_ref_provider_handle::ActorRefProviderHandle;
-pub use actor_ref_provider_installer::ActorRefProviderInstaller;
-pub use actor_ref_provider_shared::{ActorRefProviderShared, ActorRefProviderSharedGeneric};
-pub use actor_ref_resolve_error::ActorRefResolveError;
 pub use actor_system_build_error::ActorSystemBuildError;
 pub use actor_system_config::{ActorSystemConfig, ActorSystemConfigGeneric};
 pub use actor_system_weak::{ActorSystemWeak, ActorSystemWeakGeneric};
-pub use authority_state::AuthorityState;
 pub use base::{ActorSystem, ActorSystemGeneric};
-pub(crate) use cells_shared::CellsSharedGeneric;
 pub use extended_actor_system::{ExtendedActorSystem, ExtendedActorSystemGeneric};
-pub use guardian_kind::GuardianKind;
-pub use local_actor_ref_provider::LocalActorRefProviderGeneric;
-pub use local_actor_ref_provider_installer::LocalActorRefProviderInstaller;
 pub use register_extension_error::RegisterExtensionError;
 pub use register_extra_top_level_error::RegisterExtraTopLevelError;
-pub use remote_authority_error::RemoteAuthorityError;
-pub use remote_authority_registry::{RemoteAuthorityRegistry, RemoteAuthorityRegistryGeneric};
-pub use remote_watch_hook::RemoteWatchHook;
-pub(crate) use remote_watch_hook_dyn_shared::RemoteWatchHookDynSharedGeneric;
-pub use remote_watch_hook_handle::RemoteWatchHookHandle;
-pub use remote_watch_hook_shared::RemoteWatchHookShared;
-pub use remoting_config::RemotingConfig;
 pub use reservation_policy::ReservationPolicy;
-pub(crate) use root_guardian_actor::RootGuardianActor;
-pub(crate) use system_guardian_actor::SystemGuardianActor;
-pub use system_guardian_protocol::SystemGuardianProtocol;
-pub use system_state::{FailureOutcome, SystemState, SystemStateGeneric};
-pub use system_state_shared::{SystemStateShared, SystemStateSharedGeneric};
-pub use system_state_weak::SystemStateWeakGeneric;
