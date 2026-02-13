@@ -1,5 +1,6 @@
 //! Provides actor references targeting remote authorities.
 
+mod installer;
 #[cfg(test)]
 mod tests;
 
@@ -29,11 +30,9 @@ use fraktor_utils_rs::core::{
   sync::{SharedAccess, sync_mutex_like::SyncMutexLike},
 };
 use hashbrown::HashMap;
+pub use installer::RemoteActorRefProviderInstaller;
 
-use super::{
-  loopback_router, loopback_router::LoopbackDeliveryOutcome, remote_error::RemoteActorRefProviderError,
-  remote_installer::RemoteActorRefProviderInstaller,
-};
+use super::{loopback_router, loopback_router::LoopbackDeliveryOutcome, remote_error::RemoteActorRefProviderError};
 use crate::core::{
   actor_ref_field_normalizer::ActorRefFieldNormalizerGeneric,
   endpoint_writer::{EndpointWriterError, EndpointWriterSharedGeneric},

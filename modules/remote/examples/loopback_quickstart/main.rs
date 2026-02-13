@@ -24,7 +24,7 @@ use fraktor_actor_rs::core::{
 };
 use fraktor_remote_rs::core::{
   RemotingExtensionId, RemotingExtensionInstaller,
-  actor_ref_provider::{LoopbackActorRefProviderInstaller, default_loopback_setup},
+  actor_ref_provider::loopback::{LoopbackActorRefProviderInstaller, default_loopback_setup},
   remoting_extension::RemotingExtensionConfig,
 };
 use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;

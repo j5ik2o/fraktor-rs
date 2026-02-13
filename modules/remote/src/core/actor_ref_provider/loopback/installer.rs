@@ -1,4 +1,4 @@
-//! Builder-facing installer for the Tokio TCP actor-ref provider.
+//! Builder-facing installer for the Loopback actor-ref provider.
 
 use alloc::format;
 
@@ -16,48 +16,33 @@ use fraktor_utils_rs::core::{
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 
-use super::{loopback_router, tokio::TokioActorRefProviderGeneric};
+use super::{super::loopback_router, LoopbackActorRefProviderGeneric};
 use crate::core::{
   endpoint_reader::EndpointReaderGeneric,
   endpoint_writer::{EndpointWriterGeneric, EndpointWriterSharedGeneric},
   remoting_extension::RemotingExtensionGeneric,
-  transport::TokioTransportConfig,
 };
 
-/// Installer for Tokio TCP actor-ref provider.
-pub struct TokioActorRefProviderInstaller<TB: RuntimeToolbox + 'static> {
-  transport_config: TokioTransportConfig,
-  enable_loopback:  bool,
-  _marker:          core::marker::PhantomData<TB>,
+/// Installer for Loopback actor-ref provider.
+pub struct LoopbackActorRefProviderInstaller<TB: RuntimeToolbox + 'static> {
+  _marker: core::marker::PhantomData<TB>,
 }
 
-impl<TB: RuntimeToolbox + 'static> TokioActorRefProviderInstaller<TB> {
-  /// Creates a new Tokio actor-ref provider installer.
+impl<TB: RuntimeToolbox + 'static> LoopbackActorRefProviderInstaller<TB> {
+  /// Creates a new Loopback actor-ref provider installer.
   #[must_use]
-  pub fn new(transport_config: TokioTransportConfig, enable_loopback: bool) -> Self {
-    Self { transport_config, enable_loopback, _marker: core::marker::PhantomData }
-  }
-
-  /// Creates a Tokio TCP transport installer (loopback routing disabled).
-  #[must_use]
-  pub fn from_config(transport_config: TokioTransportConfig) -> Self {
-    Self::new(transport_config, false)
-  }
-
-  /// Creates a Tokio transport installer with loopback routing enabled.
-  #[must_use]
-  pub fn from_config_with_loopback(transport_config: TokioTransportConfig) -> Self {
-    Self::new(transport_config, true)
+  pub const fn new() -> Self {
+    Self { _marker: core::marker::PhantomData }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Default for TokioActorRefProviderInstaller<TB> {
+impl<TB: RuntimeToolbox + 'static> Default for LoopbackActorRefProviderInstaller<TB> {
   fn default() -> Self {
-    Self::from_config(TokioTransportConfig::default())
+    Self::new()
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> ActorRefProviderInstaller<TB> for TokioActorRefProviderInstaller<TB> {
+impl<TB: RuntimeToolbox + 'static> ActorRefProviderInstaller<TB> for LoopbackActorRefProviderInstaller<TB> {
   fn install(&self, system: &ActorSystemGeneric<TB>) -> Result<(), ActorSystemBuildError> {
     let extended = system.extended();
 
@@ -76,20 +61,18 @@ impl<TB: RuntimeToolbox + 'static> ActorRefProviderInstaller<TB> for TokioActorR
 
     let control = extension.handle();
     control.lock().register_endpoint_io(writer.clone(), reader.clone());
-    let provider =
-      TokioActorRefProviderGeneric::from_components(system.clone(), writer, control, self.transport_config.clone())
-        .map_err(|error| ActorSystemBuildError::Configuration(format!("{error}")))?;
+    let provider = LoopbackActorRefProviderGeneric::from_components(system.clone(), writer, control)
+      .map_err(|error| ActorSystemBuildError::Configuration(format!("{error}")))?;
     let shared = RemoteWatchHookShared::new(provider, &[ActorPathScheme::FraktorTcp]);
     let shared_provider = ActorRefProviderSharedGeneric::new(shared.clone());
     extended.register_actor_ref_provider(&shared_provider)?;
     extended.register_remote_watch_hook(shared);
 
-    if self.enable_loopback {
-      let Some(authority) = system.canonical_authority() else {
-        return Err(ActorSystemBuildError::Configuration("canonical authority missing for loopback routing".into()));
-      };
-      loopback_router::register_endpoint(authority, (*reader).clone(), system.clone());
-    }
+    // Always register loopback routing for LoopbackActorRefProvider
+    let Some(authority) = system.canonical_authority() else {
+      return Err(ActorSystemBuildError::Configuration("canonical authority missing for loopback routing".into()));
+    };
+    loopback_router::register_endpoint(authority, (*reader).clone(), system.clone());
     Ok(())
   }
 }

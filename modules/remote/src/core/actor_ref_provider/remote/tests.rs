@@ -24,7 +24,7 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::core::{
-  actor_ref_provider::RemoteActorRefProvider,
+  actor_ref_provider::remote::RemoteActorRefProvider,
   endpoint_writer::{EndpointWriter, EndpointWriterShared},
   remoting_extension::{RemotingControl, RemotingControlHandle, RemotingControlShared, RemotingExtensionConfig},
 };

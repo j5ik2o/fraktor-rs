@@ -21,9 +21,9 @@ use fraktor_utils_rs::core::{
 };
 
 #[cfg(feature = "tokio-transport")]
-use crate::core::actor_ref_provider::TokioActorRefProviderGeneric;
+use crate::core::actor_ref_provider::tokio::TokioActorRefProviderGeneric;
 use crate::core::{
-  actor_ref_provider::RemoteActorRefProviderGeneric,
+  actor_ref_provider::remote::RemoteActorRefProviderGeneric,
   envelope::{InboundEnvelope, RemotingEnvelope},
 };
 

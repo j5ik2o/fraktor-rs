@@ -94,7 +94,7 @@ use fraktor_cluster_rs::{
 };
 use fraktor_remote_rs::core::{
   RemotingExtensionInstaller,
-  actor_ref_provider::{TokioActorRefProviderInstaller, default_loopback_setup},
+  actor_ref_provider::{loopback::default_loopback_setup, tokio::TokioActorRefProviderInstaller},
   remoting_extension::RemotingExtensionConfig,
   transport::TokioTransportConfig,
 };
