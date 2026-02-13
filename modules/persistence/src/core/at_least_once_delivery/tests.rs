@@ -6,7 +6,7 @@ use fraktor_actor_rs::core::{
   messaging::AnyMessageGeneric,
 };
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
+  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
   sync::ArcShared,
   time::TimerInstant,
 };

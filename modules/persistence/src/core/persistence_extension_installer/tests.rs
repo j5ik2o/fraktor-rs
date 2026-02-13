@@ -4,7 +4,10 @@ use fraktor_actor_rs::core::{
   extension::ExtensionInstallers,
   messaging::AnyMessageViewGeneric,
   props::PropsGeneric,
-  scheduler::{ManualTestDriver, SchedulerConfig, TickDriverConfig},
+  scheduler::{
+    SchedulerConfig,
+    tick_driver::{ManualTestDriver, TickDriverConfig},
+  },
   system::{ActorSystemConfigGeneric, ActorSystemGeneric},
 };
 use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
