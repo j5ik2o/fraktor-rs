@@ -40,13 +40,13 @@ reviews:
 
   labeling_instructions: []
 
-tools:
-  clippy:
-    enabled: true
-  gitleaks:
-    enabled: true
-  ast-grep:
-    essential_rules: true
+  tools:
+    clippy:
+      enabled: true
+    gitleaks:
+      enabled: true
+    ast-grep:
+      essential_rules: true
 
 knowledge_base:
   opt_out: false
