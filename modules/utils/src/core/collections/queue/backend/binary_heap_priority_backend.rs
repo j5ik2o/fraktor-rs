@@ -1,16 +1,13 @@
 use alloc::collections::BinaryHeap;
 use core::cmp::Ordering;
 
-use super::sync_priority_backend::PriorityEntry;
+use super::{
+  PriorityBackendConfig, SyncPriorityBackendInternal, SyncQueueBackend, SyncQueueBackendInternal,
+  sync_priority_backend::{PriorityEntry, SyncPriorityBackend},
+};
 use crate::core::collections::{
   PriorityMessage,
-  queue::{
-    OfferOutcome, OverflowPolicy, QueueError, SyncQueueBackend,
-    backend::{
-      PriorityBackendConfig, SyncPriorityBackendInternal, SyncQueueBackendInternal,
-      sync_priority_backend::SyncPriorityBackend,
-    },
-  },
+  queue::{QueueError, offer_outcome::OfferOutcome, overflow_policy::OverflowPolicy},
 };
 
 /// Priority-aware backend backed by a binary heap.

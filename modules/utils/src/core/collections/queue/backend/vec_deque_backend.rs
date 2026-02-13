@@ -4,8 +4,9 @@ mod tests;
 use alloc::collections::{TryReserveError, VecDeque};
 use core::cmp;
 
+use super::SyncQueueBackend;
 use crate::core::collections::queue::{
-  OfferOutcome, OverflowPolicy, QueueError, SyncQueueBackend, backend::SyncQueueBackendInternal,
+  QueueError, backend::SyncQueueBackendInternal, offer_outcome::OfferOutcome, overflow_policy::OverflowPolicy,
 };
 
 /// Queue backend backed by [`VecDeque`].

@@ -2,11 +2,7 @@ use core::marker::PhantomData;
 
 use super::{AsyncQueue, async_queue_shared::offer_shared};
 use crate::core::{
-  collections::queue::{
-    QueueError,
-    backend::{AsyncQueueBackend, OfferOutcome},
-    type_keys::MpscKey,
-  },
+  collections::queue::{QueueError, backend::AsyncQueueBackend, offer_outcome::OfferOutcome, type_keys::MpscKey},
   sync::{
     ArcShared,
     async_mutex_like::{AsyncMutexLike, SpinAsyncMutex},

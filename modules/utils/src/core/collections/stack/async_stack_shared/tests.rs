@@ -8,8 +8,8 @@ use core::{
 use super::AsyncStackShared;
 use crate::core::{
   collections::stack::{
-    AsyncStack, StackOverflowPolicy,
-    backend::{PushOutcome, StackError, SyncStackAsyncAdapter, VecStackBackend},
+    AsyncStack,
+    backend::{PushOutcome, StackError, StackOverflowPolicy, SyncStackAsyncAdapter, VecStackBackend},
   },
   sync::{ArcShared, SharedError, async_mutex_like::SpinAsyncMutex, interrupt::InterruptContextPolicy},
 };

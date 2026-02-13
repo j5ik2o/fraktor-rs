@@ -25,8 +25,6 @@ mod weak_shared;
 
 pub use arc_shared::ArcShared;
 pub use flag::Flag;
-pub use function::{SharedFactory, SharedFn};
-pub use interrupt::{CriticalSectionInterruptPolicy, InterruptContextPolicy, NeverInterruptPolicy};
 #[cfg(feature = "alloc")]
 pub use rc_shared::RcShared;
 pub use shared_access::SharedAccess;

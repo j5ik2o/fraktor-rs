@@ -10,10 +10,7 @@ mod tests;
 
 pub use async_stack::AsyncStack;
 pub use async_stack_shared::AsyncStackShared;
-pub use backend::{
-  AsyncStackBackend, PushOutcome, StackError, StackOverflowPolicy, SyncStackAsyncAdapter, SyncStackBackend,
-  VecStackBackend,
-};
+use backend::{SyncStackAsyncAdapter, VecStackBackend};
 pub use sync_stack::SyncStack;
 pub use sync_stack_shared::SyncStackShared;
 

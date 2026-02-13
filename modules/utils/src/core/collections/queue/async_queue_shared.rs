@@ -9,8 +9,9 @@ use crate::core::{
     PriorityMessage,
     queue::{
       QueueError,
-      backend::{AsyncPriorityBackend, AsyncQueueBackend, OfferOutcome},
+      backend::{AsyncPriorityBackend, AsyncQueueBackend},
       capabilities::{MultiProducer, SingleConsumer, SingleProducer, SupportsPeek},
+      offer_outcome::OfferOutcome,
       type_keys::{FifoKey, MpscKey, PriorityKey, SpscKey, TypeKey},
     },
   },

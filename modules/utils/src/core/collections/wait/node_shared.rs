@@ -2,7 +2,7 @@
 
 use super::node::WaitNode;
 use crate::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
+  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
   sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
 };
 

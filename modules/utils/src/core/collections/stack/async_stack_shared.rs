@@ -2,7 +2,7 @@ use core::marker::PhantomData;
 
 use super::AsyncStack;
 use crate::core::{
-  collections::stack::{PushOutcome, StackError, backend::AsyncStackBackend},
+  collections::stack::backend::{AsyncStackBackend, PushOutcome, StackError},
   sync::{
     ArcShared,
     async_mutex_like::{AsyncMutexLike, SpinAsyncMutex},

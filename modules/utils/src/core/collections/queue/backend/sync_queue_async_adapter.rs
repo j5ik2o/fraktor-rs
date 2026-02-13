@@ -4,12 +4,12 @@ use core::marker::PhantomData;
 use async_trait::async_trait;
 
 use super::{
-  AsyncPriorityBackend, AsyncPriorityBackendInternal, AsyncQueueBackend, AsyncQueueBackendInternal, OfferOutcome,
+  AsyncPriorityBackend, AsyncPriorityBackendInternal, AsyncQueueBackend, AsyncQueueBackendInternal,
   SyncPriorityBackendInternal, SyncQueueBackend, sync_priority_backend::SyncPriorityBackend,
 };
 use crate::core::collections::{
   PriorityMessage,
-  queue::QueueError,
+  queue::{QueueError, offer_outcome::OfferOutcome, overflow_policy::OverflowPolicy},
   wait::{WaitError, WaitQueue, WaitShared},
 };
 
@@ -124,7 +124,7 @@ where
   }
 
   fn prepare_producer_wait(&mut self) -> Result<Option<WaitShared<QueueError<T>>>, WaitError> {
-    if self.backend.overflow_policy() == super::OverflowPolicy::Block && !self.backend.is_closed() {
+    if self.backend.overflow_policy() == OverflowPolicy::Block && !self.backend.is_closed() {
       Ok(Some(self.register_producer_waiter()?))
     } else {
       Ok(None)

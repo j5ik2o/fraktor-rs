@@ -5,10 +5,7 @@ mod tests;
 
 use super::{SyncQueue, type_keys::SpscKey};
 use crate::core::{
-  collections::queue::{
-    QueueError,
-    backend::{OfferOutcome, SyncQueueBackend},
-  },
+  collections::queue::{QueueError, backend::SyncQueueBackend, offer_outcome::OfferOutcome},
   sync::{
     ArcShared,
     sync_mutex_like::{SpinSyncMutex, SyncMutexLike},

@@ -10,8 +10,8 @@ pub mod sync_mutex_family;
 pub mod sync_rwlock_family;
 
 pub use no_std_toolbox::NoStdToolbox;
-pub use sync_mutex_family::{SpinMutexFamily, SyncMutexFamily};
-pub use sync_rwlock_family::{SpinRwLockFamily, SyncRwLockFamily};
+use sync_mutex_family::SyncMutexFamily;
+use sync_rwlock_family::SyncRwLockFamily;
 
 /// Provides access to synchronization primitives required by the runtime.
 pub trait RuntimeToolbox: Send + Sync + 'static {
