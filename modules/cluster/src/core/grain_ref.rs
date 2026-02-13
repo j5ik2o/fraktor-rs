@@ -12,7 +12,7 @@ use fraktor_actor_rs::core::{
   futures::ActorFutureSharedGeneric,
   messaging::{AnyMessageGeneric, AskError, AskResponseGeneric, AskResult},
   scheduler::{ExecutionBatch, SchedulerCommand, SchedulerRunnable},
-  system::{ActorSystemGeneric, SystemStateSharedGeneric},
+  system::{ActorSystemGeneric, state::SystemStateSharedGeneric},
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::RuntimeToolbox,

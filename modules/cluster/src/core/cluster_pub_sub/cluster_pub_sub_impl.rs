@@ -9,7 +9,7 @@ use core::time::Duration;
 use fraktor_actor_rs::core::{
   event::stream::EventStreamSharedGeneric,
   messaging::AnyMessageGeneric,
-  serialization::{SerializationError, SerializationRegistryGeneric},
+  serialization::{SerializationError, serialization_registry::SerializationRegistryGeneric},
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::RuntimeToolbox,
@@ -17,10 +17,11 @@ use fraktor_utils_rs::core::{
   time::TimerInstant,
 };
 
+use super::ClusterPubSub;
 use crate::core::{
-  ClusterEvent, ClusterPubSub, DeliverBatchRequest, DeliveryEndpointSharedGeneric, DeliveryReport, KindRegistry,
-  PubSubBatch, PubSubBroker, PubSubConfig, PubSubError, PubSubEvent, PubSubSubscriber, PubSubTopic, PubSubTopicOptions,
-  PublishAck, PublishOptions, PublishRejectReason, PublishRequest, StartupMode, SubscriberDeliveryReport,
+  ClusterEvent, DeliverBatchRequest, DeliveryEndpointSharedGeneric, DeliveryReport, KindRegistry, PubSubBatch,
+  PubSubBroker, PubSubConfig, PubSubError, PubSubEvent, PubSubSubscriber, PubSubTopic, PubSubTopicOptions, PublishAck,
+  PublishOptions, PublishRejectReason, PublishRequest, StartupMode, SubscriberDeliveryReport,
   kind_registry::TOPIC_ACTOR_KIND,
 };
 

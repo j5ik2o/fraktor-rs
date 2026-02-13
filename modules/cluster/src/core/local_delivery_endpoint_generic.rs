@@ -5,7 +5,7 @@ use core::any::TypeId;
 
 use fraktor_actor_rs::core::{
   messaging::AnyMessageGeneric,
-  serialization::{SerializationError, SerializationRegistryGeneric, SerializerId},
+  serialization::{SerializationError, SerializerId, serialization_registry::SerializationRegistryGeneric},
 };
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 

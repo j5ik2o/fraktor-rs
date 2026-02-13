@@ -55,7 +55,9 @@ use fraktor_utils_rs::{
 };
 use tokio::task::JoinHandle;
 
-use crate::core::{ClusterEvent, ClusterProvider, ClusterProviderError, ClusterTopology, StartupMode, TopologyUpdate};
+use crate::core::{
+  ClusterEvent, ClusterProviderError, ClusterTopology, StartupMode, TopologyUpdate, cluster_provider::ClusterProvider,
+};
 
 /// Configuration for AWS ECS cluster provider.
 #[derive(Clone, Debug)]

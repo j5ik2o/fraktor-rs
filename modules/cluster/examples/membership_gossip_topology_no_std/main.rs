@@ -24,9 +24,12 @@ use fraktor_cluster_rs::core::{
   ActivatedKind, ClusterCore, ClusterEvent, ClusterExtensionConfig, ClusterProviderShared, ClusterPubSubShared,
   GossipOutbound, GossiperShared, IdentityLookupShared, KindRegistry, MembershipCoordinatorConfig,
   MembershipCoordinatorGeneric, MembershipCoordinatorOutcome, MembershipDelta, MembershipSnapshot, MembershipTable,
-  NoopClusterProvider, NoopClusterPubSub, NoopGossiper, NoopIdentityLookup,
+  NoopClusterPubSub, NoopGossiper, NoopIdentityLookup, cluster_provider::NoopClusterProvider,
 };
-use fraktor_remote_rs::core::{BlockListProvider, PhiFailureDetector, PhiFailureDetectorConfig};
+use fraktor_remote_rs::core::{
+  BlockListProvider,
+  failure_detector::{PhiFailureDetector, PhiFailureDetectorConfig},
+};
 use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::ArcShared, time::TimerInstant};
 
 struct DemoBlockListProvider;

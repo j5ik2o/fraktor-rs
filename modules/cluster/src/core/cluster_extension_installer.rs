@@ -11,8 +11,10 @@ use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
 use crate::core::{
-  ClusterExtensionConfig, ClusterProvider, ClusterPubSub, Gossiper, IdentityLookup, LocalClusterProviderGeneric,
-  NoopClusterPubSub, NoopGossiper, NoopIdentityLookup, cluster_extension_id::ClusterExtensionId,
+  ClusterExtensionConfig, Gossiper, IdentityLookup, NoopClusterPubSub, NoopGossiper, NoopIdentityLookup,
+  cluster_extension_id::ClusterExtensionId,
+  cluster_provider::{ClusterProvider, LocalClusterProviderGeneric},
+  cluster_pub_sub::ClusterPubSub,
 };
 
 /// Empty block list provider that never blocks any members.

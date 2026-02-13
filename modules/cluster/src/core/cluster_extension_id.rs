@@ -7,8 +7,9 @@ use fraktor_actor_rs::core::{extension::ExtensionId, system::ActorSystemGeneric}
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
 use crate::core::{
-  ClusterCore, ClusterExtensionConfig, ClusterExtensionGeneric, ClusterProvider, ClusterProviderShared, ClusterPubSub,
-  ClusterPubSubShared, Gossiper, GossiperShared, IdentityLookup, IdentityLookupShared, KindRegistry,
+  ClusterCore, ClusterExtensionConfig, ClusterExtensionGeneric, ClusterProviderShared, ClusterPubSubShared, Gossiper,
+  GossiperShared, IdentityLookup, IdentityLookupShared, KindRegistry, cluster_provider::ClusterProvider,
+  cluster_pub_sub::ClusterPubSub,
 };
 
 /// Registers the cluster extension into an actor system.

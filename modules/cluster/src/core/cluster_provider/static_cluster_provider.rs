@@ -11,7 +11,8 @@ use fraktor_actor_rs::core::event::stream::EventStreamSharedGeneric;
 use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared, time::TimerInstant};
 
-use crate::core::{ClusterProvider, ClusterProviderError, ClusterTopology, TopologyUpdate};
+use super::ClusterProvider;
+use crate::core::{ClusterProviderError, ClusterTopology, TopologyUpdate};
 
 #[cfg(test)]
 mod tests;

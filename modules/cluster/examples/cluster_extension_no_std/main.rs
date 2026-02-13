@@ -74,18 +74,18 @@ use fraktor_actor_rs::core::{
   futures::ActorFutureSharedGeneric,
   messaging::{AnyMessage, AnyMessageViewGeneric, AskResponseGeneric, AskResult},
   props::Props,
-  scheduler::{ManualTestDriver, TickDriverConfig},
+  scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
   system::{
-    ActorRefProvider, ActorRefProviderInstaller, ActorRefProviderSharedGeneric, ActorSystemBuildError,
-    ActorSystemConfig, ActorSystemGeneric,
+    ActorSystemBuildError, ActorSystemConfig, ActorSystemGeneric,
+    provider::{ActorRefProvider, ActorRefProviderInstaller, ActorRefProviderSharedGeneric},
   },
 };
 use fraktor_cluster_rs::core::{
   ActivatedKind, ClusterApi, ClusterApiGeneric, ClusterEvent, ClusterExtensionConfig, ClusterExtensionGeneric,
-  ClusterExtensionInstaller, ClusterIdentity, ClusterPubSub, ClusterTopology, Gossiper, GrainCallError, GrainKey,
-  GrainRefGeneric, IdentityLookup, IdentitySetupError, LookupError, PlacementDecision, PlacementLocality,
-  PlacementResolution, PubSubError, PubSubSubscriber, PubSubTopic, PublishAck, PublishRejectReason, PublishRequest,
-  StaticClusterProvider, TopologyUpdate,
+  ClusterExtensionInstaller, ClusterIdentity, ClusterTopology, Gossiper, GrainCallError, GrainKey, GrainRefGeneric,
+  IdentityLookup, IdentitySetupError, LookupError, PlacementDecision, PlacementLocality, PlacementResolution,
+  PubSubError, PubSubSubscriber, PubSubTopic, PublishAck, PublishRejectReason, PublishRequest, TopologyUpdate,
+  cluster_provider::StaticClusterProvider, cluster_pub_sub::ClusterPubSub,
 };
 use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{

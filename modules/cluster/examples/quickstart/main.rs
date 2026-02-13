@@ -15,7 +15,7 @@ use anyhow::{Result, anyhow, bail};
 use fraktor_actor_rs::{
   core::{
     error::ActorError, extension::ExtensionInstallers, serialization::SerializationExtensionInstaller,
-    system::RemotingConfig,
+    system::remote::RemotingConfig,
   },
   std::{
     actor::{Actor, ActorContext, ActorRef},
@@ -27,12 +27,14 @@ use fraktor_actor_rs::{
   },
 };
 use fraktor_cluster_rs::core::{
-  ClusterProvider, GrainKey, MembershipDelta, MembershipTable, NoopClusterProvider, RendezvousHasher,
-  VirtualActorRegistry,
+  GrainKey, MembershipDelta, MembershipTable, RendezvousHasher, VirtualActorRegistry,
+  cluster_provider::{ClusterProvider, NoopClusterProvider},
 };
 use fraktor_remote_rs::core::{
-  RemotingExtensionConfig, RemotingExtensionId, RemotingExtensionInstaller, TokioActorRefProviderInstaller,
-  TokioTransportConfig, default_loopback_setup,
+  RemotingExtensionId, RemotingExtensionInstaller,
+  actor_ref_provider::{TokioActorRefProviderInstaller, default_loopback_setup},
+  remoting_extension::RemotingExtensionConfig,
+  transport::TokioTransportConfig,
 };
 use fraktor_utils_rs::{core::sync::ArcShared, std::StdSyncMutex};
 use tokio::sync::oneshot;

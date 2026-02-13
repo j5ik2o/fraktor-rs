@@ -9,8 +9,8 @@ use fraktor_utils_rs::core::{
 
 use super::BatchingProducerGeneric;
 use crate::core::{
-  BatchingProducerConfig, ClusterPubSub, ClusterPubSubShared, PubSubBatch, PubSubError, PubSubPublisherGeneric,
-  PubSubSubscriber, PubSubTopic, PublishAck, PublishRejectReason, PublishRequest, TopologyUpdate,
+  BatchingProducerConfig, ClusterPubSubShared, PubSubBatch, PubSubError, PubSubPublisherGeneric, PubSubSubscriber,
+  PubSubTopic, PublishAck, PublishRejectReason, PublishRequest, TopologyUpdate, cluster_pub_sub::ClusterPubSub,
 };
 
 #[derive(Clone)]
@@ -63,11 +63,14 @@ impl ClusterPubSub<NoStdToolbox> for RecordingPubSub {
   fn on_topology(&mut self, _update: &TopologyUpdate) {}
 }
 
-fn make_registry() -> ArcShared<fraktor_actor_rs::core::serialization::SerializationRegistryGeneric<NoStdToolbox>> {
+fn make_registry()
+-> ArcShared<fraktor_actor_rs::core::serialization::serialization_registry::SerializationRegistryGeneric<NoStdToolbox>>
+{
   let setup = fraktor_actor_rs::core::serialization::default_serialization_setup();
-  let registry =
-    ArcShared::new(fraktor_actor_rs::core::serialization::SerializationRegistryGeneric::from_setup(&setup));
-  let _ = fraktor_actor_rs::core::serialization::register_defaults(&registry, |_name, _id| {});
+  let registry = ArcShared::new(
+    fraktor_actor_rs::core::serialization::serialization_registry::SerializationRegistryGeneric::from_setup(&setup),
+  );
+  let _ = fraktor_actor_rs::core::serialization::builtin::register_defaults(&registry, |_name, _id| {});
   registry
 }
 

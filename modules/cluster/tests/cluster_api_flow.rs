@@ -8,13 +8,19 @@ use fraktor_actor_rs::core::{
   extension::ExtensionInstallers,
   messaging::AnyMessageGeneric,
   props::PropsGeneric,
-  scheduler::{ManualTestDriver, SchedulerConfig, TickDriverConfig},
-  system::{ActorRefProvider, ActorRefProviderSharedGeneric, ActorSystemConfigGeneric, ActorSystemGeneric},
+  scheduler::{
+    SchedulerConfig,
+    tick_driver::{ManualTestDriver, TickDriverConfig},
+  },
+  system::{
+    ActorSystemConfigGeneric, ActorSystemGeneric,
+    provider::{ActorRefProvider, ActorRefProviderSharedGeneric},
+  },
 };
 use fraktor_cluster_rs::core::{
   ActivatedKind, ClusterApiGeneric, ClusterExtensionConfig, ClusterExtensionGeneric, ClusterExtensionInstaller,
-  ClusterIdentity, GrainKey, IdentityLookup, IdentitySetupError, LookupError, NoopClusterProvider, PlacementDecision,
-  PlacementLocality, PlacementResolution,
+  ClusterIdentity, GrainKey, IdentityLookup, IdentitySetupError, LookupError, PlacementDecision, PlacementLocality,
+  PlacementResolution, cluster_provider::NoopClusterProvider,
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::NoStdToolbox,

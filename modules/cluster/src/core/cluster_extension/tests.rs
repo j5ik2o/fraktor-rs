@@ -17,9 +17,10 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::core::{
-  ActivatedKind, ClusterEvent, ClusterExtensionConfig, ClusterExtensionId, ClusterProvider, ClusterProviderError,
-  ClusterPubSub, ClusterTopology, Gossiper, GrainKey, IdentityLookup, IdentitySetupError, LookupError,
-  PlacementResolution, StaticClusterProvider, TopologyUpdate,
+  ActivatedKind, ClusterEvent, ClusterExtensionConfig, ClusterExtensionId, ClusterProviderError, ClusterTopology,
+  Gossiper, GrainKey, IdentityLookup, IdentitySetupError, LookupError, PlacementResolution, TopologyUpdate,
+  cluster_provider::{ClusterProvider, StaticClusterProvider},
+  cluster_pub_sub::ClusterPubSub,
 };
 
 fn build_update(

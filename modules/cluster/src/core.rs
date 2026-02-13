@@ -22,10 +22,12 @@ mod cluster_identity;
 mod cluster_identity_error;
 mod cluster_metrics;
 mod cluster_metrics_snapshot;
-mod cluster_provider;
+/// Cluster provider implementations and traits.
+pub mod cluster_provider;
 mod cluster_provider_error;
 mod cluster_provider_shared;
-mod cluster_pub_sub;
+/// Cluster pub-sub messaging coordination.
+pub mod cluster_pub_sub;
 mod cluster_pub_sub_shared;
 mod cluster_request_error;
 mod cluster_resolve_error;
@@ -175,13 +177,8 @@ pub use cluster_identity::ClusterIdentity;
 pub use cluster_identity_error::ClusterIdentityError;
 pub use cluster_metrics::ClusterMetrics;
 pub use cluster_metrics_snapshot::ClusterMetricsSnapshot;
-pub use cluster_provider::{
-  ClusterProvider, LocalClusterProviderGeneric, LocalClusterProviderSharedGeneric, NoopClusterProvider,
-  StaticClusterProvider,
-};
 pub use cluster_provider_error::ClusterProviderError;
 pub use cluster_provider_shared::ClusterProviderShared;
-pub use cluster_pub_sub::{ClusterPubSub, ClusterPubSubImpl};
 pub use cluster_pub_sub_shared::ClusterPubSubShared;
 pub use cluster_request_error::ClusterRequestError;
 pub use cluster_resolve_error::ClusterResolveError;

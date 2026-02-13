@@ -8,7 +8,7 @@ use core::any::type_name_of_val;
 
 use fraktor_actor_rs::core::{
   messaging::AnyMessageGeneric,
-  serialization::{SerializationError, SerializationRegistryGeneric},
+  serialization::{SerializationError, serialization_registry::SerializationRegistryGeneric},
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::RuntimeToolbox,
