@@ -7,7 +7,7 @@ use fraktor_utils_rs::core::{
   sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
 };
 
-use super::transport_inbound_handler::TransportInbound;
+use super::handler::TransportInbound;
 
 /// Shared wrapper for [`TransportInbound`] implementations.
 ///

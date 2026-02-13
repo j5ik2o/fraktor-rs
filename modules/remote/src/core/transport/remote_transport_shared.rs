@@ -10,7 +10,7 @@ use fraktor_utils_rs::core::{
 
 use super::{
   RemoteTransport, TransportBackpressureHookShared, TransportBind, TransportChannel, TransportEndpoint, TransportError,
-  TransportHandle, TransportInboundShared,
+  TransportHandle, inbound::TransportInboundShared,
 };
 
 /// Shared wrapper that provides thread-safe access to a [`RemoteTransport`]

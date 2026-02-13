@@ -37,8 +37,8 @@ use crate::core::{
   envelope::{DeferredEnvelope, RemotingEnvelope},
   handshake::{HandshakeFrame, HandshakeKind},
   transport::{
-    InboundFrame, RemoteTransportShared, TransportBind, TransportChannel, TransportEndpoint, TransportError,
-    TransportHandle, TransportInbound, TransportInboundShared,
+    RemoteTransportShared, TransportBind, TransportChannel, TransportEndpoint, TransportError, TransportHandle,
+    inbound::{InboundFrame, TransportInbound, TransportInboundShared},
   },
 };
 

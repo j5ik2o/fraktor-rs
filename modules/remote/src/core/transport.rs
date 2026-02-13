@@ -6,6 +6,8 @@ mod tests;
 mod backpressure_hook;
 mod backpressure_hook_shared;
 mod factory;
+/// Inbound transport types for receiving frames from remote peers.
+pub mod inbound;
 mod loopback_transport;
 mod remote_transport;
 mod remote_transport_shared;
@@ -15,9 +17,6 @@ mod transport_channel;
 mod transport_endpoint;
 mod transport_error;
 mod transport_handle;
-mod transport_inbound_frame;
-mod transport_inbound_handler;
-mod transport_inbound_shared;
 
 pub use backpressure_hook::TransportBackpressureHook;
 pub use backpressure_hook_shared::TransportBackpressureHookShared;
@@ -31,6 +30,3 @@ pub use transport_channel::TransportChannel;
 pub use transport_endpoint::TransportEndpoint;
 pub use transport_error::TransportError;
 pub use transport_handle::TransportHandle;
-pub use transport_inbound_frame::InboundFrame;
-pub use transport_inbound_handler::TransportInbound;
-pub use transport_inbound_shared::TransportInboundShared;

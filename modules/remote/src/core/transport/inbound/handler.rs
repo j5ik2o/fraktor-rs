@@ -1,6 +1,6 @@
 //! Callback invoked when transports receive inbound frames.
 
-use crate::core::transport::transport_inbound_frame::InboundFrame;
+use super::frame::InboundFrame;
 
 /// Receives decoded transport frames and forwards them to higher layers.
 ///

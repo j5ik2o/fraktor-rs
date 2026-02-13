@@ -28,8 +28,9 @@ use tokio::{
 };
 
 use crate::core::transport::{
-  InboundFrame, RemoteTransport, TransportBackpressureHookShared, TransportBind, TransportChannel, TransportEndpoint,
-  TransportError, TransportHandle, TransportInboundShared,
+  RemoteTransport, TransportBackpressureHookShared, TransportBind, TransportChannel, TransportEndpoint, TransportError,
+  TransportHandle,
+  inbound::{InboundFrame, TransportInboundShared},
 };
 
 const BACKPRESSURE_THRESHOLD: usize = 1024;

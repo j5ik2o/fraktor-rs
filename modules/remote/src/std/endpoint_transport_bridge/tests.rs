@@ -43,7 +43,7 @@ use crate::core::{
   handshake::{HandshakeFrame, HandshakeKind},
   transport::{
     RemoteTransport, RemoteTransportShared, TransportBind, TransportChannel, TransportEndpoint, TransportError,
-    TransportHandle, TransportInboundShared,
+    TransportHandle, inbound::TransportInboundShared,
   },
 };
 
