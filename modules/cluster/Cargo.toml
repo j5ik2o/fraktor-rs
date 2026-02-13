@@ -26,7 +26,7 @@ serde = { workspace = true }
 postcard = { workspace = true }
 aws-sdk-ecs = { workspace = true, optional = true }
 aws-config = { workspace = true, optional = true }
-tokio = { workspace = true, optional = true, features = ["rt", "sync", "time", "net"] }
+tokio = { workspace = true, optional = true, features = ["rt", "sync", "time", "net", "macros"] }
 
 [dev-dependencies]
 fraktor-actor-rs = { workspace = true, features = ["std", "tokio-executor", "test-support"] }
