@@ -2,8 +2,10 @@
 
 mod config;
 mod control;
+mod control_backpressure_hook;
 mod control_handle;
 mod error;
+mod lifecycle_state;
 #[cfg(all(test, feature = "std"))]
 mod tests;
 
