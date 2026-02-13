@@ -2,7 +2,7 @@
 
 use alloc::vec::Vec;
 
-use super::remoting_metric::RemotingMetric;
+use super::metric::RemotingMetric;
 
 /// Snapshot returned by the flight recorder for observability tooling.
 #[derive(Clone, Debug, PartialEq)]

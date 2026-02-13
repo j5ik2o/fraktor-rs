@@ -27,7 +27,7 @@ use crate::core::{
   endpoint_reader::EndpointReaderGeneric,
   endpoint_writer::EndpointWriterSharedGeneric,
   event_publisher::EventPublisherGeneric,
-  flight_recorder::{RemotingFlightRecorder, RemotingFlightRecorderSnapshot},
+  flight_recorder::remoting_flight_recorder::{RemotingFlightRecorder, RemotingFlightRecorderSnapshot},
   remote_authority_snapshot::RemoteAuthoritySnapshot,
   transport::{RemoteTransport, RemoteTransportShared, TransportBackpressureHook, TransportBackpressureHookShared},
 };
