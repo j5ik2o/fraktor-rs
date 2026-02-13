@@ -11,8 +11,11 @@ use core::{
 use std::{thread, time::Duration as StdDuration};
 
 use fraktor_actor_rs::core::scheduler::{
-  HardwareKind, HardwareTickDriver, SchedulerSharedGeneric, SchedulerTickExecutor, TickDriver, TickDriverBundle,
-  TickDriverConfig, TickDriverError, TickExecutorSignal, TickFeed, TickFeedHandle, TickPulseHandler, TickPulseSource,
+  SchedulerSharedGeneric,
+  tick_driver::{
+    HardwareKind, HardwareTickDriver, SchedulerTickExecutor, TickDriver, TickDriverBundle, TickDriverConfig,
+    TickDriverError, TickExecutorSignal, TickFeed, TickFeedHandle, TickPulseHandler, TickPulseSource,
+  },
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::NoStdToolbox,

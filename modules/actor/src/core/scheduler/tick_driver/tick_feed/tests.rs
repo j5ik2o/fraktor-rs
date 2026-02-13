@@ -5,7 +5,7 @@ use core::time::Duration;
 
 use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, time::TimerInstant};
 
-use crate::core::scheduler::{TickDriverKind, TickExecutorSignal, TickFeed};
+use crate::core::scheduler::tick_driver::{TickDriverKind, TickExecutorSignal, TickFeed};
 
 #[test]
 fn enqueue_wakes_signal_and_preserves_order() {

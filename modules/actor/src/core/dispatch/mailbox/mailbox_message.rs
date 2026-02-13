@@ -2,7 +2,7 @@
 
 use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
-use crate::core::messaging::{AnyMessageGeneric, SystemMessage};
+use crate::core::messaging::{AnyMessageGeneric, system_message::SystemMessage};
 
 /// Represents messages dequeued from the mailbox.
 #[derive(Debug)]

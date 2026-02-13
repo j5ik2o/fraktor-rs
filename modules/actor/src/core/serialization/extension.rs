@@ -39,7 +39,7 @@ use crate::core::{
     serializer_id::SerializerId,
     transport_information::TransportInformation,
   },
-  system::{ActorSystemGeneric, SystemStateWeakGeneric},
+  system::{ActorSystemGeneric, state::SystemStateWeakGeneric},
 };
 
 /// Serialization extension type alias for the default toolbox.

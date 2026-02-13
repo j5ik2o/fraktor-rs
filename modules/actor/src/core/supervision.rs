@@ -4,9 +4,10 @@
 
 mod base;
 mod restart_statistics;
-mod strategy;
 mod supervisor_directive;
 mod supervisor_strategy_kind;
 
+pub use base::SupervisorStrategy;
 pub use restart_statistics::RestartStatistics;
-pub use strategy::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind};
+pub use supervisor_directive::SupervisorDirective;
+pub use supervisor_strategy_kind::SupervisorStrategyKind;

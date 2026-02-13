@@ -2,11 +2,10 @@
 
 use core::time::Duration;
 
-use super::FailureClassification;
+use super::{FailureClassification, FailureMessageSnapshot};
 use crate::core::{
   actor::Pid,
   error::{ActorError, ActorErrorReason},
-  messaging::FailureMessageSnapshot,
   supervision::RestartStatistics,
 };
 

@@ -5,7 +5,7 @@ use core::time::Duration;
 use fraktor_utils_rs::core::{
   runtime_toolbox::RuntimeToolbox,
   sync::{ArcShared, SharedAccess},
-  timing::{DelayFuture, DelayProvider, DelayTrigger},
+  timing::delay::{DelayFuture, DelayProvider, DelayTrigger},
 };
 
 use super::{

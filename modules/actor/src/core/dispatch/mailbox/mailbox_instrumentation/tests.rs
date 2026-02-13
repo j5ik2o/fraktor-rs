@@ -69,7 +69,7 @@ fn mailbox_instrumentation_notifies_backpressure_publisher() {
   let captured = ArcShared::new(NoStdMutex::new(Vec::new()));
   let publisher = BackpressurePublisherGeneric::from_fn({
     let captured = captured.clone();
-    move |event: &crate::core::dispatch::mailbox::MailboxPressureEvent| {
+    move |event: &crate::core::dispatch::mailbox::metrics_event::MailboxPressureEvent| {
       captured.lock().push((event.pid(), event.user_len()));
     }
   });

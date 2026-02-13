@@ -10,12 +10,12 @@ use core::{
 
 use fraktor_utils_rs::core::{
   collections::{
-    queue::{QueueError, backend::OfferOutcome},
+    queue::{OfferOutcome, QueueError},
     wait::WaitShared,
   },
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex},
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
-  timing::{DelayFuture, DelayProvider},
+  timing::delay::{DelayFuture, DelayProvider},
 };
 
 use super::{mailbox_queue_state::QueueState, map_user_queue_error};

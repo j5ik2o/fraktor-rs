@@ -9,8 +9,15 @@ use crate::core::{
   error::{ActorError, SendError},
   messaging::{AnyMessage, AnyMessageViewGeneric},
   props::Props,
-  scheduler::{ManualTestDriver, SchedulerConfig, TickDriverConfig},
-  system::{ActorSystemConfig, RemotingConfig, SystemState, SystemStateShared},
+  scheduler::{
+    SchedulerConfig,
+    tick_driver::{ManualTestDriver, TickDriverConfig},
+  },
+  system::{
+    ActorSystemConfig,
+    remote::RemotingConfig,
+    state::{SystemStateShared, system_state::SystemState},
+  },
 };
 
 struct TestSender;

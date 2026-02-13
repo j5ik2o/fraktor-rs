@@ -7,7 +7,7 @@ use alloc::{borrow::ToOwned, boxed::Box};
 use fraktor_utils_rs::core::time::TimerInstant;
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::SharedAccess, time::MonotonicClock};
 #[cfg(any(test, feature = "test-support"))]
-use fraktor_utils_rs::core::{runtime_toolbox::SyncMutexFamily, sync::ArcShared};
+use fraktor_utils_rs::core::{runtime_toolbox::sync_mutex_family::SyncMutexFamily, sync::ArcShared};
 
 #[cfg(any(test, feature = "test-support"))]
 use super::TickDriverControl;
@@ -24,7 +24,7 @@ use super::{
 use crate::core::event::logging::{LogEvent, LogLevel};
 use crate::core::{
   event::stream::{EventStreamEvent, TickDriverSnapshot},
-  scheduler::TickDriverProvisioningContext,
+  scheduler::tick_driver::TickDriverProvisioningContext,
 };
 
 /// Bootstrapper responsible for wiring drivers into the scheduler context.

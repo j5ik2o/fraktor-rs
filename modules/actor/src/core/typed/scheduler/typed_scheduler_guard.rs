@@ -4,7 +4,7 @@ use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use crate::core::{
   scheduler::{DispatcherSenderShared, Scheduler, SchedulerError, SchedulerHandle},
-  typed::{TypedScheduler, actor::TypedActorRefGeneric},
+  typed::{actor::TypedActorRefGeneric, scheduler::TypedScheduler},
 };
 
 /// Guard that keeps the scheduler lock and exposes typed scheduling APIs.

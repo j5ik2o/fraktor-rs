@@ -2,7 +2,7 @@
 
 use alloc::string::String;
 
-use crate::core::system::AuthorityState;
+use crate::core::system::state::AuthorityState;
 
 /// Event payload describing a remote authority state transition.
 #[derive(Clone, Debug)]

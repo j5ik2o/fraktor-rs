@@ -15,8 +15,8 @@ use crate::core::{
   },
   extension::ExtensionInstallers,
   props::MailboxConfig,
-  scheduler::{SchedulerConfig, TickDriverConfig},
-  system::{ActorRefProviderInstaller, RemotingConfig},
+  scheduler::{SchedulerConfig, tick_driver::TickDriverConfig},
+  system::{provider::ActorRefProviderInstaller, remote::RemotingConfig},
 };
 
 #[cfg(test)]

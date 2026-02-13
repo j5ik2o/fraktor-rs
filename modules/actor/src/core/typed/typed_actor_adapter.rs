@@ -7,7 +7,7 @@ use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 use crate::core::{
   actor::{Actor, ActorContextGeneric, actor_ref::ActorRefGeneric},
   dead_letter::DeadLetterReason,
-  dispatch::mailbox::MailboxPressureEvent,
+  dispatch::mailbox::metrics_event::MailboxPressureEvent,
   error::{ActorError, ActorErrorReason},
   event::logging::LogLevel,
   messaging::{AnyMessageGeneric, AnyMessageViewGeneric},

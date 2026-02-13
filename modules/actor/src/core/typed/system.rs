@@ -15,7 +15,7 @@ use crate::core::{
   futures::ActorFutureSharedGeneric,
   messaging::AskResult,
   spawn::SpawnError,
-  system::{ActorSystemConfigGeneric, ActorSystemGeneric, SystemStateSharedGeneric},
+  system::{ActorSystemConfigGeneric, ActorSystemGeneric, state::SystemStateSharedGeneric},
   typed::{
     actor::{TypedActorRefGeneric, TypedChildRefGeneric},
     props::TypedPropsGeneric,
@@ -59,7 +59,7 @@ where
   /// Returns an error if the guardian actor cannot be spawned or tick driver setup fails.
   pub fn new(
     guardian: &TypedPropsGeneric<M, TB>,
-    tick_driver_config: crate::core::scheduler::TickDriverConfig<TB>,
+    tick_driver_config: crate::core::scheduler::tick_driver::TickDriverConfig<TB>,
   ) -> Result<Self, SpawnError> {
     Ok(Self { inner: ActorSystemGeneric::new(guardian.to_untyped(), tick_driver_config)?, marker: PhantomData })
   }

@@ -11,7 +11,7 @@ use crate::core::{
   actor::Pid,
   dispatch::{
     dispatcher::{DispatchExecutorRunnerGeneric, InlineExecutor, InlineScheduleAdapter},
-    mailbox::{Mailbox, MailboxPressureEvent},
+    mailbox::{Mailbox, metrics_event::MailboxPressureEvent},
   },
   error::ActorError,
   messaging::message_invoker::{MessageInvoker, MessageInvokerShared},
@@ -91,7 +91,10 @@ fn dispatcher_core_register_invoker() {
       Ok(())
     }
 
-    fn invoke_system_message(&mut self, _message: crate::core::messaging::SystemMessage) -> Result<(), ActorError> {
+    fn invoke_system_message(
+      &mut self,
+      _message: crate::core::messaging::system_message::SystemMessage,
+    ) -> Result<(), ActorError> {
       Ok(())
     }
   }
@@ -116,7 +119,10 @@ fn dispatcher_core_invokes_mailbox_pressure_hook_when_full() {
       Ok(())
     }
 
-    fn invoke_system_message(&mut self, _message: crate::core::messaging::SystemMessage) -> Result<(), ActorError> {
+    fn invoke_system_message(
+      &mut self,
+      _message: crate::core::messaging::system_message::SystemMessage,
+    ) -> Result<(), ActorError> {
       Ok(())
     }
 
@@ -155,7 +161,10 @@ fn dispatcher_core_invokes_mailbox_pressure_hook_when_threshold_is_reached() {
       Ok(())
     }
 
-    fn invoke_system_message(&mut self, _message: crate::core::messaging::SystemMessage) -> Result<(), ActorError> {
+    fn invoke_system_message(
+      &mut self,
+      _message: crate::core::messaging::system_message::SystemMessage,
+    ) -> Result<(), ActorError> {
       Ok(())
     }
 
@@ -203,7 +212,10 @@ fn dispatcher_core_prioritizes_system_messages_over_mailbox_pressure() {
       Ok(())
     }
 
-    fn invoke_system_message(&mut self, _message: crate::core::messaging::SystemMessage) -> Result<(), ActorError> {
+    fn invoke_system_message(
+      &mut self,
+      _message: crate::core::messaging::system_message::SystemMessage,
+    ) -> Result<(), ActorError> {
       self.calls.lock().push(DispatchCall::System);
       Ok(())
     }
@@ -228,7 +240,7 @@ fn dispatcher_core_prioritizes_system_messages_over_mailbox_pressure() {
   );
   core.register_invoker(invoker);
 
-  mailbox.enqueue_system(crate::core::messaging::SystemMessage::Stop).unwrap();
+  mailbox.enqueue_system(crate::core::messaging::system_message::SystemMessage::Stop).unwrap();
   let event = MailboxPressureEvent::new(Pid::new(13, 0), 4, 4, 100, Duration::from_millis(1), Some(3));
   DispatcherCoreGeneric::handle_backpressure(&core, &event);
   DispatcherCoreGeneric::drive(&core);

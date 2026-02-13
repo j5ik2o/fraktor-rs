@@ -9,8 +9,9 @@ use fraktor_utils_rs::core::{
 };
 
 use super::{
-  ActorRefProvider, ActorRefProviderSharedGeneric, ActorSystemBuildError, ActorSystemGeneric, RegisterExtensionError,
-  RegisterExtraTopLevelError, RemoteWatchHook,
+  ActorSystemBuildError, ActorSystemGeneric, RegisterExtensionError, RegisterExtraTopLevelError,
+  provider::{ActorRefProvider, ActorRefProviderSharedGeneric},
+  remote::RemoteWatchHook,
 };
 use crate::core::{
   actor::{ChildRefGeneric, actor_ref::ActorRefGeneric},

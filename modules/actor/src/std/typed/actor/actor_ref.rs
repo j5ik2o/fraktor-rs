@@ -4,7 +4,7 @@ use std::ops::{Deref, DerefMut};
 
 use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
-use crate::core::typed::TypedActorRefGeneric;
+use crate::core::typed::actor::TypedActorRefGeneric;
 
 #[repr(transparent)]
 /// Strongly typed actor reference bound to the standard runtime toolbox.

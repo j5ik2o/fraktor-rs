@@ -16,7 +16,9 @@ use fraktor_utils_rs::core::{
 };
 
 use super::{
-  ExtendedActorSystemGeneric, RemotingConfig, RootGuardianActor, SystemGuardianActor, SystemGuardianProtocol,
+  ExtendedActorSystemGeneric,
+  guardian::{RootGuardianActor, SystemGuardianActor, SystemGuardianProtocol},
+  remote::RemotingConfig,
 };
 use crate::core::{
   actor::{
@@ -34,13 +36,15 @@ use crate::core::{
     },
   },
   futures::ActorFutureSharedGeneric,
-  messaging::{AnyMessageGeneric, AskResult, SystemMessage},
+  messaging::{AnyMessageGeneric, AskResult, system_message::SystemMessage},
   props::PropsGeneric,
-  scheduler::{SchedulerBackedDelayProvider, TickDriverConfig},
+  scheduler::{SchedulerBackedDelayProvider, tick_driver::TickDriverConfig},
   serialization::default_serialization_extension_id,
   spawn::SpawnError,
   system::{
-    ActorRefResolveError, SystemStateGeneric, SystemStateSharedGeneric, actor_system_config::ActorSystemConfigGeneric,
+    actor_system_config::ActorSystemConfigGeneric,
+    provider::ActorRefResolveError,
+    state::{SystemStateSharedGeneric, system_state::SystemStateGeneric},
   },
 };
 
@@ -80,7 +84,9 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   where
     TB: Default,
     F: FnOnce(ActorSystemConfigGeneric<TB>) -> ActorSystemConfigGeneric<TB>, {
-    let tick_driver = crate::core::scheduler::TickDriverConfig::manual(crate::core::scheduler::ManualTestDriver::new());
+    let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
+      crate::core::scheduler::tick_driver::ManualTestDriver::new(),
+    );
     let scheduler_config = crate::core::scheduler::SchedulerConfig::default().with_runner_api_enabled(true);
     let config =
       ActorSystemConfigGeneric::default().with_scheduler_config(scheduler_config).with_tick_driver(tick_driver);
@@ -318,7 +324,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
 
   /// Returns the tick driver bundle when initialized.
   #[must_use]
-  pub fn tick_driver_bundle(&self) -> crate::core::scheduler::TickDriverBundle<TB> {
+  pub fn tick_driver_bundle(&self) -> crate::core::scheduler::tick_driver::TickDriverBundle<TB> {
     self.state.tick_driver_bundle()
   }
 

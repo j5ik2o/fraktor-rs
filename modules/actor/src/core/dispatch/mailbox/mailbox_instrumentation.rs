@@ -10,9 +10,9 @@ use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 use super::BackpressurePublisherGeneric;
 use crate::core::{
   actor::Pid,
-  dispatch::mailbox::{MailboxMetricsEvent, MailboxPressureEvent},
+  dispatch::mailbox::metrics_event::{MailboxMetricsEvent, MailboxPressureEvent},
   event::{logging::LogLevel, stream::EventStreamEvent},
-  system::{SystemStateSharedGeneric, SystemStateWeakGeneric},
+  system::state::{SystemStateSharedGeneric, SystemStateWeakGeneric},
 };
 
 const PRESSURE_THRESHOLD_PERCENT: usize = 75;

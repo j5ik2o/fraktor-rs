@@ -7,7 +7,7 @@ use alloc::string::String;
 use core::any::TypeId;
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
+  runtime_toolbox::{RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 

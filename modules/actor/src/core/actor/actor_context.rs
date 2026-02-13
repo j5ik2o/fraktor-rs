@@ -12,7 +12,7 @@ use crate::core::{
   actor::{ChildRefGeneric, Pid, actor_ref::ActorRefGeneric, pipe_spawn_error::PipeSpawnError},
   error::SendError,
   event::logging::LogLevel,
-  messaging::{AnyMessageGeneric, SystemMessage},
+  messaging::{AnyMessageGeneric, system_message::SystemMessage},
   props::PropsGeneric,
   spawn::SpawnError,
   system::ActorSystemGeneric,

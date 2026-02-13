@@ -21,7 +21,7 @@ impl<M, T> TypedActorAdapter<M, T> {
   }
 }
 
-impl<M, T> crate::core::typed::TypedActor<M, StdToolbox> for TypedActorAdapter<M, T>
+impl<M, T> crate::core::typed::actor::TypedActor<M, StdToolbox> for TypedActorAdapter<M, T>
 where
   M: Send + Sync + 'static,
   T: TypedActor<M>,

@@ -6,14 +6,14 @@ use core::{
 };
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
+  runtime_toolbox::{RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 
 use crate::core::{
   actor::{ContextPipeTaskId, Pid},
-  messaging::SystemMessage,
-  system::SystemStateSharedGeneric,
+  messaging::system_message::SystemMessage,
+  system::state::SystemStateSharedGeneric,
 };
 
 #[cfg(test)]

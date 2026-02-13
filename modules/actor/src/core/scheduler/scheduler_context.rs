@@ -1,10 +1,12 @@
 //! Scheduler runtime container used across the actor system.
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, SyncRwLockFamily, ToolboxRwLock},
+  runtime_toolbox::{RuntimeToolbox, ToolboxRwLock, sync_rwlock_family::SyncRwLockFamily},
   sync::{ArcShared, SharedAccess},
 };
 
-use super::{Scheduler, SchedulerBackedDelayProvider, SchedulerConfig, SchedulerSharedGeneric, TaskRunSummary};
+use super::{
+  Scheduler, SchedulerBackedDelayProvider, SchedulerConfig, SchedulerSharedGeneric, task_run::TaskRunSummary,
+};
 use crate::core::event::stream::EventStreamSharedGeneric;
 
 /// Owns the shared scheduler instance and exposes auxiliary services.

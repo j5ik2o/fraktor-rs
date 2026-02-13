@@ -16,9 +16,11 @@ use crate::core::{
     stream::{EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriber, subscriber_handle},
   },
   scheduler::{
-    ExecutionBatch, HardwareKind, ManualTestDriver, SchedulerCommand, SchedulerConfig, SchedulerContext,
-    SchedulerRunnable, SchedulerTickExecutor, TickDriverConfig, TickDriverError, TickDriverKind,
-    TickDriverProvisioningContext, TickExecutorSignal, TickFeed, TickPulseHandler, TickPulseSource,
+    ExecutionBatch, SchedulerCommand, SchedulerConfig, SchedulerContext, SchedulerRunnable,
+    tick_driver::{
+      HardwareKind, ManualTestDriver, SchedulerTickExecutor, TickDriverConfig, TickDriverError, TickDriverKind,
+      TickDriverProvisioningContext, TickExecutorSignal, TickFeed, TickPulseHandler, TickPulseSource,
+    },
   },
 };
 

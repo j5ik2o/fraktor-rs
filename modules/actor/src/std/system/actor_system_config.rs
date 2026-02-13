@@ -7,8 +7,11 @@ use crate::{
     actor::actor_path::GuardianKind,
     dispatch::dispatcher::DispatcherConfigGeneric,
     extension::ExtensionInstallers,
-    scheduler::{SchedulerConfig, TickDriverConfig},
-    system::{ActorRefProviderInstaller, ActorSystemConfigGeneric as CoreActorSystemConfigGeneric, RemotingConfig},
+    scheduler::{SchedulerConfig, tick_driver::TickDriverConfig},
+    system::{
+      ActorSystemConfigGeneric as CoreActorSystemConfigGeneric, provider::ActorRefProviderInstaller,
+      remote::RemotingConfig,
+    },
   },
   std::dispatch::dispatcher::DispatcherConfig,
 };

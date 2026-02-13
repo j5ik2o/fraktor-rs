@@ -5,7 +5,7 @@
 //! preventing potential deadlocks.
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncRwLockFamily, ToolboxRwLock},
+  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxRwLock, sync_rwlock_family::SyncRwLockFamily},
   sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike, sync_rwlock_like::SyncRwLockLike},
 };
 

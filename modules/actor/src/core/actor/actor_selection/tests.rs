@@ -8,7 +8,7 @@ use crate::core::{
     actor_selection::{ActorSelectionError, ActorSelectionResolver},
   },
   messaging::AnyMessage,
-  system::{RemoteAuthorityError, RemoteAuthorityRegistry},
+  system::remote::{RemoteAuthorityError, RemoteAuthorityRegistry},
 };
 
 #[test]

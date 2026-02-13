@@ -2,7 +2,7 @@ use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 
 use crate::core::{
   actor::{ContextPipeTaskId, context_pipe_waker::ContextPipeWaker},
-  system::{SystemStateGeneric, SystemStateSharedGeneric},
+  system::state::{SystemStateSharedGeneric, system_state::SystemStateGeneric},
 };
 
 #[test]

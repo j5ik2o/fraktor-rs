@@ -25,14 +25,14 @@ use crate::core::{
   event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   messaging::AnyMessageViewGeneric,
   props::Props,
-  scheduler::{ManualTestDriver, TickDriverConfig},
+  scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
   serialization::{
     builtin, call_scope::SerializationCallScope, error::SerializationError, error_event::SerializationErrorEvent,
     not_serializable_error::NotSerializableError, serialization_setup::SerializationSetup,
     serialized_message::SerializedMessage, serializer::Serializer, serializer_id::SerializerId,
     string_manifest_serializer::SerializerWithStringManifest, transport_information::TransportInformation,
   },
-  system::{ActorSystemConfig, ActorSystemGeneric, RemotingConfig, SystemStateShared},
+  system::{ActorSystemConfig, ActorSystemGeneric, remote::RemotingConfig, state::SystemStateShared},
 };
 
 #[derive(Debug, PartialEq)]
@@ -162,7 +162,9 @@ fn build_system_with_remoting(remoting: Option<RemotingConfig>, system_name: &st
   if let Some(remoting) = remoting {
     config = config.with_remoting_config(remoting);
   }
-  let state = SystemStateShared::new(crate::core::system::SystemState::build_from_config(&config).expect("state"));
+  let state = SystemStateShared::new(
+    crate::core::system::state::system_state::SystemState::build_from_config(&config).expect("state"),
+  );
   ActorSystemGeneric::from_state(state)
 }
 

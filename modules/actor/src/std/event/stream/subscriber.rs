@@ -2,7 +2,7 @@ use alloc::boxed::Box;
 
 use fraktor_utils_rs::{
   core::{
-    runtime_toolbox::{RuntimeToolbox, SyncMutexFamily},
+    runtime_toolbox::{RuntimeToolbox, sync_mutex_family::SyncMutexFamily},
     sync::ArcShared,
   },
   std::runtime_toolbox::StdToolbox,

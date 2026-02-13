@@ -4,7 +4,7 @@ use core::{
   sync::atomic::{AtomicPtr, AtomicUsize, Ordering},
 };
 
-use crate::core::messaging::SystemMessage;
+use crate::core::messaging::system_message::SystemMessage;
 
 #[cfg(test)]
 mod tests;

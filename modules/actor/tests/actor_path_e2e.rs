@@ -8,7 +8,11 @@ use fraktor_actor_rs::core::{
     actor_selection::{ActorSelectionError, ActorSelectionResolver},
   },
   messaging::AnyMessage,
-  system::{ActorSystemConfigGeneric, AuthorityState, RemoteAuthorityRegistry, RemotingConfig},
+  system::{
+    ActorSystemConfigGeneric,
+    remote::{RemoteAuthorityRegistry, RemotingConfig},
+    state::AuthorityState,
+  },
 };
 use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 

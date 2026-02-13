@@ -5,7 +5,7 @@ use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 use super::Actor;
 use crate::core::{
   actor::{ActorContext, ActorContextGeneric, Pid},
-  dispatch::mailbox::MailboxPressureEvent,
+  dispatch::mailbox::metrics_event::MailboxPressureEvent,
   error::ActorError,
   messaging::AnyMessageViewGeneric,
   system::ActorSystem,

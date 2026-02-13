@@ -7,7 +7,7 @@ use alloc::{boxed::Box, collections::VecDeque, string::String, vec, vec::Vec};
 use core::{mem, task::Poll, time::Duration};
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
+  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
   sync::{ArcShared, SharedAccess, WeakShared, sync_mutex_like::SyncMutexLike},
 };
 use portable_atomic::{AtomicBool, Ordering};
@@ -22,21 +22,26 @@ use crate::core::{
   dispatch::{
     dispatcher::DispatcherSharedGeneric,
     mailbox::{
-      BackpressurePublisherGeneric, MailboxCapacity, MailboxGeneric, MailboxInstrumentationGeneric,
-      MailboxPressureEvent, ScheduleHints,
+      BackpressurePublisherGeneric, MailboxCapacity, MailboxGeneric, MailboxInstrumentationGeneric, ScheduleHints,
+      metrics_event::MailboxPressureEvent,
     },
   },
   error::ActorError,
   event::stream::EventStreamEvent,
   lifecycle::{LifecycleEvent, LifecycleStage},
   messaging::{
-    AnyMessageGeneric, FailureMessageSnapshot, FailurePayload, SystemMessage,
+    AnyMessageGeneric,
     message_invoker::{MessageInvoker, MessageInvokerPipelineGeneric, MessageInvokerShared},
+    system_message::{FailureMessageSnapshot, FailurePayload, SystemMessage},
   },
   props::{ActorFactorySharedGeneric, PropsGeneric},
   spawn::SpawnError,
   supervision::{RestartStatistics, SupervisorDirective, SupervisorStrategyKind},
-  system::{ActorSystemGeneric, FailureOutcome, GuardianKind, SystemStateSharedGeneric, SystemStateWeakGeneric},
+  system::{
+    ActorSystemGeneric,
+    guardian::GuardianKind,
+    state::{SystemStateSharedGeneric, SystemStateWeakGeneric, system_state::FailureOutcome},
+  },
   typed::message_adapter::{AdapterLifecycleState, AdapterRefHandle, AdapterRefHandleId},
 };
 

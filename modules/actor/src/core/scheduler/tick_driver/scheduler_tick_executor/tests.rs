@@ -9,8 +9,8 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::core::scheduler::{
-  SchedulerCommand, SchedulerConfig, SchedulerContext, SchedulerRunnable, SchedulerTickExecutor, TickExecutorSignal,
-  TickFeed,
+  SchedulerCommand, SchedulerConfig, SchedulerContext, SchedulerRunnable,
+  tick_driver::{SchedulerTickExecutor, TickExecutorSignal, TickFeed},
 };
 
 #[derive(Clone)]

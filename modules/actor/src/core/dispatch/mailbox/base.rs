@@ -7,8 +7,8 @@ use alloc::{collections::VecDeque, string::String};
 use core::num::NonZeroUsize;
 
 use fraktor_utils_rs::core::{
-  collections::queue::{QueueError, backend::OfferOutcome},
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, ToolboxMutex},
+  collections::queue::{OfferOutcome, QueueError},
+  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
   sync::sync_mutex_like::SyncMutexLike,
 };
 
@@ -22,8 +22,8 @@ use crate::core::{
   dispatch::mailbox::{capacity::MailboxCapacity, overflow_strategy::MailboxOverflowStrategy, policy::MailboxPolicy},
   error::SendError,
   event::logging::LogLevel,
-  messaging::{AnyMessageGeneric, SystemMessage},
-  system::SystemStateSharedGeneric,
+  messaging::{AnyMessageGeneric, system_message::SystemMessage},
+  system::state::SystemStateSharedGeneric,
 };
 
 /// Priority mailbox maintaining separate queues for system and user messages.

@@ -15,7 +15,7 @@ pub mod message_adapter;
 /// Typed props that wrap untyped props.
 mod props;
 /// Typed scheduler facade mirroring the untyped API.
-mod scheduler;
+pub mod scheduler;
 /// Bounded stash helper used by `Behaviors::with_stash`.
 mod stash_buffer;
 /// Builder for assigning supervisor strategies to behaviors.
@@ -33,16 +33,10 @@ mod typed_ask_response;
 /// Unhandled message event for monitoring.
 mod unhandled_message_event;
 
-pub use actor::{
-  TypedActor, TypedActorContext, TypedActorContextGeneric, TypedActorRef, TypedActorRefGeneric, TypedChildRef,
-  TypedChildRefGeneric,
-};
 pub use behavior::Behavior;
 pub use behavior_signal::BehaviorSignal;
 pub use behaviors::Behaviors;
-pub use message_adapter::{AdapterError, AdapterPayload, MessageAdapterBuilderGeneric, MessageAdapterRegistry};
 pub use props::{TypedProps, TypedPropsGeneric};
-pub use scheduler::{TypedScheduler, TypedSchedulerContext, TypedSchedulerGuard, TypedSchedulerShared};
 pub use stash_buffer::{StashBuffer, StashBufferGeneric};
 pub use supervise::Supervise;
 pub use system::{TypedActorSystem, TypedActorSystemGeneric};
