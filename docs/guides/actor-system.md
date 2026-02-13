@@ -7,7 +7,8 @@ use fraktor_actor_rs::{
   core::scheduler::TickDriverConfig,
   std::{
     props::Props,
-    system::{ActorSystem, ActorSystemConfig, DispatcherConfig},
+    dispatch::dispatcher::DispatcherConfig,
+    system::{ActorSystem, ActorSystemConfig},
   },
 };
 ```
