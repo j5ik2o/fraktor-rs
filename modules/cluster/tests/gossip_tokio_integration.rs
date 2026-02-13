@@ -13,7 +13,7 @@ use fraktor_cluster_rs::{
   },
   std::{TokioGossipTransport, TokioGossipTransportConfig, TokioGossiper, TokioGossiperConfig},
 };
-use fraktor_remote_rs::core::failure_detector::{PhiFailureDetector, PhiFailureDetectorConfig};
+use fraktor_remote_rs::core::failure_detector::phi_failure_detector::{PhiFailureDetector, PhiFailureDetectorConfig};
 use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
 struct EventSink {

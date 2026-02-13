@@ -14,7 +14,7 @@ use fraktor_cluster_rs::{
   },
   std::MembershipCoordinatorDriverGeneric,
 };
-use fraktor_remote_rs::core::failure_detector::{PhiFailureDetector, PhiFailureDetectorConfig};
+use fraktor_remote_rs::core::failure_detector::phi_failure_detector::{PhiFailureDetector, PhiFailureDetectorConfig};
 use fraktor_utils_rs::{
   core::{sync::SharedAccess, time::TimerInstant},
   std::runtime_toolbox::StdToolbox,

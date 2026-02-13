@@ -27,7 +27,7 @@ use fraktor_cluster_rs::core::{
 };
 use fraktor_remote_rs::core::{
   BlockListProvider,
-  failure_detector::{PhiFailureDetector, PhiFailureDetectorConfig},
+  failure_detector::phi_failure_detector::{PhiFailureDetector, PhiFailureDetectorConfig},
 };
 use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::ArcShared, time::TimerInstant};
 

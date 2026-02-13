@@ -10,7 +10,7 @@ use alloc::{
 };
 use core::{marker::PhantomData, time::Duration};
 
-use fraktor_remote_rs::core::failure_detector::{PhiFailureDetector, PhiFailureDetectorEffect};
+use fraktor_remote_rs::core::failure_detector::phi_failure_detector::{PhiFailureDetector, PhiFailureDetectorEffect};
 use fraktor_utils_rs::core::time::TimerInstant;
 
 use crate::core::{
