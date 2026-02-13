@@ -34,7 +34,7 @@ mod-file, module-wiring, type-per-file, tests-location, use-placement, rustdoc, 
 
 # 曖昧なサフィックスを避ける
 
-命名において曖昧なサフィックスを検出し、明確な命名へ導く。
+型の命名において曖昧なサフィックスを検出し、明確な命名へ導く。
 
 ## 目的
 
@@ -607,4 +607,412 @@ function processLargeData(items) {
 - ナビゲーション性の向上（ファイル名 = 型名）
 - 責任の明確化（ファイル肥大化 = 設計の問題）
 - Git履歴の追跡容易性
+
+
+# Rust Rules
+
+
+# fraktor-rs CQS 原則
+
+## 原則
+
+**CQS (Command-Query Separation) をできるだけ守ること。**
+
+- **Query**: 状態を読み取る（`&self`、戻り値あり）
+- **Command**: 状態を変更する（`&mut self`、戻り値なし or `Result<(), E>`）
+
+## 判定フロー
+
+```
+1. このメソッドは状態を変更するか？
+   ├─ No → &self + 戻り値（Query）
+   └─ Yes → 次へ
+
+2. 戻り値が必要か？
+   ├─ No → &mut self + () または Result<(), E>（Command）
+   └─ Yes → 次へ
+
+3. CQS 違反なしでロジックが書けるか？
+   ├─ Yes → 2つのメソッドに分離
+   └─ No → 人間の許可を得て CQS 違反を許容
+```
+
+## 許容される違反（人間許可前提）
+
+| ケース | 理由 |
+|--------|------|
+| `Vec::pop` 相当 | 読み取りだが更新が不可避 |
+| `Iterator::next` | プロトコル上 `&mut self` + `Option<T>` が必要 |
+| Builder パターン | メソッドチェーンのため `&mut self` を返す |
+
+## コード例
+
+```rust
+// ❌ WRONG: CQS 違反（状態変更 + 値返却）
+fn process_and_get(&mut self) -> ProcessedData {
+    self.state += 1;
+    ProcessedData::new(self.state)
+}
+
+// ✅ CORRECT: 分離
+fn process(&mut self) {
+    self.state += 1;
+}
+fn processed_data(&self) -> ProcessedData {
+    ProcessedData::new(self.state)
+}
+
+// ✅ ACCEPTABLE: Vec::pop 相当（人間の許可前提）
+// NOTE: ロジック上分離不可のため CQS 違反を許容
+fn pop_item(&mut self) -> Option<Item> {
+    self.items.pop()
+}
+```
+
+## 禁止パターン
+
+- `&mut self` + 戻り値を安易に使用
+- 「便利だから」という理由で CQS 違反
+- 内部可変性で `&self` + 戻り値に変更して CQS 違反を隠蔽
+
+
+# fraktor-rs 内部可変性ポリシー
+
+## 原則
+
+**内部可変性をデフォルトでは禁止する。可変操作はまず `&mut self` で設計すること。**
+
+`&self` メソッド + 内部可変性を安易に使うと Rust の借用システムの価値が失われる。
+
+## 判定フロー
+
+```
+1. この型は共有される必要があるか？
+   ├─ No → &mut self で設計（第1選択）
+   └─ Yes → 次へ
+
+2. 状態変更メソッドが必要か？
+   ├─ No → ArcShared<T> で共有（読み取り専用）
+   └─ Yes → AShared パターンを新設（第2選択）
+
+AShared パターン:
+  inner に ArcShared<ToolboxMutex<A, TB>> を保持する AShared 構造体を新設
+  → 詳細は docs/guides/shared_vs_handle.md を参照
+```
+
+## ルール
+
+### trait の `&mut self` メソッド
+
+- セマンティクスを重視した設計になっている
+- 戻り値を返さないで状態を変えるメソッドは `&self` ではなく `&mut self` が原則
+- 安易に `&self` + 内部可変性にリファクタリングしないこと
+- **変更する場合は人間から許可を取ること**
+
+### AShared パターン（内部可変性の唯一の許容ケース）
+
+`&mut self` メソッドを持つ型 A が複数箇所から共有される場合のみ許容：
+
+```rust
+// ロジック本体: &mut self
+pub struct XyzGeneric<TB: RuntimeToolbox> { /* state */ }
+
+impl<TB: RuntimeToolbox> XyzGeneric<TB> {
+    pub fn do_something(&mut self, arg: T) -> Result<()> { /* logic */ }
+    pub fn snapshot(&self) -> Snapshot { /* read-only */ }
+}
+
+// 共有ラッパー: 内部可変性はここだけ
+#[derive(Clone)]
+pub struct XyzSharedGeneric<TB: RuntimeToolbox> {
+    inner: ArcShared<ToolboxMutex<XyzGeneric<TB>, TB>>,
+}
+```
+
+### 命名
+
+- 薄い同期ラッパー → `*Shared`
+- ライフサイクル/管理責務 → `*Handle`
+- 所有権一意・同期不要 → サフィックスなし
+
+## 禁止パターン
+
+- 既存の `&mut self` trait メソッドを `&self` + 内部可変性に変更（人間許可なし）
+- 共有不要な型に `ArcShared<ToolboxMutex<T>>` を使用
+- `AShared` パターン適用時に元の型を削除
+- ガードやロックを外部に返す（ロック区間はメソッド内に閉じる）
+
+
+# fraktor-rs 命名規約
+
+## 原則
+
+**名前は責務・境界・依存方向を最小限の語で符号化する。曖昧な名前は設計が未完成であることを示す。**
+
+## 禁止サフィックス（ambiguous-suffix-lint で機械的に強制）
+
+| サフィックス | 問題 | 代替案 |
+|--------------|------|--------|
+| Manager | 「全部やる箱」になる | Registry, Coordinator, Dispatcher, Controller |
+| Util | 設計されていない再利用コード | 具体的な動詞を含む名前（例: DateFormatter） |
+| Facade | 責務の境界が不明確 | Gateway, Adapter, Bridge |
+| Service | 層や責務が未整理 | Executor, Scheduler, Evaluator, Repository, Policy |
+| Runtime | 何が動くのか不明 | Executor, Scheduler, EventLoop, Environment |
+| Engine | 実行体の責務が不明確 | Executor, Evaluator, Processor, Pipeline |
+
+### 例外
+
+- 外部 API / OSS / フレームワーク由来の名称は `#[allow(ambiguous_suffix::ambiguous_suffix)]` で明示的に許可
+
+### 判定フロー
+
+```
+1. 禁止サフィックスを含むか？
+   ├─ No → OK
+   └─ Yes → 次へ
+
+2. この名前だけで責務を一文で説明できるか？
+   ├─ Yes → 外部API由来なら #[allow] で許可
+   └─ No → 代替案テーブルから具体名を選ぶ
+```
+
+## Shared / Handle 命名
+
+| サフィックス | 用途 | 条件 |
+|--------------|------|------|
+| `*Shared` | 薄い同期ラッパー | `ArcShared<ToolboxMutex<T>>` を内包するだけ |
+| `*Handle` | ライフサイクル / 管理責務 | 起動・停止・リソース解放・複数構成要素の束ね |
+| サフィックスなし | 所有権一意・同期不要 | `ArcShared` やロックを持たない |
+
+### 詳細
+
+- `*Shared` は `SharedAccess` 準拠の `with_read` / `with_write` に API を絞る
+- `*Handle` も基本は `with_write` / `with_read` を提供し、複合操作をまとめる
+- 管理対象が複数の場合は `*HandleSet` / `*Context` で「束ね役」であることを明示
+- 詳細は `docs/guides/shared_vs_handle.md` を参照
+
+## 責務別命名パターン
+
+| 責務 | 推奨パターン |
+|------|------------|
+| データ保持・管理 | `*Registry`, `*Catalog`, `*Index`, `*Table`, `*Store` |
+| 選択・分岐・方針 | `*Policy`, `*Selector`, `*Router` |
+| 仲介・調停・制御 | `*Coordinator`, `*Dispatcher`, `*Controller` |
+| 生成・構築 | `*Factory`, `*Builder` |
+| 変換・適合 | `*Adapter`, `*Bridge`, `*Mapper` |
+| 実行・評価 | `*Executor`, `*Scheduler`, `*Evaluator` |
+
+## ファイル・ディレクトリ・型の命名
+
+| 対象 | 規約 | 例 |
+|------|------|-----|
+| ファイル | `snake_case.rs` | `actor_cell.rs` |
+| ディレクトリ | `snake_case/` | `actor_cell/` |
+| 型 / trait | `PascalCase` | `ActorCell` |
+| クレート | `fraktor-<domain>-rs` | `fraktor-actor-rs` |
+| Cargo features | `kebab-case` | `tokio-executor` |
+| TB ジェネリクス付き | `*Generic` サフィックス | `ActorCellGeneric<TB>` |
+
+## ドキュメント言語
+
+- rustdoc（`///`, `//!`）→ 英語
+- それ以外のコメント・Markdown → 日本語
+
+## 最終チェック
+
+「この名前だけ見て、何に依存してよいか分かるか？」
+
+分からないなら、その名前はまだ設計途中である。
+
+
+# fraktor-rs 参照実装からの逆輸入手順
+
+## 原則
+
+**protoactor-go と Apache Pekko を参照しつつ、Rust の所有権と no_std 制約に合わせた最小 API を優先する。**
+
+## 参照実装の位置
+
+| 実装 | パス | 言語 |
+|------|------|------|
+| protoactor-go | `references/protoactor-go/` | Go |
+| Apache Pekko | `references/pekko/` | Scala/Java |
+
+## 逆輸入ワークフロー
+
+```
+1. 概念の特定
+   対象機能に対応する参照実装のソースを特定する
+   ├─ protoactor-go: Go のチャネル・goroutine ベースの設計
+   └─ pekko: Scala の trait 階層・型クラスベースの設計
+
+2. 型数の比較
+   参照実装の公開型数を数え、fraktor-rs が同等以上に多い場合は過剰設計を疑う
+   目安: fraktor-rs の公開型数 ≤ 参照実装の 1.5 倍
+
+3. Rust イディオムへの変換
+   ├─ Go goroutine + channel → async + mailbox
+   ├─ Go interface{} → Rust の型パラメータまたは dyn Trait
+   ├─ Scala trait 階層 → Rust trait + 合成（継承より合成）
+   ├─ Scala implicit → Rust ジェネリクス + RuntimeToolbox
+   └─ Scala Actor DSL → Rust Behavior パターン
+
+4. no_std 制約の適用
+   ├─ ヒープ割り当て → ArcShared / heapless を検討
+   ├─ std 依存 → std モジュールに隔離
+   └─ スレッド → ToolboxMutex で抽象化
+
+5. 最小 API の原則
+   ├─ 参照実装の全機能を移植しない
+   ├─ 現在の要件で必要な機能のみ
+   └─ YAGNI: 使われていない機能は作らない
+```
+
+## 変換時の注意点
+
+### Go → Rust
+
+| Go パターン | Rust パターン |
+|-------------|--------------|
+| `interface{}` | `dyn Any` / 型パラメータ `T` |
+| `func(ctx Context)` | `&mut self` メソッド |
+| `go func()` | `spawn` / async task |
+| `chan T` | mailbox / mpsc channel |
+| `sync.Mutex` | `ToolboxMutex` |
+| `struct embedding` | trait 実装 + 委譲 |
+
+### Scala/Pekko → Rust
+
+| Pekko パターン | Rust パターン |
+|----------------|--------------|
+| `trait Actor` | `BehaviorGeneric<TB, M>` |
+| `ActorRef[T]` | `TypedActorRefGeneric<TB, M>` |
+| `Props` | `PropsGeneric<TB>` |
+| `Supervision Strategy` | `SupervisorStrategyGeneric<TB>` |
+| `implicit ActorSystem` | `TB: RuntimeToolbox` パラメータ |
+| `sealed trait` + case classes | `enum` |
+| `akka.pattern.ask` | `ask` Future |
+
+## 比較レビューの実施タイミング
+
+- 新機能の設計開始時
+- 型の過剰設計が疑われるとき（`reviewing-fraktor-types` スキルと併用）
+- 命名に迷ったとき（参照実装の命名を確認）
+
+## 禁止パターン
+
+- 参照実装の設計をそのまま移植（言語特性の違いを無視）
+- 「pekko にあるから」という理由だけで型や機能を追加（YAGNI）
+- 参照実装を読まずに独自設計を進める（先行事例の無視）
+
+
+# fraktor-rs 型配置ルール
+
+## 原則
+
+**1つの公開型につき1つのファイルを作成する（type-per-file-lint で機械的に強制）。**
+
+ただし、以下の判定フローに従い、例外として同居を許可する場合がある。
+
+## lint との関係
+
+現在の `type-per-file-lint` はこの例外基準を認識しない（全公開型に分離を強制する）。同居が妥当と判断した場合は **人間に相談し、lint エラーへの対処方針を確認すること**。
+
+## 判定フロー
+
+```
+1. この型は公開型（pub struct / pub trait / pub enum）か？
+   ├─ No → 同居可（プライベート型は制約なし）
+   └─ Yes → 次へ
+
+2. 以下の除外対象に該当するか？
+   - エラー型（*Error, *Failure）→ 常に独立ファイル
+   - Shared/Handle 型 → 常に独立ファイル
+   - テスト対象となる型 → 常に独立ファイル
+   - ドメインプリミティブ（newtype）→ 常に独立ファイル
+   ├─ 該当 → 独立ファイルに分離（例外不可）
+   └─ 非該当 → 次へ
+
+3. 以下の同居条件をすべて満たすか？
+   a) 型が ≤20行（※計測基準を参照）
+   b) 親型のフィールド・メソッド引数・戻り値としてのみ使われている
+   c) 他のモジュールから直接参照されない（mcp__serena__find_referencing_symbols で確認）
+   d) 同居先ファイルが同居後も 200行 を超えない
+   ├─ すべて Yes → 同居可
+   └─ 1つでも No → 独立ファイルに分離
+```
+
+## 除外対象の理由
+
+| 型の種類 | 理由 |
+|----------|------|
+| エラー型（`*Error`, `*Failure`） | 独自の `From` / `Display` / `Error` 実装が伸びる |
+| Shared/Handle 型 | 独自の同期責務・ライフサイクル責務を持つ |
+| テスト対象となる型 | `<name>/tests.rs` との紐づけが曖昧になる |
+| ドメインプリミティブ（newtype） | 独立した型安全性を提供する単位 |
+
+## 同居条件の補足
+
+### a) ≤20行の計測基準
+
+以下をすべて含めて20行以下であること：
+- `///` doc コメント
+- `#[derive(...)]` 等の属性マクロ
+- 型定義本体
+- 関連する `impl` ブロック（ある場合）
+
+### b) 「親型のフィールド・メソッド引数・戻り値としてのみ使われている」の確認方法
+
+`mcp__serena__find_referencing_symbols` で参照元を調査し、すべての参照が親型の定義内（フィールド型、メソッドシグネチャ）に限定されていること。
+
+## コード例
+
+```rust
+// ✅ 同居可: TickDriverConfig (親型) + TickMetricsMode (≤20行, フィールド型としてのみ使用)
+// tick_driver_config.rs
+
+/// Configuration for tick driver.
+pub struct TickDriverConfig {
+    kind: TickDriverKind,
+    metrics_mode: TickMetricsMode,
+}
+
+/// Metrics publishing strategy (used only within TickDriverConfig).
+pub enum TickMetricsMode {
+    AutoPublish { interval: Duration },
+    OnDemand,
+}
+```
+
+```rust
+// ❌ 同居不可: エラー型は除外対象（ステップ2で判定）
+// tick_driver_error.rs
+
+/// Errors during tick driver operation.
+pub enum TickDriverError {
+    AlreadyRunning,
+    NotStarted,
+    ConfigInvalid(String),
+}
+
+impl fmt::Display for TickDriverError { /* ... */ }
+impl std::error::Error for TickDriverError {}
+```
+
+```rust
+// ❌ 同居不可: ドメインプリミティブは除外対象（ステップ2で判定）
+// tick_driver_id.rs
+
+/// Unique identifier for a tick driver instance.
+pub struct TickDriverId(u64);
+```
+
+## 禁止パターン
+
+- 「関連しているから」という理由だけでの型の集約（判定フロー3の条件をすべて確認すること）
+- 200行超のファイルへの型の追加
+- 除外対象（エラー型・Shared型・Handle型・ドメインプリミティブ）の同居
+- lint の `#[allow]` による type-per-file-lint の無効化（人間の許可なしで）
+
+根拠: `claudedocs/actor-module-overengineering-analysis.md`（Phase 1-4 の分析実績）
 
