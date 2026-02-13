@@ -21,10 +21,10 @@ use fraktor_actor_rs::core::{
   },
   messaging::AnyMessageViewGeneric,
   props::PropsGeneric,
-  scheduler::{ManualTestDriver, TickDriverConfig},
+  scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
   serialization::{
     SerializationCallScope, SerializationExtensionGeneric, SerializationExtensionSharedGeneric, SerializationSetup,
-    SerializationSetupBuilder, SerializedMessage, Serializer, SerializerId, StringSerializer,
+    SerializationSetupBuilder, SerializedMessage, Serializer, SerializerId, builtin::StringSerializer,
   },
   system::{ActorSystemConfigGeneric, ActorSystemGeneric},
 };
@@ -35,10 +35,16 @@ use fraktor_utils_rs::{
 
 use super::{EndpointTransportBridge, EndpointTransportBridgeConfig};
 use crate::core::{
-  AssociationState, EndpointAssociationCommand, EndpointReaderGeneric, EndpointWriterGeneric,
-  EndpointWriterSharedGeneric, EventPublisherGeneric, HandshakeFrame, HandshakeKind, OutboundPriority,
-  QuarantineReason, RemoteNodeId, RemoteTransport, RemoteTransportShared, RemotingEnvelope, TransportBind,
-  TransportChannel, TransportEndpoint, TransportError, TransportHandle, TransportInboundShared,
+  EventPublisherGeneric, RemoteNodeId,
+  endpoint_association::{AssociationState, EndpointAssociationCommand, QuarantineReason},
+  endpoint_reader::EndpointReaderGeneric,
+  endpoint_writer::{EndpointWriterGeneric, EndpointWriterSharedGeneric},
+  envelope::{OutboundPriority, RemotingEnvelope},
+  handshake::{HandshakeFrame, HandshakeKind},
+  transport::{
+    RemoteTransport, RemoteTransportShared, TransportBind, TransportChannel, TransportEndpoint, TransportError,
+    TransportHandle, TransportInboundShared,
+  },
 };
 
 struct NoopActor;
@@ -144,7 +150,7 @@ impl RemoteTransport<StdToolbox> for TestTransport {
     self.channels.remove(&channel.id());
   }
 
-  fn install_backpressure_hook(&mut self, _hook: crate::core::TransportBackpressureHookShared) {}
+  fn install_backpressure_hook(&mut self, _hook: crate::core::transport::TransportBackpressureHookShared) {}
 
   fn install_inbound_handler(&mut self, handler: TransportInboundShared<StdToolbox>) {
     self.inbound = Some(handler);
@@ -234,11 +240,11 @@ fn build_bridge(
 fn association_state(
   bridge: &EndpointTransportBridge<StdToolbox>,
   authority: &str,
-) -> Option<crate::core::AssociationState> {
+) -> Option<crate::core::endpoint_association::AssociationState> {
   bridge.coordinator.with_read(|m| m.state(authority))
 }
 
-fn deferred_envelope(label: &str) -> crate::core::DeferredEnvelope {
+fn deferred_envelope(label: &str) -> crate::core::envelope::DeferredEnvelope {
   let mut parts = ActorPathParts::with_authority("remote-system", Some(("127.0.0.1", 25520)));
   parts = parts.with_guardian(GuardianKind::User);
   let recipient = ActorPath::from_parts(parts).child("svc");
@@ -247,7 +253,7 @@ fn deferred_envelope(label: &str) -> crate::core::DeferredEnvelope {
   let serialized = SerializedMessage::new(serializer, None, label.as_bytes().to_vec());
   let envelope =
     RemotingEnvelope::new(recipient, remote, None, serialized, CorrelationId::nil(), OutboundPriority::User);
-  crate::core::DeferredEnvelope::new(envelope)
+  crate::core::envelope::DeferredEnvelope::new(envelope)
 }
 
 async fn associate(

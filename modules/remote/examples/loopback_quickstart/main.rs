@@ -18,13 +18,14 @@ use fraktor_actor_rs::core::{
   extension::ExtensionInstallers,
   messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
   props::PropsGeneric,
-  scheduler::{ManualTestDriver, TickDriverConfig},
+  scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
   serialization::SerializationExtensionInstaller,
-  system::{ActorSystemConfigGeneric, ActorSystemGeneric, RemotingConfig},
+  system::{ActorSystemConfigGeneric, ActorSystemGeneric, remote::RemotingConfig},
 };
 use fraktor_remote_rs::core::{
-  LoopbackActorRefProviderInstaller, RemotingExtensionConfig, RemotingExtensionId, RemotingExtensionInstaller,
-  default_loopback_setup,
+  RemotingExtensionId, RemotingExtensionInstaller,
+  actor_ref_provider::{LoopbackActorRefProviderInstaller, default_loopback_setup},
+  remoting_extension::RemotingExtensionConfig,
 };
 use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 

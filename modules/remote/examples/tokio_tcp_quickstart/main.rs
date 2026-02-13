@@ -14,7 +14,7 @@ use anyhow::{Result, anyhow};
 use fraktor_actor_rs::{
   core::{
     error::ActorError, extension::ExtensionInstallers, serialization::SerializationExtensionInstaller,
-    system::RemotingConfig,
+    system::remote::RemotingConfig,
   },
   std::{
     actor::{Actor, ActorContext},
@@ -26,8 +26,10 @@ use fraktor_actor_rs::{
   },
 };
 use fraktor_remote_rs::core::{
-  RemotingExtensionConfig, RemotingExtensionId, RemotingExtensionInstaller, TokioActorRefProviderInstaller,
-  TokioTransportConfig, default_loopback_setup,
+  RemotingExtensionId, RemotingExtensionInstaller,
+  actor_ref_provider::{TokioActorRefProviderInstaller, default_loopback_setup},
+  remoting_extension::RemotingExtensionConfig,
+  transport::TokioTransportConfig,
 };
 use fraktor_utils_rs::{core::sync::ArcShared, std::StdSyncMutex};
 

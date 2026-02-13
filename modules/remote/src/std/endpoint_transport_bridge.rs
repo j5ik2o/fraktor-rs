@@ -27,10 +27,19 @@ use fraktor_utils_rs::core::{
 use tokio::{sync::Mutex as TokioMutex, task::JoinHandle, time::sleep};
 
 use crate::core::{
-  AssociationState, DeferredEnvelope, EndpointAssociationCommand, EndpointAssociationCoordinatorSharedGeneric,
-  EndpointAssociationEffect, EndpointReaderGeneric, EndpointWriterSharedGeneric, EventPublisherGeneric, HandshakeFrame,
-  HandshakeKind, InboundFrame, RemoteNodeId, RemoteTransportShared, RemotingEnvelope, TransportBind, TransportChannel,
-  TransportEndpoint, TransportError, TransportHandle, TransportInbound, TransportInboundShared, WireError,
+  EventPublisherGeneric, RemoteNodeId, WireError,
+  endpoint_association::{
+    AssociationState, EndpointAssociationCommand, EndpointAssociationCoordinatorSharedGeneric,
+    EndpointAssociationEffect,
+  },
+  endpoint_reader::EndpointReaderGeneric,
+  endpoint_writer::EndpointWriterSharedGeneric,
+  envelope::{DeferredEnvelope, RemotingEnvelope},
+  handshake::{HandshakeFrame, HandshakeKind},
+  transport::{
+    InboundFrame, RemoteTransportShared, TransportBind, TransportChannel, TransportEndpoint, TransportError,
+    TransportHandle, TransportInbound, TransportInboundShared,
+  },
 };
 
 const OUTBOUND_IDLE_DELAY: Duration = Duration::from_millis(5);

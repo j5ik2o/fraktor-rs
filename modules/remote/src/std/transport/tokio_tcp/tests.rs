@@ -6,7 +6,7 @@ use std::thread;
 use fraktor_actor_rs::core::event::stream::CorrelationId;
 
 use super::super::TokioTcpTransport;
-use crate::core::{RemoteTransport, TransportBind, TransportEndpoint};
+use crate::core::transport::{RemoteTransport, TransportBind, TransportEndpoint};
 
 fn find_free_port() -> u16 {
   std::net::TcpListener::bind("127.0.0.1:0").expect("bind").local_addr().expect("addr").port()

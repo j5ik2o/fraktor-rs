@@ -2,7 +2,7 @@
 
 use alloc::string::String;
 
-use fraktor_actor_rs::core::system::AuthorityState;
+use fraktor_actor_rs::core::system::state::AuthorityState;
 
 /// Immutable view of an authority's state and queue depth.
 #[derive(Clone, Debug, PartialEq)]

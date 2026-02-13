@@ -13,14 +13,14 @@ use fraktor_actor_rs::core::{
   extension::ExtensionInstallers,
   messaging::AnyMessageViewGeneric,
   props::PropsGeneric,
-  scheduler::{ManualTestDriver, TickDriverConfig},
+  scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
   system::{ActorSystemConfigGeneric, ActorSystemGeneric},
 };
 use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
 use super::{RemotingControl, RemotingControlShared, RemotingError, RemotingExtensionConfig};
 use crate::{
-  core::FnRemotingBackpressureListener,
+  core::backpressure::FnRemotingBackpressureListener,
   std::{RemotingExtensionId, RemotingExtensionInstaller},
 };
 

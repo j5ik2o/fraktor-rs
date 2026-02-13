@@ -4,7 +4,7 @@ mod config;
 mod control;
 mod control_handle;
 mod error;
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 mod tests;
 
 use alloc::string::String;

@@ -3,7 +3,7 @@
 use fraktor_actor_rs::core::{extension::ExtensionId, system::ActorSystemGeneric};
 use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
-use crate::core::{RemotingExtensionConfig, RemotingExtensionGeneric};
+use crate::core::remoting_extension::{RemotingExtensionConfig, RemotingExtensionGeneric};
 
 /// Registers and instantiates [`crate::core::RemotingExtension`] instances.
 ///

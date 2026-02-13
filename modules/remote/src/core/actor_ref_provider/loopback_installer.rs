@@ -6,8 +6,9 @@ use fraktor_actor_rs::core::{
   actor::actor_path::ActorPathScheme,
   serialization::SerializationExtensionSharedGeneric,
   system::{
-    ActorRefProviderInstaller, ActorRefProviderSharedGeneric, ActorSystemBuildError, ActorSystemGeneric,
-    RemoteWatchHookShared,
+    ActorSystemBuildError, ActorSystemGeneric,
+    provider::{ActorRefProviderInstaller, ActorRefProviderSharedGeneric},
+    remote::RemoteWatchHookShared,
   },
 };
 use fraktor_utils_rs::core::{
@@ -17,7 +18,9 @@ use fraktor_utils_rs::core::{
 
 use super::{loopback::LoopbackActorRefProviderGeneric, loopback_router};
 use crate::core::{
-  EndpointWriterGeneric, EndpointWriterSharedGeneric, RemotingExtensionGeneric, endpoint_reader::EndpointReaderGeneric,
+  endpoint_reader::EndpointReaderGeneric,
+  endpoint_writer::{EndpointWriterGeneric, EndpointWriterSharedGeneric},
+  remoting_extension::RemotingExtensionGeneric,
 };
 
 /// Installer for Loopback actor-ref provider.
