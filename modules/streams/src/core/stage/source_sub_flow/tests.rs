@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 
 use super::SourceSubFlow;
-use crate::core::Source;
+use crate::core::stage::Source;
 
 impl<Out, Mat> SourceSubFlow<Out, Mat> {
   pub(crate) fn into_source(self) -> Source<Vec<Out>, Mat> {

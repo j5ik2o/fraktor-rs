@@ -5,7 +5,10 @@ use std::time::Duration;
 use fraktor_actor_rs::{
   core::{
     error::ActorError,
-    scheduler::{ManualTestDriver, SchedulerConfig, TickDriverConfig},
+    scheduler::{
+      SchedulerConfig,
+      tick_driver::{ManualTestDriver, TickDriverConfig},
+    },
   },
   std::{
     actor::{Actor, ActorContext},
@@ -15,7 +18,11 @@ use fraktor_actor_rs::{
   },
 };
 use fraktor_streams_rs::{
-  core::{ActorMaterializerConfig, Completion, KeepRight, Sink, Source},
+  core::{
+    Completion, KeepRight,
+    mat::ActorMaterializerConfig,
+    stage::{Sink, Source},
+  },
   std::ActorMaterializer,
 };
 

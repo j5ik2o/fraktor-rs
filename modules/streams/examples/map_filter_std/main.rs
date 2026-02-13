@@ -5,7 +5,10 @@ mod std_materializer_support;
 
 use std::vec::Vec;
 
-use fraktor_streams_rs::core::{KeepRight, Sink, Source};
+use fraktor_streams_rs::core::{
+  KeepRight,
+  stage::{Sink, Source},
+};
 
 fn main() {
   let (mut materializer, driver) = std_materializer_support::start_materializer();

@@ -1,4 +1,4 @@
-use crate::core::TestSourceProbe;
+use crate::core::testing::TestSourceProbe;
 
 #[test]
 fn test_source_probe_push_pull_and_complete() {

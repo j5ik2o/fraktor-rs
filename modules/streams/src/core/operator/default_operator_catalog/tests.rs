@@ -1,4 +1,7 @@
-use crate::core::{DefaultOperatorCatalog, OperatorCatalog, OperatorKey, StreamDslError};
+use crate::core::{
+  StreamDslError,
+  operator::{DefaultOperatorCatalog, OperatorCatalog, OperatorKey},
+};
 
 #[test]
 fn lookup_returns_group_by_contract() {

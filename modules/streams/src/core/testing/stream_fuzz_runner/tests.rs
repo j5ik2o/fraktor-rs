@@ -1,4 +1,4 @@
-use crate::core::{StreamFuzzRunner, TestSinkProbe, TestSourceProbe};
+use crate::core::testing::{StreamFuzzRunner, TestSinkProbe, TestSourceProbe};
 
 #[test]
 fn stream_fuzz_runner_is_deterministic_for_same_seed() {

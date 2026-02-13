@@ -2,8 +2,8 @@
 
 // Bridge imports from core level for children
 use super::{
-  SharedKillSwitch, StreamBufferConfig, StreamError, StreamHandleGeneric, StreamHandleId, StreamPlan, UniqueKillSwitch,
-  lifecycle,
+  StreamBufferConfig, StreamError, StreamPlan,
+  lifecycle::{self, SharedKillSwitch, StreamHandleGeneric, StreamHandleId, UniqueKillSwitch},
 };
 
 mod actor_materializer;

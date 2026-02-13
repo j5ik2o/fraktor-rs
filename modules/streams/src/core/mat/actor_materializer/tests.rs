@@ -5,13 +5,19 @@ use fraktor_actor_rs::core::{
   error::ActorError,
   messaging::AnyMessageViewGeneric,
   props::PropsGeneric,
-  scheduler::{ManualTestDriver, SchedulerConfig, TickDriverConfig},
-  system::{ActorSystemConfigGeneric, ActorSystemGeneric, RemotingConfig},
+  scheduler::{
+    SchedulerConfig,
+    tick_driver::{ManualTestDriver, TickDriverConfig},
+  },
+  system::{ActorSystemConfigGeneric, ActorSystemGeneric, remote::RemotingConfig},
 };
 use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 
 use crate::core::{
-  ActorMaterializerConfig, ActorMaterializerGeneric, Completion, KeepRight, Sink, Source, StreamError, StreamState,
+  Completion, KeepRight, StreamError,
+  lifecycle::StreamState,
+  mat::{ActorMaterializerConfig, ActorMaterializerGeneric},
+  stage::{Sink, Source},
 };
 
 struct GuardianActor;

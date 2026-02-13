@@ -1,6 +1,8 @@
 use crate::core::{
-  MatCombine, Source, StageKind, StreamGraph,
+  MatCombine,
+  graph::StreamGraph,
   shape::{Inlet, Outlet, PortId},
+  stage::{Source, StageKind},
 };
 
 impl StreamGraph {

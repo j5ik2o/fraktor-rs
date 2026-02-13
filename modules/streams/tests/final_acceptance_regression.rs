@@ -1,4 +1,8 @@
-use fraktor_streams_rs::core::{BroadcastHub, MergeHub, PartitionHub, SharedKillSwitch, StreamError, UniqueKillSwitch};
+use fraktor_streams_rs::core::{
+  StreamError,
+  hub::{BroadcastHub, MergeHub, PartitionHub},
+  lifecycle::{SharedKillSwitch, UniqueKillSwitch},
+};
 
 #[test]
 fn dynamic_hub_contract_returns_would_block_without_active_consumers() {

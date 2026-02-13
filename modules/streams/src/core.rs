@@ -57,23 +57,15 @@ use core::any::{Any, TypeId};
 pub use completion::Completion;
 pub use demand::Demand;
 pub use demand_tracker::DemandTracker;
-pub use graph::{GraphDsl, GraphInterpreter, GraphStage, GraphStageLogic, StreamGraph};
-pub use hub::{BroadcastHub, MergeHub, PartitionHub};
 pub use keep_both::KeepBoth;
 pub use keep_left::KeepLeft;
 pub use keep_none::KeepNone;
 pub use keep_right::KeepRight;
-pub use lifecycle::{
-  DriveOutcome, SharedKillSwitch, StreamHandle, StreamHandleGeneric, StreamHandleId, StreamState, UniqueKillSwitch,
-};
-pub use mat::{ActorMaterializerConfig, ActorMaterializerGeneric, Materialized, Materializer, RunnableGraph};
 pub use mat_combine::MatCombine;
 pub use mat_combine_rule::MatCombineRule;
-pub use operator::{DefaultOperatorCatalog, OperatorCatalog, OperatorContract, OperatorCoverage, OperatorKey};
 pub use restart_settings::RestartSettings;
 use shape::PortId;
-pub use shape::{Inlet, Outlet, StreamShape};
-pub use stage::{BidiFlow, Flow, FlowSubFlow, Sink, Source, SourceSubFlow, StageContext, StageKind, StreamStage};
+use stage::StageKind;
 pub use stream_buffer::StreamBuffer;
 pub use stream_buffer_config::StreamBufferConfig;
 pub use stream_completion::StreamCompletion;
@@ -81,7 +73,6 @@ pub use stream_done::StreamDone;
 pub use stream_dsl_error::StreamDslError;
 pub use stream_error::StreamError;
 pub use stream_not_used::StreamNotUsed;
-pub use testing::{StreamFuzzRunner, TestSinkProbe, TestSourceProbe};
 pub use validate_positive_argument::validate_positive_argument;
 type DynValue = Box<dyn Any + Send + Sync + 'static>;
 

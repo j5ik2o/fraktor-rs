@@ -7,10 +7,13 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::core::{
-  DriveOutcome, DynValue, KeepRight, Materialized, Materializer, RestartSettings, SharedKillSwitch, Sink, Source,
-  SourceLogic, StageKind, StreamBufferConfig, StreamCompletion, StreamDone, StreamDslError, StreamError,
-  StreamHandleGeneric, StreamHandleId, StreamState,
-  lifecycle::{Stream, StreamSharedGeneric},
+  DynValue, KeepRight, RestartSettings, SourceLogic, StreamBufferConfig, StreamCompletion, StreamDone, StreamDslError,
+  StreamError,
+  lifecycle::{
+    DriveOutcome, SharedKillSwitch, Stream, StreamHandleGeneric, StreamHandleId, StreamSharedGeneric, StreamState,
+  },
+  mat::{Materialized, Materializer},
+  stage::{Sink, Source, StageKind},
 };
 
 struct RecordingMaterializer {

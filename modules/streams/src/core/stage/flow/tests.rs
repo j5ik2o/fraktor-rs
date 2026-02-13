@@ -3,8 +3,9 @@ use alloc::{boxed::Box, collections::VecDeque};
 use fraktor_utils_rs::core::collections::queue::OverflowPolicy;
 
 use crate::core::{
-  DefaultOperatorCatalog, DynValue, Flow, FlowLogic, OperatorCatalog, OperatorKey, RestartSettings, Source,
-  SourceLogic, StageKind, StreamDslError, StreamError, StreamNotUsed,
+  DynValue, FlowLogic, RestartSettings, SourceLogic, StreamDslError, StreamError, StreamNotUsed,
+  operator::{DefaultOperatorCatalog, OperatorCatalog, OperatorKey},
+  stage::{Flow, Source, StageKind},
 };
 
 struct SequenceSourceLogic {

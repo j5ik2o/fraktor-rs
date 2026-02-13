@@ -1,4 +1,4 @@
-use crate::core::{StreamError, TestSinkProbe};
+use crate::core::{StreamError, testing::TestSinkProbe};
 
 #[test]
 fn test_sink_probe_respects_demand() {

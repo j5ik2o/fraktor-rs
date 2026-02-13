@@ -2,8 +2,10 @@ use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 
 use super::super::lifecycle::{Stream, StreamSharedGeneric};
 use crate::core::{
-  KeepRight, Materialized, Materializer, RunnableGraph, Sink, Source, StreamBufferConfig, StreamError,
-  StreamHandleGeneric, StreamHandleId,
+  KeepRight, StreamBufferConfig, StreamError,
+  lifecycle::{StreamHandleGeneric, StreamHandleId},
+  mat::{Materialized, Materializer, RunnableGraph},
+  stage::{Sink, Source},
 };
 
 struct RecordingMaterializer {

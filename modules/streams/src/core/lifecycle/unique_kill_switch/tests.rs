@@ -1,4 +1,4 @@
-use crate::core::{StreamError, UniqueKillSwitch};
+use crate::core::{StreamError, lifecycle::UniqueKillSwitch};
 
 #[test]
 fn unique_kill_switch_shutdown_sets_state() {

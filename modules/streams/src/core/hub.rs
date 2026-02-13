@@ -2,8 +2,8 @@
 
 // Bridge imports for children
 use super::{
-  DemandTracker, DynValue, Sink, SinkDecision, SinkLogic, Source, SourceLogic, StageKind, StreamError, StreamNotUsed,
-  downcast_value,
+  DemandTracker, DynValue, SinkDecision, SinkLogic, SourceLogic, StreamError, StreamNotUsed, downcast_value,
+  stage::{Sink, Source, StageKind},
 };
 
 mod broadcast_hub;

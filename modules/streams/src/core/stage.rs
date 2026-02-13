@@ -3,11 +3,14 @@
 // Bridge submodules from core level
 // Bridge types from core level for children
 use super::{
-  DemandTracker, DriveOutcome, DynValue, FlowDefinition, FlowLogic, MatCombine, MatCombineRule, Materialized,
-  Materializer, RestartBackoff, RestartSettings, RunnableGraph, SinkDecision, SinkDefinition, SinkLogic,
-  SourceDefinition, SourceLogic, StageDefinition, StreamBufferConfig, StreamCompletion, StreamDone, StreamDslError,
-  StreamError, StreamGraph, StreamNotUsed, SupervisionStrategy, downcast_value, graph, keep_left, keep_right,
-  lifecycle, shape, validate_positive_argument,
+  DemandTracker, DynValue, FlowDefinition, FlowLogic, MatCombine, MatCombineRule, RestartBackoff, RestartSettings,
+  SinkDecision, SinkDefinition, SinkLogic, SourceDefinition, SourceLogic, StageDefinition, StreamBufferConfig,
+  StreamCompletion, StreamDone, StreamDslError, StreamError, StreamNotUsed, SupervisionStrategy, downcast_value, graph,
+  graph::StreamGraph,
+  keep_left, keep_right,
+  lifecycle::{self, DriveOutcome},
+  mat::{Materialized, Materializer, RunnableGraph},
+  shape, validate_positive_argument,
 };
 
 /// Bidirectional flow definition.

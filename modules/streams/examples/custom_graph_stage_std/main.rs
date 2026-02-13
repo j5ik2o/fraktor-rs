@@ -1,7 +1,10 @@
 //! Custom `GraphStage` example that runs stage logic against a lightweight local context.
 
 use fraktor_streams_rs::core::{
-  GraphStage, GraphStageLogic, Inlet, Outlet, StageContext, StreamError, StreamNotUsed, StreamShape,
+  StreamError, StreamNotUsed,
+  graph::{GraphStage, GraphStageLogic},
+  shape::{Inlet, Outlet, StreamShape},
+  stage::StageContext,
 };
 
 struct MultiplyStage {

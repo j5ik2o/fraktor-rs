@@ -1,7 +1,10 @@
 use alloc::vec::Vec;
 
 use super::FlowSubFlow;
-use crate::core::{Flow, Source, StreamNotUsed};
+use crate::core::{
+  StreamNotUsed,
+  stage::{Flow, Source},
+};
 
 impl<In, Out, Mat> FlowSubFlow<In, Out, Mat> {
   pub(crate) fn into_flow(self) -> Flow<In, Vec<Out>, Mat> {

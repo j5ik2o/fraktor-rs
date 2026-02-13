@@ -1,8 +1,11 @@
 use std::collections::BTreeSet;
 
 use fraktor_streams_rs::core::{
-  BroadcastHub, DefaultOperatorCatalog, Flow, MergeHub, OperatorCatalog, OperatorKey, PartitionHub, RestartSettings,
-  SharedKillSwitch, Sink, Source, StreamDslError, StreamError, StreamNotUsed, UniqueKillSwitch,
+  RestartSettings, StreamDslError, StreamError, StreamNotUsed,
+  hub::{BroadcastHub, MergeHub, PartitionHub},
+  lifecycle::{SharedKillSwitch, UniqueKillSwitch},
+  operator::{DefaultOperatorCatalog, OperatorCatalog, OperatorKey},
+  stage::{Flow, Sink, Source},
 };
 
 type VerifyFn = fn();

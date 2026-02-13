@@ -1,4 +1,4 @@
-use crate::core::{SharedKillSwitch, StreamError};
+use crate::core::{StreamError, lifecycle::SharedKillSwitch};
 
 #[test]
 fn shared_kill_switch_shutdown_is_visible_across_clones() {
