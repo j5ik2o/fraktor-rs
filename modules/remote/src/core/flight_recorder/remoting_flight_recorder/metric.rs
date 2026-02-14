@@ -4,7 +4,7 @@ use alloc::string::String;
 
 use fraktor_actor_rs::core::event::stream::CorrelationId;
 
-use super::metric_kind::FlightMetricKind;
+use crate::core::flight_recorder::remoting_flight_recorder::metric_kind::FlightMetricKind;
 
 /// Immutable snapshot describing a single metric observation.
 #[derive(Clone, Debug, PartialEq)]

@@ -1,6 +1,6 @@
 use alloc::{
   boxed::Box,
-  collections::{BTreeMap, VecDeque},
+  collections::{BTreeMap, VecDeque, btree_map::Entry},
   format,
   string::String,
   sync::Arc,
@@ -19,7 +19,10 @@ use fraktor_utils_rs::core::{
   runtime_toolbox::RuntimeToolbox,
   sync::{ArcShared, SharedAccess},
 };
-use tokio::{sync::Mutex as TokioMutex, time::sleep};
+use tokio::{
+  sync::{Mutex as TokioMutex, mpsc},
+  time::sleep,
+};
 
 use super::{EndpointTransportBridgeConfig, EndpointTransportBridgeHandle};
 use crate::core::{
@@ -39,6 +42,7 @@ use crate::core::{
 };
 
 const OUTBOUND_IDLE_DELAY: Duration = Duration::from_millis(5);
+const INBOUND_FRAME_MAX_CONCURRENCY: usize = 32;
 
 pub(crate) struct EndpointTransportBridge<TB: RuntimeToolbox + 'static> {
   system:                 ActorSystemWeakGeneric<TB>,
@@ -84,7 +88,7 @@ impl<TB: RuntimeToolbox + 'static> EndpointTransportBridge<TB> {
     bridge.event_publisher.publish_listen_started(bind.authority(), CorrelationId::from_u128(0));
     *bridge.listener.try_lock().expect("listener mutex uncontended") = Some(handle);
     let handler: TransportInboundShared<TB> =
-      TransportInboundShared::new(Box::new(InboundHandler::new(bridge.clone())));
+      TransportInboundShared::new(Box::new(InboundHandler::new(bridge.clone(), INBOUND_FRAME_MAX_CONCURRENCY)));
     bridge.transport.with_write(|t| t.install_inbound_handler(handler));
     let send_task = tokio::spawn(Self::drive_outbound(bridge.clone()));
     Ok(EndpointTransportBridgeHandle { send_task })
@@ -247,13 +251,17 @@ impl<TB: RuntimeToolbox + 'static> EndpointTransportBridge<TB> {
   }
 
   async fn ensure_channel(&self, authority: &str) -> Result<TransportChannel, TransportError> {
-    if !self.channels.lock().await.contains_key(authority) {
-      let endpoint = TransportEndpoint::new(authority.to_string());
-      let channel = self.transport.with_write(|t| t.open_channel(&endpoint))?;
-      self.channels.lock().await.insert(authority.to_string(), channel);
-    }
-    let channels = self.channels.lock().await;
-    channels.get(authority).copied().ok_or_else(|| TransportError::AuthorityNotBound(authority.to_string()))
+    let mut channels = self.channels.lock().await;
+    let channel = match channels.entry(authority.to_string()) {
+      | Entry::Occupied(entry) => *entry.get(),
+      | Entry::Vacant(entry) => {
+        let endpoint = TransportEndpoint::new(authority.to_string());
+        let channel = self.transport.with_write(|t| t.open_channel(&endpoint))?;
+        entry.insert(channel);
+        channel
+      },
+    };
+    Ok(channel)
   }
 
   fn emit_error(&self, message: String) {
@@ -274,13 +282,16 @@ impl<TB: RuntimeToolbox + 'static> EndpointTransportBridge<TB> {
     if frame.payload().is_empty() {
       return;
     }
+    const KIND_HANDSHAKE_INIT: u8 = 0x01;
+    const KIND_HANDSHAKE_ACK: u8 = 0x02;
+    const KIND_MESSAGE: u8 = 0x10;
     match frame.payload()[1] {
-      | 0x01 | 0x02 => {
+      | KIND_HANDSHAKE_INIT | KIND_HANDSHAKE_ACK => {
         if let Err(error) = self.process_handshake_payload(frame.payload().to_vec()).await {
           self.emit_error(format!("failed to decode handshake: {error:?}"));
         }
       },
-      | 0x10 => match RemotingEnvelope::decode_frame(frame.payload(), frame.correlation_id()) {
+      | KIND_MESSAGE => match RemotingEnvelope::decode_frame(frame.payload(), frame.correlation_id()) {
         | Ok(envelope) => self.deliver_inbound(envelope).await,
         | Err(error) => self.emit_error(format!("failed to decode envelope: {error:?}")),
       },
@@ -308,7 +319,9 @@ impl<TB: RuntimeToolbox + 'static> EndpointTransportBridge<TB> {
       if should_send_ack && let Err(error) = self.send_handshake_ack(&authority).await {
         self.emit_error(format!("failed to send handshake ack: {error:?}"));
       }
-      let _ = self.process_effects(accept.effects).await;
+      if let Err(error) = self.process_effects(accept.effects).await {
+        self.emit_error(format!("failed to process effects after handshake accept: {error:?}"));
+      }
     }
     Ok(())
   }
@@ -332,21 +345,36 @@ impl<TB: RuntimeToolbox + 'static> EndpointTransportBridge<TB> {
   }
 }
 
-struct InboundHandler<TB: RuntimeToolbox + 'static> {
-  bridge: Arc<EndpointTransportBridge<TB>>,
+struct InboundHandler {
+  frame_sender: mpsc::Sender<InboundFrame>,
 }
 
-impl<TB: RuntimeToolbox + 'static> InboundHandler<TB> {
-  fn new(bridge: Arc<EndpointTransportBridge<TB>>) -> Self {
-    Self { bridge }
+impl InboundHandler {
+  fn new<TB: RuntimeToolbox + 'static>(bridge: Arc<EndpointTransportBridge<TB>>, max_concurrency: usize) -> Self {
+    let (frame_sender, frame_receiver) = mpsc::channel::<InboundFrame>(max_concurrency);
+    let frame_receiver = Arc::new(TokioMutex::new(frame_receiver));
+    for _ in 0..max_concurrency {
+      let bridge = bridge.clone();
+      let frame_receiver = Arc::clone(&frame_receiver);
+      tokio::spawn(async move {
+        loop {
+          let frame = {
+            let mut receiver = frame_receiver.lock().await;
+            receiver.recv().await
+          };
+          match frame {
+            | Some(frame) => bridge.handle_inbound_frame(frame).await,
+            | None => break,
+          }
+        }
+      });
+    }
+    Self { frame_sender }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> TransportInbound for InboundHandler<TB> {
+impl TransportInbound for InboundHandler {
   fn on_frame(&mut self, frame: InboundFrame) {
-    let bridge = self.bridge.clone();
-    tokio::spawn(async move {
-      bridge.handle_inbound_frame(frame).await;
-    });
+    let _ = self.frame_sender.try_send(frame);
   }
 }
