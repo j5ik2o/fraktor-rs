@@ -1,5 +1,11 @@
 use alloc::{boxed::Box, collections::VecDeque, vec, vec::Vec};
-use core::{any::TypeId, marker::PhantomData};
+use core::{
+  any::TypeId,
+  future::Future,
+  marker::PhantomData,
+  pin::Pin,
+  task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
+};
 
 use fraktor_utils_rs::core::collections::queue::OverflowPolicy;
 
@@ -96,6 +102,30 @@ where
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds an async map stage to this flow.
+  ///
+  /// This is a compatibility entry point for Pekko's `map_async`.
+  /// `parallelism` is validated as a positive integer.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `parallelism` is zero.
+  pub fn map_async<T, F, Fut>(mut self, parallelism: usize, func: F) -> Result<Flow<In, T, Mat>, StreamDslError>
+  where
+    T: Send + Sync + 'static,
+    F: FnMut(Out) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = T> + Send + 'static, {
+    let parallelism = validate_positive_argument("parallelism", parallelism)?;
+    let definition = map_async_definition::<Out, T, F, Fut>(parallelism, func);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
   /// Adds a stateful-map stage to this flow.
@@ -733,6 +763,28 @@ where
   let logic = MapLogic { func, _pd: PhantomData };
   FlowDefinition {
     kind:        StageKind::FlowMap,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<Out>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(in crate::core) fn map_async_definition<In, Out, F, Fut>(parallelism: usize, func: F) -> FlowDefinition
+where
+  In: Send + Sync + 'static,
+  Out: Send + Sync + 'static,
+  F: FnMut(In) -> Fut + Send + Sync + 'static,
+  Fut: Future<Output = Out> + Send + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<Out> = Outlet::new();
+  let logic = MapAsyncLogic::<In, Out, F, Fut> { func, parallelism, pending: VecDeque::new(), _pd: PhantomData };
+  FlowDefinition {
+    kind:        StageKind::FlowMapAsync,
     inlet:       inlet.id(),
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
@@ -1410,6 +1462,34 @@ struct MapLogic<In, Out, F> {
   _pd:  PhantomData<fn(In) -> Out>,
 }
 
+struct MapAsyncLogic<In, Out, F, Fut>
+where
+  Fut: Future<Output = Out> + Send + 'static, {
+  func:        F,
+  parallelism: usize,
+  pending:     VecDeque<MapAsyncEntry<Out, Fut>>,
+  _pd:         PhantomData<fn(In) -> Out>,
+}
+
+enum MapAsyncEntry<Out, Fut>
+where
+  Fut: Future<Output = Out> + Send + 'static, {
+  InFlight(Pin<Box<Fut>>),
+  Completed(Out),
+}
+
+impl<Out, Fut> MapAsyncEntry<Out, Fut>
+where
+  Fut: Future<Output = Out> + Send + 'static,
+{
+  const fn is_pending(&self) -> bool {
+    match self {
+      | Self::InFlight(_) => true,
+      | Self::Completed(_) => false,
+    }
+  }
+}
+
 struct StatefulMapLogic<In, Out, Factory, Mapper> {
   factory: Factory,
   mapper:  Mapper,
@@ -1509,6 +1589,82 @@ where
     Ok(vec![Box::new(output)])
   }
 }
+
+impl<In, Out, F, Fut> FlowLogic for MapAsyncLogic<In, Out, F, Fut>
+where
+  In: Send + Sync + 'static,
+  Out: Send + Sync + 'static,
+  F: FnMut(In) -> Fut + Send + Sync + 'static,
+  Fut: Future<Output = Out> + Send + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let value = downcast_value::<In>(input)?;
+    let future = (self.func)(value);
+    self.pending.push_back(MapAsyncEntry::InFlight(Box::pin(future)));
+    Ok(Vec::new())
+  }
+
+  fn can_accept_input(&self) -> bool {
+    if self.parallelism == 0 {
+      return false;
+    }
+    self.pending.iter().filter(|entry| entry.is_pending()).count() < self.parallelism
+  }
+
+  fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
+    let waker = noop_waker();
+    let mut cx = Context::from_waker(&waker);
+    for entry in &mut self.pending {
+      let MapAsyncEntry::InFlight(future) = entry else {
+        continue;
+      };
+      if let Poll::Ready(output) = future.as_mut().poll(&mut cx) {
+        *entry = MapAsyncEntry::Completed(output);
+      }
+    }
+
+    let mut outputs = Vec::new();
+    while let Some(entry) = self.pending.pop_front() {
+      match entry {
+        | MapAsyncEntry::Completed(output) => outputs.push(Box::new(output) as DynValue),
+        | in_flight => {
+          self.pending.push_front(in_flight);
+          break;
+        },
+      }
+    }
+    Ok(outputs)
+  }
+
+  fn has_pending_output(&self) -> bool {
+    !self.pending.is_empty()
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.pending.clear();
+    Ok(())
+  }
+}
+
+const fn noop_waker() -> Waker {
+  unsafe { Waker::from_raw(noop_raw_waker()) }
+}
+
+const fn noop_raw_waker() -> RawWaker {
+  RawWaker::new(core::ptr::null(), &NOOP_WAKER_VTABLE)
+}
+
+const fn noop_clone(_: *const ()) -> RawWaker {
+  noop_raw_waker()
+}
+
+const fn noop_wake(_: *const ()) {}
+
+const fn noop_wake_by_ref(_: *const ()) {}
+
+const fn noop_drop(_: *const ()) {}
+
+const NOOP_WAKER_VTABLE: RawWakerVTable = RawWakerVTable::new(noop_clone, noop_wake, noop_wake_by_ref, noop_drop);
 
 impl<In, Out, Factory, Mapper> FlowLogic for StatefulMapLogic<In, Out, Factory, Mapper>
 where

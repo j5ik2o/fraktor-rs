@@ -449,10 +449,10 @@ Error handling
 2. [x] P1-02 `StreamGraph` をステージ列から「ノード+ポート+エッジ」に再設計する
 3. [x] P1-03 `StreamPlan` を graph 実行向け中間表現へ置換する
 4. [x] P1-04 `StreamInterpreter`/`GraphInterpreter` をポート駆動化し、複数in/out を扱えるように変更する
-5. [ ] P1-05 線形 `StreamShape` API の互換アダプタを維持しつつ新基盤へ接続する
-6. [ ] P1-06 junction/fan-in/fan-out を破綻しない形で最小実行経路として通せるようにする
-7. [ ] P1-07 Graph の materialization 境界と不変性契約をドキュメントとテストで固定する
-8. [ ] P1-08 P1 対象テスト（回帰）を追加して `ci-check` 対象を更新する
+5. [x] P1-05 線形 `StreamShape` API の互換アダプタを維持しつつ新基盤へ接続する
+6. [x] P1-06 junction/fan-in/fan-out を破綻しない形で最小実行経路として通せるようにする
+7. [x] P1-07 Graph の materialization 境界と不変性契約をドキュメントとテストで固定する
+8. [x] P1-08 P1 対象テスト（回帰）を追加して `ci-check` 対象を更新する
 
 #### 13.2.x P1 現状スナップショット
 
@@ -460,10 +460,15 @@ Error handling
 - `Shape` 系は `shape/bidi_shape.rs` / `flow_shape.rs` / `source_shape.rs` / `sink_shape.rs` が存在し、基盤側の型は概ね揃っている
 - `GraphInterpreter` 側は `graph_interpreter.rs` の `compile_plan` で source/sink の 1 対 1 制約を解消し、複数in/out を扱える状態に変更している
 - `StreamPlan::from_parts` で fan-in / fan-out / cycle など実行器向け変換の主要不正を検証し、`P1-03` は完了
-- 次アクション: `P1-05` `線形 StreamShape API の互換アダプタを維持しつつ新基盤へ接続する
+- P1 回帰として、`Shape` API と materialization 境界の回帰テストを追加済み
+  - `converts_between_stream_shape_and_flow_shape`
+  - `converts_source_shape_to_stream_shape`
+  - `converts_sink_shape_to_stream_shape`
+  - `with_shared_kill_switch_keeps_materialized_value`
+- 次アクション: `P2-01` 完了（`broadcast`/`balance`/`merge`/`zip`/`concat` を新基盤へ接続）
 ### 13.3 P2: オペレーター拡張（実用性コア）
 
-1. [ ] P2-01 `broadcast`/`balance`/`merge`/`zip`/`concat` の既存実装を新 Graph 基盤へ接続する
+1. [x] P2-01 `broadcast`/`balance`/`merge`/`zip`/`concat` の既存実装を新 Graph 基盤へ接続する
 2. [ ] P2-02 `mapasync` 系を実装し、実効する async 境界の最小検証を通す
 3. [ ] P2-03 `flat_map_merge` と `flat_map_concat` の順序・並行・終了条件を固定テスト化する
 4. [ ] P2-04 `buffer`, `throttle`, `batch` 系を backlog 抑制含めて追加実装する

@@ -187,6 +187,7 @@ impl GraphInterpreter {
       && !self.source_restart_waiting()
       && !self.sink_restart_waiting()
       && !self.flow_order.iter().any(|stage_index| self.flow_restart_waiting(*stage_index))
+      && !self.flow_order.iter().any(|stage_index| self.flow_has_pending_output(*stage_index))
     {
       loop {
         match self.drive_flow_stages_once() {
@@ -717,6 +718,13 @@ impl GraphInterpreter {
       return false;
     };
     flow.restart.map(|restart| restart.is_waiting()).unwrap_or(false)
+  }
+
+  fn flow_has_pending_output(&self, stage_index: usize) -> bool {
+    let StageDefinition::Flow(flow) = &self.stages[stage_index] else {
+      return false;
+    };
+    flow.logic.has_pending_output()
   }
 
   fn sink_restart_waiting(&self) -> bool {

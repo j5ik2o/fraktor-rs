@@ -65,6 +65,13 @@ impl OperatorCatalog for DefaultOperatorCatalog {
         failure_condition: "Propagates upstream or mapper failures.",
         requirement_ids: &["1.1", "1.3"],
       }),
+      | "map_async" => Ok(OperatorContract {
+        key,
+        input_condition: "Maps each element using provided closure in asynchronous-map compatibility mode.",
+        completion_condition: "Completes when upstream completes.",
+        failure_condition: "Propagates upstream or mapper failures.",
+        requirement_ids: &["1.1", "1.3", "7.1", "7.2", "7.3", "7.4"],
+      }),
       | "map_option" => Ok(OperatorContract {
         key,
         input_condition: "Maps each element and emits only present values.",
@@ -343,7 +350,7 @@ impl OperatorCatalog for DefaultOperatorCatalog {
   }
 
   fn coverage(&self) -> &'static [OperatorCoverage] {
-    const COVERAGE: [OperatorCoverage; 45] = [
+    const COVERAGE: [OperatorCoverage; 46] = [
       OperatorCoverage {
         key:             OperatorKey::ASYNC_BOUNDARY,
         requirement_ids: &["1.1", "1.3", "7.1", "7.2", "7.3", "7.4"],
@@ -372,6 +379,10 @@ impl OperatorCatalog for DefaultOperatorCatalog {
       OperatorCoverage { key: OperatorKey::GROUP_BY, requirement_ids: &["1.1", "1.3", "2.1", "2.2"] },
       OperatorCoverage { key: OperatorKey::FLATTEN_OPTIONAL, requirement_ids: &["1.1", "1.3"] },
       OperatorCoverage { key: OperatorKey::MAP_CONCAT, requirement_ids: &["1.1", "1.3"] },
+      OperatorCoverage {
+        key:             OperatorKey::MAP_ASYNC,
+        requirement_ids: &["1.1", "1.3", "7.1", "7.2", "7.3", "7.4"],
+      },
       OperatorCoverage { key: OperatorKey::MAP_OPTION, requirement_ids: &["1.1", "1.3"] },
       OperatorCoverage { key: OperatorKey::MERGE, requirement_ids: &["1.1", "1.3"] },
       OperatorCoverage { key: OperatorKey::MERGE_HUB, requirement_ids: &["1.1", "1.3", "4.1", "4.2"] },

@@ -1,4 +1,5 @@
 use alloc::{boxed::Box, collections::VecDeque};
+use core::{future::Future, pin::Pin, task::Poll};
 
 use fraktor_utils_rs::core::collections::queue::OverflowPolicy;
 
@@ -133,6 +134,80 @@ fn buffer_rejects_zero_capacity() {
 fn async_boundary_keeps_single_path_behavior() {
   let values = Source::single(7_u32).via(Flow::new().async_boundary()).collect_values().expect("collect_values");
   assert_eq!(values, vec![7_u32]);
+}
+
+#[test]
+fn map_async_keeps_single_path_behavior() {
+  let values = Source::single(7_u32)
+    .via(Flow::new().map_async(2, |value: u32| async move { value.saturating_add(1) }).expect("map_async"))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![8_u32]);
+}
+
+#[test]
+fn map_async_rejects_zero_parallelism() {
+  let flow = Flow::<u32, u32, StreamNotUsed>::new();
+  let result = flow.map_async(0, |value| async move { value });
+  assert!(matches!(
+    result,
+    Err(StreamDslError::InvalidArgument { name: "parallelism", value: 0, reason: "must be greater than zero" })
+  ));
+}
+
+#[test]
+fn map_async_logic_keeps_order_and_tracks_pending_output() {
+  let mut logic = super::MapAsyncLogic::<u32, u32, _, YieldThenOutputFuture<u32>> {
+    func:        |value: u32| YieldThenOutputFuture::new(value.saturating_add(1)),
+    parallelism: 2,
+    pending:     VecDeque::new(),
+    _pd:         core::marker::PhantomData,
+  };
+
+  assert!(logic.can_accept_input());
+  let _ = logic.apply(Box::new(1_u32)).expect("apply");
+  assert!(logic.has_pending_output());
+
+  assert!(logic.can_accept_input());
+  let _ = logic.apply(Box::new(2_u32)).expect("apply");
+  assert!(!logic.can_accept_input());
+
+  let outputs = logic.drain_pending().expect("drain");
+  assert_eq!(outputs.len(), 0);
+
+  let outputs = logic.drain_pending().expect("drain");
+  assert_eq!(outputs.len(), 2);
+  let output_values: Vec<u32> =
+    outputs.into_iter().map(|value: DynValue| *value.downcast::<u32>().expect("u32")).collect();
+  assert_eq!(output_values, vec![2_u32, 3_u32]);
+  assert!(!logic.has_pending_output());
+  assert!(logic.can_accept_input());
+}
+
+#[derive(Default)]
+struct YieldThenOutputFuture<T> {
+  value:   Option<T>,
+  poll_at: u8,
+}
+
+impl<T> YieldThenOutputFuture<T> {
+  fn new(value: T) -> Self {
+    Self { value: Some(value), poll_at: 0 }
+  }
+}
+
+impl<T> Future for YieldThenOutputFuture<T> {
+  type Output = T;
+
+  fn poll(self: Pin<&mut Self>, _cx: &mut core::task::Context<'_>) -> Poll<Self::Output> {
+    let this = unsafe { self.get_unchecked_mut() };
+    if this.poll_at == 0 {
+      this.poll_at = 1;
+      Poll::Pending
+    } else {
+      Poll::Ready(this.value.take().expect("future value"))
+    }
+  }
 }
 
 #[test]
@@ -634,6 +709,14 @@ fn operator_catalog_lookup_returns_stateful_map_contract() {
   let contract = catalog.lookup(OperatorKey::STATEFUL_MAP).expect("lookup");
   assert_eq!(contract.key, OperatorKey::STATEFUL_MAP);
   assert_eq!(contract.requirement_ids, &["1.1", "1.3"]);
+}
+
+#[test]
+fn operator_catalog_lookup_returns_map_async_contract() {
+  let catalog = DefaultOperatorCatalog::new();
+  let contract = catalog.lookup(OperatorKey::MAP_ASYNC).expect("lookup");
+  assert_eq!(contract.key, OperatorKey::MAP_ASYNC);
+  assert_eq!(contract.requirement_ids, &["1.1", "1.3", "7.1", "7.2", "7.3", "7.4"]);
 }
 
 #[test]

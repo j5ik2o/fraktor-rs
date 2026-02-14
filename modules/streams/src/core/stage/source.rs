@@ -1,5 +1,5 @@
 use alloc::{boxed::Box, vec, vec::Vec};
-use core::{any::TypeId, marker::PhantomData};
+use core::{any::TypeId, future::Future, marker::PhantomData};
 
 use fraktor_utils_rs::core::collections::queue::OverflowPolicy;
 
@@ -11,8 +11,8 @@ use super::{
     async_boundary_definition, balance_definition, broadcast_definition, buffer_definition, concat_definition,
     concat_substreams_definition, drop_definition, drop_while_definition, filter_definition,
     flat_map_concat_definition, flat_map_merge_definition, group_by_definition, grouped_definition,
-    intersperse_definition, map_concat_definition, map_definition, map_option_definition, merge_definition,
-    merge_substreams_definition, merge_substreams_with_parallelism_definition, recover_definition,
+    intersperse_definition, map_async_definition, map_concat_definition, map_definition, map_option_definition,
+    merge_definition, merge_substreams_definition, merge_substreams_with_parallelism_definition, recover_definition,
     recover_with_retries_definition, scan_definition, sliding_definition, split_after_definition,
     split_when_definition, stateful_map_concat_definition, stateful_map_definition, take_definition,
     take_until_definition, take_while_definition, zip_definition, zip_with_index_definition,
@@ -188,6 +188,31 @@ where
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
     Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds an async map stage to this source.
+  ///
+  /// This is a compatibility entry point for Pekko's `map_async`.
+  /// `parallelism` is validated as a positive integer.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `parallelism` is zero.
+  #[must_use = "resulting source should be used for further stream composition"]
+  pub fn map_async<T, F, Fut>(mut self, parallelism: usize, func: F) -> Result<Source<T, Mat>, StreamDslError>
+  where
+    T: Send + Sync + 'static,
+    F: FnMut(Out) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = T> + Send + 'static, {
+    let parallelism = validate_positive_argument("parallelism", parallelism)?;
+    let definition = map_async_definition::<Out, T, F, Fut>(parallelism, func);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Ok(Source { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
   /// Adds a stateful-map stage to this source.

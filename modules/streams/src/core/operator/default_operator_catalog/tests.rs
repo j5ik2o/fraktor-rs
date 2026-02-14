@@ -35,6 +35,14 @@ fn lookup_returns_async_boundary_contract() {
 }
 
 #[test]
+fn lookup_returns_map_async_contract() {
+  let catalog = DefaultOperatorCatalog::new();
+  let contract = catalog.lookup(OperatorKey::MAP_ASYNC).expect("lookup");
+  assert_eq!(contract.key, OperatorKey::MAP_ASYNC);
+  assert_eq!(contract.requirement_ids, &["1.1", "1.3", "7.1", "7.2", "7.3", "7.4"]);
+}
+
+#[test]
 fn coverage_extends_beyond_nine_operators() {
   let catalog = DefaultOperatorCatalog::new();
   assert!(catalog.coverage().len() > 9);

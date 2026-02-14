@@ -1,4 +1,4 @@
-use core::any::TypeId;
+use core::{any::TypeId, future::Future, pin::Pin, task::Poll};
 
 use fraktor_utils_rs::core::{
   collections::queue::OverflowPolicy,
@@ -43,6 +43,134 @@ fn linear_plan(source: SourceDefinition, flows: Vec<FlowDefinition>, sink: SinkD
 
 fn stream_plan(stages: Vec<StageDefinition>, edges: Vec<(PortId, PortId, MatCombine)>) -> StreamPlan {
   StreamPlan::from_parts(stages, edges).expect("valid stream graph shape")
+}
+
+fn source_sequence_u32(outlet: Outlet<u32>, end: u32) -> SourceDefinition {
+  SourceDefinition {
+    kind:        StageKind::SourceSingle,
+    outlet:      outlet.id(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(SequenceSourceLogic { next: 1, end }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  }
+}
+
+fn source_single_u32(outlet: Outlet<u32>, value: u32) -> SourceDefinition {
+  SourceDefinition {
+    kind:        StageKind::SourceSingle,
+    outlet:      outlet.id(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(SingleValueSourceLogic { value: Some(value) }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  }
+}
+
+fn sum_fold_u32_sink(inlet: Inlet<u32>, completion: StreamCompletion<u32>) -> SinkDefinition {
+  SinkDefinition {
+    kind:        StageKind::SinkFold,
+    inlet:       inlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(SumSinkLogic { completion, sum: 0 }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  }
+}
+
+fn zip_sum_fold_u32_sink(inlet: &Inlet<Vec<u32>>, completion: StreamCompletion<u32>) -> SinkDefinition {
+  SinkDefinition {
+    kind:        StageKind::SinkFold,
+    inlet:       inlet.id(),
+    input_type:  TypeId::of::<Vec<u32>>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(ZipSumSinkLogic { completion, sum: 0 }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  }
+}
+
+fn collect_u32_sequence_sink(inlet: Inlet<u32>, completion: StreamCompletion<Vec<u32>>) -> SinkDefinition {
+  SinkDefinition {
+    kind:        StageKind::SinkFold,
+    inlet:       inlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(CollectSequenceSinkLogic { completion, values: Vec::new() }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  }
+}
+
+fn collect_u32_nested_sequence_sink(
+  inlet: &Inlet<Vec<u32>>,
+  completion: StreamCompletion<Vec<Vec<u32>>>,
+) -> SinkDefinition {
+  SinkDefinition {
+    kind:        StageKind::SinkFold,
+    inlet:       inlet.id(),
+    input_type:  TypeId::of::<Vec<u32>>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(CollectNestedSequenceSinkLogic { completion, values: Vec::new() }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  }
+}
+
+#[derive(Default)]
+struct YieldThenOutputFuture<T> {
+  value:    Option<T>,
+  pollings: u8,
+}
+
+impl<T> YieldThenOutputFuture<T> {
+  fn new(value: T) -> Self {
+    Self { value: Some(value), pollings: 0 }
+  }
+}
+
+impl<T> Future for YieldThenOutputFuture<T> {
+  type Output = T;
+
+  fn poll(self: Pin<&mut Self>, _cx: &mut core::task::Context<'_>) -> Poll<Self::Output> {
+    let this = unsafe { self.get_unchecked_mut() };
+    if this.pollings == 0 {
+      this.pollings = 1;
+      Poll::Pending
+    } else {
+      Poll::Ready(this.value.take().expect("future value"))
+    }
+  }
+}
+
+#[test]
+fn map_async_waits_for_pending_future_before_completion() {
+  let graph = Source::single(7_u32)
+    .via(Flow::new().map_async(1, |value: u32| YieldThenOutputFuture::new(value.saturating_add(1))).expect("map_async"))
+    .to_mat(
+      Sink::fold(Vec::<u32>::new(), |mut acc, value| {
+        acc.push(value);
+        acc
+      }),
+      KeepRight,
+    );
+  let (plan, completion) = graph.into_parts();
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+
+  interpreter.start().expect("start");
+  assert_eq!(interpreter.drive(), DriveOutcome::Progressed);
+  assert_eq!(interpreter.state(), StreamState::Running);
+  assert_eq!(completion.poll(), Completion::Pending);
+
+  while interpreter.state() == StreamState::Running {
+    let _ = interpreter.drive();
+  }
+
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![8_u32])));
 }
 
 #[test]
@@ -126,28 +254,12 @@ fn flat_map_merge_uses_configured_breadth() {
   let sink_inlet: Inlet<u32> = Inlet::new();
   let completion = StreamCompletion::new();
 
-  let source = SourceDefinition {
-    kind:        StageKind::SourceSingle,
-    outlet:      source_outlet.id(),
-    output_type: TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
-    logic:       Box::new(SequenceSourceLogic { next: 1, end: 3 }),
-    supervision: SupervisionStrategy::Stop,
-    restart:     None,
-  };
+  let source = source_sequence_u32(source_outlet, 3);
   let flat_map_merge =
     flat_map_merge_definition::<u32, u32, StreamNotUsed, _>(2, |value| Source::single(value).broadcast(2));
   let flat_map_merge_inlet = flat_map_merge.inlet;
   let flat_map_merge_outlet = flat_map_merge.outlet;
-  let sink = SinkDefinition {
-    kind:        StageKind::SinkFold,
-    inlet:       sink_inlet.id(),
-    input_type:  TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
-    logic:       Box::new(CollectSequenceSinkLogic { completion: completion.clone(), values: Vec::new() }),
-    supervision: SupervisionStrategy::Stop,
-    restart:     None,
-  };
+  let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
 
   let plan = stream_plan(
     vec![StageDefinition::Source(source), StageDefinition::Flow(flat_map_merge), StageDefinition::Sink(sink)],
@@ -243,15 +355,7 @@ fn buffer_flow_fails_with_block_policy_on_overflow() {
   let sink_inlet: Inlet<u32> = Inlet::new();
   let completion = StreamCompletion::new();
 
-  let source = SourceDefinition {
-    kind:        StageKind::SourceSingle,
-    outlet:      source_outlet.id(),
-    output_type: TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
-    logic:       Box::new(SequenceSourceLogic { next: 1, end: 3 }),
-    supervision: SupervisionStrategy::Stop,
-    restart:     None,
-  };
+  let source = source_sequence_u32(source_outlet, 3);
   let buffer = buffer_definition::<u32>(2, OverflowPolicy::Block);
   let buffer_inlet = buffer.inlet;
   let buffer_outlet = buffer.outlet;
@@ -285,27 +389,11 @@ fn buffer_flow_drop_oldest_keeps_latest_elements() {
   let sink_inlet: Inlet<u32> = Inlet::new();
   let completion = StreamCompletion::new();
 
-  let source = SourceDefinition {
-    kind:        StageKind::SourceSingle,
-    outlet:      source_outlet.id(),
-    output_type: TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
-    logic:       Box::new(SequenceSourceLogic { next: 1, end: 3 }),
-    supervision: SupervisionStrategy::Stop,
-    restart:     None,
-  };
+  let source = source_sequence_u32(source_outlet, 3);
   let buffer = buffer_definition::<u32>(2, OverflowPolicy::DropOldest);
   let buffer_inlet = buffer.inlet;
   let buffer_outlet = buffer.outlet;
-  let sink = SinkDefinition {
-    kind:        StageKind::SinkFold,
-    inlet:       sink_inlet.id(),
-    input_type:  TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
-    logic:       Box::new(CollectSequenceSinkLogic { completion: completion.clone(), values: Vec::new() }),
-    supervision: SupervisionStrategy::Stop,
-    restart:     None,
-  };
+  let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
 
   let plan = stream_plan(
     vec![StageDefinition::Source(source), StageDefinition::Flow(buffer), StageDefinition::Sink(sink)],
@@ -327,27 +415,11 @@ fn async_boundary_flow_preserves_input_order() {
   let sink_inlet: Inlet<u32> = Inlet::new();
   let completion = StreamCompletion::new();
 
-  let source = SourceDefinition {
-    kind:        StageKind::SourceSingle,
-    outlet:      source_outlet.id(),
-    output_type: TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
-    logic:       Box::new(SequenceSourceLogic { next: 1, end: 3 }),
-    supervision: SupervisionStrategy::Stop,
-    restart:     None,
-  };
+  let source = source_sequence_u32(source_outlet, 3);
   let async_boundary = async_boundary_definition::<u32>();
   let async_boundary_inlet = async_boundary.inlet;
   let async_boundary_outlet = async_boundary.outlet;
-  let sink = SinkDefinition {
-    kind:        StageKind::SinkFold,
-    inlet:       sink_inlet.id(),
-    input_type:  TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
-    logic:       Box::new(CollectSequenceSinkLogic { completion: completion.clone(), values: Vec::new() }),
-    supervision: SupervisionStrategy::Stop,
-    restart:     None,
-  };
+  let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
 
   let plan = stream_plan(
     vec![StageDefinition::Source(source), StageDefinition::Flow(async_boundary), StageDefinition::Sink(sink)],
@@ -469,15 +541,7 @@ fn source_completion_triggers_restart_until_budget_is_exhausted() {
     supervision: SupervisionStrategy::Stop,
     restart:     Some(RestartBackoff::new(0, 1)),
   };
-  let sink = SinkDefinition {
-    kind:        StageKind::SinkFold,
-    inlet:       sink_inlet.id(),
-    input_type:  TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
-    logic:       Box::new(CollectSequenceSinkLogic { completion: completion.clone(), values: Vec::new() }),
-    supervision: SupervisionStrategy::Stop,
-    restart:     None,
-  };
+  let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
   let plan = stream_plan(vec![StageDefinition::Source(source), StageDefinition::Sink(sink)], vec![(
     source_outlet.id(),
     sink_inlet.id(),
@@ -498,15 +562,7 @@ fn split_when_restart_supervision_behaves_like_resume() {
   let completion = StreamCompletion::new();
   let restart_calls = ArcShared::new(SpinSyncMutex::new(0_u32));
 
-  let source = SourceDefinition {
-    kind:        StageKind::SourceSingle,
-    outlet:      source_outlet.id(),
-    output_type: TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
-    logic:       Box::new(SequenceSourceLogic { next: 1, end: 3 }),
-    supervision: SupervisionStrategy::Stop,
-    restart:     None,
-  };
+  let source = source_sequence_u32(source_outlet, 3);
   let flow = FlowDefinition {
     kind:        StageKind::FlowSplitWhen,
     inlet:       flow_inlet.id(),
@@ -544,15 +600,7 @@ fn non_split_restart_supervision_calls_on_restart() {
   let completion = StreamCompletion::new();
   let restart_calls = ArcShared::new(SpinSyncMutex::new(0_u32));
 
-  let source = SourceDefinition {
-    kind:        StageKind::SourceSingle,
-    outlet:      source_outlet.id(),
-    output_type: TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
-    logic:       Box::new(SequenceSourceLogic { next: 1, end: 3 }),
-    supervision: SupervisionStrategy::Stop,
-    restart:     None,
-  };
+  let source = source_sequence_u32(source_outlet, 3);
   let flow = FlowDefinition {
     kind:        StageKind::FlowMap,
     inlet:       flow_inlet.id(),
@@ -741,15 +789,7 @@ fn source_restart_is_preserved_across_substream_and_async_boundary_chain() {
   let async_boundary = async_boundary_definition::<u32>();
   let async_boundary_inlet = async_boundary.inlet;
   let async_boundary_outlet = async_boundary.outlet;
-  let sink = SinkDefinition {
-    kind:        StageKind::SinkFold,
-    inlet:       sink_inlet.id(),
-    input_type:  TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
-    logic:       Box::new(CollectSequenceSinkLogic { completion: completion.clone(), values: Vec::new() }),
-    supervision: SupervisionStrategy::Stop,
-    restart:     None,
-  };
+  let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
   let plan = stream_plan(
     vec![
       StageDefinition::Source(source),
@@ -777,27 +817,11 @@ fn split_when_flow_splits_before_predicate() {
   let sink_inlet: Inlet<Vec<u32>> = Inlet::new();
   let completion = StreamCompletion::new();
 
-  let source = SourceDefinition {
-    kind:        StageKind::SourceSingle,
-    outlet:      source_outlet.id(),
-    output_type: TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
-    logic:       Box::new(SequenceSourceLogic { next: 1, end: 4 }),
-    supervision: SupervisionStrategy::Stop,
-    restart:     None,
-  };
+  let source = source_sequence_u32(source_outlet, 4);
   let split_when = split_when_definition::<u32, _>(|value| value % 2 == 0);
   let split_when_inlet = split_when.inlet;
   let split_when_outlet = split_when.outlet;
-  let sink = SinkDefinition {
-    kind:        StageKind::SinkFold,
-    inlet:       sink_inlet.id(),
-    input_type:  TypeId::of::<Vec<u32>>(),
-    mat_combine: MatCombine::KeepRight,
-    logic:       Box::new(CollectNestedSequenceSinkLogic { completion: completion.clone(), values: Vec::new() }),
-    supervision: SupervisionStrategy::Stop,
-    restart:     None,
-  };
+  let sink = collect_u32_nested_sequence_sink(&sink_inlet, completion.clone());
 
   let plan = stream_plan(
     vec![StageDefinition::Source(source), StageDefinition::Flow(split_when), StageDefinition::Sink(sink)],
@@ -819,27 +843,11 @@ fn split_after_flow_splits_after_predicate() {
   let sink_inlet: Inlet<Vec<u32>> = Inlet::new();
   let completion = StreamCompletion::new();
 
-  let source = SourceDefinition {
-    kind:        StageKind::SourceSingle,
-    outlet:      source_outlet.id(),
-    output_type: TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
-    logic:       Box::new(SequenceSourceLogic { next: 1, end: 4 }),
-    supervision: SupervisionStrategy::Stop,
-    restart:     None,
-  };
+  let source = source_sequence_u32(source_outlet, 4);
   let split_after = split_after_definition::<u32, _>(|value| value % 2 == 0);
   let split_after_inlet = split_after.inlet;
   let split_after_outlet = split_after.outlet;
-  let sink = SinkDefinition {
-    kind:        StageKind::SinkFold,
-    inlet:       sink_inlet.id(),
-    input_type:  TypeId::of::<Vec<u32>>(),
-    mat_combine: MatCombine::KeepRight,
-    logic:       Box::new(CollectNestedSequenceSinkLogic { completion: completion.clone(), values: Vec::new() }),
-    supervision: SupervisionStrategy::Stop,
-    restart:     None,
-  };
+  let sink = collect_u32_nested_sequence_sink(&sink_inlet, completion.clone());
 
   let plan = stream_plan(
     vec![StageDefinition::Source(source), StageDefinition::Flow(split_after), StageDefinition::Sink(sink)],
@@ -933,15 +941,7 @@ fn drive_does_not_pull_without_demand() {
 fn drive_rejects_type_mismatch() {
   let completion = StreamCompletion::new();
   let outlet: Outlet<u32> = Outlet::new();
-  let source = SourceDefinition {
-    kind:        StageKind::SourceSingle,
-    outlet:      outlet.id(),
-    output_type: TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
-    logic:       Box::new(SingleValueSourceLogic { value: Some(1_u32) }),
-    supervision: SupervisionStrategy::Stop,
-    restart:     None,
-  };
+  let source = source_single_u32(outlet, 1_u32);
   let inlet: Inlet<u32> = Inlet::new();
   let flow = FlowDefinition {
     kind:        StageKind::FlowMap,
@@ -984,15 +984,7 @@ fn executes_with_topologically_sorted_flow_order() {
   let sink_inlet: Inlet<u32> = Inlet::new();
   let completion = StreamCompletion::new();
 
-  let source = SourceDefinition {
-    kind:        StageKind::SourceSingle,
-    outlet:      source_outlet.id(),
-    output_type: TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
-    logic:       Box::new(SingleValueSourceLogic { value: Some(1_u32) }),
-    supervision: SupervisionStrategy::Stop,
-    restart:     None,
-  };
+  let source = source_single_u32(source_outlet, 1_u32);
   let flow1 = FlowDefinition {
     kind:        StageKind::FlowMap,
     inlet:       flow1_inlet.id(),
@@ -1053,15 +1045,7 @@ fn rejects_cycle_plan_on_construction() {
   let sink_inlet: Inlet<u32> = Inlet::new();
   let completion = StreamCompletion::new();
 
-  let source = SourceDefinition {
-    kind:        StageKind::SourceSingle,
-    outlet:      source_outlet.id(),
-    output_type: TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
-    logic:       Box::new(SingleValueSourceLogic { value: Some(1_u32) }),
-    supervision: SupervisionStrategy::Stop,
-    restart:     None,
-  };
+  let source = source_single_u32(source_outlet, 1_u32);
   let flow = FlowDefinition {
     kind:        StageKind::FlowMap,
     inlet:       flow_inlet.id(),
@@ -1100,33 +1084,9 @@ fn supports_plan_with_multiple_sources() {
   let sink_inlet: Inlet<u32> = Inlet::new();
   let completion = StreamCompletion::new();
 
-  let source1 = SourceDefinition {
-    kind:        StageKind::SourceSingle,
-    outlet:      source1_outlet.id(),
-    output_type: TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
-    logic:       Box::new(SingleValueSourceLogic { value: Some(1_u32) }),
-    supervision: SupervisionStrategy::Stop,
-    restart:     None,
-  };
-  let source2 = SourceDefinition {
-    kind:        StageKind::SourceSingle,
-    outlet:      source2_outlet.id(),
-    output_type: TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepLeft,
-    logic:       Box::new(SingleValueSourceLogic { value: Some(2_u32) }),
-    supervision: SupervisionStrategy::Stop,
-    restart:     None,
-  };
-  let sink = SinkDefinition {
-    kind:        StageKind::SinkFold,
-    inlet:       sink_inlet.id(),
-    input_type:  TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
-    logic:       Box::new(CollectSequenceSinkLogic { completion: completion.clone(), values: Vec::new() }),
-    supervision: SupervisionStrategy::Stop,
-    restart:     None,
-  };
+  let source1 = source_single_u32(source1_outlet, 1_u32);
+  let source2 = source_single_u32(source2_outlet, 2_u32);
+  let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
   let plan = stream_plan(
     vec![StageDefinition::Source(source1), StageDefinition::Source(source2), StageDefinition::Sink(sink)],
     vec![
@@ -1149,33 +1109,9 @@ fn supports_plan_with_multiple_sinks() {
   let completion1 = StreamCompletion::new();
   let completion2 = StreamCompletion::new();
 
-  let source = SourceDefinition {
-    kind:        StageKind::SourceSingle,
-    outlet:      source_outlet.id(),
-    output_type: TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
-    logic:       Box::new(SequenceSourceLogic { next: 1, end: 2 }),
-    supervision: SupervisionStrategy::Stop,
-    restart:     None,
-  };
-  let sink1 = SinkDefinition {
-    kind:        StageKind::SinkFold,
-    inlet:       sink1_inlet.id(),
-    input_type:  TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
-    logic:       Box::new(CollectSequenceSinkLogic { completion: completion1.clone(), values: Vec::new() }),
-    supervision: SupervisionStrategy::Stop,
-    restart:     None,
-  };
-  let sink2 = SinkDefinition {
-    kind:        StageKind::SinkFold,
-    inlet:       sink2_inlet.id(),
-    input_type:  TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
-    logic:       Box::new(CollectSequenceSinkLogic { completion: completion2.clone(), values: Vec::new() }),
-    supervision: SupervisionStrategy::Stop,
-    restart:     None,
-  };
+  let source = source_sequence_u32(source_outlet, 2);
+  let sink1 = collect_u32_sequence_sink(sink1_inlet, completion1.clone());
+  let sink2 = collect_u32_sequence_sink(sink2_inlet, completion2.clone());
   let plan = stream_plan(
     vec![StageDefinition::Source(source), StageDefinition::Sink(sink1), StageDefinition::Sink(sink2)],
     vec![
@@ -1201,15 +1137,7 @@ fn supports_multiple_outgoing_edges_from_source() {
   let sink_inlet: Inlet<u32> = Inlet::new();
   let completion = StreamCompletion::new();
 
-  let source = SourceDefinition {
-    kind:        StageKind::SourceSingle,
-    outlet:      source_outlet.id(),
-    output_type: TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
-    logic:       Box::new(SequenceSourceLogic { next: 1, end: 4 }),
-    supervision: SupervisionStrategy::Stop,
-    restart:     None,
-  };
+  let source = source_sequence_u32(source_outlet, 4);
   let left_flow = FlowDefinition {
     kind:        StageKind::FlowMap,
     inlet:       left_inlet.id(),
@@ -1232,15 +1160,7 @@ fn supports_multiple_outgoing_edges_from_source() {
     supervision: SupervisionStrategy::Stop,
     restart:     None,
   };
-  let sink = SinkDefinition {
-    kind:        StageKind::SinkFold,
-    inlet:       sink_inlet.id(),
-    input_type:  TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
-    logic:       Box::new(SumSinkLogic { completion: completion.clone(), sum: 0 }),
-    supervision: SupervisionStrategy::Stop,
-    restart:     None,
-  };
+  let sink = sum_fold_u32_sink(sink_inlet, completion.clone());
 
   let plan = stream_plan(
     vec![
@@ -1273,15 +1193,7 @@ fn supports_multiple_outgoing_edges_from_flow() {
   let sink_inlet: Inlet<u32> = Inlet::new();
   let completion = StreamCompletion::new();
 
-  let source = SourceDefinition {
-    kind:        StageKind::SourceSingle,
-    outlet:      source_outlet.id(),
-    output_type: TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
-    logic:       Box::new(SequenceSourceLogic { next: 1, end: 4 }),
-    supervision: SupervisionStrategy::Stop,
-    restart:     None,
-  };
+  let source = source_sequence_u32(source_outlet, 4);
   let split_flow = FlowDefinition {
     kind:        StageKind::FlowMap,
     inlet:       split_inlet.id(),
@@ -1304,15 +1216,7 @@ fn supports_multiple_outgoing_edges_from_flow() {
     supervision: SupervisionStrategy::Stop,
     restart:     None,
   };
-  let sink = SinkDefinition {
-    kind:        StageKind::SinkFold,
-    inlet:       sink_inlet.id(),
-    input_type:  TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
-    logic:       Box::new(SumSinkLogic { completion: completion.clone(), sum: 0 }),
-    supervision: SupervisionStrategy::Stop,
-    restart:     None,
-  };
+  let sink = sum_fold_u32_sink(sink_inlet, completion.clone());
 
   let plan = stream_plan(
     vec![
@@ -1343,15 +1247,7 @@ fn broadcast_flow_duplicates_elements_to_all_outgoing_edges() {
   let sink_inlet: Inlet<u32> = Inlet::new();
   let completion = StreamCompletion::new();
 
-  let source = SourceDefinition {
-    kind:        StageKind::SourceSingle,
-    outlet:      source_outlet.id(),
-    output_type: TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
-    logic:       Box::new(SequenceSourceLogic { next: 1, end: 3 }),
-    supervision: SupervisionStrategy::Stop,
-    restart:     None,
-  };
+  let source = source_sequence_u32(source_outlet, 3);
   let broadcast = broadcast_definition::<u32>(2);
   let broadcast_inlet = broadcast.inlet;
   let broadcast_outlet = broadcast.outlet;
@@ -1366,15 +1262,7 @@ fn broadcast_flow_duplicates_elements_to_all_outgoing_edges() {
     supervision: SupervisionStrategy::Stop,
     restart:     None,
   };
-  let sink = SinkDefinition {
-    kind:        StageKind::SinkFold,
-    inlet:       sink_inlet.id(),
-    input_type:  TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
-    logic:       Box::new(SumSinkLogic { completion: completion.clone(), sum: 0 }),
-    supervision: SupervisionStrategy::Stop,
-    restart:     None,
-  };
+  let sink = sum_fold_u32_sink(sink_inlet, completion.clone());
 
   let plan = stream_plan(
     vec![
@@ -1403,15 +1291,7 @@ fn rejects_broadcast_flow_when_fan_out_does_not_match_wiring() {
   let sink_inlet: Inlet<u32> = Inlet::new();
   let completion = StreamCompletion::new();
 
-  let source = SourceDefinition {
-    kind:        StageKind::SourceSingle,
-    outlet:      source_outlet.id(),
-    output_type: TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
-    logic:       Box::new(SingleValueSourceLogic { value: Some(1_u32) }),
-    supervision: SupervisionStrategy::Stop,
-    restart:     None,
-  };
+  let source = source_single_u32(source_outlet, 1_u32);
   let broadcast = broadcast_definition::<u32>(2);
   let broadcast_inlet = broadcast.inlet;
   let broadcast_outlet = broadcast.outlet;
@@ -1443,15 +1323,7 @@ fn balance_flow_distributes_elements_round_robin() {
   let sink_inlet: Inlet<u32> = Inlet::new();
   let completion = StreamCompletion::new();
 
-  let source = SourceDefinition {
-    kind:        StageKind::SourceSingle,
-    outlet:      source_outlet.id(),
-    output_type: TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
-    logic:       Box::new(SequenceSourceLogic { next: 1, end: 4 }),
-    supervision: SupervisionStrategy::Stop,
-    restart:     None,
-  };
+  let source = source_sequence_u32(source_outlet, 4);
   let balance = balance_definition::<u32>(2);
   let balance_inlet = balance.inlet;
   let balance_outlet = balance.outlet;
@@ -1466,15 +1338,7 @@ fn balance_flow_distributes_elements_round_robin() {
     supervision: SupervisionStrategy::Stop,
     restart:     None,
   };
-  let sink = SinkDefinition {
-    kind:        StageKind::SinkFold,
-    inlet:       sink_inlet.id(),
-    input_type:  TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
-    logic:       Box::new(SumSinkLogic { completion: completion.clone(), sum: 0 }),
-    supervision: SupervisionStrategy::Stop,
-    restart:     None,
-  };
+  let sink = sum_fold_u32_sink(sink_inlet, completion.clone());
 
   let plan = stream_plan(
     vec![
@@ -1503,15 +1367,7 @@ fn rejects_balance_flow_when_fan_out_does_not_match_wiring() {
   let sink_inlet: Inlet<u32> = Inlet::new();
   let completion = StreamCompletion::new();
 
-  let source = SourceDefinition {
-    kind:        StageKind::SourceSingle,
-    outlet:      source_outlet.id(),
-    output_type: TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
-    logic:       Box::new(SingleValueSourceLogic { value: Some(1_u32) }),
-    supervision: SupervisionStrategy::Stop,
-    restart:     None,
-  };
+  let source = source_single_u32(source_outlet, 1_u32);
   let balance = balance_definition::<u32>(2);
   let balance_inlet = balance.inlet;
   let balance_outlet = balance.outlet;
@@ -1545,15 +1401,7 @@ fn merge_flow_combines_multiple_incoming_edges() {
   let sink_inlet: Inlet<u32> = Inlet::new();
   let completion = StreamCompletion::new();
 
-  let source = SourceDefinition {
-    kind:        StageKind::SourceSingle,
-    outlet:      source_outlet.id(),
-    output_type: TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
-    logic:       Box::new(SequenceSourceLogic { next: 1, end: 4 }),
-    supervision: SupervisionStrategy::Stop,
-    restart:     None,
-  };
+  let source = source_sequence_u32(source_outlet, 4);
   let left_flow = FlowDefinition {
     kind:        StageKind::FlowMap,
     inlet:       left_inlet.id(),
@@ -1579,15 +1427,7 @@ fn merge_flow_combines_multiple_incoming_edges() {
   let merge = merge_definition::<u32>(2);
   let merge_inlet = merge.inlet;
   let merge_outlet = merge.outlet;
-  let sink = SinkDefinition {
-    kind:        StageKind::SinkFold,
-    inlet:       sink_inlet.id(),
-    input_type:  TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
-    logic:       Box::new(SumSinkLogic { completion: completion.clone(), sum: 0 }),
-    supervision: SupervisionStrategy::Stop,
-    restart:     None,
-  };
+  let sink = sum_fold_u32_sink(sink_inlet, completion.clone());
 
   let plan = stream_plan(
     vec![
@@ -1618,15 +1458,7 @@ fn rejects_merge_flow_when_fan_in_does_not_match_wiring() {
   let sink_inlet: Inlet<u32> = Inlet::new();
   let completion = StreamCompletion::new();
 
-  let source = SourceDefinition {
-    kind:        StageKind::SourceSingle,
-    outlet:      source_outlet.id(),
-    output_type: TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
-    logic:       Box::new(SingleValueSourceLogic { value: Some(1_u32) }),
-    supervision: SupervisionStrategy::Stop,
-    restart:     None,
-  };
+  let source = source_single_u32(source_outlet, 1_u32);
   let merge = merge_definition::<u32>(2);
   let merge_inlet = merge.inlet;
   let merge_outlet = merge.outlet;
@@ -1660,15 +1492,7 @@ fn zip_flow_combines_elements_when_all_inputs_have_values() {
   let sink_inlet: Inlet<Vec<u32>> = Inlet::new();
   let completion = StreamCompletion::new();
 
-  let source = SourceDefinition {
-    kind:        StageKind::SourceSingle,
-    outlet:      source_outlet.id(),
-    output_type: TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
-    logic:       Box::new(SequenceSourceLogic { next: 1, end: 4 }),
-    supervision: SupervisionStrategy::Stop,
-    restart:     None,
-  };
+  let source = source_sequence_u32(source_outlet, 4);
   let left_flow = FlowDefinition {
     kind:        StageKind::FlowMap,
     inlet:       left_inlet.id(),
@@ -1694,15 +1518,7 @@ fn zip_flow_combines_elements_when_all_inputs_have_values() {
   let zip = zip_definition::<u32>(2);
   let zip_inlet = zip.inlet;
   let zip_outlet = zip.outlet;
-  let sink = SinkDefinition {
-    kind:        StageKind::SinkFold,
-    inlet:       sink_inlet.id(),
-    input_type:  TypeId::of::<Vec<u32>>(),
-    mat_combine: MatCombine::KeepRight,
-    logic:       Box::new(ZipSumSinkLogic { completion: completion.clone(), sum: 0 }),
-    supervision: SupervisionStrategy::Stop,
-    restart:     None,
-  };
+  let sink = zip_sum_fold_u32_sink(&sink_inlet, completion.clone());
 
   let plan = stream_plan(
     vec![
@@ -1733,15 +1549,7 @@ fn rejects_zip_flow_when_fan_in_does_not_match_wiring() {
   let sink_inlet: Inlet<Vec<u32>> = Inlet::new();
   let completion = StreamCompletion::new();
 
-  let source = SourceDefinition {
-    kind:        StageKind::SourceSingle,
-    outlet:      source_outlet.id(),
-    output_type: TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
-    logic:       Box::new(SingleValueSourceLogic { value: Some(1_u32) }),
-    supervision: SupervisionStrategy::Stop,
-    restart:     None,
-  };
+  let source = source_single_u32(source_outlet, 1_u32);
   let zip = zip_definition::<u32>(2);
   let zip_inlet = zip.inlet;
   let zip_outlet = zip.outlet;
@@ -1772,15 +1580,7 @@ fn concat_flow_emits_elements_in_input_order() {
   let sink_inlet: Inlet<u32> = Inlet::new();
   let completion = StreamCompletion::new();
 
-  let source = SourceDefinition {
-    kind:        StageKind::SourceSingle,
-    outlet:      source_outlet.id(),
-    output_type: TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
-    logic:       Box::new(SequenceSourceLogic { next: 1, end: 4 }),
-    supervision: SupervisionStrategy::Stop,
-    restart:     None,
-  };
+  let source = source_sequence_u32(source_outlet, 4);
   let left_flow = FlowDefinition {
     kind:        StageKind::FlowMap,
     inlet:       left_inlet.id(),
@@ -1806,15 +1606,7 @@ fn concat_flow_emits_elements_in_input_order() {
   let concat = concat_definition::<u32>(2);
   let concat_inlet = concat.inlet;
   let concat_outlet = concat.outlet;
-  let sink = SinkDefinition {
-    kind:        StageKind::SinkFold,
-    inlet:       sink_inlet.id(),
-    input_type:  TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
-    logic:       Box::new(CollectSequenceSinkLogic { completion: completion.clone(), values: Vec::new() }),
-    supervision: SupervisionStrategy::Stop,
-    restart:     None,
-  };
+  let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
 
   let plan = stream_plan(
     vec![
@@ -1845,15 +1637,7 @@ fn rejects_concat_flow_when_fan_in_does_not_match_wiring() {
   let sink_inlet: Inlet<u32> = Inlet::new();
   let completion = StreamCompletion::new();
 
-  let source = SourceDefinition {
-    kind:        StageKind::SourceSingle,
-    outlet:      source_outlet.id(),
-    output_type: TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
-    logic:       Box::new(SingleValueSourceLogic { value: Some(1_u32) }),
-    supervision: SupervisionStrategy::Stop,
-    restart:     None,
-  };
+  let source = source_single_u32(source_outlet, 1_u32);
   let concat = concat_definition::<u32>(2);
   let concat_inlet = concat.inlet;
   let concat_outlet = concat.outlet;

@@ -456,6 +456,10 @@ trait FlowLogic: Send {
     Ok(Vec::new())
   }
 
+  fn has_pending_output(&self) -> bool {
+    false
+  }
+
   fn on_restart(&mut self) -> Result<(), StreamError> {
     Ok(())
   }

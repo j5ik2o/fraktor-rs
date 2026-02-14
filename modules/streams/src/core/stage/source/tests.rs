@@ -440,6 +440,26 @@ fn source_flatten_optional_skips_none() {
 }
 
 #[test]
+fn source_map_async_keeps_single_path_behavior() {
+  let values = Source::single(7_u32)
+    .map_async(2, |value| async move { value.saturating_add(1) })
+    .expect("map_async")
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![8_u32]);
+}
+
+#[test]
+fn source_map_async_rejects_zero_parallelism() {
+  let source = Source::single(7_u32);
+  let result = source.map_async(0, |value| async move { value });
+  assert!(matches!(
+    result,
+    Err(StreamDslError::InvalidArgument { name: "parallelism", value: 0, reason: "must be greater than zero" })
+  ));
+}
+
+#[test]
 fn source_map_concat_expands_each_element() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
     .map_concat(|value: u32| [value, value.saturating_add(10)])

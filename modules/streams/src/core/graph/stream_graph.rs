@@ -155,6 +155,7 @@ impl StreamGraph {
         matches!(
           kind,
           StageKind::FlowMap
+            | StageKind::FlowMapAsync
             | StageKind::FlowStatefulMap
             | StageKind::FlowStatefulMapConcat
             | StageKind::FlowMapConcat

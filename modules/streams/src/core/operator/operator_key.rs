@@ -47,6 +47,8 @@ impl OperatorKey {
   pub const GROUP_BY: Self = Self::new("group_by");
   /// Key for `intersperse`.
   pub const INTERSPERSE: Self = Self::new("intersperse");
+  /// Key for `map_async`.
+  pub const MAP_ASYNC: Self = Self::new("map_async");
   /// Key for `map_concat`.
   pub const MAP_CONCAT: Self = Self::new("map_concat");
   /// Key for `map_option`.
