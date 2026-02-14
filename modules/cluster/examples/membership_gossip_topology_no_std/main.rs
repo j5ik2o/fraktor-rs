@@ -21,10 +21,16 @@ use fraktor_actor_rs::core::{
   messaging::AnyMessageGeneric,
 };
 use fraktor_cluster_rs::core::{
-  ActivatedKind, ClusterCore, ClusterEvent, ClusterExtensionConfig, ClusterProviderShared, ClusterPubSubShared,
-  GossipOutbound, GossiperShared, IdentityLookupShared, KindRegistry, MembershipCoordinatorConfig,
-  MembershipCoordinatorGeneric, MembershipCoordinatorOutcome, MembershipDelta, MembershipSnapshot, MembershipTable,
-  NoopClusterPubSub, NoopGossiper, NoopIdentityLookup, cluster_provider::NoopClusterProvider,
+  ClusterCore, ClusterEvent, ClusterExtensionConfig, ClusterProviderShared,
+  cluster_provider::NoopClusterProvider,
+  grain::KindRegistry,
+  identity::{IdentityLookupShared, NoopIdentityLookup},
+  membership::{
+    GossipOutbound, GossiperShared, MembershipCoordinatorConfig, MembershipCoordinatorGeneric,
+    MembershipCoordinatorOutcome, MembershipDelta, MembershipSnapshot, MembershipTable, NoopGossiper,
+  },
+  placement::ActivatedKind,
+  pub_sub::{ClusterPubSubShared, NoopClusterPubSub},
 };
 use fraktor_remote_rs::core::{
   BlockListProvider,

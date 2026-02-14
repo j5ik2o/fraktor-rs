@@ -1,7 +1,7 @@
 use core::time::Duration;
 
 use crate::{
-  core::{GrainCallOptions, GrainRetryPolicy},
+  core::grain::{GrainCallOptions, GrainRetryPolicy},
   std::{call_options_with_retry, call_options_with_timeout, default_grain_call_options},
 };
 

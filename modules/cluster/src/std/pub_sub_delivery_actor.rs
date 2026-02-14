@@ -10,8 +10,11 @@ use fraktor_actor_rs::core::{
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
 use crate::core::{
-  ClusterApiGeneric, DeliverBatchRequest, DeliveryEndpoint, DeliveryReport, DeliveryStatus, PubSubAutoRespondBatch,
-  PubSubConfig, PubSubError, PubSubSubscriber, SubscriberDeliveryReport,
+  ClusterApiGeneric,
+  pub_sub::{
+    DeliverBatchRequest, DeliveryEndpoint, DeliveryReport, DeliveryStatus, PubSubAutoRespondBatch, PubSubConfig,
+    PubSubError, PubSubSubscriber, SubscriberDeliveryReport,
+  },
 };
 
 /// Delivery endpoint that resolves cluster identities and sends batches.
@@ -69,7 +72,7 @@ impl<TB: RuntimeToolbox + 'static> DeliveryEndpoint<TB> for PubSubDeliveryActor<
 
 fn deserialize_batch<TB: RuntimeToolbox>(
   registry: &ArcShared<SerializationRegistryGeneric<TB>>,
-  batch: &crate::core::PubSubBatch,
+  batch: &crate::core::pub_sub::PubSubBatch,
 ) -> Result<Vec<AnyMessageGeneric<TB>>, SerializationError> {
   let mut messages = Vec::with_capacity(batch.envelopes.len());
   for envelope in &batch.envelopes {

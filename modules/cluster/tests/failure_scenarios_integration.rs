@@ -8,7 +8,7 @@ use std::{
 
 use fraktor_actor_rs::core::event::stream::EventStreamSharedGeneric;
 use fraktor_cluster_rs::{
-  core::{
+  core::membership::{
     GossipOutbound, GossipTransport, GossipTransportError, MembershipCoordinatorConfig, MembershipCoordinatorGeneric,
     MembershipCoordinatorSharedGeneric, MembershipDelta, MembershipSnapshot, MembershipTable, NodeStatus,
   },

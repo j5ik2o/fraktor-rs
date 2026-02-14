@@ -1,6 +1,10 @@
 use std::collections::BTreeMap;
 
-use fraktor_cluster_rs::core::{GrainKey, IdentityLookup, PartitionIdentityLookup, PlacementLocality};
+use fraktor_cluster_rs::core::{
+  grain::GrainKey,
+  identity::{IdentityLookup, PartitionIdentityLookup},
+  placement::PlacementLocality,
+};
 
 #[test]
 fn partition_identity_lookup_distributes_keys_across_members() {

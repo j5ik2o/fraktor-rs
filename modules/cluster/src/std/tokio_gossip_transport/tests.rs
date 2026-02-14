@@ -3,7 +3,7 @@ use core::time::Duration;
 use tokio::net::UdpSocket;
 
 use crate::{
-  core::{GossipOutbound, GossipTransport, MembershipDelta, MembershipVersion, NodeRecord, NodeStatus},
+  core::membership::{GossipOutbound, GossipTransport, MembershipDelta, MembershipVersion, NodeRecord, NodeStatus},
   std::{TokioGossipTransport, TokioGossipTransportConfig},
 };
 

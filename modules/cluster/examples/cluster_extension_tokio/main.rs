@@ -86,9 +86,10 @@ use fraktor_actor_rs::{
 };
 use fraktor_cluster_rs::{
   core::{
-    ActivatedKind, ClusterEvent, ClusterExtensionConfig, ClusterExtensionGeneric, ClusterExtensionInstaller,
-    ClusterIdentity, ClusterTopology, GrainKey, IdentityLookup, IdentitySetupError, LookupError, PlacementDecision,
-    PlacementLocality, PlacementResolution,
+    ClusterEvent, ClusterExtensionConfig, ClusterExtensionGeneric, ClusterExtensionInstaller, ClusterTopology,
+    grain::GrainKey,
+    identity::{ClusterIdentity, IdentityLookup, IdentitySetupError, LookupError},
+    placement::{ActivatedKind, PlacementDecision, PlacementLocality, PlacementResolution},
   },
   std::{ClusterApi, GrainRef, default_grain_call_options},
 };

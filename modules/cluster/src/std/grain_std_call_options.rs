@@ -2,7 +2,7 @@
 
 use core::time::Duration;
 
-use crate::core::{GrainCallOptions, GrainRetryPolicy};
+use crate::core::grain::{GrainCallOptions, GrainRetryPolicy};
 
 /// Returns the std default call options (mirrors core defaults).
 #[must_use]

@@ -4,7 +4,7 @@ use alloc::string::String;
 
 use fraktor_utils_rs::core::time::TimerInstant;
 
-use crate::core::{TopologyUpdate, node_status::NodeStatus, startup_mode::StartupMode};
+use crate::core::{TopologyUpdate, membership::NodeStatus, startup_mode::StartupMode};
 
 /// Event payload published via `EventStreamEvent::Extension { name: "cluster", .. }`.
 #[derive(Clone, Debug, Eq, PartialEq)]

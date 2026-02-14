@@ -13,13 +13,17 @@ use fraktor_actor_rs::core::{
   },
 };
 use fraktor_cluster_rs::core::{
-  ClusterCore, ClusterExtensionConfig, ClusterProviderShared, ClusterPubSubShared, ClusterTopology,
-  DeliverBatchRequest, DeliveryEndpoint, DeliveryEndpointSharedGeneric, DeliveryReport, DeliveryStatus, GossiperShared,
-  IdentityLookupShared, KindRegistry, NoopGossiper, NoopIdentityLookup, PubSubBatch, PubSubConfig, PubSubEnvelope,
-  PubSubError, PubSubEvent, PubSubSubscriber, PubSubTopic, PublishOptions, PublishRequest, SubscriberDeliveryReport,
-  TopologyUpdate,
+  ClusterCore, ClusterExtensionConfig, ClusterProviderShared, ClusterTopology, TopologyUpdate,
   cluster_provider::NoopClusterProvider,
-  cluster_pub_sub::{ClusterPubSub, ClusterPubSubImpl},
+  grain::KindRegistry,
+  identity::{IdentityLookupShared, NoopIdentityLookup},
+  membership::{GossiperShared, NoopGossiper},
+  pub_sub::{
+    ClusterPubSubShared, DeliverBatchRequest, DeliveryEndpoint, DeliveryEndpointSharedGeneric, DeliveryReport,
+    DeliveryStatus, PubSubBatch, PubSubConfig, PubSubEnvelope, PubSubError, PubSubEvent, PubSubSubscriber, PubSubTopic,
+    PublishOptions, PublishRequest, SubscriberDeliveryReport,
+    cluster_pub_sub::{ClusterPubSub, ClusterPubSubImpl},
+  },
 };
 use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{
@@ -138,7 +142,7 @@ fn publish_emits_delivery_and_metrics_events() {
 
   let topic = PubSubTopic::from("news");
   let subscriber = PubSubSubscriber::ClusterIdentity(
-    fraktor_cluster_rs::core::ClusterIdentity::new("kind", "sub-1").expect("identity"),
+    fraktor_cluster_rs::core::identity::ClusterIdentity::new("kind", "sub-1").expect("identity"),
   );
   pubsub.subscribe(&topic, subscriber).expect("subscribe");
 
@@ -171,7 +175,7 @@ fn topology_update_reactivates_suspended_subscribers() {
 
   let topic = PubSubTopic::from("news");
   let subscriber = PubSubSubscriber::ClusterIdentity(
-    fraktor_cluster_rs::core::ClusterIdentity::new("kind", "sub-1").expect("identity"),
+    fraktor_cluster_rs::core::identity::ClusterIdentity::new("kind", "sub-1").expect("identity"),
   );
 
   let pubsub = build_pubsub(event_stream.clone(), &kind_registry, vec![subscriber.clone()]);

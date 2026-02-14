@@ -4,7 +4,7 @@ use alloc::string::String;
 
 use serde::{Deserialize, Serialize};
 
-use crate::core::{MembershipVersion, NodeRecord, NodeStatus};
+use crate::core::membership::{MembershipVersion, NodeRecord, NodeStatus};
 
 /// Wire representation of a node record.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

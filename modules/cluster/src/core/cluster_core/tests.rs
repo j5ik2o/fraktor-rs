@@ -17,11 +17,14 @@ use fraktor_utils_rs::core::{
 
 use super::*;
 use crate::core::{
-  ActivatedKind, ClusterEvent, ClusterProviderError, ClusterProviderShared, ClusterPubSubShared, ClusterTopology,
-  Gossiper, GossiperShared, IdentityLookup, IdentityLookupShared, IdentitySetupError, KindRegistry, LookupError,
-  MetricsError, PidCacheEvent, PlacementResolution, StartupMode, TOPIC_ACTOR_KIND, TopologyUpdate,
-  cluster_provider::ClusterProvider, cluster_pub_sub::ClusterPubSub, grain_key::GrainKey, pid_cache::PidCache,
-  pub_sub_error::PubSubError,
+  ClusterEvent, ClusterProviderError, ClusterProviderShared, ClusterTopology, MetricsError, StartupMode,
+  TopologyUpdate,
+  cluster_provider::ClusterProvider,
+  grain::{GrainKey, KindRegistry, TOPIC_ACTOR_KIND},
+  identity::{IdentityLookup, IdentityLookupShared, IdentitySetupError, LookupError, PidCache, PidCacheEvent},
+  membership::{Gossiper, GossiperShared},
+  placement::{ActivatedKind, PlacementResolution},
+  pub_sub::{ClusterPubSubShared, PubSubError, cluster_pub_sub::ClusterPubSub},
 };
 
 fn build_update(
@@ -303,7 +306,7 @@ impl StubPubSub {
 impl ClusterPubSub<NoStdToolbox> for StubPubSub {
   fn start(&mut self) -> Result<(), PubSubError> {
     if self.fail_start {
-      return Err(PubSubError::TopicAlreadyExists { topic: crate::core::PubSubTopic::from("pubsub-error") });
+      return Err(PubSubError::TopicAlreadyExists { topic: crate::core::pub_sub::PubSubTopic::from("pubsub-error") });
     }
     *self.started.lock() = true;
     Ok(())
@@ -311,7 +314,7 @@ impl ClusterPubSub<NoStdToolbox> for StubPubSub {
 
   fn stop(&mut self) -> Result<(), PubSubError> {
     if self.fail_stop {
-      return Err(PubSubError::TopicNotFound { topic: crate::core::PubSubTopic::from("pubsub-error") });
+      return Err(PubSubError::TopicNotFound { topic: crate::core::pub_sub::PubSubTopic::from("pubsub-error") });
     }
     *self.stopped.lock() = true;
     Ok(())
@@ -319,25 +322,25 @@ impl ClusterPubSub<NoStdToolbox> for StubPubSub {
 
   fn subscribe(
     &mut self,
-    _topic: &crate::core::PubSubTopic,
-    _subscriber: crate::core::PubSubSubscriber<NoStdToolbox>,
+    _topic: &crate::core::pub_sub::PubSubTopic,
+    _subscriber: crate::core::pub_sub::PubSubSubscriber<NoStdToolbox>,
   ) -> Result<(), PubSubError> {
     Ok(())
   }
 
   fn unsubscribe(
     &mut self,
-    _topic: &crate::core::PubSubTopic,
-    _subscriber: crate::core::PubSubSubscriber<NoStdToolbox>,
+    _topic: &crate::core::pub_sub::PubSubTopic,
+    _subscriber: crate::core::pub_sub::PubSubSubscriber<NoStdToolbox>,
   ) -> Result<(), PubSubError> {
     Ok(())
   }
 
   fn publish(
     &mut self,
-    _request: crate::core::PublishRequest<NoStdToolbox>,
-  ) -> Result<crate::core::PublishAck, PubSubError> {
-    Ok(crate::core::PublishAck::accepted())
+    _request: crate::core::pub_sub::PublishRequest<NoStdToolbox>,
+  ) -> Result<crate::core::pub_sub::PublishAck, PubSubError> {
+    Ok(crate::core::pub_sub::PublishAck::accepted())
   }
 
   fn on_topology(&mut self, _update: &crate::core::TopologyUpdate) {}

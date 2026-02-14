@@ -19,8 +19,10 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::core::{
-  ActivatedKind, ClusterCore, ClusterError, ClusterEvent, ClusterMetricsSnapshot, GrainMetrics,
-  GrainMetricsSharedGeneric, GrainMetricsSnapshot, IdentitySetupError, MetricsError, TopologyUpdate,
+  ClusterCore, ClusterError, ClusterEvent, ClusterMetricsSnapshot, MetricsError, TopologyUpdate,
+  grain::{GrainMetrics, GrainMetricsSharedGeneric, GrainMetricsSnapshot},
+  identity::IdentitySetupError,
+  placement::ActivatedKind,
 };
 
 /// Internal subscriber that applies topology updates to ClusterCore.
@@ -86,7 +88,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionGeneric<TB> {
 
   /// Returns the shared pub/sub handle.
   #[must_use]
-  pub(crate) fn pub_sub_shared(&self) -> crate::core::ClusterPubSubShared<TB> {
+  pub(crate) fn pub_sub_shared(&self) -> crate::core::pub_sub::ClusterPubSubShared<TB> {
     self.core.lock().pub_sub_shared()
   }
 

@@ -24,11 +24,17 @@ use fraktor_actor_rs::core::event::stream::{
 };
 use fraktor_cluster_rs::{
   core::{
-    ActivatedKind, ClusterCore, ClusterEvent, ClusterExtensionConfig, ClusterProviderShared, ClusterPubSubShared,
-    GossipOutbound, GossipTransport, GossipTransportError, GossiperShared, IdentityLookupShared, KindRegistry,
-    MembershipCoordinatorConfig, MembershipCoordinatorGeneric, MembershipCoordinatorSharedGeneric, MembershipDelta,
-    MembershipSnapshot, MembershipTable, NodeStatus, NoopClusterPubSub, NoopGossiper, NoopIdentityLookup,
+    ClusterCore, ClusterEvent, ClusterExtensionConfig, ClusterProviderShared,
     cluster_provider::NoopClusterProvider,
+    grain::KindRegistry,
+    identity::{IdentityLookupShared, NoopIdentityLookup},
+    membership::{
+      GossipOutbound, GossipTransport, GossipTransportError, GossiperShared, MembershipCoordinatorConfig,
+      MembershipCoordinatorGeneric, MembershipCoordinatorSharedGeneric, MembershipDelta, MembershipSnapshot,
+      MembershipTable, NodeStatus, NoopGossiper,
+    },
+    placement::ActivatedKind,
+    pub_sub::{ClusterPubSubShared, NoopClusterPubSub},
   },
   std::MembershipCoordinatorDriverGeneric,
 };

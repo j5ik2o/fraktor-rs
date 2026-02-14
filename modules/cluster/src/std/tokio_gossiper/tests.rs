@@ -5,7 +5,7 @@ use fraktor_remote_rs::core::failure_detector::phi_failure_detector::{PhiFailure
 use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
 use crate::{
-  core::{
+  core::membership::{
     Gossiper, MembershipCoordinatorConfig, MembershipCoordinatorGeneric, MembershipCoordinatorSharedGeneric,
     MembershipTable,
   },

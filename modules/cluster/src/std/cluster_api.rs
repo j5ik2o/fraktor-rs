@@ -10,7 +10,9 @@ use fraktor_actor_rs::std::{
 };
 use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
-use crate::core::{ClusterApiError, ClusterApiGeneric, ClusterIdentity, ClusterRequestError, ClusterResolveError};
+use crate::core::{
+  ClusterApiError, ClusterApiGeneric, ClusterRequestError, ClusterResolveError, identity::ClusterIdentity,
+};
 
 /// Cluster API facade bound to a std actor system.
 pub struct ClusterApi {
