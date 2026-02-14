@@ -1,5 +1,4 @@
 use core::any::TypeId;
-use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use fraktor_utils_rs::core::{
   collections::queue::OverflowPolicy,
@@ -12,7 +11,7 @@ use crate::core::{
   StreamDone, StreamError, StreamNotUsed, StreamPlan, SupervisionStrategy,
   graph::GraphInterpreter,
   lifecycle::{DriveOutcome, StreamState},
-  shape::{Inlet, Outlet},
+  shape::{Inlet, Outlet, PortId},
   stage::{
     Flow, Sink, Source, StageKind, async_boundary_definition, balance_definition, broadcast_definition,
     buffer_definition, concat_definition, flat_map_merge_definition, merge_definition,
@@ -39,7 +38,11 @@ fn linear_plan(source: SourceDefinition, flows: Vec<FlowDefinition>, sink: SinkD
   }
   edges.push((upstream_outlet, sink.inlet, sink.mat_combine));
   stages.push(StageDefinition::Sink(sink));
-  StreamPlan::from_parts(stages, edges)
+  stream_plan(stages, edges)
+}
+
+fn stream_plan(stages: Vec<StageDefinition>, edges: Vec<(PortId, PortId, MatCombine)>) -> StreamPlan {
+  StreamPlan::from_parts(stages, edges).expect("valid stream graph shape")
 }
 
 #[test]
@@ -146,7 +149,7 @@ fn flat_map_merge_uses_configured_breadth() {
     restart:     None,
   };
 
-  let plan = StreamPlan::from_parts(
+  let plan = stream_plan(
     vec![StageDefinition::Source(source), StageDefinition::Flow(flat_map_merge), StageDefinition::Sink(sink)],
     vec![
       (source_outlet.id(), flat_map_merge_inlet, MatCombine::KeepLeft),
@@ -262,7 +265,7 @@ fn buffer_flow_fails_with_block_policy_on_overflow() {
     restart:     None,
   };
 
-  let plan = StreamPlan::from_parts(
+  let plan = stream_plan(
     vec![StageDefinition::Source(source), StageDefinition::Flow(buffer), StageDefinition::Sink(sink)],
     vec![
       (source_outlet.id(), buffer_inlet, MatCombine::KeepLeft),
@@ -304,7 +307,7 @@ fn buffer_flow_drop_oldest_keeps_latest_elements() {
     restart:     None,
   };
 
-  let plan = StreamPlan::from_parts(
+  let plan = stream_plan(
     vec![StageDefinition::Source(source), StageDefinition::Flow(buffer), StageDefinition::Sink(sink)],
     vec![
       (source_outlet.id(), buffer_inlet, MatCombine::KeepLeft),
@@ -346,7 +349,7 @@ fn async_boundary_flow_preserves_input_order() {
     restart:     None,
   };
 
-  let plan = StreamPlan::from_parts(
+  let plan = stream_plan(
     vec![StageDefinition::Source(source), StageDefinition::Flow(async_boundary), StageDefinition::Sink(sink)],
     vec![
       (source_outlet.id(), async_boundary_inlet, MatCombine::KeepLeft),
@@ -441,7 +444,7 @@ fn restart_budget_exhaustion_completes_with_default_terminal_action() {
     supervision: SupervisionStrategy::Stop,
     restart:     None,
   };
-  let plan = StreamPlan::from_parts(vec![StageDefinition::Source(source), StageDefinition::Sink(sink)], vec![(
+  let plan = stream_plan(vec![StageDefinition::Source(source), StageDefinition::Sink(sink)], vec![(
     source_outlet.id(),
     sink_inlet.id(),
     MatCombine::KeepRight,
@@ -475,7 +478,7 @@ fn source_completion_triggers_restart_until_budget_is_exhausted() {
     supervision: SupervisionStrategy::Stop,
     restart:     None,
   };
-  let plan = StreamPlan::from_parts(vec![StageDefinition::Source(source), StageDefinition::Sink(sink)], vec![(
+  let plan = stream_plan(vec![StageDefinition::Source(source), StageDefinition::Sink(sink)], vec![(
     source_outlet.id(),
     sink_inlet.id(),
     MatCombine::KeepRight,
@@ -607,7 +610,7 @@ fn async_boundary_backpressures_instead_of_failing_when_downstream_stalls() {
     restart:     None,
   };
 
-  let plan = StreamPlan::from_parts(
+  let plan = stream_plan(
     vec![StageDefinition::Source(source), StageDefinition::Flow(async_boundary), StageDefinition::Sink(sink)],
     vec![
       (source_outlet.id(), async_boundary_inlet, MatCombine::KeepLeft),
@@ -662,7 +665,7 @@ fn cross_operator_backpressure_propagates_through_substream_and_async_boundary()
     supervision: SupervisionStrategy::Stop,
     restart:     None,
   };
-  let plan = StreamPlan::from_parts(
+  let plan = stream_plan(
     vec![
       StageDefinition::Source(source),
       StageDefinition::Flow(flat_map_merge),
@@ -747,7 +750,7 @@ fn source_restart_is_preserved_across_substream_and_async_boundary_chain() {
     supervision: SupervisionStrategy::Stop,
     restart:     None,
   };
-  let plan = StreamPlan::from_parts(
+  let plan = stream_plan(
     vec![
       StageDefinition::Source(source),
       StageDefinition::Flow(split_after),
@@ -796,7 +799,7 @@ fn split_when_flow_splits_before_predicate() {
     restart:     None,
   };
 
-  let plan = StreamPlan::from_parts(
+  let plan = stream_plan(
     vec![StageDefinition::Source(source), StageDefinition::Flow(split_when), StageDefinition::Sink(sink)],
     vec![
       (source_outlet.id(), split_when_inlet, MatCombine::KeepLeft),
@@ -838,7 +841,7 @@ fn split_after_flow_splits_after_predicate() {
     restart:     None,
   };
 
-  let plan = StreamPlan::from_parts(
+  let plan = stream_plan(
     vec![StageDefinition::Source(source), StageDefinition::Flow(split_after), StageDefinition::Sink(sink)],
     vec![
       (source_outlet.id(), split_after_inlet, MatCombine::KeepLeft),
@@ -1022,7 +1025,7 @@ fn executes_with_topologically_sorted_flow_order() {
     restart:     None,
   };
 
-  let plan = StreamPlan::from_parts(
+  let plan = stream_plan(
     vec![
       StageDefinition::Source(source),
       StageDefinition::Flow(flow2),
@@ -1087,11 +1090,105 @@ fn rejects_cycle_plan_on_construction() {
       (flow_outlet.id(), sink_inlet.id(), MatCombine::KeepRight),
     ],
   );
+  assert!(plan.is_err());
+}
 
-  let result = catch_unwind(AssertUnwindSafe(|| {
-    let _ = GraphInterpreter::new(plan, StreamBufferConfig::default());
-  }));
-  assert!(result.is_err());
+#[test]
+fn supports_plan_with_multiple_sources() {
+  let source1_outlet: Outlet<u32> = Outlet::new();
+  let source2_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<u32> = Inlet::new();
+  let completion = StreamCompletion::new();
+
+  let source1 = SourceDefinition {
+    kind:        StageKind::SourceSingle,
+    outlet:      source1_outlet.id(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(SingleValueSourceLogic { value: Some(1_u32) }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  };
+  let source2 = SourceDefinition {
+    kind:        StageKind::SourceSingle,
+    outlet:      source2_outlet.id(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepLeft,
+    logic:       Box::new(SingleValueSourceLogic { value: Some(2_u32) }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  };
+  let sink = SinkDefinition {
+    kind:        StageKind::SinkFold,
+    inlet:       sink_inlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(CollectSequenceSinkLogic { completion: completion.clone(), values: Vec::new() }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  };
+  let plan = stream_plan(
+    vec![StageDefinition::Source(source1), StageDefinition::Source(source2), StageDefinition::Sink(sink)],
+    vec![
+      (source1_outlet.id(), sink_inlet.id(), MatCombine::KeepLeft),
+      (source2_outlet.id(), sink_inlet.id(), MatCombine::KeepRight),
+    ],
+  );
+
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  drive_to_completion(&mut interpreter);
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![1_u32, 2_u32])));
+}
+
+#[test]
+fn supports_plan_with_multiple_sinks() {
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let sink1_inlet: Inlet<u32> = Inlet::new();
+  let sink2_inlet: Inlet<u32> = Inlet::new();
+  let completion1 = StreamCompletion::new();
+  let completion2 = StreamCompletion::new();
+
+  let source = SourceDefinition {
+    kind:        StageKind::SourceSingle,
+    outlet:      source_outlet.id(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(SequenceSourceLogic { next: 1, end: 2 }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  };
+  let sink1 = SinkDefinition {
+    kind:        StageKind::SinkFold,
+    inlet:       sink1_inlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(CollectSequenceSinkLogic { completion: completion1.clone(), values: Vec::new() }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  };
+  let sink2 = SinkDefinition {
+    kind:        StageKind::SinkFold,
+    inlet:       sink2_inlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(CollectSequenceSinkLogic { completion: completion2.clone(), values: Vec::new() }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  };
+  let plan = stream_plan(
+    vec![StageDefinition::Source(source), StageDefinition::Sink(sink1), StageDefinition::Sink(sink2)],
+    vec![
+      (source_outlet.id(), sink1_inlet.id(), MatCombine::KeepLeft),
+      (source_outlet.id(), sink2_inlet.id(), MatCombine::KeepRight),
+    ],
+  );
+
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  drive_to_completion(&mut interpreter);
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(completion1.poll(), Completion::Ready(Ok(vec![1_u32])));
+  assert_eq!(completion2.poll(), Completion::Ready(Ok(vec![2_u32])));
 }
 
 #[test]
@@ -1145,7 +1242,7 @@ fn supports_multiple_outgoing_edges_from_source() {
     restart:     None,
   };
 
-  let plan = StreamPlan::from_parts(
+  let plan = stream_plan(
     vec![
       StageDefinition::Source(source),
       StageDefinition::Flow(left_flow),
@@ -1217,7 +1314,7 @@ fn supports_multiple_outgoing_edges_from_flow() {
     restart:     None,
   };
 
-  let plan = StreamPlan::from_parts(
+  let plan = stream_plan(
     vec![
       StageDefinition::Source(source),
       StageDefinition::Flow(split_flow),
@@ -1279,7 +1376,7 @@ fn broadcast_flow_duplicates_elements_to_all_outgoing_edges() {
     restart:     None,
   };
 
-  let plan = StreamPlan::from_parts(
+  let plan = stream_plan(
     vec![
       StageDefinition::Source(source),
       StageDefinition::Flow(broadcast),
@@ -1335,11 +1432,7 @@ fn rejects_broadcast_flow_when_fan_out_does_not_match_wiring() {
       (broadcast_outlet, sink_inlet.id(), MatCombine::KeepRight),
     ],
   );
-
-  let result = catch_unwind(AssertUnwindSafe(|| {
-    let _ = GraphInterpreter::new(plan, StreamBufferConfig::default());
-  }));
-  assert!(result.is_err());
+  assert!(plan.is_err());
 }
 
 #[test]
@@ -1383,7 +1476,7 @@ fn balance_flow_distributes_elements_round_robin() {
     restart:     None,
   };
 
-  let plan = StreamPlan::from_parts(
+  let plan = stream_plan(
     vec![
       StageDefinition::Source(source),
       StageDefinition::Flow(balance),
@@ -1439,11 +1532,7 @@ fn rejects_balance_flow_when_fan_out_does_not_match_wiring() {
       (balance_outlet, sink_inlet.id(), MatCombine::KeepRight),
     ],
   );
-
-  let result = catch_unwind(AssertUnwindSafe(|| {
-    let _ = GraphInterpreter::new(plan, StreamBufferConfig::default());
-  }));
-  assert!(result.is_err());
+  assert!(plan.is_err());
 }
 
 #[test]
@@ -1500,7 +1589,7 @@ fn merge_flow_combines_multiple_incoming_edges() {
     restart:     None,
   };
 
-  let plan = StreamPlan::from_parts(
+  let plan = stream_plan(
     vec![
       StageDefinition::Source(source),
       StageDefinition::Flow(left_flow),
@@ -1558,11 +1647,7 @@ fn rejects_merge_flow_when_fan_in_does_not_match_wiring() {
       (merge_outlet, sink_inlet.id(), MatCombine::KeepRight),
     ],
   );
-
-  let result = catch_unwind(AssertUnwindSafe(|| {
-    let _ = GraphInterpreter::new(plan, StreamBufferConfig::default());
-  }));
-  assert!(result.is_err());
+  assert!(plan.is_err());
 }
 
 #[test]
@@ -1619,7 +1704,7 @@ fn zip_flow_combines_elements_when_all_inputs_have_values() {
     restart:     None,
   };
 
-  let plan = StreamPlan::from_parts(
+  let plan = stream_plan(
     vec![
       StageDefinition::Source(source),
       StageDefinition::Flow(left_flow),
@@ -1674,11 +1759,7 @@ fn rejects_zip_flow_when_fan_in_does_not_match_wiring() {
     vec![StageDefinition::Source(source), StageDefinition::Flow(zip), StageDefinition::Sink(sink)],
     vec![(source_outlet.id(), zip_inlet, MatCombine::KeepLeft), (zip_outlet, sink_inlet.id(), MatCombine::KeepRight)],
   );
-
-  let result = catch_unwind(AssertUnwindSafe(|| {
-    let _ = GraphInterpreter::new(plan, StreamBufferConfig::default());
-  }));
-  assert!(result.is_err());
+  assert!(plan.is_err());
 }
 
 #[test]
@@ -1735,7 +1816,7 @@ fn concat_flow_emits_elements_in_input_order() {
     restart:     None,
   };
 
-  let plan = StreamPlan::from_parts(
+  let plan = stream_plan(
     vec![
       StageDefinition::Source(source),
       StageDefinition::Flow(left_flow),
@@ -1793,11 +1874,7 @@ fn rejects_concat_flow_when_fan_in_does_not_match_wiring() {
       (concat_outlet, sink_inlet.id(), MatCombine::KeepRight),
     ],
   );
-
-  let result = catch_unwind(AssertUnwindSafe(|| {
-    let _ = GraphInterpreter::new(plan, StreamBufferConfig::default());
-  }));
-  assert!(result.is_err());
+  assert!(plan.is_err());
 }
 
 struct CountingSourceLogic {

@@ -318,10 +318,10 @@ Error handling
 - Error は要素側エラー。要素型を `Result<T, StreamError>` で持つ
 - `recover`/`recover_with_retries` は要素エラーペイロードを対象に復元する
 
-現在の受理と現時点の状態（要改善）
+現在の受理と現時点の状態
 
-- `supervision_stop/resume/restart` は Source/Flow/Sink 側で受理されているが実害時 no-op のまま
-- `restart_source_with_backoff`, `restart_flow_with_backoff`, `restart_sink_with_backoff` も受理のみで実動作が不足
+- `supervision_stop/resume/restart` は Source/Flow/Sink 側で受理され、GraphInterpreter 側の失敗分岐に接続される
+- `restart_source_with_backoff`, `restart_flow_with_backoff`, `restart_sink_with_backoff` は graph へ反映され、tick ベース再起動の試行経路を持つ
 
 再設計ルール
 
@@ -423,22 +423,44 @@ Error handling
 
 ### 13.1 P0: まず着手する前提タスク
 
-1. [ ] P0-01 目標整合: この md を唯一の streams 計画原本として固定する
-2. [ ] P0-02 現行テストの実行範囲（回帰）を確定し、壊れやすいテストを識別する
-3. [ ] P0-03 `modules/streams` の `async_boundary` と `GraphInterpreter` の現状差分を最小再現テストで固定する
-4. [ ] P0-04 no-op 監視・再起動 API の現状を再確認し、対象 API 一覧を確定する
+1. [x] P0-01 目標整合: この md を唯一の streams 計画原本として固定する
+2. [x] P0-02 現行テストの実行範囲（回帰）を確定し、壊れやすいテストを識別する
+3. [x] P0-03 `modules/streams` の `async_boundary` と `GraphInterpreter` の現状差分を最小再現テストで固定する
+4. [x] P0-04 no-op 監視・再起動 API の現状を再確認し、対象 API 一覧を確定する
+
+#### 13.1.x P0 実行ログ
+
+- 実行コマンド:
+  - `cargo test -p fraktor-streams-rs async_boundary`
+  - `cargo test -p fraktor-streams-rs restart`
+  - `cargo test -p fraktor-streams-rs supervision`
+- 結果: いずれも `ok`。対象は 7/17/5 件（フィルタ一致分）を確認
+- no-op 監視・再起動 API（設定反映先を確認）:
+  - `Source::{restart_source_with_backoff, restart_source_with_settings, supervision_stop, supervision_resume, supervision_restart}`
+  - `Flow::{restart_flow_with_backoff, restart_flow_with_settings, supervision_stop, supervision_resume, supervision_restart}`
+  - `Sink::{restart_sink_with_backoff, restart_sink_with_settings, supervision_stop, supervision_resume, supervision_restart}`
+- 検証結果の要約:
+  - 設定自体は graph に反映され、GraphInterpreter 側で restart / supervision ハンドリング経路に到達することを確認
+  - ただし、複合経路・非同期境界混在時の完全集約性は P3 で追加検証する
 
 ### 13.2 P1: グラフ基盤固定（優先度: 最高）
 
-1. [ ] P1-01 `Shape` 系（`Shape`, `SourceShape`, `SinkShape`, `FlowShape`, `BidiShape`）の公開 API を定義し直す
-2. [ ] P1-02 `StreamGraph` をステージ列から「ノード+ポート+エッジ」に再設計する
-3. [ ] P1-03 `StreamPlan` を graph 実行向け中間表現へ置換する
-4. [ ] P1-04 `StreamInterpreter`/`GraphInterpreter` をポート駆動化し、複数in/out を扱えるように変更する
+1. [x] P1-01 `Shape` 系（`Shape`, `SourceShape`, `SinkShape`, `FlowShape`, `BidiShape`）の公開 API を定義し直す
+2. [x] P1-02 `StreamGraph` をステージ列から「ノード+ポート+エッジ」に再設計する
+3. [x] P1-03 `StreamPlan` を graph 実行向け中間表現へ置換する
+4. [x] P1-04 `StreamInterpreter`/`GraphInterpreter` をポート駆動化し、複数in/out を扱えるように変更する
 5. [ ] P1-05 線形 `StreamShape` API の互換アダプタを維持しつつ新基盤へ接続する
 6. [ ] P1-06 junction/fan-in/fan-out を破綻しない形で最小実行経路として通せるようにする
 7. [ ] P1-07 Graph の materialization 境界と不変性契約をドキュメントとテストで固定する
 8. [ ] P1-08 P1 対象テスト（回帰）を追加して `ci-check` 対象を更新する
 
+#### 13.2.x P1 現状スナップショット
+
+- `StreamGraph` はすでに `nodes/edges/ports` を持つ構成になっており、`into_plan` は `source_count == 1` / `sink_count == 1` の線形制約を撤廃している
+- `Shape` 系は `shape/bidi_shape.rs` / `flow_shape.rs` / `source_shape.rs` / `sink_shape.rs` が存在し、基盤側の型は概ね揃っている
+- `GraphInterpreter` 側は `graph_interpreter.rs` の `compile_plan` で source/sink の 1 対 1 制約を解消し、複数in/out を扱える状態に変更している
+- `StreamPlan::from_parts` で fan-in / fan-out / cycle など実行器向け変換の主要不正を検証し、`P1-03` は完了
+- 次アクション: `P1-05` `線形 StreamShape API の互換アダプタを維持しつつ新基盤へ接続する
 ### 13.3 P2: オペレーター拡張（実用性コア）
 
 1. [ ] P2-01 `broadcast`/`balance`/`merge`/`zip`/`concat` の既存実装を新 Graph 基盤へ接続する
