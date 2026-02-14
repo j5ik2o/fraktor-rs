@@ -6,6 +6,9 @@
 mod loopback_router;
 mod remote_error;
 
+/// Errors returned by actor reference provider operations.
+pub use remote_error::RemoteActorRefProviderError;
+
 /// Loopback actor reference provider and installer.
 pub mod loopback;
 /// Remote actor reference provider and installer.
