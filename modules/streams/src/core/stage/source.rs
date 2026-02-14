@@ -8,14 +8,14 @@ use super::{
   SourceDefinition, SourceLogic, SourceSubFlow, StageDefinition, StageKind, StreamDslError, StreamError, StreamGraph,
   StreamNotUsed, StreamStage, SupervisionStrategy,
   flow::{
-    async_boundary_definition, balance_definition, broadcast_definition, buffer_definition, concat_definition,
-    concat_substreams_definition, drop_definition, drop_while_definition, filter_definition,
+    async_boundary_definition, balance_definition, batch_definition, broadcast_definition, buffer_definition,
+    concat_definition, concat_substreams_definition, drop_definition, drop_while_definition, filter_definition,
     flat_map_concat_definition, flat_map_merge_definition, group_by_definition, grouped_definition,
     intersperse_definition, map_async_definition, map_concat_definition, map_definition, map_option_definition,
     merge_definition, merge_substreams_definition, merge_substreams_with_parallelism_definition, recover_definition,
     recover_with_retries_definition, scan_definition, sliding_definition, split_after_definition,
     split_when_definition, stateful_map_concat_definition, stateful_map_definition, take_definition,
-    take_until_definition, take_while_definition, zip_definition, zip_with_index_definition,
+    take_until_definition, take_while_definition, throttle_definition, zip_definition, zip_with_index_definition,
   },
   graph::{GraphStage, GraphStageLogic},
   shape::{Inlet, Outlet, StreamShape},
@@ -514,6 +514,40 @@ where
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
     Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds a throttle stage that limits the number of buffered in-flight elements.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `capacity` is zero.
+  pub fn throttle(mut self, capacity: usize) -> Result<Source<Out, Mat>, StreamDslError> {
+    let capacity = validate_positive_argument("capacity", capacity)?;
+    let definition = throttle_definition::<Out>(capacity);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Ok(Source { graph: self.graph, mat: self.mat, _pd: PhantomData })
+  }
+
+  /// Adds a batch stage that emits vectors of size `size`.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `size` is zero.
+  pub fn batch(mut self, size: usize) -> Result<Source<Vec<Out>, Mat>, StreamDslError> {
+    let size = validate_positive_argument("size", size)?;
+    let definition = batch_definition::<Out>(size);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Ok(Source { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
   /// Enables restart semantics with backoff for this source.

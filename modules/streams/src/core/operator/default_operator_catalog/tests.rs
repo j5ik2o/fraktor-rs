@@ -43,6 +43,36 @@ fn lookup_returns_map_async_contract() {
 }
 
 #[test]
+fn lookup_returns_batch_contract() {
+  let catalog = DefaultOperatorCatalog::new();
+  let contract = catalog.lookup(OperatorKey::BATCH).expect("lookup");
+  assert_eq!(contract.key, OperatorKey::BATCH);
+  assert_eq!(contract.requirement_ids, &["1.1", "1.2", "1.3"]);
+}
+
+#[test]
+fn lookup_returns_throttle_contract() {
+  let catalog = DefaultOperatorCatalog::new();
+  let contract = catalog.lookup(OperatorKey::THROTTLE).expect("lookup");
+  assert_eq!(contract.key, OperatorKey::THROTTLE);
+  assert!(contract.requirement_ids.contains(&"1.3"));
+}
+
+#[test]
+fn coverage_contains_batch() {
+  let catalog = DefaultOperatorCatalog::new();
+  let covered = catalog.coverage().iter().any(|entry| entry.key == OperatorKey::BATCH);
+  assert!(covered);
+}
+
+#[test]
+fn coverage_contains_throttle() {
+  let catalog = DefaultOperatorCatalog::new();
+  let covered = catalog.coverage().iter().any(|entry| entry.key == OperatorKey::THROTTLE);
+  assert!(covered);
+}
+
+#[test]
 fn coverage_extends_beyond_nine_operators() {
   let catalog = DefaultOperatorCatalog::new();
   assert!(catalog.coverage().len() > 9);

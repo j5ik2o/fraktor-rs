@@ -469,8 +469,8 @@ Error handling
 ### 13.3 P2: オペレーター拡張（実用性コア）
 
 1. [x] P2-01 `broadcast`/`balance`/`merge`/`zip`/`concat` の既存実装を新 Graph 基盤へ接続する
-2. [ ] P2-02 `mapasync` 系を実装し、実効する async 境界の最小検証を通す
-3. [ ] P2-03 `flat_map_merge` と `flat_map_concat` の順序・並行・終了条件を固定テスト化する
+2. [x] P2-02 `mapasync` 系を実装し、実効する async 境界の最小検証を通す
+3. [x] P2-03 `flat_map_merge` と `flat_map_concat` の順序・並行・終了条件を固定テスト化する
 4. [ ] P2-04 `buffer`, `throttle`, `batch` 系を backlog 抑制含めて追加実装する
 5. [ ] P2-05 `group_by`, `split_when`, `split_after`, `merge_substreams`, `concat_substreams` を実装する
 6. [ ] P2-06 `GraphDSL` の最小 partial graph API を追加し、`from_*` 系で利用可能にする

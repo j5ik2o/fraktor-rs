@@ -9,6 +9,8 @@ impl OperatorKey {
   pub const ASYNC_BOUNDARY: Self = Self::new("async_boundary");
   /// Key for `balance`.
   pub const BALANCE: Self = Self::new("balance");
+  /// Key for `batch`.
+  pub const BATCH: Self = Self::new("batch");
   /// Key for `broadcast`.
   pub const BROADCAST: Self = Self::new("broadcast");
   /// Key for `broadcast_hub`.
@@ -91,6 +93,8 @@ impl OperatorKey {
   pub const TAKE_UNTIL: Self = Self::new("take_until");
   /// Key for `take_while`.
   pub const TAKE_WHILE: Self = Self::new("take_while");
+  /// Key for `throttle`.
+  pub const THROTTLE: Self = Self::new("throttle");
   /// Key for `unique_kill_switch`.
   pub const UNIQUE_KILL_SWITCH: Self = Self::new("unique_kill_switch");
   /// Key for `zip`.

@@ -429,6 +429,40 @@ where
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
+  /// Adds a throttle stage that limits the number of buffered in-flight elements.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `capacity` is zero.
+  pub fn throttle(mut self, capacity: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
+    let capacity = validate_positive_argument("capacity", capacity)?;
+    let definition = throttle_definition::<Out>(capacity);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
+  }
+
+  /// Adds a batch stage that emits vectors of size `size`.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `size` is zero.
+  pub fn batch(mut self, size: usize) -> Result<Flow<In, Vec<Out>, Mat>, StreamDslError> {
+    let size = validate_positive_argument("size", size)?;
+    let definition = batch_definition::<Out>(size);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
+  }
+
   /// Enables restart semantics with backoff for this flow.
   #[must_use]
   pub fn restart_flow_with_backoff(mut self, min_backoff_ticks: u32, max_restarts: usize) -> Flow<In, Out, Mat> {
@@ -1181,6 +1215,44 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(in crate::core) fn throttle_definition<In>(capacity: usize) -> FlowDefinition
+where
+  In: Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = AsyncBoundaryLogic::<In> { pending: VecDeque::new(), capacity };
+  FlowDefinition {
+    kind:        StageKind::FlowThrottle,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(in crate::core) fn batch_definition<In>(size: usize) -> FlowDefinition
+where
+  In: Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<Vec<In>> = Outlet::new();
+  let logic = GroupedLogic::<In> { size, current: Vec::new(), source_done: false };
+  FlowDefinition {
+    kind:        StageKind::FlowBatch,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<Vec<In>>(),
     mat_combine: MatCombine::KeepLeft,
     supervision: SupervisionStrategy::Stop,
     restart:     None,

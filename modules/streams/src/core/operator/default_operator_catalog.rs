@@ -44,6 +44,13 @@ impl OperatorCatalog for DefaultOperatorCatalog {
         failure_condition: "Fails with overflow semantics according to configured policy.",
         requirement_ids: &["1.1", "1.2", "1.3"],
       }),
+      | "batch" => Ok(OperatorContract {
+        key,
+        input_condition: "Rejects non-positive group size at construction.",
+        completion_condition: "Flushes trailing partial group on upstream completion.",
+        failure_condition: "Propagates upstream failures.",
+        requirement_ids: &["1.1", "1.2", "1.3"],
+      }),
       | "filter" => Ok(OperatorContract {
         key,
         input_condition: "Evaluates each element against predicate and forwards only matches.",
@@ -240,6 +247,13 @@ impl OperatorCatalog for DefaultOperatorCatalog {
         failure_condition: "Backpressures upstream when boundary queue is saturated.",
         requirement_ids: &["1.1", "1.3", "7.1", "7.2", "7.3", "7.4"],
       }),
+      | "throttle" => Ok(OperatorContract {
+        key,
+        input_condition: "Rejects non-positive capacity at construction.",
+        completion_condition: "Preserves buffered elements until capacity allows downstream drains.",
+        failure_condition: "Backpressures upstream when capacity is saturated.",
+        requirement_ids: &["1.1", "1.2", "1.3", "7.1", "7.2", "7.3", "7.4"],
+      }),
       | "broadcast" => Ok(OperatorContract {
         key,
         input_condition: "Duplicates each element to all connected downstream lanes.",
@@ -350,12 +364,13 @@ impl OperatorCatalog for DefaultOperatorCatalog {
   }
 
   fn coverage(&self) -> &'static [OperatorCoverage] {
-    const COVERAGE: [OperatorCoverage; 46] = [
+    const COVERAGE: [OperatorCoverage; 48] = [
       OperatorCoverage {
         key:             OperatorKey::ASYNC_BOUNDARY,
         requirement_ids: &["1.1", "1.3", "7.1", "7.2", "7.3", "7.4"],
       },
       OperatorCoverage { key: OperatorKey::BALANCE, requirement_ids: &["1.1", "1.3"] },
+      OperatorCoverage { key: OperatorKey::BATCH, requirement_ids: &["1.1", "1.2", "1.3"] },
       OperatorCoverage { key: OperatorKey::DROP, requirement_ids: &["1.1", "1.3"] },
       OperatorCoverage { key: OperatorKey::DROP_WHILE, requirement_ids: &["1.1", "1.3"] },
       OperatorCoverage { key: OperatorKey::EMPTY, requirement_ids: &["1.1", "1.3"] },
@@ -393,6 +408,10 @@ impl OperatorCatalog for DefaultOperatorCatalog {
       OperatorCoverage { key: OperatorKey::TAKE, requirement_ids: &["1.1", "1.3"] },
       OperatorCoverage { key: OperatorKey::TAKE_UNTIL, requirement_ids: &["1.1", "1.3"] },
       OperatorCoverage { key: OperatorKey::TAKE_WHILE, requirement_ids: &["1.1", "1.3"] },
+      OperatorCoverage {
+        key:             OperatorKey::THROTTLE,
+        requirement_ids: &["1.1", "1.2", "1.3", "7.1", "7.2", "7.3", "7.4"],
+      },
       OperatorCoverage { key: OperatorKey::MERGE_SUBSTREAMS, requirement_ids: &["1.1", "1.3", "2.5"] },
       OperatorCoverage {
         key:             OperatorKey::MERGE_SUBSTREAMS_WITH_PARALLELISM,

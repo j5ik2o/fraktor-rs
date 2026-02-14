@@ -41,8 +41,12 @@ pub enum StageKind {
   FlowFlatMapMerge,
   /// Flow stage that buffers upstream elements with an overflow strategy.
   FlowBuffer,
+  /// Flow stage that limits in-flight elements with bounded buffering.
+  FlowThrottle,
   /// Flow stage that represents an asynchronous execution boundary.
   FlowAsyncBoundary,
+  /// Flow stage that groups elements into fixed-size batches.
+  FlowBatch,
   /// Flow stage that annotates elements with a substream key.
   FlowGroupBy,
   /// Flow stage that recovers from error payloads with a fallback element.

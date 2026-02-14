@@ -379,12 +379,46 @@ fn source_flat_map_merge_keeps_single_path_behavior() {
 }
 
 #[test]
+fn source_flat_map_merge_preserves_outer_order_and_round_robin() {
+  let values = Source::from_array([1_u32, 2_u32])
+    .flat_map_merge(2, |value| Source::from_array([value, value.saturating_add(10)]))
+    .expect("flat_map_merge")
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 11_u32, 2_u32, 12_u32]);
+}
+
+#[test]
 fn source_flat_map_merge_rejects_zero_breadth() {
   let result = Source::single(1_u32).flat_map_merge(0, Source::single);
   assert!(matches!(
     result,
     Err(StreamDslError::InvalidArgument { name: "breadth", value: 0, reason: "must be greater than zero" })
   ));
+}
+
+#[test]
+fn source_flat_map_merge_skips_empty_inner_and_completes() {
+  let values = Source::from_array([1_u32, 2_u32, 3_u32])
+    .flat_map_merge(
+      2,
+      |value| {
+        if value == 1 { Source::empty() } else { Source::from_array([value.saturating_add(10)]) }
+      },
+    )
+    .expect("flat_map_merge")
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![12_u32, 13_u32]);
+}
+
+#[test]
+fn source_flat_map_concat_keeps_order_with_empty_inner_stream() {
+  let values = Source::from_array([1_u32, 2_u32, 3_u32]).flat_map_concat(|value| {
+    if value == 1 { Source::empty() } else { Source::from_array([value.saturating_add(20), value.saturating_add(30)]) }
+  });
+  let values = values.collect_values().expect("collect_values");
+  assert_eq!(values, vec![22_u32, 32_u32, 23_u32, 33_u32]);
 }
 
 #[test]
@@ -407,6 +441,40 @@ fn source_buffer_rejects_zero_capacity() {
 fn source_async_boundary_keeps_single_path_behavior() {
   let values = Source::single(5_u32).async_boundary().collect_values().expect("collect_values");
   assert_eq!(values, vec![5_u32]);
+}
+
+#[test]
+fn source_throttle_keeps_single_path_behavior() {
+  let values = Source::single(5_u32).throttle(2).expect("throttle").collect_values().expect("collect_values");
+  assert_eq!(values, vec![5_u32]);
+}
+
+#[test]
+fn source_throttle_rejects_zero_capacity() {
+  let result = Source::single(1_u32).throttle(0);
+  assert!(matches!(
+    result,
+    Err(StreamDslError::InvalidArgument { name: "capacity", value: 0, reason: "must be greater than zero" })
+  ));
+}
+
+#[test]
+fn source_batch_emits_fixed_size_chunks() {
+  let values = Source::from_array([1_u32, 2_u32, 3_u32, 4_u32, 5_u32])
+    .batch(2)
+    .expect("batch")
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![vec![1_u32, 2_u32], vec![3_u32, 4_u32], vec![5_u32]]);
+}
+
+#[test]
+fn source_batch_rejects_zero_size() {
+  let result = Source::single(1_u32).batch(0);
+  assert!(matches!(
+    result,
+    Err(StreamDslError::InvalidArgument { name: "size", value: 0, reason: "must be greater than zero" })
+  ));
 }
 
 #[test]

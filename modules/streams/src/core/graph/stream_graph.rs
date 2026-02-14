@@ -174,6 +174,8 @@ impl StreamGraph {
             | StageKind::FlowFlatMapMerge
             | StageKind::FlowBuffer
             | StageKind::FlowAsyncBoundary
+            | StageKind::FlowThrottle
+            | StageKind::FlowBatch
             | StageKind::FlowGroupBy
             | StageKind::FlowRecover
             | StageKind::FlowRecoverWithRetries

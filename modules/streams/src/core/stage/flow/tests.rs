@@ -137,6 +137,42 @@ fn async_boundary_keeps_single_path_behavior() {
 }
 
 #[test]
+fn throttle_keeps_single_path_behavior() {
+  let values =
+    Source::single(7_u32).via(Flow::new().throttle(2).expect("throttle")).collect_values().expect("collect_values");
+  assert_eq!(values, vec![7_u32]);
+}
+
+#[test]
+fn throttle_rejects_zero_capacity() {
+  let flow = Flow::<u32, u32, StreamNotUsed>::new();
+  let result = flow.throttle(0);
+  assert!(matches!(
+    result,
+    Err(StreamDslError::InvalidArgument { name: "capacity", value: 0, reason: "must be greater than zero" })
+  ));
+}
+
+#[test]
+fn batch_emits_fixed_size_chunks() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4, 5]))
+    .via(Flow::new().batch(2).expect("batch"))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![vec![1_u32, 2_u32], vec![3_u32, 4_u32], vec![5_u32]]);
+}
+
+#[test]
+fn batch_rejects_zero_size() {
+  let flow = Flow::<u32, u32, StreamNotUsed>::new();
+  let result = flow.batch(0);
+  assert!(matches!(
+    result,
+    Err(StreamDslError::InvalidArgument { name: "size", value: 0, reason: "must be greater than zero" })
+  ));
+}
+
+#[test]
 fn map_async_keeps_single_path_behavior() {
   let values = Source::single(7_u32)
     .via(Flow::new().map_async(2, |value: u32| async move { value.saturating_add(1) }).expect("map_async"))
@@ -153,6 +189,23 @@ fn map_async_rejects_zero_parallelism() {
     result,
     Err(StreamDslError::InvalidArgument { name: "parallelism", value: 0, reason: "must be greater than zero" })
   ));
+}
+
+#[test]
+fn map_async_preserves_order_with_parallelism() {
+  let values = Source::from_array([1_u32, 2_u32, 3_u32])
+    .via(
+      Flow::new()
+        .map_async(2, |value: u32| match value {
+          | 1 => YieldThenOutputFuture::new_with_poll_count(value.saturating_add(1), 2),
+          | 2 => YieldThenOutputFuture::new(value.saturating_add(1)),
+          | _ => YieldThenOutputFuture::new_with_poll_count(value.saturating_add(1), 3),
+        })
+        .expect("map_async"),
+    )
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![2_u32, 3_u32, 4_u32]);
 }
 
 #[test]
@@ -186,13 +239,18 @@ fn map_async_logic_keeps_order_and_tracks_pending_output() {
 
 #[derive(Default)]
 struct YieldThenOutputFuture<T> {
-  value:   Option<T>,
-  poll_at: u8,
+  value:       Option<T>,
+  poll_count:  u8,
+  ready_after: u8,
 }
 
 impl<T> YieldThenOutputFuture<T> {
   fn new(value: T) -> Self {
-    Self { value: Some(value), poll_at: 0 }
+    Self { value: Some(value), poll_count: 0, ready_after: 1 }
+  }
+
+  fn new_with_poll_count(value: T, poll_count: u8) -> Self {
+    Self { value: Some(value), poll_count: 0, ready_after: poll_count }
   }
 }
 
@@ -201,8 +259,8 @@ impl<T> Future for YieldThenOutputFuture<T> {
 
   fn poll(self: Pin<&mut Self>, _cx: &mut core::task::Context<'_>) -> Poll<Self::Output> {
     let this = unsafe { self.get_unchecked_mut() };
-    if this.poll_at == 0 {
-      this.poll_at = 1;
+    if this.poll_count < this.ready_after {
+      this.poll_count = this.poll_count.saturating_add(1);
       Poll::Pending
     } else {
       Poll::Ready(this.value.take().expect("future value"))
