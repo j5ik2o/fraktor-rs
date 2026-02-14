@@ -13,8 +13,8 @@ use fraktor_actor_rs::core::{
 };
 use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
-use super::{super::loopback_router, RemoteActorRefProviderGeneric};
 use crate::core::{
+  actor_ref_provider::{loopback_router, remote::RemoteActorRefProviderGeneric},
   endpoint_reader::EndpointReaderGeneric,
   endpoint_writer::{EndpointWriterGeneric, EndpointWriterSharedGeneric},
   remoting_extension::RemotingExtensionGeneric,

@@ -32,9 +32,11 @@ use hashbrown::HashMap;
 pub use installer::LoopbackActorRefProviderInstaller;
 pub use serialization_setup::default_loopback_setup;
 
-use super::{loopback_router, loopback_router::LoopbackDeliveryOutcome, remote_error::RemoteActorRefProviderError};
 use crate::core::{
   actor_ref_field_normalizer::ActorRefFieldNormalizerGeneric,
+  actor_ref_provider::{
+    loopback_router, loopback_router::LoopbackDeliveryOutcome, remote_error::RemoteActorRefProviderError,
+  },
   endpoint_writer::{EndpointWriterError, EndpointWriterSharedGeneric},
   envelope::{OutboundMessage, OutboundPriority},
   remote_authority_snapshot::RemoteAuthoritySnapshot,

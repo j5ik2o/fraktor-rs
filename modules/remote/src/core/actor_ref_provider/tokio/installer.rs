@@ -16,8 +16,8 @@ use fraktor_utils_rs::core::{
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 
-use super::{super::loopback_router, TokioActorRefProviderGeneric};
 use crate::core::{
+  actor_ref_provider::{loopback_router, tokio::TokioActorRefProviderGeneric},
   endpoint_reader::EndpointReaderGeneric,
   endpoint_writer::{EndpointWriterGeneric, EndpointWriterSharedGeneric},
   remoting_extension::RemotingExtensionGeneric,
