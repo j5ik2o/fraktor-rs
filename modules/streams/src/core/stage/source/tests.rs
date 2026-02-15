@@ -315,6 +315,78 @@ fn source_from_array_empty_array_completes_without_elements() {
 }
 
 #[test]
+fn source_from_alias_emits_values_in_order() {
+  let values = Source::from([4_u32, 5, 6]).collect_values().expect("collect_values");
+  assert_eq!(values, vec![4_u32, 5, 6]);
+}
+
+#[test]
+fn source_failed_returns_error_on_collection() {
+  let values = Source::<u32, _>::failed(StreamError::Failed).collect_values();
+  assert_eq!(values, Err(StreamError::Failed));
+}
+
+#[test]
+fn source_never_with_take_returns_would_block() {
+  let values = Source::<u32, _>::never().take(1).collect_values();
+  assert_eq!(values, Err(StreamError::WouldBlock));
+}
+
+#[test]
+fn source_range_emits_inclusive_sequence() {
+  let values = Source::range(2, 5).collect_values().expect("collect_values");
+  assert_eq!(values, vec![2, 3, 4, 5]);
+}
+
+#[test]
+fn source_range_descending_emits_reverse_sequence() {
+  let values = Source::range(5, 2).collect_values().expect("collect_values");
+  assert_eq!(values, vec![5, 4, 3, 2]);
+}
+
+#[test]
+fn source_repeat_with_take_limits_elements() {
+  let mut logic = super::RepeatSourceLogic { value: 9_u32 };
+  let mut values = Vec::new();
+  for _ in 0..4 {
+    let value = logic.pull().expect("pull").expect("value");
+    values.push(*value.downcast::<u32>().expect("u32 value"));
+  }
+  assert_eq!(values, vec![9_u32, 9, 9, 9]);
+}
+
+#[test]
+fn source_cycle_repeats_input_sequence() {
+  let mut logic = super::CycleSourceLogic { values: vec![1_u32, 2, 3], index: 0 };
+  let mut values = Vec::new();
+  for _ in 0..7 {
+    let value = logic.pull().expect("pull").expect("value");
+    values.push(*value.downcast::<u32>().expect("u32 value"));
+  }
+  assert_eq!(values, vec![1_u32, 2, 3, 1, 2, 3, 1]);
+}
+
+#[test]
+fn source_cycle_empty_values_completes_without_elements() {
+  let values = Source::<u32, _>::cycle(core::iter::empty::<u32>()).collect_values().expect("collect_values");
+  assert_eq!(values, Vec::<u32>::new());
+}
+
+#[test]
+fn source_iterate_emits_progressive_values() {
+  let mut logic = super::IterateSourceLogic {
+    current: 1_u32,
+    func:    |value| value + 2,
+  };
+  let mut values = Vec::new();
+  for _ in 0..4 {
+    let value = logic.pull().expect("pull").expect("value");
+    values.push(*value.downcast::<u32>().expect("u32 value"));
+  }
+  assert_eq!(values, vec![1_u32, 3, 5, 7]);
+}
+
+#[test]
 #[should_panic(expected = "fan_out must be greater than zero")]
 fn source_broadcast_rejects_zero_fan_out() {
   let _ = Source::single(1_u32).broadcast(0);

@@ -97,14 +97,14 @@ Source operators
 - [ ] `combine`
 - [ ] `completionstage`
 - [ ] `completionstagesource`
-- [ ] `cycle`
-- [ ] `failed`
-- [ ] `from`
+- [x] `cycle`
+- [x] `failed`
+- [x] `from`
 - [ ] `fromjavastream`
 - [ ] `frompublisher`
 - [ ] `future`
 - [ ] `futuresource`
-- [ ] `iterate`
+- [x] `iterate`
 - [ ] `lazycompletionstage`
 - [ ] `lazycompletionstagesource`
 - [ ] `lazyfuture`
@@ -112,10 +112,10 @@ Source operators
 - [ ] `lazysingle`
 - [ ] `lazysource`
 - [ ] `maybe`
-- [ ] `never`
+- [x] `never`
 - [ ] `queue`
-- [ ] `range`
-- [ ] `repeat`
+- [x] `range`
+- [x] `repeat`
 - [ ] `tick`
 - [ ] `unfold`
 - [ ] `unfoldasync`
@@ -615,7 +615,7 @@ Error handling
 
 ### 13.6 未実装オペレーター実装タスクリスト（カテゴリ単位）
 
-1. [ ] O1 Source 未実装カテゴリを一括実装する（31件）
+1. [ ] O1 Source 未実装カテゴリを一括実装する（31件中7件対応）
 2. [ ] O2 Sink 未実装カテゴリを一括実装する（25件）
 3. [ ] O3 Converter 未実装カテゴリを一括実装する（7件）
 4. [ ] O4 File I/O 未実装カテゴリを一括実装する（2件）

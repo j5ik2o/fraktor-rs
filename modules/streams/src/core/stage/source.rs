@@ -66,6 +66,15 @@ where
     Self::from_logic(StageKind::Custom, IteratorSourceLogic { values: values.into_iter() })
   }
 
+  /// Compatibility alias of [`Source::from_iterator`].
+  #[must_use]
+  pub fn from<I>(values: I) -> Self
+  where
+    I: IntoIterator<Item = Out>,
+    I::IntoIter: Send + 'static, {
+    Self::from_iterator(values)
+  }
+
   /// Creates a source from an array.
   #[must_use]
   pub fn from_array<const N: usize>(values: [Out; N]) -> Self {
@@ -91,6 +100,48 @@ where
     Self { graph, mat: StreamNotUsed::new(), _pd: PhantomData }
   }
 
+  /// Creates a source that fails when pulled.
+  #[must_use]
+  pub fn failed(error: StreamError) -> Self {
+    Self::from_logic(StageKind::Custom, FailedSourceLogic { error })
+  }
+
+  /// Creates a source that never emits and never completes.
+  #[must_use]
+  pub fn never() -> Self {
+    Self::from_logic(StageKind::Custom, NeverSourceLogic)
+  }
+
+  /// Creates a source that repeatedly emits the provided element.
+  #[must_use]
+  pub fn repeat(value: Out) -> Self
+  where
+    Out: Clone, {
+    Self::from_logic(StageKind::Custom, RepeatSourceLogic { value })
+  }
+
+  /// Creates a source that repeatedly cycles over provided values.
+  #[must_use]
+  pub fn cycle<I>(values: I) -> Self
+  where
+    I: IntoIterator<Item = Out>,
+    Out: Clone, {
+    let values = values.into_iter().collect::<Vec<Out>>();
+    if values.is_empty() {
+      return Self::empty();
+    }
+    Self::from_logic(StageKind::Custom, CycleSourceLogic { values, index: 0 })
+  }
+
+  /// Creates a source that emits an infinite iterative sequence.
+  #[must_use]
+  pub fn iterate<F>(seed: Out, func: F) -> Self
+  where
+    Out: Clone,
+    F: FnMut(Out) -> Out + Send + Sync + 'static, {
+    Self::from_logic(StageKind::Custom, IterateSourceLogic { current: seed, func })
+  }
+
   pub(in crate::core) fn from_logic<L>(kind: StageKind, logic: L) -> Self
   where
     L: SourceLogic + 'static, {
@@ -107,6 +158,17 @@ where
     };
     graph.push_stage(StageDefinition::Source(definition));
     Self { graph, mat: StreamNotUsed::new(), _pd: PhantomData }
+  }
+}
+
+impl Source<i32, StreamNotUsed> {
+  /// Creates a source that emits all integers between `start` and `end` (inclusive).
+  #[must_use]
+  pub fn range(start: i32, end: i32) -> Self {
+    if start <= end {
+      return Self::from_iterator(start..=end);
+    }
+    Self::from_iterator((end..=start).rev())
   }
 }
 
@@ -1103,6 +1165,26 @@ struct IteratorSourceLogic<I> {
   values: I,
 }
 
+struct FailedSourceLogic {
+  error: StreamError,
+}
+
+struct NeverSourceLogic;
+
+struct RepeatSourceLogic<Out> {
+  value: Out,
+}
+
+struct CycleSourceLogic<Out> {
+  values: Vec<Out>,
+  index:  usize,
+}
+
+struct IterateSourceLogic<Out, F> {
+  current: Out,
+  func:    F,
+}
+
 impl<Out, I> SourceLogic for IteratorSourceLogic<I>
 where
   Out: Send + Sync + 'static,
@@ -1110,6 +1192,53 @@ where
 {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
     Ok(self.values.next().map(|value| Box::new(value) as DynValue))
+  }
+}
+
+impl SourceLogic for FailedSourceLogic {
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    Err(self.error.clone())
+  }
+}
+
+impl SourceLogic for NeverSourceLogic {
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    Err(StreamError::WouldBlock)
+  }
+}
+
+impl<Out> SourceLogic for RepeatSourceLogic<Out>
+where
+  Out: Clone + Send + Sync + 'static,
+{
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    Ok(Some(Box::new(self.value.clone()) as DynValue))
+  }
+}
+
+impl<Out> SourceLogic for CycleSourceLogic<Out>
+where
+  Out: Clone + Send + Sync + 'static,
+{
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    if self.values.is_empty() {
+      return Ok(None);
+    }
+    let value = self.values[self.index].clone();
+    self.index = (self.index + 1) % self.values.len();
+    Ok(Some(Box::new(value) as DynValue))
+  }
+}
+
+impl<Out, F> SourceLogic for IterateSourceLogic<Out, F>
+where
+  Out: Clone + Send + Sync + 'static,
+  F: FnMut(Out) -> Out + Send + Sync + 'static,
+{
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    let next = (self.func)(self.current.clone());
+    let value = core::mem::replace(&mut self.current, next);
+    Ok(Some(Box::new(value) as DynValue))
   }
 }
 
