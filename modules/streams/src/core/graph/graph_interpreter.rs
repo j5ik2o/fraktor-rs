@@ -515,11 +515,24 @@ impl GraphInterpreter {
         continue;
       }
 
+      let outgoing_edges = self.outgoing_edge_indices(flow_outlet)?;
       for output in outputs {
         if output.as_ref().type_id() != flow_output_type {
           return Err(StreamError::TypeMismatch);
         }
-        self.offer_to_next_outgoing_edge(flow_outlet, output)?;
+        let selected_slot = {
+          let StageDefinition::Flow(flow) = &mut self.stages[stage_index] else {
+            return Err(StreamError::InvalidConnection);
+          };
+          flow.logic.take_next_output_edge_slot()
+        };
+        match selected_slot {
+          | Some(slot) => {
+            let target = outgoing_edges[slot % outgoing_edges.len()];
+            self.offer_to_outgoing_edge(target, output)?;
+          },
+          | None => self.offer_to_next_outgoing_edge(flow_outlet, output)?,
+        }
       }
       progressed = true;
     }
@@ -655,24 +668,31 @@ impl GraphInterpreter {
 
   fn offer_to_next_outgoing_edge(&mut self, from: PortId, value: DynValue) -> Result<(), StreamError> {
     let target = self.next_outgoing_edge_index(from)?;
+    self.offer_to_outgoing_edge(target, value)
+  }
 
-    if self.edges[target].buffer.offer(value).is_err() {
+  fn offer_to_outgoing_edge(&mut self, edge_index: usize, value: DynValue) -> Result<(), StreamError> {
+    if self.edges[edge_index].buffer.offer(value).is_err() {
       return Err(StreamError::BufferOverflow);
     }
     Ok(())
   }
 
-  fn next_outgoing_edge_index(&mut self, from: PortId) -> Result<usize, StreamError> {
+  fn outgoing_edge_indices(&self, from: PortId) -> Result<Vec<usize>, StreamError> {
     let mut outgoing_edges = Vec::new();
     for (index, edge) in self.edges.iter().enumerate() {
       if edge.from == from {
         outgoing_edges.push(index);
       }
     }
-
     if outgoing_edges.is_empty() {
       return Err(StreamError::InvalidConnection);
     }
+    Ok(outgoing_edges)
+  }
+
+  fn next_outgoing_edge_index(&mut self, from: PortId) -> Result<usize, StreamError> {
+    let outgoing_edges = self.outgoing_edge_indices(from)?;
 
     let Some(state_index) = self.dispatch.iter().position(|state| state.outlet == from) else {
       return Err(StreamError::InvalidConnection);

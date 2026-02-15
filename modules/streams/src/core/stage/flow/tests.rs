@@ -93,6 +93,69 @@ fn concat_rejects_zero_fan_in() {
 }
 
 #[test]
+fn partition_keeps_single_path_behavior() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4]))
+    .via(Flow::new().partition(|value| *value % 2 == 0))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2_u32, 3_u32, 4_u32]);
+}
+
+#[test]
+fn unzip_emits_tuple_components() {
+  let values = Source::single((7_u32, 8_u32)).via(Flow::new().unzip()).collect_values().expect("collect_values");
+  assert_eq!(values, vec![7_u32, 8_u32]);
+}
+
+#[test]
+fn unzip_with_emits_mapped_tuple_components() {
+  let values = Source::single(7_u32)
+    .via(Flow::new().unzip_with(|value: u32| (value, value.saturating_add(1))))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![7_u32, 8_u32]);
+}
+
+#[test]
+fn interleave_keeps_single_path_behavior() {
+  let values = Source::single(7_u32).via(Flow::new().interleave(1)).collect_values().expect("collect_values");
+  assert_eq!(values, vec![7_u32]);
+}
+
+#[test]
+#[should_panic(expected = "fan_in must be greater than zero")]
+fn interleave_rejects_zero_fan_in() {
+  let flow = Flow::<u32, u32, StreamNotUsed>::new();
+  let _ = flow.interleave(0);
+}
+
+#[test]
+fn prepend_keeps_single_path_behavior() {
+  let values = Source::single(7_u32).via(Flow::new().prepend(1)).collect_values().expect("collect_values");
+  assert_eq!(values, vec![7_u32]);
+}
+
+#[test]
+#[should_panic(expected = "fan_in must be greater than zero")]
+fn prepend_rejects_zero_fan_in() {
+  let flow = Flow::<u32, u32, StreamNotUsed>::new();
+  let _ = flow.prepend(0);
+}
+
+#[test]
+fn zip_all_wraps_value_when_single_path() {
+  let values = Source::single(7_u32).via(Flow::new().zip_all(1, 0_u32)).collect_values().expect("collect_values");
+  assert_eq!(values, vec![vec![7_u32]]);
+}
+
+#[test]
+#[should_panic(expected = "fan_in must be greater than zero")]
+fn zip_all_rejects_zero_fan_in() {
+  let flow = Flow::<u32, u32, StreamNotUsed>::new();
+  let _ = flow.zip_all(0, 0_u32);
+}
+
+#[test]
 fn flat_map_merge_keeps_single_path_behavior() {
   let values = Source::single(7_u32)
     .via(Flow::new().flat_map_merge(2, Source::single).expect("flat_map_merge"))

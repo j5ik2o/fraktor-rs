@@ -51,6 +51,8 @@ impl OperatorKey {
   pub const GROUP_BY: Self = Self::new("group_by");
   /// Key for `initial_delay`.
   pub const INITIAL_DELAY: Self = Self::new("initial_delay");
+  /// Key for `interleave`.
+  pub const INTERLEAVE: Self = Self::new("interleave");
   /// Key for `intersperse`.
   pub const INTERSPERSE: Self = Self::new("intersperse");
   /// Key for `map_async`.
@@ -67,8 +69,12 @@ impl OperatorKey {
   pub const MERGE_SUBSTREAMS: Self = Self::new("merge_substreams");
   /// Key for `merge_substreams_with_parallelism`.
   pub const MERGE_SUBSTREAMS_WITH_PARALLELISM: Self = Self::new("merge_substreams_with_parallelism");
+  /// Key for `partition`.
+  pub const PARTITION: Self = Self::new("partition");
   /// Key for `partition_hub`.
   pub const PARTITION_HUB: Self = Self::new("partition_hub");
+  /// Key for `prepend`.
+  pub const PREPEND: Self = Self::new("prepend");
   /// Key for `recover`.
   pub const RECOVER: Self = Self::new("recover");
   /// Key for `recover_with_retries`.
@@ -103,8 +109,14 @@ impl OperatorKey {
   pub const THROTTLE: Self = Self::new("throttle");
   /// Key for `unique_kill_switch`.
   pub const UNIQUE_KILL_SWITCH: Self = Self::new("unique_kill_switch");
+  /// Key for `unzip`.
+  pub const UNZIP: Self = Self::new("unzip");
+  /// Key for `unzip_with`.
+  pub const UNZIP_WITH: Self = Self::new("unzip_with");
   /// Key for `zip`.
   pub const ZIP: Self = Self::new("zip");
+  /// Key for `zip_all`.
+  pub const ZIP_ALL: Self = Self::new("zip_all");
   /// Key for `zip_with_index`.
   pub const ZIP_WITH_INDEX: Self = Self::new("zip_with_index");
 

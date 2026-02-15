@@ -11,12 +11,13 @@ use super::{
     async_boundary_definition, balance_definition, batch_definition, broadcast_definition, buffer_definition,
     concat_definition, concat_substreams_definition, delay_definition, drop_definition, drop_while_definition,
     filter_definition, flat_map_concat_definition, flat_map_merge_definition, group_by_definition, grouped_definition,
-    initial_delay_definition, intersperse_definition, map_async_definition, map_concat_definition, map_definition,
-    map_option_definition, merge_definition, merge_substreams_definition, merge_substreams_with_parallelism_definition,
-    recover_definition, recover_with_retries_definition, scan_definition, sliding_definition, split_after_definition,
+    initial_delay_definition, interleave_definition, intersperse_definition, map_async_definition,
+    map_concat_definition, map_definition, map_option_definition, merge_definition, merge_substreams_definition,
+    merge_substreams_with_parallelism_definition, partition_definition, prepend_definition, recover_definition,
+    recover_with_retries_definition, scan_definition, sliding_definition, split_after_definition,
     split_when_definition, stateful_map_concat_definition, stateful_map_definition, take_definition,
-    take_until_definition, take_while_definition, take_within_definition, throttle_definition, zip_definition,
-    zip_with_index_definition,
+    take_until_definition, take_while_definition, take_within_definition, throttle_definition, unzip_definition,
+    unzip_with_definition, zip_all_definition, zip_definition, zip_with_index_definition,
   },
   graph::{GraphStage, GraphStageLogic},
   shape::{Inlet, Outlet, StreamShape},
@@ -692,6 +693,38 @@ where
     SourceSubFlow::from_source(Source { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
+  /// Adds a partition stage that routes each element to one of two output lanes.
+  #[must_use]
+  pub fn partition<F>(mut self, predicate: F) -> Source<Out, Mat>
+  where
+    F: FnMut(&Out) -> bool + Send + Sync + 'static, {
+    let definition = partition_definition::<Out, F>(predicate);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds an unzip-with stage that maps each element into a pair and routes them to two output
+  /// lanes.
+  #[must_use]
+  pub fn unzip_with<T, F>(mut self, func: F) -> Source<T, Mat>
+  where
+    T: Send + Sync + 'static,
+    F: FnMut(Out) -> (T, T) + Send + Sync + 'static, {
+    let definition = unzip_with_definition::<Out, T, F>(func);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
   /// Adds a broadcast stage that duplicates each element `fan_out` times.
   ///
   /// # Panics
@@ -748,6 +781,42 @@ where
     Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
+  /// Adds an interleave stage that consumes `fan_in` inputs in round-robin order.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `fan_in` is zero.
+  #[must_use]
+  pub fn interleave(mut self, fan_in: usize) -> Source<Out, Mat> {
+    assert!(fan_in > 0, "fan_in must be greater than zero");
+    let definition = interleave_definition::<Out>(fan_in);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds a prepend stage that prioritizes lower-index input lanes.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `fan_in` is zero.
+  #[must_use]
+  pub fn prepend(mut self, fan_in: usize) -> Source<Out, Mat> {
+    assert!(fan_in > 0, "fan_in must be greater than zero");
+    let definition = prepend_definition::<Out>(fan_in);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
   /// Adds a zip stage that emits one vector after receiving one element from each input.
   ///
   /// # Panics
@@ -757,6 +826,26 @@ where
   pub fn zip(mut self, fan_in: usize) -> Source<Vec<Out>, Mat> {
     assert!(fan_in > 0, "fan_in must be greater than zero");
     let definition = zip_definition::<Out>(fan_in);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds a zip-all stage that fills missing lanes with `fill_value` after completion.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `fan_in` is zero.
+  #[must_use]
+  pub fn zip_all(mut self, fan_in: usize, fill_value: Out) -> Source<Vec<Out>, Mat>
+  where
+    Out: Clone, {
+    assert!(fan_in > 0, "fan_in must be greater than zero");
+    let definition = zip_all_definition::<Out>(fan_in, fill_value);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
@@ -853,6 +942,28 @@ where
 
   pub(crate) fn into_parts(self) -> (StreamGraph, Mat) {
     (self.graph, self.mat)
+  }
+}
+
+impl<Out, Mat> Source<(Out, Out), Mat>
+where
+  Out: Send + Sync + 'static,
+{
+  /// Adds an unzip stage that routes tuple components to two output lanes.
+  #[must_use]
+  pub fn unzip(mut self) -> Source<Out, Mat> {
+    let definition = unzip_definition::<Out>();
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(
+        &Outlet::<(Out, Out)>::from_id(from),
+        &Inlet::<(Out, Out)>::from_id(inlet_id),
+        MatCombine::KeepLeft,
+      );
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 }
 

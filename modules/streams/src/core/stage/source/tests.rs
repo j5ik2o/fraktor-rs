@@ -369,6 +369,66 @@ fn source_concat_rejects_zero_fan_in() {
 }
 
 #[test]
+fn source_partition_keeps_single_path_behavior() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4]))
+    .partition(|value| value % 2 == 0)
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2_u32, 3_u32, 4_u32]);
+}
+
+#[test]
+fn source_unzip_emits_tuple_components() {
+  let values = Source::single((5_u32, 6_u32)).unzip().collect_values().expect("collect_values");
+  assert_eq!(values, vec![5_u32, 6_u32]);
+}
+
+#[test]
+fn source_unzip_with_emits_mapped_tuple_components() {
+  let values = Source::single(5_u32)
+    .unzip_with(|value| (value, value.saturating_add(1)))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![5_u32, 6_u32]);
+}
+
+#[test]
+fn source_interleave_keeps_single_path_behavior() {
+  let values = Source::single(5_u32).interleave(1).collect_values().expect("collect_values");
+  assert_eq!(values, vec![5_u32]);
+}
+
+#[test]
+#[should_panic(expected = "fan_in must be greater than zero")]
+fn source_interleave_rejects_zero_fan_in() {
+  let _ = Source::single(1_u32).interleave(0);
+}
+
+#[test]
+fn source_prepend_keeps_single_path_behavior() {
+  let values = Source::single(5_u32).prepend(1).collect_values().expect("collect_values");
+  assert_eq!(values, vec![5_u32]);
+}
+
+#[test]
+#[should_panic(expected = "fan_in must be greater than zero")]
+fn source_prepend_rejects_zero_fan_in() {
+  let _ = Source::single(1_u32).prepend(0);
+}
+
+#[test]
+fn source_zip_all_wraps_value_when_single_path() {
+  let values = Source::single(5_u32).zip_all(1, 0_u32).collect_values().expect("collect_values");
+  assert_eq!(values, vec![vec![5_u32]]);
+}
+
+#[test]
+#[should_panic(expected = "fan_in must be greater than zero")]
+fn source_zip_all_rejects_zero_fan_in() {
+  let _ = Source::single(1_u32).zip_all(0, 0_u32);
+}
+
+#[test]
 fn source_flat_map_merge_keeps_single_path_behavior() {
   let values = Source::single(5_u32)
     .flat_map_merge(2, Source::single)
@@ -836,6 +896,32 @@ fn source_group_by_fails_when_unique_key_count_exceeds_limit() {
     .merge_substreams()
     .collect_values();
   assert_eq!(result, Err(StreamError::SubstreamLimitExceeded { max_substreams: 2 }));
+}
+
+#[test]
+fn source_p2_regression_group_by_merge_substreams_with_delay_and_zip_all() {
+  let values = Source::from_array([1_u32, 2_u32, 3_u32])
+    .group_by(4, |value: &u32| value % 2)
+    .expect("group_by")
+    .merge_substreams()
+    .delay(1)
+    .expect("delay")
+    .zip_all(1, 0_u32)
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![vec![1_u32], vec![2_u32], vec![3_u32]]);
+}
+
+#[test]
+fn source_p2_regression_concat_substreams_with_take_within_and_prepend() {
+  let values = Source::single(vec![4_u32, 5_u32])
+    .concat_substreams()
+    .take_within(2)
+    .expect("take_within")
+    .prepend(1)
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![4_u32, 5_u32]);
 }
 
 #[test]

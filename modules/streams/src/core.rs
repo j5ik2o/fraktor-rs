@@ -441,6 +441,10 @@ trait FlowLogic: Send {
     self.apply(input)
   }
 
+  fn take_next_output_edge_slot(&mut self) -> Option<usize> {
+    None
+  }
+
   fn expected_fan_out(&self) -> Option<usize> {
     None
   }

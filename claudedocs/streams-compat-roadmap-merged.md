@@ -476,9 +476,9 @@ Error handling
 6. [x] P2-06 `GraphDSL` の最小 partial graph API を追加し、`from_*` 系で利用可能にする
 7. [x] P2-07 `BidiFlow` の最小骨格を追加する
 8. [x] P2-08 `delay`, `initialdelay`, `takewithin` 等 timer 系を追加する
-9. [ ] P2-09 `partition`/`unzip` 系を段階追加する
-10. [ ] P2-10 `Fan-in` 主要演算子 (`interleave`, `prepend`, `zipall`) を追加する
-11. [ ] P2-11 P2 対象テスト（junction/substream/backpressure）を追加する
+9. [x] P2-09 `partition`/`unzip` 系を段階追加する
+10. [x] P2-10 `Fan-in` 主要演算子 (`interleave`, `prepend`, `zipall`) を追加する
+11. [x] P2-11 P2 対象テスト（junction/substream/backpressure）を追加する
 
 #### 13.3.x P2 現状スナップショット
 
@@ -489,9 +489,8 @@ Error handling
   - `map_async`, `flat_map_merge`, `flat_map_concat`, `group_by`, `split_when`, `split_after`, `buffer`, `throttle`, `batch`, `merge_substreams`, `concat_substreams` の主要経路は既に実装・テストが存在
   - `GraphDSL` の最小構成と `BidiFlow` は既存骨格があり、`P2-06` / `P2-07` の到達基準を満たす
 - 未完了（優先順）
-  - `P2-09`: `partition` と `unzip` 系
-  - `P2-10`: `interleave` / `prepend` / `zipall` など主要 fan-in
-  - `P2-11`: 上記未完了を含む junction/substream/backpressure の固定回帰テストを追加
+  - `P3`: 障害モデル（no-op 解消）
+  - `P4`: 動的制御・検証基盤
 
 #### 13.3.y P2 続行アクション
 
@@ -544,10 +543,10 @@ Error handling
   - `partition` と `unzip`/`unzip_with` を、既存 `Graph`/`Shape` 経路のまま実効化する
   - `Flow` と `Source` のサブクラス別差分は最小化し、実装共通化を優先する
 - タスク分解
-  - [ ] P2-09-01 `partition` の `Graph` 定義を整備し、`Fan-out` の順序・分配規則を固定する
-  - [ ] P2-09-02 `unzip` と `unzip_with` の共通定義を追加し、`flow`/`source` 側へ露出する
-  - [ ] P2-09-03 `partition`/`unzip` 系の backpressure/完了/エラー挙動を固定テスト化する
-  - [ ] P2-09-04 `group_by` や `split/merge_substreams` と組み合わせた組合せ回帰を 1 セット追加する
+  - [x] P2-09-01 `partition` の `Graph` 定義を整備し、`Fan-out` の順序・分配規則を固定する
+  - [x] P2-09-02 `unzip` と `unzip_with` の共通定義を追加し、`flow`/`source` 側へ露出する
+  - [x] P2-09-03 `partition`/`unzip` 系の backpressure/完了/エラー挙動を固定テスト化する
+  - [x] P2-09-04 `group_by` や `split/merge_substreams` と組み合わせた組合せ回帰を 1 セット追加する
 - 受け入れ条件
   - DRY: `partition`/`unzip` は `StreamShape` 方向の重複ロジックを避け、定義レベルで分離する
   - 実装単位: `P2-09-04` 完了時点で `P2-09` を `[x]` 更新可能にする
@@ -559,10 +558,10 @@ Error handling
   - `interleave`、`prepend`、`zipall` を既存の junction 実行系に載せ、`merge`/`concat`/`zip` 系との一貫性を保つ
   - `merge_preferred` / `prepend` 系と内部的に重なりうる処理は 1 箇所に集約する
 - タスク分解
-  - [ ] P2-10-01 `interleave` の入力分岐ポリシーと配信順序を明文化し、`Flow` 実装を追加
-  - [ ] P2-10-02 `prepend` / `prepend_lazy` の差分を共通化し、`append` 系とは別に最小 API で提供
-  - [ ] P2-10-03 `zipall` の終了条件・不足要素ハンドリングを固定し実装追加
-  - [ ] P2-10-04 `P2-10` 追加演算子の junction 側回帰を `P2-11` 観点へ接続する
+  - [x] P2-10-01 `interleave` の入力分岐ポリシーと配信順序を明文化し、`Flow` 実装を追加
+  - [x] P2-10-02 `prepend` / `prepend_lazy` の差分を共通化し、`append` 系とは別に最小 API で提供
+  - [x] P2-10-03 `zipall` の終了条件・不足要素ハンドリングを固定し実装追加
+  - [x] P2-10-04 `P2-10` 追加演算子の junction 側回帰を `P2-11` 観点へ接続する
 - 受け入れ条件
   - DRY: fan-in 系で重複する要素の配布・drain ロジックは共通ヘルパーへ統合
   - 整合性: 既存 `interleave`/`prepend` 系 API とテストでシグネチャ重複を排除
@@ -574,10 +573,10 @@ Error handling
   - `P2-08`/`P2-09`/`P2-10` の実装は、同一カテゴリ内で共通に壊れやすい境界条件を固定する
   - no-op 実装を増やさず、`GraphInterpreter` 側の制御境界（需要/完了/失敗）で検証可能な形にする
 - 対応項目
-  - [ ] P2-11-01 `delay/initialdelay/takewithin` の時間境界と backpressure テストを追加
-  - [ ] P2-11-02 `partition/unzip` の order/backpressure/完了連鎖を固定
-  - [ ] P2-11-03 `interleave/prepend/zipall` の fan-in 収束と終端状態を固定
-  - [ ] P2-11-04 `group_by`, `merge_substreams`, `concat_substreams` と新規 `P2-08`〜`P2-10` を混在させた最小結合回帰を追加
+  - [x] P2-11-01 `delay/initialdelay/takewithin` の時間境界と backpressure テストを追加
+  - [x] P2-11-02 `partition/unzip` の order/backpressure/完了連鎖を固定
+  - [x] P2-11-03 `interleave/prepend/zipall` の fan-in 収束と終端状態を固定
+  - [x] P2-11-04 `group_by`, `merge_substreams`, `concat_substreams` と新規 `P2-08`〜`P2-10` を混在させた最小結合回帰を追加
 - 完了条件
   - 追加回帰で `P2` の残存未実装 3 付随カテゴリの主要不具合再現が潰れていること
   - `P2` フェーズ完了基準として本節の 4 件がすべて `[x]` になっていること

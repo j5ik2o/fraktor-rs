@@ -187,10 +187,16 @@ impl StreamGraph {
             | StageKind::FlowMergeSubstreams
             | StageKind::FlowMergeSubstreamsWithParallelism
             | StageKind::FlowConcatSubstreams
+            | StageKind::FlowPartition
+            | StageKind::FlowUnzip
+            | StageKind::FlowUnzipWith
             | StageKind::FlowBroadcast
             | StageKind::FlowBalance
             | StageKind::FlowMerge
+            | StageKind::FlowInterleave
+            | StageKind::FlowPrepend
             | StageKind::FlowZip
+            | StageKind::FlowZipAll
             | StageKind::FlowZipWithIndex
             | StageKind::FlowConcat
             | StageKind::Custom

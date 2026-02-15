@@ -604,6 +604,38 @@ where
     FlowSubFlow::from_flow(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
+  /// Adds a partition stage that routes each element to one of two output lanes.
+  #[must_use]
+  pub fn partition<F>(mut self, predicate: F) -> Flow<In, Out, Mat>
+  where
+    F: FnMut(&Out) -> bool + Send + Sync + 'static, {
+    let definition = partition_definition::<Out, F>(predicate);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds an unzip-with stage that maps each element into a pair and routes them to two output
+  /// lanes.
+  #[must_use]
+  pub fn unzip_with<T, F>(mut self, func: F) -> Flow<In, T, Mat>
+  where
+    T: Send + Sync + 'static,
+    F: FnMut(Out) -> (T, T) + Send + Sync + 'static, {
+    let definition = unzip_with_definition::<Out, T, F>(func);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
   /// Adds a broadcast stage that duplicates each element `fan_out` times.
   ///
   /// # Panics
@@ -660,6 +692,42 @@ where
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
+  /// Adds an interleave stage that consumes `fan_in` inputs in round-robin order.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `fan_in` is zero.
+  #[must_use]
+  pub fn interleave(mut self, fan_in: usize) -> Flow<In, Out, Mat> {
+    assert!(fan_in > 0, "fan_in must be greater than zero");
+    let definition = interleave_definition::<Out>(fan_in);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds a prepend stage that prioritizes lower-index input lanes.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `fan_in` is zero.
+  #[must_use]
+  pub fn prepend(mut self, fan_in: usize) -> Flow<In, Out, Mat> {
+    assert!(fan_in > 0, "fan_in must be greater than zero");
+    let definition = prepend_definition::<Out>(fan_in);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
   /// Adds a zip stage that emits one vector after receiving one element from each input.
   ///
   /// # Panics
@@ -669,6 +737,26 @@ where
   pub fn zip(mut self, fan_in: usize) -> Flow<In, Vec<Out>, Mat> {
     assert!(fan_in > 0, "fan_in must be greater than zero");
     let definition = zip_definition::<Out>(fan_in);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds a zip-all stage that fills missing lanes with `fill_value` after completion.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `fan_in` is zero.
+  #[must_use]
+  pub fn zip_all(mut self, fan_in: usize, fill_value: Out) -> Flow<In, Vec<Out>, Mat>
+  where
+    Out: Clone, {
+    assert!(fan_in > 0, "fan_in must be greater than zero");
+    let definition = zip_all_definition::<Out>(fan_in, fill_value);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
@@ -768,6 +856,29 @@ where
       let _ = self.graph.connect(
         &Outlet::<Vec<Out>>::from_id(from),
         &Inlet::<Vec<Out>>::from_id(inlet_id),
+        MatCombine::KeepLeft,
+      );
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+}
+
+impl<In, Out, Mat> Flow<In, (Out, Out), Mat>
+where
+  In: Send + Sync + 'static,
+  Out: Send + Sync + 'static,
+{
+  /// Adds an unzip stage that routes tuple components to two output lanes.
+  #[must_use]
+  pub fn unzip(mut self) -> Flow<In, Out, Mat> {
+    let definition = unzip_definition::<Out>();
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(
+        &Outlet::<(Out, Out)>::from_id(from),
+        &Inlet::<(Out, Out)>::from_id(inlet_id),
         MatCombine::KeepLeft,
       );
     }
@@ -1550,6 +1661,26 @@ where
   }
 }
 
+pub(in crate::core) fn partition_definition<In, F>(predicate: F) -> FlowDefinition
+where
+  In: Send + Sync + 'static,
+  F: FnMut(&In) -> bool + Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = PartitionLogic::<In, F> { predicate, output_slots: VecDeque::new(), _pd: PhantomData };
+  FlowDefinition {
+    kind:        StageKind::FlowPartition,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
 pub(in crate::core) fn balance_definition<In>(fan_out: usize) -> FlowDefinition
 where
   In: Send + Sync + 'static, {
@@ -1588,6 +1719,56 @@ where
   }
 }
 
+pub(in crate::core) fn interleave_definition<In>(fan_in: usize) -> FlowDefinition
+where
+  In: Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = InterleaveLogic::<In> {
+    fan_in,
+    edge_slots: Vec::with_capacity(fan_in),
+    pending: Vec::with_capacity(fan_in),
+    next_slot: 0,
+    source_done: false,
+  };
+  FlowDefinition {
+    kind:        StageKind::FlowInterleave,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(in crate::core) fn prepend_definition<In>(fan_in: usize) -> FlowDefinition
+where
+  In: Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = ConcatLogic::<In> {
+    fan_in,
+    edge_slots: Vec::with_capacity(fan_in),
+    pending: Vec::with_capacity(fan_in),
+    active_slot: 0,
+    source_done: false,
+  };
+  FlowDefinition {
+    kind:        StageKind::FlowPrepend,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
 pub(in crate::core) fn zip_definition<In>(fan_in: usize) -> FlowDefinition
 where
   In: Send + Sync + 'static, {
@@ -1600,6 +1781,71 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<Vec<In>>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(in crate::core) fn zip_all_definition<In>(fan_in: usize, fill_value: In) -> FlowDefinition
+where
+  In: Clone + Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<Vec<In>> = Outlet::new();
+  let logic = ZipAllLogic::<In> {
+    fan_in,
+    fill_value,
+    edge_slots: Vec::with_capacity(fan_in),
+    pending: Vec::with_capacity(fan_in),
+    source_done: false,
+  };
+  FlowDefinition {
+    kind:        StageKind::FlowZipAll,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<Vec<In>>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(in crate::core) fn unzip_definition<In>() -> FlowDefinition
+where
+  In: Send + Sync + 'static, {
+  let inlet: Inlet<(In, In)> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = UnzipLogic::<In> { output_slots: VecDeque::new(), _pd: PhantomData };
+  FlowDefinition {
+    kind:        StageKind::FlowUnzip,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<(In, In)>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(in crate::core) fn unzip_with_definition<In, Out, F>(func: F) -> FlowDefinition
+where
+  In: Send + Sync + 'static,
+  Out: Send + Sync + 'static,
+  F: FnMut(In) -> (Out, Out) + Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<Out> = Outlet::new();
+  let logic = UnzipWithLogic::<In, Out, F> { func, output_slots: VecDeque::new(), _pd: PhantomData };
+  FlowDefinition {
+    kind:        StageKind::FlowUnzipWith,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<Out>(),
     mat_combine: MatCombine::KeepLeft,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
@@ -2866,6 +3112,34 @@ where
   }
 }
 
+struct PartitionLogic<In, F> {
+  predicate:    F,
+  output_slots: VecDeque<usize>,
+  _pd:          PhantomData<fn(In)>,
+}
+
+impl<In, F> FlowLogic for PartitionLogic<In, F>
+where
+  In: Send + Sync + 'static,
+  F: FnMut(&In) -> bool + Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let value = downcast_value::<In>(input)?;
+    let slot = if (self.predicate)(&value) { 0 } else { 1 };
+    self.output_slots.push_back(slot);
+    Ok(vec![Box::new(value) as DynValue])
+  }
+
+  fn take_next_output_edge_slot(&mut self) -> Option<usize> {
+    self.output_slots.pop_front()
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.output_slots.clear();
+    Ok(())
+  }
+}
+
 struct BalanceLogic<In> {
   fan_out: usize,
   _pd:     PhantomData<fn(In)>,
@@ -2908,15 +3182,128 @@ where
   }
 }
 
+struct InterleaveLogic<In> {
+  fan_in:      usize,
+  edge_slots:  Vec<usize>,
+  pending:     Vec<VecDeque<In>>,
+  next_slot:   usize,
+  source_done: bool,
+}
+
 struct ZipLogic<In> {
   fan_in:     usize,
   edge_slots: Vec<usize>,
   pending:    Vec<VecDeque<In>>,
 }
 
+struct ZipAllLogic<In> {
+  fan_in:      usize,
+  fill_value:  In,
+  edge_slots:  Vec<usize>,
+  pending:     Vec<VecDeque<In>>,
+  source_done: bool,
+}
+
+struct UnzipLogic<In> {
+  output_slots: VecDeque<usize>,
+  _pd:          PhantomData<fn(In)>,
+}
+
+struct UnzipWithLogic<In, Out, F> {
+  func:         F,
+  output_slots: VecDeque<usize>,
+  _pd:          PhantomData<fn(In) -> Out>,
+}
+
 struct ZipWithIndexLogic<In> {
   next_index: u64,
   _pd:        PhantomData<fn(In)>,
+}
+
+impl<In> InterleaveLogic<In>
+where
+  In: Send + Sync + 'static,
+{
+  fn slot_for_edge(&mut self, edge_index: usize) -> Result<usize, StreamError> {
+    if let Some(position) = self.edge_slots.iter().position(|index| *index == edge_index) {
+      return Ok(position);
+    }
+    if self.edge_slots.len() >= self.fan_in {
+      return Err(StreamError::InvalidConnection);
+    }
+    let insert_at = self.edge_slots.partition_point(|index| *index < edge_index);
+    self.edge_slots.insert(insert_at, edge_index);
+    self.pending.insert(insert_at, VecDeque::new());
+    if insert_at <= self.next_slot && self.edge_slots.len() > 1 {
+      self.next_slot = self.next_slot.saturating_add(1) % self.edge_slots.len();
+    }
+    Ok(insert_at)
+  }
+
+  fn pop_next_value(&mut self) -> Option<In> {
+    if self.pending.is_empty() {
+      return None;
+    }
+    let start_slot = self.next_slot % self.pending.len();
+    let mut slot = start_slot;
+    for _ in 0..self.pending.len() {
+      if let Some(value) = self.pending[slot].pop_front() {
+        self.next_slot = (slot + 1) % self.pending.len();
+        return Some(value);
+      }
+      slot = (slot + 1) % self.pending.len();
+    }
+    None
+  }
+}
+
+impl<In> FlowLogic for InterleaveLogic<In>
+where
+  In: Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    self.apply_with_edge(0, input)
+  }
+
+  fn apply_with_edge(&mut self, edge_index: usize, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    if self.fan_in == 0 {
+      return Err(StreamError::InvalidConnection);
+    }
+    let value = downcast_value::<In>(input)?;
+    let slot = self.slot_for_edge(edge_index)?;
+    self.pending[slot].push_back(value);
+    if let Some(next) = self.pop_next_value() {
+      return Ok(vec![Box::new(next) as DynValue]);
+    }
+    Ok(Vec::new())
+  }
+
+  fn expected_fan_in(&self) -> Option<usize> {
+    Some(self.fan_in)
+  }
+
+  fn on_source_done(&mut self) -> Result<(), StreamError> {
+    self.source_done = true;
+    Ok(())
+  }
+
+  fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
+    if !self.source_done {
+      return Ok(Vec::new());
+    }
+    let Some(next) = self.pop_next_value() else {
+      return Ok(Vec::new());
+    };
+    Ok(vec![Box::new(next) as DynValue])
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.edge_slots.clear();
+    self.pending.clear();
+    self.next_slot = 0;
+    self.source_done = false;
+    Ok(())
+  }
 }
 
 impl<In> ZipLogic<In>
@@ -2933,6 +3320,155 @@ where
     self.edge_slots.push(edge_index);
     self.pending.push(VecDeque::new());
     Ok(self.edge_slots.len().saturating_sub(1))
+  }
+}
+
+impl<In> ZipAllLogic<In>
+where
+  In: Clone + Send + Sync + 'static,
+{
+  fn slot_for_edge(&mut self, edge_index: usize) -> Result<usize, StreamError> {
+    if let Some(position) = self.edge_slots.iter().position(|index| *index == edge_index) {
+      return Ok(position);
+    }
+    if self.edge_slots.len() >= self.fan_in {
+      return Err(StreamError::InvalidConnection);
+    }
+    let insert_at = self.edge_slots.partition_point(|index| *index < edge_index);
+    self.edge_slots.insert(insert_at, edge_index);
+    self.pending.insert(insert_at, VecDeque::new());
+    Ok(insert_at)
+  }
+
+  fn pop_ready_group(&mut self) -> Option<Vec<In>> {
+    if self.pending.len() < self.fan_in {
+      return None;
+    }
+    let ready = self.pending.iter().all(|queue| !queue.is_empty());
+    if !ready {
+      return None;
+    }
+    let mut values = Vec::with_capacity(self.fan_in);
+    for queue in &mut self.pending {
+      let value = queue.pop_front()?;
+      values.push(value);
+    }
+    Some(values)
+  }
+
+  fn pop_with_fill_after_completion(&mut self) -> Option<Vec<In>> {
+    if self.pending.iter().all(|queue| queue.is_empty()) {
+      return None;
+    }
+    let mut values = Vec::with_capacity(self.fan_in);
+    for queue in &mut self.pending {
+      if let Some(value) = queue.pop_front() {
+        values.push(value);
+      } else {
+        values.push(self.fill_value.clone());
+      }
+    }
+    for _ in self.pending.len()..self.fan_in {
+      values.push(self.fill_value.clone());
+    }
+    Some(values)
+  }
+}
+
+impl<In> FlowLogic for ZipAllLogic<In>
+where
+  In: Clone + Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    self.apply_with_edge(0, input)
+  }
+
+  fn apply_with_edge(&mut self, edge_index: usize, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    if self.fan_in == 0 {
+      return Err(StreamError::InvalidConnection);
+    }
+    let value = downcast_value::<In>(input)?;
+    let slot = self.slot_for_edge(edge_index)?;
+    self.pending[slot].push_back(value);
+
+    if let Some(values) = self.pop_ready_group() {
+      return Ok(vec![Box::new(values) as DynValue]);
+    }
+    Ok(Vec::new())
+  }
+
+  fn expected_fan_in(&self) -> Option<usize> {
+    Some(self.fan_in)
+  }
+
+  fn on_source_done(&mut self) -> Result<(), StreamError> {
+    self.source_done = true;
+    Ok(())
+  }
+
+  fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
+    if let Some(values) = self.pop_ready_group() {
+      return Ok(vec![Box::new(values) as DynValue]);
+    }
+    if !self.source_done {
+      return Ok(Vec::new());
+    }
+    let Some(values) = self.pop_with_fill_after_completion() else {
+      return Ok(Vec::new());
+    };
+    Ok(vec![Box::new(values) as DynValue])
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.edge_slots.clear();
+    self.pending.clear();
+    self.source_done = false;
+    Ok(())
+  }
+}
+
+impl<In> FlowLogic for UnzipLogic<In>
+where
+  In: Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let (left, right) = downcast_value::<(In, In)>(input)?;
+    self.output_slots.push_back(0);
+    self.output_slots.push_back(1);
+    Ok(vec![Box::new(left) as DynValue, Box::new(right) as DynValue])
+  }
+
+  fn take_next_output_edge_slot(&mut self) -> Option<usize> {
+    self.output_slots.pop_front()
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.output_slots.clear();
+    Ok(())
+  }
+}
+
+impl<In, Out, F> FlowLogic for UnzipWithLogic<In, Out, F>
+where
+  In: Send + Sync + 'static,
+  Out: Send + Sync + 'static,
+  F: FnMut(In) -> (Out, Out) + Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let value = downcast_value::<In>(input)?;
+    let (left, right) = (self.func)(value);
+    self.output_slots.push_back(0);
+    self.output_slots.push_back(1);
+    Ok(vec![Box::new(left) as DynValue, Box::new(right) as DynValue])
+  }
+
+  fn take_next_output_edge_slot(&mut self) -> Option<usize> {
+    self.output_slots.pop_front()
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.output_slots.clear();
+    Ok(())
   }
 }
 

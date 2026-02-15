@@ -14,8 +14,9 @@ use crate::core::{
   shape::{Inlet, Outlet, PortId},
   stage::{
     Flow, Sink, Source, StageKind, async_boundary_definition, balance_definition, broadcast_definition,
-    buffer_definition, concat_definition, flat_map_merge_definition, merge_definition,
-    merge_substreams_with_parallelism_definition, split_after_definition, split_when_definition, zip_definition,
+    buffer_definition, concat_definition, flat_map_merge_definition, interleave_definition, merge_definition,
+    merge_substreams_with_parallelism_definition, partition_definition, prepend_definition, split_after_definition,
+    split_when_definition, unzip_definition, zip_all_definition, zip_definition,
   },
 };
 
@@ -64,6 +65,18 @@ fn source_single_u32(outlet: Outlet<u32>, value: u32) -> SourceDefinition {
     output_type: TypeId::of::<u32>(),
     mat_combine: MatCombine::KeepRight,
     logic:       Box::new(SingleValueSourceLogic { value: Some(value) }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  }
+}
+
+fn source_single_pair_u32(outlet: Outlet<(u32, u32)>, value: (u32, u32)) -> SourceDefinition {
+  SourceDefinition {
+    kind:        StageKind::SourceSingle,
+    outlet:      outlet.id(),
+    output_type: TypeId::of::<(u32, u32)>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(SinglePairSourceLogic { value: Some(value) }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
   }
@@ -673,6 +686,29 @@ fn async_boundary_backpressures_instead_of_failing_when_downstream_stalls() {
   }
   assert_eq!(interpreter.state(), StreamState::Running);
   assert_eq!(*pulls.lock(), 2_u32);
+}
+
+#[test]
+fn delay_backpressures_instead_of_failing_when_downstream_stalls() {
+  let pulls = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let completion = StreamCompletion::new();
+
+  let graph =
+    Source::<u32, _>::from_logic(StageKind::Custom, CountingSourceLogic { remaining: 8, pulls: pulls.clone() })
+      .delay(2)
+      .expect("delay")
+      .to_mat(Sink::from_logic(StageKind::SinkIgnore, BlockedSinkLogic { completion }), KeepRight);
+  let (plan, _completion) = graph.into_parts();
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::new(1, OverflowPolicy::Block));
+  interpreter.start().expect("start");
+
+  for _ in 0..10 {
+    let _ = interpreter.drive();
+    assert_ne!(interpreter.state(), StreamState::Failed);
+  }
+
+  assert_eq!(interpreter.state(), StreamState::Running);
+  assert!(*pulls.lock() > 0_u32);
 }
 
 #[test]
@@ -1661,6 +1697,257 @@ fn rejects_concat_flow_when_fan_in_does_not_match_wiring() {
   assert!(plan.is_err());
 }
 
+#[test]
+fn partition_flow_routes_elements_by_predicate_between_outgoing_edges() {
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let right_inlet: Inlet<u32> = Inlet::new();
+  let right_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<u32> = Inlet::new();
+  let completion = StreamCompletion::new();
+
+  let source = source_sequence_u32(source_outlet, 4);
+  let partition = partition_definition::<u32, _>(|value| value % 2 == 0);
+  let partition_inlet = partition.inlet;
+  let partition_outlet = partition.outlet;
+  let right_flow = FlowDefinition {
+    kind:        StageKind::FlowMap,
+    inlet:       right_inlet.id(),
+    outlet:      right_outlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepLeft,
+    logic:       Box::new(AddFlowLogic { add: 100 }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  };
+  let sink = sum_fold_u32_sink(sink_inlet, completion.clone());
+
+  let plan = stream_plan(
+    vec![
+      StageDefinition::Source(source),
+      StageDefinition::Flow(partition),
+      StageDefinition::Flow(right_flow),
+      StageDefinition::Sink(sink),
+    ],
+    vec![
+      (source_outlet.id(), partition_inlet, MatCombine::KeepLeft),
+      (partition_outlet, sink_inlet.id(), MatCombine::KeepRight),
+      (partition_outlet, right_inlet.id(), MatCombine::KeepLeft),
+      (right_outlet.id(), sink_inlet.id(), MatCombine::KeepRight),
+    ],
+  );
+
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  drive_to_completion(&mut interpreter);
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(210_u32)));
+}
+
+#[test]
+fn unzip_flow_routes_tuple_components_to_two_edges() {
+  let source_outlet: Outlet<(u32, u32)> = Outlet::new();
+  let right_inlet: Inlet<u32> = Inlet::new();
+  let right_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<u32> = Inlet::new();
+  let completion = StreamCompletion::new();
+
+  let source = source_single_pair_u32(source_outlet, (7_u32, 8_u32));
+  let unzip = unzip_definition::<u32>();
+  let unzip_inlet = unzip.inlet;
+  let unzip_outlet = unzip.outlet;
+  let right_flow = FlowDefinition {
+    kind:        StageKind::FlowMap,
+    inlet:       right_inlet.id(),
+    outlet:      right_outlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepLeft,
+    logic:       Box::new(AddFlowLogic { add: 100 }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  };
+  let sink = sum_fold_u32_sink(sink_inlet, completion.clone());
+
+  let plan = stream_plan(
+    vec![
+      StageDefinition::Source(source),
+      StageDefinition::Flow(unzip),
+      StageDefinition::Flow(right_flow),
+      StageDefinition::Sink(sink),
+    ],
+    vec![
+      (source_outlet.id(), unzip_inlet, MatCombine::KeepLeft),
+      (unzip_outlet, sink_inlet.id(), MatCombine::KeepRight),
+      (unzip_outlet, right_inlet.id(), MatCombine::KeepLeft),
+      (right_outlet.id(), sink_inlet.id(), MatCombine::KeepRight),
+    ],
+  );
+
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  drive_to_completion(&mut interpreter);
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(115_u32)));
+}
+
+#[test]
+fn interleave_flow_emits_round_robin_from_multiple_incoming_edges() {
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let left_inlet: Inlet<u32> = Inlet::new();
+  let left_outlet: Outlet<u32> = Outlet::new();
+  let right_inlet: Inlet<u32> = Inlet::new();
+  let right_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<u32> = Inlet::new();
+  let completion = StreamCompletion::new();
+
+  let source = source_sequence_u32(source_outlet, 4);
+  let left_flow = FlowDefinition {
+    kind:        StageKind::FlowMap,
+    inlet:       left_inlet.id(),
+    outlet:      left_outlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepLeft,
+    logic:       Box::new(AddFlowLogic { add: 10 }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  };
+  let right_flow = FlowDefinition {
+    kind:        StageKind::FlowMap,
+    inlet:       right_inlet.id(),
+    outlet:      right_outlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepLeft,
+    logic:       Box::new(AddFlowLogic { add: 100 }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  };
+  let interleave = interleave_definition::<u32>(2);
+  let interleave_inlet = interleave.inlet;
+  let interleave_outlet = interleave.outlet;
+  let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
+
+  let plan = stream_plan(
+    vec![
+      StageDefinition::Source(source),
+      StageDefinition::Flow(left_flow),
+      StageDefinition::Flow(right_flow),
+      StageDefinition::Flow(interleave),
+      StageDefinition::Sink(sink),
+    ],
+    vec![
+      (source_outlet.id(), left_inlet.id(), MatCombine::KeepLeft),
+      (source_outlet.id(), right_inlet.id(), MatCombine::KeepLeft),
+      (left_outlet.id(), interleave_inlet, MatCombine::KeepLeft),
+      (right_outlet.id(), interleave_inlet, MatCombine::KeepLeft),
+      (interleave_outlet, sink_inlet.id(), MatCombine::KeepRight),
+    ],
+  );
+
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  drive_to_completion(&mut interpreter);
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![11_u32, 102_u32, 13_u32, 104_u32])));
+}
+
+#[test]
+fn prepend_flow_prioritizes_lower_index_inputs() {
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let left_inlet: Inlet<u32> = Inlet::new();
+  let left_outlet: Outlet<u32> = Outlet::new();
+  let right_inlet: Inlet<u32> = Inlet::new();
+  let right_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<u32> = Inlet::new();
+  let completion = StreamCompletion::new();
+
+  let source = source_sequence_u32(source_outlet, 4);
+  let left_flow = FlowDefinition {
+    kind:        StageKind::FlowMap,
+    inlet:       left_inlet.id(),
+    outlet:      left_outlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepLeft,
+    logic:       Box::new(AddFlowLogic { add: 10 }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  };
+  let right_flow = FlowDefinition {
+    kind:        StageKind::FlowMap,
+    inlet:       right_inlet.id(),
+    outlet:      right_outlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepLeft,
+    logic:       Box::new(AddFlowLogic { add: 100 }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  };
+  let prepend = prepend_definition::<u32>(2);
+  let prepend_inlet = prepend.inlet;
+  let prepend_outlet = prepend.outlet;
+  let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
+
+  let plan = stream_plan(
+    vec![
+      StageDefinition::Source(source),
+      StageDefinition::Flow(left_flow),
+      StageDefinition::Flow(right_flow),
+      StageDefinition::Flow(prepend),
+      StageDefinition::Sink(sink),
+    ],
+    vec![
+      (source_outlet.id(), left_inlet.id(), MatCombine::KeepLeft),
+      (source_outlet.id(), right_inlet.id(), MatCombine::KeepLeft),
+      (left_outlet.id(), prepend_inlet, MatCombine::KeepLeft),
+      (right_outlet.id(), prepend_inlet, MatCombine::KeepLeft),
+      (prepend_outlet, sink_inlet.id(), MatCombine::KeepRight),
+    ],
+  );
+
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  drive_to_completion(&mut interpreter);
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![11_u32, 13_u32, 102_u32, 104_u32])));
+}
+
+#[test]
+fn zip_all_flow_emits_fill_values_after_completion() {
+  let left_outlet: Outlet<u32> = Outlet::new();
+  let right_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<Vec<u32>> = Inlet::new();
+  let completion = StreamCompletion::new();
+
+  let left_source = source_sequence_u32(left_outlet, 3);
+  let right_source = source_single_u32(right_outlet, 100_u32);
+  let zip_all = zip_all_definition::<u32>(2, 0_u32);
+  let zip_all_inlet = zip_all.inlet;
+  let zip_all_outlet = zip_all.outlet;
+  let sink = collect_u32_nested_sequence_sink(&sink_inlet, completion.clone());
+
+  let plan = stream_plan(
+    vec![
+      StageDefinition::Source(left_source),
+      StageDefinition::Source(right_source),
+      StageDefinition::Flow(zip_all),
+      StageDefinition::Sink(sink),
+    ],
+    vec![
+      (left_outlet.id(), zip_all_inlet, MatCombine::KeepLeft),
+      (right_outlet.id(), zip_all_inlet, MatCombine::KeepLeft),
+      (zip_all_outlet, sink_inlet.id(), MatCombine::KeepRight),
+    ],
+  );
+
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  drive_to_completion(&mut interpreter);
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(
+    completion.poll(),
+    Completion::Ready(Ok(vec![vec![1_u32, 100_u32], vec![2_u32, 0_u32], vec![3_u32, 0_u32]]))
+  );
+}
+
 struct CountingSourceLogic {
   remaining: u32,
   pulls:     ArcShared<SpinSyncMutex<u32>>,
@@ -1707,6 +1994,16 @@ struct SingleValueSourceLogic {
 }
 
 impl SourceLogic for SingleValueSourceLogic {
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    Ok(self.value.take().map(|value| Box::new(value) as DynValue))
+  }
+}
+
+struct SinglePairSourceLogic {
+  value: Option<(u32, u32)>,
+}
+
+impl SourceLogic for SinglePairSourceLogic {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
     Ok(self.value.take().map(|value| Box::new(value) as DynValue))
   }

@@ -69,14 +69,26 @@ pub enum StageKind {
   FlowMergeSubstreamsWithParallelism,
   /// Flow stage that concatenates emitted substreams into a single stream.
   FlowConcatSubstreams,
+  /// Flow stage that routes each element to one of two output lanes.
+  FlowPartition,
+  /// Flow stage that splits tuple payload into two output lanes.
+  FlowUnzip,
+  /// Flow stage that maps payload then splits mapped tuple into two output lanes.
+  FlowUnzipWith,
   /// Flow stage that broadcasts each element to multiple outputs.
   FlowBroadcast,
   /// Flow stage that balances elements across outputs.
   FlowBalance,
   /// Flow stage that merges elements from multiple inputs.
   FlowMerge,
+  /// Flow stage that interleaves elements from multiple inputs in round-robin order.
+  FlowInterleave,
+  /// Flow stage that prepends higher-priority input lanes before others.
+  FlowPrepend,
   /// Flow stage that zips elements from multiple inputs.
   FlowZip,
+  /// Flow stage that zips elements and fills missing lanes after completion.
+  FlowZipAll,
   /// Flow stage that pairs each element with an incrementing index.
   FlowZipWithIndex,
   /// Flow stage that concatenates inputs in port order.
