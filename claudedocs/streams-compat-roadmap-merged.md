@@ -593,15 +593,15 @@ Error handling
   - `13.3.u` の 4 項目完了後に `13.3` の `P2-11` を `[x]` 化
 ### 13.4 P3: 障害モデル（no-op 解消）
 
-1. [ ] P3-01 `supervision_stop` / `supervision_resume` / `supervision_restart` を実行器に接続する
-2. [ ] P3-02 `restart_source_with_backoff` の再起動遷移を実装する
-3. [ ] P3-03 `restart_flow_with_backoff` の再起動遷移を実装する
-4. [ ] P3-04 `restart_sink_with_backoff` の再起動遷移を実装する
-5. [ ] P3-05 `recover` の Failure/Error 振る舞いを再確認し、要素型 `Result` パスと分離する
-6. [ ] P3-06 `recover_with_retries` の最大再試行数と `fallback` 仕様を固定する
-7. [ ] P3-07 `kill switch` / `abort` 状態遷移を再起動・進捗 loop と整合化する
-8. [ ] P3-08 backoff 実行時刻の再現テストを追加する
-9. [ ] P3-09 Phase3 対象テストを固定し `./scripts/ci-check.sh` 対象範囲を更新する
+1. [x] P3-01 `supervision_stop` / `supervision_resume` / `supervision_restart` を実行器に接続する
+2. [x] P3-02 `restart_source_with_backoff` の再起動遷移を実装する
+3. [x] P3-03 `restart_flow_with_backoff` の再起動遷移を実装する
+4. [x] P3-04 `restart_sink_with_backoff` の再起動遷移を実装する
+5. [x] P3-05 `recover` の Failure/Error 振る舞いを再確認し、要素型 `Result` パスと分離する
+6. [x] P3-06 `recover_with_retries` の最大再試行数と `fallback` 仕様を固定する
+7. [x] P3-07 `kill switch` / `abort` 状態遷移を再起動・進捗 loop と整合化する
+8. [x] P3-08 backoff 実行時刻の再現テストを追加する
+9. [x] P3-09 Phase3 対象テストを固定し `./scripts/ci-check.sh` 対象範囲を更新する
 
 ### 13.5 P4: 動的制御・検証基盤
 

@@ -934,9 +934,44 @@ fn source_recover_replaces_error_payload_with_fallback() {
 }
 
 #[test]
+fn source_recover_preserves_ok_values_and_replaces_error_payloads() {
+  let values = Source::from_array([
+    Ok::<u32, StreamError>(1_u32),
+    Err::<u32, StreamError>(StreamError::Failed),
+    Ok::<u32, StreamError>(2_u32),
+  ])
+  .recover(5_u32)
+  .collect_values()
+  .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 5_u32, 2_u32]);
+}
+
+#[test]
 fn source_recover_with_retries_fails_when_retry_budget_is_exhausted() {
   let result =
     Source::single(Err::<u32, StreamError>(StreamError::Failed)).recover_with_retries(0, 5_u32).collect_values();
+  assert_eq!(result, Err(StreamError::Failed));
+}
+
+#[test]
+fn source_recover_with_retries_emits_fallback_until_budget_exhausts() {
+  let values = Source::from_array([
+    Err::<u32, StreamError>(StreamError::Failed),
+    Ok::<u32, StreamError>(5_u32),
+    Err::<u32, StreamError>(StreamError::Failed),
+  ])
+  .recover_with_retries(2, 7_u32)
+  .collect_values()
+  .expect("collect_values");
+  assert_eq!(values, vec![7_u32, 5_u32, 7_u32]);
+}
+
+#[test]
+fn source_recover_with_retries_fails_after_consuming_retry_budget() {
+  let result =
+    Source::from_array([Err::<u32, StreamError>(StreamError::Failed), Err::<u32, StreamError>(StreamError::Failed)])
+      .recover_with_retries(1, 7_u32)
+      .collect_values();
   assert_eq!(result, Err(StreamError::Failed));
 }
 
