@@ -605,13 +605,13 @@ Error handling
 
 ### 13.5 P4: 動的制御・検証基盤
 
-1. [ ] P4-01 `UniqueKillSwitch` を実行器に接続し、`shutdown`/`abort` の影響を確定する
-2. [ ] P4-02 `SharedKillSwitch` を追加し、複数 stream で検証する
-3. [ ] P4-03 `MergeHub` / `BroadcastHub` を `Source` / `Sink` 実装へ接続する
-4. [ ] P4-04 `TestSource` / `TestSink` probe の最小 API を追加する
-5. [ ] P4-05 需要制御・失敗注入・完了検証のシナリオを追加する
-6. [ ] P4-06 fuzz 相当のストレス系テストを追加し順序崩れ検知を導入する
-7. [ ] P4-07 P4 対象テストを固定し `./scripts/ci-check.sh all` を実行する
+1. [x] P4-01 `UniqueKillSwitch` を実行器に接続し、`shutdown`/`abort` の影響を確定する
+2. [x] P4-02 `SharedKillSwitch` を追加し、複数 stream で検証する
+3. [x] P4-03 `MergeHub` / `BroadcastHub` を `Source` / `Sink` 実装へ接続する
+4. [x] P4-04 `TestSource` / `TestSink` probe の最小 API を追加する
+5. [x] P4-05 需要制御・失敗注入・完了検証のシナリオを追加する
+6. [x] P4-06 fuzz 相当のストレス系テストを追加し順序崩れ検知を導入する
+7. [x] P4-07 P4 対象テストを固定し `./scripts/ci-check.sh all` を実行する
 
 ### 13.6 未実装オペレーター実装タスクリスト（カテゴリ単位）
 
