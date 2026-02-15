@@ -670,6 +670,54 @@ fn merge_substreams_with_parallelism_rejects_zero_parallelism() {
 }
 
 #[test]
+fn map_error_maps_error_payload() {
+  let values = Source::single(Err::<u32, StreamError>(StreamError::Failed))
+    .via(Flow::new().map_error(|_| StreamError::WouldBlock))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![Err(StreamError::WouldBlock)]);
+}
+
+#[test]
+fn on_error_continue_drops_error_payloads() {
+  let values = Source::from_array([
+    Ok::<u32, StreamError>(1_u32),
+    Err::<u32, StreamError>(StreamError::Failed),
+    Ok::<u32, StreamError>(2_u32),
+  ])
+  .via(Flow::new().on_error_continue())
+  .collect_values()
+  .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2_u32]);
+}
+
+#[test]
+fn on_error_resume_alias_drops_error_payloads() {
+  let values = Source::from_array([
+    Ok::<u32, StreamError>(1_u32),
+    Err::<u32, StreamError>(StreamError::Failed),
+    Ok::<u32, StreamError>(2_u32),
+  ])
+  .via(Flow::new().on_error_resume())
+  .collect_values()
+  .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2_u32]);
+}
+
+#[test]
+fn on_error_complete_stops_emitting_after_first_error_payload() {
+  let values = Source::from_array([
+    Ok::<u32, StreamError>(1_u32),
+    Err::<u32, StreamError>(StreamError::Failed),
+    Ok::<u32, StreamError>(2_u32),
+  ])
+  .via(Flow::new().on_error_complete())
+  .collect_values()
+  .expect("collect_values");
+  assert_eq!(values, vec![1_u32]);
+}
+
+#[test]
 fn recover_replaces_error_payload_with_fallback() {
   let values = Source::single(Err::<u32, StreamError>(StreamError::Failed))
     .via(Flow::new().recover(9_u32))
@@ -689,6 +737,15 @@ fn recover_preserves_ok_values_and_replaces_error_payloads() {
   .collect_values()
   .expect("collect_values");
   assert_eq!(values, vec![1_u32, 9_u32, 2_u32]);
+}
+
+#[test]
+fn recover_with_alias_replaces_error_payload_with_fallback() {
+  let values = Source::single(Err::<u32, StreamError>(StreamError::Failed))
+    .via(Flow::new().recover_with(8_u32))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![8_u32]);
 }
 
 #[test]
@@ -725,6 +782,28 @@ fn recover_with_retries_fails_after_consuming_retry_budget() {
 fn restart_flow_with_backoff_keeps_single_path_behavior() {
   let values =
     Source::single(7_u32).via(Flow::new().restart_flow_with_backoff(1, 3)).collect_values().expect("collect_values");
+  assert_eq!(values, vec![7_u32]);
+}
+
+#[test]
+fn on_failures_with_backoff_alias_keeps_single_path_behavior() {
+  let values =
+    Source::single(7_u32).via(Flow::new().on_failures_with_backoff(1, 3)).collect_values().expect("collect_values");
+  assert_eq!(values, vec![7_u32]);
+}
+
+#[test]
+fn with_backoff_alias_keeps_single_path_behavior() {
+  let values = Source::single(7_u32).via(Flow::new().with_backoff(1, 3)).collect_values().expect("collect_values");
+  assert_eq!(values, vec![7_u32]);
+}
+
+#[test]
+fn with_backoff_and_context_alias_keeps_single_path_behavior() {
+  let values = Source::single(7_u32)
+    .via(Flow::new().with_backoff_and_context(1, 3, "compat"))
+    .collect_values()
+    .expect("collect_values");
   assert_eq!(values, vec![7_u32]);
 }
 

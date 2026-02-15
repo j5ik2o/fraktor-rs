@@ -374,10 +374,7 @@ fn source_cycle_empty_values_completes_without_elements() {
 
 #[test]
 fn source_iterate_emits_progressive_values() {
-  let mut logic = super::IterateSourceLogic {
-    current: 1_u32,
-    func:    |value| value + 2,
-  };
+  let mut logic = super::IterateSourceLogic { current: 1_u32, func: |value| value + 2 };
   let mut values = Vec::new();
   for _ in 0..4 {
     let value = logic.pull().expect("pull").expect("value");
@@ -997,6 +994,54 @@ fn source_p2_regression_concat_substreams_with_take_within_and_prepend() {
 }
 
 #[test]
+fn source_map_error_maps_error_payload() {
+  let values = Source::single(Err::<u32, StreamError>(StreamError::Failed))
+    .map_error(|_| StreamError::WouldBlock)
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![Err(StreamError::WouldBlock)]);
+}
+
+#[test]
+fn source_on_error_continue_drops_error_payloads() {
+  let values = Source::from_array([
+    Ok::<u32, StreamError>(1_u32),
+    Err::<u32, StreamError>(StreamError::Failed),
+    Ok::<u32, StreamError>(2_u32),
+  ])
+  .on_error_continue()
+  .collect_values()
+  .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2_u32]);
+}
+
+#[test]
+fn source_on_error_resume_alias_drops_error_payloads() {
+  let values = Source::from_array([
+    Ok::<u32, StreamError>(1_u32),
+    Err::<u32, StreamError>(StreamError::Failed),
+    Ok::<u32, StreamError>(2_u32),
+  ])
+  .on_error_resume()
+  .collect_values()
+  .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2_u32]);
+}
+
+#[test]
+fn source_on_error_complete_stops_emitting_after_first_error_payload() {
+  let values = Source::from_array([
+    Ok::<u32, StreamError>(1_u32),
+    Err::<u32, StreamError>(StreamError::Failed),
+    Ok::<u32, StreamError>(2_u32),
+  ])
+  .on_error_complete()
+  .collect_values()
+  .expect("collect_values");
+  assert_eq!(values, vec![1_u32]);
+}
+
+#[test]
 fn source_recover_replaces_error_payload_with_fallback() {
   let values = Source::single(Err::<u32, StreamError>(StreamError::Failed))
     .recover(5_u32)
@@ -1016,6 +1061,15 @@ fn source_recover_preserves_ok_values_and_replaces_error_payloads() {
   .collect_values()
   .expect("collect_values");
   assert_eq!(values, vec![1_u32, 5_u32, 2_u32]);
+}
+
+#[test]
+fn source_recover_with_alias_replaces_error_payload_with_fallback() {
+  let values = Source::single(Err::<u32, StreamError>(StreamError::Failed))
+    .recover_with(8_u32)
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![8_u32]);
 }
 
 #[test]
@@ -1050,6 +1104,24 @@ fn source_recover_with_retries_fails_after_consuming_retry_budget() {
 #[test]
 fn source_restart_with_backoff_keeps_single_path_behavior() {
   let values = Source::single(5_u32).restart_source_with_backoff(1, 3).collect_values().expect("collect_values");
+  assert_eq!(values, vec![5_u32]);
+}
+
+#[test]
+fn source_on_failures_with_backoff_alias_keeps_single_path_behavior() {
+  let values = Source::single(5_u32).on_failures_with_backoff(1, 3).collect_values().expect("collect_values");
+  assert_eq!(values, vec![5_u32]);
+}
+
+#[test]
+fn source_with_backoff_alias_keeps_single_path_behavior() {
+  let values = Source::single(5_u32).with_backoff(1, 3).collect_values().expect("collect_values");
+  assert_eq!(values, vec![5_u32]);
+}
+
+#[test]
+fn source_with_backoff_and_context_alias_keeps_single_path_behavior() {
+  let values = Source::single(5_u32).with_backoff_and_context(1, 3, "compat").collect_values().expect("collect_values");
   assert_eq!(values, vec![5_u32]);
 }
 

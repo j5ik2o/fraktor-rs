@@ -672,6 +672,29 @@ where
     self
   }
 
+  /// Compatibility alias for applying restart-on-failure backoff semantics.
+  #[must_use]
+  pub fn on_failures_with_backoff(self, min_backoff_ticks: u32, max_restarts: usize) -> Source<Out, Mat> {
+    self.restart_source_with_backoff(min_backoff_ticks, max_restarts)
+  }
+
+  /// Compatibility alias for applying restart backoff semantics.
+  #[must_use]
+  pub fn with_backoff(self, min_backoff_ticks: u32, max_restarts: usize) -> Source<Out, Mat> {
+    self.restart_source_with_backoff(min_backoff_ticks, max_restarts)
+  }
+
+  /// Compatibility alias for applying restart backoff semantics with ignored context parameter.
+  #[must_use]
+  pub fn with_backoff_and_context<C>(
+    self,
+    min_backoff_ticks: u32,
+    max_restarts: usize,
+    _context: C,
+  ) -> Source<Out, Mat> {
+    self.restart_source_with_backoff(min_backoff_ticks, max_restarts)
+  }
+
   /// Enables restart semantics by explicit restart settings.
   #[must_use]
   pub fn restart_source_with_settings(mut self, settings: RestartSettings) -> Source<Out, Mat> {
@@ -1104,6 +1127,48 @@ impl<Out, Mat> Source<Result<Out, StreamError>, Mat>
 where
   Out: Clone + Send + Sync + 'static,
 {
+  /// Maps error payloads while keeping successful elements unchanged.
+  #[must_use]
+  pub fn map_error<F>(self, mut mapper: F) -> Source<Result<Out, StreamError>, Mat>
+  where
+    F: FnMut(StreamError) -> StreamError + Send + Sync + 'static, {
+    self.map(move |value| value.map_err(&mut mapper))
+  }
+
+  /// Drops failing payloads and keeps successful elements.
+  #[must_use]
+  pub fn on_error_continue(self) -> Source<Out, Mat> {
+    self.map_option(Result::ok)
+  }
+
+  /// Alias of [`Source::on_error_continue`].
+  #[must_use]
+  pub fn on_error_resume(self) -> Source<Out, Mat> {
+    self.on_error_continue()
+  }
+
+  /// Emits successful payloads until first error payload is observed.
+  #[must_use]
+  pub fn on_error_complete(self) -> Source<Out, Mat> {
+    self
+      .stateful_map(|| {
+        let mut seen_error = false;
+        move |value| {
+          if seen_error {
+            return None;
+          }
+          match value {
+            | Ok(value) => Some(value),
+            | Err(_) => {
+              seen_error = true;
+              None
+            },
+          }
+        }
+      })
+      .flatten_optional()
+  }
+
   /// Recovers error payloads with the provided fallback element.
   #[must_use]
   pub fn recover(mut self, fallback: Out) -> Source<Out, Mat> {
@@ -1136,6 +1201,12 @@ where
       );
     }
     Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Alias of [`Source::recover`].
+  #[must_use]
+  pub fn recover_with(self, fallback: Out) -> Source<Out, Mat> {
+    self.recover(fallback)
   }
 }
 

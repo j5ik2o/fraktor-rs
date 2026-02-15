@@ -127,30 +127,30 @@ Source operators
 Sink operators
 
 - [ ] `aspublisher`
-- [ ] `cancelled`
-- [ ] `collect`
-- [ ] `collection`
+- [x] `cancelled`
+- [x] `collect`
+- [x] `collection`
 - [ ] `completionstagesink`
-- [ ] `count`
-- [ ] `exists`
+- [x] `count`
+- [x] `exists`
 - [ ] `foldwhile`
-- [ ] `forall`
+- [x] `forall`
 - [ ] `foreachasync`
 - [ ] `frommaterializer`
 - [ ] `fromsubscriber`
 - [ ] `futuresink`
-- [ ] `headoption`
-- [ ] `lastoption`
+- [x] `headoption`
+- [x] `lastoption`
 - [ ] `lazycompletionstagesink`
 - [ ] `lazyfuturesink`
 - [ ] `lazysink`
-- [ ] `none`
-- [ ] `oncomplete`
+- [x] `none`
+- [x] `oncomplete`
 - [ ] `prematerialize`
-- [ ] `reduce`
-- [ ] `seq`
+- [x] `reduce`
+- [x] `seq`
 - [ ] `source`
-- [ ] `takelast`
+- [x] `takelast`
 
 Additional sink and source converters
 
@@ -301,14 +301,14 @@ Compression
 
 Error handling
 
-- [ ] `maperror`
-- [ ] `onerrorcomplete`
-- [ ] `onerrorcontinue`
-- [ ] `onerrorresume`
-- [ ] `onfailureswithbackoff`
-- [ ] `recoverwith`
-- [ ] `withbackoff`
-- [ ] `withbackoffandcontext`
+- [x] `maperror`
+- [x] `onerrorcomplete`
+- [x] `onerrorcontinue`
+- [x] `onerrorresume`
+- [x] `onfailureswithbackoff`
+- [x] `recoverwith`
+- [x] `withbackoff`
+- [x] `withbackoffandcontext`
 
 ## 6. 障害モデル統一方針
 
@@ -616,7 +616,7 @@ Error handling
 ### 13.6 未実装オペレーター実装タスクリスト（カテゴリ単位）
 
 1. [ ] O1 Source 未実装カテゴリを一括実装する（31件中7件対応）
-2. [ ] O2 Sink 未実装カテゴリを一括実装する（25件）
+2. [ ] O2 Sink 未実装カテゴリを一括実装する（25件中13件対応）
 3. [ ] O3 Converter 未実装カテゴリを一括実装する（7件）
 4. [ ] O4 File I/O 未実装カテゴリを一括実装する（2件）
 5. [ ] O5 Simple 未実装カテゴリを一括実装する（30件）
@@ -631,7 +631,7 @@ Error handling
 14. [ ] O14 watching status 系カテゴリを一括実装する（2件）
 15. [ ] O15 actor interop 系カテゴリを一括実装する（8件）
 16. [ ] O16 圧縮系カテゴリを一括実装する（4件）
-17. [ ] O17 Error handling 系カテゴリを一括実装する（8件）
+17. [x] O17 Error handling 系カテゴリを一括実装する（8件）
 
 ### 13.7 クロージング
 
