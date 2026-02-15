@@ -154,6 +154,61 @@ fn throttle_rejects_zero_capacity() {
 }
 
 #[test]
+fn delay_keeps_single_path_behavior() {
+  let values =
+    Source::single(7_u32).via(Flow::new().delay(2).expect("delay")).collect_values().expect("collect_values");
+  assert_eq!(values, vec![7_u32]);
+}
+
+#[test]
+fn delay_rejects_zero_ticks() {
+  let flow = Flow::<u32, u32, StreamNotUsed>::new();
+  let result = flow.delay(0);
+  assert!(matches!(
+    result,
+    Err(StreamDslError::InvalidArgument { name: "ticks", value: 0, reason: "must be greater than zero" })
+  ));
+}
+
+#[test]
+fn initial_delay_keeps_single_path_behavior() {
+  let values = Source::single(7_u32)
+    .via(Flow::new().initial_delay(2).expect("initial_delay"))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![7_u32]);
+}
+
+#[test]
+fn initial_delay_rejects_zero_ticks() {
+  let flow = Flow::<u32, u32, StreamNotUsed>::new();
+  let result = flow.initial_delay(0);
+  assert!(matches!(
+    result,
+    Err(StreamDslError::InvalidArgument { name: "ticks", value: 0, reason: "must be greater than zero" })
+  ));
+}
+
+#[test]
+fn take_within_limits_output_window() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .via(Flow::new().take_within(1).expect("take_within"))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32]);
+}
+
+#[test]
+fn take_within_rejects_zero_ticks() {
+  let flow = Flow::<u32, u32, StreamNotUsed>::new();
+  let result = flow.take_within(0);
+  assert!(matches!(
+    result,
+    Err(StreamDslError::InvalidArgument { name: "ticks", value: 0, reason: "must be greater than zero" })
+  ));
+}
+
+#[test]
 fn batch_emits_fixed_size_chunks() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4, 5]))
     .via(Flow::new().batch(2).expect("batch"))

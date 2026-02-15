@@ -446,6 +446,57 @@ where
     Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
+  /// Adds a delay stage that emits each element after `ticks`.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `ticks` is zero.
+  pub fn delay(mut self, ticks: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
+    let ticks = validate_positive_argument("ticks", ticks)?;
+    let definition = delay_definition::<Out>(ticks as u64);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
+  }
+
+  /// Adds an initial-delay stage that suppresses outputs until `ticks` elapse.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `ticks` is zero.
+  pub fn initial_delay(mut self, ticks: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
+    let ticks = validate_positive_argument("ticks", ticks)?;
+    let definition = initial_delay_definition::<Out>(ticks as u64);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
+  }
+
+  /// Adds a take-within stage that forwards elements only within `ticks`.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `ticks` is zero.
+  pub fn take_within(mut self, ticks: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
+    let ticks = validate_positive_argument("ticks", ticks)?;
+    let definition = take_within_definition::<Out>(ticks as u64);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
+  }
+
   /// Adds a batch stage that emits vectors of size `size`.
   ///
   /// # Errors
@@ -1230,6 +1281,77 @@ where
   let logic = AsyncBoundaryLogic::<In> { pending: VecDeque::new(), capacity };
   FlowDefinition {
     kind:        StageKind::FlowThrottle,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(in crate::core) fn delay_definition<In>(delay_ticks: u64) -> FlowDefinition
+where
+  In: Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = TimedDelayLogic::<In> {
+    mode:       DelayMode::PerElement { delay_ticks },
+    pending:    VecDeque::new(),
+    tick_count: 0,
+  };
+  FlowDefinition {
+    kind:        StageKind::FlowDelay,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(in crate::core) fn initial_delay_definition<In>(initial_delay_ticks: u64) -> FlowDefinition
+where
+  In: Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = TimedDelayLogic::<In> {
+    mode:       DelayMode::Initial { initial_delay_ticks },
+    pending:    VecDeque::new(),
+    tick_count: 0,
+  };
+  FlowDefinition {
+    kind:        StageKind::FlowInitialDelay,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(in crate::core) fn take_within_definition<In>(duration_ticks: u64) -> FlowDefinition
+where
+  In: Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = TakeWithinLogic::<In> {
+    duration_ticks,
+    tick_count: 0,
+    expired: false,
+    shutdown_requested: false,
+    _pd: PhantomData,
+  };
+  FlowDefinition {
+    kind:        StageKind::FlowTakeWithin,
     inlet:       inlet.id(),
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
@@ -2117,6 +2239,30 @@ struct AsyncBoundaryLogic<In> {
   capacity: usize,
 }
 
+enum DelayMode {
+  PerElement { delay_ticks: u64 },
+  Initial { initial_delay_ticks: u64 },
+}
+
+struct TimedPendingEntry<In> {
+  ready_at: u64,
+  value:    In,
+}
+
+struct TimedDelayLogic<In> {
+  mode:       DelayMode,
+  pending:    VecDeque<TimedPendingEntry<In>>,
+  tick_count: u64,
+}
+
+struct TakeWithinLogic<In> {
+  duration_ticks:     u64,
+  tick_count:         u64,
+  expired:            bool,
+  shutdown_requested: bool,
+  _pd:                PhantomData<fn(In)>,
+}
+
 struct GroupByLogic<In, Key, F> {
   max_substreams: usize,
   seen_keys:      Vec<Key>,
@@ -2437,6 +2583,104 @@ where
 
   fn on_restart(&mut self) -> Result<(), StreamError> {
     self.pending.clear();
+    Ok(())
+  }
+}
+
+impl<In> TimedDelayLogic<In>
+where
+  In: Send + Sync + 'static,
+{
+  const fn ready_at(&self) -> u64 {
+    match self.mode {
+      | DelayMode::PerElement { delay_ticks } => self.tick_count.saturating_add(delay_ticks),
+      | DelayMode::Initial { initial_delay_ticks } => {
+        if self.tick_count < initial_delay_ticks {
+          initial_delay_ticks
+        } else {
+          self.tick_count
+        }
+      },
+    }
+  }
+}
+
+impl<In> FlowLogic for TimedDelayLogic<In>
+where
+  In: Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let value = downcast_value::<In>(input)?;
+    let ready_at = self.ready_at();
+    self.pending.push_back(TimedPendingEntry { ready_at, value });
+    Ok(Vec::new())
+  }
+
+  fn on_tick(&mut self, tick_count: u64) -> Result<(), StreamError> {
+    self.tick_count = tick_count;
+    Ok(())
+  }
+
+  fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
+    let Some(entry) = self.pending.front() else {
+      return Ok(Vec::new());
+    };
+    if entry.ready_at > self.tick_count {
+      return Ok(Vec::new());
+    }
+    let Some(entry) = self.pending.pop_front() else {
+      return Ok(Vec::new());
+    };
+    Ok(vec![Box::new(entry.value) as DynValue])
+  }
+
+  fn has_pending_output(&self) -> bool {
+    !self.pending.is_empty()
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.pending.clear();
+    self.tick_count = 0;
+    Ok(())
+  }
+}
+
+impl<In> FlowLogic for TakeWithinLogic<In>
+where
+  In: Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let value = downcast_value::<In>(input)?;
+    if self.expired {
+      return Ok(Vec::new());
+    }
+    if self.tick_count > self.duration_ticks {
+      self.expired = true;
+      self.shutdown_requested = true;
+      return Ok(Vec::new());
+    }
+    Ok(vec![Box::new(value) as DynValue])
+  }
+
+  fn on_tick(&mut self, tick_count: u64) -> Result<(), StreamError> {
+    self.tick_count = tick_count;
+    if self.tick_count > self.duration_ticks {
+      self.expired = true;
+      self.shutdown_requested = true;
+    }
+    Ok(())
+  }
+
+  fn take_shutdown_request(&mut self) -> bool {
+    let requested = self.shutdown_requested;
+    self.shutdown_requested = false;
+    requested
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.tick_count = 0;
+    self.expired = false;
+    self.shutdown_requested = false;
     Ok(())
   }
 }

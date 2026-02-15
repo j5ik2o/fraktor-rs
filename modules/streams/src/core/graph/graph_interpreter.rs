@@ -131,6 +131,15 @@ impl GraphInterpreter {
 
     let mut progressed = false;
 
+    match self.tick_flow_stages() {
+      | Ok(true) => progressed = true,
+      | Ok(false) => {},
+      | Err(error) => {
+        self.fail(&error);
+        return DriveOutcome::Progressed;
+      },
+    }
+
     if !self.on_start_done {
       match self.start_sinks() {
         | Ok(()) => {
@@ -215,6 +224,53 @@ impl GraphInterpreter {
     }
 
     if progressed { DriveOutcome::Progressed } else { DriveOutcome::Idle }
+  }
+
+  fn tick_flow_stages(&mut self) -> Result<bool, StreamError> {
+    let mut progressed = false;
+
+    for flow_index in 0..self.flow_order.len() {
+      let stage_index = self.flow_order[flow_index];
+      if self.flow_restart_waiting(stage_index) {
+        continue;
+      }
+
+      let on_tick_result = {
+        let StageDefinition::Flow(flow) = &mut self.stages[stage_index] else {
+          continue;
+        };
+        flow.logic.on_tick(self.tick_count)
+      };
+      match on_tick_result {
+        | Ok(()) => {},
+        | Err(error) => match self.handle_flow_failure(stage_index, error)? {
+          | FailureDisposition::Continue => {
+            progressed = true;
+            continue;
+          },
+          | FailureDisposition::Complete => {
+            self.set_all_sources_done()?;
+            self.notify_source_done_to_flows()?;
+            progressed = true;
+            continue;
+          },
+          | FailureDisposition::Fail(error) => return Err(error),
+        },
+      }
+
+      let shutdown_requested = {
+        let StageDefinition::Flow(flow) = &mut self.stages[stage_index] else {
+          continue;
+        };
+        flow.logic.take_shutdown_request()
+      };
+      if shutdown_requested {
+        self.request_shutdown()?;
+        progressed = true;
+      }
+    }
+
+    Ok(progressed)
   }
 
   fn compile_plan(plan: StreamPlan, buffer_config: StreamBufferConfig) -> CompiledPlan {

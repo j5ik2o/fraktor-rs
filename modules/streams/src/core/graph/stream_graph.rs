@@ -175,6 +175,9 @@ impl StreamGraph {
             | StageKind::FlowBuffer
             | StageKind::FlowAsyncBoundary
             | StageKind::FlowThrottle
+            | StageKind::FlowDelay
+            | StageKind::FlowInitialDelay
+            | StageKind::FlowTakeWithin
             | StageKind::FlowBatch
             | StageKind::FlowGroupBy
             | StageKind::FlowRecover

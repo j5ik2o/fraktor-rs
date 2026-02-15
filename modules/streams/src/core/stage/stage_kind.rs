@@ -43,6 +43,12 @@ pub enum StageKind {
   FlowBuffer,
   /// Flow stage that limits in-flight elements with bounded buffering.
   FlowThrottle,
+  /// Flow stage that delays each element by a fixed number of ticks.
+  FlowDelay,
+  /// Flow stage that delays stream start by a fixed number of ticks.
+  FlowInitialDelay,
+  /// Flow stage that forwards elements only within configured tick window.
+  FlowTakeWithin,
   /// Flow stage that represents an asynchronous execution boundary.
   FlowAsyncBoundary,
   /// Flow stage that groups elements into fixed-size batches.

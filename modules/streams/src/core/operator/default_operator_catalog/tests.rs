@@ -59,6 +59,22 @@ fn lookup_returns_throttle_contract() {
 }
 
 #[test]
+fn lookup_returns_delay_contract() {
+  let catalog = DefaultOperatorCatalog::new();
+  let contract = catalog.lookup(OperatorKey::DELAY).expect("lookup");
+  assert_eq!(contract.key, OperatorKey::DELAY);
+  assert!(contract.requirement_ids.contains(&"1.2"));
+}
+
+#[test]
+fn lookup_returns_take_within_contract() {
+  let catalog = DefaultOperatorCatalog::new();
+  let contract = catalog.lookup(OperatorKey::TAKE_WITHIN).expect("lookup");
+  assert_eq!(contract.key, OperatorKey::TAKE_WITHIN);
+  assert!(contract.requirement_ids.contains(&"1.3"));
+}
+
+#[test]
 fn coverage_contains_batch() {
   let catalog = DefaultOperatorCatalog::new();
   let covered = catalog.coverage().iter().any(|entry| entry.key == OperatorKey::BATCH);
@@ -69,6 +85,13 @@ fn coverage_contains_batch() {
 fn coverage_contains_throttle() {
   let catalog = DefaultOperatorCatalog::new();
   let covered = catalog.coverage().iter().any(|entry| entry.key == OperatorKey::THROTTLE);
+  assert!(covered);
+}
+
+#[test]
+fn coverage_contains_delay() {
+  let catalog = DefaultOperatorCatalog::new();
+  let covered = catalog.coverage().iter().any(|entry| entry.key == OperatorKey::DELAY);
   assert!(covered);
 }
 

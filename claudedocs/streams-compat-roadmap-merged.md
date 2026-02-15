@@ -469,17 +469,129 @@ Error handling
 ### 13.3 P2: オペレーター拡張（実用性コア）
 
 1. [x] P2-01 `broadcast`/`balance`/`merge`/`zip`/`concat` の既存実装を新 Graph 基盤へ接続する
-2. [x] P2-02 `mapasync` 系を実装し、実効する async 境界の最小検証を通す
+2. [x] P2-02 `map_async` 系を実装し、実効する async 境界の最小検証を通す
 3. [x] P2-03 `flat_map_merge` と `flat_map_concat` の順序・並行・終了条件を固定テスト化する
-4. [ ] P2-04 `buffer`, `throttle`, `batch` 系を backlog 抑制含めて追加実装する
-5. [ ] P2-05 `group_by`, `split_when`, `split_after`, `merge_substreams`, `concat_substreams` を実装する
-6. [ ] P2-06 `GraphDSL` の最小 partial graph API を追加し、`from_*` 系で利用可能にする
-7. [ ] P2-07 `BidiFlow` の最小骨格を追加する
-8. [ ] P2-08 `delay`, `initialdelay`, `takewithin` 等 timer 系を追加する
+4. [x] P2-04 `buffer`, `throttle`, `batch` 系を backlog 抑制含めて追加実装する
+5. [x] P2-05 `group_by`, `split_when`, `split_after`, `merge_substreams`, `concat_substreams` を実装する
+6. [x] P2-06 `GraphDSL` の最小 partial graph API を追加し、`from_*` 系で利用可能にする
+7. [x] P2-07 `BidiFlow` の最小骨格を追加する
+8. [x] P2-08 `delay`, `initialdelay`, `takewithin` 等 timer 系を追加する
 9. [ ] P2-09 `partition`/`unzip` 系を段階追加する
 10. [ ] P2-10 `Fan-in` 主要演算子 (`interleave`, `prepend`, `zipall`) を追加する
 11. [ ] P2-11 P2 対象テスト（junction/substream/backpressure）を追加する
 
+#### 13.3.x P2 現状スナップショット
+
+- 方針
+  - 今フェーズでは後方互換維持を優先せず、再設計に不要な互換分岐は持ち込まない
+  - `P2` で新規追加する挙動は既存実装を流用できる場合は共通化し、同一ロジックの重複は `DRY` で抑える
+- 進捗
+  - `map_async`, `flat_map_merge`, `flat_map_concat`, `group_by`, `split_when`, `split_after`, `buffer`, `throttle`, `batch`, `merge_substreams`, `concat_substreams` の主要経路は既に実装・テストが存在
+  - `GraphDSL` の最小構成と `BidiFlow` は既存骨格があり、`P2-06` / `P2-07` の到達基準を満たす
+- 未完了（優先順）
+  - `P2-09`: `partition` と `unzip` 系
+  - `P2-10`: `interleave` / `prepend` / `zipall` など主要 fan-in
+  - `P2-11`: 上記未完了を含む junction/substream/backpressure の固定回帰テストを追加
+
+#### 13.3.y P2 続行アクション
+
+- まず着手する順
+  1. `timer` 系ステート管理を共通化して、`delay`/`initialdelay`/`takewithin` 相当の構造を先に固定
+  2. `partition` と `unzip` を `Flow`/`Source` の双方で使い回し可能な定義に寄せる
+  3. `interleave` / `prepend` / `zipall` を `Fan-in` の既存分岐（`merge` 系、`zip` 系、`concat` 系）で共通化しつつ実装
+  4. `P2-11` を `supervision/backpressure/join/segment` の観点で固定し、`Phase3` へ移すために最小の回帰セットを確定
+- 完了条件
+  - `P2-08`/`P2-09`/`P2-10` のチェックを `[x]` へ更新
+  - `P2-11` の追加テストを `./scripts/ci-check.sh all` の対象に反映しないまでも、`P2` 範囲の再現失敗が再発しない状態を固定
+  - 互換分岐を増やさず、既存実装は可能な限り流用で DRY を維持
+
+#### 13.3.z P2-08 実施計画（timer 系）
+
+- 到達目標
+  - `delay`, `initialdelay`, `takewithin` を timer 系として同一の時刻計測抽象で扱う
+  - `Flow` と `Source` で差分定義を最小化し、実装ロジックは可能な限り共通化
+- タスク分解
+  - [x] P2-08-01 `timer` 用の中核定義を設計し、`GraphInterpreter` での時間制御ノードと接続仕様を固定する
+  - [x] P2-08-02 `delay` を `Flow`/`Source` 向けに実装し、要素順序と完了の時系列を固定テスト化する
+  - [x] P2-08-03 `initialdelay` を実装し、空入力/即完了時の振る舞いを境界条件として追加する
+  - [x] P2-08-04 `takewithin` を実装し、タイムアウト境界での途中完了・要素残留ルールを固定する
+  - [x] P2-08-05 timer 系テストを 1 まとまりに整理し、`P2-11` の回帰観点（junction/substream/backpressure）へ接続する
+- 受け入れ条件
+  - DRY: `delay` と `initialdelay` は同一の timer 基底に寄せる
+  - no-op 禁止: `P2-08` の各項目は既存 no-op 実装を残さない
+  - 形式: `P2-08-05` 完了時点で `P2-08` を `[x]` 更新可能にする
+
+#### 13.3.z.x P2-08-01 timer 基底具体化
+
+- 現時点判断
+  - ここを先に固定しないと `P2-08-02`〜`P2-08-04` の実装が分散するため、先行着手対象は `P2-08-01` に限定
+- スコープ
+  - 時刻管理（tick 系設定値）を持つ共通ヘルパーを `Graph` 定義層で導入
+  - timer 演算子共通の制御状態を 1 箇所に抽象化し、`Flow`/`Source` 側 API は薄いエントリポイントに集約
+  - 完了・キャンセル・エラー処理は共通ヘルパーのみで完結
+- 実装分解（順序固定）
+  - `timer` 名義の時刻抽象を `StreamPlan` 側のノード属性として定義し、`GraphInterpreter` での参照先を明確化
+  - `duration`/`deadline`/`deadline_at_open` の表現を共通化し、`initialdelay` と `delay` の差分はオプション定義として吸収
+  - `takewithin` 追加時の「未完了要素保持/破棄」の境界を、既存 backpressure 終端ハンドリングと一体で検証
+- 完了条件（P2-08-01）
+  - `P2-08-01` 実装内容を 1 つの定義エントリとして `default_operator_catalog` 側に反映できる状態
+  - `P2-08-01` の観点で `map_async` 系の実効検証に必要なタイム依存ロジックが再利用可能
+  - `P2-08` 以外のカテゴリに timer 名の複製実装を持たない
+
+#### 13.3.w P2-09 実施計画（分岐・逆配列系）
+
+- 到達目標
+  - `partition` と `unzip`/`unzip_with` を、既存 `Graph`/`Shape` 経路のまま実効化する
+  - `Flow` と `Source` のサブクラス別差分は最小化し、実装共通化を優先する
+- タスク分解
+  - [ ] P2-09-01 `partition` の `Graph` 定義を整備し、`Fan-out` の順序・分配規則を固定する
+  - [ ] P2-09-02 `unzip` と `unzip_with` の共通定義を追加し、`flow`/`source` 側へ露出する
+  - [ ] P2-09-03 `partition`/`unzip` 系の backpressure/完了/エラー挙動を固定テスト化する
+  - [ ] P2-09-04 `group_by` や `split/merge_substreams` と組み合わせた組合せ回帰を 1 セット追加する
+- 受け入れ条件
+  - DRY: `partition`/`unzip` は `StreamShape` 方向の重複ロジックを避け、定義レベルで分離する
+  - 実装単位: `P2-09-04` 完了時点で `P2-09` を `[x]` 更新可能にする
+  - 監査: `P2` 全体の進捗計画（`P2-11`）へ遷移可能な回帰観点を 1 つ以上追加する
+
+#### 13.3.v P2-10 実施計画（主要 fan-in）
+
+- 到達目標
+  - `interleave`、`prepend`、`zipall` を既存の junction 実行系に載せ、`merge`/`concat`/`zip` 系との一貫性を保つ
+  - `merge_preferred` / `prepend` 系と内部的に重なりうる処理は 1 箇所に集約する
+- タスク分解
+  - [ ] P2-10-01 `interleave` の入力分岐ポリシーと配信順序を明文化し、`Flow` 実装を追加
+  - [ ] P2-10-02 `prepend` / `prepend_lazy` の差分を共通化し、`append` 系とは別に最小 API で提供
+  - [ ] P2-10-03 `zipall` の終了条件・不足要素ハンドリングを固定し実装追加
+  - [ ] P2-10-04 `P2-10` 追加演算子の junction 側回帰を `P2-11` 観点へ接続する
+- 受け入れ条件
+  - DRY: fan-in 系で重複する要素の配布・drain ロジックは共通ヘルパーへ統合
+  - 整合性: 既存 `interleave`/`prepend` 系 API とテストでシグネチャ重複を排除
+  - 完了: `P2-10-04` にて `P2-10` を `[x]` 更新可能にする
+
+#### 13.3.u P2-11 方針（回帰固定）
+
+- 方針
+  - `P2-08`/`P2-09`/`P2-10` の実装は、同一カテゴリ内で共通に壊れやすい境界条件を固定する
+  - no-op 実装を増やさず、`GraphInterpreter` 側の制御境界（需要/完了/失敗）で検証可能な形にする
+- 対応項目
+  - [ ] P2-11-01 `delay/initialdelay/takewithin` の時間境界と backpressure テストを追加
+  - [ ] P2-11-02 `partition/unzip` の order/backpressure/完了連鎖を固定
+  - [ ] P2-11-03 `interleave/prepend/zipall` の fan-in 収束と終端状態を固定
+  - [ ] P2-11-04 `group_by`, `merge_substreams`, `concat_substreams` と新規 `P2-08`〜`P2-10` を混在させた最小結合回帰を追加
+- 完了条件
+  - 追加回帰で `P2` の残存未実装 3 付随カテゴリの主要不具合再現が潰れていること
+  - `P2` フェーズ完了基準として本節の 4 件がすべて `[x]` になっていること
+
+#### 13.3.next P2 直近実行順
+
+- 直近実行順
+  1. `13.3.z` の `P2-08-01` から着手して timer 時刻基底を確定
+  2. `13.3.z` の `P2-08-02` / `P2-08-03` を通して時間制御の基本経路を固定
+  3. `13.3.z` の `P2-08-04` / `P2-08-05` を閉じる
+  4. `13.3.w` → `13.3.v` → `13.3.u` の順で回帰連携を詰める
+- 記録ルール
+  - 各 `P2-08`〜`P2-10` の完了時に、本ファイルの該当 `[ ]` を `[x]` に更新
+  - `13.3.u` の 4 項目完了後に `13.3` の `P2-11` を `[x]` 化
 ### 13.4 P3: 障害モデル（no-op 解消）
 
 1. [ ] P3-01 `supervision_stop` / `supervision_resume` / `supervision_restart` を実行器に接続する

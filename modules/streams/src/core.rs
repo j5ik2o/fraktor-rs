@@ -427,6 +427,11 @@ trait SourceLogic: Send {
 trait FlowLogic: Send {
   fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError>;
 
+  fn on_tick(&mut self, tick_count: u64) -> Result<(), StreamError> {
+    let _ = tick_count;
+    Ok(())
+  }
+
   fn can_accept_input(&self) -> bool {
     true
   }

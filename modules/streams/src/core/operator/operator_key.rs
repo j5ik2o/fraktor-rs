@@ -21,6 +21,8 @@ impl OperatorKey {
   pub const CONCAT: Self = Self::new("concat");
   /// Key for `concat_substreams`.
   pub const CONCAT_SUBSTREAMS: Self = Self::new("concat_substreams");
+  /// Key for `delay`.
+  pub const DELAY: Self = Self::new("delay");
   /// Key for `drop`.
   pub const DROP: Self = Self::new("drop");
   /// Key for `drop_while`.
@@ -47,6 +49,8 @@ impl OperatorKey {
   pub const GROUPED: Self = Self::new("grouped");
   /// Key for `group_by`.
   pub const GROUP_BY: Self = Self::new("group_by");
+  /// Key for `initial_delay`.
+  pub const INITIAL_DELAY: Self = Self::new("initial_delay");
   /// Key for `intersperse`.
   pub const INTERSPERSE: Self = Self::new("intersperse");
   /// Key for `map_async`.
@@ -93,6 +97,8 @@ impl OperatorKey {
   pub const TAKE_UNTIL: Self = Self::new("take_until");
   /// Key for `take_while`.
   pub const TAKE_WHILE: Self = Self::new("take_while");
+  /// Key for `take_within`.
+  pub const TAKE_WITHIN: Self = Self::new("take_within");
   /// Key for `throttle`.
   pub const THROTTLE: Self = Self::new("throttle");
   /// Key for `unique_kill_switch`.
