@@ -1079,3 +1079,118 @@ fn operator_catalog_lookup_rejects_unknown_operator() {
   let result = catalog.lookup(OperatorKey::new("unsupported_operator"));
   assert_eq!(result, Err(StreamDslError::UnsupportedOperator { key: OperatorKey::new("unsupported_operator") }));
 }
+
+#[test]
+fn detach_preserves_elements_and_order() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .via(Flow::new().detach())
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2_u32, 3_u32]);
+}
+
+#[test]
+fn log_passes_elements_through_unchanged() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .via(Flow::new().log("test"))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2_u32, 3_u32]);
+}
+
+#[test]
+fn log_with_marker_passes_elements_through_unchanged() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .via(Flow::new().log_with_marker("test", "marker"))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2_u32, 3_u32]);
+}
+
+#[test]
+fn do_on_first_invokes_callback_on_first_element_only() {
+  use core::sync::atomic::{AtomicU32, Ordering};
+
+  use fraktor_utils_rs::core::sync::ArcShared;
+
+  let counter = ArcShared::new(AtomicU32::new(0));
+  let counter_clone = counter.clone();
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[10, 20, 30]))
+    .via(Flow::new().do_on_first(move |_value| {
+      counter_clone.fetch_add(1, Ordering::Relaxed);
+    }))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![10_u32, 20_u32, 30_u32]);
+  assert_eq!(counter.load(Ordering::Relaxed), 1);
+}
+
+#[test]
+fn conflate_preserves_elements_with_single_consumer() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .via(Flow::new().conflate())
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2_u32, 3_u32]);
+}
+
+#[test]
+fn fold_emits_running_accumulation_without_initial() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .via(Flow::new().fold(0_u32, |acc, value| acc + value))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 3_u32, 6_u32]);
+}
+
+#[test]
+fn reduce_folds_with_first_element_as_seed() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .via(Flow::new().reduce(|acc, value| acc + value))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 3_u32, 6_u32]);
+}
+
+#[test]
+fn reduce_single_element_emits_that_element() {
+  let values =
+    Source::single(42_u32).via(Flow::new().reduce(|acc, value| acc + value)).collect_values().expect("collect_values");
+  assert_eq!(values, vec![42_u32]);
+}
+
+#[test]
+fn fold_on_empty_stream_emits_nothing() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[]))
+    .via(Flow::new().fold(0_u32, |acc, value| acc + value))
+    .collect_values()
+    .expect("collect_values");
+  assert!(values.is_empty());
+}
+
+#[test]
+fn reduce_on_empty_stream_emits_nothing() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[]))
+    .via(Flow::new().reduce(|acc, value| acc + value))
+    .collect_values()
+    .expect("collect_values");
+  assert!(values.is_empty());
+}
+
+#[test]
+fn do_on_first_does_not_fire_on_empty_stream() {
+  use core::sync::atomic::{AtomicU32, Ordering};
+
+  use fraktor_utils_rs::core::sync::ArcShared;
+
+  let counter = ArcShared::new(AtomicU32::new(0));
+  let counter_clone = counter.clone();
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[]))
+    .via(Flow::new().do_on_first(move |_value| {
+      counter_clone.fetch_add(1, Ordering::Relaxed);
+    }))
+    .collect_values()
+    .expect("collect_values");
+  assert!(values.is_empty());
+  assert_eq!(counter.load(Ordering::Relaxed), 0);
+}

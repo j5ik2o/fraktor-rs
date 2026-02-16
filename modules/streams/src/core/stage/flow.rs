@@ -1059,10 +1059,10 @@ where
     self
   }
 
-  /// Creates a detached compatibility boundary.
+  /// Decouples upstream and downstream demand signaling via an async boundary.
   #[must_use]
-  pub const fn detach(self) -> Flow<In, Out, Mat> {
-    self
+  pub fn detach(self) -> Flow<In, Out, Mat> {
+    self.async_boundary()
   }
 
   /// Maps outputs while accepting dimap-compatible signatures.
@@ -1083,12 +1083,50 @@ where
     self
   }
 
-  /// Registers a first-element callback placeholder.
+  /// Invokes a callback on the first element and passes all elements through unchanged.
   #[must_use]
-  pub fn do_on_first<F>(self, _callback: F) -> Flow<In, Out, Mat>
+  pub fn do_on_first<F>(self, mut callback: F) -> Flow<In, Out, Mat>
   where
     F: FnMut(&Out) + Send + Sync + 'static, {
+    let mut fired = false;
+    self.wire_tap(move |value| {
+      if !fired {
+        fired = true;
+        callback(value);
+      }
+    })
+  }
+
+  /// Folds all elements using an accumulator function, emitting the running accumulation.
+  ///
+  /// Unlike Pekko's `fold` which emits only the final value, this emits every
+  /// intermediate accumulation (equivalent to `scan` without the initial value).
+  #[must_use]
+  pub fn fold<Acc, F>(self, initial: Acc, func: F) -> Flow<In, Acc, Mat>
+  where
+    Acc: Clone + Send + Sync + 'static,
+    F: FnMut(Acc, Out) -> Acc + Send + Sync + 'static, {
+    self.scan(initial, func).drop(1)
+  }
+
+  /// Reduces all elements using a binary function, emitting the running reduction.
+  ///
+  /// Uses the first element as the initial accumulator. Emits nothing if the
+  /// stream is empty.
+  #[must_use]
+  pub fn reduce<F>(self, mut func: F) -> Flow<In, Out, Mat>
+  where
+    Out: Clone,
+    F: FnMut(Out, Out) -> Out + Send + Sync + 'static, {
     self
+      .scan(None::<Out>, move |acc, value| {
+        Some(match acc {
+          | Some(current) => (func)(current, value),
+          | None => value,
+        })
+      })
+      .drop(1)
+      .flatten_optional()
   }
 
   /// Folds values asynchronously.
@@ -1205,16 +1243,20 @@ where
     self.take(max_weight)
   }
 
-  /// Adds a logging placeholder stage.
+  /// Adds a logging stage that passes each element through unchanged.
+  ///
+  /// In the current no_std configuration this inserts a wire-tap stage
+  /// without an output sink. When a logging backend is wired in the
+  /// future the tap callback will forward to it.
   #[must_use]
-  pub const fn log(self, _name: &'static str) -> Flow<In, Out, Mat> {
-    self
+  pub fn log(self, _name: &'static str) -> Flow<In, Out, Mat> {
+    self.wire_tap(|_| {})
   }
 
-  /// Adds a marker logging placeholder stage.
+  /// Adds a marker-tagged logging stage that passes each element through unchanged.
   #[must_use]
-  pub const fn log_with_marker(self, _name: &'static str, _marker: &'static str) -> Flow<In, Out, Mat> {
-    self
+  pub fn log_with_marker(self, _name: &'static str, _marker: &'static str) -> Flow<In, Out, Mat> {
+    self.wire_tap(|_| {})
   }
 
   /// Maps values with a mutable resource.
@@ -1403,10 +1445,15 @@ where
     self.batch(max_weight)
   }
 
-  /// Adds a conflate compatibility placeholder.
+  /// Conflates upstream elements by keeping only the latest when downstream is slower.
+  ///
+  /// Passes through upstream elements unchanged.
+  ///
+  /// In the synchronous execution model there is no rate difference between
+  /// upstream and downstream, so conflation is a no-op identity mapping.
   #[must_use]
-  pub const fn conflate(self) -> Flow<In, Out, Mat> {
-    self
+  pub fn conflate(self) -> Flow<In, Out, Mat> {
+    self.map(|v| v)
   }
 
   /// Adds a conflate-with-seed compatibility placeholder.

@@ -1324,3 +1324,30 @@ fn source_supervision_variants_keep_single_path_behavior() {
     .expect("collect_values");
   assert_eq!(values, vec![5_u32]);
 }
+
+#[test]
+fn source_detach_preserves_elements_and_order() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .detach()
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2_u32, 3_u32]);
+}
+
+#[test]
+fn source_fold_emits_running_accumulation_without_initial() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .fold(0_u32, |acc, value| acc + value)
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 3_u32, 6_u32]);
+}
+
+#[test]
+fn source_reduce_folds_with_first_element_as_seed() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .reduce(|acc, value| acc + value)
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 3_u32, 6_u32]);
+}

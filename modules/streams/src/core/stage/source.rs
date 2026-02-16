@@ -781,6 +781,35 @@ where
     Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
+  /// Adds a fold stage that emits running accumulation (excluding the initial value).
+  ///
+  /// Equivalent to `scan(initial, func).drop(1)`.
+  #[must_use]
+  pub fn fold<Acc, F>(self, initial: Acc, func: F) -> Source<Acc, Mat>
+  where
+    Acc: Clone + Send + Sync + 'static,
+    F: FnMut(Acc, Out) -> Acc + Send + Sync + 'static, {
+    self.scan(initial, func).drop(1)
+  }
+
+  /// Adds a reduce stage that folds elements using the first element as the seed,
+  /// emitting the running reduction for each subsequent element.
+  #[must_use]
+  pub fn reduce<F>(self, mut func: F) -> Source<Out, Mat>
+  where
+    Out: Clone,
+    F: FnMut(Out, Out) -> Out + Send + Sync + 'static, {
+    self
+      .scan(None::<Out>, move |acc, value| {
+        Some(match acc {
+          | Some(current) => (func)(current, value),
+          | None => value,
+        })
+      })
+      .drop(1)
+      .flatten_optional()
+  }
+
   /// Adds an intersperse stage with start, separator and end markers.
   #[must_use]
   pub fn intersperse(mut self, start: Out, inject: Out, end: Out) -> Source<Out, Mat>
@@ -853,6 +882,12 @@ where
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
     Ok(Source { graph: self.graph, mat: self.mat, _pd: PhantomData })
+  }
+
+  /// Decouples upstream and downstream demand signaling via an async boundary.
+  #[must_use]
+  pub fn detach(self) -> Source<Out, Mat> {
+    self.async_boundary()
   }
 
   /// Adds an explicit async boundary stage.
