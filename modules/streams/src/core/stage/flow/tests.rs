@@ -930,6 +930,62 @@ fn stateful_map_concat_logic_on_restart_recreates_mapper() {
 }
 
 #[test]
+fn collect_type_collects_convertible_values() {
+  let values = Source::from_array([1_i32, -1_i32, 2_i32])
+    .via(Flow::new().collect_type::<u32>())
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2_u32]);
+}
+
+#[test]
+fn fold_async_emits_running_accumulation_when_future_is_ready() {
+  let values = Source::from_array([1_u32, 2, 3])
+    .via(Flow::new().fold_async(0_u32, |acc, value| async move { acc + value }))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 3_u32, 6_u32]);
+}
+
+#[test]
+fn ask_alias_maps_values_asynchronously() {
+  let flow = Flow::new().ask(1, |value: u32| async move { value + 1 }).expect("ask");
+  let values = Source::from_array([1_u32, 2_u32]).via(flow).collect_values().expect("collect_values");
+  assert_eq!(values, vec![2_u32, 3_u32]);
+}
+
+#[test]
+fn ask_with_status_alias_maps_values_asynchronously() {
+  let flow = Flow::new().ask_with_status(1, |value: u32| async move { value + 2 }).expect("ask_with_status");
+  let values = Source::from_array([1_u32, 2_u32]).via(flow).collect_values().expect("collect_values");
+  assert_eq!(values, vec![3_u32, 4_u32]);
+}
+
+#[test]
+fn ask_with_context_preserves_context_and_maps_value() {
+  let flow = Flow::<(u32, u32), (u32, u32), StreamNotUsed>::new()
+    .ask_with_context(1, |value| async move { value + 10 })
+    .expect("ask_with_context");
+  let values = Source::from_array([(7_u32, 1_u32), (8_u32, 2_u32)]).via(flow).collect_values().expect("collect_values");
+  assert_eq!(values, vec![(7_u32, 11_u32), (8_u32, 12_u32)]);
+}
+
+#[test]
+fn ask_with_status_and_context_preserves_context_and_maps_value() {
+  let flow = Flow::<(u32, u32), (u32, u32), StreamNotUsed>::new()
+    .ask_with_status_and_context(1, |value| async move { value + 20 })
+    .expect("ask_with_status_and_context");
+  let values = Source::from_array([(7_u32, 1_u32), (8_u32, 2_u32)]).via(flow).collect_values().expect("collect_values");
+  assert_eq!(values, vec![(7_u32, 21_u32), (8_u32, 22_u32)]);
+}
+
+#[test]
+fn watch_alias_keeps_single_path_behavior() {
+  let values = Source::from_array([1_u32, 2_u32]).via(Flow::new().watch()).collect_values().expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2_u32]);
+}
+
+#[test]
 fn operator_catalog_lookup_returns_contract_for_supported_operator() {
   let catalog = DefaultOperatorCatalog::new();
   let contract = catalog.lookup(OperatorKey::GROUP_BY).expect("lookup");

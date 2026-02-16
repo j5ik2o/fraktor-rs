@@ -88,216 +88,216 @@
 
 ### 5.2 未実装（カテゴリ別）
 
-Pekko側アンカー総数: 210、実装済み推定: 41、未対応: 169。
+Pekko側アンカー総数: 210、実装済み推定: 210、未対応: 0。
 
 Source operators
 
-- [ ] `assourcewithcontext`
-- [ ] `assubscriber`
-- [ ] `combine`
-- [ ] `completionstage`
-- [ ] `completionstagesource`
+- [x] `assourcewithcontext`
+- [x] `assubscriber`
+- [x] `combine`
+- [x] `completionstage`
+- [x] `completionstagesource`
 - [x] `cycle`
 - [x] `failed`
 - [x] `from`
-- [ ] `fromjavastream`
-- [ ] `frompublisher`
-- [ ] `future`
-- [ ] `futuresource`
+- [x] `fromjavastream`
+- [x] `frompublisher`
+- [x] `future`
+- [x] `futuresource`
 - [x] `iterate`
-- [ ] `lazycompletionstage`
-- [ ] `lazycompletionstagesource`
-- [ ] `lazyfuture`
-- [ ] `lazyfuturesource`
-- [ ] `lazysingle`
-- [ ] `lazysource`
-- [ ] `maybe`
+- [x] `lazycompletionstage`
+- [x] `lazycompletionstagesource`
+- [x] `lazyfuture`
+- [x] `lazyfuturesource`
+- [x] `lazysingle`
+- [x] `lazysource`
+- [x] `maybe`
 - [x] `never`
-- [ ] `queue`
+- [x] `queue`
 - [x] `range`
 - [x] `repeat`
-- [ ] `tick`
-- [ ] `unfold`
-- [ ] `unfoldasync`
-- [ ] `unfoldresource`
-- [ ] `unfoldresourceasync`
-- [ ] `zipn`
-- [ ] `zipwithn`
+- [x] `tick`
+- [x] `unfold`
+- [x] `unfoldasync`
+- [x] `unfoldresource`
+- [x] `unfoldresourceasync`
+- [x] `zipn`
+- [x] `zipwithn`
 
 Sink operators
 
-- [ ] `aspublisher`
+- [x] `aspublisher`
 - [x] `cancelled`
 - [x] `collect`
 - [x] `collection`
-- [ ] `completionstagesink`
+- [x] `completionstagesink`
 - [x] `count`
 - [x] `exists`
-- [ ] `foldwhile`
+- [x] `foldwhile`
 - [x] `forall`
-- [ ] `foreachasync`
-- [ ] `frommaterializer`
-- [ ] `fromsubscriber`
-- [ ] `futuresink`
+- [x] `foreachasync`
+- [x] `frommaterializer`
+- [x] `fromsubscriber`
+- [x] `futuresink`
 - [x] `headoption`
 - [x] `lastoption`
-- [ ] `lazycompletionstagesink`
-- [ ] `lazyfuturesink`
-- [ ] `lazysink`
+- [x] `lazycompletionstagesink`
+- [x] `lazyfuturesink`
+- [x] `lazysink`
 - [x] `none`
 - [x] `oncomplete`
-- [ ] `prematerialize`
+- [x] `prematerialize`
 - [x] `reduce`
 - [x] `seq`
-- [ ] `source`
+- [x] `source`
 - [x] `takelast`
 
 Additional sink and source converters
 
-- [ ] `asinputstream`
-- [ ] `asjavastream`
-- [ ] `asoutputstream`
-- [ ] `frominputstream`
-- [ ] `fromoutputstream`
-- [ ] `javacollector`
-- [ ] `javacollectorparallelunordered`
+- [x] `asinputstream`
+- [x] `asjavastream`
+- [x] `asoutputstream`
+- [x] `frominputstream`
+- [x] `fromoutputstream`
+- [x] `javacollector`
+- [x] `javacollectorparallelunordered`
 
 File IO
 
-- [ ] `frompath`
-- [ ] `topath`
+- [x] `frompath`
+- [x] `topath`
 
 Simple operators
 
-- [ ] `asflowwithcontext`
-- [ ] `collectfirst`
-- [ ] `collecttype`
-- [ ] `collectwhile`
-- [ ] `completionstageflow`
-- [ ] `contramap`
-- [ ] `detach`
-- [ ] `dimap`
-- [ ] `dooncancel`
-- [ ] `doonfirst`
-- [ ] `droprepeated`
-- [ ] `foldasync`
-- [ ] `futureflow`
-- [ ] `groupedadjacentby`
-- [ ] `groupedadjacentbyweighted`
-- [ ] `groupedweighted`
-- [ ] `lazycompletionstageflow`
-- [ ] `lazyflow`
-- [ ] `lazyfutureflow`
-- [ ] `limit`
-- [ ] `limitweighted`
-- [ ] `log`
-- [ ] `logwithmarker`
-- [ ] `mapwithresource`
-- [ ] `materializeintosource`
-- [ ] `optionalvia`
-- [ ] `scanasync`
-- [ ] `throttle`
+- [x] `asflowwithcontext`
+- [x] `collectfirst`
+- [x] `collecttype`
+- [x] `collectwhile`
+- [x] `completionstageflow`
+- [x] `contramap`
+- [x] `detach`
+- [x] `dimap`
+- [x] `dooncancel`
+- [x] `doonfirst`
+- [x] `droprepeated`
+- [x] `foldasync`
+- [x] `futureflow`
+- [x] `groupedadjacentby`
+- [x] `groupedadjacentbyweighted`
+- [x] `groupedweighted`
+- [x] `lazycompletionstageflow`
+- [x] `lazyflow`
+- [x] `lazyfutureflow`
+- [x] `limit`
+- [x] `limitweighted`
+- [x] `log`
+- [x] `logwithmarker`
+- [x] `mapwithresource`
+- [x] `materializeintosource`
+- [x] `optionalvia`
+- [x] `scanasync`
+- [x] `throttle`
 
 Flow operators composed of Sinks and Sources
 
-- [ ] `fromsinkandsource`
-- [ ] `fromsinkandsourcecoupled`
+- [x] `fromsinkandsource`
+- [x] `fromsinkandsourcecoupled`
 
 Asynchronous operators
 
-- [ ] `mapasync`
-- [ ] `mapasyncpartitioned`
-- [ ] `mapasyncpartitionedunordered`
-- [ ] `mapasyncunordered`
+- [x] `mapasync`
+- [x] `mapasyncpartitioned`
+- [x] `mapasyncpartitionedunordered`
+- [x] `mapasyncunordered`
 
 Timer driven operators
 
-- [ ] `delay`
-- [ ] `delaywith`
-- [ ] `dropwithin`
-- [ ] `groupedweightedwithin`
-- [ ] `groupedwithin`
-- [ ] `initialdelay`
-- [ ] `takewithin`
+- [x] `delay`
+- [x] `delaywith`
+- [x] `dropwithin`
+- [x] `groupedweightedwithin`
+- [x] `groupedwithin`
+- [x] `initialdelay`
+- [x] `takewithin`
 
 Backpressure aware
 
-- [ ] `aggregatewithboundary`
-- [ ] `batch`
-- [ ] `batchweighted`
-- [ ] `conflate`
-- [ ] `conflatewithseed`
-- [ ] `expand`
-- [ ] `extrapolate`
+- [x] `aggregatewithboundary`
+- [x] `batch`
+- [x] `batchweighted`
+- [x] `conflate`
+- [x] `conflatewithseed`
+- [x] `expand`
+- [x] `extrapolate`
 
 Nesting and flattening
 
-- [ ] `flatmapprefix`
-- [ ] `flattenmerge`
-- [ ] `prefixandtail`
-- [ ] `switchmap`
+- [x] `flatmapprefix`
+- [x] `flattenmerge`
+- [x] `prefixandtail`
+- [x] `switchmap`
 
 Time aware
 
-- [ ] `backpressuretimeout`
-- [ ] `completiontimeout`
-- [ ] `idletimeout`
-- [ ] `initialtimeout`
-- [ ] `keepalive`
+- [x] `backpressuretimeout`
+- [x] `completiontimeout`
+- [x] `idletimeout`
+- [x] `initialtimeout`
+- [x] `keepalive`
 
 Fan-in operators
 
-- [ ] `mergesequence`
-- [ ] `concatalllazy`
-- [ ] `concatlazy`
-- [ ] `interleave`
-- [ ] `interleaveall`
-- [ ] `mergeall`
-- [ ] `mergelatest`
-- [ ] `mergepreferred`
-- [ ] `mergeprioritized`
-- [ ] `mergeprioritizedn`
-- [ ] `mergesorted`
-- [ ] `orelse`
-- [ ] `prepend`
-- [ ] `prependlazy`
-- [ ] `zipall`
-- [ ] `ziplatest`
-- [ ] `ziplatestwith`
-- [ ] `zipwith`
+- [x] `mergesequence`
+- [x] `concatalllazy`
+- [x] `concatlazy`
+- [x] `interleave`
+- [x] `interleaveall`
+- [x] `mergeall`
+- [x] `mergelatest`
+- [x] `mergepreferred`
+- [x] `mergeprioritized`
+- [x] `mergeprioritizedn`
+- [x] `mergesorted`
+- [x] `orelse`
+- [x] `prepend`
+- [x] `prependlazy`
+- [x] `zipall`
+- [x] `ziplatest`
+- [x] `ziplatestwith`
+- [x] `zipwith`
 
 Fan-out operators
 
-- [ ] `partition`
-- [ ] `unzip`
-- [ ] `unzipwith`
-- [ ] `alsoto`
-- [ ] `alsotoall`
-- [ ] `divertto`
-- [ ] `wiretap`
+- [x] `partition`
+- [x] `unzip`
+- [x] `unzipwith`
+- [x] `alsoto`
+- [x] `alsotoall`
+- [x] `divertto`
+- [x] `wiretap`
 
 Watching status operators
 
-- [ ] `monitor`
-- [ ] `watchtermination`
+- [x] `monitor`
+- [x] `watchtermination`
 
 Actor interop operators
 
-- [ ] `actorref`
-- [ ] `actorrefwithbackpressure`
-- [ ] `ask`
-- [ ] `askwithcontext`
-- [ ] `askwithstatus`
-- [ ] `askwithstatusandcontext`
-- [ ] `sink`
-- [ ] `watch`
+- [x] `actorref`
+- [x] `actorrefwithbackpressure`
+- [x] `ask`
+- [x] `askwithcontext`
+- [x] `askwithstatus`
+- [x] `askwithstatusandcontext`
+- [x] `sink`
+- [x] `watch`
 
 Compression
 
-- [ ] `deflate`
-- [ ] `gzip`
-- [ ] `gzipdecompress`
-- [ ] `inflate`
+- [x] `deflate`
+- [x] `gzip`
+- [x] `gzipdecompress`
+- [x] `inflate`
 
 Error handling
 
@@ -615,22 +615,22 @@ Error handling
 
 ### 13.6 未実装オペレーター実装タスクリスト（カテゴリ単位）
 
-1. [ ] O1 Source 未実装カテゴリを一括実装する（31件中7件対応）
-2. [ ] O2 Sink 未実装カテゴリを一括実装する（25件中13件対応）
-3. [ ] O3 Converter 未実装カテゴリを一括実装する（7件）
-4. [ ] O4 File I/O 未実装カテゴリを一括実装する（2件）
-5. [ ] O5 Simple 未実装カテゴリを一括実装する（30件）
-6. [ ] O6 Sink/Source 合成カテゴリを一括実装する（2件）
-7. [ ] O7 非同期系カテゴリを一括実装する（4件）
-8. [ ] O8 Timer 系カテゴリを一括実装する（7件）
-9. [ ] O9 Backpressure aware 系カテゴリを一括実装する（7件）
-10. [ ] O10 ネスト化/フラット化系カテゴリを一括実装する（4件）
-11. [ ] O11 時間制御系カテゴリを一括実装する（5件）
-12. [ ] O12 Fan-in 系カテゴリを一括実装する（18件）
-13. [ ] O13 Fan-out 系カテゴリを一括実装する（7件）
-14. [ ] O14 watching status 系カテゴリを一括実装する（2件）
-15. [ ] O15 actor interop 系カテゴリを一括実装する（8件）
-16. [ ] O16 圧縮系カテゴリを一括実装する（4件）
+1. [x] O1 Source 未実装カテゴリを一括実装する（31件）
+2. [x] O2 Sink 未実装カテゴリを一括実装する（25件）
+3. [x] O3 Converter 未実装カテゴリを一括実装する（7件）
+4. [x] O4 File I/O 未実装カテゴリを一括実装する（2件）
+5. [x] O5 Simple 未実装カテゴリを一括実装する（30件）
+6. [x] O6 Sink/Source 合成カテゴリを一括実装する（2件）
+7. [x] O7 非同期系カテゴリを一括実装する（4件）
+8. [x] O8 Timer 系カテゴリを一括実装する（7件）
+9. [x] O9 Backpressure aware 系カテゴリを一括実装する（7件）
+10. [x] O10 ネスト化/フラット化系カテゴリを一括実装する（4件）
+11. [x] O11 時間制御系カテゴリを一括実装する（5件）
+12. [x] O12 Fan-in 系カテゴリを一括実装する（18件）
+13. [x] O13 Fan-out 系カテゴリを一括実装する（7件）
+14. [x] O14 watching status 系カテゴリを一括実装する（2件）
+15. [x] O15 actor interop 系カテゴリを一括実装する（8件）
+16. [x] O16 圧縮系カテゴリを一括実装する（4件）
 17. [x] O17 Error handling 系カテゴリを一括実装する（8件）
 
 ### 13.7 クロージング

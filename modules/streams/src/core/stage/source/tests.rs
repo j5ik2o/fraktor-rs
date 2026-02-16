@@ -1,4 +1,5 @@
 use alloc::{boxed::Box, collections::VecDeque};
+use core::future::ready;
 
 use fraktor_utils_rs::core::{
   collections::queue::OverflowPolicy,
@@ -381,6 +382,184 @@ fn source_iterate_emits_progressive_values() {
     values.push(*value.downcast::<u32>().expect("u32 value"));
   }
   assert_eq!(values, vec![1_u32, 3, 5, 7]);
+}
+
+#[test]
+fn source_as_source_with_context_attaches_unit_context() {
+  let values = Source::from_array([1_u32, 2_u32]).as_source_with_context().collect_values().expect("collect_values");
+  assert_eq!(values, vec![((), 1_u32), ((), 2_u32)]);
+}
+
+#[test]
+fn source_actor_ref_alias_emits_values() {
+  let values = Source::actor_ref([1_u32, 2_u32]).collect_values().expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2_u32]);
+}
+
+#[test]
+fn source_actor_ref_with_backpressure_alias_emits_values() {
+  let values = Source::actor_ref_with_backpressure([3_u32, 4_u32]).collect_values().expect("collect_values");
+  assert_eq!(values, vec![3_u32, 4_u32]);
+}
+
+#[test]
+fn source_sink_alias_exposes_sink_endpoint() {
+  let values = Source::<u32, _>::sink().as_publisher().collect_values().expect("collect_values");
+  assert_eq!(values, Vec::<u32>::new());
+}
+
+#[test]
+fn source_watch_alias_keeps_values() {
+  let values = Source::from_array([5_u32, 6_u32]).watch().collect_values().expect("collect_values");
+  assert_eq!(values, vec![5_u32, 6_u32]);
+}
+
+#[test]
+fn source_combine_selects_first_available_source() {
+  let values = Source::combine([Source::from_array([1_u32, 2_u32]), Source::from_array([9_u32])])
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2_u32]);
+}
+
+#[test]
+fn source_from_java_stream_alias_emits_values() {
+  let values = Source::from_java_stream([3_u32, 4_u32]).collect_values().expect("collect_values");
+  assert_eq!(values, vec![3_u32, 4_u32]);
+}
+
+#[test]
+fn source_from_publisher_alias_emits_values() {
+  let values = Source::from_publisher([5_u32, 6_u32]).collect_values().expect("collect_values");
+  assert_eq!(values, vec![5_u32, 6_u32]);
+}
+
+#[test]
+fn source_future_alias_emits_when_ready() {
+  let values = Source::future(ready(7_u32)).collect_values().expect("collect_values");
+  assert_eq!(values, vec![7_u32]);
+}
+
+#[test]
+fn source_completion_stage_alias_emits_when_ready() {
+  let values = Source::completion_stage(ready(8_u32)).collect_values().expect("collect_values");
+  assert_eq!(values, vec![8_u32]);
+}
+
+#[test]
+fn source_lazy_future_alias_emits_when_ready() {
+  let values = Source::lazy_future(|| ready(9_u32)).collect_values().expect("collect_values");
+  assert_eq!(values, vec![9_u32]);
+}
+
+#[test]
+fn source_lazy_single_alias_emits_factory_value() {
+  let values = Source::lazy_single(|| 10_u32).collect_values().expect("collect_values");
+  assert_eq!(values, vec![10_u32]);
+}
+
+#[test]
+fn source_maybe_alias_matches_from_option_behavior() {
+  let values = Source::maybe(Some(11_u32)).collect_values().expect("collect_values");
+  assert_eq!(values, vec![11_u32]);
+}
+
+#[test]
+fn source_queue_alias_matches_iterator_behavior() {
+  let values = Source::queue([12_u32, 13_u32]).collect_values().expect("collect_values");
+  assert_eq!(values, vec![12_u32, 13_u32]);
+}
+
+#[test]
+fn source_tick_accepts_positive_interval() {
+  let source = Source::tick(1, 1, 14_u32);
+  assert!(source.is_ok());
+}
+
+#[test]
+fn source_tick_rejects_zero_interval() {
+  let source = Source::tick(1, 0, 14_u32);
+  assert!(matches!(
+    source,
+    Err(StreamDslError::InvalidArgument { name: "interval_ticks", value: 0, reason: "must be greater than zero" })
+  ));
+}
+
+#[test]
+fn source_unfold_emits_state_progression() {
+  let values = Source::unfold(0_u32, |state| {
+    if state >= 3 {
+      return None;
+    }
+    Some((state + 1, state))
+  })
+  .collect_values()
+  .expect("collect_values");
+  assert_eq!(values, vec![0_u32, 1_u32, 2_u32]);
+}
+
+#[test]
+fn source_unfold_async_emits_state_progression() {
+  let values = Source::unfold_async(0_u32, |state| async move {
+    if state >= 3 {
+      return None;
+    }
+    Some((state + 1, state))
+  })
+  .collect_values()
+  .expect("collect_values");
+  assert_eq!(values, vec![0_u32, 1_u32, 2_u32]);
+}
+
+#[test]
+fn source_zip_n_alias_wraps_values_by_fan_in() {
+  let values = Source::single(15_u32).zip_n(1).collect_values().expect("collect_values");
+  assert_eq!(values, vec![vec![15_u32]]);
+}
+
+#[test]
+fn source_zip_with_n_alias_maps_zipped_values() {
+  let values = Source::single(16_u32)
+    .zip_with_n(1, |items: Vec<u32>| items.into_iter().sum::<u32>())
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![16_u32]);
+}
+
+#[test]
+fn source_from_input_stream_alias_emits_values() {
+  let values = Source::from_input_stream([17_u32, 18_u32]).collect_values().expect("collect_values");
+  assert_eq!(values, vec![17_u32, 18_u32]);
+}
+
+#[test]
+fn source_from_output_stream_alias_emits_values() {
+  let values = Source::from_output_stream([19_u32, 20_u32]).collect_values().expect("collect_values");
+  assert_eq!(values, vec![19_u32, 20_u32]);
+}
+
+#[test]
+fn source_as_input_stream_collects_values() {
+  let values = Source::from_array([21_u32, 22_u32]).as_input_stream().expect("as_input_stream");
+  assert_eq!(values, vec![21_u32, 22_u32]);
+}
+
+#[test]
+fn source_as_java_stream_collects_values() {
+  let values = Source::from_array([23_u32, 24_u32]).as_java_stream().expect("as_java_stream");
+  assert_eq!(values, vec![23_u32, 24_u32]);
+}
+
+#[test]
+fn source_as_output_stream_collects_values() {
+  let values = Source::from_array([25_u32, 26_u32]).as_output_stream().expect("as_output_stream");
+  assert_eq!(values, vec![25_u32, 26_u32]);
+}
+
+#[test]
+fn source_from_path_emits_path_bytes() {
+  let values = Source::from_path("ab").collect_values().expect("collect_values");
+  assert_eq!(values, vec![b'a', b'b']);
 }
 
 #[test]

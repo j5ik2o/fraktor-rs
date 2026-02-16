@@ -5,7 +5,7 @@ use fraktor_utils_rs::core::{
 
 use super::super::super::lifecycle::{Stream, StreamSharedGeneric};
 use crate::core::{
-  Completion, KeepRight, StreamBufferConfig, StreamCompletion, StreamDone, StreamError, StreamNotUsed,
+  Completion, KeepRight, StreamBufferConfig, StreamCompletion, StreamDone, StreamDslError, StreamError, StreamNotUsed,
   lifecycle::{StreamHandleGeneric, StreamHandleId},
   mat::{Materialized, Materializer, RunnableGraph},
   stage::{Sink, Source},
@@ -190,4 +190,97 @@ fn sink_on_complete_invokes_callback_on_failure() {
 
   assert_eq!(completion, Completion::Ready(Err(StreamError::Failed)));
   assert_eq!(*observed.lock(), Some(Err(StreamError::Failed)));
+}
+
+#[test]
+fn sink_completion_stage_sink_alias_completes_with_done() {
+  let completion = run_source_with_sink(Source::from_array([1_u32, 2, 3]), Sink::completion_stage_sink());
+  assert_eq!(completion, Completion::Ready(Ok(StreamDone::new())));
+}
+
+#[test]
+fn sink_fold_while_stops_updating_after_predicate_is_false() {
+  let completion = run_source_with_sink(
+    Source::from_array([1_u32, 2, 3, 4]),
+    Sink::fold_while(0_u32, |acc, _| *acc < 3, |acc, value| acc + value),
+  );
+  assert_eq!(completion, Completion::Ready(Ok(3_u32)));
+}
+
+#[test]
+fn sink_foreach_async_rejects_zero_parallelism() {
+  let result = Sink::<u32, StreamCompletion<StreamDone>>::foreach_async(0, |_value| async move {});
+  assert!(matches!(
+    result,
+    Err(StreamDslError::InvalidArgument { name: "parallelism", value: 0, reason: "must be greater than zero" })
+  ));
+}
+
+#[test]
+fn sink_foreach_async_accepts_positive_parallelism() {
+  let sink =
+    Sink::<u32, StreamCompletion<StreamDone>>::foreach_async(1, |_value| async move {}).expect("foreach_async");
+  let completion = run_source_with_sink(Source::from_array([1_u32, 2, 3]), sink);
+  assert_eq!(completion, Completion::Ready(Ok(StreamDone::new())));
+}
+
+#[test]
+fn sink_from_materializer_alias_completes_with_done() {
+  let completion = run_source_with_sink(Source::from_array([1_u32, 2, 3]), Sink::from_materializer());
+  assert_eq!(completion, Completion::Ready(Ok(StreamDone::new())));
+}
+
+#[test]
+fn sink_from_subscriber_alias_completes_with_done() {
+  let completion = run_source_with_sink(Source::from_array([1_u32, 2, 3]), Sink::from_subscriber());
+  assert_eq!(completion, Completion::Ready(Ok(StreamDone::new())));
+}
+
+#[test]
+fn sink_future_sink_alias_completes_with_done() {
+  let completion = run_source_with_sink(Source::from_array([1_u32, 2, 3]), Sink::future_sink());
+  assert_eq!(completion, Completion::Ready(Ok(StreamDone::new())));
+}
+
+#[test]
+fn sink_lazy_sink_alias_completes_with_done() {
+  let completion = run_source_with_sink(Source::from_array([1_u32, 2, 3]), Sink::lazy_sink(Sink::ignore));
+  assert_eq!(completion, Completion::Ready(Ok(StreamDone::new())));
+}
+
+#[test]
+fn sink_pre_materialize_returns_pending_completion_handle() {
+  let (_sink, completion) = Sink::<u32, StreamCompletion<StreamDone>>::ignore().pre_materialize();
+  assert_eq!(completion.poll(), Completion::Pending);
+}
+
+#[test]
+fn sink_source_alias_returns_empty_source() {
+  let values = Sink::<u32, StreamCompletion<StreamDone>>::source().collect_values().expect("collect_values");
+  assert_eq!(values, Vec::<u32>::new());
+}
+
+#[test]
+fn sink_as_publisher_alias_returns_empty_source() {
+  let values =
+    Sink::<u32, StreamCompletion<StreamDone>>::ignore().as_publisher().collect_values().expect("collect_values");
+  assert_eq!(values, Vec::<u32>::new());
+}
+
+#[test]
+fn sink_java_collector_alias_collects_values() {
+  let completion = run_source_with_sink(Source::from_array([1_u32, 2, 3]), Sink::java_collector());
+  assert_eq!(completion, Completion::Ready(Ok(vec![1_u32, 2, 3])));
+}
+
+#[test]
+fn sink_java_collector_parallel_unordered_alias_collects_values() {
+  let completion = run_source_with_sink(Source::from_array([1_u32, 2, 3]), Sink::java_collector_parallel_unordered());
+  assert_eq!(completion, Completion::Ready(Ok(vec![1_u32, 2, 3])));
+}
+
+#[test]
+fn sink_to_path_collects_bytes() {
+  let completion = run_source_with_sink(Source::from_array([b'a', b'b']), Sink::to_path("dummy"));
+  assert_eq!(completion, Completion::Ready(Ok(vec![b'a', b'b'])));
 }

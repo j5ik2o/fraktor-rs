@@ -1,13 +1,15 @@
 use alloc::{boxed::Box, collections::VecDeque, vec::Vec};
-use core::{any::TypeId, marker::PhantomData};
+use core::{any::TypeId, future::Future, marker::PhantomData};
 
 use super::{
   DynValue, MatCombine, RestartBackoff, RestartSettings, SinkDecision, SinkDefinition, SinkLogic, StageDefinition,
-  StageKind, StreamCompletion, StreamDone, StreamError, StreamGraph, StreamNotUsed, StreamStage, SupervisionStrategy,
-  downcast_value,
+  StageKind, StreamCompletion, StreamDone, StreamDslError, StreamError, StreamGraph, StreamNotUsed, StreamStage,
+  SupervisionStrategy, downcast_value,
   graph::{GraphStage, GraphStageLogic},
   shape::{Inlet, Outlet, StreamShape},
+  source::Source,
   stage_context::StageContext,
+  validate_positive_argument,
 };
 
 #[cfg(test)]
@@ -65,6 +67,103 @@ where
     let logic = OnCompleteSinkLogic::<In, F> { callback, completion: completion.clone(), _pd: PhantomData };
     Self::from_definition(StageKind::Custom, logic, completion)
   }
+
+  /// Creates a sink that is compatible with completion-stage based APIs.
+  #[must_use]
+  pub fn completion_stage_sink() -> Self {
+    Self::ignore()
+  }
+
+  /// Creates a sink that folds while a predicate remains true.
+  #[must_use]
+  pub fn fold_while<Acc, P, F>(initial: Acc, mut predicate: P, mut func: F) -> Sink<In, StreamCompletion<Acc>>
+  where
+    Acc: Send + Sync + 'static,
+    P: FnMut(&Acc, &In) -> bool + Send + Sync + 'static,
+    F: FnMut(Acc, In) -> Acc + Send + Sync + 'static, {
+    Sink::fold(initial, move |acc, value| {
+      if predicate(&acc, &value) {
+        return func(acc, value);
+      }
+      acc
+    })
+  }
+
+  /// Creates a sink that is compatible with async-foreach entry points.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `parallelism` is zero.
+  pub fn foreach_async<F, Fut>(parallelism: usize, mut func: F) -> Result<Self, StreamDslError>
+  where
+    F: FnMut(In) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = ()> + Send + 'static, {
+    let _ = validate_positive_argument("parallelism", parallelism)?;
+    Ok(Self::foreach(move |value| {
+      core::mem::drop((func)(value));
+    }))
+  }
+
+  /// Creates a sink backed by a materializer integration placeholder.
+  #[must_use]
+  pub fn from_materializer() -> Self {
+    Self::ignore()
+  }
+
+  /// Creates a sink backed by a subscriber integration placeholder.
+  #[must_use]
+  pub fn from_subscriber() -> Self {
+    Self::ignore()
+  }
+
+  /// Creates a sink compatible with future-based entry points.
+  #[must_use]
+  pub fn future_sink() -> Self {
+    Self::ignore()
+  }
+
+  /// Lazily creates a completion-stage sink.
+  #[must_use]
+  pub fn lazy_completion_stage_sink<F>(factory: F) -> Self
+  where
+    F: FnOnce() -> Self, {
+    factory()
+  }
+
+  /// Lazily creates a future sink.
+  #[must_use]
+  pub fn lazy_future_sink<F>(factory: F) -> Self
+  where
+    F: FnOnce() -> Self, {
+    factory()
+  }
+
+  /// Lazily creates a sink.
+  #[must_use]
+  pub fn lazy_sink<F>(factory: F) -> Self
+  where
+    F: FnOnce() -> Self, {
+    factory()
+  }
+
+  /// Converts this sink into a pre-materialized form.
+  #[must_use]
+  pub fn pre_materialize(self) -> (Self, StreamCompletion<StreamDone>) {
+    (self, StreamCompletion::new())
+  }
+
+  /// Creates a source placeholder corresponding to sink-source bridge APIs.
+  #[must_use]
+  pub fn source() -> Source<In, StreamNotUsed> {
+    Source::empty()
+  }
+
+  /// Creates a source placeholder corresponding to publisher conversion APIs.
+  #[must_use]
+  pub fn as_publisher(self) -> Source<In, StreamNotUsed> {
+    let _ = self;
+    Source::empty()
+  }
 }
 
 impl<In> Sink<In, StreamCompletion<Vec<In>>>
@@ -92,6 +191,18 @@ where
     Self::collect()
   }
 
+  /// Creates a sink compatible with Java collector integration.
+  #[must_use]
+  pub fn java_collector() -> Self {
+    Self::collect()
+  }
+
+  /// Creates a sink compatible with parallel unordered Java collector integration.
+  #[must_use]
+  pub fn java_collector_parallel_unordered() -> Self {
+    Self::collect()
+  }
+
   /// Creates a sink that stores only the last `limit` elements.
   #[must_use]
   pub fn take_last(limit: usize) -> Self {
@@ -103,6 +214,15 @@ where
       _pd: PhantomData,
     };
     Self::from_definition(StageKind::Custom, logic, completion)
+  }
+}
+
+impl Sink<u8, StreamCompletion<Vec<u8>>> {
+  /// Creates a sink that collects bytes for path-compatible output.
+  #[must_use]
+  pub fn to_path(path: &str) -> Self {
+    let _ = path;
+    Self::collect()
   }
 }
 

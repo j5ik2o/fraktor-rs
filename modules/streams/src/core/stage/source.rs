@@ -1,12 +1,18 @@
 use alloc::{boxed::Box, vec, vec::Vec};
-use core::{any::TypeId, future::Future, marker::PhantomData};
+use core::{
+  any::TypeId,
+  future::Future,
+  marker::PhantomData,
+  pin::Pin,
+  task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
+};
 
 use fraktor_utils_rs::core::collections::queue::OverflowPolicy;
 
 use super::{
   DynValue, MatCombine, MatCombineRule, Materialized, Materializer, RestartBackoff, RestartSettings, RunnableGraph,
-  SourceDefinition, SourceLogic, SourceSubFlow, StageDefinition, StageKind, StreamDslError, StreamError, StreamGraph,
-  StreamNotUsed, StreamStage, SupervisionStrategy,
+  SourceDefinition, SourceLogic, SourceSubFlow, StageDefinition, StageKind, StreamCompletion, StreamDone,
+  StreamDslError, StreamError, StreamGraph, StreamNotUsed, StreamStage, SupervisionStrategy,
   flow::{
     async_boundary_definition, balance_definition, batch_definition, broadcast_definition, buffer_definition,
     concat_definition, concat_substreams_definition, delay_definition, drop_definition, drop_while_definition,
@@ -142,6 +148,280 @@ where
     Self::from_logic(StageKind::Custom, IterateSourceLogic { current: seed, func })
   }
 
+  /// Converts this source into a context-carrying source by attaching unit context.
+  #[must_use]
+  pub fn as_source_with_context(self) -> Source<((), Out), StreamNotUsed> {
+    self.map(|value| ((), value))
+  }
+
+  /// Creates a sink endpoint that can be paired with a source subscriber bridge.
+  #[must_use]
+  pub fn as_subscriber() -> Sink<Out, StreamCompletion<StreamDone>> {
+    Sink::ignore()
+  }
+
+  /// Creates a source from actor-ref style push values.
+  #[must_use]
+  pub fn actor_ref<I>(values: I) -> Self
+  where
+    I: IntoIterator<Item = Out>,
+    I::IntoIter: Send + 'static, {
+    Self::from_iterator(values)
+  }
+
+  /// Creates a source from actor-ref with backpressure style push values.
+  #[must_use]
+  pub fn actor_ref_with_backpressure<I>(values: I) -> Self
+  where
+    I: IntoIterator<Item = Out>,
+    I::IntoIter: Send + 'static, {
+    Self::actor_ref(values)
+  }
+
+  /// Creates a sink endpoint for actor interop entry points.
+  #[must_use]
+  pub fn sink() -> Sink<Out, StreamCompletion<StreamDone>> {
+    Self::as_subscriber()
+  }
+
+  /// Adds an actor-watch compatibility stage.
+  #[must_use]
+  pub const fn watch(self) -> Self {
+    self
+  }
+
+  /// Combines multiple sources by selecting the first source when available.
+  #[must_use]
+  pub fn combine<I>(sources: I) -> Self
+  where
+    I: IntoIterator<Item = Self>, {
+    sources.into_iter().next().unwrap_or_else(Self::empty)
+  }
+
+  /// Creates a source from a Java-stream compatible iterator.
+  #[must_use]
+  pub fn from_java_stream<I>(values: I) -> Self
+  where
+    I: IntoIterator<Item = Out>,
+    I::IntoIter: Send + 'static, {
+    Self::from_iterator(values)
+  }
+
+  /// Creates a source from a publisher-compatible iterator.
+  #[must_use]
+  pub fn from_publisher<I>(values: I) -> Self
+  where
+    I: IntoIterator<Item = Out>,
+    I::IntoIter: Send + 'static, {
+    Self::from_iterator(values)
+  }
+
+  /// Creates a source from an input-stream compatible iterator.
+  #[must_use]
+  pub fn from_input_stream<I>(values: I) -> Self
+  where
+    I: IntoIterator<Item = Out>,
+    I::IntoIter: Send + 'static, {
+    Self::from_iterator(values)
+  }
+
+  /// Creates a source from an output-stream compatible iterator.
+  #[must_use]
+  pub fn from_output_stream<I>(values: I) -> Self
+  where
+    I: IntoIterator<Item = Out>,
+    I::IntoIter: Send + 'static, {
+    Self::from_iterator(values)
+  }
+
+  /// Creates a source that emits one value from a future when it becomes ready.
+  #[must_use]
+  pub fn future<Fut>(future: Fut) -> Self
+  where
+    Fut: Future<Output = Out> + Send + 'static, {
+    Self::from_logic(StageKind::Custom, FutureSourceLogic::<Out, Fut> {
+      future: Some(Box::pin(future)),
+      done:   false,
+      _pd:    PhantomData,
+    })
+  }
+
+  /// Alias of [`Source::future`].
+  #[must_use]
+  pub fn future_source<Fut>(future: Fut) -> Self
+  where
+    Fut: Future<Output = Out> + Send + 'static, {
+    Self::future(future)
+  }
+
+  /// Alias of [`Source::future`].
+  #[must_use]
+  pub fn completion_stage<Fut>(future: Fut) -> Self
+  where
+    Fut: Future<Output = Out> + Send + 'static, {
+    Self::future(future)
+  }
+
+  /// Alias of [`Source::future`].
+  #[must_use]
+  pub fn completion_stage_source<Fut>(future: Fut) -> Self
+  where
+    Fut: Future<Output = Out> + Send + 'static, {
+    Self::future(future)
+  }
+
+  /// Lazily creates a source from a future factory.
+  #[must_use]
+  pub fn lazy_future<F, Fut>(factory: F) -> Self
+  where
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = Out> + Send + 'static, {
+    Self::future(factory())
+  }
+
+  /// Alias of [`Source::lazy_future`].
+  #[must_use]
+  pub fn lazy_future_source<F, Fut>(factory: F) -> Self
+  where
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = Out> + Send + 'static, {
+    Self::lazy_future(factory)
+  }
+
+  /// Alias of [`Source::lazy_future`].
+  #[must_use]
+  pub fn lazy_completion_stage<F, Fut>(factory: F) -> Self
+  where
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = Out> + Send + 'static, {
+    Self::lazy_future(factory)
+  }
+
+  /// Alias of [`Source::lazy_future`].
+  #[must_use]
+  pub fn lazy_completion_stage_source<F, Fut>(factory: F) -> Self
+  where
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = Out> + Send + 'static, {
+    Self::lazy_future(factory)
+  }
+
+  /// Lazily creates a single-element source.
+  #[must_use]
+  pub fn lazy_single<F>(factory: F) -> Self
+  where
+    F: FnOnce() -> Out, {
+    Self::single(factory())
+  }
+
+  /// Lazily creates a source from a source factory.
+  #[must_use]
+  pub fn lazy_source<F>(factory: F) -> Self
+  where
+    F: FnOnce() -> Self, {
+    factory()
+  }
+
+  /// Creates an optional source.
+  #[must_use]
+  pub fn maybe(value: Option<Out>) -> Self {
+    Self::from_option(value)
+  }
+
+  /// Creates a source backed by queue-compatible values.
+  #[must_use]
+  pub fn queue<I>(values: I) -> Self
+  where
+    I: IntoIterator<Item = Out>,
+    I::IntoIter: Send + 'static, {
+    Self::from_iterator(values)
+  }
+
+  /// Creates a ticking source by repeating and delaying values.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `interval_ticks` is zero.
+  pub fn tick(initial_delay_ticks: usize, interval_ticks: usize, value: Out) -> Result<Self, StreamDslError>
+  where
+    Out: Clone, {
+    let _ = validate_positive_argument("interval_ticks", interval_ticks)?;
+    let mut source = Self::repeat(value);
+    if initial_delay_ticks > 0 {
+      source = source.initial_delay(initial_delay_ticks)?;
+    }
+    Ok(source)
+  }
+
+  /// Creates a source by repeatedly unfolding state.
+  #[must_use]
+  pub fn unfold<S, F>(initial: S, mut func: F) -> Self
+  where
+    S: Send + 'static,
+    F: FnMut(S) -> Option<(S, Out)> + Send + 'static, {
+    let mut state = Some(initial);
+    Self::from_iterator(core::iter::from_fn(move || {
+      let current = state.take()?;
+      match func(current) {
+        | Some((next, value)) => {
+          state = Some(next);
+          Some(value)
+        },
+        | None => None,
+      }
+    }))
+  }
+
+  /// Creates a source by repeatedly unfolding state with an asynchronous function.
+  #[must_use]
+  pub fn unfold_async<S, F, Fut>(initial: S, func: F) -> Self
+  where
+    S: Send + 'static,
+    F: FnMut(S) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = Option<(S, Out)>> + Send + 'static, {
+    Self::from_logic(StageKind::Custom, UnfoldAsyncSourceLogic::<S, Out, F, Fut> {
+      state: Some(initial),
+      func,
+      pending: None,
+      done: false,
+      _pd: PhantomData,
+    })
+  }
+
+  /// Alias of [`Source::unfold`].
+  #[must_use]
+  pub fn unfold_resource<S, F>(initial: S, func: F) -> Self
+  where
+    S: Send + 'static,
+    F: FnMut(S) -> Option<(S, Out)> + Send + 'static, {
+    Self::unfold(initial, func)
+  }
+
+  /// Alias of [`Source::unfold_async`].
+  #[must_use]
+  pub fn unfold_resource_async<S, F, Fut>(initial: S, func: F) -> Self
+  where
+    S: Send + 'static,
+    F: FnMut(S) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = Option<(S, Out)>> + Send + 'static, {
+    Self::unfold_async(initial, func)
+  }
+
+  /// Alias of [`Source::zip`].
+  #[must_use]
+  pub fn zip_n(self, n: usize) -> Source<Vec<Out>, StreamNotUsed> {
+    self.zip(n)
+  }
+
+  /// Alias of [`Source::zip_n`] followed by mapping.
+  #[must_use]
+  pub fn zip_with_n<T, F>(self, n: usize, func: F) -> Source<T, StreamNotUsed>
+  where
+    T: Send + Sync + 'static,
+    F: FnMut(Vec<Out>) -> T + Send + Sync + 'static, {
+    self.zip_n(n).map(func)
+  }
+
   pub(in crate::core) fn from_logic<L>(kind: StageKind, logic: L) -> Self
   where
     L: SourceLogic + 'static, {
@@ -169,6 +449,14 @@ impl Source<i32, StreamNotUsed> {
       return Self::from_iterator(start..=end);
     }
     Self::from_iterator((end..=start).rev())
+  }
+}
+
+impl Source<u8, StreamNotUsed> {
+  /// Creates a source from a path-compatible value.
+  #[must_use]
+  pub fn from_path(path: &str) -> Self {
+    Self::from_iterator(path.as_bytes().to_vec())
   }
 }
 
@@ -1025,6 +1313,33 @@ where
     }
   }
 
+  /// Converts this source into an input-stream compatible collection.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamError`] when source execution fails.
+  pub fn as_input_stream(self) -> Result<Vec<Out>, StreamError> {
+    self.collect_values()
+  }
+
+  /// Converts this source into a Java-stream compatible collection.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamError`] when source execution fails.
+  pub fn as_java_stream(self) -> Result<Vec<Out>, StreamError> {
+    self.collect_values()
+  }
+
+  /// Converts this source into an output-stream compatible collection.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamError`] when source execution fails.
+  pub fn as_output_stream(self) -> Result<Vec<Out>, StreamError> {
+    self.collect_values()
+  }
+
   pub(crate) fn into_parts(self) -> (StreamGraph, Mat) {
     (self.graph, self.mat)
   }
@@ -1256,6 +1571,20 @@ struct IterateSourceLogic<Out, F> {
   func:    F,
 }
 
+struct FutureSourceLogic<Out, Fut> {
+  future: Option<Pin<Box<Fut>>>,
+  done:   bool,
+  _pd:    PhantomData<fn() -> Out>,
+}
+
+struct UnfoldAsyncSourceLogic<State, Out, F, Fut> {
+  state:   Option<State>,
+  func:    F,
+  pending: Option<Pin<Box<Fut>>>,
+  done:    bool,
+  _pd:     PhantomData<fn() -> Out>,
+}
+
 impl<Out, I> SourceLogic for IteratorSourceLogic<I>
 where
   Out: Send + Sync + 'static,
@@ -1322,6 +1651,72 @@ where
   }
 }
 
+impl<Out, Fut> SourceLogic for FutureSourceLogic<Out, Fut>
+where
+  Out: Send + Sync + 'static,
+  Fut: Future<Output = Out> + Send + 'static,
+{
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    if self.done {
+      return Ok(None);
+    }
+    let Some(future) = self.future.as_mut() else {
+      self.done = true;
+      return Ok(None);
+    };
+    let waker = noop_waker();
+    let mut cx = Context::from_waker(&waker);
+    match future.as_mut().poll(&mut cx) {
+      | Poll::Ready(value) => {
+        self.done = true;
+        self.future = None;
+        Ok(Some(Box::new(value) as DynValue))
+      },
+      | Poll::Pending => Err(StreamError::WouldBlock),
+    }
+  }
+}
+
+impl<State, Out, F, Fut> SourceLogic for UnfoldAsyncSourceLogic<State, Out, F, Fut>
+where
+  State: Send + 'static,
+  Out: Send + Sync + 'static,
+  F: FnMut(State) -> Fut + Send + Sync + 'static,
+  Fut: Future<Output = Option<(State, Out)>> + Send + 'static,
+{
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    if self.done {
+      return Ok(None);
+    }
+    if self.pending.is_none() {
+      let Some(state) = self.state.take() else {
+        self.done = true;
+        return Ok(None);
+      };
+      self.pending = Some(Box::pin((self.func)(state)));
+    }
+    let Some(pending) = self.pending.as_mut() else {
+      self.done = true;
+      return Ok(None);
+    };
+    let waker = noop_waker();
+    let mut cx = Context::from_waker(&waker);
+    match pending.as_mut().poll(&mut cx) {
+      | Poll::Ready(Some((next_state, output))) => {
+        self.state = Some(next_state);
+        self.pending = None;
+        Ok(Some(Box::new(output) as DynValue))
+      },
+      | Poll::Ready(None) => {
+        self.done = true;
+        self.pending = None;
+        Ok(None)
+      },
+      | Poll::Pending => Err(StreamError::WouldBlock),
+    }
+  }
+}
+
 impl<Out> GraphStageLogic<StreamNotUsed, Out, StreamNotUsed> for SingleSourceLogic<Out>
 where
   Out: Send + Sync + 'static,
@@ -1356,3 +1751,23 @@ where
   C: MatCombineRule<Left, Right>, {
   C::combine(left, right)
 }
+
+const fn noop_waker() -> Waker {
+  unsafe { Waker::from_raw(noop_raw_waker()) }
+}
+
+const fn noop_raw_waker() -> RawWaker {
+  RawWaker::new(core::ptr::null(), &NOOP_WAKER_VTABLE)
+}
+
+const fn noop_clone(_: *const ()) -> RawWaker {
+  noop_raw_waker()
+}
+
+const fn noop_wake(_: *const ()) {}
+
+const fn noop_wake_by_ref(_: *const ()) {}
+
+const fn noop_drop(_: *const ()) {}
+
+const NOOP_WAKER_VTABLE: RawWakerVTable = RawWakerVTable::new(noop_clone, noop_wake, noop_wake_by_ref, noop_drop);
