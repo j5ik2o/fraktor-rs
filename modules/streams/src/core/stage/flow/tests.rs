@@ -1,4 +1,5 @@
 use alloc::{boxed::Box, collections::VecDeque};
+use core::{future::Future, pin::Pin, task::Poll};
 
 use fraktor_utils_rs::core::collections::queue::OverflowPolicy;
 
@@ -92,6 +93,69 @@ fn concat_rejects_zero_fan_in() {
 }
 
 #[test]
+fn partition_keeps_single_path_behavior() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4]))
+    .via(Flow::new().partition(|value| *value % 2 == 0))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2_u32, 3_u32, 4_u32]);
+}
+
+#[test]
+fn unzip_emits_tuple_components() {
+  let values = Source::single((7_u32, 8_u32)).via(Flow::new().unzip()).collect_values().expect("collect_values");
+  assert_eq!(values, vec![7_u32, 8_u32]);
+}
+
+#[test]
+fn unzip_with_emits_mapped_tuple_components() {
+  let values = Source::single(7_u32)
+    .via(Flow::new().unzip_with(|value: u32| (value, value.saturating_add(1))))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![7_u32, 8_u32]);
+}
+
+#[test]
+fn interleave_keeps_single_path_behavior() {
+  let values = Source::single(7_u32).via(Flow::new().interleave(1)).collect_values().expect("collect_values");
+  assert_eq!(values, vec![7_u32]);
+}
+
+#[test]
+#[should_panic(expected = "fan_in must be greater than zero")]
+fn interleave_rejects_zero_fan_in() {
+  let flow = Flow::<u32, u32, StreamNotUsed>::new();
+  let _ = flow.interleave(0);
+}
+
+#[test]
+fn prepend_keeps_single_path_behavior() {
+  let values = Source::single(7_u32).via(Flow::new().prepend(1)).collect_values().expect("collect_values");
+  assert_eq!(values, vec![7_u32]);
+}
+
+#[test]
+#[should_panic(expected = "fan_in must be greater than zero")]
+fn prepend_rejects_zero_fan_in() {
+  let flow = Flow::<u32, u32, StreamNotUsed>::new();
+  let _ = flow.prepend(0);
+}
+
+#[test]
+fn zip_all_wraps_value_when_single_path() {
+  let values = Source::single(7_u32).via(Flow::new().zip_all(1, 0_u32)).collect_values().expect("collect_values");
+  assert_eq!(values, vec![vec![7_u32]]);
+}
+
+#[test]
+#[should_panic(expected = "fan_in must be greater than zero")]
+fn zip_all_rejects_zero_fan_in() {
+  let flow = Flow::<u32, u32, StreamNotUsed>::new();
+  let _ = flow.zip_all(0, 0_u32);
+}
+
+#[test]
 fn flat_map_merge_keeps_single_path_behavior() {
   let values = Source::single(7_u32)
     .via(Flow::new().flat_map_merge(2, Source::single).expect("flat_map_merge"))
@@ -133,6 +197,193 @@ fn buffer_rejects_zero_capacity() {
 fn async_boundary_keeps_single_path_behavior() {
   let values = Source::single(7_u32).via(Flow::new().async_boundary()).collect_values().expect("collect_values");
   assert_eq!(values, vec![7_u32]);
+}
+
+#[test]
+fn throttle_keeps_single_path_behavior() {
+  let values =
+    Source::single(7_u32).via(Flow::new().throttle(2).expect("throttle")).collect_values().expect("collect_values");
+  assert_eq!(values, vec![7_u32]);
+}
+
+#[test]
+fn throttle_rejects_zero_capacity() {
+  let flow = Flow::<u32, u32, StreamNotUsed>::new();
+  let result = flow.throttle(0);
+  assert!(matches!(
+    result,
+    Err(StreamDslError::InvalidArgument { name: "capacity", value: 0, reason: "must be greater than zero" })
+  ));
+}
+
+#[test]
+fn delay_keeps_single_path_behavior() {
+  let values =
+    Source::single(7_u32).via(Flow::new().delay(2).expect("delay")).collect_values().expect("collect_values");
+  assert_eq!(values, vec![7_u32]);
+}
+
+#[test]
+fn delay_rejects_zero_ticks() {
+  let flow = Flow::<u32, u32, StreamNotUsed>::new();
+  let result = flow.delay(0);
+  assert!(matches!(
+    result,
+    Err(StreamDslError::InvalidArgument { name: "ticks", value: 0, reason: "must be greater than zero" })
+  ));
+}
+
+#[test]
+fn initial_delay_keeps_single_path_behavior() {
+  let values = Source::single(7_u32)
+    .via(Flow::new().initial_delay(2).expect("initial_delay"))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![7_u32]);
+}
+
+#[test]
+fn initial_delay_rejects_zero_ticks() {
+  let flow = Flow::<u32, u32, StreamNotUsed>::new();
+  let result = flow.initial_delay(0);
+  assert!(matches!(
+    result,
+    Err(StreamDslError::InvalidArgument { name: "ticks", value: 0, reason: "must be greater than zero" })
+  ));
+}
+
+#[test]
+fn take_within_limits_output_window() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .via(Flow::new().take_within(1).expect("take_within"))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32]);
+}
+
+#[test]
+fn take_within_rejects_zero_ticks() {
+  let flow = Flow::<u32, u32, StreamNotUsed>::new();
+  let result = flow.take_within(0);
+  assert!(matches!(
+    result,
+    Err(StreamDslError::InvalidArgument { name: "ticks", value: 0, reason: "must be greater than zero" })
+  ));
+}
+
+#[test]
+fn batch_emits_fixed_size_chunks() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4, 5]))
+    .via(Flow::new().batch(2).expect("batch"))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![vec![1_u32, 2_u32], vec![3_u32, 4_u32], vec![5_u32]]);
+}
+
+#[test]
+fn batch_rejects_zero_size() {
+  let flow = Flow::<u32, u32, StreamNotUsed>::new();
+  let result = flow.batch(0);
+  assert!(matches!(
+    result,
+    Err(StreamDslError::InvalidArgument { name: "size", value: 0, reason: "must be greater than zero" })
+  ));
+}
+
+#[test]
+fn map_async_keeps_single_path_behavior() {
+  let values = Source::single(7_u32)
+    .via(Flow::new().map_async(2, |value: u32| async move { value.saturating_add(1) }).expect("map_async"))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![8_u32]);
+}
+
+#[test]
+fn map_async_rejects_zero_parallelism() {
+  let flow = Flow::<u32, u32, StreamNotUsed>::new();
+  let result = flow.map_async(0, |value| async move { value });
+  assert!(matches!(
+    result,
+    Err(StreamDslError::InvalidArgument { name: "parallelism", value: 0, reason: "must be greater than zero" })
+  ));
+}
+
+#[test]
+fn map_async_preserves_order_with_parallelism() {
+  let values = Source::from_array([1_u32, 2_u32, 3_u32])
+    .via(
+      Flow::new()
+        .map_async(2, |value: u32| match value {
+          | 1 => YieldThenOutputFuture::new_with_poll_count(value.saturating_add(1), 2),
+          | 2 => YieldThenOutputFuture::new(value.saturating_add(1)),
+          | _ => YieldThenOutputFuture::new_with_poll_count(value.saturating_add(1), 3),
+        })
+        .expect("map_async"),
+    )
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![2_u32, 3_u32, 4_u32]);
+}
+
+#[test]
+fn map_async_logic_keeps_order_and_tracks_pending_output() {
+  let mut logic = super::MapAsyncLogic::<u32, u32, _, YieldThenOutputFuture<u32>> {
+    func:        |value: u32| YieldThenOutputFuture::new(value.saturating_add(1)),
+    parallelism: 2,
+    pending:     VecDeque::new(),
+    _pd:         core::marker::PhantomData,
+  };
+
+  assert!(logic.can_accept_input());
+  let _ = logic.apply(Box::new(1_u32)).expect("apply");
+  assert!(logic.has_pending_output());
+
+  assert!(logic.can_accept_input());
+  let _ = logic.apply(Box::new(2_u32)).expect("apply");
+  assert!(!logic.can_accept_input());
+
+  let outputs = logic.drain_pending().expect("drain");
+  assert_eq!(outputs.len(), 0);
+
+  let outputs = logic.drain_pending().expect("drain");
+  assert_eq!(outputs.len(), 2);
+  let output_values: Vec<u32> =
+    outputs.into_iter().map(|value: DynValue| *value.downcast::<u32>().expect("u32")).collect();
+  assert_eq!(output_values, vec![2_u32, 3_u32]);
+  assert!(!logic.has_pending_output());
+  assert!(logic.can_accept_input());
+}
+
+#[derive(Default)]
+struct YieldThenOutputFuture<T> {
+  value:       Option<T>,
+  poll_count:  u8,
+  ready_after: u8,
+}
+
+impl<T> YieldThenOutputFuture<T> {
+  fn new(value: T) -> Self {
+    Self { value: Some(value), poll_count: 0, ready_after: 1 }
+  }
+
+  fn new_with_poll_count(value: T, poll_count: u8) -> Self {
+    Self { value: Some(value), poll_count: 0, ready_after: poll_count }
+  }
+}
+
+impl<T> Future for YieldThenOutputFuture<T> {
+  type Output = T;
+
+  fn poll(self: Pin<&mut Self>, _cx: &mut core::task::Context<'_>) -> Poll<Self::Output> {
+    let this = unsafe { self.get_unchecked_mut() };
+    if this.poll_count < this.ready_after {
+      this.poll_count = this.poll_count.saturating_add(1);
+      Poll::Pending
+    } else {
+      Poll::Ready(this.value.take().expect("future value"))
+    }
+  }
 }
 
 #[test]
@@ -419,12 +670,82 @@ fn merge_substreams_with_parallelism_rejects_zero_parallelism() {
 }
 
 #[test]
+fn map_error_maps_error_payload() {
+  let values = Source::single(Err::<u32, StreamError>(StreamError::Failed))
+    .via(Flow::new().map_error(|_| StreamError::WouldBlock))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![Err(StreamError::WouldBlock)]);
+}
+
+#[test]
+fn on_error_continue_drops_error_payloads() {
+  let values = Source::from_array([
+    Ok::<u32, StreamError>(1_u32),
+    Err::<u32, StreamError>(StreamError::Failed),
+    Ok::<u32, StreamError>(2_u32),
+  ])
+  .via(Flow::new().on_error_continue())
+  .collect_values()
+  .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2_u32]);
+}
+
+#[test]
+fn on_error_resume_alias_drops_error_payloads() {
+  let values = Source::from_array([
+    Ok::<u32, StreamError>(1_u32),
+    Err::<u32, StreamError>(StreamError::Failed),
+    Ok::<u32, StreamError>(2_u32),
+  ])
+  .via(Flow::new().on_error_resume())
+  .collect_values()
+  .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2_u32]);
+}
+
+#[test]
+fn on_error_complete_stops_emitting_after_first_error_payload() {
+  let values = Source::from_array([
+    Ok::<u32, StreamError>(1_u32),
+    Err::<u32, StreamError>(StreamError::Failed),
+    Ok::<u32, StreamError>(2_u32),
+  ])
+  .via(Flow::new().on_error_complete())
+  .collect_values()
+  .expect("collect_values");
+  assert_eq!(values, vec![1_u32]);
+}
+
+#[test]
 fn recover_replaces_error_payload_with_fallback() {
   let values = Source::single(Err::<u32, StreamError>(StreamError::Failed))
     .via(Flow::new().recover(9_u32))
     .collect_values()
     .expect("collect_values");
   assert_eq!(values, vec![9_u32]);
+}
+
+#[test]
+fn recover_preserves_ok_values_and_replaces_error_payloads() {
+  let values = Source::from_array([
+    Ok::<u32, StreamError>(1_u32),
+    Err::<u32, StreamError>(StreamError::Failed),
+    Ok::<u32, StreamError>(2_u32),
+  ])
+  .via(Flow::new().recover(9_u32))
+  .collect_values()
+  .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 9_u32, 2_u32]);
+}
+
+#[test]
+fn recover_with_alias_replaces_error_payload_with_fallback() {
+  let values = Source::single(Err::<u32, StreamError>(StreamError::Failed))
+    .via(Flow::new().recover_with(8_u32))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![8_u32]);
 }
 
 #[test]
@@ -436,9 +757,53 @@ fn recover_with_retries_fails_when_retry_budget_is_exhausted() {
 }
 
 #[test]
+fn recover_with_retries_emits_fallback_until_budget_exhausts() {
+  let values = Source::from_array([
+    Err::<u32, StreamError>(StreamError::Failed),
+    Ok::<u32, StreamError>(5_u32),
+    Err::<u32, StreamError>(StreamError::Failed),
+  ])
+  .via(Flow::new().recover_with_retries(2, 9_u32))
+  .collect_values()
+  .expect("collect_values");
+  assert_eq!(values, vec![9_u32, 5_u32, 9_u32]);
+}
+
+#[test]
+fn recover_with_retries_fails_after_consuming_retry_budget() {
+  let result =
+    Source::from_array([Err::<u32, StreamError>(StreamError::Failed), Err::<u32, StreamError>(StreamError::Failed)])
+      .via(Flow::new().recover_with_retries(1, 9_u32))
+      .collect_values();
+  assert_eq!(result, Err(StreamError::Failed));
+}
+
+#[test]
 fn restart_flow_with_backoff_keeps_single_path_behavior() {
   let values =
     Source::single(7_u32).via(Flow::new().restart_flow_with_backoff(1, 3)).collect_values().expect("collect_values");
+  assert_eq!(values, vec![7_u32]);
+}
+
+#[test]
+fn on_failures_with_backoff_alias_keeps_single_path_behavior() {
+  let values =
+    Source::single(7_u32).via(Flow::new().on_failures_with_backoff(1, 3)).collect_values().expect("collect_values");
+  assert_eq!(values, vec![7_u32]);
+}
+
+#[test]
+fn with_backoff_alias_keeps_single_path_behavior() {
+  let values = Source::single(7_u32).via(Flow::new().with_backoff(1, 3)).collect_values().expect("collect_values");
+  assert_eq!(values, vec![7_u32]);
+}
+
+#[test]
+fn with_backoff_and_context_alias_keeps_single_path_behavior() {
+  let values = Source::single(7_u32)
+    .via(Flow::new().with_backoff_and_context(1, 3, "compat"))
+    .collect_values()
+    .expect("collect_values");
   assert_eq!(values, vec![7_u32]);
 }
 
@@ -565,6 +930,62 @@ fn stateful_map_concat_logic_on_restart_recreates_mapper() {
 }
 
 #[test]
+fn collect_type_collects_convertible_values() {
+  let values = Source::from_array([1_i32, -1_i32, 2_i32])
+    .via(Flow::new().collect_type::<u32>())
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2_u32]);
+}
+
+#[test]
+fn fold_async_emits_running_accumulation_when_future_is_ready() {
+  let values = Source::from_array([1_u32, 2, 3])
+    .via(Flow::new().fold_async(0_u32, |acc, value| async move { acc + value }))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 3_u32, 6_u32]);
+}
+
+#[test]
+fn ask_alias_maps_values_asynchronously() {
+  let flow = Flow::new().ask(1, |value: u32| async move { value + 1 }).expect("ask");
+  let values = Source::from_array([1_u32, 2_u32]).via(flow).collect_values().expect("collect_values");
+  assert_eq!(values, vec![2_u32, 3_u32]);
+}
+
+#[test]
+fn ask_with_status_alias_maps_values_asynchronously() {
+  let flow = Flow::new().ask_with_status(1, |value: u32| async move { value + 2 }).expect("ask_with_status");
+  let values = Source::from_array([1_u32, 2_u32]).via(flow).collect_values().expect("collect_values");
+  assert_eq!(values, vec![3_u32, 4_u32]);
+}
+
+#[test]
+fn ask_with_context_preserves_context_and_maps_value() {
+  let flow = Flow::<(u32, u32), (u32, u32), StreamNotUsed>::new()
+    .ask_with_context(1, |value| async move { value + 10 })
+    .expect("ask_with_context");
+  let values = Source::from_array([(7_u32, 1_u32), (8_u32, 2_u32)]).via(flow).collect_values().expect("collect_values");
+  assert_eq!(values, vec![(7_u32, 11_u32), (8_u32, 12_u32)]);
+}
+
+#[test]
+fn ask_with_status_and_context_preserves_context_and_maps_value() {
+  let flow = Flow::<(u32, u32), (u32, u32), StreamNotUsed>::new()
+    .ask_with_status_and_context(1, |value| async move { value + 20 })
+    .expect("ask_with_status_and_context");
+  let values = Source::from_array([(7_u32, 1_u32), (8_u32, 2_u32)]).via(flow).collect_values().expect("collect_values");
+  assert_eq!(values, vec![(7_u32, 21_u32), (8_u32, 22_u32)]);
+}
+
+#[test]
+fn watch_alias_keeps_single_path_behavior() {
+  let values = Source::from_array([1_u32, 2_u32]).via(Flow::new().watch()).collect_values().expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2_u32]);
+}
+
+#[test]
 fn operator_catalog_lookup_returns_contract_for_supported_operator() {
   let catalog = DefaultOperatorCatalog::new();
   let contract = catalog.lookup(OperatorKey::GROUP_BY).expect("lookup");
@@ -634,6 +1055,14 @@ fn operator_catalog_lookup_returns_stateful_map_contract() {
   let contract = catalog.lookup(OperatorKey::STATEFUL_MAP).expect("lookup");
   assert_eq!(contract.key, OperatorKey::STATEFUL_MAP);
   assert_eq!(contract.requirement_ids, &["1.1", "1.3"]);
+}
+
+#[test]
+fn operator_catalog_lookup_returns_map_async_contract() {
+  let catalog = DefaultOperatorCatalog::new();
+  let contract = catalog.lookup(OperatorKey::MAP_ASYNC).expect("lookup");
+  assert_eq!(contract.key, OperatorKey::MAP_ASYNC);
+  assert_eq!(contract.requirement_ids, &["1.1", "1.3", "7.1", "7.2", "7.3", "7.4"]);
 }
 
 #[test]

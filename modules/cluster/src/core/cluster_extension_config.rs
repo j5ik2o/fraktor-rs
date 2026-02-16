@@ -5,7 +5,7 @@ mod tests;
 
 use alloc::string::String;
 
-use crate::core::{PubSubConfig, cluster_topology::ClusterTopology};
+use crate::core::{cluster_topology::ClusterTopology, pub_sub::PubSubConfig};
 
 /// Configuration applied when installing the cluster extension.
 #[derive(Clone, Debug, Eq, PartialEq)]

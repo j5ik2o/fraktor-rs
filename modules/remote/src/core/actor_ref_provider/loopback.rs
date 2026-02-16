@@ -1,5 +1,8 @@
 //! Provides actor references targeting remote authorities using Loopback transport.
 
+mod installer;
+mod serialization_setup;
+
 use alloc::{
   format,
   string::{String, ToString},
@@ -26,10 +29,14 @@ use fraktor_utils_rs::core::{
   sync::{SharedAccess, sync_mutex_like::SyncMutexLike},
 };
 use hashbrown::HashMap;
+pub use installer::LoopbackActorRefProviderInstaller;
+pub use serialization_setup::default_loopback_setup;
 
-use super::{loopback_router, loopback_router::LoopbackDeliveryOutcome, remote_error::RemoteActorRefProviderError};
 use crate::core::{
   actor_ref_field_normalizer::ActorRefFieldNormalizerGeneric,
+  actor_ref_provider::{
+    loopback_router, loopback_router::LoopbackDeliveryOutcome, remote_error::RemoteActorRefProviderError,
+  },
   endpoint_writer::{EndpointWriterError, EndpointWriterSharedGeneric},
   envelope::{OutboundMessage, OutboundPriority},
   remote_authority_snapshot::RemoteAuthoritySnapshot,

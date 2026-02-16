@@ -252,13 +252,148 @@ impl RestartBackoff {
 /// Mutable execution state is created by the interpreter during materialization.
 struct StreamPlan {
   stages:            Vec<StageDefinition>,
-  edges:             Vec<(PortId, PortId, MatCombine)>,
+  edges:             Vec<StreamPlanEdge>,
+  source_indices:    Vec<usize>,
+  sink_indices:      Vec<usize>,
+  flow_order:        Vec<usize>,
   kill_switch_state: Option<lifecycle::KillSwitchStateHandle>,
 }
 
 impl StreamPlan {
-  const fn from_parts(stages: Vec<StageDefinition>, edges: Vec<(PortId, PortId, MatCombine)>) -> Self {
-    Self { stages, edges, kill_switch_state: None }
+  fn from_parts(stages: Vec<StageDefinition>, edges: Vec<(PortId, PortId, MatCombine)>) -> Result<Self, StreamError> {
+    if stages.is_empty() || edges.is_empty() {
+      return Err(StreamError::InvalidConnection);
+    }
+
+    let mut source_indices = Vec::new();
+    let mut sink_indices = Vec::new();
+
+    let mut input_ports = Vec::with_capacity(stages.len());
+    let mut output_ports = Vec::with_capacity(stages.len());
+
+    for (stage_index, stage) in stages.iter().enumerate() {
+      match stage {
+        | StageDefinition::Source(_) => {
+          source_indices.push(stage_index);
+        },
+        | StageDefinition::Flow(_) => {},
+        | StageDefinition::Sink(_) => {
+          sink_indices.push(stage_index);
+        },
+      }
+
+      if let Some(inlet) = stage.inlet() {
+        if input_ports.iter().any(|(port, _)| *port == inlet) {
+          return Err(StreamError::InvalidConnection);
+        }
+        input_ports.push((inlet, stage_index));
+      }
+      if let Some(outlet) = stage.outlet() {
+        if output_ports.iter().any(|(port, _)| *port == outlet) {
+          return Err(StreamError::InvalidConnection);
+        }
+        output_ports.push((outlet, stage_index));
+      }
+    }
+
+    if source_indices.is_empty() {
+      return Err(StreamError::InvalidConnection);
+    }
+    if sink_indices.is_empty() {
+      return Err(StreamError::InvalidConnection);
+    }
+
+    let mut incoming = alloc::vec::Vec::with_capacity(stages.len());
+    let mut outgoing = alloc::vec::Vec::with_capacity(stages.len());
+    let mut adjacency = alloc::vec::Vec::with_capacity(stages.len());
+
+    for _ in 0..stages.len() {
+      incoming.push(0_usize);
+      outgoing.push(0_usize);
+      adjacency.push(alloc::vec::Vec::new());
+    }
+
+    let mut plan_edges = alloc::vec::Vec::with_capacity(edges.len());
+
+    for (from, to, mat) in edges {
+      let Some(from_stage) = output_ports.iter().find(|(port, _)| *port == from).map(|(_, stage_index)| *stage_index)
+      else {
+        return Err(StreamError::InvalidConnection);
+      };
+      let Some(to_stage) = input_ports.iter().find(|(port, _)| *port == to).map(|(_, stage_index)| *stage_index) else {
+        return Err(StreamError::InvalidConnection);
+      };
+      outgoing[from_stage] = outgoing[from_stage].saturating_add(1);
+      incoming[to_stage] = incoming[to_stage].saturating_add(1);
+      adjacency[from_stage].push(to_stage);
+      plan_edges.push(StreamPlanEdge { from_port: from, to_port: to, mat });
+    }
+
+    for stage_index in 0..stages.len() {
+      match &stages[stage_index] {
+        | StageDefinition::Source(_) => {
+          if outgoing[stage_index] == 0 {
+            return Err(StreamError::InvalidConnection);
+          }
+        },
+        | StageDefinition::Flow(definition) => {
+          if incoming[stage_index] == 0 {
+            return Err(StreamError::InvalidConnection);
+          }
+          if let Some(expected_fan_in) = definition.logic.expected_fan_in()
+            && incoming[stage_index] != expected_fan_in
+          {
+            return Err(StreamError::InvalidConnection);
+          }
+          if outgoing[stage_index] == 0 {
+            return Err(StreamError::InvalidConnection);
+          }
+          if let Some(expected_fan_out) = definition.logic.expected_fan_out()
+            && outgoing[stage_index] != expected_fan_out
+          {
+            return Err(StreamError::InvalidConnection);
+          }
+        },
+        | StageDefinition::Sink(_) => {
+          if incoming[stage_index] == 0 {
+            return Err(StreamError::InvalidConnection);
+          }
+        },
+      }
+    }
+
+    let mut ready = Vec::new();
+    for (stage_index, count) in incoming.iter().enumerate() {
+      if *count == 0 {
+        ready.push(stage_index);
+      }
+    }
+
+    let mut processing_incoming = incoming;
+    let mut ordered_indices = Vec::new();
+
+    while let Some(stage_index) = ready.pop() {
+      ordered_indices.push(stage_index);
+      for next_index in &adjacency[stage_index] {
+        processing_incoming[*next_index] = processing_incoming[*next_index].saturating_sub(1);
+        if processing_incoming[*next_index] == 0 {
+          ready.push(*next_index);
+        }
+      }
+    }
+
+    if ordered_indices.len() != stages.len() {
+      return Err(StreamError::InvalidConnection);
+    }
+
+    let mut flow_order = Vec::new();
+    for stage_index in ordered_indices {
+      if matches!(stages[stage_index], StageDefinition::Flow(_)) {
+        flow_order.push(stage_index);
+      }
+    }
+
+    Ok(Self { stages, edges: plan_edges, source_indices, sink_indices, flow_order, kill_switch_state: None })
   }
 
   fn with_shared_kill_switch_state(mut self, kill_switch_state: lifecycle::KillSwitchStateHandle) -> Self {
@@ -269,6 +404,12 @@ impl StreamPlan {
   fn shared_kill_switch_state(&self) -> Option<lifecycle::KillSwitchStateHandle> {
     self.kill_switch_state.clone()
   }
+}
+
+struct StreamPlanEdge {
+  from_port: PortId,
+  to_port:   PortId,
+  mat:       MatCombine,
 }
 
 trait SourceLogic: Send {
@@ -286,6 +427,11 @@ trait SourceLogic: Send {
 trait FlowLogic: Send {
   fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError>;
 
+  fn on_tick(&mut self, tick_count: u64) -> Result<(), StreamError> {
+    let _ = tick_count;
+    Ok(())
+  }
+
   fn can_accept_input(&self) -> bool {
     true
   }
@@ -293,6 +439,10 @@ trait FlowLogic: Send {
   fn apply_with_edge(&mut self, edge_index: usize, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
     let _ = edge_index;
     self.apply(input)
+  }
+
+  fn take_next_output_edge_slot(&mut self) -> Option<usize> {
+    None
   }
 
   fn expected_fan_out(&self) -> Option<usize> {
@@ -313,6 +463,10 @@ trait FlowLogic: Send {
 
   fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
     Ok(Vec::new())
+  }
+
+  fn has_pending_output(&self) -> bool {
+    false
   }
 
   fn on_restart(&mut self) -> Result<(), StreamError> {

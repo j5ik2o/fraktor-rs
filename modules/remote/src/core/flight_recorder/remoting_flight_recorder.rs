@@ -1,5 +1,8 @@
 //! Records remoting metrics for later inspection.
 
+mod metric;
+mod metric_kind;
+mod snapshot;
 #[cfg(test)]
 mod tests;
 
@@ -7,11 +10,8 @@ use alloc::{collections::VecDeque, string::String};
 
 use fraktor_actor_rs::core::event::stream::{BackpressureSignal, CorrelationId};
 use fraktor_utils_rs::core::{runtime_toolbox::NoStdMutex, sync::ArcShared};
-
-use super::{
-  flight_metric_kind::FlightMetricKind, remoting_flight_recorder_snapshot::RemotingFlightRecorderSnapshot,
-  remoting_metric::RemotingMetric,
-};
+use metric::RemotingMetric;
+pub use metric_kind::FlightMetricKind;
 
 struct FlightBuffer {
   capacity: usize,
@@ -81,3 +81,6 @@ impl RemotingFlightRecorder {
     RemotingFlightRecorderSnapshot { records }
   }
 }
+
+/// Flight recorder snapshot alias for crate-internal usage.
+pub(crate) type RemotingFlightRecorderSnapshot = snapshot::RemotingFlightRecorderSnapshot;

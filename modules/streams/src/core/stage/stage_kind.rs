@@ -5,6 +5,8 @@ pub enum StageKind {
   SourceSingle,
   /// Flow stage that maps elements.
   FlowMap,
+  /// Flow stage that maps elements in async map context.
+  FlowMapAsync,
   /// Flow stage that creates a stateful mapper per materialization.
   FlowStatefulMap,
   /// Flow stage that creates a stateful map-concat mapper per materialization.
@@ -39,8 +41,18 @@ pub enum StageKind {
   FlowFlatMapMerge,
   /// Flow stage that buffers upstream elements with an overflow strategy.
   FlowBuffer,
+  /// Flow stage that limits in-flight elements with bounded buffering.
+  FlowThrottle,
+  /// Flow stage that delays each element by a fixed number of ticks.
+  FlowDelay,
+  /// Flow stage that delays stream start by a fixed number of ticks.
+  FlowInitialDelay,
+  /// Flow stage that forwards elements only within configured tick window.
+  FlowTakeWithin,
   /// Flow stage that represents an asynchronous execution boundary.
   FlowAsyncBoundary,
+  /// Flow stage that groups elements into fixed-size batches.
+  FlowBatch,
   /// Flow stage that annotates elements with a substream key.
   FlowGroupBy,
   /// Flow stage that recovers from error payloads with a fallback element.
@@ -57,14 +69,26 @@ pub enum StageKind {
   FlowMergeSubstreamsWithParallelism,
   /// Flow stage that concatenates emitted substreams into a single stream.
   FlowConcatSubstreams,
+  /// Flow stage that routes each element to one of two output lanes.
+  FlowPartition,
+  /// Flow stage that splits tuple payload into two output lanes.
+  FlowUnzip,
+  /// Flow stage that maps payload then splits mapped tuple into two output lanes.
+  FlowUnzipWith,
   /// Flow stage that broadcasts each element to multiple outputs.
   FlowBroadcast,
   /// Flow stage that balances elements across outputs.
   FlowBalance,
   /// Flow stage that merges elements from multiple inputs.
   FlowMerge,
+  /// Flow stage that interleaves elements from multiple inputs in round-robin order.
+  FlowInterleave,
+  /// Flow stage that prepends higher-priority input lanes before others.
+  FlowPrepend,
   /// Flow stage that zips elements from multiple inputs.
   FlowZip,
+  /// Flow stage that zips elements and fills missing lanes after completion.
+  FlowZipAll,
   /// Flow stage that pairs each element with an incrementing index.
   FlowZipWithIndex,
   /// Flow stage that concatenates inputs in port order.

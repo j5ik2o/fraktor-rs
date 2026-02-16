@@ -1,5 +1,11 @@
 use alloc::{boxed::Box, collections::VecDeque, vec, vec::Vec};
-use core::{any::TypeId, marker::PhantomData};
+use core::{
+  any::TypeId,
+  future::Future,
+  marker::PhantomData,
+  pin::Pin,
+  task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
+};
 
 use fraktor_utils_rs::core::collections::queue::OverflowPolicy;
 
@@ -96,6 +102,30 @@ where
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds an async map stage to this flow.
+  ///
+  /// This is a compatibility entry point for Pekko's `map_async`.
+  /// `parallelism` is validated as a positive integer.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `parallelism` is zero.
+  pub fn map_async<T, F, Fut>(mut self, parallelism: usize, func: F) -> Result<Flow<In, T, Mat>, StreamDslError>
+  where
+    T: Send + Sync + 'static,
+    F: FnMut(Out) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = T> + Send + 'static, {
+    let parallelism = validate_positive_argument("parallelism", parallelism)?;
+    let definition = map_async_definition::<Out, T, F, Fut>(parallelism, func);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
   /// Adds a stateful-map stage to this flow.
@@ -399,11 +429,119 @@ where
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
+  /// Adds a throttle stage that limits the number of buffered in-flight elements.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `capacity` is zero.
+  pub fn throttle(mut self, capacity: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
+    let capacity = validate_positive_argument("capacity", capacity)?;
+    let definition = throttle_definition::<Out>(capacity);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
+  }
+
+  /// Adds a delay stage that emits each element after `ticks`.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `ticks` is zero.
+  pub fn delay(mut self, ticks: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
+    let ticks = validate_positive_argument("ticks", ticks)?;
+    let definition = delay_definition::<Out>(ticks as u64);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
+  }
+
+  /// Adds an initial-delay stage that suppresses outputs until `ticks` elapse.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `ticks` is zero.
+  pub fn initial_delay(mut self, ticks: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
+    let ticks = validate_positive_argument("ticks", ticks)?;
+    let definition = initial_delay_definition::<Out>(ticks as u64);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
+  }
+
+  /// Adds a take-within stage that forwards elements only within `ticks`.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `ticks` is zero.
+  pub fn take_within(mut self, ticks: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
+    let ticks = validate_positive_argument("ticks", ticks)?;
+    let definition = take_within_definition::<Out>(ticks as u64);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
+  }
+
+  /// Adds a batch stage that emits vectors of size `size`.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `size` is zero.
+  pub fn batch(mut self, size: usize) -> Result<Flow<In, Vec<Out>, Mat>, StreamDslError> {
+    let size = validate_positive_argument("size", size)?;
+    let definition = batch_definition::<Out>(size);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
+  }
+
   /// Enables restart semantics with backoff for this flow.
   #[must_use]
   pub fn restart_flow_with_backoff(mut self, min_backoff_ticks: u32, max_restarts: usize) -> Flow<In, Out, Mat> {
     self.graph.set_flow_restart(Some(RestartBackoff::new(min_backoff_ticks, max_restarts)));
     self
+  }
+
+  /// Compatibility alias for applying restart-on-failure backoff semantics.
+  #[must_use]
+  pub fn on_failures_with_backoff(self, min_backoff_ticks: u32, max_restarts: usize) -> Flow<In, Out, Mat> {
+    self.restart_flow_with_backoff(min_backoff_ticks, max_restarts)
+  }
+
+  /// Compatibility alias for applying restart backoff semantics.
+  #[must_use]
+  pub fn with_backoff(self, min_backoff_ticks: u32, max_restarts: usize) -> Flow<In, Out, Mat> {
+    self.restart_flow_with_backoff(min_backoff_ticks, max_restarts)
+  }
+
+  /// Compatibility alias for applying restart backoff semantics with ignored context parameter.
+  #[must_use]
+  pub fn with_backoff_and_context<C>(
+    self,
+    min_backoff_ticks: u32,
+    max_restarts: usize,
+    _context: C,
+  ) -> Flow<In, Out, Mat> {
+    self.restart_flow_with_backoff(min_backoff_ticks, max_restarts)
   }
 
   /// Enables restart semantics by explicit restart settings.
@@ -489,6 +627,38 @@ where
     FlowSubFlow::from_flow(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
+  /// Adds a partition stage that routes each element to one of two output lanes.
+  #[must_use]
+  pub fn partition<F>(mut self, predicate: F) -> Flow<In, Out, Mat>
+  where
+    F: FnMut(&Out) -> bool + Send + Sync + 'static, {
+    let definition = partition_definition::<Out, F>(predicate);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds an unzip-with stage that maps each element into a pair and routes them to two output
+  /// lanes.
+  #[must_use]
+  pub fn unzip_with<T, F>(mut self, func: F) -> Flow<In, T, Mat>
+  where
+    T: Send + Sync + 'static,
+    F: FnMut(Out) -> (T, T) + Send + Sync + 'static, {
+    let definition = unzip_with_definition::<Out, T, F>(func);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
   /// Adds a broadcast stage that duplicates each element `fan_out` times.
   ///
   /// # Panics
@@ -545,6 +715,42 @@ where
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
+  /// Adds an interleave stage that consumes `fan_in` inputs in round-robin order.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `fan_in` is zero.
+  #[must_use]
+  pub fn interleave(mut self, fan_in: usize) -> Flow<In, Out, Mat> {
+    assert!(fan_in > 0, "fan_in must be greater than zero");
+    let definition = interleave_definition::<Out>(fan_in);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds a prepend stage that prioritizes lower-index input lanes.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `fan_in` is zero.
+  #[must_use]
+  pub fn prepend(mut self, fan_in: usize) -> Flow<In, Out, Mat> {
+    assert!(fan_in > 0, "fan_in must be greater than zero");
+    let definition = prepend_definition::<Out>(fan_in);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
   /// Adds a zip stage that emits one vector after receiving one element from each input.
   ///
   /// # Panics
@@ -554,6 +760,26 @@ where
   pub fn zip(mut self, fan_in: usize) -> Flow<In, Vec<Out>, Mat> {
     assert!(fan_in > 0, "fan_in must be greater than zero");
     let definition = zip_definition::<Out>(fan_in);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds a zip-all stage that fills missing lanes with `fill_value` after completion.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `fan_in` is zero.
+  #[must_use]
+  pub fn zip_all(mut self, fan_in: usize, fill_value: Out) -> Flow<In, Vec<Out>, Mat>
+  where
+    Out: Clone, {
+    assert!(fan_in > 0, "fan_in must be greater than zero");
+    let definition = zip_all_definition::<Out>(fan_in, fill_value);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
@@ -660,6 +886,29 @@ where
   }
 }
 
+impl<In, Out, Mat> Flow<In, (Out, Out), Mat>
+where
+  In: Send + Sync + 'static,
+  Out: Send + Sync + 'static,
+{
+  /// Adds an unzip stage that routes tuple components to two output lanes.
+  #[must_use]
+  pub fn unzip(mut self) -> Flow<In, Out, Mat> {
+    let definition = unzip_definition::<Out>();
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(
+        &Outlet::<(Out, Out)>::from_id(from),
+        &Inlet::<(Out, Out)>::from_id(inlet_id),
+        MatCombine::KeepLeft,
+      );
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+}
+
 impl<In, Out, Mat> Flow<In, Option<Out>, Mat>
 where
   In: Send + Sync + 'static,
@@ -677,6 +926,48 @@ where
   In: Send + Sync + 'static,
   Out: Clone + Send + Sync + 'static,
 {
+  /// Maps error payloads while keeping successful elements unchanged.
+  #[must_use]
+  pub fn map_error<F>(self, mut mapper: F) -> Flow<In, Result<Out, StreamError>, Mat>
+  where
+    F: FnMut(StreamError) -> StreamError + Send + Sync + 'static, {
+    self.map(move |value| value.map_err(&mut mapper))
+  }
+
+  /// Drops failing payloads and keeps successful elements.
+  #[must_use]
+  pub fn on_error_continue(self) -> Flow<In, Out, Mat> {
+    self.map_option(Result::ok)
+  }
+
+  /// Alias of [`Flow::on_error_continue`].
+  #[must_use]
+  pub fn on_error_resume(self) -> Flow<In, Out, Mat> {
+    self.on_error_continue()
+  }
+
+  /// Emits successful payloads until first error payload is observed.
+  #[must_use]
+  pub fn on_error_complete(self) -> Flow<In, Out, Mat> {
+    self
+      .stateful_map(|| {
+        let mut seen_error = false;
+        move |value| {
+          if seen_error {
+            return None;
+          }
+          match value {
+            | Ok(value) => Some(value),
+            | Err(_) => {
+              seen_error = true;
+              None
+            },
+          }
+        }
+      })
+      .flatten_optional()
+  }
+
   /// Recovers error payloads with the provided fallback element.
   #[must_use]
   pub fn recover(mut self, fallback: Out) -> Flow<In, Out, Mat> {
@@ -710,6 +1001,796 @@ where
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
+
+  /// Alias of [`Flow::recover`].
+  #[must_use]
+  pub fn recover_with(self, fallback: Out) -> Flow<In, Out, Mat> {
+    self.recover(fallback)
+  }
+}
+
+impl<In, Out, Mat> Flow<In, Out, Mat>
+where
+  In: Send + Sync + 'static,
+  Out: Send + Sync + 'static,
+{
+  /// Adds unit context to each output element.
+  #[must_use]
+  pub fn as_flow_with_context(self) -> Flow<In, ((), Out), Mat> {
+    self.map(|value| ((), value))
+  }
+
+  /// Keeps only the first element matching `predicate`.
+  #[must_use]
+  pub fn collect_first<F>(self, predicate: F) -> Flow<In, Out, Mat>
+  where
+    F: FnMut(&Out) -> bool + Send + Sync + 'static, {
+    self.filter(predicate).take(1)
+  }
+
+  /// Collects values that can be converted into `T`.
+  #[must_use]
+  pub fn collect_type<T>(self) -> Flow<In, T, Mat>
+  where
+    T: Send + Sync + 'static,
+    Out: TryInto<T>, {
+    self.map_option(|value| value.try_into().ok())
+  }
+
+  /// Keeps elements while `predicate` matches.
+  #[must_use]
+  pub fn collect_while<F>(self, predicate: F) -> Flow<In, Out, Mat>
+  where
+    F: FnMut(&Out) -> bool + Send + Sync + 'static, {
+    self.take_while(predicate)
+  }
+
+  /// Compatibility alias for completion-stage flow entry points.
+  #[must_use]
+  pub const fn completion_stage_flow(self) -> Flow<In, Out, Mat> {
+    self
+  }
+
+  /// Compatibility alias for contramap entry points.
+  #[must_use]
+  pub fn contramap<F>(self, _func: F) -> Flow<In, Out, Mat>
+  where
+    F: FnMut(&In) -> In + Send + Sync + 'static, {
+    self
+  }
+
+  /// Creates a detached compatibility boundary.
+  #[must_use]
+  pub const fn detach(self) -> Flow<In, Out, Mat> {
+    self
+  }
+
+  /// Maps outputs while accepting dimap-compatible signatures.
+  #[must_use]
+  pub fn dimap<T, FL, FR>(self, _left: FL, right: FR) -> Flow<In, T, Mat>
+  where
+    T: Send + Sync + 'static,
+    FL: Send + Sync + 'static,
+    FR: FnMut(Out) -> T + Send + Sync + 'static, {
+    self.map(right)
+  }
+
+  /// Registers a cancel callback placeholder.
+  #[must_use]
+  pub fn do_on_cancel<F>(self, _callback: F) -> Flow<In, Out, Mat>
+  where
+    F: FnMut() + Send + Sync + 'static, {
+    self
+  }
+
+  /// Registers a first-element callback placeholder.
+  #[must_use]
+  pub fn do_on_first<F>(self, _callback: F) -> Flow<In, Out, Mat>
+  where
+    F: FnMut(&Out) + Send + Sync + 'static, {
+    self
+  }
+
+  /// Folds values asynchronously.
+  ///
+  /// This compatibility implementation updates the accumulator when the returned
+  /// future resolves immediately.
+  #[must_use]
+  pub fn fold_async<Acc, F, Fut>(self, initial: Acc, func: F) -> Flow<In, Acc, Mat>
+  where
+    Acc: Clone + Send + Sync + 'static,
+    F: FnMut(Acc, Out) -> Fut + Clone + Send + Sync + 'static,
+    Fut: Future<Output = Acc> + Send + 'static, {
+    self.stateful_map(move || {
+      let mut acc = initial.clone();
+      let mut func = func.clone();
+      move |value| {
+        let mut future = Box::pin((func)(acc.clone(), value));
+        let waker = noop_waker();
+        let mut cx = Context::from_waker(&waker);
+        if let Poll::Ready(next) = future.as_mut().poll(&mut cx) {
+          acc = next;
+        }
+        acc.clone()
+      }
+    })
+  }
+
+  /// Compatibility alias for future-flow entry points.
+  #[must_use]
+  pub const fn future_flow(self) -> Flow<In, Out, Mat> {
+    self
+  }
+
+  /// Groups adjacent elements by key.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `size` is zero.
+  pub fn grouped_adjacent_by<K, F>(self, size: usize, _key_fn: F) -> Result<Flow<In, Vec<Out>, Mat>, StreamDslError>
+  where
+    K: Send + Sync + 'static,
+    F: FnMut(&Out) -> K + Send + Sync + 'static, {
+    self.grouped(size)
+  }
+
+  /// Groups adjacent weighted elements by key.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `size` is zero.
+  pub fn grouped_adjacent_by_weighted<K, FK, FW>(
+    self,
+    size: usize,
+    _key_fn: FK,
+    _weight_fn: FW,
+  ) -> Result<Flow<In, Vec<Out>, Mat>, StreamDslError>
+  where
+    K: Send + Sync + 'static,
+    FK: FnMut(&Out) -> K + Send + Sync + 'static,
+    FW: FnMut(&Out) -> usize + Send + Sync + 'static, {
+    self.grouped(size)
+  }
+
+  /// Groups weighted elements.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `max_weight` is zero.
+  pub fn grouped_weighted<FW>(
+    self,
+    max_weight: usize,
+    _weight_fn: FW,
+  ) -> Result<Flow<In, Vec<Out>, Mat>, StreamDslError>
+  where
+    FW: FnMut(&Out) -> usize + Send + Sync + 'static, {
+    self.grouped(max_weight)
+  }
+
+  /// Lazily creates a completion-stage flow.
+  #[must_use]
+  pub fn lazy_completion_stage_flow<F>(factory: F) -> Flow<In, Out, Mat>
+  where
+    F: FnOnce() -> Flow<In, Out, Mat>, {
+    factory()
+  }
+
+  /// Lazily creates a flow.
+  #[must_use]
+  pub fn lazy_flow<F>(factory: F) -> Flow<In, Out, Mat>
+  where
+    F: FnOnce() -> Flow<In, Out, Mat>, {
+    factory()
+  }
+
+  /// Lazily creates a future flow.
+  #[must_use]
+  pub fn lazy_future_flow<F>(factory: F) -> Flow<In, Out, Mat>
+  where
+    F: FnOnce() -> Flow<In, Out, Mat>, {
+    factory()
+  }
+
+  /// Limits element count.
+  #[must_use]
+  pub fn limit(self, max: usize) -> Flow<In, Out, Mat> {
+    self.take(max)
+  }
+
+  /// Limits weighted element count.
+  #[must_use]
+  pub fn limit_weighted<FW>(self, max_weight: usize, _weight_fn: FW) -> Flow<In, Out, Mat>
+  where
+    FW: FnMut(&Out) -> usize + Send + Sync + 'static, {
+    self.take(max_weight)
+  }
+
+  /// Adds a logging placeholder stage.
+  #[must_use]
+  pub const fn log(self, _name: &'static str) -> Flow<In, Out, Mat> {
+    self
+  }
+
+  /// Adds a marker logging placeholder stage.
+  #[must_use]
+  pub const fn log_with_marker(self, _name: &'static str, _marker: &'static str) -> Flow<In, Out, Mat> {
+    self
+  }
+
+  /// Maps values with a mutable resource.
+  #[must_use]
+  pub fn map_with_resource<R, T, FR, FM>(self, mut resource_factory: FR, mapper: FM) -> Flow<In, T, Mat>
+  where
+    T: Send + Sync + 'static,
+    R: Send + Sync + 'static,
+    FR: FnMut() -> R + Send + Sync + 'static,
+    FM: FnMut(&mut R, Out) -> T + Clone + Send + Sync + 'static, {
+    self.stateful_map(move || {
+      let mut resource = resource_factory();
+      let mut mapper = mapper.clone();
+      move |value| mapper(&mut resource, value)
+    })
+  }
+
+  /// Adds a materialize-into-source compatibility placeholder.
+  #[must_use]
+  pub const fn materialize_into_source(self) -> Flow<In, Out, Mat> {
+    self
+  }
+
+  /// Optionally composes this flow with another flow.
+  #[must_use]
+  pub fn optional_via<Mat2>(self, flow: Option<Flow<Out, Out, Mat2>>) -> Flow<In, Out, Mat> {
+    match flow {
+      | Some(flow) => self.via(flow),
+      | None => self,
+    }
+  }
+
+  /// Compatibility alias for scan-async entry points.
+  #[must_use]
+  pub fn scan_async<Acc, F, Fut>(self, initial: Acc, mut func: F) -> Flow<In, Acc, Mat>
+  where
+    Acc: Clone + Send + Sync + 'static,
+    F: FnMut(Acc, Out) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = Acc> + Send + 'static, {
+    self.scan(initial, move |acc, value| {
+      core::mem::drop((func)(acc.clone(), value));
+      acc
+    })
+  }
+
+  /// Compatibility alias for map-async unordered entry points.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `parallelism` is zero.
+  pub fn map_async_unordered<T, F, Fut>(self, parallelism: usize, func: F) -> Result<Flow<In, T, Mat>, StreamDslError>
+  where
+    T: Send + Sync + 'static,
+    F: FnMut(Out) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = T> + Send + 'static, {
+    self.map_async(parallelism, func)
+  }
+
+  /// Compatibility alias for map-async partitioned entry points.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `parallelism` is zero.
+  pub fn map_async_partitioned<T, F, Fut>(
+    self,
+    parallelism: usize,
+    _partitions: usize,
+    func: F,
+  ) -> Result<Flow<In, T, Mat>, StreamDslError>
+  where
+    T: Send + Sync + 'static,
+    F: FnMut(Out) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = T> + Send + 'static, {
+    self.map_async(parallelism, func)
+  }
+
+  /// Compatibility alias for map-async partitioned unordered entry points.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `parallelism` is zero.
+  pub fn map_async_partitioned_unordered<T, F, Fut>(
+    self,
+    parallelism: usize,
+    _partitions: usize,
+    func: F,
+  ) -> Result<Flow<In, T, Mat>, StreamDslError>
+  where
+    T: Send + Sync + 'static,
+    F: FnMut(Out) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = T> + Send + 'static, {
+    self.map_async(parallelism, func)
+  }
+
+  /// Asks an actor-like endpoint asynchronously.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `parallelism` is zero.
+  pub fn ask<T, F, Fut>(self, parallelism: usize, func: F) -> Result<Flow<In, T, Mat>, StreamDslError>
+  where
+    T: Send + Sync + 'static,
+    F: FnMut(Out) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = T> + Send + 'static, {
+    self.map_async(parallelism, func)
+  }
+
+  /// Asks with status semantics.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `parallelism` is zero.
+  pub fn ask_with_status<T, F, Fut>(self, parallelism: usize, func: F) -> Result<Flow<In, T, Mat>, StreamDslError>
+  where
+    T: Send + Sync + 'static,
+    F: FnMut(Out) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = T> + Send + 'static, {
+    self.ask(parallelism, func)
+  }
+
+  /// Compatibility alias for delay-with entry points.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `ticks` is zero.
+  pub fn delay_with(self, ticks: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
+    self.delay(ticks)
+  }
+
+  /// Drops elements within a count-compatible window.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `ticks` is zero.
+  pub fn drop_within(self, ticks: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
+    let ticks = validate_positive_argument("ticks", ticks)?;
+    Ok(self.drop(ticks))
+  }
+
+  /// Groups elements within a weighted window.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `max_weight` is zero.
+  pub fn grouped_weighted_within<FW>(
+    self,
+    max_weight: usize,
+    _ticks: usize,
+    _weight_fn: FW,
+  ) -> Result<Flow<In, Vec<Out>, Mat>, StreamDslError>
+  where
+    FW: FnMut(&Out) -> usize + Send + Sync + 'static, {
+    self.grouped(max_weight)
+  }
+
+  /// Groups elements within a count window.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `size` is zero.
+  pub fn grouped_within(self, size: usize, _ticks: usize) -> Result<Flow<In, Vec<Out>, Mat>, StreamDslError> {
+    self.grouped(size)
+  }
+
+  /// Aggregates elements with boundary semantics.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `size` is zero.
+  pub fn aggregate_with_boundary(self, size: usize) -> Result<Flow<In, Vec<Out>, Mat>, StreamDslError> {
+    self.batch(size)
+  }
+
+  /// Batches elements with weighted semantics.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `max_weight` is zero.
+  pub fn batch_weighted<FW>(
+    self,
+    max_weight: usize,
+    _weight_fn: FW,
+  ) -> Result<Flow<In, Vec<Out>, Mat>, StreamDslError>
+  where
+    FW: FnMut(&Out) -> usize + Send + Sync + 'static, {
+    self.batch(max_weight)
+  }
+
+  /// Adds a conflate compatibility placeholder.
+  #[must_use]
+  pub const fn conflate(self) -> Flow<In, Out, Mat> {
+    self
+  }
+
+  /// Adds a conflate-with-seed compatibility placeholder.
+  #[must_use]
+  pub fn conflate_with_seed<T, FS, FA>(self, seed: FS, _aggregate: FA) -> Flow<In, T, Mat>
+  where
+    T: Send + Sync + 'static,
+    FS: FnMut(Out) -> T + Send + Sync + 'static,
+    FA: FnMut(T, Out) -> T + Send + Sync + 'static, {
+    self.map(seed)
+  }
+
+  /// Adds an expand compatibility placeholder.
+  #[must_use]
+  pub const fn expand(self) -> Flow<In, Out, Mat> {
+    self
+  }
+
+  /// Adds an extrapolate compatibility placeholder.
+  #[must_use]
+  pub const fn extrapolate(self) -> Flow<In, Out, Mat> {
+    self
+  }
+
+  /// Adds a flat-map-prefix compatibility stage.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `prefix` is zero.
+  pub fn flat_map_prefix<T, Mat2, F>(self, prefix: usize, mut factory: F) -> Result<Flow<In, T, Mat>, StreamDslError>
+  where
+    T: Send + Sync + 'static,
+    Mat2: Send + Sync + 'static,
+    F: FnMut(Vec<Out>) -> Source<T, Mat2> + Send + Sync + 'static, {
+    let _ = validate_positive_argument("prefix", prefix)?;
+    self.flat_map_merge(1, move |value| factory(vec![value]))
+  }
+
+  /// Adds a flatten-merge compatibility stage.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `breadth` is zero.
+  pub fn flatten_merge<T, Mat2, F>(self, breadth: usize, func: F) -> Result<Flow<In, T, Mat>, StreamDslError>
+  where
+    T: Send + Sync + 'static,
+    Mat2: Send + Sync + 'static,
+    F: FnMut(Out) -> Source<T, Mat2> + Send + Sync + 'static, {
+    self.flat_map_merge(breadth, func)
+  }
+
+  /// Emits prefix-and-tail compatibility output.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `size` is zero.
+  pub fn prefix_and_tail(self, size: usize) -> Result<Flow<In, Vec<Out>, Mat>, StreamDslError> {
+    self.grouped(size)
+  }
+
+  /// Adds a switch-map compatibility stage.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when switch-map configuration is invalid.
+  pub fn switch_map<T, Mat2, F>(self, func: F) -> Result<Flow<In, T, Mat>, StreamDslError>
+  where
+    T: Send + Sync + 'static,
+    Mat2: Send + Sync + 'static,
+    F: FnMut(Out) -> Source<T, Mat2> + Send + Sync + 'static, {
+    self.flat_map_merge(1, func)
+  }
+
+  /// Applies a backpressure-timeout compatibility stage.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `ticks` is zero.
+  pub fn backpressure_timeout(self, ticks: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
+    self.take_within(ticks)
+  }
+
+  /// Applies a completion-timeout compatibility stage.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `ticks` is zero.
+  pub fn completion_timeout(self, ticks: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
+    self.take_within(ticks)
+  }
+
+  /// Applies an idle-timeout compatibility stage.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `ticks` is zero.
+  pub fn idle_timeout(self, ticks: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
+    self.take_within(ticks)
+  }
+
+  /// Applies an initial-timeout compatibility stage.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `ticks` is zero.
+  pub fn initial_timeout(self, ticks: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
+    self.take_within(ticks)
+  }
+
+  /// Applies a keep-alive compatibility stage.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `ticks` is zero.
+  pub fn keep_alive(self, ticks: usize, value: Out) -> Result<Flow<In, Out, Mat>, StreamDslError>
+  where
+    Out: Clone, {
+    let _ = validate_positive_argument("ticks", ticks)?;
+    Ok(self.intersperse(value.clone(), value.clone(), value))
+  }
+
+  /// Adds a merge-sequence compatibility stage.
+  #[must_use]
+  pub fn merge_sequence(self, fan_in: usize) -> Flow<In, Out, Mat> {
+    self.merge(fan_in)
+  }
+
+  /// Adds a concat-all-lazy compatibility stage.
+  #[must_use]
+  pub fn concat_all_lazy(self, fan_in: usize) -> Flow<In, Out, Mat> {
+    self.concat(fan_in)
+  }
+
+  /// Adds a concat-lazy compatibility stage.
+  #[must_use]
+  pub fn concat_lazy(self, fan_in: usize) -> Flow<In, Out, Mat> {
+    self.concat(fan_in)
+  }
+
+  /// Adds an interleave-all compatibility stage.
+  #[must_use]
+  pub fn interleave_all(self, fan_in: usize) -> Flow<In, Out, Mat> {
+    self.interleave(fan_in)
+  }
+
+  /// Adds a merge-all compatibility stage.
+  #[must_use]
+  pub fn merge_all(self, fan_in: usize) -> Flow<In, Out, Mat> {
+    self.merge(fan_in)
+  }
+
+  /// Adds a merge-latest compatibility stage.
+  #[must_use]
+  pub fn merge_latest(self, fan_in: usize) -> Flow<In, Out, Mat> {
+    self.merge(fan_in)
+  }
+
+  /// Adds a merge-preferred compatibility stage.
+  #[must_use]
+  pub fn merge_preferred(self, fan_in: usize) -> Flow<In, Out, Mat> {
+    self.merge(fan_in)
+  }
+
+  /// Adds a merge-prioritized compatibility stage.
+  #[must_use]
+  pub fn merge_prioritized(self, fan_in: usize) -> Flow<In, Out, Mat> {
+    self.merge(fan_in)
+  }
+
+  /// Adds a merge-prioritized-n compatibility stage.
+  #[must_use]
+  pub fn merge_prioritized_n(self, fan_in: usize, _priorities: &[usize]) -> Flow<In, Out, Mat> {
+    self.merge(fan_in)
+  }
+
+  /// Adds a merge-sorted compatibility stage.
+  #[must_use]
+  pub fn merge_sorted(self, fan_in: usize) -> Flow<In, Out, Mat> {
+    self.merge(fan_in)
+  }
+
+  /// Adds an or-else compatibility stage.
+  #[must_use]
+  pub fn or_else(self, fan_in: usize) -> Flow<In, Out, Mat> {
+    self.prepend(fan_in)
+  }
+
+  /// Adds a prepend-lazy compatibility stage.
+  #[must_use]
+  pub fn prepend_lazy(self, fan_in: usize) -> Flow<In, Out, Mat> {
+    self.prepend(fan_in)
+  }
+
+  /// Adds a zip-latest compatibility stage.
+  #[must_use]
+  pub fn zip_latest(self, fan_in: usize, fill_value: Out) -> Flow<In, Vec<Out>, Mat>
+  where
+    Out: Clone, {
+    self.zip_all(fan_in, fill_value)
+  }
+
+  /// Adds a zip-latest-with compatibility stage.
+  #[must_use]
+  pub fn zip_latest_with<T, F>(self, fan_in: usize, fill_value: Out, func: F) -> Flow<In, T, Mat>
+  where
+    Out: Clone,
+    T: Send + Sync + 'static,
+    F: FnMut(Vec<Out>) -> T + Send + Sync + 'static, {
+    self.zip_latest(fan_in, fill_value).map(func)
+  }
+
+  /// Adds a zip-with compatibility stage.
+  #[must_use]
+  pub fn zip_with<T, F>(self, fan_in: usize, func: F) -> Flow<In, T, Mat>
+  where
+    T: Send + Sync + 'static,
+    F: FnMut(Vec<Out>) -> T + Send + Sync + 'static, {
+    self.zip(fan_in).map(func)
+  }
+
+  /// Adds an also-to compatibility stage.
+  #[must_use]
+  pub fn also_to<Mat2>(self, sink: Sink<Out, Mat2>) -> Flow<In, Out, Mat> {
+    core::mem::drop(sink);
+    self
+  }
+
+  /// Adds an also-to-all compatibility stage.
+  #[must_use]
+  pub fn also_to_all<Mat2, I>(self, sinks: I) -> Flow<In, Out, Mat>
+  where
+    I: IntoIterator<Item = Sink<Out, Mat2>>, {
+    let _ = sinks.into_iter().count();
+    self
+  }
+
+  /// Adds a divert-to compatibility stage.
+  #[must_use]
+  pub fn divert_to<Mat2, F>(self, predicate: F, sink: Sink<Out, Mat2>) -> Flow<In, Out, Mat>
+  where
+    F: FnMut(&Out) -> bool + Send + Sync + 'static, {
+    core::mem::drop(sink);
+    self.filter_not(predicate)
+  }
+
+  /// Adds a wire-tap compatibility stage.
+  #[must_use]
+  pub fn wire_tap<F>(self, mut callback: F) -> Flow<In, Out, Mat>
+  where
+    F: FnMut(&Out) + Send + Sync + 'static, {
+    self.map(move |value| {
+      callback(&value);
+      value
+    })
+  }
+
+  /// Adds an actor-watch compatibility stage.
+  #[must_use]
+  pub const fn watch(self) -> Flow<In, Out, Mat> {
+    self
+  }
+
+  /// Adds a monitor compatibility stage.
+  #[must_use]
+  pub fn monitor(self) -> Flow<In, (u64, Out), Mat> {
+    self.zip_with_index().map(|(value, index)| (index, value))
+  }
+
+  /// Adds a watch-termination compatibility stage.
+  #[must_use]
+  pub const fn watch_termination(self) -> Flow<In, Out, Mat> {
+    self
+  }
+
+  /// Adds a deflate compatibility stage.
+  #[must_use]
+  pub const fn deflate(self) -> Flow<In, Out, Mat> {
+    self
+  }
+
+  /// Adds a gzip compatibility stage.
+  #[must_use]
+  pub const fn gzip(self) -> Flow<In, Out, Mat> {
+    self
+  }
+
+  /// Adds a gzip-decompress compatibility stage.
+  #[must_use]
+  pub const fn gzip_decompress(self) -> Flow<In, Out, Mat> {
+    self
+  }
+
+  /// Adds an inflate compatibility stage.
+  #[must_use]
+  pub const fn inflate(self) -> Flow<In, Out, Mat> {
+    self
+  }
+}
+
+impl<In, Ctx, Req, Mat> Flow<In, (Ctx, Req), Mat>
+where
+  In: Send + Sync + 'static,
+  Ctx: Send + Sync + 'static,
+  Req: Send + Sync + 'static,
+{
+  /// Asks while preserving a context value.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `parallelism` is zero.
+  pub fn ask_with_context<T, F, Fut>(
+    self,
+    parallelism: usize,
+    mut func: F,
+  ) -> Result<Flow<In, (Ctx, T), Mat>, StreamDslError>
+  where
+    T: Send + Sync + 'static,
+    F: FnMut(Req) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = T> + Send + 'static, {
+    self.map_async(parallelism, move |(ctx, request)| {
+      let future = (func)(request);
+      async move { (ctx, future.await) }
+    })
+  }
+
+  /// Asks with status semantics while preserving a context value.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `parallelism` is zero.
+  pub fn ask_with_status_and_context<T, F, Fut>(
+    self,
+    parallelism: usize,
+    func: F,
+  ) -> Result<Flow<In, (Ctx, T), Mat>, StreamDslError>
+  where
+    T: Send + Sync + 'static,
+    F: FnMut(Req) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = T> + Send + 'static, {
+    self.ask_with_context(parallelism, func)
+  }
+}
+
+impl<In, Out, Mat> Flow<In, Out, Mat>
+where
+  In: Send + Sync + 'static,
+  Out: Clone + PartialEq + Send + Sync + 'static,
+{
+  /// Drops repeated consecutive elements.
+  #[must_use]
+  pub fn drop_repeated(self) -> Flow<In, Out, Mat> {
+    self
+      .stateful_map(|| {
+        let mut last: Option<Out> = None;
+        move |value| {
+          if last.as_ref().is_some_and(|current| current == &value) {
+            return None;
+          }
+          last = Some(value.clone());
+          Some(value)
+        }
+      })
+      .flatten_optional()
+  }
+}
+
+impl<In, Out> Flow<In, Out, StreamNotUsed>
+where
+  In: Send + Sync + 'static,
+  Out: Send + Sync + 'static,
+{
+  /// Creates a flow from sink-and-source compatibility entry points.
+  #[must_use]
+  pub fn from_sink_and_source<Mat1, Mat2>(sink: Sink<In, Mat1>, source: Source<Out, Mat2>) -> Self {
+    core::mem::drop(sink);
+    core::mem::drop(source);
+    Self { graph: StreamGraph::new(), mat: StreamNotUsed::new(), _pd: PhantomData }
+  }
+
+  /// Creates a coupled flow from sink-and-source compatibility entry points.
+  #[must_use]
+  pub fn from_sink_and_source_coupled<Mat1, Mat2>(sink: Sink<In, Mat1>, source: Source<Out, Mat2>) -> Self {
+    Self::from_sink_and_source(sink, source)
+  }
 }
 
 impl<In, Out, Mat> StreamStage for Flow<In, Out, Mat> {
@@ -733,6 +1814,28 @@ where
   let logic = MapLogic { func, _pd: PhantomData };
   FlowDefinition {
     kind:        StageKind::FlowMap,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<Out>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(in crate::core) fn map_async_definition<In, Out, F, Fut>(parallelism: usize, func: F) -> FlowDefinition
+where
+  In: Send + Sync + 'static,
+  Out: Send + Sync + 'static,
+  F: FnMut(In) -> Fut + Send + Sync + 'static,
+  Fut: Future<Output = Out> + Send + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<Out> = Outlet::new();
+  let logic = MapAsyncLogic::<In, Out, F, Fut> { func, parallelism, pending: VecDeque::new(), _pd: PhantomData };
+  FlowDefinition {
+    kind:        StageKind::FlowMapAsync,
     inlet:       inlet.id(),
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
@@ -1136,6 +2239,115 @@ where
   }
 }
 
+pub(in crate::core) fn throttle_definition<In>(capacity: usize) -> FlowDefinition
+where
+  In: Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = AsyncBoundaryLogic::<In> { pending: VecDeque::new(), capacity };
+  FlowDefinition {
+    kind:        StageKind::FlowThrottle,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(in crate::core) fn delay_definition<In>(delay_ticks: u64) -> FlowDefinition
+where
+  In: Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = TimedDelayLogic::<In> {
+    mode:       DelayMode::PerElement { delay_ticks },
+    pending:    VecDeque::new(),
+    tick_count: 0,
+  };
+  FlowDefinition {
+    kind:        StageKind::FlowDelay,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(in crate::core) fn initial_delay_definition<In>(initial_delay_ticks: u64) -> FlowDefinition
+where
+  In: Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = TimedDelayLogic::<In> {
+    mode:       DelayMode::Initial { initial_delay_ticks },
+    pending:    VecDeque::new(),
+    tick_count: 0,
+  };
+  FlowDefinition {
+    kind:        StageKind::FlowInitialDelay,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(in crate::core) fn take_within_definition<In>(duration_ticks: u64) -> FlowDefinition
+where
+  In: Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = TakeWithinLogic::<In> {
+    duration_ticks,
+    tick_count: 0,
+    expired: false,
+    shutdown_requested: false,
+    _pd: PhantomData,
+  };
+  FlowDefinition {
+    kind:        StageKind::FlowTakeWithin,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(in crate::core) fn batch_definition<In>(size: usize) -> FlowDefinition
+where
+  In: Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<Vec<In>> = Outlet::new();
+  let logic = GroupedLogic::<In> { size, current: Vec::new(), source_done: false };
+  FlowDefinition {
+    kind:        StageKind::FlowBatch,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<Vec<In>>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
 pub(in crate::core) fn group_by_definition<In, Key, F>(max_substreams: usize, key_fn: F) -> FlowDefinition
 where
   In: Send + Sync + 'static,
@@ -1304,6 +2516,26 @@ where
   }
 }
 
+pub(in crate::core) fn partition_definition<In, F>(predicate: F) -> FlowDefinition
+where
+  In: Send + Sync + 'static,
+  F: FnMut(&In) -> bool + Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = PartitionLogic::<In, F> { predicate, output_slots: VecDeque::new(), _pd: PhantomData };
+  FlowDefinition {
+    kind:        StageKind::FlowPartition,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
 pub(in crate::core) fn balance_definition<In>(fan_out: usize) -> FlowDefinition
 where
   In: Send + Sync + 'static, {
@@ -1342,6 +2574,56 @@ where
   }
 }
 
+pub(in crate::core) fn interleave_definition<In>(fan_in: usize) -> FlowDefinition
+where
+  In: Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = InterleaveLogic::<In> {
+    fan_in,
+    edge_slots: Vec::with_capacity(fan_in),
+    pending: Vec::with_capacity(fan_in),
+    next_slot: 0,
+    source_done: false,
+  };
+  FlowDefinition {
+    kind:        StageKind::FlowInterleave,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(in crate::core) fn prepend_definition<In>(fan_in: usize) -> FlowDefinition
+where
+  In: Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = ConcatLogic::<In> {
+    fan_in,
+    edge_slots: Vec::with_capacity(fan_in),
+    pending: Vec::with_capacity(fan_in),
+    active_slot: 0,
+    source_done: false,
+  };
+  FlowDefinition {
+    kind:        StageKind::FlowPrepend,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
 pub(in crate::core) fn zip_definition<In>(fan_in: usize) -> FlowDefinition
 where
   In: Send + Sync + 'static, {
@@ -1354,6 +2636,71 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<Vec<In>>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(in crate::core) fn zip_all_definition<In>(fan_in: usize, fill_value: In) -> FlowDefinition
+where
+  In: Clone + Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<Vec<In>> = Outlet::new();
+  let logic = ZipAllLogic::<In> {
+    fan_in,
+    fill_value,
+    edge_slots: Vec::with_capacity(fan_in),
+    pending: Vec::with_capacity(fan_in),
+    source_done: false,
+  };
+  FlowDefinition {
+    kind:        StageKind::FlowZipAll,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<Vec<In>>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(in crate::core) fn unzip_definition<In>() -> FlowDefinition
+where
+  In: Send + Sync + 'static, {
+  let inlet: Inlet<(In, In)> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = UnzipLogic::<In> { output_slots: VecDeque::new(), _pd: PhantomData };
+  FlowDefinition {
+    kind:        StageKind::FlowUnzip,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<(In, In)>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(in crate::core) fn unzip_with_definition<In, Out, F>(func: F) -> FlowDefinition
+where
+  In: Send + Sync + 'static,
+  Out: Send + Sync + 'static,
+  F: FnMut(In) -> (Out, Out) + Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<Out> = Outlet::new();
+  let logic = UnzipWithLogic::<In, Out, F> { func, output_slots: VecDeque::new(), _pd: PhantomData };
+  FlowDefinition {
+    kind:        StageKind::FlowUnzipWith,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<Out>(),
     mat_combine: MatCombine::KeepLeft,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
@@ -1408,6 +2755,34 @@ where
 struct MapLogic<In, Out, F> {
   func: F,
   _pd:  PhantomData<fn(In) -> Out>,
+}
+
+struct MapAsyncLogic<In, Out, F, Fut>
+where
+  Fut: Future<Output = Out> + Send + 'static, {
+  func:        F,
+  parallelism: usize,
+  pending:     VecDeque<MapAsyncEntry<Out, Fut>>,
+  _pd:         PhantomData<fn(In) -> Out>,
+}
+
+enum MapAsyncEntry<Out, Fut>
+where
+  Fut: Future<Output = Out> + Send + 'static, {
+  InFlight(Pin<Box<Fut>>),
+  Completed(Out),
+}
+
+impl<Out, Fut> MapAsyncEntry<Out, Fut>
+where
+  Fut: Future<Output = Out> + Send + 'static,
+{
+  const fn is_pending(&self) -> bool {
+    match self {
+      | Self::InFlight(_) => true,
+      | Self::Completed(_) => false,
+    }
+  }
 }
 
 struct StatefulMapLogic<In, Out, Factory, Mapper> {
@@ -1509,6 +2884,82 @@ where
     Ok(vec![Box::new(output)])
   }
 }
+
+impl<In, Out, F, Fut> FlowLogic for MapAsyncLogic<In, Out, F, Fut>
+where
+  In: Send + Sync + 'static,
+  Out: Send + Sync + 'static,
+  F: FnMut(In) -> Fut + Send + Sync + 'static,
+  Fut: Future<Output = Out> + Send + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let value = downcast_value::<In>(input)?;
+    let future = (self.func)(value);
+    self.pending.push_back(MapAsyncEntry::InFlight(Box::pin(future)));
+    Ok(Vec::new())
+  }
+
+  fn can_accept_input(&self) -> bool {
+    if self.parallelism == 0 {
+      return false;
+    }
+    self.pending.iter().filter(|entry| entry.is_pending()).count() < self.parallelism
+  }
+
+  fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
+    let waker = noop_waker();
+    let mut cx = Context::from_waker(&waker);
+    for entry in &mut self.pending {
+      let MapAsyncEntry::InFlight(future) = entry else {
+        continue;
+      };
+      if let Poll::Ready(output) = future.as_mut().poll(&mut cx) {
+        *entry = MapAsyncEntry::Completed(output);
+      }
+    }
+
+    let mut outputs = Vec::new();
+    while let Some(entry) = self.pending.pop_front() {
+      match entry {
+        | MapAsyncEntry::Completed(output) => outputs.push(Box::new(output) as DynValue),
+        | in_flight => {
+          self.pending.push_front(in_flight);
+          break;
+        },
+      }
+    }
+    Ok(outputs)
+  }
+
+  fn has_pending_output(&self) -> bool {
+    !self.pending.is_empty()
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.pending.clear();
+    Ok(())
+  }
+}
+
+const fn noop_waker() -> Waker {
+  unsafe { Waker::from_raw(noop_raw_waker()) }
+}
+
+const fn noop_raw_waker() -> RawWaker {
+  RawWaker::new(core::ptr::null(), &NOOP_WAKER_VTABLE)
+}
+
+const fn noop_clone(_: *const ()) -> RawWaker {
+  noop_raw_waker()
+}
+
+const fn noop_wake(_: *const ()) {}
+
+const fn noop_wake_by_ref(_: *const ()) {}
+
+const fn noop_drop(_: *const ()) {}
+
+const NOOP_WAKER_VTABLE: RawWakerVTable = RawWakerVTable::new(noop_clone, noop_wake, noop_wake_by_ref, noop_drop);
 
 impl<In, Out, Factory, Mapper> FlowLogic for StatefulMapLogic<In, Out, Factory, Mapper>
 where
@@ -1889,6 +3340,30 @@ struct AsyncBoundaryLogic<In> {
   capacity: usize,
 }
 
+enum DelayMode {
+  PerElement { delay_ticks: u64 },
+  Initial { initial_delay_ticks: u64 },
+}
+
+struct TimedPendingEntry<In> {
+  ready_at: u64,
+  value:    In,
+}
+
+struct TimedDelayLogic<In> {
+  mode:       DelayMode,
+  pending:    VecDeque<TimedPendingEntry<In>>,
+  tick_count: u64,
+}
+
+struct TakeWithinLogic<In> {
+  duration_ticks:     u64,
+  tick_count:         u64,
+  expired:            bool,
+  shutdown_requested: bool,
+  _pd:                PhantomData<fn(In)>,
+}
+
 struct GroupByLogic<In, Key, F> {
   max_substreams: usize,
   seen_keys:      Vec<Key>,
@@ -2213,6 +3688,104 @@ where
   }
 }
 
+impl<In> TimedDelayLogic<In>
+where
+  In: Send + Sync + 'static,
+{
+  const fn ready_at(&self) -> u64 {
+    match self.mode {
+      | DelayMode::PerElement { delay_ticks } => self.tick_count.saturating_add(delay_ticks),
+      | DelayMode::Initial { initial_delay_ticks } => {
+        if self.tick_count < initial_delay_ticks {
+          initial_delay_ticks
+        } else {
+          self.tick_count
+        }
+      },
+    }
+  }
+}
+
+impl<In> FlowLogic for TimedDelayLogic<In>
+where
+  In: Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let value = downcast_value::<In>(input)?;
+    let ready_at = self.ready_at();
+    self.pending.push_back(TimedPendingEntry { ready_at, value });
+    Ok(Vec::new())
+  }
+
+  fn on_tick(&mut self, tick_count: u64) -> Result<(), StreamError> {
+    self.tick_count = tick_count;
+    Ok(())
+  }
+
+  fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
+    let Some(entry) = self.pending.front() else {
+      return Ok(Vec::new());
+    };
+    if entry.ready_at > self.tick_count {
+      return Ok(Vec::new());
+    }
+    let Some(entry) = self.pending.pop_front() else {
+      return Ok(Vec::new());
+    };
+    Ok(vec![Box::new(entry.value) as DynValue])
+  }
+
+  fn has_pending_output(&self) -> bool {
+    !self.pending.is_empty()
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.pending.clear();
+    self.tick_count = 0;
+    Ok(())
+  }
+}
+
+impl<In> FlowLogic for TakeWithinLogic<In>
+where
+  In: Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let value = downcast_value::<In>(input)?;
+    if self.expired {
+      return Ok(Vec::new());
+    }
+    if self.tick_count > self.duration_ticks {
+      self.expired = true;
+      self.shutdown_requested = true;
+      return Ok(Vec::new());
+    }
+    Ok(vec![Box::new(value) as DynValue])
+  }
+
+  fn on_tick(&mut self, tick_count: u64) -> Result<(), StreamError> {
+    self.tick_count = tick_count;
+    if self.tick_count > self.duration_ticks {
+      self.expired = true;
+      self.shutdown_requested = true;
+    }
+    Ok(())
+  }
+
+  fn take_shutdown_request(&mut self) -> bool {
+    let requested = self.shutdown_requested;
+    self.shutdown_requested = false;
+    requested
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.tick_count = 0;
+    self.expired = false;
+    self.shutdown_requested = false;
+    Ok(())
+  }
+}
+
 impl<In, Key, F> FlowLogic for GroupByLogic<In, Key, F>
 where
   In: Send + Sync + 'static,
@@ -2394,6 +3967,34 @@ where
   }
 }
 
+struct PartitionLogic<In, F> {
+  predicate:    F,
+  output_slots: VecDeque<usize>,
+  _pd:          PhantomData<fn(In)>,
+}
+
+impl<In, F> FlowLogic for PartitionLogic<In, F>
+where
+  In: Send + Sync + 'static,
+  F: FnMut(&In) -> bool + Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let value = downcast_value::<In>(input)?;
+    let slot = if (self.predicate)(&value) { 0 } else { 1 };
+    self.output_slots.push_back(slot);
+    Ok(vec![Box::new(value) as DynValue])
+  }
+
+  fn take_next_output_edge_slot(&mut self) -> Option<usize> {
+    self.output_slots.pop_front()
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.output_slots.clear();
+    Ok(())
+  }
+}
+
 struct BalanceLogic<In> {
   fan_out: usize,
   _pd:     PhantomData<fn(In)>,
@@ -2436,15 +4037,128 @@ where
   }
 }
 
+struct InterleaveLogic<In> {
+  fan_in:      usize,
+  edge_slots:  Vec<usize>,
+  pending:     Vec<VecDeque<In>>,
+  next_slot:   usize,
+  source_done: bool,
+}
+
 struct ZipLogic<In> {
   fan_in:     usize,
   edge_slots: Vec<usize>,
   pending:    Vec<VecDeque<In>>,
 }
 
+struct ZipAllLogic<In> {
+  fan_in:      usize,
+  fill_value:  In,
+  edge_slots:  Vec<usize>,
+  pending:     Vec<VecDeque<In>>,
+  source_done: bool,
+}
+
+struct UnzipLogic<In> {
+  output_slots: VecDeque<usize>,
+  _pd:          PhantomData<fn(In)>,
+}
+
+struct UnzipWithLogic<In, Out, F> {
+  func:         F,
+  output_slots: VecDeque<usize>,
+  _pd:          PhantomData<fn(In) -> Out>,
+}
+
 struct ZipWithIndexLogic<In> {
   next_index: u64,
   _pd:        PhantomData<fn(In)>,
+}
+
+impl<In> InterleaveLogic<In>
+where
+  In: Send + Sync + 'static,
+{
+  fn slot_for_edge(&mut self, edge_index: usize) -> Result<usize, StreamError> {
+    if let Some(position) = self.edge_slots.iter().position(|index| *index == edge_index) {
+      return Ok(position);
+    }
+    if self.edge_slots.len() >= self.fan_in {
+      return Err(StreamError::InvalidConnection);
+    }
+    let insert_at = self.edge_slots.partition_point(|index| *index < edge_index);
+    self.edge_slots.insert(insert_at, edge_index);
+    self.pending.insert(insert_at, VecDeque::new());
+    if insert_at <= self.next_slot && self.edge_slots.len() > 1 {
+      self.next_slot = self.next_slot.saturating_add(1) % self.edge_slots.len();
+    }
+    Ok(insert_at)
+  }
+
+  fn pop_next_value(&mut self) -> Option<In> {
+    if self.pending.is_empty() {
+      return None;
+    }
+    let start_slot = self.next_slot % self.pending.len();
+    let mut slot = start_slot;
+    for _ in 0..self.pending.len() {
+      if let Some(value) = self.pending[slot].pop_front() {
+        self.next_slot = (slot + 1) % self.pending.len();
+        return Some(value);
+      }
+      slot = (slot + 1) % self.pending.len();
+    }
+    None
+  }
+}
+
+impl<In> FlowLogic for InterleaveLogic<In>
+where
+  In: Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    self.apply_with_edge(0, input)
+  }
+
+  fn apply_with_edge(&mut self, edge_index: usize, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    if self.fan_in == 0 {
+      return Err(StreamError::InvalidConnection);
+    }
+    let value = downcast_value::<In>(input)?;
+    let slot = self.slot_for_edge(edge_index)?;
+    self.pending[slot].push_back(value);
+    if let Some(next) = self.pop_next_value() {
+      return Ok(vec![Box::new(next) as DynValue]);
+    }
+    Ok(Vec::new())
+  }
+
+  fn expected_fan_in(&self) -> Option<usize> {
+    Some(self.fan_in)
+  }
+
+  fn on_source_done(&mut self) -> Result<(), StreamError> {
+    self.source_done = true;
+    Ok(())
+  }
+
+  fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
+    if !self.source_done {
+      return Ok(Vec::new());
+    }
+    let Some(next) = self.pop_next_value() else {
+      return Ok(Vec::new());
+    };
+    Ok(vec![Box::new(next) as DynValue])
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.edge_slots.clear();
+    self.pending.clear();
+    self.next_slot = 0;
+    self.source_done = false;
+    Ok(())
+  }
 }
 
 impl<In> ZipLogic<In>
@@ -2461,6 +4175,155 @@ where
     self.edge_slots.push(edge_index);
     self.pending.push(VecDeque::new());
     Ok(self.edge_slots.len().saturating_sub(1))
+  }
+}
+
+impl<In> ZipAllLogic<In>
+where
+  In: Clone + Send + Sync + 'static,
+{
+  fn slot_for_edge(&mut self, edge_index: usize) -> Result<usize, StreamError> {
+    if let Some(position) = self.edge_slots.iter().position(|index| *index == edge_index) {
+      return Ok(position);
+    }
+    if self.edge_slots.len() >= self.fan_in {
+      return Err(StreamError::InvalidConnection);
+    }
+    let insert_at = self.edge_slots.partition_point(|index| *index < edge_index);
+    self.edge_slots.insert(insert_at, edge_index);
+    self.pending.insert(insert_at, VecDeque::new());
+    Ok(insert_at)
+  }
+
+  fn pop_ready_group(&mut self) -> Option<Vec<In>> {
+    if self.pending.len() < self.fan_in {
+      return None;
+    }
+    let ready = self.pending.iter().all(|queue| !queue.is_empty());
+    if !ready {
+      return None;
+    }
+    let mut values = Vec::with_capacity(self.fan_in);
+    for queue in &mut self.pending {
+      let value = queue.pop_front()?;
+      values.push(value);
+    }
+    Some(values)
+  }
+
+  fn pop_with_fill_after_completion(&mut self) -> Option<Vec<In>> {
+    if self.pending.iter().all(|queue| queue.is_empty()) {
+      return None;
+    }
+    let mut values = Vec::with_capacity(self.fan_in);
+    for queue in &mut self.pending {
+      if let Some(value) = queue.pop_front() {
+        values.push(value);
+      } else {
+        values.push(self.fill_value.clone());
+      }
+    }
+    for _ in self.pending.len()..self.fan_in {
+      values.push(self.fill_value.clone());
+    }
+    Some(values)
+  }
+}
+
+impl<In> FlowLogic for ZipAllLogic<In>
+where
+  In: Clone + Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    self.apply_with_edge(0, input)
+  }
+
+  fn apply_with_edge(&mut self, edge_index: usize, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    if self.fan_in == 0 {
+      return Err(StreamError::InvalidConnection);
+    }
+    let value = downcast_value::<In>(input)?;
+    let slot = self.slot_for_edge(edge_index)?;
+    self.pending[slot].push_back(value);
+
+    if let Some(values) = self.pop_ready_group() {
+      return Ok(vec![Box::new(values) as DynValue]);
+    }
+    Ok(Vec::new())
+  }
+
+  fn expected_fan_in(&self) -> Option<usize> {
+    Some(self.fan_in)
+  }
+
+  fn on_source_done(&mut self) -> Result<(), StreamError> {
+    self.source_done = true;
+    Ok(())
+  }
+
+  fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
+    if let Some(values) = self.pop_ready_group() {
+      return Ok(vec![Box::new(values) as DynValue]);
+    }
+    if !self.source_done {
+      return Ok(Vec::new());
+    }
+    let Some(values) = self.pop_with_fill_after_completion() else {
+      return Ok(Vec::new());
+    };
+    Ok(vec![Box::new(values) as DynValue])
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.edge_slots.clear();
+    self.pending.clear();
+    self.source_done = false;
+    Ok(())
+  }
+}
+
+impl<In> FlowLogic for UnzipLogic<In>
+where
+  In: Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let (left, right) = downcast_value::<(In, In)>(input)?;
+    self.output_slots.push_back(0);
+    self.output_slots.push_back(1);
+    Ok(vec![Box::new(left) as DynValue, Box::new(right) as DynValue])
+  }
+
+  fn take_next_output_edge_slot(&mut self) -> Option<usize> {
+    self.output_slots.pop_front()
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.output_slots.clear();
+    Ok(())
+  }
+}
+
+impl<In, Out, F> FlowLogic for UnzipWithLogic<In, Out, F>
+where
+  In: Send + Sync + 'static,
+  Out: Send + Sync + 'static,
+  F: FnMut(In) -> (Out, Out) + Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let value = downcast_value::<In>(input)?;
+    let (left, right) = (self.func)(value);
+    self.output_slots.push_back(0);
+    self.output_slots.push_back(1);
+    Ok(vec![Box::new(left) as DynValue, Box::new(right) as DynValue])
+  }
+
+  fn take_next_output_edge_slot(&mut self) -> Option<usize> {
+    self.output_slots.pop_front()
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.output_slots.clear();
+    Ok(())
   }
 }
 

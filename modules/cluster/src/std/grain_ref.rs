@@ -7,7 +7,10 @@ use fraktor_actor_rs::std::{
 use fraktor_utils_rs::{core::sync::ArcShared, std::runtime_toolbox::StdToolbox};
 
 use crate::{
-  core::{ClusterIdentity, GrainCallError, GrainCallOptions, GrainCodec, GrainRefGeneric},
+  core::{
+    grain::{GrainCallError, GrainCallOptions, GrainCodec, GrainRefGeneric},
+    identity::ClusterIdentity,
+  },
   std::ClusterApi,
 };
 

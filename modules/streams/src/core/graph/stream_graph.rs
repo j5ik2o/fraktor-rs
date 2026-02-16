@@ -138,22 +138,12 @@ impl StreamGraph {
       return Err(StreamError::InvalidConnection);
     }
     let mut stages = Vec::with_capacity(self.nodes.len());
-    let mut source_count = 0_usize;
-    let mut sink_count = 0_usize;
     for node in self.nodes {
       Self::ensure_stage_metadata(&node.stage)?;
-      match node.stage {
-        | StageDefinition::Source(_) => source_count = source_count.saturating_add(1),
-        | StageDefinition::Sink(_) => sink_count = sink_count.saturating_add(1),
-        | StageDefinition::Flow(_) => {},
-      }
       stages.push(node.stage);
     }
-    if source_count != 1 || sink_count != 1 {
-      return Err(StreamError::InvalidConnection);
-    }
     let edges = self.edges.into_iter().map(|edge| (edge.from, edge.to, edge.mat)).collect();
-    Ok(StreamPlan::from_parts(stages, edges))
+    StreamPlan::from_parts(stages, edges)
   }
 
   const fn ensure_stage_metadata(stage: &StageDefinition) -> Result<(), StreamError> {
@@ -165,6 +155,7 @@ impl StreamGraph {
         matches!(
           kind,
           StageKind::FlowMap
+            | StageKind::FlowMapAsync
             | StageKind::FlowStatefulMap
             | StageKind::FlowStatefulMapConcat
             | StageKind::FlowMapConcat
@@ -183,6 +174,11 @@ impl StreamGraph {
             | StageKind::FlowFlatMapMerge
             | StageKind::FlowBuffer
             | StageKind::FlowAsyncBoundary
+            | StageKind::FlowThrottle
+            | StageKind::FlowDelay
+            | StageKind::FlowInitialDelay
+            | StageKind::FlowTakeWithin
+            | StageKind::FlowBatch
             | StageKind::FlowGroupBy
             | StageKind::FlowRecover
             | StageKind::FlowRecoverWithRetries
@@ -191,10 +187,16 @@ impl StreamGraph {
             | StageKind::FlowMergeSubstreams
             | StageKind::FlowMergeSubstreamsWithParallelism
             | StageKind::FlowConcatSubstreams
+            | StageKind::FlowPartition
+            | StageKind::FlowUnzip
+            | StageKind::FlowUnzipWith
             | StageKind::FlowBroadcast
             | StageKind::FlowBalance
             | StageKind::FlowMerge
+            | StageKind::FlowInterleave
+            | StageKind::FlowPrepend
             | StageKind::FlowZip
+            | StageKind::FlowZipAll
             | StageKind::FlowZipWithIndex
             | StageKind::FlowConcat
             | StageKind::Custom

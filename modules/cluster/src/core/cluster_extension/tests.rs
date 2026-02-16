@@ -17,10 +17,13 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::core::{
-  ActivatedKind, ClusterEvent, ClusterExtensionConfig, ClusterExtensionId, ClusterProviderError, ClusterTopology,
-  Gossiper, GrainKey, IdentityLookup, IdentitySetupError, LookupError, PlacementResolution, TopologyUpdate,
+  ClusterEvent, ClusterExtensionConfig, ClusterExtensionId, ClusterProviderError, ClusterTopology, TopologyUpdate,
   cluster_provider::{ClusterProvider, StaticClusterProvider},
-  cluster_pub_sub::ClusterPubSub,
+  grain::GrainKey,
+  identity::{IdentityLookup, IdentitySetupError, LookupError},
+  membership::Gossiper,
+  placement::{ActivatedKind, PlacementResolution},
+  pub_sub::cluster_pub_sub::ClusterPubSub,
 };
 
 fn build_update(
@@ -70,35 +73,35 @@ impl Gossiper for StubGossiper {
 
 struct StubPubSub;
 impl ClusterPubSub<NoStdToolbox> for StubPubSub {
-  fn start(&mut self) -> Result<(), crate::core::pub_sub_error::PubSubError> {
+  fn start(&mut self) -> Result<(), crate::core::pub_sub::PubSubError> {
     Ok(())
   }
 
-  fn stop(&mut self) -> Result<(), crate::core::pub_sub_error::PubSubError> {
+  fn stop(&mut self) -> Result<(), crate::core::pub_sub::PubSubError> {
     Ok(())
   }
 
   fn subscribe(
     &mut self,
-    _topic: &crate::core::PubSubTopic,
-    _subscriber: crate::core::PubSubSubscriber<NoStdToolbox>,
-  ) -> Result<(), crate::core::pub_sub_error::PubSubError> {
+    _topic: &crate::core::pub_sub::PubSubTopic,
+    _subscriber: crate::core::pub_sub::PubSubSubscriber<NoStdToolbox>,
+  ) -> Result<(), crate::core::pub_sub::PubSubError> {
     Ok(())
   }
 
   fn unsubscribe(
     &mut self,
-    _topic: &crate::core::PubSubTopic,
-    _subscriber: crate::core::PubSubSubscriber<NoStdToolbox>,
-  ) -> Result<(), crate::core::pub_sub_error::PubSubError> {
+    _topic: &crate::core::pub_sub::PubSubTopic,
+    _subscriber: crate::core::pub_sub::PubSubSubscriber<NoStdToolbox>,
+  ) -> Result<(), crate::core::pub_sub::PubSubError> {
     Ok(())
   }
 
   fn publish(
     &mut self,
-    _request: crate::core::PublishRequest<NoStdToolbox>,
-  ) -> Result<crate::core::PublishAck, crate::core::pub_sub_error::PubSubError> {
-    Ok(crate::core::PublishAck::accepted())
+    _request: crate::core::pub_sub::PublishRequest<NoStdToolbox>,
+  ) -> Result<crate::core::pub_sub::PublishAck, crate::core::pub_sub::PubSubError> {
+    Ok(crate::core::pub_sub::PublishAck::accepted())
   }
 
   fn on_topology(&mut self, _update: &crate::core::TopologyUpdate) {}

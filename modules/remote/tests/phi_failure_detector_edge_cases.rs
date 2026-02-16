@@ -1,6 +1,6 @@
 #![cfg(feature = "test-support")]
 
-use fraktor_remote_rs::core::failure_detector::{
+use fraktor_remote_rs::core::failure_detector::phi_failure_detector::{
   PhiFailureDetector, PhiFailureDetectorConfig, PhiFailureDetectorEffect,
 };
 

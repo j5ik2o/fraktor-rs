@@ -19,10 +19,14 @@ use fraktor_actor_rs::core::event::stream::{
   EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriber, subscriber_handle,
 };
 use fraktor_cluster_rs::core::{
-  ActivationEntry, ActivationError, ActivationExecutor, ActivationRecord, ActivationStorage, ActivationStorageError,
-  GrainKey, LookupError, PlacementCommand, PlacementCommandResult, PlacementCoordinatorCore,
-  PlacementCoordinatorDriverGeneric, PlacementCoordinatorSharedGeneric, PlacementEvent, PlacementLease, PlacementLock,
-  PlacementLockError, PlacementResolution, RendezvousHasher,
+  grain::GrainKey,
+  identity::{LookupError, RendezvousHasher},
+  placement::{
+    ActivationEntry, ActivationError, ActivationExecutor, ActivationRecord, ActivationStorage, ActivationStorageError,
+    PlacementCommand, PlacementCommandResult, PlacementCoordinatorCore, PlacementCoordinatorDriverGeneric,
+    PlacementCoordinatorSharedGeneric, PlacementEvent, PlacementLease, PlacementLock, PlacementLockError,
+    PlacementResolution,
+  },
 };
 use fraktor_utils_rs::{core::sync::SharedAccess, std::runtime_toolbox::StdToolbox};
 

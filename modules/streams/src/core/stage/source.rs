@@ -1,21 +1,29 @@
 use alloc::{boxed::Box, vec, vec::Vec};
-use core::{any::TypeId, marker::PhantomData};
+use core::{
+  any::TypeId,
+  future::Future,
+  marker::PhantomData,
+  pin::Pin,
+  task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
+};
 
 use fraktor_utils_rs::core::collections::queue::OverflowPolicy;
 
 use super::{
   DynValue, MatCombine, MatCombineRule, Materialized, Materializer, RestartBackoff, RestartSettings, RunnableGraph,
-  SourceDefinition, SourceLogic, SourceSubFlow, StageDefinition, StageKind, StreamDslError, StreamError, StreamGraph,
-  StreamNotUsed, StreamStage, SupervisionStrategy,
+  SourceDefinition, SourceLogic, SourceSubFlow, StageDefinition, StageKind, StreamCompletion, StreamDone,
+  StreamDslError, StreamError, StreamGraph, StreamNotUsed, StreamStage, SupervisionStrategy,
   flow::{
-    async_boundary_definition, balance_definition, broadcast_definition, buffer_definition, concat_definition,
-    concat_substreams_definition, drop_definition, drop_while_definition, filter_definition,
-    flat_map_concat_definition, flat_map_merge_definition, group_by_definition, grouped_definition,
-    intersperse_definition, map_concat_definition, map_definition, map_option_definition, merge_definition,
-    merge_substreams_definition, merge_substreams_with_parallelism_definition, recover_definition,
+    async_boundary_definition, balance_definition, batch_definition, broadcast_definition, buffer_definition,
+    concat_definition, concat_substreams_definition, delay_definition, drop_definition, drop_while_definition,
+    filter_definition, flat_map_concat_definition, flat_map_merge_definition, group_by_definition, grouped_definition,
+    initial_delay_definition, interleave_definition, intersperse_definition, map_async_definition,
+    map_concat_definition, map_definition, map_option_definition, merge_definition, merge_substreams_definition,
+    merge_substreams_with_parallelism_definition, partition_definition, prepend_definition, recover_definition,
     recover_with_retries_definition, scan_definition, sliding_definition, split_after_definition,
     split_when_definition, stateful_map_concat_definition, stateful_map_definition, take_definition,
-    take_until_definition, take_while_definition, zip_definition, zip_with_index_definition,
+    take_until_definition, take_while_definition, take_within_definition, throttle_definition, unzip_definition,
+    unzip_with_definition, zip_all_definition, zip_definition, zip_with_index_definition,
   },
   graph::{GraphStage, GraphStageLogic},
   shape::{Inlet, Outlet, StreamShape},
@@ -64,6 +72,15 @@ where
     Self::from_logic(StageKind::Custom, IteratorSourceLogic { values: values.into_iter() })
   }
 
+  /// Compatibility alias of [`Source::from_iterator`].
+  #[must_use]
+  pub fn from<I>(values: I) -> Self
+  where
+    I: IntoIterator<Item = Out>,
+    I::IntoIter: Send + 'static, {
+    Self::from_iterator(values)
+  }
+
   /// Creates a source from an array.
   #[must_use]
   pub fn from_array<const N: usize>(values: [Out; N]) -> Self {
@@ -89,6 +106,322 @@ where
     Self { graph, mat: StreamNotUsed::new(), _pd: PhantomData }
   }
 
+  /// Creates a source that fails when pulled.
+  #[must_use]
+  pub fn failed(error: StreamError) -> Self {
+    Self::from_logic(StageKind::Custom, FailedSourceLogic { error })
+  }
+
+  /// Creates a source that never emits and never completes.
+  #[must_use]
+  pub fn never() -> Self {
+    Self::from_logic(StageKind::Custom, NeverSourceLogic)
+  }
+
+  /// Creates a source that repeatedly emits the provided element.
+  #[must_use]
+  pub fn repeat(value: Out) -> Self
+  where
+    Out: Clone, {
+    Self::from_logic(StageKind::Custom, RepeatSourceLogic { value })
+  }
+
+  /// Creates a source that repeatedly cycles over provided values.
+  #[must_use]
+  pub fn cycle<I>(values: I) -> Self
+  where
+    I: IntoIterator<Item = Out>,
+    Out: Clone, {
+    let values = values.into_iter().collect::<Vec<Out>>();
+    if values.is_empty() {
+      return Self::empty();
+    }
+    Self::from_logic(StageKind::Custom, CycleSourceLogic { values, index: 0 })
+  }
+
+  /// Creates a source that emits an infinite iterative sequence.
+  #[must_use]
+  pub fn iterate<F>(seed: Out, func: F) -> Self
+  where
+    Out: Clone,
+    F: FnMut(Out) -> Out + Send + Sync + 'static, {
+    Self::from_logic(StageKind::Custom, IterateSourceLogic { current: seed, func })
+  }
+
+  /// Converts this source into a context-carrying source by attaching unit context.
+  #[must_use]
+  pub fn as_source_with_context(self) -> Source<((), Out), StreamNotUsed> {
+    self.map(|value| ((), value))
+  }
+
+  /// Creates a sink endpoint that can be paired with a source subscriber bridge.
+  #[must_use]
+  pub fn as_subscriber() -> Sink<Out, StreamCompletion<StreamDone>> {
+    Sink::ignore()
+  }
+
+  /// Creates a source from actor-ref style push values.
+  #[must_use]
+  pub fn actor_ref<I>(values: I) -> Self
+  where
+    I: IntoIterator<Item = Out>,
+    I::IntoIter: Send + 'static, {
+    Self::from_iterator(values)
+  }
+
+  /// Creates a source from actor-ref with backpressure style push values.
+  #[must_use]
+  pub fn actor_ref_with_backpressure<I>(values: I) -> Self
+  where
+    I: IntoIterator<Item = Out>,
+    I::IntoIter: Send + 'static, {
+    Self::actor_ref(values)
+  }
+
+  /// Creates a sink endpoint for actor interop entry points.
+  #[must_use]
+  pub fn sink() -> Sink<Out, StreamCompletion<StreamDone>> {
+    Self::as_subscriber()
+  }
+
+  /// Adds an actor-watch compatibility stage.
+  #[must_use]
+  pub const fn watch(self) -> Self {
+    self
+  }
+
+  /// Combines multiple sources by selecting the first source when available.
+  #[must_use]
+  pub fn combine<I>(sources: I) -> Self
+  where
+    I: IntoIterator<Item = Self>, {
+    sources.into_iter().next().unwrap_or_else(Self::empty)
+  }
+
+  /// Creates a source from a Java-stream compatible iterator.
+  #[must_use]
+  pub fn from_java_stream<I>(values: I) -> Self
+  where
+    I: IntoIterator<Item = Out>,
+    I::IntoIter: Send + 'static, {
+    Self::from_iterator(values)
+  }
+
+  /// Creates a source from a publisher-compatible iterator.
+  #[must_use]
+  pub fn from_publisher<I>(values: I) -> Self
+  where
+    I: IntoIterator<Item = Out>,
+    I::IntoIter: Send + 'static, {
+    Self::from_iterator(values)
+  }
+
+  /// Creates a source from an input-stream compatible iterator.
+  #[must_use]
+  pub fn from_input_stream<I>(values: I) -> Self
+  where
+    I: IntoIterator<Item = Out>,
+    I::IntoIter: Send + 'static, {
+    Self::from_iterator(values)
+  }
+
+  /// Creates a source from an output-stream compatible iterator.
+  #[must_use]
+  pub fn from_output_stream<I>(values: I) -> Self
+  where
+    I: IntoIterator<Item = Out>,
+    I::IntoIter: Send + 'static, {
+    Self::from_iterator(values)
+  }
+
+  /// Creates a source that emits one value from a future when it becomes ready.
+  #[must_use]
+  pub fn future<Fut>(future: Fut) -> Self
+  where
+    Fut: Future<Output = Out> + Send + 'static, {
+    Self::from_logic(StageKind::Custom, FutureSourceLogic::<Out, Fut> {
+      future: Some(Box::pin(future)),
+      done:   false,
+      _pd:    PhantomData,
+    })
+  }
+
+  /// Alias of [`Source::future`].
+  #[must_use]
+  pub fn future_source<Fut>(future: Fut) -> Self
+  where
+    Fut: Future<Output = Out> + Send + 'static, {
+    Self::future(future)
+  }
+
+  /// Alias of [`Source::future`].
+  #[must_use]
+  pub fn completion_stage<Fut>(future: Fut) -> Self
+  where
+    Fut: Future<Output = Out> + Send + 'static, {
+    Self::future(future)
+  }
+
+  /// Alias of [`Source::future`].
+  #[must_use]
+  pub fn completion_stage_source<Fut>(future: Fut) -> Self
+  where
+    Fut: Future<Output = Out> + Send + 'static, {
+    Self::future(future)
+  }
+
+  /// Lazily creates a source from a future factory.
+  #[must_use]
+  pub fn lazy_future<F, Fut>(factory: F) -> Self
+  where
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = Out> + Send + 'static, {
+    Self::future(factory())
+  }
+
+  /// Alias of [`Source::lazy_future`].
+  #[must_use]
+  pub fn lazy_future_source<F, Fut>(factory: F) -> Self
+  where
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = Out> + Send + 'static, {
+    Self::lazy_future(factory)
+  }
+
+  /// Alias of [`Source::lazy_future`].
+  #[must_use]
+  pub fn lazy_completion_stage<F, Fut>(factory: F) -> Self
+  where
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = Out> + Send + 'static, {
+    Self::lazy_future(factory)
+  }
+
+  /// Alias of [`Source::lazy_future`].
+  #[must_use]
+  pub fn lazy_completion_stage_source<F, Fut>(factory: F) -> Self
+  where
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = Out> + Send + 'static, {
+    Self::lazy_future(factory)
+  }
+
+  /// Lazily creates a single-element source.
+  #[must_use]
+  pub fn lazy_single<F>(factory: F) -> Self
+  where
+    F: FnOnce() -> Out, {
+    Self::single(factory())
+  }
+
+  /// Lazily creates a source from a source factory.
+  #[must_use]
+  pub fn lazy_source<F>(factory: F) -> Self
+  where
+    F: FnOnce() -> Self, {
+    factory()
+  }
+
+  /// Creates an optional source.
+  #[must_use]
+  pub fn maybe(value: Option<Out>) -> Self {
+    Self::from_option(value)
+  }
+
+  /// Creates a source backed by queue-compatible values.
+  #[must_use]
+  pub fn queue<I>(values: I) -> Self
+  where
+    I: IntoIterator<Item = Out>,
+    I::IntoIter: Send + 'static, {
+    Self::from_iterator(values)
+  }
+
+  /// Creates a ticking source by repeating and delaying values.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `interval_ticks` is zero.
+  pub fn tick(initial_delay_ticks: usize, interval_ticks: usize, value: Out) -> Result<Self, StreamDslError>
+  where
+    Out: Clone, {
+    let _ = validate_positive_argument("interval_ticks", interval_ticks)?;
+    let mut source = Self::repeat(value);
+    if initial_delay_ticks > 0 {
+      source = source.initial_delay(initial_delay_ticks)?;
+    }
+    Ok(source)
+  }
+
+  /// Creates a source by repeatedly unfolding state.
+  #[must_use]
+  pub fn unfold<S, F>(initial: S, mut func: F) -> Self
+  where
+    S: Send + 'static,
+    F: FnMut(S) -> Option<(S, Out)> + Send + 'static, {
+    let mut state = Some(initial);
+    Self::from_iterator(core::iter::from_fn(move || {
+      let current = state.take()?;
+      match func(current) {
+        | Some((next, value)) => {
+          state = Some(next);
+          Some(value)
+        },
+        | None => None,
+      }
+    }))
+  }
+
+  /// Creates a source by repeatedly unfolding state with an asynchronous function.
+  #[must_use]
+  pub fn unfold_async<S, F, Fut>(initial: S, func: F) -> Self
+  where
+    S: Send + 'static,
+    F: FnMut(S) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = Option<(S, Out)>> + Send + 'static, {
+    Self::from_logic(StageKind::Custom, UnfoldAsyncSourceLogic::<S, Out, F, Fut> {
+      state: Some(initial),
+      func,
+      pending: None,
+      done: false,
+      _pd: PhantomData,
+    })
+  }
+
+  /// Alias of [`Source::unfold`].
+  #[must_use]
+  pub fn unfold_resource<S, F>(initial: S, func: F) -> Self
+  where
+    S: Send + 'static,
+    F: FnMut(S) -> Option<(S, Out)> + Send + 'static, {
+    Self::unfold(initial, func)
+  }
+
+  /// Alias of [`Source::unfold_async`].
+  #[must_use]
+  pub fn unfold_resource_async<S, F, Fut>(initial: S, func: F) -> Self
+  where
+    S: Send + 'static,
+    F: FnMut(S) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = Option<(S, Out)>> + Send + 'static, {
+    Self::unfold_async(initial, func)
+  }
+
+  /// Alias of [`Source::zip`].
+  #[must_use]
+  pub fn zip_n(self, n: usize) -> Source<Vec<Out>, StreamNotUsed> {
+    self.zip(n)
+  }
+
+  /// Alias of [`Source::zip_n`] followed by mapping.
+  #[must_use]
+  pub fn zip_with_n<T, F>(self, n: usize, func: F) -> Source<T, StreamNotUsed>
+  where
+    T: Send + Sync + 'static,
+    F: FnMut(Vec<Out>) -> T + Send + Sync + 'static, {
+    self.zip_n(n).map(func)
+  }
+
   pub(in crate::core) fn from_logic<L>(kind: StageKind, logic: L) -> Self
   where
     L: SourceLogic + 'static, {
@@ -105,6 +438,25 @@ where
     };
     graph.push_stage(StageDefinition::Source(definition));
     Self { graph, mat: StreamNotUsed::new(), _pd: PhantomData }
+  }
+}
+
+impl Source<i32, StreamNotUsed> {
+  /// Creates a source that emits all integers between `start` and `end` (inclusive).
+  #[must_use]
+  pub fn range(start: i32, end: i32) -> Self {
+    if start <= end {
+      return Self::from_iterator(start..=end);
+    }
+    Self::from_iterator((end..=start).rev())
+  }
+}
+
+impl Source<u8, StreamNotUsed> {
+  /// Creates a source from a path-compatible value.
+  #[must_use]
+  pub fn from_path(path: &str) -> Self {
+    Self::from_iterator(path.as_bytes().to_vec())
   }
 }
 
@@ -188,6 +540,31 @@ where
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
     Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds an async map stage to this source.
+  ///
+  /// This is a compatibility entry point for Pekko's `map_async`.
+  /// `parallelism` is validated as a positive integer.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `parallelism` is zero.
+  #[must_use = "resulting source should be used for further stream composition"]
+  pub fn map_async<T, F, Fut>(mut self, parallelism: usize, func: F) -> Result<Source<T, Mat>, StreamDslError>
+  where
+    T: Send + Sync + 'static,
+    F: FnMut(Out) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = T> + Send + 'static, {
+    let parallelism = validate_positive_argument("parallelism", parallelism)?;
+    let definition = map_async_definition::<Out, T, F, Fut>(parallelism, func);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Ok(Source { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
   /// Adds a stateful-map stage to this source.
@@ -491,11 +868,119 @@ where
     Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
+  /// Adds a throttle stage that limits the number of buffered in-flight elements.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `capacity` is zero.
+  pub fn throttle(mut self, capacity: usize) -> Result<Source<Out, Mat>, StreamDslError> {
+    let capacity = validate_positive_argument("capacity", capacity)?;
+    let definition = throttle_definition::<Out>(capacity);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Ok(Source { graph: self.graph, mat: self.mat, _pd: PhantomData })
+  }
+
+  /// Adds a delay stage that emits each element after `ticks`.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `ticks` is zero.
+  pub fn delay(mut self, ticks: usize) -> Result<Source<Out, Mat>, StreamDslError> {
+    let ticks = validate_positive_argument("ticks", ticks)?;
+    let definition = delay_definition::<Out>(ticks as u64);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Ok(Source { graph: self.graph, mat: self.mat, _pd: PhantomData })
+  }
+
+  /// Adds an initial-delay stage that suppresses outputs until `ticks` elapse.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `ticks` is zero.
+  pub fn initial_delay(mut self, ticks: usize) -> Result<Source<Out, Mat>, StreamDslError> {
+    let ticks = validate_positive_argument("ticks", ticks)?;
+    let definition = initial_delay_definition::<Out>(ticks as u64);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Ok(Source { graph: self.graph, mat: self.mat, _pd: PhantomData })
+  }
+
+  /// Adds a take-within stage that forwards elements only within `ticks`.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `ticks` is zero.
+  pub fn take_within(mut self, ticks: usize) -> Result<Source<Out, Mat>, StreamDslError> {
+    let ticks = validate_positive_argument("ticks", ticks)?;
+    let definition = take_within_definition::<Out>(ticks as u64);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Ok(Source { graph: self.graph, mat: self.mat, _pd: PhantomData })
+  }
+
+  /// Adds a batch stage that emits vectors of size `size`.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `size` is zero.
+  pub fn batch(mut self, size: usize) -> Result<Source<Vec<Out>, Mat>, StreamDslError> {
+    let size = validate_positive_argument("size", size)?;
+    let definition = batch_definition::<Out>(size);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Ok(Source { graph: self.graph, mat: self.mat, _pd: PhantomData })
+  }
+
   /// Enables restart semantics with backoff for this source.
   #[must_use]
   pub fn restart_source_with_backoff(mut self, min_backoff_ticks: u32, max_restarts: usize) -> Source<Out, Mat> {
     self.graph.set_source_restart(Some(RestartBackoff::new(min_backoff_ticks, max_restarts)));
     self
+  }
+
+  /// Compatibility alias for applying restart-on-failure backoff semantics.
+  #[must_use]
+  pub fn on_failures_with_backoff(self, min_backoff_ticks: u32, max_restarts: usize) -> Source<Out, Mat> {
+    self.restart_source_with_backoff(min_backoff_ticks, max_restarts)
+  }
+
+  /// Compatibility alias for applying restart backoff semantics.
+  #[must_use]
+  pub fn with_backoff(self, min_backoff_ticks: u32, max_restarts: usize) -> Source<Out, Mat> {
+    self.restart_source_with_backoff(min_backoff_ticks, max_restarts)
+  }
+
+  /// Compatibility alias for applying restart backoff semantics with ignored context parameter.
+  #[must_use]
+  pub fn with_backoff_and_context<C>(
+    self,
+    min_backoff_ticks: u32,
+    max_restarts: usize,
+    _context: C,
+  ) -> Source<Out, Mat> {
+    self.restart_source_with_backoff(min_backoff_ticks, max_restarts)
   }
 
   /// Enables restart semantics by explicit restart settings.
@@ -581,6 +1066,38 @@ where
     SourceSubFlow::from_source(Source { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
+  /// Adds a partition stage that routes each element to one of two output lanes.
+  #[must_use]
+  pub fn partition<F>(mut self, predicate: F) -> Source<Out, Mat>
+  where
+    F: FnMut(&Out) -> bool + Send + Sync + 'static, {
+    let definition = partition_definition::<Out, F>(predicate);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds an unzip-with stage that maps each element into a pair and routes them to two output
+  /// lanes.
+  #[must_use]
+  pub fn unzip_with<T, F>(mut self, func: F) -> Source<T, Mat>
+  where
+    T: Send + Sync + 'static,
+    F: FnMut(Out) -> (T, T) + Send + Sync + 'static, {
+    let definition = unzip_with_definition::<Out, T, F>(func);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
   /// Adds a broadcast stage that duplicates each element `fan_out` times.
   ///
   /// # Panics
@@ -637,6 +1154,42 @@ where
     Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
+  /// Adds an interleave stage that consumes `fan_in` inputs in round-robin order.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `fan_in` is zero.
+  #[must_use]
+  pub fn interleave(mut self, fan_in: usize) -> Source<Out, Mat> {
+    assert!(fan_in > 0, "fan_in must be greater than zero");
+    let definition = interleave_definition::<Out>(fan_in);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds a prepend stage that prioritizes lower-index input lanes.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `fan_in` is zero.
+  #[must_use]
+  pub fn prepend(mut self, fan_in: usize) -> Source<Out, Mat> {
+    assert!(fan_in > 0, "fan_in must be greater than zero");
+    let definition = prepend_definition::<Out>(fan_in);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
   /// Adds a zip stage that emits one vector after receiving one element from each input.
   ///
   /// # Panics
@@ -646,6 +1199,26 @@ where
   pub fn zip(mut self, fan_in: usize) -> Source<Vec<Out>, Mat> {
     assert!(fan_in > 0, "fan_in must be greater than zero");
     let definition = zip_definition::<Out>(fan_in);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds a zip-all stage that fills missing lanes with `fill_value` after completion.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `fan_in` is zero.
+  #[must_use]
+  pub fn zip_all(mut self, fan_in: usize, fill_value: Out) -> Source<Vec<Out>, Mat>
+  where
+    Out: Clone, {
+    assert!(fan_in > 0, "fan_in must be greater than zero");
+    let definition = zip_all_definition::<Out>(fan_in, fill_value);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
@@ -740,8 +1313,57 @@ where
     }
   }
 
+  /// Converts this source into an input-stream compatible collection.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamError`] when source execution fails.
+  pub fn as_input_stream(self) -> Result<Vec<Out>, StreamError> {
+    self.collect_values()
+  }
+
+  /// Converts this source into a Java-stream compatible collection.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamError`] when source execution fails.
+  pub fn as_java_stream(self) -> Result<Vec<Out>, StreamError> {
+    self.collect_values()
+  }
+
+  /// Converts this source into an output-stream compatible collection.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamError`] when source execution fails.
+  pub fn as_output_stream(self) -> Result<Vec<Out>, StreamError> {
+    self.collect_values()
+  }
+
   pub(crate) fn into_parts(self) -> (StreamGraph, Mat) {
     (self.graph, self.mat)
+  }
+}
+
+impl<Out, Mat> Source<(Out, Out), Mat>
+where
+  Out: Send + Sync + 'static,
+{
+  /// Adds an unzip stage that routes tuple components to two output lanes.
+  #[must_use]
+  pub fn unzip(mut self) -> Source<Out, Mat> {
+    let definition = unzip_definition::<Out>();
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(
+        &Outlet::<(Out, Out)>::from_id(from),
+        &Inlet::<(Out, Out)>::from_id(inlet_id),
+        MatCombine::KeepLeft,
+      );
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 }
 
@@ -820,6 +1442,48 @@ impl<Out, Mat> Source<Result<Out, StreamError>, Mat>
 where
   Out: Clone + Send + Sync + 'static,
 {
+  /// Maps error payloads while keeping successful elements unchanged.
+  #[must_use]
+  pub fn map_error<F>(self, mut mapper: F) -> Source<Result<Out, StreamError>, Mat>
+  where
+    F: FnMut(StreamError) -> StreamError + Send + Sync + 'static, {
+    self.map(move |value| value.map_err(&mut mapper))
+  }
+
+  /// Drops failing payloads and keeps successful elements.
+  #[must_use]
+  pub fn on_error_continue(self) -> Source<Out, Mat> {
+    self.map_option(Result::ok)
+  }
+
+  /// Alias of [`Source::on_error_continue`].
+  #[must_use]
+  pub fn on_error_resume(self) -> Source<Out, Mat> {
+    self.on_error_continue()
+  }
+
+  /// Emits successful payloads until first error payload is observed.
+  #[must_use]
+  pub fn on_error_complete(self) -> Source<Out, Mat> {
+    self
+      .stateful_map(|| {
+        let mut seen_error = false;
+        move |value| {
+          if seen_error {
+            return None;
+          }
+          match value {
+            | Ok(value) => Some(value),
+            | Err(_) => {
+              seen_error = true;
+              None
+            },
+          }
+        }
+      })
+      .flatten_optional()
+  }
+
   /// Recovers error payloads with the provided fallback element.
   #[must_use]
   pub fn recover(mut self, fallback: Out) -> Source<Out, Mat> {
@@ -853,6 +1517,12 @@ where
     }
     Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
+
+  /// Alias of [`Source::recover`].
+  #[must_use]
+  pub fn recover_with(self, fallback: Out) -> Source<Out, Mat> {
+    self.recover(fallback)
+  }
 }
 
 impl<Out, Mat> StreamStage for Source<Out, Mat> {
@@ -881,6 +1551,40 @@ struct IteratorSourceLogic<I> {
   values: I,
 }
 
+struct FailedSourceLogic {
+  error: StreamError,
+}
+
+struct NeverSourceLogic;
+
+struct RepeatSourceLogic<Out> {
+  value: Out,
+}
+
+struct CycleSourceLogic<Out> {
+  values: Vec<Out>,
+  index:  usize,
+}
+
+struct IterateSourceLogic<Out, F> {
+  current: Out,
+  func:    F,
+}
+
+struct FutureSourceLogic<Out, Fut> {
+  future: Option<Pin<Box<Fut>>>,
+  done:   bool,
+  _pd:    PhantomData<fn() -> Out>,
+}
+
+struct UnfoldAsyncSourceLogic<State, Out, F, Fut> {
+  state:   Option<State>,
+  func:    F,
+  pending: Option<Pin<Box<Fut>>>,
+  done:    bool,
+  _pd:     PhantomData<fn() -> Out>,
+}
+
 impl<Out, I> SourceLogic for IteratorSourceLogic<I>
 where
   Out: Send + Sync + 'static,
@@ -891,12 +1595,125 @@ where
   }
 }
 
+impl SourceLogic for FailedSourceLogic {
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    Err(self.error.clone())
+  }
+}
+
+impl SourceLogic for NeverSourceLogic {
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    Err(StreamError::WouldBlock)
+  }
+}
+
+impl<Out> SourceLogic for RepeatSourceLogic<Out>
+where
+  Out: Clone + Send + Sync + 'static,
+{
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    Ok(Some(Box::new(self.value.clone()) as DynValue))
+  }
+}
+
+impl<Out> SourceLogic for CycleSourceLogic<Out>
+where
+  Out: Clone + Send + Sync + 'static,
+{
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    if self.values.is_empty() {
+      return Ok(None);
+    }
+    let value = self.values[self.index].clone();
+    self.index = (self.index + 1) % self.values.len();
+    Ok(Some(Box::new(value) as DynValue))
+  }
+}
+
+impl<Out, F> SourceLogic for IterateSourceLogic<Out, F>
+where
+  Out: Clone + Send + Sync + 'static,
+  F: FnMut(Out) -> Out + Send + Sync + 'static,
+{
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    let next = (self.func)(self.current.clone());
+    let value = core::mem::replace(&mut self.current, next);
+    Ok(Some(Box::new(value) as DynValue))
+  }
+}
+
 impl<Out> SourceLogic for SingleSourceLogic<Out>
 where
   Out: Send + Sync + 'static,
 {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
     Ok(self.value.take().map(|value| Box::new(value) as DynValue))
+  }
+}
+
+impl<Out, Fut> SourceLogic for FutureSourceLogic<Out, Fut>
+where
+  Out: Send + Sync + 'static,
+  Fut: Future<Output = Out> + Send + 'static,
+{
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    if self.done {
+      return Ok(None);
+    }
+    let Some(future) = self.future.as_mut() else {
+      self.done = true;
+      return Ok(None);
+    };
+    let waker = noop_waker();
+    let mut cx = Context::from_waker(&waker);
+    match future.as_mut().poll(&mut cx) {
+      | Poll::Ready(value) => {
+        self.done = true;
+        self.future = None;
+        Ok(Some(Box::new(value) as DynValue))
+      },
+      | Poll::Pending => Err(StreamError::WouldBlock),
+    }
+  }
+}
+
+impl<State, Out, F, Fut> SourceLogic for UnfoldAsyncSourceLogic<State, Out, F, Fut>
+where
+  State: Send + 'static,
+  Out: Send + Sync + 'static,
+  F: FnMut(State) -> Fut + Send + Sync + 'static,
+  Fut: Future<Output = Option<(State, Out)>> + Send + 'static,
+{
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    if self.done {
+      return Ok(None);
+    }
+    if self.pending.is_none() {
+      let Some(state) = self.state.take() else {
+        self.done = true;
+        return Ok(None);
+      };
+      self.pending = Some(Box::pin((self.func)(state)));
+    }
+    let Some(pending) = self.pending.as_mut() else {
+      self.done = true;
+      return Ok(None);
+    };
+    let waker = noop_waker();
+    let mut cx = Context::from_waker(&waker);
+    match pending.as_mut().poll(&mut cx) {
+      | Poll::Ready(Some((next_state, output))) => {
+        self.state = Some(next_state);
+        self.pending = None;
+        Ok(Some(Box::new(output) as DynValue))
+      },
+      | Poll::Ready(None) => {
+        self.done = true;
+        self.pending = None;
+        Ok(None)
+      },
+      | Poll::Pending => Err(StreamError::WouldBlock),
+    }
   }
 }
 
@@ -934,3 +1751,23 @@ where
   C: MatCombineRule<Left, Right>, {
   C::combine(left, right)
 }
+
+const fn noop_waker() -> Waker {
+  unsafe { Waker::from_raw(noop_raw_waker()) }
+}
+
+const fn noop_raw_waker() -> RawWaker {
+  RawWaker::new(core::ptr::null(), &NOOP_WAKER_VTABLE)
+}
+
+const fn noop_clone(_: *const ()) -> RawWaker {
+  noop_raw_waker()
+}
+
+const fn noop_wake(_: *const ()) {}
+
+const fn noop_wake_by_ref(_: *const ()) {}
+
+const fn noop_drop(_: *const ()) {}
+
+const NOOP_WAKER_VTABLE: RawWakerVTable = RawWakerVTable::new(noop_clone, noop_wake, noop_wake_by_ref, noop_drop);

@@ -23,8 +23,10 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::core::{
-  ClusterApiError, ClusterExtensionGeneric, ClusterIdentity, ClusterRequestError, ClusterResolveError,
-  GRAIN_EVENT_STREAM_NAME, GrainEvent, GrainMetricsSharedGeneric, PlacementEvent,
+  ClusterApiError, ClusterExtensionGeneric, ClusterRequestError, ClusterResolveError,
+  grain::{GRAIN_EVENT_STREAM_NAME, GrainEvent, GrainMetricsSharedGeneric},
+  identity::ClusterIdentity,
+  placement::PlacementEvent,
 };
 
 /// Cluster API facade bound to an actor system.
@@ -121,7 +123,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterApiGeneric<TB> {
         return Err(ClusterResolveError::KindNotRegistered { kind: identity.kind().to_string() });
       }
       let resolution = guard.resolve_pid(&key, now).map_err(|error| match error {
-        | crate::core::LookupError::Pending => ClusterResolveError::LookupPending,
+        | crate::core::identity::LookupError::Pending => ClusterResolveError::LookupPending,
         | _ => ClusterResolveError::LookupFailed,
       });
       let events = guard.drain_placement_events();

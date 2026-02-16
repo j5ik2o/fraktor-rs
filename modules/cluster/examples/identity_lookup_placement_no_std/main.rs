@@ -16,10 +16,15 @@
 compile_error!("identity_lookup_placement_no_std は --features test-support が必要です。");
 
 use fraktor_cluster_rs::core::{
-  ActivatedKind, ActivationRecord, GrainKey, IdentityLookup, LookupError, PartitionIdentityLookup,
-  PartitionIdentityLookupConfig, PidCacheEvent, PlacementCommand, PlacementCommandResult, PlacementCoordinatorCore,
-  PlacementCoordinatorOutcome, PlacementEvent, PlacementLease, PlacementLockError, PlacementResolution,
-  RendezvousHasher,
+  grain::GrainKey,
+  identity::{
+    IdentityLookup, LookupError, PartitionIdentityLookup, PartitionIdentityLookupConfig, PidCacheEvent,
+    RendezvousHasher,
+  },
+  placement::{
+    ActivatedKind, ActivationRecord, PlacementCommand, PlacementCommandResult, PlacementCoordinatorCore,
+    PlacementCoordinatorOutcome, PlacementEvent, PlacementLease, PlacementLockError, PlacementResolution,
+  },
 };
 
 fn main() {

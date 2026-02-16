@@ -4,7 +4,11 @@ use alloc::{
   sync::Arc,
   vec::Vec,
 };
-use core::{convert::TryFrom, time::Duration};
+use core::{
+  convert::TryFrom,
+  sync::atomic::{AtomicU64, AtomicUsize, Ordering},
+  time::Duration,
+};
 use std::sync::Mutex;
 
 use fraktor_actor_rs::core::{
@@ -33,7 +37,7 @@ use fraktor_utils_rs::{
   std::runtime_toolbox::StdToolbox,
 };
 
-use super::{EndpointTransportBridge, EndpointTransportBridgeConfig};
+use super::{EndpointTransportBridge, EndpointTransportBridgeConfig, EndpointTransportBridgeHandle};
 use crate::core::{
   EventPublisherGeneric, RemoteNodeId,
   endpoint_association::{AssociationState, EndpointAssociationCommand, QuarantineReason},
@@ -43,7 +47,8 @@ use crate::core::{
   handshake::{HandshakeFrame, HandshakeKind},
   transport::{
     RemoteTransport, RemoteTransportShared, TransportBind, TransportChannel, TransportEndpoint, TransportError,
-    TransportHandle, TransportInboundShared,
+    TransportHandle,
+    inbound::{InboundFrame, TransportInboundShared},
   },
 };
 
@@ -66,12 +71,44 @@ struct SentFrame {
   correlation_id: CorrelationId,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 struct TestTransportProbe {
-  sent_frames: Arc<Mutex<Vec<SentFrame>>>,
+  sent_frames:        Arc<Mutex<Vec<SentFrame>>>,
+  open_calls:         Arc<AtomicUsize>,
+  open_channel_delay: Arc<AtomicU64>,
+  send_failures_left: Arc<AtomicUsize>,
+  send_delay:         Arc<AtomicU64>,
+  inbound_handler:    Arc<Mutex<Option<TransportInboundShared<StdToolbox>>>>,
 }
 
 impl TestTransportProbe {
+  fn open_calls(&self) -> usize {
+    self.open_calls.load(Ordering::Acquire)
+  }
+
+  fn set_open_delay(&self, delay: Duration) {
+    self.open_channel_delay.store(delay.as_millis() as u64, Ordering::SeqCst);
+  }
+
+  fn set_send_failures_left(&self, failures_left: usize) {
+    self.send_failures_left.store(failures_left, Ordering::SeqCst);
+  }
+
+  fn set_send_delay(&self, delay: Duration) {
+    self.send_delay.store(delay.as_millis() as u64, Ordering::SeqCst);
+  }
+
+  fn set_inbound_handler(&self, handler: TransportInboundShared<StdToolbox>) {
+    *self.inbound_handler.lock().expect("probe lock") = Some(handler);
+  }
+
+  fn emit_inbound_frame(&self, frame: InboundFrame) {
+    let handler = self.inbound_handler.lock().expect("probe lock").clone();
+    if let Some(handler) = handler {
+      handler.with_write(|handler| handler.on_frame(frame));
+    }
+  }
+
   fn push_sent(&self, authority: String, payload: &[u8], correlation_id: CorrelationId) {
     self.sent_frames.lock().expect("probe lock").push(SentFrame {
       authority,
@@ -89,6 +126,29 @@ impl TestTransportProbe {
       .filter(|frame| frame.authority == authority && frame.correlation_id == CorrelationId::nil())
       .filter_map(|frame| HandshakeFrame::decode(&frame.payload).ok().map(|decoded| decoded.kind()))
       .collect()
+  }
+
+  fn sent_handshake_kinds(&self) -> Vec<HandshakeKind> {
+    self
+      .sent_frames
+      .lock()
+      .expect("probe lock")
+      .iter()
+      .filter_map(|frame| HandshakeFrame::decode(&frame.payload).ok().map(|decoded| decoded.kind()))
+      .collect()
+  }
+}
+
+impl Default for TestTransportProbe {
+  fn default() -> Self {
+    Self {
+      sent_frames:        Arc::new(Mutex::new(Vec::new())),
+      open_calls:         Arc::new(AtomicUsize::new(0)),
+      open_channel_delay: Arc::new(AtomicU64::new(0)),
+      send_failures_left: Arc::new(AtomicUsize::new(0)),
+      send_delay:         Arc::new(AtomicU64::new(0)),
+      inbound_handler:    Arc::new(Mutex::new(None)),
+    }
   }
 }
 
@@ -128,6 +188,11 @@ impl RemoteTransport<StdToolbox> for TestTransport {
   }
 
   fn open_channel(&mut self, endpoint: &TransportEndpoint) -> Result<TransportChannel, TransportError> {
+    self.probe.open_calls.fetch_add(1, Ordering::SeqCst);
+    let delay_millis = self.probe.open_channel_delay.load(Ordering::Acquire);
+    if delay_millis > 0 {
+      std::thread::sleep(std::time::Duration::from_millis(delay_millis));
+    }
     let id = self.next_channel;
     self.next_channel += 1;
     self.channels.insert(id, endpoint.authority().to_string());
@@ -140,6 +205,17 @@ impl RemoteTransport<StdToolbox> for TestTransport {
     payload: &[u8],
     correlation_id: CorrelationId,
   ) -> Result<(), TransportError> {
+    let failures_left = self.probe.send_failures_left.load(Ordering::Acquire);
+    if failures_left > 0 {
+      self.probe.send_failures_left.fetch_sub(1, Ordering::SeqCst);
+      return Err(TransportError::AuthorityNotBound("injected transport send failure".into()));
+    }
+
+    let delay_millis = self.probe.send_delay.load(Ordering::Acquire);
+    if delay_millis > 0 {
+      std::thread::sleep(std::time::Duration::from_millis(delay_millis));
+    }
+
     let authority =
       self.channels.get(&channel.id()).cloned().ok_or(TransportError::ChannelUnavailable(channel.id()))?;
     self.probe.push_sent(authority, payload, correlation_id);
@@ -154,6 +230,7 @@ impl RemoteTransport<StdToolbox> for TestTransport {
 
   fn install_inbound_handler(&mut self, handler: TransportInboundShared<StdToolbox>) {
     self.inbound = Some(handler);
+    self.probe.set_inbound_handler(self.inbound.clone().expect("inbound handler"));
   }
 }
 
@@ -235,6 +312,28 @@ fn build_bridge(
     handshake_timeout,
   };
   (EndpointTransportBridge::new(config), probe, system)
+}
+
+fn spawn_bridge(
+  handshake_timeout: Duration,
+) -> (EndpointTransportBridgeHandle, TestTransportProbe, ActorSystemGeneric<StdToolbox>) {
+  let system = build_system();
+  let serialization = serialization_extension(&system);
+  let writer = EndpointWriterSharedGeneric::new(EndpointWriterGeneric::new(system.downgrade(), serialization.clone()));
+  let reader = ArcShared::new(EndpointReaderGeneric::new(system.downgrade(), serialization));
+  let (transport, probe) = TestTransport::new();
+  let config = EndpointTransportBridgeConfig {
+    system: system.downgrade(),
+    writer,
+    reader,
+    transport: RemoteTransportShared::new(Box::new(transport)),
+    event_publisher: EventPublisherGeneric::new(system.downgrade()),
+    canonical_host: "127.0.0.1".to_string(),
+    canonical_port: 2552,
+    system_name: "local-system".to_string(),
+    handshake_timeout,
+  };
+  (EndpointTransportBridge::spawn(config).expect("spawn bridge"), probe, system)
 }
 
 fn association_state(
@@ -437,4 +536,98 @@ async fn stale_handshake_timeout_does_not_gate_new_attempt() {
 
   tokio::time::sleep(Duration::from_millis(40)).await;
   assert!(matches!(association_state(&bridge, authority), Some(AssociationState::Gated { .. })));
+}
+
+#[tokio::test]
+async fn ensure_channel_open_is_atomic_under_concurrent_flushes() {
+  let (bridge, probe, _system) = build_bridge(Duration::from_millis(200));
+  let authority = "127.0.0.1:4601";
+  let remote = RemoteNodeId::new("remote-system", "127.0.0.1", Some(4601), 9);
+
+  let accept = bridge.coordinator.with_write(|m| {
+    m.handle(EndpointAssociationCommand::HandshakeAccepted {
+      authority:   authority.to_string(),
+      remote_node: remote,
+      now:         bridge.now_millis(),
+    })
+  });
+  bridge.process_effects(accept.effects).await.expect("accept effects");
+
+  probe.set_open_delay(Duration::from_millis(20));
+  let effect1 = bridge
+    .coordinator
+    .with_write(|m| {
+      m.handle(EndpointAssociationCommand::EnqueueDeferred {
+        authority: authority.to_string(),
+        envelope:  Box::new(deferred_envelope("first")),
+      })
+    })
+    .effects;
+  let effect2 = bridge
+    .coordinator
+    .with_write(|m| {
+      m.handle(EndpointAssociationCommand::EnqueueDeferred {
+        authority: authority.to_string(),
+        envelope:  Box::new(deferred_envelope("second")),
+      })
+    })
+    .effects;
+
+  let bridge1 = bridge.clone();
+  let bridge2 = bridge.clone();
+  let t1 = tokio::spawn(async move { bridge1.process_effects(effect1).await });
+  let t2 = tokio::spawn(async move { bridge2.process_effects(effect2).await });
+
+  let (r1, r2) = tokio::join!(t1, t2);
+  r1.expect("first deliver task").expect("first deliver");
+  r2.expect("second deliver task").expect("second deliver");
+  assert_eq!(probe.open_calls(), 1);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn process_handshake_payload_logs_process_effects_error() {
+  let (bridge, probe, system) = build_bridge(Duration::from_millis(500));
+  let (recorder, _subscription) = subscribe_events(&system);
+  let authority = "127.0.0.1:4701";
+
+  probe.set_send_failures_left(2);
+  bridge.coordinator.with_write(|m| {
+    m.handle(EndpointAssociationCommand::EnqueueDeferred {
+      authority: authority.to_string(),
+      envelope:  Box::new(deferred_envelope("pending")),
+    })
+  });
+
+  let offer = HandshakeFrame::new(HandshakeKind::Offer, "remote-system", "127.0.0.1", Some(4701), 12);
+  bridge.process_handshake_payload(offer.encode()).await.expect("offer processing");
+
+  let events = recorder.snapshot();
+  assert!(events.iter().any(|event| {
+    matches!(event, EventStreamEvent::Log(log) if log.message().contains("failed to process effects after handshake accept"))
+  }));
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn inbound_handler_rejects_frames_when_queue_is_full() {
+  let (handle, probe, _system) = spawn_bridge(Duration::from_millis(500));
+  probe.set_send_delay(Duration::from_millis(20));
+
+  let total_frames = 96usize;
+  for index in 0..total_frames {
+    let port = 4800 + index as u16;
+    let frame = HandshakeFrame::new(HandshakeKind::Offer, "remote-system", "127.0.0.1", Some(port), index as u64);
+    probe.emit_inbound_frame(InboundFrame::new(
+      "test-listener",
+      format!("127.0.0.1:{port}"),
+      frame.encode(),
+      CorrelationId::nil(),
+    ));
+  }
+
+  tokio::time::sleep(Duration::from_millis(200)).await;
+  let ack_count = probe.sent_handshake_kinds().iter().filter(|kind| matches!(kind, HandshakeKind::Ack)).count();
+  assert!(ack_count > 0);
+  assert!(ack_count < total_frames);
+
+  let _ = handle.shutdown().await;
 }

@@ -10,7 +10,7 @@ use fraktor_utils_rs::{core::time::TimerInstant, std::runtime_toolbox::StdToolbo
 use tokio::sync::oneshot;
 
 use crate::{
-  core::{Gossiper, MembershipCoordinatorSharedGeneric},
+  core::membership::{Gossiper, MembershipCoordinatorSharedGeneric},
   std::{
     MembershipCoordinatorDriverGeneric, tokio_gossip_transport::TokioGossipTransport,
     tokio_gossiper_config::TokioGossiperConfig,

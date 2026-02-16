@@ -15,7 +15,8 @@ fn metrics_flag_and_address_are_preserved() {
 
 #[test]
 fn pubsub_config_is_preserved() {
-  let custom = crate::core::PubSubConfig::new(core::time::Duration::from_secs(5), core::time::Duration::from_secs(12));
+  let custom =
+    crate::core::pub_sub::PubSubConfig::new(core::time::Duration::from_secs(5), core::time::Duration::from_secs(12));
   let config = ClusterExtensionConfig::new().with_pubsub_config(custom);
   assert_eq!(config.pubsub_config(), &custom);
 }

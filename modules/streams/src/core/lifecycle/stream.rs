@@ -31,13 +31,13 @@ impl Stream {
       | KillSwitchState::Running => {},
       | KillSwitchState::Shutdown => {
         if let Err(error) = self.interpreter.request_shutdown() {
-          self.interpreter.abort(error);
+          self.interpreter.abort(&error);
           return DriveOutcome::Progressed;
         }
       },
       | KillSwitchState::Aborted(error) => {
         let was_terminal = self.interpreter.state().is_terminal();
-        self.interpreter.abort(error);
+        self.interpreter.abort(&error);
         return if was_terminal { DriveOutcome::Idle } else { DriveOutcome::Progressed };
       },
     }

@@ -20,10 +20,13 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::core::{
-  ActivatedKind, ClusterError, ClusterEvent, ClusterExtensionConfig, ClusterMetrics, ClusterMetricsSnapshot,
-  ClusterProviderShared, ClusterPubSubShared, GossiperShared, GrainKey, IdentityLookupShared, IdentitySetupError,
-  KindRegistry, LookupError, MetricsError, PidCache, PlacementEvent, PlacementResolution, StartupMode,
-  TopologyApplyError, TopologyUpdate,
+  ClusterError, ClusterEvent, ClusterExtensionConfig, ClusterMetrics, ClusterMetricsSnapshot, ClusterProviderShared,
+  MetricsError, StartupMode, TopologyApplyError, TopologyUpdate,
+  grain::{GrainKey, KindRegistry},
+  identity::{IdentityLookupShared, IdentitySetupError, LookupError, PidCache},
+  membership::GossiperShared,
+  placement::{ActivatedKind, PlacementEvent, PlacementResolution},
+  pub_sub::ClusterPubSubShared,
 };
 
 /// Aggregates configuration and shared dependencies for cluster runtime flows.

@@ -8,13 +8,13 @@ use std::{
 
 use fraktor_actor_rs::core::event::stream::EventStreamSharedGeneric;
 use fraktor_cluster_rs::{
-  core::{
+  core::membership::{
     GossipOutbound, GossipTransport, GossipTransportError, MembershipCoordinatorConfig, MembershipCoordinatorGeneric,
     MembershipCoordinatorSharedGeneric, MembershipDelta, MembershipSnapshot, MembershipTable, NodeStatus,
   },
   std::MembershipCoordinatorDriverGeneric,
 };
-use fraktor_remote_rs::core::failure_detector::{PhiFailureDetector, PhiFailureDetectorConfig};
+use fraktor_remote_rs::core::failure_detector::phi_failure_detector::{PhiFailureDetector, PhiFailureDetectorConfig};
 use fraktor_utils_rs::{
   core::{sync::SharedAccess, time::TimerInstant},
   std::runtime_toolbox::StdToolbox,

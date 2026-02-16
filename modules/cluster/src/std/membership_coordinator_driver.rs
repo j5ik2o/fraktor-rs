@@ -9,8 +9,10 @@ use fraktor_actor_rs::core::{
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::SharedAccess, time::TimerInstant};
 
 use crate::core::{
-  ClusterEvent, GossipTransport, MembershipCoordinatorError, MembershipCoordinatorOutcome,
-  MembershipCoordinatorSharedGeneric,
+  ClusterEvent,
+  membership::{
+    GossipTransport, MembershipCoordinatorError, MembershipCoordinatorOutcome, MembershipCoordinatorSharedGeneric,
+  },
 };
 
 /// Driver that applies coordinator outcomes to EventStream and gossip transport.

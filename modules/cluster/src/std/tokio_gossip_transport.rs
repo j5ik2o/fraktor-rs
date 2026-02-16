@@ -13,7 +13,7 @@ use std::sync::Arc;
 use tokio::{net::UdpSocket, sync::mpsc};
 
 use crate::{
-  core::{GossipOutbound, GossipTransport, GossipTransportError, MembershipDelta},
+  core::membership::{GossipOutbound, GossipTransport, GossipTransportError, MembershipDelta},
   std::{gossip_wire_delta_v1::GossipWireDeltaV1, tokio_gossip_transport_config::TokioGossipTransportConfig},
 };
 

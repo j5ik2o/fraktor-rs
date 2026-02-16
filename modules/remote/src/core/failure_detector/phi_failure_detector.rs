@@ -1,5 +1,7 @@
 //! Phi accrual failure detector for remote authorities.
 
+mod config;
+mod effect;
 #[cfg(test)]
 mod tests;
 
@@ -9,9 +11,8 @@ use alloc::{
   vec::Vec,
 };
 
-use super::{
-  phi_failure_detector_config::PhiFailureDetectorConfig, phi_failure_detector_effect::PhiFailureDetectorEffect,
-};
+pub use config::PhiFailureDetectorConfig;
+pub use effect::PhiFailureDetectorEffect;
 
 struct PhiEntry {
   last_heartbeat: Option<u64>,

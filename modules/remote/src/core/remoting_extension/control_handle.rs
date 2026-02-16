@@ -19,7 +19,10 @@ use fraktor_utils_rs::core::{
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 
-use super::{config::RemotingExtensionConfig, control::RemotingControl, error::RemotingError};
+use super::{
+  config::RemotingExtensionConfig, control::RemotingControl, control_backpressure_hook::ControlBackpressureHook,
+  error::RemotingError, lifecycle_state::RemotingLifecycleState,
+};
 use crate::core::{
   actor_ref_provider::unregister_endpoint,
   backpressure::{RemotingBackpressureListener, RemotingBackpressureListenerShared},
@@ -29,7 +32,7 @@ use crate::core::{
   event_publisher::EventPublisherGeneric,
   flight_recorder::{RemotingFlightRecorder, RemotingFlightRecorderSnapshot},
   remote_authority_snapshot::RemoteAuthoritySnapshot,
-  transport::{RemoteTransport, RemoteTransportShared, TransportBackpressureHook, TransportBackpressureHookShared},
+  transport::{RemoteTransport, RemoteTransportShared, TransportBackpressureHookShared},
 };
 
 /// Shared handle used by endpoints and providers to drive remoting.
@@ -149,7 +152,12 @@ where
     }
   }
 
-  fn notify_backpressure(&self, authority: &str, signal: BackpressureSignal, correlation: Option<CorrelationId>) {
+  pub(super) fn notify_backpressure(
+    &self,
+    authority: &str,
+    signal: BackpressureSignal,
+    correlation: Option<CorrelationId>,
+  ) {
     let listeners = {
       let guard = self.inner.listeners.lock();
       guard.clone()
@@ -313,82 +321,5 @@ where
       *bridge_guard = Some(handle);
     }
     Ok(())
-  }
-}
-
-struct RemotingLifecycleState {
-  phase: LifecyclePhase,
-}
-
-impl RemotingLifecycleState {
-  #[allow(dead_code)]
-  const fn new() -> Self {
-    Self { phase: LifecyclePhase::Idle }
-  }
-
-  fn is_running(&self) -> bool {
-    matches!(self.phase, LifecyclePhase::Running)
-  }
-
-  fn ensure_running(&self) -> Result<(), RemotingError> {
-    match self.phase {
-      | LifecyclePhase::Running => Ok(()),
-      | LifecyclePhase::Idle => Err(RemotingError::NotStarted),
-      | LifecyclePhase::Stopped => Err(RemotingError::AlreadyShutdown),
-    }
-  }
-
-  fn transition_to_start(&mut self) -> Result<(), RemotingError> {
-    match self.phase {
-      | LifecyclePhase::Idle => {
-        self.phase = LifecyclePhase::Running;
-        Ok(())
-      },
-      | LifecyclePhase::Running => Err(RemotingError::AlreadyStarted),
-      | LifecyclePhase::Stopped => Err(RemotingError::AlreadyShutdown),
-    }
-  }
-
-  fn transition_to_shutdown(&mut self) -> Result<(), RemotingError> {
-    match self.phase {
-      | LifecyclePhase::Idle | LifecyclePhase::Running => {
-        self.phase = LifecyclePhase::Stopped;
-        Ok(())
-      },
-      | LifecyclePhase::Stopped => Err(RemotingError::AlreadyShutdown),
-    }
-  }
-
-  #[allow(dead_code)]
-  fn mark_shutdown(&mut self) -> bool {
-    if matches!(self.phase, LifecyclePhase::Stopped) {
-      false
-    } else {
-      self.phase = LifecyclePhase::Stopped;
-      true
-    }
-  }
-}
-
-#[allow(dead_code)]
-enum LifecyclePhase {
-  Idle,
-  Running,
-  Stopped,
-}
-
-#[allow(dead_code)]
-struct ControlBackpressureHook<TB>
-where
-  TB: RuntimeToolbox + 'static, {
-  control: RemotingControlHandle<TB>,
-}
-
-impl<TB> TransportBackpressureHook for ControlBackpressureHook<TB>
-where
-  TB: RuntimeToolbox + 'static,
-{
-  fn on_backpressure(&mut self, signal: BackpressureSignal, authority: &str, correlation_id: CorrelationId) {
-    self.control.notify_backpressure(authority, signal, Some(correlation_id));
   }
 }

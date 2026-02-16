@@ -86,15 +86,16 @@ use fraktor_actor_rs::{
 };
 use fraktor_cluster_rs::{
   core::{
-    ActivatedKind, ClusterEvent, ClusterExtensionConfig, ClusterExtensionGeneric, ClusterExtensionInstaller,
-    ClusterIdentity, ClusterTopology, GrainKey, IdentityLookup, IdentitySetupError, LookupError, PlacementDecision,
-    PlacementLocality, PlacementResolution,
+    ClusterEvent, ClusterExtensionConfig, ClusterExtensionGeneric, ClusterExtensionInstaller, ClusterTopology,
+    grain::GrainKey,
+    identity::{ClusterIdentity, IdentityLookup, IdentitySetupError, LookupError},
+    placement::{ActivatedKind, PlacementDecision, PlacementLocality, PlacementResolution},
   },
   std::{ClusterApi, GrainRef, default_grain_call_options},
 };
 use fraktor_remote_rs::core::{
   RemotingExtensionInstaller,
-  actor_ref_provider::{TokioActorRefProviderInstaller, default_loopback_setup},
+  actor_ref_provider::{loopback::default_loopback_setup, tokio::TokioActorRefProviderInstaller},
   remoting_extension::RemotingExtensionConfig,
   transport::TokioTransportConfig,
 };

@@ -1,0 +1,1 @@
+../../.agent/rules/legacy-code-temporary-usage.md

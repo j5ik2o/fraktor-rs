@@ -38,8 +38,9 @@ pub use flow::Flow;
 #[allow(unused_imports)]
 pub(in crate::core) use flow::{
   async_boundary_definition, balance_definition, broadcast_definition, buffer_definition, concat_definition,
-  flat_map_merge_definition, merge_definition, merge_substreams_with_parallelism_definition, split_after_definition,
-  split_when_definition, zip_definition,
+  flat_map_merge_definition, interleave_definition, merge_definition, merge_substreams_with_parallelism_definition,
+  partition_definition, prepend_definition, split_after_definition, split_when_definition, unzip_definition,
+  unzip_with_definition, zip_all_definition, zip_definition,
 };
 pub use flow_sub_flow::FlowSubFlow;
 pub use sink::Sink;

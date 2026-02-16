@@ -31,10 +31,12 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::core::{
-  ActivatedKind, ClusterApiError, ClusterApiGeneric, ClusterExtensionConfig, ClusterExtensionGeneric,
-  ClusterExtensionInstaller, ClusterIdentity, ClusterRequestError, ClusterResolveError, GRAIN_EVENT_STREAM_NAME,
-  GrainEvent, GrainKey, IdentityLookup, IdentitySetupError, LookupError, MetricsError, NoopIdentityLookup,
-  PlacementDecision, PlacementEvent, PlacementLocality, PlacementResolution, cluster_provider::NoopClusterProvider,
+  ClusterApiError, ClusterApiGeneric, ClusterExtensionConfig, ClusterExtensionGeneric, ClusterExtensionInstaller,
+  ClusterRequestError, ClusterResolveError, MetricsError,
+  cluster_provider::NoopClusterProvider,
+  grain::{GRAIN_EVENT_STREAM_NAME, GrainEvent, GrainKey},
+  identity::{ClusterIdentity, IdentityLookup, IdentitySetupError, LookupError, NoopIdentityLookup},
+  placement::{ActivatedKind, PlacementDecision, PlacementEvent, PlacementLocality, PlacementResolution},
 };
 
 #[test]

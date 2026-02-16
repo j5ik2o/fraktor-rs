@@ -44,6 +44,13 @@ impl OperatorCatalog for DefaultOperatorCatalog {
         failure_condition: "Fails with overflow semantics according to configured policy.",
         requirement_ids: &["1.1", "1.2", "1.3"],
       }),
+      | "batch" => Ok(OperatorContract {
+        key,
+        input_condition: "Rejects non-positive group size at construction.",
+        completion_condition: "Flushes trailing partial group on upstream completion.",
+        failure_condition: "Propagates upstream failures.",
+        requirement_ids: &["1.1", "1.2", "1.3"],
+      }),
       | "filter" => Ok(OperatorContract {
         key,
         input_condition: "Evaluates each element against predicate and forwards only matches.",
@@ -64,6 +71,13 @@ impl OperatorCatalog for DefaultOperatorCatalog {
         completion_condition: "Completes when upstream completes and expanded elements are emitted.",
         failure_condition: "Propagates upstream or mapper failures.",
         requirement_ids: &["1.1", "1.3"],
+      }),
+      | "map_async" => Ok(OperatorContract {
+        key,
+        input_condition: "Maps each element using provided closure in asynchronous-map compatibility mode.",
+        completion_condition: "Completes when upstream completes.",
+        failure_condition: "Propagates upstream or mapper failures.",
+        requirement_ids: &["1.1", "1.3", "7.1", "7.2", "7.3", "7.4"],
       }),
       | "map_option" => Ok(OperatorContract {
         key,
@@ -191,6 +205,27 @@ impl OperatorCatalog for DefaultOperatorCatalog {
         failure_condition: "Fails when observed unique key count exceeds configured max_substreams.",
         requirement_ids: &["1.1", "1.3", "2.1", "2.2"],
       }),
+      | "partition" => Ok(OperatorContract {
+        key,
+        input_condition: "Routes each element into one of two lanes according to predicate.",
+        completion_condition: "Completes when upstream completes and routed elements are drained.",
+        failure_condition: "Propagates upstream or predicate evaluation failures.",
+        requirement_ids: &["1.1", "1.3"],
+      }),
+      | "unzip" => Ok(OperatorContract {
+        key,
+        input_condition: "Accepts tuple payloads and routes tuple components to two output lanes.",
+        completion_condition: "Completes when upstream completes and both lanes are drained.",
+        failure_condition: "Fails on non-tuple payload type mismatch.",
+        requirement_ids: &["1.1", "1.3"],
+      }),
+      | "unzip_with" => Ok(OperatorContract {
+        key,
+        input_condition: "Maps each payload to a tuple and routes each component to its lane.",
+        completion_condition: "Completes when upstream completes and both mapped lanes are drained.",
+        failure_condition: "Propagates upstream or mapper failures.",
+        requirement_ids: &["1.1", "1.3"],
+      }),
       | "split_when" => Ok(OperatorContract {
         key,
         input_condition: "Starts a new segment with the matching element.",
@@ -233,6 +268,34 @@ impl OperatorCatalog for DefaultOperatorCatalog {
         failure_condition: "Backpressures upstream when boundary queue is saturated.",
         requirement_ids: &["1.1", "1.3", "7.1", "7.2", "7.3", "7.4"],
       }),
+      | "throttle" => Ok(OperatorContract {
+        key,
+        input_condition: "Rejects non-positive capacity at construction.",
+        completion_condition: "Preserves buffered elements until capacity allows downstream drains.",
+        failure_condition: "Backpressures upstream when capacity is saturated.",
+        requirement_ids: &["1.1", "1.2", "1.3", "7.1", "7.2", "7.3", "7.4"],
+      }),
+      | "delay" => Ok(OperatorContract {
+        key,
+        input_condition: "Rejects non-positive ticks at construction.",
+        completion_condition: "Delays each element by configured ticks and drains pending elements on completion.",
+        failure_condition: "Propagates upstream failures.",
+        requirement_ids: &["1.1", "1.2", "1.3"],
+      }),
+      | "initial_delay" => Ok(OperatorContract {
+        key,
+        input_condition: "Rejects non-positive ticks at construction.",
+        completion_condition: "Suppresses outputs until initial delay elapses, then drains in order.",
+        failure_condition: "Propagates upstream failures.",
+        requirement_ids: &["1.1", "1.2", "1.3"],
+      }),
+      | "take_within" => Ok(OperatorContract {
+        key,
+        input_condition: "Rejects non-positive ticks at construction.",
+        completion_condition: "Forwards elements only within configured tick window and then requests shutdown.",
+        failure_condition: "Propagates upstream failures.",
+        requirement_ids: &["1.1", "1.2", "1.3"],
+      }),
       | "broadcast" => Ok(OperatorContract {
         key,
         input_condition: "Duplicates each element to all connected downstream lanes.",
@@ -254,10 +317,31 @@ impl OperatorCatalog for DefaultOperatorCatalog {
         failure_condition: "Fails when fan-in wiring does not satisfy contract.",
         requirement_ids: &["1.1", "1.3"],
       }),
+      | "interleave" => Ok(OperatorContract {
+        key,
+        input_condition: "Consumes multiple upstream lanes in round-robin order.",
+        completion_condition: "Completes when upstream lanes complete and pending values are drained.",
+        failure_condition: "Fails when fan-in wiring does not satisfy contract.",
+        requirement_ids: &["1.1", "1.3"],
+      }),
+      | "prepend" => Ok(OperatorContract {
+        key,
+        input_condition: "Consumes lower-index lanes before higher-index lanes.",
+        completion_condition: "Completes when all lanes are consumed.",
+        failure_condition: "Fails when fan-in wiring does not satisfy contract.",
+        requirement_ids: &["1.1", "1.3"],
+      }),
       | "zip" => Ok(OperatorContract {
         key,
         input_condition: "Waits for one element from each upstream lane before emitting.",
         completion_condition: "Completes when upstream lanes complete and pending zip groups are flushed.",
+        failure_condition: "Fails when fan-in wiring does not satisfy contract.",
+        requirement_ids: &["1.1", "1.3"],
+      }),
+      | "zip_all" => Ok(OperatorContract {
+        key,
+        input_condition: "Waits for one element from each upstream lane while active and accepts fill value.",
+        completion_condition: "After completion, fills missing lanes and drains remaining pending values.",
         failure_condition: "Fails when fan-in wiring does not satisfy contract.",
         requirement_ids: &["1.1", "1.3"],
       }),
@@ -343,12 +427,13 @@ impl OperatorCatalog for DefaultOperatorCatalog {
   }
 
   fn coverage(&self) -> &'static [OperatorCoverage] {
-    const COVERAGE: [OperatorCoverage; 45] = [
+    const COVERAGE: [OperatorCoverage; 57] = [
       OperatorCoverage {
         key:             OperatorKey::ASYNC_BOUNDARY,
         requirement_ids: &["1.1", "1.3", "7.1", "7.2", "7.3", "7.4"],
       },
       OperatorCoverage { key: OperatorKey::BALANCE, requirement_ids: &["1.1", "1.3"] },
+      OperatorCoverage { key: OperatorKey::BATCH, requirement_ids: &["1.1", "1.2", "1.3"] },
       OperatorCoverage { key: OperatorKey::DROP, requirement_ids: &["1.1", "1.3"] },
       OperatorCoverage { key: OperatorKey::DROP_WHILE, requirement_ids: &["1.1", "1.3"] },
       OperatorCoverage { key: OperatorKey::EMPTY, requirement_ids: &["1.1", "1.3"] },
@@ -368,10 +453,17 @@ impl OperatorCatalog for DefaultOperatorCatalog {
       OperatorCoverage { key: OperatorKey::BROADCAST_HUB, requirement_ids: &["1.1", "1.3", "4.2", "4.3"] },
       OperatorCoverage { key: OperatorKey::CONCAT, requirement_ids: &["1.1", "1.3"] },
       OperatorCoverage { key: OperatorKey::CONCAT_SUBSTREAMS, requirement_ids: &["1.1", "1.3", "2.5"] },
+      OperatorCoverage { key: OperatorKey::DELAY, requirement_ids: &["1.1", "1.2", "1.3"] },
       OperatorCoverage { key: OperatorKey::GROUPED, requirement_ids: &["1.1", "1.2", "1.3"] },
       OperatorCoverage { key: OperatorKey::GROUP_BY, requirement_ids: &["1.1", "1.3", "2.1", "2.2"] },
+      OperatorCoverage { key: OperatorKey::INTERLEAVE, requirement_ids: &["1.1", "1.3"] },
       OperatorCoverage { key: OperatorKey::FLATTEN_OPTIONAL, requirement_ids: &["1.1", "1.3"] },
+      OperatorCoverage { key: OperatorKey::INITIAL_DELAY, requirement_ids: &["1.1", "1.2", "1.3"] },
       OperatorCoverage { key: OperatorKey::MAP_CONCAT, requirement_ids: &["1.1", "1.3"] },
+      OperatorCoverage {
+        key:             OperatorKey::MAP_ASYNC,
+        requirement_ids: &["1.1", "1.3", "7.1", "7.2", "7.3", "7.4"],
+      },
       OperatorCoverage { key: OperatorKey::MAP_OPTION, requirement_ids: &["1.1", "1.3"] },
       OperatorCoverage { key: OperatorKey::MERGE, requirement_ids: &["1.1", "1.3"] },
       OperatorCoverage { key: OperatorKey::MERGE_HUB, requirement_ids: &["1.1", "1.3", "4.1", "4.2"] },
@@ -380,14 +472,21 @@ impl OperatorCatalog for DefaultOperatorCatalog {
       OperatorCoverage { key: OperatorKey::SPLIT_WHEN, requirement_ids: &["1.1", "1.3", "2.3"] },
       OperatorCoverage { key: OperatorKey::SPLIT_AFTER, requirement_ids: &["1.1", "1.3", "2.4"] },
       OperatorCoverage { key: OperatorKey::TAKE, requirement_ids: &["1.1", "1.3"] },
+      OperatorCoverage { key: OperatorKey::TAKE_WITHIN, requirement_ids: &["1.1", "1.2", "1.3"] },
       OperatorCoverage { key: OperatorKey::TAKE_UNTIL, requirement_ids: &["1.1", "1.3"] },
       OperatorCoverage { key: OperatorKey::TAKE_WHILE, requirement_ids: &["1.1", "1.3"] },
+      OperatorCoverage {
+        key:             OperatorKey::THROTTLE,
+        requirement_ids: &["1.1", "1.2", "1.3", "7.1", "7.2", "7.3", "7.4"],
+      },
       OperatorCoverage { key: OperatorKey::MERGE_SUBSTREAMS, requirement_ids: &["1.1", "1.3", "2.5"] },
       OperatorCoverage {
         key:             OperatorKey::MERGE_SUBSTREAMS_WITH_PARALLELISM,
         requirement_ids: &["1.1", "1.2", "1.3", "2.5"],
       },
+      OperatorCoverage { key: OperatorKey::PARTITION, requirement_ids: &["1.1", "1.3"] },
       OperatorCoverage { key: OperatorKey::PARTITION_HUB, requirement_ids: &["1.1", "1.3", "4.4", "4.5"] },
+      OperatorCoverage { key: OperatorKey::PREPEND, requirement_ids: &["1.1", "1.3"] },
       OperatorCoverage { key: OperatorKey::RECOVER, requirement_ids: &["1.1", "1.3", "3.4"] },
       OperatorCoverage { key: OperatorKey::RECOVER_WITH_RETRIES, requirement_ids: &["1.1", "1.3", "3.4"] },
       OperatorCoverage { key: OperatorKey::RESTART, requirement_ids: &["1.1", "1.3", "6.1", "6.2", "6.3"] },
@@ -405,7 +504,10 @@ impl OperatorCatalog for DefaultOperatorCatalog {
         key:             OperatorKey::UNIQUE_KILL_SWITCH,
         requirement_ids: &["1.1", "1.3", "5.1", "5.2", "5.3"],
       },
+      OperatorCoverage { key: OperatorKey::UNZIP, requirement_ids: &["1.1", "1.3"] },
+      OperatorCoverage { key: OperatorKey::UNZIP_WITH, requirement_ids: &["1.1", "1.3"] },
       OperatorCoverage { key: OperatorKey::ZIP, requirement_ids: &["1.1", "1.3"] },
+      OperatorCoverage { key: OperatorKey::ZIP_ALL, requirement_ids: &["1.1", "1.3"] },
       OperatorCoverage { key: OperatorKey::ZIP_WITH_INDEX, requirement_ids: &["1.1", "1.3"] },
     ];
     &COVERAGE

@@ -1,5 +1,7 @@
 //! Provides actor references targeting remote authorities using Tokio TCP transport.
 
+mod installer;
+
 use alloc::{
   string::{String, ToString},
   vec::Vec,
@@ -25,10 +27,13 @@ use fraktor_utils_rs::core::{
   sync::{SharedAccess, sync_mutex_like::SyncMutexLike},
 };
 use hashbrown::HashMap;
+pub use installer::TokioActorRefProviderInstaller;
 
-use super::{loopback_router, loopback_router::LoopbackDeliveryOutcome, remote_error::RemoteActorRefProviderError};
 use crate::core::{
   actor_ref_field_normalizer::ActorRefFieldNormalizerGeneric,
+  actor_ref_provider::{
+    loopback_router, loopback_router::LoopbackDeliveryOutcome, remote_error::RemoteActorRefProviderError,
+  },
   endpoint_writer::{EndpointWriterError, EndpointWriterSharedGeneric},
   envelope::{OutboundMessage, OutboundPriority},
   remote_authority_snapshot::RemoteAuthoritySnapshot,

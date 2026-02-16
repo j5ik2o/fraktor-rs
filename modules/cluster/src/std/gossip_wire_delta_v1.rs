@@ -5,7 +5,7 @@ use alloc::vec::Vec;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-  core::{MembershipDelta, MembershipVersion},
+  core::membership::{MembershipDelta, MembershipVersion},
   std::gossip_wire_node_record::GossipWireNodeRecord,
 };
 

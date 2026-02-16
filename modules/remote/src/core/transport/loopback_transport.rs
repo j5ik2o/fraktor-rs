@@ -11,9 +11,9 @@ use fraktor_actor_rs::core::event::stream::{BackpressureSignal, CorrelationId};
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::SharedAccess};
 
 use super::{
-  backpressure_hook_shared::TransportBackpressureHookShared, remote_transport::RemoteTransport,
-  transport_bind::TransportBind, transport_channel::TransportChannel, transport_endpoint::TransportEndpoint,
-  transport_error::TransportError, transport_handle::TransportHandle, transport_inbound_shared::TransportInboundShared,
+  backpressure_hook_shared::TransportBackpressureHookShared, inbound::TransportInboundShared,
+  remote_transport::RemoteTransport, transport_bind::TransportBind, transport_channel::TransportChannel,
+  transport_endpoint::TransportEndpoint, transport_error::TransportError, transport_handle::TransportHandle,
 };
 
 /// In-memory transport that records frames for assertions.
