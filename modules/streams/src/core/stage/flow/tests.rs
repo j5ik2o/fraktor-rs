@@ -4,10 +4,10 @@ use core::{future::Future, pin::Pin, task::Poll};
 use fraktor_utils_rs::core::collections::queue::OverflowPolicy;
 
 use crate::core::{
-  Completion, DynValue, FlowLogic, KeepBoth, KeepRight, RestartSettings, SourceLogic, StreamDslError, StreamError,
-  StreamNotUsed,
+  Completion, DynValue, FlowLogic, KeepBoth, KeepLeft, KeepRight, RestartSettings, SourceLogic, StreamDslError,
+  StreamError, StreamNotUsed,
   operator::{DefaultOperatorCatalog, OperatorCatalog, OperatorKey},
-  stage::{Flow, Sink, Source, StageKind},
+  stage::{Flow, FlowMonitor, Sink, Source, StageKind},
 };
 
 struct SequenceSourceLogic {
@@ -1240,6 +1240,35 @@ fn wire_tap_mat_combines_materialized_values_and_keeps_data_path_behavior() {
 
   let values = Source::single(4_u32)
     .via(Flow::new().map(|value: u32| value + 1).wire_tap_mat(Sink::ignore(), KeepRight))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![5_u32]);
+}
+
+#[test]
+fn monitor_mat_combines_materialized_values_and_keeps_data_path_behavior() {
+  let (graph, _unused) = Flow::<u32, u32, StreamNotUsed>::new().into_parts();
+  let flow: Flow<u32, u32, u32> = Flow::from_graph(graph, 21_u32);
+  let (_graph, (left_mat, right_mat)) = flow.monitor_mat(KeepBoth).into_parts();
+  assert_eq!(left_mat, 21_u32);
+  assert_eq!(right_mat, FlowMonitor::<u32>::new());
+
+  let values = Source::single(4_u32)
+    .via(Flow::new().map(|value: u32| value + 1).monitor_mat(KeepLeft))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![5_u32]);
+}
+
+#[test]
+fn flow_map_materialized_value_transforms_materialized_value_and_keeps_data_path_behavior() {
+  let (graph, _unused) = Flow::<u32, u32, StreamNotUsed>::new().map(|value: u32| value + 1).into_parts();
+  let flow: Flow<u32, u32, u32> = Flow::from_graph(graph, 10_u32);
+  let (_graph, materialized) = flow.map_materialized_value(|value| value + 5).into_parts();
+  assert_eq!(materialized, 15_u32);
+
+  let values = Source::single(4_u32)
+    .via(Flow::new().map(|value: u32| value + 1).map_materialized_value(|_| 1_u32))
     .collect_values()
     .expect("collect_values");
   assert_eq!(values, vec![5_u32]);

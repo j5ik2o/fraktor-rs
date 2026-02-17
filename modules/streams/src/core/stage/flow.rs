@@ -10,9 +10,9 @@ use core::{
 use fraktor_utils_rs::core::collections::queue::OverflowPolicy;
 
 use super::{
-  DynValue, FlowDefinition, FlowLogic, FlowSubFlow, MatCombine, MatCombineRule, RestartBackoff, RestartSettings,
-  Source, StageDefinition, StageKind, StreamDslError, StreamError, StreamGraph, StreamNotUsed, StreamStage,
-  SupervisionStrategy, downcast_value,
+  DynValue, FlowDefinition, FlowLogic, FlowMonitor, FlowSubFlow, MatCombine, MatCombineRule, RestartBackoff,
+  RestartSettings, Source, StageDefinition, StageKind, StreamDslError, StreamError, StreamGraph, StreamNotUsed,
+  StreamStage, SupervisionStrategy, downcast_value,
   graph::{GraphStage, GraphStageLogic},
   shape::{Inlet, Outlet, StreamShape},
   sink::Sink,
@@ -82,6 +82,15 @@ where
     graph.append(flow_graph);
     let mat = combine_mat::<Mat, Mat2, C>(left_mat, right_mat);
     Flow { graph, mat, _pd: PhantomData }
+  }
+
+  /// Maps this flow materialized value.
+  #[must_use]
+  pub fn map_materialized_value<Mat2, F>(self, func: F) -> Flow<In, Out, Mat2>
+  where
+    F: FnOnce(Mat) -> Mat2, {
+    let (graph, mat) = self.into_parts();
+    Flow::from_graph(graph, func(mat))
   }
 
   /// Connects this flow to a sink.
@@ -1762,6 +1771,16 @@ where
   #[must_use]
   pub fn monitor(self) -> Flow<In, (u64, Out), Mat> {
     self.zip_with_index().map(|(value, index)| (index, value))
+  }
+
+  /// Adds a monitor compatibility stage and combines materialized values.
+  #[must_use]
+  pub fn monitor_mat<C>(self, _combine: C) -> Flow<In, Out, C::Out>
+  where
+    C: MatCombineRule<Mat, FlowMonitor<Out>>, {
+    let (graph, left_mat) = self.into_parts();
+    let mat = combine_mat::<Mat, FlowMonitor<Out>, C>(left_mat, FlowMonitor::<Out>::new());
+    Flow::from_graph(graph, mat)
   }
 
   /// Adds a watch-termination compatibility stage.
