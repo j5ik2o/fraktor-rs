@@ -1,0 +1,48 @@
+tasks:
+  - piece: .takt/pieces/streams-phase2.yaml
+    auto_pr: false
+    name: distinct-distinctby-hashset
+    status: failed
+    content: distinct / distinctByオペレーター（HashSetベースの重複排除フィルタ）を実装する
+    created_at: 2026-02-17T06:18:44.052Z
+    started_at: 2026-02-17T06:18:44.062Z
+    completed_at: 2026-02-17T06:18:44.116Z
+    owner_pid: null
+    failure:
+      error: Task failed
+  - piece: .takt/pieces/streams-phase2.yaml
+    auto_pr: false
+    name: distinct-distinctby-hashset-1
+    status: failed
+    content: distinct / distinctByオペレーター（HashSetベースの重複排除フィルタ）を実装する
+    created_at: 2026-02-17T06:21:40.116Z
+    started_at: 2026-02-17T06:21:40.123Z
+    completed_at: 2026-02-17T06:21:40.159Z
+    owner_pid: null
+    failure:
+      error: Task failed
+  - piece: .takt/pieces/streams-phase2.yaml
+    auto_pr: false
+    name: distinct-distinctby-hashset-2
+    status: pending
+    content: distinct / distinctByオペレーター（HashSetベースの重複排除フィルタ）を実装する
+    created_at: 2026-02-17T06:23:16.015Z
+    started_at: null
+    completed_at: null
+    owner_pid: null
+  - worktree: true
+    branch: takt/20260217T0736-bidiflow-from-function-to-bidi
+    piece: .takt/pieces/streams-phase2.yaml
+    auto_pr: false
+    name: bidiflow-from-function-bidiflow-from-functions
+    status: pending
+    worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260217T0736-bidiflow-from-function-to-bidi
+    content: >-
+      BidiFlow::from_function と BidiFlow::from_functions を実装する。
+        Pekko参照: references/pekko/pekko-stream/src/main/scala/org/apache/pekko/stream/scaladsl/BidiFlow.scala の fromFunction/fromFunctions。
+        from_function は単一の変換関数からBidiFlowを構築する。from_functions は上り・下りそれぞれの変換関数を受け取る。
+        既存の BidiFlow::from_flows, BidiFlow::identity の実装パターンに従うこと。テスト必須。
+    created_at: 2026-02-17T07:36:49.446Z
+    started_at: null
+    completed_at: null
+    owner_pid: null
