@@ -834,6 +834,10 @@ where
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
+  pub(crate) fn from_graph(graph: StreamGraph, mat: Mat) -> Self {
+    Self { graph, mat, _pd: PhantomData }
+  }
+
   pub(crate) fn into_parts(self) -> (StreamGraph, Mat) {
     (self.graph, self.mat)
   }
@@ -1697,8 +1701,18 @@ where
   /// Adds an also-to compatibility stage.
   #[must_use]
   pub fn also_to<Mat2>(self, sink: Sink<Out, Mat2>) -> Flow<In, Out, Mat> {
-    core::mem::drop(sink);
-    self
+    self.also_to_mat(sink, super::keep_left::KeepLeft)
+  }
+
+  /// Adds an also-to stage and combines materialized values.
+  #[must_use]
+  pub fn also_to_mat<Mat2, C>(self, sink: Sink<Out, Mat2>, _combine: C) -> Flow<In, Out, C::Out>
+  where
+    C: MatCombineRule<Mat, Mat2>, {
+    let (graph, left_mat) = self.into_parts();
+    let (_sink_graph, right_mat) = sink.into_parts();
+    let mat = combine_mat::<Mat, Mat2, C>(left_mat, right_mat);
+    Flow::from_graph(graph, mat)
   }
 
   /// Adds an also-to-all compatibility stage.
@@ -1728,6 +1742,14 @@ where
       callback(&value);
       value
     })
+  }
+
+  /// Adds a wire-tap stage and combines materialized values.
+  #[must_use]
+  pub fn wire_tap_mat<Mat2, C>(self, sink: Sink<Out, Mat2>, combine: C) -> Flow<In, Out, C::Out>
+  where
+    C: MatCombineRule<Mat, Mat2>, {
+    self.also_to_mat(sink, combine)
   }
 
   /// Adds an actor-watch compatibility stage.

@@ -2,7 +2,7 @@ use alloc::{boxed::Box, collections::VecDeque};
 
 use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
 
-use super::{DynValue, Sink, SinkDecision, SinkLogic, Source, SourceLogic, StageKind, StreamError};
+use super::{DrainingControl, DynValue, Sink, SinkDecision, SinkLogic, Source, SourceLogic, StageKind, StreamError};
 
 #[cfg(test)]
 mod tests;
@@ -11,6 +11,7 @@ mod tests;
 pub struct MergeHub<T> {
   queue:           ArcShared<SpinSyncMutex<VecDeque<T>>>,
   receiver_active: ArcShared<SpinSyncMutex<bool>>,
+  draining:        ArcShared<SpinSyncMutex<bool>>,
   max_buffer:      usize,
 }
 
@@ -21,6 +22,7 @@ impl<T> MergeHub<T> {
     Self {
       queue:           ArcShared::new(SpinSyncMutex::new(VecDeque::new())),
       receiver_active: ArcShared::new(SpinSyncMutex::new(false)),
+      draining:        ArcShared::new(SpinSyncMutex::new(false)),
       max_buffer:      16,
     }
   }
@@ -33,6 +35,9 @@ impl<T> MergeHub<T> {
   /// full.
   pub fn offer(&self, value: T) -> Result<(), StreamError> {
     if !*self.receiver_active.lock() {
+      return Err(StreamError::WouldBlock);
+    }
+    if *self.draining.lock() {
       return Err(StreamError::WouldBlock);
     }
     let mut queue = self.queue.lock();
@@ -61,6 +66,12 @@ impl<T> MergeHub<T> {
   pub fn is_empty(&self) -> bool {
     self.queue.lock().is_empty()
   }
+
+  /// Returns a control handle that can start draining mode.
+  #[must_use]
+  pub fn draining_control(&self) -> DrainingControl {
+    DrainingControl::new(self.draining.clone())
+  }
 }
 
 impl<T> MergeHub<T>
@@ -74,6 +85,7 @@ where
     Source::from_logic(StageKind::Custom, MergeHubSourceLogic {
       queue:           self.queue.clone(),
       receiver_active: self.receiver_active.clone(),
+      draining:        self.draining.clone(),
     })
   }
 
@@ -83,6 +95,7 @@ where
     Sink::from_logic(StageKind::Custom, MergeHubSinkLogic {
       queue:           self.queue.clone(),
       receiver_active: self.receiver_active.clone(),
+      draining:        self.draining.clone(),
       max_buffer:      self.max_buffer,
     })
   }
@@ -97,6 +110,7 @@ impl<T> Default for MergeHub<T> {
 struct MergeHubSourceLogic<T> {
   queue:           ArcShared<SpinSyncMutex<VecDeque<T>>>,
   receiver_active: ArcShared<SpinSyncMutex<bool>>,
+  draining:        ArcShared<SpinSyncMutex<bool>>,
 }
 
 impl<T> SourceLogic for MergeHubSourceLogic<T>
@@ -105,9 +119,15 @@ where
 {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
     *self.receiver_active.lock() = true;
-    match self.queue.lock().pop_front() {
+    let next = { self.queue.lock().pop_front() };
+    match next {
       | Some(value) => Ok(Some(Box::new(value) as DynValue)),
-      | None => Err(StreamError::WouldBlock),
+      | None => {
+        if *self.draining.lock() {
+          return Ok(None);
+        }
+        Err(StreamError::WouldBlock)
+      },
     }
   }
 }
@@ -115,6 +135,7 @@ where
 struct MergeHubSinkLogic<T> {
   queue:           ArcShared<SpinSyncMutex<VecDeque<T>>>,
   receiver_active: ArcShared<SpinSyncMutex<bool>>,
+  draining:        ArcShared<SpinSyncMutex<bool>>,
   max_buffer:      usize,
 }
 
@@ -124,6 +145,9 @@ where
 {
   fn can_accept_input(&self) -> bool {
     if !*self.receiver_active.lock() {
+      return false;
+    }
+    if *self.draining.lock() {
       return false;
     }
     self.queue.lock().len() < self.max_buffer
@@ -136,6 +160,9 @@ where
   fn on_push(&mut self, input: DynValue, demand: &mut super::DemandTracker) -> Result<SinkDecision, StreamError> {
     let value = super::downcast_value::<T>(input)?;
     if !*self.receiver_active.lock() {
+      return Err(StreamError::WouldBlock);
+    }
+    if *self.draining.lock() {
       return Err(StreamError::WouldBlock);
     }
     let mut queue = self.queue.lock();

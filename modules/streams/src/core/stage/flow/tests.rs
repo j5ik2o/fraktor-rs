@@ -4,9 +4,10 @@ use core::{future::Future, pin::Pin, task::Poll};
 use fraktor_utils_rs::core::collections::queue::OverflowPolicy;
 
 use crate::core::{
-  DynValue, FlowLogic, RestartSettings, SourceLogic, StreamDslError, StreamError, StreamNotUsed,
+  Completion, DynValue, FlowLogic, KeepBoth, KeepRight, RestartSettings, SourceLogic, StreamDslError, StreamError,
+  StreamNotUsed,
   operator::{DefaultOperatorCatalog, OperatorCatalog, OperatorKey},
-  stage::{Flow, Source, StageKind},
+  stage::{Flow, Sink, Source, StageKind},
 };
 
 struct SequenceSourceLogic {
@@ -1211,4 +1212,35 @@ fn named_passes_elements_through_unchanged() {
     .collect_values()
     .expect("collect_values");
   assert_eq!(values, vec![1_u32, 2_u32, 3_u32]);
+}
+
+#[test]
+fn also_to_mat_combines_materialized_values() {
+  let (graph, (left_mat, right_mat)) =
+    Flow::<u32, u32, StreamNotUsed>::new().also_to_mat(Sink::head(), KeepBoth).into_parts();
+  let _ = graph;
+  assert_eq!(left_mat, StreamNotUsed::new());
+  assert_eq!(right_mat.poll(), Completion::Pending);
+}
+
+#[test]
+fn also_to_mat_keeps_data_path_behavior() {
+  let values = Source::single(1_u32)
+    .via(Flow::new().map(|value: u32| value + 1).also_to_mat(Sink::ignore(), KeepBoth))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![2_u32]);
+}
+
+#[test]
+fn wire_tap_mat_combines_materialized_values_and_keeps_data_path_behavior() {
+  let (graph, materialized) = Flow::<u32, u32, StreamNotUsed>::new().wire_tap_mat(Sink::head(), KeepRight).into_parts();
+  let _ = graph;
+  assert_eq!(materialized.poll(), Completion::Pending);
+
+  let values = Source::single(4_u32)
+    .via(Flow::new().map(|value: u32| value + 1).wire_tap_mat(Sink::ignore(), KeepRight))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![5_u32]);
 }
