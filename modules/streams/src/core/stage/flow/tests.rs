@@ -1194,3 +1194,21 @@ fn do_on_first_does_not_fire_on_empty_stream() {
   assert!(values.is_empty());
   assert_eq!(counter.load(Ordering::Relaxed), 0);
 }
+
+#[test]
+fn from_function_transforms_elements() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .via(Flow::from_function(|x: u32| x + 1))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![2_u32, 3_u32, 4_u32]);
+}
+
+#[test]
+fn named_passes_elements_through_unchanged() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .via(Flow::new().named("test-stage"))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2_u32, 3_u32]);
+}

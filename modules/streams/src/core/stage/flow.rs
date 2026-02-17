@@ -44,6 +44,20 @@ impl<T> Default for Flow<T, T, StreamNotUsed> {
   }
 }
 
+impl<In, Out> Flow<In, Out, StreamNotUsed>
+where
+  In: Send + Sync + 'static,
+  Out: Send + Sync + 'static,
+{
+  /// Creates a flow from a mapping function.
+  #[must_use]
+  pub fn from_function<F>(f: F) -> Self
+  where
+    F: Fn(In) -> Out + Send + Sync + 'static, {
+    Flow::new().map(f)
+  }
+}
+
 impl<In, Out, Mat> Flow<In, Out, Mat>
 where
   In: Send + Sync + 'static,
@@ -1475,6 +1489,12 @@ where
   /// Adds an extrapolate compatibility placeholder.
   #[must_use]
   pub const fn extrapolate(self) -> Flow<In, Out, Mat> {
+    self
+  }
+
+  /// Assigns a debug name to this stage (no-op until Attributes are introduced).
+  #[must_use]
+  pub const fn named(self, _name: &str) -> Flow<In, Out, Mat> {
     self
   }
 
