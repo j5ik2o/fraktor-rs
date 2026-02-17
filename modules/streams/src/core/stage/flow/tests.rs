@@ -879,6 +879,40 @@ fn zip_with_index_logic_on_restart_resets_counter() {
 }
 
 #[test]
+fn distinct_logic_on_restart_clears_seen_state() {
+  let mut logic = super::DistinctLogic::<u32> { seen: super::AHashSet::default(), _pd: core::marker::PhantomData };
+
+  let first = logic.apply(Box::new(1_u32)).expect("first apply");
+  assert_eq!(first.len(), 1);
+  let duplicate = logic.apply(Box::new(1_u32)).expect("duplicate apply");
+  assert!(duplicate.is_empty());
+
+  logic.on_restart().expect("restart");
+
+  let after_restart = logic.apply(Box::new(1_u32)).expect("after restart apply");
+  assert_eq!(after_restart.len(), 1);
+}
+
+#[test]
+fn distinct_by_logic_on_restart_clears_seen_keys() {
+  let mut logic = super::DistinctByLogic::<u32, u32, _> {
+    key_extractor: |value: &u32| value % 10,
+    seen:          super::AHashSet::default(),
+    _pd:           core::marker::PhantomData,
+  };
+
+  let first = logic.apply(Box::new(11_u32)).expect("first apply");
+  assert_eq!(first.len(), 1);
+  let duplicate_key = logic.apply(Box::new(21_u32)).expect("duplicate key apply");
+  assert!(duplicate_key.is_empty());
+
+  logic.on_restart().expect("restart");
+
+  let after_restart = logic.apply(Box::new(31_u32)).expect("after restart apply");
+  assert_eq!(after_restart.len(), 1);
+}
+
+#[test]
 fn stateful_map_logic_on_restart_recreates_mapper() {
   let factory = || {
     let mut sum = 0_u32;
@@ -1211,4 +1245,73 @@ fn named_passes_elements_through_unchanged() {
     .collect_values()
     .expect("collect_values");
   assert_eq!(values, vec![1_u32, 2_u32, 3_u32]);
+}
+
+#[test]
+fn distinct_removes_duplicates() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 1, 3, 2, 4, 1]))
+    .distinct()
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2_u32, 3_u32, 4_u32]);
+}
+
+#[test]
+fn distinct_preserves_order_of_first_occurrence() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[3, 1, 2, 1, 3]))
+    .distinct()
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![3_u32, 1_u32, 2_u32]);
+}
+
+#[test]
+fn distinct_handles_empty_stream() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[]))
+    .distinct()
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, Vec::<u32>::new());
+}
+
+#[test]
+fn distinct_handles_single_element() {
+  let values = Source::single(42_u32).distinct().collect_values().expect("collect_values");
+  assert_eq!(values, vec![42_u32]);
+}
+
+#[test]
+fn distinct_handles_all_unique_elements() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4, 5]))
+    .distinct()
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2_u32, 3_u32, 4_u32, 5_u32]);
+}
+
+#[test]
+fn distinct_by_removes_duplicates_by_key() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 11, 2, 12, 3]))
+    .distinct_by(|x| x % 10)
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2_u32, 3_u32]);
+}
+
+#[test]
+fn distinct_by_preserves_first_occurrence_of_key() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[10, 20, 11, 21, 12]))
+    .distinct_by(|x| x / 10)
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![10_u32, 20_u32]);
+}
+
+#[test]
+fn distinct_by_handles_empty_stream() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[]))
+    .distinct_by(|x: &u32| x % 10)
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, Vec::<u32>::new());
 }

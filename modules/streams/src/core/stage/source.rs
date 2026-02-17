@@ -658,6 +658,41 @@ where
     self.filter(move |value| !predicate(value))
   }
 
+  /// Eliminates duplicate elements from the stream.
+  ///
+  /// Only the first occurrence of each element is emitted. Uses a `HashSet` to track seen elements.
+  #[must_use]
+  pub fn distinct(mut self) -> Source<Out, Mat>
+  where
+    Out: Clone + Eq + core::hash::Hash, {
+    let definition = super::flow::distinct_definition::<Out>();
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Eliminates elements with duplicate keys from the stream.
+  ///
+  /// Only the first occurrence of each key is emitted. Uses a `HashSet` to track seen keys.
+  #[must_use]
+  pub fn distinct_by<Key, F>(mut self, key_extractor: F) -> Source<Out, Mat>
+  where
+    Key: Eq + core::hash::Hash + Send + Sync + 'static,
+    F: FnMut(&Out) -> Key + Send + Sync + 'static, {
+    let definition = super::flow::distinct_by_definition::<Out, Key, F>(key_extractor);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
   /// Adds a drop stage that skips the first `count` elements.
   #[must_use]
   pub fn drop(mut self, count: usize) -> Source<Out, Mat> {

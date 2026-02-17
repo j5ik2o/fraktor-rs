@@ -93,6 +93,10 @@ pub enum StageKind {
   FlowZipWithIndex,
   /// Flow stage that concatenates inputs in port order.
   FlowConcat,
+  /// Flow stage that eliminates duplicate elements using a seen set.
+  FlowDistinct,
+  /// Flow stage that eliminates elements with duplicate keys using a seen set.
+  FlowDistinctBy,
   /// Sink that ignores elements.
   SinkIgnore,
   /// Sink that folds elements.

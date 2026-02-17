@@ -161,6 +161,8 @@ impl StreamGraph {
             | StageKind::FlowMapConcat
             | StageKind::FlowMapOption
             | StageKind::FlowFilter
+            | StageKind::FlowDistinct
+            | StageKind::FlowDistinctBy
             | StageKind::FlowDrop
             | StageKind::FlowTake
             | StageKind::FlowDropWhile

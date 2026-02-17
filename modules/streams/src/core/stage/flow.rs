@@ -2,12 +2,15 @@ use alloc::{boxed::Box, collections::VecDeque, vec, vec::Vec};
 use core::{
   any::TypeId,
   future::Future,
+  hash::BuildHasherDefault,
   marker::PhantomData,
   pin::Pin,
   task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
 };
 
+use ahash::AHasher;
 use fraktor_utils_rs::core::collections::queue::OverflowPolicy;
+use hashbrown::HashSet;
 
 use super::{
   DynValue, FlowDefinition, FlowLogic, FlowSubFlow, MatCombine, MatCombineRule, RestartBackoff, RestartSettings,
@@ -22,6 +25,8 @@ use super::{
 
 #[cfg(test)]
 mod tests;
+
+type AHashSet<T> = HashSet<T, BuildHasherDefault<AHasher>>;
 
 /// Flow stage definition.
 pub struct Flow<In, Out, Mat> {
@@ -231,6 +236,41 @@ where
   where
     F: FnMut(&Out) -> bool + Send + Sync + 'static, {
     self.filter(move |value| !predicate(value))
+  }
+
+  /// Eliminates duplicate elements from the stream.
+  ///
+  /// Only the first occurrence of each element is emitted. Uses a `HashSet` to track seen elements.
+  #[must_use]
+  pub fn distinct(mut self) -> Flow<In, Out, Mat>
+  where
+    Out: Clone + Eq + core::hash::Hash, {
+    let definition = distinct_definition::<Out>();
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Eliminates elements with duplicate keys from the stream.
+  ///
+  /// Only the first occurrence of each key is emitted. Uses a `HashSet` to track seen keys.
+  #[must_use]
+  pub fn distinct_by<Key, F>(mut self, key_extractor: F) -> Flow<In, Out, Mat>
+  where
+    Key: Eq + core::hash::Hash + Send + Sync + 'static,
+    F: FnMut(&Out) -> Key + Send + Sync + 'static, {
+    let definition = distinct_by_definition::<Out, Key, F>(key_extractor);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
   /// Adds a drop stage that skips the first `count` elements.
@@ -2026,6 +2066,46 @@ where
   }
 }
 
+pub(in crate::core) fn distinct_definition<In>() -> FlowDefinition
+where
+  In: Clone + Eq + core::hash::Hash + Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = DistinctLogic::<In> { seen: AHashSet::default(), _pd: PhantomData };
+  FlowDefinition {
+    kind:        StageKind::FlowDistinct,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(in crate::core) fn distinct_by_definition<In, Key, F>(key_extractor: F) -> FlowDefinition
+where
+  In: Send + Sync + 'static,
+  Key: Eq + core::hash::Hash + Send + Sync + 'static,
+  F: FnMut(&In) -> Key + Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = DistinctByLogic::<In, Key, F> { key_extractor, seen: AHashSet::default(), _pd: PhantomData };
+  FlowDefinition {
+    kind:        StageKind::FlowDistinctBy,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
 pub(in crate::core) fn drop_definition<In>(count: usize) -> FlowDefinition
 where
   In: Send + Sync + 'static, {
@@ -2879,6 +2959,17 @@ struct FilterLogic<In, F> {
   _pd:       PhantomData<fn(In)>,
 }
 
+struct DistinctLogic<In> {
+  seen: AHashSet<In>,
+  _pd:  PhantomData<fn(In)>,
+}
+
+struct DistinctByLogic<In, Key, F> {
+  key_extractor: F,
+  seen:          AHashSet<Key>,
+  _pd:           PhantomData<fn(In) -> Key>,
+}
+
 struct DropLogic<In> {
   remaining: usize,
   _pd:       PhantomData<fn(In)>,
@@ -3107,6 +3198,45 @@ where
       return Ok(vec![Box::new(value) as DynValue]);
     }
     Ok(Vec::new())
+  }
+}
+
+impl<In> FlowLogic for DistinctLogic<In>
+where
+  In: Clone + Eq + core::hash::Hash + Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let value = downcast_value::<In>(input)?;
+    if self.seen.insert(value.clone()) {
+      return Ok(vec![Box::new(value) as DynValue]);
+    }
+    Ok(Vec::new())
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.seen.clear();
+    Ok(())
+  }
+}
+
+impl<In, Key, F> FlowLogic for DistinctByLogic<In, Key, F>
+where
+  In: Send + Sync + 'static,
+  Key: Eq + core::hash::Hash + Send + Sync + 'static,
+  F: FnMut(&In) -> Key + Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let value = downcast_value::<In>(input)?;
+    let key = (self.key_extractor)(&value);
+    if self.seen.insert(key) {
+      return Ok(vec![Box::new(value) as DynValue]);
+    }
+    Ok(Vec::new())
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.seen.clear();
+    Ok(())
   }
 }
 

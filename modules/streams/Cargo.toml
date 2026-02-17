@@ -20,6 +20,8 @@ std = ["fraktor-utils-rs/std", "fraktor-actor-rs/std", "fraktor-actor-rs/test-su
 fraktor-utils-rs = { workspace = true, default-features = false, features = ["alloc"] }
 fraktor-actor-rs = { workspace = true }
 portable-atomic = { workspace = true, default-features = false, features = ["critical-section"] }
+hashbrown = { workspace = true, default-features = false }
+ahash = { workspace = true, default-features = false }
 
 [dev-dependencies]
 fraktor-actor-rs = { workspace = true, features = ["test-support"] }
