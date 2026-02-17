@@ -1,0 +1,11 @@
+{
+  "task": "distinct / distinctByオペレーター（HashSetベースの重複排除フィルタ）を実装する",
+  "piece": "streams-phase2",
+  "runSlug": "20260217-062316-distinct-distinctbyオペレーター-ha",
+  "runRoot": ".takt/runs/20260217-062316-distinct-distinctbyオペレーター-ha",
+  "reportDirectory": ".takt/runs/20260217-062316-distinct-distinctbyオペレーター-ha/reports",
+  "contextDirectory": ".takt/runs/20260217-062316-distinct-distinctbyオペレーター-ha/context",
+  "logsDirectory": ".takt/runs/20260217-062316-distinct-distinctbyオペレーター-ha/logs",
+  "status": "running",
+  "startTime": "2026-02-17T06:23:16.026Z"
+}

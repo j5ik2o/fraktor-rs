@@ -1,0 +1,10 @@
+{
+  "personaSessions": {
+    "planner": "0f5e6640-ab2a-40a3-a0dd-ea8086101668",
+    "coder": "acbaee4a-ca2a-4144-9335-483341647c4f",
+    "ai-antipattern-reviewer": "e6381628-2c87-4042-b90e-3f4972fcf29a",
+    "supervisor": "3f9c73cb-0af1-4943-a71e-20049071f260"
+  },
+  "updatedAt": "2026-02-17T06:44:32.992Z",
+  "provider": "claude"
+}
