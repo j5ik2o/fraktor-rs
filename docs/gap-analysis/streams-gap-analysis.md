@@ -9,7 +9,7 @@
 | カバレッジ（型単位） | 60/85 (約71%) |
 | 完全実装オペレーター数 | 約40 |
 | スタブ実装オペレーター数 | 約25 |
-| 完全未実装ギャップ数 | 約20 |
+| 完全未実装ギャップ数 | 約14 |
 
 ### 補足: 実行モデルの違い
 
@@ -41,7 +41,7 @@ fraktor-rsはtickベースの同期実行モデルを採用しているため、
 | `FlowShape[-I,+O]` | `Shape.scala` | `FlowShape<In,Out>` | - | 実装済み |
 | `SinkShape[-T]` | `Shape.scala` | `SinkShape<In>` | - | 実装済み |
 | `BidiShape[-I1,+O1,-I2,+O2]` | `Shape.scala` | `BidiShape<In1,Out1,In2,Out2>` | - | 実装済み |
-| `ClosedShape` | `Shape.scala` | なし | trivial | 必要時にユニット型で代替可能 |
+| `ClosedShape` | `Shape.scala` | `ClosedShape` (`pub type ClosedShape = ()`) | - | 実装済み |
 | `AmorphousShape` | `Shape.scala` | なし | n/a | 動的ポート数は設計対象外 |
 | `Shape` trait | `Shape.scala` | `Shape` trait | - | 実装済み |
 | `PortId` | - | `PortId` | - | 実装済み |
@@ -119,11 +119,9 @@ fraktor-rsはtickベースの同期実行モデルを採用しているため、
 | `debounce` | `FlowOps.scala` | medium | 実時間タイマー必要（同期モデルでは再設計要） |
 | `sample` | `FlowOps.scala` | medium | 実時間サンプリング（同期モデルでは再設計要） |
 | `distinct` / `distinctBy` | `FlowOps.scala` | easy | HashSetベースの重複排除 |
-| `named` | `FlowOps.scala` | trivial | ストリーム要素への名前付け |
 | `withAttributes` / `addAttributes` | `FlowOps.scala` | hard | Attributes型システム全体の設計が必要 |
 | `async` / `async(dispatcher)` | `FlowOps.scala` | hard | 非同期ディスパッチャモデルの設計が必要 |
 | `mapMaterializedValue` | `FlowOps.scala` | medium | マテリアライゼーション値の変換 |
-| `fromFunction` (Flow) | `Flow.scala` | trivial | `Flow::new().map(f)` で代替可能 |
 | `viaMat` / `toMat` 完全版 | `FlowOps.scala` | - | 存在するが`alsoToMat`, `wireTapMat`はなし |
 | `alsoToMat` / `wireTapMat` | `FlowOps.scala` | easy | Mat合成のサイドチャネル |
 | `monitorMat` | `FlowOps.scala` | easy | FlowMonitorとのMat合成 |
@@ -191,7 +189,7 @@ fraktor-rsはtickベースの同期実行モデルを採用しているため、
 | Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
 |-----------|-----------|-------------|--------|------|
 | `apply[T]` | `Flow.scala` | `Flow::new()` | - | 実装済み |
-| `fromFunction` | `Flow.scala` | なし | trivial | `Flow::new().map(f)` で代替 |
+| `fromFunction` | `Flow.scala` | `from_function` | - | 実装済み |
 | `fromGraph` | `Flow.scala` | なし | medium | Graph型未実装 |
 | `fromMaterializer` | `Flow.scala` | なし | medium | Materializer参照ファクトリ |
 | `fromSinkAndSource` | `Flow.scala` | `from_sink_and_source` | - | 実装済み |
@@ -243,8 +241,8 @@ fraktor-rsはtickベースの同期実行モデルを採用しているため、
 | `KillSwitch` trait | `KillSwitch.scala` | なし（具象型のみ） | trivial | trait化可能 |
 | `SharedKillSwitch` | `KillSwitch.scala` | `SharedKillSwitch` | - | 実装済み |
 | `UniqueKillSwitch` | `KillSwitch.scala` | `UniqueKillSwitch` | - | 実装済み |
-| `KillSwitches.shared` | `KillSwitch.scala` | なし | trivial | ファクトリメソッド |
-| `KillSwitches.single` | `KillSwitch.scala` | なし | trivial | ファクトリメソッド |
+| `KillSwitches.shared` | `KillSwitch.scala` | `KillSwitches::shared()` | - | 実装済み |
+| `KillSwitches.single` | `KillSwitch.scala` | `KillSwitches::single()` | - | 実装済み |
 | `StreamHandle` trait | - | `StreamHandle` trait | - | fraktor独自 |
 | `StreamHandleGeneric<TB>` | - | `StreamHandleGeneric<TB>` | - | fraktor独自 |
 | `StreamState` | - | `StreamState` | - | fraktor独自 |
@@ -301,7 +299,7 @@ fraktor-rsはtickベースの同期実行モデルを採用しているため、
 | `Attributes` | `Attributes.scala` | なし | hard | 属性型システム全体 |
 | `withAttributes` | `FlowOps.scala` | なし | hard | 属性変更API |
 | `addAttributes` | `FlowOps.scala` | なし | hard | 属性追加API |
-| `named` | `FlowOps.scala` | なし | trivial | 名前のみならAttributes不要 |
+| `named` | `FlowOps.scala` | `named` | - | 実装済み（no-op、Attributes未導入） |
 | `async` | `FlowOps.scala` | `async_boundary` | - | 別名で実装済み |
 | `Supervision.Strategy` | `Supervision.scala` | `supervision_stop/resume/restart` | - | メソッドベースで実装 |
 | `OverflowStrategy` | `OverflowStrategy.scala` | `overflow_policy` パラメータ | - | buffer内で対応 |
@@ -338,9 +336,9 @@ fraktor-rsはtickベースの同期実行モデルを採用しているため、
 | `BidiFlow[I1,O1,I2,O2,Mat]` | `BidiFlow.scala` | `BidiFlow<InTop,OutTop,InBottom,OutBottom>` | easy | Mat型パラメータなし |
 | `atop` / `atopMat` | `BidiFlow.scala` | なし | easy | BidiFlow合成 |
 | `join` | `BidiFlow.scala` | なし | easy | FlowとのBidi結合 |
-| `reversed` | `BidiFlow.scala` | なし | trivial | 方向反転 |
-| `identity` | `BidiFlow.scala` | なし | trivial | 恒等BidiFlow |
-| `fromFlows` | `BidiFlow.scala` | なし | easy | 2つのFlowから構築 |
+| `reversed` | `BidiFlow.scala` | `reversed` | - | 実装済み |
+| `identity` | `BidiFlow.scala` | `identity` | - | 実装済み |
+| `fromFlows` | `BidiFlow.scala` | `from_flows` | - | 実装済み |
 | `fromFunction` / `fromFunctions` | `BidiFlow.scala` | なし | easy | 関数から構築 |
 
 ### 20. テストキット
@@ -355,20 +353,20 @@ fraktor-rsはtickベースの同期実行モデルを採用しているため、
 
 ## 実装優先度の提案
 
-### Phase 1: trivial（既存組み合わせで即実装可能）
+### Phase 1: trivial（既存組み合わせで即実装可能）— 実装完了
 
-1. `Flow::from_function` — `Flow::new().map(f)` のショートカット
-2. `named` — ストリーム要素にデバッグ名を付与（Attributes不要の簡易版）
-3. `ClosedShape` — ユニット型のtypeエイリアス
-4. `KillSwitches::shared/single` — ファクトリメソッド追加
-5. `BidiFlow::identity` — 恒等BidiFlow
-6. `BidiFlow::reversed` — フィールド入れ替え
+1. ~~`Flow::from_function`~~ — 実装済み
+2. ~~`named`~~ — 実装済み（no-op）
+3. ~~`ClosedShape`~~ — 実装済み
+4. ~~`KillSwitches::shared/single`~~ — 実装済み
+5. ~~`BidiFlow::identity`~~ — 実装済み
+6. ~~`BidiFlow::reversed`~~ — 実装済み
 
 ### Phase 2: easy（単純な新規実装）
 
 1. `distinct` / `distinctBy` — HashSetベースの重複排除フィルタ
 2. `drop_within` — `take_within`の逆（時間内要素スキップ）
-3. `BidiFlow::fromFlows/fromFunction/fromFunctions` — BidiFlowファクトリ群
+3. ~~`BidiFlow::fromFlows`~~ (実装済み) / `BidiFlow::fromFunction/fromFunctions` — BidiFlowファクトリ群
 4. `BidiFlow::atop/join` — BidiFlow合成・結合
 5. `DrainingControl` — Hub用ドレイン制御
 6. `alsoToMat` / `wireTapMat` — マテリアライゼーション合成版サイドチャネル
@@ -426,9 +424,9 @@ Pekkoの`Attributes`型システム全体が未実装。`named`, `withAttributes
 
 PekkoのThrowableベースのエラー処理はRustの`Result<T, StreamError>`ベースに適応されている。`recover`, `recoverWith`, `onErrorComplete`, `onErrorContinue`はすべて`Result`型の要素に対して動作する。
 
-### 6. BidiFlowの最小実装
+### 6. BidiFlowの実装状況
 
-BidiFlowは型定義のみで、`atop`, `join`, `reversed` 等の合成オペレーターが未実装。双方向通信パターン（プロトコル変換等）が必要な場合は Phase 2 での対応が望ましい。
+BidiFlowは `from_flows`, `split`, `identity`, `reversed` が実装済み。`atop`, `join` 等の合成オペレーターは未実装。双方向通信パターン（プロトコル変換等）が必要な場合は Phase 2 での対応が望ましい。
 
 ### 7. fraktor独自の追加
 
