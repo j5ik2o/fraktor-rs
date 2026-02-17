@@ -1,6 +1,7 @@
 //! Stream topology shapes and connection points.
 
 mod bidi_shape;
+mod closed_shape;
 mod flow_shape;
 mod inlet;
 mod outlet;
@@ -12,6 +13,7 @@ mod source_shape;
 mod stream_shape;
 
 pub use bidi_shape::BidiShape;
+pub use closed_shape::ClosedShape;
 pub use flow_shape::FlowShape;
 pub use inlet::Inlet;
 pub use outlet::Outlet;
