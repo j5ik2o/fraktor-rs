@@ -1,0 +1,118 @@
+name: streams-phase2
+description: "fraktor-rs streams Phase 2 (easy) - analyze, implement, review, fix"
+piece_config:
+  provider_options:
+    codex:
+      network_access: true
+max_movements: 20
+initial_movement: analyze
+movements:
+  - name: analyze
+    edit: false
+    persona: planner
+    provider: codex
+    model: gpt-5.3-codex
+    knowledge:
+      - ../knowledge/fraktor-streams.md
+    instruction: plan
+    rules:
+      - condition: "requirements are clear and implementation is possible"
+        next: implement
+    output_contracts:
+      report:
+        - name: 00-analysis.md
+          format: |
+            # Analysis
+            ## Requirements
+            ## Design
+            ## Implementation Plan
+
+  - name: implement
+    edit: true
+    persona: coder
+    provider: codex
+    model: gpt-5.3-codex
+    knowledge:
+      - ../knowledge/fraktor-streams.md
+    policy:
+      - ../policies/fraktor-coding.md
+    instruction: implement
+    rules:
+      - condition: "implementation is complete"
+        next: reviewers
+    output_contracts:
+      report:
+        - name: coder-scope.md
+          format: |
+            # Scope
+            ## Files Changed
+        - name: coder-decisions.md
+          format: |
+            # Decisions
+            ## Key Choices
+
+  - name: reviewers
+    parallel:
+      - name: ai_review
+        edit: false
+        persona: ai-antipattern-reviewer
+        provider: codex
+        model: gpt-5.3-codex
+        instruction: review-ai
+        policy:
+          - ../policies/fraktor-coding.md
+        rules:
+          - condition: approved
+          - condition: needs_fix
+        output_contracts:
+          report:
+            - name: codex-ai-review.md
+              format: |
+                # Codex AI Review
+                ## Verdict
+                ## Issues Found
+      - name: supervise
+        edit: false
+        persona: supervisor
+        provider: codex
+        model: gpt-5.3-codex
+        instruction: supervise
+        policy:
+          - ../policies/fraktor-coding.md
+        rules:
+          - condition: approved
+          - condition: needs_fix
+        output_contracts:
+          report:
+            - name: supervisor-validation.md
+              format: |
+                # Supervisor Validation
+                ## Verdict
+                ## Issues Found
+    rules:
+      - condition: all("approved")
+        next: COMPLETE
+      - condition: any("needs_fix")
+        next: fix_both
+
+  - name: fix_both
+    edit: true
+    persona: coder
+    provider: codex
+    model: gpt-5.3-codex
+    knowledge:
+      - ../knowledge/fraktor-streams.md
+    policy:
+      - ../policies/fraktor-coding.md
+    instruction: fix-supervisor
+    pass_previous_response: true
+    rules:
+      - condition: "fix is complete"
+        next: reviewers
+    output_contracts:
+      report:
+        - name: fix-report.md
+          format: |
+            # Fix Report
+            ## Issues Addressed
+            ## Changes Made
