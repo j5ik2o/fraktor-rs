@@ -28,6 +28,30 @@ impl SourceLogic for SequenceSourceLogic {
   }
 }
 
+struct PulsedSourceLogic {
+  schedule: VecDeque<Option<u32>>,
+}
+
+impl PulsedSourceLogic {
+  fn new(schedule: &[Option<u32>]) -> Self {
+    let mut queue = VecDeque::with_capacity(schedule.len());
+    queue.extend(schedule.iter().copied());
+    Self { schedule: queue }
+  }
+}
+
+impl SourceLogic for PulsedSourceLogic {
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    let Some(next) = self.schedule.pop_front() else {
+      return Ok(None);
+    };
+    match next {
+      | Some(value) => Ok(Some(Box::new(value) as DynValue)),
+      | None => Err(StreamError::WouldBlock),
+    }
+  }
+}
+
 #[test]
 fn broadcast_duplicates_each_element() {
   let values = Source::single(7_u32).via(Flow::new().broadcast(2)).collect_values().expect("collect_values");
@@ -354,6 +378,41 @@ fn map_async_logic_keeps_order_and_tracks_pending_output() {
   assert_eq!(output_values, vec![2_u32, 3_u32]);
   assert!(!logic.has_pending_output());
   assert!(logic.can_accept_input());
+}
+
+#[test]
+fn conflate_with_seed_logic_defers_and_merges_pending_values() {
+  let mut logic = super::ConflateWithSeedLogic::<u32, u32, _, _> {
+    seed:         |value| value + 10,
+    aggregate:    |acc, value| acc + value,
+    pending:      None,
+    just_updated: false,
+    _pd:          core::marker::PhantomData,
+  };
+
+  assert!(logic.can_accept_input());
+  let first = logic.apply(Box::new(1_u32)).expect("first apply");
+  assert!(first.is_empty());
+  assert!(logic.can_accept_input());
+  assert!(logic.drain_pending().expect("first deferred drain").is_empty());
+
+  let second = logic.apply(Box::new(2_u32)).expect("second apply");
+  assert!(second.is_empty());
+  assert!(logic.can_accept_input());
+  assert!(logic.drain_pending().expect("second deferred drain").is_empty());
+
+  let flushed = logic.drain_pending().expect("flush pending");
+  let flushed_values: Vec<u32> = flushed.into_iter().map(|value| *value.downcast::<u32>().expect("u32")).collect();
+  assert_eq!(flushed_values, vec![13_u32]);
+
+  let third = logic.apply(Box::new(3_u32)).expect("third apply");
+  assert!(third.is_empty());
+  assert!(logic.can_accept_input());
+  assert!(logic.drain_pending().expect("third deferred drain").is_empty());
+  let flushed_third = logic.drain_pending().expect("flush third");
+  let flushed_third_values: Vec<u32> =
+    flushed_third.into_iter().map(|value| *value.downcast::<u32>().expect("u32")).collect();
+  assert_eq!(flushed_third_values, vec![13_u32]);
 }
 
 #[derive(Default)]
@@ -1127,12 +1186,191 @@ fn do_on_first_invokes_callback_on_first_element_only() {
 }
 
 #[test]
-fn conflate_preserves_elements_with_single_consumer() {
+fn conflate_preserves_elements_when_upstream_is_not_bursty() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
-    .via(Flow::new().conflate())
+    .via(Flow::new().conflate(|acc, value| acc + value))
     .collect_values()
     .expect("collect_values");
   assert_eq!(values, vec![1_u32, 2_u32, 3_u32]);
+}
+
+#[test]
+fn conflate_with_seed_applies_seed_and_aggregate() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .via(Flow::new().conflate_with_seed(|value| value + 10, |acc, value| acc + value))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![11_u32, 12_u32, 13_u32]);
+}
+
+#[test]
+fn conflate_aggregates_bursty_upstream_values() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2]))
+    .via(Flow::new().map_concat(|value: u32| vec![value, value.saturating_mul(10)]))
+    .via(Flow::new().conflate(|acc, value| acc + value))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![11_u32, 22_u32]);
+}
+
+#[test]
+fn conflate_with_seed_aggregates_bursty_upstream_values() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2]))
+    .via(Flow::new().map_concat(|value: u32| vec![value, value.saturating_mul(10)]))
+    .via(Flow::new().conflate_with_seed(|value| value + 100, |acc, value| acc + value))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![111_u32, 122_u32]);
+}
+
+#[test]
+fn conflate_accepts_non_clone_output_type() {
+  #[derive(Debug, PartialEq, Eq)]
+  struct NonClone(u32);
+
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .via(Flow::new().map(NonClone))
+    .via(Flow::new().conflate(|acc: NonClone, value: NonClone| NonClone(acc.0 + value.0)))
+    .collect_values()
+    .expect("collect_values");
+
+  assert_eq!(values, vec![NonClone(1), NonClone(2), NonClone(3)]);
+}
+
+#[test]
+fn expand_and_extrapolate_share_expand_behavior() {
+  let expand_values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2]))
+    .via(Flow::new().expand(|value: &u32| vec![*value, value.saturating_mul(10)]))
+    .collect_values()
+    .expect("collect_values");
+  let extrapolate_values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2]))
+    .via(Flow::new().extrapolate(|value: &u32| vec![*value, value.saturating_mul(10)]))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(expand_values, vec![1_u32, 2_u32]);
+  assert_eq!(expand_values, extrapolate_values);
+}
+
+#[test]
+fn expand_and_extrapolate_emit_extrapolated_values_during_idle_ticks() {
+  let mut logic = super::ExpandLogic::<u32, _> {
+    expander:                |value: &u32| vec![*value, value.saturating_mul(10)],
+    last:                    None,
+    pending:                 None,
+    tick_count:              0,
+    last_input_tick:         None,
+    last_extrapolation_tick: None,
+    source_done:             false,
+  };
+
+  logic.on_tick(1).expect("tick 1");
+  let first = logic.apply(Box::new(1_u32)).expect("apply first");
+  let first_values: Vec<u32> = first.into_iter().map(|value| *value.downcast::<u32>().expect("u32")).collect();
+  assert_eq!(first_values, vec![1_u32]);
+
+  let remaining_same_tick = logic.drain_pending().expect("drain tick 1");
+  let remaining_same_tick_values: Vec<u32> =
+    remaining_same_tick.into_iter().map(|value| *value.downcast::<u32>().expect("u32")).collect();
+  assert_eq!(remaining_same_tick_values, vec![10_u32]);
+
+  logic.on_tick(2).expect("tick 2");
+  let extrapolated = logic.drain_pending().expect("drain tick 2");
+  let extrapolated_values: Vec<u32> =
+    extrapolated.into_iter().map(|value| *value.downcast::<u32>().expect("u32")).collect();
+  assert_eq!(extrapolated_values, vec![1_u32]);
+
+  let extrapolated_remaining = logic.drain_pending().expect("drain tick 2 remaining");
+  let extrapolated_remaining_values: Vec<u32> =
+    extrapolated_remaining.into_iter().map(|value| *value.downcast::<u32>().expect("u32")).collect();
+  assert_eq!(extrapolated_remaining_values, vec![10_u32]);
+
+  logic.on_tick(3).expect("tick 3");
+  let extrapolated_again = logic.drain_pending().expect("drain tick 3");
+  let extrapolated_again_values: Vec<u32> =
+    extrapolated_again.into_iter().map(|value| *value.downcast::<u32>().expect("u32")).collect();
+  assert_eq!(extrapolated_again_values, vec![1_u32]);
+
+  let extrapolated_again_remaining = logic.drain_pending().expect("drain tick 3 remaining");
+  let extrapolated_again_remaining_values: Vec<u32> =
+    extrapolated_again_remaining.into_iter().map(|value| *value.downcast::<u32>().expect("u32")).collect();
+  assert_eq!(extrapolated_again_remaining_values, vec![10_u32]);
+
+  logic.on_source_done().expect("source done");
+  logic.on_tick(4).expect("tick 4");
+  assert!(logic.drain_pending().expect("drain tick 4").is_empty());
+}
+
+#[test]
+fn expand_and_extrapolate_do_not_hang_with_infinite_iterators() {
+  let mut logic = super::ExpandLogic::<u32, _> {
+    expander:                |value: &u32| core::iter::repeat(*value),
+    last:                    None,
+    pending:                 None,
+    tick_count:              0,
+    last_input_tick:         None,
+    last_extrapolation_tick: None,
+    source_done:             false,
+  };
+
+  logic.on_tick(1).expect("tick 1");
+  let first = logic.apply(Box::new(1_u32)).expect("apply first");
+  let first_values: Vec<u32> = first.into_iter().map(|value| *value.downcast::<u32>().expect("u32")).collect();
+  assert_eq!(first_values, vec![1_u32]);
+  assert!(logic.can_accept_input());
+
+  let second = logic.drain_pending().expect("drain second");
+  let second_values: Vec<u32> = second.into_iter().map(|value| *value.downcast::<u32>().expect("u32")).collect();
+  assert_eq!(second_values, vec![1_u32]);
+  assert!(logic.can_accept_input());
+
+  logic.on_tick(2).expect("tick 2");
+  let extrapolated = logic.drain_pending().expect("drain extrapolated");
+  let extrapolated_values: Vec<u32> =
+    extrapolated.into_iter().map(|value| *value.downcast::<u32>().expect("u32")).collect();
+  assert_eq!(extrapolated_values, vec![1_u32]);
+
+  let replaced = logic.apply(Box::new(2_u32)).expect("apply replacement");
+  let replaced_values: Vec<u32> = replaced.into_iter().map(|value| *value.downcast::<u32>().expect("u32")).collect();
+  assert_eq!(replaced_values, vec![2_u32]);
+
+  let replaced_following = logic.drain_pending().expect("drain replacement");
+  let replaced_following_values: Vec<u32> =
+    replaced_following.into_iter().map(|value| *value.downcast::<u32>().expect("u32")).collect();
+  assert_eq!(replaced_following_values, vec![2_u32]);
+
+  logic.on_source_done().expect("source done");
+  logic.on_tick(3).expect("tick 3");
+  assert!(logic.drain_pending().expect("drain after source done").is_empty());
+  assert!(!logic.has_pending_output());
+}
+
+#[test]
+fn grouped_within_preserves_size_grouping_behavior() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4, 5]))
+    .via(Flow::new().grouped_within(2, 10).expect("grouped_within"))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![vec![1_u32, 2_u32], vec![3_u32, 4_u32], vec![5_u32]]);
+}
+
+#[test]
+fn grouped_within_flushes_when_tick_window_expires() {
+  let schedule = [Some(1_u32), None, None, Some(2_u32), Some(3_u32)];
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, PulsedSourceLogic::new(&schedule))
+    .via(Flow::new().grouped_within(10, 2).expect("grouped_within"))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![vec![1_u32], vec![2_u32, 3_u32]]);
+}
+
+#[test]
+fn grouped_within_rejects_zero_ticks() {
+  let flow = Flow::<u32, u32, StreamNotUsed>::new();
+  let result = flow.grouped_within(2, 0);
+  assert!(matches!(
+    result,
+    Err(StreamDslError::InvalidArgument { name: "ticks", value: 0, reason: "must be greater than zero" })
+  ));
 }
 
 #[test]

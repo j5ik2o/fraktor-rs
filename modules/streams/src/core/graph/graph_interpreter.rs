@@ -429,7 +429,12 @@ impl GraphInterpreter {
         | StageDefinition::Flow(flow) => (flow.inlet, flow.outlet, flow.input_type, flow.output_type),
         | _ => continue,
       };
-      if self.has_buffered_outgoing(flow_outlet) {
+      let outgoing_buffered = self.has_buffered_outgoing(flow_outlet);
+      let can_accept_input_while_output_buffered = match &self.stages[stage_index] {
+        | StageDefinition::Flow(flow) => flow.logic.can_accept_input_while_output_buffered(),
+        | _ => false,
+      };
+      if outgoing_buffered && !can_accept_input_while_output_buffered {
         continue;
       }
 
@@ -471,7 +476,7 @@ impl GraphInterpreter {
         };
       }
 
-      if outputs.is_empty() {
+      if outputs.is_empty() && !outgoing_buffered {
         let drain_result = {
           let StageDefinition::Flow(flow) = &mut self.stages[stage_index] else {
             return Err(StreamError::InvalidConnection);

@@ -1439,13 +1439,22 @@ where
     self.grouped(max_weight)
   }
 
-  /// Groups elements within a count window.
+  /// Groups elements while tracking both group size and tick window progress.
   ///
   /// # Errors
   ///
-  /// Returns [`StreamDslError`] when `size` is zero.
-  pub fn grouped_within(self, size: usize, _ticks: usize) -> Result<Flow<In, Vec<Out>, Mat>, StreamDslError> {
-    self.grouped(size)
+  /// Returns [`StreamDslError`] when `size` or `ticks` is zero.
+  pub fn grouped_within(mut self, size: usize, ticks: usize) -> Result<Flow<In, Vec<Out>, Mat>, StreamDslError> {
+    let size = validate_positive_argument("size", size)?;
+    let ticks = validate_positive_argument("ticks", ticks)? as u64;
+    let definition = grouped_within_definition::<Out>(size, ticks);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
   /// Aggregates elements with boundary semantics.
@@ -1472,37 +1481,58 @@ where
     self.batch(max_weight)
   }
 
-  /// Conflates upstream elements by keeping only the latest when downstream is slower.
-  ///
-  /// Passes through upstream elements unchanged.
-  ///
-  /// In the synchronous execution model there is no rate difference between
-  /// upstream and downstream, so conflation is a no-op identity mapping.
+  /// Conflates upstream elements by repeatedly aggregating all emitted values.
   #[must_use]
-  pub fn conflate(self) -> Flow<In, Out, Mat> {
-    self.map(|v| v)
+  pub fn conflate<FA>(self, aggregate: FA) -> Flow<In, Out, Mat>
+  where
+    Out: Send + Sync + 'static,
+    FA: FnMut(Out, Out) -> Out + Send + Sync + 'static, {
+    self.conflate_with_seed(|value| value, aggregate)
   }
 
-  /// Adds a conflate-with-seed compatibility placeholder.
+  /// Adds a conflate-with-seed stage.
   #[must_use]
-  pub fn conflate_with_seed<T, FS, FA>(self, seed: FS, _aggregate: FA) -> Flow<In, T, Mat>
+  pub fn conflate_with_seed<T, FS, FA>(mut self, seed: FS, aggregate: FA) -> Flow<In, T, Mat>
   where
+    Out: 'static,
     T: Send + Sync + 'static,
     FS: FnMut(Out) -> T + Send + Sync + 'static,
     FA: FnMut(T, Out) -> T + Send + Sync + 'static, {
-    self.map(seed)
+    let definition = conflate_with_seed_definition::<Out, T, FS, FA>(seed, aggregate);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
-  /// Adds an expand compatibility placeholder.
+  /// Expands each input element and extrapolates on idle ticks while upstream is active.
   #[must_use]
-  pub const fn expand(self) -> Flow<In, Out, Mat> {
-    self
+  pub fn expand<F, I>(mut self, expander: F) -> Flow<In, Out, Mat>
+  where
+    F: FnMut(&Out) -> I + Send + Sync + 'static,
+    I: IntoIterator<Item = Out> + 'static,
+    <I as IntoIterator>::IntoIter: Send, {
+    let definition = expand_definition::<Out, F, I>(expander);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
-  /// Adds an extrapolate compatibility placeholder.
+  /// Extrapolates elements with the same behavior as [`Flow::expand`].
   #[must_use]
-  pub const fn extrapolate(self) -> Flow<In, Out, Mat> {
-    self
+  pub fn extrapolate<F, I>(self, expander: F) -> Flow<In, Out, Mat>
+  where
+    F: FnMut(&Out) -> I + Send + Sync + 'static,
+    I: IntoIterator<Item = Out> + 'static,
+    <I as IntoIterator>::IntoIter: Send, {
+    self.expand(expander)
   }
 
   /// Assigns a debug name to this stage (no-op until Attributes are introduced).
@@ -2177,6 +2207,90 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<Vec<In>>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(in crate::core) fn grouped_within_definition<In>(size: usize, duration_ticks: u64) -> FlowDefinition
+where
+  In: Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<Vec<In>> = Outlet::new();
+  let logic = GroupedWithinLogic::<In> {
+    size,
+    duration_ticks,
+    tick_count: 0,
+    window_start_tick: None,
+    current: Vec::new(),
+    pending: VecDeque::new(),
+  };
+  FlowDefinition {
+    kind:        StageKind::FlowStatefulMapConcat,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<Vec<In>>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(in crate::core) fn conflate_with_seed_definition<In, T, FS, FA>(seed: FS, aggregate: FA) -> FlowDefinition
+where
+  In: Send + Sync + 'static,
+  T: Send + Sync + 'static,
+  FS: FnMut(In) -> T + Send + Sync + 'static,
+  FA: FnMut(T, In) -> T + Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<T> = Outlet::new();
+  let logic = ConflateWithSeedLogic::<In, T, FS, FA> {
+    seed,
+    aggregate,
+    pending: None,
+    just_updated: false,
+    _pd: core::marker::PhantomData,
+  };
+  FlowDefinition {
+    kind:        StageKind::Custom,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<T>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(in crate::core) fn expand_definition<In, F, I>(expander: F) -> FlowDefinition
+where
+  In: Send + Sync + 'static,
+  F: FnMut(&In) -> I + Send + Sync + 'static,
+  I: IntoIterator<Item = In> + 'static,
+  <I as IntoIterator>::IntoIter: Send, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = ExpandLogic::<In, F> {
+    expander,
+    last: None,
+    pending: None,
+    tick_count: 0,
+    last_input_tick: None,
+    last_extrapolation_tick: None,
+    source_done: false,
+  };
+  FlowDefinition {
+    kind:        StageKind::FlowStatefulMapConcat,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
     mat_combine: MatCombine::KeepLeft,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
@@ -2955,6 +3069,33 @@ struct GroupedLogic<In> {
   source_done: bool,
 }
 
+struct GroupedWithinLogic<In> {
+  size:              usize,
+  duration_ticks:    u64,
+  tick_count:        u64,
+  window_start_tick: Option<u64>,
+  current:           Vec<In>,
+  pending:           VecDeque<Vec<In>>,
+}
+
+struct ConflateWithSeedLogic<In, T, FS, FA> {
+  seed:         FS,
+  aggregate:    FA,
+  pending:      Option<T>,
+  just_updated: bool,
+  _pd:          core::marker::PhantomData<fn(In) -> T>,
+}
+
+struct ExpandLogic<In, F> {
+  expander:                F,
+  last:                    Option<In>,
+  pending:                 Option<core::iter::Peekable<Box<dyn Iterator<Item = In> + Send + 'static>>>,
+  tick_count:              u64,
+  last_input_tick:         Option<u64>,
+  last_extrapolation_tick: Option<u64>,
+  source_done:             bool,
+}
+
 struct SlidingLogic<In> {
   size:   usize,
   window: VecDeque<In>,
@@ -2990,6 +3131,55 @@ where
     let value = downcast_value::<In>(input)?;
     let output = (self.func)(value);
     Ok(vec![Box::new(output)])
+  }
+}
+
+impl<In, T, FS, FA> FlowLogic for ConflateWithSeedLogic<In, T, FS, FA>
+where
+  In: Send + Sync + 'static,
+  T: Send + Sync + 'static,
+  FS: FnMut(In) -> T + Send + Sync + 'static,
+  FA: FnMut(T, In) -> T + Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let value = downcast_value::<In>(input)?;
+    let aggregated =
+      if let Some(current) = self.pending.take() { (self.aggregate)(current, value) } else { (self.seed)(value) };
+    self.pending = Some(aggregated);
+    self.just_updated = true;
+    Ok(Vec::new())
+  }
+
+  fn can_accept_input(&self) -> bool {
+    true
+  }
+
+  fn can_accept_input_while_output_buffered(&self) -> bool {
+    true
+  }
+
+  fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
+    let Some(aggregated) = self.pending.take() else {
+      return Ok(Vec::new());
+    };
+
+    if self.just_updated {
+      self.pending = Some(aggregated);
+      self.just_updated = false;
+      return Ok(Vec::new());
+    }
+
+    Ok(vec![Box::new(aggregated) as DynValue])
+  }
+
+  fn has_pending_output(&self) -> bool {
+    self.pending.is_some()
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.pending = None;
+    self.just_updated = false;
+    Ok(())
   }
 }
 
@@ -3285,6 +3475,174 @@ where
 
   fn on_restart(&mut self) -> Result<(), StreamError> {
     self.current.clear();
+    self.source_done = false;
+    Ok(())
+  }
+}
+
+impl<In> GroupedWithinLogic<In>
+where
+  In: Send + Sync + 'static,
+{
+  fn tick_window_expired(&self) -> bool {
+    self
+      .window_start_tick
+      .is_some_and(|window_start_tick| self.tick_count > window_start_tick.saturating_add(self.duration_ticks))
+  }
+
+  fn flush_current(&mut self) {
+    if self.current.is_empty() {
+      return;
+    }
+    self.pending.push_back(core::mem::take(&mut self.current));
+    self.window_start_tick = None;
+  }
+}
+
+impl<In> FlowLogic for GroupedWithinLogic<In>
+where
+  In: Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    if self.size == 0 {
+      return Err(StreamError::InvalidConnection);
+    }
+    let value = downcast_value::<In>(input)?;
+    if self.current.is_empty() {
+      self.window_start_tick = Some(self.tick_count);
+    }
+    self.current.push(value);
+    if self.current.len() >= self.size {
+      self.flush_current();
+    }
+    self.drain_pending()
+  }
+
+  fn on_tick(&mut self, tick_count: u64) -> Result<(), StreamError> {
+    self.tick_count = tick_count;
+    if self.tick_window_expired() {
+      self.flush_current();
+    }
+    Ok(())
+  }
+
+  fn on_source_done(&mut self) -> Result<(), StreamError> {
+    self.flush_current();
+    Ok(())
+  }
+
+  fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
+    let Some(values) = self.pending.pop_front() else {
+      return Ok(Vec::new());
+    };
+    Ok(vec![Box::new(values) as DynValue])
+  }
+
+  fn has_pending_output(&self) -> bool {
+    !self.pending.is_empty()
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.tick_count = 0;
+    self.window_start_tick = None;
+    self.current.clear();
+    self.pending.clear();
+    Ok(())
+  }
+}
+
+impl<In, F, I> FlowLogic for ExpandLogic<In, F>
+where
+  In: Send + Sync + 'static,
+  F: FnMut(&In) -> I + Send + Sync + 'static,
+  I: IntoIterator<Item = In> + 'static,
+  <I as IntoIterator>::IntoIter: Send,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let value = downcast_value::<In>(input)?;
+    self.last = Some(value);
+    self.last_input_tick = Some(self.tick_count);
+    self.last_extrapolation_tick = Some(self.tick_count);
+    let Some(last) = self.last.as_ref() else {
+      return Ok(Vec::new());
+    };
+    let mut iterator = (self.expander)(last).into_iter();
+    if self.source_done {
+      if let Some(next) = iterator.next() {
+        return Ok(vec![Box::new(next) as DynValue]);
+      }
+      return Ok(Vec::new());
+    }
+    let iterator: Box<dyn Iterator<Item = In> + Send + 'static> = Box::new(iterator);
+    self.pending = Some(iterator.peekable());
+    self.drain_pending()
+  }
+
+  fn on_tick(&mut self, tick_count: u64) -> Result<(), StreamError> {
+    self.tick_count = tick_count;
+    Ok(())
+  }
+
+  fn can_accept_input(&self) -> bool {
+    true
+  }
+
+  fn on_source_done(&mut self) -> Result<(), StreamError> {
+    self.source_done = true;
+    Ok(())
+  }
+
+  fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
+    if self.source_done {
+      self.pending = None;
+      return Ok(Vec::new());
+    }
+
+    if let Some(iter) = &mut self.pending {
+      if let Some(value) = iter.next() {
+        if iter.peek().is_none() {
+          self.pending = None;
+        }
+        return Ok(vec![Box::new(value) as DynValue]);
+      }
+      self.pending = None;
+    }
+
+    let Some(last_input_tick) = self.last_input_tick else {
+      return Ok(Vec::new());
+    };
+    if self.tick_count <= last_input_tick || self.last_extrapolation_tick == Some(self.tick_count) {
+      return Ok(Vec::new());
+    }
+    let Some(last) = self.last.as_ref() else {
+      return Ok(Vec::new());
+    };
+    self.last_extrapolation_tick = Some(self.tick_count);
+    let iterator: Box<dyn Iterator<Item = In> + Send + 'static> = Box::new((self.expander)(last).into_iter());
+    self.pending = Some(iterator.peekable());
+
+    if let Some(iter) = &mut self.pending {
+      if let Some(value) = iter.next() {
+        if iter.peek().is_none() {
+          self.pending = None;
+        }
+        return Ok(vec![Box::new(value) as DynValue]);
+      }
+      self.pending = None;
+    }
+    Ok(Vec::new())
+  }
+
+  fn has_pending_output(&self) -> bool {
+    self.pending.is_some()
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.last = None;
+    self.pending = None;
+    self.tick_count = 0;
+    self.last_input_tick = None;
+    self.last_extrapolation_tick = None;
     self.source_done = false;
     Ok(())
   }

@@ -436,6 +436,10 @@ trait FlowLogic: Send {
     true
   }
 
+  fn can_accept_input_while_output_buffered(&self) -> bool {
+    false
+  }
+
   fn apply_with_edge(&mut self, edge_index: usize, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
     let _ = edge_index;
     self.apply(input)
