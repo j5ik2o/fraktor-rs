@@ -6,3 +6,17 @@
 
 # Project configuration
 !config.yaml
+
+# Facets and pieces (version-controlled)
+!pieces/
+!pieces/**
+!personas/
+!personas/**
+!policies/
+!policies/**
+!knowledge/
+!knowledge/**
+!instructions/
+!instructions/**
+!output-contracts/
+!output-contracts/**
