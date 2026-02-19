@@ -1442,10 +1442,11 @@ fn conflate_emits_aggregated_value_when_downstream_unblocks() {
   })
   .via(Flow::new().conflate(|acc, value| acc + value))
   .to_mat(
-    Sink::from_logic(
-      StageKind::SinkIgnore,
-      GatedSinkLogic { gate_open: gate_open.clone(), received: received.clone(), completion },
-    ),
+    Sink::from_logic(StageKind::SinkIgnore, GatedSinkLogic {
+      gate_open: gate_open.clone(),
+      received: received.clone(),
+      completion,
+    }),
     KeepRight,
   );
   let (plan, _completion) = graph.into_parts();
