@@ -72,10 +72,10 @@ where
     Self { top, bottom, mat }
   }
 
-  /// Splits the bidirectional flow into top and bottom flow fragments.
+  /// Splits the bidirectional flow into top/bottom flow fragments and materialized value.
   #[must_use]
-  pub fn split(self) -> (Flow<InTop, OutTop, StreamNotUsed>, Flow<InBottom, OutBottom, StreamNotUsed>) {
-    (self.top, self.bottom)
+  pub fn split(self) -> (Flow<InTop, OutTop, StreamNotUsed>, Flow<InBottom, OutBottom, StreamNotUsed>, Mat) {
+    (self.top, self.bottom, self.mat)
   }
 
   /// Reverses this bidirectional flow, swapping the top and bottom fragments.
