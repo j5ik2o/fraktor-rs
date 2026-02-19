@@ -8,8 +8,8 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::core::{
-  DynValue, KeepRight, RestartSettings, SourceLogic, StreamBufferConfig, StreamCompletion, StreamDone, StreamDslError,
-  StreamError,
+  DynValue, KeepLeft, KeepRight, RestartSettings, SourceLogic, StreamBufferConfig, StreamCompletion, StreamDone,
+  StreamDslError, StreamError,
   lifecycle::{
     DriveOutcome, SharedKillSwitch, Stream, StreamHandleGeneric, StreamHandleId, StreamSharedGeneric, StreamState,
   },
@@ -127,6 +127,23 @@ fn run_with_delegates_to_materializer_and_uses_sink_materialized_value() {
   let materialized = source.run_with(sink, &mut materializer).expect("run_with");
   assert_eq!(materializer.calls, 1);
   assert_eq!(*materialized.materialized(), marker);
+}
+
+#[test]
+fn source_map_materialized_value_transforms_materialized_value_and_keeps_data_path_behavior() {
+  let (_graph, materialized) = Source::single(1_u32).map_materialized_value(|_| 99_u32).into_parts();
+  assert_eq!(materialized, 99_u32);
+
+  let values = Source::from_array([1_u32, 2_u32, 3_u32])
+    .map_materialized_value(|_| 42_u32)
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2_u32, 3_u32]);
+
+  let graph = Source::single(7_u32).map_materialized_value(|_| 55_u32).to_mat(Sink::ignore(), KeepLeft);
+  let mut materializer = RecordingMaterializer::default();
+  let materialized = graph.run(&mut materializer).expect("materialize");
+  assert_eq!(*materialized.materialized(), 55_u32);
 }
 
 #[test]

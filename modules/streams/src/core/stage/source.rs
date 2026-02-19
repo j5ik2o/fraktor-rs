@@ -485,6 +485,15 @@ where
     Source { graph, mat, _pd: PhantomData }
   }
 
+  /// Maps this source materialized value.
+  #[must_use]
+  pub fn map_materialized_value<Mat2, F>(self, func: F) -> Source<Out, Mat2>
+  where
+    F: FnOnce(Mat) -> Mat2, {
+    let (graph, mat) = self.into_parts();
+    Source { graph, mat: func(mat), _pd: PhantomData }
+  }
+
   /// Connects this source to a sink.
   #[must_use]
   pub fn to<Mat2>(self, sink: Sink<Out, Mat2>) -> RunnableGraph<Mat> {

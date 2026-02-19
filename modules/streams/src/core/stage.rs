@@ -17,6 +17,8 @@ use super::{
 mod bidi_flow;
 /// Flow stage definitions.
 mod flow;
+/// Flow monitor handle.
+mod flow_monitor;
 /// Flow-oriented substream surface.
 mod flow_sub_flow;
 /// Sink stage definitions.
@@ -42,6 +44,7 @@ pub(in crate::core) use flow::{
   partition_definition, prepend_definition, split_after_definition, split_when_definition, unzip_definition,
   unzip_with_definition, zip_all_definition, zip_definition,
 };
+pub use flow_monitor::FlowMonitor;
 pub use flow_sub_flow::FlowSubFlow;
 pub use sink::Sink;
 pub use source::Source;

@@ -69,6 +69,26 @@ where
 }
 
 #[test]
+fn sink_map_materialized_value_transforms_materialized_value_and_keeps_data_path_behavior() {
+  let (_graph, materialized) =
+    Sink::<u32, StreamCompletion<StreamDone>>::ignore().map_materialized_value(|_| 7_u32).into_parts();
+  assert_eq!(materialized, 7_u32);
+
+  let graph = Source::from_array([1_u32, 2_u32, 3_u32])
+    .to_mat(Sink::<u32, StreamCompletion<StreamDone>>::ignore().map_materialized_value(|_| 7_u32), KeepRight);
+  let mut materializer = TestMaterializer::default();
+  let materialized = graph.run(&mut materializer).expect("materialize");
+  for _ in 0..64 {
+    let _ = materialized.handle().drive();
+    if materialized.handle().state().is_terminal() {
+      break;
+    }
+  }
+  assert_eq!(*materialized.materialized(), 7_u32);
+  assert!(materialized.handle().state().is_terminal());
+}
+
+#[test]
 fn sink_collect_returns_all_elements() {
   let completion = run_source_with_sink(Source::from_array([1_u32, 2, 3]), Sink::collect());
   assert_eq!(completion, Completion::Ready(Ok(vec![1_u32, 2, 3])));

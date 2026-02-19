@@ -1,3 +1,4 @@
+use alloc::collections::VecDeque;
 use core::{any::TypeId, future::Future, pin::Pin, task::Poll};
 
 use fraktor_utils_rs::core::{
@@ -1374,6 +1375,111 @@ fn cross_operator_backpressure_propagates_through_substream_and_async_boundary()
 }
 
 #[test]
+fn conflate_continues_aggregating_while_downstream_is_backpressured() {
+  let pulls = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let completion = StreamCompletion::new();
+  let graph = Source::<u32, _>::from_logic(StageKind::Custom, PulsedSourceLogic {
+    schedule: VecDeque::from(vec![Some(1_u32), None, None, Some(2_u32), Some(3_u32), Some(4_u32), Some(5_u32)]),
+    pulls:    pulls.clone(),
+  })
+  .via(Flow::new().conflate(|acc, value| acc + value))
+  .to_mat(Sink::from_logic(StageKind::SinkIgnore, BlockedSinkLogic { completion }), KeepRight);
+  let (plan, _completion) = graph.into_parts();
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::new(1, OverflowPolicy::Block));
+  interpreter.start().expect("start");
+
+  for _ in 0..16 {
+    let _ = interpreter.drive();
+    assert_ne!(interpreter.state(), StreamState::Failed);
+  }
+
+  assert_eq!(interpreter.state(), StreamState::Running);
+  assert_eq!(*pulls.lock(), 8_u32);
+}
+
+#[test]
+fn conflate_emits_aggregated_value_when_downstream_unblocks() {
+  let gate_open = ArcShared::new(SpinSyncMutex::new(false));
+  let received = ArcShared::new(SpinSyncMutex::new(alloc::vec::Vec::<u32>::new()));
+  let completion = StreamCompletion::new();
+
+  struct GatedSinkLogic {
+    gate_open:  ArcShared<SpinSyncMutex<bool>>,
+    received:   ArcShared<SpinSyncMutex<alloc::vec::Vec<u32>>>,
+    completion: StreamCompletion<StreamDone>,
+  }
+
+  impl SinkLogic for GatedSinkLogic {
+    fn can_accept_input(&self) -> bool {
+      *self.gate_open.lock()
+    }
+
+    fn on_start(&mut self, demand: &mut DemandTracker) -> Result<(), StreamError> {
+      demand.request(8)
+    }
+
+    fn on_push(&mut self, input: DynValue, demand: &mut DemandTracker) -> Result<SinkDecision, StreamError> {
+      let value = *input.downcast::<u32>().map_err(|_| StreamError::TypeMismatch)?;
+      self.received.lock().push(value);
+      demand.request(1)?;
+      Ok(SinkDecision::Continue)
+    }
+
+    fn on_complete(&mut self) -> Result<(), StreamError> {
+      self.completion.complete(Ok(StreamDone::new()));
+      Ok(())
+    }
+
+    fn on_error(&mut self, error: StreamError) {
+      self.completion.complete(Err(error));
+    }
+  }
+
+  let pulls = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let graph = Source::<u32, _>::from_logic(StageKind::Custom, PulsedSourceLogic {
+    schedule: VecDeque::from(vec![Some(1_u32), Some(2_u32), Some(3_u32), Some(4_u32), Some(5_u32)]),
+    pulls:    pulls.clone(),
+  })
+  .via(Flow::new().conflate(|acc, value| acc + value))
+  .to_mat(
+    Sink::from_logic(StageKind::SinkIgnore, GatedSinkLogic {
+      gate_open: gate_open.clone(),
+      received: received.clone(),
+      completion,
+    }),
+    KeepRight,
+  );
+  let (plan, _completion) = graph.into_parts();
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::new(1, OverflowPolicy::Block));
+  interpreter.start().expect("start");
+
+  // Phase 1: drive while downstream is blocked – conflate processes source values.
+  // The first value drains into the edge buffer (one-iteration delay within the flow loop),
+  // then remaining values aggregate while the buffer is occupied and sink is blocked.
+  for _ in 0..20 {
+    let _ = interpreter.drive();
+    assert_ne!(interpreter.state(), StreamState::Failed);
+  }
+  assert!(*pulls.lock() >= 6);
+  // Sink has received nothing yet because the gate was closed.
+  assert!(received.lock().is_empty());
+
+  // Phase 2: open the gate and drive to completion.
+  *gate_open.lock() = true;
+  for _ in 0..20 {
+    let _ = interpreter.drive();
+  }
+
+  // The first source value (1) drains to the buffer before backpressure takes effect.
+  // Remaining values 2+3+4+5 = 14 are aggregated while the buffer is occupied.
+  // After the gate opens, sink receives 1 first, then the aggregated 14.
+  let values = received.lock().clone();
+  assert_eq!(values.len(), 2, "sink should receive exactly two values");
+  assert_eq!(values[0], 1_u32, "first value is the initial drain before backpressure");
+  assert_eq!(values[1], 14_u32, "second value is the aggregated sum of remaining elements");
+}
+
+#[test]
 fn cross_operator_failure_propagates_from_flat_map_to_substream_merge_chain() {
   struct FailingInnerSourceLogic;
 
@@ -2550,6 +2656,11 @@ struct CountingSourceLogic {
   pulls:     ArcShared<SpinSyncMutex<u32>>,
 }
 
+struct PulsedSourceLogic {
+  schedule: VecDeque<Option<u32>>,
+  pulls:    ArcShared<SpinSyncMutex<u32>>,
+}
+
 struct CancelAwareSequenceSourceLogic {
   next:    u32,
   end:     u32,
@@ -2582,6 +2693,19 @@ impl SourceLogic for CountingSourceLogic {
     } else {
       self.remaining -= 1;
       Ok(Some(Box::new(1_u32)))
+    }
+  }
+}
+
+impl SourceLogic for PulsedSourceLogic {
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    *self.pulls.lock() += 1;
+    let Some(next) = self.schedule.pop_front() else {
+      return Ok(None);
+    };
+    match next {
+      | Some(value) => Ok(Some(Box::new(value))),
+      | None => Err(StreamError::WouldBlock),
     }
   }
 }

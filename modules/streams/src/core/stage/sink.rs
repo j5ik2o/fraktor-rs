@@ -351,6 +351,15 @@ where
     (self.graph, self.mat)
   }
 
+  /// Maps this sink materialized value.
+  #[must_use]
+  pub fn map_materialized_value<Mat2, F>(self, func: F) -> Sink<In, Mat2>
+  where
+    F: FnOnce(Mat) -> Mat2, {
+    let (graph, mat) = self.into_parts();
+    Sink::from_graph(graph, func(mat))
+  }
+
   /// Enables restart semantics with backoff for this sink.
   #[must_use]
   pub fn restart_sink_with_backoff(mut self, min_backoff_ticks: u32, max_restarts: usize) -> Self {
