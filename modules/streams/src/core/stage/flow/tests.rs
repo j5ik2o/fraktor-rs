@@ -4,8 +4,9 @@ use core::{future::Future, pin::Pin, task::Poll};
 use fraktor_utils_rs::core::collections::queue::OverflowPolicy;
 
 use crate::core::{
-  Completion, DynValue, FlowLogic, KeepBoth, KeepLeft, KeepRight, RestartSettings, SourceLogic, StreamDslError,
-  StreamError, StreamNotUsed,
+  Completion, DynValue, FlowLogic, KeepBoth, KeepLeft, KeepRight, RestartSettings, SourceLogic, StreamBufferConfig,
+  StreamDone, StreamDslError, StreamError, StreamNotUsed,
+  lifecycle::{DriveOutcome, Stream},
   operator::{DefaultOperatorCatalog, OperatorCatalog, OperatorKey},
   stage::{Flow, FlowMonitor, Sink, Source, StageKind},
 };
@@ -1364,6 +1365,16 @@ fn grouped_within_flushes_when_tick_window_expires() {
 }
 
 #[test]
+fn grouped_within_expires_window_at_tick_boundary() {
+  let schedule = [Some(1_u32), Some(2_u32)];
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, PulsedSourceLogic::new(&schedule))
+    .via(Flow::new().grouped_within(10, 1).expect("grouped_within"))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![vec![1_u32], vec![2_u32]]);
+}
+
+#[test]
 fn grouped_within_rejects_zero_ticks() {
   let flow = Flow::<u32, u32, StreamNotUsed>::new();
   let result = flow.grouped_within(2, 0);
@@ -1471,6 +1482,29 @@ fn also_to_mat_keeps_data_path_behavior() {
 }
 
 #[test]
+fn also_to_mat_routes_elements_to_side_sink() {
+  let (mut graph, side_completion) =
+    Source::single(9_u32).via_mat(Flow::new().also_to_mat(Sink::head(), KeepRight), KeepRight).into_parts();
+  let (sink_graph, downstream_completion) = Sink::<u32, _>::ignore().into_parts();
+  graph.append(sink_graph);
+  let plan = graph.into_plan().expect("into_plan");
+  let mut stream = Stream::new(plan, StreamBufferConfig::default());
+  stream.start().expect("start");
+  let mut idle_budget = 1024_usize;
+  while !stream.state().is_terminal() {
+    match stream.drive() {
+      | DriveOutcome::Progressed => idle_budget = 1024,
+      | DriveOutcome::Idle => {
+        assert!(idle_budget > 0, "stream stalled");
+        idle_budget = idle_budget.saturating_sub(1);
+      },
+    }
+  }
+  assert_eq!(side_completion.poll(), Completion::Ready(Ok(9_u32)));
+  assert_eq!(downstream_completion.poll(), Completion::Ready(Ok(StreamDone::new())));
+}
+
+#[test]
 fn wire_tap_mat_combines_materialized_values_and_keeps_data_path_behavior() {
   let (graph, materialized) = Flow::<u32, u32, StreamNotUsed>::new().wire_tap_mat(Sink::head(), KeepRight).into_parts();
   let _ = graph;
@@ -1481,6 +1515,29 @@ fn wire_tap_mat_combines_materialized_values_and_keeps_data_path_behavior() {
     .collect_values()
     .expect("collect_values");
   assert_eq!(values, vec![5_u32]);
+}
+
+#[test]
+fn wire_tap_mat_routes_elements_to_side_sink() {
+  let (mut graph, side_completion) =
+    Source::single(4_u32).via_mat(Flow::new().wire_tap_mat(Sink::head(), KeepRight), KeepRight).into_parts();
+  let (sink_graph, downstream_completion) = Sink::<u32, _>::ignore().into_parts();
+  graph.append(sink_graph);
+  let plan = graph.into_plan().expect("into_plan");
+  let mut stream = Stream::new(plan, StreamBufferConfig::default());
+  stream.start().expect("start");
+  let mut idle_budget = 1024_usize;
+  while !stream.state().is_terminal() {
+    match stream.drive() {
+      | DriveOutcome::Progressed => idle_budget = 1024,
+      | DriveOutcome::Idle => {
+        assert!(idle_budget > 0, "stream stalled");
+        idle_budget = idle_budget.saturating_sub(1);
+      },
+    }
+  }
+  assert_eq!(side_completion.poll(), Completion::Ready(Ok(4_u32)));
+  assert_eq!(downstream_completion.poll(), Completion::Ready(Ok(StreamDone::new())));
 }
 
 #[test]

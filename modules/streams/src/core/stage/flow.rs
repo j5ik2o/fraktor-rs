@@ -1739,7 +1739,9 @@ where
 
   /// Adds an also-to compatibility stage.
   #[must_use]
-  pub fn also_to<Mat2>(self, sink: Sink<Out, Mat2>) -> Flow<In, Out, Mat> {
+  pub fn also_to<Mat2>(self, sink: Sink<Out, Mat2>) -> Flow<In, Out, Mat>
+  where
+    Out: Clone, {
     self.also_to_mat(sink, super::keep_left::KeepLeft)
   }
 
@@ -1747,9 +1749,31 @@ where
   #[must_use]
   pub fn also_to_mat<Mat2, C>(self, sink: Sink<Out, Mat2>, _combine: C) -> Flow<In, Out, C::Out>
   where
+    Out: Clone,
     C: MatCombineRule<Mat, Mat2>, {
-    let (graph, left_mat) = self.into_parts();
-    let (_sink_graph, right_mat) = sink.into_parts();
+    let (mut graph, left_mat) = self.into_parts();
+    let (mut sink_graph, right_mat) = sink.into_parts();
+    let broadcast = broadcast_definition::<Out>(2);
+    let broadcast_inlet = broadcast.inlet;
+    let broadcast_outlet = broadcast.outlet;
+    let upstream_outlet = graph.tail_outlet();
+    graph.push_stage(StageDefinition::Flow(broadcast));
+    if let Some(upstream_outlet) = upstream_outlet {
+      let _ = graph.connect(
+        &Outlet::<Out>::from_id(upstream_outlet),
+        &Inlet::<Out>::from_id(broadcast_inlet),
+        MatCombine::KeepLeft,
+      );
+    }
+    let passthrough = map_definition::<Out, Out, _>(|value| value);
+    let passthrough_inlet = passthrough.inlet;
+    sink_graph.push_stage(StageDefinition::Flow(passthrough));
+    graph.append(sink_graph);
+    let _ = graph.connect(
+      &Outlet::<Out>::from_id(broadcast_outlet),
+      &Inlet::<Out>::from_id(passthrough_inlet),
+      MatCombine::KeepLeft,
+    );
     let mat = combine_mat::<Mat, Mat2, C>(left_mat, right_mat);
     Flow::from_graph(graph, mat)
   }
@@ -1787,6 +1811,7 @@ where
   #[must_use]
   pub fn wire_tap_mat<Mat2, C>(self, sink: Sink<Out, Mat2>, combine: C) -> Flow<In, Out, C::Out>
   where
+    Out: Clone,
     C: MatCombineRule<Mat, Mat2>, {
     self.also_to_mat(sink, combine)
   }
@@ -3487,7 +3512,7 @@ where
   fn tick_window_expired(&self) -> bool {
     self
       .window_start_tick
-      .is_some_and(|window_start_tick| self.tick_count > window_start_tick.saturating_add(self.duration_ticks))
+      .is_some_and(|window_start_tick| self.tick_count >= window_start_tick.saturating_add(self.duration_ticks))
   }
 
   fn flush_current(&mut self) {
