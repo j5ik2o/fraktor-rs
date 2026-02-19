@@ -64,7 +64,7 @@ merge/zip系のセマンティクス強化。
 
 | 対象 | パス |
 |------|------|
-| FlowOps | `references/pekko/stream/src/main/scala/org/apache/pekko/stream/scaladsl/FlowOps.scala` |
+| FlowOps | `references/pekko/pekko-stream/src/main/scala/org/apache/pekko/stream/scaladsl/FlowOps.scala` |
 
 ## 既存パターン参考
 
