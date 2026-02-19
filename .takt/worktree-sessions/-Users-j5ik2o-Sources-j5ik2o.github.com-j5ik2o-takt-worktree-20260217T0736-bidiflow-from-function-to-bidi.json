@@ -1,9 +1,0 @@
-{
-  "personaSessions": {
-    "planner": "8ccc4992-2edc-4b70-88cf-176b0488cfdc",
-    "coder": "dc6f1677-ed28-4b08-b44a-71c6f745cb14",
-    "ai-antipattern-reviewer": "044fe093-22cc-418b-93c5-90bb83f0b300"
-  },
-  "updatedAt": "2026-02-17T08:00:29.573Z",
-  "provider": "claude"
-}
