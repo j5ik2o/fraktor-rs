@@ -1,0 +1,169 @@
+name: critical-bug-fix
+description: 既存コードの致命的バグ（ロジック・セキュリティ・並行処理）を検出し自動修正する
+piece_config:
+  provider_options:
+    codex:
+      network_access: true
+    opencode:
+      network_access: true
+max_movements: 20
+initial_movement: scan
+
+personas:
+  logic-bug-scanner: ../facets/personas/logic-bug-scanner.md
+  concurrency-bug-scanner: ../facets/personas/concurrency-bug-scanner.md
+
+instructions:
+  scan-critical-bugs: ../facets/instructions/scan-critical-bugs.md
+  fix-critical-bugs: ../facets/instructions/fix-critical-bugs.md
+
+report_formats:
+  bug-scan-report: ../facets/output-contracts/bug-scan-report.md
+
+loop_monitors:
+  - cycle:
+      - scan
+      - fix
+    threshold: 3
+    judge:
+      persona: supervisor
+      instruction_template: |
+        scan と fix のループが {cycle_count} 回繰り返されました。
+
+        各サイクルのレポートを確認し、このループが健全（進捗がある）か、
+        非生産的（同じ問題を繰り返している）かを判断してください。
+
+        **参照するレポート:**
+        - ロジックバグ: {report:01-logic-scan.md}
+        - セキュリティ: {report:02-security-scan.md}
+        - 並行処理: {report:03-concurrency-scan.md}
+
+        **判断基準:**
+        - 前回から問題件数が減少しているか
+        - 同じ finding_id が persists に残り続けていないか
+        - 修正が実際にコードに反映されているか
+      rules:
+        - condition: 健全（進捗あり）
+          next: scan
+        - condition: 非生産的（改善なし）
+          next: supervise
+
+movements:
+  - name: scan
+    parallel:
+      - name: logic-scan
+        edit: false
+        persona: logic-bug-scanner
+        policy: review
+        allowed_tools:
+          - Read
+          - Glob
+          - Grep
+          - Bash
+        instruction: scan-critical-bugs
+        output_contracts:
+          report:
+            - name: 01-logic-scan.md
+              format: bug-scan-report
+        rules:
+          - condition: バグなし
+          - condition: バグあり
+
+      - name: security-scan
+        edit: false
+        persona: security-reviewer
+        policy: review
+        knowledge: security
+        allowed_tools:
+          - Read
+          - Glob
+          - Grep
+          - Bash
+        instruction: scan-critical-bugs
+        output_contracts:
+          report:
+            - name: 02-security-scan.md
+              format: bug-scan-report
+        rules:
+          - condition: バグなし
+          - condition: バグあり
+
+      - name: concurrency-scan
+        edit: false
+        persona: concurrency-bug-scanner
+        policy: review
+        allowed_tools:
+          - Read
+          - Glob
+          - Grep
+          - Bash
+        instruction: scan-critical-bugs
+        output_contracts:
+          report:
+            - name: 03-concurrency-scan.md
+              format: bug-scan-report
+        rules:
+          - condition: バグなし
+          - condition: バグあり
+
+    rules:
+      - condition: all("バグなし")
+        next: supervise
+      - condition: any("バグあり")
+        next: fix
+
+  - name: fix
+    edit: true
+    persona: coder
+    policy:
+      - coding
+      - testing
+      - ../facets/policies/fraktor-coding.md
+    session: refresh
+    allowed_tools:
+      - Read
+      - Glob
+      - Grep
+      - Edit
+      - Write
+      - Bash
+    required_permission_mode: edit
+    pass_previous_response: false
+    instruction: fix-critical-bugs
+    output_contracts:
+      report:
+        - name: coder-scope.md
+          format: coder-scope
+        - name: coder-decisions.md
+          format: coder-decisions
+    rules:
+      - condition: 修正完了
+        next: scan
+      - condition: 修正不能な問題のみ残っている
+        next: supervise
+      - condition: 判断できない、情報不足
+        next: supervise
+
+  - name: supervise
+    edit: false
+    persona: supervisor
+    policy: review
+    allowed_tools:
+      - Read
+      - Glob
+      - Grep
+      - Bash
+    pass_previous_response: false
+    instruction: supervise
+    output_contracts:
+      report:
+        - name: supervisor-validation.md
+          format: supervisor-validation
+        - name: summary.md
+          format: summary
+          use_judge: false
+    rules:
+      - condition: すべて問題なし
+        next: COMPLETE
+      - condition: 未対応のバグが残っている
+        next: fix
