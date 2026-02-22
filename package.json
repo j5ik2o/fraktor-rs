@@ -10,7 +10,10 @@
     "sdd:impl": "takt --pipeline --skip-git --create-worktree no -w sdd-impl -t",
     "sdd:validate-impl": "takt --pipeline --skip-git --create-worktree no -w sdd-validate-impl -t",
     "steering": "takt --pipeline --skip-git --create-worktree no -w steering -t",
-    "steering:custom": "takt --pipeline --skip-git --create-worktree no -w steering-custom -t"
+    "steering:custom": "takt --pipeline --skip-git --create-worktree no -w steering-custom -t",
+    "stub-elimination": "takt --pipeline --skip-git --create-worktree no -w stub-elimination -t",
+    "streams-phase2": "takt --pipeline --skip-git --create-worktree no -w streams-phase2 -t",
+    "critical-bug-fix": "takt --pipeline --skip-git --create-worktree no -w critical-bug-fix -t"
   },
   "devDependencies": {
     "takt": "^0.22.0"
