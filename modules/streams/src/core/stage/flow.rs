@@ -1752,28 +1752,62 @@ where
     self.merge(fan_in)
   }
 
-  /// Adds a merge-preferred compatibility stage.
+  /// Adds a merge-preferred stage that prioritizes slot 0 (preferred) input.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `fan_in` is zero.
   #[must_use]
-  pub fn merge_preferred(self, fan_in: usize) -> Flow<In, Out, Mat> {
-    self.merge(fan_in)
+  pub fn merge_preferred(mut self, fan_in: usize) -> Flow<In, Out, Mat> {
+    assert!(fan_in > 0, "fan_in must be greater than zero");
+    let definition = merge_preferred_definition::<Out>(fan_in);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
-  /// Adds a merge-prioritized compatibility stage.
+  /// Adds a merge-prioritized stage with equal weights across all input ports.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `fan_in` is zero.
   #[must_use]
-  pub fn merge_prioritized(self, fan_in: usize) -> Flow<In, Out, Mat> {
-    self.merge(fan_in)
+  pub fn merge_prioritized(mut self, fan_in: usize) -> Flow<In, Out, Mat> {
+    assert!(fan_in > 0, "fan_in must be greater than zero");
+    let equal_priorities: Vec<usize> = vec![1; fan_in];
+    let definition = merge_prioritized_definition::<Out>(fan_in, &equal_priorities);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
-  /// Adds a merge-prioritized-n compatibility stage.
+  /// Adds a merge-prioritized stage with custom weight priorities per input port.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `fan_in` is zero, when `priorities.len() != fan_in`,
+  /// or when any priority is zero.
   #[must_use]
-  pub fn merge_prioritized_n(self, fan_in: usize, _priorities: &[usize]) -> Flow<In, Out, Mat> {
-    self.merge(fan_in)
-  }
-
-  /// Adds a merge-sorted compatibility stage.
-  #[must_use]
-  pub fn merge_sorted(self, fan_in: usize) -> Flow<In, Out, Mat> {
-    self.merge(fan_in)
+  pub fn merge_prioritized_n(mut self, fan_in: usize, priorities: &[usize]) -> Flow<In, Out, Mat> {
+    assert!(fan_in > 0, "fan_in must be greater than zero");
+    assert_eq!(priorities.len(), fan_in, "priorities length must match fan_in");
+    assert!(priorities.iter().all(|&p| p > 0), "priorities must be positive");
+    let definition = merge_prioritized_definition::<Out>(fan_in, priorities);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
   /// Adds an or-else compatibility stage.
@@ -2011,6 +2045,30 @@ where
         }
       })
       .flatten_optional()
+  }
+}
+
+impl<In, Out, Mat> Flow<In, Out, Mat>
+where
+  In: Send + Sync + 'static,
+  Out: Ord + Send + Sync + 'static,
+{
+  /// Adds a merge-sorted stage that merges pre-sorted inputs into a single sorted output.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `fan_in` is zero.
+  #[must_use]
+  pub fn merge_sorted(mut self, fan_in: usize) -> Flow<In, Out, Mat> {
+    assert!(fan_in > 0, "fan_in must be greater than zero");
+    let definition = merge_sorted_definition::<Out>(fan_in);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 }
 
@@ -2975,6 +3033,81 @@ where
   let logic = MergeLogic::<In> { fan_in, _pd: PhantomData };
   FlowDefinition {
     kind:        StageKind::FlowMerge,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(in crate::core) fn merge_preferred_definition<In>(fan_in: usize) -> FlowDefinition
+where
+  In: Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = MergePreferredLogic::<In> {
+    fan_in,
+    edge_slots: Vec::with_capacity(fan_in),
+    pending: Vec::with_capacity(fan_in),
+    source_done: false,
+  };
+  FlowDefinition {
+    kind:        StageKind::FlowMergePreferred,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(in crate::core) fn merge_prioritized_definition<In>(fan_in: usize, priorities: &[usize]) -> FlowDefinition
+where
+  In: Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = MergePrioritizedLogic::<In> {
+    fan_in,
+    priorities: priorities.to_vec(),
+    edge_slots: Vec::with_capacity(fan_in),
+    pending: Vec::with_capacity(fan_in),
+    credits: Vec::with_capacity(fan_in),
+    current: 0,
+    source_done: false,
+  };
+  FlowDefinition {
+    kind:        StageKind::FlowMergePrioritized,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(in crate::core) fn merge_sorted_definition<In>(fan_in: usize) -> FlowDefinition
+where
+  In: Ord + Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = MergeSortedLogic::<In> {
+    fan_in,
+    edge_slots: Vec::with_capacity(fan_in),
+    pending: Vec::with_capacity(fan_in),
+    source_done: false,
+  };
+  FlowDefinition {
+    kind:        StageKind::FlowMergeSorted,
     inlet:       inlet.id(),
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
@@ -4909,6 +5042,328 @@ where
 
   fn expected_fan_in(&self) -> Option<usize> {
     Some(self.fan_in)
+  }
+}
+
+struct MergePreferredLogic<In> {
+  fan_in:      usize,
+  edge_slots:  Vec<usize>,
+  pending:     Vec<VecDeque<In>>,
+  source_done: bool,
+}
+
+impl<In> MergePreferredLogic<In>
+where
+  In: Send + Sync + 'static,
+{
+  fn slot_for_edge(&mut self, edge_index: usize) -> Result<usize, StreamError> {
+    if let Some(position) = self.edge_slots.iter().position(|index| *index == edge_index) {
+      return Ok(position);
+    }
+    if self.edge_slots.len() >= self.fan_in {
+      return Err(StreamError::InvalidConnection);
+    }
+    let insert_at = self.edge_slots.partition_point(|index| *index < edge_index);
+    self.edge_slots.insert(insert_at, edge_index);
+    self.pending.insert(insert_at, VecDeque::new());
+    Ok(insert_at)
+  }
+
+  fn pop_preferred(&mut self) -> Option<In> {
+    if self.pending.is_empty() {
+      return None;
+    }
+    // slot 0 はpreferred入力。常に最初にチェックする。
+    if let Some(value) = self.pending[0].pop_front() {
+      return Some(value);
+    }
+    // preferred が空の場合のみ他のスロットから取得
+    for slot in 1..self.pending.len() {
+      if let Some(value) = self.pending[slot].pop_front() {
+        return Some(value);
+      }
+    }
+    None
+  }
+}
+
+impl<In> FlowLogic for MergePreferredLogic<In>
+where
+  In: Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    self.apply_with_edge(0, input)
+  }
+
+  fn apply_with_edge(&mut self, edge_index: usize, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    if self.fan_in == 0 {
+      return Err(StreamError::InvalidConnection);
+    }
+    let value = downcast_value::<In>(input)?;
+    let slot = self.slot_for_edge(edge_index)?;
+    self.pending[slot].push_back(value);
+    if let Some(next) = self.pop_preferred() {
+      return Ok(vec![Box::new(next) as DynValue]);
+    }
+    Ok(Vec::new())
+  }
+
+  fn expected_fan_in(&self) -> Option<usize> {
+    Some(self.fan_in)
+  }
+
+  fn on_source_done(&mut self) -> Result<(), StreamError> {
+    self.source_done = true;
+    Ok(())
+  }
+
+  fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
+    if !self.source_done {
+      return Ok(Vec::new());
+    }
+    let Some(next) = self.pop_preferred() else {
+      return Ok(Vec::new());
+    };
+    Ok(vec![Box::new(next) as DynValue])
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.edge_slots.clear();
+    self.pending.clear();
+    self.source_done = false;
+    Ok(())
+  }
+}
+
+struct MergePrioritizedLogic<In> {
+  fan_in:      usize,
+  priorities:  Vec<usize>,
+  edge_slots:  Vec<usize>,
+  pending:     Vec<VecDeque<In>>,
+  credits:     Vec<usize>,
+  current:     usize,
+  source_done: bool,
+}
+
+impl<In> MergePrioritizedLogic<In>
+where
+  In: Send + Sync + 'static,
+{
+  fn slot_for_edge(&mut self, edge_index: usize) -> Result<usize, StreamError> {
+    if let Some(position) = self.edge_slots.iter().position(|index| *index == edge_index) {
+      return Ok(position);
+    }
+    if self.edge_slots.len() >= self.fan_in {
+      return Err(StreamError::InvalidConnection);
+    }
+    let insert_at = self.edge_slots.partition_point(|index| *index < edge_index);
+    self.edge_slots.insert(insert_at, edge_index);
+    self.pending.insert(insert_at, VecDeque::new());
+    // 仮クレジットを挿入後、全スロットのクレジットを再計算する。
+    // 挿入によりスロットがシフトするため、個別設定だとpriorities[slot]との不整合が発生する。
+    self.credits.insert(insert_at, 0);
+    self.refill_credits();
+    if insert_at <= self.current && self.edge_slots.len() > 1 {
+      self.current = self.current.saturating_add(1) % self.edge_slots.len();
+    }
+    Ok(insert_at)
+  }
+
+  fn refill_credits(&mut self) {
+    for (slot, credit) in self.credits.iter_mut().enumerate() {
+      *credit = self.priorities[slot];
+    }
+  }
+
+  fn pop_prioritized(&mut self) -> Option<In> {
+    if self.pending.is_empty() {
+      return None;
+    }
+    let len = self.pending.len();
+    // 加重ラウンドロビン: 現在のスロットからクレジットに基づいて要素を取得
+    for _ in 0..len {
+      let slot = self.current % len;
+      if self.credits[slot] > 0 {
+        if let Some(value) = self.pending[slot].pop_front() {
+          self.credits[slot] = self.credits[slot].saturating_sub(1);
+          if self.credits[slot] == 0 {
+            self.current = (slot + 1) % len;
+          }
+          return Some(value);
+        }
+      }
+      self.current = (slot + 1) % len;
+    }
+    // 全クレジット消費済み → 再充填して再試行
+    self.refill_credits();
+    for _ in 0..len {
+      let slot = self.current % len;
+      if let Some(value) = self.pending[slot].pop_front() {
+        self.credits[slot] = self.credits[slot].saturating_sub(1);
+        if self.credits[slot] == 0 {
+          self.current = (slot + 1) % len;
+        }
+        return Some(value);
+      }
+      self.current = (slot + 1) % len;
+    }
+    None
+  }
+}
+
+impl<In> FlowLogic for MergePrioritizedLogic<In>
+where
+  In: Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    self.apply_with_edge(0, input)
+  }
+
+  fn apply_with_edge(&mut self, edge_index: usize, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    if self.fan_in == 0 {
+      return Err(StreamError::InvalidConnection);
+    }
+    let value = downcast_value::<In>(input)?;
+    let slot = self.slot_for_edge(edge_index)?;
+    self.pending[slot].push_back(value);
+    if let Some(next) = self.pop_prioritized() {
+      return Ok(vec![Box::new(next) as DynValue]);
+    }
+    Ok(Vec::new())
+  }
+
+  fn expected_fan_in(&self) -> Option<usize> {
+    Some(self.fan_in)
+  }
+
+  fn on_source_done(&mut self) -> Result<(), StreamError> {
+    self.source_done = true;
+    Ok(())
+  }
+
+  fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
+    if !self.source_done {
+      return Ok(Vec::new());
+    }
+    let Some(next) = self.pop_prioritized() else {
+      return Ok(Vec::new());
+    };
+    Ok(vec![Box::new(next) as DynValue])
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.edge_slots.clear();
+    self.pending.clear();
+    self.credits.clear();
+    self.current = 0;
+    self.source_done = false;
+    Ok(())
+  }
+}
+
+struct MergeSortedLogic<In> {
+  fan_in:      usize,
+  edge_slots:  Vec<usize>,
+  pending:     Vec<VecDeque<In>>,
+  source_done: bool,
+}
+
+impl<In> MergeSortedLogic<In>
+where
+  In: Ord + Send + Sync + 'static,
+{
+  fn slot_for_edge(&mut self, edge_index: usize) -> Result<usize, StreamError> {
+    if let Some(position) = self.edge_slots.iter().position(|index| *index == edge_index) {
+      return Ok(position);
+    }
+    if self.edge_slots.len() >= self.fan_in {
+      return Err(StreamError::InvalidConnection);
+    }
+    let insert_at = self.edge_slots.partition_point(|index| *index < edge_index);
+    self.edge_slots.insert(insert_at, edge_index);
+    self.pending.insert(insert_at, VecDeque::new());
+    Ok(insert_at)
+  }
+
+  fn pop_sorted(&mut self) -> Option<In> {
+    if self.pending.is_empty() {
+      return None;
+    }
+    // source_done前は全fan_inスロットが登録され、かつ全てに要素が揃うのを待つ
+    if !self.source_done {
+      if self.pending.len() < self.fan_in {
+        return None;
+      }
+      let all_have_data = self.pending.iter().all(|queue| !queue.is_empty());
+      if !all_have_data {
+        return None;
+      }
+    }
+    // 全スロットの先頭要素を比較して最小値のスロットを選択
+    let mut min_slot: Option<usize> = None;
+    for (slot, queue) in self.pending.iter().enumerate() {
+      if let Some(front) = queue.front() {
+        match min_slot {
+          | None => min_slot = Some(slot),
+          | Some(current_min) => {
+            if let Some(current_front) = self.pending[current_min].front() {
+              if front < current_front {
+                min_slot = Some(slot);
+              }
+            }
+          },
+        }
+      }
+    }
+    min_slot.and_then(|slot| self.pending[slot].pop_front())
+  }
+}
+
+impl<In> FlowLogic for MergeSortedLogic<In>
+where
+  In: Ord + Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    self.apply_with_edge(0, input)
+  }
+
+  fn apply_with_edge(&mut self, edge_index: usize, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    if self.fan_in == 0 {
+      return Err(StreamError::InvalidConnection);
+    }
+    let value = downcast_value::<In>(input)?;
+    let slot = self.slot_for_edge(edge_index)?;
+    self.pending[slot].push_back(value);
+    if let Some(next) = self.pop_sorted() {
+      return Ok(vec![Box::new(next) as DynValue]);
+    }
+    Ok(Vec::new())
+  }
+
+  fn expected_fan_in(&self) -> Option<usize> {
+    Some(self.fan_in)
+  }
+
+  fn on_source_done(&mut self) -> Result<(), StreamError> {
+    self.source_done = true;
+    Ok(())
+  }
+
+  fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
+    if !self.source_done {
+      return Ok(Vec::new());
+    }
+    let Some(next) = self.pop_sorted() else {
+      return Ok(Vec::new());
+    };
+    Ok(vec![Box::new(next) as DynValue])
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.edge_slots.clear();
+    self.pending.clear();
+    self.source_done = false;
+    Ok(())
   }
 }
 
