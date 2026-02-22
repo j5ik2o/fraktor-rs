@@ -227,6 +227,10 @@ impl StreamGraph {
     self.nodes.last().and_then(|node| node.stage.outlet())
   }
 
+  pub(in crate::core) fn into_stages(self) -> Vec<StageDefinition> {
+    self.nodes.into_iter().map(|node| node.stage).collect()
+  }
+
   pub(in crate::core) fn expected_fan_out_for_outlet(&self, outlet: PortId) -> Option<usize> {
     for node in &self.nodes {
       if let StageDefinition::Flow(definition) = &node.stage

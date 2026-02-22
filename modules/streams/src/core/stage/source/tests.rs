@@ -476,6 +476,42 @@ fn source_lazy_single_alias_emits_factory_value() {
 }
 
 #[test]
+fn source_lazy_source_emits_all_elements_from_factory() {
+  let values = Source::lazy_source(|| Source::from_array([1_u32, 2, 3])).collect_values().expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2, 3]);
+}
+
+#[test]
+fn source_lazy_source_defers_factory_call() {
+  let called = ArcShared::new(SpinSyncMutex::new(false));
+  let called_clone = called.clone();
+  let source = Source::lazy_source(move || {
+    *called_clone.lock() = true;
+    Source::from_array([42_u32])
+  });
+  // ファクトリはまだ呼ばれていない
+  assert!(!*called.lock());
+  let values = source.collect_values().expect("collect_values");
+  // ファクトリが呼ばれ、値が取得される
+  assert!(*called.lock());
+  assert_eq!(values, vec![42_u32]);
+}
+
+#[test]
+fn source_lazy_source_with_empty_factory_completes_immediately() {
+  let values = Source::<u32, _>::lazy_source(Source::empty).collect_values().expect("collect_values");
+  assert_eq!(values, Vec::<u32>::new());
+}
+
+#[test]
+fn source_lazy_source_with_mapped_source_emits_transformed() {
+  let values = Source::lazy_source(|| Source::from_array([1_u32, 2, 3]).map(|v| v * 10))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![10_u32, 20, 30]);
+}
+
+#[test]
 fn source_maybe_alias_matches_from_option_behavior() {
   let values = Source::maybe(Some(11_u32)).collect_values().expect("collect_values");
   assert_eq!(values, vec![11_u32]);
