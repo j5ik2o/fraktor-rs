@@ -11,6 +11,7 @@ mod shape;
 mod sink_shape;
 mod source_shape;
 mod stream_shape;
+mod uniform_fan_in_shape;
 
 pub use bidi_shape::BidiShape;
 pub use closed_shape::ClosedShape;
@@ -22,3 +23,4 @@ pub use shape::Shape;
 pub use sink_shape::SinkShape;
 pub use source_shape::SourceShape;
 pub use stream_shape::StreamShape;
+pub use uniform_fan_in_shape::UniformFanInShape;

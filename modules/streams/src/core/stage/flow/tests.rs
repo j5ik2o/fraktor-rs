@@ -5,9 +5,10 @@ use fraktor_utils_rs::core::collections::queue::OverflowPolicy;
 
 use crate::core::{
   Completion, DynValue, FlowLogic, KeepBoth, KeepLeft, KeepRight, RestartSettings, SourceLogic, StreamBufferConfig,
-  StreamDone, StreamDslError, StreamError, StreamNotUsed,
+  StreamCompletion, StreamDone, StreamDslError, StreamError, StreamNotUsed,
   lifecycle::{DriveOutcome, Stream},
   operator::{DefaultOperatorCatalog, OperatorCatalog, OperatorKey},
+  shape::UniformFanInShape,
   stage::{Flow, FlowMonitor, Sink, Source, StageKind},
 };
 
@@ -1631,6 +1632,7 @@ fn flow_map_materialized_value_transforms_materialized_value_and_keeps_data_path
     .expect("collect_values");
   assert_eq!(values, vec![5_u32]);
 }
+<<<<<<< HEAD
 
 
 // --- backpressure_timeout ---
@@ -2120,4 +2122,107 @@ fn merge_sorted_logic_on_restart_clears_state() {
 
   let drained = logic.drain_pending().expect("drain");
   assert!(drained.is_empty());
+}
+
+// --- merge_latest tests ---
+
+#[test]
+fn merge_latest_wraps_single_path_value_into_vec() {
+  let values = Source::single(7_u32)
+    .via(Flow::new().merge_latest(1))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![vec![7_u32]]);
+}
+
+#[test]
+#[should_panic(expected = "fan_in must be greater than zero")]
+fn merge_latest_rejects_zero_fan_in() {
+  let flow = Flow::<u32, u32, StreamNotUsed>::new();
+  let _ = flow.merge_latest(0);
+}
+
+#[test]
+fn merge_latest_emits_latest_snapshot_on_each_update() {
+  use alloc::vec;
+  use crate::core::{DynValue, FlowLogic, StreamError, downcast_value};
+  use super::merge_latest_definition;
+
+  let def = merge_latest_definition::<u32>(2);
+  let mut logic = def.logic;
+
+  // edge 0: 値10 → 全スロット未充填のためemitなし
+  let result = logic.apply_with_edge(0, Box::new(10_u32) as DynValue).expect("apply edge 0");
+  assert!(result.is_empty());
+
+  // edge 1: 値20 → 全スロット充填。Vec[10, 20]をemit
+  let result = logic.apply_with_edge(1, Box::new(20_u32) as DynValue).expect("apply edge 1");
+  assert_eq!(result.len(), 1);
+  let snapshot = downcast_value::<Vec<u32>>(result.into_iter().next().unwrap()).expect("downcast");
+  assert_eq!(snapshot, vec![10, 20]);
+
+  // edge 0: 値30 → latestが[30, 20]に更新
+  let result = logic.apply_with_edge(0, Box::new(30_u32) as DynValue).expect("apply edge 0 again");
+  assert_eq!(result.len(), 1);
+  let snapshot = downcast_value::<Vec<u32>>(result.into_iter().next().unwrap()).expect("downcast");
+  assert_eq!(snapshot, vec![30, 20]);
+}
+
+// --- watch_termination tests ---
+
+#[test]
+fn watch_termination_passes_through_elements() {
+  let values = Source::single(42_u32)
+    .via(Flow::new().watch_termination_mat(KeepLeft))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![42_u32]);
+}
+
+#[test]
+fn watch_termination_completes_stream_completion_handle() {
+  let (graph, completion) = Flow::<u32, u32, StreamNotUsed>::new().watch_termination_mat(KeepRight).into_parts();
+  // 実行前はPending
+  assert_eq!(completion.poll(), Completion::Pending);
+
+  let source_flow: Flow<u32, u32, StreamCompletion<()>> = Flow::from_graph(graph, completion.clone());
+  let values = Source::single(1_u32).via(source_flow).collect_values().expect("collect_values");
+  assert_eq!(values, vec![1_u32]);
+
+  // 実行後はReady
+  assert_eq!(completion.poll(), Completion::Ready(Ok(())));
+}
+
+#[test]
+fn watch_termination_mat_keeps_both() {
+  let (_graph, (left, right)) =
+    Flow::<u32, u32, StreamNotUsed>::new().watch_termination_mat(KeepBoth).into_parts();
+  assert_eq!(left, StreamNotUsed::new());
+  assert_eq!(right.poll(), Completion::Pending);
+}
+
+// --- UniformFanInShape tests ---
+
+#[test]
+fn uniform_fan_in_shape_creates_with_port_count() {
+  let shape = UniformFanInShape::<u32, u32>::with_port_count(3);
+  assert_eq!(shape.port_count(), 3);
+  assert_eq!(shape.inlets().len(), 3);
+}
+
+#[test]
+fn uniform_fan_in_shape_creates_from_parts() {
+  use crate::core::shape::{Inlet, Outlet};
+  let inlets = alloc::vec![Inlet::<u32>::new(), Inlet::<u32>::new()];
+  let outlet = Outlet::<u64>::new();
+  let shape = UniformFanInShape::new(inlets, outlet);
+  assert_eq!(shape.port_count(), 2);
+  assert_eq!(shape.inlets().len(), 2);
+}
+
+#[test]
+fn uniform_fan_in_shape_zero_ports() {
+  let shape = UniformFanInShape::<u32, u32>::with_port_count(0);
+  assert_eq!(shape.port_count(), 0);
+  assert!(shape.inlets().is_empty());
 }
