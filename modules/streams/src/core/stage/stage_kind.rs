@@ -49,6 +49,14 @@ pub enum StageKind {
   FlowInitialDelay,
   /// Flow stage that forwards elements only within configured tick window.
   FlowTakeWithin,
+  /// Flow stage that fails when downstream backpressure exceeds tick threshold.
+  FlowBackpressureTimeout,
+  /// Flow stage that fails when stream does not complete within tick threshold.
+  FlowCompletionTimeout,
+  /// Flow stage that fails when no elements arrive within tick threshold.
+  FlowIdleTimeout,
+  /// Flow stage that fails when the first element does not arrive within tick threshold.
+  FlowInitialTimeout,
   /// Flow stage that represents an asynchronous execution boundary.
   FlowAsyncBoundary,
   /// Flow stage that groups elements into fixed-size batches.

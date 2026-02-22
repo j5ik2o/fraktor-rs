@@ -1568,3 +1568,131 @@ fn flow_map_materialized_value_transforms_materialized_value_and_keeps_data_path
     .expect("collect_values");
   assert_eq!(values, vec![5_u32]);
 }
+
+// --- backpressure_timeout ---
+
+#[test]
+fn backpressure_timeout_passes_elements_within_threshold() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .via(Flow::new().backpressure_timeout(100).expect("backpressure_timeout"))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2, 3]);
+}
+
+#[test]
+fn backpressure_timeout_fails_when_backpressure_exceeds_threshold() {
+  let result = Source::<u32, _>::from_logic(
+    StageKind::Custom,
+    PulsedSourceLogic::new(&[Some(1), None, None, None, None]),
+  )
+  .via(Flow::new().backpressure_timeout(2).expect("backpressure_timeout"))
+  .collect_values();
+  assert!(matches!(result, Err(StreamError::Timeout { kind: "backpressure", ticks: 2 })));
+}
+
+#[test]
+fn backpressure_timeout_rejects_zero_ticks() {
+  let flow = Flow::<u32, u32, StreamNotUsed>::new();
+  let result = flow.backpressure_timeout(0);
+  assert!(matches!(
+    result,
+    Err(StreamDslError::InvalidArgument { name: "ticks", value: 0, reason: "must be greater than zero" })
+  ));
+}
+
+// --- completion_timeout ---
+
+#[test]
+fn completion_timeout_passes_elements_within_threshold() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .via(Flow::new().completion_timeout(100).expect("completion_timeout"))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2, 3]);
+}
+
+#[test]
+fn completion_timeout_fails_when_stream_exceeds_threshold() {
+  let result = Source::<u32, _>::from_logic(
+    StageKind::Custom,
+    PulsedSourceLogic::new(&[None, None, None, Some(1)]),
+  )
+  .via(Flow::new().completion_timeout(2).expect("completion_timeout"))
+  .collect_values();
+  assert!(matches!(result, Err(StreamError::Timeout { kind: "completion", ticks: 2 })));
+}
+
+#[test]
+fn completion_timeout_rejects_zero_ticks() {
+  let flow = Flow::<u32, u32, StreamNotUsed>::new();
+  let result = flow.completion_timeout(0);
+  assert!(matches!(
+    result,
+    Err(StreamDslError::InvalidArgument { name: "ticks", value: 0, reason: "must be greater than zero" })
+  ));
+}
+
+// --- idle_timeout ---
+
+#[test]
+fn idle_timeout_passes_elements_within_threshold() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .via(Flow::new().idle_timeout(100).expect("idle_timeout"))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2, 3]);
+}
+
+#[test]
+fn idle_timeout_fails_when_no_elements_within_threshold() {
+  let result = Source::<u32, _>::from_logic(
+    StageKind::Custom,
+    PulsedSourceLogic::new(&[None, None, None, Some(1)]),
+  )
+  .via(Flow::new().idle_timeout(2).expect("idle_timeout"))
+  .collect_values();
+  assert!(matches!(result, Err(StreamError::Timeout { kind: "idle", ticks: 2 })));
+}
+
+#[test]
+fn idle_timeout_rejects_zero_ticks() {
+  let flow = Flow::<u32, u32, StreamNotUsed>::new();
+  let result = flow.idle_timeout(0);
+  assert!(matches!(
+    result,
+    Err(StreamDslError::InvalidArgument { name: "ticks", value: 0, reason: "must be greater than zero" })
+  ));
+}
+
+// --- initial_timeout ---
+
+#[test]
+fn initial_timeout_passes_elements_within_threshold() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .via(Flow::new().initial_timeout(100).expect("initial_timeout"))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2, 3]);
+}
+
+#[test]
+fn initial_timeout_fails_when_first_element_exceeds_threshold() {
+  let result = Source::<u32, _>::from_logic(
+    StageKind::Custom,
+    PulsedSourceLogic::new(&[None, None, None, Some(1)]),
+  )
+  .via(Flow::new().initial_timeout(2).expect("initial_timeout"))
+  .collect_values();
+  assert!(matches!(result, Err(StreamError::Timeout { kind: "initial", ticks: 2 })));
+}
+
+#[test]
+fn initial_timeout_rejects_zero_ticks() {
+  let flow = Flow::<u32, u32, StreamNotUsed>::new();
+  let result = flow.initial_timeout(0);
+  assert!(matches!(
+    result,
+    Err(StreamDslError::InvalidArgument { name: "ticks", value: 0, reason: "must be greater than zero" })
+  ));
+}

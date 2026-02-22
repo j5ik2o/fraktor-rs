@@ -178,6 +178,10 @@ impl StreamGraph {
             | StageKind::FlowDelay
             | StageKind::FlowInitialDelay
             | StageKind::FlowTakeWithin
+            | StageKind::FlowBackpressureTimeout
+            | StageKind::FlowCompletionTimeout
+            | StageKind::FlowIdleTimeout
+            | StageKind::FlowInitialTimeout
             | StageKind::FlowBatch
             | StageKind::FlowGroupBy
             | StageKind::FlowRecover

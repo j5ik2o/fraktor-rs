@@ -1590,40 +1590,88 @@ where
     self.flat_map_merge(1, func)
   }
 
-  /// Applies a backpressure-timeout compatibility stage.
+  /// Fails the stream when downstream backpressure exceeds `ticks`.
+  ///
+  /// After the first element arrives, if no subsequent `apply` call occurs
+  /// within `ticks` ticks, the stream fails with [`StreamError::Timeout`].
   ///
   /// # Errors
   ///
   /// Returns [`StreamDslError`] when `ticks` is zero.
-  pub fn backpressure_timeout(self, ticks: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
-    self.take_within(ticks)
+  pub fn backpressure_timeout(mut self, ticks: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
+    let ticks = validate_positive_argument("ticks", ticks)?;
+    let definition = backpressure_timeout_definition::<Out>(ticks as u64);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
-  /// Applies a completion-timeout compatibility stage.
+  /// Fails the stream when it does not complete within `ticks`.
+  ///
+  /// The tick counter starts at stream start. If the stream has not
+  /// completed by the time `tick_count` exceeds `ticks`, the stream
+  /// fails with [`StreamError::Timeout`].
   ///
   /// # Errors
   ///
   /// Returns [`StreamDslError`] when `ticks` is zero.
-  pub fn completion_timeout(self, ticks: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
-    self.take_within(ticks)
+  pub fn completion_timeout(mut self, ticks: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
+    let ticks = validate_positive_argument("ticks", ticks)?;
+    let definition = completion_timeout_definition::<Out>(ticks as u64);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
-  /// Applies an idle-timeout compatibility stage.
+  /// Fails the stream when no element arrives within `ticks`.
+  ///
+  /// The tick counter starts at stream start and resets on every element.
+  /// If the gap between successive elements (or between start and the
+  /// first element) exceeds `ticks`, the stream fails with
+  /// [`StreamError::Timeout`].
   ///
   /// # Errors
   ///
   /// Returns [`StreamDslError`] when `ticks` is zero.
-  pub fn idle_timeout(self, ticks: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
-    self.take_within(ticks)
+  pub fn idle_timeout(mut self, ticks: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
+    let ticks = validate_positive_argument("ticks", ticks)?;
+    let definition = idle_timeout_definition::<Out>(ticks as u64);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
-  /// Applies an initial-timeout compatibility stage.
+  /// Fails the stream when the first element does not arrive within `ticks`.
+  ///
+  /// If `tick_count` exceeds `ticks` before the first `apply` call, the
+  /// stream fails with [`StreamError::Timeout`]. Once the first element
+  /// arrives, this stage becomes a pure pass-through.
   ///
   /// # Errors
   ///
   /// Returns [`StreamDslError`] when `ticks` is zero.
-  pub fn initial_timeout(self, ticks: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
-    self.take_within(ticks)
+  pub fn initial_timeout(mut self, ticks: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
+    let ticks = validate_positive_argument("ticks", ticks)?;
+    let definition = initial_timeout_definition::<Out>(ticks as u64);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
   /// Applies a keep-alive compatibility stage.
@@ -2565,6 +2613,93 @@ where
   };
   FlowDefinition {
     kind:        StageKind::FlowTakeWithin,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(in crate::core) fn backpressure_timeout_definition<In>(duration_ticks: u64) -> FlowDefinition
+where
+  In: Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = BackpressureTimeoutLogic::<In> {
+    duration_ticks,
+    tick_count: 0,
+    last_apply_tick: 0,
+    has_received_element: false,
+    _pd: PhantomData,
+  };
+  FlowDefinition {
+    kind:        StageKind::FlowBackpressureTimeout,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(in crate::core) fn completion_timeout_definition<In>(duration_ticks: u64) -> FlowDefinition
+where
+  In: Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = CompletionTimeoutLogic::<In> { duration_ticks, tick_count: 0, _pd: PhantomData };
+  FlowDefinition {
+    kind:        StageKind::FlowCompletionTimeout,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(in crate::core) fn idle_timeout_definition<In>(duration_ticks: u64) -> FlowDefinition
+where
+  In: Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = IdleTimeoutLogic::<In> { duration_ticks, tick_count: 0, last_element_tick: 0, _pd: PhantomData };
+  FlowDefinition {
+    kind:        StageKind::FlowIdleTimeout,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(in crate::core) fn initial_timeout_definition<In>(duration_ticks: u64) -> FlowDefinition
+where
+  In: Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = InitialTimeoutLogic::<In> {
+    duration_ticks,
+    tick_count: 0,
+    first_element_received: false,
+    _pd: PhantomData,
+  };
+  FlowDefinition {
+    kind:        StageKind::FlowInitialTimeout,
     inlet:       inlet.id(),
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
@@ -3855,6 +3990,34 @@ struct TakeWithinLogic<In> {
   _pd:                PhantomData<fn(In)>,
 }
 
+struct BackpressureTimeoutLogic<In> {
+  duration_ticks:       u64,
+  tick_count:           u64,
+  last_apply_tick:      u64,
+  has_received_element: bool,
+  _pd:                  PhantomData<fn(In)>,
+}
+
+struct CompletionTimeoutLogic<In> {
+  duration_ticks: u64,
+  tick_count:     u64,
+  _pd:            PhantomData<fn(In)>,
+}
+
+struct IdleTimeoutLogic<In> {
+  duration_ticks:    u64,
+  tick_count:        u64,
+  last_element_tick: u64,
+  _pd:               PhantomData<fn(In)>,
+}
+
+struct InitialTimeoutLogic<In> {
+  duration_ticks:         u64,
+  tick_count:             u64,
+  first_element_received: bool,
+  _pd:                    PhantomData<fn(In)>,
+}
+
 struct GroupByLogic<In, Key, F> {
   max_substreams: usize,
   seen_keys:      Vec<Key>,
@@ -4273,6 +4436,106 @@ where
     self.tick_count = 0;
     self.expired = false;
     self.shutdown_requested = false;
+    Ok(())
+  }
+}
+
+impl<In> FlowLogic for BackpressureTimeoutLogic<In>
+where
+  In: Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let value = downcast_value::<In>(input)?;
+    self.has_received_element = true;
+    self.last_apply_tick = self.tick_count;
+    Ok(vec![Box::new(value) as DynValue])
+  }
+
+  fn on_tick(&mut self, tick_count: u64) -> Result<(), StreamError> {
+    self.tick_count = tick_count;
+    if self.has_received_element && (self.tick_count - self.last_apply_tick) > self.duration_ticks {
+      return Err(StreamError::Timeout { kind: "backpressure", ticks: self.duration_ticks });
+    }
+    Ok(())
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.tick_count = 0;
+    self.last_apply_tick = 0;
+    self.has_received_element = false;
+    Ok(())
+  }
+}
+
+impl<In> FlowLogic for CompletionTimeoutLogic<In>
+where
+  In: Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let value = downcast_value::<In>(input)?;
+    Ok(vec![Box::new(value) as DynValue])
+  }
+
+  fn on_tick(&mut self, tick_count: u64) -> Result<(), StreamError> {
+    self.tick_count = tick_count;
+    if self.tick_count > self.duration_ticks {
+      return Err(StreamError::Timeout { kind: "completion", ticks: self.duration_ticks });
+    }
+    Ok(())
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.tick_count = 0;
+    Ok(())
+  }
+}
+
+impl<In> FlowLogic for IdleTimeoutLogic<In>
+where
+  In: Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let value = downcast_value::<In>(input)?;
+    self.last_element_tick = self.tick_count;
+    Ok(vec![Box::new(value) as DynValue])
+  }
+
+  fn on_tick(&mut self, tick_count: u64) -> Result<(), StreamError> {
+    self.tick_count = tick_count;
+    if (self.tick_count - self.last_element_tick) > self.duration_ticks {
+      return Err(StreamError::Timeout { kind: "idle", ticks: self.duration_ticks });
+    }
+    Ok(())
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.tick_count = 0;
+    self.last_element_tick = 0;
+    Ok(())
+  }
+}
+
+impl<In> FlowLogic for InitialTimeoutLogic<In>
+where
+  In: Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let value = downcast_value::<In>(input)?;
+    self.first_element_received = true;
+    Ok(vec![Box::new(value) as DynValue])
+  }
+
+  fn on_tick(&mut self, tick_count: u64) -> Result<(), StreamError> {
+    self.tick_count = tick_count;
+    if !self.first_element_received && self.tick_count > self.duration_ticks {
+      return Err(StreamError::Timeout { kind: "initial", ticks: self.duration_ticks });
+    }
+    Ok(())
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.tick_count = 0;
+    self.first_element_received = false;
     Ok(())
   }
 }

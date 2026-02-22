@@ -45,6 +45,13 @@ pub enum StreamError {
     /// Maximum allowed substream count.
     max_substreams: usize,
   },
+  /// Indicates that a timeout condition was reached.
+  Timeout {
+    /// Timeout kind identifier.
+    kind:  &'static str,
+    /// Configured tick threshold.
+    ticks: u64,
+  },
 }
 
 impl fmt::Display for StreamError {
@@ -68,6 +75,9 @@ impl fmt::Display for StreamError {
       },
       | Self::SubstreamLimitExceeded { max_substreams } => {
         write!(f, "substream limit exceeded: max_substreams={max_substreams}")
+      },
+      | Self::Timeout { kind, ticks } => {
+        write!(f, "{kind} timeout after {ticks} ticks")
       },
     }
   }
