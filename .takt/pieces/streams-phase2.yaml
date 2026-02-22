@@ -17,8 +17,6 @@ movements:
   - name: analyze
     edit: false
     persona: planner
-    provider: codex
-    model: gpt-5.3-codex
     knowledge:
       - fraktor-streams
     instruction: plan
@@ -37,8 +35,6 @@ movements:
   - name: implement
     edit: true
     persona: coder
-    provider: codex
-    model: gpt-5.3-codex
     knowledge:
       - fraktor-streams
     policy:
@@ -63,8 +59,6 @@ movements:
       - name: ai_review
         edit: false
         persona: ai-antipattern-reviewer
-        provider: codex
-        model: gpt-5.3-codex
         instruction: review-ai
         policy:
           - fraktor-coding
@@ -81,8 +75,6 @@ movements:
       - name: supervise
         edit: false
         persona: supervisor
-        provider: codex
-        model: gpt-5.3-codex
         instruction: supervise
         policy:
           - fraktor-coding
@@ -105,8 +97,6 @@ movements:
   - name: fix_both
     edit: true
     persona: coder
-    provider: codex
-    model: gpt-5.3-codex
     knowledge:
       - fraktor-streams
     policy:
