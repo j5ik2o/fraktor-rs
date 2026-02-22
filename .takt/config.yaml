@@ -1,2 +1,17 @@
 provider: claude
 model: opus
+concurrency: 4
+
+persona_providers:
+  coder:
+    provider: claude
+    model: opus
+  planner:
+    provider: codex
+    model: gpt-5.3-codex
+  supervisor:
+    provider: codex
+    model: gpt-5.3-codex
+  ai-antipattern-reviewer:
+    provider: codex
+    model: gpt-5.3-codex
