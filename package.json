@@ -1,0 +1,18 @@
+{
+  "private": true,
+  "scripts": {
+    "sdd": "takt --pipeline --skip-git --create-worktree no -w sdd -t",
+    "sdd:requirements": "takt --pipeline --skip-git --create-worktree no -w sdd-requirements -t",
+    "sdd:validate-gap": "takt --pipeline --skip-git --create-worktree no -w sdd-validate-gap -t",
+    "sdd:design": "takt --pipeline --skip-git --create-worktree no -w sdd-design -t",
+    "sdd:validate-design": "takt --pipeline --skip-git --create-worktree no -w sdd-validate-design -t",
+    "sdd:tasks": "takt --pipeline --skip-git --create-worktree no -w sdd-tasks -t",
+    "sdd:impl": "takt --pipeline --skip-git --create-worktree no -w sdd-impl -t",
+    "sdd:validate-impl": "takt --pipeline --skip-git --create-worktree no -w sdd-validate-impl -t",
+    "steering": "takt --pipeline --skip-git --create-worktree no -w steering -t",
+    "steering:custom": "takt --pipeline --skip-git --create-worktree no -w steering-custom -t"
+  },
+  "devDependencies": {
+    "takt": "^0.22.0"
+  }
+}
