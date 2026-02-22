@@ -1,14 +1,15 @@
 # 技術スタック
-> 最終更新: 2025-01-29
+> 最終更新: 2026-02-22
+updated_at: 2026-02-22T14:07:25Z
 
 ## アーキテクチャ
-ワークスペースは `modules/utils`（crate: `fraktor-utils-rs`）、`modules/actor`（crate: `fraktor-actor-rs`）、`modules/remote`（crate: `fraktor-remote-rs`）、`modules/cluster`（crate: `fraktor-cluster-rs`）、`modules/streams`（crate: `fraktor-streams-rs`）、`modules/persistence`（crate: `fraktor-persistence-rs`）の 6 クレート構成です。各クレートは `core.rs` で no_std ドメインを `#![no_std]` のまま公開し、`std.rs` 以下を `feature = "std"`/`"tokio-executor"` などで有効化する 2 階層モジュールになりました。`fraktor-utils-rs::core` が `RuntimeToolbox` / `NoStdToolbox` / `StdToolbox` を提供し、`fraktor-actor-rs::core` が ActorSystem・SystemMailbox・EventStream を no_std で構築、`std` モジュールが Tokio/ホスト固有の Dispatcher・TickDriver・Builder を後掛けします。`fraktor-remote-rs::core` は RemoteActorRefProvider/EndpointReader/EndpointWriter/RemotingExtension とトランスポート抽象を actor/core 上に積み、`std` モジュールが Tokio TCP・Loopback などの具体的トランスポートを束ねます。`fraktor-cluster-rs` はクラスタ管理・ゴシップ・プレースメントを、`fraktor-streams-rs` はストリーム処理を、`fraktor-persistence-rs` は永続化ランタイムを提供します。supervisor/DeathWatch/EventStream は引き続き system mailbox で `SystemMessage` を先行処理します。
+ワークスペースは `modules/utils`（crate: `fraktor-utils-rs`）、`modules/actor`（crate: `fraktor-actor-rs`）、`modules/remote`（crate: `fraktor-remote-rs`）、`modules/cluster`（crate: `fraktor-cluster-rs`）、`modules/streams`（crate: `fraktor-streams-rs`）、`modules/persistence`（crate: `fraktor-persistence-rs`）の 6 クレート構成です。5 クレート（utils/actor/remote/cluster/streams）は `core.rs` / `std.rs` の 2 階層で、`feature = "std"`/`"tokio-executor"` などで std 機能を有効化します。`fraktor-persistence-rs` は現時点で `core` モジュールを公開面に持つ構成です。`fraktor-utils-rs::core` が `RuntimeToolbox` / `NoStdToolbox` / `StdToolbox` を提供し、`fraktor-actor-rs::core` が ActorSystem・SystemMailbox・EventStream を no_std で構築、`std` モジュールが Tokio/ホスト固有の Dispatcher・TickDriver・Builder を後掛けします。`fraktor-remote-rs::core` は RemoteActorRefProvider/EndpointReader/EndpointWriter/RemotingExtension とトランスポート抽象を actor/core 上に積み、`std` モジュールが Tokio TCP・Loopback などの具体的トランスポートを束ねます。`fraktor-cluster-rs` はクラスタ管理・ゴシップ・プレースメントを、`fraktor-streams-rs` はストリーム処理を、`fraktor-persistence-rs` は永続化ランタイムを提供します。supervisor/DeathWatch/EventStream は引き続き system mailbox で `SystemMessage` を先行処理します。
 
 ## コア技術
-- **言語**: Rust 2024 edition（ワークスペース全体で nightly toolchain を既定とし、`core` 側は `#![no_std]` を前提）。
+- **言語**: Rust 2024 edition（`rust-toolchain.toml` で `nightly-2025-12-01` を固定し、`core` 側は `#![no_std]` を前提）。
 - **フレームワーク / ランタイム**: `fraktor-actor-rs::core` が embassy/裸メタル環境を、`fraktor-actor-rs::std` + `StdToolbox` が Tokio マルチスレッド実行器を担当し、`tokio-executor` feature で TickDriver/Dispatcher/ログ連携をまとめて有効化。
 - **同期基盤**: `portable-atomic(+critical-section)` と `spin` による lock-free/lock-based 混在戦略、`ArcShared` 系の共有所有権プリミティブ。
-- **Tick Driver / Scheduler**: `TickDriverBootstrap` + `SchedulerTickExecutor` がハードウェア/手動/Tokio driver を共通 API で駆動し、`StdTickDriverConfig::tokio_quickstart*` がホスト側のデフォルト構成を 1 行で提供します。
+- **Tick Driver / Scheduler**: `TickDriverBootstrap` + `SchedulerTickExecutor` がハードウェア/手動/Tokio driver を共通 API で駆動し、`TickDriverConfig::tokio_quickstart*` がホスト側のデフォルト構成を 1 行で提供します。
 
 ## 主要ライブラリ
 - `portable-atomic` / `portable-atomic-util`: 割り込み安全なアトミック操作と no_std での `Arc` 代替を提供。
@@ -20,14 +21,14 @@
 
 ## リモーティング / アドレッシング
 - **ActorPathParts & Formatter**: `modules/actor/src/core/actor/actor_path/{parts,formatter}.rs` が system 名・guardian・authority(host/port) を保持し、`ActorPath::root()` で `cellactor` ガーディアンを自動注入します。`modules/actor/src/core/actor/actor_selection/resolver.rs` の `ActorSelectionResolver` は `..` を guardian 境界で遮断し、Pekko の相対選択ルールに追従します。
-- **RemoteAuthorityRegistry**: `modules/actor/src/core/system/remote_authority_registry.rs` が `HashMap<String, AuthorityEntry>` を `ToolboxMutex` で包み、`Unresolved/Connected/Quarantine` の状態を no_std でも駆動します。`VecDeque<AnyMessageGeneric<TB>>` に deferred を蓄積し、`try_defer_send` で隔離中の新規送信を拒否、`poll_quarantine_expiration` と `manual_override_to_connected` で復旧を制御します。
+- **RemoteAuthorityRegistry**: `modules/actor/src/core/system/remote/remote_authority_registry.rs` が `HashMap<String, AuthorityEntry>` を `ToolboxMutex` で包み、`Unresolved/Connected/Quarantine` の状態を no_std でも駆動します。`VecDeque<AnyMessageGeneric<TB>>` に deferred を蓄積し、`try_defer_send` で隔離中の新規送信を拒否、`poll_quarantine_expiration` と `manual_override_to_connected` で復旧を制御します。
 - **RemotingExtension**: `modules/remote/src/core/remoting_extension.rs` が remoting の中核を担い、`RemotingControl`・`RemotingError`・`RemotingExtensionConfig` などを提供します。
 - **イベント観測**: Remoting 由来の InvalidAssociation を `handle_invalid_association` へ集約し、EventStream 通知と同期できるようにしています（spec `pekko-compatible-actor-path` に準拠）。
 
 ## スケジューラ / Tick Driver
-- **コア抽象**: `modules/actor/src/core/scheduler/tick_driver.rs` が `TickDriverBootstrap`・`TickDriverRuntime`・`TickDriverMatrix`・`SchedulerTickExecutor` を提供し、ハードウェア/手動/Tokio driver を単一 API で扱います。
-- **Tokio 構成**: `modules/actor/src/std/scheduler/tick.rs` の `StdTickDriverConfig::tokio_quickstart*` と `tokio_with_handle` が `TickDriverConfig<StdToolbox>` を即時生成し、`docs/guides/tick-driver-quickstart.md` が Quickstart/embedded/manual 向けテンプレを管理します。
-- **観測**: `modules/actor/src/core/event_stream/tick_driver_snapshot.rs` がアクティブ driver のスナップショットを定義し、`modules/actor/src/std/system/base.rs` の `ActorSystem::tick_driver_snapshot` 経由で UI/監視から参照できます。EventStream へは `EventStreamEvent::TickDriver` と `SchedulerTickMetricsProbe` によるメトリクスが流れます。
+- **コア抽象**: `modules/actor/src/core/scheduler/tick_driver.rs` が `TickDriverBootstrap`・`TickDriverFactory`・`TickDriverKind`・`SchedulerTickExecutor` を提供し、ハードウェア/手動/Tokio driver を単一 API で扱います。
+- **Tokio 構成**: `modules/actor/src/std/scheduler/tick.rs` の `TickDriverConfig::tokio_quickstart*` と `tokio_with_handle` が `TickDriverConfig<StdToolbox>` を即時生成し、`docs/guides/tick-driver-quickstart.md` が Quickstart/embedded/manual 向けテンプレを管理します。
+- **観測**: `modules/actor/src/core/event/stream/tick_driver_snapshot.rs` がアクティブ driver のスナップショットを定義し、`modules/actor/src/std/system/base.rs` の `ActorSystem::tick_driver_snapshot` 経由で UI/監視から参照できます。EventStream へは `EventStreamEvent::TickDriver` と `SchedulerTickMetricsProbe` によるメトリクスが流れます。
 
 ## 開発標準
 ### 型安全性
@@ -36,16 +37,16 @@
 
 ### コード品質
 - 各クレートの `#![deny(...)]` で `unwrap/expect`, `todo`, `unimplemented`, 未使用 async などをコンパイルエラー化。
-- カスタム Dylint 群 (`mod-file-lint`, `module-wiring-lint`, `type-per-file-lint`, `tests-location-lint`, `use-placement-lint`, `rustdoc-lint`, `cfg-std-forbid-lint`) でモジュール構造, FQCN import, 1 ファイル 1 構造体, テスト配置, `use` 順序, rustdoc 英語 / 他コメント日本語, `core` 側での `#[cfg(feature = "std")]` 使用禁止を機械的に担保。
+- カスタム Dylint 群 (`mod-file-lint`, `module-wiring-lint`, `type-per-file-lint`, `tests-location-lint`, `use-placement-lint`, `rustdoc-lint`, `cfg-std-forbid-lint`, `ambiguous-suffix-lint`) でモジュール構造, FQCN import, 1 ファイル 1 構造体, テスト配置, `use` 順序, rustdoc 英語 / 他コメント日本語, `core` 側での `#[cfg(feature = "std")]` 使用禁止, 曖昧サフィックス禁止を機械的に担保。
 - rustdoc (`///`, `//!`) は英語、それ以外のコメント・ドキュメントは日本語で記述する運用を徹底。
 
 ### テスト
 - モジュール単位テストは `<module>/tests.rs` に配置し、公開 API の統合テストは `modules/actor/tests/*.rs` で ActorSystem シナリオ（DeathWatch, Supervisor, EventStream, TickDriver 等）を網羅。
-- `scripts/ci-check.sh` の `no-std`, `std`, `embedded`, `doc` サブコマンドでターゲット別の検証を自動化し、`THUMB` ターゲット (`thumbv6m`, `thumbv8m.main`) までカバー。
+- `scripts/ci-check.sh` の `no-std`, `std`, `doc`, `test`, `examples`, `actor-path-e2e`, `perf` サブコマンドでターゲット別の検証を自動化し、`no-std` で `thumbv8m.main-none-eabi` までカバー。
 
 ## 開発環境
 ### 必須ツール
-- Rust nightly toolchain（`RUSTUP_TOOLCHAIN` 未設定時は `nightly` を既定）
+- Rust nightly toolchain（`rust-toolchain.toml` で `nightly-2025-12-01` を固定。`scripts/ci-check.sh` はこの値を優先）
 - `cargo-dylint` と Rust コンポーネント `rustc-dev` / `llvm-tools-preview`（カスタム lint ビルド用）
 - `rustup target add thumbv6m-none-eabi thumbv8m.main-none-eabi`（no_std クロスチェック）
 - 任意: `Tokio` 実行用のホスト OS ロガー、`embassy` 対応ハードウェア SDK
@@ -54,9 +55,10 @@
 ```bash
 scripts/ci-check.sh lint                 # rustfmt --check
 scripts/ci-check.sh dylint module-wiring-lint
+scripts/ci-check.sh dylint ambiguous-suffix-lint
 scripts/ci-check.sh clippy               # -D warnings をワークスペース一括
-scripts/ci-check.sh no-std std embedded  # ターゲット別テスト
-scripts/ci-check.sh doc examples test    # ドキュメント・examples・workspace test
+scripts/ci-check.sh no-std std doc       # no_std/std/doc の検証
+scripts/ci-check.sh test examples        # workspace test と examples 実行
 scripts/ci-check.sh perf                 # Scheduler ストレス・ベンチマークテスト
 scripts/ci-check.sh actor-path-e2e       # actor_path_e2e テスト単体実行
 scripts/ci-check.sh all                  # CI と同等フルスイート
@@ -78,7 +80,7 @@ scripts/ci-check.sh all                  # CI と同等フルスイート
   - 所有権やライフサイクルを管理する型のみ `*Handle` サフィックスを許容し、`ArcShared` 等を薄く包む共有参照は `*Shared` を用いる。管理対象が複数ハンドルに及ぶ場合は `*HandleSet` / `*Context` 等で「束ね役・制御面」であることを明示し、単なる参照ラッパーでは `Handle` を名乗らない。命名段階で責務の違いが分かるようにし、Scheduler/Dispatcher まわりの API でも同ルールを徹底する。
   - Facadeというサフィックスも安易に使わない。例えばpub traitにFacadeと命名するのはもってのほか。つまりFacadeは内部実装の都合をインターフェイス名に暴露しているのと同じだからだ
   - Manager, Utilなどの責務が曖昧になる命名は避けて、具体的な名前を付けること
-- **Tick Driver の追加判断**: 新規 driver / executor を導入する際は `modules/actor/src/core/scheduler/tick_driver/tick_driver_matrix.rs` にエントリを追加し、`docs/guides/tick-driver-quickstart.md` のテンプレと `StdTickDriverConfig` のヘルパを同期更新する。Code/Doc の両方を更新できない場合は spec 側でギャップを明記する。
+- **Tick Driver の追加判断**: 新規 driver / executor を導入する際は `modules/actor/src/core/scheduler/tick_driver/{tick_driver_kind,tick_driver_factory}.rs` を起点に種別と注入経路を更新し、`docs/guides/tick-driver-quickstart.md` のテンプレと `TickDriverConfig` ヘルパを同期更新する。Code/Doc の両方を更新できない場合は spec 側でギャップを明記する。
 - **トレイトメソッドの `&self` vs `&mut self` 設計方針**:
   - **ライフサイクル制御系**（`start`, `stop`, `shutdown`, `setup_*` 等）: 低頻度呼び出しのため `&self` + interior mutability（実装内部で `ToolboxMutex` を使用）を許容。`ArcShared<dyn Trait>` で共有しやすくなる。
   - **ホットパス・状態変更系**（`get`, `remove`, `update_*`, `on_*`, `drain_*` 等）: 高頻度呼び出しや明示的な状態変更を伴うメソッドは `&mut self` を使用。呼び出し側（`ClusterCore` 等）が `ToolboxMutex<dyn Trait>` で保護し、ロック粒度を制御する。

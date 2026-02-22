@@ -1,9 +1,10 @@
 # プロジェクト構造
-> 最終更新: 2025-01-29
+> 最終更新: 2026-02-22
+updated_at: 2026-02-22T14:07:25Z
 
 ## 組織方針
-- ワークスペースは `modules/utils`（`fraktor-utils-rs`）、`modules/actor`（`fraktor-actor-rs`）、`modules/remote`（`fraktor-remote-rs`）、`modules/cluster`（`fraktor-cluster-rs`）、`modules/streams`（`fraktor-streams-rs`）、`modules/persistence`（`fraktor-persistence-rs`）の 6 クレートで構成され、各クレートが `core`（default `#![no_std]`）と `std` モジュールを持つ 2018 モジュール構成です。依存方向は utils/core → actor/core → actor/std → remote/core → remote/std → cluster/core → cluster/std の一方通行に固定します。streams と persistence は actor に依存します。
-- 各モジュールは 2018 エディションのファイルツリー（`foo.rs` + `foo/` ディレクトリ）で構成し、`mod.rs` を使用しません。
+- ワークスペースは `modules/utils`（`fraktor-utils-rs`）、`modules/actor`（`fraktor-actor-rs`）、`modules/remote`（`fraktor-remote-rs`）、`modules/cluster`（`fraktor-cluster-rs`）、`modules/streams`（`fraktor-streams-rs`）、`modules/persistence`（`fraktor-persistence-rs`）の 6 クレートで構成されます。5 クレート（utils/actor/remote/cluster/streams）は `core`（default `#![no_std]`）と `std` モジュールを持ち、persistence は現時点で `core` 中心の公開構成です。依存方向は utils/core → actor/core → actor/std → remote/core → remote/std → cluster/core → cluster/std の一方通行に固定します。streams と persistence は actor に依存します。
+- 各モジュールは Rust 2024 edition 上で、2018 スタイルのファイルツリー（`foo.rs` + `foo/` ディレクトリ）を維持し、`mod.rs` を使用しません。
 - `type-per-file-lint` により 1 ファイル 1 構造体/trait を原則とし、テストは `hoge/tests.rs` へ分離します。
 - 公開 API に限り `prelude` を許容し、内部は FQCN (`crate::...`) で明示的に依存をたどります。
 - std 向けの追加コードは `modules/actor/src/std/*` へ閉じ込め、`cfg-std-forbid-lint` により core 内の `#[cfg(feature = "std")]` 分岐を禁止します。
@@ -25,29 +26,29 @@
 **Example**: `modules/actor/src/std/system/base.rs` が Core ActorSystem を包む `ActorSystem` 型を提供。
 
 ### リモートアドレッシング & Authority
-**Location**: `modules/actor/src/core/actor/actor_path/*`, `modules/actor/src/core/system/remote_authority_registry.rs`
+**Location**: `modules/actor/src/core/actor/actor_path/*`, `modules/actor/src/core/system/remote/remote_authority_registry.rs`
 **Purpose**: `parts.rs`（`ActorPathParts`・`GuardianKind`）、`formatter.rs`、`path.rs` を分けて canonical URI 生成を単一責務化し、`RemoteAuthorityRegistry` が remoting の状態管理（Unresolved/Connected/Quarantine）と deferred キューの排出を担います。
-**Example**: `actor/actor_selection/tests.rs` が guardian を越えない相対解決シナリオを網羅し、`system/remote_authority_registry/tests.rs` が quarantine/手動解除/InvalidAssociation を `tests.rs` に閉じ込めています。
+**Example**: `actor/actor_selection/tests.rs` が guardian を越えない相対解決シナリオを網羅し、`system/remote/remote_authority_registry/tests.rs` が quarantine/手動解除/InvalidAssociation を `tests.rs` に閉じ込めています。
 
 ### スケジューラ & Tick Driver
 **Location**: `modules/actor/src/core/scheduler/tick_driver/*`, `modules/actor/src/std/scheduler/tick.rs`, `docs/guides/tick-driver-quickstart.md`
 **Purpose**: TickDriver 抽象・Bootstrap・SchedulerTickExecutor をコア側で定義し、Tokio/embedded/manual driver を同じ API で選択。ガイドは Quickstart/embedded/manual を 1 か所にまとめ、コード追加時に表と仕様を同期する。
-**Example**: `tick_driver_matrix.rs` がドライバ一覧を管理し、`docs/guides/tick-driver-quickstart.md` が `StdTickDriverConfig::tokio_quickstart*` サンプルを提供。
+**Example**: `tick_driver_kind.rs` がドライバ種別を管理し、`docs/guides/tick-driver-quickstart.md` が `TickDriverConfig::tokio_quickstart*` サンプルを提供。
 
 ### ドキュメント & ガイド
 **Location**: `docs/guides`
 **Purpose**: ActorSystem 運用や DeathWatch/TickDriver 移行など運用パターンを文章化し、spec ではなく作業ガイドとして参照。
-**Example**: `docs/guides/tick-driver-quickstart.md` が TickDriver のシナリオ別導入手順を管理、`docs/guides/actor-system.md` が no_std / std 共通の初期化を示す。`docs/guides/remoting-quickstart.md` が Remoting のクイックスタートを提供。`docs/guides/shared_vs_handle.md` が共有型と内部可変性の設計指針を示す。`docs/guides/pipe_to_self_future.md` が Future の自己パイプパターンを説明。
+**Example**: `docs/guides/tick-driver-quickstart.md` が TickDriver のシナリオ別導入手順を管理、`docs/guides/actor-system.md` が no_std / std 共通の初期化を示す。`docs/guides/remoting-quickstart.md` が Remoting のクイックスタートを提供。`docs/guides/cluster-architecture.md` と `docs/guides/persistence-quickstart.md` が拡張モジュール導入の起点を提供し、`docs/guides/shared_vs_handle.md` が共有型と内部可変性の設計指針を示す。`docs/guides/pipe_to_self_future.md` が Future の自己パイプパターンを説明。
 
 ### Lint パッケージ
 **Location**: `lints/<lint-name>`
-**Purpose**: Dylint ベースで構造ルール（`mod-file`, `module-wiring`, `tests-location`, `cfg-std-forbid` など）をコンパイル時に適用。
+**Purpose**: Dylint ベースで構造ルール（`mod-file`, `module-wiring`, `tests-location`, `cfg-std-forbid`, `ambiguous-suffix` など）をコンパイル時に適用。
 **Example**: `lints/module-wiring-lint` が FQCN import と末端モジュールのみ再エクスポートする方針を強制。
 
 ### CI / スクリプト
 **Location**: `scripts/*.sh`
-**Purpose**: `ci-check.sh` を中心に lint / dylint / clippy / no_std / std / doc / embedded を一括実行し、再現性のある検証手順を共有。
-**Example**: `scripts/ci-check.sh embedded` が `embassy` と `thumb` ターゲットをまとめてビルド。
+**Purpose**: `ci-check.sh` を中心に lint / dylint / clippy / no_std / std / doc / test / examples / perf / actor-path-e2e を一括実行し、再現性のある検証手順を共有。
+**Example**: `scripts/ci-check.sh all` が CI 同等フルスイートを実行し、`scripts/ci-check.sh no-std` が `thumb` ターゲットまで含めて検証します。
 
 ## 命名規則
 - **ファイル**: `snake_case.rs`。モジュール本体は `foo.rs`、実装詳細は `foo/bar.rs`、テストは `foo/tests.rs`。
@@ -57,7 +58,7 @@
 - **クレート名**: 既存は `fraktor-utils-rs`, `fraktor-actor-rs`, `fraktor-remote-rs`, `fraktor-cluster-rs`, `fraktor-streams-rs`, `fraktor-persistence-rs`, `fraktor-rs`。新規クレートも `fraktor-<domain>-rs` を踏襲し、Cargo features は `kebab-case`（例: `alloc-metrics`, `tokio-executor`）。
 - **ドキュメント言語**: rustdoc は英語、それ以外のコメント・Markdown は日本語。
 - **ActorPath 初期値**: `ActorPath::root()` は system 名に `cellactor` を用い、guardian は `GuardianKind::User/System` から自動付与するため、手動で `/cellactor` を記述しないこと。
-- **Authority 表記**: リモート authority は `host:port` 文字列で `RemoteAuthorityManager` のキーにし、`PathAuthority` 経由で host/port を保持する。命名は小文字 + `-` を基本とし、実ホスト名を抽象化します。
+- **Authority 表記**: リモート authority は `host:port` 文字列で `RemoteAuthorityRegistry` のキーにし、`PathAuthority` 経由で host/port を保持する。命名は小文字 + `-` を基本とし、実ホスト名を抽象化します。
 
 ## import 組織
 ```rust
@@ -78,7 +79,7 @@ pub mod prelude {
 - DeathWatch/監督/ログ/DeadLetter は EventStream を介して疎結合化し、観測面の利用者が自由に購読可能。
 - テストは `hoge/tests.rs`（単体）と `modules/actor/tests/*.rs`（統合）に分け、`tests-location-lint` で逸脱を検出します。
 - 新規 capability は OpenSpec (requirements → design → tasks) を通して合意し、ステアリングはパターン変化が生じたときのみ更新します。
-- Remoting への追記は `system::remote_authority` 経由で一元化し、ActorPath 側の guardian/authority パターン（`pekko` / `pekko.tcp` スキーム）との乖離が出ないように spec（`pekko-compatible-actor-path`）で検証してから着手します。
+- Remoting への追記は `system::remote` 経由で一元化し、ActorPath 側の guardian/authority パターン（`pekko` / `pekko.tcp` スキーム）との乖離が出ないように spec（`pekko-compatible-actor-path`）で検証してから着手します。
 - TickDriver 関連コードは `core/scheduler/tick_driver/*`（抽象）と `std/scheduler/tick.rs`（Tokio), docs/guides/tick-driver-quickstart.md（ドキュメント）を同時に更新し、`modules/actor/tests/system_*` でカバレッジを追加します。
 
 ---
