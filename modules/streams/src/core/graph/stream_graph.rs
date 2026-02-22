@@ -193,6 +193,9 @@ impl StreamGraph {
             | StageKind::FlowBroadcast
             | StageKind::FlowBalance
             | StageKind::FlowMerge
+            | StageKind::FlowMergePreferred
+            | StageKind::FlowMergePrioritized
+            | StageKind::FlowMergeSorted
             | StageKind::FlowInterleave
             | StageKind::FlowPrepend
             | StageKind::FlowZip
