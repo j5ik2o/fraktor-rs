@@ -1668,10 +1668,24 @@ where
     self.merge(fan_in)
   }
 
-  /// Adds a merge-latest compatibility stage.
+  /// Keeps the latest value from each of `fan_in` input ports and emits a
+  /// `Vec<Out>` snapshot every time any input is updated.
+  ///
+  /// No output is produced until every input has delivered at least one
+  /// element.
   #[must_use]
-  pub fn merge_latest(self, fan_in: usize) -> Flow<In, Out, Mat> {
-    self.merge(fan_in)
+  pub fn merge_latest(mut self, fan_in: usize) -> Flow<In, Vec<Out>, Mat>
+  where
+    Out: Clone, {
+    assert!(fan_in > 0, "fan_in must be greater than zero");
+    let definition = merge_latest_definition::<Out>(fan_in);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
   /// Adds a merge-preferred compatibility stage.
@@ -1838,10 +1852,25 @@ where
     Flow::from_graph(graph, mat)
   }
 
-  /// Adds a watch-termination compatibility stage.
+  /// Watches stream termination and completes a `StreamCompletion<()>` handle.
+  ///
+  /// Elements are passed through unchanged. The materialized value is
+  /// combined with a fresh `StreamCompletion<()>` using the supplied
+  /// `MatCombineRule`.
   #[must_use]
-  pub const fn watch_termination(self) -> Flow<In, Out, Mat> {
-    self
+  pub fn watch_termination_mat<C>(mut self, _combine: C) -> Flow<In, Out, C::Out>
+  where
+    C: MatCombineRule<Mat, super::StreamCompletion<()>>, {
+    let completion = super::StreamCompletion::<()>::new();
+    let definition = watch_termination_definition::<Out>(completion.clone());
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    let mat = combine_mat::<Mat, super::StreamCompletion<()>, C>(self.mat, completion);
+    Flow { graph: self.graph, mat, _pd: PhantomData }
   }
 
   /// Adds a deflate compatibility stage.
@@ -2908,6 +2937,49 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<Vec<In>>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(in crate::core) fn merge_latest_definition<In>(fan_in: usize) -> FlowDefinition
+where
+  In: Clone + Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<Vec<In>> = Outlet::new();
+  let logic = MergeLatestLogic::<In> {
+    fan_in,
+    edge_slots: Vec::with_capacity(fan_in),
+    latest: Vec::with_capacity(fan_in),
+    all_seen: false,
+  };
+  FlowDefinition {
+    kind:        StageKind::FlowMergeLatest,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<Vec<In>>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+fn watch_termination_definition<In>(completion: super::StreamCompletion<()>) -> FlowDefinition
+where
+  In: Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = WatchTerminationLogic::<In> { completion, _pd: PhantomData };
+  FlowDefinition {
+    kind:        StageKind::FlowWatchTermination,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
     mat_combine: MatCombine::KeepLeft,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
@@ -4550,6 +4622,18 @@ struct ZipAllLogic<In> {
   source_done: bool,
 }
 
+struct MergeLatestLogic<In> {
+  fan_in:     usize,
+  edge_slots: Vec<usize>,
+  latest:     Vec<Option<In>>,
+  all_seen:   bool,
+}
+
+struct WatchTerminationLogic<In> {
+  completion: super::StreamCompletion<()>,
+  _pd:       PhantomData<fn(In)>,
+}
+
 struct UnzipLogic<In> {
   output_slots: VecDeque<usize>,
   _pd:          PhantomData<fn(In)>,
@@ -4769,6 +4853,86 @@ where
     self.edge_slots.clear();
     self.pending.clear();
     self.source_done = false;
+    Ok(())
+  }
+}
+
+// --- MergeLatestLogic ---
+
+impl<In> MergeLatestLogic<In>
+where
+  In: Clone + Send + Sync + 'static,
+{
+  fn slot_for_edge(&mut self, edge_index: usize) -> Result<usize, StreamError> {
+    if let Some(position) = self.edge_slots.iter().position(|index| *index == edge_index) {
+      return Ok(position);
+    }
+    if self.edge_slots.len() >= self.fan_in {
+      return Err(StreamError::InvalidConnection);
+    }
+    let insert_at = self.edge_slots.partition_point(|index| *index < edge_index);
+    self.edge_slots.insert(insert_at, edge_index);
+    self.latest.insert(insert_at, None);
+    Ok(insert_at)
+  }
+
+  fn try_emit(&self) -> Option<Vec<In>> {
+    if !self.all_seen {
+      return None;
+    }
+    Some(self.latest.iter().map(|opt| opt.as_ref().unwrap().clone()).collect())
+  }
+}
+
+impl<In> FlowLogic for MergeLatestLogic<In>
+where
+  In: Clone + Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    self.apply_with_edge(0, input)
+  }
+
+  fn apply_with_edge(&mut self, edge_index: usize, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    if self.fan_in == 0 {
+      return Err(StreamError::InvalidConnection);
+    }
+    let value = downcast_value::<In>(input)?;
+    let slot = self.slot_for_edge(edge_index)?;
+    self.latest[slot] = Some(value);
+    // 全スロットが一度でもSomeになったかチェック
+    if !self.all_seen && self.latest.len() >= self.fan_in && self.latest.iter().all(|opt| opt.is_some()) {
+      self.all_seen = true;
+    }
+    if let Some(values) = self.try_emit() {
+      return Ok(vec![Box::new(values) as DynValue]);
+    }
+    Ok(Vec::new())
+  }
+
+  fn expected_fan_in(&self) -> Option<usize> {
+    Some(self.fan_in)
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.edge_slots.clear();
+    self.latest.clear();
+    self.all_seen = false;
+    Ok(())
+  }
+}
+
+// --- WatchTerminationLogic ---
+
+impl<In> FlowLogic for WatchTerminationLogic<In>
+where
+  In: Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    Ok(vec![input])
+  }
+
+  fn on_source_done(&mut self) -> Result<(), StreamError> {
+    self.completion.complete(Ok(()));
     Ok(())
   }
 }

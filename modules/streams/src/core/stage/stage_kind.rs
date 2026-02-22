@@ -81,6 +81,8 @@ pub enum StageKind {
   FlowBalance,
   /// Flow stage that merges elements from multiple inputs.
   FlowMerge,
+  /// Flow stage that keeps the latest value from each input and emits all latest on every update.
+  FlowMergeLatest,
   /// Flow stage that interleaves elements from multiple inputs in round-robin order.
   FlowInterleave,
   /// Flow stage that prepends higher-priority input lanes before others.
@@ -93,6 +95,8 @@ pub enum StageKind {
   FlowZipWithIndex,
   /// Flow stage that concatenates inputs in port order.
   FlowConcat,
+  /// Flow stage that watches stream termination and completes a handle.
+  FlowWatchTermination,
   /// Sink that ignores elements.
   SinkIgnore,
   /// Sink that folds elements.
