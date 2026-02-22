@@ -6,6 +6,14 @@ piece_config:
       network_access: true
 max_movements: 25
 initial_movement: analyze
+
+knowledge:
+  stub-elimination: ../facets/knowledge/stub-elimination.md
+  fraktor-streams: ../facets/knowledge/fraktor-streams.md
+
+policies:
+  fraktor-coding: ../facets/policies/fraktor-coding.md
+
 movements:
   - name: analyze
     edit: false
@@ -13,8 +21,8 @@ movements:
     provider: codex
     model: gpt-5.3-codex
     knowledge:
-      - ../knowledge/stub-elimination.md
-      - ../knowledge/fraktor-streams.md
+      - stub-elimination
+      - fraktor-streams
     instruction: plan
     rules:
       - condition: "requirements are clear and implementation is possible"
@@ -34,10 +42,10 @@ movements:
     provider: codex
     model: gpt-5.3-codex-spark
     knowledge:
-      - ../knowledge/stub-elimination.md
-      - ../knowledge/fraktor-streams.md
+      - stub-elimination
+      - fraktor-streams
     policy:
-      - ../policies/fraktor-coding.md
+      - fraktor-coding
     instruction: implement
     rules:
       - condition: "implementation is complete"
@@ -63,7 +71,7 @@ movements:
         model: gpt-5.3-codex
         instruction: review-ai
         policy:
-          - ../policies/fraktor-coding.md
+          - fraktor-coding
         rules:
           - condition: approved
           - condition: needs_fix
@@ -81,7 +89,7 @@ movements:
         model: gpt-5.3-codex
         instruction: supervise
         policy:
-          - ../policies/fraktor-coding.md
+          - fraktor-coding
         rules:
           - condition: approved
           - condition: needs_fix
@@ -104,10 +112,10 @@ movements:
     provider: codex
     model: gpt-5.3-codex-spark
     knowledge:
-      - ../knowledge/stub-elimination.md
-      - ../knowledge/fraktor-streams.md
+      - stub-elimination
+      - fraktor-streams
     policy:
-      - ../policies/fraktor-coding.md
+      - fraktor-coding
     instruction: fix-supervisor
     pass_previous_response: true
     rules:
