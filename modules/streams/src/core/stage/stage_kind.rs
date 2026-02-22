@@ -89,6 +89,12 @@ pub enum StageKind {
   FlowBalance,
   /// Flow stage that merges elements from multiple inputs.
   FlowMerge,
+  /// Flow stage that merges elements with a preferred input port checked first.
+  FlowMergePreferred,
+  /// Flow stage that merges elements with weighted priority across input ports.
+  FlowMergePrioritized,
+  /// Flow stage that merges pre-sorted inputs into a single sorted output.
+  FlowMergeSorted,
   /// Flow stage that interleaves elements from multiple inputs in round-robin order.
   FlowInterleave,
   /// Flow stage that prepends higher-priority input lanes before others.
