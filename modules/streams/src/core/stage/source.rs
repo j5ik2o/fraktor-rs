@@ -1,4 +1,4 @@
-use alloc::{boxed::Box, vec, vec::Vec};
+use alloc::{boxed::Box, collections::VecDeque, vec, vec::Vec};
 use core::{
   any::TypeId,
   future::Future,
@@ -315,11 +315,17 @@ where
   }
 
   /// Lazily creates a source from a source factory.
+  ///
+  /// The factory is not called until the first element is demanded.
+  /// All elements from the created source are collected and buffered on first pull.
   #[must_use]
   pub fn lazy_source<F>(factory: F) -> Self
   where
-    F: FnOnce() -> Self, {
-    factory()
+    F: FnOnce() -> Self + Send + 'static, {
+    Self::from_logic(
+      StageKind::Custom,
+      LazySourceLogic::<Out, F> { factory: Some(factory), buffer: VecDeque::new(), _pd: PhantomData },
+    )
   }
 
   /// Creates an optional source.
@@ -1758,6 +1764,27 @@ where
       },
       | Poll::Pending => Err(StreamError::WouldBlock),
     }
+  }
+}
+
+struct LazySourceLogic<Out, F> {
+  factory: Option<F>,
+  buffer:  VecDeque<DynValue>,
+  _pd:     PhantomData<fn() -> Out>,
+}
+
+impl<Out, F> SourceLogic for LazySourceLogic<Out, F>
+where
+  Out: Send + Sync + 'static,
+  F: FnOnce() -> Source<Out, StreamNotUsed> + Send + 'static,
+{
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    if let Some(factory) = self.factory.take() {
+      let source = factory();
+      let values = source.collect_values()?;
+      self.buffer = values.into_iter().map(|v| Box::new(v) as DynValue).collect();
+    }
+    Ok(self.buffer.pop_front())
   }
 }
 

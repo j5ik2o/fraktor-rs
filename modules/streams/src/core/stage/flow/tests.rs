@@ -1556,6 +1556,69 @@ fn monitor_mat_combines_materialized_values_and_keeps_data_path_behavior() {
 }
 
 #[test]
+fn flow_lazy_flow_passes_elements_through_factory_flow() {
+  let values = Source::single(5_u32)
+    .via(Flow::lazy_flow(|| Flow::new().map(|v: u32| v * 2)))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![10_u32]);
+}
+
+#[test]
+fn flow_lazy_flow_defers_factory_call() {
+  let values = Source::from_array([1_u32, 2, 3])
+    .via(Flow::lazy_flow(|| Flow::new().map(|v: u32| v + 100)))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![101_u32, 102, 103]);
+}
+
+#[test]
+fn flow_lazy_flow_with_identity_flow_passes_through() {
+  let values = Source::from_array([1_u32, 2, 3])
+    .via(Flow::lazy_flow(Flow::<u32, u32, StreamNotUsed>::new))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2, 3]);
+}
+
+#[test]
+fn flow_lazy_flow_with_chained_operations() {
+  let values = Source::from_array([1_u32, 2, 3, 4, 5])
+    .via(Flow::lazy_flow(|| Flow::new().map(|v: u32| v * 2).filter(|v: &u32| *v > 4)))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![6_u32, 8, 10]);
+}
+
+#[test]
+fn flow_lazy_flow_with_empty_source() {
+  let values = Source::<u32, _>::empty()
+    .via(Flow::lazy_flow(|| Flow::new().map(|v: u32| v + 1)))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, Vec::<u32>::new());
+}
+
+#[test]
+fn flow_lazy_completion_stage_flow_delegates_to_lazy_flow() {
+  let values = Source::single(7_u32)
+    .via(Flow::lazy_completion_stage_flow(|| Flow::new().map(|v: u32| v + 3)))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![10_u32]);
+}
+
+#[test]
+fn flow_lazy_future_flow_delegates_to_lazy_flow() {
+  let values = Source::single(7_u32)
+    .via(Flow::lazy_future_flow(|| Flow::new().map(|v: u32| v + 3)))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![10_u32]);
+}
+
+#[test]
 fn flow_map_materialized_value_transforms_materialized_value_and_keeps_data_path_behavior() {
   let (graph, _unused) = Flow::<u32, u32, StreamNotUsed>::new().map(|value: u32| value + 1).into_parts();
   let flow: Flow<u32, u32, u32> = Flow::from_graph(graph, 10_u32);
