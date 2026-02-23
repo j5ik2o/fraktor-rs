@@ -15,7 +15,7 @@ pub struct UniformFanInShape<In, Out> {
 impl<In, Out> UniformFanInShape<In, Out> {
   /// Creates a new fan-in shape from the given inlets and outlet.
   #[must_use]
-  pub fn new(inlets: Vec<Inlet<In>>, outlet: Outlet<Out>) -> Self {
+  pub const fn new(inlets: Vec<Inlet<In>>, outlet: Outlet<Out>) -> Self {
     Self { inlets, outlet }
   }
 
@@ -35,13 +35,13 @@ impl<In, Out> UniformFanInShape<In, Out> {
 
   /// Returns the output port.
   #[must_use]
-  pub fn outlet(&self) -> &Outlet<Out> {
+  pub const fn outlet(&self) -> &Outlet<Out> {
     &self.outlet
   }
 
   /// Returns the number of input ports.
   #[must_use]
-  pub fn port_count(&self) -> usize {
+  pub const fn port_count(&self) -> usize {
     self.inlets.len()
   }
 }

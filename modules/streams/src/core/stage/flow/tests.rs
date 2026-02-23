@@ -1646,12 +1646,10 @@ fn backpressure_timeout_passes_elements_within_threshold() {
 
 #[test]
 fn backpressure_timeout_fails_when_backpressure_exceeds_threshold() {
-  let result = Source::<u32, _>::from_logic(
-    StageKind::Custom,
-    PulsedSourceLogic::new(&[Some(1), None, None, None, None]),
-  )
-  .via(Flow::new().backpressure_timeout(2).expect("backpressure_timeout"))
-  .collect_values();
+  let result =
+    Source::<u32, _>::from_logic(StageKind::Custom, PulsedSourceLogic::new(&[Some(1), None, None, None, None]))
+      .via(Flow::new().backpressure_timeout(2).expect("backpressure_timeout"))
+      .collect_values();
   assert!(matches!(result, Err(StreamError::Timeout { kind: "backpressure", ticks: 2 })));
 }
 
@@ -1678,12 +1676,9 @@ fn completion_timeout_passes_elements_within_threshold() {
 
 #[test]
 fn completion_timeout_fails_when_stream_exceeds_threshold() {
-  let result = Source::<u32, _>::from_logic(
-    StageKind::Custom,
-    PulsedSourceLogic::new(&[None, None, None, Some(1)]),
-  )
-  .via(Flow::new().completion_timeout(2).expect("completion_timeout"))
-  .collect_values();
+  let result = Source::<u32, _>::from_logic(StageKind::Custom, PulsedSourceLogic::new(&[None, None, None, Some(1)]))
+    .via(Flow::new().completion_timeout(2).expect("completion_timeout"))
+    .collect_values();
   assert!(matches!(result, Err(StreamError::Timeout { kind: "completion", ticks: 2 })));
 }
 
@@ -1710,12 +1705,9 @@ fn idle_timeout_passes_elements_within_threshold() {
 
 #[test]
 fn idle_timeout_fails_when_no_elements_within_threshold() {
-  let result = Source::<u32, _>::from_logic(
-    StageKind::Custom,
-    PulsedSourceLogic::new(&[None, None, None, Some(1)]),
-  )
-  .via(Flow::new().idle_timeout(2).expect("idle_timeout"))
-  .collect_values();
+  let result = Source::<u32, _>::from_logic(StageKind::Custom, PulsedSourceLogic::new(&[None, None, None, Some(1)]))
+    .via(Flow::new().idle_timeout(2).expect("idle_timeout"))
+    .collect_values();
   assert!(matches!(result, Err(StreamError::Timeout { kind: "idle", ticks: 2 })));
 }
 
@@ -1742,12 +1734,9 @@ fn initial_timeout_passes_elements_within_threshold() {
 
 #[test]
 fn initial_timeout_fails_when_first_element_exceeds_threshold() {
-  let result = Source::<u32, _>::from_logic(
-    StageKind::Custom,
-    PulsedSourceLogic::new(&[None, None, None, Some(1)]),
-  )
-  .via(Flow::new().initial_timeout(2).expect("initial_timeout"))
-  .collect_values();
+  let result = Source::<u32, _>::from_logic(StageKind::Custom, PulsedSourceLogic::new(&[None, None, None, Some(1)]))
+    .via(Flow::new().initial_timeout(2).expect("initial_timeout"))
+    .collect_values();
   assert!(matches!(result, Err(StreamError::Timeout { kind: "initial", ticks: 2 })));
 }
 
@@ -2126,10 +2115,7 @@ fn merge_sorted_logic_on_restart_clears_state() {
 
 #[test]
 fn merge_latest_wraps_single_path_value_into_vec() {
-  let values = Source::single(7_u32)
-    .via(Flow::new().merge_latest(1))
-    .collect_values()
-    .expect("collect_values");
+  let values = Source::single(7_u32).via(Flow::new().merge_latest(1)).collect_values().expect("collect_values");
   assert_eq!(values, vec![vec![7_u32]]);
 }
 
@@ -2143,8 +2129,9 @@ fn merge_latest_rejects_zero_fan_in() {
 #[test]
 fn merge_latest_emits_latest_snapshot_on_each_update() {
   use alloc::vec;
-  use crate::core::{DynValue, FlowLogic, StreamError, downcast_value};
+
   use super::merge_latest_definition;
+  use crate::core::{DynValue, downcast_value};
 
   let def = merge_latest_definition::<u32>(2);
   let mut logic = def.logic;
@@ -2170,10 +2157,8 @@ fn merge_latest_emits_latest_snapshot_on_each_update() {
 
 #[test]
 fn watch_termination_passes_through_elements() {
-  let values = Source::single(42_u32)
-    .via(Flow::new().watch_termination_mat(KeepLeft))
-    .collect_values()
-    .expect("collect_values");
+  let values =
+    Source::single(42_u32).via(Flow::new().watch_termination_mat(KeepLeft)).collect_values().expect("collect_values");
   assert_eq!(values, vec![42_u32]);
 }
 
@@ -2193,8 +2178,7 @@ fn watch_termination_completes_stream_completion_handle() {
 
 #[test]
 fn watch_termination_mat_keeps_both() {
-  let (_graph, (left, right)) =
-    Flow::<u32, u32, StreamNotUsed>::new().watch_termination_mat(KeepBoth).into_parts();
+  let (_graph, (left, right)) = Flow::<u32, u32, StreamNotUsed>::new().watch_termination_mat(KeepBoth).into_parts();
   assert_eq!(left, StreamNotUsed::new());
   assert_eq!(right.poll(), Completion::Pending);
 }

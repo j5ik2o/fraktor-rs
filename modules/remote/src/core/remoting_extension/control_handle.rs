@@ -281,10 +281,9 @@ where
       if !self.state.lock().is_running() {
         return Ok(());
       }
-      let mut bridge_guard = self.endpoint_bridge.lock();
-      if bridge_guard.is_some() {
-        return Ok(());
-      }
+      // transport_ref, writer, reader を先にclone取得してからendpoint_bridgeをロックする。
+      // register_endpoint_io()がwriter/readerロック後にこの関数を呼ぶため、
+      // 逆順でendpoint_bridgeを先にロックするとABBA型デッドロックになる
       let Some(transport) = self.transport_ref.lock().clone() else {
         return Ok(());
       };
@@ -294,6 +293,10 @@ where
       let Some(reader) = self.reader.lock().clone() else {
         return Ok(());
       };
+      let mut bridge_guard = self.endpoint_bridge.lock();
+      if bridge_guard.is_some() {
+        return Ok(());
+      }
       let Some(system) = self.system.upgrade() else {
         return Err(RemotingError::TransportUnavailable("actor system has been dropped".into()));
       };

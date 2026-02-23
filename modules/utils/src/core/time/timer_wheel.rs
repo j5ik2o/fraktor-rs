@@ -16,6 +16,7 @@ pub struct TimerWheel<P> {
   config:      TimerWheelConfig,
   queue:       BinaryHeap<Reverse<ScheduledEntry<P>>>,
   cancelled:   BTreeSet<TimerHandleId>,
+  fired:       BTreeSet<TimerHandleId>,
   next_handle: u64,
   sequence:    u64,
   active:      usize,
@@ -25,7 +26,15 @@ impl<P> TimerWheel<P> {
   /// Creates an empty wheel.
   #[must_use]
   pub const fn new(config: TimerWheelConfig) -> Self {
-    Self { config, queue: BinaryHeap::new(), cancelled: BTreeSet::new(), next_handle: 0, sequence: 0, active: 0 }
+    Self {
+      config,
+      queue: BinaryHeap::new(),
+      cancelled: BTreeSet::new(),
+      fired: BTreeSet::new(),
+      next_handle: 0,
+      sequence: 0,
+      active: 0,
+    }
   }
 
   /// Returns the number of active (non-cancelled) timers.
@@ -66,7 +75,7 @@ impl<P> TimerWheel<P> {
 
   /// Cancels a scheduled entry if present.
   pub fn cancel(&mut self, handle: TimerHandleId) -> bool {
-    if self.cancelled.contains(&handle) {
+    if self.cancelled.contains(&handle) || self.fired.contains(&handle) {
       return false;
     }
     self.cancelled.insert(handle);
@@ -83,6 +92,9 @@ impl<P> TimerWheel<P> {
   /// This function should not panic under normal conditions. The internal queue invariant
   /// guarantees that if `peek()` returns `Some`, then `pop()` will also return `Some`.
   pub fn collect_expired(&mut self, now: TimerInstant) -> Vec<TimerEntry<P>> {
+    // 前エポックの発火済みエントリをクリア。現エポックで新たに発火したエントリは
+    // 次の collect_expired 呼び出しまで保持され、cancel() の二重デクリメントを防止する。
+    self.fired.clear();
     let mut expired = Vec::new();
     while let Some(Reverse(scheduled)) = self.queue.peek() {
       if scheduled.deadline_tick > now.ticks() {
@@ -96,6 +108,7 @@ impl<P> TimerWheel<P> {
       if self.cancelled.remove(&scheduled.handle_id) {
         continue;
       }
+      self.fired.insert(scheduled.handle_id);
       if self.active > 0 {
         self.active -= 1;
       }

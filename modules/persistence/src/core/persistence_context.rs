@@ -118,6 +118,12 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
       return;
     }
 
+    // State transition BEFORE destructive operations to prevent data loss on failure.
+    let Ok(next_state) = self.state.transition_to_persisting_events() else {
+      return;
+    };
+    self.state = next_state;
+
     self.journal_batch.append(&mut self.event_batch);
     let mut messages = Vec::new();
 
@@ -143,15 +149,15 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
       instance_id: self.instance_id,
     };
     let _ = self.send_write_messages(message);
-    if let Ok(state) = self.state.transition_to_persisting_events() {
-      self.state = state;
-    }
   }
 
   /// Handles journal responses.
   pub(crate) fn handle_journal_response(&mut self, response: &JournalResponse) -> JournalResponseAction<A> {
     match response {
       | JournalResponse::WriteMessageSuccess { repr, .. } => {
+        if self.state != PersistentActorState::PersistingEvents {
+          return JournalResponseAction::None;
+        }
         let action = self
           .pending_invocations
           .pop_front()
@@ -213,7 +219,7 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
     response: &SnapshotResponse,
     sender: ActorRefGeneric<TB>,
   ) -> SnapshotResponseAction {
-    if !self.is_ready() {
+    if !self.is_ready() || self.state != PersistentActorState::RecoveryStarted {
       return SnapshotResponseAction::None;
     }
 
@@ -273,9 +279,10 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
       return;
     }
     self.recovery = recovery;
-    if let Ok(state) = self.state.transition_to_recovery_started() {
-      self.state = state;
-    }
+    let Ok(next_state) = self.state.transition_to_recovery_started() else {
+      return;
+    };
+    self.state = next_state;
     if self.recovery == Recovery::none() {
       let message = JournalMessage::GetHighestSequenceNr {
         persistence_id: self.persistence_id.clone(),
@@ -332,7 +339,7 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
   }
 
   fn is_bound(&self) -> bool {
-    !Self::is_null_ref(&self.journal_actor_ref) || !Self::is_null_ref(&self.snapshot_actor_ref)
+    !Self::is_null_ref(&self.journal_actor_ref) && !Self::is_null_ref(&self.snapshot_actor_ref)
   }
 
   fn is_ready(&self) -> bool {
