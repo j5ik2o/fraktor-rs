@@ -200,12 +200,14 @@ impl StreamGraph {
             | StageKind::FlowMergePreferred
             | StageKind::FlowMergePrioritized
             | StageKind::FlowMergeSorted
+            | StageKind::FlowMergeLatest
             | StageKind::FlowInterleave
             | StageKind::FlowPrepend
             | StageKind::FlowZip
             | StageKind::FlowZipAll
             | StageKind::FlowZipWithIndex
             | StageKind::FlowConcat
+            | StageKind::FlowWatchTermination
             | StageKind::Custom
         )
       },

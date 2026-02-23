@@ -124,7 +124,13 @@ impl GossipTransport for TokioGossipTransport {
 }
 
 fn decode_delta(bytes: &[u8]) -> Result<MembershipDelta, GossipTransportError> {
+  const MAX_ENTRIES: usize = 1024;
   let wire: GossipWireDeltaV1 = postcard::from_bytes(bytes)
     .map_err(|error| GossipTransportError::SendFailed { reason: format!("decode failed: {error}") })?;
+  if wire.entries.len() > MAX_ENTRIES {
+    return Err(GossipTransportError::SendFailed {
+      reason: format!("too many entries: {} (max {MAX_ENTRIES})", wire.entries.len()),
+    });
+  }
   wire.to_delta().ok_or_else(|| GossipTransportError::SendFailed { reason: String::from("invalid status value") })
 }

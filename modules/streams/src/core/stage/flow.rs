@@ -1354,8 +1354,15 @@ where
     F: FnMut(Acc, Out) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = Acc> + Send + 'static, {
     self.scan(initial, move |acc, value| {
-      core::mem::drop((func)(acc.clone(), value));
-      acc
+      let mut future = (func)(acc.clone(), value);
+      // SAFETY: future はローカル変数でこのクロージャを超えて移動しない
+      let mut pinned = unsafe { Pin::new_unchecked(&mut future) };
+      let waker = noop_waker();
+      let mut cx = Context::from_waker(&waker);
+      match pinned.as_mut().poll(&mut cx) {
+        | Poll::Ready(result) => result,
+        | Poll::Pending => acc,
+      }
     })
   }
 
@@ -1751,6 +1758,10 @@ where
   ///
   /// No output is produced until every input has delivered at least one
   /// element.
+  ///
+  /// # Panics
+  ///
+  /// Panics if `fan_in` is zero.
   #[must_use]
   pub fn merge_latest(mut self, fan_in: usize) -> Flow<In, Vec<Out>, Mat>
   where
@@ -2809,12 +2820,8 @@ where
   In: Send + Sync + 'static, {
   let inlet: Inlet<In> = Inlet::new();
   let outlet: Outlet<In> = Outlet::new();
-  let logic = InitialTimeoutLogic::<In> {
-    duration_ticks,
-    tick_count: 0,
-    first_element_received: false,
-    _pd: PhantomData,
-  };
+  let logic =
+    InitialTimeoutLogic::<In> { duration_ticks, tick_count: 0, first_element_received: false, _pd: PhantomData };
   FlowDefinition {
     kind:        StageKind::FlowInitialTimeout,
     inlet:       inlet.id(),
@@ -3417,7 +3424,7 @@ where
   }
 
   fn can_accept_input(&self) -> bool {
-    self.inner_logics.first().map_or(true, |l| l.can_accept_input())
+    self.inner_logics.first().is_none_or(|l| l.can_accept_input())
   }
 
   fn on_source_done(&mut self) -> Result<(), StreamError> {
@@ -5255,14 +5262,14 @@ where
     // 加重ラウンドロビン: 現在のスロットからクレジットに基づいて要素を取得
     for _ in 0..len {
       let slot = self.current % len;
-      if self.credits[slot] > 0 {
-        if let Some(value) = self.pending[slot].pop_front() {
-          self.credits[slot] = self.credits[slot].saturating_sub(1);
-          if self.credits[slot] == 0 {
-            self.current = (slot + 1) % len;
-          }
-          return Some(value);
+      if self.credits[slot] > 0
+        && let Some(value) = self.pending[slot].pop_front()
+      {
+        self.credits[slot] = self.credits[slot].saturating_sub(1);
+        if self.credits[slot] == 0 {
+          self.current = (slot + 1) % len;
         }
+        return Some(value);
       }
       self.current = (slot + 1) % len;
     }
@@ -5378,10 +5385,10 @@ where
         match min_slot {
           | None => min_slot = Some(slot),
           | Some(current_min) => {
-            if let Some(current_front) = self.pending[current_min].front() {
-              if front < current_front {
-                min_slot = Some(slot);
-              }
+            if let Some(current_front) = self.pending[current_min].front()
+              && front < current_front
+            {
+              min_slot = Some(slot);
             }
           },
         }
@@ -5470,7 +5477,7 @@ struct MergeLatestLogic<In> {
 
 struct WatchTerminationLogic<In> {
   completion: super::StreamCompletion<()>,
-  _pd:       PhantomData<fn(In)>,
+  _pd:        PhantomData<fn(In)>,
 }
 
 struct UnzipLogic<In> {
@@ -5719,7 +5726,7 @@ where
     if !self.all_seen {
       return None;
     }
-    Some(self.latest.iter().map(|opt| opt.as_ref().unwrap().clone()).collect())
+    Some(self.latest.iter().filter_map(|opt| opt.as_ref().cloned()).collect())
   }
 }
 

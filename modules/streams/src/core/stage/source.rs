@@ -322,10 +322,11 @@ where
   pub fn lazy_source<F>(factory: F) -> Self
   where
     F: FnOnce() -> Self + Send + 'static, {
-    Self::from_logic(
-      StageKind::Custom,
-      LazySourceLogic::<Out, F> { factory: Some(factory), buffer: VecDeque::new(), _pd: PhantomData },
-    )
+    Self::from_logic(StageKind::Custom, LazySourceLogic::<Out, F> {
+      factory: Some(factory),
+      buffer:  VecDeque::new(),
+      _pd:     PhantomData,
+    })
   }
 
   /// Creates an optional source.

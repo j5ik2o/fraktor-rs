@@ -192,6 +192,10 @@ impl TokioTcpTransport {
       if total_len < 12 {
         return Err(TransportError::Io("invalid frame: length too short".into()));
       }
+      const MAX_FRAME_SIZE: usize = 16 * 1024 * 1024;
+      if total_len > MAX_FRAME_SIZE {
+        return Err(TransportError::Io("invalid frame: length exceeds maximum (16 MiB)".into()));
+      }
       buffer.resize(total_len, 0);
       stream.read_exact(&mut buffer).await.map_err(|e| TransportError::Io(format!("frame read failed: {e}")))?;
       // CorrelationId は 96bit (12 bytes) = u64 (8 bytes) + u32 (4 bytes)

@@ -114,4 +114,29 @@ impl SystemQueue {
     }
     prev
   }
+
+  /// Frees all nodes in a linked list starting from `head`.
+  ///
+  /// # Safety
+  ///
+  /// `head` must be a valid pointer to a `Node` chain allocated via `Box::into_raw`, or null.
+  unsafe fn free_chain(mut head: *mut Node) {
+    while !head.is_null() {
+      let next = unsafe { (*head).next };
+      let _ = unsafe { Box::from_raw(head) };
+      head = next;
+    }
+  }
+}
+
+impl Drop for SystemQueue {
+  fn drop(&mut self) {
+    // SAFETY: drop時には排他アクセスが保証されている（&mut self）
+    let head = *self.head.get_mut();
+    let pending = *self.pending.get_mut();
+    unsafe {
+      Self::free_chain(head);
+      Self::free_chain(pending);
+    }
+  }
 }

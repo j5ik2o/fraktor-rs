@@ -279,7 +279,7 @@ impl<TB: RuntimeToolbox + 'static> EndpointTransportBridge<TB> {
   }
 
   pub(super) async fn handle_inbound_frame(&self, frame: InboundFrame) {
-    if frame.payload().is_empty() {
+    if frame.payload().len() < 2 {
       return;
     }
     const KIND_HANDSHAKE_INIT: u8 = 0x01;

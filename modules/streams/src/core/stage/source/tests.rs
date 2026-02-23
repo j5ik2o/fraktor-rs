@@ -505,9 +505,8 @@ fn source_lazy_source_with_empty_factory_completes_immediately() {
 
 #[test]
 fn source_lazy_source_with_mapped_source_emits_transformed() {
-  let values = Source::lazy_source(|| Source::from_array([1_u32, 2, 3]).map(|v| v * 10))
-    .collect_values()
-    .expect("collect_values");
+  let values =
+    Source::lazy_source(|| Source::from_array([1_u32, 2, 3]).map(|v| v * 10)).collect_values().expect("collect_values");
   assert_eq!(values, vec![10_u32, 20, 30]);
 }
 
