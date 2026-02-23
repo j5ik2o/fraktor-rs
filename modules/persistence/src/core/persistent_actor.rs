@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::{boxed::Box, string::ToString, vec::Vec};
+use alloc::{boxed::Box, format, string::ToString, vec::Vec};
 use core::any::Any;
 
 use fraktor_actor_rs::core::{actor::ActorContextGeneric, error::ActorError, messaging::AnyMessageViewGeneric};
@@ -83,9 +83,13 @@ where
   }
 
   /// Flushes the pending batch to the journal.
-  fn flush_batch(&mut self, ctx: &mut ActorContextGeneric<'_, TB>) {
+  ///
+  /// # Errors
+  ///
+  /// Returns `ActorError` when the batch send fails.
+  fn flush_batch(&mut self, ctx: &mut ActorContextGeneric<'_, TB>) -> Result<(), ActorError> {
     let sender = ctx.self_ref();
-    self.persistence_context().flush_batch(sender);
+    self.persistence_context().flush_batch(sender).map_err(|error| ActorError::fatal(format!("{error:?}")))
   }
 
   /// Saves a snapshot.
@@ -116,10 +120,14 @@ where
   }
 
   /// Starts recovery by delegating to the base.
-  fn start_recovery(&mut self, ctx: &mut ActorContextGeneric<'_, TB>) {
+  ///
+  /// # Errors
+  ///
+  /// Returns `ActorError` when recovery initiation fails.
+  fn start_recovery(&mut self, ctx: &mut ActorContextGeneric<'_, TB>) -> Result<(), ActorError> {
     let sender = ctx.self_ref();
     let recovery = self.recovery();
-    self.persistence_context().start_recovery(recovery, sender);
+    self.persistence_context().start_recovery(recovery, sender).map_err(|error| ActorError::fatal(format!("{error:?}")))
   }
 
   /// Handles journal responses by delegating to the base.

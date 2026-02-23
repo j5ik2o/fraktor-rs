@@ -264,6 +264,12 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     }
 
     let mut state = self.state.lock();
+    // ロック内で再確認し、TOCTOU競合を防ぐ
+    if self.is_terminated() {
+      drop(state);
+      let _ = self.system().send_system_message(watcher, SystemMessage::Terminated(self.pid));
+      return;
+    }
     if !state.watchers.contains(&watcher) {
       state.watchers.push(watcher);
     }
@@ -386,6 +392,10 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
       return Err(PipeSpawnError::TargetStopped);
     }
     let mut state = self.state.lock();
+    // ロック内で再確認し、TOCTOU競合を防ぐ
+    if self.is_terminated() {
+      return Err(PipeSpawnError::TargetStopped);
+    }
     let id = ContextPipeTaskId::new(state.pipe_task_counter.wrapping_add(1));
     state.pipe_task_counter = id.get();
     let task = ContextPipeTask::new(id, future, self.pid, self.system());

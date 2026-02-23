@@ -85,13 +85,20 @@ impl<T> PartitionHub<T> {
     }
 
     let route = partitioner(active_consumer_count);
-    if route < 0 {
+    if route < 0 || route as usize >= active_consumer_count {
       return Err(StreamError::InvalidRoute { route, partition_count });
     }
-    let partition = route as usize;
-    if partition >= partition_count || !guard.active_consumers[partition] {
-      return Err(StreamError::InvalidRoute { route, partition_count });
-    }
+
+    // N番目のアクティブコンシューマを実パーティションインデックスに変換
+    let nth_active = route as usize;
+    let partition = guard
+      .active_consumers
+      .iter()
+      .enumerate()
+      .filter(|&(_, is_active)| *is_active)
+      .nth(nth_active)
+      .map(|(index, _)| index)
+      .ok_or(StreamError::InvalidRoute { route, partition_count })?;
 
     if guard.partitions[partition].len() >= self.max_buffer {
       return Err(StreamError::WouldBlock);

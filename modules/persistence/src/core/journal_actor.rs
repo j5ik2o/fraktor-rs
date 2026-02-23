@@ -90,7 +90,10 @@ where
       return;
     }
     self.poll_scheduled = true;
-    let _ = ctx.self_ref().tell(AnyMessageGeneric::new(JournalPoll));
+    if ctx.self_ref().tell(AnyMessageGeneric::new(JournalPoll)).is_err() {
+      // tell失敗時にフラグをリセットし、ポーリング停止を防ぐ
+      self.poll_scheduled = false;
+    }
   }
 
   fn poll_in_flight(&mut self, ctx: &mut ActorContextGeneric<'_, TB>) {

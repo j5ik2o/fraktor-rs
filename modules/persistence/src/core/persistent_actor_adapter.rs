@@ -56,7 +56,9 @@ where
     persistence_context
       .bind_actor_refs(journal_actor_ref, snapshot_actor_ref)
       .map_err(|error| ActorError::fatal(format!("{error:?}")))?;
-    persistence_context.start_recovery(recovery, ctx.self_ref());
+    persistence_context
+      .start_recovery(recovery, ctx.self_ref())
+      .map_err(|error| ActorError::fatal(format!("{error:?}")))?;
     Ok(())
   }
 

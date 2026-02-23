@@ -95,7 +95,7 @@ fn start_recovery_none_requests_highest_sequence_nr() {
   let mut context = DummyContext::new("pid-1".to_string());
   context.bind_actor_refs(journal_ref, snapshot_ref).expect("bind actor refs");
 
-  context.start_recovery(crate::core::Recovery::none(), ActorRefGeneric::null());
+  context.start_recovery(crate::core::Recovery::none(), ActorRefGeneric::null()).expect("start recovery");
 
   let journal_messages = journal_store.lock();
   assert_eq!(journal_messages.len(), 1);

@@ -135,7 +135,7 @@ fn partition_hub_route_with_partitioner_assigns_to_active_consumer() {
   hub
     .route_with(99_u32, |consumer_count| {
       assert_eq!(consumer_count, 2);
-      2
+      1 // Nth-active-consumer index: 0 → partition 0, 1 → partition 2
     })
     .expect("route_with");
 

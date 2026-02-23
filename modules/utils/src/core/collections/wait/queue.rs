@@ -44,7 +44,12 @@ where
   /// Notifies the oldest pending waiter with success.
   pub fn notify_success(&mut self) -> bool {
     while let Ok(node) = self.waiters.poll() {
-      if node.with_write(|n| n.complete_ok()) {
+      let (completed, waker) = node.with_write(|n| n.complete_ok());
+      // ロック解放後にwakeし、スピンロック下でのデッドロックを防ぐ
+      if let Some(waker) = waker {
+        waker.wake();
+      }
+      if completed {
         return true;
       }
     }
@@ -63,7 +68,11 @@ where
   where
     F: FnMut() -> E, {
     while let Ok(node) = self.waiters.poll() {
-      node.with_write(|n| n.complete_with_error(make_error()));
+      let waker = node.with_write(|n| n.complete_with_error(make_error()));
+      // ロック解放後にwakeし、スピンロック下でのデッドロックを防ぐ
+      if let Some(waker) = waker {
+        waker.wake();
+      }
     }
   }
 }
