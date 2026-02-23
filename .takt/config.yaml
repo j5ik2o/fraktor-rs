@@ -1,7 +1,7 @@
 provider: claude
 model: opus
-concurrency: 4
-base_branch: feat/takt-pekko-porting-piece
+concurrency: 8
+base_branch: main
 
 persona_providers:
   coder:
