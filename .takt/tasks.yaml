@@ -1,0 +1,130 @@
+tasks:
+  - worktree: true
+    piece: pekko-porting
+    auto_pr: true
+    draft_pr: true
+    name: actor-signals-and-watch
+    status: running
+    slug: 20260224-100001-act-sig
+    task_dir: .takt/tasks/20260224-100001-act-sig
+    created_at: 2026-02-24T10:00:01.000Z
+    started_at: 2026-02-23T17:39:21.139Z
+    completed_at: null
+    owner_pid: 42161
+  - worktree: true
+    piece: pekko-porting
+    auto_pr: true
+    draft_pr: true
+    name: actor-timer-router-interceptor
+    status: running
+    slug: 20260224-100002-act-tmr
+    task_dir: .takt/tasks/20260224-100002-act-tmr
+    created_at: 2026-02-24T10:00:02.000Z
+    started_at: 2026-02-23T17:39:21.140Z
+    completed_at: null
+    owner_pid: 42161
+  - worktree: true
+    piece: pekko-porting
+    auto_pr: true
+    draft_pr: true
+    name: streams-factories-and-operators
+    status: running
+    slug: 20260224-100003-str-fac
+    task_dir: .takt/tasks/20260224-100003-str-fac
+    created_at: 2026-02-24T10:00:03.000Z
+    started_at: 2026-02-23T17:39:21.140Z
+    completed_at: null
+    owner_pid: 42161
+  - worktree: true
+    piece: pekko-porting
+    auto_pr: true
+    draft_pr: true
+    name: streams-medium-operators
+    status: running
+    slug: 20260224-100004-str-med
+    task_dir: .takt/tasks/20260224-100004-str-med
+    created_at: 2026-02-24T10:00:04.000Z
+    started_at: 2026-02-23T17:39:21.140Z
+    completed_at: null
+    owner_pid: 42161
+  - worktree: true
+    piece: pekko-porting
+    auto_pr: true
+    draft_pr: true
+    name: remote-failure-detection
+    status: running
+    slug: 20260224-100005-rmt-fd
+    task_dir: .takt/tasks/20260224-100005-rmt-fd
+    created_at: 2026-02-24T10:00:05.000Z
+    started_at: 2026-02-23T17:39:21.140Z
+    completed_at: null
+    owner_pid: 42161
+  - worktree: true
+    piece: pekko-porting
+    auto_pr: true
+    draft_pr: true
+    name: remote-events-and-control
+    status: running
+    slug: 20260224-100006-rmt-evt
+    task_dir: .takt/tasks/20260224-100006-rmt-evt
+    created_at: 2026-02-24T10:00:06.000Z
+    started_at: 2026-02-23T17:39:21.140Z
+    completed_at: null
+    owner_pid: 42161
+  - worktree: true
+    piece: pekko-porting
+    auto_pr: true
+    draft_pr: true
+    name: cluster-member-model
+    status: running
+    slug: 20260224-100007-cls-mbr
+    task_dir: .takt/tasks/20260224-100007-cls-mbr
+    created_at: 2026-02-24T10:00:07.000Z
+    started_at: 2026-02-23T17:39:21.140Z
+    completed_at: null
+    owner_pid: 42161
+  - worktree: true
+    piece: pekko-porting
+    auto_pr: true
+    draft_pr: true
+    name: cluster-leader-and-downing
+    status: running
+    slug: 20260224-100008-cls-ldr
+    task_dir: .takt/tasks/20260224-100008-cls-ldr
+    created_at: 2026-02-24T10:00:08.000Z
+    started_at: 2026-02-23T17:39:21.140Z
+    completed_at: null
+    owner_pid: 42161
+  - worktree: true
+    piece: pekko-porting
+    auto_pr: true
+    draft_pr: true
+    name: persistence-event-adapter
+    status: pending
+    slug: 20260224-100009-per-adp
+    task_dir: .takt/tasks/20260224-100009-per-adp
+    created_at: 2026-02-24T10:00:09.000Z
+    started_at: null
+    completed_at: null
+  - worktree: true
+    piece: pekko-porting
+    auto_pr: true
+    draft_pr: true
+    name: persistence-enhancements
+    status: pending
+    slug: 20260224-100010-per-enh
+    task_dir: .takt/tasks/20260224-100010-per-enh
+    created_at: 2026-02-24T10:00:10.000Z
+    started_at: null
+    completed_at: null
+  - worktree: true
+    piece: pekko-porting
+    auto_pr: true
+    draft_pr: true
+    name: persistence-durable-state
+    status: pending
+    slug: 20260224-100011-per-dur
+    task_dir: .takt/tasks/20260224-100011-per-dur
+    created_at: 2026-02-24T10:00:11.000Z
+    started_at: null
+    completed_at: null
