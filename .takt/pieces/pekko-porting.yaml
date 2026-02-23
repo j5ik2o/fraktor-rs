@@ -248,6 +248,7 @@ movements:
       - coding
       - testing
       - fraktor-coding
+    session: refresh
     knowledge:
       - pekko-porting
       - architecture
