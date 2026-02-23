@@ -8,8 +8,8 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::core::{
-  DynValue, KeepLeft, KeepRight, RestartSettings, SourceLogic, StreamBufferConfig, StreamCompletion, StreamDone,
-  StreamDslError, StreamError, StreamNotUsed,
+  Completion, DynValue, KeepBoth, KeepLeft, KeepRight, RestartSettings, SourceLogic, StreamBufferConfig,
+  StreamCompletion, StreamDone, StreamDslError, StreamError, StreamNotUsed,
   lifecycle::{
     DriveOutcome, SharedKillSwitch, Stream, StreamHandleGeneric, StreamHandleId, StreamSharedGeneric, StreamState,
   },
@@ -425,10 +425,31 @@ fn source_sink_alias_exposes_sink_endpoint() {
   assert_eq!(values, Vec::<u32>::new());
 }
 
+// --- watch_termination tests ---
+
 #[test]
-fn source_watch_alias_keeps_values() {
-  let values = Source::from_array([5_u32, 6_u32]).watch().collect_values().expect("collect_values");
+fn source_watch_termination_mat_keep_left_passes_elements_through() {
+  let values =
+    Source::from_array([5_u32, 6_u32]).watch_termination_mat(KeepLeft).collect_values().expect("collect_values");
   assert_eq!(values, vec![5_u32, 6_u32]);
+}
+
+#[test]
+fn source_watch_termination_mat_keep_right_exposes_completion_handle() {
+  let source = Source::from_array([1_u32, 2_u32]).watch_termination_mat(KeepRight);
+  let completion = source.map_materialized_value(|c| {
+    assert_eq!(c.poll(), Completion::Pending);
+    c
+  });
+  let values = completion.collect_values().expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2_u32]);
+}
+
+#[test]
+fn source_watch_termination_mat_keep_both() {
+  let (_graph, (left, right)) = Source::<u32, StreamNotUsed>::empty().watch_termination_mat(KeepBoth).into_parts();
+  assert_eq!(left, StreamNotUsed::new());
+  assert_eq!(right.poll(), Completion::Pending);
 }
 
 #[test]

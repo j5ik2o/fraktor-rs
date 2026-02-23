@@ -184,20 +184,6 @@ where
     Self::as_subscriber()
   }
 
-  /// Adds an actor-watch compatibility stage.
-  #[must_use]
-  pub fn watch(mut self) -> Self {
-    let completion = StreamCompletion::<()>::new();
-    let definition = watch_termination_definition::<Out>(completion);
-    let inlet_id = definition.inlet;
-    let from = self.graph.tail_outlet();
-    self.graph.push_stage(StageDefinition::Flow(definition));
-    if let Some(from) = from {
-      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
-    }
-    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
-  }
-
   /// Combines multiple sources by selecting the first source when available.
   #[must_use]
   pub fn combine<I>(sources: I) -> Self
@@ -516,6 +502,27 @@ where
     F: FnOnce(Mat) -> Mat2, {
     let (graph, mat) = self.into_parts();
     Source { graph, mat: func(mat), _pd: PhantomData }
+  }
+
+  /// Watches stream termination and completes a `StreamCompletion<()>` handle.
+  ///
+  /// Elements are passed through unchanged. The materialized value is
+  /// combined with a fresh `StreamCompletion<()>` using the supplied
+  /// `MatCombineRule`.
+  #[must_use]
+  pub fn watch_termination_mat<C>(mut self, _combine: C) -> Source<Out, C::Out>
+  where
+    C: MatCombineRule<Mat, StreamCompletion<()>>, {
+    let completion = StreamCompletion::<()>::new();
+    let definition = watch_termination_definition::<Out>(completion.clone());
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    let mat = combine_mat::<Mat, StreamCompletion<()>, C>(self.mat, completion);
+    Source { graph: self.graph, mat, _pd: PhantomData }
   }
 
   /// Connects this source to a sink.
