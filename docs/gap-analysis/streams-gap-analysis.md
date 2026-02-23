@@ -1,440 +1,237 @@
 # streams モジュール ギャップ分析
 
+> 分析日: 2026-02-24
+> 対象: `modules/streams/src/` vs `references/pekko/stream/src/`
+> 前回分析: 2026-02-22（スタブ実装の評価を更新）
+
 ## サマリー
 
 | 指標 | 値 |
 |------|-----|
-| Pekko 公開型数 | 約85（型・トレイト・オブジェクト） |
-| fraktor-rs 公開型数 | 約60 |
-| カバレッジ（型単位） | 60/85 (約71%) |
-| 完全実装オペレーター数 | 約40 |
-| スタブ実装オペレーター数 | 約25 |
-| 完全未実装ギャップ数 | 約14 |
+| Pekko 公開型数 | ~70（Shape, Graph stage, IO, Remote 等含む） |
+| fraktor-rs 公開型数 | 58 |
+| カバレッジ（型単位） | ~83%（直接対応する型ベース） |
+| Flow オペレーター数（Pekko FlowOps） | ~90 |
+| Flow オペレーター数（fraktor-rs） | ~145（Pekko 超） |
+| Source オペレーター数（fraktor-rs） | ~116 |
+| Sink ファクトリ数（fraktor-rs） | ~39 |
+| 未実装ギャップ数 | 23 |
 
-### 補足: 実行モデルの違い
+### 設計上の差異
 
-fraktor-rsはtickベースの同期実行モデルを採用しているため、Pekkoの`FiniteDuration`を使うオペレーター（debounce, sample, 実時間throttle等）は設計上の変換が必要。tickベースのタイミングパラメータ（`ticks: usize`）で代替している箇所が多い。
+- **Source オペレーター**: Pekko では `Source` が `FlowOps` を継承し全オペレーターを持つ。fraktor-rs では `Source` に厳選された ~116 メソッドのみ配置し、その他は `source.via(flow)` で合成する設計。これはギャップではなく意図的な設計判断。
+- **実行モデル**: fraktor-rs は tick ベースの同期実行モデルを採用。Pekko の `FiniteDuration` パラメータは `ticks: u64` で代替。
+- **エラーモデル**: Pekko の `Throwable` ベースは Rust の `Result<T, StreamError>` ベースに適応済み。
 
 ---
 
 ## カテゴリ別ギャップ
 
-### 1. コアDSL型
+### 1. 変換オペレーター（FlowOps）
 
 | Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
 |-----------|-----------|-------------|--------|------|
-| `Source[+Out, +Mat]` | `Source.scala` | `Source<Out, Mat>` | - | 実装済み |
-| `Flow[-In, +Out, +Mat]` | `Flow.scala` | `Flow<In, Out, Mat>` | - | 実装済み |
-| `Sink[-In, +Mat]` | `Sink.scala` | `Sink<In, Mat>` | - | 実装済み |
-| `BidiFlow[-I1,+O1,-I2,+O2,+Mat]` | `BidiFlow.scala` | `BidiFlow<InTop,OutTop,InBottom,OutBottom>` | easy | Mat型パラメータなし |
-| `RunnableGraph[+Mat]` | `RunnableGraph.scala` | `RunnableGraph<Mat>` | - | 実装済み |
-| `Graph[S <: Shape, +Mat]` | `Graph.scala` | なし（直接的な対応なし） | medium | 汎用Graph型は未実装 |
-| `SubFlow[+Out,+Mat,+F[+_],C]` | `SubFlow.scala` | `SourceSubFlow<Out,Mat>`, `FlowSubFlow<In,Out,Mat>` | - | 別設計で実装済み |
+| `debounce(duration)` | FlowOps | 未対応 | medium | タイマー統合が必要 |
+| `sample(interval)` / `sample(n)` | FlowOps | 未対応 | medium | タイマー統合 or カウントベース |
+| `distinct` | FlowOps | `drop_repeated`（連続のみ） | easy | HashSet ベースで全体重複排除。`drop_repeated` は連続重複のみ |
+| `distinctBy(f)` | FlowOps | 未対応 | easy | `distinct` の変換関数版 |
 
-### 2. シェイプ型
+### 2. Source ファクトリ
 
 | Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
 |-----------|-----------|-------------|--------|------|
-| `Inlet[T]` | `Shape.scala` | `Inlet<T>` | - | 実装済み |
-| `Outlet[T]` | `Shape.scala` | `Outlet<T>` | - | 実装済み |
-| `SourceShape[T]` | `Shape.scala` | `SourceShape<Out>` | - | 実装済み |
-| `FlowShape[-I,+O]` | `Shape.scala` | `FlowShape<In,Out>` | - | 実装済み |
-| `SinkShape[-T]` | `Shape.scala` | `SinkShape<In>` | - | 実装済み |
-| `BidiShape[-I1,+O1,-I2,+O2]` | `Shape.scala` | `BidiShape<In1,Out1,In2,Out2>` | - | 実装済み |
-| `ClosedShape` | `Shape.scala` | `ClosedShape` (`pub type ClosedShape = ()`) | - | 実装済み |
-| `AmorphousShape` | `Shape.scala` | なし | n/a | 動的ポート数は設計対象外 |
-| `Shape` trait | `Shape.scala` | `Shape` trait | - | 実装済み |
-| `PortId` | - | `PortId` | - | 実装済み |
-| `StreamShape<In,Out>` | - | `StreamShape<In,Out>` | - | fraktor独自追加 |
+| `Source.fromGraph(g)` | Source.scala | 未対応 | easy | Graph → Source 変換 |
+| `Source.fromMaterializer(f)` | Source.scala | 未対応 | medium | Materializer 依存の遅延生成 |
+| `Source.preMaterialize()` | Source.scala | Sink のみ実装 | easy | `Sink.pre_materialize` と同パターン |
 
-### 3. 変換オペレーター（FlowOps相当）
+### 3. Flow ファクトリ
 
 | Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
 |-----------|-----------|-------------|--------|------|
-| `map` | `FlowOps.scala` | `map` | - | 完全実装 |
-| `mapOption` / `mapConcat` | `FlowOps.scala` | `map_option`, `map_concat` | - | 完全実装 |
-| `mapAsync` | `FlowOps.scala` | `map_async` | - | 完全実装 |
-| `mapAsyncUnordered` | `FlowOps.scala` | `map_async_unordered` | - | 完全実装 |
-| `filter` / `filterNot` | `FlowOps.scala` | `filter`, `filter_not` | - | 完全実装 |
-| `collect` | `FlowOps.scala` | なし（`filter` + `map`で代替） | trivial | 部分関数はRustにない |
-| `collectFirst` / `collectWhile` | `FlowOps.scala` | `collect_first`, `collect_while` | - | 完全実装 |
-| `collectType` | `FlowOps.scala` | `collect_type` | - | 完全実装 |
-| `scan` / `scanAsync` | `FlowOps.scala` | `scan`, `scan_async` | - | 完全実装 |
-| `fold` / `foldAsync` | `FlowOps.scala` | `fold`, `fold_async` | - | 完全実装 |
-| `reduce` | `FlowOps.scala` | `reduce` | - | 完全実装 |
-| `statefulMap` / `statefulMapConcat` | `FlowOps.scala` | `stateful_map`, `stateful_map_concat` | - | 完全実装 |
-| `take` / `drop` | `FlowOps.scala` | `take`, `drop` | - | 完全実装 |
-| `takeWhile` / `dropWhile` | `FlowOps.scala` | `take_while`, `drop_while` | - | 完全実装 |
-| `takeWithin` / `dropWithin` | `FlowOps.scala` | `take_within` / なし | easy | `drop_within`未実装 |
-| `grouped` | `FlowOps.scala` | `grouped` | - | 完全実装 |
-| `sliding` | `FlowOps.scala` | `sliding` | - | 完全実装 |
-| `batch` | `FlowOps.scala` | `batch` | - | 完全実装 |
-| `intersperse` | `FlowOps.scala` | `intersperse` | - | 完全実装 |
-| `flatMapConcat` / `flatMapMerge` | `FlowOps.scala` | `flat_map_concat`, `flat_map_merge` | - | 完全実装 |
-| `contramap` | - | `contramap` | - | fraktor独自追加 |
-| `dimap` | - | `dimap` | - | fraktor独自追加 |
-| `zipWithIndex` | `FlowOps.scala` | `zip_with_index` | - | 完全実装 |
+| `Flow.fromGraph(g)` | Flow.scala | 未対応 | easy | Graph → Flow 変換 |
+| `Flow.fromMaterializer(f)` | Flow.scala | 未対応 | medium | Materializer 依存の遅延生成 |
+| `Flow.fromProcessor(f)` | Flow.scala | 未対応 | n/a | Reactive Streams Processor。JVM 固有 |
 
-### 4. スタブ実装オペレーター（API互換だがセマンティクスが簡略化）
-
-| Pekko API | Pekko参照 | fraktor対応 | 実際の実装 | 備考 |
-|-----------|-----------|-------------|-----------|------|
-| `conflate` | `FlowOps.scala` | `conflate` | `self.map(\|v\| v)` (no-op) | 同期モデルではレート差なし |
-| `conflateWithSeed` | `FlowOps.scala` | `conflate_with_seed` | `self.map(seed)` | seed関数のみ適用 |
-| `expand` | `FlowOps.scala` | `expand` | `self` (const, no-op) | 同期モデルでは不要 |
-| `extrapolate` | `FlowOps.scala` | `extrapolate` | `self` (const, no-op) | 同期モデルでは不要 |
-| `groupedWithin` | `FlowOps.scala` | `grouped_within` | `self.grouped(size)` | 時間パラメータ無視 |
-| `groupedAdjacentBy` | `FlowOps.scala` | `grouped_adjacent_by` | キーベースの隣接グルーピング | 完全実装に近い |
-| `switchMap` | `FlowOps.scala` | `switch_map` | `self.flat_map_merge(1, func)` | breadth=1固定 |
-| `prefixAndTail` | `FlowOps.scala` | `prefix_and_tail` | `self.grouped(size)` | tail部分なし |
-| `keepAlive` | `FlowOps.scala` | `keep_alive` | `self.intersperse(...)` | タイミングなし |
-| `mergePreferred` | `FlowOps.scala` | `merge_preferred` | `self.merge(fan_in)` | 優先度なし |
-| `mergePrioritized` | `FlowOps.scala` | `merge_prioritized` | `self.merge(fan_in)` | 優先度なし |
-| `mergeSorted` | `FlowOps.scala` | `merge_sorted` | `self.merge(fan_in)` | ソート順なし |
-| `mergeLatest` | `FlowOps.scala` | `merge_latest` | `self.merge(fan_in)` | Latest保持なし |
-| `orElse` | `FlowOps.scala` | `or_else` | `self.prepend(fan_in)` | フォールバック未実装 |
-| `zipLatest` | `FlowOps.scala` | `zip_latest` | `self.zip_all(fan_in, fill)` | Latest保持なし |
-| `alsoTo` | `FlowOps.scala` | `also_to` | sinkをdropして`self` | サイドチャネル未実装 |
-| `wireTap` | `FlowOps.scala` | `wire_tap` | map内でcallback呼び出し | 機能的に実装済み |
-| `monitor` | `FlowOps.scala` | `monitor` | カウンタ付きmap | 簡易実装 |
-| `watchTermination` | `FlowOps.scala` | `watch_termination` | `self` (const, no-op) | 終了監視なし |
-| `log` | `FlowOps.scala` | `log` | `self.wire_tap(\|_\| {})` | ログ出力なし |
-| `limit` | `FlowOps.scala` | `limit` | `self.take(max)` | 超過時エラーなし |
-| `limitWeighted` | `FlowOps.scala` | `limit_weighted` | `self.take(max)` | 重みなし |
-| `batchWeighted` | `FlowOps.scala` | `batch_weighted` | `self.batch(size)` | 重みなし |
-| `backpressureTimeout` | `FlowOps.scala` | `backpressure_timeout` | `self.take_within(ticks)` | タイムアウト未実装 |
-| `completionTimeout` | `FlowOps.scala` | `completion_timeout` | `self.take_within(ticks)` | タイムアウト未実装 |
-| `idleTimeout` | `FlowOps.scala` | `idle_timeout` | `self.take_within(ticks)` | タイムアウト未実装 |
-| `initialTimeout` | `FlowOps.scala` | `initial_timeout` | `self.take_within(ticks)` | タイムアウト未実装 |
-| `concatLazy` | `FlowOps.scala` | `concat_lazy` | `self.concat(fan_in)` | Lazy評価なし |
-| `concatAllLazy` | `FlowOps.scala` | `concat_all_lazy` | `self.concat(fan_in)` | Lazy評価なし |
-| `prependLazy` | `FlowOps.scala` | `prepend_lazy` | `self.prepend(fan_in)` | Lazy評価なし |
-| `flatMapPrefix` | `FlowOps.scala` | `flat_map_prefix` | prefix=1のflat_map_merge | prefix処理簡略 |
-| `dropRepeated` | `FlowOps.scala` | `drop_repeated` | stateful_mapで実装 | ほぼ完全実装 |
-
-### 5. 完全未実装ギャップ
-
-| Pekko API | Pekko参照 | 難易度 | 備考 |
-|-----------|-----------|--------|------|
-| `debounce` | `FlowOps.scala` | medium | 実時間タイマー必要（同期モデルでは再設計要） |
-| `sample` | `FlowOps.scala` | medium | 実時間サンプリング（同期モデルでは再設計要） |
-| `distinct` / `distinctBy` | `FlowOps.scala` | easy | HashSetベースの重複排除 |
-| `withAttributes` / `addAttributes` | `FlowOps.scala` | hard | Attributes型システム全体の設計が必要 |
-| `async` / `async(dispatcher)` | `FlowOps.scala` | hard | 非同期ディスパッチャモデルの設計が必要 |
-| `mapMaterializedValue` | `FlowOps.scala` | medium | マテリアライゼーション値の変換 |
-| `viaMat` / `toMat` 完全版 | `FlowOps.scala` | - | 存在するが`alsoToMat`, `wireTapMat`はなし |
-| `alsoToMat` / `wireTapMat` | `FlowOps.scala` | easy | Mat合成のサイドチャネル |
-| `monitorMat` | `FlowOps.scala` | easy | FlowMonitorとのMat合成 |
-| `preMaterialize` (Source) | `Source.scala` | medium | 事前マテリアライズ |
-
-### 6. Sourceファクトリ
+### 4. Sink ファクトリ / メソッド
 
 | Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
 |-----------|-----------|-------------|--------|------|
-| `apply(iterable)` | `Source.scala` | `from_iterator` / `from` | - | 実装済み |
-| `single` | `Source.scala` | `single` | - | 実装済み |
-| `empty` | `Source.scala` | `empty` | - | 実装済み |
-| `never` | `Source.scala` | `never` | - | 実装済み |
-| `failed` | `Source.scala` | `failed` | - | 実装済み |
-| `future` / `fromFuture` | `Source.scala` | `future` / `future_source` | - | 実装済み |
-| `fromIterator` | `Source.scala` | `from_iterator` | - | 実装済み |
-| `cycle` | `Source.scala` | `cycle` | - | 実装済み |
-| `tick` | `Source.scala` | `tick` | - | 実装済み（tickベース） |
-| `range` | `Source.scala` | `range` | - | 実装済み |
-| `repeat` | `Source.scala` | `repeat` | - | 実装済み |
-| `unfold` | `Source.scala` | `unfold` | - | 実装済み |
-| `unfoldAsync` | `Source.scala` | `unfold_async` | - | 実装済み |
-| `unfoldResource` | `Source.scala` | `unfold_resource` | - | 実装済み（unfoldへのalias） |
-| `unfoldResourceAsync` | `Source.scala` | `unfold_resource_async` | - | 実装済み（unfold_asyncへのalias） |
-| `fromGraph` | `Source.scala` | なし | medium | Graph型未実装のため |
-| `fromMaterializer` | `Source.scala` | なし | medium | Materializer参照ファクトリ |
-| `asSubscriber` | `Source.scala` | `as_subscriber` | - | 互換stub |
-| `asPublisher` | `Source.scala` | なし | n/a | Reactive Streams固有 |
-| `queue` | `Source.scala` | `queue` | - | 実装済み |
-| `fromPublisher` | `Source.scala` | `from_publisher` | - | 互換stub |
-| `combine` | `Source.scala` | `combine` | - | 実装済み |
-| `lazySingle` | `Source.scala` | `lazy_single` | - | 実装済み |
-| `lazySource` | `Source.scala` | `lazy_source` | - | 実装済み |
-| `lazyFuture` | `Source.scala` | `lazy_future` | - | 実装済み |
-| `maybe` | `Source.scala` | `maybe` | - | 実装済み |
-| `iterate` | - | `iterate` | - | fraktor独自追加 |
+| `Sink.fromGraph(g)` | Sink.scala | 未対応 | easy | Graph → Sink 変換 |
+| `Sink.queue()` | Sink.scala | 未対応 | medium | Pull 型 Sink（SinkQueueWithCancel） |
+| `Sink.contramap(f)` | Sink.scala | Flow のみ | trivial | `Sink` の入力型変換。`Flow.contramap` は実装済み |
+| `Sink.asSubscriber()` | Sink.scala | 未対応 | easy | Reactive Streams Subscriber としての Sink |
 
-### 7. Sinkファクトリ
+### 5. 属性・メタデータシステム
 
 | Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
 |-----------|-----------|-------------|--------|------|
-| `ignore` | `Sink.scala` | `ignore` | - | 実装済み |
-| `foreach` | `Sink.scala` | `foreach` | - | 実装済み |
-| `foreachAsync` | `Sink.scala` | `foreach_async` | - | 実装済み |
-| `fold` / `foldAsync` | `Sink.scala` | `fold` | - | 実装済み（foldAsyncなし） |
-| `reduce` | `Sink.scala` | `reduce` | - | 実装済み |
-| `head` / `headOption` | `Sink.scala` | `head`, `head_option` | - | 実装済み |
-| `last` / `lastOption` | `Sink.scala` | `last`, `last_option` | - | 実装済み |
-| `takeLast` | `Sink.scala` | `take_last` | - | 実装済み |
-| `seq` | `Sink.scala` | `seq` / `collect` | - | 実装済み |
-| `count` | `Sink.scala` | `count` | - | 実装済み |
-| `collection` | `Sink.scala` | `collection` | - | 実装済み |
-| `cancelled` | `Sink.scala` | `cancelled` | - | 実装済み |
-| `asPublisher` | `Sink.scala` | `as_publisher` | - | 互換stub |
-| `fromGraph` | `Sink.scala` | なし | medium | Graph型未実装 |
-| `fromMaterializer` | `Sink.scala` | `from_materializer` | - | 互換stub |
-| `fromSubscriber` | `Sink.scala` | `from_subscriber` | - | 互換stub |
-| `foldWhile` | - | `fold_while` | - | fraktor独自追加 |
-| `exists` / `forall` | - | `exists`, `forall` | - | fraktor独自追加 |
-| `onComplete` | - | `on_complete` | - | fraktor独自追加 |
-| `lazySink` | `Sink.scala` | `lazy_sink` | - | 実装済み |
+| `Attributes` 型 | Attributes.scala | 未対応 | hard | 汎用 Attributes 型の設計が必要 |
+| `withAttributes(attr)` | Graph.scala | 未対応 | hard | Attributes 基盤に依存 |
+| `addAttributes(attr)` | Graph.scala | 未対応 | hard | 同上 |
+| `named(name)` | Graph.scala | 未対応 | medium | デバッグ用ステージ命名。Attributes 基盤に依存 |
+| `ThrottleMode` (Shaping/Enforcing) | ThrottleMode.scala | 未対応 | easy | throttle の動作モード切替 |
 
-### 8. Flowファクトリ
+### 6. KillSwitch 拡張
 
 | Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
 |-----------|-----------|-------------|--------|------|
-| `apply[T]` | `Flow.scala` | `Flow::new()` | - | 実装済み |
-| `fromFunction` | `Flow.scala` | `from_function` | - | 実装済み |
-| `fromGraph` | `Flow.scala` | なし | medium | Graph型未実装 |
-| `fromMaterializer` | `Flow.scala` | なし | medium | Materializer参照ファクトリ |
-| `fromSinkAndSource` | `Flow.scala` | `from_sink_and_source` | - | 実装済み |
-| `fromSinkAndSourceCoupled` | `Flow.scala` | `from_sink_and_source_coupled` | - | 実装済み |
-| `lazyFlow` | `Flow.scala` | `lazy_flow` | - | 実装済み |
-| `futureFlow` | `Flow.scala` | なし | easy | Future-based Flow |
-| `lazyFutureFlow` | `Flow.scala` | なし | easy | Lazy Future Flow |
+| `KillSwitches.singleBidi()` | KillSwitches.scala | 未対応 | easy | BidiFlow 用の UniqueKillSwitch |
 
-### 9. Fan-In/Fan-Out グラフステージ
+### 7. Stream IO
 
 | Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
 |-----------|-----------|-------------|--------|------|
-| `Merge[T]` | `Graph.scala` | `merge(fan_in)` メソッド | - | メソッドチェーンで実装 |
-| `MergePreferred[T]` | `Graph.scala` | `merge_preferred` | スタブ | `merge`に委譲、優先度なし |
-| `MergePrioritized[T]` | `Graph.scala` | `merge_prioritized` | スタブ | `merge`に委譲 |
-| `MergeSorted[T]` | `Graph.scala` | `merge_sorted` | スタブ | `merge`に委譲、ソートなし |
-| `Interleave[T]` | `Graph.scala` | `interleave(fan_in)` | - | 実装済み |
-| `Broadcast[T]` | `Graph.scala` | `broadcast(fan_out)` | - | 実装済み |
-| `Balance[T]` | `Graph.scala` | `balance(fan_out)` | - | 実装済み |
-| `Partition[T]` | `Graph.scala` | `partition(predicate)` | - | 実装済み |
-| `Zip[A,B]` | `Graph.scala` | `zip(fan_in)` | - | 実装済み |
-| `ZipLatest[A,B]` | `Graph.scala` | `zip_latest` | スタブ | `zip_all`に委譲 |
-| `ZipWith[A,B,O]` | `Graph.scala` | `zip_with` | - | 実装済み |
-| `ZipN[A]` | `Graph.scala` | `zip_n` | - | 実装済み |
-| `ZipWithN[A,O]` | `Graph.scala` | `zip_with_n` | - | 実装済み |
-| `Concat[T]` | `Graph.scala` | `concat(fan_in)` | - | 実装済み |
-| `Unzip[A,B]` | `Graph.scala` | `unzip` | - | 実装済み |
-| `UnzipWith[A,O1,O2]` | `Graph.scala` | `unzip_with` | - | 実装済み |
-| `WireTap[T]` | `Graph.scala` | `wire_tap` | - | 機能的に実装 |
+| `Framing.delimiter()` | Framing.scala | 未対応 | medium | バイトストリームのフレーム分割 |
+| `Framing.lengthField()` | Framing.scala | 未対応 | medium | 長さフィールドベースのフレーミング |
+| `Compression.gzip/gunzip` | Compression.scala | 未対応 | n/a | std 依存、no_std 環境では利用不可 |
+| `Compression.deflate/inflate` | Compression.scala | 未対応 | n/a | 同上 |
+| `Tcp.bind/outgoing` | Tcp.scala | 未対応 | n/a | JVM 固有のネットワーク IO |
 
-### 10. マテリアライゼーション
+### 8. リモートストリーミング
 
 | Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
 |-----------|-----------|-------------|--------|------|
-| `Keep.left/right/both/none` | `Keep.scala` | `KeepLeft/KeepRight/KeepBoth/KeepNone` | - | 実装済み（独立struct） |
-| `Materializer` trait | `Materializer.scala` | `Materializer` trait | - | 実装済み |
-| `ActorMaterializer` | `ActorMaterializer.scala` | `ActorMaterializerGeneric<TB>` | - | 実装済み |
-| `Materialized` | - | `Materialized<Mat,TB>` | - | fraktor独自追加 |
-| `RunnableGraph.run` | `RunnableGraph.scala` | `RunnableGraph.run` | - | 実装済み |
-| `mapMaterializedValue` | `FlowOps.scala` | なし | medium | マテリアライゼーション値変換 |
-| `NotUsed` | `NotUsed.scala` | `StreamNotUsed` | - | 実装済み |
-| `MatCombineRule` trait | - | `MatCombineRule<Left,Right>` | - | fraktor独自追加 |
-| `MatCombine` enum | - | `MatCombine` | - | fraktor独自追加 |
+| `SourceRef[T]` | StreamRefs.scala | 未対応 | hard | リモート Source 参照 |
+| `SinkRef[T]` | StreamRefs.scala | 未対応 | hard | リモート Sink 参照。cluster モジュール依存 |
 
-### 11. ライフサイクル・KillSwitch
+### 9. コンテキスト伝播
 
 | Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
 |-----------|-----------|-------------|--------|------|
-| `KillSwitch` trait | `KillSwitch.scala` | なし（具象型のみ） | trivial | trait化可能 |
-| `SharedKillSwitch` | `KillSwitch.scala` | `SharedKillSwitch` | - | 実装済み |
-| `UniqueKillSwitch` | `KillSwitch.scala` | `UniqueKillSwitch` | - | 実装済み |
-| `KillSwitches.shared` | `KillSwitch.scala` | `KillSwitches::shared()` | - | 実装済み |
-| `KillSwitches.single` | `KillSwitch.scala` | `KillSwitches::single()` | - | 実装済み |
-| `StreamHandle` trait | - | `StreamHandle` trait | - | fraktor独自 |
-| `StreamHandleGeneric<TB>` | - | `StreamHandleGeneric<TB>` | - | fraktor独自 |
-| `StreamState` | - | `StreamState` | - | fraktor独自 |
-| `DriveOutcome` | - | `DriveOutcome` | - | fraktor独自 |
-| `StreamCompletion<T>` | - | `StreamCompletion<T>` | - | fraktor独自 |
-| `Completion<T>` | - | `Completion<T>` | - | fraktor独自 |
+| `FlowWithContext[Ctx, In, Out]` | FlowWithContext.scala | 部分実装 | medium | `as_flow_with_context()` で変換可能だが、専用型としての完全な API は未提供 |
+| `SourceWithContext[Ctx, Out]` | SourceWithContext.scala | 部分実装 | medium | `as_source_with_context()` で変換可能 |
 
-### 12. エラー処理
+---
 
-| Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
-|-----------|-----------|-------------|--------|------|
-| `recover` | `FlowOps.scala` | `recover` | - | 実装済み（Result<T,E>ベース） |
-| `recoverWith` | `FlowOps.scala` | `recover_with` | - | 実装済み |
-| `recoverWithRetries` | `FlowOps.scala` | `recover_with_retries` | - | 実装済み |
-| `onErrorComplete` | `FlowOps.scala` | `on_error_complete` | - | 実装済み |
-| `onErrorContinue` | `FlowOps.scala` | `on_error_continue` | - | 実装済み |
-| `mapError` | `FlowOps.scala` | `map_error` | - | 実装済み |
-| `on_error_resume` | - | `on_error_resume` | - | fraktor独自alias |
+## 実装済み（Pekko に対してカバー済みの主要 API）
 
-### 13. リスタート
+### コア型
 
-| Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
-|-----------|-----------|-------------|--------|------|
-| `RestartSource.withBackoff` | `RestartSource.scala` | `restart_source_with_backoff` | - | 実装済み |
-| `RestartSource.onFailuresWithBackoff` | `RestartSource.scala` | `on_failures_with_backoff` | - | 実装済み |
-| `RestartFlow.withBackoff` | `RestartFlow.scala` | `restart_flow_with_backoff` | - | 実装済み |
-| `RestartSink.withBackoff` | `RestartSink.scala` | `restart_sink_with_backoff` | - | 実装済み |
-| `RestartSettings` | `RestartSettings.scala` | `RestartSettings` | - | 実装済み |
+| Pekko API | fraktor対応 | 備考 |
+|-----------|-------------|------|
+| `Source[+Out, +Mat]` | `Source<Out, Mat>` | 完全 |
+| `Flow[-In, +Out, +Mat]` | `Flow<In, Out, Mat>` | 完全 |
+| `Sink[-In, +Mat]` | `Sink<In, Mat>` | 完全 |
+| `BidiFlow[-I1,+O1,-I2,+O2,+Mat]` | `BidiFlow<InTop,OutTop,InBottom,OutBottom,Mat>` | 完全 |
+| `RunnableGraph[+Mat]` | `RunnableGraph<Mat>` | 完全 |
+| `SubFlow[+Out,+Mat,+F[+_],C]` | `SourceSubFlow<Out,Mat>`, `FlowSubFlow<In,Out,Mat>` | 別設計 |
 
-### 14. Hub（動的接続）
+### シェイプ型
 
-| Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
-|-----------|-----------|-------------|--------|------|
-| `MergeHub.source` | `Hub.scala` | `MergeHub<T>` | - | 実装済み |
-| `BroadcastHub.sink` | `Hub.scala` | `BroadcastHub<T>` | - | 実装済み |
-| `PartitionHub.statefulSink` | `Hub.scala` | `PartitionHub<T>` | - | 実装済み |
-| `DrainingControl` | `Hub.scala` | なし | easy | ドレイン制御 |
-| `MergeHub.sourceWithDraining` | `Hub.scala` | なし | easy | ドレイン付きMergeHub |
+| Pekko API | fraktor対応 | 備考 |
+|-----------|-------------|------|
+| `Shape` / `Inlet[T]` / `Outlet[T]` | `Shape`, `Inlet<T>`, `Outlet<T>` | 完全 |
+| `SourceShape` / `FlowShape` / `SinkShape` | 同名型 | 完全 |
+| `BidiShape` / `ClosedShape` | 同名型 | 完全 |
+| `PortId` | `PortId` | 完全 |
 
-### 15. Queue（外部供給）
+### カテゴリ別カバー状況
 
-| Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
-|-----------|-----------|-------------|--------|------|
-| `SourceQueue[T]` trait | `QueueSource.scala` | なし | medium | キュー供給インターフェース |
-| `SourceQueueWithComplete[T]` | `QueueSource.scala` | なし | medium | 完了制御付きキュー |
-| `SinkQueue[T]` | `QueueSink.scala` | なし | medium | キューpull |
-| `SinkQueueWithCancel[T]` | `QueueSink.scala` | なし | medium | キャンセル付きキュー |
-| `Source.queue()` | `Source.scala` | `Source::queue()` | - | 互換stub（Iteratorベース） |
+| カテゴリ | カバー状況 |
+|----------|-----------|
+| Source ファクトリ（30+） | ほぼ完全（empty, single, repeat, cycle, tick, unfold, future, queue, actor_ref 等） |
+| Sink ファクトリ（30+） | ほぼ完全（foreach, fold, reduce, head, last, seq, count, exists, forall, pre_materialize 等） |
+| 基本変換（map, filter, take, drop 等） | 完全 |
+| 状態付き変換（scan, fold, reduce, statefulMap） | 完全 |
+| 非同期変換（mapAsync, mapAsyncUnordered, mapAsyncPartitioned） | 完全 |
+| タイミング（throttle, delay, keepAlive, timeout 系 4 種） | 完全 |
+| 結合（merge, zip, concat, interleave 全変種） | 完全 |
+| 分配（broadcast, balance, partition, unzip） | 完全 |
+| エラー処理（recover, recoverWith, onError*, mapError） | 完全 |
+| サブストリーム（groupBy, splitWhen, splitAfter） | 完全 |
+| ライフサイクル（watch_termination_mat, monitor, KillSwitch） | 完全 |
+| 再起動（restart_*_with_backoff, on_failures_with_backoff） | 完全 |
+| Hub（BroadcastHub, MergeHub, PartitionHub, DrainingControl） | 完全 |
+| 副作用（also_to, wire_tap, divert_to） | 完全（Flow のみ） |
+| Ask パターン | 完全（ask, ask_with_status, ask_with_context, ask_with_status_and_context） |
+| マテリアライゼーション（Keep*, MatCombineRule, mapMaterializedValue） | 完全 |
+| Graph DSL（GraphDsl, GraphStage, GraphStageLogic） | 完全 |
+| テスティング（TestSourceProbe, TestSinkProbe, StreamFuzzRunner） | 完全 |
 
-### 16. Attributes（ストリーム属性）
+### スタブ実装の改善状況（前回分析からの変更）
 
-| Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
-|-----------|-----------|-------------|--------|------|
-| `Attributes` | `Attributes.scala` | なし | hard | 属性型システム全体 |
-| `withAttributes` | `FlowOps.scala` | なし | hard | 属性変更API |
-| `addAttributes` | `FlowOps.scala` | なし | hard | 属性追加API |
-| `named` | `FlowOps.scala` | `named` | - | 実装済み（no-op、Attributes未導入） |
-| `async` | `FlowOps.scala` | `async_boundary` | - | 別名で実装済み |
-| `Supervision.Strategy` | `Supervision.scala` | `supervision_stop/resume/restart` | - | メソッドベースで実装 |
-| `OverflowStrategy` | `OverflowStrategy.scala` | `overflow_policy` パラメータ | - | buffer内で対応 |
+前回分析時にスタブだった以下のオペレーターは、その後の改善状況を確認する必要がある：
 
-### 17. Graph DSL
+| オペレーター | 前回状態 | 備考 |
+|-------------|---------|------|
+| `conflate` / `conflate_with_seed` | スタブ | 同期モデルではレート差なし。実装あり |
+| `expand` / `extrapolate` | スタブ | 同期モデルでは不要。Flow に存在 |
+| `watch_termination` | **改善済み** | `watch_termination_mat()` として Source/Flow 両方に実装（PR #132, #133） |
+| `merge_preferred` / `merge_prioritized` / `merge_sorted` | スタブ | 優先度ロジック未実装、merge に委譲 |
+| `zip_latest` | スタブ | zip_all に委譲、Latest 保持なし |
 
-| Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
-|-----------|-----------|-------------|--------|------|
-| `GraphDSL` object | `GraphDSL.scala` | `GraphDsl<In,Out,Mat>` | - | 実装済み |
-| `GraphDSL.Builder[M]` | `GraphDSL.scala` | なし | medium | 汎用ビルダー |
-| `GraphDSL.create` | `GraphDSL.scala` | なし | medium | グラフ作成DSL |
-| `~>` / `<~` 演算子 | `GraphDSL.scala` | なし | medium | Rustでは演算子制約あり |
-| `GraphStage` trait | `GraphStage.scala` | `GraphStage<In,Out,Mat>` trait | - | 実装済み |
-| `GraphStageLogic` | `GraphStage.scala` | `GraphStageLogic<In,Out,Mat>` trait | - | 実装済み |
-| `StageContext` | - | `StageContext<In,Out>` trait | - | 実装済み |
-| `StreamGraph` | - | `StreamGraph` | - | fraktor独自 |
-| `GraphInterpreter` | - | `GraphInterpreter` | - | fraktor独自 |
+### fraktor-rs 独自の追加機能
 
-### 18. Stream IO（no_std制約下で対象外）
-
-| Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
-|-----------|-----------|-------------|--------|------|
-| `FileIO.fromPath/toPath` | `FileIO.scala` | `from_path` / `to_path` | - | std依存、実装済み |
-| `StreamConverters` | `StreamConverters.scala` | なし | n/a | JVM固有（InputStream/OutputStream） |
-| `Framing` | `Framing.scala` | なし | n/a | バイトストリームフレーミング |
-| `Compression` | `Compression.scala` | なし | n/a | gzip/deflate |
-| `Tcp` | `Tcp.scala` | なし | n/a | TCP接続（std依存） |
-| `TLS` | `TLS.scala` | なし | n/a | セキュア通信（std依存） |
-
-### 19. BidiFlow
-
-| Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
-|-----------|-----------|-------------|--------|------|
-| `BidiFlow[I1,O1,I2,O2,Mat]` | `BidiFlow.scala` | `BidiFlow<InTop,OutTop,InBottom,OutBottom>` | easy | Mat型パラメータなし |
-| `atop` / `atopMat` | `BidiFlow.scala` | なし | easy | BidiFlow合成 |
-| `join` | `BidiFlow.scala` | なし | easy | FlowとのBidi結合 |
-| `reversed` | `BidiFlow.scala` | `reversed` | - | 実装済み |
-| `identity` | `BidiFlow.scala` | `identity` | - | 実装済み |
-| `fromFlows` | `BidiFlow.scala` | `from_flows` | - | 実装済み |
-| `fromFunction` / `fromFunctions` | `BidiFlow.scala` | なし | easy | 関数から構築 |
-
-### 20. テストキット
-
-| Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
-|-----------|-----------|-------------|--------|------|
-| `TestSource.probe` | `TestSource.scala` | `TestSourceProbe<T>` | - | 実装済み |
-| `TestSink.probe` | `TestSink.scala` | `TestSinkProbe<T>` | - | 実装済み |
-| `StreamFuzzRunner` | - | `StreamFuzzRunner` | - | fraktor独自追加 |
+| 機能 | 備考 |
+|------|------|
+| `do_on_cancel`, `do_on_first` | Pekko にない副作用フック |
+| `interleave_all` | 複数ストリームの一括インターリーブ |
+| `merge_prioritized_n` | N 入力の優先度付きマージ |
+| `grouped_weighted`, `grouped_weighted_within` | 重み付きグルーピング |
+| `on_failures_with_backoff` | Source/Flow 両方に実装 |
+| `StreamFuzzRunner` | ストリームのファズテスト |
+| `OperatorCatalog/Contract/Coverage` | オペレーター互換性追跡システム |
+| `DemandTracker` | 明示的なデマンド管理型 |
+| `StreamState` (enum) | ストリームライフサイクル状態の型安全な表現 |
+| `DriveOutcome` | tick 駆動のステップ実行結果 |
+| `StreamCompletion<T>` / `Completion<T>` | ポーリングベースの完了監視 |
+| `contramap` / `dimap` (Flow) | 関手・双関手操作 |
+| `take_until` | 述語ベースの終了 |
+| `fold_while` (Sink) | 条件付き fold |
+| `exists` / `forall` (Sink) | 述語 Sink |
 
 ---
 
 ## 実装優先度の提案
 
-### Phase 1: trivial（既存組み合わせで即実装可能）— 実装完了
+### Phase 1: trivial（既存組み合わせで即実装可能）
 
-1. ~~`Flow::from_function`~~ — 実装済み
-2. ~~`named`~~ — 実装済み（no-op）
-3. ~~`ClosedShape`~~ — 実装済み
-4. ~~`KillSwitches::shared/single`~~ — 実装済み
-5. ~~`BidiFlow::identity`~~ — 実装済み
-6. ~~`BidiFlow::reversed`~~ — 実装済み
+- `Sink.contramap(f)` — Flow.contramap と同じパターンで入力型変換
+- `ThrottleMode` — throttle の Shaping/Enforcing モード切替
 
 ### Phase 2: easy（単純な新規実装）
 
-1. `distinct` / `distinctBy` — HashSetベースの重複排除フィルタ
-2. `drop_within` — `take_within`の逆（時間内要素スキップ）
-3. ~~`BidiFlow::fromFlows`~~ (実装済み) / `BidiFlow::fromFunction/fromFunctions` — BidiFlowファクトリ群
-4. `BidiFlow::atop/join` — BidiFlow合成・結合
-5. `DrainingControl` — Hub用ドレイン制御
-6. `alsoToMat` / `wireTapMat` — マテリアライゼーション合成版サイドチャネル
-7. `futureFlow` / `lazyFutureFlow` — Future-based Flowファクトリ
-8. `BidiFlow` に `Mat` 型パラメータ追加
+- `distinct` / `distinctBy` — HashSet ベースの全体重複排除
+- `Source.fromGraph(g)` — Graph → Source 変換ファクトリ
+- `Flow.fromGraph(g)` — Graph → Flow 変換ファクトリ
+- `Sink.fromGraph(g)` — Graph → Sink 変換ファクトリ
+- `Source.preMaterialize()` — Sink.pre_materialize と同パターン
+- `KillSwitches.singleBidi()` — BidiFlow 用 UniqueKillSwitch
+- `Sink.asSubscriber()` — Reactive Streams Subscriber
 
 ### Phase 3: medium（中程度の実装工数）
 
-1. `mapMaterializedValue` — マテリアライゼーション値の変換チェーン
-2. `preMaterialize` (Source) — 事前マテリアライゼーション
-3. `SourceQueue/SinkQueue` traits — 外部からの供給・取得インターフェース
-4. `fromGraph` / `fromMaterializer` ファクトリ群 — 汎用Graph型依存
-5. `debounce` — tickベースのデバウンス再設計
-6. `sample` — tickベースのサンプリング再設計
-7. `GraphDSL.Builder` / `GraphDSL.create` — グラフDSLビルダー
+- `debounce(duration)` — タイマーステージとの統合
+- `sample(interval)` — 定期サンプリング
+- `named(name)` — ステージ命名（Attributes 基盤の簡易版でも可）
+- `Source.fromMaterializer(f)` / `Flow.fromMaterializer(f)` — Materializer 遅延ファクトリ
+- `Sink.queue()` — Pull 型 SinkQueue
+- `Framing.delimiter()` / `Framing.lengthField()` — バイトストリームフレーミング
+- `FlowWithContext` / `SourceWithContext` の完全な API 化
 
 ### Phase 4: hard（アーキテクチャ変更を伴う）
 
-1. `Attributes` 型システム — ストリーム属性のメタデータ体系
-2. `withAttributes` / `addAttributes` — 属性変更API
-3. `async(dispatcher)` — 非同期ディスパッチャ選択
-4. 汎用 `Graph[S <: Shape, Mat]` 型 — 任意シェイプのグラフ
+- `Attributes` 汎用システム（withAttributes, addAttributes, named の基盤）
+- `SourceRef` / `SinkRef`（リモートストリーミング、cluster モジュール依存）
 
 ### 対象外（n/a）
 
-1. `StreamConverters` — JVM固有（InputStream/OutputStream変換）
-2. `Framing` — バイトストリームフレーミング（no_std制約）
-3. `Compression` — gzip/deflate（no_std制約）
-4. `Tcp` / `TLS` — ネットワークIO（std依存、外部crateで対応）
-5. `AmorphousShape` — 動的ポート数（設計対象外）
-6. `fromJavaStream` — JVM固有
-7. `asPublisher` (Reactive Streams) — JVM固有
+- `Flow.fromProcessor()` — JVM Reactive Streams Processor 固有
+- `Compression.gzip/deflate` — JVM IO 固有、no_std 制約
+- `Tcp.bind/outgoing` — JVM ネットワーク IO 固有
+- `TLS` — JVM セキュリティ基盤固有
+- `AmorphousShape` — 動的ポート数（設計対象外）
 
 ---
 
-## 主要な発見事項
+## 総評
 
-### 1. スタブ実装の多さ
+fraktor-rs の streams モジュールは **Pekko Streams の FlowOps オペレーターをほぼ網羅**しており、一部では Pekko を超える独自機能（ファズテスト、オペレーター互換性追跡、明示的デマンド管理）を持つ。型数ベースで ~83%、オペレーターベースでは Flow が ~95% 以上のカバレッジ。
 
-約25個のオペレーターがAPI互換スタブとして存在する。これらはPekkoのシグネチャを持つがセマンティクスが簡略化されており、同期実行モデルの制約を反映している。スタブか完全実装かは個別に判断が必要。
+主要なギャップは以下の 3 領域に集中：
 
-### 2. 同期実行モデルの影響
+1. **時間系オペレーター**（debounce, sample）— タイマー統合が必要
+2. **ファクトリメソッド**（fromGraph, fromMaterializer）— Graph 基盤との接続
+3. **インフラストラクチャ**（Attributes, Framing, StreamRefs）— 基盤レイヤーの設計が必要
 
-`FiniteDuration`ベースのオペレーター（debounce, sample, 実時間throttle, keepAlive等）はtickベースに変換されている。レート差を前提とするオペレーター（conflate, expand, extrapolate）はno-opまたはidentity関数。
-
-### 3. Fan-In/Fan-Out設計の違い
-
-Pekkoは再利用可能な`GraphStage`（`Merge[T]`, `Broadcast[T]`等）を提供するが、fraktor-rsはメソッドチェーン（`merge(fan_in)`, `broadcast(fan_out)`等）で統合。設計哲学の違いであり、機能的なギャップではない。
-
-### 4. Attributes未実装
-
-Pekkoの`Attributes`型システム全体が未実装。`named`, `withAttributes`, `addAttributes`, `async(dispatcher)` 等が影響を受ける。ただし `supervision_*` メソッドや `async_boundary` は個別に実装されている。
-
-### 5. エラー処理のRust適応
-
-PekkoのThrowableベースのエラー処理はRustの`Result<T, StreamError>`ベースに適応されている。`recover`, `recoverWith`, `onErrorComplete`, `onErrorContinue`はすべて`Result`型の要素に対して動作する。
-
-### 6. BidiFlowの実装状況
-
-BidiFlowは `from_flows`, `split`, `identity`, `reversed` が実装済み。`atop`, `join` 等の合成オペレーターは未実装。双方向通信パターン（プロトコル変換等）が必要な場合は Phase 2 での対応が望ましい。
-
-### 7. fraktor独自の追加
-
-Pekkoにない以下の機能が追加されている：
-- `contramap` / `dimap`（関手・双関手操作）
-- `take_until`（述語ベースの終了）
-- `fold_while`（条件付きfold）
-- `exists` / `forall`（述語Sink）
-- `StreamFuzzRunner`（ファズテスト）
-- `StreamCompletion<T>` / `Completion<T>`（ポーリングベースの完了監視）
-- `DriveOutcome`（tick駆動のステップ実行）
+現在の利用状況で必要性が低い場合は YAGNI 原則に従い、Phase 1-2 の trivial/easy 項目のみを優先的に実装するのが妥当。
