@@ -19,19 +19,20 @@ impl<E> WaitNode<E> {
   }
 
   /// Completes the waiter with the provided result.
-  pub fn complete(&mut self, value: Result<(), E>) -> bool {
+  ///
+  /// Returns `(completed, waker)`. The caller MUST call `waker.wake()` after
+  /// releasing any outer lock to avoid deadlock with spinlock-based mutexes.
+  pub fn complete(&mut self, value: Result<(), E>) -> (bool, Option<Waker>) {
     if self.state != STATE_PENDING {
-      return false;
+      return (false, None);
     }
 
     self.state = STATE_COMPLETED;
     self.result = Some(value);
 
-    if let Some(waker) = self.waker.take() {
-      waker.wake();
-    }
-
-    true
+    // wakerをtakeして返す。ロック外でwake()すべき
+    let waker = self.waker.take();
+    (true, waker)
   }
 
   /// Marks the waiter as cancelled.
@@ -56,12 +57,19 @@ impl<E> WaitNode<E> {
   }
 
   /// Completes the waiter with the specified error.
-  pub fn complete_with_error(&mut self, error: E) {
-    let _ = self.complete(Err(error));
+  ///
+  /// Returns the waker if one was registered. The caller MUST call
+  /// `waker.wake()` after releasing any outer lock.
+  pub fn complete_with_error(&mut self, error: E) -> Option<Waker> {
+    let (_, waker) = self.complete(Err(error));
+    waker
   }
 
   /// Completes the waiter successfully.
-  pub fn complete_ok(&mut self) -> bool {
+  ///
+  /// Returns `(completed, waker)`. The caller MUST call `waker.wake()` after
+  /// releasing any outer lock.
+  pub fn complete_ok(&mut self) -> (bool, Option<Waker>) {
     self.complete(Ok(()))
   }
 

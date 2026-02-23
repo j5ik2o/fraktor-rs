@@ -1347,6 +1347,9 @@ where
   }
 
   /// Compatibility alias for scan-async entry points.
+  ///
+  /// Only supports futures that resolve immediately (synchronously).
+  /// Panics if the future returns `Pending`.
   #[must_use]
   pub fn scan_async<Acc, F, Fut>(self, initial: Acc, mut func: F) -> Flow<In, Acc, Mat>
   where
@@ -1354,12 +1357,10 @@ where
     F: FnMut(Acc, Out) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = Acc> + Send + 'static, {
     self.scan(initial, move |acc, value| {
-      let mut future = (func)(acc.clone(), value);
-      // SAFETY: future はローカル変数でこのクロージャを超えて移動しない
-      let mut pinned = unsafe { Pin::new_unchecked(&mut future) };
+      let mut future = Box::pin((func)(acc.clone(), value));
       let waker = noop_waker();
       let mut cx = Context::from_waker(&waker);
-      match pinned.as_mut().poll(&mut cx) {
+      match future.as_mut().poll(&mut cx) {
         | Poll::Ready(result) => result,
         | Poll::Pending => acc,
       }
@@ -4641,6 +4642,10 @@ where
     Ok(vec![Box::new(value) as DynValue])
   }
 
+  fn has_pending_output(&self) -> bool {
+    !self.pending.is_empty()
+  }
+
   fn on_restart(&mut self) -> Result<(), StreamError> {
     self.pending.clear();
     self.source_done = false;
@@ -4786,7 +4791,7 @@ where
 
   fn on_tick(&mut self, tick_count: u64) -> Result<(), StreamError> {
     self.tick_count = tick_count;
-    if self.has_received_element && (self.tick_count - self.last_apply_tick) > self.duration_ticks {
+    if self.has_received_element && self.tick_count.saturating_sub(self.last_apply_tick) > self.duration_ticks {
       return Err(StreamError::Timeout { kind: "backpressure", ticks: self.duration_ticks });
     }
     Ok(())
@@ -4835,7 +4840,7 @@ where
 
   fn on_tick(&mut self, tick_count: u64) -> Result<(), StreamError> {
     self.tick_count = tick_count;
-    if (self.tick_count - self.last_element_tick) > self.duration_ticks {
+    if self.tick_count.saturating_sub(self.last_element_tick) > self.duration_ticks {
       return Err(StreamError::Timeout { kind: "idle", ticks: self.duration_ticks });
     }
     Ok(())
