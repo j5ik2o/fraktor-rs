@@ -40,7 +40,7 @@ jobs:
           BODY: ${{ github.event.comment.body }}
         run: |
           # 空行をスキップして最初の行を取得（最大80文字）
-          title=$(printf '%s' "$BODY" | grep -m1 -v '^[[:space:]]*$' | sed 's/^#*[[:space:]]*//' | cut -c1-80)
+          title=$(printf '%s' "$BODY" | grep -m1 -v '^[[:space:]]*$' | sed 's/^#*[[:space:]]*//' | cut -c1-80) || true
           # タイトルが空の場合はデフォルト値
           echo "title=${title:-BugBot detected an issue}" >> "$GITHUB_OUTPUT"
 
