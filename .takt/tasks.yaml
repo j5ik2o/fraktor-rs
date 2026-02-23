@@ -69,17 +69,36 @@ tasks:
     completed_at: 2026-02-23T13:26:27.919Z
     owner_pid: null
   - worktree: true
+    branch: takt/126/github-issue-126-bugbot-system
     piece: default
     issue: 126
     auto_pr: true
     draft_pr: true
     name: github-issue-126-bugbot-system
-    status: running
+    status: completed
     slug: github-issue-126-bugbot-system
     summary: "## GitHub Issue #126: 🐛 [BugBot] SystemQueue CAS fallback can reorder
       messages"
+    worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260223T1310-126-github-issue-126-bugbot-system
+    pr_url: https://github.com/j5ik2o/fraktor-rs/pull/131
     task_dir: .takt/tasks/20260223-130407-github-issue-126-bugbot-system
     created_at: 2026-02-23T13:04:07.945Z
-    started_at: 2026-02-23T13:10:27.799Z
-    completed_at: null
-    owner_pid: 77528
+    started_at: 2026-02-23T13:10:59.884Z
+    completed_at: 2026-02-23T14:02:54.733Z
+    owner_pid: null
+  - worktree: true
+    branch: takt/20260223T1401-streams-source-watch-stub
+    piece: default
+    auto_pr: true
+    draft_pr: true
+    name: streams-source-watch-stub
+    status: completed
+    slug: streams-source-watch-stub
+    summary: "Source::watch() stub実装: actor-watch互換ステージの実処理追加 or 不要なら削除"
+    worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260223T1401-streams-source-watch-stub
+    pr_url: https://github.com/j5ik2o/fraktor-rs/pull/132
+    task_dir: .takt/tasks/20260223-140023-streams-source-watch-stub
+    created_at: 2026-02-23T14:00:23.000Z
+    started_at: 2026-02-23T14:01:21.606Z
+    completed_at: 2026-02-23T14:27:00.722Z
+    owner_pid: null
