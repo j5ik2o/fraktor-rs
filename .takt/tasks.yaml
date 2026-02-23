@@ -102,3 +102,99 @@ tasks:
     started_at: 2026-02-23T14:01:21.606Z
     completed_at: 2026-02-23T14:27:00.722Z
     owner_pid: null
+  - worktree: true
+    branch: takt/135/20260223-161931-issue-135
+    piece: default
+    issue: 135
+    auto_pr: true
+    draft_pr: true
+    name: issue-135-reject-table-to-policy
+    status: completed
+    slug: 20260223-161931-issue-135
+    worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260223T1622-135-20260223-161931-issue-135
+    pr_url: https://github.com/j5ik2o/fraktor-rs/pull/150
+    task_dir: .takt/tasks/20260223-161931-issue-135
+    created_at: 2026-02-23T16:19:31.000Z
+    started_at: 2026-02-23T16:22:20.157Z
+    completed_at: 2026-02-23T16:42:38.586Z
+    owner_pid: null
+  - worktree: true
+    branch: takt/136/20260223-161932-issue-136
+    piece: default
+    issue: 136
+    auto_pr: true
+    draft_pr: true
+    name: issue-136-fix-session-refresh
+    status: completed
+    slug: 20260223-161932-issue-136
+    worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260223T1622-136-20260223-161932-issue-136
+    pr_url: https://github.com/j5ik2o/fraktor-rs/pull/143
+    task_dir: .takt/tasks/20260223-161932-issue-136
+    created_at: 2026-02-23T16:19:32.000Z
+    started_at: 2026-02-23T16:22:38.081Z
+    completed_at: 2026-02-23T16:33:20.255Z
+    owner_pid: null
+  - worktree: true
+    branch: takt/137/20260223-161933-issue-137
+    piece: default
+    issue: 137
+    auto_pr: true
+    draft_pr: true
+    name: issue-137-codeblock-lang-spec
+    status: completed
+    slug: 20260223-161933-issue-137
+    worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260223T1622-137-20260223-161933-issue-137
+    pr_url: https://github.com/j5ik2o/fraktor-rs/pull/144
+    task_dir: .takt/tasks/20260223-161933-issue-137
+    created_at: 2026-02-23T16:19:33.000Z
+    started_at: 2026-02-23T16:22:56.059Z
+    completed_at: 2026-02-23T16:34:06.566Z
+    owner_pid: null
+  - worktree: true
+    branch: takt/138/20260223-161934-issue-138
+    piece: default
+    issue: 138
+    auto_pr: true
+    draft_pr: true
+    name: issue-138-output-contract-30line
+    status: completed
+    slug: 20260223-161934-issue-138
+    worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260223T1623-138-20260223-161934-issue-138
+    pr_url: https://github.com/j5ik2o/fraktor-rs/pull/151
+    task_dir: .takt/tasks/20260223-161934-issue-138
+    created_at: 2026-02-23T16:19:34.000Z
+    started_at: 2026-02-23T16:23:07.092Z
+    completed_at: 2026-02-23T16:46:43.052Z
+    owner_pid: null
+  - worktree: true
+    branch: takt/139/20260223-161935-issue-139
+    piece: default
+    issue: 139
+    auto_pr: true
+    draft_pr: true
+    name: issue-139-undefined-instructions
+    status: completed
+    slug: 20260223-161935-issue-139
+    worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260223T1633-139-20260223-161935-issue-139
+    pr_url: https://github.com/j5ik2o/fraktor-rs/pull/155
+    task_dir: .takt/tasks/20260223-161935-issue-139
+    created_at: 2026-02-23T16:19:35.000Z
+    started_at: 2026-02-23T16:33:30.869Z
+    completed_at: 2026-02-23T16:59:50.484Z
+    owner_pid: null
+  - worktree: true
+    branch: takt/140/20260223-161936-issue-140
+    piece: default
+    issue: 140
+    auto_pr: true
+    draft_pr: true
+    name: issue-140-missing-loop-monitors
+    status: completed
+    slug: 20260223-161936-issue-140
+    worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260223T1634-140-20260223-161936-issue-140
+    pr_url: https://github.com/j5ik2o/fraktor-rs/pull/153
+    task_dir: .takt/tasks/20260223-161936-issue-140
+    created_at: 2026-02-23T16:19:36.000Z
+    started_at: 2026-02-23T16:34:16.972Z
+    completed_at: 2026-02-23T16:52:04.226Z
+    owner_pid: null
