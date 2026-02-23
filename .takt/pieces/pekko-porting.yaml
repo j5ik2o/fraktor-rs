@@ -52,6 +52,83 @@ loop_monitors:
         - condition: 非生産的（改善なし）
           next: reviewers
 
+  - cycle:
+      - reviewers
+      - fix
+    threshold: 3
+    judge:
+      persona: supervisor
+      instruction_template: |
+        reviewers と fix のレビュー・修正サイクルが {cycle_count} 回繰り返されました。
+
+        各サイクルのレポートを確認し、このループが健全（進捗がある）か、
+        非生産的（同じ問題を繰り返している）かを判断してください。
+
+        **参照するレポート:**
+        - Pekko互換性レビュー: {report:05-pekko-compat-review.md}
+        - QAレビュー: {report:06-qa-review.md}
+
+        **判断基準:**
+        - 各サイクルで新しい問題が発見・修正されているか
+        - 同じ指摘が繰り返されていないか
+        - 修正が実際に反映されているか
+      rules:
+        - condition: 健全（進捗あり）
+          next: fix
+        - condition: 非生産的（改善なし）
+          next: supervise
+
+  - cycle:
+      - supervise
+      - plan
+    threshold: 2
+    judge:
+      persona: supervisor
+      instruction_template: |
+        supervise と plan のサイクルが {cycle_count} 回繰り返されました。
+
+        各サイクルのレポートを確認し、このループが健全（進捗がある）か、
+        非生産的（同じ問題を繰り返している）かを判断してください。
+
+        **参照するレポート:**
+        - スーパーバイザー検証: {report:supervisor-validation.md}
+        - 計画: {report:00-plan.md}
+
+        **判断基準:**
+        - 前回のsuperviseで指摘された問題が解決に向かっているか
+        - 計画が前回と実質的に異なる改善を含んでいるか
+        - 同じテスト失敗やビルドエラーが繰り返されていないか
+      rules:
+        - condition: 健全（進捗あり）
+          next: plan
+        - condition: 非生産的（改善なし）
+          next: ABORT
+
+  - cycle:
+      - ai_fix
+      - ai_no_fix
+    threshold: 3
+    judge:
+      persona: supervisor
+      instruction_template: |
+        ai_fix と ai_no_fix のループが {cycle_count} 回繰り返されました。
+
+        ai_fix が修正不要と判断し、ai_no_fix が修正必要と差し戻すサイクルが
+        繰り返されています。このループが健全か判断してください。
+
+        **参照するレポート:**
+        - AIレビュー結果: {report:04-ai-review.md}
+
+        **判断基準:**
+        - ai_fix と ai_no_fix の間で同じ指摘について意見が分かれ続けていないか
+        - 新しい観点や情報が各サイクルで追加されているか
+        - 合意に向かう進捗があるか
+      rules:
+        - condition: 健全（進捗あり）
+          next: ai_fix
+        - condition: 非生産的（改善なし）
+          next: reviewers
+
 movements:
   - name: plan
     edit: false
