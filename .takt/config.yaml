@@ -1,6 +1,6 @@
 provider: claude
 model: opus
-concurrency: 8
+concurrency: 4
 base_branch: main
 
 persona_providers:
