@@ -21,6 +21,9 @@ policies:
 instructions:
   plan-pekko-impl: ../facets/instructions/plan-pekko-impl.md
   review-pekko-compat: ../facets/instructions/review-pekko-compat.md
+  ai-review: ../facets/instructions/ai-review.md
+  ai-fix: ../facets/instructions/ai-fix.md
+  arbitrate: ../facets/instructions/arbitrate.md
 
 report_formats:
   pekko-compat-review: ../facets/output-contracts/pekko-compat-review.md
