@@ -465,6 +465,10 @@ where
           break;
         }
       }
+      // ライフサイクル契約: inner sink のbackpressure初期化
+      if let Some(inner) = &mut self.inner {
+        inner.on_start(demand)?;
+      }
     }
 
     match &mut self.inner {
@@ -477,11 +481,15 @@ where
   }
 
   fn on_complete(&mut self) -> Result<(), StreamError> {
-    if let Some(inner) = &mut self.inner {
-      let _ = inner.on_complete();
+    let result = match &mut self.inner {
+      | Some(inner) => inner.on_complete(),
+      | None => Ok(()),
+    };
+    match &result {
+      | Ok(()) => self.completion.complete(Ok(StreamDone::new())),
+      | Err(e) => self.completion.complete(Err(e.clone())),
     }
-    self.completion.complete(Ok(StreamDone::new()));
-    Ok(())
+    result
   }
 
   fn on_error(&mut self, error: StreamError) {

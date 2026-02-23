@@ -1,5 +1,5 @@
 use alloc::{boxed::Box, collections::VecDeque};
-use core::future::ready;
+use core::{future::ready, marker::PhantomData};
 
 use fraktor_utils_rs::core::{
   collections::queue::OverflowPolicy,
@@ -9,7 +9,7 @@ use fraktor_utils_rs::core::{
 
 use crate::core::{
   DynValue, KeepLeft, KeepRight, RestartSettings, SourceLogic, StreamBufferConfig, StreamCompletion, StreamDone,
-  StreamDslError, StreamError,
+  StreamDslError, StreamError, StreamNotUsed,
   lifecycle::{
     DriveOutcome, SharedKillSwitch, Stream, StreamHandleGeneric, StreamHandleId, StreamSharedGeneric, StreamState,
   },
@@ -286,7 +286,7 @@ fn shared_kill_switch_created_before_materialization_controls_multiple_streams()
 
 #[test]
 fn source_broadcast_duplicates_each_element() {
-  let values = Source::single(5_u32).broadcast(2).collect_values().expect("collect_values");
+  let values = Source::single(5_u32).broadcast(2).expect("broadcast").collect_values().expect("collect_values");
   assert_eq!(values, vec![5_u32, 5_u32]);
 }
 
@@ -565,7 +565,7 @@ fn source_unfold_async_emits_state_progression() {
 
 #[test]
 fn source_zip_n_alias_wraps_values_by_fan_in() {
-  let values = Source::single(15_u32).zip_n(1).collect_values().expect("collect_values");
+  let values = Source::single(15_u32).zip_n(1).expect("zip_n").collect_values().expect("collect_values");
   assert_eq!(values, vec![vec![15_u32]]);
 }
 
@@ -573,6 +573,7 @@ fn source_zip_n_alias_wraps_values_by_fan_in() {
 fn source_zip_with_n_alias_maps_zipped_values() {
   let values = Source::single(16_u32)
     .zip_with_n(1, |items: Vec<u32>| items.into_iter().sum::<u32>())
+    .expect("zip_with_n")
     .collect_values()
     .expect("collect_values");
   assert_eq!(values, vec![16_u32]);
@@ -615,57 +616,52 @@ fn source_from_path_emits_path_bytes() {
 }
 
 #[test]
-#[should_panic(expected = "fan_out must be greater than zero")]
 fn source_broadcast_rejects_zero_fan_out() {
-  let _ = Source::single(1_u32).broadcast(0);
+  assert!(Source::single(1_u32).broadcast(0).is_err());
 }
 
 #[test]
 fn source_balance_keeps_single_path_behavior() {
-  let values = Source::single(5_u32).balance(1).collect_values().expect("collect_values");
+  let values = Source::single(5_u32).balance(1).expect("balance").collect_values().expect("collect_values");
   assert_eq!(values, vec![5_u32]);
 }
 
 #[test]
-#[should_panic(expected = "fan_out must be greater than zero")]
 fn source_balance_rejects_zero_fan_out() {
-  let _ = Source::single(1_u32).balance(0);
+  assert!(Source::single(1_u32).balance(0).is_err());
 }
 
 #[test]
 fn source_merge_keeps_single_path_behavior() {
-  let values = Source::single(5_u32).merge(1).collect_values().expect("collect_values");
+  let values = Source::single(5_u32).merge(1).expect("merge").collect_values().expect("collect_values");
   assert_eq!(values, vec![5_u32]);
 }
 
 #[test]
-#[should_panic(expected = "fan_in must be greater than zero")]
 fn source_merge_rejects_zero_fan_in() {
-  let _ = Source::single(1_u32).merge(0);
+  assert!(Source::single(1_u32).merge(0).is_err());
 }
 
 #[test]
 fn source_zip_wraps_value_when_single_path() {
-  let values = Source::single(5_u32).zip(1).collect_values().expect("collect_values");
+  let values = Source::single(5_u32).zip(1).expect("zip").collect_values().expect("collect_values");
   assert_eq!(values, vec![vec![5_u32]]);
 }
 
 #[test]
-#[should_panic(expected = "fan_in must be greater than zero")]
 fn source_zip_rejects_zero_fan_in() {
-  let _ = Source::single(1_u32).zip(0);
+  assert!(Source::single(1_u32).zip(0).is_err());
 }
 
 #[test]
 fn source_concat_keeps_single_path_behavior() {
-  let values = Source::single(5_u32).concat(1).collect_values().expect("collect_values");
+  let values = Source::single(5_u32).concat(1).expect("concat").collect_values().expect("collect_values");
   assert_eq!(values, vec![5_u32]);
 }
 
 #[test]
-#[should_panic(expected = "fan_in must be greater than zero")]
 fn source_concat_rejects_zero_fan_in() {
-  let _ = Source::single(1_u32).concat(0);
+  assert!(Source::single(1_u32).concat(0).is_err());
 }
 
 #[test]
@@ -694,38 +690,35 @@ fn source_unzip_with_emits_mapped_tuple_components() {
 
 #[test]
 fn source_interleave_keeps_single_path_behavior() {
-  let values = Source::single(5_u32).interleave(1).collect_values().expect("collect_values");
+  let values = Source::single(5_u32).interleave(1).expect("interleave").collect_values().expect("collect_values");
   assert_eq!(values, vec![5_u32]);
 }
 
 #[test]
-#[should_panic(expected = "fan_in must be greater than zero")]
 fn source_interleave_rejects_zero_fan_in() {
-  let _ = Source::single(1_u32).interleave(0);
+  assert!(Source::single(1_u32).interleave(0).is_err());
 }
 
 #[test]
 fn source_prepend_keeps_single_path_behavior() {
-  let values = Source::single(5_u32).prepend(1).collect_values().expect("collect_values");
+  let values = Source::single(5_u32).prepend(1).expect("prepend").collect_values().expect("collect_values");
   assert_eq!(values, vec![5_u32]);
 }
 
 #[test]
-#[should_panic(expected = "fan_in must be greater than zero")]
 fn source_prepend_rejects_zero_fan_in() {
-  let _ = Source::single(1_u32).prepend(0);
+  assert!(Source::single(1_u32).prepend(0).is_err());
 }
 
 #[test]
 fn source_zip_all_wraps_value_when_single_path() {
-  let values = Source::single(5_u32).zip_all(1, 0_u32).collect_values().expect("collect_values");
+  let values = Source::single(5_u32).zip_all(1, 0_u32).expect("zip_all").collect_values().expect("collect_values");
   assert_eq!(values, vec![vec![5_u32]]);
 }
 
 #[test]
-#[should_panic(expected = "fan_in must be greater than zero")]
 fn source_zip_all_rejects_zero_fan_in() {
-  let _ = Source::single(1_u32).zip_all(0, 0_u32);
+  assert!(Source::single(1_u32).zip_all(0, 0_u32).is_err());
 }
 
 #[test]
@@ -1207,6 +1200,7 @@ fn source_p2_regression_group_by_merge_substreams_with_delay_and_zip_all() {
     .delay(1)
     .expect("delay")
     .zip_all(1, 0_u32)
+    .expect("zip_all")
     .collect_values()
     .expect("collect_values");
   assert_eq!(values, vec![vec![1_u32], vec![2_u32], vec![3_u32]]);
@@ -1219,6 +1213,7 @@ fn source_p2_regression_concat_substreams_with_take_within_and_prepend() {
     .take_within(2)
     .expect("take_within")
     .prepend(1)
+    .expect("prepend")
     .collect_values()
     .expect("collect_values");
   assert_eq!(values, vec![4_u32, 5_u32]);
@@ -1402,4 +1397,28 @@ fn source_reduce_folds_with_first_element_as_seed() {
     .collect_values()
     .expect("collect_values");
   assert_eq!(values, vec![1_u32, 3_u32, 6_u32]);
+}
+
+#[test]
+fn source_lazy_source_persists_error_on_collect_values_failure() {
+  let mut logic = super::LazySourceLogic::<u32, _> {
+    factory: Some(|| Source::<u32, StreamNotUsed>::failed(StreamError::Failed)),
+    buffer:  VecDeque::new(),
+    error:   None,
+    _pd:     PhantomData,
+  };
+
+  // Given: 初回 pull で factory が消費され collect_values が失敗する
+  let first = logic.pull();
+  assert!(matches!(first, Err(StreamError::Failed)));
+
+  // When: 後続 pull を呼ぶ（factory は既に消費済み）
+  let second = logic.pull();
+  // Then: 偽の正常完了（Ok(None)）ではなくエラーを返す
+  assert!(matches!(second, Err(StreamError::Failed)));
+
+  // When: on_restart を呼ぶ
+  let restart = logic.on_restart();
+  // Then: エラー状態が永続化されリスタートも失敗する
+  assert!(matches!(restart, Err(StreamError::Failed)));
 }

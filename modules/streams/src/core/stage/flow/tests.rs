@@ -1,5 +1,5 @@
 use alloc::{boxed::Box, collections::VecDeque};
-use core::{future::Future, pin::Pin, task::Poll};
+use core::{future::Future, marker::PhantomData, pin::Pin, task::Poll};
 
 use fraktor_utils_rs::core::collections::queue::OverflowPolicy;
 
@@ -56,67 +56,62 @@ impl SourceLogic for PulsedSourceLogic {
 
 #[test]
 fn broadcast_duplicates_each_element() {
-  let values = Source::single(7_u32).via(Flow::new().broadcast(2)).collect_values().expect("collect_values");
+  let values = Source::single(7_u32).via(Flow::new().broadcast(2).expect("broadcast")).collect_values().expect("collect_values");
   assert_eq!(values, vec![7_u32, 7_u32]);
 }
 
 #[test]
-#[should_panic(expected = "fan_out must be greater than zero")]
 fn broadcast_rejects_zero_fan_out() {
   let flow = Flow::<u32, u32, StreamNotUsed>::new();
-  let _ = flow.broadcast(0);
+  assert!(flow.broadcast(0).is_err());
 }
 
 #[test]
 fn balance_keeps_single_path_behavior() {
-  let values = Source::single(7_u32).via(Flow::new().balance(1)).collect_values().expect("collect_values");
+  let values = Source::single(7_u32).via(Flow::new().balance(1).expect("balance")).collect_values().expect("collect_values");
   assert_eq!(values, vec![7_u32]);
 }
 
 #[test]
-#[should_panic(expected = "fan_out must be greater than zero")]
 fn balance_rejects_zero_fan_out() {
   let flow = Flow::<u32, u32, StreamNotUsed>::new();
-  let _ = flow.balance(0);
+  assert!(flow.balance(0).is_err());
 }
 
 #[test]
 fn merge_keeps_single_path_behavior() {
-  let values = Source::single(7_u32).via(Flow::new().merge(1)).collect_values().expect("collect_values");
+  let values = Source::single(7_u32).via(Flow::new().merge(1).expect("merge")).collect_values().expect("collect_values");
   assert_eq!(values, vec![7_u32]);
 }
 
 #[test]
-#[should_panic(expected = "fan_in must be greater than zero")]
 fn merge_rejects_zero_fan_in() {
   let flow = Flow::<u32, u32, StreamNotUsed>::new();
-  let _ = flow.merge(0);
+  assert!(flow.merge(0).is_err());
 }
 
 #[test]
 fn zip_wraps_value_when_single_path() {
-  let values = Source::single(7_u32).via(Flow::new().zip(1)).collect_values().expect("collect_values");
+  let values = Source::single(7_u32).via(Flow::new().zip(1).expect("zip")).collect_values().expect("collect_values");
   assert_eq!(values, vec![vec![7_u32]]);
 }
 
 #[test]
-#[should_panic(expected = "fan_in must be greater than zero")]
 fn zip_rejects_zero_fan_in() {
   let flow = Flow::<u32, u32, StreamNotUsed>::new();
-  let _ = flow.zip(0);
+  assert!(flow.zip(0).is_err());
 }
 
 #[test]
 fn concat_keeps_single_path_behavior() {
-  let values = Source::single(7_u32).via(Flow::new().concat(1)).collect_values().expect("collect_values");
+  let values = Source::single(7_u32).via(Flow::new().concat(1).expect("concat")).collect_values().expect("collect_values");
   assert_eq!(values, vec![7_u32]);
 }
 
 #[test]
-#[should_panic(expected = "fan_in must be greater than zero")]
 fn concat_rejects_zero_fan_in() {
   let flow = Flow::<u32, u32, StreamNotUsed>::new();
-  let _ = flow.concat(0);
+  assert!(flow.concat(0).is_err());
 }
 
 #[test]
@@ -145,41 +140,38 @@ fn unzip_with_emits_mapped_tuple_components() {
 
 #[test]
 fn interleave_keeps_single_path_behavior() {
-  let values = Source::single(7_u32).via(Flow::new().interleave(1)).collect_values().expect("collect_values");
+  let values = Source::single(7_u32).via(Flow::new().interleave(1).expect("interleave")).collect_values().expect("collect_values");
   assert_eq!(values, vec![7_u32]);
 }
 
 #[test]
-#[should_panic(expected = "fan_in must be greater than zero")]
 fn interleave_rejects_zero_fan_in() {
   let flow = Flow::<u32, u32, StreamNotUsed>::new();
-  let _ = flow.interleave(0);
+  assert!(flow.interleave(0).is_err());
 }
 
 #[test]
 fn prepend_keeps_single_path_behavior() {
-  let values = Source::single(7_u32).via(Flow::new().prepend(1)).collect_values().expect("collect_values");
+  let values = Source::single(7_u32).via(Flow::new().prepend(1).expect("prepend")).collect_values().expect("collect_values");
   assert_eq!(values, vec![7_u32]);
 }
 
 #[test]
-#[should_panic(expected = "fan_in must be greater than zero")]
 fn prepend_rejects_zero_fan_in() {
   let flow = Flow::<u32, u32, StreamNotUsed>::new();
-  let _ = flow.prepend(0);
+  assert!(flow.prepend(0).is_err());
 }
 
 #[test]
 fn zip_all_wraps_value_when_single_path() {
-  let values = Source::single(7_u32).via(Flow::new().zip_all(1, 0_u32)).collect_values().expect("collect_values");
+  let values = Source::single(7_u32).via(Flow::new().zip_all(1, 0_u32).expect("zip_all")).collect_values().expect("collect_values");
   assert_eq!(values, vec![vec![7_u32]]);
 }
 
 #[test]
-#[should_panic(expected = "fan_in must be greater than zero")]
 fn zip_all_rejects_zero_fan_in() {
   let flow = Flow::<u32, u32, StreamNotUsed>::new();
-  let _ = flow.zip_all(0, 0_u32);
+  assert!(flow.zip_all(0, 0_u32).is_err());
 }
 
 #[test]
@@ -1756,15 +1748,14 @@ fn initial_timeout_rejects_zero_ticks() {
 
 #[test]
 fn merge_preferred_keeps_single_path_behavior() {
-  let values = Source::single(7_u32).via(Flow::new().merge_preferred(1)).collect_values().expect("collect_values");
+  let values = Source::single(7_u32).via(Flow::new().merge_preferred(1).expect("merge_preferred")).collect_values().expect("collect_values");
   assert_eq!(values, vec![7_u32]);
 }
 
 #[test]
-#[should_panic(expected = "fan_in must be greater than zero")]
 fn merge_preferred_rejects_zero_fan_in() {
   let flow = Flow::<u32, u32, StreamNotUsed>::new();
-  let _ = flow.merge_preferred(0);
+  assert!(flow.merge_preferred(0).is_err());
 }
 
 #[test]
@@ -1886,43 +1877,39 @@ fn merge_preferred_logic_on_restart_clears_state() {
 
 #[test]
 fn merge_prioritized_keeps_single_path_behavior() {
-  let values = Source::single(7_u32).via(Flow::new().merge_prioritized(1)).collect_values().expect("collect_values");
+  let values = Source::single(7_u32).via(Flow::new().merge_prioritized(1).expect("merge_prioritized")).collect_values().expect("collect_values");
   assert_eq!(values, vec![7_u32]);
 }
 
 #[test]
-#[should_panic(expected = "fan_in must be greater than zero")]
 fn merge_prioritized_rejects_zero_fan_in() {
   let flow = Flow::<u32, u32, StreamNotUsed>::new();
-  let _ = flow.merge_prioritized(0);
+  assert!(flow.merge_prioritized(0).is_err());
 }
 
 #[test]
 fn merge_prioritized_n_keeps_single_path_behavior() {
   let values =
-    Source::single(7_u32).via(Flow::new().merge_prioritized_n(1, &[1])).collect_values().expect("collect_values");
+    Source::single(7_u32).via(Flow::new().merge_prioritized_n(1, &[1]).expect("merge_prioritized_n")).collect_values().expect("collect_values");
   assert_eq!(values, vec![7_u32]);
 }
 
 #[test]
-#[should_panic(expected = "priorities must be positive")]
 fn merge_prioritized_n_rejects_zero_priority() {
   let flow = Flow::<u32, u32, StreamNotUsed>::new();
-  let _ = flow.merge_prioritized_n(2, &[3, 0]);
+  assert!(flow.merge_prioritized_n(2, &[3, 0]).is_err());
 }
 
 #[test]
-#[should_panic(expected = "fan_in must be greater than zero")]
 fn merge_prioritized_n_rejects_zero_fan_in() {
   let flow = Flow::<u32, u32, StreamNotUsed>::new();
-  let _ = flow.merge_prioritized_n(0, &[]);
+  assert!(flow.merge_prioritized_n(0, &[]).is_err());
 }
 
 #[test]
-#[should_panic(expected = "priorities length must match fan_in")]
 fn merge_prioritized_n_rejects_length_mismatch() {
   let flow = Flow::<u32, u32, StreamNotUsed>::new();
-  let _ = flow.merge_prioritized_n(3, &[3, 1]);
+  assert!(flow.merge_prioritized_n(3, &[3, 1]).is_err());
 }
 
 #[test]
@@ -2033,15 +2020,14 @@ fn merge_prioritized_logic_on_restart_clears_state() {
 
 #[test]
 fn merge_sorted_keeps_single_path_behavior() {
-  let values = Source::single(7_u32).via(Flow::new().merge_sorted(1)).collect_values().expect("collect_values");
+  let values = Source::single(7_u32).via(Flow::new().merge_sorted(1).expect("merge_sorted")).collect_values().expect("collect_values");
   assert_eq!(values, vec![7_u32]);
 }
 
 #[test]
-#[should_panic(expected = "fan_in must be greater than zero")]
 fn merge_sorted_rejects_zero_fan_in() {
   let flow = Flow::<u32, u32, StreamNotUsed>::new();
-  let _ = flow.merge_sorted(0);
+  assert!(flow.merge_sorted(0).is_err());
 }
 
 #[test]
@@ -2117,15 +2103,14 @@ fn merge_sorted_logic_on_restart_clears_state() {
 
 #[test]
 fn merge_latest_wraps_single_path_value_into_vec() {
-  let values = Source::single(7_u32).via(Flow::new().merge_latest(1)).collect_values().expect("collect_values");
+  let values = Source::single(7_u32).via(Flow::new().merge_latest(1).expect("merge_latest")).collect_values().expect("collect_values");
   assert_eq!(values, vec![vec![7_u32]]);
 }
 
 #[test]
-#[should_panic(expected = "fan_in must be greater than zero")]
 fn merge_latest_rejects_zero_fan_in() {
   let flow = Flow::<u32, u32, StreamNotUsed>::new();
-  let _ = flow.merge_latest(0);
+  assert!(flow.merge_latest(0).is_err());
 }
 
 #[test]
@@ -2209,4 +2194,49 @@ fn uniform_fan_in_shape_zero_ports() {
   let shape = UniformFanInShape::<u32, u32>::with_port_count(0);
   assert_eq!(shape.port_count(), 0);
   assert!(shape.inlets().is_empty());
+}
+
+// take_shutdown_request の全フラグクリアを検証するためのカスタム FlowLogic
+struct ShutdownFlagFlowLogic {
+  shutdown_requested: bool,
+}
+
+impl FlowLogic for ShutdownFlagFlowLogic {
+  fn apply(&mut self, input: DynValue) -> Result<alloc::vec::Vec<DynValue>, StreamError> {
+    Ok(alloc::vec![input])
+  }
+
+  fn take_shutdown_request(&mut self) -> bool {
+    let was_requested = self.shutdown_requested;
+    self.shutdown_requested = false;
+    was_requested
+  }
+}
+
+#[test]
+fn flow_lazy_flow_take_shutdown_request_clears_all_inner_flags() {
+  // Given: 3つの inner logic すべてにシャットダウンフラグが設定された LazyFlowLogic
+  let mut logic = super::LazyFlowLogic::<u32, u32, StreamNotUsed, fn() -> Flow<u32, u32, StreamNotUsed>> {
+    factory:      None,
+    inner_logics: alloc::vec![
+      Box::new(ShutdownFlagFlowLogic { shutdown_requested: true }),
+      Box::new(ShutdownFlagFlowLogic { shutdown_requested: true }),
+      Box::new(ShutdownFlagFlowLogic { shutdown_requested: true }),
+    ],
+    mat:          None,
+    _pd:          PhantomData,
+  };
+
+  // When: take_shutdown_request を呼ぶ
+  let first_call = logic.take_shutdown_request();
+
+  // Then: true が返る（いずれかのフラグが設定されていたため）
+  assert!(first_call);
+
+  // When: 再度呼ぶ（fold で全フラグがクリア済みであれば false になる）
+  let second_call = logic.take_shutdown_request();
+
+  // Then: 全フラグがクリアされているため false
+  // any() 短絡評価の場合、2番目以降のフラグが未クリアで true になりテスト失敗
+  assert!(!second_call);
 }

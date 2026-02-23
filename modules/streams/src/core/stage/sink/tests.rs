@@ -3,12 +3,12 @@ use fraktor_utils_rs::core::{
   sync::{ArcShared, sync_mutex_like::SpinSyncMutex},
 };
 
-use super::super::super::lifecycle::{Stream, StreamSharedGeneric};
 use crate::core::{
-  Completion, KeepRight, StreamBufferConfig, StreamCompletion, StreamDone, StreamDslError, StreamError, StreamNotUsed,
-  lifecycle::{StreamHandleGeneric, StreamHandleId},
+  Completion, DemandTracker, DynValue, KeepRight, SinkDecision, SinkLogic, StreamBufferConfig, StreamCompletion,
+  StreamDone, StreamDslError, StreamError, StreamNotUsed,
+  lifecycle::{Stream, StreamHandleGeneric, StreamHandleId, StreamSharedGeneric},
   mat::{Materialized, Materializer, RunnableGraph},
-  stage::{Sink, Source},
+  stage::{Sink, Source, StageKind},
 };
 
 struct TestMaterializer {
@@ -352,4 +352,42 @@ fn sink_java_collector_parallel_unordered_alias_collects_values() {
 fn sink_to_path_collects_bytes() {
   let completion = run_source_with_sink(Source::from_array([b'a', b'b']), Sink::to_path("dummy"));
   assert_eq!(completion, Completion::Ready(Ok(vec![b'a', b'b'])));
+}
+
+// inner sink の on_complete エラーを検証するためのカスタム SinkLogic
+struct FailOnCompleteSinkLogic {
+  completion: StreamCompletion<StreamDone>,
+}
+
+impl SinkLogic for FailOnCompleteSinkLogic {
+  fn on_start(&mut self, demand: &mut DemandTracker) -> Result<(), StreamError> {
+    demand.request(1)
+  }
+
+  fn on_push(&mut self, _input: DynValue, demand: &mut DemandTracker) -> Result<SinkDecision, StreamError> {
+    demand.request(1)?;
+    Ok(SinkDecision::Continue)
+  }
+
+  fn on_complete(&mut self) -> Result<(), StreamError> {
+    self.completion.complete(Err(StreamError::Failed));
+    Err(StreamError::Failed)
+  }
+
+  fn on_error(&mut self, error: StreamError) {
+    self.completion.complete(Err(error));
+  }
+}
+
+#[test]
+fn sink_lazy_sink_propagates_inner_on_complete_error() {
+  let inner_completion = StreamCompletion::new();
+  let inner_sink = Sink::<u32, StreamCompletion<StreamDone>>::from_definition(
+    StageKind::Custom,
+    FailOnCompleteSinkLogic { completion: inner_completion.clone() },
+    inner_completion,
+  );
+  let lazy = Sink::lazy_sink(move || inner_sink);
+  let completion = run_source_with_sink(Source::from_array([1_u32, 2, 3]), lazy);
+  assert_eq!(completion, Completion::Ready(Err(StreamError::Failed)));
 }
