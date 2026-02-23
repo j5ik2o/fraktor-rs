@@ -6,14 +6,19 @@ piece_config:
       network_access: true
 max_movements: 20
 initial_movement: analyze
+
+knowledge:
+  fraktor-streams: ../facets/knowledge/fraktor-streams.md
+
+policies:
+  fraktor-coding: ../facets/policies/fraktor-coding.md
+
 movements:
   - name: analyze
     edit: false
     persona: planner
-    provider: codex
-    model: gpt-5.3-codex
     knowledge:
-      - ../knowledge/fraktor-streams.md
+      - fraktor-streams
     instruction: plan
     rules:
       - condition: "requirements are clear and implementation is possible"
@@ -30,12 +35,10 @@ movements:
   - name: implement
     edit: true
     persona: coder
-    provider: codex
-    model: gpt-5.3-codex
     knowledge:
-      - ../knowledge/fraktor-streams.md
+      - fraktor-streams
     policy:
-      - ../policies/fraktor-coding.md
+      - fraktor-coding
     instruction: implement
     rules:
       - condition: "implementation is complete"
@@ -56,11 +59,9 @@ movements:
       - name: ai_review
         edit: false
         persona: ai-antipattern-reviewer
-        provider: codex
-        model: gpt-5.3-codex
         instruction: review-ai
         policy:
-          - ../policies/fraktor-coding.md
+          - fraktor-coding
         rules:
           - condition: approved
           - condition: needs_fix
@@ -74,11 +75,9 @@ movements:
       - name: supervise
         edit: false
         persona: supervisor
-        provider: codex
-        model: gpt-5.3-codex
         instruction: supervise
         policy:
-          - ../policies/fraktor-coding.md
+          - fraktor-coding
         rules:
           - condition: approved
           - condition: needs_fix
@@ -98,12 +97,10 @@ movements:
   - name: fix_both
     edit: true
     persona: coder
-    provider: codex
-    model: gpt-5.3-codex
     knowledge:
-      - ../knowledge/fraktor-streams.md
+      - fraktor-streams
     policy:
-      - ../policies/fraktor-coding.md
+      - fraktor-coding
     instruction: fix-supervisor
     pass_previous_response: true
     rules:

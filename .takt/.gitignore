@@ -1,14 +1,21 @@
-# 既定で全て無視
+# Ignore everything by default
 *
 
-# 生成物
-clone-meta/*.json
-runs/*/logs/*.jsonl
-runs/*/logs/reports-history/*.md
-runs/*/reports/*.md
-tasks/TASK-FORMAT
-worktree-sessions/*.json
-
-# 許可する例外
+# This file itself
 !.gitignore
+
+# Project configuration
 !config.yaml
+
+# Pieces (version-controlled)
+!pieces/
+!pieces/**
+
+# Facets (version-controlled, 0.22.0+ layout)
+!facets/
+!facets/**
+
+# Tasks (version-controlled for cross-machine execution)
+!tasks.yaml
+!tasks/
+!tasks/**

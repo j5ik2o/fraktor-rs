@@ -1,0 +1,35 @@
+tasks:
+  - worktree: true
+    branch: takt/20260223T0610-coderabbit-13-major-lazy-flow
+    piece: critical-bug-fix
+    auto_pr: true
+    draft_pr: true
+    name: coderabbit-13-major-lazy-flow
+    status: completed
+    slug: coderabbit-13-major-lazy-flow
+    summary: "CodeRabbit指摘一括修正(全13件): [Major] lazy_flow Mat反映不足, LazyFlowLogic副作用消失,
+      backpress"
+    worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260223T0610-coderabbit-13-major-lazy-flow
+    pr_url: https://github.com/j5ik2o/fraktor-rs/pull/122
+    task_dir: .takt/tasks/20260222-230304-coderabbit-13-major-lazy-flow
+    created_at: 2026-02-22T23:03:04.726Z
+    started_at: 2026-02-23T06:10:59.936Z
+    completed_at: 2026-02-23T07:27:29.911Z
+    owner_pid: null
+  - worktree: true
+    branch: takt/20260223T0611-coderabbit-pr117-review-feedback
+    piece: critical-bug-fix
+    auto_pr: true
+    draft_pr: true
+    name: coderabbit-pr117-review-feedback
+    status: completed
+    slug: coderabbit-pr117-review-feedback
+    summary: "PR #117 CodeRabbit指摘127件を一括修正: Critical 8/Major 32/Minor 64/Trivial
+      14/その他9。.takt参照整合、streams/persistence指摘、markdownlint対応"
+    worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260223T0611-coderabbit-pr117-review-feedback
+    pr_url: https://github.com/j5ik2o/fraktor-rs/pull/121
+    task_dir: .takt/tasks/20260223-021548-2aecc2
+    created_at: 2026-02-23T02:15:48.000Z
+    started_at: 2026-02-23T06:11:14.198Z
+    completed_at: 2026-02-23T07:08:55.036Z
+    owner_pid: null

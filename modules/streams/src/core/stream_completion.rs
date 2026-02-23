@@ -54,7 +54,10 @@ impl<T> StreamCompletion<T> {
 
   pub(crate) fn complete(&self, result: Result<T, StreamError>) {
     let mut guard = self.inner.lock();
-    guard.result = Some(result);
+    // 既存結果の上書きを防止
+    if guard.result.is_none() {
+      guard.result = Some(result);
+    }
   }
 }
 

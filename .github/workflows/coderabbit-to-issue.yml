@@ -1,0 +1,120 @@
+name: CodeRabbit → GitHub Issue
+
+on:
+  pull_request_review_comment:
+    types: [created]
+
+permissions:
+  issues: write
+  pull-requests: read
+
+jobs:
+  create-issue:
+    if: github.event.comment.user.login == 'coderabbitai[bot]'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Resolve PR URL and number
+        id: pr
+        run: |
+          echo "url=${{ github.event.pull_request.html_url }}" >> "$GITHUB_OUTPUT"
+          echo "number=${{ github.event.pull_request.number }}"  >> "$GITHUB_OUTPUT"
+
+      - name: Extract level from comment body
+        id: level
+        env:
+          BODY: ${{ github.event.comment.body }}
+        run: |
+          if printf '%s' "$BODY" | grep -qE '⚠️ Potential issue.*🟠 Major'; then
+            echo "level=major" >> "$GITHUB_OUTPUT"
+            echo "badge=🟠 Major" >> "$GITHUB_OUTPUT"
+          elif printf '%s' "$BODY" | grep -qE '⚠️ Potential issue.*🟡 Minor'; then
+            echo "level=minor" >> "$GITHUB_OUTPUT"
+            echo "badge=🟡 Minor" >> "$GITHUB_OUTPUT"
+          elif printf '%s' "$BODY" | grep -qE '🧹 Nitpick.*🔵 Trivial'; then
+            echo "level=trivial" >> "$GITHUB_OUTPUT"
+            echo "badge=🔵 Trivial" >> "$GITHUB_OUTPUT"
+          else
+            echo "level=unknown" >> "$GITHUB_OUTPUT"
+            echo "badge=⚪ Unknown" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Extract issue title from comment body
+        id: title
+        env:
+          BODY: ${{ github.event.comment.body }}
+        run: |
+          # コメント本文の最初の **太字テキスト** を抽出（最大80文字）
+          title=$(printf '%s' "$BODY" | grep -oP '\*\*\K[^*]+' | head -1 | cut -c1-80)
+          echo "title=${title:-CodeRabbit detected an issue}" >> "$GITHUB_OUTPUT"
+
+      - name: Check for duplicate issue
+        id: dup
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMENT_URL: ${{ github.event.comment.html_url }}
+        run: |
+          existing=$(gh issue list \
+            --repo "${{ github.repository }}" \
+            --label "coderabbit" \
+            --state all \
+            --search "$COMMENT_URL" \
+            --json number \
+            --jq 'length')
+          if [[ "$existing" -gt 0 ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Ensure labels exist
+        if: steps.dup.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LEVEL: ${{ steps.level.outputs.level }}
+        run: |
+          gh label create coderabbit \
+            --repo "${{ github.repository }}" \
+            --color 7c4dff \
+            --description "CodeRabbit review comment" \
+            2>/dev/null || true
+          gh label create "coderabbit:${LEVEL}" \
+            --repo "${{ github.repository }}" \
+            --color 7c4dff \
+            --description "CodeRabbit ${LEVEL} issue" \
+            2>/dev/null || true
+
+      - name: Build issue body
+        if: steps.dup.outputs.skip == 'false'
+        env:
+          PR_URL: ${{ steps.pr.outputs.url }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          LEVEL_BADGE: ${{ steps.level.outputs.badge }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          COMMENT_URL: ${{ github.event.comment.html_url }}
+        run: |
+          {
+            echo "> **CodeRabbit が PR #${PR_NUMBER} で検出した問題** (${LEVEL_BADGE})"
+            echo "> ${PR_URL}"
+            echo ""
+            echo "---"
+            echo ""
+            printf '%s\n' "${COMMENT_BODY}"
+            echo ""
+            echo "---"
+            echo ""
+            echo "**元コメント**: ${COMMENT_URL}"
+          } > /tmp/issue-body.md
+
+      - name: Create GitHub Issue
+        if: steps.dup.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_TITLE: ${{ steps.title.outputs.title }}
+          LEVEL: ${{ steps.level.outputs.level }}
+        run: |
+          gh issue create \
+            --repo "${{ github.repository }}" \
+            --title "🐇 [CodeRabbit:${LEVEL}] ${ISSUE_TITLE}" \
+            --body-file /tmp/issue-body.md \
+            --label "coderabbit,coderabbit:${LEVEL}"

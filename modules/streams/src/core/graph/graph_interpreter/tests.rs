@@ -247,7 +247,7 @@ fn flat_map_concat_uses_inner_source() {
 #[test]
 fn flat_map_concat_respects_backpressure_when_inner_emits_multiple_elements() {
   let graph = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic { next: 1, end: 2 })
-    .flat_map_concat(|value| Source::single(value).broadcast(2))
+    .flat_map_concat(|value| Source::single(value).broadcast(2).expect("broadcast"))
     .to_mat(
       Sink::fold(Vec::new(), |mut acc: Vec<u32>, value| {
         acc.push(value);
@@ -269,8 +269,9 @@ fn flat_map_merge_uses_configured_breadth() {
   let completion = StreamCompletion::new();
 
   let source = source_sequence_u32(source_outlet, 3);
-  let flat_map_merge =
-    flat_map_merge_definition::<u32, u32, StreamNotUsed, _>(2, |value| Source::single(value).broadcast(2));
+  let flat_map_merge = flat_map_merge_definition::<u32, u32, StreamNotUsed, _>(2, |value| {
+    Source::single(value).broadcast(2).expect("broadcast")
+  });
   let flat_map_merge_inlet = flat_map_merge.inlet;
   let flat_map_merge_outlet = flat_map_merge.outlet;
   let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
@@ -298,7 +299,7 @@ fn flat_map_merge_delays_new_inner_creation_until_breadth_slot_is_released() {
       move |value| {
         let mut guard = created.lock();
         *guard = guard.saturating_add(1);
-        Source::single(value).broadcast(2)
+        Source::single(value).broadcast(2).expect("broadcast")
       }
     })
     .expect("flat_map_merge")
@@ -1325,8 +1326,9 @@ fn cross_operator_backpressure_propagates_through_substream_and_async_boundary()
     supervision: SupervisionStrategy::Stop,
     restart:     None,
   };
-  let flat_map_merge =
-    flat_map_merge_definition::<u32, u32, StreamNotUsed, _>(1, |value| Source::single(value).broadcast(2));
+  let flat_map_merge = flat_map_merge_definition::<u32, u32, StreamNotUsed, _>(1, |value| {
+    Source::single(value).broadcast(2).expect("broadcast")
+  });
   let flat_map_merge_inlet = flat_map_merge.inlet;
   let flat_map_merge_outlet = flat_map_merge.outlet;
   let split_after = split_after_definition::<u32, _>(|_| true);

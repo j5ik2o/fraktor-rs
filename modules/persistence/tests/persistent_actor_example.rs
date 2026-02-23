@@ -76,7 +76,7 @@ impl Eventsourced<TB> for BatchActor {
     if let Some(Command::AddAll(events)) = message.downcast_ref::<Command>() {
       let mapped: Vec<Event> = events.iter().map(|value| Event::Added(*value)).collect();
       self.persist_all(ctx, mapped, |actor, event| actor.apply_event(event));
-      self.flush_batch(ctx);
+      self.flush_batch(ctx)?;
     }
     Ok(())
   }

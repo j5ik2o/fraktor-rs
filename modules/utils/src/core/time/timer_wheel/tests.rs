@@ -54,6 +54,37 @@ fn manual_clock_is_monotonic() {
   }
 }
 
+/// LOGIC-014 回帰テスト: collect_expired で発火済みハンドルを cancel しても active が
+/// 二重デクリメントされないことを検証する。
+///
+/// 再現手順: H1(deadline=10), H2(deadline=20) を schedule → active=2。
+/// collect_expired(now=15) → H1 発火 → active=1。cancel(H1) → fired に含まれるため
+/// false を返し active は 1 のまま。
+#[test]
+fn cancel_after_fire_does_not_double_decrement_active() {
+  let resolution = Duration::from_millis(10);
+  let config = TimerWheelConfig::new(resolution, 128, 5);
+  let mut wheel = TimerWheel::new(config);
+
+  let deadline_h1 = TimerInstant::from_ticks(1, resolution);
+  let deadline_h2 = TimerInstant::from_ticks(2, resolution);
+
+  let h1 = wheel.schedule(TimerEntry::oneshot(deadline_h1, 1u32)).expect("schedule h1");
+  let _h2 = wheel.schedule(TimerEntry::oneshot(deadline_h2, 2u32)).expect("schedule h2");
+  assert_eq!(wheel.len(), 2);
+
+  // now=15ms (tick 1.5 相当 → tick 1 まで期限切れ) で H1 のみ発火
+  let now = TimerInstant::from_ticks(1, resolution);
+  let expired = wheel.collect_expired(now);
+  assert_eq!(expired.len(), 1);
+  assert_eq!(wheel.len(), 1, "H1 発火後 active は 1");
+
+  // 発火済み H1 を cancel しても active は変わらない
+  let cancelled = wheel.cancel(h1);
+  assert!(!cancelled, "発火済みハンドルの cancel は false を返す");
+  assert_eq!(wheel.len(), 1, "active は 1 のまま（二重デクリメントなし）");
+}
+
 proptest! {
   #[test]
   fn fifo_is_preserved_under_random_delays(delays in proptest::collection::vec(1u8..8, 4..16)) {

@@ -15,8 +15,9 @@ use crate::core::{
   journal_message::JournalMessage, journal_response::JournalResponse, journal_response_action::JournalResponseAction,
   pending_handler_invocation::PendingHandlerInvocation, persistence_error::PersistenceError,
   persistent_actor_state::PersistentActorState, persistent_envelope::PersistentEnvelope,
-  persistent_repr::PersistentRepr, recovery::Recovery, snapshot_message::SnapshotMessage,
-  snapshot_response::SnapshotResponse, snapshot_response_action::SnapshotResponseAction,
+  persistent_repr::PersistentRepr, recovery::Recovery, snapshot_error::SnapshotError,
+  snapshot_message::SnapshotMessage, snapshot_response::SnapshotResponse,
+  snapshot_response_action::SnapshotResponseAction,
 };
 
 type PendingHandler<A> = Box<dyn FnOnce(&mut A, &PersistentRepr) + Send + Sync>;
@@ -113,10 +114,19 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
   }
 
   /// Flushes the current batch to the journal.
-  pub fn flush_batch(&mut self, sender: ActorRefGeneric<TB>) {
+  ///
+  /// # Errors
+  ///
+  /// Returns `PersistenceError` when the state transition or message send fails.
+  /// On send failure the state is rolled back to `ProcessingCommands` and
+  /// pending invocations are cleared.
+  pub fn flush_batch(&mut self, sender: ActorRefGeneric<TB>) -> Result<(), PersistenceError> {
     if self.event_batch.is_empty() || !self.is_ready() {
-      return;
+      return Ok(());
     }
+
+    let next_state = self.state.transition_to_persisting_events()?;
+    self.state = next_state;
 
     self.journal_batch.append(&mut self.event_batch);
     let mut messages = Vec::new();
@@ -142,16 +152,24 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
       sender,
       instance_id: self.instance_id,
     };
-    let _ = self.send_write_messages(message);
-    if let Ok(state) = self.state.transition_to_persisting_events() {
-      self.state = state;
+    if let Err(error) = self.send_write_messages(message) {
+      // 送信失敗時: 状態をロールバックし、処理不能な保留ハンドラをクリア
+      self.pending_invocations.clear();
+      if let Ok(rollback) = self.state.transition_to_processing_commands() {
+        self.state = rollback;
+      }
+      return Err(error);
     }
+    Ok(())
   }
 
   /// Handles journal responses.
   pub(crate) fn handle_journal_response(&mut self, response: &JournalResponse) -> JournalResponseAction<A> {
     match response {
       | JournalResponse::WriteMessageSuccess { repr, .. } => {
+        if self.state != PersistentActorState::PersistingEvents {
+          return JournalResponseAction::None;
+        }
         let action = self
           .pending_invocations
           .pop_front()
@@ -213,7 +231,7 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
     response: &SnapshotResponse,
     sender: ActorRefGeneric<TB>,
   ) -> SnapshotResponseAction {
-    if !self.is_ready() {
+    if !self.is_ready() || self.state != PersistentActorState::RecoveryStarted {
       return SnapshotResponseAction::None;
     }
 
@@ -237,7 +255,11 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
           max: recovery.replay_max(),
           sender,
         };
-        let _ = self.send_write_messages(message);
+        if let Err(error) = self.send_write_messages(message) {
+          return SnapshotResponseAction::SnapshotFailure(SnapshotError::LoadFailed(format!(
+            "failed to send replay messages: {error}"
+          )));
+        }
         snapshot
           .as_ref()
           .map(|snap| SnapshotResponseAction::ReceiveSnapshot(snap.clone()))
@@ -255,7 +277,11 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
           max: recovery.replay_max(),
           sender,
         };
-        let _ = self.send_write_messages(message);
+        if let Err(send_error) = self.send_write_messages(message) {
+          return SnapshotResponseAction::SnapshotFailure(SnapshotError::LoadFailed(format!(
+            "failed to send replay messages after snapshot load failure: {send_error}"
+          )));
+        }
         SnapshotResponseAction::SnapshotFailure(error.clone())
       },
       | SnapshotResponse::SaveSnapshotFailure { error, .. } => SnapshotResponseAction::SnapshotFailure(error.clone()),
@@ -268,22 +294,32 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
   }
 
   /// Starts recovery.
-  pub(crate) fn start_recovery(&mut self, recovery: Recovery, sender: ActorRefGeneric<TB>) {
-    if !self.is_ready() {
-      return;
-    }
+  ///
+  /// # Errors
+  ///
+  /// Returns `PersistenceError` when the state transition or message send fails.
+  /// On send failure the state is rolled back to `WaitingRecoveryPermit`.
+  pub(crate) fn start_recovery(
+    &mut self,
+    recovery: Recovery,
+    sender: ActorRefGeneric<TB>,
+  ) -> Result<(), PersistenceError> {
+    self.ensure_ready()?;
     self.recovery = recovery;
-    if let Ok(state) = self.state.transition_to_recovery_started() {
-      self.state = state;
-    }
+    let next_state = self.state.transition_to_recovery_started()?;
+    self.state = next_state;
     if self.recovery == Recovery::none() {
       let message = JournalMessage::GetHighestSequenceNr {
         persistence_id: self.persistence_id.clone(),
         from_sequence_nr: 0,
         sender,
       };
-      let _ = self.send_write_messages(message);
-      return;
+      if let Err(error) = self.send_write_messages(message) {
+        // 送信失敗時: 状態をロールバック
+        self.state = PersistentActorState::WaitingRecoveryPermit;
+        return Err(error);
+      }
+      return Ok(());
     }
 
     let message = SnapshotMessage::LoadSnapshot {
@@ -291,7 +327,12 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
       criteria: self.recovery.snapshot_criteria().clone(),
       sender,
     };
-    let _ = self.send_snapshot_message(message);
+    if let Err(error) = self.send_snapshot_message(message) {
+      // 送信失敗時: 状態をロールバック
+      self.state = PersistentActorState::WaitingRecoveryPermit;
+      return Err(error);
+    }
+    Ok(())
   }
 
   /// Sends journal messages through the persistence extension.
@@ -332,7 +373,7 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
   }
 
   fn is_bound(&self) -> bool {
-    !Self::is_null_ref(&self.journal_actor_ref) || !Self::is_null_ref(&self.snapshot_actor_ref)
+    !Self::is_null_ref(&self.journal_actor_ref) && !Self::is_null_ref(&self.snapshot_actor_ref)
   }
 
   fn is_ready(&self) -> bool {

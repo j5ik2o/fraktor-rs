@@ -78,7 +78,7 @@ impl Eventsourced<TB> for CounterActor {
   ) -> Result<(), ActorError> {
     if let Some(Command::Add(delta)) = message.downcast_ref::<Command>() {
       self.persist(ctx, Event::Incremented(*delta), |actor, event| actor.apply_event(event));
-      self.flush_batch(ctx);
+      self.flush_batch(ctx)?;
     }
     Ok(())
   }

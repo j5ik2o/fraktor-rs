@@ -33,11 +33,9 @@ impl Future for DelayFuture {
   type Output = ();
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-    if self.state.is_completed() {
-      Poll::Ready(())
-    } else {
-      self.state.register_waker(cx.waker());
-      Poll::Pending
-    }
+    // waker登録を完了チェックの前に行う。
+    // 逆順だとfire()が間に実行された場合にwakeされず永久Pendingになる
+    self.state.register_waker(cx.waker());
+    if self.state.is_completed() { Poll::Ready(()) } else { Poll::Pending }
   }
 }

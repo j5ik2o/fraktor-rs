@@ -1,4 +1,4 @@
-use alloc::{boxed::Box, vec, vec::Vec};
+use alloc::{boxed::Box, collections::VecDeque, vec, vec::Vec};
 use core::{
   any::TypeId,
   future::Future,
@@ -307,19 +307,29 @@ where
   }
 
   /// Lazily creates a single-element source.
+  ///
+  /// The factory is deferred until the first element is demanded.
   #[must_use]
   pub fn lazy_single<F>(factory: F) -> Self
   where
-    F: FnOnce() -> Out, {
-    Self::single(factory())
+    F: FnOnce() -> Out + Send + 'static, {
+    Self::lazy_source(move || Self::single(factory()))
   }
 
   /// Lazily creates a source from a source factory.
+  ///
+  /// The factory is not called until the first element is demanded.
+  /// All elements from the created source are collected and buffered on first pull.
   #[must_use]
   pub fn lazy_source<F>(factory: F) -> Self
   where
-    F: FnOnce() -> Self, {
-    factory()
+    F: FnOnce() -> Self + Send + 'static, {
+    Self::from_logic(StageKind::Custom, LazySourceLogic::<Out, F> {
+      factory: Some(factory),
+      buffer:  VecDeque::new(),
+      error:   None,
+      _pd:     PhantomData,
+    })
   }
 
   /// Creates an optional source.
@@ -408,18 +418,24 @@ where
   }
 
   /// Alias of [`Source::zip`].
-  #[must_use]
-  pub fn zip_n(self, n: usize) -> Source<Vec<Out>, StreamNotUsed> {
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `n` is zero.
+  pub fn zip_n(self, n: usize) -> Result<Source<Vec<Out>, StreamNotUsed>, StreamDslError> {
     self.zip(n)
   }
 
   /// Alias of [`Source::zip_n`] followed by mapping.
-  #[must_use]
-  pub fn zip_with_n<T, F>(self, n: usize, func: F) -> Source<T, StreamNotUsed>
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `n` is zero.
+  pub fn zip_with_n<T, F>(self, n: usize, func: F) -> Result<Source<T, StreamNotUsed>, StreamDslError>
   where
     T: Send + Sync + 'static,
     F: FnMut(Vec<Out>) -> T + Send + Sync + 'static, {
-    self.zip_n(n).map(func)
+    Ok(self.zip_n(n)?.map(func))
   }
 
   pub(in crate::core) fn from_logic<L>(kind: StageKind, logic: L) -> Self
@@ -1144,14 +1160,13 @@ where
 
   /// Adds a broadcast stage that duplicates each element `fan_out` times.
   ///
-  /// # Panics
+  /// # Errors
   ///
-  /// Panics when `fan_out` is zero.
-  #[must_use]
-  pub fn broadcast(mut self, fan_out: usize) -> Source<Out, Mat>
+  /// Returns [`StreamDslError`] when `fan_out` is zero.
+  pub fn broadcast(mut self, fan_out: usize) -> Result<Source<Out, Mat>, StreamDslError>
   where
     Out: Clone, {
-    assert!(fan_out > 0, "fan_out must be greater than zero");
+    let _ = validate_positive_argument("fan_out", fan_out)?;
     let definition = broadcast_definition::<Out>(fan_out);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
@@ -1159,17 +1174,16 @@ where
     if let Some(from) = from {
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
-    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+    Ok(Source { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
   /// Adds a balance stage that distributes elements across `fan_out` outputs.
   ///
-  /// # Panics
+  /// # Errors
   ///
-  /// Panics when `fan_out` is zero.
-  #[must_use]
-  pub fn balance(mut self, fan_out: usize) -> Source<Out, Mat> {
-    assert!(fan_out > 0, "fan_out must be greater than zero");
+  /// Returns [`StreamDslError`] when `fan_out` is zero.
+  pub fn balance(mut self, fan_out: usize) -> Result<Source<Out, Mat>, StreamDslError> {
+    let _ = validate_positive_argument("fan_out", fan_out)?;
     let definition = balance_definition::<Out>(fan_out);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
@@ -1177,17 +1191,16 @@ where
     if let Some(from) = from {
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
-    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+    Ok(Source { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
   /// Adds a merge stage that merges `fan_in` upstream paths.
   ///
-  /// # Panics
+  /// # Errors
   ///
-  /// Panics when `fan_in` is zero.
-  #[must_use]
-  pub fn merge(mut self, fan_in: usize) -> Source<Out, Mat> {
-    assert!(fan_in > 0, "fan_in must be greater than zero");
+  /// Returns [`StreamDslError`] when `fan_in` is zero.
+  pub fn merge(mut self, fan_in: usize) -> Result<Source<Out, Mat>, StreamDslError> {
+    let _ = validate_positive_argument("fan_in", fan_in)?;
     let definition = merge_definition::<Out>(fan_in);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
@@ -1195,17 +1208,16 @@ where
     if let Some(from) = from {
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
-    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+    Ok(Source { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
   /// Adds an interleave stage that consumes `fan_in` inputs in round-robin order.
   ///
-  /// # Panics
+  /// # Errors
   ///
-  /// Panics when `fan_in` is zero.
-  #[must_use]
-  pub fn interleave(mut self, fan_in: usize) -> Source<Out, Mat> {
-    assert!(fan_in > 0, "fan_in must be greater than zero");
+  /// Returns [`StreamDslError`] when `fan_in` is zero.
+  pub fn interleave(mut self, fan_in: usize) -> Result<Source<Out, Mat>, StreamDslError> {
+    let _ = validate_positive_argument("fan_in", fan_in)?;
     let definition = interleave_definition::<Out>(fan_in);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
@@ -1213,17 +1225,16 @@ where
     if let Some(from) = from {
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
-    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+    Ok(Source { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
   /// Adds a prepend stage that prioritizes lower-index input lanes.
   ///
-  /// # Panics
+  /// # Errors
   ///
-  /// Panics when `fan_in` is zero.
-  #[must_use]
-  pub fn prepend(mut self, fan_in: usize) -> Source<Out, Mat> {
-    assert!(fan_in > 0, "fan_in must be greater than zero");
+  /// Returns [`StreamDslError`] when `fan_in` is zero.
+  pub fn prepend(mut self, fan_in: usize) -> Result<Source<Out, Mat>, StreamDslError> {
+    let _ = validate_positive_argument("fan_in", fan_in)?;
     let definition = prepend_definition::<Out>(fan_in);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
@@ -1231,17 +1242,16 @@ where
     if let Some(from) = from {
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
-    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+    Ok(Source { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
   /// Adds a zip stage that emits one vector after receiving one element from each input.
   ///
-  /// # Panics
+  /// # Errors
   ///
-  /// Panics when `fan_in` is zero.
-  #[must_use]
-  pub fn zip(mut self, fan_in: usize) -> Source<Vec<Out>, Mat> {
-    assert!(fan_in > 0, "fan_in must be greater than zero");
+  /// Returns [`StreamDslError`] when `fan_in` is zero.
+  pub fn zip(mut self, fan_in: usize) -> Result<Source<Vec<Out>, Mat>, StreamDslError> {
+    let _ = validate_positive_argument("fan_in", fan_in)?;
     let definition = zip_definition::<Out>(fan_in);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
@@ -1249,19 +1259,18 @@ where
     if let Some(from) = from {
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
-    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+    Ok(Source { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
   /// Adds a zip-all stage that fills missing lanes with `fill_value` after completion.
   ///
-  /// # Panics
+  /// # Errors
   ///
-  /// Panics when `fan_in` is zero.
-  #[must_use]
-  pub fn zip_all(mut self, fan_in: usize, fill_value: Out) -> Source<Vec<Out>, Mat>
+  /// Returns [`StreamDslError`] when `fan_in` is zero.
+  pub fn zip_all(mut self, fan_in: usize, fill_value: Out) -> Result<Source<Vec<Out>, Mat>, StreamDslError>
   where
     Out: Clone, {
-    assert!(fan_in > 0, "fan_in must be greater than zero");
+    let _ = validate_positive_argument("fan_in", fan_in)?;
     let definition = zip_all_definition::<Out>(fan_in, fill_value);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
@@ -1269,7 +1278,7 @@ where
     if let Some(from) = from {
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
-    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+    Ok(Source { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
   /// Adds a zip-with-index stage that pairs each element with an incrementing index.
@@ -1287,12 +1296,11 @@ where
 
   /// Adds a concat stage that emits all elements from each input in port order.
   ///
-  /// # Panics
+  /// # Errors
   ///
-  /// Panics when `fan_in` is zero.
-  #[must_use]
-  pub fn concat(mut self, fan_in: usize) -> Source<Out, Mat> {
-    assert!(fan_in > 0, "fan_in must be greater than zero");
+  /// Returns [`StreamDslError`] when `fan_in` is zero.
+  pub fn concat(mut self, fan_in: usize) -> Result<Source<Out, Mat>, StreamDslError> {
+    let _ = validate_positive_argument("fan_in", fan_in)?;
     let definition = concat_definition::<Out>(fan_in);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
@@ -1300,7 +1308,7 @@ where
     if let Some(from) = from {
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
-    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+    Ok(Source { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
   /// Runs this source to completion and collects emitted elements.
@@ -1758,6 +1766,46 @@ where
       },
       | Poll::Pending => Err(StreamError::WouldBlock),
     }
+  }
+}
+
+struct LazySourceLogic<Out, F> {
+  factory: Option<F>,
+  buffer:  VecDeque<DynValue>,
+  // factory 消費後に collect_values が失敗した場合のエラー状態
+  error:   Option<StreamError>,
+  _pd:     PhantomData<fn() -> Out>,
+}
+
+impl<Out, F> SourceLogic for LazySourceLogic<Out, F>
+where
+  Out: Send + Sync + 'static,
+  F: FnOnce() -> Source<Out, StreamNotUsed> + Send + 'static,
+{
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    if let Some(error) = &self.error {
+      return Err(error.clone());
+    }
+    if let Some(factory) = self.factory.take() {
+      let source = factory();
+      match source.collect_values() {
+        | Ok(values) => {
+          self.buffer = values.into_iter().map(|v| Box::new(v) as DynValue).collect();
+        },
+        | Err(e) => {
+          self.error = Some(e.clone());
+          return Err(e);
+        },
+      }
+    }
+    Ok(self.buffer.pop_front())
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    if let Some(error) = &self.error {
+      return Err(error.clone());
+    }
+    Ok(())
   }
 }
 

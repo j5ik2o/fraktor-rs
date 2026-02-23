@@ -149,11 +149,11 @@ impl GrainRpcRouter {
       }
 
       if let Some(next) = state.queue.pop_front() {
-        state.in_flight += 1;
         if now >= next.deadline {
           local_events.push(RpcEvent::TimedOut { key: key.clone() });
           Some(RpcDispatch::Dropped { reason: "timeout".to_string() })
         } else {
+          state.in_flight += 1;
           local_events.push(RpcEvent::Promoted { key: key.clone() });
           Some(RpcDispatch::Immediate { key: key.clone(), message: next.message, deadline: next.deadline })
         }

@@ -178,6 +178,10 @@ impl StreamGraph {
             | StageKind::FlowDelay
             | StageKind::FlowInitialDelay
             | StageKind::FlowTakeWithin
+            | StageKind::FlowBackpressureTimeout
+            | StageKind::FlowCompletionTimeout
+            | StageKind::FlowIdleTimeout
+            | StageKind::FlowInitialTimeout
             | StageKind::FlowBatch
             | StageKind::FlowGroupBy
             | StageKind::FlowRecover
@@ -193,12 +197,17 @@ impl StreamGraph {
             | StageKind::FlowBroadcast
             | StageKind::FlowBalance
             | StageKind::FlowMerge
+            | StageKind::FlowMergePreferred
+            | StageKind::FlowMergePrioritized
+            | StageKind::FlowMergeSorted
+            | StageKind::FlowMergeLatest
             | StageKind::FlowInterleave
             | StageKind::FlowPrepend
             | StageKind::FlowZip
             | StageKind::FlowZipAll
             | StageKind::FlowZipWithIndex
             | StageKind::FlowConcat
+            | StageKind::FlowWatchTermination
             | StageKind::Custom
         )
       },
@@ -225,6 +234,10 @@ impl StreamGraph {
 
   pub(in crate::core) fn tail_outlet(&self) -> Option<PortId> {
     self.nodes.last().and_then(|node| node.stage.outlet())
+  }
+
+  pub(in crate::core) fn into_stages(self) -> Vec<StageDefinition> {
+    self.nodes.into_iter().map(|node| node.stage).collect()
   }
 
   pub(in crate::core) fn expected_fan_out_for_outlet(&self, outlet: PortId) -> Option<usize> {

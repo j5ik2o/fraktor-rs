@@ -7,12 +7,17 @@ use super::{DrainingControl, DynValue, Sink, SinkDecision, SinkLogic, Source, So
 #[cfg(test)]
 mod tests;
 
+/// Internal state protected by a single mutex to avoid TOCTOU races.
+struct MergeHubState<T> {
+  queue:           VecDeque<T>,
+  receiver_active: bool,
+  draining:        bool,
+}
+
 /// Minimal merge hub that merges offered elements into a single queue.
 pub struct MergeHub<T> {
-  queue:           ArcShared<SpinSyncMutex<VecDeque<T>>>,
-  receiver_active: ArcShared<SpinSyncMutex<bool>>,
-  draining:        ArcShared<SpinSyncMutex<bool>>,
-  max_buffer:      usize,
+  state:      ArcShared<SpinSyncMutex<MergeHubState<T>>>,
+  max_buffer: usize,
 }
 
 impl<T> MergeHub<T> {
@@ -20,10 +25,12 @@ impl<T> MergeHub<T> {
   #[must_use]
   pub fn new() -> Self {
     Self {
-      queue:           ArcShared::new(SpinSyncMutex::new(VecDeque::new())),
-      receiver_active: ArcShared::new(SpinSyncMutex::new(false)),
-      draining:        ArcShared::new(SpinSyncMutex::new(false)),
-      max_buffer:      16,
+      state:      ArcShared::new(SpinSyncMutex::new(MergeHubState {
+        queue:           VecDeque::new(),
+        receiver_active: false,
+        draining:        false,
+      })),
+      max_buffer: 16,
     }
   }
 
@@ -34,43 +41,38 @@ impl<T> MergeHub<T> {
   /// Returns [`StreamError::WouldBlock`] when receiver side is not active or the hub buffer is
   /// full.
   pub fn offer(&self, value: T) -> Result<(), StreamError> {
-    if !*self.receiver_active.lock() {
+    let mut guard = self.state.lock();
+    if !guard.receiver_active {
       return Err(StreamError::WouldBlock);
     }
-    if *self.draining.lock() {
+    if guard.draining {
       return Err(StreamError::WouldBlock);
     }
-    let mut queue = self.queue.lock();
-    if queue.len() >= self.max_buffer {
+    if guard.queue.len() >= self.max_buffer {
       return Err(StreamError::WouldBlock);
     }
-    queue.push_back(value);
+    guard.queue.push_back(value);
     Ok(())
   }
 
   /// Polls the next merged element from the hub.
   #[must_use]
   pub fn poll(&self) -> Option<T> {
-    *self.receiver_active.lock() = true;
-    self.queue.lock().pop_front()
+    let mut guard = self.state.lock();
+    guard.receiver_active = true;
+    guard.queue.pop_front()
   }
 
   /// Returns the number of queued elements.
   #[must_use]
   pub fn len(&self) -> usize {
-    self.queue.lock().len()
+    self.state.lock().queue.len()
   }
 
   /// Returns true when the hub queue is empty.
   #[must_use]
   pub fn is_empty(&self) -> bool {
-    self.queue.lock().is_empty()
-  }
-
-  /// Returns a control handle that can start draining mode.
-  #[must_use]
-  pub fn draining_control(&self) -> DrainingControl {
-    DrainingControl::new(self.draining.clone())
+    self.state.lock().queue.is_empty()
   }
 }
 
@@ -78,25 +80,32 @@ impl<T> MergeHub<T>
 where
   T: Send + Sync + 'static,
 {
+  /// Returns a control handle that can start draining mode.
+  #[must_use]
+  pub fn draining_control(&self) -> DrainingControl {
+    let drain_state = self.state.clone();
+    let query_state = self.state.clone();
+    DrainingControl::new_with_callback(
+      move || {
+        drain_state.lock().draining = true;
+      },
+      move || query_state.lock().draining,
+    )
+  }
+
   /// Creates a source that drains the merged queue.
   #[must_use]
   pub fn source(&self) -> Source<T, super::StreamNotUsed> {
-    *self.receiver_active.lock() = true;
-    Source::from_logic(StageKind::Custom, MergeHubSourceLogic {
-      queue:           self.queue.clone(),
-      receiver_active: self.receiver_active.clone(),
-      draining:        self.draining.clone(),
-    })
+    self.state.lock().receiver_active = true;
+    Source::from_logic(StageKind::Custom, MergeHubSourceLogic { state: self.state.clone() })
   }
 
   /// Creates a sink that offers incoming elements into the merged queue.
   #[must_use]
   pub fn sink(&self) -> Sink<T, super::StreamNotUsed> {
     Sink::from_logic(StageKind::Custom, MergeHubSinkLogic {
-      queue:           self.queue.clone(),
-      receiver_active: self.receiver_active.clone(),
-      draining:        self.draining.clone(),
-      max_buffer:      self.max_buffer,
+      state:      self.state.clone(),
+      max_buffer: self.max_buffer,
     })
   }
 }
@@ -108,9 +117,7 @@ impl<T> Default for MergeHub<T> {
 }
 
 struct MergeHubSourceLogic<T> {
-  queue:           ArcShared<SpinSyncMutex<VecDeque<T>>>,
-  receiver_active: ArcShared<SpinSyncMutex<bool>>,
-  draining:        ArcShared<SpinSyncMutex<bool>>,
+  state: ArcShared<SpinSyncMutex<MergeHubState<T>>>,
 }
 
 impl<T> SourceLogic for MergeHubSourceLogic<T>
@@ -118,12 +125,12 @@ where
   T: Send + Sync + 'static,
 {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
-    *self.receiver_active.lock() = true;
-    let next = { self.queue.lock().pop_front() };
-    match next {
+    let mut guard = self.state.lock();
+    guard.receiver_active = true;
+    match guard.queue.pop_front() {
       | Some(value) => Ok(Some(Box::new(value) as DynValue)),
       | None => {
-        if *self.draining.lock() {
+        if guard.draining {
           return Ok(None);
         }
         Err(StreamError::WouldBlock)
@@ -133,10 +140,8 @@ where
 }
 
 struct MergeHubSinkLogic<T> {
-  queue:           ArcShared<SpinSyncMutex<VecDeque<T>>>,
-  receiver_active: ArcShared<SpinSyncMutex<bool>>,
-  draining:        ArcShared<SpinSyncMutex<bool>>,
-  max_buffer:      usize,
+  state:      ArcShared<SpinSyncMutex<MergeHubState<T>>>,
+  max_buffer: usize,
 }
 
 impl<T> SinkLogic for MergeHubSinkLogic<T>
@@ -144,13 +149,8 @@ where
   T: Send + Sync + 'static,
 {
   fn can_accept_input(&self) -> bool {
-    if !*self.receiver_active.lock() {
-      return false;
-    }
-    if *self.draining.lock() {
-      return false;
-    }
-    self.queue.lock().len() < self.max_buffer
+    let guard = self.state.lock();
+    guard.receiver_active && !guard.draining && guard.queue.len() < self.max_buffer
   }
 
   fn on_start(&mut self, demand: &mut super::DemandTracker) -> Result<(), StreamError> {
@@ -159,17 +159,15 @@ where
 
   fn on_push(&mut self, input: DynValue, demand: &mut super::DemandTracker) -> Result<SinkDecision, StreamError> {
     let value = super::downcast_value::<T>(input)?;
-    if !*self.receiver_active.lock() {
+    let mut guard = self.state.lock();
+    if !guard.receiver_active || guard.draining {
       return Err(StreamError::WouldBlock);
     }
-    if *self.draining.lock() {
+    if guard.queue.len() >= self.max_buffer {
       return Err(StreamError::WouldBlock);
     }
-    let mut queue = self.queue.lock();
-    if queue.len() >= self.max_buffer {
-      return Err(StreamError::WouldBlock);
-    }
-    queue.push_back(value);
+    guard.queue.push_back(value);
+    drop(guard);
     demand.request(1)?;
     Ok(SinkDecision::Continue)
   }

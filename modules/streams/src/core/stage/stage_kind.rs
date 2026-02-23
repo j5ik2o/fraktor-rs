@@ -49,6 +49,14 @@ pub enum StageKind {
   FlowInitialDelay,
   /// Flow stage that forwards elements only within configured tick window.
   FlowTakeWithin,
+  /// Flow stage that fails when downstream backpressure exceeds tick threshold.
+  FlowBackpressureTimeout,
+  /// Flow stage that fails when stream does not complete within tick threshold.
+  FlowCompletionTimeout,
+  /// Flow stage that fails when no elements arrive within tick threshold.
+  FlowIdleTimeout,
+  /// Flow stage that fails when the first element does not arrive within tick threshold.
+  FlowInitialTimeout,
   /// Flow stage that represents an asynchronous execution boundary.
   FlowAsyncBoundary,
   /// Flow stage that groups elements into fixed-size batches.
@@ -81,6 +89,14 @@ pub enum StageKind {
   FlowBalance,
   /// Flow stage that merges elements from multiple inputs.
   FlowMerge,
+  /// Flow stage that merges elements with a preferred input port checked first.
+  FlowMergePreferred,
+  /// Flow stage that merges elements with weighted priority across input ports.
+  FlowMergePrioritized,
+  /// Flow stage that merges pre-sorted inputs into a single sorted output.
+  FlowMergeSorted,
+  /// Flow stage that keeps the latest value from each input and emits all latest on every update.
+  FlowMergeLatest,
   /// Flow stage that interleaves elements from multiple inputs in round-robin order.
   FlowInterleave,
   /// Flow stage that prepends higher-priority input lanes before others.
@@ -93,6 +109,8 @@ pub enum StageKind {
   FlowZipWithIndex,
   /// Flow stage that concatenates inputs in port order.
   FlowConcat,
+  /// Flow stage that watches stream termination and completes a handle.
+  FlowWatchTermination,
   /// Sink that ignores elements.
   SinkIgnore,
   /// Sink that folds elements.

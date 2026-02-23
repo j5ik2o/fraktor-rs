@@ -123,27 +123,41 @@ where
   }
 
   /// Lazily creates a completion-stage sink.
+  ///
+  /// Alias of [`Sink::lazy_sink`].
   #[must_use]
   pub fn lazy_completion_stage_sink<F>(factory: F) -> Self
   where
-    F: FnOnce() -> Self, {
-    factory()
+    F: FnOnce() -> Self + Send + 'static, {
+    Self::lazy_sink(factory)
   }
 
   /// Lazily creates a future sink.
+  ///
+  /// Alias of [`Sink::lazy_sink`].
   #[must_use]
   pub fn lazy_future_sink<F>(factory: F) -> Self
   where
-    F: FnOnce() -> Self, {
-    factory()
+    F: FnOnce() -> Self + Send + 'static, {
+    Self::lazy_sink(factory)
   }
 
   /// Lazily creates a sink.
+  ///
+  /// The factory is not called until the first element arrives.
+  /// The sink logic from the created sink is extracted and used for processing.
   #[must_use]
   pub fn lazy_sink<F>(factory: F) -> Self
   where
-    F: FnOnce() -> Self, {
-    factory()
+    F: FnOnce() -> Self + Send + 'static, {
+    let completion = StreamCompletion::new();
+    let logic = LazySinkLogic::<In, F> {
+      factory:    Some(factory),
+      inner:      None,
+      completion: completion.clone(),
+      _pd:        PhantomData,
+    };
+    Self::from_definition(StageKind::Custom, logic, completion)
   }
 
   /// Converts this sink into a pre-materialized form.
@@ -421,6 +435,75 @@ impl<In, Mat> StreamStage for Sink<In, Mat> {
   fn shape(&self) -> StreamShape<Self::In, Self::Out> {
     let inlet = self.graph.head_inlet().map(Inlet::from_id).unwrap_or_default();
     StreamShape::new(inlet, Outlet::new())
+  }
+}
+
+struct LazySinkLogic<In, F> {
+  factory:    Option<F>,
+  inner:      Option<Box<dyn SinkLogic>>,
+  completion: StreamCompletion<StreamDone>,
+  _pd:        PhantomData<fn(In)>,
+}
+
+impl<In, F> SinkLogic for LazySinkLogic<In, F>
+where
+  In: Send + Sync + 'static,
+  F: FnOnce() -> Sink<In, StreamCompletion<StreamDone>> + Send + 'static,
+{
+  fn on_start(&mut self, demand: &mut super::DemandTracker) -> Result<(), StreamError> {
+    demand.request(1)
+  }
+
+  fn on_push(&mut self, input: DynValue, demand: &mut super::DemandTracker) -> Result<SinkDecision, StreamError> {
+    if let Some(factory) = self.factory.take() {
+      let sink = factory();
+      let (graph, _inner_completion) = sink.into_parts();
+      let stages = graph.into_stages();
+      for stage in stages {
+        if let StageDefinition::Sink(def) = stage {
+          self.inner = Some(def.logic);
+          break;
+        }
+      }
+      // ライフサイクル契約: inner sink のbackpressure初期化
+      if let Some(inner) = &mut self.inner {
+        inner.on_start(demand)?;
+      }
+    }
+
+    match &mut self.inner {
+      | Some(inner) => inner.on_push(input, demand),
+      | None => {
+        self.completion.complete(Err(StreamError::Failed));
+        Ok(SinkDecision::Complete)
+      },
+    }
+  }
+
+  fn on_complete(&mut self) -> Result<(), StreamError> {
+    let result = match &mut self.inner {
+      | Some(inner) => inner.on_complete(),
+      | None => Ok(()),
+    };
+    match &result {
+      | Ok(()) => self.completion.complete(Ok(StreamDone::new())),
+      | Err(e) => self.completion.complete(Err(e.clone())),
+    }
+    result
+  }
+
+  fn on_error(&mut self, error: StreamError) {
+    if let Some(inner) = &mut self.inner {
+      inner.on_error(error.clone());
+    }
+    self.completion.complete(Err(error));
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    if let Some(inner) = &mut self.inner {
+      inner.on_restart()?;
+    }
+    Ok(())
   }
 }
 

@@ -1,13 +1,14 @@
 use alloc::{boxed::Box, collections::VecDeque};
-use core::{future::Future, pin::Pin, task::Poll};
+use core::{future::Future, marker::PhantomData, pin::Pin, task::Poll};
 
 use fraktor_utils_rs::core::collections::queue::OverflowPolicy;
 
 use crate::core::{
   Completion, DynValue, FlowLogic, KeepBoth, KeepLeft, KeepRight, RestartSettings, SourceLogic, StreamBufferConfig,
-  StreamDone, StreamDslError, StreamError, StreamNotUsed,
+  StreamCompletion, StreamDone, StreamDslError, StreamError, StreamNotUsed,
   lifecycle::{DriveOutcome, Stream},
   operator::{DefaultOperatorCatalog, OperatorCatalog, OperatorKey},
+  shape::UniformFanInShape,
   stage::{Flow, FlowMonitor, Sink, Source, StageKind},
 };
 
@@ -55,67 +56,66 @@ impl SourceLogic for PulsedSourceLogic {
 
 #[test]
 fn broadcast_duplicates_each_element() {
-  let values = Source::single(7_u32).via(Flow::new().broadcast(2)).collect_values().expect("collect_values");
+  let values =
+    Source::single(7_u32).via(Flow::new().broadcast(2).expect("broadcast")).collect_values().expect("collect_values");
   assert_eq!(values, vec![7_u32, 7_u32]);
 }
 
 #[test]
-#[should_panic(expected = "fan_out must be greater than zero")]
 fn broadcast_rejects_zero_fan_out() {
   let flow = Flow::<u32, u32, StreamNotUsed>::new();
-  let _ = flow.broadcast(0);
+  assert!(flow.broadcast(0).is_err());
 }
 
 #[test]
 fn balance_keeps_single_path_behavior() {
-  let values = Source::single(7_u32).via(Flow::new().balance(1)).collect_values().expect("collect_values");
+  let values =
+    Source::single(7_u32).via(Flow::new().balance(1).expect("balance")).collect_values().expect("collect_values");
   assert_eq!(values, vec![7_u32]);
 }
 
 #[test]
-#[should_panic(expected = "fan_out must be greater than zero")]
 fn balance_rejects_zero_fan_out() {
   let flow = Flow::<u32, u32, StreamNotUsed>::new();
-  let _ = flow.balance(0);
+  assert!(flow.balance(0).is_err());
 }
 
 #[test]
 fn merge_keeps_single_path_behavior() {
-  let values = Source::single(7_u32).via(Flow::new().merge(1)).collect_values().expect("collect_values");
+  let values =
+    Source::single(7_u32).via(Flow::new().merge(1).expect("merge")).collect_values().expect("collect_values");
   assert_eq!(values, vec![7_u32]);
 }
 
 #[test]
-#[should_panic(expected = "fan_in must be greater than zero")]
 fn merge_rejects_zero_fan_in() {
   let flow = Flow::<u32, u32, StreamNotUsed>::new();
-  let _ = flow.merge(0);
+  assert!(flow.merge(0).is_err());
 }
 
 #[test]
 fn zip_wraps_value_when_single_path() {
-  let values = Source::single(7_u32).via(Flow::new().zip(1)).collect_values().expect("collect_values");
+  let values = Source::single(7_u32).via(Flow::new().zip(1).expect("zip")).collect_values().expect("collect_values");
   assert_eq!(values, vec![vec![7_u32]]);
 }
 
 #[test]
-#[should_panic(expected = "fan_in must be greater than zero")]
 fn zip_rejects_zero_fan_in() {
   let flow = Flow::<u32, u32, StreamNotUsed>::new();
-  let _ = flow.zip(0);
+  assert!(flow.zip(0).is_err());
 }
 
 #[test]
 fn concat_keeps_single_path_behavior() {
-  let values = Source::single(7_u32).via(Flow::new().concat(1)).collect_values().expect("collect_values");
+  let values =
+    Source::single(7_u32).via(Flow::new().concat(1).expect("concat")).collect_values().expect("collect_values");
   assert_eq!(values, vec![7_u32]);
 }
 
 #[test]
-#[should_panic(expected = "fan_in must be greater than zero")]
 fn concat_rejects_zero_fan_in() {
   let flow = Flow::<u32, u32, StreamNotUsed>::new();
-  let _ = flow.concat(0);
+  assert!(flow.concat(0).is_err());
 }
 
 #[test]
@@ -144,41 +144,43 @@ fn unzip_with_emits_mapped_tuple_components() {
 
 #[test]
 fn interleave_keeps_single_path_behavior() {
-  let values = Source::single(7_u32).via(Flow::new().interleave(1)).collect_values().expect("collect_values");
+  let values =
+    Source::single(7_u32).via(Flow::new().interleave(1).expect("interleave")).collect_values().expect("collect_values");
   assert_eq!(values, vec![7_u32]);
 }
 
 #[test]
-#[should_panic(expected = "fan_in must be greater than zero")]
 fn interleave_rejects_zero_fan_in() {
   let flow = Flow::<u32, u32, StreamNotUsed>::new();
-  let _ = flow.interleave(0);
+  assert!(flow.interleave(0).is_err());
 }
 
 #[test]
 fn prepend_keeps_single_path_behavior() {
-  let values = Source::single(7_u32).via(Flow::new().prepend(1)).collect_values().expect("collect_values");
+  let values =
+    Source::single(7_u32).via(Flow::new().prepend(1).expect("prepend")).collect_values().expect("collect_values");
   assert_eq!(values, vec![7_u32]);
 }
 
 #[test]
-#[should_panic(expected = "fan_in must be greater than zero")]
 fn prepend_rejects_zero_fan_in() {
   let flow = Flow::<u32, u32, StreamNotUsed>::new();
-  let _ = flow.prepend(0);
+  assert!(flow.prepend(0).is_err());
 }
 
 #[test]
 fn zip_all_wraps_value_when_single_path() {
-  let values = Source::single(7_u32).via(Flow::new().zip_all(1, 0_u32)).collect_values().expect("collect_values");
+  let values = Source::single(7_u32)
+    .via(Flow::new().zip_all(1, 0_u32).expect("zip_all"))
+    .collect_values()
+    .expect("collect_values");
   assert_eq!(values, vec![vec![7_u32]]);
 }
 
 #[test]
-#[should_panic(expected = "fan_in must be greater than zero")]
 fn zip_all_rejects_zero_fan_in() {
   let flow = Flow::<u32, u32, StreamNotUsed>::new();
-  let _ = flow.zip_all(0, 0_u32);
+  assert!(flow.zip_all(0, 0_u32).is_err());
 }
 
 #[test]
@@ -1556,6 +1558,69 @@ fn monitor_mat_combines_materialized_values_and_keeps_data_path_behavior() {
 }
 
 #[test]
+fn flow_lazy_flow_passes_elements_through_factory_flow() {
+  let values = Source::single(5_u32)
+    .via(Flow::lazy_flow(|| Flow::new().map(|v: u32| v * 2)))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![10_u32]);
+}
+
+#[test]
+fn flow_lazy_flow_defers_factory_call() {
+  let values = Source::from_array([1_u32, 2, 3])
+    .via(Flow::lazy_flow(|| Flow::new().map(|v: u32| v + 100)))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![101_u32, 102, 103]);
+}
+
+#[test]
+fn flow_lazy_flow_with_identity_flow_passes_through() {
+  let values = Source::from_array([1_u32, 2, 3])
+    .via(Flow::lazy_flow(Flow::<u32, u32, StreamNotUsed>::new))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2, 3]);
+}
+
+#[test]
+fn flow_lazy_flow_with_chained_operations() {
+  let values = Source::from_array([1_u32, 2, 3, 4, 5])
+    .via(Flow::lazy_flow(|| Flow::new().map(|v: u32| v * 2).filter(|v: &u32| *v > 4)))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![6_u32, 8, 10]);
+}
+
+#[test]
+fn flow_lazy_flow_with_empty_source() {
+  let values = Source::<u32, _>::empty()
+    .via(Flow::lazy_flow(|| Flow::new().map(|v: u32| v + 1)))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, Vec::<u32>::new());
+}
+
+#[test]
+fn flow_lazy_completion_stage_flow_delegates_to_lazy_flow() {
+  let values = Source::single(7_u32)
+    .via(Flow::lazy_completion_stage_flow(|| Flow::new().map(|v: u32| v + 3)))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![10_u32]);
+}
+
+#[test]
+fn flow_lazy_future_flow_delegates_to_lazy_flow() {
+  let values = Source::single(7_u32)
+    .via(Flow::lazy_future_flow(|| Flow::new().map(|v: u32| v + 3)))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![10_u32]);
+}
+
+#[test]
 fn flow_map_materialized_value_transforms_materialized_value_and_keeps_data_path_behavior() {
   let (graph, _unused) = Flow::<u32, u32, StreamNotUsed>::new().map(|value: u32| value + 1).into_parts();
   let flow: Flow<u32, u32, u32> = Flow::from_graph(graph, 10_u32);
@@ -1567,4 +1632,632 @@ fn flow_map_materialized_value_transforms_materialized_value_and_keeps_data_path
     .collect_values()
     .expect("collect_values");
   assert_eq!(values, vec![5_u32]);
+}
+
+// --- backpressure_timeout ---
+
+#[test]
+fn backpressure_timeout_passes_elements_within_threshold() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .via(Flow::new().backpressure_timeout(100).expect("backpressure_timeout"))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2, 3]);
+}
+
+#[test]
+fn backpressure_timeout_fails_when_backpressure_exceeds_threshold() {
+  let result =
+    Source::<u32, _>::from_logic(StageKind::Custom, PulsedSourceLogic::new(&[Some(1), None, None, None, None]))
+      .via(Flow::new().backpressure_timeout(2).expect("backpressure_timeout"))
+      .collect_values();
+  assert!(matches!(result, Err(StreamError::Timeout { kind: "backpressure", ticks: 2 })));
+}
+
+#[test]
+fn backpressure_timeout_rejects_zero_ticks() {
+  let flow = Flow::<u32, u32, StreamNotUsed>::new();
+  let result = flow.backpressure_timeout(0);
+  assert!(matches!(
+    result,
+    Err(StreamDslError::InvalidArgument { name: "ticks", value: 0, reason: "must be greater than zero" })
+  ));
+}
+
+// --- completion_timeout ---
+
+#[test]
+fn completion_timeout_passes_elements_within_threshold() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .via(Flow::new().completion_timeout(100).expect("completion_timeout"))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2, 3]);
+}
+
+#[test]
+fn completion_timeout_fails_when_stream_exceeds_threshold() {
+  let result = Source::<u32, _>::from_logic(StageKind::Custom, PulsedSourceLogic::new(&[None, None, None, Some(1)]))
+    .via(Flow::new().completion_timeout(2).expect("completion_timeout"))
+    .collect_values();
+  assert!(matches!(result, Err(StreamError::Timeout { kind: "completion", ticks: 2 })));
+}
+
+#[test]
+fn completion_timeout_rejects_zero_ticks() {
+  let flow = Flow::<u32, u32, StreamNotUsed>::new();
+  let result = flow.completion_timeout(0);
+  assert!(matches!(
+    result,
+    Err(StreamDslError::InvalidArgument { name: "ticks", value: 0, reason: "must be greater than zero" })
+  ));
+}
+
+// --- idle_timeout ---
+
+#[test]
+fn idle_timeout_passes_elements_within_threshold() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .via(Flow::new().idle_timeout(100).expect("idle_timeout"))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2, 3]);
+}
+
+#[test]
+fn idle_timeout_fails_when_no_elements_within_threshold() {
+  let result = Source::<u32, _>::from_logic(StageKind::Custom, PulsedSourceLogic::new(&[None, None, None, Some(1)]))
+    .via(Flow::new().idle_timeout(2).expect("idle_timeout"))
+    .collect_values();
+  assert!(matches!(result, Err(StreamError::Timeout { kind: "idle", ticks: 2 })));
+}
+
+#[test]
+fn idle_timeout_rejects_zero_ticks() {
+  let flow = Flow::<u32, u32, StreamNotUsed>::new();
+  let result = flow.idle_timeout(0);
+  assert!(matches!(
+    result,
+    Err(StreamDslError::InvalidArgument { name: "ticks", value: 0, reason: "must be greater than zero" })
+  ));
+}
+
+// --- initial_timeout ---
+
+#[test]
+fn initial_timeout_passes_elements_within_threshold() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .via(Flow::new().initial_timeout(100).expect("initial_timeout"))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2, 3]);
+}
+
+#[test]
+fn initial_timeout_fails_when_first_element_exceeds_threshold() {
+  let result = Source::<u32, _>::from_logic(StageKind::Custom, PulsedSourceLogic::new(&[None, None, None, Some(1)]))
+    .via(Flow::new().initial_timeout(2).expect("initial_timeout"))
+    .collect_values();
+  assert!(matches!(result, Err(StreamError::Timeout { kind: "initial", ticks: 2 })));
+}
+
+#[test]
+fn initial_timeout_rejects_zero_ticks() {
+  let flow = Flow::<u32, u32, StreamNotUsed>::new();
+  let result = flow.initial_timeout(0);
+  assert!(matches!(
+    result,
+    Err(StreamDslError::InvalidArgument { name: "ticks", value: 0, reason: "must be greater than zero" })
+  ));
+}
+
+// --- MergePreferredLogic テスト ---
+
+#[test]
+fn merge_preferred_keeps_single_path_behavior() {
+  let values = Source::single(7_u32)
+    .via(Flow::new().merge_preferred(1).expect("merge_preferred"))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![7_u32]);
+}
+
+#[test]
+fn merge_preferred_rejects_zero_fan_in() {
+  let flow = Flow::<u32, u32, StreamNotUsed>::new();
+  assert!(flow.merge_preferred(0).is_err());
+}
+
+#[test]
+fn merge_preferred_logic_prefers_slot_zero() {
+  let mut logic = super::MergePreferredLogic::<u32> {
+    fan_in:      2,
+    edge_slots:  Vec::new(),
+    pending:     Vec::new(),
+    source_done: false,
+  };
+
+  // edge 1 が最初に接続 → partition_point により slot 0 に配置される
+  let result = logic.apply_with_edge(1, Box::new(100_u32)).expect("edge 1");
+  assert_eq!(result.len(), 1); // slot 0 から即座に取得
+
+  // edge 1 に再度データ投入 → 即座に消費される
+  let _ = logic.apply_with_edge(1, Box::new(200_u32)).expect("edge 1 second");
+  // edge 0 が接続 → partition_point により slot 0 に挿入、edge 1 は slot 1 にシフト
+  let result = logic.apply_with_edge(0, Box::new(10_u32)).expect("edge 0");
+  // edge 0 のデータが slot 0（preferred）にあるため出力される
+  assert_eq!(result.len(), 1);
+  let value = result[0].downcast_ref::<u32>().expect("downcast");
+  assert_eq!(*value, 10_u32);
+}
+
+#[test]
+fn merge_preferred_logic_always_prefers_slot_zero_in_sequence() {
+  let mut logic = super::MergePreferredLogic::<u32> {
+    fan_in:      2,
+    edge_slots:  Vec::new(),
+    pending:     Vec::new(),
+    source_done: false,
+  };
+
+  // 各apply_with_edgeで投入されたデータは即座に消費される（同時データなし）
+  // このテストはシーケンシャルな投入・消費の基本動作を確認する
+  let r1 = logic.apply_with_edge(0, Box::new(10_u32)).expect("edge 0 first");
+  assert_eq!(r1.len(), 1);
+  assert_eq!(*r1[0].downcast_ref::<u32>().expect("downcast"), 10_u32);
+
+  let r2 = logic.apply_with_edge(1, Box::new(99_u32)).expect("edge 1");
+  assert_eq!(r2.len(), 1);
+  assert_eq!(*r2[0].downcast_ref::<u32>().expect("downcast"), 99_u32);
+
+  let r3 = logic.apply_with_edge(0, Box::new(20_u32)).expect("edge 0 second");
+  assert_eq!(r3.len(), 1);
+  assert_eq!(*r3[0].downcast_ref::<u32>().expect("downcast"), 20_u32);
+}
+
+#[test]
+fn merge_preferred_logic_prefers_slot_zero_with_simultaneous_data() {
+  // 両スロットに同時にデータが存在する状態で、slot 0（preferred）が優先されることを検証
+  let mut logic = super::MergePreferredLogic::<u32> {
+    fan_in:      2,
+    edge_slots:  vec![0, 1],
+    pending:     vec![VecDeque::from([10, 20, 30]), VecDeque::from([100, 200, 300])],
+    source_done: false,
+  };
+
+  // pop_preferred は常に slot 0 を優先する。
+  // slot 0 のデータが全て消費されてから slot 1 のデータを取得する。
+  let v1 = logic.pop_preferred().expect("pop 1");
+  assert_eq!(v1, 10_u32);
+  let v2 = logic.pop_preferred().expect("pop 2");
+  assert_eq!(v2, 20_u32);
+  let v3 = logic.pop_preferred().expect("pop 3");
+  assert_eq!(v3, 30_u32);
+
+  // slot 0 が空になったので slot 1 から取得
+  let v4 = logic.pop_preferred().expect("pop 4");
+  assert_eq!(v4, 100_u32);
+  let v5 = logic.pop_preferred().expect("pop 5");
+  assert_eq!(v5, 200_u32);
+  let v6 = logic.pop_preferred().expect("pop 6");
+  assert_eq!(v6, 300_u32);
+
+  // 全消費後は None
+  assert!(logic.pop_preferred().is_none());
+}
+
+#[test]
+fn merge_preferred_logic_falls_back_to_secondary() {
+  // slot 0（preferred）が空の場合、slot 1（secondary）から取得されることを検証
+  let mut logic = super::MergePreferredLogic::<u32> {
+    fan_in:      2,
+    edge_slots:  vec![0, 1],
+    pending:     vec![VecDeque::new(), VecDeque::from([100, 200])],
+    source_done: false,
+  };
+
+  // slot 0 は空なので slot 1 にフォールバック
+  let v1 = logic.pop_preferred().expect("pop 1");
+  assert_eq!(v1, 100_u32);
+  let v2 = logic.pop_preferred().expect("pop 2");
+  assert_eq!(v2, 200_u32);
+
+  assert!(logic.pop_preferred().is_none());
+}
+
+#[test]
+fn merge_preferred_logic_on_restart_clears_state() {
+  let mut logic = super::MergePreferredLogic::<u32> {
+    fan_in:      2,
+    edge_slots:  Vec::new(),
+    pending:     Vec::new(),
+    source_done: false,
+  };
+
+  let _ = logic.apply_with_edge(0, Box::new(1_u32)).expect("apply");
+  logic.on_source_done().expect("source done");
+
+  logic.on_restart().expect("restart");
+
+  let drained = logic.drain_pending().expect("drain");
+  assert!(drained.is_empty());
+}
+
+// --- MergePrioritizedLogic テスト ---
+
+#[test]
+fn merge_prioritized_keeps_single_path_behavior() {
+  let values = Source::single(7_u32)
+    .via(Flow::new().merge_prioritized(1).expect("merge_prioritized"))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![7_u32]);
+}
+
+#[test]
+fn merge_prioritized_rejects_zero_fan_in() {
+  let flow = Flow::<u32, u32, StreamNotUsed>::new();
+  assert!(flow.merge_prioritized(0).is_err());
+}
+
+#[test]
+fn merge_prioritized_n_keeps_single_path_behavior() {
+  let values = Source::single(7_u32)
+    .via(Flow::new().merge_prioritized_n(1, &[1]).expect("merge_prioritized_n"))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![7_u32]);
+}
+
+#[test]
+fn merge_prioritized_n_rejects_zero_priority() {
+  let flow = Flow::<u32, u32, StreamNotUsed>::new();
+  assert!(flow.merge_prioritized_n(2, &[3, 0]).is_err());
+}
+
+#[test]
+fn merge_prioritized_n_rejects_zero_fan_in() {
+  let flow = Flow::<u32, u32, StreamNotUsed>::new();
+  assert!(flow.merge_prioritized_n(0, &[]).is_err());
+}
+
+#[test]
+fn merge_prioritized_n_rejects_length_mismatch() {
+  let flow = Flow::<u32, u32, StreamNotUsed>::new();
+  assert!(flow.merge_prioritized_n(3, &[3, 1]).is_err());
+}
+
+#[test]
+fn merge_prioritized_logic_outputs_on_each_apply() {
+  // シーケンシャルな投入・消費の基本動作を確認
+  let mut logic = super::MergePrioritizedLogic::<u32> {
+    fan_in:      2,
+    priorities:  vec![3, 1],
+    edge_slots:  Vec::new(),
+    pending:     Vec::new(),
+    credits:     Vec::new(),
+    current:     0,
+    source_done: false,
+  };
+
+  // 各apply_with_edgeで投入されたデータは即座に消費される
+  let r1 = logic.apply_with_edge(0, Box::new(10_u32)).expect("edge 0 first");
+  assert_eq!(r1.len(), 1);
+  assert_eq!(*r1[0].downcast_ref::<u32>().expect("downcast"), 10_u32);
+
+  let r2 = logic.apply_with_edge(1, Box::new(99_u32)).expect("edge 1 first");
+  assert_eq!(r2.len(), 1);
+  assert_eq!(*r2[0].downcast_ref::<u32>().expect("downcast"), 99_u32);
+
+  let r3 = logic.apply_with_edge(0, Box::new(20_u32)).expect("edge 0 second");
+  assert_eq!(r3.len(), 1);
+  assert_eq!(*r3[0].downcast_ref::<u32>().expect("downcast"), 20_u32);
+
+  // source_done後のdrain: 全要素は即座に出力されたため、drainは空
+  logic.on_source_done().expect("source done");
+  let drained = logic.drain_pending().expect("drain");
+  assert!(drained.is_empty());
+}
+
+#[test]
+fn merge_prioritized_logic_respects_weight_ratio() {
+  // 重み [3, 1] で両スロットにデータが同時に存在する場合、
+  // slot 0 から3つ → slot 1 から1つ のサイクルで取得されることを検証
+  let mut logic = super::MergePrioritizedLogic::<u32> {
+    fan_in:      2,
+    priorities:  vec![3, 1],
+    edge_slots:  vec![0, 1],
+    pending:     vec![VecDeque::from([10, 20, 30, 40, 50, 60]), VecDeque::from([100, 200, 300, 400, 500, 600])],
+    credits:     vec![3, 1],
+    current:     0,
+    source_done: false,
+  };
+
+  let mut results = Vec::new();
+  for _ in 0..8 {
+    if let Some(v) = logic.pop_prioritized() {
+      results.push(v);
+    }
+  }
+
+  // クレジットベースラウンドロビン:
+  // サイクル1: slot 0 × 3 (credit=3) → slot 1 × 1 (credit=1)
+  // サイクル2: refill → slot 0 × 3 → slot 1 × 1
+  assert_eq!(results, vec![10, 20, 30, 100, 40, 50, 60, 200]);
+}
+
+#[test]
+fn merge_prioritized_logic_equal_weights_alternates() {
+  // 等重み [1, 1] で両スロットにデータがある場合、交互に取得されることを検証
+  let mut logic = super::MergePrioritizedLogic::<u32> {
+    fan_in:      2,
+    priorities:  vec![1, 1],
+    edge_slots:  vec![0, 1],
+    pending:     vec![VecDeque::from([10, 20, 30]), VecDeque::from([100, 200, 300])],
+    credits:     vec![1, 1],
+    current:     0,
+    source_done: false,
+  };
+
+  let mut results = Vec::new();
+  for _ in 0..6 {
+    if let Some(v) = logic.pop_prioritized() {
+      results.push(v);
+    }
+  }
+
+  // 等重み: slot 0 × 1 → slot 1 × 1 → refill → 繰り返し
+  assert_eq!(results, vec![10, 100, 20, 200, 30, 300]);
+}
+
+#[test]
+fn merge_prioritized_logic_on_restart_clears_state() {
+  let mut logic = super::MergePrioritizedLogic::<u32> {
+    fan_in:      2,
+    priorities:  vec![1, 1],
+    edge_slots:  Vec::new(),
+    pending:     Vec::new(),
+    credits:     Vec::new(),
+    current:     0,
+    source_done: false,
+  };
+
+  let _ = logic.apply_with_edge(0, Box::new(1_u32)).expect("apply");
+  logic.on_source_done().expect("source done");
+
+  logic.on_restart().expect("restart");
+
+  let drained = logic.drain_pending().expect("drain");
+  assert!(drained.is_empty());
+}
+
+// --- MergeSortedLogic テスト ---
+
+#[test]
+fn merge_sorted_keeps_single_path_behavior() {
+  let values = Source::single(7_u32)
+    .via(Flow::new().merge_sorted(1).expect("merge_sorted"))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![7_u32]);
+}
+
+#[test]
+fn merge_sorted_rejects_zero_fan_in() {
+  let flow = Flow::<u32, u32, StreamNotUsed>::new();
+  assert!(flow.merge_sorted(0).is_err());
+}
+
+#[test]
+fn merge_sorted_logic_emits_minimum_value() {
+  let mut logic = super::MergeSortedLogic::<u32> {
+    fan_in:      2,
+    edge_slots:  Vec::new(),
+    pending:     Vec::new(),
+    source_done: false,
+  };
+
+  // edge 0 に大きい値
+  let result = logic.apply_with_edge(0, Box::new(10_u32)).expect("edge 0");
+  assert!(result.is_empty()); // もう1つのスロットが空なので待機
+
+  // edge 1 に小さい値 → 全スロットに要素があるので最小値を出力
+  let result = logic.apply_with_edge(1, Box::new(3_u32)).expect("edge 1");
+  assert_eq!(result.len(), 1);
+  let value = result[0].downcast_ref::<u32>().expect("downcast");
+  assert_eq!(*value, 3_u32);
+}
+
+#[test]
+fn merge_sorted_logic_drain_emits_sorted_order() {
+  let mut logic = super::MergeSortedLogic::<u32> {
+    fan_in:      2,
+    edge_slots:  Vec::new(),
+    pending:     Vec::new(),
+    source_done: false,
+  };
+
+  // 各edgeにソート済みデータを蓄積
+  let _ = logic.apply_with_edge(0, Box::new(1_u32)).expect("edge 0 a");
+  let _ = logic.apply_with_edge(0, Box::new(3_u32)).expect("edge 0 b");
+  let _ = logic.apply_with_edge(1, Box::new(2_u32)).expect("edge 1 a");
+  let _ = logic.apply_with_edge(1, Box::new(4_u32)).expect("edge 1 b");
+
+  logic.on_source_done().expect("source done");
+
+  let mut results = Vec::new();
+  loop {
+    let drained = logic.drain_pending().expect("drain");
+    if drained.is_empty() {
+      break;
+    }
+    for value in drained {
+      results.push(*value.downcast::<u32>().expect("downcast"));
+    }
+  }
+  // drain時のソート済み順序: apply_with_edgeで1と2が既に出力済み、残りの3, 4がドレインされる
+  assert_eq!(results, vec![3_u32, 4_u32]);
+}
+
+#[test]
+fn merge_sorted_logic_on_restart_clears_state() {
+  let mut logic = super::MergeSortedLogic::<u32> {
+    fan_in:      2,
+    edge_slots:  Vec::new(),
+    pending:     Vec::new(),
+    source_done: false,
+  };
+
+  let _ = logic.apply_with_edge(0, Box::new(1_u32)).expect("apply");
+  logic.on_source_done().expect("source done");
+
+  logic.on_restart().expect("restart");
+
+  let drained = logic.drain_pending().expect("drain");
+  assert!(drained.is_empty());
+}
+
+// --- merge_latest tests ---
+
+#[test]
+fn merge_latest_wraps_single_path_value_into_vec() {
+  let values = Source::single(7_u32)
+    .via(Flow::new().merge_latest(1).expect("merge_latest"))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![vec![7_u32]]);
+}
+
+#[test]
+fn merge_latest_rejects_zero_fan_in() {
+  let flow = Flow::<u32, u32, StreamNotUsed>::new();
+  assert!(flow.merge_latest(0).is_err());
+}
+
+#[test]
+fn merge_latest_emits_latest_snapshot_on_each_update() {
+  use alloc::vec;
+
+  use super::merge_latest_definition;
+  use crate::core::{DynValue, downcast_value};
+
+  let def = merge_latest_definition::<u32>(2);
+  let mut logic = def.logic;
+
+  // edge 0: 値10 → 全スロット未充填のためemitなし
+  let result = logic.apply_with_edge(0, Box::new(10_u32) as DynValue).expect("apply edge 0");
+  assert!(result.is_empty());
+
+  // edge 1: 値20 → 全スロット充填。Vec[10, 20]をemit
+  let result = logic.apply_with_edge(1, Box::new(20_u32) as DynValue).expect("apply edge 1");
+  assert_eq!(result.len(), 1);
+  let snapshot = downcast_value::<Vec<u32>>(result.into_iter().next().unwrap()).expect("downcast");
+  assert_eq!(snapshot, vec![10, 20]);
+
+  // edge 0: 値30 → latestが[30, 20]に更新
+  let result = logic.apply_with_edge(0, Box::new(30_u32) as DynValue).expect("apply edge 0 again");
+  assert_eq!(result.len(), 1);
+  let snapshot = downcast_value::<Vec<u32>>(result.into_iter().next().unwrap()).expect("downcast");
+  assert_eq!(snapshot, vec![30, 20]);
+}
+
+// --- watch_termination tests ---
+
+#[test]
+fn watch_termination_passes_through_elements() {
+  let values =
+    Source::single(42_u32).via(Flow::new().watch_termination_mat(KeepLeft)).collect_values().expect("collect_values");
+  assert_eq!(values, vec![42_u32]);
+}
+
+#[test]
+fn watch_termination_completes_stream_completion_handle() {
+  let (graph, completion) = Flow::<u32, u32, StreamNotUsed>::new().watch_termination_mat(KeepRight).into_parts();
+  // 実行前はPending
+  assert_eq!(completion.poll(), Completion::Pending);
+
+  let source_flow: Flow<u32, u32, StreamCompletion<()>> = Flow::from_graph(graph, completion.clone());
+  let values = Source::single(1_u32).via(source_flow).collect_values().expect("collect_values");
+  assert_eq!(values, vec![1_u32]);
+
+  // 実行後はReady
+  assert_eq!(completion.poll(), Completion::Ready(Ok(())));
+}
+
+#[test]
+fn watch_termination_mat_keeps_both() {
+  let (_graph, (left, right)) = Flow::<u32, u32, StreamNotUsed>::new().watch_termination_mat(KeepBoth).into_parts();
+  assert_eq!(left, StreamNotUsed::new());
+  assert_eq!(right.poll(), Completion::Pending);
+}
+
+// --- UniformFanInShape tests ---
+
+#[test]
+fn uniform_fan_in_shape_creates_with_port_count() {
+  let shape = UniformFanInShape::<u32, u32>::with_port_count(3);
+  assert_eq!(shape.port_count(), 3);
+  assert_eq!(shape.inlets().len(), 3);
+}
+
+#[test]
+fn uniform_fan_in_shape_creates_from_parts() {
+  use crate::core::shape::{Inlet, Outlet};
+  let inlets = alloc::vec![Inlet::<u32>::new(), Inlet::<u32>::new()];
+  let outlet = Outlet::<u64>::new();
+  let shape = UniformFanInShape::new(inlets, outlet);
+  assert_eq!(shape.port_count(), 2);
+  assert_eq!(shape.inlets().len(), 2);
+}
+
+#[test]
+fn uniform_fan_in_shape_zero_ports() {
+  let shape = UniformFanInShape::<u32, u32>::with_port_count(0);
+  assert_eq!(shape.port_count(), 0);
+  assert!(shape.inlets().is_empty());
+}
+
+// take_shutdown_request の全フラグクリアを検証するためのカスタム FlowLogic
+struct ShutdownFlagFlowLogic {
+  shutdown_requested: bool,
+}
+
+impl FlowLogic for ShutdownFlagFlowLogic {
+  fn apply(&mut self, input: DynValue) -> Result<alloc::vec::Vec<DynValue>, StreamError> {
+    Ok(alloc::vec![input])
+  }
+
+  fn take_shutdown_request(&mut self) -> bool {
+    let was_requested = self.shutdown_requested;
+    self.shutdown_requested = false;
+    was_requested
+  }
+}
+
+#[test]
+fn flow_lazy_flow_take_shutdown_request_clears_all_inner_flags() {
+  // Given: 3つの inner logic すべてにシャットダウンフラグが設定された LazyFlowLogic
+  let mut logic = super::LazyFlowLogic::<u32, u32, StreamNotUsed, fn() -> Flow<u32, u32, StreamNotUsed>> {
+    factory:      None,
+    inner_logics: alloc::vec![
+      Box::new(ShutdownFlagFlowLogic { shutdown_requested: true }),
+      Box::new(ShutdownFlagFlowLogic { shutdown_requested: true }),
+      Box::new(ShutdownFlagFlowLogic { shutdown_requested: true }),
+    ],
+    mat:          None,
+    _pd:          PhantomData,
+  };
+
+  // When: take_shutdown_request を呼ぶ
+  let first_call = logic.take_shutdown_request();
+
+  // Then: true が返る（いずれかのフラグが設定されていたため）
+  assert!(first_call);
+
+  // When: 再度呼ぶ（fold で全フラグがクリア済みであれば false になる）
+  let second_call = logic.take_shutdown_request();
+
+  // Then: 全フラグがクリアされているため false
+  // any() 短絡評価の場合、2番目以降のフラグが未クリアで true になりテスト失敗
+  assert!(!second_call);
 }
