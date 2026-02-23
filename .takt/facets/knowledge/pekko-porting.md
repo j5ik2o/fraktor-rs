@@ -13,7 +13,7 @@
 
 ## fraktor-rs モジュール構造
 
-```
+```text
 modules/
 ├── utils/       # fraktor-utils-rs: 共有ユーティリティ
 ├── actor/       # fraktor-actor-rs: アクターシステムコア
@@ -23,7 +23,8 @@ modules/
 ```
 
 各モジュールの内部構造:
-```
+
+```text
 modules/{name}/src/
 ├── core/     # no_std 実装（ヒープのみ、OS非依存）
 └── std/      # std 依存の拡張（Tokio等）
