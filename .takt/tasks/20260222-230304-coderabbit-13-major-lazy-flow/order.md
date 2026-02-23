@@ -1,0 +1,1 @@
+CodeRabbit指摘一括修正(全13件): [Major] lazy_flow Mat反映不足, LazyFlowLogic副作用消失, backpressure無視, shutdown片側消費, lazy_sink on_start未呼出, collect_values失敗時誤完了, use super→crate修正, assert→fallible validation変換 [Minor] rustdocコメント追加, 非rustdocコメント日本語化, use配置修正, defers_factory_callテスト改善

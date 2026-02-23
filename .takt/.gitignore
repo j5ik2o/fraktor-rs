@@ -14,3 +14,8 @@
 # Facets (version-controlled, 0.22.0+ layout)
 !facets/
 !facets/**
+
+# Tasks (version-controlled for cross-machine execution)
+!tasks.yaml
+!tasks/
+!tasks/**
