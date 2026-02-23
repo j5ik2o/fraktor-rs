@@ -56,7 +56,8 @@ impl SourceLogic for PulsedSourceLogic {
 
 #[test]
 fn broadcast_duplicates_each_element() {
-  let values = Source::single(7_u32).via(Flow::new().broadcast(2).expect("broadcast")).collect_values().expect("collect_values");
+  let values =
+    Source::single(7_u32).via(Flow::new().broadcast(2).expect("broadcast")).collect_values().expect("collect_values");
   assert_eq!(values, vec![7_u32, 7_u32]);
 }
 
@@ -68,7 +69,8 @@ fn broadcast_rejects_zero_fan_out() {
 
 #[test]
 fn balance_keeps_single_path_behavior() {
-  let values = Source::single(7_u32).via(Flow::new().balance(1).expect("balance")).collect_values().expect("collect_values");
+  let values =
+    Source::single(7_u32).via(Flow::new().balance(1).expect("balance")).collect_values().expect("collect_values");
   assert_eq!(values, vec![7_u32]);
 }
 
@@ -80,7 +82,8 @@ fn balance_rejects_zero_fan_out() {
 
 #[test]
 fn merge_keeps_single_path_behavior() {
-  let values = Source::single(7_u32).via(Flow::new().merge(1).expect("merge")).collect_values().expect("collect_values");
+  let values =
+    Source::single(7_u32).via(Flow::new().merge(1).expect("merge")).collect_values().expect("collect_values");
   assert_eq!(values, vec![7_u32]);
 }
 
@@ -104,7 +107,8 @@ fn zip_rejects_zero_fan_in() {
 
 #[test]
 fn concat_keeps_single_path_behavior() {
-  let values = Source::single(7_u32).via(Flow::new().concat(1).expect("concat")).collect_values().expect("collect_values");
+  let values =
+    Source::single(7_u32).via(Flow::new().concat(1).expect("concat")).collect_values().expect("collect_values");
   assert_eq!(values, vec![7_u32]);
 }
 
@@ -140,7 +144,8 @@ fn unzip_with_emits_mapped_tuple_components() {
 
 #[test]
 fn interleave_keeps_single_path_behavior() {
-  let values = Source::single(7_u32).via(Flow::new().interleave(1).expect("interleave")).collect_values().expect("collect_values");
+  let values =
+    Source::single(7_u32).via(Flow::new().interleave(1).expect("interleave")).collect_values().expect("collect_values");
   assert_eq!(values, vec![7_u32]);
 }
 
@@ -152,7 +157,8 @@ fn interleave_rejects_zero_fan_in() {
 
 #[test]
 fn prepend_keeps_single_path_behavior() {
-  let values = Source::single(7_u32).via(Flow::new().prepend(1).expect("prepend")).collect_values().expect("collect_values");
+  let values =
+    Source::single(7_u32).via(Flow::new().prepend(1).expect("prepend")).collect_values().expect("collect_values");
   assert_eq!(values, vec![7_u32]);
 }
 
@@ -164,7 +170,10 @@ fn prepend_rejects_zero_fan_in() {
 
 #[test]
 fn zip_all_wraps_value_when_single_path() {
-  let values = Source::single(7_u32).via(Flow::new().zip_all(1, 0_u32).expect("zip_all")).collect_values().expect("collect_values");
+  let values = Source::single(7_u32)
+    .via(Flow::new().zip_all(1, 0_u32).expect("zip_all"))
+    .collect_values()
+    .expect("collect_values");
   assert_eq!(values, vec![vec![7_u32]]);
 }
 
@@ -1624,8 +1633,6 @@ fn flow_map_materialized_value_transforms_materialized_value_and_keeps_data_path
     .expect("collect_values");
   assert_eq!(values, vec![5_u32]);
 }
-<<<<<<< HEAD
-
 
 // --- backpressure_timeout ---
 
@@ -1748,7 +1755,10 @@ fn initial_timeout_rejects_zero_ticks() {
 
 #[test]
 fn merge_preferred_keeps_single_path_behavior() {
-  let values = Source::single(7_u32).via(Flow::new().merge_preferred(1).expect("merge_preferred")).collect_values().expect("collect_values");
+  let values = Source::single(7_u32)
+    .via(Flow::new().merge_preferred(1).expect("merge_preferred"))
+    .collect_values()
+    .expect("collect_values");
   assert_eq!(values, vec![7_u32]);
 }
 
@@ -1877,7 +1887,10 @@ fn merge_preferred_logic_on_restart_clears_state() {
 
 #[test]
 fn merge_prioritized_keeps_single_path_behavior() {
-  let values = Source::single(7_u32).via(Flow::new().merge_prioritized(1).expect("merge_prioritized")).collect_values().expect("collect_values");
+  let values = Source::single(7_u32)
+    .via(Flow::new().merge_prioritized(1).expect("merge_prioritized"))
+    .collect_values()
+    .expect("collect_values");
   assert_eq!(values, vec![7_u32]);
 }
 
@@ -1889,8 +1902,10 @@ fn merge_prioritized_rejects_zero_fan_in() {
 
 #[test]
 fn merge_prioritized_n_keeps_single_path_behavior() {
-  let values =
-    Source::single(7_u32).via(Flow::new().merge_prioritized_n(1, &[1]).expect("merge_prioritized_n")).collect_values().expect("collect_values");
+  let values = Source::single(7_u32)
+    .via(Flow::new().merge_prioritized_n(1, &[1]).expect("merge_prioritized_n"))
+    .collect_values()
+    .expect("collect_values");
   assert_eq!(values, vec![7_u32]);
 }
 
@@ -2020,7 +2035,10 @@ fn merge_prioritized_logic_on_restart_clears_state() {
 
 #[test]
 fn merge_sorted_keeps_single_path_behavior() {
-  let values = Source::single(7_u32).via(Flow::new().merge_sorted(1).expect("merge_sorted")).collect_values().expect("collect_values");
+  let values = Source::single(7_u32)
+    .via(Flow::new().merge_sorted(1).expect("merge_sorted"))
+    .collect_values()
+    .expect("collect_values");
   assert_eq!(values, vec![7_u32]);
 }
 
@@ -2103,7 +2121,10 @@ fn merge_sorted_logic_on_restart_clears_state() {
 
 #[test]
 fn merge_latest_wraps_single_path_value_into_vec() {
-  let values = Source::single(7_u32).via(Flow::new().merge_latest(1).expect("merge_latest")).collect_values().expect("collect_values");
+  let values = Source::single(7_u32)
+    .via(Flow::new().merge_latest(1).expect("merge_latest"))
+    .collect_values()
+    .expect("collect_values");
   assert_eq!(values, vec![vec![7_u32]]);
 }
 

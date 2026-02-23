@@ -269,8 +269,9 @@ fn flat_map_merge_uses_configured_breadth() {
   let completion = StreamCompletion::new();
 
   let source = source_sequence_u32(source_outlet, 3);
-  let flat_map_merge =
-    flat_map_merge_definition::<u32, u32, StreamNotUsed, _>(2, |value| Source::single(value).broadcast(2).expect("broadcast"));
+  let flat_map_merge = flat_map_merge_definition::<u32, u32, StreamNotUsed, _>(2, |value| {
+    Source::single(value).broadcast(2).expect("broadcast")
+  });
   let flat_map_merge_inlet = flat_map_merge.inlet;
   let flat_map_merge_outlet = flat_map_merge.outlet;
   let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
@@ -1325,8 +1326,9 @@ fn cross_operator_backpressure_propagates_through_substream_and_async_boundary()
     supervision: SupervisionStrategy::Stop,
     restart:     None,
   };
-  let flat_map_merge =
-    flat_map_merge_definition::<u32, u32, StreamNotUsed, _>(1, |value| Source::single(value).broadcast(2).expect("broadcast"));
+  let flat_map_merge = flat_map_merge_definition::<u32, u32, StreamNotUsed, _>(1, |value| {
+    Source::single(value).broadcast(2).expect("broadcast")
+  });
   let flat_map_merge_inlet = flat_map_merge.inlet;
   let flat_map_merge_outlet = flat_map_merge.outlet;
   let split_after = split_after_definition::<u32, _>(|_| true);

@@ -1830,7 +1830,11 @@ where
   ///
   /// Returns [`StreamDslError`] when `fan_in` is zero, when
   /// `priorities.len() != fan_in`, or when any priority is zero.
-  pub fn merge_prioritized_n(mut self, fan_in: usize, priorities: &[usize]) -> Result<Flow<In, Out, Mat>, StreamDslError> {
+  pub fn merge_prioritized_n(
+    mut self,
+    fan_in: usize,
+    priorities: &[usize],
+  ) -> Result<Flow<In, Out, Mat>, StreamDslError> {
     let _ = validate_positive_argument("fan_in", fan_in)?;
     if priorities.len() != fan_in {
       return Err(StreamDslError::InvalidArgument {
@@ -1892,7 +1896,12 @@ where
   /// # Errors
   ///
   /// Returns [`StreamDslError`] when `fan_in` is zero.
-  pub fn zip_latest_with<T, F>(self, fan_in: usize, fill_value: Out, func: F) -> Result<Flow<In, T, Mat>, StreamDslError>
+  pub fn zip_latest_with<T, F>(
+    self,
+    fan_in: usize,
+    fill_value: Out,
+    func: F,
+  ) -> Result<Flow<In, T, Mat>, StreamDslError>
   where
     Out: Clone,
     T: Send + Sync + 'static,
