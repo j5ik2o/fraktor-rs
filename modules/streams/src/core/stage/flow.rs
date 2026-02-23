@@ -684,14 +684,13 @@ where
 
   /// Adds a broadcast stage that duplicates each element `fan_out` times.
   ///
-  /// # Panics
+  /// # Errors
   ///
-  /// Panics when `fan_out` is zero.
-  #[must_use]
-  pub fn broadcast(mut self, fan_out: usize) -> Flow<In, Out, Mat>
+  /// Returns [`StreamDslError`] when `fan_out` is zero.
+  pub fn broadcast(mut self, fan_out: usize) -> Result<Flow<In, Out, Mat>, StreamDslError>
   where
     Out: Clone, {
-    assert!(fan_out > 0, "fan_out must be greater than zero");
+    let _ = validate_positive_argument("fan_out", fan_out)?;
     let definition = broadcast_definition::<Out>(fan_out);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
@@ -699,17 +698,16 @@ where
     if let Some(from) = from {
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
-    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+    Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
   /// Adds a balance stage that distributes elements across `fan_out` outputs.
   ///
-  /// # Panics
+  /// # Errors
   ///
-  /// Panics when `fan_out` is zero.
-  #[must_use]
-  pub fn balance(mut self, fan_out: usize) -> Flow<In, Out, Mat> {
-    assert!(fan_out > 0, "fan_out must be greater than zero");
+  /// Returns [`StreamDslError`] when `fan_out` is zero.
+  pub fn balance(mut self, fan_out: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
+    let _ = validate_positive_argument("fan_out", fan_out)?;
     let definition = balance_definition::<Out>(fan_out);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
@@ -717,17 +715,16 @@ where
     if let Some(from) = from {
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
-    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+    Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
   /// Adds a merge stage that merges `fan_in` upstream paths.
   ///
-  /// # Panics
+  /// # Errors
   ///
-  /// Panics when `fan_in` is zero.
-  #[must_use]
-  pub fn merge(mut self, fan_in: usize) -> Flow<In, Out, Mat> {
-    assert!(fan_in > 0, "fan_in must be greater than zero");
+  /// Returns [`StreamDslError`] when `fan_in` is zero.
+  pub fn merge(mut self, fan_in: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
+    let _ = validate_positive_argument("fan_in", fan_in)?;
     let definition = merge_definition::<Out>(fan_in);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
@@ -735,17 +732,16 @@ where
     if let Some(from) = from {
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
-    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+    Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
   /// Adds an interleave stage that consumes `fan_in` inputs in round-robin order.
   ///
-  /// # Panics
+  /// # Errors
   ///
-  /// Panics when `fan_in` is zero.
-  #[must_use]
-  pub fn interleave(mut self, fan_in: usize) -> Flow<In, Out, Mat> {
-    assert!(fan_in > 0, "fan_in must be greater than zero");
+  /// Returns [`StreamDslError`] when `fan_in` is zero.
+  pub fn interleave(mut self, fan_in: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
+    let _ = validate_positive_argument("fan_in", fan_in)?;
     let definition = interleave_definition::<Out>(fan_in);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
@@ -753,17 +749,16 @@ where
     if let Some(from) = from {
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
-    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+    Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
   /// Adds a prepend stage that prioritizes lower-index input lanes.
   ///
-  /// # Panics
+  /// # Errors
   ///
-  /// Panics when `fan_in` is zero.
-  #[must_use]
-  pub fn prepend(mut self, fan_in: usize) -> Flow<In, Out, Mat> {
-    assert!(fan_in > 0, "fan_in must be greater than zero");
+  /// Returns [`StreamDslError`] when `fan_in` is zero.
+  pub fn prepend(mut self, fan_in: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
+    let _ = validate_positive_argument("fan_in", fan_in)?;
     let definition = prepend_definition::<Out>(fan_in);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
@@ -771,17 +766,16 @@ where
     if let Some(from) = from {
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
-    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+    Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
   /// Adds a zip stage that emits one vector after receiving one element from each input.
   ///
-  /// # Panics
+  /// # Errors
   ///
-  /// Panics when `fan_in` is zero.
-  #[must_use]
-  pub fn zip(mut self, fan_in: usize) -> Flow<In, Vec<Out>, Mat> {
-    assert!(fan_in > 0, "fan_in must be greater than zero");
+  /// Returns [`StreamDslError`] when `fan_in` is zero.
+  pub fn zip(mut self, fan_in: usize) -> Result<Flow<In, Vec<Out>, Mat>, StreamDslError> {
+    let _ = validate_positive_argument("fan_in", fan_in)?;
     let definition = zip_definition::<Out>(fan_in);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
@@ -789,19 +783,18 @@ where
     if let Some(from) = from {
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
-    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+    Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
   /// Adds a zip-all stage that fills missing lanes with `fill_value` after completion.
   ///
-  /// # Panics
+  /// # Errors
   ///
-  /// Panics when `fan_in` is zero.
-  #[must_use]
-  pub fn zip_all(mut self, fan_in: usize, fill_value: Out) -> Flow<In, Vec<Out>, Mat>
+  /// Returns [`StreamDslError`] when `fan_in` is zero.
+  pub fn zip_all(mut self, fan_in: usize, fill_value: Out) -> Result<Flow<In, Vec<Out>, Mat>, StreamDslError>
   where
     Out: Clone, {
-    assert!(fan_in > 0, "fan_in must be greater than zero");
+    let _ = validate_positive_argument("fan_in", fan_in)?;
     let definition = zip_all_definition::<Out>(fan_in, fill_value);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
@@ -809,7 +802,7 @@ where
     if let Some(from) = from {
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
-    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+    Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
   /// Adds a zip-with-index stage that pairs each element with an incrementing index.
@@ -827,12 +820,11 @@ where
 
   /// Adds a concat stage that emits all elements from each input in port order.
   ///
-  /// # Panics
+  /// # Errors
   ///
-  /// Panics when `fan_in` is zero.
-  #[must_use]
-  pub fn concat(mut self, fan_in: usize) -> Flow<In, Out, Mat> {
-    assert!(fan_in > 0, "fan_in must be greater than zero");
+  /// Returns [`StreamDslError`] when `fan_in` is zero.
+  pub fn concat(mut self, fan_in: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
+    let _ = validate_positive_argument("fan_in", fan_in)?;
     let definition = concat_definition::<Out>(fan_in);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
@@ -840,7 +832,7 @@ where
     if let Some(from) = from {
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
-    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+    Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
   pub(crate) fn from_graph(graph: StreamGraph, mat: Mat) -> Self {
@@ -1247,6 +1239,10 @@ where
   ///
   /// The factory is not called until the first element arrives.
   /// Flow stages from the created flow are extracted and chained for processing.
+  ///
+  /// The outer `Flow`'s Mat value uses `Mat::default()`. The factory-produced Mat
+  /// is captured internally by `LazyFlowLogic` but is not propagated as the
+  /// outer Mat.
   #[must_use]
   pub fn lazy_flow<F>(factory: F) -> Flow<In, Out, Mat>
   where
@@ -1257,6 +1253,7 @@ where
     let logic = LazyFlowLogic::<In, Out, Mat, F> {
       factory:      Some(factory),
       inner_logics: Vec::new(),
+      mat:          None,
       _pd:          PhantomData,
     };
     let definition = FlowDefinition {
@@ -1354,12 +1351,10 @@ where
     F: FnMut(Acc, Out) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = Acc> + Send + 'static, {
     self.scan(initial, move |acc, value| {
-      let mut future = (func)(acc.clone(), value);
-      // SAFETY: future はローカル変数でこのクロージャを超えて移動しない
-      let mut pinned = unsafe { Pin::new_unchecked(&mut future) };
+      let mut future = Box::pin((func)(acc.clone(), value));
       let waker = noop_waker();
       let mut cx = Context::from_waker(&waker);
-      match pinned.as_mut().poll(&mut cx) {
+      match future.as_mut().poll(&mut cx) {
         | Poll::Ready(result) => result,
         | Poll::Pending => acc,
       }
@@ -1724,32 +1719,47 @@ where
   }
 
   /// Adds a merge-sequence compatibility stage.
-  #[must_use]
-  pub fn merge_sequence(self, fan_in: usize) -> Flow<In, Out, Mat> {
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `fan_in` is zero.
+  pub fn merge_sequence(self, fan_in: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
     self.merge(fan_in)
   }
 
   /// Adds a concat-all-lazy compatibility stage.
-  #[must_use]
-  pub fn concat_all_lazy(self, fan_in: usize) -> Flow<In, Out, Mat> {
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `fan_in` is zero.
+  pub fn concat_all_lazy(self, fan_in: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
     self.concat(fan_in)
   }
 
   /// Adds a concat-lazy compatibility stage.
-  #[must_use]
-  pub fn concat_lazy(self, fan_in: usize) -> Flow<In, Out, Mat> {
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `fan_in` is zero.
+  pub fn concat_lazy(self, fan_in: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
     self.concat(fan_in)
   }
 
   /// Adds an interleave-all compatibility stage.
-  #[must_use]
-  pub fn interleave_all(self, fan_in: usize) -> Flow<In, Out, Mat> {
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `fan_in` is zero.
+  pub fn interleave_all(self, fan_in: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
     self.interleave(fan_in)
   }
 
   /// Adds a merge-all compatibility stage.
-  #[must_use]
-  pub fn merge_all(self, fan_in: usize) -> Flow<In, Out, Mat> {
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `fan_in` is zero.
+  pub fn merge_all(self, fan_in: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
     self.merge(fan_in)
   }
 
@@ -1759,14 +1769,13 @@ where
   /// No output is produced until every input has delivered at least one
   /// element.
   ///
-  /// # Panics
+  /// # Errors
   ///
-  /// Panics if `fan_in` is zero.
-  #[must_use]
-  pub fn merge_latest(mut self, fan_in: usize) -> Flow<In, Vec<Out>, Mat>
+  /// Returns [`StreamDslError`] when `fan_in` is zero.
+  pub fn merge_latest(mut self, fan_in: usize) -> Result<Flow<In, Vec<Out>, Mat>, StreamDslError>
   where
     Out: Clone, {
-    assert!(fan_in > 0, "fan_in must be greater than zero");
+    let _ = validate_positive_argument("fan_in", fan_in)?;
     let definition = merge_latest_definition::<Out>(fan_in);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
@@ -1774,17 +1783,16 @@ where
     if let Some(from) = from {
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
-    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+    Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
   /// Adds a merge-preferred stage that prioritizes slot 0 (preferred) input.
   ///
-  /// # Panics
+  /// # Errors
   ///
-  /// Panics when `fan_in` is zero.
-  #[must_use]
-  pub fn merge_preferred(mut self, fan_in: usize) -> Flow<In, Out, Mat> {
-    assert!(fan_in > 0, "fan_in must be greater than zero");
+  /// Returns [`StreamDslError`] when `fan_in` is zero.
+  pub fn merge_preferred(mut self, fan_in: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
+    let _ = validate_positive_argument("fan_in", fan_in)?;
     let definition = merge_preferred_definition::<Out>(fan_in);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
@@ -1792,17 +1800,16 @@ where
     if let Some(from) = from {
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
-    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+    Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
   /// Adds a merge-prioritized stage with equal weights across all input ports.
   ///
-  /// # Panics
+  /// # Errors
   ///
-  /// Panics when `fan_in` is zero.
-  #[must_use]
-  pub fn merge_prioritized(mut self, fan_in: usize) -> Flow<In, Out, Mat> {
-    assert!(fan_in > 0, "fan_in must be greater than zero");
+  /// Returns [`StreamDslError`] when `fan_in` is zero.
+  pub fn merge_prioritized(mut self, fan_in: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
+    let _ = validate_positive_argument("fan_in", fan_in)?;
     let equal_priorities: Vec<usize> = vec![1; fan_in];
     let definition = merge_prioritized_definition::<Out>(fan_in, &equal_priorities);
     let inlet_id = definition.inlet;
@@ -1811,20 +1818,33 @@ where
     if let Some(from) = from {
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
-    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+    Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
   /// Adds a merge-prioritized stage with custom weight priorities per input port.
   ///
-  /// # Panics
+  /// # Errors
   ///
-  /// Panics when `fan_in` is zero, when `priorities.len() != fan_in`,
-  /// or when any priority is zero.
-  #[must_use]
-  pub fn merge_prioritized_n(mut self, fan_in: usize, priorities: &[usize]) -> Flow<In, Out, Mat> {
-    assert!(fan_in > 0, "fan_in must be greater than zero");
-    assert_eq!(priorities.len(), fan_in, "priorities length must match fan_in");
-    assert!(priorities.iter().all(|&p| p > 0), "priorities must be positive");
+  /// Returns [`StreamDslError`] when `fan_in` is zero, when
+  /// `priorities.len() != fan_in`, or when any priority is zero.
+  pub fn merge_prioritized_n(mut self, fan_in: usize, priorities: &[usize]) -> Result<Flow<In, Out, Mat>, StreamDslError> {
+    let _ = validate_positive_argument("fan_in", fan_in)?;
+    if priorities.len() != fan_in {
+      return Err(StreamDslError::InvalidArgument {
+        name:   "priorities",
+        value:  priorities.len(),
+        reason: "length must match fan_in",
+      });
+    }
+    for (i, &p) in priorities.iter().enumerate() {
+      if p == 0 {
+        return Err(StreamDslError::InvalidArgument {
+          name:   "priorities",
+          value:  i,
+          reason: "all priorities must be positive",
+        });
+      }
+    }
     let definition = merge_prioritized_definition::<Out>(fan_in, priorities);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
@@ -1832,46 +1852,61 @@ where
     if let Some(from) = from {
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
-    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+    Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
   /// Adds an or-else compatibility stage.
-  #[must_use]
-  pub fn or_else(self, fan_in: usize) -> Flow<In, Out, Mat> {
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `fan_in` is zero.
+  pub fn or_else(self, fan_in: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
     self.prepend(fan_in)
   }
 
   /// Adds a prepend-lazy compatibility stage.
-  #[must_use]
-  pub fn prepend_lazy(self, fan_in: usize) -> Flow<In, Out, Mat> {
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `fan_in` is zero.
+  pub fn prepend_lazy(self, fan_in: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
     self.prepend(fan_in)
   }
 
   /// Adds a zip-latest compatibility stage.
-  #[must_use]
-  pub fn zip_latest(self, fan_in: usize, fill_value: Out) -> Flow<In, Vec<Out>, Mat>
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `fan_in` is zero.
+  pub fn zip_latest(self, fan_in: usize, fill_value: Out) -> Result<Flow<In, Vec<Out>, Mat>, StreamDslError>
   where
     Out: Clone, {
     self.zip_all(fan_in, fill_value)
   }
 
   /// Adds a zip-latest-with compatibility stage.
-  #[must_use]
-  pub fn zip_latest_with<T, F>(self, fan_in: usize, fill_value: Out, func: F) -> Flow<In, T, Mat>
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `fan_in` is zero.
+  pub fn zip_latest_with<T, F>(self, fan_in: usize, fill_value: Out, func: F) -> Result<Flow<In, T, Mat>, StreamDslError>
   where
     Out: Clone,
     T: Send + Sync + 'static,
     F: FnMut(Vec<Out>) -> T + Send + Sync + 'static, {
-    self.zip_latest(fan_in, fill_value).map(func)
+    Ok(self.zip_latest(fan_in, fill_value)?.map(func))
   }
 
   /// Adds a zip-with compatibility stage.
-  #[must_use]
-  pub fn zip_with<T, F>(self, fan_in: usize, func: F) -> Flow<In, T, Mat>
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `fan_in` is zero.
+  pub fn zip_with<T, F>(self, fan_in: usize, func: F) -> Result<Flow<In, T, Mat>, StreamDslError>
   where
     T: Send + Sync + 'static,
     F: FnMut(Vec<Out>) -> T + Send + Sync + 'static, {
-    self.zip(fan_in).map(func)
+    Ok(self.zip(fan_in)?.map(func))
   }
 
   /// Adds an also-to compatibility stage.
@@ -2095,12 +2130,11 @@ where
 {
   /// Adds a merge-sorted stage that merges pre-sorted inputs into a single sorted output.
   ///
-  /// # Panics
+  /// # Errors
   ///
-  /// Panics when `fan_in` is zero.
-  #[must_use]
-  pub fn merge_sorted(mut self, fan_in: usize) -> Flow<In, Out, Mat> {
-    assert!(fan_in > 0, "fan_in must be greater than zero");
+  /// Returns [`StreamDslError`] when `fan_in` is zero.
+  pub fn merge_sorted(mut self, fan_in: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
+    let _ = validate_positive_argument("fan_in", fan_in)?;
     let definition = merge_sorted_definition::<Out>(fan_in);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
@@ -2108,7 +2142,7 @@ where
     if let Some(from) = from {
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
-    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+    Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 }
 
@@ -3379,7 +3413,9 @@ where
 struct LazyFlowLogic<In, Out, Mat, F> {
   factory:      Option<F>,
   inner_logics: Vec<Box<dyn FlowLogic>>,
-  _pd:          PhantomData<fn(In, Out, Mat)>,
+  // factory 生成 Flow の Mat 値を保持
+  mat:          Option<Mat>,
+  _pd:          PhantomData<fn(In, Out)>,
 }
 
 impl<In, Out, Mat, F> FlowLogic for LazyFlowLogic<In, Out, Mat, F>
@@ -3392,7 +3428,8 @@ where
   fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
     if let Some(factory) = self.factory.take() {
       let flow = factory();
-      let (graph, _mat) = flow.into_parts();
+      let (graph, mat) = flow.into_parts();
+      self.mat = Some(mat);
       let stages = graph.into_stages();
       for stage in stages {
         if let StageDefinition::Flow(def) = stage {
@@ -3456,7 +3493,8 @@ where
   }
 
   fn take_shutdown_request(&mut self) -> bool {
-    self.inner_logics.iter_mut().any(|l| l.take_shutdown_request())
+    // any() の短絡評価を避け、全 inner logic のフラグを一括クリアする
+    self.inner_logics.iter_mut().fold(false, |acc, l| l.take_shutdown_request() || acc)
   }
 
   fn on_restart(&mut self) -> Result<(), StreamError> {
