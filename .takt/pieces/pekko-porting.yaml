@@ -17,6 +17,7 @@ knowledge:
 
 policies:
   fraktor-coding: ../facets/policies/fraktor-coding.md
+  pekko-compat: ../facets/policies/pekko-compat.md
 
 instructions:
   plan-pekko-impl: ../facets/instructions/plan-pekko-impl.md
@@ -196,7 +197,9 @@ movements:
       - name: pekko-compat-review
         edit: false
         persona: pekko-compat-reviewer
-        policy: review
+        policy:
+          - review
+          - pekko-compat
         knowledge:
           - pekko-porting
           - architecture
