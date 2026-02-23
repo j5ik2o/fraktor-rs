@@ -16,6 +16,6 @@
     "critical-bug-fix": "takt --pipeline --skip-git --create-worktree no -w critical-bug-fix -t"
   },
   "devDependencies": {
-    "takt": "^0.22.0"
+    "takt": "^0.23.0"
   }
 }
