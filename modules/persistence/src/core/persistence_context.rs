@@ -373,7 +373,7 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
   }
 
   fn is_bound(&self) -> bool {
-    !Self::is_null_ref(&self.journal_actor_ref) && !Self::is_null_ref(&self.snapshot_actor_ref)
+    !Self::is_null_ref(&self.journal_actor_ref) || !Self::is_null_ref(&self.snapshot_actor_ref)
   }
 
   fn is_ready(&self) -> bool {

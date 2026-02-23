@@ -88,6 +88,48 @@ fn bind_actor_refs_rejects_second_bind() {
   assert!(result.is_err());
 }
 
+/// Regression test for GitHub Issue #125: `is_bound` must use OR semantics
+/// (either ref non-null → bound) while `is_ready` uses AND semantics
+/// (both refs non-null → ready). PR #117 accidentally changed `is_bound`
+/// to AND, making it identical to `is_ready`.
+#[test]
+fn is_bound_returns_true_when_only_journal_ref_is_set() {
+  // Given: a context with only journal_actor_ref set (partial binding)
+  let mut context = DummyContext::new("pid-1".to_string());
+  let (journal_ref, _) = create_sender();
+  context.journal_actor_ref = journal_ref;
+
+  // Then: is_bound is true (OR: at least one ref is set)
+  assert!(context.is_bound());
+  // Then: is_ready is false (AND: both refs must be set)
+  assert!(!context.is_ready());
+}
+
+/// Regression test for GitHub Issue #125: partial binding with only
+/// snapshot_actor_ref must also be considered "bound".
+#[test]
+fn is_bound_returns_true_when_only_snapshot_ref_is_set() {
+  // Given: a context with only snapshot_actor_ref set (partial binding)
+  let mut context = DummyContext::new("pid-1".to_string());
+  let (snapshot_ref, _) = create_sender();
+  context.snapshot_actor_ref = snapshot_ref;
+
+  // Then: is_bound is true (OR: at least one ref is set)
+  assert!(context.is_bound());
+  // Then: is_ready is false (AND: both refs must be set)
+  assert!(!context.is_ready());
+}
+
+#[test]
+fn is_bound_returns_false_when_neither_ref_is_set() {
+  // Given: a freshly created context (both refs are null)
+  let context = DummyContext::new("pid-1".to_string());
+
+  // Then: neither bound nor ready
+  assert!(!context.is_bound());
+  assert!(!context.is_ready());
+}
+
 #[test]
 fn start_recovery_none_requests_highest_sequence_nr() {
   let (journal_ref, journal_store) = create_sender();
