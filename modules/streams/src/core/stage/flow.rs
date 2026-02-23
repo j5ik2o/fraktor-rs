@@ -3319,7 +3319,7 @@ where
   }
 }
 
-fn watch_termination_definition<In>(completion: super::StreamCompletion<()>) -> FlowDefinition
+pub(in crate::core) fn watch_termination_definition<In>(completion: super::StreamCompletion<()>) -> FlowDefinition
 where
   In: Send + Sync + 'static, {
   let inlet: Inlet<In> = Inlet::new();
