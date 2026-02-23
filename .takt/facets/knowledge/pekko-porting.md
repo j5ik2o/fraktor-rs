@@ -4,10 +4,11 @@
 
 | 実装 | パス | 言語 |
 |------|------|------|
-| Apache Pekko (actor) | `references/pekko/pekko-actor/src/main/scala/org/apache/pekko/actor/` | Scala |
-| Apache Pekko (streams) | `references/pekko/pekko-stream/src/main/scala/org/apache/pekko/stream/` | Scala |
-| Apache Pekko (cluster) | `references/pekko/pekko-cluster/src/main/scala/org/apache/pekko/cluster/` | Scala |
-| Apache Pekko (remote) | `references/pekko/pekko-remote/src/main/scala/org/apache/pekko/remote/` | Scala |
+| Apache Pekko (actor) | `references/pekko/actor/src/main/scala/org/apache/pekko/actor/` | Scala |
+| Apache Pekko (actor-typed) | `references/pekko/actor-typed/src/main/scala/org/apache/pekko/actor/typed/` | Scala |
+| Apache Pekko (streams) | `references/pekko/stream/src/main/scala/org/apache/pekko/stream/` | Scala |
+| Apache Pekko (cluster) | `references/pekko/cluster/src/main/scala/org/apache/pekko/cluster/` | Scala |
+| Apache Pekko (remote) | `references/pekko/remote/src/main/scala/org/apache/pekko/remote/` | Scala |
 | protoactor-go | `references/protoactor-go/` | Go |
 
 ## fraktor-rs モジュール構造
@@ -49,13 +50,16 @@ modules/{name}/src/
 
 | Pekko | fraktor-rs | 変換ルール |
 |-------|-----------|-----------|
-| `ActorRef[T]` | `TypedActorRefGeneric<TB, M>` | TB パラメータ追加 |
+| `ActorRef[T]` | `TypedActorRefGeneric<M, TB>` | メッセージ型 M が第1パラメータ |
 | `Props` | `PropsGeneric<TB>` | TB パラメータ追加 |
-| `Behavior[T]` | `BehaviorGeneric<TB, M>` | TB パラメータ追加 |
+| `Behavior[T]` | `Behavior<M, TB>` | `*Generic` サフィックスなし、`<M, TB>` 順 |
 | `ActorSystem` | `ActorSystemGeneric<TB>` | TB パラメータ追加 |
-| `Materializer` | `MaterializerGeneric<TB>` | TB パラメータ追加 |
+| `ActorMaterializer` | `ActorMaterializerGeneric<TB>` | trait `Materializer` も別途存在 |
+| `ActorContext[T]` | `TypedActorContextGeneric<'a, M, TB>` | ライフタイム + メッセージ型 + TB |
 | メソッドチェーン | メソッドチェーン | 所有権移動に注意 |
 | コンパニオンオブジェクト | `impl` ブロック | ファクトリメソッド |
+
+**パラメータ順の原則**: メッセージ型 `M` が先、`TB` が後。`TB` にはデフォルト型パラメータ（`NoStdToolbox`）が設定されている場合がある。
 
 ### 命名規約
 
@@ -64,7 +68,9 @@ modules/{name}/src/
 | `camelCase` メソッド | `snake_case` メソッド | `mapAsync` → `map_async` |
 | `PascalCase` 型 | `PascalCase` 型 | `Source` → `Source` |
 | ジェネリクス付き | `*Generic` サフィックス | `ActorCell` → `ActorCellGeneric<TB>` |
-| 型エイリアス（TB固定） | サフィックスなし | `type ActorCell = ActorCellGeneric<TokioToolbox>` |
+| 型エイリアス（TB固定） | サフィックスなし | `type ActorCell = ActorCellGeneric<StdToolbox>` |
+
+**例外**: `Behavior<M, TB>` のように `*Generic` サフィックスを持たない型もある。既存コードの命名に従うこと。
 
 ## fraktor-rs 固有の制約
 
@@ -80,12 +86,17 @@ modules/{name}/src/
 これにより `no_std` と `std` で同一APIを提供する。
 
 ```rust
-// ジェネリック版（core/）
-pub struct XyzGeneric<TB: RuntimeToolbox> { /* ... */ }
+// ジェネリック版（core/）— デフォルト型パラメータ NoStdToolbox
+pub struct XyzGeneric<TB: RuntimeToolbox = NoStdToolbox> { /* ... */ }
 
-// 具象版（std/）
-pub type Xyz = XyzGeneric<TokioToolbox>;
+// 具象版（std/）— StdToolbox で固定
+pub type Xyz = XyzGeneric<StdToolbox>;
 ```
+
+| Toolbox | 用途 | 配置 |
+|---------|------|------|
+| `NoStdToolbox` | no_std 環境のデフォルト | `modules/utils/src/core/` |
+| `StdToolbox` | std 環境（Tokio統合） | `modules/utils/src/std/` |
 
 ### AShared パターン（共有ラッパー）
 
