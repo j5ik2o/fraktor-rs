@@ -263,6 +263,10 @@ movements:
     required_permission_mode: edit
     pass_previous_response: false
     instruction: fix
+    instruction_template: |
+      **Pekko互換性の指摘への対応:**
+      pekko-compat-reviewの指摘がある場合は、必ず `references/pekko/` の
+      該当ソースを読み直してからRust実装を修正すること。
     rules:
       - condition: 修正完了
         next: reviewers
@@ -282,6 +286,10 @@ movements:
       - WebFetch
     pass_previous_response: false
     instruction: supervise
+    instruction_template: |
+      **fraktor-rs固有の検証:**
+      - `./scripts/ci-check.sh all` を実行し、全チェックがパスすることを確認
+      - Pekko参照実装との対応関係がレビューで承認済みであることを確認
     output_contracts:
       report:
         - name: supervisor-validation.md
