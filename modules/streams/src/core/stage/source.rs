@@ -23,7 +23,8 @@ use super::{
     recover_with_retries_definition, scan_definition, sliding_definition, split_after_definition,
     split_when_definition, stateful_map_concat_definition, stateful_map_definition, take_definition,
     take_until_definition, take_while_definition, take_within_definition, throttle_definition, unzip_definition,
-    unzip_with_definition, zip_all_definition, zip_definition, zip_with_index_definition,
+    unzip_with_definition, watch_termination_definition, zip_all_definition, zip_definition,
+    zip_with_index_definition,
   },
   graph::{GraphStage, GraphStageLogic},
   shape::{Inlet, Outlet, StreamShape},
@@ -186,8 +187,16 @@ where
 
   /// Adds an actor-watch compatibility stage.
   #[must_use]
-  pub const fn watch(self) -> Self {
-    self
+  pub fn watch(mut self) -> Self {
+    let completion = StreamCompletion::<()>::new();
+    let definition = watch_termination_definition::<Out>(completion);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
   /// Combines multiple sources by selecting the first source when available.
