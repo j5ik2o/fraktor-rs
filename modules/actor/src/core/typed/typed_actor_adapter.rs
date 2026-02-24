@@ -2,7 +2,7 @@
 
 use alloc::boxed::Box;
 
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::SharedAccess};
 
 use crate::core::{
   actor::{Actor, ActorContextGeneric, actor_ref::ActorRefGeneric},
@@ -11,12 +11,14 @@ use crate::core::{
   error::{ActorError, ActorErrorReason},
   event::logging::LogLevel,
   messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
+  scheduler::SchedulerCommand,
   supervision::SupervisorStrategy,
   typed::{
     actor::{TypedActor, TypedActorContextGeneric},
     message_adapter::{
       AdaptMessage, AdapterEnvelope, AdapterError, AdapterOutcome, AdapterPayload, MessageAdapterRegistry,
     },
+    receive_timeout_config::ReceiveTimeoutConfig,
   },
 };
 
@@ -27,8 +29,9 @@ pub(crate) struct TypedActorAdapter<M, TB>
 where
   M: Send + Sync + 'static,
   TB: RuntimeToolbox + 'static, {
-  actor:    Box<dyn TypedActor<M, TB>>,
-  adapters: MessageAdapterRegistry<M, TB>,
+  actor:           Box<dyn TypedActor<M, TB>>,
+  adapters:        MessageAdapterRegistry<M, TB>,
+  receive_timeout: Option<ReceiveTimeoutConfig<M, TB>>,
 }
 
 impl<M, TB> TypedActorAdapter<M, TB>
@@ -41,7 +44,7 @@ where
   pub(crate) fn new<A>(actor: A) -> Self
   where
     A: TypedActor<M, TB> + 'static, {
-    Self { actor: Box::new(actor), adapters: MessageAdapterRegistry::new() }
+    Self { actor: Box::new(actor), adapters: MessageAdapterRegistry::new(), receive_timeout: None }
   }
 
   fn handle_adapter_envelope(
@@ -124,6 +127,60 @@ where
     self.actor.on_adapter_failure(&mut typed_ctx, failure)
   }
 
+  fn make_typed_ctx<'c>(
+    ctx: &mut ActorContextGeneric<'c, TB>,
+    adapters: &mut MessageAdapterRegistry<M, TB>,
+    receive_timeout: &mut Option<ReceiveTimeoutConfig<M, TB>>,
+  ) -> TypedActorContextGeneric<'c, M, TB> {
+    TypedActorContextGeneric::from_untyped(ctx, Some(adapters)).with_receive_timeout(receive_timeout)
+  }
+
+  fn reschedule_receive_timeout(&mut self, ctx: &ActorContextGeneric<'_, TB>) {
+    if let Some(config) = &mut self.receive_timeout {
+      Self::cancel_timer_handle(ctx, &mut config.handle);
+      let self_ref = ctx.self_ref();
+      let message = config.make_message();
+      let duration = config.duration;
+      let scheduler = ctx.system().scheduler();
+      let result = scheduler.with_write(|guard| {
+        guard.schedule_once(duration, SchedulerCommand::SendMessage {
+          receiver:   self_ref,
+          message:    AnyMessageGeneric::new(message),
+          dispatcher: None,
+          sender:     None,
+        })
+      });
+      match result {
+        | Ok(handle) => config.handle = Some(handle),
+        | Err(e) => {
+          ctx.system().emit_log(
+            LogLevel::Warn,
+            alloc::format!("failed to schedule receive timeout: {}", e),
+            Some(ctx.pid()),
+          );
+        },
+      }
+    }
+  }
+
+  fn cancel_receive_timeout_timer(&mut self, ctx: &ActorContextGeneric<'_, TB>) {
+    if let Some(config) = &mut self.receive_timeout {
+      Self::cancel_timer_handle(ctx, &mut config.handle);
+    }
+  }
+
+  fn cancel_timer_handle(
+    ctx: &ActorContextGeneric<'_, TB>,
+    handle: &mut Option<crate::core::scheduler::SchedulerHandle>,
+  ) {
+    if let Some(h) = handle.take() {
+      let scheduler = ctx.system().scheduler();
+      scheduler.with_write(|guard| {
+        guard.cancel(&h);
+      });
+    }
+  }
+
   fn record_dead_letter(
     ctx: &ActorContextGeneric<'_, TB>,
     payload: AdapterPayload<TB>,
@@ -142,7 +199,7 @@ where
   TB: RuntimeToolbox + 'static,
 {
   fn pre_start(&mut self, ctx: &mut ActorContextGeneric<'_, TB>) -> Result<(), ActorError> {
-    let mut typed_ctx = TypedActorContextGeneric::from_untyped(ctx, Some(&mut self.adapters));
+    let mut typed_ctx = Self::make_typed_ctx(ctx, &mut self.adapters, &mut self.receive_timeout);
     self.actor.pre_start(&mut typed_ctx)
   }
 
@@ -152,20 +209,29 @@ where
     message: AnyMessageViewGeneric<'_, TB>,
   ) -> Result<(), ActorError> {
     if let Some(envelope) = message.downcast_ref::<AdapterEnvelope<TB>>() {
-      return self.handle_adapter_envelope(ctx, envelope);
+      let result = self.handle_adapter_envelope(ctx, envelope);
+      self.reschedule_receive_timeout(ctx);
+      return result;
     }
     if let Some(adapt) = message.downcast_ref::<AdaptMessage<M, TB>>() {
-      return self.handle_adapt_message(ctx, adapt);
+      let result = self.handle_adapt_message(ctx, adapt);
+      self.reschedule_receive_timeout(ctx);
+      return result;
     }
     let payload =
       message.downcast_ref::<M>().ok_or_else(|| ActorError::recoverable(ActorErrorReason::new(DOWNCAST_FAILED)))?;
-    let mut typed_ctx = TypedActorContextGeneric::from_untyped(ctx, Some(&mut self.adapters));
-    self.actor.receive(&mut typed_ctx, payload)
+    {
+      let mut typed_ctx = Self::make_typed_ctx(ctx, &mut self.adapters, &mut self.receive_timeout);
+      self.actor.receive(&mut typed_ctx, payload)?;
+    }
+    self.reschedule_receive_timeout(ctx);
+    Ok(())
   }
 
   fn post_stop(&mut self, ctx: &mut ActorContextGeneric<'_, TB>) -> Result<(), ActorError> {
+    self.cancel_receive_timeout_timer(ctx);
     self.adapters.clear();
-    let mut typed_ctx = TypedActorContextGeneric::from_untyped(ctx, Some(&mut self.adapters));
+    let mut typed_ctx = Self::make_typed_ctx(ctx, &mut self.adapters, &mut self.receive_timeout);
     self.actor.post_stop(&mut typed_ctx)
   }
 
@@ -175,12 +241,12 @@ where
     terminated: crate::core::actor::Pid,
   ) -> Result<(), ActorError> {
     self.adapters.clear();
-    let mut typed_ctx = TypedActorContextGeneric::from_untyped(ctx, Some(&mut self.adapters));
+    let mut typed_ctx = Self::make_typed_ctx(ctx, &mut self.adapters, &mut self.receive_timeout);
     self.actor.on_terminated(&mut typed_ctx, terminated)
   }
 
   fn supervisor_strategy(&mut self, ctx: &mut ActorContextGeneric<'_, TB>) -> SupervisorStrategy {
-    let mut typed_ctx = TypedActorContextGeneric::from_untyped(ctx, Some(&mut self.adapters));
+    let mut typed_ctx = Self::make_typed_ctx(ctx, &mut self.adapters, &mut self.receive_timeout);
     self.actor.supervisor_strategy(&mut typed_ctx)
   }
 
@@ -189,7 +255,7 @@ where
     ctx: &mut ActorContextGeneric<'_, TB>,
     event: &MailboxPressureEvent,
   ) -> Result<(), ActorError> {
-    let mut typed_ctx = TypedActorContextGeneric::from_untyped(ctx, Some(&mut self.adapters));
+    let mut typed_ctx = Self::make_typed_ctx(ctx, &mut self.adapters, &mut self.receive_timeout);
     self.actor.on_mailbox_pressure(&mut typed_ctx, event)
   }
 

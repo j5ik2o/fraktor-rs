@@ -12,7 +12,7 @@ use super::EventStreamEvent;
 use crate::core::{
   actor::Pid,
   dead_letter::DeadLetterEntry,
-  dispatch::mailbox::MailboxMetricsEvent,
+  dispatch::mailbox::metrics_event::MailboxMetricsEvent,
   event::logging::{LogEvent, LogLevel},
   lifecycle::{LifecycleEvent, LifecycleStage},
   messaging::AnyMessage,
