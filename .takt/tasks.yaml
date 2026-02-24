@@ -1,783 +1,111 @@
 tasks:
   - worktree: true
-    branch: takt/20260223T1739-20260224-100001-act-sig
-    piece: pekko-porting
-    auto_pr: true
-    draft_pr: true
-    name: actor-signals-and-watch
-    status: failed
-    slug: 20260224-100001-act-sig
-    worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260223T1739-20260224-100001-act-sig
-    task_dir: .takt/tasks/20260224-100001-act-sig
-    created_at: 2026-02-24T10:00:01.000Z
-    started_at: 2026-02-23T17:39:21.142Z
-    completed_at: 2026-02-23T20:01:20.687Z
-    owner_pid: null
-    failure:
-      movement: ai_review
-      error: 'Movement execution failed: Status not found for movement "reviewers": no
-        rule matched after all detection phases'
-      last_message: >-
-        I've completed my thorough review. Let me compile my findings.
-
-
-        ---
-
-
-        ## AI Antipattern Review Report
-
-
-        ### Previous Findings Tracking
-
-
-        This is iteration 3/30 of the piece, and the first ai_review iteration
-        (Movement Iteration: 1). The previous response from the `implement`
-        phase states: "All tasks are complete. The implementation is finished
-        and all CI checks pass." There are no previous ai_review findings to
-        track.
-
-
-        ### Review Scope
-
-
-        Files changed (per coder-scope.md):
-
-        - **New files (2):** `death_pact_exception.rs`,
-        `death_pact_exception/tests.rs`
-
-        - **Changed files (16):** `behavior_signal.rs`, `behavior_runner.rs`,
-        `behavior_runner/tests.rs`, `typed_actor_adapter.rs`, `typed_actor.rs`
-        (core), `actor_context.rs` (core typed), `tests.rs`, `actor_cell.rs`,
-        `actor_context.rs` (core untyped), `actor_lifecycle.rs`, `error.rs`,
-        `actor_context.rs` (std), `typed_actor.rs` (std), `actor_adaptor.rs`
-        (std), 2 example files
-
-
-        ### Checklist Results
-
-
-        #### 1. Hallucinated APIs / Phantom Imports
-
-        **PASS** — All APIs verified to exist:
-
-        - `Behavior::has_signal_handler()` → `behavior.rs:196`
-
-        - `ActorError::recoverable()` → `actor_error.rs:24`
-
-        - `ActorErrorReason::new()` → `actor_error_reason.rs:16` (accepts `impl
-        Into<Cow<'static, str>>`)
-
-        - `AnyMessageGeneric::new()` → `any_message.rs:28`
-
-        - `ActorError::from_send_error()` → `actor_error.rs:60`
-
-        - `ActorCellGeneric::actor_ref()` → `actor_cell.rs:214`
-
-        - `ActorRefGeneric::tell()` → `actor_ref/base.rs:96`
-
-        - `report_failure()` → `actor_cell.rs:567`
-
-        - `payload.child()` → used throughout existing code at lines 578, 591,
-        596, 603, 609
-
-        - `DeathPactException::new()`, `::terminated()`, `Display` — newly
-        created, verified
-
-        - `Pid::new()` — used throughout existing codebase
-
-
-        All imports are used. No phantom imports detected.
-
-
-        #### 2. Pattern Completion Errors
-
-        **PASS** — The death pact logic in `behavior_runner.rs:129-141`
-        correctly mirrors the existing `on_adapter_failure` pattern (line
-        161-173). Both:
-
-        1. Check `has_signal_handler()` before dispatch
-
-        2. Dispatch the signal
-
-        3. Return `Ok(())` if handler exists, `Err(...)` if not
-
-
-        The `dispatch_signal` → `handle_signal` → `apply_transition` chain works
-        correctly because `handle_signal` returns `Ok(Behavior::same())` when no
-        signal handler is installed (verified at `behavior.rs:187`).
-
-
-        #### 3. Over-abstraction / Scope Creep
-
-        **PASS** — Implementation strictly follows the task requirements:
-
-        - 3 new `BehaviorSignal` variants (including rename)
-
-        - `watch_with` across 3 layers (core untyped → core typed → std)
-
-        - `DeathPactException` as a simple data struct
-
-        - Trait hooks (`on_pre_restart`, `on_child_failed`) across the same
-        3-layer architecture as existing hooks
-
-        - No unnecessary generics, no premature abstractions, no gold-plating
-
-
-        #### 4. Dead Code / Unused Code
-
-        **PASS** — Verified all new code is reachable:
-
-        - `register_watch_with()` — called from
-        `ActorContextGeneric::watch_with` (line 232)
-
-        - `remove_watch_with()` — called from `ActorContextGeneric::unwatch`
-        (line 250)
-
-        - `DeathPactException::terminated()` — public accessor on a public type,
-        used in tests; standard Rust API design for data structs
-
-        - `AdapterFailed` variant completely removed (0 references in codebase)
-
-        - All trait methods bridged through adapter chain (core
-        `TypedActorAdapter`, std `TypedActorAdapter`)
-
-
-        #### 5. Fallback / Default Value Abuse
-
-        **PASS** — The `Ok(())` defaults on new trait methods (`on_pre_restart`,
-        `on_child_failed`) are consistent with existing trait methods
-        (`pre_start`, `post_stop`, `on_terminated`). These are standard Rust
-        trait default implementations, not fallback abuse.
-
-
-        #### 6. Backward Compatibility / Legacy Code
-
-        **PASS** — `AdapterFailed` → `MessageAdaptionFailure` rename is
-        complete:
-
-        - Zero remaining references to `AdapterFailed` in the entire codebase
-
-        - All 4 files with pattern matches updated (behavior_signal,
-        behavior_runner, tests, examples)
-
-        - No legacy compatibility shims or deprecated markers added
-
-
-        #### 7. Error Handling Patterns
-
-        **PASS** — Error handling follows existing codebase patterns:
-
-        - `on_child_failed` error discarded with `let _ =` at
-        `actor_cell.rs:619` — consistent with 7 other `let _ =` patterns in the
-        same file (lines 237, 264, 272, 467, 535, 601, 607), all for best-effort
-        operations. Justified by plan: informational signal, supervisor decision
-        already complete.
-
-        - `on_pre_restart` error reported via `report_failure` at
-        `actor_cell.rs:501-503` — consistent with `handle_create` pattern (line
-        492). Justified by decision log #5.
-
-
-        #### 8. Context Fitness / Codebase Consistency
-
-        **PASS** — All new code follows existing patterns:
-
-        - Naming conventions match (snake_case methods, PascalCase types)
-
-        - Doc comments follow existing rustdoc style with `///`, `# Errors`
-        sections
-
-        - `#[allow(unused_variables)]` usage in `TypedActor` trait matches
-        existing hooks (`pre_start`, `post_stop`, `on_terminated`)
-
-        - `_param` prefix in `Actor` trait matches existing hooks
-
-        - Test structure (build_context helper, Arc<AtomicBool> witness pattern)
-        matches existing tests
-
-
-        ### Findings Summary
-
-
-        | finding_id | Status | Severity | Description |
-
-        |------------|--------|----------|-------------|
-
-        | *(none)* | — | — | No blocking issues found |
-
-
-        ### Verdict
-
-
-        **APPROVE**
-
-
-        The implementation is clean, well-structured, and free of AI-specific
-        antipatterns. All APIs are real and verified. The code follows existing
-        codebase patterns consistently across all 3 layers (core untyped → core
-        typed → std). No hallucinated imports, no phantom APIs, no
-        over-abstraction, no dead code, no fallback abuse, and no unnecessary
-        backward compatibility code. The `AdapterFailed` →
-        `MessageAdaptionFailure` rename is complete with zero leftover
-        references. Test coverage exists for all new BehaviorRunner behaviors
-        (death pact, PreRestart dispatch, ChildFailed dispatch).
-  - worktree: true
-    branch: takt/20260223T1739-20260224-100002-act-tmr
-    piece: pekko-porting
-    auto_pr: true
-    draft_pr: true
-    name: actor-timer-router-interceptor
-    status: failed
-    slug: 20260224-100002-act-tmr
-    worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260223T1739-20260224-100002-act-tmr
-    task_dir: .takt/tasks/20260224-100002-act-tmr
-    created_at: 2026-02-24T10:00:02.000Z
-    started_at: 2026-02-23T17:39:38.773Z
-    completed_at: 2026-02-23T20:03:11.254Z
-    owner_pid: null
-    failure:
-      movement: ai_review
-      error: >-
-        Movement execution failed: All parallel sub-movements failed:
-        pekko-compat-review: Report phase failed for 05-pekko-compat-review.md:
-        AbortError: The operation was aborted
-            at abortChildProcess (node:child_process:725:27)
-            at EventTarget.onAbortListener (node:child_process:795:7)
-            at [nodejs.internal.kHybridDispatch] (node:internal/event_target:831:20)
-            at EventTarget.dispatchEvent (node:internal/event_target:766:26)
-            at abortSignal (node:internal/abort_controller:370:10)
-            at AbortController.abort (node:internal/abort_controller:392:5)
-            at Timeout._onTimeout (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:12091:4659)
-            at listOnTimeout (node:internal/timers:581:17)
-            at process.processTimers (node:internal/timers:519:7)
-        AxiosError: timeout of 5000ms exceeded
-            at JT.<anonymous> (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:91:10396)
-            at JT.emit (node:events:524:28)
-            at Timeout.<anonymous> (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:90:5608)
-            at listOnTimeout (node:internal/timers:581:17)
-            at process.processTimers (node:internal/timers:519:7)
-            at FE6.request (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:93:2132)
-            at runNextTicks (node:internal/process/task_queues:60:5)
-            at listOnTimeout (node:internal/timers:545:9)
-            at process.processTimers (node:internal/timers:519:7)
-            at async Lc9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:1648:366)
-            at async Y (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:110:19570)
-            at async Rc9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:1648:509)
-        AxiosError: Request failed with status code 403
-            at Lx (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:90:1138)
-            at Unzip.<anonymous> (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:91:9819)
-            at Unzip.emit (node:events:536:35)
-            at endReadableNT (node:internal/streams/readable:1698:12)
-            at process.processTicksAndRejections (node:internal/process/task_queues:82:21)
-            at FE6.request (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:93:2132)
-            at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
-            at async Lc9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:1648:366)
-            at async Y (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:110:19570)
-            at async Rc9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:1648:509)
-        AxiosError: Request failed with status code 403
-            at Lx (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:90:1138)
-            at Unzip.<anonymous> (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:91:9819)
-            at Unzip.emit (node:events:536:35)
-            at endReadableNT (node:internal/streams/readable:1698:12)
-            at process.processTicksAndRejections (node:internal/process/task_queues:82:21)
-            at FE6.request (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:93:2132)
-            at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
-            at async Lc9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:1648:366)
-            at async Y (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:110:19570)
-            at async Rc9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:1648:509)
-        AxiosError: Request failed with status code 403
-            at Lx (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:90:1138)
-            at Unzip.<anonymous> (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:91:9819)
-            at Unzip.emit (node:events:536:35)
-            at endReadableNT (node:internal/streams/readable:1698:12)
-            at process.processTicksAndRejections (node:internal/process/task_queues:82:21)
-            at FE6.request (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:93:2132)
-            at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
-            at async Lc9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:1648:366)
-            at async Y (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:110:19570)
-            at async Rc9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:1648:509)
-        AxiosError: Request failed with status code 403
-            at Lx (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:90:1138)
-            at Unzip.<anonymous> (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:91:9819)
-            at Unzip.emit (node:events:536:35)
-            at endReadableNT (node:internal/streams/readable:1698:12)
-            at process.processTicksAndRejections (node:internal/process/task_queues:82:21)
-            at FE6.request (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:93:2132)
-            at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
-            at async Lc9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:1648:366)
-            at async Y (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:110:19570)
-            at async Rc9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:1648:509)
-        Error: Request was aborted.
-            at QS.makeRequest (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:363:3940)
-            at process.processTicksAndRejections (node:internal/process/task_queues:95:5); qa-review: Report phase failed for 06-qa-review.md: AxiosError: Request failed with status code 403
-            at Lx (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:90:1138)
-            at Unzip.<anonymous> (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:91:9819)
-            at Unzip.emit (node:events:536:35)
-            at endReadableNT (node:internal/streams/readable:1698:12)
-            at process.processTicksAndRejections (node:internal/process/task_queues:82:21)
-            at FE6.request (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:93:2132)
-            at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
-            at async Lc9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:1648:366)
-            at async Y (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:110:19570)
-            at async Rc9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:1648:509)
-        AxiosError: Request failed with status code 403
-            at Lx (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:90:1138)
-            at Unzip.<anonymous> (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:91:9819)
-            at Unzip.emit (node:events:536:35)
-            at endReadableNT (node:internal/streams/readable:1698:12)
-            at process.processTicksAndRejections (node:internal/process/task_queues:82:21)
-            at FE6.request (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:93:2132)
-            at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
-            at async Lc9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:1648:366)
-            at async Y (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:110:19570)
-            at async Rc9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:1648:509)
-        AxiosError: Request failed with status code 403
-            at Lx (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:90:1138)
-            at Unzip.<anonymous> (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:91:9819)
-            at Unzip.emit (node:events:536:35)
-            at endReadableNT (node:internal/streams/readable:1698:12)
-            at process.processTicksAndRejections (node:internal/process/task_queues:82:21)
-            at FE6.request (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:93:2132)
-            at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
-            at async Lc9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:1648:366)
-            at async Y (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:110:19570)
-            at async Rc9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:1648:509)
-        AxiosError: Request failed with status code 403
-            at Lx (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:90:1138)
-            at Unzip.<anonymous> (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:91:9819)
-            at Unzip.emit (node:events:536:35)
-            at endReadableNT (node:internal/streams/readable:1698:12)
-            at process.processTicksAndRejections (node:internal/process/task_queues:82:21)
-            at FE6.request (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:93:2132)
-            at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
-            at async Lc9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:1648:366)
-            at async Y (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:110:19570)
-            at async Rc9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:1648:509)
-      last_message: You've hit your limit · resets 5am (Asia/Tokyo)
-  - worktree: true
-    branch: takt/20260223T1739-20260224-100003-str-fac
-    piece: pekko-porting
-    auto_pr: true
-    draft_pr: true
-    name: streams-factories-and-operators
-    status: failed
-    slug: 20260224-100003-str-fac
-    worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260223T1739-20260224-100003-str-fac
-    task_dir: .takt/tasks/20260224-100003-str-fac
-    created_at: 2026-02-24T10:00:03.000Z
-    started_at: 2026-02-23T17:39:54.523Z
-    completed_at: 2026-02-23T20:01:04.679Z
-    owner_pid: null
-    failure:
-      movement: ai_review
-      error: 'Movement execution failed: All parallel sub-movements failed:
-        pekko-compat-review: Status not found for movement
-        "pekko-compat-review"; qa-review: Status not found for movement
-        "qa-review"'
-      last_message: |-
-        Now I have all the information needed for a comprehensive review. Let me compile the final assessment.
-
-        ---
-
-        # AI生成コードレビュー
-
-        ## 結果: APPROVE
-
-        ## サマリー
-
-        前回指摘の AIR-001（DRY違反）は正しく修正済み。`throttle_definition` は `throttle_with_mode_definition` への委譲に変更されており、重複ロジックは解消されている。全変更対象ファイルを精査した結果、AI特有のアンチパターン（幻覚API、ファントムインポート、スコープクリープ、デッドコード、フォールバック濫用、不要な後方互換コード）はいずれも検出されなかった。
-
-        ## 検証した項目
-
-        | 観点 | 結果 | 備考 |
-        |------|------|------|
-        | 仮定の妥当性 | ✅ | 7要件（contramap, ThrottleMode, distinct/distinct_by, from_graph, pre_materialize, single_bidi）全てに対応。要件外の機能追加なし |
-        | API/ライブラリの実在 | ✅ | `BidiFlow::from_flows_mat`, `Flow::from_function`, `stateful_map`, `flatten_optional`, `StreamGraph::append`, `BTreeSet`, `Arc`, `downcast_value` — 全て実在確認済み |
-        | ファントムインポート | ✅ | `source.rs` L25 の `throttle_definition` import、`flow.rs` の `ThrottleMode` import 含め、全新規importに使用箇所あり |
-        | パターン補完エラー | ✅ | `EnforcingThrottleLogic` は `AsyncBoundaryLogic` と同一パターンで `FlowLogic` trait を正しく実装。`apply` での capacity 超過即エラーは Pekko の Enforcing セマンティクスに合致 |
-        | コンテキスト適合 | ✅ | `contramap` のグラフ合成パターンは `Sink::contramap` 既存パターンと一致（決定ログ #2）。`distinct` の `stateful_map` + `flatten_optional` 構成は既存の `deduplicate` 系と一貫 |
-        | スコープクリープ | ✅ | 追加機能・過度な汎化・不要な設定オプションなし |
-        | 未使用デッドコード | ✅ | 新規 public API（`from_graph`, `contramap`, `distinct`, `distinct_by`, `throttle_with_mode`, `pre_materialize`, `single_bidi`）全てにテスト呼び出しあり |
-        | フォールバック濫用 | ✅ | 本番コードに不正なフォールバックなし。`unwrap_or(0)` はテストファイル内のみ（flow/tests.rs:2321, sink/tests.rs:397）で、テスト入力は全て正常にパースされる文字列 |
-        | 後方互換の自発的追加 | ✅ | 旧コード残存なし。`#[deprecated]` アノテーションなし |
-        | TODO/FIXME | ✅ | 全変更ファイルに TODO/FIXME なし |
-        | DRY違反 | ✅ | `throttle_definition` は `throttle_with_mode_definition` へ委譲済み。新規コード間にロジック重複なし |
-
-        ## 前回指摘の追跡
-
-        | # | finding_id | 前回状態 | 今回状態 | 根拠 |
-        |---|------------|---------|---------|------|
-        | 1 | AIR-001 | new | **resolved** | `flow.rs:2797-2801` — `throttle_definition` が `throttle_with_mode_definition::<In>(capacity, ThrottleMode::Shaping)` へ委譲する3行の関数に変更済み。重複ロジック完全解消 |
-
-        ## 今回の指摘（new）
-
-        なし
-
-        ## 継続指摘（persists）
-
-        なし
-
-        ## 解消済み（resolved）
-
-        | # | finding_id | 詳細 |
-        |---|------------|------|
-        | 1 | AIR-001 | `flow.rs:2797-2801` にて `throttle_definition` が `throttle_with_mode_definition` への1行委譲に修正済み。`throttle_with_mode_definition`（L2803-2823）が `ThrottleMode` による match で `AsyncBoundaryLogic` / `EnforcingThrottleLogic` を選択する唯一の実装箇所となっている |
-
-        ## APPROVE判定条件
-
-        - `new` または `persists` のブロッキング問題: 0件
-        - 前回指摘 AIR-001: resolved
-        - 全7要件の実装とテストカバレッジを確認済み
-        - CI検証済み（前回 ai_fix レポートにて `./scripts/ci-check.sh all` パス確認）
-  - worktree: true
-    branch: takt/20260223T1740-20260224-100004-str-med
-    piece: pekko-porting
-    auto_pr: true
-    draft_pr: true
-    name: streams-medium-operators
-    status: failed
-    slug: 20260224-100004-str-med
-    worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260223T1740-20260224-100004-str-med
-    task_dir: .takt/tasks/20260224-100004-str-med
-    created_at: 2026-02-24T10:00:04.000Z
-    started_at: 2026-02-23T17:40:10.420Z
-    completed_at: 2026-02-23T20:03:14.352Z
-    owner_pid: null
-    failure:
-      movement: ai_review
-      error: 'Movement execution failed: Status not found for movement "reviewers": no
-        rule matched after all detection phases'
-      last_message: You've hit your limit · resets 5am (Asia/Tokyo)
-  - worktree: true
-    branch: takt/20260223T1740-20260224-100005-rmt-fd
+    branch: takt/20260224T0122-20260224-100005-rmt-fd
     piece: pekko-porting
     auto_pr: true
     draft_pr: true
     name: remote-failure-detection
-    status: failed
+    status: completed
     slug: 20260224-100005-rmt-fd
-    worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260223T1740-20260224-100005-rmt-fd
+    worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260224T0122-20260224-100005-rmt-fd
+    pr_url: https://github.com/j5ik2o/fraktor-rs/pull/180
     task_dir: .takt/tasks/20260224-100005-rmt-fd
     created_at: 2026-02-24T10:00:05.000Z
-    started_at: 2026-02-23T17:40:26.853Z
-    completed_at: 2026-02-23T20:03:10.858Z
+    started_at: 2026-02-24T01:22:09.470Z
+    completed_at: 2026-02-24T02:36:27.153Z
     owner_pid: null
-    failure:
-      movement: ai_review
-      error: "Movement execution failed: All parallel sub-movements failed:
-        pekko-compat-review: Report phase failed for 05-pekko-compat-review.md:
-        Unknown error; qa-review: Report phase failed for 06-qa-review.md: Let
-        me first examine the existing reports and understand what changes were
-        made in this piece.Now let me examine the actual code changes and test
-        files."
-      last_message: You've hit your limit · resets 5am (Asia/Tokyo)
   - worktree: true
-    branch: takt/20260223T1740-20260224-100006-rmt-evt
+    branch: takt/20260224T0326-20260224-100006-rmt-evt
     piece: pekko-porting
     auto_pr: true
     draft_pr: true
     name: remote-events-and-control
-    status: failed
+    status: pending
     slug: 20260224-100006-rmt-evt
-    worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260223T1740-20260224-100006-rmt-evt
+    worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260224T0326-20260224-100006-rmt-evt
     task_dir: .takt/tasks/20260224-100006-rmt-evt
     created_at: 2026-02-24T10:00:06.000Z
-    started_at: 2026-02-23T17:40:42.294Z
-    completed_at: 2026-02-23T20:03:10.808Z
+    started_at: null
+    completed_at: null
     owner_pid: null
-    failure:
-      movement: ai_review
-      error: "Movement execution failed: All parallel sub-movements failed:
-        pekko-compat-review: Report phase failed for 05-pekko-compat-review.md:
-        Unknown error; qa-review: Report phase failed for 06-qa-review.md:
-        Unknown error"
-      last_message: You've hit your limit · resets 5am (Asia/Tokyo)
   - worktree: true
-    branch: takt/20260223T1740-20260224-100007-cls-mbr
     piece: pekko-porting
     auto_pr: true
     draft_pr: true
     name: cluster-member-model
     status: failed
     slug: 20260224-100007-cls-mbr
-    worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260223T1740-20260224-100007-cls-mbr
     task_dir: .takt/tasks/20260224-100007-cls-mbr
     created_at: 2026-02-24T10:00:07.000Z
-    started_at: 2026-02-23T17:40:58.060Z
-    completed_at: 2026-02-23T20:03:19.569Z
+    started_at: 2026-02-24T03:22:40.168Z
+    completed_at: 2026-02-24T03:22:41.477Z
     owner_pid: null
     failure:
-      movement: fix
-      error: >-
-        Movement "fix" failed: AxiosError: Request failed with status code 403
-            at Lx (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:90:1138)
-            at Unzip.<anonymous> (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:91:9819)
-            at Unzip.emit (node:events:536:35)
-            at endReadableNT (node:internal/streams/readable:1698:12)
-            at process.processTicksAndRejections (node:internal/process/task_queues:82:21)
-            at FE6.request (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:93:2132)
-            at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
-            at async Lc9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:1648:366)
-            at async Y (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:110:19570)
-            at async Rc9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:1648:509)
-        AxiosError: Request failed with status code 403
-            at Lx (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:90:1138)
-            at Unzip.<anonymous> (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:91:9819)
-            at Unzip.emit (node:events:536:35)
-            at endReadableNT (node:internal/streams/readable:1698:12)
-            at process.processTicksAndRejections (node:internal/process/task_queues:82:21)
-            at FE6.request (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:93:2132)
-            at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
-            at async Lc9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:1648:366)
-            at async Y (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:110:19570)
-            at async Rc9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:1648:509)
-        Error: Request was aborted.
-            at QS.makeRequest (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:363:3940)
-            at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
-      last_message: >-
-        AxiosError: Request failed with status code 403
-            at Lx (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:90:1138)
-            at Unzip.<anonymous> (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:91:9819)
-            at Unzip.emit (node:events:536:35)
-            at endReadableNT (node:internal/streams/readable:1698:12)
-            at process.processTicksAndRejections (node:internal/process/task_queues:82:21)
-            at FE6.request (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:93:2132)
-            at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
-            at async Lc9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:1648:366)
-            at async Y (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:110:19570)
-            at async Rc9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:1648:509)
-        AxiosError: Request failed with status code 403
-            at Lx (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:90:1138)
-            at Unzip.<anonymous> (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:91:9819)
-            at Unzip.emit (node:events:536:35)
-            at endReadableNT (node:internal/streams/readable:1698:12)
-            at process.processTicksAndRejections (node:internal/process/task_queues:82:21)
-            at FE6.request (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:93:2132)
-            at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
-            at async Lc9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:1648:366)
-            at async Y (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:110:19570)
-            at async Rc9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:1648:509)
-        Error: Request was aborted.
-            at QS.makeRequest (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:363:3940)
-            at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+      error: |
+        Command failed: git clone --reference /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs --dissociate /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260224T0322-20260224-100007-cls-mbr
+        Cloning into '/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260224T0322-20260224-100007-cls-mbr'...
+        done.
   - worktree: true
-    branch: takt/20260223T1741-20260224-100008-cls-ldr
     piece: pekko-porting
     auto_pr: true
     draft_pr: true
     name: cluster-leader-and-downing
     status: failed
     slug: 20260224-100008-cls-ldr
-    worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260223T1741-20260224-100008-cls-ldr
     task_dir: .takt/tasks/20260224-100008-cls-ldr
     created_at: 2026-02-24T10:00:08.000Z
-    started_at: 2026-02-23T17:41:15.226Z
-    completed_at: 2026-02-23T20:00:07.327Z
+    started_at: 2026-02-24T03:22:40.994Z
+    completed_at: 2026-02-24T03:22:41.481Z
     owner_pid: null
     failure:
-      movement: ai_review
-      error: 'Movement execution failed: Status not found for movement "ai_fix"'
-      last_message: |-
-        ## Review Complete: **REJECT**
-
-        レポートを `/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260223T1741-20260224-100008-cls-ldr/.takt/runs/20260224-100008-cls-ldr/reports/04-ai-review.md` に出力しました。
-
-        ### 検出した5件のブロッキング問題:
-
-        | ID | 種別 | 概要 |
-        |----|------|------|
-        | **AI-F001** | 配線忘れ | `ClusterEvent::SeenChanged` がenum定義されているが、コードベース全体でどこからも emit されない。計画ステップ6で「SeenChangedイベント発火」と指定されているが未実装 |
-        | **AI-F002** | デッドコード | `DowningProvider::down_removal_margin()` がtrait上に定義されているが、`apply_downing_provider()` は `decide_downing()` のみ呼び出し、このメソッドを完全に無視 |
-        | **AI-F003** | 配線忘れ/イベント消失 | `TokioGossiper::down()` が `coordinator.handle_down()` の戻り値 `MembershipCoordinatorOutcome` を破棄。`MemberStatusChanged`, `LeaderChanged` 等のイベントがEventStreamに到達しない |
-        | **AI-F004** | デッドコード | `MembershipCoordinatorDriverGeneric::handle_down()` が定義されているが、コードベース全体で一度も呼ばれていない（`TokioGossiper` がドライバーを迂回して coordinator を直接呼び出すため） |
-        | **AI-F005** | 未指示の後方互換 | `GossipWireNodeRecord::up_number` に `#[serde(default)]` が付与されているが、計画は「後方互換は不要」と明記 |
-
-        AI-F003は特に重要で、公開API経由の `down()` 呼び出しでメンバーステータス変更・リーダー変更イベントが無音で消失するバグです。
+      error: |
+        Command failed: git clone --reference /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs --dissociate /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260224T0322-20260224-100008-cls-ldr
+        Cloning into '/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260224T0322-20260224-100008-cls-ldr'...
   - worktree: true
-    branch: takt/20260223T2000-20260224-100009-per-adp
     piece: pekko-porting
     auto_pr: true
     draft_pr: true
     name: persistence-event-adapter
     status: failed
     slug: 20260224-100009-per-adp
-    worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260223T2000-20260224-100009-per-adp
     task_dir: .takt/tasks/20260224-100009-per-adp
     created_at: 2026-02-24T10:00:09.000Z
-    started_at: 2026-02-23T20:00:07.368Z
-    completed_at: 2026-02-23T20:02:39.222Z
+    started_at: 2026-02-24T03:22:41.045Z
+    completed_at: 2026-02-24T03:22:41.484Z
     owner_pid: null
     failure:
-      movement: plan
-      error: |-
-        Movement "plan" failed: AxiosError: Request failed with status code 403
-            at Lx (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:90:1138)
-            at Unzip.<anonymous> (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:91:9819)
-            at Unzip.emit (node:events:536:35)
-            at endReadableNT (node:internal/streams/readable:1698:12)
-            at process.processTicksAndRejections (node:internal/process/task_queues:82:21)
-            at FE6.request (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:93:2132)
-            at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
-            at async Lc9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:1648:366)
-            at async Y (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:110:19570)
-            at async Rc9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:1648:509)
-        AxiosError: Request failed with status code 403
-            at Lx (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:90:1138)
-            at Unzip.<anonymous> (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:91:9819)
-            at Unzip.emit (node:events:536:35)
-            at endReadableNT (node:internal/streams/readable:1698:12)
-            at process.processTicksAndRejections (node:internal/process/task_queues:82:21)
-            at FE6.request (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:93:2132)
-            at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
-            at async Lc9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:1648:366)
-            at async Y (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:110:19570)
-            at async Rc9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:1648:509)
-        AxiosError: Request failed with status code 403
-            at Lx (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:90:1138)
-            at Unzip.<anonymous> (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:91:9819)
-            at Unzip.emit (node:events:536:35)
-            at endReadableNT (node:internal/streams/readable:1698:12)
-            at process.processTicksAndRejections (node:internal/process/task_queues:82:21)
-            at FE6.request (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:93:2132)
-            at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
-            at async Lc9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:1648:366)
-            at async Y (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:110:19570)
-            at async Rc9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:1648:509)
-        AxiosError: Request failed with status code 403
-            at Lx (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:90:1138)
-            at Unzip.<anonymous> (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:91:9819)
-            at Unzip.emit (node:events:536:35)
-            at endReadableNT (node:internal/streams/readable:1698:12)
-            at process.processTicksAndRejections (node:internal/process/task_queues:82:21)
-            at FE6.request (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:93:2132)
-            at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
-            at async Lc9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:1648:366)
-            at async Y (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:110:19570)
-            at async Rc9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:1648:509)
-        Error: File does not exist. Note: your current working directory is /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260223T2000-20260224-100009-per-adp.
-            at Object.call (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:4898:6227)
-            at async ms9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:2081:15022)
-        Error: File does not exist. Note: your current working directory is /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260223T2000-20260224-100009-per-adp.
-            at Object.call (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:4898:6227)
-            at async ms9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:2081:15022)
-        Error: File does not exist. Note: your current working directory is /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260223T2000-20260224-100009-per-adp.
-            at Object.call (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:4898:6227)
-            at async ms9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:2081:15022)
-        Error: Request was aborted.
-            at QS.makeRequest (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:363:3940)
-            at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
-      last_message: |-
-        AxiosError: Request failed with status code 403
-            at Lx (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:90:1138)
-            at Unzip.<anonymous> (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:91:9819)
-            at Unzip.emit (node:events:536:35)
-            at endReadableNT (node:internal/streams/readable:1698:12)
-            at process.processTicksAndRejections (node:internal/process/task_queues:82:21)
-            at FE6.request (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:93:2132)
-            at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
-            at async Lc9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:1648:366)
-            at async Y (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:110:19570)
-            at async Rc9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:1648:509)
-        AxiosError: Request failed with status code 403
-            at Lx (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:90:1138)
-            at Unzip.<anonymous> (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:91:9819)
-            at Unzip.emit (node:events:536:35)
-            at endReadableNT (node:internal/streams/readable:1698:12)
-            at process.processTicksAndRejections (node:internal/process/task_queues:82:21)
-            at FE6.request (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:93:2132)
-            at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
-            at async Lc9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:1648:366)
-            at async Y (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:110:19570)
-            at async Rc9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:1648:509)
-        AxiosError: Request failed with status code 403
-            at Lx (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:90:1138)
-            at Unzip.<anonymous> (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:91:9819)
-            at Unzip.emit (node:events:536:35)
-            at endReadableNT (node:internal/streams/readable:1698:12)
-            at process.processTicksAndRejections (node:internal/process/task_queues:82:21)
-            at FE6.request (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:93:2132)
-            at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
-            at async Lc9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:1648:366)
-            at async Y (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:110:19570)
-            at async Rc9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:1648:509)
-        AxiosError: Request failed with status code 403
-            at Lx (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:90:1138)
-            at Unzip.<anonymous> (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:91:9819)
-            at Unzip.emit (node:events:536:35)
-            at endReadableNT (node:internal/streams/readable:1698:12)
-            at process.processTicksAndRejections (node:internal/process/task_queues:82:21)
-            at FE6.request (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:93:2132)
-            at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
-            at async Lc9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:1648:366)
-            at async Y (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:110:19570)
-            at async Rc9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:1648:509)
-        Error: File does not exist. Note: your current working directory is /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260223T2000-20260224-100009-per-adp.
-            at Object.call (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:4898:6227)
-            at async ms9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:2081:15022)
-        Error: File does not exist. Note: your current working directory is /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260223T2000-20260224-100009-per-adp.
-            at Object.call (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:4898:6227)
-            at async ms9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:2081:15022)
-        Error: File does not exist. Note: your current working directory is /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260223T2000-20260224-100009-per-adp.
-            at Object.call (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:4898:6227)
-            at async ms9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:2081:15022)
-        Error: Request was aborted.
-            at QS.makeRequest (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:363:3940)
-            at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+      error: |
+        Command failed: git clone --reference /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs --dissociate /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260224T0322-20260224-100009-per-adp
+        Cloning into '/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260224T0322-20260224-100009-per-adp'...
   - worktree: true
-    branch: takt/20260223T2001-20260224-100010-per-enh
     piece: pekko-porting
     auto_pr: true
     draft_pr: true
     name: persistence-enhancements
     status: failed
     slug: 20260224-100010-per-enh
-    worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260223T2001-20260224-100010-per-enh
     task_dir: .takt/tasks/20260224-100010-per-enh
     created_at: 2026-02-24T10:00:10.000Z
-    started_at: 2026-02-23T20:01:04.708Z
-    completed_at: 2026-02-23T20:03:20.010Z
+    started_at: 2026-02-24T03:22:41.490Z
+    completed_at: 2026-02-24T03:22:41.598Z
     owner_pid: null
     failure:
-      error: 'Movement execution failed: Status not found for movement "plan"'
+      error: |
+        Command failed: git clone --reference /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs --dissociate /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260224T0322-20260224-100010-per-enh
+        Cloning into '/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260224T0322-20260224-100010-per-enh'...
   - worktree: true
-    branch: takt/20260223T2001-20260224-100011-per-dur
     piece: pekko-porting
     auto_pr: true
     draft_pr: true
     name: persistence-durable-state
     status: failed
     slug: 20260224-100011-per-dur
-    worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260223T2001-20260224-100011-per-dur
     task_dir: .takt/tasks/20260224-100011-per-dur
     created_at: 2026-02-24T10:00:11.000Z
-    started_at: 2026-02-23T20:01:20.707Z
-    completed_at: 2026-02-23T20:03:14.784Z
+    started_at: 2026-02-24T03:22:41.604Z
+    completed_at: 2026-02-24T03:22:41.811Z
     owner_pid: null
     failure:
-      error: >-
-        Movement execution failed: Report phase failed for 00-plan.md:
-        AxiosError: Request failed with status code 403
-            at Lx (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:90:1138)
-            at Unzip.<anonymous> (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:91:9819)
-            at Unzip.emit (node:events:536:35)
-            at endReadableNT (node:internal/streams/readable:1698:12)
-            at process.processTicksAndRejections (node:internal/process/task_queues:82:21)
-            at FE6.request (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:93:2132)
-            at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
-            at async Lc9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:1648:366)
-            at async Y (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:110:19570)
-            at async Rc9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:1648:509)
-        AxiosError: Request failed with status code 403
-            at Lx (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:90:1138)
-            at Unzip.<anonymous> (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:91:9819)
-            at Unzip.emit (node:events:536:35)
-            at endReadableNT (node:internal/streams/readable:1698:12)
-            at process.processTicksAndRejections (node:internal/process/task_queues:82:21)
-            at FE6.request (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:93:2132)
-            at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
-            at async Lc9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:1648:366)
-            at async Y (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:110:19570)
-            at async Rc9 (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:1648:509)
-        Error: Request was aborted.
-            at QS.makeRequest (file:///Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/node_modules/@anthropic-ai/claude-agent-sdk/cli.js:363:3940)
-            at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+      error: |
+        Command failed: git clone --reference /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs --dissociate /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260224T0322-20260224-100011-per-dur
+        Cloning into '/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260224T0322-20260224-100011-per-dur'...
