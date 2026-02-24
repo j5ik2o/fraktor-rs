@@ -29,7 +29,6 @@ use fraktor_remote_rs::core::{
   RemotingExtensionId, RemotingExtensionInstaller,
   actor_ref_provider::{loopback::default_loopback_setup, tokio::TokioActorRefProviderInstaller},
   remoting_extension::RemotingExtensionConfig,
-  transport::TokioTransportConfig,
 };
 use fraktor_utils_rs::{core::sync::ArcShared, std::StdSyncMutex};
 
@@ -91,7 +90,7 @@ fn build_tokio_tcp_system(
     .with_system_name(system_name.to_string())
     .with_tick_driver_config(TickDriverConfig::tokio_quickstart())
     .with_default_dispatcher_config(default_dispatcher)
-    .with_actor_ref_provider_installer(TokioActorRefProviderInstaller::from_config(TokioTransportConfig::default()))
+    .with_actor_ref_provider_installer(TokioActorRefProviderInstaller::default())
     .with_remoting_config(RemotingConfig::default().with_canonical_host(HOST).with_canonical_port(canonical_port))
     .with_extension_installers(
       ExtensionInstallers::default()

@@ -3,6 +3,7 @@
 mod installer;
 
 use alloc::{
+  format,
   string::{String, ToString},
   vec::Vec,
 };
@@ -15,6 +16,7 @@ use fraktor_actor_rs::core::{
     actor_ref::{ActorRefGeneric, ActorRefSender, SendOutcome},
   },
   error::{ActorError, SendError},
+  event::logging::LogLevel,
   messaging::{AnyMessageGeneric, system_message::SystemMessage},
   system::{
     ActorSystemGeneric, ActorSystemWeakGeneric,
@@ -39,7 +41,6 @@ use crate::core::{
   remote_authority_snapshot::RemoteAuthoritySnapshot,
   remote_node_id::RemoteNodeId,
   remoting_extension::{RemotingControl, RemotingControlShared, RemotingError},
-  transport::TokioTransportConfig,
   watcher::{RemoteWatcherCommand, RemoteWatcherDaemon},
 };
 
@@ -49,13 +50,11 @@ use crate::core::{
 /// Uses a weak reference to the actor system to avoid circular references,
 /// since this provider is registered into the actor system's extensions.
 pub struct TokioActorRefProviderGeneric<TB: RuntimeToolbox + 'static> {
-  system:           ActorSystemWeakGeneric<TB>,
-  writer:           EndpointWriterSharedGeneric<TB>,
-  control:          RemotingControlShared<TB>,
-  watcher_daemon:   ActorRefGeneric<TB>,
-  watch_entries:    HashMap<Pid, RemoteWatchEntry, RandomState>,
-  #[allow(dead_code)] // Reserved for future transport-specific configuration
-  transport_config: TokioTransportConfig,
+  system:         ActorSystemWeakGeneric<TB>,
+  writer:         EndpointWriterSharedGeneric<TB>,
+  control:        RemotingControlShared<TB>,
+  watcher_daemon: ActorRefGeneric<TB>,
+  watch_entries:  HashMap<Pid, RemoteWatchEntry, RandomState>,
 }
 
 /// Provider that creates [`ActorRefGeneric`] instances for remote recipients using Tokio TCP
@@ -77,16 +76,15 @@ impl<TB: RuntimeToolbox + 'static> TokioActorRefProviderGeneric<TB> {
     system: ActorSystemGeneric<TB>,
     writer: EndpointWriterSharedGeneric<TB>,
     control: RemotingControlShared<TB>,
-    transport_config: TokioTransportConfig,
   ) -> Result<Self, RemoteActorRefProviderError> {
     let daemon = RemoteWatcherDaemon::spawn(&system, control.clone())?;
+    control.lock().register_remote_watcher_daemon(daemon.clone());
     Ok(Self {
       system: system.downgrade(),
       writer,
       control,
       watcher_daemon: daemon,
       watch_entries: HashMap::with_hasher(RandomState::new()),
-      transport_config,
     })
   }
 
@@ -150,8 +148,18 @@ impl<TB: RuntimeToolbox + 'static> TokioActorRefProviderGeneric<TB> {
     self.control.lock().record_authority_snapshot(snapshot);
   }
 
-  fn dispatch_remote_watch(&mut self, command: RemoteWatcherCommand) {
-    let _ = self.watcher_daemon.tell(AnyMessageGeneric::new(command));
+  fn dispatch_remote_watch(&mut self, command: RemoteWatcherCommand) -> Result<(), RemotingError> {
+    self
+      .watcher_daemon
+      .tell(AnyMessageGeneric::new(command))
+      .map(|_| ())
+      .map_err(|error| RemotingError::TransportUnavailable(format!("{error:?}")))
+  }
+
+  fn emit_remote_watch_dispatch_error(&self, error: &RemotingError) {
+    if let Some(system) = self.system.upgrade() {
+      system.emit_log(LogLevel::Warn, format!("failed to dispatch remote watcher command: {error}"), None);
+    }
   }
 
   fn track_watch(&mut self, target: Pid, watcher: Pid) -> Option<(ActorPathParts, bool)> {
@@ -184,8 +192,10 @@ impl<TB: RuntimeToolbox + 'static> TokioActorRefProviderGeneric<TB> {
 impl<TB: RuntimeToolbox + 'static> RemoteWatchHook<TB> for TokioActorRefProviderGeneric<TB> {
   fn handle_watch(&mut self, target: Pid, watcher: Pid) -> bool {
     if let Some((parts, should_send)) = self.track_watch(target, watcher) {
-      if should_send {
-        self.dispatch_remote_watch(RemoteWatcherCommand::Watch { target: parts, watcher });
+      if should_send
+        && let Err(error) = self.dispatch_remote_watch(RemoteWatcherCommand::Watch { target: parts, watcher })
+      {
+        self.emit_remote_watch_dispatch_error(&error);
       }
       true
     } else {
@@ -195,8 +205,10 @@ impl<TB: RuntimeToolbox + 'static> RemoteWatchHook<TB> for TokioActorRefProvider
 
   fn handle_unwatch(&mut self, target: Pid, watcher: Pid) -> bool {
     if let Some((parts, removed)) = self.track_unwatch(target, watcher) {
-      if removed {
-        self.dispatch_remote_watch(RemoteWatcherCommand::Unwatch { target: parts, watcher });
+      if removed
+        && let Err(error) = self.dispatch_remote_watch(RemoteWatcherCommand::Unwatch { target: parts, watcher })
+      {
+        self.emit_remote_watch_dispatch_error(&error);
       }
       true
     } else {

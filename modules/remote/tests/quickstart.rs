@@ -32,6 +32,7 @@ use fraktor_remote_rs::core::{
   backpressure::FnRemotingBackpressureListener,
   flight_recorder::remoting_flight_recorder::FlightMetricKind,
   remoting_extension::{RemotingControl, RemotingControlShared, RemotingExtensionConfig},
+  transport::TransportBind,
 };
 use fraktor_utils_rs::{
   core::{
@@ -129,6 +130,10 @@ async fn quickstart_loopback_provider_flow() -> Result<()> {
 
   assert!(!handle.lock().is_running());
   handle.lock().start().map_err(|error| anyhow!("{error}"))?;
+  handle
+    .lock()
+    .bind_transport_listener_for_test(&TransportBind::new("127.0.0.1", Some(4321)))
+    .map_err(|error| anyhow!("{error}"))?;
 
   // Wait for async startup to complete
   tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
@@ -196,6 +201,10 @@ async fn remote_provider_enqueues_message() -> Result<()> {
   let config = RemotingExtensionConfig::default().with_auto_start(false);
   let (system, handle) = build_system(config);
   handle.lock().start().map_err(|error| anyhow!("{error}"))?;
+  handle
+    .lock()
+    .bind_transport_listener_for_test(&TransportBind::new("127.0.0.1", Some(25520)))
+    .map_err(|error| anyhow!("{error}"))?;
   let provider = system.extended().actor_ref_provider::<SharedProvider>().expect("provider installed");
   provider
     .inner()
@@ -222,6 +231,10 @@ async fn remote_watch_hook_handles_system_watch_messages() -> Result<()> {
   let config = RemotingExtensionConfig::default().with_auto_start(false);
   let (system, handle) = build_system(config);
   handle.lock().start().map_err(|error| anyhow!("{error}"))?;
+  handle
+    .lock()
+    .bind_transport_listener_for_test(&TransportBind::new("127.0.0.1", Some(25520)))
+    .map_err(|error| anyhow!("{error}"))?;
   type SharedProvider = RemoteWatchHookShared<StdToolbox, LoopbackActorRefProviderGeneric<StdToolbox>>;
   let provider = system.extended().actor_ref_provider::<SharedProvider>().expect("provider installed");
   let remote = provider.get_actor_ref(remote_path()).expect("remote actor ref");

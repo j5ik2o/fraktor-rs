@@ -3,13 +3,17 @@
 use alloc::{
   boxed::Box,
   string::{String, ToString},
+  sync::Arc,
   vec::Vec,
 };
 use core::time::Duration;
 
 use fraktor_actor_rs::core::event::stream::{BackpressureSignal, CorrelationId};
 
-use crate::core::backpressure::{FnRemotingBackpressureListener, RemotingBackpressureListener};
+use crate::core::{
+  RemoteInstrument,
+  backpressure::{FnRemotingBackpressureListener, RemotingBackpressureListener},
+};
 
 #[cfg(test)]
 mod tests;
@@ -24,6 +28,7 @@ pub struct RemotingExtensionConfig {
   handshake_timeout:        Duration,
   transport_scheme:         String,
   backpressure_listeners:   Vec<Box<dyn RemotingBackpressureListener>>,
+  remote_instruments:       Vec<Arc<dyn RemoteInstrument>>,
   flight_recorder_capacity: usize,
 }
 
@@ -37,6 +42,7 @@ impl Clone for RemotingExtensionConfig {
       handshake_timeout:        self.handshake_timeout,
       transport_scheme:         self.transport_scheme.clone(),
       backpressure_listeners:   listeners,
+      remote_instruments:       self.remote_instruments.clone(),
       flight_recorder_capacity: self.flight_recorder_capacity,
     }
   }
@@ -54,6 +60,7 @@ impl RemotingExtensionConfig {
       handshake_timeout:        Duration::from_secs(3),
       transport_scheme:         "fraktor.loopback".to_string(),
       backpressure_listeners:   Vec::new(),
+      remote_instruments:       Vec::new(),
       flight_recorder_capacity: 128,
     }
   }
@@ -108,6 +115,13 @@ impl RemotingExtensionConfig {
     self
   }
 
+  /// Registers a remoting instrument used by transport pipelines.
+  #[must_use]
+  pub fn with_remote_instrument(mut self, instrument: Arc<dyn RemoteInstrument>) -> Self {
+    self.remote_instruments.push(instrument);
+    self
+  }
+
   /// Overrides the flight recorder capacity.
   #[must_use]
   pub fn with_flight_recorder_capacity(mut self, capacity: usize) -> Self {
@@ -143,6 +157,12 @@ impl RemotingExtensionConfig {
   #[must_use]
   pub fn backpressure_listeners(&self) -> &[Box<dyn RemotingBackpressureListener>] {
     &self.backpressure_listeners
+  }
+
+  /// Returns the registered remoting instruments.
+  #[must_use]
+  pub fn remote_instruments(&self) -> &[Arc<dyn RemoteInstrument>] {
+    &self.remote_instruments
   }
 
   /// Returns the configured transport scheme.
