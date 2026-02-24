@@ -1,81 +1,86 @@
 #![cfg(feature = "test-support")]
 
-use fraktor_remote_rs::core::failure_detector::phi_failure_detector::{
-  PhiFailureDetector, PhiFailureDetectorConfig, PhiFailureDetectorEffect,
+use fraktor_remote_rs::core::failure_detector::{
+  DefaultFailureDetectorRegistry, FailureDetector, FailureDetectorRegistry,
+  phi_failure_detector::{PhiFailureDetector, PhiFailureDetectorConfig},
 };
 
 fn detector_with(threshold: f64, max_sample_size: usize, minimum_interval_ms: u64) -> PhiFailureDetector {
   PhiFailureDetector::new(PhiFailureDetectorConfig::new(threshold, max_sample_size, minimum_interval_ms))
 }
 
-#[test]
-fn poll_without_heartbeats_returns_no_effects() {
-  let mut detector = detector_with(1.5, 8, 1);
-  assert!(detector.poll(100).is_empty());
+fn registry_with(
+  threshold: f64,
+  max_sample_size: usize,
+  minimum_interval_ms: u64,
+) -> DefaultFailureDetectorRegistry<String> {
+  DefaultFailureDetectorRegistry::new(Box::new(move || {
+    Box::new(PhiFailureDetector::new(PhiFailureDetectorConfig::new(threshold, max_sample_size, minimum_interval_ms)))
+  }))
 }
 
 #[test]
-fn suspect_is_emitted_only_once_until_new_heartbeat_arrives() {
-  let mut detector = detector_with(1.5, 8, 1);
-  detector.record_heartbeat("node-a:4100", 0);
-  detector.record_heartbeat("node-a:4100", 10);
-
-  let first = detector.poll(40);
-  assert!(
-    matches!(first.as_slice(), [PhiFailureDetectorEffect::Suspect { authority, .. }] if authority == "node-a:4100")
-  );
-
-  let second = detector.poll(100);
-  assert!(second.is_empty(), "suspect event should not be emitted repeatedly");
+fn single_detector_is_available_without_heartbeats() {
+  let detector = detector_with(1.5, 8, 1);
+  assert!(detector.is_available(100));
+  assert!(!detector.is_monitoring());
 }
 
 #[test]
-fn reachable_is_emitted_only_for_first_recovery_heartbeat() {
+fn single_detector_becomes_unavailable() {
   let mut detector = detector_with(1.5, 8, 1);
-  detector.record_heartbeat("node-a:4200", 0);
-  detector.record_heartbeat("node-a:4200", 10);
-  let suspect = detector.poll(40);
-  assert!(matches!(suspect.as_slice(), [PhiFailureDetectorEffect::Suspect { .. }]));
+  detector.heartbeat(0);
+  detector.heartbeat(10);
+  assert!(!detector.is_available(40));
+}
 
-  let first_recovery = detector.record_heartbeat("node-a:4200", 41);
-  assert!(
-    matches!(
-      first_recovery,
-      Some(PhiFailureDetectorEffect::Reachable { authority }) if authority == "node-a:4200"
-    ),
-    "first heartbeat after suspect should emit reachable"
-  );
+#[test]
+fn single_detector_recovers_after_heartbeat() {
+  let mut detector = detector_with(1.5, 8, 1);
+  detector.heartbeat(0);
+  detector.heartbeat(10);
+  assert!(!detector.is_available(40));
+  detector.heartbeat(41);
+  assert!(detector.is_available(41));
+}
 
-  let second_recovery = detector.record_heartbeat("node-a:4200", 42);
-  assert!(second_recovery.is_none(), "steady-state heartbeats should not emit reachable");
+#[test]
+fn registry_returns_available_for_unregistered() {
+  let registry = registry_with(1.5, 8, 1);
+  assert!(registry.is_available(&String::from("node-a:4100"), 100));
+}
+
+#[test]
+fn registry_detects_unavailability() {
+  let mut registry = registry_with(1.5, 8, 1);
+  let node = String::from("node-a:4100");
+  registry.heartbeat(&node, 0);
+  registry.heartbeat(&node, 10);
+  assert!(!registry.is_available(&node, 40));
 }
 
 #[test]
 fn minimum_interval_clamps_fast_heartbeats() {
   let mut detector = detector_with(2.0, 8, 20);
-  detector.record_heartbeat("node-a:4300", 0);
-  detector.record_heartbeat("node-a:4300", 1);
-
-  assert!(detector.poll(40).is_empty(), "minimum interval should prevent early suspect");
-  let effects = detector.poll(41);
-  assert!(
-    matches!(effects.as_slice(), [PhiFailureDetectorEffect::Suspect { authority, .. }] if authority == "node-a:4300")
-  );
+  detector.heartbeat(0);
+  detector.heartbeat(1);
+  assert!(detector.is_available(40));
+  assert!(!detector.is_available(41));
 }
 
 #[test]
-fn authorities_are_tracked_independently() {
-  let mut detector = detector_with(1.5, 8, 1);
-  detector.record_heartbeat("node-a:4400", 0);
-  detector.record_heartbeat("node-a:4400", 10);
+fn registry_tracks_resources_independently() {
+  let mut registry = registry_with(1.5, 8, 1);
+  let a = String::from("node-a:4400");
+  let b = String::from("node-b:4401");
 
-  detector.record_heartbeat("node-b:4401", 0);
-  detector.record_heartbeat("node-b:4401", 10);
-  detector.record_heartbeat("node-b:4401", 38);
+  registry.heartbeat(&a, 0);
+  registry.heartbeat(&a, 10);
 
-  let effects = detector.poll(40);
-  assert_eq!(effects.len(), 1);
-  assert!(
-    matches!(effects.as_slice(), [PhiFailureDetectorEffect::Suspect { authority, .. }] if authority == "node-a:4400")
-  );
+  registry.heartbeat(&b, 0);
+  registry.heartbeat(&b, 10);
+  registry.heartbeat(&b, 38);
+
+  assert!(!registry.is_available(&a, 40));
+  assert!(registry.is_available(&b, 40));
 }

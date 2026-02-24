@@ -1,12 +1,12 @@
-provider: claude
-model: opus
+provider: codex
+model: gpt-5.3-codex
 concurrency: 4
 base_branch: main
 
 persona_providers:
   coder:
-    provider: claude
-    model: opus
+    provider: codex
+    model: gpt-5.3-codex
   planner:
     provider: codex
     model: gpt-5.3-codex
