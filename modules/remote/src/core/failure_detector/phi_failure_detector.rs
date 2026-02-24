@@ -14,6 +14,8 @@ use alloc::{
 pub use config::PhiFailureDetectorConfig;
 pub use effect::PhiFailureDetectorEffect;
 
+use super::failure_detector::FailureDetector;
+
 struct PhiEntry {
   last_heartbeat: Option<u64>,
   intervals_ms:   VecDeque<u64>,
@@ -60,6 +62,8 @@ pub struct PhiFailureDetector {
   entries: BTreeMap<String, PhiEntry>,
 }
 
+const SINGLE_RESOURCE_AUTHORITY: &str = "__single_resource__";
+
 impl PhiFailureDetector {
   /// Creates a detector with the provided configuration.
   #[must_use]
@@ -98,5 +102,19 @@ impl PhiFailureDetector {
         }
       })
       .collect()
+  }
+}
+
+impl FailureDetector for PhiFailureDetector {
+  fn is_available(&self, now_ms: u64) -> bool {
+    self.entries.get(SINGLE_RESOURCE_AUTHORITY).is_none_or(|entry| entry.phi(now_ms) < self.config.threshold())
+  }
+
+  fn is_monitoring(&self) -> bool {
+    self.entries.get(SINGLE_RESOURCE_AUTHORITY).is_some_and(|entry| entry.last_heartbeat.is_some())
+  }
+
+  fn heartbeat(&mut self, now_ms: u64) {
+    let _ = self.record_heartbeat(SINGLE_RESOURCE_AUTHORITY, now_ms);
   }
 }

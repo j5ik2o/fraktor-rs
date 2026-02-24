@@ -20,6 +20,7 @@ use fraktor_utils_rs::core::{
 
 use super::RemoteWatcherDaemon;
 use crate::core::{
+  failure_detector::FailureDetector,
   remoting_extension::{
     RemotingControl, RemotingControlHandle, RemotingControlShared, RemotingError, RemotingExtensionConfig,
   },
@@ -113,7 +114,8 @@ fn heartbeat_rsp_with_zero_uid_is_tracked_and_reaped_by_failure_detector() {
     .expect("heartbeat rsp command");
 
   daemon.handle_command(&RemoteWatcherCommand::ReapUnreachable, 4_000).expect("reap unreachable command");
-  assert!(daemon.failure_detector.poll(5_000).is_empty());
+  let detector = daemon.failure_detectors.get(authority).expect("failure detector");
+  assert!(detector.is_monitoring());
 }
 
 #[test]
@@ -184,5 +186,5 @@ fn heartbeat_probe_is_ignored_when_authority_is_not_watched() {
     )
     .expect("heartbeat command");
   daemon.handle_command(&RemoteWatcherCommand::ReapUnreachable, 4_000).expect("reap unreachable command");
-  assert!(daemon.failure_detector.poll(5_000).is_empty());
+  assert!(daemon.failure_detectors.is_empty());
 }

@@ -21,7 +21,10 @@ use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::sync_mutex_l
 use super::{command::RemoteWatcherCommand, heartbeat::Heartbeat, heartbeat_rsp::HeartbeatRsp};
 use crate::core::{
   endpoint_association::QuarantineReason,
-  failure_detector::phi_failure_detector::{PhiFailureDetector, PhiFailureDetectorConfig, PhiFailureDetectorEffect},
+  failure_detector::{
+    FailureDetector,
+    phi_failure_detector::{PhiFailureDetector, PhiFailureDetectorConfig},
+  },
   remoting_extension::{RemotingControl, RemotingControlShared, RemotingError},
 };
 
@@ -31,12 +34,13 @@ const HEARTBEAT_UNREACHABLE_REASON: &str = "heartbeat unreachable";
 pub(crate) struct RemoteWatcherDaemon<TB>
 where
   TB: RuntimeToolbox + 'static, {
-  control:          RemotingControlShared<TB>,
-  watchers:         Vec<(Pid, ActorPathParts)>,
-  authority_uids:   BTreeMap<String, u64>,
-  failure_detector: PhiFailureDetector,
+  control:                 RemotingControlShared<TB>,
+  watchers:                Vec<(Pid, ActorPathParts)>,
+  authority_uids:          BTreeMap<String, u64>,
+  failure_detectors:       BTreeMap<String, PhiFailureDetector>,
+  failure_detector_config: PhiFailureDetectorConfig,
   #[cfg(any(test, feature = "test-support"))]
-  rewatch_count:    usize,
+  rewatch_count:           usize,
 }
 
 impl<TB> RemoteWatcherDaemon<TB>
@@ -48,7 +52,8 @@ where
       control,
       watchers: Vec::new(),
       authority_uids: BTreeMap::new(),
-      failure_detector: PhiFailureDetector::new(PhiFailureDetectorConfig::default()),
+      failure_detectors: BTreeMap::new(),
+      failure_detector_config: PhiFailureDetectorConfig::default(),
       #[cfg(any(test, feature = "test-support"))]
       rewatch_count: 0,
     }
@@ -92,7 +97,7 @@ where
     }
     self.control.lock().associate(target)?;
     if let Some(authority) = Self::authority_from_parts(target) {
-      let _ = self.failure_detector.record_heartbeat(&authority, now_millis);
+      self.failure_detector_for(&authority).heartbeat(now_millis);
     }
     Ok(())
   }
@@ -105,12 +110,13 @@ where
       && !self.is_watching_authority(&authority)
     {
       self.authority_uids.remove(&authority);
+      self.failure_detectors.remove(&authority);
     }
   }
 
   fn handle_heartbeat_probe(&mut self, heartbeat: &Heartbeat, now_millis: u64) {
     if self.is_watching_authority(heartbeat.authority()) {
-      let _ = self.failure_detector.record_heartbeat(heartbeat.authority(), now_millis);
+      self.failure_detector_for(heartbeat.authority()).heartbeat(now_millis);
     }
   }
 
@@ -121,17 +127,14 @@ where
         self.rewatch_authority(authority)?;
       }
       self.authority_uids.insert(authority.to_string(), heartbeat_rsp.uid);
-      let _ = self.failure_detector.record_heartbeat(authority, now_millis);
+      self.failure_detector_for(authority).heartbeat(now_millis);
     }
     Ok(())
   }
 
   fn handle_reap_unreachable(&mut self, now_millis: u64) -> Result<(), RemotingError> {
-    let effects = self.failure_detector.poll(now_millis);
-    for effect in effects {
-      if let PhiFailureDetectorEffect::Suspect { authority, .. } = effect
-        && self.is_watching_authority(&authority)
-      {
+    for authority in self.watched_authorities() {
+      if !self.failure_detector_for(&authority).is_available(now_millis) {
         let reason = QuarantineReason::new(HEARTBEAT_UNREACHABLE_REASON);
         self.control.lock().quarantine(&authority, &reason)?;
       }
@@ -177,6 +180,13 @@ where
 
   fn is_watching_authority(&self, authority: &str) -> bool {
     self.watchers.iter().any(|(_, target)| Self::authority_from_parts(target).as_deref() == Some(authority))
+  }
+
+  fn failure_detector_for(&mut self, authority: &str) -> &mut PhiFailureDetector {
+    self
+      .failure_detectors
+      .entry(authority.to_string())
+      .or_insert_with(|| PhiFailureDetector::new(self.failure_detector_config.clone()))
   }
 }
 
