@@ -455,3 +455,119 @@ fn cyclic_watchers_do_not_deadlock() {
   let snapshot_b = log_b.lock().clone();
   assert!(observed, "log_b={:?}", snapshot_b);
 }
+
+// --- watch_with tests ---
+
+struct WatchWithNotification {
+  terminated_pid: Pid,
+}
+
+struct WatchWithHarness {
+  custom_log:     ArcShared<NoStdMutex<Vec<Pid>>>,
+  terminated_log: ArcShared<NoStdMutex<Vec<Pid>>>,
+  child_slot:     ArcShared<NoStdMutex<Option<ChildRef>>>,
+}
+
+impl WatchWithHarness {
+  fn new(
+    custom_log: ArcShared<NoStdMutex<Vec<Pid>>>,
+    terminated_log: ArcShared<NoStdMutex<Vec<Pid>>>,
+    child_slot: ArcShared<NoStdMutex<Option<ChildRef>>>,
+  ) -> Self {
+    Self { custom_log, terminated_log, child_slot }
+  }
+}
+
+impl Actor for WatchWithHarness {
+  fn receive(
+    &mut self,
+    ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
+    message: AnyMessageViewGeneric<'_, NoStdToolbox>,
+  ) -> Result<(), ActorError> {
+    if message.downcast_ref::<SpawnChild>().is_some() {
+      if self.child_slot.lock().is_some() {
+        return Ok(());
+      }
+      let props = Props::from_fn(|| PassiveChild);
+      let child =
+        ctx.spawn_child(&props).map_err(|error| ActorError::recoverable(format!("spawn failed: {:?}", error)))?;
+      let custom_msg = AnyMessage::new(WatchWithNotification { terminated_pid: child.pid() });
+      ctx.watch_with(child.actor_ref(), custom_msg).map_err(|_| ActorError::recoverable("watch_with failed"))?;
+      self.child_slot.lock().replace(child);
+      return Ok(());
+    }
+    if message.downcast_ref::<StopChild>().is_some() {
+      if let Some(child) = self.child_slot.lock().as_ref() {
+        let _ = child.stop();
+      }
+      return Ok(());
+    }
+    if message.downcast_ref::<UnwatchChild>().is_some() {
+      if let Some(child) = self.child_slot.lock().as_ref() {
+        ctx.unwatch(child.actor_ref()).map_err(|_| ActorError::recoverable("unwatch failed"))?;
+      }
+      return Ok(());
+    }
+    if let Some(notification) = message.downcast_ref::<WatchWithNotification>() {
+      self.custom_log.lock().push(notification.terminated_pid);
+      return Ok(());
+    }
+    Ok(())
+  }
+
+  fn on_terminated(&mut self, _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>, pid: Pid) -> Result<(), ActorError> {
+    self.terminated_log.lock().push(pid);
+    Ok(())
+  }
+}
+
+#[test]
+fn watch_with_delivers_custom_message_instead_of_on_terminated() {
+  let custom_log = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let terminated_log = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let child_slot = ArcShared::new(NoStdMutex::new(None));
+  let props = Props::from_fn({
+    let custom_log = custom_log.clone();
+    let terminated_log = terminated_log.clone();
+    let child_slot = child_slot.clone();
+    move || WatchWithHarness::new(custom_log.clone(), terminated_log.clone(), child_slot.clone())
+  });
+  let tick_driver = fraktor_actor_rs::core::scheduler::tick_driver::TickDriverConfig::manual(
+    fraktor_actor_rs::core::scheduler::tick_driver::ManualTestDriver::new(),
+  );
+  let system = ActorSystem::new(&props, tick_driver).expect("system");
+
+  system.user_guardian_ref().tell(AnyMessage::new(SpawnChild)).expect("spawn child");
+  system.user_guardian_ref().tell(AnyMessage::new(StopChild)).expect("stop child");
+
+  let child_pid = child_slot.lock().as_ref().map(|c| c.pid()).unwrap();
+  let observed = wait_until(200, &|| custom_log.lock().len() == 1);
+  assert!(observed, "custom message should be delivered via watch_with");
+  assert_eq!(custom_log.lock().clone(), vec![child_pid]);
+  assert!(terminated_log.lock().is_empty(), "on_terminated should not be called when watch_with is active");
+}
+
+#[test]
+fn watch_with_unwatch_clears_custom_message_registration() {
+  let custom_log = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let terminated_log = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let child_slot = ArcShared::new(NoStdMutex::new(None));
+  let props = Props::from_fn({
+    let custom_log = custom_log.clone();
+    let terminated_log = terminated_log.clone();
+    let child_slot = child_slot.clone();
+    move || WatchWithHarness::new(custom_log.clone(), terminated_log.clone(), child_slot.clone())
+  });
+  let tick_driver = fraktor_actor_rs::core::scheduler::tick_driver::TickDriverConfig::manual(
+    fraktor_actor_rs::core::scheduler::tick_driver::ManualTestDriver::new(),
+  );
+  let system = ActorSystem::new(&props, tick_driver).expect("system");
+
+  system.user_guardian_ref().tell(AnyMessage::new(SpawnChild)).expect("spawn child");
+  system.user_guardian_ref().tell(AnyMessage::new(UnwatchChild)).expect("unwatch");
+  system.user_guardian_ref().tell(AnyMessage::new(StopChild)).expect("stop child");
+
+  thread::sleep(Duration::from_millis(50));
+  assert!(custom_log.lock().is_empty(), "no custom message after unwatch");
+  assert!(terminated_log.lock().is_empty(), "no on_terminated after unwatch");
+}

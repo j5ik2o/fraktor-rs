@@ -162,6 +162,31 @@ pub trait Actor<TB: RuntimeToolbox = NoStdToolbox>: Send {
   fn supervisor_strategy(&mut self, _ctx: &mut ActorContextGeneric<'_, TB>) -> SupervisorStrategy {
     SupervisorStrategy::default()
   }
+
+  /// Called before the actor is restarted by its supervisor.
+  ///
+  /// The default implementation delegates to [`post_stop`](Actor::post_stop).
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when pre-restart cleanup fails.
+  fn pre_restart(&mut self, ctx: &mut ActorContextGeneric<'_, TB>) -> Result<(), ActorError> {
+    self.post_stop(ctx)
+  }
+
+  /// Called when a supervised child actor fails.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the notification cannot be processed.
+  fn on_child_failed(
+    &mut self,
+    _ctx: &mut ActorContextGeneric<'_, TB>,
+    _child: Pid,
+    _error: &ActorError,
+  ) -> Result<(), ActorError> {
+    Ok(())
+  }
 }
 
 impl<T, TB> Actor<TB> for Box<T>
@@ -199,5 +224,18 @@ where
 
   fn supervisor_strategy(&mut self, ctx: &mut ActorContextGeneric<'_, TB>) -> SupervisorStrategy {
     (**self).supervisor_strategy(ctx)
+  }
+
+  fn pre_restart(&mut self, ctx: &mut ActorContextGeneric<'_, TB>) -> Result<(), ActorError> {
+    (**self).pre_restart(ctx)
+  }
+
+  fn on_child_failed(
+    &mut self,
+    ctx: &mut ActorContextGeneric<'_, TB>,
+    child: Pid,
+    error: &ActorError,
+  ) -> Result<(), ActorError> {
+    (**self).on_child_failed(ctx, child, error)
   }
 }

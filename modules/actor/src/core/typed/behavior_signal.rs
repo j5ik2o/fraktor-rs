@@ -12,5 +12,14 @@ pub enum BehaviorSignal {
   /// Indicates that a watched actor terminated with the provided pid.
   Terminated(Pid),
   /// Indicates that message adaptation failed before reaching the behavior.
-  AdapterFailed(AdapterError),
+  MessageAdaptionFailure(AdapterError),
+  /// Indicates that a child actor failed with the provided pid and error.
+  ChildFailed {
+    /// Pid of the child actor that failed.
+    pid:   Pid,
+    /// Error that caused the child to fail.
+    error: crate::core::error::ActorError,
+  },
+  /// Indicates that the actor is about to be restarted by its supervisor.
+  PreRestart,
 }

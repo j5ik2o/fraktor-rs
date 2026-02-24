@@ -231,6 +231,9 @@ impl<TB: RuntimeToolbox + 'static> ActorContextGeneric<'_, TB> {
     }
 
     let state = self.system.state();
+    if let Some(cell) = state.cell(&self.pid) {
+      cell.remove_watch_with(target.pid());
+    }
     match state.send_system_message(target.pid(), SystemMessage::Unwatch(self.pid)) {
       | Ok(()) => Ok(()),
       | Err(SendError::Closed(_)) => Ok(()),
@@ -251,6 +254,26 @@ impl<TB: RuntimeToolbox + 'static> ActorContextGeneric<'_, TB> {
       return Err(SpawnError::invalid_props("failed to install death watch"));
     }
     Ok(child)
+  }
+
+  /// Watches the specified target and delivers a custom message on termination.
+  ///
+  /// When the target terminates, the provided `message` is delivered as a user message
+  /// instead of a `Terminated` signal.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the runtime cannot enqueue the watch signal.
+  pub fn watch_with(&self, target: &ActorRefGeneric<TB>, message: AnyMessageGeneric<TB>) -> Result<(), SendError<TB>> {
+    if target.pid() == self.pid {
+      return Ok(());
+    }
+    let state = self.system.state();
+    let cell = state.cell(&self.pid);
+    if let Some(cell) = cell {
+      cell.register_watch_with(target.pid(), message);
+    }
+    self.watch(target)
   }
 
   /// Emits a log event associated with the running actor.

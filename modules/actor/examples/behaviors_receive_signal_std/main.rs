@@ -30,7 +30,11 @@ fn guardian_behavior() -> Behavior<GuardianCommand> {
       | BehaviorSignal::Started => println!("guardian: Started signal"),
       | BehaviorSignal::Stopped => println!("guardian: Stopped signal"),
       | BehaviorSignal::Terminated(pid) => println!("guardian: Terminated({pid:?})"),
-      | BehaviorSignal::AdapterFailed(reason) => println!("guardian: AdapterFailed({reason:?})"),
+      | BehaviorSignal::MessageAdaptionFailure(reason) => {
+        println!("guardian: MessageAdaptionFailure({reason:?})")
+      },
+      | BehaviorSignal::ChildFailed { pid, error } => println!("guardian: ChildFailed({pid:?}, {error:?})"),
+      | BehaviorSignal::PreRestart => println!("guardian: PreRestart signal"),
     }
     Ok(Behaviors::same())
   })

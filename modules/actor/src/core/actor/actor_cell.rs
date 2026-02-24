@@ -49,6 +49,7 @@ struct ActorCellState<TB: RuntimeToolbox + 'static> {
   children:               Vec<Pid>,
   child_stats:            Vec<(Pid, RestartStatistics)>,
   watchers:               Vec<Pid>,
+  watch_with_messages:    Vec<(Pid, AnyMessageGeneric<TB>)>,
   stashed_messages:       VecDeque<AnyMessageGeneric<TB>>,
   pipe_tasks:             Vec<ContextPipeTask<TB>>,
   adapter_handles:        Vec<AdapterRefHandle<TB>>,
@@ -62,6 +63,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellState<TB> {
       children:               Vec::new(),
       child_stats:            Vec::new(),
       watchers:               Vec::new(),
+      watch_with_messages:    Vec::new(),
       stashed_messages:       VecDeque::new(),
       pipe_tasks:             Vec::new(),
       adapter_handles:        Vec::new(),
@@ -455,11 +457,44 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
   }
 
   pub(crate) fn handle_terminated(&self, terminated_pid: Pid) -> Result<(), ActorError> {
-    let system = ActorSystemGeneric::from_state(self.system());
-    let mut ctx = ActorContextGeneric::new(&system, self.pid);
-    let result = self.actor.with_write(|actor| actor.on_terminated(&mut ctx, terminated_pid));
-    ctx.clear_sender();
-    result
+    let custom_message = self.take_watch_with_message(terminated_pid);
+    if let Some(message) = custom_message {
+      match self.actor_ref().tell(message) {
+        | Ok(()) => Ok(()),
+        | Err(error) => {
+          self.system().record_send_error(Some(self.pid), &error);
+          Err(ActorError::from_send_error(&error))
+        },
+      }
+    } else {
+      let system = ActorSystemGeneric::from_state(self.system());
+      let mut ctx = ActorContextGeneric::new(&system, self.pid);
+      let result = self.actor.with_write(|actor| actor.on_terminated(&mut ctx, terminated_pid));
+      ctx.clear_sender();
+      result
+    }
+  }
+
+  /// Registers a custom message to deliver when the watched target terminates.
+  pub(crate) fn register_watch_with(&self, target: Pid, message: AnyMessageGeneric<TB>) {
+    let mut state = self.state.lock();
+    state.watch_with_messages.retain(|(pid, _)| *pid != target);
+    state.watch_with_messages.push((target, message));
+  }
+
+  /// Removes any custom watch-with message for the given target.
+  pub(crate) fn remove_watch_with(&self, target: Pid) {
+    self.state.lock().watch_with_messages.retain(|(pid, _)| *pid != target);
+  }
+
+  fn take_watch_with_message(&self, target: Pid) -> Option<AnyMessageGeneric<TB>> {
+    let mut state = self.state.lock();
+    if let Some(index) = state.watch_with_messages.iter().position(|(pid, _)| *pid == target) {
+      let (_, message) = state.watch_with_messages.swap_remove(index);
+      Some(message)
+    } else {
+      None
+    }
   }
 
   fn handle_create(&self) -> Result<(), ActorError> {
@@ -474,7 +509,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     {
       let system = ActorSystemGeneric::from_state(self.system());
       let mut ctx = ActorContextGeneric::new(&system, self.pid);
-      self.actor.with_write(|actor| actor.post_stop(&mut ctx))?;
+      self.actor.with_write(|actor| actor.pre_restart(&mut ctx))?;
       ctx.clear_sender();
     }
 
@@ -549,6 +584,17 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     let now = self.system().monotonic_now();
     let payload_ref = &payload;
     let (directive, affected) = self.handle_child_failure(payload.child(), &actor_error, now);
+
+    {
+      let system = ActorSystemGeneric::from_state(self.system());
+      let mut ctx = ActorContextGeneric::new(&system, self.pid);
+      if let Err(ref error) =
+        self.actor.with_write(|actor| actor.on_child_failed(&mut ctx, payload.child(), &actor_error))
+      {
+        self.report_failure(error, None);
+      }
+      ctx.clear_sender();
+    }
 
     match directive {
       | SupervisorDirective::Restart => {
