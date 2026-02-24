@@ -33,7 +33,10 @@ use fraktor_cluster_rs::core::{
 };
 use fraktor_remote_rs::core::{
   BlockListProvider,
-  failure_detector::phi_failure_detector::{PhiFailureDetector, PhiFailureDetectorConfig},
+  failure_detector::{
+    DefaultFailureDetectorRegistry,
+    phi_failure_detector::{PhiFailureDetector, PhiFailureDetectorConfig},
+  },
 };
 use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::ArcShared, time::TimerInstant};
 
@@ -97,8 +100,11 @@ impl DemoNode {
     event_stream: EventStreamSharedGeneric<NoStdToolbox>,
   ) -> Self {
     let table = MembershipTable::new(3);
-    let detector = PhiFailureDetector::new(PhiFailureDetectorConfig::new(config.phi_threshold, 10, 1));
-    let coordinator = MembershipCoordinatorGeneric::<NoStdToolbox>::new(config, table, detector);
+    let threshold = config.phi_threshold;
+    let registry = DefaultFailureDetectorRegistry::new(Box::new(move || {
+      Box::new(PhiFailureDetector::new(PhiFailureDetectorConfig::new(threshold, 10, 1)))
+    }));
+    let coordinator = MembershipCoordinatorGeneric::<NoStdToolbox>::new(config, table, registry);
     Self { name, authority: authority.to_string(), coordinator, event_stream }
   }
 
