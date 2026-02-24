@@ -21,39 +21,25 @@ use crate::core::{
   endpoint_reader::EndpointReaderGeneric,
   endpoint_writer::{EndpointWriterGeneric, EndpointWriterSharedGeneric},
   remoting_extension::RemotingExtensionGeneric,
-  transport::TokioTransportConfig,
 };
 
 /// Installer for Tokio TCP actor-ref provider.
 pub struct TokioActorRefProviderInstaller<TB: RuntimeToolbox + 'static> {
-  transport_config: TokioTransportConfig,
-  enable_loopback:  bool,
-  _marker:          core::marker::PhantomData<TB>,
+  enable_loopback: bool,
+  _marker:         core::marker::PhantomData<TB>,
 }
 
 impl<TB: RuntimeToolbox + 'static> TokioActorRefProviderInstaller<TB> {
-  /// Creates a new Tokio actor-ref provider installer.
+  /// Creates a Tokio actor-ref provider installer with loopback routing enabled.
   #[must_use]
-  pub fn new(transport_config: TokioTransportConfig, enable_loopback: bool) -> Self {
-    Self { transport_config, enable_loopback, _marker: core::marker::PhantomData }
-  }
-
-  /// Creates a Tokio TCP transport installer (loopback routing disabled).
-  #[must_use]
-  pub fn from_config(transport_config: TokioTransportConfig) -> Self {
-    Self::new(transport_config, false)
-  }
-
-  /// Creates a Tokio transport installer with loopback routing enabled.
-  #[must_use]
-  pub fn from_config_with_loopback(transport_config: TokioTransportConfig) -> Self {
-    Self::new(transport_config, true)
+  pub fn loopback() -> Self {
+    Self { enable_loopback: true, _marker: core::marker::PhantomData }
   }
 }
 
 impl<TB: RuntimeToolbox + 'static> Default for TokioActorRefProviderInstaller<TB> {
   fn default() -> Self {
-    Self::from_config(TokioTransportConfig::default())
+    Self { enable_loopback: false, _marker: core::marker::PhantomData }
   }
 }
 
@@ -76,9 +62,8 @@ impl<TB: RuntimeToolbox + 'static> ActorRefProviderInstaller<TB> for TokioActorR
 
     let control = extension.handle();
     control.lock().register_endpoint_io(writer.clone(), reader.clone());
-    let provider =
-      TokioActorRefProviderGeneric::from_components(system.clone(), writer, control, self.transport_config.clone())
-        .map_err(|error| ActorSystemBuildError::Configuration(format!("{error}")))?;
+    let provider = TokioActorRefProviderGeneric::from_components(system.clone(), writer, control)
+      .map_err(|error| ActorSystemBuildError::Configuration(format!("{error}")))?;
     let shared = RemoteWatchHookShared::new(provider, &[ActorPathScheme::FraktorTcp]);
     let shared_provider = ActorRefProviderSharedGeneric::new(shared.clone());
     extended.register_actor_ref_provider(&shared_provider)?;

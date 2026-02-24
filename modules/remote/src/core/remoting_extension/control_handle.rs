@@ -1,4 +1,9 @@
 //! Concrete implementation of [`RemotingControl`] backed by the actor system.
+#[cfg(test)]
+mod tests;
+
+#[cfg(feature = "tokio-transport")]
+use alloc::sync::Arc;
 use alloc::{
   boxed::Box,
   format,
@@ -9,11 +14,15 @@ use core::sync::atomic::{AtomicU64, Ordering};
 #[cfg(feature = "tokio-transport")]
 use core::time::Duration;
 
+#[cfg(feature = "tokio-transport")]
+use fraktor_actor_rs::core::messaging::AnyMessageGeneric;
 use fraktor_actor_rs::core::{
-  actor::actor_path::ActorPathParts,
+  actor::{actor_path::ActorPathParts, actor_ref::ActorRefGeneric},
   event::stream::{BackpressureSignal, CorrelationId, RemotingLifecycleEvent},
   system::{ActorSystemGeneric, ActorSystemWeakGeneric},
 };
+#[cfg(any(feature = "tokio-transport", test, feature = "test-support"))]
+use fraktor_utils_rs::core::sync::SharedAccess;
 use fraktor_utils_rs::core::{
   runtime_toolbox::{RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
@@ -23,6 +32,12 @@ use super::{
   config::RemotingExtensionConfig, control::RemotingControl, control_backpressure_hook::ControlBackpressureHook,
   error::RemotingError, lifecycle_state::RemotingLifecycleState,
 };
+#[cfg(feature = "tokio-transport")]
+use crate::core::RemoteInstrument;
+#[cfg(feature = "tokio-transport")]
+use crate::core::transport::TransportEndpoint;
+#[cfg(feature = "tokio-transport")]
+use crate::core::watcher::{Heartbeat, RemoteWatcherCommand};
 use crate::core::{
   actor_ref_provider::unregister_endpoint,
   backpressure::{RemotingBackpressureListener, RemotingBackpressureListenerShared},
@@ -81,7 +96,10 @@ where
       correlation_seq: AtomicU64::new(1),
       writer: <TB::MutexFamily as SyncMutexFamily>::create(None),
       reader: <TB::MutexFamily as SyncMutexFamily>::create(None),
+      watcher_daemon: <TB::MutexFamily as SyncMutexFamily>::create(None),
       transport_ref: <TB::MutexFamily as SyncMutexFamily>::create(None),
+      #[cfg(feature = "tokio-transport")]
+      remote_instruments: config.remote_instruments().to_vec(),
       #[cfg(feature = "tokio-transport")]
       endpoint_bridge: <TB::MutexFamily as SyncMutexFamily>::create(None),
     };
@@ -124,7 +142,7 @@ where
   /// Registers a pre-wrapped shared transport instance.
   pub(crate) fn register_remote_transport_shared(&self, transport: RemoteTransportShared<TB>) {
     *self.inner.transport_ref.lock() = Some(transport);
-    let _ = self.inner.try_bootstrap_runtime();
+    let _ = self.inner.try_bootstrap_runtime(self.clone());
   }
 
   /// Registers endpoint IO components required for transport bridging.
@@ -135,7 +153,25 @@ where
   ) {
     *self.inner.writer.lock() = Some(writer);
     *self.inner.reader.lock() = Some(reader);
-    let _ = self.inner.try_bootstrap_runtime();
+    let _ = self.inner.try_bootstrap_runtime(self.clone());
+  }
+
+  /// Registers the remote watcher daemon actor.
+  pub(crate) fn register_remote_watcher_daemon(&self, daemon: ActorRefGeneric<TB>) {
+    *self.inner.watcher_daemon.lock() = Some(daemon);
+  }
+
+  /// Dispatches a command to the registered remote watcher daemon.
+  #[cfg(feature = "tokio-transport")]
+  pub(crate) fn dispatch_remote_watcher_command(&self, command: RemoteWatcherCommand) -> Result<(), RemotingError> {
+    let daemon = self.inner.watcher_daemon.lock().clone();
+    if let Some(daemon) = daemon {
+      daemon
+        .tell(AnyMessageGeneric::new(command))
+        .map(|_| ())
+        .map_err(|error| RemotingError::TransportUnavailable(format!("{error:?}")))?;
+    }
+    Ok(())
   }
 
   fn register_listener_dyn(&self, listener: RemotingBackpressureListenerShared<TB>) {
@@ -181,6 +217,21 @@ where
     self.notify_backpressure(authority, signal, None);
   }
 
+  /// Binds a transport listener for tests using the currently registered transport.
+  #[cfg(any(test, feature = "test-support"))]
+  pub fn bind_transport_listener_for_test(
+    &self,
+    bind: &crate::core::transport::TransportBind,
+  ) -> Result<(), RemotingError> {
+    let transport = self
+      .inner
+      .transport_ref
+      .lock()
+      .clone()
+      .ok_or_else(|| RemotingError::TransportUnavailable("remote transport not registered".to_string()))?;
+    transport.with_write(|t| t.spawn_listener(bind)).map(|_| ()).map_err(RemotingError::from)
+  }
+
   /// Returns the most recent flight recorder snapshot.
   #[must_use]
   pub fn flight_recorder_snapshot(&self) -> RemotingFlightRecorderSnapshot {
@@ -199,12 +250,21 @@ where
     }
     self.inner.event_publisher.publish_lifecycle(RemotingLifecycleEvent::Starting);
     self.inner.event_publisher.publish_lifecycle(RemotingLifecycleEvent::Started);
-    self.inner.try_bootstrap_runtime()?;
+    self.inner.try_bootstrap_runtime(self.clone())?;
     Ok(())
   }
 
-  fn associate(&mut self, _address: &ActorPathParts) -> Result<(), RemotingError> {
-    self.ensure_can_run()
+  fn associate(&mut self, address: &ActorPathParts) -> Result<(), RemotingError> {
+    self.ensure_can_run()?;
+    #[cfg(feature = "tokio-transport")]
+    if let Some(authority) = address.authority_endpoint() {
+      self.inner.send_heartbeat_probe(&authority)?;
+    }
+    #[cfg(not(feature = "tokio-transport"))]
+    {
+      let _ = address;
+    }
+    Ok(())
   }
 
   fn quarantine(&mut self, _authority: &str, _reason: &QuarantineReason) -> Result<(), RemotingError> {
@@ -235,22 +295,25 @@ where
 struct RemotingControlInner<TB>
 where
   TB: RuntimeToolbox + 'static, {
-  system:            ActorSystemWeakGeneric<TB>,
-  event_publisher:   EventPublisherGeneric<TB>,
-  canonical_host:    String,
-  canonical_port:    Option<u16>,
+  system:             ActorSystemWeakGeneric<TB>,
+  event_publisher:    EventPublisherGeneric<TB>,
+  canonical_host:     String,
+  canonical_port:     Option<u16>,
   #[cfg(feature = "tokio-transport")]
-  handshake_timeout: Duration,
-  state:             ToolboxMutex<RemotingLifecycleState, TB>,
-  listeners:         ToolboxMutex<Vec<RemotingBackpressureListenerShared<TB>>, TB>,
-  snapshots:         ToolboxMutex<Vec<RemoteAuthoritySnapshot>, TB>,
-  recorder:          RemotingFlightRecorder,
-  correlation_seq:   AtomicU64,
-  writer:            ToolboxMutex<Option<EndpointWriterSharedGeneric<TB>>, TB>,
-  reader:            ToolboxMutex<Option<ArcShared<EndpointReaderGeneric<TB>>>, TB>,
-  transport_ref:     ToolboxMutex<Option<RemoteTransportShared<TB>>, TB>,
+  handshake_timeout:  Duration,
+  state:              ToolboxMutex<RemotingLifecycleState, TB>,
+  listeners:          ToolboxMutex<Vec<RemotingBackpressureListenerShared<TB>>, TB>,
+  snapshots:          ToolboxMutex<Vec<RemoteAuthoritySnapshot>, TB>,
+  recorder:           RemotingFlightRecorder,
+  correlation_seq:    AtomicU64,
+  writer:             ToolboxMutex<Option<EndpointWriterSharedGeneric<TB>>, TB>,
+  reader:             ToolboxMutex<Option<ArcShared<EndpointReaderGeneric<TB>>>, TB>,
+  watcher_daemon:     ToolboxMutex<Option<ActorRefGeneric<TB>>, TB>,
+  transport_ref:      ToolboxMutex<Option<RemoteTransportShared<TB>>, TB>,
   #[cfg(feature = "tokio-transport")]
-  endpoint_bridge:   ToolboxMutex<Option<crate::std::endpoint_transport_bridge::EndpointTransportBridgeHandle>, TB>,
+  remote_instruments: Vec<Arc<dyn RemoteInstrument>>,
+  #[cfg(feature = "tokio-transport")]
+  endpoint_bridge:    ToolboxMutex<Option<crate::std::endpoint_transport_bridge::EndpointTransportBridgeHandle>, TB>,
 }
 
 impl<TB> RemotingControlInner<TB>
@@ -270,12 +333,26 @@ where
     CorrelationId::from_u128(seq)
   }
 
+  #[cfg(feature = "tokio-transport")]
+  fn send_heartbeat_probe(&self, authority: &str) -> Result<(), RemotingError> {
+    let transport = self
+      .transport_ref
+      .lock()
+      .clone()
+      .ok_or_else(|| RemotingError::TransportUnavailable("remote transport not registered".to_string()))?;
+    let endpoint = TransportEndpoint::new(authority.to_string());
+    let channel = transport.with_write(|t| t.open_channel(&endpoint))?;
+    let payload = Heartbeat::new(authority).encode_frame();
+    transport.with_write(|t| t.send(&channel, &payload, CorrelationId::nil()))?;
+    Ok(())
+  }
+
   fn record_backpressure(&self, authority: &str, signal: BackpressureSignal, correlation_id: CorrelationId) {
     let millis = self.system.upgrade().map(|s| s.state().monotonic_now().as_millis() as u64).unwrap_or(0);
     self.recorder.record_backpressure(authority.to_string(), signal, correlation_id, millis);
   }
 
-  fn try_bootstrap_runtime(&self) -> Result<(), RemotingError> {
+  fn try_bootstrap_runtime(&self, control: RemotingControlHandle<TB>) -> Result<(), RemotingError> {
     #[cfg(feature = "tokio-transport")]
     {
       if !self.state.lock().is_running() {
@@ -309,6 +386,7 @@ where
       let system_name = system.state().system_name();
       let config = crate::std::endpoint_transport_bridge::EndpointTransportBridgeConfig {
         system: system.downgrade(),
+        control,
         writer,
         reader,
         transport,
@@ -316,12 +394,17 @@ where
         canonical_host: self.canonical_host.clone(),
         canonical_port: port,
         system_name,
+        remote_instruments: self.remote_instruments.clone(),
         #[cfg(feature = "tokio-transport")]
         handshake_timeout: self.handshake_timeout,
       };
       let handle = crate::std::endpoint_transport_bridge::EndpointTransportBridge::spawn(config)
         .map_err(|error| RemotingError::TransportUnavailable(format!("{error:?}")))?;
       *bridge_guard = Some(handle);
+    }
+    #[cfg(not(feature = "tokio-transport"))]
+    {
+      let _ = control;
     }
     Ok(())
   }

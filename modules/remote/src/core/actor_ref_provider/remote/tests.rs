@@ -1,6 +1,6 @@
 #![cfg(any(test, feature = "test-support"))]
 
-use alloc::string::String;
+use alloc::{boxed::Box, string::String};
 use core::time::Duration;
 
 use fraktor_actor_rs::core::{
@@ -27,6 +27,7 @@ use crate::core::{
   actor_ref_provider::remote::RemoteActorRefProvider,
   endpoint_writer::{EndpointWriter, EndpointWriterShared},
   remoting_extension::{RemotingControl, RemotingControlHandle, RemotingControlShared, RemotingExtensionConfig},
+  transport::{LoopbackTransport, RemoteTransport, RemoteTransportShared, TransportBind},
 };
 
 struct NoopActor;
@@ -76,6 +77,10 @@ fn provider(system: &ActorSystemGeneric<NoStdToolbox>) -> RemoteActorRefProvider
   let control_handle = RemotingControlHandle::new(system.clone(), RemotingExtensionConfig::default());
   let control: RemotingControlShared<NoStdToolbox> =
     ArcShared::new(<<NoStdToolbox as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(control_handle));
+  let mut transport = LoopbackTransport::<NoStdToolbox>::default();
+  transport.spawn_listener(&TransportBind::new("127.0.0.1", Some(4100))).expect("bind 127.0.0.1:4100");
+  transport.spawn_listener(&TransportBind::new("10.0.0.1", Some(9000))).expect("bind 10.0.0.1:9000");
+  control.lock().register_remote_transport_shared(RemoteTransportShared::new(Box::new(transport)));
   control.lock().start().expect("control start");
   RemoteActorRefProvider::from_components(system.clone(), writer, control).expect("provider builds")
 }

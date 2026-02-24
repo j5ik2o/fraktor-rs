@@ -29,6 +29,7 @@ use fraktor_remote_rs::core::{
     LoopbackActorRefProviderGeneric, LoopbackActorRefProviderInstaller, default_loopback_setup,
   },
   remoting_extension::{RemotingControl, RemotingControlShared, RemotingExtensionConfig},
+  transport::TransportBind,
 };
 use fraktor_utils_rs::{core::sync::SharedAccess, std::runtime_toolbox::StdToolbox};
 
@@ -80,6 +81,14 @@ async fn loopback_provider_routes_messages_for_multiple_remote_authorities() -> 
   let (system, handle) = build_system(config);
 
   handle.lock().start().map_err(|error| anyhow!("{error}"))?;
+  handle
+    .lock()
+    .bind_transport_listener_for_test(&TransportBind::new("127.0.0.1", Some(25520)))
+    .map_err(|error| anyhow!("{error}"))?;
+  handle
+    .lock()
+    .bind_transport_listener_for_test(&TransportBind::new("127.0.0.1", Some(25521)))
+    .map_err(|error| anyhow!("{error}"))?;
   tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
   let provider = system.extended().actor_ref_provider::<SharedProvider>().expect("provider installed");
