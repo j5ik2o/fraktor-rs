@@ -20,14 +20,14 @@ tasks:
     auto_pr: true
     draft_pr: true
     name: remote-events-and-control
-    status: pending
+    status: running
     slug: 20260224-100006-rmt-evt
     worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260224T0326-20260224-100006-rmt-evt
     task_dir: .takt/tasks/20260224-100006-rmt-evt
     created_at: 2026-02-24T10:00:06.000Z
-    started_at: null
+    started_at: 2026-02-24T04:23:00.680Z
     completed_at: null
-    owner_pid: null
+    owner_pid: 3972
   - worktree: true
     piece: pekko-porting
     auto_pr: true
