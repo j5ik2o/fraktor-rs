@@ -819,13 +819,17 @@ fn source_async_boundary_keeps_single_path_behavior() {
 
 #[test]
 fn source_throttle_keeps_single_path_behavior() {
-  let values = Source::single(5_u32).throttle(2).expect("throttle").collect_values().expect("collect_values");
+  let values = Source::single(5_u32)
+    .throttle(2, crate::core::ThrottleMode::Shaping)
+    .expect("throttle")
+    .collect_values()
+    .expect("collect_values");
   assert_eq!(values, vec![5_u32]);
 }
 
 #[test]
 fn source_throttle_rejects_zero_capacity() {
-  let result = Source::single(1_u32).throttle(0);
+  let result = Source::single(1_u32).throttle(0, crate::core::ThrottleMode::Shaping);
   assert!(matches!(
     result,
     Err(StreamDslError::InvalidArgument { name: "capacity", value: 0, reason: "must be greater than zero" })
@@ -1442,4 +1446,63 @@ fn source_lazy_source_persists_error_on_collect_values_failure() {
   let restart = logic.on_restart();
   // Then: エラー状態が永続化されリスタートも失敗する
   assert!(matches!(restart, Err(StreamError::Failed)));
+}
+
+#[test]
+fn source_distinct_removes_duplicate_elements() {
+  let values = Source::from_array([3_u32, 1, 2, 1, 3, 2, 4]).distinct().collect_values().expect("collect_values");
+  assert_eq!(values, vec![3_u32, 1, 2, 4]);
+}
+
+#[test]
+fn source_distinct_on_already_unique_passes_all() {
+  let values = Source::from_array([1_u32, 2, 3]).distinct().collect_values().expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2, 3]);
+}
+
+#[test]
+fn source_distinct_by_removes_elements_with_duplicate_key() {
+  let values = Source::from_array([(1_u32, "a"), (2, "b"), (1, "c"), (3, "d")])
+    .distinct_by(|pair: &(u32, &str)| pair.0)
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![(1_u32, "a"), (2, "b"), (3, "d")]);
+}
+
+#[test]
+fn source_from_graph_creates_source_from_existing_graph() {
+  let original = Source::from_array([10_u32, 20, 30]);
+  let (graph, mat) = original.into_parts();
+  let reconstructed = Source::<u32, StreamNotUsed>::from_graph(graph, mat);
+  let values = reconstructed.collect_values().expect("collect_values");
+  assert_eq!(values, vec![10_u32, 20, 30]);
+}
+
+#[test]
+fn source_pre_materialize_returns_source_and_completion() {
+  let source: Source<u32, StreamCompletion<StreamDone>> =
+    Source::<u32, StreamNotUsed>::empty().map_materialized_value(|_| StreamCompletion::<StreamDone>::new());
+  let (source, completion) = source.pre_materialize();
+  let _ = source;
+  assert!(completion.try_take().is_none());
+}
+
+#[test]
+fn source_throttle_enforcing_mode_keeps_single_path() {
+  let values = Source::single(5_u32)
+    .throttle(2, crate::core::ThrottleMode::Enforcing)
+    .expect("throttle")
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![5_u32]);
+}
+
+#[test]
+fn source_throttle_enforcing_mode_fails_on_capacity_overflow() {
+  let result = Source::single(alloc::vec![1_u32, 2, 3])
+    .map_concat(|v: alloc::vec::Vec<u32>| v)
+    .throttle(1, crate::core::ThrottleMode::Enforcing)
+    .expect("throttle")
+    .collect_values();
+  assert_eq!(result, Err(StreamError::BufferOverflow));
 }

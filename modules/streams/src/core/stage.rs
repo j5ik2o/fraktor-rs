@@ -5,7 +5,8 @@
 use super::{
   DemandTracker, DynValue, FlowDefinition, FlowLogic, MatCombine, MatCombineRule, RestartBackoff, RestartSettings,
   SinkDecision, SinkDefinition, SinkLogic, SourceDefinition, SourceLogic, StageDefinition, StreamBufferConfig,
-  StreamCompletion, StreamDone, StreamDslError, StreamError, StreamNotUsed, SupervisionStrategy, downcast_value, graph,
+  StreamCompletion, StreamDone, StreamDslError, StreamError, StreamNotUsed, SupervisionStrategy, ThrottleMode,
+  downcast_value, graph,
   graph::StreamGraph,
   keep_left, keep_right,
   lifecycle::{self, DriveOutcome},

@@ -357,7 +357,9 @@ impl<In, Mat> Sink<In, Mat>
 where
   In: Send + Sync + 'static,
 {
-  pub(crate) fn from_graph(graph: StreamGraph, mat: Mat) -> Self {
+  /// Creates a sink from a pre-built stream graph and materialized value.
+  #[must_use]
+  pub fn from_graph(graph: StreamGraph, mat: Mat) -> Self {
     Self { graph, mat, _pd: PhantomData }
   }
 
@@ -372,6 +374,16 @@ where
     F: FnOnce(Mat) -> Mat2, {
     let (graph, mat) = self.into_parts();
     Sink::from_graph(graph, func(mat))
+  }
+
+  /// Transforms the input type of this sink by applying a mapping function.
+  #[must_use]
+  pub fn contramap<In2, F>(self, func: F) -> Sink<In2, Mat>
+  where
+    In2: Send + Sync + 'static,
+    F: Fn(In2) -> In + Send + Sync + 'static, {
+    let flow = super::flow::Flow::<In2, In, StreamNotUsed>::from_function(func);
+    flow.to_mat(self, super::keep_right::KeepRight)
   }
 
   /// Enables restart semantics with backoff for this sink.

@@ -391,3 +391,19 @@ fn sink_lazy_sink_propagates_inner_on_complete_error() {
   let completion = run_source_with_sink(Source::from_array([1_u32, 2, 3]), lazy);
   assert_eq!(completion, Completion::Ready(Err(StreamError::Failed)));
 }
+
+#[test]
+fn sink_contramap_transforms_input_type() {
+  let sink = Sink::<u32, StreamCompletion<alloc::vec::Vec<u32>>>::collect().contramap(|s: &str| s.len() as u32);
+  let completion = run_source_with_sink(Source::from_array(["hello", "hi", "hey"]), sink);
+  assert_eq!(completion, Completion::Ready(Ok(alloc::vec![5_u32, 2, 3])));
+}
+
+#[test]
+fn sink_from_graph_creates_sink_from_existing_graph() {
+  let original = Sink::<u32, StreamCompletion<alloc::vec::Vec<u32>>>::collect();
+  let (graph, mat) = original.into_parts();
+  let reconstructed = Sink::<u32, StreamCompletion<alloc::vec::Vec<u32>>>::from_graph(graph, mat);
+  let completion = run_source_with_sink(Source::from_array([1_u32, 2, 3]), reconstructed);
+  assert_eq!(completion, Completion::Ready(Ok(alloc::vec![1_u32, 2, 3])));
+}

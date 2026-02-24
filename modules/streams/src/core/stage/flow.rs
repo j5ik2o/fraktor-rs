@@ -457,9 +457,9 @@ where
   /// # Errors
   ///
   /// Returns [`StreamDslError`] when `capacity` is zero.
-  pub fn throttle(mut self, capacity: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
+  pub fn throttle(mut self, capacity: usize, mode: super::ThrottleMode) -> Result<Flow<In, Out, Mat>, StreamDslError> {
     let capacity = validate_positive_argument("capacity", capacity)?;
-    let definition = throttle_definition::<Out>(capacity);
+    let definition = throttle_definition::<Out>(capacity, mode);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
@@ -835,7 +835,9 @@ where
     Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
-  pub(crate) fn from_graph(graph: StreamGraph, mat: Mat) -> Self {
+  /// Creates a flow from a pre-built stream graph and materialized value.
+  #[must_use]
+  pub fn from_graph(graph: StreamGraph, mat: Mat) -> Self {
     Self { graph, mat, _pd: PhantomData }
   }
 
@@ -2138,6 +2140,52 @@ where
 impl<In, Out, Mat> Flow<In, Out, Mat>
 where
   In: Send + Sync + 'static,
+  Out: Clone + Ord + Send + Sync + 'static,
+{
+  /// Filters out elements that have already been seen, using `Ord` for tracking.
+  #[must_use]
+  pub fn distinct(self) -> Flow<In, Out, Mat> {
+    self
+      .stateful_map(|| {
+        let mut seen = alloc::collections::BTreeSet::new();
+        move |value: Out| {
+          if seen.contains(&value) {
+            return None;
+          }
+          seen.insert(value.clone());
+          Some(value)
+        }
+      })
+      .flatten_optional()
+  }
+}
+
+impl<In, Out, Mat> Flow<In, Out, Mat>
+where
+  In: Send + Sync + 'static,
+  Out: Send + Sync + 'static,
+{
+  /// Filters out elements whose key has already been seen.
+  #[must_use]
+  pub fn distinct_by<K, F>(self, mut key_fn: F) -> Flow<In, Out, Mat>
+  where
+    K: Ord + Send + Sync + 'static,
+    F: FnMut(&Out) -> K + Send + Sync + 'static, {
+    let mut seen = alloc::collections::BTreeSet::<K>::new();
+    self.filter(move |value| {
+      let key = key_fn(value);
+      if seen.contains(&key) {
+        return false;
+      }
+      seen.insert(key);
+      true
+    })
+  }
+}
+
+impl<In, Out, Mat> Flow<In, Out, Mat>
+where
+  In: Send + Sync + 'static,
   Out: Ord + Send + Sync + 'static,
 {
   /// Adds a merge-sorted stage that merges pre-sorted inputs into a single sorted output.
@@ -2694,7 +2742,7 @@ where
   In: Send + Sync + 'static, {
   let inlet: Inlet<In> = Inlet::new();
   let outlet: Outlet<In> = Outlet::new();
-  let logic = AsyncBoundaryLogic::<In> { pending: VecDeque::new(), capacity: 16 };
+  let logic = AsyncBoundaryLogic::<In> { pending: VecDeque::new(), capacity: 16, enforcing: false };
   FlowDefinition {
     kind:        StageKind::FlowAsyncBoundary,
     inlet:       inlet.id(),
@@ -2708,12 +2756,13 @@ where
   }
 }
 
-pub(in crate::core) fn throttle_definition<In>(capacity: usize) -> FlowDefinition
+pub(in crate::core) fn throttle_definition<In>(capacity: usize, mode: super::ThrottleMode) -> FlowDefinition
 where
   In: Send + Sync + 'static, {
   let inlet: Inlet<In> = Inlet::new();
   let outlet: Outlet<In> = Outlet::new();
-  let logic = AsyncBoundaryLogic::<In> { pending: VecDeque::new(), capacity };
+  let enforcing = matches!(mode, super::ThrottleMode::Enforcing);
+  let logic = AsyncBoundaryLogic::<In> { pending: VecDeque::new(), capacity, enforcing };
   FlowDefinition {
     kind:        StageKind::FlowThrottle,
     inlet:       inlet.id(),
@@ -4345,8 +4394,9 @@ struct BufferLogic<In> {
 }
 
 struct AsyncBoundaryLogic<In> {
-  pending:  VecDeque<In>,
-  capacity: usize,
+  pending:   VecDeque<In>,
+  capacity:  usize,
+  enforcing: bool,
 }
 
 enum DelayMode {
@@ -4707,13 +4757,25 @@ where
   In: Send + Sync + 'static,
 {
   fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    if self.enforcing && self.pending.len() >= self.capacity {
+      return Err(StreamError::BufferOverflow);
+    }
     let value = downcast_value::<In>(input)?;
     self.pending.push_back(value);
     Ok(Vec::new())
   }
 
   fn can_accept_input(&self) -> bool {
-    self.pending.len() < self.capacity
+    // Enforcing mode accepts input unconditionally so apply() can detect
+    // capacity overflow and fail with BufferOverflow (matching Pekko's
+    // RateExceededException semantics). Shaping mode uses backpressure.
+    self.enforcing || self.pending.len() < self.capacity
+  }
+
+  fn can_accept_input_while_output_buffered(&self) -> bool {
+    // Enforcing mode does not backpressure — it accepts input even when
+    // downstream is slow, and fails on overflow (Pekko RateExceededException).
+    self.enforcing
   }
 
   fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
