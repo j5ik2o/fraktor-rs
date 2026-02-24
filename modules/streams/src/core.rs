@@ -4,6 +4,8 @@ mod completion;
 mod demand;
 /// Demand tracking utilities.
 mod demand_tracker;
+/// Byte stream framing utilities.
+mod framing;
 /// Graph-related abstractions.
 pub mod graph;
 /// Dynamic fan-in/fan-out connectors.
@@ -30,6 +32,8 @@ pub mod operator;
 mod restart_settings;
 /// Stream topology shapes and connection points.
 pub mod shape;
+/// Shared pull handle for queue-based sink materialization.
+mod sink_queue;
 /// Stage definitions for source, flow, and sink.
 pub mod stage;
 /// Stream buffer implementation.
@@ -59,6 +63,7 @@ use core::any::{Any, TypeId};
 pub use completion::Completion;
 pub use demand::Demand;
 pub use demand_tracker::DemandTracker;
+pub use framing::Framing;
 pub use keep_both::KeepBoth;
 pub use keep_left::KeepLeft;
 pub use keep_none::KeepNone;
@@ -67,6 +72,7 @@ pub use mat_combine::MatCombine;
 pub use mat_combine_rule::MatCombineRule;
 pub use restart_settings::RestartSettings;
 use shape::PortId;
+pub use sink_queue::SinkQueue;
 use stage::StageKind;
 pub use stream_buffer::StreamBuffer;
 pub use stream_buffer_config::StreamBufferConfig;

@@ -22,12 +22,16 @@ mod flow;
 mod flow_monitor;
 /// Flow-oriented substream surface.
 mod flow_sub_flow;
+/// Context-preserving flow wrapper.
+mod flow_with_context;
 /// Sink stage definitions.
 mod sink;
 /// Source stage definitions.
 mod source;
 /// Source-oriented substream surface.
 mod source_sub_flow;
+/// Context-preserving source wrapper.
+mod source_with_context;
 /// Stage execution context.
 mod stage_context;
 /// Built-in stage kinds.
@@ -47,9 +51,11 @@ pub(in crate::core) use flow::{
 };
 pub use flow_monitor::FlowMonitor;
 pub use flow_sub_flow::FlowSubFlow;
+pub use flow_with_context::FlowWithContext;
 pub use sink::Sink;
 pub use source::Source;
 pub use source_sub_flow::SourceSubFlow;
+pub use source_with_context::SourceWithContext;
 pub use stage_context::StageContext;
 pub use stage_kind::StageKind;
 pub use stream_stage::StreamStage;

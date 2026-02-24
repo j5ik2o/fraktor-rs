@@ -11,6 +11,7 @@ use super::{
   stage_context::StageContext,
   validate_positive_argument,
 };
+use crate::core::SinkQueue;
 
 #[cfg(test)]
 mod tests;
@@ -305,6 +306,21 @@ where
   }
 }
 
+impl<In> Sink<In, SinkQueue<In>>
+where
+  In: Send + Sync + 'static,
+{
+  /// Creates a sink that pushes elements into a shared queue.
+  ///
+  /// The materialized value is a [`SinkQueue`] handle from which elements can be pulled.
+  #[must_use]
+  pub fn queue() -> Self {
+    let queue = SinkQueue::new();
+    let logic = QueueSinkLogic::<In> { queue: queue.clone(), _pd: PhantomData };
+    Self::from_definition(StageKind::Custom, logic, queue)
+  }
+}
+
 impl<In, Acc> Sink<In, StreamCompletion<Acc>>
 where
   In: Send + Sync + 'static,
@@ -418,6 +434,12 @@ where
   #[must_use]
   pub fn supervision_restart(mut self) -> Self {
     self.graph.set_sink_supervision(SupervisionStrategy::Restart);
+    self
+  }
+
+  /// Assigns a debug name to this stage (no-op until Attributes are introduced).
+  #[must_use]
+  pub const fn named(self, _name: &str) -> Self {
     self
   }
 
@@ -1084,6 +1106,33 @@ where
   fn on_error(&mut self, error: StreamError) {
     self.completion.complete(Err(error));
   }
+}
+
+struct QueueSinkLogic<In> {
+  queue: SinkQueue<In>,
+  _pd:   PhantomData<fn(In)>,
+}
+
+impl<In> SinkLogic for QueueSinkLogic<In>
+where
+  In: Send + Sync + 'static,
+{
+  fn on_start(&mut self, demand: &mut super::DemandTracker) -> Result<(), StreamError> {
+    demand.request(1)
+  }
+
+  fn on_push(&mut self, input: DynValue, demand: &mut super::DemandTracker) -> Result<SinkDecision, StreamError> {
+    let value = downcast_value::<In>(input)?;
+    self.queue.push(value);
+    demand.request(1)?;
+    Ok(SinkDecision::Continue)
+  }
+
+  fn on_complete(&mut self) -> Result<(), StreamError> {
+    Ok(())
+  }
+
+  fn on_error(&mut self, _error: StreamError) {}
 }
 
 struct TakeLastSinkLogic<In> {
