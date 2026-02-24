@@ -96,7 +96,7 @@ where
     ctx: &mut TypedActorContextGeneric<'_, M, TB>,
     signal: &BehaviorSignal,
   ) -> Result<(), ActorError> {
-    if let BehaviorSignal::AdapterFailed(failure) = signal {
+    if let BehaviorSignal::MessageAdaptionFailure(failure) = signal {
       ctx
         .system()
         .event_stream()
@@ -130,7 +130,26 @@ where
     ctx: &mut TypedActorContextGeneric<'_, M, TB>,
     terminated: crate::core::actor::Pid,
   ) -> Result<(), ActorError> {
-    self.dispatch_signal(ctx, &BehaviorSignal::Terminated(terminated))
+    let has_signal_handler = self.current.has_signal_handler();
+    self.dispatch_signal(ctx, &BehaviorSignal::Terminated(terminated))?;
+    if has_signal_handler {
+      Ok(())
+    } else {
+      Err(ActorError::recoverable(ActorErrorReason::new("death pact: unhandled Terminated signal")))
+    }
+  }
+
+  fn pre_restart(&mut self, ctx: &mut TypedActorContextGeneric<'_, M, TB>) -> Result<(), ActorError> {
+    self.dispatch_signal(ctx, &BehaviorSignal::PreRestart)
+  }
+
+  fn on_child_failed(
+    &mut self,
+    ctx: &mut TypedActorContextGeneric<'_, M, TB>,
+    child: crate::core::actor::Pid,
+    error: ActorError,
+  ) -> Result<(), ActorError> {
+    self.dispatch_signal(ctx, &BehaviorSignal::ChildFailed { pid: child, error })
   }
 
   fn supervisor_strategy(&mut self, _ctx: &mut TypedActorContextGeneric<'_, M, TB>) -> SupervisorStrategy {
@@ -143,7 +162,7 @@ where
     failure: AdapterError,
   ) -> Result<(), ActorError> {
     let has_signal_handler = self.current.has_signal_handler();
-    self.dispatch_signal(ctx, &BehaviorSignal::AdapterFailed(failure))?;
+    self.dispatch_signal(ctx, &BehaviorSignal::MessageAdaptionFailure(failure))?;
     if has_signal_handler {
       Ok(())
     } else {

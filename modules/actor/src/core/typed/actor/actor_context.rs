@@ -112,6 +112,20 @@ where
     self.inner().watch(target.as_untyped())
   }
 
+  /// Watches the provided typed target with a custom message.
+  ///
+  /// When the target terminates, the provided `message` is delivered as a user message
+  /// instead of a `Terminated` signal.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the watch operation cannot be performed.
+  pub fn watch_with<C>(&self, target: &TypedActorRefGeneric<C, TB>, message: M) -> Result<(), SendError<TB>>
+  where
+    C: Send + Sync + 'static, {
+    self.inner().watch_with(target.as_untyped(), AnyMessageGeneric::new(message))
+  }
+
   /// Stops watching the provided typed target.
   ///
   /// # Errors

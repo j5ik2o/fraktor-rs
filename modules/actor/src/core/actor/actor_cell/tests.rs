@@ -287,6 +287,71 @@ fn unstash_messages_are_replayed_before_existing_mailbox_messages() {
   assert_eq!(received.lock().clone(), vec![1, 2]);
 }
 
+#[test]
+fn register_watch_with_stores_and_take_returns_message() {
+  let state = ActorSystem::new_empty().state();
+  let props = Props::from_fn(|| ProbeActor);
+  let cell =
+    ActorCell::create(state.clone(), Pid::new(70, 0), None, "watcher".to_string(), &props).expect("create actor cell");
+  state.register_cell(cell.clone());
+
+  let target_pid = Pid::new(71, 0);
+  cell.register_watch_with(target_pid, AnyMessage::new(42_i32));
+
+  assert!(cell.take_watch_with_message(target_pid).is_some());
+  assert!(cell.take_watch_with_message(target_pid).is_none());
+}
+
+#[test]
+fn remove_watch_with_clears_custom_message() {
+  let state = ActorSystem::new_empty().state();
+  let props = Props::from_fn(|| ProbeActor);
+  let cell =
+    ActorCell::create(state.clone(), Pid::new(72, 0), None, "watcher".to_string(), &props).expect("create actor cell");
+  state.register_cell(cell.clone());
+
+  let target_pid = Pid::new(73, 0);
+  cell.register_watch_with(target_pid, AnyMessage::new(42_i32));
+  cell.remove_watch_with(target_pid);
+
+  assert!(cell.take_watch_with_message(target_pid).is_none());
+}
+
+#[test]
+fn register_watch_with_replaces_previous_entry_for_same_target() {
+  let state = ActorSystem::new_empty().state();
+  let props = Props::from_fn(|| ProbeActor);
+  let cell =
+    ActorCell::create(state.clone(), Pid::new(74, 0), None, "watcher".to_string(), &props).expect("create actor cell");
+  state.register_cell(cell.clone());
+
+  let target_pid = Pid::new(75, 0);
+  cell.register_watch_with(target_pid, AnyMessage::new(1_i32));
+  cell.register_watch_with(target_pid, AnyMessage::new(2_i32));
+
+  assert!(cell.take_watch_with_message(target_pid).is_some());
+  assert!(cell.take_watch_with_message(target_pid).is_none());
+}
+
+#[test]
+fn handle_terminated_skips_on_terminated_when_watch_with_registered() {
+  let state = ActorSystem::new_empty().state();
+  let log = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let watcher_props = Props::from_fn({
+    let log = log.clone();
+    move || RecordingActor::new(log.clone())
+  });
+  let watcher = ActorCell::create(state.clone(), Pid::new(80, 0), None, "watcher".to_string(), &watcher_props)
+    .expect("create watcher");
+  state.register_cell(watcher.clone());
+
+  let target_pid = Pid::new(81, 0);
+  watcher.register_watch_with(target_pid, AnyMessage::new(42_i32));
+  let result = watcher.handle_terminated(target_pid);
+  assert!(result.is_ok());
+  assert!(log.lock().is_empty(), "on_terminated should not be called when watch_with is registered");
+}
+
 fn wait_until(mut condition: impl FnMut() -> bool) {
   for _ in 0..10_000 {
     if condition() {

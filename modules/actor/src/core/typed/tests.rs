@@ -550,8 +550,10 @@ fn signal_probe_behavior(
       | BehaviorSignal::Stopped => {
         stop_probe.fetch_add(1, Ordering::SeqCst);
       },
-      | BehaviorSignal::Terminated(_) => {},
-      | BehaviorSignal::AdapterFailed(_) => {},
+      | BehaviorSignal::Terminated(_)
+      | BehaviorSignal::MessageAdaptionFailure(_)
+      | BehaviorSignal::ChildFailed { .. }
+      | BehaviorSignal::PreRestart => {},
     }
     Ok(Behaviors::same())
   })

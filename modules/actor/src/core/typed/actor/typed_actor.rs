@@ -88,4 +88,30 @@ where
   ) -> Result<(), ActorError> {
     Err(ActorError::recoverable(ActorErrorReason::new("message adapter failure")))
   }
+
+  /// Called before the actor is restarted by its supervisor.
+  ///
+  /// The default implementation delegates to [`post_stop`](TypedActor::post_stop).
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when pre-restart cleanup fails.
+  fn pre_restart(&mut self, ctx: &mut TypedActorContextGeneric<'_, M, TB>) -> Result<(), ActorError> {
+    self.post_stop(ctx)
+  }
+
+  /// Called when a supervised child actor fails.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the notification cannot be processed.
+  #[allow(unused_variables)]
+  fn on_child_failed(
+    &mut self,
+    ctx: &mut TypedActorContextGeneric<'_, M, TB>,
+    child: Pid,
+    error: ActorError,
+  ) -> Result<(), ActorError> {
+    Ok(())
+  }
 }
