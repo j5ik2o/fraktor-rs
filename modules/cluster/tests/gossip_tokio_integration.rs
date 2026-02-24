@@ -16,7 +16,10 @@ use fraktor_cluster_rs::{
   },
   std::{TokioGossipTransport, TokioGossipTransportConfig, TokioGossiper, TokioGossiperConfig},
 };
-use fraktor_remote_rs::core::failure_detector::phi_failure_detector::{PhiFailureDetector, PhiFailureDetectorConfig};
+use fraktor_remote_rs::core::failure_detector::{
+  DefaultFailureDetectorRegistry,
+  phi_failure_detector::{PhiFailureDetector, PhiFailureDetectorConfig},
+};
 use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
 struct EventSink {
@@ -48,8 +51,11 @@ fn build_coordinator() -> MembershipCoordinatorSharedGeneric<StdToolbox> {
     topology_emit_interval: Duration::from_millis(20),
   };
   let table = MembershipTable::new(3);
-  let detector = PhiFailureDetector::new(PhiFailureDetectorConfig::new(config.phi_threshold, 10, 1));
-  let mut coordinator = MembershipCoordinatorGeneric::<StdToolbox>::new(config, table, detector);
+  let threshold = config.phi_threshold;
+  let registry = DefaultFailureDetectorRegistry::new(Box::new(move || {
+    Box::new(PhiFailureDetector::new(PhiFailureDetectorConfig::new(threshold, 10, 1)))
+  }));
+  let mut coordinator = MembershipCoordinatorGeneric::<StdToolbox>::new(config, table, registry);
   coordinator.start_member().expect("start_member");
   MembershipCoordinatorSharedGeneric::new(coordinator)
 }

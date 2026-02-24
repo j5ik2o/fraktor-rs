@@ -10,7 +10,7 @@ use alloc::{
 };
 use core::{marker::PhantomData, time::Duration};
 
-use fraktor_remote_rs::core::failure_detector::phi_failure_detector::{PhiFailureDetector, PhiFailureDetectorEffect};
+use fraktor_remote_rs::core::failure_detector::{DefaultFailureDetectorRegistry, FailureDetectorRegistry};
 use fraktor_utils_rs::core::time::TimerInstant;
 
 use super::{
@@ -25,7 +25,7 @@ pub struct MembershipCoordinatorGeneric<TB: fraktor_utils_rs::core::runtime_tool
   config:                MembershipCoordinatorConfig,
   state:                 MembershipCoordinatorState,
   gossip:                GossipDisseminationCoordinator,
-  detector:              PhiFailureDetector,
+  registry:              DefaultFailureDetectorRegistry<String>,
   quarantine:            QuarantineTable,
   topology_accumulator:  TopologyAccumulator,
   next_topology_emit_at: Option<TimerInstant>,
@@ -36,12 +36,16 @@ pub struct MembershipCoordinatorGeneric<TB: fraktor_utils_rs::core::runtime_tool
 impl<TB: fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox + 'static> MembershipCoordinatorGeneric<TB> {
   /// Creates a new coordinator.
   #[must_use]
-  pub fn new(config: MembershipCoordinatorConfig, table: MembershipTable, detector: PhiFailureDetector) -> Self {
+  pub fn new(
+    config: MembershipCoordinatorConfig,
+    table: MembershipTable,
+    registry: DefaultFailureDetectorRegistry<String>,
+  ) -> Self {
     Self {
       config,
       state: MembershipCoordinatorState::Stopped,
       gossip: GossipDisseminationCoordinator::new(table, Vec::new()),
-      detector,
+      registry,
       quarantine: QuarantineTable::new(),
       topology_accumulator: TopologyAccumulator::new(),
       next_topology_emit_at: None,
@@ -221,6 +225,7 @@ impl<TB: fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox + 'static> Memb
 
     let mut outcome = MembershipCoordinatorOutcome::default();
     let now_ms = to_millis(now);
+    let authority_key = authority.to_string();
 
     let status = self.gossip.table().record(authority).map(|record| record.status);
     if let Some(status) = status
@@ -233,8 +238,11 @@ impl<TB: fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox + 'static> Memb
       self.emit_status_change(authority, status, NodeStatus::Up, now, &mut outcome);
     }
 
-    if let Some(effect) = self.detector.record_heartbeat(authority, now_ms) {
-      self.apply_detector_effect(effect, now, &mut outcome)?;
+    let was_suspect = self.suspect_since.contains_key(&authority_key);
+    self.registry.heartbeat(&authority_key, now_ms);
+
+    if was_suspect {
+      self.apply_reachable(&authority_key, now, &mut outcome)?;
     }
 
     outcome.membership_events = self.gossip.table_mut().drain_events();
@@ -303,10 +311,7 @@ impl<TB: fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox + 'static> Memb
     let mut outcome = MembershipCoordinatorOutcome::default();
     let now_ms = to_millis(now);
 
-    let effects = self.detector.poll(now_ms);
-    for effect in effects {
-      self.apply_detector_effect(effect, now, &mut outcome)?;
-    }
+    self.detect_suspects(now_ms, now, &mut outcome)?;
 
     self.handle_suspect_timeouts(now, &mut outcome)?;
 
@@ -321,6 +326,74 @@ impl<TB: fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox + 'static> Memb
 
     outcome.membership_events = self.gossip.table_mut().drain_events();
     Ok(outcome)
+  }
+
+  fn detect_suspects(
+    &mut self,
+    now_ms: u64,
+    now: TimerInstant,
+    outcome: &mut MembershipCoordinatorOutcome,
+  ) -> Result<(), MembershipCoordinatorError> {
+    let active_authorities: Vec<String> = self
+      .gossip
+      .table()
+      .snapshot()
+      .entries
+      .iter()
+      .filter(|record| record.status.is_active())
+      .map(|record| record.authority.clone())
+      .collect();
+
+    for authority in active_authorities {
+      if self.suspect_since.contains_key(&authority) {
+        continue;
+      }
+      if !self.registry.is_monitoring(&authority) {
+        continue;
+      }
+      if !self.registry.is_available(&authority, now_ms) {
+        self.apply_suspect(&authority, now, outcome)?;
+      }
+    }
+    Ok(())
+  }
+
+  fn apply_suspect(
+    &mut self,
+    authority: &str,
+    now: TimerInstant,
+    outcome: &mut MembershipCoordinatorOutcome,
+  ) -> Result<(), MembershipCoordinatorError> {
+    if let Some(delta) =
+      self.gossip.table_mut().mark_suspect(authority).map_err(MembershipCoordinatorError::Membership)?
+    {
+      self.suspect_since.entry(authority.to_string()).or_insert(now);
+      if self.config.gossip_enabled {
+        outcome.gossip_outbound.extend(self.gossip.disseminate(&delta));
+      }
+      if let Some(record) = self.gossip.table().record(authority) {
+        self.emit_status_change(authority, NodeStatus::Up, record.status, now, outcome);
+      }
+    }
+    Ok(())
+  }
+
+  fn apply_reachable(
+    &mut self,
+    authority: &str,
+    now: TimerInstant,
+    outcome: &mut MembershipCoordinatorOutcome,
+  ) -> Result<(), MembershipCoordinatorError> {
+    if let Some(delta) = self.gossip.table_mut().mark_up(authority).map_err(MembershipCoordinatorError::Membership)? {
+      self.suspect_since.remove(authority);
+      if self.config.gossip_enabled {
+        outcome.gossip_outbound.extend(self.gossip.disseminate(&delta));
+      }
+      if let Some(record) = self.gossip.table().record(authority) {
+        self.emit_status_change(authority, NodeStatus::Suspect, record.status, now, outcome);
+      }
+    }
+    Ok(())
   }
 
   fn ensure_started(&self) -> Result<(), MembershipCoordinatorError> {
@@ -349,43 +422,6 @@ impl<TB: fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox + 'static> Memb
       .map(|record| record.authority.clone())
       .collect::<Vec<_>>();
     self.gossip.set_peers(peers);
-  }
-
-  fn apply_detector_effect(
-    &mut self,
-    effect: PhiFailureDetectorEffect,
-    now: TimerInstant,
-    outcome: &mut MembershipCoordinatorOutcome,
-  ) -> Result<(), MembershipCoordinatorError> {
-    match effect {
-      | PhiFailureDetectorEffect::Suspect { authority, .. } => {
-        if let Some(delta) =
-          self.gossip.table_mut().mark_suspect(&authority).map_err(MembershipCoordinatorError::Membership)?
-        {
-          self.suspect_since.entry(authority.clone()).or_insert(now);
-          if self.config.gossip_enabled {
-            outcome.gossip_outbound.extend(self.gossip.disseminate(&delta));
-          }
-          if let Some(record) = self.gossip.table().record(&authority) {
-            self.emit_status_change(&authority, NodeStatus::Up, record.status, now, outcome);
-          }
-        }
-      },
-      | PhiFailureDetectorEffect::Reachable { authority } => {
-        if let Some(delta) =
-          self.gossip.table_mut().mark_up(&authority).map_err(MembershipCoordinatorError::Membership)?
-        {
-          self.suspect_since.remove(&authority);
-          if self.config.gossip_enabled {
-            outcome.gossip_outbound.extend(self.gossip.disseminate(&delta));
-          }
-          if let Some(record) = self.gossip.table().record(&authority) {
-            self.emit_status_change(&authority, NodeStatus::Suspect, record.status, now, outcome);
-          }
-        }
-      },
-    }
-    Ok(())
   }
 
   fn handle_suspect_timeouts(

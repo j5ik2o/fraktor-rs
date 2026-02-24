@@ -1,6 +1,10 @@
+use alloc::{boxed::Box, string::String};
 use core::time::Duration;
 
-use fraktor_remote_rs::core::failure_detector::phi_failure_detector::{PhiFailureDetector, PhiFailureDetectorConfig};
+use fraktor_remote_rs::core::failure_detector::{
+  DefaultFailureDetectorRegistry,
+  phi_failure_detector::{PhiFailureDetector, PhiFailureDetectorConfig},
+};
 use fraktor_utils_rs::core::time::TimerInstant;
 
 use super::MembershipCoordinatorGeneric;
@@ -24,8 +28,10 @@ fn base_config() -> MembershipCoordinatorConfig {
   }
 }
 
-fn detector(threshold: f64) -> PhiFailureDetector {
-  PhiFailureDetector::new(PhiFailureDetectorConfig::new(threshold, 10, 1))
+fn registry(threshold: f64) -> DefaultFailureDetectorRegistry<String> {
+  DefaultFailureDetectorRegistry::new(Box::new(move || {
+    Box::new(PhiFailureDetector::new(PhiFailureDetectorConfig::new(threshold, 10, 1)))
+  }))
 }
 
 fn now(ticks: u64) -> TimerInstant {
@@ -39,7 +45,7 @@ fn stopped_rejects_inputs() {
   let mut coordinator = MembershipCoordinatorGeneric::<fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox>::new(
     config,
     table,
-    detector(1.0),
+    registry(1.0),
   );
   let now = now(1);
 
@@ -57,7 +63,7 @@ fn client_rejects_join_and_leave() {
   let mut coordinator = MembershipCoordinatorGeneric::<fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox>::new(
     config,
     table,
-    detector(1.0),
+    registry(1.0),
   );
   coordinator.start_client().unwrap();
 
@@ -75,7 +81,7 @@ fn join_then_heartbeat_promotes_to_up() {
   let mut coordinator = MembershipCoordinatorGeneric::<fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox>::new(
     config,
     table,
-    detector(1.0),
+    registry(1.0),
   );
   coordinator.start_member().unwrap();
 
@@ -104,7 +110,7 @@ fn topology_emits_after_interval() {
   let mut coordinator = MembershipCoordinatorGeneric::<fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox>::new(
     config,
     table,
-    detector(1.0),
+    registry(1.0),
   );
   coordinator.start_member().unwrap();
 
@@ -125,7 +131,7 @@ fn quarantine_rejects_join_and_expires() {
   let mut coordinator = MembershipCoordinatorGeneric::<fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox>::new(
     config,
     table,
-    detector(1.0),
+    registry(1.0),
   );
   coordinator.start_member().unwrap();
 
@@ -148,7 +154,7 @@ fn suspect_timeout_marks_dead_and_quarantines() {
   let mut coordinator = MembershipCoordinatorGeneric::<fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox>::new(
     config,
     table,
-    detector(1.0),
+    registry(1.0),
   );
   coordinator.start_member().unwrap();
 

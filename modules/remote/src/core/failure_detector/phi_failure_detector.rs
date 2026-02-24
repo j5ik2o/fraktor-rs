@@ -1,44 +1,36 @@
-//! Phi accrual failure detector for remote authorities.
+//! Phi accrual failure detector for a single monitored resource.
 
 mod config;
-mod effect;
 #[cfg(test)]
 mod tests;
 
-use alloc::{
-  collections::{BTreeMap, VecDeque},
-  string::{String, ToString},
-  vec::Vec,
-};
+use alloc::collections::VecDeque;
 
 pub use config::PhiFailureDetectorConfig;
-pub use effect::PhiFailureDetectorEffect;
 
-struct PhiEntry {
+use super::failure_detector::FailureDetector;
+
+/// Phi accrual failure detector monitoring a single resource.
+///
+/// Implements the phi accrual algorithm: the suspicion level grows as the
+/// silence interval diverges from the observed heartbeat mean.
+pub struct PhiFailureDetector {
+  config:         PhiFailureDetectorConfig,
   last_heartbeat: Option<u64>,
   intervals_ms:   VecDeque<u64>,
-  suspect:        bool,
-  capacity:       usize,
 }
 
-impl PhiEntry {
-  fn new(capacity: usize) -> Self {
-    Self { last_heartbeat: None, intervals_ms: VecDeque::with_capacity(capacity), suspect: false, capacity }
+impl PhiFailureDetector {
+  /// Creates a detector with the provided configuration.
+  #[must_use]
+  pub fn new(config: PhiFailureDetectorConfig) -> Self {
+    let capacity = config.max_sample_size();
+    Self { config, last_heartbeat: None, intervals_ms: VecDeque::with_capacity(capacity) }
   }
 
-  fn record_heartbeat(&mut self, now_ms: u64, minimum_interval_ms: u64) {
-    if let Some(previous) = self.last_heartbeat {
-      let interval = now_ms.saturating_sub(previous).max(minimum_interval_ms);
-      if self.intervals_ms.len() == self.capacity {
-        self.intervals_ms.pop_front();
-      }
-      self.intervals_ms.push_back(interval);
-    }
-    self.last_heartbeat = Some(now_ms);
-    self.suspect = false;
-  }
-
-  fn phi(&self, now_ms: u64) -> f64 {
+  /// Returns the current phi value for the given timestamp.
+  #[must_use]
+  pub fn phi(&self, now_ms: u64) -> f64 {
     let Some(last) = self.last_heartbeat else {
       return 0.0;
     };
@@ -54,49 +46,23 @@ impl PhiEntry {
   }
 }
 
-/// Phi accrual failure detector managing per-authority heartbeats.
-pub struct PhiFailureDetector {
-  config:  PhiFailureDetectorConfig,
-  entries: BTreeMap<String, PhiEntry>,
-}
-
-impl PhiFailureDetector {
-  /// Creates a detector with the provided configuration.
-  #[must_use]
-  pub fn new(config: PhiFailureDetectorConfig) -> Self {
-    Self { config, entries: BTreeMap::new() }
+impl FailureDetector for PhiFailureDetector {
+  fn is_available(&self, now_ms: u64) -> bool {
+    self.phi(now_ms) < self.config.threshold()
   }
 
-  fn entry_mut(&mut self, authority: &str) -> &mut PhiEntry {
-    self.entries.entry(authority.to_string()).or_insert_with(|| PhiEntry::new(self.config.max_sample_size()))
+  fn is_monitoring(&self) -> bool {
+    self.last_heartbeat.is_some()
   }
 
-  /// Records a heartbeat for the authority and returns a reachable effect if one was pending.
-  pub fn record_heartbeat(&mut self, authority: &str, now_ms: u64) -> Option<PhiFailureDetectorEffect> {
-    let min_interval = self.config.minimum_interval_ms();
-    let entry = self.entry_mut(authority);
-    let was_suspect = entry.suspect;
-    entry.record_heartbeat(now_ms, min_interval);
-    if was_suspect { Some(PhiFailureDetectorEffect::Reachable { authority: authority.to_string() }) } else { None }
-  }
-
-  /// Polls all authorities and produces suspect events when necessary.
-  pub fn poll(&mut self, now_ms: u64) -> Vec<PhiFailureDetectorEffect> {
-    self
-      .entries
-      .iter_mut()
-      .filter_map(|(authority, entry)| {
-        if entry.last_heartbeat.is_none() || entry.suspect {
-          return None;
-        }
-        let phi = entry.phi(now_ms);
-        if phi >= self.config.threshold() {
-          entry.suspect = true;
-          Some(PhiFailureDetectorEffect::Suspect { authority: authority.clone(), phi })
-        } else {
-          None
-        }
-      })
-      .collect()
+  fn heartbeat(&mut self, now_ms: u64) {
+    if let Some(previous) = self.last_heartbeat {
+      let interval = now_ms.saturating_sub(previous).max(self.config.minimum_interval_ms());
+      if self.intervals_ms.len() == self.config.max_sample_size() {
+        self.intervals_ms.pop_front();
+      }
+      self.intervals_ms.push_back(interval);
+    }
+    self.last_heartbeat = Some(now_ms);
   }
 }

@@ -1,28 +1,45 @@
-use super::{PhiFailureDetector, PhiFailureDetectorConfig, PhiFailureDetectorEffect};
+use super::{PhiFailureDetector, PhiFailureDetectorConfig};
+use crate::core::failure_detector::FailureDetector;
 
 fn detector() -> PhiFailureDetector {
   PhiFailureDetector::new(PhiFailureDetectorConfig::new(1.5, 4, 1))
 }
 
 #[test]
-fn emits_suspect_after_threshold() {
-  let mut detector = detector();
-  detector.record_heartbeat("loopback:4100", 0);
-  detector.record_heartbeat("loopback:4100", 10);
-  let effects = detector.poll(40);
-  assert!(
-    matches!(effects.as_slice(), [PhiFailureDetectorEffect::Suspect { authority, .. }] if authority == "loopback:4100")
-  );
+fn should_be_available_when_no_heartbeats_recorded() {
+  let det = detector();
+  assert!(det.is_available(100));
+  assert!(!det.is_monitoring());
 }
 
 #[test]
-fn emits_reachable_after_new_heartbeat() {
-  let mut detector = detector();
-  detector.record_heartbeat("loopback:4200", 0);
-  detector.record_heartbeat("loopback:4200", 10);
-  let suspect = detector.poll(40);
-  assert!(matches!(suspect.as_slice(), [PhiFailureDetectorEffect::Suspect { .. }]));
+fn should_be_monitoring_after_first_heartbeat() {
+  let mut det = detector();
+  det.heartbeat(0);
+  assert!(det.is_monitoring());
+}
 
-  let reachable = detector.record_heartbeat("loopback:4200", 42);
-  assert!(matches!(reachable, Some(PhiFailureDetectorEffect::Reachable { authority }) if authority == "loopback:4200"));
+#[test]
+fn should_be_unavailable_when_phi_exceeds_threshold() {
+  let mut det = detector();
+  det.heartbeat(0);
+  det.heartbeat(10);
+  assert!(det.is_available(10));
+  assert!(!det.is_available(40));
+}
+
+#[test]
+fn should_recover_availability_after_new_heartbeat() {
+  let mut det = detector();
+  det.heartbeat(0);
+  det.heartbeat(10);
+  assert!(!det.is_available(40));
+  det.heartbeat(41);
+  assert!(det.is_available(41));
+}
+
+#[test]
+fn should_return_zero_phi_when_no_heartbeats() {
+  let det = detector();
+  assert!((det.phi(100) - 0.0).abs() < f64::EPSILON);
 }
