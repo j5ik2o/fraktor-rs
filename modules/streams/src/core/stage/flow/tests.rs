@@ -229,15 +229,17 @@ fn async_boundary_keeps_single_path_behavior() {
 
 #[test]
 fn throttle_keeps_single_path_behavior() {
-  let values =
-    Source::single(7_u32).via(Flow::new().throttle(2).expect("throttle")).collect_values().expect("collect_values");
+  let values = Source::single(7_u32)
+    .via(Flow::new().throttle(2, crate::core::ThrottleMode::Shaping).expect("throttle"))
+    .collect_values()
+    .expect("collect_values");
   assert_eq!(values, vec![7_u32]);
 }
 
 #[test]
 fn throttle_rejects_zero_capacity() {
   let flow = Flow::<u32, u32, StreamNotUsed>::new();
-  let result = flow.throttle(0);
+  let result = flow.throttle(0, crate::core::ThrottleMode::Shaping);
   assert!(matches!(
     result,
     Err(StreamDslError::InvalidArgument { name: "capacity", value: 0, reason: "must be greater than zero" })
@@ -2260,4 +2262,88 @@ fn flow_lazy_flow_take_shutdown_request_clears_all_inner_flags() {
   // Then: 全フラグがクリアされているため false
   // any() 短絡評価の場合、2番目以降のフラグが未クリアで true になりテスト失敗
   assert!(!second_call);
+}
+
+#[test]
+fn throttle_enforcing_mode_keeps_single_path_behavior() {
+  let values = Source::single(7_u32)
+    .via(Flow::new().throttle(2, crate::core::ThrottleMode::Enforcing).expect("throttle"))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![7_u32]);
+}
+
+#[test]
+fn throttle_enforcing_mode_fails_on_capacity_overflow() {
+  // map_concat produces multiple outputs from one input, saturating the
+  // throttle's internal buffer faster than it can drain downstream.
+  let result = Source::single(alloc::vec![1_u32, 2, 3])
+    .via(Flow::new().map_concat(|v: alloc::vec::Vec<u32>| v))
+    .via(Flow::new().throttle(1, crate::core::ThrottleMode::Enforcing).expect("throttle"))
+    .collect_values();
+  assert_eq!(result, Err(StreamError::BufferOverflow));
+}
+
+#[test]
+fn throttle_enforcing_logic_returns_buffer_overflow_when_pending_full() {
+  use super::AsyncBoundaryLogic;
+
+  let mut logic = AsyncBoundaryLogic::<u32> { pending: VecDeque::new(), capacity: 1, enforcing: true };
+
+  // First element fits within capacity
+  let first: DynValue = Box::new(1_u32);
+  assert!(logic.apply(first).is_ok());
+  assert_eq!(logic.pending.len(), 1);
+
+  // can_accept_input remains true in enforcing mode even at capacity
+  assert!(logic.can_accept_input());
+
+  // Second element triggers BufferOverflow
+  let second: DynValue = Box::new(2_u32);
+  assert!(matches!(logic.apply(second), Err(StreamError::BufferOverflow)));
+}
+
+#[test]
+fn throttle_shaping_logic_uses_backpressure_at_capacity() {
+  use super::AsyncBoundaryLogic;
+
+  let mut logic = AsyncBoundaryLogic::<u32> { pending: VecDeque::new(), capacity: 1, enforcing: false };
+
+  let first: DynValue = Box::new(1_u32);
+  assert!(logic.apply(first).is_ok());
+  assert_eq!(logic.pending.len(), 1);
+
+  // Shaping mode refuses input at capacity (backpressure)
+  assert!(!logic.can_accept_input());
+}
+
+#[test]
+fn distinct_removes_duplicate_elements() {
+  let values =
+    Source::from_array([1_u32, 2, 1, 3, 2, 3, 4]).via(Flow::new().distinct()).collect_values().expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2, 3, 4]);
+}
+
+#[test]
+fn distinct_on_already_unique_passes_all() {
+  let values = Source::from_array([1_u32, 2, 3]).via(Flow::new().distinct()).collect_values().expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2, 3]);
+}
+
+#[test]
+fn distinct_by_removes_elements_with_duplicate_key() {
+  let values = Source::from_array([(1_u32, "a"), (2, "b"), (1, "c"), (3, "d")])
+    .via(Flow::new().distinct_by(|pair: &(u32, &str)| pair.0))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![(1_u32, "a"), (2, "b"), (3, "d")]);
+}
+
+#[test]
+fn from_graph_creates_flow_from_existing_graph() {
+  let original = Flow::<u32, u32, StreamNotUsed>::new().map(|x| x * 2);
+  let (graph, mat) = original.into_parts();
+  let reconstructed = Flow::<u32, u32, StreamNotUsed>::from_graph(graph, mat);
+  let values = Source::from_array([1_u32, 2, 3]).via(reconstructed).collect_values().expect("collect_values");
+  assert_eq!(values, vec![2_u32, 4, 6]);
 }

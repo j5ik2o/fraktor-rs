@@ -48,6 +48,8 @@ mod stream_error;
 mod stream_not_used;
 /// Test utilities for stream verification.
 pub mod testing;
+/// Throttle behavior mode.
+mod throttle_mode;
 /// Positive argument validator.
 mod validate_positive_argument;
 
@@ -73,6 +75,7 @@ pub use stream_done::StreamDone;
 pub use stream_dsl_error::StreamDslError;
 pub use stream_error::StreamError;
 pub use stream_not_used::StreamNotUsed;
+pub use throttle_mode::ThrottleMode;
 pub use validate_positive_argument::validate_positive_argument;
 type DynValue = Box<dyn Any + Send + Sync + 'static>;
 

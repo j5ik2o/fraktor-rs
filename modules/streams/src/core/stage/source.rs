@@ -948,9 +948,9 @@ where
   /// # Errors
   ///
   /// Returns [`StreamDslError`] when `capacity` is zero.
-  pub fn throttle(mut self, capacity: usize) -> Result<Source<Out, Mat>, StreamDslError> {
+  pub fn throttle(mut self, capacity: usize, mode: super::ThrottleMode) -> Result<Source<Out, Mat>, StreamDslError> {
     let capacity = validate_positive_argument("capacity", capacity)?;
-    let definition = throttle_definition::<Out>(capacity);
+    let definition = throttle_definition::<Out>(capacity, mode);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
@@ -1407,6 +1407,12 @@ where
     self.collect_values()
   }
 
+  /// Creates a source from a pre-built stream graph and materialized value.
+  #[must_use]
+  pub fn from_graph(graph: StreamGraph, mat: Mat) -> Self {
+    Self { graph, mat, _pd: PhantomData }
+  }
+
   pub(crate) fn into_parts(self) -> (StreamGraph, Mat) {
     (self.graph, self.mat)
   }
@@ -1589,6 +1595,61 @@ where
   #[must_use]
   pub fn recover_with(self, fallback: Out) -> Source<Out, Mat> {
     self.recover(fallback)
+  }
+}
+
+impl<Out, Mat> Source<Out, Mat>
+where
+  Out: Clone + Ord + Send + Sync + 'static,
+{
+  /// Filters out elements that have already been seen, using `Ord` for tracking.
+  #[must_use]
+  pub fn distinct(self) -> Source<Out, Mat> {
+    self
+      .stateful_map(|| {
+        let mut seen = alloc::collections::BTreeSet::new();
+        move |value: Out| {
+          if seen.contains(&value) {
+            return None;
+          }
+          seen.insert(value.clone());
+          Some(value)
+        }
+      })
+      .flatten_optional()
+  }
+}
+
+impl<Out, Mat> Source<Out, Mat>
+where
+  Out: Send + Sync + 'static,
+{
+  /// Filters out elements whose key has already been seen.
+  #[must_use]
+  pub fn distinct_by<K, F>(self, mut key_fn: F) -> Source<Out, Mat>
+  where
+    K: Ord + Send + Sync + 'static,
+    F: FnMut(&Out) -> K + Send + Sync + 'static, {
+    let mut seen = alloc::collections::BTreeSet::<K>::new();
+    self.filter(move |value| {
+      let key = key_fn(value);
+      if seen.contains(&key) {
+        return false;
+      }
+      seen.insert(key);
+      true
+    })
+  }
+}
+
+impl<Out> Source<Out, StreamCompletion<StreamDone>>
+where
+  Out: Send + Sync + 'static,
+{
+  /// Converts this source into a pre-materialized form.
+  #[must_use]
+  pub fn pre_materialize(self) -> (Self, StreamCompletion<StreamDone>) {
+    (self, StreamCompletion::new())
   }
 }
 
