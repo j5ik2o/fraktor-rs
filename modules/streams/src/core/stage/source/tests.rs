@@ -403,7 +403,8 @@ fn source_iterate_emits_progressive_values() {
 
 #[test]
 fn source_as_source_with_context_attaches_unit_context() {
-  let values = Source::from_array([1_u32, 2_u32]).as_source_with_context().collect_values().expect("collect_values");
+  let values =
+    Source::from_array([1_u32, 2_u32]).as_source_with_context().as_source().collect_values().expect("collect_values");
   assert_eq!(values, vec![((), 1_u32), ((), 2_u32)]);
 }
 
@@ -1447,7 +1448,6 @@ fn source_lazy_source_persists_error_on_collect_values_failure() {
   // Then: エラー状態が永続化されリスタートも失敗する
   assert!(matches!(restart, Err(StreamError::Failed)));
 }
-
 #[test]
 fn source_distinct_removes_duplicate_elements() {
   let values = Source::from_array([3_u32, 1, 2, 1, 3, 2, 4]).distinct().collect_values().expect("collect_values");
@@ -1505,4 +1505,40 @@ fn source_throttle_enforcing_mode_fails_on_capacity_overflow() {
     .expect("throttle")
     .collect_values();
   assert_eq!(result, Err(StreamError::BufferOverflow));
+}
+
+#[test]
+fn source_named_is_noop() {
+  let values = Source::from_array([1_u32, 2, 3]).named("test-source").collect_values().expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2, 3]);
+}
+
+#[test]
+fn source_from_materializer_creates_source() {
+  let values = Source::from_materializer(|| Source::from_array([10_u32, 20])).collect_values().expect("collect_values");
+  assert_eq!(values, vec![10_u32, 20]);
+}
+
+#[test]
+fn source_debounce_rejects_zero_ticks() {
+  let result = Source::from_array([1_u32]).debounce(0);
+  assert!(result.is_err());
+}
+
+#[test]
+fn source_sample_rejects_zero_ticks() {
+  let result = Source::from_array([1_u32]).sample(0);
+  assert!(result.is_err());
+}
+
+#[test]
+fn source_debounce_keeps_single_path_behavior() {
+  let values = Source::single(7_u32).debounce(1).expect("debounce").collect_values().expect("collect_values");
+  assert_eq!(values, vec![7_u32]);
+}
+
+#[test]
+fn source_sample_keeps_single_path_behavior() {
+  let values = Source::single(7_u32).sample(1).expect("sample").collect_values().expect("collect_values");
+  assert_eq!(values, vec![7_u32]);
 }

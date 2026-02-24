@@ -2263,7 +2263,6 @@ fn flow_lazy_flow_take_shutdown_request_clears_all_inner_flags() {
   // any() 短絡評価の場合、2番目以降のフラグが未クリアで true になりテスト失敗
   assert!(!second_call);
 }
-
 #[test]
 fn throttle_enforcing_mode_keeps_single_path_behavior() {
   let values = Source::single(7_u32)
@@ -2346,4 +2345,58 @@ fn from_graph_creates_flow_from_existing_graph() {
   let reconstructed = Flow::<u32, u32, StreamNotUsed>::from_graph(graph, mat);
   let values = Source::from_array([1_u32, 2, 3]).via(reconstructed).collect_values().expect("collect_values");
   assert_eq!(values, vec![2_u32, 4, 6]);
+}
+
+#[test]
+fn debounce_keeps_single_path_behavior() {
+  let values =
+    Source::single(7_u32).via(Flow::new().debounce(2).expect("debounce")).collect_values().expect("collect_values");
+  assert_eq!(values, vec![7_u32]);
+}
+
+#[test]
+fn debounce_rejects_zero_ticks() {
+  let flow = Flow::<u32, u32, StreamNotUsed>::new();
+  let result = flow.debounce(0);
+  assert!(matches!(
+    result,
+    Err(StreamDslError::InvalidArgument { name: "ticks", value: 0, reason: "must be greater than zero" })
+  ));
+}
+
+#[test]
+fn sample_keeps_single_path_behavior() {
+  let values =
+    Source::single(7_u32).via(Flow::new().sample(2).expect("sample")).collect_values().expect("collect_values");
+  assert_eq!(values, vec![7_u32]);
+}
+
+#[test]
+fn sample_rejects_zero_ticks() {
+  let flow = Flow::<u32, u32, StreamNotUsed>::new();
+  let result = flow.sample(0);
+  assert!(matches!(
+    result,
+    Err(StreamDslError::InvalidArgument { name: "ticks", value: 0, reason: "must be greater than zero" })
+  ));
+}
+
+#[test]
+fn flow_named_is_noop() {
+  let values = Source::single(7_u32).via(Flow::new().named("test-flow")).collect_values().expect("collect_values");
+  assert_eq!(values, vec![7_u32]);
+}
+
+#[test]
+fn flow_from_materializer_creates_flow() {
+  let flow = Flow::from_materializer(|| Flow::from_function(|x: u32| x * 2));
+  let values = Source::single(5_u32).via(flow).collect_values().expect("collect_values");
+  assert_eq!(values, vec![10_u32]);
+}
+
+#[test]
+fn flow_as_flow_with_context_returns_wrapper() {
+  let flow = Flow::<u32, u32, StreamNotUsed>::new();
+  let fwc = flow.as_flow_with_context();
+  let _ = fwc.as_flow();
 }

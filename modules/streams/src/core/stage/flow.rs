@@ -56,6 +56,16 @@ where
     F: Fn(In) -> Out + Send + Sync + 'static, {
     Flow::new().map(f)
   }
+
+  /// Creates a flow from a materializer-provided factory.
+  ///
+  /// The factory is called eagerly to produce the flow.
+  #[must_use]
+  pub fn from_materializer<F>(factory: F) -> Self
+  where
+    F: FnOnce() -> Self, {
+    factory()
+  }
 }
 
 impl<In, Out, Mat> Flow<In, Out, Mat>
@@ -494,6 +504,40 @@ where
   pub fn initial_delay(mut self, ticks: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
     let ticks = validate_positive_argument("ticks", ticks)?;
     let definition = initial_delay_definition::<Out>(ticks as u64);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
+  }
+
+  /// Adds a debounce stage that emits the held element after `ticks` of silence.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `ticks` is zero.
+  pub fn debounce(mut self, ticks: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
+    let ticks = validate_positive_argument("ticks", ticks)?;
+    let definition = debounce_definition::<Out>(ticks as u64);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
+  }
+
+  /// Adds a sample stage that emits the latest element at fixed `ticks` intervals.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `ticks` is zero.
+  pub fn sample(mut self, ticks: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
+    let ticks = validate_positive_argument("ticks", ticks)?;
+    let definition = sample_definition::<Out>(ticks as u64);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
@@ -1035,10 +1079,13 @@ where
   In: Send + Sync + 'static,
   Out: Send + Sync + 'static,
 {
-  /// Adds unit context to each output element.
+  /// Wraps this flow with unit context propagation.
   #[must_use]
-  pub fn as_flow_with_context(self) -> Flow<In, ((), Out), Mat> {
-    self.map(|value| ((), value))
+  pub fn as_flow_with_context(self) -> super::flow_with_context::FlowWithContext<(), In, Out, Mat> {
+    let unwrap: Flow<((), In), In, StreamNotUsed> = Flow::from_function(|(_, value)| value);
+    let rewrap: Flow<Out, ((), Out), StreamNotUsed> = Flow::from_function(|value| ((), value));
+    let inner = unwrap.via_mat(self, super::keep_right::KeepRight).via(rewrap);
+    super::flow_with_context::FlowWithContext::from_flow(inner)
   }
 
   /// Keeps only the first element matching `predicate`.
@@ -2847,6 +2894,44 @@ where
   }
 }
 
+pub(in crate::core) fn debounce_definition<In>(silence_ticks: u64) -> FlowDefinition
+where
+  In: Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = DebounceLogic::<In> { silence_ticks, held: None, last_receive_tick: 0, tick_count: 0 };
+  FlowDefinition {
+    kind:        StageKind::FlowDebounce,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(in crate::core) fn sample_definition<In>(interval_ticks: u64) -> FlowDefinition
+where
+  In: Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = SampleLogic::<In> { interval_ticks, held: None, last_emit_tick: 0, tick_count: 0 };
+  FlowDefinition {
+    kind:        StageKind::FlowSample,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
 pub(in crate::core) fn backpressure_timeout_definition<In>(duration_ticks: u64) -> FlowDefinition
 where
   In: Send + Sync + 'static, {
@@ -4423,6 +4508,20 @@ struct TakeWithinLogic<In> {
   _pd:                PhantomData<fn(In)>,
 }
 
+struct DebounceLogic<In> {
+  silence_ticks:     u64,
+  held:              Option<In>,
+  last_receive_tick: u64,
+  tick_count:        u64,
+}
+
+struct SampleLogic<In> {
+  interval_ticks: u64,
+  held:           Option<In>,
+  last_emit_tick: u64,
+  tick_count:     u64,
+}
+
 struct BackpressureTimeoutLogic<In> {
   duration_ticks:       u64,
   tick_count:           u64,
@@ -4885,6 +4984,90 @@ where
     self.tick_count = 0;
     self.expired = false;
     self.shutdown_requested = false;
+    Ok(())
+  }
+}
+
+impl<In> FlowLogic for DebounceLogic<In>
+where
+  In: Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let value = downcast_value::<In>(input)?;
+    self.held = Some(value);
+    self.last_receive_tick = self.tick_count;
+    Ok(Vec::new())
+  }
+
+  fn on_tick(&mut self, tick_count: u64) -> Result<(), StreamError> {
+    self.tick_count = tick_count;
+    Ok(())
+  }
+
+  fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
+    if self.held.is_some()
+      && (self.tick_count.saturating_sub(self.last_receive_tick) >= self.silence_ticks)
+      && let Some(value) = self.held.take()
+    {
+      return Ok(vec![Box::new(value) as DynValue]);
+    }
+    Ok(Vec::new())
+  }
+
+  fn has_pending_output(&self) -> bool {
+    self.held.is_some()
+  }
+
+  fn on_source_done(&mut self) -> Result<(), StreamError> {
+    Ok(())
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.held = None;
+    self.last_receive_tick = 0;
+    self.tick_count = 0;
+    Ok(())
+  }
+}
+
+impl<In> FlowLogic for SampleLogic<In>
+where
+  In: Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let value = downcast_value::<In>(input)?;
+    self.held = Some(value);
+    Ok(Vec::new())
+  }
+
+  fn on_tick(&mut self, tick_count: u64) -> Result<(), StreamError> {
+    self.tick_count = tick_count;
+    Ok(())
+  }
+
+  fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
+    if self.held.is_some()
+      && (self.tick_count.saturating_sub(self.last_emit_tick) >= self.interval_ticks)
+      && let Some(value) = self.held.take()
+    {
+      self.last_emit_tick = self.tick_count;
+      return Ok(vec![Box::new(value) as DynValue]);
+    }
+    Ok(Vec::new())
+  }
+
+  fn has_pending_output(&self) -> bool {
+    self.held.is_some()
+  }
+
+  fn on_source_done(&mut self) -> Result<(), StreamError> {
+    Ok(())
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.held = None;
+    self.last_emit_tick = 0;
+    self.tick_count = 0;
     Ok(())
   }
 }

@@ -391,7 +391,6 @@ fn sink_lazy_sink_propagates_inner_on_complete_error() {
   let completion = run_source_with_sink(Source::from_array([1_u32, 2, 3]), lazy);
   assert_eq!(completion, Completion::Ready(Err(StreamError::Failed)));
 }
-
 #[test]
 fn sink_contramap_transforms_input_type() {
   let sink = Sink::<u32, StreamCompletion<alloc::vec::Vec<u32>>>::collect().contramap(|s: &str| s.len() as u32);
@@ -406,4 +405,30 @@ fn sink_from_graph_creates_sink_from_existing_graph() {
   let reconstructed = Sink::<u32, StreamCompletion<alloc::vec::Vec<u32>>>::from_graph(graph, mat);
   let completion = run_source_with_sink(Source::from_array([1_u32, 2, 3]), reconstructed);
   assert_eq!(completion, Completion::Ready(Ok(alloc::vec![1_u32, 2, 3])));
+}
+
+#[test]
+fn sink_named_is_noop() {
+  let sink = Sink::<u32, _>::ignore().named("test-sink");
+  let completion = run_source_with_sink(Source::from_array([1_u32, 2, 3]), sink);
+  assert_eq!(completion, Completion::Ready(Ok(StreamDone::new())));
+}
+
+#[test]
+fn sink_queue_collects_elements() {
+  let queue_sink = Sink::<u32, _>::queue();
+  let graph = Source::from_array([1_u32, 2, 3]).to_mat(queue_sink, KeepRight);
+  let mut materializer = TestMaterializer::default();
+  let materialized = graph.run(&mut materializer).expect("materialize");
+  for _ in 0..64 {
+    let _ = materialized.handle().drive();
+    if materialized.handle().state().is_terminal() {
+      break;
+    }
+  }
+  let queue = materialized.materialized();
+  assert_eq!(queue.pull(), Some(1_u32));
+  assert_eq!(queue.pull(), Some(2_u32));
+  assert_eq!(queue.pull(), Some(3_u32));
+  assert!(queue.pull().is_none());
 }

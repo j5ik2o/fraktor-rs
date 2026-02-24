@@ -208,6 +208,8 @@ impl StreamGraph {
             | StageKind::FlowZipWithIndex
             | StageKind::FlowConcat
             | StageKind::FlowWatchTermination
+            | StageKind::FlowDebounce
+            | StageKind::FlowSample
             | StageKind::Custom
         )
       },

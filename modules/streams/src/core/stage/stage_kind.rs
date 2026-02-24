@@ -111,6 +111,10 @@ pub enum StageKind {
   FlowConcat,
   /// Flow stage that watches stream termination and completes a handle.
   FlowWatchTermination,
+  /// Flow stage that emits the held element after silence period expires.
+  FlowDebounce,
+  /// Flow stage that samples the latest element at fixed tick intervals.
+  FlowSample,
   /// Sink that ignores elements.
   SinkIgnore,
   /// Sink that folds elements.

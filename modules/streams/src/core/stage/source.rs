@@ -15,15 +15,16 @@ use super::{
   StreamDslError, StreamError, StreamGraph, StreamNotUsed, StreamStage, SupervisionStrategy,
   flow::{
     async_boundary_definition, balance_definition, batch_definition, broadcast_definition, buffer_definition,
-    concat_definition, concat_substreams_definition, delay_definition, drop_definition, drop_while_definition,
-    filter_definition, flat_map_concat_definition, flat_map_merge_definition, group_by_definition, grouped_definition,
-    initial_delay_definition, interleave_definition, intersperse_definition, map_async_definition,
-    map_concat_definition, map_definition, map_option_definition, merge_definition, merge_substreams_definition,
-    merge_substreams_with_parallelism_definition, partition_definition, prepend_definition, recover_definition,
-    recover_with_retries_definition, scan_definition, sliding_definition, split_after_definition,
-    split_when_definition, stateful_map_concat_definition, stateful_map_definition, take_definition,
-    take_until_definition, take_while_definition, take_within_definition, throttle_definition, unzip_definition,
-    unzip_with_definition, watch_termination_definition, zip_all_definition, zip_definition, zip_with_index_definition,
+    concat_definition, concat_substreams_definition, debounce_definition, delay_definition, drop_definition,
+    drop_while_definition, filter_definition, flat_map_concat_definition, flat_map_merge_definition,
+    group_by_definition, grouped_definition, initial_delay_definition, interleave_definition, intersperse_definition,
+    map_async_definition, map_concat_definition, map_definition, map_option_definition, merge_definition,
+    merge_substreams_definition, merge_substreams_with_parallelism_definition, partition_definition,
+    prepend_definition, recover_definition, recover_with_retries_definition, sample_definition, scan_definition,
+    sliding_definition, split_after_definition, split_when_definition, stateful_map_concat_definition,
+    stateful_map_definition, take_definition, take_until_definition, take_while_definition, take_within_definition,
+    throttle_definition, unzip_definition, unzip_with_definition, watch_termination_definition, zip_all_definition,
+    zip_definition, zip_with_index_definition,
   },
   graph::{GraphStage, GraphStageLogic},
   shape::{Inlet, Outlet, StreamShape},
@@ -148,10 +149,21 @@ where
     Self::from_logic(StageKind::Custom, IterateSourceLogic { current: seed, func })
   }
 
+  /// Creates a source from a materializer-provided factory.
+  ///
+  /// The factory is deferred until the first element is demanded, equivalent to `lazy_source`.
+  #[must_use]
+  pub fn from_materializer<F>(factory: F) -> Self
+  where
+    F: FnOnce() -> Self + Send + 'static, {
+    Self::lazy_source(factory)
+  }
+
   /// Converts this source into a context-carrying source by attaching unit context.
   #[must_use]
-  pub fn as_source_with_context(self) -> Source<((), Out), StreamNotUsed> {
-    self.map(|value| ((), value))
+  pub fn as_source_with_context(self) -> super::source_with_context::SourceWithContext<(), Out, StreamNotUsed> {
+    let inner = self.map(|value| ((), value));
+    super::source_with_context::SourceWithContext::from_source(inner)
   }
 
   /// Creates a sink endpoint that can be paired with a source subscriber bridge.
@@ -1011,6 +1023,40 @@ where
     Ok(Source { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
+  /// Adds a debounce stage that emits the held element after `ticks` of silence.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `ticks` is zero.
+  pub fn debounce(mut self, ticks: usize) -> Result<Source<Out, Mat>, StreamDslError> {
+    let ticks = validate_positive_argument("ticks", ticks)?;
+    let definition = debounce_definition::<Out>(ticks as u64);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Ok(Source { graph: self.graph, mat: self.mat, _pd: PhantomData })
+  }
+
+  /// Adds a sample stage that emits the latest element at fixed `ticks` intervals.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `ticks` is zero.
+  pub fn sample(mut self, ticks: usize) -> Result<Source<Out, Mat>, StreamDslError> {
+    let ticks = validate_positive_argument("ticks", ticks)?;
+    let definition = sample_definition::<Out>(ticks as u64);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Ok(Source { graph: self.graph, mat: self.mat, _pd: PhantomData })
+  }
+
   /// Adds a batch stage that emits vectors of size `size`.
   ///
   /// # Errors
@@ -1083,6 +1129,12 @@ where
   #[must_use]
   pub fn supervision_restart(mut self) -> Source<Out, Mat> {
     self.graph.set_source_supervision(SupervisionStrategy::Restart);
+    self
+  }
+
+  /// Assigns a debug name to this stage (no-op until Attributes are introduced).
+  #[must_use]
+  pub const fn named(self, _name: &str) -> Source<Out, Mat> {
     self
   }
 
