@@ -1,6 +1,6 @@
 //! Typed actor context wrapper.
 
-use core::{future::Future, marker::PhantomData, ptr::NonNull};
+use core::{future::Future, marker::PhantomData, ptr::NonNull, time::Duration};
 
 use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 
@@ -14,6 +14,7 @@ use crate::core::{
     actor::{actor_ref::TypedActorRefGeneric, child_ref::TypedChildRefGeneric},
     message_adapter::{AdaptMessage, AdapterError, MessageAdapterBuilderGeneric, MessageAdapterRegistry},
     props::TypedPropsGeneric,
+    receive_timeout_config::ReceiveTimeoutConfig,
   },
 };
 
@@ -22,9 +23,10 @@ pub struct TypedActorContextGeneric<'a, M, TB = NoStdToolbox>
 where
   M: Send + Sync + 'static,
   TB: RuntimeToolbox + 'static, {
-  inner:    NonNull<ActorContextGeneric<'a, TB>>,
-  adapters: Option<NonNull<MessageAdapterRegistry<M, TB>>>,
-  _marker:  PhantomData<(&'a mut ActorContextGeneric<'a, TB>, M)>,
+  inner:           NonNull<ActorContextGeneric<'a, TB>>,
+  adapters:        Option<NonNull<MessageAdapterRegistry<M, TB>>>,
+  receive_timeout: Option<NonNull<Option<ReceiveTimeoutConfig<M, TB>>>>,
+  _marker:         PhantomData<(&'a mut ActorContextGeneric<'a, TB>, M)>,
 }
 
 /// Type alias for [TypedActorContextGeneric] with the default [NoStdToolbox].
@@ -40,7 +42,18 @@ where
     inner: &mut ActorContextGeneric<'a, TB>,
     adapters: Option<&mut MessageAdapterRegistry<M, TB>>,
   ) -> Self {
-    Self { inner: NonNull::from(inner), adapters: adapters.map(NonNull::from), _marker: PhantomData }
+    Self {
+      inner:           NonNull::from(inner),
+      adapters:        adapters.map(NonNull::from),
+      receive_timeout: None,
+      _marker:         PhantomData,
+    }
+  }
+
+  /// Attaches a receive timeout state reference to this context.
+  pub(crate) fn with_receive_timeout(mut self, state: &mut Option<ReceiveTimeoutConfig<M, TB>>) -> Self {
+    self.receive_timeout = Some(NonNull::from(state));
+    self
   }
 
   const fn inner(&self) -> &ActorContextGeneric<'a, TB> {
@@ -237,5 +250,30 @@ where
       AnyMessageGeneric::new(adapt)
     };
     self.inner().pipe_to_self(mapped, |message| message)
+  }
+
+  /// Configures an idle timeout that sends `message` when no messages are received within
+  /// `timeout`.
+  ///
+  /// The timer resets on every message delivery. Calling this again replaces the previous
+  /// configuration. Use [`cancel_receive_timeout`](Self::cancel_receive_timeout) to disable.
+  pub fn set_receive_timeout<F>(&mut self, timeout: Duration, message_factory: F)
+  where
+    F: Fn() -> M + Send + Sync + 'static, {
+    if let Some(mut ptr) = self.receive_timeout {
+      // SAFETY: The pointer is valid for the duration of the actor's message processing.
+      let state = unsafe { ptr.as_mut() };
+      *state = Some(ReceiveTimeoutConfig::new(timeout, message_factory));
+    }
+  }
+
+  /// Disables the receive timeout previously set via
+  /// [`set_receive_timeout`](Self::set_receive_timeout).
+  pub fn cancel_receive_timeout(&mut self) {
+    if let Some(mut ptr) = self.receive_timeout {
+      // SAFETY: The pointer is valid for the duration of the actor's message processing.
+      let state = unsafe { ptr.as_mut() };
+      *state = None;
+    }
   }
 }
