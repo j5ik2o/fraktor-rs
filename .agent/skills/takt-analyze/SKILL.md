@@ -36,6 +36,8 @@ description: >
 |---------|------|--------|
 | initial_movement存在 | `initial_movement`が`movements`配列内に存在するか | Critical |
 | 遷移先の有効性 | 全`rules.next`が有効なムーブメント名 or `COMPLETE`/`ABORT`か | Critical |
+| loop健全遷移整合 | `loop_monitors.cycle` の健全時 `next` が cycle 先頭ノードと一致するか | Critical |
+| loop参照レポート範囲 | `loop_monitors.judge.instruction_template` の `{report:...}` が cycle 内 movement 生成物のみか | Critical |
 | セクションマップ整合性 | セクションマップのキーとムーブメント内参照が一致するか | Critical |
 | ファイルパス存在 | セクションマップのパスが実在するか | Critical |
 | parallel構造 | 親ルールが`all()`/`any()`を使用、サブステップに`next`がないか | Warning |
@@ -94,6 +96,8 @@ description: >
 | aggregate使用 | parallelの親でall()/any()を使用しているか |
 | 到達不能ルール | どの条件にも該当しないケースがないか |
 | ループリスク | fix→review等の循環にloop_monitorsがあるか |
+| loop健全遷移 | 各 loop monitor で「健全（進捗あり）」の `next` が cycle 先頭ノードか |
+| loopレポート整合 | loop monitor が cycle 外 movement 専用レポートを参照していないか |
 | ABORT条件 | 失敗時のABORT遷移が適切に定義されているか |
 
 ### 5. ビルトイン活用分析
