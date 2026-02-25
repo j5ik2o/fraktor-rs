@@ -48,6 +48,7 @@ Cargo.lock
 /.cursor/
 /.copilot/
 /.opencode/
+/openspec/
 
 /.serena/cache/
 
