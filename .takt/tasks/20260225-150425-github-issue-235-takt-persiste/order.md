@@ -1,3 +1,12 @@
+## GitHub Issue #235: [TAKT] persistence-enhancements (20260224-100010-per-enh)
+
+## 元タスク
+- slug: 20260224-100010-per-enh
+- task_dir: .takt/tasks/20260224-100010-per-enh
+- source: .takt/tasks/20260224-100010-per-enh/order.md
+
+## タスク仕様（order.md）
+
 # タスク仕様
 
 ## 目的
@@ -28,3 +37,7 @@ persistenceモジュールの既存機能を拡張し、不足しているフィ
 - Pekko参照: `references/pekko/persistence/src/main/scala/org/apache/pekko/persistence/PersistentRepr.scala`
 - Pekko参照: `references/pekko/persistence/src/main/scala/org/apache/pekko/persistence/Eventsourced.scala`
 - Pekko参照: `references/pekko/persistence/src/main/scala/org/apache/pekko/persistence/AtLeastOnceDelivery.scala`
+
+
+### Labels
+takt

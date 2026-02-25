@@ -1,3 +1,12 @@
+## GitHub Issue #233: [TAKT] cluster-leader-and-downing (20260224-100008-cls-ldr)
+
+## 元タスク
+- slug: 20260224-100008-cls-ldr
+- task_dir: .takt/tasks/20260224-100008-cls-ldr
+- source: .takt/tasks/20260224-100008-cls-ldr/order.md
+
+## タスク仕様（order.md）
+
 # タスク仕様
 
 ## 目的
@@ -29,3 +38,7 @@ clusterモジュールにリーダー選出、ダウニング戦略、Gossipプ�
 - Pekko参照: `references/pekko/cluster/src/main/scala/org/apache/pekko/cluster/DowningProvider.scala`
 - Pekko参照: `references/pekko/cluster/src/main/scala/org/apache/pekko/cluster/VectorClock.scala`
 - Pekko参照: `references/pekko/cluster/src/main/scala/org/apache/pekko/cluster/Gossip.scala`
+
+
+### Labels
+takt
