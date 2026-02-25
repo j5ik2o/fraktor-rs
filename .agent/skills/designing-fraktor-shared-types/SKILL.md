@@ -128,9 +128,9 @@ Shared と同じ構造だが、ライフサイクル制御メソッド（start/s
 
 ## 参照ドキュメント
 
-- `.claude/rules/rust/immutability-policy.md`: 判定フローの根拠となる内部可変性ポリシー。ステップ2の判断に迷った場合に参照
+- `.agent/rules/rust/immutability-policy.md`: 判定フローの根拠となる内部可変性ポリシー。ステップ2の判断に迷った場合に参照
 - `docs/guides/shared_vs_handle.md`: Shared/Handle パターンの詳細な実装ガイド。テンプレート生成時に既存パターンを確認する際に参照
-- `.claude/rules/rust/cqs-principle.md`: Command（&mut self）と Query（&self）の分離原則。テンプレートのメソッド設計時に参照
+- `.agent/rules/rust/cqs-principle.md`: Command（&mut self）と Query（&self）の分離原則。テンプレートのメソッド設計時に参照
 
 ## 出力ガイドライン
 
