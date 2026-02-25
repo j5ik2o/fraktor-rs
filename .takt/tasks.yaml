@@ -1,111 +1,55 @@
 tasks:
   - worktree: true
-    branch: takt/20260224T0122-20260224-100005-rmt-fd
+    branch: takt/232/github-issue-232-takt-cluster
     piece: pekko-porting
+    issue: 232
     auto_pr: true
     draft_pr: true
-    name: remote-failure-detection
+    name: github-issue-232-takt-cluster
     status: completed
-    slug: 20260224-100005-rmt-fd
-    worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260224T0122-20260224-100005-rmt-fd
-    pr_url: https://github.com/j5ik2o/fraktor-rs/pull/180
-    task_dir: .takt/tasks/20260224-100005-rmt-fd
-    created_at: 2026-02-24T10:00:05.000Z
-    started_at: 2026-02-24T01:22:09.470Z
-    completed_at: 2026-02-24T02:36:27.153Z
+    slug: github-issue-232-takt-cluster
+    summary: "## GitHub Issue #232: [TAKT] cluster-member-model
+      (20260224-100007-cls-mbr)"
+    worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktrees/20260225T0214-232-github-issue-232-takt-cluster
+    pr_url: https://github.com/j5ik2o/fraktor-rs/pull/245
+    task_dir: .takt/tasks/20260225-021228-github-issue-232-takt-cluster
+    created_at: 2026-02-25T02:12:28.703Z
+    started_at: 2026-02-25T02:14:04.784Z
+    completed_at: 2026-02-25T06:31:06.089Z
     owner_pid: null
   - worktree: true
-    branch: takt/20260224T0326-20260224-100006-rmt-evt
+    branch: takt/234/github-issue-234-takt-persiste
     piece: pekko-porting
+    issue: 234
     auto_pr: true
     draft_pr: true
-    name: remote-events-and-control
-    status: running
-    slug: 20260224-100006-rmt-evt
-    worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260224T0326-20260224-100006-rmt-evt
-    task_dir: .takt/tasks/20260224-100006-rmt-evt
-    created_at: 2026-02-24T10:00:06.000Z
-    started_at: 2026-02-24T04:23:00.680Z
-    completed_at: null
-    owner_pid: 3972
-  - worktree: true
-    piece: pekko-porting
-    auto_pr: true
-    draft_pr: true
-    name: cluster-member-model
-    status: failed
-    slug: 20260224-100007-cls-mbr
-    task_dir: .takt/tasks/20260224-100007-cls-mbr
-    created_at: 2026-02-24T10:00:07.000Z
-    started_at: 2026-02-24T03:22:40.168Z
-    completed_at: 2026-02-24T03:22:41.477Z
+    name: github-issue-234-takt-persiste
+    status: completed
+    slug: github-issue-234-takt-persiste
+    summary: "## GitHub Issue #234: [TAKT] persistence-event-adapter
+      (20260224-100009-per-adp)"
+    worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktrees/20260225T0214-234-github-issue-234-takt-persiste
+    pr_url: https://github.com/j5ik2o/fraktor-rs/pull/238
+    task_dir: .takt/tasks/20260225-021322-github-issue-234-takt-persiste
+    created_at: 2026-02-25T02:13:22.441Z
+    started_at: 2026-02-25T02:14:21.975Z
+    completed_at: 2026-02-25T03:59:56.487Z
     owner_pid: null
-    failure:
-      error: |
-        Command failed: git clone --reference /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs --dissociate /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260224T0322-20260224-100007-cls-mbr
-        Cloning into '/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260224T0322-20260224-100007-cls-mbr'...
-        done.
   - worktree: true
+    branch: takt/236/github-issue-236-takt-persiste
     piece: pekko-porting
+    issue: 236
     auto_pr: true
     draft_pr: true
-    name: cluster-leader-and-downing
-    status: failed
-    slug: 20260224-100008-cls-ldr
-    task_dir: .takt/tasks/20260224-100008-cls-ldr
-    created_at: 2026-02-24T10:00:08.000Z
-    started_at: 2026-02-24T03:22:40.994Z
-    completed_at: 2026-02-24T03:22:41.481Z
+    name: github-issue-236-takt-persiste
+    status: completed
+    slug: github-issue-236-takt-persiste
+    summary: "## GitHub Issue #236: [TAKT] persistence-durable-state
+      (20260224-100011-per-dur)"
+    worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktrees/20260225T0214-236-github-issue-236-takt-persiste
+    pr_url: https://github.com/j5ik2o/fraktor-rs/pull/237
+    task_dir: .takt/tasks/20260225-021333-github-issue-236-takt-persiste
+    created_at: 2026-02-25T02:13:33.792Z
+    started_at: 2026-02-25T02:14:32.842Z
+    completed_at: 2026-02-25T03:30:35.688Z
     owner_pid: null
-    failure:
-      error: |
-        Command failed: git clone --reference /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs --dissociate /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260224T0322-20260224-100008-cls-ldr
-        Cloning into '/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260224T0322-20260224-100008-cls-ldr'...
-  - worktree: true
-    piece: pekko-porting
-    auto_pr: true
-    draft_pr: true
-    name: persistence-event-adapter
-    status: failed
-    slug: 20260224-100009-per-adp
-    task_dir: .takt/tasks/20260224-100009-per-adp
-    created_at: 2026-02-24T10:00:09.000Z
-    started_at: 2026-02-24T03:22:41.045Z
-    completed_at: 2026-02-24T03:22:41.484Z
-    owner_pid: null
-    failure:
-      error: |
-        Command failed: git clone --reference /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs --dissociate /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260224T0322-20260224-100009-per-adp
-        Cloning into '/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260224T0322-20260224-100009-per-adp'...
-  - worktree: true
-    piece: pekko-porting
-    auto_pr: true
-    draft_pr: true
-    name: persistence-enhancements
-    status: failed
-    slug: 20260224-100010-per-enh
-    task_dir: .takt/tasks/20260224-100010-per-enh
-    created_at: 2026-02-24T10:00:10.000Z
-    started_at: 2026-02-24T03:22:41.490Z
-    completed_at: 2026-02-24T03:22:41.598Z
-    owner_pid: null
-    failure:
-      error: |
-        Command failed: git clone --reference /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs --dissociate /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260224T0322-20260224-100010-per-enh
-        Cloning into '/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260224T0322-20260224-100010-per-enh'...
-  - worktree: true
-    piece: pekko-porting
-    auto_pr: true
-    draft_pr: true
-    name: persistence-durable-state
-    status: failed
-    slug: 20260224-100011-per-dur
-    task_dir: .takt/tasks/20260224-100011-per-dur
-    created_at: 2026-02-24T10:00:11.000Z
-    started_at: 2026-02-24T03:22:41.604Z
-    completed_at: 2026-02-24T03:22:41.811Z
-    owner_pid: null
-    failure:
-      error: |
-        Command failed: git clone --reference /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs --dissociate /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260224T0322-20260224-100011-per-dur
-        Cloning into '/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktree/20260224T0322-20260224-100011-per-dur'...
