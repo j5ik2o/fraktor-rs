@@ -1,3 +1,4 @@
 [tools]
 node = "20"
 python = "3"
+"npm:@fission-ai/openspec" = "latest"
