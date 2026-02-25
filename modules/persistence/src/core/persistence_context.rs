@@ -4,6 +4,7 @@
 mod tests;
 
 use alloc::{boxed::Box, collections::VecDeque, format, string::String, vec::Vec};
+use core::ops::Deref;
 
 use fraktor_actor_rs::core::{
   actor::{Pid, actor_ref::ActorRefGeneric},
@@ -12,11 +13,11 @@ use fraktor_actor_rs::core::{
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
 use crate::core::{
-  journal_message::JournalMessage, journal_response::JournalResponse, journal_response_action::JournalResponseAction,
-  pending_handler_invocation::PendingHandlerInvocation, persistence_error::PersistenceError,
-  persistent_actor_state::PersistentActorState, persistent_envelope::PersistentEnvelope,
-  persistent_repr::PersistentRepr, recovery::Recovery, snapshot_error::SnapshotError,
-  snapshot_message::SnapshotMessage, snapshot_response::SnapshotResponse,
+  event_adapters::EventAdapters, journal_message::JournalMessage, journal_response::JournalResponse,
+  journal_response_action::JournalResponseAction, pending_handler_invocation::PendingHandlerInvocation,
+  persistence_error::PersistenceError, persistent_actor_state::PersistentActorState,
+  persistent_envelope::PersistentEnvelope, persistent_repr::PersistentRepr, recovery::Recovery,
+  snapshot_error::SnapshotError, snapshot_message::SnapshotMessage, snapshot_response::SnapshotResponse,
   snapshot_response_action::SnapshotResponseAction,
 };
 
@@ -33,6 +34,7 @@ pub struct PersistenceContext<A: 'static, TB: RuntimeToolbox + 'static> {
   last_sequence_nr:    u64,
   recovery:            Recovery,
   instance_id:         u32,
+  event_adapters:      EventAdapters,
   journal_actor_ref:   ActorRefGeneric<TB>,
   snapshot_actor_ref:  ActorRefGeneric<TB>,
 }
@@ -51,6 +53,7 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
       last_sequence_nr: 0,
       recovery: Recovery::default(),
       instance_id: 1,
+      event_adapters: EventAdapters::new(),
       journal_actor_ref: ActorRefGeneric::null(),
       snapshot_actor_ref: ActorRefGeneric::null(),
     }
@@ -101,6 +104,17 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
     self.last_sequence_nr
   }
 
+  /// Returns the event adapter registry.
+  #[must_use]
+  pub const fn event_adapters(&self) -> &EventAdapters {
+    &self.event_adapters
+  }
+
+  /// Returns the mutable event adapter registry.
+  pub const fn event_adapters_mut(&mut self) -> &mut EventAdapters {
+    &mut self.event_adapters
+  }
+
   /// Adds an event to the batch.
   pub fn add_to_event_batch<E: core::any::Any + Send + Sync + 'static>(
     &mut self,
@@ -133,7 +147,8 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
 
     for envelope in self.journal_batch.drain(..) {
       let stashing = envelope.is_stashing();
-      let repr = envelope.into_persistent_repr(self.persistence_id.clone());
+      let repr = envelope.into_persistent_repr(self.persistence_id.clone(), self.event_adapters.clone());
+      let journal_repr = Self::to_journal_repr(&repr);
       let handler = envelope.into_handler();
       let invocation = if stashing {
         PendingHandlerInvocation::stashing(repr.clone(), handler)
@@ -141,7 +156,7 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
         PendingHandlerInvocation::async_handler(repr.clone(), handler)
       };
       self.pending_invocations.push_back(invocation);
-      messages.push(repr);
+      messages.push(journal_repr);
     }
 
     let to_sequence_nr = messages.last().map(|repr| repr.sequence_nr()).unwrap_or(self.current_sequence_nr);
@@ -193,7 +208,18 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
       },
       | JournalResponse::ReplayedMessage { persistent_repr } => {
         self.current_sequence_nr = persistent_repr.sequence_nr();
-        JournalResponseAction::ReceiveRecover(persistent_repr.clone())
+        let mut replayed_reprs = Self::from_journal_repr(persistent_repr);
+        match replayed_reprs.len() {
+          | 0 => JournalResponseAction::None,
+          | 1 => {
+            if let Some(replayed_repr) = replayed_reprs.pop() {
+              JournalResponseAction::ReceiveRecover(replayed_repr)
+            } else {
+              JournalResponseAction::None
+            }
+          },
+          | _ => JournalResponseAction::ReceiveRecoverMany(replayed_reprs),
+        }
       },
       | JournalResponse::RecoverySuccess { highest_sequence_nr } => {
         let highest = (*highest_sequence_nr).max(self.current_sequence_nr).max(self.last_sequence_nr);
@@ -363,6 +389,34 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
       .tell(AnyMessageGeneric::new(message))
       .map_err(|error| PersistenceError::MessagePassing(format!("{error:?}")))
       .map(|_| ())
+  }
+
+  fn to_journal_repr(repr: &PersistentRepr) -> PersistentRepr {
+    let payload = repr.payload().clone();
+    let adapter = repr.adapters().write_adapter_for_type_id(repr.adapter_type_id());
+    let manifest = adapter.manifest(payload.deref());
+    let adapted_payload = adapter.to_journal(payload);
+    Self::repr_with_payload(repr, adapted_payload).with_manifest(manifest)
+  }
+
+  fn from_journal_repr(repr: &PersistentRepr) -> Vec<PersistentRepr> {
+    let payload = repr.payload().clone();
+    let adapted =
+      repr.adapters().read_adapter_for_type_id(repr.adapter_type_id()).adapt_from_journal(payload, repr.manifest());
+    adapted.into_events().into_iter().map(|adapted_payload| Self::repr_with_payload(repr, adapted_payload)).collect()
+  }
+
+  fn repr_with_payload(repr: &PersistentRepr, payload: ArcShared<dyn core::any::Any + Send + Sync>) -> PersistentRepr {
+    let updated = PersistentRepr::new(repr.persistence_id(), repr.sequence_nr(), payload)
+      .with_manifest(repr.manifest())
+      .with_writer_uuid(repr.writer_uuid())
+      .with_timestamp(repr.timestamp())
+      .with_adapters(repr.adapters().clone())
+      .with_adapter_type_id(repr.adapter_type_id());
+    if let Some(metadata) = repr.metadata() {
+      return updated.with_metadata(metadata.clone());
+    }
+    updated
   }
 
   fn ensure_ready(&self) -> Result<(), PersistenceError> {

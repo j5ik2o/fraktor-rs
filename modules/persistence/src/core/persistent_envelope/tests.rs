@@ -1,6 +1,8 @@
 use fraktor_utils_rs::core::sync::ArcShared;
 
-use crate::core::{persistent_envelope::PersistentEnvelope, persistent_repr::PersistentRepr};
+use crate::core::{
+  event_adapters::EventAdapters, persistent_envelope::PersistentEnvelope, persistent_repr::PersistentRepr,
+};
 
 struct Counter;
 
@@ -11,7 +13,7 @@ fn persistent_envelope_into_repr() {
 
   assert!(envelope.is_stashing());
 
-  let repr: PersistentRepr = envelope.into_persistent_repr("pid-1");
+  let repr: PersistentRepr = envelope.into_persistent_repr("pid-1", EventAdapters::new());
   assert_eq!(repr.sequence_nr(), 3);
   assert_eq!(repr.downcast_ref::<i32>(), Some(&5));
 }
