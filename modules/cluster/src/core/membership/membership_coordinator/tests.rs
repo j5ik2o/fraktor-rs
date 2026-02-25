@@ -286,3 +286,170 @@ fn join_uses_joining_config_metadata() {
   assert_eq!(snapshot.entries[0].app_version, "2.0.0");
   assert_eq!(snapshot.entries[0].roles, vec![String::from("edge"), String::from("frontend")]);
 }
+
+#[test]
+fn current_cluster_state_emits_oldest_leader_and_role_leaders() {
+  let table = MembershipTable::new(3);
+  let config = base_config();
+  let mut coordinator = MembershipCoordinatorGeneric::<fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox>::new(
+    config,
+    local_cluster_config(),
+    table,
+    registry(1.0),
+  );
+  coordinator.start_member().unwrap();
+
+  let joining_backend = ClusterExtensionConfig::new()
+    .with_app_version("1.0.0")
+    .with_roles(vec![String::from("backend"), String::from("shared")]);
+  let joining_frontend = ClusterExtensionConfig::new()
+    .with_app_version("1.0.0")
+    .with_roles(vec![String::from("frontend"), String::from("shared")]);
+
+  let _ = coordinator.handle_join("node-1".to_string(), "node-a".to_string(), &joining_backend, now(1)).unwrap();
+  let _ = coordinator.handle_join("node-2".to_string(), "node-b".to_string(), &joining_frontend, now(2)).unwrap();
+  let _ = coordinator.handle_heartbeat("node-a", now(3)).unwrap();
+  let outcome = coordinator.handle_heartbeat("node-b", now(4)).unwrap();
+
+  let state = outcome
+    .member_events
+    .iter()
+    .find_map(
+      |event| {
+        if let ClusterEvent::CurrentClusterState { state, .. } = event { Some(state.clone()) } else { None }
+      },
+    )
+    .expect("current cluster state");
+
+  assert_eq!(state.leader, Some(String::from("node-a")));
+  assert_eq!(state.role_leader.get("backend"), Some(&Some(String::from("node-a"))));
+  assert_eq!(state.role_leader.get("frontend"), Some(&Some(String::from("node-b"))));
+  assert_eq!(state.role_leader.get("shared"), Some(&Some(String::from("node-a"))));
+}
+
+#[test]
+fn current_cluster_state_keeps_roles_without_eligible_leader_as_none() {
+  let table = MembershipTable::new(3);
+  let config = base_config();
+  let mut coordinator = MembershipCoordinatorGeneric::<fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox>::new(
+    config,
+    local_cluster_config(),
+    table,
+    registry(1.0),
+  );
+  coordinator.start_member().unwrap();
+
+  let joining_backend =
+    ClusterExtensionConfig::new().with_app_version("1.0.0").with_roles(vec![String::from("backend")]);
+  let joining_analytics =
+    ClusterExtensionConfig::new().with_app_version("1.0.0").with_roles(vec![String::from("analytics")]);
+
+  let _ = coordinator.handle_join("node-1".to_string(), "node-a".to_string(), &joining_backend, now(1)).unwrap();
+  let _ = coordinator.handle_heartbeat("node-a", now(2)).unwrap();
+  let outcome =
+    coordinator.handle_join("node-2".to_string(), "node-b".to_string(), &joining_analytics, now(3)).unwrap();
+
+  let state = outcome
+    .member_events
+    .iter()
+    .find_map(
+      |event| {
+        if let ClusterEvent::CurrentClusterState { state, .. } = event { Some(state.clone()) } else { None }
+      },
+    )
+    .expect("current cluster state");
+
+  assert_eq!(state.role_leader.get("backend"), Some(&Some(String::from("node-a"))));
+  assert_eq!(state.role_leader.get("analytics"), Some(&None));
+}
+
+#[test]
+fn current_cluster_state_does_not_use_suspect_oldest_for_leader() {
+  let table = MembershipTable::new(3);
+  let mut config = base_config();
+  config.suspect_timeout = Duration::from_secs(1);
+  config.dead_timeout = Duration::from_secs(30);
+  let mut coordinator = MembershipCoordinatorGeneric::<fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox>::new(
+    config,
+    local_cluster_config(),
+    table,
+    registry(1.0),
+  );
+  coordinator.start_member().unwrap();
+
+  let role = ClusterExtensionConfig::new().with_app_version("1.0.0").with_roles(vec![String::from("backend")]);
+  let _ = coordinator.handle_join("node-1".to_string(), "node-a".to_string(), &role, now(1)).unwrap();
+  let _ = coordinator.handle_join("node-2".to_string(), "node-b".to_string(), &role, now(2)).unwrap();
+  let _ = coordinator.handle_heartbeat("node-a", now(3)).unwrap();
+  let _ = coordinator.handle_heartbeat("node-a", now(4)).unwrap();
+  let _ = coordinator.handle_heartbeat("node-b", now(5)).unwrap();
+  let _ = coordinator.handle_heartbeat("node-b", now(6)).unwrap();
+
+  let _ = coordinator.poll(now(7)).unwrap();
+  let outcome = coordinator.handle_heartbeat("node-b", now(8)).unwrap();
+  let state = outcome
+    .member_events
+    .iter()
+    .find_map(
+      |event| {
+        if let ClusterEvent::CurrentClusterState { state, .. } = event { Some(state.clone()) } else { None }
+      },
+    )
+    .expect("current cluster state");
+
+  assert!(state.unreachable.iter().any(|record| record.authority == "node-a"));
+  assert_eq!(state.leader, Some(String::from("node-b")));
+  assert_eq!(state.role_leader.get("backend"), Some(&Some(String::from("node-b"))));
+}
+
+#[test]
+fn suspect_and_heartbeat_emit_unreachable_and_reachable_events() {
+  let table = MembershipTable::new(3);
+  let mut config = base_config();
+  config.suspect_timeout = Duration::from_secs(30);
+  let mut coordinator = MembershipCoordinatorGeneric::<fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox>::new(
+    config,
+    local_cluster_config(),
+    table,
+    registry(1.0),
+  );
+  coordinator.start_member().unwrap();
+
+  let _ =
+    coordinator.handle_join("node-1".to_string(), "node-a".to_string(), &joining_cluster_config(), now(1)).unwrap();
+  let _ = coordinator.handle_heartbeat("node-a", now(2)).unwrap();
+  let _ = coordinator.handle_heartbeat("node-a", now(3)).unwrap();
+
+  let suspect_outcome = coordinator.poll(now(5)).unwrap();
+  assert!(suspect_outcome.member_events.iter().any(|event| matches!(
+    event,
+    ClusterEvent::UnreachableMember { authority, .. } if authority == "node-a"
+  )));
+
+  let reachable_outcome = coordinator.handle_heartbeat("node-a", now(6)).unwrap();
+  assert!(reachable_outcome.member_events.iter().any(|event| matches!(
+    event,
+    ClusterEvent::ReachableMember { authority, .. } if authority == "node-a"
+  )));
+}
+
+#[test]
+fn gossip_seen_changed_event_is_emitted() {
+  let table = MembershipTable::new(3);
+  let mut config = base_config();
+  config.gossip_enabled = true;
+  let mut coordinator = MembershipCoordinatorGeneric::<fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox>::new(
+    config,
+    local_cluster_config(),
+    table,
+    registry(1.0),
+  );
+  coordinator.start_member().unwrap();
+
+  let outcome =
+    coordinator.handle_join("node-1".to_string(), "node-a".to_string(), &joining_cluster_config(), now(1)).unwrap();
+  assert!(outcome.member_events.iter().any(|event| matches!(
+    event,
+    ClusterEvent::SeenChanged { version, .. } if *version == MembershipVersion::new(1)
+  )));
+}

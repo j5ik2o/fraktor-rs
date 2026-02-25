@@ -64,6 +64,8 @@ fn status_to_u8(status: NodeStatus) -> u8 {
     | NodeStatus::Removed => 4,
     | NodeStatus::Dead => 5,
     | NodeStatus::Exiting => 6,
+    | NodeStatus::PreparingForShutdown => 7,
+    | NodeStatus::ReadyForShutdown => 8,
   }
 }
 
@@ -76,6 +78,8 @@ fn status_from_u8(value: u8) -> Option<NodeStatus> {
     | 4 => Some(NodeStatus::Removed),
     | 5 => Some(NodeStatus::Dead),
     | 6 => Some(NodeStatus::Exiting),
+    | 7 => Some(NodeStatus::PreparingForShutdown),
+    | 8 => Some(NodeStatus::ReadyForShutdown),
     | _ => None,
   }
 }

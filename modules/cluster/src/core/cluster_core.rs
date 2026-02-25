@@ -4,6 +4,7 @@
 mod tests;
 
 use alloc::{
+  boxed::Box,
   format,
   string::{String, ToString},
   vec::Vec,
@@ -15,13 +16,14 @@ use fraktor_actor_rs::core::{
 };
 use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{
-  runtime_toolbox::RuntimeToolbox,
-  sync::{ArcShared, SharedAccess},
+  runtime_toolbox::{RuntimeToolbox, ToolboxMutex},
+  sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
 };
 
 use crate::core::{
   ClusterError, ClusterEvent, ClusterExtensionConfig, ClusterMetrics, ClusterMetricsSnapshot, ClusterProviderShared,
   MetricsError, StartupMode, TopologyApplyError, TopologyUpdate,
+  downing_provider::DowningProvider,
   grain::{GrainKey, KindRegistry},
   identity::{IdentityLookupShared, IdentitySetupError, LookupError, PidCache},
   membership::GossiperShared,
@@ -34,6 +36,7 @@ pub struct ClusterCore<TB: RuntimeToolbox + 'static> {
   provider:            ClusterProviderShared<TB>,
   block_list_provider: ArcShared<dyn BlockListProvider>,
   event_stream:        EventStreamSharedGeneric<TB>,
+  downing_provider:    ArcShared<ToolboxMutex<Box<dyn DowningProvider>, TB>>,
   gossiper:            GossiperShared<TB>,
   pub_sub:             ClusterPubSubShared<TB>,
   startup_state:       ClusterStartupState,
@@ -58,6 +61,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
     provider: ClusterProviderShared<TB>,
     block_list_provider: ArcShared<dyn BlockListProvider>,
     event_stream: EventStreamSharedGeneric<TB>,
+    downing_provider: ArcShared<ToolboxMutex<Box<dyn DowningProvider>, TB>>,
     gossiper: GossiperShared<TB>,
     pubsub: ClusterPubSubShared<TB>,
     kind_registry: KindRegistry,
@@ -72,6 +76,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
       provider,
       block_list_provider,
       event_stream,
+      downing_provider,
       gossiper,
       pub_sub: pubsub,
       startup_state,
@@ -322,6 +327,20 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
         Err(ClusterError::from(error))
       },
     }
+  }
+
+  /// Explicitly downs a member authority.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the cluster has not been started, downing strategy rejects the command,
+  /// or provider-side down processing fails.
+  pub fn down(&mut self, authority: &str) -> Result<(), ClusterError> {
+    if self.mode.is_none() {
+      return Err(ClusterError::from(crate::core::ClusterProviderError::down("cluster is not started")));
+    }
+    self.downing_provider.lock().down(authority).map_err(ClusterError::from)?;
+    self.provider.with_write(|provider| provider.down(authority)).map_err(ClusterError::from)
   }
 
   fn publish_cluster_event(&self, event: ClusterEvent) {

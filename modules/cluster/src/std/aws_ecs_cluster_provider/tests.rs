@@ -3,8 +3,7 @@
 use std::sync::Mutex;
 
 use fraktor_actor_rs::core::event::stream::{
-  EventStreamEvent, EventStreamShared, EventStreamSharedGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric,
-  subscriber_handle,
+  EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric, subscriber_handle,
 };
 use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::{core::sync::ArcShared, std::runtime_toolbox::StdToolbox};
@@ -86,7 +85,7 @@ fn ecs_cluster_config_builder_pattern() {
 
 #[test]
 fn provider_new_creates_instance() {
-  let event_stream = EventStreamShared::default();
+  let event_stream = EventStreamSharedGeneric::<StdToolbox>::default();
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
 
   let provider = AwsEcsClusterProvider::new(event_stream, block_list, "127.0.0.1:8080");
@@ -98,7 +97,7 @@ fn provider_new_creates_instance() {
 
 #[test]
 fn provider_with_ecs_config() {
-  let event_stream = EventStreamShared::default();
+  let event_stream = EventStreamSharedGeneric::<StdToolbox>::default();
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
 
   let ecs_config = EcsClusterConfig::new().with_cluster_name("test-cluster").with_service_name("test-service");
@@ -109,14 +108,14 @@ fn provider_with_ecs_config() {
   assert_eq!(provider.advertised_address(), "127.0.0.1:8080");
 }
 
-#[test]
-fn start_member_publishes_startup_event() {
-  let event_stream = EventStreamShared::default();
+#[tokio::test]
+async fn start_member_publishes_startup_event() {
+  let event_stream = EventStreamSharedGeneric::<StdToolbox>::default();
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
 
   let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
-  let provider = AwsEcsClusterProvider::new(event_stream, block_list, "127.0.0.1:8080");
+  let mut provider = AwsEcsClusterProvider::new(event_stream, block_list, "127.0.0.1:8080");
 
   let result = provider.start_member();
   assert!(result.is_ok());
@@ -133,16 +132,18 @@ fn start_member_publishes_startup_event() {
     assert_eq!(address, "127.0.0.1:8080");
     assert_eq!(*mode, StartupMode::Member);
   }
+
+  let _ = provider.shutdown(true);
 }
 
-#[test]
-fn start_client_publishes_startup_event() {
-  let event_stream = EventStreamShared::default();
+#[tokio::test]
+async fn start_client_publishes_startup_event() {
+  let event_stream = EventStreamSharedGeneric::<StdToolbox>::default();
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
 
   let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
-  let provider = AwsEcsClusterProvider::new(event_stream, block_list, "127.0.0.1:8080");
+  let mut provider = AwsEcsClusterProvider::new(event_stream, block_list, "127.0.0.1:8080");
 
   let result = provider.start_client();
   assert!(result.is_ok());
@@ -158,16 +159,18 @@ fn start_client_publishes_startup_event() {
     assert_eq!(address, "127.0.0.1:8080");
     assert_eq!(*mode, StartupMode::Client);
   }
+
+  let _ = provider.shutdown(true);
 }
 
-#[test]
-fn shutdown_publishes_shutdown_event() {
-  let event_stream = EventStreamShared::default();
+#[tokio::test]
+async fn shutdown_publishes_shutdown_event() {
+  let event_stream = EventStreamSharedGeneric::<StdToolbox>::default();
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
 
   let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
-  let provider = AwsEcsClusterProvider::new(event_stream, block_list, "127.0.0.1:8080");
+  let mut provider = AwsEcsClusterProvider::new(event_stream, block_list, "127.0.0.1:8080");
 
   let _ = provider.start_member();
   let result = provider.shutdown(true);
@@ -182,4 +185,51 @@ fn shutdown_publishes_shutdown_event() {
     assert_eq!(address, "127.0.0.1:8080");
     assert_eq!(*mode, StartupMode::Member);
   }
+}
+
+#[test]
+fn down_rejects_self_authority() {
+  let event_stream = EventStreamSharedGeneric::<StdToolbox>::default();
+  let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
+  let mut provider = AwsEcsClusterProvider::new(event_stream, block_list, "127.0.0.1:8080");
+
+  let result = provider.down("127.0.0.1:8080");
+
+  assert!(
+    matches!(result, Err(crate::core::ClusterProviderError::DownFailed(reason)) if reason == "cannot down self authority")
+  );
+}
+
+#[test]
+fn down_unknown_node_is_noop() {
+  let event_stream = EventStreamSharedGeneric::<StdToolbox>::default();
+  let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
+  let mut provider = AwsEcsClusterProvider::new(event_stream, block_list, "127.0.0.1:8080");
+  provider.members = vec![String::from("127.0.0.1:8080"), String::from("127.0.0.1:8081")];
+
+  let result = provider.down("127.0.0.1:9090");
+
+  assert!(result.is_ok());
+  assert_eq!(provider.member_count(), 2);
+  assert!(subscriber_impl.events().is_empty());
+}
+
+#[test]
+fn down_known_node_removes_member_and_publishes_left() {
+  let event_stream = EventStreamSharedGeneric::<StdToolbox>::default();
+  let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
+  let mut provider = AwsEcsClusterProvider::new(event_stream, block_list, "127.0.0.1:8080");
+  provider.members = vec![String::from("127.0.0.1:8080"), String::from("127.0.0.1:8081")];
+
+  let result = provider.down("127.0.0.1:8081");
+
+  assert!(result.is_ok());
+  assert_eq!(provider.member_count(), 1);
+  let events = subscriber_impl.events();
+  assert!(events.iter().any(|event| matches!(
+    event,
+    ClusterEvent::TopologyUpdated { update } if update.left == vec![String::from("127.0.0.1:8081")]
+  )));
 }

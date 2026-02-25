@@ -19,6 +19,8 @@ mod cluster_request_error;
 mod cluster_resolve_error;
 mod cluster_topology;
 mod config_validation;
+/// Downing strategy abstractions and default implementations.
+pub mod downing_provider;
 /// Virtual actor (grain) API, RPC routing, and codec abstraction.
 pub mod grain;
 /// PID resolution, identity lookup, and rendezvous hashing.

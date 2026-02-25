@@ -22,6 +22,7 @@ use fraktor_actor_rs::core::{
 use fraktor_cluster_rs::core::{
   ClusterCore, ClusterEvent, ClusterExtensionConfig, ClusterProviderShared,
   cluster_provider::NoopClusterProvider,
+  downing_provider::{DowningProvider, NoopDowningProvider},
   grain::KindRegistry,
   identity::{IdentityLookupShared, NoopIdentityLookup},
   membership::{
@@ -38,7 +39,11 @@ use fraktor_remote_rs::core::{
     phi_failure_detector::{PhiFailureDetector, PhiFailureDetectorConfig},
   },
 };
-use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::ArcShared, time::TimerInstant};
+use fraktor_utils_rs::core::{
+  runtime_toolbox::{NoStdMutex, NoStdToolbox},
+  sync::ArcShared,
+  time::TimerInstant,
+};
 
 struct DemoBlockListProvider;
 
@@ -291,6 +296,8 @@ fn build_cluster_core(event_stream: EventStreamSharedGeneric<NoStdToolbox>) -> C
   let provider = ClusterProviderShared::new(Box::new(NoopClusterProvider::new()));
   let block_list_provider: ArcShared<dyn BlockListProvider> = ArcShared::new(DemoBlockListProvider);
   let gossiper = GossiperShared::new(Box::new(NoopGossiper::new()));
+  let downing_provider: ArcShared<NoStdMutex<Box<dyn DowningProvider>>> =
+    ArcShared::new(NoStdMutex::new(Box::new(NoopDowningProvider::new())));
   let pub_sub = ClusterPubSubShared::new(Box::new(NoopClusterPubSub::new()));
   let identity_lookup = IdentityLookupShared::new(Box::new(NoopIdentityLookup::new()));
   let kind_registry = KindRegistry::new();
@@ -300,6 +307,7 @@ fn build_cluster_core(event_stream: EventStreamSharedGeneric<NoStdToolbox>) -> C
     provider,
     block_list_provider,
     event_stream,
+    downing_provider,
     gossiper,
     pub_sub,
     kind_registry,

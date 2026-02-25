@@ -36,6 +36,13 @@ pub trait ClusterProvider: Send + Sync {
   /// Returns [`ClusterProviderError`] when client initialisation fails.
   fn start_client(&mut self) -> Result<(), ClusterProviderError>;
 
+  /// Explicitly downs the provided authority.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`ClusterProviderError`] when the provider fails to apply downing.
+  fn down(&mut self, authority: &str) -> Result<(), ClusterProviderError>;
+
   /// Shuts down the provider and releases resources.
   ///
   /// `graceful` indicates whether in-flight operations should be drained before teardown.

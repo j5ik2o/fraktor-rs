@@ -98,6 +98,10 @@ impl<TB: RuntimeToolbox + 'static> ClusterProvider for StaticClusterProvider<TB>
     Ok(())
   }
 
+  fn down(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+
   fn shutdown(&mut self, _graceful: bool) -> Result<(), ClusterProviderError> {
     // 静的 provider なので特にクリーンアップ不要
     Ok(())

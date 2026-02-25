@@ -15,6 +15,7 @@ use fraktor_actor_rs::core::{
 use fraktor_cluster_rs::core::{
   ClusterCore, ClusterExtensionConfig, ClusterProviderShared, ClusterTopology, TopologyUpdate,
   cluster_provider::NoopClusterProvider,
+  downing_provider::NoopDowningProvider,
   grain::KindRegistry,
   identity::{IdentityLookupShared, NoopIdentityLookup},
   membership::{GossiperShared, NoopGossiper},
@@ -191,6 +192,7 @@ fn topology_update_reactivates_suspended_subscribers() {
     provider,
     block_list_provider,
     event_stream.clone(),
+    ArcShared::new(NoStdMutex::new(Box::new(NoopDowningProvider::new()))),
     gossiper,
     pubsub_shared.clone(),
     kind_registry,

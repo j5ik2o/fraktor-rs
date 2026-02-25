@@ -1,5 +1,6 @@
 //! Membership management, gossip dissemination, and node lifecycle.
 
+mod current_cluster_state;
 mod gossip_dissemination_coordinator;
 mod gossip_event;
 mod gossip_outbound;
@@ -26,7 +27,9 @@ mod noop_gossiper;
 mod quarantine_entry;
 mod quarantine_event;
 mod quarantine_table;
+mod vector_clock;
 
+pub use current_cluster_state::CurrentClusterState;
 pub use gossip_dissemination_coordinator::GossipDisseminationCoordinator;
 pub use gossip_event::GossipEvent;
 pub use gossip_outbound::GossipOutbound;
@@ -53,3 +56,4 @@ pub use noop_gossiper::NoopGossiper;
 pub use quarantine_entry::QuarantineEntry;
 pub use quarantine_event::QuarantineEvent;
 pub use quarantine_table::QuarantineTable;
+pub use vector_clock::VectorClock;

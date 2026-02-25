@@ -35,3 +35,19 @@ fn to_record_returns_none_for_unknown_status_code() {
 
   assert!(wire.to_record().is_none());
 }
+
+#[test]
+fn to_record_preserves_shutdown_related_statuses() {
+  for status in [NodeStatus::PreparingForShutdown, NodeStatus::ReadyForShutdown] {
+    let record = NodeRecord::new(
+      String::from("node-1"),
+      String::from("n1:4050"),
+      status,
+      MembershipVersion::new(4),
+      String::from("1.0.0"),
+      vec![String::from("role-a")],
+    );
+    let decoded = GossipWireNodeRecord::from_record(&record).to_record().expect("decode");
+    assert_eq!(decoded.status, status);
+  }
+}

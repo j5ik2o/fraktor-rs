@@ -1,4 +1,4 @@
-use alloc::{boxed::Box, string::String, vec, vec::Vec};
+use alloc::{boxed::Box, format, string::String, vec, vec::Vec};
 use core::time::Duration;
 
 use fraktor_actor_rs::core::{
@@ -20,6 +20,7 @@ use crate::core::{
   ClusterEvent, ClusterProviderError, ClusterProviderShared, ClusterTopology, MetricsError, StartupMode,
   TopologyUpdate,
   cluster_provider::ClusterProvider,
+  downing_provider::{DowningProvider, NoopDowningProvider},
   grain::{GrainKey, KindRegistry, TOPIC_ACTOR_KIND},
   identity::{IdentityLookup, IdentityLookupShared, IdentitySetupError, LookupError, PidCache, PidCacheEvent},
   membership::{Gossiper, GossiperShared},
@@ -71,6 +72,10 @@ impl ClusterProvider for StubProvider {
     Ok(())
   }
 
+  fn down(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+
   fn shutdown(&mut self, _graceful: bool) -> Result<(), ClusterProviderError> {
     Ok(())
   }
@@ -80,6 +85,7 @@ impl ClusterProvider for StubProvider {
 struct FailingProvider {
   start_member_error: Option<ClusterProviderError>,
   start_client_error: Option<ClusterProviderError>,
+  down_error:         Option<ClusterProviderError>,
   shutdown_error:     Option<ClusterProviderError>,
 }
 
@@ -88,6 +94,7 @@ impl FailingProvider {
     Self {
       start_member_error: Some(ClusterProviderError::start_member(reason)),
       start_client_error: None,
+      down_error:         None,
       shutdown_error:     None,
     }
   }
@@ -96,6 +103,16 @@ impl FailingProvider {
     Self {
       start_member_error: None,
       start_client_error: Some(ClusterProviderError::start_client(reason)),
+      down_error:         None,
+      shutdown_error:     None,
+    }
+  }
+
+  fn down_fail(reason: impl Into<String>) -> Self {
+    Self {
+      start_member_error: None,
+      start_client_error: None,
+      down_error:         Some(ClusterProviderError::down(reason)),
       shutdown_error:     None,
     }
   }
@@ -104,6 +121,7 @@ impl FailingProvider {
     Self {
       start_member_error: None,
       start_client_error: None,
+      down_error:         None,
       shutdown_error:     Some(ClusterProviderError::shutdown(reason)),
     }
   }
@@ -119,6 +137,13 @@ impl ClusterProvider for FailingProvider {
 
   fn start_client(&mut self) -> Result<(), ClusterProviderError> {
     if let Some(err) = &self.start_client_error {
+      return Err(err.clone());
+    }
+    Ok(())
+  }
+
+  fn down(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
+    if let Some(err) = &self.down_error {
       return Err(err.clone());
     }
     Ok(())
@@ -399,6 +424,12 @@ fn wrap_provider<P: ClusterProvider + 'static>(provider: P) -> ClusterProviderSh
   ClusterProviderShared::new(boxed)
 }
 
+fn wrap_downing_provider<D: DowningProvider + 'static>(
+  downing_provider: D,
+) -> ArcShared<NoStdMutex<Box<dyn DowningProvider>>> {
+  ArcShared::new(NoStdMutex::new(Box::new(downing_provider)))
+}
+
 /// Helper wrapping a `ClusterPubSub` in `ClusterPubSubShared`.
 fn wrap_pubsub<P: ClusterPubSub<NoStdToolbox> + 'static>(pubsub: P) -> ClusterPubSubShared<NoStdToolbox> {
   let boxed: Box<dyn ClusterPubSub<NoStdToolbox>> = Box::new(pubsub);
@@ -425,6 +456,7 @@ fn build_core_with_config(config: &ClusterExtensionConfig) -> ClusterCore<NoStdT
     provider,
     block_list_provider,
     event_stream,
+    wrap_downing_provider(NoopDowningProvider::new()),
     gossiper,
     pubsub,
     kind_registry,
@@ -449,6 +481,7 @@ fn new_core_stores_dependencies_and_startup_params() {
     provider,
     block_list_provider.clone(),
     event_stream.clone(),
+    wrap_downing_provider(NoopDowningProvider::new()),
     gossiper,
     pubsub,
     kind_registry,
@@ -499,6 +532,7 @@ fn setup_member_kinds_registers_and_updates_virtual_actor_count() {
     provider,
     block_list_provider,
     event_stream,
+    wrap_downing_provider(NoopDowningProvider::new()),
     gossiper,
     pubsub,
     kind_registry,
@@ -535,6 +569,7 @@ fn setup_client_kinds_registers_and_updates_virtual_actor_count() {
     provider,
     block_list_provider,
     event_stream,
+    wrap_downing_provider(NoopDowningProvider::new()),
     gossiper,
     pubsub,
     kind_registry,
@@ -565,6 +600,7 @@ fn topology_event_includes_blocked_and_updates_metrics() {
     provider,
     block_list_provider,
     event_stream.clone(),
+    wrap_downing_provider(NoopDowningProvider::new()),
     gossiper,
     pubsub,
     kind_registry,
@@ -629,6 +665,7 @@ fn topology_with_same_hash_is_suppressed() {
     provider,
     block_list_provider,
     event_stream.clone(),
+    wrap_downing_provider(NoopDowningProvider::new()),
     gossiper,
     pubsub,
     kind_registry,
@@ -663,6 +700,7 @@ fn multi_node_topology_flow_updates_metrics_and_pid_cache() {
     provider,
     block_list_provider,
     event_stream.clone(),
+    wrap_downing_provider(NoopDowningProvider::new()),
     gossiper,
     pubsub,
     kind_registry,
@@ -719,6 +757,7 @@ fn start_member_emits_startup_event_and_sets_mode() {
     provider,
     block_list_provider,
     event_stream.clone(),
+    wrap_downing_provider(NoopDowningProvider::new()),
     gossiper,
     pubsub,
     kind_registry,
@@ -757,6 +796,7 @@ fn start_member_failure_emits_startup_failed() {
     provider,
     block_list_provider,
     event_stream.clone(),
+    wrap_downing_provider(NoopDowningProvider::new()),
     gossiper,
     pubsub,
     kind_registry,
@@ -789,6 +829,7 @@ fn start_client_emits_startup_event_and_sets_mode() {
     provider,
     block_list_provider,
     event_stream.clone(),
+    wrap_downing_provider(NoopDowningProvider::new()),
     gossiper,
     pubsub,
     kind_registry,
@@ -819,6 +860,7 @@ fn start_client_failure_emits_startup_failed() {
     provider,
     block_list_provider,
     event_stream.clone(),
+    wrap_downing_provider(NoopDowningProvider::new()),
     gossiper,
     pubsub,
     kind_registry,
@@ -851,6 +893,7 @@ fn start_member_fails_when_gossip_start_fails() {
     provider,
     block_list_provider,
     event_stream.clone(),
+    wrap_downing_provider(NoopDowningProvider::new()),
     gossiper,
     pubsub,
     kind_registry,
@@ -882,6 +925,7 @@ fn start_member_fails_when_pubsub_start_fails() {
     provider,
     block_list_provider,
     event_stream.clone(),
+    wrap_downing_provider(NoopDowningProvider::new()),
     gossiper,
     pubsub,
     kind_registry,
@@ -925,6 +969,7 @@ fn shutdown_stops_pubsub_then_gossip() {
     provider,
     block_list_provider,
     event_stream.clone(),
+    wrap_downing_provider(NoopDowningProvider::new()),
     gossiper,
     pubsub,
     kind_registry,
@@ -952,6 +997,7 @@ fn shutdown_resets_virtual_actor_count_and_emits_event() {
     provider,
     block_list_provider,
     event_stream.clone(),
+    wrap_downing_provider(NoopDowningProvider::new()),
     gossiper,
     pubsub,
     kind_registry,
@@ -987,6 +1033,7 @@ fn shutdown_failure_emits_shutdown_failed() {
     provider,
     block_list_provider,
     event_stream.clone(),
+    wrap_downing_provider(NoopDowningProvider::new()),
     gossiper,
     pubsub,
     kind_registry,
@@ -1005,6 +1052,110 @@ fn shutdown_failure_emits_shutdown_failed() {
     ClusterEvent::ShutdownFailed { address, mode, reason }
       if address == "proto://member" && *mode == StartupMode::Member && reason == "stop-error"
   )));
+}
+
+#[test]
+fn down_fails_when_cluster_is_not_started() {
+  let mut core = build_core_with_config(&ClusterExtensionConfig::new());
+  let result = core.down("node-a:2552");
+  assert!(matches!(
+    result,
+    Err(crate::core::ClusterError::Provider(ClusterProviderError::DownFailed(reason)))
+    if reason == "cluster is not started"
+  ));
+}
+
+#[test]
+fn down_invokes_strategy_before_provider_down() {
+  #[derive(Clone)]
+  struct RecordingProvider {
+    calls: ArcShared<NoStdMutex<Vec<String>>>,
+  }
+
+  impl ClusterProvider for RecordingProvider {
+    fn start_member(&mut self) -> Result<(), ClusterProviderError> {
+      Ok(())
+    }
+
+    fn start_client(&mut self) -> Result<(), ClusterProviderError> {
+      Ok(())
+    }
+
+    fn down(&mut self, authority: &str) -> Result<(), ClusterProviderError> {
+      self.calls.lock().push(format!("provider:{authority}"));
+      Ok(())
+    }
+
+    fn shutdown(&mut self, _graceful: bool) -> Result<(), ClusterProviderError> {
+      Ok(())
+    }
+  }
+
+  struct RecordingDowningProvider {
+    calls: ArcShared<NoStdMutex<Vec<String>>>,
+  }
+
+  impl DowningProvider for RecordingDowningProvider {
+    fn down(&mut self, authority: &str) -> Result<(), ClusterProviderError> {
+      self.calls.lock().push(format!("strategy:{authority}"));
+      Ok(())
+    }
+  }
+
+  let calls: ArcShared<NoStdMutex<Vec<String>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let provider = wrap_provider(RecordingProvider { calls: calls.clone() });
+  let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
+  let event_stream = EventStreamShared::default();
+  let kind_registry = KindRegistry::new();
+  let identity_lookup = wrap_identity_lookup(StubIdentityLookup::new());
+  let gossiper = wrap_gossiper(StubGossiper::new());
+  let pubsub = wrap_pubsub(StubPubSub::new());
+  let mut core = ClusterCore::new(
+    &ClusterExtensionConfig::new(),
+    provider,
+    block_list_provider,
+    event_stream,
+    wrap_downing_provider(RecordingDowningProvider { calls: calls.clone() }),
+    gossiper,
+    pubsub,
+    kind_registry,
+    identity_lookup,
+  );
+  core.start_member().unwrap();
+
+  core.down("node-b:2552").unwrap();
+
+  assert_eq!(calls.lock().clone(), vec![String::from("strategy:node-b:2552"), String::from("provider:node-b:2552"),]);
+}
+
+#[test]
+fn down_returns_provider_error() {
+  let provider = wrap_provider(FailingProvider::down_fail("manual-down-rejected"));
+  let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
+  let event_stream = EventStreamShared::default();
+  let kind_registry = KindRegistry::new();
+  let identity_lookup = wrap_identity_lookup(StubIdentityLookup::new());
+  let gossiper = wrap_gossiper(StubGossiper::new());
+  let pubsub = wrap_pubsub(StubPubSub::new());
+  let mut core = ClusterCore::new(
+    &ClusterExtensionConfig::new(),
+    provider,
+    block_list_provider,
+    event_stream,
+    wrap_downing_provider(NoopDowningProvider::new()),
+    gossiper,
+    pubsub,
+    kind_registry,
+    identity_lookup,
+  );
+  core.start_member().unwrap();
+
+  let result = core.down("node-b:2552");
+  assert!(matches!(
+    result,
+    Err(crate::core::ClusterError::Provider(ClusterProviderError::DownFailed(reason)))
+    if reason == "manual-down-rejected"
+  ));
 }
 
 // ====================================================================
@@ -1036,6 +1187,7 @@ fn metrics_disabled_still_emits_startup_event() {
     provider,
     block_list_provider,
     event_stream.clone(),
+    wrap_downing_provider(NoopDowningProvider::new()),
     gossiper,
     pubsub,
     kind_registry,
@@ -1073,6 +1225,7 @@ fn metrics_disabled_still_emits_topology_updated_event() {
     provider,
     block_list_provider,
     event_stream.clone(),
+    wrap_downing_provider(NoopDowningProvider::new()),
     gossiper,
     pubsub,
     kind_registry,
@@ -1121,6 +1274,7 @@ fn metrics_disabled_still_emits_shutdown_event() {
     provider,
     block_list_provider,
     event_stream.clone(),
+    wrap_downing_provider(NoopDowningProvider::new()),
     gossiper,
     pubsub,
     kind_registry,
@@ -1162,6 +1316,7 @@ fn metrics_disabled_full_lifecycle_events_continue() {
     provider,
     block_list_provider,
     event_stream.clone(),
+    wrap_downing_provider(NoopDowningProvider::new()),
     gossiper,
     pubsub,
     kind_registry,

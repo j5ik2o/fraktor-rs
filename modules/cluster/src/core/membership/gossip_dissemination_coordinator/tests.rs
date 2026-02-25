@@ -1,4 +1,4 @@
-use alloc::string::ToString;
+use alloc::{string::ToString, vec::Vec};
 
 use crate::core::membership::{
   GossipDisseminationCoordinator, GossipEvent, GossipOutbound, GossipState, MembershipDelta, MembershipTable,
@@ -13,7 +13,10 @@ fn diffusing_reaches_confirmed_after_all_peers_ack() {
     .expect("join succeeds");
   table.drain_events();
 
-  let mut coordinator = GossipDisseminationCoordinator::new(table, vec!["node-2".to_string(), "node-3".to_string()]);
+  let mut coordinator = GossipDisseminationCoordinator::new(table, Some("n1:4050".to_string()), vec![
+    "node-2".to_string(),
+    "node-3".to_string(),
+  ]);
 
   let outbound = coordinator.disseminate(&delta);
   assert_eq!(outbound.len(), 2);
@@ -27,10 +30,25 @@ fn diffusing_reaches_confirmed_after_all_peers_ack() {
   assert_eq!(coordinator.state(), GossipState::Confirmed);
 
   let events = coordinator.drain_events();
-  assert_eq!(events, vec![
-    GossipEvent::Disseminated { peers: 2, version: MembershipVersion::new(1) },
-    GossipEvent::Confirmed { version: MembershipVersion::new(1) },
-  ],);
+  assert_eq!(events.first(), Some(&GossipEvent::Disseminated { peers: 2, version: MembershipVersion::new(1) }));
+  assert_eq!(events.last(), Some(&GossipEvent::Confirmed { version: MembershipVersion::new(1) }));
+  let seen_events = events
+    .iter()
+    .filter_map(|event| {
+      if let GossipEvent::SeenChanged { seen_by, version, .. } = event {
+        Some((seen_by.clone(), *version))
+      } else {
+        None
+      }
+    })
+    .collect::<Vec<_>>();
+  assert_eq!(seen_events.len(), 3);
+  assert_eq!(seen_events[0], (vec!["n1:4050".to_string()], MembershipVersion::new(1)));
+  assert_eq!(seen_events[1], (vec!["n1:4050".to_string(), "node-2".to_string()], MembershipVersion::new(1)));
+  assert_eq!(
+    seen_events[2],
+    (vec!["n1:4050".to_string(), "node-2".to_string(), "node-3".to_string()], MembershipVersion::new(1))
+  );
 }
 
 #[test]
@@ -41,7 +59,7 @@ fn conflict_moves_engine_to_reconciling_and_emits_event() {
     .expect("join succeeds");
   table.drain_events();
 
-  let mut coordinator = GossipDisseminationCoordinator::new(table, vec!["node-2".to_string()]);
+  let mut coordinator = GossipDisseminationCoordinator::new(table, None, vec!["node-2".to_string()]);
 
   let conflict_delta =
     MembershipDelta::new(MembershipVersion::zero(), MembershipVersion::zero(), vec![NodeRecord::new(
@@ -72,7 +90,7 @@ fn missing_range_request_enters_reconciling() {
     .expect("join succeeds");
   table.drain_events();
 
-  let mut coordinator = GossipDisseminationCoordinator::new(table, vec!["node-2".to_string()]);
+  let mut coordinator = GossipDisseminationCoordinator::new(table, None, vec!["node-2".to_string()]);
 
   coordinator.request_reconcile("node-2", MembershipVersion::new(0), MembershipVersion::new(1));
 
@@ -82,4 +100,53 @@ fn missing_range_request_enters_reconciling() {
     peer:          "node-2".to_string(),
     local_version: MembershipVersion::new(1),
   }],);
+}
+
+#[test]
+fn seen_by_tracks_latest_acknowledgements() {
+  let mut table = MembershipTable::new(3);
+  let delta = table
+    .try_join("node-1".to_string(), "n1:4050".to_string(), "1.0.0".to_string(), vec!["member".to_string()])
+    .expect("join succeeds");
+  table.drain_events();
+  let mut coordinator = GossipDisseminationCoordinator::new(table, Some("n1:4050".to_string()), vec![
+    "node-2".to_string(),
+    "node-3".to_string(),
+  ]);
+
+  let _ = coordinator.disseminate(&delta);
+  let _ = coordinator.handle_ack("node-3");
+
+  assert_eq!(coordinator.seen_by(), vec!["n1:4050".to_string(), "node-3".to_string()]);
+
+  let _ = coordinator.handle_ack("node-2");
+  assert_eq!(coordinator.seen_by(), vec!["n1:4050".to_string(), "node-2".to_string(), "node-3".to_string()]);
+}
+
+#[test]
+fn disseminate_marks_self_as_seen_in_single_node_cluster() {
+  let mut table = MembershipTable::new(3);
+  let delta = table
+    .try_join("node-1".to_string(), "n1:4050".to_string(), "1.0.0".to_string(), vec!["member".to_string()])
+    .expect("join succeeds");
+  table.drain_events();
+
+  let mut coordinator = GossipDisseminationCoordinator::new(table, Some("n1:4050".to_string()), Vec::new());
+
+  let outbound = coordinator.disseminate(&delta);
+  assert!(outbound.is_empty());
+  assert_eq!(coordinator.seen_by(), vec!["n1:4050".to_string()]);
+
+  let events = coordinator.drain_events();
+  let seen_events = events
+    .iter()
+    .filter_map(|event| {
+      if let GossipEvent::SeenChanged { seen_by, version, .. } = event {
+        Some((seen_by.clone(), *version))
+      } else {
+        None
+      }
+    })
+    .collect::<Vec<_>>();
+  assert_eq!(seen_events, vec![(vec!["n1:4050".to_string()], MembershipVersion::new(1))]);
 }
