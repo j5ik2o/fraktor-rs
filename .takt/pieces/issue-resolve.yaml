@@ -33,7 +33,6 @@ loop_monitors:
         以下のレポートを確認し、継続の妥当性を判定してください。
         - AIレビュー: {report:01-ai-review.md}
         - Commitログ: {report:issue-commit-log.md}
-        - Issue検証: {report:02-issue-verify.md}
       rules:
         - condition: 継続妥当
           next: review
