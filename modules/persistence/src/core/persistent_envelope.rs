@@ -7,7 +7,7 @@ use alloc::boxed::Box;
 
 use fraktor_utils_rs::core::sync::ArcShared;
 
-use crate::core::persistent_repr::PersistentRepr;
+use crate::core::{event_adapters::EventAdapters, persistent_repr::PersistentRepr};
 
 type PersistentHandler<A> = Box<dyn FnOnce(&mut A, &PersistentRepr) + Send + Sync>;
 
@@ -45,8 +45,12 @@ impl<A> PersistentEnvelope<A> {
 
   /// Converts the envelope into a persistent representation.
   #[must_use]
-  pub fn into_persistent_repr(&self, persistence_id: impl Into<alloc::string::String>) -> PersistentRepr {
-    PersistentRepr::new(persistence_id, self.sequence_nr, self.event.clone())
+  pub fn into_persistent_repr(
+    &self,
+    persistence_id: impl Into<alloc::string::String>,
+    adapters: EventAdapters,
+  ) -> PersistentRepr {
+    PersistentRepr::new(persistence_id, self.sequence_nr, self.event.clone()).with_adapters(adapters)
   }
 
   /// Consumes the envelope and returns the stored handler.
