@@ -3,9 +3,15 @@
 mod at_least_once_delivery;
 mod at_least_once_delivery_config;
 mod at_least_once_delivery_snapshot;
+mod durable_state_exception;
+mod durable_state_store;
+mod durable_state_store_provider;
+mod durable_state_store_registry;
+mod durable_state_update_store;
+mod eventsourced;
+
 mod event_adapters;
 mod event_seq;
-mod eventsourced;
 mod identity_event_adapter;
 mod in_memory_journal;
 mod in_memory_snapshot_store;
@@ -49,6 +55,11 @@ mod write_event_adapter;
 pub use at_least_once_delivery::{AtLeastOnceDelivery, AtLeastOnceDeliveryGeneric};
 pub use at_least_once_delivery_config::AtLeastOnceDeliveryConfig;
 pub use at_least_once_delivery_snapshot::AtLeastOnceDeliverySnapshot;
+pub use durable_state_exception::DurableStateException;
+pub use durable_state_store::DurableStateStore;
+pub use durable_state_store_provider::DurableStateStoreProvider;
+pub use durable_state_store_registry::DurableStateStoreRegistry;
+pub use durable_state_update_store::DurableStateUpdateStore;
 pub use event_adapters::EventAdapters;
 pub use event_seq::EventSeq;
 pub use eventsourced::Eventsourced;
