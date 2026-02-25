@@ -77,6 +77,19 @@ impl<TB: RuntimeToolbox + 'static> EventStreamSharedGeneric<TB> {
     EventStreamSubscriptionGeneric::new(self.clone(), id)
   }
 
+  /// Subscribes without replaying buffered events.
+  #[must_use]
+  pub fn subscribe_no_replay(
+    &self,
+    subscriber: &EventStreamSubscriberShared<TB>,
+  ) -> EventStreamSubscriptionGeneric<TB> {
+    let id = {
+      let mut guard = self.inner.write();
+      guard.subscribe_no_replay(subscriber.clone())
+    };
+    EventStreamSubscriptionGeneric::new(self.clone(), id)
+  }
+
   /// Subscribes an ActorRef to this event stream.
   ///
   /// Events will be delivered **asynchronously** to the actor's mailbox.

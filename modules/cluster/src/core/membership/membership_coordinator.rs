@@ -6,6 +6,7 @@ mod tests;
 use alloc::{
   collections::{BTreeMap, BTreeSet},
   string::{String, ToString},
+  vec,
   vec::Vec,
 };
 use core::{marker::PhantomData, time::Duration};
@@ -18,11 +19,14 @@ use super::{
   MembershipCoordinatorOutcome, MembershipCoordinatorState, MembershipDelta, MembershipError, MembershipSnapshot,
   MembershipTable, MembershipVersion, NodeStatus, QuarantineEntry, QuarantineTable,
 };
-use crate::core::{ClusterEvent, ClusterTopology, TopologyUpdate};
+use crate::core::{
+  ClusterEvent, ClusterExtensionConfig, ClusterTopology, ConfigValidation, JoinConfigCompatChecker, TopologyUpdate,
+};
 
 /// Membership/Gossip coordinator (no_std).
 pub struct MembershipCoordinatorGeneric<TB: fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox + 'static> {
   config:                MembershipCoordinatorConfig,
+  cluster_config:        ClusterExtensionConfig,
   state:                 MembershipCoordinatorState,
   gossip:                GossipDisseminationCoordinator,
   registry:              DefaultFailureDetectorRegistry<String>,
@@ -38,11 +42,13 @@ impl<TB: fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox + 'static> Memb
   #[must_use]
   pub fn new(
     config: MembershipCoordinatorConfig,
+    cluster_config: ClusterExtensionConfig,
     table: MembershipTable,
     registry: DefaultFailureDetectorRegistry<String>,
   ) -> Self {
     Self {
       config,
+      cluster_config,
       state: MembershipCoordinatorState::Stopped,
       gossip: GossipDisseminationCoordinator::new(table, Vec::new()),
       registry,
@@ -120,6 +126,7 @@ impl<TB: fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox + 'static> Memb
     &mut self,
     node_id: String,
     authority: String,
+    joining_config: &ClusterExtensionConfig,
     now: TimerInstant,
   ) -> Result<MembershipCoordinatorOutcome, MembershipCoordinatorError> {
     self.ensure_member()?;
@@ -135,11 +142,20 @@ impl<TB: fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox + 'static> Memb
       return Err(MembershipCoordinatorError::Membership(MembershipError::Quarantined { authority, reason }));
     }
 
+    if let ConfigValidation::Incompatible { reason } = self.cluster_config.check_join_compatibility(joining_config) {
+      return Err(MembershipCoordinatorError::Membership(MembershipError::IncompatibleConfig { reason }));
+    }
+
     let before = self.gossip.table().record(&authority).map(|r| r.status);
     let delta = self
       .gossip
       .table_mut()
-      .try_join(node_id.clone(), authority.clone())
+      .try_join(
+        node_id.clone(),
+        authority.clone(),
+        joining_config.app_version().to_string(),
+        joining_config.roles().to_vec(),
+      )
       .map_err(MembershipCoordinatorError::Membership)?;
 
     let changed = delta.from != delta.to;
@@ -179,25 +195,54 @@ impl<TB: fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox + 'static> Memb
     self.ensure_member()?;
 
     let before = self.gossip.table().record(authority).map(|r| r.status);
-    let delta = self.gossip.table_mut().mark_left(authority).map_err(MembershipCoordinatorError::Membership)?;
+    let first_delta = self.gossip.table_mut().mark_left(authority).map_err(MembershipCoordinatorError::Membership)?;
+    let first_to = self.gossip.table().record(authority).map(|record| record.status);
+
+    let mut deltas = vec![first_delta];
+    let mut second_to = None;
+    if first_to == Some(NodeStatus::Exiting) {
+      let second_delta =
+        self.gossip.table_mut().mark_left(authority).map_err(MembershipCoordinatorError::Membership)?;
+      second_to = self.gossip.table().record(authority).map(|record| record.status);
+      deltas.push(second_delta);
+    }
 
     let membership_events = self.gossip.table_mut().drain_events();
     let mut outcome = MembershipCoordinatorOutcome { membership_events, ..Default::default() };
-    self.topology_accumulator.left.insert(authority.to_string());
+    if self.gossip.table().record(authority).map(|record| record.status) == Some(NodeStatus::Removed) {
+      self.topology_accumulator.left.insert(authority.to_string());
+    }
     self.refresh_peers();
 
     if self.config.gossip_enabled {
-      outcome.gossip_outbound = self.gossip.disseminate(&delta);
+      for delta in deltas.iter() {
+        outcome.gossip_outbound.extend(self.gossip.disseminate(delta));
+      }
     }
 
     if let Some(from) = before
+      && let Some(to) = first_to
+      && from != to
       && let Some(record) = self.gossip.table().record(authority)
     {
       outcome.member_events.push(ClusterEvent::MemberStatusChanged {
         node_id: record.node_id.clone(),
         authority: record.authority.clone(),
         from,
-        to: record.status,
+        to,
+        observed_at: now,
+      });
+    }
+
+    if let Some(to) = second_to
+      && to != NodeStatus::Exiting
+      && let Some(record) = self.gossip.table().record(authority)
+    {
+      outcome.member_events.push(ClusterEvent::MemberStatusChanged {
+        node_id: record.node_id.clone(),
+        authority: record.authority.clone(),
+        from: NodeStatus::Exiting,
+        to,
         observed_at: now,
       });
     }
@@ -486,7 +531,7 @@ impl<TB: fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox + 'static> Memb
           observed_at: now,
         });
       },
-      | NodeStatus::Leaving => {},
+      | NodeStatus::Leaving | NodeStatus::Exiting => {},
     }
 
     if let Some(from) = before
@@ -550,7 +595,9 @@ impl<TB: fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox + 'static> Memb
       .snapshot()
       .entries
       .into_iter()
-      .filter(|record| !matches!(record.status, NodeStatus::Removed | NodeStatus::Dead))
+      .filter(|record| {
+        !matches!(record.status, NodeStatus::Leaving | NodeStatus::Exiting | NodeStatus::Removed | NodeStatus::Dead)
+      })
       .map(|record| record.authority)
       .collect::<Vec<_>>();
     let update = TopologyUpdate::new(topology, members, joined, left, dead, Vec::new(), now);

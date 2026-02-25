@@ -36,6 +36,20 @@ fn mailbox_set_instrumentation() {
 }
 
 #[test]
+fn mailbox_enqueue_system_after_system_state_drop_does_not_panic() {
+  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
+  let system_state = ActorSystem::new_empty().state();
+  let pid = Pid::new(2, 0);
+  let instrumentation = MailboxInstrumentation::new(system_state.clone(), pid, Some(8), Some(4), Some(6));
+  mailbox.set_instrumentation(instrumentation);
+
+  drop(system_state);
+
+  let result = mailbox.enqueue_system(SystemMessage::Stop);
+  assert!(result.is_ok());
+}
+
+#[test]
 fn mailbox_enqueue_system() {
   let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
   let message = SystemMessage::Stop;

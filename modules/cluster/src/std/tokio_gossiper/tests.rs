@@ -8,9 +8,12 @@ use fraktor_remote_rs::core::failure_detector::{
 use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
 use crate::{
-  core::membership::{
-    Gossiper, MembershipCoordinatorConfig, MembershipCoordinatorGeneric, MembershipCoordinatorSharedGeneric,
-    MembershipTable,
+  core::{
+    ClusterExtensionConfig,
+    membership::{
+      Gossiper, MembershipCoordinatorConfig, MembershipCoordinatorGeneric, MembershipCoordinatorSharedGeneric,
+      MembershipTable,
+    },
   },
   std::{TokioGossipTransport, TokioGossipTransportConfig, TokioGossiper, TokioGossiperConfig},
 };
@@ -30,7 +33,8 @@ fn build_coordinator() -> MembershipCoordinatorSharedGeneric<StdToolbox> {
   let registry = DefaultFailureDetectorRegistry::new(Box::new(move || {
     Box::new(PhiFailureDetector::new(PhiFailureDetectorConfig::new(threshold, 10, 1)))
   }));
-  let mut coordinator = MembershipCoordinatorGeneric::<StdToolbox>::new(config, table, registry);
+  let mut coordinator =
+    MembershipCoordinatorGeneric::<StdToolbox>::new(config, ClusterExtensionConfig::new(), table, registry);
   coordinator.start_member().expect("start_member");
   MembershipCoordinatorSharedGeneric::new(coordinator)
 }

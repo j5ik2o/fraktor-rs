@@ -18,10 +18,12 @@ mod cluster_provider_shared;
 mod cluster_request_error;
 mod cluster_resolve_error;
 mod cluster_topology;
+mod config_validation;
 /// Virtual actor (grain) API, RPC routing, and codec abstraction.
 pub mod grain;
 /// PID resolution, identity lookup, and rendezvous hashing.
 pub mod identity;
+mod join_config_compat_checker;
 /// Membership management, gossip dissemination, and node lifecycle.
 pub mod membership;
 mod metrics_error;
@@ -51,6 +53,8 @@ pub use cluster_provider_shared::ClusterProviderShared;
 pub use cluster_request_error::ClusterRequestError;
 pub use cluster_resolve_error::ClusterResolveError;
 pub use cluster_topology::ClusterTopology;
+pub use config_validation::ConfigValidation;
+pub use join_config_compat_checker::JoinConfigCompatChecker;
 pub use metrics_error::MetricsError;
 pub use startup_mode::StartupMode;
 pub use topology_apply_error::TopologyApplyError;

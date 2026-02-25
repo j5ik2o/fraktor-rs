@@ -8,7 +8,9 @@ use crate::core::membership::{
 #[test]
 fn diffusing_reaches_confirmed_after_all_peers_ack() {
   let mut table = MembershipTable::new(3);
-  let delta = table.try_join("node-1".to_string(), "n1:4050".to_string()).expect("join succeeds");
+  let delta = table
+    .try_join("node-1".to_string(), "n1:4050".to_string(), "1.0.0".to_string(), vec!["member".to_string()])
+    .expect("join succeeds");
   table.drain_events();
 
   let mut coordinator = GossipDisseminationCoordinator::new(table, vec!["node-2".to_string(), "node-3".to_string()]);
@@ -34,7 +36,9 @@ fn diffusing_reaches_confirmed_after_all_peers_ack() {
 #[test]
 fn conflict_moves_engine_to_reconciling_and_emits_event() {
   let mut table = MembershipTable::new(3);
-  table.try_join("node-1".to_string(), "n1:4050".to_string()).expect("join succeeds");
+  table
+    .try_join("node-1".to_string(), "n1:4050".to_string(), "1.0.0".to_string(), vec!["member".to_string()])
+    .expect("join succeeds");
   table.drain_events();
 
   let mut coordinator = GossipDisseminationCoordinator::new(table, vec!["node-2".to_string()]);
@@ -45,6 +49,8 @@ fn conflict_moves_engine_to_reconciling_and_emits_event() {
       "n1:4050".to_string(),
       NodeStatus::Up,
       MembershipVersion::zero(),
+      "1.0.0".to_string(),
+      vec!["member".to_string()],
     )]);
 
   coordinator.apply_incoming(&conflict_delta, "node-2");
@@ -61,7 +67,9 @@ fn conflict_moves_engine_to_reconciling_and_emits_event() {
 #[test]
 fn missing_range_request_enters_reconciling() {
   let mut table = MembershipTable::new(3);
-  table.try_join("node-1".to_string(), "n1:4050".to_string()).expect("join succeeds");
+  table
+    .try_join("node-1".to_string(), "n1:4050".to_string(), "1.0.0".to_string(), vec!["member".to_string()])
+    .expect("join succeeds");
   table.drain_events();
 
   let mut coordinator = GossipDisseminationCoordinator::new(table, vec!["node-2".to_string()]);

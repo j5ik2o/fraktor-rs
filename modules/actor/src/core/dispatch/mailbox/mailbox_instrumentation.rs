@@ -46,22 +46,19 @@ impl<TB: RuntimeToolbox + 'static> MailboxInstrumentationGeneric<TB> {
   }
 
   /// Upgrades the weak system state reference to a strong reference.
-  ///
-  /// # Panics
-  ///
-  /// Panics if the system state has been dropped.
-  #[allow(clippy::expect_used)]
-  fn get_system_state(&self) -> SystemStateSharedGeneric<TB> {
-    self.system_state.upgrade().expect("system state has been dropped")
+  fn get_system_state(&self) -> Option<SystemStateSharedGeneric<TB>> {
+    self.system_state.upgrade()
   }
 
   /// Publishes a metrics snapshot.
   pub fn publish(&self, user_len: usize, system_len: usize) {
-    let system_state = self.get_system_state();
+    let Some(system_state) = self.get_system_state() else {
+      return;
+    };
     let timestamp = system_state.monotonic_now();
     let event = MailboxMetricsEvent::new(self.pid, user_len, system_len, self.capacity, self.throughput, timestamp);
     system_state.publish_event(&EventStreamEvent::Mailbox(event));
-    self.publish_pressure(user_len, timestamp);
+    self.publish_pressure(&system_state, user_len, timestamp);
 
     if let Some(threshold) = self.warn_threshold
       && user_len >= threshold
@@ -71,7 +68,12 @@ impl<TB: RuntimeToolbox + 'static> MailboxInstrumentationGeneric<TB> {
     }
   }
 
-  fn publish_pressure(&self, user_len: usize, timestamp: core::time::Duration) {
+  fn publish_pressure(
+    &self,
+    system_state: &SystemStateSharedGeneric<TB>,
+    user_len: usize,
+    timestamp: core::time::Duration,
+  ) {
     let Some(capacity) = self.capacity else {
       return;
     };
@@ -82,7 +84,7 @@ impl<TB: RuntimeToolbox + 'static> MailboxInstrumentationGeneric<TB> {
     let utilization = ((user_len.saturating_mul(100)) / capacity).min(100) as u8;
     if utilization as usize >= PRESSURE_THRESHOLD_PERCENT {
       let event = MailboxPressureEvent::new(self.pid, user_len, capacity, utilization, timestamp, self.warn_threshold);
-      self.get_system_state().publish_event(&EventStreamEvent::MailboxPressure(event.clone()));
+      system_state.publish_event(&EventStreamEvent::MailboxPressure(event.clone()));
       self.forward_backpressure(&event);
     }
   }
@@ -100,13 +102,15 @@ impl<TB: RuntimeToolbox + 'static> MailboxInstrumentationGeneric<TB> {
 
   /// Returns the associated system state handle.
   #[must_use]
-  pub fn system_state(&self) -> SystemStateSharedGeneric<TB> {
+  pub fn system_state(&self) -> Option<SystemStateSharedGeneric<TB>> {
     self.get_system_state()
   }
 
   /// Emits a log event tagged with the owning actor pid.
   pub fn emit_log(&self, level: LogLevel, message: impl Into<String>) {
-    self.get_system_state().emit_log(level, message.into(), Some(self.pid));
+    if let Some(system_state) = self.get_system_state() {
+      system_state.emit_log(level, message.into(), Some(self.pid));
+    }
   }
 
   /// Returns the pid associated with this mailbox.

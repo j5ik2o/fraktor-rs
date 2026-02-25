@@ -9,7 +9,7 @@ use fraktor_actor_rs::core::{
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::SharedAccess, time::TimerInstant};
 
 use crate::core::{
-  ClusterEvent,
+  ClusterEvent, ClusterExtensionConfig,
   membership::{
     GossipTransport, MembershipCoordinatorError, MembershipCoordinatorOutcome, MembershipCoordinatorSharedGeneric,
   },
@@ -49,10 +49,12 @@ impl<TB: RuntimeToolbox + 'static, TTransport: GossipTransport> MembershipCoordi
     &mut self,
     node_id: impl Into<String>,
     authority: impl Into<String>,
+    joining_config: &ClusterExtensionConfig,
     now: TimerInstant,
   ) -> Result<(), MembershipCoordinatorError> {
-    let outcome =
-      self.coordinator.with_write(|coordinator| coordinator.handle_join(node_id.into(), authority.into(), now))?;
+    let outcome = self
+      .coordinator
+      .with_write(|coordinator| coordinator.handle_join(node_id.into(), authority.into(), joining_config, now))?;
     self.apply_outcome(outcome)
   }
 

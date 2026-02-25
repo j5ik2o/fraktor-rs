@@ -35,4 +35,9 @@ pub enum MembershipError {
     /// Quarantine reason.
     reason:    String,
   },
+  /// Join rejected due to incompatible cluster configuration.
+  IncompatibleConfig {
+    /// Human-readable incompatibility reason.
+    reason: String,
+  },
 }

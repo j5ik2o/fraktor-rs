@@ -104,10 +104,14 @@ impl DemoNode {
   ) -> Self {
     let table = MembershipTable::new(3);
     let threshold = config.phi_threshold;
+    let cluster_config = ClusterExtensionConfig::new()
+      .with_advertised_address(authority)
+      .with_app_version("1.0.0")
+      .with_roles(vec![String::from("member")]);
     let registry = DefaultFailureDetectorRegistry::new(Box::new(move || {
       Box::new(PhiFailureDetector::new(PhiFailureDetectorConfig::new(threshold, 10, 1)))
     }));
-    let coordinator = MembershipCoordinatorGeneric::<NoStdToolbox>::new(config, table, registry);
+    let coordinator = MembershipCoordinatorGeneric::<NoStdToolbox>::new(config, cluster_config, table, registry);
     Self { name, authority: authority.to_string(), coordinator, event_stream }
   }
 
@@ -115,8 +119,17 @@ impl DemoNode {
     self.coordinator.start_member().expect("start_member");
   }
 
-  fn handle_join(&mut self, node_id: &str, authority: &str, now: TimerInstant) -> Vec<GossipOutbound> {
-    let outcome = self.coordinator.handle_join(node_id.to_string(), authority.to_string(), now).expect("handle_join");
+  fn handle_join(
+    &mut self,
+    node_id: &str,
+    authority: &str,
+    joining_config: &ClusterExtensionConfig,
+    now: TimerInstant,
+  ) -> Vec<GossipOutbound> {
+    let outcome = self
+      .coordinator
+      .handle_join(node_id.to_string(), authority.to_string(), joining_config, now)
+      .expect("handle_join");
     self.apply_outcome(outcome)
   }
 
@@ -191,8 +204,16 @@ fn main() {
 
   println!("\n--- Join ---");
   let t1 = now(1);
-  let out_a1 = node_a.handle_join("node-a", "node-a", t1);
-  let out_a2 = node_a.handle_join("node-b", "node-b", t1);
+  let join_a_config = ClusterExtensionConfig::new()
+    .with_advertised_address("node-a")
+    .with_app_version("1.0.0")
+    .with_roles(vec![String::from("member")]);
+  let join_b_config = ClusterExtensionConfig::new()
+    .with_advertised_address("node-b")
+    .with_app_version("1.0.0")
+    .with_roles(vec![String::from("member")]);
+  let out_a1 = node_a.handle_join("node-a", "node-a", &join_a_config, t1);
+  let out_a2 = node_a.handle_join("node-b", "node-b", &join_b_config, t1);
   deliver_outbounds("node-a", out_a1, &mut node_b, t1);
   deliver_outbounds("node-a", out_a2, &mut node_b, t1);
 

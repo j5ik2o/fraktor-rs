@@ -68,7 +68,7 @@ where
 
   /// Returns the system state handle if instrumentation has been installed.
   pub(crate) fn system_state(&self) -> Option<SystemStateSharedGeneric<TB>> {
-    self.instrumentation.lock().as_ref().map(|inst| inst.system_state())
+    self.instrumentation.lock().as_ref().and_then(|inst| inst.system_state())
   }
 
   /// Returns the actor pid associated with this mailbox when instrumentation is installed.

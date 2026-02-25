@@ -59,8 +59,12 @@ async fn main() -> Result<()> {
 
   // Membership を事前に揃え、IdentityTable へ配布するための delta を作成
   let mut membership_a = MembershipTable::new(3);
-  let delta_a = membership_a.try_join("node-a".to_string(), format!("{HOST}:{NODE_A_PORT}")).expect("join a");
-  let delta_b = membership_a.try_join("node-b".to_string(), format!("{HOST}:{NODE_B_PORT}")).expect("join b");
+  let delta_a = membership_a
+    .try_join("node-a".to_string(), format!("{HOST}:{NODE_A_PORT}"), "1.0.0".to_string(), vec!["member".to_string()])
+    .expect("join a");
+  let delta_b = membership_a
+    .try_join("node-b".to_string(), format!("{HOST}:{NODE_B_PORT}"), "1.0.0".to_string(), vec!["member".to_string()])
+    .expect("join b");
   let full_delta =
     MembershipDelta::new(delta_a.from, delta_b.to, vec![delta_a.entries[0].clone(), delta_b.entries[0].clone()]);
 

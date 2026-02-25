@@ -158,10 +158,14 @@ impl DemoNode {
   ) -> Self {
     let table = MembershipTable::new(3);
     let threshold = config.phi_threshold;
+    let cluster_config = ClusterExtensionConfig::new()
+      .with_advertised_address(authority)
+      .with_app_version("1.0.0")
+      .with_roles(vec![String::from("member")]);
     let registry = DefaultFailureDetectorRegistry::new(Box::new(move || {
       Box::new(PhiFailureDetector::new(PhiFailureDetectorConfig::new(threshold, 10, 1)))
     }));
-    let mut coordinator = MembershipCoordinatorGeneric::<StdToolbox>::new(config, table, registry);
+    let mut coordinator = MembershipCoordinatorGeneric::<StdToolbox>::new(config, cluster_config, table, registry);
     coordinator.start_member().expect("start_member");
     let shared = MembershipCoordinatorSharedGeneric::new(coordinator);
     let transport = DemoTransport::new(authority.to_string(), bus);
@@ -171,7 +175,11 @@ impl DemoNode {
 
   fn handle_join(&mut self, node_id: &str, authority: &str, now: TimerInstant) {
     println!("[{}][join] {} -> {}", self.name, node_id, authority);
-    self.driver.handle_join(node_id, authority, now).expect("handle_join");
+    let joining_config = ClusterExtensionConfig::new()
+      .with_advertised_address(authority)
+      .with_app_version("1.0.0")
+      .with_roles(vec![String::from("member")]);
+    self.driver.handle_join(node_id, authority, &joining_config, now).expect("handle_join");
   }
 
   fn handle_heartbeat(&mut self, authority: &str, now: TimerInstant) {

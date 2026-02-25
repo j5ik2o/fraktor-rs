@@ -88,7 +88,7 @@ impl IdentityTable {
     };
 
     match record.status {
-      | NodeStatus::Removed | NodeStatus::Dead => {
+      | NodeStatus::Leaving | NodeStatus::Exiting | NodeStatus::Removed | NodeStatus::Dead => {
         self.events.push(IdentityEvent::UnknownAuthority { authority: authority.to_string(), version });
         return Ok(ResolveResult::Unreachable { authority: authority.to_string(), version });
       },

@@ -3,9 +3,14 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::string::String;
+use alloc::{
+  string::{String, ToString},
+  vec::Vec,
+};
 
-use crate::core::{cluster_topology::ClusterTopology, pub_sub::PubSubConfig};
+use crate::core::{
+  ConfigValidation, JoinConfigCompatChecker, cluster_topology::ClusterTopology, pub_sub::PubSubConfig,
+};
 
 /// Configuration applied when installing the cluster extension.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -14,17 +19,21 @@ pub struct ClusterExtensionConfig {
   metrics_enabled:    bool,
   static_topology:    Option<ClusterTopology>,
   pubsub_config:      PubSubConfig,
+  app_version:        String,
+  roles:              Vec<String>,
 }
 
 impl ClusterExtensionConfig {
   /// Creates a configuration with an empty advertised address and metrics disabled.
   #[must_use]
-  pub const fn new() -> Self {
+  pub fn new() -> Self {
     Self {
       advertised_address: String::new(),
       metrics_enabled:    false,
       static_topology:    None,
       pubsub_config:      PubSubConfig::new(core::time::Duration::from_secs(3), core::time::Duration::from_secs(60)),
+      app_version:        String::from(env!("CARGO_PKG_VERSION")),
+      roles:              Vec::new(),
     }
   }
 
@@ -44,8 +53,7 @@ impl ClusterExtensionConfig {
 
   /// Returns the configured advertised address.
   #[must_use]
-  #[allow(clippy::missing_const_for_fn)]
-  pub fn advertised_address(&self) -> &str {
+  pub const fn advertised_address(&self) -> &String {
     &self.advertised_address
   }
 
@@ -71,10 +79,23 @@ impl ClusterExtensionConfig {
     self
   }
 
+  /// Sets cluster roles advertised by this node.
+  #[must_use]
+  pub fn with_roles(mut self, roles: Vec<String>) -> Self {
+    self.roles = normalize_roles(roles);
+    self
+  }
+
+  /// Sets application version advertised by this node.
+  #[must_use]
+  pub fn with_app_version(mut self, app_version: impl Into<String>) -> Self {
+    self.app_version = app_version.into();
+    self
+  }
+
   /// Returns the configured static topology.
   #[must_use]
-  #[allow(clippy::missing_const_for_fn)]
-  pub fn static_topology(&self) -> Option<&ClusterTopology> {
+  pub const fn static_topology(&self) -> Option<&ClusterTopology> {
     self.static_topology.as_ref()
   }
 
@@ -83,10 +104,37 @@ impl ClusterExtensionConfig {
   pub const fn pubsub_config(&self) -> &PubSubConfig {
     &self.pubsub_config
   }
+
+  /// Returns advertised application version.
+  #[must_use]
+  pub const fn app_version(&self) -> &String {
+    &self.app_version
+  }
+
+  /// Returns configured cluster roles.
+  #[must_use]
+  pub fn roles(&self) -> &[String] {
+    &self.roles
+  }
 }
 
 impl Default for ClusterExtensionConfig {
   fn default() -> Self {
     Self::new()
   }
+}
+
+impl JoinConfigCompatChecker for ClusterExtensionConfig {
+  fn check_join_compatibility(&self, joining: &ClusterExtensionConfig) -> ConfigValidation {
+    if self.pubsub_config != joining.pubsub_config {
+      return ConfigValidation::Incompatible { reason: "pubsub configuration mismatch".to_string() };
+    }
+    ConfigValidation::Compatible
+  }
+}
+
+fn normalize_roles(mut roles: Vec<String>) -> Vec<String> {
+  roles.sort();
+  roles.dedup();
+  roles
 }
