@@ -77,7 +77,7 @@ loop_monitors:
         - 修正が実際に反映されているか
       rules:
         - condition: 健全（進捗あり）
-          next: fix
+          next: reviewers
         - condition: 非生産的（改善なし）
           next: supervise
 
@@ -103,7 +103,7 @@ loop_monitors:
         - 同じテスト失敗やビルドエラーが繰り返されていないか
       rules:
         - condition: 健全（進捗あり）
-          next: plan
+          next: supervise
         - condition: 非生産的（改善なし）
           next: ABORT
 
@@ -118,9 +118,6 @@ loop_monitors:
 
         ai_fix が修正不要と判断し、ai_no_fix が修正必要と差し戻すサイクルが
         繰り返されています。このループが健全か判断してください。
-
-        **参照するレポート:**
-        - AIレビュー結果: {report:04-ai-review.md}
 
         **判断基準:**
         - ai_fix と ai_no_fix の間で同じ指摘について意見が分かれ続けていないか

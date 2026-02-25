@@ -261,6 +261,14 @@ loop_monitors:
           next: supervise
 ```
 
+#### Loop Monitor 安全ルール
+
+- `loop_monitors[*].cycle` の「健全（進捗あり）」遷移先は、必ず `cycle` の先頭ノードにする
+  - 例: `cycle: [reviewers, fix]` の場合、健全時 `next: reviewers`
+- `judge.instruction_template` で参照する `{report:...}` は、対象 `cycle` 内 movement が生成するレポートのみ許可
+  - cycle 外 movement（例: `verify`）専用レポートは参照しない
+- 上記2点を満たさない場合は、ループ継続判定が壊れるため修正してから保存する
+
 ### Step 6: 検証
 
 作成したファイルの整合性を確認する:
@@ -272,6 +280,8 @@ loop_monitors:
 - [ ] 全ムーブメントの `rules.next` が有効な遷移先（他のムーブメント名 or COMPLETE/ABORT）
 - [ ] parallel ムーブメントの親ルールが `all()` / `any()` を使用
 - [ ] parallel サブステップのルールに `next` がない（親が制御）
+- [ ] loop monitor の健全時 `next` が `cycle` 先頭ノードと一致
+- [ ] loop monitor の `instruction_template` が cycle 外レポートを参照していない
 
 ## バリデーション
 
@@ -283,6 +293,7 @@ bash .agent/skills/takt-piece/scripts/validate-takt-files.sh
 
 検証項目:
 - **ピース YAML**: 必須フィールド（`name`/`initial_movement`/`movements`）、`initial_movement` の movement 参照、ファセットファイル参照の実在
+- **loop_monitors**: 健全時 `next` が cycle 先頭ノード、`instruction_template` のレポート参照が cycle 内 movement 生成物に限定されていること
 - **ファセット .md**: 空チェック、persona/policy/knowledge は `# 見出し` 必須、instruction/output-contract は内容存在
 
 オプション `--pieces` / `--facets` で対象を絞り込み可能。

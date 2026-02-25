@@ -41,17 +41,15 @@ Thumbs.db
 .vscode/
 
 Cargo.lock
-/.claude/settings.local.json
-/.codex/sessions/
-/.codex/tmp
-/.codex/log/
-/.codex/shell_snapshots/*.sh
-/.codex/*.json
-/.codex/*.jsonl
-/.codex/.personality_migration
+/.claude/
+/.codex/
+/.gemini/
+/.cursor/
+/.copilot/
+/.opencode/
+
 /.serena/cache/
-/.copilot/.copilot/logs/
-/.copilot/configstore/update-notifier-@github/
+
 /.takt/clone-meta/
 
 *.pkl
