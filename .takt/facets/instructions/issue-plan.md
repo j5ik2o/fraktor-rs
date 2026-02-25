@@ -3,6 +3,9 @@
 ## 手順
 
 1. User Request と `order.md` から issue 番号一覧（`#123` 形式）を抽出する
+   ※ ここでの `order.md` はユーザー要求に含まれる作業指示文脈を指し、`.takt/tasks/*/order.md` の存在を必須としない
+   ※ 取得対象 issue は `takt` ラベルを除外し、`coderabbit` または `bug` ラベルを持つものに限定する
+   ※ issue 情報が不足する場合は `gh issue view <issue-number>` で補完する
 2. issue ごとに目的・制約・受け入れ条件を定義する
 3. issue ごとに実装対象ファイルと非対象（スコープ外）を明確化する
 4. issue ごとの完了順序を決める
