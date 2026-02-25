@@ -227,6 +227,54 @@ fn shutdown_clears_member_list() {
 }
 
 #[test]
+fn down_removes_member_and_publishes_leave_topology() {
+  let event_stream = EventStreamShared::default();
+  let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
+  let mut provider = LocalClusterProviderGeneric::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
+
+  provider.start_member().unwrap();
+  provider.on_member_join("node-b:8080");
+  provider.down("node-b:8080").unwrap();
+
+  assert_eq!(provider.member_count(), 1);
+  let events = subscriber_impl.events();
+  assert!(events.iter().any(|event| matches!(
+    event,
+    ClusterEvent::TopologyUpdated { update } if update.left == vec![String::from("node-b:8080")]
+  )));
+}
+
+#[test]
+fn down_self_is_rejected() {
+  let event_stream = EventStreamShared::default();
+  let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
+  let mut provider = LocalClusterProviderGeneric::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
+  provider.start_member().unwrap();
+
+  let result = provider.down("node-a:8080");
+  assert!(
+    matches!(result, Err(crate::core::ClusterProviderError::DownFailed(reason)) if reason == "cannot down self authority")
+  );
+}
+
+#[test]
+fn down_unknown_member_is_noop() {
+  let event_stream = EventStreamShared::default();
+  let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
+  let mut provider = LocalClusterProviderGeneric::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
+  provider.start_member().unwrap();
+
+  let events_before = subscriber_impl.events().len();
+  provider.down("node-z:8080").unwrap();
+  let events_after = subscriber_impl.events();
+
+  assert_eq!(provider.member_count(), 1);
+  assert_eq!(events_after.len(), events_before);
+}
+
+#[test]
 fn version_increments_with_each_topology_change() {
   let event_stream = EventStreamShared::default();
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);

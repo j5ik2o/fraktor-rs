@@ -33,7 +33,8 @@ use fraktor_utils_rs::core::{
 use crate::core::{
   ClusterApiError, ClusterApiGeneric, ClusterExtensionConfig, ClusterExtensionGeneric, ClusterExtensionInstaller,
   ClusterRequestError, ClusterResolveError, MetricsError,
-  cluster_provider::NoopClusterProvider,
+  cluster_provider::{ClusterProvider, NoopClusterProvider},
+  downing_provider::DowningProvider,
   grain::{GRAIN_EVENT_STREAM_NAME, GrainEvent, GrainKey},
   identity::{ClusterIdentity, IdentityLookup, IdentitySetupError, LookupError, NoopIdentityLookup},
   placement::{ActivatedKind, PlacementDecision, PlacementEvent, PlacementLocality, PlacementResolution},
@@ -195,6 +196,44 @@ fn request_future_completes_with_timeout_payload() {
   assert!(result.is_err(), "expect timeout error");
   let ask_error = result.unwrap_err();
   assert_eq!(ask_error, fraktor_actor_rs::core::messaging::AskError::Timeout);
+}
+
+#[test]
+fn down_delegates_to_cluster_provider() {
+  let downed_provider: ArcShared<NoStdMutex<Vec<String>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let downed_strategy: ArcShared<NoStdMutex<Vec<String>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let downed_for_provider = downed_provider.clone();
+  let downed_for_strategy = downed_strategy.clone();
+
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
+  let scheduler_config = SchedulerConfig::default().with_runner_api_enabled(true);
+  let cluster_config = ClusterExtensionConfig::new().with_advertised_address("node1:8080");
+  let cluster_installer =
+    ClusterExtensionInstaller::new(cluster_config, move |_event_stream, _block_list, _address| {
+      Box::new(RecordingDownProvider { downed: downed_for_provider.clone() })
+    })
+    .with_downing_provider_factory(move || Box::new(RecordingDowningProvider { downed: downed_for_strategy.clone() }))
+    .with_identity_lookup_factory(|| Box::new(StaticIdentityLookup::new("node1:8080")));
+  let extensions = ExtensionInstallers::default().with_extension_installer(cluster_installer);
+  let config = ActorSystemConfigGeneric::default()
+    .with_scheduler_config(scheduler_config)
+    .with_tick_driver(tick_driver)
+    .with_extension_installers(extensions)
+    .with_actor_ref_provider_installer(|system: &ActorSystemGeneric<NoStdToolbox>| {
+      let provider = ActorRefProviderSharedGeneric::new(TestActorRefProvider::new(system.clone()));
+      system.extended().register_actor_ref_provider(&provider)
+    });
+  let props = PropsGeneric::from_fn(|| TestGuardian);
+  let system = ActorSystemGeneric::new_with_config(&props, &config).expect("build system");
+  let extension =
+    system.extended().extension_by_type::<ClusterExtensionGeneric<NoStdToolbox>>().expect("cluster extension");
+  extension.start_member().expect("start member");
+
+  let api = ClusterApiGeneric::try_from_system(&system).expect("cluster api");
+  api.down("node2:8080").expect("down");
+
+  assert_eq!(downed_strategy.lock().clone(), vec![String::from("node2:8080")]);
+  assert_eq!(downed_provider.lock().clone(), vec![String::from("node2:8080")]);
 }
 
 fn run_scheduler(system: &ActorSystemGeneric<NoStdToolbox>, duration: Duration) {
@@ -401,6 +440,40 @@ impl IdentityLookup for PendingIdentityLookup {
 
   fn resolve(&mut self, _key: &GrainKey, _now: u64) -> Result<PlacementResolution, LookupError> {
     Err(LookupError::Pending)
+  }
+}
+
+struct RecordingDownProvider {
+  downed: ArcShared<NoStdMutex<Vec<String>>>,
+}
+
+impl ClusterProvider for RecordingDownProvider {
+  fn start_member(&mut self) -> Result<(), crate::core::ClusterProviderError> {
+    Ok(())
+  }
+
+  fn start_client(&mut self) -> Result<(), crate::core::ClusterProviderError> {
+    Ok(())
+  }
+
+  fn down(&mut self, authority: &str) -> Result<(), crate::core::ClusterProviderError> {
+    self.downed.lock().push(String::from(authority));
+    Ok(())
+  }
+
+  fn shutdown(&mut self, _graceful: bool) -> Result<(), crate::core::ClusterProviderError> {
+    Ok(())
+  }
+}
+
+struct RecordingDowningProvider {
+  downed: ArcShared<NoStdMutex<Vec<String>>>,
+}
+
+impl DowningProvider for RecordingDowningProvider {
+  fn down(&mut self, authority: &str) -> Result<(), crate::core::ClusterProviderError> {
+    self.downed.lock().push(String::from(authority));
+    Ok(())
   }
 }
 

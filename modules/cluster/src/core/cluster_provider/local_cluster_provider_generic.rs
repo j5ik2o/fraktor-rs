@@ -287,6 +287,16 @@ impl<TB: RuntimeToolbox + 'static> ClusterProvider for LocalClusterProviderGener
     Ok(())
   }
 
+  fn down(&mut self, authority: &str) -> Result<(), ClusterProviderError> {
+    if authority == self.advertised_address {
+      return Err(ClusterProviderError::down("cannot down self authority"));
+    }
+    if self.members.contains(&String::from(authority)) {
+      self.on_member_leave(authority);
+    }
+    Ok(())
+  }
+
   fn shutdown(&mut self, _graceful: bool) -> Result<(), ClusterProviderError> {
     // 起動モードを取得してからクリア
     let mode = self.startup_mode.take().unwrap_or(StartupMode::Member);

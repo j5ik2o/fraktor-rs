@@ -303,6 +303,15 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionGeneric<TB> {
     result
   }
 
+  /// Explicitly downs the provided member authority.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the cluster is not started or the provider cannot process downing.
+  pub fn down(&self, authority: &str) -> Result<(), ClusterError> {
+    self.core.lock().down(authority)
+  }
+
   /// Registers kinds for member mode.
   ///
   /// # Errors

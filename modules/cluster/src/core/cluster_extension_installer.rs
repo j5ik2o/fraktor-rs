@@ -14,6 +14,7 @@ use crate::core::{
   ClusterExtensionConfig,
   cluster_extension_id::ClusterExtensionId,
   cluster_provider::{ClusterProvider, LocalClusterProviderGeneric},
+  downing_provider::{DowningProvider, NoopDowningProvider},
   identity::{IdentityLookup, NoopIdentityLookup},
   membership::{Gossiper, NoopGossiper},
   pub_sub::{NoopClusterPubSub, cluster_pub_sub::ClusterPubSub},
@@ -45,6 +46,8 @@ pub type ClusterProviderFactory<TB> = ArcShared<
 
 /// Factory function type for creating a `Gossiper`.
 type GossiperFactory = ArcShared<dyn Fn() -> Box<dyn Gossiper> + Send + Sync>;
+/// Factory function type for creating a `DowningProvider`.
+type DowningProviderFactory = ArcShared<dyn Fn() -> Box<dyn DowningProvider> + Send + Sync>;
 
 /// Factory function type for creating a `ClusterPubSub`.
 type PubSubFactory<TB> = ArcShared<dyn Fn(&ClusterExtensionConfig) -> Box<dyn ClusterPubSub<TB>> + Send + Sync>;
@@ -81,6 +84,7 @@ pub struct ClusterExtensionInstaller<TB: RuntimeToolbox + 'static> {
   config:              ClusterExtensionConfig,
   provider_f:          ClusterProviderFactory<TB>,
   block_list_provider: Option<ArcShared<dyn BlockListProvider>>,
+  downing_provider_f:  Option<DowningProviderFactory>,
   gossiper_f:          Option<GossiperFactory>,
   pubsub_f:            Option<PubSubFactory<TB>>,
   identity_lookup_f:   Option<IdentityLookupFactory>,
@@ -92,6 +96,7 @@ impl<TB: RuntimeToolbox + 'static> Clone for ClusterExtensionInstaller<TB> {
       config:              self.config.clone(),
       provider_f:          ArcShared::clone(&self.provider_f),
       block_list_provider: self.block_list_provider.clone(),
+      downing_provider_f:  self.downing_provider_f.clone(),
       gossiper_f:          self.gossiper_f.clone(),
       pubsub_f:            self.pubsub_f.clone(),
       identity_lookup_f:   self.identity_lookup_f.clone(),
@@ -130,6 +135,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
       config,
       provider_f: ArcShared::new(provider_f),
       block_list_provider: None,
+      downing_provider_f: None,
       gossiper_f: None,
       pubsub_f: None,
       identity_lookup_f: None,
@@ -211,6 +217,17 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
     self
   }
 
+  /// Sets a custom downing provider factory.
+  ///
+  /// The factory is called during installation to create a fresh `DowningProvider` instance.
+  #[must_use]
+  pub fn with_downing_provider_factory<F>(mut self, factory: F) -> Self
+  where
+    F: Fn() -> Box<dyn DowningProvider> + Send + Sync + 'static, {
+    self.downing_provider_f = Some(ArcShared::new(factory));
+    self
+  }
+
   /// Sets a custom pub/sub factory.
   ///
   /// The factory is called during installation to create a fresh `ClusterPubSub` instance.
@@ -266,6 +283,8 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
     // デフォルト実装を使用（未指定の場合）
     let block_list_provider: ArcShared<dyn BlockListProvider> =
       self.block_list_provider.clone().unwrap_or_else(|| ArcShared::new(EmptyBlockListProvider));
+    let downing_provider: Box<dyn DowningProvider> =
+      self.downing_provider_f.as_ref().map(|f| f()).unwrap_or_else(|| Box::new(NoopDowningProvider::new()));
     // Gossiper はファクトリ経由で作成（Clone できないため）
     let gossiper: Box<dyn Gossiper> = self.gossiper_f.as_ref().map(|f| f()).unwrap_or_else(|| Box::new(NoopGossiper));
     // ClusterPubSub はファクトリ経由で作成（Clone できないため）
@@ -278,7 +297,15 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
     // ファクトリー関数を呼び出して ClusterProvider を作成
     let provider = (self.provider_f)(system.event_stream(), block_list_provider.clone(), config.advertised_address());
 
-    let id = ClusterExtensionId::<TB>::new(config, provider, block_list_provider, gossiper, pubsub, identity_lookup);
+    let id = ClusterExtensionId::<TB>::new(
+      config,
+      provider,
+      block_list_provider,
+      downing_provider,
+      gossiper,
+      pubsub,
+      identity_lookup,
+    );
     system.extended().register_extension(&id).map_err(|error| {
       ActorSystemBuildError::Configuration(format!("cluster extension registration failed: {error:?}"))
     })

@@ -1,8 +1,8 @@
 //! Events emitted by gossip convergence.
 
-use alloc::string::String;
+use alloc::{string::String, vec::Vec};
 
-use super::MembershipVersion;
+use super::{MembershipVersion, VectorClock};
 
 /// Gossip lifecycle events for observability.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -34,5 +34,14 @@ pub enum GossipEvent {
   Confirmed {
     /// Version that reached confirmation.
     version: MembershipVersion,
+  },
+  /// Seen-set changed for a version.
+  SeenChanged {
+    /// Authorities that have seen the version.
+    seen_by: Vec<String>,
+    /// Version associated with the seen-set.
+    version: MembershipVersion,
+    /// Vector clock snapshot.
+    clock:   VectorClock,
   },
 }

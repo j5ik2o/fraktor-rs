@@ -16,6 +16,10 @@ pub enum NodeStatus {
   Leaving,
   /// Node completed leaving and is about to be removed.
   Exiting,
+  /// Node is preparing for coordinated shutdown.
+  PreparingForShutdown,
+  /// Node is ready for coordinated shutdown.
+  ReadyForShutdown,
   /// Node has completed leave and is removed from the view.
   Removed,
   /// Node is considered dead and removed from active membership.

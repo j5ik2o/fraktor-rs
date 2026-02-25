@@ -23,7 +23,7 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::core::{
-  ClusterApiError, ClusterExtensionGeneric, ClusterRequestError, ClusterResolveError,
+  ClusterApiError, ClusterError, ClusterExtensionGeneric, ClusterRequestError, ClusterResolveError,
   grain::{GRAIN_EVENT_STREAM_NAME, GrainEvent, GrainMetricsSharedGeneric},
   identity::ClusterIdentity,
   placement::PlacementEvent,
@@ -108,6 +108,15 @@ impl<TB: RuntimeToolbox + 'static> ClusterApiGeneric<TB> {
     let response = self.request(identity, message, timeout)?;
     let (_, future) = response.into_parts();
     Ok(future)
+  }
+
+  /// Explicitly downs the provided member authority.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the cluster is not started or downing fails.
+  pub fn down(&self, authority: &str) -> Result<(), ClusterError> {
+    self.extension.down(authority)
   }
 
   fn resolve_actor_ref(&self, identity: &ClusterIdentity) -> Result<ActorRefGeneric<TB>, ClusterResolveError> {

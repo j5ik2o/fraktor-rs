@@ -15,9 +15,10 @@ use fraktor_remote_rs::core::failure_detector::{DefaultFailureDetectorRegistry, 
 use fraktor_utils_rs::core::time::TimerInstant;
 
 use super::{
-  GossipDisseminationCoordinator, MembershipCoordinatorConfig, MembershipCoordinatorError,
-  MembershipCoordinatorOutcome, MembershipCoordinatorState, MembershipDelta, MembershipError, MembershipSnapshot,
-  MembershipTable, MembershipVersion, NodeStatus, QuarantineEntry, QuarantineTable,
+  CurrentClusterState, GossipDisseminationCoordinator, GossipEvent, MembershipCoordinatorConfig,
+  MembershipCoordinatorError, MembershipCoordinatorOutcome, MembershipCoordinatorState, MembershipDelta,
+  MembershipError, MembershipSnapshot, MembershipTable, MembershipVersion, NodeRecord, NodeStatus, QuarantineEntry,
+  QuarantineTable,
 };
 use crate::core::{
   ClusterEvent, ClusterExtensionConfig, ClusterTopology, ConfigValidation, JoinConfigCompatChecker, TopologyUpdate,
@@ -46,11 +47,12 @@ impl<TB: fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox + 'static> Memb
     table: MembershipTable,
     registry: DefaultFailureDetectorRegistry<String>,
   ) -> Self {
+    let local_authority = local_authority_from_config(&cluster_config);
     Self {
       config,
       cluster_config,
       state: MembershipCoordinatorState::Stopped,
-      gossip: GossipDisseminationCoordinator::new(table, Vec::new()),
+      gossip: GossipDisseminationCoordinator::new(table, local_authority, Vec::new()),
       registry,
       quarantine: QuarantineTable::new(),
       topology_accumulator: TopologyAccumulator::new(),
@@ -178,6 +180,7 @@ impl<TB: fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox + 'static> Memb
       });
     }
 
+    self.collect_gossip_and_state_events(now, &mut outcome);
     Ok(outcome)
   }
 
@@ -247,6 +250,7 @@ impl<TB: fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox + 'static> Memb
       });
     }
 
+    self.collect_gossip_and_state_events(now, &mut outcome);
     Ok(outcome)
   }
 
@@ -291,6 +295,7 @@ impl<TB: fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox + 'static> Memb
     }
 
     outcome.membership_events = self.gossip.table_mut().drain_events();
+    self.collect_gossip_and_state_events(now, &mut outcome);
     Ok(outcome)
   }
 
@@ -322,6 +327,7 @@ impl<TB: fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox + 'static> Memb
     }
 
     outcome.membership_events = self.gossip.table_mut().drain_events();
+    self.collect_gossip_and_state_events(now, &mut outcome);
     Ok(outcome)
   }
 
@@ -342,6 +348,7 @@ impl<TB: fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox + 'static> Memb
     let event = self.quarantine.quarantine(authority.clone(), reason.clone(), now, self.config.quarantine_ttl);
     outcome.quarantine_events.push(event);
     outcome.member_events.push(ClusterEvent::MemberQuarantined { authority, reason, observed_at: now });
+    self.collect_gossip_and_state_events(now, &mut outcome);
     Ok(outcome)
   }
 
@@ -370,6 +377,7 @@ impl<TB: fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox + 'static> Memb
     }
 
     outcome.membership_events = self.gossip.table_mut().drain_events();
+    self.collect_gossip_and_state_events(now, &mut outcome);
     Ok(outcome)
   }
 
@@ -418,6 +426,7 @@ impl<TB: fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox + 'static> Memb
       }
       if let Some(record) = self.gossip.table().record(authority) {
         self.emit_status_change(authority, NodeStatus::Up, record.status, now, outcome);
+        Self::emit_unreachable_event(record, now, outcome);
       }
     }
     Ok(())
@@ -436,6 +445,7 @@ impl<TB: fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox + 'static> Memb
       }
       if let Some(record) = self.gossip.table().record(authority) {
         self.emit_status_change(authority, NodeStatus::Suspect, record.status, now, outcome);
+        Self::emit_reachable_event(record, now, outcome);
       }
     }
     Ok(())
@@ -531,7 +541,8 @@ impl<TB: fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox + 'static> Memb
           observed_at: now,
         });
       },
-      | NodeStatus::Leaving | NodeStatus::Exiting => {},
+      | NodeStatus::Leaving | NodeStatus::Exiting | NodeStatus::PreparingForShutdown | NodeStatus::ReadyForShutdown => {
+      },
     }
 
     if let Some(from) = before
@@ -544,6 +555,11 @@ impl<TB: fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox + 'static> Memb
         to: status,
         observed_at: now,
       });
+      if status == NodeStatus::Suspect {
+        Self::emit_unreachable_event(record, now, outcome);
+      } else if from == NodeStatus::Suspect && status == NodeStatus::Up {
+        Self::emit_reachable_event(record, now, outcome);
+      }
     }
   }
 
@@ -564,6 +580,55 @@ impl<TB: fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox + 'static> Memb
         observed_at: now,
       });
     }
+  }
+
+  fn emit_unreachable_event(record: &NodeRecord, now: TimerInstant, outcome: &mut MembershipCoordinatorOutcome) {
+    outcome.member_events.push(ClusterEvent::UnreachableMember {
+      node_id:     record.node_id.clone(),
+      authority:   record.authority.clone(),
+      observed_at: now,
+    });
+  }
+
+  fn emit_reachable_event(record: &NodeRecord, now: TimerInstant, outcome: &mut MembershipCoordinatorOutcome) {
+    outcome.member_events.push(ClusterEvent::ReachableMember {
+      node_id:     record.node_id.clone(),
+      authority:   record.authority.clone(),
+      observed_at: now,
+    });
+  }
+
+  fn collect_gossip_and_state_events(&mut self, now: TimerInstant, outcome: &mut MembershipCoordinatorOutcome) {
+    self.collect_seen_changed_events(now, outcome);
+    outcome
+      .member_events
+      .push(ClusterEvent::CurrentClusterState { state: self.current_cluster_state(), observed_at: now });
+  }
+
+  fn collect_seen_changed_events(&mut self, now: TimerInstant, outcome: &mut MembershipCoordinatorOutcome) {
+    let events = self.gossip.drain_events();
+    for event in events {
+      if let GossipEvent::SeenChanged { seen_by, version, .. } = event {
+        outcome.member_events.push(ClusterEvent::SeenChanged { seen_by, version, observed_at: now });
+      }
+    }
+  }
+
+  fn current_cluster_state(&self) -> CurrentClusterState {
+    let snapshot = self.gossip.table().snapshot();
+    let members = snapshot
+      .entries
+      .iter()
+      .filter(|record| !matches!(record.status, NodeStatus::Removed | NodeStatus::Dead))
+      .cloned()
+      .collect::<Vec<_>>();
+    let unreachable = members.iter().filter(|record| record.status == NodeStatus::Suspect).cloned().collect::<Vec<_>>();
+    let leader_members =
+      members.iter().filter(|record| is_leader_eligible_status(record.status)).cloned().collect::<Vec<_>>();
+    let leader = oldest_authority(&leader_members);
+    let role_leader = role_leaders(&members);
+    let seen_by = self.gossip.seen_by();
+    CurrentClusterState::new(members, unreachable, seen_by, leader, role_leader)
   }
 
   fn emit_topology_if_due(&mut self, now: TimerInstant) -> Option<ClusterEvent> {
@@ -641,6 +706,48 @@ impl TopologyAccumulator {
   fn dead_sorted(&self) -> Vec<String> {
     self.dead.iter().cloned().collect()
   }
+}
+
+fn oldest_authority(records: &[NodeRecord]) -> Option<String> {
+  let mut oldest: Option<&NodeRecord> = None;
+  for record in records {
+    oldest = match oldest {
+      | Some(current) if !record.is_older_than(current) => Some(current),
+      | _ => Some(record),
+    };
+  }
+  oldest.map(|record| record.authority.clone())
+}
+
+fn role_leaders(records: &[NodeRecord]) -> BTreeMap<String, Option<String>> {
+  let mut role_records: BTreeMap<String, Option<NodeRecord>> = BTreeMap::new();
+  for record in records {
+    for role in record.roles.iter() {
+      let entry = role_records.entry(role.clone()).or_insert(None);
+      if !is_leader_eligible_status(record.status) {
+        continue;
+      }
+      let replace = match entry {
+        | Some(current) => record.is_older_than(current),
+        | None => true,
+      };
+      if replace {
+        *entry = Some(record.clone());
+      }
+    }
+  }
+  role_records.into_iter().map(|(role, record)| (role, record.map(|record| record.authority))).collect()
+}
+
+fn local_authority_from_config(cluster_config: &ClusterExtensionConfig) -> Option<String> {
+  if cluster_config.advertised_address().is_empty() { None } else { Some(cluster_config.advertised_address().clone()) }
+}
+
+const fn is_leader_eligible_status(status: NodeStatus) -> bool {
+  matches!(
+    status,
+    NodeStatus::Up | NodeStatus::Leaving | NodeStatus::PreparingForShutdown | NodeStatus::ReadyForShutdown
+  )
 }
 
 fn to_millis(now: TimerInstant) -> u64 {

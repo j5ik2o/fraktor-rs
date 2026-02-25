@@ -412,6 +412,19 @@ impl ClusterProvider for AwsEcsClusterProvider {
     Ok(())
   }
 
+  fn down(&mut self, authority: &str) -> Result<(), ClusterProviderError> {
+    if authority == self.advertised_address {
+      return Err(ClusterProviderError::down("cannot down self authority"));
+    }
+    if !self.members.contains(&String::from(authority)) {
+      return Ok(());
+    }
+    self.members.retain(|member| member != authority);
+    let version = self.next_version();
+    self.publish_topology(version, vec![], vec![authority.to_string()]);
+    Ok(())
+  }
+
   fn shutdown(&mut self, _graceful: bool) -> Result<(), ClusterProviderError> {
     // シャットダウンフラグを設定
     self.shutdown_flag.store(true, Ordering::Relaxed);

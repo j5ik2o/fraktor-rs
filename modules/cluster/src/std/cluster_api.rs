@@ -11,7 +11,7 @@ use fraktor_actor_rs::std::{
 use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
 use crate::core::{
-  ClusterApiError, ClusterApiGeneric, ClusterRequestError, ClusterResolveError, identity::ClusterIdentity,
+  ClusterApiError, ClusterApiGeneric, ClusterError, ClusterRequestError, ClusterResolveError, identity::ClusterIdentity,
 };
 
 /// Cluster API facade bound to a std actor system.
@@ -83,5 +83,14 @@ impl ClusterApi {
     timeout: Option<Duration>,
   ) -> Result<ActorFutureShared<AskResult>, ClusterRequestError> {
     self.inner.request_future(identity, message, timeout)
+  }
+
+  /// Explicitly downs the provided member authority.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the cluster is not started or downing fails.
+  pub fn down(&self, authority: &str) -> Result<(), ClusterError> {
+    self.inner.down(authority)
   }
 }

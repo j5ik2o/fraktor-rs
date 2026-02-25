@@ -1,10 +1,14 @@
 //! Cluster lifecycle and topology events emitted to the event stream.
 
-use alloc::string::String;
+use alloc::{string::String, vec::Vec};
 
 use fraktor_utils_rs::core::time::TimerInstant;
 
-use crate::core::{TopologyUpdate, membership::NodeStatus, startup_mode::StartupMode};
+use crate::core::{
+  TopologyUpdate,
+  membership::{CurrentClusterState, MembershipVersion, NodeStatus},
+  startup_mode::StartupMode,
+};
 
 /// Event payload published via `EventStreamEvent::Extension { name: "cluster", .. }`.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -56,6 +60,40 @@ pub enum ClusterEvent {
     from:        NodeStatus,
     /// Current status.
     to:          NodeStatus,
+    /// Observation timestamp.
+    observed_at: TimerInstant,
+  },
+  /// Current cluster state snapshot.
+  CurrentClusterState {
+    /// Enriched current cluster state.
+    state:       CurrentClusterState,
+    /// Observation timestamp.
+    observed_at: TimerInstant,
+  },
+  /// Gossip seen-set changed for a version.
+  SeenChanged {
+    /// Authorities that have seen the version.
+    seen_by:     Vec<String>,
+    /// Membership version associated with the seen-set.
+    version:     MembershipVersion,
+    /// Observation timestamp.
+    observed_at: TimerInstant,
+  },
+  /// Member became unreachable.
+  UnreachableMember {
+    /// Node identifier.
+    node_id:     String,
+    /// Authority address.
+    authority:   String,
+    /// Observation timestamp.
+    observed_at: TimerInstant,
+  },
+  /// Member became reachable again.
+  ReachableMember {
+    /// Node identifier.
+    node_id:     String,
+    /// Authority address.
+    authority:   String,
     /// Observation timestamp.
     observed_at: TimerInstant,
   },
