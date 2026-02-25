@@ -1,0 +1,175 @@
+name: issue-resolve
+description: 複数の GitHub Issue を起点に要件整理・実装・レビュー・Issue単位コミット・完了判定までを実行する
+piece_config:
+  provider_options:
+    codex:
+      network_access: true
+    opencode:
+      network_access: true
+max_movements: 30
+initial_movement: issue-plan
+
+instructions:
+  issue-plan: ../facets/instructions/issue-plan.md
+  issue-implement: ../facets/instructions/issue-implement.md
+  issue-fix: ../facets/instructions/issue-fix.md
+  issue-verify: ../facets/instructions/issue-verify.md
+
+report_formats:
+  issue-plan: ../facets/output-contracts/issue-plan.md
+  issue-commit-log: ../facets/output-contracts/issue-commit-log.md
+  issue-verify: ../facets/output-contracts/issue-verify.md
+
+loop_monitors:
+  - cycle:
+      - review
+      - fix
+    threshold: 3
+    judge:
+      persona: supervisor
+      instruction_template: |
+        review と fix のループが {cycle_count} 回繰り返されました。
+
+        以下のレポートを確認し、継続の妥当性を判定してください。
+        - AIレビュー: {report:01-ai-review.md}
+        - Commitログ: {report:issue-commit-log.md}
+        - Issue検証: {report:02-issue-verify.md}
+      rules:
+        - condition: 継続妥当
+          next: review
+        - condition: 打ち切り妥当
+          next: ABORT
+
+movements:
+  - name: issue-plan
+    edit: false
+    persona: planner
+    policy: review
+    allowed_tools:
+      - Read
+      - Glob
+      - Grep
+      - Bash
+    instruction: issue-plan
+    output_contracts:
+      report:
+        - name: 00-issue-plan.md
+          format: issue-plan
+    rules:
+      - condition: 全issueの受け入れ条件が明確で実装可能
+        next: implement
+      - condition: 1件以上のissueで情報不足
+        next: ABORT
+      - condition: 判断不能
+        next: ABORT
+
+  - name: implement
+    edit: true
+    persona: coder
+    policy:
+      - coding
+      - testing
+      - ../facets/policies/fraktor-coding.md
+    session: refresh
+    allowed_tools:
+      - Read
+      - Glob
+      - Grep
+      - Edit
+      - Write
+      - Bash
+    required_permission_mode: edit
+    instruction: issue-implement
+    output_contracts:
+      report:
+        - name: coder-scope.md
+          format: coder-scope
+        - name: coder-decisions.md
+          format: coder-decisions
+        - name: issue-commit-log.md
+          format: issue-commit-log
+    rules:
+      - condition: 全issueの実装とissue単位コミット完了
+        next: review
+      - condition: 1件以上のissueで実装不能
+        next: ABORT
+      - condition: 判断不能
+        next: ABORT
+
+  - name: review
+    edit: false
+    persona: ai-antipattern-reviewer
+    policy:
+      - review
+      - ai-antipattern
+    allowed_tools:
+      - Read
+      - Glob
+      - Grep
+      - Bash
+    instruction: ai-review
+    output_contracts:
+      report:
+        - name: 01-ai-review.md
+          format: ai-review
+    rules:
+      - condition: AI特有の問題なし
+        next: verify
+      - condition: AI特有の問題あり
+        next: fix
+
+  - name: fix
+    edit: true
+    persona: coder
+    policy:
+      - coding
+      - testing
+      - ../facets/policies/fraktor-coding.md
+    session: refresh
+    pass_previous_response: false
+    allowed_tools:
+      - Read
+      - Glob
+      - Grep
+      - Edit
+      - Write
+      - Bash
+    required_permission_mode: edit
+    instruction: issue-fix
+    output_contracts:
+      report:
+        - name: issue-commit-log.md
+          format: issue-commit-log
+    rules:
+      - condition: 修正完了かつ必要なissue単位コミット完了
+        next: review
+      - condition: 修正不能なissueあり
+        next: ABORT
+      - condition: 判断不能
+        next: ABORT
+
+  - name: verify
+    edit: false
+    persona: supervisor
+    policy: review
+    pass_previous_response: false
+    allowed_tools:
+      - Read
+      - Glob
+      - Grep
+      - Bash
+    instruction: issue-verify
+    output_contracts:
+      report:
+        - name: 02-issue-verify.md
+          format: issue-verify
+        - name: summary.md
+          format: summary
+          use_judge: false
+    rules:
+      - condition: 全issueの完了条件を満たす
+        next: COMPLETE
+      - condition: 1件以上で未達
+        next: fix
+      - condition: 判断不能
+        next: ABORT
