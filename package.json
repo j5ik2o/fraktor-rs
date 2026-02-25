@@ -9,6 +9,7 @@
     "sdd:tasks": "takt --pipeline --skip-git --create-worktree no -w sdd-tasks -t",
     "sdd:impl": "takt --pipeline --skip-git --create-worktree no -w sdd-impl -t",
     "sdd:validate-impl": "takt --pipeline --skip-git --create-worktree no -w sdd-validate-impl -t",
+    "issue:resolve": "takt --pipeline --skip-git --create-worktree no -w issue-resolve -t",
     "steering": "takt --pipeline --skip-git --create-worktree no -w steering -t",
     "steering:custom": "takt --pipeline --skip-git --create-worktree no -w steering-custom -t",
     "takt:run": "takt run"
