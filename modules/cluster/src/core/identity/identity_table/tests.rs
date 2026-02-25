@@ -10,7 +10,9 @@ use crate::core::{
 #[test]
 fn ready_returns_canonical_path_and_latest_version() {
   let mut membership = MembershipTable::new(2);
-  membership.try_join("node-1".to_string(), "n1:4050".to_string()).expect("join succeeds");
+  membership
+    .try_join("node-1".to_string(), "n1:4050".to_string(), "1.0.0".to_string(), vec!["member".to_string()])
+    .expect("join succeeds");
   membership.drain_events();
 
   let mut table = IdentityTable::new(membership);
@@ -36,7 +38,9 @@ fn ready_returns_canonical_path_and_latest_version() {
 #[test]
 fn unreachable_is_returned_for_removed_node() {
   let mut membership = MembershipTable::new(2);
-  membership.try_join("node-1".to_string(), "n1:4050".to_string()).expect("join succeeds");
+  membership
+    .try_join("node-1".to_string(), "n1:4050".to_string(), "1.0.0".to_string(), vec!["member".to_string()])
+    .expect("join succeeds");
   membership.drain_events();
   membership.mark_left("n1:4050").expect("leave succeeds");
 
@@ -51,6 +55,39 @@ fn unreachable_is_returned_for_removed_node() {
     },
     | other => panic!("unexpected result: {other:?}"),
   }
+}
+
+#[test]
+fn unreachable_is_returned_for_leaving_node() {
+  let mut membership = MembershipTable::new(2);
+  membership.apply_delta(MembershipDelta::new(MembershipVersion::zero(), MembershipVersion::new(1), vec![
+    NodeRecord::new(
+      "node-1".to_string(),
+      "n1:4050".to_string(),
+      NodeStatus::Leaving,
+      MembershipVersion::new(1),
+      "1.0.0".to_string(),
+      vec!["member".to_string()],
+    ),
+  ]));
+
+  let mut table = IdentityTable::new(membership);
+
+  let result = table.resolve("n1:4050", "user/echo").expect("resolve should succeed");
+
+  match result {
+    | ResolveResult::Unreachable { authority, version } => {
+      assert_eq!(authority, "n1:4050");
+      assert_eq!(version, MembershipVersion::new(1));
+    },
+    | other => panic!("unexpected result: {other:?}"),
+  }
+
+  let events = table.drain_events();
+  assert_eq!(events, vec![IdentityEvent::UnknownAuthority {
+    authority: "n1:4050".to_string(),
+    version:   MembershipVersion::new(1),
+  }],);
 }
 
 #[test]
@@ -78,7 +115,9 @@ fn unreachable_is_returned_for_missing_authority() {
 #[test]
 fn quarantine_takes_precedence_over_membership() {
   let mut membership = MembershipTable::new(2);
-  membership.try_join("node-1".to_string(), "n1:4050".to_string()).expect("join succeeds");
+  membership
+    .try_join("node-1".to_string(), "n1:4050".to_string(), "1.0.0".to_string(), vec!["member".to_string()])
+    .expect("join succeeds");
   membership.drain_events();
 
   let mut table = IdentityTable::new(membership);
@@ -119,7 +158,9 @@ fn invalid_format_returns_error_and_event() {
 #[test]
 fn resolve_uses_latest_version_after_delta() {
   let mut membership = MembershipTable::new(2);
-  membership.try_join("node-1".to_string(), "n1:4050".to_string()).expect("join succeeds");
+  membership
+    .try_join("node-1".to_string(), "n1:4050".to_string(), "1.0.0".to_string(), vec!["member".to_string()])
+    .expect("join succeeds");
   membership.drain_events();
 
   let mut table = IdentityTable::new(membership);
@@ -130,6 +171,8 @@ fn resolve_uses_latest_version_after_delta() {
     "n2:4051".to_string(),
     NodeStatus::Up,
     MembershipVersion::new(2),
+    "1.0.0".to_string(),
+    vec!["member".to_string()],
   )]);
   table.apply_membership_delta(delta);
 

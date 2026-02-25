@@ -6,7 +6,10 @@ use super::MailboxInstrumentation;
 use crate::core::{
   actor::Pid,
   dispatch::mailbox::BackpressurePublisherGeneric,
-  event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
+  event::{
+    logging::LogLevel,
+    stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
+  },
   system::ActorSystem,
 };
 
@@ -104,6 +107,19 @@ fn mailbox_pressure_event_captures_threshold() {
     })
     .flatten();
   assert_eq!(pressure, Some(3));
+}
+
+#[test]
+fn mailbox_instrumentation_is_no_op_after_system_state_drop() {
+  let system_state = ActorSystem::new_empty().state();
+  let pid = Pid::new(8, 0);
+  let instrumentation = MailboxInstrumentation::new(system_state.clone(), pid, Some(4), Some(2), Some(3));
+
+  drop(system_state);
+
+  assert!(instrumentation.system_state().is_none());
+  instrumentation.publish(4, 1);
+  instrumentation.emit_log(LogLevel::Info, "ignored after system shutdown");
 }
 
 struct TestSubscriber {

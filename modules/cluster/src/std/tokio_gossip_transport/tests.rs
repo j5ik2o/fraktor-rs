@@ -13,8 +13,14 @@ fn free_udp_addr() -> std::net::SocketAddr {
 }
 
 fn sample_delta() -> MembershipDelta {
-  let record =
-    NodeRecord::new(String::from("node-a"), String::from("127.0.0.1:11000"), NodeStatus::Up, MembershipVersion::new(1));
+  let record = NodeRecord::new(
+    String::from("node-a"),
+    String::from("127.0.0.1:11000"),
+    NodeStatus::Up,
+    MembershipVersion::new(1),
+    String::from("1.0.0"),
+    vec![String::from("member")],
+  );
   MembershipDelta::new(MembershipVersion::new(0), MembershipVersion::new(1), vec![record])
 }
 

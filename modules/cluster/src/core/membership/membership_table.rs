@@ -43,7 +43,13 @@ impl MembershipTable {
   ///
   /// Returns `MembershipError::AuthorityConflict` if the authority is already registered with a
   /// different node ID.
-  pub fn try_join(&mut self, node_id: String, authority: String) -> Result<MembershipDelta, MembershipError> {
+  pub fn try_join(
+    &mut self,
+    node_id: String,
+    authority: String,
+    app_version: String,
+    roles: Vec<String>,
+  ) -> Result<MembershipDelta, MembershipError> {
     if let Some(existing) = self.entries.get_mut(&authority) {
       if existing.node_id != node_id {
         self.events.push(MembershipEvent::AuthorityConflict {
@@ -64,6 +70,9 @@ impl MembershipTable {
         self.version = self.version.next();
         existing.status = NodeStatus::Joining;
         existing.version = self.version;
+        existing.join_version = self.version;
+        existing.app_version = app_version;
+        existing.roles = roles;
         return Ok(MembershipDelta::new(from, self.version, vec![existing.clone()]));
       }
 
@@ -73,7 +82,8 @@ impl MembershipTable {
     let from = self.version;
     self.version = self.version.next();
 
-    let record = NodeRecord::new(node_id.clone(), authority.clone(), NodeStatus::Joining, self.version);
+    let record =
+      NodeRecord::new(node_id.clone(), authority.clone(), NodeStatus::Joining, self.version, app_version, roles);
     self.entries.insert(authority.clone(), record.clone());
     self.heartbeat_miss_counters.insert(authority.clone(), 0);
 
@@ -82,7 +92,7 @@ impl MembershipTable {
     Ok(MembershipDelta::new(from, self.version, vec![record]))
   }
 
-  /// Marks the authority as leaving and then removed.
+  /// Marks the authority as leaving (`Exiting`) and then removed.
   ///
   /// # Errors
   ///
@@ -96,17 +106,21 @@ impl MembershipTable {
       return Err(MembershipError::InvalidTransition {
         authority: authority.to_string(),
         from:      record.status,
-        to:        NodeStatus::Removed,
+        to:        NodeStatus::Exiting,
       });
     }
 
     let from = self.version;
     self.version = self.version.next();
-
-    record.status = NodeStatus::Removed;
+    if record.status == NodeStatus::Exiting {
+      record.status = NodeStatus::Removed;
+      self
+        .events
+        .push(MembershipEvent::Left { node_id: record.node_id.clone(), authority: record.authority.clone() });
+    } else {
+      record.status = NodeStatus::Exiting;
+    }
     record.version = self.version;
-
-    self.events.push(MembershipEvent::Left { node_id: record.node_id.clone(), authority: record.authority.clone() });
 
     Ok(MembershipDelta::new(from, self.version, vec![record.clone()]))
   }
@@ -115,7 +129,7 @@ impl MembershipTable {
   pub fn mark_heartbeat_miss(&mut self, authority: &str) -> Option<MembershipDelta> {
     let record = self.entries.get_mut(authority)?;
 
-    if matches!(record.status, NodeStatus::Removed | NodeStatus::Dead) {
+    if !record.status.is_active() {
       return None;
     }
 

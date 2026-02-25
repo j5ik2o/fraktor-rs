@@ -57,6 +57,35 @@ fn event_stream_replays_buffer_for_new_subscribers() {
 }
 
 #[test]
+fn subscribe_no_replay_skips_buffered_events() {
+  let stream = EventStreamShared::default();
+
+  stream.publish(&EventStreamEvent::Log(LogEvent::new(
+    LogLevel::Info,
+    String::from("buffered"),
+    Duration::from_millis(1),
+    None,
+  )));
+
+  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
+  let _subscription = stream.subscribe_no_replay(&subscriber);
+
+  assert!(events.lock().is_empty());
+
+  stream.publish(&EventStreamEvent::Log(LogEvent::new(
+    LogLevel::Info,
+    String::from("live"),
+    Duration::from_millis(2),
+    None,
+  )));
+
+  let recorded = events.lock().clone();
+  assert_eq!(recorded.len(), 1);
+  assert!(matches!(&recorded[0], EventStreamEvent::Log(event) if event.message() == "live"));
+}
+
+#[test]
 fn capacity_limits_buffer_size() {
   let stream = EventStreamShared::with_capacity(1);
 

@@ -1,5 +1,8 @@
 //! Node status representation.
 
+#[cfg(test)]
+mod tests;
+
 /// Represents the membership state of a cluster node.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NodeStatus {
@@ -11,6 +14,8 @@ pub enum NodeStatus {
   Suspect,
   /// Node initiated a graceful leave.
   Leaving,
+  /// Node completed leaving and is about to be removed.
+  Exiting,
   /// Node has completed leave and is removed from the view.
   Removed,
   /// Node is considered dead and removed from active membership.

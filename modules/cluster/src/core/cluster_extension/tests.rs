@@ -21,7 +21,7 @@ use crate::core::{
   cluster_provider::{ClusterProvider, StaticClusterProvider},
   grain::GrainKey,
   identity::{IdentityLookup, IdentitySetupError, LookupError},
-  membership::Gossiper,
+  membership::{Gossiper, NodeStatus},
   placement::{ActivatedKind, PlacementResolution},
   pub_sub::cluster_pub_sub::ClusterPubSub,
 };
@@ -43,6 +43,25 @@ fn build_update(
     blocked,
     TimerInstant::from_ticks(hash, Duration::from_secs(1)),
   )
+}
+
+fn publish_member_status(
+  event_stream: &EventStreamSharedGeneric<NoStdToolbox>,
+  node_id: &str,
+  authority: &str,
+  from: NodeStatus,
+  to: NodeStatus,
+) {
+  let cluster_event = ClusterEvent::MemberStatusChanged {
+    node_id: String::from(node_id),
+    authority: String::from(authority),
+    from,
+    to,
+    observed_at: TimerInstant::from_ticks(10, Duration::from_secs(1)),
+  };
+  let payload = AnyMessageGeneric::new(cluster_event);
+  let event = EventStreamEvent::Extension { name: String::from("cluster"), payload };
+  event_stream.publish(&event);
 }
 
 struct StubProvider;
@@ -145,6 +164,274 @@ fn registers_extension_and_starts_member() {
   let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
   let result = ext_shared.start_member();
   assert!(result.is_ok());
+}
+
+#[test]
+fn register_on_member_up_invokes_callback_for_up_transition() {
+  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let event_stream = system.event_stream();
+
+  let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
+    ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"),
+    Box::new(StubProvider),
+    ArcShared::new(StubBlockList),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
+    Box::new(StubIdentity),
+  );
+  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
+
+  let calls = ArcShared::new(NoStdMutex::new(Vec::<(String, String)>::new()));
+  let calls_for_callback = calls.clone();
+  let _subscription = ext_shared.register_on_member_up(move |node_id, authority| {
+    calls_for_callback.lock().push((String::from(node_id), String::from(authority)));
+  });
+
+  publish_member_status(&event_stream, "node-ignored", "node-other", NodeStatus::Joining, NodeStatus::Up);
+  publish_member_status(&event_stream, "node-self", "fraktor://demo", NodeStatus::Joining, NodeStatus::Up);
+  publish_member_status(&event_stream, "node-self", "fraktor://demo", NodeStatus::Suspect, NodeStatus::Up);
+
+  let recorded = calls.lock().clone();
+  assert_eq!(recorded, vec![(String::from("node-self"), String::from("fraktor://demo"))]);
+}
+
+#[test]
+fn register_on_member_removed_invokes_callback_for_removed_transition() {
+  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let event_stream = system.event_stream();
+
+  let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
+    ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"),
+    Box::new(StubProvider),
+    ArcShared::new(StubBlockList),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
+    Box::new(StubIdentity),
+  );
+  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
+
+  let calls = ArcShared::new(NoStdMutex::new(Vec::<(String, String)>::new()));
+  let calls_for_callback = calls.clone();
+  let _subscription = ext_shared.register_on_member_removed(move |node_id, authority| {
+    calls_for_callback.lock().push((String::from(node_id), String::from(authority)));
+  });
+
+  publish_member_status(&event_stream, "node-ignored", "node-other", NodeStatus::Exiting, NodeStatus::Removed);
+  publish_member_status(&event_stream, "node-self", "fraktor://demo", NodeStatus::Exiting, NodeStatus::Removed);
+  publish_member_status(&event_stream, "node-self", "fraktor://demo", NodeStatus::Dead, NodeStatus::Removed);
+
+  let recorded = calls.lock().clone();
+  assert_eq!(recorded, vec![(String::from("node-self"), String::from("fraktor://demo"))]);
+}
+
+#[test]
+fn register_on_member_up_invokes_callback_immediately_when_self_already_up() {
+  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let event_stream = system.event_stream();
+
+  let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
+    ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"),
+    Box::new(StubProvider),
+    ArcShared::new(StubBlockList),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
+    Box::new(StubIdentity),
+  );
+  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
+
+  publish_member_status(&event_stream, "node-self", "fraktor://demo", NodeStatus::Joining, NodeStatus::Up);
+
+  let calls = ArcShared::new(NoStdMutex::new(Vec::<(String, String)>::new()));
+  let calls_for_callback = calls.clone();
+  let _subscription = ext_shared.register_on_member_up(move |node_id, authority| {
+    calls_for_callback.lock().push((String::from(node_id), String::from(authority)));
+  });
+
+  publish_member_status(&event_stream, "node-self", "fraktor://demo", NodeStatus::Suspect, NodeStatus::Up);
+
+  let recorded = calls.lock().clone();
+  assert_eq!(recorded, vec![(String::from("node-self"), String::from("fraktor://demo"))]);
+}
+
+#[test]
+fn register_on_member_removed_invokes_callback_immediately_when_self_already_removed() {
+  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let event_stream = system.event_stream();
+
+  let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
+    ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"),
+    Box::new(StubProvider),
+    ArcShared::new(StubBlockList),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
+    Box::new(StubIdentity),
+  );
+  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
+
+  publish_member_status(&event_stream, "node-self", "fraktor://demo", NodeStatus::Exiting, NodeStatus::Removed);
+
+  let calls = ArcShared::new(NoStdMutex::new(Vec::<(String, String)>::new()));
+  let calls_for_callback = calls.clone();
+  let _subscription = ext_shared.register_on_member_removed(move |node_id, authority| {
+    calls_for_callback.lock().push((String::from(node_id), String::from(authority)));
+  });
+
+  publish_member_status(&event_stream, "node-self", "fraktor://demo", NodeStatus::Dead, NodeStatus::Removed);
+
+  let recorded = calls.lock().clone();
+  assert_eq!(recorded, vec![(String::from("node-self"), String::from("fraktor://demo"))]);
+}
+
+#[test]
+fn register_on_member_removed_invokes_callback_immediately_after_shutdown() {
+  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+
+  let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
+    ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"),
+    Box::new(StubProvider),
+    ArcShared::new(StubBlockList),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
+    Box::new(StubIdentity),
+  );
+  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
+  ext_shared.start_member().expect("start member");
+  ext_shared.shutdown(true).expect("shutdown");
+
+  let calls = ArcShared::new(NoStdMutex::new(Vec::<(String, String)>::new()));
+  let calls_for_callback = calls.clone();
+  let _subscription = ext_shared.register_on_member_removed(move |node_id, authority| {
+    calls_for_callback.lock().push((String::from(node_id), String::from(authority)));
+  });
+
+  let recorded = calls.lock().clone();
+  assert_eq!(recorded, vec![(String::from("fraktor://demo"), String::from("fraktor://demo"))]);
+}
+
+#[test]
+fn register_on_member_up_does_not_fire_for_buffered_old_up_events() {
+  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let event_stream = system.event_stream();
+
+  let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
+    ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"),
+    Box::new(StubProvider),
+    ArcShared::new(StubBlockList),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
+    Box::new(StubIdentity),
+  );
+  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
+
+  publish_member_status(&event_stream, "node-old", "fraktor://demo", NodeStatus::Joining, NodeStatus::Up);
+  publish_member_status(&event_stream, "node-old", "fraktor://demo", NodeStatus::Exiting, NodeStatus::Removed);
+
+  let calls = ArcShared::new(NoStdMutex::new(Vec::<(String, String)>::new()));
+  let calls_for_callback = calls.clone();
+  let _subscription = ext_shared.register_on_member_up(move |node_id, authority| {
+    calls_for_callback.lock().push((String::from(node_id), String::from(authority)));
+  });
+
+  assert!(calls.lock().is_empty());
+
+  publish_member_status(&event_stream, "node-new", "fraktor://demo", NodeStatus::Joining, NodeStatus::Up);
+
+  let recorded = calls.lock().clone();
+  assert_eq!(recorded, vec![(String::from("node-new"), String::from("fraktor://demo"))]);
+}
+
+#[test]
+fn register_on_member_removed_does_not_fire_for_buffered_old_removed_events() {
+  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let event_stream = system.event_stream();
+
+  let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
+    ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"),
+    Box::new(StubProvider),
+    ArcShared::new(StubBlockList),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
+    Box::new(StubIdentity),
+  );
+  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
+
+  publish_member_status(&event_stream, "node-old", "fraktor://demo", NodeStatus::Exiting, NodeStatus::Removed);
+  publish_member_status(&event_stream, "node-old", "fraktor://demo", NodeStatus::Joining, NodeStatus::Up);
+
+  let calls = ArcShared::new(NoStdMutex::new(Vec::<(String, String)>::new()));
+  let calls_for_callback = calls.clone();
+  let _subscription = ext_shared.register_on_member_removed(move |node_id, authority| {
+    calls_for_callback.lock().push((String::from(node_id), String::from(authority)));
+  });
+
+  assert!(calls.lock().is_empty());
+
+  publish_member_status(&event_stream, "node-new", "fraktor://demo", NodeStatus::Exiting, NodeStatus::Removed);
+
+  let recorded = calls.lock().clone();
+  assert_eq!(recorded, vec![(String::from("node-new"), String::from("fraktor://demo"))]);
+}
+
+#[test]
+fn register_on_member_up_does_not_fire_for_events_buffered_before_extension_install() {
+  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let event_stream = system.event_stream();
+
+  publish_member_status(&event_stream, "node-old", "fraktor://demo", NodeStatus::Joining, NodeStatus::Up);
+
+  let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
+    ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"),
+    Box::new(StubProvider),
+    ArcShared::new(StubBlockList),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
+    Box::new(StubIdentity),
+  );
+  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
+
+  let calls = ArcShared::new(NoStdMutex::new(Vec::<(String, String)>::new()));
+  let calls_for_callback = calls.clone();
+  let _subscription = ext_shared.register_on_member_up(move |node_id, authority| {
+    calls_for_callback.lock().push((String::from(node_id), String::from(authority)));
+  });
+
+  assert!(calls.lock().is_empty());
+
+  publish_member_status(&event_stream, "node-new", "fraktor://demo", NodeStatus::Joining, NodeStatus::Up);
+
+  let recorded = calls.lock().clone();
+  assert_eq!(recorded, vec![(String::from("node-new"), String::from("fraktor://demo"))]);
+}
+
+#[test]
+fn register_on_member_removed_does_not_fire_for_events_buffered_before_extension_install() {
+  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let event_stream = system.event_stream();
+
+  publish_member_status(&event_stream, "node-old", "fraktor://demo", NodeStatus::Exiting, NodeStatus::Removed);
+
+  let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
+    ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"),
+    Box::new(StubProvider),
+    ArcShared::new(StubBlockList),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
+    Box::new(StubIdentity),
+  );
+  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
+
+  let calls = ArcShared::new(NoStdMutex::new(Vec::<(String, String)>::new()));
+  let calls_for_callback = calls.clone();
+  let _subscription = ext_shared.register_on_member_removed(move |node_id, authority| {
+    calls_for_callback.lock().push((String::from(node_id), String::from(authority)));
+  });
+
+  assert!(calls.lock().is_empty());
+
+  publish_member_status(&event_stream, "node-new", "fraktor://demo", NodeStatus::Exiting, NodeStatus::Removed);
+
+  let recorded = calls.lock().clone();
+  assert_eq!(recorded, vec![(String::from("node-new"), String::from("fraktor://demo"))]);
 }
 
 #[test]

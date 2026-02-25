@@ -17,7 +17,7 @@ use fraktor_actor_rs::core::event::stream::{
 };
 use fraktor_cluster_rs::{
   core::{
-    ClusterEvent,
+    ClusterEvent, ClusterExtensionConfig,
     membership::{
       GossipOutbound, GossipTransport, Gossiper, MembershipCoordinatorConfig, MembershipCoordinatorGeneric,
       MembershipCoordinatorSharedGeneric, MembershipDelta, MembershipTable, MembershipVersion, NodeRecord, NodeStatus,
@@ -64,13 +64,21 @@ fn build_coordinator() -> MembershipCoordinatorSharedGeneric<StdToolbox> {
   let registry = DefaultFailureDetectorRegistry::new(Box::new(move || {
     Box::new(PhiFailureDetector::new(PhiFailureDetectorConfig::new(threshold, 10, 1)))
   }));
-  let mut coordinator = MembershipCoordinatorGeneric::<StdToolbox>::new(config, table, registry);
+  let mut coordinator =
+    MembershipCoordinatorGeneric::<StdToolbox>::new(config, ClusterExtensionConfig::new(), table, registry);
   coordinator.start_member().expect("start_member");
   MembershipCoordinatorSharedGeneric::new(coordinator)
 }
 
 fn delta_for(node_id: &str, authority: &str, status: NodeStatus, version: u64) -> MembershipDelta {
-  let record = NodeRecord::new(node_id.to_string(), authority.to_string(), status, MembershipVersion::new(version));
+  let record = NodeRecord::new(
+    node_id.to_string(),
+    authority.to_string(),
+    status,
+    MembershipVersion::new(version),
+    String::from("1.0.0"),
+    vec![String::from("member")],
+  );
   MembershipDelta::new(MembershipVersion::new(version.saturating_sub(1)), MembershipVersion::new(version), vec![record])
 }
 

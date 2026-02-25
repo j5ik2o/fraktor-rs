@@ -45,6 +45,12 @@ impl<TB: RuntimeToolbox + 'static> EventStreamGeneric<TB> {
     (id, snapshot)
   }
 
+  /// Adds a subscriber without replaying buffered events.
+  #[must_use]
+  pub fn subscribe_no_replay(&mut self, subscriber: EventStreamSubscriberShared<TB>) -> u64 {
+    self.subscribers.add(subscriber)
+  }
+
   /// Removes the subscriber associated with the identifier.
   pub fn unsubscribe(&mut self, id: u64) {
     self.subscribers.remove(id);
