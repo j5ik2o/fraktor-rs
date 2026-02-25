@@ -156,12 +156,10 @@ Pekkoに存在してfraktor-rsに存在しない機能を特定する。
 
 - Pekkoの全機能を移植することが目的ではない（YAGNI原則）
 - 結果は「何が足りないか」の可視化であり、すべてを実装すべきという提案ではない
-- 制約カード（`/spec-constraint-card`）作成の入力データとして活用する
 - `n/a` 判定は保守的に行う（JVM固有、Akka互換層、deprecated機能のみ）
 - Rust/no_std 固有の制約（`cfg_std_forbid` lint等）を考慮する
 
 ## 関連スキル
 
-- **spec-constraint-card**: ギャップ分析結果から実装タスクの制約カードを作成
 - **reviewing-fraktor-types**: 既存実装の型設計レビュー（過剰設計の検出）
 - **creating-fraktor-modules**: 新規モジュール・型の雛形生成
