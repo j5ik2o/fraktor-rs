@@ -11,9 +11,9 @@
     "sdd:validate-impl": "takt --pipeline --skip-git --create-worktree no -w sdd-validate-impl -t",
     "steering": "takt --pipeline --skip-git --create-worktree no -w steering -t",
     "steering:custom": "takt --pipeline --skip-git --create-worktree no -w steering-custom -t",
-    "task": "takt run"
+    "takt:run": "takt run"
   },
   "devDependencies": {
-    "takt": "file:../takt"
+    "takt": "0.25.0"
   }
 }

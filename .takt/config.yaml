@@ -2,6 +2,7 @@ provider: codex
 model: gpt-5.3-codex
 concurrency: 4
 base_branch: main
+with_submodules: true
 
 persona_providers:
   coder:

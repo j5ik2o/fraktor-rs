@@ -1,1 +1,0 @@
-../../.agent/rules/single-type-per-file.md

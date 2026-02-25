@@ -41,12 +41,14 @@ Thumbs.db
 .vscode/
 
 Cargo.lock
+/.agent/
 /.claude/
 /.codex/
 /.gemini/
 /.cursor/
 /.copilot/
 /.opencode/
+/openspec/
 
 /.serena/cache/
 

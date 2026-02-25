@@ -1,55 +1,19 @@
 tasks:
   - worktree: true
-    branch: takt/232/github-issue-232-takt-cluster
+    branch: takt/233/github-issue-233-takt-cluster
     piece: pekko-porting
-    issue: 232
+    issue: 233
     auto_pr: true
     draft_pr: true
-    name: github-issue-232-takt-cluster
+    name: github-issue-233-takt-cluster
     status: completed
-    slug: github-issue-232-takt-cluster
-    summary: "## GitHub Issue #232: [TAKT] cluster-member-model
-      (20260224-100007-cls-mbr)"
-    worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktrees/20260225T0214-232-github-issue-232-takt-cluster
-    pr_url: https://github.com/j5ik2o/fraktor-rs/pull/245
-    task_dir: .takt/tasks/20260225-021228-github-issue-232-takt-cluster
-    created_at: 2026-02-25T02:12:28.703Z
-    started_at: 2026-02-25T02:14:04.784Z
-    completed_at: 2026-02-25T06:31:06.089Z
-    owner_pid: null
-  - worktree: true
-    branch: takt/234/github-issue-234-takt-persiste
-    piece: pekko-porting
-    issue: 234
-    auto_pr: true
-    draft_pr: true
-    name: github-issue-234-takt-persiste
-    status: completed
-    slug: github-issue-234-takt-persiste
-    summary: "## GitHub Issue #234: [TAKT] persistence-event-adapter
-      (20260224-100009-per-adp)"
-    worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktrees/20260225T0214-234-github-issue-234-takt-persiste
-    pr_url: https://github.com/j5ik2o/fraktor-rs/pull/238
-    task_dir: .takt/tasks/20260225-021322-github-issue-234-takt-persiste
-    created_at: 2026-02-25T02:13:22.441Z
-    started_at: 2026-02-25T02:14:21.975Z
-    completed_at: 2026-02-25T03:59:56.487Z
-    owner_pid: null
-  - worktree: true
-    branch: takt/236/github-issue-236-takt-persiste
-    piece: pekko-porting
-    issue: 236
-    auto_pr: true
-    draft_pr: true
-    name: github-issue-236-takt-persiste
-    status: completed
-    slug: github-issue-236-takt-persiste
-    summary: "## GitHub Issue #236: [TAKT] persistence-durable-state
-      (20260224-100011-per-dur)"
-    worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktrees/20260225T0214-236-github-issue-236-takt-persiste
-    pr_url: https://github.com/j5ik2o/fraktor-rs/pull/237
-    task_dir: .takt/tasks/20260225-021333-github-issue-236-takt-persiste
-    created_at: 2026-02-25T02:13:33.792Z
-    started_at: 2026-02-25T02:14:32.842Z
-    completed_at: 2026-02-25T03:30:35.688Z
+    slug: github-issue-233-takt-cluster
+    summary: "## GitHub Issue #233: [TAKT] cluster-leader-and-downing
+      (20260224-100008-cls-ldr"
+    worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktrees/20260225T1527-233-github-issue-233-takt-cluster
+    pr_url: https://github.com/j5ik2o/fraktor-rs/pull/274
+    task_dir: .takt/tasks/20260225-152251-github-issue-233-takt-cluster
+    created_at: 2026-02-25T15:22:51.101Z
+    started_at: 2026-02-25T15:27:31.414Z
+    completed_at: 2026-02-25T17:56:10.085Z
     owner_pid: null
