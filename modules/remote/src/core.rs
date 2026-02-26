@@ -35,9 +35,9 @@ mod remote_node_id;
 pub mod remoting_extension;
 /// Transport layer abstractions and implementations.
 pub mod transport;
-pub(crate) mod wire_format;
 pub(crate) mod watcher;
 mod wire_error;
+mod wire_format;
 
 pub use block_list_provider::BlockListProvider;
 pub use control_message::ControlMessage;

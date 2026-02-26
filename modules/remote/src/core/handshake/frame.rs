@@ -4,8 +4,7 @@ use alloc::{string::String, vec::Vec};
 use core::convert::TryInto;
 
 use super::kind::HandshakeKind;
-use crate::core::wire_error::WireError;
-use crate::core::wire_format;
+use crate::core::{wire_error::WireError, wire_format};
 
 /// Payload exchanged when establishing associations.
 pub struct HandshakeFrame {
