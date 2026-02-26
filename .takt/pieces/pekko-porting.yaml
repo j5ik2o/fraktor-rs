@@ -11,6 +11,13 @@ initial_movement: plan
 
 personas:
   pekko-compat-reviewer: ../facets/personas/pekko-compat-reviewer.md
+  # Built-in personas (referenced in movements)
+  planner: builtin
+  coder: builtin
+  supervisor: builtin
+  ai-antipattern-reviewer: builtin
+  architecture-reviewer: builtin
+  qa-reviewer: builtin
 
 knowledge:
   pekko-porting: ../facets/knowledge/pekko-porting.md
