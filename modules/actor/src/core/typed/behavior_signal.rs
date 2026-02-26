@@ -1,6 +1,6 @@
 //! Signals forwarded to typed behaviors.
 
-use crate::core::{actor::Pid, typed::message_adapter::AdapterError};
+use crate::core::{actor::Pid, error::ActorError, typed::message_adapter::AdapterError};
 
 /// Enumerates lifecycle notifications delivered to typed behaviors.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -18,7 +18,7 @@ pub enum BehaviorSignal {
     /// Pid of the child actor that failed.
     pid:   Pid,
     /// Error that caused the child to fail.
-    error: crate::core::error::ActorError,
+    error: ActorError,
   },
   /// Indicates that the actor is about to be restarted by its supervisor.
   PreRestart,

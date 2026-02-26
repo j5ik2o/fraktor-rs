@@ -329,7 +329,9 @@ fn register_watch_with_replaces_previous_entry_for_same_target() {
   cell.register_watch_with(target_pid, AnyMessage::new(1_i32));
   cell.register_watch_with(target_pid, AnyMessage::new(2_i32));
 
-  assert!(cell.take_watch_with_message(target_pid).is_some());
+  // 後から登録した値（2）で上書きされていることを検証
+  let msg = cell.take_watch_with_message(target_pid).expect("watch_with メッセージが存在すること");
+  assert_eq!(*msg.payload().downcast_ref::<i32>().expect("i32 にダウンキャスト"), 2);
   assert!(cell.take_watch_with_message(target_pid).is_none());
 }
 
