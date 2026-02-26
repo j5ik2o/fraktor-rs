@@ -8,7 +8,7 @@ use core::{
   future::Future,
   marker::PhantomData,
   pin::Pin,
-  task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
+  task::{Context, Poll, Waker},
 };
 
 use fraktor_actor_rs::core::{
@@ -97,8 +97,8 @@ where
 
   fn poll_in_flight(&mut self, ctx: &mut ActorContextGeneric<'_, TB>) {
     self.poll_scheduled = false;
-    let waker = noop_waker();
-    let mut cx = Context::from_waker(&waker);
+    let waker = Waker::noop();
+    let mut cx = Context::from_waker(waker);
     let mut pending = Vec::new();
     let retry_max = self.config.retry_max();
     let in_flight = core::mem::take(&mut self.in_flight);
@@ -177,15 +177,6 @@ where
   }
 }
 
-const fn noop_waker() -> Waker {
-  const VTABLE: RawWakerVTable = RawWakerVTable::new(|data| RawWaker::new(data, &VTABLE), |_| {}, |_| {}, |_| {});
-
-  const unsafe fn raw_waker() -> RawWaker {
-    RawWaker::new(core::ptr::null(), &VTABLE)
-  }
-
-  unsafe { Waker::from_raw(raw_waker()) }
-}
 
 fn poll_entry<S: SnapshotStore, TB: RuntimeToolbox + 'static>(
   snapshot_store: &mut S,

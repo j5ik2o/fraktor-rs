@@ -5,7 +5,7 @@ extern crate alloc;
 use alloc::{string::String, vec::Vec};
 use core::{
   future::Future,
-  task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
+  task::{Context, Poll, Waker},
 };
 
 use fraktor_actor_rs::core::{
@@ -155,28 +155,14 @@ fn shared_mutex<T: Send + 'static>(value: T) -> ArcShared<ToolboxMutex<T, TB>> {
 }
 
 fn drive_ready<F: Future>(future: F) -> F::Output {
-  let waker = unsafe { Waker::from_raw(raw_waker()) };
-  let mut context = Context::from_waker(&waker);
+  let waker = Waker::noop();
+  let mut context = Context::from_waker(waker);
   let mut future = core::pin::pin!(future);
   match Future::poll(future.as_mut(), &mut context) {
     | Poll::Ready(output) => output,
     | Poll::Pending => panic!("future was not ready"),
   }
 }
-
-fn raw_waker() -> RawWaker {
-  RawWaker::new(core::ptr::null(), &RAW_WAKER_VTABLE)
-}
-
-static RAW_WAKER_VTABLE: RawWakerVTable = RawWakerVTable::new(clone_raw, wake_raw, wake_raw, drop_raw);
-
-unsafe fn clone_raw(_: *const ()) -> RawWaker {
-  raw_waker()
-}
-
-const unsafe fn wake_raw(_: *const ()) {}
-
-const unsafe fn drop_raw(_: *const ()) {}
 
 #[test]
 fn recovery_flow_snapshot_then_replay() {

@@ -7,7 +7,7 @@ use alloc::{
 use core::{
   future::{Future, ready},
   pin::Pin,
-  task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
+  task::{Context, Poll, Waker},
 };
 
 use fraktor_utils_rs::core::sync::ArcShared;
@@ -83,19 +83,9 @@ impl DurableStateStoreProvider<i32> for TestDurableStateStoreProvider {
   }
 }
 
-fn noop_waker() -> Waker {
-  const VTABLE: RawWakerVTable = RawWakerVTable::new(|data| RawWaker::new(data, &VTABLE), |_| {}, |_| {}, |_| {});
-
-  unsafe fn raw_waker() -> RawWaker {
-    RawWaker::new(core::ptr::null(), &VTABLE)
-  }
-
-  unsafe { Waker::from_raw(raw_waker()) }
-}
-
 fn poll_ready<F: Future>(future: F) -> F::Output {
-  let waker = noop_waker();
-  let mut context = Context::from_waker(&waker);
+  let waker = Waker::noop();
+  let mut context = Context::from_waker(waker);
   let mut future = Box::pin(future);
   match Future::poll(future.as_mut(), &mut context) {
     | Poll::Ready(output) => output,
