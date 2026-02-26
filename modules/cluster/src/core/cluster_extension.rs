@@ -298,7 +298,6 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionGeneric<TB> {
     let result = self.core.lock().shutdown(graceful);
     if result.is_ok() {
       *self.terminated.lock() = true;
-      *self.self_member_status.lock() = None;
     }
     result
   }
@@ -371,8 +370,12 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionGeneric<TB> {
     F: FnMut(&str, &str) + Send + Sync + 'static, {
     if *self.terminated.lock() {
       let self_address = self.core.lock().startup_address();
+      let node_id = {
+        let current = self.self_member_status.lock();
+        if let Some(status) = current.as_ref() { status.node_id.clone() } else { self_address.clone() }
+      };
       let mut immediate = callback;
-      immediate(&self_address, &self_address);
+      immediate(&node_id, &self_address);
       return self.already_unsubscribed_subscription();
     }
     self.register_on_member_status(NodeStatus::Removed, callback)
