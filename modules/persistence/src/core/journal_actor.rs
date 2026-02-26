@@ -180,8 +180,6 @@ where
   }
 }
 
-
-
 fn poll_entry<J: Journal, TB: RuntimeToolbox + 'static>(
   journal: &mut J,
   mut entry: JournalInFlight<TB>,
