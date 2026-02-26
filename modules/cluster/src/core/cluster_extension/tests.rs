@@ -84,6 +84,54 @@ impl ClusterProvider for StubProvider {
   }
 }
 
+struct StartAndEmitSelfUpProvider {
+  event_stream: EventStreamSharedGeneric<NoStdToolbox>,
+  authority: String,
+  node_id: String,
+}
+
+impl StartAndEmitSelfUpProvider {
+  const fn new(
+    event_stream: EventStreamSharedGeneric<NoStdToolbox>,
+    authority: String,
+    node_id: String,
+  ) -> Self {
+    Self { event_stream, authority, node_id }
+  }
+}
+
+impl ClusterProvider for StartAndEmitSelfUpProvider {
+  fn start_member(&mut self) -> Result<(), ClusterProviderError> {
+    publish_member_status(
+      &self.event_stream,
+      &self.node_id,
+      &self.authority,
+      NodeStatus::Joining,
+      NodeStatus::Up,
+    );
+    Ok(())
+  }
+
+  fn start_client(&mut self) -> Result<(), ClusterProviderError> {
+    publish_member_status(
+      &self.event_stream,
+      &self.node_id,
+      &self.authority,
+      NodeStatus::Joining,
+      NodeStatus::Up,
+    );
+    Ok(())
+  }
+
+  fn down(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+
+  fn shutdown(&mut self, _graceful: bool) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+}
+
 struct StubGossiper;
 impl Gossiper for StubGossiper {
   fn start(&mut self) -> Result<(), &'static str> {
@@ -257,6 +305,64 @@ fn register_on_member_up_invokes_callback_immediately_when_self_already_up() {
   });
 
   publish_member_status(&event_stream, "node-self", "fraktor://demo", NodeStatus::Suspect, NodeStatus::Up);
+
+  let recorded = calls.lock().clone();
+  assert_eq!(recorded, vec![(String::from("node-self"), String::from("fraktor://demo"))]);
+}
+
+#[test]
+fn register_on_member_up_invokes_callback_when_status_arrives_during_start_member() {
+  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let event_stream = system.event_stream();
+  let authority = String::from("fraktor://demo");
+
+  let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
+    ClusterExtensionConfig::new().with_advertised_address(&authority),
+    Box::new(StartAndEmitSelfUpProvider::new(event_stream.clone(), authority.clone(), String::from("node-self"))),
+    ArcShared::new(StubBlockList),
+    Box::new(NoopDowningProvider::new()),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
+    Box::new(StubIdentity),
+  );
+  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
+
+  ext_shared.start_member().expect("start member");
+
+  let calls = ArcShared::new(NoStdMutex::new(Vec::<(String, String)>::new()));
+  let calls_for_callback = calls.clone();
+  let _subscription = ext_shared.register_on_member_up(move |node_id, authority| {
+    calls_for_callback.lock().push((String::from(node_id), String::from(authority)));
+  });
+
+  let recorded = calls.lock().clone();
+  assert_eq!(recorded, vec![(String::from("node-self"), String::from("fraktor://demo"))]);
+}
+
+#[test]
+fn register_on_member_up_invokes_callback_when_status_arrives_during_start_client() {
+  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let event_stream = system.event_stream();
+  let authority = String::from("fraktor://demo");
+
+  let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
+    ClusterExtensionConfig::new().with_advertised_address(&authority),
+    Box::new(StartAndEmitSelfUpProvider::new(event_stream.clone(), authority.clone(), String::from("node-self"))),
+    ArcShared::new(StubBlockList),
+    Box::new(NoopDowningProvider::new()),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
+    Box::new(StubIdentity),
+  );
+  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
+
+  ext_shared.start_client().expect("start client");
+
+  let calls = ArcShared::new(NoStdMutex::new(Vec::<(String, String)>::new()));
+  let calls_for_callback = calls.clone();
+  let _subscription = ext_shared.register_on_member_up(move |node_id, authority| {
+    calls_for_callback.lock().push((String::from(node_id), String::from(authority)));
+  });
 
   let recorded = calls.lock().clone();
   assert_eq!(recorded, vec![(String::from("node-self"), String::from("fraktor://demo"))]);
