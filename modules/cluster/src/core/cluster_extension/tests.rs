@@ -17,7 +17,8 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::core::{
-  ClusterEvent, ClusterExtensionConfig, ClusterExtensionId, ClusterProviderError, ClusterTopology, TopologyUpdate,
+  ClusterError, ClusterEvent, ClusterExtensionConfig, ClusterExtensionGeneric, ClusterExtensionId,
+  ClusterProviderError, ClusterTopology, TopologyUpdate,
   cluster_provider::{ClusterProvider, StaticClusterProvider},
   downing_provider::NoopDowningProvider,
   grain::GrainKey,
@@ -294,8 +295,9 @@ fn register_on_member_up_invokes_callback_immediately_when_self_already_up() {
   assert_eq!(recorded, vec![(String::from("node-self"), String::from("fraktor://demo"))]);
 }
 
-#[test]
-fn register_on_member_up_invokes_callback_when_status_arrives_during_start_member() {
+fn run_member_up_during_start_test(
+  start_fn: impl FnOnce(&ClusterExtensionGeneric<NoStdToolbox>) -> Result<(), ClusterError>,
+) {
   let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
   let event_stream = system.event_stream();
   let authority = String::from("fraktor://demo");
@@ -311,7 +313,7 @@ fn register_on_member_up_invokes_callback_when_status_arrives_during_start_membe
   );
   let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
 
-  ext_shared.start_member().expect("start member");
+  start_fn(&ext_shared).expect("start");
 
   let calls = ArcShared::new(NoStdMutex::new(Vec::<(String, String)>::new()));
   let calls_for_callback = calls.clone();
@@ -324,32 +326,13 @@ fn register_on_member_up_invokes_callback_when_status_arrives_during_start_membe
 }
 
 #[test]
+fn register_on_member_up_invokes_callback_when_status_arrives_during_start_member() {
+  run_member_up_during_start_test(|ext| ext.start_member());
+}
+
+#[test]
 fn register_on_member_up_invokes_callback_when_status_arrives_during_start_client() {
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
-  let event_stream = system.event_stream();
-  let authority = String::from("fraktor://demo");
-
-  let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
-    ClusterExtensionConfig::new().with_advertised_address(&authority),
-    Box::new(StartAndEmitSelfUpProvider::new(event_stream.clone(), authority.clone(), String::from("node-self"))),
-    ArcShared::new(StubBlockList),
-    Box::new(NoopDowningProvider::new()),
-    Box::new(StubGossiper),
-    Box::new(StubPubSub),
-    Box::new(StubIdentity),
-  );
-  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
-
-  ext_shared.start_client().expect("start client");
-
-  let calls = ArcShared::new(NoStdMutex::new(Vec::<(String, String)>::new()));
-  let calls_for_callback = calls.clone();
-  let _subscription = ext_shared.register_on_member_up(move |node_id, authority| {
-    calls_for_callback.lock().push((String::from(node_id), String::from(authority)));
-  });
-
-  let recorded = calls.lock().clone();
-  assert_eq!(recorded, vec![(String::from("node-self"), String::from("fraktor://demo"))]);
+  run_member_up_during_start_test(|ext| ext.start_client());
 }
 
 #[test]
