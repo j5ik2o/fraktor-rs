@@ -133,6 +133,26 @@ fn apply_incoming_marks_local_authority_as_seen() {
 }
 
 #[test]
+fn apply_incoming_uses_same_vector_clock_convergence_as_handle_ack() {
+  let mut table = MembershipTable::new(3);
+  let delta = table
+    .try_join("node-1".to_string(), "n1:4050".to_string(), "1.0.0".to_string(), vec!["member".to_string()])
+    .expect("join succeeds");
+  table.drain_events();
+
+  let mut coordinator =
+    GossipDisseminationCoordinator::new(table, None, vec!["node-2".to_string(), "node-3".to_string()]);
+  let _ = coordinator.disseminate(&delta);
+
+  coordinator.apply_incoming(&delta, "node-2");
+  assert_eq!(coordinator.state(), GossipState::Diffusing);
+
+  let state_after = coordinator.handle_ack("node-3");
+  assert_eq!(state_after, Some(GossipState::Confirmed));
+  assert_eq!(coordinator.state(), GossipState::Confirmed);
+}
+
+#[test]
 fn seen_by_tracks_latest_acknowledgements() {
   let mut table = MembershipTable::new(3);
   let delta = table

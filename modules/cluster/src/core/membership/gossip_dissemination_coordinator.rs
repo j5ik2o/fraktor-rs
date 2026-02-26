@@ -120,7 +120,7 @@ impl GossipDisseminationCoordinator {
       self.events.push(self.seen_changed_event());
     }
 
-    if self.vector_clock.has_seen_all(&self.peers, self.inflight_version.value()) {
+    if self.has_converged() {
       self.state = GossipState::Confirmed;
       self.events.push(GossipEvent::Confirmed { version: self.inflight_version });
       return Some(self.state);
@@ -162,11 +162,7 @@ impl GossipDisseminationCoordinator {
       self.events.push(self.seen_changed_event());
     }
 
-    if self
-      .peers
-      .iter()
-      .all(|p| self.peer_versions.get(p).copied().unwrap_or(MembershipVersion::zero()) == self.inflight_version)
-    {
+    if self.has_converged() {
       self.state = GossipState::Confirmed;
       self.events.push(GossipEvent::Confirmed { version: self.inflight_version });
     } else {
@@ -185,6 +181,10 @@ impl GossipDisseminationCoordinator {
       version: self.inflight_version,
       clock:   self.vector_clock.clone(),
     }
+  }
+
+  fn has_converged(&self) -> bool {
+    self.vector_clock.has_seen_all(&self.peers, self.inflight_version.value())
   }
 }
 
