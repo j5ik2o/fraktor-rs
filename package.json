@@ -15,6 +15,6 @@
     "takt:run": "takt run"
   },
   "devDependencies": {
-    "takt": "0.25.0"
+    "takt": "0.26.0"
   }
 }
