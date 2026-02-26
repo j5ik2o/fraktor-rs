@@ -5,6 +5,7 @@ use core::convert::TryInto;
 
 use super::kind::HandshakeKind;
 use crate::core::wire_error::WireError;
+use crate::core::wire_format;
 
 /// Payload exchanged when establishing associations.
 pub struct HandshakeFrame {
@@ -65,8 +66,8 @@ impl HandshakeFrame {
     let mut buffer = Vec::new();
     buffer.push(VERSION);
     buffer.push(self.kind.to_wire());
-    write_string(&mut buffer, &self.system_name);
-    write_string(&mut buffer, &self.host);
+    wire_format::write_string(&mut buffer, &self.system_name);
+    wire_format::write_string(&mut buffer, &self.host);
     if let Some(port) = self.port {
       buffer.push(1);
       buffer.extend_from_slice(&port.to_le_bytes());
@@ -94,9 +95,9 @@ impl HandshakeFrame {
       return Err(WireError::InvalidFormat);
     };
     let mut cursor = 2;
-    let system_name = read_string(bytes, &mut cursor)?;
-    let host = read_string(bytes, &mut cursor)?;
-    let port = if read_bool(bytes, &mut cursor)? {
+    let system_name = wire_format::read_string(bytes, &mut cursor)?;
+    let host = wire_format::read_string(bytes, &mut cursor)?;
+    let port = if wire_format::read_bool(bytes, &mut cursor)? {
       if bytes.len() < cursor + 2 {
         return Err(WireError::InvalidFormat);
       }
@@ -111,38 +112,5 @@ impl HandshakeFrame {
     }
     let uid = u64::from_le_bytes(bytes[cursor..cursor + 8].try_into().map_err(|_| WireError::InvalidFormat)?);
     Ok(Self::new(kind, system_name, host, port, uid))
-  }
-}
-
-fn write_string(buffer: &mut Vec<u8>, value: &str) {
-  let bytes = value.as_bytes();
-  buffer.extend_from_slice(&(bytes.len() as u32).to_le_bytes());
-  buffer.extend_from_slice(bytes);
-}
-
-fn read_string(bytes: &[u8], cursor: &mut usize) -> Result<String, WireError> {
-  if bytes.len() < *cursor + 4 {
-    return Err(WireError::InvalidFormat);
-  }
-  let len = u32::from_le_bytes(bytes[*cursor..*cursor + 4].try_into().map_err(|_| WireError::InvalidFormat)?) as usize;
-  *cursor += 4;
-  if bytes.len() < *cursor + len {
-    return Err(WireError::InvalidFormat);
-  }
-  let slice = &bytes[*cursor..*cursor + len];
-  *cursor += len;
-  Ok(String::from_utf8(slice.to_vec())?)
-}
-
-fn read_bool(bytes: &[u8], cursor: &mut usize) -> Result<bool, WireError> {
-  if bytes.len() <= *cursor {
-    return Err(WireError::InvalidFormat);
-  }
-  let value = bytes[*cursor];
-  *cursor += 1;
-  match value {
-    | 0 => Ok(false),
-    | 1 => Ok(true),
-    | _ => Err(WireError::InvalidFormat),
   }
 }
