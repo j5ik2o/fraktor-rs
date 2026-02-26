@@ -177,7 +177,6 @@ where
   }
 }
 
-
 fn poll_entry<S: SnapshotStore, TB: RuntimeToolbox + 'static>(
   snapshot_store: &mut S,
   mut entry: SnapshotInFlight<TB>,

@@ -181,9 +181,7 @@ where
         .tell(AnyMessageGeneric::new(command))
         .map(|_| ())
         .map_err(|error| RemotingError::TransportUnavailable(format!("{error:?}"))),
-      | None => Err(RemotingError::TransportUnavailable(
-        "watcher daemon not registered; command dropped".into(),
-      )),
+      | None => Err(RemotingError::TransportUnavailable("watcher daemon not registered; command dropped".into())),
     }
   }
 
@@ -308,29 +306,29 @@ where
 struct RemotingControlInner<TB>
 where
   TB: RuntimeToolbox + 'static, {
-  system:             ActorSystemWeakGeneric<TB>,
-  event_publisher:    EventPublisherGeneric<TB>,
-  canonical_host:     String,
-  canonical_port:     Option<u16>,
+  system:                 ActorSystemWeakGeneric<TB>,
+  event_publisher:        EventPublisherGeneric<TB>,
+  canonical_host:         String,
+  canonical_port:         Option<u16>,
   #[cfg(feature = "tokio-transport")]
-  handshake_timeout:        Duration,
+  handshake_timeout:      Duration,
   #[cfg(feature = "tokio-transport")]
-  shutdown_flush_timeout:   Duration,
-  state:              ToolboxMutex<RemotingLifecycleState, TB>,
-  listeners:          ToolboxMutex<Vec<RemotingBackpressureListenerShared<TB>>, TB>,
-  snapshots:          ToolboxMutex<Vec<RemoteAuthoritySnapshot>, TB>,
-  recorder:           RemotingFlightRecorder,
-  correlation_seq:    AtomicU64,
-  writer:             ToolboxMutex<Option<EndpointWriterSharedGeneric<TB>>, TB>,
-  reader:             ToolboxMutex<Option<ArcShared<EndpointReaderGeneric<TB>>>, TB>,
-  watcher_daemon:     ToolboxMutex<Option<ActorRefGeneric<TB>>, TB>,
-  transport_ref:      ToolboxMutex<Option<RemoteTransportShared<TB>>, TB>,
+  shutdown_flush_timeout: Duration,
+  state:                  ToolboxMutex<RemotingLifecycleState, TB>,
+  listeners:              ToolboxMutex<Vec<RemotingBackpressureListenerShared<TB>>, TB>,
+  snapshots:              ToolboxMutex<Vec<RemoteAuthoritySnapshot>, TB>,
+  recorder:               RemotingFlightRecorder,
+  correlation_seq:        AtomicU64,
+  writer:                 ToolboxMutex<Option<EndpointWriterSharedGeneric<TB>>, TB>,
+  reader:                 ToolboxMutex<Option<ArcShared<EndpointReaderGeneric<TB>>>, TB>,
+  watcher_daemon:         ToolboxMutex<Option<ActorRefGeneric<TB>>, TB>,
+  transport_ref:          ToolboxMutex<Option<RemoteTransportShared<TB>>, TB>,
   #[cfg(feature = "tokio-transport")]
-  remote_instruments: Vec<Arc<dyn RemoteInstrument>>,
+  remote_instruments:     Vec<Arc<dyn RemoteInstrument>>,
   #[cfg(feature = "tokio-transport")]
-  endpoint_bridge:    ToolboxMutex<Option<crate::std::endpoint_transport_bridge::EndpointTransportBridgeHandle>, TB>,
+  endpoint_bridge: ToolboxMutex<Option<crate::std::endpoint_transport_bridge::EndpointTransportBridgeHandle>, TB>,
   #[cfg(feature = "tokio-transport")]
-  heartbeat_channels: ToolboxMutex<BTreeMap<String, TransportChannel>, TB>,
+  heartbeat_channels:     ToolboxMutex<BTreeMap<String, TransportChannel>, TB>,
 }
 
 impl<TB> RemotingControlInner<TB>

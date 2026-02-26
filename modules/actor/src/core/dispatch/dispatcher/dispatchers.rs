@@ -48,7 +48,7 @@ impl<TB: RuntimeToolbox + 'static> DispatchersGeneric<TB> {
       | Entry::Vacant(entry) => {
         entry.insert(config);
         Ok(())
-      }
+      },
     }
   }
 

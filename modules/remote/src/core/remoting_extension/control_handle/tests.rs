@@ -193,7 +193,7 @@ fn dispatch_remote_watcher_command_returns_error_without_daemon() {
   match error {
     | RemotingError::TransportUnavailable(reason) => {
       assert!(reason.contains("watcher daemon not registered"), "unexpected reason: {reason}");
-    }
+    },
     | other => panic!("unexpected error variant: {other:?}"),
   }
 }

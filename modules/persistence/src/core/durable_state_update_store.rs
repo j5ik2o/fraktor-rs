@@ -1,8 +1,6 @@
 //! Durable state update store abstraction.
 
-use crate::core::{
-  durable_state_store::{DurableStateStore, DurableStateStoreFuture},
-};
+use crate::core::durable_state_store::{DurableStateStore, DurableStateStoreFuture};
 
 /// Durable state store extension that exposes update notifications.
 pub trait DurableStateUpdateStore<A: Send>: DurableStateStore<A> {

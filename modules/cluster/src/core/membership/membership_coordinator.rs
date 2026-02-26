@@ -750,7 +750,11 @@ fn role_leaders(records: &[NodeRecord]) -> BTreeMap<String, Option<String>> {
 }
 
 fn local_authority_from_config(cluster_config: &ClusterExtensionConfig) -> Option<String> {
-  if cluster_config.advertised_address().is_empty() { None } else { Some(String::from(cluster_config.advertised_address())) }
+  if cluster_config.advertised_address().is_empty() {
+    None
+  } else {
+    Some(String::from(cluster_config.advertised_address()))
+  }
 }
 
 const fn is_leader_eligible_status(status: NodeStatus) -> bool {

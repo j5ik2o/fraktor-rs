@@ -39,7 +39,7 @@ impl NameRegistry {
       | Entry::Vacant(entry) => {
         entry.insert(pid);
         Ok(())
-      }
+      },
     }
   }
 

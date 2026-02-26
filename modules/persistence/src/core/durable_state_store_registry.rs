@@ -3,7 +3,11 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::{boxed::Box, collections::btree_map::Entry, collections::BTreeMap, string::String};
+use alloc::{
+  boxed::Box,
+  collections::{BTreeMap, btree_map::Entry},
+  string::String,
+};
 
 use fraktor_utils_rs::core::sync::ArcShared;
 
@@ -41,7 +45,7 @@ impl<A: Send + 'static> DurableStateStoreRegistry<A> {
       | Entry::Vacant(entry) => {
         entry.insert(provider);
         Ok(())
-      }
+      },
     }
   }
 

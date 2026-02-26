@@ -53,7 +53,7 @@ mod stream_not_used;
 /// Test utilities for stream verification.
 pub mod testing;
 /// Throttle behavior mode.
-pub mod throttle_mode;
+mod throttle_mode;
 /// Positive argument validator.
 mod validate_positive_argument;
 
