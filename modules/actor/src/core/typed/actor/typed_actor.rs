@@ -110,7 +110,7 @@ where
     &mut self,
     ctx: &mut TypedActorContextGeneric<'_, M, TB>,
     child: Pid,
-    error: ActorError,
+    error: &ActorError,
   ) -> Result<(), ActorError> {
     Ok(())
   }

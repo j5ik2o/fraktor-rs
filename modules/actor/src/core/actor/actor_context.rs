@@ -269,10 +269,8 @@ impl<TB: RuntimeToolbox + 'static> ActorContextGeneric<'_, TB> {
       return Ok(());
     }
     let state = self.system.state();
-    let cell = state.cell(&self.pid);
-    if let Some(cell) = cell {
-      cell.register_watch_with(target.pid(), message);
-    }
+    let cell = state.cell(&self.pid).ok_or_else(|| SendError::no_recipient(message.clone()))?;
+    cell.register_watch_with(target.pid(), message);
     self.watch(target)
   }
 

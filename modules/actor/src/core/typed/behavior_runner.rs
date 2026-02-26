@@ -147,9 +147,9 @@ where
     &mut self,
     ctx: &mut TypedActorContextGeneric<'_, M, TB>,
     child: crate::core::actor::Pid,
-    error: ActorError,
+    error: &ActorError,
   ) -> Result<(), ActorError> {
-    self.dispatch_signal(ctx, &BehaviorSignal::ChildFailed { pid: child, error })
+    self.dispatch_signal(ctx, &BehaviorSignal::ChildFailed { pid: child, error: error.clone() })
   }
 
   fn supervisor_strategy(&mut self, _ctx: &mut TypedActorContextGeneric<'_, M, TB>) -> SupervisorStrategy {

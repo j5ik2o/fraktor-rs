@@ -260,6 +260,7 @@ where
   }
 
   fn pre_restart(&mut self, ctx: &mut ActorContextGeneric<'_, TB>) -> Result<(), ActorError> {
+    self.adapters.clear();
     let mut typed_ctx = TypedActorContextGeneric::from_untyped(ctx, Some(&mut self.adapters));
     self.actor.pre_restart(&mut typed_ctx)
   }
@@ -271,6 +272,6 @@ where
     error: &ActorError,
   ) -> Result<(), ActorError> {
     let mut typed_ctx = TypedActorContextGeneric::from_untyped(ctx, Some(&mut self.adapters));
-    self.actor.on_child_failed(&mut typed_ctx, child, error.clone())
+    self.actor.on_child_failed(&mut typed_ctx, child, error)
   }
 }
