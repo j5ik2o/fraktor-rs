@@ -420,6 +420,8 @@ impl<TB: fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox + 'static> Memb
     now: TimerInstant,
     outcome: &mut MembershipCoordinatorOutcome,
   ) -> Result<(), MembershipCoordinatorError> {
+    // mark_suspect は Up | Joining → Suspect の遷移を行うため、遷移前の状態を保存しておく
+    let previous_status = self.gossip.table().record(authority).map(|r| r.status);
     if let Some(delta) =
       self.gossip.table_mut().mark_suspect(authority).map_err(MembershipCoordinatorError::Membership)?
     {
@@ -428,7 +430,8 @@ impl<TB: fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox + 'static> Memb
         outcome.gossip_outbound.extend(self.gossip.disseminate(&delta));
       }
       if let Some(record) = self.gossip.table().record(authority) {
-        self.emit_status_change(authority, NodeStatus::Up, record.status, now, outcome);
+        let from = previous_status.unwrap_or(NodeStatus::Up);
+        self.emit_status_change(authority, from, record.status, now, outcome);
         Self::emit_unreachable_event(record, now, outcome);
       }
     }
