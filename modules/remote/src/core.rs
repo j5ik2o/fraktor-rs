@@ -37,6 +37,7 @@ pub mod remoting_extension;
 pub mod transport;
 pub(crate) mod watcher;
 mod wire_error;
+mod wire_format;
 
 pub use block_list_provider::BlockListProvider;
 pub use control_message::ControlMessage;

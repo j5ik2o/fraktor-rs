@@ -263,10 +263,10 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionGeneric<TB> {
   ///
   /// Returns an error if pub/sub, gossiper, or provider startup fails.
   pub fn start_member(&self) -> Result<(), ClusterError> {
+    *self.self_member_status.lock() = None;
     let result = self.core.lock().start_member();
     if result.is_ok() {
       *self.terminated.lock() = false;
-      *self.self_member_status.lock() = None;
       self.subscribe_topology_events();
     }
     result
@@ -278,10 +278,10 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionGeneric<TB> {
   ///
   /// Returns an error if pub/sub or provider startup fails.
   pub fn start_client(&self) -> Result<(), ClusterError> {
+    *self.self_member_status.lock() = None;
     let result = self.core.lock().start_client();
     if result.is_ok() {
       *self.terminated.lock() = false;
-      *self.self_member_status.lock() = None;
       self.subscribe_topology_events();
     }
     result

@@ -1,38 +1,25 @@
-```markdown
 # {領域名}バグスキャンレポート
 
-## 結果: CLEAN / BUGS_FOUND
+## 結果
 
-## 重大度サマリー
-| 重大度 | 件数 |
-|--------|------|
-| Critical | 0 |
-| High | 0 |
+- CLEAN / BUGS_FOUND
+- 重大度: Critical=0 / High=0
 
-## 検出された問題（BUGS_FOUND の場合）
-| # | finding_id | 重大度 | 種類 | 場所 | 問題 | 修正案 |
-|---|------------|--------|------|------|------|--------|
-| 1 | {PREFIX}-NEW-{file}-L{line} | Critical/High | {種類} | `{file}:{line}` | {問題の説明} | {修正案} |
+## 検出（BUGS_FOUND）
 
-## 継続指摘（persists）（2回目以降）
-| # | finding_id | 前回根拠 | 今回根拠 | 問題 | 修正案 |
-|---|------------|----------|----------|------|--------|
-| 1 | {PREFIX}-PERSIST-{file}-L{line} | `{file}:{line}` | `{file}:{line}` | {未解消} | {修正案} |
+|finding_id|重大度|種類|場所|問題|修正|
+|---|---|---|---|---|---|
+|{PREFIX}-NEW-{file}-L{line}|Critical/High|{種類}|`{file}:{line}`|{説明}|{対応}|
 
-## 解消済み（resolved）（2回目以降）
-| finding_id | 解消根拠 |
-|------------|----------|
-| {PREFIX}-RESOLVED-{file}-L{line} | {確認内容} |
+## 継続指摘 / 解消
+
+- 継続: `{PREFIX}-PERSIST-{file}-L{line}` / `{file}:{line}` → `{file}:{line}`
+- 解消: `{PREFIX}-RESOLVED-{file}-L{line}` / {確認内容}
 
 ## スキャン範囲
-- {スキャンしたモジュール・ファイルの範囲}
-```
 
-**finding_id プレフィックス:**
-- ロジックバグ: `LOGIC`
-- セキュリティ: `SEC`
-- 並行処理: `CONC`
+- {モジュール・ファイル}
 
-**認知負荷軽減ルール:**
-- CLEAN → サマリーのみ（5行以内）
-- BUGS_FOUND → 問題テーブル + スキャン範囲（30行以内）
+## Finding 種別
+
+- `LOGIC` / `SEC` / `CONC`

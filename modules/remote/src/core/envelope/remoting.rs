@@ -1,6 +1,6 @@
 //! Serialized outbound frame metadata used by transports.
 
-use alloc::{string::String, vec::Vec};
+use alloc::vec::Vec;
 use core::convert::TryInto;
 
 use fraktor_actor_rs::core::{
@@ -10,7 +10,7 @@ use fraktor_actor_rs::core::{
 };
 
 use super::priority::OutboundPriority;
-use crate::core::{remote_node_id::RemoteNodeId, wire_error::WireError};
+use crate::core::{remote_node_id::RemoteNodeId, wire_error::WireError, wire_format};
 
 /// Fully serialized outbound message ready for transport framing.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -88,15 +88,15 @@ impl RemotingEnvelope {
     buffer.push(VERSION);
     buffer.push(KIND_MESSAGE);
     buffer.push(self.priority.to_wire());
-    write_string(&mut buffer, &self.recipient.to_canonical_uri());
+    wire_format::write_string(&mut buffer, &self.recipient.to_canonical_uri());
     if let Some(sender) = self.sender.as_ref() {
       buffer.push(1);
-      write_string(&mut buffer, &sender.to_canonical_uri());
+      wire_format::write_string(&mut buffer, &sender.to_canonical_uri());
     } else {
       buffer.push(0);
     }
-    write_string(&mut buffer, self.remote_node.system());
-    write_string(&mut buffer, self.remote_node.host());
+    wire_format::write_string(&mut buffer, self.remote_node.system());
+    wire_format::write_string(&mut buffer, self.remote_node.host());
     if let Some(port) = self.remote_node.port() {
       buffer.push(1);
       buffer.extend_from_slice(&port.to_le_bytes());
@@ -126,17 +126,17 @@ impl RemotingEnvelope {
     }
     let priority = OutboundPriority::from_wire(bytes[2]).ok_or(WireError::InvalidFormat)?;
     let mut cursor = 3;
-    let recipient = ActorPathParser::parse(&read_string(bytes, &mut cursor)?)?;
+    let recipient = ActorPathParser::parse(&wire_format::read_string(bytes, &mut cursor)?)?;
 
-    let sender = if read_bool(bytes, &mut cursor)? {
-      Some(ActorPathParser::parse(&read_string(bytes, &mut cursor)?)?)
+    let sender = if wire_format::read_bool(bytes, &mut cursor)? {
+      Some(ActorPathParser::parse(&wire_format::read_string(bytes, &mut cursor)?)?)
     } else {
       None
     };
 
-    let system_name = read_string(bytes, &mut cursor)?;
-    let host = read_string(bytes, &mut cursor)?;
-    let port = if read_bool(bytes, &mut cursor)? {
+    let system_name = wire_format::read_string(bytes, &mut cursor)?;
+    let host = wire_format::read_string(bytes, &mut cursor)?;
+    let port = if wire_format::read_bool(bytes, &mut cursor)? {
       if bytes.len() < cursor + 2 {
         return Err(WireError::InvalidFormat);
       }
@@ -164,38 +164,5 @@ impl RemotingEnvelope {
     let serialized = SerializedMessage::decode(payload)?;
     let remote_node = RemoteNodeId::new(system_name, host, port, uid);
     Ok(Self::new(recipient, remote_node, sender, serialized, correlation_id, priority))
-  }
-}
-
-fn write_string(buffer: &mut Vec<u8>, value: &str) {
-  let bytes = value.as_bytes();
-  buffer.extend_from_slice(&(bytes.len() as u32).to_le_bytes());
-  buffer.extend_from_slice(bytes);
-}
-
-fn read_string(bytes: &[u8], cursor: &mut usize) -> Result<String, WireError> {
-  if bytes.len() < *cursor + 4 {
-    return Err(WireError::InvalidFormat);
-  }
-  let len = u32::from_le_bytes(bytes[*cursor..*cursor + 4].try_into().map_err(|_| WireError::InvalidFormat)?) as usize;
-  *cursor += 4;
-  if bytes.len() < *cursor + len {
-    return Err(WireError::InvalidFormat);
-  }
-  let slice = &bytes[*cursor..*cursor + len];
-  *cursor += len;
-  Ok(String::from_utf8(slice.to_vec())?)
-}
-
-fn read_bool(bytes: &[u8], cursor: &mut usize) -> Result<bool, WireError> {
-  if bytes.len() <= *cursor {
-    return Err(WireError::InvalidFormat);
-  }
-  let value = bytes[*cursor];
-  *cursor += 1;
-  match value {
-    | 0 => Ok(false),
-    | 1 => Ok(true),
-    | _ => Err(WireError::InvalidFormat),
   }
 }
