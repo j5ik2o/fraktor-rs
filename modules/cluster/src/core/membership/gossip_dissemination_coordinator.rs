@@ -153,7 +153,12 @@ impl GossipDisseminationCoordinator {
     self.peer_versions.insert(peer.to_string(), delta.to);
     self.inflight_version = delta.to;
     self.vector_clock.observe(peer, delta.to.value());
-    if self.seen_by.insert(peer.to_string()) {
+    let mut seen_changed = false;
+    if let Some(local_authority) = self.local_authority.as_ref() {
+      seen_changed |= self.seen_by.insert(local_authority.clone());
+    }
+    seen_changed |= self.seen_by.insert(peer.to_string());
+    if seen_changed {
       self.events.push(self.seen_changed_event());
     }
 

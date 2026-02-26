@@ -103,6 +103,36 @@ fn missing_range_request_enters_reconciling() {
 }
 
 #[test]
+fn apply_incoming_marks_local_authority_as_seen() {
+  let table = MembershipTable::new(3);
+  let mut coordinator =
+    GossipDisseminationCoordinator::new(table, Some("n1:4050".to_string()), vec!["node-2".to_string()]);
+
+  let incoming_delta =
+    MembershipDelta::new(MembershipVersion::zero(), MembershipVersion::new(1), vec![NodeRecord::new(
+      "node-2".to_string(),
+      "node-2".to_string(),
+      NodeStatus::Up,
+      MembershipVersion::new(1),
+      "1.0.0".to_string(),
+      vec!["member".to_string()],
+    )]);
+
+  coordinator.apply_incoming(&incoming_delta, "node-2");
+
+  assert_eq!(coordinator.seen_by(), vec!["n1:4050".to_string(), "node-2".to_string()]);
+
+  let seen_events = coordinator
+    .drain_events()
+    .into_iter()
+    .filter_map(|event| {
+      if let GossipEvent::SeenChanged { seen_by, version, .. } = event { Some((seen_by, version)) } else { None }
+    })
+    .collect::<Vec<_>>();
+  assert_eq!(seen_events, vec![(vec!["n1:4050".to_string(), "node-2".to_string()], MembershipVersion::new(1))]);
+}
+
+#[test]
 fn seen_by_tracks_latest_acknowledgements() {
   let mut table = MembershipTable::new(3);
   let delta = table
