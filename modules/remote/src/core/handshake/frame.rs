@@ -67,11 +67,9 @@ impl HandshakeFrame {
     buffer.push(self.kind.to_wire());
     wire_format::write_string(&mut buffer, &self.system_name);
     wire_format::write_string(&mut buffer, &self.host);
+    wire_format::write_bool(&mut buffer, self.port.is_some());
     if let Some(port) = self.port {
-      buffer.push(1);
       buffer.extend_from_slice(&port.to_le_bytes());
-    } else {
-      buffer.push(0);
     }
     buffer.extend_from_slice(&self.uid.to_le_bytes());
     buffer

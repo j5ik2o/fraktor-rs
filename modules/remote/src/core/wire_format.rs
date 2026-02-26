@@ -6,7 +6,8 @@ use crate::core::wire_error::WireError;
 /// Writes a length-prefixed UTF-8 string into the buffer.
 pub(crate) fn write_string(buffer: &mut Vec<u8>, value: &str) {
   let bytes = value.as_bytes();
-  buffer.extend_from_slice(&(bytes.len() as u32).to_le_bytes());
+  let len = u32::try_from(bytes.len()).expect("string length must fit in u32");
+  buffer.extend_from_slice(&len.to_le_bytes());
   buffer.extend_from_slice(bytes);
 }
 
@@ -29,6 +30,11 @@ pub(crate) fn read_string(bytes: &[u8], cursor: &mut usize) -> Result<String, Wi
   let slice = &bytes[*cursor..str_end];
   *cursor = str_end;
   Ok(String::from_utf8(slice.to_vec())?)
+}
+
+/// Writes a single boolean byte (1 for true, 0 for false) into the buffer.
+pub(crate) fn write_bool(buffer: &mut Vec<u8>, value: bool) {
+  buffer.push(u8::from(value));
 }
 
 /// Reads a single boolean byte (0 or 1) from the byte slice at the given cursor position.
