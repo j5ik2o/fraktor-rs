@@ -1,8 +1,13 @@
+use core::num::NonZeroU64;
+
 use super::{DeadlineFailureDetector, DeadlineFailureDetectorConfig};
 use crate::core::failure_detector::FailureDetector;
 
 fn detector(pause_ms: u64, interval_ms: u64) -> DeadlineFailureDetector {
-  DeadlineFailureDetector::new(DeadlineFailureDetectorConfig::new(pause_ms, interval_ms))
+  DeadlineFailureDetector::new(DeadlineFailureDetectorConfig::new(
+    pause_ms,
+    NonZeroU64::new(interval_ms).expect("interval must be > 0"),
+  ))
 }
 
 #[test]
@@ -43,10 +48,4 @@ fn should_recover_after_new_heartbeat() {
   det.heartbeat(1600);
   // deadline = 1600 + 1500 = 3100
   assert!(det.is_available(1601));
-}
-
-#[test]
-#[should_panic(expected = "heartbeat_interval_ms must be > 0")]
-fn should_panic_when_interval_is_zero() {
-  let _ = DeadlineFailureDetectorConfig::new(500, 0);
 }
