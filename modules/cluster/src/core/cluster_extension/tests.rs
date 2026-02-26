@@ -295,6 +295,35 @@ fn register_on_member_removed_invokes_callback_immediately_when_self_already_rem
 #[test]
 fn register_on_member_removed_invokes_callback_immediately_after_shutdown() {
   let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let event_stream = system.event_stream();
+
+  let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
+    ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"),
+    Box::new(StubProvider),
+    ArcShared::new(StubBlockList),
+    Box::new(NoopDowningProvider::new()),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
+    Box::new(StubIdentity),
+  );
+  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
+  ext_shared.start_member().expect("start member");
+  publish_member_status(&event_stream, "node-self", "fraktor://demo", NodeStatus::Exiting, NodeStatus::Removed);
+  ext_shared.shutdown(true).expect("shutdown");
+
+  let calls = ArcShared::new(NoStdMutex::new(Vec::<(String, String)>::new()));
+  let calls_for_callback = calls.clone();
+  let _subscription = ext_shared.register_on_member_removed(move |node_id, authority| {
+    calls_for_callback.lock().push((String::from(node_id), String::from(authority)));
+  });
+
+  let recorded = calls.lock().clone();
+  assert_eq!(recorded, vec![(String::from("node-self"), String::from("fraktor://demo"))]);
+}
+
+#[test]
+fn register_on_member_removed_after_shutdown_falls_back_to_authority_when_node_id_is_unknown() {
+  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
 
   let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
     ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"),
