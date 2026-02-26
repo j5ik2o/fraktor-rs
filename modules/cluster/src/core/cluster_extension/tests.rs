@@ -86,40 +86,24 @@ impl ClusterProvider for StubProvider {
 
 struct StartAndEmitSelfUpProvider {
   event_stream: EventStreamSharedGeneric<NoStdToolbox>,
-  authority: String,
-  node_id: String,
+  authority:    String,
+  node_id:      String,
 }
 
 impl StartAndEmitSelfUpProvider {
-  const fn new(
-    event_stream: EventStreamSharedGeneric<NoStdToolbox>,
-    authority: String,
-    node_id: String,
-  ) -> Self {
+  const fn new(event_stream: EventStreamSharedGeneric<NoStdToolbox>, authority: String, node_id: String) -> Self {
     Self { event_stream, authority, node_id }
   }
 }
 
 impl ClusterProvider for StartAndEmitSelfUpProvider {
   fn start_member(&mut self) -> Result<(), ClusterProviderError> {
-    publish_member_status(
-      &self.event_stream,
-      &self.node_id,
-      &self.authority,
-      NodeStatus::Joining,
-      NodeStatus::Up,
-    );
+    publish_member_status(&self.event_stream, &self.node_id, &self.authority, NodeStatus::Joining, NodeStatus::Up);
     Ok(())
   }
 
   fn start_client(&mut self) -> Result<(), ClusterProviderError> {
-    publish_member_status(
-      &self.event_stream,
-      &self.node_id,
-      &self.authority,
-      NodeStatus::Joining,
-      NodeStatus::Up,
-    );
+    publish_member_status(&self.event_stream, &self.node_id, &self.authority, NodeStatus::Joining, NodeStatus::Up);
     Ok(())
   }
 
