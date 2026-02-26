@@ -3,6 +3,8 @@
 mod tests;
 
 #[cfg(feature = "tokio-transport")]
+use alloc::collections::BTreeMap;
+#[cfg(feature = "tokio-transport")]
 use alloc::sync::Arc;
 use alloc::{
   boxed::Box,
@@ -35,7 +37,7 @@ use super::{
 #[cfg(feature = "tokio-transport")]
 use crate::core::RemoteInstrument;
 #[cfg(feature = "tokio-transport")]
-use crate::core::transport::TransportEndpoint;
+use crate::core::transport::{TransportChannel, TransportEndpoint};
 #[cfg(feature = "tokio-transport")]
 use crate::core::watcher::{Heartbeat, RemoteWatcherCommand};
 use crate::core::{
@@ -89,6 +91,8 @@ where
       canonical_port: config.canonical_port(),
       #[cfg(feature = "tokio-transport")]
       handshake_timeout: config.handshake_timeout(),
+      #[cfg(feature = "tokio-transport")]
+      shutdown_flush_timeout: config.shutdown_flush_timeout(),
       state: <TB::MutexFamily as SyncMutexFamily>::create(RemotingLifecycleState::new()),
       listeners: <TB::MutexFamily as SyncMutexFamily>::create(listeners),
       snapshots: <TB::MutexFamily as SyncMutexFamily>::create(Vec::new()),
@@ -102,6 +106,8 @@ where
       remote_instruments: config.remote_instruments().to_vec(),
       #[cfg(feature = "tokio-transport")]
       endpoint_bridge: <TB::MutexFamily as SyncMutexFamily>::create(None),
+      #[cfg(feature = "tokio-transport")]
+      heartbeat_channels: <TB::MutexFamily as SyncMutexFamily>::create(BTreeMap::new()),
     };
     Self { inner: ArcShared::new(inner) }
   }
@@ -162,16 +168,21 @@ where
   }
 
   /// Dispatches a command to the registered remote watcher daemon.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`RemotingError::TransportUnavailable`] when the watcher daemon is not yet
+  /// registered or when the tell operation fails.
   #[cfg(feature = "tokio-transport")]
   pub(crate) fn dispatch_remote_watcher_command(&self, command: RemoteWatcherCommand) -> Result<(), RemotingError> {
     let daemon = self.inner.watcher_daemon.lock().clone();
-    if let Some(daemon) = daemon {
-      daemon
+    match daemon {
+      | Some(daemon) => daemon
         .tell(AnyMessageGeneric::new(command))
         .map(|_| ())
-        .map_err(|error| RemotingError::TransportUnavailable(format!("{error:?}")))?;
+        .map_err(|error| RemotingError::TransportUnavailable(format!("{error:?}"))),
+      | None => Err(RemotingError::TransportUnavailable("watcher daemon not registered; command dropped".into())),
     }
-    Ok(())
   }
 
   fn register_listener_dyn(&self, listener: RemotingBackpressureListenerShared<TB>) {
@@ -295,25 +306,29 @@ where
 struct RemotingControlInner<TB>
 where
   TB: RuntimeToolbox + 'static, {
-  system:             ActorSystemWeakGeneric<TB>,
-  event_publisher:    EventPublisherGeneric<TB>,
-  canonical_host:     String,
-  canonical_port:     Option<u16>,
+  system:                 ActorSystemWeakGeneric<TB>,
+  event_publisher:        EventPublisherGeneric<TB>,
+  canonical_host:         String,
+  canonical_port:         Option<u16>,
   #[cfg(feature = "tokio-transport")]
-  handshake_timeout:  Duration,
-  state:              ToolboxMutex<RemotingLifecycleState, TB>,
-  listeners:          ToolboxMutex<Vec<RemotingBackpressureListenerShared<TB>>, TB>,
-  snapshots:          ToolboxMutex<Vec<RemoteAuthoritySnapshot>, TB>,
-  recorder:           RemotingFlightRecorder,
-  correlation_seq:    AtomicU64,
-  writer:             ToolboxMutex<Option<EndpointWriterSharedGeneric<TB>>, TB>,
-  reader:             ToolboxMutex<Option<ArcShared<EndpointReaderGeneric<TB>>>, TB>,
-  watcher_daemon:     ToolboxMutex<Option<ActorRefGeneric<TB>>, TB>,
-  transport_ref:      ToolboxMutex<Option<RemoteTransportShared<TB>>, TB>,
+  handshake_timeout:      Duration,
   #[cfg(feature = "tokio-transport")]
-  remote_instruments: Vec<Arc<dyn RemoteInstrument>>,
+  shutdown_flush_timeout: Duration,
+  state:                  ToolboxMutex<RemotingLifecycleState, TB>,
+  listeners:              ToolboxMutex<Vec<RemotingBackpressureListenerShared<TB>>, TB>,
+  snapshots:              ToolboxMutex<Vec<RemoteAuthoritySnapshot>, TB>,
+  recorder:               RemotingFlightRecorder,
+  correlation_seq:        AtomicU64,
+  writer:                 ToolboxMutex<Option<EndpointWriterSharedGeneric<TB>>, TB>,
+  reader:                 ToolboxMutex<Option<ArcShared<EndpointReaderGeneric<TB>>>, TB>,
+  watcher_daemon:         ToolboxMutex<Option<ActorRefGeneric<TB>>, TB>,
+  transport_ref:          ToolboxMutex<Option<RemoteTransportShared<TB>>, TB>,
   #[cfg(feature = "tokio-transport")]
-  endpoint_bridge:    ToolboxMutex<Option<crate::std::endpoint_transport_bridge::EndpointTransportBridgeHandle>, TB>,
+  remote_instruments:     Vec<Arc<dyn RemoteInstrument>>,
+  #[cfg(feature = "tokio-transport")]
+  endpoint_bridge: ToolboxMutex<Option<crate::std::endpoint_transport_bridge::EndpointTransportBridgeHandle>, TB>,
+  #[cfg(feature = "tokio-transport")]
+  heartbeat_channels:     ToolboxMutex<BTreeMap<String, TransportChannel>, TB>,
 }
 
 impl<TB> RemotingControlInner<TB>
@@ -340,8 +355,16 @@ where
       .lock()
       .clone()
       .ok_or_else(|| RemotingError::TransportUnavailable("remote transport not registered".to_string()))?;
-    let endpoint = TransportEndpoint::new(authority.to_string());
-    let channel = transport.with_write(|t| t.open_channel(&endpoint))?;
+    let mut channels = self.heartbeat_channels.lock();
+    let channel = match channels.get(authority) {
+      | Some(&ch) => ch,
+      | None => {
+        let endpoint = TransportEndpoint::new(authority.to_string());
+        let ch = transport.with_write(|t| t.open_channel(&endpoint))?;
+        channels.insert(authority.to_string(), ch);
+        ch
+      },
+    };
     let payload = Heartbeat::new(authority).encode_frame();
     transport.with_write(|t| t.send(&channel, &payload, CorrelationId::nil()))?;
     Ok(())
@@ -397,6 +420,8 @@ where
         remote_instruments: self.remote_instruments.clone(),
         #[cfg(feature = "tokio-transport")]
         handshake_timeout: self.handshake_timeout,
+        #[cfg(feature = "tokio-transport")]
+        shutdown_flush_timeout: self.shutdown_flush_timeout,
       };
       let handle = crate::std::endpoint_transport_bridge::EndpointTransportBridge::spawn(config)
         .map_err(|error| RemotingError::TransportUnavailable(format!("{error:?}")))?;

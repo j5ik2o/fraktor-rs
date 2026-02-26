@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, vec::Vec};
 use core::{
   future::Future,
-  task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
+  task::{Context, Poll, Waker},
 };
 
 use fraktor_utils_rs::core::sync::ArcShared;
@@ -10,19 +10,9 @@ use crate::core::{
   in_memory_journal::InMemoryJournal, journal::Journal, journal_error::JournalError, persistent_repr::PersistentRepr,
 };
 
-fn noop_waker() -> Waker {
-  const VTABLE: RawWakerVTable = RawWakerVTable::new(|data| RawWaker::new(data, &VTABLE), |_| {}, |_| {}, |_| {});
-
-  unsafe fn raw_waker() -> RawWaker {
-    RawWaker::new(core::ptr::null(), &VTABLE)
-  }
-
-  unsafe { Waker::from_raw(raw_waker()) }
-}
-
 fn poll_ready<F: Future>(future: F) -> F::Output {
-  let waker = noop_waker();
-  let mut cx = Context::from_waker(&waker);
+  let waker = Waker::noop();
+  let mut cx = Context::from_waker(waker);
   let mut future = Box::pin(future);
   match Future::poll(future.as_mut(), &mut cx) {
     | Poll::Ready(output) => output,

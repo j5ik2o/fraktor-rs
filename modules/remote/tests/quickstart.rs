@@ -3,6 +3,7 @@
 extern crate alloc;
 
 use alloc::{format, vec::Vec};
+use std::net::TcpListener;
 
 use anyhow::{Result, anyhow};
 use fraktor_actor_rs::core::{
@@ -100,9 +101,13 @@ fn subscribe(
   (subscriber_impl, subscription)
 }
 
-fn remote_path() -> fraktor_actor_rs::core::actor::actor_path::ActorPath {
+fn alloc_port() -> u16 {
+  TcpListener::bind("127.0.0.1:0").expect("bind").local_addr().expect("addr").port()
+}
+
+fn remote_path(port: u16) -> fraktor_actor_rs::core::actor::actor_path::ActorPath {
   use fraktor_actor_rs::core::actor::actor_path::{ActorPath, ActorPathParts, GuardianKind};
-  let mut parts = ActorPathParts::with_authority("remote-system", Some(("127.0.0.1", 25520)));
+  let mut parts = ActorPathParts::with_authority("remote-system", Some(("127.0.0.1", port)));
   parts = parts.with_guardian(GuardianKind::User);
   let mut path = ActorPath::from_parts(parts);
   path = path.child("user");
@@ -128,11 +133,12 @@ async fn quickstart_loopback_provider_flow() -> Result<()> {
   }));
   let (recorder, _subscription) = subscribe(&system);
 
+  let bind_port = alloc_port();
   assert!(!handle.lock().is_running());
   handle.lock().start().map_err(|error| anyhow!("{error}"))?;
   handle
     .lock()
-    .bind_transport_listener_for_test(&TransportBind::new("127.0.0.1", Some(4321)))
+    .bind_transport_listener_for_test(&TransportBind::new("127.0.0.1", Some(bind_port)))
     .map_err(|error| anyhow!("{error}"))?;
 
   // Wait for async startup to complete
@@ -145,10 +151,11 @@ async fn quickstart_loopback_provider_flow() -> Result<()> {
     .inner()
     .lock()
     .inner_mut()
-    .watch_remote(ActorPathParts::with_authority("remote-system", Some(("127.0.0.1", 4321))))
+    .watch_remote(ActorPathParts::with_authority("remote-system", Some(("127.0.0.1", bind_port))))
     .map_err(|error| anyhow!("{error}"))?;
 
-  handle.lock().emit_backpressure_signal("127.0.0.1:4321", BackpressureSignal::Apply);
+  let authority = format!("127.0.0.1:{bind_port}");
+  handle.lock().emit_backpressure_signal(&authority, BackpressureSignal::Apply);
 
   // Wait for events to propagate
   tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
@@ -172,13 +179,12 @@ async fn quickstart_loopback_provider_flow() -> Result<()> {
   );
 
   let config_snapshot = config_hits.lock().clone();
-  assert_eq!(config_snapshot, vec!["127.0.0.1:4321:Apply".to_string()]);
+  assert_eq!(config_snapshot, vec![format!("{authority}:Apply")]);
   let backpressure_snapshot = backpressure_hits.lock().clone();
-  assert_eq!(backpressure_snapshot, vec!["127.0.0.1:4321:Apply".to_string()]);
+  assert_eq!(backpressure_snapshot, vec![format!("{authority}:Apply")]);
 
   assert!(recorder.events.lock().iter().any(|event| matches!(event, EventStreamEvent::RemotingBackpressure(_))));
 
-  let authority = "127.0.0.1:4321";
   let snapshots = provider.inner().lock().inner().inner().lock().inner().connections_snapshot();
   let snapshot = snapshots.iter().find(|entry| entry.authority() == authority).expect("snapshot exists");
   assert!(matches!(snapshot.state(), AuthorityState::Unresolved));
@@ -198,12 +204,13 @@ async fn quickstart_loopback_provider_flow() -> Result<()> {
 #[tokio::test]
 async fn remote_provider_enqueues_message() -> Result<()> {
   type SharedProvider = RemoteWatchHookShared<StdToolbox, LoopbackActorRefProviderGeneric<StdToolbox>>;
+  let bind_port = alloc_port();
   let config = RemotingExtensionConfig::default().with_auto_start(false);
   let (system, handle) = build_system(config);
   handle.lock().start().map_err(|error| anyhow!("{error}"))?;
   handle
     .lock()
-    .bind_transport_listener_for_test(&TransportBind::new("127.0.0.1", Some(25520)))
+    .bind_transport_listener_for_test(&TransportBind::new("127.0.0.1", Some(bind_port)))
     .map_err(|error| anyhow!("{error}"))?;
   let provider = system.extended().actor_ref_provider::<SharedProvider>().expect("provider installed");
   provider
@@ -213,31 +220,32 @@ async fn remote_provider_enqueues_message() -> Result<()> {
     .inner()
     .lock()
     .inner_mut()
-    .watch_remote(ActorPathParts::with_authority("remote-system", Some(("127.0.0.1", 25520))))
+    .watch_remote(ActorPathParts::with_authority("remote-system", Some(("127.0.0.1", bind_port))))
     .map_err(|error| anyhow!("{error}"))?;
-  let remote = provider.clone().actor_ref(remote_path()).expect("actor ref");
+  let remote = provider.clone().actor_ref(remote_path(bind_port)).expect("actor ref");
   remote.tell(AnyMessageGeneric::new("loopback".to_string())).expect("send succeeds");
 
   let writer = provider.inner().lock().inner().inner().lock().inner().writer_for_test();
   let envelope = writer.with_write(|w| w.try_next()).expect("poll writer").expect("envelope");
   assert_eq!(envelope.recipient().to_relative_string(), "/user/user/svc");
   assert_eq!(envelope.remote_node().host(), "127.0.0.1");
-  assert_eq!(envelope.remote_node().port(), Some(25520));
+  assert_eq!(envelope.remote_node().port(), Some(bind_port));
   Ok(())
 }
 
 #[tokio::test]
 async fn remote_watch_hook_handles_system_watch_messages() -> Result<()> {
+  let bind_port = alloc_port();
   let config = RemotingExtensionConfig::default().with_auto_start(false);
   let (system, handle) = build_system(config);
   handle.lock().start().map_err(|error| anyhow!("{error}"))?;
   handle
     .lock()
-    .bind_transport_listener_for_test(&TransportBind::new("127.0.0.1", Some(25520)))
+    .bind_transport_listener_for_test(&TransportBind::new("127.0.0.1", Some(bind_port)))
     .map_err(|error| anyhow!("{error}"))?;
   type SharedProvider = RemoteWatchHookShared<StdToolbox, LoopbackActorRefProviderGeneric<StdToolbox>>;
   let provider = system.extended().actor_ref_provider::<SharedProvider>().expect("provider installed");
-  let remote = provider.get_actor_ref(remote_path()).expect("remote actor ref");
+  let remote = provider.get_actor_ref(remote_path(bind_port)).expect("remote actor ref");
   let watcher = Pid::new(7777, 0);
 
   assert!(RemoteWatchHook::handle_watch(provider.inner().lock().inner_mut(), remote.pid(), watcher));

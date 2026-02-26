@@ -8,7 +8,7 @@ use alloc::collections::VecDeque;
 
 pub use config::PhiFailureDetectorConfig;
 
-use super::failure_detector::FailureDetector;
+use crate::core::failure_detector::failure_detector::FailureDetector;
 
 /// Phi accrual failure detector monitoring a single resource.
 ///

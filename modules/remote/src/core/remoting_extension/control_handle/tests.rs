@@ -184,12 +184,18 @@ fn associate_propagates_send_failure() {
 }
 
 #[test]
-fn dispatch_remote_watcher_command_is_noop_without_daemon() {
+fn dispatch_remote_watcher_command_returns_error_without_daemon() {
   let handle = build_started_control_without_transport();
 
-  handle
+  let error = handle
     .dispatch_remote_watcher_command(RemoteWatcherCommand::heartbeat("127.0.0.1:25520"))
-    .expect("dispatch without daemon should be no-op");
+    .expect_err("dispatch without daemon should return an error");
+  match error {
+    | RemotingError::TransportUnavailable(reason) => {
+      assert!(reason.contains("watcher daemon not registered"), "unexpected reason: {reason}");
+    },
+    | other => panic!("unexpected error variant: {other:?}"),
+  }
 }
 
 #[test]

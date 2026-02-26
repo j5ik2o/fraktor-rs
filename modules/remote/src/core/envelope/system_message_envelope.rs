@@ -122,17 +122,16 @@ impl SystemMessageEnvelope {
     buffer.push(VERSION);
     buffer.push(SYSTEM_MESSAGE_FRAME_KIND);
     wire_format::write_string(&mut buffer, &self.recipient.to_canonical_uri());
+    wire_format::write_bool(&mut buffer, self.sender.is_some());
     if let Some(sender) = self.sender() {
-      buffer.push(1);
       wire_format::write_string(&mut buffer, &sender.to_canonical_uri());
-    } else {
-      buffer.push(0);
     }
     write_node(&mut buffer, &self.remote_node);
     buffer.extend_from_slice(&self.sequence_no.to_le_bytes());
     write_node(&mut buffer, &self.ack_reply_to);
     let serialized = self.serialized.encode();
-    buffer.extend_from_slice(&(serialized.len() as u32).to_le_bytes());
+    let serialized_len = u32::try_from(serialized.len()).expect("serialized payload must fit in u32");
+    buffer.extend_from_slice(&serialized_len.to_le_bytes());
     buffer.extend_from_slice(&serialized);
     buffer
   }
@@ -173,11 +172,9 @@ impl SystemMessageEnvelope {
 fn write_node(buffer: &mut Vec<u8>, node: &RemoteNodeId) {
   wire_format::write_string(buffer, node.system());
   wire_format::write_string(buffer, node.host());
+  wire_format::write_bool(buffer, node.port().is_some());
   if let Some(port) = node.port() {
-    buffer.push(1);
     buffer.extend_from_slice(&port.to_le_bytes());
-  } else {
-    buffer.push(0);
   }
   buffer.extend_from_slice(&node.uid().to_le_bytes());
 }

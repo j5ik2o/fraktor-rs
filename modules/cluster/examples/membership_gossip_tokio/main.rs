@@ -49,7 +49,7 @@ impl EventStreamSubscriber<StdToolbox> for EventPrinter {
   }
 }
 
-fn build_coordinator() -> MembershipCoordinatorSharedGeneric<StdToolbox> {
+fn build_coordinator(authority: &str) -> MembershipCoordinatorSharedGeneric<StdToolbox> {
   let config = MembershipCoordinatorConfig {
     phi_threshold:          1.0,
     suspect_timeout:        Duration::from_secs(1),
@@ -64,8 +64,11 @@ fn build_coordinator() -> MembershipCoordinatorSharedGeneric<StdToolbox> {
   let registry = DefaultFailureDetectorRegistry::new(Box::new(move || {
     Box::new(PhiFailureDetector::new(PhiFailureDetectorConfig::new(threshold, 10, 1)))
   }));
-  let mut coordinator =
-    MembershipCoordinatorGeneric::<StdToolbox>::new(config, ClusterExtensionConfig::new(), table, registry);
+  let cluster_config = ClusterExtensionConfig::new()
+    .with_advertised_address(authority)
+    .with_app_version("1.0.0")
+    .with_roles(vec![String::from("member")]);
+  let mut coordinator = MembershipCoordinatorGeneric::<StdToolbox>::new(config, cluster_config, table, registry);
   coordinator.start_member().expect("start_member");
   MembershipCoordinatorSharedGeneric::new(coordinator)
 }
@@ -95,8 +98,8 @@ async fn main() {
   let _sub_a = event_stream_a.subscribe(&subscriber_handle(EventPrinter { label: "node-a" }));
   let _sub_b = event_stream_b.subscribe(&subscriber_handle(EventPrinter { label: "node-b" }));
 
-  let coordinator_a = build_coordinator();
-  let coordinator_b = build_coordinator();
+  let coordinator_a = build_coordinator(addr_a);
+  let coordinator_b = build_coordinator(addr_b);
 
   let transport_a = TokioGossipTransport::bind(
     TokioGossipTransportConfig::new(addr_a.to_string(), 1024, 16),

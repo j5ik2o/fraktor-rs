@@ -1,3 +1,4 @@
+```markdown
 # 技術設計: {feature名}
 
 ## 概要
@@ -26,3 +27,4 @@
 
 - Unit: {項目}
 - Integration: {項目}
+```

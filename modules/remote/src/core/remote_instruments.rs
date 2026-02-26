@@ -18,6 +18,16 @@ impl RemoteInstruments {
   /// Creates a collection from the provided instrument instances.
   #[must_use]
   pub(crate) fn new(instruments: Vec<Arc<dyn RemoteInstrument>>) -> Self {
+    debug_assert!(
+      {
+        let mut ids: Vec<u8> = instruments.iter().map(|i| i.identifier()).collect();
+        ids.sort_unstable();
+        let before = ids.len();
+        ids.dedup();
+        ids.len() == before
+      },
+      "duplicate instrument identifiers detected"
+    );
     let serialization_timing_enabled = instruments.iter().any(|instrument| instrument.serialization_timing_enabled());
     Self { instruments, serialization_timing_enabled }
   }
@@ -39,7 +49,8 @@ impl RemoteInstruments {
         continue;
       }
       payload.push(instrument.identifier());
-      payload.extend_from_slice(&(metadata.len() as u32).to_le_bytes());
+      let metadata_len = u32::try_from(metadata.len()).expect("instrument metadata must fit in u32");
+      payload.extend_from_slice(&metadata_len.to_le_bytes());
       payload.extend_from_slice(&metadata);
     }
     payload
@@ -53,7 +64,8 @@ impl RemoteInstruments {
   pub(crate) fn read_metadata(&self, payload: &[u8]) -> Result<(), WireError> {
     let mut cursor = 0usize;
     while cursor < payload.len() {
-      if payload.len() < cursor + 5 {
+      let header_end = cursor.checked_add(5).ok_or(WireError::InvalidFormat)?;
+      if payload.len() < header_end {
         return Err(WireError::InvalidFormat);
       }
       let identifier = payload[cursor];
@@ -61,11 +73,12 @@ impl RemoteInstruments {
       let metadata_len =
         u32::from_le_bytes(payload[cursor..cursor + 4].try_into().map_err(|_| WireError::InvalidFormat)?) as usize;
       cursor += 4;
-      if payload.len() < cursor + metadata_len {
+      let metadata_end = cursor.checked_add(metadata_len).ok_or(WireError::InvalidFormat)?;
+      if payload.len() < metadata_end {
         return Err(WireError::InvalidFormat);
       }
-      let metadata = &payload[cursor..cursor + metadata_len];
-      cursor += metadata_len;
+      let metadata = &payload[cursor..metadata_end];
+      cursor = metadata_end;
       if let Some(instrument) = self.instruments.iter().find(|instrument| instrument.identifier() == identifier) {
         instrument.remote_read_metadata(metadata)?;
       }

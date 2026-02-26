@@ -19,6 +19,7 @@ use crate::core::{
 mod tests;
 
 const MIN_HANDSHAKE_TIMEOUT: Duration = Duration::from_millis(1);
+const DEFAULT_SHUTDOWN_FLUSH_TIMEOUT: Duration = Duration::from_secs(3);
 
 /// Declarative configuration applied when the remoting extension is installed.
 pub struct RemotingExtensionConfig {
@@ -26,6 +27,7 @@ pub struct RemotingExtensionConfig {
   canonical_port:           Option<u16>,
   auto_start:               bool,
   handshake_timeout:        Duration,
+  shutdown_flush_timeout:   Duration,
   transport_scheme:         String,
   backpressure_listeners:   Vec<Box<dyn RemotingBackpressureListener>>,
   remote_instruments:       Vec<Arc<dyn RemoteInstrument>>,
@@ -40,6 +42,7 @@ impl Clone for RemotingExtensionConfig {
       canonical_port:           self.canonical_port,
       auto_start:               self.auto_start,
       handshake_timeout:        self.handshake_timeout,
+      shutdown_flush_timeout:   self.shutdown_flush_timeout,
       transport_scheme:         self.transport_scheme.clone(),
       backpressure_listeners:   listeners,
       remote_instruments:       self.remote_instruments.clone(),
@@ -58,6 +61,7 @@ impl RemotingExtensionConfig {
       canonical_port:           None,
       auto_start:               true,
       handshake_timeout:        Duration::from_secs(3),
+      shutdown_flush_timeout:   DEFAULT_SHUTDOWN_FLUSH_TIMEOUT,
       transport_scheme:         "fraktor.loopback".to_string(),
       backpressure_listeners:   Vec::new(),
       remote_instruments:       Vec::new(),
@@ -95,6 +99,20 @@ impl RemotingExtensionConfig {
   pub fn with_handshake_timeout(mut self, timeout: Duration) -> Self {
     assert!(timeout >= MIN_HANDSHAKE_TIMEOUT, "handshake timeout must be >= 1 millisecond");
     self.handshake_timeout = timeout;
+    self
+  }
+
+  /// Overrides the timeout applied when flushing messages during graceful shutdown.
+  ///
+  /// Defaults to three seconds. This timeout is independent of the handshake timeout.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `timeout` is shorter than one millisecond.
+  #[must_use]
+  pub fn with_shutdown_flush_timeout(mut self, timeout: Duration) -> Self {
+    assert!(timeout >= MIN_HANDSHAKE_TIMEOUT, "shutdown flush timeout must be >= 1 millisecond");
+    self.shutdown_flush_timeout = timeout;
     self
   }
 
@@ -151,6 +169,12 @@ impl RemotingExtensionConfig {
   #[must_use]
   pub const fn handshake_timeout(&self) -> Duration {
     self.handshake_timeout
+  }
+
+  /// Returns the configured shutdown flush timeout.
+  #[must_use]
+  pub const fn shutdown_flush_timeout(&self) -> Duration {
+    self.shutdown_flush_timeout
   }
 
   /// Returns the registered backpressure listeners.

@@ -88,7 +88,7 @@ fn behavior_runner_dispatches_child_failed_signal() {
   let mut registry = MessageAdapterRegistry::<ProbeMessage, NoStdToolbox>::new();
   let mut typed_ctx = TypedActorContextGeneric::from_untyped(&mut ctx, Some(&mut registry));
   let error = ActorError::recoverable("child boom");
-  let result = runner.on_child_failed(&mut typed_ctx, pids[1], error);
+  let result = runner.on_child_failed(&mut typed_ctx, pids[1], &error);
   assert!(result.is_ok());
   assert!(received.load(Ordering::SeqCst));
 }
