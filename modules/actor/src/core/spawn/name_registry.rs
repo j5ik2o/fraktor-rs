@@ -6,7 +6,7 @@ mod tests;
 use alloc::{borrow::ToOwned, format, string::String};
 
 use ahash::RandomState;
-use hashbrown::HashMap;
+use hashbrown::{HashMap, hash_map::Entry};
 
 use crate::core::{actor::Pid, spawn::NameRegistryError};
 
@@ -34,11 +34,13 @@ impl NameRegistry {
   ///
   /// Returns an error if the name is already registered in this scope.
   pub fn register(&mut self, name: &str, pid: Pid) -> Result<(), NameRegistryError> {
-    if self.entries.contains_key(name) {
-      return Err(NameRegistryError::Duplicate(name.to_owned()));
+    match self.entries.entry(name.to_owned()) {
+      | Entry::Occupied(entry) => Err(NameRegistryError::Duplicate(entry.key().clone())),
+      | Entry::Vacant(entry) => {
+        entry.insert(pid);
+        Ok(())
+      }
     }
-    self.entries.insert(name.to_owned(), pid);
-    Ok(())
   }
 
   /// Resolves a name to the stored pid if present.

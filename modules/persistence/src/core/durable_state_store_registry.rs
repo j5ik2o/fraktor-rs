@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::{boxed::Box, collections::BTreeMap, string::String};
+use alloc::{boxed::Box, collections::btree_map::Entry, collections::BTreeMap, string::String};
 
 use fraktor_utils_rs::core::sync::ArcShared;
 
@@ -17,7 +17,7 @@ pub struct DurableStateStoreRegistry<A> {
   providers: BTreeMap<String, ArcShared<dyn DurableStateStoreProvider<A>>>,
 }
 
-impl<A: 'static> DurableStateStoreRegistry<A> {
+impl<A: Send + 'static> DurableStateStoreRegistry<A> {
   /// Creates an empty durable state store registry.
   #[must_use]
   pub const fn empty() -> Self {
@@ -36,11 +36,13 @@ impl<A: 'static> DurableStateStoreRegistry<A> {
     provider: ArcShared<dyn DurableStateStoreProvider<A>>,
   ) -> Result<(), DurableStateException> {
     let provider_id = provider_id.into();
-    if self.providers.contains_key(&provider_id) {
-      return Err(DurableStateException::provider_already_registered(provider_id));
+    match self.providers.entry(provider_id) {
+      | Entry::Occupied(entry) => Err(DurableStateException::provider_already_registered(entry.key().clone())),
+      | Entry::Vacant(entry) => {
+        entry.insert(provider);
+        Ok(())
+      }
     }
-    self.providers.insert(provider_id, provider);
-    Ok(())
   }
 
   /// Resolves a durable state store from the identifier.

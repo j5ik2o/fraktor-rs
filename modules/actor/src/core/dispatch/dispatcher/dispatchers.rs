@@ -2,7 +2,7 @@ use alloc::{borrow::ToOwned, string::String};
 
 use ahash::RandomState;
 use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
-use hashbrown::HashMap;
+use hashbrown::{HashMap, hash_map::Entry};
 
 use crate::core::dispatch::dispatcher::{DispatcherConfigGeneric, DispatcherRegistryError};
 
@@ -43,11 +43,13 @@ impl<TB: RuntimeToolbox + 'static> DispatchersGeneric<TB> {
     config: DispatcherConfigGeneric<TB>,
   ) -> Result<(), DispatcherRegistryError> {
     let id = id.into();
-    if self.entries.contains_key(&id) {
-      return Err(DispatcherRegistryError::duplicate(&id));
+    match self.entries.entry(id) {
+      | Entry::Occupied(entry) => Err(DispatcherRegistryError::duplicate(entry.key())),
+      | Entry::Vacant(entry) => {
+        entry.insert(config);
+        Ok(())
+      }
     }
-    self.entries.insert(id, config);
-    Ok(())
   }
 
   /// Registers or updates a dispatcher configuration for the provided identifier.
