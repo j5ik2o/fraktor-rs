@@ -336,23 +336,21 @@ impl ClusterNode {
     let peer_name = peer_name.to_string();
     let grain_path = "user/grain".to_string();
     let cluster_config = build_cluster_extension_config(authority);
-    let cluster_installer = ClusterExtensionInstaller::new(
-      cluster_config,
-      move |event_stream, block_list_provider, advertised_address| {
+    let cluster_installer =
+      ClusterExtensionInstaller::new(cluster_config, move |event_stream, block_list_provider, advertised_address| {
         let static_topology = ClusterTopology::new(1, vec![peer_name.clone()], vec![], Vec::new());
         let provider = StaticClusterProvider::new(event_stream, block_list_provider, advertised_address)
           .with_static_topology(static_topology);
         Box::new(provider)
-      },
-    )
-    .with_block_list_provider(ArcShared::new(DemoBlockList::default()))
-    .with_gossiper_factory(|| Box::new(DemoGossiper::default()))
-    .with_pubsub_factory(|_| Box::new(DemoPubSub::default()))
-    .with_identity_lookup_factory({
-      let authority = authority.to_string();
-      let grain_path = grain_path.clone();
-      move || Box::new(DemoIdentityLookup::new(authority.clone(), grain_path.clone()))
-    });
+      })
+      .with_block_list_provider(ArcShared::new(DemoBlockList::default()))
+      .with_gossiper_factory(|| Box::new(DemoGossiper::default()))
+      .with_pubsub_factory(|_| Box::new(DemoPubSub::default()))
+      .with_identity_lookup_factory({
+        let authority = authority.to_string();
+        let grain_path = grain_path.clone();
+        move || Box::new(DemoIdentityLookup::new(authority.clone(), grain_path.clone()))
+      });
 
     let system_cfg = ActorSystemConfig::default()
       .with_system_name(format!("cluster-{}", authority))
