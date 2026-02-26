@@ -416,6 +416,7 @@ fn build_bridge_with_control(
     system_name: "local-system".to_string(),
     remote_instruments: Vec::new(),
     handshake_timeout,
+    shutdown_flush_timeout: handshake_timeout,
   };
   (EndpointTransportBridge::new(config), probe, system, control)
 }
@@ -442,6 +443,7 @@ fn build_bridge_with_instruments(
     system_name: "local-system".to_string(),
     remote_instruments,
     handshake_timeout,
+    shutdown_flush_timeout: handshake_timeout,
   };
   (EndpointTransportBridge::new(config), probe, system)
 }
@@ -479,6 +481,7 @@ fn spawn_bridge_with_control(
     system_name: "local-system".to_string(),
     remote_instruments: Vec::new(),
     handshake_timeout,
+    shutdown_flush_timeout: handshake_timeout,
   };
   (EndpointTransportBridge::spawn(config).expect("spawn bridge"), probe, system, control)
 }

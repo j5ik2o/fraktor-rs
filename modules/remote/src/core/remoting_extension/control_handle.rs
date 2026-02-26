@@ -91,6 +91,8 @@ where
       canonical_port: config.canonical_port(),
       #[cfg(feature = "tokio-transport")]
       handshake_timeout: config.handshake_timeout(),
+      #[cfg(feature = "tokio-transport")]
+      shutdown_flush_timeout: config.shutdown_flush_timeout(),
       state: <TB::MutexFamily as SyncMutexFamily>::create(RemotingLifecycleState::new()),
       listeners: <TB::MutexFamily as SyncMutexFamily>::create(listeners),
       snapshots: <TB::MutexFamily as SyncMutexFamily>::create(Vec::new()),
@@ -166,16 +168,23 @@ where
   }
 
   /// Dispatches a command to the registered remote watcher daemon.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`RemotingError::TransportUnavailable`] when the watcher daemon is not yet
+  /// registered or when the tell operation fails.
   #[cfg(feature = "tokio-transport")]
   pub(crate) fn dispatch_remote_watcher_command(&self, command: RemoteWatcherCommand) -> Result<(), RemotingError> {
     let daemon = self.inner.watcher_daemon.lock().clone();
-    if let Some(daemon) = daemon {
-      daemon
+    match daemon {
+      | Some(daemon) => daemon
         .tell(AnyMessageGeneric::new(command))
         .map(|_| ())
-        .map_err(|error| RemotingError::TransportUnavailable(format!("{error:?}")))?;
+        .map_err(|error| RemotingError::TransportUnavailable(format!("{error:?}"))),
+      | None => Err(RemotingError::TransportUnavailable(
+        "watcher daemon not registered; command dropped".into(),
+      )),
     }
-    Ok(())
   }
 
   fn register_listener_dyn(&self, listener: RemotingBackpressureListenerShared<TB>) {
@@ -304,7 +313,9 @@ where
   canonical_host:     String,
   canonical_port:     Option<u16>,
   #[cfg(feature = "tokio-transport")]
-  handshake_timeout:  Duration,
+  handshake_timeout:        Duration,
+  #[cfg(feature = "tokio-transport")]
+  shutdown_flush_timeout:   Duration,
   state:              ToolboxMutex<RemotingLifecycleState, TB>,
   listeners:          ToolboxMutex<Vec<RemotingBackpressureListenerShared<TB>>, TB>,
   snapshots:          ToolboxMutex<Vec<RemoteAuthoritySnapshot>, TB>,
@@ -411,6 +422,8 @@ where
         remote_instruments: self.remote_instruments.clone(),
         #[cfg(feature = "tokio-transport")]
         handshake_timeout: self.handshake_timeout,
+        #[cfg(feature = "tokio-transport")]
+        shutdown_flush_timeout: self.shutdown_flush_timeout,
       };
       let handle = crate::std::endpoint_transport_bridge::EndpointTransportBridge::spawn(config)
         .map_err(|error| RemotingError::TransportUnavailable(format!("{error:?}")))?;

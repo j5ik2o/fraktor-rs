@@ -77,8 +77,9 @@ pub(crate) struct EndpointTransportBridge<TB: RuntimeToolbox + 'static> {
   host:                   String,
   port:                   u16,
   system_name:            String,
-  handshake_timeout:      Duration,
-  local_uid:              u64,
+  handshake_timeout:        Duration,
+  shutdown_flush_timeout:   Duration,
+  local_uid:                u64,
   listener:               TokioMutex<Option<TransportHandle>>,
   channels:               TokioMutex<BTreeMap<String, TransportChannel>>,
   watchdog_versions:      Arc<TokioMutex<BTreeMap<String, u64>>>,
@@ -104,8 +105,9 @@ impl<TB: RuntimeToolbox + 'static> EndpointTransportBridge<TB> {
       host:                   config.canonical_host,
       port:                   config.canonical_port,
       system_name:            config.system_name,
-      handshake_timeout:      config.handshake_timeout,
-      local_uid:              Self::allocate_local_uid(),
+      handshake_timeout:        config.handshake_timeout,
+      shutdown_flush_timeout:   config.shutdown_flush_timeout,
+      local_uid:                Self::allocate_local_uid(),
       listener:               TokioMutex::new(None),
       channels:               TokioMutex::new(BTreeMap::<String, TransportChannel>::new()),
       watchdog_versions:      Arc::new(TokioMutex::new(BTreeMap::<String, u64>::new())),
@@ -264,6 +266,7 @@ impl<TB: RuntimeToolbox + 'static> EndpointTransportBridge<TB> {
   }
 
   fn allocate_local_uid() -> u64 {
+    // as_nanos() returns u128; the u64 cast is safe for practical use (covers ~584 years from epoch).
     let timestamp_nanos =
       SystemTime::now().duration_since(UNIX_EPOCH).expect("system clock should be after unix epoch").as_nanos() as u64;
     let sequence = LOCAL_NODE_UID_SEQUENCE.fetch_add(1, Ordering::Relaxed);
@@ -635,7 +638,7 @@ impl<TB: RuntimeToolbox + 'static> EndpointTransportBridge<TB> {
       }
     }
     let started = Instant::now();
-    let timeout = self.handshake_timeout;
+    let timeout = self.shutdown_flush_timeout;
     loop {
       let awaiting = {
         let observations = self.flush_ack_observations.lock().await;

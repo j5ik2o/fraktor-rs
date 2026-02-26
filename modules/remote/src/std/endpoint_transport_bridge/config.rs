@@ -33,5 +33,7 @@ pub struct EndpointTransportBridgeConfig<TB: RuntimeToolbox + 'static> {
   /// Registered remoting instruments used by outbound/inbound pipelines.
   pub remote_instruments: Vec<Arc<dyn RemoteInstrument>>,
   /// Timeout used while waiting for a handshake to complete.
-  pub handshake_timeout:  Duration,
+  pub handshake_timeout:        Duration,
+  /// Timeout applied when flushing outstanding messages during graceful shutdown.
+  pub shutdown_flush_timeout:   Duration,
 }
