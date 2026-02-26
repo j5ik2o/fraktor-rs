@@ -320,15 +320,24 @@ struct ClusterNode {
   driver:    ManualTestDriver<NoStdToolbox>,
 }
 
+fn build_cluster_extension_config(authority: &'static str) -> ClusterExtensionConfig {
+  ClusterExtensionConfig::new()
+    .with_advertised_address(authority)
+    .with_app_version(format!("1.0.0-{authority}"))
+    .with_roles(vec![String::from("member"), format!("role:{authority}")])
+    .with_metrics_enabled(true)
+}
+
 impl ClusterNode {
-  fn new(name: &'static str, peer_name: &str) -> Self {
+  fn new(authority: &'static str, peer_name: &'static str) -> Self {
     // ActorSystem を構築
     let driver = ManualTestDriver::<NoStdToolbox>::new();
     let tick_cfg = TickDriverConfig::manual(driver.clone());
     let peer_name = peer_name.to_string();
     let grain_path = "user/grain".to_string();
+    let cluster_config = build_cluster_extension_config(authority);
     let cluster_installer = ClusterExtensionInstaller::new(
-      ClusterExtensionConfig::new().with_advertised_address(name).with_metrics_enabled(true),
+      cluster_config,
       move |event_stream, block_list_provider, advertised_address| {
         let static_topology = ClusterTopology::new(1, vec![peer_name.clone()], vec![], Vec::new());
         let provider = StaticClusterProvider::new(event_stream, block_list_provider, advertised_address)
@@ -340,13 +349,13 @@ impl ClusterNode {
     .with_gossiper_factory(|| Box::new(DemoGossiper::default()))
     .with_pubsub_factory(|_| Box::new(DemoPubSub::default()))
     .with_identity_lookup_factory({
-      let authority = name.to_string();
+      let authority = authority.to_string();
       let grain_path = grain_path.clone();
       move || Box::new(DemoIdentityLookup::new(authority.clone(), grain_path.clone()))
     });
 
     let system_cfg = ActorSystemConfig::default()
-      .with_system_name(format!("cluster-{}", name))
+      .with_system_name(format!("cluster-{}", authority))
       .with_tick_driver(tick_cfg)
       .with_extension_installers(ExtensionInstallers::default().with_extension_installer(cluster_installer))
       .with_actor_ref_provider_installer(DemoActorRefProviderInstaller);
@@ -356,7 +365,7 @@ impl ClusterNode {
       ActorSystemGeneric::new_with_config(&grain_props, &system_cfg).expect("system build");
 
     // EventStream のサブスクライバを登録（クラスタイベントを観測）
-    let event_subscriber = subscriber_handle(ClusterEventLogger::new(name));
+    let event_subscriber = subscriber_handle(ClusterEventLogger::new(authority));
     let _subscription = system.subscribe_event_stream(&event_subscriber);
 
     let extension =
@@ -460,4 +469,19 @@ fn main() {
   node_b.tick(3);
 
   println!("\n=== Demo complete ===");
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn cluster_extension_config_is_node_specific() {
+    let node_a = build_cluster_extension_config("node-a");
+    let node_b = build_cluster_extension_config("node-b");
+
+    assert_ne!(node_a.advertised_address(), node_b.advertised_address());
+    assert_ne!(node_a.app_version(), node_b.app_version());
+    assert_ne!(node_a.roles(), node_b.roles());
+  }
 }
