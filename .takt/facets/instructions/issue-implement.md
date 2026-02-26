@@ -1,3 +1,5 @@
+# Issue 実装手順
+
 `00-issue-plan.md` に基づき、複数 issue を順番に解決してください。
 
 ## 手順
@@ -56,17 +58,21 @@
 ## 必須出力（見出しを含める）
 
 ## 受け入れ条件への対応
+
 - {条件ごとの対応結果}
 
 ## 変更内容
+
 - {issue ごとにファイル単位で要約}
 
 ## テスト結果
+
 - {issue ごとの実行コマンドと結果}
 - {issue ごとの `./scripts/ci-check.sh all` 実行結果}
 - {最終 `./scripts/ci-check.sh all` 実行結果}
 
 ## コミット結果
+
 - {issue番号, commit hash, commit message}
 - {解決済み issue の場合は「対応不要でClose済み」と記載}
 - {情報不足 issue の場合は「情報不足でスキップ」と記載}
