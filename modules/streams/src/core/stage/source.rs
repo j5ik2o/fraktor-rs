@@ -1701,7 +1701,9 @@ where
   /// Converts this source into a pre-materialized form.
   #[must_use]
   pub fn pre_materialize(self) -> (Self, StreamCompletion<StreamDone>) {
-    (self, StreamCompletion::new())
+    let (graph, mat) = self.into_parts();
+    let source = Source { graph, mat: mat.clone(), _pd: PhantomData };
+    (source, mat)
   }
 }
 
