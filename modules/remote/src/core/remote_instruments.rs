@@ -18,6 +18,16 @@ impl RemoteInstruments {
   /// Creates a collection from the provided instrument instances.
   #[must_use]
   pub(crate) fn new(instruments: Vec<Arc<dyn RemoteInstrument>>) -> Self {
+    debug_assert!(
+      {
+        let mut ids: Vec<u8> = instruments.iter().map(|i| i.identifier()).collect();
+        ids.sort_unstable();
+        let before = ids.len();
+        ids.dedup();
+        ids.len() == before
+      },
+      "duplicate instrument identifiers detected"
+    );
     let serialization_timing_enabled = instruments.iter().any(|instrument| instrument.serialization_timing_enabled());
     Self { instruments, serialization_timing_enabled }
   }

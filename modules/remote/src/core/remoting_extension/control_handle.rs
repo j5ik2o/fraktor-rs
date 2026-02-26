@@ -3,6 +3,8 @@
 mod tests;
 
 #[cfg(feature = "tokio-transport")]
+use alloc::collections::BTreeMap;
+#[cfg(feature = "tokio-transport")]
 use alloc::sync::Arc;
 use alloc::{
   boxed::Box,
@@ -35,7 +37,7 @@ use super::{
 #[cfg(feature = "tokio-transport")]
 use crate::core::RemoteInstrument;
 #[cfg(feature = "tokio-transport")]
-use crate::core::transport::TransportEndpoint;
+use crate::core::transport::{TransportChannel, TransportEndpoint};
 #[cfg(feature = "tokio-transport")]
 use crate::core::watcher::{Heartbeat, RemoteWatcherCommand};
 use crate::core::{
@@ -102,6 +104,8 @@ where
       remote_instruments: config.remote_instruments().to_vec(),
       #[cfg(feature = "tokio-transport")]
       endpoint_bridge: <TB::MutexFamily as SyncMutexFamily>::create(None),
+      #[cfg(feature = "tokio-transport")]
+      heartbeat_channels: <TB::MutexFamily as SyncMutexFamily>::create(BTreeMap::new()),
     };
     Self { inner: ArcShared::new(inner) }
   }
@@ -314,6 +318,8 @@ where
   remote_instruments: Vec<Arc<dyn RemoteInstrument>>,
   #[cfg(feature = "tokio-transport")]
   endpoint_bridge:    ToolboxMutex<Option<crate::std::endpoint_transport_bridge::EndpointTransportBridgeHandle>, TB>,
+  #[cfg(feature = "tokio-transport")]
+  heartbeat_channels: ToolboxMutex<BTreeMap<String, TransportChannel>, TB>,
 }
 
 impl<TB> RemotingControlInner<TB>
@@ -340,8 +346,16 @@ where
       .lock()
       .clone()
       .ok_or_else(|| RemotingError::TransportUnavailable("remote transport not registered".to_string()))?;
-    let endpoint = TransportEndpoint::new(authority.to_string());
-    let channel = transport.with_write(|t| t.open_channel(&endpoint))?;
+    let mut channels = self.heartbeat_channels.lock();
+    let channel = match channels.get(authority) {
+      | Some(&ch) => ch,
+      | None => {
+        let endpoint = TransportEndpoint::new(authority.to_string());
+        let ch = transport.with_write(|t| t.open_channel(&endpoint))?;
+        channels.insert(authority.to_string(), ch);
+        ch
+      },
+    };
     let payload = Heartbeat::new(authority).encode_frame();
     transport.with_write(|t| t.send(&channel, &payload, CorrelationId::nil()))?;
     Ok(())
