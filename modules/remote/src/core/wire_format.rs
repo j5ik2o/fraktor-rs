@@ -16,16 +16,18 @@ pub(crate) fn write_string(buffer: &mut Vec<u8>, value: &str) {
 ///
 /// Returns [`WireError`] when the buffer is too short or the bytes are not valid UTF-8.
 pub(crate) fn read_string(bytes: &[u8], cursor: &mut usize) -> Result<String, WireError> {
-  if bytes.len() < *cursor + 4 {
+  let len_end = (*cursor).checked_add(4).ok_or(WireError::InvalidFormat)?;
+  if bytes.len() < len_end {
     return Err(WireError::InvalidFormat);
   }
-  let len = u32::from_le_bytes(bytes[*cursor..*cursor + 4].try_into().map_err(|_| WireError::InvalidFormat)?) as usize;
-  *cursor += 4;
-  if bytes.len() < *cursor + len {
+  let len = u32::from_le_bytes(bytes[*cursor..len_end].try_into().map_err(|_| WireError::InvalidFormat)?) as usize;
+  *cursor = len_end;
+  let str_end = (*cursor).checked_add(len).ok_or(WireError::InvalidFormat)?;
+  if bytes.len() < str_end {
     return Err(WireError::InvalidFormat);
   }
-  let slice = &bytes[*cursor..*cursor + len];
-  *cursor += len;
+  let slice = &bytes[*cursor..str_end];
+  *cursor = str_end;
   Ok(String::from_utf8(slice.to_vec())?)
 }
 
