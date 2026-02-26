@@ -117,6 +117,29 @@ fn join_then_heartbeat_promotes_to_up() {
 }
 
 #[test]
+fn current_cluster_state_is_emitted_only_when_state_changes() {
+  let table = MembershipTable::new(3);
+  let config = base_config();
+  let mut coordinator = MembershipCoordinatorGeneric::<fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox>::new(
+    config,
+    local_cluster_config(),
+    table,
+    registry(1.0),
+  );
+  coordinator.start_member().unwrap();
+
+  let join_outcome =
+    coordinator.handle_join("node-1".to_string(), "node-a".to_string(), &joining_cluster_config(), now(1)).unwrap();
+  assert!(join_outcome.member_events.iter().any(|event| matches!(event, ClusterEvent::CurrentClusterState { .. })));
+
+  let promote_outcome = coordinator.handle_heartbeat("node-a", now(2)).unwrap();
+  assert!(promote_outcome.member_events.iter().any(|event| matches!(event, ClusterEvent::CurrentClusterState { .. })));
+
+  let steady_outcome = coordinator.handle_heartbeat("node-a", now(3)).unwrap();
+  assert!(steady_outcome.member_events.iter().all(|event| !matches!(event, ClusterEvent::CurrentClusterState { .. })));
+}
+
+#[test]
 fn leave_emits_exiting_then_removed() {
   let table = MembershipTable::new(3);
   let config = base_config();

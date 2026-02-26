@@ -32,6 +32,7 @@ pub struct MembershipCoordinatorGeneric<TB: fraktor_utils_rs::core::runtime_tool
   gossip:                GossipDisseminationCoordinator,
   registry:              DefaultFailureDetectorRegistry<String>,
   quarantine:            QuarantineTable,
+  last_cluster_state:    Option<CurrentClusterState>,
   topology_accumulator:  TopologyAccumulator,
   next_topology_emit_at: Option<TimerInstant>,
   suspect_since:         BTreeMap<String, TimerInstant>,
@@ -55,6 +56,7 @@ impl<TB: fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox + 'static> Memb
       gossip: GossipDisseminationCoordinator::new(table, local_authority, Vec::new()),
       registry,
       quarantine: QuarantineTable::new(),
+      last_cluster_state: None,
       topology_accumulator: TopologyAccumulator::new(),
       next_topology_emit_at: None,
       suspect_since: BTreeMap::new(),
@@ -97,6 +99,7 @@ impl<TB: fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox + 'static> Memb
     self.state = MembershipCoordinatorState::Stopped;
     self.suspect_since.clear();
     self.topology_accumulator.clear();
+    self.last_cluster_state = None;
     Ok(())
   }
 
@@ -600,9 +603,7 @@ impl<TB: fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox + 'static> Memb
 
   fn collect_gossip_and_state_events(&mut self, now: TimerInstant, outcome: &mut MembershipCoordinatorOutcome) {
     self.collect_seen_changed_events(now, outcome);
-    outcome
-      .member_events
-      .push(ClusterEvent::CurrentClusterState { state: self.current_cluster_state(), observed_at: now });
+    self.collect_current_cluster_state_event(now, outcome);
   }
 
   fn collect_seen_changed_events(&mut self, now: TimerInstant, outcome: &mut MembershipCoordinatorOutcome) {
@@ -629,6 +630,15 @@ impl<TB: fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox + 'static> Memb
     let role_leader = role_leaders(&members);
     let seen_by = self.gossip.seen_by();
     CurrentClusterState::new(members, unreachable, seen_by, leader, role_leader)
+  }
+
+  fn collect_current_cluster_state_event(&mut self, now: TimerInstant, outcome: &mut MembershipCoordinatorOutcome) {
+    let state = self.current_cluster_state();
+    if self.last_cluster_state.as_ref().is_some_and(|last_state| last_state == &state) {
+      return;
+    }
+    self.last_cluster_state = Some(state.clone());
+    outcome.member_events.push(ClusterEvent::CurrentClusterState { state, observed_at: now });
   }
 
   fn emit_topology_if_due(&mut self, now: TimerInstant) -> Option<ClusterEvent> {
