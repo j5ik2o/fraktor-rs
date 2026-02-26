@@ -507,6 +507,8 @@ impl<TB: RuntimeToolbox + 'static> EndpointTransportBridge<TB> {
     }
   }
 
+  // NOTE: CQS 例外 — authority 解決と heartbeat ディスパッチは受信パスで常に
+  // ペアになるため、分離するとすべての呼び出し元に副作用責務が漏れてしまう。
   async fn resolve_control_authority(&self, frame: &InboundFrame) -> Option<String> {
     if !frame.correlation_id().is_nil()
       && let Some(authority) = self.resolve_system_correlation_authority(frame.correlation_id()).await
