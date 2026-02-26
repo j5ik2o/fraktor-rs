@@ -25,6 +25,10 @@ pub struct ClusterExtensionConfig {
 
 impl ClusterExtensionConfig {
   /// Creates a configuration with an empty advertised address and metrics disabled.
+  ///
+  /// `app_version` defaults to the `fraktor-cluster-rs` crate version via
+  /// `env!("CARGO_PKG_VERSION")`. Use [`with_app_version`](Self::with_app_version)
+  /// to override it with the embedding application's version.
   #[must_use]
   pub fn new() -> Self {
     Self {
@@ -53,7 +57,7 @@ impl ClusterExtensionConfig {
 
   /// Returns the configured advertised address.
   #[must_use]
-  pub const fn advertised_address(&self) -> &String {
+  pub fn advertised_address(&self) -> &str {
     &self.advertised_address
   }
 
@@ -107,7 +111,7 @@ impl ClusterExtensionConfig {
 
   /// Returns advertised application version.
   #[must_use]
-  pub const fn app_version(&self) -> &String {
+  pub fn app_version(&self) -> &str {
     &self.app_version
   }
 

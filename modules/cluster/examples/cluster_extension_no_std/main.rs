@@ -478,8 +478,11 @@ mod tests {
     let node_a = build_cluster_extension_config("node-a");
     let node_b = build_cluster_extension_config("node-b");
 
-    assert_ne!(node_a.advertised_address(), node_b.advertised_address());
-    assert_ne!(node_a.app_version(), node_b.app_version());
-    assert_ne!(node_a.roles(), node_b.roles());
+    assert_eq!(node_a.advertised_address(), "node-a");
+    assert_eq!(node_b.advertised_address(), "node-b");
+    assert_eq!(node_a.app_version(), "1.0.0-node-a");
+    assert_eq!(node_b.app_version(), "1.0.0-node-b");
+    assert_eq!(node_a.roles(), &[String::from("member"), String::from("role:node-a")]);
+    assert_eq!(node_b.roles(), &[String::from("member"), String::from("role:node-b")]);
   }
 }
