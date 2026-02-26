@@ -14,11 +14,16 @@ instructions:
   issue-implement: ../facets/instructions/issue-implement.md
   issue-fix: ../facets/instructions/issue-fix.md
   issue-verify: ../facets/instructions/issue-verify.md
+  ai-review: ../facets/instructions/ai-review.md
 
 report_formats:
   issue-plan: ../facets/output-contracts/issue-plan.md
   issue-commit-log: ../facets/output-contracts/issue-commit-log.md
   issue-verify: ../facets/output-contracts/issue-verify.md
+  ai-review: ../facets/output-contracts/ai-review.md
+  coder-scope: ../facets/output-contracts/coder-scope.md
+  coder-decisions: ../facets/output-contracts/coder-decisions.md
+  summary: ../facets/output-contracts/summary.md
 
 loop_monitors:
   - cycle:
@@ -58,8 +63,10 @@ movements:
     rules:
       - condition: 全issueの受け入れ条件が明確で実装可能
         next: implement
+      - condition: 全issueが解決済み
+        next: COMPLETE
       - condition: 1件以上のissueで情報不足
-        next: ABORT
+        next: implement
       - condition: 判断不能
         next: ABORT
 
@@ -89,9 +96,9 @@ movements:
         - name: issue-commit-log.md
           format: issue-commit-log
     rules:
-      - condition: 全issueの実装とissue単位コミット完了
+      - condition: 全issueが「実装完了」または「理由をissueに記録してスキップ」され、issue単位コミット完了（またはコミット禁止のため未作成を明記）
         next: review
-      - condition: 1件以上のissueで実装不能
+      - condition: 1件以上のissueで実装不能かつ理由未記録
         next: ABORT
       - condition: 判断不能
         next: ABORT
@@ -141,9 +148,9 @@ movements:
         - name: issue-commit-log.md
           format: issue-commit-log
     rules:
-      - condition: 修正完了かつ必要なissue単位コミット完了
+      - condition: 修正完了または理由をissueに記録したスキップで、必要なissue単位コミット完了（またはコミット禁止のため未作成を明記）
         next: review
-      - condition: 修正不能なissueあり
+      - condition: 修正不能なissueがあり理由未記録
         next: ABORT
       - condition: 判断不能
         next: ABORT

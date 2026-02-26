@@ -4,9 +4,9 @@
 ## 結果: OK / NG
 
 ## Issue別コミット
-| Issue | Commit Hash | Commit Message | Conventional準拠 | 英語メッセージ | テスト結果 | issue完了時のci-check.sh all |
-|-------|-------------|----------------|------------------|----------------|------------|------------------------------|
-| #123 | abcdef1 | fix(remote): avoid duplicate heartbeat probe dispatch (#123) | PASS/FAIL | PASS/FAIL | {コマンドと結果} | PASS/FAIL |
+| Issue | 状態 | Commit Hash | Commit Message | Conventional準拠 | 英語メッセージ | テスト結果 | issue完了時のci-check.sh all | Issue記録 |
+|-------|------|-------------|----------------|------------------|----------------|------------|------------------------------|-----------|
+| #123 | 実装完了 / 理由付きスキップ / 対応不要 | abcdef1 | fix(remote): avoid duplicate heartbeat probe dispatch (#123) | PASS/FAIL | PASS/FAIL | {コマンドと結果} | PASS/FAIL | {comment済み/Close済み/なし} |
 
 ## 未対応Issue（ある場合）
 | Issue | 理由 | 必要アクション |
@@ -18,7 +18,7 @@
 - 実行ログ要約: {1-3行}
 
 ## 判定
-- 判定: {全issueでコミット作成済みかつci-check全PASS / 未対応issueあり or ci-check失敗あり}
+- 判定: {全issueで実装完了または理由付きスキップでci-check全PASS / コミット禁止のため未作成を明記しci-check全PASS / 理由未記録の未対応issueあり or ci-check失敗あり}
 - 理由: {1-3行}
 ```
 

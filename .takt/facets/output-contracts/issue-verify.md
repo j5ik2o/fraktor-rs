@@ -6,7 +6,9 @@
 ## Issue別受け入れ条件判定
 | Issue | 条件 | 判定 | 根拠 |
 |-------|------|------|------|
-| #123 | {条件} | PASS/FAIL | {根拠} |
+| #123 | {条件} | PASS/FAIL/SKIPPED | {根拠} |
+
+- `SKIPPED` を使う場合は、`issue-commit-log.md` の「理由付きスキップ」と Issue コメント記録を根拠に明記する
 
 ## コミット検証
 | Issue | コミット数 | Conventional準拠 | 英語メッセージ | issue完了時ci-check | 判定 |
