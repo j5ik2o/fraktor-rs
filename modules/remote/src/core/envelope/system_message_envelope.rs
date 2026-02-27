@@ -33,6 +33,7 @@ pub struct SystemMessageEnvelope {
 
 impl SystemMessageEnvelope {
   /// Creates a new system-message envelope.
+  // TODO(#210): 引数が7個で多い。フィールド増加時はパラメータ構造体の導入を検討する
   #[must_use]
   pub const fn new(
     recipient: ActorPath,

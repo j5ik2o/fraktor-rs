@@ -186,19 +186,24 @@ impl fraktor_remote_rs::core::BlockListProvider for StubBlockList {
   }
 }
 
-#[test]
-fn registers_extension_and_starts_member() {
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
-
-  let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
-    ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"),
+/// デフォルトのスタブ群で `ClusterExtensionId` を構築するヘルパー。
+fn stub_extension_id(config: ClusterExtensionConfig) -> ClusterExtensionId<NoStdToolbox> {
+  ClusterExtensionId::<NoStdToolbox>::new(
+    config,
     Box::new(StubProvider),
     ArcShared::new(StubBlockList),
     Box::new(NoopDowningProvider::new()),
     Box::new(StubGossiper),
     Box::new(StubPubSub),
     Box::new(StubIdentity),
-  );
+  )
+}
+
+#[test]
+fn registers_extension_and_starts_member() {
+  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+
+  let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
 
   let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
   let result = ext_shared.start_member();
@@ -210,15 +215,7 @@ fn register_on_member_up_invokes_callback_for_up_transition() {
   let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
   let event_stream = system.event_stream();
 
-  let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
-    ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"),
-    Box::new(StubProvider),
-    ArcShared::new(StubBlockList),
-    Box::new(NoopDowningProvider::new()),
-    Box::new(StubGossiper),
-    Box::new(StubPubSub),
-    Box::new(StubIdentity),
-  );
+  let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
   let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
 
   let calls = ArcShared::new(NoStdMutex::new(Vec::<(String, String)>::new()));
@@ -240,15 +237,7 @@ fn register_on_member_removed_invokes_callback_for_removed_transition() {
   let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
   let event_stream = system.event_stream();
 
-  let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
-    ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"),
-    Box::new(StubProvider),
-    ArcShared::new(StubBlockList),
-    Box::new(NoopDowningProvider::new()),
-    Box::new(StubGossiper),
-    Box::new(StubPubSub),
-    Box::new(StubIdentity),
-  );
+  let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
   let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
 
   let calls = ArcShared::new(NoStdMutex::new(Vec::<(String, String)>::new()));
@@ -270,15 +259,7 @@ fn register_on_member_up_invokes_callback_immediately_when_self_already_up() {
   let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
   let event_stream = system.event_stream();
 
-  let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
-    ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"),
-    Box::new(StubProvider),
-    ArcShared::new(StubBlockList),
-    Box::new(NoopDowningProvider::new()),
-    Box::new(StubGossiper),
-    Box::new(StubPubSub),
-    Box::new(StubIdentity),
-  );
+  let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
   let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
 
   publish_member_status(&event_stream, "node-self", "fraktor://demo", NodeStatus::Joining, NodeStatus::Up);
@@ -340,15 +321,7 @@ fn register_on_member_removed_invokes_callback_immediately_when_self_already_rem
   let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
   let event_stream = system.event_stream();
 
-  let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
-    ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"),
-    Box::new(StubProvider),
-    ArcShared::new(StubBlockList),
-    Box::new(NoopDowningProvider::new()),
-    Box::new(StubGossiper),
-    Box::new(StubPubSub),
-    Box::new(StubIdentity),
-  );
+  let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
   let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
 
   publish_member_status(&event_stream, "node-self", "fraktor://demo", NodeStatus::Exiting, NodeStatus::Removed);
@@ -370,15 +343,7 @@ fn register_on_member_removed_invokes_callback_immediately_after_shutdown() {
   let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
   let event_stream = system.event_stream();
 
-  let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
-    ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"),
-    Box::new(StubProvider),
-    ArcShared::new(StubBlockList),
-    Box::new(NoopDowningProvider::new()),
-    Box::new(StubGossiper),
-    Box::new(StubPubSub),
-    Box::new(StubIdentity),
-  );
+  let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
   let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
   ext_shared.start_member().expect("start member");
   publish_member_status(&event_stream, "node-self", "fraktor://demo", NodeStatus::Exiting, NodeStatus::Removed);
@@ -398,15 +363,7 @@ fn register_on_member_removed_invokes_callback_immediately_after_shutdown() {
 fn register_on_member_removed_after_shutdown_falls_back_to_authority_when_node_id_is_unknown() {
   let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
 
-  let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
-    ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"),
-    Box::new(StubProvider),
-    ArcShared::new(StubBlockList),
-    Box::new(NoopDowningProvider::new()),
-    Box::new(StubGossiper),
-    Box::new(StubPubSub),
-    Box::new(StubIdentity),
-  );
+  let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
   let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
   ext_shared.start_member().expect("start member");
   ext_shared.shutdown(true).expect("shutdown");
@@ -426,15 +383,7 @@ fn register_on_member_up_does_not_fire_for_buffered_old_up_events() {
   let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
   let event_stream = system.event_stream();
 
-  let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
-    ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"),
-    Box::new(StubProvider),
-    ArcShared::new(StubBlockList),
-    Box::new(NoopDowningProvider::new()),
-    Box::new(StubGossiper),
-    Box::new(StubPubSub),
-    Box::new(StubIdentity),
-  );
+  let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
   let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
 
   publish_member_status(&event_stream, "node-old", "fraktor://demo", NodeStatus::Joining, NodeStatus::Up);
@@ -459,15 +408,7 @@ fn register_on_member_removed_does_not_fire_for_buffered_old_removed_events() {
   let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
   let event_stream = system.event_stream();
 
-  let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
-    ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"),
-    Box::new(StubProvider),
-    ArcShared::new(StubBlockList),
-    Box::new(NoopDowningProvider::new()),
-    Box::new(StubGossiper),
-    Box::new(StubPubSub),
-    Box::new(StubIdentity),
-  );
+  let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
   let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
 
   publish_member_status(&event_stream, "node-old", "fraktor://demo", NodeStatus::Exiting, NodeStatus::Removed);
@@ -494,15 +435,7 @@ fn register_on_member_up_does_not_fire_for_events_buffered_before_extension_inst
 
   publish_member_status(&event_stream, "node-old", "fraktor://demo", NodeStatus::Joining, NodeStatus::Up);
 
-  let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
-    ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"),
-    Box::new(StubProvider),
-    ArcShared::new(StubBlockList),
-    Box::new(NoopDowningProvider::new()),
-    Box::new(StubGossiper),
-    Box::new(StubPubSub),
-    Box::new(StubIdentity),
-  );
+  let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
   let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
 
   let calls = ArcShared::new(NoStdMutex::new(Vec::<(String, String)>::new()));
@@ -526,15 +459,7 @@ fn register_on_member_removed_does_not_fire_for_events_buffered_before_extension
 
   publish_member_status(&event_stream, "node-old", "fraktor://demo", NodeStatus::Exiting, NodeStatus::Removed);
 
-  let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
-    ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"),
-    Box::new(StubProvider),
-    ArcShared::new(StubBlockList),
-    Box::new(NoopDowningProvider::new()),
-    Box::new(StubGossiper),
-    Box::new(StubPubSub),
-    Box::new(StubIdentity),
-  );
+  let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
   let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
 
   let calls = ArcShared::new(NoStdMutex::new(Vec::<(String, String)>::new()));
@@ -557,14 +482,8 @@ fn subscribes_to_event_stream_and_applies_topology_on_topology_updated() {
   let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
   let event_stream = system.event_stream();
 
-  let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
+  let ext_id = stub_extension_id(
     ClusterExtensionConfig::new().with_advertised_address("fraktor://demo").with_metrics_enabled(true),
-    Box::new(StubProvider),
-    ArcShared::new(StubBlockList),
-    Box::new(NoopDowningProvider::new()),
-    Box::new(StubGossiper),
-    Box::new(StubPubSub),
-    Box::new(StubIdentity),
   );
 
   // 2. エクステンションを登録
@@ -598,14 +517,8 @@ fn ignores_topology_with_same_hash_via_event_stream() {
   let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
   let event_stream = system.event_stream();
 
-  let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
+  let ext_id = stub_extension_id(
     ClusterExtensionConfig::new().with_advertised_address("fraktor://demo").with_metrics_enabled(true),
-    Box::new(StubProvider),
-    ArcShared::new(StubBlockList),
-    Box::new(NoopDowningProvider::new()),
-    Box::new(StubGossiper),
-    Box::new(StubPubSub),
-    Box::new(StubIdentity),
   );
 
   let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
@@ -813,15 +726,8 @@ fn phase1_integration_duplicate_hash_topology_is_suppressed() {
   let (recorder, _subscription) = subscribe_recorder(&event_stream);
 
   // 3. ClusterExtension をセットアップ
-  let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(StubBlockList);
-  let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
+  let ext_id = stub_extension_id(
     ClusterExtensionConfig::new().with_advertised_address("node-a").with_metrics_enabled(true),
-    Box::new(StubProvider),
-    block_list,
-    Box::new(NoopDowningProvider::new()),
-    Box::new(StubGossiper),
-    Box::new(StubPubSub),
-    Box::new(StubIdentity),
   );
   let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
   ext_shared.start_member().unwrap();
@@ -851,15 +757,8 @@ fn phase1_integration_metrics_include_members_and_virtual_actors() {
   let event_stream = system.event_stream();
 
   // 2. ClusterExtension をセットアップ
-  let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(StubBlockList);
-  let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
+  let ext_id = stub_extension_id(
     ClusterExtensionConfig::new().with_advertised_address("node-a").with_metrics_enabled(true),
-    Box::new(StubProvider),
-    block_list,
-    Box::new(NoopDowningProvider::new()),
-    Box::new(StubGossiper),
-    Box::new(StubPubSub),
-    Box::new(StubIdentity),
   );
   let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
 
@@ -909,15 +808,8 @@ fn phase2_integration_join_leave_events_produce_topology_updated() {
   let (recorder, _subscription) = subscribe_recorder(&event_stream);
 
   // 3. ClusterExtension をセットアップ
-  let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(StubBlockList);
-  let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
+  let ext_id = stub_extension_id(
     ClusterExtensionConfig::new().with_advertised_address("node-a").with_metrics_enabled(true),
-    Box::new(StubProvider),
-    block_list,
-    Box::new(NoopDowningProvider::new()),
-    Box::new(StubGossiper),
-    Box::new(StubPubSub),
-    Box::new(StubIdentity),
   );
   let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
 
@@ -1036,15 +928,8 @@ fn phase2_integration_metrics_updated_correctly_with_dynamic_topology() {
   let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
 
   // 2. ClusterExtension をセットアップ
-  let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(StubBlockList);
-  let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
+  let ext_id = stub_extension_id(
     ClusterExtensionConfig::new().with_advertised_address("node-a").with_metrics_enabled(true),
-    Box::new(StubProvider),
-    block_list,
-    Box::new(NoopDowningProvider::new()),
-    Box::new(StubGossiper),
-    Box::new(StubPubSub),
-    Box::new(StubIdentity),
   );
   let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
 
@@ -1100,15 +985,8 @@ fn phase2_integration_shutdown_resets_metrics_and_emits_event() {
   let (recorder, _subscription) = subscribe_recorder(&event_stream);
 
   // 3. ClusterExtension をセットアップ
-  let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(StubBlockList);
-  let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
+  let ext_id = stub_extension_id(
     ClusterExtensionConfig::new().with_advertised_address("node-a").with_metrics_enabled(true),
-    Box::new(StubProvider),
-    block_list,
-    Box::new(NoopDowningProvider::new()),
-    Box::new(StubGossiper),
-    Box::new(StubPubSub),
-    Box::new(StubIdentity),
   );
   let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
 

@@ -1,5 +1,8 @@
 //! Heartbeat response exchanged by remote watcher daemons.
 
+#[cfg(test)]
+mod tests;
+
 use alloc::string::String;
 #[cfg(feature = "tokio-transport")]
 use alloc::vec::Vec;

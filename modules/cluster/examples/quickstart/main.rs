@@ -167,6 +167,7 @@ fn build_system(
     .with_remoting_config(RemotingConfig::default().with_canonical_host(HOST).with_canonical_port(port))
     .with_extension_installers(
       ExtensionInstallers::default()
+        // default_loopback_setup() はシリアライゼーション登録のみ（ルーティングは別途 enable_loopback で制御）
         .with_extension_installer(SerializationExtensionInstaller::new(default_loopback_setup()))
         .with_extension_installer(RemotingExtensionInstaller::new(
           RemotingExtensionConfig::default().with_transport_scheme("fraktor.tcp"),
