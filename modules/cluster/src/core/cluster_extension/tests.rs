@@ -726,9 +726,8 @@ fn phase1_integration_duplicate_hash_topology_is_suppressed() {
   let (recorder, _subscription) = subscribe_recorder(&event_stream);
 
   // 3. ClusterExtension をセットアップ
-  let ext_id = stub_extension_id(
-    ClusterExtensionConfig::new().with_advertised_address("node-a").with_metrics_enabled(true),
-  );
+  let ext_id =
+    stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("node-a").with_metrics_enabled(true));
   let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
   ext_shared.start_member().unwrap();
 
@@ -757,9 +756,8 @@ fn phase1_integration_metrics_include_members_and_virtual_actors() {
   let event_stream = system.event_stream();
 
   // 2. ClusterExtension をセットアップ
-  let ext_id = stub_extension_id(
-    ClusterExtensionConfig::new().with_advertised_address("node-a").with_metrics_enabled(true),
-  );
+  let ext_id =
+    stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("node-a").with_metrics_enabled(true));
   let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
 
   // 3. Kind を登録（virtual_actors が増加する）
@@ -808,9 +806,8 @@ fn phase2_integration_join_leave_events_produce_topology_updated() {
   let (recorder, _subscription) = subscribe_recorder(&event_stream);
 
   // 3. ClusterExtension をセットアップ
-  let ext_id = stub_extension_id(
-    ClusterExtensionConfig::new().with_advertised_address("node-a").with_metrics_enabled(true),
-  );
+  let ext_id =
+    stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("node-a").with_metrics_enabled(true));
   let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
 
   // 4. クラスタを開始
@@ -928,9 +925,8 @@ fn phase2_integration_metrics_updated_correctly_with_dynamic_topology() {
   let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
 
   // 2. ClusterExtension をセットアップ
-  let ext_id = stub_extension_id(
-    ClusterExtensionConfig::new().with_advertised_address("node-a").with_metrics_enabled(true),
-  );
+  let ext_id =
+    stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("node-a").with_metrics_enabled(true));
   let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
 
   // 3. Kind を登録して起動
@@ -985,9 +981,8 @@ fn phase2_integration_shutdown_resets_metrics_and_emits_event() {
   let (recorder, _subscription) = subscribe_recorder(&event_stream);
 
   // 3. ClusterExtension をセットアップ
-  let ext_id = stub_extension_id(
-    ClusterExtensionConfig::new().with_advertised_address("node-a").with_metrics_enabled(true),
-  );
+  let ext_id =
+    stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("node-a").with_metrics_enabled(true));
   let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
 
   // 4. Kind を登録して起動
