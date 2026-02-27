@@ -315,11 +315,18 @@ impl<TB: RuntimeToolbox + 'static> EndpointTransportBridge<TB> {
     let envelope = deferred.into_envelope();
     let channel = self.ensure_channel(authority).await?;
     if envelope.is_system() {
+      let start = if self.remote_instruments.serialization_timing_enabled() { Some(Instant::now()) } else { None };
+      let metadata = self.remote_instruments.write_metadata();
       let sequence_no = self.next_system_sequence(authority).await;
       let system_envelope = SystemMessageEnvelope::from_remoting_envelope(envelope, sequence_no, self.local_node());
       self.register_pending_system_envelope(authority, system_envelope.clone()).await;
-      let payload = AckedDelivery::SystemMessage(AllocBox::new(system_envelope.clone())).encode_frame();
+      let mut payload = AckedDelivery::SystemMessage(AllocBox::new(system_envelope.clone())).encode_frame();
+      if !metadata.is_empty() {
+        Self::append_remote_instrument_metadata(&mut payload, &metadata);
+      }
+      let serialization_nanos = start.map_or(0, |started| started.elapsed().as_nanos() as u64);
       self.transport.with_write(|t| t.send(&channel, &payload, system_envelope.correlation_id()))?;
+      self.remote_instruments.message_sent(payload.len(), serialization_nanos);
       return Ok(());
     }
 
@@ -671,8 +678,22 @@ impl<TB: RuntimeToolbox + 'static> EndpointTransportBridge<TB> {
   }
 
   async fn handle_acked_delivery_frame(&self, frame: InboundFrame) {
-    match AckedDelivery::decode_frame(frame.payload(), frame.correlation_id()) {
+    let start = if self.remote_instruments.serialization_timing_enabled() { Some(Instant::now()) } else { None };
+    let (frame_payload, metadata) = match Self::split_remote_instrument_metadata(frame.payload()) {
+      | Ok(result) => result,
+      | Err(error) => {
+        self.emit_error(format!("failed to parse remote instrument metadata on acked-delivery: {error:?}"));
+        return;
+      },
+    };
+    if let Err(error) = self.remote_instruments.read_metadata(metadata) {
+      self.emit_error(format!("failed to decode remote instrument metadata on acked-delivery: {error:?}"));
+      return;
+    }
+    match AckedDelivery::decode_frame(frame_payload, frame.correlation_id()) {
       | Ok(AckedDelivery::SystemMessage(envelope)) => {
+        let deserialization_nanos = start.map_or(0, |started| started.elapsed().as_nanos() as u64);
+        self.remote_instruments.message_received(frame.payload().len(), deserialization_nanos);
         let Some(authority) = self.resolve_system_message_reply_authority(&frame, &envelope).await else {
           self.emit_error("failed to resolve system-message ack authority".to_string());
           return;
