@@ -5,7 +5,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 #[cfg(feature = "tokio-transport")]
-use crate::core::{control_message::ControlMessage, wire_error::WireError};
+use crate::core::wire_error::WireError;
 
 #[cfg(feature = "tokio-transport")]
 const VERSION: u8 = 1;
@@ -55,8 +55,10 @@ impl Heartbeat {
 }
 
 #[cfg(feature = "tokio-transport")]
-impl ControlMessage for Heartbeat {
-  fn frame_kind(&self) -> u8 {
+impl Heartbeat {
+  /// Returns the wire frame kind associated with the control message.
+  #[must_use]
+  pub(crate) const fn frame_kind(&self) -> u8 {
     HEARTBEAT_FRAME_KIND
   }
 }

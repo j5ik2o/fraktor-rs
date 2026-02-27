@@ -5,7 +5,7 @@ mod tests;
 
 use alloc::vec::Vec;
 
-use crate::core::{control_message::ControlMessage, wire_error::WireError};
+use crate::core::wire_error::WireError;
 
 /// Wire kind used for [`Flush`] control frames.
 pub const FLUSH_FRAME_KIND: u8 = 0x20;
@@ -41,8 +41,10 @@ impl Flush {
   }
 }
 
-impl ControlMessage for Flush {
-  fn frame_kind(&self) -> u8 {
+impl Flush {
+  /// Returns the wire frame kind associated with the control message.
+  #[must_use]
+  pub const fn frame_kind(&self) -> u8 {
     FLUSH_FRAME_KIND
   }
 }

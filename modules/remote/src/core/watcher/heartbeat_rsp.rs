@@ -10,7 +10,7 @@ use alloc::vec::Vec;
 use core::convert::TryInto;
 
 #[cfg(feature = "tokio-transport")]
-use crate::core::{control_message::ControlMessage, wire_error::WireError};
+use crate::core::wire_error::WireError;
 
 #[cfg(feature = "tokio-transport")]
 const VERSION: u8 = 1;
@@ -71,8 +71,10 @@ impl HeartbeatRsp {
 }
 
 #[cfg(feature = "tokio-transport")]
-impl ControlMessage for HeartbeatRsp {
-  fn frame_kind(&self) -> u8 {
+impl HeartbeatRsp {
+  /// Returns the wire frame kind associated with the control message.
+  #[must_use]
+  pub(crate) const fn frame_kind(&self) -> u8 {
     HEARTBEAT_RSP_FRAME_KIND
   }
 }

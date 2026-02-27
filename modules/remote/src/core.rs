@@ -7,7 +7,6 @@ pub mod actor_ref_provider;
 /// Backpressure listeners for remoting channels.
 pub mod backpressure;
 mod block_list_provider;
-mod control_message;
 /// Endpoint association state machine and coordination.
 pub mod endpoint_association;
 /// Endpoint reader for inbound remote messages.
@@ -40,7 +39,6 @@ mod wire_error;
 mod wire_format;
 
 pub use block_list_provider::BlockListProvider;
-pub use control_message::ControlMessage;
 pub use event_publisher::{EventPublisher, EventPublisherGeneric};
 pub use flush::{FLUSH_FRAME_KIND, Flush};
 pub use flush_ack::{FLUSH_ACK_FRAME_KIND, FlushAck};
