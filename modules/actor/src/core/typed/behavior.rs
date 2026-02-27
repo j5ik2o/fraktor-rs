@@ -155,10 +155,10 @@ where
     let existing = self.signal_handler.take();
     self.signal_handler = Some(Box::new(move |ctx, signal| {
       let result = wrapper(ctx, signal)?;
-      if matches!(result.directive, BehaviorDirective::Same) {
-        if let Some(ref handler) = existing {
-          return handler(ctx, signal);
-        }
+      if matches!(result.directive, BehaviorDirective::Same)
+        && let Some(ref handler) = existing
+      {
+        return handler(ctx, signal);
       }
       Ok(result)
     }));

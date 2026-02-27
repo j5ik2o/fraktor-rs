@@ -169,10 +169,8 @@ where
     }
     // One heartbeat probe per authority is sufficient; find the first matching
     // target and send the probe only once instead of once per watcher.
-    if let Some((_, target)) = self
-      .watchers
-      .iter()
-      .find(|(_, target)| Self::authority_from_parts(target).as_deref() == Some(authority))
+    if let Some((_, target)) =
+      self.watchers.iter().find(|(_, target)| Self::authority_from_parts(target).as_deref() == Some(authority))
     {
       self.control.lock().associate(target)?;
     }

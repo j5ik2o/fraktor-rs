@@ -266,10 +266,7 @@ impl Behaviors {
 ///
 /// Returns `Some(Behavior::stopped())` when the inner behavior requests a stop
 /// during startup, so the caller can propagate it instead of continuing.
-fn apply_intercepted_directive<M, TB>(
-  inner: &mut Behavior<M, TB>,
-  next: Behavior<M, TB>,
-) -> Option<Behavior<M, TB>>
+fn apply_intercepted_directive<M, TB>(inner: &mut Behavior<M, TB>, next: Behavior<M, TB>) -> Option<Behavior<M, TB>>
 where
   M: Send + Sync + 'static,
   TB: RuntimeToolbox + 'static, {

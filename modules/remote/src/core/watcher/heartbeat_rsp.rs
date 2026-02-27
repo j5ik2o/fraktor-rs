@@ -69,12 +69,3 @@ impl HeartbeatRsp {
     Ok(Self::new(authority, uid))
   }
 }
-
-#[cfg(feature = "tokio-transport")]
-impl HeartbeatRsp {
-  /// Returns the wire frame kind associated with the control message.
-  #[must_use]
-  pub(crate) const fn frame_kind(&self) -> u8 {
-    HEARTBEAT_RSP_FRAME_KIND
-  }
-}

@@ -53,12 +53,3 @@ impl Heartbeat {
     Ok(Self::new(authority))
   }
 }
-
-#[cfg(feature = "tokio-transport")]
-impl Heartbeat {
-  /// Returns the wire frame kind associated with the control message.
-  #[must_use]
-  pub(crate) const fn frame_kind(&self) -> u8 {
-    HEARTBEAT_FRAME_KIND
-  }
-}

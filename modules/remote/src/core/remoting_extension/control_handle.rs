@@ -284,6 +284,10 @@ where
     {
       self.inner.heartbeat_channels.lock().remove(authority);
     }
+    #[cfg(not(feature = "tokio-transport"))]
+    {
+      let _ = authority;
+    }
     Ok(())
   }
 
