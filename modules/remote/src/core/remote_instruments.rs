@@ -18,7 +18,7 @@ impl RemoteInstruments {
   /// Creates a collection from the provided instrument instances.
   #[must_use]
   pub(crate) fn new(instruments: Vec<Arc<dyn RemoteInstrument>>) -> Self {
-    debug_assert!(
+    assert!(
       {
         let mut ids: Vec<u8> = instruments.iter().map(|i| i.identifier()).collect();
         ids.sort_unstable();
