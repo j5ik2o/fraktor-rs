@@ -29,6 +29,6 @@ impl DeadlineFailureDetectorConfig {
   /// Returns the deadline in milliseconds (pause + interval).
   #[must_use]
   pub const fn deadline_ms(&self) -> u64 {
-    self.acceptable_heartbeat_pause_ms + self.heartbeat_interval_ms.get()
+    self.acceptable_heartbeat_pause_ms.saturating_add(self.heartbeat_interval_ms.get())
   }
 }
