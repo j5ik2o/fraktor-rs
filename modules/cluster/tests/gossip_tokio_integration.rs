@@ -55,8 +55,12 @@ fn build_coordinator() -> MembershipCoordinatorSharedGeneric<StdToolbox> {
   let registry = DefaultFailureDetectorRegistry::new(Box::new(move || {
     Box::new(PhiFailureDetector::new(PhiFailureDetectorConfig::new(threshold, 10, 1)))
   }));
+  let cluster_config = ClusterExtensionConfig::new()
+    .with_advertised_address("127.0.0.1:22110")
+    .with_app_version("1.0.0")
+    .with_roles(vec![String::from("member")]);
   let mut coordinator =
-    MembershipCoordinatorGeneric::<StdToolbox>::new(config, ClusterExtensionConfig::new(), table, registry);
+    MembershipCoordinatorGeneric::<StdToolbox>::new(config, cluster_config, table, registry);
   coordinator.start_member().expect("start_member");
   MembershipCoordinatorSharedGeneric::new(coordinator)
 }
