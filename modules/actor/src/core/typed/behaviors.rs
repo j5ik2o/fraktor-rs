@@ -199,7 +199,7 @@ impl Behaviors {
       let mutex = <TB::MutexFamily as SyncMutexFamily>::create(timers);
       let shared = ArcShared::new(mutex);
       let shared_for_stop = shared.clone();
-      factory(shared).receive_signal(move |_ctx, signal| match signal {
+      factory(shared).compose_signal(move |_ctx, signal| match signal {
         | BehaviorSignal::Stopped => {
           shared_for_stop.lock().cancel_all();
           Ok(Behavior::stopped())
