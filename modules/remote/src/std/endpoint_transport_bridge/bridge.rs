@@ -682,13 +682,16 @@ impl<TB: RuntimeToolbox + 'static> EndpointTransportBridge<TB> {
     let (frame_payload, metadata) = match Self::split_remote_instrument_metadata(frame.payload()) {
       | Ok(result) => result,
       | Err(error) => {
-        self.emit_error(format!("failed to parse remote instrument metadata on acked-delivery: {error:?}"));
-        return;
+        self.emit_error(format!(
+          "failed to parse remote instrument metadata on acked-delivery, fallback to raw payload: {error:?}"
+        ));
+        (frame.payload(), &[] as &[u8])
       },
     };
     if let Err(error) = self.remote_instruments.read_metadata(metadata) {
-      self.emit_error(format!("failed to decode remote instrument metadata on acked-delivery: {error:?}"));
-      return;
+      self.emit_error(format!(
+        "failed to decode remote instrument metadata on acked-delivery, skipping instrumentation: {error:?}"
+      ));
     }
     match AckedDelivery::decode_frame(frame_payload, frame.correlation_id()) {
       | Ok(AckedDelivery::SystemMessage(envelope)) => {
