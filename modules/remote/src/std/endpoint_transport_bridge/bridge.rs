@@ -315,11 +315,11 @@ impl<TB: RuntimeToolbox + 'static> EndpointTransportBridge<TB> {
     let envelope = deferred.into_envelope();
     let channel = self.ensure_channel(authority).await?;
     if envelope.is_system() {
-      let start = if self.remote_instruments.serialization_timing_enabled() { Some(Instant::now()) } else { None };
       let metadata = self.remote_instruments.write_metadata();
       let sequence_no = self.next_system_sequence(authority).await;
       let system_envelope = SystemMessageEnvelope::from_remoting_envelope(envelope, sequence_no, self.local_node());
       self.register_pending_system_envelope(authority, system_envelope.clone()).await;
+      let start = if self.remote_instruments.serialization_timing_enabled() { Some(Instant::now()) } else { None };
       let mut payload = AckedDelivery::SystemMessage(AllocBox::new(system_envelope.clone())).encode_frame();
       if !metadata.is_empty() {
         Self::append_remote_instrument_metadata(&mut payload, &metadata);
