@@ -227,7 +227,9 @@ impl Behaviors {
 
         let started_result =
           interceptor.around_start(ctx, &mut |ctx| inner.handle_signal(ctx, &BehaviorSignal::Started))?;
-        apply_intercepted_directive(&mut inner, started_result);
+        if let Some(stopped) = apply_intercepted_directive(&mut inner, started_result) {
+          return Ok(stopped);
+        }
 
         let state = InterceptState { interceptor, inner };
         let mutex = <TB::MutexFamily as SyncMutexFamily>::create(state);
@@ -261,14 +263,27 @@ impl Behaviors {
 }
 
 /// Applies the behavior directive from an interceptor result to the inner behavior.
-fn apply_intercepted_directive<M, TB>(inner: &mut Behavior<M, TB>, next: Behavior<M, TB>)
+///
+/// Returns `Some(Behavior::stopped())` when the inner behavior requests a stop
+/// during startup, so the caller can propagate it instead of continuing.
+fn apply_intercepted_directive<M, TB>(
+  inner: &mut Behavior<M, TB>,
+  next: Behavior<M, TB>,
+) -> Option<Behavior<M, TB>>
 where
   M: Send + Sync + 'static,
   TB: RuntimeToolbox + 'static, {
   match next.directive() {
-    | BehaviorDirective::Active => *inner = next,
-    | BehaviorDirective::Empty => *inner = Behavior::empty(),
-    | _ => {},
+    | BehaviorDirective::Active => {
+      *inner = next;
+      None
+    },
+    | BehaviorDirective::Empty => {
+      *inner = Behavior::empty();
+      None
+    },
+    | BehaviorDirective::Stopped => Some(Behavior::stopped()),
+    | _ => None,
   }
 }
 
