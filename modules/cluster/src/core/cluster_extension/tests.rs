@@ -186,7 +186,7 @@ impl fraktor_remote_rs::core::BlockListProvider for StubBlockList {
   }
 }
 
-/// デフォルトのスタブ群で `ClusterExtensionId` を構築するヘルパー。
+/// Helper to build `ClusterExtensionId` with default stub components.
 fn stub_extension_id(config: ClusterExtensionConfig) -> ClusterExtensionId<NoStdToolbox> {
   ClusterExtensionId::<NoStdToolbox>::new(
     config,
