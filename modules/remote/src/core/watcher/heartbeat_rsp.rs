@@ -10,7 +10,7 @@ use alloc::vec::Vec;
 use core::convert::TryInto;
 
 #[cfg(feature = "tokio-transport")]
-use crate::core::{control_message::ControlMessage, wire_error::WireError};
+use crate::core::wire_error::WireError;
 
 #[cfg(feature = "tokio-transport")]
 const VERSION: u8 = 1;
@@ -67,12 +67,5 @@ impl HeartbeatRsp {
     }
     let uid = u64::from_le_bytes(bytes[2..10].try_into().map_err(|_| WireError::InvalidFormat)?);
     Ok(Self::new(authority, uid))
-  }
-}
-
-#[cfg(feature = "tokio-transport")]
-impl ControlMessage for HeartbeatRsp {
-  fn frame_kind(&self) -> u8 {
-    HEARTBEAT_RSP_FRAME_KIND
   }
 }

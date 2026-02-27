@@ -278,8 +278,17 @@ where
     Ok(())
   }
 
-  fn quarantine(&mut self, _authority: &str, _reason: &QuarantineReason) -> Result<(), RemotingError> {
-    self.ensure_can_run()
+  fn quarantine(&mut self, authority: &str, _reason: &QuarantineReason) -> Result<(), RemotingError> {
+    self.ensure_can_run()?;
+    #[cfg(feature = "tokio-transport")]
+    {
+      self.inner.heartbeat_channels.lock().remove(authority);
+    }
+    #[cfg(not(feature = "tokio-transport"))]
+    {
+      let _ = authority;
+    }
+    Ok(())
   }
 
   fn shutdown(&mut self) -> Result<(), RemotingError> {
@@ -355,17 +364,18 @@ where
       .lock()
       .clone()
       .ok_or_else(|| RemotingError::TransportUnavailable("remote transport not registered".to_string()))?;
-    // ロック範囲を最小化し、open_channel の I/O をロック外で実行する
-    let cached = { self.heartbeat_channels.lock().get(authority).copied() };
-    let channel = match cached {
-      | Some(ch) => ch,
-      | None => {
-        let endpoint = TransportEndpoint::new(authority.to_string());
-        let opened = transport.with_write(|t| t.open_channel(&endpoint))?;
-        let mut channels = self.heartbeat_channels.lock();
-        // 別スレッドが先に挿入済みならそちらを使う
-        *channels.entry(authority.to_string()).or_insert(opened)
-      },
+    // open_channel をロック内で実行しレース条件によるリソースリークを防ぐ
+    let channel = {
+      let mut channels = self.heartbeat_channels.lock();
+      match channels.get(authority).copied() {
+        | Some(ch) => ch,
+        | None => {
+          let endpoint = TransportEndpoint::new(authority.to_string());
+          let opened = transport.with_write(|t| t.open_channel(&endpoint))?;
+          channels.insert(authority.to_string(), opened);
+          opened
+        },
+      }
     };
     let payload = Heartbeat::new(authority).encode_frame();
     // 送信失敗時はキャッシュを無効化して壊れたチャネルの再利用を防ぐ

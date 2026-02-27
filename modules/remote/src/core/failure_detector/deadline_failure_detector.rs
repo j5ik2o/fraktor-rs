@@ -30,7 +30,7 @@ impl FailureDetector for DeadlineFailureDetector {
     match self.heartbeat_timestamp {
       // Pekko 互換: ハートビート未受信のリソースは健全として扱う
       | None => true,
-      | Some(ts) => (ts + self.deadline_ms) > now_ms,
+      | Some(ts) => ts.saturating_add(self.deadline_ms) > now_ms,
     }
   }
 

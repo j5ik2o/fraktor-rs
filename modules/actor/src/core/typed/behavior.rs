@@ -142,6 +142,32 @@ where
     self
   }
 
+  /// Composes an additional signal handler that runs before the existing one.
+  ///
+  /// If the wrapper returns `Same`, the original handler (if any) is called.
+  /// Otherwise the wrapper's result is returned directly.
+  pub(crate) fn compose_signal<F>(mut self, wrapper: F) -> Self
+  where
+    F: for<'a> Fn(&mut TypedActorContextGeneric<'a, M, TB>, &BehaviorSignal) -> Result<Behavior<M, TB>, ActorError>
+      + Send
+      + Sync
+      + 'static, {
+    let existing = self.signal_handler.take();
+    self.signal_handler = Some(Box::new(move |ctx, signal| {
+      let result = wrapper(ctx, signal)?;
+      if matches!(result.directive, BehaviorDirective::Same)
+        && let Some(ref handler) = existing
+      {
+        return handler(ctx, signal);
+      }
+      Ok(result)
+    }));
+    if matches!(self.directive, BehaviorDirective::Same) {
+      self.directive = BehaviorDirective::Active;
+    }
+    self
+  }
+
   /// Overrides the supervisor strategy associated with this behavior.
   #[must_use]
   pub const fn with_supervisor_strategy(mut self, strategy: SupervisorStrategy) -> Self {

@@ -199,10 +199,10 @@ impl Behaviors {
       let mutex = <TB::MutexFamily as SyncMutexFamily>::create(timers);
       let shared = ArcShared::new(mutex);
       let shared_for_stop = shared.clone();
-      factory(shared).receive_signal(move |_ctx, signal| match signal {
+      factory(shared).compose_signal(move |_ctx, signal| match signal {
         | BehaviorSignal::Stopped => {
           shared_for_stop.lock().cancel_all();
-          Ok(Behavior::stopped())
+          Ok(Behavior::same())
         },
         | _ => Ok(Behavior::same()),
       })
@@ -227,7 +227,9 @@ impl Behaviors {
 
         let started_result =
           interceptor.around_start(ctx, &mut |ctx| inner.handle_signal(ctx, &BehaviorSignal::Started))?;
-        apply_intercepted_directive(&mut inner, started_result);
+        if apply_intercepted_directive(&mut inner, started_result).is_err() {
+          return Ok(Behavior::stopped());
+        }
 
         let state = InterceptState { interceptor, inner };
         let mutex = <TB::MutexFamily as SyncMutexFamily>::create(state);
@@ -261,14 +263,24 @@ impl Behaviors {
 }
 
 /// Applies the behavior directive from an interceptor result to the inner behavior.
-fn apply_intercepted_directive<M, TB>(inner: &mut Behavior<M, TB>, next: Behavior<M, TB>)
+///
+/// Returns `Err(())` when the inner behavior requests a stop during startup,
+/// so the caller can construct `Behavior::stopped()` and propagate it.
+fn apply_intercepted_directive<M, TB>(inner: &mut Behavior<M, TB>, next: Behavior<M, TB>) -> Result<(), ()>
 where
   M: Send + Sync + 'static,
   TB: RuntimeToolbox + 'static, {
   match next.directive() {
-    | BehaviorDirective::Active => *inner = next,
-    | BehaviorDirective::Empty => *inner = Behavior::empty(),
-    | _ => {},
+    | BehaviorDirective::Active => {
+      *inner = next;
+      Ok(())
+    },
+    | BehaviorDirective::Empty => {
+      *inner = Behavior::empty();
+      Ok(())
+    },
+    | BehaviorDirective::Stopped => Err(()),
+    | _ => Ok(()),
   }
 }
 

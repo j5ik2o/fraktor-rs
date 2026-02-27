@@ -1,7 +1,6 @@
 #![cfg(any(test, feature = "test-support"))]
 
 use super::Flush;
-use crate::core::control_message::ControlMessage;
 
 #[test]
 fn round_trip_flush_frame() {
