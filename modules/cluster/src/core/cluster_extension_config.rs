@@ -130,7 +130,7 @@ impl Default for ClusterExtensionConfig {
 
 impl JoinConfigCompatChecker for ClusterExtensionConfig {
   fn check_join_compatibility(&self, joining: &ClusterExtensionConfig) -> ConfigValidation {
-    // TODO: gossip_config、app_version、roles 等の互換性チェックを追加する
+    // TODO(#248): gossip_config、app_version、roles 等の互換性チェックを追加する
     if self.pubsub_config != joining.pubsub_config {
       return ConfigValidation::Incompatible { reason: "pubsub configuration mismatch".to_string() };
     }
