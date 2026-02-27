@@ -5,7 +5,7 @@ mod tests;
 
 use alloc::string::String;
 
-use super::correlation_id::CorrelationId;
+use crate::core::event::stream::correlation_id::CorrelationId;
 
 /// Lifecycle event emitted by the remoting subsystem.
 #[derive(Clone, Debug, PartialEq, Eq)]
