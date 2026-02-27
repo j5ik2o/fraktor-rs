@@ -4,7 +4,7 @@
 mod tests;
 
 use alloc::{
-  collections::BTreeMap,
+  collections::{BTreeMap, BTreeSet},
   string::{String, ToString},
   vec::Vec,
 };
@@ -150,10 +150,11 @@ where
   }
 
   fn watched_authorities(&self) -> Vec<String> {
+    let mut seen = BTreeSet::new();
     let mut authorities = Vec::new();
     for (_, target) in &self.watchers {
       if let Some(authority) = Self::authority_from_parts(target)
-        && !authorities.iter().any(|existing| existing == &authority)
+        && seen.insert(authority.clone())
       {
         authorities.push(authority);
       }

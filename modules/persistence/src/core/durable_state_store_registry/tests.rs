@@ -133,20 +133,25 @@ fn resolve_unknown_provider_fails() {
 fn durable_state_update_store_reports_changes() {
   let mut store = TestDurableStateStore::new();
 
+  // changes(id, seq) は指定 seq より大きいシーケンス番号の変更を返す
   let no_change = poll_ready(store.changes(TEST_PERSISTENCE_ID, 0)).expect("load changes before first upsert");
   assert_eq!(no_change, None);
 
+  // 最初の upsert → seq=1, value=10
   poll_ready(store.upsert_object(TEST_PERSISTENCE_ID, 10)).expect("upsert first state");
   let first_change = poll_ready(store.changes(TEST_PERSISTENCE_ID, 0)).expect("load first change");
   assert_eq!(first_change, Some((1, 10)));
 
+  // seq=1 以降は未更新なので None
   let no_second_change = poll_ready(store.changes(TEST_PERSISTENCE_ID, 1)).expect("load second change before upsert");
   assert_eq!(no_second_change, None);
 
+  // 2回目の upsert → seq=2, value=20
   poll_ready(store.upsert_object(TEST_PERSISTENCE_ID, 20)).expect("upsert second state");
   let second_change = poll_ready(store.changes(TEST_PERSISTENCE_ID, 1)).expect("load second change");
   assert_eq!(second_change, Some((2, 20)));
 
+  // seq=2 以降は未更新なので None
   let no_third_change = poll_ready(store.changes(TEST_PERSISTENCE_ID, 2)).expect("load third change");
   assert_eq!(no_third_change, None);
 }

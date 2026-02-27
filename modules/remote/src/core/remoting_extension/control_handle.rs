@@ -355,18 +355,24 @@ where
       .lock()
       .clone()
       .ok_or_else(|| RemotingError::TransportUnavailable("remote transport not registered".to_string()))?;
-    let mut channels = self.heartbeat_channels.lock();
-    let channel = match channels.get(authority) {
-      | Some(&ch) => ch,
+    // ロック範囲を最小化し、open_channel の I/O をロック外で実行する
+    let cached = { self.heartbeat_channels.lock().get(authority).copied() };
+    let channel = match cached {
+      | Some(ch) => ch,
       | None => {
         let endpoint = TransportEndpoint::new(authority.to_string());
-        let ch = transport.with_write(|t| t.open_channel(&endpoint))?;
-        channels.insert(authority.to_string(), ch);
-        ch
+        let opened = transport.with_write(|t| t.open_channel(&endpoint))?;
+        let mut channels = self.heartbeat_channels.lock();
+        // 別スレッドが先に挿入済みならそちらを使う
+        *channels.entry(authority.to_string()).or_insert(opened)
       },
     };
     let payload = Heartbeat::new(authority).encode_frame();
-    transport.with_write(|t| t.send(&channel, &payload, CorrelationId::nil()))?;
+    // 送信失敗時はキャッシュを無効化して壊れたチャネルの再利用を防ぐ
+    if let Err(error) = transport.with_write(|t| t.send(&channel, &payload, CorrelationId::nil())) {
+      self.heartbeat_channels.lock().remove(authority);
+      return Err(error.into());
+    }
     Ok(())
   }
 

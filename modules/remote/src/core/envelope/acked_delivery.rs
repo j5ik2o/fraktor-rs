@@ -84,6 +84,8 @@ impl AckedDelivery {
   ///
   /// Returns [`WireError`] when the payload is malformed.
   pub fn decode_frame(bytes: &[u8], correlation_id: CorrelationId) -> Result<Self, WireError> {
+    // NOTE: VERSION はここで検証済み。SystemMessageEnvelope::decode_frame 内でも
+    // 再度検証されるが、各デコーダが単体でも安全に呼べるよう意図的に二重チェックしている。
     if bytes.len() < 2 || bytes[0] != VERSION {
       return Err(WireError::InvalidFormat);
     }

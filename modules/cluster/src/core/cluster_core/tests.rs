@@ -495,11 +495,6 @@ fn new_core_stores_dependencies_and_startup_params() {
   assert!(core.event_stream == event_stream);
 
   // 構成が保持されていること
-  // startup_state内部のアドレスが正しく設定されていることを確認
-  assert_eq!(core.startup_address(), config.advertised_address());
-
-  // 起動パラメータが両モードで再利用できる形で保持されること
-  assert_eq!(core.startup_address(), config.advertised_address());
   assert_eq!(core.startup_address(), config.advertised_address());
 }
 

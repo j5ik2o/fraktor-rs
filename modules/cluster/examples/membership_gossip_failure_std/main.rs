@@ -173,6 +173,7 @@ impl DemoNode {
 
   fn handle_join(&mut self, node_id: &str, authority: &str, now: TimerInstant) {
     println!("[{}][join] {} -> {}", self.name, node_id, authority);
+    // デモ用の固定設定（本番では呼び出し元からの引数を使用すること）
     let joining_config = ClusterExtensionConfig::new()
       .with_advertised_address(authority)
       .with_app_version("1.0.0")

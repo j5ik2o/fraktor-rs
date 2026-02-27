@@ -62,7 +62,9 @@ fn build_coordinator(authority: &str) -> MembershipCoordinatorSharedGeneric<StdT
   let table = MembershipTable::new(3);
   let threshold = config.phi_threshold;
   let registry = DefaultFailureDetectorRegistry::new(Box::new(move || {
-    Box::new(PhiFailureDetector::new(PhiFailureDetectorConfig::new(threshold, 10, 1)))
+    const MAX_SAMPLE_SIZE: usize = 10;
+    const MINIMUM_INTERVAL_MS: u64 = 1;
+    Box::new(PhiFailureDetector::new(PhiFailureDetectorConfig::new(threshold, MAX_SAMPLE_SIZE, MINIMUM_INTERVAL_MS)))
   }));
   let cluster_config = ClusterExtensionConfig::new()
     .with_advertised_address(authority)

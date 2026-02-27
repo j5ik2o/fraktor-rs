@@ -456,6 +456,11 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     }
   }
 
+  /// Delivers a termination notification for the given pid.
+  ///
+  /// When a custom message was registered via [`register_watch_with`](Self::register_watch_with),
+  /// the message is enqueued into the actor mailbox (delivered asynchronously on a later turn).
+  /// Otherwise, [`Actor::on_terminated`] is invoked synchronously within this call.
   pub(crate) fn handle_terminated(&self, terminated_pid: Pid) -> Result<(), ActorError> {
     let custom_message = self.take_watch_with_message(terminated_pid);
     if let Some(message) = custom_message {

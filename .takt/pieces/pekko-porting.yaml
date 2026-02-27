@@ -264,7 +264,8 @@ movements:
   - name: ai_no_fix
     edit: false
     persona: architecture-reviewer
-    policy: review
+    policy:
+      - review
     allowed_tools:
       - Read
       - Glob
@@ -364,7 +365,8 @@ movements:
   - name: supervise
     edit: false
     persona: supervisor
-    policy: review
+    policy:
+      - review
     allowed_tools:
       - Read
       - Glob

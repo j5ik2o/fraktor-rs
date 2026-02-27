@@ -2274,8 +2274,8 @@ fn throttle_enforcing_mode_keeps_single_path_behavior() {
 
 #[test]
 fn throttle_enforcing_mode_fails_on_capacity_overflow() {
-  // map_concat produces multiple outputs from one input, saturating the
-  // throttle's internal buffer faster than it can drain downstream.
+  // map_concat は1入力から複数出力を生成し、スロットルの内部バッファを
+  // 下流が排出できるより速く飽和させる。
   let result = Source::single(alloc::vec![1_u32, 2, 3])
     .via(Flow::new().map_concat(|v: alloc::vec::Vec<u32>| v))
     .via(Flow::new().throttle(1, crate::core::ThrottleMode::Enforcing).expect("throttle"))
@@ -2289,15 +2289,15 @@ fn throttle_enforcing_logic_returns_buffer_overflow_when_pending_full() {
 
   let mut logic = AsyncBoundaryLogic::<u32> { pending: VecDeque::new(), capacity: 1, enforcing: true };
 
-  // First element fits within capacity
+  // 最初の要素はキャパシティ内に収まる
   let first: DynValue = Box::new(1_u32);
   assert!(logic.apply(first).is_ok());
   assert_eq!(logic.pending.len(), 1);
 
-  // can_accept_input remains true in enforcing mode even at capacity
+  // enforcing モードではキャパシティに達しても can_accept_input は true のまま
   assert!(logic.can_accept_input());
 
-  // Second element triggers BufferOverflow
+  // 2番目の要素で BufferOverflow が発生する
   let second: DynValue = Box::new(2_u32);
   assert!(matches!(logic.apply(second), Err(StreamError::BufferOverflow)));
 }
@@ -2312,7 +2312,7 @@ fn throttle_shaping_logic_uses_backpressure_at_capacity() {
   assert!(logic.apply(first).is_ok());
   assert_eq!(logic.pending.len(), 1);
 
-  // Shaping mode refuses input at capacity (backpressure)
+  // shaping モードではキャパシティに達すると入力を拒否する（バックプレッシャー）
   assert!(!logic.can_accept_input());
 }
 
