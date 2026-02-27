@@ -271,7 +271,12 @@ impl<TB: RuntimeToolbox + 'static> ActorContextGeneric<'_, TB> {
     let state = self.system.state();
     let cell = state.cell(&self.pid).ok_or_else(|| SendError::no_recipient(message.clone()))?;
     cell.register_watch_with(target.pid(), message);
-    self.watch(target)
+    if let Err(error) = self.watch(target) {
+      // watch 失敗時はカスタムメッセージ登録をロールバックする
+      cell.remove_watch_with(target.pid());
+      return Err(error);
+    }
+    Ok(())
   }
 
   /// Emits a log event associated with the running actor.
