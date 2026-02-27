@@ -1,20 +1,20 @@
 {
   "private": true,
   "scripts": {
-    "sdd": "takt --pipeline --skip-git --create-worktree no -w sdd -t",
-    "sdd:requirements": "takt --pipeline --skip-git --create-worktree no -w sdd-requirements -t",
-    "sdd:validate-gap": "takt --pipeline --skip-git --create-worktree no -w sdd-validate-gap -t",
-    "sdd:design": "takt --pipeline --skip-git --create-worktree no -w sdd-design -t",
-    "sdd:validate-design": "takt --pipeline --skip-git --create-worktree no -w sdd-validate-design -t",
-    "sdd:tasks": "takt --pipeline --skip-git --create-worktree no -w sdd-tasks -t",
-    "sdd:impl": "takt --pipeline --skip-git --create-worktree no -w sdd-impl -t",
-    "sdd:validate-impl": "takt --pipeline --skip-git --create-worktree no -w sdd-validate-impl -t",
-    "issue:resolve": "takt --pipeline --skip-git --create-worktree no -w issue-resolve -t",
-    "steering": "takt --pipeline --skip-git --create-worktree no -w steering -t",
-    "steering:custom": "takt --pipeline --skip-git --create-worktree no -w steering-custom -t",
-    "takt:run": "takt run"
+    "takt:cc-sdd:full": "takt --pipeline --skip-git --create-worktree no -w sdd -t",
+    "takt:cc-sdd:requirements": "takt --pipeline --skip-git --create-worktree no -w sdd-requirements -t",
+    "takt:cc-sdd:validate-gap": "takt --pipeline --skip-git --create-worktree no -w sdd-validate-gap -t",
+    "takt:cc-sdd:design": "takt --pipeline --skip-git --create-worktree no -w sdd-design -t",
+    "takt:cc-sdd:validate-design": "takt --pipeline --skip-git --create-worktree no -w sdd-validate-design -t",
+    "takt:cc-sdd:tasks": "takt --pipeline --skip-git --create-worktree no -w sdd-tasks -t",
+    "takt:cc-sdd:impl": "takt --pipeline --skip-git --create-worktree no -w sdd-impl -t",
+    "takt:cc-sdd:validate-impl": "takt --pipeline --skip-git --create-worktree no -w sdd-validate-impl -t",
+    "takt:cc-sdd:steering": "takt --pipeline --skip-git --create-worktree no -w steering -t",
+    "takt:cc-sdd:steering:custom": "takt --pipeline --skip-git --create-worktree no -w steering-custom -t",
+    "takt:run": "takt run",
+    "takt:issue:resolve": "takt --pipeline --skip-git --create-worktree no -w issue-resolve -t"
   },
   "devDependencies": {
-    "takt": "0.26.0"
+    "takt": "0.27.0-alpha.1"
   }
 }
