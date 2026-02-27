@@ -439,6 +439,10 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     self.state.lock().stashed_messages.clear();
   }
 
+  fn drop_watch_with_messages(&self) {
+    self.state.lock().watch_with_messages.clear();
+  }
+
   fn handle_pipe_task_ready(&self, task_id: ContextPipeTaskId) {
     self.poll_pipe_task(task_id);
   }
@@ -520,6 +524,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
 
     self.drop_pipe_tasks();
     self.drop_stash_messages();
+    self.drop_watch_with_messages();
     self.publish_lifecycle(LifecycleStage::Stopped);
     self.recreate_actor();
     let outcome = self.run_pre_start(LifecycleStage::Restarted);
