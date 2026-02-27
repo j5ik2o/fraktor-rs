@@ -5,10 +5,7 @@ mod tests;
 
 use alloc::string::String;
 
-use super::{
-  correlation_id::CorrelationId, graceful_shutdown_quarantined_event::GracefulShutdownQuarantinedEvent,
-  this_actor_system_quarantined_event::ThisActorSystemQuarantinedEvent,
-};
+use super::correlation_id::CorrelationId;
 
 /// Lifecycle event emitted by the remoting subsystem.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -44,10 +41,6 @@ pub enum RemotingLifecycleEvent {
     /// Correlation identifier linking to deferred queue drains and metrics.
     correlation_id: CorrelationId,
   },
-  /// Authority was quarantined due to graceful shutdown.
-  GracefulShutdownQuarantined(GracefulShutdownQuarantinedEvent),
-  /// This actor system was quarantined by the specified remote authority.
-  ThisActorSystemQuarantined(ThisActorSystemQuarantinedEvent),
   /// Authority temporarily gated following a transient transport failure.
   Gated {
     /// Authority for which gating was applied.
