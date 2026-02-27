@@ -202,7 +202,7 @@ impl Behaviors {
       factory(shared).compose_signal(move |_ctx, signal| match signal {
         | BehaviorSignal::Stopped => {
           shared_for_stop.lock().cancel_all();
-          Ok(Behavior::stopped())
+          Ok(Behavior::same())
         },
         | _ => Ok(Behavior::same()),
       })
