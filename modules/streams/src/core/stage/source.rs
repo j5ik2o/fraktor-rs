@@ -1678,19 +1678,24 @@ where
 {
   /// Filters out elements whose key has already been seen.
   #[must_use]
-  pub fn distinct_by<K, F>(self, mut key_fn: F) -> Source<Out, Mat>
+  pub fn distinct_by<K, F>(self, key_fn: F) -> Source<Out, Mat>
   where
     K: Ord + Send + Sync + 'static,
-    F: FnMut(&Out) -> K + Send + Sync + 'static, {
-    let mut seen = alloc::collections::BTreeSet::<K>::new();
-    self.filter(move |value| {
-      let key = key_fn(value);
-      if seen.contains(&key) {
-        return false;
-      }
-      seen.insert(key);
-      true
-    })
+    F: FnMut(&Out) -> K + Clone + Send + Sync + 'static, {
+    self
+      .stateful_map(move || {
+        let mut key_fn = key_fn.clone();
+        let mut seen = alloc::collections::BTreeSet::<K>::new();
+        move |value: Out| {
+          let key = key_fn(&value);
+          if seen.contains(&key) {
+            return None;
+          }
+          seen.insert(key);
+          Some(value)
+        }
+      })
+      .flatten_optional()
   }
 }
 
