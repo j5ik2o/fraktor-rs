@@ -1,1 +1,15 @@
-tasks: []
+tasks:
+  - worktree: true
+    piece: pekko-porting
+    issue: 400
+    auto_pr: true
+    draft_pr: true
+    name: github-issue-400-takt-pekkogya
+    status: pending
+    slug: github-issue-400-takt-pekkogya
+    summary: "## GitHub Issue #400: takt: Pekkoギャップ埋め Phase 1-2 (trivial/easy/medium)"
+    task_dir: .takt/tasks/20260228-235758-github-issue-400-takt-pekko-ph
+    created_at: 2026-02-28T23:57:58.787Z
+    started_at: null
+    completed_at: null
+    owner_pid: null
