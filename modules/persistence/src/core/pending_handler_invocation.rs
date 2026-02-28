@@ -98,7 +98,11 @@ impl<A> PendingHandlerInvocation<A> {
   /// Returns true when the invocation came from defer/defer_async.
   #[must_use]
   pub const fn is_deferred(&self) -> bool {
-    self.deferred()
+    match self {
+      | PendingHandlerInvocation::Stashing { deferred, .. } | PendingHandlerInvocation::Async { deferred, .. } => {
+        *deferred
+      },
+    }
   }
 
   /// Returns the sequence number associated with this invocation.
@@ -116,14 +120,6 @@ impl<A> PendingHandlerInvocation<A> {
     match self {
       | PendingHandlerInvocation::Stashing { repr, handler, .. } => handler(actor, &repr),
       | PendingHandlerInvocation::Async { repr, handler, .. } => handler(actor, &repr),
-    }
-  }
-
-  const fn deferred(&self) -> bool {
-    match self {
-      | PendingHandlerInvocation::Stashing { deferred, .. } | PendingHandlerInvocation::Async { deferred, .. } => {
-        *deferred
-      },
     }
   }
 }

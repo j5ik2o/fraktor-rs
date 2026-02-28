@@ -1,6 +1,7 @@
 **Pekko互換性**と**fraktor-rs規約準拠**のレビューに集中してください。
 
 ## やらないこと (Do Not)
+
 - `cargo check` / `cargo build` / `cargo test` など、ビルドを伴うコマンドを実行しないこと。このムーブメントはビルド権限がなく `Operation not permitted` で失敗する。ビルド検証は `fix` / `implement` ムーブメントの責務。
 AI特有の問題はレビューしないでください（ai_reviewムーブメントで実施済み）。
 
@@ -17,6 +18,7 @@ AI特有の問題はレビューしないでください（ai_reviewムーブメ
 
 **Pekko参照の確認（必須）:**
 - `references/pekko/` の該当ソースを実際に開いて、実装との対応を検証する
+   - clusterモジュールはpekkoだけではなく`references/protoactor-go`の該当ソースを開くこと
 - 推測で「互換」と判定しない
 
 **前回指摘の追跡（必須）:**

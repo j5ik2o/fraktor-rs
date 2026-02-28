@@ -24,7 +24,12 @@ reviews:
   path_filters:
     - "!references/**"
     - "!target/**"
+    - "!.claude/**"
     - "!.codex/**"
+    - "!.gemini/**"
+    - "!.cursor/**"
+    - "!.opencode/**"
+    - "!.takt/**"
 
   auto_review:
     enabled: true

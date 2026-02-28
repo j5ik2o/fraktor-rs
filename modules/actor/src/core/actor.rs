@@ -19,6 +19,7 @@ mod pipe_spawn_error;
 mod receive_state;
 
 pub use actor_cell::{ActorCell, ActorCellGeneric};
+pub(crate) use actor_context::STASH_OVERFLOW_REASON;
 pub use actor_context::{ActorContext, ActorContextGeneric};
 pub use actor_lifecycle::Actor;
 pub(crate) use actor_shared::ActorSharedGeneric;

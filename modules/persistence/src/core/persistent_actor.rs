@@ -158,6 +158,10 @@ where
   }
 
   /// Defers a side effect until current persistence completes (stashing mode).
+  ///
+  /// # Panics
+  ///
+  /// Panics if called during recovery (before `RecoveryCompleted`).
   fn defer<E: Any + Send + Sync + 'static>(
     &mut self,
     ctx: &mut ActorContextGeneric<'_, TB>,
@@ -183,6 +187,10 @@ where
   }
 
   /// Defers a side effect until current persistence completes (non-stashing mode).
+  ///
+  /// # Panics
+  ///
+  /// Panics if called during recovery (before `RecoveryCompleted`).
   fn defer_async<E: Any + Send + Sync + 'static>(
     &mut self,
     ctx: &mut ActorContextGeneric<'_, TB>,
@@ -208,12 +216,17 @@ where
   }
 
   /// Returns strategy used when stashing fails during persist fencing.
+  ///
+  /// Defaults to [`StashOverflowStrategy::Fail`] — differs from Pekko's default (`Drop` for typed
+  /// persistence).
   #[must_use]
   fn stash_overflow_strategy(&self) -> StashOverflowStrategy {
     StashOverflowStrategy::Fail
   }
 
   /// Returns the maximum number of commands that can be stashed while fencing.
+  ///
+  /// Defaults to `1024` — differs from Pekko's default (unbounded, `-1`).
   #[must_use]
   fn stash_capacity(&self) -> usize {
     1024
