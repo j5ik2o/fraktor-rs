@@ -14,12 +14,13 @@
 | Flow オペレーター数（fraktor-rs） | ~145（Pekko 超） |
 | Source オペレーター数（fraktor-rs） | ~116 |
 | Sink ファクトリ数（fraktor-rs） | ~39 |
-| 未実装ギャップ数 | 23 |
+| 未実装ギャップ数 | 24 |
 
 ### 設計上の差異
 
 - **Source オペレーター**: Pekko では `Source` が `FlowOps` を継承し全オペレーターを持つ。fraktor-rs では `Source` に厳選された ~116 メソッドのみ配置し、その他は `source.via(flow)` で合成する設計。これはギャップではなく意図的な設計判断。
 - **実行モデル**: fraktor-rs は tick ベースの同期実行モデルを採用。Pekko の `FiniteDuration` パラメータは `ticks: u64` で代替。
+- **非同期境界**: fraktor-rs は `async_boundary`/`detach` により境界段でバッファリングする実装を持つが、Pekko の `island`（`Attributes.asyncBoundary`）に相当する dispatcher 分離は未対応。
 - **エラーモデル**: Pekko の `Throwable` ベースは Rust の `Result<T, StreamError>` ベースに適応済み。
 
 ---
@@ -30,6 +31,7 @@
 
 | Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
 |-----------|-----------|-------------|--------|------|
+| `async` | FlowOps | `async_boundary`/`detach`（実体あり） | medium | `async_boundary` は受信・送信間でキューを持つが、Pekko の actor dispatcher ベースの `island` 分離（`Attributes.asyncBoundary` 系）は未対応 |
 | `debounce(duration)` | FlowOps | 未対応 | medium | タイマー統合が必要 |
 | `sample(interval)` / `sample(n)` | FlowOps | 未対応 | medium | タイマー統合 or カウントベース |
 | `distinct` | FlowOps | `drop_repeated`（連続のみ） | easy | HashSet ベースで全体重複排除。`drop_repeated` は連続重複のみ |
@@ -233,10 +235,23 @@
 
 fraktor-rs の streams モジュールは **Pekko Streams の FlowOps オペレーターをほぼ網羅**しており、一部では Pekko を超える独自機能（ファズテスト、オペレーター互換性追跡、明示的デマンド管理）を持つ。型数ベースで ~83%、オペレーターベースでは Flow が ~95% 以上のカバレッジ。
 
-主要なギャップは以下の 3 領域に集中：
+主要なギャップは以下の 4 領域に集中：
 
 1. **時間系オペレーター**（debounce, sample）— タイマー統合が必要
 2. **ファクトリメソッド**（fromGraph, fromMaterializer）— Graph 基盤との接続
 3. **インフラストラクチャ**（Attributes, Framing, StreamRefs）— 基盤レイヤーの設計が必要
+4. **非同期境界の意味論**（`async`）— `island` 相当の dispatcher 分離未対応
 
 現在の利用状況で必要性が低い場合は YAGNI 原則に従い、Phase 1-2 の trivial/easy 項目のみを優先的に実装するのが妥当。
+
+## 次の推奨プラン（全体優先度）
+
+cluster の `SplitBrainResolver` まわりは後回しにし、まず `actor` と `streams` の Pekko 互換を先に揃える方針とする。
+
+- 第1優先（来期）: `streams` の易〜中程度実装を先行する  
+  - `distinct` / `distinctBy`、`fromGraph` 系ファクトリ、`debounce`、`sample`、`named` の順で段階実装
+- 第2優先: `streams` hard 領域の基盤整備  
+  - `Attributes` 基盤（withAttributes/addAttributes）を追加し、`SourceRef` / `SinkRef` などのリモート/クラスタ依存機能の土台を作る
+- 第3優先: `actor` に合わせた相互接続最適化  
+  - `Receptionist` / `ServiceKey` / `GroupRouter` が揃った後に、`SourceRef`/`SinkRef` の接続設計を見直す
+- 同時進行: `cluster` は `easy` 領域（`roles`, `registerOnMemberUp/Removed`, `MemberStatus.Exiting` 等）中心に保守、SBR/Reachability は要件確定後に再優先化

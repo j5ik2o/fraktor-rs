@@ -170,3 +170,14 @@ fraktor-rs の remote モジュールは前回分析から大幅に改善され�
 3. **テストユーティリティ**（TestTransport, FailureInjectorTransportAdapter）— テストキットの充実
 
 コアのリモーティング機能（トランスポート、エンドポイント、ハンドシェイク、障害検出、信頼配信、ライフサイクルイベント）は完全にカバーされている。
+
+## 次の推奨プラン（全体優先度）
+
+全体方針として、まず `actor` / `streams` の Pekko 互換を上げてから cluster 深掘りを行うため、remote は既存カバレッジを維持しつつ必要最小限の補強に留める。
+
+- 第1優先: 既存実装の安定化  
+  - `Phase 1-2` の項目（`TestTransport`, `FailureInjectorTransportAdapter`, `Flush/FlushAck`）を現行 API 破壊なしで実装
+- 第2優先: `streams` と `actor` の統合検証  
+  - `RemoteWatcher` 系ハートビートや `SourceRef`/`SinkRef` 実装時に、リモート層との接続前提を先に固める
+- 第3優先: cluster 優先度見直しと並行  
+  - cluster を中核スコープアウトしている期間は、remote 側は `cluster` 追加項目との依存関係だけを抑え、SBR や大規模クラスタ運用機構は別計画で扱う

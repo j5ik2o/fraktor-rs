@@ -27,7 +27,7 @@
 | Pub/Sub | distributed-pub-sub（別モジュール） | PubSub（cluster内蔵） | protoactor-go準拠 |
 | メンバーシップ | Gossipプロトコル + VectorClock | Gossip + MembershipVersion（単調増加） | 簡略化された一貫性モデル |
 | 障害検出 | FailureDetector統合 + Reachability | PhiFailureDetector（remote経由） | 基本機能は実装済み |
-| ダウニング | プラガブルDowningProvider + SBR | DowningProvider trait + NoopDowningProvider | 基盤のみ実装 |
+| ダウニング | プラガブルDowningProvider + SBR | DowningProvider trait + NoopDowningProvider | 基盤のみ実装。`DowningProvider::down` が下流の明示ダウンを制御し、最終的な適用は `ClusterProvider::down` へ委譲 |
 | イベントモデル | 豊富なsealed trait階層 | ClusterEvent enum | 簡略化 |
 
 ## カテゴリ別ギャップ
@@ -112,7 +112,7 @@
 | Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
 |-----------|-----------|-------------|--------|------|
 | `DowningProvider` (abstract) | `DowningProvider.scala` | `DowningProvider` trait | - | **実装済み**。`NoopDowningProvider` が既定 |
-| `SplitBrainResolver` | `sbr/SplitBrainResolver.scala` | 未対応 | hard | ネットワーク分断時のダウニング判定 |
+| `SplitBrainResolver` | `sbr/SplitBrainResolver.scala` | 未対応 | hard | ネットワーク分断時の自動ダウニング判定。proto.actor-goベースの明示ダウン経路では対応外 |
 | `DowningStrategy` (abstract) | `sbr/DowningStrategy.scala` | 未対応 | hard | ダウニング判定ロジックの抽象化 |
 | `DowningStrategy.Decision` (sealed) | `sbr/DowningStrategy.scala` | 未対応 | hard | DownReachable, DownUnreachable, DownAll 等 |
 | Phi Accrual FD統合 | `Cluster.scala` | PhiFailureDetector（remote経由） | - | 実装済み。MembershipCoordinatorが使用 |
@@ -168,6 +168,21 @@
 | `ClusterNodeMBean` (JMX) | `ClusterJmx.scala` | 未対応 | n/a | JVM固有 |
 | `ClusterLogMarker` | `ClusterLogMarker.scala` | 未対応 | easy | 構造化ログマーカー |
 | Metrics（全般） | 散在 | `ClusterMetrics` / `ClusterMetricsSnapshot` | - | 実装済み |
+
+## 設計統合観点（Proto.Actor-go基盤 + Pekko的クラスタ機能）
+
+現行実装は「ClusterProvider + VirtualActor」を既存価値として維持しつつ、以下の2層で拡張すると大規模化の耐性を高められる。
+
+- クラスタ基盤層: `ClusterProvider` がノードの参加/離脱/障害検知を担う。
+- 配置統治層: シャード（または仮想Actor配置）を独立制御する層を追加し、`ClusterSharding` 的な責務を担わせる。
+
+この分割にすると、現状は維持しつつ次の順でスコープインできる。
+
+- まず `DowningProvider` を活用して手動downの制御を明確化し、`SplitBrainResolver` 相当の最小自動判定を追加する。
+- 次に `Reachability` と `Unreachable/Reachable` 系イベントを追加して、分断耐性と収束品質を上げる。
+- 最後に `Placement` 系（leader/role別の制御、コンバージェンス、ルーティング）を追加してシャード統治を高化する。
+
+この見方では、現時点の `proto.actor-go` 基盤は捨てずに、Pekko 的機能を段階的に「差し込む」方式になるため、移行時の破壊的変更を小さく保ちながらスケール要求へ対応できる。
 
 ## 実装優先度の提案
 
@@ -237,4 +252,15 @@ fraktor-rs の cluster モジュールは **Pekko とは大きく異なる設計
 2. **リーダー選出とコンバージェンス**（Leader, VectorClock, Seen）— 分散合意の強化
 3. **クラスタルーティング**（ClusterRouter）— クラスタ対応のメッセージルーティング
 
-YAGNI 原則に従い、Phase 2 の easy 項目（Exiting 状態、ロール、registerOnMemberUp 等）を優先し、SBR 等の hard 項目は本番運用要件が明確になってから検討するのが妥当。
+YAGNI 原則に従い、Phase 2 の easy 項目（Exiting 状態、ロール、registerOnMemberUp 等）を優先し、SBR 等の hard 項目は本番運用要件が明確になってから検討するのが妥当。なお現状は明示 `down` API を主軸にしており、分断自動判定（SplitBrainResolver 相当）は未対応。
+
+## 次の推奨プラン（全体優先度）
+
+ユーザ要求どおり、当面は `actor` / `streams` を優先し、cluster の拡充は defer する。
+
+- 第1優先: `cluster` は easy 領域で安全に収束  
+  - `MemberStatus.Exiting` / `roles` / `isOlderThan` / `registerOnMemberUp` / `registerOnMemberRemoved` / `ClusterLogMarker` などを先に実装
+- 第2優先: `SplitBrainResolver` 系は保留  
+  - SBR・`Reachability`・`MembershipState.convergence` はクラスタ要件が明確になるまでハイブリッド（明示 `down` 中心）運用を維持
+- 第3優先: `actor` / `streams` の Pekko 互換が進んだ後に再評価  
+  - `LeaderChanged` / `RoleLeaderChanged` / `ClusterRouter` / Placement 系を同一トランザクションで統合する設計に移行

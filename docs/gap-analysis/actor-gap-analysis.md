@@ -245,3 +245,12 @@ fraktor-rs の actor モジュールは **Pekko Typed Actor の中核 API をほ
 コア機能（Behavior, Supervision, StashBuffer, Ask, Extension, Timer, Interceptor, ReceiveTimeout, WatchWith）は完全にカバーされており、**Pekko Typed Actor を使った一般的なアクターパターンは fraktor-rs でそのまま実現可能**。
 
 ギャップの大半は「便利機能」であり、コアのアクターモデルには影響しない。YAGNI 原則に従い、Phase 1-2 の trivial/easy 項目を優先実装し、Receptionist 等は cluster モジュールとの統合時に検討するのが妥当。
+
+## 次の推奨プラン（全体優先度）
+
+現在の開発方針は「**actor / streams を先行して Pekko互換性を先に上げる**」こととし、cluster の SBR/再配置周りは次点とする。
+
+- 第1優先（来期）: `actor` の hard ギャップ（`Receptionist` / `ServiceKey` / `Routers.group(serviceKey)`）を実装し、サービスディスカバリ前提のエコシステムを整える。
+- 第2優先（次期）: `streams` の core 未対応機能を追加し、`fromGraph/fromMaterializer` 系、`debounce` / `sample`、`Attributes` 基盤、`SourceRef`/`SinkRef` を段階導入する。
+- 第3優先（条件付き）: `cluster` は `easy` 領域を先に揃え、`SBR`/`Reachability` などの hard は本番運用要件が確定した時点で再評価する。
+- 補助: `remote` / `persistence` は現状のカバレッジを維持しつつ、actor/streams 強化と依存関係の破綻が出ない範囲で最小改善を入れる。

@@ -215,3 +215,12 @@ fraktor-rs の persistence モジュールは前回分析から大幅に改善�
 3. **細かな補助型**（easy/trivial）— Tagged, StashOverflowStrategy, PersistentRepr.deleted/sender 等
 
 コア機能（persist, persistAsync, persistAll, Recovery, Snapshot, Journal, EventAdapter, DurableState, AtLeastOnceDelivery）は完全にカバーされており、イベントソーシングの基本的なワークフローは fraktor-rs で実現可能。
+
+## 次の推奨プラン（全体優先度）
+
+当面は `actor` と `streams` の互換性強化を主目的とし、`cluster` の SBR/クラスタ再配置周りは defer する。
+
+- 第1優先（安定性）: `persistence` は既存のコア機能を崩さず、easy 領域の補完を最小で実施
+  - `Tagged`, `StashOverflowStrategy`, `RecoveryTimedOut`, `persistAllAsync`, `PersistentRepr.sender` 等
+- 第2優先（連携）: `actor` / `streams` 側が進んだタイミングで、`persistence` の運用面影響が出る項目（イベント再送・defer 系）との整合を再確認
+- 第3優先: `PersistentFSM` は現在は保留。クラスタ運用条件・CQRS/ES 方針が確定した時点で導入可否を再検討
