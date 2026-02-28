@@ -29,6 +29,7 @@ use crate::core::{
 
 type TB = NoStdToolbox;
 type MessageStore = ArcShared<ToolboxMutex<Vec<AnyMessageGeneric<TB>>, TB>>;
+type DummyPendingHandler = Box<dyn FnOnce(&mut DummyActor, &PersistentRepr) + Send + Sync>;
 const ADD_TEN_MANIFEST: &str = "add-ten-v1";
 const SINGLE_MANIFEST: &str = "single-v1";
 const EMPTY_MANIFEST: &str = "empty-v1";
@@ -56,6 +57,18 @@ fn create_sender() -> (ActorRefGeneric<TB>, MessageStore) {
   let messages = ArcShared::new(<<TB as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(Vec::new()));
   let sender = ActorRefGeneric::new(Pid::new(1, 1), TestSender { messages: messages.clone() });
   (sender, messages)
+}
+
+struct FailingSender;
+
+impl ActorRefSender<TB> for FailingSender {
+  fn send(&mut self, message: AnyMessageGeneric<TB>) -> Result<SendOutcome, SendError<TB>> {
+    Err(SendError::closed(message))
+  }
+}
+
+fn create_failing_sender() -> ActorRefGeneric<TB> {
+  ActorRefGeneric::new(Pid::new(2, 1), FailingSender)
 }
 
 struct AddTenWriteAdapter;
@@ -475,6 +488,68 @@ fn flush_batch_clears_sender_in_journal_repr_but_keeps_it_for_handler_invocation
 }
 
 #[test]
+fn flush_batch_reuses_pre_boxed_stashing_handler_without_double_boxing() {
+  let (journal_ref, _journal_store) = create_sender();
+  let (snapshot_ref, _snapshot_store) = create_sender();
+  let mut context = DummyContext::new("pid-1".to_string());
+  context.bind_actor_refs(journal_ref, snapshot_ref).expect("bind actor refs");
+  context.state = PersistentActorState::ProcessingCommands;
+
+  let handler: DummyPendingHandler = Box::new(|_actor: &mut DummyActor, _repr| {});
+  let original_ptr = (&*handler as *const dyn FnOnce(&mut DummyActor, &PersistentRepr)) as *const ();
+  context.add_to_event_batch(1_i32, true, None, handler);
+  context.flush_batch(ActorRefGeneric::null()).expect("flush batch");
+
+  let invocation = context.pending_invocations.pop_front().expect("pending invocation");
+  match invocation {
+    | PendingHandlerInvocation::Stashing { handler, .. } => {
+      let stored_ptr = (&*handler as *const dyn FnOnce(&mut DummyActor, &PersistentRepr)) as *const ();
+      assert_eq!(stored_ptr, original_ptr);
+    },
+    | _ => panic!("expected stashing invocation"),
+  }
+}
+
+#[test]
+fn flush_batch_reuses_pre_boxed_async_handler_without_double_boxing() {
+  let (journal_ref, _journal_store) = create_sender();
+  let (snapshot_ref, _snapshot_store) = create_sender();
+  let mut context = DummyContext::new("pid-1".to_string());
+  context.bind_actor_refs(journal_ref, snapshot_ref).expect("bind actor refs");
+  context.state = PersistentActorState::ProcessingCommands;
+
+  let handler: DummyPendingHandler = Box::new(|_actor: &mut DummyActor, _repr| {});
+  let original_ptr = (&*handler as *const dyn FnOnce(&mut DummyActor, &PersistentRepr)) as *const ();
+  context.add_to_event_batch(1_i32, false, None, handler);
+  context.flush_batch(ActorRefGeneric::null()).expect("flush batch");
+
+  let invocation = context.pending_invocations.pop_front().expect("pending invocation");
+  match invocation {
+    | PendingHandlerInvocation::Async { handler, .. } => {
+      let stored_ptr = (&*handler as *const dyn FnOnce(&mut DummyActor, &PersistentRepr)) as *const ();
+      assert_eq!(stored_ptr, original_ptr);
+    },
+    | _ => panic!("expected async invocation"),
+  }
+}
+
+#[test]
+fn flush_batch_send_failure_rolls_back_and_clears_stash_until_batch_completion() {
+  let journal_ref = create_failing_sender();
+  let (snapshot_ref, _snapshot_store) = create_sender();
+  let mut context = DummyContext::new("pid-1".to_string());
+  context.bind_actor_refs(journal_ref, snapshot_ref).expect("bind actor refs");
+  context.state = PersistentActorState::ProcessingCommands;
+
+  context.add_to_event_batch(1_i32, true, None, Box::new(|_actor: &mut DummyActor, _repr| {}));
+  let result = context.flush_batch(ActorRefGeneric::null());
+  assert!(result.is_err());
+  assert_eq!(context.state(), PersistentActorState::ProcessingCommands);
+  assert!(context.pending_invocations.is_empty());
+  assert!(!context.stash_until_batch_completion);
+}
+
+#[test]
 fn write_message_success_interleaves_defer_between_persisted_handlers() {
   let (journal_ref, journal_store) = create_sender();
   let (snapshot_ref, _snapshot_store) = create_sender();
@@ -627,6 +702,75 @@ fn should_stash_commands_when_stashing_defer_waits_for_batch_success() {
   assert!(context.should_stash_commands());
 
   let _ = context.handle_journal_response(&JournalResponse::WriteMessagesSuccessful { instance_id });
+  assert!(!context.should_stash_commands());
+}
+
+#[test]
+fn should_stash_commands_until_write_messages_successful_for_stashing_batch() {
+  let (journal_ref, journal_store) = create_sender();
+  let (snapshot_ref, _snapshot_store) = create_sender();
+  let mut context = DummyContext::new("pid-1".to_string());
+  context.bind_actor_refs(journal_ref, snapshot_ref).expect("bind actor refs");
+  context.state = PersistentActorState::ProcessingCommands;
+
+  context.add_to_event_batch(1_i32, true, None, Box::new(|_actor: &mut DummyActor, _repr| {}));
+  context.flush_batch(ActorRefGeneric::null()).expect("flush batch");
+
+  let persisted_repr = {
+    let journal_messages = journal_store.lock();
+    let message = journal_messages[0].payload().downcast_ref::<JournalMessage<TB>>().expect("unexpected payload");
+    match message {
+      | JournalMessage::WriteMessages { messages, .. } => messages[0].clone(),
+      | _ => panic!("unexpected message"),
+    }
+  };
+
+  let instance_id = context.instance_id();
+  let _ = context.handle_journal_response(&JournalResponse::WriteMessageSuccess { repr: persisted_repr, instance_id });
+  assert_eq!(context.state(), PersistentActorState::PersistingEvents);
+  assert!(context.should_stash_commands());
+
+  let _ = context.handle_journal_response(&JournalResponse::WriteMessagesSuccessful { instance_id });
+  assert_eq!(context.state(), PersistentActorState::ProcessingCommands);
+  assert!(!context.should_stash_commands());
+}
+
+#[test]
+fn should_stash_commands_until_batch_success_when_stashing_defer_is_between_persisted_events() {
+  let (journal_ref, journal_store) = create_sender();
+  let (snapshot_ref, _snapshot_store) = create_sender();
+  let mut context = DummyContext::new("pid-1".to_string());
+  context.bind_actor_refs(journal_ref, snapshot_ref).expect("bind actor refs");
+  context.state = PersistentActorState::ProcessingCommands;
+
+  context.add_to_event_batch(1_i32, false, None, Box::new(|_actor: &mut DummyActor, _repr| {}));
+  context.add_deferred_handler(2_i32, true, None, Box::new(|_actor: &mut DummyActor, _repr| {}));
+  context.add_to_event_batch(3_i32, false, None, Box::new(|_actor: &mut DummyActor, _repr| {}));
+  context.flush_batch(ActorRefGeneric::null()).expect("flush batch");
+
+  let persisted_reprs = {
+    let journal_messages = journal_store.lock();
+    let message = journal_messages[0].payload().downcast_ref::<JournalMessage<TB>>().expect("unexpected payload");
+    match message {
+      | JournalMessage::WriteMessages { messages, .. } => messages.clone(),
+      | _ => panic!("unexpected message"),
+    }
+  };
+  assert_eq!(persisted_reprs.len(), 2);
+
+  let instance_id = context.instance_id();
+  let _ = context
+    .handle_journal_response(&JournalResponse::WriteMessageSuccess { repr: persisted_reprs[0].clone(), instance_id });
+  assert_eq!(context.state(), PersistentActorState::PersistingEvents);
+  assert!(context.should_stash_commands());
+
+  let _ = context
+    .handle_journal_response(&JournalResponse::WriteMessageSuccess { repr: persisted_reprs[1].clone(), instance_id });
+  assert_eq!(context.state(), PersistentActorState::PersistingEvents);
+  assert!(context.should_stash_commands());
+
+  let _ = context.handle_journal_response(&JournalResponse::WriteMessagesSuccessful { instance_id });
+  assert_eq!(context.state(), PersistentActorState::ProcessingCommands);
   assert!(!context.should_stash_commands());
 }
 

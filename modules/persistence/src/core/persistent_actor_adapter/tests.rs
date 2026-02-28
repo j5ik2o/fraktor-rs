@@ -1,4 +1,4 @@
-use alloc::string::ToString;
+use alloc::{string::ToString, vec::Vec};
 
 use fraktor_actor_rs::core::{
   actor::{Actor, ActorCellGeneric, ActorContextGeneric, actor_ref::ActorRefGeneric},
@@ -46,6 +46,7 @@ struct DummyPersistentActor {
   recovery_failure_count:  usize,
   last_recovery_failure:   Option<PersistenceError>,
   command_count:           usize,
+  command_log:             Vec<i32>,
   stash_overflow_strategy: StashOverflowStrategy,
   stash_capacity:          usize,
 }
@@ -58,6 +59,7 @@ impl DummyPersistentActor {
       recovery_failure_count:  0,
       last_recovery_failure:   None,
       command_count:           0,
+      command_log:             Vec::new(),
       stash_overflow_strategy: StashOverflowStrategy::Fail,
       stash_capacity:          1024,
     }
@@ -89,9 +91,12 @@ impl Eventsourced<TB> for DummyPersistentActor {
   fn receive_command(
     &mut self,
     _ctx: &mut ActorContextGeneric<'_, TB>,
-    _message: AnyMessageViewGeneric<'_, TB>,
+    message: AnyMessageViewGeneric<'_, TB>,
   ) -> Result<(), ActorError> {
     self.command_count = self.command_count.saturating_add(1);
+    if let Some(value) = message.downcast_ref::<i32>() {
+      self.command_log.push(*value);
+    }
     Ok(())
   }
 
@@ -490,6 +495,45 @@ fn adapter_stashes_command_until_defer_completes_after_persist_unfenced() {
 }
 
 #[test]
+fn adapter_stashes_command_between_write_message_success_and_write_messages_successful() {
+  let system = ActorSystemGeneric::<TB>::from_state(SystemStateSharedGeneric::new(SystemStateGeneric::new()));
+  let mut ctx = build_context(&system);
+  let actor = DummyPersistentActor::new();
+  let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
+  prepare_processing_commands(&mut adapter, &mut ctx);
+  adapter.actor.persist(&mut ctx, 1_i32, |_actor, _event| {});
+  adapter.actor.flush_batch(&mut ctx).expect("flush");
+  assert!(adapter.actor.persistence_context().should_stash_commands());
+  let instance_id = adapter.actor.persistence_context().instance_id();
+
+  let write_success = AnyMessageGeneric::<TB>::new(JournalResponse::WriteMessageSuccess {
+    repr: PersistentRepr::new("pid-1", 1, ArcShared::new(1_i32)),
+    instance_id,
+  });
+  adapter.receive(&mut ctx, write_success.as_view()).expect("write success");
+  assert_eq!(adapter.actor.persistence_context().state(), PersistentActorState::PersistingEvents);
+  assert!(adapter.actor.persistence_context().should_stash_commands());
+
+  let pipeline = MessageInvokerPipelineGeneric::<TB>::new();
+  let boundary_command = AnyMessageGeneric::<TB>::new(125_i32);
+  pipeline.invoke_user(&mut adapter, &mut ctx, boundary_command).expect("boundary command should be stashed");
+  assert_eq!(adapter.actor.command_count, 0);
+
+  let write_messages_successful =
+    AnyMessageGeneric::<TB>::new(JournalResponse::WriteMessagesSuccessful { instance_id });
+  adapter.receive(&mut ctx, write_messages_successful.as_view()).expect("write messages successful should unstash");
+  assert_eq!(adapter.actor.persistence_context().state(), PersistentActorState::ProcessingCommands);
+  assert!(!adapter.actor.persistence_context().should_stash_commands());
+  assert_eq!(adapter.actor.command_count, 0);
+  assert!(adapter.actor.command_log.is_empty());
+
+  let follow_up_command = AnyMessageGeneric::<TB>::new(126_i32);
+  pipeline.invoke_user(&mut adapter, &mut ctx, follow_up_command).expect("follow-up command should be processed");
+  assert_eq!(adapter.actor.command_count, 1);
+  assert_eq!(adapter.actor.command_log, vec![126_i32]);
+}
+
+#[test]
 fn adapter_does_not_stash_command_during_persist_all_async() {
   let system = ActorSystemGeneric::<TB>::from_state(SystemStateSharedGeneric::new(SystemStateGeneric::new()));
   let mut ctx = build_context(&system);
@@ -506,6 +550,7 @@ fn adapter_does_not_stash_command_during_persist_all_async() {
   pipeline.invoke_user(&mut adapter, &mut ctx, command).expect("command should be processed");
 
   assert_eq!(adapter.actor.command_count, 1);
+  assert_eq!(adapter.actor.command_log, vec![124_i32]);
 }
 
 #[test]
