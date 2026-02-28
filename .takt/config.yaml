@@ -1,6 +1,6 @@
 provider: codex
 model: gpt-5.3-codex
-concurrency: 4
+concurrency: 1
 base_branch: main
 with_submodules: true
 
