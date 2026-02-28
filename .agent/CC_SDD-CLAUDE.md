@@ -1,1 +1,0 @@
-CC-SDD.md
