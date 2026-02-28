@@ -14,7 +14,7 @@ use portable_atomic::{AtomicBool, Ordering};
 
 use crate::core::{
   actor::{
-    Actor, ActorContextGeneric, ActorSharedGeneric, ContextPipeTaskId, Pid,
+    Actor, ActorContextGeneric, ActorSharedGeneric, ContextPipeTaskId, Pid, STASH_OVERFLOW_REASON,
     actor_ref::{ActorRefGeneric, ActorRefSenderSharedGeneric},
     context_pipe_task::{ContextPipeFuture, ContextPipeTask},
     pipe_spawn_error::PipeSpawnError,
@@ -293,7 +293,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
   ) -> Result<(), ActorError> {
     let mut state = self.state.lock();
     if state.stashed_messages.len() >= max_messages {
-      return Err(ActorError::recoverable("stash buffer overflow"));
+      return Err(ActorError::recoverable(STASH_OVERFLOW_REASON));
     }
     state.stashed_messages.push_back(message);
     Ok(())

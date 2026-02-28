@@ -18,7 +18,7 @@ use crate::core::{
   system::ActorSystemGeneric,
 };
 
-const STASH_OVERFLOW_REASON: &str = "stash buffer overflow";
+pub(crate) const STASH_OVERFLOW_REASON: &str = "stash buffer overflow";
 
 /// Provides contextual APIs while handling a message.
 pub struct ActorContextGeneric<'a, TB: RuntimeToolbox + 'static> {
