@@ -487,8 +487,7 @@ fn flush_batch_clears_sender_in_journal_repr_but_keeps_it_for_handler_invocation
   assert_eq!(actor.handled_values, vec![11_i32]);
 }
 
-#[test]
-fn flush_batch_reuses_pre_boxed_stashing_handler_without_double_boxing() {
+fn assert_handler_not_double_boxed(stashing: bool) {
   let (journal_ref, _journal_store) = create_sender();
   let (snapshot_ref, _snapshot_store) = create_sender();
   let mut context = DummyContext::new("pid-1".to_string());
@@ -497,40 +496,30 @@ fn flush_batch_reuses_pre_boxed_stashing_handler_without_double_boxing() {
 
   let handler: DummyPendingHandler = Box::new(|_actor: &mut DummyActor, _repr| {});
   let original_ptr = (&*handler as *const dyn FnOnce(&mut DummyActor, &PersistentRepr)) as *const ();
-  context.add_to_event_batch(1_i32, true, None, handler);
+  context.add_to_event_batch(1_i32, stashing, None, handler);
   context.flush_batch(ActorRefGeneric::null()).expect("flush batch");
 
   let invocation = context.pending_invocations.pop_front().expect("pending invocation");
-  match invocation {
-    | PendingHandlerInvocation::Stashing { handler, .. } => {
-      let stored_ptr = (&*handler as *const dyn FnOnce(&mut DummyActor, &PersistentRepr)) as *const ();
-      assert_eq!(stored_ptr, original_ptr);
+  let stored_ptr = match invocation {
+    | PendingHandlerInvocation::Stashing { handler, .. } if stashing => {
+      (&*handler as *const dyn FnOnce(&mut DummyActor, &PersistentRepr)) as *const ()
     },
-    | _ => panic!("expected stashing invocation"),
-  }
+    | PendingHandlerInvocation::Async { handler, .. } if !stashing => {
+      (&*handler as *const dyn FnOnce(&mut DummyActor, &PersistentRepr)) as *const ()
+    },
+    | _ => panic!("unexpected invocation variant"),
+  };
+  assert_eq!(stored_ptr, original_ptr);
+}
+
+#[test]
+fn flush_batch_reuses_pre_boxed_stashing_handler_without_double_boxing() {
+  assert_handler_not_double_boxed(true);
 }
 
 #[test]
 fn flush_batch_reuses_pre_boxed_async_handler_without_double_boxing() {
-  let (journal_ref, _journal_store) = create_sender();
-  let (snapshot_ref, _snapshot_store) = create_sender();
-  let mut context = DummyContext::new("pid-1".to_string());
-  context.bind_actor_refs(journal_ref, snapshot_ref).expect("bind actor refs");
-  context.state = PersistentActorState::ProcessingCommands;
-
-  let handler: DummyPendingHandler = Box::new(|_actor: &mut DummyActor, _repr| {});
-  let original_ptr = (&*handler as *const dyn FnOnce(&mut DummyActor, &PersistentRepr)) as *const ();
-  context.add_to_event_batch(1_i32, false, None, handler);
-  context.flush_batch(ActorRefGeneric::null()).expect("flush batch");
-
-  let invocation = context.pending_invocations.pop_front().expect("pending invocation");
-  match invocation {
-    | PendingHandlerInvocation::Async { handler, .. } => {
-      let stored_ptr = (&*handler as *const dyn FnOnce(&mut DummyActor, &PersistentRepr)) as *const ();
-      assert_eq!(stored_ptr, original_ptr);
-    },
-    | _ => panic!("expected async invocation"),
-  }
+  assert_handler_not_double_boxed(false);
 }
 
 #[test]
