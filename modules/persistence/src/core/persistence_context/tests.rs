@@ -731,13 +731,13 @@ fn should_stash_commands_until_batch_success_when_stashing_defer_is_between_pers
   assert_eq!(persisted_reprs.len(), 2);
 
   let instance_id = context.instance_id();
-  let _ =
-    context.handle_journal_response(&JournalResponse::WriteMessageSuccess { repr: persisted_reprs[0].clone(), instance_id });
+  let _ = context
+    .handle_journal_response(&JournalResponse::WriteMessageSuccess { repr: persisted_reprs[0].clone(), instance_id });
   assert_eq!(context.state(), PersistentActorState::PersistingEvents);
   assert!(context.should_stash_commands());
 
-  let _ =
-    context.handle_journal_response(&JournalResponse::WriteMessageSuccess { repr: persisted_reprs[1].clone(), instance_id });
+  let _ = context
+    .handle_journal_response(&JournalResponse::WriteMessageSuccess { repr: persisted_reprs[1].clone(), instance_id });
   assert_eq!(context.state(), PersistentActorState::PersistingEvents);
   assert!(context.should_stash_commands());
 
