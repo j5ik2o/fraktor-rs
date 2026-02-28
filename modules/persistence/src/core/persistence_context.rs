@@ -35,17 +35,18 @@ enum EventBatchEntry<A> {
 
 /// Persistence context owned by persistent actors.
 pub struct PersistenceContext<A: 'static, TB: RuntimeToolbox + 'static> {
-  persistence_id:      String,
-  state:               PersistentActorState,
+  persistence_id: String,
+  state: PersistentActorState,
   pending_invocations: VecDeque<PendingHandlerInvocation<A>>,
-  event_batch:         Vec<EventBatchEntry<A>>,
+  stash_until_batch_completion: bool,
+  event_batch: Vec<EventBatchEntry<A>>,
   current_sequence_nr: u64,
-  last_sequence_nr:    u64,
-  recovery:            Recovery,
-  instance_id:         u32,
-  event_adapters:      EventAdapters,
-  journal_actor_ref:   ActorRefGeneric<TB>,
-  snapshot_actor_ref:  ActorRefGeneric<TB>,
+  last_sequence_nr: u64,
+  recovery: Recovery,
+  instance_id: u32,
+  event_adapters: EventAdapters,
+  journal_actor_ref: ActorRefGeneric<TB>,
+  snapshot_actor_ref: ActorRefGeneric<TB>,
 }
 
 impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
@@ -56,6 +57,7 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
       persistence_id,
       state: PersistentActorState::WaitingRecoveryPermit,
       pending_invocations: VecDeque::new(),
+      stash_until_batch_completion: false,
       event_batch: Vec::new(),
       current_sequence_nr: 0,
       last_sequence_nr: 0,
@@ -180,7 +182,9 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
       self.pending_invocations.iter().any(|invocation| invocation.is_stashing() && !invocation.is_deferred());
     let has_stashing_deferred =
       self.pending_invocations.iter().any(|invocation| invocation.is_stashing() && invocation.is_deferred());
-    (self.state == PersistentActorState::PersistingEvents && has_stashing_pending) || has_stashing_deferred
+    (self.state == PersistentActorState::PersistingEvents
+      && (has_stashing_pending || self.stash_until_batch_completion))
+      || has_stashing_deferred
   }
 
   /// Flushes the current batch to the journal.
@@ -200,6 +204,7 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
 
     let mut messages = Vec::new();
     let to_sequence_nr = self.current_sequence_nr;
+    let mut has_stashing_invocation = false;
 
     for entry in self.event_batch.drain(..) {
       match entry {
@@ -209,9 +214,10 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
           let journal_repr = Self::to_journal_repr(&repr);
           let handler = envelope.into_handler();
           let invocation = if stashing {
-            PendingHandlerInvocation::stashing(repr.clone(), handler)
+            has_stashing_invocation = true;
+            PendingHandlerInvocation::stashing_boxed(repr.clone(), handler)
           } else {
-            PendingHandlerInvocation::async_handler(repr.clone(), handler)
+            PendingHandlerInvocation::async_handler_boxed(repr.clone(), handler)
           };
           self.pending_invocations.push_back(invocation);
           messages.push(journal_repr);
@@ -219,6 +225,7 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
         | EventBatchEntry::Deferred(invocation) => self.pending_invocations.push_back(*invocation),
       }
     }
+    self.stash_until_batch_completion = has_stashing_invocation;
 
     debug_assert!(!messages.is_empty(), "flush_batch requires at least one persistent journal message");
 
@@ -279,6 +286,7 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
         if self.state != PersistentActorState::PersistingEvents || !self.matches_instance_id(*instance_id) {
           return JournalResponseAction::None;
         }
+        self.stash_until_batch_completion = false;
         let action = Self::to_handler_action(self.take_leading_deferred_invocations());
         self.transition_to_processing_commands_if_no_pending();
         action
@@ -427,6 +435,7 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
 
   fn transition_to_processing_commands_if_no_pending(&mut self) {
     if self.pending_invocations.is_empty()
+      && !self.stash_until_batch_completion
       && let Ok(state) = self.state.transition_to_processing_commands()
     {
       self.state = state;
@@ -434,6 +443,7 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
   }
 
   fn advance_after_write_rejected(&mut self, repr: &PersistentRepr) {
+    self.stash_until_batch_completion = false;
     self.remove_pending_persist_invocation(repr.sequence_nr());
     self.transition_to_processing_commands_if_no_pending();
   }
@@ -453,6 +463,7 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
   }
 
   fn reset_after_write_failure(&mut self) {
+    self.stash_until_batch_completion = false;
     self.pending_invocations.clear();
     self.transition_to_processing_commands_if_no_pending();
   }
