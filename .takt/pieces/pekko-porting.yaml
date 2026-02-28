@@ -29,12 +29,14 @@ policies:
 instructions:
   plan-pekko-impl: ../facets/instructions/plan-pekko-impl.md
   review-pekko-compat: ../facets/instructions/review-pekko-compat.md
+  coderabbit-review: ../facets/instructions/coderabbit-review.md
   ai-review: ../facets/instructions/ai-review.md
   ai-fix: ../facets/instructions/ai-fix.md
   arbitrate: ../facets/instructions/arbitrate.md
 
 report_formats:
   pekko-compat-review: ../facets/output-contracts/pekko-compat-review.md
+  coderabbit-review: ../facets/output-contracts/coderabbit-review.md
 
 loop_monitors:
   - cycle:
@@ -84,6 +86,32 @@ loop_monitors:
       rules:
         - condition: 健全（進捗あり）
           next: qa-review
+        - condition: 非生産的（改善なし）
+          next: ABORT
+
+  - cycle:
+      - coderabbit-review
+      - qa-fix
+    threshold: 3
+    judge:
+      persona: supervisor
+      instruction_template: |
+        coderabbit-review と qa-fix のレビュー・修正サイクルが {cycle_count} 回繰り返されました。
+
+        各サイクルのレポートを確認し、このループが健全（進捗がある）か、
+        非生産的（同じ問題を繰り返している）かを判断してください。
+
+        **参照するレポート:**
+        - Coderabbitレビュー: {report:07-coderabbit-review.md}
+        - QAレビュー: {report:06-qa-review.md}
+
+        **判断基準:**
+        - 各サイクルで修正対象が収束しているか
+        - 同じ指摘が繰り返されていないか
+        - 反映履歴から改善進捗が確認できるか
+      rules:
+        - condition: 健全（進捗あり）
+          next: coderabbit-review
         - condition: 非生産的（改善なし）
           next: ABORT
 
@@ -322,6 +350,33 @@ movements:
           format: qa-review
     rules:
       - condition: approved
+        next: coderabbit-review
+      - condition: needs_fix
+        next: qa-fix
+
+  - name: coderabbit-review
+    edit: false
+    persona: qa-reviewer
+    policy:
+      - review
+      - qa
+    knowledge:
+      - pekko-porting
+      - architecture
+    allowed_tools:
+      - Read
+      - Glob
+      - Grep
+      - Bash
+      - WebSearch
+      - WebFetch
+    instruction: coderabbit-review
+    output_contracts:
+      report:
+        - name: 07-coderabbit-review.md
+          format: coderabbit-review
+    rules:
+      - condition: approved
         next: pekko-compat-review
       - condition: needs_fix
         next: qa-fix
@@ -351,7 +406,10 @@ movements:
     instruction: fix
     instruction_template: |
       **QA観点の指摘への対応:**
-      QAレビューの指摘を優先的に解消すること。
+      QAレビューとCoderabbitレビューの指摘を優先的に解消すること。
+
+      - QAレビュー由来の指摘: `06-qa-review.md`
+      - Coderabbit由来の指摘: `07-coderabbit-review.md`
 
       **修正完了条件（必須）:**
       修正後に必ず以下を順番に実行し、全チェックがパスすることを確認してからレポートに記録すること:
@@ -446,7 +504,10 @@ movements:
     instruction_template: |
       **fraktor-rs固有の検証:**
       - qa-fix / pekko-compat-fix / implement ムーブメントのレポートに `./scripts/ci-check.sh all` の成功ログが記録されていることを確認
-      - Pekko参照実装との対応関係がレビューで承認済みであることを確認
+      - `06-qa-review.md` の判定がapprovedであることを確認
+      - `07-coderabbit-review.md` の判定がapprovedであることを確認
+      - `05-pekko-compat-review.md` の承認済み判定があることを確認
+      - `qa-fix` / `pekko-compat-fix` の修正内容が上記レビュー結果と矛盾していないことを確認
       ※ supervisorはCIを自身では実行しない（qa-fix/pekko-compat-fix/implementの実行済み証跡をレポートで確認するのみ）
     output_contracts:
       report:
