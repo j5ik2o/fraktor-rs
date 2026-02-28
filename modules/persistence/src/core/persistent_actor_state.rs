@@ -52,9 +52,9 @@ impl PersistentActorState {
   /// Returns `PersistenceError::StateMachine` when the transition is invalid.
   pub fn transition_to_processing_commands(self) -> Result<Self, PersistenceError> {
     match self {
-      | PersistentActorState::Recovering | PersistentActorState::PersistingEvents => {
-        Ok(PersistentActorState::ProcessingCommands)
-      },
+      | PersistentActorState::RecoveryStarted
+      | PersistentActorState::Recovering
+      | PersistentActorState::PersistingEvents => Ok(PersistentActorState::ProcessingCommands),
       | _ => Err(PersistenceError::StateMachine("invalid transition to ProcessingCommands".into())),
     }
   }

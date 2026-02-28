@@ -23,9 +23,12 @@ fn journal_response_variants_hold_data() {
     cause:       JournalError::WriteFailed("reject".into()),
     instance_id: 7,
   };
-  let bulk_ok = JournalResponse::WriteMessagesSuccessful;
-  let bulk_failed =
-    JournalResponse::WriteMessagesFailed { cause: JournalError::DeleteFailed("oops".into()), write_count: 2 };
+  let bulk_ok = JournalResponse::WriteMessagesSuccessful { instance_id: 8 };
+  let bulk_failed = JournalResponse::WriteMessagesFailed {
+    cause:       JournalError::DeleteFailed("oops".into()),
+    write_count: 2,
+    instance_id: 9,
+  };
   let replayed = JournalResponse::ReplayedMessage { persistent_repr: repr2.clone() };
   let recovery = JournalResponse::RecoverySuccess { highest_sequence_nr: 9 };
   let highest = JournalResponse::HighestSequenceNr { persistence_id: "pid-1".into(), sequence_nr: 9 };
@@ -65,12 +68,15 @@ fn journal_response_variants_hold_data() {
   }
 
   match bulk_ok {
-    | JournalResponse::WriteMessagesSuccessful => {},
+    | JournalResponse::WriteMessagesSuccessful { instance_id } => assert_eq!(instance_id, 8),
     | _ => panic!("unexpected variant"),
   }
 
   match bulk_failed {
-    | JournalResponse::WriteMessagesFailed { write_count, .. } => assert_eq!(write_count, 2),
+    | JournalResponse::WriteMessagesFailed { write_count, instance_id, .. } => {
+      assert_eq!(write_count, 2);
+      assert_eq!(instance_id, 9);
+    },
     | _ => panic!("unexpected variant"),
   }
 

@@ -255,6 +255,24 @@ fn actor_context_stash_and_unstash_replays_message() {
 }
 
 #[test]
+fn actor_context_stash_with_limit_detects_overflow() {
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(NoStdMutex::new(Vec::new()))));
+  let cell = register_cell(&system, pid, "self", &props);
+
+  let mut context = ActorContext::new(&system, pid);
+  context.set_current_message(Some(AnyMessage::new(1_i32)));
+  context.stash_with_limit(1).expect("stash first");
+  context.set_current_message(Some(AnyMessage::new(2_i32)));
+
+  let error = context.stash_with_limit(1).expect_err("overflow should fail");
+
+  assert!(ActorContextGeneric::<NoStdToolbox>::is_stash_overflow_error(&error));
+  assert_eq!(cell.stashed_message_len(), 1);
+}
+
+#[test]
 fn actor_context_unstash_replays_single_message_and_unstash_all_replays_remaining() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();

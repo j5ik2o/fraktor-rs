@@ -9,6 +9,7 @@ use core::{
   ops::Deref,
 };
 
+use fraktor_actor_rs::core::actor::Pid;
 use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::event_adapters::EventAdapters;
@@ -22,6 +23,8 @@ pub struct PersistentRepr {
   manifest:        String,
   writer_uuid:     String,
   timestamp:       u64,
+  deleted:         bool,
+  sender:          Option<Pid>,
   metadata:        Option<ArcShared<dyn Any + Send + Sync>>,
   adapters:        EventAdapters,
   adapter_type_id: TypeId,
@@ -39,6 +42,8 @@ impl PersistentRepr {
       manifest: String::new(),
       writer_uuid: String::new(),
       timestamp: 0,
+      deleted: false,
+      sender: None,
       metadata: None,
       adapters: EventAdapters::new(),
       adapter_type_id,
@@ -73,6 +78,18 @@ impl PersistentRepr {
   #[must_use]
   pub const fn timestamp(&self) -> u64 {
     self.timestamp
+  }
+
+  /// Returns whether the representation is marked as deleted.
+  #[must_use]
+  pub const fn deleted(&self) -> bool {
+    self.deleted
+  }
+
+  /// Returns the optional sender pid.
+  #[must_use]
+  pub const fn sender(&self) -> Option<Pid> {
+    self.sender
   }
 
   /// Returns the payload.
@@ -137,6 +154,20 @@ impl PersistentRepr {
   #[must_use]
   pub const fn with_timestamp(mut self, timestamp: u64) -> Self {
     self.timestamp = timestamp;
+    self
+  }
+
+  /// Returns a new instance with deleted flag.
+  #[must_use]
+  pub const fn with_deleted(mut self, deleted: bool) -> Self {
+    self.deleted = deleted;
+    self
+  }
+
+  /// Returns a new instance with sender pid.
+  #[must_use]
+  pub const fn with_sender(mut self, sender: Option<Pid>) -> Self {
+    self.sender = sender;
     self
   }
 

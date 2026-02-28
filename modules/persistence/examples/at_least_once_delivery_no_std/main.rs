@@ -38,10 +38,10 @@ fn main() {
 
   // 日本語コメント: RedeliveryTick の検出例
   let tick = RedeliveryTick;
-  let _handled = delivery.handle_message(&tick);
+  let _handled = delivery.handle_message(&tick, now);
 
   // 日本語コメント: スナップショットを取得して復元する
   let snapshot = delivery.get_delivery_snapshot();
   let mut restored: AtLeastOnceDelivery<TB> = AtLeastOnceDelivery::new(AtLeastOnceDeliveryConfig::default());
-  restored.set_delivery_snapshot(snapshot);
+  restored.set_delivery_snapshot(snapshot, now);
 }

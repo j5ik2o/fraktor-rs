@@ -3,12 +3,14 @@
 #[cfg(test)]
 mod tests;
 
+use core::time::Duration;
+
 use fraktor_actor_rs::core::{actor::ActorContextGeneric, error::ActorError, messaging::AnyMessageViewGeneric};
 use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use crate::core::{
   journal_error::JournalError, persistence_error::PersistenceError, persistent_repr::PersistentRepr,
-  recovery::Recovery, snapshot::Snapshot, snapshot_error::SnapshotError,
+  recovery::Recovery, recovery_timed_out::RecoveryTimedOut, snapshot::Snapshot, snapshot_error::SnapshotError,
 };
 
 /// Event-sourced actor interface.
@@ -19,6 +21,12 @@ pub trait Eventsourced<TB: RuntimeToolbox + 'static>: Send {
   /// Returns the recovery configuration.
   fn recovery(&self) -> Recovery {
     Recovery::default()
+  }
+
+  /// Returns the timeout used to monitor recovery progress.
+  #[must_use]
+  fn recovery_event_timeout(&self) -> Duration {
+    Duration::from_secs(30)
   }
 
   /// Handles replayed events during recovery.
@@ -40,6 +48,9 @@ pub trait Eventsourced<TB: RuntimeToolbox + 'static>: Send {
 
   /// Called when recovery completes.
   fn on_recovery_completed(&mut self) {}
+
+  /// Called when recovery timed out.
+  fn on_recovery_timed_out(&mut self, _signal: &RecoveryTimedOut) {}
 
   /// Called when persisting fails.
   fn on_persist_failure(&mut self, _cause: &JournalError, _repr: &PersistentRepr) {}

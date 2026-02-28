@@ -10,13 +10,15 @@ use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 
 use crate::core::{
   actor::{ChildRefGeneric, Pid, actor_ref::ActorRefGeneric, pipe_spawn_error::PipeSpawnError},
-  error::SendError,
+  error::{ActorError, SendError},
   event::logging::LogLevel,
   messaging::{AnyMessageGeneric, system_message::SystemMessage},
   props::PropsGeneric,
   spawn::SpawnError,
   system::ActorSystemGeneric,
 };
+
+const STASH_OVERFLOW_REASON: &str = "stash buffer overflow";
 
 /// Provides contextual APIs while handling a message.
 pub struct ActorContextGeneric<'a, TB: RuntimeToolbox + 'static> {
@@ -80,19 +82,34 @@ impl<TB: RuntimeToolbox + 'static> ActorContextGeneric<'_, TB> {
   /// # Errors
   ///
   /// Returns an error when no current message is active or when the actor cell is unavailable.
-  pub fn stash(&self) -> Result<(), crate::core::error::ActorError> {
+  pub fn stash(&self) -> Result<(), ActorError> {
+    self.stash_with_limit(usize::MAX)
+  }
+
+  /// Stashes the currently processed user message with an explicit stash limit.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when no current message is active, when the stash reached `max_messages`,
+  /// or when the actor cell is unavailable.
+  pub fn stash_with_limit(&self, max_messages: usize) -> Result<(), ActorError> {
     let message = self
       .current_message
       .as_ref()
       .cloned()
-      .ok_or_else(|| crate::core::error::ActorError::recoverable("stash requires an active user message"))?;
+      .ok_or_else(|| ActorError::recoverable("stash requires an active user message"))?;
     let cell = self
       .system
       .state()
       .cell(&self.pid)
-      .ok_or_else(|| crate::core::error::ActorError::recoverable("actor cell unavailable during stash"))?;
-    cell.stash_message(message);
-    Ok(())
+      .ok_or_else(|| ActorError::recoverable("actor cell unavailable during stash"))?;
+    cell.stash_message_with_limit(message, max_messages)
+  }
+
+  /// Returns true when the provided error is caused by stash capacity overflow.
+  #[must_use]
+  pub fn is_stash_overflow_error(error: &ActorError) -> bool {
+    matches!(error, ActorError::Recoverable(reason) if reason.as_str() == STASH_OVERFLOW_REASON)
   }
 
   /// Re-enqueues the oldest previously stashed message back to this actor mailbox.
@@ -100,12 +117,12 @@ impl<TB: RuntimeToolbox + 'static> ActorContextGeneric<'_, TB> {
   /// # Errors
   ///
   /// Returns an error when the actor cell is unavailable or unstash dispatch fails.
-  pub fn unstash(&self) -> Result<usize, crate::core::error::ActorError> {
+  pub fn unstash(&self) -> Result<usize, ActorError> {
     let cell = self
       .system
       .state()
       .cell(&self.pid)
-      .ok_or_else(|| crate::core::error::ActorError::recoverable("actor cell unavailable during unstash"))?;
+      .ok_or_else(|| ActorError::recoverable("actor cell unavailable during unstash"))?;
     cell.unstash_message()
   }
 
@@ -114,12 +131,12 @@ impl<TB: RuntimeToolbox + 'static> ActorContextGeneric<'_, TB> {
   /// # Errors
   ///
   /// Returns an error when the actor cell is unavailable or unstash dispatch fails.
-  pub fn unstash_all(&self) -> Result<usize, crate::core::error::ActorError> {
+  pub fn unstash_all(&self) -> Result<usize, ActorError> {
     let cell = self
       .system
       .state()
       .cell(&self.pid)
-      .ok_or_else(|| crate::core::error::ActorError::recoverable("actor cell unavailable during unstash"))?;
+      .ok_or_else(|| ActorError::recoverable("actor cell unavailable during unstash"))?;
     cell.unstash_messages()
   }
 

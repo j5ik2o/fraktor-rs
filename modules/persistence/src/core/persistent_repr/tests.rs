@@ -1,6 +1,7 @@
 use alloc::string::ToString;
 use core::any::{Any, TypeId};
 
+use fraktor_actor_rs::core::actor::Pid;
 use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::{
@@ -39,6 +40,8 @@ fn persistent_repr_new_and_accessors() {
   assert_eq!(repr.manifest(), "");
   assert_eq!(repr.writer_uuid(), "");
   assert_eq!(repr.timestamp(), 0);
+  assert!(!repr.deleted());
+  assert_eq!(repr.sender(), None);
   assert!(repr.metadata().is_none());
   assert!(repr.adapters().is_empty());
   assert_eq!(repr.adapter_type_id(), TypeId::of::<i32>());
@@ -57,12 +60,16 @@ fn persistent_repr_with_fields() {
     .with_manifest("manifest-1")
     .with_writer_uuid("writer-1")
     .with_timestamp(99)
+    .with_deleted(true)
+    .with_sender(Some(Pid::new(1, 2)))
     .with_adapters(adapters)
     .with_metadata(metadata);
 
   assert_eq!(repr.manifest(), "manifest-1");
   assert_eq!(repr.writer_uuid(), "writer-1");
   assert_eq!(repr.timestamp(), 99);
+  assert!(repr.deleted());
+  assert_eq!(repr.sender(), Some(Pid::new(1, 2)));
   assert!(repr.metadata().is_some());
   assert_eq!(repr.adapters().len(), 1);
   let converted = repr.adapters().to_journal::<i32>(ArcShared::new(5_i32));

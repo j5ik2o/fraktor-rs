@@ -42,11 +42,11 @@ fn test_basic_delivery_tracking() {
 
   // 配信を追跡
   let id1 = delivery.next_delivery_id();
-  let unconfirmed1 = UnconfirmedDelivery::new(id1, null_actor_ref(), create_payload("message-1"), None, now());
+  let unconfirmed1 = UnconfirmedDelivery::new(id1, null_actor_ref(), create_payload("message-1"), None, now(), 0);
   delivery.add_unconfirmed(unconfirmed1);
 
   let id2 = delivery.next_delivery_id();
-  let unconfirmed2 = UnconfirmedDelivery::new(id2, null_actor_ref(), create_payload("message-2"), None, now());
+  let unconfirmed2 = UnconfirmedDelivery::new(id2, null_actor_ref(), create_payload("message-2"), None, now(), 0);
   delivery.add_unconfirmed(unconfirmed2);
 
   // 状態の確認
@@ -67,7 +67,7 @@ fn test_delivery_confirmation() {
   for i in 1..=3 {
     let id = delivery.next_delivery_id();
     let unconfirmed =
-      UnconfirmedDelivery::new(id, null_actor_ref(), create_payload(format!("message-{}", i)), None, now());
+      UnconfirmedDelivery::new(id, null_actor_ref(), create_payload(format!("message-{}", i)), None, now(), 0);
     delivery.add_unconfirmed(unconfirmed);
   }
 
@@ -92,14 +92,14 @@ fn test_delivery_confirmation() {
 #[test]
 fn test_max_unconfirmed_enforcement() {
   // max_unconfirmed = 3 の設定を作成
-  let config = AtLeastOnceDeliveryConfig::new(Duration::from_secs(5), 3, 10);
+  let config = AtLeastOnceDeliveryConfig::new(Duration::from_secs(5), 3, 10, 5);
   let mut delivery: AtLeastOnceDelivery<NoStdToolbox> = AtLeastOnceDelivery::new(config);
 
   // 最大数まで追加
   for _ in 0..3 {
     assert!(delivery.can_accept_more());
     let id = delivery.next_delivery_id();
-    let unconfirmed = UnconfirmedDelivery::new(id, null_actor_ref(), create_payload("msg"), None, now());
+    let unconfirmed = UnconfirmedDelivery::new(id, null_actor_ref(), create_payload("msg"), None, now(), 0);
     delivery.add_unconfirmed(unconfirmed);
   }
 
@@ -119,7 +119,7 @@ fn test_snapshot_save_and_restore() {
   for i in 1..=3 {
     let id = delivery1.next_delivery_id();
     let unconfirmed =
-      UnconfirmedDelivery::new(id, null_actor_ref(), create_payload(format!("message-{}", i)), None, now());
+      UnconfirmedDelivery::new(id, null_actor_ref(), create_payload(format!("message-{}", i)), None, now(), 0);
     delivery1.add_unconfirmed(unconfirmed);
   }
 
@@ -131,7 +131,7 @@ fn test_snapshot_save_and_restore() {
 
   // アクター2: スナップショットからリカバリ
   let mut delivery2: AtLeastOnceDelivery<NoStdToolbox> = AtLeastOnceDelivery::new(AtLeastOnceDeliveryConfig::default());
-  delivery2.set_delivery_snapshot(snapshot);
+  delivery2.set_delivery_snapshot(snapshot, now());
 
   // 状態が復元されていることを確認
   assert_eq!(delivery2.current_delivery_id(), 4); // 次の配信 ID
@@ -157,20 +157,20 @@ fn test_redelivery_tick_detection() {
 
 #[test]
 fn test_deliveries_to_redeliver() {
-  // redelivery_burst_limit = 2 の設定
-  let config = AtLeastOnceDeliveryConfig::new(Duration::from_secs(5), 100, 2);
+  // redelivery_burst_limit = 2 の設定（now() で overdue になるよう interval を短くする）
+  let config = AtLeastOnceDeliveryConfig::new(Duration::from_millis(200), 100, 2, 5);
   let mut delivery: AtLeastOnceDelivery<NoStdToolbox> = AtLeastOnceDelivery::new(config);
 
   // 5つの配信を追加
   for i in 1..=5 {
     let id = delivery.next_delivery_id();
     let unconfirmed =
-      UnconfirmedDelivery::new(id, null_actor_ref(), create_payload(format!("message-{}", i)), None, now());
+      UnconfirmedDelivery::new(id, null_actor_ref(), create_payload(format!("message-{}", i)), None, now(), 0);
     delivery.add_unconfirmed(unconfirmed);
   }
 
   // burst_limit により最初の2つのみ返される
-  let to_redeliver = delivery.deliveries_to_redeliver();
+  let to_redeliver = delivery.deliveries_to_redeliver(TimerInstant::from_ticks(200, Duration::from_millis(10)));
   assert_eq!(to_redeliver.len(), 2);
   assert_eq!(to_redeliver[0].delivery_id(), 1);
   assert_eq!(to_redeliver[1].delivery_id(), 2);
@@ -178,12 +178,13 @@ fn test_deliveries_to_redeliver() {
 
 #[test]
 fn test_config_accessors() {
-  let config = AtLeastOnceDeliveryConfig::new(Duration::from_secs(30), 500, 25);
+  let config = AtLeastOnceDeliveryConfig::new(Duration::from_secs(30), 500, 25, 7);
   let delivery: AtLeastOnceDelivery<NoStdToolbox> = AtLeastOnceDelivery::new(config);
 
   assert_eq!(delivery.config().redeliver_interval(), Duration::from_secs(30));
   assert_eq!(delivery.config().max_unconfirmed(), 500);
   assert_eq!(delivery.config().redelivery_burst_limit(), 25);
+  assert_eq!(delivery.config().warn_after_number_of_unconfirmed_attempts(), 7);
 }
 
 #[test]
@@ -194,7 +195,7 @@ fn test_delivery_with_sender() {
   let sender = null_actor_ref();
 
   // 送信者を指定して配信を作成
-  let unconfirmed = UnconfirmedDelivery::new(id, null_actor_ref(), create_payload("message"), Some(sender), now());
+  let unconfirmed = UnconfirmedDelivery::new(id, null_actor_ref(), create_payload("message"), Some(sender), now(), 0);
   delivery.add_unconfirmed(unconfirmed);
 
   // 送信者が設定されていることを確認

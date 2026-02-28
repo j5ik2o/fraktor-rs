@@ -1,5 +1,8 @@
 AIレビューアと修正者の判断が分かれた指摘について仲裁せよ。
 
+## やらないこと (Do Not)
+- `cargo check` / `cargo build` / `cargo test` など、ビルドを伴うコマンドを実行しないこと。このムーブメントはビルド権限がなく `Operation not permitted` で失敗する。ビルド検証は `fix` / `implement` ムーブメントの責務。
+
 **やること:**
 1. レポートディレクトリから `04-ai-review.md`（レビューア指摘）を読み込む
 2. Previous Response から修正者の判断理由を読み込む

@@ -12,7 +12,7 @@ use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared, t
 use crate::core::{
   at_least_once_delivery_config::AtLeastOnceDeliveryConfig,
   at_least_once_delivery_snapshot::AtLeastOnceDeliverySnapshot, persistence_error::PersistenceError,
-  redelivery_tick::RedeliveryTick, unconfirmed_delivery::UnconfirmedDelivery,
+  redelivery_tick::RedeliveryTick, unconfirmed_delivery::UnconfirmedDelivery, unconfirmed_warning::UnconfirmedWarning,
 };
 
 /// At-least-once delivery implementation.
@@ -85,11 +85,18 @@ impl<TB: RuntimeToolbox + 'static> AtLeastOnceDeliveryGeneric<TB> {
     &self.unconfirmed
   }
 
-  /// Returns deliveries that should be redelivered according to burst limit.
+  /// Returns deliveries that should be redelivered according to overdue deadline and burst limit.
   #[must_use]
-  pub fn deliveries_to_redeliver(&self) -> Vec<UnconfirmedDelivery<TB>> {
+  pub fn deliveries_to_redeliver(&self, now: TimerInstant) -> Vec<UnconfirmedDelivery<TB>> {
+    let redeliver_interval = self.config.redeliver_interval();
     let limit = self.config.redelivery_burst_limit().min(self.unconfirmed.len());
-    self.unconfirmed.iter().take(limit).cloned().collect()
+    self
+      .unconfirmed
+      .iter()
+      .filter(|delivery| Self::is_overdue(delivery, now, redeliver_interval))
+      .take(limit)
+      .cloned()
+      .collect()
   }
 
   /// Returns a snapshot of current delivery state.
@@ -99,9 +106,26 @@ impl<TB: RuntimeToolbox + 'static> AtLeastOnceDeliveryGeneric<TB> {
   }
 
   /// Restores delivery state from a snapshot.
-  pub fn set_delivery_snapshot(&mut self, snapshot: AtLeastOnceDeliverySnapshot<TB>) {
+  ///
+  /// Restored entries are rebuilt so that redelivery attempts restart from zero
+  /// and the next redelivery tick can resend them.
+  pub fn set_delivery_snapshot(&mut self, snapshot: AtLeastOnceDeliverySnapshot<TB>, now: TimerInstant) {
     self.delivery_seq_nr = snapshot.current_delivery_id();
-    self.unconfirmed = snapshot.into_unconfirmed();
+    let redelivery_base_timestamp = Self::redelivery_base_timestamp(now, self.config.redeliver_interval());
+    self.unconfirmed = snapshot
+      .into_unconfirmed()
+      .into_iter()
+      .map(|delivery| {
+        UnconfirmedDelivery::new(
+          delivery.delivery_id(),
+          delivery.destination().clone(),
+          delivery.payload_arc(),
+          delivery.sender().cloned(),
+          redelivery_base_timestamp,
+          0,
+        )
+      })
+      .collect();
   }
 
   /// Returns true when the message is a redelivery tick.
@@ -110,18 +134,73 @@ impl<TB: RuntimeToolbox + 'static> AtLeastOnceDeliveryGeneric<TB> {
     message.is::<RedeliveryTick>()
   }
 
-  /// Handles a redelivery tick message.
-  pub fn handle_message(&mut self, message: &dyn Any) -> bool {
+  /// Handles a redelivery tick message and returns a warning payload when the threshold is reached.
+  /// # Errors
+  ///
+  /// Returns `PersistenceError::MessagePassing` when any redelivery send fails.
+  pub fn handle_message(
+    &mut self,
+    message: &dyn Any,
+    now: TimerInstant,
+  ) -> Result<Option<UnconfirmedWarning<TB>>, PersistenceError> {
     if !Self::is_redelivery_tick(message) {
-      return false;
+      return Ok(None);
+    }
+    self.redeliver_overdue(now)
+  }
+
+  fn redeliver_overdue(&mut self, now: TimerInstant) -> Result<Option<UnconfirmedWarning<TB>>, PersistenceError> {
+    let mut warnings = Vec::new();
+    let redeliver_interval = self.config.redeliver_interval();
+    let warning_attempt = self.config.warn_after_number_of_unconfirmed_attempts();
+    let burst_limit = self.config.redelivery_burst_limit();
+
+    for delivery in self
+      .unconfirmed
+      .iter_mut()
+      .filter(|delivery| Self::is_overdue(delivery, now, redeliver_interval))
+      .take(burst_limit)
+    {
+      let warning = (delivery.attempt() == warning_attempt).then(|| delivery.clone());
+      Self::send_delivery(delivery)?;
+      delivery.mark_redelivered(now);
+      if let Some(warning) = warning {
+        warnings.push(warning);
+      }
     }
 
-    let deliveries = self.deliveries_to_redeliver();
-    for delivery in deliveries {
-      let _ = Self::send_delivery(&delivery);
+    if warnings.is_empty() { Ok(None) } else { Ok(Some(UnconfirmedWarning::new(warnings))) }
+  }
+
+  fn is_overdue(
+    delivery: &UnconfirmedDelivery<TB>,
+    now: TimerInstant,
+    redeliver_interval: core::time::Duration,
+  ) -> bool {
+    if delivery.attempt() == 0 {
+      return true;
     }
 
-    true
+    let now_nanos = Self::instant_to_nanos(now);
+    let delivery_nanos = Self::instant_to_nanos(delivery.timestamp());
+    let elapsed_nanos = now_nanos.saturating_sub(delivery_nanos);
+    elapsed_nanos >= redeliver_interval.as_nanos()
+  }
+
+  fn instant_to_nanos(instant: TimerInstant) -> u128 {
+    let tick_nanos = instant.resolution().as_nanos().max(1);
+    u128::from(instant.ticks()).saturating_mul(tick_nanos)
+  }
+
+  fn redelivery_base_timestamp(now: TimerInstant, redeliver_interval: core::time::Duration) -> TimerInstant {
+    let ticks = Self::duration_to_ticks(redeliver_interval, now.resolution());
+    TimerInstant::from_ticks(now.ticks().saturating_sub(ticks), now.resolution())
+  }
+
+  fn duration_to_ticks(duration: core::time::Duration, resolution: core::time::Duration) -> u64 {
+    let resolution_nanos = resolution.as_nanos().max(1);
+    let ticks = duration.as_nanos().div_ceil(resolution_nanos);
+    ticks.min(u128::from(u64::MAX)) as u64
   }
 
   /// Sends a tracked delivery and returns its id.
@@ -148,7 +227,7 @@ impl<TB: RuntimeToolbox + 'static> AtLeastOnceDeliveryGeneric<TB> {
     let message = AnyMessageGeneric::from_erased(payload.clone(), sender.clone());
     destination.tell(message).map_err(|error| PersistenceError::MessagePassing(format!("{error:?}")))?;
 
-    let unconfirmed = UnconfirmedDelivery::new(delivery_id, destination, payload, sender, timestamp);
+    let unconfirmed = UnconfirmedDelivery::new(delivery_id, destination, payload, sender, timestamp, 1);
     self.add_unconfirmed(unconfirmed);
     Ok(delivery_id)
   }

@@ -281,9 +281,22 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     self.state.lock().watchers.retain(|pid| *pid != watcher);
   }
 
-  /// Stashes a user message until explicit unstash.
-  pub(crate) fn stash_message(&self, message: AnyMessageGeneric<TB>) {
-    self.state.lock().stashed_messages.push_back(message);
+  /// Stashes a user message with an explicit stash capacity limit.
+  ///
+  /// # Errors
+  ///
+  /// Returns an overflow error when the stash already reached `max_messages`.
+  pub(crate) fn stash_message_with_limit(
+    &self,
+    message: AnyMessageGeneric<TB>,
+    max_messages: usize,
+  ) -> Result<(), ActorError> {
+    let mut state = self.state.lock();
+    if state.stashed_messages.len() >= max_messages {
+      return Err(ActorError::recoverable("stash buffer overflow"));
+    }
+    state.stashed_messages.push_back(message);
+    Ok(())
   }
 
   /// Returns the number of messages currently held in the stash.
