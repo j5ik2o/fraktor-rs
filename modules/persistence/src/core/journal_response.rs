@@ -36,13 +36,18 @@ pub enum JournalResponse {
     instance_id: u32,
   },
   /// Batch write succeeded.
-  WriteMessagesSuccessful,
+  WriteMessagesSuccessful {
+    /// Instance id for correlation.
+    instance_id: u32,
+  },
   /// Batch write failed.
   WriteMessagesFailed {
     /// Failure cause.
     cause:       JournalError,
     /// Number of writes attempted.
     write_count: u64,
+    /// Instance id for correlation.
+    instance_id: u32,
   },
   /// Replayed message entry.
   ReplayedMessage {

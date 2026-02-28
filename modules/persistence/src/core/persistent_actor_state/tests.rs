@@ -18,3 +18,12 @@ fn persistent_actor_state_invalid_transition() {
 
   assert!(state.transition_to_processing_commands().is_err());
 }
+
+#[test]
+fn persistent_actor_state_allows_recovery_started_to_processing_commands() {
+  let state = PersistentActorState::RecoveryStarted;
+
+  let transitioned = state.transition_to_processing_commands().expect("transition failed");
+
+  assert_eq!(transitioned, PersistentActorState::ProcessingCommands);
+}

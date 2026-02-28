@@ -5,6 +5,7 @@ mod tests;
 
 use alloc::boxed::Box;
 
+use fraktor_actor_rs::core::actor::Pid;
 use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::{event_adapters::EventAdapters, persistent_repr::PersistentRepr};
@@ -17,6 +18,7 @@ pub struct PersistentEnvelope<A> {
   sequence_nr: u64,
   handler:     PersistentHandler<A>,
   stashing:    bool,
+  sender:      Option<Pid>,
 }
 
 impl<A> PersistentEnvelope<A> {
@@ -27,8 +29,9 @@ impl<A> PersistentEnvelope<A> {
     sequence_nr: u64,
     handler: PersistentHandler<A>,
     stashing: bool,
+    sender: Option<Pid>,
   ) -> Self {
-    Self { event, sequence_nr, handler, stashing }
+    Self { event, sequence_nr, handler, stashing, sender }
   }
 
   /// Returns true when the envelope stashes commands.
@@ -50,7 +53,9 @@ impl<A> PersistentEnvelope<A> {
     persistence_id: impl Into<alloc::string::String>,
     adapters: EventAdapters,
   ) -> PersistentRepr {
-    PersistentRepr::new(persistence_id, self.sequence_nr, self.event.clone()).with_adapters(adapters)
+    PersistentRepr::new(persistence_id, self.sequence_nr, self.event.clone())
+      .with_sender(self.sender)
+      .with_adapters(adapters)
   }
 
   /// Consumes the envelope and returns the stored handler.

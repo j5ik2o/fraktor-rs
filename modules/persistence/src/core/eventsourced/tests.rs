@@ -1,3 +1,5 @@
+use core::time::Duration;
+
 use fraktor_actor_rs::core::{
   actor::{ActorContextGeneric, Pid},
   error::ActorError,
@@ -10,7 +12,8 @@ use fraktor_actor_rs::core::{
 use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 
 use crate::core::{
-  eventsourced::Eventsourced, persistent_repr::PersistentRepr, recovery::Recovery, snapshot::Snapshot,
+  eventsourced::Eventsourced, persistent_repr::PersistentRepr, recovery::Recovery,
+  recovery_timed_out::RecoveryTimedOut, snapshot::Snapshot,
 };
 
 struct DummyEventsourced {
@@ -46,6 +49,7 @@ fn eventsourced_default_recovery_is_latest() {
 
   let recovery = dummy.recovery();
   assert_eq!(recovery, Recovery::default());
+  assert_eq!(dummy.recovery_event_timeout(), Duration::from_secs(30));
 }
 
 #[test]
@@ -57,4 +61,5 @@ fn eventsourced_default_hooks_do_not_panic() {
   let message = AnyMessageGeneric::new(1_i32);
 
   let _ = dummy.receive_command(&mut ctx, message.as_view());
+  dummy.on_recovery_timed_out(&RecoveryTimedOut::new("pid-1"));
 }

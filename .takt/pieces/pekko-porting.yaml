@@ -6,7 +6,7 @@ piece_config:
       network_access: true
     opencode:
       network_access: true
-max_movements: 30
+max_movements: 100
 initial_movement: plan
 
 personas:
@@ -90,23 +90,21 @@ loop_monitors:
 
   - cycle:
       - supervise
-      - plan
-    threshold: 2
+      - fix
+    threshold: 3
     judge:
       persona: supervisor
       instruction_template: |
-        supervise と plan のサイクルが {cycle_count} 回繰り返されました。
+        supervise と fix のサイクルが {cycle_count} 回繰り返されました。
 
         各サイクルのレポートを確認し、このループが健全（進捗がある）か、
         非生産的（同じ問題を繰り返している）かを判断してください。
 
         **参照するレポート:**
         - スーパーバイザー検証: {report:supervisor-validation.md}
-        - 計画: {report:00-plan.md}
 
         **判断基準:**
-        - 前回のsuperviseで指摘された問題が解決に向かっているか
-        - 計画が前回と実質的に異なる改善を含んでいるか
+        - 各サイクルで修正が実際に反映され、前回の指摘が解消されているか
         - 同じテスト失敗やビルドエラーが繰り返されていないか
       rules:
         - condition: 健全（進捗あり）
@@ -316,6 +314,9 @@ movements:
           - WebSearch
           - WebFetch
         instruction: review-qa
+        instruction_template: |
+          **やらないこと:**
+          `cargo check` / `cargo build` / `cargo test` など、ビルドを伴うコマンドを実行しないこと。このムーブメントはビルド権限がなく `Operation not permitted` で失敗する。ビルド検証は `fix` / `implement` ムーブメントの責務。
         output_contracts:
           report:
             - name: 06-qa-review.md
@@ -356,8 +357,14 @@ movements:
       **Pekko互換性の指摘への対応:**
       pekko-compat-reviewの指摘がある場合は、必ず `references/pekko/` の
       該当ソースを読み直してからRust実装を修正すること。
+
+      **修正完了条件（必須）:**
+      修正後に必ず以下を順番に実行し、全チェックがパスすることを確認してからレポートに記録すること:
+      1. `./scripts/ci-check.sh dylint` （Dylint全lint）
+      2. `./scripts/ci-check.sh all` （全CI）
+      成功ログをcoder-decisionsレポートの「実行結果」セクションに含めること。
     rules:
-      - condition: 修正完了
+      - condition: 修正完了（ci-check.sh all 通過済み）
         next: reviewers
       - condition: 判断できない、情報不足
         next: plan
@@ -378,8 +385,9 @@ movements:
     instruction: supervise
     instruction_template: |
       **fraktor-rs固有の検証:**
-      - `./scripts/ci-check.sh all` を実行し、全チェックがパスすることを確認
+      - fix / implement ムーブメントのレポートに `./scripts/ci-check.sh all` の成功ログが記録されていることを確認
       - Pekko参照実装との対応関係がレビューで承認済みであることを確認
+      ※ supervisorはCIを自身では実行しない（fix/implementの実行済み証跡をレポートで確認するのみ）
     output_contracts:
       report:
         - name: supervisor-validation.md
@@ -390,5 +398,7 @@ movements:
     rules:
       - condition: すべて問題なし
         next: COMPLETE
-      - condition: 要求未達成、テスト失敗、ビルドエラー
+      - condition: テスト失敗、ビルドエラー、要件未達（修正で解決可能）
+        next: fix
+      - condition: 根本的な設計変更が必要
         next: plan

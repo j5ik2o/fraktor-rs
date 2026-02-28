@@ -277,7 +277,7 @@ fn unstash_messages_are_replayed_before_existing_mailbox_messages() {
   state.register_cell(cell.clone());
 
   cell.dispatcher().enqueue_system(SystemMessage::Create).expect("create");
-  cell.stash_message(AnyMessage::new(1_i32));
+  cell.stash_message_with_limit(AnyMessage::new(1_i32), usize::MAX).expect("stashing below limit should succeed");
   cell.mailbox().enqueue_user(AnyMessage::new(2_i32)).expect("enqueue queued");
 
   let unstashed = cell.unstash_messages().expect("unstash");

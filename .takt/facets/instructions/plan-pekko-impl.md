@@ -1,5 +1,8 @@
 Pekko互換仕様のRust実装を計画してください。
 
+## やらないこと (Do Not)
+- `cargo check` / `cargo build` / `cargo test` など、ビルドを伴うコマンドを実行しないこと。このムーブメントはビルド権限がなく `Operation not permitted` で失敗する。ビルド検証は `fix` / `implement` ムーブメントの責務。
+
 **注意:** Previous Responseがある場合は差し戻しのため、
 その内容を踏まえて計画を見直してください（replan）。
 

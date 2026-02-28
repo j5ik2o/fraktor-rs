@@ -15,6 +15,8 @@ pub(crate) enum JournalResponseAction<A> {
   None,
   /// Invoke the next pending handler.
   InvokeHandler(PendingHandlerInvocation<A>),
+  /// Invoke multiple handlers in order.
+  InvokeHandlers(Vec<PendingHandlerInvocation<A>>),
   /// Notify persist failure.
   PersistFailure { cause: JournalError, repr: PersistentRepr },
   /// Notify persist rejection.
@@ -36,6 +38,11 @@ impl<A> JournalResponseAction<A> {
     match self {
       | JournalResponseAction::None => {},
       | JournalResponseAction::InvokeHandler(invocation) => invocation.invoke(actor),
+      | JournalResponseAction::InvokeHandlers(invocations) => {
+        for invocation in invocations {
+          invocation.invoke(actor);
+        }
+      },
       | JournalResponseAction::PersistFailure { cause, repr } => actor.on_persist_failure(&cause, &repr),
       | JournalResponseAction::PersistRejected { cause, repr } => actor.on_persist_rejected(&cause, &repr),
       | JournalResponseAction::ReceiveRecover(repr) => actor.receive_recover(&repr),

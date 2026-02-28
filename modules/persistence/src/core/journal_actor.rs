@@ -199,7 +199,8 @@ where
             let _ = sender
               .tell(AnyMessageGeneric::new(JournalResponse::WriteMessageSuccess { repr, instance_id: *instance_id }));
           }
-          let _ = sender.tell(AnyMessageGeneric::new(JournalResponse::WriteMessagesSuccessful));
+          let _ =
+            sender.tell(AnyMessageGeneric::new(JournalResponse::WriteMessagesSuccessful { instance_id: *instance_id }));
           None
         },
         | Poll::Ready(Err(error)) => {
@@ -218,6 +219,7 @@ where
             let _ = sender.tell(AnyMessageGeneric::new(JournalResponse::WriteMessagesFailed {
               cause:       error,
               write_count: messages.len() as u64,
+              instance_id: *instance_id,
             }));
             None
           }
@@ -238,6 +240,9 @@ where
         let mut highest = 0;
         for repr in messages.iter().cloned() {
           highest = repr.sequence_nr();
+          if repr.deleted() {
+            continue;
+          }
           let _ = sender.tell(AnyMessageGeneric::new(JournalResponse::ReplayedMessage { persistent_repr: repr }));
         }
         let _ = sender.tell(AnyMessageGeneric::new(JournalResponse::RecoverySuccess { highest_sequence_nr: highest }));

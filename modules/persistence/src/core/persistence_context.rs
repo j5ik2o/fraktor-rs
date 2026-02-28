@@ -4,7 +4,10 @@
 mod tests;
 
 use alloc::{boxed::Box, collections::VecDeque, format, string::String, vec::Vec};
-use core::ops::Deref;
+use core::{
+  ops::Deref,
+  sync::atomic::{AtomicU32, Ordering},
+};
 
 use fraktor_actor_rs::core::{
   actor::{Pid, actor_ref::ActorRefGeneric},
@@ -23,13 +26,19 @@ use crate::core::{
 
 type PendingHandler<A> = Box<dyn FnOnce(&mut A, &PersistentRepr) + Send + Sync>;
 
+static NEXT_INSTANCE_ID: AtomicU32 = AtomicU32::new(1);
+
+enum EventBatchEntry<A> {
+  Persistent(PersistentEnvelope<A>),
+  Deferred(Box<PendingHandlerInvocation<A>>),
+}
+
 /// Persistence context owned by persistent actors.
 pub struct PersistenceContext<A: 'static, TB: RuntimeToolbox + 'static> {
   persistence_id:      String,
   state:               PersistentActorState,
   pending_invocations: VecDeque<PendingHandlerInvocation<A>>,
-  event_batch:         Vec<PersistentEnvelope<A>>,
-  journal_batch:       Vec<PersistentEnvelope<A>>,
+  event_batch:         Vec<EventBatchEntry<A>>,
   current_sequence_nr: u64,
   last_sequence_nr:    u64,
   recovery:            Recovery,
@@ -48,11 +57,10 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
       state: PersistentActorState::WaitingRecoveryPermit,
       pending_invocations: VecDeque::new(),
       event_batch: Vec::new(),
-      journal_batch: Vec::new(),
       current_sequence_nr: 0,
       last_sequence_nr: 0,
       recovery: Recovery::default(),
-      instance_id: 1,
+      instance_id: NEXT_INSTANCE_ID.fetch_add(1, Ordering::Relaxed),
       event_adapters: EventAdapters::new(),
       journal_actor_ref: ActorRefGeneric::null(),
       snapshot_actor_ref: ActorRefGeneric::null(),
@@ -115,16 +123,64 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
     &mut self.event_adapters
   }
 
+  /// Returns the current persistence instance id.
+  #[must_use]
+  pub(crate) const fn instance_id(&self) -> u32 {
+    self.instance_id
+  }
+
   /// Adds an event to the batch.
   pub fn add_to_event_batch<E: core::any::Any + Send + Sync + 'static>(
     &mut self,
     event: E,
     stashing: bool,
+    sender: Option<Pid>,
     handler: PendingHandler<A>,
   ) {
     self.current_sequence_nr = self.current_sequence_nr.saturating_add(1);
-    let envelope = PersistentEnvelope::new(ArcShared::new(event), self.current_sequence_nr, handler, stashing);
-    self.event_batch.push(envelope);
+    let envelope = PersistentEnvelope::new(ArcShared::new(event), self.current_sequence_nr, handler, stashing, sender);
+    self.event_batch.push(EventBatchEntry::Persistent(envelope));
+  }
+
+  /// Adds a deferred handler invocation executed after successful batch persistence.
+  pub fn add_deferred_handler<E: core::any::Any + Send + Sync + 'static>(
+    &mut self,
+    event: E,
+    stashing: bool,
+    sender: Option<Pid>,
+    handler: PendingHandler<A>,
+  ) {
+    let repr = PersistentRepr::new(self.persistence_id.clone(), self.current_sequence_nr, ArcShared::new(event))
+      .with_sender(sender)
+      .with_adapters(self.event_adapters.clone());
+    let invocation = if stashing {
+      PendingHandlerInvocation::stashing_deferred_boxed(repr, handler)
+    } else {
+      PendingHandlerInvocation::async_deferred_boxed(repr, handler)
+    };
+    if self.event_batch.is_empty() {
+      self.pending_invocations.push_back(invocation);
+      return;
+    }
+    self.event_batch.push(EventBatchEntry::Deferred(Box::new(invocation)));
+  }
+
+  /// Returns true when there is in-flight persistence work.
+  #[must_use]
+  pub fn has_in_flight_persistence(&self) -> bool {
+    self.state == PersistentActorState::PersistingEvents
+      || !self.event_batch.is_empty()
+      || !self.pending_invocations.is_empty()
+  }
+
+  /// Returns true when incoming commands should be stashed.
+  #[must_use]
+  pub fn should_stash_commands(&self) -> bool {
+    let has_stashing_pending =
+      self.pending_invocations.iter().any(|invocation| invocation.is_stashing() && !invocation.is_deferred());
+    let has_stashing_deferred =
+      self.pending_invocations.iter().any(|invocation| invocation.is_stashing() && invocation.is_deferred());
+    (self.state == PersistentActorState::PersistingEvents && has_stashing_pending) || has_stashing_deferred
   }
 
   /// Flushes the current batch to the journal.
@@ -142,24 +198,30 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
     let next_state = self.state.transition_to_persisting_events()?;
     self.state = next_state;
 
-    self.journal_batch.append(&mut self.event_batch);
     let mut messages = Vec::new();
+    let to_sequence_nr = self.current_sequence_nr;
 
-    for envelope in self.journal_batch.drain(..) {
-      let stashing = envelope.is_stashing();
-      let repr = envelope.into_persistent_repr(self.persistence_id.clone(), self.event_adapters.clone());
-      let journal_repr = Self::to_journal_repr(&repr);
-      let handler = envelope.into_handler();
-      let invocation = if stashing {
-        PendingHandlerInvocation::stashing(repr.clone(), handler)
-      } else {
-        PendingHandlerInvocation::async_handler(repr.clone(), handler)
-      };
-      self.pending_invocations.push_back(invocation);
-      messages.push(journal_repr);
+    for entry in self.event_batch.drain(..) {
+      match entry {
+        | EventBatchEntry::Persistent(envelope) => {
+          let stashing = envelope.is_stashing();
+          let repr = envelope.into_persistent_repr(self.persistence_id.clone(), self.event_adapters.clone());
+          let journal_repr = Self::to_journal_repr(&repr);
+          let handler = envelope.into_handler();
+          let invocation = if stashing {
+            PendingHandlerInvocation::stashing(repr.clone(), handler)
+          } else {
+            PendingHandlerInvocation::async_handler(repr.clone(), handler)
+          };
+          self.pending_invocations.push_back(invocation);
+          messages.push(journal_repr);
+        },
+        | EventBatchEntry::Deferred(invocation) => self.pending_invocations.push_back(*invocation),
+      }
     }
 
-    let to_sequence_nr = messages.last().map(|repr| repr.sequence_nr()).unwrap_or(self.current_sequence_nr);
+    debug_assert!(!messages.is_empty(), "flush_batch requires at least one persistent journal message");
+
     let message = JournalMessage::WriteMessages {
       persistence_id: self.persistence_id.clone(),
       to_sequence_nr,
@@ -181,30 +243,45 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
   /// Handles journal responses.
   pub(crate) fn handle_journal_response(&mut self, response: &JournalResponse) -> JournalResponseAction<A> {
     match response {
-      | JournalResponse::WriteMessageSuccess { repr, .. } => {
-        if self.state != PersistentActorState::PersistingEvents {
+      | JournalResponse::WriteMessageSuccess { repr, instance_id } => {
+        if self.state != PersistentActorState::PersistingEvents || !self.matches_instance_id(*instance_id) {
           return JournalResponseAction::None;
         }
-        let action = self
-          .pending_invocations
-          .pop_front()
-          .map(JournalResponseAction::InvokeHandler)
-          .unwrap_or(JournalResponseAction::None);
         self.last_sequence_nr = repr.sequence_nr();
-        if self.pending_invocations.is_empty()
-          && let Ok(state) = self.state.transition_to_processing_commands()
-        {
-          self.state = state;
-        }
+        let action = Self::to_handler_action(self.take_invocations_for_write_success());
+        self.transition_to_processing_commands_if_no_pending();
         action
       },
-      | JournalResponse::WriteMessageFailure { repr, cause, .. } => {
-        let _ = self.pending_invocations.pop_front();
+      | JournalResponse::WriteMessageFailure { repr, cause, instance_id } => {
+        if !self.matches_instance_id(*instance_id) {
+          return JournalResponseAction::None;
+        }
+        self.advance_after_write_failure(repr);
         JournalResponseAction::PersistFailure { cause: cause.clone(), repr: repr.clone() }
       },
-      | JournalResponse::WriteMessageRejected { repr, cause, .. } => {
-        let _ = self.pending_invocations.pop_front();
+      | JournalResponse::WriteMessageRejected { repr, cause, instance_id } => {
+        if !self.matches_instance_id(*instance_id) {
+          return JournalResponseAction::None;
+        }
+        self.advance_after_write_rejected(repr);
         JournalResponseAction::PersistRejected { cause: cause.clone(), repr: repr.clone() }
+      },
+      | JournalResponse::WriteMessagesFailed { write_count, instance_id, .. } => {
+        if self.state != PersistentActorState::PersistingEvents || !self.matches_instance_id(*instance_id) {
+          return JournalResponseAction::None;
+        }
+        if *write_count == 0 {
+          self.reset_after_write_failure();
+        }
+        JournalResponseAction::None
+      },
+      | JournalResponse::WriteMessagesSuccessful { instance_id } => {
+        if self.state != PersistentActorState::PersistingEvents || !self.matches_instance_id(*instance_id) {
+          return JournalResponseAction::None;
+        }
+        let action = Self::to_handler_action(self.take_leading_deferred_invocations());
+        self.transition_to_processing_commands_if_no_pending();
+        action
       },
       | JournalResponse::ReplayedMessage { persistent_repr } => {
         self.current_sequence_nr = persistent_repr.sequence_nr();
@@ -319,6 +396,71 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
     }
   }
 
+  fn take_invocations_for_write_success(&mut self) -> Vec<PendingHandlerInvocation<A>> {
+    let mut invocations = self.take_leading_deferred_invocations();
+    if let Some(invocation) = self.pending_invocations.pop_front() {
+      invocations.push(invocation);
+    }
+    invocations
+  }
+
+  fn take_leading_deferred_invocations(&mut self) -> Vec<PendingHandlerInvocation<A>> {
+    let mut invocations = Vec::new();
+    while self.pending_invocations.front().is_some_and(PendingHandlerInvocation::is_deferred) {
+      if let Some(invocation) = self.pending_invocations.pop_front() {
+        invocations.push(invocation);
+      }
+    }
+    invocations
+  }
+
+  fn to_handler_action(mut invocations: Vec<PendingHandlerInvocation<A>>) -> JournalResponseAction<A> {
+    match invocations.len() {
+      | 0 => JournalResponseAction::None,
+      | 1 => {
+        let invocation = invocations.remove(0);
+        JournalResponseAction::InvokeHandler(invocation)
+      },
+      | _ => JournalResponseAction::InvokeHandlers(invocations),
+    }
+  }
+
+  fn transition_to_processing_commands_if_no_pending(&mut self) {
+    if self.pending_invocations.is_empty()
+      && let Ok(state) = self.state.transition_to_processing_commands()
+    {
+      self.state = state;
+    }
+  }
+
+  fn advance_after_write_rejected(&mut self, repr: &PersistentRepr) {
+    self.remove_pending_persist_invocation(repr.sequence_nr());
+    self.transition_to_processing_commands_if_no_pending();
+  }
+
+  fn advance_after_write_failure(&mut self, repr: &PersistentRepr) {
+    self.remove_pending_persist_invocation(repr.sequence_nr());
+  }
+
+  fn remove_pending_persist_invocation(&mut self, sequence_nr: u64) {
+    if let Some(index) = self
+      .pending_invocations
+      .iter()
+      .position(|invocation| !invocation.is_deferred() && invocation.sequence_nr() == sequence_nr)
+    {
+      let _ = self.pending_invocations.remove(index);
+    }
+  }
+
+  fn reset_after_write_failure(&mut self) {
+    self.pending_invocations.clear();
+    self.transition_to_processing_commands_if_no_pending();
+  }
+
+  const fn matches_instance_id(&self, instance_id: u32) -> bool {
+    self.instance_id == instance_id
+  }
+
   /// Starts recovery.
   ///
   /// # Errors
@@ -396,7 +538,7 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
     let adapter = repr.adapters().write_adapter_for_type_id(repr.adapter_type_id());
     let manifest = adapter.manifest(payload.deref());
     let adapted_payload = adapter.to_journal(payload);
-    Self::repr_with_payload(repr, adapted_payload).with_manifest(manifest)
+    Self::repr_with_payload(repr, adapted_payload).with_manifest(manifest).with_sender(None)
   }
 
   fn from_journal_repr(repr: &PersistentRepr) -> Vec<PersistentRepr> {
@@ -411,6 +553,8 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
       .with_manifest(repr.manifest())
       .with_writer_uuid(repr.writer_uuid())
       .with_timestamp(repr.timestamp())
+      .with_deleted(repr.deleted())
+      .with_sender(repr.sender())
       .with_adapters(repr.adapters().clone())
       .with_adapter_type_id(repr.adapter_type_id());
     if let Some(metadata) = repr.metadata() {

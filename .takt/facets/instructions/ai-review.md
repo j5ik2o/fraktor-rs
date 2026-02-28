@@ -1,5 +1,8 @@
 # AIレビュー指示
 
+## やらないこと (Do Not)
+- `cargo check` / `cargo build` / `cargo test` など、ビルドを伴うコマンドを実行しないこと。このムーブメントはビルド権限がなく `Operation not permitted` で失敗する。ビルド検証は `fix` / `implement` ムーブメントの責務。
+
 ## やること (Do)
 1. AI生成コード特有の問題を対象ファイルで確認してください。主に、幻覚API、ファントムインポート、パターン補完エラー、過度な抽象化、未使用デッドコード、フォールバック濫用、指示外の後方互換追加をチェックしてください。
 2. Previous Response から前回の open findings を抽出して、各 finding に `finding_id` を付与してください。

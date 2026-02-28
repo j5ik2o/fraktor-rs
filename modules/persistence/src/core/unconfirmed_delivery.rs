@@ -15,6 +15,7 @@ pub struct UnconfirmedDelivery<TB: RuntimeToolbox + 'static> {
   payload:     ArcShared<dyn Any + Send + Sync>,
   sender:      Option<ActorRefGeneric<TB>>,
   timestamp:   TimerInstant,
+  attempt:     u32,
 }
 
 impl<TB: RuntimeToolbox + 'static> UnconfirmedDelivery<TB> {
@@ -26,8 +27,9 @@ impl<TB: RuntimeToolbox + 'static> UnconfirmedDelivery<TB> {
     payload: ArcShared<dyn Any + Send + Sync>,
     sender: Option<ActorRefGeneric<TB>>,
     timestamp: TimerInstant,
+    attempt: u32,
   ) -> Self {
-    Self { delivery_id, destination, payload, sender, timestamp }
+    Self { delivery_id, destination, payload, sender, timestamp, attempt }
   }
 
   /// Returns the delivery id.
@@ -65,6 +67,18 @@ impl<TB: RuntimeToolbox + 'static> UnconfirmedDelivery<TB> {
   pub const fn timestamp(&self) -> TimerInstant {
     self.timestamp
   }
+
+  /// Returns the number of delivery attempts.
+  #[must_use]
+  pub const fn attempt(&self) -> u32 {
+    self.attempt
+  }
+
+  /// Marks this delivery as redelivered and updates timestamp/attempt.
+  pub const fn mark_redelivered(&mut self, timestamp: TimerInstant) {
+    self.timestamp = timestamp;
+    self.attempt = self.attempt.saturating_add(1);
+  }
 }
 
 impl<TB: RuntimeToolbox + 'static> Clone for UnconfirmedDelivery<TB> {
@@ -75,6 +89,7 @@ impl<TB: RuntimeToolbox + 'static> Clone for UnconfirmedDelivery<TB> {
       payload:     self.payload.clone(),
       sender:      self.sender.clone(),
       timestamp:   self.timestamp,
+      attempt:     self.attempt,
     }
   }
 }
