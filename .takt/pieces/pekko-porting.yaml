@@ -60,22 +60,21 @@ loop_monitors:
         - condition: 健全（進捗あり）
           next: ai_review
         - condition: 非生産的（改善なし）
-          next: reviewers
+          next: ai_no_fix
 
   - cycle:
-      - reviewers
-      - fix
+      - qa-review
+      - qa-fix
     threshold: 3
     judge:
       persona: supervisor
       instruction_template: |
-        reviewers と fix のレビュー・修正サイクルが {cycle_count} 回繰り返されました。
+        qa-review と qa-fix のレビュー・修正サイクルが {cycle_count} 回繰り返されました。
 
         各サイクルのレポートを確認し、このループが健全（進捗がある）か、
         非生産的（同じ問題を繰り返している）かを判断してください。
 
         **参照するレポート:**
-        - Pekko互換性レビュー: {report:05-pekko-compat-review.md}
         - QAレビュー: {report:06-qa-review.md}
 
         **判断基準:**
@@ -84,24 +83,50 @@ loop_monitors:
         - 修正が実際に反映されているか
       rules:
         - condition: 健全（進捗あり）
-          next: reviewers
+          next: qa-review
         - condition: 非生産的（改善なし）
-          next: supervise
+          next: ABORT
 
   - cycle:
-      - supervise
-      - fix
+      - pekko-compat-review
+      - pekko-compat-fix
     threshold: 3
     judge:
       persona: supervisor
       instruction_template: |
-        supervise と fix のサイクルが {cycle_count} 回繰り返されました。
+        pekko-compat-review と pekko-compat-fix のレビュー・修正サイクルが {cycle_count} 回繰り返されました。
+
+        各サイクルのレポートを確認し、このループが健全（進捗がある）か、
+        非生産的（同じ問題を繰り返している）かを判断してください。
+
+        **参照するレポート:**
+        - Pekko互換性レビュー: {report:05-pekko-compat-review.md}
+
+        **判断基準:**
+        - 各サイクルで新しい問題が発見・修正されているか
+        - 同じ指摘が繰り返されていないか
+        - 修正が実際に反映されているか
+      rules:
+        - condition: 健全（進捗あり）
+          next: pekko-compat-review
+        - condition: 非生産的（改善なし）
+          next: ABORT
+
+  - cycle:
+      - supervise
+      - pekko-compat-fix
+    threshold: 3
+    judge:
+      persona: supervisor
+      instruction_template: |
+        supervise と pekko-compat-fix のサイクルが {cycle_count} 回繰り返されました。
 
         各サイクルのレポートを確認し、このループが健全（進捗がある）か、
         非生産的（同じ問題を繰り返している）かを判断してください。
 
         **参照するレポート:**
         - スーパーバイザー検証: {report:supervisor-validation.md}
+        - Pekko互換性レビュー: {report:05-pekko-compat-review.md}
 
         **判断基準:**
         - 各サイクルで修正が実際に反映され、前回の指摘が解消されているか
@@ -129,10 +154,10 @@ loop_monitors:
         - 新しい観点や情報が各サイクルで追加されているか
         - 合意に向かう進捗があるか
       rules:
-        - condition: 健全（進捗あり）
-          next: ai_fix
-        - condition: 非生産的（改善なし）
-          next: reviewers
+      - condition: 健全（進捗あり）
+        next: ai_fix
+      - condition: 非生産的（改善なし）
+        next: ABORT
 
 movements:
   - name: plan
@@ -224,7 +249,7 @@ movements:
           format: ai-review
     rules:
       - condition: AI特有の問題なし
-        next: reviewers
+        next: qa-review
       - condition: AI特有の問題あり
         next: ai_fix
 
@@ -273,64 +298,99 @@ movements:
       - condition: ai_reviewの指摘が妥当（修正すべき）
         next: ai_fix
       - condition: ai_fixの判断が妥当（修正不要）
-        next: reviewers
+        next: qa-review
 
-  - name: reviewers
-    parallel:
-      - name: pekko-compat-review
-        edit: false
-        persona: pekko-compat-reviewer
-        policy:
-          - review
-          - pekko-compat
-        knowledge:
-          - pekko-porting
-          - architecture
-        allowed_tools:
-          - Read
-          - Glob
-          - Grep
-          - WebSearch
-          - WebFetch
-        instruction: review-pekko-compat
-        output_contracts:
-          report:
-            - name: 05-pekko-compat-review.md
-              format: pekko-compat-review
-        rules:
-          - condition: approved
-          - condition: needs_fix
-
-      - name: qa-review
-        edit: false
-        persona: qa-reviewer
-        policy:
-          - review
-          - qa
-        allowed_tools:
-          - Read
-          - Glob
-          - Grep
-          - WebSearch
-          - WebFetch
-        instruction: review-qa
-        instruction_template: |
-          **やらないこと:**
-          `cargo check` / `cargo build` / `cargo test` など、ビルドを伴うコマンドを実行しないこと。このムーブメントはビルド権限がなく `Operation not permitted` で失敗する。ビルド検証は `fix` / `implement` ムーブメントの責務。
-        output_contracts:
-          report:
-            - name: 06-qa-review.md
-              format: qa-review
-        rules:
-          - condition: approved
-          - condition: needs_fix
+  - name: qa-review
+    edit: false
+    persona: qa-reviewer
+    policy:
+      - review
+      - qa
+    allowed_tools:
+      - Read
+      - Glob
+      - Grep
+      - WebSearch
+      - WebFetch
+    instruction: review-qa
+    instruction_template: |
+      **やらないこと:**
+      `cargo check` / `cargo build` / `cargo test` など、ビルドを伴うコマンドを実行しないこと。このムーブメントはビルド権限がなく `Operation not permitted` で失敗する。ビルド検証は `qa-fix` / `pekko-compat-fix` / `implement` ムーブメントの責務。
+    output_contracts:
+      report:
+        - name: 06-qa-review.md
+          format: qa-review
     rules:
-      - condition: all("approved")
-        next: supervise
-      - condition: any("needs_fix")
-        next: fix
+      - condition: approved
+        next: pekko-compat-review
+      - condition: needs_fix
+        next: qa-fix
 
-  - name: fix
+  - name: qa-fix
+    edit: true
+    persona: coder
+    policy:
+      - coding
+      - testing
+      - fraktor-coding
+    session: refresh
+    knowledge:
+      - pekko-porting
+      - architecture
+    allowed_tools:
+      - Read
+      - Glob
+      - Grep
+      - Edit
+      - Write
+      - Bash
+      - WebSearch
+      - WebFetch
+    required_permission_mode: edit
+    pass_previous_response: false
+    instruction: fix
+    instruction_template: |
+      **QA観点の指摘への対応:**
+      QAレビューの指摘を優先的に解消すること。
+
+      **修正完了条件（必須）:**
+      修正後に必ず以下を順番に実行し、全チェックがパスすることを確認してからレポートに記録すること:
+      1. `./scripts/ci-check.sh dylint` （Dylint全lint）
+      2. `./scripts/ci-check.sh all` （全CI）
+      成功ログをcoder-decisionsレポートの「実行結果」セクションに含めること。
+    rules:
+      - condition: 修正完了（ci-check.sh all 通過済み）
+        next: qa-review
+      - condition: 判断できない、情報不足
+        next: qa-review
+
+  - name: pekko-compat-review
+    edit: false
+    persona: pekko-compat-reviewer
+    policy:
+      - review
+      - pekko-compat
+    knowledge:
+      - pekko-porting
+      - architecture
+    allowed_tools:
+      - Read
+      - Glob
+      - Grep
+      - WebSearch
+      - WebFetch
+    instruction: review-pekko-compat
+    output_contracts:
+      report:
+        - name: 05-pekko-compat-review.md
+          format: pekko-compat-review
+    rules:
+      - condition: approved
+        next: supervise
+      - condition: needs_fix
+        next: pekko-compat-fix
+
+  - name: pekko-compat-fix
     edit: true
     persona: coder
     policy:
@@ -355,7 +415,7 @@ movements:
     instruction: fix
     instruction_template: |
       **Pekko互換性の指摘への対応:**
-      pekko-compat-reviewの指摘がある場合は、必ず `references/pekko/` の
+      pekko-compat-review の指摘がある場合は、必ず `references/pekko/` の
       該当ソースを読み直してからRust実装を修正すること。
 
       **修正完了条件（必須）:**
@@ -365,9 +425,9 @@ movements:
       成功ログをcoder-decisionsレポートの「実行結果」セクションに含めること。
     rules:
       - condition: 修正完了（ci-check.sh all 通過済み）
-        next: reviewers
+        next: pekko-compat-review
       - condition: 判断できない、情報不足
-        next: plan
+        next: pekko-compat-review
 
   - name: supervise
     edit: false
@@ -385,9 +445,9 @@ movements:
     instruction: supervise
     instruction_template: |
       **fraktor-rs固有の検証:**
-      - fix / implement ムーブメントのレポートに `./scripts/ci-check.sh all` の成功ログが記録されていることを確認
+      - qa-fix / pekko-compat-fix / implement ムーブメントのレポートに `./scripts/ci-check.sh all` の成功ログが記録されていることを確認
       - Pekko参照実装との対応関係がレビューで承認済みであることを確認
-      ※ supervisorはCIを自身では実行しない（fix/implementの実行済み証跡をレポートで確認するのみ）
+      ※ supervisorはCIを自身では実行しない（qa-fix/pekko-compat-fix/implementの実行済み証跡をレポートで確認するのみ）
     output_contracts:
       report:
         - name: supervisor-validation.md
@@ -399,6 +459,6 @@ movements:
       - condition: すべて問題なし
         next: COMPLETE
       - condition: テスト失敗、ビルドエラー、要件未達（修正で解決可能）
-        next: fix
+        next: pekko-compat-fix
       - condition: 根本的な設計変更が必要
         next: plan
