@@ -168,6 +168,16 @@ where
     self.inner().stash()
   }
 
+  /// Stashes the currently processed message with an explicit capacity limit.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when no current message is active, when the stash reached `max_messages`,
+  /// or when the actor cell is unavailable.
+  pub fn stash_with_limit(&self, max_messages: usize) -> Result<(), ActorError> {
+    self.inner().stash_with_limit(max_messages)
+  }
+
   /// Re-enqueues the oldest stashed message back to the actor mailbox.
   ///
   /// # Errors

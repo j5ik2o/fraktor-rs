@@ -273,6 +273,19 @@ fn actor_context_stash_with_limit_detects_overflow() {
 }
 
 #[test]
+fn actor_context_stash_with_limit_requires_active_message() {
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(NoStdMutex::new(Vec::new()))));
+  let _cell = register_cell(&system, pid, "self", &props);
+
+  let context = ActorContext::new(&system, pid);
+  let error = context.stash_with_limit(10).expect_err("should fail without active message");
+
+  assert!(matches!(error, ActorError::Recoverable(reason) if reason.as_str().contains("active user message")));
+}
+
+#[test]
 fn actor_context_unstash_replays_single_message_and_unstash_all_replays_remaining() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();

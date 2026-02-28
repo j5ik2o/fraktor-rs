@@ -7,7 +7,7 @@ use core::marker::PhantomData;
 
 use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 
-use crate::core::{actor::STASH_OVERFLOW_REASON, error::ActorError, typed::actor::TypedActorContextGeneric};
+use crate::core::{error::ActorError, typed::actor::TypedActorContextGeneric};
 
 /// Bounded stash helper inspired by Pekko's `StashBuffer`.
 pub struct StashBufferGeneric<M, TB = NoStdToolbox>
@@ -76,10 +76,7 @@ where
   ///
   /// Returns an error when the stash capacity is reached or when context stashing fails.
   pub fn stash(&self, ctx: &TypedActorContextGeneric<'_, M, TB>) -> Result<(), ActorError> {
-    if self.is_full(ctx)? {
-      return Err(ActorError::recoverable(STASH_OVERFLOW_REASON));
-    }
-    ctx.stash()
+    ctx.stash_with_limit(self.capacity)
   }
 
   /// Re-enqueues all stashed messages back to the mailbox.
