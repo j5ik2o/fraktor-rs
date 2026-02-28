@@ -708,6 +708,45 @@ fn should_stash_commands_until_write_messages_successful_for_stashing_batch() {
 }
 
 #[test]
+fn should_stash_commands_until_batch_success_when_stashing_defer_is_between_persisted_events() {
+  let (journal_ref, journal_store) = create_sender();
+  let (snapshot_ref, _snapshot_store) = create_sender();
+  let mut context = DummyContext::new("pid-1".to_string());
+  context.bind_actor_refs(journal_ref, snapshot_ref).expect("bind actor refs");
+  context.state = PersistentActorState::ProcessingCommands;
+
+  context.add_to_event_batch(1_i32, false, None, Box::new(|_actor: &mut DummyActor, _repr| {}));
+  context.add_deferred_handler(2_i32, true, None, Box::new(|_actor: &mut DummyActor, _repr| {}));
+  context.add_to_event_batch(3_i32, false, None, Box::new(|_actor: &mut DummyActor, _repr| {}));
+  context.flush_batch(ActorRefGeneric::null()).expect("flush batch");
+
+  let persisted_reprs = {
+    let journal_messages = journal_store.lock();
+    let message = journal_messages[0].payload().downcast_ref::<JournalMessage<TB>>().expect("unexpected payload");
+    match message {
+      | JournalMessage::WriteMessages { messages, .. } => messages.clone(),
+      | _ => panic!("unexpected message"),
+    }
+  };
+  assert_eq!(persisted_reprs.len(), 2);
+
+  let instance_id = context.instance_id();
+  let _ =
+    context.handle_journal_response(&JournalResponse::WriteMessageSuccess { repr: persisted_reprs[0].clone(), instance_id });
+  assert_eq!(context.state(), PersistentActorState::PersistingEvents);
+  assert!(context.should_stash_commands());
+
+  let _ =
+    context.handle_journal_response(&JournalResponse::WriteMessageSuccess { repr: persisted_reprs[1].clone(), instance_id });
+  assert_eq!(context.state(), PersistentActorState::PersistingEvents);
+  assert!(context.should_stash_commands());
+
+  let _ = context.handle_journal_response(&JournalResponse::WriteMessagesSuccessful { instance_id });
+  assert_eq!(context.state(), PersistentActorState::ProcessingCommands);
+  assert!(!context.should_stash_commands());
+}
+
+#[test]
 fn write_message_failure_keeps_context_in_persisting_state() {
   let (journal_ref, journal_store) = create_sender();
   let (snapshot_ref, _snapshot_store) = create_sender();

@@ -222,7 +222,12 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
           self.pending_invocations.push_back(invocation);
           messages.push(journal_repr);
         },
-        | EventBatchEntry::Deferred(invocation) => self.pending_invocations.push_back(*invocation),
+        | EventBatchEntry::Deferred(invocation) => {
+          if invocation.is_stashing() {
+            has_stashing_invocation = true;
+          }
+          self.pending_invocations.push_back(*invocation);
+        },
       }
     }
     self.stash_until_batch_completion = has_stashing_invocation;
