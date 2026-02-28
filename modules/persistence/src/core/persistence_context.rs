@@ -243,6 +243,7 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
     };
     if let Err(error) = self.send_write_messages(message) {
       // 送信失敗時: 状態をロールバックし、処理不能な保留ハンドラをクリア
+      self.stash_until_batch_completion = false;
       self.pending_invocations.clear();
       if let Ok(rollback) = self.state.transition_to_processing_commands() {
         self.state = rollback;

@@ -59,6 +59,18 @@ fn create_sender() -> (ActorRefGeneric<TB>, MessageStore) {
   (sender, messages)
 }
 
+struct FailingSender;
+
+impl ActorRefSender<TB> for FailingSender {
+  fn send(&mut self, message: AnyMessageGeneric<TB>) -> Result<SendOutcome, SendError<TB>> {
+    Err(SendError::closed(message))
+  }
+}
+
+fn create_failing_sender() -> ActorRefGeneric<TB> {
+  ActorRefGeneric::new(Pid::new(2, 1), FailingSender)
+}
+
 struct AddTenWriteAdapter;
 
 impl WriteEventAdapter for AddTenWriteAdapter {
@@ -519,6 +531,22 @@ fn flush_batch_reuses_pre_boxed_async_handler_without_double_boxing() {
     },
     | _ => panic!("expected async invocation"),
   }
+}
+
+#[test]
+fn flush_batch_send_failure_rolls_back_and_clears_stash_until_batch_completion() {
+  let journal_ref = create_failing_sender();
+  let (snapshot_ref, _snapshot_store) = create_sender();
+  let mut context = DummyContext::new("pid-1".to_string());
+  context.bind_actor_refs(journal_ref, snapshot_ref).expect("bind actor refs");
+  context.state = PersistentActorState::ProcessingCommands;
+
+  context.add_to_event_batch(1_i32, true, None, Box::new(|_actor: &mut DummyActor, _repr| {}));
+  let result = context.flush_batch(ActorRefGeneric::null());
+  assert!(result.is_err());
+  assert_eq!(context.state(), PersistentActorState::ProcessingCommands);
+  assert!(context.pending_invocations.is_empty());
+  assert!(!context.stash_until_batch_completion);
 }
 
 #[test]
