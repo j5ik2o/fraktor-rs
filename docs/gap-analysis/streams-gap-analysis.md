@@ -1,8 +1,7 @@
 # streams モジュール ギャップ分析
 
-> 分析日: 2026-02-24
+> 分析日: 2026-02-27（前回: 2026-02-24）
 > 対象: `modules/streams/src/` vs `references/pekko/stream/src/`
-> 前回分析: 2026-02-22（スタブ実装の評価を更新）
 
 ## サマリー
 
@@ -125,6 +124,14 @@
 | `BidiShape` / `ClosedShape` | 同名型 | 完全 |
 | `PortId` | `PortId` | 完全 |
 
+### Graph DSL
+
+| Pekko API | fraktor対応 | 備考 |
+|-----------|-------------|------|
+| `GraphDSL.Builder` | `GraphDsl<In, Out, Mat>` | 完全。`from_flow`, `via`, `to`, `build` |
+| `GraphStage` | `GraphStage` | 完全 |
+| `GraphStageLogic` | `GraphStageLogic` | 完全 |
+
 ### カテゴリ別カバー状況
 
 | カテゴリ | カバー状況 |
@@ -148,15 +155,13 @@
 | Graph DSL（GraphDsl, GraphStage, GraphStageLogic） | 完全 |
 | テスティング（TestSourceProbe, TestSinkProbe, StreamFuzzRunner） | 完全 |
 
-### スタブ実装の改善状況（前回分析からの変更）
+### スタブ実装の状況
 
-前回分析時にスタブだった以下のオペレーターは、その後の改善状況を確認する必要がある：
-
-| オペレーター | 前回状態 | 備考 |
-|-------------|---------|------|
-| `conflate` / `conflate_with_seed` | スタブ | 同期モデルではレート差なし。実装あり |
-| `expand` / `extrapolate` | スタブ | 同期モデルでは不要。Flow に存在 |
-| `watch_termination` | **改善済み** | `watch_termination_mat()` として Source/Flow 両方に実装（PR #132, #133） |
+| オペレーター | 状態 | 備考 |
+|-------------|------|------|
+| `conflate` / `conflate_with_seed` | 実装あり | 同期モデルではレート差なし |
+| `expand` / `extrapolate` | 実装あり | 同期モデルでは不要。Flow に存在 |
+| `watch_termination` | 改善済み | `watch_termination_mat()` として Source/Flow 両方に実装 |
 | `merge_preferred` / `merge_prioritized` / `merge_sorted` | スタブ | 優先度ロジック未実装、merge に委譲 |
 | `zip_latest` | スタブ | zip_all に委譲、Latest 保持なし |
 

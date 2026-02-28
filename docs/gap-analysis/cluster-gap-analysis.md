@@ -1,15 +1,23 @@
 # cluster モジュール ギャップ分析
 
+> 分析日: 2026-02-27（前回: 2026-02-24）
+> 対象: `modules/cluster/src/` vs `references/pekko/cluster-typed/src/` + `references/pekko/cluster/src/`
+
 ## サマリー
 
 | 指標 | 値 |
 |------|-----|
 | Pekko 公開型数（公開API + 主要内部型） | 約45型 |
 | fraktor-rs 公開型数 | 約160型 |
-| カバレッジ（機能カテゴリ単位） | 7/12 (58%) |
-| 主要ギャップ数 | 15 |
+| カバレッジ（機能カテゴリ単位） | 8/12 (67%)（前回 7/12 → 改善） |
+| 主要ギャップ数 | 14（前回15 → 1件削減） |
 
 > 注: fraktor-rsのclusterモジュールはPekkoよりもprotoactor-goの設計に近い。Pekkoでは別モジュール（cluster-sharding, distributed-pub-sub）に分離されている機能（Virtual Actors, Pub/Sub）がfraktor-rsではclusterモジュールに統合されている。型数の差はこの設計差異による。
+
+### 前回分析からの変更
+
+以下の機能が新たに実装済みとなった：
+- `DowningProvider` trait → 実装済み（`downing_provider.rs`）。`NoopDowningProvider` が既定実装
 
 ## 設計方針の差異
 
@@ -19,7 +27,7 @@
 | Pub/Sub | distributed-pub-sub（別モジュール） | PubSub（cluster内蔵） | protoactor-go準拠 |
 | メンバーシップ | Gossipプロトコル + VectorClock | Gossip + MembershipVersion（単調増加） | 簡略化された一貫性モデル |
 | 障害検出 | FailureDetector統合 + Reachability | PhiFailureDetector（remote経由） | 基本機能は実装済み |
-| ダウニング | プラガブルDowningProvider + SBR | 未対応 | 主要ギャップ |
+| ダウニング | プラガブルDowningProvider + SBR | DowningProvider trait + NoopDowningProvider | 基盤のみ実装 |
 | イベントモデル | 豊富なsealed trait階層 | ClusterEvent enum | 簡略化 |
 
 ## カテゴリ別ギャップ
@@ -32,7 +40,7 @@
 | `Cluster.subscribe` | `Cluster.scala` | EventStream経由 | - | パターンは異なるが機能的に同等 |
 | `Cluster.join` | `Cluster.scala` | `start_member` / `start_client` | - | API名は異なるが概念は対応 |
 | `Cluster.leave` | `Cluster.scala` | `shutdown(graceful=true)` | - | 実装済み |
-| `Cluster.down` | `Cluster.scala` | 未対応 | medium | 特定ノードのdown指示が不在 |
+| `Cluster.down` | `Cluster.scala` | `DowningProvider::down()` | - | **実装済み**（DowningProvider trait経由） |
 | `Cluster.prepareForFullClusterShutdown` | `Cluster.scala` | 未対応 | medium | 全ノード協調シャットダウン |
 | `Cluster.registerOnMemberUp` | `Cluster.scala` | 未対応 | easy | コールバック登録。EventStreamで代替可 |
 | `Cluster.registerOnMemberRemoved` | `Cluster.scala` | 未対応 | easy | コールバック登録。EventStreamで代替可 |
@@ -103,7 +111,7 @@
 
 | Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
 |-----------|-----------|-------------|--------|------|
-| `DowningProvider` (abstract) | `DowningProvider.scala` | 未対応 | medium | プラガブルダウニング戦略 |
+| `DowningProvider` (abstract) | `DowningProvider.scala` | `DowningProvider` trait | - | **実装済み**。`NoopDowningProvider` が既定 |
 | `SplitBrainResolver` | `sbr/SplitBrainResolver.scala` | 未対応 | hard | ネットワーク分断時のダウニング判定 |
 | `DowningStrategy` (abstract) | `sbr/DowningStrategy.scala` | 未対応 | hard | ダウニング判定ロジックの抽象化 |
 | `DowningStrategy.Decision` (sealed) | `sbr/DowningStrategy.scala` | 未対応 | hard | DownReachable, DownUnreachable, DownAll 等 |
@@ -176,8 +184,7 @@
 - `ClusterLogMarker` - 構造化ログマーカー
 
 ### Phase 3: medium（中程度の実装工数）
-- `DowningProvider` trait - プラガブルダウニング戦略の抽象化
-- `Cluster.down(address)` - 特定ノードのdown指示
+- `Cluster.prepareForFullClusterShutdown` - 全ノード協調シャットダウン
 - `LeaderChanged` / `RoleLeaderChanged` イベント + リーダー選出ロジック
 - `MemberStatus.WeaklyUp` - Reachability統合が前提
 - `MemberStatus.PreparingForShutdown` / `ReadyForShutdown` - 協調シャットダウン
@@ -217,3 +224,17 @@
 | AwsEcsClusterProvider | pekko-management (外部ライブラリ) | クラウドネイティブディスカバリ |
 | OutboundPipeline | pekko-remote (内部) | メッセージパイプライン |
 | BlockList | なし | fraktor-rs独自 |
+
+---
+
+## 総評
+
+fraktor-rs の cluster モジュールは **Pekko とは大きく異なる設計方針**（protoactor-go 準拠）を採用しており、Pekko の cluster-sharding や distributed-pub-sub に相当する機能（Grain, Pub/Sub）が統合されている点が特徴的。カバレッジは前回の 58% から **67%** に向上し、`DowningProvider` trait が新たに実装された。
+
+主要なギャップは以下の 3 領域に集中：
+
+1. **到達可能性と分断耐性**（Reachability, SplitBrainResolver）— ネットワーク分断への対処
+2. **リーダー選出とコンバージェンス**（Leader, VectorClock, Seen）— 分散合意の強化
+3. **クラスタルーティング**（ClusterRouter）— クラスタ対応のメッセージルーティング
+
+YAGNI 原則に従い、Phase 2 の easy 項目（Exiting 状態、ロール、registerOnMemberUp 等）を優先し、SBR 等の hard 項目は本番運用要件が明確になってから検討するのが妥当。

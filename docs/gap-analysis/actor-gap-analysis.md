@@ -1,6 +1,6 @@
 # actor モジュール ギャップ分析
 
-> 分析日: 2026-02-24
+> 分析日: 2026-02-27（前回: 2026-02-24）
 > 対象: `modules/actor/src/` vs `references/pekko/actor-typed/src/` + `references/pekko/actor/src/`
 
 ## サマリー
@@ -9,8 +9,16 @@
 |------|-----|
 | Pekko 公開型数（actor-typed） | ~80（Behavior, ActorRef, Receptionist, Routers 等含む） |
 | fraktor-rs 公開型数 | ~200+（17 ドメインに分散） |
-| カバレッジ（型単位） | ~85%（直接対応する型ベース） |
-| 未実装ギャップ数 | 12 |
+| カバレッジ（型単位） | ~92%（直接対応する型ベース） |
+| 未実装ギャップ数 | 6（前回12 → 6件削減） |
+
+### 前回分析からの変更
+
+以下の機能が新たに実装済みとなった：
+- `Behaviors.withTimers` / `TimerScheduler` → 完全実装（`behaviors.rs:190-210`, `timer_scheduler.rs`）
+- `BehaviorInterceptor` / `Behaviors.intercept` → 完全実装（`behavior_interceptor.rs`, `behaviors.rs:217-262`）
+- `ActorContext.setReceiveTimeout` → 完全実装（`receive_timeout_config.rs`, `actor_context.rs:274-277`）
+- `watchWith(target, msg)` → 完全実装（Typed: `actor_context.rs:136-140`, Untyped: `actor_context.rs:267-280`）
 
 ### 設計上の差異
 
@@ -34,14 +42,7 @@
 | `Receptionist.Subscribe` | receptionist/Receptionist.scala | 未対応 | hard | サービス一覧の変更通知購読 |
 | `Receptionist.Find` | receptionist/Receptionist.scala | 未対応 | hard | サービスの一回限りの検索 |
 
-### 2. タイマー
-
-| Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
-|-----------|-----------|-------------|--------|------|
-| `Behaviors.withTimers` | scaladsl/Behaviors.scala | 未対応 | medium | アクター単位のタイマースケジューラ。`Behaviors::setup` と同パターンで提供可能 |
-| `TimerScheduler[T]` | TimerScheduler.scala | 未対応 | medium | `startTimerWithFixedDelay`, `startTimerAtFixedRate`, `startSingleTimer`, `cancel` 等 |
-
-### 3. ルーティング
+### 2. ルーティング
 
 | Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
 |-----------|-----------|-------------|--------|------|
@@ -50,33 +51,13 @@
 | `PoolRouter[T]` | PoolRouter.scala | 未対応 | medium | プールルーターの型 |
 | `GroupRouter[T]` | GroupRouter.scala | 未対応 | medium | グループルーターの型 |
 
-### 4. シグナル拡張
+### 3. シグナル拡張
 
 | Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
 |-----------|-----------|-------------|--------|------|
 | `ChildFailed` | Signal.scala | 未対応 | easy | 子アクター失敗シグナル。現在は SupervisorStrategy 経由で処理 |
 | `PreRestart` | Signal.scala | 未対応 | easy | リスタート前シグナル。Lifecycle フックで代替可能 |
 | `MessageAdaptionFailure` | Signal.scala | 未対応 | trivial | メッセージアダプタ変換失敗時のシグナル |
-
-### 5. ウォッチ拡張
-
-| Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
-|-----------|-----------|-------------|--------|------|
-| `ActorContext.watchWith(target, msg)` | ActorContext.scala | 未対応 | easy | 監視対象の終了時にカスタムメッセージを送信。`spawn_child_watched` は存在するが `watchWith` 相当なし |
-| `DeathPactException` | DeathPactException.scala | 未対応 | easy | 監視対象終了時にハンドルしなかった場合の例外。デフォルト動作の定義 |
-
-### 6. タイムアウト
-
-| Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
-|-----------|-----------|-------------|--------|------|
-| `ActorContext.setReceiveTimeout(timeout, msg)` | ActorContext.scala | 未対応 | medium | メッセージ受信のアイドルタイムアウト。タイマー統合が必要 |
-
-### 7. ビヘイビアインターセプタ
-
-| Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
-|-----------|-----------|-------------|--------|------|
-| `BehaviorInterceptor[Outer, Inner]` | BehaviorInterceptor.scala | 未対応 | medium | ビヘイビアの横断的関心事のインターセプト。ロギング・監視等に使用 |
-| `Behaviors.intercept(interceptor)(behavior)` | Behaviors.scala | 未対応 | medium | インターセプタの適用 |
 
 ---
 
@@ -106,6 +87,40 @@
 | `Behaviors.receiveSignal(f)` | `Behaviors::receive_signal(f)` | 完全 |
 | `Behaviors.withStash(capacity)(f)` | `Behaviors::with_stash(capacity, f)` | 完全 |
 | `Behaviors.supervise(behavior)` | `Behaviors::supervise(behavior)` | 完全。`Supervise::on_failure(strategy)` |
+| `Behaviors.withTimers(f)` | `Behaviors::with_timers(f)` | **新規実装** |
+| `Behaviors.intercept(interceptor)(behavior)` | `Behaviors::intercept(interceptor, behavior)` | **新規実装** |
+
+### タイマー
+
+| Pekko API | fraktor対応 | 備考 |
+|-----------|-------------|------|
+| `TimerScheduler[T]` | `TimerSchedulerGeneric<M, TB>` | **新規実装**。`start_timer_with_fixed_delay`, `start_timer_at_fixed_rate`, `start_single_timer`, `cancel`, `cancel_all` |
+| `TimerScheduler.startTimerWithFixedDelay` | `start_timer_with_fixed_delay()` | 完全 |
+| `TimerScheduler.startTimerAtFixedRate` | `start_timer_at_fixed_rate()` | 完全 |
+| `TimerScheduler.startSingleTimer` | `start_single_timer()` | 完全 |
+| `TimerScheduler.isTimerActive` | `is_timer_active()` | 完全 |
+| `TimerScheduler.cancel` | `cancel()` | 完全 |
+| `TimerScheduler.cancelAll` | `cancel_all()` | 完全 |
+
+### ビヘイビアインターセプタ
+
+| Pekko API | fraktor対応 | 備考 |
+|-----------|-------------|------|
+| `BehaviorInterceptor[Outer, Inner]` | `BehaviorInterceptorGeneric<M, TB>` | **新規実装**。`around_start`, `around_receive`, `around_signal` |
+
+### ウォッチ
+
+| Pekko API | fraktor対応 | 備考 |
+|-----------|-------------|------|
+| `ActorContext.watch(target)` | `watch(target)` | 完全 |
+| `ActorContext.watchWith(target, msg)` | `watch_with(target, msg)` | **新規実装**。Typed/Untyped 両方で実装 |
+
+### タイムアウト
+
+| Pekko API | fraktor対応 | 備考 |
+|-----------|-------------|------|
+| `ActorContext.setReceiveTimeout(timeout, msg)` | `set_receive_timeout(config)` | **新規実装**。`ReceiveTimeoutConfig` で設定 |
+| `ActorContext.cancelReceiveTimeout` | `cancel_receive_timeout()` | **新規実装** |
 
 ### シグナル
 
@@ -154,7 +169,7 @@
 
 | カテゴリ | カバー状況 |
 |----------|-----------|
-| Behavior ファクトリ（same, stopped, setup, receive 等） | 完全 |
+| Behavior ファクトリ（same, stopped, setup, receive, withTimers, intercept 等） | 完全 |
 | 型付きアクターリファレンス（tell, ask, spawn） | 完全 |
 | スーパービジョン（OneForOne, AllForOne, Directive） | 完全 |
 | StashBuffer | 完全 |
@@ -166,6 +181,10 @@
 | メールボックス（Mailbox, Dispatcher） | 完全（インストルメンテーション付き） |
 | リモートフック（RemoteWatchHook, ActorRefProvider） | 完全 |
 | アクターライフサイクル（pre_start, post_stop, pre_restart, post_restart） | 完全 |
+| タイマー（TimerScheduler, withTimers） | **完全（新規）** |
+| ビヘイビアインターセプタ（intercept） | **完全（新規）** |
+| アイドルタイムアウト（setReceiveTimeout） | **完全（新規）** |
+| ウォッチ拡張（watchWith） | **完全（新規）** |
 
 ### fraktor-rs 独自の追加機能
 
@@ -193,17 +212,12 @@
 
 ### Phase 2: easy（単純な新規実装）
 
-- `watchWith(target, msg)` — `spawn_child_watched` の拡張版。カスタム終了メッセージ
 - `ChildFailed` シグナル — SupervisorStrategy 処理パスからシグナルを発行
 - `PreRestart` シグナル — リスタート前のライフサイクルフックをシグナルとして公開
-- `DeathPactException` — 未ハンドルの `Terminated` 時のデフォルト動作定義
 
 ### Phase 3: medium（中程度の実装工数）
 
-- `TimerScheduler` / `Behaviors.withTimers` — アクター単位のタイマー。TickDriver との統合が必要
 - `Routers.pool(size)` — 固定サイズプールルーター。子アクター生成 + ラウンドロビン
-- `BehaviorInterceptor` — ビヘイビアのラッピング。ロギング・計測のインターセプト
-- `setReceiveTimeout(timeout, msg)` — アイドルタイムアウト。タイマー統合が必要
 
 ### Phase 4: hard（アーキテクチャ変更を伴う）
 
@@ -221,14 +235,13 @@
 
 ## 総評
 
-fraktor-rs の actor モジュールは **Pekko Typed Actor の中核 API をほぼ網羅**しており、公開型数（~200+）は Pekko（~80）を大幅に上回る。これは no_std/std 分離の `Generic<TB>` パターンによる型エイリアスの増加と、Pekko にはないインフラ機能（SerializationRegistry, MailboxInstrumentation, RemoteWatchHook 等）を含むためである。
+fraktor-rs の actor モジュールは **Pekko Typed Actor の中核 API をほぼ完全に網羅**しており、カバレッジは前回の ~85% から **~92%** に向上した。特に、タイマー（`TimerScheduler` / `withTimers`）、ビヘイビアインターセプタ（`BehaviorInterceptor`）、アイドルタイムアウト（`setReceiveTimeout`）、カスタム終了メッセージ（`watchWith`）が新たに実装され、6件のギャップが解消された。
 
-主要なギャップは以下の 3 領域に集中：
+残るギャップは以下の 2 領域に集中：
 
 1. **サービスディスカバリ**（Receptionist, ServiceKey）— 分散レジストリ基盤が必要
-2. **アクター単位タイマー**（TimerScheduler, withTimers）— TickDriver との統合
-3. **ルーティング**（Pool/Group Router）— Receptionist 依存のグループルーターを含む
+2. **ルーティング**（Pool/Group Router）— Receptionist 依存のグループルーターを含む
 
-コア機能（Behavior, Supervision, StashBuffer, Ask, Extension）は完全にカバーされており、**Pekko Typed Actor を使った一般的なアクターパターンは fraktor-rs でそのまま実現可能**。
+コア機能（Behavior, Supervision, StashBuffer, Ask, Extension, Timer, Interceptor, ReceiveTimeout, WatchWith）は完全にカバーされており、**Pekko Typed Actor を使った一般的なアクターパターンは fraktor-rs でそのまま実現可能**。
 
 ギャップの大半は「便利機能」であり、コアのアクターモデルには影響しない。YAGNI 原則に従い、Phase 1-2 の trivial/easy 項目を優先実装し、Receptionist 等は cluster モジュールとの統合時に検討するのが妥当。
