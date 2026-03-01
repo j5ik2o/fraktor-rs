@@ -2,7 +2,10 @@ provider: codex
 model: gpt-5.3-codex
 concurrency: 1
 base_branch: main
-with_submodules: true
+submodules:
+  - references/okite-ai
+  - references/pekko-persistence-effector
+  - references/protoactor-go
 
 persona_providers:
   coder:
