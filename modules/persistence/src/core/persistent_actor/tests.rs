@@ -164,6 +164,16 @@ fn persistent_actor_persist_all_increments_sequence() {
 }
 
 #[test]
+fn persistent_actor_persist_async_increments_sequence() {
+  let mut ctx = build_context();
+  let mut actor = DummyPersistentActor::new();
+
+  actor.persist_async(&mut ctx, 1_i32, |_actor, _| {});
+
+  assert_eq!(actor.context.current_sequence_nr(), 1);
+}
+
+#[test]
 fn persistent_actor_persist_all_async_increments_sequence() {
   let mut ctx = build_context();
   let mut actor = DummyPersistentActor::new();

@@ -408,10 +408,22 @@ fn sink_from_graph_creates_sink_from_existing_graph() {
 }
 
 #[test]
-fn sink_named_is_noop() {
+fn sink_named_keeps_behavior_and_sets_attributes() {
   let sink = Sink::<u32, _>::ignore().named("test-sink");
   let completion = run_source_with_sink(Source::from_array([1_u32, 2, 3]), sink);
   assert_eq!(completion, Completion::Ready(Ok(StreamDone::new())));
+
+  let (graph, _mat) = Sink::<u32, _>::ignore().named("test-sink").into_parts();
+  assert_eq!(graph.attributes().names(), &[alloc::string::String::from("test-sink")]);
+}
+
+#[test]
+fn sink_with_and_add_attributes_merge_names() {
+  let (graph, _mat) = Sink::<u32, _>::ignore()
+    .with_attributes(crate::core::Attributes::named("base"))
+    .add_attributes(crate::core::Attributes::named("extra"))
+    .into_parts();
+  assert_eq!(graph.attributes().names(), &[alloc::string::String::from("base"), alloc::string::String::from("extra")]);
 }
 
 #[test]

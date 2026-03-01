@@ -7,6 +7,7 @@ use super::{
   MatCombine, RestartBackoff, StageDefinition, StageKind, StreamError, StreamPlan, SupervisionStrategy,
   shape::{Inlet, Outlet, PortId},
 };
+use crate::core::Attributes;
 
 /// Immutable blueprint that stores stage connectivity.
 ///
@@ -16,6 +17,7 @@ pub struct StreamGraph {
   nodes:        Vec<GraphNode>,
   edges:        Vec<GraphEdge>,
   ports:        Vec<PortId>,
+  attributes:   Attributes,
   next_node_id: usize,
 }
 
@@ -23,7 +25,13 @@ impl StreamGraph {
   /// Creates an empty graph.
   #[must_use]
   pub const fn new() -> Self {
-    Self { nodes: Vec::new(), edges: Vec::new(), ports: Vec::new(), next_node_id: 0 }
+    Self {
+      nodes:        Vec::new(),
+      edges:        Vec::new(),
+      ports:        Vec::new(),
+      attributes:   Attributes::new(),
+      next_node_id: 0,
+    }
   }
 
   /// Connects two ports with type safety.
@@ -114,10 +122,12 @@ impl StreamGraph {
       self.nodes = other.nodes;
       self.edges = other.edges;
       self.ports = other.ports;
+      self.attributes = other.attributes;
       self.next_node_id = other.next_node_id;
       return;
     }
     if other.nodes.is_empty() {
+      self.attributes = self.attributes.clone().and(other.attributes);
       return;
     }
     if let (Some(from), Some(to)) = (self.tail_outlet(), other.head_inlet()) {
@@ -131,6 +141,7 @@ impl StreamGraph {
     self.ports.append(&mut other.ports);
     self.edges.append(&mut other.edges);
     self.nodes.append(&mut other.nodes);
+    self.attributes = self.attributes.clone().and(other.attributes);
   }
 
   pub(in crate::core) fn into_plan(self) -> Result<StreamPlan, StreamError> {
@@ -240,6 +251,14 @@ impl StreamGraph {
 
   pub(in crate::core) fn into_stages(self) -> Vec<StageDefinition> {
     self.nodes.into_iter().map(|node| node.stage).collect()
+  }
+
+  pub(in crate::core) fn set_attributes(&mut self, attributes: Attributes) {
+    self.attributes = attributes;
+  }
+
+  pub(in crate::core) fn add_attributes(&mut self, attributes: Attributes) {
+    self.attributes = self.attributes.clone().and(attributes);
   }
 
   pub(in crate::core) fn expected_fan_out_for_outlet(&self, outlet: PortId) -> Option<usize> {

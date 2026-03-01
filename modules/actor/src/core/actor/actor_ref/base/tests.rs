@@ -172,3 +172,51 @@ fn actor_ref_hash() {
   let _ = actor1;
   let _ = actor2;
 }
+
+#[test]
+fn actor_ref_poison_pill_without_system_uses_user_channel() {
+  let (count, sender) = RecordingSender::new();
+  let actor: ActorRef = ActorRef::new(Pid::new(10, 0), sender);
+  actor.poison_pill().expect("poison pill should use sender channel");
+  assert_eq!(count.load(Ordering::Relaxed), 1);
+}
+
+#[test]
+fn actor_ref_kill_without_system_uses_user_channel() {
+  let (count, sender) = RecordingSender::new();
+  let actor: ActorRef = ActorRef::new(Pid::new(11, 0), sender);
+  actor.kill().expect("kill should use sender channel");
+  assert_eq!(count.load(Ordering::Relaxed), 1);
+}
+
+#[test]
+fn actor_ref_poison_pill_with_system_enqueues_user_message() {
+  use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
+
+  use crate::core::{
+    actor::{Actor, ActorCell, ActorContextGeneric},
+    messaging::AnyMessageViewGeneric,
+    props::Props,
+  };
+
+  struct ProbeActor;
+  impl Actor for ProbeActor {
+    fn receive(
+      &mut self,
+      _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
+      _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
+    ) -> Result<(), crate::core::error::ActorError> {
+      Ok(())
+    }
+  }
+
+  let system = ActorSystem::new_empty().state();
+  let pid = system.allocate_pid();
+  let props = Props::from_fn(|| ProbeActor);
+  let cell = ActorCell::create(system.clone(), pid, None, "probe".into(), &props).expect("create actor cell");
+  system.register_cell(cell.clone());
+
+  let actor: ActorRef = cell.actor_ref();
+  actor.poison_pill().expect("poison pill enqueue");
+  let _ = cell;
+}

@@ -390,6 +390,36 @@ fn build_bridge(
   (bridge, probe, system)
 }
 
+fn build_bridge_with_windows(
+  handshake_timeout: Duration,
+  ack_send_window: usize,
+  ack_receive_window: u64,
+) -> (Arc<EndpointTransportBridge<StdToolbox>>, TestTransportProbe, ActorSystemGeneric<StdToolbox>) {
+  let system = build_system();
+  let serialization = serialization_extension(&system);
+  let writer = EndpointWriterSharedGeneric::new(EndpointWriterGeneric::new(system.downgrade(), serialization.clone()));
+  let reader = ArcShared::new(EndpointReaderGeneric::new(system.downgrade(), serialization));
+  let (transport, probe) = TestTransport::new();
+  let control = RemotingControlHandle::new(system.clone(), RemotingExtensionConfig::default());
+  let config = EndpointTransportBridgeConfig {
+    system: system.downgrade(),
+    control: control.clone(),
+    writer,
+    reader,
+    transport: RemoteTransportShared::new(Box::new(transport)),
+    event_publisher: EventPublisherGeneric::new(system.downgrade()),
+    canonical_host: "127.0.0.1".to_string(),
+    canonical_port: 2552,
+    system_name: "local-system".to_string(),
+    remote_instruments: Vec::new(),
+    handshake_timeout,
+    shutdown_flush_timeout: handshake_timeout,
+    ack_send_window,
+    ack_receive_window,
+  };
+  (EndpointTransportBridge::new(config), probe, system)
+}
+
 fn build_bridge_with_control(
   handshake_timeout: Duration,
 ) -> (
@@ -417,6 +447,8 @@ fn build_bridge_with_control(
     remote_instruments: Vec::new(),
     handshake_timeout,
     shutdown_flush_timeout: handshake_timeout,
+    ack_send_window: 128,
+    ack_receive_window: 128,
   };
   (EndpointTransportBridge::new(config), probe, system, control)
 }
@@ -444,6 +476,8 @@ fn build_bridge_with_instruments(
     remote_instruments,
     handshake_timeout,
     shutdown_flush_timeout: handshake_timeout,
+    ack_send_window: 128,
+    ack_receive_window: 128,
   };
   (EndpointTransportBridge::new(config), probe, system)
 }
@@ -482,6 +516,8 @@ fn spawn_bridge_with_control(
     remote_instruments: Vec::new(),
     handshake_timeout,
     shutdown_flush_timeout: handshake_timeout,
+    ack_send_window: 128,
+    ack_receive_window: 128,
   };
   (EndpointTransportBridge::spawn(config).expect("spawn bridge"), probe, system, control)
 }
@@ -948,6 +984,36 @@ async fn duplicate_inbound_system_message_replies_with_latest_contiguous_ack() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn inbound_system_message_ignores_out_of_window_sequence() {
+  let (bridge, probe, _system) = build_bridge_with_windows(Duration::from_millis(200), 128, 2);
+  let authority = "127.0.0.1:4906";
+  let peer_address = "127.0.0.1:61202";
+  let ack_reply_to = RemoteNodeId::new("local-system", "127.0.0.1", Some(4906), 92);
+
+  for (sequence_no, correlation_id) in [(2, CorrelationId::from_u128(41)), (3, CorrelationId::from_u128(42))] {
+    let payload = AckedDelivery::SystemMessage(AllocBox::new(sample_system_message_envelope(
+      sequence_no,
+      correlation_id,
+      ack_reply_to.clone(),
+    )))
+    .encode_frame();
+    bridge.handle_inbound_frame(InboundFrame::new("test-listener", peer_address, payload, correlation_id)).await;
+  }
+
+  let control_replies: Vec<AckedDelivery> = probe
+    .sent_frames_for(authority)
+    .into_iter()
+    .filter_map(|frame| match frame.payload.get(1) {
+      | Some(kind) if *kind == ACKED_DELIVERY_ACK_FRAME_KIND || *kind == ACKED_DELIVERY_NACK_FRAME_KIND => {
+        Some(AckedDelivery::decode_frame(&frame.payload, frame.correlation_id).expect("decode control reply"))
+      },
+      | _ => None,
+    })
+    .collect();
+  assert!(matches!(control_replies.as_slice(), [AckedDelivery::Nack { sequence_no: 0 }]));
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn inbound_system_message_emits_watcher_heartbeat_rsp() {
   let (bridge, _probe, system, control) = build_bridge_with_control(Duration::from_millis(200));
   let recorder = register_remote_watcher_daemon(&system, &control);
@@ -1006,6 +1072,57 @@ async fn flush_ack_reports_pending_system_message_count() {
     .handle_inbound_frame(InboundFrame::new("test-listener", peer_address, offer.encode(), CorrelationId::nil()))
     .await;
 
+  bridge
+    .handle_inbound_frame(InboundFrame::new(
+      "test-listener",
+      peer_address,
+      Flush::new().encode_frame(),
+      CorrelationId::nil(),
+    ))
+    .await;
+
+  let flush_ack_frame = probe
+    .sent_frames_for(authority)
+    .into_iter()
+    .rfind(|frame| frame.payload.get(1) == Some(&FLUSH_ACK_FRAME_KIND))
+    .expect("flush-ack frame");
+  let flush_ack = FlushAck::decode_frame(&flush_ack_frame.payload).expect("flush-ack decode");
+  assert_eq!(flush_ack.expected_acks(), 1);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn flush_ack_respects_ack_send_window_limit() {
+  let (bridge, probe, _system) = build_bridge_with_windows(Duration::from_millis(200), 1, 128);
+  let authority = "127.0.0.1:25520";
+  let peer_address = "127.0.0.1:61123";
+  let remote = RemoteNodeId::new("remote-system", "127.0.0.1", Some(25520), 1);
+
+  let accept = bridge.coordinator.with_write(|m| {
+    m.handle(EndpointAssociationCommand::HandshakeAccepted {
+      authority:   authority.to_string(),
+      remote_node: remote,
+      now:         bridge.now_millis(),
+    })
+  });
+  bridge.process_effects(accept.effects).await.expect("accept effects");
+
+  for label in ["windowed-1", "windowed-2"] {
+    let effects = bridge
+      .coordinator
+      .with_write(|m| {
+        m.handle(EndpointAssociationCommand::EnqueueDeferred {
+          authority: authority.to_string(),
+          envelope:  Box::new(deferred_system_envelope(label)),
+        })
+      })
+      .effects;
+    bridge.process_effects(effects).await.expect("deliver effects");
+  }
+
+  let offer = HandshakeFrame::new(HandshakeKind::Offer, "remote-system", "127.0.0.1", Some(25520), 84);
+  bridge
+    .handle_inbound_frame(InboundFrame::new("test-listener", peer_address, offer.encode(), CorrelationId::nil()))
+    .await;
   bridge
     .handle_inbound_frame(InboundFrame::new(
       "test-listener",

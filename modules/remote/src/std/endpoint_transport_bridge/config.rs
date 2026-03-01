@@ -36,4 +36,8 @@ pub struct EndpointTransportBridgeConfig<TB: RuntimeToolbox + 'static> {
   pub handshake_timeout:      Duration,
   /// Timeout applied when flushing outstanding messages during graceful shutdown.
   pub shutdown_flush_timeout: Duration,
+  /// Maximum number of outbound system messages kept pending per authority.
+  pub ack_send_window:        usize,
+  /// Maximum accepted sequence distance for inbound acked-delivery per authority.
+  pub ack_receive_window:     u64,
 }

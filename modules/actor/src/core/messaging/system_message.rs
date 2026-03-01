@@ -21,6 +21,10 @@ pub use failure_payload::FailurePayload;
 /// Lightweight enum describing system-level mailbox traffic.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SystemMessage {
+  /// Requests immediate actor termination using PoisonPill semantics.
+  PoisonPill,
+  /// Requests immediate actor termination using Kill semantics.
+  Kill,
   /// Signals that the associated actor should stop.
   Stop,
   /// Requests actor initialization via the mailbox pipeline.

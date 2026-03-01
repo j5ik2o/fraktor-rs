@@ -1508,9 +1508,22 @@ fn source_throttle_enforcing_mode_fails_on_capacity_overflow() {
 }
 
 #[test]
-fn source_named_is_noop() {
+fn source_named_keeps_elements_and_sets_attributes() {
   let values = Source::from_array([1_u32, 2, 3]).named("test-source").collect_values().expect("collect_values");
   assert_eq!(values, vec![1_u32, 2, 3]);
+
+  let (graph, _mat) =
+    Source::<u32, crate::core::StreamNotUsed>::from_array([1_u32, 2]).named("test-source").into_parts();
+  assert_eq!(graph.attributes().names(), &[alloc::string::String::from("test-source")]);
+}
+
+#[test]
+fn source_with_and_add_attributes_merge_names() {
+  let (graph, _mat) = Source::<u32, crate::core::StreamNotUsed>::from_array([1_u32, 2])
+    .with_attributes(crate::core::Attributes::named("base"))
+    .add_attributes(crate::core::Attributes::named("extra"))
+    .into_parts();
+  assert_eq!(graph.attributes().names(), &[alloc::string::String::from("base"), alloc::string::String::from("extra")]);
 }
 
 #[test]

@@ -65,6 +65,7 @@ enum InboundSystemSequenceResult {
   Deliver,
   Duplicate { ack_sequence_no: u64 },
   Missing { highest_acked_sequence_no: u64 },
+  OutOfWindow { highest_acked_sequence_no: u64, max_acceptable_sequence_no: u64 },
 }
 
 pub(crate) struct EndpointTransportBridge<TB: RuntimeToolbox + 'static> {
@@ -79,6 +80,8 @@ pub(crate) struct EndpointTransportBridge<TB: RuntimeToolbox + 'static> {
   system_name:            String,
   handshake_timeout:      Duration,
   shutdown_flush_timeout: Duration,
+  ack_send_window:        usize,
+  ack_receive_window:     u64,
   local_uid:              u64,
   listener:               TokioMutex<Option<TransportHandle>>,
   channels:               TokioMutex<BTreeMap<String, TransportChannel>>,
@@ -107,6 +110,8 @@ impl<TB: RuntimeToolbox + 'static> EndpointTransportBridge<TB> {
       system_name:            config.system_name,
       handshake_timeout:      config.handshake_timeout,
       shutdown_flush_timeout: config.shutdown_flush_timeout,
+      ack_send_window:        config.ack_send_window,
+      ack_receive_window:     config.ack_receive_window,
       local_uid:              Self::allocate_local_uid(),
       listener:               TokioMutex::new(None),
       channels:               TokioMutex::new(BTreeMap::<String, TransportChannel>::new()),
@@ -481,11 +486,28 @@ impl<TB: RuntimeToolbox + 'static> EndpointTransportBridge<TB> {
 
   async fn register_pending_system_envelope(&self, authority: &str, envelope: SystemMessageEnvelope) {
     let correlation_id = envelope.correlation_id();
-    let mut pending = self.pending_system.lock().await;
-    let entry = pending.entry(authority.to_string()).or_insert_with(BTreeMap::new);
-    entry.insert(envelope.sequence_no(), envelope);
-    drop(pending);
+    let removed_correlations = {
+      let mut pending = self.pending_system.lock().await;
+      let entry = pending.entry(authority.to_string()).or_insert_with(BTreeMap::new);
+      entry.insert(envelope.sequence_no(), envelope);
+      let mut removed = Vec::new();
+      while entry.len() > self.ack_send_window {
+        let Some((&oldest_seq, oldest_envelope)) = entry.first_key_value() else {
+          break;
+        };
+        removed.push(oldest_envelope.correlation_id().to_u128());
+        entry.remove(&oldest_seq);
+      }
+      removed
+    };
     self.register_system_correlation(correlation_id, authority).await;
+    if removed_correlations.is_empty() {
+      return;
+    }
+    let mut correlations = self.system_correlations.lock().await;
+    for correlation in removed_correlations {
+      correlations.remove(&correlation);
+    }
   }
 
   async fn clear_pending_system_envelopes(&self, authority: &str, ack_seq_no: u64) {
@@ -565,6 +587,13 @@ impl<TB: RuntimeToolbox + 'static> EndpointTransportBridge<TB> {
     }
     if sequence_no < current_expected {
       return InboundSystemSequenceResult::Duplicate { ack_sequence_no: current_expected.saturating_sub(1) };
+    }
+    let max_acceptable = current_expected.saturating_add(self.ack_receive_window.saturating_sub(1));
+    if sequence_no > max_acceptable {
+      return InboundSystemSequenceResult::OutOfWindow {
+        highest_acked_sequence_no:  current_expected.saturating_sub(1),
+        max_acceptable_sequence_no: max_acceptable,
+      };
     }
     InboundSystemSequenceResult::Missing { highest_acked_sequence_no: current_expected.saturating_sub(1) }
   }
@@ -705,14 +734,22 @@ impl<TB: RuntimeToolbox + 'static> EndpointTransportBridge<TB> {
         let reply = match self.classify_inbound_sequence(&authority, sequence_no).await {
           | InboundSystemSequenceResult::Deliver => {
             self.deliver_inbound((*envelope).into_remoting_envelope()).await;
-            AckedDelivery::ack(sequence_no)
+            Some(AckedDelivery::ack(sequence_no))
           },
-          | InboundSystemSequenceResult::Duplicate { ack_sequence_no } => AckedDelivery::ack(ack_sequence_no),
+          | InboundSystemSequenceResult::Duplicate { ack_sequence_no } => Some(AckedDelivery::ack(ack_sequence_no)),
           | InboundSystemSequenceResult::Missing { highest_acked_sequence_no } => {
-            AckedDelivery::nack(highest_acked_sequence_no)
+            Some(AckedDelivery::nack(highest_acked_sequence_no))
+          },
+          | InboundSystemSequenceResult::OutOfWindow { highest_acked_sequence_no, max_acceptable_sequence_no } => {
+            self.emit_error(format!(
+              "inbound system-message sequence {sequence_no} for {authority} exceeds receive window; highest_acked={highest_acked_sequence_no}, max_acceptable={max_acceptable_sequence_no}",
+            ));
+            None
           },
         };
-        if let Err(error) = self.send_acked_delivery(&authority, reply, frame.correlation_id()).await {
+        if let Some(reply) = reply
+          && let Err(error) = self.send_acked_delivery(&authority, reply, frame.correlation_id()).await
+        {
           self.emit_error(format!("failed to send system-message control reply: {error:?}"));
         }
       },

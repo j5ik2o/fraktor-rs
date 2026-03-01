@@ -80,6 +80,14 @@ impl ClusterProvider for StubProvider {
     Ok(())
   }
 
+  fn join(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+
+  fn leave(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+
   fn shutdown(&mut self, _graceful: bool) -> Result<(), ClusterProviderError> {
     Ok(())
   }
@@ -109,6 +117,14 @@ impl ClusterProvider for StartAndEmitSelfUpProvider {
   }
 
   fn down(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+
+  fn join(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+
+  fn leave(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
     Ok(())
   }
 

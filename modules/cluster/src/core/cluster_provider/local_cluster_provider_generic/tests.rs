@@ -246,16 +246,39 @@ fn down_removes_member_and_publishes_leave_topology() {
 }
 
 #[test]
-fn down_self_is_rejected() {
+fn down_self_is_allowed() {
   let event_stream = EventStreamShared::default();
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
   let mut provider = LocalClusterProviderGeneric::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
   provider.start_member().unwrap();
 
-  let result = provider.down("node-a:8080");
-  assert!(
-    matches!(result, Err(crate::core::ClusterProviderError::DownFailed(reason)) if reason == "cannot down self authority")
-  );
+  provider.down("node-a:8080").unwrap();
+
+  assert_eq!(provider.member_count(), 0);
+  let events = subscriber_impl.events();
+  assert!(events.iter().any(|event| matches!(
+    event,
+    ClusterEvent::TopologyUpdated { update } if update.left == vec![String::from("node-a:8080")]
+  )));
+}
+
+#[test]
+fn leave_self_is_allowed() {
+  let event_stream = EventStreamShared::default();
+  let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
+  let mut provider = LocalClusterProviderGeneric::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
+  provider.start_member().unwrap();
+
+  provider.leave("node-a:8080").unwrap();
+
+  assert_eq!(provider.member_count(), 0);
+  let events = subscriber_impl.events();
+  assert!(events.iter().any(|event| matches!(
+    event,
+    ClusterEvent::TopologyUpdated { update } if update.left == vec![String::from("node-a:8080")]
+  )));
 }
 
 #[test]
@@ -268,6 +291,22 @@ fn down_unknown_member_is_noop() {
 
   let events_before = subscriber_impl.events().len();
   provider.down("node-z:8080").unwrap();
+  let events_after = subscriber_impl.events();
+
+  assert_eq!(provider.member_count(), 1);
+  assert_eq!(events_after.len(), events_before);
+}
+
+#[test]
+fn leave_unknown_member_is_noop() {
+  let event_stream = EventStreamShared::default();
+  let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
+  let mut provider = LocalClusterProviderGeneric::<NoStdToolbox>::new(event_stream, block_list, "node-a:8080");
+  provider.start_member().unwrap();
+
+  let events_before = subscriber_impl.events().len();
+  provider.leave("node-z:8080").unwrap();
   let events_after = subscriber_impl.events();
 
   assert_eq!(provider.member_count(), 1);

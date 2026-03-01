@@ -19,6 +19,7 @@ use super::{
   stage_context::StageContext,
   validate_positive_argument,
 };
+use crate::core::Attributes;
 
 #[cfg(test)]
 mod tests;
@@ -1619,10 +1620,24 @@ where
     self.expand(expander)
   }
 
-  /// Assigns a debug name to this stage (no-op until Attributes are introduced).
+  /// Replaces graph attributes with the provided values.
   #[must_use]
-  pub const fn named(self, _name: &str) -> Flow<In, Out, Mat> {
+  pub fn with_attributes(mut self, attributes: Attributes) -> Flow<In, Out, Mat> {
+    self.graph.set_attributes(attributes);
     self
+  }
+
+  /// Appends graph attributes to the existing values.
+  #[must_use]
+  pub fn add_attributes(mut self, attributes: Attributes) -> Flow<In, Out, Mat> {
+    self.graph.add_attributes(attributes);
+    self
+  }
+
+  /// Assigns a debug name attribute to this stage graph.
+  #[must_use]
+  pub fn named(self, name: &str) -> Flow<In, Out, Mat> {
+    self.add_attributes(Attributes::named(name))
   }
 
   /// Adds a flat-map-prefix compatibility stage.

@@ -32,6 +32,7 @@ use super::{
   stage_context::StageContext,
   validate_positive_argument,
 };
+use crate::core::Attributes;
 
 #[cfg(test)]
 mod tests;
@@ -1132,10 +1133,24 @@ where
     self
   }
 
-  /// Assigns a debug name to this stage (no-op until Attributes are introduced).
+  /// Replaces graph attributes with the provided values.
   #[must_use]
-  pub const fn named(self, _name: &str) -> Source<Out, Mat> {
+  pub fn with_attributes(mut self, attributes: Attributes) -> Source<Out, Mat> {
+    self.graph.set_attributes(attributes);
     self
+  }
+
+  /// Appends graph attributes to the existing values.
+  #[must_use]
+  pub fn add_attributes(mut self, attributes: Attributes) -> Source<Out, Mat> {
+    self.graph.add_attributes(attributes);
+    self
+  }
+
+  /// Assigns a debug name attribute to this stage graph.
+  #[must_use]
+  pub fn named(self, name: &str) -> Source<Out, Mat> {
+    self.add_attributes(Attributes::named(name))
   }
 
   /// Adds a group-by stage and returns substream surface for merge operations.

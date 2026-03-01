@@ -30,6 +30,14 @@ impl ClusterProvider for NoopClusterProvider {
     Ok(())
   }
 
+  fn join(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+
+  fn leave(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+
   fn shutdown(&mut self, _graceful: bool) -> Result<(), ClusterProviderError> {
     Ok(())
   }

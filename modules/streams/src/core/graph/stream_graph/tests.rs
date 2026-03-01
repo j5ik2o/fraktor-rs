@@ -1,14 +1,18 @@
 use core::any::TypeId;
 
 use crate::core::{
-  DemandTracker, DynValue, MatCombine, SinkDecision, SinkDefinition, SinkLogic, SourceDefinition, SourceLogic,
-  StageDefinition, StreamError,
+  Attributes, DemandTracker, DynValue, MatCombine, SinkDecision, SinkDefinition, SinkLogic, SourceDefinition,
+  SourceLogic, StageDefinition, StreamError,
   graph::StreamGraph,
   shape::{Inlet, Outlet, PortId},
   stage::{Source, StageKind},
 };
 
 impl StreamGraph {
+  pub(in crate::core) fn attributes(&self) -> &Attributes {
+    &self.attributes
+  }
+
   fn stage_kinds(&self) -> Vec<StageKind> {
     self.nodes.iter().map(|node| node.stage.kind()).collect()
   }
@@ -23,6 +27,10 @@ impl StreamGraph {
 
   fn connections(&self) -> Vec<(PortId, PortId, MatCombine)> {
     self.edges.iter().map(|edge| (edge.from, edge.to, edge.mat)).collect()
+  }
+
+  fn attribute_names(&self) -> &[alloc::string::String] {
+    self.attributes.names()
   }
 }
 
@@ -124,4 +132,13 @@ fn into_plan_allows_multiple_source_and_sink_nodes() {
   assert!(graph.connect(&source2_outlet, &sink2_inlet, MatCombine::KeepRight).is_ok());
 
   assert!(graph.into_plan().is_ok());
+}
+
+#[test]
+fn graph_tracks_attributes() {
+  let mut graph = StreamGraph::new();
+  graph.set_attributes(Attributes::named("base"));
+  graph.add_attributes(Attributes::named("extra"));
+
+  assert_eq!(graph.attribute_names(), &[alloc::string::String::from("base"), alloc::string::String::from("extra")]);
 }

@@ -288,9 +288,21 @@ impl<TB: RuntimeToolbox + 'static> ClusterProvider for LocalClusterProviderGener
   }
 
   fn down(&mut self, authority: &str) -> Result<(), ClusterProviderError> {
-    if authority == self.advertised_address {
-      return Err(ClusterProviderError::down("cannot down self authority"));
+    if self.members.contains(&String::from(authority)) {
+      self.on_member_leave(authority);
     }
+    Ok(())
+  }
+
+  fn join(&mut self, authority: &str) -> Result<(), ClusterProviderError> {
+    if authority == self.advertised_address {
+      return Ok(());
+    }
+    self.on_member_join(authority);
+    Ok(())
+  }
+
+  fn leave(&mut self, authority: &str) -> Result<(), ClusterProviderError> {
     if self.members.contains(&String::from(authority)) {
       self.on_member_leave(authority);
     }

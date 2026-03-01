@@ -18,7 +18,7 @@ use crate::core::{
   },
   error::SendError,
   futures::ActorFutureSharedGeneric,
-  messaging::{AnyMessageGeneric, AskResponseGeneric, AskResult},
+  messaging::{AnyMessageGeneric, AskResponseGeneric, AskResult, system_message::SystemMessage},
   system::state::{SystemStateSharedGeneric, SystemStateWeakGeneric},
 };
 
@@ -103,6 +103,24 @@ impl<TB: RuntimeToolbox + 'static> ActorRefGeneric<TB> {
         Err(error)
       },
     }
+  }
+
+  /// Sends `PoisonPill` to the referenced actor via the user message channel.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when message delivery fails.
+  pub fn poison_pill(&self) -> Result<(), SendError<TB>> {
+    self.tell(AnyMessageGeneric::new(SystemMessage::PoisonPill))
+  }
+
+  /// Sends `Kill` to the referenced actor via the user message channel.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when message delivery fails.
+  pub fn kill(&self) -> Result<(), SendError<TB>> {
+    self.tell(AnyMessageGeneric::new(SystemMessage::Kill))
   }
 
   /// Sends a request and obtains a future that resolves with the reply.
