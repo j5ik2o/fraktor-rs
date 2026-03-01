@@ -1,65 +1,12 @@
 tasks:
   - worktree: true
-    branch: takt/400/github-issue-400-takt-pekkogya
-    piece: pekko-porting
-    issue: 400
-    auto_pr: true
-    draft_pr: true
-    name: github-issue-400-takt-pekkogya
-    status: completed
-    slug: github-issue-400-takt-pekkogya
-    summary: "## GitHub Issue #400: takt: Pekkoギャップ埋め Phase 1-2 (trivial/easy/medium)"
-    worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktrees/20260301T0056-400-github-issue-400-takt-pekkogya
-    pr_url: https://github.com/j5ik2o/fraktor-rs/pull/415
-    task_dir: .takt/tasks/20260228-235758-github-issue-400-takt-pekko-ph
-    created_at: 2026-02-28T23:57:58.787Z
-    started_at: 2026-03-01T00:56:24.338Z
-    completed_at: 2026-03-01T04:37:15.404Z
-    owner_pid: null
-  - worktree: true
-    branch: takt/412/github-issue-412-tb-runtime-toolbox-removal
     piece: refactoring
     issue: 412
     auto_pr: true
     draft_pr: true
     name: github-issue-412-tb-runtime-toolbox-removal
-    status: failed
+    status: pending
     slug: github-issue-412-tb-runtime-toolbox-removal
-    summary: "## GitHub Issue #412: refactor: TB: RuntimeToolbox 型パラメータを feature
-      flag に置換し、Generic 二重構造を廃止する"
-    worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktrees/20260301T1014-412-github-issue-412-tb-runtime-toolbox-removal
+    summary: "Phase A レビュー: RuntimeMutex/RuntimeRwLock 導入（PR #441）の品質確認"
     task_dir: .takt/tasks/20260301-170000-github-issue-412-tb-runtime-toolbox
     created_at: 2026-03-01T17:00:00.000Z
-    started_at: 2026-03-01T10:14:16.033Z
-    completed_at: 2026-03-01T15:39:40.203Z
-    owner_pid: null
-    failure:
-      movement: ai_fix
-      error: Max movements reached
-      last_message: |-
-        依頼内容に沿って、まず `.takt/.../context/task/order.md` と同ディレクトリ内の関連ファイル、あわせて Report Directory の履歴を確認し、今回の `ai_fix` で修正すべき指摘事項を特定します。特定後に対象モジュールの `dylint` を先に実行してから実装に入ります。
-        `task` には `order.md` のみありました。次に `order.md` 本文と、このムーブメントで参照必須の `policy/knowledge` 原本、さらに Report Directory（実行履歴）を特定して修正対象を絞ります。
-        ポリシーと知識ファイルの全文を確認しました。次に実行履歴として指定されている Report Directory を探索し、`ai_fix` で直すべき未解決指摘を抽出します。
-        `reports/` が実行履歴の本体でした。ここから `ai-review` を中心に、`coder-scope`/`coder-decisions` も含めて今回修正すべき未解決項目を洗い出します。
-        未解決の本質は `QA-NEW-CI-ALL-EVIDENCE`（`./scripts/ci-check.sh all` 完走証跡不足）で、コード側の新規指摘は現時点で見当たりません。次は手順どおり検証を実行し、完走可否を確認して必要なら修正と証跡更新を行います。
-        先に規約どおり `utils` モジュールの `dylint` を実行しています。進行を監視し、完了後に `ci-check all` へ進みます。
-        `dylint` 実行が無出力のまま継続しているため、もう少し監視して停止か進行かを判定します。
-        `dylint` は `mod-file-lint` の `cargo build` 段階で無出力停止を再現しました。いったん中断して、同条件で `./scripts/ci-check.sh all` の完走可否も確認します。
-        `all` も同じ `run_dylint -> mod-file-lint cargo build` 位置で停止しています。停止証跡を残すため、いまの実行中プロセス状態を取得します。
-        ここまでの再現では前回同様に `run_dylint` で止まりましたが、単純にビルド時間が長い可能性を除外するため、次は中断せず長時間待機して完走可否を確認します。
-        現在 `cargo build --manifest-path lints/mod-file-lint/Cargo.toml --release` の 27/69 から進まず、長時間待機で実進行するかを継続確認中です。
-        通常実行の `./scripts/ci-check.sh all` も無出力停止を再現しました。これで再現条件は揃ったため、実行ログをレポートに追記します。
-        これから Report Directory の2ファイルに `ai_fix.9` の実行記録を追記します。内容は「長時間待機しても `run_dylint` が進行しない再現結果」と「`QA-NEW-CI-ALL-EVIDENCE` が依然 persists」で、ソースコード本体は変更しません。
-        追記内容の整合性を確認しました。最後に参照しやすいよう該当箇所の行番号を取得して、実施結果を報告します。
-        `ai_fix.9` として、未解決の `QA-NEW-CI-ALL-EVIDENCE` 解消を目的に再検証を実施し、結果をレポートへ追記しました。
-
-        - 追記: [coder-scope.md](/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktrees/20260301T1014-412-github-issue-412-tb-runtime-toolbox-removal/.takt/runs/20260301-170000-github-issue-412-tb-runtime-toolbox/reports/coder-scope.md:34)
-        - 追記: [coder-decisions.md](/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktrees/20260301T1014-412-github-issue-412-tb-runtime-toolbox-removal/.takt/runs/20260301-170000-github-issue-412-tb-runtime-toolbox/reports/coder-decisions.md:108)
-
-        実行結果（要点）:
-        1. `./scripts/ci-check.sh dylint -m utils` は無出力停止（`Ctrl-C` で中断）
-        2. `bash -x ./scripts/ci-check.sh dylint -m utils` は `run_dylint` 内の `cargo build --manifest-path lints/mod-file-lint/Cargo.toml --release` で停止
-        3. `./scripts/ci-check.sh all` / `bash -x ./scripts/ci-check.sh all` も同箇所で停止
-        4. `ps -Ao pid,pcpu,time,stat,command` で `bash`/`cargo`/`build-script-build` が `SN`・`%CPU=0.0` で停滞を再現
-
-        そのため、今回も `./scripts/ci-check.sh all` 完走成功証跡は取得できず、完了条件は未達です。ソースコード本体の追加変更は行っていません。
