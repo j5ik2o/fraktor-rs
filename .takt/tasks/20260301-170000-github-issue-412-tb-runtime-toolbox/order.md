@@ -1,39 +1,22 @@
-## GitHub Issue #412: refactor: TB: RuntimeToolbox 型パラメータを feature flag に置換し、Generic 二重構造を廃止する
+## Phase A レビュー: RuntimeMutex/RuntimeRwLock 導入（PR #441）
 
 ## 背景
-fraktor-rs の `TB: RuntimeToolbox` 型パラメータは実質ロック実装（spin vs std）の選択のみを抽象化している。
-これはビルド時に確定する選択であり、feature flag（条件コンパイル）で解決すべき問題。
-170型に TB が伝播し、~64型に Generic サフィックス、~60個の NoStd エイリアス、~29個の Std エイリアスが発生している。
+GitHub Issue #412 の Phase A として、PR #441 で以下の変更が実装されマージ済みである。
+しかし takt のレビューサイクル（ai_review → reviewers → supervise）が未完了のまま止まっていた。
+本タスクは既存の変更に対するレビューのみを行い、Phase A の品質を確認する。
 
-## 実施計画
-
-### Phase A: utils の RuntimeMutex/RuntimeRwLock 導入
-- `RuntimeMutex<T>` / `RuntimeRwLock<T>` 型エイリアスを feature flag で定義
-- `SyncMutexFamily` / `SyncRwLockFamily` の Family パターンを廃止
+## レビュー対象の変更内容（PR #441、既にマージ済み）
+- `RuntimeMutex<T>` / `RuntimeRwLock<T>` 型エイリアスを feature flag（`#[cfg(feature = "std")]`）で定義
+- `SyncMutexFamily` / `SyncRwLockFamily` の Family パターン（trait ベースの抽象化）を廃止
 - `ToolboxMutex<T, TB>` / `ToolboxRwLock<T, TB>` を `RuntimeMutex<T>` / `RuntimeRwLock<T>` に置換
+- 主な変更箇所: `modules/utils/src/core/runtime_toolbox.rs`, `modules/utils/src/lib.rs`
 
-### Phase B: actor モジュールから TB を除去
-- 全 `XxxGeneric<TB>` 型から `TB` パラメータを除去し、`Xxx` にリネーム
-- `Generic` サフィックスを全廃
-- `pub type Xxx = XxxGeneric<NoStdToolbox>` エイリアス ~60個を削除
-- `std/` 内の型エイリアス再エクスポート ~29個を削除（アダプター実装は残す）
-
-### Phase C: 他モジュール（cluster/remote/persistence/streams）から TB を除去
-- 同様に TB パラメータ除去とリネーム
-
-### Phase D: RuntimeToolbox trait の廃止
-- `RuntimeToolbox` trait を削除
-- `NoStdToolbox` / `StdToolbox` 構造体を削除
-- Clock を必要に応じて `Arc<dyn MonotonicClock>` で Scheduler に注入
-- `core/` + `std/` ディレクトリ構造は Port & Adapter として維持
-
-## 追加注意事項
-- `tick_source()` メソッドの再設計が必要（ライフタイム問題）
-- `SyncMutexFamily::create()` → `RuntimeMutex::new()` への一括置換
-- TB を直接使う型は37%（30型）のみ、残り63%は伝播のみ
-- Dylint の8つの lint が TB パターンを前提にしている可能性あり
+## 実施内容
+- **新規実装は不要**（既にマージ済み）
+- レビューで問題が見つかった場合のみ修正を行う
+- Phase B〜D（TB パラメータ除去、Generic サフィックス廃止、RuntimeToolbox trait 廃止）は別 Issue（#442, #443, #444）で対応するため、本タスクのスコープ外
 
 ## 完了条件
-- 全 Phase (A→D) が完了し、TB パラメータが完全に除去されている
-- `./scripts/ci-check.sh all` がパスする
-- Generic サフィックス型が0になっている
+- ai_review + arch-review + qa-review がすべて approved
+- 修正があった場合は `./scripts/ci-check.sh all` がパス
+- 修正がなかった場合は既存の CI 状態が green であることの確認で可
