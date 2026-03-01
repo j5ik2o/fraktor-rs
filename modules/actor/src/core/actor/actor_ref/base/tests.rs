@@ -218,5 +218,4 @@ fn actor_ref_poison_pill_with_system_enqueues_user_message() {
 
   let actor: ActorRef = cell.actor_ref();
   actor.poison_pill().expect("poison pill enqueue");
-  let _ = cell;
 }

@@ -392,7 +392,7 @@ fn build_bridge(
 
 fn build_bridge_with_windows(
   handshake_timeout: Duration,
-  ack_send_window: usize,
+  ack_send_window: u64,
   ack_receive_window: u64,
 ) -> (Arc<EndpointTransportBridge<StdToolbox>>, TestTransportProbe, ActorSystemGeneric<StdToolbox>) {
   let system = build_system();

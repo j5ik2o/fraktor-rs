@@ -207,6 +207,8 @@ impl<TB: RuntimeToolbox + 'static> ClusterApiGeneric<TB> {
         EventStreamSubscriptionGeneric::new(event_stream, subscription_id)
       },
       | ClusterSubscriptionInitialStateMode::AsSnapshot => {
+        // Subscribe first to avoid event gap between snapshot and registration.
+        let subscription_id = event_stream.with_write(|stream| stream.subscribe_no_replay(filtered));
         let initial_event = {
           let core = self.extension.core_shared();
           let (state, observed_at) = core.lock().current_cluster_state_snapshot();
@@ -216,7 +218,6 @@ impl<TB: RuntimeToolbox + 'static> ClusterApiGeneric<TB> {
         let extension_event = EventStreamEvent::Extension { name: String::from(CLUSTER_EVENT_STREAM_NAME), payload };
         let mut guard = subscriber.lock();
         guard.on_event(&extension_event);
-        let subscription_id = event_stream.with_write(|stream| stream.subscribe_no_replay(filtered));
         EventStreamSubscriptionGeneric::new(event_stream, subscription_id)
       },
     }

@@ -28,7 +28,7 @@ pub struct RemotingExtensionConfig {
   auto_start:               bool,
   handshake_timeout:        Duration,
   shutdown_flush_timeout:   Duration,
-  ack_send_window:          usize,
+  ack_send_window:          u64,
   ack_receive_window:       u64,
   transport_scheme:         String,
   backpressure_listeners:   Vec<Box<dyn RemotingBackpressureListener>>,
@@ -128,7 +128,7 @@ impl RemotingExtensionConfig {
   ///
   /// Panics when `window` is zero.
   #[must_use]
-  pub fn with_ack_send_window(mut self, window: usize) -> Self {
+  pub fn with_ack_send_window(mut self, window: u64) -> Self {
     assert!(window > 0, "ack send window must be > 0");
     self.ack_send_window = window;
     self
@@ -209,7 +209,7 @@ impl RemotingExtensionConfig {
 
   /// Returns the configured outbound ack send window.
   #[must_use]
-  pub const fn ack_send_window(&self) -> usize {
+  pub const fn ack_send_window(&self) -> u64 {
     self.ack_send_window
   }
 

@@ -333,7 +333,7 @@ where
   #[cfg(feature = "tokio-transport")]
   shutdown_flush_timeout: Duration,
   #[cfg(feature = "tokio-transport")]
-  ack_send_window:        usize,
+  ack_send_window:        u64,
   #[cfg(feature = "tokio-transport")]
   ack_receive_window:     u64,
   state:                  ToolboxMutex<RemotingLifecycleState, TB>,

@@ -736,7 +736,11 @@ impl<TB: RuntimeToolbox + 'static> MessageInvoker<TB> for ActorCellInvoker<TB> {
     }
     match message {
       | SystemMessage::PoisonPill => cell.handle_stop(),
-      | SystemMessage::Kill => cell.handle_kill(None),
+      | SystemMessage::Kill => {
+        let payload: ArcShared<dyn core::any::Any + Send + Sync + 'static> = ArcShared::new(SystemMessage::Kill);
+        let snapshot = FailureMessageSnapshot::new(payload, None);
+        cell.handle_kill(Some(snapshot))
+      },
       | SystemMessage::Stop => cell.handle_stop(),
       | SystemMessage::Create => cell.handle_create(),
       | SystemMessage::Recreate => cell.handle_recreate(),

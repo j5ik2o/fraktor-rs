@@ -40,13 +40,16 @@ impl ClusterRouterPool {
   }
 
   /// Selects the next routee authority using round-robin.
+  ///
+  /// The effective pool is capped at [`ClusterRouterPoolSettings::total_instances`].
   #[must_use]
   pub fn next_routee(&mut self) -> Option<&str> {
     if self.routees.is_empty() {
       return None;
     }
-    let index = self.next_index % self.routees.len();
-    self.next_index = (self.next_index + 1) % self.routees.len();
+    let effective_count = self.routees.len().min(self.settings.total_instances());
+    let index = self.next_index % effective_count;
+    self.next_index = (self.next_index + 1) % effective_count;
     Some(self.routees[index].as_str())
   }
 }

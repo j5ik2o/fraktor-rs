@@ -80,7 +80,7 @@ pub(crate) struct EndpointTransportBridge<TB: RuntimeToolbox + 'static> {
   system_name:            String,
   handshake_timeout:      Duration,
   shutdown_flush_timeout: Duration,
-  ack_send_window:        usize,
+  ack_send_window:        u64,
   ack_receive_window:     u64,
   local_uid:              u64,
   listener:               TokioMutex<Option<TransportHandle>>,
@@ -491,7 +491,7 @@ impl<TB: RuntimeToolbox + 'static> EndpointTransportBridge<TB> {
       let entry = pending.entry(authority.to_string()).or_insert_with(BTreeMap::new);
       entry.insert(envelope.sequence_no(), envelope);
       let mut removed = Vec::new();
-      while entry.len() > self.ack_send_window {
+      while entry.len() as u64 > self.ack_send_window {
         let Some((&oldest_seq, oldest_envelope)) = entry.first_key_value() else {
           break;
         };

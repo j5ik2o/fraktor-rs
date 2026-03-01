@@ -48,6 +48,8 @@ impl ClusterEventType {
       | (Self::ReachableMember, ClusterEvent::ReachableMember { .. })
       | (Self::MemberQuarantined, ClusterEvent::MemberQuarantined { .. })
       | (Self::TopologyApplyFailed, ClusterEvent::TopologyApplyFailed { .. }) => true,
+      // NOTE: ワイルドカードは意図的。ClusterEvent/ClusterEventType にバリアントを追加する場合は
+      // 対応する行もここに追加すること。
       | _ => false,
     }
   }

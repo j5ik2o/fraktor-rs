@@ -114,9 +114,10 @@ impl<TB: RuntimeToolbox + 'static> LocalClusterProviderGeneric<TB> {
   /// in the `joined` list.
   pub fn on_member_join(&mut self, authority: impl Into<String>) {
     let authority = authority.into();
-    if !self.members.contains(&authority) {
-      self.members.push(authority.clone());
+    if self.members.contains(&authority) {
+      return;
     }
+    self.members.push(authority.clone());
 
     let version = self.next_version();
     self.publish_topology(version, alloc::vec![authority], alloc::vec![]);

@@ -252,6 +252,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
     match provider_result {
       | Ok(()) => {
         self.mode = Some(StartupMode::Member);
+        self.last_topology_hash = None;
         self.member_count = 1;
         self.current_members = Vec::from([address.clone()]);
         self.observed_at = TimerInstant::zero(Duration::from_secs(1));
@@ -300,6 +301,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
     match provider_result {
       | Ok(()) => {
         self.mode = Some(StartupMode::Client);
+        self.last_topology_hash = None;
         self.member_count = 1;
         self.current_members = Vec::from([address.clone()]);
         self.observed_at = TimerInstant::zero(Duration::from_secs(1));

@@ -94,6 +94,8 @@ struct FailingProvider {
   start_member_error: Option<ClusterProviderError>,
   start_client_error: Option<ClusterProviderError>,
   down_error:         Option<ClusterProviderError>,
+  join_error:         Option<ClusterProviderError>,
+  leave_error:        Option<ClusterProviderError>,
   shutdown_error:     Option<ClusterProviderError>,
 }
 
@@ -103,6 +105,8 @@ impl FailingProvider {
       start_member_error: Some(ClusterProviderError::start_member(reason)),
       start_client_error: None,
       down_error:         None,
+      join_error:         None,
+      leave_error:        None,
       shutdown_error:     None,
     }
   }
@@ -112,6 +116,8 @@ impl FailingProvider {
       start_member_error: None,
       start_client_error: Some(ClusterProviderError::start_client(reason)),
       down_error:         None,
+      join_error:         None,
+      leave_error:        None,
       shutdown_error:     None,
     }
   }
@@ -121,6 +127,8 @@ impl FailingProvider {
       start_member_error: None,
       start_client_error: None,
       down_error:         Some(ClusterProviderError::down(reason)),
+      join_error:         None,
+      leave_error:        None,
       shutdown_error:     None,
     }
   }
@@ -130,6 +138,8 @@ impl FailingProvider {
       start_member_error: None,
       start_client_error: None,
       down_error:         None,
+      join_error:         None,
+      leave_error:        None,
       shutdown_error:     Some(ClusterProviderError::shutdown(reason)),
     }
   }
@@ -158,14 +168,14 @@ impl ClusterProvider for FailingProvider {
   }
 
   fn join(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
-    if let Some(err) = &self.down_error {
+    if let Some(err) = &self.join_error {
       return Err(err.clone());
     }
     Ok(())
   }
 
   fn leave(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
-    if let Some(err) = &self.down_error {
+    if let Some(err) = &self.leave_error {
       return Err(err.clone());
     }
     Ok(())
