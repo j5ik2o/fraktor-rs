@@ -19,7 +19,7 @@ use core::{
 };
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
+  runtime_toolbox::{NoStdToolbox, RuntimeMutex, RuntimeToolbox},
   sync::{ArcShared, SharedAccess},
 };
 use portable_atomic::{AtomicBool, AtomicU64, Ordering};
@@ -218,7 +218,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
     let signal = TickExecutorSignal::new();
     let feed = TickFeed::new(resolution, 1, signal);
     let control: Box<dyn TickDriverControl> = Box::new(NoopDriverControl);
-    let control = ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(control));
+    let control = ArcShared::new(RuntimeMutex::new(control));
     let handle = TickDriverHandleGeneric::new(next_tick_driver_id(), TickDriverKind::Auto, resolution, control);
     TickDriverBundle::new(handle, feed)
   }
@@ -666,7 +666,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
       .actor_ref_providers
       .get(&TypeId::of::<P>())
       .cloned()
-      .and_then(|provider| provider.downcast::<ToolboxMutex<ActorRefProviderHandle<P>, TB>>().ok())
+      .and_then(|provider| provider.downcast::<RuntimeMutex<ActorRefProviderHandle<P>>>().ok())
       .map(ActorRefProviderSharedGeneric::from_shared)
   }
 

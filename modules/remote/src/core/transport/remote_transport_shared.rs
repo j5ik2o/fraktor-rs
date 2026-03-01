@@ -4,7 +4,7 @@ use alloc::{boxed::Box, string::String};
 
 use fraktor_actor_rs::core::event::stream::CorrelationId;
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
+  runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
   sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
 };
 
@@ -16,7 +16,7 @@ use super::{
 /// Shared wrapper that provides thread-safe access to a [`RemoteTransport`]
 /// implementation.
 ///
-/// This adapter wraps a transport in a `ToolboxMutex`, allowing it to be shared
+/// This adapter wraps a transport in a `RuntimeMutex`, allowing it to be shared
 /// across multiple owners while satisfying the `&mut self` requirement of
 /// `RemoteTransport` methods.
 ///
@@ -27,7 +27,7 @@ use super::{
 ///
 /// Example: `transport_shared.with_write(|t| t.open_channel(&endpoint))?;`
 pub struct RemoteTransportShared<TB: RuntimeToolbox + 'static> {
-  inner:  ArcShared<ToolboxMutex<Box<dyn RemoteTransport<TB>>, TB>>,
+  inner:  ArcShared<RuntimeMutex<Box<dyn RemoteTransport<TB>>>>,
   scheme: String,
 }
 
@@ -35,7 +35,7 @@ impl<TB: RuntimeToolbox + 'static> RemoteTransportShared<TB> {
   /// Creates a new shared wrapper around the provided transport implementation.
   pub fn new(transport: Box<dyn RemoteTransport<TB>>) -> Self {
     let scheme = transport.scheme().into();
-    Self { inner: ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(transport)), scheme }
+    Self { inner: ArcShared::new(RuntimeMutex::new(transport)), scheme }
   }
 
   /// Returns the transport scheme (e.g., "tcp", "loopback").

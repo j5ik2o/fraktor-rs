@@ -4,6 +4,7 @@
 mod tests;
 
 use alloc::{format, string::String, vec::Vec};
+use core::marker::PhantomData;
 
 use fraktor_actor_rs::core::{
   event::stream::{
@@ -14,7 +15,7 @@ use fraktor_actor_rs::core::{
   system::{ActorSystemGeneric, ActorSystemWeakGeneric},
 };
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
+  runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
   sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
 };
 
@@ -30,12 +31,12 @@ const CLUSTER_EVENT_STREAM_NAME: &str = "cluster";
 
 /// Internal subscriber that applies topology updates to ClusterCore.
 struct ClusterTopologySubscriber<TB: RuntimeToolbox + 'static> {
-  core:         ArcShared<ToolboxMutex<ClusterCore<TB>, TB>>,
+  core:         ArcShared<RuntimeMutex<ClusterCore<TB>>>,
   event_stream: EventStreamSharedGeneric<TB>,
 }
 
 impl<TB: RuntimeToolbox + 'static> ClusterTopologySubscriber<TB> {
-  const fn new(core: ArcShared<ToolboxMutex<ClusterCore<TB>, TB>>, event_stream: EventStreamSharedGeneric<TB>) -> Self {
+  const fn new(core: ArcShared<RuntimeMutex<ClusterCore<TB>>>, event_stream: EventStreamSharedGeneric<TB>) -> Self {
     Self { core, event_stream }
   }
 }
@@ -83,7 +84,7 @@ impl<F> MemberStatusCallbackState<F> {
 }
 
 fn trigger_member_status_callback<TB, F>(
-  callback_state: &ArcShared<ToolboxMutex<MemberStatusCallbackState<F>, TB>>,
+  callback_state: &ArcShared<RuntimeMutex<MemberStatusCallbackState<F>>>,
   node_id: &str,
   authority: &str,
 ) -> bool
@@ -108,12 +109,13 @@ struct SelfMemberStatus {
 
 struct SelfMemberStatusTrackerSubscriber<TB: RuntimeToolbox + 'static> {
   self_address: String,
-  self_status:  ArcShared<ToolboxMutex<Option<SelfMemberStatus>, TB>>,
+  self_status:  ArcShared<RuntimeMutex<Option<SelfMemberStatus>>>,
+  _marker:      PhantomData<TB>,
 }
 
 impl<TB: RuntimeToolbox + 'static> SelfMemberStatusTrackerSubscriber<TB> {
-  const fn new(self_address: String, self_status: ArcShared<ToolboxMutex<Option<SelfMemberStatus>, TB>>) -> Self {
-    Self { self_address, self_status }
+  const fn new(self_address: String, self_status: ArcShared<RuntimeMutex<Option<SelfMemberStatus>>>) -> Self {
+    Self { self_address, self_status, _marker: PhantomData }
   }
 }
 
@@ -134,8 +136,8 @@ impl<TB: RuntimeToolbox + 'static> EventStreamSubscriber<TB> for SelfMemberStatu
 struct MemberStatusSubscriber<TB: RuntimeToolbox + 'static, F: FnMut(&str, &str) + Send + Sync + 'static> {
   target:         NodeStatus,
   self_address:   String,
-  callback_state: ArcShared<ToolboxMutex<MemberStatusCallbackState<F>, TB>>,
-  state:          ArcShared<ToolboxMutex<MemberStatusSubscriberState, TB>>,
+  callback_state: ArcShared<RuntimeMutex<MemberStatusCallbackState<F>>>,
+  state:          ArcShared<RuntimeMutex<MemberStatusSubscriberState>>,
   event_stream:   EventStreamSharedGeneric<TB>,
 }
 
@@ -143,8 +145,8 @@ impl<TB: RuntimeToolbox + 'static, F: FnMut(&str, &str) + Send + Sync + 'static>
   const fn new(
     target: NodeStatus,
     self_address: String,
-    callback_state: ArcShared<ToolboxMutex<MemberStatusCallbackState<F>, TB>>,
-    state: ArcShared<ToolboxMutex<MemberStatusSubscriberState, TB>>,
+    callback_state: ArcShared<RuntimeMutex<MemberStatusCallbackState<F>>>,
+    state: ArcShared<RuntimeMutex<MemberStatusSubscriberState>>,
     event_stream: EventStreamSharedGeneric<TB>,
   ) -> Self {
     Self { target, self_address, callback_state, state, event_stream }
@@ -185,12 +187,12 @@ impl<TB: RuntimeToolbox + 'static> EventStreamSubscriber<TB> for NoopMemberStatu
 
 /// Cluster extension registered into `ActorSystemGeneric`.
 pub struct ClusterExtensionGeneric<TB: RuntimeToolbox + 'static> {
-  core: ArcShared<ToolboxMutex<ClusterCore<TB>, TB>>,
+  core: ArcShared<RuntimeMutex<ClusterCore<TB>>>,
   event_stream: EventStreamSharedGeneric<TB>,
   grain_metrics: Option<GrainMetricsSharedGeneric<TB>>,
-  subscription: ToolboxMutex<Option<EventStreamSubscriptionGeneric<TB>>, TB>,
-  terminated: ToolboxMutex<bool, TB>,
-  self_member_status: ArcShared<ToolboxMutex<Option<SelfMemberStatus>, TB>>,
+  subscription: RuntimeMutex<Option<EventStreamSubscriptionGeneric<TB>>>,
+  terminated: RuntimeMutex<bool>,
+  self_member_status: ArcShared<RuntimeMutex<Option<SelfMemberStatus>>>,
   _self_member_status_subscription: EventStreamSubscriptionGeneric<TB>,
   _system: ActorSystemWeakGeneric<TB>,
 }
@@ -205,13 +207,13 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionGeneric<TB> {
     let self_address = core.startup_address();
     let grain_metrics =
       if core.metrics_enabled() { Some(GrainMetricsSharedGeneric::new(GrainMetrics::new())) } else { None };
-    let self_member_status = ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(None));
+    let self_member_status = ArcShared::new(RuntimeMutex::new(None));
     let status_subscriber =
       subscriber_handle::<TB>(SelfMemberStatusTrackerSubscriber::<TB>::new(self_address, self_member_status.clone()));
     let self_member_status_subscription = event_stream.subscribe_no_replay(&status_subscriber);
-    let locked = <TB::MutexFamily as SyncMutexFamily>::create(core);
-    let subscription = <TB::MutexFamily as SyncMutexFamily>::create(None);
-    let terminated = <TB::MutexFamily as SyncMutexFamily>::create(false);
+    let locked = RuntimeMutex::new(core);
+    let subscription = RuntimeMutex::new(None);
+    let terminated = RuntimeMutex::new(false);
     Self {
       core: ArcShared::new(locked),
       event_stream,
@@ -226,7 +228,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionGeneric<TB> {
 
   /// Returns the shared cluster core handle.
   #[must_use]
-  pub(crate) fn core_shared(&self) -> ArcShared<ToolboxMutex<ClusterCore<TB>, TB>> {
+  pub(crate) fn core_shared(&self) -> ArcShared<RuntimeMutex<ClusterCore<TB>>> {
     self.core.clone()
   }
 
@@ -434,9 +436,8 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionGeneric<TB> {
   where
     F: FnMut(&str, &str) + Send + Sync + 'static, {
     let self_address = self.core.lock().startup_address();
-    let state = ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(MemberStatusSubscriberState::new()));
-    let callback_state =
-      ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(MemberStatusCallbackState::new(callback)));
+    let state = ArcShared::new(RuntimeMutex::new(MemberStatusSubscriberState::new()));
+    let callback_state = ArcShared::new(RuntimeMutex::new(MemberStatusCallbackState::new(callback)));
     let subscriber = subscriber_handle::<TB>(MemberStatusSubscriber::new(
       target,
       self_address.clone(),

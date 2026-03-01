@@ -1,9 +1,10 @@
 //! Shared wrapper for TransportInbound implementations.
 
 use alloc::boxed::Box;
+use core::marker::PhantomData;
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
+  runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
   sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
 };
 
@@ -15,20 +16,21 @@ use super::handler::TransportInbound;
 /// that internally lock the underlying handler, allowing safe
 /// concurrent access from multiple owners.
 pub struct TransportInboundShared<TB: RuntimeToolbox + 'static> {
-  inner: ArcShared<ToolboxMutex<Box<dyn TransportInbound + 'static>, TB>>,
+  inner:   ArcShared<RuntimeMutex<Box<dyn TransportInbound + 'static>>>,
+  _marker: PhantomData<TB>,
 }
 
 impl<TB: RuntimeToolbox + 'static> TransportInboundShared<TB> {
   /// Creates a new shared wrapper around the provided handler.
   #[must_use]
   pub fn new(handler: Box<dyn TransportInbound + 'static>) -> Self {
-    Self { inner: ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(handler)) }
+    Self { inner: ArcShared::new(RuntimeMutex::new(handler)), _marker: PhantomData }
   }
 }
 
 impl<TB: RuntimeToolbox + 'static> Clone for TransportInboundShared<TB> {
   fn clone(&self) -> Self {
-    Self { inner: self.inner.clone() }
+    Self { inner: self.inner.clone(), _marker: PhantomData }
   }
 }
 

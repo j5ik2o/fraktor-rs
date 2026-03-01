@@ -5,7 +5,7 @@ use core::marker::PhantomData;
 
 use fraktor_actor_rs::core::{extension::ExtensionId, system::ActorSystemGeneric};
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
+  runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
   sync::ArcShared,
 };
 
@@ -24,7 +24,7 @@ pub struct ClusterExtensionId<TB: RuntimeToolbox + 'static> {
   config:              ClusterExtensionConfig,
   provider:            ClusterProviderShared<TB>,
   block_list_provider: ArcShared<dyn fraktor_remote_rs::core::BlockListProvider>,
-  downing_provider:    ArcShared<ToolboxMutex<Box<dyn DowningProvider>, TB>>,
+  downing_provider:    ArcShared<RuntimeMutex<Box<dyn DowningProvider>>>,
   gossiper:            GossiperShared<TB>,
   pubsub:              ClusterPubSubShared<TB>,
   identity_lookup:     IdentityLookupShared<TB>,
@@ -49,7 +49,7 @@ impl<TB: RuntimeToolbox + 'static> Clone for ClusterExtensionId<TB> {
 impl<TB: RuntimeToolbox + 'static> ClusterExtensionId<TB> {
   /// Creates a new identifier with injected dependencies.
   ///
-  /// The `identity_lookup`, `provider`, `gossiper`, and `pubsub` are wrapped in `ToolboxMutex`
+  /// The `identity_lookup`, `provider`, `gossiper`, and `pubsub` are wrapped in `RuntimeMutex`
   /// for thread-safe mutable access.
   #[must_use]
   pub fn new(
@@ -62,7 +62,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionId<TB> {
     identity_lookup: Box<dyn IdentityLookup>,
   ) -> Self {
     let provider = ClusterProviderShared::new(provider);
-    let downing_provider = ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(downing_provider));
+    let downing_provider = ArcShared::new(RuntimeMutex::new(downing_provider));
     let gossiper = GossiperShared::new(gossiper);
     let pubsub = ClusterPubSubShared::new(pubsub);
     let identity_lookup = IdentityLookupShared::new(identity_lookup);

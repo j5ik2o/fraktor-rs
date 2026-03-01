@@ -7,7 +7,7 @@ use alloc::{boxed::Box, collections::VecDeque, string::String, vec, vec::Vec};
 use core::{mem, task::Poll, time::Duration};
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
+  runtime_toolbox::{NoStdToolbox, RuntimeMutex, RuntimeToolbox},
   sync::{ArcShared, SharedAccess, WeakShared, sync_mutex_like::SyncMutexLike},
 };
 use portable_atomic::{AtomicBool, Ordering};
@@ -85,7 +85,7 @@ pub struct ActorCellGeneric<TB: RuntimeToolbox + 'static> {
   mailbox:    ArcShared<MailboxGeneric<TB>>,
   dispatcher: DispatcherSharedGeneric<TB>,
   sender:     ActorRefSenderSharedGeneric<TB>,
-  state:      ToolboxMutex<ActorCellState<TB>, TB>,
+  state:      RuntimeMutex<ActorCellState<TB>>,
   terminated: AtomicBool,
 }
 
@@ -136,7 +136,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     let sender = dispatcher.into_sender();
     let factory = props.factory().clone();
     let actor = ActorSharedGeneric::new(factory.with_write(|f| f.create()));
-    let state = <TB::MutexFamily as SyncMutexFamily>::create(ActorCellState::new());
+    let state = RuntimeMutex::new(ActorCellState::new());
 
     let cell = ArcShared::new(Self {
       pid,

@@ -1,7 +1,7 @@
 //! Shared wrapper for serialization extension instance.
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
+  runtime_toolbox::{NoStdToolbox, RuntimeMutex, RuntimeToolbox},
   sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
 };
 
@@ -14,7 +14,7 @@ use crate::core::extension::Extension;
 /// that internally lock the underlying extension, allowing safe
 /// concurrent access from multiple owners.
 pub struct SerializationExtensionSharedGeneric<TB: RuntimeToolbox + 'static> {
-  inner: ArcShared<ToolboxMutex<SerializationExtensionGeneric<TB>, TB>>,
+  inner: ArcShared<RuntimeMutex<SerializationExtensionGeneric<TB>>>,
 }
 
 /// Type alias using the default toolbox.
@@ -24,7 +24,7 @@ impl<TB: RuntimeToolbox + 'static> SerializationExtensionSharedGeneric<TB> {
   /// Creates a new shared wrapper around the provided extension instance.
   #[must_use]
   pub fn new(extension: SerializationExtensionGeneric<TB>) -> Self {
-    let mutex = <TB::MutexFamily as SyncMutexFamily>::create(extension);
+    let mutex = RuntimeMutex::new(extension);
     Self { inner: ArcShared::new(mutex) }
   }
 }

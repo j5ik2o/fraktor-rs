@@ -9,7 +9,7 @@ use core::{
 
 use fraktor_utils_rs::core::{
   collections::{queue::QueueError, wait::WaitShared},
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex},
+  runtime_toolbox::{NoStdToolbox, RuntimeMutex, RuntimeToolbox},
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 
@@ -23,7 +23,7 @@ mod tests;
 struct QueuePollFuture<T, TB: RuntimeToolbox>
 where
   T: Send + 'static, {
-  state:  ArcShared<ToolboxMutex<QueueState<T, TB>, TB>>,
+  state:  ArcShared<RuntimeMutex<QueueState<T, TB>>>,
   waiter: Option<WaitShared<QueueError<T>, TB>>,
 }
 

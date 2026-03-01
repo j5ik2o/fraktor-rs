@@ -8,7 +8,7 @@ use core::num::NonZeroUsize;
 
 use fraktor_utils_rs::core::{
   collections::queue::{OfferOutcome, QueueError},
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
+  runtime_toolbox::{NoStdToolbox, RuntimeMutex, RuntimeToolbox},
   sync::sync_mutex_like::SyncMutexLike,
 };
 
@@ -32,7 +32,7 @@ pub struct MailboxGeneric<TB: RuntimeToolbox + 'static> {
   system:          SystemQueue,
   user:            QueueStateHandle<AnyMessageGeneric<TB>, TB>,
   state:           MailboxScheduleState,
-  instrumentation: ToolboxMutex<Option<MailboxInstrumentationGeneric<TB>>, TB>,
+  instrumentation: RuntimeMutex<Option<MailboxInstrumentationGeneric<TB>>>,
 }
 
 unsafe impl<TB: RuntimeToolbox + 'static> Send for MailboxGeneric<TB> {}
@@ -51,7 +51,7 @@ where
       system: SystemQueue::new(),
       user: user_handles,
       state: MailboxScheduleState::new(),
-      instrumentation: <TB::MutexFamily as SyncMutexFamily>::create(None),
+      instrumentation: RuntimeMutex::new(None),
     }
   }
 

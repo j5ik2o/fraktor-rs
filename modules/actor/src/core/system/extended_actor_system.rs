@@ -128,7 +128,7 @@ impl<TB: RuntimeToolbox + 'static> ExtendedActorSystemGeneric<TB> {
 
   /// Registers a remote watch hook that intercepts watch/unwatch to remote actors.
   ///
-  /// The hook will be wrapped in a `ToolboxMutex` internally for thread-safe access.
+  /// The hook will be wrapped in a `RuntimeMutex` internally for thread-safe access.
   pub fn register_remote_watch_hook<H>(&self, hook: H)
   where
     H: RemoteWatchHook<TB>, {

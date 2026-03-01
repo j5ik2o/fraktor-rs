@@ -1,9 +1,10 @@
 //! Shared wrapper for `IdentityLookup` implementations.
 
 use alloc::boxed::Box;
+use core::marker::PhantomData;
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
+  runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
   sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
 };
 
@@ -11,36 +12,37 @@ use super::identity_lookup::IdentityLookup;
 
 /// Shared wrapper enabling interior mutability for [`IdentityLookup`].
 ///
-/// This adapter wraps an `IdentityLookup` in a `ToolboxMutex`, allowing callers
+/// This adapter wraps an `IdentityLookup` in a `RuntimeMutex`, allowing callers
 /// to access mutable methods via [`SharedAccess`] without requiring a mutable
 /// handle to the wrapper itself.
 pub struct IdentityLookupShared<TB: RuntimeToolbox + 'static> {
-  inner: ArcShared<ToolboxMutex<Box<dyn IdentityLookup>, TB>>,
+  inner:   ArcShared<RuntimeMutex<Box<dyn IdentityLookup>>>,
+  _marker: PhantomData<TB>,
 }
 
 impl<TB: RuntimeToolbox + 'static> IdentityLookupShared<TB> {
   /// Creates a new shared wrapper around the given identity lookup.
   #[must_use]
   pub fn new(identity_lookup: Box<dyn IdentityLookup>) -> Self {
-    Self { inner: ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(identity_lookup)) }
+    Self { inner: ArcShared::new(RuntimeMutex::new(identity_lookup)), _marker: PhantomData }
   }
 
   /// Creates a wrapper from an existing shared mutex.
   #[must_use]
-  pub fn from_inner(inner: ArcShared<ToolboxMutex<Box<dyn IdentityLookup>, TB>>) -> Self {
-    Self { inner }
+  pub fn from_inner(inner: ArcShared<RuntimeMutex<Box<dyn IdentityLookup>>>) -> Self {
+    Self { inner, _marker: PhantomData }
   }
 
   /// Returns a cloned handle to the inner shared mutex.
   #[must_use]
-  pub fn inner(&self) -> ArcShared<ToolboxMutex<Box<dyn IdentityLookup>, TB>> {
+  pub fn inner(&self) -> ArcShared<RuntimeMutex<Box<dyn IdentityLookup>>> {
     self.inner.clone()
   }
 }
 
 impl<TB: RuntimeToolbox> Clone for IdentityLookupShared<TB> {
   fn clone(&self) -> Self {
-    Self { inner: self.inner.clone() }
+    Self { inner: self.inner.clone(), _marker: PhantomData }
   }
 }
 

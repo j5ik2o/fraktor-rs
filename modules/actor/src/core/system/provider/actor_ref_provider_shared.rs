@@ -1,9 +1,9 @@
 //! Shared wrapper for ActorRefProvider implementations.
 
-use core::any::TypeId;
+use core::{any::TypeId, marker::PhantomData};
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
+  runtime_toolbox::{NoStdToolbox, RuntimeMutex, RuntimeToolbox},
   sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
 };
 
@@ -19,7 +19,7 @@ use crate::core::{
 /// Shared wrapper that provides thread-safe access to an [`ActorRefProvider`]
 /// implementation.
 ///
-/// This adapter wraps a provider handle in a `ToolboxMutex`, allowing it to be shared
+/// This adapter wraps a provider handle in a `RuntimeMutex`, allowing it to be shared
 /// across multiple owners while satisfying the `&mut self` requirement of
 /// `ActorRefProvider` methods. The wrapper itself remains a thin layer that
 /// locks and delegates only.
@@ -30,7 +30,8 @@ use crate::core::{
 /// 2. Clone and share as needed
 /// 3. Call provider methods through the wrapper (automatically acquires lock)
 pub struct ActorRefProviderSharedGeneric<TB: RuntimeToolbox + 'static, P: ActorRefProvider<TB> + 'static> {
-  inner: ArcShared<ToolboxMutex<ActorRefProviderHandle<P>, TB>>,
+  inner:   ArcShared<RuntimeMutex<ActorRefProviderHandle<P>>>,
+  _marker: PhantomData<TB>,
 }
 
 impl<TB: RuntimeToolbox + 'static, P: ActorRefProvider<TB> + 'static> ActorRefProviderSharedGeneric<TB, P> {
@@ -38,18 +39,18 @@ impl<TB: RuntimeToolbox + 'static, P: ActorRefProvider<TB> + 'static> ActorRefPr
   pub fn new(provider: P) -> Self {
     let schemes = provider.supported_schemes();
     let handle = ActorRefProviderHandle::new(provider, schemes);
-    Self { inner: ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(handle)) }
+    Self { inner: ArcShared::new(RuntimeMutex::new(handle)), _marker: PhantomData }
   }
 
   /// Creates a new shared wrapper from an existing shared mutex.
   #[must_use]
-  pub const fn from_shared(inner: ArcShared<ToolboxMutex<ActorRefProviderHandle<P>, TB>>) -> Self {
-    Self { inner }
+  pub const fn from_shared(inner: ArcShared<RuntimeMutex<ActorRefProviderHandle<P>>>) -> Self {
+    Self { inner, _marker: PhantomData }
   }
 
   /// Returns a reference to the inner shared mutex.
   #[must_use]
-  pub const fn inner(&self) -> &ArcShared<ToolboxMutex<ActorRefProviderHandle<P>, TB>> {
+  pub const fn inner(&self) -> &ArcShared<RuntimeMutex<ActorRefProviderHandle<P>>> {
     &self.inner
   }
 
@@ -75,7 +76,7 @@ impl<TB: RuntimeToolbox + 'static, P: ActorRefProvider<TB> + 'static> ActorRefPr
 
 impl<TB: RuntimeToolbox + 'static, P: ActorRefProvider<TB> + 'static> Clone for ActorRefProviderSharedGeneric<TB, P> {
   fn clone(&self) -> Self {
-    Self { inner: self.inner.clone() }
+    Self { inner: self.inner.clone(), _marker: PhantomData }
   }
 }
 

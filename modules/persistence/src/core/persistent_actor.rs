@@ -8,7 +8,7 @@ use core::any::Any;
 
 use fraktor_actor_rs::core::{actor::ActorContextGeneric, error::ActorError, messaging::AnyMessageViewGeneric};
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, sync_mutex_family::SyncMutexFamily},
+  runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 
@@ -86,7 +86,7 @@ where
     handler: impl FnMut(&mut Self, &E) + Send + Sync + 'static,
   ) {
     let handler_box = Box::new(handler);
-    let shared_handler = ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(handler_box));
+    let shared_handler = ArcShared::new(RuntimeMutex::new(handler_box));
 
     for event in events {
       let handler_clone = shared_handler.clone();
@@ -109,7 +109,7 @@ where
     handler: impl FnMut(&mut Self, &E) + Send + Sync + 'static,
   ) {
     let handler_box = Box::new(handler);
-    let shared_handler = ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(handler_box));
+    let shared_handler = ArcShared::new(RuntimeMutex::new(handler_box));
 
     for event in events {
       let handler_clone = shared_handler.clone();

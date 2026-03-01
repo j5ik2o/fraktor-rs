@@ -11,7 +11,7 @@ use fraktor_actor_rs::core::{
 };
 use fraktor_utils_rs::{
   core::{
-    runtime_toolbox::{RuntimeToolbox, sync_mutex_family::SyncMutexFamily},
+    runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
     sync::{ArcShared, sync_mutex_like::SyncMutexLike},
   },
   std::runtime_toolbox::StdToolbox,
@@ -46,8 +46,7 @@ impl RemotingExtensionGeneric<StdToolbox> {
     config: &RemotingExtensionConfig,
   ) -> Result<Self, RemotingError> {
     let control_handle = RemotingControlHandle::new(system.clone(), config.clone());
-    let control: RemotingControlShared<StdToolbox> =
-      ArcShared::new(<<StdToolbox as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(control_handle));
+    let control: RemotingControlShared<StdToolbox> = ArcShared::new(RuntimeMutex::new(control_handle));
     let mut transport = StdTransportFactory::build(config)?;
     transport.install_backpressure_hook(control.lock().backpressure_hook());
     let shared_transport: RemoteTransportShared<StdToolbox> = RemoteTransportShared::new(transport);

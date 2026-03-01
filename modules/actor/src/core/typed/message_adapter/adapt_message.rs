@@ -7,7 +7,7 @@ use alloc::string::String;
 use core::any::TypeId;
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
+  runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 
@@ -19,7 +19,7 @@ where
   M: Send + Sync + 'static,
   TB: RuntimeToolbox + 'static, {
   entry:   ArcShared<AdapterEntry<M, TB>>,
-  payload: ToolboxMutex<Option<AdapterPayload<TB>>, TB>,
+  payload: RuntimeMutex<Option<AdapterPayload<TB>>>,
 }
 
 impl<M, TB> AdaptMessage<M, TB>
@@ -34,7 +34,7 @@ where
     F: Fn(U) -> Result<M, AdapterError> + Send + Sync + 'static, {
     let payload = AdapterPayload::new(value);
     let entry = ArcShared::new(AdapterEntry::<M, TB>::new::<U, F>(TypeId::of::<U>(), adapter));
-    let storage = <TB::MutexFamily as SyncMutexFamily>::create(Some(payload));
+    let storage = RuntimeMutex::new(Some(payload));
     Self { entry, payload: storage }
   }
 

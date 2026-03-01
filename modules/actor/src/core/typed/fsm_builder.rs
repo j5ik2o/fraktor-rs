@@ -6,7 +6,7 @@ mod tests;
 use alloc::{boxed::Box, vec::Vec};
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, sync_mutex_family::SyncMutexFamily},
+  runtime_toolbox::{NoStdToolbox, RuntimeMutex, RuntimeToolbox},
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 
@@ -71,7 +71,7 @@ where
   /// Builds a typed behavior that evaluates transitions on each message.
   #[must_use]
   pub fn build(self) -> Behavior<Message, TB> {
-    let runtime_state = ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(FsmRuntimeState {
+    let runtime_state = ArcShared::new(RuntimeMutex::new(FsmRuntimeState {
       state:       self.initial_state,
       transitions: self.transitions,
     }));

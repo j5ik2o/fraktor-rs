@@ -5,7 +5,7 @@ use core::sync::atomic::Ordering;
 
 use fraktor_utils_rs::core::{
   collections::queue::{OverflowPolicy, QueueError, SyncFifoQueue, backend::VecDequeBackend},
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
+  runtime_toolbox::{NoStdToolbox, RuntimeMutex, RuntimeToolbox},
   sync::sync_mutex_like::SyncMutexLike,
 };
 use portable_atomic::AtomicBool;
@@ -25,8 +25,8 @@ type TaskQueue<TB> = SyncFifoQueue<DispatchSharedGeneric<TB>, VecDequeBackend<Di
 /// When `submit` is called during an ongoing execution (re-entry), the task is
 /// queued instead of blocking. Only one thread drains the queue at a time.
 pub struct DispatchExecutorRunnerGeneric<TB: RuntimeToolbox + 'static> {
-  executor: ToolboxMutex<Box<dyn DispatchExecutor<TB>>, TB>,
-  queue:    ToolboxMutex<TaskQueue<TB>, TB>,
+  executor: RuntimeMutex<Box<dyn DispatchExecutor<TB>>>,
+  queue:    RuntimeMutex<TaskQueue<TB>>,
   running:  AtomicBool,
 }
 
@@ -58,11 +58,7 @@ impl<TB: RuntimeToolbox + 'static> DispatchExecutorRunnerGeneric<TB> {
   pub fn new(executor: Box<dyn DispatchExecutor<TB>>) -> Self {
     let backend = VecDequeBackend::with_capacity(DEFAULT_QUEUE_CAPACITY, OverflowPolicy::Grow);
     let queue = SyncFifoQueue::new(backend);
-    Self {
-      executor: <TB::MutexFamily as SyncMutexFamily>::create(executor),
-      queue:    <TB::MutexFamily as SyncMutexFamily>::create(queue),
-      running:  AtomicBool::new(false),
-    }
+    Self { executor: RuntimeMutex::new(executor), queue: RuntimeMutex::new(queue), running: AtomicBool::new(false) }
   }
 
   /// Submits a task for execution.

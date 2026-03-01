@@ -4,8 +4,8 @@ use alloc::boxed::Box;
 use std::time::Duration;
 
 use fraktor_utils_rs::{
-  core::{runtime_toolbox::sync_mutex_family::SyncMutexFamily, sync::ArcShared, time::TimerInstant},
-  std::runtime_toolbox::{StdMutexFamily, StdToolbox},
+  core::{runtime_toolbox::RuntimeMutex, sync::ArcShared, time::TimerInstant},
+  std::runtime_toolbox::StdToolbox,
 };
 use tokio::{
   runtime::Handle,
@@ -110,7 +110,7 @@ impl TickDriver<StdToolbox> for TokioIntervalTicker {
       )
     });
     let control: Box<dyn TickDriverControl> = Box::new(TokioIntervalTickerControl::new(join, metrics));
-    let control = ArcShared::new(<StdMutexFamily as SyncMutexFamily>::create(control));
+    let control = ArcShared::new(RuntimeMutex::new(control));
     Ok(TickDriverHandleGeneric::new(self.id, self.kind(), self.resolution, control))
   }
 }

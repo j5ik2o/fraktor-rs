@@ -3,7 +3,7 @@
 use alloc::boxed::Box;
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, ToolboxRwLock, sync_rwlock_family::SyncRwLockFamily},
+  runtime_toolbox::{RuntimeRwLock, RuntimeToolbox},
   sync::{ArcShared, SharedAccess, sync_rwlock_like::SyncRwLockLike},
 };
 
@@ -15,14 +15,14 @@ use super::invoker_trait::MessageInvoker;
 /// that internally lock the underlying invoker, allowing safe
 /// concurrent access from multiple owners.
 pub struct MessageInvokerShared<TB: RuntimeToolbox + 'static> {
-  inner: ArcShared<ToolboxRwLock<Box<dyn MessageInvoker<TB>>, TB>>,
+  inner: ArcShared<RuntimeRwLock<Box<dyn MessageInvoker<TB>>>>,
 }
 
 impl<TB: RuntimeToolbox + 'static> MessageInvokerShared<TB> {
   /// Creates a new shared wrapper around the provided invoker.
   #[must_use]
   pub fn new(invoker: Box<dyn MessageInvoker<TB>>) -> Self {
-    Self { inner: ArcShared::new(<TB::RwLockFamily as SyncRwLockFamily>::create(invoker)) }
+    Self { inner: ArcShared::new(RuntimeRwLock::new(invoker)) }
   }
 }
 

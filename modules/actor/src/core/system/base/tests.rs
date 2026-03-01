@@ -8,7 +8,7 @@ use core::{
 
 use fraktor_utils_rs::core::{
   collections::queue::capabilities::{QueueCapabilityRegistry, QueueCapabilitySet},
-  runtime_toolbox::{NoStdMutex, NoStdToolbox, RuntimeToolbox, sync_mutex_family::SyncMutexFamily},
+  runtime_toolbox::{NoStdMutex, NoStdToolbox, RuntimeMutex, RuntimeToolbox},
   sync::{ArcShared, SharedAccess},
   timing::delay::{DelayFuture, DelayProvider},
 };
@@ -177,7 +177,7 @@ fn actor_system_drop_shuts_down_executor_once() {
   let executor_calls_for_builder = executor_calls.clone();
   let tick_driver = TickDriverConfig::new(move |_ctx: &TickDriverProvisioningContext<NoStdToolbox>| {
     let control: Box<dyn TickDriverControl> = Box::new(NoopControl);
-    let control = ArcShared::new(<<NoStdToolbox as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(control));
+    let control = ArcShared::new(RuntimeMutex::new(control));
     let resolution = Duration::from_millis(1);
     let handle = TickDriverHandleGeneric::new(TickDriverId::new(1), TickDriverKind::Auto, resolution, control);
     let feed = TickFeed::<NoStdToolbox>::new(resolution, 1, TickExecutorSignal::new());
@@ -307,7 +307,7 @@ fn actor_system_reports_tick_driver_snapshot() {
   let resolution = Duration::from_millis(5);
   let tick_driver = TickDriverConfig::new(move |_ctx: &TickDriverProvisioningContext<NoStdToolbox>| {
     let control: Box<dyn TickDriverControl> = Box::new(NoopControl);
-    let control = ArcShared::new(<<NoStdToolbox as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(control));
+    let control = ArcShared::new(RuntimeMutex::new(control));
     let handle = TickDriverHandleGeneric::new(driver_id, TickDriverKind::Auto, resolution, control);
     let feed = TickFeed::<NoStdToolbox>::new(resolution, 1, TickExecutorSignal::new());
     let auto = AutoDriverMetadata { profile: AutoProfileKind::Tokio, driver_id, resolution };

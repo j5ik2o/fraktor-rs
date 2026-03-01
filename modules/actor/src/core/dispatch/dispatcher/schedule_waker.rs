@@ -6,7 +6,7 @@ use core::{
 };
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
+  runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 
@@ -37,13 +37,13 @@ impl<TB: RuntimeToolbox + 'static> ScheduleHandle<TB> {
 }
 
 struct ScheduleShared<TB: RuntimeToolbox + 'static> {
-  inner: ArcShared<ToolboxMutex<ScheduleHandle<TB>, TB>>,
+  inner: ArcShared<RuntimeMutex<ScheduleHandle<TB>>>,
 }
 
 impl<TB: RuntimeToolbox + 'static> ScheduleShared<TB> {
   fn new(dispatcher: DispatcherSharedGeneric<TB>) -> Self {
     let handle = ScheduleHandle::new(dispatcher);
-    let inner = ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(handle));
+    let inner = ArcShared::new(RuntimeMutex::new(handle));
     Self { inner }
   }
 

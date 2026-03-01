@@ -2,18 +2,15 @@
 
 use core::time::Duration;
 
-use crate::{
-  core::{
-    runtime_toolbox::RuntimeToolbox,
-    time::{ManualClock, SchedulerTickHandle},
-  },
-  std::runtime_toolbox::{StdMutexFamily, StdRwLockFamily},
+use crate::core::{
+  runtime_toolbox::RuntimeToolbox,
+  time::{ManualClock, SchedulerTickHandle},
 };
 
 #[cfg(test)]
 mod tests;
 
-/// Toolbox for std environments, backed by [`StdMutexFamily`].
+/// Toolbox for std environments.
 #[derive(Clone, Copy, Debug)]
 pub struct StdToolbox {
   clock: ManualClock,
@@ -35,8 +32,6 @@ impl Default for StdToolbox {
 
 impl RuntimeToolbox for StdToolbox {
   type Clock = ManualClock;
-  type MutexFamily = StdMutexFamily;
-  type RwLockFamily = StdRwLockFamily;
 
   fn clock(&self) -> &Self::Clock {
     &self.clock

@@ -3,7 +3,7 @@
 use alloc::boxed::Box;
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
+  runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
   sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
 };
 
@@ -12,7 +12,7 @@ use crate::core::actor::Pid;
 
 /// Shared wrapper that provides thread-safe access to a boxed [`RemoteWatchHook`].
 ///
-/// The hook is wrapped in `ToolboxMutex` and shared via `ArcShared`, while the
+/// The hook is wrapped in `RuntimeMutex` and shared via `ArcShared`, while the
 /// public surface is limited to `with_read` / `with_write` closures to hide the
 /// lock scope and reduce deadlock risk.
 ///
@@ -22,14 +22,14 @@ use crate::core::actor::Pid;
 /// - The underlying `Box<dyn RemoteWatchHook<TB>>` does not need internal locks
 /// - Lock acquisition is hidden from callers via closure-based API
 pub(crate) struct RemoteWatchHookDynSharedGeneric<TB: RuntimeToolbox + 'static> {
-  inner: ArcShared<ToolboxMutex<Box<dyn RemoteWatchHook<TB>>, TB>>,
+  inner: ArcShared<RuntimeMutex<Box<dyn RemoteWatchHook<TB>>>>,
 }
 
 impl<TB: RuntimeToolbox + 'static> RemoteWatchHookDynSharedGeneric<TB> {
   /// Creates a new shared wrapper around the provided hook.
   #[must_use]
   pub(crate) fn new(hook: Box<dyn RemoteWatchHook<TB>>) -> Self {
-    Self { inner: ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(hook)) }
+    Self { inner: ArcShared::new(RuntimeMutex::new(hook)) }
   }
 
   /// Creates a new shared wrapper with the default no-op hook.

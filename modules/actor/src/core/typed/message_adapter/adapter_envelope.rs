@@ -6,7 +6,7 @@ mod tests;
 use core::any::TypeId;
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
+  runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
   sync::sync_mutex_like::SyncMutexLike,
 };
 
@@ -15,7 +15,7 @@ use crate::core::{actor::actor_ref::ActorRefGeneric, typed::message_adapter::Ada
 /// Wraps adapted payloads alongside metadata for typed actors.
 pub(crate) struct AdapterEnvelope<TB: RuntimeToolbox + 'static> {
   type_id: TypeId,
-  payload: ToolboxMutex<Option<AdapterPayload<TB>>, TB>,
+  payload: RuntimeMutex<Option<AdapterPayload<TB>>>,
   sender:  Option<ActorRefGeneric<TB>>,
 }
 
@@ -24,7 +24,7 @@ impl<TB: RuntimeToolbox + 'static> AdapterEnvelope<TB> {
   #[must_use]
   pub(crate) fn new(payload: AdapterPayload<TB>, sender: Option<ActorRefGeneric<TB>>) -> Self {
     let type_id = payload.type_id();
-    let storage = <TB::MutexFamily as SyncMutexFamily>::create(Some(payload));
+    let storage = RuntimeMutex::new(Some(payload));
     Self { type_id, payload: storage, sender }
   }
 

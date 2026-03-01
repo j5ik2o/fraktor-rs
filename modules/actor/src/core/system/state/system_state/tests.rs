@@ -5,7 +5,7 @@ use core::{
 };
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdMutex, NoStdToolbox, RuntimeToolbox, sync_mutex_family::SyncMutexFamily},
+  runtime_toolbox::{NoStdMutex, NoStdToolbox, RuntimeMutex, RuntimeToolbox},
   sync::{ArcShared, SharedAccess},
 };
 
@@ -110,7 +110,7 @@ fn system_state_drop_shuts_down_executor_once() {
   let executor_calls_for_builder = executor_calls.clone();
   let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::new(move |_ctx| {
     let control: Box<dyn TickDriverControl> = Box::new(NoopControl);
-    let control = ArcShared::new(<<NoStdToolbox as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(control));
+    let control = ArcShared::new(RuntimeMutex::new(control));
     let resolution = Duration::from_millis(1);
     let handle = TickDriverHandleGeneric::new(TickDriverId::new(1), TickDriverKind::Auto, resolution, control);
     let feed = TickFeed::<NoStdToolbox>::new(resolution, 1, TickExecutorSignal::new());

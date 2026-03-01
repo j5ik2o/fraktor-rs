@@ -1,5 +1,7 @@
+use core::marker::PhantomData;
+
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
+  runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
   sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
 };
 
@@ -7,19 +9,20 @@ use super::stream::Stream;
 
 /// Shared wrapper for [`Stream`].
 pub(crate) struct StreamSharedGeneric<TB: RuntimeToolbox + 'static> {
-  inner: ArcShared<ToolboxMutex<Stream, TB>>,
+  inner:   ArcShared<RuntimeMutex<Stream>>,
+  _marker: PhantomData<TB>,
 }
 
 impl<TB: RuntimeToolbox + 'static> Clone for StreamSharedGeneric<TB> {
   fn clone(&self) -> Self {
-    Self { inner: self.inner.clone() }
+    Self { inner: self.inner.clone(), _marker: PhantomData }
   }
 }
 
 impl<TB: RuntimeToolbox + 'static> StreamSharedGeneric<TB> {
   pub(crate) fn new(stream: Stream) -> Self {
-    let inner = ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(stream));
-    Self { inner }
+    let inner = ArcShared::new(RuntimeMutex::new(stream));
+    Self { inner, _marker: PhantomData }
   }
 }
 

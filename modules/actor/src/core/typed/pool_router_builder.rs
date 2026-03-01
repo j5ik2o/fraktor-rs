@@ -7,7 +7,7 @@ use alloc::{vec, vec::Vec};
 use core::sync::atomic::AtomicUsize;
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
+  runtime_toolbox::{NoStdToolbox, RuntimeMutex, RuntimeToolbox},
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 use portable_atomic::{AtomicU64, Ordering};
@@ -120,13 +120,13 @@ where
       }
 
       let routee_count = routee_vec.len();
-      let mutex = <TB::MutexFamily as SyncMutexFamily>::create(routee_vec);
-      let routees: ArcShared<ToolboxMutex<Vec<TypedActorRefGeneric<M, TB>>, TB>> = ArcShared::new(mutex);
+      let mutex = RuntimeMutex::new(routee_vec);
+      let routees: ArcShared<RuntimeMutex<Vec<TypedActorRefGeneric<M, TB>>>> = ArcShared::new(mutex);
       let routees_for_msg = routees.clone();
       let routees_for_sig = routees;
       let index = AtomicUsize::new(0);
       let random_seed = AtomicU64::new(0);
-      let dispatch_counts = ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(vec![0_usize; routee_count]));
+      let dispatch_counts = ArcShared::new(RuntimeMutex::new(vec![0_usize; routee_count]));
       let strategy_for_msg = strategy.clone();
 
       Behaviors::receive_message(move |_ctx, message: &M| {
@@ -197,7 +197,7 @@ const fn pseudo_random_index(seed: u64, len: usize) -> usize {
 
 fn select_smallest_mailbox_index<M, TB>(
   routees: &[TypedActorRefGeneric<M, TB>],
-  dispatch_counts: &ArcShared<ToolboxMutex<Vec<usize>, TB>>,
+  dispatch_counts: &ArcShared<RuntimeMutex<Vec<usize>>>,
 ) -> usize
 where
   M: Send + Sync + Clone + 'static,

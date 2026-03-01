@@ -1,7 +1,7 @@
 //! Shared wrapper for actor cell registry.
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
+  runtime_toolbox::{NoStdToolbox, RuntimeMutex, RuntimeToolbox},
   sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
 };
 
@@ -13,7 +13,7 @@ use super::cells::CellsGeneric;
 /// that internally lock the underlying registry, allowing safe
 /// concurrent access from multiple owners.
 pub(crate) struct CellsSharedGeneric<TB: RuntimeToolbox + 'static> {
-  inner: ArcShared<ToolboxMutex<CellsGeneric<TB>, TB>>,
+  inner: ArcShared<RuntimeMutex<CellsGeneric<TB>>>,
 }
 
 /// Type alias using the default toolbox.
@@ -24,7 +24,7 @@ impl<TB: RuntimeToolbox + 'static> CellsSharedGeneric<TB> {
   /// Creates a new shared wrapper around the provided registry.
   #[must_use]
   pub(crate) fn new(cells: CellsGeneric<TB>) -> Self {
-    Self { inner: ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(cells)) }
+    Self { inner: ArcShared::new(RuntimeMutex::new(cells)) }
   }
 }
 

@@ -3,7 +3,7 @@
 use alloc::boxed::Box;
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
+  runtime_toolbox::{NoStdToolbox, RuntimeMutex, RuntimeToolbox},
   sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
 };
 
@@ -15,7 +15,7 @@ use crate::core::{
 
 /// Shared wrapper for [`ActorRefSender`] with external mutex synchronization.
 pub struct ActorRefSenderSharedGeneric<TB: RuntimeToolbox + 'static> {
-  inner: ArcShared<ToolboxMutex<Box<dyn ActorRefSender<TB>>, TB>>,
+  inner: ArcShared<RuntimeMutex<Box<dyn ActorRefSender<TB>>>>,
 }
 
 impl<TB: RuntimeToolbox + 'static> Clone for ActorRefSenderSharedGeneric<TB> {
@@ -29,7 +29,7 @@ impl<TB: RuntimeToolbox + 'static> ActorRefSenderSharedGeneric<TB> {
   #[must_use]
   pub fn new<S: ActorRefSender<TB> + 'static>(sender: S) -> Self {
     let boxed: Box<dyn ActorRefSender<TB>> = Box::new(sender);
-    Self { inner: ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(boxed)) }
+    Self { inner: ArcShared::new(RuntimeMutex::new(boxed)) }
   }
 
   /// Sends a message through the wrapped sender.

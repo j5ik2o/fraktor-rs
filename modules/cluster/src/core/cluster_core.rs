@@ -18,7 +18,7 @@ use fraktor_actor_rs::core::{
 };
 use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, ToolboxMutex},
+  runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
   sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
   time::TimerInstant,
 };
@@ -39,7 +39,7 @@ pub struct ClusterCore<TB: RuntimeToolbox + 'static> {
   provider:            ClusterProviderShared<TB>,
   block_list_provider: ArcShared<dyn BlockListProvider>,
   event_stream:        EventStreamSharedGeneric<TB>,
-  downing_provider:    ArcShared<ToolboxMutex<Box<dyn DowningProvider>, TB>>,
+  downing_provider:    ArcShared<RuntimeMutex<Box<dyn DowningProvider>>>,
   gossiper:            GossiperShared<TB>,
   pub_sub:             ClusterPubSubShared<TB>,
   startup_state:       ClusterStartupState,
@@ -66,7 +66,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
     provider: ClusterProviderShared<TB>,
     block_list_provider: ArcShared<dyn BlockListProvider>,
     event_stream: EventStreamSharedGeneric<TB>,
-    downing_provider: ArcShared<ToolboxMutex<Box<dyn DowningProvider>, TB>>,
+    downing_provider: ArcShared<RuntimeMutex<Box<dyn DowningProvider>>>,
     gossiper: GossiperShared<TB>,
     pubsub: ClusterPubSubShared<TB>,
     kind_registry: KindRegistry,

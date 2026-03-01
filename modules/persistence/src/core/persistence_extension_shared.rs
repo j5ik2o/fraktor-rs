@@ -2,7 +2,7 @@
 
 use fraktor_actor_rs::core::extension::Extension;
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
+  runtime_toolbox::{NoStdToolbox, RuntimeMutex, RuntimeToolbox},
   sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
 };
 
@@ -10,7 +10,7 @@ use crate::core::persistence_extension::PersistenceExtensionGeneric;
 
 /// Shared wrapper for a persistence extension instance.
 pub struct PersistenceExtensionSharedGeneric<TB: RuntimeToolbox + 'static> {
-  inner: ArcShared<ToolboxMutex<PersistenceExtensionGeneric<TB>, TB>>,
+  inner: ArcShared<RuntimeMutex<PersistenceExtensionGeneric<TB>>>,
 }
 
 /// Type alias using the default toolbox.
@@ -20,7 +20,7 @@ impl<TB: RuntimeToolbox + 'static> PersistenceExtensionSharedGeneric<TB> {
   /// Creates a new shared wrapper around the provided extension instance.
   #[must_use]
   pub fn new(extension: PersistenceExtensionGeneric<TB>) -> Self {
-    let mutex = <TB::MutexFamily as SyncMutexFamily>::create(extension);
+    let mutex = RuntimeMutex::new(extension);
     Self { inner: ArcShared::new(mutex) }
   }
 }

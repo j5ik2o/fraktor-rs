@@ -15,7 +15,7 @@ use fraktor_actor_rs::core::{
   messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
 };
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
+  runtime_toolbox::{NoStdToolbox, RuntimeMutex, RuntimeToolbox},
   sync::ArcShared,
 };
 
@@ -28,7 +28,7 @@ use crate::core::{
 };
 
 type TB = NoStdToolbox;
-type MessageStore = ArcShared<ToolboxMutex<Vec<AnyMessageGeneric<TB>>, TB>>;
+type MessageStore = ArcShared<RuntimeMutex<Vec<AnyMessageGeneric<TB>>>>;
 type DummyPendingHandler = Box<dyn FnOnce(&mut DummyActor, &PersistentRepr) + Send + Sync>;
 const ADD_TEN_MANIFEST: &str = "add-ten-v1";
 const SINGLE_MANIFEST: &str = "single-v1";
@@ -54,7 +54,7 @@ impl ActorRefSender<TB> for TestSender {
 }
 
 fn create_sender() -> (ActorRefGeneric<TB>, MessageStore) {
-  let messages = ArcShared::new(<<TB as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(Vec::new()));
+  let messages = ArcShared::new(RuntimeMutex::new(Vec::new()));
   let sender = ActorRefGeneric::new(Pid::new(1, 1), TestSender { messages: messages.clone() });
   (sender, messages)
 }

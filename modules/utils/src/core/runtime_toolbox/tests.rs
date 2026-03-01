@@ -1,19 +1,24 @@
 use core::time::Duration;
 
-use super::{NoStdToolbox, RuntimeToolbox, SyncMutexFamily, SyncRwLockFamily, ToolboxMutex, ToolboxRwLock};
+use super::{NoStdToolbox, RuntimeMutex, RuntimeRwLock, RuntimeToolbox};
 use crate::core::sync::sync_rwlock_like::SyncRwLockLike;
 
+#[cfg(not(feature = "std"))]
 #[test]
-fn toolbox_mutex_uses_spin_family() {
-  type Family = <NoStdToolbox as RuntimeToolbox>::MutexFamily;
-  let mutex: ToolboxMutex<_, NoStdToolbox> = Family::create(5_u32);
+fn runtime_lock_aliases_use_spin_backend() {
+  let _: RuntimeMutex<u8> = crate::core::sync::sync_mutex_like::SpinSyncMutex::new(1);
+  let _: RuntimeRwLock<u8> = crate::core::sync::sync_rwlock_like::SpinSyncRwLock::new(1);
+}
+
+#[test]
+fn runtime_mutex_protects_value() {
+  let mutex: RuntimeMutex<_> = RuntimeMutex::new(5_u32);
   assert_eq!(*mutex.lock(), 5);
 }
 
 #[test]
-fn toolbox_rwlock_uses_spin_family() {
-  type Family = <NoStdToolbox as RuntimeToolbox>::RwLockFamily;
-  let rwlock: ToolboxRwLock<_, NoStdToolbox> = Family::create(7_u32);
+fn runtime_rwlock_protects_value() {
+  let rwlock: RuntimeRwLock<_> = RuntimeRwLock::new(7_u32);
   assert_eq!(*rwlock.read(), 7);
   {
     let mut guard = rwlock.write();

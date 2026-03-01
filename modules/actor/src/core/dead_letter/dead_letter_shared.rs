@@ -8,7 +8,7 @@ use alloc::{format, vec::Vec};
 use core::time::Duration;
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxRwLock, sync_rwlock_family::SyncRwLockFamily},
+  runtime_toolbox::{NoStdToolbox, RuntimeRwLock, RuntimeToolbox},
   sync::{ArcShared, SharedAccess, sync_rwlock_like::SyncRwLockLike},
 };
 
@@ -43,7 +43,7 @@ const DEFAULT_CAPACITY: usize = 256;
 ///   4. Publish events to event stream (no lock held)
 /// ```
 pub struct DeadLetterSharedGeneric<TB: RuntimeToolbox + 'static> {
-  inner:        ArcShared<ToolboxRwLock<DeadLetterGeneric<TB>, TB>>,
+  inner:        ArcShared<RuntimeRwLock<DeadLetterGeneric<TB>>>,
   event_stream: EventStreamSharedGeneric<TB>,
 }
 
@@ -51,10 +51,7 @@ impl<TB: RuntimeToolbox + 'static> DeadLetterSharedGeneric<TB> {
   /// Creates a shared deadletter store with the specified capacity.
   #[must_use]
   pub fn with_capacity(event_stream: EventStreamSharedGeneric<TB>, capacity: usize) -> Self {
-    Self {
-      inner: ArcShared::new(<TB::RwLockFamily as SyncRwLockFamily>::create(DeadLetterGeneric::with_capacity(capacity))),
-      event_stream,
-    }
+    Self { inner: ArcShared::new(RuntimeRwLock::new(DeadLetterGeneric::with_capacity(capacity))), event_stream }
   }
 
   /// Creates a shared deadletter store with the default capacity.
