@@ -14,12 +14,13 @@ use fraktor_actor_rs::core::{
   messaging::AnyMessageViewGeneric,
   props::PropsGeneric,
   scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
-  system::{ActorSystemConfigGeneric, ActorSystemGeneric},
+  system::{ActorSystemConfigGeneric, ActorSystemGeneric, state::AuthorityState},
 };
 use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
 use super::RemotingControlHandle;
 use crate::core::{
+  endpoint_association::QuarantineReason,
   remoting_extension::{RemotingControl, RemotingError, RemotingExtensionConfig},
   transport::{
     LoopbackTransport, RemoteTransport, RemoteTransportShared, TransportBind, TransportChannel, TransportEndpoint,
@@ -212,4 +213,20 @@ fn dispatch_remote_watcher_command_propagates_daemon_send_failure() {
     },
     | other => panic!("unexpected error: {other:?}"),
   }
+}
+
+#[test]
+fn quarantine_updates_remote_authority_snapshot_and_state() {
+  let system = build_system();
+  let mut handle = RemotingControlHandle::new(system.clone(), RemotingExtensionConfig::default());
+  handle.start().expect("control start");
+  let authority = "127.0.0.1:25520";
+
+  handle.quarantine(authority, &QuarantineReason::new("manual quarantine")).expect("quarantine should succeed");
+
+  let snapshots = handle.connections_snapshot();
+  assert_eq!(snapshots.len(), 1);
+  assert_eq!(snapshots[0].authority(), authority);
+  assert!(matches!(snapshots[0].state(), AuthorityState::Quarantine { .. }));
+  assert!(matches!(system.state().remote_authority_state(authority), AuthorityState::Quarantine { .. }));
 }

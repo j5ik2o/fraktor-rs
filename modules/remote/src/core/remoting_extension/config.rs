@@ -28,6 +28,8 @@ pub struct RemotingExtensionConfig {
   auto_start:               bool,
   handshake_timeout:        Duration,
   shutdown_flush_timeout:   Duration,
+  ack_send_window:          u64,
+  ack_receive_window:       u64,
   transport_scheme:         String,
   backpressure_listeners:   Vec<Box<dyn RemotingBackpressureListener>>,
   remote_instruments:       Vec<Arc<dyn RemoteInstrument>>,
@@ -43,6 +45,8 @@ impl Clone for RemotingExtensionConfig {
       auto_start:               self.auto_start,
       handshake_timeout:        self.handshake_timeout,
       shutdown_flush_timeout:   self.shutdown_flush_timeout,
+      ack_send_window:          self.ack_send_window,
+      ack_receive_window:       self.ack_receive_window,
       transport_scheme:         self.transport_scheme.clone(),
       backpressure_listeners:   listeners,
       remote_instruments:       self.remote_instruments.clone(),
@@ -62,6 +66,8 @@ impl RemotingExtensionConfig {
       auto_start:               true,
       handshake_timeout:        Duration::from_secs(3),
       shutdown_flush_timeout:   DEFAULT_SHUTDOWN_FLUSH_TIMEOUT,
+      ack_send_window:          128,
+      ack_receive_window:       128,
       transport_scheme:         "fraktor.loopback".to_string(),
       backpressure_listeners:   Vec::new(),
       remote_instruments:       Vec::new(),
@@ -113,6 +119,30 @@ impl RemotingExtensionConfig {
   pub fn with_shutdown_flush_timeout(mut self, timeout: Duration) -> Self {
     assert!(timeout >= MIN_HANDSHAKE_TIMEOUT, "shutdown flush timeout must be >= 1 millisecond");
     self.shutdown_flush_timeout = timeout;
+    self
+  }
+
+  /// Overrides the outbound ack send window.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `window` is zero.
+  #[must_use]
+  pub fn with_ack_send_window(mut self, window: u64) -> Self {
+    assert!(window > 0, "ack send window must be > 0");
+    self.ack_send_window = window;
+    self
+  }
+
+  /// Overrides the inbound ack receive window.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `window` is zero.
+  #[must_use]
+  pub fn with_ack_receive_window(mut self, window: u64) -> Self {
+    assert!(window > 0, "ack receive window must be > 0");
+    self.ack_receive_window = window;
     self
   }
 
@@ -175,6 +205,18 @@ impl RemotingExtensionConfig {
   #[must_use]
   pub const fn shutdown_flush_timeout(&self) -> Duration {
     self.shutdown_flush_timeout
+  }
+
+  /// Returns the configured outbound ack send window.
+  #[must_use]
+  pub const fn ack_send_window(&self) -> u64 {
+    self.ack_send_window
+  }
+
+  /// Returns the configured inbound ack receive window.
+  #[must_use]
+  pub const fn ack_receive_window(&self) -> u64 {
+    self.ack_receive_window
   }
 
   /// Returns the registered backpressure listeners.

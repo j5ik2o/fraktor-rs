@@ -45,3 +45,34 @@ fn remoting_extension_config_registers_remote_instrument() {
   let config = RemotingExtensionConfig::default().with_remote_instrument(Arc::new(NoopInstrument));
   assert_eq!(config.remote_instruments().len(), 1);
 }
+
+#[test]
+fn remoting_extension_config_default_ack_windows_are_set() {
+  let config = RemotingExtensionConfig::default();
+  assert_eq!(config.ack_send_window(), 128);
+  assert_eq!(config.ack_receive_window(), 128);
+}
+
+#[test]
+fn remoting_extension_config_with_ack_send_window_overrides_value() {
+  let config = RemotingExtensionConfig::default().with_ack_send_window(32);
+  assert_eq!(config.ack_send_window(), 32);
+}
+
+#[test]
+fn remoting_extension_config_with_ack_receive_window_overrides_value() {
+  let config = RemotingExtensionConfig::default().with_ack_receive_window(64);
+  assert_eq!(config.ack_receive_window(), 64);
+}
+
+#[test]
+#[should_panic(expected = "ack send window must be > 0")]
+fn remoting_extension_config_with_ack_send_window_rejects_zero() {
+  let _ = RemotingExtensionConfig::default().with_ack_send_window(0);
+}
+
+#[test]
+#[should_panic(expected = "ack receive window must be > 0")]
+fn remoting_extension_config_with_ack_receive_window_rejects_zero() {
+  let _ = RemotingExtensionConfig::default().with_ack_receive_window(0);
+}

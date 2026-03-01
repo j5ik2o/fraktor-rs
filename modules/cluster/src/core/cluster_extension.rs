@@ -311,6 +311,24 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionGeneric<TB> {
     self.core.lock().down(authority)
   }
 
+  /// Requests a member join for the provided authority.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the cluster is not started or join processing fails.
+  pub fn join(&self, authority: &str) -> Result<(), ClusterError> {
+    self.core.lock().join(authority)
+  }
+
+  /// Requests a graceful member leave for the provided authority.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the cluster is not started or leave processing fails.
+  pub fn leave(&self, authority: &str) -> Result<(), ClusterError> {
+    self.core.lock().leave(authority)
+  }
+
   /// Registers kinds for member mode.
   ///
   /// # Errors

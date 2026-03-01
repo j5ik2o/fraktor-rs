@@ -93,6 +93,10 @@ where
       handshake_timeout: config.handshake_timeout(),
       #[cfg(feature = "tokio-transport")]
       shutdown_flush_timeout: config.shutdown_flush_timeout(),
+      #[cfg(feature = "tokio-transport")]
+      ack_send_window: config.ack_send_window(),
+      #[cfg(feature = "tokio-transport")]
+      ack_receive_window: config.ack_receive_window(),
       state: <TB::MutexFamily as SyncMutexFamily>::create(RemotingLifecycleState::new()),
       listeners: <TB::MutexFamily as SyncMutexFamily>::create(listeners),
       snapshots: <TB::MutexFamily as SyncMutexFamily>::create(Vec::new()),
@@ -278,16 +282,21 @@ where
     Ok(())
   }
 
-  fn quarantine(&mut self, authority: &str, _reason: &QuarantineReason) -> Result<(), RemotingError> {
+  fn quarantine(&mut self, authority: &str, reason: &QuarantineReason) -> Result<(), RemotingError> {
     self.ensure_can_run()?;
     #[cfg(feature = "tokio-transport")]
     {
       self.inner.heartbeat_channels.lock().remove(authority);
     }
-    #[cfg(not(feature = "tokio-transport"))]
-    {
-      let _ = authority;
+    if let Some(system) = self.inner.system.upgrade() {
+      system.state().remote_authority_set_quarantine(authority.to_string(), None);
+      let state = system.state().remote_authority_state(authority);
+      let ticks = system.state().monotonic_now().as_millis() as u64;
+      let deferred = system.state().remote_authority_deferred_count(authority) as u32;
+      self.record_authority_snapshot(RemoteAuthoritySnapshot::new(authority.to_string(), state, ticks, deferred));
     }
+    let correlation_id = self.inner.next_correlation_id();
+    self.inner.event_publisher.publish_quarantined(authority.to_string(), reason.message().to_string(), correlation_id);
     Ok(())
   }
 
@@ -323,6 +332,10 @@ where
   handshake_timeout:      Duration,
   #[cfg(feature = "tokio-transport")]
   shutdown_flush_timeout: Duration,
+  #[cfg(feature = "tokio-transport")]
+  ack_send_window:        u64,
+  #[cfg(feature = "tokio-transport")]
+  ack_receive_window:     u64,
   state:                  ToolboxMutex<RemotingLifecycleState, TB>,
   listeners:              ToolboxMutex<Vec<RemotingBackpressureListenerShared<TB>>, TB>,
   snapshots:              ToolboxMutex<Vec<RemoteAuthoritySnapshot>, TB>,
@@ -438,6 +451,8 @@ where
         handshake_timeout: self.handshake_timeout,
         #[cfg(feature = "tokio-transport")]
         shutdown_flush_timeout: self.shutdown_flush_timeout,
+        ack_send_window: self.ack_send_window,
+        ack_receive_window: self.ack_receive_window,
       };
       let handle = crate::std::endpoint_transport_bridge::EndpointTransportBridge::spawn(config)
         .map_err(|error| RemotingError::TransportUnavailable(format!("{error:?}")))?;

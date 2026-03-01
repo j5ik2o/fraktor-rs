@@ -5,10 +5,12 @@ mod tests;
 
 use alloc::{
   boxed::Box,
+  collections::BTreeMap,
   format,
   string::{String, ToString},
   vec::Vec,
 };
+use core::time::Duration;
 
 use fraktor_actor_rs::core::{
   event::stream::{EventStreamEvent, EventStreamSharedGeneric},
@@ -18,6 +20,7 @@ use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{
   runtime_toolbox::{RuntimeToolbox, ToolboxMutex},
   sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
+  time::TimerInstant,
 };
 
 use crate::core::{
@@ -26,7 +29,7 @@ use crate::core::{
   downing_provider::DowningProvider,
   grain::{GrainKey, KindRegistry},
   identity::{IdentityLookupShared, IdentitySetupError, LookupError, PidCache},
-  membership::GossiperShared,
+  membership::{CurrentClusterState, GossiperShared, MembershipVersion, NodeRecord, NodeStatus},
   placement::{ActivatedKind, PlacementEvent, PlacementResolution},
   pub_sub::ClusterPubSubShared,
 };
@@ -50,6 +53,8 @@ pub struct ClusterCore<TB: RuntimeToolbox + 'static> {
   member_count:        usize,
   pid_cache:           Option<PidCache>,
   last_topology_hash:  Option<u64>,
+  current_members:     Vec<String>,
+  observed_at:         TimerInstant,
 }
 
 impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
@@ -90,6 +95,8 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
       member_count: 0,
       pid_cache: None,
       last_topology_hash: None,
+      current_members: Vec::new(),
+      observed_at: TimerInstant::zero(Duration::from_secs(1)),
     }
   }
 
@@ -177,6 +184,24 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
     &self.blocked_members
   }
 
+  /// Returns the current cluster-state snapshot and its observation time.
+  #[must_use]
+  pub fn current_cluster_state_snapshot(&self) -> (CurrentClusterState, TimerInstant) {
+    let version = MembershipVersion::new(self.last_topology_hash.unwrap_or(0));
+    let members = self
+      .current_members
+      .iter()
+      .cloned()
+      .map(|authority| {
+        let node_id = authority.clone();
+        NodeRecord::new(node_id, authority, NodeStatus::Up, version, String::new(), Vec::new())
+      })
+      .collect::<Vec<_>>();
+    let leader = members.iter().map(|record| record.authority.clone()).min();
+    let state = CurrentClusterState::new(members, Vec::new(), Vec::new(), leader, BTreeMap::new());
+    (state, self.observed_at)
+  }
+
   /// Installs a PID cache used for topology-driven invalidation (tests/core wiring).
   pub fn set_pid_cache(&mut self, cache: PidCache) {
     self.pid_cache = Some(cache);
@@ -227,7 +252,10 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
     match provider_result {
       | Ok(()) => {
         self.mode = Some(StartupMode::Member);
+        self.last_topology_hash = None;
         self.member_count = 1;
+        self.current_members = Vec::from([address.clone()]);
+        self.observed_at = TimerInstant::zero(Duration::from_secs(1));
         self.update_metrics(self.member_count, self.virtual_actor_count);
         self.publish_cluster_event(ClusterEvent::Startup { address, mode: StartupMode::Member });
         Ok(())
@@ -273,7 +301,10 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
     match provider_result {
       | Ok(()) => {
         self.mode = Some(StartupMode::Client);
+        self.last_topology_hash = None;
         self.member_count = 1;
+        self.current_members = Vec::from([address.clone()]);
+        self.observed_at = TimerInstant::zero(Duration::from_secs(1));
         self.update_metrics(self.member_count, self.virtual_actor_count);
         self.publish_cluster_event(ClusterEvent::Startup { address, mode: StartupMode::Client });
         Ok(())
@@ -317,6 +348,8 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
         self.member_count = 0;
         self.update_metrics(self.member_count, 0);
         self.blocked_members.clear();
+        self.current_members.clear();
+        self.observed_at = TimerInstant::zero(Duration::from_secs(1));
         self.mode = None;
         self.publish_cluster_event(ClusterEvent::Shutdown { address, mode });
         Ok(())
@@ -341,6 +374,30 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
     }
     self.downing_provider.lock().down(authority).map_err(ClusterError::from)?;
     self.provider.with_write(|provider| provider.down(authority)).map_err(ClusterError::from)
+  }
+
+  /// Requests a member join for the provided authority.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the cluster is not started or the provider rejects the join request.
+  pub fn join(&mut self, authority: &str) -> Result<(), ClusterError> {
+    if self.mode.is_none() {
+      return Err(ClusterError::from(crate::core::ClusterProviderError::join("cluster is not started")));
+    }
+    self.provider.with_write(|provider| provider.join(authority)).map_err(ClusterError::from)
+  }
+
+  /// Requests a graceful member leave for the provided authority.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the cluster is not started or the provider rejects the leave request.
+  pub fn leave(&mut self, authority: &str) -> Result<(), ClusterError> {
+    if self.mode.is_none() {
+      return Err(ClusterError::from(crate::core::ClusterProviderError::leave("cluster is not started")));
+    }
+    self.provider.with_write(|provider| provider.leave(authority)).map_err(ClusterError::from)
   }
 
   fn publish_cluster_event(&self, event: ClusterEvent) {
@@ -410,6 +467,8 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
 
     self.member_count = update.members.len();
     self.update_metrics(self.member_count, self.virtual_actor_count);
+    self.current_members = update.members.clone();
+    self.observed_at = update.observed_at;
 
     if let Some(cache) = self.pid_cache.as_mut() {
       for authority in update.left.iter().chain(update.dead.iter()) {

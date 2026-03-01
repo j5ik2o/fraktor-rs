@@ -1,19 +1,15 @@
 tasks:
   - worktree: true
-    branch: takt/233/github-issue-233-takt-cluster
     piece: pekko-porting
-    issue: 233
+    issue: 400
     auto_pr: true
     draft_pr: true
-    name: github-issue-233-takt-cluster
-    status: completed
-    slug: github-issue-233-takt-cluster
-    summary: "## GitHub Issue #233: [TAKT] cluster-leader-and-downing
-      (20260224-100008-cls-ldr"
-    worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktrees/20260225T1527-233-github-issue-233-takt-cluster
-    pr_url: https://github.com/j5ik2o/fraktor-rs/pull/274
-    task_dir: .takt/tasks/20260225-152251-github-issue-233-takt-cluster
-    created_at: 2026-02-25T15:22:51.101Z
-    started_at: 2026-02-25T15:27:31.414Z
-    completed_at: 2026-02-25T17:56:10.085Z
+    name: github-issue-400-takt-pekkogya
+    status: pending
+    slug: github-issue-400-takt-pekkogya
+    summary: "## GitHub Issue #400: takt: Pekkoギャップ埋め Phase 1-2 (trivial/easy/medium)"
+    task_dir: .takt/tasks/20260228-235758-github-issue-400-takt-pekko-ph
+    created_at: 2026-02-28T23:57:58.787Z
+    started_at: null
+    completed_at: null
     owner_pid: null

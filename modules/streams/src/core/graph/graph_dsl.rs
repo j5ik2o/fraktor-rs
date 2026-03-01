@@ -1,4 +1,4 @@
-use super::{Flow, Sink};
+use super::{Flow, Sink, StreamDslError};
 
 #[cfg(test)]
 mod tests;
@@ -23,6 +23,54 @@ impl<In, Out, Mat> GraphDsl<In, Out, Mat> {
     Out: Send + Sync + 'static,
     T: Send + Sync + 'static, {
     GraphDsl { flow: self.flow.via(flow) }
+  }
+
+  /// Adds a broadcast fan-out stage.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `fan_out` is zero.
+  pub fn broadcast(self, fan_out: usize) -> Result<GraphDsl<In, Out, Mat>, StreamDslError>
+  where
+    In: Send + Sync + 'static,
+    Out: Send + Sync + Clone + 'static, {
+    Ok(GraphDsl { flow: self.flow.broadcast(fan_out)? })
+  }
+
+  /// Adds a balance fan-out stage.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `fan_out` is zero.
+  pub fn balance(self, fan_out: usize) -> Result<GraphDsl<In, Out, Mat>, StreamDslError>
+  where
+    In: Send + Sync + 'static,
+    Out: Send + Sync + 'static, {
+    Ok(GraphDsl { flow: self.flow.balance(fan_out)? })
+  }
+
+  /// Adds a merge fan-in stage.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `fan_in` is zero.
+  pub fn merge(self, fan_in: usize) -> Result<GraphDsl<In, Out, Mat>, StreamDslError>
+  where
+    In: Send + Sync + 'static,
+    Out: Send + Sync + 'static, {
+    Ok(GraphDsl { flow: self.flow.merge(fan_in)? })
+  }
+
+  /// Adds a concat fan-in stage.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `fan_in` is zero.
+  pub fn concat(self, fan_in: usize) -> Result<GraphDsl<In, Out, Mat>, StreamDslError>
+  where
+    In: Send + Sync + 'static,
+    Out: Send + Sync + 'static, {
+    Ok(GraphDsl { flow: self.flow.concat(fan_in)? })
   }
 
   /// Connects the partial graph to a sink.

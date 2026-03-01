@@ -12,6 +12,8 @@ mod behavior_runner;
 mod behavior_signal;
 /// Functional behavior builders inspired by Fraktor.
 mod behaviors;
+/// Minimal FSM DSL builder for typed behaviors.
+mod fsm_builder;
 /// Message adapter primitives bridging external protocols.
 pub mod message_adapter;
 /// Builder for configuring and constructing pool routers.
@@ -49,6 +51,7 @@ pub use behavior::Behavior;
 pub use behavior_interceptor::BehaviorInterceptor;
 pub use behavior_signal::BehaviorSignal;
 pub use behaviors::Behaviors;
+pub use fsm_builder::{FsmBuilder, FsmBuilderGeneric};
 pub use pool_router_builder::{PoolRouterBuilder, PoolRouterBuilderGeneric};
 pub use props::{TypedProps, TypedPropsGeneric};
 pub use routers::Routers;

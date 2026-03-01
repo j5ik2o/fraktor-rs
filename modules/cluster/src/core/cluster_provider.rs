@@ -43,6 +43,20 @@ pub trait ClusterProvider: Send + Sync {
   /// Returns [`ClusterProviderError`] when the provider fails to apply downing.
   fn down(&mut self, authority: &str) -> Result<(), ClusterProviderError>;
 
+  /// Requests a member join for the provided authority.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`ClusterProviderError`] when the provider cannot process the join request.
+  fn join(&mut self, authority: &str) -> Result<(), ClusterProviderError>;
+
+  /// Requests a graceful member leave for the provided authority.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`ClusterProviderError`] when the provider cannot process the leave request.
+  fn leave(&mut self, authority: &str) -> Result<(), ClusterProviderError>;
+
   /// Shuts down the provider and releases resources.
   ///
   /// `graceful` indicates whether in-flight operations should be drained before teardown.

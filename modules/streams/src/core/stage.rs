@@ -24,6 +24,12 @@ mod flow_monitor;
 mod flow_sub_flow;
 /// Context-preserving flow wrapper.
 mod flow_with_context;
+/// Restart DSL facade for flow stages.
+mod restart_flow;
+/// Restart DSL facade for sink stages.
+mod restart_sink;
+/// Restart DSL facade for source stages.
+mod restart_source;
 /// Sink stage definitions.
 mod sink;
 /// Source stage definitions.
@@ -52,6 +58,9 @@ pub(in crate::core) use flow::{
 pub use flow_monitor::FlowMonitor;
 pub use flow_sub_flow::FlowSubFlow;
 pub use flow_with_context::FlowWithContext;
+pub use restart_flow::RestartFlow;
+pub use restart_sink::RestartSink;
+pub use restart_source::RestartSource;
 pub use sink::Sink;
 pub use source::Source;
 pub use source_sub_flow::SourceSubFlow;

@@ -20,7 +20,7 @@ use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
 use super::{RemotingControl, RemotingControlShared, RemotingError, RemotingExtensionConfig};
 use crate::{
-  core::backpressure::FnRemotingBackpressureListener,
+  core::{backpressure::FnRemotingBackpressureListener, endpoint_association::QuarantineReason},
   std::{RemotingExtensionId, RemotingExtensionInstaller},
 };
 
@@ -152,4 +152,28 @@ fn backpressure_listener_invoked_and_eventstream_emits() {
 
   let emitted = recorder.snapshot();
   assert!(emitted.iter().any(|event| matches!(event, EventStreamEvent::RemotingBackpressure(_))));
+}
+
+#[test]
+fn quarantine_emits_quarantined_lifecycle_event() {
+  let config = RemotingExtensionConfig::default().with_auto_start(false);
+  let (system, handle) = bootstrap(config);
+  let (recorder, _subscription) = subscribe_events(&system);
+
+  handle.lock().start().expect("start succeeds");
+  recorder.events.lock().expect("recorder lock").clear();
+
+  handle
+    .lock()
+    .quarantine("127.0.0.1:25520", &QuarantineReason::new("manual quarantine"))
+    .expect("quarantine succeeds");
+
+  let lifecycle = captured_lifecycle(&recorder.snapshot());
+  assert!(lifecycle.iter().any(|event| {
+    matches!(
+      event,
+      RemotingLifecycleEvent::Quarantined { authority, reason, .. }
+        if authority == "127.0.0.1:25520" && reason == "manual quarantine"
+    )
+  }));
 }

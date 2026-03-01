@@ -13,6 +13,10 @@ pub enum ClusterProviderError {
   StartClientFailed(String),
   /// Provider failed to down a node.
   DownFailed(String),
+  /// Provider failed to join a node.
+  JoinFailed(String),
+  /// Provider failed to leave a node.
+  LeaveFailed(String),
   /// Provider shutdown failed.
   ShutdownFailed(String),
 }
@@ -36,6 +40,18 @@ impl ClusterProviderError {
     ClusterProviderError::DownFailed(reason.into())
   }
 
+  /// Creates a join failure with the given reason.
+  #[must_use]
+  pub fn join(reason: impl Into<String>) -> Self {
+    ClusterProviderError::JoinFailed(reason.into())
+  }
+
+  /// Creates a leave failure with the given reason.
+  #[must_use]
+  pub fn leave(reason: impl Into<String>) -> Self {
+    ClusterProviderError::LeaveFailed(reason.into())
+  }
+
   /// Creates a shutdown failure with the given reason.
   #[must_use]
   pub fn shutdown(reason: impl Into<String>) -> Self {
@@ -49,6 +65,8 @@ impl ClusterProviderError {
       | ClusterProviderError::StartMemberFailed(reason)
       | ClusterProviderError::StartClientFailed(reason)
       | ClusterProviderError::DownFailed(reason)
+      | ClusterProviderError::JoinFailed(reason)
+      | ClusterProviderError::LeaveFailed(reason)
       | ClusterProviderError::ShutdownFailed(reason) => reason.as_str(),
     }
   }

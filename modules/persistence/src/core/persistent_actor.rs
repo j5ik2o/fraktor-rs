@@ -45,6 +45,18 @@ where
     self.persistence_context().add_to_event_batch(event, true, sender, handler_box);
   }
 
+  /// Persists a single event without command stashing.
+  ///
+  /// This is a Pekko-compatible alias of [`Self::persist_unfenced`].
+  fn persist_async<E: Any + Send + Sync + 'static>(
+    &mut self,
+    ctx: &mut ActorContextGeneric<'_, TB>,
+    event: E,
+    handler: impl FnOnce(&mut Self, &E) + Send + Sync + 'static,
+  ) {
+    self.persist_unfenced(ctx, event, handler);
+  }
+
   /// Persists a single event without command stashing (fencing).
   ///
   /// Unlike [`Self::persist`], this method does not stash incoming commands

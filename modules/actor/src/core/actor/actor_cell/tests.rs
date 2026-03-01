@@ -240,6 +240,87 @@ fn recreate_system_message_invokes_post_stop_then_pre_start() {
 }
 
 #[test]
+fn poison_pill_system_message_invokes_post_stop() {
+  let state = ActorSystem::new_empty().state();
+  let log = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let props = Props::from_fn({
+    let log = log.clone();
+    move || LifecycleRecorderActor::new(log.clone())
+  });
+  let cell =
+    ActorCell::create(state.clone(), Pid::new(410, 0), None, "probe".to_string(), &props).expect("create actor cell");
+  state.register_cell(cell.clone());
+
+  let mut invoker = super::ActorCellInvoker { cell: cell.downgrade() };
+  invoker.invoke_system_message(SystemMessage::Create).expect("create");
+  invoker.invoke_system_message(SystemMessage::PoisonPill).expect("poison pill");
+
+  let snapshot = log.lock().clone();
+  assert_eq!(snapshot, vec!["pre_start", "post_stop"]);
+}
+
+#[test]
+fn kill_system_message_reports_fatal_failure() {
+  let state = ActorSystem::new_empty().state();
+  let log = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let props = Props::from_fn({
+    let log = log.clone();
+    move || LifecycleRecorderActor::new(log.clone())
+  });
+  let cell =
+    ActorCell::create(state.clone(), Pid::new(411, 0), None, "probe".to_string(), &props).expect("create actor cell");
+  state.register_cell(cell.clone());
+
+  let mut invoker = super::ActorCellInvoker { cell: cell.downgrade() };
+  invoker.invoke_system_message(SystemMessage::Create).expect("create");
+  let error = invoker.invoke_system_message(SystemMessage::Kill).expect_err("kill should report failure");
+
+  assert_eq!(error, ActorError::fatal("Kill"));
+}
+
+#[test]
+fn poison_pill_user_message_preserves_user_ordering() {
+  let state = ActorSystem::new_empty().state();
+  let log = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let props = Props::from_fn({
+    let log = log.clone();
+    move || LifecycleRecorderActor::new(log.clone())
+  });
+  let cell =
+    ActorCell::create(state.clone(), Pid::new(412, 0), None, "probe".to_string(), &props).expect("create actor cell");
+  state.register_cell(cell.clone());
+
+  let mut invoker = super::ActorCellInvoker { cell: cell.downgrade() };
+  invoker.invoke_system_message(SystemMessage::Create).expect("create");
+
+  cell.actor_ref().tell(AnyMessage::new(1_u8)).expect("enqueue first user message");
+  cell.actor_ref().poison_pill().expect("enqueue poison pill");
+  cell.actor_ref().tell(AnyMessage::new(2_u8)).expect("enqueue second user message");
+
+  wait_until(|| log.lock().len() >= 3);
+  let snapshot = log.lock().clone();
+  assert_eq!(snapshot, vec!["pre_start", "receive", "post_stop"]);
+}
+
+#[test]
+fn kill_user_message_reports_fatal_failure() {
+  let state = ActorSystem::new_empty().state();
+  let log = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let props = Props::from_fn({
+    let log = log.clone();
+    move || LifecycleRecorderActor::new(log.clone())
+  });
+  let cell =
+    ActorCell::create(state.clone(), Pid::new(413, 0), None, "probe".to_string(), &props).expect("create actor cell");
+  state.register_cell(cell.clone());
+
+  let mut invoker = super::ActorCellInvoker { cell: cell.downgrade() };
+  invoker.invoke_system_message(SystemMessage::Create).expect("create");
+  let error = invoker.invoke_user_message(AnyMessage::new(SystemMessage::Kill)).expect_err("kill should fail");
+  assert_eq!(error, ActorError::fatal("Kill"));
+}
+
+#[test]
 fn system_queue_is_drained_before_user_queue() {
   let state = ActorSystem::new_empty().state();
   let log = ArcShared::new(NoStdMutex::new(Vec::new()));

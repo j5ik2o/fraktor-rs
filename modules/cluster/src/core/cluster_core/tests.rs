@@ -76,6 +76,14 @@ impl ClusterProvider for StubProvider {
     Ok(())
   }
 
+  fn join(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+
+  fn leave(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+
   fn shutdown(&mut self, _graceful: bool) -> Result<(), ClusterProviderError> {
     Ok(())
   }
@@ -86,6 +94,8 @@ struct FailingProvider {
   start_member_error: Option<ClusterProviderError>,
   start_client_error: Option<ClusterProviderError>,
   down_error:         Option<ClusterProviderError>,
+  join_error:         Option<ClusterProviderError>,
+  leave_error:        Option<ClusterProviderError>,
   shutdown_error:     Option<ClusterProviderError>,
 }
 
@@ -95,6 +105,8 @@ impl FailingProvider {
       start_member_error: Some(ClusterProviderError::start_member(reason)),
       start_client_error: None,
       down_error:         None,
+      join_error:         None,
+      leave_error:        None,
       shutdown_error:     None,
     }
   }
@@ -104,6 +116,8 @@ impl FailingProvider {
       start_member_error: None,
       start_client_error: Some(ClusterProviderError::start_client(reason)),
       down_error:         None,
+      join_error:         None,
+      leave_error:        None,
       shutdown_error:     None,
     }
   }
@@ -113,6 +127,8 @@ impl FailingProvider {
       start_member_error: None,
       start_client_error: None,
       down_error:         Some(ClusterProviderError::down(reason)),
+      join_error:         None,
+      leave_error:        None,
       shutdown_error:     None,
     }
   }
@@ -122,6 +138,8 @@ impl FailingProvider {
       start_member_error: None,
       start_client_error: None,
       down_error:         None,
+      join_error:         None,
+      leave_error:        None,
       shutdown_error:     Some(ClusterProviderError::shutdown(reason)),
     }
   }
@@ -144,6 +162,20 @@ impl ClusterProvider for FailingProvider {
 
   fn down(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
     if let Some(err) = &self.down_error {
+      return Err(err.clone());
+    }
+    Ok(())
+  }
+
+  fn join(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
+    if let Some(err) = &self.join_error {
+      return Err(err.clone());
+    }
+    Ok(())
+  }
+
+  fn leave(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
+    if let Some(err) = &self.leave_error {
       return Err(err.clone());
     }
     Ok(())
@@ -1078,6 +1110,14 @@ fn down_invokes_strategy_before_provider_down() {
 
     fn down(&mut self, authority: &str) -> Result<(), ClusterProviderError> {
       self.calls.lock().push(format!("provider:{authority}"));
+      Ok(())
+    }
+
+    fn join(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
+      Ok(())
+    }
+
+    fn leave(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
       Ok(())
     }
 

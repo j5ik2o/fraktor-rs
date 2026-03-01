@@ -4,6 +4,7 @@
 mod tests;
 
 use alloc::{
+  collections::BTreeSet,
   format,
   string::{String, ToString},
   vec::Vec,
@@ -12,7 +13,10 @@ use core::time::Duration;
 
 use fraktor_actor_rs::core::{
   actor::{actor_path::ActorPathParser, actor_ref::ActorRefGeneric},
-  event::stream::EventStreamEvent,
+  event::stream::{
+    EventStreamEvent, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscriptionGeneric,
+    subscriber_handle,
+  },
   messaging::{AnyMessageGeneric, AskError, AskResponseGeneric, AskResult},
   scheduler::{ExecutionBatch, SchedulerCommand, SchedulerRunnable},
   system::ActorSystemGeneric,
@@ -23,11 +27,44 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::core::{
-  ClusterApiError, ClusterError, ClusterExtensionGeneric, ClusterRequestError, ClusterResolveError,
+  ClusterApiError, ClusterError, ClusterEvent, ClusterEventType, ClusterExtensionGeneric, ClusterRequestError,
+  ClusterResolveError, ClusterSubscriptionInitialStateMode,
   grain::{GRAIN_EVENT_STREAM_NAME, GrainEvent, GrainMetricsSharedGeneric},
   identity::ClusterIdentity,
   placement::PlacementEvent,
 };
+
+const CLUSTER_EVENT_STREAM_NAME: &str = "cluster";
+
+struct ClusterEventFilterSubscriber<TB: RuntimeToolbox + 'static> {
+  subscriber:  EventStreamSubscriberShared<TB>,
+  event_types: BTreeSet<ClusterEventType>,
+}
+
+impl<TB: RuntimeToolbox + 'static> ClusterEventFilterSubscriber<TB> {
+  fn new(subscriber: EventStreamSubscriberShared<TB>, event_types: BTreeSet<ClusterEventType>) -> Self {
+    Self { subscriber, event_types }
+  }
+
+  fn matches_event(event: &EventStreamEvent<TB>, event_types: &BTreeSet<ClusterEventType>) -> bool {
+    if let EventStreamEvent::Extension { name, payload } = event
+      && name == CLUSTER_EVENT_STREAM_NAME
+      && let Some(cluster_event) = payload.payload().downcast_ref::<ClusterEvent>()
+    {
+      return event_types.iter().any(|event_type| event_type.matches(cluster_event));
+    }
+    false
+  }
+}
+
+impl<TB: RuntimeToolbox + 'static> EventStreamSubscriber<TB> for ClusterEventFilterSubscriber<TB> {
+  fn on_event(&mut self, event: &EventStreamEvent<TB>) {
+    if Self::matches_event(event, &self.event_types) {
+      let mut subscriber = self.subscriber.lock();
+      subscriber.on_event(event);
+    }
+  }
+}
 
 /// Cluster API facade bound to an actor system.
 pub struct ClusterApiGeneric<TB: RuntimeToolbox + 'static> {
@@ -117,6 +154,102 @@ impl<TB: RuntimeToolbox + 'static> ClusterApiGeneric<TB> {
   /// Returns an error when the cluster is not started or downing fails.
   pub fn down(&self, authority: &str) -> Result<(), ClusterError> {
     self.extension.down(authority)
+  }
+
+  /// Requests a member join for the provided authority.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the cluster is not started or join processing fails.
+  pub fn join(&self, authority: &str) -> Result<(), ClusterError> {
+    self.extension.join(authority)
+  }
+
+  /// Requests a graceful member leave for the provided authority.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the cluster is not started or leave processing fails.
+  pub fn leave(&self, authority: &str) -> Result<(), ClusterError> {
+    self.extension.leave(authority)
+  }
+
+  /// Subscribes to cluster events with explicit initial-state mode and event filters.
+  ///
+  /// `ClusterSubscriptionInitialStateMode::AsSnapshot` always delivers one
+  /// `ClusterEvent::CurrentClusterState` as the first message.
+  ///
+  /// Panics when `event_types` is empty.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `event_types` is empty.
+  #[must_use]
+  pub fn subscribe(
+    &self,
+    subscriber: &EventStreamSubscriberShared<TB>,
+    initial_state_mode: ClusterSubscriptionInitialStateMode,
+    event_types: &[ClusterEventType],
+  ) -> EventStreamSubscriptionGeneric<TB> {
+    assert!(!event_types.is_empty(), "at least one cluster event type is required");
+
+    let event_type_set = to_event_type_set(event_types);
+    let filtered = subscriber_handle::<TB>(ClusterEventFilterSubscriber::<TB>::new(subscriber.clone(), event_type_set));
+    let event_stream = self.system.event_stream();
+
+    match initial_state_mode {
+      | ClusterSubscriptionInitialStateMode::AsEvents => {
+        let (subscription_id, snapshot) = event_stream.with_write(|stream| stream.subscribe(filtered.clone()));
+        for event in &snapshot {
+          let mut guard = filtered.lock();
+          guard.on_event(event);
+        }
+        EventStreamSubscriptionGeneric::new(event_stream, subscription_id)
+      },
+      | ClusterSubscriptionInitialStateMode::AsSnapshot => {
+        // Subscribe first to avoid event gap between snapshot and registration.
+        let subscription_id = event_stream.with_write(|stream| stream.subscribe_no_replay(filtered));
+        let initial_event = {
+          let core = self.extension.core_shared();
+          let (state, observed_at) = core.lock().current_cluster_state_snapshot();
+          ClusterEvent::CurrentClusterState { state, observed_at }
+        };
+        let payload = AnyMessageGeneric::new(initial_event);
+        let extension_event = EventStreamEvent::Extension { name: String::from(CLUSTER_EVENT_STREAM_NAME), payload };
+        let mut guard = subscriber.lock();
+        guard.on_event(&extension_event);
+        EventStreamSubscriptionGeneric::new(event_stream, subscription_id)
+      },
+    }
+  }
+
+  /// Subscribes to cluster events without replaying buffered events.
+  ///
+  /// Panics when `event_types` is empty.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `event_types` is empty.
+  #[must_use]
+  pub fn subscribe_no_replay(
+    &self,
+    subscriber: &EventStreamSubscriberShared<TB>,
+    event_types: &[ClusterEventType],
+  ) -> EventStreamSubscriptionGeneric<TB> {
+    assert!(!event_types.is_empty(), "at least one cluster event type is required");
+
+    let filtered = subscriber_handle::<TB>(ClusterEventFilterSubscriber::<TB>::new(
+      subscriber.clone(),
+      to_event_type_set(event_types),
+    ));
+    let event_stream = self.system.event_stream();
+    let subscription_id = event_stream.with_write(|stream| stream.subscribe_no_replay(filtered));
+    EventStreamSubscriptionGeneric::new(event_stream, subscription_id)
+  }
+
+  /// Unsubscribes from event stream notifications by subscription identifier.
+  pub fn unsubscribe(&self, subscription_id: u64) {
+    self.system.event_stream().unsubscribe(subscription_id);
   }
 
   fn resolve_actor_ref(&self, identity: &ClusterIdentity) -> Result<ActorRefGeneric<TB>, ClusterResolveError> {
@@ -227,4 +360,8 @@ impl<TB: RuntimeToolbox + 'static> SchedulerRunnable for TimeoutRunnable<TB> {
       waker.wake();
     }
   }
+}
+
+fn to_event_type_set(event_types: &[ClusterEventType]) -> BTreeSet<ClusterEventType> {
+  event_types.iter().copied().collect()
 }

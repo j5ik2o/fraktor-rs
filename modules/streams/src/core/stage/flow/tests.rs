@@ -2382,9 +2382,21 @@ fn sample_rejects_zero_ticks() {
 }
 
 #[test]
-fn flow_named_is_noop() {
+fn flow_named_keeps_elements_and_sets_attributes() {
   let values = Source::single(7_u32).via(Flow::new().named("test-flow")).collect_values().expect("collect_values");
   assert_eq!(values, vec![7_u32]);
+
+  let (graph, _mat) = Flow::<u32, u32, StreamNotUsed>::new().named("test-flow").into_parts();
+  assert_eq!(graph.attributes().names(), &[alloc::string::String::from("test-flow")]);
+}
+
+#[test]
+fn flow_with_and_add_attributes_merge_names() {
+  let (graph, _mat) = Flow::<u32, u32, StreamNotUsed>::new()
+    .with_attributes(crate::core::Attributes::named("base"))
+    .add_attributes(crate::core::Attributes::named("extra"))
+    .into_parts();
+  assert_eq!(graph.attributes().names(), &[alloc::string::String::from("base"), alloc::string::String::from("extra")]);
 }
 
 #[test]

@@ -114,9 +114,10 @@ impl<TB: RuntimeToolbox + 'static> LocalClusterProviderGeneric<TB> {
   /// in the `joined` list.
   pub fn on_member_join(&mut self, authority: impl Into<String>) {
     let authority = authority.into();
-    if !self.members.contains(&authority) {
-      self.members.push(authority.clone());
+    if self.members.contains(&authority) {
+      return;
     }
+    self.members.push(authority.clone());
 
     let version = self.next_version();
     self.publish_topology(version, alloc::vec![authority], alloc::vec![]);
@@ -288,9 +289,21 @@ impl<TB: RuntimeToolbox + 'static> ClusterProvider for LocalClusterProviderGener
   }
 
   fn down(&mut self, authority: &str) -> Result<(), ClusterProviderError> {
-    if authority == self.advertised_address {
-      return Err(ClusterProviderError::down("cannot down self authority"));
+    if self.members.contains(&String::from(authority)) {
+      self.on_member_leave(authority);
     }
+    Ok(())
+  }
+
+  fn join(&mut self, authority: &str) -> Result<(), ClusterProviderError> {
+    if authority == self.advertised_address {
+      return Ok(());
+    }
+    self.on_member_join(authority);
+    Ok(())
+  }
+
+  fn leave(&mut self, authority: &str) -> Result<(), ClusterProviderError> {
     if self.members.contains(&String::from(authority)) {
       self.on_member_leave(authority);
     }

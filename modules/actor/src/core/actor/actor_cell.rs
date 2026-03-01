@@ -595,6 +595,12 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     result
   }
 
+  fn handle_kill(&self, snapshot: Option<FailureMessageSnapshot>) -> Result<(), ActorError> {
+    let error = ActorError::fatal("Kill");
+    self.report_failure(&error, snapshot);
+    Err(error)
+  }
+
   fn report_failure(&self, error: &ActorError, snapshot: Option<FailureMessageSnapshot>) {
     self.mailbox.suspend();
     let timestamp = self.system().monotonic_now();
@@ -696,6 +702,19 @@ impl<TB: RuntimeToolbox + 'static> MessageInvoker<TB> for ActorCellInvoker<TB> {
       // ActorCell has been dropped, silently ignore the message
       return Ok(());
     };
+    if cell.is_terminated() {
+      return Ok(());
+    }
+    if let Some(system_message) = message.payload().downcast_ref::<SystemMessage>() {
+      match system_message {
+        | SystemMessage::PoisonPill => return cell.handle_stop(),
+        | SystemMessage::Kill => {
+          let snapshot = FailureMessageSnapshot::from_message(&message);
+          return cell.handle_kill(Some(snapshot));
+        },
+        | _ => {},
+      }
+    }
     let system = ActorSystemGeneric::from_state(cell.system());
     let mut ctx = ActorContextGeneric::new(&system, cell.pid);
     let failure_candidate = message.clone();
@@ -712,7 +731,16 @@ impl<TB: RuntimeToolbox + 'static> MessageInvoker<TB> for ActorCellInvoker<TB> {
       // ActorCell has been dropped, silently ignore the message
       return Ok(());
     };
+    if cell.is_terminated() {
+      return Ok(());
+    }
     match message {
+      | SystemMessage::PoisonPill => cell.handle_stop(),
+      | SystemMessage::Kill => {
+        let payload: ArcShared<dyn core::any::Any + Send + Sync + 'static> = ArcShared::new(SystemMessage::Kill);
+        let snapshot = FailureMessageSnapshot::new(payload, None);
+        cell.handle_kill(Some(snapshot))
+      },
       | SystemMessage::Stop => cell.handle_stop(),
       | SystemMessage::Create => cell.handle_create(),
       | SystemMessage::Recreate => cell.handle_recreate(),

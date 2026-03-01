@@ -1,3 +1,5 @@
+/// Stream attributes for stage and graph metadata.
+mod attributes;
 /// Completion polling types.
 mod completion;
 /// Demand model types.
@@ -60,6 +62,7 @@ mod validate_positive_argument;
 use alloc::{boxed::Box, vec::Vec};
 use core::any::{Any, TypeId};
 
+pub use attributes::Attributes;
 pub use completion::Completion;
 pub use demand::Demand;
 pub use demand_tracker::DemandTracker;

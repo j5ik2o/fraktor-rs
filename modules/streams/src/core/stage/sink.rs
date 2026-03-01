@@ -11,7 +11,7 @@ use super::{
   stage_context::StageContext,
   validate_positive_argument,
 };
-use crate::core::SinkQueue;
+use crate::core::{Attributes, SinkQueue};
 
 #[cfg(test)]
 mod tests;
@@ -437,10 +437,24 @@ where
     self
   }
 
-  /// Assigns a debug name to this stage (no-op until Attributes are introduced).
+  /// Replaces graph attributes with the provided values.
   #[must_use]
-  pub const fn named(self, _name: &str) -> Self {
+  pub fn with_attributes(mut self, attributes: Attributes) -> Self {
+    self.graph.set_attributes(attributes);
     self
+  }
+
+  /// Appends graph attributes to the existing values.
+  #[must_use]
+  pub fn add_attributes(mut self, attributes: Attributes) -> Self {
+    self.graph.add_attributes(attributes);
+    self
+  }
+
+  /// Assigns a debug name attribute to this stage graph.
+  #[must_use]
+  pub fn named(self, name: &str) -> Self {
+    self.add_attributes(Attributes::named(name))
   }
 
   fn from_definition<L>(kind: StageKind, logic: L, mat: Mat) -> Self

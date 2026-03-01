@@ -233,3 +233,29 @@ fn down_known_node_removes_member_and_publishes_left() {
     ClusterEvent::TopologyUpdated { update } if update.left == vec![String::from("127.0.0.1:8081")]
   )));
 }
+
+#[test]
+fn join_is_explicitly_unsupported() {
+  let event_stream = EventStreamSharedGeneric::<StdToolbox>::default();
+  let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
+  let mut provider = AwsEcsClusterProvider::new(event_stream, block_list, "127.0.0.1:8080");
+
+  let result = provider.join("127.0.0.1:9090");
+
+  assert!(
+    matches!(result, Err(crate::core::ClusterProviderError::JoinFailed(reason)) if reason == "join is not supported by aws ecs provider")
+  );
+}
+
+#[test]
+fn leave_is_explicitly_unsupported() {
+  let event_stream = EventStreamSharedGeneric::<StdToolbox>::default();
+  let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
+  let mut provider = AwsEcsClusterProvider::new(event_stream, block_list, "127.0.0.1:8080");
+
+  let result = provider.leave("127.0.0.1:9090");
+
+  assert!(
+    matches!(result, Err(crate::core::ClusterProviderError::LeaveFailed(reason)) if reason == "leave is not supported by aws ecs provider")
+  );
+}
