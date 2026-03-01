@@ -79,15 +79,20 @@ where
     Behaviors::receive_message(move |_ctx, message| {
       let mut guard = runtime_state.lock();
       let current_state = guard.state.clone();
+      let mut handler_found = false;
       let mut next_state: Option<State> = None;
       for transition in &guard.transitions {
         if transition.state == current_state {
+          handler_found = true;
           next_state = (transition.handler)(message);
           break;
         }
       }
       if let Some(state) = next_state {
         guard.state = state;
+        return Ok(Behaviors::same());
+      }
+      if handler_found {
         return Ok(Behaviors::same());
       }
       Ok(Behaviors::unhandled())

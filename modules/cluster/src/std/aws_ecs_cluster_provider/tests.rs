@@ -243,7 +243,7 @@ fn join_is_explicitly_unsupported() {
   let result = provider.join("127.0.0.1:9090");
 
   assert!(
-    matches!(result, Err(crate::core::ClusterProviderError::DownFailed(reason)) if reason == "join is not supported by aws ecs provider")
+    matches!(result, Err(crate::core::ClusterProviderError::JoinFailed(reason)) if reason == "join is not supported by aws ecs provider")
   );
 }
 
@@ -256,6 +256,6 @@ fn leave_is_explicitly_unsupported() {
   let result = provider.leave("127.0.0.1:9090");
 
   assert!(
-    matches!(result, Err(crate::core::ClusterProviderError::DownFailed(reason)) if reason == "leave is not supported by aws ecs provider")
+    matches!(result, Err(crate::core::ClusterProviderError::LeaveFailed(reason)) if reason == "leave is not supported by aws ecs provider")
   );
 }

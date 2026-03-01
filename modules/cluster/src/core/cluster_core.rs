@@ -381,7 +381,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
   /// Returns an error if the cluster is not started or the provider rejects the join request.
   pub fn join(&mut self, authority: &str) -> Result<(), ClusterError> {
     if self.mode.is_none() {
-      return Err(ClusterError::from(crate::core::ClusterProviderError::down("cluster is not started")));
+      return Err(ClusterError::from(crate::core::ClusterProviderError::join("cluster is not started")));
     }
     self.provider.with_write(|provider| provider.join(authority)).map_err(ClusterError::from)
   }
@@ -393,7 +393,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
   /// Returns an error if the cluster is not started or the provider rejects the leave request.
   pub fn leave(&mut self, authority: &str) -> Result<(), ClusterError> {
     if self.mode.is_none() {
-      return Err(ClusterError::from(crate::core::ClusterProviderError::down("cluster is not started")));
+      return Err(ClusterError::from(crate::core::ClusterProviderError::leave("cluster is not started")));
     }
     self.provider.with_write(|provider| provider.leave(authority)).map_err(ClusterError::from)
   }

@@ -426,11 +426,11 @@ impl ClusterProvider for AwsEcsClusterProvider {
   }
 
   fn join(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
-    Err(ClusterProviderError::down("join is not supported by aws ecs provider"))
+    Err(ClusterProviderError::join("join is not supported by aws ecs provider"))
   }
 
   fn leave(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
-    Err(ClusterProviderError::down("leave is not supported by aws ecs provider"))
+    Err(ClusterProviderError::leave("leave is not supported by aws ecs provider"))
   }
 
   fn shutdown(&mut self, _graceful: bool) -> Result<(), ClusterProviderError> {

@@ -202,6 +202,7 @@ fn select_smallest_mailbox_index<M, TB>(
 where
   M: Send + Sync + Clone + 'static,
   TB: RuntimeToolbox + 'static, {
+  let routee_count = routees.len();
   let mut best_index = 0_usize;
   let mut best_len = usize::MAX;
   for (index, routee) in routees.iter().enumerate() {
@@ -220,7 +221,7 @@ where
     let mut counts = dispatch_counts.lock();
     let mut selected = 0_usize;
     let mut selected_count = usize::MAX;
-    for (index, count) in counts.iter().enumerate() {
+    for (index, count) in counts.iter().enumerate().take(routee_count) {
       if *count < selected_count {
         selected = index;
         selected_count = *count;
