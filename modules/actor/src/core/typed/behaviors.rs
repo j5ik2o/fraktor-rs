@@ -6,7 +6,7 @@ mod tests;
 use alloc::boxed::Box;
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, sync_mutex_family::SyncMutexFamily},
+  runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 
@@ -196,7 +196,7 @@ impl Behaviors {
       let self_ref = ctx.self_ref();
       let scheduler = ctx.system().scheduler();
       let timers = TimerSchedulerGeneric::new(self_ref, scheduler);
-      let mutex = <TB::MutexFamily as SyncMutexFamily>::create(timers);
+      let mutex = RuntimeMutex::new(timers);
       let shared = ArcShared::new(mutex);
       let shared_for_stop = shared.clone();
       factory(shared).compose_signal(move |_ctx, signal| match signal {
@@ -232,7 +232,7 @@ impl Behaviors {
         }
 
         let state = InterceptState { interceptor, inner };
-        let mutex = <TB::MutexFamily as SyncMutexFamily>::create(state);
+        let mutex = RuntimeMutex::new(state);
         let shared = ArcShared::new(mutex);
 
         let shared_msg = shared.clone();

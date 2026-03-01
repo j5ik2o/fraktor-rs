@@ -2,7 +2,7 @@ use alloc::{collections::VecDeque, vec::Vec};
 use core::marker::PhantomData;
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
+  runtime_toolbox::{NoStdToolbox, RuntimeMutex, RuntimeToolbox},
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 
@@ -23,8 +23,9 @@ pub(crate) struct DiagnosticsSubscriberGeneric<TB: RuntimeToolbox + 'static> {
 pub(crate) type DiagnosticsSubscriber = DiagnosticsSubscriberGeneric<NoStdToolbox>;
 
 pub(crate) struct DiagnosticsBufferGeneric<TB: RuntimeToolbox + 'static> {
-  queue:    ToolboxMutex<VecDeque<SchedulerDiagnosticsEvent>, TB>,
+  queue:    RuntimeMutex<VecDeque<SchedulerDiagnosticsEvent>>,
   capacity: usize,
+  _marker:  PhantomData<TB>,
 }
 
 /// Type alias using the default toolbox.
@@ -33,7 +34,7 @@ pub(crate) type DiagnosticsBuffer = DiagnosticsBufferGeneric<NoStdToolbox>;
 
 impl<TB: RuntimeToolbox + 'static> DiagnosticsBufferGeneric<TB> {
   pub(crate) fn new(capacity: usize) -> Self {
-    Self { queue: <TB::MutexFamily as SyncMutexFamily>::create(VecDeque::new()), capacity }
+    Self { queue: RuntimeMutex::new(VecDeque::new()), capacity, _marker: PhantomData }
   }
 
   pub(crate) fn push(&self, event: &SchedulerDiagnosticsEvent) -> bool {
@@ -55,7 +56,7 @@ impl<TB: RuntimeToolbox + 'static> DiagnosticsBufferGeneric<TB> {
 
 /// Streams scheduler events to diagnostic subscribers.
 pub(crate) struct DiagnosticsRegistryGeneric<TB: RuntimeToolbox + 'static> {
-  entries: ArcShared<ToolboxMutex<Vec<DiagnosticsSubscriberGeneric<TB>>, TB>>,
+  entries: ArcShared<RuntimeMutex<Vec<DiagnosticsSubscriberGeneric<TB>>>>,
   _marker: PhantomData<TB>,
 }
 
@@ -71,7 +72,7 @@ pub(crate) type DiagnosticsRegistry = DiagnosticsRegistryGeneric<NoStdToolbox>;
 
 impl<TB: RuntimeToolbox + 'static> DiagnosticsRegistryGeneric<TB> {
   pub(crate) fn new() -> Self {
-    Self { entries: ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(Vec::new())), _marker: PhantomData }
+    Self { entries: ArcShared::new(RuntimeMutex::new(Vec::new())), _marker: PhantomData }
   }
 
   pub(crate) fn register(&self, id: u64, capacity: usize) -> ArcShared<DiagnosticsBufferGeneric<TB>> {

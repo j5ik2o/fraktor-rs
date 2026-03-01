@@ -12,7 +12,7 @@ use fraktor_actor_rs::core::{
   },
 };
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
+  runtime_toolbox::{NoStdToolbox, RuntimeMutex, RuntimeToolbox},
   sync::ArcShared,
 };
 
@@ -24,7 +24,7 @@ use crate::core::{
 };
 
 type TB = NoStdToolbox;
-type MessageStore = ArcShared<ToolboxMutex<Vec<AnyMessageGeneric<TB>>, TB>>;
+type MessageStore = ArcShared<RuntimeMutex<Vec<AnyMessageGeneric<TB>>>>;
 
 struct TestSender {
   messages: MessageStore,
@@ -38,7 +38,7 @@ impl ActorRefSender<TB> for TestSender {
 }
 
 fn create_sender_with_pid(pid: Pid) -> (ActorRefGeneric<TB>, MessageStore) {
-  let messages = ArcShared::new(<<NoStdToolbox as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(Vec::new()));
+  let messages = ArcShared::new(RuntimeMutex::new(Vec::new()));
   let sender = ActorRefGeneric::new(pid, TestSender { messages: messages.clone() });
   (sender, messages)
 }

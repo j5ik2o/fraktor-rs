@@ -16,7 +16,7 @@ use super::UserQueueShared;
 pub(crate) struct QueueState<T, TB: RuntimeToolbox>
 where
   T: Send + 'static, {
-  pub(crate) queue:            UserQueueShared<T, TB>,
+  pub(crate) queue:            UserQueueShared<T>,
   pub(crate) producer_waiters: WaitQueue<QueueError<T>, TB>,
   pub(crate) consumer_waiters: WaitQueue<QueueError<T>, TB>,
   pub(crate) size:             AtomicUsize,
@@ -28,7 +28,7 @@ where
 {
   /// Creates a new queue state wrapper.
   #[must_use]
-  pub(crate) fn new(queue: UserQueueShared<T, TB>) -> Self {
+  pub(crate) fn new(queue: UserQueueShared<T>) -> Self {
     Self { queue, producer_waiters: WaitQueue::new(), consumer_waiters: WaitQueue::new(), size: AtomicUsize::new(0) }
   }
 

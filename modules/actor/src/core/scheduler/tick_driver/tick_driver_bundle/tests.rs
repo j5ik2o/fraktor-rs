@@ -7,7 +7,7 @@ use core::{
 };
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, sync_mutex_family::SyncMutexFamily},
+  runtime_toolbox::{NoStdToolbox, RuntimeMutex, RuntimeToolbox},
   sync::ArcShared,
 };
 
@@ -31,7 +31,7 @@ fn runtime_with_executor_shutdown(
   driver_calls: ArcShared<AtomicUsize>,
 ) -> TickDriverBundle<NoStdToolbox> {
   let control: Box<dyn TickDriverControl> = Box::new(RecordingControl { shutdown_calls: driver_calls });
-  let control = ArcShared::new(<<NoStdToolbox as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(control));
+  let control = ArcShared::new(RuntimeMutex::new(control));
   let handle =
     TickDriverHandleGeneric::new(TickDriverId::new(1), TickDriverKind::Auto, Duration::from_millis(1), control);
   let feed = TickFeed::<NoStdToolbox>::new(Duration::from_millis(1), 1, TickExecutorSignal::new());

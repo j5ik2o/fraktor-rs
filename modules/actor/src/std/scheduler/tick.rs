@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use fraktor_utils_rs::{
   core::{
+    runtime_toolbox::RuntimeMutex,
     sync::{ArcShared, ArcShared as Arc, SharedAccess},
     time::TimerInstant,
   },
@@ -60,9 +61,6 @@ impl TickDriverConfig {
   pub fn tokio_quickstart_with_resolution(resolution: Duration) -> CoreTickDriverConfig<StdToolbox> {
     use alloc::boxed::Box;
 
-    use fraktor_utils_rs::{
-      core::runtime_toolbox::sync_mutex_family::SyncMutexFamily, std::runtime_toolbox::StdMutexFamily,
-    };
     use tokio::time::{MissedTickBehavior, interval};
 
     use crate::core::scheduler::{
@@ -121,7 +119,7 @@ impl TickDriverConfig {
 
       let driver_id = next_tick_driver_id();
       let control: Box<dyn TickDriverControl> = Box::new(TokioQuickstartControl { tick_task, executor_task });
-      let control = ArcShared::new(<StdMutexFamily as SyncMutexFamily>::create(control));
+      let control = ArcShared::new(RuntimeMutex::new(control));
       let driver_handle =
         TickDriverHandleGeneric::<StdToolbox>::new(driver_id, TickDriverKind::Auto, resolution, control);
       let metadata = AutoDriverMetadata { profile: AutoProfileKind::Tokio, driver_id, resolution };
@@ -150,9 +148,6 @@ impl TickDriverConfig {
   ) -> CoreTickDriverConfig<StdToolbox> {
     use alloc::boxed::Box;
 
-    use fraktor_utils_rs::{
-      core::runtime_toolbox::sync_mutex_family::SyncMutexFamily, std::runtime_toolbox::StdMutexFamily,
-    };
     use tokio::time::{MissedTickBehavior, interval};
 
     use crate::core::scheduler::{
@@ -238,7 +233,7 @@ impl TickDriverConfig {
       let driver_id = next_tick_driver_id();
       let control: Box<dyn TickDriverControl> =
         Box::new(TokioQuickstartControl { tick_task, executor_task, metrics_task: Some(metrics_task) });
-      let control = Arc::new(<StdMutexFamily as SyncMutexFamily>::create(control));
+      let control = Arc::new(RuntimeMutex::new(control));
       let driver_handle =
         TickDriverHandleGeneric::<StdToolbox>::new(driver_id, TickDriverKind::Auto, resolution, control);
       let metadata = AutoDriverMetadata { profile: AutoProfileKind::Tokio, driver_id, resolution };

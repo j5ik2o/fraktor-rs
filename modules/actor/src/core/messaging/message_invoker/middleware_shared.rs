@@ -3,7 +3,7 @@
 use alloc::boxed::Box;
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, ToolboxRwLock, sync_rwlock_family::SyncRwLockFamily},
+  runtime_toolbox::{RuntimeRwLock, RuntimeToolbox},
   sync::{ArcShared, SharedAccess, sync_rwlock_like::SyncRwLockLike},
 };
 
@@ -15,7 +15,7 @@ use super::middleware::MessageInvokerMiddleware;
 /// that internally lock the underlying middleware, allowing safe
 /// concurrent access from multiple owners.
 pub(crate) struct MiddlewareShared<TB: RuntimeToolbox + 'static> {
-  inner: ArcShared<ToolboxRwLock<Box<dyn MessageInvokerMiddleware<TB>>, TB>>,
+  inner: ArcShared<RuntimeRwLock<Box<dyn MessageInvokerMiddleware<TB>>>>,
 }
 
 impl<TB: RuntimeToolbox + 'static> MiddlewareShared<TB> {
@@ -23,7 +23,7 @@ impl<TB: RuntimeToolbox + 'static> MiddlewareShared<TB> {
   #[must_use]
   #[allow(dead_code)] // Used in tests
   pub(crate) fn new(middleware: Box<dyn MessageInvokerMiddleware<TB>>) -> Self {
-    Self { inner: ArcShared::new(<TB::RwLockFamily as SyncRwLockFamily>::create(middleware)) }
+    Self { inner: ArcShared::new(RuntimeRwLock::new(middleware)) }
   }
 }
 

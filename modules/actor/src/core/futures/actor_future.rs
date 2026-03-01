@@ -77,7 +77,7 @@ where
 }
 
 // SAFETY: `ActorFuture` fields are only accessed through `&mut self` methods.
-// When wrapped in `ToolboxMutex`, the mutex provides synchronization.
+// When wrapped in `RuntimeMutex`, the mutex provides synchronization.
 // The stored value must be `Send` to allow transfer between threads.
 unsafe impl<T, TB> Send for ActorFuture<T, TB>
 where

@@ -1,7 +1,9 @@
 //! Shared wrapper for RemoteWatchHook implementations.
 
+use core::marker::PhantomData;
+
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
+  runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
   sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
 };
 
@@ -14,7 +16,7 @@ use crate::core::{
 /// Shared wrapper that provides thread-safe access to a provider implementing
 /// both [`ActorRefProvider`] and [`RemoteWatchHook`].
 ///
-/// The handle is wrapped in `ToolboxMutex` and shared via `ArcShared`, while the
+/// The handle is wrapped in `RuntimeMutex` and shared via `ArcShared`, while the
 /// public surface is limited to `with_read` / `with_write` closures to hide the
 /// lock scope and reduce deadlock risk.
 ///
@@ -23,7 +25,8 @@ use crate::core::{
 /// 2. Use clones for `ActorRefProvider` registration
 /// 3. Pass the same shared instance for `RemoteWatchHook` registration
 pub struct RemoteWatchHookShared<TB: RuntimeToolbox + 'static, P: Send + 'static> {
-  inner: ArcShared<ToolboxMutex<RemoteWatchHookHandle<P>, TB>>,
+  inner:   ArcShared<RuntimeMutex<RemoteWatchHookHandle<P>>>,
+  _marker: PhantomData<TB>,
 }
 
 impl<TB: RuntimeToolbox + 'static, P: Send + 'static> RemoteWatchHookShared<TB, P> {
@@ -33,7 +36,7 @@ impl<TB: RuntimeToolbox + 'static, P: Send + 'static> RemoteWatchHookShared<TB, 
   /// the underlying provider for `ActorRefProvider::supported_schemes()`.
   pub fn new(provider: P, schemes: &'static [ActorPathScheme]) -> Self {
     let handle = RemoteWatchHookHandle::new(provider, schemes);
-    Self { inner: ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(handle)) }
+    Self { inner: ArcShared::new(RuntimeMutex::new(handle)), _marker: PhantomData }
   }
 
   /// Acquires a write lock and applies the closure to the inner handle.
@@ -55,7 +58,7 @@ impl<TB: RuntimeToolbox + 'static, P: Send + 'static> RemoteWatchHookShared<TB, 
   /// This method is intended for testing and debugging purposes only.
   #[doc(hidden)]
   #[must_use]
-  pub const fn inner(&self) -> &ArcShared<ToolboxMutex<RemoteWatchHookHandle<P>, TB>> {
+  pub const fn inner(&self) -> &ArcShared<RuntimeMutex<RemoteWatchHookHandle<P>>> {
     &self.inner
   }
 }
@@ -76,7 +79,7 @@ impl<TB: RuntimeToolbox + 'static, P: Send + 'static> SharedAccess<RemoteWatchHo
 
 impl<TB: RuntimeToolbox + 'static, P: Send + 'static> Clone for RemoteWatchHookShared<TB, P> {
   fn clone(&self) -> Self {
-    Self { inner: self.inner.clone() }
+    Self { inner: self.inner.clone(), _marker: PhantomData }
   }
 }
 

@@ -3,15 +3,14 @@
 use alloc::boxed::Box;
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
+  runtime_toolbox::{NoStdToolbox, RuntimeMutex, RuntimeToolbox},
   sync::ArcShared,
 };
 
 use crate::core::event::stream::EventStreamEvent;
 
 /// Shared subscriber handle guarded by the runtime mutex family.
-pub type EventStreamSubscriberShared<TB = NoStdToolbox> =
-  ArcShared<ToolboxMutex<Box<dyn EventStreamSubscriber<TB>>, TB>>;
+pub type EventStreamSubscriberShared<TB = NoStdToolbox> = ArcShared<RuntimeMutex<Box<dyn EventStreamSubscriber<TB>>>>;
 
 /// Observers registered with the event stream must implement this trait.
 pub trait EventStreamSubscriber<TB: RuntimeToolbox = NoStdToolbox>: Send + Sync + 'static {
@@ -24,5 +23,5 @@ pub trait EventStreamSubscriber<TB: RuntimeToolbox = NoStdToolbox>: Send + Sync 
 pub fn subscriber_handle<TB>(subscriber: impl EventStreamSubscriber<TB>) -> EventStreamSubscriberShared<TB>
 where
   TB: RuntimeToolbox + 'static, {
-  ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(Box::new(subscriber)))
+  ArcShared::new(RuntimeMutex::new(Box::new(subscriber)))
 }

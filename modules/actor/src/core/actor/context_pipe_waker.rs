@@ -6,7 +6,7 @@ use core::{
 };
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
+  runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 
@@ -42,13 +42,13 @@ impl<TB: RuntimeToolbox + 'static> ContextPipeWakerHandle<TB> {
 }
 
 struct ContextPipeWakerShared<TB: RuntimeToolbox + 'static> {
-  inner: ArcShared<ToolboxMutex<ContextPipeWakerHandle<TB>, TB>>,
+  inner: ArcShared<RuntimeMutex<ContextPipeWakerHandle<TB>>>,
 }
 
 impl<TB: RuntimeToolbox + 'static> ContextPipeWakerShared<TB> {
   fn new(system: SystemStateSharedGeneric<TB>, pid: Pid, task: ContextPipeTaskId) -> Self {
     let handle = ContextPipeWakerHandle::new(system, pid, task);
-    let inner = ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(handle));
+    let inner = ArcShared::new(RuntimeMutex::new(handle));
     Self { inner }
   }
 

@@ -6,7 +6,7 @@ use core::{
 };
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, ToolboxMutex},
+  runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
   sync::ArcShared,
 };
 
@@ -20,13 +20,13 @@ impl<T, TB: RuntimeToolbox> QueuePollFuture<T, TB>
 where
   T: Send + 'static,
 {
-  pub(crate) const fn new(state: ArcShared<ToolboxMutex<QueueState<T, TB>, TB>>) -> Self {
+  pub(crate) const fn new(state: ArcShared<RuntimeMutex<QueueState<T, TB>>>) -> Self {
     Self { state, waiter: None }
   }
 }
 
 impl<TB: RuntimeToolbox + 'static> super::MailboxPollFutureGeneric<TB> {
-  pub(crate) const fn new(state: ArcShared<ToolboxMutex<QueueState<AnyMessageGeneric<TB>, TB>, TB>>) -> Self {
+  pub(crate) const fn new(state: ArcShared<RuntimeMutex<QueueState<AnyMessageGeneric<TB>, TB>>>) -> Self {
     Self { inner: QueuePollFuture::new(state) }
   }
 }

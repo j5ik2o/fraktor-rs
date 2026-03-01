@@ -1,7 +1,7 @@
 //! Weak reference wrapper for system state.
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxRwLock},
+  runtime_toolbox::{NoStdToolbox, RuntimeRwLock, RuntimeToolbox},
   sync::WeakShared,
 };
 
@@ -11,7 +11,7 @@ use super::{system_state::SystemStateGeneric, system_state_shared::SystemStateSh
 ///
 /// This wrapper avoids circular reference issues between system state and actor cells.
 pub struct SystemStateWeakGeneric<TB: RuntimeToolbox + 'static> {
-  pub(crate) inner: WeakShared<ToolboxRwLock<SystemStateGeneric<TB>, TB>>,
+  pub(crate) inner: WeakShared<RuntimeRwLock<SystemStateGeneric<TB>>>,
 }
 
 impl<TB: RuntimeToolbox + 'static> Clone for SystemStateWeakGeneric<TB> {

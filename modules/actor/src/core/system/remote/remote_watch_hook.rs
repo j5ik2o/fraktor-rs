@@ -6,7 +6,7 @@ use crate::core::actor::Pid;
 
 /// Allows custom providers to reroute `SystemMessage::Watch/Unwatch` for remote actors.
 ///
-/// Implementations should be wrapped in a `ToolboxMutex` by callers to ensure thread-safe access.
+/// Implementations should be wrapped in a `RuntimeMutex` by callers to ensure thread-safe access.
 /// The `&mut self` signature makes state changes explicit in the type system.
 pub trait RemoteWatchHook<TB>: Send + 'static
 where

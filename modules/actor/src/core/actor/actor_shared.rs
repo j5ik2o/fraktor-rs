@@ -3,7 +3,7 @@
 use alloc::boxed::Box;
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
+  runtime_toolbox::{NoStdToolbox, RuntimeMutex, RuntimeToolbox},
   sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
 };
 
@@ -15,7 +15,7 @@ use super::actor_lifecycle::Actor;
 /// that internally lock the underlying actor, allowing safe
 /// concurrent access from multiple owners.
 pub(crate) struct ActorSharedGeneric<TB: RuntimeToolbox + 'static> {
-  inner: ArcShared<ToolboxMutex<Box<dyn Actor<TB> + Send + Sync>, TB>>,
+  inner: ArcShared<RuntimeMutex<Box<dyn Actor<TB> + Send + Sync>>>,
 }
 
 /// Type alias using the default toolbox.
@@ -26,7 +26,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSharedGeneric<TB> {
   /// Creates a new shared wrapper around the provided actor instance.
   #[must_use]
   pub(crate) fn new(actor: Box<dyn Actor<TB> + Send + Sync>) -> Self {
-    let mutex = <TB::MutexFamily as SyncMutexFamily>::create(actor);
+    let mutex = RuntimeMutex::new(actor);
     Self { inner: ArcShared::new(mutex) }
   }
 }

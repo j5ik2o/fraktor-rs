@@ -5,9 +5,9 @@ use alloc::{borrow::ToOwned, boxed::Box};
 
 #[cfg(any(test, feature = "test-support"))]
 use fraktor_utils_rs::core::time::TimerInstant;
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::SharedAccess, time::MonotonicClock};
 #[cfg(any(test, feature = "test-support"))]
-use fraktor_utils_rs::core::{runtime_toolbox::sync_mutex_family::SyncMutexFamily, sync::ArcShared};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeMutex, sync::ArcShared};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::SharedAccess, time::MonotonicClock};
 
 #[cfg(any(test, feature = "test-support"))]
 use super::TickDriverControl;
@@ -78,7 +78,7 @@ impl TickDriverBootstrap {
     driver.attach(ctx);
     let state = driver.state();
     let control: Box<dyn TickDriverControl> = Box::new(ManualDriverControl::new(state));
-    let control = ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(control));
+    let control = ArcShared::new(RuntimeMutex::new(control));
     let handle = TickDriverHandleGeneric::new(next_tick_driver_id(), TickDriverKind::ManualTest, resolution, control);
     let controller = driver.controller();
     let bundle = TickDriverBundle::new_manual(handle.clone(), controller);

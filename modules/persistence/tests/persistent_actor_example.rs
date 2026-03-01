@@ -20,13 +20,13 @@ use fraktor_persistence_rs::core::{
   PersistentActor, PersistentRepr, Snapshot, persistent_props, spawn_persistent,
 };
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
+  runtime_toolbox::{NoStdToolbox, RuntimeMutex, RuntimeToolbox},
   sync::ArcShared,
 };
 
 type TB = NoStdToolbox;
-type SharedValue = ArcShared<ToolboxMutex<i32, TB>>;
-type SharedRefs = ArcShared<ToolboxMutex<Vec<ActorRefGeneric<TB>>, TB>>;
+type SharedValue = ArcShared<RuntimeMutex<i32>>;
+type SharedRefs = ArcShared<RuntimeMutex<Vec<ActorRefGeneric<TB>>>>;
 
 #[derive(Clone)]
 enum Command {
@@ -124,8 +124,8 @@ impl Actor<TB> for Guardian {
 
 struct Start;
 
-fn shared_mutex<T: Send + 'static>(value: T) -> ArcShared<ToolboxMutex<T, TB>> {
-  ArcShared::new(<<NoStdToolbox as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(value))
+fn shared_mutex<T: Send + 'static>(value: T) -> ArcShared<RuntimeMutex<T>> {
+  ArcShared::new(RuntimeMutex::new(value))
 }
 
 #[test]

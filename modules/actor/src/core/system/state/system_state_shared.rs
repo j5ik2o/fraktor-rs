@@ -12,7 +12,7 @@ use alloc::{
 use core::{any::TypeId, time::Duration};
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxRwLock, sync_rwlock_family::SyncRwLockFamily},
+  runtime_toolbox::{NoStdToolbox, RuntimeRwLock, RuntimeToolbox},
   sync::{ArcShared, SharedAccess, sync_rwlock_like::SyncRwLockLike},
 };
 
@@ -55,7 +55,7 @@ use crate::core::{
 /// This wrapper uses a read-write lock to provide safe concurrent access
 /// to the underlying system state.
 pub struct SystemStateSharedGeneric<TB: RuntimeToolbox + 'static> {
-  pub(crate) inner:    ArcShared<ToolboxRwLock<SystemStateGeneric<TB>, TB>>,
+  pub(crate) inner:    ArcShared<RuntimeRwLock<SystemStateGeneric<TB>>>,
   system_name:         String,
   guardian_kind:       PathGuardianKind,
   canonical_host:      Option<String>,
@@ -109,7 +109,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
     let scheduler = state.scheduler();
     let delay_provider = state.delay_provider();
     let tick_driver_bundle = state.tick_driver_bundle();
-    let inner = ArcShared::new(<TB::RwLockFamily as SyncRwLockFamily>::create(state));
+    let inner = ArcShared::new(RuntimeRwLock::new(state));
     Self {
       inner,
       system_name,
@@ -130,7 +130,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
 
   /// Creates a shared wrapper from an existing [`ArcShared`].
   #[must_use]
-  pub(crate) fn from_arc_shared(inner: ArcShared<ToolboxRwLock<SystemStateGeneric<TB>, TB>>) -> Self {
+  pub(crate) fn from_arc_shared(inner: ArcShared<RuntimeRwLock<SystemStateGeneric<TB>>>) -> Self {
     let guard = inner.read();
     let system_name = guard.system_name();
     let guardian_kind = guard.path_guardian_kind();
@@ -166,7 +166,7 @@ impl<TB: RuntimeToolbox + 'static> SystemStateSharedGeneric<TB> {
 
   /// Returns the inner reference for direct access when needed.
   #[must_use]
-  pub const fn inner(&self) -> &ArcShared<ToolboxRwLock<SystemStateGeneric<TB>, TB>> {
+  pub const fn inner(&self) -> &ArcShared<RuntimeRwLock<SystemStateGeneric<TB>>> {
     &self.inner
   }
 

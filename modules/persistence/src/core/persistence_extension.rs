@@ -14,7 +14,7 @@ use fraktor_actor_rs::core::{
   system::ActorSystemGeneric,
 };
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
+  runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
   sync::sync_mutex_like::SyncMutexLike,
 };
 
@@ -89,7 +89,7 @@ where
 }
 
 struct JournalActorWrapper<J: Journal, TB: RuntimeToolbox + 'static> {
-  inner: ToolboxMutex<JournalActor<J, TB>, TB>,
+  inner: RuntimeMutex<JournalActor<J, TB>>,
 }
 
 impl<J: Journal, TB: RuntimeToolbox + 'static> JournalActorWrapper<J, TB>
@@ -100,7 +100,7 @@ where
   for<'a> J::HighestSeqNrFuture<'a>: Send + 'static,
 {
   fn new(journal: J) -> Self {
-    Self { inner: <TB::MutexFamily as SyncMutexFamily>::create(JournalActor::new(journal)) }
+    Self { inner: RuntimeMutex::new(JournalActor::new(journal)) }
   }
 }
 
@@ -121,7 +121,7 @@ where
 }
 
 struct SnapshotActorWrapper<S: SnapshotStore, TB: RuntimeToolbox + 'static> {
-  inner: ToolboxMutex<SnapshotActor<S, TB>, TB>,
+  inner: RuntimeMutex<SnapshotActor<S, TB>>,
 }
 
 impl<S: SnapshotStore, TB: RuntimeToolbox + 'static> SnapshotActorWrapper<S, TB>
@@ -132,7 +132,7 @@ where
   for<'a> S::DeleteManyFuture<'a>: Send + 'static,
 {
   fn new(snapshot_store: S) -> Self {
-    Self { inner: <TB::MutexFamily as SyncMutexFamily>::create(SnapshotActor::new(snapshot_store)) }
+    Self { inner: RuntimeMutex::new(SnapshotActor::new(snapshot_store)) }
   }
 }
 

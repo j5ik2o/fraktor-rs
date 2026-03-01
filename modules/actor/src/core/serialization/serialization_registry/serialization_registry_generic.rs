@@ -1,11 +1,11 @@
 //! Generic serialization registry implementation.
 
 use alloc::{string::String, vec::Vec};
-use core::any::TypeId;
+use core::{any::TypeId, marker::PhantomData};
 
 use ahash::RandomState;
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxRwLock, sync_rwlock_family::SyncRwLockFamily},
+  runtime_toolbox::{NoStdToolbox, RuntimeRwLock, RuntimeToolbox},
   sync::{ArcShared, sync_rwlock_like::SyncRwLockLike},
 };
 use hashbrown::{HashMap, hash_map::Entry};
@@ -18,12 +18,13 @@ use crate::core::serialization::{
 /// Registry that resolves serializers based on type identifiers.
 #[allow(clippy::type_complexity)]
 pub struct SerializationRegistryGeneric<TB: RuntimeToolbox> {
-  serializers:     ToolboxRwLock<HashMap<SerializerId, ArcShared<dyn Serializer>, RandomState>, TB>,
-  bindings:        ToolboxRwLock<HashMap<TypeId, SerializerId, RandomState>, TB>,
-  binding_names:   ToolboxRwLock<HashMap<TypeId, String, RandomState>, TB>,
-  manifest_routes: ToolboxRwLock<HashMap<String, Vec<(u8, SerializerId)>, RandomState>, TB>,
-  cache:           ToolboxRwLock<HashMap<TypeId, SerializerId, RandomState>, TB>,
+  serializers:     RuntimeRwLock<HashMap<SerializerId, ArcShared<dyn Serializer>, RandomState>>,
+  bindings:        RuntimeRwLock<HashMap<TypeId, SerializerId, RandomState>>,
+  binding_names:   RuntimeRwLock<HashMap<TypeId, String, RandomState>>,
+  manifest_routes: RuntimeRwLock<HashMap<String, Vec<(u8, SerializerId)>, RandomState>>,
+  cache:           RuntimeRwLock<HashMap<TypeId, SerializerId, RandomState>>,
   fallback:        SerializerId,
+  _marker:         PhantomData<TB>,
 }
 
 impl<TB: RuntimeToolbox> SerializationRegistryGeneric<TB> {
@@ -40,12 +41,13 @@ impl<TB: RuntimeToolbox> SerializationRegistryGeneric<TB> {
     manifest_routes
       .extend(setup.manifest_routes_ref().iter().map(|(manifest, routes)| (manifest.clone(), routes.clone())));
     Self {
-      serializers:     <TB::RwLockFamily as SyncRwLockFamily>::create(serializers),
-      bindings:        <TB::RwLockFamily as SyncRwLockFamily>::create(bindings),
-      binding_names:   <TB::RwLockFamily as SyncRwLockFamily>::create(binding_names),
-      manifest_routes: <TB::RwLockFamily as SyncRwLockFamily>::create(manifest_routes),
-      cache:           <TB::RwLockFamily as SyncRwLockFamily>::create(HashMap::with_hasher(RandomState::new())),
+      serializers:     RuntimeRwLock::new(serializers),
+      bindings:        RuntimeRwLock::new(bindings),
+      binding_names:   RuntimeRwLock::new(binding_names),
+      manifest_routes: RuntimeRwLock::new(manifest_routes),
+      cache:           RuntimeRwLock::new(HashMap::with_hasher(RandomState::new())),
       fallback:        setup.fallback_serializer(),
+      _marker:         PhantomData,
     }
   }
 

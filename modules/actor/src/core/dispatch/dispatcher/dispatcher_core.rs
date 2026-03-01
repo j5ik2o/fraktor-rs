@@ -11,7 +11,7 @@ use core::{
 };
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
+  runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
   sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
 };
 use portable_atomic::{AtomicU8, AtomicU64};
@@ -40,8 +40,8 @@ pub(crate) struct DispatcherCoreGeneric<TB: RuntimeToolbox + 'static> {
   mailbox:             ArcShared<MailboxGeneric<TB>>,
   executor:            ArcShared<DispatchExecutorRunnerGeneric<TB>>,
   schedule_adapter:    ScheduleAdapterSharedGeneric<TB>,
-  invoker:             ToolboxMutex<Option<MessageInvokerShared<TB>>, TB>,
-  mailbox_pressure:    ToolboxMutex<Option<MailboxPressureEvent>, TB>,
+  invoker:             RuntimeMutex<Option<MessageInvokerShared<TB>>>,
+  mailbox_pressure:    RuntimeMutex<Option<MailboxPressureEvent>>,
   state:               AtomicU8,
   throughput_limit:    Option<NonZeroUsize>,
   throughput_deadline: Option<Duration>,
@@ -67,8 +67,8 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCoreGeneric<TB> {
       mailbox,
       executor,
       schedule_adapter,
-      invoker: <TB::MutexFamily as SyncMutexFamily>::create(None),
-      mailbox_pressure: <TB::MutexFamily as SyncMutexFamily>::create(None),
+      invoker: RuntimeMutex::new(None),
+      mailbox_pressure: RuntimeMutex::new(None),
       state: AtomicU8::new(DispatcherState::Idle.as_u8()),
       throughput_limit,
       throughput_deadline,

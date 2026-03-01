@@ -26,7 +26,7 @@ use fraktor_actor_rs::core::{
 #[cfg(any(feature = "tokio-transport", test, feature = "test-support"))]
 use fraktor_utils_rs::core::sync::SharedAccess;
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
+  runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 
@@ -77,10 +77,10 @@ where
   /// The handle stores a weak reference to the actor system to avoid circular references.
   #[allow(dead_code)]
   pub(crate) fn new(system: ActorSystemGeneric<TB>, config: RemotingExtensionConfig) -> Self {
-    let mut listeners: Vec<RemotingBackpressureListenerShared<TB>> = Vec::new();
+    let mut listeners: Vec<RemotingBackpressureListenerShared> = Vec::new();
     for listener in config.backpressure_listeners() {
       let boxed = listener.clone_box();
-      listeners.push(ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(boxed)));
+      listeners.push(ArcShared::new(RuntimeMutex::new(boxed)));
     }
     let system_weak = system.downgrade();
     let publisher = EventPublisherGeneric::new(system_weak.clone());
@@ -97,21 +97,21 @@ where
       ack_send_window: config.ack_send_window(),
       #[cfg(feature = "tokio-transport")]
       ack_receive_window: config.ack_receive_window(),
-      state: <TB::MutexFamily as SyncMutexFamily>::create(RemotingLifecycleState::new()),
-      listeners: <TB::MutexFamily as SyncMutexFamily>::create(listeners),
-      snapshots: <TB::MutexFamily as SyncMutexFamily>::create(Vec::new()),
+      state: RuntimeMutex::new(RemotingLifecycleState::new()),
+      listeners: RuntimeMutex::new(listeners),
+      snapshots: RuntimeMutex::new(Vec::new()),
       recorder: RemotingFlightRecorder::new(config.flight_recorder_capacity()),
       correlation_seq: AtomicU64::new(1),
-      writer: <TB::MutexFamily as SyncMutexFamily>::create(None),
-      reader: <TB::MutexFamily as SyncMutexFamily>::create(None),
-      watcher_daemon: <TB::MutexFamily as SyncMutexFamily>::create(None),
-      transport_ref: <TB::MutexFamily as SyncMutexFamily>::create(None),
+      writer: RuntimeMutex::new(None),
+      reader: RuntimeMutex::new(None),
+      watcher_daemon: RuntimeMutex::new(None),
+      transport_ref: RuntimeMutex::new(None),
       #[cfg(feature = "tokio-transport")]
       remote_instruments: config.remote_instruments().to_vec(),
       #[cfg(feature = "tokio-transport")]
-      endpoint_bridge: <TB::MutexFamily as SyncMutexFamily>::create(None),
+      endpoint_bridge: RuntimeMutex::new(None),
       #[cfg(feature = "tokio-transport")]
-      heartbeat_channels: <TB::MutexFamily as SyncMutexFamily>::create(BTreeMap::new()),
+      heartbeat_channels: RuntimeMutex::new(BTreeMap::new()),
     };
     Self { inner: ArcShared::new(inner) }
   }
@@ -189,7 +189,7 @@ where
     }
   }
 
-  fn register_listener_dyn(&self, listener: RemotingBackpressureListenerShared<TB>) {
+  fn register_listener_dyn(&self, listener: RemotingBackpressureListenerShared) {
     let mut guard = self.inner.listeners.lock();
     guard.push(listener);
   }
@@ -311,8 +311,7 @@ where
   fn register_backpressure_listener<L>(&mut self, listener: L)
   where
     L: RemotingBackpressureListener, {
-    let dyn_listener: RemotingBackpressureListenerShared<TB> =
-      ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(Box::new(listener)));
+    let dyn_listener: RemotingBackpressureListenerShared = ArcShared::new(RuntimeMutex::new(Box::new(listener)));
     self.register_listener_dyn(dyn_listener);
   }
 
@@ -336,21 +335,21 @@ where
   ack_send_window:        u64,
   #[cfg(feature = "tokio-transport")]
   ack_receive_window:     u64,
-  state:                  ToolboxMutex<RemotingLifecycleState, TB>,
-  listeners:              ToolboxMutex<Vec<RemotingBackpressureListenerShared<TB>>, TB>,
-  snapshots:              ToolboxMutex<Vec<RemoteAuthoritySnapshot>, TB>,
+  state:                  RuntimeMutex<RemotingLifecycleState>,
+  listeners:              RuntimeMutex<Vec<RemotingBackpressureListenerShared>>,
+  snapshots:              RuntimeMutex<Vec<RemoteAuthoritySnapshot>>,
   recorder:               RemotingFlightRecorder,
   correlation_seq:        AtomicU64,
-  writer:                 ToolboxMutex<Option<EndpointWriterSharedGeneric<TB>>, TB>,
-  reader:                 ToolboxMutex<Option<ArcShared<EndpointReaderGeneric<TB>>>, TB>,
-  watcher_daemon:         ToolboxMutex<Option<ActorRefGeneric<TB>>, TB>,
-  transport_ref:          ToolboxMutex<Option<RemoteTransportShared<TB>>, TB>,
+  writer:                 RuntimeMutex<Option<EndpointWriterSharedGeneric<TB>>>,
+  reader:                 RuntimeMutex<Option<ArcShared<EndpointReaderGeneric<TB>>>>,
+  watcher_daemon:         RuntimeMutex<Option<ActorRefGeneric<TB>>>,
+  transport_ref:          RuntimeMutex<Option<RemoteTransportShared<TB>>>,
   #[cfg(feature = "tokio-transport")]
   remote_instruments:     Vec<Arc<dyn RemoteInstrument>>,
   #[cfg(feature = "tokio-transport")]
-  endpoint_bridge: ToolboxMutex<Option<crate::std::endpoint_transport_bridge::EndpointTransportBridgeHandle>, TB>,
+  endpoint_bridge:        RuntimeMutex<Option<crate::std::endpoint_transport_bridge::EndpointTransportBridgeHandle>>,
   #[cfg(feature = "tokio-transport")]
-  heartbeat_channels:     ToolboxMutex<BTreeMap<String, TransportChannel>, TB>,
+  heartbeat_channels:     RuntimeMutex<BTreeMap<String, TransportChannel>>,
 }
 
 impl<TB> RemotingControlInner<TB>

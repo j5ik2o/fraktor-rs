@@ -4,7 +4,7 @@ use core::cmp;
 
 use fraktor_utils_rs::core::{
   collections::queue::{OfferOutcome, OverflowPolicy, QueueError, SyncQueue, backend::VecDequeBackend},
-  runtime_toolbox::{RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
+  runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
 };
 
@@ -19,7 +19,7 @@ const DEFAULT_QUEUE_CAPACITY: usize = 16;
 pub(crate) struct QueueStateHandle<T, TB: RuntimeToolbox>
 where
   T: Send + 'static, {
-  pub(crate) state: ArcShared<ToolboxMutex<QueueState<T, TB>, TB>>,
+  pub(crate) state: ArcShared<RuntimeMutex<QueueState<T, TB>>>,
 }
 
 impl<T, TB> QueueStateHandle<T, TB>
@@ -38,9 +38,9 @@ where
   fn new_with(capacity: usize, overflow: OverflowPolicy) -> Self {
     let backend = VecDequeBackend::with_capacity(capacity, overflow);
     let sync_queue = SyncQueue::new(backend);
-    let mutex = <TB::MutexFamily as SyncMutexFamily>::create(sync_queue);
+    let mutex = RuntimeMutex::new(sync_queue);
     let queue = UserQueueShared::<T, TB>::new(ArcShared::new(mutex));
-    let state_mutex = <TB::MutexFamily as SyncMutexFamily>::create(QueueState::new(queue));
+    let state_mutex = RuntimeMutex::new(QueueState::new(queue));
     let state = ArcShared::new(state_mutex);
     Self { state }
   }

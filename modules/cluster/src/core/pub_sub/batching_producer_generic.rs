@@ -11,7 +11,7 @@ use fraktor_actor_rs::core::{
 };
 use fraktor_utils_rs::core::{
   collections::queue::{OverflowPolicy, QueueError, SyncFifoQueue, backend::VecDequeBackend},
-  runtime_toolbox::{RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
+  runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
   sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
 };
 
@@ -41,13 +41,7 @@ impl<TB: RuntimeToolbox + 'static> BatchingProducerGeneric<TB> {
     config: BatchingProducerConfig,
   ) -> Self {
     let state = BatchingProducerState::new(config.max_queue_size);
-    let inner = BatchingProducerInner {
-      state: <TB::MutexFamily as SyncMutexFamily>::create(state),
-      topic,
-      publisher,
-      scheduler,
-      config,
-    };
+    let inner = BatchingProducerInner { state: RuntimeMutex::new(state), topic, publisher, scheduler, config };
     Self { inner: ArcShared::new(inner) }
   }
 
@@ -170,7 +164,7 @@ impl<TB: RuntimeToolbox + 'static> BatchingProducerGeneric<TB> {
 }
 
 struct BatchingProducerInner<TB: RuntimeToolbox + 'static> {
-  state:     ToolboxMutex<BatchingProducerState<TB>, TB>,
+  state:     RuntimeMutex<BatchingProducerState<TB>>,
   topic:     PubSubTopic,
   publisher: PubSubPublisherGeneric<TB>,
   scheduler: SchedulerSharedGeneric<TB>,

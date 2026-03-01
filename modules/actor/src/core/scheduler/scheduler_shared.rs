@@ -1,18 +1,18 @@
 //! Thin shared wrapper for `Scheduler`.
 //!
-//! Hides the `ArcShared<ToolboxMutex<...>>` internals and exposes only
+//! Hides the `ArcShared<RuntimeRwLock<...>>` internals and exposes only
 //! the `with_read` / `with_write` closure API.
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxRwLock},
+  runtime_toolbox::{NoStdToolbox, RuntimeRwLock, RuntimeToolbox},
   sync::{ArcShared, SharedAccess, sync_rwlock_like::SyncRwLockLike},
 };
 
 use super::Scheduler;
 
-/// Thin shared wrapper around `ArcShared<ToolboxMutex<Scheduler<..>>>`.
+/// Thin shared wrapper around `ArcShared<RuntimeRwLock<Scheduler<..>>>`.
 pub struct SchedulerSharedGeneric<TB: RuntimeToolbox + 'static> {
-  inner: ArcShared<ToolboxRwLock<Scheduler<TB>, TB>>,
+  inner: ArcShared<RuntimeRwLock<Scheduler<TB>>>,
 }
 
 impl<TB: RuntimeToolbox + 'static> Clone for SchedulerSharedGeneric<TB> {
@@ -24,7 +24,7 @@ impl<TB: RuntimeToolbox + 'static> Clone for SchedulerSharedGeneric<TB> {
 impl<TB: RuntimeToolbox + 'static> SchedulerSharedGeneric<TB> {
   /// Wrap an existing shared mutex.
   #[must_use]
-  pub const fn new(inner: ArcShared<ToolboxRwLock<Scheduler<TB>, TB>>) -> Self {
+  pub const fn new(inner: ArcShared<RuntimeRwLock<Scheduler<TB>>>) -> Self {
     Self { inner }
   }
 }

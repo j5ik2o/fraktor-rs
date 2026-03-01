@@ -13,7 +13,7 @@ use fraktor_utils_rs::core::{
     queue::{OfferOutcome, QueueError},
     wait::WaitShared,
   },
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex},
+  runtime_toolbox::{NoStdToolbox, RuntimeMutex, RuntimeToolbox},
   sync::{ArcShared, sync_mutex_like::SyncMutexLike},
   timing::delay::{DelayFuture, DelayProvider},
 };
@@ -28,7 +28,7 @@ mod tests;
 struct QueueOfferFuture<T, TB: RuntimeToolbox>
 where
   T: Send + 'static, {
-  state:   ArcShared<ToolboxMutex<QueueState<T, TB>, TB>>,
+  state:   ArcShared<RuntimeMutex<QueueState<T, TB>>>,
   message: Option<T>,
   waiter:  Option<WaitShared<QueueError<T>, TB>>,
   timeout: Option<DelayFuture>,
@@ -38,7 +38,7 @@ impl<T, TB: RuntimeToolbox> QueueOfferFuture<T, TB>
 where
   T: Send + 'static,
 {
-  pub(crate) const fn new(state: ArcShared<ToolboxMutex<QueueState<T, TB>, TB>>, message: T) -> Self {
+  pub(crate) const fn new(state: ArcShared<RuntimeMutex<QueueState<T, TB>>>, message: T) -> Self {
     Self { state, message: Some(message), waiter: None, timeout: None }
   }
 
@@ -133,7 +133,7 @@ pub type MailboxOfferFuture = MailboxOfferFutureGeneric<NoStdToolbox>;
 
 impl<TB: RuntimeToolbox + 'static> MailboxOfferFutureGeneric<TB> {
   pub(crate) const fn new(
-    state: ArcShared<ToolboxMutex<QueueState<AnyMessageGeneric<TB>, TB>, TB>>,
+    state: ArcShared<RuntimeMutex<QueueState<AnyMessageGeneric<TB>, TB>>>,
     message: AnyMessageGeneric<TB>,
   ) -> Self {
     Self { inner: QueueOfferFuture::new(state, message) }

@@ -3,7 +3,7 @@
 use alloc::boxed::Box;
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxRwLock, sync_rwlock_family::SyncRwLockFamily},
+  runtime_toolbox::{NoStdToolbox, RuntimeRwLock, RuntimeToolbox},
   sync::{ArcShared, SharedAccess, sync_rwlock_like::SyncRwLockLike},
 };
 
@@ -15,7 +15,7 @@ use super::schedule_adapter::ScheduleAdapter;
 /// that internally lock the underlying adapter, allowing safe
 /// concurrent access from multiple owners.
 pub struct ScheduleAdapterSharedGeneric<TB: RuntimeToolbox + 'static> {
-  inner: ArcShared<ToolboxRwLock<Box<dyn ScheduleAdapter<TB>>, TB>>,
+  inner: ArcShared<RuntimeRwLock<Box<dyn ScheduleAdapter<TB>>>>,
 }
 
 /// Type alias using the default toolbox.
@@ -25,7 +25,7 @@ impl<TB: RuntimeToolbox + 'static> ScheduleAdapterSharedGeneric<TB> {
   /// Creates a new shared wrapper around the provided adapter.
   #[must_use]
   pub fn new(adapter: Box<dyn ScheduleAdapter<TB>>) -> Self {
-    Self { inner: ArcShared::new(<TB::RwLockFamily as SyncRwLockFamily>::create(adapter)) }
+    Self { inner: ArcShared::new(RuntimeRwLock::new(adapter)) }
   }
 }
 

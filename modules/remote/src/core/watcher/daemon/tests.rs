@@ -14,7 +14,7 @@ use fraktor_actor_rs::core::{
   system::{ActorSystemConfig, ActorSystemGeneric},
 };
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, sync_mutex_family::SyncMutexFamily},
+  runtime_toolbox::{NoStdToolbox, RuntimeMutex, RuntimeToolbox},
   sync::ArcShared,
 };
 
@@ -48,8 +48,7 @@ fn build_system() -> ActorSystemGeneric<NoStdToolbox> {
 
 fn build_control(system: &ActorSystemGeneric<NoStdToolbox>) -> RemotingControlShared<NoStdToolbox> {
   let handle = RemotingControlHandle::new(system.clone(), RemotingExtensionConfig::default());
-  let control: RemotingControlShared<NoStdToolbox> =
-    ArcShared::new(<<NoStdToolbox as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(handle));
+  let control: RemotingControlShared<NoStdToolbox> = ArcShared::new(RuntimeMutex::new(handle));
   let mut transport = LoopbackTransport::<NoStdToolbox>::default();
   transport.spawn_listener(&TransportBind::new("127.0.0.1", Some(4100))).expect("bind 127.0.0.1:4100");
   control.lock().register_remote_transport_shared(RemoteTransportShared::new(Box::new(transport)));
@@ -59,7 +58,7 @@ fn build_control(system: &ActorSystemGeneric<NoStdToolbox>) -> RemotingControlSh
 
 fn build_control_without_start(system: &ActorSystemGeneric<NoStdToolbox>) -> RemotingControlShared<NoStdToolbox> {
   let handle = RemotingControlHandle::new(system.clone(), RemotingExtensionConfig::default());
-  ArcShared::new(<<NoStdToolbox as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(handle))
+  ArcShared::new(RuntimeMutex::new(handle))
 }
 
 fn remote_target() -> ActorPathParts {

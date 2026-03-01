@@ -1,7 +1,9 @@
 //! Shared wrapper for endpoint association coordinator.
 
+use core::marker::PhantomData;
+
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxRwLock, sync_rwlock_family::SyncRwLockFamily},
+  runtime_toolbox::{NoStdToolbox, RuntimeRwLock, RuntimeToolbox},
   sync::{ArcShared, SharedAccess, sync_rwlock_like::SyncRwLockLike},
 };
 
@@ -13,12 +15,13 @@ use super::coordinator::EndpointAssociationCoordinator;
 /// that internally lock the underlying [`EndpointAssociationCoordinator`], allowing safe
 /// concurrent access from multiple owners.
 pub struct EndpointAssociationCoordinatorSharedGeneric<TB: RuntimeToolbox + 'static> {
-  inner: ArcShared<ToolboxRwLock<EndpointAssociationCoordinator, TB>>,
+  inner:   ArcShared<RuntimeRwLock<EndpointAssociationCoordinator>>,
+  _marker: PhantomData<TB>,
 }
 
 impl<TB: RuntimeToolbox + 'static> Clone for EndpointAssociationCoordinatorSharedGeneric<TB> {
   fn clone(&self) -> Self {
-    Self { inner: self.inner.clone() }
+    Self { inner: self.inner.clone(), _marker: PhantomData }
   }
 }
 
@@ -32,9 +35,7 @@ impl<TB: RuntimeToolbox + 'static> EndpointAssociationCoordinatorSharedGeneric<T
   /// Creates a new shared endpoint association coordinator instance.
   #[must_use]
   pub fn new() -> Self {
-    Self {
-      inner: ArcShared::new(<TB::RwLockFamily as SyncRwLockFamily>::create(EndpointAssociationCoordinator::new())),
-    }
+    Self { inner: ArcShared::new(RuntimeRwLock::new(EndpointAssociationCoordinator::new())), _marker: PhantomData }
   }
 }
 

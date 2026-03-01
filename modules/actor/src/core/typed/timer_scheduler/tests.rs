@@ -1,7 +1,7 @@
 use core::time::Duration;
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
+  runtime_toolbox::{NoStdToolbox, RuntimeRwLock},
   sync::ArcShared,
 };
 
@@ -18,7 +18,7 @@ fn build_scheduler_pair() -> (TypedSchedulerShared<NoStdToolbox>, TypedActorRefG
   let toolbox = NoStdToolbox::default();
   let config = SchedulerConfig::default();
   let scheduler = Scheduler::new(toolbox, config);
-  let rwlock = <<NoStdToolbox as RuntimeToolbox>::RwLockFamily as fraktor_utils_rs::core::runtime_toolbox::sync_rwlock_family::SyncRwLockFamily>::create(scheduler);
+  let rwlock = RuntimeRwLock::new(scheduler);
   let shared = SchedulerSharedGeneric::new(ArcShared::new(rwlock));
   let typed_shared = TypedSchedulerShared::new(shared);
   let receiver = TypedActorRefGeneric::<u32, NoStdToolbox>::from_untyped(ActorRefGeneric::null());

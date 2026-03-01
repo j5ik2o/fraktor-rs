@@ -5,7 +5,7 @@
 //! preventing potential deadlocks.
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxRwLock, sync_rwlock_family::SyncRwLockFamily},
+  runtime_toolbox::{NoStdToolbox, RuntimeRwLock, RuntimeToolbox},
   sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike, sync_rwlock_like::SyncRwLockLike},
 };
 
@@ -42,18 +42,14 @@ use crate::core::{
 /// - Thread B holds a lock that Thread A's callback needs
 /// - Thread B tries to access EventStream → deadlock
 pub struct EventStreamSharedGeneric<TB: RuntimeToolbox + 'static> {
-  inner: ArcShared<ToolboxRwLock<EventStreamGeneric<TB>, TB>>,
+  inner: ArcShared<RuntimeRwLock<EventStreamGeneric<TB>>>,
 }
 
 impl<TB: RuntimeToolbox + 'static> EventStreamSharedGeneric<TB> {
   /// Creates a shared event stream with the specified buffer capacity.
   #[must_use]
   pub fn with_capacity(capacity: usize) -> Self {
-    Self {
-      inner: ArcShared::new(<TB::RwLockFamily as SyncRwLockFamily>::create(EventStreamGeneric::with_capacity(
-        capacity,
-      ))),
-    }
+    Self { inner: ArcShared::new(RuntimeRwLock::new(EventStreamGeneric::with_capacity(capacity))) }
   }
 
   /// Subscribes and replays buffered events to the subscriber.

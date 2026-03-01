@@ -8,7 +8,7 @@ use core::time::Duration;
 
 use ahash::RandomState;
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex},
+  runtime_toolbox::{NoStdToolbox, RuntimeMutex, RuntimeToolbox},
   sync::ArcShared,
 };
 use hashbrown::HashMap;
@@ -40,7 +40,7 @@ pub type TimerScheduler<M> = TimerSchedulerGeneric<M, NoStdToolbox>;
 /// Users call `.lock()` (via
 /// [`SyncMutexLike`](fraktor_utils_rs::core::sync::sync_mutex_like::SyncMutexLike))
 /// to obtain mutable access to the underlying timer scheduler.
-pub type TimerSchedulerShared<M, TB = NoStdToolbox> = ArcShared<ToolboxMutex<TimerSchedulerGeneric<M, TB>, TB>>;
+pub type TimerSchedulerShared<M, TB = NoStdToolbox> = ArcShared<RuntimeMutex<TimerSchedulerGeneric<M, TB>>>;
 
 impl<M, TB> TimerSchedulerGeneric<M, TB>
 where
