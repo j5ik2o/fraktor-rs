@@ -11,8 +11,7 @@ use fraktor_actor_rs::core::{
 };
 use fraktor_utils_rs::core::{
   collections::queue::{OverflowPolicy, QueueError, SyncFifoQueue, backend::VecDequeBackend},
-  runtime_toolbox::RuntimeMutex,
-  sync::{ArcShared, SharedAccess},
+  sync::{ArcShared, RuntimeMutex, SharedAccess},
 };
 
 use super::{

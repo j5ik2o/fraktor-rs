@@ -24,8 +24,7 @@ use fraktor_actor_rs::core::{
   },
 };
 use fraktor_utils_rs::core::{
-  runtime_toolbox::NoStdMutex,
-  sync::{ArcShared, SharedAccess},
+  sync::{ArcShared, NoStdMutex, SharedAccess},
   time::TimerInstant,
 };
 

@@ -4,7 +4,7 @@ use fraktor_actor_rs::core::event::stream::{
   EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscription, subscriber_handle,
 };
 use fraktor_remote_rs::core::BlockListProvider;
-use fraktor_utils_rs::core::{runtime_toolbox::NoStdMutex, sync::ArcShared};
+use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 
 use super::*;
 use crate::core::{ClusterEvent, ClusterTopology, cluster_provider::ClusterProvider};

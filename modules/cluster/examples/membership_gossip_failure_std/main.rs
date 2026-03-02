@@ -51,7 +51,7 @@ use fraktor_utils_rs::{
     sync::{ArcShared, SharedAccess},
     time::TimerInstant,
   },
-  std::runtime_toolbox::StdMutex,
+  std::StdMutex,
 };
 
 struct DemoBlockListProvider;
