@@ -10,10 +10,7 @@ use core::{
   time::Duration,
 };
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::RuntimeMutex,
-  sync::{ArcShared, SharedAccess},
-};
+use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
 use portable_atomic::{AtomicU8, AtomicU64};
 
 use super::{

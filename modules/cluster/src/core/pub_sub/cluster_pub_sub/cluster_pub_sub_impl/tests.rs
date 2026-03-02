@@ -4,7 +4,10 @@ use core::time::Duration;
 use fraktor_actor_rs::core::event::stream::{
   EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscription, subscriber_handle,
 };
-use fraktor_utils_rs::core::{runtime_toolbox::NoStdMutex, sync::ArcShared, time::TimerInstant};
+use fraktor_utils_rs::core::{
+  sync::{ArcShared, NoStdMutex},
+  time::TimerInstant,
+};
 
 use super::ClusterPubSubImpl;
 use crate::core::{

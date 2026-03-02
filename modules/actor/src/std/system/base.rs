@@ -32,7 +32,7 @@ mod tests;
 
 type StdSubscriberHandle = crate::std::event::stream::EventStreamSubscriberShared;
 
-/// Actor system specialised for `StdToolbox` with ergonomics for standard runtime consumers.
+/// Actor system for the standard runtime with ergonomics for standard runtime consumers.
 pub struct ActorSystem {
   inner: CoreActorSystem,
 }

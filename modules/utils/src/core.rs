@@ -4,7 +4,6 @@ pub mod collections;
 pub mod concurrent;
 /// Network utilities for URI parsing.
 pub mod net;
-pub mod runtime_toolbox;
 /// Synchronization primitives and shared ownership abstractions.
 pub mod sync;
 pub mod time;

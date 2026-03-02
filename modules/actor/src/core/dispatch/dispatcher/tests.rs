@@ -9,10 +9,7 @@ use core::{
 };
 use std::thread;
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::NoStdMutex,
-  sync::{ArcShared, SharedAccess, sync_mutex_like::SpinSyncMutex},
-};
+use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex, SharedAccess, sync_mutex_like::SpinSyncMutex};
 
 use super::schedule_waker::ScheduleWaker;
 use crate::core::{

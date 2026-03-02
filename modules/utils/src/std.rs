@@ -1,7 +1,5 @@
 /// Collection utilities for std environments.
 pub mod collections;
-/// Runtime toolbox and aliases for std environments.
-pub mod runtime_toolbox;
 /// Synchronization primitives built on top of `std::sync::Mutex`.
 mod sync_mutex;
 /// Guard returned by [`StdSyncMutex`](crate::StdSyncMutex).
@@ -18,3 +16,8 @@ pub use sync_mutex_guard::StdSyncMutexGuard;
 pub use sync_rwlock::StdSyncRwLock;
 pub use sync_rwlock_read_guard::StdSyncRwLockReadGuard;
 pub use sync_rwlock_write_guard::StdSyncRwLockWriteGuard;
+
+/// Convenience alias for the default std mutex.
+pub type StdMutex<T> = crate::core::sync::RuntimeMutex<T>;
+/// Convenience alias for the default std rwlock.
+pub type StdRwLock<T> = crate::core::sync::RuntimeRwLock<T>;

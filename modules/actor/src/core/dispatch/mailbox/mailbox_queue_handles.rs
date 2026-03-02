@@ -4,8 +4,7 @@ use core::cmp;
 
 use fraktor_utils_rs::core::{
   collections::queue::{OfferOutcome, OverflowPolicy, QueueError, SyncQueue, backend::VecDequeBackend},
-  runtime_toolbox::RuntimeMutex,
-  sync::ArcShared,
+  sync::{ArcShared, RuntimeMutex},
 };
 
 use super::{UserQueueShared, mailbox_queue_state::QueueState};

@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, string::String, vec::Vec};
 use core::time::Duration;
 
-use fraktor_utils_rs::core::{runtime_toolbox::NoStdMutex, sync::ArcShared};
+use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 
 use crate::core::{
   dead_letter::DeadLetterEntry,

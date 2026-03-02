@@ -6,8 +6,8 @@ use alloc::{borrow::ToOwned, boxed::Box};
 #[cfg(any(test, feature = "test-support"))]
 use fraktor_utils_rs::core::time::TimerInstant;
 #[cfg(any(test, feature = "test-support"))]
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeMutex, sync::ArcShared};
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::SharedAccess, time::MonotonicClock};
+use fraktor_utils_rs::core::{sync::ArcShared, sync::RuntimeMutex};
+use fraktor_utils_rs::core::{sync::SharedAccess, time::MonotonicClock};
 
 #[cfg(any(test, feature = "test-support"))]
 use super::TickDriverControl;
@@ -46,7 +46,7 @@ impl TickDriverBootstrap {
       | TickDriverConfig::Builder { builder } => {
         let start_instant = {
           let scheduler = ctx.scheduler();
-          scheduler.with_read(|s| s.toolbox().clock().now())
+          scheduler.with_read(|s| s.clock().now())
         };
         let bundle = builder(ctx)?;
         let handle = bundle.driver();
@@ -72,7 +72,7 @@ impl TickDriverBootstrap {
     }
     let (resolution, start_instant) = scheduler.with_read(|s| {
       let config = s.config();
-      let instant = s.toolbox().clock().now();
+      let instant = s.clock().now();
       (config.resolution(), instant)
     });
     driver.attach(ctx);
@@ -93,7 +93,7 @@ impl TickDriverBootstrap {
 fn publish_driver_warning(ctx: &TickDriverProvisioningContext, message: &str) {
   let timestamp = {
     let scheduler = ctx.scheduler();
-    scheduler.with_read(|s| instant_to_duration(s.toolbox().clock().now()))
+    scheduler.with_read(|s| instant_to_duration(s.clock().now()))
   };
   let event = EventStreamEvent::Log(LogEvent::new(LogLevel::Warn, message.to_owned(), timestamp, None));
   ctx.event_stream().publish(&event);

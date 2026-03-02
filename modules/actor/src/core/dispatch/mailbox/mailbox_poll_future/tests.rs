@@ -5,7 +5,7 @@ use core::{
   task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
 };
 
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeMutex, sync::ArcShared};
+use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use super::{super::mailbox_queue_state::QueueState, QueuePollFuture};
 use crate::core::{

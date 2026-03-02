@@ -105,7 +105,7 @@ pub trait Actor: Send {
   ///   messaging::AnyMessageView,
   ///   supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
   /// };
-  /// use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
+  /// use fraktor_utils_rs::core::sync::NoStdMutex;
   ///
   /// struct ResilientWorker {
   ///   consecutive_errors: u32,

@@ -40,7 +40,10 @@ use fraktor_remote_rs::core::{
     phi_failure_detector::{PhiFailureDetector, PhiFailureDetectorConfig},
   },
 };
-use fraktor_utils_rs::core::{runtime_toolbox::NoStdMutex, sync::ArcShared, time::TimerInstant};
+use fraktor_utils_rs::core::{
+  sync::{ArcShared, NoStdMutex},
+  time::TimerInstant,
+};
 
 struct DemoBlockListProvider;
 

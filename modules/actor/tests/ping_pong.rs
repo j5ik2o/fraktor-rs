@@ -11,7 +11,7 @@ use fraktor_actor_rs::core::{
   spawn::SpawnError,
   system::ActorSystem,
 };
-use fraktor_utils_rs::core::{runtime_toolbox::NoStdMutex, sync::ArcShared};
+use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 
 struct Start;
 struct Deliver(u32);

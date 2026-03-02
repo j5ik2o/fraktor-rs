@@ -13,8 +13,7 @@ use core::{
 
 use ahash::RandomState;
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdMutex, NoStdToolbox, RuntimeRwLock},
-  sync::{ArcShared, SharedAccess},
+  sync::{ArcShared, NoStdMutex, RuntimeRwLock, SharedAccess},
   time::{SchedulerCapacityProfile, SchedulerTickHandle},
   timing::delay::{DelayFuture, DelayProvider},
 };
@@ -42,25 +41,22 @@ use crate::core::{
 };
 
 fn build_scheduler() -> Scheduler {
-  let toolbox = NoStdToolbox::default();
   let config = SchedulerConfig::default();
-  Scheduler::new(toolbox, config)
+  Scheduler::new(config)
 }
 
 fn build_scheduler_with_resolution(resolution: Duration) -> Scheduler {
-  let toolbox = NoStdToolbox::new(resolution);
   let profile = SchedulerCapacityProfile::standard();
   let config = SchedulerConfig::new(resolution, profile);
-  Scheduler::new(toolbox, config)
+  Scheduler::new(config)
 }
 
 fn build_scheduler_with_policies(rate_policy: FixedRatePolicy, delay_policy: FixedDelayPolicy) -> Scheduler {
-  let toolbox = NoStdToolbox::default();
   let profile = SchedulerCapacityProfile::standard();
   let config = SchedulerConfig::new(Duration::from_millis(1), profile)
     .with_fixed_rate_policy(rate_policy)
     .with_fixed_delay_policy(delay_policy);
-  Scheduler::new(toolbox, config)
+  Scheduler::new(config)
 }
 
 fn nz(value: u32) -> NonZeroU32 {
@@ -94,8 +90,7 @@ impl TaskRunOnClose for RecordingTask {
 type SharedScheduler = SchedulerShared;
 
 fn shared_scheduler_state() -> (SharedScheduler, SchedulerBackedDelayProvider) {
-  let toolbox = NoStdToolbox::default();
-  let scheduler = Scheduler::new(toolbox, SchedulerConfig::default());
+  let scheduler = Scheduler::new(SchedulerConfig::default());
   let rwlock = RuntimeRwLock::new(scheduler);
   let shared = SchedulerShared::new(ArcShared::new(rwlock));
   let provider = SchedulerBackedDelayProvider::new(shared.clone());
@@ -215,10 +210,9 @@ fn handles_are_unique_across_registrations() {
 
 #[test]
 fn capacity_limit_returns_error() {
-  let toolbox = NoStdToolbox::default();
   let profile = SchedulerCapacityProfile::new("tiny", 1, 1, 1);
   let config = SchedulerConfig::new(Duration::from_millis(1), profile).with_max_pending_jobs(1);
-  let mut scheduler = Scheduler::new(toolbox, config);
+  let mut scheduler = Scheduler::new(config);
   scheduler.schedule_once(Duration::from_millis(1), SchedulerCommand::Noop).expect("first");
   let err = scheduler.schedule_once(Duration::from_millis(2), SchedulerCommand::Noop).expect_err("second should fail");
   assert_eq!(err, SchedulerError::Backpressured);
@@ -371,10 +365,9 @@ fn runner_manual_processes_ticks_in_order() {
 
 #[test]
 fn backpressure_error_returned_when_pending_jobs_exceed_limit() {
-  let toolbox = NoStdToolbox::default();
   let profile = SchedulerCapacityProfile::new("tiny", 32, 8, 4);
   let config = SchedulerConfig::new(Duration::from_millis(1), profile).with_max_pending_jobs(1);
-  let mut scheduler = Scheduler::new(toolbox, config);
+  let mut scheduler = Scheduler::new(config);
   scheduler.schedule_once(Duration::from_millis(1), SchedulerCommand::Noop).expect("first");
   let err = scheduler.schedule_once(Duration::from_millis(2), SchedulerCommand::Noop).expect_err("second");
   assert_eq!(err, SchedulerError::Backpressured);
@@ -382,10 +375,9 @@ fn backpressure_error_returned_when_pending_jobs_exceed_limit() {
 
 #[test]
 fn timer_wheel_capacity_exceeded_returns_error() {
-  let toolbox = NoStdToolbox::default();
   let profile = SchedulerCapacityProfile::new("mini", 1, 1, 1);
   let config = SchedulerConfig::new(Duration::from_millis(1), profile).with_max_pending_jobs(2);
-  let mut scheduler = Scheduler::new(toolbox, config);
+  let mut scheduler = Scheduler::new(config);
   scheduler.schedule_once(Duration::from_millis(1), SchedulerCommand::Noop).expect("first");
   let err = scheduler.schedule_once(Duration::from_millis(2), SchedulerCommand::Noop).expect_err("second");
   assert_eq!(err, SchedulerError::CapacityExceeded);
@@ -439,10 +431,9 @@ fn scheduler_metrics_track_active_and_drops() {
 
 #[test]
 fn fixed_rate_runnable_reports_missed_runs() {
-  let toolbox = NoStdToolbox::new(Duration::from_millis(1));
   let profile = SchedulerCapacityProfile::standard();
   let config = SchedulerConfig::new(Duration::from_millis(1), profile).with_backlog_limit(10);
-  let mut scheduler = Scheduler::new(toolbox, config);
+  let mut scheduler = Scheduler::new(config);
   let batches = ArcShared::new(NoStdMutex::new(Vec::new()));
   let capture = batches.clone();
   let runnable: ArcShared<dyn SchedulerRunnable> = ArcShared::new(move |batch: &ExecutionBatch| {
@@ -468,9 +459,8 @@ fn fixed_rate_runnable_reports_missed_runs() {
 
 #[test]
 fn backlog_limit_auto_cancels_periodic_job() {
-  let toolbox = NoStdToolbox::default();
   let config = SchedulerConfig::default().with_backlog_limit(1);
-  let mut scheduler = Scheduler::new(toolbox, config);
+  let mut scheduler = Scheduler::new(config);
   scheduler
     .schedule_at_fixed_rate(Duration::from_millis(1), Duration::from_millis(1), SchedulerCommand::Noop)
     .expect("handle");
@@ -523,7 +513,7 @@ fn fixed_delay_policy_enforces_independent_backlog_limit() {
   let config = SchedulerConfig::new(Duration::from_millis(1), profile)
     .with_fixed_delay_policy(delay_policy)
     .with_fixed_rate_policy(rate_policy);
-  let mut scheduler = Scheduler::new(NoStdToolbox::default(), config);
+  let mut scheduler = Scheduler::new(config);
   let rate_handle = scheduler
     .schedule_at_fixed_rate(Duration::from_millis(1), Duration::from_millis(1), SchedulerCommand::Noop)
     .expect("rate");
@@ -582,7 +572,7 @@ fn fixed_delay_policy_controls_burst_threshold() {
   let config = SchedulerConfig::new(Duration::from_millis(1), profile)
     .with_fixed_delay_policy(delay_policy)
     .with_fixed_rate_policy(rate_policy);
-  let mut scheduler = Scheduler::new(NoStdToolbox::default(), config);
+  let mut scheduler = Scheduler::new(config);
   let rate_handle = scheduler
     .schedule_at_fixed_rate(Duration::from_millis(1), Duration::from_millis(1), SchedulerCommand::Noop)
     .expect("rate");
@@ -608,7 +598,7 @@ fn fixed_delay_policy_controls_burst_threshold() {
 fn fixed_rate_backlog_marks_handle_cancelled() {
   let profile = SchedulerCapacityProfile::standard();
   let config = SchedulerConfig::new(Duration::from_millis(1), profile).with_backlog_limit(1);
-  let mut scheduler = Scheduler::new(NoStdToolbox::default(), config);
+  let mut scheduler = Scheduler::new(config);
   let handle = scheduler
     .schedule_at_fixed_rate(Duration::from_millis(1), Duration::from_millis(1), SchedulerCommand::Noop)
     .expect("handle");
@@ -620,7 +610,7 @@ fn fixed_rate_backlog_marks_handle_cancelled() {
 fn fixed_delay_backlog_marks_handle_cancelled() {
   let profile = SchedulerCapacityProfile::standard();
   let config = SchedulerConfig::new(Duration::from_millis(1), profile).with_backlog_limit(1);
-  let mut scheduler = Scheduler::new(NoStdToolbox::default(), config);
+  let mut scheduler = Scheduler::new(config);
   let handle = scheduler
     .schedule_with_fixed_delay(Duration::from_millis(1), Duration::from_millis(1), SchedulerCommand::Noop)
     .expect("handle");
@@ -652,7 +642,7 @@ fn scheduler_backed_delay_provider_cancels_on_drop() {
 
 #[test]
 fn scheduler_context_provides_shared_delay_provider() {
-  let scheduler_context = SchedulerContext::new(NoStdToolbox::default(), SchedulerConfig::default());
+  let scheduler_context = SchedulerContext::new(SchedulerConfig::default());
   let mut future = scheduler_context.delay_provider().delay(Duration::from_millis(1));
   assert!(matches!(poll_delay_future(&mut future), Poll::Pending));
 
@@ -843,7 +833,7 @@ struct StressReport {
 fn run_stress_profile(job_count: usize, drift_ticks: u64) -> StressReport {
   let profile = SchedulerCapacityProfile::standard();
   let config = SchedulerConfig::new(Duration::from_millis(1), profile).with_max_pending_jobs(job_count + 512);
-  let mut scheduler = Scheduler::new(NoStdToolbox::default(), config);
+  let mut scheduler = Scheduler::new(config);
   scheduler.enable_deterministic_log(job_count * 4);
 
   for idx in 0..job_count {
@@ -980,10 +970,9 @@ fn shutdown_executes_task_run_on_close_in_priority_order() {
 
 #[test]
 fn task_run_capacity_limits_registrations() {
-  let toolbox = NoStdToolbox::default();
   let profile = SchedulerCapacityProfile::standard();
   let config = SchedulerConfig::new(Duration::from_millis(1), profile).with_task_run_capacity(1);
-  let mut scheduler = Scheduler::new(toolbox, config);
+  let mut scheduler = Scheduler::new(config);
   let task = RecordingTask::succeed(ArcShared::new(NoStdMutex::new(Vec::new())), "only");
   scheduler.register_on_close(task.clone(), TaskRunPriority::User).expect("first");
   let err = scheduler.register_on_close(task, TaskRunPriority::User).expect_err("capacity");

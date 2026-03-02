@@ -19,7 +19,7 @@ use crate::core::{
 #[cfg(all(test, feature = "tokio-executor"))]
 mod tests;
 
-/// Dispatcher configuration specialised for `StdToolbox`.
+/// Dispatcher configuration for the standard runtime.
 #[derive(Clone, Default)]
 pub struct DispatcherConfig {
   inner: CoreDispatcherConfig,

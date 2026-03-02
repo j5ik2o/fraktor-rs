@@ -17,7 +17,7 @@ use crate::{
   },
 };
 
-/// Actor properties specialised for `StdToolbox` with a closure ergonomics layer.
+/// Actor properties for the standard runtime with a closure ergonomics layer.
 #[derive(Clone)]
 pub struct Props {
   inner: CoreProps,

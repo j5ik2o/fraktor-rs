@@ -1,9 +1,6 @@
 use core::time::Duration;
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeRwLock},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::sync::{ArcShared, RuntimeRwLock};
 
 use crate::core::{
   actor::actor_ref::ActorRef,
@@ -14,9 +11,8 @@ use crate::core::{
 };
 
 fn build_scheduler_pair() -> (TypedSchedulerShared, TypedActorRef<u32>) {
-  let toolbox = NoStdToolbox::default();
   let config = SchedulerConfig::default();
-  let scheduler = Scheduler::new(toolbox, config);
+  let scheduler = Scheduler::new(config);
   let rwlock = RuntimeRwLock::new(scheduler);
   let shared = SchedulerShared::new(ArcShared::new(rwlock));
   let typed_shared = TypedSchedulerShared::new(shared);

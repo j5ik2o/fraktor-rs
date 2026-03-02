@@ -5,7 +5,6 @@ use core::time::Duration;
 use std::sync::Mutex;
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::NoStdToolbox,
   sync::{ArcShared, SharedAccess},
   time::TimerInstant,
 };
@@ -25,7 +24,7 @@ use crate::{
 #[allow(clippy::expect_used)]
 async fn tokio_interval_driver_produces_ticks() {
   let config = TickDriverConfig::tokio_quickstart_with_resolution(Duration::from_millis(5));
-  let scheduler_context = SchedulerContext::new(NoStdToolbox::default(), SchedulerConfig::default());
+  let scheduler_context = SchedulerContext::new(SchedulerConfig::default());
   let ctx = TickDriverProvisioningContext::from_scheduler_context(&scheduler_context);
   let (mut runtime, _) = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
 
@@ -68,7 +67,7 @@ async fn tokio_interval_driver_publishes_tick_metrics_events() {
     event_stream.clone(),
     Duration::from_millis(50),
   );
-  let scheduler_context = SchedulerContext::new(NoStdToolbox::default(), SchedulerConfig::default());
+  let scheduler_context = SchedulerContext::new(SchedulerConfig::default());
   let ctx = TickDriverProvisioningContext::from_scheduler_context(&scheduler_context);
   let (mut runtime, _) = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
 
@@ -88,7 +87,7 @@ async fn tokio_interval_driver_publishes_tick_metrics_events() {
 #[allow(clippy::expect_used)]
 async fn tokio_quickstart_helper_provisions_driver() {
   let config = TickDriverConfig::tokio_quickstart();
-  let scheduler_context = SchedulerContext::new(NoStdToolbox::default(), SchedulerConfig::default());
+  let scheduler_context = SchedulerContext::new(SchedulerConfig::default());
   let ctx = TickDriverProvisioningContext::from_scheduler_context(&scheduler_context);
   let (mut runtime, snapshot) = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
   assert!(

@@ -1,49 +1,16 @@
 tasks:
-  - worktree: true
-    branch: takt/412/github-issue-412-phase-a-review
-    piece: refactoring
-    issue: 412
-    auto_pr: true
-    draft_pr: true
-    name: github-issue-412-phase-a-review
-    status: completed
-    slug: github-issue-412-phase-a-review
-    summary: "Phase A レビュー: RuntimeMutex/RuntimeRwLock 導入（PR #441）の品質確認"
-    worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktrees/20260301T2247-412-github-issue-412-phase-a-review
-    pr_url: https://github.com/j5ik2o/fraktor-rs/pull/456
-    task_dir: .takt/tasks/20260301-170000-github-issue-412-tb-runtime-toolbox
-    created_at: 2026-03-02T02:10:00.000Z
-    started_at: 2026-03-01T22:47:46.657Z
-    completed_at: 2026-03-02T00:12:10.480Z
-    owner_pid: null
-  - worktree: false
-    branch: refactor/cleanup
-    piece: refactoring
-    issue: 442
-    auto_pr: false
-    draft_pr: false
-    name: github-issue-442-refactor-phas
-    status: completed
-    slug: github-issue-442-refactor-phas
-    summary: "## GitHub Issue #442: refactor: Phase B — actor モジュールから TB:
-      RuntimeToolbox を除去し "
-    task_dir: .takt/tasks/20260302-014152-github-issue-442-refactor-phas
-    created_at: 2026-03-02T01:41:52.831Z
-    started_at: 2026-03-02T02:08:02.062Z
-    completed_at: 2026-03-02T05:40:51.562Z
-    owner_pid: null
   - worktree: false
     piece: refactoring
-    issue: 443
+    issue: 444
     auto_pr: false
     draft_pr: false
-    name: github-issue-443-refactor-phas
+    name: github-issue-444-refactor-phas
     status: completed
-    slug: github-issue-443-refactor-phas
-    summary: "## GitHub Issue #443: refactor: Phase C —
-      cluster/remote/persistence/streams モジュ"
-    task_dir: .takt/tasks/20260302-071323-github-issue-443-refactor-phas
-    created_at: 2026-03-02T07:13:23.505Z
-    started_at: 2026-03-02T10:15:06.803Z
-    completed_at: 2026-03-02T12:01:11.902Z
+    slug: github-issue-444-refactor-phas
+    summary: "## GitHub Issue #444: refactor: Phase D — RuntimeToolbox trait /
+      NoStdToolbox / "
+    task_dir: .takt/tasks/20260302-123951-github-issue-444-refactor-phas
+    created_at: 2026-03-02T12:39:51.270Z
+    started_at: 2026-03-02T12:43:16.473Z
+    completed_at: 2026-03-02T14:41:09.343Z
     owner_pid: null

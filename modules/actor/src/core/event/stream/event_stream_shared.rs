@@ -4,10 +4,7 @@
 //! that subscriber callbacks are executed without holding the event stream lock,
 //! preventing potential deadlocks.
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::RuntimeRwLock,
-  sync::{ArcShared, SharedAccess, sync_rwlock_like::SyncRwLockLike},
-};
+use fraktor_utils_rs::core::sync::{ArcShared, RuntimeRwLock, SharedAccess, sync_rwlock_like::SyncRwLockLike};
 
 use crate::core::{
   actor::actor_ref::ActorRef,

@@ -35,5 +35,4 @@ pub trait RemotingControl: Send + Sync {
 }
 
 /// Shared handle wrapping [`RemotingControlHandle`] with external synchronization.
-pub type RemotingControlShared =
-  ArcShared<fraktor_utils_rs::core::runtime_toolbox::RuntimeMutex<RemotingControlHandle>>;
+pub type RemotingControlShared = ArcShared<fraktor_utils_rs::core::sync::RuntimeMutex<RemotingControlHandle>>;

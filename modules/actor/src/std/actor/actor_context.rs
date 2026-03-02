@@ -8,7 +8,7 @@ use crate::{
   std::{props::Props, system::ActorSystem},
 };
 
-/// Context handle specialised for `StdToolbox`.
+/// Context handle for the standard runtime.
 pub struct ActorContext<'ctx, 'inner> {
   inner: &'ctx mut CoreActorContext<'inner>,
 }

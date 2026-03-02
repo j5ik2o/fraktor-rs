@@ -5,7 +5,10 @@ use fraktor_actor_rs::core::{
   error::SendError,
   messaging::AnyMessage,
 };
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeMutex, sync::ArcShared, time::TimerInstant};
+use fraktor_utils_rs::core::{
+  sync::{ArcShared, RuntimeMutex},
+  time::TimerInstant,
+};
 
 use crate::core::{
   at_least_once_delivery::AtLeastOnceDelivery, at_least_once_delivery_config::AtLeastOnceDeliveryConfig,

@@ -1,10 +1,7 @@
 //! Shared wrapper for persistence extension instance.
 
 use fraktor_actor_rs::core::extension::Extension;
-use fraktor_utils_rs::core::{
-  runtime_toolbox::RuntimeMutex,
-  sync::{ArcShared, SharedAccess},
-};
+use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
 
 use crate::core::persistence_extension::PersistenceExtension;
 

@@ -3,7 +3,7 @@
 use alloc::boxed::Box;
 
 use fraktor_actor_rs::core::event::stream::{BackpressureSignal, CorrelationId};
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeMutex, sync::ArcShared};
+use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
 /// Listener invoked whenever backpressure is applied or released for a remote authority.
 ///

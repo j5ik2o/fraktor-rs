@@ -18,10 +18,7 @@ use fraktor_actor_rs::core::{
   },
   system::{ActorSystem, ActorSystemConfig, remote::RemoteWatchHook},
 };
-use fraktor_utils_rs::core::{
-  runtime_toolbox::RuntimeMutex,
-  sync::{ArcShared, SharedAccess},
-};
+use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
 
 use crate::core::{
   actor_ref_provider::remote::RemoteActorRefProvider,

@@ -8,7 +8,7 @@ use alloc::{
 use core::any::{Any, TypeId};
 
 use ahash::RandomState;
-use fraktor_utils_rs::core::{runtime_toolbox::NoStdMutex, sync::ArcShared};
+use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 use hashbrown::HashMap;
 use portable_atomic::{AtomicUsize, Ordering};
 

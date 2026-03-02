@@ -1,7 +1,5 @@
 use core::time::Duration;
 
-use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
-
 use crate::core::{
   actor::actor_ref::ActorRef,
   scheduler::{Scheduler, SchedulerCommand, SchedulerConfig},
@@ -12,9 +10,8 @@ use crate::core::{
 };
 
 fn build_scheduler() -> Scheduler {
-  let toolbox = NoStdToolbox::default();
   let config = SchedulerConfig::default();
-  Scheduler::new(toolbox, config)
+  Scheduler::new(config)
 }
 
 #[test]
@@ -51,7 +48,7 @@ fn typed_schedule_at_fixed_rate_registers_job() {
 
 #[test]
 fn typed_scheduler_context_reuses_shared_scheduler_arc() {
-  let context = TypedSchedulerContext::new_with_config(NoStdToolbox::default(), SchedulerConfig::default());
+  let context = TypedSchedulerContext::new_with_config(SchedulerConfig::default());
   let receiver = TypedActorRef::<u32>::from_untyped(ActorRef::null());
 
   let handle = context.with_scheduler(|scheduler| {

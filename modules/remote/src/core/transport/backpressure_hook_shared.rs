@@ -2,10 +2,7 @@
 
 use alloc::boxed::Box;
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::NoStdMutex,
-  sync::{ArcShared, SharedAccess},
-};
+use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex, SharedAccess};
 
 use super::backpressure_hook::TransportBackpressureHook;
 

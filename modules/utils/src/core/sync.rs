@@ -11,6 +11,8 @@ pub mod interrupt;
 #[cfg(feature = "alloc")]
 #[allow(clippy::disallowed_types)]
 mod rc_shared;
+/// Runtime-selected lock type aliases.
+mod runtime_lock_alias;
 pub mod shared;
 mod shared_access;
 mod shared_error;
@@ -27,6 +29,7 @@ pub use arc_shared::ArcShared;
 pub use flag::Flag;
 #[cfg(feature = "alloc")]
 pub use rc_shared::RcShared;
+pub use runtime_lock_alias::{NoStdMutex, NoStdRwLock, RuntimeMutex, RuntimeRwLock};
 pub use shared_access::SharedAccess;
 pub use shared_error::SharedError;
 pub use state::StateCell;
