@@ -7,33 +7,24 @@ use core::{
 };
 
 use super::WaitNodeShared;
-use crate::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  sync::SharedAccess,
-};
+use crate::core::sync::SharedAccess;
 
 /// Future returned when registering interest in a queue/stack event.
-pub struct WaitShared<E: Send + 'static, TB: RuntimeToolbox = NoStdToolbox> {
-  node: WaitNodeShared<E, TB>,
+pub struct WaitShared<E: Send + 'static> {
+  node: WaitNodeShared<E>,
 }
 
-impl<E: Send + 'static, TB: RuntimeToolbox + 'static> Unpin for WaitShared<E, TB> {}
+impl<E: Send + 'static> Unpin for WaitShared<E> {}
 
-impl<E: Send + 'static, TB> WaitShared<E, TB>
-where
-  TB: RuntimeToolbox + 'static,
-{
+impl<E: Send + 'static> WaitShared<E> {
   /// Creates a shared wait future bound to the supplied waiter node.
   #[must_use]
-  pub const fn new(node: WaitNodeShared<E, TB>) -> Self {
+  pub const fn new(node: WaitNodeShared<E>) -> Self {
     Self { node }
   }
 }
 
-impl<E: Send + 'static, TB> Future for WaitShared<E, TB>
-where
-  TB: RuntimeToolbox + 'static,
-{
+impl<E: Send + 'static> Future for WaitShared<E> {
   type Output = Result<(), E>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -52,13 +43,13 @@ where
   }
 }
 
-impl<E: Send + 'static, TB: RuntimeToolbox + 'static> Drop for WaitShared<E, TB> {
+impl<E: Send + 'static> Drop for WaitShared<E> {
   fn drop(&mut self) {
     self.node.with_write(|n| n.cancel());
   }
 }
 
-impl<E: Send + 'static, TB: RuntimeToolbox + 'static> Clone for WaitShared<E, TB> {
+impl<E: Send + 'static> Clone for WaitShared<E> {
   fn clone(&self) -> Self {
     Self { node: self.node.clone() }
   }

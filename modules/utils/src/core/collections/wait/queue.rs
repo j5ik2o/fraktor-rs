@@ -1,7 +1,6 @@
 use super::{WaitError, WaitNodeShared, handle_shared::WaitShared};
 use crate::core::{
   collections::queue::{OverflowPolicy, QueueError, SyncFifoQueue, backend::VecDequeBackend},
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
   sync::SharedAccess,
 };
 
@@ -9,14 +8,11 @@ use crate::core::{
 mod tests;
 
 /// FIFO queue managing waiter nodes.
-pub struct WaitQueue<E: Send + 'static, TB: RuntimeToolbox = NoStdToolbox> {
-  waiters: SyncFifoQueue<WaitNodeShared<E, TB>, VecDequeBackend<WaitNodeShared<E, TB>>>,
+pub struct WaitQueue<E: Send + 'static> {
+  waiters: SyncFifoQueue<WaitNodeShared<E>, VecDequeBackend<WaitNodeShared<E>>>,
 }
 
-impl<E: Send + 'static, TB> WaitQueue<E, TB>
-where
-  TB: RuntimeToolbox + 'static,
-{
+impl<E: Send + 'static> WaitQueue<E> {
   /// Creates an empty queue.
   #[must_use]
   pub fn new() -> Self {
@@ -30,8 +26,8 @@ where
   ///
   /// Returns a `WaitError` if the queue cannot accept the waiter due to allocation failure
   /// or if the queue is closed.
-  pub fn register(&mut self) -> Result<WaitShared<E, TB>, WaitError> {
-    let node: WaitNodeShared<E, TB> = WaitNodeShared::new();
+  pub fn register(&mut self) -> Result<WaitShared<E>, WaitError> {
+    let node: WaitNodeShared<E> = WaitNodeShared::new();
     self.waiters.offer(node.clone()).map_err(|e| match e {
       | QueueError::AllocError(_) => WaitError::AllocationFailure,
       | QueueError::Closed(_) => WaitError::QueueClosed,
@@ -77,7 +73,7 @@ where
   }
 }
 
-impl<E: Send + 'static, TB: RuntimeToolbox + 'static> Default for WaitQueue<E, TB> {
+impl<E: Send + 'static> Default for WaitQueue<E> {
   fn default() -> Self {
     Self::new()
   }
