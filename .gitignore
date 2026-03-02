@@ -50,6 +50,26 @@ Cargo.lock
 /.opencode/
 /openspec/
 
+# Codex CLI (personal)
+/.codex-personal/*.json
+/.codex-personal/*.jsonl
+/.codex-personal/sessions/
+/.codex-personal/cache/
+/.codex-personal/log
+/.codex-personal/tmp/
+/.codex-personal/shell_snapshots/
+/.codex-personal/*.sqlite
+
+# Codex CLI (corporate)
+/.codex-corporate/*.json
+/.codex-corporate/*.jsonl
+/.codex-corporate/sessions/
+/.codex-corporate/cache/
+/.codex-corporate/log
+/.codex-corporate/tmp/
+/.codex-corporate/shell_snapshots/
+/.codex-corporate/*.sqlite
+
 /.serena/cache/
 
 /.takt/clone-meta/
