@@ -1,6 +1,6 @@
-/// Future primitive specialised for `StdToolbox`.
+/// Future primitive for the standard runtime.
 pub type ActorFuture<T> = crate::core::futures::ActorFuture<T>;
-/// Shared future primitive specialised for `StdToolbox`.
+/// Shared future primitive for the standard runtime.
 pub type ActorFutureShared<T> = crate::core::futures::ActorFutureShared<T>;
-/// Future listener specialised for `StdToolbox`.
+/// Future listener for the standard runtime.
 pub type ActorFutureListener<T> = crate::core::futures::ActorFutureListener<T>;

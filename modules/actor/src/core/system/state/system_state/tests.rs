@@ -4,10 +4,7 @@ use core::{
   time::Duration,
 };
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdMutex, RuntimeMutex},
-  sync::{ArcShared, SharedAccess},
-};
+use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex, RuntimeMutex, SharedAccess};
 
 use super::{super::booting_state::BootingSystemState, SystemState};
 use crate::core::{

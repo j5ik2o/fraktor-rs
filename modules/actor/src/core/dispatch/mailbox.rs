@@ -4,7 +4,7 @@
 
 use fraktor_utils_rs::core::{
   collections::queue::{QueueError, SyncFifoQueueShared, SyncQueue, backend::VecDequeBackend, type_keys::FifoKey},
-  runtime_toolbox::RuntimeMutex,
+  sync::RuntimeMutex,
 };
 
 use crate::core::{error::SendError, messaging::AnyMessage};

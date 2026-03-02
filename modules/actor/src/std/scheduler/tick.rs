@@ -5,8 +5,7 @@ extern crate std;
 use std::time::Duration;
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::RuntimeMutex,
-  sync::{ArcShared, ArcShared as Arc, SharedAccess},
+  sync::{ArcShared, ArcShared as Arc, RuntimeMutex, SharedAccess},
   time::TimerInstant,
 };
 use tokio::runtime::Handle;

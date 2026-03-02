@@ -9,8 +9,7 @@ use core::{
 
 use fraktor_utils_rs::core::{
   collections::{queue::QueueError, wait::WaitShared},
-  runtime_toolbox::RuntimeMutex,
-  sync::ArcShared,
+  sync::{ArcShared, RuntimeMutex},
 };
 
 use super::{mailbox_queue_state::QueueState, map_user_queue_error};

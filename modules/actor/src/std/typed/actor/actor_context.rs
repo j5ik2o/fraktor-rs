@@ -14,7 +14,7 @@ use crate::{
   },
 };
 
-/// Typed actor context wrapper for StdToolbox.
+/// Typed actor context wrapper for the standard runtime.
 pub struct TypedActorContext<'ctx, 'inner, M>
 where
   M: Send + Sync + 'static, {

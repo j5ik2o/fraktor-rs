@@ -1,6 +1,6 @@
-/// Event stream specialised for `StdToolbox` (shared wrapper).
+/// Event stream for the standard runtime (shared wrapper).
 pub type EventStream = crate::core::event::stream::EventStreamShared;
-/// Event stream event specialised for `StdToolbox`.
+/// Event stream event for the standard runtime.
 pub type EventStreamEvent = crate::core::event::stream::EventStreamEvent;
-/// Event stream subscription specialised for `StdToolbox`.
+/// Event stream subscription for the standard runtime.
 pub type EventStreamSubscription = crate::core::event::stream::EventStreamSubscription;

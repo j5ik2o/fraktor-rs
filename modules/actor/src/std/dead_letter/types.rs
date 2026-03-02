@@ -1,4 +1,4 @@
-/// DeadLetter store specialised for `StdToolbox` (shared wrapper).
+/// DeadLetter store for the standard runtime (shared wrapper).
 pub type DeadLetter = crate::core::dead_letter::DeadLetterShared;
 
 /// Captures a single deadletter occurrence.

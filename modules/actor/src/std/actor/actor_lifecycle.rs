@@ -4,7 +4,7 @@ use crate::{
   std::messaging::AnyMessageView,
 };
 
-/// Defines the lifecycle contract for actors executed with `StdToolbox`.
+/// Defines the lifecycle contract for actors executed with the standard runtime.
 pub trait Actor: Send {
   /// Called once before the actor starts processing messages.
   ///

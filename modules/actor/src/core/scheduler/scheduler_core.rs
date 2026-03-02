@@ -9,8 +9,7 @@ mod tests;
 use ahash::RandomState;
 use fraktor_utils_rs::core::{
   collections::queue::{OverflowPolicy, backend::BinaryHeapPriorityBackend},
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  time::{SchedulerTickHandle, TimerEntry, TimerHandleId, TimerInstant, TimerWheel, TimerWheelConfig},
+  time::{ManualClock, TimerEntry, TimerHandleId, TimerInstant, TimerWheel, TimerWheelConfig},
 };
 use hashbrown::HashMap;
 
@@ -33,7 +32,7 @@ const DEFAULT_DRIFT_BUDGET_PCT: u8 = 5;
 
 /// Scheduler responsible for registering delayed and periodic jobs.
 pub struct Scheduler {
-  toolbox:       NoStdToolbox,
+  clock:         ManualClock,
   config:        SchedulerConfig,
   wheel:         TimerWheel<ScheduledPayload>,
   registry:      CancellableRegistry,
@@ -49,7 +48,6 @@ pub struct Scheduler {
   diagnostics:   SchedulerDiagnostics,
 }
 
-#[allow(dead_code)]
 struct ScheduledJob {
   handle:        SchedulerHandle,
   wheel_id:      TimerHandleId,
@@ -91,15 +89,16 @@ enum BatchPreparation {
 }
 
 impl Scheduler {
-  /// Creates a scheduler backed by the provided toolbox.
+  /// Creates a scheduler with the provided configuration.
   #[must_use]
-  pub fn new(toolbox: NoStdToolbox, config: SchedulerConfig) -> Self {
+  pub fn new(config: SchedulerConfig) -> Self {
+    let clock = ManualClock::new(config.resolution());
     let timer_config = TimerWheelConfig::from_profile(config.profile(), config.resolution(), DEFAULT_DRIFT_BUDGET_PCT);
     let wheel = TimerWheel::new(timer_config);
     let task_run_backend =
       BinaryHeapPriorityBackend::new_with_capacity(config.task_run_capacity(), OverflowPolicy::Block);
     Self {
-      toolbox,
+      clock,
       config,
       wheel,
       registry: CancellableRegistry::default(),
@@ -128,10 +127,10 @@ impl Scheduler {
     self.config
   }
 
-  /// Returns a reference to the underlying toolbox.
+  /// Returns a reference to the monotonic clock.
   #[must_use]
-  pub const fn toolbox(&self) -> &NoStdToolbox {
-    &self.toolbox
+  pub const fn clock(&self) -> &ManualClock {
+    &self.clock
   }
 
   /// Returns a snapshot of the current scheduler metrics.
@@ -287,12 +286,6 @@ impl Scheduler {
     self.closed = true;
     self.cancel_all_jobs();
     self.run_task_queue()
-  }
-
-  /// Borrows a tick handle from the toolbox.
-  #[allow(dead_code)]
-  pub(crate) fn tick_source(&self) -> SchedulerTickHandle<'_> {
-    self.toolbox.tick_source()
   }
 
   /// Runs due timers at the provided instant, returning the number of executed jobs.

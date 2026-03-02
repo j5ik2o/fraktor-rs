@@ -2,10 +2,7 @@
 
 use alloc::boxed::Box;
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::RuntimeMutex,
-  sync::{ArcShared, SharedAccess},
-};
+use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
 
 use super::factory::ActorFactory;
 

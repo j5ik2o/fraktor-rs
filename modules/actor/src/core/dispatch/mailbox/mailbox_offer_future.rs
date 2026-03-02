@@ -13,8 +13,7 @@ use fraktor_utils_rs::core::{
     queue::{OfferOutcome, QueueError},
     wait::WaitShared,
   },
-  runtime_toolbox::RuntimeMutex,
-  sync::ArcShared,
+  sync::{ArcShared, RuntimeMutex},
   timing::delay::{DelayFuture, DelayProvider},
 };
 

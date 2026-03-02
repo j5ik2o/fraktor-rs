@@ -1,4 +1,4 @@
-use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::SharedAccess};
+use fraktor_utils_rs::core::sync::SharedAccess;
 
 use super::TypedSchedulerShared;
 use crate::core::{
@@ -15,10 +15,10 @@ pub struct TypedSchedulerContext {
 }
 
 impl TypedSchedulerContext {
-  /// Creates a service from the provided toolbox and configuration.
+  /// Creates a service from the provided configuration.
   #[must_use]
-  pub fn new_with_config(toolbox: NoStdToolbox, config: SchedulerConfig) -> Self {
-    let context = SchedulerContext::new(toolbox, config);
+  pub fn new_with_config(config: SchedulerConfig) -> Self {
+    let context = SchedulerContext::new(config);
     Self::new(&context)
   }
 

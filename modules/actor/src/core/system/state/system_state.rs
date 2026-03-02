@@ -18,10 +18,7 @@ use core::{
   time::Duration,
 };
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeMutex},
-  sync::{ArcShared, SharedAccess},
-};
+use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
 use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
 use self::path_identity::PathIdentity;
@@ -125,8 +122,7 @@ impl SystemState {
     let mut mailboxes = Mailboxes::new();
     mailboxes.ensure_default();
     let scheduler_config = SchedulerConfig::default();
-    let toolbox = NoStdToolbox::default();
-    let scheduler_context = SchedulerContext::with_event_stream(toolbox, scheduler_config, event_stream.clone());
+    let scheduler_context = SchedulerContext::with_event_stream(scheduler_config, event_stream.clone());
     let tick_driver_bundle = Self::default_tick_driver_bundle(scheduler_config.resolution());
     Self {
       next_pid: AtomicU64::new(0),
@@ -174,7 +170,6 @@ impl SystemState {
     state.apply_actor_system_config(config);
 
     let event_stream = state.event_stream();
-    let toolbox = NoStdToolbox::default();
     let scheduler_config = *config.scheduler_config();
     #[cfg(any(test, feature = "test-support"))]
     let scheduler_config = if let Some(tick_driver_config) = config.tick_driver_config()
@@ -186,7 +181,7 @@ impl SystemState {
       scheduler_config
     };
 
-    let context = SchedulerContext::with_event_stream(toolbox, scheduler_config, event_stream);
+    let context = SchedulerContext::with_event_stream(scheduler_config, event_stream);
     let provisioning = TickDriverProvisioningContext::from_scheduler_context(&context);
     state.scheduler_context = context;
 

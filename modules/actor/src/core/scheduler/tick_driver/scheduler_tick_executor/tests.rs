@@ -3,10 +3,7 @@
 use alloc::vec::Vec;
 use core::time::Duration;
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdMutex, NoStdToolbox},
-  sync::{ArcShared, SharedAccess},
-};
+use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex, SharedAccess};
 
 use crate::core::scheduler::{
   SchedulerCommand, SchedulerConfig, SchedulerContext, SchedulerRunnable,
@@ -27,9 +24,8 @@ impl SchedulerRunnable for RecordingRunnable {
 
 #[test]
 fn drive_pending_executes_scheduled_job() {
-  let toolbox = NoStdToolbox::default();
   let config = SchedulerConfig::default();
-  let context = SchedulerContext::new(toolbox, config);
+  let context = SchedulerContext::new(config);
   let scheduler = context.scheduler();
   let signal = TickExecutorSignal::new();
   let feed = TickFeed::new(config.resolution(), 8, signal.clone());

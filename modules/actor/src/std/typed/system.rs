@@ -18,7 +18,7 @@ use crate::{
 
 type StdSubscriberHandle = crate::std::event::stream::EventStreamSubscriberShared;
 
-/// Typed actor system specialized for `StdToolbox`.
+/// Typed actor system for the standard runtime.
 ///
 /// This is a newtype wrapper that provides std-specific convenience methods,
 /// particularly for event stream operations with type conversions.

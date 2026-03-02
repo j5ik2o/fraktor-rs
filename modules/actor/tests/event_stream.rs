@@ -14,7 +14,7 @@ use fraktor_actor_rs::core::{
   props::{MailboxConfig, Props},
   system::ActorSystem,
 };
-use fraktor_utils_rs::core::{runtime_toolbox::NoStdMutex, sync::ArcShared};
+use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 
 struct RecordingSubscriber {
   events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>,

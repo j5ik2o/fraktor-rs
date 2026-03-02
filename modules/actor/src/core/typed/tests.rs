@@ -9,7 +9,7 @@ use core::{
   time::Duration,
 };
 
-use fraktor_utils_rs::core::runtime_toolbox::NoStdMutex;
+use fraktor_utils_rs::core::sync::NoStdMutex;
 
 use crate::core::{
   dead_letter::DeadLetterReason,

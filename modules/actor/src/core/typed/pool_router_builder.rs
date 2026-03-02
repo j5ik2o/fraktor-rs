@@ -6,7 +6,7 @@ mod tests;
 use alloc::{vec, vec::Vec};
 use core::sync::atomic::AtomicUsize;
 
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeMutex, sync::ArcShared};
+use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 use portable_atomic::{AtomicU64, Ordering};
 
 use crate::core::{

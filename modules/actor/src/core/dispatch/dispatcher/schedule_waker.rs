@@ -5,7 +5,7 @@ use core::{
   task::{RawWaker, RawWakerVTable, Waker},
 };
 
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeMutex, sync::ArcShared};
+use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use super::dispatcher_shared::DispatcherShared;
 use crate::core::dispatch::mailbox::ScheduleHints;

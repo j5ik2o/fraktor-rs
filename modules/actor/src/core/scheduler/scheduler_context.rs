@@ -1,8 +1,5 @@
 //! Scheduler runtime container used across the actor system.
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeRwLock},
-  sync::{ArcShared, SharedAccess},
-};
+use fraktor_utils_rs::core::sync::{ArcShared, RuntimeRwLock, SharedAccess};
 
 use super::{Scheduler, SchedulerBackedDelayProvider, SchedulerConfig, SchedulerShared, task_run::TaskRunSummary};
 use crate::core::event::stream::EventStreamShared;
@@ -15,16 +12,16 @@ pub struct SchedulerContext {
 }
 
 impl SchedulerContext {
-  /// Creates a service from the provided toolbox and configuration.
+  /// Creates a service from the provided configuration.
   #[must_use]
-  pub fn new(toolbox: NoStdToolbox, config: SchedulerConfig) -> Self {
-    Self::with_event_stream(toolbox, config, EventStreamShared::default())
+  pub fn new(config: SchedulerConfig) -> Self {
+    Self::with_event_stream(config, EventStreamShared::default())
   }
 
   /// Creates a service with the specified event stream handle.
   #[must_use]
-  pub fn with_event_stream(toolbox: NoStdToolbox, config: SchedulerConfig, event_stream: EventStreamShared) -> Self {
-    let scheduler = Scheduler::new(toolbox, config);
+  pub fn with_event_stream(config: SchedulerConfig, event_stream: EventStreamShared) -> Self {
+    let scheduler = Scheduler::new(config);
     let rwlock: RuntimeRwLock<_> = RuntimeRwLock::new(scheduler);
     let shared = SchedulerShared::new(ArcShared::new(rwlock));
     let provider = SchedulerBackedDelayProvider::new(shared.clone());

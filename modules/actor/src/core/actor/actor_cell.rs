@@ -6,10 +6,7 @@ mod tests;
 use alloc::{boxed::Box, collections::VecDeque, string::String, vec, vec::Vec};
 use core::{mem, task::Poll, time::Duration};
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::RuntimeMutex,
-  sync::{ArcShared, SharedAccess, WeakShared},
-};
+use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess, WeakShared};
 use portable_atomic::{AtomicBool, Ordering};
 
 use crate::core::{
